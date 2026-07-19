@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    privatetmpstory_table_tauri_parentgcmx80story_table_lib::run()
+    table_tavern_lib::run()
 }

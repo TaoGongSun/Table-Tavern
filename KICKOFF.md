@@ -1,4 +1,4 @@
-# KICKOFF — Story Table 工程起手文件
+# KICKOFF — Table Tavern（桌面酒館）工程起手文件
 
 > 文件日期：2026-07-18
 > 讀者：從零開始實作本專案的全新 Claude 對話。產品規格見 `NewPlan.md`（本檔不重複其內容，衝突時以 NewPlan.md 為準）。
@@ -16,7 +16,7 @@
 ## 2. Repo 佈局草案
 
 ```text
-Story-Table/
+Table-Tavern/
 ├── NewPlan.md / KICKOFF.md
 ├── src/            # React 前端
 ├── src-tauri/      # Rust 後端（指令、傳輸層、檔案存取）
@@ -25,13 +25,13 @@ Story-Table/
 
 ## 3. 資料落地格式（NewPlan §5.1 的落地細節）
 
-使用者資料放 `~/Documents/StoryTable/worlds/<世界名>/`（可在設定改路徑）：
+使用者資料放 `~/Documents/TableTavern/worlds/<世界名>/`（可在設定改路徑）：
 
 - `world.md`：世界書 v1，純 Markdown，整份作為 GM 的 system prompt 素材（§7.0）。
 - `characters/<角色名>.md`：YAML frontmatter ＋ Markdown 內文。frontmatter 欄位：`name`、`color`（hex，建卡時從調色盤自動配）、`avatar`（相對路徑或內建 emoji）、`tier`（`best`/`balanced`/`fast`/`default`）。內文分節：`## 公開`（人格、語氣、背景，所有人可見的部分）與 `## 私有`（秘密、私人目標、私人記憶——只進本角色與 GM 的上下文）。
 - `transcript/<場景序號>.jsonl`：每行一個事件 `{ts, speaker, kind, text}`；`kind` ∈ `dialogue`（角色對話）/`narration`（GM 旁白）/`player`（玩家輸入）/`system`（點名、進離場）。
 - `state.json`：執行期狀態——角色↔傳輸層/模型對應、場景指標、離場角色的補課摘要。角色卡永不寫入供應商資訊（§5.1）。
-- 全域設定 `~/Library/Application Support/StoryTable/config.json`：API key（檔案權限 0600，與各家 CLI 儲存憑證的慣例相同）、檔位→模型對應表、偏好。
+- 全域設定 `~/Library/Application Support/TableTavern/config.json`：API key（檔案權限 0600，與各家 CLI 儲存憑證的慣例相同）、檔位→模型對應表、偏好。
 
 ## 4. 傳輸層（NewPlan §8.1 的落地細節）
 
