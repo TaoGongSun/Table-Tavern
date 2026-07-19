@@ -75,15 +75,108 @@ input {
   flex: 1;
 }
 
-.chat-container {
-  max-width: 44rem;
-  padding-top: 1.5rem;
-  min-height: 100vh;
+.app-shell {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 14rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid #88888833;
   box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.new-table {
+  text-align: left;
+}
+
+.table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.table-item {
+  text-align: left;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0.45em 0.6em;
+  border-radius: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-item:hover {
+  background: #88888822;
+}
+
+.table-item-active {
+  background: #396cd822;
+  font-weight: 700;
+}
+
+.sidebar-footer {
+  font-size: 0.9em;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  max-width: 46rem;
+  margin: 0 auto;
+  box-sizing: border-box;
+  height: 100vh;
+  overflow: hidden;
+  width: 100%;
 }
 
 .chat-header {
+  display: flex;
   align-items: center;
+}
+
+.table-title {
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-size: 1.3em;
+  font-weight: 700;
+  padding: 0.1em 0.3em;
+  cursor: text;
+}
+
+.table-title-input {
+  font-size: 1.3em;
+  font-weight: 700;
+}
+
+.avatar {
+  flex: none;
+  width: 1.8em;
+  height: 1.8em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px var(--ring);
+  font-size: 0.95em;
+}
+
+.composer input {
+  min-width: 0;
 }
 
 .link {
@@ -164,12 +257,17 @@ select {
 }
 
 .cast {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
   border-width: 2px;
   border-style: solid;
+  border-color: transparent;
 }
 
 .cast-active {
   font-weight: 700;
+  border-color: var(--ring);
 }
 
 .messages {
@@ -185,16 +283,55 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* 角色泡泡：頭像光圈＋名字＋左邊框上角色色，不整顆填色（NewPlan §9.2） */
 .message-dialogue {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
   align-self: flex-start;
   max-width: 85%;
+}
+
+.message-dialogue .bubble {
+  display: flex;
+  flex-direction: column;
+  border-left: 3px solid;
+  padding: 0.1em 0 0.1em 0.6em;
 }
 
 .message-dialogue .speaker {
   font-weight: 700;
   font-size: 0.85em;
+}
+
+.typing i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: typing-blink 1.2s infinite;
+}
+
+.typing i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
 }
 
 .message-player {
@@ -205,14 +342,24 @@ select {
   padding: 0.4em 0.8em;
 }
 
-.message-narration,
-.message-system {
+/* GM 旁白：置中窄欄敘事區塊，與角色對話分層（NewPlan §9.2） */
+.message-narration {
   align-self: center;
   max-width: 70%;
   text-align: center;
   font-style: italic;
-  opacity: 0.75;
-  font-size: 0.9em;
+  opacity: 0.85;
+  padding: 0.4em 0;
+  border-top: 1px solid #88888833;
+  border-bottom: 1px solid #88888833;
+}
+
+.message-system {
+  align-self: center;
+  max-width: 70%;
+  text-align: center;
+  opacity: 0.6;
+  font-size: 0.85em;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -236,5 +383,9 @@ select {
   }
   button:active {
     background-color: #0f0f0f69;
+  }
+
+  .avatar {
+    background: #1f1f1f;
   }
 }

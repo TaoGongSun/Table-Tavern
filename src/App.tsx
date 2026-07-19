@@ -44,6 +44,8 @@ const SUGGESTED_TIER_MODELS: Record<string, string> = {
 
 const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
 
+const DEFAULT_TABLE_NAME = "新的一桌";
+
 interface CliInfo {
   id: string;
   path: string;
@@ -111,10 +113,10 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
 
   return (
     <details className="settings">
-      <summary>設定（API key／檔位模型）</summary>
+      <summary>AI 設定（自備 key／CLI 模式）</summary>
       <form onSubmit={save} className="settings-form">
         <fieldset className="transport-choice">
-          <legend>傳輸層</legend>
+          <legend>連線方式</legend>
           <label className="inline">
             <input
               type="radio"
@@ -267,10 +269,18 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
   );
 }
 
+// 頭像光圈：角色色上在光圈與左邊框，不整顆填色（NewPlan §9.2）
+function Avatar({ meta }: { meta?: CharacterMeta }) {
+  return (
+    <span className="avatar" style={{ ["--ring" as string]: meta?.color ?? "#888888" }}>
+      {meta?.avatar ?? "🎭"}
+    </span>
+  );
+}
+
 function App() {
   const [worlds, setWorlds] = useState<string[]>([]);
-  const [worldName, setWorldName] = useState("");
-  const [world, setWorld] = useState("");
+  const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const [characterName, setCharacterName] = useState("");
@@ -278,48 +288,104 @@ function App() {
   const [scene, setScene] = useState(0);
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState<string | null>(null);
+  // 逐角色打字指示：狀態帶「是哪位角色在生成」，不做全域單一指示燈（NewPlan §9.2）
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [streamText, setStreamText] = useState("");
+  const [editingName, setEditingName] = useState<string | null>(null);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
-    Promise.all([
-      invoke<string[]>("list_worlds").then(setWorlds),
-      invoke<AppConfig>("read_config").then(setConfig),
-    ]).catch((reason) => setError(String(reason)));
+    (async () => {
+      try {
+        const [names, loaded] = await Promise.all([
+          invoke<string[]>("list_worlds"),
+          invoke<AppConfig>("read_config"),
+        ]);
+        setConfig(loaded);
+        if (names.length === 0) {
+          await invoke("create_world", { name: DEFAULT_TABLE_NAME });
+          setWorlds([DEFAULT_TABLE_NAME]);
+          await enterTable(DEFAULT_TABLE_NAME, loaded);
+          return;
+        }
+        setWorlds(names);
+        const last = String(loaded.preferences["last_world"] ?? "");
+        await enterTable(names.includes(last) ? last : names[0], loaded);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    })();
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events, streaming]);
+  }, [events, generating, streamText]);
 
-  async function openWorld(name: string) {
+  async function enterTable(name: string, loaded: AppConfig) {
+    const state = await invoke<WorldState>("read_state", { world: name });
+    const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
+      world: name,
+      scene: state.current_scene,
+    });
+    const cast = await invoke<CharacterMeta[]>("list_characters", { world: name });
+    setTable(name);
+    setScene(state.current_scene);
+    setEvents(transcript);
+    setCharacters(cast);
+    setSpeaker(cast[0]?.name ?? "");
+    setEditingName(null);
+    if (loaded.preferences["last_world"] !== name) {
+      const next = { ...loaded, preferences: { ...loaded.preferences, last_world: name } };
+      await invoke("write_config", { config: next });
+      setConfig(next);
+    }
+  }
+
+  async function switchTable(name: string) {
+    if (!config || name === table || generating !== null) return;
     setError("");
     try {
-      const state = await invoke<WorldState>("read_state", { world: name });
-      const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
-        world: name,
-        scene: state.current_scene,
-      });
-      const cast = await invoke<CharacterMeta[]>("list_characters", { world: name });
-      setWorld(name);
-      setScene(state.current_scene);
-      setEvents(transcript);
-      setCharacters(cast);
-      setSpeaker(cast[0]?.name ?? "");
+      const previous = table;
+      await enterTable(name, config);
+      // 空桌（零訊息、零角色、無設定）離開時自動回收（NewPlan §9.3）
+      if (previous) await invoke("reclaim_world_if_empty", { world: previous });
+      setWorlds(await invoke<string[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     }
   }
 
-  async function createWorld(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function newTable() {
+    if (!config || generating !== null) return;
     setError("");
     try {
-      await invoke("create_world", { name: worldName });
+      const existing = await invoke<string[]>("list_worlds");
+      let name = DEFAULT_TABLE_NAME;
+      for (let n = 2; existing.includes(name); n += 1) name = `${DEFAULT_TABLE_NAME} ${n}`;
+      await invoke("create_world", { name });
+      const previous = table;
+      await enterTable(name, config);
+      if (previous) await invoke("reclaim_world_if_empty", { world: previous });
       setWorlds(await invoke<string[]>("list_worlds"));
-      await openWorld(worldName);
-      setWorldName("");
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function renameTable(raw: string) {
+    const name = raw.trim();
+    setEditingName(null);
+    if (!config || !name || name === table) return;
+    setError("");
+    try {
+      await invoke("rename_world", { world: table, newName: name });
+      setTable(name);
+      const next = { ...config, preferences: { ...config.preferences, last_world: name } };
+      await invoke("write_config", { config: next });
+      setConfig(next);
+      setWorlds(await invoke<string[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     }
@@ -337,9 +403,8 @@ function App() {
       private_md: "",
     };
     try {
-      await invoke("write_character", { world, card });
-      const cast = await invoke<CharacterMeta[]>("list_characters", { world });
-      setCharacters(cast);
+      await invoke("write_character", { world: table, card });
+      setCharacters(await invoke<CharacterMeta[]>("list_characters", { world: table }));
       setSpeaker(card.name);
       setCharacterName("");
     } catch (reason) {
@@ -348,145 +413,208 @@ function App() {
   }
 
   async function appendEvent(event: TranscriptEvent) {
-    await invoke("append_transcript", { world, scene, event });
+    await invoke("append_transcript", { world: table, scene, event });
     setEvents((previous) => [...previous, event]);
+  }
+
+  // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
+  async function requestReply(character: string) {
+    if (!character || generating !== null) return;
+    setError("");
+    setGenerating(character);
+    setStreamText("");
+    try {
+      const onDelta = new Channel<string>();
+      onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
+      const full = await invoke<string>("chat_with_character", {
+        world: table,
+        character,
+        onDelta,
+      });
+      await appendEvent({ ts: nowTs(), speaker: character, kind: "dialogue", text: full });
+      setWorlds(await invoke<string[]>("list_worlds"));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setGenerating(null);
+      setStreamText("");
+    }
   }
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = input.trim();
-    if (!text || !speaker || streaming !== null) return;
+    if (!text || !speaker || generating !== null) return;
     setError("");
     setInput("");
     try {
       await appendEvent({ ts: nowTs(), speaker: "玩家", kind: "player", text });
-      setStreaming("");
-      const onDelta = new Channel<string>();
-      onDelta.onmessage = (delta) => setStreaming((prev) => (prev ?? "") + delta);
-      const full = await invoke<string>("chat_with_character", {
-        world,
-        character: speaker,
-        onDelta,
-      });
-      await appendEvent({ ts: nowTs(), speaker, kind: "dialogue", text: full });
     } catch (reason) {
       setError(String(reason));
-    } finally {
-      setStreaming(null);
+      return;
     }
+    await requestReply(speaker);
   }
 
-  const colorOf = (name: string) =>
-    characters.find((c) => c.name === name)?.color ?? "#888888";
+  const metaOf = (name: string) => characters.find((c) => c.name === name);
+  const generatingMeta = generating !== null ? metaOf(generating) : undefined;
 
-  if (!config) return <main className="container">{error && <p role="alert">{error}</p>}</main>;
-
-  if (!world) {
-    return (
-      <main className="container">
-        <h1>桌面酒館</h1>
-        <Settings config={config} onSaved={setConfig} />
-        <section aria-labelledby="world-list-title">
-          <h2 id="world-list-title">世界</h2>
-          {worlds.length === 0 ? (
-            <p>尚無世界</p>
-          ) : (
-            <ul>
-              {worlds.map((name) => (
-                <li key={name}>
-                  <button className="link" onClick={() => openWorld(name)}>
-                    {name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <form className="row" onSubmit={createWorld}>
-          <input
-            aria-label="世界名稱"
-            value={worldName}
-            onChange={(e) => setWorldName(e.currentTarget.value)}
-            placeholder="輸入世界名稱"
-          />
-          <button type="submit">建立世界</button>
-        </form>
-        {error && <p role="alert">{error}</p>}
-      </main>
-    );
+  if (!config || !table) {
+    return <main className="container">{error && <p role="alert">{error}</p>}</main>;
   }
 
   return (
-    <main className="container chat-container">
-      <header className="row chat-header">
-        <button className="link" onClick={() => setWorld("")}>
-          ← 世界列表
+    <div className="app-shell">
+      <aside className="sidebar">
+        <button className="new-table" onClick={newTable} disabled={generating !== null}>
+          ＋ 開新的一桌
         </button>
-        <h1>{world}</h1>
-      </header>
+        <nav className="table-list" aria-label="桌列表">
+          {worlds.map((name) => (
+            <button
+              key={name}
+              className={`table-item ${name === table ? "table-item-active" : ""}`}
+              onClick={() => switchTable(name)}
+            >
+              {name}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <Settings config={config} onSaved={setConfig} />
+        </div>
+      </aside>
 
-      <Settings config={config} onSaved={setConfig} />
+      <main className="chat-main">
+        <header className="chat-header">
+          {editingName === null ? (
+            <button
+              className="table-title"
+              title="點一下改名"
+              onClick={() => setEditingName(table)}
+            >
+              {table}
+            </button>
+          ) : (
+            <input
+              className="table-title-input"
+              autoFocus
+              value={editingName}
+              aria-label="桌名"
+              onChange={(e) => setEditingName(e.currentTarget.value)}
+              onBlur={() => renameTable(editingName)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setEditingName(null);
+              }}
+            />
+          )}
+        </header>
 
-      <section className="row cast-row" aria-label="角色">
-        {characters.map((c) => (
-          <button
-            key={c.name}
-            className={`cast ${speaker === c.name ? "cast-active" : ""}`}
-            style={{ borderColor: c.color }}
-            onClick={() => setSpeaker(c.name)}
-          >
-            {c.avatar} {c.name}
-          </button>
-        ))}
-        <form className="row" onSubmit={createCharacter}>
-          <input
-            aria-label="角色名稱"
-            value={characterName}
-            onChange={(e) => setCharacterName(e.currentTarget.value)}
-            placeholder="新角色名稱"
+        <section className="row cast-row" aria-label="角色">
+          {characters.map((c) => (
+            <button
+              key={c.name}
+              className={`cast ${speaker === c.name ? "cast-active" : ""}`}
+              style={{ ["--ring" as string]: c.color }}
+              onClick={() => setSpeaker(c.name)}
+              title={`點名「${c.name}」接話`}
+            >
+              <Avatar meta={c} /> {c.name}
+            </button>
+          ))}
+          <form className="row" onSubmit={createCharacter}>
+            <input
+              aria-label="角色名稱"
+              value={characterName}
+              onChange={(e) => setCharacterName(e.currentTarget.value)}
+              placeholder="新角色名稱"
+            />
+            <button type="submit">建卡</button>
+          </form>
+        </section>
+
+        {speaker && (
+          <CardEditor
+            world={table}
+            name={speaker}
+            onSaved={() =>
+              invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
+            }
           />
-          <button type="submit">建卡</button>
-        </form>
-      </section>
-
-      {speaker && <CardEditor world={world} name={speaker} onSaved={() => openWorld(world)} />}
-
-      <section className="messages" aria-label="對話">
-        {events.map((event, index) => (
-          <div key={index} className={`message message-${event.kind}`}>
-            {event.kind === "dialogue" && (
-              <span className="speaker" style={{ color: colorOf(event.speaker) }}>
-                {event.speaker}
-              </span>
-            )}
-            <span className="text">{event.text}</span>
-          </div>
-        ))}
-        {streaming !== null && (
-          <div className="message message-dialogue">
-            <span className="speaker" style={{ color: colorOf(speaker) }}>
-              {speaker}
-            </span>
-            <span className="text">{streaming || "…"}</span>
-          </div>
         )}
-        <div ref={bottomRef} />
-      </section>
 
-      <form className="row" onSubmit={send}>
-        <input
-          aria-label="玩家輸入"
-          value={input}
-          onChange={(e) => setInput(e.currentTarget.value)}
-          placeholder={speaker ? `對「${speaker}」說…` : "先建立一個角色"}
-          disabled={!speaker || streaming !== null}
-        />
-        <button type="submit" disabled={!speaker || streaming !== null}>
-          送出
-        </button>
-      </form>
-      {error && <p role="alert">{error}</p>}
-    </main>
+        <section className="messages" aria-label="對話">
+          {events.map((event, index) => {
+            if (event.kind === "dialogue") {
+              const meta = metaOf(event.speaker);
+              const color = meta?.color ?? "#888888";
+              return (
+                <div key={index} className="message message-dialogue">
+                  <Avatar meta={meta} />
+                  <div className="bubble" style={{ borderLeftColor: color }}>
+                    <span className="speaker" style={{ color }}>
+                      {event.speaker}
+                    </span>
+                    <span className="text">{event.text}</span>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={index} className={`message message-${event.kind}`}>
+                <span className="text">{event.text}</span>
+              </div>
+            );
+          })}
+          {generating !== null && (
+            <div className="message message-dialogue">
+              <Avatar meta={generatingMeta} />
+              <div
+                className="bubble"
+                style={{ borderLeftColor: generatingMeta?.color ?? "#888888" }}
+              >
+                <span className="speaker" style={{ color: generatingMeta?.color ?? "#888888" }}>
+                  {generating}
+                </span>
+                {streamText ? (
+                  <span className="text">{streamText}</span>
+                ) : (
+                  <span className="typing" aria-label={`${generating} 正在打字`}>
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </section>
+
+        <form className="row composer" onSubmit={send}>
+          <input
+            aria-label="玩家輸入"
+            value={input}
+            onChange={(e) => setInput(e.currentTarget.value)}
+            placeholder={speaker ? `以玩家身分發言，「${speaker}」會接話…` : "先建立一個角色"}
+            disabled={!speaker || generating !== null}
+          />
+          <button type="submit" disabled={!speaker || generating !== null}>
+            送出
+          </button>
+          <button
+            type="button"
+            onClick={() => requestReply(speaker)}
+            disabled={!speaker || generating !== null}
+            title="不輸入玩家發言，直接請被點名的角色接話"
+          >
+            請{speaker || "角色"}發言
+          </button>
+        </form>
+        {error && <p role="alert">{error}</p>}
+      </main>
+    </div>
   );
 }
 

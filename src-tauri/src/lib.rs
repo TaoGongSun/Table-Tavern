@@ -31,6 +31,16 @@ fn create_world(app: tauri::AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn reclaim_world_if_empty(app: tauri::AppHandle, world: String) -> Result<bool, String> {
+    data::reclaim_world_if_empty(&data_root(&app)?, &world).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn rename_world(app: tauri::AppHandle, world: String, new_name: String) -> Result<(), String> {
+    data::rename_world(&data_root(&app)?, &world, &new_name).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn read_world_md(app: tauri::AppHandle, world: String) -> Result<String, String> {
     data::read_world_md(&data_root(&app)?, &world).map_err(|error| error.to_string())
 }
@@ -178,6 +188,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_worlds,
             create_world,
+            reclaim_world_if_empty,
+            rename_world,
             read_world_md,
             write_world_md,
             list_characters,

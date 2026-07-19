@@ -127,6 +127,22 @@ fn character_path(root: &Path, world: &str, name: &str) -> DataResult<PathBuf> {
         .join(format!("{name}.md")))
 }
 
+/// 最後活動時間＝transcript 內最新檔案 mtime，退而求其次用世界目錄 mtime
+fn last_active(world_directory: &Path) -> std::time::SystemTime {
+    let mut latest = fs::metadata(world_directory)
+        .and_then(|meta| meta.modified())
+        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+    if let Ok(entries) = fs::read_dir(world_directory.join("transcript")) {
+        for entry in entries.flatten() {
+            if let Ok(modified) = entry.metadata().and_then(|meta| meta.modified()) {
+                latest = latest.max(modified);
+            }
+        }
+    }
+    latest
+}
+
+/// 依最後活動排序（新的在前），供側欄桌列表用（NewPlan §9.3）
 pub fn list_worlds(root: &Path) -> DataResult<Vec<String>> {
     let directory = worlds_dir(root);
     if !directory.exists() {
@@ -137,16 +153,15 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<String>> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            worlds.push(
-                entry
-                    .file_name()
-                    .into_string()
-                    .map_err(|_| invalid_data("world directory name is not valid UTF-8"))?,
-            );
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| invalid_data("world directory name is not valid UTF-8"))?;
+            worlds.push((last_active(&entry.path()), name));
         }
     }
-    worlds.sort();
-    Ok(worlds)
+    worlds.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    Ok(worlds.into_iter().map(|(_, name)| name).collect())
 }
 
 pub fn create_world(root: &Path, name: &str) -> DataResult<()> {
@@ -161,6 +176,45 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<()> {
         directory.join("state.json"),
         serde_json::to_string_pretty(&WorldState::default())?,
     )?;
+    Ok(())
+}
+
+/// 空桌回收（NewPlan §9.3）：只回收完全未動過的桌——零訊息、零角色、world.md 空白；
+/// 任一項有內容即保留，防資料遺失。回傳是否真的刪了。
+pub fn reclaim_world_if_empty(root: &Path, world: &str) -> DataResult<bool> {
+    let directory = world_dir(root, world)?;
+    if !directory.exists() {
+        return Ok(false);
+    }
+    let has_messages = fs::read_dir(directory.join("transcript"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|entry| entry.metadata().map(|meta| meta.len() > 0).unwrap_or(true))
+        })
+        .unwrap_or(false);
+    let has_characters = fs::read_dir(directory.join("characters"))
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false);
+    let world_md = fs::read_to_string(directory.join("world.md")).unwrap_or_default();
+    if has_messages || has_characters || !world_md.trim().is_empty() {
+        return Ok(false);
+    }
+    fs::remove_dir_all(directory)?;
+    Ok(true)
+}
+
+/// 懶命名的後半：桌名隨時可改（NewPlan §9.3）
+pub fn rename_world(root: &Path, world: &str, new_name: &str) -> DataResult<()> {
+    let from = world_dir(root, world)?;
+    let to = world_dir(root, new_name)?;
+    if world == new_name {
+        return Ok(());
+    }
+    if to.exists() {
+        return Err(invalid_data(format!("world already exists: {new_name}")));
+    }
+    fs::rename(from, to)?;
     Ok(())
 }
 
@@ -444,6 +498,83 @@ mod tests {
         assert!(root.path().join("worlds/群島/transcript").is_dir());
         assert!(root.path().join("worlds/群島/world.md").is_file());
         assert!(root.path().join("worlds/群島/state.json").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lists_worlds_by_last_activity_descending() {
+        let root = TestRoot::new("activity");
+        create_world(root.path(), "甲桌").unwrap();
+        create_world(root.path(), "乙桌").unwrap();
+
+        // 兩桌目錄 mtime 撥回一小時前：同時間時按名稱升冪（乙 U+4E59 < 甲 U+7532）
+        let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        for name in ["甲桌", "乙桌"] {
+            let directory = fs::File::open(root.path().join("worlds").join(name)).unwrap();
+            directory.set_modified(hour_ago).unwrap();
+        }
+        assert_eq!(list_worlds(root.path()).unwrap(), vec!["乙桌", "甲桌"]);
+
+        // 對名稱排序居後的甲桌寫一筆訊息，活動排序應把它推到最前
+        let event = TranscriptEvent {
+            ts: "2026-07-19T00:00:00Z".to_owned(),
+            speaker: "玩家".to_owned(),
+            kind: TranscriptKind::Player,
+            text: "你好".to_owned(),
+        };
+        append_transcript(root.path(), "甲桌", 0, &event).unwrap();
+        assert_eq!(list_worlds(root.path()).unwrap(), vec!["甲桌", "乙桌"]);
+    }
+
+    #[test]
+    fn reclaims_only_untouched_worlds() {
+        let root = TestRoot::new("reclaim");
+        create_world(root.path(), "空桌").unwrap();
+        assert!(reclaim_world_if_empty(root.path(), "空桌").unwrap());
+        assert!(list_worlds(root.path()).unwrap().is_empty());
+        // 已刪的桌再回收一次應為 no-op
+        assert!(!reclaim_world_if_empty(root.path(), "空桌").unwrap());
+
+        create_world(root.path(), "有訊息").unwrap();
+        let event = TranscriptEvent {
+            ts: "2026-07-19T00:00:00Z".to_owned(),
+            speaker: "玩家".to_owned(),
+            kind: TranscriptKind::Player,
+            text: "留著".to_owned(),
+        };
+        append_transcript(root.path(), "有訊息", 0, &event).unwrap();
+        assert!(!reclaim_world_if_empty(root.path(), "有訊息").unwrap());
+
+        create_world(root.path(), "有角色").unwrap();
+        let card = CharacterCard {
+            name: "旅人".to_owned(),
+            color: "#e07a5f".to_owned(),
+            avatar: "🎭".to_owned(),
+            tier: Tier::Default,
+            public_md: String::new(),
+            private_md: String::new(),
+        };
+        write_character(root.path(), "有角色", &card).unwrap();
+        assert!(!reclaim_world_if_empty(root.path(), "有角色").unwrap());
+
+        create_world(root.path(), "有設定").unwrap();
+        write_world_md(root.path(), "有設定", "海島世界").unwrap();
+        assert!(!reclaim_world_if_empty(root.path(), "有設定").unwrap());
+    }
+
+    #[test]
+    fn renames_world_and_rejects_collisions() {
+        let root = TestRoot::new("rename");
+        create_world(root.path(), "舊名").unwrap();
+        create_world(root.path(), "占用").unwrap();
+
+        rename_world(root.path(), "舊名", "新名").unwrap();
+        assert!(root.path().join("worlds/新名").is_dir());
+        assert!(!root.path().join("worlds/舊名").exists());
+
+        assert!(rename_world(root.path(), "新名", "占用").is_err());
+        rename_world(root.path(), "新名", "新名").unwrap();
+        assert!(rename_world(root.path(), "新名", "壞/名").is_err());
     }
 
     #[test]
