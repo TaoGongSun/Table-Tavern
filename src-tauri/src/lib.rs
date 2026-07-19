@@ -1,3 +1,4 @@
+mod cli;
 mod data;
 mod transport;
 
@@ -102,9 +103,14 @@ fn write_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> 
     data::write_config(&config_root(&app)?, &config).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn detect_clis() -> Vec<cli::CliInfo> {
+    cli::detect_clis().await
+}
+
 /// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
-/// 上下文完全由本機正典（角色卡＋公開 transcript）組裝；
-/// 增量文字經 on_delta channel 回前端，完整回覆作為回傳值。
+/// 上下文完全由本機正典（角色卡＋公開 transcript）經 assemble_messages 組裝，
+/// 再依 preferences.transport 分流到 API 或 CLI；增量文字經 on_delta channel 回前端。
 #[tauri::command]
 async fn chat_with_character(
     app: tauri::AppHandle,
@@ -119,12 +125,49 @@ async fn chat_with_character(
     let events = data::read_transcript(&root, &world, state.current_scene)
         .map_err(|error| error.to_string())?;
 
-    let model = transport::resolve_model(card.tier, &config)?;
     let messages = transport::assemble_messages(&card, &events);
-    transport::stream_chat(&config, &model, &messages, |delta| {
+    let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
-    })
-    .await
+    };
+
+    let transport_kind = config
+        .preferences
+        .get("transport")
+        .and_then(|value| value.as_str())
+        .unwrap_or("api")
+        .to_owned();
+    if transport_kind == "api" {
+        let model = transport::resolve_model(card.tier, &config)?;
+        return transport::stream_chat(&config, &model, &messages, emit)
+            .await
+            .map_err(|error| error.to_string());
+    }
+
+    // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
+    if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
+        return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
+    }
+    let info = cli::detect_clis()
+        .await
+        .into_iter()
+        .find(|info| info.id == transport_kind)
+        .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
+
+    let (system, prompt) = cli::flatten_messages(&card.name, &messages);
+    let program = std::path::PathBuf::from(&info.path);
+    match transport_kind.as_str() {
+        "claude" => {
+            let args = cli::claude_args(cli::claude_model_for(card.tier), &system);
+            cli::run_cli(&program, &args, &prompt, cli::parse_claude_line, emit).await
+        }
+        "codex" => {
+            // codex 沒有 system prompt 旗標，併進 prompt 開頭
+            let args = cli::codex_args(cli::codex_effort_for(card.tier));
+            let combined = format!("{system}\n\n{prompt}");
+            cli::run_cli(&program, &args, &combined, cli::parse_codex_line, emit).await
+        }
+        other => Err(format!("未知傳輸層：{other}").into()),
+    }
     .map_err(|error| error.to_string())
 }
 
@@ -146,6 +189,7 @@ pub fn run() {
             write_state,
             read_config,
             write_config,
+            detect_clis,
             chat_with_character
         ])
         .run(tauri::generate_context!())
