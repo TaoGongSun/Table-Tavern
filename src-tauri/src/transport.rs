@@ -1,0 +1,375 @@
+//! 傳輸層共用介面：上下文組裝→單發呼叫→串流回傳。
+//! API 直連與（之後的）CLI 傳輸都必須經由 assemble_messages 取得上下文（KICKOFF §4）。
+
+use crate::data::{AppConfig, CharacterCard, DataResult, Tier, TranscriptEvent, TranscriptKind};
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
+
+pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+fn message(role: &str, content: String) -> ChatMessage {
+    ChatMessage {
+        role: role.to_owned(),
+        content,
+    }
+}
+
+/// 組裝單一角色的上下文。只餵入該角色自己的卡與公開 transcript：
+/// 他人私有設定與 world.md（GM 專屬，NewPlan §7.0）由呼叫端負責永不傳入。
+pub fn assemble_messages(card: &CharacterCard, events: &[TranscriptEvent]) -> Vec<ChatMessage> {
+    let mut system = format!(
+        "你正在一場多人桌上角色扮演中扮演「{name}」。\
+         請一律以「{name}」的第一人稱視角與口吻回應，只輸出這個角色的台詞與動作描寫；\
+         不要跳出角色、不要以 AI 助理的身分說話、不要替其他角色或玩家代言。\n\n\
+         ## 你的公開設定（其他人也認識的你）\n{public}\n",
+        name = card.name,
+        public = card.public_md.trim(),
+    );
+    if !card.private_md.trim().is_empty() {
+        system.push_str(&format!(
+            "\n## 你的私有設定（只有你自己知道；除非劇情走到，不要主動說破）\n{}\n",
+            card.private_md.trim()
+        ));
+    }
+
+    let mut messages = vec![message("system", system)];
+    for event in events {
+        let (role, line) = match event.kind {
+            TranscriptKind::Dialogue if event.speaker == card.name => {
+                ("assistant", event.text.clone())
+            }
+            TranscriptKind::Dialogue => ("user", format!("{}：{}", event.speaker, event.text)),
+            TranscriptKind::Player => ("user", format!("{}：{}", event.speaker, event.text)),
+            TranscriptKind::Narration => ("user", format!("（旁白）{}", event.text)),
+            TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
+        };
+        match messages.last_mut() {
+            // 相鄰同 role 合併成一則，維持 user/assistant 交錯
+            Some(last) if last.role == role => {
+                last.content.push('\n');
+                last.content.push_str(&line);
+            }
+            _ => messages.push(message(role, line)),
+        }
+    }
+    messages
+}
+
+/// 檔位→模型解析。模型 id 一律來自設定檔（config.tier_models），程式不內建。
+pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
+    let key = match tier {
+        Tier::Default => config
+            .preferences
+            .get("default_tier")
+            .and_then(|value| value.as_str())
+            .unwrap_or("balanced")
+            .to_owned(),
+        other => other.as_str().to_owned(),
+    };
+    config
+        .tier_models
+        .get(&key)
+        .cloned()
+        .filter(|model| !model.is_empty())
+        .ok_or_else(|| format!("尚未設定「{key}」檔位對應的模型，請先到設定填寫"))
+}
+
+pub fn base_url(config: &AppConfig) -> String {
+    config
+        .preferences
+        .get("base_url")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim_end_matches('/').to_owned())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned())
+}
+
+/// SSE 逐塊解析器。以位元組緩衝避免 UTF-8 字元被 chunk 邊界切斷。
+#[derive(Default)]
+pub struct SseParser {
+    buffer: Vec<u8>,
+}
+
+impl SseParser {
+    /// 餵入一塊原始位元組，回傳所有完整行的 `data:` 承載內容。
+    pub fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+        self.buffer.extend_from_slice(chunk);
+        let mut payloads = Vec::new();
+        while let Some(index) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = self.buffer.drain(..=index).collect();
+            let line = String::from_utf8_lossy(&line);
+            let line = line.trim_end_matches(['\n', '\r']);
+            if let Some(payload) = line.strip_prefix("data:") {
+                payloads.push(payload.trim_start().to_owned());
+            }
+            // 其餘：空行（事件分隔）與 ": comment"（OpenRouter 的處理中心跳）一律忽略
+        }
+        payloads
+    }
+}
+
+/// 從一則 SSE payload 取出增量文字；非增量塊（usage、空 choices）回 None。
+pub fn extract_delta(payload: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(payload).ok()?;
+    let text = value
+        .get("choices")?
+        .get(0)?
+        .get("delta")?
+        .get("content")?
+        .as_str()?;
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_owned())
+    }
+}
+
+/// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
+/// 每個增量經 on_delta 回傳，結束後回傳完整文字。
+pub async fn stream_chat(
+    config: &AppConfig,
+    model: &str,
+    messages: &[ChatMessage],
+    mut on_delta: impl FnMut(&str),
+) -> DataResult<String> {
+    let base = base_url(config);
+    let api_key = config.api_keys.get("openrouter").filter(|key| !key.is_empty());
+    if api_key.is_none() && base == DEFAULT_BASE_URL {
+        return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
+    }
+
+    let mut request = reqwest::Client::new()
+        .post(format!("{base}/chat/completions"))
+        .json(&serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "stream": true,
+        }));
+    if let Some(key) = api_key {
+        request = request.bearer_auth(key);
+    }
+
+    let response = request.send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("API 回應 {status}：{body}").into());
+    }
+
+    let mut stream = response.bytes_stream();
+    let mut parser = SseParser::default();
+    let mut full_text = String::new();
+    'outer: while let Some(chunk) = stream.next().await {
+        for payload in parser.push(&chunk?) {
+            if payload == "[DONE]" {
+                break 'outer;
+            }
+            if let Some(delta) = extract_delta(&payload) {
+                on_delta(&delta);
+                full_text.push_str(&delta);
+            }
+        }
+    }
+    Ok(full_text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::Tier;
+
+    fn card(name: &str, public_md: &str, private_md: &str) -> CharacterCard {
+        CharacterCard {
+            name: name.to_owned(),
+            color: "#336699".to_owned(),
+            avatar: "🦊".to_owned(),
+            tier: Tier::Default,
+            public_md: public_md.to_owned(),
+            private_md: private_md.to_owned(),
+        }
+    }
+
+    fn event(kind: TranscriptKind, speaker: &str, text: &str) -> TranscriptEvent {
+        TranscriptEvent {
+            ts: "2026-07-19T12:00:00+08:00".to_owned(),
+            speaker: speaker.to_owned(),
+            kind,
+            text: text.to_owned(),
+        }
+    }
+
+    /// 驗收：上下文只含本角色可見內容——含自己的公開＋私有，
+    /// 且介面上根本收不到他人的卡或 world.md。
+    #[test]
+    fn context_contains_own_card_only_and_public_transcript() {
+        let fox = card("狐狸", "旅店老闆，笑口常開", "其實是通緝犯");
+        let events = [
+            event(TranscriptKind::Narration, "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
+            event(TranscriptKind::Dialogue, "騎士", "我在找一名通緝犯。"),
+            event(TranscriptKind::System, "系統", "騎士 加入本桌"),
+        ];
+        let messages = assemble_messages(&fox, &events);
+
+        let system = &messages[0];
+        assert_eq!(system.role, "system");
+        assert!(system.content.contains("旅店老闆"));
+        assert!(system.content.contains("其實是通緝犯"));
+
+        // 他人（騎士）的私有設定不存在於任何訊息——組裝介面收不到它
+        let joined: String = messages.iter().map(|m| m.content.as_str()).collect();
+        assert!(!joined.contains("world"));
+        assert!(joined.contains("（旁白）夜幕低垂"));
+        assert!(joined.contains("玩家：老闆，來杯麥酒"));
+        assert!(joined.contains("騎士：我在找一名通緝犯。"));
+        assert!(joined.contains("（系統）騎士 加入本桌"));
+    }
+
+    #[test]
+    fn own_dialogue_becomes_assistant_and_adjacent_roles_merge() {
+        let fox = card("狐狸", "公開", "");
+        let events = [
+            event(TranscriptKind::Player, "玩家", "第一句"),
+            event(TranscriptKind::Narration, "GM", "旁白一句"),
+            event(TranscriptKind::Dialogue, "狐狸", "我的回答"),
+            event(TranscriptKind::Player, "玩家", "第二句"),
+        ];
+        let messages = assemble_messages(&fox, &events);
+        let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["system", "user", "assistant", "user"]);
+        assert_eq!(messages[1].content, "玩家：第一句\n（旁白）旁白一句");
+        assert_eq!(messages[2].content, "我的回答");
+        // 空的私有節不產生私有段落
+        assert!(!messages[0].content.contains("私有設定"));
+    }
+
+    #[test]
+    fn resolve_model_reads_config_and_default_tier() {
+        let mut config = AppConfig::default();
+        assert!(resolve_model(Tier::Best, &config).is_err());
+
+        config
+            .tier_models
+            .insert("best".to_owned(), "vendor/big-model".to_owned());
+        config
+            .tier_models
+            .insert("balanced".to_owned(), "vendor/mid-model".to_owned());
+        config
+            .tier_models
+            .insert("fast".to_owned(), "vendor/small-model".to_owned());
+        assert_eq!(
+            resolve_model(Tier::Best, &config).unwrap(),
+            "vendor/big-model"
+        );
+        // default 檔位未指定偏好時落在 balanced
+        assert_eq!(
+            resolve_model(Tier::Default, &config).unwrap(),
+            "vendor/mid-model"
+        );
+        config.preferences.insert(
+            "default_tier".to_owned(),
+            serde_json::Value::String("fast".to_owned()),
+        );
+        assert_eq!(
+            resolve_model(Tier::Default, &config).unwrap(),
+            "vendor/small-model"
+        );
+    }
+
+    #[test]
+    fn base_url_defaults_and_trims_trailing_slash() {
+        let mut config = AppConfig::default();
+        assert_eq!(base_url(&config), DEFAULT_BASE_URL);
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String("http://localhost:11434/v1/".to_owned()),
+        );
+        assert_eq!(base_url(&config), "http://localhost:11434/v1");
+    }
+
+    #[test]
+    fn sse_parser_handles_split_chunks_comments_and_multibyte_boundaries() {
+        let mut parser = SseParser::default();
+        assert!(parser.push(b": OPENROUTER PROCESSING\n\n").is_empty());
+
+        // 一則 payload 被切成兩塊，且切點落在多位元組字元中間
+        let payload = r#"data: {"choices":[{"delta":{"content":"你好"}}]}"#;
+        let bytes = payload.as_bytes();
+        let split = payload.find("你").unwrap() + 1; // 「你」的第 2 個位元組處
+        let mut collected = parser.push(&bytes[..split]);
+        assert!(collected.is_empty());
+        collected.extend(parser.push(&bytes[split..]));
+        collected.extend(parser.push(b"\ndata: [DONE]\n"));
+        assert_eq!(collected.len(), 2);
+        assert_eq!(extract_delta(&collected[0]).unwrap(), "你好");
+        assert_eq!(collected[1], "[DONE]");
+    }
+
+    #[tokio::test]
+    async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openrouter() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request);
+            let body = concat!(
+                ": OPENROUTER PROCESSING\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}\n\n",
+                "data: [DONE]\n\n",
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+
+        // 預設 OpenRouter endpoint 且沒 key：呼叫前就擋下
+        let mut config = AppConfig::default();
+        let messages = [message("user", "嗨".to_owned())];
+        let error = stream_chat(&config, "test/model", &messages, |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("API key"), "{error}");
+
+        // 自訂 base URL（無 key）：走 mock server，增量與全文一致
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String(format!("http://{address}")),
+        );
+        let mut deltas = Vec::new();
+        let full = stream_chat(&config, "test/model", &messages, |delta| {
+            deltas.push(delta.to_owned());
+        })
+        .await
+        .unwrap();
+        assert_eq!(full, "你好");
+        assert_eq!(deltas, ["你", "好"]);
+    }
+
+    #[test]
+    fn extract_delta_ignores_non_delta_payloads() {
+        assert_eq!(extract_delta(r#"{"choices":[]}"#), None);
+        assert_eq!(extract_delta(r#"{"usage":{"total_tokens":9}}"#), None);
+        assert_eq!(
+            extract_delta(r#"{"choices":[{"delta":{"content":""}}]}"#),
+            None
+        );
+        assert_eq!(
+            extract_delta(r#"{"choices":[{"delta":{"content":"嗨"}}]}"#).unwrap(),
+            "嗨"
+        );
+    }
+}
