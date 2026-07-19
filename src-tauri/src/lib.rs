@@ -1,4 +1,5 @@
 mod data;
+mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
 use std::path::PathBuf;
@@ -101,6 +102,32 @@ fn write_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> 
     data::write_config(&config_root(&app)?, &config).map_err(|error| error.to_string())
 }
 
+/// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
+/// 上下文完全由本機正典（角色卡＋公開 transcript）組裝；
+/// 增量文字經 on_delta channel 回前端，完整回覆作為回傳值。
+#[tauri::command]
+async fn chat_with_character(
+    app: tauri::AppHandle,
+    world: String,
+    character: String,
+    on_delta: tauri::ipc::Channel<String>,
+) -> Result<String, String> {
+    let root = data_root(&app)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let card = data::read_character(&root, &world, &character).map_err(|error| error.to_string())?;
+    let state = data::read_state(&root, &world).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(&root, &world, state.current_scene)
+        .map_err(|error| error.to_string())?;
+
+    let model = transport::resolve_model(card.tier, &config)?;
+    let messages = transport::assemble_messages(&card, &events);
+    transport::stream_chat(&config, &model, &messages, |delta| {
+        let _ = on_delta.send(delta.to_owned());
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -118,7 +145,8 @@ pub fn run() {
             read_state,
             write_state,
             read_config,
-            write_config
+            write_config,
+            chat_with_character
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
