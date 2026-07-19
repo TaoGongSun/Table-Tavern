@@ -44,6 +44,24 @@ const SUGGESTED_TIER_MODELS: Record<string, string> = {
 
 const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
 
+interface CliInfo {
+  id: string;
+  path: string;
+  version: string;
+}
+
+const CLI_LABELS: Record<string, string> = {
+  claude: "Claude Code CLI",
+  codex: "Codex CLI",
+};
+
+const CLI_RISKS = [
+  "供應商條款禁止第三方工具使用訂閱憑證；Google 已對同類工具的使用者執行帳號停權且申訴無果；Anthropic 保留不經通知執法的權利。",
+  "多角色扮演的用量形狀與條款所述「一般個人使用」有可見差距，可能觸發限流或審查。",
+  "在訂閱模式下生成違反該供應商內容政策的內容，風險疊加。",
+  "後果由你自己的帳號承擔。",
+];
+
 function nowTs() {
   return new Date().toISOString();
 }
@@ -55,16 +73,32 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     ...config.tier_models,
   });
   const [baseUrl, setBaseUrl] = useState(String(config.preferences["base_url"] ?? ""));
+  const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
+  const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
+  const [clis, setClis] = useState<CliInfo[]>([]);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
+  }, []);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    if (transport !== "api" && !riskAccepted) {
+      setMessage("啟用 CLI 訂閱模式前，請先勾選風險告知確認");
+      return;
+    }
     const next: AppConfig = {
       ...config,
       api_keys: { ...config.api_keys, openrouter: apiKey.trim() },
       tier_models: tierModels,
-      preferences: { ...config.preferences, base_url: baseUrl.trim() },
+      preferences: {
+        ...config.preferences,
+        base_url: baseUrl.trim(),
+        transport,
+        cli_risk_accepted: riskAccepted,
+      },
     };
     try {
       await invoke("write_config", { config: next });
@@ -79,6 +113,56 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     <details className="settings">
       <summary>設定（API key／檔位模型）</summary>
       <form onSubmit={save} className="settings-form">
+        <fieldset className="transport-choice">
+          <legend>傳輸層</legend>
+          <label className="inline">
+            <input
+              type="radio"
+              name="transport"
+              checked={transport === "api"}
+              onChange={() => setTransport("api")}
+            />
+            API 直連（OpenRouter，標準）
+          </label>
+          {(["claude", "codex"] as const).map((id) => {
+            const found = clis.find((c) => c.id === id);
+            return (
+              <label key={id} className="inline">
+                <input
+                  type="radio"
+                  name="transport"
+                  disabled={!found}
+                  checked={transport === id}
+                  onChange={() => setTransport(id)}
+                />
+                {CLI_LABELS[id]}（訂閱模式，進階）
+                {found ? (
+                  <span className="cli-version">已偵測：{found.version}</span>
+                ) : (
+                  <span className="cli-version">未偵測到；請自行安裝並登入官方 CLI，App 不代辦</span>
+                )}
+              </label>
+            );
+          })}
+        </fieldset>
+        {transport !== "api" && (
+          <div className="risk-box" role="note">
+            <strong>啟用前請了解具體風險：</strong>
+            <ul>
+              {CLI_RISKS.map((risk, index) => (
+                <li key={index}>{risk}</li>
+              ))}
+            </ul>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={riskAccepted}
+                onChange={(e) => setRiskAccepted(e.currentTarget.checked)}
+              />
+              我已了解上述風險，仍要以自己的帳號啟用
+            </label>
+          </div>
+        )}
         <label>
           OpenRouter API key
           <input
