@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import "./App.css";
 
 type Tier = "best" | "balanced" | "fast" | "default";
@@ -66,6 +67,69 @@ const CLI_RISKS = [
 
 function nowTs() {
   return new Date().toISOString();
+}
+
+function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
+  const [apiKey, setApiKey] = useState("");
+  const [message, setMessage] = useState("");
+  const transport = config.preferences["transport"] ?? "api";
+
+  if (transport !== "api" || (config.api_keys["openrouter"] ?? "").trim()) return null;
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    const next: AppConfig = {
+      ...config,
+      api_keys: { ...config.api_keys, openrouter: apiKey.trim() },
+    };
+    try {
+      await invoke("write_config", { config: next });
+      onSaved(next);
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
+  return (
+    <section className="settings onboarding" role="note">
+      <form className="settings-form" onSubmit={save}>
+        <strong>還差最後一步：貼上 API key 就能開玩</strong>
+        <p>本 App 不代管模型——你自備一把 OpenRouter key，一把通吃多家模型（角色與 GM 可以用不同檔位）。</p>
+        <ol>
+          <li>
+            註冊 OpenRouter
+            <button type="button" onClick={() => void openUrl("https://openrouter.ai/")}>
+              開啟註冊頁
+            </button>
+          </li>
+          <li>儲值小額（$5 起，用多少扣多少，不會自動扣款）</li>
+          <li>
+            建立一把 API key 並貼到下方
+            <button
+              type="button"
+              onClick={() => void openUrl("https://openrouter.ai/settings/keys")}
+            >
+              開啟 API key 頁
+            </button>
+          </li>
+        </ol>
+        <p>費用有多低？以平衡檔粗估，$5 約可玩 5 個晚上；改用「快速省額度」檔更便宜。</p>
+        <div className="row">
+          <input
+            type="password"
+            aria-label="OpenRouter API key"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.currentTarget.value)}
+            placeholder="sk-or-..."
+          />
+          <button type="submit">儲存並開玩</button>
+        </div>
+        {message && <span role="alert">{message}</span>}
+        <small>已自行安裝並登入官方 CLI 的進階使用者，也可以改到下方「AI 設定」啟用 CLI 訂閱模式。</small>
+      </form>
+    </section>
+  );
 }
 
 function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
@@ -377,9 +441,9 @@ function App() {
         ]);
         setConfig(loaded);
         if (names.length === 0) {
-          await invoke("create_world", { name: DEFAULT_TABLE_NAME });
-          setWorlds([DEFAULT_TABLE_NAME]);
-          await enterTable(DEFAULT_TABLE_NAME, loaded);
+          const name = await invoke<string>("create_sample_world");
+          setWorlds([name]);
+          await enterTable(name, loaded);
           return;
         }
         setWorlds(names);
@@ -635,6 +699,8 @@ function App() {
             />
           )}
         </header>
+
+        <Onboarding config={config} onSaved={setConfig} />
 
         <section className="row cast-row" aria-label="角色">
           {characters.map((c) => (
