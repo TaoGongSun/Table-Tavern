@@ -20,6 +20,17 @@ fn message(role: &str, content: String) -> ChatMessage {
     }
 }
 
+/// 相鄰同 role 合併成一則，維持 user/assistant 交錯
+fn push_merged(messages: &mut Vec<ChatMessage>, role: &str, line: String) {
+    match messages.last_mut() {
+        Some(last) if last.role == role => {
+            last.content.push('\n');
+            last.content.push_str(&line);
+        }
+        _ => messages.push(message(role, line)),
+    }
+}
+
 /// 組裝單一角色的上下文。只餵入該角色自己的卡與公開 transcript：
 /// 他人私有設定與 world.md（GM 專屬，NewPlan §7.0）由呼叫端負責永不傳入。
 pub fn assemble_messages(card: &CharacterCard, events: &[TranscriptEvent]) -> Vec<ChatMessage> {
@@ -49,16 +60,112 @@ pub fn assemble_messages(card: &CharacterCard, events: &[TranscriptEvent]) -> Ve
             TranscriptKind::Narration => ("user", format!("（旁白）{}", event.text)),
             TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
         };
-        match messages.last_mut() {
-            // 相鄰同 role 合併成一則，維持 user/assistant 交錯
-            Some(last) if last.role == role => {
-                last.content.push('\n');
-                last.content.push_str(&line);
-            }
-            _ => messages.push(message(role, line)),
-        }
+        push_merged(&mut messages, role, line);
     }
     messages
+}
+
+/// 點名時「輪到玩家」的哨兵名；前端以它停下 GM 推進回合
+pub const PLAYER_SENTINEL: &str = "玩家";
+
+/// 組裝 GM 上下文：world.md（只有 GM 看得到）＋全部角色卡（含私有，NewPlan §7.0）
+/// ＋公開 transcript。GM 自己的旁白是 assistant，其餘事件是 user。
+pub fn assemble_gm_messages(
+    world_md: &str,
+    cards: &[CharacterCard],
+    events: &[TranscriptEvent],
+) -> Vec<ChatMessage> {
+    let mut system = String::from(
+        "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
+         推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
+         旁白是所有人都聽得到的公開敘事：不要替任何角色或玩家代言；\
+         世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。\n",
+    );
+    if !world_md.trim().is_empty() {
+        system.push_str(&format!(
+            "\n## 世界設定（只進你的上下文，角色只知道你說出口的內容）\n{}\n",
+            world_md.trim()
+        ));
+    }
+    if !cards.is_empty() {
+        system.push_str("\n## 登場角色\n");
+        for card in cards {
+            system.push_str(&format!("### {}\n", card.name));
+            if !card.public_md.trim().is_empty() {
+                system.push_str(&format!("公開設定：\n{}\n", card.public_md.trim()));
+            }
+            if !card.private_md.trim().is_empty() {
+                system.push_str(&format!(
+                    "私有設定（僅你與該角色知道）：\n{}\n",
+                    card.private_md.trim()
+                ));
+            }
+        }
+    }
+
+    let mut messages = vec![message("system", system)];
+    for event in events {
+        let (role, line) = match event.kind {
+            TranscriptKind::Narration => ("assistant", event.text.clone()),
+            TranscriptKind::Dialogue | TranscriptKind::Player => {
+                ("user", format!("{}：{}", event.speaker, event.text))
+            }
+            TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
+        };
+        push_merged(&mut messages, role, line);
+    }
+    messages
+}
+
+/// 導演指示：插入旁白（附加在 GM 上下文最後）
+pub fn narrate_instruction() -> ChatMessage {
+    message(
+        "user",
+        "（導演指示）請插入一段簡短旁白：描述場景變化、世界反應或劇情推進，一到三句。\
+         只輸出旁白本文，不要替任何角色說話。"
+            .to_owned(),
+    )
+}
+
+/// 導演指示：從名單選出下一位發言者
+pub fn suggest_instruction(roster: &[String]) -> ChatMessage {
+    message(
+        "user",
+        format!(
+            "（導演指示）根據目前劇情，從名單中選出下一位最適合發言的角色：{}。\
+             若現在應該輪到玩家行動，就輸出：{PLAYER_SENTINEL}。只輸出名字，不要任何其他文字。",
+            roster.join("、")
+        ),
+    )
+}
+
+/// 從 GM 點名回覆解析出角色名（或玩家哨兵）。
+/// 先試整句精確比對；模型多話時退回「回覆中最先出現的候選名」。
+pub fn pick_speaker(reply: &str, roster: &[String]) -> Option<String> {
+    let mut candidates: Vec<&str> = roster.iter().map(String::as_str).collect();
+    candidates.push(PLAYER_SENTINEL);
+
+    let trimmed = reply.trim().trim_matches(|character: char| {
+        character.is_whitespace() || "「」『』。．：:，,！!？?".contains(character)
+    });
+    if let Some(hit) = candidates.iter().find(|name| trimmed == **name) {
+        return Some((*hit).to_owned());
+    }
+    candidates
+        .iter()
+        .filter_map(|name| reply.find(*name).map(|position| (position, *name)))
+        .min_by_key(|(position, _)| *position)
+        .map(|(_, name)| name.to_owned())
+}
+
+/// GM 檔位：preferences.gm_tier，預設 best（GM 需掌握整體資訊，NewPlan §6.3）
+pub fn gm_tier(config: &AppConfig) -> Tier {
+    config
+        .preferences
+        .get("gm_tier")
+        .and_then(|value| value.as_str())
+        .and_then(|value| Tier::parse(value).ok())
+        .unwrap_or(Tier::Best)
 }
 
 /// 檔位→模型解析。模型 id 一律來自設定檔（config.tier_models），程式不內建。
@@ -248,6 +355,67 @@ mod tests {
         assert_eq!(messages[2].content, "我的回答");
         // 空的私有節不產生私有段落
         assert!(!messages[0].content.contains("私有設定"));
+    }
+
+    /// 驗收：GM 上下文含 world.md＋全部角色卡（含私有）＋公開歷史；
+    /// GM 自己的旁白是 assistant，其餘事件是 user 且相鄰合併。
+    #[test]
+    fn gm_context_contains_world_all_cards_and_marks_own_narration() {
+        let cards = [
+            card("狐狸", "旅店老闆", "其實是通緝犯"),
+            card("騎士", "巡邏騎士", "暗中追查狐狸"),
+        ];
+        let events = [
+            event(TranscriptKind::Narration, "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
+            event(TranscriptKind::Narration, "GM", "門外傳來馬蹄聲"),
+        ];
+        let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events);
+
+        let system = &messages[0];
+        assert_eq!(system.role, "system");
+        assert!(system.content.contains("酒館位於邊境小鎮"));
+        assert!(system.content.contains("旅店老闆"));
+        assert!(system.content.contains("其實是通緝犯"));
+        assert!(system.content.contains("暗中追查狐狸"));
+
+        let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["system", "assistant", "user", "assistant"]);
+        assert_eq!(messages[1].content, "夜幕低垂");
+        assert_eq!(messages[2].content, "玩家：老闆，來杯麥酒\n狐狸：馬上來！");
+        assert_eq!(messages[3].content, "門外傳來馬蹄聲");
+    }
+
+    #[test]
+    fn pick_speaker_handles_exact_verbose_and_player_sentinel() {
+        let roster = vec!["狐狸".to_owned(), "騎士".to_owned()];
+        assert_eq!(pick_speaker("狐狸", &roster).unwrap(), "狐狸");
+        assert_eq!(pick_speaker("「騎士」。", &roster).unwrap(), "騎士");
+        assert_eq!(pick_speaker("玩家", &roster).unwrap(), PLAYER_SENTINEL);
+        // 模型多話：取回覆中最先出現的候選名
+        assert_eq!(
+            pick_speaker("下一位應該由騎士發言，逼問狐狸。", &roster).unwrap(),
+            "騎士"
+        );
+        assert_eq!(pick_speaker("酒保", &roster), None);
+    }
+
+    #[test]
+    fn gm_tier_defaults_to_best_and_reads_preference() {
+        let mut config = AppConfig::default();
+        assert_eq!(gm_tier(&config), Tier::Best);
+        config.preferences.insert(
+            "gm_tier".to_owned(),
+            serde_json::Value::String("fast".to_owned()),
+        );
+        assert_eq!(gm_tier(&config), Tier::Fast);
+        // 亂值退回預設 best
+        config.preferences.insert(
+            "gm_tier".to_owned(),
+            serde_json::Value::String("impossible".to_owned()),
+        );
+        assert_eq!(gm_tier(&config), Tier::Best);
     }
 
     #[test]
