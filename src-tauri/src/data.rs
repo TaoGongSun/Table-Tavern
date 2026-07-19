@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -389,14 +390,15 @@ pub fn read_config(root: &Path) -> DataResult<AppConfig> {
 pub fn write_config(root: &Path, config: &AppConfig) -> DataResult<()> {
     fs::create_dir_all(root)?;
     let path = root.join("config.json");
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&path)?;
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    // 0600 僅限 unix；Windows 的 %APPDATA% 本身即使用者私有目錄，不需 chmod
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(&path)?;
     file.write_all(serde_json::to_string_pretty(config)?.as_bytes())?;
     // mode() 只在建檔時生效；補 set_permissions 修復既存檔的過寬權限
+    #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     Ok(())
 }
@@ -640,11 +642,14 @@ mod tests {
 
         write_config(root.path(), &config).unwrap();
         assert_eq!(read_config(root.path()).unwrap(), config);
-        let mode = fs::metadata(root.path().join("config.json"))
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o600);
+        #[cfg(unix)]
+        {
+            let mode = fs::metadata(root.path().join("config.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
     }
 }
