@@ -32,16 +32,26 @@ fn candidate_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+fn is_executable(path: &Path) -> bool {
+    // 執行位元檢查僅限 unix；Windows（日後支援）改查副檔名慣例即可，先保住編譯路
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
+}
+
 fn find_binary(name: &str) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
     candidate_dirs()
         .into_iter()
         .map(|directory| directory.join(name))
-        .find(|path| {
-            path.metadata()
-                .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        })
+        .find(|path| is_executable(path))
 }
 
 pub async fn detect_clis() -> Vec<CliInfo> {
@@ -402,7 +412,8 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["--system-prompt", "系統"]));
     }
 
-    /// 以假 CLI 腳本走完 spawn→stdin→逐行解析→增量→收尾整條路
+    /// 以假 CLI 腳本走完 spawn→stdin→逐行解析→增量→收尾整條路（sh 腳本，僅 unix）
+    #[cfg(unix)]
     #[tokio::test]
     async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         let dir = std::env::temp_dir().join(format!("tt-fake-cli-{}", std::process::id()));
