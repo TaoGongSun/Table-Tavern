@@ -179,6 +179,60 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<()> {
     Ok(())
 }
 
+pub fn create_sample_world(root: &Path) -> DataResult<String> {
+    let world = "迷霧酒館（範例）";
+    create_world(root, world)?;
+    write_world_md(
+        root,
+        world,
+        "# 迷霧酒館\n\n邊境小鎮「霧口鎮」的一間旅店酒館，今晚外頭下著暴雨。鎮上最近流傳狼人傳說：三天前開始，每晚都有牲口失蹤。\n\n## 只有 GM 知道的真相\n- 狼人是鎮長葛倫——他半年前在山裡被咬傷，自己也不完全清楚夜裡發生的事。\n- 酒館老闆狐狸其實是鄰國的通緝犯，賞金獵人正在路上。\n- 今晚稍後，渾身濕透的鎮長會推門進來，袖口沾著血。\n\n## 導演方針\n- 步調：慢熱，讓角色先互相試探。\n- 旁白保持懸疑，不要太快揭露真相。",
+    )?;
+
+    let characters = [
+        CharacterCard {
+            name: "狐狸".to_owned(),
+            color: "#e07a5f".to_owned(),
+            avatar: "🦊".to_owned(),
+            tier: Tier::Default,
+            public_md: "旅店酒館的老闆，笑口常開、八面玲瓏，對鎮上大小事瞭若指掌。說話帶點江湖氣，擅長打圓場。".to_owned(),
+            private_md: "真名「阿狸」，是鄰國的通緝犯——三年前替人頂罪後逃亡至此。聽到「賞金」「通緝」等字眼會不動聲色地緊張。目標：安穩活下去，必要時準備隨時跑路。".to_owned(),
+        },
+        CharacterCard {
+            name: "騎士".to_owned(),
+            color: "#3d84a8".to_owned(),
+            avatar: "🛡️".to_owned(),
+            tier: Tier::Default,
+            public_md: "巡邏至此的年輕騎士，個性正直到近乎固執，在酒館喝的是熱茶不是酒。".to_owned(),
+            private_md: "此行真正任務是追查一名逃亡三年的通緝犯，手上的畫像已經模糊。暗中觀察酒館裡的每個人。原則：先確認再行動，不冤枉好人。".to_owned(),
+        },
+        CharacterCard {
+            name: "吟遊詩人".to_owned(),
+            color: "#f2a541".to_owned(),
+            avatar: "🪕".to_owned(),
+            tier: Tier::Fast,
+            public_md: "雲遊四方的吟遊詩人，愛蹭酒喝，滿嘴誇張的故事與歌謠。消息靈通。".to_owned(),
+            private_md: "他的故事九分真一分假——他真的在鄰鎮親眼看過「那頭狼」用兩條腿走路。因為太害怕沒敢說全，只敢把它編進歌裡。".to_owned(),
+        },
+    ];
+    for character in &characters {
+        write_character(root, world, character)?;
+    }
+
+    append_transcript(
+        root,
+        world,
+        0,
+        &TranscriptEvent {
+            ts: "2026-07-20T00:00:00+08:00".to_owned(),
+            speaker: "GM".to_owned(),
+            kind: TranscriptKind::Narration,
+            text: "暴雨拍打著迷霧酒館的窗，爐火劈啪作響。今晚店裡客人不多——老闆在吧檯後擦著杯子，一名騎士坐在角落喝茶，吟遊詩人正調著琴弦。門外，隱約傳來一聲狼嚎。".to_owned(),
+        },
+    )?;
+
+    Ok(world.to_owned())
+}
+
 /// 空桌回收（NewPlan §9.3）：只回收完全未動過的桌——零訊息、零角色、world.md 空白；
 /// 任一項有內容即保留，防資料遺失。回傳是否真的刪了。
 pub fn reclaim_world_if_empty(root: &Path, world: &str) -> DataResult<bool> {
@@ -498,6 +552,30 @@ mod tests {
         assert!(root.path().join("worlds/群島/transcript").is_dir());
         assert!(root.path().join("worlds/群島/world.md").is_file());
         assert!(root.path().join("worlds/群島/state.json").is_file());
+    }
+
+    #[test]
+    fn sample_world_is_ready_to_play() {
+        let root = TestRoot::new("sample-world");
+        let world = create_sample_world(root.path()).unwrap();
+
+        assert_eq!(world, "迷霧酒館（範例）");
+        assert!(list_worlds(root.path()).unwrap().contains(&world));
+
+        let characters = list_characters(root.path(), &world).unwrap();
+        assert_eq!(characters.len(), 3);
+        for name in ["狐狸", "騎士", "吟遊詩人"] {
+            assert!(characters.iter().any(|character| character.name == name));
+        }
+
+        let world_md = read_world_md(root.path(), &world).unwrap();
+        assert!(!world_md.is_empty());
+        assert!(world_md.contains("霧口鎮"));
+
+        let transcript = read_transcript(root.path(), &world, 0).unwrap();
+        assert_eq!(transcript.len(), 1);
+        assert_eq!(transcript[0].kind, TranscriptKind::Narration);
+        assert_eq!(transcript[0].speaker, "GM");
     }
 
     #[cfg(unix)]
