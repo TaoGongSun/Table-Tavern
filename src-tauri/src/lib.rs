@@ -118,6 +118,57 @@ async fn detect_clis() -> Vec<cli::CliInfo> {
     cli::detect_clis().await
 }
 
+/// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
+/// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
+async fn stream_via_transport(
+    config: &data::AppConfig,
+    tier: data::Tier,
+    assistant_label: &str,
+    cli_closing: &str,
+    messages: &[transport::ChatMessage],
+    emit: impl FnMut(&str),
+) -> Result<String, String> {
+    let transport_kind = config
+        .preferences
+        .get("transport")
+        .and_then(|value| value.as_str())
+        .unwrap_or("api")
+        .to_owned();
+    if transport_kind == "api" {
+        let model = transport::resolve_model(tier, config)?;
+        return transport::stream_chat(config, &model, messages, emit)
+            .await
+            .map_err(|error| error.to_string());
+    }
+
+    // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
+    if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
+        return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
+    }
+    let info = cli::detect_clis()
+        .await
+        .into_iter()
+        .find(|info| info.id == transport_kind)
+        .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
+
+    let (system, prompt) = cli::flatten_messages(assistant_label, cli_closing, messages);
+    let program = std::path::PathBuf::from(&info.path);
+    match transport_kind.as_str() {
+        "claude" => {
+            let args = cli::claude_args(cli::claude_model_for(tier), &system);
+            cli::run_cli(&program, &args, &prompt, cli::parse_claude_line, emit).await
+        }
+        "codex" => {
+            // codex 沒有 system prompt 旗標，併進 prompt 開頭
+            let args = cli::codex_args(cli::codex_effort_for(tier));
+            let combined = format!("{system}\n\n{prompt}");
+            cli::run_cli(&program, &args, &combined, cli::parse_codex_line, emit).await
+        }
+        other => Err(format!("未知傳輸層：{other}").into()),
+    }
+    .map_err(|error| error.to_string())
+}
+
 /// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
 /// 上下文完全由本機正典（角色卡＋公開 transcript）經 assemble_messages 組裝，
 /// 再依 preferences.transport 分流到 API 或 CLI；增量文字經 on_delta channel 回前端。
@@ -136,49 +187,78 @@ async fn chat_with_character(
         .map_err(|error| error.to_string())?;
 
     let messages = transport::assemble_messages(&card, &events);
+    let closing = format!(
+        "現在輪到「{}」回應。請直接輸出台詞與動作描寫，不要加名字前綴、不要任何角色之外的說明。",
+        card.name
+    );
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
+    stream_via_transport(&config, card.tier, &card.name, &closing, &messages, emit).await
+}
 
-    let transport_kind = config
-        .preferences
-        .get("transport")
-        .and_then(|value| value.as_str())
-        .unwrap_or("api")
-        .to_owned();
-    if transport_kind == "api" {
-        let model = transport::resolve_model(card.tier, &config)?;
-        return transport::stream_chat(&config, &model, &messages, emit)
-            .await
-            .map_err(|error| error.to_string());
-    }
-
-    // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
-    if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
-        return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
-    }
-    let info = cli::detect_clis()
-        .await
+/// GM 上下文＝world.md（只進 GM）＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
+/// 回傳（角色名單, 組裝好的訊息）。
+fn assemble_gm(root: &std::path::Path, world: &str) -> Result<(Vec<String>, Vec<transport::ChatMessage>), String> {
+    let world_md = data::read_world_md(root, world).map_err(|error| error.to_string())?;
+    let state = data::read_state(root, world).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(root, world, state.current_scene)
+        .map_err(|error| error.to_string())?;
+    let cards: Vec<data::CharacterCard> = data::list_characters(root, world)
+        .map_err(|error| error.to_string())?
         .into_iter()
-        .find(|info| info.id == transport_kind)
-        .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
+        .map(|meta| data::read_character(root, world, &meta.name))
+        .collect::<Result<_, _>>()
+        .map_err(|error| error.to_string())?;
+    let roster = cards.iter().map(|card| card.name.clone()).collect();
+    Ok((roster, transport::assemble_gm_messages(&world_md, &cards, &events)))
+}
 
-    let (system, prompt) = cli::flatten_messages(&card.name, &messages);
-    let program = std::path::PathBuf::from(&info.path);
-    match transport_kind.as_str() {
-        "claude" => {
-            let args = cli::claude_args(cli::claude_model_for(card.tier), &system);
-            cli::run_cli(&program, &args, &prompt, cli::parse_claude_line, emit).await
-        }
-        "codex" => {
-            // codex 沒有 system prompt 旗標，併進 prompt 開頭
-            let args = cli::codex_args(cli::codex_effort_for(card.tier));
-            let combined = format!("{system}\n\n{prompt}");
-            cli::run_cli(&program, &args, &combined, cli::parse_codex_line, emit).await
-        }
-        other => Err(format!("未知傳輸層：{other}").into()),
+/// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
+#[tauri::command]
+async fn gm_narrate(
+    app: tauri::AppHandle,
+    world: String,
+    on_delta: tauri::ipc::Channel<String>,
+) -> Result<String, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let (_, mut messages) = assemble_gm(&data_root(&app)?, &world)?;
+    messages.push(transport::narrate_instruction());
+    let emit = |delta: &str| {
+        let _ = on_delta.send(delta.to_owned());
+    };
+    stream_via_transport(
+        &config,
+        transport::gm_tier(&config),
+        "GM",
+        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文，不要加名字前綴。",
+        &messages,
+        emit,
+    )
+    .await
+}
+
+/// 簡易導演：GM 建議下一位發言者（NewPlan §6.1）。
+/// 回傳名單中的角色名，或「玩家」表示該輪到玩家行動。
+#[tauri::command]
+async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<String, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let (roster, mut messages) = assemble_gm(&data_root(&app)?, &world)?;
+    if roster.is_empty() {
+        return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
     }
-    .map_err(|error| error.to_string())
+    messages.push(transport::suggest_instruction(&roster));
+    let reply = stream_via_transport(
+        &config,
+        transport::gm_tier(&config),
+        "GM",
+        "現在請執行上述導演指示，只輸出一個名字。",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    transport::pick_speaker(&reply, &roster)
+        .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -202,7 +282,9 @@ pub fn run() {
             read_config,
             write_config,
             detect_clis,
-            chat_with_character
+            chat_with_character,
+            gm_narrate,
+            gm_suggest_speaker
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

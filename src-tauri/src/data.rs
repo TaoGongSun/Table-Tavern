@@ -28,7 +28,7 @@ impl Tier {
         }
     }
 
-    fn parse(value: &str) -> DataResult<Self> {
+    pub(crate) fn parse(value: &str) -> DataResult<Self> {
         match value {
             "best" => Ok(Self::Best),
             "balanced" => Ok(Self::Balanced),

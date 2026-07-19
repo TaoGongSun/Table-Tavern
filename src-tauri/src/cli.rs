@@ -83,8 +83,13 @@ pub async fn detect_clis() -> Vec<CliInfo> {
 }
 
 /// 把共用組裝結果攤平成 CLI 單發需要的 (system, prompt)。
-/// assistant 訊息即本角色過往台詞，攤平時補回名字前綴。
-pub fn flatten_messages(character: &str, messages: &[ChatMessage]) -> (String, String) {
+/// assistant 訊息即本發言者（角色或 GM）過往內容，攤平時補回名字前綴；
+/// closing 為收尾指示，由呼叫端依發言者身分決定。
+pub fn flatten_messages(
+    assistant_label: &str,
+    closing: &str,
+    messages: &[ChatMessage],
+) -> (String, String) {
     let system = messages
         .first()
         .map(|message| message.content.clone())
@@ -94,15 +99,14 @@ pub fn flatten_messages(character: &str, messages: &[ChatMessage]) -> (String, S
         .skip(1)
         .map(|message| {
             if message.role == "assistant" {
-                format!("{character}：{}", message.content)
+                format!("{assistant_label}：{}", message.content)
             } else {
                 message.content.clone()
             }
         })
         .collect();
     let prompt = format!(
-        "以下是到目前為止的對話紀錄：\n\n{}\n\n——\n現在輪到「{character}」回應。\
-         請直接輸出台詞與動作描寫，不要加名字前綴、不要任何角色之外的說明。",
+        "以下是到目前為止的對話紀錄：\n\n{}\n\n——\n{closing}",
         history.join("\n\n")
     );
     (system, prompt)
@@ -327,11 +331,11 @@ mod tests {
             msg("assistant", "晚安，要來一杯嗎？"),
             msg("user", "玩家：好啊"),
         ];
-        let (system, prompt) = flatten_messages("狐狸", &messages);
+        let (system, prompt) = flatten_messages("狐狸", "現在輪到「狐狸」回應。", &messages);
         assert_eq!(system, "你在扮演狐狸");
         assert!(prompt.contains("玩家：晚安\n（旁白）打烊前"));
         assert!(prompt.contains("狐狸：晚安，要來一杯嗎？"));
-        assert!(prompt.contains("現在輪到「狐狸」回應"));
+        assert!(prompt.ends_with("現在輪到「狐狸」回應。"));
     }
 
     // 樣本取自 2026-07-19 真實 CLI 冒煙輸出（scratchpad claude-smoke.jsonl／codex-smoke.jsonl）

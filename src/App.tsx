@@ -75,6 +75,8 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     ...config.tier_models,
   });
   const [baseUrl, setBaseUrl] = useState(String(config.preferences["base_url"] ?? ""));
+  const [gmTier, setGmTier] = useState(String(config.preferences["gm_tier"] ?? "best"));
+  const [maxRound, setMaxRound] = useState(String(config.preferences["max_round_speakers"] ?? 3));
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[]>([]);
@@ -100,6 +102,8 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         base_url: baseUrl.trim(),
         transport,
         cli_risk_accepted: riskAccepted,
+        gm_tier: gmTier,
+        max_round_speakers: Math.max(1, Number(maxRound) || 3),
       },
     };
     try {
@@ -186,6 +190,26 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
           </label>
         ))}
         <label>
+          GM 檔位（導演與旁白用，建議較強模型）
+          <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
+            {["best", "balanced", "fast", "default"].map((tier) => (
+              <option key={tier} value={tier}>
+                {tier}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          GM 推進每回合最大發言數
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={maxRound}
+            onChange={(e) => setMaxRound(e.currentTarget.value)}
+          />
+        </label>
+        <label>
           自訂 base URL（進階，留空用 OpenRouter）
           <input
             value={baseUrl}
@@ -195,6 +219,51 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         </label>
         <div className="row">
           <button type="submit">儲存設定</button>
+          {message && <span>{message}</span>}
+        </div>
+      </form>
+    </details>
+  );
+}
+
+// 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
+function WorldEditor({ world }: { world: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setMessage("");
+    setText(null);
+    invoke<string>("read_world_md", { world })
+      .then(setText)
+      .catch((reason) => setMessage(String(reason)));
+  }, [world]);
+
+  if (text === null) return message ? <p role="alert">{message}</p> : null;
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      await invoke("write_world_md", { world, content: text });
+      setMessage("已儲存");
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
+  return (
+    <details className="settings">
+      <summary>世界設定 world.md（只進 GM 上下文，角色只知道 GM 說出口的內容）</summary>
+      <form onSubmit={save} className="settings-form">
+        <textarea
+          rows={6}
+          aria-label="世界設定"
+          value={text}
+          onChange={(e) => setText(e.currentTarget.value)}
+        />
+        <div className="row">
+          <button type="submit">儲存世界設定</button>
           {message && <span>{message}</span>}
         </div>
       </form>
@@ -288,8 +357,11 @@ function App() {
   const [scene, setScene] = useState(0);
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   const [input, setInput] = useState("");
-  // 逐角色打字指示：狀態帶「是哪位角色在生成」，不做全域單一指示燈（NewPlan §9.2）
-  const [generating, setGenerating] = useState<string | null>(null);
+  // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
+  const [generating, setGenerating] = useState<{
+    name: string;
+    kind: "dialogue" | "narration";
+  } | null>(null);
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -394,8 +466,13 @@ function App() {
   async function createCharacter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    const name = characterName.trim();
+    if (name === "GM" || name === "玩家") {
+      setError("「GM」與「玩家」是保留名稱，請換一個角色名");
+      return;
+    }
     const card: CharacterCard = {
-      name: characterName.trim(),
+      name,
       color: PALETTE[characters.length % PALETTE.length],
       avatar: "🎭",
       tier: "default",
@@ -417,21 +494,69 @@ function App() {
     setEvents((previous) => [...previous, event]);
   }
 
+  // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
+  async function replyOnce(character: string) {
+    setGenerating({ name: character, kind: "dialogue" });
+    setStreamText("");
+    const onDelta = new Channel<string>();
+    onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
+    const full = await invoke<string>("chat_with_character", {
+      world: table,
+      character,
+      onDelta,
+    });
+    await appendEvent({ ts: nowTs(), speaker: character, kind: "dialogue", text: full });
+  }
+
   // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
   async function requestReply(character: string) {
     if (!character || generating !== null) return;
     setError("");
-    setGenerating(character);
+    try {
+      await replyOnce(character);
+      setWorlds(await invoke<string[]>("list_worlds"));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setGenerating(null);
+      setStreamText("");
+    }
+  }
+
+  // 簡易導演：GM 插入旁白（NewPlan §6.1、MVP 第 9 項）
+  async function gmNarrate() {
+    if (generating !== null) return;
+    setError("");
+    setGenerating({ name: "GM", kind: "narration" });
     setStreamText("");
     try {
       const onDelta = new Channel<string>();
       onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-      const full = await invoke<string>("chat_with_character", {
-        world: table,
-        character,
-        onDelta,
-      });
-      await appendEvent({ ts: nowTs(), speaker: character, kind: "dialogue", text: full });
+      const full = await invoke<string>("gm_narrate", { world: table, onDelta });
+      await appendEvent({ ts: nowTs(), speaker: "GM", kind: "narration", text: full });
+      setWorlds(await invoke<string[]>("list_worlds"));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setGenerating(null);
+      setStreamText("");
+    }
+  }
+
+  // 簡易導演：GM 點名→角色接話的接力，至「玩家」哨兵或每回合上限停下（NewPlan §6.1）
+  async function gmAdvance() {
+    if (!config || generating !== null || characters.length === 0) return;
+    setError("");
+    const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
+    try {
+      for (let turn = 0; turn < max; turn += 1) {
+        setGenerating({ name: "GM", kind: "narration" });
+        setStreamText("");
+        const name = await invoke<string>("gm_suggest_speaker", { world: table });
+        if (name === "玩家") break;
+        await appendEvent({ ts: nowTs(), speaker: "GM", kind: "system", text: `GM 請「${name}」發言` });
+        await replyOnce(name);
+      }
       setWorlds(await invoke<string[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
@@ -457,7 +582,7 @@ function App() {
   }
 
   const metaOf = (name: string) => characters.find((c) => c.name === name);
-  const generatingMeta = generating !== null ? metaOf(generating) : undefined;
+  const generatingMeta = generating !== null ? metaOf(generating.name) : undefined;
 
   if (!config || !table) {
     return <main className="container">{error && <p role="alert">{error}</p>}</main>;
@@ -534,6 +659,8 @@ function App() {
           </form>
         </section>
 
+        <WorldEditor world={table} />
+
         {speaker && (
           <CardEditor
             world={table}
@@ -567,7 +694,7 @@ function App() {
               </div>
             );
           })}
-          {generating !== null && (
+          {generating !== null && generating.kind === "dialogue" && (
             <div className="message message-dialogue">
               <Avatar meta={generatingMeta} />
               <div
@@ -575,18 +702,31 @@ function App() {
                 style={{ borderLeftColor: generatingMeta?.color ?? "#888888" }}
               >
                 <span className="speaker" style={{ color: generatingMeta?.color ?? "#888888" }}>
-                  {generating}
+                  {generating.name}
                 </span>
                 {streamText ? (
                   <span className="text">{streamText}</span>
                 ) : (
-                  <span className="typing" aria-label={`${generating} 正在打字`}>
+                  <span className="typing" aria-label={`${generating.name} 正在打字`}>
                     <i />
                     <i />
                     <i />
                   </span>
                 )}
               </div>
+            </div>
+          )}
+          {generating !== null && generating.kind === "narration" && (
+            <div className="message message-narration">
+              {streamText ? (
+                <span className="text">{streamText}</span>
+              ) : (
+                <span className="typing" aria-label="GM 正在打字">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              )}
             </div>
           )}
           <div ref={bottomRef} />
@@ -610,6 +750,22 @@ function App() {
             title="不輸入玩家發言，直接請被點名的角色接話"
           >
             請{speaker || "角色"}發言
+          </button>
+          <button
+            type="button"
+            onClick={gmNarrate}
+            disabled={generating !== null}
+            title="請 GM 插入一段場景旁白（GM 讀得到世界設定與全部角色卡）"
+          >
+            GM 旁白
+          </button>
+          <button
+            type="button"
+            onClick={gmAdvance}
+            disabled={generating !== null || characters.length === 0}
+            title="GM 點名下一位角色接話並接力推進，遇「輪到玩家」或達每回合上限即停"
+          >
+            GM 推進
           </button>
         </form>
         {error && <p role="alert">{error}</p>}
