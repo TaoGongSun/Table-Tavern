@@ -1,49 +1,62 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import { FormEvent, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [worlds, setWorlds] = useState<string[]>([]);
+  const [worldName, setWorldName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  async function refreshWorlds() {
+    setWorlds(await invoke<string[]>("list_worlds"));
+  }
+
+  useEffect(() => {
+    refreshWorlds()
+      .catch((reason) => setError(String(reason)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function createWorld(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    try {
+      await invoke("create_world", { name: worldName });
+      setWorldName("");
+      await refreshWorlds();
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+      <h1>桌面酒館</h1>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <section aria-labelledby="world-list-title">
+        <h2 id="world-list-title">世界</h2>
+        {!loading && worlds.length === 0 ? (
+          <p>尚無世界</p>
+        ) : (
+          <ul>
+            {worlds.map((world) => (
+              <li key={world}>{world}</li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
+      <form className="row" onSubmit={createWorld}>
         <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          aria-label="世界名稱"
+          value={worldName}
+          onChange={(event) => setWorldName(event.currentTarget.value)}
+          placeholder="輸入世界名稱"
         />
-        <button type="submit">Greet</button>
+        <button type="submit">建立世界</button>
       </form>
-      <p>{greetMsg}</p>
+      {error && <p role="alert">{error}</p>}
     </main>
   );
 }
