@@ -112,7 +112,21 @@ pub fn flatten_messages(
     (system, prompt)
 }
 
-/// claude 的檔位對應：CLI 模型別名是穩定介面，直接對映不佔用 OpenRouter 的 tier_models
+/// CLI 檔位覆寫：使用者可在 tier_models 以「{cli}:{tier}」為鍵（如 claude:best）
+/// 指定該檔位的模型（別名或完整 id 皆可，CLI 端自行驗證）；空白視同未設。
+pub fn tier_override<'a>(
+    tier_models: &'a std::collections::BTreeMap<String, String>,
+    cli: &str,
+    tier: Tier,
+) -> Option<&'a str> {
+    tier_models
+        .get(&format!("{cli}:{}", tier.as_str()))
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+}
+
+/// claude 的檔位預設對應（未覆寫時）：CLI 模型別名是穩定介面，不佔用 OpenRouter 的 tier_models
 pub fn claude_model_for(tier: Tier) -> Option<&'static str> {
     match tier {
         Tier::Best => Some("opus"),
@@ -159,7 +173,7 @@ pub fn claude_args(model: Option<&str>, system: &str) -> Vec<String> {
 
 /// codex 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// --ignore-user-config：跳過使用者 config.toml（hooks／MCP），auth 不受影響（--help 查證）。
-pub fn codex_args(effort: Option<&str>) -> Vec<String> {
+pub fn codex_args(model: Option<&str>, effort: Option<&str>) -> Vec<String> {
     let mut args: Vec<String> = [
         "exec",
         "--json",
@@ -171,6 +185,10 @@ pub fn codex_args(effort: Option<&str>) -> Vec<String> {
     ]
     .map(str::to_owned)
     .to_vec();
+    if let Some(model) = model {
+        args.push("-m".to_owned());
+        args.push(model.to_owned());
+    }
     if let Some(effort) = effort {
         args.push("-c".to_owned());
         args.push(format!("model_reasoning_effort=\"{effort}\""));
@@ -408,12 +426,26 @@ mod tests {
         assert_eq!(claude_model_for(Tier::Default), None);
         assert_eq!(codex_effort_for(Tier::Balanced), Some("medium"));
         assert_eq!(codex_effort_for(Tier::Default), None);
-        let args = codex_args(codex_effort_for(Tier::Best));
+        let args = codex_args(None, codex_effort_for(Tier::Best));
         assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
+        assert!(!args.contains(&"-m".to_owned()));
         assert_eq!(args.last().unwrap(), "-");
+        let args = codex_args(Some("gpt-5.6-terra"), None);
+        assert!(args.windows(2).any(|w| w == ["-m", "gpt-5.6-terra"]));
         let args = claude_args(claude_model_for(Tier::Fast), "系統");
         assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
         assert!(args.windows(2).any(|w| w == ["--system-prompt", "系統"]));
+    }
+
+    #[test]
+    fn tier_override_reads_prefixed_keys_and_ignores_blank() {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("claude:best".to_owned(), "claude-fable-5".to_owned());
+        map.insert("claude:fast".to_owned(), "  ".to_owned());
+        map.insert("best".to_owned(), "vendor/api-model".to_owned()); // API 檔位不受影響
+        assert_eq!(tier_override(&map, "claude", Tier::Best), Some("claude-fable-5"));
+        assert_eq!(tier_override(&map, "claude", Tier::Fast), None); // 空白＝未設
+        assert_eq!(tier_override(&map, "codex", Tier::Best), None);
     }
 
     /// 以假 CLI 腳本走完 spawn→stdin→逐行解析→增量→收尾整條路（sh 腳本，僅 unix）

@@ -281,11 +281,38 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
             </datalist>
           </>
         ) : (
-          <p className="cli-version" role="note">
-            {transport === "claude"
-              ? "CLI 模式檔位固定對應官方別名：高→opus、中→sonnet、低→haiku（上游只提供這些別名）"
-              : "CLI 模式檔位固定對應推理力度：高→high、中→medium、低→low（模型用 CLI 預設）"}
-          </p>
+          <>
+            {(["best", "balanced", "fast"] as const).map((tier) => {
+              const key = `${transport}:${tier}`;
+              const fallback =
+                transport === "claude"
+                  ? { best: "opus", balanced: "sonnet", fast: "haiku" }[tier]
+                  : "CLI 預設模型";
+              return (
+                <label key={key}>
+                  「{TIER_LABELS[tier]}」檔位模型（別名或完整 id 皆可）
+                  <input
+                    list={transport === "claude" ? "claude-aliases" : undefined}
+                    value={tierModels[key] ?? ""}
+                    placeholder={`留空＝${fallback}`}
+                    onChange={(e) =>
+                      setTierModels({ ...tierModels, [key]: e.currentTarget.value })
+                    }
+                  />
+                </label>
+              );
+            })}
+            <datalist id="claude-aliases">
+              {["opus", "sonnet", "haiku"].map((alias) => (
+                <option key={alias} value={alias} />
+              ))}
+            </datalist>
+            <p className="cli-version" role="note">
+              {transport === "claude"
+                ? "CLI 不提供可用模型查詢，請依你的訂閱填別名（opus／sonnet／haiku）或完整模型 id（如 claude-fable-5）；填錯 CLI 會直接回錯誤"
+                : "填 codex -m 接受的模型 id；檔位另固定對應推理力度 高→high、中→medium、低→low"}
+            </p>
+          </>
         )}
         <label>
           GM 檔位（導演與旁白用，建議選「高」）
