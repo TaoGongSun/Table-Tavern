@@ -43,6 +43,14 @@ const SUGGESTED_TIER_MODELS: Record<string, string> = {
   fast: "google/gemini-3.5-flash",
 };
 
+// 檔位只是三個插槽，UI 以品質高低命名；內部 key（卡片 frontmatter／config.json）維持不變
+const TIER_LABELS: Record<string, string> = {
+  best: "高",
+  balanced: "中",
+  fast: "低",
+  default: "跟隨預設",
+};
+
 const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
 
 const DEFAULT_TABLE_NAME = "新的一桌";
@@ -144,10 +152,18 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[]>([]);
+  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
+    // OpenRouter 公開模型清單（免 key）；拿不到就退化成純手動輸入
+    fetch("https://openrouter.ai/api/v1/models")
+      .then((res) => res.json())
+      .then((body: { data?: { id?: string; name?: string }[] }) =>
+        setModels((body.data ?? []).flatMap((m) => (m.id ? [{ id: m.id, name: m.name ?? m.id }] : []))),
+      )
+      .catch(() => {});
   }, []);
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -242,23 +258,41 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
             placeholder="sk-or-..."
           />
         </label>
-        {(["best", "balanced", "fast"] as const).map((tier) => (
-          <label key={tier}>
-            {tier} 檔位模型
-            <input
-              value={tierModels[tier] ?? ""}
-              onChange={(e) =>
-                setTierModels({ ...tierModels, [tier]: e.currentTarget.value })
-              }
-            />
-          </label>
-        ))}
+        {transport === "api" ? (
+          <>
+            {(["best", "balanced", "fast"] as const).map((tier) => (
+              <label key={tier}>
+                「{TIER_LABELS[tier]}」檔位模型（可挑可貼，任何 OpenRouter 模型 id）
+                <input
+                  list="openrouter-models"
+                  value={tierModels[tier] ?? ""}
+                  onChange={(e) =>
+                    setTierModels({ ...tierModels, [tier]: e.currentTarget.value })
+                  }
+                />
+              </label>
+            ))}
+            <datalist id="openrouter-models">
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </datalist>
+          </>
+        ) : (
+          <p className="cli-version" role="note">
+            {transport === "claude"
+              ? "CLI 模式檔位固定對應官方別名：高→opus、中→sonnet、低→haiku（上游只提供這些別名）"
+              : "CLI 模式檔位固定對應推理力度：高→high、中→medium、低→low（模型用 CLI 預設）"}
+          </p>
+        )}
         <label>
-          GM 檔位（導演與旁白用，建議較強模型）
+          GM 檔位（導演與旁白用，建議選「高」）
           <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
             {["best", "balanced", "fast", "default"].map((tier) => (
               <option key={tier} value={tier}>
-                {tier}
+                {TIER_LABELS[tier]}
               </option>
             ))}
           </select>
@@ -388,7 +422,7 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
           >
             {["default", "best", "balanced", "fast"].map((tier) => (
               <option key={tier} value={tier}>
-                {tier}
+                {TIER_LABELS[tier]}
               </option>
             ))}
           </select>
