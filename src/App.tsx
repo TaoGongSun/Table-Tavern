@@ -153,10 +153,18 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[]>([]);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
+  const [cliCatalogs, setCliCatalogs] = useState<Record<string, { id: string; label: string }[]>>({});
+  const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
+    // CLI 模型下拉目錄：讀各 CLI 本機快取（後端 list_cli_models）
+    for (const id of ["claude", "codex"]) {
+      invoke<{ id: string; label: string }[]>("list_cli_models", { cli: id })
+        .then((options) => setCliCatalogs((prev) => ({ ...prev, [id]: options })))
+        .catch(() => {});
+    }
     // OpenRouter 公開模型清單（免 key）；拿不到就退化成純手動輸入
     fetch("https://openrouter.ai/api/v1/models")
       .then((res) => res.json())
@@ -284,33 +292,49 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
           <>
             {(["best", "balanced", "fast"] as const).map((tier) => {
               const key = `${transport}:${tier}`;
-              const fallback =
-                transport === "claude"
-                  ? { best: "opus", balanced: "sonnet", fast: "haiku" }[tier]
-                  : "CLI 預設模型";
+              const value = tierModels[key] ?? "";
+              const catalog = cliCatalogs[transport] ?? [];
+              const custom =
+                customTiers[key] ?? (value !== "" && !catalog.some((m) => m.id === value));
               return (
                 <label key={key}>
-                  「{TIER_LABELS[tier]}」檔位模型（別名或完整 id 皆可）
-                  <input
-                    list={transport === "claude" ? "claude-aliases" : undefined}
-                    value={tierModels[key] ?? ""}
-                    placeholder={`留空＝${fallback}`}
-                    onChange={(e) =>
-                      setTierModels({ ...tierModels, [key]: e.currentTarget.value })
-                    }
-                  />
+                  「{TIER_LABELS[tier]}」檔位模型
+                  <select
+                    value={custom ? "__custom__" : value}
+                    onChange={(e) => {
+                      const next = e.currentTarget.value;
+                      if (next === "__custom__") {
+                        setCustomTiers({ ...customTiers, [key]: true });
+                      } else {
+                        setCustomTiers({ ...customTiers, [key]: false });
+                        setTierModels({ ...tierModels, [key]: next });
+                      }
+                    }}
+                  >
+                    <option value="">預設（CLI）</option>
+                    {catalog.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                    <option value="__custom__">自訂模型 id…</option>
+                  </select>
+                  {custom && (
+                    <input
+                      value={value}
+                      placeholder="完整模型 id"
+                      onChange={(e) =>
+                        setTierModels({ ...tierModels, [key]: e.currentTarget.value })
+                      }
+                    />
+                  )}
                 </label>
               );
             })}
-            <datalist id="claude-aliases">
-              {["opus", "sonnet", "haiku"].map((alias) => (
-                <option key={alias} value={alias} />
-              ))}
-            </datalist>
             <p className="cli-version" role="note">
               {transport === "claude"
-                ? "CLI 不提供可用模型查詢，請依你的訂閱填別名（opus／sonnet／haiku）或完整模型 id（如 claude-fable-5）；填錯 CLI 會直接回錯誤"
-                : "填 codex -m 接受的模型 id；檔位另固定對應推理力度 高→high、中→medium、低→low"}
+                ? "清單讀自 Claude CLI 的本機模型快取；沒列到的用「自訂」手填"
+                : "清單讀自 Codex 的本機模型快取；檔位另固定對應推理力度 高→high、中→medium、低→low"}
             </p>
           </>
         )}

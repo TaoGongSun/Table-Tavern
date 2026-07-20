@@ -123,6 +123,12 @@ async fn detect_clis() -> Vec<cli::CliInfo> {
     cli::detect_clis().await
 }
 
+/// 設定 UI 下拉用：列出 CLI 訂閱模式可選的模型（讀 CLI 本機快取，見 cli::cli_model_catalog）
+#[tauri::command]
+fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
+    cli::cli_model_catalog(&cli)
+}
+
 /// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
 async fn stream_via_transport(
@@ -291,6 +297,7 @@ pub fn run() {
             read_config,
             write_config,
             detect_clis,
+            list_cli_models,
             chat_with_character,
             gm_narrate,
             gm_suggest_speaker

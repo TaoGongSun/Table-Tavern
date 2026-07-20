@@ -112,6 +112,112 @@ pub fn flatten_messages(
     (system, prompt)
 }
 
+/// 設定 UI 下拉用的模型選項。清單讀自各 CLI 留在本機的模型目錄快取
+/// （codex：~/.codex/models_cache.json；claude：~/.claude/cache/gateway-models.json），
+/// 非本程式寫死的正典；實際用哪個模型仍由 config 的覆寫決定。
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ModelOption {
+    pub id: String,
+    pub label: String,
+}
+
+/// codex 快取解析：跳過內部項與 hidden，依 priority 排序，label 用 display_name
+pub fn parse_codex_catalog(json: &str) -> Vec<ModelOption> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let Some(models) = value.get("models").and_then(|m| m.as_array()) else {
+        return Vec::new();
+    };
+    let mut ranked: Vec<(i64, ModelOption)> = models
+        .iter()
+        .filter_map(|item| {
+            let slug = item.get("slug").and_then(|s| s.as_str())?.trim();
+            if slug.is_empty() || slug == "codex-auto-review" {
+                return None;
+            }
+            if matches!(
+                item.get("visibility").and_then(|v| v.as_str()),
+                Some("hidden") | Some("none")
+            ) {
+                return None;
+            }
+            let label = item.get("display_name").and_then(|s| s.as_str()).unwrap_or(slug);
+            let priority = item.get("priority").and_then(|p| p.as_i64()).unwrap_or(0);
+            Some((priority, ModelOption { id: slug.to_owned(), label: label.to_owned() }))
+        })
+        .collect();
+    ranked.sort_by_key(|(priority, _)| *priority);
+    ranked.into_iter().map(|(_, option)| option).collect()
+}
+
+/// 只留一線 Claude 模型：排除 3.x 舊版、代理編碼 id（-dd-）與跨供應商別名
+fn is_primary_claude_id(id: &str) -> bool {
+    let id = id.to_ascii_lowercase();
+    id.starts_with("claude-")
+        && !id.starts_with("claude-3-")
+        && !id.contains("-dd-")
+        && !["gpt", "gemini", "korg", "xedoc", "grok", "composer"]
+            .iter()
+            .any(|token| id.contains(token))
+}
+
+/// claude 快取解析：新 id 排前（id 反向排序近似「新在前」）
+pub fn parse_claude_catalog(json: &str) -> Vec<ModelOption> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let Some(models) = value.get("models").and_then(|m| m.as_array()) else {
+        return Vec::new();
+    };
+    let mut options: Vec<ModelOption> = models
+        .iter()
+        .filter_map(|item| {
+            let id = item.get("id").and_then(|s| s.as_str())?.trim();
+            if !is_primary_claude_id(id) {
+                return None;
+            }
+            let label = item.get("display_name").and_then(|s| s.as_str()).unwrap_or(id);
+            Some(ModelOption { id: id.to_owned(), label: label.to_owned() })
+        })
+        .collect();
+    options.sort_by(|a, b| b.id.cmp(&a.id));
+    options
+}
+
+/// 組下拉目錄：claude 固定前置官方別名（CLI 穩定介面）再接快取；快取讀不到就只剩別名。
+/// codex 純靠快取，讀不到回空（UI 仍有「自訂」手填逃生口）。
+pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
+    let read = |rel: &[&str]| -> Option<String> {
+        let mut path = PathBuf::from(std::env::var_os("HOME")?);
+        for part in rel {
+            path.push(part);
+        }
+        std::fs::read_to_string(path).ok()
+    };
+    match cli {
+        "claude" => {
+            let mut options: Vec<ModelOption> = ["fable", "opus", "sonnet", "haiku"]
+                .iter()
+                .map(|alias| ModelOption {
+                    id: (*alias).to_owned(),
+                    label: format!("{alias}（官方別名）"),
+                })
+                .collect();
+            options.extend(
+                read(&[".claude", "cache", "gateway-models.json"])
+                    .map(|json| parse_claude_catalog(&json))
+                    .unwrap_or_default(),
+            );
+            options
+        }
+        "codex" => read(&[".codex", "models_cache.json"])
+            .map(|json| parse_codex_catalog(&json))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
 /// CLI 檔位覆寫：使用者可在 tier_models 以「{cli}:{tier}」為鍵（如 claude:best）
 /// 指定該檔位的模型（別名或完整 id 皆可，CLI 端自行驗證）；空白視同未設。
 pub fn tier_override<'a>(
@@ -435,6 +541,34 @@ mod tests {
         let args = claude_args(claude_model_for(Tier::Fast), "系統");
         assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
         assert!(args.windows(2).any(|w| w == ["--system-prompt", "系統"]));
+    }
+
+    #[test]
+    fn codex_catalog_skips_internal_and_hidden_and_sorts_by_priority() {
+        let json = r#"{"models":[
+            {"slug":"codex-auto-review","display_name":"內部"},
+            {"slug":"gpt-5.4","display_name":"GPT-5.4","priority":2},
+            {"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","priority":1},
+            {"slug":"secret-model","visibility":"hidden"}
+        ]}"#;
+        let ids: Vec<_> = parse_codex_catalog(json).into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, ["gpt-5.6-sol", "gpt-5.4"]);
+        assert!(parse_codex_catalog("not json").is_empty());
+    }
+
+    #[test]
+    fn claude_catalog_keeps_primary_models_only() {
+        let json = r#"{"models":[
+            {"id":"claude-fable-5","display_name":"Fable 5"},
+            {"id":"claude-3-5-haiku-20241022","display_name":"舊版"},
+            {"id":"claude-fable-5-dd-los-6.5-tpg"},
+            {"id":"claude-gpt-bridge"},
+            {"id":"gemini-3.5-flash"}
+        ]}"#;
+        let options = parse_claude_catalog(json);
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0].id, "claude-fable-5");
+        assert_eq!(options[0].label, "Fable 5");
     }
 
     #[test]
