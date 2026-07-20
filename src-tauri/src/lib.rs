@@ -160,12 +160,15 @@ async fn stream_via_transport(
     let program = std::path::PathBuf::from(&info.path);
     match transport_kind.as_str() {
         "claude" => {
-            let args = cli::claude_args(cli::claude_model_for(tier), &system);
+            let model = cli::tier_override(&config.tier_models, "claude", tier)
+                .or_else(|| cli::claude_model_for(tier));
+            let args = cli::claude_args(model, &system);
             cli::run_cli(&program, &args, &prompt, cli::parse_claude_line, emit).await
         }
         "codex" => {
-            // codex 沒有 system prompt 旗標，併進 prompt 開頭
-            let args = cli::codex_args(cli::codex_effort_for(tier));
+            // codex 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時模型用 CLI 預設
+            let model = cli::tier_override(&config.tier_models, "codex", tier);
+            let args = cli::codex_args(model, cli::codex_effort_for(tier));
             let combined = format!("{system}\n\n{prompt}");
             cli::run_cli(&program, &args, &combined, cli::parse_codex_line, emit).await
         }
