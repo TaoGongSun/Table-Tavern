@@ -111,7 +111,7 @@ function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppCo
               開啟註冊頁
             </button>
           </li>
-          <li>儲值小額（$5 起，用多少扣多少，不會自動扣款）</li>
+          <li>儲值小額（最低 5 美元，用多少扣多少，不會自動扣款）</li>
           <li>
             建立一把 API key 並貼到下方
             <button
@@ -122,7 +122,7 @@ function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppCo
             </button>
           </li>
         </ol>
-        <p>費用有多低？以平衡檔粗估，$5 約可玩 5 個晚上；改用「快速省額度」檔更便宜。</p>
+        <p>費用有多高？以平衡檔粗估，5 美元約可玩 3 小時；改用「快速省額度」檔更便宜。</p>
         <div className="row">
           <input
             type="password"
