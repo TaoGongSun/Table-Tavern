@@ -1,0 +1,15 @@
+# Task
+Task-ID: post-mvp-st-import
+Title: MVP 後第一優先：SillyTavern 角色卡匯入
+Status: todo
+Created: 2026-07-18T22:55:00.699921+08:00
+Updated: 2026-07-18T22:55:00.699921+08:00
+
+## Summary
+依 NewPlan §5.2：支援 V2 card spec（內嵌 JSON 的 PNG 或純 JSON）。欄位對應：name/description/personality/scenario→角色卡對應欄；first_mes、mes_example→開場白與語氣範例；character book→角色私有資訊。對不上的欄位保留原始資料不丟棄。只做匯入不做匯出。此任務排在 MVP 七切片全部驗收之後（NewPlan §12）。
+
+## Next action
+- 等 MVP 切片 1–7 驗收後再開工；屆時先解析 V2 card spec 並寫欄位對應
+
+## Constraints
+不提前實作（KICKOFF §6）；不做反向匯出相容（NewPlan §5.2）。
