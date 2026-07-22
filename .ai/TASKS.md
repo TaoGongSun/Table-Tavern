@@ -17,6 +17,7 @@
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：等 release-1-mac-signing 的憑證就緒後開工：寫 tauri-action workflow，Developer ID .p12 與公證 API key 進 CI secrets；Windows 產物由協力者在乾淨 Windows 機驗收（下載→安裝→啟動，記錄 SmartScreen 實況）
 - [post-mvp-st-import](tasks/post-mvp-st-import.md) — MVP 後第一優先：SillyTavern 角色卡匯入 — 下一步：解析 V2 card spec 並寫欄位對應（MVP 切片 1–7 已驗收，可開工）
 - [sample-world-i18n](tasks/sample-world-i18n.md) — 範例桌內容依語系產生（en 使用者首開拿英文範例桌） — 下一步：create_sample_world 內容抽成 zh-TW／en 兩份依 config 語系選用，並解決首開「先選語言還是先建桌」的順序
+- [transcript-export](tasks/transcript-export.md) — 一鍵下載跑團紀錄（劇情歷史匯出） — 下一步：後端 export_transcript（全場景 JSONL→Markdown）＋前端匯出鈕與存檔對話框
 - [ui-settings-panel](tasks/ui-settings-panel.md) — 設定按鈕：外觀偏好（文字大小等） — 下一步：定 UI 位置與第一批偏好項目（文字大小存 config.preferences 套 CSS 變數；語言下拉一併移入）
 - [cli-auto-connect](tasks/cli-auto-connect.md) — CLI 自動連接：背景偵測＋登入跳轉自動回 — 下一步：查證 claude／codex CLI 的登入觸發與完成偵知介面，再定 UX 流程（風險告知仍前置）
 - [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 下一步：先實作換場鈕＋摘要生成單發呼叫，摘要存 world 目錄並在組裝時注入
