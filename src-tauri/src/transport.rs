@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
+/// 角色與 GM system prompt 共用的語言規範：中文語料以簡中為大宗，不明講就會飄成中國用語。
+/// 多語系後改為僅 zh-TW 語系注入（.ai/tasks/post-mvp-i18n-language-rule.md）。
+const LANGUAGE_RULE: &str = "所有輸出一律使用繁體中文與台灣慣用語，禁止中國大陸用語與簡體字\
+    （例如：說「影片」不說「視頻」、說「品質」不說「質量」、說「訊息」不說「信息」）。";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -37,9 +42,11 @@ pub fn assemble_messages(card: &CharacterCard, events: &[TranscriptEvent]) -> Ve
     let mut system = format!(
         "你正在一場多人桌上角色扮演中扮演「{name}」。\
          請一律以「{name}」的第一人稱視角與口吻回應，只輸出這個角色的台詞與動作描寫；\
-         不要跳出角色、不要以 AI 助理的身分說話、不要替其他角色或玩家代言。\n\n\
+         不要跳出角色、不要以 AI 助理的身分說話、不要替其他角色或玩家代言。\
+         {language_rule}\n\n\
          ## 你的公開設定（其他人也認識的你）\n{public}\n",
         name = card.name,
+        language_rule = LANGUAGE_RULE,
         public = card.public_md.trim(),
     );
     if !card.private_md.trim().is_empty() {
@@ -75,11 +82,12 @@ pub fn assemble_gm_messages(
     cards: &[CharacterCard],
     events: &[TranscriptEvent],
 ) -> Vec<ChatMessage> {
-    let mut system = String::from(
+    let mut system = format!(
         "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
          推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
          旁白是所有人都聽得到的公開敘事：不要替任何角色或玩家代言；\
-         世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。\n",
+         世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。\
+         {LANGUAGE_RULE}\n",
     );
     if !world_md.trim().is_empty() {
         system.push_str(&format!(
