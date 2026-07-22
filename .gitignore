@@ -2,3 +2,12 @@
 node_modules
 dist
 src-tauri/target
+
+# .ai 交接 Markdown 要進版控（! 規則蓋過全域 gitignore 的排除）；本機狀態檔仍排除
+!.ai/
+!.ai/**
+.ai/*.json
+.ai/*.jsonl
+
+# Claude Code 個人設定不共享
+.claude/settings.local.json
