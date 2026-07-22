@@ -55,6 +55,13 @@ const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399
 
 const DEFAULT_TABLE_NAME = "新的一桌";
 
+// 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。
+// 下限擋在這裡，上限交給 CSS 的 max-width: 50%（視窗縮小時自動夾住）。
+const SIDEBAR_WIDTH_KEY = "sidebar_width";
+const SIDEBAR_DEFAULT_WIDTH = 224;
+const SIDEBAR_MIN_WIDTH = 176;
+const SIDEBAR_KEY_STEP = 16;
+
 interface CliInfo {
   id: string;
   path: string;
@@ -514,6 +521,9 @@ function App() {
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [sidebarWidth, setSidebarWidth] = useState(
+    () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
@@ -737,9 +747,27 @@ function App() {
     return <main className="container">{error && <p role="alert">{error}</p>}</main>;
   }
 
+  // 拖曳分隔線調側欄寬度：上限由 CSS max-width 夾住，這裡只擋下限
+  function resizeSidebar(next: number) {
+    const clamped = Math.min(Math.max(next, SIDEBAR_MIN_WIDTH), window.innerWidth / 2);
+    setSidebarWidth(clamped);
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(clamped)));
+  }
+
+  function startSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const onMove = (moveEvent: PointerEvent) => resizeSidebar(moveEvent.clientX);
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="sidebar" style={{ width: sidebarWidth }}>
         <button className="new-table" onClick={newTable} disabled={generating !== null}>
           ＋ 開新的一桌
         </button>
@@ -758,6 +786,21 @@ function App() {
           <Settings config={config} onSaved={setConfig} />
         </div>
       </aside>
+
+      <div
+        className="sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="調整側欄寬度"
+        aria-valuenow={Math.round(sidebarWidth)}
+        tabIndex={0}
+        onPointerDown={startSidebarResize}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") resizeSidebar(sidebarWidth - SIDEBAR_KEY_STEP);
+          if (e.key === "ArrowRight") resizeSidebar(sidebarWidth + SIDEBAR_KEY_STEP);
+        }}
+        onDoubleClick={() => resizeSidebar(SIDEBAR_DEFAULT_WIDTH)}
+      />
 
       <main className="chat-main">
         <header className="chat-header">

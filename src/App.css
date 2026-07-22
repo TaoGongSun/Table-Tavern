@@ -82,6 +82,9 @@ input {
 
 .sidebar {
   width: 14rem;
+  /* 護欄交給 CSS：視窗縮小時瀏覽器自動夾住，不必監聽 resize */
+  min-width: 11rem;
+  max-width: 50%;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -90,6 +93,26 @@ input {
   border-right: 1px solid #88888833;
   box-sizing: border-box;
   overflow-y: auto;
+}
+
+/* 側欄與主區之間的拖曳分隔線：視覺上只有 1px 邊框，實際命中區 9px 好抓 */
+.sidebar-resizer {
+  flex: none;
+  width: 9px;
+  margin-left: -5px;
+  margin-right: -4px;
+  z-index: 1;
+  cursor: col-resize;
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible {
+  background: #88888844;
 }
 
 .new-table {
