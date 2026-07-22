@@ -151,6 +151,18 @@ input {
   font-size: 0.9em;
 }
 
+.language-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.language-picker select {
+  flex: 1;
+  min-width: 0;
+}
+
 .chat-main {
   flex: 1;
   display: flex;

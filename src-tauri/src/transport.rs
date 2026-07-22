@@ -7,10 +7,16 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
-/// 角色與 GM system prompt 共用的語言規範：中文語料以簡中為大宗，不明講就會飄成中國用語。
-/// 多語系後改為僅 zh-TW 語系注入（.ai/tasks/post-mvp-i18n-language-rule.md）。
-const LANGUAGE_RULE: &str = "所有輸出一律使用繁體中文與台灣慣用語，禁止中國大陸用語與簡體字\
-    （例如：說「影片」不說「視頻」、說「品質」不說「質量」、說「訊息」不說「信息」）。";
+/// 角色與 GM system prompt 共用的語言規範，依使用者語系（config.preferences.language）注入：
+/// zh 系防止簡中飄移；en 因提示詞模板仍是中文、需明講才不會被帶成中文輸出。
+fn language_rule(lang: &str) -> &'static str {
+    if lang.starts_with("zh") {
+        "所有輸出一律使用繁體中文與台灣慣用語，禁止中國大陸用語與簡體字\
+         （例如：說「影片」不說「視頻」、說「品質」不說「質量」、說「訊息」不說「信息」）。"
+    } else {
+        "All of your output must be in natural, fluent English."
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -38,7 +44,11 @@ fn push_merged(messages: &mut Vec<ChatMessage>, role: &str, line: String) {
 
 /// 組裝單一角色的上下文。只餵入該角色自己的卡與公開 transcript：
 /// 他人私有設定與 world.md（GM 專屬，NewPlan §7.0）由呼叫端負責永不傳入。
-pub fn assemble_messages(card: &CharacterCard, events: &[TranscriptEvent]) -> Vec<ChatMessage> {
+pub fn assemble_messages(
+    card: &CharacterCard,
+    events: &[TranscriptEvent],
+    lang: &str,
+) -> Vec<ChatMessage> {
     let mut system = format!(
         "你正在一場多人桌上角色扮演中扮演「{name}」。\
          請一律以「{name}」的第一人稱視角與口吻回應，只輸出這個角色的台詞與動作描寫；\
@@ -46,7 +56,7 @@ pub fn assemble_messages(card: &CharacterCard, events: &[TranscriptEvent]) -> Ve
          {language_rule}\n\n\
          ## 你的公開設定（其他人也認識的你）\n{public}\n",
         name = card.name,
-        language_rule = LANGUAGE_RULE,
+        language_rule = language_rule(lang),
         public = card.public_md.trim(),
     );
     if !card.private_md.trim().is_empty() {
@@ -81,13 +91,15 @@ pub fn assemble_gm_messages(
     world_md: &str,
     cards: &[CharacterCard],
     events: &[TranscriptEvent],
+    lang: &str,
 ) -> Vec<ChatMessage> {
     let mut system = format!(
         "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
          推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
          旁白是所有人都聽得到的公開敘事：不要替任何角色或玩家代言；\
          世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。\
-         {LANGUAGE_RULE}\n",
+         {language_rule}\n",
+        language_rule = language_rule(lang),
     );
     if !world_md.trim().is_empty() {
         system.push_str(&format!(
@@ -164,6 +176,16 @@ pub fn pick_speaker(reply: &str, roster: &[String]) -> Option<String> {
         .filter_map(|name| reply.find(*name).map(|position| (position, *name)))
         .min_by_key(|(position, _)| *position)
         .map(|(_, name)| name.to_owned())
+}
+
+/// 使用者語系：preferences.language，預設 zh-TW；決定 system prompt 注入哪份語言規範
+pub fn ui_language(config: &AppConfig) -> String {
+    config
+        .preferences
+        .get("language")
+        .and_then(|value| value.as_str())
+        .unwrap_or("zh-TW")
+        .to_owned()
 }
 
 /// GM 檔位：preferences.gm_tier，預設 best（GM 需掌握整體資訊，NewPlan §6.3）
@@ -331,7 +353,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "騎士", "我在找一名通緝犯。"),
             event(TranscriptKind::System, "系統", "騎士 加入本桌"),
         ];
-        let messages = assemble_messages(&fox, &events);
+        let messages = assemble_messages(&fox, &events, "zh-TW");
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -356,7 +378,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "狐狸", "我的回答"),
             event(TranscriptKind::Player, "玩家", "第二句"),
         ];
-        let messages = assemble_messages(&fox, &events);
+        let messages = assemble_messages(&fox, &events, "zh-TW");
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert_eq!(roles, ["system", "user", "assistant", "user"]);
         assert_eq!(messages[1].content, "玩家：第一句\n（旁白）旁白一句");
@@ -379,7 +401,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
             event(TranscriptKind::Narration, "GM", "門外傳來馬蹄聲"),
         ];
-        let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events);
+        let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events, "zh-TW");
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -393,6 +415,28 @@ mod tests {
         assert_eq!(messages[1].content, "夜幕低垂");
         assert_eq!(messages[2].content, "玩家：老闆，來杯麥酒\n狐狸：馬上來！");
         assert_eq!(messages[3].content, "門外傳來馬蹄聲");
+    }
+
+    /// 驗收：語言規範依語系切換——zh-TW 注入繁中規範，en 注入英文規範
+    #[test]
+    fn language_rule_follows_ui_language() {
+        let fox = card("狐狸", "旅店老闆", "");
+        let zh = assemble_messages(&fox, &[], "zh-TW");
+        assert!(zh[0].content.contains("繁體中文"));
+        let en = assemble_messages(&fox, &[], "en");
+        assert!(en[0].content.contains("in natural, fluent English"));
+        assert!(!en[0].content.contains("繁體中文"));
+
+        let gm_en = assemble_gm_messages("", &[], &[], "en");
+        assert!(gm_en[0].content.contains("in natural, fluent English"));
+
+        let mut config = AppConfig::default();
+        assert_eq!(ui_language(&config), "zh-TW");
+        config.preferences.insert(
+            "language".to_owned(),
+            serde_json::Value::String("en".to_owned()),
+        );
+        assert_eq!(ui_language(&config), "en");
     }
 
     #[test]

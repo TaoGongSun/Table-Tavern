@@ -200,7 +200,7 @@ async fn chat_with_character(
     let events = data::read_transcript(&root, &world, state.current_scene)
         .map_err(|error| error.to_string())?;
 
-    let messages = transport::assemble_messages(&card, &events);
+    let messages = transport::assemble_messages(&card, &events, &transport::ui_language(&config));
     let closing = format!(
         "現在輪到「{}」回應。請直接輸出台詞與動作描寫，不要加名字前綴、不要任何角色之外的說明。",
         card.name
@@ -213,7 +213,7 @@ async fn chat_with_character(
 
 /// GM 上下文＝world.md（只進 GM）＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
 /// 回傳（角色名單, 組裝好的訊息）。
-fn assemble_gm(root: &std::path::Path, world: &str) -> Result<(Vec<String>, Vec<transport::ChatMessage>), String> {
+fn assemble_gm(root: &std::path::Path, world: &str, lang: &str) -> Result<(Vec<String>, Vec<transport::ChatMessage>), String> {
     let world_md = data::read_world_md(root, world).map_err(|error| error.to_string())?;
     let state = data::read_state(root, world).map_err(|error| error.to_string())?;
     let events = data::read_transcript(root, world, state.current_scene)
@@ -225,7 +225,7 @@ fn assemble_gm(root: &std::path::Path, world: &str) -> Result<(Vec<String>, Vec<
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
     let roster = cards.iter().map(|card| card.name.clone()).collect();
-    Ok((roster, transport::assemble_gm_messages(&world_md, &cards, &events)))
+    Ok((roster, transport::assemble_gm_messages(&world_md, &cards, &events, lang)))
 }
 
 /// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
@@ -236,7 +236,7 @@ async fn gm_narrate(
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (_, mut messages) = assemble_gm(&data_root(&app)?, &world)?;
+    let (_, mut messages) = assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
     messages.push(transport::narrate_instruction());
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
@@ -257,7 +257,7 @@ async fn gm_narrate(
 #[tauri::command]
 async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (roster, mut messages) = assemble_gm(&data_root(&app)?, &world)?;
+    let (roster, mut messages) = assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
     if roster.is_empty() {
         return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
     }
