@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import "./App.css";
 
 type Tier = "best" | "balanced" | "fast" | "default";
@@ -44,16 +45,15 @@ const SUGGESTED_TIER_MODELS: Record<string, string> = {
 };
 
 // 檔位只是三個插槽，UI 以品質高低命名；內部 key（卡片 frontmatter／config.json）維持不變
-const TIER_LABELS: Record<string, string> = {
-  best: "高",
-  balanced: "中",
-  fast: "低",
-  default: "跟隨預設",
-};
+const TIER_LABEL_KEYS = {
+  best: "tierBest",
+  balanced: "tierBalanced",
+  fast: "tierFast",
+  default: "tierDefault",
+} as const;
+const tierLabel = (tier: keyof typeof TIER_LABEL_KEYS) => t(TIER_LABEL_KEYS[tier]);
 
 const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
-
-const DEFAULT_TABLE_NAME = "新的一桌";
 
 // 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。
 // 下限擋在這裡，上限交給 CSS 的 max-width: 50%（視窗縮小時自動夾住）。
@@ -73,12 +73,7 @@ const CLI_LABELS: Record<string, string> = {
   codex: "Codex CLI",
 };
 
-const CLI_RISKS = [
-  "供應商條款禁止第三方工具使用訂閱憑證；Google 已對同類工具的使用者執行帳號停權且申訴無果；Anthropic 保留不經通知執法的權利。",
-  "多角色扮演的用量形狀與條款所述「一般個人使用」有可見差距，可能觸發限流或審查。",
-  "在訂閱模式下生成違反該供應商內容政策的內容，風險疊加。",
-  "後果由你自己的帳號承擔。",
-];
+const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
 function nowTs() {
   return new Date().toISOString();
@@ -109,39 +104,39 @@ function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppCo
   return (
     <section className="settings onboarding" role="note">
       <form className="settings-form" onSubmit={save}>
-        <strong>還差最後一步：貼上 API key 就能開玩</strong>
-        <p>本 App 不代管模型——你自備一把 OpenRouter key，一把通吃多家模型（角色與 GM 可以用不同檔位）。</p>
+        <strong>{t("onboardTitle")}</strong>
+        <p>{t("onboardIntro")}</p>
         <ol>
           <li>
-            註冊 OpenRouter
+            {t("onboardStep1")}
             <button type="button" onClick={() => void openUrl("https://openrouter.ai/")}>
-              開啟註冊頁
+              {t("onboardStep1Btn")}
             </button>
           </li>
-          <li>儲值小額（最低 5 美元，用多少扣多少，不會自動扣款）</li>
+          <li>{t("onboardStep2")}</li>
           <li>
-            建立一把 API key 並貼到下方
+            {t("onboardStep3")}
             <button
               type="button"
               onClick={() => void openUrl("https://openrouter.ai/settings/keys")}
             >
-              開啟 API key 頁
+              {t("onboardStep3Btn")}
             </button>
           </li>
         </ol>
-        <p>費用有多高？以平衡檔粗估，5 美元約可玩 3 小時；改用「快速省額度」檔更便宜。</p>
+        <p>{t("onboardCost")}</p>
         <div className="row">
           <input
             type="password"
-            aria-label="OpenRouter API key"
+            aria-label={t("apiKeyLabel")}
             value={apiKey}
             onChange={(event) => setApiKey(event.currentTarget.value)}
             placeholder="sk-or-..."
           />
-          <button type="submit">儲存並開玩</button>
+          <button type="submit">{t("onboardSaveBtn")}</button>
         </div>
         {message && <span role="alert">{message}</span>}
-        <small>已自行安裝並登入官方 CLI 的進階使用者，也可以改到下方「AI 設定」啟用 CLI 訂閱模式。</small>
+        <small>{t("onboardCliHint")}</small>
       </form>
     </section>
   );
@@ -185,7 +180,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     event.preventDefault();
     setMessage("");
     if (transport !== "api" && !riskAccepted) {
-      setMessage("啟用 CLI 訂閱模式前，請先勾選風險告知確認");
+      setMessage(t("riskRequired"));
       return;
     }
     const next: AppConfig = {
@@ -204,7 +199,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     try {
       await invoke("write_config", { config: next });
       onSaved(next);
-      setMessage("已儲存");
+      setMessage(t("saved"));
     } catch (reason) {
       setMessage(String(reason));
     }
@@ -212,10 +207,10 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
 
   return (
     <details className="settings">
-      <summary>AI 設定（自備 key／CLI 模式）</summary>
+      <summary>{t("settingsSummary")}</summary>
       <form onSubmit={save} className="settings-form">
         <fieldset className="transport-choice">
-          <legend>連線方式</legend>
+          <legend>{t("transportLegend")}</legend>
           <label className="inline">
             <input
               type="radio"
@@ -223,7 +218,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
               checked={transport === "api"}
               onChange={() => setTransport("api")}
             />
-            API 直連（OpenRouter，標準）
+            {t("transportApi")}
           </label>
           {(["claude", "codex"] as const).map((id) => {
             const found = clis.find((c) => c.id === id);
@@ -236,11 +231,12 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                   checked={transport === id}
                   onChange={() => setTransport(id)}
                 />
-                {CLI_LABELS[id]}（訂閱模式，進階）
+                {CLI_LABELS[id]}
+                {t("cliSubscriptionSuffix")}
                 {found ? (
-                  <span className="cli-version">已偵測：{found.version}</span>
+                  <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
                 ) : (
-                  <span className="cli-version">未偵測到；請自行安裝並登入官方 CLI，App 不代辦</span>
+                  <span className="cli-version">{t("cliNotDetected")}</span>
                 )}
               </label>
             );
@@ -248,10 +244,10 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         </fieldset>
         {transport !== "api" && (
           <div className="risk-box" role="note">
-            <strong>啟用前請了解具體風險：</strong>
+            <strong>{t("riskTitle")}</strong>
             <ul>
-              {CLI_RISKS.map((risk, index) => (
-                <li key={index}>{risk}</li>
+              {CLI_RISK_KEYS.map((key) => (
+                <li key={key}>{t(key)}</li>
               ))}
             </ul>
             <label className="inline">
@@ -260,12 +256,12 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                 checked={riskAccepted}
                 onChange={(e) => setRiskAccepted(e.currentTarget.checked)}
               />
-              我已了解上述風險，仍要以自己的帳號啟用
+              {t("riskAccept")}
             </label>
           </div>
         )}
         <label>
-          OpenRouter API key
+          {t("apiKeyLabel")}
           <input
             type="password"
             value={apiKey}
@@ -277,7 +273,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
           <>
             {(["best", "balanced", "fast"] as const).map((tier) => (
               <label key={tier}>
-                「{TIER_LABELS[tier]}」檔位模型（可挑可貼，任何 OpenRouter 模型 id）
+                {t("tierModelApiLabel", { tier: tierLabel(tier) })}
                 <input
                   list="openrouter-models"
                   value={tierModels[tier] ?? ""}
@@ -305,7 +301,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                 customTiers[key] ?? (value !== "" && !catalog.some((m) => m.id === value));
               return (
                 <label key={key}>
-                  「{TIER_LABELS[tier]}」檔位模型
+                  {t("tierModelCliLabel", { tier: tierLabel(tier) })}
                   <select
                     value={custom ? "__custom__" : value}
                     onChange={(e) => {
@@ -318,18 +314,18 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                       }
                     }}
                   >
-                    <option value="">預設（CLI）</option>
+                    <option value="">{t("cliDefaultOption")}</option>
                     {catalog.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.label}
                       </option>
                     ))}
-                    <option value="__custom__">自訂模型 id…</option>
+                    <option value="__custom__">{t("customModelOption")}</option>
                   </select>
                   {custom && (
                     <input
                       value={value}
-                      placeholder="完整模型 id"
+                      placeholder={t("customModelPlaceholder")}
                       onChange={(e) =>
                         setTierModels({ ...tierModels, [key]: e.currentTarget.value })
                       }
@@ -339,24 +335,22 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
               );
             })}
             <p className="cli-version" role="note">
-              {transport === "claude"
-                ? "清單讀自 Claude CLI 的本機模型快取；沒列到的用「自訂」手填"
-                : "清單讀自 Codex 的本機模型快取；檔位另固定對應推理力度 高→high、中→medium、低→low"}
+              {transport === "claude" ? t("cliCatalogClaude") : t("cliCatalogCodex")}
             </p>
           </>
         )}
         <label>
-          GM 檔位（導演與旁白用，建議選「高」）
+          {t("gmTierLabel")}
           <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
-            {["best", "balanced", "fast", "default"].map((tier) => (
+            {(["best", "balanced", "fast", "default"] as const).map((tier) => (
               <option key={tier} value={tier}>
-                {TIER_LABELS[tier]}
+                {tierLabel(tier)}
               </option>
             ))}
           </select>
         </label>
         <label>
-          GM 推進每回合最大發言數
+          {t("maxRoundLabel")}
           <input
             type="number"
             min={1}
@@ -366,7 +360,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
           />
         </label>
         <label>
-          自訂 base URL（進階，留空用 OpenRouter）
+          {t("baseUrlLabel")}
           <input
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.currentTarget.value)}
@@ -374,7 +368,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
           />
         </label>
         <div className="row">
-          <button type="submit">儲存設定</button>
+          <button type="submit">{t("saveSettings")}</button>
           {message && <span>{message}</span>}
         </div>
       </form>
@@ -402,7 +396,7 @@ function WorldEditor({ world }: { world: string }) {
     setMessage("");
     try {
       await invoke("write_world_md", { world, content: text });
-      setMessage("已儲存");
+      setMessage(t("saved"));
     } catch (reason) {
       setMessage(String(reason));
     }
@@ -410,16 +404,16 @@ function WorldEditor({ world }: { world: string }) {
 
   return (
     <details className="settings">
-      <summary>世界設定 world.md（只進 GM 上下文，角色只知道 GM 說出口的內容）</summary>
+      <summary>{t("worldSummary")}</summary>
       <form onSubmit={save} className="settings-form">
         <textarea
           rows={6}
-          aria-label="世界設定"
+          aria-label={t("worldAria")}
           value={text}
           onChange={(e) => setText(e.currentTarget.value)}
         />
         <div className="row">
-          <button type="submit">儲存世界設定</button>
+          <button type="submit">{t("saveWorld")}</button>
           {message && <span>{message}</span>}
         </div>
       </form>
@@ -445,7 +439,7 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
     setMessage("");
     try {
       await invoke("write_character", { world, card });
-      setMessage("已儲存");
+      setMessage(t("saved"));
       onSaved();
     } catch (reason) {
       setMessage(String(reason));
@@ -454,10 +448,10 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
 
   return (
     <details className="settings">
-      <summary>編輯「{card.name}」角色卡</summary>
+      <summary>{t("editCardSummary", { name: card.name })}</summary>
       <form onSubmit={save} className="settings-form">
         <label>
-          公開設定（所有人認識的它）
+          {t("publicLabel")}
           <textarea
             rows={4}
             value={card.public_md}
@@ -465,7 +459,7 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
           />
         </label>
         <label>
-          私有設定（只進本角色與 GM 的上下文）
+          {t("privateLabel")}
           <textarea
             rows={4}
             value={card.private_md}
@@ -473,20 +467,20 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
           />
         </label>
         <label>
-          檔位
+          {t("tierLabel")}
           <select
             value={card.tier}
             onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
           >
-            {["default", "best", "balanced", "fast"].map((tier) => (
+            {(["default", "best", "balanced", "fast"] as const).map((tier) => (
               <option key={tier} value={tier}>
-                {TIER_LABELS[tier]}
+                {tierLabel(tier)}
               </option>
             ))}
           </select>
         </label>
         <div className="row">
-          <button type="submit">儲存角色卡</button>
+          <button type="submit">{t("saveCard")}</button>
           {message && <span>{message}</span>}
         </div>
       </form>
@@ -525,6 +519,21 @@ function App() {
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
   );
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // 語系跟著 config 走；render 前同步進 i18n 模組，之後子樹的 t() 都拿到正確語言
+  const language = normalizeLang(config?.preferences["language"]);
+  setLang(language);
+
+  async function changeLanguage(next: Lang) {
+    if (!config) return;
+    const updated = { ...config, preferences: { ...config.preferences, language: next } };
+    setConfig(updated);
+    try {
+      await invoke("write_config", { config: updated });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
@@ -593,8 +602,9 @@ function App() {
     setError("");
     try {
       const existing = await invoke<string[]>("list_worlds");
-      let name = DEFAULT_TABLE_NAME;
-      for (let n = 2; existing.includes(name); n += 1) name = `${DEFAULT_TABLE_NAME} ${n}`;
+      const base = t("newTableName");
+      let name = base;
+      for (let n = 2; existing.includes(name); n += 1) name = `${base} ${n}`;
       await invoke("create_world", { name });
       const previous = table;
       await enterTable(name, config);
@@ -627,7 +637,7 @@ function App() {
     setError("");
     const name = characterName.trim();
     if (name === "GM" || name === "玩家") {
-      setError("「GM」與「玩家」是保留名稱，請換一個角色名");
+      setError(t("reservedNameError"));
       return;
     }
     const card: CharacterCard = {
@@ -713,7 +723,7 @@ function App() {
         setStreamText("");
         const name = await invoke<string>("gm_suggest_speaker", { world: table });
         if (name === "玩家") break;
-        await appendEvent({ ts: nowTs(), speaker: "GM", kind: "system", text: `GM 請「${name}」發言` });
+        await appendEvent({ ts: nowTs(), speaker: "GM", kind: "system", text: t("gmCallOn", { name }) });
         await replyOnce(name);
       }
       setWorlds(await invoke<string[]>("list_worlds"));
@@ -769,9 +779,9 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar" style={{ width: sidebarWidth }}>
         <button className="new-table" onClick={newTable} disabled={generating !== null}>
-          ＋ 開新的一桌
+          {t("newTable")}
         </button>
-        <nav className="table-list" aria-label="桌列表">
+        <nav className="table-list" aria-label={t("tableListAria")}>
           {worlds.map((name) => (
             <button
               key={name}
@@ -783,6 +793,19 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
+          <label className="language-picker">
+            {t("languageLabel")}
+            <select
+              value={language}
+              onChange={(e) => void changeLanguage(normalizeLang(e.currentTarget.value))}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <Settings config={config} onSaved={setConfig} />
         </div>
       </aside>
@@ -791,7 +814,7 @@ function App() {
         className="sidebar-resizer"
         role="separator"
         aria-orientation="vertical"
-        aria-label="調整側欄寬度"
+        aria-label={t("sidebarResizerAria")}
         aria-valuenow={Math.round(sidebarWidth)}
         tabIndex={0}
         onPointerDown={startSidebarResize}
@@ -807,7 +830,7 @@ function App() {
           {editingName === null ? (
             <button
               className="table-title"
-              title="點一下改名"
+              title={t("renameHint")}
               onClick={() => setEditingName(table)}
             >
               {table}
@@ -817,7 +840,7 @@ function App() {
               className="table-title-input"
               autoFocus
               value={editingName}
-              aria-label="桌名"
+              aria-label={t("tableNameAria")}
               onChange={(e) => setEditingName(e.currentTarget.value)}
               onBlur={() => renameTable(editingName)}
               onKeyDown={(e) => {
@@ -830,26 +853,26 @@ function App() {
 
         <Onboarding config={config} onSaved={setConfig} />
 
-        <section className="row cast-row" aria-label="角色">
+        <section className="row cast-row" aria-label={t("castAria")}>
           {characters.map((c) => (
             <button
               key={c.name}
               className={`cast ${speaker === c.name ? "cast-active" : ""}`}
               style={{ ["--ring" as string]: c.color }}
               onClick={() => setSpeaker(c.name)}
-              title={`點名「${c.name}」接話`}
+              title={t("castHint", { name: c.name })}
             >
               <Avatar meta={c} /> {c.name}
             </button>
           ))}
           <form className="row" onSubmit={createCharacter}>
             <input
-              aria-label="角色名稱"
+              aria-label={t("newCharacterAria")}
               value={characterName}
               onChange={(e) => setCharacterName(e.currentTarget.value)}
-              placeholder="新角色名稱"
+              placeholder={t("newCharacterPlaceholder")}
             />
-            <button type="submit">建卡</button>
+            <button type="submit">{t("createCard")}</button>
           </form>
         </section>
 
@@ -865,7 +888,7 @@ function App() {
           />
         )}
 
-        <section className="messages" aria-label="對話">
+        <section className="messages" aria-label={t("messagesAria")}>
           {events.map((event, index) => {
             if (event.kind === "dialogue") {
               const meta = metaOf(event.speaker);
@@ -901,7 +924,7 @@ function App() {
                 {streamText ? (
                   <span className="text">{streamText}</span>
                 ) : (
-                  <span className="typing" aria-label={`${generating.name} 正在打字`}>
+                  <span className="typing" aria-label={t("typing", { name: generating.name })}>
                     <i />
                     <i />
                     <i />
@@ -915,7 +938,7 @@ function App() {
               {streamText ? (
                 <span className="text">{streamText}</span>
               ) : (
-                <span className="typing" aria-label="GM 正在打字">
+                <span className="typing" aria-label={t("typing", { name: "GM" })}>
                   <i />
                   <i />
                   <i />
@@ -928,38 +951,40 @@ function App() {
 
         <form className="row composer" onSubmit={send}>
           <input
-            aria-label="玩家輸入"
+            aria-label={t("composerAria")}
             value={input}
             onChange={(e) => setInput(e.currentTarget.value)}
-            placeholder={speaker ? `以玩家身分發言，「${speaker}」會接話…` : "先建立一個角色"}
+            placeholder={
+              speaker ? t("composerPlaceholder", { name: speaker }) : t("composerNoCharacter")
+            }
             disabled={!speaker || generating !== null}
           />
           <button type="submit" disabled={!speaker || generating !== null}>
-            送出
+            {t("send")}
           </button>
           <button
             type="button"
             onClick={() => requestReply(speaker)}
             disabled={!speaker || generating !== null}
-            title="不輸入玩家發言，直接請被點名的角色接話"
+            title={t("requestReplyHint")}
           >
-            請{speaker || "角色"}發言
+            {t("requestReplyBtn", { name: speaker || t("characterFallback") })}
           </button>
           <button
             type="button"
             onClick={gmNarrate}
             disabled={generating !== null}
-            title="請 GM 插入一段場景旁白（GM 讀得到世界設定與全部角色卡）"
+            title={t("gmNarrateHint")}
           >
-            GM 旁白
+            {t("gmNarrate")}
           </button>
           <button
             type="button"
             onClick={gmAdvance}
             disabled={generating !== null || characters.length === 0}
-            title="GM 點名下一位角色接話並接力推進，遇「輪到玩家」或達每回合上限即停"
+            title={t("gmAdvanceHint")}
           >
-            GM 推進
+            {t("gmAdvance")}
           </button>
         </form>
         {error && <p role="alert">{error}</p>}
