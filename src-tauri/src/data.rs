@@ -181,6 +181,10 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<()> {
 
 pub fn create_sample_world(root: &Path) -> DataResult<String> {
     let world = "迷霧酒館（範例）";
+    // 冪等：範例桌已在就直接沿用，避免重複呼叫（dev 的 StrictMode 雙跑）噴 File exists
+    if world_dir(root, world)?.exists() {
+        return Ok(world.to_owned());
+    }
     create_world(root, world)?;
     write_world_md(
         root,
@@ -576,6 +580,10 @@ mod tests {
         assert_eq!(transcript.len(), 1);
         assert_eq!(transcript[0].kind, TranscriptKind::Narration);
         assert_eq!(transcript[0].speaker, "GM");
+
+        // 重複呼叫要沿用既有那桌，不噴 File exists、也不重複塞開場旁白
+        assert_eq!(create_sample_world(root.path()).unwrap(), world);
+        assert_eq!(read_transcript(root.path(), &world, 0).unwrap().len(), 1);
     }
 
     #[cfg(unix)]

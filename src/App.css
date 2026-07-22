@@ -201,6 +201,15 @@ input {
   gap: 0.25rem;
 }
 
+/* 引導步驟裡的行內按鈕：與前面的說明文字留白，別擠成壓字 */
+.onboarding li {
+  margin-bottom: 0.5rem;
+}
+
+.onboarding li button {
+  margin-left: 0.5rem;
+}
+
 textarea,
 select {
   border-radius: 8px;
