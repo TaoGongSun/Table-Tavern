@@ -1,3 +1,8 @@
+/* body 預設 margin 會讓 100vh 的 app-shell 永遠比視窗高 16px，造成常駐捲軸 */
+body {
+  margin: 0;
+}
+
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
