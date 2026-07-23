@@ -306,6 +306,34 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<Stri
         .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))
 }
 
+/// 換場：把當前場景公開紀錄壓成一則摘要，寫進新場景開頭，current_scene +1（NewPlan 換場＋場景摘要）。
+/// 摘要走既有 stream_via_transport＋GM 檔位，不新開連線路徑、不新增設定項。
+#[tauri::command]
+async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, String> {
+    let root = data_root(&app)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let state = data::read_state(&root, &world).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(&root, &world, state.current_scene)
+        .map_err(|error| error.to_string())?;
+    if events.is_empty() {
+        return Err("這個場景還沒有任何紀錄，沒東西可以換場".to_owned());
+    }
+
+    let messages = transport::summary_messages(&events, &lang);
+    let summary = stream_via_transport(
+        &config,
+        transport::gm_tier(&config),
+        "GM",
+        "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
+        &messages,
+        |_| {},
+    )
+    .await?;
+
+    data::begin_next_scene(&root, &world, &summary, &lang).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -335,7 +363,8 @@ pub fn run() {
             list_cli_models,
             chat_with_character,
             gm_narrate,
-            gm_suggest_speaker
+            gm_suggest_speaker,
+            advance_scene
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

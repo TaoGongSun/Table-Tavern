@@ -824,6 +824,22 @@ function App() {
     }
   }
 
+  // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
+  async function advanceScene() {
+    setError("");
+    setGenerating({ name: "GM", kind: "narration" });
+    setStreamText("");
+    try {
+      await invoke<number>("advance_scene", { world: table });
+      await enterTable(table, config!);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setGenerating(null);
+      setStreamText("");
+    }
+  }
+
   // 存哪裡由使用者決定：跳原生「另存新檔」對話框，取消就什麼都不做
   async function exportTranscript() {
     setError("");
@@ -1169,6 +1185,15 @@ function App() {
               }}
             />
           )}
+          <button
+            type="button"
+            title={t("sceneAdvanceHint")}
+            aria-label={t("sceneAdvance")}
+            disabled={generating !== null || events.length === 0}
+            onClick={advanceScene}
+          >
+            {t("sceneAdvance")}
+          </button>
           <button
             type="button"
             title={t("exportTranscriptHint")}
