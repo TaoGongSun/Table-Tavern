@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: post-mvp-scene-summary
-Updated: 2026-07-24T01:50:00+08:00
-Status: in-progress
+Updated: 2026-07-24T12:30:00+08:00
+Status: done
 
 ## Goal
 依 NewPlan §8／§8.1：「換場」動作——把當前場景公開紀錄用單發 LLM 呼叫壓成摘要，存入本機正典並帶進新場景上下文。不依賴供應商 session 或自動壓縮。
 
 ## Current state
-程式碼完成（Opus subagent 實作、主線驗收）。設計拍板：摘要以 GM 旁白事件（【前情提要】／Previously: 前綴）寫入新場景 transcript 開頭——角色與 GM 上下文、匯出、下次換場的鏈式壓縮全部自然沿用，不另做注入管線；摘要檔位固定 GM 檔位（不做設定項，YAGNI）。cargo test 43 綠、npm build 綠。剩使用者實測一次真實換場。
+程式碼完成（Opus subagent 實作、主線驗收）。設計拍板：摘要以 GM 旁白事件（【前情提要】／Previously: 前綴）寫入新場景 transcript 開頭——角色與 GM 上下文、匯出、下次換場的鏈式壓縮全部自然沿用，不另做注入管線；摘要檔位固定 GM 檔位（不做設定項，YAGNI）。cargo test 43 綠、npm build 綠。2026-07-24 使用者實測換場通過（附截圖），結案。
 
 ## Completed
 - transport.rs `summary_messages(events, lang)`（transport.rs:140-172）：system 指示（條列地點時間／人物狀態／關鍵事件／關係變化／未解懸念，zh 約 300 字／en 約 200 words）＋公開 transcript 逐行；不含 world.md 與角色卡（摘要只壓公開事件，避免私有資訊外洩到公開摘要）
@@ -26,10 +26,10 @@ Status: in-progress
 - Branch: main
 
 ## Remaining
-- 使用者實測：在有紀錄的桌按「換場」→ 等 GM 檔位生成 → 畫面切到新場景，開頭是一則【前情提要】旁白；空場景時鈕應為 disabled
+- 無
 
 ## Next action
-- 使用者實測通過即結案
+- 無（任務結案；場景歷史瀏覽／單場匯出／換場提醒見 scene-history-browser）
 
 ## Constraints
 - 摘要只讀公開 transcript（不讀 world.md／角色私有）；不依賴供應商 session；摘要檔位固定 GM 檔位
