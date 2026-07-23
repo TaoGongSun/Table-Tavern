@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import "./App.css";
@@ -680,10 +681,19 @@ function App() {
     }
   }
 
+  // 存哪裡由使用者決定：跳原生「另存新檔」對話框，取消就什麼都不做
   async function exportTranscript() {
     setError("");
     try {
-      const path = await invoke<string>("export_transcript", { world: table });
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const path = await save({
+        defaultPath: `${t("exportFileName", { table, stamp })}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!path) return;
+      await invoke("export_transcript", { world: table, path });
       await revealItemInDir(path);
     } catch (reason) {
       setError(String(reason));
