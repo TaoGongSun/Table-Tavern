@@ -1,9 +1,10 @@
 # Project tasks
 
 ## In progress
-- [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 下一步：前後端完成（Opus subagent 實作＋主線驗收 cargo test 43 綠＋npm build 綠），剩使用者實測換場鈕即結案
+- [scene-history-browser](tasks/scene-history-browser.md) — 過去的場：場景歷史瀏覽＋單場匯出＋換場提醒 — 下一步：Opus subagent 實作中，回來主線驗證
 
 ## Done
+- [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 2026-07-24 使用者實測換場通過，結案
 - [sample-world-i18n](tasks/sample-world-i18n.md) — 範例桌內容依語系產生（首開先選語言） — 2026-07-24 使用者實測首開通過，結案
 - [ui-settings-panel](tasks/ui-settings-panel.md) — 設定視窗：單一入口內分頁（外觀預設／AI 連線）＋文字大小五檔 — 2026-07-24 使用者複驗通過，結案
 - [ui-layout-rework](tasks/ui-layout-rework.md) — 版面重構：角色卡移左側欄＋桌列表可摺疊（NewPlan §9.4） — 2026-07-23 使用者視覺驗收通過，結案
