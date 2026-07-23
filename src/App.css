@@ -440,8 +440,7 @@ input {
   flex-direction: column;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  max-width: 46rem;
-  margin: 0 auto;
+  /* 主欄自動填滿左右（2026-07-24 使用者拍板）：不設 max-width，字級縮小時行寬變寬、不留大片空白 */
   box-sizing: border-box;
   height: 100vh;
   overflow: hidden;
