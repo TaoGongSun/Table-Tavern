@@ -509,21 +509,18 @@ function WorldEditor({ world }: { world: string }) {
   }
 
   return (
-    <details className="settings">
-      <summary>{t("worldSummary")}</summary>
-      <form onSubmit={save} className="settings-form">
-        <textarea
-          rows={6}
-          aria-label={t("worldAria")}
-          value={text}
-          onChange={(e) => setText(e.currentTarget.value)}
-        />
-        <div className="row">
-          <button type="submit">{t("saveWorld")}</button>
-          {message && <span>{message}</span>}
-        </div>
-      </form>
-    </details>
+    <form onSubmit={save} className="settings-form">
+      <textarea
+        rows={6}
+        aria-label={t("worldAria")}
+        value={text}
+        onChange={(e) => setText(e.currentTarget.value)}
+      />
+      <div className="row">
+        <button type="submit">{t("saveWorld")}</button>
+        {message && <span>{message}</span>}
+      </div>
+    </form>
   );
 }
 
@@ -531,11 +528,14 @@ function CardEditor({
   world,
   name,
   hasImage,
+  avatarDataUrl,
   onSaved,
 }: {
   world: string;
   name: string;
   hasImage: boolean;
+  // 匯入卡的 PNG（來源 App 的 characterImages 快取）；沒有就退回大顆 emoji 頭像
+  avatarDataUrl?: string;
   onSaved: () => void;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
@@ -563,66 +563,96 @@ function CardEditor({
   }
 
   return (
-    <details className="settings">
-      <summary>{t("editCardSummary", { name: card.name })}</summary>
-      <form onSubmit={save} className="settings-form">
-        <label>
-          {t("publicLabel")}
-          <textarea
-            rows={4}
-            value={card.public_md}
-            onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
-          />
-        </label>
-        <label>
-          {t("privateLabel")}
-          <textarea
-            rows={4}
-            value={card.private_md}
-            onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
-          />
-        </label>
-        {hasImage && (
-          <label className="inline">
-            <input
-              type="checkbox"
-              checked={card.show_image}
-              onChange={(e) => setCard({ ...card, show_image: e.currentTarget.checked })}
-            />
-            {t("showImageLabel")}
-          </label>
+    <form onSubmit={save} className="settings-form">
+      <div className="card-editor-avatar">
+        {avatarDataUrl ? (
+          <img className="card-editor-image" src={avatarDataUrl} alt="" />
+        ) : (
+          <span className="card-editor-avatar-emoji" style={{ ["--ring" as string]: card.color }}>
+            {card.avatar}
+          </span>
         )}
-        <label>
-          {t("tierLabel")}
-          <select
-            value={card.tier}
-            onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
-          >
-            {(["default", "best", "balanced", "fast"] as const).map((tier) => (
-              <option key={tier} value={tier}>
-                {tierLabel(tier)}
-              </option>
-            ))}
-          </select>
+      </div>
+      <label>
+        {t("publicLabel")}
+        <textarea
+          rows={4}
+          value={card.public_md}
+          onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
+        />
+      </label>
+      <label>
+        {t("privateLabel")}
+        <textarea
+          rows={4}
+          value={card.private_md}
+          onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
+        />
+      </label>
+      {hasImage && (
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={card.show_image}
+            onChange={(e) => setCard({ ...card, show_image: e.currentTarget.checked })}
+          />
+          {t("showImageLabel")}
         </label>
-        <div className="row">
-          <button type="submit">{t("saveCard")}</button>
-          {message && <span>{message}</span>}
-        </div>
-      </form>
-    </details>
+      )}
+      <label>
+        {t("tierLabel")}
+        <select
+          value={card.tier}
+          onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
+        >
+          {(["default", "best", "balanced", "fast"] as const).map((tier) => (
+            <option key={tier} value={tier}>
+              {tierLabel(tier)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="row">
+        <button type="submit">{t("saveCard")}</button>
+        {message && <span>{message}</span>}
+      </div>
+    </form>
   );
 }
 
-// 單場檢視：唯讀事件列表＋匯出本場，沿用 SettingsWindow 的 modal 結構與 Esc／背景點擊關閉
-function SceneViewer({
+// 卡片／世界設定編輯共用整面外框：與單幕閱讀同款（頂部標題＋返回，下方內容填滿），不是 modal——
+// 使用者拍板：主欄下半部（messages＋composer）整面取代，composer 不渲染＝編輯中無法發言
+function EditPane({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="act-reader-header">
+        <strong>{title}</strong>
+        <button type="button" onClick={onBack}>
+          {t("backToNow")}
+        </button>
+      </div>
+      <div className="edit-pane-body">{children}</div>
+    </>
+  );
+}
+
+// 單幕閱讀：整面取代對話畫面（不是 modal），頂部一行標題＋匯出＋返回，下方唯讀事件列表填滿到底
+function ActReader({
   world,
   scene,
-  onClose,
+  onBack,
 }: {
   world: string;
   scene: number;
-  onClose: () => void;
+  onBack: () => void;
 }) {
   const [events, setEvents] = useState<TranscriptEvent[] | null>(null);
   const [error, setError] = useState("");
@@ -634,14 +664,6 @@ function SceneViewer({
       .then(setEvents)
       .catch((reason) => setError(String(reason)));
   }, [world, scene]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function exportScene() {
     setError("");
@@ -662,41 +684,32 @@ function SceneViewer({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-label={t("sceneLabel", { n: scene + 1 })}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="modal-header">
-          <strong>{t("sceneLabel", { n: scene + 1 })}</strong>
-          <button className="modal-close" aria-label={t("closeBtn")} onClick={onClose}>
-            ✕
-          </button>
-        </header>
-        <div className="scene-viewer-body">
-          {events === null ? (
-            error && <p role="alert">{error}</p>
-          ) : (
-            events.map((event, index) => (
-              <div key={index} className={`scene-event scene-event-${event.kind}`}>
-                {(event.kind === "dialogue" || event.kind === "player") && (
-                  <span className="speaker">{event.speaker}</span>
-                )}
-                <span className="text">{event.text}</span>
-              </div>
-            ))
-          )}
-        </div>
-        <div className="row">
-          <button type="button" onClick={exportScene}>
-            {t("exportScene")}
-          </button>
-          {error && events !== null && <span role="alert">{error}</span>}
-        </div>
+    <>
+      <div className="act-reader-header">
+        <strong>{t("sceneLabel", { n: scene + 1 })}</strong>
+        <button type="button" onClick={exportScene}>
+          {t("exportScene")}
+        </button>
+        <button type="button" onClick={onBack}>
+          {t("backToNow")}
+        </button>
       </div>
-    </div>
+      <section className="messages" aria-label={t("sceneLabel", { n: scene + 1 })}>
+        {events === null ? (
+          error && <p role="alert">{error}</p>
+        ) : (
+          events.map((event, index) => (
+            <div key={index} className={`scene-event scene-event-${event.kind}`}>
+              {(event.kind === "dialogue" || event.kind === "player") && (
+                <span className="speaker">{event.speaker}</span>
+              )}
+              <span className="text">{event.text}</span>
+            </div>
+          ))
+        )}
+      </section>
+      {error && events !== null && <p role="alert">{error}</p>}
+    </>
   );
 }
 
@@ -756,7 +769,13 @@ function App() {
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [viewingScene, setViewingScene] = useState<number | null>(null);
+  // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
+  // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
+  const [mainView, setMainView] = useState<
+    { kind: "scene"; n: number } | { kind: "character"; name: string } | { kind: "world" } | null
+  >(null);
+  // 前幕清單浮層：只是開關狀態，不佔版面高度（NewPlan §9.4 主欄閱讀優先改造）
+  const [actsOpen, setActsOpen] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
@@ -858,6 +877,9 @@ function App() {
     await loadCharacterImages(name, cast);
     setSpeaker(cast[0]?.name ?? "");
     setEditingName(null);
+    // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
+    setMainView(null);
+    setActsOpen(false);
     if (loaded.preferences["last_world"] !== name) {
       const next = { ...loaded, preferences: { ...loaded.preferences, last_world: name } };
       await invoke("write_config", { config: next });
@@ -1173,12 +1195,36 @@ function App() {
         </details>
         <section className="character-panel" aria-label={t("castAria")}>
           <div className="character-list">
-            {characters.map((c) => (
+            {/* GM 卡：世界設定的暫時入口，待與世界書合併（NewPlan §9.4 2026-07-24 拍板）；不可選為發言對象 */}
+            <div className="character-card character-card-gm">
+              <span className="character-card-avatar">
+                <Avatar meta={{ name: "GM", color: "#888888", avatar: "🎲", tier: "default", show_image: false }} />
+              </span>
+              <span className="character-card-name">GM</span>
               <button
+                type="button"
+                className="character-card-edit"
+                aria-label={t("worldSummary")}
+                title={t("worldSummary")}
+                onClick={() => setMainView({ kind: "world" })}
+              >
+                ✎
+              </button>
+            </div>
+            {characters.map((c) => (
+              <div
                 key={c.name}
+                role="button"
+                tabIndex={0}
                 className={`character-card ${speaker === c.name ? "character-card-active" : ""}`}
                 style={{ ["--ring" as string]: c.color }}
                 onClick={() => setSpeaker(c.name)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSpeaker(c.name);
+                  }
+                }}
                 title={t("castHint", { name: c.name })}
               >
                 <span className="character-card-avatar">
@@ -1193,7 +1239,19 @@ function App() {
                   )}
                 </span>
                 <span className="character-card-name">{c.name}</span>
-              </button>
+                <button
+                  type="button"
+                  className="character-card-edit"
+                  aria-label={t("editCardSummary", { name: c.name })}
+                  title={t("editCardSummary", { name: c.name })}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setMainView({ kind: "character", name: c.name });
+                  }}
+                >
+                  ✎
+                </button>
+              </div>
             ))}
           </div>
           <form className="character-create" onSubmit={createCharacter}>
@@ -1279,157 +1337,178 @@ function App() {
               }}
             />
           )}
-          <button
-            type="button"
-            title={t("sceneAdvanceHint")}
-            aria-label={t("sceneAdvance")}
-            disabled={generating !== null || events.length === 0}
-            onClick={advanceScene}
-          >
-            {t("sceneAdvance")}
-          </button>
-          {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
-          <button
-            type="button"
-            title={t("exportTranscriptHint")}
-            aria-label={t("exportTranscript")}
-            onClick={exportTranscript}
-          >
-            {t("exportTranscript")}
-          </button>
-        </header>
-
-        {scene > 0 && (
-          <details className="scene-history">
-            <summary>{t("pastScenes", { count: scene })}</summary>
-            <div className="scene-history-list">
+          <div className="chat-header-actions">
+            {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
+            <button
+              type="button"
+              title={t("sceneAdvanceHint")}
+              aria-label={t("sceneAdvance")}
+              disabled={generating !== null || events.length === 0}
+              onClick={advanceScene}
+            >
+              {t("sceneAdvance")}
+            </button>
+            <button
+              type="button"
+              title={t("exportTranscriptHint")}
+              aria-label={t("exportTranscript")}
+              onClick={exportTranscript}
+            >
+              {t("exportTranscript")}
+            </button>
+            {scene > 0 && (
+              <button type="button" onClick={() => setActsOpen((open) => !open)}>
+                {t("pastScenes", { count: scene })}
+              </button>
+            )}
+          </div>
+          {actsOpen && scene > 0 && (
+            <div className="acts-flyout">
               {Array.from({ length: scene }, (_, n) => n).map((n) => (
-                <button key={n} type="button" onClick={() => setViewingScene(n)}>
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => {
+                    setMainView({ kind: "scene", n });
+                    setActsOpen(false);
+                  }}
+                >
                   {t("sceneLabel", { n: n + 1 })}
                 </button>
               ))}
+              <button type="button" className="acts-flyout-hide" onClick={() => setActsOpen(false)}>
+                {t("hideActs")}
+              </button>
             </div>
-          </details>
-        )}
+          )}
+        </header>
 
-        {viewingScene !== null && (
-          <SceneViewer world={table} scene={viewingScene} onClose={() => setViewingScene(null)} />
-        )}
+        {mainView?.kind === "scene" ? (
+          <ActReader world={table} scene={mainView.n} onBack={() => setMainView(null)} />
+        ) : mainView?.kind === "character" ? (
+          <EditPane
+            title={t("editCardSummary", { name: mainView.name })}
+            onBack={() => setMainView(null)}
+          >
+            <CardEditor
+              world={table}
+              name={mainView.name}
+              hasImage={mainView.name in characterImages}
+              avatarDataUrl={characterImages[mainView.name]}
+              onSaved={() =>
+                invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
+              }
+            />
+          </EditPane>
+        ) : mainView?.kind === "world" ? (
+          <EditPane title={t("worldSummary")} onBack={() => setMainView(null)}>
+            <WorldEditor world={table} />
+          </EditPane>
+        ) : (
+          <>
+            <Onboarding config={config} onSaved={setConfig} />
 
-        <Onboarding config={config} onSaved={setConfig} />
-
-        <WorldEditor world={table} />
-
-        {speaker && (
-          <CardEditor
-            world={table}
-            name={speaker}
-            hasImage={speaker in characterImages}
-            onSaved={() =>
-              invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
-            }
-          />
-        )}
-
-        <section className="messages" aria-label={t("messagesAria")}>
-          {events.map((event, index) => {
-            if (event.kind === "dialogue") {
-              const meta = metaOf(event.speaker);
-              const color = meta?.color ?? "#888888";
-              return (
-                <div key={index} className="message message-dialogue">
-                  <Avatar meta={meta} />
-                  <div className="bubble" style={{ borderLeftColor: color }}>
-                    <span className="speaker" style={{ color }}>
-                      {event.speaker}
-                    </span>
+            <section className="messages" aria-label={t("messagesAria")}>
+              {events.map((event, index) => {
+                if (event.kind === "dialogue") {
+                  const meta = metaOf(event.speaker);
+                  const color = meta?.color ?? "#888888";
+                  return (
+                    <div key={index} className="message message-dialogue">
+                      <Avatar meta={meta} />
+                      <div className="bubble" style={{ borderLeftColor: color }}>
+                        <span className="speaker" style={{ color }}>
+                          {event.speaker}
+                        </span>
+                        <span className="text">{event.text}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={index} className={`message message-${event.kind}`}>
                     <span className="text">{event.text}</span>
                   </div>
+                );
+              })}
+              {generating !== null && generating.kind === "dialogue" && (
+                <div className="message message-dialogue">
+                  <Avatar meta={generatingMeta} />
+                  <div
+                    className="bubble"
+                    style={{ borderLeftColor: generatingMeta?.color ?? "#888888" }}
+                  >
+                    <span className="speaker" style={{ color: generatingMeta?.color ?? "#888888" }}>
+                      {generating.name}
+                    </span>
+                    {streamText ? (
+                      <span className="text">{streamText}</span>
+                    ) : (
+                      <span className="typing" aria-label={t("typing", { name: generating.name })}>
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    )}
+                  </div>
                 </div>
-              );
-            }
-            return (
-              <div key={index} className={`message message-${event.kind}`}>
-                <span className="text">{event.text}</span>
-              </div>
-            );
-          })}
-          {generating !== null && generating.kind === "dialogue" && (
-            <div className="message message-dialogue">
-              <Avatar meta={generatingMeta} />
-              <div
-                className="bubble"
-                style={{ borderLeftColor: generatingMeta?.color ?? "#888888" }}
-              >
-                <span className="speaker" style={{ color: generatingMeta?.color ?? "#888888" }}>
-                  {generating.name}
-                </span>
-                {streamText ? (
-                  <span className="text">{streamText}</span>
-                ) : (
-                  <span className="typing" aria-label={t("typing", { name: generating.name })}>
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          {generating !== null && generating.kind === "narration" && (
-            <div className="message message-narration">
-              {streamText ? (
-                <span className="text">{streamText}</span>
-              ) : (
-                <span className="typing" aria-label={t("typing", { name: "GM" })}>
-                  <i />
-                  <i />
-                  <i />
-                </span>
               )}
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </section>
+              {generating !== null && generating.kind === "narration" && (
+                <div className="message message-narration">
+                  {streamText ? (
+                    <span className="text">{streamText}</span>
+                  ) : (
+                    <span className="typing" aria-label={t("typing", { name: "GM" })}>
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  )}
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </section>
 
-        <form className="row composer" onSubmit={send}>
-          <input
-            aria-label={t("composerAria")}
-            value={input}
-            onChange={(e) => setInput(e.currentTarget.value)}
-            placeholder={
-              speaker ? t("composerPlaceholder", { name: speaker }) : t("composerNoCharacter")
-            }
-            disabled={!speaker || generating !== null}
-          />
-          <button type="submit" disabled={!speaker || generating !== null}>
-            {t("send")}
-          </button>
-          <button
-            type="button"
-            onClick={() => requestReply(speaker)}
-            disabled={!speaker || generating !== null}
-            title={t("requestReplyHint")}
-          >
-            {t("requestReplyBtn", { name: speaker || t("characterFallback") })}
-          </button>
-          <button
-            type="button"
-            onClick={gmNarrate}
-            disabled={generating !== null}
-            title={t("gmNarrateHint")}
-          >
-            {t("gmNarrate")}
-          </button>
-          <button
-            type="button"
-            onClick={gmAdvance}
-            disabled={generating !== null || characters.length === 0}
-            title={t("gmAdvanceHint")}
-          >
-            {t("gmAdvance")}
-          </button>
-        </form>
+            <form className="row composer" onSubmit={send}>
+              <input
+                aria-label={t("composerAria")}
+                value={input}
+                onChange={(e) => setInput(e.currentTarget.value)}
+                placeholder={
+                  speaker ? t("composerPlaceholder", { name: speaker }) : t("composerNoCharacter")
+                }
+                disabled={!speaker || generating !== null}
+              />
+              <button type="submit" disabled={!speaker || generating !== null}>
+                {t("send")}
+              </button>
+              <button
+                type="button"
+                onClick={() => requestReply(speaker)}
+                disabled={!speaker || generating !== null}
+                title={t("requestReplyHint")}
+              >
+                {t("requestReplyBtn", { name: speaker || t("characterFallback") })}
+              </button>
+              <button
+                type="button"
+                onClick={gmNarrate}
+                disabled={generating !== null}
+                title={t("gmNarrateHint")}
+              >
+                {t("gmNarrate")}
+              </button>
+              <button
+                type="button"
+                onClick={gmAdvance}
+                disabled={generating !== null || characters.length === 0}
+                title={t("gmAdvanceHint")}
+              >
+                {t("gmAdvance")}
+              </button>
+            </form>
+          </>
+        )}
         {error && <p role="alert">{error}</p>}
       </main>
     </div>
