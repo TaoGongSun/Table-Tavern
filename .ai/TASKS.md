@@ -1,9 +1,9 @@
 # Project tasks
 
 ## In progress
-- [scene-history-browser](tasks/scene-history-browser.md) — 前幕：場景歷史瀏覽＋單幕匯出＋主欄閱讀優先版面 — 下一步：閱讀優先改版＋二輪修訂完成（幕名／右側面板／✎ 靠右／編輯框限縱向，cargo test 47 綠＋npm build 綠），剩使用者視覺驗收即結案
 
 ## Done
+- [scene-history-browser](tasks/scene-history-browser.md) — 前幕：場景歷史瀏覽＋單幕匯出＋主欄閱讀優先版面 — 2026-07-24 使用者驗收通過（含三輪回饋修訂），結案
 - [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 2026-07-24 使用者實測換場通過，結案
 - [sample-world-i18n](tasks/sample-world-i18n.md) — 範例桌內容依語系產生（首開先選語言） — 2026-07-24 使用者實測首開通過，結案
 - [ui-settings-panel](tasks/ui-settings-panel.md) — 設定視窗：單一入口內分頁（外觀預設／AI 連線）＋文字大小五檔 — 2026-07-24 使用者複驗通過，結案

@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: scene-history-browser
-Updated: 2026-07-24T16:10:00+08:00
-Status: in-progress
+Updated: 2026-07-24T18:00:00+08:00
+Status: done
 
 ## Goal
 前幕（場景歷史）三件套＋主欄閱讀優先改版（NewPlan §9.4 2026-07-24 拍板：對話訊息上方只留 header 一行，其餘移出主欄；用語統一「幕」）。
 
 ## Current state
-閱讀優先改版＋二輪修訂完成（Opus subagent 實作、主線驗收）：cargo test 47 綠、npm build 綠。剩使用者視覺驗收。
+結案。2026-07-24 使用者驗收通過。含後續零星修訂：chat-main 移除 46rem 上限（主欄填滿左右）、body margin reset（修常駐捲軸）、composer placeholder 精簡、編輯畫面「返回」移至儲存鈕右側。
 
 ## Completed
 - 第一版（已含在內）：export_scene_markdown＋export_scene command＋8000 字元換幕提醒
@@ -34,10 +34,10 @@ Status: in-progress
 - Branch: main
 
 ## Remaining
-- 使用者視覺驗收：右側前幕面板（隱藏鈕置頂、捲軸）；換一次幕看「第 N 幕：幕名」；✎ 靠右；編輯框只能上下拉且改字級不變寬；其餘一輪項目（整面閱讀／編輯、GM 卡）一併看
+- 無
 
 ## Next action
-- 使用者驗收通過即結案
+- 無（任務結案）
 
 ## Constraints
 - 歷史幕唯讀；整桌匯出與換幕邏輯不變；GM 卡為世界設定暫時入口（待與世界書合併）
