@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: ui-settings-panel
-Updated: 2026-07-23T23:30:00+08:00
-Status: in-progress
+Updated: 2026-07-24T00:40:00+08:00
+Status: done
 
 ## Goal
 依 NewPlan §9.4：單一設定鈕開設定視窗，內部分頁——外觀（預設頁：文字大小、語言）／AI 連線（key、傳輸層、檔位模型）。原側欄底部的 AI 設定摺疊區與語言下拉移入。
 
 ## Current state
-程式碼完成（主線 Fable 5 直做）：側欄底改單一「⚙️ 設定」鈕，開 modal 兩分頁；外觀頁含語言下拉＋文字大小；AI 連線頁是原 Settings 表單原樣搬入。使用者初驗回饋後文字大小改五檔（更小10／小12／中14／大16／更大18px，預設「大」＝原視覺大小；偏小取向：大螢幕看長文要小字）。npm build 綠。剩使用者複驗五檔。
+程式碼完成（主線 Fable 5 直做）：側欄底改單一「⚙️ 設定」鈕，開 modal 兩分頁；外觀頁含語言下拉＋文字大小；AI 連線頁是原 Settings 表單原樣搬入。使用者初驗回饋後文字大小改五檔（更小10／小12／中14／大16／更大18px，預設「大」＝原視覺大小；偏小取向：大螢幕看長文要小字）。npm build 綠。2026-07-24 使用者複驗五檔通過（附截圖：更小檔全版面縮放正常），結案。
 
 ## Completed
 - App.tsx：
@@ -27,10 +27,10 @@ Status: in-progress
 - Branch: main
 
 ## Remaining
-- 使用者複驗：文字大小五檔切換全版面縮放（其餘項目 2026-07-23 初驗已過：預設外觀頁、換語言即時生效、AI 頁設定保留、開關正常）
+- 無
 
 ## Next action
-- 使用者驗收通過即結案；若外觀頁日後加主題（release-4）已有明確的家
+- 無（任務結案）；若外觀頁日後加主題（release-4）已有明確的家
 
 ## Constraints
 - 偏好存 config.preferences（language／text_size）；純視覺狀態（側欄寬、桌列表摺疊）維持 localStorage 不進 config
