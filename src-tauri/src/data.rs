@@ -7,7 +7,65 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+#[repr(C)]
+struct LocalTime {
+    tm_sec: std::os::raw::c_int,
+    tm_min: std::os::raw::c_int,
+    tm_hour: std::os::raw::c_int,
+    tm_mday: std::os::raw::c_int,
+    tm_mon: std::os::raw::c_int,
+    tm_year: std::os::raw::c_int,
+    tm_wday: std::os::raw::c_int,
+    tm_yday: std::os::raw::c_int,
+    tm_isdst: std::os::raw::c_int,
+    tm_gmtoff: std::os::raw::c_long,
+    tm_zone: *const std::os::raw::c_char,
+}
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn localtime_r(timestamp: *const i64, result: *mut LocalTime) -> *mut LocalTime;
+}
+
 pub type DataResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+pub fn local_timestamp() -> DataResult<String> {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map_err(|error| invalid_data(format!("system clock is before the Unix epoch: {error}")))?
+        .as_secs() as i64;
+
+    #[cfg(unix)]
+    {
+        let mut local = std::mem::MaybeUninit::<LocalTime>::uninit();
+        // localtime_r writes the supplied storage and has no shared mutable state.
+        if unsafe { localtime_r(&seconds, local.as_mut_ptr()) }.is_null() {
+            return Err(invalid_data("could not convert local time"));
+        }
+        let local = unsafe { local.assume_init() };
+        return Ok(format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}",
+            local.tm_year + 1900,
+            local.tm_mon + 1,
+            local.tm_mday,
+            local.tm_hour,
+            local.tm_min
+        ));
+    }
+
+    #[cfg(not(unix))]
+    {
+        // Tauri's supported Unix targets use localtime_r above. Keep a dependency-free fallback
+        // for other targets; its value is UTC when no platform local-time API is available.
+        let minutes = seconds / 60;
+        Ok(format!(
+            "1970-01-01 {:02}:{:02}",
+            (minutes / 60) % 24,
+            minutes % 60
+        ))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -475,6 +533,88 @@ pub fn read_transcript(root: &Path, world: &str, scene: u64) -> DataResult<Vec<T
     Ok(events)
 }
 
+pub fn export_transcript_markdown(root: &Path, world: &str, lang: &str) -> DataResult<String> {
+    let transcript_dir = world_dir(root, world)?.join("transcript");
+    if !transcript_dir.is_dir() {
+        return Err(invalid_data("這桌還沒有任何紀錄"));
+    }
+
+    let mut scenes = Vec::new();
+    for entry in fs::read_dir(transcript_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+            continue;
+        }
+        if let Ok(scene) = stem.parse::<u64>() {
+            scenes.push(scene);
+        }
+    }
+    scenes.sort_unstable();
+    scenes.dedup();
+    if scenes.is_empty() {
+        return Err(invalid_data("這桌還沒有任何紀錄"));
+    }
+
+    let english = lang == "en";
+    let timestamp = local_timestamp()?;
+    let title = if english {
+        format!("# {world} — Session Transcript\n\nExported: {timestamp}")
+    } else {
+        format!("# {world} 跑團紀錄\n\n匯出時間：{timestamp}")
+    };
+    let mut sections = Vec::new();
+    for scene in scenes {
+        let heading = if english {
+            format!("## Scene {scene}")
+        } else {
+            format!("## 場景 {scene}")
+        };
+        let events = read_transcript(root, world, scene)?;
+        let entries = events
+            .iter()
+            .map(|event| match event.kind {
+                TranscriptKind::Dialogue | TranscriptKind::Player => {
+                    if english {
+                        format!("**{}**: {}", event.speaker, event.text)
+                    } else {
+                        format!("**{}**：{}", event.speaker, event.text)
+                    }
+                }
+                TranscriptKind::Narration => {
+                    if event.text.is_empty() {
+                        "> ".to_owned()
+                    } else {
+                        event
+                            .text
+                            .lines()
+                            .map(|line| format!("> {line}"))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
+                }
+                TranscriptKind::System => {
+                    if english {
+                        format!("*({})*", event.text)
+                    } else {
+                        format!("*（{}）*", event.text)
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        sections.push(if entries.is_empty() {
+            heading
+        } else {
+            format!("{heading}\n\n{}", entries.join("\n\n"))
+        });
+    }
+
+    Ok(format!("{title}\n\n{}\n", sections.join("\n\n")))
+}
+
 pub fn read_state(root: &Path, world: &str) -> DataResult<WorldState> {
     let path = world_dir(root, world)?.join("state.json");
     if !path.exists() {
@@ -816,6 +956,74 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("line 4"), "{error}");
+    }
+
+    #[test]
+    fn exports_all_transcript_scenes_as_localized_markdown() {
+        let root = TestRoot::new("transcript-export");
+        create_world(root.path(), "海風桌").unwrap();
+        for (scene, event) in [
+            (
+                1,
+                TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker: "船長".to_owned(),
+                    kind: TranscriptKind::Dialogue,
+                    text: "我們啟航。".to_owned(),
+                },
+            ),
+            (
+                0,
+                TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker: "GM".to_owned(),
+                    kind: TranscriptKind::Narration,
+                    text: "霧氣升起。\n港口安靜。".to_owned(),
+                },
+            ),
+            (
+                1,
+                TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker: "玩家".to_owned(),
+                    kind: TranscriptKind::Player,
+                    text: "我登上甲板。".to_owned(),
+                },
+            ),
+            (
+                0,
+                TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker: "GM".to_owned(),
+                    kind: TranscriptKind::System,
+                    text: "第一幕開始".to_owned(),
+                },
+            ),
+        ] {
+            append_transcript(root.path(), "海風桌", scene, &event).unwrap();
+        }
+
+        let zh = export_transcript_markdown(root.path(), "海風桌", "zh-TW").unwrap();
+        assert!(zh.starts_with("# 海風桌 跑團紀錄\n\n匯出時間："));
+        assert!(zh.find("## 場景 0").unwrap() < zh.find("## 場景 1").unwrap());
+        assert!(zh.contains("> 霧氣升起。\n> 港口安靜。"));
+        assert!(zh.contains("*（第一幕開始）*"));
+        assert!(zh.contains("**玩家**：我登上甲板。"));
+        assert!(zh.contains("**船長**：我們啟航。"));
+
+        let en = export_transcript_markdown(root.path(), "海風桌", "en").unwrap();
+        assert!(en.starts_with("# 海風桌 — Session Transcript\n\nExported: "));
+        assert!(en.contains("## Scene 0"));
+        assert!(en.contains("## Scene 1"));
+        assert!(en.contains("**船長**: 我們啟航。"));
+        assert!(en.contains("*(第一幕開始)*"));
+    }
+
+    #[test]
+    fn transcript_export_rejects_a_world_without_scenes() {
+        let root = TestRoot::new("empty-transcript-export");
+        create_world(root.path(), "空桌").unwrap();
+        assert!(export_transcript_markdown(root.path(), "空桌", "zh-TW").is_err());
     }
 
     #[test]
