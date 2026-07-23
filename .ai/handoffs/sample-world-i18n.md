@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: sample-world-i18n
-Updated: 2026-07-24T00:05:00+08:00
-Status: in-progress
+Updated: 2026-07-24T01:00:00+08:00
+Status: done
 
 ## Goal
 範例桌內容依語系產生。首開順序 2026-07-23 使用者拍板：先跳語言選擇畫面（下拉、預選系統語系），選完寫入 config 再建對應語言的範例桌。
 
 ## Current state
-前後端程式碼完成（主線 Fable 5 直做）：create_sample_world 吃 lang 參數產 zh-TW／en 內容；首開（無桌且 config 沒有 language 偏好）先渲染 FirstRun 語言選擇畫面。cargo test 41 綠、npm build 綠。剩使用者模擬首開實測。
+前後端程式碼完成（主線 Fable 5 直做）：create_sample_world 吃 lang 參數產 zh-TW／en 內容；首開（無桌且 config 沒有 language 偏好）先渲染 FirstRun 語言選擇畫面。cargo test 41 綠、npm build 綠。2026-07-24 使用者實測首開通過（語言選擇畫面→English→英文範例桌 The Misty Tavern，附截圖），結案。
 
 ## Completed
 - data.rs `create_sample_world(root, lang)`：en 時桌名 "The Misty Tavern (sample)"、world.md／三張角色卡（Fox／Knight／Bard）／開場旁白全英文；非 en 一律走原中文內容；顏色／頭像／檔位兩語系共用一份 style 表
@@ -26,10 +26,10 @@ Status: in-progress
 - Branch: main
 
 ## Remaining
-- 使用者實測首開：備份後清掉 `~/Library/Application Support/…/worlds` 目錄，並把 config.json 的 `preferences.language` 鍵整個刪掉（留著就不會觸發）→ 開 App 應見語言選擇畫面 → 選 English → 應建英文範例桌直接進桌；再重複一次選繁中驗證中文桌
+- 無
 
 ## Next action
-- 使用者實測通過即結案
+- 無（任務結案）
 
 ## Constraints
 - 只影響新建的範例桌；已存在的桌不回頭改；後端錯誤訊息 i18n 不在範圍；更多介面語言另立 i18n-more-languages
