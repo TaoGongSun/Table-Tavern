@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: ui-layout-rework
-Updated: 2026-07-23T15:05:00+08:00
-Status: in-progress
+Updated: 2026-07-23T22:40:00+08:00
+Status: done
 
 ## Goal
 依 NewPlan §9.4（2026-07-23 拍板）重構主版面：左側欄以角色卡為主體（直排頭像＋名稱、預留角色圖片位、點選即選定發言）、移除聊天區上方水平 cast-row、桌列表收進側欄可摺疊區塊（摺疊狀態存 localStorage）。純前端，不動後端。
 
 ## Current state
-程式碼改完並通過建置與逐項功能核對，只剩使用者在真實 App 裡的視覺驗收。實作由 Codex（gpt-5.6-terra）依主線規格完成，主線已親自複驗。
+結案。2026-07-23 使用者視覺驗收通過（截圖示角色卡左欄直排＋桌列表摺疊／展開皆正常）。實作由 Codex（gpt-5.6-terra）依主線規格完成，主線複驗。
 
 ## Completed
 - 側欄重排（src/App.tsx:785-855）：`<details class="table-section">` 摺疊桌區（summary＋開新桌鈕＋桌列表）→ `<section class="character-panel">` 直排角色卡＋建卡表單 → 原 sidebar-footer（語言下拉＋Settings）不動

@@ -28,10 +28,17 @@ const zh = {
   onboardCost: "費用有多高？以平衡檔粗估，5 美元約可玩 3 小時；改用「快速省額度」檔更便宜。",
   onboardSaveBtn: "儲存並開玩",
   onboardCliHint:
-    "已自行安裝並登入官方 CLI 的進階使用者，也可以改到下方「AI 設定」啟用 CLI 訂閱模式。",
+    "已自行安裝並登入官方 CLI 的進階使用者，也可以改到左下角「設定 → AI 連線」啟用 CLI 訂閱模式。",
 
-  // AI 設定
-  settingsSummary: "AI 設定（自備 key／CLI 模式）",
+  // 設定視窗
+  settingsBtn: "設定",
+  appearanceTab: "外觀",
+  aiTab: "AI 連線",
+  closeBtn: "關閉",
+  textSizeLabel: "文字大小",
+  textSizeSmall: "小",
+  textSizeMedium: "標準",
+  textSizeLarge: "大",
   languageLabel: "語言 Language",
   transportLegend: "連線方式",
   transportApi: "API 直連（OpenRouter，標準）",
@@ -128,9 +135,16 @@ const en: Record<MsgKey, string> = {
     "How much does it cost? Roughly, US$5 buys about 3 hours of play on the Medium tier; the Low tier is even cheaper.",
   onboardSaveBtn: "Save and play",
   onboardCliHint:
-    "Advanced users who already installed and logged into an official CLI can instead enable CLI subscription mode under “AI Settings” below.",
+    "Advanced users who already installed and logged into an official CLI can instead enable CLI subscription mode under “Settings → AI Connection” in the lower left.",
 
-  settingsSummary: "AI Settings (bring your own key / CLI mode)",
+  settingsBtn: "Settings",
+  appearanceTab: "Appearance",
+  aiTab: "AI Connection",
+  closeBtn: "Close",
+  textSizeLabel: "Text size",
+  textSizeSmall: "Small",
+  textSizeMedium: "Standard",
+  textSizeLarge: "Large",
   languageLabel: "Language 語言",
   transportLegend: "Connection",
   transportApi: "Direct API (OpenRouter, standard)",
