@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- None.
+- [ui-layout-rework](tasks/ui-layout-rework.md) — 版面重構：角色卡移左側欄＋桌列表可摺疊（NewPlan §9.4） — 下一步：程式碼完成（Codex 實作＋主線驗收 build 綠、cast-row 清零、功能逐項核對），剩使用者真實 App 視覺驗收即結案
 
 ## Done
 - [ui-i18n-switch](tasks/ui-i18n-switch.md) — UI 語系切換（zh-TW／en） — 2026-07-23 前端 i18n 字典＋語言下拉、後端 LANGUAGE_RULE 依語系注入，npm build＋cargo test 全綠，結案
@@ -15,7 +15,6 @@
 - [release-4-theme-pack](tasks/release-4-theme-pack.md) — 發佈 4：佈景主題引擎＋贊助包（回禮內容） — 下一步：等發佈產線（release-1、release-2）打通後開工：先定主題檔格式與載入引擎＋基礎白色主題，再產五套贊助包資產與自選桌布功能；AI 產生主題（prompt 模板＋BYOK 產圖）排最後，v1 可不上
 - [release-3-kofi](tasks/release-3-kofi.md) — 發佈 3：Ko-fi 開帳與金流（多為使用者本人操作） — 下一步：使用者操作：PayPal 升級商業帳戶 → 開 Ko-fi 帳號並「切至 Free 檔」（新帳號預設 Contributor 檔抽 5%）→ 建 Shop 商品（10 美元主題包，檔案自動發貨）→ 提領設 USD 進玉山外匯戶自行換匯。商品檔案本身等 release-4-theme-pack 產出
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：等 release-1-mac-signing 的憑證就緒後開工：寫 tauri-action workflow，Developer ID .p12 與公證 API key 進 CI secrets；Windows 產物由協力者在乾淨 Windows 機驗收（下載→安裝→啟動，記錄 SmartScreen 實況）
-- [ui-layout-rework](tasks/ui-layout-rework.md) — 版面重構：角色卡移左側欄＋桌列表可摺疊（NewPlan §9.4） — 下一步：App.tsx 把 cast-row 改成側欄直排角色卡、桌列表包進可摺疊區塊（摺疊狀態存 localStorage）
 - [ui-settings-panel](tasks/ui-settings-panel.md) — 設定視窗：單一入口內分頁（外觀預設／AI 連線） — 下一步：等 ui-layout-rework 完成後做設定視窗骨架＋兩分頁，搬入現有 AI 設定與語言下拉，再加文字大小
 - [post-mvp-st-import](tasks/post-mvp-st-import.md) — MVP 後第一優先：SillyTavern 角色卡匯入（含存 PNG＋角色圖顯示/隱藏） — 下一步：解析 V2 card spec 並寫欄位對應（可開工）；圖片顯示 UI 等 ui-layout-rework 定版面後做
 - [sample-world-i18n](tasks/sample-world-i18n.md) — 範例桌內容依語系產生（en 使用者首開拿英文範例桌） — 下一步：create_sample_world 內容抽成 zh-TW／en 兩份依 config 語系選用，並解決首開「先選語言還是先建桌」的順序
