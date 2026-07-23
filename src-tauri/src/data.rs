@@ -94,11 +94,11 @@ pub struct AppConfig {
     pub preferences: serde_json::Map<String, serde_json::Value>,
 }
 
-fn invalid_data(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
+pub(crate) fn invalid_data(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
     std::io::Error::new(std::io::ErrorKind::InvalidData, message.into()).into()
 }
 
-fn validate_name(name: &str) -> DataResult<()> {
+pub(crate) fn validate_name(name: &str) -> DataResult<()> {
     if name.is_empty()
         || name.starts_with('.')
         || name.contains("..")
@@ -120,7 +120,7 @@ fn world_dir(root: &Path, world: &str) -> DataResult<PathBuf> {
     Ok(worlds_dir(root).join(world))
 }
 
-fn character_path(root: &Path, world: &str, name: &str) -> DataResult<PathBuf> {
+pub(crate) fn character_path(root: &Path, world: &str, name: &str) -> DataResult<PathBuf> {
     validate_name(name)?;
     Ok(world_dir(root, world)?
         .join("characters")
