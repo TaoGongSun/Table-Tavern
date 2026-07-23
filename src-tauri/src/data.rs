@@ -590,6 +590,51 @@ pub fn read_transcript(root: &Path, world: &str, scene: u64) -> DataResult<Vec<T
     Ok(events)
 }
 
+/// 把單一事件渲染成一行（或多行）Markdown，整桌／單場匯出共用同一份格式。
+fn render_transcript_entry(event: &TranscriptEvent, english: bool) -> String {
+    match event.kind {
+        TranscriptKind::Dialogue | TranscriptKind::Player => {
+            if english {
+                format!("**{}**: {}", event.speaker, event.text)
+            } else {
+                format!("**{}**：{}", event.speaker, event.text)
+            }
+        }
+        TranscriptKind::Narration => {
+            if event.text.is_empty() {
+                "> ".to_owned()
+            } else {
+                event
+                    .text
+                    .lines()
+                    .map(|line| format!("> {line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        }
+        TranscriptKind::System => {
+            if english {
+                format!("*({})*", event.text)
+            } else {
+                format!("*（{}）*", event.text)
+            }
+        }
+    }
+}
+
+/// 場景標題＋事件列表組成一段章節，整桌匯出把多段章節接起來。
+fn render_scene_section(events: &[TranscriptEvent], heading: &str, english: bool) -> String {
+    let entries = events
+        .iter()
+        .map(|event| render_transcript_entry(event, english))
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        heading.to_owned()
+    } else {
+        format!("{heading}\n\n{}", entries.join("\n\n"))
+    }
+}
+
 pub fn export_transcript_markdown(root: &Path, world: &str, lang: &str) -> DataResult<String> {
     let transcript_dir = world_dir(root, world)?.join("transcript");
     if !transcript_dir.is_dir() {
@@ -631,45 +676,38 @@ pub fn export_transcript_markdown(root: &Path, world: &str, lang: &str) -> DataR
             format!("## 場景 {scene}")
         };
         let events = read_transcript(root, world, scene)?;
-        let entries = events
-            .iter()
-            .map(|event| match event.kind {
-                TranscriptKind::Dialogue | TranscriptKind::Player => {
-                    if english {
-                        format!("**{}**: {}", event.speaker, event.text)
-                    } else {
-                        format!("**{}**：{}", event.speaker, event.text)
-                    }
-                }
-                TranscriptKind::Narration => {
-                    if event.text.is_empty() {
-                        "> ".to_owned()
-                    } else {
-                        event
-                            .text
-                            .lines()
-                            .map(|line| format!("> {line}"))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    }
-                }
-                TranscriptKind::System => {
-                    if english {
-                        format!("*({})*", event.text)
-                    } else {
-                        format!("*（{}）*", event.text)
-                    }
-                }
-            })
-            .collect::<Vec<_>>();
-        sections.push(if entries.is_empty() {
-            heading
-        } else {
-            format!("{heading}\n\n{}", entries.join("\n\n"))
-        });
+        sections.push(render_scene_section(&events, &heading, english));
     }
 
     Ok(format!("{title}\n\n{}\n", sections.join("\n\n")))
+}
+
+/// 匯出單一場景的紀錄，格式與整桌匯出一致，供「過去的場」單場匯出使用。
+/// 場景不存在（無該檔）視為錯誤，避免誤匯出空白文件。
+pub fn export_scene_markdown(
+    root: &Path,
+    world: &str,
+    scene: u64,
+    lang: &str,
+) -> DataResult<String> {
+    let path = transcript_path(root, world, scene)?;
+    if !path.exists() {
+        return Err(invalid_data(format!("場景 {scene} 不存在")));
+    }
+
+    let english = lang == "en";
+    let timestamp = local_timestamp()?;
+    let title = if english {
+        format!("# {world} — Scene {scene}\n\nExported: {timestamp}")
+    } else {
+        format!("# {world} 場景 {scene}\n\n匯出時間：{timestamp}")
+    };
+    let events = read_transcript(root, world, scene)?;
+    let entries = events
+        .iter()
+        .map(|event| render_transcript_entry(event, english))
+        .collect::<Vec<_>>();
+    Ok(format!("{title}\n\n{}\n", entries.join("\n\n")))
 }
 
 /// 換場：把摘要包成一則 GM 旁白 append 到下一場景開頭，再把 current_scene +1 並存檔。
@@ -1157,6 +1195,51 @@ mod tests {
         let root = TestRoot::new("empty-transcript-export");
         create_world(root.path(), "空桌").unwrap();
         assert!(export_transcript_markdown(root.path(), "空桌", "zh-TW").is_err());
+    }
+
+    #[test]
+    fn scene_export_contains_only_that_scenes_events() {
+        let root = TestRoot::new("scene-export");
+        create_world(root.path(), "海風桌").unwrap();
+        for (scene, event) in [
+            (
+                0,
+                TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker: "GM".to_owned(),
+                    kind: TranscriptKind::Narration,
+                    text: "霧氣升起。".to_owned(),
+                },
+            ),
+            (
+                1,
+                TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker: "船長".to_owned(),
+                    kind: TranscriptKind::Dialogue,
+                    text: "我們啟航。".to_owned(),
+                },
+            ),
+        ] {
+            append_transcript(root.path(), "海風桌", scene, &event).unwrap();
+        }
+
+        let zh = export_scene_markdown(root.path(), "海風桌", 0, "zh-TW").unwrap();
+        assert!(zh.starts_with("# 海風桌 場景 0\n\n匯出時間："));
+        assert!(zh.contains("> 霧氣升起。"));
+        assert!(!zh.contains("船長"));
+
+        let en = export_scene_markdown(root.path(), "海風桌", 1, "en").unwrap();
+        assert!(en.starts_with("# 海風桌 — Scene 1\n\nExported: "));
+        assert!(en.contains("**船長**: 我們啟航。"));
+        assert!(!en.contains("霧氣升起"));
+    }
+
+    #[test]
+    fn scene_export_rejects_a_missing_scene() {
+        let root = TestRoot::new("scene-export-missing");
+        create_world(root.path(), "空桌").unwrap();
+        assert!(export_scene_markdown(root.path(), "空桌", 0, "zh-TW").is_err());
     }
 
     #[test]

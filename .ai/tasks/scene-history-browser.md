@@ -3,13 +3,13 @@ Task-ID: scene-history-browser
 Title: 過去的場：場景歷史瀏覽＋單場匯出＋換場提醒
 Status: in-progress
 Created: 2026-07-24T12:30:00+08:00
-Updated: 2026-07-24T12:30:00+08:00
+Updated: 2026-07-24T13:10:00+08:00
 
 ## Summary
 2026-07-24 使用者提議拍板：長團的原始紀錄會很長，需要（1）「過去的場」列表——像桌列表一樣可收合不佔畫面，點開可看單場歷史紀錄；（2）在單場檢視處提供「匯出本場」——一場匯一份，免煩惱整桌匯出過長；（3）當前場景紀錄過長時顯示「紀錄較長，建議換場」提醒——換場即壓縮上下文，順便替玩家省額度。整桌全匯出（現有鈕）保留不動。
 
 ## Next action
-- Opus subagent 實作中；回來主線驗證 cargo test／npm build＋行號抽查
+- 程式碼完成（cargo test 45 綠＋npm build 綠，見 handoffs/scene-history-browser.md）；剩使用者視覺驗收即結案
 
 ## Constraints
 只讀不改歷史場景（唯讀檢視）；單場匯出沿用另存對話框；提醒只是文字提示不強制。

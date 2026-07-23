@@ -78,6 +78,9 @@ const CLI_LABELS: Record<string, string> = {
 
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
+// 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token，超過就提示玩家可以換場省額度
+const SCENE_LENGTH_HINT_CHARS = 8000;
+
 function nowTs() {
   return new Date().toISOString();
 }
@@ -611,6 +614,92 @@ function CardEditor({
   );
 }
 
+// 單場檢視：唯讀事件列表＋匯出本場，沿用 SettingsWindow 的 modal 結構與 Esc／背景點擊關閉
+function SceneViewer({
+  world,
+  scene,
+  onClose,
+}: {
+  world: string;
+  scene: number;
+  onClose: () => void;
+}) {
+  const [events, setEvents] = useState<TranscriptEvent[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setEvents(null);
+    setError("");
+    invoke<TranscriptEvent[]>("read_transcript", { world, scene })
+      .then(setEvents)
+      .catch((reason) => setError(String(reason)));
+  }, [world, scene]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function exportScene() {
+    setError("");
+    try {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const path = await save({
+        defaultPath: `${t("sceneExportFileName", { table: world, n: scene + 1, stamp })}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!path) return;
+      await invoke("export_scene", { world, scene, path });
+      await revealItemInDir(path);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-label={t("sceneLabel", { n: scene + 1 })}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="modal-header">
+          <strong>{t("sceneLabel", { n: scene + 1 })}</strong>
+          <button className="modal-close" aria-label={t("closeBtn")} onClick={onClose}>
+            ✕
+          </button>
+        </header>
+        <div className="scene-viewer-body">
+          {events === null ? (
+            error && <p role="alert">{error}</p>
+          ) : (
+            events.map((event, index) => (
+              <div key={index} className={`scene-event scene-event-${event.kind}`}>
+                {(event.kind === "dialogue" || event.kind === "player") && (
+                  <span className="speaker">{event.speaker}</span>
+                )}
+                <span className="text">{event.text}</span>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="row">
+          <button type="button" onClick={exportScene}>
+            {t("exportScene")}
+          </button>
+          {error && events !== null && <span role="alert">{error}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 首開先選語言再建範例桌（sample-world-i18n 拍板）：預選跟系統語系走，選單即選即換介面語言
 function FirstRun({ onStart }: { onStart: (lang: Lang) => void }) {
   const [choice, setChoice] = useState<Lang>(() =>
@@ -667,6 +756,7 @@ function App() {
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [viewingScene, setViewingScene] = useState<number | null>(null);
   const [firstRun, setFirstRun] = useState(false);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
@@ -1029,6 +1119,10 @@ function App() {
     return <main className="container">{error && <p role="alert">{error}</p>}</main>;
   }
 
+  // 換場提醒：粗估目前場景累計字元數，超過門檻就在換場鈕旁小字提醒（不擋操作）
+  const sceneTooLong =
+    events.reduce((sum, event) => sum + event.text.length, 0) > SCENE_LENGTH_HINT_CHARS;
+
   // 拖曳分隔線調側欄寬度：上限由 CSS max-width 夾住，這裡只擋下限
   function resizeSidebar(next: number) {
     const clamped = Math.min(Math.max(next, SIDEBAR_MIN_WIDTH), window.innerWidth / 2);
@@ -1194,6 +1288,7 @@ function App() {
           >
             {t("sceneAdvance")}
           </button>
+          {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
           <button
             type="button"
             title={t("exportTranscriptHint")}
@@ -1203,6 +1298,23 @@ function App() {
             {t("exportTranscript")}
           </button>
         </header>
+
+        {scene > 0 && (
+          <details className="scene-history">
+            <summary>{t("pastScenes", { count: scene })}</summary>
+            <div className="scene-history-list">
+              {Array.from({ length: scene }, (_, n) => n).map((n) => (
+                <button key={n} type="button" onClick={() => setViewingScene(n)}>
+                  {t("sceneLabel", { n: n + 1 })}
+                </button>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {viewingScene !== null && (
+          <SceneViewer world={table} scene={viewingScene} onClose={() => setViewingScene(null)} />
+        )}
 
         <Onboarding config={config} onSaved={setConfig} />
 

@@ -129,6 +129,21 @@ fn export_transcript(app: tauri::AppHandle, world: String, path: String) -> Resu
     std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
 
+// 單場匯出：格式與 export_transcript 一致，但只匯一場，供「過去的場」單場檢視使用
+#[tauri::command]
+fn export_scene(
+    app: tauri::AppHandle,
+    world: String,
+    scene: u64,
+    path: String,
+) -> Result<(), String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let markdown = data::export_scene_markdown(&data_root(&app)?, &world, scene, &lang)
+        .map_err(|error| error.to_string())?;
+    std::fs::write(&path, markdown).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn read_state(app: tauri::AppHandle, world: String) -> Result<WorldState, String> {
     data::read_state(&data_root(&app)?, &world).map_err(|error| error.to_string())
@@ -355,6 +370,7 @@ pub fn run() {
             append_transcript,
             read_transcript,
             export_transcript,
+            export_scene,
             read_state,
             write_state,
             read_config,

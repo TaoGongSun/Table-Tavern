@@ -297,6 +297,64 @@ input {
   padding: 0.4em 0.7em;
 }
 
+/* 過去的場：低調的收合列，樣式比照側欄的 .table-section */
+.scene-history {
+  flex: none;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.scene-history summary {
+  cursor: pointer;
+  padding: 0.3rem 0;
+}
+
+.scene-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.35rem 0;
+}
+
+.scene-history-list button {
+  box-shadow: none;
+  padding: 0.3em 0.7em;
+  font-size: 0.9em;
+}
+
+/* 換場提醒：小字、不擋操作 */
+.scene-length-hint {
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+/* 單場檢視 modal：唯讀事件列表 */
+.scene-viewer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+
+.scene-event {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scene-event .speaker {
+  font-weight: 700;
+  margin-right: 0.4em;
+}
+
+.scene-event-narration,
+.scene-event-system {
+  text-align: center;
+  opacity: 0.8;
+  font-style: italic;
+}
+
 .chat-main {
   flex: 1;
   display: flex;
