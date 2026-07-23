@@ -58,6 +58,7 @@ const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399
 // 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。
 // 下限擋在這裡，上限交給 CSS 的 max-width: 50%（視窗縮小時自動夾住）。
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
+const TABLE_LIST_OPEN_KEY = "table_list_open";
 const SIDEBAR_DEFAULT_WIDTH = 224;
 const SIDEBAR_MIN_WIDTH = 176;
 const SIDEBAR_KEY_STEP = 16;
@@ -518,6 +519,9 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
   );
+  const [tableListOpen, setTableListOpen] = useState(
+    () => localStorage.getItem(TABLE_LIST_OPEN_KEY) !== "false",
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 語系跟著 config 走；render 前同步進 i18n 模組，之後子樹的 t() 都拿到正確語言
@@ -778,20 +782,60 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar" style={{ width: sidebarWidth }}>
-        <button className="new-table" onClick={newTable} disabled={generating !== null}>
-          {t("newTable")}
-        </button>
-        <nav className="table-list" aria-label={t("tableListAria")}>
-          {worlds.map((name) => (
-            <button
-              key={name}
-              className={`table-item ${name === table ? "table-item-active" : ""}`}
-              onClick={() => switchTable(name)}
-            >
-              {name}
+        <details
+          className="table-section"
+          open={tableListOpen}
+          onToggle={(event) => {
+            const next = event.currentTarget.open;
+            setTableListOpen(next);
+            localStorage.setItem(TABLE_LIST_OPEN_KEY, String(next));
+          }}
+        >
+          <summary>{t("tableListAria")}</summary>
+          <div className="table-section-content">
+            <button className="new-table" onClick={newTable} disabled={generating !== null}>
+              {t("newTable")}
             </button>
-          ))}
-        </nav>
+            <nav className="table-list" aria-label={t("tableListAria")}>
+              {worlds.map((name) => (
+                <button
+                  key={name}
+                  className={`table-item ${name === table ? "table-item-active" : ""}`}
+                  onClick={() => switchTable(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </details>
+        <section className="character-panel" aria-label={t("castAria")}>
+          <div className="character-list">
+            {characters.map((c) => (
+              <button
+                key={c.name}
+                className={`character-card ${speaker === c.name ? "character-card-active" : ""}`}
+                style={{ ["--ring" as string]: c.color }}
+                onClick={() => setSpeaker(c.name)}
+                title={t("castHint", { name: c.name })}
+              >
+                <span className="character-card-avatar">
+                  <Avatar meta={c} />
+                </span>
+                <span className="character-card-name">{c.name}</span>
+              </button>
+            ))}
+          </div>
+          <form className="character-create" onSubmit={createCharacter}>
+            <input
+              aria-label={t("newCharacterAria")}
+              value={characterName}
+              onChange={(e) => setCharacterName(e.currentTarget.value)}
+              placeholder={t("newCharacterPlaceholder")}
+            />
+            <button type="submit">{t("createCard")}</button>
+          </form>
+        </section>
         <div className="sidebar-footer">
           <label className="language-picker">
             {t("languageLabel")}
@@ -852,29 +896,6 @@ function App() {
         </header>
 
         <Onboarding config={config} onSaved={setConfig} />
-
-        <section className="row cast-row" aria-label={t("castAria")}>
-          {characters.map((c) => (
-            <button
-              key={c.name}
-              className={`cast ${speaker === c.name ? "cast-active" : ""}`}
-              style={{ ["--ring" as string]: c.color }}
-              onClick={() => setSpeaker(c.name)}
-              title={t("castHint", { name: c.name })}
-            >
-              <Avatar meta={c} /> {c.name}
-            </button>
-          ))}
-          <form className="row" onSubmit={createCharacter}>
-            <input
-              aria-label={t("newCharacterAria")}
-              value={characterName}
-              onChange={(e) => setCharacterName(e.currentTarget.value)}
-              placeholder={t("newCharacterPlaceholder")}
-            />
-            <button type="submit">{t("createCard")}</button>
-          </form>
-        </section>
 
         <WorldEditor world={table} />
 
