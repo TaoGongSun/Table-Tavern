@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import "./App.css";
 
@@ -636,6 +636,16 @@ function App() {
     }
   }
 
+  async function exportTranscript() {
+    setError("");
+    try {
+      const path = await invoke<string>("export_transcript", { world: table });
+      await revealItemInDir(path);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   async function createCharacter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -893,6 +903,14 @@ function App() {
               }}
             />
           )}
+          <button
+            type="button"
+            title={t("exportTranscriptHint")}
+            aria-label={t("exportTranscript")}
+            onClick={exportTranscript}
+          >
+            {t("exportTranscript")}
+          </button>
         </header>
 
         <Onboarding config={config} onSaved={setConfig} />

@@ -111,6 +111,27 @@ fn read_transcript(
 }
 
 #[tauri::command]
+fn export_transcript(app: tauri::AppHandle, world: String) -> Result<String, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let markdown = data::export_transcript_markdown(&data_root(&app)?, &world, &lang)
+        .map_err(|error| error.to_string())?;
+    let timestamp = data::local_timestamp().map_err(|error| error.to_string())?;
+    let filename = if lang == "en" {
+        format!("{world} transcript {}.md", timestamp.replace(':', ""))
+    } else {
+        format!("{world} 跑團紀錄 {}.md", timestamp.replace(':', ""))
+    };
+    let path = app
+        .path()
+        .download_dir()
+        .map_err(|error| error.to_string())?
+        .join(filename);
+    std::fs::write(&path, markdown).map_err(|error| error.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 fn read_state(app: tauri::AppHandle, world: String) -> Result<WorldState, String> {
     data::read_state(&data_root(&app)?, &world).map_err(|error| error.to_string())
 }
@@ -305,6 +326,7 @@ pub fn run() {
             import_character,
             append_transcript,
             read_transcript,
+            export_transcript,
             read_state,
             write_state,
             read_config,

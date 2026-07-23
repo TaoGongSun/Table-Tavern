@@ -3,6 +3,7 @@
 ## In progress
 - [ui-layout-rework](tasks/ui-layout-rework.md) — 版面重構：角色卡移左側欄＋桌列表可摺疊（NewPlan §9.4） — 下一步：程式碼完成（Codex 實作＋主線驗收 build 綠、cast-row 清零、功能逐項核對），剩使用者真實 App 視覺驗收即結案
 - [post-mvp-st-import](tasks/post-mvp-st-import.md) — MVP 後第一優先：SillyTavern 角色卡匯入（含存 PNG＋角色圖顯示/隱藏） — 下一步：後端切片完成（cargo test 36 綠），剩前端匯入鈕＋角色圖顯示開關，等 ui-layout-rework 視覺驗收後接
+- [transcript-export](tasks/transcript-export.md) — 一鍵下載跑團紀錄（劇情歷史匯出） — 下一步：前後端完成（cargo test 38 綠＋npm build 綠），剩使用者實測匯出鈕出檔即結案
 
 ## Done
 - [ui-i18n-switch](tasks/ui-i18n-switch.md) — UI 語系切換（zh-TW／en） — 2026-07-23 前端 i18n 字典＋語言下拉、後端 LANGUAGE_RULE 依語系注入，npm build＋cargo test 全綠，結案
@@ -18,7 +19,6 @@
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：等 release-1-mac-signing 的憑證就緒後開工：寫 tauri-action workflow，Developer ID .p12 與公證 API key 進 CI secrets；Windows 產物由協力者在乾淨 Windows 機驗收（下載→安裝→啟動，記錄 SmartScreen 實況）
 - [ui-settings-panel](tasks/ui-settings-panel.md) — 設定視窗：單一入口內分頁（外觀預設／AI 連線） — 下一步：等 ui-layout-rework 完成後做設定視窗骨架＋兩分頁，搬入現有 AI 設定與語言下拉，再加文字大小
 - [sample-world-i18n](tasks/sample-world-i18n.md) — 範例桌內容依語系產生（en 使用者首開拿英文範例桌） — 下一步：create_sample_world 內容抽成 zh-TW／en 兩份依 config 語系選用，並解決首開「先選語言還是先建桌」的順序
-- [transcript-export](tasks/transcript-export.md) — 一鍵下載跑團紀錄（劇情歷史匯出） — 下一步：後端 export_transcript（全場景 JSONL→Markdown）＋前端匯出鈕與存檔對話框
 - [cli-auto-connect](tasks/cli-auto-connect.md) — CLI 自動連接：背景偵測＋登入跳轉自動回 — 下一步：查證 claude／codex CLI 的登入觸發與完成偵知介面，再定 UX 流程（風險告知仍前置）
 - [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 下一步：先實作換場鈕＋摘要生成單發呼叫，摘要存 world 目錄並在組裝時注入
 - [post-mvp-character-archive](tasks/post-mvp-character-archive.md) — MVP 後：角色卡隱藏區（軟刪除）＋真刪除警告 — 下一步：先定儲存形式（frontmatter 旗標 vs archived/ 子目錄），再依序做收起／還原／真刪除＋確認框
