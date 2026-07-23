@@ -485,7 +485,7 @@ function SettingsWindow({
 }
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
-function WorldEditor({ world }: { world: string }) {
+function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   const [text, setText] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
@@ -520,6 +520,9 @@ function WorldEditor({ world }: { world: string }) {
       />
       <div className="row">
         <button type="submit">{t("saveWorld")}</button>
+        <button type="button" onClick={onBack}>
+          {t("backToNow")}
+        </button>
         {message && <span>{message}</span>}
       </div>
     </form>
@@ -532,12 +535,14 @@ function CardEditor({
   hasImage,
   avatarDataUrl,
   onSaved,
+  onBack,
 }: {
   world: string;
   name: string;
   hasImage: boolean;
   // 匯入卡的 PNG（來源 App 的 characterImages 快取）；沒有就退回大顆 emoji 頭像
   avatarDataUrl?: string;
+  onBack: () => void;
   onSaved: () => void;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
@@ -616,30 +621,23 @@ function CardEditor({
       </label>
       <div className="row">
         <button type="submit">{t("saveCard")}</button>
+        <button type="button" onClick={onBack}>
+          {t("backToNow")}
+        </button>
         {message && <span>{message}</span>}
       </div>
     </form>
   );
 }
 
-// 卡片／世界設定編輯共用整面外框：與單幕閱讀同款（頂部標題＋返回，下方內容填滿），不是 modal——
-// 使用者拍板：主欄下半部（messages＋composer）整面取代，composer 不渲染＝編輯中無法發言
-function EditPane({
-  title,
-  onBack,
-  children,
-}: {
-  title: string;
-  onBack: () => void;
-  children: React.ReactNode;
-}) {
+// 卡片／世界設定編輯共用整面外框：與單幕閱讀同款（頂部標題，下方內容填滿），不是 modal——
+// 使用者拍板：主欄下半部（messages＋composer）整面取代，composer 不渲染＝編輯中無法發言。
+// 「返回」不在這裡：使用者拍板放在表單的儲存鈕旁邊，由 CardEditor／WorldEditor 自己渲染
+function EditPane({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <>
       <div className="act-reader-header">
         <strong>{title}</strong>
-        <button type="button" onClick={onBack}>
-          {t("backToNow")}
-        </button>
       </div>
       <div className="edit-pane-body">{children}</div>
     </>
@@ -1406,10 +1404,7 @@ function App() {
             onBack={() => setMainView(null)}
           />
         ) : mainView?.kind === "character" ? (
-          <EditPane
-            title={t("editCardSummary", { name: mainView.name })}
-            onBack={() => setMainView(null)}
-          >
+          <EditPane title={t("editCardSummary", { name: mainView.name })}>
             <CardEditor
               world={table}
               name={mainView.name}
@@ -1418,11 +1413,12 @@ function App() {
               onSaved={() =>
                 invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
               }
+              onBack={() => setMainView(null)}
             />
           </EditPane>
         ) : mainView?.kind === "world" ? (
-          <EditPane title={t("worldSummary")} onBack={() => setMainView(null)}>
-            <WorldEditor world={table} />
+          <EditPane title={t("worldSummary")}>
+            <WorldEditor world={table} onBack={() => setMainView(null)} />
           </EditPane>
         ) : (
           <>
