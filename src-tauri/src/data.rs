@@ -149,6 +149,9 @@ pub struct WorldState {
     pub current_scene: u64,
     #[serde(default)]
     pub catchup_summaries: BTreeMap<String, String>,
+    // 換幕順手取的幕名：key 是場景號字串（比照 catchup_summaries），沒取到就不進這個表
+    #[serde(default)]
+    pub scene_titles: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -712,14 +715,17 @@ pub fn export_scene_markdown(
 
 /// 換場：把摘要包成一則 GM 旁白 append 到下一場景開頭，再把 current_scene +1 並存檔。
 /// 回傳新場景號。摘要文字本身由呼叫端（單發 LLM）產生，這裡只負責落地與推進場次。
+/// title 有值就存進「舊場景」（bump 前的 current_scene）的 scene_titles，與場次 +1 同一次 write_state。
 pub fn begin_next_scene(
     root: &Path,
     world: &str,
     summary_text: &str,
     lang: &str,
+    title: Option<&str>,
 ) -> DataResult<u64> {
     let mut state = read_state(root, world)?;
-    let next_scene = state.current_scene + 1;
+    let old_scene = state.current_scene;
+    let next_scene = old_scene + 1;
     let text = if lang == "en" {
         format!("Previously:\n{summary_text}")
     } else {
@@ -736,6 +742,11 @@ pub fn begin_next_scene(
             text,
         },
     )?;
+    if let Some(name) = title.map(str::trim).filter(|name| !name.is_empty()) {
+        state
+            .scene_titles
+            .insert(old_scene.to_string(), name.to_owned());
+    }
     state.current_scene = next_scene;
     write_state(root, world, &state)?;
     Ok(next_scene)
@@ -1254,7 +1265,7 @@ mod tests {
         };
         append_transcript(root.path(), "換場桌", 0, &event).unwrap();
 
-        let next = begin_next_scene(root.path(), "換場桌", "壓縮後的摘要", "zh-TW").unwrap();
+        let next = begin_next_scene(root.path(), "換場桌", "壓縮後的摘要", "zh-TW", None).unwrap();
         assert_eq!(next, 1);
         assert_eq!(read_state(root.path(), "換場桌").unwrap().current_scene, 1);
 
@@ -1267,10 +1278,36 @@ mod tests {
         assert_eq!(new_scene[0].text, "【前情提要】\n壓縮後的摘要");
 
         // en 語系用英文前綴
-        let next_en = begin_next_scene(root.path(), "換場桌", "recap text", "en").unwrap();
+        let next_en = begin_next_scene(root.path(), "換場桌", "recap text", "en", None).unwrap();
         assert_eq!(next_en, 2);
         let scene_two = read_transcript(root.path(), "換場桌", 2).unwrap();
         assert_eq!(scene_two[0].text, "Previously:\nrecap text");
+    }
+
+    #[test]
+    fn begin_next_scene_stores_title_on_old_scene_when_given() {
+        let root = TestRoot::new("begin-next-scene-title");
+        create_world(root.path(), "取名桌").unwrap();
+        let event = TranscriptEvent {
+            ts: "2026-07-24T00:00:00Z".to_owned(),
+            speaker: "玩家".to_owned(),
+            kind: TranscriptKind::Player,
+            text: "第一幕的對話".to_owned(),
+        };
+        append_transcript(root.path(), "取名桌", 0, &event).unwrap();
+
+        begin_next_scene(root.path(), "取名桌", "摘要", "zh-TW", Some("酒館夜話")).unwrap();
+        let state = read_state(root.path(), "取名桌").unwrap();
+        assert_eq!(state.current_scene, 1);
+        assert_eq!(state.scene_titles.get("0").map(String::as_str), Some("酒館夜話"));
+        assert!(!state.scene_titles.contains_key("1"));
+
+        // 空字串／None 都不進表
+        begin_next_scene(root.path(), "取名桌", "摘要二", "zh-TW", Some("   ")).unwrap();
+        begin_next_scene(root.path(), "取名桌", "摘要三", "zh-TW", None).unwrap();
+        let state = read_state(root.path(), "取名桌").unwrap();
+        assert!(!state.scene_titles.contains_key("1"));
+        assert!(!state.scene_titles.contains_key("2"));
     }
 
     #[test]

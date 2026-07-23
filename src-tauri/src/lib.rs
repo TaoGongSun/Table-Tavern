@@ -336,7 +336,7 @@ async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, Stri
     }
 
     let messages = transport::summary_messages(&events, &lang);
-    let summary = stream_via_transport(
+    let reply = stream_via_transport(
         &config,
         transport::gm_tier(&config),
         "GM",
@@ -346,7 +346,10 @@ async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, Stri
     )
     .await?;
 
-    data::begin_next_scene(&root, &world, &summary, &lang).map_err(|error| error.to_string())
+    // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
+    let (title, summary) = transport::extract_scene_title(&reply);
+    data::begin_next_scene(&root, &world, &summary, &lang, title.as_deref())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

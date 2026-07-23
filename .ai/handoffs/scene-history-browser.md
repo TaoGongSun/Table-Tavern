@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: scene-history-browser
-Updated: 2026-07-24T15:00:00+08:00
+Updated: 2026-07-24T16:10:00+08:00
 Status: in-progress
 
 ## Goal
 前幕（場景歷史）三件套＋主欄閱讀優先改版（NewPlan §9.4 2026-07-24 拍板：對話訊息上方只留 header 一行，其餘移出主欄；用語統一「幕」）。
 
 ## Current state
-閱讀優先改版完成（Opus subagent 實作、主線驗收）：npm build 綠、cargo test 45 綠（後端零改動）。剩使用者視覺驗收。
+閱讀優先改版＋二輪修訂完成（Opus subagent 實作、主線驗收）：cargo test 47 綠、npm build 綠。剩使用者視覺驗收。
 
 ## Completed
 - 第一版（已含在內）：export_scene_markdown＋export_scene command＋8000 字元換幕提醒
@@ -19,8 +19,14 @@ Status: in-progress
 - GM 卡（暫代世界設定入口）：側欄置頂、🎲、虛線框、不可選為發言對象、僅 ✎ 開 world.md 整面編輯（App.tsx:1203-1212，含「待與世界書合併」註解）
 - CSS：acts-flyout／act-reader-header／edit-pane-body／card-editor-avatar*／character-card-gm／character-card-edit／chat-header-actions＋dark mode；舊 scene-history*／scene-viewer-body 刪除
 
+- 二輪修訂（2026-07-24 使用者回饋）：
+  - 換幕順手取幕名：summary_messages 指示第一行「標題：…」（transport.rs:142-176）；`extract_scene_title` 純函式解析、失敗整段當摘要不報錯（transport.rs:178-201＋測試）；WorldState 加 `scene_titles`（data.rs:144-154）；begin_next_scene 加 title 參數存舊場景、同次 write_state（data.rs:713-747＋測試）；前端清單與 ActReader 顯示「第 N 幕：幕名」（i18n sceneWithTitle，無幕名退回 sceneLabel）
+  - 前幕清單改右側暫時面板：16rem 固定寬、header 下延伸到底、overflow-y auto、隱藏鈕置頂全寬反白區隔、dark mode（App.css:328-378、687-690；App.tsx:1379-1400 chat-body 錨點）
+  - 側欄 ✎ 鈕 margin-left auto 靠右（App.css:222-229）
+  - textarea 全域 width:100%＋box-sizing＋resize:vertical，只能上下拉、左右貼齊、改字級不變寬（App.css:540-544）
+
 ## Verification
-- 主線親跑 `cargo test` 45 綠、`npm run build` rc=0
+- 主線親跑 `cargo test` **47 passed; 0 failed**（新增幕名解析＋存舊場景兩條）、`npm run build` rc=0
 - 主線抽查：三選一分支與 composer 僅在對話分支渲染（App.tsx:1386-1472）、切桌重置（App.tsx:881）、GM 卡只有編輯鈕（App.tsx:1203-1212）、編輯畫面卡面圖（App.tsx:567-575）、header 靠右（App.css:432-437）
 
 ## Working context
@@ -28,7 +34,7 @@ Status: in-progress
 - Branch: main
 
 ## Remaining
-- 使用者視覺驗收：header 右排三鈕；前幕浮層兩種收法；點幕整面閱讀（無輸入列）＋返回；角色卡 ✎ 整面編輯含卡面圖；GM 卡編輯世界設定；以上狀態切桌自動復原
+- 使用者視覺驗收：右側前幕面板（隱藏鈕置頂、捲軸）；換一次幕看「第 N 幕：幕名」；✎ 靠右；編輯框只能上下拉且改字級不變寬；其餘一輪項目（整面閱讀／編輯、GM 卡）一併看
 
 ## Next action
 - 使用者驗收通過即結案

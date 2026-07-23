@@ -31,6 +31,8 @@ interface WorldState {
   model_bindings: Record<string, string>;
   current_scene: number;
   catchup_summaries: Record<string, string>;
+  // 換幕順手取的幕名：key 是內部場號字串（0 起算），對應後端 WorldState.scene_titles
+  scene_titles: Record<string, string>;
 }
 
 interface AppConfig {
@@ -648,10 +650,12 @@ function EditPane({
 function ActReader({
   world,
   scene,
+  label,
   onBack,
 }: {
   world: string;
   scene: number;
+  label: string;
   onBack: () => void;
 }) {
   const [events, setEvents] = useState<TranscriptEvent[] | null>(null);
@@ -686,7 +690,7 @@ function ActReader({
   return (
     <>
       <div className="act-reader-header">
-        <strong>{t("sceneLabel", { n: scene + 1 })}</strong>
+        <strong>{label}</strong>
         <button type="button" onClick={exportScene}>
           {t("exportScene")}
         </button>
@@ -694,7 +698,7 @@ function ActReader({
           {t("backToNow")}
         </button>
       </div>
-      <section className="messages" aria-label={t("sceneLabel", { n: scene + 1 })}>
+      <section className="messages" aria-label={label}>
         {events === null ? (
           error && <p role="alert">{error}</p>
         ) : (
@@ -759,6 +763,7 @@ function App() {
   const [characterName, setCharacterName] = useState("");
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
+  const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
@@ -872,6 +877,7 @@ function App() {
     const cast = await invoke<CharacterMeta[]>("list_characters", { world: name });
     setTable(name);
     setScene(state.current_scene);
+    setSceneTitles(state.scene_titles ?? {});
     setEvents(transcript);
     setCharacters(cast);
     await loadCharacterImages(name, cast);
@@ -1110,6 +1116,12 @@ function App() {
   }
 
   const metaOf = (name: string) => characters.find((c) => c.name === name);
+
+  // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算
+  const sceneDisplayLabel = (n: number) => {
+    const title = sceneTitles[String(n)];
+    return title ? t("sceneWithTitle", { n: n + 1, title }) : t("sceneLabel", { n: n + 1 });
+  };
   const generatingMeta = generating !== null ? metaOf(generating.name) : undefined;
 
   async function startFirstRun(lang: Lang) {
@@ -1362,8 +1374,15 @@ function App() {
               </button>
             )}
           </div>
-          {actsOpen && scene > 0 && (
-            <div className="acts-flyout">
+        </header>
+
+        <div className="chat-body">
+        {actsOpen && scene > 0 && (
+          <div className="acts-flyout">
+            <button type="button" className="acts-flyout-hide" onClick={() => setActsOpen(false)}>
+              {t("hideActs")}
+            </button>
+            <div className="acts-flyout-list">
               {Array.from({ length: scene }, (_, n) => n).map((n) => (
                 <button
                   key={n}
@@ -1373,18 +1392,19 @@ function App() {
                     setActsOpen(false);
                   }}
                 >
-                  {t("sceneLabel", { n: n + 1 })}
+                  {sceneDisplayLabel(n)}
                 </button>
               ))}
-              <button type="button" className="acts-flyout-hide" onClick={() => setActsOpen(false)}>
-                {t("hideActs")}
-              </button>
             </div>
-          )}
-        </header>
-
+          </div>
+        )}
         {mainView?.kind === "scene" ? (
-          <ActReader world={table} scene={mainView.n} onBack={() => setMainView(null)} />
+          <ActReader
+            world={table}
+            scene={mainView.n}
+            label={sceneDisplayLabel(mainView.n)}
+            onBack={() => setMainView(null)}
+          />
         ) : mainView?.kind === "character" ? (
           <EditPane
             title={t("editCardSummary", { name: mainView.name })}
@@ -1509,6 +1529,7 @@ function App() {
             </form>
           </>
         )}
+        </div>
         {error && <p role="alert">{error}</p>}
       </main>
     </div>

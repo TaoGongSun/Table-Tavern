@@ -142,6 +142,8 @@ pub fn assemble_gm_messages(
 pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessage> {
     let instruction = if lang == "en" {
         "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
+         The first line of your reply must be exactly \"Title: <act name, 10 words or fewer>\", \
+         followed by a blank line before the recap. \
          Summarize everything that happened in this scene as a recap, covering: \
          location and time, who is present and their state, key events, relationship changes, \
          and unresolved threads — as a compact bulleted list. Keep it under about 200 words. \
@@ -150,6 +152,7 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
     } else {
         format!(
             "你是這場多人桌上角色扮演的 GM，現在要換場。\
+             回覆第一行固定輸出「標題：〈10 字內的幕名〉」，空一行後才是摘要條列。\
              請把本場景發生的一切壓成一則前情提要，條列涵蓋：\
              地點與時間、在場人物與狀態、關鍵事件、關係變化、未解懸念。\
              長度上限約 300 字。\
@@ -170,6 +173,32 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
         push_merged(&mut messages, "user", line);
     }
     messages
+}
+
+/// 從換場摘要回覆的第一行取幕名：以「標題：」或「Title:」開頭（大小寫寬鬆）才算，
+/// 取到就把該行（含後面的空行）從摘要文字中拿掉；解析不到就回傳 None、原文整段當摘要。
+pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
+    let mut lines = reply.splitn(2, '\n');
+    let first_line = lines.next().unwrap_or("").trim();
+    let remainder = lines.next().unwrap_or("");
+
+    let title = first_line
+        .strip_prefix("標題：")
+        .or_else(|| first_line.strip_prefix("標題:"))
+        .map(str::to_owned)
+        .or_else(|| {
+            let lower = first_line.to_lowercase();
+            lower
+                .strip_prefix("title:")
+                .map(|_| first_line[6..].to_owned())
+        })
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty());
+
+    match title {
+        Some(name) => (Some(name), remainder.trim_start_matches('\n').to_owned()),
+        None => (None, reply.to_owned()),
+    }
 }
 
 /// 導演指示：插入旁白（附加在 GM 上下文最後）
@@ -495,6 +524,27 @@ mod tests {
         let en = summary_messages(&events, "en");
         assert!(en[0].content.contains("recap"));
         assert!(en[0].content.contains("200 words"));
+    }
+
+    /// 驗收：換幕順手取幕名——有標題行／無標題行／en 前綴，都不能報錯
+    #[test]
+    fn extract_scene_title_reads_zh_and_en_prefixes_and_falls_back_without_one() {
+        let (title, rest) = extract_scene_title("標題：酒館夜話\n\n地點與時間：酒館");
+        assert_eq!(title.as_deref(), Some("酒館夜話"));
+        assert_eq!(rest, "地點與時間：酒館");
+
+        let (title_en, rest_en) = extract_scene_title("Title: Tavern Talk\n\nLocation: the tavern");
+        assert_eq!(title_en.as_deref(), Some("Tavern Talk"));
+        assert_eq!(rest_en, "Location: the tavern");
+
+        // 大小寫寬鬆
+        let (title_mixed, _) = extract_scene_title("title: Mixed Case\n\nbody");
+        assert_eq!(title_mixed.as_deref(), Some("Mixed Case"));
+
+        // 沒有標題行：整段原文當摘要，不報錯
+        let (none_title, whole) = extract_scene_title("地點與時間：酒館\n關鍵事件：無");
+        assert_eq!(none_title, None);
+        assert_eq!(whole, "地點與時間：酒館\n關鍵事件：無");
     }
 
     #[test]
