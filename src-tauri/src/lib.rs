@@ -91,6 +91,15 @@ fn import_character(
 }
 
 #[tauri::command]
+fn read_character_image(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+) -> Result<Option<String>, String> {
+    import::character_image(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn append_transcript(
     app: tauri::AppHandle,
     world: String,
@@ -324,6 +333,7 @@ pub fn run() {
             read_character,
             write_character,
             import_character,
+            read_character_image,
             append_transcript,
             read_transcript,
             export_transcript,

@@ -72,6 +72,9 @@ const zh = {
   privateLabel: "私有設定（只進本角色與 GM 的上下文）",
   tierLabel: "檔位",
   saveCard: "儲存角色卡",
+  showImageLabel: "顯示角色圖片（關閉改回 emoji 頭像）",
+  importCard: "匯入卡",
+  importCardHint: "匯入 SillyTavern 角色卡（PNG 或 JSON），原檔會保留在該桌目錄",
 
   // 主畫面
   newTable: "＋ 開新的一桌",
@@ -170,6 +173,10 @@ const en: Record<MsgKey, string> = {
   privateLabel: "Private profile (only this character and the GM see it)",
   tierLabel: "Tier",
   saveCard: "Save character card",
+  showImageLabel: "Show character image (off = emoji avatar)",
+  importCard: "Import",
+  importCardHint:
+    "Import a SillyTavern character card (PNG or JSON); the original file is kept in the table folder",
 
   newTable: "＋ New table",
   newTableName: "New table",

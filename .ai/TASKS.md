@@ -2,7 +2,7 @@
 
 ## In progress
 - [ui-layout-rework](tasks/ui-layout-rework.md) — 版面重構：角色卡移左側欄＋桌列表可摺疊（NewPlan §9.4） — 下一步：程式碼完成（Codex 實作＋主線驗收 build 綠、cast-row 清零、功能逐項核對），剩使用者真實 App 視覺驗收即結案
-- [post-mvp-st-import](tasks/post-mvp-st-import.md) — MVP 後第一優先：SillyTavern 角色卡匯入（含存 PNG＋角色圖顯示/隱藏） — 下一步：後端切片完成（cargo test 36 綠），剩前端匯入鈕＋角色圖顯示開關，等 ui-layout-rework 視覺驗收後接
+- [post-mvp-st-import](tasks/post-mvp-st-import.md) — MVP 後第一優先：SillyTavern 角色卡匯入（含存 PNG＋角色圖顯示/隱藏） — 下一步：前後端完成（cargo test 40 綠＋npm build 綠），剩使用者實測匯入鈕＋角色圖開關即結案
 - [transcript-export](tasks/transcript-export.md) — 一鍵下載跑團紀錄（劇情歷史匯出） — 下一步：前後端完成（cargo test 38 綠＋npm build 綠），剩使用者實測匯出鈕出檔即結案
 
 ## Done

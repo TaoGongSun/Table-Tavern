@@ -97,12 +97,19 @@ impl Tier {
     }
 }
 
+// 匯入卡附原 PNG 時的顯示開關（NewPlan §5.2）；舊卡與手建卡缺此欄一律視為 true
+fn default_show_image() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterMeta {
     pub name: String,
     pub color: String,
     pub avatar: String,
     pub tier: Tier,
+    #[serde(default = "default_show_image")]
+    pub show_image: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +118,8 @@ pub struct CharacterCard {
     pub color: String,
     pub avatar: String,
     pub tier: Tier,
+    #[serde(default = "default_show_image")]
+    pub show_image: bool,
     pub public_md: String,
     pub private_md: String,
 }
@@ -256,6 +265,7 @@ pub fn create_sample_world(root: &Path) -> DataResult<String> {
             color: "#e07a5f".to_owned(),
             avatar: "🦊".to_owned(),
             tier: Tier::Default,
+            show_image: true,
             public_md: "旅店酒館的老闆，笑口常開、八面玲瓏，對鎮上大小事瞭若指掌。說話帶點江湖氣，擅長打圓場。".to_owned(),
             private_md: "真名「阿狸」，是鄰國的通緝犯——三年前替人頂罪後逃亡至此。聽到「賞金」「通緝」等字眼會不動聲色地緊張。目標：安穩活下去，必要時準備隨時跑路。".to_owned(),
         },
@@ -264,6 +274,7 @@ pub fn create_sample_world(root: &Path) -> DataResult<String> {
             color: "#3d84a8".to_owned(),
             avatar: "🛡️".to_owned(),
             tier: Tier::Default,
+            show_image: true,
             public_md: "巡邏至此的年輕騎士，個性正直到近乎固執，在酒館喝的是熱茶不是酒。".to_owned(),
             private_md: "此行真正任務是追查一名逃亡三年的通緝犯，手上的畫像已經模糊。暗中觀察酒館裡的每個人。原則：先確認再行動，不冤枉好人。".to_owned(),
         },
@@ -272,6 +283,7 @@ pub fn create_sample_world(root: &Path) -> DataResult<String> {
             color: "#f2a541".to_owned(),
             avatar: "🪕".to_owned(),
             tier: Tier::Fast,
+            show_image: true,
             public_md: "雲遊四方的吟遊詩人，愛蹭酒喝，滿嘴誇張的故事與歌謠。消息靈通。".to_owned(),
             private_md: "他的故事九分真一分假——他真的在鄰鎮親眼看過「那頭狼」用兩條腿走路。因為太害怕沒敢說全，只敢把它編進歌裡。".to_owned(),
         },
@@ -359,6 +371,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
     let mut color = None;
     let mut avatar = None;
     let mut tier = None;
+    let mut show_image = true;
     for line in frontmatter.lines() {
         let Some((key, value)) = line.split_once(':') else {
             if line.trim().is_empty() {
@@ -373,6 +386,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
             "color" => color = Some(value.to_owned()),
             "avatar" => avatar = Some(value.to_owned()),
             "tier" => tier = Some(Tier::parse(value)?),
+            "show_image" => show_image = value != "false",
             _ => {}
         }
     }
@@ -385,6 +399,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
             color: color.ok_or_else(|| invalid_data("frontmatter is missing color"))?,
             avatar: avatar.ok_or_else(|| invalid_data("frontmatter is missing avatar"))?,
             tier: tier.ok_or_else(|| invalid_data("frontmatter is missing tier"))?,
+            show_image,
         },
         body,
     ))
@@ -434,11 +449,12 @@ fn parse_sections(body: &str) -> (String, String) {
 
 fn serialize_character(card: &CharacterCard) -> String {
     format!(
-        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\n---\n## 公開\n{}\n## 私有\n{}",
+        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\n---\n## 公開\n{}\n## 私有\n{}",
         card.name,
         card.color,
         card.avatar,
         card.tier.as_str(),
+        card.show_image,
         card.public_md,
         card.private_md
     )
@@ -473,6 +489,7 @@ pub fn read_character(root: &Path, world: &str, name: &str) -> DataResult<Charac
         color: meta.color,
         avatar: meta.avatar,
         tier: meta.tier,
+        show_image: meta.show_image,
         public_md,
         private_md,
     })
@@ -777,6 +794,7 @@ mod tests {
             color: "#e07a5f".to_owned(),
             avatar: "🎭".to_owned(),
             tier: Tier::Default,
+            show_image: true,
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -812,6 +830,7 @@ mod tests {
             color: "#123456\ntier: best".to_owned(),
             avatar: "🧙".to_owned(),
             tier: Tier::Default,
+            show_image: true,
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -835,6 +854,7 @@ mod tests {
                 color: "#123456".to_owned(),
                 avatar: "🧙".to_owned(),
                 tier: Tier::Default,
+                show_image: true,
                 public_md: String::new(),
                 private_md: String::new(),
             };
@@ -851,6 +871,7 @@ mod tests {
             color: "#3366ff".to_owned(),
             avatar: "avatars/blue.png".to_owned(),
             tier: Tier::Best,
+            show_image: true,
             public_md: "第一段\n\n- 公開條目\n".to_owned(),
             private_md: "秘密第一行\n\n秘密第二行".to_owned(),
         };
@@ -864,6 +885,7 @@ mod tests {
                 color: "#3366ff".to_owned(),
                 avatar: "avatars/blue.png".to_owned(),
                 tier: Tier::Best,
+                show_image: true,
             }]
         );
 
@@ -878,9 +900,33 @@ mod tests {
             .lines()
             .map(|line| line.split_once(':').unwrap().0)
             .collect();
-        assert_eq!(keys, ["name", "color", "avatar", "tier"]);
+        assert_eq!(keys, ["name", "color", "avatar", "tier", "show_image"]);
         assert!(raw.contains("\n## 公開\n"));
         assert!(raw.contains("\n## 私有\n"));
+    }
+
+    #[test]
+    fn show_image_false_round_trips_and_missing_key_defaults_to_true() {
+        let root = TestRoot::new("show-image");
+        create_world(root.path(), "世界").unwrap();
+        let card = CharacterCard {
+            name: "藏圖".to_owned(),
+            color: "#333333".to_owned(),
+            avatar: "🎭".to_owned(),
+            tier: Tier::Default,
+            show_image: false,
+            public_md: String::new(),
+            private_md: String::new(),
+        };
+        write_character(root.path(), "世界", &card).unwrap();
+        assert!(!read_character(root.path(), "世界", "藏圖").unwrap().show_image);
+
+        fs::write(
+            root.path().join("worlds/世界/characters/舊卡.md"),
+            "---\nname: 舊卡\ncolor: #111111\navatar: 🎭\ntier: default\n---\n## 公開\n\n## 私有\n",
+        )
+        .unwrap();
+        assert!(read_character(root.path(), "世界", "舊卡").unwrap().show_image);
     }
 
     #[test]
