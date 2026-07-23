@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
+import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import "./App.css";
 
 type Tier = "best" | "balanced" | "fast" | "default";
@@ -611,6 +611,33 @@ function CardEditor({
   );
 }
 
+// 首開先選語言再建範例桌（sample-world-i18n 拍板）：預選跟系統語系走，選單即選即換介面語言
+function FirstRun({ onStart }: { onStart: (lang: Lang) => void }) {
+  const [choice, setChoice] = useState<Lang>(() =>
+    navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en",
+  );
+  setLang(choice);
+
+  return (
+    <main className="container first-run">
+      <h1>{t("firstRunTitle")}</h1>
+      <p>{t("firstRunIntro")}</p>
+      <select
+        aria-label={t("languageLabel")}
+        value={choice}
+        onChange={(e) => setChoice(normalizeLang(e.currentTarget.value))}
+      >
+        {LANGUAGE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button onClick={() => onStart(choice)}>{t("firstRunStart")}</button>
+    </main>
+  );
+}
+
 // 頭像光圈：角色色上在光圈與左邊框，不整顆填色（NewPlan §9.2）
 function Avatar({ meta }: { meta?: CharacterMeta }) {
   return (
@@ -640,6 +667,7 @@ function App() {
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [firstRun, setFirstRun] = useState(false);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -701,7 +729,14 @@ function App() {
         ]);
         setConfig(loaded);
         if (names.length === 0) {
-          const name = await invoke<string>("create_sample_world");
+          // 首開（沒有任何桌也沒選過語言）：先讓使用者選語言，選完才建範例桌
+          if (loaded.preferences["language"] === undefined) {
+            setFirstRun(true);
+            return;
+          }
+          const name = await invoke<string>("create_sample_world", {
+            lang: normalizeLang(loaded.preferences["language"]),
+          });
           setWorlds([name]);
           await enterTable(name, loaded);
           return;
@@ -948,6 +983,31 @@ function App() {
 
   const metaOf = (name: string) => characters.find((c) => c.name === name);
   const generatingMeta = generating !== null ? metaOf(generating.name) : undefined;
+
+  async function startFirstRun(lang: Lang) {
+    if (!config) return;
+    setError("");
+    try {
+      const updated = { ...config, preferences: { ...config.preferences, language: lang } };
+      await invoke("write_config", { config: updated });
+      setConfig(updated);
+      const name = await invoke<string>("create_sample_world", { lang });
+      setWorlds([name]);
+      await enterTable(name, updated);
+      setFirstRun(false);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  if (firstRun && config) {
+    return (
+      <>
+        <FirstRun onStart={(lang) => void startFirstRun(lang)} />
+        {error && <p role="alert">{error}</p>}
+      </>
+    );
+  }
 
   if (!config || !table) {
     return <main className="container">{error && <p role="alert">{error}</p>}</main>;

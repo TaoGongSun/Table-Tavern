@@ -30,6 +30,11 @@ const zh = {
   onboardCliHint:
     "已自行安裝並登入官方 CLI 的進階使用者，也可以改到左下角「設定 → AI 連線」啟用 CLI 訂閱模式。",
 
+  // 首開語言選擇
+  firstRunTitle: "歡迎來到 Table Tavern",
+  firstRunIntro: "選擇介面與範例桌的語言，之後隨時可在「設定 → 外觀」更改。",
+  firstRunStart: "開始",
+
   // 設定視窗
   settingsBtn: "設定",
   appearanceTab: "外觀",
@@ -138,6 +143,11 @@ const en: Record<MsgKey, string> = {
   onboardSaveBtn: "Save and play",
   onboardCliHint:
     "Advanced users who already installed and logged into an official CLI can instead enable CLI subscription mode under “Settings → AI Connection” in the lower left.",
+
+  firstRunTitle: "Welcome to Table Tavern",
+  firstRunIntro:
+    "Choose the language for the interface and the sample table — you can change it anytime under Settings → Appearance.",
+  firstRunStart: "Start",
 
   settingsBtn: "Settings",
   appearanceTab: "Appearance",
