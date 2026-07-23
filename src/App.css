@@ -1,7 +1,8 @@
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
-  line-height: 24px;
+  /* 相對行高：文字大小偏好改根字級時行距跟著縮放 */
+  line-height: 1.5;
   font-weight: 400;
 
   color: #0f0f0f;
@@ -242,16 +243,58 @@ input {
   font-size: 0.9em;
 }
 
-.language-picker {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+.settings-open {
+  width: 100%;
 }
 
-.language-picker select {
-  flex: 1;
-  min-width: 0;
+/* 設定視窗：單一入口內分頁（NewPlan §9.4） */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #00000055;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: #f6f6f6;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px #00000044;
+  width: min(34rem, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.tab {
+  box-shadow: none;
+  background: transparent;
+}
+
+.tab-active {
+  background: #88888833;
+  font-weight: 600;
+}
+
+.modal-close {
+  box-shadow: none;
+  background: transparent;
+  padding: 0.4em 0.7em;
 }
 
 .chat-main {
@@ -490,6 +533,10 @@ select {
   :root {
     color: #f6f6f6;
     background-color: #2f2f2f;
+  }
+
+  .modal {
+    background: #2f2f2f;
   }
 
   input,

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
+import { LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import "./App.css";
 
 type Tier = "best" | "balanced" | "fast" | "default";
@@ -209,9 +209,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   }
 
   return (
-    <details className="settings">
-      <summary>{t("settingsSummary")}</summary>
-      <form onSubmit={save} className="settings-form">
+    <form onSubmit={save} className="settings-form">
         <fieldset className="transport-choice">
           <legend>{t("transportLegend")}</legend>
           <label className="inline">
@@ -370,12 +368,105 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
             placeholder="https://openrouter.ai/api/v1"
           />
         </label>
-        <div className="row">
-          <button type="submit">{t("saveSettings")}</button>
-          {message && <span>{message}</span>}
-        </div>
-      </form>
-    </details>
+      <div className="row">
+        <button type="submit">{t("saveSettings")}</button>
+        {message && <span>{message}</span>}
+      </div>
+    </form>
+  );
+}
+
+// 文字大小偏好：存 config.preferences.text_size，套在 html 根字級（rem 版面跟著縮放）
+const TEXT_SIZE_PX: Record<string, string> = { small: "14px", medium: "16px", large: "18px" };
+
+// 單一設定入口內分頁（NewPlan §9.4）：外觀為預設頁，不碰 AI 的人打開只見外觀
+function SettingsWindow({
+  config,
+  onSaved,
+  onPreference,
+  onClose,
+}: {
+  config: AppConfig;
+  onSaved: (c: AppConfig) => void;
+  onPreference: (key: string, value: unknown) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"appearance" | "ai">("appearance");
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const textSize = String(config.preferences["text_size"] ?? "medium");
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-label={t("settingsBtn")}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="modal-header">
+          <nav className="tabs" aria-label={t("settingsBtn")}>
+            <button
+              className={tab === "appearance" ? "tab tab-active" : "tab"}
+              onClick={() => setTab("appearance")}
+            >
+              {t("appearanceTab")}
+            </button>
+            <button className={tab === "ai" ? "tab tab-active" : "tab"} onClick={() => setTab("ai")}>
+              {t("aiTab")}
+            </button>
+          </nav>
+          <button className="modal-close" aria-label={t("closeBtn")} onClick={onClose}>
+            ✕
+          </button>
+        </header>
+        {tab === "appearance" ? (
+          <div className="settings-form">
+            <label>
+              {t("languageLabel")}
+              <select
+                value={normalizeLang(config.preferences["language"])}
+                onChange={(e) => onPreference("language", normalizeLang(e.currentTarget.value))}
+              >
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t("textSizeLabel")}
+              <select
+                value={textSize}
+                onChange={(e) => onPreference("text_size", e.currentTarget.value)}
+              >
+                {(["small", "medium", "large"] as const).map((size) => (
+                  <option key={size} value={size}>
+                    {t(
+                      size === "small"
+                        ? "textSizeSmall"
+                        : size === "large"
+                          ? "textSizeLarge"
+                          : "textSizeMedium",
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <Settings config={config} onSaved={onSaved} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -539,6 +630,7 @@ function App() {
   } | null>(null);
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -572,9 +664,10 @@ function App() {
   const language = normalizeLang(config?.preferences["language"]);
   setLang(language);
 
-  async function changeLanguage(next: Lang) {
+  // 外觀類偏好（語言、文字大小）：改了立即生效並寫回 config，不設儲存鈕
+  async function changePreference(key: string, value: unknown) {
     if (!config) return;
-    const updated = { ...config, preferences: { ...config.preferences, language: next } };
+    const updated = { ...config, preferences: { ...config.preferences, [key]: value } };
     setConfig(updated);
     try {
       await invoke("write_config", { config: updated });
@@ -582,6 +675,11 @@ function App() {
       setError(String(reason));
     }
   }
+
+  const textSize = String(config?.preferences["text_size"] ?? "medium");
+  useEffect(() => {
+    document.documentElement.style.fontSize = TEXT_SIZE_PX[textSize] ?? TEXT_SIZE_PX.medium;
+  }, [textSize]);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
@@ -947,22 +1045,20 @@ function App() {
           </form>
         </section>
         <div className="sidebar-footer">
-          <label className="language-picker">
-            {t("languageLabel")}
-            <select
-              value={language}
-              onChange={(e) => void changeLanguage(normalizeLang(e.currentTarget.value))}
-            >
-              {LANGUAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Settings config={config} onSaved={setConfig} />
+          <button className="settings-open" onClick={() => setSettingsOpen(true)}>
+            ⚙️ {t("settingsBtn")}
+          </button>
         </div>
       </aside>
+
+      {settingsOpen && (
+        <SettingsWindow
+          config={config}
+          onSaved={setConfig}
+          onPreference={(key, value) => void changePreference(key, value)}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       <div
         className="sidebar-resizer"
