@@ -246,8 +246,14 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<()> {
     Ok(())
 }
 
-pub fn create_sample_world(root: &Path) -> DataResult<String> {
-    let world = "迷霧酒館（範例）";
+/// 範例桌內容依語系產生（首開先選語言再建桌）；lang 非 en 一律走 zh-TW
+pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
+    let english = lang == "en";
+    let world = if english {
+        "The Misty Tavern (sample)"
+    } else {
+        "迷霧酒館（範例）"
+    };
     // 冪等：範例桌已在就直接沿用，避免重複呼叫（dev 的 StrictMode 雙跑）噴 File exists
     if world_dir(root, world)?.exists() {
         return Ok(world.to_owned());
@@ -256,40 +262,69 @@ pub fn create_sample_world(root: &Path) -> DataResult<String> {
     write_world_md(
         root,
         world,
-        "# 迷霧酒館\n\n邊境小鎮「霧口鎮」的一間旅店酒館，今晚外頭下著暴雨。鎮上最近流傳狼人傳說：三天前開始，每晚都有牲口失蹤。\n\n## 只有 GM 知道的真相\n- 狼人是鎮長葛倫——他半年前在山裡被咬傷，自己也不完全清楚夜裡發生的事。\n- 酒館老闆狐狸其實是鄰國的通緝犯，賞金獵人正在路上。\n- 今晚稍後，渾身濕透的鎮長會推門進來，袖口沾著血。\n\n## 導演方針\n- 步調：慢熱，讓角色先互相試探。\n- 旁白保持懸疑，不要太快揭露真相。",
+        if english {
+            "# The Misty Tavern\n\nAn inn-tavern in the border town of Mistmouth; a storm rages outside tonight. A werewolf rumor has spread through town: for three nights running, livestock has gone missing.\n\n## Truths only the GM knows\n- The werewolf is Mayor Glenn — bitten in the mountains half a year ago, he himself doesn't fully know what happens at night.\n- Fox, the tavern keeper, is actually a fugitive from the neighboring kingdom, and a bounty hunter is on the way.\n- Later tonight the mayor will push through the door soaked to the bone, blood on his cuff.\n\n## Directing notes\n- Pacing: slow burn — let the characters feel each other out first.\n- Keep the narration suspenseful; don't reveal the truth too quickly."
+        } else {
+            "# 迷霧酒館\n\n邊境小鎮「霧口鎮」的一間旅店酒館，今晚外頭下著暴雨。鎮上最近流傳狼人傳說：三天前開始，每晚都有牲口失蹤。\n\n## 只有 GM 知道的真相\n- 狼人是鎮長葛倫——他半年前在山裡被咬傷，自己也不完全清楚夜裡發生的事。\n- 酒館老闆狐狸其實是鄰國的通緝犯，賞金獵人正在路上。\n- 今晚稍後，渾身濕透的鎮長會推門進來，袖口沾著血。\n\n## 導演方針\n- 步調：慢熱，讓角色先互相試探。\n- 旁白保持懸疑，不要太快揭露真相。"
+        },
     )?;
 
-    let characters = [
-        CharacterCard {
-            name: "狐狸".to_owned(),
-            color: "#e07a5f".to_owned(),
-            avatar: "🦊".to_owned(),
-            tier: Tier::Default,
-            show_image: true,
-            public_md: "旅店酒館的老闆，笑口常開、八面玲瓏，對鎮上大小事瞭若指掌。說話帶點江湖氣，擅長打圓場。".to_owned(),
-            private_md: "真名「阿狸」，是鄰國的通緝犯——三年前替人頂罪後逃亡至此。聽到「賞金」「通緝」等字眼會不動聲色地緊張。目標：安穩活下去，必要時準備隨時跑路。".to_owned(),
-        },
-        CharacterCard {
-            name: "騎士".to_owned(),
-            color: "#3d84a8".to_owned(),
-            avatar: "🛡️".to_owned(),
-            tier: Tier::Default,
-            show_image: true,
-            public_md: "巡邏至此的年輕騎士，個性正直到近乎固執，在酒館喝的是熱茶不是酒。".to_owned(),
-            private_md: "此行真正任務是追查一名逃亡三年的通緝犯，手上的畫像已經模糊。暗中觀察酒館裡的每個人。原則：先確認再行動，不冤枉好人。".to_owned(),
-        },
-        CharacterCard {
-            name: "吟遊詩人".to_owned(),
-            color: "#f2a541".to_owned(),
-            avatar: "🪕".to_owned(),
-            tier: Tier::Fast,
-            show_image: true,
-            public_md: "雲遊四方的吟遊詩人，愛蹭酒喝，滿嘴誇張的故事與歌謠。消息靈通。".to_owned(),
-            private_md: "他的故事九分真一分假——他真的在鄰鎮親眼看過「那頭狼」用兩條腿走路。因為太害怕沒敢說全，只敢把它編進歌裡。".to_owned(),
-        },
+    let texts: [(&str, &str, &str); 3] = if english {
+        [
+            (
+                "Fox",
+                "Keeper of the inn-tavern — all smiles and smooth talk, with an ear for everything that happens in town. Speaks with a streetwise charm and is great at defusing tension.",
+                "Real name \"Ali\", a fugitive from the neighboring kingdom — took the fall for someone three years ago and fled here. Words like \"bounty\" or \"wanted\" make them quietly tense. Goal: live in peace, but stay ready to run.",
+            ),
+            (
+                "Knight",
+                "A young knight on patrol, upright to the point of stubbornness; drinks hot tea in the tavern, never ale.",
+                "The real mission is to track a fugitive who fled three years ago; the portrait in hand has long since faded. Quietly observes everyone in the tavern. Principle: verify first, act second — never wrong the innocent.",
+            ),
+            (
+                "Bard",
+                "A wandering bard who cadges drinks and spins outrageous tales and songs. Remarkably well-informed.",
+                "Nine parts of every story are true, one part false — the bard really did see \"that wolf\" walk on two legs in the next town. Too frightened to tell it straight, they only dared weave it into a song.",
+            ),
+        ]
+    } else {
+        [
+            (
+                "狐狸",
+                "旅店酒館的老闆，笑口常開、八面玲瓏，對鎮上大小事瞭若指掌。說話帶點江湖氣，擅長打圓場。",
+                "真名「阿狸」，是鄰國的通緝犯——三年前替人頂罪後逃亡至此。聽到「賞金」「通緝」等字眼會不動聲色地緊張。目標：安穩活下去，必要時準備隨時跑路。",
+            ),
+            (
+                "騎士",
+                "巡邏至此的年輕騎士，個性正直到近乎固執，在酒館喝的是熱茶不是酒。",
+                "此行真正任務是追查一名逃亡三年的通緝犯，手上的畫像已經模糊。暗中觀察酒館裡的每個人。原則：先確認再行動，不冤枉好人。",
+            ),
+            (
+                "吟遊詩人",
+                "雲遊四方的吟遊詩人，愛蹭酒喝，滿嘴誇張的故事與歌謠。消息靈通。",
+                "他的故事九分真一分假——他真的在鄰鎮親眼看過「那頭狼」用兩條腿走路。因為太害怕沒敢說全，只敢把它編進歌裡。",
+            ),
+        ]
+    };
+    let style = [
+        ("#e07a5f", "🦊", Tier::Default),
+        ("#3d84a8", "🛡️", Tier::Default),
+        ("#f2a541", "🪕", Tier::Fast),
     ];
-    for character in &characters {
-        write_character(root, world, character)?;
+    for ((name, public_md, private_md), (color, avatar, tier)) in texts.into_iter().zip(style) {
+        write_character(
+            root,
+            world,
+            &CharacterCard {
+                name: name.to_owned(),
+                color: color.to_owned(),
+                avatar: avatar.to_owned(),
+                tier,
+                show_image: true,
+                public_md: public_md.to_owned(),
+                private_md: private_md.to_owned(),
+            },
+        )?;
     }
 
     append_transcript(
@@ -300,7 +335,12 @@ pub fn create_sample_world(root: &Path) -> DataResult<String> {
             ts: "2026-07-20T00:00:00+08:00".to_owned(),
             speaker: "GM".to_owned(),
             kind: TranscriptKind::Narration,
-            text: "暴雨拍打著迷霧酒館的窗，爐火劈啪作響。今晚店裡客人不多——老闆在吧檯後擦著杯子，一名騎士坐在角落喝茶，吟遊詩人正調著琴弦。門外，隱約傳來一聲狼嚎。".to_owned(),
+            text: if english {
+                "Rain hammers the windows of the Misty Tavern; the hearth crackles. Few guests tonight — the keeper polishes glasses behind the bar, a knight sips tea in the corner, and the bard is tuning their strings. Outside, faint through the storm, comes a wolf's howl."
+            } else {
+                "暴雨拍打著迷霧酒館的窗，爐火劈啪作響。今晚店裡客人不多——老闆在吧檯後擦著杯子，一名騎士坐在角落喝茶，吟遊詩人正調著琴弦。門外，隱約傳來一聲狼嚎。"
+            }
+            .to_owned(),
         },
     )?;
 
@@ -718,7 +758,7 @@ mod tests {
     #[test]
     fn sample_world_is_ready_to_play() {
         let root = TestRoot::new("sample-world");
-        let world = create_sample_world(root.path()).unwrap();
+        let world = create_sample_world(root.path(), "zh-TW").unwrap();
 
         assert_eq!(world, "迷霧酒館（範例）");
         assert!(list_worlds(root.path()).unwrap().contains(&world));
@@ -739,8 +779,24 @@ mod tests {
         assert_eq!(transcript[0].speaker, "GM");
 
         // 重複呼叫要沿用既有那桌，不噴 File exists、也不重複塞開場旁白
-        assert_eq!(create_sample_world(root.path()).unwrap(), world);
+        assert_eq!(create_sample_world(root.path(), "zh-TW").unwrap(), world);
         assert_eq!(read_transcript(root.path(), &world, 0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn sample_world_english_content_follows_lang() {
+        let root = TestRoot::new("sample-world-en");
+        let world = create_sample_world(root.path(), "en").unwrap();
+
+        assert_eq!(world, "The Misty Tavern (sample)");
+        let characters = list_characters(root.path(), &world).unwrap();
+        assert_eq!(characters.len(), 3);
+        for name in ["Fox", "Knight", "Bard"] {
+            assert!(characters.iter().any(|character| character.name == name));
+        }
+        assert!(read_world_md(root.path(), &world).unwrap().contains("Mistmouth"));
+        let transcript = read_transcript(root.path(), &world, 0).unwrap();
+        assert!(transcript[0].text.starts_with("Rain hammers"));
     }
 
     #[cfg(unix)]

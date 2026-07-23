@@ -32,8 +32,8 @@ fn create_world(app: tauri::AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn create_sample_world(app: tauri::AppHandle) -> Result<String, String> {
-    data::create_sample_world(&data_root(&app)?).map_err(|error| error.to_string())
+fn create_sample_world(app: tauri::AppHandle, lang: String) -> Result<String, String> {
+    data::create_sample_world(&data_root(&app)?, &lang).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
