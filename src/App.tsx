@@ -376,8 +376,23 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   );
 }
 
-// 文字大小偏好：存 config.preferences.text_size，套在 html 根字級（rem 版面跟著縮放）
-const TEXT_SIZE_PX: Record<string, string> = { small: "14px", medium: "16px", large: "18px" };
+// 文字大小偏好：存 config.preferences.text_size，套在 html 根字級（rem 版面跟著縮放）。
+// 五檔偏小取向（大螢幕看長文要小字）；預設 l（16px）＝原本的視覺大小
+const TEXT_SIZE_PX: Record<string, string> = {
+  xs: "10px",
+  s: "12px",
+  m: "14px",
+  l: "16px",
+  xl: "18px",
+};
+const TEXT_SIZE_LABEL_KEYS = {
+  xs: "textSizeXS",
+  s: "textSizeS",
+  m: "textSizeM",
+  l: "textSizeL",
+  xl: "textSizeXL",
+} as const;
+const TEXT_SIZE_DEFAULT = "l";
 
 // 單一設定入口內分頁（NewPlan §9.4）：外觀為預設頁，不碰 AI 的人打開只見外觀
 function SettingsWindow({
@@ -401,7 +416,7 @@ function SettingsWindow({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const textSize = String(config.preferences["text_size"] ?? "medium");
+  const textSize = String(config.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -445,18 +460,12 @@ function SettingsWindow({
             <label>
               {t("textSizeLabel")}
               <select
-                value={textSize}
+                value={textSize in TEXT_SIZE_PX ? textSize : TEXT_SIZE_DEFAULT}
                 onChange={(e) => onPreference("text_size", e.currentTarget.value)}
               >
-                {(["small", "medium", "large"] as const).map((size) => (
+                {(["xs", "s", "m", "l", "xl"] as const).map((size) => (
                   <option key={size} value={size}>
-                    {t(
-                      size === "small"
-                        ? "textSizeSmall"
-                        : size === "large"
-                          ? "textSizeLarge"
-                          : "textSizeMedium",
-                    )}
+                    {t(TEXT_SIZE_LABEL_KEYS[size])}
                   </option>
                 ))}
               </select>
@@ -676,9 +685,10 @@ function App() {
     }
   }
 
-  const textSize = String(config?.preferences["text_size"] ?? "medium");
+  const textSize = String(config?.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
   useEffect(() => {
-    document.documentElement.style.fontSize = TEXT_SIZE_PX[textSize] ?? TEXT_SIZE_PX.medium;
+    document.documentElement.style.fontSize =
+      TEXT_SIZE_PX[textSize] ?? TEXT_SIZE_PX[TEXT_SIZE_DEFAULT];
   }, [textSize]);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
