@@ -119,25 +119,14 @@ fn read_transcript(
     data::read_transcript(&data_root(&app)?, &world, scene).map_err(|error| error.to_string())
 }
 
+// 存檔位置由前端的「另存新檔」對話框決定，這裡只負責產內容寫入該路徑
 #[tauri::command]
-fn export_transcript(app: tauri::AppHandle, world: String) -> Result<String, String> {
+fn export_transcript(app: tauri::AppHandle, world: String, path: String) -> Result<(), String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let markdown = data::export_transcript_markdown(&data_root(&app)?, &world, &lang)
         .map_err(|error| error.to_string())?;
-    let timestamp = data::local_timestamp().map_err(|error| error.to_string())?;
-    let filename = if lang == "en" {
-        format!("{world} transcript {}.md", timestamp.replace(':', ""))
-    } else {
-        format!("{world} 跑團紀錄 {}.md", timestamp.replace(':', ""))
-    };
-    let path = app
-        .path()
-        .download_dir()
-        .map_err(|error| error.to_string())?
-        .join(filename);
-    std::fs::write(&path, markdown).map_err(|error| error.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
+    std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -321,6 +310,7 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<Stri
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_worlds,
             create_world,

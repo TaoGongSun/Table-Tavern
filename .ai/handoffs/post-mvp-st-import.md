@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: post-mvp-st-import
-Updated: 2026-07-23T21:30:00+08:00
-Status: in-progress
+Updated: 2026-07-23T22:10:00+08:00
+Status: done
 
 ## Goal
 依 NewPlan §5.2：匯入 SillyTavern V2 角色卡（內嵌 JSON 的 PNG 或純 JSON）。欄位對應到本專案卡格式；對不上的欄位保留原始資料；匯入 PNG 原圖存世界目錄並做角色圖顯示／隱藏開關（UI 在左側欄角色卡，NewPlan §9.4）。只做匯入不做匯出。
 
 ## Current state
-前後端程式碼全部完成：後端解析＋匯入 command＋角色圖讀取 command＋show_image 旗標，前端匯入鈕＋角色圖顯示＋顯示開關。cargo test 40 綠、npm build 綠。剩使用者在真實 App 實測匯入流程（範例卡已備好）即結案。
+結案。2026-07-23 使用者實測通過：匯入範例卡「夜鶯」→ 側欄角色卡顯示 PNG 圖 → CardEditor 關「顯示角色圖片」→ 換回 emoji 頭像（附截圖驗證）。
 
 ## Completed
 - 後端解析＋欄位對應＋`import_character` command（上一手完成，見 git 7c4f93f）
@@ -32,11 +32,10 @@ Status: in-progress
 - Branch: main
 
 ## Remaining
-- 使用者真實 App 驗收：匯入範例卡（或任一社群 V2 卡）→ 側欄出現角色與圖 → CardEditor 關「顯示角色圖片」→ 圖換回 emoji；通過即結案
-- 若驗收發現角色圖在側欄的裁切不理想，調 App.css `.character-card-image` 的 object-position
+- 無
 
 ## Next action
-- 等使用者驗收回報；無其他程式碼工作
+- 無（任務結案）
 
 ## Constraints
 - 不做匯出相容（NewPlan §5.2）；不加新 crate 依賴（base64 編解碼皆手寫已含測試）
