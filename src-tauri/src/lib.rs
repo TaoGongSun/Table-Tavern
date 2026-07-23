@@ -1,5 +1,6 @@
 mod cli;
 mod data;
+mod import;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
@@ -76,6 +77,17 @@ fn write_character(
     card: CharacterCard,
 ) -> Result<(), String> {
     data::write_character(&data_root(&app)?, &world, &card).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn import_character(
+    app: tauri::AppHandle,
+    world: String,
+    data: Vec<u8>,
+    color: String,
+) -> Result<CharacterMeta, String> {
+    import::import_character(&data_root(&app)?, &world, &data, &color)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -290,6 +302,7 @@ pub fn run() {
             list_characters,
             read_character,
             write_character,
+            import_character,
             append_transcript,
             read_transcript,
             read_state,
