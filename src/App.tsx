@@ -11,6 +11,7 @@ interface CharacterMeta {
   color: string;
   avatar: string;
   tier: Tier;
+  show_image: boolean;
 }
 
 interface CharacterCard extends CharacterMeta {
@@ -422,7 +423,17 @@ function WorldEditor({ world }: { world: string }) {
   );
 }
 
-function CardEditor({ world, name, onSaved }: { world: string; name: string; onSaved: () => void }) {
+function CardEditor({
+  world,
+  name,
+  hasImage,
+  onSaved,
+}: {
+  world: string;
+  name: string;
+  hasImage: boolean;
+  onSaved: () => void;
+}) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [message, setMessage] = useState("");
 
@@ -467,6 +478,16 @@ function CardEditor({ world, name, onSaved }: { world: string; name: string; onS
             onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
           />
         </label>
+        {hasImage && (
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={card.show_image}
+              onChange={(e) => setCard({ ...card, show_image: e.currentTarget.checked })}
+            />
+            {t("showImageLabel")}
+          </label>
+        )}
         <label>
           {t("tierLabel")}
           <select
@@ -503,6 +524,8 @@ function App() {
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
+  // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
+  const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterName, setCharacterName] = useState("");
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
@@ -523,6 +546,26 @@ function App() {
     () => localStorage.getItem(TABLE_LIST_OPEN_KEY) !== "false",
   );
   const bottomRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  async function loadCharacterImages(world: string, cast: CharacterMeta[]) {
+    const entries = await Promise.all(
+      cast.map(async (c) => {
+        const encoded = await invoke<string | null>("read_character_image", {
+          world,
+          name: c.name,
+        }).catch(() => null);
+        return [c.name, encoded] as const;
+      }),
+    );
+    setCharacterImages(
+      Object.fromEntries(
+        entries
+          .filter(([, encoded]) => encoded !== null)
+          .map(([name, encoded]) => [name, `data:image/png;base64,${encoded}`]),
+      ),
+    );
+  }
 
   // 語系跟著 config 走；render 前同步進 i18n 模組，之後子樹的 t() 都拿到正確語言
   const language = normalizeLang(config?.preferences["language"]);
@@ -578,6 +621,7 @@ function App() {
     setScene(state.current_scene);
     setEvents(transcript);
     setCharacters(cast);
+    await loadCharacterImages(name, cast);
     setSpeaker(cast[0]?.name ?? "");
     setEditingName(null);
     if (loaded.preferences["last_world"] !== name) {
@@ -659,6 +703,7 @@ function App() {
       color: PALETTE[characters.length % PALETTE.length],
       avatar: "🎭",
       tier: "default",
+      show_image: true,
       public_md: "",
       private_md: "",
     };
@@ -667,6 +712,25 @@ function App() {
       setCharacters(await invoke<CharacterMeta[]>("list_characters", { world: table }));
       setSpeaker(card.name);
       setCharacterName("");
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端解析，顏色沿用建卡輪選
+  async function importCharacter(file: File) {
+    setError("");
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const meta = await invoke<CharacterMeta>("import_character", {
+        world: table,
+        data: Array.from(bytes),
+        color: PALETTE[characters.length % PALETTE.length],
+      });
+      const cast = await invoke<CharacterMeta[]>("list_characters", { world: table });
+      setCharacters(cast);
+      await loadCharacterImages(table, cast);
+      setSpeaker(meta.name);
     } catch (reason) {
       setError(String(reason));
     }
@@ -830,7 +894,15 @@ function App() {
                 title={t("castHint", { name: c.name })}
               >
                 <span className="character-card-avatar">
-                  <Avatar meta={c} />
+                  {c.show_image && characterImages[c.name] ? (
+                    <img
+                      className="character-card-image"
+                      src={characterImages[c.name]}
+                      alt=""
+                    />
+                  ) : (
+                    <Avatar meta={c} />
+                  )}
                 </span>
                 <span className="character-card-name">{c.name}</span>
               </button>
@@ -844,6 +916,24 @@ function App() {
               placeholder={t("newCharacterPlaceholder")}
             />
             <button type="submit">{t("createCard")}</button>
+            <button
+              type="button"
+              title={t("importCardHint")}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {t("importCard")}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".png,.json,image/png,application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                e.currentTarget.value = "";
+                if (file) void importCharacter(file);
+              }}
+            />
           </form>
         </section>
         <div className="sidebar-footer">
@@ -921,6 +1011,7 @@ function App() {
           <CardEditor
             world={table}
             name={speaker}
+            hasImage={speaker in characterImages}
             onSaved={() =>
               invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
             }

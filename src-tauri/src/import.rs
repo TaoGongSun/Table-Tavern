@@ -38,6 +38,7 @@ pub fn import_character(
         color: color.to_owned(),
         avatar: "🎭".to_owned(),
         tier: Tier::parse("default")?,
+        show_image: true,
         public_md: public_markdown(card_data),
         private_md: private_markdown(card_data),
     };
@@ -49,7 +50,17 @@ pub fn import_character(
         color: color.to_owned(),
         avatar: "🎭".to_owned(),
         tier: Tier::parse("default")?,
+        show_image: true,
     })
+}
+
+/// 匯入時存下的原 PNG（characters/<name>.png）；沒有圖回 None，前端拿 base64 組 data URL 顯示
+pub fn character_image(root: &Path, world: &str, name: &str) -> DataResult<Option<String>> {
+    let path = data::character_path(root, world, name)?.with_extension("png");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(base64_encode(&fs::read(path)?)))
 }
 
 fn string_field<'a>(data: &'a Value, field: &str) -> Option<&'a str> {
@@ -162,6 +173,29 @@ fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
     Ok(output)
 }
 
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for group in bytes.chunks(3) {
+        let a = group[0];
+        let b = *group.get(1).unwrap_or(&0);
+        let c = *group.get(2).unwrap_or(&0);
+        output.push(ALPHABET[(a >> 2) as usize] as char);
+        output.push(ALPHABET[(((a & 0x03) << 4) | (b >> 4)) as usize] as char);
+        output.push(if group.len() > 1 {
+            ALPHABET[(((b & 0x0f) << 2) | (c >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if group.len() > 2 {
+            ALPHABET[(c & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    output
+}
+
 fn base64_value(byte: u8) -> Option<u8> {
     match byte {
         b'A'..=b'Z' => Some(byte - b'A'),
@@ -215,30 +249,6 @@ mod tests {
         png
     }
 
-    fn base64_encode(bytes: &[u8]) -> String {
-        const ALPHABET: &[u8; 64] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut output = String::new();
-        for group in bytes.chunks(3) {
-            let a = group[0];
-            let b = *group.get(1).unwrap_or(&0);
-            let c = *group.get(2).unwrap_or(&0);
-            output.push(ALPHABET[(a >> 2) as usize] as char);
-            output.push(ALPHABET[(((a & 0x03) << 4) | (b >> 4)) as usize] as char);
-            output.push(if group.len() > 1 {
-                ALPHABET[(((b & 0x0f) << 2) | (c >> 6)) as usize] as char
-            } else {
-                '='
-            });
-            output.push(if group.len() > 2 {
-                ALPHABET[(c & 0x3f) as usize] as char
-            } else {
-                '='
-            });
-        }
-        output
-    }
-
     #[test]
     fn imports_v2_json_and_preserves_original() {
         let root = TestRoot::new("v2");
@@ -250,7 +260,9 @@ mod tests {
         let markdown =
             fs::read_to_string(root.path().join("worlds/酒館/characters/莉亞.md")).unwrap();
         assert!(
-            markdown.contains("---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\n---")
+            markdown.contains(
+                "---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\n---"
+            )
         );
         for section in [
             "### 簡介\n精靈遊俠",
@@ -307,6 +319,7 @@ mod tests {
             color: "#000000".to_owned(),
             avatar: "🎭".to_owned(),
             tier: Tier::Default,
+            show_image: true,
             public_md: "既有內容".to_owned(),
             private_md: String::new(),
         };
@@ -335,5 +348,17 @@ mod tests {
         assert_eq!(decode_base64(b"SGVsbG8=").unwrap(), b"Hello");
         assert!(decode_base64(b"SGVsbG8!").is_err());
         assert!(decode_base64(b"AA=A").is_err());
+    }
+
+    #[test]
+    fn character_image_returns_png_base64_or_none() {
+        let root = TestRoot::new("image");
+        data::create_world(root.path(), "酒館").unwrap();
+        let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
+        import_character(root.path(), "酒館", &png, "#111111").unwrap();
+
+        let encoded = character_image(root.path(), "酒館", "凱恩").unwrap().unwrap();
+        assert_eq!(decode_base64(encoded.as_bytes()).unwrap(), png);
+        assert_eq!(character_image(root.path(), "酒館", "沒圖").unwrap(), None);
     }
 }

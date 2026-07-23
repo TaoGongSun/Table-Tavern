@@ -327,6 +327,7 @@ mod tests {
             color: "#336699".to_owned(),
             avatar: "🦊".to_owned(),
             tier: Tier::Default,
+            show_image: true,
             public_md: public_md.to_owned(),
             private_md: private_md.to_owned(),
         }
