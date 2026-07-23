@@ -672,6 +672,37 @@ pub fn export_transcript_markdown(root: &Path, world: &str, lang: &str) -> DataR
     Ok(format!("{title}\n\n{}\n", sections.join("\n\n")))
 }
 
+/// 換場：把摘要包成一則 GM 旁白 append 到下一場景開頭，再把 current_scene +1 並存檔。
+/// 回傳新場景號。摘要文字本身由呼叫端（單發 LLM）產生，這裡只負責落地與推進場次。
+pub fn begin_next_scene(
+    root: &Path,
+    world: &str,
+    summary_text: &str,
+    lang: &str,
+) -> DataResult<u64> {
+    let mut state = read_state(root, world)?;
+    let next_scene = state.current_scene + 1;
+    let text = if lang == "en" {
+        format!("Previously:\n{summary_text}")
+    } else {
+        format!("【前情提要】\n{summary_text}")
+    };
+    append_transcript(
+        root,
+        world,
+        next_scene,
+        &TranscriptEvent {
+            ts: local_timestamp()?,
+            speaker: "GM".to_owned(),
+            kind: TranscriptKind::Narration,
+            text,
+        },
+    )?;
+    state.current_scene = next_scene;
+    write_state(root, world, &state)?;
+    Ok(next_scene)
+}
+
 pub fn read_state(root: &Path, world: &str) -> DataResult<WorldState> {
     let path = world_dir(root, world)?.join("state.json");
     if !path.exists() {
@@ -1126,6 +1157,37 @@ mod tests {
         let root = TestRoot::new("empty-transcript-export");
         create_world(root.path(), "空桌").unwrap();
         assert!(export_transcript_markdown(root.path(), "空桌", "zh-TW").is_err());
+    }
+
+    #[test]
+    fn begin_next_scene_appends_summary_and_advances_scene() {
+        let root = TestRoot::new("begin-next-scene");
+        create_world(root.path(), "換場桌").unwrap();
+        let event = TranscriptEvent {
+            ts: "2026-07-19T00:00:00Z".to_owned(),
+            speaker: "玩家".to_owned(),
+            kind: TranscriptKind::Player,
+            text: "第一場的對話".to_owned(),
+        };
+        append_transcript(root.path(), "換場桌", 0, &event).unwrap();
+
+        let next = begin_next_scene(root.path(), "換場桌", "壓縮後的摘要", "zh-TW").unwrap();
+        assert_eq!(next, 1);
+        assert_eq!(read_state(root.path(), "換場桌").unwrap().current_scene, 1);
+
+        // 摘要落在新場景檔開頭，舊場景不受影響
+        assert_eq!(read_transcript(root.path(), "換場桌", 0).unwrap().len(), 1);
+        let new_scene = read_transcript(root.path(), "換場桌", 1).unwrap();
+        assert_eq!(new_scene.len(), 1);
+        assert_eq!(new_scene[0].speaker, "GM");
+        assert_eq!(new_scene[0].kind, TranscriptKind::Narration);
+        assert_eq!(new_scene[0].text, "【前情提要】\n壓縮後的摘要");
+
+        // en 語系用英文前綴
+        let next_en = begin_next_scene(root.path(), "換場桌", "recap text", "en").unwrap();
+        assert_eq!(next_en, 2);
+        let scene_two = read_transcript(root.path(), "換場桌", 2).unwrap();
+        assert_eq!(scene_two[0].text, "Previously:\nrecap text");
     }
 
     #[test]

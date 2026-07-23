@@ -137,6 +137,41 @@ pub fn assemble_gm_messages(
     messages
 }
 
+/// 組裝「換場摘要」上下文：GM 檔位讀公開 transcript，把本場景壓成一則前情提要。
+/// 不含 world.md／角色卡——摘要只需壓縮已發生的公開事件，不需要世界觀全貌。
+pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessage> {
+    let instruction = if lang == "en" {
+        "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
+         Summarize everything that happened in this scene as a recap, covering: \
+         location and time, who is present and their state, key events, relationship changes, \
+         and unresolved threads — as a compact bulleted list. Keep it under about 200 words. \
+         Output only the summary body, in English."
+            .to_owned()
+    } else {
+        format!(
+            "你是這場多人桌上角色扮演的 GM，現在要換場。\
+             請把本場景發生的一切壓成一則前情提要，條列涵蓋：\
+             地點與時間、在場人物與狀態、關鍵事件、關係變化、未解懸念。\
+             長度上限約 300 字。\
+             {language_rule}",
+            language_rule = language_rule(lang),
+        )
+    };
+
+    let mut messages = vec![message("system", instruction)];
+    for event in events {
+        let line = match event.kind {
+            TranscriptKind::Narration => format!("（旁白）{}", event.text),
+            TranscriptKind::Dialogue | TranscriptKind::Player => {
+                format!("{}：{}", event.speaker, event.text)
+            }
+            TranscriptKind::System => format!("（系統）{}", event.text),
+        };
+        push_merged(&mut messages, "user", line);
+    }
+    messages
+}
+
 /// 導演指示：插入旁白（附加在 GM 上下文最後）
 pub fn narrate_instruction() -> ChatMessage {
     message(
@@ -438,6 +473,28 @@ mod tests {
             serde_json::Value::String("en".to_owned()),
         );
         assert_eq!(ui_language(&config), "en");
+    }
+
+    /// 驗收：換場摘要指示依語系切換，且 transcript 事件正確攤平成 user 訊息
+    #[test]
+    fn summary_messages_follow_lang_and_include_transcript() {
+        let events = [
+            event(TranscriptKind::Narration, "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
+        ];
+        let zh = summary_messages(&events, "zh-TW");
+        assert_eq!(zh[0].role, "system");
+        assert!(zh[0].content.contains("前情提要"));
+        assert!(zh[0].content.contains("300 字"));
+        let joined: String = zh.iter().map(|m| m.content.as_str()).collect();
+        assert!(joined.contains("（旁白）夜幕低垂"));
+        assert!(joined.contains("玩家：老闆，來杯麥酒"));
+        assert!(joined.contains("狐狸：馬上來！"));
+
+        let en = summary_messages(&events, "en");
+        assert!(en[0].content.contains("recap"));
+        assert!(en[0].content.contains("200 words"));
     }
 
     #[test]
