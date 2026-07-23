@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- [scene-history-browser](tasks/scene-history-browser.md) — 前幕：場景歷史瀏覽＋單幕匯出＋主欄閱讀優先版面 — 下一步：依驗收回饋改版（幕用語＋浮層清單＋整面閱讀＋卡上編輯鈕＋GM 卡），Opus subagent 實作中
+- [scene-history-browser](tasks/scene-history-browser.md) — 前幕：場景歷史瀏覽＋單幕匯出＋主欄閱讀優先版面 — 下一步：閱讀優先改版完成（Opus 實作＋主線驗收 npm build 綠＋cargo test 45 綠），剩使用者視覺驗收即結案
 
 ## Done
 - [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 2026-07-24 使用者實測換場通過，結案

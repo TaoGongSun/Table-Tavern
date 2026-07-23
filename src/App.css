@@ -184,6 +184,7 @@ input {
   overflow-y: auto;
 }
 
+/* 角色卡改 div role=button（HTML 不能巢狀 button，卡內另有編輯鈕），游標比照原本按鈕 */
 .character-card {
   display: flex;
   align-items: stretch;
@@ -193,6 +194,7 @@ input {
   text-align: left;
   border: 2px solid transparent;
   background: #88888822;
+  cursor: pointer;
 }
 
 .character-card:hover {
@@ -204,6 +206,26 @@ input {
   border-color: var(--ring);
   background: #396cd822;
   font-weight: 700;
+}
+
+/* GM 卡：世界設定的暫時入口，虛線框與一般角色卡區隔、不可選為發言對象 */
+.character-card-gm {
+  border-style: dashed;
+  border-color: #88888866;
+  cursor: default;
+}
+
+.character-card-gm:hover {
+  background: #88888822;
+}
+
+.character-card-edit {
+  flex: none;
+  align-self: center;
+  box-shadow: none;
+  background: transparent;
+  padding: 0.2em 0.5em;
+  font-size: 0.95em;
 }
 
 .character-card-avatar {
@@ -297,45 +319,76 @@ input {
   padding: 0.4em 0.7em;
 }
 
-/* 過去的場：低調的收合列，樣式比照側欄的 .table-section */
-.scene-history {
-  flex: none;
-  font-size: 0.9em;
-  opacity: 0.85;
-}
-
-.scene-history summary {
-  cursor: pointer;
-  padding: 0.3rem 0;
-}
-
-.scene-history-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.35rem 0;
-}
-
-.scene-history-list button {
-  box-shadow: none;
-  padding: 0.3em 0.7em;
-  font-size: 0.9em;
-}
-
 /* 換場提醒：小字、不擋操作 */
 .scene-length-hint {
   font-size: 0.8em;
   opacity: 0.6;
 }
 
-/* 單場檢視 modal：唯讀事件列表 */
-.scene-viewer-body {
+/* 前幕浮層：錨在 header 右側，蓋在對話區上方，不佔版面高度（NewPlan §9.4） */
+.acts-flyout {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.3rem;
+  min-width: 10rem;
   max-height: 60vh;
   overflow-y: auto;
-  margin-bottom: 0.75rem;
+  margin-top: 0.3rem;
+  padding: 0.5rem;
+  background: #f6f6f6;
+  border: 1px solid #88888855;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #00000033;
+}
+
+.acts-flyout button {
+  box-shadow: none;
+  padding: 0.3em 0.7em;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+/* 單幕閱讀／角色卡編輯／世界設定編輯共用的整面標題列（取代 messages＋composer） */
+.act-reader-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.edit-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 角色卡編輯頂部的卡面圖／大顆頭像（SillyTavern 卡編輯器的觀感） */
+.card-editor-avatar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+}
+
+.card-editor-image {
+  max-height: 12rem;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.card-editor-avatar-emoji {
+  width: 6rem;
+  height: 6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px var(--ring);
+  font-size: 3rem;
 }
 
 .scene-event {
@@ -369,9 +422,18 @@ input {
   width: 100%;
 }
 
+/* 桌名靠左、按鈕群靠右（前幕浮層以此為錨點）*/
 .chat-header {
+  position: relative;
   display: flex;
   align-items: center;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .table-title {
@@ -595,6 +657,11 @@ select {
 
   .modal {
     background: #2f2f2f;
+  }
+
+  .acts-flyout {
+    background: #2f2f2f;
+    border-color: #ffffff33;
   }
 
   input,
