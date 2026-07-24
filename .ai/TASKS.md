@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：等四家 Windows 安裝指令查證回報（已派 subagent），驗證後實作 Windows 分支
 - [cli-install-all-providers](tasks/cli-install-all-providers.md) — CLI 一鍵安裝擴充到 claude／codex／grok（比照 agy） — 下一步：實作完成（cargo 70 綠＋npm build 綠），等使用者實測安裝鈕後結案，再重打包
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：兩平台產物已出爐並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 artifact）後結案
 
