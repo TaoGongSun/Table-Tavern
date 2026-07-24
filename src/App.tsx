@@ -795,7 +795,7 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
                   setDraft({ ...draft, constant: event.currentTarget.checked })
                 }
               />
-              {t("worldbookConstant")}
+              {t("worldbookConstantLabel")}
             </label>
             <label className="inline">
               <input
