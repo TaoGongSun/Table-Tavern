@@ -36,28 +36,58 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-fn agy_install_script(messages: &InstallMessages) -> String {
+fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<String, String> {
     let start = shell_quote(&messages.start);
     let login_hint = shell_quote(&messages.login_hint);
     let success = shell_quote(&messages.success);
     let fail = shell_quote(&messages.fail);
-    format!(
+    let (install_command, login_command, probe_command, poll_seconds) = match provider {
+        "claude" => (
+            "curl -fsSL https://claude.ai/install.sh | bash",
+            Some("claude auth login"),
+            "claude -p \"ok\"",
+            120,
+        ),
+        "codex" => (
+            "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+            Some("codex login"),
+            "codex exec \"ok\"",
+            120,
+        ),
+        "agy" => (
+            "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+            None,
+            "agy -p \"ok\"",
+            600,
+        ),
+        "grok" => (
+            "curl -fsSL https://x.ai/cli/install.sh | bash",
+            Some("grok login"),
+            "grok -p \"ok\"",
+            120,
+        ),
+        _ => return Err(format!("unsupported CLI provider: {provider}")),
+    };
+    let login_flow = login_command
+        .map(|command| format!("  {command} || {{ echo {fail}; exit 1; }}\n"))
+        .unwrap_or_default();
+    Ok(format!(
         r#"#!/bin/bash
 echo {start}
-export PATH="$HOME/.local/bin:$PATH"
-if ! command -v agy >/dev/null 2>&1; then
-  curl -fsSL https://antigravity.google/cli/install.sh | bash || {{ echo {fail}; exit 1; }}
+export PATH="$HOME/.local/bin:$HOME/.grok/bin:$HOME/.codex/bin:$PATH"
+if ! command -v {provider} >/dev/null 2>&1; then
+  {install_command} || {{ echo {fail}; exit 1; }}
 fi
 echo {login_hint}
 verified=0
-if agy -p "ok" >/dev/null 2>&1; then
+if {probe_command} >/dev/null 2>&1; then
   verified=1
 else
-  elapsed=0
-  while [ "$elapsed" -lt 600 ]; do
+{login_flow}  elapsed=0
+  while [ "$elapsed" -lt {poll_seconds} ]; do
     sleep 5
     elapsed=$((elapsed + 5))
-    if agy -p "ok" >/dev/null 2>&1; then
+    if {probe_command} >/dev/null 2>&1; then
       verified=1
       break
     fi
@@ -70,16 +100,20 @@ fi
 echo ""
 echo {success}
 "#
-    )
+    ))
 }
 
 #[tauri::command]
-fn install_agy_cli(app: tauri::AppHandle, messages: InstallMessages) -> Result<(), String> {
+fn install_cli(
+    app: tauri::AppHandle,
+    provider: String,
+    messages: InstallMessages,
+) -> Result<(), String> {
+    let script = cli_install_script(&provider, &messages)?;
     let directory = data_root(&app)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let script_path = directory.join("install-agy.command");
-    std::fs::write(&script_path, agy_install_script(&messages))
-        .map_err(|error| error.to_string())?;
+    let script_path = directory.join(format!("install-{provider}.command"));
+    std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -554,7 +588,7 @@ pub fn run() {
             read_config,
             write_config,
             detect_clis,
-            install_agy_cli,
+            install_cli,
             list_cli_models,
             chat_with_character,
             gm_narrate,
@@ -567,34 +601,77 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{agy_install_script, InstallMessages};
+    use super::{cli_install_script, InstallMessages};
 
-    #[test]
-    fn agy_install_script_contains_messages_and_flow() {
-        let messages = InstallMessages {
+    fn messages() -> InstallMessages {
+        InstallMessages {
             start: "start".to_owned(),
             login_hint: "login hint".to_owned(),
             success: "success".to_owned(),
             fail: "fail".to_owned(),
-        };
-        let script = agy_install_script(&messages);
+        }
+    }
+
+    fn assert_messages(script: &str) {
         for text in ["start", "login hint", "success", "fail"] {
             assert!(script.contains(text));
         }
+    }
+
+    #[test]
+    fn claude_install_script_contains_messages_and_flow() {
+        let script = cli_install_script("claude", &messages()).unwrap();
+        assert_messages(&script);
+        assert!(script.contains("curl -fsSL https://claude.ai/install.sh | bash"));
+        assert!(script.contains("claude auth login"));
+        assert!(script.contains("claude -p \"ok\" >/dev/null 2>&1"));
+        assert!(script.contains("while [ \"$elapsed\" -lt 120 ]"));
+    }
+
+    #[test]
+    fn codex_install_script_contains_messages_and_flow() {
+        let script = cli_install_script("codex", &messages()).unwrap();
+        assert_messages(&script);
+        assert!(script.contains("curl -fsSL https://chatgpt.com/codex/install.sh | sh"));
+        assert!(script.contains("codex login"));
+        assert!(script.contains("codex exec \"ok\" >/dev/null 2>&1"));
+        assert!(script.contains("while [ \"$elapsed\" -lt 120 ]"));
+    }
+
+    #[test]
+    fn agy_provider_script_contains_messages_and_flow() {
+        let script = cli_install_script("agy", &messages()).unwrap();
+        assert_messages(&script);
         assert!(script.contains("curl -fsSL https://antigravity.google/cli/install.sh | bash"));
+        assert!(!script.contains("claude auth login"));
+        assert!(!script.contains("codex login"));
+        assert!(!script.contains("grok login"));
         assert!(script.contains("agy -p \"ok\" >/dev/null 2>&1"));
         assert!(script.contains("while [ \"$elapsed\" -lt 600 ]"));
         assert!(script.contains("sleep 5"));
     }
 
     #[test]
-    fn agy_install_script_escapes_single_quotes() {
-        let messages = InstallMessages {
+    fn grok_install_script_contains_messages_and_flow() {
+        let script = cli_install_script("grok", &messages()).unwrap();
+        assert_messages(&script);
+        assert!(script.contains("curl -fsSL https://x.ai/cli/install.sh | bash"));
+        assert!(script.contains("grok login"));
+        assert!(script.contains("grok -p \"ok\" >/dev/null 2>&1"));
+        assert!(script.contains("while [ \"$elapsed\" -lt 120 ]"));
+    }
+
+    #[test]
+    fn cli_install_script_escapes_single_quotes_and_rejects_unknown_provider() {
+        let quoted_messages = InstallMessages {
             start: "don't".to_owned(),
             login_hint: "login".to_owned(),
             success: "success".to_owned(),
             fail: "fail".to_owned(),
         };
-        assert!(agy_install_script(&messages).contains("'don'\"'\"'t'"));
+        assert!(cli_install_script("agy", &quoted_messages)
+            .unwrap()
+            .contains("'don'\"'\"'t'"));
+        assert!(cli_install_script("unknown", &messages()).is_err());
     }
 }
