@@ -1,8 +1,8 @@
 # Changelog
 
-格式依 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號依 [Semantic Versioning](https://semver.org/lang/zh-TW/)。尚未正式發佈；`0.1.0` 為內部測試版基準。
+格式依 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號依 [Semantic Versioning](https://semver.org/lang/zh-TW/)。尚未正式對外發佈，以下皆為內部測試版。
 
-## [未發佈]
+## [0.2.0] — 2026-07-24（內部測試版）
 
 ### 新增
 - UI 語系切換（繁體中文／English），角色與 GM 的語言規則依語系注入；範例桌內容跟著語系產生，首開先選語言。
@@ -20,6 +20,10 @@
 - 版面重構：角色卡移左側欄、桌列表可摺疊、側欄寬度可拖曳。
 - 編輯畫面按鈕列統一置頂（角色卡與世界設定一致）。
 - 主欄閱讀優先版面：移除寬度上限、修掉常駐捲軸。
+- App icon 換成自製圖示（啤酒杯＋角色卡），取代 Tauri 範本 logo。
+
+### 修正
+- CLI 一鍵安裝：Codex 驗證探針在非 git 目錄拒跑導致「驗證成功」訊息不出現，改用 `codex login status`。
 
 ## [0.1.0] — 2026-07-22（內部測試版）
 
