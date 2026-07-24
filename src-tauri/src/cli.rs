@@ -1,7 +1,7 @@
 //! CLI 傳輸層（訂閱模式，NewPlan §3.2／§4.2）。
 //! 原則：只偵測不代辦；CLI 是無狀態傳輸——上下文一律由 transport::assemble_messages
 //! 組裝、headless 單發、system prompt 覆寫，不依賴 CLI 自身 session（§8.1）。
-//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.3。
+//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.3、grok 0.2.111。
 
 use crate::data::{DataResult, Tier};
 use crate::transport::ChatMessage;
@@ -56,7 +56,7 @@ fn find_binary(name: &str) -> Option<PathBuf> {
 
 pub async fn detect_clis() -> Vec<CliInfo> {
     let mut found = Vec::new();
-    for id in ["claude", "codex", "agy"] {
+    for id in ["claude", "codex", "agy", "grok"] {
         let Some(path) = find_binary(id) else { continue };
         let version = Command::new(&path)
             .arg("--version")
@@ -185,8 +185,24 @@ pub fn parse_claude_catalog(json: &str) -> Vec<ModelOption> {
     options
 }
 
+/// grok models 只認縮排列；保留原列為 label，去掉預設標記後作為可傳入的 id。
+pub fn parse_grok_catalog(output: &str) -> Vec<ModelOption> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            let label = trimmed.strip_prefix('*')?.trim();
+            let id = label.strip_suffix(" (default)").unwrap_or(label).trim();
+            (!id.is_empty()).then(|| ModelOption {
+                id: id.to_owned(),
+                label: label.to_owned(),
+            })
+        })
+        .collect()
+}
+
 /// 組下拉目錄：claude 固定前置官方別名（CLI 穩定介面）再接快取；快取讀不到就只剩別名。
-/// codex 純靠快取；agy 即時讀 CLI 輸出，讀不到回空（UI 都保留「自訂」手填逃生口）。
+/// codex 純靠快取；agy／grok 即時讀 CLI 輸出，讀不到回空（UI 都保留「自訂」手填逃生口）。
 pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
     let read = |rel: &[&str]| -> Option<String> {
         let mut path = PathBuf::from(std::env::var_os("HOME")?);
@@ -232,6 +248,16 @@ pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
                     })
                     .collect()
             })
+            .unwrap_or_default(),
+        "grok" => find_binary("grok")
+            .and_then(|program| {
+                std::process::Command::new(program)
+                    .arg("models")
+                    .output()
+                    .ok()
+                    .filter(|output| output.status.success())
+            })
+            .map(|output| parse_grok_catalog(&String::from_utf8_lossy(&output.stdout)))
             .unwrap_or_default(),
         _ => Vec::new(),
     }
@@ -335,6 +361,29 @@ pub fn agy_args(model: Option<&str>, prompt: &str) -> Vec<String> {
     args
 }
 
+/// grok 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
+/// headless 單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
+pub fn grok_args(model: Option<&str>, prompt: &str) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "--output-format",
+        "streaming-json",
+        "--deny",
+        "*",
+        "--disable-web-search",
+        "--no-plan",
+        "--no-subagents",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    if let Some(model) = model {
+        args.push("-m".to_owned());
+        args.push(model.to_owned());
+    }
+    args.push("-p".to_owned());
+    args.push(prompt.to_owned());
+    args
+}
+
 #[derive(Debug, PartialEq)]
 pub enum CliLine {
     Delta(String),
@@ -407,6 +456,34 @@ pub fn parse_codex_line(line: &str) -> CliLine {
 /// agy 輸出純文字；逐行補回換行，包含空行，以 EOF 作為回合結束。
 pub fn parse_agy_line(line: &str) -> CliLine {
     CliLine::Delta(format!("{line}\n"))
+}
+
+/// grok --output-format streaming-json 逐行解析：thought 不進對話，text 為增量，end 正常收尾。
+pub fn parse_grok_line(line: &str) -> CliLine {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return CliLine::Other;
+    };
+    match value.get("type").and_then(|t| t.as_str()) {
+        Some("text") => value
+            .get("data")
+            .and_then(|data| data.as_str())
+            .map(|text| CliLine::Delta(text.to_owned()))
+            .unwrap_or(CliLine::Other),
+        Some("end") => CliLine::Done {
+            text: String::new(),
+            is_error: false,
+        },
+        Some("error") => CliLine::Done {
+            text: value
+                .get("data")
+                .or_else(|| value.get("message"))
+                .and_then(|message| message.as_str())
+                .unwrap_or("Grok CLI 回合失敗")
+                .to_owned(),
+            is_error: true,
+        },
+        _ => CliLine::Other,
+    }
 }
 
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
@@ -586,6 +663,58 @@ mod tests {
     }
 
     #[test]
+    fn grok_args_disable_every_tool_and_put_prompt_last() {
+        let prompt = "system\n\n整包 prompt（含空格）";
+        let args = grok_args(Some("grok-4.5"), prompt);
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--output-format", "streaming-json"]));
+        assert!(args.windows(2).any(|pair| pair == ["--deny", "*"]));
+        assert!(args.contains(&"--disable-web-search".to_owned()));
+        assert!(args.contains(&"--no-plan".to_owned()));
+        assert!(args.contains(&"--no-subagents".to_owned()));
+        assert!(args.windows(2).any(|pair| pair == ["-m", "grok-4.5"]));
+        assert_eq!(args[args.len() - 2..], ["-p", prompt]);
+        let default_args = grok_args(None, prompt);
+        assert_eq!(default_args[default_args.len() - 2..], ["-p", prompt]);
+    }
+
+    #[test]
+    fn parses_grok_streaming_json_lines() {
+        assert_eq!(
+            parse_grok_line(r#"{"type":"text","data":"測試"}"#),
+            CliLine::Delta("測試".to_owned())
+        );
+        assert_eq!(
+            parse_grok_line(r#"{"type":"thought","data":"推理"}"#),
+            CliLine::Other
+        );
+        assert_eq!(parse_grok_line(r#"{"type":"unknown"}"#), CliLine::Other);
+        assert_eq!(parse_grok_line("not json"), CliLine::Other);
+        assert_eq!(
+            parse_grok_line(r#"{"type":"end","stopReason":"EndTurn"}"#),
+            CliLine::Done {
+                text: String::new(),
+                is_error: false
+            }
+        );
+        assert_eq!(
+            parse_grok_line(r#"{"type":"error","data":"quota exceeded"}"#),
+            CliLine::Done {
+                text: "quota exceeded".to_owned(),
+                is_error: true
+            }
+        );
+        assert_eq!(
+            parse_grok_line(r#"{"type":"error"}"#),
+            CliLine::Done {
+                text: "Grok CLI 回合失敗".to_owned(),
+                is_error: true
+            }
+        );
+    }
+
+    #[test]
     fn tier_mappings_cover_all_tiers() {
         assert_eq!(claude_model_for(Tier::Best), Some("opus"));
         assert_eq!(claude_model_for(Tier::Fast), Some("haiku"));
@@ -629,6 +758,24 @@ mod tests {
         assert_eq!(options.len(), 1);
         assert_eq!(options[0].id, "claude-fable-5");
         assert_eq!(options[0].label, "Fable 5");
+    }
+
+    #[test]
+    fn grok_catalog_ignores_noise_and_strips_default_marker() {
+        let output = "You are not authenticated.\nDefault model: grok-4.5\nAvailable models:\n  * grok-4.5 (default)\n  * grok-4.1-fast\n";
+        assert_eq!(
+            parse_grok_catalog(output),
+            vec![
+                ModelOption {
+                    id: "grok-4.5".to_owned(),
+                    label: "grok-4.5 (default)".to_owned()
+                },
+                ModelOption {
+                    id: "grok-4.1-fast".to_owned(),
+                    label: "grok-4.1-fast".to_owned()
+                },
+            ]
+        );
     }
 
     #[test]
