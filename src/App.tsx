@@ -516,11 +516,14 @@ function SettingsWindow({
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   const [text, setText] = useState<string | null>(null);
+  const [savedText, setSavedText] = useState("");
   const [message, setMessage] = useState("");
   const [entries, setEntries] = useState<WorldbookEntry[]>([]);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const [worldbookMessage, setWorldbookMessage] = useState("");
   const [draft, setDraft] = useState<WorldbookDraft | null>(null);
+  // 條目表單開啟當下的快照，用來判斷「有沒有改過」（未儲存提示）
+  const [draftOrigin, setDraftOrigin] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -531,7 +534,10 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
     setCharacters([]);
     setDraft(null);
     invoke<string>("read_world_md", { world })
-      .then(setText)
+      .then((value) => {
+        setText(value);
+        setSavedText(value);
+      })
       .catch((reason) => setMessage(String(reason)));
     invoke<WorldbookEntry[]>("read_worldbook", { world })
       .then(setEntries)
@@ -543,24 +549,44 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
 
   if (text === null) return message ? <p role="alert">{message}</p> : null;
 
+  const unsavedCount =
+    (text !== savedText ? 1 : 0) + (draft && JSON.stringify(draft) !== draftOrigin ? 1 : 0);
+
   async function saveWorldSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     try {
       await invoke("write_world_md", { world, content: text });
+      setSavedText(text);
       setMessage(t("saved"));
     } catch (reason) {
       setMessage(String(reason));
     }
   }
 
+  async function handleBack() {
+    if (unsavedCount > 0) {
+      const accepted = await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
+        title: t("unsavedLeaveTitle"),
+        kind: "warning",
+      });
+      if (!accepted) return;
+    }
+    onBack();
+  }
+
   async function refreshWorldbook() {
     setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { world }));
   }
 
-  function addEntry() {
+  function openDraft(next: WorldbookDraft) {
     setWorldbookMessage("");
-    setDraft({
+    setDraft(next);
+    setDraftOrigin(JSON.stringify(next));
+  }
+
+  function addEntry() {
+    openDraft({
       uid: null,
       title: "",
       keys: "",
@@ -574,8 +600,7 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   }
 
   function editEntry(entry: WorldbookEntry) {
-    setWorldbookMessage("");
-    setDraft({
+    openDraft({
       uid: entry.uid,
       title: entry.title,
       keys: entry.keys.join("、"),
@@ -688,10 +713,15 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
         {/* 按鈕列放文字框上方：長文編輯時儲存／返回固定在最顯眼處（2026-07-24 使用者回饋） */}
         <div className="row">
           <button type="submit">{t("saveWorld")}</button>
-          <button type="button" onClick={onBack}>
+          <button type="button" onClick={() => void handleBack()}>
             {t("backToNow")}
           </button>
           {message && <span>{message}</span>}
+          {unsavedCount > 0 && (
+            <span className="unsaved-hint" role="status">
+              {t("unsavedChanges", { n: unsavedCount })}
+            </span>
+          )}
         </div>
         <textarea
           rows={6}

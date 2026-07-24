@@ -112,6 +112,9 @@ const zh = {
   worldbookImported: "已匯入 {n} 條",
   worldbookReadError: "無法讀取 JSON 檔案",
   worldbookJson: "JSON",
+  unsavedChanges: "有 {n} 項修改未儲存",
+  unsavedLeaveTitle: "尚未儲存",
+  unsavedLeaveConfirm: "有 {n} 項修改未儲存，確定要離開嗎？離開後修改將遺失。",
 
   // 角色卡
   editCardSummary: "編輯「{name}」角色卡",
@@ -278,6 +281,9 @@ const en: Record<MsgKey, string> = {
   worldbookImported: "Imported {n} entries",
   worldbookReadError: "Could not read the JSON file",
   worldbookJson: "JSON",
+  unsavedChanges: "{n} unsaved changes",
+  unsavedLeaveTitle: "Unsaved changes",
+  unsavedLeaveConfirm: "You have {n} unsaved changes. Leave anyway? They will be lost.",
 
   editCardSummary: "Edit “{name}” character card",
   publicLabel: "Public profile (what everyone knows about them)",
