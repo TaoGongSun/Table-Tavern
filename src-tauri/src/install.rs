@@ -229,7 +229,8 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     #[cfg(target_os = "windows")]
     child.creation_flags(0x08000000);
     let output = child.output().await.map_err(|error| error.to_string())?;
@@ -238,6 +239,20 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
         stdout: output.stdout,
         stderr: output.stderr,
     })
+}
+
+// grok -p 未登入行為官方無載：若探針阻塞等互動，30 秒斷頭視同未綠，避免吊死輪詢
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn run_probe(command: &[String]) -> Result<CommandOutput, String> {
+    match tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command)).await {
+        Ok(result) => result,
+        Err(_) => Ok(CommandOutput {
+            success: false,
+            stdout: format!("probe timed out after {}s", PROBE_TIMEOUT.as_secs()).into_bytes(),
+            stderr: Vec::new(),
+        }),
+    }
 }
 
 async fn copy_stream<R>(mut stream: R, output: Arc<Mutex<Vec<u8>>>)
@@ -387,7 +402,7 @@ async fn run_install_with_interval(
     }
 
     emit(InstallProgress::new(&spec.id, "verify", &log_path));
-    let initial_probe = match run_hidden(&spec.probe).await {
+    let initial_probe = match run_probe(&spec.probe).await {
         Ok(output) => output,
         Err(error) => {
             return Err(emit_error(&spec.id, &log_path, error, &mut emit));
@@ -497,7 +512,7 @@ async fn run_install_with_interval(
             tokio::time::sleep(delay).await;
             elapsed += delay;
             emit(InstallProgress::new(&spec.id, "verify", &log_path));
-            let output = match run_hidden(&spec.probe).await {
+            let output = match run_probe(&spec.probe).await {
                 Ok(output) => output,
                 Err(error) => break Err(error),
             };
@@ -526,7 +541,7 @@ async fn run_install_with_interval(
         tokio::time::sleep(delay).await;
         elapsed += delay;
         emit(InstallProgress::new(&spec.id, "verify", &log_path));
-        let output = match run_hidden(&spec.probe).await {
+        let output = match run_probe(&spec.probe).await {
             Ok(output) => output,
             Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
         };
