@@ -557,7 +557,7 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
     setMessage("");
     try {
       await invoke("write_world_md", { world, content: text });
-      setSavedText(text);
+      setSavedText(text ?? "");
       setMessage(t("saved"));
     } catch (reason) {
       setMessage(String(reason));
