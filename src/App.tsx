@@ -110,6 +110,13 @@ const CLI_LABELS: Record<string, string> = {
   grok: "Grok CLI",
 };
 
+const CLI_INSTALL_URLS: Record<string, string> = {
+  claude: "claude.ai",
+  codex: "chatgpt.com/codex",
+  agy: "antigravity.google",
+  grok: "x.ai/cli",
+};
+
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token，超過就提示玩家可以換場省額度
@@ -198,13 +205,13 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   const [cliCatalogs, setCliCatalogs] = useState<Record<string, { id: string; label: string }[]>>({});
   const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
-  const [agyInstalling, setAgyInstalling] = useState(false);
-  const agyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [installingCli, setInstallingCli] = useState<string | null>(null);
+  const cliPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function stopAgyPolling() {
-    if (agyPollRef.current !== null) {
-      clearInterval(agyPollRef.current);
-      agyPollRef.current = null;
+  function stopCliPolling() {
+    if (cliPollRef.current !== null) {
+      clearInterval(cliPollRef.current);
+      cliPollRef.current = null;
     }
   }
 
@@ -223,41 +230,46 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         setModels((body.data ?? []).flatMap((m) => (m.id ? [{ id: m.id, name: m.name ?? m.id }] : []))),
       )
       .catch(() => {});
-    return stopAgyPolling;
+    return stopCliPolling;
   }, []);
 
-  async function installAgy() {
-    setAgyInstalling(true);
+  async function installCli(provider: string) {
+    setInstallingCli(provider);
+    const params = {
+      provider: CLI_LABELS[provider],
+      url: CLI_INSTALL_URLS[provider],
+    };
     try {
-      await invoke("install_agy_cli", {
+      await invoke("install_cli", {
+        provider,
         messages: {
-          start: t("agyInstallStart"),
-          loginHint: t("agyInstallLoginHint"),
-          success: t("agyInstallSuccess"),
-          fail: t("agyInstallFail"),
+          start: t("cliInstallStart", params),
+          loginHint: t("cliInstallLoginHint", params),
+          success: t("cliInstallSuccess", params),
+          fail: t("cliInstallFail", params),
         },
       });
     } catch (reason) {
       setMessage(String(reason));
-      setAgyInstalling(false);
+      setInstallingCli(null);
       return;
     }
 
     let elapsed = 0;
-    agyPollRef.current = setInterval(() => {
+    cliPollRef.current = setInterval(() => {
       elapsed += 3_000;
       invoke<CliInfo[]>("detect_clis")
         .then((detected) => {
           setClis(detected);
-          if (detected.some((cli) => cli.id === "agy") || elapsed >= 600_000) {
-            stopAgyPolling();
-            setAgyInstalling(false);
+          if (detected.some((cli) => cli.id === provider) || elapsed >= 600_000) {
+            stopCliPolling();
+            setInstallingCli(null);
           }
         })
         .catch(() => {
           if (elapsed >= 600_000) {
-            stopAgyPolling();
-            setAgyInstalling(false);
+            stopCliPolling();
+            setInstallingCli(null);
           }
         });
     }, 3_000);
@@ -323,11 +335,15 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                 ) : (
                   <>
                     <span className="cli-version">{t("cliNotDetected")}</span>
-                    {id === "agy" && (
-                      <button type="button" disabled={agyInstalling} onClick={() => void installAgy()}>
-                        {agyInstalling ? t("agyInstalling") : t("agyInstallBtn")}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={installingCli !== null}
+                      onClick={() => void installCli(id)}
+                    >
+                      {installingCli === id
+                        ? t("cliInstalling", { provider: CLI_LABELS[id] })
+                        : t("cliInstallBtn")}
+                    </button>
                   </>
                 )}
               </label>
