@@ -784,7 +784,15 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
                     name="worldbook-visibility"
                     value={visibility}
                     checked={draft.visibility === visibility}
-                    onChange={() => setDraft({ ...draft, visibility })}
+                    onChange={() => {
+                      setDraft({ ...draft, visibility });
+                      // 點「指定角色」當下重抓在場角色：畫面開著時可能剛從隱藏區還原角色
+                      if (visibility === "characters") {
+                        void invoke<CharacterMeta[]>("list_characters", { world }).then((cast) =>
+                          setCharacters(cast.filter((character) => !character.archived)),
+                        );
+                      }
+                    }}
                   />
                   {visibility === "gm"
                     ? t("worldbookVisibilityGm")
