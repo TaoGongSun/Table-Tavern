@@ -75,6 +75,17 @@ fn upsert_worldbook_entry(
 }
 
 #[tauri::command]
+fn move_worldbook_entry(
+    app: tauri::AppHandle,
+    world: String,
+    uid: u64,
+    up: bool,
+) -> Result<(), String> {
+    data::move_worldbook_entry(&data_root(&app)?, &world, uid, up)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn delete_worldbook_entry(app: tauri::AppHandle, world: String, uid: u64) -> Result<(), String> {
     data::delete_worldbook_entry(&data_root(&app)?, &world, uid).map_err(|error| error.to_string())
 }
@@ -436,6 +447,7 @@ pub fn run() {
             write_world_md,
             read_worldbook,
             upsert_worldbook_entry,
+            move_worldbook_entry,
             delete_worldbook_entry,
             import_worldbook,
             export_worldbook,

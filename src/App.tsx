@@ -640,6 +640,16 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
     }
   }
 
+  async function moveEntry(entry: WorldbookEntry, up: boolean) {
+    setWorldbookMessage("");
+    try {
+      await invoke("move_worldbook_entry", { world, uid: entry.uid, up });
+      await refreshWorldbook();
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
   async function importWorldbook(file: File) {
     setWorldbookMessage("");
     try {
@@ -715,49 +725,6 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
             {t("worldbookExport")}
           </button>
         </div>
-
-        {entries.length === 0 ? (
-          <p className="worldbook-empty">{t("worldbookEmpty")}</p>
-        ) : (
-          <div className="worldbook-list">
-            {entries.map((entry) => (
-              <div
-                className={`worldbook-row${entry.disabled ? " worldbook-row-disabled" : ""}`}
-                key={entry.uid}
-              >
-                <div className="worldbook-summary">
-                  <strong>{entry.title || entry.uid}</strong>
-                  <span>{entry.keys.join("、") || t("worldbookNoKeys")}</span>
-                  <div className="worldbook-badges">
-                    {entry.constant && (
-                      <span className="worldbook-badge">{t("worldbookConstant")}</span>
-                    )}
-                    <span className="worldbook-badge">
-                      {entry.visibility.type === "gm"
-                        ? t("worldbookVisibilityGm")
-                        : entry.visibility.type === "public"
-                          ? t("worldbookVisibilityPublic")
-                          : t("worldbookCharacterCount", {
-                              n: entry.visibility.characters.length,
-                            })}
-                    </span>
-                    {entry.disabled && (
-                      <span className="worldbook-badge">{t("worldbookDisabled")}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="worldbook-row-actions">
-                  <button type="button" onClick={() => editEntry(entry)}>
-                    {t("worldbookEdit")}
-                  </button>
-                  <button type="button" onClick={() => void deleteEntry(entry)}>
-                    {t("worldbookDelete")}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {draft && (
           <form className="settings-form worldbook-form" onSubmit={saveEntry}>
@@ -860,6 +827,65 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
               </button>
             </div>
           </form>
+        )}
+
+        {entries.length === 0 ? (
+          <p className="worldbook-empty">{t("worldbookEmpty")}</p>
+        ) : (
+          <div className="worldbook-list">
+            {entries.map((entry, index) => (
+              <div
+                className={`worldbook-row${entry.disabled ? " worldbook-row-disabled" : ""}`}
+                key={entry.uid}
+              >
+                <div className="worldbook-summary">
+                  <strong>{entry.title || entry.uid}</strong>
+                  <span>{entry.keys.join("、") || t("worldbookNoKeys")}</span>
+                  <div className="worldbook-badges">
+                    {entry.constant && (
+                      <span className="worldbook-badge">{t("worldbookConstant")}</span>
+                    )}
+                    <span className="worldbook-badge">
+                      {entry.visibility.type === "gm"
+                        ? t("worldbookVisibilityGm")
+                        : entry.visibility.type === "public"
+                          ? t("worldbookVisibilityPublic")
+                          : t("worldbookCharacterCount", {
+                              n: entry.visibility.characters.length,
+                            })}
+                    </span>
+                    {entry.disabled && (
+                      <span className="worldbook-badge">{t("worldbookDisabled")}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="worldbook-row-actions">
+                  <button
+                    type="button"
+                    aria-label={t("worldbookMoveUp")}
+                    disabled={index === 0}
+                    onClick={() => void moveEntry(entry, true)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("worldbookMoveDown")}
+                    disabled={index === entries.length - 1}
+                    onClick={() => void moveEntry(entry, false)}
+                  >
+                    ↓
+                  </button>
+                  <button type="button" onClick={() => editEntry(entry)}>
+                    {t("worldbookEdit")}
+                  </button>
+                  <button type="button" onClick={() => void deleteEntry(entry)}>
+                    {t("worldbookDelete")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
         {worldbookMessage && <p role="status">{worldbookMessage}</p>}
       </section>
