@@ -107,6 +107,7 @@ const CLI_LABELS: Record<string, string> = {
   codex: "Codex CLI",
   // 引擎是 Google Antigravity CLI，但一般使用者只認識 Gemini 這個名字（2026-07-25 拍板）
   agy: "Gemini CLI",
+  grok: "Grok CLI",
 };
 
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
@@ -210,7 +211,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   useEffect(() => {
     invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
     // CLI 模型下拉目錄：讀各 CLI 本機快取（後端 list_cli_models）
-    for (const id of ["claude", "codex", "agy"]) {
+    for (const id of ["claude", "codex", "agy", "grok"]) {
       invoke<{ id: string; label: string }[]>("list_cli_models", { cli: id })
         .then((options) => setCliCatalogs((prev) => ({ ...prev, [id]: options })))
         .catch(() => {});
@@ -304,7 +305,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
             />
             {t("transportApi")}
           </label>
-          {(["claude", "codex", "agy"] as const).map((id) => {
+          {(["claude", "codex", "agy", "grok"] as const).map((id) => {
             const found = clis.find((c) => c.id === id);
             return (
               <label key={id} className="inline">
@@ -430,6 +431,8 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                 ? t("cliCatalogClaude")
                 : transport === "agy"
                   ? t("cliCatalogAgy")
+                  : transport === "grok"
+                    ? t("cliCatalogGrok")
                   : t("cliCatalogCodex")}
             </p>
           </>
