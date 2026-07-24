@@ -69,6 +69,8 @@ const zh = {
   cliCatalogClaude: "清單讀自 Claude CLI 的本機模型快取；沒列到的用「自訂」手填",
   cliCatalogCodex:
     "清單讀自 Codex 的本機模型快取；檔位另固定對應推理力度 高→high、中→medium、低→low",
+  cliCatalogAgy:
+    "清單來自 `agy models` 即時輸出；未指定檔位時用 CLI 預設模型",
   gmTierLabel: "GM 檔位（導演與旁白用，建議選「高」）",
   maxRoundLabel: "GM 推進每回合最大發言數",
   baseUrlLabel: "自訂 base URL（進階，留空用 OpenRouter）",
@@ -238,6 +240,8 @@ const en: Record<MsgKey, string> = {
     "List comes from the Claude CLI's local model cache; use “Custom” for anything missing",
   cliCatalogCodex:
     "List comes from the Codex local model cache; tiers also map to reasoning effort High→high, Medium→medium, Low→low",
+  cliCatalogAgy:
+    "The list comes from live `agy models` output; when no tier model is specified, the CLI default model is used",
   gmTierLabel: "GM tier (for directing and narration; “High” recommended)",
   maxRoundLabel: "Max speakers per GM-advance round",
   baseUrlLabel: "Custom base URL (advanced; leave empty for OpenRouter)",

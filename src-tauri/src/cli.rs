@@ -1,7 +1,7 @@
 //! CLI 傳輸層（訂閱模式，NewPlan §3.2／§4.2）。
 //! 原則：只偵測不代辦；CLI 是無狀態傳輸——上下文一律由 transport::assemble_messages
 //! 組裝、headless 單發、system prompt 覆寫，不依賴 CLI 自身 session（§8.1）。
-//! 旗標依 2026-07-19 當場 --help 查證：claude 2.1.210、codex-cli 0.145.0。
+//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.3。
 
 use crate::data::{DataResult, Tier};
 use crate::transport::ChatMessage;
@@ -56,7 +56,7 @@ fn find_binary(name: &str) -> Option<PathBuf> {
 
 pub async fn detect_clis() -> Vec<CliInfo> {
     let mut found = Vec::new();
-    for id in ["claude", "codex"] {
+    for id in ["claude", "codex", "agy"] {
         let Some(path) = find_binary(id) else { continue };
         let version = Command::new(&path)
             .arg("--version")
@@ -186,7 +186,7 @@ pub fn parse_claude_catalog(json: &str) -> Vec<ModelOption> {
 }
 
 /// 組下拉目錄：claude 固定前置官方別名（CLI 穩定介面）再接快取；快取讀不到就只剩別名。
-/// codex 純靠快取，讀不到回空（UI 仍有「自訂」手填逃生口）。
+/// codex 純靠快取；agy 即時讀 CLI 輸出，讀不到回空（UI 都保留「自訂」手填逃生口）。
 pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
     let read = |rel: &[&str]| -> Option<String> {
         let mut path = PathBuf::from(std::env::var_os("HOME")?);
@@ -213,6 +213,25 @@ pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
         }
         "codex" => read(&[".codex", "models_cache.json"])
             .map(|json| parse_codex_catalog(&json))
+            .unwrap_or_default(),
+        "agy" => find_binary("agy")
+            .and_then(|program| {
+                std::process::Command::new(program)
+                    .arg("models")
+                    .output()
+                    .ok()
+                    .filter(|output| output.status.success())
+            })
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| ModelOption {
+                        id: line.to_owned(),
+                        label: line.to_owned(),
+                    })
+                    .collect()
+            })
             .unwrap_or_default(),
         _ => Vec::new(),
     }
@@ -303,6 +322,19 @@ pub fn codex_args(model: Option<&str>, effort: Option<&str>) -> Vec<String> {
     args
 }
 
+/// agy 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
+/// -p 必須直接帶整包 prompt；headless 維持安全預設，不開放工具呼叫。
+pub fn agy_args(model: Option<&str>, prompt: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(model) = model {
+        args.push("--model".to_owned());
+        args.push(model.to_owned());
+    }
+    args.push("-p".to_owned());
+    args.push(prompt.to_owned());
+    args
+}
+
 #[derive(Debug, PartialEq)]
 pub enum CliLine {
     Delta(String),
@@ -370,6 +402,11 @@ pub fn parse_codex_line(line: &str) -> CliLine {
         },
         _ => CliLine::Other,
     }
+}
+
+/// agy 輸出純文字；逐行補回換行，包含空行，以 EOF 作為回合結束。
+pub fn parse_agy_line(line: &str) -> CliLine {
+    CliLine::Delta(format!("{line}\n"))
 }
 
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
@@ -523,6 +560,29 @@ mod tests {
                 is_error: true
             }
         );
+    }
+
+    #[test]
+    fn parses_agy_plain_text_lines_and_preserves_paragraphs() {
+        assert_eq!(
+            parse_agy_line("一般文字"),
+            CliLine::Delta("一般文字\n".to_owned())
+        );
+        assert_eq!(parse_agy_line(""), CliLine::Delta("\n".to_owned()));
+        assert!(matches!(
+            parse_agy_line(r#"{"type":"result"}"#),
+            CliLine::Delta(_)
+        ));
+    }
+
+    #[test]
+    fn agy_args_put_prompt_in_final_p_value_with_optional_model() {
+        let prompt = "system\n\n整包 prompt（含空格）";
+        assert_eq!(
+            agy_args(Some("Claude Sonnet 4.6 (Thinking)"), prompt),
+            ["--model", "Claude Sonnet 4.6 (Thinking)", "-p", prompt]
+        );
+        assert_eq!(agy_args(None, prompt), ["-p", prompt]);
     }
 
     #[test]

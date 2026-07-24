@@ -360,7 +360,9 @@ mod tests {
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
         import_character(root.path(), "酒館", &png, "#111111").unwrap();
 
-        let encoded = character_image(root.path(), "酒館", "凱恩").unwrap().unwrap();
+        let encoded = character_image(root.path(), "酒館", "凱恩")
+            .unwrap()
+            .unwrap();
         assert_eq!(decode_base64(encoded.as_bytes()).unwrap(), png);
         assert_eq!(character_image(root.path(), "酒館", "沒圖").unwrap(), None);
     }
