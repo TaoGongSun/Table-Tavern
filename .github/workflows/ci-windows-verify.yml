@@ -1,0 +1,48 @@
+name: CI Windows verify
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # generate_context! 編譯期嵌前端資產，cargo test 前必須先有 dist
+      - run: npm ci
+      - run: npm run build
+
+      - name: cargo test (native Windows)
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Real-install smoke (four CLIs, stops at OAuth URL)
+        working-directory: src-tauri
+        run: cargo test -- --ignored --test-threads=1 real_install_
+
+      - name: Collect smoke logs
+        if: always()
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:TEMP "tt-smoke/install-logs"
+          if (Test-Path $source) { Copy-Item $source -Destination smoke-logs -Recurse }
+          else { New-Item -ItemType Directory -Path smoke-logs | Out-Null }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-verify-smoke-logs
+          path: smoke-logs
+          if-no-files-found: warn
