@@ -213,11 +213,11 @@ input {
   font-weight: 700;
 }
 
-/* GM 卡：世界設定的暫時入口，虛線框與一般角色卡區隔、不可選為發言對象 */
+/* GM 卡：整卡點擊開世界設定＋世界書，虛線框與一般角色卡區隔、不可選為發言對象 */
 .character-card-gm {
   border-style: dashed;
   border-color: #88888866;
-  cursor: default;
+  cursor: pointer;
 }
 
 .character-card-gm:hover {

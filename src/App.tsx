@@ -1600,21 +1600,24 @@ function App() {
         </details>
         <section className="character-panel" aria-label={t("castAria")}>
           <div className="character-list">
-            {/* GM 卡：世界設定的暫時入口，待與世界書合併（NewPlan §9.4 2026-07-24 拍板）；不可選為發言對象 */}
-            <div className="character-card character-card-gm">
+            {/* GM 卡：整卡點擊直接開世界設定＋世界書；不可選為發言對象 */}
+            <div
+              role="button"
+              tabIndex={0}
+              className="character-card character-card-gm"
+              title={t("worldSummary")}
+              onClick={() => setMainView({ kind: "world" })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setMainView({ kind: "world" });
+                }
+              }}
+            >
               <span className="character-card-avatar">
                 <Avatar meta={{ name: "GM", color: "#888888", avatar: "🎲", tier: "default", show_image: false, archived: false }} />
               </span>
               <span className="character-card-name">GM</span>
-              <button
-                type="button"
-                className="character-card-edit"
-                aria-label={t("worldSummary")}
-                title={t("worldSummary")}
-                onClick={() => setMainView({ kind: "world" })}
-              >
-                ✎
-              </button>
             </div>
             {activeCharacters.map((c) => (
               <div
