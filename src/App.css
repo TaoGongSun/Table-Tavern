@@ -34,6 +34,14 @@ body {
   gap: 0.5rem;
 }
 
+/* 未儲存提示：靠按鈕列右緣（Discord 式），琥珀色在深淺色主題都夠對比 */
+.unsaved-hint {
+  margin-left: auto;
+  align-self: center;
+  color: #c47f17;
+  font-weight: 600;
+}
+
 h1 {
   margin: 0;
 }
