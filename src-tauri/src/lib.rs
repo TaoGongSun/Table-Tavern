@@ -118,11 +118,12 @@ fn cli_install_script_windows(
     let login_hint = powershell_quote(&messages.login_hint);
     let success = powershell_quote(&messages.success);
     let fail = powershell_quote(&messages.fail);
+    // 探針不加引號：要塞進 cmd /c "..." 包裝，內層引號會讓跳脫變地獄
     let (install_command, login_command, probe_command, poll_seconds) = match provider {
         "claude" => (
             "irm https://claude.ai/install.ps1 | iex",
             Some("claude auth login"),
-            "claude -p \"ok\"",
+            "claude -p ok",
             120,
         ),
         "codex" => (
@@ -134,25 +135,28 @@ fn cli_install_script_windows(
         "agy" => (
             "irm https://antigravity.google/cli/install.ps1 | iex",
             None,
-            "agy -p \"ok\"",
+            "agy -p ok",
             600,
         ),
         "grok" => (
             "irm https://x.ai/cli/install.ps1 | iex",
             Some("grok login"),
-            "grok -p \"ok\"",
+            "grok -p ok",
             120,
         ),
         _ => return Err(format!("unsupported CLI provider: {provider}")),
     };
     let path = r#"$env:Path = "$env:USERPROFILE\.local\bin;$env:LOCALAPPDATA\Programs\OpenAI\Codex\bin;$env:LOCALAPPDATA\agy\bin;$env:USERPROFILE\.grok\bin;$env:Path""#;
-    let login_flow = login_command
-        .map(|command| {
-            format!(
-                "  {command}\n  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}\n"
-            )
-        })
-        .unwrap_or_default();
+    // PS 5.1 會把原生程式被重導的 stderr 包成 NativeCommandError 紅字漏到畫面上，
+    // 改讓 cmd 自己吞輸出（exit code 照樣穿透）
+    let silent_probe = format!("cmd /c \"{probe_command} >nul 2>&1\"");
+    let login_flow = match login_command {
+        Some(command) => format!(
+            "  {command}\n  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}\n"
+        ),
+        // 無獨立登入指令（agy）：可見地跑一次探針，讓 CLI 把登入 URL 印在視窗上
+        None => format!("  {probe_command}\n"),
+    };
     Ok(format!(
         r#"{path}
 Write-Output {start}
@@ -163,7 +167,7 @@ if (-not (Get-Command {provider} -ErrorAction SilentlyContinue)) {{
 }}
 Write-Output {login_hint}
 $verified = $false
-{probe_command} *> $null
+{silent_probe}
 if ($LASTEXITCODE -eq 0) {{
   $verified = $true
 }} else {{
@@ -171,7 +175,7 @@ if ($LASTEXITCODE -eq 0) {{
   while ($elapsed -lt {poll_seconds}) {{
     Start-Sleep -Seconds 5
     $elapsed += 5
-    {probe_command} *> $null
+    {silent_probe}
     if ($LASTEXITCODE -eq 0) {{
       $verified = $true
       break
@@ -828,6 +832,15 @@ mod tests {
         assert!(cli_install_script_windows("agy", &quoted_messages)
             .unwrap()
             .contains("'don''t'"));
+    }
+
+    #[test]
+    fn windows_agy_script_shows_login_url_and_silences_polling() {
+        let script = cli_install_script_windows("agy", &messages()).unwrap();
+        // 輪詢探針交給 cmd 吞輸出，避免 PS 5.1 NativeCommandError 紅字
+        assert!(script.contains("cmd /c \"agy -p ok >nul 2>&1\""));
+        // agy 無獨立登入指令：登入階段可見地跑一次探針，讓登入 URL 印得出來
+        assert!(script.contains("\n  agy -p ok\n"));
     }
 
     #[test]
