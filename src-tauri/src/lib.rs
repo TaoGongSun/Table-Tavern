@@ -154,8 +154,10 @@ fn cli_install_script_windows(
         Some(command) => format!(
             "  {command}\n  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}\n"
         ),
-        // 無獨立登入指令（agy）：可見地跑一次探針，讓 CLI 把登入 URL 印在視窗上
-        None => format!("  {probe_command}\n"),
+        // 無獨立登入指令（agy）：跑一次探針抓輸出——URL 印在視窗上（保險）＋自動開瀏覽器
+        None => format!(
+            "  $authOutput = cmd /c \"{probe_command} 2>&1\"\n  $authOutput\n  $authUrl = ($authOutput | Select-String -Pattern 'https://\\S+' | Select-Object -First 1)\n  if ($authUrl) {{ Start-Process $authUrl.Matches[0].Value }}\n"
+        ),
     };
     Ok(format!(
         r#"{path}
@@ -839,8 +841,9 @@ mod tests {
         let script = cli_install_script_windows("agy", &messages()).unwrap();
         // 輪詢探針交給 cmd 吞輸出，避免 PS 5.1 NativeCommandError 紅字
         assert!(script.contains("cmd /c \"agy -p ok >nul 2>&1\""));
-        // agy 無獨立登入指令：登入階段可見地跑一次探針，讓登入 URL 印得出來
-        assert!(script.contains("\n  agy -p ok\n"));
+        // agy 無獨立登入指令：登入階段抓探針輸出，URL 上屏＋自動開瀏覽器
+        assert!(script.contains("$authOutput = cmd /c \"agy -p ok 2>&1\""));
+        assert!(script.contains("Start-Process $authUrl.Matches[0].Value"));
     }
 
     #[test]
