@@ -598,18 +598,42 @@ fn next_uid(entries: &serde_json::Map<String, serde_json::Value>) -> DataResult<
         .unwrap_or(Ok(0))
 }
 
-fn next_display_index(entries: &serde_json::Map<String, serde_json::Value>) -> DataResult<u64> {
-    entries
-        .values()
-        .filter_map(|value| value.get("displayIndex"))
-        .filter_map(serde_json::Value::as_u64)
-        .max()
-        .map(|index| {
-            index
-                .checked_add(1)
-                .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))
-        })
-        .unwrap_or(Ok(0))
+fn sorted_entry_keys(entries: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
+    let mut keys: Vec<_> = entries.keys().cloned().collect();
+    keys.sort_by_key(|key| {
+        let value = &entries[key];
+        (
+            value
+                .get("displayIndex")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(u64::MAX),
+            entry_uid(key, value).unwrap_or(0),
+        )
+    });
+    keys
+}
+
+fn set_display_index(value: &mut serde_json::Value, display_index: u64) -> DataResult<()> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| invalid_data("worldbook entry must be an object"))?;
+    object.insert("displayIndex".to_owned(), serde_json::json!(display_index));
+    Ok(())
+}
+
+fn normalize_display_indices(
+    entries: &mut serde_json::Map<String, serde_json::Value>,
+    keys: &[String],
+) -> DataResult<()> {
+    for (index, key) in keys.iter().enumerate() {
+        let display_index =
+            u64::try_from(index).map_err(|_| invalid_data("worldbook displayIndex overflow"))?;
+        let value = entries
+            .get_mut(key)
+            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
+        set_display_index(value, display_index)?;
+    }
+    Ok(())
 }
 
 fn update_entry_fields(value: &mut serde_json::Value, entry: &WorldbookEntry) {
@@ -680,10 +704,20 @@ pub fn read_worldbook(root: &Path, world: &str) -> DataResult<Vec<WorldbookEntry
     let value = read_worldbook_value(root, world)?;
     let mut entries: Vec<_> = entries_object(&value)?
         .iter()
-        .map(|(key, value)| entry_view(value, key.parse().ok()))
+        .map(|(key, value)| {
+            let entry = entry_view(value, key.parse().ok());
+            (
+                value
+                    .get("displayIndex")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(u64::MAX),
+                entry.uid,
+                entry,
+            )
+        })
         .collect();
-    entries.sort_by_key(|entry| entry.uid);
-    Ok(entries)
+    entries.sort_by_key(|(display_index, uid, _)| (*display_index, *uid));
+    Ok(entries.into_iter().map(|(_, _, entry)| entry).collect())
 }
 
 pub fn upsert_worldbook_entry(root: &Path, world: &str, entry: WorldbookEntry) -> DataResult<u64> {
@@ -704,12 +738,87 @@ pub fn upsert_worldbook_entry(root: &Path, world: &str, entry: WorldbookEntry) -
         entry.uid
     } else {
         let uid = next_uid(entries)?;
-        let display_index = next_display_index(entries)?;
-        entries.insert(uid.to_string(), new_entry_value(&entry, uid, display_index));
+        let keys = sorted_entry_keys(entries);
+        let has_missing_display_index = entries.values().any(|value| {
+            value
+                .get("displayIndex")
+                .and_then(serde_json::Value::as_u64)
+                .is_none()
+        });
+        if has_missing_display_index {
+            normalize_display_indices(entries, &keys)?;
+        }
+        for key in keys {
+            let value = entries
+                .get_mut(&key)
+                .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
+            let display_index = value
+                .get("displayIndex")
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?
+                .checked_add(1)
+                .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))?;
+            set_display_index(value, display_index)?;
+        }
+        entries.insert(uid.to_string(), new_entry_value(&entry, uid, 0));
         uid
     };
     write_worldbook_value(root, world, &worldbook)?;
     Ok(actual_uid)
+}
+
+pub fn move_worldbook_entry(root: &Path, world: &str, uid: u64, up: bool) -> DataResult<()> {
+    let mut worldbook = read_worldbook_value(root, world)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let keys = sorted_entry_keys(entries);
+    let index = keys
+        .iter()
+        .position(|key| entry_uid(key, &entries[key]) == Some(uid))
+        .ok_or_else(|| invalid_data("worldbook entry not found"))?;
+    let adjacent = if up {
+        let Some(adjacent) = index.checked_sub(1) else {
+            return Ok(());
+        };
+        adjacent
+    } else {
+        let adjacent = index + 1;
+        if adjacent >= keys.len() {
+            return Ok(());
+        }
+        adjacent
+    };
+
+    if entries.values().any(|value| {
+        value
+            .get("displayIndex")
+            .and_then(serde_json::Value::as_u64)
+            .is_none()
+    }) {
+        // 舊檔先依目前顯示順序補齊索引，避免第一次移動時跳位。
+        normalize_display_indices(entries, &keys)?;
+    }
+
+    let current_index = entries[&keys[index]]
+        .get("displayIndex")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?;
+    let adjacent_index = entries[&keys[adjacent]]
+        .get("displayIndex")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?;
+    set_display_index(
+        entries
+            .get_mut(&keys[index])
+            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?,
+        adjacent_index,
+    )?;
+    set_display_index(
+        entries
+            .get_mut(&keys[adjacent])
+            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?,
+        current_index,
+    )?;
+    write_worldbook_value(root, world, &worldbook)
 }
 
 pub fn delete_worldbook_entry(root: &Path, world: &str, uid: u64) -> DataResult<()> {
@@ -1268,6 +1377,23 @@ mod tests {
         }
     }
 
+    fn write_worldbook_fixture(root: &TestRoot, world: &str, entries: serde_json::Value) {
+        create_world(root.path(), world).unwrap();
+        fs::write(
+            root.path().join(format!("worlds/{world}/worldbook.json")),
+            serde_json::to_string_pretty(&serde_json::json!({ "entries": entries })).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn read_worldbook_fixture(root: &TestRoot, world: &str) -> serde_json::Value {
+        serde_json::from_str(
+            &fs::read_to_string(root.path().join(format!("worlds/{world}/worldbook.json")))
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn worldbook_missing_returns_empty_and_invalid_json_errors() {
         let root = TestRoot::new("worldbook-missing");
@@ -1486,6 +1612,146 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1]
         );
+    }
+
+    #[test]
+    fn new_worldbook_entry_is_first_and_shifts_display_indices() {
+        let root = TestRoot::new("worldbook-new-first");
+        write_worldbook_fixture(
+            &root,
+            "世界",
+            serde_json::json!({
+                "10": {
+                    "uid": 10, "comment": "甲", "order": 10, "displayIndex": 0
+                },
+                "20": {
+                    "uid": 20, "comment": "乙", "order": 20, "displayIndex": 1
+                }
+            }),
+        );
+
+        let uid =
+            upsert_worldbook_entry(root.path(), "世界", worldbook_entry(u64::MAX, "新增")).unwrap();
+        assert_eq!(read_worldbook(root.path(), "世界").unwrap()[0].uid, uid);
+        let raw = read_worldbook_fixture(&root, "世界");
+        assert_eq!(raw["entries"]["10"]["displayIndex"], 1);
+        assert_eq!(raw["entries"]["20"]["displayIndex"], 2);
+        assert_eq!(raw["entries"][uid.to_string()]["displayIndex"], 0);
+    }
+
+    #[test]
+    fn moving_down_then_up_restores_worldbook_order() {
+        let root = TestRoot::new("worldbook-move-round-trip");
+        write_worldbook_fixture(
+            &root,
+            "世界",
+            serde_json::json!({
+                "0": {"uid": 0, "comment": "甲", "displayIndex": 0},
+                "1": {"uid": 1, "comment": "乙", "displayIndex": 1},
+                "2": {"uid": 2, "comment": "丙", "displayIndex": 2}
+            }),
+        );
+
+        move_worldbook_entry(root.path(), "世界", 0, false).unwrap();
+        assert_eq!(
+            read_worldbook(root.path(), "世界")
+                .unwrap()
+                .iter()
+                .map(|entry| entry.uid)
+                .collect::<Vec<_>>(),
+            [1, 0, 2]
+        );
+        move_worldbook_entry(root.path(), "世界", 0, true).unwrap();
+        assert_eq!(
+            read_worldbook(root.path(), "世界")
+                .unwrap()
+                .iter()
+                .map(|entry| entry.uid)
+                .collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+    }
+
+    #[test]
+    fn moving_top_worldbook_entry_up_is_no_op() {
+        let root = TestRoot::new("worldbook-move-top");
+        write_worldbook_fixture(
+            &root,
+            "世界",
+            serde_json::json!({
+                "0": {"uid": 0, "comment": "甲", "displayIndex": 0},
+                "1": {"uid": 1, "comment": "乙", "displayIndex": 1}
+            }),
+        );
+        let before = read_worldbook_fixture(&root, "世界");
+
+        move_worldbook_entry(root.path(), "世界", 0, true).unwrap();
+
+        assert_eq!(read_worldbook_fixture(&root, "世界"), before);
+    }
+
+    #[test]
+    fn moving_legacy_worldbook_entries_normalizes_display_indices_stably() {
+        let root = TestRoot::new("worldbook-move-legacy");
+        write_worldbook_fixture(
+            &root,
+            "世界",
+            serde_json::json!({
+                "7": {"uid": 7, "comment": "丙"},
+                "3": {"uid": 3, "comment": "甲"},
+                "5": {"uid": 5, "comment": "乙"}
+            }),
+        );
+
+        move_worldbook_entry(root.path(), "世界", 3, false).unwrap();
+
+        assert_eq!(
+            read_worldbook(root.path(), "世界")
+                .unwrap()
+                .iter()
+                .map(|entry| entry.uid)
+                .collect::<Vec<_>>(),
+            [5, 3, 7]
+        );
+        let raw = read_worldbook_fixture(&root, "世界");
+        let mut indices = raw["entries"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|entry| entry["displayIndex"].as_u64().unwrap())
+            .collect::<Vec<_>>();
+        indices.sort_unstable();
+        assert_eq!(indices, [0, 1, 2]);
+    }
+
+    #[test]
+    fn moving_worldbook_entry_preserves_order_and_unknown_fields() {
+        let root = TestRoot::new("worldbook-move-lossless");
+        write_worldbook_fixture(
+            &root,
+            "世界",
+            serde_json::json!({
+                "0": {
+                    "uid": 0, "comment": "甲", "order": 91, "displayIndex": 0,
+                    "foreign": {"nested": true}
+                },
+                "1": {
+                    "uid": 1, "comment": "乙", "order": 7, "displayIndex": 1,
+                    "sticky": 42
+                }
+            }),
+        );
+
+        move_worldbook_entry(root.path(), "世界", 0, false).unwrap();
+
+        let raw = read_worldbook_fixture(&root, "世界");
+        assert_eq!(raw["entries"]["0"]["order"], 91);
+        assert_eq!(raw["entries"]["1"]["order"], 7);
+        assert_eq!(
+            raw["entries"]["0"]["foreign"],
+            serde_json::json!({"nested": true})
+        );
+        assert_eq!(raw["entries"]["1"]["sticky"], 42);
     }
 
     #[test]
