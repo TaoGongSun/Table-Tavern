@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { confirm, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import "./App.css";
@@ -13,6 +13,7 @@ interface CharacterMeta {
   avatar: string;
   tier: Tier;
   show_image: boolean;
+  archived: boolean;
 }
 
 interface CharacterCard extends CharacterMeta {
@@ -535,6 +536,7 @@ function CardEditor({
   hasImage,
   avatarDataUrl,
   onSaved,
+  onArchived,
   onBack,
 }: {
   world: string;
@@ -544,6 +546,7 @@ function CardEditor({
   avatarDataUrl?: string;
   onBack: () => void;
   onSaved: () => void;
+  onArchived: () => Promise<void>;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [message, setMessage] = useState("");
@@ -564,6 +567,16 @@ function CardEditor({
       await invoke("write_character", { world, card });
       setMessage(t("saved"));
       onSaved();
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
+  async function archive() {
+    setMessage("");
+    try {
+      await invoke("set_character_archived", { world, name, archived: true });
+      await onArchived();
     } catch (reason) {
       setMessage(String(reason));
     }
@@ -623,6 +636,9 @@ function CardEditor({
         <button type="submit">{t("saveCard")}</button>
         <button type="button" onClick={onBack}>
           {t("backToNow")}
+        </button>
+        <button type="button" className="archive-button" onClick={archive}>
+          {t("archiveCharacter")}
         </button>
         {message && <span>{message}</span>}
       </div>
@@ -756,6 +772,8 @@ function App() {
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
+  const activeCharacters = characters.filter((character) => !character.archived);
+  const archivedCharacters = characters.filter((character) => character.archived);
   // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterName, setCharacterName] = useState("");
@@ -879,7 +897,7 @@ function App() {
     setEvents(transcript);
     setCharacters(cast);
     await loadCharacterImages(name, cast);
-    setSpeaker(cast[0]?.name ?? "");
+    setSpeaker(cast.find((character) => !character.archived)?.name ?? "");
     setEditingName(null);
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
     setMainView(null);
@@ -989,6 +1007,7 @@ function App() {
       avatar: "🎭",
       tier: "default",
       show_image: true,
+      archived: false,
       public_md: "",
       private_md: "",
     };
@@ -1016,6 +1035,46 @@ function App() {
       setCharacters(cast);
       await loadCharacterImages(table, cast);
       setSpeaker(meta.name);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function refreshCharacters() {
+    const cast = await invoke<CharacterMeta[]>("list_characters", { world: table });
+    setCharacters(cast);
+    await loadCharacterImages(table, cast);
+    return cast;
+  }
+
+  async function finishArchiving(name: string) {
+    const cast = await refreshCharacters();
+    if (speaker === name) {
+      setSpeaker(cast.find((character) => !character.archived)?.name ?? "");
+    }
+    setMainView(null);
+  }
+
+  async function restoreCharacter(name: string) {
+    setError("");
+    try {
+      await invoke("set_character_archived", { world: table, name, archived: false });
+      await refreshCharacters();
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function deleteArchivedCharacter(name: string) {
+    setError("");
+    try {
+      const accepted = await confirm(t("deleteCharacterConfirm", { name }), {
+        title: t("deleteCharacterTitle"),
+        kind: "warning",
+      });
+      if (!accepted) return;
+      await invoke("delete_character", { world: table, name });
+      await refreshCharacters();
     } catch (reason) {
       setError(String(reason));
     }
@@ -1077,7 +1136,7 @@ function App() {
 
   // 簡易導演：GM 點名→角色接話的接力，至「玩家」哨兵或每回合上限停下（NewPlan §6.1）
   async function gmAdvance() {
-    if (!config || generating !== null || characters.length === 0) return;
+    if (!config || generating !== null || activeCharacters.length === 0) return;
     setError("");
     const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
     try {
@@ -1208,7 +1267,7 @@ function App() {
             {/* GM 卡：世界設定的暫時入口，待與世界書合併（NewPlan §9.4 2026-07-24 拍板）；不可選為發言對象 */}
             <div className="character-card character-card-gm">
               <span className="character-card-avatar">
-                <Avatar meta={{ name: "GM", color: "#888888", avatar: "🎲", tier: "default", show_image: false }} />
+                <Avatar meta={{ name: "GM", color: "#888888", avatar: "🎲", tier: "default", show_image: false, archived: false }} />
               </span>
               <span className="character-card-name">GM</span>
               <button
@@ -1221,7 +1280,7 @@ function App() {
                 ✎
               </button>
             </div>
-            {characters.map((c) => (
+            {activeCharacters.map((c) => (
               <div
                 key={c.name}
                 role="button"
@@ -1264,6 +1323,28 @@ function App() {
               </div>
             ))}
           </div>
+          {archivedCharacters.length > 0 && (
+            <details className="archive-section">
+              <summary>{t("archiveSectionTitle")}</summary>
+              <div className="archive-list">
+                {archivedCharacters.map((character) => (
+                  <div className="archive-row" key={character.name}>
+                    <span>{character.name}</span>
+                    <button type="button" onClick={() => void restoreCharacter(character.name)}>
+                      {t("restoreCharacter")}
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-character"
+                      onClick={() => void deleteArchivedCharacter(character.name)}
+                    >
+                      {t("deleteCharacter")}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
           <form className="character-create" onSubmit={createCharacter}>
             <input
               aria-label={t("newCharacterAria")}
@@ -1413,6 +1494,7 @@ function App() {
               onSaved={() =>
                 invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
               }
+              onArchived={() => finishArchiving(mainView.name)}
               onBack={() => setMainView(null)}
             />
           </EditPane>
@@ -1517,7 +1599,7 @@ function App() {
               <button
                 type="button"
                 onClick={gmAdvance}
-                disabled={generating !== null || characters.length === 0}
+                disabled={generating !== null || activeCharacters.length === 0}
                 title={t("gmAdvanceHint")}
               >
                 {t("gmAdvance")}

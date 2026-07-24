@@ -392,6 +392,7 @@ mod tests {
             avatar: "🦊".to_owned(),
             tier: Tier::Default,
             show_image: true,
+            archived: false,
             public_md: public_md.to_owned(),
             private_md: private_md.to_owned(),
         }

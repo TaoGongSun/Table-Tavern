@@ -39,6 +39,7 @@ pub fn import_character(
         avatar: "🎭".to_owned(),
         tier: Tier::parse("default")?,
         show_image: true,
+        archived: false,
         public_md: public_markdown(card_data),
         private_md: private_markdown(card_data),
     };
@@ -51,6 +52,7 @@ pub fn import_character(
         avatar: "🎭".to_owned(),
         tier: Tier::parse("default")?,
         show_image: true,
+        archived: false,
     })
 }
 
@@ -261,7 +263,7 @@ mod tests {
             fs::read_to_string(root.path().join("worlds/酒館/characters/莉亞.md")).unwrap();
         assert!(
             markdown.contains(
-                "---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\n---"
+                "---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\narchived: false\n---"
             )
         );
         for section in [
@@ -320,6 +322,7 @@ mod tests {
             avatar: "🎭".to_owned(),
             tier: Tier::Default,
             show_image: true,
+            archived: false,
             public_md: "既有內容".to_owned(),
             private_md: String::new(),
         };

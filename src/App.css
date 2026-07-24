@@ -267,6 +267,48 @@ input {
   gap: 0.5rem;
 }
 
+.archive-section {
+  border-top: 1px solid #88888855;
+  padding-top: 0.5rem;
+}
+
+.archive-section summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.archive-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.archive-row span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-row button,
+.archive-button {
+  padding: 0.35em 0.65em;
+  box-shadow: none;
+}
+
+.delete-character {
+  color: #b42318;
+  border-color: #b42318;
+}
+
 .sidebar-footer {
   font-size: 0.9em;
 }

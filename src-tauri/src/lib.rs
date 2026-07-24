@@ -80,6 +80,22 @@ fn write_character(
 }
 
 #[tauri::command]
+fn set_character_archived(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+    archived: bool,
+) -> Result<(), String> {
+    data::set_character_archived(&data_root(&app)?, &world, &name, archived)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_character(app: tauri::AppHandle, world: String, name: String) -> Result<(), String> {
+    data::delete_character(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn import_character(
     app: tauri::AppHandle,
     world: String,
@@ -267,6 +283,7 @@ fn assemble_gm(root: &std::path::Path, world: &str, lang: &str) -> Result<(Vec<S
     let cards: Vec<data::CharacterCard> = data::list_characters(root, world)
         .map_err(|error| error.to_string())?
         .into_iter()
+        .filter(|meta| !meta.archived)
         .map(|meta| data::read_character(root, world, &meta.name))
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
@@ -368,6 +385,8 @@ pub fn run() {
             list_characters,
             read_character,
             write_character,
+            set_character_archived,
+            delete_character,
             import_character,
             read_character_image,
             append_transcript,
