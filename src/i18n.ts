@@ -126,7 +126,7 @@ const zh = {
   importCard: "匯入卡",
   importCardHint: "匯入 SillyTavern 角色卡（PNG 或 JSON），原檔會保留在該桌目錄",
   archiveSectionTitle: "隱藏角色",
-  archiveCharacter: "收起角色",
+  archiveCharacter: "隱藏角色",
   restoreCharacter: "還原",
   deleteCharacter: "刪除",
   deleteCharacterTitle: "永久刪除角色",
