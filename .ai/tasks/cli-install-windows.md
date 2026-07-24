@@ -3,7 +3,7 @@ Task-ID: cli-install-windows
 Title: CLI 一鍵安裝 Windows 支援（PowerShell 分支）
 Status: in_progress
 Created: 2026-07-24T18:00:00+08:00
-Updated: 2026-07-24T18:00:00+08:00
+Updated: 2026-07-24T18:40:00+08:00
 
 ## Summary
 2026-07-24 朋友實測 Windows 11 版（release-2 未簽章包），按 CLI 一鍵安裝「沒反應、沒跳終端機」。根因已確診：`install_cli`（src-tauri/src/lib.rs:107-130）是純 macOS 實作——寫出 bash `.command` 腳本後用 `open -a Terminal` 開視窗，`open` 在 Windows 不存在，spawn 當場失敗；前端有 setMessage 顯示錯誤（src/App.tsx:252）但太不顯眼，體感即「沒反應」。就算修掉開視窗這步，bash 腳本在 Windows 也跑不了。
@@ -24,8 +24,14 @@ Updated: 2026-07-24T18:00:00+08:00
 - claude 在 Windows 無 `claude auth login`，登入流程改為直接執行探針前提示使用者跑 `claude`；探針沿用 `claude -p "ok"` 等 headless 指令。
 - grok beta 限 SuperGrok／X Premium+（第三方報導），裝了可能用不了——失敗訊息已有手動安裝引導，暫不特判。
 
+實作已完成（commit 032759c，cargo test 76 綠＝原 70＋新增 6 條 Windows 測試，零警告）：
+- `cli_install_script_windows`（lib.rs:113 起）：PowerShell 腳本——PATH 前置四家 bin 目錄、`Get-Command` 偵測、`irm | iex` 安裝、`$LASTEXITCODE` 探針＋5 秒輪詢，訊息單引號跳脫（`powershell_quote`）。
+- `install_cli` 雙平台（lib.rs:200 起）：Windows 寫 `install-{provider}.ps1`，`cmd /C start powershell -NoExit -ExecutionPolicy Bypass -File` 開可見視窗；macOS 路徑原樣。
+- `find_binary`／`candidate_dirs`（cli.rs）：Windows 接 `{name}.exe`，候選目錄補 `%USERPROFILE%\.local\bin`、`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`、`%LOCALAPPDATA%\agy\bin`、`%USERPROFILE%\.grok\bin`——沒這條裝完偵測輪詢永遠不會綠。
+- cli.rs 另含 codex 順手 rustfmt 排版重排（無邏輯變化，auto mode 擋還原故保留）。
+
 ## Next action
-- 發包實作 Windows 分支（cli_install_script 泛化為雙平台＋install_cli 用 `cmd /C start` 開 PowerShell）＋對應 cargo test → 主線驗證 → 走 release-2 CI 重打包給朋友複測
+- 走 release-2 CI 重打包 Windows artifact → 給朋友（Windows 11、Gemini 訂閱→agy）複測一鍵安裝：預期按鈕跳出 PowerShell 視窗跑安裝→瀏覽器 OAuth→app 內偵測變綠。Windows 端行為（start 開窗、PATH、.exe 偵測）本機無從實測，以朋友複測為準
 
 ## Constraints
 承 cli-install-all-providers：安裝過程必須可見（開 PowerShell 視窗）；app 不碰帳密／token；只用官方安裝指令，不走第三方；查證回報屬二手摘要，實作前主線須親讀關鍵來源。若某家官方不支援 Windows，按鈕在 Windows 對該家顯示「請手動安裝」引導而非硬跑。另外前端錯誤顯示太不顯眼的問題（invoke 失敗只有一行小字）順帶評估要不要改成明顯的錯誤提示。
