@@ -36,6 +36,11 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn powershell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
 fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<String, String> {
     let start = shell_quote(&messages.start);
     let login_hint = shell_quote(&messages.login_hint);
@@ -104,28 +109,129 @@ echo {success}
     ))
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn cli_install_script_windows(
+    provider: &str,
+    messages: &InstallMessages,
+) -> Result<String, String> {
+    let start = powershell_quote(&messages.start);
+    let login_hint = powershell_quote(&messages.login_hint);
+    let success = powershell_quote(&messages.success);
+    let fail = powershell_quote(&messages.fail);
+    let (install_command, login_command, probe_command, poll_seconds) = match provider {
+        "claude" => (
+            "irm https://claude.ai/install.ps1 | iex",
+            Some("claude auth login"),
+            "claude -p \"ok\"",
+            120,
+        ),
+        "codex" => (
+            "irm https://chatgpt.com/codex/install.ps1 | iex",
+            Some("codex login"),
+            "codex login status",
+            120,
+        ),
+        "agy" => (
+            "irm https://antigravity.google/cli/install.ps1 | iex",
+            None,
+            "agy -p \"ok\"",
+            600,
+        ),
+        "grok" => (
+            "irm https://x.ai/cli/install.ps1 | iex",
+            Some("grok login"),
+            "grok -p \"ok\"",
+            120,
+        ),
+        _ => return Err(format!("unsupported CLI provider: {provider}")),
+    };
+    let path = r#"$env:Path = "$env:USERPROFILE\.local\bin;$env:LOCALAPPDATA\Programs\OpenAI\Codex\bin;$env:LOCALAPPDATA\agy\bin;$env:USERPROFILE\.grok\bin;$env:Path""#;
+    let login_flow = login_command
+        .map(|command| {
+            format!(
+                "  {command}\n  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}\n"
+            )
+        })
+        .unwrap_or_default();
+    Ok(format!(
+        r#"{path}
+Write-Output {start}
+if (-not (Get-Command {provider} -ErrorAction SilentlyContinue)) {{
+  {install_command}
+  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}
+  {path}
+}}
+Write-Output {login_hint}
+$verified = $false
+{probe_command} *> $null
+if ($LASTEXITCODE -eq 0) {{
+  $verified = $true
+}} else {{
+{login_flow}  $elapsed = 0
+  while ($elapsed -lt {poll_seconds}) {{
+    Start-Sleep -Seconds 5
+    $elapsed += 5
+    {probe_command} *> $null
+    if ($LASTEXITCODE -eq 0) {{
+      $verified = $true
+      break
+    }}
+  }}
+}}
+if (-not $verified) {{
+  Write-Output {fail}
+  exit 1
+}}
+Write-Output ""
+Write-Output {success}
+"#
+    ))
+}
+
 #[tauri::command]
 fn install_cli(
     app: tauri::AppHandle,
     provider: String,
     messages: InstallMessages,
 ) -> Result<(), String> {
-    let script = cli_install_script(&provider, &messages)?;
     let directory = data_root(&app)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let script_path = directory.join(format!("install-{provider}.command"));
-    std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
-    #[cfg(unix)]
+    #[cfg(target_os = "windows")]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+        let script = cli_install_script_windows(&provider, &messages)?;
+        let script_path = directory.join(format!("install-{provider}.ps1"));
+        std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
+        Command::new("cmd")
+            .args([
+                "/C",
+                "start",
+                "powershell",
+                "-NoExit",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(&script_path)
+            .spawn()
             .map_err(|error| error.to_string())?;
     }
-    Command::new("open")
-        .args(["-a", "Terminal"])
-        .arg(&script_path)
-        .spawn()
-        .map_err(|error| error.to_string())?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let script = cli_install_script(&provider, &messages)?;
+        let script_path = directory.join(format!("install-{provider}.command"));
+        std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+                .map_err(|error| error.to_string())?;
+        }
+        Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(&script_path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 
@@ -602,7 +708,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{cli_install_script, InstallMessages};
+    use super::{cli_install_script, cli_install_script_windows, InstallMessages};
 
     fn messages() -> InstallMessages {
         InstallMessages {
@@ -674,5 +780,53 @@ mod tests {
             .unwrap()
             .contains("'don'\"'\"'t'"));
         assert!(cli_install_script("unknown", &messages()).is_err());
+    }
+
+    const WINDOWS_PATH: &str = "$env:Path = \"$env:USERPROFILE\\.local\\bin;$env:LOCALAPPDATA\\Programs\\OpenAI\\Codex\\bin;$env:LOCALAPPDATA\\agy\\bin;$env:USERPROFILE\\.grok\\bin;$env:Path\"";
+
+    #[test]
+    fn windows_claude_install_script_contains_install_command_and_path() {
+        let script = cli_install_script_windows("claude", &messages()).unwrap();
+        assert!(script.contains("irm https://claude.ai/install.ps1 | iex"));
+        assert!(script.contains(WINDOWS_PATH));
+    }
+
+    #[test]
+    fn windows_codex_install_script_contains_install_command_and_path() {
+        let script = cli_install_script_windows("codex", &messages()).unwrap();
+        assert!(script.contains("irm https://chatgpt.com/codex/install.ps1 | iex"));
+        assert!(script.contains(WINDOWS_PATH));
+    }
+
+    #[test]
+    fn windows_agy_install_script_contains_install_command_and_path() {
+        let script = cli_install_script_windows("agy", &messages()).unwrap();
+        assert!(script.contains("irm https://antigravity.google/cli/install.ps1 | iex"));
+        assert!(script.contains(WINDOWS_PATH));
+    }
+
+    #[test]
+    fn windows_grok_install_script_contains_install_command_and_path() {
+        let script = cli_install_script_windows("grok", &messages()).unwrap();
+        assert!(script.contains("irm https://x.ai/cli/install.ps1 | iex"));
+        assert!(script.contains(WINDOWS_PATH));
+    }
+
+    #[test]
+    fn windows_install_script_escapes_single_quotes() {
+        let quoted_messages = InstallMessages {
+            start: "don't".to_owned(),
+            login_hint: "login".to_owned(),
+            success: "success".to_owned(),
+            fail: "fail".to_owned(),
+        };
+        assert!(cli_install_script_windows("agy", &quoted_messages)
+            .unwrap()
+            .contains("'don''t'"));
+    }
+
+    #[test]
+    fn windows_install_script_rejects_unknown_provider() {
+        assert!(cli_install_script_windows("unknown", &messages()).is_err());
     }
 }

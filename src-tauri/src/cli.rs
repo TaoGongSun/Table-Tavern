@@ -29,6 +29,17 @@ fn candidate_dirs() -> Vec<PathBuf> {
     }
     dirs.push(PathBuf::from("/opt/homebrew/bin"));
     dirs.push(PathBuf::from("/usr/local/bin"));
+    #[cfg(windows)]
+    {
+        if let Some(profile) = std::env::var_os("USERPROFILE").map(PathBuf::from) {
+            dirs.push(profile.join(".local").join("bin"));
+            dirs.push(profile.join(".grok").join("bin"));
+        }
+        if let Some(local) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+            dirs.push(local.join("Programs").join("OpenAI").join("Codex").join("bin"));
+            dirs.push(local.join("agy").join("bin"));
+        }
+    }
     dirs
 }
 
@@ -48,16 +59,24 @@ fn is_executable(path: &Path) -> bool {
 }
 
 fn find_binary(name: &str) -> Option<PathBuf> {
+    // Windows 執行檔帶 .exe 副檔名（四家官方安裝器皆落 .exe）
+    let filename = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_owned()
+    };
     candidate_dirs()
         .into_iter()
-        .map(|directory| directory.join(name))
+        .map(|directory| directory.join(&filename))
         .find(|path| is_executable(path))
 }
 
 pub async fn detect_clis() -> Vec<CliInfo> {
     let mut found = Vec::new();
     for id in ["claude", "codex", "agy", "grok"] {
-        let Some(path) = find_binary(id) else { continue };
+        let Some(path) = find_binary(id) else {
+            continue;
+        };
         let version = Command::new(&path)
             .arg("--version")
             .output()
@@ -142,9 +161,18 @@ pub fn parse_codex_catalog(json: &str) -> Vec<ModelOption> {
             ) {
                 return None;
             }
-            let label = item.get("display_name").and_then(|s| s.as_str()).unwrap_or(slug);
+            let label = item
+                .get("display_name")
+                .and_then(|s| s.as_str())
+                .unwrap_or(slug);
             let priority = item.get("priority").and_then(|p| p.as_i64()).unwrap_or(0);
-            Some((priority, ModelOption { id: slug.to_owned(), label: label.to_owned() }))
+            Some((
+                priority,
+                ModelOption {
+                    id: slug.to_owned(),
+                    label: label.to_owned(),
+                },
+            ))
         })
         .collect();
     ranked.sort_by_key(|(priority, _)| *priority);
@@ -177,8 +205,14 @@ pub fn parse_claude_catalog(json: &str) -> Vec<ModelOption> {
             if !is_primary_claude_id(id) {
                 return None;
             }
-            let label = item.get("display_name").and_then(|s| s.as_str()).unwrap_or(id);
-            Some(ModelOption { id: id.to_owned(), label: label.to_owned() })
+            let label = item
+                .get("display_name")
+                .and_then(|s| s.as_str())
+                .unwrap_or(id);
+            Some(ModelOption {
+                id: id.to_owned(),
+                label: label.to_owned(),
+            })
         })
         .collect();
     options.sort_by(|a, b| b.id.cmp(&a.id));
@@ -401,7 +435,10 @@ pub fn parse_claude_line(line: &str) -> CliLine {
         Some("stream_event") => {
             let delta = value.pointer("/event/delta");
             let kind = delta.and_then(|d| d.get("type")).and_then(|t| t.as_str());
-            match (kind, delta.and_then(|d| d.get("text")).and_then(|t| t.as_str())) {
+            match (
+                kind,
+                delta.and_then(|d| d.get("text")).and_then(|t| t.as_str()),
+            ) {
                 (Some("text_delta"), Some(text)) => CliLine::Delta(text.to_owned()),
                 _ => CliLine::Other,
             }
@@ -431,7 +468,10 @@ pub fn parse_codex_line(line: &str) -> CliLine {
         Some("item.completed") => {
             let item = value.get("item");
             let kind = item.and_then(|i| i.get("type")).and_then(|t| t.as_str());
-            match (kind, item.and_then(|i| i.get("text")).and_then(|t| t.as_str())) {
+            match (
+                kind,
+                item.and_then(|i| i.get("text")).and_then(|t| t.as_str()),
+            ) {
                 (Some("agent_message"), Some(text)) => CliLine::Delta(text.to_owned()),
                 _ => CliLine::Other,
             }
@@ -543,7 +583,12 @@ pub async fn run_cli(
         }
     }
     if full_text.is_empty() {
-        let tail: String = stderr_text.lines().rev().take(5).collect::<Vec<_>>().join("\n");
+        let tail: String = stderr_text
+            .lines()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("\n");
         return Err(format!("CLI 沒有產出回覆（exit {status}）：{tail}").into());
     }
     Ok(full_text)
@@ -592,14 +637,18 @@ mod tests {
             CliLine::Other
         );
         assert_eq!(
-            parse_claude_line(r#"{"type":"result","subtype":"success","is_error":false,"result":"測試"}"#),
+            parse_claude_line(
+                r#"{"type":"result","subtype":"success","is_error":false,"result":"測試"}"#
+            ),
             CliLine::Done {
                 text: "測試".to_owned(),
                 is_error: false
             }
         );
         assert_eq!(
-            parse_claude_line(r#"{"type":"result","is_error":true,"result":"Failed to authenticate. API Error: 401 Invalid bearer token"}"#),
+            parse_claude_line(
+                r#"{"type":"result","is_error":true,"result":"Failed to authenticate. API Error: 401 Invalid bearer token"}"#
+            ),
             CliLine::Done {
                 text: "Failed to authenticate. API Error: 401 Invalid bearer token".to_owned(),
                 is_error: true
@@ -740,7 +789,10 @@ mod tests {
             {"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","priority":1},
             {"slug":"secret-model","visibility":"hidden"}
         ]}"#;
-        let ids: Vec<_> = parse_codex_catalog(json).into_iter().map(|m| m.id).collect();
+        let ids: Vec<_> = parse_codex_catalog(json)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         assert_eq!(ids, ["gpt-5.6-sol", "gpt-5.4"]);
         assert!(parse_codex_catalog("not json").is_empty());
     }
@@ -784,7 +836,10 @@ mod tests {
         map.insert("claude:best".to_owned(), "claude-fable-5".to_owned());
         map.insert("claude:fast".to_owned(), "  ".to_owned());
         map.insert("best".to_owned(), "vendor/api-model".to_owned()); // API 檔位不受影響
-        assert_eq!(tier_override(&map, "claude", Tier::Best), Some("claude-fable-5"));
+        assert_eq!(
+            tier_override(&map, "claude", Tier::Best),
+            Some("claude-fable-5")
+        );
         assert_eq!(tier_override(&map, "claude", Tier::Fast), None); // 空白＝未設
         assert_eq!(tier_override(&map, "codex", Tier::Best), None);
     }
