@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { confirm, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
@@ -100,6 +101,33 @@ interface CliInfo {
   id: string;
   path: string;
   version: string;
+}
+
+type CliInstallStage = "detect" | "install" | "login" | "verify" | "done" | "error";
+
+interface CliInstallProgress {
+  provider: string;
+  stage: CliInstallStage;
+  detail?: string;
+  url?: string;
+  logPath?: string;
+}
+
+function cliInstallStageText(stage: CliInstallStage) {
+  switch (stage) {
+    case "detect":
+      return t("cliInstallStageDetect");
+    case "install":
+      return t("cliInstallStageInstall");
+    case "login":
+      return t("cliInstallStageLogin");
+    case "verify":
+      return t("cliInstallStageVerify");
+    case "done":
+      return t("cliInstallStageDone");
+    case "error":
+      return t("cliInstallStageError");
+  }
 }
 
 const CLI_LABELS: Record<string, string> = {
@@ -206,6 +234,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
   const [installingCli, setInstallingCli] = useState<string | null>(null);
+  const [installProgress, setInstallProgress] = useState<Record<string, CliInstallProgress>>({});
   const cliPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopCliPolling() {
@@ -233,8 +262,34 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     return stopCliPolling;
   }, []);
 
+  useEffect(() => {
+    let disposed = false;
+    let stopListening: (() => void) | undefined;
+    void listen<CliInstallProgress>("cli-install-progress", (event) => {
+      setInstallProgress((previous) => ({
+        ...previous,
+        [event.payload.provider]: event.payload,
+      }));
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        stopListening = unlisten;
+      }
+    });
+    return () => {
+      disposed = true;
+      stopListening?.();
+    };
+  }, []);
+
   async function installCli(provider: string) {
     setInstallingCli(provider);
+    setInstallProgress((previous) => {
+      const next = { ...previous };
+      delete next[provider];
+      return next;
+    });
     const params = {
       provider: CLI_LABELS[provider],
       url: CLI_INSTALL_URLS[provider],
@@ -319,6 +374,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
           </label>
           {(["claude", "codex", "agy", "grok"] as const).map((id) => {
             const found = clis.find((c) => c.id === id);
+            const progress = installProgress[id];
             return (
               <label key={id} className="inline">
                 <input
@@ -345,6 +401,32 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                         : t("cliInstallBtn")}
                     </button>
                   </>
+                )}
+                {progress && (
+                  <span
+                    className={`cli-install-progress${progress.stage === "error" ? " cli-install-error" : ""}`}
+                    role={progress.stage === "error" ? "alert" : "status"}
+                  >
+                    <strong>{cliInstallStageText(progress.stage)}</strong>
+                    {progress.detail && (
+                      <span className="cli-install-detail">{progress.detail}</span>
+                    )}
+                    {progress.url && (
+                      <a
+                        href={progress.url}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void openUrl(progress.url!);
+                        }}
+                      >
+                        {t("cliInstallOpenUrl")}
+                      </a>
+                    )}
+                    {progress.logPath && (
+                      <small>{t("cliInstallLogPath", { path: progress.logPath })}</small>
+                    )}
+                  </span>
                 )}
               </label>
             );
