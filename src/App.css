@@ -1,23 +1,88 @@
+/* ============================================================
+   Table Tavern — Emblem design system (ui-overhaul 2026-07-25)
+   規則一頁講完：wedge＝名字、虛線琥珀＝機密、角色色固定五處
+   （卡圖染色、名牌、檔位寶石、發言名牌、目標晶片）、
+   serif＝故事文字、sans＝系統文字、控制項一律同高。
+   ============================================================ */
+
 /* body 預設 margin 會讓 100vh 的 app-shell 永遠比視窗高 16px，造成常駐捲軸 */
 body {
   margin: 0;
 }
 
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  /* ---- tokens: light（石板紙色系，同一結構的亮色對應） ---- */
+  --surface-0: #eceae5; /* app ground */
+  --surface-1: #f6f5f2; /* rail / composer strip */
+  --surface-2: #ffffff; /* cards, inputs */
+  --surface-3: #fbfaf8; /* write surface */
+  --ink-1: #23272f; /* primary text */
+  --ink-2: #4a505c; /* secondary text */
+  --ink-3: #6a7180; /* muted text */
+  --line: #d4d2cb;
+  --line-strong: #b8b6ae;
+  --accent: #b85a35; /* primary action */
+  --accent-ink: #ffffff;
+  --amber: #8a6a1c; /* classified / info-boundary only */
+  --player: #3d6488; /* player voice */
+  --plate-mix: #3a4152; /* wedge 的角色色混底 */
+  --neutral-plate: #3a4152; /* 桌名 wedge */
+  --neutral-plate-ink: #ffffff;
+  --danger: #a43a2a;
+
+  --font-ui: "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  --font-story: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  --control-h: 1.875rem; /* 全 UI 控制項統一高度（30px @ 16px 根字級） */
+  --radius-s: 4px;
+  --radius-m: 7px;
+  --radius-l: 10px;
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
+
+  font-family: var(--font-ui);
   font-size: 16px;
   /* 相對行高：文字大小偏好改根字級時行距跟著縮放 */
   line-height: 1.5;
   font-weight: 400;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  color: var(--ink-1);
+  background-color: var(--surface-0);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ---- tokens: dark（Emblem 定案深石板；對比皆過 AA，正文 AAA） ---- */
+    --surface-0: #20242c;
+    --surface-1: #2c313c;
+    --surface-2: #333947;
+    --surface-3: #1a1e26;
+    --ink-1: #e6eaf2;
+    --ink-2: #c4cddc;
+    --ink-3: #aeb8ca;
+    --line: #454e60;
+    --line-strong: #4a5468;
+    --accent: #e58057;
+    --accent-ink: #16181e;
+    --amber: #e6c46e;
+    --player: #8fb8dc;
+    --plate-mix: #2c313c;
+    --neutral-plate: #333947;
+    --neutral-plate-ink: #ffffff;
+    --danger: #e07a6a;
+    --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* 舊版把 outline 全關掉是無障礙缺陷（ui-overhaul 檢討第一條）：鍵盤焦點一律可見 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .container {
@@ -32,13 +97,14 @@ body {
 .row {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
 }
 
-/* 未儲存提示：靠按鈕列右緣（Discord 式），琥珀色在深淺色主題都夠對比 */
+/* 未儲存提示：靠按鈕列右緣，琥珀色在深淺色主題都夠對比 */
 .unsaved-hint {
   margin-left: auto;
   align-self: center;
-  color: #c47f17;
+  color: var(--amber);
   font-weight: 600;
 }
 
@@ -54,39 +120,80 @@ ul {
   padding-left: 1.5rem;
 }
 
+/* ---- 控制項統一規格：同高、600 字重、.74rem；title case 由文案端保證 ---- */
 input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+select {
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line);
+  padding: 0 0.75em;
+  height: var(--control-h);
+  box-sizing: border-box;
+  font-size: 0.86rem;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+  color: var(--ink-1);
+  background-color: var(--surface-2);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  height: auto;
+  accent-color: var(--accent);
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  height: var(--control-h);
+  box-sizing: border-box;
+  padding: 0 1.05em;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line-strong);
+  font: 600 0.74rem/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background-color: transparent;
   cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink-1);
 }
 
-input,
-button {
-  outline: none;
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
-input {
-  flex: 1;
+/* 主要動作（送出類）：整畫面同時間只該有一顆 */
+button[type="submit"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+button[type="submit"]:hover:not(:disabled) {
+  color: var(--accent-ink);
+  filter: brightness(1.06);
+}
+
+textarea {
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line);
+  padding: 0.6em 0.8em;
+  font-size: 0.95rem;
+  font-family: var(--font-ui);
+  color: var(--ink-1);
+  background-color: var(--surface-2);
+  /* 編輯框只能上下拉：貼齊容器兩側，不能橫向拖大出捲軸 */
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
 }
 
 .app-shell {
@@ -94,25 +201,27 @@ input {
   height: 100vh;
 }
 
+/* ============ 側欄：手牌（單欄橫式桌遊卡） ============ */
 .sidebar {
   width: 14rem;
-  /* 護欄交給 CSS：視窗縮小時瀏覽器自動夾住，不必監聽 resize */
   min-width: 11rem;
   max-width: 50%;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem 0.75rem;
-  border-right: 1px solid #88888833;
+  gap: 0.65rem;
+  padding: 0.8rem 0.75rem;
+  background: var(--surface-1);
+  border-right: 1px solid var(--line);
   box-sizing: border-box;
   overflow: hidden;
 }
 
-/* 側欄與主區之間的拖曳分隔線：視覺上只有 1px 邊框，實際命中區 9px 好抓 */
+/* 側欄與主區之間的拖曳分隔線：視覺 1px、命中區 9px */
 .sidebar-resizer {
   flex: none;
   width: 9px;
+  height: auto;
   margin-left: -5px;
   margin-right: -4px;
   z-index: 1;
@@ -121,12 +230,11 @@ input {
   border: none;
   padding: 0;
   border-radius: 0;
-  box-shadow: none;
 }
 
 .sidebar-resizer:hover,
 .sidebar-resizer:focus-visible {
-  background: #88888844;
+  background: var(--line);
 }
 
 .table-section {
@@ -135,47 +243,52 @@ input {
 
 .table-section summary {
   cursor: pointer;
-  font-weight: 700;
+  font: 600 0.72rem/1.4 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
   padding: 0.35rem 0;
 }
 
 .table-section-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding-top: 0.4rem;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
 }
 
 .new-table {
-  text-align: left;
+  justify-content: flex-start;
 }
 
 .table-list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
   max-height: 30vh;
   overflow-y: auto;
 }
 
 .table-item {
-  text-align: left;
-  background: none;
+  justify-content: flex-start;
   border: none;
-  box-shadow: none;
-  padding: 0.45em 0.6em;
-  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.82rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: block;
+  line-height: var(--control-h);
+  text-align: left;
 }
 
 .table-item:hover {
-  background: #88888822;
+  background: var(--surface-2);
 }
 
 .table-item-active {
-  background: #396cd822;
+  background: var(--surface-2);
+  color: var(--ink-1);
   font-weight: 700;
 }
 
@@ -184,8 +297,8 @@ input {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding-top: 0.25rem;
+  gap: 0.65rem;
+  padding-top: 0.1rem;
 }
 
 .character-list {
@@ -193,96 +306,147 @@ input {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
   overflow-y: auto;
 }
 
-/* 角色卡改 div role=button（HTML 不能巢狀 button，卡內另有編輯鈕），游標比照原本按鈕 */
-.character-card {
+/* GM 列：系統機件不是角色，壓成一行工具列（整列點擊開世界設定＋世界書） */
+.gm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-m);
+  font-size: 0.74rem;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.gm-row:hover {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+
+.gm-row b {
+  font-weight: 600;
+}
+
+.gm-cfg {
+  margin-left: auto;
+  opacity: 0.65;
+  font-size: 0.72rem;
+}
+
+/* 角色卡＝桌遊組件卡：左圖窗（角色色染底）＋名字 wedge＋檔位寶石。
+   卡內另有編輯鈕故外層是 div role=button（HTML 不能巢狀 button） */
+.tcard {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
   display: flex;
   align-items: stretch;
-  gap: 0.65rem;
-  min-height: 4.5rem;
-  padding: 0.45rem;
-  text-align: left;
-  border: 2px solid transparent;
-  background: #88888822;
+  min-height: 2.75rem;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-card);
   cursor: pointer;
 }
 
-.character-card:hover {
-  border-color: var(--ring);
-  background: #396cd822;
-}
-
-.character-card-active {
-  border-color: var(--ring);
-  background: #396cd822;
-  font-weight: 700;
-}
-
-/* GM 卡：整卡點擊開世界設定＋世界書，虛線框與一般角色卡區隔、不可選為發言對象 */
-.character-card-gm {
-  border-style: dashed;
-  border-color: #88888866;
-  cursor: pointer;
-}
-
-.character-card-gm:hover {
-  background: #88888822;
-}
-
-.character-card-edit {
+.tcard-art {
+  width: 2.875rem;
   flex: none;
-  align-self: center;
-  margin-left: auto;
-  box-shadow: none;
-  background: transparent;
-  padding: 0.2em 0.5em;
-  font-size: 0.95em;
-}
-
-.character-card-avatar {
-  flex: none;
-  width: 4rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: #ffffff88;
+  font-size: 1.375rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--fac, #888888) 38%, var(--surface-2)),
+    var(--surface-2)
+  );
   overflow: hidden;
 }
 
-/* 匯入卡的角色圖：填滿頭像格，臉部通常在上半故對齊頂部 */
-.character-card-image {
+/* 匯入卡的角色圖：填滿圖窗，臉部通常在上半故對齊頂部 */
+.tcard-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: top;
 }
 
-.character-card-name {
+.tcard-body {
+  flex: 1;
   min-width: 0;
-  align-self: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.35rem 0.5rem 0.35rem 0;
+}
+
+/* 名字 wedge：角色被叫到名字的地方全用同一塊牌（此處＋發言名牌＋目標晶片） */
+.tcard-plate {
+  display: block;
+  color: #ffffff;
+  font: 700 0.74rem/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--fac, #888888) 64%, var(--plate-mix));
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  padding: 0.45em 1.3em 0.45em 0.7em;
+  margin-left: -6px;
+  width: fit-content;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
-.character-create {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+/* 檔位寶石：右上角，「跟隨預設」不顯示（沒有明確檔位就沒有寶石） */
+.tcard-gem {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  font: 800 0.52rem/1 var(--font-ui);
+  letter-spacing: 0.04em;
+  padding: 0.3em 0.5em;
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: color-mix(in srgb, var(--fac, #888888) 90%, var(--ink-1));
+  box-shadow: 0 0 0 1px var(--fac, #888888);
+}
+
+/* 被選為發言對象：角色色描邊（= 設計稿 turn 態） */
+.tcard-selected {
+  box-shadow: 0 0 0 2px var(--fac, #888888), var(--shadow-card);
+}
+
+.character-card-edit {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.25rem;
+  height: auto;
+  padding: 0.15em 0.45em;
+  border: none;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  background: transparent;
+}
+
+.character-card-edit:hover:not(:disabled) {
+  color: var(--ink-1);
 }
 
 .archive-section {
-  border-top: 1px solid #88888855;
+  border-top: 1px solid var(--line);
   padding-top: 0.5rem;
 }
 
 .archive-section summary {
   cursor: pointer;
-  font-weight: 600;
+  font: 600 0.72rem/1.4 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 
 .archive-list {
@@ -304,17 +468,23 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.82rem;
 }
 
 .archive-row button,
 .archive-button {
-  padding: 0.35em 0.65em;
-  box-shadow: none;
+  padding: 0 0.65em;
 }
 
 .delete-character {
-  color: #b42318;
-  border-color: #b42318;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.character-create {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .sidebar-footer {
@@ -325,21 +495,22 @@ input {
   width: 100%;
 }
 
-/* 設定視窗：單一入口內分頁（NewPlan §9.4） */
+/* ============ 設定視窗 ============ */
 .modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: #00000055;
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .modal {
-  background: #f6f6f6;
-  border-radius: 10px;
-  box-shadow: 0 8px 32px #00000044;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   width: min(34rem, 92vw);
   max-height: 85vh;
   overflow-y: auto;
@@ -360,38 +531,36 @@ input {
 }
 
 .tab {
-  box-shadow: none;
-  background: transparent;
+  border: none;
 }
 
 .tab-active {
-  background: #88888833;
-  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--ink-1);
 }
 
 .modal-close {
-  box-shadow: none;
-  background: transparent;
-  padding: 0.4em 0.7em;
+  border: none;
+  padding: 0 0.7em;
 }
 
 /* 換場提醒：小字、不擋操作 */
 .scene-length-hint {
-  font-size: 0.8em;
-  opacity: 0.6;
+  font-size: 0.72rem;
+  color: var(--ink-3);
 }
 
-/* header 下方到 composer 上方的內容區：前幕面板以此為錨（絕對定位、不擠壓版面） */
+/* header 下方到 composer 上方的內容區：前幕面板以此為錨 */
 .chat-body {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.8rem;
 }
 
-/* 前幕暫時面板：錨在主欄右側，從 header 下方延伸到視窗底，清單再長都在捲軸內（NewPlan §9.4） */
+/* 前幕暫時面板：錨在主欄右側 */
 .acts-flyout {
   position: absolute;
   inset: 0 0 0 auto;
@@ -402,18 +571,16 @@ input {
   flex-direction: column;
   padding: 0.5rem;
   gap: 0.4rem;
-  background: #f6f6f6;
-  border-left: 1px solid #88888855;
-  box-shadow: -8px 0 24px #00000033;
+  background: var(--surface-1);
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
 }
 
-/* 隱藏鈕固定在面板最上方，樣式與幕項目明顯區隔（全寬＋反白底） */
 .acts-flyout-hide {
   flex: none;
   width: 100%;
-  padding: 0.4em 0.7em;
-  background: #396cd8;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--accent-ink);
   border: none;
 }
 
@@ -427,13 +594,15 @@ input {
 }
 
 .acts-flyout-list button {
-  box-shadow: none;
-  padding: 0.3em 0.7em;
-  font-size: 0.9em;
-  text-align: left;
+  justify-content: flex-start;
+  border: none;
 }
 
-/* 單幕閱讀／角色卡編輯／世界設定編輯共用的整面標題列（取代 messages＋composer） */
+.acts-flyout-list button:hover {
+  background: var(--surface-2);
+}
+
+/* 單幕閱讀／角色卡編輯／世界設定編輯共用的整面標題列 */
 .act-reader-header {
   flex: none;
   display: flex;
@@ -447,7 +616,7 @@ input {
   overflow-y: auto;
 }
 
-/* 角色卡編輯頂部的卡面圖／大顆頭像（SillyTavern 卡編輯器的觀感） */
+/* 角色卡編輯頂部的卡面圖／大顆頭像 */
 .card-editor-avatar {
   display: flex;
   justify-content: center;
@@ -456,7 +625,7 @@ input {
 
 .card-editor-image {
   max-height: 12rem;
-  border-radius: 10px;
+  border-radius: var(--radius-l);
   object-fit: cover;
 }
 
@@ -467,35 +636,46 @@ input {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px var(--ring);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--ring, #888888);
   font-size: 3rem;
 }
 
+/* 單幕閱讀事件列表：與現況對話同一套 playbill 字樣 */
 .scene-event {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font-family: var(--font-story);
+  font-size: 0.96rem;
+  line-height: 1.65;
 }
 
 .scene-event .speaker {
-  font-weight: 700;
-  margin-right: 0.4em;
+  font: 700 0.7rem/1.4 var(--font-ui);
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  margin-right: 0.5em;
 }
 
-.scene-event-narration,
-.scene-event-system {
-  text-align: center;
-  opacity: 0.8;
+.scene-event-narration {
   font-style: italic;
+  color: var(--ink-2);
 }
 
+.scene-event-system {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+/* ============ 主欄 ============ */
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
-  /* 主欄自動填滿左右（2026-07-24 使用者拍板）：不設 max-width，字級縮小時行寬變寬、不留大片空白 */
+  gap: 0.8rem;
+  padding: 0.9rem 2rem 1rem;
+  /* 主欄自動填滿左右（2026-07-24 使用者拍板）：不設 max-width */
   box-sizing: border-box;
   height: 100vh;
   overflow: hidden;
@@ -507,279 +687,119 @@ input {
   position: relative;
   display: flex;
   align-items: center;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .chat-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   margin-left: auto;
 }
 
+/* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名 */
 .table-title {
-  background: none;
+  height: auto;
   border: none;
-  box-shadow: none;
-  font-size: 1.3em;
-  font-weight: 700;
-  padding: 0.1em 0.3em;
+  border-radius: 0;
+  color: var(--neutral-plate-ink);
+  background: var(--neutral-plate);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  font: 700 0.85rem/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  padding: 0.5em 1.4em 0.5em 0.8em;
   cursor: text;
 }
 
+.table-title:hover:not(:disabled) {
+  color: var(--neutral-plate-ink);
+  filter: brightness(1.15);
+}
+
 .table-title-input {
-  font-size: 1.3em;
   font-weight: 700;
+  font-size: 0.85rem;
 }
 
-.avatar {
-  flex: none;
-  width: 1.8em;
-  height: 1.8em;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 0 2px var(--ring);
-  font-size: 0.95em;
-}
-
-.composer input {
-  min-width: 0;
-}
-
-.link {
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 0.2em 0.4em;
-  color: #396cd8;
-  cursor: pointer;
-}
-
-.settings-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.settings-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.worldbook-section {
-  border-top: 1px solid #88888855;
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-}
-
-.worldbook-section h3 {
-  margin: 0 0 0.75rem;
-}
-
-.worldbook-actions,
-.worldbook-row-actions,
-.worldbook-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.worldbook-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.worldbook-row {
-  align-items: center;
-  border: 1px solid #88888855;
-  border-radius: 8px;
-  display: flex;
-  gap: 0.75rem;
-  padding: 0.65rem;
-}
-
-.worldbook-row-disabled {
-  opacity: 0.55;
-}
-
-.worldbook-summary {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.worldbook-summary > span {
-  overflow-wrap: anywhere;
-}
-
-.worldbook-badge {
-  background: #88888822;
-  border-radius: 999px;
-  font-size: 0.8em;
-  padding: 0.1em 0.55em;
-}
-
-.worldbook-row-actions button {
-  box-shadow: none;
-  padding: 0.35em 0.65em;
-}
-
-.worldbook-empty {
-  opacity: 0.7;
-}
-
-.worldbook-form {
-  border: 1px solid #88888855;
-  border-radius: 8px;
-  padding: 0.75rem;
-}
-
-.worldbook-visibility,
-.worldbook-characters {
-  border: 1px solid #88888855;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.6rem 0.8rem;
-}
-
-/* 引導步驟裡的行內按鈕：與前面的說明文字留白，別擠成壓字 */
-.onboarding li {
-  margin-bottom: 0.5rem;
-}
-
-.onboarding li button {
-  margin-left: 0.5rem;
-}
-
-textarea,
-select {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em;
-  font-size: 1em;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-/* 編輯框只能上下拉：貼齊容器兩側，不能橫向拖大出捲軸（任何文字大小檔位都適用） */
-textarea {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  resize: vertical;
-}
-
-.transport-choice {
-  border: 1px solid #88888855;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.6rem 0.8rem;
-}
-
-.inline {
-  flex-direction: row !important;
-  align-items: center;
-  gap: 0.5rem !important;
-}
-
-.inline input[type="radio"],
-.inline input[type="checkbox"] {
-  flex: none;
-  box-shadow: none;
-}
-
-.cli-version {
-  font-size: 0.8em;
-  opacity: 0.7;
-}
-
-.cli-install-progress {
-  border-left: 3px solid #396cd8;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  margin-left: 0.25rem;
-  max-width: min(32rem, 100%);
-  padding: 0.35rem 0.5rem;
-}
-
-.cli-install-detail {
-  font-size: 0.85em;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.cli-install-progress small {
-  opacity: 0.75;
-  overflow-wrap: anywhere;
-}
-
-.cli-install-error {
-  background: #d0342c1a;
-  border: 1px solid #d0342c;
-  border-left-width: 4px;
-  border-radius: 6px;
-  color: #b42318;
-  font-weight: 600;
-}
-
-.risk-box {
-  border: 1px solid #d0342c88;
-  border-radius: 8px;
-  padding: 0.6rem 0.8rem;
-  font-size: 0.9em;
-}
-
-.risk-box ul {
-  margin: 0.4rem 0;
-  padding-left: 1.2rem;
-}
-
+/* ============ 對話區：playbill（左對齊名牌＋純散文） ============ */
 .messages {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.95rem;
   overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+/* 幕標記：現在這一幕的書籤（幕是既有系統結構：換幕／前幕／單幕匯出） */
+.act-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+}
+
+.act-tag {
+  font: 600 0.68rem/1 var(--font-ui);
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.act-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 
 .message {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font-family: var(--font-story);
 }
 
-/* 角色泡泡：頭像光圈＋名字＋左邊框上角色色，不整顆填色（NewPlan §9.2） */
-.message-dialogue {
+.message .text {
+  font-size: 0.96rem;
+  line-height: 1.65;
+}
+
+/* 發言名牌＝角色卡名牌同一塊 wedge，後接同色細線收尾 */
+.pb-name {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  align-self: flex-start;
-  max-width: 85%;
+  align-items: center;
+  gap: 0.7em;
+  margin-bottom: 0.4em;
 }
 
-.message-dialogue .bubble {
-  display: flex;
-  flex-direction: column;
-  border-left: 3px solid;
-  padding: 0.1em 0 0.1em 0.6em;
+.pb-plate {
+  font: 700 0.74rem/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: color-mix(in srgb, var(--fac, #888888) 64%, var(--plate-mix));
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  padding: 0.45em 1.3em 0.45em 0.8em;
 }
 
-.message-dialogue .speaker {
-  font-weight: 700;
-  font-size: 0.85em;
+.pb-name::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--fac, #888888) 35%, transparent);
+}
+
+.message-player {
+  --fac: var(--player);
+}
+
+.message-narration {
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.message-system {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--ink-3);
 }
 
 .typing i {
@@ -812,67 +832,262 @@ textarea {
   }
 }
 
-.message-player {
-  align-self: flex-end;
-  max-width: 85%;
-  background: #396cd822;
-  border-radius: 10px;
-  padding: 0.4em 0.8em;
+@media (prefers-reduced-motion: reduce) {
+  .typing i {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
-/* GM 旁白：置中窄欄敘事區塊，與角色對話分層（NewPlan §9.2） */
-.message-narration {
-  align-self: center;
-  max-width: 70%;
-  text-align: center;
-  font-style: italic;
-  opacity: 0.85;
-  padding: 0.4em 0;
-  border-top: 1px solid #88888833;
-  border-bottom: 1px solid #88888833;
+/* ============ Composer：整寬書寫面（打字所見＝故事字樣）＋選項列＋按鈕列 ============ */
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
 }
 
-.message-system {
-  align-self: center;
-  max-width: 70%;
-  text-align: center;
-  opacity: 0.6;
+.composer-opts {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* 目標晶片：顯示目前發言對象（點側欄卡片切換），非新功能只是可見化 */
+.opt-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  height: var(--control-h);
+  box-sizing: border-box;
+  font: 600 0.74rem/1 var(--font-ui);
+  padding: 0 0.9em;
+  border-radius: var(--radius-m);
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fac, #888888) 22%, var(--surface-1));
+  border: 1px solid var(--fac, #888888);
+  color: var(--ink-1);
+}
+
+.composer .writebox {
+  width: 100%;
+  height: auto;
+  min-height: 3em;
+  padding: 0.7em 1em;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  color: var(--ink-1);
+  font-family: var(--font-story);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+.composer-send {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.composer-send .spacer {
+  flex: 1;
+}
+
+/* ============ 表單／設定 ============ */
+.link {
+  background: none;
+  border: none;
+  height: auto;
+  padding: 0.2em 0.4em;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.worldbook-section {
+  border-top: 1px solid var(--line);
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+}
+
+.worldbook-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.worldbook-actions,
+.worldbook-row-actions,
+.worldbook-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.worldbook-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.worldbook-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.65rem;
+}
+
+.worldbook-row-disabled {
+  opacity: 0.55;
+}
+
+.worldbook-summary {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.worldbook-summary > span {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+/* 徽章：中性框；可見範圍屬資訊邊界＝虛線琥珀（機密記號全 app 只此一種） */
+.worldbook-badge {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-3);
+  border-radius: var(--radius-s);
+  font: 600 0.68rem/1.4 var(--font-ui);
+  padding: 0.1em 0.55em;
+}
+
+.worldbook-badge-visibility {
+  border: 1.5px dashed color-mix(in srgb, var(--amber) 65%, transparent);
+  color: var(--amber);
+}
+
+.worldbook-row-actions button {
+  padding: 0 0.65em;
+}
+
+.worldbook-empty {
+  color: var(--ink-3);
+}
+
+.worldbook-form {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 0.75rem;
+}
+
+.worldbook-visibility,
+.worldbook-characters {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.8rem;
+}
+
+/* 引導步驟裡的行內按鈕：與說明文字留白 */
+.onboarding li {
+  margin-bottom: 0.5rem;
+}
+
+.onboarding li button {
+  margin-left: 0.5rem;
+}
+
+.transport-choice {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.inline {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+
+.cli-version {
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+.cli-install-progress {
+  border-left: 3px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-left: 0.25rem;
+  max-width: min(32rem, 100%);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.cli-install-detail {
   font-size: 0.85em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-@media (prefers-color-scheme: dark) {
-  textarea,
-  select {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
+.cli-install-progress small {
+  opacity: 0.75;
+  overflow-wrap: anywhere;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
+.cli-install-error {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: 6px;
+  color: var(--danger);
+  font-weight: 600;
+}
 
-  .modal {
-    background: #2f2f2f;
-  }
+.risk-box {
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+}
 
-  .acts-flyout {
-    background: #2f2f2f;
-    border-color: #ffffff33;
-  }
+.risk-box ul {
+  margin: 0.4rem 0;
+  padding-left: 1.2rem;
+}
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-
-  .avatar {
-    background: #1f1f1f;
-  }
+.first-run select,
+.first-run button {
+  align-self: flex-start;
 }

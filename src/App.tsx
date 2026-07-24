@@ -1044,7 +1044,8 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
                     {entry.constant && (
                       <span className="worldbook-badge">{t("worldbookConstant")}</span>
                     )}
-                    <span className="worldbook-badge">
+                    {/* 可見範圍＝資訊邊界：全 app 統一的虛線琥珀機密記號 */}
+                    <span className="worldbook-badge worldbook-badge-visibility">
                       {entry.visibility.type === "gm"
                         ? t("worldbookVisibilityGm")
                         : entry.visibility.type === "public"
@@ -1318,15 +1319,6 @@ function FirstRun({ onStart }: { onStart: (lang: Lang) => void }) {
       </select>
       <button onClick={() => onStart(choice)}>{t("firstRunStart")}</button>
     </main>
-  );
-}
-
-// 頭像光圈：角色色上在光圈與左邊框，不整顆填色（NewPlan §9.2）
-function Avatar({ meta }: { meta?: CharacterMeta }) {
-  return (
-    <span className="avatar" style={{ ["--ring" as string]: meta?.color ?? "#888888" }}>
-      {meta?.avatar ?? "🎭"}
-    </span>
   );
 }
 
@@ -1827,11 +1819,11 @@ function App() {
         </details>
         <section className="character-panel" aria-label={t("castAria")}>
           <div className="character-list">
-            {/* GM 卡：整卡點擊直接開世界設定＋世界書；不可選為發言對象 */}
+            {/* GM 列：系統機件壓成一行（ui-overhaul 拍板）；整列點擊開世界設定＋世界書，不可選為發言對象 */}
             <div
               role="button"
               tabIndex={0}
-              className="character-card character-card-gm"
+              className="gm-row"
               title={t("worldSummary")}
               onClick={() => setMainView({ kind: "world" })}
               onKeyDown={(e) => {
@@ -1841,18 +1833,20 @@ function App() {
                 }
               }}
             >
-              <span className="character-card-avatar">
-                <Avatar meta={{ name: "GM", color: "#888888", avatar: "🎲", tier: "default", show_image: false, archived: false }} />
+              <span aria-hidden="true">🎲</span>
+              <b>GM</b>
+              <span className="gm-cfg" aria-hidden="true">
+                ⚙
               </span>
-              <span className="character-card-name">GM</span>
             </div>
+            {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（tier 是既有欄位；「跟隨預設」不掛寶石） */}
             {activeCharacters.map((c) => (
               <div
                 key={c.name}
                 role="button"
                 tabIndex={0}
-                className={`character-card ${speaker === c.name ? "character-card-active" : ""}`}
-                style={{ ["--ring" as string]: c.color }}
+                className={`tcard ${speaker === c.name ? "tcard-selected" : ""}`}
+                style={{ ["--fac" as string]: c.color }}
                 onClick={() => setSpeaker(c.name)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -1862,18 +1856,17 @@ function App() {
                 }}
                 title={t("castHint", { name: c.name })}
               >
-                <span className="character-card-avatar">
+                <span className="tcard-art">
                   {c.show_image && characterImages[c.name] ? (
-                    <img
-                      className="character-card-image"
-                      src={characterImages[c.name]}
-                      alt=""
-                    />
+                    <img className="tcard-image" src={characterImages[c.name]} alt="" />
                   ) : (
-                    <Avatar meta={c} />
+                    <span aria-hidden="true">{c.avatar}</span>
                   )}
                 </span>
-                <span className="character-card-name">{c.name}</span>
+                <span className="tcard-body">
+                  <span className="tcard-plate">{c.name}</span>
+                </span>
+                {c.tier !== "default" && <span className="tcard-gem">{tierLabel(c.tier)}</span>}
                 <button
                   type="button"
                   className="character-card-edit"
@@ -2073,19 +2066,28 @@ function App() {
             <Onboarding config={config} onSaved={setConfig} />
 
             <section className="messages" aria-label={t("messagesAria")}>
+              {/* 幕書籤：目前這一幕的既有系統標籤（換幕／前幕／單幕匯出同一套資料） */}
+              <div className="act-divider">
+                <span className="act-tag">{sceneDisplayLabel(scene)}</span>
+              </div>
               {events.map((event, index) => {
-                if (event.kind === "dialogue") {
+                if (event.kind === "dialogue" || event.kind === "player") {
                   const meta = metaOf(event.speaker);
-                  const color = meta?.color ?? "#888888";
+                  const isPlayer = event.kind === "player";
                   return (
-                    <div key={index} className="message message-dialogue">
-                      <Avatar meta={meta} />
-                      <div className="bubble" style={{ borderLeftColor: color }}>
-                        <span className="speaker" style={{ color }}>
-                          {event.speaker}
+                    <div
+                      key={index}
+                      className={`message message-${event.kind}`}
+                      style={
+                        isPlayer ? undefined : { ["--fac" as string]: meta?.color ?? "#888888" }
+                      }
+                    >
+                      <div className="pb-name">
+                        <span className="pb-plate">
+                          {isPlayer ? t("playerLabel") : event.speaker}
                         </span>
-                        <span className="text">{event.text}</span>
                       </div>
+                      <span className="text">{event.text}</span>
                     </div>
                   );
                 }
@@ -2096,25 +2098,22 @@ function App() {
                 );
               })}
               {generating !== null && generating.kind === "dialogue" && (
-                <div className="message message-dialogue">
-                  <Avatar meta={generatingMeta} />
-                  <div
-                    className="bubble"
-                    style={{ borderLeftColor: generatingMeta?.color ?? "#888888" }}
-                  >
-                    <span className="speaker" style={{ color: generatingMeta?.color ?? "#888888" }}>
-                      {generating.name}
-                    </span>
-                    {streamText ? (
-                      <span className="text">{streamText}</span>
-                    ) : (
-                      <span className="typing" aria-label={t("typing", { name: generating.name })}>
-                        <i />
-                        <i />
-                        <i />
-                      </span>
-                    )}
+                <div
+                  className="message message-dialogue"
+                  style={{ ["--fac" as string]: generatingMeta?.color ?? "#888888" }}
+                >
+                  <div className="pb-name">
+                    <span className="pb-plate">{generating.name}</span>
                   </div>
+                  {streamText ? (
+                    <span className="text">{streamText}</span>
+                  ) : (
+                    <span className="typing" aria-label={t("typing", { name: generating.name })}>
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  )}
                 </div>
               )}
               {generating !== null && generating.kind === "narration" && (
@@ -2133,8 +2132,22 @@ function App() {
               <div ref={bottomRef} />
             </section>
 
-            <form className="row composer" onSubmit={send}>
+            {/* Composer 改整寬書寫面（ui-overhaul 拍板）：目標晶片只是把「點側欄選發言對象」既有狀態可見化 */}
+            <form className="composer" onSubmit={send}>
+              {speaker && (
+                <div className="composer-opts">
+                  <span
+                    className="opt-target"
+                    title={t("castHint", { name: speaker })}
+                    style={{ ["--fac" as string]: metaOf(speaker)?.color ?? "#888888" }}
+                  >
+                    <span aria-hidden="true">{metaOf(speaker)?.avatar ?? "🎭"}</span>
+                    {speaker}
+                  </span>
+                </div>
+              )}
               <input
+                className="writebox"
                 aria-label={t("composerAria")}
                 value={input}
                 onChange={(e) => setInput(e.currentTarget.value)}
@@ -2143,33 +2156,36 @@ function App() {
                 }
                 disabled={!speaker || generating !== null}
               />
-              <button type="submit" disabled={!speaker || generating !== null}>
-                {t("send")}
-              </button>
-              <button
-                type="button"
-                onClick={() => requestReply(speaker)}
-                disabled={!speaker || generating !== null}
-                title={t("requestReplyHint")}
-              >
-                {t("requestReplyBtn", { name: speaker || t("characterFallback") })}
-              </button>
-              <button
-                type="button"
-                onClick={gmNarrate}
-                disabled={generating !== null}
-                title={t("gmNarrateHint")}
-              >
-                {t("gmNarrate")}
-              </button>
-              <button
-                type="button"
-                onClick={gmAdvance}
-                disabled={generating !== null || activeCharacters.length === 0}
-                title={t("gmAdvanceHint")}
-              >
-                {t("gmAdvance")}
-              </button>
+              <div className="composer-send">
+                <button
+                  type="button"
+                  onClick={() => requestReply(speaker)}
+                  disabled={!speaker || generating !== null}
+                  title={t("requestReplyHint")}
+                >
+                  {t("requestReplyBtn", { name: speaker || t("characterFallback") })}
+                </button>
+                <button
+                  type="button"
+                  onClick={gmNarrate}
+                  disabled={generating !== null}
+                  title={t("gmNarrateHint")}
+                >
+                  {t("gmNarrate")}
+                </button>
+                <button
+                  type="button"
+                  onClick={gmAdvance}
+                  disabled={generating !== null || activeCharacters.length === 0}
+                  title={t("gmAdvanceHint")}
+                >
+                  {t("gmAdvance")}
+                </button>
+                <span className="spacer" />
+                <button type="submit" disabled={!speaker || generating !== null}>
+                  {t("send")} ➤
+                </button>
+              </div>
             </form>
           </>
         )}
