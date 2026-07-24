@@ -110,6 +110,8 @@ pub struct CharacterMeta {
     pub tier: Tier,
     #[serde(default = "default_show_image")]
     pub show_image: bool,
+    #[serde(default)]
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +122,8 @@ pub struct CharacterCard {
     pub tier: Tier,
     #[serde(default = "default_show_image")]
     pub show_image: bool,
+    #[serde(default)]
+    pub archived: bool,
     pub public_md: String,
     pub private_md: String,
 }
@@ -324,6 +328,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
                 avatar: avatar.to_owned(),
                 tier,
                 show_image: true,
+                archived: false,
                 public_md: public_md.to_owned(),
                 private_md: private_md.to_owned(),
             },
@@ -415,6 +420,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
     let mut avatar = None;
     let mut tier = None;
     let mut show_image = true;
+    let mut archived = false;
     for line in frontmatter.lines() {
         let Some((key, value)) = line.split_once(':') else {
             if line.trim().is_empty() {
@@ -430,6 +436,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
             "avatar" => avatar = Some(value.to_owned()),
             "tier" => tier = Some(Tier::parse(value)?),
             "show_image" => show_image = value != "false",
+            "archived" => archived = value == "true",
             _ => {}
         }
     }
@@ -443,6 +450,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
             avatar: avatar.ok_or_else(|| invalid_data("frontmatter is missing avatar"))?,
             tier: tier.ok_or_else(|| invalid_data("frontmatter is missing tier"))?,
             show_image,
+            archived,
         },
         body,
     ))
@@ -492,12 +500,13 @@ fn parse_sections(body: &str) -> (String, String) {
 
 fn serialize_character(card: &CharacterCard) -> String {
     format!(
-        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\n---\n## 公開\n{}\n## 私有\n{}",
+        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\n---\n## 公開\n{}\n## 私有\n{}",
         card.name,
         card.color,
         card.avatar,
         card.tier.as_str(),
         card.show_image,
+        card.archived,
         card.public_md,
         card.private_md
     )
@@ -533,6 +542,7 @@ pub fn read_character(root: &Path, world: &str, name: &str) -> DataResult<Charac
         avatar: meta.avatar,
         tier: meta.tier,
         show_image: meta.show_image,
+        archived: meta.archived,
         public_md,
         private_md,
     })
@@ -550,6 +560,27 @@ pub fn write_character(root: &Path, world: &str, card: &CharacterCard) -> DataRe
     validate_single_line("color", &card.color)?;
     validate_single_line("avatar", &card.avatar)?;
     fs::write(path, serialize_character(card))?;
+    Ok(())
+}
+
+pub fn set_character_archived(
+    root: &Path,
+    world: &str,
+    name: &str,
+    archived: bool,
+) -> DataResult<()> {
+    let mut card = read_character(root, world, name)?;
+    card.archived = archived;
+    write_character(root, world, &card)
+}
+
+pub fn delete_character(root: &Path, world: &str, name: &str) -> DataResult<()> {
+    let path = character_path(root, world, name)?;
+    fs::remove_file(&path)?;
+    let image_path = path.with_extension("png");
+    if image_path.exists() {
+        fs::remove_file(image_path)?;
+    }
     Ok(())
 }
 
@@ -931,6 +962,7 @@ mod tests {
             avatar: "🎭".to_owned(),
             tier: Tier::Default,
             show_image: true,
+            archived: false,
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -967,6 +999,7 @@ mod tests {
             avatar: "🧙".to_owned(),
             tier: Tier::Default,
             show_image: true,
+            archived: false,
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -991,6 +1024,7 @@ mod tests {
                 avatar: "🧙".to_owned(),
                 tier: Tier::Default,
                 show_image: true,
+                archived: false,
                 public_md: String::new(),
                 private_md: String::new(),
             };
@@ -1008,6 +1042,7 @@ mod tests {
             avatar: "avatars/blue.png".to_owned(),
             tier: Tier::Best,
             show_image: true,
+            archived: true,
             public_md: "第一段\n\n- 公開條目\n".to_owned(),
             private_md: "秘密第一行\n\n秘密第二行".to_owned(),
         };
@@ -1022,6 +1057,7 @@ mod tests {
                 avatar: "avatars/blue.png".to_owned(),
                 tier: Tier::Best,
                 show_image: true,
+                archived: true,
             }]
         );
 
@@ -1036,9 +1072,19 @@ mod tests {
             .lines()
             .map(|line| line.split_once(':').unwrap().0)
             .collect();
-        assert_eq!(keys, ["name", "color", "avatar", "tier", "show_image"]);
+        assert_eq!(
+            keys,
+            ["name", "color", "avatar", "tier", "show_image", "archived"]
+        );
         assert!(raw.contains("\n## 公開\n"));
         assert!(raw.contains("\n## 私有\n"));
+
+        set_character_archived(root.path(), "港灣", "阿藍", false).unwrap();
+        assert!(
+            !read_character(root.path(), "港灣", "阿藍")
+                .unwrap()
+                .archived
+        );
     }
 
     #[test]
@@ -1051,6 +1097,7 @@ mod tests {
             avatar: "🎭".to_owned(),
             tier: Tier::Default,
             show_image: false,
+            archived: false,
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -1062,7 +1109,35 @@ mod tests {
             "---\nname: 舊卡\ncolor: #111111\navatar: 🎭\ntier: default\n---\n## 公開\n\n## 私有\n",
         )
         .unwrap();
-        assert!(read_character(root.path(), "世界", "舊卡").unwrap().show_image);
+        let old_card = read_character(root.path(), "世界", "舊卡").unwrap();
+        assert!(old_card.show_image);
+        assert!(!old_card.archived);
+    }
+
+    #[test]
+    fn delete_character_removes_card_and_png() {
+        let root = TestRoot::new("delete-character");
+        create_world(root.path(), "世界").unwrap();
+        let card = CharacterCard {
+            name: "退場角色".to_owned(),
+            color: "#333333".to_owned(),
+            avatar: "🎭".to_owned(),
+            tier: Tier::Default,
+            show_image: true,
+            archived: true,
+            public_md: String::new(),
+            private_md: String::new(),
+        };
+        write_character(root.path(), "世界", &card).unwrap();
+        let md_path = character_path(root.path(), "世界", "退場角色").unwrap();
+        let png_path = md_path.with_extension("png");
+        fs::write(&png_path, b"png").unwrap();
+
+        delete_character(root.path(), "世界", "退場角色").unwrap();
+
+        assert!(list_characters(root.path(), "世界").unwrap().is_empty());
+        assert!(!md_path.exists());
+        assert!(!png_path.exists());
     }
 
     #[test]

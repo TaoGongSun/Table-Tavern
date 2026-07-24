@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [post-mvp-character-archive](tasks/post-mvp-character-archive.md) — MVP 後：角色卡隱藏區（軟刪除）＋真刪除警告 — 下一步：功能與自動驗證已完成（cargo 48/48、npm build 綠），等使用者實測收起／還原／刪除確認框三條路徑即結案
 
 ## Done
 - [scene-history-browser](tasks/scene-history-browser.md) — 前幕：場景歷史瀏覽＋單幕匯出＋主欄閱讀優先版面 — 2026-07-24 使用者驗收通過（含三輪回饋修訂），結案
@@ -23,7 +24,6 @@
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：等 release-1-mac-signing 的憑證就緒後開工：寫 tauri-action workflow，Developer ID .p12 與公證 API key 進 CI secrets；Windows 產物由協力者在乾淨 Windows 機驗收（下載→安裝→啟動，記錄 SmartScreen 實況）
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：定目標語系清單與字典品質驗證流程，再一次擴 i18n／範例桌／LANGUAGE_RULE
 - [cli-auto-connect](tasks/cli-auto-connect.md) — CLI 自動連接：背景偵測＋登入跳轉自動回 — 下一步：查證 claude／codex CLI 的登入觸發與完成偵知介面，再定 UX 流程（風險告知仍前置）
-- [post-mvp-character-archive](tasks/post-mvp-character-archive.md) — MVP 後：角色卡隱藏區（軟刪除）＋真刪除警告 — 下一步：先定儲存形式（frontmatter 旗標 vs archived/ 子目錄），再依序做收起／還原／真刪除＋確認框
 - [post-mvp-more-cli-providers](tasks/post-mvp-more-cli-providers.md) — MVP 後：擴充 CLI 訂閱供應商（gemini／grok，依偵測到的 CLI 決定） — 下一步：查證 gemini CLI（agy）與 grok CLI 的 headless 單發介面與模型列表取得方式（grok 先抄 Build-Collab-Board 的做法）
 
 ## Blocked

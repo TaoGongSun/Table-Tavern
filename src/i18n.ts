@@ -89,6 +89,12 @@ const zh = {
   showImageLabel: "顯示角色圖片（關閉改回 emoji 頭像）",
   importCard: "匯入卡",
   importCardHint: "匯入 SillyTavern 角色卡（PNG 或 JSON），原檔會保留在該桌目錄",
+  archiveSectionTitle: "隱藏角色",
+  archiveCharacter: "收起角色",
+  restoreCharacter: "還原",
+  deleteCharacter: "刪除",
+  deleteCharacterTitle: "永久刪除角色",
+  deleteCharacterConfirm: "確定要永久刪除「{name}」嗎？角色卡與圖片將一併刪除，且不可復原。",
 
   // 主畫面
   newTable: "＋ 開新的一桌",
@@ -216,6 +222,13 @@ const en: Record<MsgKey, string> = {
   importCard: "Import",
   importCardHint:
     "Import a SillyTavern character card (PNG or JSON); the original file is kept in the table folder",
+  archiveSectionTitle: "Hidden characters",
+  archiveCharacter: "Hide character",
+  restoreCharacter: "Restore",
+  deleteCharacter: "Delete",
+  deleteCharacterTitle: "Permanently delete character",
+  deleteCharacterConfirm:
+    "Permanently delete “{name}”? The character card and image will both be deleted. This cannot be undone.",
 
   newTable: "＋ New table",
   newTableName: "New table",
