@@ -4,7 +4,9 @@ mod import;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
+use serde::Deserialize;
 use std::path::PathBuf;
+use std::process::Command;
 use tauri::Manager;
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -19,6 +21,77 @@ fn config_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .config_dir()
         .map(|path| path.join("TableTavern"))
         .map_err(|error| error.to_string())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallMessages {
+    start: String,
+    login_hint: String,
+    success: String,
+    fail: String,
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn agy_install_script(messages: &InstallMessages) -> String {
+    let start = shell_quote(&messages.start);
+    let login_hint = shell_quote(&messages.login_hint);
+    let success = shell_quote(&messages.success);
+    let fail = shell_quote(&messages.fail);
+    format!(
+        r#"#!/bin/bash
+echo {start}
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v agy >/dev/null 2>&1; then
+  curl -fsSL https://antigravity.google/cli/install.sh | bash || {{ echo {fail}; exit 1; }}
+fi
+echo {login_hint}
+verified=0
+if agy -p "ok" >/dev/null 2>&1; then
+  verified=1
+else
+  elapsed=0
+  while [ "$elapsed" -lt 600 ]; do
+    sleep 5
+    elapsed=$((elapsed + 5))
+    if agy -p "ok" >/dev/null 2>&1; then
+      verified=1
+      break
+    fi
+  done
+fi
+if [ "$verified" -ne 1 ]; then
+  echo {fail}
+  exit 1
+fi
+echo ""
+echo {success}
+"#
+    )
+}
+
+#[tauri::command]
+fn install_agy_cli(app: tauri::AppHandle, messages: InstallMessages) -> Result<(), String> {
+    let directory = data_root(&app)?;
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let script_path = directory.join("install-agy.command");
+    std::fs::write(&script_path, agy_install_script(&messages))
+        .map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|error| error.to_string())?;
+    }
+    Command::new("open")
+        .args(["-a", "Terminal"])
+        .arg(&script_path)
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -474,6 +547,7 @@ pub fn run() {
             read_config,
             write_config,
             detect_clis,
+            install_agy_cli,
             list_cli_models,
             chat_with_character,
             gm_narrate,
@@ -482,4 +556,38 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{agy_install_script, InstallMessages};
+
+    #[test]
+    fn agy_install_script_contains_messages_and_flow() {
+        let messages = InstallMessages {
+            start: "start".to_owned(),
+            login_hint: "login hint".to_owned(),
+            success: "success".to_owned(),
+            fail: "fail".to_owned(),
+        };
+        let script = agy_install_script(&messages);
+        for text in ["start", "login hint", "success", "fail"] {
+            assert!(script.contains(text));
+        }
+        assert!(script.contains("curl -fsSL https://antigravity.google/cli/install.sh | bash"));
+        assert!(script.contains("agy -p \"ok\" >/dev/null 2>&1"));
+        assert!(script.contains("while [ \"$elapsed\" -lt 600 ]"));
+        assert!(script.contains("sleep 5"));
+    }
+
+    #[test]
+    fn agy_install_script_escapes_single_quotes() {
+        let messages = InstallMessages {
+            start: "don't".to_owned(),
+            login_hint: "login".to_owned(),
+            success: "success".to_owned(),
+            fail: "fail".to_owned(),
+        };
+        assert!(agy_install_script(&messages).contains("'don'\"'\"'t'"));
+    }
 }
