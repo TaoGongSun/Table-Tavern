@@ -3,8 +3,12 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::AsyncReadExt;
+use tokio::process::Child;
 use tokio::process::Command;
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone)]
 pub enum LoginMode {
@@ -53,6 +57,12 @@ struct CommandOutput {
     success: bool,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+}
+
+struct StreamingChild {
+    child: Child,
+    output: Arc<Mutex<Vec<u8>>>,
+    readers: Vec<JoinHandle<()>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -230,6 +240,78 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
     })
 }
 
+async fn copy_stream<R>(mut stream: R, output: Arc<Mutex<Vec<u8>>>)
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut chunk = [0; 4096];
+    loop {
+        match stream.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(count) => output.lock().unwrap().extend_from_slice(&chunk[..count]),
+        }
+    }
+}
+
+fn spawn_streaming(command: &[String]) -> Result<StreamingChild, String> {
+    let (program, args) = command
+        .split_first()
+        .ok_or_else(|| "empty command argv".to_owned())?;
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000);
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to capture command stdout".to_owned())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "failed to capture command stderr".to_owned())?;
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let readers = vec![
+        tokio::spawn(copy_stream(stdout, Arc::clone(&output))),
+        tokio::spawn(copy_stream(stderr, Arc::clone(&output))),
+    ];
+    Ok(StreamingChild {
+        child,
+        output,
+        readers,
+    })
+}
+
+impl StreamingChild {
+    async fn wait_for_readers(&mut self) {
+        for reader in self.readers.drain(..) {
+            let _ = reader.await;
+        }
+    }
+
+    fn output(&self) -> Vec<u8> {
+        self.output.lock().unwrap().clone()
+    }
+
+    async fn stop(mut self) -> CommandOutput {
+        let _ = self.child.start_kill();
+        let status = self.child.wait().await.ok();
+        for reader in self.readers.drain(..) {
+            reader.abort();
+            let _ = reader.await;
+        }
+        CommandOutput {
+            success: status.is_some_and(|status| status.success()),
+            stdout: self.output(),
+            stderr: Vec::new(),
+        }
+    }
+}
+
 async fn run_terminal(command: &[String]) -> Result<CommandOutput, String> {
     let (program, args) = command
         .split_first()
@@ -322,36 +404,118 @@ async fn run_install_with_interval(
         LoginMode::Terminal(command) => command,
         LoginMode::Headless { trigger } => trigger.as_ref().unwrap_or(&spec.probe),
     };
-    let login_output = match &spec.login {
-        LoginMode::Terminal(_) => run_terminal(login_command).await,
-        LoginMode::Headless { .. } => run_hidden(login_command).await,
-    };
-    let login_output = match login_output {
-        Ok(output) => output,
-        Err(error) => {
-            return Err(emit_error(&spec.id, &log_path, error, &mut emit));
-        }
-    };
-    append_output(&mut log, login_command, &login_output)?;
-
-    if let LoginMode::Headless { .. } = spec.login {
-        let mut raw = login_output.stdout.clone();
-        raw.extend_from_slice(&login_output.stderr);
-        if let Some(url) = extract_first_url(&raw) {
-            let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
-            progress.detail = output_detail(&login_output);
-            progress.url = Some(url.clone());
-            emit(progress);
-            if let Err(error) = open_url(&url) {
+    if let LoginMode::Terminal(_) = spec.login {
+        let login_output = match run_terminal(login_command).await {
+            Ok(output) => output,
+            Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
+        };
+        append_output(&mut log, login_command, &login_output)?;
+    } else {
+        let mut login = match spawn_streaming(login_command) {
+            Ok(login) => login,
+            Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
+        };
+        let scan_timeout = Duration::from_secs(60);
+        let scan_interval = poll_interval.min(Duration::from_millis(500));
+        let mut scan_elapsed = Duration::ZERO;
+        let mut exited = false;
+        while scan_elapsed < scan_timeout {
+            if let Some(url) = extract_first_url(&login.output()) {
+                let login_output = CommandOutput {
+                    success: true,
+                    stdout: login.output(),
+                    stderr: Vec::new(),
+                };
                 let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
-                progress.detail = Some(error);
-                progress.url = Some(url);
+                progress.detail = output_detail(&login_output);
+                progress.url = Some(url.clone());
+                emit(progress);
+                if let Err(error) = open_url(&url) {
+                    let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
+                    progress.detail = Some(error);
+                    progress.url = Some(url);
+                    emit(progress);
+                }
+                break;
+            }
+            match login.child.try_wait() {
+                Ok(Some(_)) => {
+                    login.wait_for_readers().await;
+                    exited = true;
+                    break;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let login_output = login.stop().await;
+                    append_output(&mut log, login_command, &login_output)?;
+                    return Err(emit_error(
+                        &spec.id,
+                        &log_path,
+                        error.to_string(),
+                        &mut emit,
+                    ));
+                }
+            }
+            let delay = scan_interval.min(scan_timeout - scan_elapsed);
+            tokio::time::sleep(delay).await;
+            scan_elapsed += delay;
+        }
+        if exited {
+            if let Some(url) = extract_first_url(&login.output()) {
+                let login_output = CommandOutput {
+                    success: true,
+                    stdout: login.output(),
+                    stderr: Vec::new(),
+                };
+                let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
+                progress.detail = output_detail(&login_output);
+                progress.url = Some(url.clone());
+                emit(progress);
+                if let Err(error) = open_url(&url) {
+                    let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
+                    progress.detail = Some(error);
+                    progress.url = Some(url);
+                    emit(progress);
+                }
+            } else if !login.output().is_empty() {
+                let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
+                progress.detail = Some(String::from_utf8_lossy(&login.output()).trim().to_owned());
                 emit(progress);
             }
-        } else if let Some(detail) = output_detail(&login_output) {
-            let mut progress = InstallProgress::new(&spec.id, "login", &log_path);
-            progress.detail = Some(detail);
-            emit(progress);
+        }
+
+        let timeout = Duration::from_secs(spec.poll_seconds);
+        let mut elapsed = Duration::ZERO;
+        let result = loop {
+            if elapsed >= timeout {
+                break Err(format!(
+                    "verification timed out after {} seconds",
+                    spec.poll_seconds
+                ));
+            }
+            let delay = poll_interval.min(timeout - elapsed);
+            tokio::time::sleep(delay).await;
+            elapsed += delay;
+            emit(InstallProgress::new(&spec.id, "verify", &log_path));
+            let output = match run_hidden(&spec.probe).await {
+                Ok(output) => output,
+                Err(error) => break Err(error),
+            };
+            if let Err(error) = append_output(&mut log, &spec.probe, &output) {
+                break Err(error);
+            }
+            if output.success {
+                break Ok(());
+            }
+        };
+        let login_output = login.stop().await;
+        append_output(&mut log, login_command, &login_output)?;
+        match result {
+            Ok(()) => {
+                emit(InstallProgress::new(&spec.id, "done", &log_path));
+                return Ok(log_path);
+            }
+            Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
         }
     }
 
@@ -364,9 +528,7 @@ async fn run_install_with_interval(
         emit(InstallProgress::new(&spec.id, "verify", &log_path));
         let output = match run_hidden(&spec.probe).await {
             Ok(output) => output,
-            Err(error) => {
-                return Err(emit_error(&spec.id, &log_path, error, &mut emit));
-            }
+            Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
         };
         append_output(&mut log, &spec.probe, &output)?;
         if output.success {
@@ -685,5 +847,141 @@ if "%1"=="login" (echo https://example.com/oauth& exit /b 0)"#,
         assert_eq!(urls, ["https://example.com/oauth"]);
         assert_eq!(events.last().unwrap().stage, "error");
         assert!(Path::new(events.last().unwrap().log_path.as_ref().unwrap()).exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stub_login_streams_url_before_trigger_exits() {
+        let root = TestDir::new("streaming-login");
+        let state = root.0.join("ready");
+        let script = write_stub(
+            &root.0,
+            r#"case "$1" in
+  install) exit 0 ;;
+  probe) [ -f "$2" ] ;;
+  login) echo https://example.com/oauth; touch "$2"; sleep 300 ;;
+esac"#,
+        );
+        let (result, events, urls) = run_case(&root.0, spec(&script, &state, "login", 5)).await;
+        assert!(result.is_ok());
+        assert_eq!(urls, ["https://example.com/oauth"]);
+        assert_eq!(events.last().unwrap().stage, "done");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn stub_login_streams_url_before_trigger_exits() {
+        let root = TestDir::new("streaming-login");
+        let state = root.0.join("ready");
+        let script = write_stub(
+            &root.0,
+            r#"if "%1"=="install" exit /b 0
+if "%1"=="probe" if exist "%2" (exit /b 0) else (exit /b 1)
+if "%1"=="login" (echo https://example.com/oauth& type nul > "%2"& ping -n 300 127.0.0.1 >nul)"#,
+        );
+        let (result, events, urls) = run_case(&root.0, spec(&script, &state, "login", 5)).await;
+        assert!(result.is_ok());
+        assert_eq!(urls, ["https://example.com/oauth"]);
+        assert_eq!(events.last().unwrap().stage, "done");
+    }
+
+    #[cfg(windows)]
+    async fn real_install_smoke(provider: &str, expects_url: bool) {
+        let specs = super::windows_specs();
+        assert!(
+            specs.is_ok(),
+            "{provider}: unable to load Windows install specs: {specs:?}"
+        );
+        let mut spec = match specs {
+            Ok(specs) => match specs.into_iter().find(|spec| spec.id == provider) {
+                Some(spec) => spec,
+                None => panic!("{provider}: no matching Windows install spec"),
+            },
+            Err(_) => return,
+        };
+        spec.poll_seconds = 60;
+        let probe_path = PathBuf::from(&spec.probe[0]);
+        let data_root = std::env::temp_dir().join("tt-smoke");
+        let created = std::fs::create_dir_all(&data_root);
+        assert!(
+            created.is_ok(),
+            "{provider}: unable to create {data_root:?}: {created:?}"
+        );
+
+        let mut events = Vec::new();
+        let mut urls = Vec::new();
+        let result = run_install_with_interval(
+            spec,
+            &data_root,
+            |_| None,
+            |event| events.push(event),
+            |url| {
+                urls.push(url.to_owned());
+                Ok(())
+            },
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(
+            probe_path.exists(),
+            "{provider}: installed binary missing at {probe_path:?}"
+        );
+        assert!(
+            events.iter().any(|event| event.stage == "login"),
+            "{provider}: login stage was not emitted: {events:?}"
+        );
+        let last = match events.last() {
+            Some(event) => event,
+            None => panic!("{provider}: no install events were emitted"),
+        };
+        match result {
+            Ok(_) => assert_eq!(
+                last.stage, "done",
+                "{provider}: successful run did not finish"
+            ),
+            Err(error) => {
+                assert_eq!(
+                    last.stage, "error",
+                    "{provider}: failed run did not report error: {error}"
+                );
+                let log_path = match last.log_path.as_ref() {
+                    Some(path) => Path::new(path),
+                    None => panic!("{provider}: error event had no log path"),
+                };
+                assert!(log_path.exists(), "{provider}: missing log at {log_path:?}");
+                if expects_url {
+                    assert!(!urls.is_empty(), "{provider}: OAuth URL was not captured");
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore]
+    async fn real_install_claude() {
+        real_install_smoke("claude", false).await;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore]
+    async fn real_install_codex() {
+        real_install_smoke("codex", true).await;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore]
+    async fn real_install_agy() {
+        real_install_smoke("agy", true).await;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore]
+    async fn real_install_grok() {
+        real_install_smoke("grok", true).await;
     }
 }
