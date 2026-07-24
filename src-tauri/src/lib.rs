@@ -51,7 +51,8 @@ fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<Stri
         "codex" => (
             "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
             Some("codex login"),
-            "codex exec \"ok\"",
+            // codex exec 在非 git 目錄會拒跑，probe 改用即時且不耗額度的 login status
+            "codex login status",
             120,
         ),
         "agy" => (
@@ -634,7 +635,7 @@ mod tests {
         assert_messages(&script);
         assert!(script.contains("curl -fsSL https://chatgpt.com/codex/install.sh | sh"));
         assert!(script.contains("codex login"));
-        assert!(script.contains("codex exec \"ok\" >/dev/null 2>&1"));
+        assert!(script.contains("codex login status >/dev/null 2>&1"));
         assert!(script.contains("while [ \"$elapsed\" -lt 120 ]"));
     }
 
