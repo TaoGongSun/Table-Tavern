@@ -675,12 +675,7 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   return (
     <>
       <form onSubmit={saveWorldSettings} className="settings-form">
-        <textarea
-          rows={6}
-          aria-label={t("worldAria")}
-          value={text}
-          onChange={(e) => setText(e.currentTarget.value)}
-        />
+        {/* 按鈕列放文字框上方：長文編輯時儲存／返回固定在最顯眼處（2026-07-24 使用者回饋） */}
         <div className="row">
           <button type="submit">{t("saveWorld")}</button>
           <button type="button" onClick={onBack}>
@@ -688,6 +683,12 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
           </button>
           {message && <span>{message}</span>}
         </div>
+        <textarea
+          rows={6}
+          aria-label={t("worldAria")}
+          value={text}
+          onChange={(e) => setText(e.currentTarget.value)}
+        />
       </form>
 
       <section className="worldbook-section" aria-labelledby="worldbook-title">
