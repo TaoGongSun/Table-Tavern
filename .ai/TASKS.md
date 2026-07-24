@@ -1,9 +1,9 @@
 # Project tasks
 
 ## In progress
-- [worldbook-st-format](tasks/worldbook-st-format.md) — 世界書 v2：ST 相容條目化＋一鍵匯入＋可見性資訊邊界 — 下一步：主功能＋三輪 UI 回饋修訂＋R3（新增置頂、條目上下移動）皆完成（cargo 60/60、npm build 綠），剩使用者驗收：新增條目、匯出、↑↓ 移動、資訊邊界實聊、GM 不點名隱藏角色
 
 ## Done
+- [worldbook-st-format](tasks/worldbook-st-format.md) — 世界書 v2：ST 相容條目化＋一鍵匯入＋可見性資訊邊界 — 2026-07-24 使用者實測通過（匯入、條目管理、置頂與移動、未儲存提示、資訊邊界實聊：指定角色知情／未指定不知情），結案
 - [post-mvp-character-archive](tasks/post-mvp-character-archive.md) — MVP 後：角色卡隱藏區（軟刪除）＋真刪除警告 — 2026-07-24 使用者實測收起／還原／刪除確認框通過，結案
 - [scene-history-browser](tasks/scene-history-browser.md) — 前幕：場景歷史瀏覽＋單幕匯出＋主欄閱讀優先版面 — 2026-07-24 使用者驗收通過（含三輪回饋修訂），結案
 - [post-mvp-scene-summary](tasks/post-mvp-scene-summary.md) — MVP 後：場景切換＋場景摘要 — 2026-07-24 使用者實測換場通過，結案
