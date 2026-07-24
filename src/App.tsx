@@ -985,6 +985,17 @@ function CardEditor({
 
   return (
     <form onSubmit={save} className="settings-form">
+      {/* 按鈕列統一放頂部，與世界設定畫面同款（2026-07-24 使用者拍板） */}
+      <div className="row">
+        <button type="submit">{t("saveCard")}</button>
+        <button type="button" onClick={onBack}>
+          {t("backToNow")}
+        </button>
+        <button type="button" className="archive-button" onClick={archive}>
+          {t("archiveCharacter")}
+        </button>
+        {message && <span>{message}</span>}
+      </div>
       <div className="card-editor-avatar">
         {avatarDataUrl ? (
           <img className="card-editor-image" src={avatarDataUrl} alt="" />
@@ -1033,16 +1044,6 @@ function CardEditor({
           ))}
         </select>
       </label>
-      <div className="row">
-        <button type="submit">{t("saveCard")}</button>
-        <button type="button" onClick={onBack}>
-          {t("backToNow")}
-        </button>
-        <button type="button" className="archive-button" onClick={archive}>
-          {t("archiveCharacter")}
-        </button>
-        {message && <span>{message}</span>}
-      </div>
     </form>
   );
 }
