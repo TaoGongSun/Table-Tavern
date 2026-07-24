@@ -105,7 +105,8 @@ interface CliInfo {
 const CLI_LABELS: Record<string, string> = {
   claude: "Claude Code CLI",
   codex: "Codex CLI",
-  agy: "Antigravity CLI",
+  // 引擎是 Google Antigravity CLI，但一般使用者只認識 Gemini 這個名字（2026-07-25 拍板）
+  agy: "Gemini CLI",
 };
 
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
