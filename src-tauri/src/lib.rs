@@ -200,7 +200,12 @@ fn install_cli(
     {
         let script = cli_install_script_windows(&provider, &messages)?;
         let script_path = directory.join(format!("install-{provider}.ps1"));
-        std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
+        // UTF-8 BOM 必加：Windows PowerShell 5.1 讀無 BOM 腳本走系統 ANSI 編碼頁，
+        // 非英語系統會把多位元組訊息解成亂碼並吞掉引號，整份腳本 ParserError
+        let mut bytes = Vec::with_capacity(script.len() + 3);
+        bytes.extend_from_slice(b"\xEF\xBB\xBF");
+        bytes.extend_from_slice(script.as_bytes());
+        std::fs::write(&script_path, bytes).map_err(|error| error.to_string())?;
         Command::new("cmd")
             .args([
                 "/C",

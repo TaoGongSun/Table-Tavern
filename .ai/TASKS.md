@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：新包已出爐（CI run 30086528279 綠），等朋友 Windows 11 複測一鍵安裝後結案
+- [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：複測抓到無 BOM 編碼 bug 已修（ps1 補 UTF-8 BOM），重打包後再請朋友複測
 - [cli-install-all-providers](tasks/cli-install-all-providers.md) — CLI 一鍵安裝擴充到 claude／codex／grok（比照 agy） — 下一步：實作完成（cargo 70 綠＋npm build 綠），等使用者實測安裝鈕後結案，再重打包
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：兩平台產物已出爐並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 artifact）後結案
 
