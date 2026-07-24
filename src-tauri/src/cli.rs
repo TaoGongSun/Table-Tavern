@@ -36,7 +36,13 @@ fn candidate_dirs() -> Vec<PathBuf> {
             dirs.push(profile.join(".grok").join("bin"));
         }
         if let Some(local) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
-            dirs.push(local.join("Programs").join("OpenAI").join("Codex").join("bin"));
+            dirs.push(
+                local
+                    .join("Programs")
+                    .join("OpenAI")
+                    .join("Codex")
+                    .join("bin"),
+            );
             dirs.push(local.join("agy").join("bin"));
         }
     }
@@ -58,7 +64,7 @@ fn is_executable(path: &Path) -> bool {
     }
 }
 
-fn find_binary(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_binary(name: &str) -> Option<PathBuf> {
     // Windows 執行檔帶 .exe 副檔名（四家官方安裝器皆落 .exe）
     let filename = if cfg!(windows) {
         format!("{name}.exe")

@@ -706,6 +706,36 @@ textarea {
   opacity: 0.7;
 }
 
+.cli-install-progress {
+  border-left: 3px solid #396cd8;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-left: 0.25rem;
+  max-width: min(32rem, 100%);
+  padding: 0.35rem 0.5rem;
+}
+
+.cli-install-detail {
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.cli-install-progress small {
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+.cli-install-error {
+  background: #d0342c1a;
+  border: 1px solid #d0342c;
+  border-left-width: 4px;
+  border-radius: 6px;
+  color: #b42318;
+  font-weight: 600;
+}
+
 .risk-box {
   border: 1px solid #d0342c88;
   border-radius: 8px;

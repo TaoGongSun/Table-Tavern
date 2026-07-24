@@ -1,11 +1,14 @@
 mod cli;
 mod data;
 mod import;
+#[cfg(any(target_os = "windows", test))]
+mod install;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
 use serde::Deserialize;
 use std::path::PathBuf;
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
 use tauri::Manager;
 
@@ -34,11 +37,6 @@ struct InstallMessages {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
-}
-
-#[cfg(any(target_os = "windows", test))]
-fn powershell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<String, String> {
@@ -109,91 +107,6 @@ echo {success}
     ))
 }
 
-#[cfg(any(target_os = "windows", test))]
-fn cli_install_script_windows(
-    provider: &str,
-    messages: &InstallMessages,
-) -> Result<String, String> {
-    let start = powershell_quote(&messages.start);
-    let login_hint = powershell_quote(&messages.login_hint);
-    let success = powershell_quote(&messages.success);
-    let fail = powershell_quote(&messages.fail);
-    // 探針不加引號：要塞進 cmd /c "..." 包裝，內層引號會讓跳脫變地獄
-    let (install_command, login_command, probe_command, poll_seconds) = match provider {
-        "claude" => (
-            "irm https://claude.ai/install.ps1 | iex",
-            Some("claude auth login"),
-            "claude -p ok",
-            120,
-        ),
-        "codex" => (
-            "irm https://chatgpt.com/codex/install.ps1 | iex",
-            Some("codex login"),
-            "codex login status",
-            120,
-        ),
-        "agy" => (
-            "irm https://antigravity.google/cli/install.ps1 | iex",
-            None,
-            "agy -p ok",
-            600,
-        ),
-        "grok" => (
-            "irm https://x.ai/cli/install.ps1 | iex",
-            Some("grok login"),
-            "grok -p ok",
-            120,
-        ),
-        _ => return Err(format!("unsupported CLI provider: {provider}")),
-    };
-    let path = r#"$env:Path = "$env:USERPROFILE\.local\bin;$env:LOCALAPPDATA\Programs\OpenAI\Codex\bin;$env:LOCALAPPDATA\agy\bin;$env:USERPROFILE\.grok\bin;$env:Path""#;
-    // PS 5.1 會把原生程式被重導的 stderr 包成 NativeCommandError 紅字漏到畫面上，
-    // 改讓 cmd 自己吞輸出（exit code 照樣穿透）
-    let silent_probe = format!("cmd /c \"{probe_command} >nul 2>&1\"");
-    let login_flow = match login_command {
-        Some(command) => format!(
-            "  {command}\n  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}\n"
-        ),
-        // 無獨立登入指令（agy）：跑一次探針抓輸出——URL 印在視窗上（保險）＋自動開瀏覽器
-        None => format!(
-            "  $authOutput = cmd /c \"{probe_command} 2>&1\"\n  $authOutput\n  $authUrl = ($authOutput | Select-String -Pattern 'https://\\S+' | Select-Object -First 1)\n  if ($authUrl) {{ Start-Process $authUrl.Matches[0].Value }}\n"
-        ),
-    };
-    Ok(format!(
-        r#"{path}
-Write-Output {start}
-if (-not (Get-Command {provider} -ErrorAction SilentlyContinue)) {{
-  {install_command}
-  if (-not ($LASTEXITCODE -eq 0)) {{ Write-Output {fail}; exit 1 }}
-  {path}
-}}
-Write-Output {login_hint}
-$verified = $false
-{silent_probe}
-if ($LASTEXITCODE -eq 0) {{
-  $verified = $true
-}} else {{
-{login_flow}  $elapsed = 0
-  while ($elapsed -lt {poll_seconds}) {{
-    Start-Sleep -Seconds 5
-    $elapsed += 5
-    {silent_probe}
-    if ($LASTEXITCODE -eq 0) {{
-      $verified = $true
-      break
-    }}
-  }}
-}}
-if (-not $verified) {{
-  Write-Output {fail}
-  exit 1
-}}
-Write-Output ""
-Write-Output {success}
-"#
-    ))
-}
-
 #[tauri::command]
 fn install_cli(
     app: tauri::AppHandle,
@@ -202,29 +115,36 @@ fn install_cli(
 ) -> Result<(), String> {
     let directory = data_root(&app)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let _ = &messages;
     #[cfg(target_os = "windows")]
     {
-        let script = cli_install_script_windows(&provider, &messages)?;
-        let script_path = directory.join(format!("install-{provider}.ps1"));
-        // UTF-8 BOM 必加：Windows PowerShell 5.1 讀無 BOM 腳本走系統 ANSI 編碼頁，
-        // 非英語系統會把多位元組訊息解成亂碼並吞掉引號，整份腳本 ParserError
-        let mut bytes = Vec::with_capacity(script.len() + 3);
-        bytes.extend_from_slice(b"\xEF\xBB\xBF");
-        bytes.extend_from_slice(script.as_bytes());
-        std::fs::write(&script_path, bytes).map_err(|error| error.to_string())?;
-        Command::new("cmd")
-            .args([
-                "/C",
-                "start",
-                "powershell",
-                "-NoExit",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-            ])
-            .arg(&script_path)
-            .spawn()
-            .map_err(|error| error.to_string())?;
+        use tauri::Emitter;
+        use tauri_plugin_opener::OpenerExt;
+
+        let spec = install::windows_specs()?
+            .into_iter()
+            .find(|spec| spec.id == provider)
+            .ok_or_else(|| format!("unsupported CLI provider: {provider}"))?;
+        let task_app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let emit_app = task_app.clone();
+            let opener_app = task_app.clone();
+            let _ = install::run_install(
+                spec,
+                &directory,
+                cli::find_binary,
+                move |progress| {
+                    let _ = emit_app.emit("cli-install-progress", progress);
+                },
+                move |url| {
+                    opener_app
+                        .opener()
+                        .open_url(url, None::<&str>)
+                        .map_err(|error| error.to_string())
+                },
+            )
+            .await;
+        });
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -719,7 +639,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{cli_install_script, cli_install_script_windows, InstallMessages};
+    use super::{cli_install_script, InstallMessages};
 
     fn messages() -> InstallMessages {
         InstallMessages {
@@ -791,63 +711,5 @@ mod tests {
             .unwrap()
             .contains("'don'\"'\"'t'"));
         assert!(cli_install_script("unknown", &messages()).is_err());
-    }
-
-    const WINDOWS_PATH: &str = "$env:Path = \"$env:USERPROFILE\\.local\\bin;$env:LOCALAPPDATA\\Programs\\OpenAI\\Codex\\bin;$env:LOCALAPPDATA\\agy\\bin;$env:USERPROFILE\\.grok\\bin;$env:Path\"";
-
-    #[test]
-    fn windows_claude_install_script_contains_install_command_and_path() {
-        let script = cli_install_script_windows("claude", &messages()).unwrap();
-        assert!(script.contains("irm https://claude.ai/install.ps1 | iex"));
-        assert!(script.contains(WINDOWS_PATH));
-    }
-
-    #[test]
-    fn windows_codex_install_script_contains_install_command_and_path() {
-        let script = cli_install_script_windows("codex", &messages()).unwrap();
-        assert!(script.contains("irm https://chatgpt.com/codex/install.ps1 | iex"));
-        assert!(script.contains(WINDOWS_PATH));
-    }
-
-    #[test]
-    fn windows_agy_install_script_contains_install_command_and_path() {
-        let script = cli_install_script_windows("agy", &messages()).unwrap();
-        assert!(script.contains("irm https://antigravity.google/cli/install.ps1 | iex"));
-        assert!(script.contains(WINDOWS_PATH));
-    }
-
-    #[test]
-    fn windows_grok_install_script_contains_install_command_and_path() {
-        let script = cli_install_script_windows("grok", &messages()).unwrap();
-        assert!(script.contains("irm https://x.ai/cli/install.ps1 | iex"));
-        assert!(script.contains(WINDOWS_PATH));
-    }
-
-    #[test]
-    fn windows_install_script_escapes_single_quotes() {
-        let quoted_messages = InstallMessages {
-            start: "don't".to_owned(),
-            login_hint: "login".to_owned(),
-            success: "success".to_owned(),
-            fail: "fail".to_owned(),
-        };
-        assert!(cli_install_script_windows("agy", &quoted_messages)
-            .unwrap()
-            .contains("'don''t'"));
-    }
-
-    #[test]
-    fn windows_agy_script_shows_login_url_and_silences_polling() {
-        let script = cli_install_script_windows("agy", &messages()).unwrap();
-        // 輪詢探針交給 cmd 吞輸出，避免 PS 5.1 NativeCommandError 紅字
-        assert!(script.contains("cmd /c \"agy -p ok >nul 2>&1\""));
-        // agy 無獨立登入指令：登入階段抓探針輸出，URL 上屏＋自動開瀏覽器
-        assert!(script.contains("$authOutput = cmd /c \"agy -p ok 2>&1\""));
-        assert!(script.contains("Start-Process $authUrl.Matches[0].Value"));
-    }
-
-    #[test]
-    fn windows_install_script_rejects_unknown_provider() {
-        assert!(cli_install_script_windows("unknown", &messages()).is_err());
     }
 }
