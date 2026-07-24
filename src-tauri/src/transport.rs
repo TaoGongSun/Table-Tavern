@@ -1,7 +1,10 @@
 //! 傳輸層共用介面：上下文組裝→單發呼叫→串流回傳。
 //! API 直連與（之後的）CLI 傳輸都必須經由 assemble_messages 取得上下文（KICKOFF §4）。
 
-use crate::data::{AppConfig, CharacterCard, DataResult, Tier, TranscriptEvent, TranscriptKind};
+use crate::data::{
+    AppConfig, CharacterCard, DataResult, Tier, TranscriptEvent, TranscriptKind, Visibility,
+    WorldbookEntry,
+};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -42,11 +45,38 @@ fn push_merged(messages: &mut Vec<ChatMessage>, role: &str, line: String) {
     }
 }
 
-/// 組裝單一角色的上下文。只餵入該角色自己的卡與公開 transcript：
-/// 他人私有設定與 world.md（GM 專屬，NewPlan §7.0）由呼叫端負責永不傳入。
+pub fn active_worldbook_entries<'a>(
+    entries: &'a [WorldbookEntry],
+    events: &[TranscriptEvent],
+) -> Vec<&'a WorldbookEntry> {
+    let recent_text: Vec<String> = events
+        .iter()
+        .rev()
+        .take(4)
+        .map(|event| event.text.to_lowercase())
+        .collect();
+    let mut active: Vec<_> = entries
+        .iter()
+        .filter(|entry| {
+            !entry.disabled
+                && (entry.constant
+                    || (!entry.keys.is_empty()
+                        && entry.keys.iter().any(|key| {
+                            let key = key.to_lowercase();
+                            !key.is_empty() && recent_text.iter().any(|text| text.contains(&key))
+                        })))
+        })
+        .collect();
+    active.sort_by_key(|entry| (entry.order, entry.uid));
+    active
+}
+
+/// 組裝單一角色的上下文。只餵入該角色自己的卡、可見世界書條目與公開 transcript：
+/// 他人私有設定與 world.md 不在介面中；GM 專有條目組裝時一律排除，永不傳入模型。
 pub fn assemble_messages(
     card: &CharacterCard,
     events: &[TranscriptEvent],
+    worldbook: &[WorldbookEntry],
     lang: &str,
 ) -> Vec<ChatMessage> {
     let mut system = format!(
@@ -64,6 +94,22 @@ pub fn assemble_messages(
             "\n## 你的私有設定（只有你自己知道；除非劇情走到，不要主動說破）\n{}\n",
             card.private_md.trim()
         ));
+    }
+    let visible: Vec<_> = worldbook
+        .iter()
+        .filter(|entry| match &entry.visibility {
+            Visibility::Gm => false,
+            Visibility::Public => true,
+            Visibility::Characters(names) => names.iter().any(|name| name == &card.name),
+        })
+        .cloned()
+        .collect();
+    let active = active_worldbook_entries(&visible, events);
+    if !active.is_empty() {
+        system.push_str("\n## 你知道的世界情報\n");
+        for entry in active {
+            system.push_str(&format!("### {}\n{}\n", entry.title, entry.content));
+        }
     }
 
     let mut messages = vec![message("system", system)];
@@ -91,6 +137,7 @@ pub fn assemble_gm_messages(
     world_md: &str,
     cards: &[CharacterCard],
     events: &[TranscriptEvent],
+    worldbook: &[WorldbookEntry],
     lang: &str,
 ) -> Vec<ChatMessage> {
     let mut system = format!(
@@ -106,6 +153,13 @@ pub fn assemble_gm_messages(
             "\n## 世界設定（只進你的上下文，角色只知道你說出口的內容）\n{}\n",
             world_md.trim()
         ));
+    }
+    let active = active_worldbook_entries(worldbook, events);
+    if !active.is_empty() {
+        system.push_str("\n## 世界書（只進你的上下文）\n");
+        for entry in active {
+            system.push_str(&format!("### {}\n{}\n", entry.title, entry.content));
+        }
     }
     if !cards.is_empty() {
         system.push_str("\n## 登場角色\n");
@@ -340,7 +394,10 @@ pub async fn stream_chat(
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let base = base_url(config);
-    let api_key = config.api_keys.get("openrouter").filter(|key| !key.is_empty());
+    let api_key = config
+        .api_keys
+        .get("openrouter")
+        .filter(|key| !key.is_empty());
     if api_key.is_none() && base == DEFAULT_BASE_URL {
         return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
     }
@@ -407,6 +464,121 @@ mod tests {
         }
     }
 
+    fn worldbook_entry(
+        uid: u64,
+        title: &str,
+        keys: &[&str],
+        constant: bool,
+        order: i64,
+        disabled: bool,
+        visibility: Visibility,
+    ) -> WorldbookEntry {
+        WorldbookEntry {
+            uid,
+            title: title.to_owned(),
+            keys: keys.iter().map(|key| (*key).to_owned()).collect(),
+            content: format!("{title}內容"),
+            constant,
+            order,
+            disabled,
+            visibility,
+        }
+    }
+
+    #[test]
+    fn empty_worldbook_keeps_character_and_gm_context_unchanged() {
+        let fox = card("狐狸", "旅店老闆", "通緝犯");
+        let events = [event(TranscriptKind::Player, "玩家", "你好")];
+        let character = assemble_messages(&fox, &events, &[], "zh-TW");
+        assert_eq!(character.len(), 2);
+        assert!(character[0].content.contains("## 你的公開設定"));
+        assert!(character[0].content.contains("## 你的私有設定"));
+        assert!(!character[0].content.contains("## 你知道的世界情報"));
+        assert_eq!(character[1], message("user", "玩家：你好".to_owned()));
+
+        let gm = assemble_gm_messages("世界總覽", &[fox], &events, &[], "zh-TW");
+        assert_eq!(gm.len(), 2);
+        assert!(gm[0].content.contains("## 世界設定"));
+        assert!(gm[0].content.contains("## 登場角色"));
+        assert!(!gm[0].content.contains("## 世界書（只進你的上下文）"));
+        assert_eq!(gm[1], message("user", "玩家：你好".to_owned()));
+    }
+
+    #[test]
+    fn active_worldbook_entries_use_constant_recent_four_keys_and_sorting() {
+        let entries = [
+            worldbook_entry(4, "常駐", &[], true, 20, false, Visibility::Gm),
+            worldbook_entry(1, "同序先排", &[], true, 20, false, Visibility::Gm),
+            worldbook_entry(3, "近期", &["DrAgOn"], false, 10, false, Visibility::Gm),
+            worldbook_entry(2, "太舊", &["ancient"], false, 0, false, Visibility::Gm),
+            worldbook_entry(1, "停用", &[], true, -10, true, Visibility::Gm),
+            worldbook_entry(0, "空關鍵字", &[], false, -20, false, Visibility::Gm),
+        ];
+        let events = [
+            event(TranscriptKind::Narration, "GM", "ancient history"),
+            event(TranscriptKind::Player, "玩家", "one"),
+            event(TranscriptKind::Dialogue, "狐狸", "two"),
+            event(TranscriptKind::Narration, "GM", "A DRAGON wakes"),
+            event(TranscriptKind::Player, "玩家", "four"),
+        ];
+
+        let active = active_worldbook_entries(&entries, &events);
+        assert_eq!(
+            active.iter().map(|entry| entry.uid).collect::<Vec<_>>(),
+            [3, 1, 4]
+        );
+    }
+
+    #[test]
+    fn worldbook_visibility_separates_gm_public_and_character_contexts() {
+        let entries = [
+            worldbook_entry(0, "GM 祕密", &[], true, 0, false, Visibility::Gm),
+            worldbook_entry(1, "公開情報", &[], true, 1, false, Visibility::Public),
+            worldbook_entry(
+                2,
+                "狐狸情報",
+                &[],
+                true,
+                2,
+                false,
+                Visibility::Characters(vec!["狐狸".to_owned()]),
+            ),
+            worldbook_entry(
+                3,
+                "騎士情報",
+                &[],
+                true,
+                3,
+                false,
+                Visibility::Characters(vec!["騎士".to_owned()]),
+            ),
+        ];
+        let fox = card("狐狸", "公開", "私有");
+        let fox_messages = assemble_messages(&fox, &[], &entries, "zh-TW");
+        let fox_system = &fox_messages[0].content;
+        assert!(fox_system.contains("\n## 你知道的世界情報\n"));
+        assert!(fox_system.contains("### 公開情報\n公開情報內容\n"));
+        assert!(fox_system.contains("### 狐狸情報\n狐狸情報內容\n"));
+        assert!(!fox_system.contains("GM 祕密"));
+        assert!(!fox_system.contains("騎士情報"));
+
+        let knight = card("騎士", "公開", "私有");
+        let knight_system = &assemble_messages(&knight, &[], &entries, "zh-TW")[0].content;
+        assert!(knight_system.contains("公開情報"));
+        assert!(knight_system.contains("騎士情報"));
+        assert!(!knight_system.contains("狐狸情報"));
+
+        let gm_system = &assemble_gm_messages("世界總覽", &[], &[], &entries, "zh-TW")[0].content;
+        assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n"));
+        for title in ["GM 祕密", "公開情報", "狐狸情報", "騎士情報"] {
+            assert!(gm_system.contains(title));
+        }
+        assert!(
+            gm_system.find("世界總覽").unwrap() < gm_system.find("## 世界書").unwrap(),
+            "世界書段落必須接在 world.md 段落之後"
+        );
+    }
+
     /// 驗收：上下文只含本角色可見內容——含自己的公開＋私有，
     /// 且介面上根本收不到他人的卡或 world.md。
     #[test]
@@ -419,7 +591,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "騎士", "我在找一名通緝犯。"),
             event(TranscriptKind::System, "系統", "騎士 加入本桌"),
         ];
-        let messages = assemble_messages(&fox, &events, "zh-TW");
+        let messages = assemble_messages(&fox, &events, &[], "zh-TW");
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -444,7 +616,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "狐狸", "我的回答"),
             event(TranscriptKind::Player, "玩家", "第二句"),
         ];
-        let messages = assemble_messages(&fox, &events, "zh-TW");
+        let messages = assemble_messages(&fox, &events, &[], "zh-TW");
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert_eq!(roles, ["system", "user", "assistant", "user"]);
         assert_eq!(messages[1].content, "玩家：第一句\n（旁白）旁白一句");
@@ -467,7 +639,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
             event(TranscriptKind::Narration, "GM", "門外傳來馬蹄聲"),
         ];
-        let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events, "zh-TW");
+        let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events, &[], "zh-TW");
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -487,13 +659,13 @@ mod tests {
     #[test]
     fn language_rule_follows_ui_language() {
         let fox = card("狐狸", "旅店老闆", "");
-        let zh = assemble_messages(&fox, &[], "zh-TW");
+        let zh = assemble_messages(&fox, &[], &[], "zh-TW");
         assert!(zh[0].content.contains("繁體中文"));
-        let en = assemble_messages(&fox, &[], "en");
+        let en = assemble_messages(&fox, &[], &[], "en");
         assert!(en[0].content.contains("in natural, fluent English"));
         assert!(!en[0].content.contains("繁體中文"));
 
-        let gm_en = assemble_gm_messages("", &[], &[], "en");
+        let gm_en = assemble_gm_messages("", &[], &[], &[], "en");
         assert!(gm_en[0].content.contains("in natural, fluent English"));
 
         let mut config = AppConfig::default();

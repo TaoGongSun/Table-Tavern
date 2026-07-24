@@ -10,3 +10,4 @@ Unfinished long-task handoffs tracked in this repository.
 - [mvp-6-onboarding](handoffs/mvp-6-onboarding.md) — paused / in-progress
 - [mvp-7-packaging](handoffs/mvp-7-packaging.md) — paused / in-progress
 - [post-mvp-character-archive](handoffs/post-mvp-character-archive.md) — paused / in-progress
+- [worldbook-st-format](handoffs/worldbook-st-format.md) — paused / in-progress
