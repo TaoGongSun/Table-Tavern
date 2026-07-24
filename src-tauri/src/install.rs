@@ -87,6 +87,21 @@ fn windows_binary(
     Ok(path.to_string_lossy().into_owned())
 }
 
+// $ErrorActionPreference='Stop'：irm|iex 內部錯誤預設不改 exit code，會誤判安裝成功
+#[cfg(target_os = "windows")]
+fn ps_install(url: &str) -> Vec<String> {
+    argv(
+        "powershell",
+        &[
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &format!("$ErrorActionPreference='Stop'; irm {url} | iex"),
+        ],
+    )
+}
+
 #[cfg(target_os = "windows")]
 pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
     let profile = std::env::var_os("USERPROFILE");
@@ -107,32 +122,14 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
     Ok(vec![
         InstallSpec {
             id: "claude".to_owned(),
-            install: argv(
-                "powershell",
-                &[
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-Command",
-                    "irm https://claude.ai/install.ps1 | iex",
-                ],
-            ),
+            install: ps_install("https://claude.ai/install.ps1"),
             login: LoginMode::Terminal(argv("cmd", &["/C", "start", "", claude.as_str()])),
             probe: argv(claude, &["-p", "ok"]),
             poll_seconds: 120,
         },
         InstallSpec {
             id: "codex".to_owned(),
-            install: argv(
-                "powershell",
-                &[
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-Command",
-                    "irm https://chatgpt.com/codex/install.ps1 | iex",
-                ],
-            ),
+            install: ps_install("https://chatgpt.com/codex/install.ps1"),
             login: LoginMode::Headless {
                 trigger: Some(argv(codex.clone(), &["login"])),
             },
@@ -141,32 +138,14 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
         },
         InstallSpec {
             id: "agy".to_owned(),
-            install: argv(
-                "powershell",
-                &[
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-Command",
-                    "irm https://antigravity.google/cli/install.ps1 | iex",
-                ],
-            ),
+            install: ps_install("https://antigravity.google/cli/install.ps1"),
             login: LoginMode::Headless { trigger: None },
             probe: argv(agy, &["-p", "ok"]),
             poll_seconds: 600,
         },
         InstallSpec {
             id: "grok".to_owned(),
-            install: argv(
-                "powershell",
-                &[
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-Command",
-                    "irm https://x.ai/cli/install.ps1 | iex",
-                ],
-            ),
+            install: ps_install("https://x.ai/cli/install.ps1"),
             login: LoginMode::Headless {
                 trigger: Some(argv(grok.clone(), &["login"])),
             },
@@ -227,6 +206,9 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
     let mut child = Command::new(program);
     child
         .args(args)
+        // pwsh 7 會把 PSModulePath 指到自己的模組庫，Windows PowerShell 5.1 繼承後
+        // 連 Get-FileHash 等內建 cmdlet 都解析不到；清掉讓它重建預設值
+        .env_remove("PSModulePath")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -275,6 +257,7 @@ fn spawn_streaming(command: &[String]) -> Result<StreamingChild, String> {
     let mut command = Command::new(program);
     command
         .args(args)
+        .env_remove("PSModulePath")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
