@@ -57,6 +57,45 @@ fn write_world_md(app: tauri::AppHandle, world: String, content: String) -> Resu
 }
 
 #[tauri::command]
+fn read_worldbook(
+    app: tauri::AppHandle,
+    world: String,
+) -> Result<Vec<data::WorldbookEntry>, String> {
+    data::read_worldbook(&data_root(&app)?, &world).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn upsert_worldbook_entry(
+    app: tauri::AppHandle,
+    world: String,
+    entry: data::WorldbookEntry,
+) -> Result<u64, String> {
+    data::upsert_worldbook_entry(&data_root(&app)?, &world, entry)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_worldbook_entry(app: tauri::AppHandle, world: String, uid: u64) -> Result<(), String> {
+    data::delete_worldbook_entry(&data_root(&app)?, &world, uid).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn import_worldbook(
+    app: tauri::AppHandle,
+    world: String,
+    json_text: String,
+) -> Result<usize, String> {
+    data::import_worldbook(&data_root(&app)?, &world, &json_text).map_err(|error| error.to_string())
+}
+
+// 存檔位置由前端的「另存新檔」對話框決定
+#[tauri::command]
+fn export_worldbook(app: tauri::AppHandle, world: String, path: String) -> Result<(), String> {
+    data::export_worldbook(&data_root(&app)?, &world, std::path::Path::new(&path))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn list_characters(app: tauri::AppHandle, world: String) -> Result<Vec<CharacterMeta>, String> {
     data::list_characters(&data_root(&app)?, &world).map_err(|error| error.to_string())
 }
@@ -246,7 +285,7 @@ async fn stream_via_transport(
 }
 
 /// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
-/// 上下文完全由本機正典（角色卡＋公開 transcript）經 assemble_messages 組裝，
+/// 上下文完全由本機正典（角色卡＋可見世界書＋公開 transcript）經 assemble_messages 組裝，
 /// 再依 preferences.transport 分流到 API 或 CLI；增量文字經 on_delta channel 回前端。
 #[tauri::command]
 async fn chat_with_character(
@@ -257,12 +296,15 @@ async fn chat_with_character(
 ) -> Result<String, String> {
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let card = data::read_character(&root, &world, &character).map_err(|error| error.to_string())?;
+    let card =
+        data::read_character(&root, &world, &character).map_err(|error| error.to_string())?;
     let state = data::read_state(&root, &world).map_err(|error| error.to_string())?;
     let events = data::read_transcript(&root, &world, state.current_scene)
         .map_err(|error| error.to_string())?;
+    let worldbook = data::read_worldbook(&root, &world).map_err(|error| error.to_string())?;
 
-    let messages = transport::assemble_messages(&card, &events, &transport::ui_language(&config));
+    let messages =
+        transport::assemble_messages(&card, &events, &worldbook, &transport::ui_language(&config));
     let closing = format!(
         "現在輪到「{}」回應。請直接輸出台詞與動作描寫，不要加名字前綴、不要任何角色之外的說明。",
         card.name
@@ -273,10 +315,15 @@ async fn chat_with_character(
     stream_via_transport(&config, card.tier, &card.name, &closing, &messages, emit).await
 }
 
-/// GM 上下文＝world.md（只進 GM）＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
+/// GM 上下文＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
 /// 回傳（角色名單, 組裝好的訊息）。
-fn assemble_gm(root: &std::path::Path, world: &str, lang: &str) -> Result<(Vec<String>, Vec<transport::ChatMessage>), String> {
+fn assemble_gm(
+    root: &std::path::Path,
+    world: &str,
+    lang: &str,
+) -> Result<(Vec<String>, Vec<transport::ChatMessage>), String> {
     let world_md = data::read_world_md(root, world).map_err(|error| error.to_string())?;
+    let worldbook = data::read_worldbook(root, world).map_err(|error| error.to_string())?;
     let state = data::read_state(root, world).map_err(|error| error.to_string())?;
     let events = data::read_transcript(root, world, state.current_scene)
         .map_err(|error| error.to_string())?;
@@ -288,7 +335,10 @@ fn assemble_gm(root: &std::path::Path, world: &str, lang: &str) -> Result<(Vec<S
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
     let roster = cards.iter().map(|card| card.name.clone()).collect();
-    Ok((roster, transport::assemble_gm_messages(&world_md, &cards, &events, lang)))
+    Ok((
+        roster,
+        transport::assemble_gm_messages(&world_md, &cards, &events, &worldbook, lang),
+    ))
 }
 
 /// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
@@ -299,7 +349,8 @@ async fn gm_narrate(
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (_, mut messages) = assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
+    let (_, mut messages) =
+        assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
     messages.push(transport::narrate_instruction());
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
@@ -320,7 +371,8 @@ async fn gm_narrate(
 #[tauri::command]
 async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (roster, mut messages) = assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
+    let (roster, mut messages) =
+        assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
     if roster.is_empty() {
         return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
     }
@@ -382,6 +434,11 @@ pub fn run() {
             rename_world,
             read_world_md,
             write_world_md,
+            read_worldbook,
+            upsert_worldbook_entry,
+            delete_worldbook_entry,
+            import_worldbook,
+            export_worldbook,
             list_characters,
             read_character,
             write_character,

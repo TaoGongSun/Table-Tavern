@@ -36,6 +36,34 @@ interface WorldState {
   scene_titles: Record<string, string>;
 }
 
+type Visibility =
+  | { type: "gm" }
+  | { type: "public" }
+  | { type: "characters"; characters: string[] };
+
+interface WorldbookEntry {
+  uid: number;
+  title: string;
+  keys: string[];
+  content: string;
+  constant: boolean;
+  order: number;
+  disabled: boolean;
+  visibility: Visibility;
+}
+
+interface WorldbookDraft {
+  uid: number | null;
+  title: string;
+  keys: string;
+  content: string;
+  constant: boolean;
+  enabled: boolean;
+  order: number;
+  visibility: Visibility["type"];
+  characters: string[];
+}
+
 interface AppConfig {
   api_keys: Record<string, string>;
   tier_models: Record<string, string>;
@@ -489,18 +517,33 @@ function SettingsWindow({
 function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   const [text, setText] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [entries, setEntries] = useState<WorldbookEntry[]>([]);
+  const [characters, setCharacters] = useState<CharacterMeta[]>([]);
+  const [worldbookMessage, setWorldbookMessage] = useState("");
+  const [draft, setDraft] = useState<WorldbookDraft | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setMessage("");
+    setWorldbookMessage("");
     setText(null);
+    setEntries([]);
+    setCharacters([]);
+    setDraft(null);
     invoke<string>("read_world_md", { world })
       .then(setText)
       .catch((reason) => setMessage(String(reason)));
+    invoke<WorldbookEntry[]>("read_worldbook", { world })
+      .then(setEntries)
+      .catch((reason) => setWorldbookMessage(String(reason)));
+    invoke<CharacterMeta[]>("list_characters", { world })
+      .then((cast) => setCharacters(cast.filter((character) => !character.archived)))
+      .catch((reason) => setWorldbookMessage(String(reason)));
   }, [world]);
 
   if (text === null) return message ? <p role="alert">{message}</p> : null;
 
-  async function save(event: FormEvent<HTMLFormElement>) {
+  async function saveWorldSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     try {
@@ -511,22 +554,315 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
     }
   }
 
+  async function refreshWorldbook() {
+    setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { world }));
+  }
+
+  function addEntry() {
+    setWorldbookMessage("");
+    setDraft({
+      uid: null,
+      title: "",
+      keys: "",
+      content: "",
+      constant: false,
+      enabled: true,
+      order: 100,
+      visibility: "gm",
+      characters: [],
+    });
+  }
+
+  function editEntry(entry: WorldbookEntry) {
+    setWorldbookMessage("");
+    setDraft({
+      uid: entry.uid,
+      title: entry.title,
+      keys: entry.keys.join("、"),
+      content: entry.content,
+      constant: entry.constant,
+      enabled: !entry.disabled,
+      order: entry.order,
+      visibility: entry.visibility.type,
+      characters: entry.visibility.type === "characters" ? entry.visibility.characters : [],
+    });
+  }
+
+  async function saveEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft) return;
+    setWorldbookMessage("");
+    const visibility: Visibility =
+      draft.visibility === "characters"
+        ? {
+            type: "characters",
+            characters: draft.characters.filter((name) =>
+              characters.some((character) => character.name === name),
+            ),
+          }
+        : { type: draft.visibility };
+    const entry: WorldbookEntry = {
+      uid: draft.uid ?? Number.MAX_SAFE_INTEGER,
+      title: draft.title.trim(),
+      keys: draft.keys
+        .split(/[,、]/)
+        .map((key) => key.trim())
+        .filter(Boolean),
+      content: draft.content,
+      constant: draft.constant,
+      order: draft.order,
+      disabled: !draft.enabled,
+      visibility,
+    };
+    try {
+      await invoke<number>("upsert_worldbook_entry", { world, entry });
+      await refreshWorldbook();
+      setDraft(null);
+      setWorldbookMessage(t("worldbookEntrySaved"));
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
+  async function deleteEntry(entry: WorldbookEntry) {
+    setWorldbookMessage("");
+    try {
+      const accepted = await confirm(
+        t("worldbookDeleteConfirm", { title: entry.title || String(entry.uid) }),
+        { title: t("worldbookDeleteTitle"), kind: "warning" },
+      );
+      if (!accepted) return;
+      await invoke("delete_worldbook_entry", { world, uid: entry.uid });
+      await refreshWorldbook();
+      if (draft?.uid === entry.uid) setDraft(null);
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
+  async function importWorldbook(file: File) {
+    setWorldbookMessage("");
+    try {
+      const jsonText = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+          typeof reader.result === "string" ? resolve(reader.result) : reject(t("worldbookReadError"));
+        reader.onerror = () => reject(reader.error ?? new Error(t("worldbookReadError")));
+        reader.readAsText(file);
+      });
+      const count = await invoke<number>("import_worldbook", { world, jsonText });
+      await refreshWorldbook();
+      setWorldbookMessage(t("worldbookImported", { n: count }));
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
+  async function exportWorldbook() {
+    setWorldbookMessage("");
+    try {
+      const path = await save({
+        defaultPath: "worldbook.json",
+        filters: [{ name: t("worldbookJson"), extensions: ["json"] }],
+      });
+      if (!path) return;
+      await invoke("export_worldbook", { world, path });
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
   return (
-    <form onSubmit={save} className="settings-form">
-      <textarea
-        rows={6}
-        aria-label={t("worldAria")}
-        value={text}
-        onChange={(e) => setText(e.currentTarget.value)}
-      />
-      <div className="row">
-        <button type="submit">{t("saveWorld")}</button>
-        <button type="button" onClick={onBack}>
-          {t("backToNow")}
-        </button>
-        {message && <span>{message}</span>}
-      </div>
-    </form>
+    <>
+      <form onSubmit={saveWorldSettings} className="settings-form">
+        <textarea
+          rows={6}
+          aria-label={t("worldAria")}
+          value={text}
+          onChange={(e) => setText(e.currentTarget.value)}
+        />
+        <div className="row">
+          <button type="submit">{t("saveWorld")}</button>
+          <button type="button" onClick={onBack}>
+            {t("backToNow")}
+          </button>
+          {message && <span>{message}</span>}
+        </div>
+      </form>
+
+      <section className="worldbook-section" aria-labelledby="worldbook-title">
+        <h3 id="worldbook-title">{t("worldbookTitle")}</h3>
+        <div className="worldbook-actions">
+          <button type="button" onClick={addEntry}>
+            {t("worldbookAddEntry")}
+          </button>
+          <button type="button" onClick={() => importInputRef.current?.click()}>
+            {t("worldbookImport")}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) void importWorldbook(file);
+            }}
+          />
+          <button type="button" onClick={() => void exportWorldbook()}>
+            {t("worldbookExport")}
+          </button>
+        </div>
+
+        {entries.length === 0 ? (
+          <p className="worldbook-empty">{t("worldbookEmpty")}</p>
+        ) : (
+          <div className="worldbook-list">
+            {entries.map((entry) => (
+              <div
+                className={`worldbook-row${entry.disabled ? " worldbook-row-disabled" : ""}`}
+                key={entry.uid}
+              >
+                <div className="worldbook-summary">
+                  <strong>{entry.title || entry.uid}</strong>
+                  <span>{entry.keys.join("、") || t("worldbookNoKeys")}</span>
+                  <div className="worldbook-badges">
+                    {entry.constant && (
+                      <span className="worldbook-badge">{t("worldbookConstant")}</span>
+                    )}
+                    <span className="worldbook-badge">
+                      {entry.visibility.type === "gm"
+                        ? t("worldbookVisibilityGm")
+                        : entry.visibility.type === "public"
+                          ? t("worldbookVisibilityPublic")
+                          : t("worldbookCharacterCount", {
+                              n: entry.visibility.characters.length,
+                            })}
+                    </span>
+                    {entry.disabled && (
+                      <span className="worldbook-badge">{t("worldbookDisabled")}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="worldbook-row-actions">
+                  <button type="button" onClick={() => editEntry(entry)}>
+                    {t("worldbookEdit")}
+                  </button>
+                  <button type="button" onClick={() => void deleteEntry(entry)}>
+                    {t("worldbookDelete")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {draft && (
+          <form className="settings-form worldbook-form" onSubmit={saveEntry}>
+            <label>
+              {t("worldbookEntryTitle")}
+              <input
+                value={draft.title}
+                onChange={(event) =>
+                  setDraft({ ...draft, title: event.currentTarget.value })
+                }
+              />
+            </label>
+            <label>
+              {t("worldbookKeys")}
+              <input
+                value={draft.keys}
+                placeholder={t("worldbookKeysHint")}
+                onChange={(event) => setDraft({ ...draft, keys: event.currentTarget.value })}
+              />
+            </label>
+            <label>
+              {t("worldbookContent")}
+              <textarea
+                rows={7}
+                value={draft.content}
+                onChange={(event) =>
+                  setDraft({ ...draft, content: event.currentTarget.value })
+                }
+              />
+            </label>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={draft.constant}
+                onChange={(event) =>
+                  setDraft({ ...draft, constant: event.currentTarget.checked })
+                }
+              />
+              {t("worldbookConstant")}
+            </label>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={draft.enabled}
+                onChange={(event) =>
+                  setDraft({ ...draft, enabled: event.currentTarget.checked })
+                }
+              />
+              {t("worldbookEnabled")}
+            </label>
+            <fieldset className="worldbook-visibility">
+              <legend>{t("worldbookVisibility")}</legend>
+              {(["gm", "public", "characters"] as const).map((visibility) => (
+                <label className="inline" key={visibility}>
+                  <input
+                    type="radio"
+                    name="worldbook-visibility"
+                    value={visibility}
+                    checked={draft.visibility === visibility}
+                    onChange={() => setDraft({ ...draft, visibility })}
+                  />
+                  {visibility === "gm"
+                    ? t("worldbookVisibilityGm")
+                    : visibility === "public"
+                      ? t("worldbookVisibilityPublic")
+                      : t("worldbookVisibilityCharacters")}
+                </label>
+              ))}
+            </fieldset>
+            {draft.visibility === "characters" && (
+              <fieldset className="worldbook-characters">
+                <legend>{t("worldbookChooseCharacters")}</legend>
+                {characters.length === 0 ? (
+                  <span>{t("worldbookNoCharacters")}</span>
+                ) : (
+                  characters.map((character) => (
+                    <label className="inline" key={character.name}>
+                      <input
+                        type="checkbox"
+                        checked={draft.characters.includes(character.name)}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            characters: event.currentTarget.checked
+                              ? [...draft.characters, character.name]
+                              : draft.characters.filter((name) => name !== character.name),
+                          })
+                        }
+                      />
+                      {character.name}
+                    </label>
+                  ))
+                )}
+              </fieldset>
+            )}
+            <div className="row">
+              <button type="submit">{t("worldbookSaveEntry")}</button>
+              <button type="button" onClick={() => setDraft(null)}>
+                {t("worldbookCancel")}
+              </button>
+            </div>
+          </form>
+        )}
+        {worldbookMessage && <p role="status">{worldbookMessage}</p>}
+      </section>
+    </>
   );
 }
 

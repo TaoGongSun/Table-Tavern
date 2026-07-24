@@ -145,6 +145,26 @@ pub struct TranscriptEvent {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "characters", rename_all = "lowercase")]
+pub enum Visibility {
+    Gm,
+    Public,
+    Characters(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorldbookEntry {
+    pub uid: u64,
+    pub title: String,
+    pub keys: Vec<String>,
+    pub content: String,
+    pub constant: bool,
+    pub order: i64,
+    pub disabled: bool,
+    pub visibility: Visibility,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldState {
     #[serde(default)]
@@ -402,6 +422,389 @@ pub fn read_world_md(root: &Path, world: &str) -> DataResult<String> {
 
 pub fn write_world_md(root: &Path, world: &str, content: &str) -> DataResult<()> {
     fs::write(world_dir(root, world)?.join("world.md"), content)?;
+    Ok(())
+}
+
+fn worldbook_path(root: &Path, world: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world)?.join("worldbook.json"))
+}
+
+fn empty_worldbook() -> serde_json::Value {
+    serde_json::json!({ "entries": {} })
+}
+
+fn read_worldbook_value(root: &Path, world: &str) -> DataResult<serde_json::Value> {
+    let path = worldbook_path(root, world)?;
+    if !path.exists() {
+        return Ok(empty_worldbook());
+    }
+    let text = fs::read_to_string(path)?;
+    let value: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
+    if !value
+        .get("entries")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        return Err(invalid_data("worldbook entries must be an object"));
+    }
+    Ok(value)
+}
+
+fn write_worldbook_value(root: &Path, world: &str, value: &serde_json::Value) -> DataResult<()> {
+    fs::write(
+        worldbook_path(root, world)?,
+        serde_json::to_string_pretty(value)?,
+    )?;
+    Ok(())
+}
+
+fn visibility_from_value(value: &serde_json::Value) -> Visibility {
+    match value
+        .get("extensions")
+        .and_then(|value| value.get("table_tavern"))
+        .and_then(|value| value.get("visibility"))
+    {
+        Some(serde_json::Value::String(value)) if value == "public" => Visibility::Public,
+        Some(serde_json::Value::Object(value)) => value
+            .get("characters")
+            .and_then(serde_json::Value::as_array)
+            .filter(|names| names.iter().all(serde_json::Value::is_string))
+            .map(|names| {
+                Visibility::Characters(
+                    names
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                        .collect(),
+                )
+            })
+            .unwrap_or(Visibility::Gm),
+        _ => Visibility::Gm,
+    }
+}
+
+fn visibility_value(visibility: &Visibility) -> serde_json::Value {
+    match visibility {
+        Visibility::Gm => serde_json::Value::String("gm".to_owned()),
+        Visibility::Public => serde_json::Value::String("public".to_owned()),
+        Visibility::Characters(names) => serde_json::json!({ "characters": names }),
+    }
+}
+
+fn set_visibility(value: &mut serde_json::Value, visibility: &Visibility) {
+    let Some(entry) = value.as_object_mut() else {
+        return;
+    };
+    let extensions = entry
+        .entry("extensions")
+        .or_insert_with(|| serde_json::json!({}));
+    if !extensions.is_object() {
+        *extensions = serde_json::json!({});
+    }
+    let extensions = extensions.as_object_mut().expect("object set above");
+    let table_tavern = extensions
+        .entry("table_tavern")
+        .or_insert_with(|| serde_json::json!({}));
+    if !table_tavern.is_object() {
+        *table_tavern = serde_json::json!({});
+    }
+    table_tavern
+        .as_object_mut()
+        .expect("object set above")
+        .insert("visibility".to_owned(), visibility_value(visibility));
+}
+
+fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> WorldbookEntry {
+    WorldbookEntry {
+        uid: value
+            .get("uid")
+            .and_then(serde_json::Value::as_u64)
+            .or(fallback_uid)
+            .unwrap_or(0),
+        title: value
+            .get("comment")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        keys: value
+            .get("key")
+            .and_then(serde_json::Value::as_array)
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        content: value
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        constant: value
+            .get("constant")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        order: value
+            .get("order")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0),
+        disabled: value
+            .get("disable")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        visibility: visibility_from_value(value),
+    }
+}
+
+fn entries_object(
+    value: &serde_json::Value,
+) -> DataResult<&serde_json::Map<String, serde_json::Value>> {
+    value
+        .get("entries")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| invalid_data("worldbook entries must be an object"))
+}
+
+fn entries_object_mut(
+    value: &mut serde_json::Value,
+) -> DataResult<&mut serde_json::Map<String, serde_json::Value>> {
+    value
+        .get_mut("entries")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| invalid_data("worldbook entries must be an object"))
+}
+
+fn entry_uid(key: &str, value: &serde_json::Value) -> Option<u64> {
+    value
+        .get("uid")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| key.parse().ok())
+}
+
+fn max_uid(entries: &serde_json::Map<String, serde_json::Value>) -> Option<u64> {
+    entries
+        .iter()
+        .filter_map(|(key, value)| entry_uid(key, value))
+        .max()
+}
+
+fn next_uid(entries: &serde_json::Map<String, serde_json::Value>) -> DataResult<u64> {
+    max_uid(entries)
+        .map(|uid| {
+            uid.checked_add(1)
+                .ok_or_else(|| invalid_data("worldbook uid overflow"))
+        })
+        .unwrap_or(Ok(0))
+}
+
+fn next_display_index(entries: &serde_json::Map<String, serde_json::Value>) -> DataResult<u64> {
+    entries
+        .values()
+        .filter_map(|value| value.get("displayIndex"))
+        .filter_map(serde_json::Value::as_u64)
+        .max()
+        .map(|index| {
+            index
+                .checked_add(1)
+                .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))
+        })
+        .unwrap_or(Ok(0))
+}
+
+fn update_entry_fields(value: &mut serde_json::Value, entry: &WorldbookEntry) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    object.insert("key".to_owned(), serde_json::json!(entry.keys));
+    object.insert(
+        "comment".to_owned(),
+        serde_json::Value::String(entry.title.clone()),
+    );
+    object.insert(
+        "content".to_owned(),
+        serde_json::Value::String(entry.content.clone()),
+    );
+    object.insert(
+        "constant".to_owned(),
+        serde_json::Value::Bool(entry.constant),
+    );
+    object.insert("order".to_owned(), serde_json::json!(entry.order));
+    object.insert(
+        "disable".to_owned(),
+        serde_json::Value::Bool(entry.disabled),
+    );
+    set_visibility(value, &entry.visibility);
+}
+
+fn new_entry_value(entry: &WorldbookEntry, uid: u64, display_index: u64) -> serde_json::Value {
+    let mut value = serde_json::json!({
+        "uid": uid,
+        "key": entry.keys,
+        "keysecondary": [],
+        "comment": entry.title,
+        "content": entry.content,
+        "constant": entry.constant,
+        "vectorized": false,
+        "selective": true,
+        "selectiveLogic": 0,
+        "addMemo": true,
+        "order": entry.order,
+        "position": 0,
+        "disable": entry.disabled,
+        "excludeRecursion": false,
+        "preventRecursion": false,
+        "delayUntilRecursion": false,
+        "probability": 100,
+        "useProbability": true,
+        "depth": 4,
+        "group": "",
+        "groupOverride": false,
+        "groupWeight": 100,
+        "scanDepth": null,
+        "caseSensitive": null,
+        "matchWholeWords": null,
+        "useGroupScoring": null,
+        "automationId": "",
+        "role": null,
+        "sticky": 0,
+        "cooldown": 0,
+        "delay": 0,
+        "displayIndex": display_index
+    });
+    set_visibility(&mut value, &entry.visibility);
+    value
+}
+
+pub fn read_worldbook(root: &Path, world: &str) -> DataResult<Vec<WorldbookEntry>> {
+    let value = read_worldbook_value(root, world)?;
+    let mut entries: Vec<_> = entries_object(&value)?
+        .iter()
+        .map(|(key, value)| entry_view(value, key.parse().ok()))
+        .collect();
+    entries.sort_by_key(|entry| entry.uid);
+    Ok(entries)
+}
+
+pub fn upsert_worldbook_entry(root: &Path, world: &str, entry: WorldbookEntry) -> DataResult<u64> {
+    let mut worldbook = read_worldbook_value(root, world)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let existing_key = entries
+        .iter()
+        .find(|(key, value)| entry_uid(key, value) == Some(entry.uid))
+        .map(|(key, _)| key.clone());
+    let actual_uid = if let Some(key) = existing_key {
+        let value = entries
+            .get_mut(&key)
+            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
+        if !value.is_object() {
+            return Err(invalid_data("worldbook entry must be an object"));
+        }
+        update_entry_fields(value, &entry);
+        entry.uid
+    } else {
+        let uid = next_uid(entries)?;
+        let display_index = next_display_index(entries)?;
+        entries.insert(uid.to_string(), new_entry_value(&entry, uid, display_index));
+        uid
+    };
+    write_worldbook_value(root, world, &worldbook)?;
+    Ok(actual_uid)
+}
+
+pub fn delete_worldbook_entry(root: &Path, world: &str, uid: u64) -> DataResult<()> {
+    let path = worldbook_path(root, world)?;
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut worldbook = read_worldbook_value(root, world)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let key = entries
+        .iter()
+        .find(|(key, value)| entry_uid(key, value) == Some(uid))
+        .map(|(key, _)| key.clone());
+    if let Some(key) = key {
+        entries.remove(&key);
+        write_worldbook_value(root, world, &worldbook)?;
+    }
+    Ok(())
+}
+
+fn normalize_imported_entry(
+    mut value: serde_json::Value,
+    character_book: bool,
+    uid: u64,
+) -> DataResult<serde_json::Value> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| invalid_data("worldbook entry must be an object"))?;
+    if character_book {
+        if let Some(keys) = object.remove("keys") {
+            object.insert("key".to_owned(), keys);
+        }
+        if let Some(keys) = object.remove("secondary_keys") {
+            object.insert("keysecondary".to_owned(), keys);
+        }
+        if let Some(order) = object.remove("insertion_order") {
+            object.insert("order".to_owned(), order);
+        }
+        if let Some(enabled) = object.remove("enabled") {
+            let enabled = enabled
+                .as_bool()
+                .ok_or_else(|| invalid_data("character_book enabled must be a boolean"))?;
+            object.insert("disable".to_owned(), serde_json::Value::Bool(!enabled));
+        }
+    }
+    object.insert("uid".to_owned(), serde_json::json!(uid));
+    let has_visibility = value
+        .get("extensions")
+        .and_then(|value| value.get("table_tavern"))
+        .and_then(|value| value.get("visibility"))
+        .is_some();
+    if !has_visibility {
+        set_visibility(&mut value, &Visibility::Gm);
+    }
+    Ok(value)
+}
+
+pub fn import_worldbook(root: &Path, world: &str, json_text: &str) -> DataResult<usize> {
+    let imported: serde_json::Value = serde_json::from_str(json_text)
+        .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
+    let source = imported
+        .get("entries")
+        .ok_or_else(|| invalid_data("imported worldbook is missing entries"))?;
+    let (source_entries, character_book): (Vec<serde_json::Value>, bool) = match source {
+        serde_json::Value::Object(entries) => (entries.values().cloned().collect(), false),
+        serde_json::Value::Array(entries) => (entries.clone(), true),
+        _ => {
+            return Err(invalid_data(
+                "imported worldbook entries must be an object or array",
+            ));
+        }
+    };
+
+    let mut worldbook = read_worldbook_value(root, world)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let imported_count = source_entries.len();
+    let mut uid = next_uid(entries)?;
+    for source_entry in source_entries {
+        let entry = normalize_imported_entry(source_entry, character_book, uid)?;
+        entries.insert(uid.to_string(), entry);
+        uid = uid
+            .checked_add(1)
+            .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
+    }
+    write_worldbook_value(root, world, &worldbook)?;
+    Ok(imported_count)
+}
+
+pub fn export_worldbook(root: &Path, world: &str, path: &Path) -> DataResult<()> {
+    let source = worldbook_path(root, world)?;
+    if source.exists() {
+        fs::copy(source, path)?;
+    } else {
+        fs::write(path, serde_json::to_string_pretty(&empty_worldbook())?)?;
+    }
     Ok(())
 }
 
@@ -852,6 +1255,239 @@ mod tests {
         }
     }
 
+    fn worldbook_entry(uid: u64, title: &str) -> WorldbookEntry {
+        WorldbookEntry {
+            uid,
+            title: title.to_owned(),
+            keys: vec!["霧".to_owned()],
+            content: format!("{title}內容"),
+            constant: false,
+            order: 10,
+            disabled: false,
+            visibility: Visibility::Gm,
+        }
+    }
+
+    #[test]
+    fn worldbook_missing_returns_empty_and_invalid_json_errors() {
+        let root = TestRoot::new("worldbook-missing");
+        create_world(root.path(), "舊桌").unwrap();
+        assert_eq!(read_worldbook(root.path(), "舊桌").unwrap(), Vec::new());
+        assert_eq!(
+            serde_json::to_value(Visibility::Gm).unwrap(),
+            serde_json::json!({"type": "gm"})
+        );
+        assert_eq!(
+            serde_json::to_value(Visibility::Characters(vec!["狐狸".to_owned()])).unwrap(),
+            serde_json::json!({"type": "characters", "characters": ["狐狸"]})
+        );
+
+        fs::write(root.path().join("worlds/舊桌/worldbook.json"), "{broken").unwrap();
+        assert!(read_worldbook(root.path(), "舊桌").is_err());
+    }
+
+    #[test]
+    fn imports_st_worldbook_losslessly_and_round_trips_export() {
+        let root = TestRoot::new("worldbook-st-import");
+        create_world(root.path(), "來源").unwrap();
+        let imported = serde_json::json!({
+            "entries": {
+                "7": {
+                    "uid": 7,
+                    "key": ["dragon", "wyrm"],
+                    "comment": "龍",
+                    "content": "古龍沉睡於山下。",
+                    "constant": false,
+                    "order": 20,
+                    "disable": false,
+                    "sticky": 4,
+                    "probability": 37
+                },
+                "9": {
+                    "uid": 9,
+                    "key": [],
+                    "comment": "王都",
+                    "content": "王都戒嚴。",
+                    "constant": true,
+                    "order": 5,
+                    "disable": false,
+                    "extensions": {
+                        "foreign_app": {"kept": true},
+                        "table_tavern": {"visibility": "public"}
+                    }
+                }
+            }
+        });
+        assert_eq!(
+            import_worldbook(root.path(), "來源", &imported.to_string()).unwrap(),
+            2
+        );
+
+        let entries = read_worldbook(root.path(), "來源").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].uid, 0);
+        assert_eq!(entries[0].title, "龍");
+        assert_eq!(entries[0].keys, ["dragon", "wyrm"]);
+        assert_eq!(entries[0].visibility, Visibility::Gm);
+        assert_eq!(entries[1].uid, 1);
+        assert_eq!(entries[1].visibility, Visibility::Public);
+
+        let raw: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.path().join("worlds/來源/worldbook.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["entries"]["0"]["sticky"], 4);
+        assert_eq!(raw["entries"]["0"]["probability"], 37);
+        assert_eq!(
+            raw["entries"]["0"]["extensions"]["table_tavern"]["visibility"],
+            "gm"
+        );
+        assert_eq!(
+            raw["entries"]["1"]["extensions"]["foreign_app"]["kept"],
+            true
+        );
+
+        let exported = root.path().join("exported-worldbook.json");
+        export_worldbook(root.path(), "來源", &exported).unwrap();
+        create_world(root.path(), "目的").unwrap();
+        let exported_text = fs::read_to_string(exported).unwrap();
+        assert_eq!(
+            import_worldbook(root.path(), "目的", &exported_text).unwrap(),
+            entries.len()
+        );
+        assert_eq!(
+            read_worldbook(root.path(), "目的").unwrap().len(),
+            entries.len()
+        );
+    }
+
+    #[test]
+    fn imports_character_book_mapping_and_appends_unique_uids() {
+        let root = TestRoot::new("worldbook-character-book");
+        create_world(root.path(), "世界").unwrap();
+        let first = serde_json::json!({
+            "entries": {
+                "12": {
+                    "uid": 12,
+                    "key": ["existing"],
+                    "comment": "既有",
+                    "content": "內容",
+                    "constant": false,
+                    "order": 1,
+                    "disable": false
+                }
+            }
+        });
+        import_worldbook(root.path(), "世界", &first.to_string()).unwrap();
+
+        let character_book = serde_json::json!({
+            "entries": [
+                {
+                    "keys": ["gate"],
+                    "secondary_keys": ["night"],
+                    "comment": "城門",
+                    "content": "城門已關。",
+                    "constant": false,
+                    "insertion_order": 42,
+                    "enabled": false,
+                    "priority": 8
+                },
+                {
+                    "keys": ["market"],
+                    "comment": "市集",
+                    "content": "市集喧鬧。",
+                    "constant": false,
+                    "insertion_order": 43,
+                    "enabled": true
+                }
+            ]
+        });
+        assert_eq!(
+            import_worldbook(root.path(), "世界", &character_book.to_string()).unwrap(),
+            2
+        );
+
+        let entries = read_worldbook(root.path(), "世界").unwrap();
+        assert_eq!(
+            entries.iter().map(|entry| entry.uid).collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        assert_eq!(entries[1].keys, ["gate"]);
+        assert_eq!(entries[1].order, 42);
+        assert!(entries[1].disabled);
+        assert!(!entries[2].disabled);
+
+        let raw: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.path().join("worlds/世界/worldbook.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["entries"]["1"]["keysecondary"][0], "night");
+        assert_eq!(raw["entries"]["1"]["priority"], 8);
+        assert!(raw["entries"]["1"].get("keys").is_none());
+        assert!(raw["entries"]["1"].get("enabled").is_none());
+    }
+
+    #[test]
+    fn upsert_preserves_unknown_fields_allocates_uid_and_deletes() {
+        let root = TestRoot::new("worldbook-upsert");
+        create_world(root.path(), "世界").unwrap();
+        let imported = serde_json::json!({
+            "entries": {
+                "5": {
+                    "uid": 5,
+                    "key": ["old"],
+                    "comment": "舊標題",
+                    "content": "舊內容",
+                    "constant": false,
+                    "order": 1,
+                    "disable": false,
+                    "sticky": 99
+                }
+            }
+        });
+        import_worldbook(root.path(), "世界", &imported.to_string()).unwrap();
+
+        let mut updated = worldbook_entry(0, "新標題");
+        updated.visibility = Visibility::Characters(vec!["狐狸".to_owned()]);
+        assert_eq!(
+            upsert_worldbook_entry(root.path(), "世界", updated.clone()).unwrap(),
+            0
+        );
+        let raw: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.path().join("worlds/世界/worldbook.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["entries"]["0"]["sticky"], 99);
+        assert_eq!(raw["entries"]["0"]["comment"], "新標題");
+        assert_eq!(
+            raw["entries"]["0"]["extensions"]["table_tavern"]["visibility"]["characters"][0],
+            "狐狸"
+        );
+
+        let allocated =
+            upsert_worldbook_entry(root.path(), "世界", worldbook_entry(u64::MAX, "新增")).unwrap();
+        assert_eq!(allocated, 1);
+        let raw: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.path().join("worlds/世界/worldbook.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["entries"]["1"]["selective"], true);
+        assert_eq!(raw["entries"]["1"]["probability"], 100);
+        assert_eq!(raw["entries"]["1"]["useProbability"], true);
+        assert_eq!(raw["entries"]["1"]["depth"], 4);
+        assert_eq!(raw["entries"]["1"]["displayIndex"], 0);
+
+        delete_worldbook_entry(root.path(), "世界", 0).unwrap();
+        assert_eq!(
+            read_worldbook(root.path(), "世界")
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.uid)
+                .collect::<Vec<_>>(),
+            [1]
+        );
+    }
+
     #[test]
     fn creates_lists_worlds_and_rejects_duplicates() {
         let root = TestRoot::new("worlds");
@@ -905,7 +1541,9 @@ mod tests {
         for name in ["Fox", "Knight", "Bard"] {
             assert!(characters.iter().any(|character| character.name == name));
         }
-        assert!(read_world_md(root.path(), &world).unwrap().contains("Mistmouth"));
+        assert!(read_world_md(root.path(), &world)
+            .unwrap()
+            .contains("Mistmouth"));
         let transcript = read_transcript(root.path(), &world, 0).unwrap();
         assert!(transcript[0].text.starts_with("Rain hammers"));
     }
@@ -1102,7 +1740,11 @@ mod tests {
             private_md: String::new(),
         };
         write_character(root.path(), "世界", &card).unwrap();
-        assert!(!read_character(root.path(), "世界", "藏圖").unwrap().show_image);
+        assert!(
+            !read_character(root.path(), "世界", "藏圖")
+                .unwrap()
+                .show_image
+        );
 
         fs::write(
             root.path().join("worlds/世界/characters/舊卡.md"),
@@ -1374,7 +2016,10 @@ mod tests {
         begin_next_scene(root.path(), "取名桌", "摘要", "zh-TW", Some("酒館夜話")).unwrap();
         let state = read_state(root.path(), "取名桌").unwrap();
         assert_eq!(state.current_scene, 1);
-        assert_eq!(state.scene_titles.get("0").map(String::as_str), Some("酒館夜話"));
+        assert_eq!(
+            state.scene_titles.get("0").map(String::as_str),
+            Some("酒館夜話")
+        );
         assert!(!state.scene_titles.contains_key("1"));
 
         // 空字串／None 都不進表

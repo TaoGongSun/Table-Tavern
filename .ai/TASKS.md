@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [worldbook-st-format](tasks/worldbook-st-format.md) — 世界書 v2：ST 相容條目化＋一鍵匯入＋可見性資訊邊界 — 下一步：前後端皆完成（cargo 55/55、npm build 綠），等使用者實測條目管理／匯入匯出／資訊邊界即結案
 - [post-mvp-character-archive](tasks/post-mvp-character-archive.md) — MVP 後：角色卡隱藏區（軟刪除）＋真刪除警告 — 下一步：功能與自動驗證已完成（cargo 48/48、npm build 綠），等使用者實測收起／還原／刪除確認框三條路徑即結案
 
 ## Done

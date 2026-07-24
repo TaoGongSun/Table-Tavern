@@ -562,6 +562,87 @@ input {
   gap: 0.25rem;
 }
 
+.worldbook-section {
+  border-top: 1px solid #88888855;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+}
+
+.worldbook-section h3 {
+  margin: 0 0 0.75rem;
+}
+
+.worldbook-actions,
+.worldbook-row-actions,
+.worldbook-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.worldbook-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.worldbook-row {
+  align-items: center;
+  border: 1px solid #88888855;
+  border-radius: 8px;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.65rem;
+}
+
+.worldbook-row-disabled {
+  opacity: 0.55;
+}
+
+.worldbook-summary {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.worldbook-summary > span {
+  overflow-wrap: anywhere;
+}
+
+.worldbook-badge {
+  background: #88888822;
+  border-radius: 999px;
+  font-size: 0.8em;
+  padding: 0.1em 0.55em;
+}
+
+.worldbook-row-actions button {
+  box-shadow: none;
+  padding: 0.35em 0.65em;
+}
+
+.worldbook-empty {
+  opacity: 0.7;
+}
+
+.worldbook-form {
+  border: 1px solid #88888855;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.worldbook-visibility,
+.worldbook-characters {
+  border: 1px solid #88888855;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.8rem;
+}
+
 /* 引導步驟裡的行內按鈕：與前面的說明文字留白，別擠成壓字 */
 .onboarding li {
   margin-bottom: 0.5rem;
