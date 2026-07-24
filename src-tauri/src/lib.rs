@@ -290,6 +290,13 @@ async fn stream_via_transport(
             let combined = format!("{system}\n\n{prompt}");
             cli::run_cli(&program, &args, &combined, cli::parse_codex_line, emit).await
         }
+        "agy" => {
+            // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
+            let model = cli::tier_override(&config.tier_models, "agy", tier);
+            let combined = format!("{system}\n\n{prompt}");
+            let args = cli::agy_args(model, &combined);
+            cli::run_cli(&program, &args, "", cli::parse_agy_line, emit).await
+        }
         other => Err(format!("未知傳輸層：{other}").into()),
     }
     .map_err(|error| error.to_string())

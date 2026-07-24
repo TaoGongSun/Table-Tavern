@@ -105,6 +105,7 @@ interface CliInfo {
 const CLI_LABELS: Record<string, string> = {
   claude: "Claude Code CLI",
   codex: "Codex CLI",
+  agy: "Antigravity CLI",
 };
 
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
@@ -199,7 +200,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   useEffect(() => {
     invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
     // CLI 模型下拉目錄：讀各 CLI 本機快取（後端 list_cli_models）
-    for (const id of ["claude", "codex"]) {
+    for (const id of ["claude", "codex", "agy"]) {
       invoke<{ id: string; label: string }[]>("list_cli_models", { cli: id })
         .then((options) => setCliCatalogs((prev) => ({ ...prev, [id]: options })))
         .catch(() => {});
@@ -255,7 +256,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
             />
             {t("transportApi")}
           </label>
-          {(["claude", "codex"] as const).map((id) => {
+          {(["claude", "codex", "agy"] as const).map((id) => {
             const found = clis.find((c) => c.id === id);
             return (
               <label key={id} className="inline">
@@ -370,7 +371,11 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
               );
             })}
             <p className="cli-version" role="note">
-              {transport === "claude" ? t("cliCatalogClaude") : t("cliCatalogCodex")}
+              {transport === "claude"
+                ? t("cliCatalogClaude")
+                : transport === "agy"
+                  ? t("cliCatalogAgy")
+                  : t("cliCatalogCodex")}
             </p>
           </>
         )}
