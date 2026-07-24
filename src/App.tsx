@@ -196,6 +196,15 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   const [cliCatalogs, setCliCatalogs] = useState<Record<string, { id: string; label: string }[]>>({});
   const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
+  const [agyInstalling, setAgyInstalling] = useState(false);
+  const agyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function stopAgyPolling() {
+    if (agyPollRef.current !== null) {
+      clearInterval(agyPollRef.current);
+      agyPollRef.current = null;
+    }
+  }
 
   useEffect(() => {
     invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
@@ -212,7 +221,45 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         setModels((body.data ?? []).flatMap((m) => (m.id ? [{ id: m.id, name: m.name ?? m.id }] : []))),
       )
       .catch(() => {});
+    return stopAgyPolling;
   }, []);
+
+  async function installAgy() {
+    setAgyInstalling(true);
+    try {
+      await invoke("install_agy_cli", {
+        messages: {
+          start: t("agyInstallStart"),
+          loginHint: t("agyInstallLoginHint"),
+          success: t("agyInstallSuccess"),
+          fail: t("agyInstallFail"),
+        },
+      });
+    } catch (reason) {
+      setMessage(String(reason));
+      setAgyInstalling(false);
+      return;
+    }
+
+    let elapsed = 0;
+    agyPollRef.current = setInterval(() => {
+      elapsed += 3_000;
+      invoke<CliInfo[]>("detect_clis")
+        .then((detected) => {
+          setClis(detected);
+          if (detected.some((cli) => cli.id === "agy") || elapsed >= 600_000) {
+            stopAgyPolling();
+            setAgyInstalling(false);
+          }
+        })
+        .catch(() => {
+          if (elapsed >= 600_000) {
+            stopAgyPolling();
+            setAgyInstalling(false);
+          }
+        });
+    }, 3_000);
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -272,7 +319,14 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                 {found ? (
                   <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
                 ) : (
-                  <span className="cli-version">{t("cliNotDetected")}</span>
+                  <>
+                    <span className="cli-version">{t("cliNotDetected")}</span>
+                    {id === "agy" && (
+                      <button type="button" disabled={agyInstalling} onClick={() => void installAgy()}>
+                        {agyInstalling ? t("agyInstalling") : t("agyInstallBtn")}
+                      </button>
+                    )}
+                  </>
                 )}
               </label>
             );
