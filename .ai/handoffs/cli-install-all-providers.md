@@ -17,6 +17,7 @@
 - `grep agyInstall src/ -r`＝無殘留；install_cli 已註冊 invoke_handler（src-tauri/src/lib.rs:591）。
 
 ## Remaining / Next action
+- 使用者已實測 codex 一鍵安裝：安裝＋登入成功，但「驗證成功」訊息未出現——已修（codex 探針 codex exec 在非 git 目錄拒跑，改 codex login status，commit ce64cf2，cargo 70 綠）；下顆打包版生效
 - 使用者實測：AI 設定頁對未安裝的 CLI 按「一鍵安裝」，走完終端機安裝＋登入＋自動驗證（至少驗一家非 agy 的）。
 - 實測過後結案，接 test-build-cross-platform 重打包（Mac DMG＋CI Windows 測試包；舊測試產物已於 2026-07-24 刪除）。
 
