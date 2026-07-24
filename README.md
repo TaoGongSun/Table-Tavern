@@ -20,7 +20,7 @@
 
 ## 安裝（macOS）
 
-1. 下載 `Table Tavern_x.y.z_aarch64.dmg`，雙擊掛載。
+1. 下載 `Table Tavern_x.y.z_aarch64.dmg`（目前最新為 0.2.0），雙擊掛載。
 2. 把 `Table Tavern.app` 拖進「應用程式」資料夾。
 3. 雙擊開啟。
 
