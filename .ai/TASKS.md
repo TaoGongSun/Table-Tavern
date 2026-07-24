@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- [post-mvp-more-cli-providers](tasks/post-mvp-more-cli-providers.md) — 擴充 CLI 訂閱供應商（本輪：gemini 端到端＋一鍵安裝） — 下一步：研究安裝通道／首跑互動跳過／憑證訊號／headless 介面，回來拍板規格再派工
+- [post-mvp-more-cli-providers](tasks/post-mvp-more-cli-providers.md) — 擴充 CLI 訂閱供應商（本輪：Antigravity CLI（agy）端到端＋一鍵安裝；gemini-cli 個人版已遭 Google 停用故轉向） — 下一步：接入與一鍵安裝皆已入庫（cargo 64/64、npm build 綠），剩本機實測：移除 agy 後從設定頁跑一鍵安裝（終端機＋OAuth），與實聊驗證 agy 供應商發言
 
 ## Done
 - [worldbook-st-format](tasks/worldbook-st-format.md) — 世界書 v2：ST 相容條目化＋一鍵匯入＋可見性資訊邊界 — 2026-07-24 使用者實測通過（匯入、條目管理、置頂與移動、未儲存提示、資訊邊界實聊：指定角色知情／未指定不知情），結案
