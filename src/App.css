@@ -12,24 +12,25 @@ body {
 }
 
 :root {
-  /* ---- tokens: light（石板紙色系，同一結構的亮色對應） ---- */
-  --surface-0: #eceae5; /* app ground */
-  --surface-1: #f6f5f2; /* rail / composer strip */
-  --surface-2: #ffffff; /* cards, inputs */
-  --surface-3: #fbfaf8; /* write surface */
-  --ink-1: #23272f; /* primary text */
-  --ink-2: #4a505c; /* secondary text */
-  --ink-3: #6a7180; /* muted text */
-  --line: #d4d2cb;
-  --line-strong: #b8b6ae;
-  --accent: #b85a35; /* primary action */
-  --accent-ink: #ffffff;
-  --amber: #8a6a1c; /* classified / info-boundary only */
-  --player: #3d6488; /* player voice */
-  --plate-mix: #3a4152; /* wedge 的角色色混底 */
-  --neutral-plate: #3a4152; /* 桌名 wedge */
+  /* ---- tokens: dark 為預設（Emblem 定案深石板；對比皆過 AA，正文 AAA）。
+     主題不跟系統走：config.preferences.theme 寫在 <html data-theme>，預設 dark ---- */
+  --surface-0: #20242c; /* app ground */
+  --surface-1: #2c313c; /* rail / composer strip */
+  --surface-2: #333947; /* cards, inputs */
+  --surface-3: #1a1e26; /* write surface */
+  --ink-1: #e6eaf2; /* primary text */
+  --ink-2: #c4cddc; /* secondary text */
+  --ink-3: #aeb8ca; /* muted text */
+  --line: #454e60;
+  --line-strong: #4a5468;
+  --accent: #e58057; /* primary action */
+  --accent-ink: #16181e;
+  --amber: #e6c46e; /* classified / info-boundary only */
+  --player: #8fb8dc; /* player voice */
+  --plate-mix: #2c313c; /* wedge 的角色色混底 */
+  --neutral-plate: #333947; /* 桌名 wedge */
   --neutral-plate-ink: #ffffff;
-  --danger: #a43a2a;
+  --danger: #e07a6a;
 
   --font-ui: "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
   --font-story: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -38,7 +39,7 @@ body {
   --radius-s: 4px;
   --radius-m: 7px;
   --radius-l: 10px;
-  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.35);
 
   /* ---- type scale：全 app 只允許這六階（story/body/ui/btn/meta/gem） ---- */
   --fs-story: 0.96rem; /* 故事文字（對話、旁白、書寫面） */
@@ -65,28 +66,26 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* ---- tokens: dark（Emblem 定案深石板；對比皆過 AA，正文 AAA） ---- */
-    --surface-0: #20242c;
-    --surface-1: #2c313c;
-    --surface-2: #333947;
-    --surface-3: #1a1e26;
-    --ink-1: #e6eaf2;
-    --ink-2: #c4cddc;
-    --ink-3: #aeb8ca;
-    --line: #454e60;
-    --line-strong: #4a5468;
-    --accent: #e58057;
-    --accent-ink: #16181e;
-    --amber: #e6c46e;
-    --player: #8fb8dc;
-    --plate-mix: #2c313c;
-    --neutral-plate: #333947;
-    --neutral-plate-ink: #ffffff;
-    --danger: #e07a6a;
-    --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.35);
-  }
+:root[data-theme="light"] {
+  /* ---- tokens: light（石板紙色系，同一結構的亮色對應） ---- */
+  --surface-0: #eceae5;
+  --surface-1: #f6f5f2;
+  --surface-2: #ffffff;
+  --surface-3: #fbfaf8;
+  --ink-1: #23272f;
+  --ink-2: #4a505c;
+  --ink-3: #6a7180;
+  --line: #d4d2cb;
+  --line-strong: #b8b6ae;
+  --accent: #b85a35;
+  --accent-ink: #ffffff;
+  --amber: #8a6a1c;
+  --player: #3d6488;
+  --plate-mix: #3a4152;
+  --neutral-plate: #3a4152;
+  --neutral-plate-ink: #ffffff;
+  --danger: #a43a2a;
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
 }
 
 /* 舊版把 outline 全關掉是無障礙缺陷（ui-overhaul 檢討第一條）：鍵盤焦點一律可見 */

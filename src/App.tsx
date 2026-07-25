@@ -653,6 +653,16 @@ function SettingsWindow({
               </select>
             </label>
             <label>
+              {t("themeLabel")}
+              <select
+                value={config.preferences["theme"] === "light" ? "light" : "dark"}
+                onChange={(e) => onPreference("theme", e.currentTarget.value)}
+              >
+                <option value="dark">{t("themeDark")}</option>
+                <option value="light">{t("themeLight")}</option>
+              </select>
+            </label>
+            <label>
               {t("textSizeLabel")}
               <select
                 value={textSize in TEXT_SIZE_PX ? textSize : TEXT_SIZE_DEFAULT}
@@ -1403,6 +1413,12 @@ function App() {
     document.documentElement.style.fontSize =
       TEXT_SIZE_PX[textSize] ?? TEXT_SIZE_PX[TEXT_SIZE_DEFAULT];
   }, [textSize]);
+
+  // 主題不跟系統走（2026-07-25 使用者拍板）：config.preferences.theme 寫在 <html data-theme>，預設深色
+  const theme = String(config?.preferences["theme"] ?? "dark");
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+  }, [theme]);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
