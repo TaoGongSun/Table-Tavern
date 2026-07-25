@@ -7,6 +7,7 @@ Updated: 2026-07-25 13:18 +0800（登入改可見終端機；任務背景與四�
 - **Rust spec 驅動引擎**（73b235e→f73e079）：四家共用 detect→install→login→verify 冪等引擎；探針 30s timeout＋kill_on_drop；spawn 一律 env_remove PSModulePath；安裝指令 ErrorActionPreference=Stop fail fast；進度走 cli-install-progress 事件上 app UI；log 落 data_root/install-logs。安裝階段仍為隱藏執行＋app UI 進度（是否也開視窗未拍板）。
 - 舊 CI 全綠與打包紀錄（run 30112216400／30114208497）屬 headless 版，已被本輪取代，須重跑。
 - 本機驗證（2026-07-25）：cargo test 73 綠（含 codex 沙盒跑不了的 transport TCP 測試）、npm build 綠、headless 殘留 grep 零命中；mac 路徑零邏輯變更。UI 順手改：一鍵安裝按鈕靠右對齊（App.css `.transport-choice .inline > button`）。
+- **「登入／驗證」常駐按鈕**（2026-07-25 拍板）：偵測只看執行檔在不在，「已裝未登入」時原 UI 無任何登入入口（朋友正卡在此態）。拍板常駐版（否決「未驗證才顯示」——需持久化驗證旗標、有過期死路）：已偵測的 CLI 旁常駐「登入／驗證」鈕，走同一條 `install_cli` 冪等流程，已登入者按下＝幾秒回報 done 當驗證連線用。純前端：App.tsx 已偵測分支加鈕＋i18n `cliLoginVerifyBtn` 兩語系。CI 驗證輪 run 30145802375 全綠（headless 刪除版）；run 30146328876 的 artifact 缺此按鈕已作廢，重打包中。
 
 ## Next action
 1. 等使用者下令：跑 ci-windows-verify（smoke 斷言已改為不撈 URL）→ test-build.yml 重打包 → artifact 轉交朋友（Windows 11、Gemini 訂閱→agy）複測：一鍵安裝→跳出終端機視窗→瀏覽器 OAuth（真互動終端機下預期自動回調，備援＝視窗內可貼認證碼）→偵測變綠。
