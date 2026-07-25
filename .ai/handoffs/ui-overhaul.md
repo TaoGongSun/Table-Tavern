@@ -19,6 +19,11 @@ Emblem 設計系統第一輪實作完成：App.css 全面重寫成 token 制（�
 - 對比數據（定案稿量測，token 同值）：正文 12.9:1、旁白 9.7:1、按鈕 8.9:1、機密記號 9.3:1，全過 AA。
 - 不發明 UI 查證：Say 模式／訊息內機密徽章／epithet 副標剔除；tier（CharacterMeta.tier）、發言對象（speaker state）、幕結構（advance_scene／pastScenes／ActReader）皆為既有功能（App.tsx:9-38、1343-1362）。
 
+- **回饋修訂輪 1（2026-07-25）**：
+  - 閱讀行寬：`.messages`／`.composer`／`.onboarding` 上限 42rem 靠左（推翻 2026-07-24 全寬拍板，改版設計輪重新拍板）。
+  - 側欄卡片截字修正：`tcard-body` 右側 padding 2.1rem 留位給寶石與編輯鈕，名牌不再壓到絕對定位元素下。
+  - 字級全面 token 化：六階 type scale（--fs-story/.96、--fs-body/.9、--fs-ui/.82、--fs-btn/.74、--fs-meta/.72、--fs-gem/.56，另 --fs-title/.85 桌名專用），App.css 內零散 font-size 清零（grep 驗證無 0.x rem 殘留）。
+
 ## Remaining
 - 深色模式實機驗收（系統切深色；token 值＝定案稿量測值，但未在真 app 看過）。
 - 實聊驗收 playbill：dialogue 事件要有 API key 實聊才會出現；串流中打字指示已改 playbill 版式但未實測串流。
