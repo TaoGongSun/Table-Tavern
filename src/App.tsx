@@ -216,7 +216,15 @@ function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppCo
   );
 }
 
-function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
+function Settings({
+  config,
+  onSaved,
+  onDirty,
+}: {
+  config: AppConfig;
+  onSaved: (c: AppConfig) => void;
+  onDirty: (count: number) => void;
+}) {
   const [apiKey, setApiKey] = useState(config.api_keys["openrouter"] ?? "");
   const [tierModels, setTierModels] = useState<Record<string, string>>({
     ...SUGGESTED_TIER_MODELS,
@@ -341,6 +349,24 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
     }, 3_000);
   }
 
+  // 未儲存偵測：與 config 現值逐欄比對（比對值採 save() 相同的正規化），改幾欄算幾項
+  const dirtyCount = [
+    apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
+    baseUrl.trim() !== String(config.preferences["base_url"] ?? ""),
+    gmTier !== String(config.preferences["gm_tier"] ?? "best"),
+    String(Math.max(1, Number(maxRound) || 3)) !==
+      String(config.preferences["max_round_speakers"] ?? 3),
+    transport !== String(config.preferences["transport"] ?? "api"),
+    riskAccepted !== (config.preferences["cli_risk_accepted"] === true),
+    JSON.stringify(tierModels) !==
+      JSON.stringify({ ...SUGGESTED_TIER_MODELS, ...config.tier_models }),
+  ].filter(Boolean).length;
+
+  useEffect(() => {
+    onDirty(dirtyCount);
+    return () => onDirty(0);
+  }, [dirtyCount, onDirty]);
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
@@ -371,7 +397,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   }
 
   return (
-    <form onSubmit={save} className="settings-form">
+    <form id="ai-settings-form" onSubmit={save} className="settings-form">
         <fieldset className="transport-choice">
           <legend>{t("transportLegend")}</legend>
           <label className="inline">
@@ -573,10 +599,11 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
             placeholder="https://openrouter.ai/api/v1"
           />
         </label>
-      <div className="row">
-        <button type="submit">{t("saveSettings")}</button>
-        {message && <span>{message}</span>}
-      </div>
+      {message && (
+        <div className="row">
+          <span role="status">{message}</span>
+        </div>
+      )}
     </form>
   );
 }
@@ -612,19 +639,38 @@ function SettingsWindow({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"appearance" | "ai">("appearance");
+  // AI 分頁的未儲存欄位數（外觀分頁即改即存，恆為 0）
+  const [dirtyCount, setDirtyCount] = useState(0);
+
+  // 有未儲存修改時先確認再離開；返回 true 表示可以離開
+  async function confirmDiscard() {
+    if (dirtyCount === 0) return true;
+    return confirm(t("unsavedLeaveConfirm", { n: dirtyCount }), {
+      title: t("unsavedLeaveTitle"),
+      kind: "warning",
+    });
+  }
+
+  async function discardAndClose() {
+    if (await confirmDiscard()) onClose();
+  }
+
+  async function switchToAppearance() {
+    if (await confirmDiscard()) setTab("appearance");
+  }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") void discardAndClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  });
 
   const textSize = String(config.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={() => void discardAndClose()}>
       <div
         className="modal"
         role="dialog"
@@ -635,7 +681,7 @@ function SettingsWindow({
           <nav className="tabs" aria-label={t("settingsBtn")}>
             <button
               className={tab === "appearance" ? "tab tab-active" : "tab"}
-              onClick={() => setTab("appearance")}
+              onClick={() => void switchToAppearance()}
             >
               {t("appearanceTab")}
             </button>
@@ -643,9 +689,21 @@ function SettingsWindow({
               {t("aiTab")}
             </button>
           </nav>
-          <button className="modal-close" aria-label={t("closeBtn")} onClick={onClose}>
-            ✕
-          </button>
+          <div className="row">
+            {dirtyCount > 0 && (
+              <span className="unsaved-hint" role="status">
+                {t("unsavedChanges", { n: dirtyCount })}
+              </span>
+            )}
+            {tab === "ai" && (
+              <button type="submit" form="ai-settings-form">
+                {t("saveSettings")}
+              </button>
+            )}
+            <button onClick={() => void discardAndClose()}>
+              {dirtyCount > 0 ? t("settingsDiscard") : t("settingsBack")}
+            </button>
+          </div>
         </header>
         {tab === "appearance" ? (
           <div className="settings-form">
@@ -687,7 +745,7 @@ function SettingsWindow({
             </label>
           </div>
         ) : (
-          <Settings config={config} onSaved={onSaved} />
+          <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
         )}
       </div>
     </div>
