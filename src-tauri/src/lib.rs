@@ -1,7 +1,7 @@
 mod cli;
 mod data;
 mod import;
-#[cfg(any(target_os = "windows", test))]
+#[allow(dead_code)]
 mod install;
 mod transport;
 
@@ -118,28 +118,44 @@ fn install_cli(
     let _ = &messages;
     #[cfg(target_os = "windows")]
     {
+        use std::time::Duration;
         use tauri::Emitter;
 
         let spec = install::windows_specs()?
             .into_iter()
             .find(|spec| spec.id == provider)
             .ok_or_else(|| format!("unsupported CLI provider: {provider}"))?;
+        let token = match install::try_begin(&provider, Duration::from_secs(60)) {
+            install::BeginOutcome::Started(token) => token,
+            install::BeginOutcome::AlreadyRunning => {
+                install::raise_login_window(&spec.window_title);
+                return Ok(());
+            }
+            install::BeginOutcome::Cooldown(seconds) => {
+                return Err(format!("login-cooldown:{seconds}"))
+            }
+        };
         let task_app = app.clone();
         tauri::async_runtime::spawn(async move {
+            let _token = token;
             let emit_app = task_app.clone();
-            let _ = install::run_install(
-                spec,
-                &directory,
-                cli::find_binary,
-                move |progress| {
-                    let _ = emit_app.emit("cli-install-progress", progress);
-                },
-            )
+            let _ = install::run_install(spec, &directory, cli::find_binary, move |progress| {
+                let _ = emit_app.emit("cli-install-progress", progress);
+            })
             .await;
         });
     }
     #[cfg(not(target_os = "windows"))]
     {
+        use std::time::Duration;
+
+        if install::mac_cooldown(&provider, Duration::from_secs(60)).is_some() {
+            Command::new("open")
+                .args(["-a", "Terminal"])
+                .spawn()
+                .map_err(|error| error.to_string())?;
+            return Ok(());
+        }
         let script = cli_install_script(&provider, &messages)?;
         let script_path = directory.join(format!("install-{provider}.command"));
         std::fs::write(&script_path, script).map_err(|error| error.to_string())?;

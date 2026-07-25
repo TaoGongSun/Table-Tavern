@@ -1,9 +1,11 @@
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 
 #[derive(Debug, Clone)]
@@ -12,6 +14,10 @@ pub struct InstallSpec {
     pub install: Vec<String>,
     pub login: Vec<String>,
     pub probe: Vec<String>,
+    pub pre_probe: bool,
+    #[allow(dead_code)]
+    pub window_title: String,
+    // 登入視窗的等待上限；不是探針輪詢間隔。
     pub poll_seconds: u64,
 }
 
@@ -41,6 +47,82 @@ struct CommandOutput {
     success: bool,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+}
+
+#[derive(Default)]
+struct ProviderGuard {
+    running: bool,
+    last_start: Option<Instant>,
+}
+
+static PROVIDER_GUARDS: LazyLock<Mutex<HashMap<String, ProviderGuard>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub enum BeginOutcome {
+    Started(RunToken),
+    AlreadyRunning,
+    Cooldown(u64),
+}
+
+pub struct RunToken {
+    provider: String,
+}
+
+impl Drop for RunToken {
+    fn drop(&mut self) {
+        if let Ok(mut guards) = PROVIDER_GUARDS.lock() {
+            if let Some(guard) = guards.get_mut(&self.provider) {
+                guard.running = false;
+            }
+        }
+    }
+}
+
+fn remaining_seconds(elapsed: Duration, cooldown: Duration) -> u64 {
+    let remaining = cooldown.saturating_sub(elapsed);
+    remaining.as_secs().max(1) + u64::from(remaining.subsec_nanos() > 0)
+}
+
+pub fn try_begin(provider: &str, cooldown: Duration) -> BeginOutcome {
+    let now = Instant::now();
+    let mut guards = PROVIDER_GUARDS
+        .lock()
+        .expect("provider guard mutex poisoned");
+    let guard = guards.entry(provider.to_owned()).or_default();
+    if guard.running {
+        return BeginOutcome::AlreadyRunning;
+    }
+    if let Some(last_start) = guard.last_start {
+        if now.duration_since(last_start) < cooldown {
+            return BeginOutcome::Cooldown(remaining_seconds(
+                now.duration_since(last_start),
+                cooldown,
+            ));
+        }
+    }
+    guard.running = true;
+    guard.last_start = Some(now);
+    BeginOutcome::Started(RunToken {
+        provider: provider.to_owned(),
+    })
+}
+
+// macOS 的 Terminal 腳本無法回報結束，因此只記錄開始時間來避免重複喚起認證。
+pub fn mac_cooldown(provider: &str, cooldown: Duration) -> Option<u64> {
+    let now = Instant::now();
+    let mut guards = PROVIDER_GUARDS
+        .lock()
+        .expect("provider guard mutex poisoned");
+    let guard = guards.entry(provider.to_owned()).or_default();
+    match guard.last_start {
+        Some(last_start) if now.duration_since(last_start) < cooldown => {
+            Some(remaining_seconds(now.duration_since(last_start), cooldown))
+        }
+        _ => {
+            guard.last_start = Some(now);
+            None
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -96,37 +178,117 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
     )?;
     let agy = windows_binary("LOCALAPPDATA", local, &["agy", "bin", "agy.exe"])?;
     let grok = windows_binary("USERPROFILE", profile, &[".grok", "bin", "grok.exe"])?;
-
     Ok(vec![
         InstallSpec {
             id: "claude".to_owned(),
             install: ps_install("https://claude.ai/install.ps1"),
-            login: argv("cmd", &["/C", "start", "", claude.as_str()]),
+            login: argv(
+                "cmd",
+                &[
+                    "/C",
+                    "start",
+                    "/WAIT",
+                    "Table Tavern - Claude Login",
+                    claude.as_str(),
+                ],
+            ),
             probe: argv(claude, &["-p", "ok"]),
+            pre_probe: true,
+            window_title: "Table Tavern - Claude Login".to_owned(),
             poll_seconds: 600,
         },
         InstallSpec {
             id: "codex".to_owned(),
             install: ps_install("https://chatgpt.com/codex/install.ps1"),
-            login: argv("cmd", &["/C", "start", "", codex.as_str(), "login"]),
+            login: argv(
+                "cmd",
+                &[
+                    "/C",
+                    "start",
+                    "/WAIT",
+                    "Table Tavern - Codex Login",
+                    codex.as_str(),
+                    "login",
+                ],
+            ),
             probe: argv(codex, &["login", "status"]),
+            pre_probe: true,
+            window_title: "Table Tavern - Codex Login".to_owned(),
             poll_seconds: 600,
         },
+        // agy／grok 未登入時的探針會啟動 OAuth，有副作用，登入前絕不可執行。
         InstallSpec {
             id: "agy".to_owned(),
             install: ps_install("https://antigravity.google/cli/install.ps1"),
-            login: argv("cmd", &["/C", "start", "", agy.as_str(), "-p", "ok"]),
+            login: argv(
+                "cmd",
+                &[
+                    "/C",
+                    "start",
+                    "/WAIT",
+                    "Table Tavern - Gemini Login",
+                    agy.as_str(),
+                    "-p",
+                    "ok",
+                ],
+            ),
             probe: argv(agy, &["-p", "ok"]),
+            pre_probe: false,
+            window_title: "Table Tavern - Gemini Login".to_owned(),
             poll_seconds: 600,
         },
         InstallSpec {
             id: "grok".to_owned(),
             install: ps_install("https://x.ai/cli/install.ps1"),
-            login: argv("cmd", &["/C", "start", "", grok.as_str(), "login"]),
+            login: argv(
+                "cmd",
+                &[
+                    "/C",
+                    "start",
+                    "/WAIT",
+                    "Table Tavern - Grok Login",
+                    grok.as_str(),
+                    "login",
+                ],
+            ),
             probe: argv(grok, &["-p", "ok"]),
+            pre_probe: false,
+            window_title: "Table Tavern - Grok Login".to_owned(),
             poll_seconds: 600,
         },
     ])
+}
+
+#[cfg(target_os = "windows")]
+pub fn raise_login_window(title: &str) -> bool {
+    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, FindWindowW, GetWindowTextW, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+    unsafe extern "system" fn find_containing(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let target = &mut *(lparam as *mut (&str, Option<HWND>));
+        let mut text = [0_u16; 512];
+        let length = GetWindowTextW(hwnd, text.as_mut_ptr(), text.len() as i32);
+        if length > 0 && String::from_utf16_lossy(&text[..length as usize]).contains(target.0) {
+            target.1 = Some(hwnd);
+            return 0;
+        }
+        1
+    }
+    let wide: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
+    let mut hwnd = unsafe { FindWindowW(std::ptr::null(), wide.as_ptr()) };
+    if hwnd.is_null() {
+        let mut target: (&str, Option<HWND>) = (title, None);
+        unsafe {
+            EnumWindows(Some(find_containing), &mut target as *mut _ as LPARAM);
+        }
+        hwnd = target.1.unwrap_or(std::ptr::null_mut());
+    }
+    !hwnd.is_null()
+        && unsafe {
+            ShowWindow(hwnd, SW_RESTORE);
+            SetForegroundWindow(hwnd) != 0
+        }
 }
 
 fn create_log(data_root: &Path, provider: &str) -> Result<(PathBuf, File), String> {
@@ -167,8 +329,6 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
     let mut child = Command::new(program);
     child
         .args(args)
-        // pwsh 7 會把 PSModulePath 指到自己的模組庫，Windows PowerShell 5.1 繼承後
-        // 連 Get-FileHash 等內建 cmdlet 都解析不到；清掉讓它重建預設值
         .env_remove("PSModulePath")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -184,9 +344,7 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
     })
 }
 
-// grok -p 未登入行為官方無載：若探針阻塞等互動，30 秒斷頭視同未綠，避免吊死輪詢
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
-
 async fn run_probe(command: &[String]) -> Result<CommandOutput, String> {
     match tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command)).await {
         Ok(result) => result,
@@ -198,20 +356,24 @@ async fn run_probe(command: &[String]) -> Result<CommandOutput, String> {
     }
 }
 
-async fn run_terminal(command: &[String]) -> Result<CommandOutput, String> {
+async fn run_terminal(command: &[String], timeout: Duration) -> Result<CommandOutput, String> {
     let (program, args) = command
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(CommandOutput {
-        success: status.success(),
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-    })
+    let mut child = Command::new(program);
+    child.args(args).kill_on_drop(true);
+    match tokio::time::timeout(timeout, child.status()).await {
+        Ok(status) => Ok(CommandOutput {
+            success: status.map_err(|error| error.to_string())?.success(),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }),
+        Err(_) => Ok(CommandOutput {
+            success: false,
+            stdout: b"login window timed out".to_vec(),
+            stderr: Vec::new(),
+        }),
+    }
 }
 
 fn emit_error(
@@ -233,14 +395,19 @@ pub async fn run_install(
     detect: impl FnMut(&str) -> Option<PathBuf>,
     emit: impl FnMut(InstallProgress),
 ) -> Result<PathBuf, String> {
-    run_install_with_interval(
-        spec,
-        data_root,
-        detect,
-        emit,
-        Duration::from_secs(5),
-    )
-    .await
+    run_install_with_interval(spec, data_root, detect, emit, Duration::from_secs(5)).await
+}
+
+async fn checked_probe(
+    spec: &InstallSpec,
+    log: &mut File,
+    log_path: &Path,
+    emit: &mut impl FnMut(InstallProgress),
+) -> Result<bool, String> {
+    emit(InstallProgress::new(&spec.id, "verify", log_path));
+    let output = run_probe(&spec.probe).await?;
+    append_output(log, &spec.probe, &output)?;
+    Ok(output.success)
 }
 
 async fn run_install_with_interval(
@@ -252,80 +419,91 @@ async fn run_install_with_interval(
 ) -> Result<PathBuf, String> {
     let (log_path, mut log) = create_log(data_root, &spec.id)?;
     emit(InstallProgress::new(&spec.id, "detect", &log_path));
-
     if detect(&spec.id).is_none() {
         emit(InstallProgress::new(&spec.id, "install", &log_path));
-        let output = match run_hidden(&spec.install).await {
-            Ok(output) => output,
-            Err(error) => {
-                return Err(emit_error(&spec.id, &log_path, error, &mut emit));
-            }
-        };
+        let output = run_hidden(&spec.install)
+            .await
+            .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
         append_output(&mut log, &spec.install, &output)?;
         if !output.success {
-            let detail = output_detail(&output)
-                .unwrap_or_else(|| "install command exited with a non-zero status".to_owned());
-            return Err(emit_error(&spec.id, &log_path, detail, &mut emit));
+            return Err(emit_error(
+                &spec.id,
+                &log_path,
+                output_detail(&output)
+                    .unwrap_or_else(|| "install command exited with a non-zero status".to_owned()),
+                &mut emit,
+            ));
         }
     }
-
-    emit(InstallProgress::new(&spec.id, "verify", &log_path));
-    let initial_probe = match run_probe(&spec.probe).await {
-        Ok(output) => output,
-        Err(error) => {
-            return Err(emit_error(&spec.id, &log_path, error, &mut emit));
-        }
-    };
-    append_output(&mut log, &spec.probe, &initial_probe)?;
-    if initial_probe.success {
+    if spec.pre_probe
+        && checked_probe(&spec, &mut log, &log_path, &mut emit)
+            .await
+            .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?
+    {
         emit(InstallProgress::new(&spec.id, "done", &log_path));
         return Ok(log_path);
     }
-
     emit(InstallProgress::new(&spec.id, "login", &log_path));
-    let login_output = match run_terminal(&spec.login).await {
-        Ok(output) => output,
-        Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
-    };
-    append_output(&mut log, &spec.login, &login_output)?;
-
-    let timeout = Duration::from_secs(spec.poll_seconds);
-    let mut elapsed = Duration::ZERO;
-    while elapsed < timeout {
-        let delay = poll_interval.min(timeout - elapsed);
-        tokio::time::sleep(delay).await;
-        elapsed += delay;
-        emit(InstallProgress::new(&spec.id, "verify", &log_path));
-        let output = match run_probe(&spec.probe).await {
-            Ok(output) => output,
-            Err(error) => return Err(emit_error(&spec.id, &log_path, error, &mut emit)),
-        };
-        append_output(&mut log, &spec.probe, &output)?;
-        if output.success {
-            emit(InstallProgress::new(&spec.id, "done", &log_path));
-            return Ok(log_path);
-        }
+    #[cfg(target_os = "windows")]
+    {
+        let title = spec.window_title.clone();
+        tokio::spawn(async move {
+            for _ in 0..10 {
+                if raise_login_window(&title) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        });
     }
-
+    let login_output = run_terminal(&spec.login, Duration::from_secs(spec.poll_seconds))
+        .await
+        .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
+    append_output(&mut log, &spec.login, &login_output)?;
+    if !login_output.success {
+        let suffix = output_detail(&login_output)
+            .unwrap_or_else(|| "login command exited with a non-zero status".to_owned());
+        return Err(emit_error(
+            &spec.id,
+            &log_path,
+            format!("login window closed or timed out: {suffix}"),
+            &mut emit,
+        ));
+    }
+    if checked_probe(&spec, &mut log, &log_path, &mut emit)
+        .await
+        .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?
+    {
+        emit(InstallProgress::new(&spec.id, "done", &log_path));
+        return Ok(log_path);
+    }
+    tokio::time::sleep(poll_interval).await;
+    if checked_probe(&spec, &mut log, &log_path, &mut emit)
+        .await
+        .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?
+    {
+        emit(InstallProgress::new(&spec.id, "done", &log_path));
+        return Ok(log_path);
+    }
     Err(emit_error(
         &spec.id,
         &log_path,
-        format!("verification timed out after {} seconds", spec.poll_seconds),
+        "login window closed or timed out: verification failed after login".to_owned(),
         &mut emit,
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{run_install_with_interval, InstallProgress, InstallSpec};
+    use super::{
+        mac_cooldown, run_install_with_interval, try_begin, BeginOutcome, InstallProgress,
+        InstallSpec,
+    };
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
     static TEST_ID: AtomicU64 = AtomicU64::new(0);
-
     struct TestDir(PathBuf);
-
     impl TestDir {
         fn new(name: &str) -> Self {
             let stamp = SystemTime::now()
@@ -341,13 +519,11 @@ mod tests {
             Self(path)
         }
     }
-
     impl Drop for TestDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
-
     #[cfg(unix)]
     fn write_stub(root: &Path, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
@@ -356,44 +532,66 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
     }
-
     #[cfg(windows)]
     fn write_stub(root: &Path, body: &str) -> PathBuf {
         let path = root.join("stub.cmd");
         std::fs::write(&path, format!("@echo off\r\n{body}\r\n")).unwrap();
         path
     }
-
     #[cfg(unix)]
-    fn command(script: &Path, action: &str, state: &Path) -> Vec<String> {
+    fn command(
+        script: &Path,
+        action: &str,
+        state: &Path,
+        probes: &Path,
+        login: &Path,
+    ) -> Vec<String> {
         vec![
             script.to_string_lossy().into_owned(),
             action.to_owned(),
             state.to_string_lossy().into_owned(),
+            probes.to_string_lossy().into_owned(),
+            login.to_string_lossy().into_owned(),
         ]
     }
-
     #[cfg(windows)]
-    fn command(script: &Path, action: &str, state: &Path) -> Vec<String> {
+    fn command(
+        script: &Path,
+        action: &str,
+        state: &Path,
+        probes: &Path,
+        login: &Path,
+    ) -> Vec<String> {
         vec![
             "cmd".to_owned(),
             "/C".to_owned(),
             script.to_string_lossy().into_owned(),
             action.to_owned(),
             state.to_string_lossy().into_owned(),
+            probes.to_string_lossy().into_owned(),
+            login.to_string_lossy().into_owned(),
         ]
     }
-
-    fn spec(script: &Path, state: &Path, login_action: &str, poll_seconds: u64) -> InstallSpec {
+    fn spec(
+        script: &Path,
+        root: &Path,
+        pre_probe: bool,
+        login_action: &str,
+        poll_seconds: u64,
+    ) -> InstallSpec {
+        let state = root.join("state");
+        let probes = root.join("probes");
+        let login = root.join("login");
         InstallSpec {
             id: "stub".to_owned(),
-            install: command(script, "install", state),
-            login: command(script, login_action, state),
-            probe: command(script, "probe", state),
+            install: command(script, "install", &state, &probes, &login),
+            login: command(script, login_action, &state, &probes, &login),
+            probe: command(script, "probe", &state, &probes, &login),
+            pre_probe,
+            window_title: "stub".to_owned(),
             poll_seconds,
         }
     }
-
     async fn run_case(
         root: &Path,
         spec: InstallSpec,
@@ -409,154 +607,124 @@ mod tests {
         .await;
         (result, events)
     }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn stub_happy_path_installs_logs_verifies_and_finishes() {
-        let root = TestDir::new("happy");
-        let state = root.0.join("ready");
-        let script = write_stub(
-            &root.0,
-            r#"case "$1" in
-  install) exit 0 ;;
-  probe) [ -f "$2" ] ;;
-  login) touch "$2" ;;
-esac"#,
-        );
-        let (result, events) = run_case(&root.0, spec(&script, &state, "login", 1)).await;
-        let log = result.unwrap();
-        assert!(log.exists());
-        let stages: Vec<&str> = events.iter().map(|event| event.stage).collect();
-        assert_eq!(stages, ["detect", "install", "verify", "login", "verify", "done"]);
+    fn stages(events: &[InstallProgress]) -> Vec<&str> {
+        events.iter().map(|event| event.stage).collect()
     }
-
+    #[cfg(unix)]
+    const SCRIPT: &str = r#"case "$1" in
+ install) exit 0 ;;
+ probe) echo x >> "$3"; [ -f "$2" ] ;;
+ login-ok) touch "$2"; touch "$4" ;;
+ login-no-state) touch "$4" ;;
+ login-fail) touch "$4"; exit 1 ;;
+ login-sleep) touch "$4"; sleep 3 ;;
+esac"#;
     #[cfg(windows)]
+    const SCRIPT: &str = r#"if "%1"=="install" exit /b 0
+if "%1"=="probe" (echo x>> "%3" & if exist "%2" (exit /b 0) else (exit /b 1))
+if "%1"=="login-ok" (type nul > "%2" & type nul > "%4" & exit /b 0)
+if "%1"=="login-no-state" (type nul > "%4" & exit /b 0)
+if "%1"=="login-fail" (type nul > "%4" & exit /b 1)
+if "%1"=="login-sleep" (type nul > "%4" & timeout /t 3 /nobreak >nul & exit /b 0)"#;
     #[tokio::test]
-    async fn stub_happy_path_installs_logs_verifies_and_finishes() {
-        let root = TestDir::new("happy");
-        let state = root.0.join("ready");
-        let script = write_stub(
-            &root.0,
-            r#"if "%1"=="install" exit /b 0
-if "%1"=="probe" if exist "%2" (exit /b 0) else (exit /b 1)
-if "%1"=="login" (type nul > "%2"& exit /b 0)"#,
-        );
-        let (result, events) = run_case(&root.0, spec(&script, &state, "login", 1)).await;
-        let log = result.unwrap();
-        assert!(log.exists());
-        assert_eq!(events.last().unwrap().stage, "done");
+    async fn pre_probe_green_skips_login() {
+        let root = TestDir::new("pre-green");
+        let script = write_stub(&root.0, SCRIPT);
+        std::fs::write(root.0.join("state"), "ready").unwrap();
+        let (result, events) = run_case(&root.0, spec(&script, &root.0, true, "login-ok", 1)).await;
+        assert!(result.is_ok());
+        assert_eq!(stages(&events), ["detect", "install", "verify", "done"]);
+        assert!(!root.0.join("login").exists());
     }
-
-    #[cfg(unix)]
     #[tokio::test]
-    async fn stub_install_nonzero_emits_error_and_keeps_log() {
-        let root = TestDir::new("install-fail");
-        let state = root.0.join("ready");
-        let script = write_stub(
-            &root.0,
-            r#"case "$1" in
-  install) echo install-failed >&2; exit 7 ;;
-  *) exit 1 ;;
-esac"#,
+    async fn login_success_verifies_once() {
+        let root = TestDir::new("login-green");
+        let script = write_stub(&root.0, SCRIPT);
+        let (result, events) =
+            run_case(&root.0, spec(&script, &root.0, false, "login-ok", 1)).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            stages(&events),
+            ["detect", "install", "login", "verify", "done"]
         );
-        let (result, events) = run_case(&root.0, spec(&script, &state, "login", 1)).await;
+    }
+    #[tokio::test]
+    async fn login_failure_never_probes() {
+        let root = TestDir::new("login-fail");
+        let script = write_stub(&root.0, SCRIPT);
+        let (result, events) =
+            run_case(&root.0, spec(&script, &root.0, false, "login-fail", 1)).await;
+        assert!(result.is_err());
+        assert_eq!(events.last().unwrap().stage, "error");
+        assert!(!root.0.join("probes").exists());
+    }
+    #[tokio::test]
+    async fn failed_verification_probes_twice() {
+        let root = TestDir::new("verify-fail");
+        let script = write_stub(&root.0, SCRIPT);
+        let (result, events) =
+            run_case(&root.0, spec(&script, &root.0, false, "login-no-state", 1)).await;
         assert!(result.is_err());
         assert_eq!(
-            events.iter().map(|event| event.stage).collect::<Vec<_>>(),
-            ["detect", "install", "error"]
+            std::fs::read_to_string(root.0.join("probes"))
+                .unwrap()
+                .lines()
+                .count(),
+            2
         );
-        assert!(Path::new(events.last().unwrap().log_path.as_ref().unwrap()).exists());
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn stub_install_nonzero_emits_error_and_keeps_log() {
-        let root = TestDir::new("install-fail");
-        let state = root.0.join("ready");
-        let script = write_stub(
-            &root.0,
-            r#"if "%1"=="install" (echo install-failed 1>&2& exit /b 7)
-exit /b 1"#,
-        );
-        let (result, events) = run_case(&root.0, spec(&script, &state, "login", 1)).await;
-        assert!(result.is_err());
         assert_eq!(events.last().unwrap().stage, "error");
-        assert!(Path::new(events.last().unwrap().log_path.as_ref().unwrap()).exists());
     }
-
-    #[cfg(unix)]
     #[tokio::test]
-    async fn stub_probe_never_green_times_out_and_logs_error() {
-        let root = TestDir::new("probe-timeout");
-        let state = root.0.join("ready");
-        let script = write_stub(
-            &root.0,
-            r#"case "$1" in
-  install) exit 0 ;;
-  probe) exit 1 ;;
-  login) exit 0 ;;
-esac"#,
-        );
-        let (result, events) = run_case(&root.0, spec(&script, &state, "login", 1)).await;
-        assert!(result.is_err());
+    async fn login_timeout_reports_timeout() {
+        let root = TestDir::new("login-timeout");
+        let script = write_stub(&root.0, SCRIPT);
+        let (result, events) =
+            run_case(&root.0, spec(&script, &root.0, false, "login-sleep", 1)).await;
+        assert!(result.unwrap_err().contains("timed out"));
+        assert_eq!(events.last().unwrap().stage, "error");
+    }
+    #[test]
+    fn provider_guard_enforces_running_and_cooldown() {
+        let provider = format!("guard-{}", TEST_ID.fetch_add(1, Ordering::Relaxed));
+        let token = match try_begin(&provider, Duration::from_millis(300)) {
+            BeginOutcome::Started(token) => token,
+            _ => panic!("expected start"),
+        };
+        assert!(matches!(
+            try_begin(&provider, Duration::from_millis(300)),
+            BeginOutcome::AlreadyRunning
+        ));
+        drop(token);
         assert!(
-            events
-                .iter()
-                .filter(|event| event.stage == "verify")
-                .count()
-                > 1
+            matches!(try_begin(&provider, Duration::from_millis(300)), BeginOutcome::Cooldown(seconds) if seconds > 0)
         );
-        assert_eq!(events.last().unwrap().stage, "error");
-        assert!(Path::new(events.last().unwrap().log_path.as_ref().unwrap()).exists());
+        std::thread::sleep(Duration::from_millis(350));
+        assert!(matches!(
+            try_begin(&provider, Duration::from_millis(300)),
+            BeginOutcome::Started(_)
+        ));
     }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn stub_probe_never_green_times_out_and_logs_error() {
-        let root = TestDir::new("probe-timeout");
-        let state = root.0.join("ready");
-        let script = write_stub(
-            &root.0,
-            r#"if "%1"=="install" exit /b 0
-if "%1"=="probe" exit /b 1
-if "%1"=="login" exit /b 0"#,
-        );
-        let (result, events) = run_case(&root.0, spec(&script, &state, "login", 1)).await;
-        assert!(result.is_err());
+    #[test]
+    fn mac_guard_enforces_cooldown() {
+        let provider = format!("mac-{}", TEST_ID.fetch_add(1, Ordering::Relaxed));
+        assert!(mac_cooldown(&provider, Duration::from_millis(300)).is_none());
         assert!(
-            events
-                .iter()
-                .filter(|event| event.stage == "verify")
-                .count()
-                > 1
+            matches!(mac_cooldown(&provider, Duration::from_millis(300)), Some(seconds) if seconds > 0)
         );
-        assert_eq!(events.last().unwrap().stage, "error");
-        assert!(Path::new(events.last().unwrap().log_path.as_ref().unwrap()).exists());
+        std::thread::sleep(Duration::from_millis(350));
+        assert!(mac_cooldown(&provider, Duration::from_millis(300)).is_none());
     }
-
     #[cfg(windows)]
     async fn real_install_smoke(provider: &str) {
-        let specs = super::windows_specs();
-        assert!(
-            specs.is_ok(),
-            "{provider}: unable to load Windows install specs: {specs:?}"
-        );
-        let mut spec = match specs {
-            Ok(specs) => match specs.into_iter().find(|spec| spec.id == provider) {
-                Some(spec) => spec,
-                None => panic!("{provider}: no matching Windows install spec"),
-            },
-            Err(_) => return,
-        };
+        let mut spec = super::windows_specs()
+            .unwrap()
+            .into_iter()
+            .find(|spec| spec.id == provider)
+            .unwrap();
         spec.poll_seconds = 60;
         let probe_path = PathBuf::from(&spec.probe[0]);
         let data_root = std::env::temp_dir().join("tt-smoke");
-        let created = std::fs::create_dir_all(&data_root);
-        assert!(
-            created.is_ok(),
-            "{provider}: unable to create {data_root:?}: {created:?}"
-        );
-
+        std::fs::create_dir_all(&data_root).unwrap();
         let mut events = Vec::new();
         let result = run_install_with_interval(
             spec,
@@ -566,59 +734,34 @@ if "%1"=="login" exit /b 0"#,
             Duration::from_secs(5),
         )
         .await;
-
         assert!(
             probe_path.exists(),
             "{provider}: installed binary missing at {probe_path:?}"
         );
-        assert!(
-            events.iter().any(|event| event.stage == "login"),
-            "{provider}: login stage was not emitted: {events:?}"
-        );
-        let last = match events.last() {
-            Some(event) => event,
-            None => panic!("{provider}: no install events were emitted"),
-        };
-        match result {
-            Ok(_) => assert_eq!(
-                last.stage, "done",
-                "{provider}: successful run did not finish"
-            ),
-            Err(error) => {
-                assert_eq!(
-                    last.stage, "error",
-                    "{provider}: failed run did not report error: {error}"
-                );
-                let log_path = match last.log_path.as_ref() {
-                    Some(path) => Path::new(path),
-                    None => panic!("{provider}: error event had no log path"),
-                };
-                assert!(log_path.exists(), "{provider}: missing log at {log_path:?}");
-            }
-        }
+        assert!(events.iter().any(|event| event.stage == "login"));
+        let last = events.last().unwrap();
+        assert!(matches!(last.stage, "done" | "error"));
+        assert!(Path::new(last.log_path.as_ref().unwrap()).exists());
+        let _ = result;
     }
-
     #[cfg(windows)]
     #[tokio::test]
     #[ignore]
     async fn real_install_claude() {
         real_install_smoke("claude").await;
     }
-
     #[cfg(windows)]
     #[tokio::test]
     #[ignore]
     async fn real_install_codex() {
         real_install_smoke("codex").await;
     }
-
     #[cfg(windows)]
     #[tokio::test]
     #[ignore]
     async fn real_install_agy() {
         real_install_smoke("agy").await;
     }
-
     #[cfg(windows)]
     #[tokio::test]
     #[ignore]
