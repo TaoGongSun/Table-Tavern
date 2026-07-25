@@ -26,8 +26,10 @@ Emblem 設計系統第一輪實作完成：App.css 全面重寫成 token 制（�
 
 - **回饋修訂輪 2（2026-07-25）**：選中描邊被捲動容器裁掉→`.character-list` padding 3px/margin -3px 留邊；故事欄改整欄置中（`margin: auto`，欄內仍靠左）——使用者拍板「置中欄、左對齊內容」。
 
+- **回饋修訂輪 3（2026-07-25）**：深色模式改 app 內建切換不跟系統——`config.preferences.theme` 寫在 `<html data-theme>`，**預設 dark**（:root 即深色 token，`:root[data-theme="light"]` 覆寫淺色；prefers-color-scheme 全移除）。設定 → 外觀新增「主題」下拉（i18n：themeLabel/themeDark/themeLight）。實測切 Light→寫檔生效→改回預設 dark。過程遇 WebView2 在螢幕解析度切換＋原生下拉開啟時凍結一次（跟 app 邏輯無關，殺程序重啟即復原）；另外多開 app 實例會共用 config 造成偏好互踩——期間 config 的 language/text_size 一度被舊實例覆寫掉，已還原（en／l）。
+
 ## Remaining
-- 深色模式實機驗收（系統切深色；token 值＝定案稿量測值，但未在真 app 看過）。
+- ~~深色模式實機驗收~~ → 已完成（app 內建切換後深淺兩向實測通過，深色為預設）。
 - 實聊驗收 playbill：dialogue 事件要有 API key 實聊才會出現；串流中打字指示已改 playbill 版式但未實測串流。
 - 淺色主題是深色定案的推導稿，未經設計輪；使用者若覺得不對再開一輪。
 - `.container`／first-run 首開畫面只粗略吃到新 token，未特別設計。
