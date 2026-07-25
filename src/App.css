@@ -735,15 +735,13 @@ textarea {
 }
 
 /* ============ 對話區：playbill（左對齊名牌＋純散文） ============ */
-/* 閱讀行寬：故事欄上限 42rem、整欄置中（欄內文字與元素仍靠左）——2026-07-25 使用者拍板 */
+/* 行寬填滿主欄（左右舒適距離由 .chat-main 的 2rem padding 提供），
+   字級縮小＝每行容納更多字——2026-07-26 使用者拍板，取代原 42rem 上限 */
 .messages,
 .composer,
 .onboarding {
   width: 100%;
-  max-width: 42rem;
   box-sizing: border-box;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .messages {
