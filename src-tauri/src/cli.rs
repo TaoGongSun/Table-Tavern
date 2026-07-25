@@ -77,14 +77,30 @@ pub(crate) fn find_binary(name: &str) -> Option<PathBuf> {
         .find(|path| is_executable(path))
 }
 
+/// 同步跑 `<program> <arg>` 並取 stdout，Windows 下隱藏主控台視窗。
+fn hidden_output(program: std::path::PathBuf, arg: &str) -> Option<std::process::Output> {
+    let mut command = std::process::Command::new(program);
+    command.arg(arg);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    command.output().ok().filter(|output| output.status.success())
+}
+
 pub async fn detect_clis() -> Vec<CliInfo> {
     let mut found = Vec::new();
     for id in ["claude", "codex", "agy", "grok"] {
         let Some(path) = find_binary(id) else {
             continue;
         };
-        let version = Command::new(&path)
-            .arg("--version")
+        let mut command = Command::new(&path);
+        command.arg("--version");
+        // GUI app 下 console 子程序會閃出黑視窗，一律 CREATE_NO_WINDOW
+        #[cfg(target_os = "windows")]
+        command.creation_flags(0x08000000);
+        let version = command
             .output()
             .await
             .ok()
@@ -271,13 +287,7 @@ pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
             .map(|json| parse_codex_catalog(&json))
             .unwrap_or_default(),
         "agy" => find_binary("agy")
-            .and_then(|program| {
-                std::process::Command::new(program)
-                    .arg("models")
-                    .output()
-                    .ok()
-                    .filter(|output| output.status.success())
-            })
+            .and_then(|program| hidden_output(program, "models"))
             .map(|output| {
                 String::from_utf8_lossy(&output.stdout)
                     .lines()
@@ -290,13 +300,7 @@ pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
             })
             .unwrap_or_default(),
         "grok" => find_binary("grok")
-            .and_then(|program| {
-                std::process::Command::new(program)
-                    .arg("models")
-                    .output()
-                    .ok()
-                    .filter(|output| output.status.success())
-            })
+            .and_then(|program| hidden_output(program, "models"))
             .map(|output| parse_grok_catalog(&String::from_utf8_lossy(&output.stdout)))
             .unwrap_or_default(),
         _ => Vec::new(),
@@ -540,12 +544,15 @@ pub async fn run_cli(
     parse: fn(&str) -> CliLine,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000);
+    let mut child = command.spawn()?;
 
     let mut stdin = child.stdin.take().expect("stdin piped");
     stdin.write_all(stdin_data.as_bytes()).await?;

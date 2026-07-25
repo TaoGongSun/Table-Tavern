@@ -362,6 +362,9 @@ async fn run_terminal(command: &[String], timeout: Duration) -> Result<CommandOu
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
     child.args(args).kill_on_drop(true);
+    // 隱藏外層 cmd 自己的黑視窗；使用者看到的登入視窗由內層 start 另開，不受影響
+    #[cfg(target_os = "windows")]
+    child.creation_flags(0x08000000);
     match tokio::time::timeout(timeout, child.status()).await {
         Ok(status) => Ok(CommandOutput {
             success: status.map_err(|error| error.to_string())?.success(),

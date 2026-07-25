@@ -95,6 +95,8 @@ const zh = {
   maxRoundLabel: "GM 推進每回合最大發言數",
   baseUrlLabel: "自訂 base URL（進階，留空用 OpenRouter）",
   saveSettings: "儲存設定",
+  settingsBack: "返回",
+  settingsDiscard: "不儲存返回",
   saved: "已儲存",
 
   // 世界設定
@@ -286,6 +288,8 @@ const en: Record<MsgKey, string> = {
   maxRoundLabel: "Max speakers per GM-advance round",
   baseUrlLabel: "Custom base URL (advanced; leave empty for OpenRouter)",
   saveSettings: "Save Settings",
+  settingsBack: "Back",
+  settingsDiscard: "Discard & Back",
   saved: "Saved",
 
   worldSummary:

@@ -1,8 +1,15 @@
 # Handoff: cli-install-windows（Windows 安裝流程改 Rust 引擎）
 
-Updated: 2026-07-25 15:0x +0800（防重發認證引擎 v2；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
+Updated: 2026-07-26 +0800（朋友影片診斷＋閃視窗與設定頁未儲存修復；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
 
-## Current state：防重發引擎 v2 完成本機驗證，待 CI＋重打包＋Parallels 複測
+## Current state：v2 包朋友實測影片已診斷完，閃視窗＋設定未儲存兩根因已修，待 CI verify＋重打包
+- **朋友影片診斷（2026-07-26，43s 錄影逐格看完）**：Gemini 登入其實**成功**（影片 32s「安裝與登入已完成」；朋友手動 `agy -p ok` 也有正常回覆）；掛在畫面的紅框「verification failed」是 Grok 的舊錯誤（log 路徑 install-grok-*）。最後不能聊的真因＝**transport 仍是 "api"**：風險勾選框沒勾＋用右上 ✕ 關窗（✕ 只關不存），聊天照走 OpenRouter → 402（帳戶額度見底）。朋友自救步驟：選 Gemini CLI→勾風險→按儲存。
+- **「多次閃視窗」根因與修復**：60s 冷卻只擋登入啟動；真正閃的是沒設 CREATE_NO_WINDOW 的 console 子程序——detect_clis 的 `--version`（每次偵測最多 4 閃）、agy/grok `models`、run_cli 每輪聊天、run_terminal 外層 `cmd /C` 多餘黑窗。修：cli.rs 三處＋新 `hidden_output()` helper、install.rs run_terminal 補 `creation_flags(0x08000000)`（內層 start 開的登入視窗不受影響）。
+- **設定頁未儲存防護（使用者拍板：刪 ✕，置頂雙鈕）**：SettingsWindow 標頭改「儲存設定」（`form="ai-settings-form"` 觸發原表單驗證，風險沒勾照樣被擋且看得到錯誤）＋「不儲存返回／返回」（依髒態換字）；Escape、overlay 點擊、AI→外觀切分頁一律走同一確認守門（沿用世界書 unsavedLeaveConfirm）；Settings 逐欄比對算未儲存欄位數，標頭顯示 unsaved-hint。i18n 新增 settingsBack／settingsDiscard 兩語系。
+- **終端機自動關閉＝不修**（使用者拍板）：`agy -p ok` 一次性執行完就退出、視窗跟著關是設計必然；登入能完成即可，不堅持視窗常駐。
+- 驗證（本機 2026-07-26）：cargo test 77 綠、npm build 綠、tsc 綠。Windows cfg 碼（creation_flags 三處新增）本機不編譯（cross-check 卡 ring C 標頭），寫法照抄既有 run_hidden，待 CI verify 把關。
+
+## （前輪紀錄）防重發引擎 v2，2026-07-25 下午
 - **朋友複測二輪紅（2026-07-25）**：認證分頁連環轟炸到近死機＋貼碼終端機神隱。根因三連：①未登入的 agy 每被執行一次就自開 OAuth 分頁（假 HOME 本機實證，等碼上限 60s、回跳走 antigravity.google 貼碼流程非 localhost）；②5 秒探針輪詢＝連環觸發①；③前端 3 秒就誤判完成解鎖按鈕＋後端無併發鎖，重按疊加多條輪詢。
 - **引擎 v2（使用者拍板鐵律：每按一次按鈕最多發一次認證，寧可卡住報錯不補發）**：輪詢迴圈整組刪除；流程改 detect→install→（pre_probe 僅 claude/codex，其探針無副作用；agy/grok 禁登入前探測）→`cmd /C start /WAIT "<識別標題>"` 開視窗等結果（上限 600s，kill_on_drop）→視窗失敗＝直接報錯零探針→成功才確認探針（最多 2 次防憑證落盤時差）。守門：try_begin 狀態機（running＋60s 冷卻，RunToken Drop 清旗標）；重按＝AlreadyRunning→只做視窗置頂（windows-sys FindWindowW＋EnumWindows 標題模糊比對＋SetForegroundWindow，開窗後背景任務每 500ms 試 10 次自動置頂）；冷卻中＝Err("login-cooldown:N")→前端 i18n 顯示。mac 補 mac_cooldown（60s 內重按只喚 Terminal 前景）。前端：same-provider 按鈕保持可按（觸發置頂）、done/error 事件收斂 installingCli、cliPollRef 防疊加。
 - 驗證（本機 2026-07-25）：cargo test 77 綠零警告（新增 5 流程測試＋2 守門測試）、npm build 綠、`while elapsed` 零命中、run_probe 產線僅 checked_probe 一處。主線修掉 codex 三洞：HWND 在 windows-sys 0.59 是指標非整數（編譯級，mac 測不到 cfg(windows) 碼）、smoke 掉了執行檔存在斷言、前端計時器疊加。
@@ -17,7 +24,7 @@ Updated: 2026-07-25 15:0x +0800（防重發認證引擎 v2；任務背景與四�
 - **「登入／驗證」常駐按鈕**（2026-07-25 拍板）：偵測只看執行檔在不在，「已裝未登入」時原 UI 無任何登入入口（朋友正卡在此態）。拍板常駐版（否決「未驗證才顯示」——需持久化驗證旗標、有過期死路）：已偵測的 CLI 旁常駐「登入／驗證」鈕，走同一條 `install_cli` 冪等流程，已登入者按下＝幾秒回報 done 當驗證連線用。純前端：App.tsx 已偵測分支加鈕＋i18n `cliLoginVerifyBtn` 兩語系。CI 驗證輪 run 30145802375 全綠（headless 刪除版）；run 30146328876 的 artifact 缺此按鈕已作廢；含按鈕的正式包＝run 30146710122（success，artifact `table-tavern-windows-unsigned` 7.4MB）：https://github.com/TaoGongSun/Table-Tavern/actions/runs/30146710122
 
 ## Next action
-1. 等使用者下令：跑 ci-windows-verify（smoke 斷言已改為不撈 URL）→ test-build.yml 重打包 → artifact 轉交朋友（Windows 11、Gemini 訂閱→agy）複測：一鍵安裝→跳出終端機視窗→瀏覽器 OAuth（真互動終端機下預期自動回調，備援＝視窗內可貼認證碼）→偵測變綠。
+1. 等使用者下令：跑 ci-windows-verify（驗 creation_flags 新碼可編譯）→ test-build.yml 重打包 → artifact 轉交朋友複測，重點三項：①偵測／聊天不再閃黑窗；②設定頁選 Gemini CLI→勾風險→按置頂「儲存設定」→實聊走 CLI 不再 402；③未儲存時按「不儲存返回」有確認框。
 2. 朋友回報結果：綠＝本任務關閉；紅＝讀 app 的 install-logs（UI 有顯示 log 路徑）修復。
 3. 安裝階段是否也開可見視窗、Stage C（每週金絲雀排程、診斷打包按鈕、mac 收編引擎）等使用者拍板，不自動開工。
 
@@ -26,9 +33,8 @@ Updated: 2026-07-25 15:0x +0800（防重發認證引擎 v2；任務背景與四�
 - grok -p 未登入行為官方無載（已以 30s timeout 防禦）；grok 需 SuperGrok／Premium+ 訂閱，失敗訊息有手動安裝引導。
 - CI 的 rust-cache 在 job 失敗時不存檔＝紅輪後下一輪仍冷編譯（≈40 分）。
 
-## 派工紀錄（本輪：登入改可見終端機）
-- codex gpt-5.6-terra：五檔實作（install.rs／lib.rs／App.tsx／i18n.ts／CI 步驟名）。事故：違反禁令自建 .ai/ 交接檔，主線已還原刪除。
-- 主線：根因定位（隱藏執行＝貼碼流程死路＋違反可見性約束）、規格到欄位級、diff 親審、cargo test＋npm build＋殘留 grep 複驗、按鈕靠右 CSS、交接。
+## 派工紀錄（本輪：影片診斷＋閃視窗與未儲存修復）
+- 主線（Fable 5）全程：影片抽格診斷、根因定位（transport 未存＋CREATE_NO_WINDOW 缺漏）、Rust／React 實作、驗證、交接。無外包（改動小、驗證成本＝重讀 diff，不符外包判準）。
 
 ## Constraints（承前）
 app 不碰帳密 token；只用官方安裝指令；grok 訂閱門檻不特判；不支援 Windows 的家顯示手動安裝引導；CI 觸發恢復「等使用者下令」常規（目標模式已結束）。
