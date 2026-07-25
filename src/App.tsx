@@ -486,15 +486,18 @@ function Settings({
             </label>
           </div>
         )}
-        <label>
-          {t("apiKeyLabel")}
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.currentTarget.value)}
-            placeholder="sk-or-..."
-          />
-        </label>
+        {/* OpenRouter 專屬欄位只在 API 直連時顯示，避免 CLI 使用者誤以為必填 */}
+        {transport === "api" && (
+          <label>
+            {t("apiKeyLabel")}
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.currentTarget.value)}
+              placeholder="sk-or-..."
+            />
+          </label>
+        )}
         {transport === "api" ? (
           <>
             {(["best", "balanced", "fast"] as const).map((tier) => (
@@ -591,14 +594,16 @@ function Settings({
             onChange={(e) => setMaxRound(e.currentTarget.value)}
           />
         </label>
-        <label>
-          {t("baseUrlLabel")}
-          <input
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.currentTarget.value)}
-            placeholder="https://openrouter.ai/api/v1"
-          />
-        </label>
+        {transport === "api" && (
+          <label>
+            {t("baseUrlLabel")}
+            <input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.currentTarget.value)}
+              placeholder="https://openrouter.ai/api/v1"
+            />
+          </label>
+        )}
       {message && (
         <div className="row">
           <span role="status">{message}</span>
