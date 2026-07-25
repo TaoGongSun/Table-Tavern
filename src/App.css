@@ -318,6 +318,9 @@ textarea {
   flex-direction: column;
   gap: 0.55rem;
   overflow-y: auto;
+  /* 選中描邊畫在卡片外緣 2px：捲動容器要留邊，不然描邊被裁掉 */
+  padding: 3px;
+  margin: -3px;
 }
 
 /* GM 列：系統機件不是角色，壓成一行工具列（整列點擊開世界設定＋世界書） */
@@ -733,13 +736,15 @@ textarea {
 }
 
 /* ============ 對話區：playbill（左對齊名牌＋純散文） ============ */
-/* 閱讀行寬：故事欄上限 42rem 靠左（推翻 2026-07-24 全寬拍板——改版設計輪重新拍板） */
+/* 閱讀行寬：故事欄上限 42rem、整欄置中（欄內文字與元素仍靠左）——2026-07-25 使用者拍板 */
 .messages,
 .composer,
 .onboarding {
   width: 100%;
   max-width: 42rem;
   box-sizing: border-box;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .messages {
