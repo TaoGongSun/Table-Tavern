@@ -28,7 +28,7 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
-      - name: Real-install smoke (four CLIs, stops at OAuth URL)
+      - name: Real-install smoke (four CLIs, stops at login window)
         working-directory: src-tauri
         run: cargo test -- --ignored --test-threads=1 real_install_
 
