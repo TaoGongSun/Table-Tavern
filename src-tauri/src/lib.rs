@@ -119,7 +119,6 @@ fn install_cli(
     #[cfg(target_os = "windows")]
     {
         use tauri::Emitter;
-        use tauri_plugin_opener::OpenerExt;
 
         let spec = install::windows_specs()?
             .into_iter()
@@ -128,19 +127,12 @@ fn install_cli(
         let task_app = app.clone();
         tauri::async_runtime::spawn(async move {
             let emit_app = task_app.clone();
-            let opener_app = task_app.clone();
             let _ = install::run_install(
                 spec,
                 &directory,
                 cli::find_binary,
                 move |progress| {
                     let _ = emit_app.emit("cli-install-progress", progress);
-                },
-                move |url| {
-                    opener_app
-                        .opener()
-                        .open_url(url, None::<&str>)
-                        .map_err(|error| error.to_string())
                 },
             )
             .await;

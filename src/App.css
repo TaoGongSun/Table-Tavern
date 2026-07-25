@@ -1061,6 +1061,10 @@ textarea {
   gap: 0.5rem !important;
 }
 
+.transport-choice .inline > button {
+  margin-left: auto;
+}
+
 .cli-version {
   font-size: var(--fs-meta);
   color: var(--ink-3);

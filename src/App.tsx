@@ -109,7 +109,6 @@ interface CliInstallProgress {
   provider: string;
   stage: CliInstallStage;
   detail?: string;
-  url?: string;
   logPath?: string;
 }
 
@@ -410,18 +409,6 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                     <strong>{cliInstallStageText(progress.stage)}</strong>
                     {progress.detail && (
                       <span className="cli-install-detail">{progress.detail}</span>
-                    )}
-                    {progress.url && (
-                      <a
-                        href={progress.url}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void openUrl(progress.url!);
-                        }}
-                      >
-                        {t("cliInstallOpenUrl")}
-                      </a>
                     )}
                     {progress.logPath && (
                       <small>{t("cliInstallLogPath", { path: progress.logPath })}</small>
