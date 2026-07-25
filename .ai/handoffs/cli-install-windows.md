@@ -24,8 +24,9 @@ Updated: 2026-07-26 +0800（朋友影片診斷＋閃視窗與設定頁未儲存�
 - **「登入／驗證」常駐按鈕**（2026-07-25 拍板）：偵測只看執行檔在不在，「已裝未登入」時原 UI 無任何登入入口（朋友正卡在此態）。拍板常駐版（否決「未驗證才顯示」——需持久化驗證旗標、有過期死路）：已偵測的 CLI 旁常駐「登入／驗證」鈕，走同一條 `install_cli` 冪等流程，已登入者按下＝幾秒回報 done 當驗證連線用。純前端：App.tsx 已偵測分支加鈕＋i18n `cliLoginVerifyBtn` 兩語系。CI 驗證輪 run 30145802375 全綠（headless 刪除版）；run 30146328876 的 artifact 缺此按鈕已作廢；含按鈕的正式包＝run 30146710122（success，artifact `table-tavern-windows-unsigned` 7.4MB）：https://github.com/TaoGongSun/Table-Tavern/actions/runs/30146710122
 
 ## Next action
-1. 等使用者下令：跑 ci-windows-verify（驗 creation_flags 新碼可編譯）→ test-build.yml 重打包 → artifact 轉交朋友複測，重點三項：①偵測／聊天不再閃黑窗；②設定頁選 Gemini CLI→勾風險→按置頂「儲存設定」→實聊走 CLI 不再 402；③未儲存時按「不儲存返回」有確認框。
-2. 朋友回報結果：綠＝本任務關閉；紅＝讀 app 的 install-logs（UI 有顯示 log 路徑）修復。
+1. **打包已完成（2026-07-26 使用者下令）**：verify 綠 run 30165056516 → 打包綠 run 30165448004（commit 194fb86，artifact `table-tavern-windows-unsigned` 7MB）：https://github.com/TaoGongSun/Table-Tavern/actions/runs/30165448004 。同 commit 另含兩項 ui-overhaul 順手修：故事欄行寬填滿（刪 42rem 上限）、OpenRouter 專屬欄位（API key／base URL）只在 API 直連時顯示。Mac DMG 同步重打（ad-hoc，00:22 版，四項修正齊）。
+2. artifact 轉交測試者複測，重點三項：①偵測／聊天不再閃黑窗；②設定頁選 Gemini CLI→勾風險→按置頂「儲存設定」→實聊走 CLI 不再 402；③未儲存時按「不儲存返回」有確認框。
+3. 回報結果：綠＝本任務關閉；紅＝讀 app 的 install-logs（UI 有顯示 log 路徑）修復。
 3. 安裝階段是否也開可見視窗、Stage C（每週金絲雀排程、診斷打包按鈕、mac 收編引擎）等使用者拍板，不自動開工。
 
 ## 已知限制（記錄不擋）
