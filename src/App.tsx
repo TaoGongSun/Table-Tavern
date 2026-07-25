@@ -386,7 +386,18 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                 {CLI_LABELS[id]}
                 {t("cliSubscriptionSuffix")}
                 {found ? (
-                  <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
+                  <>
+                    <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
+                    <button
+                      type="button"
+                      disabled={installingCli !== null}
+                      onClick={() => void installCli(id)}
+                    >
+                      {installingCli === id
+                        ? t("cliInstalling", { provider: CLI_LABELS[id] })
+                        : t("cliLoginVerifyBtn")}
+                    </button>
+                  </>
                 ) : (
                   <>
                     <span className="cli-version">{t("cliNotDetected")}</span>
