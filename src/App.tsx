@@ -269,6 +269,12 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         ...previous,
         [event.payload.provider]: event.payload,
       }));
+      if (event.payload.stage === "done" || event.payload.stage === "error") {
+        setInstallingCli((current) => (current === event.payload.provider ? null : current));
+        if (event.payload.stage === "done") {
+          void invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => {});
+        }
+      }
     }).then((unlisten) => {
       if (disposed) {
         unlisten();
@@ -283,12 +289,15 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
   }, []);
 
   async function installCli(provider: string) {
-    setInstallingCli(provider);
-    setInstallProgress((previous) => {
-      const next = { ...previous };
-      delete next[provider];
-      return next;
-    });
+    const repeat = installingCli === provider;
+    if (!repeat) {
+      setInstallingCli(provider);
+      setInstallProgress((previous) => {
+        const next = { ...previous };
+        delete next[provider];
+        return next;
+      });
+    }
     const params = {
       provider: CLI_LABELS[provider],
       url: CLI_INSTALL_URLS[provider],
@@ -304,12 +313,15 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
         },
       });
     } catch (reason) {
-      setMessage(String(reason));
-      setInstallingCli(null);
+      const error = String(reason);
+      const cooldown = error.match(/^login-cooldown:(\d+)$/);
+      setMessage(cooldown ? t("cliLoginCooldown", { secs: cooldown[1] }) : error);
+      if (!repeat) setInstallingCli(null);
       return;
     }
 
     let elapsed = 0;
+    stopCliPolling();
     cliPollRef.current = setInterval(() => {
       elapsed += 3_000;
       invoke<CliInfo[]>("detect_clis")
@@ -390,7 +402,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                     <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
                     <button
                       type="button"
-                      disabled={installingCli !== null}
+                      disabled={installingCli !== null && installingCli !== id}
                       onClick={() => void installCli(id)}
                     >
                       {installingCli === id
@@ -403,7 +415,7 @@ function Settings({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConf
                     <span className="cli-version">{t("cliNotDetected")}</span>
                     <button
                       type="button"
-                      disabled={installingCli !== null}
+                      disabled={installingCli !== null && installingCli !== id}
                       onClick={() => void installCli(id)}
                     >
                       {installingCli === id

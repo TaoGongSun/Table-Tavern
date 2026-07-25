@@ -1,8 +1,14 @@
 # Handoff: cli-install-windows（Windows 安裝流程改 Rust 引擎）
 
-Updated: 2026-07-25 13:18 +0800（登入改可見終端機；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
+Updated: 2026-07-25 15:0x +0800（防重發認證引擎 v2；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
 
-## Current state：四家登入全改可見終端機，待重打包＋真人 OAuth 複測
+## Current state：防重發引擎 v2 完成本機驗證，待 CI＋重打包＋Parallels 複測
+- **朋友複測二輪紅（2026-07-25）**：認證分頁連環轟炸到近死機＋貼碼終端機神隱。根因三連：①未登入的 agy 每被執行一次就自開 OAuth 分頁（假 HOME 本機實證，等碼上限 60s、回跳走 antigravity.google 貼碼流程非 localhost）；②5 秒探針輪詢＝連環觸發①；③前端 3 秒就誤判完成解鎖按鈕＋後端無併發鎖，重按疊加多條輪詢。
+- **引擎 v2（使用者拍板鐵律：每按一次按鈕最多發一次認證，寧可卡住報錯不補發）**：輪詢迴圈整組刪除；流程改 detect→install→（pre_probe 僅 claude/codex，其探針無副作用；agy/grok 禁登入前探測）→`cmd /C start /WAIT "<識別標題>"` 開視窗等結果（上限 600s，kill_on_drop）→視窗失敗＝直接報錯零探針→成功才確認探針（最多 2 次防憑證落盤時差）。守門：try_begin 狀態機（running＋60s 冷卻，RunToken Drop 清旗標）；重按＝AlreadyRunning→只做視窗置頂（windows-sys FindWindowW＋EnumWindows 標題模糊比對＋SetForegroundWindow，開窗後背景任務每 500ms 試 10 次自動置頂）；冷卻中＝Err("login-cooldown:N")→前端 i18n 顯示。mac 補 mac_cooldown（60s 內重按只喚 Terminal 前景）。前端：same-provider 按鈕保持可按（觸發置頂）、done/error 事件收斂 installingCli、cliPollRef 防疊加。
+- 驗證（本機 2026-07-25）：cargo test 77 綠零警告（新增 5 流程測試＋2 守門測試）、npm build 綠、`while elapsed` 零命中、run_probe 產線僅 checked_probe 一處。主線修掉 codex 三洞：HWND 在 windows-sys 0.59 是指標非整數（編譯級，mac 測不到 cfg(windows) 碼）、smoke 掉了執行檔存在斷言、前端計時器疊加。
+- 已知假設（Parallels 複測項）：claude `-p` 未登入＝本機報錯不發認證（推定）；Windows Terminal 為預設終端時標題比對屬 best-effort。
+
+## （前輪紀錄）四家登入改可見終端機，2026-07-25 上午
 - **登入回歸「可見終端機」約束**（2026-07-25）：朋友複測卡死的根因＝codex/agy/grok 登入是隱藏背景執行，Gemini 在非互動環境退回「貼認證碼」流程、認證碼無處可貼；且隱藏跑＋app 代開瀏覽器違反「安裝過程必須可見、app 不介入 OAuth」拍板（見 tasks/cli-install-all-providers.md）。修法：`InstallSpec.login` 改為一律 `cmd /C start` 開可見視窗（install.rs:104-127，agy 用 `-p ok` 首跑觸發 OAuth 比照 mac），四家 poll_seconds 統一 600（人速）；整組刪除 headless 機制（LoginMode enum、spawn_streaming/StreamingChild、extract_first_url、InstallProgress.url、lib.rs 代開瀏覽器閉包、前端 URL 連結與 cliInstallOpenUrl 字串），net −380 行；login 階段文案改「已開啟終端機視窗…」。
 - **Rust spec 驅動引擎**（73b235e→f73e079）：四家共用 detect→install→login→verify 冪等引擎；探針 30s timeout＋kill_on_drop；spawn 一律 env_remove PSModulePath；安裝指令 ErrorActionPreference=Stop fail fast；進度走 cli-install-progress 事件上 app UI；log 落 data_root/install-logs。安裝階段仍為隱藏執行＋app UI 進度（是否也開視窗未拍板）。
 - 舊 CI 全綠與打包紀錄（run 30112216400／30114208497）屬 headless 版，已被本輪取代，須重跑。
