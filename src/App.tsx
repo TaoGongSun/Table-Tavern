@@ -461,15 +461,13 @@ function Settings({
                     {connected && installingCli !== id ? (
                       <>
                         <span className="cli-version">{t("cliConnectedBadge")}</span>
-                        <small>
-                          <button
-                            type="button"
-                            disabled={installingCli !== null && installingCli !== id}
-                            onClick={() => void installCli(id)}
-                          >
-                            {t("cliReverifyBtn")}
-                          </button>
-                        </small>
+                        <button
+                          type="button"
+                          disabled={installingCli !== null && installingCli !== id}
+                          onClick={() => void installCli(id)}
+                        >
+                          {t("cliReverifyBtn")}
+                        </button>
                       </>
                     ) : (
                       <button
