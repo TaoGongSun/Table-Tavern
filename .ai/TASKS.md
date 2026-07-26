@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者以新 DMG 實測後結案
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者實測設定頁進階區＋實聊後結案
 - [ui-overhaul](tasks/ui-overhaul.md) — UI 全面改版：Emblem 設計系統（桌遊組件卡＋playbill 對話＋token 化） — 下一步：第一輪實作完成（npm build 綠＋淺色實跑驗證），等英文合作者實機驗收深色模式與實聊 playbill
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：verify 綠（run 30165056516）＋打包出爐（run 30165448004，commit 194fb86 含四項 UX 修正），Mac DMG 同步重打（00:22 版），等轉交測試者回報

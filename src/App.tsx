@@ -144,6 +144,12 @@ const CLI_INSTALL_URLS: Record<string, string> = {
   grok: "x.ai/cli",
 };
 
+const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;
+
+function cliConnectedKey(id: string) {
+  return `cli_connected:${id}`;
+}
+
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token，超過就提示玩家可以換場省額度
@@ -273,6 +279,11 @@ function Settings({
     return stopCliPolling;
   }, []);
 
+  // 監聽器只掛一次；config／onSaved 走 ref 取最新值，避免安裝中重掛掉事件
+  const configRef = useRef(config);
+  configRef.current = config;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
   useEffect(() => {
     let disposed = false;
     let stopListening: (() => void) | undefined;
@@ -283,6 +294,15 @@ function Settings({
       }));
       if (event.payload.stage === "done" || event.payload.stage === "error") {
         setInstallingCli((current) => (current === event.payload.provider ? null : current));
+        const base = configRef.current;
+        const next = {
+          ...base,
+          preferences: {
+            ...base.preferences,
+            [cliConnectedKey(event.payload.provider)]: event.payload.stage === "done",
+          },
+        };
+        void invoke("write_config", { config: next }).then(() => onSavedRef.current(next)).catch(() => {});
         if (event.payload.stage === "done") {
           void invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => {});
         }
@@ -423,6 +443,7 @@ function Settings({
           {(["claude", "codex", "agy", "grok"] as const).map((id) => {
             const found = clis.find((c) => c.id === id);
             const progress = installProgress[id];
+            const connected = config.preferences[cliConnectedKey(id)] === true;
             return (
               <label key={id} className="inline">
                 <input
@@ -437,15 +458,30 @@ function Settings({
                 {found ? (
                   <>
                     <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
-                    <button
-                      type="button"
-                      disabled={installingCli !== null && installingCli !== id}
-                      onClick={() => void installCli(id)}
-                    >
-                      {installingCli === id
-                        ? t("cliInstalling", { provider: CLI_LABELS[id] })
-                        : t("cliLoginVerifyBtn")}
-                    </button>
+                    {connected && installingCli !== id ? (
+                      <>
+                        <span className="cli-version">{t("cliConnectedBadge")}</span>
+                        <small>
+                          <button
+                            type="button"
+                            disabled={installingCli !== null && installingCli !== id}
+                            onClick={() => void installCli(id)}
+                          >
+                            {t("cliReverifyBtn")}
+                          </button>
+                        </small>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={installingCli !== null && installingCli !== id}
+                        onClick={() => void installCli(id)}
+                      >
+                        {installingCli === id
+                          ? t("cliInstalling", { provider: CLI_LABELS[id] })
+                          : t("cliLoginVerifyBtn")}
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -1514,6 +1550,28 @@ function App() {
     }
   }
 
+  // 串流期間 config 可能已被設定頁改寫，走 ref 取最新值，避免舊閉包蓋掉剛存的設定
+  const chatConfigRef = useRef(config);
+  chatConfigRef.current = config;
+  async function markCliConnectedFromChat() {
+    const current = chatConfigRef.current;
+    if (!current) return;
+    const transport = current.preferences["transport"];
+    if (!CLI_IDS.includes(transport as (typeof CLI_IDS)[number]) || current.preferences[cliConnectedKey(String(transport))] === true) {
+      return;
+    }
+    const updated = {
+      ...current,
+      preferences: { ...current.preferences, [cliConnectedKey(String(transport))]: true },
+    };
+    try {
+      await invoke("write_config", { config: updated });
+      setConfig(updated);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   const textSize = String(config?.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
   useEffect(() => {
     document.documentElement.style.fontSize =
@@ -1774,6 +1832,7 @@ function App() {
       onDelta,
     });
     await appendEvent({ ts: nowTs(), speaker: character, kind: "dialogue", text: full });
+    await markCliConnectedFromChat();
   }
 
   // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
@@ -1802,6 +1861,7 @@ function App() {
       onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
       const full = await invoke<string>("gm_narrate", { world: table, onDelta });
       await appendEvent({ ts: nowTs(), speaker: "GM", kind: "narration", text: full });
+      await markCliConnectedFromChat();
       setWorlds(await invoke<string[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
