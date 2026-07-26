@@ -460,7 +460,7 @@ function Settings({
                     <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
                     {connected && installingCli !== id ? (
                       <>
-                        <span className="cli-version">{t("cliConnectedBadge")}</span>
+                        <span className="cli-connected">{t("cliConnectedBadge")}</span>
                         <button
                           type="button"
                           disabled={installingCli !== null && installingCli !== id}
