@@ -31,6 +31,7 @@ body {
   --neutral-plate: #333947; /* 桌名 wedge */
   --neutral-plate-ink: #ffffff;
   --danger: #e07a6a;
+  --ok: #a4cf9e; /* connected / success */
 
   --font-ui: "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
   --font-story: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -85,6 +86,7 @@ body {
   --neutral-plate: #3a4152;
   --neutral-plate-ink: #ffffff;
   --danger: #a43a2a;
+  --ok: #3f7d3c;
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
 }
 
@@ -1066,6 +1068,11 @@ textarea {
 .cli-version {
   font-size: var(--fs-meta);
   color: var(--ink-3);
+}
+
+.cli-connected {
+  font-size: var(--fs-meta);
+  color: var(--ok);
 }
 
 .cli-install-progress {
