@@ -541,12 +541,14 @@ pub async fn run_cli(
     program: &Path,
     args: &[String],
     stdin_data: &str,
+    envs: &[(String, String)],
     parse: fn(&str) -> CliLine,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let mut command = Command::new(program);
     command
         .args(args)
+        .envs(envs.iter().map(|(key, value)| (key.as_str(), value.as_str())))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -881,7 +883,7 @@ mod tests {
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let mut deltas = Vec::new();
-        let full = run_cli(&script, &[], "提示詞", parse_claude_line, |delta| {
+        let full = run_cli(&script, &[], "提示詞", &[], parse_claude_line, |delta| {
             deltas.push(delta.to_owned());
         })
         .await

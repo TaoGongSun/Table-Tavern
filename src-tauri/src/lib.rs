@@ -434,28 +434,49 @@ async fn stream_via_transport(
             let model = cli::tier_override(&config.tier_models, "claude", tier)
                 .or_else(|| cli::claude_model_for(tier));
             let args = cli::claude_args(model, &system);
-            cli::run_cli(&program, &args, &prompt, cli::parse_claude_line, emit).await
+            let base_url = config
+                .preferences
+                .get("claude_base_url")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .unwrap_or("");
+            let envs = if base_url.is_empty() {
+                Vec::new()
+            } else {
+                let mut envs = vec![("ANTHROPIC_BASE_URL".to_owned(), base_url.to_owned())];
+                if let Some(api_key) = config
+                    .api_keys
+                    .get("claude_compat")
+                    .map(String::as_str)
+                    .map(str::trim)
+                    .filter(|key| !key.is_empty())
+                {
+                    envs.push(("ANTHROPIC_AUTH_TOKEN".to_owned(), api_key.to_owned()));
+                }
+                envs
+            };
+            cli::run_cli(&program, &args, &prompt, &envs, cli::parse_claude_line, emit).await
         }
         "codex" => {
             // codex 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時模型用 CLI 預設
             let model = cli::tier_override(&config.tier_models, "codex", tier);
             let args = cli::codex_args(model, cli::codex_effort_for(tier));
             let combined = format!("{system}\n\n{prompt}");
-            cli::run_cli(&program, &args, &combined, cli::parse_codex_line, emit).await
+            cli::run_cli(&program, &args, &combined, &[], cli::parse_codex_line, emit).await
         }
         "agy" => {
             // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::agy_args(model, &combined);
-            cli::run_cli(&program, &args, "", cli::parse_agy_line, emit).await
+            cli::run_cli(&program, &args, "", &[], cli::parse_agy_line, emit).await
         }
         "grok" => {
             // grok 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "grok", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::grok_args(model, &combined);
-            cli::run_cli(&program, &args, "", cli::parse_grok_line, emit).await
+            cli::run_cli(&program, &args, "", &[], cli::parse_grok_line, emit).await
         }
         other => Err(format!("未知傳輸層：{other}").into()),
     }

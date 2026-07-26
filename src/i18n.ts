@@ -79,6 +79,11 @@ const zh = {
   riskAccept: "我已了解上述風險，仍要以自己的帳號啟用",
   riskRequired: "啟用 CLI 訂閱模式前，請先勾選風險告知確認",
   apiKeyLabel: "OpenRouter API key",
+  claudeCompatSummary: "進階：Anthropic 相容端點（第三方）",
+  claudeCompatBaseUrlLabel: "自訂 API 端點（留空用官方）",
+  claudeCompatKeyLabel: "該端點的 API key",
+  claudeCompatHint:
+    "填了端點後，請求會送往第三方（如 DeepSeek／GLM／Kimi），以該家 API key 計費，你的 Claude 訂閱不參與。",
   tierModelApiLabel: "「{tier}」檔位模型（可挑可貼，任何 OpenRouter 模型 id）",
   tierModelCliLabel: "「{tier}」檔位模型",
   cliDefaultOption: "預設（CLI）",
@@ -271,6 +276,11 @@ const en: Record<MsgKey, string> = {
   riskAccept: "I understand the risks above and still want to enable this with my own account",
   riskRequired: "Please confirm the risk notice before enabling CLI subscription mode",
   apiKeyLabel: "OpenRouter API key",
+  claudeCompatSummary: "Advanced: Anthropic-compatible endpoint (third-party)",
+  claudeCompatBaseUrlLabel: "Custom API endpoint (leave empty for official)",
+  claudeCompatKeyLabel: "API key for that endpoint",
+  claudeCompatHint:
+    "With an endpoint set, requests go to that third party (e.g. DeepSeek / GLM / Kimi) and are billed to its API key; your Claude subscription is not used.",
   tierModelApiLabel: "“{tier}” tier model (pick or paste any OpenRouter model id)",
   tierModelCliLabel: "“{tier}” tier model",
   cliDefaultOption: "CLI default",

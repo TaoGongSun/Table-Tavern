@@ -231,6 +231,10 @@ function Settings({
     ...config.tier_models,
   });
   const [baseUrl, setBaseUrl] = useState(String(config.preferences["base_url"] ?? ""));
+  const [claudeCompatBaseUrl, setClaudeCompatBaseUrl] = useState(
+    String(config.preferences["claude_base_url"] ?? ""),
+  );
+  const [claudeCompatKey, setClaudeCompatKey] = useState(config.api_keys["claude_compat"] ?? "");
   const [gmTier, setGmTier] = useState(String(config.preferences["gm_tier"] ?? "best"));
   const [maxRound, setMaxRound] = useState(String(config.preferences["max_round_speakers"] ?? 3));
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
@@ -353,6 +357,8 @@ function Settings({
   const dirtyCount = [
     apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
     baseUrl.trim() !== String(config.preferences["base_url"] ?? ""),
+    claudeCompatBaseUrl.trim() !== String(config.preferences["claude_base_url"] ?? ""),
+    claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? ""),
     gmTier !== String(config.preferences["gm_tier"] ?? "best"),
     String(Math.max(1, Number(maxRound) || 3)) !==
       String(config.preferences["max_round_speakers"] ?? 3),
@@ -376,11 +382,16 @@ function Settings({
     }
     const next: AppConfig = {
       ...config,
-      api_keys: { ...config.api_keys, openrouter: apiKey.trim() },
+      api_keys: {
+        ...config.api_keys,
+        openrouter: apiKey.trim(),
+        claude_compat: claudeCompatKey.trim(),
+      },
       tier_models: tierModels,
       preferences: {
         ...config.preferences,
         base_url: baseUrl.trim(),
+        claude_base_url: claudeCompatBaseUrl.trim(),
         transport,
         cli_risk_accepted: riskAccepted,
         gm_tier: gmTier,
@@ -573,6 +584,28 @@ function Settings({
                   : t("cliCatalogCodex")}
             </p>
           </>
+        )}
+        {transport === "claude" && (
+          <details>
+            <summary>{t("claudeCompatSummary")}</summary>
+            <label>
+              {t("claudeCompatBaseUrlLabel")}
+              <input
+                value={claudeCompatBaseUrl}
+                onChange={(e) => setClaudeCompatBaseUrl(e.currentTarget.value)}
+                placeholder="https://api.example.com"
+              />
+            </label>
+            <label>
+              {t("claudeCompatKeyLabel")}
+              <input
+                type="password"
+                value={claudeCompatKey}
+                onChange={(e) => setClaudeCompatKey(e.currentTarget.value)}
+              />
+            </label>
+            <p role="note">{t("claudeCompatHint")}</p>
+          </details>
         )}
         <label>
           {t("gmTierLabel")}
