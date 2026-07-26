@@ -14,7 +14,7 @@
 - diff read-back 逐條核過；Mac 腳本流程親讀確認本就 pre-probe（src-tauri/src/lib.rs:87）。
 
 ## Remaining / Next action
-- 使用者實測見 tasks/cli-connected-badge.md。
+- 使用者實測見 tasks/cli-connected-badge.md。測試包：Mac DMG（本機 0.2.0 第四版，含綠 badge）＋Windows run 30202162438（artifact `table-tavern-windows-unsigned` 7.45MB，https://github.com/TaoGongSun/Table-Tavern/actions/runs/30202162438 ）。
 - 潛在後續（未拍板）：Windows agy／grok 改用憑證檔存在性判斷登入狀態（無副作用），需先查證兩家憑證檔路徑。
 
 ## Constraints
