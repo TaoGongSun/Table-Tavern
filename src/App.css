@@ -994,10 +994,45 @@ textarea {
 }
 
 /* 角色卡編輯頂部的卡面圖／大顆頭像 */
+/* 編輯畫面頂部切兩塊：左邊這張卡的動作、右邊圖片與它的操作鈕，
+   打字欄位維持全寬留在下方；視窗夠窄時兩塊自動疊回上下（2026-07-28 使用者拍板） */
+.card-editor-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.card-editor-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* 未儲存提示在這裡是獨立一行，靠左跟著按鈕走（世界設定畫面仍靠按鈕列右緣） */
+.card-editor-actions .unsaved-hint {
+  margin-left: 0;
+}
+
+.card-editor-media {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 60%;
+}
+
+/* 圖片操作鈕最多五顆，欄位窄就折行 */
+.card-editor-media .row {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .card-editor-avatar {
   display: flex;
   justify-content: center;
-  margin-bottom: 0.6rem;
 }
 
 .card-editor-image {
