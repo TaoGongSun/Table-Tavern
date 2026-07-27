@@ -5,9 +5,10 @@ use std::path::Path;
 
 const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
+/// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
 pub fn import_character(
     root: &Path,
-    world: &str,
+    world_id: &str,
     bytes: &[u8],
     color: &str,
 ) -> DataResult<CharacterMeta> {
@@ -26,14 +27,13 @@ pub fn import_character(
         .ok_or_else(|| data::invalid_data("角色卡缺少 name"))?
         .trim()
         .to_owned();
-    data::validate_name(&name)?;
+    data::validate_single_line("name", &name)?;
 
-    let md_path = data::character_path(root, world, &name)?;
-    if md_path.exists() {
-        return Err(data::invalid_data(format!("角色 {name} 已存在")));
-    }
+    let id = data::new_id();
+    let md_path = data::character_path(root, world_id, &id)?;
 
     let card = CharacterCard {
+        id: id.clone(),
         name: name.clone(),
         color: color.to_owned(),
         avatar: "🎭".to_owned(),
@@ -44,10 +44,11 @@ pub fn import_character(
         public_md: public_markdown(card_data),
         private_md: private_markdown(card_data),
     };
-    data::write_character(root, world, &card)?;
+    data::write_character(root, world_id, &card)?;
     fs::write(md_path.with_extension(raw_extension), bytes)?;
 
     Ok(CharacterMeta {
+        id,
         name,
         color: color.to_owned(),
         avatar: "🎭".to_owned(),
@@ -58,59 +59,82 @@ pub fn import_character(
     })
 }
 
-/// 匯入時存下的原 PNG（characters/<name>.png）；沒有圖回 None，前端拿 base64 組 data URL 顯示
-pub fn character_image(root: &Path, world: &str, name: &str) -> DataResult<Option<String>> {
-    let path = data::character_path(root, world, name)?.with_extension("png");
+/// 匯入時存下的原 PNG（characters/<id>.png）；沒有圖回 None，前端拿 base64 組 data URL 顯示
+pub fn character_image(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<Option<String>> {
+    let path = data::character_path(root, world_id, character_id)?.with_extension("png");
     if !path.is_file() {
         return Ok(None);
     }
     Ok(Some(base64_encode(&fs::read(path)?)))
 }
 
-pub fn save_character_image(root: &Path, world: &str, name: &str, bytes: &[u8]) -> DataResult<()> {
-    save_character_png(root, world, name, bytes, "png")
+pub fn save_character_image(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    bytes: &[u8],
+) -> DataResult<()> {
+    save_character_png(root, world_id, character_id, bytes, "png")
 }
 
-pub fn delete_character_image(root: &Path, world: &str, name: &str) -> DataResult<()> {
-    delete_character_png(root, world, name, "png")
+pub fn delete_character_image(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
+    delete_character_png(root, world_id, character_id, "png")
 }
 
-pub fn character_avatar(root: &Path, world: &str, name: &str) -> DataResult<Option<String>> {
-    let path = data::character_path(root, world, name)?.with_extension("avatar.png");
+pub fn character_avatar(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<Option<String>> {
+    let path = data::character_path(root, world_id, character_id)?.with_extension("avatar.png");
     if !path.is_file() {
         return Ok(None);
     }
     Ok(Some(base64_encode(&fs::read(path)?)))
 }
 
-pub fn save_character_avatar(root: &Path, world: &str, name: &str, bytes: &[u8]) -> DataResult<()> {
-    save_character_png(root, world, name, bytes, "avatar.png")
+pub fn save_character_avatar(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    bytes: &[u8],
+) -> DataResult<()> {
+    save_character_png(root, world_id, character_id, bytes, "avatar.png")
 }
 
-pub fn delete_character_avatar(root: &Path, world: &str, name: &str) -> DataResult<()> {
-    delete_character_png(root, world, name, "avatar.png")
+pub fn delete_character_avatar(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
+    delete_character_png(root, world_id, character_id, "avatar.png")
 }
 
 fn save_character_png(
     root: &Path,
-    world: &str,
-    name: &str,
+    world_id: &str,
+    character_id: &str,
     bytes: &[u8],
     extension: &str,
 ) -> DataResult<()> {
     if !bytes.starts_with(PNG_MAGIC) {
         return Err(data::invalid_data("圖片必須是 PNG"));
     }
-    let path = data::character_path(root, world, name)?;
+    let path = data::character_path(root, world_id, character_id)?;
     if !path.exists() {
-        return Err(data::invalid_data(format!("角色 {name} 不存在")));
+        return Err(data::invalid_data(format!("角色 {character_id} 不存在")));
     }
     fs::write(path.with_extension(extension), bytes)?;
     Ok(())
 }
 
-fn delete_character_png(root: &Path, world: &str, name: &str, extension: &str) -> DataResult<()> {
-    let path = data::character_path(root, world, name)?.with_extension(extension);
+fn delete_character_png(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    extension: &str,
+) -> DataResult<()> {
+    let path = data::character_path(root, world_id, character_id)?.with_extension(extension);
     if path.exists() {
         fs::remove_file(path)?;
     }
@@ -306,18 +330,20 @@ mod tests {
     #[test]
     fn imports_v2_json_and_preserves_original() {
         let root = TestRoot::new("v2");
-        data::create_world(root.path(), "酒館").unwrap();
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
         let raw = r#"{"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"莉亞","description":"精靈遊俠","personality":"冷靜","scenario":"雨夜","first_mes":"妳來了。","mes_example":"<START>","character_book":{"entries":[{"keys":["森林","月亮"],"content":"古老盟約","enabled":true},{"keys":["略過"],"content":""}]}}}"#.as_bytes();
 
-        let meta = import_character(root.path(), "酒館", raw, "#3366ff").unwrap();
+        let meta = import_character(root.path(), &world_id, raw, "#3366ff").unwrap();
         assert_eq!(meta.name, "莉亞");
-        let markdown =
-            fs::read_to_string(root.path().join("worlds/酒館/characters/莉亞.md")).unwrap();
-        assert!(
-            markdown.contains(
-                "---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\narchived: false\ndisplay_index: 0\ngen_prompt: \n---"
-            )
-        );
+        let markdown = fs::read_to_string(
+            root.path()
+                .join(format!("worlds/{world_id}/characters/{}.md", meta.id)),
+        )
+        .unwrap();
+        assert!(markdown.contains(&format!(
+            "---\nid: {}\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\narchived: false\ndisplay_index: 0\ngen_prompt: \n---",
+            meta.id
+        )));
         for section in [
             "### 簡介\n精靈遊俠",
             "### 人格與語氣\n冷靜",
@@ -329,7 +355,11 @@ mod tests {
             assert!(markdown.contains(section), "missing {section}");
         }
         assert_eq!(
-            fs::read(root.path().join("worlds/酒館/characters/莉亞.import.json")).unwrap(),
+            fs::read(root.path().join(format!(
+                "worlds/{world_id}/characters/{}.import.json",
+                meta.id
+            )))
+            .unwrap(),
             raw
         );
     }
@@ -337,66 +367,79 @@ mod tests {
     #[test]
     fn imports_png_text_chunk_and_preserves_original() {
         let root = TestRoot::new("png");
-        data::create_world(root.path(), "酒館").unwrap();
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩","description":"騎士"}}"#);
 
-        import_character(root.path(), "酒館", &png, "#111111").unwrap();
-        assert!(root.path().join("worlds/酒館/characters/凱恩.md").is_file());
+        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
+        assert!(root
+            .path()
+            .join(format!("worlds/{world_id}/characters/{}.md", meta.id))
+            .is_file());
         assert_eq!(
-            fs::read(root.path().join("worlds/酒館/characters/凱恩.png")).unwrap(),
+            fs::read(
+                root.path()
+                    .join(format!("worlds/{world_id}/characters/{}.png", meta.id))
+            )
+            .unwrap(),
             png
         );
-        assert_eq!(data::list_characters(root.path(), "酒館").unwrap().len(), 1);
+        assert_eq!(
+            data::list_characters(root.path(), &world_id).unwrap().len(),
+            1
+        );
     }
 
     #[test]
     fn imports_v1_top_level_fields() {
         let root = TestRoot::new("v1");
-        data::create_world(root.path(), "酒館").unwrap();
-        import_character(
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let meta = import_character(
             root.path(),
-            "酒館",
+            &world_id,
             r#"{"name":"舊卡","personality":"直率"}"#.as_bytes(),
             "#222222",
         )
         .unwrap();
-        let card = data::read_character(root.path(), "酒館", "舊卡").unwrap();
+        let card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
         assert_eq!(card.public_md, "### 人格與語氣\n直率");
     }
 
+    /// 測試清單 #12：匯入 ST 角色卡產生新 id、name 照原值（含原本會被擋的字元）；
+    /// 同名再匯入一次也會成功，各自拿到不同 id 且互不影響
     #[test]
-    fn duplicate_name_does_not_modify_existing_card() {
-        let root = TestRoot::new("duplicate");
-        data::create_world(root.path(), "酒館").unwrap();
-        let original = CharacterCard {
-            name: "重名".to_owned(),
-            color: "#000000".to_owned(),
-            avatar: "🎭".to_owned(),
-            tier: Tier::Default,
-            show_image: true,
-            archived: false,
-            gen_prompt: String::new(),
-            public_md: "既有內容".to_owned(),
-            private_md: String::new(),
-        };
-        data::write_character(root.path(), "酒館", &original).unwrap();
+    fn importing_the_same_name_twice_mints_distinct_ids_and_keeps_first_card_intact() {
+        let root = TestRoot::new("duplicate-name");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let odd_name = r#"{"name":"a/b/../重名","description":"第一張"}"#;
+        let first =
+            import_character(root.path(), &world_id, odd_name.as_bytes(), "#000000").unwrap();
+        assert_eq!(first.name, "a/b/../重名");
 
-        let error = import_character(
+        let second = import_character(
             root.path(),
-            "酒館",
-            r#"{"name":"重名","description":"新內容"}"#.as_bytes(),
+            &world_id,
+            r#"{"name":"a/b/../重名","description":"第二張"}"#.as_bytes(),
             "#ffffff",
         )
-        .unwrap_err();
-        assert_eq!(error.to_string(), "角色 重名 已存在");
+        .unwrap();
+
+        assert_ne!(first.id, second.id);
         assert_eq!(
-            data::read_character(root.path(), "酒館", "重名").unwrap(),
-            original
+            data::read_character(root.path(), &world_id, &first.id)
+                .unwrap()
+                .public_md,
+            "### 簡介\n第一張"
         );
-        assert!(!root
-            .path()
-            .join("worlds/酒館/characters/重名.import.json")
-            .exists());
+        assert_eq!(
+            data::read_character(root.path(), &world_id, &second.id)
+                .unwrap()
+                .public_md,
+            "### 簡介\n第二張"
+        );
+        assert_eq!(
+            data::list_characters(root.path(), &world_id).unwrap().len(),
+            2
+        );
     }
 
     #[test]
@@ -409,32 +452,35 @@ mod tests {
     #[test]
     fn character_image_returns_png_base64_or_none() {
         let root = TestRoot::new("image");
-        data::create_world(root.path(), "酒館").unwrap();
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
-        import_character(root.path(), "酒館", &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
 
-        let encoded = character_image(root.path(), "酒館", "凱恩")
+        let encoded = character_image(root.path(), &world_id, &meta.id)
             .unwrap()
             .unwrap();
         assert_eq!(decode_base64(encoded.as_bytes()).unwrap(), png);
-        assert_eq!(character_image(root.path(), "酒館", "沒圖").unwrap(), None);
+        assert_eq!(
+            character_image(root.path(), &world_id, &data::new_id()).unwrap(),
+            None
+        );
     }
 
     #[test]
     fn saves_and_reads_character_image_and_avatar() {
         let root = TestRoot::new("save-images");
-        data::create_world(root.path(), "酒館").unwrap();
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
-        import_character(root.path(), "酒館", &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
         let image = PNG_MAGIC.iter().copied().chain([1, 2]).collect::<Vec<_>>();
         let avatar = PNG_MAGIC.iter().copied().chain([3, 4]).collect::<Vec<_>>();
 
-        save_character_image(root.path(), "酒館", "凱恩", &image).unwrap();
-        save_character_avatar(root.path(), "酒館", "凱恩", &avatar).unwrap();
+        save_character_image(root.path(), &world_id, &meta.id, &image).unwrap();
+        save_character_avatar(root.path(), &world_id, &meta.id, &avatar).unwrap();
 
         assert_eq!(
             decode_base64(
-                character_image(root.path(), "酒館", "凱恩")
+                character_image(root.path(), &world_id, &meta.id)
                     .unwrap()
                     .unwrap()
                     .as_bytes()
@@ -444,7 +490,7 @@ mod tests {
         );
         assert_eq!(
             decode_base64(
-                character_avatar(root.path(), "酒館", "凱恩")
+                character_avatar(root.path(), &world_id, &meta.id)
                     .unwrap()
                     .unwrap()
                     .as_bytes()
@@ -457,32 +503,33 @@ mod tests {
     #[test]
     fn save_character_images_reject_invalid_png_and_missing_character() {
         let root = TestRoot::new("reject-images");
-        data::create_world(root.path(), "酒館").unwrap();
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let missing_id = data::new_id();
 
         assert_eq!(
-            save_character_image(root.path(), "酒館", "凱恩", b"not png")
+            save_character_image(root.path(), &world_id, &missing_id, b"not png")
                 .unwrap_err()
                 .to_string(),
             "圖片必須是 PNG"
         );
         assert_eq!(
-            save_character_avatar(root.path(), "酒館", "凱恩", PNG_MAGIC)
+            save_character_avatar(root.path(), &world_id, &missing_id, PNG_MAGIC)
                 .unwrap_err()
                 .to_string(),
-            "角色 凱恩 不存在"
+            format!("角色 {missing_id} 不存在")
         );
     }
 
     #[test]
     fn delete_character_images_is_idempotent() {
         let root = TestRoot::new("delete-images");
-        data::create_world(root.path(), "酒館").unwrap();
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
-        import_character(root.path(), "酒館", &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
 
-        delete_character_image(root.path(), "酒館", "凱恩").unwrap();
-        delete_character_image(root.path(), "酒館", "凱恩").unwrap();
-        delete_character_avatar(root.path(), "酒館", "凱恩").unwrap();
-        delete_character_avatar(root.path(), "酒館", "凱恩").unwrap();
+        delete_character_image(root.path(), &world_id, &meta.id).unwrap();
+        delete_character_image(root.path(), &world_id, &meta.id).unwrap();
+        delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
+        delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
     }
 }

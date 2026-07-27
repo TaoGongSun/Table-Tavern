@@ -101,7 +101,7 @@ pub fn assemble_messages(
         .filter(|entry| match &entry.visibility {
             Visibility::Gm => false,
             Visibility::Public => true,
-            Visibility::Characters(names) => names.iter().any(|name| name == &card.name),
+            Visibility::Characters(ids) => ids.iter().any(|id| id == &card.id),
         })
         .cloned()
         .collect();
@@ -116,11 +116,11 @@ pub fn assemble_messages(
     let mut messages = vec![message("system", system)];
     for event in events {
         let (role, line) = match event.kind {
-            TranscriptKind::Dialogue if event.speaker == card.name => {
+            TranscriptKind::Dialogue if event.speaker_id == card.id => {
                 ("assistant", event.text.clone())
             }
-            TranscriptKind::Dialogue => ("user", format!("{}：{}", event.speaker, event.text)),
-            TranscriptKind::Player => ("user", format!("{}：{}", event.speaker, event.text)),
+            TranscriptKind::Dialogue => ("user", format!("{}：{}", event.speaker_name, event.text)),
+            TranscriptKind::Player => ("user", format!("{}：{}", event.speaker_name, event.text)),
             TranscriptKind::Narration => ("user", format!("（旁白）{}", event.text)),
             TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
         };
@@ -183,7 +183,7 @@ pub fn assemble_gm_messages(
         let (role, line) = match event.kind {
             TranscriptKind::Narration => ("assistant", event.text.clone()),
             TranscriptKind::Dialogue | TranscriptKind::Player => {
-                ("user", format!("{}：{}", event.speaker, event.text))
+                ("user", format!("{}：{}", event.speaker_name, event.text))
             }
             TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
         };
@@ -221,7 +221,7 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
         let line = match event.kind {
             TranscriptKind::Narration => format!("（旁白）{}", event.text),
             TranscriptKind::Dialogue | TranscriptKind::Player => {
-                format!("{}：{}", event.speaker, event.text)
+                format!("{}：{}", event.speaker_name, event.text)
             }
             TranscriptKind::System => format!("（系統）{}", event.text),
         };
@@ -496,8 +496,9 @@ mod tests {
     use super::*;
     use crate::data::Tier;
 
-    fn card(name: &str, public_md: &str, private_md: &str) -> CharacterCard {
+    fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCard {
         CharacterCard {
+            id: id.to_owned(),
             name: name.to_owned(),
             color: "#336699".to_owned(),
             avatar: "🦊".to_owned(),
@@ -510,10 +511,16 @@ mod tests {
         }
     }
 
-    fn event(kind: TranscriptKind, speaker: &str, text: &str) -> TranscriptEvent {
+    fn event(
+        kind: TranscriptKind,
+        speaker_id: &str,
+        speaker_name: &str,
+        text: &str,
+    ) -> TranscriptEvent {
         TranscriptEvent {
             ts: "2026-07-19T12:00:00+08:00".to_owned(),
-            speaker: speaker.to_owned(),
+            speaker_id: speaker_id.to_owned(),
+            speaker_name: speaker_name.to_owned(),
             kind,
             text: text.to_owned(),
         }
@@ -542,8 +549,8 @@ mod tests {
 
     #[test]
     fn empty_worldbook_keeps_character_and_gm_context_unchanged() {
-        let fox = card("狐狸", "旅店老闆", "通緝犯");
-        let events = [event(TranscriptKind::Player, "玩家", "你好")];
+        let fox = card("fox-id", "狐狸", "旅店老闆", "通緝犯");
+        let events = [event(TranscriptKind::Player, "", "玩家", "你好")];
         let character = assemble_messages(&fox, &events, &[], "zh-TW");
         assert_eq!(character.len(), 2);
         assert!(character[0].content.contains("## 你的公開設定"));
@@ -570,11 +577,11 @@ mod tests {
             worldbook_entry(0, "空關鍵字", &[], false, -20, false, Visibility::Gm),
         ];
         let events = [
-            event(TranscriptKind::Narration, "GM", "ancient history"),
-            event(TranscriptKind::Player, "玩家", "one"),
-            event(TranscriptKind::Dialogue, "狐狸", "two"),
-            event(TranscriptKind::Narration, "GM", "A DRAGON wakes"),
-            event(TranscriptKind::Player, "玩家", "four"),
+            event(TranscriptKind::Narration, "", "GM", "ancient history"),
+            event(TranscriptKind::Player, "", "玩家", "one"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "two"),
+            event(TranscriptKind::Narration, "", "GM", "A DRAGON wakes"),
+            event(TranscriptKind::Player, "", "玩家", "four"),
         ];
 
         let active = active_worldbook_entries(&entries, &events);
@@ -596,7 +603,7 @@ mod tests {
                 true,
                 2,
                 false,
-                Visibility::Characters(vec!["狐狸".to_owned()]),
+                Visibility::Characters(vec!["fox-id".to_owned()]),
             ),
             worldbook_entry(
                 3,
@@ -605,10 +612,10 @@ mod tests {
                 true,
                 3,
                 false,
-                Visibility::Characters(vec!["騎士".to_owned()]),
+                Visibility::Characters(vec!["knight-id".to_owned()]),
             ),
         ];
-        let fox = card("狐狸", "公開", "私有");
+        let fox = card("fox-id", "狐狸", "公開", "私有");
         let fox_messages = assemble_messages(&fox, &[], &entries, "zh-TW");
         let fox_system = &fox_messages[0].content;
         assert!(fox_system.contains("\n## 你知道的世界情報\n"));
@@ -617,7 +624,7 @@ mod tests {
         assert!(!fox_system.contains("GM 祕密"));
         assert!(!fox_system.contains("騎士情報"));
 
-        let knight = card("騎士", "公開", "私有");
+        let knight = card("knight-id", "騎士", "公開", "私有");
         let knight_system = &assemble_messages(&knight, &[], &entries, "zh-TW")[0].content;
         assert!(knight_system.contains("公開情報"));
         assert!(knight_system.contains("騎士情報"));
@@ -638,13 +645,18 @@ mod tests {
     /// 且介面上根本收不到他人的卡或 world.md。
     #[test]
     fn context_contains_own_card_only_and_public_transcript() {
-        let fox = card("狐狸", "旅店老闆，笑口常開", "其實是通緝犯");
+        let fox = card("fox-id", "狐狸", "旅店老闆，笑口常開", "其實是通緝犯");
         let events = [
-            event(TranscriptKind::Narration, "GM", "夜幕低垂"),
-            event(TranscriptKind::Player, "玩家", "老闆，來杯麥酒"),
-            event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
-            event(TranscriptKind::Dialogue, "騎士", "我在找一名通緝犯。"),
-            event(TranscriptKind::System, "系統", "騎士 加入本桌"),
+            event(TranscriptKind::Narration, "", "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "", "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
+            event(
+                TranscriptKind::Dialogue,
+                "knight-id",
+                "騎士",
+                "我在找一名通緝犯。",
+            ),
+            event(TranscriptKind::System, "", "系統", "騎士 加入本桌"),
         ];
         let messages = assemble_messages(&fox, &events, &[], "zh-TW");
 
@@ -664,12 +676,12 @@ mod tests {
 
     #[test]
     fn own_dialogue_becomes_assistant_and_adjacent_roles_merge() {
-        let fox = card("狐狸", "公開", "");
+        let fox = card("fox-id", "狐狸", "公開", "");
         let events = [
-            event(TranscriptKind::Player, "玩家", "第一句"),
-            event(TranscriptKind::Narration, "GM", "旁白一句"),
-            event(TranscriptKind::Dialogue, "狐狸", "我的回答"),
-            event(TranscriptKind::Player, "玩家", "第二句"),
+            event(TranscriptKind::Player, "", "玩家", "第一句"),
+            event(TranscriptKind::Narration, "", "GM", "旁白一句"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "我的回答"),
+            event(TranscriptKind::Player, "", "玩家", "第二句"),
         ];
         let messages = assemble_messages(&fox, &events, &[], "zh-TW");
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
@@ -680,19 +692,45 @@ mod tests {
         assert!(!messages[0].content.contains("私有設定"));
     }
 
+    /// 測試清單 #14：同名兩角色各自只把自己的台詞當 assistant——用 speaker_id 判斷，
+    /// 不會因為顯示名相同就把對方的台詞誤認成自己說的
+    #[test]
+    fn assemble_messages_uses_speaker_id_not_name_for_same_named_characters() {
+        let first = card("id-a", "重名", "第一位", "");
+        let second_id = "id-b";
+        let events = [
+            event(TranscriptKind::Dialogue, "id-a", "重名", "我是第一位"),
+            event(TranscriptKind::Dialogue, second_id, "重名", "我是第二位"),
+        ];
+
+        let first_messages = assemble_messages(&first, &events, &[], "zh-TW");
+        let roles: Vec<&str> = first_messages.iter().map(|m| m.role.as_str()).collect();
+        // 自己的那句是 assistant，對方同名的那句仍是 user（不會相鄰合併成一則）
+        assert_eq!(roles, ["system", "assistant", "user"]);
+        assert_eq!(first_messages[1].content, "我是第一位");
+        assert_eq!(first_messages[2].content, "重名：我是第二位");
+
+        let second = card(second_id, "重名", "第二位", "");
+        let second_messages = assemble_messages(&second, &events, &[], "zh-TW");
+        let roles: Vec<&str> = second_messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["system", "user", "assistant"]);
+        assert_eq!(second_messages[1].content, "重名：我是第一位");
+        assert_eq!(second_messages[2].content, "我是第二位");
+    }
+
     /// 驗收：GM 上下文含 world.md＋全部角色卡（含私有）＋公開歷史；
     /// GM 自己的旁白是 assistant，其餘事件是 user 且相鄰合併。
     #[test]
     fn gm_context_contains_world_all_cards_and_marks_own_narration() {
         let cards = [
-            card("狐狸", "旅店老闆", "其實是通緝犯"),
-            card("騎士", "巡邏騎士", "暗中追查狐狸"),
+            card("fox-id", "狐狸", "旅店老闆", "其實是通緝犯"),
+            card("knight-id", "騎士", "巡邏騎士", "暗中追查狐狸"),
         ];
         let events = [
-            event(TranscriptKind::Narration, "GM", "夜幕低垂"),
-            event(TranscriptKind::Player, "玩家", "老闆，來杯麥酒"),
-            event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
-            event(TranscriptKind::Narration, "GM", "門外傳來馬蹄聲"),
+            event(TranscriptKind::Narration, "", "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "", "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
+            event(TranscriptKind::Narration, "", "GM", "門外傳來馬蹄聲"),
         ];
         let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events, &[], "zh-TW");
 
@@ -713,7 +751,7 @@ mod tests {
     /// 驗收：語言規範依語系切換——zh-TW 注入繁中規範，en 注入英文規範
     #[test]
     fn language_rule_follows_ui_language() {
-        let fox = card("狐狸", "旅店老闆", "");
+        let fox = card("fox-id", "狐狸", "旅店老闆", "");
         let zh = assemble_messages(&fox, &[], &[], "zh-TW");
         assert!(zh[0].content.contains("繁體中文"));
         let en = assemble_messages(&fox, &[], &[], "en");
@@ -736,9 +774,9 @@ mod tests {
     #[test]
     fn summary_messages_follow_lang_and_include_transcript() {
         let events = [
-            event(TranscriptKind::Narration, "GM", "夜幕低垂"),
-            event(TranscriptKind::Player, "玩家", "老闆，來杯麥酒"),
-            event(TranscriptKind::Dialogue, "狐狸", "馬上來！"),
+            event(TranscriptKind::Narration, "", "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "", "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
         ];
         let zh = summary_messages(&events, "zh-TW");
         assert_eq!(zh[0].role, "system");

@@ -31,6 +31,7 @@ type ThemeId = (typeof ALL_THEMES)[number];
 type Tier = "best" | "balanced" | "fast" | "default";
 
 interface CharacterMeta {
+  id: string;
   name: string;
   color: string;
   avatar: string;
@@ -45,14 +46,24 @@ interface CharacterCard extends CharacterMeta {
   gen_prompt: string;
 }
 
+// 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
+// speaker_name 是當下顯示名快照——改名後舊事件不動（2026-07-27 拍板），顯示一律讀這欄
 interface TranscriptEvent {
   ts: string;
-  speaker: string;
+  speaker_id: string;
+  speaker_name: string;
   kind: "dialogue" | "narration" | "player" | "system";
   text: string;
 }
 
+interface WorldMeta {
+  id: string;
+  name: string;
+}
+
 interface WorldState {
+  id: string;
+  name: string;
   model_bindings: Record<string, string>;
   current_scene: number;
   catchup_summaries: Record<string, string>;
@@ -141,24 +152,6 @@ function clampChars(value: string, max: number) {
       ? Array.from(new Intl.Segmenter().segment(value), (unit) => unit.segment)
       : Array.from(value);
   return chars.slice(0, max).join("");
-}
-
-// 角色名檢查（建卡／改名共用）：規則對齊後端 validate_name（data.rs:197），
-// 前端先擋才不會讓使用者看到 `invalid name: ""` 這種內部訊息。空名由送出鈕 disabled 處理。
-// taken 傳完整名單（含收起的卡），同名會直接覆寫既有卡片。
-function characterNameError(name: string, taken: string[]): string | null {
-  if (name === "GM" || name === "玩家") return t("reservedNameError");
-  if (
-    name.startsWith(".") ||
-    name.includes("..") ||
-    name.includes("/") ||
-    name.includes("\\") ||
-    /[\u0000-\u001f\u007f]/.test(name)
-  ) {
-    return t("invalidNameError");
-  }
-  if (taken.includes(name)) return t("duplicateNameError");
-  return null;
 }
 
 // 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。
@@ -1113,16 +1106,16 @@ function WorldEditor({
     setEntries([]);
     setCharacters([]);
     setDraft(null);
-    invoke<string>("read_world_md", { world })
+    invoke<string>("read_world_md", { worldId: world })
       .then((value) => {
         setText(value);
         setSavedText(value);
       })
       .catch((reason) => setMessage(String(reason)));
-    invoke<WorldbookEntry[]>("read_worldbook", { world })
+    invoke<WorldbookEntry[]>("read_worldbook", { worldId: world })
       .then(setEntries)
       .catch((reason) => setWorldbookMessage(String(reason)));
-    invoke<CharacterMeta[]>("list_characters", { world })
+    invoke<CharacterMeta[]>("list_characters", { worldId: world })
       .then((cast) => setCharacters(cast.filter((character) => !character.archived)))
       .catch((reason) => setWorldbookMessage(String(reason)));
   }, [world]);
@@ -1136,7 +1129,7 @@ function WorldEditor({
     event.preventDefault();
     setMessage("");
     try {
-      await invoke("write_world_md", { world, content: text });
+      await invoke("write_world_md", { worldId: world, content: text });
       setSavedText(text ?? "");
       setMessage(t("saved"));
     } catch (reason) {
@@ -1159,7 +1152,7 @@ function WorldEditor({
   }
 
   async function refreshWorldbook() {
-    setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { world }));
+    setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world }));
   }
 
   function openDraft(next: WorldbookDraft) {
@@ -1204,8 +1197,8 @@ function WorldEditor({
       draft.visibility === "characters"
         ? {
             type: "characters",
-            characters: draft.characters.filter((name) =>
-              characters.some((character) => character.name === name),
+            characters: draft.characters.filter((id) =>
+              characters.some((character) => character.id === id),
             ),
           }
         : { type: draft.visibility };
@@ -1223,7 +1216,7 @@ function WorldEditor({
       visibility,
     };
     try {
-      await invoke<number>("upsert_worldbook_entry", { world, entry });
+      await invoke<number>("upsert_worldbook_entry", { worldId: world, entry });
       await refreshWorldbook();
       setDraft(null);
       setWorldbookMessage(t("worldbookEntrySaved"));
@@ -1240,7 +1233,7 @@ function WorldEditor({
         { title: t("worldbookDeleteTitle"), kind: "warning" },
       );
       if (!accepted) return;
-      await invoke("delete_worldbook_entry", { world, uid: entry.uid });
+      await invoke("delete_worldbook_entry", { worldId: world, uid: entry.uid });
       await refreshWorldbook();
       if (draft?.uid === entry.uid) setDraft(null);
     } catch (reason) {
@@ -1254,7 +1247,7 @@ function WorldEditor({
     setEntries(ordered);
     try {
       await invoke("reorder_worldbook_entries", {
-        world,
+        worldId: world,
         uids: ordered.map((entry) => entry.uid),
       });
     } catch (reason) {
@@ -1273,7 +1266,7 @@ function WorldEditor({
         reader.onerror = () => reject(reader.error ?? new Error(t("worldbookReadError")));
         reader.readAsText(file);
       });
-      const count = await invoke<number>("import_worldbook", { world, jsonText });
+      const count = await invoke<number>("import_worldbook", { worldId: world, jsonText });
       await refreshWorldbook();
       setWorldbookMessage(t("worldbookImported", { n: count }));
     } catch (reason) {
@@ -1289,7 +1282,7 @@ function WorldEditor({
         filters: [{ name: t("worldbookJson"), extensions: ["json"] }],
       });
       if (!path) return;
-      await invoke("export_worldbook", { world, path });
+      await invoke("export_worldbook", { worldId: world, path });
     } catch (reason) {
       setWorldbookMessage(String(reason));
     }
@@ -1406,7 +1399,7 @@ function WorldEditor({
                       setDraft({ ...draft, visibility });
                       // 點「指定角色」當下重抓在場角色：畫面開著時可能剛從隱藏區還原角色
                       if (visibility === "characters") {
-                        void invoke<CharacterMeta[]>("list_characters", { world }).then((cast) =>
+                        void invoke<CharacterMeta[]>("list_characters", { worldId: world }).then((cast) =>
                           setCharacters(cast.filter((character) => !character.archived)),
                         );
                       }
@@ -1427,16 +1420,16 @@ function WorldEditor({
                   <span>{t("worldbookNoCharacters")}</span>
                 ) : (
                   characters.map((character) => (
-                    <label className="inline" key={character.name}>
+                    <label className="inline" key={character.id}>
                       <input
                         type="checkbox"
-                        checked={draft.characters.includes(character.name)}
+                        checked={draft.characters.includes(character.id)}
                         onChange={(event) =>
                           setDraft({
                             ...draft,
                             characters: event.currentTarget.checked
-                              ? [...draft.characters, character.name]
-                              : draft.characters.filter((name) => name !== character.name),
+                              ? [...draft.characters, character.id]
+                              : draft.characters.filter((id) => id !== character.id),
                           })
                         }
                       />
@@ -1609,8 +1602,8 @@ function CropDialog({
 
 function CardEditor({
   world,
-  name,
-  takenNames,
+  characterId,
+  isNew,
   newCardColor,
   imageDataUrl,
   avatarImgUrl,
@@ -1625,17 +1618,18 @@ function CardEditor({
   onOpenAiSettings,
 }: {
   world: string;
-  /** null＝建新卡的空白草稿（名字在表單裡填，按儲存才落地） */
-  name: string | null;
+  /** 開編輯器前已由 new_id 拿好，草稿期生圖與存檔用同一個 id */
+  characterId: string;
+  /** true＝建新卡的空白草稿，尚未寫入過任何檔案 */
+  isNew: boolean;
   /** 側欄要離開這張卡時先問過這裡（未儲存確認與返回鈕同一條） */
   leaveGuard: { current: (() => Promise<boolean>) | null };
-  takenNames: string[];
   newCardColor: string;
   imageDataUrl?: string;
   avatarImgUrl?: string;
   onImagesChanged: () => Promise<void>;
   onBack: () => void;
-  onSaved: (name: string) => void;
+  onSaved: (id: string) => void;
   onArchived: () => Promise<void>;
   onDeleted: () => Promise<void>;
   config: AppConfig;
@@ -1662,13 +1656,16 @@ function CardEditor({
   const [galleryFiles, setGalleryFiles] = useState<string[]>([]);
   const [galleryImages, setGalleryImages] = useState<Record<string, string>>({});
   const [galleryLoaded, setGalleryLoaded] = useState(0);
+  // 存檔前判斷「有沒有改名」用；新卡是空字串（第一次存檔不算改名）
+  const [originalName, setOriginalName] = useState("");
 
   useEffect(() => {
     setMessage("");
     setDraftImage(undefined);
     setDraftAvatar(undefined);
-    if (name === null) {
+    if (isNew) {
       const blank: CharacterCard = {
+        id: characterId,
         name: "",
         color: newCardColor,
         avatar: DEFAULT_AVATAR,
@@ -1681,32 +1678,31 @@ function CardEditor({
       };
       setCard(blank);
       setSavedCardJson(JSON.stringify(blank));
+      setOriginalName("");
       return;
     }
-    invoke<CharacterCard>("read_character", { world, name })
+    invoke<CharacterCard>("read_character", { worldId: world, characterId })
       .then((loaded) => {
         setCard(loaded);
         setSavedCardJson(JSON.stringify(loaded));
+        setOriginalName(loaded.name);
       })
       .catch((reason) => setMessage(String(reason)));
-  }, [world, name, newCardColor]);
+  }, [world, characterId, isNew, newCardColor]);
 
-  // 生圖與圖庫的檔案身分：既有卡片一律用已存檔的名字（改名未存檔時仍指向舊資料夾，
-  // 存檔時才由 rename_character 整包搬走）；新卡草稿用當下填的名字
-  const galleryName = name ?? card?.name.trim() ?? "";
   const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
   const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
 
   async function loadGalleryPage(files: string[], start: number) {
     const page = files.slice(start, start + GALLERY_PAGE_SIZE);
-    const images = await Promise.all(page.map(async (file) => [file, await invoke<string>("read_gallery_image", { world, name: galleryName, file })] as const));
+    const images = await Promise.all(page.map(async (file) => [file, await invoke<string>("read_gallery_image", { worldId: world, characterId, file })] as const));
     setGalleryImages((current) => ({ ...current, ...Object.fromEntries(images) }));
     setGalleryLoaded(Math.min(start + page.length, files.length));
   }
 
   async function refreshGallery() {
-    const files = await invoke<string[]>("list_gallery_images", { world, name: galleryName });
+    const files = await invoke<string[]>("list_gallery_images", { worldId: world, characterId });
     setGalleryFiles(files);
     setGalleryImages({});
     setGalleryLoaded(0);
@@ -1745,8 +1741,9 @@ function CardEditor({
     setAiGenError("");
     try {
       await invoke<string>("generate_character_image", {
-        world,
-        name: galleryName,
+        worldId: world,
+        characterId,
+        name: card?.name.trim() ?? "",
         description: card?.public_md ?? "",
         extraPrompt: aiPrompt,
         source: aiSource,
@@ -1766,7 +1763,7 @@ function CardEditor({
   async function deleteGalleryImage(file: string) {
     const accepted = await confirm(t("aiGalleryDeleteConfirm"), { title: t("aiGalleryDeleteTitle"), kind: "warning" });
     if (!accepted) return;
-    await invoke("delete_gallery_image", { world, name: galleryName, file });
+    await invoke("delete_gallery_image", { worldId: world, characterId, file });
     setGalleryFiles((current) => current.filter((item) => item !== file));
     setGalleryImages((current) => {
       const { [file]: _, ...remaining } = current;
@@ -1794,25 +1791,17 @@ function CardEditor({
       setMessage(t("nameRequiredError"));
       return;
     }
-    const nameError = characterNameError(
-      target,
-      takenNames.filter((taken) => taken !== name),
-    );
-    if (nameError) {
-      setMessage(nameError);
-      return;
-    }
     // 圖示清空就回預設，免得沒圖也沒 emoji 的空白角色
     const saved: CharacterCard = {
       ...card,
       name: target,
       avatar: card.avatar.trim() || DEFAULT_AVATAR,
     };
-    // 改名會搬檔並回填引用、正文舊名留在原地，不可逆；欄位下的說明太容易看漏，儲存前再攔一次
-    const renaming = name !== null && target !== name;
+    // 改名只換之後的顯示名稱（id 定址不受影響），欄位下的說明太容易看漏，儲存前再提醒一次
+    const renaming = !isNew && target !== originalName;
     if (
       renaming &&
-      !(await confirm(t("renameConfirm", { from: name, to: target }), {
+      !(await confirm(t("renameConfirm", { from: originalName, to: target }), {
         title: t("renameConfirmTitle"),
         kind: "warning",
       }))
@@ -1820,22 +1809,19 @@ function CardEditor({
       return;
     }
     try {
-      // 改名要先搬檔＋回填引用，再寫卡片內容；建新卡直接寫
-      if (renaming) {
-        await invoke("rename_character", { world, from: name, to: target });
-      }
-      await invoke("write_character", { world, card: saved });
-      if (draftImage === null) await invoke("delete_character_image", { world, name: target });
-      else if (draftImage) await invoke("save_character_image", { world, name: target, data: draftImage.bytes });
-      if (draftAvatar === null) await invoke("delete_character_avatar", { world, name: target });
-      else if (draftAvatar) await invoke("save_character_avatar", { world, name: target, data: draftAvatar.bytes });
+      await invoke("write_character", { worldId: world, card: saved });
+      if (draftImage === null) await invoke("delete_character_image", { worldId: world, characterId });
+      else if (draftImage) await invoke("save_character_image", { worldId: world, characterId, data: draftImage.bytes });
+      if (draftAvatar === null) await invoke("delete_character_avatar", { worldId: world, characterId });
+      else if (draftAvatar) await invoke("save_character_avatar", { worldId: world, characterId, data: draftAvatar.bytes });
       setDraftImage(undefined);
       setDraftAvatar(undefined);
       await onImagesChanged();
       setCard(saved);
       setSavedCardJson(JSON.stringify(saved));
+      setOriginalName(target);
       setMessage(t("saved"));
-      onSaved(target);
+      onSaved(characterId);
     } catch (reason) {
       setMessage(String(reason));
     }
@@ -1858,7 +1844,7 @@ function CardEditor({
   async function archive() {
     setMessage("");
     try {
-      await invoke("set_character_archived", { world, name, archived: true });
+      await invoke("set_character_archived", { worldId: world, characterId, archived: true });
       await onArchived();
     } catch (reason) {
       setMessage(String(reason));
@@ -1897,7 +1883,7 @@ function CardEditor({
         <button type="button" onClick={() => void handleBack()}>
           {t("backToNow")}
         </button>
-        {name !== null && (
+        {!isNew && (
           <>
             <button type="button" className="archive-button" onClick={archive}>
               {t("archiveCharacter")}
@@ -1934,7 +1920,7 @@ function CardEditor({
         )}
       </div>
       <div className="row">
-        <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
+        <button type="button" onClick={() => document.getElementById(`character-image-${characterId}`)?.click()}>
           {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
         </button>
         {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
@@ -1957,7 +1943,7 @@ function CardEditor({
         )}
         {shownAvatar && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
         <input
-          id={`character-image-${name}`}
+          id={`character-image-${characterId}`}
           type="file"
           accept="image/png,image/jpeg,image/webp"
           hidden
@@ -1976,8 +1962,8 @@ function CardEditor({
           onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
         />
       </label>
-      {/* 改名時才提示：機械取代劇情正文會誤傷同名詞句，故舊名留在原處（2026-07-27 拍板） */}
-      {name !== null && card.name.trim() !== name && (
+      {/* 改名只換之後的顯示名稱，已送出的對話仍顯示舊名（2026-07-27 拍板） */}
+      {!isNew && card.name.trim() !== originalName && (
         <p className="field-note" role="note">
           {t("renameNote")}
         </p>
@@ -2159,11 +2145,13 @@ function EditPane({ title, children }: { title: string; children: React.ReactNod
 // 單幕閱讀：整面取代對話畫面（不是 modal），頂部一行標題＋匯出＋返回，下方唯讀事件列表填滿到底
 function ActReader({
   world,
+  worldName,
   scene,
   label,
   onBack,
 }: {
   world: string;
+  worldName: string;
   scene: number;
   label: string;
   onBack: () => void;
@@ -2174,7 +2162,7 @@ function ActReader({
   useEffect(() => {
     setEvents(null);
     setError("");
-    invoke<TranscriptEvent[]>("read_transcript", { world, scene })
+    invoke<TranscriptEvent[]>("read_transcript", { worldId: world, scene })
       .then(setEvents)
       .catch((reason) => setError(String(reason)));
   }, [world, scene]);
@@ -2186,11 +2174,11 @@ function ActReader({
       const pad = (n: number) => String(n).padStart(2, "0");
       const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
       const path = await save({
-        defaultPath: `${t("sceneExportFileName", { table: world, n: scene + 1, stamp })}.md`,
+        defaultPath: `${t("sceneExportFileName", { table: worldName, n: scene + 1, stamp })}.md`,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
       if (!path) return;
-      await invoke("export_scene", { world, scene, path });
+      await invoke("export_scene", { worldId: world, scene, path });
       await revealItemInDir(path);
     } catch (reason) {
       setError(String(reason));
@@ -2215,7 +2203,7 @@ function ActReader({
           events.map((event, index) => (
             <div key={index} className={`scene-event scene-event-${event.kind}`}>
               {(event.kind === "dialogue" || event.kind === "player") && (
-                <span className="speaker">{event.speaker}</span>
+                <span className="speaker">{event.speaker_name}</span>
               )}
               <span className="text">{event.text}</span>
             </div>
@@ -2255,7 +2243,8 @@ function FirstRun({ onStart }: { onStart: (lang: Lang) => void }) {
 }
 
 function App() {
-  const [worlds, setWorlds] = useState<string[]>([]);
+  const [worlds, setWorlds] = useState<WorldMeta[]>([]);
+  // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
@@ -2263,12 +2252,12 @@ function App() {
   const archivedCharacters = characters.filter((character) => character.archived);
   const castDrag = useDragReorder(
     activeCharacters,
-    (character) => character.name,
+    (character) => character.id,
     (ordered) => void reorderCast(ordered),
   );
   // 角色卡編輯器每次 render 掛上「可以離開嗎」；側欄任何會換掉編輯畫面的入口都先問它
   const leaveGuard = useRef<(() => Promise<boolean>) | null>(null);
-  // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
+  // 角色圖快取：角色 id → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
   const [speaker, setSpeaker] = useState("");
@@ -2277,8 +2266,9 @@ function App() {
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
+  // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
   const [generating, setGenerating] = useState<{
-    name: string;
+    id: string;
     kind: "dialogue" | "narration";
   } | null>(null);
   const [streamText, setStreamText] = useState("");
@@ -2289,15 +2279,15 @@ function App() {
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<
     | { kind: "scene"; n: number }
-    | { kind: "character"; name: string }
-    | { kind: "new-character" }
+    | { kind: "character"; id: string }
+    | { kind: "new-character"; id: string }
     | { kind: "world" }
     | null
   >(null);
   // 側欄描邊＝側欄當下選中的那張：編輯畫面時是正在編輯的卡，其餘畫面是發言對象（編輯不動發言對象）
   const selectedCard =
     mainView?.kind === "character"
-      ? mainView.name
+      ? mainView.id
       : mainView?.kind === "new-character"
         ? ""
         : speaker;
@@ -2314,24 +2304,24 @@ function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  async function loadCharacterImages(world: string, cast: CharacterMeta[]) {
+  async function loadCharacterImages(worldId: string, cast: CharacterMeta[]) {
     const entries = await Promise.all(
       cast.map(async (c) => {
         const [image, avatar] = await Promise.all([
-          invoke<string | null>("read_character_image", { world, name: c.name }).catch(() => null),
-          invoke<string | null>("read_character_avatar", { world, name: c.name }).catch(() => null),
+          invoke<string | null>("read_character_image", { worldId, characterId: c.id }).catch(() => null),
+          invoke<string | null>("read_character_avatar", { worldId, characterId: c.id }).catch(() => null),
         ]);
-        return [c.name, image, avatar] as const;
+        return [c.id, image, avatar] as const;
       }),
     );
     setCharacterImages(
       Object.fromEntries(
-        entries.filter(([, image]) => image !== null).map(([name, image]) => [name, `data:image/png;base64,${image}`]),
+        entries.filter(([, image]) => image !== null).map(([id, image]) => [id, `data:image/png;base64,${image}`]),
       ),
     );
     setCharacterAvatars(
       Object.fromEntries(
-        entries.filter(([, , avatar]) => avatar !== null).map(([name, , avatar]) => [name, `data:image/png;base64,${avatar}`]),
+        entries.filter(([, , avatar]) => avatar !== null).map(([id, , avatar]) => [id, `data:image/png;base64,${avatar}`]),
       ),
     );
   }
@@ -2390,27 +2380,28 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [names, loaded] = await Promise.all([
-          invoke<string[]>("list_worlds"),
+        const [worldList, loaded] = await Promise.all([
+          invoke<WorldMeta[]>("list_worlds"),
           invoke<AppConfig>("read_config"),
         ]);
         setConfig(loaded);
-        if (names.length === 0) {
+        if (worldList.length === 0) {
           // 首開（沒有任何桌也沒選過語言）：先讓使用者選語言，選完才建範例桌
           if (loaded.preferences["language"] === undefined) {
             setFirstRun(true);
             return;
           }
-          const name = await invoke<string>("create_sample_world", {
+          const id = await invoke<string>("create_sample_world", {
             lang: normalizeLang(loaded.preferences["language"]),
           });
-          setWorlds([name]);
-          await enterTable(name, loaded);
+          setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+          await enterTable(id, loaded);
           return;
         }
-        setWorlds(names);
+        setWorlds(worldList);
         const last = String(loaded.preferences["last_world"] ?? "");
-        await enterTable(names.includes(last) ? last : names[0], loaded);
+        const startId = worldList.some((w) => w.id === last) ? last : worldList[0].id;
+        await enterTable(startId, loaded);
       } catch (reason) {
         setError(String(reason));
       }
@@ -2421,40 +2412,40 @@ function App() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events, generating, streamText]);
 
-  async function enterTable(name: string, loaded: AppConfig) {
-    const state = await invoke<WorldState>("read_state", { world: name });
+  async function enterTable(id: string, loaded: AppConfig) {
+    const state = await invoke<WorldState>("read_state", { worldId: id });
     const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
-      world: name,
+      worldId: id,
       scene: state.current_scene,
     });
-    const cast = await invoke<CharacterMeta[]>("list_characters", { world: name });
-    setTable(name);
+    const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: id });
+    setTable(id);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
     setEvents(transcript);
     setCharacters(cast);
-    await loadCharacterImages(name, cast);
-    setSpeaker(cast.find((character) => !character.archived)?.name ?? "");
+    await loadCharacterImages(id, cast);
+    setSpeaker(cast.find((character) => !character.archived)?.id ?? "");
     setEditingName(null);
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
     setMainView(null);
     setActsOpen(false);
-    if (loaded.preferences["last_world"] !== name) {
-      const next = { ...loaded, preferences: { ...loaded.preferences, last_world: name } };
+    if (loaded.preferences["last_world"] !== id) {
+      const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
       await invoke("write_config", { config: next });
       setConfig(next);
     }
   }
 
-  async function switchTable(name: string) {
-    if (!config || name === table || generating !== null) return;
+  async function switchTable(id: string) {
+    if (!config || id === table || generating !== null) return;
     setError("");
     try {
       const previous = table;
-      await enterTable(name, config);
+      await enterTable(id, config);
       // 空桌（零訊息、零角色、無設定）離開時自動回收（NewPlan §9.3）
-      if (previous) await invoke("reclaim_world_if_empty", { world: previous });
-      setWorlds(await invoke<string[]>("list_worlds"));
+      if (previous) await invoke("reclaim_world_if_empty", { worldId: previous });
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     }
@@ -2464,15 +2455,18 @@ function App() {
     if (!config || generating !== null) return;
     setError("");
     try {
-      const existing = await invoke<string[]>("list_worlds");
+      const existingNames = worlds.map((w) => w.name);
       const base = t("newTableName");
       let name = base;
-      for (let n = 2; existing.includes(name); n += 1) name = `${base} ${n}`;
-      await invoke("create_world", { name });
+      for (let n = 2; existingNames.includes(name); n += 1) name = `${base} ${n}`;
+      const id = await invoke<string>("create_world", { name });
       const previous = table;
-      await enterTable(name, config);
-      if (previous) await invoke("reclaim_world_if_empty", { world: previous });
-      setWorlds(await invoke<string[]>("list_worlds"));
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      await enterTable(id, config);
+      if (previous) {
+        await invoke("reclaim_world_if_empty", { worldId: previous });
+        setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      }
     } catch (reason) {
       setError(String(reason));
     }
@@ -2480,26 +2474,26 @@ function App() {
 
   // 刪桌：整桌的角色、紀錄、世界設定一起沒，故確認框把後果講白。
   // 刪掉最後一桌就補一張範例桌——App 不留「沒有桌」的空狀態（NewPlan §9.3 零精靈）
-  async function deleteTable(name: string) {
+  async function deleteTable(id: string) {
     if (!config || generating !== null) return;
-    const accepted = await confirm(t("deleteTableConfirm", { name }), {
+    const displayName = worlds.find((w) => w.id === id)?.name ?? id;
+    const accepted = await confirm(t("deleteTableConfirm", { name: displayName }), {
       title: t("deleteTableTitle"),
       kind: "warning",
     });
     if (!accepted) return;
     setError("");
     try {
-      await invoke("delete_world", { world: name });
-      let names = await invoke<string[]>("list_worlds");
-      if (names.length === 0) {
-        names = [
-          await invoke<string>("create_sample_world", {
-            lang: normalizeLang(config.preferences["language"]),
-          }),
-        ];
+      await invoke("delete_world", { worldId: id });
+      let list = await invoke<WorldMeta[]>("list_worlds");
+      if (list.length === 0) {
+        await invoke<string>("create_sample_world", {
+          lang: normalizeLang(config.preferences["language"]),
+        });
+        list = await invoke<WorldMeta[]>("list_worlds");
       }
-      setWorlds(names);
-      if (name === table) await enterTable(names[0], config);
+      setWorlds(list);
+      if (id === table) await enterTable(list[0].id, config);
     } catch (reason) {
       setError(String(reason));
     }
@@ -2508,15 +2502,12 @@ function App() {
   async function renameTable(raw: string) {
     const name = raw.trim();
     setEditingName(null);
-    if (!config || !name || name === table) return;
+    const current = worlds.find((w) => w.id === table);
+    if (!current || !name || name === current.name) return;
     setError("");
     try {
-      await invoke("rename_world", { world: table, newName: name });
-      setTable(name);
-      const next = { ...config, preferences: { ...config.preferences, last_world: name } };
-      await invoke("write_config", { config: next });
-      setConfig(next);
-      setWorlds(await invoke<string[]>("list_worlds"));
+      await invoke("rename_world", { worldId: table, newName: name });
+      setWorlds((previous) => previous.map((w) => (w.id === table ? { ...w, name } : w)));
     } catch (reason) {
       setError(String(reason));
     }
@@ -2525,10 +2516,10 @@ function App() {
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
   async function advanceScene() {
     setError("");
-    setGenerating({ name: "GM", kind: "narration" });
+    setGenerating({ id: "", kind: "narration" });
     setStreamText("");
     try {
-      await invoke<number>("advance_scene", { world: table });
+      await invoke<number>("advance_scene", { worldId: table });
       await enterTable(table, config!);
     } catch (reason) {
       setError(String(reason));
@@ -2546,11 +2537,11 @@ function App() {
       const pad = (n: number) => String(n).padStart(2, "0");
       const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
       const path = await save({
-        defaultPath: `${t("exportFileName", { table, stamp })}.md`,
+        defaultPath: `${t("exportFileName", { table: tableName, stamp })}.md`,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
       if (!path) return;
-      await invoke("export_transcript", { world: table, path });
+      await invoke("export_transcript", { worldId: table, path });
       await revealItemInDir(path);
     } catch (reason) {
       setError(String(reason));
@@ -2563,39 +2554,41 @@ function App() {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const meta = await invoke<CharacterMeta>("import_character", {
-        world: table,
+        worldId: table,
         data: Array.from(bytes),
         color: PALETTE[characters.length % PALETTE.length],
       });
-      const cast = await invoke<CharacterMeta[]>("list_characters", { world: table });
+      const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: table });
       setCharacters(cast);
       await loadCharacterImages(table, cast);
-      setSpeaker(meta.name);
+      setSpeaker(meta.id);
     } catch (reason) {
       setError(String(reason));
     }
   }
 
   async function refreshCharacters() {
-    const cast = await invoke<CharacterMeta[]>("list_characters", { world: table });
+    const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: table });
     setCharacters(cast);
     await loadCharacterImages(table, cast);
     return cast;
   }
 
-  // 建卡或改名存檔後：名單與圖片重載，畫面停在存檔後的那張卡（草稿轉正、改名換 key）
-  async function finishCardSaved(saved: string) {
-    const previous = mainView?.kind === "character" ? mainView.name : null;
+  // 建卡或改名存檔後：名單與圖片重載；id 全程不變，只有「新卡剛存下」要轉正畫面並選為發言對象
+  async function finishCardSaved(id: string) {
+    const wasNew = mainView?.kind === "new-character";
     await refreshCharacters();
-    if (previous !== saved) setMainView({ kind: "character", name: saved });
-    if (previous === null || speaker === previous) setSpeaker(saved);
+    if (wasNew) {
+      setMainView({ kind: "character", id });
+      setSpeaker(id);
+    }
   }
 
   // 角色被隱藏或刪除後的善後：名單重載、發言對象改人、關掉編輯面板
-  async function finishRemoval(name: string) {
+  async function finishRemoval(id: string) {
     const cast = await refreshCharacters();
-    if (speaker === name) {
-      setSpeaker(cast.find((character) => !character.archived)?.name ?? "");
+    if (speaker === id) {
+      setSpeaker(cast.find((character) => !character.archived)?.id ?? "");
     }
     setMainView(null);
   }
@@ -2614,18 +2607,18 @@ function App() {
     return ok;
   }
 
-  async function editCard(name: string) {
-    if (mainView?.kind === "character" && mainView.name === name) return;
-    if (await canLeaveEditor()) setMainView({ kind: "character", name });
+  async function editCard(id: string) {
+    if (mainView?.kind === "character" && mainView.id === id) return;
+    if (await canLeaveEditor()) setMainView({ kind: "character", id });
   }
 
   // 主欄開著任何畫面時側欄＝導覽（點卡＝開它的編輯頁）；只有聊天畫面點卡才是選發言對象
-  async function selectCard(name: string) {
+  async function selectCard(id: string) {
     if (mainView) {
-      await editCard(name);
+      await editCard(id);
       return;
     }
-    setSpeaker(name);
+    setSpeaker(id);
   }
 
   async function openWorldEditor() {
@@ -2633,9 +2626,16 @@ function App() {
     if (await canLeaveEditor()) setMainView({ kind: "world" });
   }
 
+  // 建卡先跟後端要一個 id：草稿期生圖就落在正確的圖庫目錄，存檔用同一個 id
   async function openNewCard() {
     if (mainView?.kind === "new-character") return;
-    if (await canLeaveEditor()) setMainView({ kind: "new-character" });
+    if (!(await canLeaveEditor())) return;
+    try {
+      const id = await invoke<string>("new_id");
+      setMainView({ kind: "new-character", id });
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   // 側欄拖曳排序：先樂觀套用，寫檔失敗才回捲
@@ -2645,8 +2645,8 @@ function App() {
     setCharacters([...ordered, ...characters.filter((character) => character.archived)]);
     try {
       await invoke("reorder_characters", {
-        world: table,
-        names: ordered.map((character) => character.name),
+        worldId: table,
+        ids: ordered.map((character) => character.id),
       });
     } catch (reason) {
       setCharacters(previous);
@@ -2654,10 +2654,10 @@ function App() {
     }
   }
 
-  async function restoreCharacter(name: string) {
+  async function restoreCharacter(id: string) {
     setError("");
     try {
-      await invoke("set_character_archived", { world: table, name, archived: false });
+      await invoke("set_character_archived", { worldId: table, characterId: id, archived: false });
       await refreshCharacters();
     } catch (reason) {
       setError(String(reason));
@@ -2665,48 +2665,50 @@ function App() {
   }
 
   // 隱藏區與角色卡編輯畫面共用同一條刪除路徑（確認框＋善後）
-  async function deleteCharacter(name: string) {
+  async function deleteCharacter(id: string) {
     setError("");
     try {
+      const name = metaOf(id)?.name ?? id;
       const accepted = await confirm(t("deleteCharacterConfirm", { name }), {
         title: t("deleteCharacterTitle"),
         kind: "warning",
       });
       if (!accepted) return;
-      await invoke("delete_character", { world: table, name });
-      await finishRemoval(name);
+      await invoke("delete_character", { worldId: table, characterId: id });
+      await finishRemoval(id);
     } catch (reason) {
       setError(String(reason));
     }
   }
 
   async function appendEvent(event: TranscriptEvent) {
-    await invoke("append_transcript", { world: table, scene, event });
+    await invoke("append_transcript", { worldId: table, scene, event });
     setEvents((previous) => [...previous, event]);
   }
 
   // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
-  async function replyOnce(character: string) {
-    setGenerating({ name: character, kind: "dialogue" });
+  async function replyOnce(characterId: string) {
+    setGenerating({ id: characterId, kind: "dialogue" });
     setStreamText("");
     const onDelta = new Channel<string>();
     onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
     const full = await invoke<string>("chat_with_character", {
-      world: table,
-      character,
+      worldId: table,
+      characterId,
       onDelta,
     });
-    await appendEvent({ ts: nowTs(), speaker: character, kind: "dialogue", text: full });
+    const name = metaOf(characterId)?.name ?? "";
+    await appendEvent({ ts: nowTs(), speaker_id: characterId, speaker_name: name, kind: "dialogue", text: full });
     await markCliConnectedFromChat();
   }
 
   // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
-  async function requestReply(character: string) {
-    if (!character || generating !== null) return;
+  async function requestReply(characterId: string) {
+    if (!characterId || generating !== null) return;
     setError("");
     try {
-      await replyOnce(character);
-      setWorlds(await invoke<string[]>("list_worlds"));
+      await replyOnce(characterId);
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -2719,15 +2721,15 @@ function App() {
   async function gmNarrate() {
     if (generating !== null) return;
     setError("");
-    setGenerating({ name: "GM", kind: "narration" });
+    setGenerating({ id: "", kind: "narration" });
     setStreamText("");
     try {
       const onDelta = new Channel<string>();
       onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-      const full = await invoke<string>("gm_narrate", { world: table, onDelta });
-      await appendEvent({ ts: nowTs(), speaker: "GM", kind: "narration", text: full });
+      const full = await invoke<string>("gm_narrate", { worldId: table, onDelta });
+      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text: full });
       await markCliConnectedFromChat();
-      setWorlds(await invoke<string[]>("list_worlds"));
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -2743,14 +2745,15 @@ function App() {
     const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
     try {
       for (let turn = 0; turn < max; turn += 1) {
-        setGenerating({ name: "GM", kind: "narration" });
+        setGenerating({ id: "", kind: "narration" });
         setStreamText("");
-        const name = await invoke<string>("gm_suggest_speaker", { world: table });
-        if (name === "玩家") break;
-        await appendEvent({ ts: nowTs(), speaker: "GM", kind: "system", text: t("gmCallOn", { name }) });
-        await replyOnce(name);
+        const characterId = await invoke<string>("gm_suggest_speaker", { worldId: table });
+        if (characterId === "玩家") break;
+        const name = metaOf(characterId)?.name ?? characterId;
+        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
+        await replyOnce(characterId);
       }
-      setWorlds(await invoke<string[]>("list_worlds"));
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -2766,7 +2769,7 @@ function App() {
     setError("");
     setInput("");
     try {
-      await appendEvent({ ts: nowTs(), speaker: "玩家", kind: "player", text });
+      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: t("playerLabel"), kind: "player", text });
     } catch (reason) {
       setError(String(reason));
       return;
@@ -2774,14 +2777,14 @@ function App() {
     await requestReply(speaker);
   }
 
-  const metaOf = (name: string) => characters.find((c) => c.name === name);
+  const metaOf = (id: string) => characters.find((c) => c.id === id);
 
   // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算
   const sceneDisplayLabel = (n: number) => {
     const title = sceneTitles[String(n)];
     return title ? t("sceneWithTitle", { n: n + 1, title }) : t("sceneLabel", { n: n + 1 });
   };
-  const generatingMeta = generating !== null ? metaOf(generating.name) : undefined;
+  const generatingMeta = generating !== null ? metaOf(generating.id) : undefined;
 
   async function startFirstRun(lang: Lang) {
     if (!config) return;
@@ -2790,9 +2793,9 @@ function App() {
       const updated = { ...config, preferences: { ...config.preferences, language: lang } };
       await invoke("write_config", { config: updated });
       setConfig(updated);
-      const name = await invoke<string>("create_sample_world", { lang });
-      setWorlds([name]);
-      await enterTable(name, updated);
+      const id = await invoke<string>("create_sample_world", { lang });
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      await enterTable(id, updated);
       setFirstRun(false);
     } catch (reason) {
       setError(String(reason));
@@ -2811,6 +2814,8 @@ function App() {
   if (!config || !table) {
     return <main className="container">{error && <p role="alert">{error}</p>}</main>;
   }
+
+  const tableName = worlds.find((w) => w.id === table)?.name ?? "";
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在換場鈕旁小字提醒（不擋操作）
   const sceneTooLong =
@@ -2852,13 +2857,13 @@ function App() {
               {t("newTable")}
             </button>
             <nav className="table-list" aria-label={t("tableListAria")}>
-              {worlds.map((name) => (
-                <div className="table-row" key={name}>
+              {worlds.map((w) => (
+                <div className="table-row" key={w.id}>
                   <button
-                    className={`table-item ${name === table ? "table-item-active" : ""}`}
-                    onClick={() => switchTable(name)}
+                    className={`table-item ${w.id === table ? "table-item-active" : ""}`}
+                    onClick={() => switchTable(w.id)}
                   >
-                    {name}
+                    {w.name}
                   </button>
                   <button
                     type="button"
@@ -2866,7 +2871,7 @@ function App() {
                     aria-label={t("deleteTableTitle")}
                     title={t("deleteTableTitle")}
                     disabled={generating !== null}
-                    onClick={() => void deleteTable(name)}
+                    onClick={() => void deleteTable(w.id)}
                   >
                     ✕
                   </button>
@@ -2906,31 +2911,31 @@ function App() {
             {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（tier 是既有欄位；「跟隨預設」不掛寶石） */}
             {castDrag.order.map((c) => (
               <div
-                key={c.name}
+                key={c.id}
                 role="button"
                 tabIndex={0}
-                className={`tcard ${selectedCard === c.name ? "tcard-selected" : ""}${
-                  castDrag.draggingKey === c.name ? " row-dragging" : ""
+                className={`tcard ${selectedCard === c.id ? "tcard-selected" : ""}${
+                  castDrag.draggingKey === c.id ? " row-dragging" : ""
                 }`}
                 style={{ ["--fac" as string]: c.color }}
                 onClick={() => {
                   if (castDrag.justDragged()) return;
-                  void selectCard(c.name);
+                  void selectCard(c.id);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    void selectCard(c.name);
+                    void selectCard(c.id);
                   }
                 }}
                 title={`${t("castHint", { name: c.name })}｜${t("dragToReorder")}`}
                 {...castDrag.rowProps(c)}
               >
                 <span className="tcard-art">
-                  {c.show_image && characterImages[c.name] ? (
-                    <img className="tcard-image" src={characterImages[c.name]} alt="" />
-                  ) : characterAvatars[c.name] ? (
-                    <img className="avatar-round tcard-avatar" src={characterAvatars[c.name]} alt="" />
+                  {c.show_image && characterImages[c.id] ? (
+                    <img className="tcard-image" src={characterImages[c.id]} alt="" />
+                  ) : characterAvatars[c.id] ? (
+                    <img className="avatar-round tcard-avatar" src={characterAvatars[c.id]} alt="" />
                   ) : (
                     <span aria-hidden="true">{c.avatar}</span>
                   )}
@@ -2948,7 +2953,7 @@ function App() {
                   title={t("editCardSummary", { name: c.name })}
                   onClick={(event) => {
                     event.stopPropagation();
-                    void editCard(c.name);
+                    void editCard(c.id);
                   }}
                 >
                   {t("editBtn")}
@@ -2961,15 +2966,15 @@ function App() {
               <summary>{t("archiveSectionTitle")}</summary>
               <div className="archive-list">
                 {archivedCharacters.map((character) => (
-                  <div className="archive-row" key={character.name}>
+                  <div className="archive-row" key={character.id}>
                     <span>{character.name}</span>
-                    <button type="button" onClick={() => void restoreCharacter(character.name)}>
+                    <button type="button" onClick={() => void restoreCharacter(character.id)}>
                       {t("restoreCharacter")}
                     </button>
                     <button
                       type="button"
                       className="delete-character"
-                      onClick={() => void deleteCharacter(character.name)}
+                      onClick={() => void deleteCharacter(character.id)}
                     >
                       {t("deleteCharacter")}
                     </button>
@@ -3031,9 +3036,9 @@ function App() {
             <button
               className="table-title"
               title={t("renameHint")}
-              onClick={() => setEditingName(table)}
+              onClick={() => setEditingName(tableName)}
             >
-              {table}
+              {tableName}
             </button>
           ) : (
             <input
@@ -3101,6 +3106,7 @@ function App() {
         {mainView?.kind === "scene" ? (
           <ActReader
             world={table}
+            worldName={tableName}
             scene={mainView.n}
             label={sceneDisplayLabel(mainView.n)}
             onBack={() => setMainView(null)}
@@ -3110,26 +3116,26 @@ function App() {
             title={
               mainView.kind === "new-character"
                 ? t("newCardTitle")
-                : t("editCardSummary", { name: mainView.name })
+                : t("editCardSummary", { name: metaOf(mainView.id)?.name ?? "" })
             }
           >
             <CardEditor
               world={table}
-              name={mainView.kind === "new-character" ? null : mainView.name}
-              takenNames={characters.map((character) => character.name)}
+              characterId={mainView.id}
+              isNew={mainView.kind === "new-character"}
               newCardColor={PALETTE[characters.length % PALETTE.length]}
-              imageDataUrl={mainView.kind === "character" ? characterImages[mainView.name] : undefined}
-              avatarImgUrl={mainView.kind === "character" ? characterAvatars[mainView.name] : undefined}
+              imageDataUrl={mainView.kind === "character" ? characterImages[mainView.id] : undefined}
+              avatarImgUrl={mainView.kind === "character" ? characterAvatars[mainView.id] : undefined}
               onImagesChanged={() => loadCharacterImages(table, characters)}
               onSaved={(saved) => void finishCardSaved(saved)}
               onArchived={
                 mainView.kind === "character"
-                  ? () => finishRemoval(mainView.name)
+                  ? () => finishRemoval(mainView.id)
                   : async () => setMainView(null)
               }
               onDeleted={
                 mainView.kind === "character"
-                  ? () => deleteCharacter(mainView.name)
+                  ? () => deleteCharacter(mainView.id)
                   : async () => setMainView(null)
               }
               onBack={() => setMainView(null)}
@@ -3154,7 +3160,7 @@ function App() {
               </div>
               {events.map((event, index) => {
                 if (event.kind === "dialogue" || event.kind === "player") {
-                  const meta = metaOf(event.speaker);
+                  const meta = metaOf(event.speaker_id);
                   const isPlayer = event.kind === "player";
                   return (
                     <div
@@ -3165,9 +3171,7 @@ function App() {
                       }
                     >
                       <div className="pb-name">
-                        <span className="pb-plate">
-                          {isPlayer ? t("playerLabel") : event.speaker}
-                        </span>
+                        <span className="pb-plate">{event.speaker_name}</span>
                       </div>
                       <span className="text">{event.text}</span>
                     </div>
@@ -3185,12 +3189,12 @@ function App() {
                   style={{ ["--fac" as string]: generatingMeta?.color ?? "#888888" }}
                 >
                   <div className="pb-name">
-                    <span className="pb-plate">{generating.name}</span>
+                    <span className="pb-plate">{generatingMeta?.name ?? ""}</span>
                   </div>
                   {streamText ? (
                     <span className="text">{streamText}</span>
                   ) : (
-                    <span className="typing" aria-label={t("typing", { name: generating.name })}>
+                    <span className="typing" aria-label={t("typing", { name: generatingMeta?.name ?? "" })}>
                       <i />
                       <i />
                       <i />
@@ -3220,7 +3224,7 @@ function App() {
                 <div className="composer-opts">
                   <span
                     className="opt-target"
-                    title={t("castHint", { name: speaker })}
+                    title={t("castHint", { name: metaOf(speaker)?.name ?? speaker })}
                     style={{ ["--fac" as string]: metaOf(speaker)?.color ?? "#888888" }}
                   >
                     {characterAvatars[speaker] ? (
@@ -3228,7 +3232,7 @@ function App() {
                     ) : (
                       <span aria-hidden="true">{metaOf(speaker)?.avatar ?? "🎭"}</span>
                     )}
-                    {speaker}
+                    {metaOf(speaker)?.name ?? speaker}
                   </span>
                 </div>
               )}
@@ -3238,7 +3242,9 @@ function App() {
                 value={input}
                 onChange={(e) => setInput(e.currentTarget.value)}
                 placeholder={
-                  speaker ? t("composerPlaceholder", { name: speaker }) : t("composerNoCharacter")
+                  speaker
+                    ? t("composerPlaceholder", { name: metaOf(speaker)?.name ?? speaker })
+                    : t("composerNoCharacter")
                 }
                 disabled={!speaker || generating !== null}
               />
@@ -3249,7 +3255,7 @@ function App() {
                   disabled={!speaker || generating !== null}
                   title={t("requestReplyHint")}
                 >
-                  {t("requestReplyBtn", { name: speaker || t("characterFallback") })}
+                  {t("requestReplyBtn", { name: metaOf(speaker)?.name ?? t("characterFallback") })}
                 </button>
                 <button
                   type="button"

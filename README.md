@@ -38,7 +38,7 @@
 
 ## 資料存放
 
-- 桌（世界）、角色卡、對話紀錄：`~/Documents/TableTavern/worlds/`（純 Markdown／JSONL，可自行備份或編輯）
+- 桌（世界）、角色卡、對話紀錄：`~/Documents/TableTavern/worlds/`（純 Markdown／JSONL，可自行備份或編輯）。資料夾與檔名是一串代碼，桌名與角色名存在檔案裡（`state.json` 的 `name`、角色卡開頭的 `name`）——改名因此不會動到任何路徑。
 - 全域設定與 API key：`~/Library/Application Support/TableTavern/config.json`（檔案權限 0600）
 
 ## 開發
