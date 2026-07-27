@@ -1,7 +1,7 @@
 # Handoff: character-image-avatar
 
 ## Current state
-實作完成（commit fa4d855），cargo test 80 綠＋npm build 綠＋tauri dev 冒煙通過，等使用者實測後結案。
+已結案（2026-07-27 使用者實測通過）。主功能 fa4d855；回饋修訂：編輯字鈕 9d9dcc7、寶石移位 3e36d23、lightbox 69af76f、app 圖示透明底 803ca94（tcard 圖窗誤修已 revert）。Mac DMG 0.2.0 打包驗證通過（adhoc,runtime、icns 透明）。
 
 ## Completed
 - 2026-07-27 規格拍板＋`react-easy-crop@6.2.3` 入依賴。
