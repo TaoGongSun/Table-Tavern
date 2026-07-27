@@ -1228,7 +1228,7 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
                     ↓
                   </button>
                   <button type="button" onClick={() => editEntry(entry)}>
-                    {t("worldbookEdit")}
+                    {t("editBtn")}
                   </button>
                   <button type="button" onClick={() => void deleteEntry(entry)}>
                     {t("worldbookDelete")}
@@ -2240,7 +2240,7 @@ function App() {
                     setMainView({ kind: "character", name: c.name });
                   }}
                 >
-                  ✎
+                  {t("editBtn")}
                 </button>
               </div>
             ))}
