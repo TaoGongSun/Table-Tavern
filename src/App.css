@@ -516,11 +516,12 @@ textarea {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
-/* GM 卡＝世界書的「書皮」：角色卡是跟主題走的白牌，GM 是桌上的實體書，
-   故用固定深皮革色＋燙金內框，三個主題下都同一張皮。
-   整張點擊開世界設定，右下的 ⚙ 只是指示，不是另一顆按鈕。
+/* GM 卡與玩家卡＝桌上兩個真人席位，共用「書皮」樣式：角色卡是跟主題走的白牌，
+   這兩張用皮革底＋燙金內框，與有陣營色的角色卡自然區隔。
+   整張點擊開對應編輯畫面，GM 右下的 ⚙ 只是指示，不是另一顆按鈕。
    （放在 .tcard 之後：同權重靠順序蓋掉基底底色） */
-.tcard-gm {
+.tcard-gm,
+.tcard-player {
   --fac: #8a6a3c; /* 銅金：名字 wedge 跟著書皮走 */
   /* 皮革色＝各主題的 --gm-leather 混主題底色（明度自動跟主題走，
      2026-07-27 使用者回饋：固定深色在淺主題下太暗太顯眼）；上層半透明漸層是打光 */
@@ -534,7 +535,8 @@ textarea {
 
 /* 燙金內框：書皮的壓紋，畫在卡緣內縮 4px 處。
    金色混 --ink-2：深主題偏淡金、淺主題偏深銅，跟皮革同步調亮暗 */
-.tcard-gm::after {
+.tcard-gm::after,
+.tcard-player::after {
   content: "";
   position: absolute;
   inset: 4px;
@@ -544,8 +546,24 @@ textarea {
 }
 
 /* 底色歸零讓整張卡是同一塊皮，書本圖直接印在皮上（高度由上面的 min-height 撐） */
-.tcard-gm .tcard-art {
+.tcard-gm .tcard-art,
+.tcard-player .tcard-art {
   background: none;
+}
+
+/* 還沒建玩家卡：同一張皮但壓暗、內框改虛線，一眼看得出是空位 */
+.tcard-player-empty {
+  opacity: 0.68;
+}
+
+.tcard-player-empty::after {
+  border-style: dashed;
+}
+
+.tcard-player-empty .tcard-body {
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.7rem;
 }
 
 .tcard-art {

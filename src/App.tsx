@@ -64,6 +64,7 @@ interface WorldMeta {
 interface WorldState {
   id: string;
   name: string;
+  player_card_id: string | null;
   model_bindings: Record<string, string>;
   current_scene: number;
   catchup_summaries: Record<string, string>;
@@ -1615,6 +1616,7 @@ function CardEditor({
   config,
   onPreference,
   onOpenAiSettings,
+  isPlayer = false,
 }: {
   world: string;
   /** 開編輯器前已由 new_id 拿好，草稿期生圖與存檔用同一個 id */
@@ -1634,6 +1636,7 @@ function CardEditor({
   config: AppConfig;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
+  isPlayer?: boolean;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [savedCardJson, setSavedCardJson] = useState("");
@@ -1795,6 +1798,8 @@ function CardEditor({
       ...card,
       name: target,
       avatar: card.avatar.trim() || DEFAULT_AVATAR,
+      private_md: isPlayer ? "" : card.private_md,
+      tier: isPlayer ? "balanced" : card.tier,
     };
     // 改名只換之後的顯示名稱（id 定址不受影響），欄位下的說明太容易看漏，儲存前再提醒一次
     const renaming = !isNew && target !== originalName;
@@ -1884,9 +1889,11 @@ function CardEditor({
         </button>
         {!isNew && (
           <>
-            <button type="button" className="archive-button" onClick={archive}>
-              {t("archiveCharacter")}
-            </button>
+            {!isPlayer && (
+              <button type="button" className="archive-button" onClick={archive}>
+                {t("archiveCharacter")}
+              </button>
+            )}
             <button type="button" className="delete-character" onClick={() => void onDeleted()}>
               {t("deleteCharacter")}
             </button>
@@ -1994,21 +2001,23 @@ function CardEditor({
         </div>
       </label>
       <label>
-        {t("publicLabel")}
+        {t(isPlayer ? "playerPublicLabel" : "publicLabel")}
         <textarea
           rows={4}
           value={card.public_md}
           onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
         />
       </label>
-      <label>
-        {t("privateLabel")}
-        <textarea
-          rows={4}
-          value={card.private_md}
-          onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
-        />
-      </label>
+      {!isPlayer && (
+        <label>
+          {t("privateLabel")}
+          <textarea
+            rows={4}
+            value={card.private_md}
+            onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
+          />
+        </label>
+      )}
       {shownImage && (
         <label className="inline">
           <input
@@ -2019,19 +2028,21 @@ function CardEditor({
           {t("showImageLabel")}
         </label>
       )}
-      <label>
-        {t("tierLabel")}
-        <select
-          value={card.tier}
-          onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
-        >
-          {(["best", "balanced", "fast"] as const).map((tier) => (
-            <option key={tier} value={tier}>
-              {tierLabel(tier)}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!isPlayer && (
+        <label>
+          {t("tierLabel")}
+          <select
+            value={card.tier}
+            onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
+          >
+            {(["best", "balanced", "fast"] as const).map((tier) => (
+              <option key={tier} value={tier}>
+                {tierLabel(tier)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {pendingImage && (
         <CropDialog
           title={t("cropImageTitle")}
@@ -2247,6 +2258,7 @@ function App() {
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
+  const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
   const activeCharacters = characters.filter((character) => !character.archived);
   const archivedCharacters = characters.filter((character) => character.archived);
   const castDrag = useDragReorder(
@@ -2259,6 +2271,8 @@ function App() {
   // 角色圖快取：角色 id → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
+  const [playerImage, setPlayerImage] = useState<string | null>(null);
+  const [playerAvatar, setPlayerAvatar] = useState<string | null>(null);
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
@@ -2280,9 +2294,20 @@ function App() {
     | { kind: "scene"; n: number }
     | { kind: "character"; id: string }
     | { kind: "new-character"; id: string }
+    | { kind: "player"; id: string }
+    | { kind: "new-player"; id: string }
     | { kind: "world" }
     | null
   >(null);
+  // 四種卡片編輯畫面都帶 id，先收斂成一個值，下面就只需要問「是不是玩家卡」
+  const cardView =
+    mainView?.kind === "character" ||
+    mainView?.kind === "new-character" ||
+    mainView?.kind === "player" ||
+    mainView?.kind === "new-player"
+      ? mainView
+      : null;
+  const editingPlayerCard = cardView?.kind === "player" || cardView?.kind === "new-player";
   // 側欄描邊＝側欄當下選中的那張：編輯畫面時是正在編輯的卡，其餘畫面是發言對象（編輯不動發言對象）
   const selectedCard =
     mainView?.kind === "character"
@@ -2323,6 +2348,29 @@ function App() {
         entries.filter(([, , avatar]) => avatar !== null).map(([id, , avatar]) => [id, `data:image/png;base64,${avatar}`]),
       ),
     );
+  }
+
+  async function loadPlayerCard(worldId: string, playerCardId: string | null) {
+    if (!playerCardId) {
+      setPlayerCard(null);
+      setPlayerImage(null);
+      setPlayerAvatar(null);
+      return;
+    }
+    try {
+      const [card, image, avatar] = await Promise.all([
+        invoke<CharacterCard>("read_character", { worldId, characterId: playerCardId }),
+        invoke<string | null>("read_character_image", { worldId, characterId: playerCardId }).catch(() => null),
+        invoke<string | null>("read_character_avatar", { worldId, characterId: playerCardId }).catch(() => null),
+      ]);
+      setPlayerCard(card);
+      setPlayerImage(image ? `data:image/png;base64,${image}` : null);
+      setPlayerAvatar(avatar ? `data:image/png;base64,${avatar}` : null);
+    } catch {
+      setPlayerCard(null);
+      setPlayerImage(null);
+      setPlayerAvatar(null);
+    }
   }
 
   // 語系跟著 config 走；render 前同步進 i18n 模組，之後子樹的 t() 都拿到正確語言
@@ -2424,6 +2472,7 @@ function App() {
     setEvents(transcript);
     setCharacters(cast);
     await loadCharacterImages(id, cast);
+    await loadPlayerCard(id, state.player_card_id);
     setSpeaker(cast.find((character) => !character.archived)?.id ?? "");
     setEditingName(null);
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
@@ -2591,6 +2640,16 @@ function App() {
     }
   }
 
+  // 玩家卡是桌的屬性：第一次存檔才把 id 掛進 state，之後存檔只重載顯示（比照角色卡留在編輯器）
+  async function finishPlayerCardSaved(id: string) {
+    if (mainView?.kind === "new-player") {
+      const state = await invoke<WorldState>("read_state", { worldId: table });
+      await invoke("write_state", { worldId: table, state: { ...state, player_card_id: id } });
+      setMainView({ kind: "player", id });
+    }
+    await loadPlayerCard(table, id);
+  }
+
   // 角色被隱藏或刪除後的善後：名單重載、發言對象改人、關掉編輯面板
   async function finishRemoval(id: string) {
     const cast = await refreshCharacters();
@@ -2603,10 +2662,7 @@ function App() {
   // 編輯角色卡時，側欄點擊＝換編輯對象（發言對象只在聊天畫面有意義），離開前先問未儲存
   async function canLeaveEditor() {
     // 只有掛著未儲存追蹤的三種畫面要問；聊天／幕紀錄沒有暫存狀態，也避免問到已卸載編輯器留下的舊守門
-    const guarded =
-      mainView?.kind === "character" ||
-      mainView?.kind === "new-character" ||
-      mainView?.kind === "world";
+    const guarded = cardView !== null || mainView?.kind === "world";
     if (!guarded) return true;
     const ok = (await leaveGuard.current?.()) ?? true;
     // 放行就清掉，下一張卡載好會重新掛上——免得載入空窗期沿用上一張的未儲存狀態
@@ -2617,6 +2673,21 @@ function App() {
   async function editCard(id: string) {
     if (mainView?.kind === "character" && mainView.id === id) return;
     if (await canLeaveEditor()) setMainView({ kind: "character", id });
+  }
+
+  async function openPlayerCard() {
+    if (mainView?.kind === "player" || mainView?.kind === "new-player") return;
+    if (!(await canLeaveEditor())) return;
+    if (playerCard) {
+      setMainView({ kind: "player", id: playerCard.id });
+      return;
+    }
+    try {
+      const id = await invoke<string>("new_id");
+      setMainView({ kind: "new-player", id });
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   // 主欄開著任何畫面時側欄＝導覽（點卡＝開它的編輯頁）；只有聊天畫面點卡才是選發言對象
@@ -2683,6 +2754,26 @@ function App() {
       if (!accepted) return;
       await invoke("delete_character", { worldId: table, characterId: id });
       await finishRemoval(id);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function deletePlayerCard(id: string) {
+    setError("");
+    try {
+      const accepted = await confirm(t("deleteCharacterConfirm", { name: playerCard?.name ?? id }), {
+        title: t("deleteCharacterTitle"),
+        kind: "warning",
+      });
+      if (!accepted) return;
+      await invoke("delete_character", { worldId: table, characterId: id });
+      const state = await invoke<WorldState>("read_state", { worldId: table });
+      await invoke("write_state", { worldId: table, state: { ...state, player_card_id: null } });
+      setPlayerCard(null);
+      setPlayerImage(null);
+      setPlayerAvatar(null);
+      setMainView(null);
     } catch (reason) {
       setError(String(reason));
     }
@@ -2776,7 +2867,7 @@ function App() {
     setError("");
     setInput("");
     try {
-      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: t("playerLabel"), kind: "player", text });
+      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: playerCard?.name || t("playerLabel"), kind: "player", text });
     } catch (reason) {
       setError(String(reason));
       return;
@@ -2914,6 +3005,40 @@ function App() {
               <span className="gm-cfg" aria-hidden="true">
                 ⚙
               </span>
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              className={`tcard tcard-player${playerCard ? "" : " tcard-player-empty"}`}
+              title={t(playerCard ? "playerCardHint" : "playerCardEmptyHint")}
+              onClick={() => void openPlayerCard()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  void openPlayerCard();
+                }
+              }}
+            >
+              {playerCard ? (
+                <>
+                  <span className="tcard-art">
+                    {playerCard.show_image && playerImage ? (
+                      <img className="tcard-image" src={playerImage} alt="" />
+                    ) : playerAvatar ? (
+                      <img className="avatar-round tcard-avatar" src={playerAvatar} alt="" />
+                    ) : (
+                      <span aria-hidden="true">{playerCard.avatar}</span>
+                    )}
+                  </span>
+                  <span className="tcard-body">
+                    <span className="tcard-name-row">
+                      <span className="tcard-plate">{playerCard.name}</span>
+                    </span>
+                  </span>
+                </>
+              ) : (
+                <span className="tcard-body">{t("playerCardEmpty")}</span>
+              )}
             </div>
             {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（中＝預設檔位，不掛寶石） */}
             {castDrag.order.map((c) => (
@@ -3129,32 +3254,49 @@ function App() {
             label={sceneDisplayLabel(mainView.n)}
             onBack={() => setMainView(null)}
           />
-        ) : mainView?.kind === "character" || mainView?.kind === "new-character" ? (
+        ) : cardView ? (
           <EditPane
             title={
-              mainView.kind === "new-character"
+              cardView.kind === "new-character"
                 ? t("newCardTitle")
-                : t("editCardSummary", { name: metaOf(mainView.id)?.name ?? "" })
+                : cardView.kind === "new-player"
+                  ? t("newPlayerCardTitle")
+                  : cardView.kind === "player"
+                    ? t("editPlayerCardTitle")
+                    : t("editCardSummary", { name: metaOf(cardView.id)?.name ?? "" })
             }
           >
             <CardEditor
               world={table}
-              characterId={mainView.id}
-              isNew={mainView.kind === "new-character"}
+              characterId={cardView.id}
+              isNew={cardView.kind === "new-character" || cardView.kind === "new-player"}
+              isPlayer={editingPlayerCard}
               newCardColor={PALETTE[characters.length % PALETTE.length]}
-              imageDataUrl={mainView.kind === "character" ? characterImages[mainView.id] : undefined}
-              avatarImgUrl={mainView.kind === "character" ? characterAvatars[mainView.id] : undefined}
-              onImagesChanged={() => loadCharacterImages(table, characters)}
-              onSaved={(saved) => void finishCardSaved(saved)}
+              imageDataUrl={
+                editingPlayerCard ? playerImage ?? undefined : characterImages[cardView.id]
+              }
+              avatarImgUrl={
+                editingPlayerCard ? playerAvatar ?? undefined : characterAvatars[cardView.id]
+              }
+              onImagesChanged={() =>
+                editingPlayerCard
+                  ? loadPlayerCard(table, playerCard?.id ?? null)
+                  : loadCharacterImages(table, characters)
+              }
+              onSaved={(saved) =>
+                void (editingPlayerCard ? finishPlayerCardSaved(saved) : finishCardSaved(saved))
+              }
               onArchived={
-                mainView.kind === "character"
-                  ? () => finishRemoval(mainView.id)
+                cardView.kind === "character"
+                  ? () => finishRemoval(cardView.id)
                   : async () => setMainView(null)
               }
               onDeleted={
-                mainView.kind === "character"
-                  ? () => deleteCharacter(mainView.id)
-                  : async () => setMainView(null)
+                cardView.kind === "character"
+                  ? () => deleteCharacter(cardView.id)
+                  : cardView.kind === "player"
+                    ? () => deletePlayerCard(cardView.id)
+                    : async () => setMainView(null)
               }
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}

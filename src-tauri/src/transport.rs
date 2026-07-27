@@ -76,6 +76,7 @@ pub fn active_worldbook_entries<'a>(
 /// 他人私有設定與 world.md 不在介面中；GM 專有條目組裝時一律排除，永不傳入模型。
 pub fn assemble_messages(
     card: &CharacterCard,
+    player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
     worldbook: &[WorldbookEntry],
     lang: &str,
@@ -95,6 +96,15 @@ pub fn assemble_messages(
             "\n## 你的私有設定（只有你自己知道；除非劇情走到，不要主動說破）\n{}\n",
             card.private_md.trim()
         ));
+    }
+    if let Some(player) = player {
+        system.push_str(&format!(
+            "\n## 同桌的玩家（真人扮演的角色，逐字稿裡的「{}」就是他）",
+            player.name
+        ));
+        if !player.public_md.trim().is_empty() {
+            system.push_str(&format!("\n{}\n", player.public_md.trim()));
+        }
     }
     let visible: Vec<_> = worldbook
         .iter()
@@ -137,6 +147,7 @@ pub const PLAYER_SENTINEL: &str = "玩家";
 pub fn assemble_gm_messages(
     world_md: &str,
     cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
     worldbook: &[WorldbookEntry],
     lang: &str,
@@ -175,6 +186,15 @@ pub fn assemble_gm_messages(
                     card.private_md.trim()
                 ));
             }
+        }
+    }
+    if let Some(player) = player {
+        system.push_str(&format!(
+            "\n## 玩家角色（真人扮演，逐字稿裡的「{}」就是他）",
+            player.name
+        ));
+        if !player.public_md.trim().is_empty() {
+            system.push_str(&format!("\n{}\n", player.public_md.trim()));
         }
     }
 
@@ -267,34 +287,49 @@ pub fn narrate_instruction() -> ChatMessage {
 }
 
 /// 導演指示：從名單選出下一位發言者
-pub fn suggest_instruction(roster: &[String]) -> ChatMessage {
+pub fn suggest_instruction(roster: &[String], player_name: Option<&str>) -> ChatMessage {
     message(
         "user",
         format!(
             "（導演指示）根據目前劇情，從名單中選出下一位最適合發言的角色：{}。\
-             若現在應該輪到玩家行動，就輸出：{PLAYER_SENTINEL}。只輸出名字，不要任何其他文字。",
-            roster.join("、")
+             若現在應該輪到玩家{player}行動，就輸出：{PLAYER_SENTINEL}。只輸出名字，不要任何其他文字。",
+            roster.join("、"),
+            // 沒玩家卡時是空字串，句子與加玩家卡前逐字相同
+            player = player_name.map_or(String::new(), |name| format!("（{name}）")),
         ),
     )
 }
 
 /// 從 GM 點名回覆解析出角色名（或玩家哨兵）。
 /// 先試整句精確比對；模型多話時退回「回覆中最先出現的候選名」。
-pub fn pick_speaker(reply: &str, roster: &[String]) -> Option<String> {
+pub fn pick_speaker(reply: &str, roster: &[String], player_name: Option<&str>) -> Option<String> {
     let mut candidates: Vec<&str> = roster.iter().map(String::as_str).collect();
+    if let Some(player_name) = player_name {
+        candidates.push(player_name);
+    }
     candidates.push(PLAYER_SENTINEL);
 
     let trimmed = reply.trim().trim_matches(|character: char| {
         character.is_whitespace() || "「」『』。．：:，,！!？?".contains(character)
     });
     if let Some(hit) = candidates.iter().find(|name| trimmed == **name) {
-        return Some((*hit).to_owned());
+        return Some(if player_name == Some(*hit) {
+            PLAYER_SENTINEL.to_owned()
+        } else {
+            (*hit).to_owned()
+        });
     }
     candidates
         .iter()
         .filter_map(|name| reply.find(*name).map(|position| (position, *name)))
         .min_by_key(|(position, _)| *position)
-        .map(|(_, name)| name.to_owned())
+        .map(|(_, name)| {
+            if player_name == Some(name) {
+                PLAYER_SENTINEL.to_owned()
+            } else {
+                name.to_owned()
+            }
+        })
 }
 
 /// 使用者語系：preferences.language，預設 zh-TW；決定 system prompt 注入哪份語言規範
@@ -539,21 +574,44 @@ mod tests {
         }
     }
 
+    /// 有玩家卡時，角色與 GM 都要認得玩家的名字與公開身份（本功能的核心）
+    #[test]
+    fn player_card_enters_character_and_gm_context() {
+        let fox = card("fox-id", "狐狸", "旅店老闆", "通緝犯");
+        let player = card("player-id", "阿濤", "遠道而來的商隊護衛", "");
+
+        let character_system = &assemble_messages(&fox, Some(&player), &[], &[], "zh-TW")[0].content;
+        assert!(character_system.contains("阿濤"));
+        assert!(character_system.contains("遠道而來的商隊護衛"));
+
+        let gm_system =
+            &assemble_gm_messages("世界總覽", &[fox], Some(&player), &[], &[], "zh-TW")[0].content;
+        assert!(gm_system.contains("阿濤"));
+        assert!(gm_system.contains("遠道而來的商隊護衛"));
+
+        // 點名 prompt 要告知玩家名字，GM 才知道喊誰；哨兵本身不變
+        let instruction = suggest_instruction(&["狐狸".to_owned()], Some("阿濤")).content;
+        assert!(instruction.contains("阿濤"));
+        assert!(instruction.contains(PLAYER_SENTINEL));
+    }
+
     #[test]
     fn empty_worldbook_keeps_character_and_gm_context_unchanged() {
         let fox = card("fox-id", "狐狸", "旅店老闆", "通緝犯");
         let events = [event(TranscriptKind::Player, "", "玩家", "你好")];
-        let character = assemble_messages(&fox, &events, &[], "zh-TW");
+        let character = assemble_messages(&fox, None, &events, &[], "zh-TW");
         assert_eq!(character.len(), 2);
         assert!(character[0].content.contains("## 你的公開設定"));
         assert!(character[0].content.contains("## 你的私有設定"));
+        assert!(!character[0].content.contains("同桌的玩家"));
         assert!(!character[0].content.contains("## 你知道的世界情報"));
         assert_eq!(character[1], message("user", "玩家：你好".to_owned()));
 
-        let gm = assemble_gm_messages("世界總覽", &[fox], &events, &[], "zh-TW");
+        let gm = assemble_gm_messages("世界總覽", &[fox], None, &events, &[], "zh-TW");
         assert_eq!(gm.len(), 2);
         assert!(gm[0].content.contains("## 世界設定"));
         assert!(gm[0].content.contains("## 登場角色"));
+        assert!(!gm[0].content.contains("玩家角色"));
         assert!(!gm[0].content.contains("## 世界書（只進你的上下文）"));
         assert_eq!(gm[1], message("user", "玩家：你好".to_owned()));
     }
@@ -608,7 +666,7 @@ mod tests {
             ),
         ];
         let fox = card("fox-id", "狐狸", "公開", "私有");
-        let fox_messages = assemble_messages(&fox, &[], &entries, "zh-TW");
+        let fox_messages = assemble_messages(&fox, None, &[], &entries, "zh-TW");
         let fox_system = &fox_messages[0].content;
         assert!(fox_system.contains("\n## 你知道的世界情報\n"));
         assert!(fox_system.contains("### 公開情報\n公開情報內容\n"));
@@ -617,12 +675,13 @@ mod tests {
         assert!(!fox_system.contains("騎士情報"));
 
         let knight = card("knight-id", "騎士", "公開", "私有");
-        let knight_system = &assemble_messages(&knight, &[], &entries, "zh-TW")[0].content;
+        let knight_system = &assemble_messages(&knight, None, &[], &entries, "zh-TW")[0].content;
         assert!(knight_system.contains("公開情報"));
         assert!(knight_system.contains("騎士情報"));
         assert!(!knight_system.contains("狐狸情報"));
 
-        let gm_system = &assemble_gm_messages("世界總覽", &[], &[], &entries, "zh-TW")[0].content;
+        let gm_system =
+            &assemble_gm_messages("世界總覽", &[], None, &[], &entries, "zh-TW")[0].content;
         assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n"));
         for title in ["GM 祕密", "公開情報", "狐狸情報", "騎士情報"] {
             assert!(gm_system.contains(title));
@@ -650,7 +709,7 @@ mod tests {
             ),
             event(TranscriptKind::System, "", "系統", "騎士 加入本桌"),
         ];
-        let messages = assemble_messages(&fox, &events, &[], "zh-TW");
+        let messages = assemble_messages(&fox, None, &events, &[], "zh-TW");
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -675,7 +734,7 @@ mod tests {
             event(TranscriptKind::Dialogue, "fox-id", "狐狸", "我的回答"),
             event(TranscriptKind::Player, "", "玩家", "第二句"),
         ];
-        let messages = assemble_messages(&fox, &events, &[], "zh-TW");
+        let messages = assemble_messages(&fox, None, &events, &[], "zh-TW");
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert_eq!(roles, ["system", "user", "assistant", "user"]);
         assert_eq!(messages[1].content, "玩家：第一句\n（旁白）旁白一句");
@@ -695,7 +754,7 @@ mod tests {
             event(TranscriptKind::Dialogue, second_id, "重名", "我是第二位"),
         ];
 
-        let first_messages = assemble_messages(&first, &events, &[], "zh-TW");
+        let first_messages = assemble_messages(&first, None, &events, &[], "zh-TW");
         let roles: Vec<&str> = first_messages.iter().map(|m| m.role.as_str()).collect();
         // 自己的那句是 assistant，對方同名的那句仍是 user（不會相鄰合併成一則）
         assert_eq!(roles, ["system", "assistant", "user"]);
@@ -703,7 +762,7 @@ mod tests {
         assert_eq!(first_messages[2].content, "重名：我是第二位");
 
         let second = card(second_id, "重名", "第二位", "");
-        let second_messages = assemble_messages(&second, &events, &[], "zh-TW");
+        let second_messages = assemble_messages(&second, None, &events, &[], "zh-TW");
         let roles: Vec<&str> = second_messages.iter().map(|m| m.role.as_str()).collect();
         assert_eq!(roles, ["system", "user", "assistant"]);
         assert_eq!(second_messages[1].content, "重名：我是第一位");
@@ -724,7 +783,8 @@ mod tests {
             event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
             event(TranscriptKind::Narration, "", "GM", "門外傳來馬蹄聲"),
         ];
-        let messages = assemble_gm_messages("酒館位於邊境小鎮", &cards, &events, &[], "zh-TW");
+        let messages =
+            assemble_gm_messages("酒館位於邊境小鎮", &cards, None, &events, &[], "zh-TW");
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -744,13 +804,13 @@ mod tests {
     #[test]
     fn language_rule_follows_ui_language() {
         let fox = card("fox-id", "狐狸", "旅店老闆", "");
-        let zh = assemble_messages(&fox, &[], &[], "zh-TW");
+        let zh = assemble_messages(&fox, None, &[], &[], "zh-TW");
         assert!(zh[0].content.contains("繁體中文"));
-        let en = assemble_messages(&fox, &[], &[], "en");
+        let en = assemble_messages(&fox, None, &[], &[], "en");
         assert!(en[0].content.contains("in natural, fluent English"));
         assert!(!en[0].content.contains("繁體中文"));
 
-        let gm_en = assemble_gm_messages("", &[], &[], &[], "en");
+        let gm_en = assemble_gm_messages("", &[], None, &[], &[], "en");
         assert!(gm_en[0].content.contains("in natural, fluent English"));
 
         let mut config = AppConfig::default();
@@ -808,15 +868,22 @@ mod tests {
     #[test]
     fn pick_speaker_handles_exact_verbose_and_player_sentinel() {
         let roster = vec!["狐狸".to_owned(), "騎士".to_owned()];
-        assert_eq!(pick_speaker("狐狸", &roster).unwrap(), "狐狸");
-        assert_eq!(pick_speaker("「騎士」。", &roster).unwrap(), "騎士");
-        assert_eq!(pick_speaker("玩家", &roster).unwrap(), PLAYER_SENTINEL);
+        assert_eq!(pick_speaker("狐狸", &roster, None).unwrap(), "狐狸");
+        assert_eq!(pick_speaker("「騎士」。", &roster, None).unwrap(), "騎士");
+        assert_eq!(
+            pick_speaker("玩家", &roster, None).unwrap(),
+            PLAYER_SENTINEL
+        );
+        assert_eq!(
+            pick_speaker("阿濤", &roster, Some("阿濤")).unwrap(),
+            PLAYER_SENTINEL
+        );
         // 模型多話：取回覆中最先出現的候選名
         assert_eq!(
-            pick_speaker("下一位應該由騎士發言，逼問狐狸。", &roster).unwrap(),
+            pick_speaker("下一位應該由騎士發言，逼問狐狸。", &roster, None).unwrap(),
             "騎士"
         );
-        assert_eq!(pick_speaker("酒保", &roster), None);
+        assert_eq!(pick_speaker("酒保", &roster, None), None);
     }
 
     #[test]

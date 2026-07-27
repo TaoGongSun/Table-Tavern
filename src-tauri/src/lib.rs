@@ -907,8 +907,14 @@ async fn chat_with_character(
         .map_err(|error| error.to_string())?;
     let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
 
-    let messages =
-        transport::assemble_messages(&card, &events, &worldbook, &transport::ui_language(&config));
+    let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
+    let messages = transport::assemble_messages(
+        &card,
+        player.as_ref(),
+        &events,
+        &worldbook,
+        &transport::ui_language(&config),
+    );
     let closing = format!(
         "現在輪到「{}」回應。請直接輸出台詞與動作描寫，不要加名字前綴、不要任何角色之外的說明。",
         card.name
@@ -924,11 +930,13 @@ async fn chat_with_character(
 
 /// GM 上下文＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
 /// 回傳（在場角色卡, 組裝好的訊息）；roster（點名用名單）由呼叫端從角色卡取名字。
-fn assemble_gm(
-    root: &std::path::Path,
-    world_id: &str,
-    lang: &str,
-) -> Result<(Vec<data::CharacterCard>, Vec<transport::ChatMessage>), String> {
+type GmAssembly = (
+    Vec<data::CharacterCard>,
+    Option<data::CharacterCard>,
+    Vec<transport::ChatMessage>,
+);
+
+fn assemble_gm(root: &std::path::Path, world_id: &str, lang: &str) -> Result<GmAssembly, String> {
     let world_md = data::read_world_md(root, world_id).map_err(|error| error.to_string())?;
     let worldbook = data::read_worldbook(root, world_id).map_err(|error| error.to_string())?;
     let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
@@ -941,8 +949,16 @@ fn assemble_gm(
         .map(|meta| data::read_character(root, world_id, &meta.id))
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
-    let messages = transport::assemble_gm_messages(&world_md, &cards, &events, &worldbook, lang);
-    Ok((cards, messages))
+    let player = data::read_player_card(root, world_id).map_err(|error| error.to_string())?;
+    let messages = transport::assemble_gm_messages(
+        &world_md,
+        &cards,
+        player.as_ref(),
+        &events,
+        &worldbook,
+        lang,
+    );
+    Ok((cards, player, messages))
 }
 
 /// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
@@ -953,7 +969,7 @@ async fn gm_narrate(
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (_, mut messages) = assemble_gm(
+    let (_, _, mut messages) = assemble_gm(
         &data_root(&app)?,
         &world_id,
         &transport::ui_language(&config),
@@ -980,7 +996,7 @@ async fn gm_narrate(
 #[tauri::command]
 async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (cards, mut messages) = assemble_gm(
+    let (cards, player, mut messages) = assemble_gm(
         &data_root(&app)?,
         &world_id,
         &transport::ui_language(&config),
@@ -989,7 +1005,10 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<S
         return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
     }
     let roster: Vec<String> = cards.iter().map(|card| card.name.clone()).collect();
-    messages.push(transport::suggest_instruction(&roster));
+    messages.push(transport::suggest_instruction(
+        &roster,
+        player.as_ref().map(|card| card.name.as_str()),
+    ));
     let reply = stream_via_transport(
         &config,
         None,
@@ -1001,8 +1020,12 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<S
         |_| {},
     )
     .await?;
-    let picked = transport::pick_speaker(&reply, &roster)
-        .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))?;
+    let picked = transport::pick_speaker(
+        &reply,
+        &roster,
+        player.as_ref().map(|card| card.name.as_str()),
+    )
+    .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))?;
     if picked == transport::PLAYER_SENTINEL {
         return Ok(picked);
     }
