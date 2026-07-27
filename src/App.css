@@ -90,7 +90,7 @@ body {
   --danger: #a43a2a;
   --ok: #3f7d3c;
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
-  --gm-leather: #939aa1; /* GM 書皮：石板灰（壓得過白卡即可） */
+  --gm-leather: #9a9b95; /* GM 書皮：石板灰帶一點暖（壓得過白卡即可） */
 }
 
 :root[data-theme="parchment"] {
