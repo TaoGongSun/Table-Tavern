@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [cli-detect-state](tasks/cli-detect-state.md) — CLI 偵測空窗期：加「正在偵測…」三態＋四支並行＋結果快取 — 下一步：實作完成（cargo 93 綠＋npm build 綠＋並行實測 2.8 倍），等使用者實測設定頁重開不再閃「一鍵安裝」後結案
 - [character-card-avatar-issues](tasks/character-card-avatar-issues.md) — 角色卡回饋修訂：頭像間距／角色改名／圖像變更未儲存提示＋移除頭像警告／建卡空名擋下 — 下一步：第 1 項間距已修（build 綠＋截圖對照）等實測；接著 5（擋空名）→ 4（移除頭像確認）→ 3（圖像操作改暫存計入未儲存）→ 2（改名＋回填歷史引用）
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫實作完成（cargo 91 綠＋build 綠），等實測圖庫；待拍板：提示詞標籤、Ko-fi 導購歧義
 - [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者以新 DMG 實測後結案

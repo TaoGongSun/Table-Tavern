@@ -159,6 +159,16 @@ interface CliInfo {
   version: string;
 }
 
+// 偵測結果跨畫面／跨設定頁開關快取：null＝本次啟動還沒偵測過。
+// 設定頁重開時先吃上次結果，不再讓使用者重看一次「偵測中」。
+let cliCache: CliInfo[] | null = null;
+
+async function detectClis(): Promise<CliInfo[]> {
+  const detected = await invoke<CliInfo[]>("detect_clis");
+  cliCache = detected;
+  return detected;
+}
+
 type CliInstallStage = "detect" | "install" | "login" | "verify" | "done" | "error";
 
 interface CliInstallProgress {
@@ -302,7 +312,7 @@ function Settings({
   const [maxRound, setMaxRound] = useState(String(config.preferences["max_round_speakers"] ?? 3));
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
-  const [clis, setClis] = useState<CliInfo[]>([]);
+  const [clis, setClis] = useState<CliInfo[] | null>(cliCache);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
   const [cliCatalogs, setCliCatalogs] = useState<Record<string, { id: string; label: string }[]>>({});
   const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
@@ -319,7 +329,7 @@ function Settings({
   }
 
   useEffect(() => {
-    invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => setClis([]));
+    detectClis().then(setClis).catch(() => setClis([]));
     // CLI 模型下拉目錄：讀各 CLI 本機快取（後端 list_cli_models）
     for (const id of ["claude", "codex", "agy", "grok"]) {
       invoke<{ id: string; label: string }[]>("list_cli_models", { cli: id })
@@ -361,7 +371,7 @@ function Settings({
         };
         void invoke("write_config", { config: next }).then(() => onSavedRef.current(next)).catch(() => {});
         if (event.payload.stage === "done") {
-          void invoke<CliInfo[]>("detect_clis").then(setClis).catch(() => {});
+          void detectClis().then(setClis).catch(() => {});
         }
       }
     }).then((unlisten) => {
@@ -413,7 +423,7 @@ function Settings({
     stopCliPolling();
     cliPollRef.current = setInterval(() => {
       elapsed += 3_000;
-      invoke<CliInfo[]>("detect_clis")
+      detectClis()
         .then((detected) => {
           setClis(detected);
           if (detected.some((cli) => cli.id === provider) || elapsed >= 600_000) {
@@ -500,7 +510,9 @@ function Settings({
             {t("transportApi")}
           </label>
           {(["claude", "codex", "agy", "grok"] as const).map((id) => {
-            const found = clis.find((c) => c.id === id);
+            // clis === null＝偵測還沒回來，與「偵測不到」是兩回事：此時不給按鈕，避免誤按一鍵安裝
+            const detecting = clis === null;
+            const found = clis?.find((c) => c.id === id);
             const progress = installProgress[id];
             const connected = config.preferences[cliConnectedKey(id)] === true;
             return (
@@ -514,7 +526,11 @@ function Settings({
                 />
                 {CLI_LABELS[id]}
                 {t("cliSubscriptionSuffix")}
-                {found ? (
+                {detecting ? (
+                  <span className="cli-version" role="status">
+                    {t("cliDetecting")}
+                  </span>
+                ) : found ? (
                   <>
                     <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
                     {connected && installingCli !== id ? (
@@ -1574,7 +1590,7 @@ function CardEditor({
     }
     const savedSource = String(config.preferences["image_source"] ?? "");
     const transport = String(config.preferences["transport"] ?? "api");
-    void invoke<CliInfo[]>("detect_clis")
+    void detectClis()
       .then((detected) => {
         setAiClis(detected);
         const detectedSources = ["api", ...detected.map((cli) => cli.id)];
