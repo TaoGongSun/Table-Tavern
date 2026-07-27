@@ -2050,8 +2050,8 @@ function CardEditor({
             <label>{t("aiGenSourceLabel")}
               <div className="row">
                 <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
-                  {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : `${source[0].toUpperCase()}${source.slice(1)}`}</option>)}
-                  {!sourceOptions.includes(aiSource) && <option value={aiSource}>{`${aiSource[0].toUpperCase()}${aiSource.slice(1)}`}</option>}
+                  {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : CLI_LABELS[source] ?? source}</option>)}
+                  {!sourceOptions.includes(aiSource) && <option value={aiSource}>{CLI_LABELS[aiSource] ?? aiSource}</option>}
                 </select>
                 <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
               </div>
