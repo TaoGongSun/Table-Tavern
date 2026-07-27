@@ -33,5 +33,5 @@ description: 本專案的工作交接規約。當使用者提到「接手」「�
 
 - 「完成／修好」必附證據（指令輸出或檔案:行號）；「找不到」必附搜尋範圍。
 - 只編輯 `.ai/` 下的 Markdown。`.json`／`.jsonl` 是某一方本機工具的狀態檔，已被 gitignore，不要建立也不要修改。
-- 開新任務：照 `.ai/tasks/` 現有檔案格式建 `tasks/<新-id>.md`，並在 `TASKS.md` 對應區段加一行。任務結案：狀態改 completed、從「In progress」移出。
+- 開新任務：照 `.ai/tasks/` 現有檔案格式建 `tasks/<新-id>.md`，並在 `TASKS.md` 對應區段加一行。任務結案：狀態改 completed、從「In progress」移出，那一行搬到 `.ai/DONE.md`（`TASKS.md` 的 Done 區只留一句連結，不列項目）。
 - 同一時間專注一個任務；動工前先 pull，收工必 push，避免兩邊現場分岔。
