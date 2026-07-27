@@ -605,6 +605,84 @@ fn encode_base64(bytes: &[u8]) -> String {
     output
 }
 
+fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
+    fn sextet(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+
+    let bytes = value.as_bytes();
+    if bytes.len() % 4 != 0 {
+        return Err("非法 base64 資料".to_owned());
+    }
+    let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
+    for (index, chunk) in bytes.chunks_exact(4).enumerate() {
+        let padding = chunk.iter().rev().take_while(|&&byte| byte == b'=').count();
+        if padding > 2 || (padding > 0 && index + 1 != bytes.len() / 4) {
+            return Err("非法 base64 資料".to_owned());
+        }
+        let a = sextet(chunk[0]).ok_or_else(|| "非法 base64 資料".to_owned())?;
+        let b = sextet(chunk[1]).ok_or_else(|| "非法 base64 資料".to_owned())?;
+        let c = if padding >= 2 { 0 } else { sextet(chunk[2]).ok_or_else(|| "非法 base64 資料".to_owned())? };
+        let d = if padding >= 1 { 0 } else { sextet(chunk[3]).ok_or_else(|| "非法 base64 資料".to_owned())? };
+        if (padding >= 1 && chunk[3] != b'=') || (padding >= 2 && chunk[2] != b'=') {
+            return Err("非法 base64 資料".to_owned());
+        }
+        let decoded = (u32::from(a) << 18) | (u32::from(b) << 12) | (u32::from(c) << 6) | u32::from(d);
+        output.push((decoded >> 16) as u8);
+        if padding < 2 { output.push((decoded >> 8) as u8); }
+        if padding == 0 { output.push(decoded as u8); }
+    }
+    Ok(output)
+}
+
+fn validate_gallery_component(value: &str, require_png: bool) -> Result<(), String> {
+    if value.is_empty()
+        || value.contains("..")
+        || value.contains('/')
+        || value.contains('\\')
+        || (require_png && !value.ends_with(".png"))
+    {
+        return Err("非法檔名".to_owned());
+    }
+    Ok(())
+}
+
+fn gallery_directory(root: &std::path::Path, world: &str, name: &str) -> Result<PathBuf, String> {
+    validate_gallery_component(name, false)?;
+    Ok(root.join(world).join("gen-gallery").join(name))
+}
+
+fn list_gallery_image_files(root: &std::path::Path, world: &str, name: &str) -> Result<Vec<String>, String> {
+    let directory = gallery_directory(root, world, name)?;
+    let mut files = match std::fs::read_dir(directory) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|file| file.ends_with(".png"))
+            .collect::<Vec<_>>(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.to_string()),
+    };
+    files.sort_unstable_by(|left, right| right.cmp(left));
+    Ok(files)
+}
+
+fn save_generated_gallery_image(root: &std::path::Path, world: &str, name: &str, data_url: &str) -> Result<(), String> {
+    let Some((header, encoded)) = data_url.split_once(',') else { return Ok(()); };
+    if !header.starts_with("data:") || !header.ends_with(";base64") { return Ok(()); }
+    let directory = gallery_directory(root, world, name)?;
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_millis();
+    std::fs::write(directory.join(format!("{timestamp}.png")), decode_base64(encoded)?).map_err(|error| error.to_string())
+}
+
 fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
     let mime = match path
         .extension()
@@ -656,7 +734,9 @@ async fn generate_character_image(
                 .to_owned()
         });
     if transport_kind == "api" {
-        return transport::generate_image(&config, &prompt).await;
+        let image = transport::generate_image(&config, &prompt).await?;
+        save_generated_gallery_image(&root, &world, &name, &image)?;
+        return Ok(image);
     }
     // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）會存檔回路徑，其餘掃不到圖就失敗
     prompt.push_str(
@@ -680,13 +760,34 @@ async fn generate_character_image(
         |_| {},
     )
     .await?;
-    match extract_image_from_text(&reply) {
+    let image = match extract_image_from_text(&reply) {
         Some(ImageRef::DataUrl(data_url)) => Ok(data_url),
         Some(ImageRef::Path(path)) if std::fs::metadata(&path).is_ok() => {
             image_file_data_url(&path)
         }
         _ => Err("回覆中沒有圖片".to_owned()),
-    }
+    }?;
+    save_generated_gallery_image(&root, &world, &name, &image)?;
+    Ok(image)
+}
+
+#[tauri::command]
+fn list_gallery_images(app: tauri::AppHandle, world: String, name: String) -> Result<Vec<String>, String> {
+    list_gallery_image_files(&data_root(&app)?, &world, &name)
+}
+
+#[tauri::command]
+fn read_gallery_image(app: tauri::AppHandle, world: String, name: String, file: String) -> Result<String, String> {
+    validate_gallery_component(&file, true)?;
+    let directory = gallery_directory(&data_root(&app)?, &world, &name)?;
+    image_file_data_url(&directory.join(file))
+}
+
+#[tauri::command]
+fn delete_gallery_image(app: tauri::AppHandle, world: String, name: String, file: String) -> Result<(), String> {
+    validate_gallery_component(&file, true)?;
+    let directory = gallery_directory(&data_root(&app)?, &world, &name)?;
+    std::fs::remove_file(directory.join(file)).map_err(|error| error.to_string())
 }
 
 /// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
@@ -876,6 +977,9 @@ pub fn run() {
             list_cli_models,
             chat_with_character,
             generate_character_image,
+            list_gallery_images,
+            read_gallery_image,
+            delete_gallery_image,
             gm_narrate,
             gm_suggest_speaker,
             advance_scene
@@ -887,7 +991,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cli_install_script, encode_base64, extract_image_from_text, ImageRef, InstallMessages,
+        cli_install_script, decode_base64, encode_base64, extract_image_from_text,
+        list_gallery_image_files, validate_gallery_component, ImageRef, InstallMessages,
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -929,6 +1034,51 @@ mod tests {
     fn extract_image_from_text_returns_none_without_image() {
         assert_eq!(extract_image_from_text("沒有附圖。"), None);
         assert_eq!(encode_base64(b"png"), "cG5n");
+    }
+
+    #[test]
+    fn decode_base64_roundtrip_restores_bytes() {
+        let bytes = [0, 1, 2, 127, 128, 255];
+        assert_eq!(decode_base64(&encode_base64(&bytes)).unwrap(), bytes);
+    }
+
+    #[test]
+    fn decode_base64_rejects_invalid_input() {
+        assert!(decode_base64("not base64!").is_err());
+    }
+
+    #[test]
+    fn gallery_component_validation_allows_plain_png_name() {
+        assert!(validate_gallery_component("1720000000000.png", true).is_ok());
+    }
+
+    #[test]
+    fn gallery_component_validation_rejects_parent_path() {
+        assert!(validate_gallery_component("../secret.png", true).is_err());
+    }
+
+    #[test]
+    fn gallery_component_validation_rejects_path_separator() {
+        assert!(validate_gallery_component("folder/image.png", true).is_err());
+    }
+
+    #[test]
+    fn list_gallery_image_files_sorts_newest_first() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-gallery-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let directory = root.join("world").join("gen-gallery").join("character");
+        std::fs::create_dir_all(&directory).unwrap();
+        for file in ["1720000000000.png", "1730000000000.png", "1710000000000.png"] {
+            std::fs::write(directory.join(file), b"png").unwrap();
+        }
+        assert_eq!(
+            list_gallery_image_files(&root, "world", "character").unwrap(),
+            ["1730000000000.png", "1720000000000.png", "1710000000000.png"]
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn assert_messages(script: &str) {

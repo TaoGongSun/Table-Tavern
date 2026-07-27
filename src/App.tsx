@@ -9,6 +9,7 @@ import taoIcon from "./assets/tao-icon.png";
 import "./App.css";
 
 const KOFI_URL = "https://ko-fi.com/taogongsun";
+const GALLERY_PAGE_SIZE = 12;
 // 主題清單：free 兩套隨點隨存；sponsor 五套未解鎖只能試看（關設定視窗即復原）
 const FREE_THEMES = ["dark", "light"] as const;
 const SPONSOR_THEMES = ["parchment", "herbal", "candlelight", "port", "seamist"] as const;
@@ -1478,6 +1479,9 @@ function CardEditor({
   const [aiClis, setAiClis] = useState<CliInfo[]>([]);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenError, setAiGenError] = useState("");
+  const [galleryFiles, setGalleryFiles] = useState<string[]>([]);
+  const [galleryImages, setGalleryImages] = useState<Record<string, string>>({});
+  const [galleryLoaded, setGalleryLoaded] = useState(0);
 
   useEffect(() => {
     setMessage("");
@@ -1489,6 +1493,21 @@ function CardEditor({
   const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
   const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
+
+  async function loadGalleryPage(files: string[], start: number) {
+    const page = files.slice(start, start + GALLERY_PAGE_SIZE);
+    const images = await Promise.all(page.map(async (file) => [file, await invoke<string>("read_gallery_image", { world, name, file })] as const));
+    setGalleryImages((current) => ({ ...current, ...Object.fromEntries(images) }));
+    setGalleryLoaded(Math.min(start + page.length, files.length));
+  }
+
+  async function refreshGallery() {
+    const files = await invoke<string[]>("list_gallery_images", { world, name });
+    setGalleryFiles(files);
+    setGalleryImages({});
+    setGalleryLoaded(0);
+    await loadGalleryPage(files, 0);
+  }
 
   function openAiGenerator() {
     if (!sponsorUnlocked && trialsUsed >= 3) {
@@ -1510,15 +1529,19 @@ function CardEditor({
     setAiPrompt(card?.gen_prompt ?? "");
     setAiGenError("");
     setAiGenOpen(true);
+    void refreshGallery().catch(() => {
+      setGalleryFiles([]);
+      setGalleryImages({});
+      setGalleryLoaded(0);
+    });
   }
 
   async function generateImage() {
     setAiGenerating(true);
     setAiGenError("");
     try {
-      const dataUrl = await invoke<string>("generate_character_image", { world, name, extraPrompt: aiPrompt, source: aiSource });
-      setAiGenOpen(false);
-      setPendingImage(dataUrl);
+      await invoke<string>("generate_character_image", { world, name, extraPrompt: aiPrompt, source: aiSource });
+      await refreshGallery();
       await onPreference("image_source", aiSource);
       if (!sponsorUnlocked) await onPreference("ai_image_trials_used", trialsUsed + 1);
     } catch (reason) {
@@ -1526,6 +1549,18 @@ function CardEditor({
     } finally {
       setAiGenerating(false);
     }
+  }
+
+  async function deleteGalleryImage(file: string) {
+    const accepted = await confirm(t("aiGalleryDeleteConfirm"), { title: t("aiGalleryDeleteTitle"), kind: "warning" });
+    if (!accepted) return;
+    await invoke("delete_gallery_image", { world, name, file });
+    setGalleryFiles((current) => current.filter((item) => item !== file));
+    setGalleryImages((current) => {
+      const { [file]: _, ...remaining } = current;
+      return remaining;
+    });
+    setGalleryLoaded((current) => Math.max(0, current - (galleryImages[file] ? 1 : 0)));
   }
 
   if (!card) return message ? <p role="alert">{message}</p> : null;
@@ -1703,6 +1738,32 @@ function CardEditor({
             </label>
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
             {aiGenError && <div className="ai-gen-error" role="alert"><div>{t("aiGenFailed")}</div><small>{aiGenError}</small></div>}
+            {galleryFiles.length > 0 && (
+              <section aria-label={t("aiGalleryTitle")}>
+                <h3>{t("aiGalleryTitle")}</h3>
+                <div className="ai-gallery">
+                  {galleryFiles.slice(0, galleryLoaded).map((file) => galleryImages[file] && (
+                    <div className="ai-gallery-thumb" key={file}>
+                      <button
+                        type="button"
+                        className="ai-gallery-pick"
+                        title={t("aiGalleryPick")}
+                        onClick={() => { setAiGenOpen(false); setPendingImage(galleryImages[file]); }}
+                      >
+                        <img src={galleryImages[file]} alt="" />
+                      </button>
+                      <button
+                        type="button"
+                        className="ai-gallery-delete"
+                        aria-label={t("aiGalleryDeleteTitle")}
+                        onClick={() => void deleteGalleryImage(file).catch((reason) => setAiGenError(String(reason)))}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+                {galleryFiles.length > galleryLoaded && <button type="button" onClick={() => void loadGalleryPage(galleryFiles, galleryLoaded)}>{t("aiGalleryLoadMore", { n: galleryFiles.length - galleryLoaded })}</button>}
+              </section>
+            )}
             {/* 主要動作放右下（2026-07-27 使用者拍板：此對話框例外，不置頂） */}
             <div className="ai-gen-footer">
               <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
