@@ -139,8 +139,9 @@ pub fn assemble_messages(
     messages
 }
 
-/// 點名時「輪到玩家」的哨兵名；前端以它停下 GM 推進回合
-pub const PLAYER_SENTINEL: &str = "玩家";
+/// 點名時「輪到玩家」的內部代號；前端以它停下 GM 推進回合。
+/// 刻意用不可能當人名的字串：玩家卡或某張 NPC 卡都可能就叫「玩家」。
+pub const PLAYER_SENTINEL: &str = "__PLAYER__";
 
 /// 組裝 GM 上下文：world.md（只有 GM 看得到）＋全部角色卡（含私有，NewPlan §7.0）
 /// ＋公開 transcript。GM 自己的旁白是 assistant，其餘事件是 user。
@@ -300,36 +301,34 @@ pub fn suggest_instruction(roster: &[String], player_name: Option<&str>) -> Chat
     )
 }
 
-/// 從 GM 點名回覆解析出角色名（或玩家哨兵）。
+/// 從 GM 點名回覆解析出角色名（或玩家代號）。
 /// 先試整句精確比對；模型多話時退回「回覆中最先出現的候選名」。
+/// GM 是語言模型，輪到玩家時可能吐代號、也可能吐「玩家」或玩家卡上的名字，全部對回代號；
+/// NPC 名字排在前面，撞名時算 NPC。
 pub fn pick_speaker(reply: &str, roster: &[String], player_name: Option<&str>) -> Option<String> {
+    let mut player_words = vec![PLAYER_SENTINEL, "玩家", "Player"];
+    player_words.extend(player_name);
     let mut candidates: Vec<&str> = roster.iter().map(String::as_str).collect();
-    if let Some(player_name) = player_name {
-        candidates.push(player_name);
-    }
-    candidates.push(PLAYER_SENTINEL);
+    candidates.extend(&player_words);
 
+    let as_speaker = |name: &str| {
+        if player_words.contains(&name) {
+            PLAYER_SENTINEL.to_owned()
+        } else {
+            name.to_owned()
+        }
+    };
     let trimmed = reply.trim().trim_matches(|character: char| {
         character.is_whitespace() || "「」『』。．：:，,！!？?".contains(character)
     });
     if let Some(hit) = candidates.iter().find(|name| trimmed == **name) {
-        return Some(if player_name == Some(*hit) {
-            PLAYER_SENTINEL.to_owned()
-        } else {
-            (*hit).to_owned()
-        });
+        return Some(as_speaker(hit));
     }
     candidates
         .iter()
         .filter_map(|name| reply.find(*name).map(|position| (position, *name)))
         .min_by_key(|(position, _)| *position)
-        .map(|(_, name)| {
-            if player_name == Some(name) {
-                PLAYER_SENTINEL.to_owned()
-            } else {
-                name.to_owned()
-            }
-        })
+        .map(|(_, name)| as_speaker(name))
 }
 
 /// 使用者語系：preferences.language，預設 zh-TW；決定 system prompt 注入哪份語言規範
@@ -874,10 +873,13 @@ mod tests {
             pick_speaker("玩家", &roster, None).unwrap(),
             PLAYER_SENTINEL
         );
-        assert_eq!(
-            pick_speaker("阿濤", &roster, Some("阿濤")).unwrap(),
-            PLAYER_SENTINEL
-        );
+        // 輪到玩家時 GM 怎麼講都算：代號本身、「玩家」、英文 Player、玩家卡上的名字
+        for reply in [PLAYER_SENTINEL, "玩家", "Player", "阿濤"] {
+            assert_eq!(
+                pick_speaker(reply, &roster, Some("阿濤")).unwrap(),
+                PLAYER_SENTINEL
+            );
+        }
         // 模型多話：取回覆中最先出現的候選名
         assert_eq!(
             pick_speaker("下一位應該由騎士發言，逼問狐狸。", &roster, None).unwrap(),
