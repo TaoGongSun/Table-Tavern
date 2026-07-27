@@ -1881,87 +1881,93 @@ function CardEditor({
 
   return (
     <form onSubmit={save} className="settings-form">
-      {/* 按鈕列統一放頂部，與世界設定畫面同款（2026-07-24 使用者拍板）。
-          返回獨立成第二列貼齊儲存下方：按鈕變多後夾在刪除旁邊很難找（2026-07-28 使用者回報） */}
-      <div className="row">
-        <button type="submit">{t("saveCard")}</button>
-        {!isNew && (
-          <>
-            {!isPlayer && (
-              <button type="button" className="archive-button" onClick={archive}>
-                {t("archiveCharacter")}
-              </button>
+      {/* 頂部切兩塊：左邊是這張卡的動作（返回獨立成第二列貼齊儲存下方，按鈕變多後夾在刪除
+          旁邊很難找），右邊是圖片與它的操作鈕；打字欄位維持全寬在下方（2026-07-28 使用者拍板） */}
+      <div className="card-editor-top">
+        <div className="card-editor-actions">
+          <div className="row">
+            <button type="submit">{t("saveCard")}</button>
+            {!isNew && (
+              <>
+                {!isPlayer && (
+                  <button type="button" className="archive-button" onClick={archive}>
+                    {t("archiveCharacter")}
+                  </button>
+                )}
+                <button type="button" className="delete-character" onClick={() => void onDeleted()}>
+                  {t("deleteCharacter")}
+                </button>
+              </>
             )}
-            <button type="button" className="delete-character" onClick={() => void onDeleted()}>
-              {t("deleteCharacter")}
+          </div>
+          <div className="row">
+            <button type="button" onClick={() => void handleBack()}>
+              {t("backToNow")}
             </button>
-          </>
-        )}
-        {message && <span>{message}</span>}
-        {unsavedCount > 0 && (
-          <span className="unsaved-hint" role="status">
-            {t("unsavedChanges", { n: unsavedCount })}
-          </span>
-        )}
-      </div>
-      <div className="row">
-        <button type="button" onClick={() => void handleBack()}>
-          {t("backToNow")}
-        </button>
-      </div>
-      <div className="card-editor-avatar">
-        {shownImage ? (
-          <button
-            type="button"
-            className="card-editor-image-zoom"
-            aria-label={t("viewImageLabel")}
-            title={t("viewImageLabel")}
-            onClick={() => setLightboxOpen(true)}
-          >
-            <img className="card-editor-image" src={shownImage} alt="" />
-          </button>
-        ) : shownAvatar ? (
-          <img className="avatar-round card-editor-avatar-round" src={shownAvatar} alt="" />
-        ) : (
-          <span className="card-editor-avatar-emoji" style={{ ["--ring" as string]: card.color }}>
-            {card.avatar}
-          </span>
-        )}
-      </div>
-      <div className="row">
-        <button type="button" onClick={() => document.getElementById(`character-image-${characterId}`)?.click()}>
-          {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
-        </button>
-        {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
-            提示掛在外層 span：disabled 的按鈕不收滑鼠事件，title 掛上去不會浮出來 */}
-        <span className="hint-wrap" data-hint={aiGenBlocked ? t("aiGenNeedsContent") : undefined}>
-          <button
-            type="button"
-            className="ai-gen-btn"
-            disabled={aiGenBlocked}
-            onClick={openAiGenerator}
-          >
-            ✨ {t("aiGenBtn")}
-          </button>
-        </span>
-        {shownImage && (
-          <>
-            <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
-            <button type="button" onClick={() => setCroppingAvatar(true)}>{t("makeAvatarBtn")}</button>
-          </>
-        )}
-        {shownAvatar && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
-        <input
-          id={`character-image-${characterId}`}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          hidden
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) chooseImage(file);
-          }}
-        />
+          </div>
+          {message && <span>{message}</span>}
+          {unsavedCount > 0 && (
+            <span className="unsaved-hint" role="status">
+              {t("unsavedChanges", { n: unsavedCount })}
+            </span>
+          )}
+        </div>
+        <div className="card-editor-media">
+          <div className="card-editor-avatar">
+            {shownImage ? (
+              <button
+                type="button"
+                className="card-editor-image-zoom"
+                aria-label={t("viewImageLabel")}
+                title={t("viewImageLabel")}
+                onClick={() => setLightboxOpen(true)}
+              >
+                <img className="card-editor-image" src={shownImage} alt="" />
+              </button>
+            ) : shownAvatar ? (
+              <img className="avatar-round card-editor-avatar-round" src={shownAvatar} alt="" />
+            ) : (
+              <span className="card-editor-avatar-emoji" style={{ ["--ring" as string]: card.color }}>
+                {card.avatar}
+              </span>
+            )}
+          </div>
+          <div className="row">
+            <button type="button" onClick={() => document.getElementById(`character-image-${characterId}`)?.click()}>
+              {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
+            </button>
+            {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
+                提示掛在外層 span：disabled 的按鈕不收滑鼠事件，title 掛上去不會浮出來 */}
+            <span className="hint-wrap" data-hint={aiGenBlocked ? t("aiGenNeedsContent") : undefined}>
+              <button
+                type="button"
+                className="ai-gen-btn"
+                disabled={aiGenBlocked}
+                onClick={openAiGenerator}
+              >
+                ✨ {t("aiGenBtn")}
+              </button>
+            </span>
+            {shownImage && (
+              <>
+                <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
+                <button type="button" onClick={() => setCroppingAvatar(true)}>{t("makeAvatarBtn")}</button>
+              </>
+            )}
+            {shownAvatar && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
+            <input
+              id={`character-image-${characterId}`}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) chooseImage(file);
+              }}
+            />
+          </div>
+        </div>
       </div>
       <label>
         {t(isPlayer ? "playerNameLabel" : "nameLabel")}
