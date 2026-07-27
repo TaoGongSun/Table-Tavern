@@ -2237,14 +2237,7 @@ function App() {
                 }}
                 title={t("castHint", { name: c.name })}
               >
-                {/* 圓頭像時關掉圖窗的角色色漸層底，避免圓圖外多一圈方底像沒去背 */}
-                <span
-                  className={`tcard-art ${
-                    !(c.show_image && characterImages[c.name]) && characterAvatars[c.name]
-                      ? "tcard-art-clear"
-                      : ""
-                  }`}
-                >
+                <span className="tcard-art">
                   {c.show_image && characterImages[c.name] ? (
                     <img className="tcard-image" src={characterImages[c.name]} alt="" />
                   ) : characterAvatars[c.name] ? (
