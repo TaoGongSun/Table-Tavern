@@ -5,7 +5,11 @@ import { listen } from "@tauri-apps/api/event";
 import { confirm, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
+import taoIcon from "./assets/tao-icon.png";
 import "./App.css";
+
+// 占位網址：release-3-kofi 開帳後換成正式 Ko-fi 頁面
+const KOFI_URL = "https://ko-fi.com/taogongsun";
 
 type Tier = "best" | "balanced" | "fast" | "default";
 
@@ -711,7 +715,7 @@ function SettingsWindow({
   onPreference: (key: string, value: unknown) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"appearance" | "ai">("appearance");
+  const [tab, setTab] = useState<"appearance" | "ai" | "author">("appearance");
   // AI 分頁的未儲存欄位數（外觀分頁即改即存，恆為 0）
   const [dirtyCount, setDirtyCount] = useState(0);
 
@@ -728,8 +732,8 @@ function SettingsWindow({
     if (await confirmDiscard()) onClose();
   }
 
-  async function switchToAppearance() {
-    if (await confirmDiscard()) setTab("appearance");
+  async function switchTab(target: "appearance" | "author") {
+    if (await confirmDiscard()) setTab(target);
   }
 
   useEffect(() => {
@@ -754,12 +758,18 @@ function SettingsWindow({
           <nav className="tabs" aria-label={t("settingsBtn")}>
             <button
               className={tab === "appearance" ? "tab tab-active" : "tab"}
-              onClick={() => void switchToAppearance()}
+              onClick={() => void switchTab("appearance")}
             >
               {t("appearanceTab")}
             </button>
             <button className={tab === "ai" ? "tab tab-active" : "tab"} onClick={() => setTab("ai")}>
               {t("aiTab")}
+            </button>
+            <button
+              className={tab === "author" ? "tab tab-active" : "tab"}
+              onClick={() => void switchTab("author")}
+            >
+              {t("authorTab")}
             </button>
           </nav>
           <div className="row">
@@ -816,6 +826,15 @@ function SettingsWindow({
                 ))}
               </select>
             </label>
+          </div>
+        ) : tab === "author" ? (
+          <div className="author-page">
+            <img src={taoIcon} alt="TaoGongSun" className="avatar-round author-avatar" />
+            <strong>TaoGongSun</strong>
+            <p className="author-blurb">{t("authorBlurb")}</p>
+            <button type="button" onClick={() => void openUrl(KOFI_URL)}>
+              {t("sponsorBtn")}
+            </button>
           </div>
         ) : (
           <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
