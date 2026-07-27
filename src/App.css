@@ -508,12 +508,12 @@ textarea {
   user-select: none;
 }
 
-/* 拖曳排序中的那一張／那一列：浮起來跟著指標走 */
+/* 拖曳排序中的那一張／那一列：靠陰影浮起來。
+   不放大——列寬吃滿容器，放大就溢出被外層 overflow 裁掉左右邊框（2026-07-27 使用者回報） */
 .row-dragging {
   cursor: grabbing;
   opacity: 0.85;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-  transform: scale(1.02);
 }
 
 /* GM 卡＝世界書的「書皮」：角色卡是跟主題走的白牌，GM 是桌上的實體書，
