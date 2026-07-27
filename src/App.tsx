@@ -1690,10 +1690,6 @@ function CardEditor({
       {aiGenOpen && (
         <div className="modal-overlay" onClick={() => !aiGenerating && setAiGenOpen(false)}>
           <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenTitle")} onClick={(event) => event.stopPropagation()}>
-            <div className="row">
-              <button type="button" disabled={aiGenerating} onClick={() => void generateImage()}>{aiGenerating ? t("aiGenerating") : t("aiGenBtn")}</button>
-              <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
-            </div>
             <h2>{t("aiGenTitle")}</h2>
             <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
             <label>{t("aiGenSourceLabel")}
@@ -1707,6 +1703,13 @@ function CardEditor({
             </label>
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
             {aiGenError && <div className="ai-gen-error" role="alert"><div>{t("aiGenFailed")}</div><small>{aiGenError}</small></div>}
+            {/* 主要動作放右下（2026-07-27 使用者拍板：此對話框例外，不置頂） */}
+            <div className="ai-gen-footer">
+              <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
+              <button type="button" className="ai-gen-submit" disabled={aiGenerating} onClick={() => void generateImage()}>
+                {aiGenerating ? t("aiGenerating") : `✨ ${t("aiGenBtn")}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

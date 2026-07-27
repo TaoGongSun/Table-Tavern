@@ -706,6 +706,24 @@ textarea {
   font-weight: 600;
 }
 
+/* 生成對話框主要動作：右下角、放大（使用者拍板的置頂例外） */
+.ai-gen-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.ai-gen-submit {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  height: 2.4rem;
+  padding: 0 1.2em;
+}
+
 .ai-gen-error small {
   display: block;
   font-size: var(--fs-meta);
