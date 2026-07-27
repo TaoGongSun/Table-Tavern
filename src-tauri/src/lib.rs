@@ -538,7 +538,7 @@ async fn stream_via_transport(
     match transport_kind.as_str() {
         "claude" => {
             let model = cli::tier_override(&config.tier_models, "claude", tier)
-                .or_else(|| cli::claude_model_for(tier));
+                .unwrap_or_else(|| cli::claude_model_for(tier));
             let args = cli::claude_args(model, &system);
             let base_url = config
                 .preferences

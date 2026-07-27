@@ -37,7 +37,7 @@ pub fn import_character(
         name: name.clone(),
         color: color.to_owned(),
         avatar: "🎭".to_owned(),
-        tier: Tier::parse("default")?,
+        tier: Tier::Balanced,
         show_image: true,
         archived: false,
         gen_prompt: String::new(),
@@ -52,7 +52,7 @@ pub fn import_character(
         name,
         color: color.to_owned(),
         avatar: "🎭".to_owned(),
-        tier: Tier::parse("default")?,
+        tier: Tier::Balanced,
         show_image: true,
         archived: false,
         display_index: None,
@@ -341,7 +341,7 @@ mod tests {
         )
         .unwrap();
         assert!(markdown.contains(&format!(
-            "---\nid: {}\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\narchived: false\ndisplay_index: 0\ngen_prompt: \n---",
+            "---\nid: {}\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: balanced\nshow_image: true\narchived: false\ndisplay_index: 0\ngen_prompt: \n---",
             meta.id
         )));
         for section in [

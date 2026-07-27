@@ -102,12 +102,13 @@ config.json `preferences.last_world` 存 world id。
 - **前端**：`worlds` 改物件陣列（顯示 name、值用 id）、圖與頭像 Record 改以 id 為 key、`mainView`／`speaker`／`last_world` 全改 id、事件帶 `speaker_id`＋`speaker_name`（訊息列顯示一律讀快照名）、名稱限制與三個錯誤訊息 i18n 鍵刪除、改名提示文案重寫。
 - **主線收尾精簡**：刪掉沒有呼叫者的 `rename_character`（後端函式＋command＋handler 註冊）——改名就是存一次卡片，相關測試改走實際路徑；順手刪 `write_character` 裡被 `validate_id` 涵蓋的重複空值檢查。
 - README「資料存放」補一句：資料夾與檔名是代碼，名字存在檔案裡。
+- **空桌回收加上「改過名就不回收」**（GUI 實測揪出，既有行為非本次改壞）：原本條件只有零訊息＋零角色＋world.md 空白，改過桌名的空桌照樣被收掉。改在前端 `reclaimIfUntouched`——名字還是自動名（`newTableName` 或 `newTableName N`）才呼叫回收；判斷放前端是因為自動名是語系字串，後端不知道使用者語言。比對不到時的失敗方向是不刪，不是誤刪。
 
 ### 與計畫的差異（執行者自行拍板，可回頭改）
 - `export_transcript_markdown`／`export_scene_markdown` 的標題改成內部 `read_state` 取顯示名（原本吃 `world` 字面值當標題，改代碼後不成立）。
 - `read_state` 遇 `state.json` 不存在直接回 Err，不再 `Default` 回退（新流程一定會寫這檔，缺檔＝壞資料）。
 - 玩家事件的 `speaker_name` 存當下語系的「玩家／Player」字樣；`gm_suggest_speaker` 的玩家哨兵仍是語言無關的 `"玩家"`。
-- 改名確認框保留（內容只剩「已送出的對話仍顯示舊名」這句提醒）——**要不要乾脆不攔，待使用者拍板**。
+- 改名確認框保留，文案配合新行為改寫。2026-07-28 拍板不刪：改名本身雖已無風險，但「已送出的對話仍顯示舊名」這句仍為真，且 character-card-avatar-issues 實測過灰字提示會被漏看，才改成確認框。
 - `list_worlds` 同時間戳的 tie-break 從目錄名改成「顯示名 → id」。
 
 ## Verification
@@ -125,8 +126,7 @@ config.json `preferences.last_world` 存 world id。
    - 建兩個同名角色 → 側欄兩張卡、發言者選單兩列、各點一次確認講話的是對的那位
    - 改角色名 → 全身圖／頭像／生成圖庫都還在，舊對話仍顯示舊名
    - 改桌名、桌名輸入含 `/` 的字串 → 存得下去、重開仍在
-2. 拍板「改名確認框還要不要」（見上方差異清單）
-3. 併驗：sponsor-features 的生成圖庫實測、character-card-avatar-issues 的改名提示複驗
+2. 併驗：sponsor-features 的生成圖庫實測、character-card-avatar-issues 的改名提示複驗
 
 ## Constraints
 - 改名後舊對話仍顯示舊名（2026-07-27 拍板），新設計以 `speaker_name` 快照守住。

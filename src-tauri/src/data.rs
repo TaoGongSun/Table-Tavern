@@ -76,9 +76,10 @@ pub fn new_id() -> String {
 #[serde(rename_all = "lowercase")]
 pub enum Tier {
     Best,
+    /// 角色未特別指定時的檔位；舊存檔的 "default" 也讀成這個
+    #[serde(alias = "default")]
     Balanced,
     Fast,
-    Default,
 }
 
 impl Tier {
@@ -87,16 +88,14 @@ impl Tier {
             Self::Best => "best",
             Self::Balanced => "balanced",
             Self::Fast => "fast",
-            Self::Default => "default",
         }
     }
 
     pub(crate) fn parse(value: &str) -> DataResult<Self> {
         match value {
             "best" => Ok(Self::Best),
-            "balanced" => Ok(Self::Balanced),
+            "balanced" | "default" => Ok(Self::Balanced),
             "fast" => Ok(Self::Fast),
-            "default" => Ok(Self::Default),
             _ => Err(invalid_data(format!("invalid tier: {value}"))),
         }
     }
@@ -402,8 +401,8 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
         ]
     };
     let style = [
-        ("#e07a5f", "🦊", Tier::Default),
-        ("#3d84a8", "🛡️", Tier::Default),
+        ("#e07a5f", "🦊", Tier::Balanced),
+        ("#3d84a8", "🛡️", Tier::Balanced),
         ("#f2a541", "🪕", Tier::Fast),
     ];
     for ((name, public_md, private_md), (color, avatar, tier)) in texts.into_iter().zip(style) {
@@ -1516,7 +1515,7 @@ mod tests {
             name: name.to_owned(),
             color: "#333333".to_owned(),
             avatar: "🎭".to_owned(),
-            tier: Tier::Default,
+            tier: Tier::Balanced,
             show_image: true,
             archived: false,
             gen_prompt: String::new(),

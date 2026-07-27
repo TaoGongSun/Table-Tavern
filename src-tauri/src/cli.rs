@@ -333,29 +333,27 @@ pub fn tier_override<'a>(
 }
 
 /// claude 的檔位預設對應（未覆寫時）：CLI 模型別名是穩定介面，不佔用 OpenRouter 的 tier_models
-pub fn claude_model_for(tier: Tier) -> Option<&'static str> {
+pub fn claude_model_for(tier: Tier) -> &'static str {
     match tier {
-        Tier::Best => Some("opus"),
-        Tier::Balanced => Some("sonnet"),
-        Tier::Fast => Some("haiku"),
-        Tier::Default => None,
+        Tier::Best => "opus",
+        Tier::Balanced => "sonnet",
+        Tier::Fast => "haiku",
     }
 }
 
 /// codex 的檔位對應：模型用 CLI 預設，檔位映射到 reasoning effort
-pub fn codex_effort_for(tier: Tier) -> Option<&'static str> {
+pub fn codex_effort_for(tier: Tier) -> &'static str {
     match tier {
-        Tier::Best => Some("high"),
-        Tier::Balanced => Some("medium"),
-        Tier::Fast => Some("low"),
-        Tier::Default => None,
+        Tier::Best => "high",
+        Tier::Balanced => "medium",
+        Tier::Fast => "low",
     }
 }
 
 /// --safe-mode：停用使用者的 CLAUDE.md／plugins／hooks，避免 coding 客製污染角色扮演；
 /// --tools ""：純文字生成不需要工具；--no-session-persistence：不落 session（§8.1）。
-pub fn claude_args(model: Option<&str>, system: &str) -> Vec<String> {
-    let mut args: Vec<String> = [
+pub fn claude_args(model: &str, system: &str) -> Vec<String> {
+    [
         "-p",
         "--verbose", // --print 的 stream-json 硬性要求
         "--safe-mode",
@@ -367,20 +365,17 @@ pub fn claude_args(model: Option<&str>, system: &str) -> Vec<String> {
         "",
         "--system-prompt",
         system,
+        "--model",
+        model,
     ]
     .map(str::to_owned)
-    .to_vec();
-    if let Some(model) = model {
-        args.push("--model".to_owned());
-        args.push(model.to_owned());
-    }
-    args
+    .to_vec()
 }
 
 /// codex 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// --ignore-user-config：跳過使用者 config.toml（hooks／MCP），auth 不受影響（--help 查證）。
 /// allow_tools：生圖呼叫需要 $imagegen 寫檔，沙盒放寬到 workspace-write；聊天一律唯讀。
-pub fn codex_args(model: Option<&str>, effort: Option<&str>, allow_tools: bool) -> Vec<String> {
+pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<String> {
     let mut args: Vec<String> = [
         "exec",
         "--json",
@@ -396,10 +391,8 @@ pub fn codex_args(model: Option<&str>, effort: Option<&str>, allow_tools: bool) 
         args.push("-m".to_owned());
         args.push(model.to_owned());
     }
-    if let Some(effort) = effort {
-        args.push("-c".to_owned());
-        args.push(format!("model_reasoning_effort=\"{effort}\""));
-    }
+    args.push("-c".to_owned());
+    args.push(format!("model_reasoning_effort=\"{effort}\""));
     args.push("-".to_owned()); // prompt 走 stdin，避開參數長度上限
     args
 }
@@ -802,16 +795,14 @@ mod tests {
 
     #[test]
     fn tier_mappings_cover_all_tiers() {
-        assert_eq!(claude_model_for(Tier::Best), Some("opus"));
-        assert_eq!(claude_model_for(Tier::Fast), Some("haiku"));
-        assert_eq!(claude_model_for(Tier::Default), None);
-        assert_eq!(codex_effort_for(Tier::Balanced), Some("medium"));
-        assert_eq!(codex_effort_for(Tier::Default), None);
+        assert_eq!(claude_model_for(Tier::Best), "opus");
+        assert_eq!(claude_model_for(Tier::Fast), "haiku");
+        assert_eq!(codex_effort_for(Tier::Balanced), "medium");
         let args = codex_args(None, codex_effort_for(Tier::Best), false);
         assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
         assert!(!args.contains(&"-m".to_owned()));
         assert_eq!(args.last().unwrap(), "-");
-        let args = codex_args(Some("gpt-5.6-terra"), None, false);
+        let args = codex_args(Some("gpt-5.6-terra"), codex_effort_for(Tier::Fast), false);
         assert!(args.windows(2).any(|w| w == ["-m", "gpt-5.6-terra"]));
         let args = claude_args(claude_model_for(Tier::Fast), "系統");
         assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
