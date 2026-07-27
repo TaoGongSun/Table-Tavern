@@ -1881,12 +1881,10 @@ function CardEditor({
 
   return (
     <form onSubmit={save} className="settings-form">
-      {/* 按鈕列統一放頂部，與世界設定畫面同款（2026-07-24 使用者拍板） */}
+      {/* 按鈕列統一放頂部，與世界設定畫面同款（2026-07-24 使用者拍板）。
+          返回獨立成第二列貼齊儲存下方：按鈕變多後夾在刪除旁邊很難找（2026-07-28 使用者回報） */}
       <div className="row">
         <button type="submit">{t("saveCard")}</button>
-        <button type="button" onClick={() => void handleBack()}>
-          {t("backToNow")}
-        </button>
         {!isNew && (
           <>
             {!isPlayer && (
@@ -1905,6 +1903,11 @@ function CardEditor({
             {t("unsavedChanges", { n: unsavedCount })}
           </span>
         )}
+      </div>
+      <div className="row">
+        <button type="button" onClick={() => void handleBack()}>
+          {t("backToNow")}
+        </button>
       </div>
       <div className="card-editor-avatar">
         {shownImage ? (
