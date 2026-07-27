@@ -65,6 +65,56 @@ pub fn character_image(root: &Path, world: &str, name: &str) -> DataResult<Optio
     Ok(Some(base64_encode(&fs::read(path)?)))
 }
 
+pub fn save_character_image(root: &Path, world: &str, name: &str, bytes: &[u8]) -> DataResult<()> {
+    save_character_png(root, world, name, bytes, "png")
+}
+
+pub fn delete_character_image(root: &Path, world: &str, name: &str) -> DataResult<()> {
+    delete_character_png(root, world, name, "png")
+}
+
+pub fn character_avatar(root: &Path, world: &str, name: &str) -> DataResult<Option<String>> {
+    let path = data::character_path(root, world, name)?.with_extension("avatar.png");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(base64_encode(&fs::read(path)?)))
+}
+
+pub fn save_character_avatar(root: &Path, world: &str, name: &str, bytes: &[u8]) -> DataResult<()> {
+    save_character_png(root, world, name, bytes, "avatar.png")
+}
+
+pub fn delete_character_avatar(root: &Path, world: &str, name: &str) -> DataResult<()> {
+    delete_character_png(root, world, name, "avatar.png")
+}
+
+fn save_character_png(
+    root: &Path,
+    world: &str,
+    name: &str,
+    bytes: &[u8],
+    extension: &str,
+) -> DataResult<()> {
+    if !bytes.starts_with(PNG_MAGIC) {
+        return Err(data::invalid_data("圖片必須是 PNG"));
+    }
+    let path = data::character_path(root, world, name)?;
+    if !path.exists() {
+        return Err(data::invalid_data(format!("角色 {name} 不存在")));
+    }
+    fs::write(path.with_extension(extension), bytes)?;
+    Ok(())
+}
+
+fn delete_character_png(root: &Path, world: &str, name: &str, extension: &str) -> DataResult<()> {
+    let path = data::character_path(root, world, name)?.with_extension(extension);
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
 fn string_field<'a>(data: &'a Value, field: &str) -> Option<&'a str> {
     data.get(field).and_then(Value::as_str)
 }
@@ -365,5 +415,71 @@ mod tests {
             .unwrap();
         assert_eq!(decode_base64(encoded.as_bytes()).unwrap(), png);
         assert_eq!(character_image(root.path(), "酒館", "沒圖").unwrap(), None);
+    }
+
+    #[test]
+    fn saves_and_reads_character_image_and_avatar() {
+        let root = TestRoot::new("save-images");
+        data::create_world(root.path(), "酒館").unwrap();
+        let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
+        import_character(root.path(), "酒館", &png, "#111111").unwrap();
+        let image = PNG_MAGIC.iter().copied().chain([1, 2]).collect::<Vec<_>>();
+        let avatar = PNG_MAGIC.iter().copied().chain([3, 4]).collect::<Vec<_>>();
+
+        save_character_image(root.path(), "酒館", "凱恩", &image).unwrap();
+        save_character_avatar(root.path(), "酒館", "凱恩", &avatar).unwrap();
+
+        assert_eq!(
+            decode_base64(
+                character_image(root.path(), "酒館", "凱恩")
+                    .unwrap()
+                    .unwrap()
+                    .as_bytes()
+            )
+            .unwrap(),
+            image
+        );
+        assert_eq!(
+            decode_base64(
+                character_avatar(root.path(), "酒館", "凱恩")
+                    .unwrap()
+                    .unwrap()
+                    .as_bytes()
+            )
+            .unwrap(),
+            avatar
+        );
+    }
+
+    #[test]
+    fn save_character_images_reject_invalid_png_and_missing_character() {
+        let root = TestRoot::new("reject-images");
+        data::create_world(root.path(), "酒館").unwrap();
+
+        assert_eq!(
+            save_character_image(root.path(), "酒館", "凱恩", b"not png")
+                .unwrap_err()
+                .to_string(),
+            "圖片必須是 PNG"
+        );
+        assert_eq!(
+            save_character_avatar(root.path(), "酒館", "凱恩", PNG_MAGIC)
+                .unwrap_err()
+                .to_string(),
+            "角色 凱恩 不存在"
+        );
+    }
+
+    #[test]
+    fn delete_character_images_is_idempotent() {
+        let root = TestRoot::new("delete-images");
+        data::create_world(root.path(), "酒館").unwrap();
+        let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
+        import_character(root.path(), "酒館", &png, "#111111").unwrap();
+
+        delete_character_image(root.path(), "酒館", "凱恩").unwrap();
+        delete_character_image(root.path(), "酒館", "凱恩").unwrap();
+        delete_character_avatar(root.path(), "酒館", "凱恩").unwrap();
+        delete_character_avatar(root.path(), "酒館", "凱恩").unwrap();
     }
 }

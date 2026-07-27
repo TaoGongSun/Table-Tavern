@@ -1093,6 +1093,10 @@ pub fn delete_character(root: &Path, world: &str, name: &str) -> DataResult<()> 
     if image_path.exists() {
         fs::remove_file(image_path)?;
     }
+    let avatar_path = path.with_extension("avatar.png");
+    if avatar_path.exists() {
+        fs::remove_file(avatar_path)?;
+    }
     Ok(())
 }
 
@@ -2023,7 +2027,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_character_removes_card_and_png() {
+    fn delete_character_removes_card_and_images() {
         let root = TestRoot::new("delete-character");
         create_world(root.path(), "世界").unwrap();
         let card = CharacterCard {
@@ -2039,13 +2043,16 @@ mod tests {
         write_character(root.path(), "世界", &card).unwrap();
         let md_path = character_path(root.path(), "世界", "退場角色").unwrap();
         let png_path = md_path.with_extension("png");
+        let avatar_path = md_path.with_extension("avatar.png");
         fs::write(&png_path, b"png").unwrap();
+        fs::write(&avatar_path, b"avatar").unwrap();
 
         delete_character(root.path(), "世界", "退場角色").unwrap();
 
         assert!(list_characters(root.path(), "世界").unwrap().is_empty());
         assert!(!md_path.exists());
         assert!(!png_path.exists());
+        assert!(!avatar_path.exists());
     }
 
     #[test]
