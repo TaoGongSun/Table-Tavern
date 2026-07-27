@@ -1097,8 +1097,13 @@ pub fn set_character_archived(
 }
 
 pub fn delete_character(root: &Path, world: &str, name: &str) -> DataResult<()> {
+    // character_path 會先跑 validate_name，下面幾條以角色名組出的路徑才安全
     let path = character_path(root, world, name)?;
     fs::remove_file(&path)?;
+    let gallery = gallery_dir(root, world, name);
+    if gallery.exists() {
+        fs::remove_dir_all(gallery)?;
+    }
     let image_path = path.with_extension("png");
     if image_path.exists() {
         fs::remove_file(image_path)?;
@@ -2174,6 +2179,9 @@ mod tests {
         let avatar_path = md_path.with_extension("avatar.png");
         fs::write(&png_path, b"png").unwrap();
         fs::write(&avatar_path, b"avatar").unwrap();
+        let gallery = gallery_dir(root.path(), "世界", "退場角色");
+        fs::create_dir_all(&gallery).unwrap();
+        fs::write(gallery.join("1.png"), b"gen").unwrap();
 
         delete_character(root.path(), "世界", "退場角色").unwrap();
 
@@ -2181,6 +2189,8 @@ mod tests {
         assert!(!md_path.exists());
         assert!(!png_path.exists());
         assert!(!avatar_path.exists());
+        // 圖庫不清會留孤兒檔，之後建同名角色還會撿到舊圖
+        assert!(!gallery.exists());
     }
 
     #[test]
