@@ -503,6 +503,8 @@ textarea {
   background: var(--surface-2);
   box-shadow: var(--shadow-card);
   cursor: pointer;
+  /* WKWebView 只認前綴版，標準寫法要一起留給其他平台 */
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -1418,6 +1420,7 @@ textarea {
   gap: 0.75rem;
   padding: 0.65rem;
   cursor: grab;
+  -webkit-user-select: none;
   user-select: none;
 }
 
