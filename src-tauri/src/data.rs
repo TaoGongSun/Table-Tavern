@@ -187,6 +187,8 @@ pub struct WorldState {
     #[serde(default)]
     pub model_bindings: BTreeMap<String, String>,
     #[serde(default)]
+    pub player_card_id: Option<String>,
+    #[serde(default)]
     pub current_scene: u64,
     #[serde(default)]
     pub catchup_summaries: BTreeMap<String, String>,
@@ -326,6 +328,7 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
         id: id.clone(),
         name: name.to_owned(),
         model_bindings: BTreeMap::new(),
+        player_card_id: None,
         current_scene: 0,
         catchup_summaries: BTreeMap::new(),
         scene_titles: BTreeMap::new(),
@@ -1121,6 +1124,9 @@ pub fn list_characters(root: &Path, world_id: &str) -> DataResult<Vec<CharacterM
         return Ok(Vec::new());
     }
 
+    let player_card_id = read_state(root, world_id)
+        .ok()
+        .and_then(|state| state.player_card_id);
     let mut characters = Vec::new();
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
@@ -1129,7 +1135,10 @@ pub fn list_characters(root: &Path, world_id: &str) -> DataResult<Vec<CharacterM
         {
             let contents = fs::read_to_string(entry.path())?;
             match parse_frontmatter(&contents) {
-                Ok((meta, _, _)) => characters.push(meta),
+                Ok((meta, _, _)) if player_card_id.as_deref() != Some(&meta.id) => {
+                    characters.push(meta)
+                }
+                Ok(_) => {}
                 Err(error) => {
                     eprintln!("略過無法解析的角色卡 {}: {error}", entry.path().display())
                 }
@@ -1193,6 +1202,22 @@ pub fn read_character(
         public_md,
         private_md,
     })
+}
+
+pub fn read_player_card(root: &Path, world_id: &str) -> DataResult<Option<CharacterCard>> {
+    let Some(character_id) = read_state(root, world_id)
+        .ok()
+        .and_then(|state| state.player_card_id)
+    else {
+        return Ok(None);
+    };
+    let Ok(path) = character_path(root, world_id, &character_id) else {
+        return Ok(None);
+    };
+    if !path.is_file() {
+        return Ok(None);
+    }
+    read_character(root, world_id, &character_id).map(Some)
 }
 
 /// id 由呼叫端先跟 new_id 要好（草稿期生圖需要落在正確的圖庫路徑）；空 id 直接回錯。
@@ -1996,6 +2021,37 @@ mod tests {
                 id: world_id,
                 name: "群島".to_owned()
             }]
+        );
+    }
+
+    #[test]
+    fn list_characters_excludes_player_card() {
+        let root = TestRoot::new("player-card");
+        let world_id = create_world(root.path(), "玩家卡桌").unwrap();
+        let player = character_card(&new_id(), "阿濤");
+        let npc = character_card(&new_id(), "狐狸");
+        write_character(root.path(), &world_id, &player).unwrap();
+        write_character(root.path(), &world_id, &npc).unwrap();
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state.player_card_id = Some(player.id.clone());
+        write_state(root.path(), &world_id, &state).unwrap();
+
+        assert_eq!(
+            list_characters(root.path(), &world_id).unwrap(),
+            vec![CharacterMeta {
+                id: npc.id,
+                name: npc.name,
+                color: npc.color,
+                avatar: npc.avatar,
+                tier: npc.tier,
+                show_image: npc.show_image,
+                archived: npc.archived,
+                display_index: Some(1),
+            }]
+        );
+        assert_eq!(
+            read_player_card(root.path(), &world_id).unwrap(),
+            Some(player)
         );
     }
 

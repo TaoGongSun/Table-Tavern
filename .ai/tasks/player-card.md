@@ -1,9 +1,9 @@
 # Task
 Task-ID: player-card
 Title: 玩家角色卡：給玩家名字與社會身份，NPC 能叫得出你
-Status: todo
+Status: in-progress
 Created: 2026-07-28T20:30:00+08:00
-Updated: 2026-07-28T20:30:00+08:00
+Updated: 2026-07-28T22:40:00+08:00
 
 ## Summary
 
@@ -16,15 +16,14 @@ Updated: 2026-07-28T20:30:00+08:00
 3. **視覺走 GM 卡同系的「特殊卡」樣式**（點開進玩家卡編輯器），與有陣營色條的 NPC 卡自然區隔。
 4. **每桌一張**，存在該桌資料底下；**沒設卡＝完全維持現狀**（顯示與提示詞都跟今天一樣）。
 
-### 實作要點
+5. **頭像與角色卡同級**（2026-07-28 追加拍板）：emoji＋可上傳圓形頭像＋可放整張大圖，沿用角色卡既有那一套。
 
-- **提示詞**：角色發言與 GM 旁白的 system prompt 加一段玩家身份描述（`src-tauri/src/transport.rs`，角色約 :86、旁白約 :147）。
-- **點名哨兵會撞名（最大陷阱）**：GM 點名輪到玩家時輸出 `PLAYER_SENTINEL`（`transport.rs:133`，值＝「玩家」）；玩家有名字後 GM 很可能改喊玩家名字，解析（`transport.rs:281` 附近、`lib.rs:979`）要把玩家名字也映射回哨兵。點名 prompt（`transport.rs:275`）可同步告知玩家名字。
-- **逐字稿發言名**：玩家發言的 `speaker_name` 改用玩家名字（前端 `src/App.tsx:2779` 與後端 `data.rs` 各處寫死的「玩家」）；未設卡維持「玩家」。
-- **側欄掛卡位置**：`src/App.tsx:2890` 起的 character-panel，GM 卡（:2893）之後、`castDrag.order.map`（:2919）之前。
+### 存檔格式（拍板）
+
+玩家卡＝一張普通角色卡，存該桌 `characters/<id>.md`，id 記在 `state.json` 的 `player_card_id`；`list_characters` 濾掉它，側欄清單／GM 登場角色／點名名單一次全乾淨。為何選這個：頭像、上傳圖、AI 生圖、圖庫等既有機制全部免費繼承，後端零新命令。
 
 ## Next action
-- 開工：先定玩家卡存檔格式（建議比照角色卡存桌資料夾下，走既有 read/write 命令模式），再依實作要點動工；驗收必測「點名輪到玩家」在有玩家名字時仍能正確停下。
+- 前後端實作完成（`cargo test` 106 綠、`npm run build` 綠），等使用者實機驗收；驗收四項與現場見 [handoffs/player-card.md](../handoffs/player-card.md)，必測「點名輪到玩家」在有玩家名字時仍能正確停下。
 
 ## Constraints
 - 沒設玩家卡時，一切行為與現狀完全相同（含提示詞內容），不得多塞空段落。
