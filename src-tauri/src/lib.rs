@@ -233,13 +233,12 @@ fn upsert_worldbook_entry(
 }
 
 #[tauri::command]
-fn move_worldbook_entry(
+fn reorder_worldbook_entries(
     app: tauri::AppHandle,
     world: String,
-    uid: u64,
-    up: bool,
+    uids: Vec<u64>,
 ) -> Result<(), String> {
-    data::move_worldbook_entry(&data_root(&app)?, &world, uid, up)
+    data::reorder_worldbook_entries(&data_root(&app)?, &world, &uids)
         .map_err(|error| error.to_string())
 }
 
@@ -267,6 +266,15 @@ fn export_worldbook(app: tauri::AppHandle, world: String, path: String) -> Resul
 #[tauri::command]
 fn list_characters(app: tauri::AppHandle, world: String) -> Result<Vec<CharacterMeta>, String> {
     data::list_characters(&data_root(&app)?, &world).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn reorder_characters(
+    app: tauri::AppHandle,
+    world: String,
+    names: Vec<String>,
+) -> Result<(), String> {
+    data::reorder_characters(&data_root(&app)?, &world, &names).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -964,11 +972,12 @@ pub fn run() {
             write_world_md,
             read_worldbook,
             upsert_worldbook_entry,
-            move_worldbook_entry,
+            reorder_worldbook_entries,
             delete_worldbook_entry,
             import_worldbook,
             export_worldbook,
             list_characters,
+            reorder_characters,
             read_character,
             write_character,
             set_character_archived,

@@ -54,6 +54,7 @@ pub fn import_character(
         tier: Tier::parse("default")?,
         show_image: true,
         archived: false,
+        display_index: None,
     })
 }
 
@@ -314,7 +315,7 @@ mod tests {
             fs::read_to_string(root.path().join("worlds/酒館/characters/莉亞.md")).unwrap();
         assert!(
             markdown.contains(
-                "---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\narchived: false\ngen_prompt: \n---"
+                "---\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: default\nshow_image: true\narchived: false\ndisplay_index: 0\ngen_prompt: \n---"
             )
         );
         for section in [
