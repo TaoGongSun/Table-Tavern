@@ -24,7 +24,8 @@ Updated: 2026-07-25T01:20:00+08:00
 
 ## Next action
 - 使用者（英文合作者）實機驗收深色模式（系統切深色主題看 token 對應）與長對話 playbill 呈現（需 API key 實聊才有 dialogue 事件）
-- 驗收後評估殘留項：舊 .container／first-run 畫面樣式僅粗略 token 化；淺色主題是推導稿未經設計輪；zh-TW 按鈕文案無 casing 問題不動
+- 驗收後評估殘留項：舊 .container／first-run 畫面樣式僅粗略 token 化；zh-TW 按鈕文案無 casing 問題不動
+- 淺色主題調色已由使用者 2026-07-27 逐輪驗收定案（去黃→中性灰，GM 書皮改石板灰帶一點暖），詳見交接檔
 
 ## Constraints
 - 不發明 UI：任何新視覺元素都要對應既有系統功能或狀態，實作前先對 App.tsx／後端指令查證。

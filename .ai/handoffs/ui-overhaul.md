@@ -12,6 +12,7 @@ Emblem 設計系統第一輪實作完成：App.css 全面重寫成 token 制（�
 - **i18n**：en 按鈕文案 Title Case（New Act、GM Narration、GM Advance、Export Transcript、Install with One Click 等 23 鍵）；新增 `playerLabel`（zh 玩家／en You）。zh-TW 文案未動。
 - **刪除**：`Avatar` 元件（三個使用點全改版後無人引用）；舊 message-bubble／character-card 樣式。
 - 合作者 pull 進來的 `cli-install-progress` 樣式已 token 化保留（App.css 尾段）。
+- **淺色主題去黃定案**（2026-07-27 使用者逐輪驗收）：底色三層改純中性灰 `--surface-0 #eceae5→#e8e8e8`、`--surface-1 #f6f5f2→#f3f3f3`、`--surface-3 #fbfaf8→#fafafa`（`--surface-2` 本就純白不動），App.tsx `THEME_SWATCH.light.bg` 同步（註記要求與 surface-0 一致）；GM 卡書皮 `--gm-leather #ab9779→#9a9b95`（暖棕 38° → 石板灰帶一點暖，混白後約 `#b4b5b0`），只動淺色，其餘六套主題書皮不變。commit ffd2421、f495949、8a07629。
 
 ## Verification
 - `npm run build`：tsc＋vite 綠，無型別錯誤（輸出 dist/assets/index-*.css 14.80 kB）。
