@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import Cropper, { Area } from "react-easy-crop";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, save } from "@tauri-apps/plugin-dialog";
@@ -1243,26 +1244,124 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   );
 }
 
+function CropDialog({
+  title,
+  src,
+  aspect,
+  cropShape,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  src: string;
+  aspect: number;
+  cropShape: "rect" | "round";
+  onConfirm: (bytes: number[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [message, setMessage] = useState("");
+
+  async function confirmCrop() {
+    if (!croppedAreaPixels) return;
+    setMessage("");
+    try {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Unable to load image"));
+        image.src = src;
+      });
+      const size = cropShape === "round" ? 256 : Math.min(Math.round(croppedAreaPixels.width), 1024);
+      const height =
+        cropShape === "round"
+          ? 256
+          : Math.max(1, Math.round((croppedAreaPixels.height / croppedAreaPixels.width) * size));
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Unable to create image canvas");
+      // 頭像存正方形原樣，圓形與黑框由 CSS 畫（拍板規格），canvas 不做圓形裁切
+      context.drawImage(
+        image,
+        croppedAreaPixels.x,
+        croppedAreaPixels.y,
+        croppedAreaPixels.width,
+        croppedAreaPixels.height,
+        0,
+        0,
+        size,
+        height,
+      );
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Unable to crop image"))), "image/png");
+      });
+      await onConfirm(Array.from(new Uint8Array(await blob.arrayBuffer())));
+      onCancel();
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <strong>{title}</strong>
+          <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={onCancel}>×</button>
+        </div>
+        <div className="crop-area">
+          <Cropper
+            image={src}
+            crop={crop}
+            zoom={zoom}
+            aspect={aspect}
+            cropShape={cropShape}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={(_, area) => setCroppedAreaPixels(area)}
+          />
+        </div>
+        <label className="crop-zoom">
+          {t("zoomLabel")}
+          <input type="range" min={1} max={4} step={0.05} value={zoom} onChange={(event) => setZoom(Number(event.currentTarget.value))} />
+        </label>
+        <div className="row">
+          <button type="button" onClick={() => void confirmCrop()}>{t("cropConfirm")}</button>
+          <button type="button" onClick={onCancel}>{t("cropCancel")}</button>
+          {message && <span role="alert">{message}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CardEditor({
   world,
   name,
-  hasImage,
-  avatarDataUrl,
+  imageDataUrl,
+  avatarImgUrl,
+  onImagesChanged,
   onSaved,
   onArchived,
   onBack,
 }: {
   world: string;
   name: string;
-  hasImage: boolean;
-  // 匯入卡的 PNG（來源 App 的 characterImages 快取）；沒有就退回大顆 emoji 頭像
-  avatarDataUrl?: string;
+  imageDataUrl?: string;
+  avatarImgUrl?: string;
+  onImagesChanged: () => Promise<void>;
   onBack: () => void;
   onSaved: () => void;
   onArchived: () => Promise<void>;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [message, setMessage] = useState("");
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [croppingAvatar, setCroppingAvatar] = useState(false);
 
   useEffect(() => {
     setMessage("");
@@ -1295,6 +1394,33 @@ function CardEditor({
     }
   }
 
+  function chooseImage(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => setPendingImage(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setMessage(String(reader.error));
+    reader.readAsDataURL(file);
+  }
+
+  async function removeImage() {
+    setMessage("");
+    try {
+      await invoke("delete_character_image", { world, name });
+      await onImagesChanged();
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
+  async function removeAvatar() {
+    setMessage("");
+    try {
+      await invoke("delete_character_avatar", { world, name });
+      await onImagesChanged();
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
   return (
     <form onSubmit={save} className="settings-form">
       {/* 按鈕列統一放頂部，與世界設定畫面同款（2026-07-24 使用者拍板） */}
@@ -1309,13 +1435,38 @@ function CardEditor({
         {message && <span>{message}</span>}
       </div>
       <div className="card-editor-avatar">
-        {avatarDataUrl ? (
-          <img className="card-editor-image" src={avatarDataUrl} alt="" />
+        {imageDataUrl ? (
+          <img className="card-editor-image" src={imageDataUrl} alt="" />
+        ) : avatarImgUrl ? (
+          <img className="avatar-round card-editor-avatar-round" src={avatarImgUrl} alt="" />
         ) : (
           <span className="card-editor-avatar-emoji" style={{ ["--ring" as string]: card.color }}>
             {card.avatar}
           </span>
         )}
+      </div>
+      <div className="row">
+        <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
+          {t(imageDataUrl ? "replaceImageBtn" : "addImageBtn")}
+        </button>
+        {imageDataUrl && (
+          <>
+            <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
+            <button type="button" onClick={() => setCroppingAvatar(true)}>{t("makeAvatarBtn")}</button>
+          </>
+        )}
+        {avatarImgUrl && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
+        <input
+          id={`character-image-${name}`}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) chooseImage(file);
+          }}
+        />
       </div>
       <label>
         {t("publicLabel")}
@@ -1333,7 +1484,7 @@ function CardEditor({
           onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
         />
       </label>
-      {hasImage && (
+      {imageDataUrl && (
         <label className="inline">
           <input
             type="checkbox"
@@ -1356,6 +1507,32 @@ function CardEditor({
           ))}
         </select>
       </label>
+      {pendingImage && (
+        <CropDialog
+          title={t("cropImageTitle")}
+          src={pendingImage}
+          aspect={2 / 3}
+          cropShape="rect"
+          onConfirm={async (data) => {
+            await invoke("save_character_image", { world, name, data });
+            await onImagesChanged();
+          }}
+          onCancel={() => setPendingImage(null)}
+        />
+      )}
+      {croppingAvatar && imageDataUrl && (
+        <CropDialog
+          title={t("cropAvatarTitle")}
+          src={imageDataUrl}
+          aspect={1}
+          cropShape="round"
+          onConfirm={async (data) => {
+            await invoke("save_character_avatar", { world, name, data });
+            await onImagesChanged();
+          }}
+          onCancel={() => setCroppingAvatar(false)}
+        />
+      )}
     </form>
   );
 }
@@ -1481,6 +1658,7 @@ function App() {
   const archivedCharacters = characters.filter((character) => character.archived);
   // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
+  const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
   const [characterName, setCharacterName] = useState("");
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
@@ -1516,18 +1694,21 @@ function App() {
   async function loadCharacterImages(world: string, cast: CharacterMeta[]) {
     const entries = await Promise.all(
       cast.map(async (c) => {
-        const encoded = await invoke<string | null>("read_character_image", {
-          world,
-          name: c.name,
-        }).catch(() => null);
-        return [c.name, encoded] as const;
+        const [image, avatar] = await Promise.all([
+          invoke<string | null>("read_character_image", { world, name: c.name }).catch(() => null),
+          invoke<string | null>("read_character_avatar", { world, name: c.name }).catch(() => null),
+        ]);
+        return [c.name, image, avatar] as const;
       }),
     );
     setCharacterImages(
       Object.fromEntries(
-        entries
-          .filter(([, encoded]) => encoded !== null)
-          .map(([name, encoded]) => [name, `data:image/png;base64,${encoded}`]),
+        entries.filter(([, image]) => image !== null).map(([name, image]) => [name, `data:image/png;base64,${image}`]),
+      ),
+    );
+    setCharacterAvatars(
+      Object.fromEntries(
+        entries.filter(([, , avatar]) => avatar !== null).map(([name, , avatar]) => [name, `data:image/png;base64,${avatar}`]),
       ),
     );
   }
@@ -2039,6 +2220,8 @@ function App() {
                 <span className="tcard-art">
                   {c.show_image && characterImages[c.name] ? (
                     <img className="tcard-image" src={characterImages[c.name]} alt="" />
+                  ) : characterAvatars[c.name] ? (
+                    <img className="avatar-round tcard-avatar" src={characterAvatars[c.name]} alt="" />
                   ) : (
                     <span aria-hidden="true">{c.avatar}</span>
                   )}
@@ -2228,8 +2411,9 @@ function App() {
             <CardEditor
               world={table}
               name={mainView.name}
-              hasImage={mainView.name in characterImages}
-              avatarDataUrl={characterImages[mainView.name]}
+              imageDataUrl={characterImages[mainView.name]}
+              avatarImgUrl={characterAvatars[mainView.name]}
+              onImagesChanged={() => loadCharacterImages(table, characters)}
               onSaved={() =>
                 invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
               }
@@ -2321,7 +2505,11 @@ function App() {
                     title={t("castHint", { name: speaker })}
                     style={{ ["--fac" as string]: metaOf(speaker)?.color ?? "#888888" }}
                   >
-                    <span aria-hidden="true">{metaOf(speaker)?.avatar ?? "🎭"}</span>
+                    {characterAvatars[speaker] ? (
+                      <img className="avatar-round opt-avatar" src={characterAvatars[speaker]} alt="" />
+                    ) : (
+                      <span aria-hidden="true">{metaOf(speaker)?.avatar ?? "🎭"}</span>
+                    )}
                     {speaker}
                   </span>
                 </div>

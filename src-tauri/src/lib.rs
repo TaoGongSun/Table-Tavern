@@ -319,6 +319,57 @@ fn read_character_image(
 }
 
 #[tauri::command]
+fn save_character_image(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    import::save_character_image(&data_root(&app)?, &world, &name, &data)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_character_image(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+) -> Result<(), String> {
+    import::delete_character_image(&data_root(&app)?, &world, &name)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn read_character_avatar(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+) -> Result<Option<String>, String> {
+    import::character_avatar(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_character_avatar(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    import::save_character_avatar(&data_root(&app)?, &world, &name, &data)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_character_avatar(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+) -> Result<(), String> {
+    import::delete_character_avatar(&data_root(&app)?, &world, &name)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn append_transcript(
     app: tauri::AppHandle,
     world: String,
@@ -646,6 +697,11 @@ pub fn run() {
             delete_character,
             import_character,
             read_character_image,
+            save_character_image,
+            delete_character_image,
+            read_character_avatar,
+            save_character_avatar,
+            delete_character_avatar,
             append_transcript,
             read_transcript,
             export_transcript,
