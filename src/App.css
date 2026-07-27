@@ -1003,11 +1003,15 @@ textarea {
   align-items: flex-start;
 }
 
-/* 兩塊各占一半：圖片與它的按鈕從中線起算靠左排，圖就落在畫面中央；
-   容器窄到放不下兩塊（min-width）就疊回上下 */
-.card-editor-actions,
+/* 左窄右寬（約 45:55）：分界比正中間再左一點，圖片與它的按鈕從那裡靠左排，
+   圖才落在畫面中央；容器窄到放不下兩塊（min-width）就疊回上下 */
+.card-editor-actions {
+  flex: 1 1 18rem;
+  min-width: 16rem;
+}
+
 .card-editor-media {
-  flex: 1 1 20rem;
+  flex: 1 1 22rem;
   min-width: 18rem;
 }
 
