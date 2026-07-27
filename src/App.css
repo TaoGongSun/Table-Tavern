@@ -33,6 +33,7 @@ body {
   --danger: #e07a6a;
   --ok: #a4cf9e; /* connected / success */
   --avatar-ring: #000;
+  --gm-leather: #5f4a33; /* GM 書皮基色：各主題跟著主配色換皮（實際上色見 .tcard-gm） */
 
   --font-ui: "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
   --font-story: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -89,6 +90,7 @@ body {
   --danger: #a43a2a;
   --ok: #3f7d3c;
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
+  --gm-leather: #ab9779; /* GM 書皮：淺暖棕（壓得過白卡即可） */
 }
 
 :root[data-theme="parchment"] {
@@ -112,6 +114,7 @@ body {
   --danger: #a43a2a;
   --ok: #3f7d3c;
   --shadow-card: 0 2px 6px rgba(80, 60, 15, 0.14);
+  --gm-leather: #a58e63; /* GM 書皮：淺琥珀 */
 }
 
 :root[data-theme="herbal"] {
@@ -135,6 +138,7 @@ body {
   --danger: #a43a2a;
   --ok: #35703a;
   --shadow-card: 0 2px 6px rgba(30, 55, 25, 0.13);
+  --gm-leather: #8a9a72; /* GM 書皮：淺苔綠 */
 }
 
 :root[data-theme="candlelight"] {
@@ -158,6 +162,7 @@ body {
   --danger: #e0806a;
   --ok: #a8cf9e;
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --gm-leather: #6f5228; /* GM 書皮：蜜蠟棕 */
 }
 
 :root[data-theme="port"] {
@@ -181,6 +186,7 @@ body {
   --danger: #e0806a;
   --ok: #a4cf9e;
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --gm-leather: #63394a; /* GM 書皮：酒紅皮革 */
 }
 
 :root[data-theme="seamist"] {
@@ -204,6 +210,7 @@ body {
   --danger: #a43a2a;
   --ok: #3f7d3c;
   --shadow-card: 0 2px 6px rgba(20, 45, 55, 0.13);
+  --gm-leather: #8595a3; /* GM 書皮：淺板岩藍 */
 }
 
 /* 舊版把 outline 全關掉是無障礙缺陷（ui-overhaul 檢討第一條）：鍵盤焦點一律可見 */
@@ -470,18 +477,6 @@ textarea {
   margin: -3px;
 }
 
-/* GM 也是一張組件卡（跟角色卡同尺寸），角色色用中性墨色與角色區分；
-   整張點擊開世界設定，右下的 ⚙ 只是指示，不是另一顆按鈕 */
-.tcard-gm {
-  --fac: var(--ink-2);
-}
-
-/* 圖窗吃 2:3（＝角色全身圖的裁切比例），GM 卡才會跟有圖片的角色卡等高。
-   書本圖置中不裁切：角色是滿版人像、GM 留白，一眼看出是系統機件 */
-.tcard-gm .tcard-art {
-  aspect-ratio: 2 / 3;
-}
-
 .gm-book {
   width: 2.5rem;
   height: 2.5rem;
@@ -508,6 +503,38 @@ textarea {
   background: var(--surface-2);
   box-shadow: var(--shadow-card);
   cursor: pointer;
+}
+
+/* GM 卡＝世界書的「書皮」：角色卡是跟主題走的白牌，GM 是桌上的實體書，
+   故用固定深皮革色＋燙金內框，三個主題下都同一張皮。
+   整張點擊開世界設定，右下的 ⚙ 只是指示，不是另一顆按鈕。
+   （放在 .tcard 之後：同權重靠順序蓋掉基底底色） */
+.tcard-gm {
+  --fac: #8a6a3c; /* 銅金：名字 wedge 跟著書皮走 */
+  /* 皮革色＝各主題的 --gm-leather 混主題底色（明度自動跟主題走，
+     2026-07-27 使用者回饋：固定深色在淺主題下太暗太顯眼）；上層半透明漸層是打光 */
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.16)),
+    color-mix(in srgb, var(--gm-leather) 74%, var(--surface-2));
+  color: var(--ink-1); /* 皮革變淺主題時 ⚙ 也要跟著轉深 */
+  /* 跟有圖角色卡等高（2.875rem 圖窗 × 3/2 = 4.3125rem ≈ 69px，使用者拍板） */
+  min-height: 4.3125rem;
+}
+
+/* 燙金內框：書皮的壓紋，畫在卡緣內縮 4px 處。
+   金色混 --ink-2：深主題偏淡金、淺主題偏深銅，跟皮革同步調亮暗 */
+.tcard-gm::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid color-mix(in srgb, #c9a24f 55%, var(--ink-2));
+  border-radius: 5px;
+  pointer-events: none;
+}
+
+/* 底色歸零讓整張卡是同一塊皮，書本圖直接印在皮上（高度由上面的 min-height 撐） */
+.tcard-gm .tcard-art {
+  background: none;
 }
 
 .tcard-art {
