@@ -2860,7 +2860,12 @@ function App() {
         setGenerating({ id: "", kind: "narration" });
         setStreamText("");
         const characterId = await invoke<string>("gm_suggest_speaker", { worldId: table });
-        if (characterId === PLAYER_SENTINEL) break;
+        // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
+        if (characterId === PLAYER_SENTINEL) {
+          const you = playerCard?.name || t("playerLabel");
+          await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name: you }) });
+          break;
+        }
         const name = metaOf(characterId)?.name ?? characterId;
         await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
         await replyOnce(characterId);
