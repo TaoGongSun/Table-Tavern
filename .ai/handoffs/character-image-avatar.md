@@ -8,6 +8,7 @@
 - 後端：import.rs 五個 fn（save/delete 全身圖、read/save/delete 頭像，共用 save_character_png／delete_character_png helper）＋lib.rs 五個 Tauri 指令註冊；data.rs delete_character 連 `<name>.avatar.png` 一起清；新增測試 4 條（往返、拒非 PNG／不存在角色、刪除冪等、刪角色清頭像）。
 - 前端：App.tsx CropDialog（modal 結構沿用、zoom 滑桿、canvas 輸出 PNG）；CardEditor 動作列（加入／更換／移除圖片、製作／移除頭像）；characterAvatars 快取併入 loadCharacterImages；tcard 圖窗／發言者列／編輯頁三處 emoji 位改吃圓頭像；i18n zh/en 各 10 鍵；CSS `--avatar-ring: #000`＋`.avatar-round`。
 - 主線修正：移除 codex 烘進 PNG 的圓形 clip——頭像存正方形原樣，圓形黑框純 CSS（App.tsx CropDialog confirmCrop 內註解）。
+- 2026-07-27 實測回饋修訂：角色卡編輯鈕 ✎ 圖示改「編輯」字鈕（i18n `editBtn`，原 worldbookEdit 更名共用），字級固定 12px 不隨文字大小偏好縮放、底色 surface-3 提高辨識；名牌右側預留 2.1→3.4rem。
 
 ## Verification
 - `cargo test`（本機）：`test result: ok. 80 passed; 0 failed`（codex 沙箱那條 transport mock 失敗係沙箱禁 TCP，本機通過）。
