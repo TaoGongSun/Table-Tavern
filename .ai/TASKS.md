@@ -11,6 +11,7 @@
 見 [DONE.md](DONE.md)（22 項）。
 
 ## Todo
+- [player-card](tasks/player-card.md) — 玩家角色卡：給玩家名字與社會身份，NPC 能叫得出你 — 下一步：設計已拍板（公開面欄位／GM 卡正下方／每桌一張／哨兵撞名處理），照任務檔實作要點開工
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
