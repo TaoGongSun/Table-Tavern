@@ -3408,7 +3408,13 @@ function App() {
                 }
                 disabled={!speaker || generating !== null}
               />
+              {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
+                  （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
               <div className="composer-send">
+                <button type="submit" disabled={!speaker || generating !== null}>
+                  {t("send")} ➤
+                </button>
+                <span className="spacer" />
                 <button
                   type="button"
                   onClick={() => requestReply(speaker)}
@@ -3432,10 +3438,6 @@ function App() {
                   title={t("gmAdvanceHint")}
                 >
                   {t("gmAdvance")}
-                </button>
-                <span className="spacer" />
-                <button type="submit" disabled={!speaker || generating !== null}>
-                  {t("send")} ➤
                 </button>
               </div>
             </form>
