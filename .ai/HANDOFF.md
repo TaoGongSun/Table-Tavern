@@ -6,6 +6,6 @@ Unfinished long-task handoffs tracked in this repository.
 - None.
 
 ## Paused or blocked
-- [mvp-4-director](handoffs/mvp-4-director.md) — paused / in-progress
-- [mvp-6-onboarding](handoffs/mvp-6-onboarding.md) — paused / in-progress
-- [mvp-7-packaging](handoffs/mvp-7-packaging.md) — paused / in-progress
+- None.
+
+（進行中任務的交接檔見 [handoffs/](handoffs/)，索引在 [TASKS.md](TASKS.md)；結案任務的交接檔封存於 [handoffs/archive/](handoffs/archive/)。）
