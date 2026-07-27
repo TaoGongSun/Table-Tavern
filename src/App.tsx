@@ -130,6 +130,17 @@ type DraftImage = { bytes: number[]; url: string };
 // 角色圖示快捷選項；輸入框沒限制在這幾個，系統 emoji 鍵盤打什麼都行
 const AVATAR_EMOJIS = ["🎭", "🧙", "🗡️", "🏹", "🛡️", "🐺", "🦊", "🐉", "👑", "💀", "🌙", "🕯️"];
 const DEFAULT_AVATAR = "🎭";
+const AVATAR_MAX_CHARS = 4;
+
+// 以「看得到的字元」為單位截斷：input 的 maxLength 算的是 UTF-16 單元，
+// 一顆 🗡️ 就佔 3 個，拿來限長會讓 emoji 只打得下一顆。
+function clampChars(value: string, max: number) {
+  const chars =
+    typeof Intl.Segmenter === "function"
+      ? Array.from(new Intl.Segmenter().segment(value), (unit) => unit.segment)
+      : Array.from(value);
+  return chars.slice(0, max).join("");
+}
 
 // 角色名檢查（建卡／改名共用）：規則對齊後端 validate_name（data.rs:197），
 // 前端先擋才不會讓使用者看到 `invalid name: ""` 這種內部訊息。空名由送出鈕 disabled 處理。
@@ -1656,8 +1667,7 @@ function CardEditor({
 
   const shownImage = draftImage === undefined ? imageDataUrl : draftImage?.url;
   const shownAvatar = draftAvatar === undefined ? avatarImgUrl : draftAvatar?.url;
-  const aiGenBlocked =
-    !card.name.trim() || !card.public_md.trim() || !card.private_md.trim();
+  const aiGenBlocked = !card.name.trim() || !card.public_md.trim();
   const unsavedCount =
     (JSON.stringify(card) !== savedCardJson ? 1 : 0) +
     (draftImage !== undefined ? 1 : 0) +
@@ -1838,8 +1848,12 @@ function CardEditor({
           <input
             className="emoji-input"
             value={card.avatar}
-            maxLength={8}
-            onChange={(e) => setCard({ ...card, avatar: e.currentTarget.value.replace(/\s/g, "") })}
+            onChange={(e) =>
+              setCard({
+                ...card,
+                avatar: clampChars(e.currentTarget.value.replace(/\s/g, ""), AVATAR_MAX_CHARS),
+              })
+            }
           />
           {AVATAR_EMOJIS.map((emoji) => (
             <button
