@@ -71,7 +71,7 @@ body {
 
 :root[data-theme="light"] {
   /* ---- tokens: light（石板紙色系，同一結構的亮色對應） ---- */
-  --surface-0: #eceae5;
+  --surface-0: #eae9e7;
   --surface-1: #f6f5f2;
   --surface-2: #ffffff;
   --surface-3: #fbfaf8;

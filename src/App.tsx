@@ -18,7 +18,7 @@ const THEME_LABEL_KEYS = { dark: "themeDark", light: "themeLight", parchment: "t
 // 色票縮圖用色（與 App.css 各主題 surface-0／accent 同步）
 const THEME_SWATCH: Record<string, { bg: string; dot: string }> = {
   dark: { bg: "#20242c", dot: "#e58057" },
-  light: { bg: "#eceae5", dot: "#b85a35" },
+  light: { bg: "#eae9e7", dot: "#b85a35" },
   parchment: { bg: "#eee8d5", dot: "#a2470e" },
   herbal: { bg: "#e2eadb", dot: "#3e6b34" },
   candlelight: { bg: "#251e15", dot: "#e0a24e" },
