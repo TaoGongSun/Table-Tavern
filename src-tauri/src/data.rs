@@ -1110,6 +1110,110 @@ pub fn delete_character(root: &Path, world: &str, name: &str) -> DataResult<()> 
     Ok(())
 }
 
+/// 生成圖庫目錄。注意層級：落在 {root}/{world}/gen-gallery/{角色名}，
+/// 與世界資料夾（{root}/worlds/{world}）不同層，改名時要一起搬。
+pub(crate) fn gallery_dir(root: &Path, world: &str, name: &str) -> PathBuf {
+    root.join(world).join("gen-gallery").join(name)
+}
+
+/// 角色改名：搬檔（卡片／全身圖／頭像／生成圖庫）＋回填以角色名為 key 的資料
+/// （劇情紀錄的 speaker、世界書條目可見角色、模型綁定）。
+/// 自然語言內文裡的舊名不動——機械取代會誤傷同名詞句（2026-07-27 使用者拍板）。
+pub fn rename_character(root: &Path, world: &str, from: &str, to: &str) -> DataResult<()> {
+    if from == to {
+        return Ok(());
+    }
+    validate_name(to)?;
+    let from_path = character_path(root, world, from)?;
+    let to_path = character_path(root, world, to)?;
+    if to_path.exists() {
+        return Err(invalid_data(format!("character already exists: {to}")));
+    }
+
+    let mut card = read_character(root, world, from)?;
+    card.name = to.to_owned();
+    fs::write(&to_path, serialize_character(&card))?;
+    fs::remove_file(&from_path)?;
+
+    for (old, new) in [
+        (from_path.with_extension("png"), to_path.with_extension("png")),
+        (
+            from_path.with_extension("avatar.png"),
+            to_path.with_extension("avatar.png"),
+        ),
+        (
+            gallery_dir(root, world, from),
+            gallery_dir(root, world, to),
+        ),
+    ] {
+        if old.exists() {
+            fs::rename(old, new)?;
+        }
+    }
+
+    rename_in_transcripts(root, world, from, to)?;
+    rename_in_worldbook(root, world, from, to)?;
+
+    let mut state = read_state(root, world)?;
+    if let Some(model) = state.model_bindings.remove(from) {
+        state.model_bindings.insert(to.to_owned(), model);
+        write_state(root, world, &state)?;
+    }
+    Ok(())
+}
+
+fn rename_in_transcripts(root: &Path, world: &str, from: &str, to: &str) -> DataResult<()> {
+    let directory = world_dir(root, world)?.join("transcript");
+    if !directory.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let text = fs::read_to_string(&path)?;
+        let mut changed = false;
+        let mut rewritten = String::with_capacity(text.len());
+        for line in text.lines() {
+            let mut event: TranscriptEvent = serde_json::from_str(line)?;
+            if event.speaker == from {
+                event.speaker = to.to_owned();
+                changed = true;
+            }
+            rewritten.push_str(&serde_json::to_string(&event)?);
+            rewritten.push('\n');
+        }
+        if changed {
+            fs::write(&path, rewritten)?;
+        }
+    }
+    Ok(())
+}
+
+fn rename_in_worldbook(root: &Path, world: &str, from: &str, to: &str) -> DataResult<()> {
+    let mut worldbook = read_worldbook_value(root, world)?;
+    let mut changed = false;
+    for (_, entry) in entries_object_mut(&mut worldbook)?.iter_mut() {
+        let Visibility::Characters(names) = visibility_from_value(entry) else {
+            continue;
+        };
+        if !names.iter().any(|name| name == from) {
+            continue;
+        }
+        let renamed = names
+            .into_iter()
+            .map(|name| if name == from { to.to_owned() } else { name })
+            .collect();
+        set_visibility(entry, &Visibility::Characters(renamed));
+        changed = true;
+    }
+    if changed {
+        write_worldbook_value(root, world, &worldbook)?;
+    }
+    Ok(())
+}
+
 fn transcript_path(root: &Path, world: &str, scene: u64) -> DataResult<PathBuf> {
     Ok(world_dir(root, world)?
         .join("transcript")
@@ -2077,6 +2181,110 @@ mod tests {
         assert!(!md_path.exists());
         assert!(!png_path.exists());
         assert!(!avatar_path.exists());
+    }
+
+    #[test]
+    fn rename_character_moves_files_and_backfills_references() {
+        let root = TestRoot::new("rename-character");
+        create_world(root.path(), "世界").unwrap();
+        let card = CharacterCard {
+            name: "舊名".to_owned(),
+            color: "#333333".to_owned(),
+            avatar: "🎭".to_owned(),
+            tier: Tier::Best,
+            show_image: true,
+            archived: false,
+            gen_prompt: String::new(),
+            public_md: "舊名是個吟遊詩人".to_owned(),
+            private_md: String::new(),
+        };
+        write_character(root.path(), "世界", &card).unwrap();
+        let old_md = character_path(root.path(), "世界", "舊名").unwrap();
+        fs::write(old_md.with_extension("png"), b"png").unwrap();
+        fs::write(old_md.with_extension("avatar.png"), b"avatar").unwrap();
+        let old_gallery = gallery_dir(root.path(), "世界", "舊名");
+        fs::create_dir_all(&old_gallery).unwrap();
+        fs::write(old_gallery.join("1.png"), b"gen").unwrap();
+        append_transcript(
+            root.path(),
+            "世界",
+            0,
+            &TranscriptEvent {
+                ts: "2026-07-27 12:00".to_owned(),
+                speaker: "舊名".to_owned(),
+                kind: TranscriptKind::Dialogue,
+                text: "舊名說了一句話".to_owned(),
+            },
+        )
+        .unwrap();
+        let mut entry = worldbook_entry(0, "條目");
+        entry.visibility = Visibility::Characters(vec!["舊名".to_owned(), "別人".to_owned()]);
+        upsert_worldbook_entry(root.path(), "世界", entry).unwrap();
+        let mut state = read_state(root.path(), "世界").unwrap();
+        state
+            .model_bindings
+            .insert("舊名".to_owned(), "model-x".to_owned());
+        write_state(root.path(), "世界", &state).unwrap();
+
+        rename_character(root.path(), "世界", "舊名", "新名").unwrap();
+
+        let renamed = read_character(root.path(), "世界", "新名").unwrap();
+        assert_eq!(renamed.name, "新名");
+        assert_eq!(renamed.tier, Tier::Best);
+        // 自然語言內文不動（拍板：機械取代會誤傷）
+        assert_eq!(renamed.public_md, "舊名是個吟遊詩人");
+        assert!(!old_md.exists());
+        let new_md = character_path(root.path(), "世界", "新名").unwrap();
+        assert!(new_md.with_extension("png").exists());
+        assert!(new_md.with_extension("avatar.png").exists());
+        assert!(!old_gallery.exists());
+        assert!(gallery_dir(root.path(), "世界", "新名").join("1.png").exists());
+
+        let events = read_transcript(root.path(), "世界", 0).unwrap();
+        assert_eq!(events[0].speaker, "新名");
+        assert_eq!(events[0].text, "舊名說了一句話");
+        assert_eq!(
+            read_worldbook(root.path(), "世界").unwrap()[0].visibility,
+            Visibility::Characters(vec!["新名".to_owned(), "別人".to_owned()])
+        );
+        assert_eq!(
+            read_state(root.path(), "世界")
+                .unwrap()
+                .model_bindings
+                .get("新名")
+                .map(String::as_str),
+            Some("model-x")
+        );
+    }
+
+    #[test]
+    fn rename_character_rejects_collision_and_invalid_names() {
+        let root = TestRoot::new("rename-character-guard");
+        create_world(root.path(), "世界").unwrap();
+        for name in ["甲", "乙"] {
+            write_character(
+                root.path(),
+                "世界",
+                &CharacterCard {
+                    name: name.to_owned(),
+                    color: "#333333".to_owned(),
+                    avatar: "🎭".to_owned(),
+                    tier: Tier::Default,
+                    show_image: true,
+                    archived: false,
+                    gen_prompt: String::new(),
+                    public_md: String::new(),
+                    private_md: String::new(),
+                },
+            )
+            .unwrap();
+        }
+
+        assert!(rename_character(root.path(), "世界", "甲", "乙").is_err());
+        assert!(rename_character(root.path(), "世界", "甲", "壞/名").is_err());
+        assert!(rename_character(root.path(), "世界", "甲", "").is_err());
+        rename_character(root.path(), "世界", "甲", "甲").unwrap();
+        assert!(character_path(root.path(), "世界", "甲").unwrap().exists());
     }
 
     #[test]
