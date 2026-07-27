@@ -409,7 +409,7 @@ textarea {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  /* 右側留位給檔位寶石與編輯鈕（絕對定位），名牌絕不壓到它們下面；
+  /* 右側留位給編輯鈕（絕對定位），名牌絕不壓到它下面；
      編輯鈕字級固定 px，小字級（根字級縮小）時佔的 rem 變多，預留取最壞情況 */
   padding: 0.35rem 3.4rem 0.35rem 0;
 }
@@ -426,17 +426,24 @@ textarea {
   margin-left: -6px;
   width: fit-content;
   max-width: 100%;
+  min-width: 0; /* flex 列裡允許縮短出 ellipsis（tcard-name-row） */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   box-sizing: border-box;
 }
 
-/* 檔位寶石：右上角，「跟隨預設」不顯示（沒有明確檔位就沒有寶石） */
+/* 名牌＋檔位寶石同一列；名字過長時名牌縮、寶石不縮 */
+.tcard-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+/* 檔位寶石：名牌後面，「跟隨預設」不顯示（沒有明確檔位就沒有寶石） */
 .tcard-gem {
-  position: absolute;
-  top: 0.375rem;
-  right: 0.375rem;
+  flex: none;
   font: 800 var(--fs-gem) / 1 var(--font-ui);
   letter-spacing: 0.04em;
   padding: 0.3em 0.5em;
