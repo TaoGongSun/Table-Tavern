@@ -1362,6 +1362,7 @@ function CardEditor({
   const [message, setMessage] = useState("");
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [croppingAvatar, setCroppingAvatar] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     setMessage("");
@@ -1436,7 +1437,15 @@ function CardEditor({
       </div>
       <div className="card-editor-avatar">
         {imageDataUrl ? (
-          <img className="card-editor-image" src={imageDataUrl} alt="" />
+          <button
+            type="button"
+            className="card-editor-image-zoom"
+            aria-label={t("viewImageLabel")}
+            title={t("viewImageLabel")}
+            onClick={() => setLightboxOpen(true)}
+          >
+            <img className="card-editor-image" src={imageDataUrl} alt="" />
+          </button>
         ) : avatarImgUrl ? (
           <img className="avatar-round card-editor-avatar-round" src={avatarImgUrl} alt="" />
         ) : (
@@ -1519,6 +1528,17 @@ function CardEditor({
           }}
           onCancel={() => setPendingImage(null)}
         />
+      )}
+      {lightboxOpen && imageDataUrl && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("viewImageLabel")}
+          onClick={() => setLightboxOpen(false)}
+        >
+          <img className="lightbox-image" src={imageDataUrl} alt="" />
+        </div>
       )}
       {croppingAvatar && imageDataUrl && (
         <CropDialog
