@@ -143,6 +143,8 @@ type DraftImage = { bytes: number[]; url: string };
 const AVATAR_EMOJIS = ["🎭", "🧙", "🗡️", "🏹", "🛡️", "🐺", "🦊", "🐉", "👑", "💀", "🌙", "🕯️"];
 const DEFAULT_AVATAR = "🎭";
 const AVATAR_MAX_CHARS = 4;
+// GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
+const PLAYER_SENTINEL = "__PLAYER__";
 
 // 以「看得到的字元」為單位截斷：input 的 maxLength 算的是 UTF-16 單元，
 // 一顆 🗡️ 就佔 3 個，拿來限長會讓 emoji 只打得下一顆。
@@ -2858,7 +2860,7 @@ function App() {
         setGenerating({ id: "", kind: "narration" });
         setStreamText("");
         const characterId = await invoke<string>("gm_suggest_speaker", { worldId: table });
-        if (characterId === "玩家") break;
+        if (characterId === PLAYER_SENTINEL) break;
         const name = metaOf(characterId)?.name ?? characterId;
         await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
         await replyOnce(characterId);
