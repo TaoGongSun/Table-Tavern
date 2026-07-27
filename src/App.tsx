@@ -127,6 +127,10 @@ const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399
 // 裁切完成的圖：bytes 給後端存檔、url 給畫面預覽（按儲存前只活在記憶體裡）
 type DraftImage = { bytes: number[]; url: string };
 
+// 角色圖示快捷選項；輸入框沒限制在這幾個，系統 emoji 鍵盤打什麼都行
+const AVATAR_EMOJIS = ["🎭", "🧙", "🗡️", "🏹", "🛡️", "🐺", "🦊", "🐉", "👑", "💀", "🌙", "🕯️"];
+const DEFAULT_AVATAR = "🎭";
+
 // 角色名檢查（建卡／改名共用）：規則對齊後端 validate_name（data.rs:197），
 // 前端先擋才不會讓使用者看到 `invalid name: ""` 這種內部訊息。空名由送出鈕 disabled 處理。
 // taken 傳完整名單（含收起的卡），同名會直接覆寫既有卡片。
@@ -1544,7 +1548,7 @@ function CardEditor({
       const blank: CharacterCard = {
         name: "",
         color: newCardColor,
-        avatar: "🎭",
+        avatar: DEFAULT_AVATAR,
         tier: "default",
         show_image: true,
         archived: false,
@@ -1564,19 +1568,22 @@ function CardEditor({
       .catch((reason) => setMessage(String(reason)));
   }, [world, name, newCardColor]);
 
+  // 生圖與圖庫的檔案身分：既有卡片一律用已存檔的名字（改名未存檔時仍指向舊資料夾，
+  // 存檔時才由 rename_character 整包搬走）；新卡草稿用當下填的名字
+  const galleryName = name ?? card?.name.trim() ?? "";
   const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
   const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
 
   async function loadGalleryPage(files: string[], start: number) {
     const page = files.slice(start, start + GALLERY_PAGE_SIZE);
-    const images = await Promise.all(page.map(async (file) => [file, await invoke<string>("read_gallery_image", { world, name, file })] as const));
+    const images = await Promise.all(page.map(async (file) => [file, await invoke<string>("read_gallery_image", { world, name: galleryName, file })] as const));
     setGalleryImages((current) => ({ ...current, ...Object.fromEntries(images) }));
     setGalleryLoaded(Math.min(start + page.length, files.length));
   }
 
   async function refreshGallery() {
-    const files = await invoke<string[]>("list_gallery_images", { world, name });
+    const files = await invoke<string[]>("list_gallery_images", { world, name: galleryName });
     setGalleryFiles(files);
     setGalleryImages({});
     setGalleryLoaded(0);
@@ -1614,10 +1621,15 @@ function CardEditor({
     setAiGenerating(true);
     setAiGenError("");
     try {
-      await invoke<string>("generate_character_image", { world, name, extraPrompt: aiPrompt, source: aiSource });
-      // 後端生圖時已把追加描寫寫進卡片，這裡同步記憶體與存檔快照，否則之後按儲存會把它蓋回舊值
+      await invoke<string>("generate_character_image", {
+        world,
+        name: galleryName,
+        description: card?.public_md ?? "",
+        extraPrompt: aiPrompt,
+        source: aiSource,
+      });
+      // 追加描寫記進草稿，跟其他欄位一起等按儲存才落地
       setCard((current) => (current ? { ...current, gen_prompt: aiPrompt } : current));
-      setSavedCardJson((json) => (json ? JSON.stringify({ ...JSON.parse(json), gen_prompt: aiPrompt }) : json));
       await refreshGallery();
       await onPreference("image_source", aiSource);
       if (!sponsorUnlocked) await onPreference("ai_image_trials_used", trialsUsed + 1);
@@ -1631,7 +1643,7 @@ function CardEditor({
   async function deleteGalleryImage(file: string) {
     const accepted = await confirm(t("aiGalleryDeleteConfirm"), { title: t("aiGalleryDeleteTitle"), kind: "warning" });
     if (!accepted) return;
-    await invoke("delete_gallery_image", { world, name, file });
+    await invoke("delete_gallery_image", { world, name: galleryName, file });
     setGalleryFiles((current) => current.filter((item) => item !== file));
     setGalleryImages((current) => {
       const { [file]: _, ...remaining } = current;
@@ -1644,6 +1656,8 @@ function CardEditor({
 
   const shownImage = draftImage === undefined ? imageDataUrl : draftImage?.url;
   const shownAvatar = draftAvatar === undefined ? avatarImgUrl : draftAvatar?.url;
+  const aiGenBlocked =
+    !card.name.trim() || !card.public_md.trim() || !card.private_md.trim();
   const unsavedCount =
     (JSON.stringify(card) !== savedCardJson ? 1 : 0) +
     (draftImage !== undefined ? 1 : 0) +
@@ -1666,7 +1680,12 @@ function CardEditor({
       setMessage(nameError);
       return;
     }
-    const saved: CharacterCard = { ...card, name: target };
+    // 圖示清空就回預設，免得沒圖也沒 emoji 的空白角色
+    const saved: CharacterCard = {
+      ...card,
+      name: target,
+      avatar: card.avatar.trim() || DEFAULT_AVATAR,
+    };
     try {
       // 改名要先搬檔＋回填引用，再寫卡片內容；建新卡直接寫
       if (name !== null && target !== name) {
@@ -1774,16 +1793,18 @@ function CardEditor({
         <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
           {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
         </button>
-        {/* 生圖要讀已存檔的角色設定、圖也存在以角色名為名的資料夾，故新卡得先存過一次 */}
-        <button
-          type="button"
-          className="ai-gen-btn"
-          disabled={name === null}
-          title={name === null ? t("aiGenNeedsSave") : undefined}
-          onClick={openAiGenerator}
-        >
-          ✨ {t("aiGenBtn")}
-        </button>
+        {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
+            提示掛在外層 span：disabled 的按鈕不收滑鼠事件，title 掛上去不會浮出來 */}
+        <span title={aiGenBlocked ? t("aiGenNeedsContent") : undefined}>
+          <button
+            type="button"
+            className="ai-gen-btn"
+            disabled={aiGenBlocked}
+            onClick={openAiGenerator}
+          >
+            ✨ {t("aiGenBtn")}
+          </button>
+        </span>
         {shownImage && (
           <>
             <button type="button" onClick={() => setDraftImage(null)}>{t("removeImageBtn")}</button>
@@ -1810,6 +1831,28 @@ function CardEditor({
           placeholder={t("newCharacterPlaceholder")}
           onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
         />
+      </label>
+      <label>
+        {t("avatarEmojiLabel")}
+        <div className="emoji-row">
+          <input
+            className="emoji-input"
+            value={card.avatar}
+            maxLength={8}
+            onChange={(e) => setCard({ ...card, avatar: e.currentTarget.value.replace(/\s/g, "") })}
+          />
+          {AVATAR_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              className="emoji-preset"
+              aria-pressed={card.avatar === emoji}
+              onClick={() => setCard({ ...card, avatar: emoji })}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
       </label>
       <label>
         {t("publicLabel")}
