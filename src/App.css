@@ -718,10 +718,7 @@ textarea {
   background: var(--accent);
   color: var(--accent-ink);
   border: 0;
-  font-size: var(--fs-body);
   font-weight: 600;
-  height: 2.4rem;
-  padding: 0 1.2em;
 }
 
 .ai-gen-error small {
