@@ -299,6 +299,17 @@ fn delete_character(app: tauri::AppHandle, world: String, name: String) -> Resul
 }
 
 #[tauri::command]
+fn rename_character(
+    app: tauri::AppHandle,
+    world: String,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    data::rename_character(&data_root(&app)?, &world, &from, &to)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn import_character(
     app: tauri::AppHandle,
     world: String,
@@ -656,7 +667,7 @@ fn validate_gallery_component(value: &str, require_png: bool) -> Result<(), Stri
 
 fn gallery_directory(root: &std::path::Path, world: &str, name: &str) -> Result<PathBuf, String> {
     validate_gallery_component(name, false)?;
-    Ok(root.join(world).join("gen-gallery").join(name))
+    Ok(data::gallery_dir(root, world, name))
 }
 
 fn list_gallery_image_files(root: &std::path::Path, world: &str, name: &str) -> Result<Vec<String>, String> {
@@ -957,6 +968,7 @@ pub fn run() {
             write_character,
             set_character_archived,
             delete_character,
+            rename_character,
             import_character,
             read_character_image,
             save_character_image,

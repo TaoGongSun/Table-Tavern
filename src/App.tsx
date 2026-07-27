@@ -1470,6 +1470,8 @@ function CropDialog({
 function CardEditor({
   world,
   name,
+  takenNames,
+  newCardColor,
   imageDataUrl,
   avatarImgUrl,
   onImagesChanged,
@@ -1481,12 +1483,15 @@ function CardEditor({
   onOpenAiSettings,
 }: {
   world: string;
-  name: string;
+  /** null＝建新卡的空白草稿（名字在表單裡填，按儲存才落地） */
+  name: string | null;
+  takenNames: string[];
+  newCardColor: string;
   imageDataUrl?: string;
   avatarImgUrl?: string;
   onImagesChanged: () => Promise<void>;
   onBack: () => void;
-  onSaved: () => void;
+  onSaved: (name: string) => void;
   onArchived: () => Promise<void>;
   config: AppConfig;
   onPreference: (key: string, value: unknown) => Promise<void>;
@@ -1517,13 +1522,29 @@ function CardEditor({
     setMessage("");
     setDraftImage(undefined);
     setDraftAvatar(undefined);
+    if (name === null) {
+      const blank: CharacterCard = {
+        name: "",
+        color: newCardColor,
+        avatar: "🎭",
+        tier: "default",
+        show_image: true,
+        archived: false,
+        public_md: "",
+        private_md: "",
+        gen_prompt: "",
+      };
+      setCard(blank);
+      setSavedCardJson(JSON.stringify(blank));
+      return;
+    }
     invoke<CharacterCard>("read_character", { world, name })
       .then((loaded) => {
         setCard(loaded);
         setSavedCardJson(JSON.stringify(loaded));
       })
       .catch((reason) => setMessage(String(reason)));
-  }, [world, name]);
+  }, [world, name, newCardColor]);
 
   const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
   const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
@@ -1613,20 +1634,38 @@ function CardEditor({
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    if (!card) return;
+    const target = card.name.trim();
+    if (!target) {
+      setMessage(t("nameRequiredError"));
+      return;
+    }
+    const nameError = characterNameError(
+      target,
+      takenNames.filter((taken) => taken !== name),
+    );
+    if (nameError) {
+      setMessage(nameError);
+      return;
+    }
+    const saved: CharacterCard = { ...card, name: target };
     try {
-      await invoke("write_character", { world, card });
-      if (draftImage === null) await invoke("delete_character_image", { world, name });
-      else if (draftImage) await invoke("save_character_image", { world, name, data: draftImage.bytes });
-      if (draftAvatar === null) await invoke("delete_character_avatar", { world, name });
-      else if (draftAvatar) await invoke("save_character_avatar", { world, name, data: draftAvatar.bytes });
-      if (draftImage !== undefined || draftAvatar !== undefined) {
-        setDraftImage(undefined);
-        setDraftAvatar(undefined);
-        await onImagesChanged();
+      // 改名要先搬檔＋回填引用，再寫卡片內容；建新卡直接寫
+      if (name !== null && target !== name) {
+        await invoke("rename_character", { world, from: name, to: target });
       }
-      setSavedCardJson(JSON.stringify(card));
+      await invoke("write_character", { world, card: saved });
+      if (draftImage === null) await invoke("delete_character_image", { world, name: target });
+      else if (draftImage) await invoke("save_character_image", { world, name: target, data: draftImage.bytes });
+      if (draftAvatar === null) await invoke("delete_character_avatar", { world, name: target });
+      else if (draftAvatar) await invoke("save_character_avatar", { world, name: target, data: draftAvatar.bytes });
+      setDraftImage(undefined);
+      setDraftAvatar(undefined);
+      await onImagesChanged();
+      setCard(saved);
+      setSavedCardJson(JSON.stringify(saved));
       setMessage(t("saved"));
-      onSaved();
+      onSaved(target);
     } catch (reason) {
       setMessage(String(reason));
     }
@@ -1677,9 +1716,11 @@ function CardEditor({
         <button type="button" onClick={() => void handleBack()}>
           {t("backToNow")}
         </button>
-        <button type="button" className="archive-button" onClick={archive}>
-          {t("archiveCharacter")}
-        </button>
+        {name !== null && (
+          <button type="button" className="archive-button" onClick={archive}>
+            {t("archiveCharacter")}
+          </button>
+        )}
         {message && <span>{message}</span>}
         {unsavedCount > 0 && (
           <span className="unsaved-hint" role="status">
@@ -1710,7 +1751,16 @@ function CardEditor({
         <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
           {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
         </button>
-        <button type="button" className="ai-gen-btn" onClick={openAiGenerator}>✨ {t("aiGenBtn")}</button>
+        {/* 生圖要讀已存檔的角色設定、圖也存在以角色名為名的資料夾，故新卡得先存過一次 */}
+        <button
+          type="button"
+          className="ai-gen-btn"
+          disabled={name === null}
+          title={name === null ? t("aiGenNeedsSave") : undefined}
+          onClick={openAiGenerator}
+        >
+          ✨ {t("aiGenBtn")}
+        </button>
         {shownImage && (
           <>
             <button type="button" onClick={() => setDraftImage(null)}>{t("removeImageBtn")}</button>
@@ -1730,6 +1780,14 @@ function CardEditor({
           }}
         />
       </div>
+      <label>
+        {t("nameLabel")}
+        <input
+          value={card.name}
+          placeholder={t("newCharacterPlaceholder")}
+          onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
+        />
+      </label>
       <label>
         {t("publicLabel")}
         <textarea
@@ -1986,7 +2044,6 @@ function App() {
   // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
-  const [characterName, setCharacterName] = useState("");
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
@@ -2004,7 +2061,11 @@ function App() {
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<
-    { kind: "scene"; n: number } | { kind: "character"; name: string } | { kind: "world" } | null
+    | { kind: "scene"; n: number }
+    | { kind: "character"; name: string }
+    | { kind: "new-character" }
+    | { kind: "world" }
+    | null
   >(null);
   // 前幕清單浮層：只是開關狀態，不佔版面高度（NewPlan §9.4 主欄閱讀優先改造）
   const [actsOpen, setActsOpen] = useState(false);
@@ -2235,40 +2296,6 @@ function App() {
     }
   }
 
-  async function createCharacter(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    const name = characterName.trim();
-    if (!name) return;
-    const nameError = characterNameError(
-      name,
-      characters.map((character) => character.name),
-    );
-    if (nameError) {
-      setError(nameError);
-      return;
-    }
-    const card: CharacterCard = {
-      name,
-      color: PALETTE[characters.length % PALETTE.length],
-      avatar: "🎭",
-      tier: "default",
-      show_image: true,
-      archived: false,
-      public_md: "",
-      private_md: "",
-      gen_prompt: "",
-    };
-    try {
-      await invoke("write_character", { world: table, card });
-      setCharacters(await invoke<CharacterMeta[]>("list_characters", { world: table }));
-      setSpeaker(card.name);
-      setCharacterName("");
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端解析，顏色沿用建卡輪選
   async function importCharacter(file: File) {
     setError("");
@@ -2293,6 +2320,14 @@ function App() {
     setCharacters(cast);
     await loadCharacterImages(table, cast);
     return cast;
+  }
+
+  // 建卡或改名存檔後：名單與圖片重載，畫面停在存檔後的那張卡（草稿轉正、改名換 key）
+  async function finishCardSaved(saved: string) {
+    const previous = mainView?.kind === "character" ? mainView.name : null;
+    await refreshCharacters();
+    if (previous !== saved) setMainView({ kind: "character", name: saved });
+    if (previous === null || speaker === previous) setSpeaker(saved);
   }
 
   async function finishArchiving(name: string) {
@@ -2603,14 +2638,9 @@ function App() {
               </div>
             </details>
           )}
-          <form className="character-create" onSubmit={createCharacter}>
-            <input
-              aria-label={t("newCharacterAria")}
-              value={characterName}
-              onChange={(e) => setCharacterName(e.currentTarget.value)}
-              placeholder={t("newCharacterPlaceholder")}
-            />
-            <button type="submit" disabled={!characterName.trim()}>
+          {/* 建卡＝直接開空白角色卡編輯器，名字與內容都在那邊填（2026-07-27 使用者拍板） */}
+          <div className="character-create">
+            <button type="button" onClick={() => setMainView({ kind: "new-character" })}>
               {t("createCard")}
             </button>
             <button
@@ -2631,7 +2661,7 @@ function App() {
                 if (file) void importCharacter(file);
               }}
             />
-          </form>
+          </div>
         </section>
         <div className="sidebar-footer">
           <button className="settings-open" onClick={() => setSettingsOpen("appearance")}>
@@ -2735,18 +2765,28 @@ function App() {
             label={sceneDisplayLabel(mainView.n)}
             onBack={() => setMainView(null)}
           />
-        ) : mainView?.kind === "character" ? (
-          <EditPane title={t("editCardSummary", { name: mainView.name })}>
+        ) : mainView?.kind === "character" || mainView?.kind === "new-character" ? (
+          <EditPane
+            title={
+              mainView.kind === "new-character"
+                ? t("newCardTitle")
+                : t("editCardSummary", { name: mainView.name })
+            }
+          >
             <CardEditor
               world={table}
-              name={mainView.name}
-              imageDataUrl={characterImages[mainView.name]}
-              avatarImgUrl={characterAvatars[mainView.name]}
+              name={mainView.kind === "new-character" ? null : mainView.name}
+              takenNames={characters.map((character) => character.name)}
+              newCardColor={PALETTE[characters.length % PALETTE.length]}
+              imageDataUrl={mainView.kind === "character" ? characterImages[mainView.name] : undefined}
+              avatarImgUrl={mainView.kind === "character" ? characterAvatars[mainView.name] : undefined}
               onImagesChanged={() => loadCharacterImages(table, characters)}
-              onSaved={() =>
-                invoke<CharacterMeta[]>("list_characters", { world: table }).then(setCharacters)
+              onSaved={(saved) => void finishCardSaved(saved)}
+              onArchived={
+                mainView.kind === "character"
+                  ? () => finishArchiving(mainView.name)
+                  : async () => setMainView(null)
               }
-              onArchived={() => finishArchiving(mainView.name)}
               onBack={() => setMainView(null)}
               config={config}
               onPreference={changePreference}
