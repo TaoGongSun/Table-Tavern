@@ -124,6 +124,9 @@ const tierLabel = (tier: keyof typeof TIER_LABEL_KEYS) => t(TIER_LABEL_KEYS[tier
 
 const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
 
+// 裁切完成的圖：bytes 給後端存檔、url 給畫面預覽（按儲存前只活在記憶體裡）
+type DraftImage = { bytes: number[]; url: string };
+
 // 角色名檢查（建卡／改名共用）：規則對齊後端 validate_name（data.rs:197），
 // 前端先擋才不會讓使用者看到 `invalid name: ""` 這種內部訊息。空名由送出鈕 disabled 處理。
 // taken 傳完整名單（含收起的卡），同名會直接覆寫既有卡片。
@@ -1377,7 +1380,7 @@ function CropDialog({
   src: string;
   aspect: number;
   cropShape: "rect" | "round";
-  onConfirm: (bytes: number[]) => Promise<void>;
+  onConfirm: (image: DraftImage) => Promise<void>;
   onCancel: () => void;
 }) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -1420,7 +1423,11 @@ function CropDialog({
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Unable to crop image"))), "image/png");
       });
-      await onConfirm(Array.from(new Uint8Array(await blob.arrayBuffer())));
+      // bytes 給存檔用、url 給暫存預覽用（圖像按儲存才落地）
+      await onConfirm({
+        bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
+        url: canvas.toDataURL("image/png"),
+      });
       onCancel();
     } catch (reason) {
       setMessage(String(reason));
@@ -1486,6 +1493,11 @@ function CardEditor({
   onOpenAiSettings: () => void;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
+  const [savedCardJson, setSavedCardJson] = useState("");
+  // 圖像操作一律暫存，按儲存才落地（2026-07-27 使用者拍板）：
+  // undefined＝沒動過（沿用 props 的已存檔圖）、null＝已標記移除、物件＝待存的新圖
+  const [draftImage, setDraftImage] = useState<DraftImage | null | undefined>(undefined);
+  const [draftAvatar, setDraftAvatar] = useState<DraftImage | null | undefined>(undefined);
   const [message, setMessage] = useState("");
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [croppingAvatar, setCroppingAvatar] = useState(false);
@@ -1503,8 +1515,13 @@ function CardEditor({
 
   useEffect(() => {
     setMessage("");
+    setDraftImage(undefined);
+    setDraftAvatar(undefined);
     invoke<CharacterCard>("read_character", { world, name })
-      .then(setCard)
+      .then((loaded) => {
+        setCard(loaded);
+        setSavedCardJson(JSON.stringify(loaded));
+      })
       .catch((reason) => setMessage(String(reason)));
   }, [world, name]);
 
@@ -1559,6 +1576,9 @@ function CardEditor({
     setAiGenError("");
     try {
       await invoke<string>("generate_character_image", { world, name, extraPrompt: aiPrompt, source: aiSource });
+      // 後端生圖時已把追加描寫寫進卡片，這裡同步記憶體與存檔快照，否則之後按儲存會把它蓋回舊值
+      setCard((current) => (current ? { ...current, gen_prompt: aiPrompt } : current));
+      setSavedCardJson((json) => (json ? JSON.stringify({ ...JSON.parse(json), gen_prompt: aiPrompt }) : json));
       await refreshGallery();
       await onPreference("image_source", aiSource);
       if (!sponsorUnlocked) await onPreference("ai_image_trials_used", trialsUsed + 1);
@@ -1583,16 +1603,44 @@ function CardEditor({
 
   if (!card) return message ? <p role="alert">{message}</p> : null;
 
+  const shownImage = draftImage === undefined ? imageDataUrl : draftImage?.url;
+  const shownAvatar = draftAvatar === undefined ? avatarImgUrl : draftAvatar?.url;
+  const unsavedCount =
+    (JSON.stringify(card) !== savedCardJson ? 1 : 0) +
+    (draftImage !== undefined ? 1 : 0) +
+    (draftAvatar !== undefined ? 1 : 0);
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     try {
       await invoke("write_character", { world, card });
+      if (draftImage === null) await invoke("delete_character_image", { world, name });
+      else if (draftImage) await invoke("save_character_image", { world, name, data: draftImage.bytes });
+      if (draftAvatar === null) await invoke("delete_character_avatar", { world, name });
+      else if (draftAvatar) await invoke("save_character_avatar", { world, name, data: draftAvatar.bytes });
+      if (draftImage !== undefined || draftAvatar !== undefined) {
+        setDraftImage(undefined);
+        setDraftAvatar(undefined);
+        await onImagesChanged();
+      }
+      setSavedCardJson(JSON.stringify(card));
       setMessage(t("saved"));
       onSaved();
     } catch (reason) {
       setMessage(String(reason));
     }
+  }
+
+  async function handleBack() {
+    if (unsavedCount > 0) {
+      const accepted = await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
+        title: t("unsavedLeaveTitle"),
+        kind: "warning",
+      });
+      if (!accepted) return;
+    }
+    onBack();
   }
 
   async function archive() {
@@ -1612,24 +1660,13 @@ function CardEditor({
     reader.readAsDataURL(file);
   }
 
-  async function removeImage() {
-    setMessage("");
-    try {
-      await invoke("delete_character_image", { world, name });
-      await onImagesChanged();
-    } catch (reason) {
-      setMessage(String(reason));
-    }
-  }
-
+  // 移除頭像會退回 emoji 圖示，先問一聲（2026-07-27 使用者回饋）
   async function removeAvatar() {
-    setMessage("");
-    try {
-      await invoke("delete_character_avatar", { world, name });
-      await onImagesChanged();
-    } catch (reason) {
-      setMessage(String(reason));
-    }
+    const accepted = await confirm(t("removeAvatarConfirm"), {
+      title: t("removeAvatarTitle"),
+      kind: "warning",
+    });
+    if (accepted) setDraftAvatar(null);
   }
 
   return (
@@ -1637,16 +1674,21 @@ function CardEditor({
       {/* 按鈕列統一放頂部，與世界設定畫面同款（2026-07-24 使用者拍板） */}
       <div className="row">
         <button type="submit">{t("saveCard")}</button>
-        <button type="button" onClick={onBack}>
+        <button type="button" onClick={() => void handleBack()}>
           {t("backToNow")}
         </button>
         <button type="button" className="archive-button" onClick={archive}>
           {t("archiveCharacter")}
         </button>
         {message && <span>{message}</span>}
+        {unsavedCount > 0 && (
+          <span className="unsaved-hint" role="status">
+            {t("unsavedChanges", { n: unsavedCount })}
+          </span>
+        )}
       </div>
       <div className="card-editor-avatar">
-        {imageDataUrl ? (
+        {shownImage ? (
           <button
             type="button"
             className="card-editor-image-zoom"
@@ -1654,10 +1696,10 @@ function CardEditor({
             title={t("viewImageLabel")}
             onClick={() => setLightboxOpen(true)}
           >
-            <img className="card-editor-image" src={imageDataUrl} alt="" />
+            <img className="card-editor-image" src={shownImage} alt="" />
           </button>
-        ) : avatarImgUrl ? (
-          <img className="avatar-round card-editor-avatar-round" src={avatarImgUrl} alt="" />
+        ) : shownAvatar ? (
+          <img className="avatar-round card-editor-avatar-round" src={shownAvatar} alt="" />
         ) : (
           <span className="card-editor-avatar-emoji" style={{ ["--ring" as string]: card.color }}>
             {card.avatar}
@@ -1666,16 +1708,16 @@ function CardEditor({
       </div>
       <div className="row">
         <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
-          {t(imageDataUrl ? "replaceImageBtn" : "addImageBtn")}
+          {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
         </button>
         <button type="button" className="ai-gen-btn" onClick={openAiGenerator}>✨ {t("aiGenBtn")}</button>
-        {imageDataUrl && (
+        {shownImage && (
           <>
-            <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
+            <button type="button" onClick={() => setDraftImage(null)}>{t("removeImageBtn")}</button>
             <button type="button" onClick={() => setCroppingAvatar(true)}>{t("makeAvatarBtn")}</button>
           </>
         )}
-        {avatarImgUrl && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
+        {shownAvatar && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
         <input
           id={`character-image-${name}`}
           type="file"
@@ -1704,7 +1746,7 @@ function CardEditor({
           onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
         />
       </label>
-      {imageDataUrl && (
+      {shownImage && (
         <label className="inline">
           <input
             type="checkbox"
@@ -1733,10 +1775,7 @@ function CardEditor({
           src={pendingImage}
           aspect={2 / 3}
           cropShape="rect"
-          onConfirm={async (data) => {
-            await invoke("save_character_image", { world, name, data });
-            await onImagesChanged();
-          }}
+          onConfirm={async (image) => setDraftImage(image)}
           onCancel={() => setPendingImage(null)}
         />
       )}
@@ -1800,7 +1839,7 @@ function CardEditor({
           </div>
         </div>
       )}
-      {lightboxOpen && imageDataUrl && (
+      {lightboxOpen && shownImage && (
         <div
           className="modal-overlay"
           role="dialog"
@@ -1808,19 +1847,16 @@ function CardEditor({
           aria-label={t("viewImageLabel")}
           onClick={() => setLightboxOpen(false)}
         >
-          <img className="lightbox-image" src={imageDataUrl} alt="" />
+          <img className="lightbox-image" src={shownImage} alt="" />
         </div>
       )}
-      {croppingAvatar && imageDataUrl && (
+      {croppingAvatar && shownImage && (
         <CropDialog
           title={t("cropAvatarTitle")}
-          src={imageDataUrl}
+          src={shownImage}
           aspect={1}
           cropShape="round"
-          onConfirm={async (data) => {
-            await invoke("save_character_avatar", { world, name, data });
-            await onImagesChanged();
-          }}
+          onConfirm={async (image) => setDraftAvatar(image)}
           onCancel={() => setCroppingAvatar(false)}
         />
       )}
