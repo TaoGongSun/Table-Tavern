@@ -17,7 +17,7 @@
 - **第 1 項間距修正**（App.css 四處，純 CSS 無 TSX 改動）：
   - `.avatar-round` 加 `margin: 2px`——黑框是 `box-shadow` 畫在邊框外、不佔版位，用 margin 把那 2px 讓回來，一次修好所有用到圓頭像的地方。
   - 新增 `.tcard:has(.tcard-avatar) .tcard-plate { margin-left: 0.35rem }`——角色卡名牌原本 `margin-left: -6px` 咬進圖窗（全身圖是填滿圖窗的方形，壓上去是設計），但圓頭像四周本來就有留白，咬合會直接壓到黑框上。只在圖窗是圓頭像時取消咬合，全身圖與 emoji 維持原樣。
-  - `.opt-target` gap `0.4em` → `0.5em`（composer 目標晶片，即使用者截圖那處）。
+  - `.opt-target` gap `0.4em` → `0.65em`（composer 目標晶片，即使用者截圖那處；先改 0.5em，使用者回報「看起來沒變化」後再放大，該次回報實為未 pull 的舊建置）。
   - `.card-editor-avatar` margin-bottom `0.25rem` → `0.6rem`（編輯頁大頭像與下方按鈕列）。
 - `:has()` 相容性：App.css 已大量使用 `color-mix()`（門檻 Safari 16.2／Chromium 111），比 `:has()`（Safari 15.4／Chromium 105）更嚴格，故不新增相容風險；即使不支援也只是退回現況，不會壞版。
 

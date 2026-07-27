@@ -1120,7 +1120,7 @@ textarea {
 .opt-target {
   display: inline-flex;
   align-items: center;
-  gap: 0.5em;
+  gap: 0.65em;
   height: var(--control-h);
   box-sizing: border-box;
   font: 600 var(--fs-btn) / 1 var(--font-ui);
