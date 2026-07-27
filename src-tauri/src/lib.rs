@@ -195,12 +195,12 @@ fn install_cli(
 }
 
 #[tauri::command]
-fn list_worlds(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+fn list_worlds(app: tauri::AppHandle) -> Result<Vec<data::WorldMeta>, String> {
     data::list_worlds(&data_root(&app)?).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn create_world(app: tauri::AppHandle, name: String) -> Result<(), String> {
+fn create_world(app: tauri::AppHandle, name: String) -> Result<String, String> {
     data::create_world(&data_root(&app)?, &name).map_err(|error| error.to_string())
 }
 
@@ -209,236 +209,241 @@ fn create_sample_world(app: tauri::AppHandle, lang: String) -> Result<String, St
     data::create_sample_world(&data_root(&app)?, &lang).map_err(|error| error.to_string())
 }
 
+/// 前端建立新世界／新角色前先要一個代碼：草稿期生圖就能落在正確的路徑，存檔用同一個 id
 #[tauri::command]
-fn reclaim_world_if_empty(app: tauri::AppHandle, world: String) -> Result<bool, String> {
-    data::reclaim_world_if_empty(&data_root(&app)?, &world).map_err(|error| error.to_string())
+fn new_id() -> String {
+    data::new_id()
 }
 
 #[tauri::command]
-fn delete_world(app: tauri::AppHandle, world: String) -> Result<(), String> {
-    data::delete_world(&data_root(&app)?, &world).map_err(|error| error.to_string())
+fn reclaim_world_if_empty(app: tauri::AppHandle, world_id: String) -> Result<bool, String> {
+    data::reclaim_world_if_empty(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn rename_world(app: tauri::AppHandle, world: String, new_name: String) -> Result<(), String> {
-    data::rename_world(&data_root(&app)?, &world, &new_name).map_err(|error| error.to_string())
+fn delete_world(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+    data::delete_world(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn read_world_md(app: tauri::AppHandle, world: String) -> Result<String, String> {
-    data::read_world_md(&data_root(&app)?, &world).map_err(|error| error.to_string())
+fn rename_world(app: tauri::AppHandle, world_id: String, new_name: String) -> Result<(), String> {
+    data::rename_world(&data_root(&app)?, &world_id, &new_name).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn write_world_md(app: tauri::AppHandle, world: String, content: String) -> Result<(), String> {
-    data::write_world_md(&data_root(&app)?, &world, &content).map_err(|error| error.to_string())
+fn read_world_md(app: tauri::AppHandle, world_id: String) -> Result<String, String> {
+    data::read_world_md(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn write_world_md(app: tauri::AppHandle, world_id: String, content: String) -> Result<(), String> {
+    data::write_world_md(&data_root(&app)?, &world_id, &content).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn read_worldbook(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
 ) -> Result<Vec<data::WorldbookEntry>, String> {
-    data::read_worldbook(&data_root(&app)?, &world).map_err(|error| error.to_string())
+    data::read_worldbook(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn upsert_worldbook_entry(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     entry: data::WorldbookEntry,
 ) -> Result<u64, String> {
-    data::upsert_worldbook_entry(&data_root(&app)?, &world, entry)
+    data::upsert_worldbook_entry(&data_root(&app)?, &world_id, entry)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn reorder_worldbook_entries(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     uids: Vec<u64>,
 ) -> Result<(), String> {
-    data::reorder_worldbook_entries(&data_root(&app)?, &world, &uids)
+    data::reorder_worldbook_entries(&data_root(&app)?, &world_id, &uids)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn delete_worldbook_entry(app: tauri::AppHandle, world: String, uid: u64) -> Result<(), String> {
-    data::delete_worldbook_entry(&data_root(&app)?, &world, uid).map_err(|error| error.to_string())
+fn delete_worldbook_entry(app: tauri::AppHandle, world_id: String, uid: u64) -> Result<(), String> {
+    data::delete_worldbook_entry(&data_root(&app)?, &world_id, uid)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn import_worldbook(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     json_text: String,
 ) -> Result<usize, String> {
-    data::import_worldbook(&data_root(&app)?, &world, &json_text).map_err(|error| error.to_string())
+    data::import_worldbook(&data_root(&app)?, &world_id, &json_text)
+        .map_err(|error| error.to_string())
 }
 
 // 存檔位置由前端的「另存新檔」對話框決定
 #[tauri::command]
-fn export_worldbook(app: tauri::AppHandle, world: String, path: String) -> Result<(), String> {
-    data::export_worldbook(&data_root(&app)?, &world, std::path::Path::new(&path))
+fn export_worldbook(app: tauri::AppHandle, world_id: String, path: String) -> Result<(), String> {
+    data::export_worldbook(&data_root(&app)?, &world_id, std::path::Path::new(&path))
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn list_characters(app: tauri::AppHandle, world: String) -> Result<Vec<CharacterMeta>, String> {
-    data::list_characters(&data_root(&app)?, &world).map_err(|error| error.to_string())
+fn list_characters(app: tauri::AppHandle, world_id: String) -> Result<Vec<CharacterMeta>, String> {
+    data::list_characters(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn reorder_characters(
     app: tauri::AppHandle,
-    world: String,
-    names: Vec<String>,
+    world_id: String,
+    ids: Vec<String>,
 ) -> Result<(), String> {
-    data::reorder_characters(&data_root(&app)?, &world, &names).map_err(|error| error.to_string())
+    data::reorder_characters(&data_root(&app)?, &world_id, &ids).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn read_character(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
 ) -> Result<CharacterCard, String> {
-    data::read_character(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
+    data::read_character(&data_root(&app)?, &world_id, &character_id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn write_character(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     card: CharacterCard,
 ) -> Result<(), String> {
-    data::write_character(&data_root(&app)?, &world, &card).map_err(|error| error.to_string())
+    data::write_character(&data_root(&app)?, &world_id, &card).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn set_character_archived(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
     archived: bool,
 ) -> Result<(), String> {
-    data::set_character_archived(&data_root(&app)?, &world, &name, archived)
+    data::set_character_archived(&data_root(&app)?, &world_id, &character_id, archived)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn delete_character(app: tauri::AppHandle, world: String, name: String) -> Result<(), String> {
-    data::delete_character(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn rename_character(
+fn delete_character(
     app: tauri::AppHandle,
-    world: String,
-    from: String,
-    to: String,
+    world_id: String,
+    character_id: String,
 ) -> Result<(), String> {
-    data::rename_character(&data_root(&app)?, &world, &from, &to)
+    data::delete_character(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn import_character(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     data: Vec<u8>,
     color: String,
 ) -> Result<CharacterMeta, String> {
-    import::import_character(&data_root(&app)?, &world, &data, &color)
+    import::import_character(&data_root(&app)?, &world_id, &data, &color)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn read_character_image(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
 ) -> Result<Option<String>, String> {
-    import::character_image(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
+    import::character_image(&data_root(&app)?, &world_id, &character_id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn save_character_image(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    import::save_character_image(&data_root(&app)?, &world, &name, &data)
+    import::save_character_image(&data_root(&app)?, &world_id, &character_id, &data)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn delete_character_image(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
 ) -> Result<(), String> {
-    import::delete_character_image(&data_root(&app)?, &world, &name)
+    import::delete_character_image(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn read_character_avatar(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
 ) -> Result<Option<String>, String> {
-    import::character_avatar(&data_root(&app)?, &world, &name).map_err(|error| error.to_string())
+    import::character_avatar(&data_root(&app)?, &world_id, &character_id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn save_character_avatar(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    import::save_character_avatar(&data_root(&app)?, &world, &name, &data)
+    import::save_character_avatar(&data_root(&app)?, &world_id, &character_id, &data)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn delete_character_avatar(
     app: tauri::AppHandle,
-    world: String,
-    name: String,
+    world_id: String,
+    character_id: String,
 ) -> Result<(), String> {
-    import::delete_character_avatar(&data_root(&app)?, &world, &name)
+    import::delete_character_avatar(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn append_transcript(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     scene: u64,
     event: TranscriptEvent,
 ) -> Result<(), String> {
-    data::append_transcript(&data_root(&app)?, &world, scene, &event)
+    data::append_transcript(&data_root(&app)?, &world_id, scene, &event)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn read_transcript(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     scene: u64,
 ) -> Result<Vec<TranscriptEvent>, String> {
-    data::read_transcript(&data_root(&app)?, &world, scene).map_err(|error| error.to_string())
+    data::read_transcript(&data_root(&app)?, &world_id, scene).map_err(|error| error.to_string())
 }
 
 // 存檔位置由前端的「另存新檔」對話框決定，這裡只負責產內容寫入該路徑
 #[tauri::command]
-fn export_transcript(app: tauri::AppHandle, world: String, path: String) -> Result<(), String> {
+fn export_transcript(app: tauri::AppHandle, world_id: String, path: String) -> Result<(), String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let markdown = data::export_transcript_markdown(&data_root(&app)?, &world, &lang)
+    let markdown = data::export_transcript_markdown(&data_root(&app)?, &world_id, &lang)
         .map_err(|error| error.to_string())?;
     std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
@@ -447,25 +452,25 @@ fn export_transcript(app: tauri::AppHandle, world: String, path: String) -> Resu
 #[tauri::command]
 fn export_scene(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     scene: u64,
     path: String,
 ) -> Result<(), String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let markdown = data::export_scene_markdown(&data_root(&app)?, &world, scene, &lang)
+    let markdown = data::export_scene_markdown(&data_root(&app)?, &world_id, scene, &lang)
         .map_err(|error| error.to_string())?;
     std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn read_state(app: tauri::AppHandle, world: String) -> Result<WorldState, String> {
-    data::read_state(&data_root(&app)?, &world).map_err(|error| error.to_string())
+fn read_state(app: tauri::AppHandle, world_id: String) -> Result<WorldState, String> {
+    data::read_state(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn write_state(app: tauri::AppHandle, world: String, state: WorldState) -> Result<(), String> {
-    data::write_state(&data_root(&app)?, &world, &state).map_err(|error| error.to_string())
+fn write_state(app: tauri::AppHandle, world_id: String, state: WorldState) -> Result<(), String> {
+    data::write_state(&data_root(&app)?, &world_id, &state).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -503,16 +508,14 @@ async fn stream_via_transport(
 ) -> Result<String, String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
     // allow_cli_tools：只有生圖呼叫為 true——CLI 生圖工具要寫檔／跑指令，聊天一律鎖死工具。
-    let transport_kind = transport_override
-        .map(str::to_owned)
-        .unwrap_or_else(|| {
-            config
-                .preferences
-                .get("transport")
-                .and_then(|value| value.as_str())
-                .unwrap_or("api")
-                .to_owned()
-        });
+    let transport_kind = transport_override.map(str::to_owned).unwrap_or_else(|| {
+        config
+            .preferences
+            .get("transport")
+            .and_then(|value| value.as_str())
+            .unwrap_or("api")
+            .to_owned()
+    });
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
         return transport::stream_chat(config, &model, messages, emit)
@@ -673,15 +676,28 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
         }
         let a = sextet(chunk[0]).ok_or_else(|| "非法 base64 資料".to_owned())?;
         let b = sextet(chunk[1]).ok_or_else(|| "非法 base64 資料".to_owned())?;
-        let c = if padding >= 2 { 0 } else { sextet(chunk[2]).ok_or_else(|| "非法 base64 資料".to_owned())? };
-        let d = if padding >= 1 { 0 } else { sextet(chunk[3]).ok_or_else(|| "非法 base64 資料".to_owned())? };
+        let c = if padding >= 2 {
+            0
+        } else {
+            sextet(chunk[2]).ok_or_else(|| "非法 base64 資料".to_owned())?
+        };
+        let d = if padding >= 1 {
+            0
+        } else {
+            sextet(chunk[3]).ok_or_else(|| "非法 base64 資料".to_owned())?
+        };
         if (padding >= 1 && chunk[3] != b'=') || (padding >= 2 && chunk[2] != b'=') {
             return Err("非法 base64 資料".to_owned());
         }
-        let decoded = (u32::from(a) << 18) | (u32::from(b) << 12) | (u32::from(c) << 6) | u32::from(d);
+        let decoded =
+            (u32::from(a) << 18) | (u32::from(b) << 12) | (u32::from(c) << 6) | u32::from(d);
         output.push((decoded >> 16) as u8);
-        if padding < 2 { output.push((decoded >> 8) as u8); }
-        if padding == 0 { output.push(decoded as u8); }
+        if padding < 2 {
+            output.push((decoded >> 8) as u8);
+        }
+        if padding == 0 {
+            output.push(decoded as u8);
+        }
     }
     Ok(output)
 }
@@ -698,13 +714,20 @@ fn validate_gallery_component(value: &str, require_png: bool) -> Result<(), Stri
     Ok(())
 }
 
-fn gallery_directory(root: &std::path::Path, world: &str, name: &str) -> Result<PathBuf, String> {
-    validate_gallery_component(name, false)?;
-    Ok(data::gallery_dir(root, world, name))
+fn gallery_directory(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+) -> Result<PathBuf, String> {
+    data::gallery_dir(root, world_id, character_id).map_err(|error| error.to_string())
 }
 
-fn list_gallery_image_files(root: &std::path::Path, world: &str, name: &str) -> Result<Vec<String>, String> {
-    let directory = gallery_directory(root, world, name)?;
+fn list_gallery_image_files(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+) -> Result<Vec<String>, String> {
+    let directory = gallery_directory(root, world_id, character_id)?;
     let mut files = match std::fs::read_dir(directory) {
         Ok(entries) => entries
             .filter_map(Result::ok)
@@ -718,13 +741,29 @@ fn list_gallery_image_files(root: &std::path::Path, world: &str, name: &str) -> 
     Ok(files)
 }
 
-fn save_generated_gallery_image(root: &std::path::Path, world: &str, name: &str, data_url: &str) -> Result<(), String> {
-    let Some((header, encoded)) = data_url.split_once(',') else { return Ok(()); };
-    if !header.starts_with("data:") || !header.ends_with(";base64") { return Ok(()); }
-    let directory = gallery_directory(root, world, name)?;
+fn save_generated_gallery_image(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+    data_url: &str,
+) -> Result<(), String> {
+    let Some((header, encoded)) = data_url.split_once(',') else {
+        return Ok(());
+    };
+    if !header.starts_with("data:") || !header.ends_with(";base64") {
+        return Ok(());
+    }
+    let directory = gallery_directory(root, world_id, character_id)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_millis();
-    std::fs::write(directory.join(format!("{timestamp}.png")), decode_base64(encoded)?).map_err(|error| error.to_string())
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_millis();
+    std::fs::write(
+        directory.join(format!("{timestamp}.png")),
+        decode_base64(encoded)?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
@@ -745,10 +784,12 @@ fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
 
 /// 角色名與描述由編輯器直接傳進來（不讀也不寫卡片檔）：新卡還沒存檔就能生圖，
 /// 且吃到的是編輯器裡的當下內容；追加描寫由前端存進草稿，跟其他欄位一起按儲存才落地。
+/// character_id 前端已先跟 new_id 要好，決定圖庫路徑；name 只進提示詞。
 #[tauri::command]
 async fn generate_character_image(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
+    character_id: String,
     name: String,
     description: String,
     extra_prompt: String,
@@ -778,7 +819,7 @@ async fn generate_character_image(
         });
     if transport_kind == "api" {
         let image = transport::generate_image(&config, &prompt).await?;
-        save_generated_gallery_image(&root, &world, &name, &image)?;
+        save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
         return Ok(image);
     }
     // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）會存檔回路徑，其餘掃不到圖就失敗
@@ -810,26 +851,40 @@ async fn generate_character_image(
         }
         _ => Err("回覆中沒有圖片".to_owned()),
     }?;
-    save_generated_gallery_image(&root, &world, &name, &image)?;
+    save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
     Ok(image)
 }
 
 #[tauri::command]
-fn list_gallery_images(app: tauri::AppHandle, world: String, name: String) -> Result<Vec<String>, String> {
-    list_gallery_image_files(&data_root(&app)?, &world, &name)
+fn list_gallery_images(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+) -> Result<Vec<String>, String> {
+    list_gallery_image_files(&data_root(&app)?, &world_id, &character_id)
 }
 
 #[tauri::command]
-fn read_gallery_image(app: tauri::AppHandle, world: String, name: String, file: String) -> Result<String, String> {
+fn read_gallery_image(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+    file: String,
+) -> Result<String, String> {
     validate_gallery_component(&file, true)?;
-    let directory = gallery_directory(&data_root(&app)?, &world, &name)?;
+    let directory = gallery_directory(&data_root(&app)?, &world_id, &character_id)?;
     image_file_data_url(&directory.join(file))
 }
 
 #[tauri::command]
-fn delete_gallery_image(app: tauri::AppHandle, world: String, name: String, file: String) -> Result<(), String> {
+fn delete_gallery_image(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+    file: String,
+) -> Result<(), String> {
     validate_gallery_component(&file, true)?;
-    let directory = gallery_directory(&data_root(&app)?, &world, &name)?;
+    let directory = gallery_directory(&data_root(&app)?, &world_id, &character_id)?;
     std::fs::remove_file(directory.join(file)).map_err(|error| error.to_string())
 }
 
@@ -839,18 +894,18 @@ fn delete_gallery_image(app: tauri::AppHandle, world: String, name: String, file
 #[tauri::command]
 async fn chat_with_character(
     app: tauri::AppHandle,
-    world: String,
-    character: String,
+    world_id: String,
+    character_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<String, String> {
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let card =
-        data::read_character(&root, &world, &character).map_err(|error| error.to_string())?;
-    let state = data::read_state(&root, &world).map_err(|error| error.to_string())?;
-    let events = data::read_transcript(&root, &world, state.current_scene)
+        data::read_character(&root, &world_id, &character_id).map_err(|error| error.to_string())?;
+    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(&root, &world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
-    let worldbook = data::read_worldbook(&root, &world).map_err(|error| error.to_string())?;
+    let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
 
     let messages =
         transport::assemble_messages(&card, &events, &worldbook, &transport::ui_language(&config));
@@ -861,45 +916,48 @@ async fn chat_with_character(
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    stream_via_transport(&config, None, false, card.tier, &card.name, &closing, &messages, emit).await
+    stream_via_transport(
+        &config, None, false, card.tier, &card.name, &closing, &messages, emit,
+    )
+    .await
 }
 
 /// GM 上下文＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
-/// 回傳（角色名單, 組裝好的訊息）。
+/// 回傳（在場角色卡, 組裝好的訊息）；roster（點名用名單）由呼叫端從角色卡取名字。
 fn assemble_gm(
     root: &std::path::Path,
-    world: &str,
+    world_id: &str,
     lang: &str,
-) -> Result<(Vec<String>, Vec<transport::ChatMessage>), String> {
-    let world_md = data::read_world_md(root, world).map_err(|error| error.to_string())?;
-    let worldbook = data::read_worldbook(root, world).map_err(|error| error.to_string())?;
-    let state = data::read_state(root, world).map_err(|error| error.to_string())?;
-    let events = data::read_transcript(root, world, state.current_scene)
+) -> Result<(Vec<data::CharacterCard>, Vec<transport::ChatMessage>), String> {
+    let world_md = data::read_world_md(root, world_id).map_err(|error| error.to_string())?;
+    let worldbook = data::read_worldbook(root, world_id).map_err(|error| error.to_string())?;
+    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
-    let cards: Vec<data::CharacterCard> = data::list_characters(root, world)
+    let cards: Vec<data::CharacterCard> = data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|meta| !meta.archived)
-        .map(|meta| data::read_character(root, world, &meta.name))
+        .map(|meta| data::read_character(root, world_id, &meta.id))
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
-    let roster = cards.iter().map(|card| card.name.clone()).collect();
-    Ok((
-        roster,
-        transport::assemble_gm_messages(&world_md, &cards, &events, &worldbook, lang),
-    ))
+    let messages = transport::assemble_gm_messages(&world_md, &cards, &events, &worldbook, lang);
+    Ok((cards, messages))
 }
 
 /// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
 #[tauri::command]
 async fn gm_narrate(
     app: tauri::AppHandle,
-    world: String,
+    world_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (_, mut messages) =
-        assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
+    let (_, mut messages) = assemble_gm(
+        &data_root(&app)?,
+        &world_id,
+        &transport::ui_language(&config),
+    )?;
     messages.push(transport::narrate_instruction());
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
@@ -918,15 +976,19 @@ async fn gm_narrate(
 }
 
 /// 簡易導演：GM 建議下一位發言者（NewPlan §6.1）。
-/// 回傳名單中的角色名，或「玩家」表示該輪到玩家行動。
+/// LLM 只認名字，點名後對回角色 id 名單（同名取第一個）；玩家哨兵原樣回傳。
 #[tauri::command]
-async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<String, String> {
+async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (roster, mut messages) =
-        assemble_gm(&data_root(&app)?, &world, &transport::ui_language(&config))?;
-    if roster.is_empty() {
+    let (cards, mut messages) = assemble_gm(
+        &data_root(&app)?,
+        &world_id,
+        &transport::ui_language(&config),
+    )?;
+    if cards.is_empty() {
         return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
     }
+    let roster: Vec<String> = cards.iter().map(|card| card.name.clone()).collect();
     messages.push(transport::suggest_instruction(&roster));
     let reply = stream_via_transport(
         &config,
@@ -939,19 +1001,27 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<Stri
         |_| {},
     )
     .await?;
-    transport::pick_speaker(&reply, &roster)
+    let picked = transport::pick_speaker(&reply, &roster)
+        .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))?;
+    if picked == transport::PLAYER_SENTINEL {
+        return Ok(picked);
+    }
+    cards
+        .iter()
+        .find(|card| card.name == picked)
+        .map(|card| card.id.clone())
         .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))
 }
 
 /// 換場：把當前場景公開紀錄壓成一則摘要，寫進新場景開頭，current_scene +1（NewPlan 換場＋場景摘要）。
 /// 摘要走既有 stream_via_transport＋GM 檔位，不新開連線路徑、不新增設定項。
 #[tauri::command]
-async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, String> {
+async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> {
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let state = data::read_state(&root, &world).map_err(|error| error.to_string())?;
-    let events = data::read_transcript(&root, &world, state.current_scene)
+    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(&root, &world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     if events.is_empty() {
         return Err("這個場景還沒有任何紀錄，沒東西可以換場".to_owned());
@@ -972,7 +1042,7 @@ async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, Stri
 
     // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
     let (title, summary) = transport::extract_scene_title(&reply);
-    data::begin_next_scene(&root, &world, &summary, &lang, title.as_deref())
+    data::begin_next_scene(&root, &world_id, &summary, &lang, title.as_deref())
         .map_err(|error| error.to_string())
 }
 
@@ -985,6 +1055,7 @@ pub fn run() {
             list_worlds,
             create_world,
             create_sample_world,
+            new_id,
             reclaim_world_if_empty,
             rename_world,
             delete_world,
@@ -1002,7 +1073,6 @@ pub fn run() {
             write_character,
             set_character_archived,
             delete_character,
-            rename_character,
             import_character,
             read_character_image,
             save_character_image,
@@ -1041,6 +1111,7 @@ mod tests {
         cli_install_script, decode_base64, encode_base64, extract_image_from_text,
         list_gallery_image_files, validate_gallery_component, ImageRef, InstallMessages,
     };
+    use crate::data;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
@@ -1116,14 +1187,28 @@ mod tests {
             std::process::id(),
             NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
         ));
-        let directory = root.join("world").join("gen-gallery").join("character");
+        let world_id = data::new_id();
+        let character_id = data::new_id();
+        let directory = root
+            .join("worlds")
+            .join(&world_id)
+            .join("gen-gallery")
+            .join(&character_id);
         std::fs::create_dir_all(&directory).unwrap();
-        for file in ["1720000000000.png", "1730000000000.png", "1710000000000.png"] {
+        for file in [
+            "1720000000000.png",
+            "1730000000000.png",
+            "1710000000000.png",
+        ] {
             std::fs::write(directory.join(file), b"png").unwrap();
         }
         assert_eq!(
-            list_gallery_image_files(&root, "world", "character").unwrap(),
-            ["1730000000000.png", "1720000000000.png", "1710000000000.png"]
+            list_gallery_image_files(&root, &world_id, &character_id).unwrap(),
+            [
+                "1730000000000.png",
+                "1720000000000.png",
+                "1710000000000.png"
+            ]
         );
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -1180,7 +1265,9 @@ mod tests {
     #[test]
     fn install_script_touches_sentinel_only_after_verification_passes() {
         let script = cli_install_script("claude", &messages()).unwrap();
-        let touch = script.find("touch \"$(dirname \"$0\")/.verified-claude\"").unwrap();
+        let touch = script
+            .find("touch \"$(dirname \"$0\")/.verified-claude\"")
+            .unwrap();
         assert!(touch > script.find("exit 1").unwrap());
         assert!(touch < script.rfind("success").unwrap());
     }

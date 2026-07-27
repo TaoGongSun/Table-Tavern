@@ -1,9 +1,9 @@
 # Task
 Task-ID: stable-id-storage
 Title: 儲存改用穩定代碼定址：桌與角色的資料夾／檔名是代碼，顯示名是欄位
-Status: todo
+Status: in-progress
 Created: 2026-07-27T23:30:00+08:00
-Updated: 2026-07-28T00:00:00+08:00
+Updated: 2026-07-28T22:40:00+08:00
 
 ## Summary
 
@@ -39,20 +39,11 @@ Updated: 2026-07-28T00:00:00+08:00
 
 ## 執行安排（已拍板）
 
-- 實作計畫由主線寫（Opus 主線 session 可接），實作發包 general-purpose subagent（`model: opus`），回來驗證：cargo 綠＋npm build 綠＋實跑改名路徑＋兩個同名角色。
-- sponsor-features 的圖庫實測、character-card-avatar-issues 的改名提示複驗**併到本案完成後一起驗**（先測會因格式全變而重測一輪）；「生成圖庫目錄放錯層」bug 確定不修，本案完成後自動消失。
-
-## 影響範圍（估）
-
-- 後端 `src-tauri/src/data.rs`：定址方式全面改寫（`world: &str` / `name: &str` → id），幾乎每個 pub fn 都會動；`validate_name` 相關的擋下規則可整組移除。
-- `src-tauri/src/lib.rs`：所有 command 參數與 `gallery_dir` 路徑。
-- 前端 `src/App.tsx`：所有以名字當索引的地方——`characterImages`／`characterAvatars`（Record 的 key）、`speaker`、`mainView`、`config.preferences.last_world`。
-- 估 3–5 小時，期間 app 大概率跑不動。屬「停線」等級改動，要先確認是否插隊到其他待辦之前。
+sponsor-features 的圖庫實測、character-card-avatar-issues 的改名提示複驗**併到本案完成後一起驗**（先測會因格式全變而重測一輪）；「生成圖庫目錄放錯層」bug 不修，改代碼定址後已自動消失。
 
 ## Next action
-- 主線寫實作計畫（含測試清單），過目後發包實作（見「執行安排」）
+- 實作與靜態驗證完成（cargo 104 綠／npm build 綠／介面機械比對過），現場與 GUI 驗收清單見 [handoffs/stable-id-storage.md](../handoffs/stable-id-storage.md)；等使用者實跑
 
 ## Constraints
-- **若本提案採用，不要先去修「生成圖庫目錄放錯層」那個 bug**（character-card-avatar-issues 交接檔 Next action 第 1 項）——改用代碼定址後那個問題自動消失，先修等於白工。若本提案否決或延後，才回頭做那個 15 分鐘的修正。
 - 改名後舊對話仍顯示舊名，是 2026-07-27 已拍板的行為，新設計不得改變它。
 - 側欄卡片高度差（有圖 69px／無圖 44px）是刻意的產品決策，與本任務無關但重構時不要動到。
