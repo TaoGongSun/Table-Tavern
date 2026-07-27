@@ -476,6 +476,13 @@ textarea {
   --fac: var(--ink-2);
 }
 
+/* 書本圖置中不裁切（角色是滿版人像，GM 留白＝一眼看出是系統機件） */
+.gm-book {
+  width: 2.125rem;
+  height: 2.125rem;
+  object-fit: contain;
+}
+
 .gm-cfg {
   position: absolute;
   right: 0.5rem;
