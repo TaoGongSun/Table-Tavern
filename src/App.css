@@ -699,6 +699,13 @@ textarea {
   padding: 0 0.7em;
 }
 
+/* AI 生成鈕：強調色描邊，與一般檔案操作鈕區隔 */
+.ai-gen-btn {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .ai-gen-error small {
   display: block;
   font-size: var(--fs-meta);
