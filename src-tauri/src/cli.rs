@@ -8,8 +8,10 @@ use crate::transport::ChatMessage;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
+use tokio::time::timeout;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CliInfo {
@@ -92,38 +94,44 @@ fn hidden_output(program: std::path::PathBuf, arg: &str) -> Option<std::process:
         .filter(|output| output.status.success())
 }
 
+/// 單支 CLI 探測。5 秒上限＋kill_on_drop：某支卡住只損失自己，不拖垮其餘三支。
+async fn probe_cli(id: &str) -> Option<CliInfo> {
+    let path = find_binary(id)?;
+    let mut command = Command::new(&path);
+    command.arg("--version").kill_on_drop(true);
+    // GUI app 下 console 子程序會閃出黑視窗，一律 CREATE_NO_WINDOW
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000);
+    let version = timeout(Duration::from_secs(5), command.output())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .filter(|output| output.status.success())
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_owned()
+        })
+        .unwrap_or_default();
+    Some(CliInfo {
+        id: id.to_owned(),
+        path: path.to_string_lossy().into_owned(),
+        version,
+    })
+}
+
 pub async fn detect_clis() -> Vec<CliInfo> {
-    let mut found = Vec::new();
-    for id in ["claude", "codex", "agy", "grok"] {
-        let Some(path) = find_binary(id) else {
-            continue;
-        };
-        let mut command = Command::new(&path);
-        command.arg("--version");
-        // GUI app 下 console 子程序會閃出黑視窗，一律 CREATE_NO_WINDOW
-        #[cfg(target_os = "windows")]
-        command.creation_flags(0x08000000);
-        let version = command
-            .output()
-            .await
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .next()
-                    .unwrap_or_default()
-                    .trim()
-                    .to_owned()
-            })
-            .unwrap_or_default();
-        found.push(CliInfo {
-            id: id.to_owned(),
-            path: path.to_string_lossy().into_owned(),
-            version,
-        });
-    }
-    found
+    // 四支並行：總耗時取決於最慢一支而非累加（序列版遇冷啟動／防毒即時掃描要等數十秒）
+    let (claude, codex, agy, grok) = tokio::join!(
+        probe_cli("claude"),
+        probe_cli("codex"),
+        probe_cli("agy"),
+        probe_cli("grok"),
+    );
+    [claude, codex, agy, grok].into_iter().flatten().collect()
 }
 
 /// 把共用組裝結果攤平成 CLI 單發需要的 (system, prompt)。
@@ -907,3 +915,4 @@ mod tests {
         assert_eq!(deltas, ["你", "好"]);
     }
 }
+
