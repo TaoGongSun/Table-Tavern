@@ -1,7 +1,7 @@
 # Handoff: character-card-avatar-issues
 
 ## Current state
-第 1 項（頭像與文字間距）已修完待實測，其餘四項未動工。2026-07-27 使用者拍板兩件事：第 3 項圖像操作**改成暫存、按儲存才落地並計入未儲存計數**；第 2 項改名**要回填**既有場景紀錄／世界書裡的角色名引用。動工順序改為 1 ✅ → 5 → 4 → 3 → 2。
+五項全部實作完成（cargo 93 綠＋npm build 綠），等使用者實測。2026-07-27 使用者追加拍板：建卡流程改成「點建卡→右側開空白角色卡編輯器填名字與資料」，取代原本側欄的名稱輸入框；改名不做自然語言內文的機械取代。
 
 ## 使用者原文（2026-07-27）
 1. 人物有頭像後，這個頭像和文字太近了，讓他間隔多一點
@@ -10,32 +10,29 @@
 4. 移除頭像沒有出現警告提示，例如「會變回 emoji」
 5. 點擊建卡下方會跳出 invalid name: ""，沒有辦法建卡
 
-（附截圖：composer 目標晶片，圓頭像緊貼「Fox」字。）
+追加：「不應該是有個新角色名稱的輸入框，是點建卡之後右邊換成角色卡介面，在那邊輸入名字和資料。」
 
 ## Completed
-- 問題定位與任務登記（見 Verification）。
-- **第 1 項間距修正**（App.css 四處，純 CSS 無 TSX 改動）：
-  - `.avatar-round` 加 `margin: 2px`——黑框是 `box-shadow` 畫在邊框外、不佔版位，用 margin 把那 2px 讓回來，一次修好所有用到圓頭像的地方。
-  - 新增 `.tcard:has(.tcard-avatar) .tcard-plate { margin-left: 0.35rem }`——角色卡名牌原本 `margin-left: -6px` 咬進圖窗（全身圖是填滿圖窗的方形，壓上去是設計），但圓頭像四周本來就有留白，咬合會直接壓到黑框上。只在圖窗是圓頭像時取消咬合，全身圖與 emoji 維持原樣。
-  - `.opt-target` gap `0.4em` → `0.65em`（composer 目標晶片，即使用者截圖那處；先改 0.5em，使用者回報「看起來沒變化」後再放大，該次回報實為未 pull 的舊建置）。
-  - `.card-editor-avatar` margin-bottom `0.25rem` → `0.6rem`（編輯頁大頭像與下方按鈕列）。
-- `:has()` 相容性：App.css 已大量使用 `color-mix()`（門檻 Safari 16.2／Chromium 111），比 `:has()`（Safari 15.4／Chromium 105）更嚴格，故不新增相容風險；即使不支援也只是退回現況，不會壞版。
+- **第 1 項間距**（App.css）：`.avatar-round` 加 `margin: 2px`（黑框是 box-shadow 不佔版位）；`.opt-target` gap 0.4→0.65em；`.card-editor-avatar` margin-bottom 0.25→0.6rem；角色卡名牌 `margin-left` −6px→**0**（使用者實測要求：不壓圖窗也不留空隙）。圓頭像卡看起來仍有間距＝圖窗本身的留白，非名牌間距。
+- **第 5 項＋名稱檢查**：`characterNameError(name, taken)`（App.tsx:133）規則對齊後端 `validate_name`（data.rs:197），建卡／改名共用；擋空名、`/`、`\`、開頭 `.`、`..`、控制字元、GM／玩家保留字、**同名**（原本同名會直接覆寫既有卡片＝資料遺失）。
+- **第 3 項圖像暫存**：`draftImage`／`draftAvatar`（undefined 沒動過／null 標記移除／`{bytes,url}` 待存），加入／更換／裁頭像／移除全部只改記憶體，按儲存才落地；未儲存計數與離開確認比照世界設定頁。CropDialog 改回傳 `{bytes,url}`（bytes 存檔、url 預覽）。生圖後同步 `gen_prompt` 到記憶體與存檔快照，避免按儲存蓋回舊值。
+- **第 4 項移除頭像警告**：confirm「會變回原本的 emoji 圖示」。
+- **建卡新流程**：側欄只剩「建卡」「匯入卡」兩鈕；`mainView` 新增 `new-character`；CardEditor `name: string | null`（null＝草稿，讀空白卡不打後端）。草稿模式關閉 AI 生圖（後端生圖要讀已存檔設定，圖庫目錄也以角色名建立）與隱藏「隱藏角色」鈕。存檔後畫面停在該卡、speaker 跟著換（`finishCardSaved`）。
+- **第 2 項改名**：後端 `rename_character(world, from, to)`（data.rs）搬檔（卡片 md 含 frontmatter name／全身圖／頭像／`gen-gallery/{名}` 目錄）＋回填（劇情紀錄全部幕的 speaker、世界書 `visibility.characters`、`state.json` 的 `model_bindings` key）；擋同名碰撞與 `validate_name`。自然語言內文（world.md／世界書內文／public_md／private_md／對話正文）**不動**——機械取代會誤傷同名詞句。
 
 ## Verification
-- `npm run build`：`✓ built in 1.05s`（先 `npm install`，容器是新的沒裝過依賴）。
-- 視覺驗證：用編譯產物 `dist/assets/index-*.css` 做 before/after 對照頁，Playwright（`/opt/pw-browsers/chromium`）3x 截圖 —— 修改前角色卡名牌確實壓在頭像黑框上、晶片幾乎貼字；修改後三處都有明顯間距，emoji 卡對照組不變。harness 與截圖在本次 session scratchpad，未進 repo。
-- 第 1 項間距（原始定位）：`.opt-target` gap `0.4em`（App.css:1111 起）、`.avatar-round` 外框 `box-shadow: 0 0 0 2px var(--avatar-ring)`（App.css:507）吃掉視覺間距；尺寸三處 App.css:513-515。
-- 第 2 項改名：全庫 grep `rename` 只有 `rename_world`（data.rs:407、lib.rs:198、指令註冊 lib.rs:946），沒有角色改名路徑；桌名就地編輯 UI 在 App.tsx:2602-2614。
-- 第 3 項未儲存：`CharacterCardEditor`（App.tsx:1449 起）無任何 dirty／unsaved 狀態；世界設定的對照實作在 App.tsx:967、1135。`removeImage` App.tsx:1597、`removeAvatar` App.tsx:1607 皆為立即 invoke 寫檔。
-- 第 4 項警告：`removeAvatar`（App.tsx:1607）無 `confirm`，直接 `delete_character_avatar`。
-- 第 5 項空名：`createCharacter`（App.tsx:2184-2191）只擋 GM／玩家；後端 `validate_name`（data.rs:197-208）對空字串回 `invalid name: ""`。
+- `cargo test` 93 綠（基線 91，+2：`rename_character_moves_files_and_backfills_references`、`rename_character_rejects_collision_and_invalid_names`）
+- `cargo clippy --all-targets` 無新增警告（既有 5 個都在 data.rs:47／import.rs／lib.rs:461,632）
+- `npm run build` exit 0
+- 第 1 項間距：另一 session 以編譯產物做 before/after Playwright 截圖對照
 
 ## Remaining
-第 1 項等使用者實機看間距；第 2～5 項未動工。
+使用者實機實測全部五項＋建卡新流程；下列缺陷未修（見 Next action）。
 
 ## Next action
-做第 5 項：`createCharacter`（App.tsx:2184）在送 `write_character` 前擋空名（trim 後為空即 return），建卡鈕在空名時 disabled，錯誤字串走 i18n（zh／en 各補一鍵）；順帶檢查 `/`、`\`、開頭 `.`、`..` 等 `validate_name`（data.rs:197）會擋的字元要不要一併前端先提示。之後依序 4 → 3 → 2。
+1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。後果：`rename_world` 只搬 `worlds/{名}`，改桌名後整個生成圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），等使用者拍板。
+2. 生圖用的是**已存檔**的 public_md（後端從磁碟讀卡），編輯器裡沒存的描述不會進提示詞——要不要在生圖前擋未儲存變更，待拍板。
 
 ## Constraints
 - 沿用 character-image-avatar 既有拍板：頭像存正方形 PNG、圓框走 CSS；移除全身圖不連動刪頭像；刪角色清兩檔。
-- 改名須沿用 `validate_name` 規則並擋同名碰撞（比照 data.rs:1897 `renames_world_and_rejects_collisions`）。
+- 編輯畫面按鈕列一律置頂（全 app 統一），例外只有生圖對話框的主要動作放右下。
