@@ -1505,8 +1505,9 @@ textarea {
   gap: 0.5rem !important;
 }
 
-.transport-choice .inline > button {
-  margin-left: auto;
+/* 版本字串吃掉中間空白，讓「已連結 ✓」與按鈕成組貼右，不受字串長短影響 */
+.transport-choice .inline > .cli-version {
+  margin-right: auto;
 }
 
 .cli-version {
@@ -1517,6 +1518,9 @@ textarea {
 .cli-connected {
   font-size: var(--fs-meta);
   color: var(--ok);
+  /* 版本字串長的那幾列會把這格擠到剩半個字寬，勾勾就掉到下一行；空間優先讓給它，版本字串自己折 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cli-install-progress {

@@ -14,6 +14,8 @@ pub struct InstallSpec {
     pub install: Vec<String>,
     pub login: Vec<String>,
     pub probe: Vec<String>,
+    // 探針輸出必須含這段字才算過；給那些未登入也可能 exit 0 的指令用。
+    pub probe_expect: Option<String>,
     pub pre_probe: bool,
     #[allow(dead_code)]
     pub window_title: String,
@@ -193,6 +195,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                 ],
             ),
             probe: argv(claude, &["-p", "ok"]),
+            probe_expect: None,
             pre_probe: true,
             window_title: "Table Tavern - Claude Login".to_owned(),
             poll_seconds: 600,
@@ -212,11 +215,12 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                 ],
             ),
             probe: argv(codex, &["login", "status"]),
+            probe_expect: None,
             pre_probe: true,
             window_title: "Table Tavern - Codex Login".to_owned(),
             poll_seconds: 600,
         },
-        // agy／grok 未登入時的探針會啟動 OAuth，有副作用，登入前絕不可執行。
+        // agy 未登入時的探針會啟動 OAuth，有副作用，登入前絕不可執行。
         InstallSpec {
             id: "agy".to_owned(),
             install: ps_install("https://antigravity.google/cli/install.ps1"),
@@ -233,6 +237,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                 ],
             ),
             probe: argv(agy, &["-p", "ok"]),
+            probe_expect: None,
             pre_probe: false,
             window_title: "Table Tavern - Gemini Login".to_owned(),
             poll_seconds: 600,
@@ -251,8 +256,11 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                     "login",
                 ],
             ),
-            probe: argv(grok, &["-p", "ok"]),
-            pre_probe: false,
+            // grok -p 會實跑一次 grok-4.5 推理（實測 26 秒，逼近 30 秒探針上限）；
+            // models 只讀本機憑證、無 OAuth 副作用，故可在登入前先探。
+            probe: argv(grok, &["models"]),
+            probe_expect: Some("You are logged in".to_owned()),
+            pre_probe: true,
             window_title: "Table Tavern - Grok Login".to_owned(),
             poll_seconds: 600,
         },
@@ -410,7 +418,10 @@ async fn checked_probe(
     emit(InstallProgress::new(&spec.id, "verify", log_path));
     let output = run_probe(&spec.probe).await?;
     append_output(log, &spec.probe, &output)?;
-    Ok(output.success)
+    let expected = spec.probe_expect.as_ref().is_none_or(|needle| {
+        String::from_utf8_lossy(&output.stdout).contains(needle.as_str())
+    });
+    Ok(output.success && expected)
 }
 
 async fn run_install_with_interval(
@@ -590,6 +601,7 @@ mod tests {
             install: command(script, "install", &state, &probes, &login),
             login: command(script, login_action, &state, &probes, &login),
             probe: command(script, "probe", &state, &probes, &login),
+            probe_expect: None,
             pre_probe,
             window_title: "stub".to_owned(),
             poll_seconds,
@@ -616,7 +628,7 @@ mod tests {
     #[cfg(unix)]
     const SCRIPT: &str = r#"case "$1" in
  install) exit 0 ;;
- probe) echo x >> "$3"; [ -f "$2" ] ;;
+ probe) echo x >> "$3"; echo signed-in; [ -f "$2" ] ;;
  login-ok) touch "$2"; touch "$4" ;;
  login-no-state) touch "$4" ;;
  login-fail) touch "$4"; exit 1 ;;
@@ -624,7 +636,7 @@ mod tests {
 esac"#;
     #[cfg(windows)]
     const SCRIPT: &str = r#"if "%1"=="install" exit /b 0
-if "%1"=="probe" (echo x>> "%3" & if exist "%2" (exit /b 0) else (exit /b 1))
+if "%1"=="probe" (echo x>> "%3" & echo signed-in & if exist "%2" (exit /b 0) else (exit /b 1))
 if "%1"=="login-ok" (type nul > "%2" & type nul > "%4" & exit /b 0)
 if "%1"=="login-no-state" (type nul > "%4" & exit /b 0)
 if "%1"=="login-fail" (type nul > "%4" & exit /b 1)
@@ -638,6 +650,28 @@ if "%1"=="login-sleep" (type nul > "%4" & timeout /t 3 /nobreak >nul & exit /b 0
         assert!(result.is_ok());
         assert_eq!(stages(&events), ["detect", "install", "verify", "done"]);
         assert!(!root.0.join("login").exists());
+    }
+    // 探針 exit 0 但輸出沒有登入字樣時不得算過（grok models 未登入是否也 exit 0 無法驗證）
+    #[tokio::test]
+    async fn probe_expect_mismatch_forces_login() {
+        let root = TestDir::new("expect-miss");
+        let script = write_stub(&root.0, SCRIPT);
+        std::fs::write(root.0.join("state"), "ready").unwrap();
+        let mut spec = spec(&script, &root.0, true, "login-ok", 1);
+        spec.probe_expect = Some("nope".to_owned());
+        let (_, events) = run_case(&root.0, spec).await;
+        assert!(stages(&events).contains(&"login"));
+    }
+    #[tokio::test]
+    async fn probe_expect_match_skips_login() {
+        let root = TestDir::new("expect-hit");
+        let script = write_stub(&root.0, SCRIPT);
+        std::fs::write(root.0.join("state"), "ready").unwrap();
+        let mut spec = spec(&script, &root.0, true, "login-ok", 1);
+        spec.probe_expect = Some("signed-in".to_owned());
+        let (result, events) = run_case(&root.0, spec).await;
+        assert!(result.is_ok());
+        assert!(!stages(&events).contains(&"login"));
     }
     #[tokio::test]
     async fn login_success_verifies_once() {
