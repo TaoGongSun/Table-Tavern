@@ -3050,20 +3050,27 @@ function App() {
               {tableName}
             </button>
           ) : (
-            <input
-              className="table-title-input"
-              autoFocus
-              value={editingName}
-              aria-label={t("tableNameAria")}
-              onChange={(e) => setEditingName(e.currentTarget.value)}
-              onBlur={() => renameTable(editingName)}
-              onKeyDown={(e) => {
-                // 中文輸入法選字也是按 Enter，組字中一律放行給輸入法
-                if (e.nativeEvent.isComposing) return;
-                if (e.key === "Enter") e.currentTarget.blur();
-                if (e.key === "Escape") setEditingName(null);
+            // 包成表單：Enter 的確認交給瀏覽器的表單送出，中文輸入法組字中的
+            // Enter 會被輸入法吃掉（對話輸入框同款做法），不會誤判成確認改名
+            <form
+              className="table-title-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                renameTable(editingName);
               }}
-            />
+            >
+              <input
+                className="table-title-input"
+                autoFocus
+                value={editingName}
+                aria-label={t("tableNameAria")}
+                onChange={(e) => setEditingName(e.currentTarget.value)}
+                onBlur={() => renameTable(editingName)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditingName(null);
+                }}
+              />
+            </form>
           )}
           <div className="chat-header-actions">
             {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
