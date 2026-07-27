@@ -525,9 +525,10 @@ textarea {
   --fac: #8a6a3c; /* 銅金：名字 wedge 跟著書皮走 */
   /* 皮革色＝各主題的 --gm-leather 混主題底色（明度自動跟主題走，
      2026-07-27 使用者回饋：固定深色在淺主題下太暗太顯眼）；上層半透明漸層是打光 */
+  --leather-base: color-mix(in srgb, var(--gm-leather) 74%, var(--surface-2));
+  --leather: var(--leather-base);
   background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.16)),
-    color-mix(in srgb, var(--gm-leather) 74%, var(--surface-2));
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.16)), var(--leather);
   color: var(--ink-1); /* 皮革變淺主題時 ⚙ 也要跟著轉深 */
   /* 跟有圖角色卡等高（2.875rem 圖窗 × 3/2 = 4.3125rem ≈ 69px，使用者拍板） */
   min-height: 4.3125rem;
@@ -549,6 +550,11 @@ textarea {
 .tcard-gm .tcard-art,
 .tcard-player .tcard-art {
   background: none;
+}
+
+/* 玩家卡：同一張皮混白調亮一階，與正上方的 GM 卡分得出來（各主題都跟著自己的皮革色走） */
+.tcard-player {
+  --leather: color-mix(in srgb, #ffffff 18%, var(--leather-base));
 }
 
 /* 還沒建玩家卡：同一張皮但壓暗、內框改虛線，一眼看得出是空位 */
