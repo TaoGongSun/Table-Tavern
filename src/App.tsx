@@ -1593,6 +1593,7 @@ function CardEditor({
   onArchived,
   onDeleted,
   onBack,
+  leaveGuard,
   config,
   onPreference,
   onOpenAiSettings,
@@ -1600,6 +1601,8 @@ function CardEditor({
   world: string;
   /** null＝建新卡的空白草稿（名字在表單裡填，按儲存才落地） */
   name: string | null;
+  /** 側欄要離開這張卡時先問過這裡（未儲存確認與返回鈕同一條） */
+  leaveGuard: { current: (() => Promise<boolean>) | null };
   takenNames: string[];
   newCardColor: string;
   imageDataUrl?: string;
@@ -1801,15 +1804,18 @@ function CardEditor({
     }
   }
 
+  async function confirmLeave() {
+    if (unsavedCount === 0) return true;
+    return await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
+      title: t("unsavedLeaveTitle"),
+      kind: "warning",
+    });
+  }
+  // 側欄切換編輯對象時走的是同一條確認；每次 render 掛上，閉包才拿得到最新的 unsavedCount
+  leaveGuard.current = confirmLeave;
+
   async function handleBack() {
-    if (unsavedCount > 0) {
-      const accepted = await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
-        title: t("unsavedLeaveTitle"),
-        kind: "warning",
-      });
-      if (!accepted) return;
-    }
-    onBack();
+    if (await confirmLeave()) onBack();
   }
 
   async function archive() {
@@ -2223,6 +2229,8 @@ function App() {
     (character) => character.name,
     (ordered) => void reorderCast(ordered),
   );
+  // 角色卡編輯器每次 render 掛上「可以離開嗎」；側欄任何會換掉編輯畫面的入口都先問它
+  const leaveGuard = useRef<(() => Promise<boolean>) | null>(null);
   // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
@@ -2548,6 +2556,36 @@ function App() {
     setMainView(null);
   }
 
+  // 編輯角色卡時，側欄點擊＝換編輯對象（發言對象只在聊天畫面有意義），離開前先問未儲存
+  async function canLeaveEditor() {
+    if (mainView?.kind !== "character" && mainView?.kind !== "new-character") return true;
+    const ok = (await leaveGuard.current?.()) ?? true;
+    // 放行就清掉，下一張卡載好會重新掛上——免得載入空窗期沿用上一張的未儲存狀態
+    if (ok) leaveGuard.current = null;
+    return ok;
+  }
+
+  async function editCard(name: string) {
+    if (mainView?.kind === "character" && mainView.name === name) return;
+    if (await canLeaveEditor()) setMainView({ kind: "character", name });
+  }
+
+  async function selectCard(name: string) {
+    if (mainView?.kind === "character" || mainView?.kind === "new-character") {
+      await editCard(name);
+      return;
+    }
+    setSpeaker(name);
+  }
+
+  async function openWorldEditor() {
+    if (await canLeaveEditor()) setMainView({ kind: "world" });
+  }
+
+  async function openNewCard() {
+    if (await canLeaveEditor()) setMainView({ kind: "new-character" });
+  }
+
   // 側欄拖曳排序：先樂觀套用，寫檔失敗才回捲
   async function reorderCast(ordered: CharacterMeta[]) {
     setError("");
@@ -2793,11 +2831,11 @@ function App() {
               tabIndex={0}
               className="tcard tcard-gm"
               title={t("worldSummary")}
-              onClick={() => setMainView({ kind: "world" })}
+              onClick={() => void openWorldEditor()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setMainView({ kind: "world" });
+                  void openWorldEditor();
                 }
               }}
             >
@@ -2825,12 +2863,12 @@ function App() {
                 style={{ ["--fac" as string]: c.color }}
                 onClick={() => {
                   if (castDrag.justDragged()) return;
-                  setSpeaker(c.name);
+                  void selectCard(c.name);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setSpeaker(c.name);
+                    void selectCard(c.name);
                   }
                 }}
                 title={`${t("castHint", { name: c.name })}｜${t("dragToReorder")}`}
@@ -2858,7 +2896,7 @@ function App() {
                   title={t("editCardSummary", { name: c.name })}
                   onClick={(event) => {
                     event.stopPropagation();
-                    setMainView({ kind: "character", name: c.name });
+                    void editCard(c.name);
                   }}
                 >
                   {t("editBtn")}
@@ -2890,7 +2928,7 @@ function App() {
           )}
           {/* 建卡＝直接開空白角色卡編輯器，名字與內容都在那邊填（2026-07-27 使用者拍板） */}
           <div className="character-create">
-            <button type="button" onClick={() => setMainView({ kind: "new-character" })}>
+            <button type="button" onClick={() => void openNewCard()}>
               {t("createCard")}
             </button>
             <button
@@ -3043,6 +3081,7 @@ function App() {
                   : async () => setMainView(null)
               }
               onBack={() => setMainView(null)}
+              leaveGuard={leaveGuard}
               config={config}
               onPreference={changePreference}
               onOpenAiSettings={() => setSettingsOpen("ai")}
