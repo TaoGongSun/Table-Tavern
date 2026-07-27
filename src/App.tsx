@@ -3058,6 +3058,8 @@ function App() {
               onChange={(e) => setEditingName(e.currentTarget.value)}
               onBlur={() => renameTable(editingName)}
               onKeyDown={(e) => {
+                // 中文輸入法選字也是按 Enter，組字中一律放行給輸入法
+                if (e.nativeEvent.isComposing) return;
                 if (e.key === "Enter") e.currentTarget.blur();
                 if (e.key === "Escape") setEditingName(null);
               }}
