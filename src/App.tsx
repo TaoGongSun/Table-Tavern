@@ -745,13 +745,15 @@ function SettingsWindow({
   onSaved,
   onPreference,
   onClose,
+  initialTab = "appearance",
 }: {
   config: AppConfig;
   onSaved: (c: AppConfig) => void;
   onPreference: (key: string, value: unknown) => void;
   onClose: () => void;
+  initialTab?: "appearance" | "ai" | "author";
 }) {
-  const [tab, setTab] = useState<"appearance" | "ai" | "author">("appearance");
+  const [tab, setTab] = useState<"appearance" | "ai" | "author">(initialTab);
   const [previewTheme, setPreviewTheme] = useState<ThemeId | null>(null);
   // AI 分頁的未儲存欄位數（外觀分頁即改即存，恆為 0）
   const [dirtyCount, setDirtyCount] = useState(0);
@@ -1450,6 +1452,7 @@ function CardEditor({
   onBack,
   config,
   onPreference,
+  onOpenAiSettings,
 }: {
   world: string;
   name: string;
@@ -1461,6 +1464,7 @@ function CardEditor({
   onArchived: () => Promise<void>;
   config: AppConfig;
   onPreference: (key: string, value: unknown) => Promise<void>;
+  onOpenAiSettings: () => void;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [message, setMessage] = useState("");
@@ -1611,7 +1615,7 @@ function CardEditor({
         <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
           {t(imageDataUrl ? "replaceImageBtn" : "addImageBtn")}
         </button>
-        <button type="button" onClick={openAiGenerator}>✨ {t("aiGenBtn")}</button>
+        <button type="button" className="ai-gen-btn" onClick={openAiGenerator}>✨ {t("aiGenBtn")}</button>
         {imageDataUrl && (
           <>
             <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
@@ -1693,10 +1697,13 @@ function CardEditor({
             <h2>{t("aiGenTitle")}</h2>
             <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
             <label>{t("aiGenSourceLabel")}
-              <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
-                {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : `${source[0].toUpperCase()}${source.slice(1)}`}</option>)}
-                {!sourceOptions.includes(aiSource) && <option value={aiSource}>{`${aiSource[0].toUpperCase()}${aiSource.slice(1)}`}</option>}
-              </select>
+              <div className="row">
+                <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
+                  {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : `${source[0].toUpperCase()}${source.slice(1)}`}</option>)}
+                  {!sourceOptions.includes(aiSource) && <option value={aiSource}>{`${aiSource[0].toUpperCase()}${aiSource.slice(1)}`}</option>}
+                </select>
+                <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
+              </div>
             </label>
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
             {aiGenError && <div className="ai-gen-error" role="alert"><div>{t("aiGenFailed")}</div><small>{aiGenError}</small></div>}
@@ -1874,7 +1881,8 @@ function App() {
   } | null>(null);
   const [streamText, setStreamText] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // false＝關閉；字串＝開啟並落在該分頁（生圖對話框的「AI 連線設定」鈕直開 ai 分頁）
+  const [settingsOpen, setSettingsOpen] = useState<false | "appearance" | "ai">(false);
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<
@@ -2501,18 +2509,19 @@ function App() {
           </form>
         </section>
         <div className="sidebar-footer">
-          <button className="settings-open" onClick={() => setSettingsOpen(true)}>
+          <button className="settings-open" onClick={() => setSettingsOpen("appearance")}>
             ⚙️ {t("settingsBtn")}
           </button>
         </div>
       </aside>
 
-      {settingsOpen && (
+      {settingsOpen !== false && (
         <SettingsWindow
           config={config}
           onSaved={setConfig}
           onPreference={(key, value) => void changePreference(key, value)}
           onClose={() => setSettingsOpen(false)}
+          initialTab={settingsOpen}
         />
       )}
 
@@ -2626,6 +2635,7 @@ function App() {
               onBack={() => setMainView(null)}
               config={config}
               onPreference={changePreference}
+              onOpenAiSettings={() => setSettingsOpen("ai")}
             />
           </EditPane>
         ) : mainView?.kind === "world" ? (
