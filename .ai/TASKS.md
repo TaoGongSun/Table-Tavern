@@ -1,9 +1,8 @@
 # Project tasks
 
 ## In progress
-- [drag-reorder-lists](tasks/drag-reorder-lists.md) — 角色卡與世界書條目改拖曳排序（GM 固定最上、刪 ↑↓ 鈕、列不可反白） — 下一步：三件實作完成（cargo 96 綠＋npm build 綠），禁反白已實測通過，等使用者實測拖曳手感後結案
 - [cli-detect-state](tasks/cli-detect-state.md) — CLI 偵測空窗期：加「正在偵測…」三態＋四支並行＋結果快取 — 下一步：實作完成（cargo 93 綠＋npm build 綠＋並行實測 2.8 倍），等使用者實測設定頁重開不再閃「一鍵安裝」後結案
-- [character-card-avatar-issues](tasks/character-card-avatar-issues.md) — 角色卡回饋修訂＋建卡流程改版＋刪除入口＋GM 卡 — 下一步：全數實作完成且使用者實測通過（GM 卡書皮方案七主題驗收，Codex 生圖取消），移除全身圖警告已補（d871f55）；剩改名提示複驗＋圖庫路徑 bug 擱置等 stable-id-storage 拍板
+- [character-card-avatar-issues](tasks/character-card-avatar-issues.md) — 角色卡回饋修訂＋建卡流程改版＋刪除入口＋GM 卡 — 下一步：全數實作完成且使用者實測通過（GM 卡書皮方案七主題驗收，Codex 生圖取消），追加的移除全身圖警告與第 7 項側欄導覽已實測通過；剩改名提示複驗＋圖庫路徑 bug 擱置等 stable-id-storage 拍板
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫實作完成（cargo 91 綠＋build 綠），等實測圖庫；待拍板：提示詞標籤、Ko-fi 導購歧義
 - [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者以新 DMG 實測後結案
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者實測設定頁進階區＋實聊後結案
@@ -14,7 +13,7 @@
 
 ## Done
 
-見 [DONE.md](DONE.md)（16 項）。
+見 [DONE.md](DONE.md)（17 項）。
 
 ## Todo
 - [stable-id-storage](tasks/stable-id-storage.md) — 儲存改用穩定代碼定址（桌與角色的路徑是代碼，顯示名是欄位） — 下一步：**等 fable／使用者回答任務檔裡的四題**（劇情紀錄發言者存什麼／範圍／代碼格式／舊資料處理），再寫實作計畫；採用的話「生成圖庫目錄放錯層」那個 bug 不用先修

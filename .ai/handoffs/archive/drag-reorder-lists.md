@@ -1,7 +1,7 @@
 # Handoff: drag-reorder-lists
 
 ## Current state
-三件全數實作完成，cargo 96 綠＋npm build 綠。禁反白已由使用者 dev 實測確認生效（修過一輪，見下），拖曳手感尚未回報。瀏覽器預覽驗證不適用（App 開場即呼叫 Tauri `invoke`，純 vite 跑不起來），僅靠單元測試與型別檢查。
+**已結案**（2026-07-27 使用者九項實測全通過）。三件全數完成：角色卡拖曳排序（GM 固定最上）、世界書條目拖曳並刪除 ↑↓ 按鈕、兩處列禁反白。
 
 ## Completed
 - **共用拖曳判定** `useDragReorder`（src/App.tsx:985-1065）：pointer 事件、移動門檻 5px（`DRAG_THRESHOLD_PX`，src/App.tsx:985）、一次只與相鄰列交換（越過鄰居中線才換，換完中線落到指標另一側，故高度不一也不抖）、`justDragged()`（src/App.tsx:1057）讓拖曳結束那一下的 click 不觸發選發言者（旗標於 `setTimeout(…, 0)` 解除，因為 click 在 pointerup 之後才補送）。按在 `button/a/input/textarea/select` 上不啟動拖曳。
@@ -15,10 +15,12 @@
 - `cargo test`：96 passed; 0 failed（改版前 93）。新增／改寫測試：`reordering_worldbook_entries_applies_the_given_order`（跨多格來回）、`reordering_worldbook_keeps_unlisted_entries_after_the_listed_ones`（不存在的 uid 忽略、沒送到的接後面）、`reordering_legacy_worldbook_entries_normalizes_display_indices`、`reordering_worldbook_entries_preserves_order_and_unknown_fields`（SillyTavern 的 `order`／未知欄位不被吃掉）、`reordering_characters_persists_order_and_survives_rename`（建卡順序＝初始順序、沒送到的接後面、改名不移位、重存不移位、新卡排最後）、`saving_one_legacy_card_does_not_reshuffle_the_others`（舊卡回歸防護）。
 - `npm run build`：tsc 綠＋`✓ built in 472ms`。
 - `cargo clippy --all-targets`：5 個 warning 全是既有的（import.rs:203、lib.rs:474、data.rs:47 等），本次新增程式碼零 warning。
+- **使用者 dev 實測九項全通過**（2026-07-27）：跨多格拖曳、點擊仍選發言者且拖完不誤選、GM 卡拖不動也擋得住、世界書拖曳與 ↑↓ 消失、拖曳視覺、世界書順序退出再進保留、角色卡順序關 app 重開保留、回歸三項（編輯存檔不跳位／改名不移位／新卡在最下面）、移除圖片確認框。
+- 實測退回一項並已修：拖曳中的 `transform: scale(1.02)` 讓列寬溢出被外層 `overflow` 裁掉左右邊框，改成只留陰影＋握拳游標（commit e4e3172）。
 
-## Remaining / Next action
-- 使用者 `npm run tauri dev` 實測拖曳：角色卡跨多格、拖完不會誤選發言者、GM 卡不動如山、世界書條目拖曳。（禁反白已實測通過。）
-- 未做（超出本次範圍，要的話另議）：拖到清單邊緣時自動捲動；觸控裝置支援（沒設 `touch-action: none`，以免side欄在觸控上不能捲）。
+## 未做（超出本任務範圍，要的話另立）
+- 拖到清單邊緣時自動捲動。
+- 觸控裝置支援：沒設 `touch-action: none`，以免側欄在觸控上不能捲。
 
 ## Constraints
 同 tasks/drag-reorder-lists.md。
