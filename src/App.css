@@ -550,6 +550,40 @@ textarea {
 .opt-avatar { width: 1.25rem; height: 1.25rem; }
 .card-editor-avatar-round { width: 6rem; height: 6rem; }
 
+/* 欄位下方的說明小字（例：改名不會動到劇情正文裡的舊名） */
+.field-note {
+  margin: -0.35rem 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+}
+
+/* 自繪懸浮提示：原生 title 要停留約一秒才浮出來，常常等不到，故改成滑到就出現。
+   掛在外層 span 上是因為 disabled 的按鈕收不到滑鼠事件 */
+.hint-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.hint-wrap[data-hint]:hover::after,
+.hint-wrap[data-hint]:focus-within::after {
+  content: attr(data-hint);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.35em 0.6em;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--ink-1);
+  font: 600 var(--fs-meta) / 1.4 var(--font-ui);
+  box-shadow: var(--shadow-card);
+  pointer-events: none;
+}
+
 /* 圖示欄：輸入框只放一顆 emoji，後面接快捷選項 */
 .emoji-row {
   display: flex;
