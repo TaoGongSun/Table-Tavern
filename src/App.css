@@ -91,6 +91,121 @@ body {
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
 }
 
+:root[data-theme="parchment"] {
+  /* 羊皮紙：米黃護眼；色相取 Solarized Light，墨色加深到 AA */
+  --surface-0: #eee8d5;
+  --surface-1: #f6f0dd;
+  --surface-2: #fdf6e3;
+  --surface-3: #f9f2dc;
+  --ink-1: #073642;
+  --ink-2: #3f565e;
+  --ink-3: #566a72;
+  --line: #d9d0b6;
+  --line-strong: #bcb192;
+  --accent: #a2470e;
+  --accent-ink: #ffffff;
+  --amber: #8a6a1c;
+  --player: #2d6a8a;
+  --plate-mix: #4a4536;
+  --neutral-plate: #4a4536;
+  --neutral-plate-ink: #ffffff;
+  --danger: #a43a2a;
+  --ok: #3f7d3c;
+  --shadow-card: 0 2px 6px rgba(80, 60, 15, 0.14);
+}
+
+:root[data-theme="herbal"] {
+  /* 藥草坊：淡綠護眼 */
+  --surface-0: #e2eadb;
+  --surface-1: #edf3e7;
+  --surface-2: #f9fcf5;
+  --surface-3: #f4f8ee;
+  --ink-1: #1e2a21;
+  --ink-2: #445243;
+  --ink-3: #5f7061;
+  --line: #c8d4bf;
+  --line-strong: #a7b89d;
+  --accent: #3e6b34;
+  --accent-ink: #ffffff;
+  --amber: #7d6817;
+  --player: #38648c;
+  --plate-mix: #3d4a3c;
+  --neutral-plate: #3d4a3c;
+  --neutral-plate-ink: #ffffff;
+  --danger: #a43a2a;
+  --ok: #35703a;
+  --shadow-card: 0 2px 6px rgba(30, 55, 25, 0.13);
+}
+
+:root[data-theme="candlelight"] {
+  /* 燭光：暖棕深色 */
+  --surface-0: #251e15;
+  --surface-1: #322a1f;
+  --surface-2: #3a3125;
+  --surface-3: #1d1710;
+  --ink-1: #f2e8d5;
+  --ink-2: #d6c9ae;
+  --ink-3: #b8ab8f;
+  --line: #4f4430;
+  --line-strong: #5d5139;
+  --accent: #e0a24e;
+  --accent-ink: #201709;
+  --amber: #e6c46e;
+  --player: #96bad8;
+  --plate-mix: #322a1f;
+  --neutral-plate: #3a3125;
+  --neutral-plate-ink: #ffffff;
+  --danger: #e0806a;
+  --ok: #a8cf9e;
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="port"] {
+  /* 波特酒：酒紅深色 */
+  --surface-0: #241a20;
+  --surface-1: #30232b;
+  --surface-2: #382a33;
+  --surface-3: #1c1319;
+  --ink-1: #efe4eb;
+  --ink-2: #d5c3cf;
+  --ink-3: #b6a2b0;
+  --line: #4e3c49;
+  --line-strong: #5c4756;
+  --accent: #d9899b;
+  --accent-ink: #26101a;
+  --amber: #e6c46e;
+  --player: #96b4dc;
+  --plate-mix: #30232b;
+  --neutral-plate: #382a33;
+  --neutral-plate-ink: #ffffff;
+  --danger: #e0806a;
+  --ok: #a4cf9e;
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="seamist"] {
+  /* 海霧：冷灰藍淺色 */
+  --surface-0: #e1e8eb;
+  --surface-1: #edf2f4;
+  --surface-2: #fafcfd;
+  --surface-3: #f4f8fa;
+  --ink-1: #1f2830;
+  --ink-2: #46525d;
+  --ink-3: #63707c;
+  --line: #c5d0d6;
+  --line-strong: #a3b2bc;
+  --accent: #2c6e86;
+  --accent-ink: #ffffff;
+  --amber: #7d641a;
+  --player: #35638a;
+  --plate-mix: #37454e;
+  --neutral-plate: #37454e;
+  --neutral-plate-ink: #ffffff;
+  --danger: #a43a2a;
+  --ok: #3f7d3c;
+  --shadow-card: 0 2px 6px rgba(20, 45, 55, 0.13);
+}
+
 /* 舊版把 outline 全關掉是無障礙缺陷（ui-overhaul 檢討第一條）：鍵盤焦點一律可見 */
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -988,6 +1103,67 @@ textarea {
   gap: 0.25rem;
   font-size: var(--fs-ui);
   color: var(--ink-2);
+}
+
+.theme-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--fs-ui);
+  color: var(--ink-2);
+}
+
+.theme-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: var(--fs-meta);
+  cursor: pointer;
+}
+
+.swatch-chip {
+  position: relative;
+  width: 3.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+}
+
+.swatch-chip-selected {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.swatch-dot {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.swatch-kofi {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.2rem;
+  font-size: var(--fs-meta);
+}
+
+.theme-preview-hint {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-ui);
 }
 
 .author-page {
