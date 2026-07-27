@@ -532,12 +532,6 @@ textarea {
   padding: 0.35rem 3.4rem 0.35rem 0;
 }
 
-/* 圖窗放圓頭像時取消名牌的 wedge 咬合（-6px）並讓出間距：
-   全身圖是填滿圖窗的方形，名牌壓上去是設計；圓頭像四周本來就有留白，再咬合會貼到黑框 */
-.tcard:has(.tcard-avatar) .tcard-plate {
-  margin-left: 0.35rem;
-}
-
 /* 名字 wedge：角色被叫到名字的地方全用同一塊牌（此處＋發言名牌＋目標晶片） */
 .tcard-plate {
   display: block;
@@ -547,7 +541,7 @@ textarea {
   background: color-mix(in srgb, var(--fac, #888888) 64%, var(--plate-mix));
   clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
   padding: 0.45em 1.3em 0.45em 0.7em;
-  margin-left: -6px;
+  margin-left: 0; /* 名牌切齊圖窗右緣：不壓圖也不留空隙（2026-07-27 使用者實測拍板） */
   width: fit-content;
   max-width: 100%;
   min-width: 0; /* flex 列裡允許縮短出 ellipsis（tcard-name-row） */
