@@ -2227,9 +2227,11 @@ function App() {
                   )}
                 </span>
                 <span className="tcard-body">
-                  <span className="tcard-plate">{c.name}</span>
+                  <span className="tcard-name-row">
+                    <span className="tcard-plate">{c.name}</span>
+                    {c.tier !== "default" && <span className="tcard-gem">{tierLabel(c.tier)}</span>}
+                  </span>
                 </span>
-                {c.tier !== "default" && <span className="tcard-gem">{tierLabel(c.tier)}</span>}
                 <button
                   type="button"
                   className="character-card-edit"
