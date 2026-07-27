@@ -235,6 +235,8 @@ const zh = {
   renameNote: "改名會一併換掉發言者名稱與世界書的角色指定；已經寫進劇情正文裡的舊名不會更動。",
   newCardTitle: "新角色卡",
   aiGenNeedsContent: "請先填角色名稱與公開設定，才能生成角色圖",
+  removeImageTitle: "移除圖片",
+  removeImageConfirm: "移除圖片後，這個角色會改用頭像顯示；沒有頭像就退回 emoji 圖示。確定要移除嗎？",
   removeAvatarTitle: "移除頭像",
   removeAvatarConfirm: "移除頭像後，這個角色會變回原本的 emoji 圖示。確定要移除嗎？",
   duplicateNameError: "已經有同名角色了，請換一個名字",
@@ -484,6 +486,9 @@ const en: Record<MsgKey, string> = {
   renameNote: "Renaming also updates speaker labels and worldbook character picks; the old name already written into the story text stays as it is.",
   newCardTitle: "New character card",
   aiGenNeedsContent: "Fill in the name and public profile before generating an image",
+  removeImageTitle: "Remove image",
+  removeImageConfirm:
+    "Removing the image falls back to this character’s avatar, or the emoji icon if there is none. Remove it?",
   removeAvatarTitle: "Remove avatar",
   removeAvatarConfirm: "Removing the avatar brings back this character’s emoji icon. Remove it?",
   duplicateNameError: "A character with that name already exists — pick another one",
