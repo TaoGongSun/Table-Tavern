@@ -34,8 +34,7 @@
 
 ## Next action
 0. GM 書本卡換方案＝fable 的工作，不要接手。
-1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。刪桌與刪角色都已各自補上清圖庫，但 `rename_world` 仍只搬 `worlds/{名}`＝改桌名後整個生成圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），等使用者拍板。
-2. 生圖用的是**已存檔**的 public_md（後端從磁碟讀卡），編輯器裡沒存的描述不會進提示詞——要不要在生圖前擋未儲存變更，待拍板。
+1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。刪桌與刪角色都已各自補上清圖庫，但 `rename_world` 仍只搬 `worlds/{名}`＝改桌名後整個生成圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），15 分鐘的事。**但先別動**：使用者提案改用代碼定址（見 [stable-id-storage](../tasks/stable-id-storage.md)），若採用則此 bug 自動消失，現在修是白工。等那個提案拍板後再決定。
 
 ## Constraints
 - 沿用 character-image-avatar 既有拍板：頭像存正方形 PNG、圓框走 CSS；移除全身圖不連動刪頭像；刪角色清兩檔。
