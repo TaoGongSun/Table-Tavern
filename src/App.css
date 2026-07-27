@@ -381,11 +381,6 @@ textarea {
   overflow: hidden;
 }
 
-/* 圓頭像時圖窗不上漸層底（角色色識別交給名牌 wedge） */
-.tcard-art-clear {
-  background: none;
-}
-
 /* 匯入卡的角色圖：填滿圖窗，臉部通常在上半故對齊頂部 */
 .tcard-image {
   width: 100%;
