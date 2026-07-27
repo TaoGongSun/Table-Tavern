@@ -450,13 +450,15 @@ fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
 async fn stream_via_transport(
     config: &data::AppConfig,
     transport_override: Option<&str>,
+    allow_cli_tools: bool,
     tier: data::Tier,
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
-    // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）
+    // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
+    // allow_cli_tools：只有生圖呼叫為 true——CLI 生圖工具要寫檔／跑指令，聊天一律鎖死工具。
     let transport_kind = transport_override
         .map(str::to_owned)
         .unwrap_or_else(|| {
@@ -525,7 +527,7 @@ async fn stream_via_transport(
         "codex" => {
             // codex 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時模型用 CLI 預設
             let model = cli::tier_override(&config.tier_models, "codex", tier);
-            let args = cli::codex_args(model, cli::codex_effort_for(tier));
+            let args = cli::codex_args(model, cli::codex_effort_for(tier), allow_cli_tools);
             let combined = format!("{system}\n\n{prompt}");
             cli::run_cli(&program, &args, &combined, &[], cli::parse_codex_line, emit).await
         }
@@ -533,14 +535,14 @@ async fn stream_via_transport(
             // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             let combined = format!("{system}\n\n{prompt}");
-            let args = cli::agy_args(model, &combined);
+            let args = cli::agy_args(model, &combined, allow_cli_tools);
             cli::run_cli(&program, &args, "", &[], cli::parse_agy_line, emit).await
         }
         "grok" => {
             // grok 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "grok", tier);
             let combined = format!("{system}\n\n{prompt}");
-            let args = cli::grok_args(model, &combined);
+            let args = cli::grok_args(model, &combined, allow_cli_tools);
             cli::run_cli(&program, &args, "", &[], cli::parse_grok_line, emit).await
         }
         other => Err(format!("未知傳輸層：{other}").into()),
@@ -670,6 +672,7 @@ async fn generate_character_image(
     let reply = stream_via_transport(
         &config,
         Some(&transport_kind),
+        true,
         transport::gm_tier(&config),
         "",
         "",
@@ -714,7 +717,7 @@ async fn chat_with_character(
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    stream_via_transport(&config, None, card.tier, &card.name, &closing, &messages, emit).await
+    stream_via_transport(&config, None, false, card.tier, &card.name, &closing, &messages, emit).await
 }
 
 /// GM 上下文＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
@@ -760,6 +763,7 @@ async fn gm_narrate(
     stream_via_transport(
         &config,
         None,
+        false,
         transport::gm_tier(&config),
         "GM",
         "現在請以 GM 身分執行上述導演指示，只輸出旁白本文，不要加名字前綴。",
@@ -783,6 +787,7 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<Stri
     let reply = stream_via_transport(
         &config,
         None,
+        false,
         transport::gm_tier(&config),
         "GM",
         "現在請執行上述導演指示，只輸出一個名字。",
@@ -812,6 +817,7 @@ async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, Stri
     let reply = stream_via_transport(
         &config,
         None,
+        false,
         transport::gm_tier(&config),
         "GM",
         "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",

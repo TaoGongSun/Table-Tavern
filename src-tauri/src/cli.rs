@@ -371,7 +371,8 @@ pub fn claude_args(model: Option<&str>, system: &str) -> Vec<String> {
 
 /// codex 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// --ignore-user-config：跳過使用者 config.toml（hooks／MCP），auth 不受影響（--help 查證）。
-pub fn codex_args(model: Option<&str>, effort: Option<&str>) -> Vec<String> {
+/// allow_tools：生圖呼叫需要 $imagegen 寫檔，沙盒放寬到 workspace-write；聊天一律唯讀。
+pub fn codex_args(model: Option<&str>, effort: Option<&str>, allow_tools: bool) -> Vec<String> {
     let mut args: Vec<String> = [
         "exec",
         "--json",
@@ -379,7 +380,7 @@ pub fn codex_args(model: Option<&str>, effort: Option<&str>) -> Vec<String> {
         "--skip-git-repo-check",
         "--ignore-user-config",
         "-s",
-        "read-only",
+        if allow_tools { "workspace-write" } else { "read-only" },
     ]
     .map(str::to_owned)
     .to_vec();
@@ -396,12 +397,17 @@ pub fn codex_args(model: Option<&str>, effort: Option<&str>) -> Vec<String> {
 }
 
 /// agy 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
-/// -p 必須直接帶整包 prompt；headless 維持安全預設，不開放工具呼叫。
-pub fn agy_args(model: Option<&str>, prompt: &str) -> Vec<String> {
+/// -p 必須直接帶整包 prompt；聊天維持安全預設不開工具。
+/// allow_tools：agy 的生圖工具在無頭模式需要 command 權限、提示彈不出來會被自動拒絕
+/// （2026-07-27 實測），生圖呼叫必須帶 --dangerously-skip-permissions 才會出圖。
+pub fn agy_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = model {
         args.push("--model".to_owned());
         args.push(model.to_owned());
+    }
+    if allow_tools {
+        args.push("--dangerously-skip-permissions".to_owned());
     }
     args.push("-p".to_owned());
     args.push(prompt.to_owned());
@@ -409,19 +415,21 @@ pub fn agy_args(model: Option<&str>, prompt: &str) -> Vec<String> {
 }
 
 /// grok 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
-/// headless 單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
-pub fn grok_args(model: Option<&str>, prompt: &str) -> Vec<String> {
-    let mut args: Vec<String> = [
-        "--output-format",
-        "streaming-json",
-        "--deny",
-        "*",
-        "--disable-web-search",
-        "--no-plan",
-        "--no-subagents",
-    ]
-    .map(str::to_owned)
-    .to_vec();
+/// 聊天單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
+/// allow_tools：生圖呼叫要用 grok 原生 image_gen 工具，--deny * 換成 --always-approve。
+pub fn grok_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<String> {
+    let mut args: Vec<String> = ["--output-format", "streaming-json"]
+        .map(str::to_owned)
+        .to_vec();
+    if allow_tools {
+        args.push("--always-approve".to_owned());
+    } else {
+        args.push("--deny".to_owned());
+        args.push("*".to_owned());
+    }
+    args.extend(
+        ["--disable-web-search", "--no-plan", "--no-subagents"].map(str::to_owned),
+    );
     if let Some(model) = model {
         args.push("-m".to_owned());
         args.push(model.to_owned());
@@ -726,16 +734,16 @@ mod tests {
     fn agy_args_put_prompt_in_final_p_value_with_optional_model() {
         let prompt = "system\n\n整包 prompt（含空格）";
         assert_eq!(
-            agy_args(Some("Claude Sonnet 4.6 (Thinking)"), prompt),
+            agy_args(Some("Claude Sonnet 4.6 (Thinking)"), prompt, false),
             ["--model", "Claude Sonnet 4.6 (Thinking)", "-p", prompt]
         );
-        assert_eq!(agy_args(None, prompt), ["-p", prompt]);
+        assert_eq!(agy_args(None, prompt, false), ["-p", prompt]);
     }
 
     #[test]
     fn grok_args_disable_every_tool_and_put_prompt_last() {
         let prompt = "system\n\n整包 prompt（含空格）";
-        let args = grok_args(Some("grok-4.5"), prompt);
+        let args = grok_args(Some("grok-4.5"), prompt, false);
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--output-format", "streaming-json"]));
@@ -745,7 +753,7 @@ mod tests {
         assert!(args.contains(&"--no-subagents".to_owned()));
         assert!(args.windows(2).any(|pair| pair == ["-m", "grok-4.5"]));
         assert_eq!(args[args.len() - 2..], ["-p", prompt]);
-        let default_args = grok_args(None, prompt);
+        let default_args = grok_args(None, prompt, false);
         assert_eq!(default_args[default_args.len() - 2..], ["-p", prompt]);
     }
 
@@ -791,11 +799,11 @@ mod tests {
         assert_eq!(claude_model_for(Tier::Default), None);
         assert_eq!(codex_effort_for(Tier::Balanced), Some("medium"));
         assert_eq!(codex_effort_for(Tier::Default), None);
-        let args = codex_args(None, codex_effort_for(Tier::Best));
+        let args = codex_args(None, codex_effort_for(Tier::Best), false);
         assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
         assert!(!args.contains(&"-m".to_owned()));
         assert_eq!(args.last().unwrap(), "-");
-        let args = codex_args(Some("gpt-5.6-terra"), None);
+        let args = codex_args(Some("gpt-5.6-terra"), None, false);
         assert!(args.windows(2).any(|w| w == ["-m", "gpt-5.6-terra"]));
         let args = claude_args(claude_model_for(Tier::Fast), "系統");
         assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
