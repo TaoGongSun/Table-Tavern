@@ -1,9 +1,9 @@
 # Task
 Task-ID: drag-reorder-lists
 Title: 角色卡與世界書條目改拖曳排序（GM 卡固定最上、刪除上下移按鈕、列不可反白）
-Status: in_progress
-Created: 2026-07-27T23:55:00+08:00
-Updated: 2026-07-27T23:30:00+08:00
+Status: completed
+Created: 2026-07-27T23:00:00+08:00
+Updated: 2026-07-27T23:55:00+08:00
 
 ## Summary
 
@@ -14,7 +14,7 @@ Updated: 2026-07-27T23:30:00+08:00
 角色卡原本沒有順序概念（後端照名字排序），新增 frontmatter 欄位 `display_index` 持久化；世界書本來就有 `displayIndex`，只是舊指令僅能與相鄰交換，改成一次重寫整串以支援跨多格拖曳。
 
 ## Next action
-- 使用者以 `npm run tauri dev` 實測拖曳手感（跨多格、與選發言者不打架）後結案；禁反白已實測通過
+- 無，2026-07-27 使用者九項實測全通過結案。交接與驗證證據見 [handoffs/archive/drag-reorder-lists.md](../handoffs/archive/drag-reorder-lists.md)
 
 ## Constraints
 - GM 卡固定在角色清單最上面，不可被拖曳、也不可被拖到它上面。
