@@ -470,29 +470,16 @@ textarea {
   margin: -3px;
 }
 
-/* GM 列：系統機件不是角色，壓成一行工具列（整列點擊開世界設定＋世界書） */
-.gm-row {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.25rem 0.4rem;
-  border-radius: var(--radius-m);
-  font-size: var(--fs-ui);
-  color: var(--ink-3);
-  cursor: pointer;
-}
-
-.gm-row:hover {
-  background: var(--surface-2);
-  color: var(--ink-1);
-}
-
-.gm-row b {
-  font-weight: 600;
+/* GM 也是一張組件卡（跟角色卡同尺寸），角色色用中性墨色與角色區分；
+   整張點擊開世界設定，右下的 ⚙ 只是指示，不是另一顆按鈕 */
+.tcard-gm {
+  --fac: var(--ink-2);
 }
 
 .gm-cfg {
-  margin-left: auto;
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.25rem;
   opacity: 0.65;
   font-size: var(--fs-meta);
 }

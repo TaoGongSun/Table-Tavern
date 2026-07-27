@@ -2669,11 +2669,11 @@ function App() {
         </details>
         <section className="character-panel" aria-label={t("castAria")}>
           <div className="character-list">
-            {/* GM 列：系統機件壓成一行（ui-overhaul 拍板）；整列點擊開世界設定＋世界書，不可選為發言對象 */}
+            {/* GM 卡：與角色卡同款同尺寸（GM 是桌上最重要的一位），但不可選為發言對象；整張點擊開世界設定＋世界書 */}
             <div
               role="button"
               tabIndex={0}
-              className="gm-row"
+              className="tcard tcard-gm"
               title={t("worldSummary")}
               onClick={() => setMainView({ kind: "world" })}
               onKeyDown={(e) => {
@@ -2683,8 +2683,14 @@ function App() {
                 }
               }}
             >
-              <span aria-hidden="true">🎲</span>
-              <b>GM</b>
+              <span className="tcard-art">
+                <span aria-hidden="true">📖</span>
+              </span>
+              <span className="tcard-body">
+                <span className="tcard-name-row">
+                  <span className="tcard-plate">GM</span>
+                </span>
+              </span>
               <span className="gm-cfg" aria-hidden="true">
                 ⚙
               </span>
