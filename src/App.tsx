@@ -1961,10 +1961,10 @@ function CardEditor({
         />
       </div>
       <label>
-        {t("nameLabel")}
+        {t(isPlayer ? "playerNameLabel" : "nameLabel")}
         <input
           value={card.name}
-          placeholder={t("newCharacterPlaceholder")}
+          placeholder={t(isPlayer ? "playerNamePlaceholder" : "newCharacterPlaceholder")}
           onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
         />
       </label>
