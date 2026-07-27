@@ -1,9 +1,9 @@
 # Task
 Task-ID: character-card-avatar-issues
 Title: 角色卡回饋修訂：頭像間距／角色改名／圖像變更未儲存提示／建卡空名擋下
-Status: in_progress
+Status: completed
 Created: 2026-07-27T00:00:00+08:00
-Updated: 2026-07-27T23:30:00+08:00
+Updated: 2026-07-28T01:20:00+08:00
 
 ## Summary
 character-image-avatar 結案後使用者實測回報的五項，加上實測中追加的第 6 項（2026-07-27）：
@@ -19,7 +19,7 @@ character-image-avatar 結案後使用者實測回報的五項，加上實測中
 七項全部實作完成且使用者實測通過；GM 卡另完成書皮方案（主題連動皮革色，commit 7597061，詳見交接檔連結的封存文件）。
 
 ## Next action
-- 改名的「劇情正文舊名不動」提示（commit 8cbcc71）待複驗
+- 改名提示已改為儲存時的原生 confirm 並實測通過（2026-07-28）；灰字保留當事前說明
 - 生成圖庫目錄放錯層：擱置等 [stable-id-storage](stable-id-storage.md) 拍板（採用則自動消失）
 - 待拍板：生圖讀的是已存檔的 public_md，編輯器裡未存的描述不會進提示詞
 
