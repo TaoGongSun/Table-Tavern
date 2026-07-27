@@ -13,6 +13,8 @@
 - i18n zh-TW／en 三鍵：authorTab、authorBlurb、sponsorBtn
 - 頭像資產：Tao-icon.png（240×240）複製為 src/assets/tao-icon.png，Vite 打包
 
+- 生成歷史圖庫（2026-07-27 實測後追加）：生成原圖落地 `{world}/gen-gallery/{name}/{unix_ms}.png`（不設上限）；生成成功不再自動開裁切，改刷新對話框內縮圖列（新在前、每批 12 張「載入更多」）；點縮圖＝重開 2:3 裁切重選範圍並套用（同一張可反覆重裁）；縮圖 X＋確認＝真刪。後端三 command（list／read／delete_gallery_image）含路徑逃逸防護與自寫 base64 decoder。生圖 UX 另修：生成鈕右下角主色（置頂例外拍板）、✨ 鈕描邊、來源旁「⚙ AI 連線」直開設定 ai 分頁（設定視窗移版面尾端修疊層）、CLI 生圖呼叫開工具權限（codex workspace-write／agy skip-permissions／grok always-approve，聊天路徑不動）。
+
 ## Verification
 - 後端：`cargo test` 85 綠（基線 77，+8 新測試：Images API mock 兩案、extract_image_from_text 三案、gen_prompt roundtrip 等）；`cargo clippy --all-targets` 0 error
 - 前端：`npm run build` exit 0
