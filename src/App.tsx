@@ -439,13 +439,27 @@ function Settings({
     stopCliPolling();
     cliPollRef.current = setInterval(() => {
       elapsed += 3_000;
-      detectClis()
-        .then((detected) => {
-          setClis(detected);
-          if (detected.some((cli) => cli.id === provider) || elapsed >= 600_000) {
-            stopCliPolling();
-            setInstallingCli(null);
+      void detectClis().then(setClis).catch(() => {});
+      // 安裝流程跑在獨立終端機／背景工作裡，只能靠 cli_verified 印記知道登入驗證過了沒
+      invoke<boolean>("cli_verified", { provider })
+        .then((verified) => {
+          if (!verified) {
+            if (elapsed >= 600_000) {
+              stopCliPolling();
+              setInstallingCli(null);
+            }
+            return;
           }
+          stopCliPolling();
+          setInstallingCli(null);
+          const base = configRef.current;
+          const next = {
+            ...base,
+            preferences: { ...base.preferences, [cliConnectedKey(provider)]: true },
+          };
+          void invoke("write_config", { config: next })
+            .then(() => onSavedRef.current(next))
+            .catch(() => {});
         })
         .catch(() => {
           if (elapsed >= 600_000) {
@@ -1794,9 +1808,20 @@ function CardEditor({
       name: target,
       avatar: card.avatar.trim() || DEFAULT_AVATAR,
     };
+    // 改名會搬檔並回填引用、正文舊名留在原地，不可逆；欄位下的說明太容易看漏，儲存前再攔一次
+    const renaming = name !== null && target !== name;
+    if (
+      renaming &&
+      !(await confirm(t("renameConfirm", { from: name, to: target }), {
+        title: t("renameConfirmTitle"),
+        kind: "warning",
+      }))
+    ) {
+      return;
+    }
     try {
       // 改名要先搬檔＋回填引用，再寫卡片內容；建新卡直接寫
-      if (name !== null && target !== name) {
+      if (renaming) {
         await invoke("rename_character", { world, from: name, to: target });
       }
       await invoke("write_character", { world, card: saved });

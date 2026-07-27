@@ -233,6 +233,9 @@ const zh = {
   nameLabel: "角色名稱",
   nameRequiredError: "請先填角色名稱",
   renameNote: "改名會一併換掉發言者名稱與世界書的角色指定；已經寫進劇情正文裡的舊名不會更動。",
+  renameConfirmTitle: "角色改名",
+  renameConfirm:
+    "「{from}」改名為「{to}」。\n發言者名稱與世界書的角色指定會一起換掉，但已經寫進劇情正文裡的「{from}」不會更動。\n確定改名？",
   newCardTitle: "新角色卡",
   aiGenNeedsContent: "請先填角色名稱與公開設定，才能生成角色圖",
   removeImageTitle: "移除圖片",
@@ -484,6 +487,9 @@ const en: Record<MsgKey, string> = {
   nameLabel: "Character name",
   nameRequiredError: "Enter a character name first",
   renameNote: "Renaming also updates speaker labels and worldbook character picks; the old name already written into the story text stays as it is.",
+  renameConfirmTitle: "Rename character",
+  renameConfirm:
+    "Rename “{from}” to “{to}”.\nSpeaker labels and worldbook character picks change with it, but “{from}” already written into the story text stays as it is.\nRename?",
   newCardTitle: "New character card",
   aiGenNeedsContent: "Fill in the name and public profile before generating an image",
   removeImageTitle: "Remove image",

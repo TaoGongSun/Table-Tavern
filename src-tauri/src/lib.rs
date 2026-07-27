@@ -67,7 +67,9 @@ fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<Stri
         "grok" => (
             "curl -fsSL https://x.ai/cli/install.sh | bash",
             Some("grok login"),
-            "grok -p \"ok\"",
+            // grok -p 會真的跑一次 grok-4.5 推理（實測 26 秒又燒額度）；models 只讀本機憑證，0.8 秒。
+            // 未登入時它是否照樣 exit 0 無法驗證，故以登入字串判定，判錯也只是多要求登入一次。
+            "grok models 2>/dev/null | grep -q '^You are logged in'",
             120,
         ),
         _ => return Err(format!("unsupported CLI provider: {provider}")),
@@ -75,6 +77,7 @@ fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<Stri
     let login_flow = login_command
         .map(|command| format!("  {command} || {{ echo {fail}; exit 1; }}\n"))
         .unwrap_or_default();
+    let sentinel = cli_sentinel_name(provider);
     Ok(format!(
         r#"#!/bin/bash
 echo {start}
@@ -101,10 +104,21 @@ if [ "$verified" -ne 1 ]; then
   echo {fail}
   exit 1
 fi
+touch "$(dirname "$0")/{sentinel}"
 echo ""
 echo {success}
 "#
     ))
+}
+
+// 驗證結果的唯一回傳通道：Mac 腳本跑在獨立終端機裡，只能靠這個檔案讓 app 知道登入成功
+fn cli_sentinel_name(provider: &str) -> String {
+    format!(".verified-{provider}")
+}
+
+#[tauri::command]
+fn cli_verified(app: tauri::AppHandle, provider: String) -> Result<bool, String> {
+    Ok(data_root(&app)?.join(cli_sentinel_name(&provider)).exists())
 }
 
 #[tauri::command]
@@ -116,6 +130,9 @@ fn install_cli(
     let directory = data_root(&app)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let _ = &messages;
+    // 先清掉上一輪的驗證印記，避免輪詢讀到舊結果就把「已連結」點亮
+    let sentinel_path = directory.join(cli_sentinel_name(&provider));
+    let _ = std::fs::remove_file(&sentinel_path);
     #[cfg(target_os = "windows")]
     {
         use std::time::Duration;
@@ -140,6 +157,9 @@ fn install_cli(
             let _token = token;
             let emit_app = task_app.clone();
             let _ = install::run_install(spec, &directory, cli::find_binary, move |progress| {
+                if progress.stage == "done" {
+                    let _ = std::fs::write(&sentinel_path, b"");
+                }
                 let _ = emit_app.emit("cli-install-progress", progress);
             })
             .await;
@@ -1000,6 +1020,7 @@ pub fn run() {
             write_config,
             detect_clis,
             install_cli,
+            cli_verified,
             list_cli_models,
             chat_with_character,
             generate_character_image,
@@ -1152,8 +1173,16 @@ mod tests {
         assert_messages(&script);
         assert!(script.contains("curl -fsSL https://x.ai/cli/install.sh | bash"));
         assert!(script.contains("grok login"));
-        assert!(script.contains("grok -p \"ok\" >/dev/null 2>&1"));
+        assert!(script.contains("grok models 2>/dev/null | grep -q '^You are logged in'"));
         assert!(script.contains("while [ \"$elapsed\" -lt 120 ]"));
+    }
+
+    #[test]
+    fn install_script_touches_sentinel_only_after_verification_passes() {
+        let script = cli_install_script("claude", &messages()).unwrap();
+        let touch = script.find("touch \"$(dirname \"$0\")/.verified-claude\"").unwrap();
+        assert!(touch > script.find("exit 1").unwrap());
+        assert!(touch < script.rfind("success").unwrap());
     }
 
     #[test]
