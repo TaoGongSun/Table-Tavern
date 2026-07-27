@@ -503,6 +503,15 @@ textarea {
   background: var(--surface-2);
   box-shadow: var(--shadow-card);
   cursor: pointer;
+  user-select: none;
+}
+
+/* 拖曳排序中的那一張／那一列：浮起來跟著指標走 */
+.row-dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  transform: scale(1.02);
 }
 
 /* GM 卡＝世界書的「書皮」：角色卡是跟主題走的白牌，GM 是桌上的實體書，
@@ -1408,6 +1417,8 @@ textarea {
   display: flex;
   gap: 0.75rem;
   padding: 0.65rem;
+  cursor: grab;
+  user-select: none;
 }
 
 .worldbook-row-disabled {

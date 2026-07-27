@@ -112,6 +112,9 @@ pub struct CharacterMeta {
     pub show_image: bool,
     #[serde(default)]
     pub archived: bool,
+    /// 側欄卡片的顯示順序；只在後端流通（前端拿到的已是排好的清單）
+    #[serde(skip)]
+    pub display_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -785,57 +788,31 @@ pub fn upsert_worldbook_entry(root: &Path, world: &str, entry: WorldbookEntry) -
     Ok(actual_uid)
 }
 
-pub fn move_worldbook_entry(root: &Path, world: &str, uid: u64, up: bool) -> DataResult<()> {
+/// 拖曳排序：uids 就是新的顯示順序，沒送到的條目依原順序接在後面
+pub fn reorder_worldbook_entries(root: &Path, world: &str, uids: &[u64]) -> DataResult<()> {
     let mut worldbook = read_worldbook_value(root, world)?;
     let entries = entries_object_mut(&mut worldbook)?;
     let keys = sorted_entry_keys(entries);
-    let index = keys
-        .iter()
-        .position(|key| entry_uid(key, &entries[key]) == Some(uid))
-        .ok_or_else(|| invalid_data("worldbook entry not found"))?;
-    let adjacent = if up {
-        let Some(adjacent) = index.checked_sub(1) else {
-            return Ok(());
-        };
-        adjacent
-    } else {
-        let adjacent = index + 1;
-        if adjacent >= keys.len() {
-            return Ok(());
-        }
-        adjacent
-    };
 
-    if entries.values().any(|value| {
-        value
-            .get("displayIndex")
-            .and_then(serde_json::Value::as_u64)
-            .is_none()
-    }) {
-        // 舊檔先依目前顯示順序補齊索引，避免第一次移動時跳位。
-        normalize_display_indices(entries, &keys)?;
+    let mut ordered: Vec<String> = Vec::with_capacity(keys.len());
+    for uid in uids {
+        let Some(key) = keys
+            .iter()
+            .find(|key| entry_uid(key, &entries[*key]) == Some(*uid))
+        else {
+            continue;
+        };
+        if !ordered.contains(key) {
+            ordered.push(key.clone());
+        }
+    }
+    for key in &keys {
+        if !ordered.contains(key) {
+            ordered.push(key.clone());
+        }
     }
 
-    let current_index = entries[&keys[index]]
-        .get("displayIndex")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?;
-    let adjacent_index = entries[&keys[adjacent]]
-        .get("displayIndex")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?;
-    set_display_index(
-        entries
-            .get_mut(&keys[index])
-            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?,
-        adjacent_index,
-    )?;
-    set_display_index(
-        entries
-            .get_mut(&keys[adjacent])
-            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?,
-        current_index,
-    )?;
+    normalize_display_indices(entries, &ordered)?;
     write_worldbook_value(root, world, &worldbook)
 }
 
@@ -951,6 +928,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
     let mut tier = None;
     let mut show_image = true;
     let mut archived = false;
+    let mut display_index = None;
     let mut gen_prompt = String::new();
     for line in frontmatter.lines() {
         let Some((key, value)) = line.split_once(':') else {
@@ -968,6 +946,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
             "tier" => tier = Some(Tier::parse(value)?),
             "show_image" => show_image = value != "false",
             "archived" => archived = value == "true",
+            "display_index" => display_index = value.parse().ok(),
             "gen_prompt" => gen_prompt = value.to_owned(),
             _ => {}
         }
@@ -983,6 +962,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
             tier: tier.ok_or_else(|| invalid_data("frontmatter is missing tier"))?,
             show_image,
             archived,
+            display_index,
         },
         gen_prompt,
         body,
@@ -1031,21 +1011,47 @@ fn parse_sections(body: &str) -> (String, String) {
     (public_md, private_md)
 }
 
-fn serialize_character(card: &CharacterCard) -> String {
+fn serialize_character(card: &CharacterCard, display_index: u32) -> String {
     // frontmatter 逐行解析，生成提示詞中的換行須在寫入前攤平。
     let gen_prompt = card.gen_prompt.replace(['\n', '\r'], " ");
     format!(
-        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\ngen_prompt: {}\n---\n## 公開\n{}\n## 私有\n{}",
+        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\ndisplay_index: {}\ngen_prompt: {}\n---\n## 公開\n{}\n## 私有\n{}",
         card.name,
         card.color,
         card.avatar,
         card.tier.as_str(),
         card.show_image,
         card.archived,
+        display_index,
         gen_prompt,
         card.public_md,
         card.private_md
     )
+}
+
+/// 舊卡沒有 display_index：整批依目前顯示順序補齊，免得只有被存到的那張拿到索引而跳到最前
+fn ensure_display_indices(root: &Path, world: &str) -> DataResult<()> {
+    let existing = list_characters(root, world)?;
+    if existing.iter().all(|meta| meta.display_index.is_some()) {
+        return Ok(());
+    }
+    let names: Vec<String> = existing.into_iter().map(|meta| meta.name).collect();
+    reorder_characters(root, world, &names)
+}
+
+/// 已存在的卡保留原位，新卡排到最後
+fn display_index_for(root: &Path, world: &str, path: &Path) -> DataResult<u32> {
+    if path.exists() {
+        let contents = fs::read_to_string(path)?;
+        if let Some(index) = parse_frontmatter(&contents)?.0.display_index {
+            return Ok(index);
+        }
+    }
+    Ok(list_characters(root, world)?
+        .iter()
+        .filter_map(|meta| meta.display_index)
+        .max()
+        .map_or(0, |max| max.saturating_add(1)))
 }
 
 pub fn list_characters(root: &Path, world: &str) -> DataResult<Vec<CharacterMeta>> {
@@ -1064,8 +1070,41 @@ pub fn list_characters(root: &Path, world: &str) -> DataResult<Vec<CharacterMeta
             characters.push(parse_frontmatter(&contents)?.0);
         }
     }
-    characters.sort_by(|left, right| left.name.cmp(&right.name));
+    // 沒有 display_index 的舊卡排在有索引的之後，彼此依名字排
+    characters.sort_by(|left, right| {
+        left.display_index
+            .unwrap_or(u32::MAX)
+            .cmp(&right.display_index.unwrap_or(u32::MAX))
+            .then_with(|| left.name.cmp(&right.name))
+    });
     Ok(characters)
+}
+
+/// 側欄拖曳排序：names 就是新的顯示順序，沒送到的（如封存角色）依原順序接在後面
+pub fn reorder_characters(root: &Path, world: &str, names: &[String]) -> DataResult<()> {
+    let existing = list_characters(root, world)?;
+    let mut ordered: Vec<&str> = Vec::with_capacity(existing.len());
+    for name in names {
+        if existing.iter().any(|meta| &meta.name == name) && !ordered.contains(&name.as_str()) {
+            ordered.push(name);
+        }
+    }
+    for meta in &existing {
+        if !ordered.contains(&meta.name.as_str()) {
+            ordered.push(&meta.name);
+        }
+    }
+
+    for (index, name) in ordered.iter().enumerate() {
+        let index =
+            u32::try_from(index).map_err(|_| invalid_data("character display_index overflow"))?;
+        let card = read_character(root, world, name)?;
+        fs::write(
+            character_path(root, world, name)?,
+            serialize_character(&card, index),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn read_character(root: &Path, world: &str, name: &str) -> DataResult<CharacterCard> {
@@ -1096,7 +1135,9 @@ pub fn write_character(root: &Path, world: &str, card: &CharacterCard) -> DataRe
     let path = character_path(root, world, &card.name)?;
     validate_single_line("color", &card.color)?;
     validate_single_line("avatar", &card.avatar)?;
-    fs::write(path, serialize_character(card))?;
+    ensure_display_indices(root, world)?;
+    let display_index = display_index_for(root, world, &path)?;
+    fs::write(path, serialize_character(card, display_index))?;
     Ok(())
 }
 
@@ -1150,9 +1191,11 @@ pub fn rename_character(root: &Path, world: &str, from: &str, to: &str) -> DataR
         return Err(invalid_data(format!("character already exists: {to}")));
     }
 
+    // 改名不動排序位置
+    let display_index = display_index_for(root, world, &from_path)?;
     let mut card = read_character(root, world, from)?;
     card.name = to.to_owned();
-    fs::write(&to_path, serialize_character(&card))?;
+    fs::write(&to_path, serialize_character(&card, display_index))?;
     fs::remove_file(&from_path)?;
 
     for (old, new) in [
@@ -1778,8 +1821,8 @@ mod tests {
     }
 
     #[test]
-    fn moving_down_then_up_restores_worldbook_order() {
-        let root = TestRoot::new("worldbook-move-round-trip");
+    fn reordering_worldbook_entries_applies_the_given_order() {
+        let root = TestRoot::new("worldbook-reorder");
         write_worldbook_fixture(
             &root,
             "世界",
@@ -1790,16 +1833,17 @@ mod tests {
             }),
         );
 
-        move_worldbook_entry(root.path(), "世界", 0, false).unwrap();
+        // 跨多格拖曳：最後一筆拉到最前
+        reorder_worldbook_entries(root.path(), "世界", &[2, 0, 1]).unwrap();
         assert_eq!(
             read_worldbook(root.path(), "世界")
                 .unwrap()
                 .iter()
                 .map(|entry| entry.uid)
                 .collect::<Vec<_>>(),
-            [1, 0, 2]
+            [2, 0, 1]
         );
-        move_worldbook_entry(root.path(), "世界", 0, true).unwrap();
+        reorder_worldbook_entries(root.path(), "世界", &[0, 1, 2]).unwrap();
         assert_eq!(
             read_worldbook(root.path(), "世界")
                 .unwrap()
@@ -1811,26 +1855,34 @@ mod tests {
     }
 
     #[test]
-    fn moving_top_worldbook_entry_up_is_no_op() {
-        let root = TestRoot::new("worldbook-move-top");
+    fn reordering_worldbook_keeps_unlisted_entries_after_the_listed_ones() {
+        let root = TestRoot::new("worldbook-reorder-partial");
         write_worldbook_fixture(
             &root,
             "世界",
             serde_json::json!({
                 "0": {"uid": 0, "comment": "甲", "displayIndex": 0},
-                "1": {"uid": 1, "comment": "乙", "displayIndex": 1}
+                "1": {"uid": 1, "comment": "乙", "displayIndex": 1},
+                "2": {"uid": 2, "comment": "丙", "displayIndex": 2}
             }),
         );
-        let before = read_worldbook_fixture(&root, "世界");
 
-        move_worldbook_entry(root.path(), "世界", 0, true).unwrap();
+        // uid 9 不存在應被忽略；沒送到的 0 依原順序接在後面
+        reorder_worldbook_entries(root.path(), "世界", &[2, 9, 1]).unwrap();
 
-        assert_eq!(read_worldbook_fixture(&root, "世界"), before);
+        assert_eq!(
+            read_worldbook(root.path(), "世界")
+                .unwrap()
+                .iter()
+                .map(|entry| entry.uid)
+                .collect::<Vec<_>>(),
+            [2, 1, 0]
+        );
     }
 
     #[test]
-    fn moving_legacy_worldbook_entries_normalizes_display_indices_stably() {
-        let root = TestRoot::new("worldbook-move-legacy");
+    fn reordering_legacy_worldbook_entries_normalizes_display_indices() {
+        let root = TestRoot::new("worldbook-reorder-legacy");
         write_worldbook_fixture(
             &root,
             "世界",
@@ -1841,7 +1893,7 @@ mod tests {
             }),
         );
 
-        move_worldbook_entry(root.path(), "世界", 3, false).unwrap();
+        reorder_worldbook_entries(root.path(), "世界", &[5, 3, 7]).unwrap();
 
         assert_eq!(
             read_worldbook(root.path(), "世界")
@@ -1863,8 +1915,8 @@ mod tests {
     }
 
     #[test]
-    fn moving_worldbook_entry_preserves_order_and_unknown_fields() {
-        let root = TestRoot::new("worldbook-move-lossless");
+    fn reordering_worldbook_entries_preserves_order_and_unknown_fields() {
+        let root = TestRoot::new("worldbook-reorder-lossless");
         write_worldbook_fixture(
             &root,
             "世界",
@@ -1880,7 +1932,7 @@ mod tests {
             }),
         );
 
-        move_worldbook_entry(root.path(), "世界", 0, false).unwrap();
+        reorder_worldbook_entries(root.path(), "世界", &[1, 0]).unwrap();
 
         let raw = read_worldbook_fixture(&root, "世界");
         assert_eq!(raw["entries"]["0"]["order"], 91);
@@ -2122,6 +2174,7 @@ mod tests {
                 tier: Tier::Best,
                 show_image: true,
                 archived: true,
+                display_index: Some(0),
             }]
         );
 
@@ -2145,6 +2198,7 @@ mod tests {
                 "tier",
                 "show_image",
                 "archived",
+                "display_index",
                 "gen_prompt"
             ]
         );
@@ -2328,6 +2382,92 @@ mod tests {
         assert!(rename_character(root.path(), "世界", "甲", "").is_err());
         rename_character(root.path(), "世界", "甲", "甲").unwrap();
         assert!(character_path(root.path(), "世界", "甲").unwrap().exists());
+    }
+
+    #[test]
+    fn reordering_characters_persists_order_and_survives_rename() {
+        let root = TestRoot::new("character-reorder");
+        create_world(root.path(), "世界").unwrap();
+        for name in ["甲", "乙", "丙"] {
+            write_character(
+                root.path(),
+                "世界",
+                &CharacterCard {
+                    name: name.to_owned(),
+                    color: "#000000".to_owned(),
+                    avatar: "🎭".to_owned(),
+                    tier: Tier::Default,
+                    show_image: true,
+                    archived: false,
+                    gen_prompt: String::new(),
+                    public_md: String::new(),
+                    private_md: String::new(),
+                },
+            )
+            .unwrap();
+        }
+        let names = |root: &Path| {
+            list_characters(root, "世界")
+                .unwrap()
+                .into_iter()
+                .map(|meta| meta.name)
+                .collect::<Vec<_>>()
+        };
+        // 建卡順序即初始順序，不再是名字排序
+        assert_eq!(names(root.path()), ["甲", "乙", "丙"]);
+
+        reorder_characters(root.path(), "世界", &["丙".to_owned(), "甲".to_owned()]).unwrap();
+        // 沒送到的「乙」接在後面
+        assert_eq!(names(root.path()), ["丙", "甲", "乙"]);
+
+        rename_character(root.path(), "世界", "甲", "甲二").unwrap();
+        assert_eq!(names(root.path()), ["丙", "甲二", "乙"]);
+
+        // 重存不動位置，新卡排到最後
+        set_character_archived(root.path(), "世界", "丙", true).unwrap();
+        write_character(
+            root.path(),
+            "世界",
+            &CharacterCard {
+                name: "丁".to_owned(),
+                color: "#000000".to_owned(),
+                avatar: "🎭".to_owned(),
+                tier: Tier::Default,
+                show_image: true,
+                archived: false,
+                gen_prompt: String::new(),
+                public_md: String::new(),
+                private_md: String::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(names(root.path()), ["丙", "甲二", "乙", "丁"]);
+    }
+
+    #[test]
+    fn saving_one_legacy_card_does_not_reshuffle_the_others() {
+        let root = TestRoot::new("character-legacy-order");
+        create_world(root.path(), "世界").unwrap();
+        for name in ["甲", "乙", "丙"] {
+            fs::write(
+                root.path().join(format!("worlds/世界/characters/{name}.md")),
+                format!("---\nname: {name}\ncolor: #000000\navatar: 🎭\ntier: default\n---\n## 公開\n"),
+            )
+            .unwrap();
+        }
+        // 舊卡沒有 display_index，顯示順序＝名字排序
+        let names = |root: &Path| {
+            list_characters(root, "世界")
+                .unwrap()
+                .into_iter()
+                .map(|meta| meta.name)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(root.path()), ["丙", "乙", "甲"]);
+
+        set_character_archived(root.path(), "世界", "甲", true).unwrap();
+
+        assert_eq!(names(root.path()), ["丙", "乙", "甲"]);
     }
 
     #[test]

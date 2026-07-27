@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import Cropper, { Area } from "react-easy-crop";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -981,6 +981,90 @@ function SettingsWindow({
   );
 }
 
+// 拖曳排序：按住移動超過門檻才算拖曳，門檻內放開仍是單純點擊（角色卡的點擊＝選發言者）
+const DRAG_THRESHOLD_PX = 5;
+
+function useDragReorder<T>(
+  items: T[],
+  keyOf: (item: T) => string,
+  onReorder: (ordered: T[]) => void,
+) {
+  const [preview, setPreview] = useState<T[] | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const rows = useRef(new Map<string, HTMLElement>());
+  const dragged = useRef(false);
+
+  // 一次只跟相鄰那列交換：越過鄰居中線就換，換完中線落到指標另一側，高度不一也不會來回抖
+  function neighbourStep(y: number, order: T[], from: number): number {
+    const midpoint = (index: number) => {
+      const item = order[index];
+      const row = item === undefined ? undefined : rows.current.get(keyOf(item));
+      if (!row) return null;
+      const rect = row.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    };
+    const above = midpoint(from - 1);
+    if (above !== null && y < above) return from - 1;
+    const below = midpoint(from + 1);
+    if (below !== null && y > below) return from + 1;
+    return from;
+  }
+
+  function startDrag(event: ReactPointerEvent, item: T) {
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest("button, a, input, textarea, select")) return;
+    const key = keyOf(item);
+    const startY = event.clientY;
+    let order = items;
+    let started = false;
+
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      if (!started) {
+        if (Math.abs(moveEvent.clientY - startY) < DRAG_THRESHOLD_PX) return;
+        started = true;
+        dragged.current = true;
+        setDraggingKey(key);
+      }
+      const from = order.findIndex((candidate) => keyOf(candidate) === key);
+      const target = neighbourStep(moveEvent.clientY, order, from);
+      if (target === from) return;
+      const next = order.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(target, 0, moved);
+      order = next;
+      setPreview(next);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (started) {
+        onReorder(order);
+        // 放開後瀏覽器才補送 click，等它送完再解旗標
+        setTimeout(() => (dragged.current = false), 0);
+      }
+      setDraggingKey(null);
+      setPreview(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  }
+
+  return {
+    order: preview ?? items,
+    draggingKey,
+    justDragged: () => dragged.current,
+    rowProps: (item: T) => ({
+      onPointerDown: (event: ReactPointerEvent) => startDrag(event, item),
+      ref: (element: HTMLElement | null) => {
+        if (element) rows.current.set(keyOf(item), element);
+        else rows.current.delete(keyOf(item));
+      },
+    }),
+  };
+}
+
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   const [text, setText] = useState<string | null>(null);
@@ -993,6 +1077,11 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
   // 條目表單開啟當下的快照，用來判斷「有沒有改過」（未儲存提示）
   const [draftOrigin, setDraftOrigin] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const entryDrag = useDragReorder(
+    entries,
+    (entry) => String(entry.uid),
+    (ordered) => void reorderEntries(ordered),
+  );
 
   useEffect(() => {
     setMessage("");
@@ -1133,12 +1222,17 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
     }
   }
 
-  async function moveEntry(entry: WorldbookEntry, up: boolean) {
+  async function reorderEntries(ordered: WorldbookEntry[]) {
     setWorldbookMessage("");
+    const previous = entries;
+    setEntries(ordered);
     try {
-      await invoke("move_worldbook_entry", { world, uid: entry.uid, up });
-      await refreshWorldbook();
+      await invoke("reorder_worldbook_entries", {
+        world,
+        uids: ordered.map((entry) => entry.uid),
+      });
     } catch (reason) {
+      setEntries(previous);
       setWorldbookMessage(String(reason));
     }
   }
@@ -1339,10 +1433,14 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
           <p className="worldbook-empty">{t("worldbookEmpty")}</p>
         ) : (
           <div className="worldbook-list">
-            {entries.map((entry, index) => (
+            {entryDrag.order.map((entry) => (
               <div
-                className={`worldbook-row${entry.disabled ? " worldbook-row-disabled" : ""}`}
+                className={`worldbook-row${entry.disabled ? " worldbook-row-disabled" : ""}${
+                  entryDrag.draggingKey === String(entry.uid) ? " row-dragging" : ""
+                }`}
                 key={entry.uid}
+                title={t("dragToReorder")}
+                {...entryDrag.rowProps(entry)}
               >
                 <div className="worldbook-summary">
                   <strong>{entry.title || entry.uid}</strong>
@@ -1367,22 +1465,6 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
                   </div>
                 </div>
                 <div className="worldbook-row-actions">
-                  <button
-                    type="button"
-                    aria-label={t("worldbookMoveUp")}
-                    disabled={index === 0}
-                    onClick={() => void moveEntry(entry, true)}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={t("worldbookMoveDown")}
-                    disabled={index === entries.length - 1}
-                    onClick={() => void moveEntry(entry, false)}
-                  >
-                    ↓
-                  </button>
                   <button type="button" onClick={() => editEntry(entry)}>
                     {t("editBtn")}
                   </button>
@@ -2128,6 +2210,11 @@ function App() {
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const activeCharacters = characters.filter((character) => !character.archived);
   const archivedCharacters = characters.filter((character) => character.archived);
+  const castDrag = useDragReorder(
+    activeCharacters,
+    (character) => character.name,
+    (ordered) => void reorderCast(ordered),
+  );
   // 角色圖快取：name → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
@@ -2453,6 +2540,22 @@ function App() {
     setMainView(null);
   }
 
+  // 側欄拖曳排序：先樂觀套用，寫檔失敗才回捲
+  async function reorderCast(ordered: CharacterMeta[]) {
+    setError("");
+    const previous = characters;
+    setCharacters([...ordered, ...characters.filter((character) => character.archived)]);
+    try {
+      await invoke("reorder_characters", {
+        world: table,
+        names: ordered.map((character) => character.name),
+      });
+    } catch (reason) {
+      setCharacters(previous);
+      setError(String(reason));
+    }
+  }
+
   async function restoreCharacter(name: string) {
     setError("");
     try {
@@ -2703,21 +2806,27 @@ function App() {
               </span>
             </div>
             {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（tier 是既有欄位；「跟隨預設」不掛寶石） */}
-            {activeCharacters.map((c) => (
+            {castDrag.order.map((c) => (
               <div
                 key={c.name}
                 role="button"
                 tabIndex={0}
-                className={`tcard ${speaker === c.name ? "tcard-selected" : ""}`}
+                className={`tcard ${speaker === c.name ? "tcard-selected" : ""}${
+                  castDrag.draggingKey === c.name ? " row-dragging" : ""
+                }`}
                 style={{ ["--fac" as string]: c.color }}
-                onClick={() => setSpeaker(c.name)}
+                onClick={() => {
+                  if (castDrag.justDragged()) return;
+                  setSpeaker(c.name);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     setSpeaker(c.name);
                   }
                 }}
-                title={t("castHint", { name: c.name })}
+                title={`${t("castHint", { name: c.name })}｜${t("dragToReorder")}`}
+                {...castDrag.rowProps(c)}
               >
                 <span className="tcard-art">
                   {c.show_image && characterImages[c.name] ? (
