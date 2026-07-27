@@ -9,6 +9,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
+pub const DEFAULT_IMAGE_MODEL: &str = "google/gemini-3.1-flash-image";
 
 /// 角色與 GM system prompt 共用的語言規範，依使用者語系（config.preferences.language）注入：
 /// zh 系防止簡中飄移；en 因提示詞模板仍是中文、需明講才不會被帶成中文輸出。
@@ -437,6 +438,59 @@ pub async fn stream_chat(
     Ok(full_text)
 }
 
+/// OpenRouter 專用 Images API（POST {base}/images）；回傳 data URL 或遠端圖片網址。
+pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, String> {
+    let api_key = config
+        .api_keys
+        .get("openrouter")
+        .map(String::as_str)
+        .filter(|key| !key.trim().is_empty())
+        .ok_or_else(|| "尚未設定 OpenRouter API key".to_owned())?;
+    let model = config
+        .preferences
+        .get("image_model")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(DEFAULT_IMAGE_MODEL);
+    let response = reqwest::Client::new()
+        .post(format!("{}/images", base_url(config)))
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({
+            "model": model,
+            "prompt": prompt,
+            "aspect_ratio": "2:3",
+            "resolution": "1K",
+        }))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "API 回應 {status}：{}",
+            body.chars().take(200).collect::<String>()
+        ));
+    }
+    let value: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    let image = value.get("data").and_then(|data| data.get(0));
+    if let Some(b64) = image
+        .and_then(|entry| entry.get("b64_json"))
+        .and_then(|value| value.as_str())
+    {
+        return Ok(format!("data:image/png;base64,{b64}"));
+    }
+    if let Some(url) = image
+        .and_then(|entry| entry.get("url"))
+        .and_then(|value| value.as_str())
+    {
+        if url.starts_with("http") {
+            return Ok(url.to_owned());
+        }
+    }
+    Err("模型沒有回傳圖片".to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,6 +504,7 @@ mod tests {
             tier: Tier::Default,
             show_image: true,
             archived: false,
+            gen_prompt: String::new(),
             public_md: public_md.to_owned(),
             private_md: private_md.to_owned(),
         }
@@ -858,6 +913,60 @@ mod tests {
         .unwrap();
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["你", "好"]);
+    }
+
+    #[tokio::test]
+    async fn generate_image_returns_data_url_from_b64_json() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request);
+            let body = r#"{"data":[{"b64_json":"cG5n"}]}"#;
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+        let mut config = AppConfig::default();
+        config
+            .api_keys
+            .insert("openrouter".to_owned(), "key".to_owned());
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String(format!("http://{address}")),
+        );
+        assert_eq!(
+            generate_image(&config, "畫一位角色").await.unwrap(),
+            "data:image/png;base64,cG5n"
+        );
+    }
+
+    #[tokio::test]
+    async fn generate_image_rejects_empty_data() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request);
+            let body = r#"{"data":[]}"#;
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+        let mut config = AppConfig::default();
+        config
+            .api_keys
+            .insert("openrouter".to_owned(), "key".to_owned());
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String(format!("http://{address}")),
+        );
+        assert_eq!(
+            generate_image(&config, "畫一位角色").await.unwrap_err(),
+            "模型沒有回傳圖片"
+        );
     }
 
     #[test]

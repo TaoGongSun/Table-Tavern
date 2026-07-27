@@ -449,18 +449,24 @@ fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
 async fn stream_via_transport(
     config: &data::AppConfig,
+    transport_override: Option<&str>,
     tier: data::Tier,
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
-    let transport_kind = config
-        .preferences
-        .get("transport")
-        .and_then(|value| value.as_str())
-        .unwrap_or("api")
-        .to_owned();
+    // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）
+    let transport_kind = transport_override
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            config
+                .preferences
+                .get("transport")
+                .and_then(|value| value.as_str())
+                .unwrap_or("api")
+                .to_owned()
+        });
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
         return transport::stream_chat(config, &model, messages, emit)
@@ -506,7 +512,15 @@ async fn stream_via_transport(
                 }
                 envs
             };
-            cli::run_cli(&program, &args, &prompt, &envs, cli::parse_claude_line, emit).await
+            cli::run_cli(
+                &program,
+                &args,
+                &prompt,
+                &envs,
+                cli::parse_claude_line,
+                emit,
+            )
+            .await
         }
         "codex" => {
             // codex 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時模型用 CLI 預設
@@ -532,6 +546,144 @@ async fn stream_via_transport(
         other => Err(format!("未知傳輸層：{other}").into()),
     }
     .map_err(|error| error.to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageRef {
+    DataUrl(String),
+    Path(PathBuf),
+}
+
+pub fn extract_image_from_text(text: &str) -> Option<ImageRef> {
+    if let Some(start) = text.find("data:image/") {
+        let data_url = text[start..]
+            .split(|character: char| {
+                character.is_whitespace() || matches!(character, '\'' | '"' | '`')
+            })
+            .next()
+            .unwrap_or("");
+        if !data_url.is_empty() {
+            return Some(ImageRef::DataUrl(data_url.to_owned()));
+        }
+    }
+    text.split_whitespace().find_map(|token| {
+        let token = token.trim_matches(|character: char| {
+            matches!(
+                character,
+                '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
+            )
+        });
+        let path = PathBuf::from(token);
+        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+        matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp")
+            .then_some(ImageRef::Path(path))
+    })
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        output.push(TABLE[((value >> 18) & 0x3f) as usize] as char);
+        output.push(TABLE[((value >> 12) & 0x3f) as usize] as char);
+        output.push(if chunk.len() > 1 {
+            TABLE[((value >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if chunk.len() > 2 {
+            TABLE[(value & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    output
+}
+
+fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
+    let mime = match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        _ => return Err("不支援的圖片格式".to_owned()),
+    };
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    Ok(format!("data:{mime};base64,{}", encode_base64(&bytes)))
+}
+
+#[tauri::command]
+async fn generate_character_image(
+    app: tauri::AppHandle,
+    world: String,
+    name: String,
+    extra_prompt: String,
+    source: Option<String>,
+) -> Result<String, String> {
+    let root = data_root(&app)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let mut card = data::read_character(&root, &world, &name).map_err(|error| error.to_string())?;
+    card.gen_prompt = extra_prompt.clone();
+    data::write_character(&root, &world, &card).map_err(|error| error.to_string())?;
+    let mut prompt = format!(
+        "Generate a single full-body character illustration, portrait orientation 2:3. No text, no watermark, plain background.\nCharacter name: {name}\nCharacter description:\n{}",
+        card.public_md
+    );
+    if !extra_prompt.trim().is_empty() {
+        prompt.push_str(&format!("\nAdditional art direction: {extra_prompt}"));
+    }
+    // 生圖來源可與聊天連線分開選（source 覆寫；空值＝跟隨 preferences.transport）
+    let transport_kind = source
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            config
+                .preferences
+                .get("transport")
+                .and_then(|value| value.as_str())
+                .unwrap_or("api")
+                .to_owned()
+        });
+    if transport_kind == "api" {
+        return transport::generate_image(&config, &prompt).await;
+    }
+    // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）會存檔回路徑，其餘掃不到圖就失敗
+    prompt.push_str(
+        "\nIf you are able to generate images, generate it now, save it as a PNG file, and reply with the absolute file path of the saved image. If you cannot generate images, reply exactly: NO_IMAGE",
+    );
+    if transport_kind == "codex" {
+        prompt = format!("$imagegen {prompt}");
+    }
+    let messages = [transport::ChatMessage {
+        role: "user".to_owned(),
+        content: prompt,
+    }];
+    let reply = stream_via_transport(
+        &config,
+        Some(&transport_kind),
+        transport::gm_tier(&config),
+        "",
+        "",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    match extract_image_from_text(&reply) {
+        Some(ImageRef::DataUrl(data_url)) => Ok(data_url),
+        Some(ImageRef::Path(path)) if std::fs::metadata(&path).is_ok() => {
+            image_file_data_url(&path)
+        }
+        _ => Err("回覆中沒有圖片".to_owned()),
+    }
 }
 
 /// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
@@ -562,7 +714,7 @@ async fn chat_with_character(
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    stream_via_transport(&config, card.tier, &card.name, &closing, &messages, emit).await
+    stream_via_transport(&config, None, card.tier, &card.name, &closing, &messages, emit).await
 }
 
 /// GM 上下文＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
@@ -607,6 +759,7 @@ async fn gm_narrate(
     };
     stream_via_transport(
         &config,
+        None,
         transport::gm_tier(&config),
         "GM",
         "現在請以 GM 身分執行上述導演指示，只輸出旁白本文，不要加名字前綴。",
@@ -629,6 +782,7 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world: String) -> Result<Stri
     messages.push(transport::suggest_instruction(&roster));
     let reply = stream_via_transport(
         &config,
+        None,
         transport::gm_tier(&config),
         "GM",
         "現在請執行上述導演指示，只輸出一個名字。",
@@ -657,6 +811,7 @@ async fn advance_scene(app: tauri::AppHandle, world: String) -> Result<u64, Stri
     let messages = transport::summary_messages(&events, &lang);
     let reply = stream_via_transport(
         &config,
+        None,
         transport::gm_tier(&config),
         "GM",
         "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
@@ -714,6 +869,7 @@ pub fn run() {
             install_cli,
             list_cli_models,
             chat_with_character,
+            generate_character_image,
             gm_narrate,
             gm_suggest_speaker,
             advance_scene
@@ -724,7 +880,12 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{cli_install_script, InstallMessages};
+    use super::{
+        cli_install_script, encode_base64, extract_image_from_text, ImageRef, InstallMessages,
+    };
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
     fn messages() -> InstallMessages {
         InstallMessages {
@@ -733,6 +894,35 @@ mod tests {
             success: "success".to_owned(),
             fail: "fail".to_owned(),
         }
+    }
+
+    #[test]
+    fn extract_image_from_text_returns_data_url() {
+        assert_eq!(
+            extract_image_from_text("圖片：`data:image/png;base64,cG5n`"),
+            Some(ImageRef::DataUrl("data:image/png;base64,cG5n".to_owned()))
+        );
+    }
+
+    #[test]
+    fn extract_image_from_text_returns_existing_temp_file_path() {
+        let path = std::env::temp_dir().join(format!(
+            "table-tavern-image-{}-{}.png",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, b"png").unwrap();
+        assert_eq!(
+            extract_image_from_text(&format!("已生成 {}", path.display())),
+            Some(ImageRef::Path(path.clone()))
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn extract_image_from_text_returns_none_without_image() {
+        assert_eq!(extract_image_from_text("沒有附圖。"), None);
+        assert_eq!(encode_base64(b"png"), "cG5n");
     }
 
     fn assert_messages(script: &str) {
