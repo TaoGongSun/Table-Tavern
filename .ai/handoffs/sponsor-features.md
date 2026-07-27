@@ -27,4 +27,8 @@
 - Ko-fi 導購歧義方案待討論（任務檔議程）
 
 ## Next action
-使用者實測 AI 生圖（`npm run tauri dev`；測試贊助旗標可手改 config.json 的 preferences.sponsor_unlocked=true；重置免費次數改 ai_image_trials_used）。
+1. 使用者實測生成歷史圖庫（Rust 有改，`npm run tauri dev` 需重啟）：生成後留在對話框、縮圖列點擊重裁、X 刪除、載入更多。
+2. 拍板任務檔「待討論議程」兩項：常用提示詞標籤（主線建議 v1 內建精選清單，分析見任務檔）、Ko-fi 導購歧義。
+3. 測試贊助旗標：手改 config.json `preferences.sponsor_unlocked=true`；重置免費次數改 `ai_image_trials_used`。
+
+（2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）
