@@ -3,7 +3,7 @@ Task-ID: character-card-avatar-issues
 Title: 角色卡回饋修訂：頭像間距／角色改名／圖像變更未儲存提示／建卡空名擋下
 Status: in_progress
 Created: 2026-07-27T00:00:00+08:00
-Updated: 2026-07-27T22:00:00+08:00
+Updated: 2026-07-27T23:30:00+08:00
 
 ## Summary
 character-image-avatar 結案後使用者實測回報的五項，加上實測中追加的第 6 項（2026-07-27）：
@@ -15,11 +15,11 @@ character-image-avatar 結案後使用者實測回報的五項，加上實測中
 5. **建卡空名炸錯誤**——`createCharacter`（App.tsx:2184）只擋保留名 GM／玩家，沒擋空字串，空白直接送 `write_character`，被後端 `validate_name`（data.rs:197）打回 `invalid name: ""`，使用者看到生錯誤訊息且建不了卡。前端要先擋空名（並讓建卡鈕在空名時 disabled），錯誤訊息走 i18n；順帶檢查其他 `validate_name` 會擋的字元（`/`、`\`、開頭 `.`、`..`）是否也該前端先提示。
 6. **建卡流程改版**（✅ 2026-07-27 追加拍板）——側欄的「新角色名稱」輸入框拿掉，建卡＝右側直接開空白角色卡編輯器，名字與內容都在那邊填、按儲存才落地。
 
-六項全部實作完成，等使用者實機實測。
+六項全部實作完成且使用者實測通過；GM 卡另完成書皮方案（主題連動皮革色，commit 7597061，詳見交接檔連結的封存文件）。
 
 ## Next action
-- 等使用者實測五項＋建卡新流程
-- 待拍板：生成圖庫目錄放錯層（在 `worlds/` 外面，改桌名會讓圖庫失聯，修法見交接檔）
+- 改名的「劇情正文舊名不動」提示（commit 8cbcc71）待複驗
+- 生成圖庫目錄放錯層：擱置等 [stable-id-storage](stable-id-storage.md) 拍板（採用則自動消失）
 - 待拍板：生圖讀的是已存檔的 public_md，編輯器裡未存的描述不會進提示詞
 
 ## Constraints

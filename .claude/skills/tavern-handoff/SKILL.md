@@ -24,6 +24,7 @@ description: 本專案的工作交接規約。當使用者提到「接手」「�
    - `Completed`：這次新完成的項目（增量補上）。
    - `Verification`：每項完成宣稱附證據——指令輸出摘要或 `檔案:行號`。
    - `Remaining`／`Next action`：下一手打開就能直接動工的具體指示。
+   - 已驗收完成的項目（含其 Verification）搬到 `.ai/handoffs/archive/<task-id>-completed.md`，交接檔的 `Completed` 只留連結——交接檔只裝現場，不裝歷史。整份完成的計畫文件同樣進 `archive/` 並在原處留連結。
 2. **同步 `.ai/tasks/<task-id>.md`** 的 `Summary` 與 `Next action`，更新 `Updated` 時間。
 3. **同步 `.ai/TASKS.md`** 該任務那一行的「下一步」摘要（保持既有行格式：`- [id](tasks/id.md) — 標題 — 下一步：…`）。
 4. **在 `.ai/history/<今天日期 YYYY-MM-DD>.md` 追加一行**：做了什麼、commit hash。

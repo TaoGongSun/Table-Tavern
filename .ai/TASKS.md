@@ -2,7 +2,7 @@
 
 ## In progress
 - [cli-detect-state](tasks/cli-detect-state.md) — CLI 偵測空窗期：加「正在偵測…」三態＋四支並行＋結果快取 — 下一步：實作完成（cargo 93 綠＋npm build 綠＋並行實測 2.8 倍），等使用者實測設定頁重開不再閃「一鍵安裝」後結案
-- [character-card-avatar-issues](tasks/character-card-avatar-issues.md) — 角色卡回饋修訂＋建卡流程改版＋刪除入口＋GM 卡 — 下一步：六項全數實作完成（cargo 94 綠＋build 綠），另加建卡改開空白卡、角色／桌刪除鈕、圖示 emoji 可選、GM 改同尺寸組件卡；等使用者實測，GM 卡的書本圖待 Codex 生圖挑版落地
+- [character-card-avatar-issues](tasks/character-card-avatar-issues.md) — 角色卡回饋修訂＋建卡流程改版＋刪除入口＋GM 卡 — 下一步：全數實作完成且使用者實測通過（GM 卡書皮方案七主題驗收，Codex 生圖取消）；剩改名提示複驗＋圖庫路徑 bug 擱置等 stable-id-storage 拍板
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫實作完成（cargo 91 綠＋build 綠），等實測圖庫；待拍板：提示詞標籤、Ko-fi 導購歧義
 - [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者以新 DMG 實測後結案
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成（cargo 77 綠＋npm build 綠），等使用者實測設定頁進階區＋實聊後結案
