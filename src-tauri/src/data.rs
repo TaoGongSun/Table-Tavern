@@ -124,6 +124,8 @@ pub struct CharacterCard {
     pub show_image: bool,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default)]
+    pub gen_prompt: String,
     pub public_md: String,
     pub private_md: String,
 }
@@ -349,6 +351,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
                 tier,
                 show_image: true,
                 archived: false,
+                gen_prompt: String::new(),
                 public_md: public_md.to_owned(),
                 private_md: private_md.to_owned(),
             },
@@ -917,7 +920,7 @@ pub fn export_worldbook(root: &Path, world: &str, path: &Path) -> DataResult<()>
     Ok(())
 }
 
-fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
+fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)> {
     let rest = contents
         .strip_prefix("---\n")
         .ok_or_else(|| invalid_data("character card must start with frontmatter"))?;
@@ -933,6 +936,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
     let mut tier = None;
     let mut show_image = true;
     let mut archived = false;
+    let mut gen_prompt = String::new();
     for line in frontmatter.lines() {
         let Some((key, value)) = line.split_once(':') else {
             if line.trim().is_empty() {
@@ -949,6 +953,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
             "tier" => tier = Some(Tier::parse(value)?),
             "show_image" => show_image = value != "false",
             "archived" => archived = value == "true",
+            "gen_prompt" => gen_prompt = value.to_owned(),
             _ => {}
         }
     }
@@ -964,6 +969,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, &str)> {
             show_image,
             archived,
         },
+        gen_prompt,
         body,
     ))
 }
@@ -1011,14 +1017,17 @@ fn parse_sections(body: &str) -> (String, String) {
 }
 
 fn serialize_character(card: &CharacterCard) -> String {
+    // frontmatter 逐行解析，生成提示詞中的換行須在寫入前攤平。
+    let gen_prompt = card.gen_prompt.replace(['\n', '\r'], " ");
     format!(
-        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\n---\n## 公開\n{}\n## 私有\n{}",
+        "---\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\ngen_prompt: {}\n---\n## 公開\n{}\n## 私有\n{}",
         card.name,
         card.color,
         card.avatar,
         card.tier.as_str(),
         card.show_image,
         card.archived,
+        gen_prompt,
         card.public_md,
         card.private_md
     )
@@ -1046,7 +1055,7 @@ pub fn list_characters(root: &Path, world: &str) -> DataResult<Vec<CharacterMeta
 
 pub fn read_character(root: &Path, world: &str, name: &str) -> DataResult<CharacterCard> {
     let contents = fs::read_to_string(character_path(root, world, name)?)?;
-    let (meta, body) = parse_frontmatter(&contents)?;
+    let (meta, gen_prompt, body) = parse_frontmatter(&contents)?;
     let (public_md, private_md) = parse_sections(body);
     Ok(CharacterCard {
         name: meta.name,
@@ -1055,6 +1064,7 @@ pub fn read_character(root: &Path, world: &str, name: &str) -> DataResult<Charac
         tier: meta.tier,
         show_image: meta.show_image,
         archived: meta.archived,
+        gen_prompt,
         public_md,
         private_md,
     })
@@ -1871,6 +1881,7 @@ mod tests {
             tier: Tier::Default,
             show_image: true,
             archived: false,
+            gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -1908,6 +1919,7 @@ mod tests {
             tier: Tier::Default,
             show_image: true,
             archived: false,
+            gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -1933,6 +1945,7 @@ mod tests {
                 tier: Tier::Default,
                 show_image: true,
                 archived: false,
+                gen_prompt: String::new(),
                 public_md: String::new(),
                 private_md: String::new(),
             };
@@ -1951,6 +1964,7 @@ mod tests {
             tier: Tier::Best,
             show_image: true,
             archived: true,
+            gen_prompt: "暖色調 水彩風".to_owned(),
             public_md: "第一段\n\n- 公開條目\n".to_owned(),
             private_md: "秘密第一行\n\n秘密第二行".to_owned(),
         };
@@ -1982,7 +1996,15 @@ mod tests {
             .collect();
         assert_eq!(
             keys,
-            ["name", "color", "avatar", "tier", "show_image", "archived"]
+            [
+                "name",
+                "color",
+                "avatar",
+                "tier",
+                "show_image",
+                "archived",
+                "gen_prompt"
+            ]
         );
         assert!(raw.contains("\n## 公開\n"));
         assert!(raw.contains("\n## 私有\n"));
@@ -2006,6 +2028,7 @@ mod tests {
             tier: Tier::Default,
             show_image: false,
             archived: false,
+            gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
         };
@@ -2037,6 +2060,7 @@ mod tests {
             tier: Tier::Default,
             show_image: true,
             archived: true,
+            gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
         };

@@ -86,7 +86,10 @@ fn hidden_output(program: std::path::PathBuf, arg: &str) -> Option<std::process:
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
-    command.output().ok().filter(|output| output.status.success())
+    command
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
 }
 
 pub async fn detect_clis() -> Vec<CliInfo> {
@@ -548,7 +551,10 @@ pub async fn run_cli(
     let mut command = Command::new(program);
     command
         .args(args)
-        .envs(envs.iter().map(|(key, value)| (key.as_str(), value.as_str())))
+        .envs(
+            envs.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
