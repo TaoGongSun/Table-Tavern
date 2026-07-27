@@ -19,6 +19,7 @@
 - 後端：`cargo test` 85 綠（基線 77，+8 新測試：Images API mock 兩案、extract_image_from_text 三案、gen_prompt roundtrip 等）；`cargo clippy --all-targets` 0 error
 - 前端：`npm run build` exit 0
 - CLI 生圖能力：真發請求實測（見 Completed 第三條），非自我宣稱
+- 生成歷史圖庫：2026-07-28 使用者實機通過（Gemini CLI 來源生圖 → 縮圖列出現 → 套用到卡片，側欄顯示新圖）。在 stable-id-storage 改成代碼定址後複驗，圖庫路徑已改到世界目錄內。張數受免費 3 次限制，未大量驗證載入更多。
 
 ## Remaining
 - 使用者實測三項（尤其 AI 生圖各來源實跑）
@@ -27,8 +28,7 @@
 - Ko-fi 導購歧義方案待討論（任務檔議程）
 
 ## Next action
-1. 使用者實測生成歷史圖庫（Rust 有改，`npm run tauri dev` 需重啟）：生成後留在對話框、縮圖列點擊重裁、X 刪除、載入更多。
-2. 拍板任務檔「待討論議程」兩項：常用提示詞標籤（主線建議 v1 內建精選清單，分析見任務檔）、Ko-fi 導購歧義。
-3. 測試贊助旗標：手改 config.json `preferences.sponsor_unlocked=true`；重置免費次數改 `ai_image_trials_used`。
+1. 拍板任務檔「待討論議程」兩項：常用提示詞標籤（主線建議 v1 內建精選清單，分析見任務檔）、Ko-fi 導購歧義。
+2. 測試贊助旗標：手改 config.json `preferences.sponsor_unlocked=true`；重置免費次數改 `ai_image_trials_used`。
 
 （2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）
