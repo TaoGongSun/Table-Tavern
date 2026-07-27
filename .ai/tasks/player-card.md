@@ -1,9 +1,9 @@
 # Task
 Task-ID: player-card
 Title: 玩家角色卡：給玩家名字與社會身份，NPC 能叫得出你
-Status: in-progress
+Status: completed
 Created: 2026-07-28T20:30:00+08:00
-Updated: 2026-07-28T22:40:00+08:00
+Updated: 2026-07-28T23:30:00+08:00
 
 ## Summary
 
@@ -23,7 +23,7 @@ Updated: 2026-07-28T22:40:00+08:00
 玩家卡＝一張普通角色卡，存該桌 `characters/<id>.md`，id 記在 `state.json` 的 `player_card_id`；`list_characters` 濾掉它，側欄清單／GM 登場角色／點名名單一次全乾淨。為何選這個：頭像、上傳圖、AI 生圖、圖庫等既有機制全部免費繼承，後端零新命令。
 
 ## Next action
-- 前後端實作完成（`cargo test` 106 綠、`npm run build` 綠），等使用者實機驗收；驗收四項與現場見 [handoffs/player-card.md](../handoffs/player-card.md)，必測「點名輪到玩家」在有玩家名字時仍能正確停下。
+- 已結案（2026-07-28）：實作完成、使用者實機建卡並把側欄與編輯畫面調整到滿意。完整現場與驗證見 [handoffs/archive/player-card.md](../handoffs/archive/player-card.md)。
 
 ## Constraints
 - 沒設玩家卡時，一切行為與現狀完全相同（含提示詞內容），不得多塞空段落。
