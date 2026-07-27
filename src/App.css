@@ -476,10 +476,15 @@ textarea {
   --fac: var(--ink-2);
 }
 
-/* 書本圖置中不裁切（角色是滿版人像，GM 留白＝一眼看出是系統機件） */
+/* 圖窗吃 2:3（＝角色全身圖的裁切比例），GM 卡才會跟有圖片的角色卡等高。
+   書本圖置中不裁切：角色是滿版人像、GM 留白，一眼看出是系統機件 */
+.tcard-gm .tcard-art {
+  aspect-ratio: 2 / 3;
+}
+
 .gm-book {
-  width: 2.125rem;
-  height: 2.125rem;
+  width: 2.5rem;
+  height: 2.5rem;
   object-fit: contain;
 }
 
