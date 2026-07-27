@@ -1477,6 +1477,7 @@ function CardEditor({
   onImagesChanged,
   onSaved,
   onArchived,
+  onDeleted,
   onBack,
   config,
   onPreference,
@@ -1493,6 +1494,7 @@ function CardEditor({
   onBack: () => void;
   onSaved: (name: string) => void;
   onArchived: () => Promise<void>;
+  onDeleted: () => Promise<void>;
   config: AppConfig;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
@@ -1717,9 +1719,14 @@ function CardEditor({
           {t("backToNow")}
         </button>
         {name !== null && (
-          <button type="button" className="archive-button" onClick={archive}>
-            {t("archiveCharacter")}
-          </button>
+          <>
+            <button type="button" className="archive-button" onClick={archive}>
+              {t("archiveCharacter")}
+            </button>
+            <button type="button" className="delete-character" onClick={() => void onDeleted()}>
+              {t("deleteCharacter")}
+            </button>
+          </>
         )}
         {message && <span>{message}</span>}
         {unsavedCount > 0 && (
@@ -2330,7 +2337,8 @@ function App() {
     if (previous === null || speaker === previous) setSpeaker(saved);
   }
 
-  async function finishArchiving(name: string) {
+  // 角色被隱藏或刪除後的善後：名單重載、發言對象改人、關掉編輯面板
+  async function finishRemoval(name: string) {
     const cast = await refreshCharacters();
     if (speaker === name) {
       setSpeaker(cast.find((character) => !character.archived)?.name ?? "");
@@ -2348,7 +2356,8 @@ function App() {
     }
   }
 
-  async function deleteArchivedCharacter(name: string) {
+  // 隱藏區與角色卡編輯畫面共用同一條刪除路徑（確認框＋善後）
+  async function deleteCharacter(name: string) {
     setError("");
     try {
       const accepted = await confirm(t("deleteCharacterConfirm", { name }), {
@@ -2357,7 +2366,7 @@ function App() {
       });
       if (!accepted) return;
       await invoke("delete_character", { world: table, name });
-      await refreshCharacters();
+      await finishRemoval(name);
     } catch (reason) {
       setError(String(reason));
     }
@@ -2629,7 +2638,7 @@ function App() {
                     <button
                       type="button"
                       className="delete-character"
-                      onClick={() => void deleteArchivedCharacter(character.name)}
+                      onClick={() => void deleteCharacter(character.name)}
                     >
                       {t("deleteCharacter")}
                     </button>
@@ -2784,7 +2793,12 @@ function App() {
               onSaved={(saved) => void finishCardSaved(saved)}
               onArchived={
                 mainView.kind === "character"
-                  ? () => finishArchiving(mainView.name)
+                  ? () => finishRemoval(mainView.name)
+                  : async () => setMainView(null)
+              }
+              onDeleted={
+                mainView.kind === "character"
+                  ? () => deleteCharacter(mainView.name)
                   : async () => setMainView(null)
               }
               onBack={() => setMainView(null)}
