@@ -6,6 +6,7 @@ import { confirm, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import taoIcon from "./assets/tao-icon.png";
+import gmBook from "./assets/gm-book.png";
 import "./App.css";
 
 const KOFI_URL = "https://ko-fi.com/taogongsun";
@@ -2684,7 +2685,7 @@ function App() {
               }}
             >
               <span className="tcard-art">
-                <span aria-hidden="true">📖</span>
+                <img className="gm-book" src={gmBook} alt="" />
               </span>
               <span className="tcard-body">
                 <span className="tcard-name-row">
