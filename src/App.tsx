@@ -40,6 +40,7 @@ interface CharacterMeta {
 interface CharacterCard extends CharacterMeta {
   public_md: string;
   private_md: string;
+  gen_prompt: string;
 }
 
 interface TranscriptEvent {
@@ -270,6 +271,7 @@ function Settings({
     ...config.tier_models,
   });
   const [baseUrl, setBaseUrl] = useState(String(config.preferences["base_url"] ?? ""));
+  const [imageModel, setImageModel] = useState(String(config.preferences["image_model"] ?? ""));
   const [claudeCompatBaseUrl, setClaudeCompatBaseUrl] = useState(
     String(config.preferences["claude_base_url"] ?? ""),
   );
@@ -410,6 +412,7 @@ function Settings({
   const dirtyCount = [
     apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
     baseUrl.trim() !== String(config.preferences["base_url"] ?? ""),
+    imageModel.trim() !== String(config.preferences["image_model"] ?? ""),
     claudeCompatBaseUrl.trim() !== String(config.preferences["claude_base_url"] ?? ""),
     claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? ""),
     gmTier !== String(config.preferences["gm_tier"] ?? "best"),
@@ -444,6 +447,7 @@ function Settings({
       preferences: {
         ...config.preferences,
         base_url: baseUrl.trim(),
+        image_model: imageModel.trim(),
         claude_base_url: claudeCompatBaseUrl.trim(),
         transport,
         cli_risk_accepted: riskAccepted,
@@ -578,6 +582,10 @@ function Settings({
         )}
         {transport === "api" ? (
           <>
+            <label>
+              {t("imageModelLabel")}
+              <input value={imageModel} onChange={(e) => setImageModel(e.currentTarget.value)} />
+            </label>
             {(["best", "balanced", "fast"] as const).map((tier) => (
               <label key={tier}>
                 {t("tierModelApiLabel", { tier: tierLabel(tier) })}
@@ -1440,6 +1448,8 @@ function CardEditor({
   onSaved,
   onArchived,
   onBack,
+  config,
+  onPreference,
 }: {
   world: string;
   name: string;
@@ -1449,12 +1459,21 @@ function CardEditor({
   onBack: () => void;
   onSaved: () => void;
   onArchived: () => Promise<void>;
+  config: AppConfig;
+  onPreference: (key: string, value: unknown) => Promise<void>;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [message, setMessage] = useState("");
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [croppingAvatar, setCroppingAvatar] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [aiGenOpen, setAiGenOpen] = useState(false);
+  const [aiGenLockedOpen, setAiGenLockedOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiSource, setAiSource] = useState("api");
+  const [aiClis, setAiClis] = useState<CliInfo[]>([]);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGenError, setAiGenError] = useState("");
 
   useEffect(() => {
     setMessage("");
@@ -1462,6 +1481,48 @@ function CardEditor({
       .then(setCard)
       .catch((reason) => setMessage(String(reason)));
   }, [world, name]);
+
+  const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
+  const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
+  const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
+
+  function openAiGenerator() {
+    if (!sponsorUnlocked && trialsUsed >= 3) {
+      setAiGenLockedOpen(true);
+      return;
+    }
+    const savedSource = String(config.preferences["image_source"] ?? "");
+    const transport = String(config.preferences["transport"] ?? "api");
+    void invoke<CliInfo[]>("detect_clis")
+      .then((detected) => {
+        setAiClis(detected);
+        const detectedSources = ["api", ...detected.map((cli) => cli.id)];
+        setAiSource(detectedSources.includes(savedSource) ? savedSource : transport);
+      })
+      .catch(() => {
+        setAiClis([]);
+        setAiSource(savedSource === "api" ? savedSource : transport);
+      });
+    setAiPrompt(card?.gen_prompt ?? "");
+    setAiGenError("");
+    setAiGenOpen(true);
+  }
+
+  async function generateImage() {
+    setAiGenerating(true);
+    setAiGenError("");
+    try {
+      const dataUrl = await invoke<string>("generate_character_image", { world, name, extraPrompt: aiPrompt, source: aiSource });
+      setAiGenOpen(false);
+      setPendingImage(dataUrl);
+      await onPreference("image_source", aiSource);
+      if (!sponsorUnlocked) await onPreference("ai_image_trials_used", trialsUsed + 1);
+    } catch (reason) {
+      setAiGenError(String(reason));
+    } finally {
+      setAiGenerating(false);
+    }
+  }
 
   if (!card) return message ? <p role="alert">{message}</p> : null;
 
@@ -1550,6 +1611,7 @@ function CardEditor({
         <button type="button" onClick={() => document.getElementById(`character-image-${name}`)?.click()}>
           {t(imageDataUrl ? "replaceImageBtn" : "addImageBtn")}
         </button>
+        <button type="button" onClick={openAiGenerator}>✨ {t("aiGenBtn")}</button>
         {imageDataUrl && (
           <>
             <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
@@ -1620,6 +1682,34 @@ function CardEditor({
           }}
           onCancel={() => setPendingImage(null)}
         />
+      )}
+      {aiGenOpen && (
+        <div className="modal-overlay" onClick={() => !aiGenerating && setAiGenOpen(false)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenTitle")} onClick={(event) => event.stopPropagation()}>
+            <div className="row">
+              <button type="button" disabled={aiGenerating} onClick={() => void generateImage()}>{aiGenerating ? t("aiGenerating") : t("aiGenBtn")}</button>
+              <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
+            </div>
+            <h2>{t("aiGenTitle")}</h2>
+            <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
+            <label>{t("aiGenSourceLabel")}
+              <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
+                {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : `${source[0].toUpperCase()}${source.slice(1)}`}</option>)}
+                {!sourceOptions.includes(aiSource) && <option value={aiSource}>{`${aiSource[0].toUpperCase()}${aiSource.slice(1)}`}</option>}
+              </select>
+            </label>
+            {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
+            {aiGenError && <div className="ai-gen-error" role="alert"><div>{t("aiGenFailed")}</div><small>{aiGenError}</small></div>}
+          </div>
+        </div>
+      )}
+      {aiGenLockedOpen && (
+        <div className="modal-overlay" onClick={() => setAiGenLockedOpen(false)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenLockedTitle")} onClick={(event) => event.stopPropagation()}>
+            <div className="row"><button type="button" onClick={() => void openUrl(KOFI_URL)}>{t("sponsorBtn")}</button><button type="button" onClick={() => setAiGenLockedOpen(false)}>{t("closeBtn")}</button></div>
+            <h2>{t("aiGenLockedTitle")}</h2><p>{t("aiGenLockedBody")}</p>
+          </div>
+        </div>
       )}
       {lightboxOpen && imageDataUrl && (
         <div
@@ -1831,8 +1921,10 @@ function App() {
 
   // 外觀類偏好（語言、文字大小）：改了立即生效並寫回 config，不設儲存鈕
   async function changePreference(key: string, value: unknown) {
-    if (!config) return;
-    const updated = { ...config, preferences: { ...config.preferences, [key]: value } };
+    const current = chatConfigRef.current;
+    if (!current) return;
+    const updated = { ...current, preferences: { ...current.preferences, [key]: value } };
+    chatConfigRef.current = updated;
     setConfig(updated);
     try {
       await invoke("write_config", { config: updated });
@@ -2034,6 +2126,7 @@ function App() {
       archived: false,
       public_md: "",
       private_md: "",
+      gen_prompt: "",
     };
     try {
       await invoke("write_character", { world: table, card });
@@ -2531,6 +2624,8 @@ function App() {
               }
               onArchived={() => finishArchiving(mainView.name)}
               onBack={() => setMainView(null)}
+              config={config}
+              onPreference={changePreference}
             />
           </EditPane>
         ) : mainView?.kind === "world" ? (

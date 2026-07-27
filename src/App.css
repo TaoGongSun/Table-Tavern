@@ -699,6 +699,12 @@ textarea {
   padding: 0 0.7em;
 }
 
+.ai-gen-error small {
+  display: block;
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
 /* 換場提醒：小字、不擋操作 */
 .scene-length-hint {
   font-size: var(--fs-meta);
