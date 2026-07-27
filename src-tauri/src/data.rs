@@ -404,6 +404,21 @@ pub fn reclaim_world_if_empty(root: &Path, world: &str) -> DataResult<bool> {
 }
 
 /// 懶命名的後半：桌名隨時可改（NewPlan §9.3）
+/// 刪桌：世界資料夾整包清掉，連同放在 worlds/ 外面的生成圖庫（見 gallery_dir 說明）。不可復原。
+pub fn delete_world(root: &Path, world: &str) -> DataResult<()> {
+    let directory = world_dir(root, world)?;
+    if directory.exists() {
+        fs::remove_dir_all(&directory)?;
+    }
+    let gallery_root = root.join(world).join("gen-gallery");
+    if gallery_root.exists() {
+        fs::remove_dir_all(&gallery_root)?;
+        // 圖庫的上層只有這桌在用，清空後順手收掉；還有別的東西就留著
+        let _ = fs::remove_dir(root.join(world));
+    }
+    Ok(())
+}
+
 pub fn rename_world(root: &Path, world: &str, new_name: &str) -> DataResult<()> {
     let from = world_dir(root, world)?;
     let to = world_dir(root, new_name)?;
@@ -2000,6 +2015,24 @@ mod tests {
         create_world(root.path(), "有設定").unwrap();
         write_world_md(root.path(), "有設定", "海島世界").unwrap();
         assert!(!reclaim_world_if_empty(root.path(), "有設定").unwrap());
+    }
+
+    #[test]
+    fn delete_world_removes_directory_and_gallery() {
+        let root = TestRoot::new("delete-world");
+        create_world(root.path(), "要刪的桌").unwrap();
+        create_world(root.path(), "留著的桌").unwrap();
+        let gallery = gallery_dir(root.path(), "要刪的桌", "角色");
+        fs::create_dir_all(&gallery).unwrap();
+        fs::write(gallery.join("1.png"), b"gen").unwrap();
+
+        delete_world(root.path(), "要刪的桌").unwrap();
+
+        assert_eq!(list_worlds(root.path()).unwrap(), vec!["留著的桌"]);
+        assert!(!root.path().join("要刪的桌").exists());
+        // 已刪的桌再刪一次應為 no-op；非法桌名擋下
+        delete_world(root.path(), "要刪的桌").unwrap();
+        assert!(delete_world(root.path(), "壞/桌").is_err());
     }
 
     #[test]

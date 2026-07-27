@@ -195,6 +195,11 @@ fn reclaim_world_if_empty(app: tauri::AppHandle, world: String) -> Result<bool, 
 }
 
 #[tauri::command]
+fn delete_world(app: tauri::AppHandle, world: String) -> Result<(), String> {
+    data::delete_world(&data_root(&app)?, &world).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn rename_world(app: tauri::AppHandle, world: String, new_name: String) -> Result<(), String> {
     data::rename_world(&data_root(&app)?, &world, &new_name).map_err(|error| error.to_string())
 }
@@ -955,6 +960,7 @@ pub fn run() {
             create_sample_world,
             reclaim_world_if_empty,
             rename_world,
+            delete_world,
             read_world_md,
             write_world_md,
             read_worldbook,

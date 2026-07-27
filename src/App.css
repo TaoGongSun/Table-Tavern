@@ -396,7 +396,34 @@ textarea {
   overflow-y: auto;
 }
 
+/* 桌名佔滿寬度、刪除鈕貼右；刪除鈕平常淡出，滑到該列或聚焦才明顯 */
+.table-row {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.table-delete {
+  flex: none;
+  border: none;
+  padding: 0 0.4em;
+  line-height: var(--control-h);
+  color: var(--ink-3);
+  opacity: 0;
+}
+
+.table-row:hover .table-delete,
+.table-delete:focus-visible {
+  opacity: 1;
+}
+
+.table-delete:hover:not(:disabled) {
+  color: var(--danger);
+}
+
 .table-item {
+  flex: 1;
+  min-width: 0;
   justify-content: flex-start;
   border: none;
   font-weight: 500;
