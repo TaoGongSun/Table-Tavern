@@ -1,9 +1,9 @@
 # Task
 Task-ID: cli-install-all-providers
 Title: CLI 一鍵安裝擴充到 claude／codex／grok（比照 agy）
-Status: in_progress
+Status: completed
 Created: 2026-07-24T15:30:00+08:00
-Updated: 2026-07-24T16:10:00+08:00
+Updated: 2026-07-28T01:20:00+08:00
 
 ## Summary
 2026-07-24 使用者整理 README 時發現：一鍵安裝只有 agy（Gemini CLI）有做，claude／codex／grok 只有偵測，不公平；拍板在測試打包前補齊。做法：沿用 agy 現成框架（`lib.rs` `install_agy_cli`——寫 `.command` 腳本、開可見終端機、官方安裝 script、headless 探針驗證），泛化成 `install_cli(provider)`。三家官方通道已查證（2026-07-24）：

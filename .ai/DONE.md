@@ -19,3 +19,7 @@
 - [mvp-7-packaging](tasks/mvp-7-packaging.md) — MVP 切片 7：打包 DMG＋README — 2026-07-22 實測 Gatekeeper，修掉 linker-signed 被判「已損毀」的缺陷＋README 步驟更新，結案（公證移交 release-1）
 - [mvp-6-onboarding](tasks/mvp-6-onboarding.md) — MVP 切片 6：Onboarding（BYOK 引導） — 2026-07-22 使用者實測首開範例桌＋BYOK 面板通過，另修冪等／幣別文案／按鈕間距，結案
 - [mvp-4-director](tasks/mvp-4-director.md) — MVP 切片 4：簡易導演（GM） — 2026-07-22 使用者實測 world.md 編輯／GM 旁白／GM 推進全通過，結案
+- [character-card-avatar-issues](tasks/character-card-avatar-issues.md) — 角色卡回饋修訂＋建卡流程改版＋刪除入口＋GM 卡 — 2026-07-28 七項全部實測通過，改名提示末項改為儲存時 confirm 後收尾；生成圖庫目錄放錯層留給 stable-id-storage 吃掉，結案
+- [cli-detect-state](tasks/cli-detect-state.md) — CLI 偵測空窗期：加「正在偵測…」三態＋四支並行＋結果快取 — 2026-07-28 使用者實測設定頁重開不再閃「一鍵安裝」，結案（並行實測 2.8 倍）
+- [cli-install-all-providers](tasks/cli-install-all-providers.md) — CLI 一鍵安裝擴充到 claude／codex／grok（比照 agy） — 2026-07-28 使用者實機按四家安裝／驗證鈕全數成功，結案
+- [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 2026-07-28 Mac 全數實測通過（補上 Mac 缺的驗證回傳通道、grok 探針換 `grok models` 由 26 秒降到瞬間、badge 對齊）；Windows 端新探針與 pre_probe 併 cli-install-windows 那輪驗，結案

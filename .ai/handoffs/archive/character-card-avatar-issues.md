@@ -4,11 +4,11 @@
 五項＋建卡新流程＋刪除入口＋GM 書皮卡全部實作完成，使用者實測通過（GM 書皮含七主題逐一驗收，commit 7597061）；僅剩改名提示複驗與一個先擱置的圖庫路徑 bug。
 
 ## Completed
-見 [archive/character-card-avatar-issues-completed.md](archive/character-card-avatar-issues-completed.md)（含使用者原文與驗證證據）。
+見 [character-card-avatar-issues-completed.md](character-card-avatar-issues-completed.md)（含使用者原文與驗證證據）。
 
 ## Remaining
 2026-07-27 使用者實測結果：桌列表分隔線、角色圖示 emoji 欄位、桌刪除鈕、角色刪除鈕、建卡新流程、GM 書皮卡（七主題）—— **全部通過**。
-改名補了「劇情正文裡的舊名不會更動」提示（commit 8cbcc71）待複驗。
+改名提示複驗（2026-07-28）：欄位下方灰字（commit 8cbcc71）確實會出現，但使用者連兩輪實測都沒注意到——時機不對（人在打字、注意力在輸入框），不是字太小。改為按儲存時再攔一次原生 confirm（src/App.tsx:1808，`renameConfirm`／`renameConfirmTitle`，`kind: "warning"`，帶入新舊名），灰字保留當事前說明。使用者實測通過。
 第 4 項的懸而未決處拍板收尾：移除全身圖比照移除頭像加確認框（`removeImage`，src/App.tsx:1833-1840；i18n `removeImageTitle`／`removeImageConfirm`，文案講明退回頭像、沒頭像才退回 emoji），commit d871f55。
 
 第 7 項（側欄導覽）已實作並實測通過，commit 9ffb9c3、bd2f56d、e8bdf19：
