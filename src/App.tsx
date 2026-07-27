@@ -2267,6 +2267,33 @@ function App() {
     }
   }
 
+  // 刪桌：整桌的角色、紀錄、世界設定一起沒，故確認框把後果講白。
+  // 刪掉最後一桌就補一張範例桌——App 不留「沒有桌」的空狀態（NewPlan §9.3 零精靈）
+  async function deleteTable(name: string) {
+    if (!config || generating !== null) return;
+    const accepted = await confirm(t("deleteTableConfirm", { name }), {
+      title: t("deleteTableTitle"),
+      kind: "warning",
+    });
+    if (!accepted) return;
+    setError("");
+    try {
+      await invoke("delete_world", { world: name });
+      let names = await invoke<string[]>("list_worlds");
+      if (names.length === 0) {
+        names = [
+          await invoke<string>("create_sample_world", {
+            lang: normalizeLang(config.preferences["language"]),
+          }),
+        ];
+      }
+      setWorlds(names);
+      if (name === table) await enterTable(names[0], config);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   async function renameTable(raw: string) {
     const name = raw.trim();
     setEditingName(null);
@@ -2561,13 +2588,24 @@ function App() {
             </button>
             <nav className="table-list" aria-label={t("tableListAria")}>
               {worlds.map((name) => (
-                <button
-                  key={name}
-                  className={`table-item ${name === table ? "table-item-active" : ""}`}
-                  onClick={() => switchTable(name)}
-                >
-                  {name}
-                </button>
+                <div className="table-row" key={name}>
+                  <button
+                    className={`table-item ${name === table ? "table-item-active" : ""}`}
+                    onClick={() => switchTable(name)}
+                  >
+                    {name}
+                  </button>
+                  <button
+                    type="button"
+                    className="table-delete"
+                    aria-label={t("deleteTableTitle")}
+                    title={t("deleteTableTitle")}
+                    disabled={generating !== null}
+                    onClick={() => void deleteTable(name)}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </nav>
           </div>

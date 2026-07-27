@@ -206,6 +206,9 @@ const zh = {
   newTableName: "新的一桌",
   tableListAria: "桌列表",
   renameHint: "點一下改名",
+  deleteTableTitle: "永久刪除這桌",
+  deleteTableConfirm:
+    "確定要永久刪除「{name}」嗎？這桌的角色卡、對話紀錄、世界設定與生成圖庫會一併刪除，且不可復原。",
   tableNameAria: "桌名",
   exportTranscript: "匯出紀錄",
   exportTranscriptHint: "將全部場景匯出成 Markdown，儲存位置自選",
@@ -451,6 +454,9 @@ const en: Record<MsgKey, string> = {
   newTableName: "New table",
   tableListAria: "Table list",
   renameHint: "Click to rename",
+  deleteTableTitle: "Delete this table permanently",
+  deleteTableConfirm:
+    "Delete “{name}” permanently? Its character cards, transcript, world settings and generated gallery all go with it. This cannot be undone.",
   tableNameAria: "Table name",
   exportTranscript: "Export Transcript",
   exportTranscriptHint: "Export every scene as Markdown to a location you choose",
