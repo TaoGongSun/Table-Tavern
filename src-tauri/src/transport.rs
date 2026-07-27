@@ -319,18 +319,10 @@ pub fn gm_tier(config: &AppConfig) -> Tier {
 
 /// 檔位→模型解析。模型 id 一律來自設定檔（config.tier_models），程式不內建。
 pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
-    let key = match tier {
-        Tier::Default => config
-            .preferences
-            .get("default_tier")
-            .and_then(|value| value.as_str())
-            .unwrap_or("balanced")
-            .to_owned(),
-        other => other.as_str().to_owned(),
-    };
+    let key = tier.as_str();
     config
         .tier_models
-        .get(&key)
+        .get(key)
         .cloned()
         .filter(|model| !model.is_empty())
         .ok_or_else(|| format!("尚未設定「{key}」檔位對應的模型，請先到設定填寫"))
@@ -502,7 +494,7 @@ mod tests {
             name: name.to_owned(),
             color: "#336699".to_owned(),
             avatar: "🦊".to_owned(),
-            tier: Tier::Default,
+            tier: Tier::Balanced,
             show_image: true,
             archived: false,
             gen_prompt: String::new(),
@@ -845,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_reads_config_and_default_tier() {
+    fn resolve_model_reads_config() {
         let mut config = AppConfig::default();
         assert!(resolve_model(Tier::Best, &config).is_err());
 
@@ -862,17 +854,12 @@ mod tests {
             resolve_model(Tier::Best, &config).unwrap(),
             "vendor/big-model"
         );
-        // default 檔位未指定偏好時落在 balanced
         assert_eq!(
-            resolve_model(Tier::Default, &config).unwrap(),
+            resolve_model(Tier::Balanced, &config).unwrap(),
             "vendor/mid-model"
         );
-        config.preferences.insert(
-            "default_tier".to_owned(),
-            serde_json::Value::String("fast".to_owned()),
-        );
         assert_eq!(
-            resolve_model(Tier::Default, &config).unwrap(),
+            resolve_model(Tier::Fast, &config).unwrap(),
             "vendor/small-model"
         );
     }

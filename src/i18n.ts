@@ -14,7 +14,6 @@ const zh = {
   tierBest: "高",
   tierBalanced: "中",
   tierFast: "低",
-  tierDefault: "跟隨預設",
 
   // Onboarding（BYOK 引導）
   onboardTitle: "還差最後一步：貼上 API key 就能開玩",
@@ -262,7 +261,6 @@ const en: Record<MsgKey, string> = {
   tierBest: "High",
   tierBalanced: "Medium",
   tierFast: "Low",
-  tierDefault: "Follow default",
 
   onboardTitle: "One last step: paste an API key and start playing",
   onboardIntro:

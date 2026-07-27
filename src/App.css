@@ -90,7 +90,7 @@ body {
   --danger: #a43a2a;
   --ok: #3f7d3c;
   --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.14);
-  --gm-leather: #9a9b95; /* GM 書皮：石板灰帶一點暖（壓得過白卡即可） */
+  --gm-leather: #cbccc7; /* GM 書皮：淺石板灰（壓得過白卡即可） */
 }
 
 :root[data-theme="parchment"] {
@@ -687,7 +687,7 @@ textarea {
   min-width: 0;
 }
 
-/* 檔位寶石：名牌後面，「跟隨預設」不顯示（沒有明確檔位就沒有寶石） */
+/* 檔位寶石：名牌後面，只有偏離預設檔位（中）的角色才掛 */
 .tcard-gem {
   flex: none;
   font: 800 var(--fs-gem) / 1 var(--font-ui);

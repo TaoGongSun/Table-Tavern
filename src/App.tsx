@@ -28,7 +28,7 @@ const THEME_SWATCH: Record<string, { bg: string; dot: string }> = {
 const ALL_THEMES = [...FREE_THEMES, ...SPONSOR_THEMES] as const;
 type ThemeId = (typeof ALL_THEMES)[number];
 
-type Tier = "best" | "balanced" | "fast" | "default";
+type Tier = "best" | "balanced" | "fast";
 
 interface CharacterMeta {
   id: string;
@@ -130,7 +130,6 @@ const TIER_LABEL_KEYS = {
   best: "tierBest",
   balanced: "tierBalanced",
   fast: "tierFast",
-  default: "tierDefault",
 } as const;
 const tierLabel = (tier: keyof typeof TIER_LABEL_KEYS) => t(TIER_LABEL_KEYS[tier]);
 
@@ -746,7 +745,7 @@ function Settings({
         <label>
           {t("gmTierLabel")}
           <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
-            {(["best", "balanced", "fast", "default"] as const).map((tier) => (
+            {(["best", "balanced", "fast"] as const).map((tier) => (
               <option key={tier} value={tier}>
                 {tierLabel(tier)}
               </option>
@@ -1669,7 +1668,7 @@ function CardEditor({
         name: "",
         color: newCardColor,
         avatar: DEFAULT_AVATAR,
-        tier: "default",
+        tier: "balanced",
         show_image: true,
         archived: false,
         public_md: "",
@@ -2026,7 +2025,7 @@ function CardEditor({
           value={card.tier}
           onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
         >
-          {(["default", "best", "balanced", "fast"] as const).map((tier) => (
+          {(["best", "balanced", "fast"] as const).map((tier) => (
             <option key={tier} value={tier}>
               {tierLabel(tier)}
             </option>
@@ -2443,12 +2442,20 @@ function App() {
     try {
       const previous = table;
       await enterTable(id, config);
-      // 空桌（零訊息、零角色、無設定）離開時自動回收（NewPlan §9.3）
-      if (previous) await invoke("reclaim_world_if_empty", { worldId: previous });
+      if (previous) await reclaimIfUntouched(previous);
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     }
+  }
+
+  // 空桌回收（NewPlan §9.3）：零訊息、零角色、無設定的桌離開時自動收掉。
+  // 但名字改過就代表使用者投入過，即使還沒放內容也不回收——只回收還掛著自動名的桌。
+  async function reclaimIfUntouched(id: string) {
+    const base = t("newTableName");
+    const name = worlds.find((w) => w.id === id)?.name;
+    if (name !== base && !name?.startsWith(`${base} `)) return;
+    await invoke("reclaim_world_if_empty", { worldId: id });
   }
 
   async function newTable() {
@@ -2464,7 +2471,7 @@ function App() {
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       await enterTable(id, config);
       if (previous) {
-        await invoke("reclaim_world_if_empty", { worldId: previous });
+        await reclaimIfUntouched(previous);
         setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       }
     } catch (reason) {
@@ -2908,7 +2915,7 @@ function App() {
                 ⚙
               </span>
             </div>
-            {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（tier 是既有欄位；「跟隨預設」不掛寶石） */}
+            {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（中＝預設檔位，不掛寶石） */}
             {castDrag.order.map((c) => (
               <div
                 key={c.id}
@@ -2943,7 +2950,9 @@ function App() {
                 <span className="tcard-body">
                   <span className="tcard-name-row">
                     <span className="tcard-plate">{c.name}</span>
-                    {c.tier !== "default" && <span className="tcard-gem">{tierLabel(c.tier)}</span>}
+                    {c.tier !== "balanced" && (
+                      <span className="tcard-gem">{tierLabel(c.tier)}</span>
+                    )}
                   </span>
                 </span>
                 <button
