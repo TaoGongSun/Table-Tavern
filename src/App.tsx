@@ -2515,16 +2515,6 @@ function App() {
         </div>
       </aside>
 
-      {settingsOpen !== false && (
-        <SettingsWindow
-          config={config}
-          onSaved={setConfig}
-          onPreference={(key, value) => void changePreference(key, value)}
-          onClose={() => setSettingsOpen(false)}
-          initialTab={settingsOpen}
-        />
-      )}
-
       <div
         className="sidebar-resizer"
         role="separator"
@@ -2777,6 +2767,17 @@ function App() {
         </div>
         {error && <p role="alert">{error}</p>}
       </main>
+
+      {/* 放整個版面最後：設定視窗永遠疊在其他 modal（含生圖對話框）之上 */}
+      {settingsOpen !== false && (
+        <SettingsWindow
+          config={config}
+          onSaved={setConfig}
+          onPreference={(key, value) => void changePreference(key, value)}
+          onClose={() => setSettingsOpen(false)}
+          initialTab={settingsOpen}
+        />
+      )}
     </div>
   );
 }
