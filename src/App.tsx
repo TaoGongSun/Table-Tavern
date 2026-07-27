@@ -1806,7 +1806,7 @@ function CardEditor({
         </button>
         {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
             提示掛在外層 span：disabled 的按鈕不收滑鼠事件，title 掛上去不會浮出來 */}
-        <span title={aiGenBlocked ? t("aiGenNeedsContent") : undefined}>
+        <span className="hint-wrap" data-hint={aiGenBlocked ? t("aiGenNeedsContent") : undefined}>
           <button
             type="button"
             className="ai-gen-btn"
@@ -1843,6 +1843,12 @@ function CardEditor({
           onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
         />
       </label>
+      {/* 改名時才提示：機械取代劇情正文會誤傷同名詞句，故舊名留在原處（2026-07-27 拍板） */}
+      {name !== null && card.name.trim() !== name && (
+        <p className="field-note" role="note">
+          {t("renameNote")}
+        </p>
+      )}
       <label>
         {t("avatarEmojiLabel")}
         <div className="emoji-row">
