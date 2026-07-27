@@ -667,6 +667,27 @@ textarea {
   max-height: 12rem;
   border-radius: var(--radius-l);
   object-fit: cover;
+  display: block;
+}
+
+/* 點圖開大圖：按鈕殼不帶預設外觀，只負責 zoom 手勢提示 */
+.card-editor-image-zoom {
+  padding: 0;
+  border: none;
+  height: auto;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.card-editor-image-zoom:hover .card-editor-image {
+  filter: brightness(1.06);
+}
+
+.lightbox-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: var(--radius-l);
+  cursor: zoom-out;
 }
 
 .card-editor-avatar-emoji {
