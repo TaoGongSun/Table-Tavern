@@ -16,7 +16,7 @@
 見 [DONE.md](DONE.md)（17 項）。
 
 ## Todo
-- [stable-id-storage](tasks/stable-id-storage.md) — 儲存改用穩定代碼定址（桌與角色的路徑是代碼，顯示名是欄位） — 下一步：**等 fable／使用者回答任務檔裡的四題**（劇情紀錄發言者存什麼／範圍／代碼格式／舊資料處理），再寫實作計畫；採用的話「生成圖庫目錄放錯層」那個 bug 不用先修
+- [stable-id-storage](tasks/stable-id-storage.md) — 儲存改用穩定代碼定址（桌與角色的路徑是代碼，顯示名是欄位） — 下一步：四題已拍板（快照／都改／ULID／不遷移），主線寫實作計畫後發包 Opus；圖庫實測與改名提示複驗併到本案後驗，「圖庫目錄放錯層」bug 不修
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：等使用者加入 Apple Developer Program（99 美元/年）後開工：設 Developer ID 憑證＋notarytool 公證流程，憑證再併入 release-2 的 CI secrets
