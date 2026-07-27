@@ -165,6 +165,7 @@ const zh = {
 
   // 角色卡
   editCardSummary: "編輯「{name}」角色卡",
+  avatarEmojiLabel: "圖示（沒有角色圖片時顯示）",
   publicLabel: "公開設定（所有人認識的它）",
   privateLabel: "私有設定（只進本角色與 GM 的上下文）",
   tierLabel: "檔位",
@@ -233,7 +234,7 @@ const zh = {
   nameLabel: "角色名稱",
   nameRequiredError: "請先填角色名稱",
   newCardTitle: "新角色卡",
-  aiGenNeedsSave: "先儲存角色卡才能生成圖片",
+  aiGenNeedsContent: "請先填角色名稱、公開設定與私有設定，才能生成角色圖",
   removeAvatarTitle: "移除頭像",
   removeAvatarConfirm: "移除頭像後，這個角色會變回原本的 emoji 圖示。確定要移除嗎？",
   duplicateNameError: "已經有同名角色了，請換一個名字",
@@ -412,6 +413,7 @@ const en: Record<MsgKey, string> = {
   unsavedLeaveConfirm: "You have {n} unsaved changes. Leave anyway? They will be lost.",
 
   editCardSummary: "Edit “{name}” character card",
+  avatarEmojiLabel: "Icon (shown when the card has no image)",
   publicLabel: "Public profile (what everyone knows about them)",
   privateLabel: "Private profile (only this character and the GM see it)",
   tierLabel: "Tier",
@@ -481,7 +483,7 @@ const en: Record<MsgKey, string> = {
   nameLabel: "Character name",
   nameRequiredError: "Enter a character name first",
   newCardTitle: "New character card",
-  aiGenNeedsSave: "Save the card before generating an image",
+  aiGenNeedsContent: "Fill in the name, public and private settings before generating an image",
   removeAvatarTitle: "Remove avatar",
   removeAvatarConfirm: "Removing the avatar brings back this character’s emoji icon. Remove it?",
   duplicateNameError: "A character with that name already exists — pick another one",

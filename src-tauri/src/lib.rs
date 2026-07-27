@@ -715,22 +715,21 @@ fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{}", encode_base64(&bytes)))
 }
 
+/// 角色名與描述由編輯器直接傳進來（不讀也不寫卡片檔）：新卡還沒存檔就能生圖，
+/// 且吃到的是編輯器裡的當下內容；追加描寫由前端存進草稿，跟其他欄位一起按儲存才落地。
 #[tauri::command]
 async fn generate_character_image(
     app: tauri::AppHandle,
     world: String,
     name: String,
+    description: String,
     extra_prompt: String,
     source: Option<String>,
 ) -> Result<String, String> {
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let mut card = data::read_character(&root, &world, &name).map_err(|error| error.to_string())?;
-    card.gen_prompt = extra_prompt.clone();
-    data::write_character(&root, &world, &card).map_err(|error| error.to_string())?;
     let mut prompt = format!(
-        "Generate a single full-body character illustration, portrait orientation 2:3. No text, no watermark, plain background.\nCharacter name: {name}\nCharacter description:\n{}",
-        card.public_md
+        "Generate a single full-body character illustration, portrait orientation 2:3. No text, no watermark, plain background.\nCharacter name: {name}\nCharacter description:\n{description}"
     );
     if !extra_prompt.trim().is_empty() {
         prompt.push_str(&format!("\nAdditional art direction: {extra_prompt}"));
