@@ -1066,7 +1066,16 @@ function useDragReorder<T>(
 }
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
-function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
+function WorldEditor({
+  world,
+  onBack,
+  leaveGuard,
+}: {
+  world: string;
+  onBack: () => void;
+  /** 側欄要離開世界設定時先問過這裡（未儲存確認與返回鈕同一條） */
+  leaveGuard: { current: (() => Promise<boolean>) | null };
+}) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
   const [message, setMessage] = useState("");
@@ -1121,15 +1130,18 @@ function WorldEditor({ world, onBack }: { world: string; onBack: () => void }) {
     }
   }
 
+  async function confirmLeave() {
+    if (unsavedCount === 0) return true;
+    return await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
+      title: t("unsavedLeaveTitle"),
+      kind: "warning",
+    });
+  }
+  // 側欄切走時走的是同一條確認；每次 render 掛上，閉包才拿得到最新的 unsavedCount
+  leaveGuard.current = confirmLeave;
+
   async function handleBack() {
-    if (unsavedCount > 0) {
-      const accepted = await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
-        title: t("unsavedLeaveTitle"),
-        kind: "warning",
-      });
-      if (!accepted) return;
-    }
-    onBack();
+    if (await confirmLeave()) onBack();
   }
 
   async function refreshWorldbook() {
@@ -2565,7 +2577,12 @@ function App() {
 
   // 編輯角色卡時，側欄點擊＝換編輯對象（發言對象只在聊天畫面有意義），離開前先問未儲存
   async function canLeaveEditor() {
-    if (mainView?.kind !== "character" && mainView?.kind !== "new-character") return true;
+    // 只有掛著未儲存追蹤的三種畫面要問；聊天／幕紀錄沒有暫存狀態，也避免問到已卸載編輯器留下的舊守門
+    const guarded =
+      mainView?.kind === "character" ||
+      mainView?.kind === "new-character" ||
+      mainView?.kind === "world";
+    if (!guarded) return true;
     const ok = (await leaveGuard.current?.()) ?? true;
     // 放行就清掉，下一張卡載好會重新掛上——免得載入空窗期沿用上一張的未儲存狀態
     if (ok) leaveGuard.current = null;
@@ -2577,8 +2594,9 @@ function App() {
     if (await canLeaveEditor()) setMainView({ kind: "character", name });
   }
 
+  // 主欄開著任何畫面時側欄＝導覽（點卡＝開它的編輯頁）；只有聊天畫面點卡才是選發言對象
   async function selectCard(name: string) {
-    if (mainView?.kind === "character" || mainView?.kind === "new-character") {
+    if (mainView) {
       await editCard(name);
       return;
     }
@@ -2586,10 +2604,12 @@ function App() {
   }
 
   async function openWorldEditor() {
+    if (mainView?.kind === "world") return;
     if (await canLeaveEditor()) setMainView({ kind: "world" });
   }
 
   async function openNewCard() {
+    if (mainView?.kind === "new-character") return;
     if (await canLeaveEditor()) setMainView({ kind: "new-character" });
   }
 
@@ -3096,7 +3116,7 @@ function App() {
           </EditPane>
         ) : mainView?.kind === "world" ? (
           <EditPane title={t("worldSummary")}>
-            <WorldEditor world={table} onBack={() => setMainView(null)} />
+            <WorldEditor world={table} onBack={() => setMainView(null)} leaveGuard={leaveGuard} />
           </EditPane>
         ) : (
           <>
