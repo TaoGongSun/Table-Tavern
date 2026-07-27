@@ -1983,32 +1983,35 @@ function CardEditor({
           {t("renameNote")}
         </p>
       )}
-      <label>
-        {t("avatarEmojiLabel")}
-        <div className="emoji-row">
-          <input
-            className="emoji-input"
-            value={card.avatar}
-            onChange={(e) =>
-              setCard({
-                ...card,
-                avatar: clampChars(e.currentTarget.value.replace(/\s/g, ""), AVATAR_MAX_CHARS),
-              })
-            }
-          />
-          {AVATAR_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              className="emoji-preset"
-              aria-pressed={card.avatar === emoji}
-              onClick={() => setCard({ ...card, avatar: emoji })}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      </label>
+      {/* emoji 只在沒有圖可顯示時才會用到：有頭像、或有大圖且開關開著，這一欄就沒意義（2026-07-28 使用者拍板） */}
+      {!shownAvatar && !(shownImage && card.show_image) && (
+        <label>
+          {t("avatarEmojiLabel")}
+          <div className="emoji-row">
+            <input
+              className="emoji-input"
+              value={card.avatar}
+              onChange={(e) =>
+                setCard({
+                  ...card,
+                  avatar: clampChars(e.currentTarget.value.replace(/\s/g, ""), AVATAR_MAX_CHARS),
+                })
+              }
+            />
+            {AVATAR_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                className="emoji-preset"
+                aria-pressed={card.avatar === emoji}
+                onClick={() => setCard({ ...card, avatar: emoji })}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </label>
+      )}
       <label>
         {t(isPlayer ? "playerPublicLabel" : "publicLabel")}
         <textarea
