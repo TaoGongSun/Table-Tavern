@@ -124,6 +124,24 @@ const tierLabel = (tier: keyof typeof TIER_LABEL_KEYS) => t(TIER_LABEL_KEYS[tier
 
 const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
 
+// 角色名檢查（建卡／改名共用）：規則對齊後端 validate_name（data.rs:197），
+// 前端先擋才不會讓使用者看到 `invalid name: ""` 這種內部訊息。空名由送出鈕 disabled 處理。
+// taken 傳完整名單（含收起的卡），同名會直接覆寫既有卡片。
+function characterNameError(name: string, taken: string[]): string | null {
+  if (name === "GM" || name === "玩家") return t("reservedNameError");
+  if (
+    name.startsWith(".") ||
+    name.includes("..") ||
+    name.includes("/") ||
+    name.includes("\\") ||
+    /[\u0000-\u001f\u007f]/.test(name)
+  ) {
+    return t("invalidNameError");
+  }
+  if (taken.includes(name)) return t("duplicateNameError");
+  return null;
+}
+
 // 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。
 // 下限擋在這裡，上限交給 CSS 的 max-width: 50%（視窗縮小時自動夾住）。
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
@@ -2185,8 +2203,13 @@ function App() {
     event.preventDefault();
     setError("");
     const name = characterName.trim();
-    if (name === "GM" || name === "玩家") {
-      setError(t("reservedNameError"));
+    if (!name) return;
+    const nameError = characterNameError(
+      name,
+      characters.map((character) => character.name),
+    );
+    if (nameError) {
+      setError(nameError);
       return;
     }
     const card: CharacterCard = {
@@ -2551,7 +2574,9 @@ function App() {
               onChange={(e) => setCharacterName(e.currentTarget.value)}
               placeholder={t("newCharacterPlaceholder")}
             />
-            <button type="submit">{t("createCard")}</button>
+            <button type="submit" disabled={!characterName.trim()}>
+              {t("createCard")}
+            </button>
             <button
               type="button"
               title={t("importCardHint")}
