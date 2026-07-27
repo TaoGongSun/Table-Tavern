@@ -1,7 +1,7 @@
 # Handoff: stable-id-storage
 
 ## Current state
-實作完成並通過主線靜態驗證（cargo 104 綠／clippy 0 error／fmt 乾淨／npm build exit 0），**尚未實跑過 app**——GUI 驗收清單見 Next action。下方「實作計畫」保留為規格原文，實際落地與它的差異列在 Completed。
+**已結案**（2026-07-28）：實作完成、靜態驗證全綠、使用者實機驗收全數通過。下方「實作計畫」保留為規格原文，實際落地與它的差異列在 Completed。
 
 ## 實作計畫（2026-07-28 主線）
 
@@ -118,15 +118,13 @@ config.json `preferences.last_world` 存 world id。
 - `npm run build`：exit 0，`✓ built in 450ms`
 - **前後端介面對接**：兩包分開實作沒一起跑過，主線改用機械比對——從 `lib.rs` 抽出每個 `#[tauri::command]` 的參數名，對照 `App.tsx` 每個 `invoke` 的 key，結果「所有 invoke 參數完全對得上」；唯一沒被前端呼叫的 command 是 `write_state`（改動前就沒人用，不在本案範圍）。
 
-## Remaining
-- **GUI 實測（沒做過，只有靜態驗證）**：清單見 Next action。app 從頭到尾沒被跑起來過，第一次啟動若炸在意料外的地方，最可能的位置是開桌流程（`enterTable` → `read_state`）。
+- **GUI 實機驗收（2026-07-28 使用者實跑，全數通過）**：兩個同名角色各自點名，回的內容各是各的；刪掉其中一張另一張完好；改角色名後全身圖／頭像／生成圖庫都在、舊對話仍顯示舊名；桌名含 `/`（「海盜老公 / 第一幕」）存得下去。
+- **併驗一起結**：sponsor-features 的生成歷史圖庫實測通過（生圖→縮圖列→套用到卡片）；character-card-avatar-issues 的改名確認框複驗通過。
 
-## Next action
-1. 使用者三分鐘 GUI 實測（**開 app 前先刪掉 `~/Documents/TableTavern`**，拍板不做遷移；`config.json` 不用刪，開機找不到舊桌會自動退回第一桌）。`npm run tauri dev` 要重啟才吃得到 Rust 改動：
-   - 建兩個同名角色 → 側欄兩張卡、發言者選單兩列、各點一次確認講話的是對的那位
-   - 改角色名 → 全身圖／頭像／生成圖庫都還在，舊對話仍顯示舊名
-   - 改桌名、桌名輸入含 `/` 的字串 → 存得下去、重開仍在
-2. 併驗：sponsor-features 的生成圖庫實測、character-card-avatar-issues 的改名提示複驗
+### 實測揪出並修掉的三件
+1. 空桌回收會誤收「改過名但還沒放內容」的桌（既有行為，回收條件沒看名字）→ 改成只回收還掛著自動名的桌，判斷放前端（自動名是語系字串）。commit f1ec755
+2. 改桌名輸入框中文選字按 Enter 直接送出 → 先試 `isComposing`（在 app 的 WKWebView 上無效），改成包表單讓瀏覽器處理 Enter（對話輸入框同款）。commit cf97f94、a621aa3
+3. 生圖來源下拉顯示 CLI 代號首字大寫（「Agy」）→ 改讀既有的 `CLI_LABELS`，顯示「Gemini CLI」。commit 476d015
 
 ## Constraints
 - 改名後舊對話仍顯示舊名（2026-07-27 拍板），新設計以 `speaker_name` 快照守住。

@@ -23,3 +23,4 @@
 - [cli-detect-state](tasks/cli-detect-state.md) — CLI 偵測空窗期：加「正在偵測…」三態＋四支並行＋結果快取 — 2026-07-28 使用者實測設定頁重開不再閃「一鍵安裝」，結案（並行實測 2.8 倍）
 - [cli-install-all-providers](tasks/cli-install-all-providers.md) — CLI 一鍵安裝擴充到 claude／codex／grok（比照 agy） — 2026-07-28 使用者實機按四家安裝／驗證鈕全數成功，結案
 - [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 2026-07-28 Mac 全數實測通過（補上 Mac 缺的驗證回傳通道、grok 探針換 `grok models` 由 26 秒降到瞬間、badge 對齊）；Windows 端新探針與 pre_probe 併 cli-install-windows 那輪驗，結案
+- [stable-id-storage](tasks/stable-id-storage.md) — 儲存改用穩定代碼定址（桌與角色的路徑是代碼，顯示名是欄位） — 2026-07-28 實作＋實機驗收全通過：同名角色並存可分辨、改名不動任何路徑、舊對話仍顯示舊名、桌名可含 `/`；順帶修掉生成圖庫放錯層與空桌誤回收，結案

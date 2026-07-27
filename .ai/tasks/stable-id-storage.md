@@ -1,9 +1,9 @@
 # Task
 Task-ID: stable-id-storage
 Title: 儲存改用穩定代碼定址：桌與角色的資料夾／檔名是代碼，顯示名是欄位
-Status: in-progress
+Status: completed
 Created: 2026-07-27T23:30:00+08:00
-Updated: 2026-07-28T22:40:00+08:00
+Updated: 2026-07-29T01:20:00+08:00
 
 ## Summary
 
@@ -42,7 +42,7 @@ Updated: 2026-07-28T22:40:00+08:00
 sponsor-features 的圖庫實測、character-card-avatar-issues 的改名提示複驗**併到本案完成後一起驗**（先測會因格式全變而重測一輪）；「生成圖庫目錄放錯層」bug 不修，改代碼定址後已自動消失。
 
 ## Next action
-- 實作與靜態驗證完成（cargo 104 綠／npm build 綠／介面機械比對過），現場與 GUI 驗收清單見 [handoffs/stable-id-storage.md](../handoffs/stable-id-storage.md)；等使用者實跑
+- 已結案（2026-07-28 使用者實機驗收全通過）。實作細節與驗收證據見 [handoffs/archive/stable-id-storage.md](../handoffs/archive/stable-id-storage.md)
 
 ## Constraints
 - 改名後舊對話仍顯示舊名，是 2026-07-27 已拍板的行為，新設計不得改變它。
