@@ -8,7 +8,6 @@ import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import taoIcon from "./assets/tao-icon.png";
 import "./App.css";
 
-// 占位網址：release-3-kofi 開帳後換成正式 Ko-fi 頁面
 const KOFI_URL = "https://ko-fi.com/taogongsun";
 
 type Tier = "best" | "balanced" | "fast" | "default";
