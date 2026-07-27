@@ -2257,6 +2257,13 @@ function App() {
     | { kind: "world" }
     | null
   >(null);
+  // 側欄描邊＝側欄當下選中的那張：編輯畫面時是正在編輯的卡，其餘畫面是發言對象（編輯不動發言對象）
+  const selectedCard =
+    mainView?.kind === "character"
+      ? mainView.name
+      : mainView?.kind === "new-character"
+        ? ""
+        : speaker;
   // 前幕清單浮層：只是開關狀態，不佔版面高度（NewPlan §9.4 主欄閱讀優先改造）
   const [actsOpen, setActsOpen] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
@@ -2857,7 +2864,7 @@ function App() {
                 key={c.name}
                 role="button"
                 tabIndex={0}
-                className={`tcard ${speaker === c.name ? "tcard-selected" : ""}${
+                className={`tcard ${selectedCard === c.name ? "tcard-selected" : ""}${
                   castDrag.draggingKey === c.name ? " row-dragging" : ""
                 }`}
                 style={{ ["--fac" as string]: c.color }}
