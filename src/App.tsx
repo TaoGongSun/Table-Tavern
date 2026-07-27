@@ -1829,7 +1829,15 @@ function CardEditor({
     reader.readAsDataURL(file);
   }
 
-  // 移除頭像會退回 emoji 圖示，先問一聲（2026-07-27 使用者回饋）
+  // 移除圖片／頭像都會讓卡片退回下一層顯示，先問一聲（2026-07-27 使用者回饋）
+  async function removeImage() {
+    const accepted = await confirm(t("removeImageConfirm"), {
+      title: t("removeImageTitle"),
+      kind: "warning",
+    });
+    if (accepted) setDraftImage(null);
+  }
+
   async function removeAvatar() {
     const accepted = await confirm(t("removeAvatarConfirm"), {
       title: t("removeAvatarTitle"),
@@ -1900,7 +1908,7 @@ function CardEditor({
         </span>
         {shownImage && (
           <>
-            <button type="button" onClick={() => setDraftImage(null)}>{t("removeImageBtn")}</button>
+            <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
             <button type="button" onClick={() => setCroppingAvatar(true)}>{t("makeAvatarBtn")}</button>
           </>
         )}
