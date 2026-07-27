@@ -1,7 +1,7 @@
 # Handoff: character-card-avatar-issues
 
 ## Current state
-五項全部實作完成（cargo 93 綠＋npm build 綠），等使用者實測。2026-07-27 使用者追加拍板：建卡流程改成「點建卡→右側開空白角色卡編輯器填名字與資料」，取代原本側欄的名稱輸入框；改名不做自然語言內文的機械取代。
+五項＋建卡新流程＋刪除入口全部實作完成（cargo 94 綠＋npm build 綠），等使用者實測。2026-07-27 使用者追加拍板：建卡流程改成「點建卡→右側開空白角色卡編輯器填名字與資料」，取代原本側欄的名稱輸入框；改名不做自然語言內文的機械取代。
 
 ## 使用者原文（2026-07-27）
 1. 人物有頭像後，這個頭像和文字太近了，讓他間隔多一點
@@ -19,7 +19,6 @@
 - **第 4 項移除頭像警告**：confirm「會變回原本的 emoji 圖示」。
 - **建卡新流程**：側欄只剩「建卡」「匯入卡」兩鈕；`mainView` 新增 `new-character`；CardEditor `name: string | null`（null＝草稿，讀空白卡不打後端）。草稿模式關閉 AI 生圖（後端生圖要讀已存檔設定，圖庫目錄也以角色名建立）與隱藏「隱藏角色」鈕。存檔後畫面停在該卡、speaker 跟著換（`finishCardSaved`）。
 - **第 2 項改名**：後端 `rename_character(world, from, to)`（data.rs）搬檔（卡片 md 含 frontmatter name／全身圖／頭像／`gen-gallery/{名}` 目錄）＋回填（劇情紀錄全部幕的 speaker、世界書 `visibility.characters`、`state.json` 的 `model_bindings` key）；擋同名碰撞與 `validate_name`。自然語言內文（world.md／世界書內文／public_md／private_md／對話正文）**不動**——機械取代會誤傷同名詞句。
-
 - **刪除入口補齊**：角色卡編輯畫面加「刪除角色」鈕（與側欄隱藏區共用 `deleteCharacter`＝確認框＋善後，`finishArchiving` 更名 `finishRemoval`）；`delete_character` 一併清 `gen-gallery/{名}`（原本留孤兒檔，建同名角色會撿到舊圖）。桌列表每列加 ✕ 刪桌，後端 `delete_world` 整包清世界資料夾＋放在 `worlds/` 外的圖庫；刪掉最後一桌自動補範例桌。
 
 ## Verification
@@ -32,7 +31,7 @@
 使用者實機實測全部五項＋建卡新流程；下列缺陷未修（見 Next action）。
 
 ## Next action
-1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。後果：`rename_world` 只搬 `worlds/{名}`，改桌名後整個生成圖庫失聯。刪桌與刪角色已各自補上清圖庫，但 `rename_world` 仍只搬 `worlds/{名}`＝改桌名後圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），等使用者拍板。
+1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。刪桌與刪角色都已各自補上清圖庫，但 `rename_world` 仍只搬 `worlds/{名}`＝改桌名後整個生成圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），等使用者拍板。
 2. 生圖用的是**已存檔**的 public_md（後端從磁碟讀卡），編輯器裡沒存的描述不會進提示詞——要不要在生圖前擋未儲存變更，待拍板。
 
 ## Constraints
