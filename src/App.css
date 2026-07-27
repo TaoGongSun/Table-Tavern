@@ -1090,6 +1090,11 @@ textarea {
   filter: brightness(1.15);
 }
 
+/* 表單只是為了讓 Enter 走瀏覽器的表單送出（中文選字不誤送），版面維持原本的直接子層 */
+.table-title-form {
+  display: contents;
+}
+
 .table-title-input {
   font-weight: 700;
   font-size: var(--fs-title);
