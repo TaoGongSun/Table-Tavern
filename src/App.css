@@ -504,10 +504,13 @@ textarea {
   object-position: top;
 }
 
+/* 圓頭像的黑框是 box-shadow，畫在邊框外、不佔版位，緊鄰文字時會吃掉視覺間距，
+   故用 margin 把那 2px 讓回來（2026-07-27 使用者回報「頭像和文字太近」） */
 .avatar-round {
   border-radius: 50%;
   object-fit: cover;
   box-shadow: 0 0 0 2px var(--avatar-ring);
+  margin: 2px;
 }
 
 .tcard-avatar { width: 2rem; height: 2rem; }
@@ -527,6 +530,12 @@ textarea {
   /* 右側留位給編輯鈕（絕對定位），名牌絕不壓到它下面；
      編輯鈕字級固定 px，小字級（根字級縮小）時佔的 rem 變多，預留取最壞情況 */
   padding: 0.35rem 3.4rem 0.35rem 0;
+}
+
+/* 圖窗放圓頭像時取消名牌的 wedge 咬合（-6px）並讓出間距：
+   全身圖是填滿圖窗的方形，名牌壓上去是設計；圓頭像四周本來就有留白，再咬合會貼到黑框 */
+.tcard:has(.tcard-avatar) .tcard-plate {
+  margin-left: 0.35rem;
 }
 
 /* 名字 wedge：角色被叫到名字的地方全用同一塊牌（此處＋發言名牌＋目標晶片） */
@@ -842,7 +851,7 @@ textarea {
 .card-editor-avatar {
   display: flex;
   justify-content: center;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.6rem;
 }
 
 .card-editor-image {
@@ -1111,7 +1120,7 @@ textarea {
 .opt-target {
   display: inline-flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.5em;
   height: var(--control-h);
   box-sizing: border-box;
   font: 600 var(--fs-btn) / 1 var(--font-ui);
