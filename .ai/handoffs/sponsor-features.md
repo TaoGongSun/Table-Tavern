@@ -14,7 +14,6 @@
 - 程式碼：src/App.tsx（KOFI_URL 常數＋SettingsWindow author 分頁）、src/i18n.ts、src/App.css（.author-page／.author-avatar／.author-blurb）
 
 ## Remaining
-- Ko-fi 連結為占位網址 `https://ko-fi.com/taogongsun`（App.tsx 頂部 KOFI_URL 常數），release-3-kofi 開帳後換正式網址
 - 第二項：配色 +5（☕ 標記＋點擊即預覽、關設定視窗復原）——依賴 release-4 主題引擎拍板檔案格式
 - 第三項：AI 生成角色圖（免費 3 次含提示詞）——動工前先查證 image API 接法
 - 「匯入贊助包」入口未做（等贊助包檔案格式定案，預計也放作者頁）
