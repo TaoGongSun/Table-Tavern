@@ -9,6 +9,22 @@ import taoIcon from "./assets/tao-icon.png";
 import "./App.css";
 
 const KOFI_URL = "https://ko-fi.com/taogongsun";
+// 主題清單：free 兩套隨點隨存；sponsor 五套未解鎖只能試看（關設定視窗即復原）
+const FREE_THEMES = ["dark", "light"] as const;
+const SPONSOR_THEMES = ["parchment", "herbal", "candlelight", "port", "seamist"] as const;
+const THEME_LABEL_KEYS = { dark: "themeDark", light: "themeLight", parchment: "themeParchment", herbal: "themeHerbal", candlelight: "themeCandlelight", port: "themePort", seamist: "themeSeamist" } as const;
+// 色票縮圖用色（與 App.css 各主題 surface-0／accent 同步）
+const THEME_SWATCH: Record<string, { bg: string; dot: string }> = {
+  dark: { bg: "#20242c", dot: "#e58057" },
+  light: { bg: "#eceae5", dot: "#b85a35" },
+  parchment: { bg: "#eee8d5", dot: "#a2470e" },
+  herbal: { bg: "#e2eadb", dot: "#3e6b34" },
+  candlelight: { bg: "#251e15", dot: "#e0a24e" },
+  port: { bg: "#241a20", dot: "#d9899b" },
+  seamist: { bg: "#e1e8eb", dot: "#2c6e86" },
+};
+const ALL_THEMES = [...FREE_THEMES, ...SPONSOR_THEMES] as const;
+type ThemeId = (typeof ALL_THEMES)[number];
 
 type Tier = "best" | "balanced" | "fast" | "default";
 
@@ -73,6 +89,19 @@ interface AppConfig {
   api_keys: Record<string, string>;
   tier_models: Record<string, string>;
   preferences: Record<string, unknown>;
+}
+
+// 主題不跟系統走（2026-07-25 使用者拍板）：config.preferences.theme 寫在 <html data-theme>，預設深色
+function resolveTheme(config: AppConfig | null | undefined): ThemeId {
+  const theme = String(config?.preferences["theme"] ?? "dark");
+  if (!ALL_THEMES.includes(theme as ThemeId)) return "dark";
+  if (
+    (SPONSOR_THEMES as readonly string[]).includes(theme) &&
+    config?.preferences["sponsor_unlocked"] !== true
+  ) {
+    return "dark";
+  }
+  return theme as ThemeId;
 }
 
 // 檔位預設模型只是設定欄的預填建議（存進 config.json 後由使用者作主），程式邏輯不讀它
@@ -715,6 +744,7 @@ function SettingsWindow({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"appearance" | "ai" | "author">("appearance");
+  const [previewTheme, setPreviewTheme] = useState<ThemeId | null>(null);
   // AI 分頁的未儲存欄位數（外觀分頁即改即存，恆為 0）
   const [dirtyCount, setDirtyCount] = useState(0);
 
@@ -744,6 +774,24 @@ function SettingsWindow({
   });
 
   const textSize = String(config.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
+  const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
+  const selectedTheme = previewTheme ?? resolveTheme(config);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = previewTheme ?? resolveTheme(config);
+    return () => {
+      document.documentElement.dataset.theme = resolveTheme(config);
+    };
+  }, [previewTheme, config]);
+
+  function selectTheme(theme: ThemeId) {
+    if ((SPONSOR_THEMES as readonly string[]).includes(theme) && !sponsorUnlocked) {
+      setPreviewTheme(theme);
+      return;
+    }
+    setPreviewTheme(null);
+    onPreference("theme", theme);
+  }
 
   return (
     <div className="modal-overlay" onClick={() => void discardAndClose()}>
@@ -802,16 +850,42 @@ function SettingsWindow({
                 ))}
               </select>
             </label>
-            <label>
+            <div className="theme-setting">
               {t("themeLabel")}
-              <select
-                value={config.preferences["theme"] === "light" ? "light" : "dark"}
-                onChange={(e) => onPreference("theme", e.currentTarget.value)}
-              >
-                <option value="dark">{t("themeDark")}</option>
-                <option value="light">{t("themeLight")}</option>
-              </select>
-            </label>
+              <div className="theme-swatches">
+                {ALL_THEMES.map((theme) => {
+                  const locked = (SPONSOR_THEMES as readonly string[]).includes(theme) && !sponsorUnlocked;
+                  const name = t(THEME_LABEL_KEYS[theme]);
+                  return (
+                    <button
+                      key={theme}
+                      type="button"
+                      className="theme-swatch"
+                      aria-pressed={selectedTheme === theme}
+                      title={name}
+                      onClick={() => selectTheme(theme)}
+                    >
+                      <span
+                        className={selectedTheme === theme ? "swatch-chip swatch-chip-selected" : "swatch-chip"}
+                        style={{ backgroundColor: THEME_SWATCH[theme].bg }}
+                      >
+                        {locked && <span className="swatch-kofi">☕</span>}
+                        <span className="swatch-dot" style={{ backgroundColor: THEME_SWATCH[theme].dot }} />
+                      </span>
+                      <span>{name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {previewTheme && (
+                <p className="theme-preview-hint">
+                  {t("themePreviewHint", { name: t(THEME_LABEL_KEYS[previewTheme]) })}{" "}
+                  <button type="button" className="link" onClick={() => void openUrl(KOFI_URL)}>
+                    {t("sponsorBtn")}
+                  </button>
+                </p>
+              )}
+            </div>
             <label>
               {t("textSizeLabel")}
               <select
@@ -1795,11 +1869,9 @@ function App() {
       TEXT_SIZE_PX[textSize] ?? TEXT_SIZE_PX[TEXT_SIZE_DEFAULT];
   }, [textSize]);
 
-  // 主題不跟系統走（2026-07-25 使用者拍板）：config.preferences.theme 寫在 <html data-theme>，預設深色
-  const theme = String(config?.preferences["theme"] ?? "dark");
   useEffect(() => {
-    document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
-  }, [theme]);
+    document.documentElement.dataset.theme = resolveTheme(config);
+  }, [config]);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
