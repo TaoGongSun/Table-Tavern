@@ -25,3 +25,4 @@
 - [cli-connected-badge](tasks/cli-connected-badge.md) — CLI 已連結狀態記憶：按鈕換「已連結 ✓」＋不重發登入 — 2026-07-28 Mac 全數實測通過（補上 Mac 缺的驗證回傳通道、grok 探針換 `grok models` 由 26 秒降到瞬間、badge 對齊）；Windows 端新探針與 pre_probe 併 cli-install-windows 那輪驗，結案
 - [stable-id-storage](tasks/stable-id-storage.md) — 儲存改用穩定代碼定址（桌與角色的路徑是代碼，顯示名是欄位） — 2026-07-28 實作＋實機驗收全通過：同名角色並存可分辨、改名不動任何路徑、舊對話仍顯示舊名、桌名可含 `/`；順帶修掉生成圖庫放錯層與空桌誤回收，結案
 - [player-card](tasks/player-card.md) — 玩家角色卡：給玩家名字與社會身份，NPC 能叫得出你 — 2026-07-28 實作完成並實機建卡驗收：玩家卡＝存該桌 characters/ 下的一張角色卡（id 記在 state.json 的 player_card_id，list_characters 濾掉它，後端零新命令），提示詞注入玩家身份、GM 改喊玩家名字時映射回哨兵；同輪把編輯畫面切成三塊、送出鈕移左、有圖時收起 emoji 欄。最後補上：代號改 `__PLAYER__`（人名撞不到）、GM 點到玩家會留下點名紀錄再停，實機驗證通過，結案
+- [card-export](tasks/card-export.md) — 角色卡匯出（SillyTavern chara_card_v2）：編輯畫面「匯出卡」另存 PNG（tEXt chara chunk）或 JSON — 2026-07-28 內容由現在的卡重建（公開五段回原欄位、手寫卡歸簡介、私有筆記轉自帶世界書），底圖取卡片圖→頭像→1×1 透明並清掉舊的 chara／ccv3；cargo test 110 綠＋新增四項測試，待使用者實機丟回 ST 驗收，結案

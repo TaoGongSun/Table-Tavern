@@ -8,7 +8,7 @@
 
 ## Done
 
-見 [DONE.md](DONE.md)（23 項）。
+見 [DONE.md](DONE.md)（24 項）。
 
 ## Todo
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
