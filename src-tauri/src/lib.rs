@@ -524,6 +524,7 @@ fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
 /// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
 async fn stream_via_transport(
+    app: &tauri::AppHandle,
     config: &data::AppConfig,
     transport_override: Option<&str>,
     allow_cli_tools: bool,
@@ -559,6 +560,11 @@ async fn stream_via_transport(
         .into_iter()
         .find(|info| info.id == transport_kind)
         .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
+    // Finder 啟動的 macOS app 工作目錄可能是根目錄；CLI 若繼承後做專案探索，
+    // 會掃到桌面、下載項目等受 TCC 保護的位置。固定在專用空目錄，避免無關權限彈窗。
+    let cli_working_dir = config_root(app)?.join("cli-workspace");
+    std::fs::create_dir_all(&cli_working_dir)
+        .map_err(|error| format!("無法準備 CLI 工作目錄：{error}"))?;
 
     let (system, prompt) = cli::flatten_messages(assistant_label, cli_closing, messages);
     let program = std::path::PathBuf::from(&info.path);
@@ -593,6 +599,7 @@ async fn stream_via_transport(
             }
             cli::run_cli(
                 &program,
+                &cli_working_dir,
                 &args,
                 &prompt,
                 &envs,
@@ -606,21 +613,48 @@ async fn stream_via_transport(
             let model = cli::tier_override(&config.tier_models, "codex", tier);
             let args = cli::codex_args(model, cli::codex_effort_for(tier), allow_cli_tools);
             let combined = format!("{system}\n\n{prompt}");
-            cli::run_cli(&program, &args, &combined, &[], cli::parse_codex_line, emit).await
+            cli::run_cli(
+                &program,
+                &cli_working_dir,
+                &args,
+                &combined,
+                &[],
+                cli::parse_codex_line,
+                emit,
+            )
+            .await
         }
         "agy" => {
             // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::agy_args(model, &combined, allow_cli_tools);
-            cli::run_cli(&program, &args, "", &[], cli::parse_agy_line, emit).await
+            cli::run_cli(
+                &program,
+                &cli_working_dir,
+                &args,
+                "",
+                &[],
+                cli::parse_agy_line,
+                emit,
+            )
+            .await
         }
         "grok" => {
             // grok 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "grok", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::grok_args(model, &combined, allow_cli_tools);
-            cli::run_cli(&program, &args, "", &[], cli::parse_grok_line, emit).await
+            cli::run_cli(
+                &program,
+                &cli_working_dir,
+                &args,
+                "",
+                &[],
+                cli::parse_grok_line,
+                emit,
+            )
+            .await
         }
         other => Err(format!("未知傳輸層：{other}").into()),
     }
@@ -879,6 +913,7 @@ async fn generate_character_image(
         content: prompt,
     }];
     let reply = stream_via_transport(
+        &app,
         &config,
         Some(&transport_kind),
         true,
@@ -978,7 +1013,15 @@ async fn chat_with_character(
         let _ = on_delta.send(delta.to_owned());
     };
     stream_via_transport(
-        &config, None, false, card.tier, &card.name, &closing, &messages, emit,
+        &app,
+        &config,
+        None,
+        false,
+        card.tier,
+        &card.name,
+        &closing,
+        &messages,
+        emit,
     )
     .await
 }
@@ -1034,6 +1077,7 @@ async fn gm_narrate(
         let _ = on_delta.send(delta.to_owned());
     };
     stream_via_transport(
+        &app,
         &config,
         None,
         false,
@@ -1065,6 +1109,7 @@ async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<S
         player.as_ref().map(|card| card.name.as_str()),
     ));
     let reply = stream_via_transport(
+        &app,
         &config,
         None,
         false,
@@ -1107,6 +1152,7 @@ async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, S
 
     let messages = transport::summary_messages(&events, &lang);
     let reply = stream_via_transport(
+        &app,
         &config,
         None,
         false,
