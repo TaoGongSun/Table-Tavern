@@ -10,7 +10,7 @@ Interface in English and Traditional Chinese; the built-in sample table follows 
 
 ## Download & Install
 
-> Current builds are **test versions** — expect rough edges.
+> Current builds are **test versions** — expect rough edges. Impressions and suggestions of any kind are welcome in [GitHub Issues](https://github.com/TaoGongSun/Table-Tavern/issues) — every bit of feedback helps polish the game.
 
 **Windows**: download the installer from the release page. Windows may show an "unknown publisher" warning — click **More info → Run anyway**.
 

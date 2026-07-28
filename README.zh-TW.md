@@ -10,7 +10,7 @@
 
 ## 下載與安裝
 
-> 目前提供的是**測試版**，還有粗糙的地方。
+> 目前提供的是**測試版**，還有粗糙的地方。歡迎把任何使用感受與建議丟到 [GitHub Issues](https://github.com/TaoGongSun/Table-Tavern/issues)——每一則回饋都在幫忙打磨這款遊戲。
 
 **Windows**：從發佈頁下載安裝檔。Windows 可能顯示「未知的發行者」——點「其他資訊 → 仍要執行」。
 
