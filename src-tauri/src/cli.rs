@@ -552,6 +552,7 @@ pub fn parse_grok_line(line: &str) -> CliLine {
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
 pub async fn run_cli(
     program: &Path,
+    working_dir: &Path,
     args: &[String],
     stdin_data: &str,
     envs: &[(String, String)],
@@ -560,6 +561,7 @@ pub async fn run_cli(
 ) -> DataResult<String> {
     let mut command = Command::new(program);
     command
+        .current_dir(working_dir)
         .args(args)
         .envs(
             envs.iter()
@@ -879,12 +881,16 @@ mod tests {
     async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         let dir = std::env::temp_dir().join(format!("tt-fake-cli-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let working_dir = dir.join("workspace");
+        std::fs::create_dir_all(&working_dir).unwrap();
+        std::fs::write(working_dir.join("cwd-marker"), "").unwrap();
         let script = dir.join("fake-claude.sh");
         std::fs::write(
             &script,
             concat!(
                 "#!/bin/sh\n",
                 "input=$(cat)\n", // 必須把 stdin 讀完，證明 prompt 有送達
+                "test -f ./cwd-marker || exit 8\n",
                 "echo '{\"type\":\"system\",\"subtype\":\"init\"}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}}'\n",
@@ -897,9 +903,17 @@ mod tests {
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let mut deltas = Vec::new();
-        let full = run_cli(&script, &[], "提示詞", &[], parse_claude_line, |delta| {
-            deltas.push(delta.to_owned());
-        })
+        let full = run_cli(
+            &script,
+            &working_dir,
+            &[],
+            "提示詞",
+            &[],
+            parse_claude_line,
+            |delta| {
+                deltas.push(delta.to_owned());
+            },
+        )
         .await
         .unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
@@ -907,4 +921,3 @@ mod tests {
         assert_eq!(deltas, ["你", "好"]);
     }
 }
-
