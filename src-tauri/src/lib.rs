@@ -122,6 +122,16 @@ fn cli_verified(app: tauri::AppHandle, provider: String) -> Result<bool, String>
 }
 
 #[tauri::command]
+fn sponsor_status(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(data::sponsor_pack_active(&data_root(&app)?))
+}
+
+#[tauri::command]
+fn import_sponsor_pack(app: tauri::AppHandle, data: Vec<u8>) -> Result<(), String> {
+    data::install_sponsor_pack(&data_root(&app)?, &data).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn install_cli(
     app: tauri::AppHandle,
     provider: String,
@@ -1132,6 +1142,8 @@ pub fn run() {
             detect_clis,
             install_cli,
             cli_verified,
+            sponsor_status,
+            import_sponsor_pack,
             list_cli_models,
             chat_with_character,
             generate_character_image,
