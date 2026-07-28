@@ -107,12 +107,12 @@ interface AppConfig {
 }
 
 // 主題不跟系統走（2026-07-25 使用者拍板）：config.preferences.theme 寫在 <html data-theme>，預設深色
-function resolveTheme(config: AppConfig | null | undefined): ThemeId {
+function resolveTheme(config: AppConfig | null | undefined, sponsorUnlocked: boolean): ThemeId {
   const theme = String(config?.preferences["theme"] ?? "dark");
   if (!ALL_THEMES.includes(theme as ThemeId)) return "dark";
   if (
     (SPONSOR_THEMES as readonly string[]).includes(theme) &&
-    config?.preferences["sponsor_unlocked"] !== true
+    !sponsorUnlocked
   ) {
     return "dark";
   }
@@ -811,17 +811,23 @@ function SettingsWindow({
   config,
   onSaved,
   onPreference,
+  sponsorUnlocked,
+  onSponsorUnlocked,
   onClose,
   initialTab = "appearance",
 }: {
   config: AppConfig;
   onSaved: (c: AppConfig) => void;
   onPreference: (key: string, value: unknown) => void;
+  sponsorUnlocked: boolean;
+  onSponsorUnlocked: () => void;
   onClose: () => void;
   initialTab?: "appearance" | "ai" | "author";
 }) {
   const [tab, setTab] = useState<"appearance" | "ai" | "author">(initialTab);
   const [previewTheme, setPreviewTheme] = useState<ThemeId | null>(null);
+  const [sponsorPackError, setSponsorPackError] = useState("");
+  const sponsorPackInputRef = useRef<HTMLInputElement>(null);
   // AI 分頁的未儲存欄位數（外觀分頁即改即存，恆為 0）
   const [dirtyCount, setDirtyCount] = useState(0);
 
@@ -851,15 +857,25 @@ function SettingsWindow({
   });
 
   const textSize = String(config.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
-  const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
-  const selectedTheme = previewTheme ?? resolveTheme(config);
+  const selectedTheme = previewTheme ?? resolveTheme(config, sponsorUnlocked);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = previewTheme ?? resolveTheme(config);
+    document.documentElement.dataset.theme = previewTheme ?? resolveTheme(config, sponsorUnlocked);
     return () => {
-      document.documentElement.dataset.theme = resolveTheme(config);
+      document.documentElement.dataset.theme = resolveTheme(config, sponsorUnlocked);
     };
-  }, [previewTheme, config]);
+  }, [previewTheme, config, sponsorUnlocked]);
+
+  async function importSponsorPack(file: File) {
+    setSponsorPackError("");
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await invoke("import_sponsor_pack", { data: Array.from(bytes) });
+      onSponsorUnlocked();
+    } catch (reason) {
+      setSponsorPackError(String(reason));
+    }
+  }
 
   function selectTheme(theme: ThemeId) {
     if ((SPONSOR_THEMES as readonly string[]).includes(theme) && !sponsorUnlocked) {
@@ -985,6 +1001,27 @@ function SettingsWindow({
             <button type="button" onClick={() => void openUrl(KOFI_URL)}>
               {t("sponsorBtn")}
             </button>
+            {sponsorUnlocked ? (
+              <p role="status">{t("sponsorPackUnlocked")}</p>
+            ) : (
+              <>
+                <button type="button" onClick={() => sponsorPackInputRef.current?.click()}>
+                  {t("importSponsorPack")}
+                </button>
+                <input
+                  ref={sponsorPackInputRef}
+                  type="file"
+                  accept=".ttpack"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    if (file) void importSponsorPack(file);
+                  }}
+                />
+                {sponsorPackError && <small role="alert">{t("sponsorPackImportError", { reason: sponsorPackError })}</small>}
+              </>
+            )}
           </div>
         ) : (
           <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
@@ -1620,6 +1657,7 @@ function CardEditor({
   onBack,
   leaveGuard,
   config,
+  sponsorUnlocked,
   onPreference,
   onOpenAiSettings,
   isPlayer = false,
@@ -1640,6 +1678,7 @@ function CardEditor({
   onArchived: () => Promise<void>;
   onDeleted: () => Promise<void>;
   config: AppConfig;
+  sponsorUnlocked: boolean;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
   isPlayer?: boolean;
@@ -1698,7 +1737,6 @@ function CardEditor({
       .catch((reason) => setMessage(String(reason)));
   }, [world, characterId, isNew, newCardColor]);
 
-  const sponsorUnlocked = config.preferences["sponsor_unlocked"] === true;
   const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
 
@@ -2302,6 +2340,7 @@ function App() {
   // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [sponsorUnlocked, setSponsorUnlocked] = useState(false);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
   const activeCharacters = characters.filter((character) => !character.archived);
@@ -2469,8 +2508,14 @@ function App() {
   }, [textSize]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = resolveTheme(config);
-  }, [config]);
+    void invoke<boolean>("sponsor_status")
+      .then(setSponsorUnlocked)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolveTheme(config, sponsorUnlocked);
+  }, [config, sponsorUnlocked]);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
@@ -3413,6 +3458,7 @@ function App() {
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
               config={config}
+              sponsorUnlocked={sponsorUnlocked}
               onPreference={changePreference}
               onOpenAiSettings={() => setSettingsOpen("ai")}
             />
@@ -3583,6 +3629,8 @@ function App() {
           config={config}
           onSaved={setConfig}
           onPreference={(key, value) => void changePreference(key, value)}
+          sponsorUnlocked={sponsorUnlocked}
+          onSponsorUnlocked={() => setSponsorUnlocked(true)}
           onClose={() => setSettingsOpen(false)}
           initialTab={settingsOpen}
         />

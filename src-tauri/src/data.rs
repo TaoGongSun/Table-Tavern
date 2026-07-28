@@ -1505,6 +1505,49 @@ pub fn write_config(root: &Path, config: &AppConfig) -> DataResult<()> {
     Ok(())
 }
 
+pub fn validate_sponsor_pack(bytes: &[u8]) -> DataResult<()> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|error| invalid_data(format!("贊助包不是合法 JSON：{error}")))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| invalid_data("贊助包必須是 JSON 物件"))?;
+
+    if object.get("type").and_then(serde_json::Value::as_str)
+        != Some("table-tavern-sponsor-pack")
+    {
+        return Err(invalid_data("贊助包的 type 不正確"));
+    }
+
+    if object
+        .get("format")
+        .and_then(serde_json::Value::as_u64)
+        .is_none_or(|format| format == 0)
+    {
+        return Err(invalid_data("贊助包的 format 必須是正整數"));
+    }
+
+    Ok(())
+}
+
+pub fn sponsor_pack_active(root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+
+    entries.flatten().any(|entry| {
+        entry.path().extension().is_some_and(|extension| extension == "ttpack")
+            && fs::read(entry.path())
+                .is_ok_and(|bytes| validate_sponsor_pack(&bytes).is_ok())
+    })
+}
+
+pub fn install_sponsor_pack(root: &Path, bytes: &[u8]) -> DataResult<()> {
+    validate_sponsor_pack(bytes)?;
+    fs::create_dir_all(root)?;
+    fs::write(root.join("sponsor-pack.ttpack"), bytes)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1580,6 +1623,38 @@ mod tests {
             .unwrap(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn validates_a_valid_sponsor_pack() {
+        assert!(validate_sponsor_pack(br#"{"type":"table-tavern-sponsor-pack","format":1}"#).is_ok());
+    }
+
+    #[test]
+    fn rejects_sponsor_pack_with_wrong_type() {
+        let error = validate_sponsor_pack(br#"{"type":"other-pack","format":1}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("type"));
+    }
+
+    #[test]
+    fn rejects_sponsor_pack_without_format() {
+        let error = validate_sponsor_pack(br#"{"type":"table-tavern-sponsor-pack"}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("format"));
+    }
+
+    #[test]
+    fn install_sponsor_pack_activates_only_valid_packages() {
+        let root = TestRoot::new("sponsor-pack");
+        let empty_root = TestRoot::new("empty-sponsor-pack");
+        let pack = br#"{"type":"table-tavern-sponsor-pack","format":1,"edition":"supporter"}"#;
+
+        assert!(!sponsor_pack_active(empty_root.path()));
+        install_sponsor_pack(root.path(), pack).unwrap();
+        assert!(sponsor_pack_active(root.path()));
     }
 
     #[test]
