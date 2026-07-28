@@ -356,6 +356,23 @@ fn import_character(
         .map_err(|error| error.to_string())
 }
 
+// 存檔位置由前端的「另存新檔」對話框決定；副檔名決定 PNG 或 JSON
+#[tauri::command]
+fn export_character(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+    path: String,
+) -> Result<(), String> {
+    import::export_character(
+        &data_root(&app)?,
+        &world_id,
+        &character_id,
+        std::path::Path::new(&path),
+    )
+    .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn read_character_image(
     app: tauri::AppHandle,
@@ -1097,6 +1114,7 @@ pub fn run() {
             set_character_archived,
             delete_character,
             import_character,
+            export_character,
             read_character_image,
             save_character_image,
             delete_character_image,

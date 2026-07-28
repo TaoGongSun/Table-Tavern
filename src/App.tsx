@@ -2,7 +2,7 @@ import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useSta
 import Cropper, { Area } from "react-easy-crop";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { confirm, save } from "@tauri-apps/plugin-dialog";
+import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import taoIcon from "./assets/tao-icon.png";
@@ -1283,7 +1283,7 @@ function WorldEditor({
   async function exportWorldbook() {
     setWorldbookMessage("");
     try {
-      const path = await save({
+      const path = await saveDialog({
         defaultPath: "worldbook.json",
         filters: [{ name: t("worldbookJson"), extensions: ["json"] }],
       });
@@ -1861,6 +1861,30 @@ function CardEditor({
     }
   }
 
+  // 匯出成 SillyTavern 角色卡：內容取自已存檔的那份，所以草稿沒存完先擋下
+  async function exportCard() {
+    setMessage("");
+    if (!card) return;
+    if (unsavedCount > 0) {
+      setMessage(t("exportCardNeedsSave"));
+      return;
+    }
+    try {
+      const path = await saveDialog({
+        defaultPath: `${card.name.trim() || "card"}.png`,
+        filters: [
+          { name: t("exportCardPng"), extensions: ["png"] },
+          { name: t("exportCardJson"), extensions: ["json"] },
+        ],
+      });
+      if (!path) return;
+      await invoke("export_character", { worldId: world, characterId, path });
+      await revealItemInDir(path);
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
   function chooseImage(file: File) {
     const reader = new FileReader();
     reader.onload = () => setPendingImage(typeof reader.result === "string" ? reader.result : null);
@@ -1895,6 +1919,9 @@ function CardEditor({
             <button type="submit">{t("saveCard")}</button>
             {!isNew && (
               <>
+                <button type="button" title={t("exportCardHint")} onClick={() => void exportCard()}>
+                  {t("exportCard")}
+                </button>
                 {!isPlayer && (
                   <button type="button" className="archive-button" onClick={archive}>
                     {t("archiveCharacter")}
@@ -2201,7 +2228,7 @@ function ActReader({
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
-      const path = await save({
+      const path = await saveDialog({
         defaultPath: `${t("sceneExportFileName", { table: worldName, n: scene + 1, stamp })}.md`,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
@@ -2644,7 +2671,7 @@ function App() {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}`;
-      const path = await save({
+      const path = await saveDialog({
         defaultPath: `${t("exportFileName", { table: tableName, stamp })}.md`,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
