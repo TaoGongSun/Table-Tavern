@@ -1,7 +1,7 @@
 # Handoff: release-4-theme-pack
 
 ## Current state
-贊助解鎖檔案（提前段）實作完成、自驗全綠，等使用者實機驗收匯入流程。主題引擎等原任務 scope 未動工。
+贊助解鎖檔案（提前段）實作完成，使用者實機驗收匯入通過。剩 Ko-fi 商品頁連結替換（等開店）；主題引擎等原任務 scope 未動工。
 
 ## Completed
 - 贊助包檔案格式定案：單一 JSON 檔、副檔名 `.ttpack`，必要欄位 `type: "table-tavern-sponsor-pack"` 與 `format`（正整數），其他欄位一律忽略（向前相容；未來要裝主題資產再升容器格式，匯入口先認格式）。榮譽制已拍板，不做簽章。
@@ -13,11 +13,11 @@
 - `cargo test` 114 綠（基線 110，+4：合法包通過、type 錯拒絕、format 缺拒絕、install 後 active／空目錄 inactive）；`cargo clippy --all-targets` 0 error
 - `npm run build` exit 0；`grep -rn "sponsor_unlocked" src src-tauri/src` 0 命中
 - 實作由 codex（gpt-5.6-terra）完成，主線逐行審過 diff 並本機重跑全部驗證
+- 2026-07-28 使用者實機驗收通過：匯入 `.ttpack` 成功解鎖
 
 ## Remaining
-- 使用者實機驗收：匯入 `.ttpack` 後五套配色與 AI 生圖解鎖；手動丟檔到「文件/TableTavern」重開 app 也生效。測試還原＝刪掉資料夾裡的 `.ttpack`。
-- 作者頁與各處 Ko-fi 連結（App.tsx `KOFI_URL`）目前指作者主頁；等 Ko-fi Shop 商品上架（release-3-kofi，使用者操作）拿到商品頁網址後換掉，一行改動。
+- 作者頁與各處 Ko-fi 連結（App.tsx `KOFI_URL`）目前指作者主頁；等 Ko-fi Shop 商品上架（release-3-kofi，使用者操作）拿到商品頁網址後換掉，一行改動（使用者：屆時交給 opus 做即可）。
 - 之後才是原任務 scope：主題檔格式與載入引擎＋基礎白色主題 → 五套贊助包資產與自選桌布 → AI 產生主題（v1 可不上）；主題檔格式定案時預留「元件裝飾」schema（theme-pack-component-skins）。
 
 ## Next action
-使用者實機驗收匯入流程（桌面上那個 `.ttpack` 檔就能測）；通過後使用者去走 release-3-kofi 開店上架，回來報商品頁網址換 `KOFI_URL`。
+使用者走 release-3-kofi 開店上架 `~/Desktop/TableTavern-SponsorPack.ttpack`，拿到商品頁網址後換 `KOFI_URL`。
