@@ -630,7 +630,9 @@ pub enum ImageRef {
     Path(PathBuf),
 }
 
-pub fn extract_image_from_text(text: &str) -> Option<ImageRef> {
+/// 回覆裡的圖片候選，依出現順序；呼叫端挑第一個真的讀得到的。
+/// 前導說明可能緊貼著路徑（「…浮水印。/Users/…png」），所以每個詞另外補一個「從斜線起算」的切法。
+pub fn extract_image_refs(text: &str) -> Vec<ImageRef> {
     if let Some(start) = text.find("data:image/") {
         let data_url = text[start..]
             .split(|character: char| {
@@ -639,21 +641,34 @@ pub fn extract_image_from_text(text: &str) -> Option<ImageRef> {
             .next()
             .unwrap_or("");
         if !data_url.is_empty() {
-            return Some(ImageRef::DataUrl(data_url.to_owned()));
+            return vec![ImageRef::DataUrl(data_url.to_owned())];
         }
     }
-    text.split_whitespace().find_map(|token| {
-        let token = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
-            )
-        });
-        let path = PathBuf::from(token);
-        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-        matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp")
-            .then_some(ImageRef::Path(path))
-    })
+    text.split_whitespace()
+        .flat_map(|token| {
+            let token = token.trim_matches(|character: char| {
+                matches!(
+                    character,
+                    '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
+                )
+            });
+            let from_slash = token
+                .find('/')
+                .filter(|start| *start > 0)
+                .map(|start| &token[start..]);
+            [Some(token), from_slash].into_iter().flatten()
+        })
+        .filter(|candidate| {
+            PathBuf::from(candidate)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(str::to_ascii_lowercase)
+                .is_some_and(|extension| {
+                    matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp")
+                })
+        })
+        .map(|candidate| ImageRef::Path(PathBuf::from(candidate)))
+        .collect()
 }
 
 fn encode_base64(bytes: &[u8]) -> String {
@@ -871,13 +886,16 @@ async fn generate_character_image(
         |_| {},
     )
     .await?;
-    let image = match extract_image_from_text(&reply) {
-        Some(ImageRef::DataUrl(data_url)) => Ok(data_url),
-        Some(ImageRef::Path(path)) if std::fs::metadata(&path).is_ok() => {
-            image_file_data_url(&path)
-        }
-        _ => Err("回覆中沒有圖片".to_owned()),
-    }?;
+    let image = extract_image_refs(&reply)
+        .into_iter()
+        .find_map(|found| match found {
+            ImageRef::DataUrl(data_url) => Some(Ok(data_url)),
+            ImageRef::Path(path) if std::fs::metadata(&path).is_ok() => {
+                Some(image_file_data_url(&path))
+            }
+            ImageRef::Path(_) => None,
+        })
+        .unwrap_or_else(|| Err("回覆中沒有圖片".to_owned()))?;
     save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
     Ok(image)
 }
@@ -1161,8 +1179,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cli_install_script, decode_base64, encode_base64, extract_image_from_text,
-        list_gallery_image_files, validate_gallery_component, ImageRef, InstallMessages,
+        cli_install_script, decode_base64, encode_base64, extract_image_refs,
+        list_gallery_image_files, validate_gallery_component, ImageRef, InstallMessages, PathBuf,
     };
     use crate::data;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1179,15 +1197,15 @@ mod tests {
     }
 
     #[test]
-    fn extract_image_from_text_returns_data_url() {
+    fn extract_image_refs_returns_data_url() {
         assert_eq!(
-            extract_image_from_text("圖片：`data:image/png;base64,cG5n`"),
-            Some(ImageRef::DataUrl("data:image/png;base64,cG5n".to_owned()))
+            extract_image_refs("圖片：`data:image/png;base64,cG5n`"),
+            vec![ImageRef::DataUrl("data:image/png;base64,cG5n".to_owned())]
         );
     }
 
     #[test]
-    fn extract_image_from_text_returns_existing_temp_file_path() {
+    fn extract_image_refs_returns_existing_temp_file_path() {
         let path = std::env::temp_dir().join(format!(
             "table-tavern-image-{}-{}.png",
             std::process::id(),
@@ -1195,15 +1213,24 @@ mod tests {
         ));
         std::fs::write(&path, b"png").unwrap();
         assert_eq!(
-            extract_image_from_text(&format!("已生成 {}", path.display())),
-            Some(ImageRef::Path(path.clone()))
+            extract_image_refs(&format!("已生成 {}", path.display())),
+            vec![ImageRef::Path(path.clone())]
         );
         std::fs::remove_file(path).unwrap();
     }
 
+    /// 真實 codex 輸出：前導說明與路徑之間沒有空白，整段當路徑會讀不到檔
     #[test]
-    fn extract_image_from_text_returns_none_without_image() {
-        assert_eq!(extract_image_from_text("沒有附圖。"), None);
+    fn extract_image_refs_recovers_path_glued_to_preceding_sentence() {
+        assert!(extract_image_refs("不含浮水印。/Users/me/.codex/generated_images/abc/call_x.png")
+            .contains(&ImageRef::Path(PathBuf::from(
+                "/Users/me/.codex/generated_images/abc/call_x.png"
+            ))));
+    }
+
+    #[test]
+    fn extract_image_refs_returns_empty_without_image() {
+        assert_eq!(extract_image_refs("沒有附圖。"), Vec::new());
         assert_eq!(encode_base64(b"png"), "cG5n");
     }
 
