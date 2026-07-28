@@ -451,6 +451,15 @@ textarea {
   background: var(--surface-2);
   color: var(--ink-1);
   font-weight: 700;
+  cursor: text;
+}
+
+/* 側欄就地改名的輸入框：撐滿該列，字重字級對齊 .table-item-active 免得跳動 */
+.table-item-input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: var(--fs-ui);
 }
 
 /* 上緣橫線把桌列表與角色區切開（2026-07-27 使用者回饋：兩區黏在一起分不出來） */
