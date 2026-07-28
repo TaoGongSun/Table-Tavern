@@ -1,3 +1,6 @@
 "NSDocumentsFolderUsageDescription" = "Table Tavern 用來把你的角色卡、世界設定與遊戲紀錄存在「文件/TableTavern」。";
 "NSAppleMusicUsageDescription" = "Table Tavern 不會讀取你的音樂。這是它啟動的 AI 命令列工具向系統要的權限，按「不允許」不影響遊戲。";
 "NSDesktopFolderUsageDescription" = "Table Tavern 不會讀取你的桌面。這是它啟動的 AI 命令列工具向系統要的權限，按「不允許」不影響遊戲。";
+"NSDownloadsFolderUsageDescription" = "Table Tavern 不會讀取你的下載項目。這是它啟動的 AI 命令列工具向系統要的權限，按「不允許」不影響遊戲。";
+"NSNetworkVolumesUsageDescription" = "Table Tavern 不會讀取你的網路卷。這是它啟動的 AI 命令列工具向系統要的權限，按「不允許」不影響遊戲。";
+"NSRemovableVolumesUsageDescription" = "Table Tavern 不會讀取你的外接儲存裝置。這是它啟動的 AI 命令列工具向系統要的權限，按「不允許」不影響遊戲。";
