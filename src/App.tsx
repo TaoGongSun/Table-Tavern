@@ -218,6 +218,9 @@ const CLI_LABELS: Record<string, string> = {
   grok: "Grok CLI",
 };
 
+// Claude Code CLI 只輸出文字，沒有生圖工具：選到它就直說，不要讓玩家等一輪才拿到失敗訊息
+const NO_IMAGE_CLIS = ["claude"];
+
 const CLI_INSTALL_URLS: Record<string, string> = {
   claude: "claude.ai",
   codex: "chatgpt.com/codex",
@@ -245,7 +248,9 @@ function nowTs() {
 const QUOTA_ERROR = /usage limit|quota|out of credit|insufficient[ _]credit|insufficient_quota|rate.?limit|resource_exhausted|too many requests|\b402\b|\b429\b/i;
 const AUTH_ERROR = /not logged in|not authenticated|unauthorized|authentication|api[ _]key|credential|expired token|\b401\b/i;
 
-function explainAiError(raw: string): "errQuota" | "errAuth" | null {
+function explainAiError(raw: string): "errQuota" | "errAuth" | "errNoImage" | null {
+  // NO_IMAGE 是生圖 prompt 跟 CLI 約好的暗號：來源自己回報生不出圖（多半是生圖額度或方案）
+  if (raw.includes("NO_IMAGE")) return "errNoImage";
   if (QUOTA_ERROR.test(raw)) return "errQuota";
   if (AUTH_ERROR.test(raw)) return "errAuth";
   return null;
@@ -1763,6 +1768,7 @@ function CardEditor({
 
   const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
+  const sourceCannotGenerate = NO_IMAGE_CLIS.includes(aiSource);
 
   async function loadGalleryPage(files: string[], start: number) {
     const page = files.slice(start, start + GALLERY_PAGE_SIZE);
@@ -1785,16 +1791,18 @@ function CardEditor({
       return;
     }
     const savedSource = String(config.preferences["image_source"] ?? "");
+    // 聊天用的來源不一定會生圖（例如 claude），跟隨不到就退回 API，玩家一打開就是能按的狀態
     const transport = String(config.preferences["transport"] ?? "api");
+    const fallback = NO_IMAGE_CLIS.includes(transport) ? "api" : transport;
     void detectClis()
       .then((detected) => {
         setAiClis(detected);
         const detectedSources = ["api", ...detected.map((cli) => cli.id)];
-        setAiSource(detectedSources.includes(savedSource) ? savedSource : transport);
+        setAiSource(detectedSources.includes(savedSource) ? savedSource : fallback);
       })
       .catch(() => {
         setAiClis([]);
-        setAiSource(savedSource === "api" ? savedSource : transport);
+        setAiSource(savedSource === "api" ? savedSource : fallback);
       });
     setAiPrompt(card?.gen_prompt ?? "");
     setAiGenError("");
@@ -2174,6 +2182,7 @@ function CardEditor({
                 <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
               </div>
             </label>
+            {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
             {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
             {galleryFiles.length > 0 && (
@@ -2205,7 +2214,7 @@ function CardEditor({
             {/* 主要動作放右下（2026-07-27 使用者拍板：此對話框例外，不置頂） */}
             <div className="ai-gen-footer">
               <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
-              <button type="button" className="ai-gen-submit" disabled={aiGenerating} onClick={() => void generateImage()}>
+              <button type="button" className="ai-gen-submit" disabled={aiGenerating || sourceCannotGenerate} onClick={() => void generateImage()}>
                 {aiGenerating ? t("aiGenerating") : `✨ ${t("aiGenBtn")}`}
               </button>
             </div>
