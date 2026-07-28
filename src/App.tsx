@@ -234,10 +234,7 @@ function cliConnectedKey(id: string) {
   return `cli_connected:${id}`;
 }
 
-// 系統權限預告只在每家 CLI 第一次啟用時彈一次；說明本身在設定頁常駐，事後查得到。
-// 這種「以 CLI 名義詢問標準資料夾」是 macOS 專屬機制，Windows 沒有，講了只會讓人困惑
-const IS_MAC = navigator.userAgent.includes("Mac");
-
+// 系統權限預告只在每家 CLI 第一次啟用時彈一次；說明本身在設定頁常駐，事後查得到
 function cliNoticeKey(id: string) {
   return `cli_permission_notice:${id}`;
 }
@@ -558,7 +555,7 @@ function Settings({
       await invoke("write_config", { config: next });
       onSaved(next);
       setMessage(t("saved"));
-      if (IS_MAC && transport !== "api" && next.preferences[cliNoticeKey(transport)] !== true) {
+      if (transport !== "api" && next.preferences[cliNoticeKey(transport)] !== true) {
         setPermissionNotice(transport);
       }
     } catch (reason) {
@@ -692,7 +689,7 @@ function Settings({
             </label>
           </div>
         )}
-        {IS_MAC && transport !== "api" && (
+        {transport !== "api" && (
           <p className="cli-permission-note" role="note">
             {t("cliPermissionNote", { provider: CLI_LABELS[transport] ?? transport })}
           </p>
@@ -2237,7 +2234,7 @@ function CardEditor({
             </label>
             {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
             {/* 生圖來源可以不經設定頁直接換，這裡也要講一次等一下的系統詢問是誰在問 */}
-            {IS_MAC && aiSource !== "api" && !sourceCannotGenerate && (
+            {aiSource !== "api" && !sourceCannotGenerate && (
               <p className="cli-permission-note" role="note">
                 {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
               </p>
