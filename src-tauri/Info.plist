@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- 系統權限彈窗裡附的說明；各語系翻譯在 macos/<語言>.lproj/InfoPlist.strings，此處為找不到語系時的預設。
-     音樂與桌面兩項不是我們要的：Claude Code CLI 一啟動就自建 macOS 沙盒，系統把要求記在發動它的
-     app（也就是我們）頭上（tccd 日誌實證 2026-07-28）。玩家按不允許不影響任何功能。 -->
+     除了「文件」（我們自己的存檔位置），其餘都不是我們要的：Claude Code CLI 一啟動就自建 macOS 沙盒，
+     系統把要求記在發動它的 app（也就是我們）頭上（tccd 日誌實證 2026-07-28）。玩家按不允許不影響任何功能。 -->
 <plist version="1.0">
 <dict>
   <key>NSDocumentsFolderUsageDescription</key>
@@ -11,5 +11,11 @@
   <string>Table Tavern never reads your music. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.</string>
   <key>NSDesktopFolderUsageDescription</key>
   <string>Table Tavern never reads your Desktop. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Table Tavern never reads your Downloads. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>Table Tavern never reads your network volumes. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>Table Tavern never reads your external drives. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.</string>
 </dict>
 </plist>
