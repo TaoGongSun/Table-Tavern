@@ -91,6 +91,10 @@ const zh = {
   risk3: "在訂閱模式下生成違反該供應商內容政策的內容，風險疊加。",
   risk4: "後果由你自己的帳號承擔。",
   riskAccept: "我已了解上述風險，仍要以自己的帳號啟用",
+  cliPermissionTitle: "接下來可能出現的系統詢問",
+  cliPermissionNote:
+    "macOS 可能會以 {provider} 自己的名義（彈窗上可能只顯示簡稱）詢問桌面、音樂或下載項目的存取權。那是 {provider} 啟動自身沙盒時產生的系統提示，Table Tavern 不會讀取這些位置。你可以選「不允許」，不影響遊戲。",
+  cliPermissionAck: "知道了",
   riskRequired: "啟用 CLI 訂閱模式前，請先勾選風險告知確認",
   apiKeyLabel: "OpenRouter API key",
   imageModelLabel: "生圖模型（OpenRouter，留空用預設）",
@@ -366,6 +370,10 @@ const en: Record<MsgKey, string> = {
     "Generating content that violates the provider's content policy while on subscription mode compounds the risk.",
   risk4: "The consequences fall on your own account.",
   riskAccept: "I understand the risks above and still want to enable this with my own account",
+  cliPermissionTitle: "System prompts you may see next",
+  cliPermissionNote:
+    "macOS may ask — under {provider}'s own name, which the dialog may shorten — for access to folders such as Desktop, Music, or Downloads. Those prompts come from {provider} starting its own sandbox; Table Tavern does not read those locations. You can choose “Don't Allow” without affecting the game.",
+  cliPermissionAck: "Got it",
   riskRequired: "Please confirm the risk notice before enabling CLI subscription mode",
   apiKeyLabel: "OpenRouter API key",
   imageModelLabel: "Image model (OpenRouter, empty = default)",

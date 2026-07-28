@@ -234,6 +234,11 @@ function cliConnectedKey(id: string) {
   return `cli_connected:${id}`;
 }
 
+// 系統權限預告只在每家 CLI 第一次啟用時彈一次；說明本身在設定頁常駐，事後查得到
+function cliNoticeKey(id: string) {
+  return `cli_permission_notice:${id}`;
+}
+
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token，超過就提示玩家可以換場省額度
@@ -355,6 +360,7 @@ function Settings({
   const [gmTier, setGmTier] = useState(String(config.preferences["gm_tier"] ?? "best"));
   const [maxRound, setMaxRound] = useState(String(config.preferences["max_round_speakers"] ?? 3));
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
+  const [permissionNotice, setPermissionNotice] = useState("");
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[] | null>(cliCache);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
@@ -549,8 +555,27 @@ function Settings({
       await invoke("write_config", { config: next });
       onSaved(next);
       setMessage(t("saved"));
+      if (transport !== "api" && next.preferences[cliNoticeKey(transport)] !== true) {
+        setPermissionNotice(transport);
+      }
     } catch (reason) {
       setMessage(String(reason));
+    }
+  }
+
+  // 看過就記下，同一家不再擋；寫失敗就當沒看過（下次再提醒，比默默吞掉好）
+  async function ackPermissionNotice() {
+    const provider = permissionNotice;
+    setPermissionNotice("");
+    const next: AppConfig = {
+      ...config,
+      preferences: { ...config.preferences, [cliNoticeKey(provider)]: true },
+    };
+    try {
+      await invoke("write_config", { config: next });
+      onSaved(next);
+    } catch {
+      /* 記不起來只是下次再問一次，不打斷玩家 */
     }
   }
 
@@ -662,6 +687,31 @@ function Settings({
               />
               {t("riskAccept")}
             </label>
+          </div>
+        )}
+        {transport !== "api" && (
+          <p className="cli-permission-note" role="note">
+            {t("cliPermissionNote", { provider: CLI_LABELS[transport] ?? transport })}
+          </p>
+        )}
+        {/* 每家 CLI 第一次啟用時擋一次：此時 CLI 還沒被叫起來，玩家先知道等一下的彈窗是誰在問 */}
+        {permissionNotice && (
+          <div className="modal-overlay" onClick={() => void ackPermissionNotice()}>
+            <div
+              className="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("cliPermissionTitle")}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h2>{t("cliPermissionTitle")}</h2>
+              <p>{t("cliPermissionNote", { provider: CLI_LABELS[permissionNotice] ?? permissionNotice })}</p>
+              <div className="ai-gen-footer">
+                <button type="button" onClick={() => void ackPermissionNotice()}>
+                  {t("cliPermissionAck")}
+                </button>
+              </div>
+            </div>
           </div>
         )}
         {/* OpenRouter 專屬欄位只在 API 直連時顯示，避免 CLI 使用者誤以為必填 */}
@@ -2183,6 +2233,12 @@ function CardEditor({
               </div>
             </label>
             {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
+            {/* 生圖來源可以不經設定頁直接換，這裡也要講一次等一下的系統詢問是誰在問 */}
+            {aiSource !== "api" && !sourceCannotGenerate && (
+              <p className="cli-permission-note" role="note">
+                {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
+              </p>
+            )}
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
             {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
             {galleryFiles.length > 0 && (

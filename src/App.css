@@ -1656,6 +1656,13 @@ textarea {
   padding-left: 1.2rem;
 }
 
+/* 系統權限預告：說明性質，不是警告，樣式壓過風險框一階 */
+.cli-permission-note {
+  margin: 0;
+  font-size: var(--fs-ui);
+  opacity: 0.8;
+}
+
 .first-run select,
 .first-run button {
   align-self: flex-start;
