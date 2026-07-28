@@ -240,6 +240,30 @@ function nowTs() {
   return new Date().toISOString();
 }
 
+// AI 失敗訊息分流：各家 CLI／API 的錯誤格式不一，只認額度與未登入兩類最痛的，
+// 認不出來回 null 走原本的通用文案——誤判比不判更糟（.ai/tasks/ai-error-messages.md）
+const QUOTA_ERROR = /usage limit|quota|out of credit|insufficient[ _]credit|insufficient_quota|rate.?limit|resource_exhausted|too many requests|\b402\b|\b429\b/i;
+const AUTH_ERROR = /not logged in|not authenticated|unauthorized|authentication|api[ _]key|credential|expired token|\b401\b/i;
+
+function explainAiError(raw: string): "errQuota" | "errAuth" | null {
+  if (QUOTA_ERROR.test(raw)) return "errQuota";
+  if (AUTH_ERROR.test(raw)) return "errAuth";
+  return null;
+}
+
+// 錯誤列：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）
+function ErrorNote({ text }: { text: string }) {
+  const key = explainAiError(text);
+  if (!key) return <p role="alert">{text}</p>;
+  return (
+    <p role="alert">
+      {t(key)}
+      <br />
+      <small>{text}</small>
+    </p>
+  );
+}
+
 function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
@@ -2151,7 +2175,7 @@ function CardEditor({
               </div>
             </label>
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
-            {aiGenError && <div className="ai-gen-error" role="alert"><div>{t("aiGenFailed")}</div><small>{aiGenError}</small></div>}
+            {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
             {galleryFiles.length > 0 && (
               <section aria-label={t("aiGalleryTitle")}>
                 <h3>{t("aiGalleryTitle")}</h3>
@@ -2291,7 +2315,7 @@ function ActReader({
       </div>
       <section className="messages" aria-label={label}>
         {events === null ? (
-          error && <p role="alert">{error}</p>
+          error && <ErrorNote text={error} />
         ) : (
           events.map((event, index) => (
             <div key={index} className={`scene-event scene-event-${event.kind}`}>
@@ -2303,7 +2327,7 @@ function ActReader({
           ))
         )}
       </section>
-      {error && events !== null && <p role="alert">{error}</p>}
+      {error && events !== null && <ErrorNote text={error} />}
     </>
   );
 }
@@ -3054,13 +3078,13 @@ function App() {
     return (
       <>
         <FirstRun onStart={(lang) => void startFirstRun(lang)} />
-        {error && <p role="alert">{error}</p>}
+        {error && <ErrorNote text={error} />}
       </>
     );
   }
 
   if (!config || !table) {
-    return <main className="container">{error && <p role="alert">{error}</p>}</main>;
+    return <main className="container">{error && <ErrorNote text={error} />}</main>;
   }
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
@@ -3620,7 +3644,7 @@ function App() {
           </>
         )}
         </div>
-        {error && <p role="alert">{error}</p>}
+        {error && <ErrorNote text={error} />}
       </main>
 
       {/* 放整個版面最後：設定視窗永遠疊在其他 modal（含生圖對話框）之上 */}

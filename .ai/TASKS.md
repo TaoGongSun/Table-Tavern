@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [ai-error-messages](tasks/ai-error-messages.md) — AI 失敗訊息人話化：額度用完與未登入分流 — 下一步：實作完成（npm build 綠＋13 例樣本零誤判），等使用者實機看一眼；內容政策拒繪分流待 sponsor-features 議程拍板後再加
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28），另待拍板：提示詞標籤、Ko-fi 導購歧義
 - [release-4-theme-pack](tasks/release-4-theme-pack.md) — 發佈 4：佈景主題引擎＋贊助包（回禮內容） — 下一步：贊助解鎖檔案（.ttpack）2026-07-28 實機驗收通過；等 Ko-fi 開店上架後換商品頁連結；主題引擎為後續段
 - [ui-overhaul](tasks/ui-overhaul.md) — UI 全面改版：Emblem 設計系統（桌遊組件卡＋playbill 對話＋token 化） — 下一步：第一輪實作完成（npm build 綠＋淺色實跑驗證），淺色主題去黃調色已驗收定案，等英文合作者實機驗收深色模式與實聊 playbill

@@ -274,6 +274,10 @@ const zh = {
   gmNarrateHint: "請 GM 插入一段場景旁白（GM 讀得到世界設定與全部角色卡）",
   gmAdvance: "GM 推進",
   gmAdvanceHint: "GM 點名下一位角色接話並接力推進，遇「輪到玩家」或達每回合上限即停",
+
+  // AI 失敗訊息分流（對話與生圖共用；認不出來就不顯示這兩句，原文照舊附在小字）
+  errQuota: "這個 AI 來源的額度用完了。換一個 AI 來源，或等額度重置再試。",
+  errAuth: "這個 AI 來源還沒登入，或憑證已過期。到設定重新連線後再試。",
 } as const;
 
 export type MsgKey = keyof typeof zh;
@@ -548,6 +552,9 @@ const en: Record<MsgKey, string> = {
   gmAdvance: "GM Advance",
   gmAdvanceHint:
     "The GM calls on the next character and keeps the scene moving, stopping at the player's turn or the per-round cap",
+
+  errQuota: "This AI source is out of quota. Switch to another AI source, or wait for the quota to reset.",
+  errAuth: "This AI source isn't signed in, or its credentials expired. Reconnect it in Settings and try again.",
 };
 
 const MESSAGES: Record<Lang, Record<MsgKey, string>> = { "zh-TW": zh, en };
