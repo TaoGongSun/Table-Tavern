@@ -7,7 +7,6 @@ use crate::data::{DataResult, Tier};
 use crate::transport::ChatMessage;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-#[cfg(not(target_os = "macos"))]
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -551,39 +550,13 @@ pub fn parse_grok_line(line: &str) -> CliLine {
 }
 
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
-/// macOS 走自家的 posix_spawn（子行程自己當責任人，權限彈窗才不會掛我們的名字，見 spawn_macos），
-/// 其餘平台用標準 Command；管線接好之後兩邊共用同一段解析。
-#[cfg(target_os = "macos")]
 pub async fn run_cli(
     program: &Path,
     args: &[String],
     stdin_data: &str,
     envs: &[(String, String)],
     parse: fn(&str) -> CliLine,
-    on_delta: impl FnMut(&str),
-) -> DataResult<String> {
-    let child = crate::spawn_macos::spawn(program, args, envs)?;
-    let wait = crate::spawn_macos::wait(child.pid);
-    pump(
-        child.stdin,
-        child.stdout,
-        child.stderr,
-        stdin_data,
-        wait,
-        parse,
-        on_delta,
-    )
-    .await
-}
-
-#[cfg(not(target_os = "macos"))]
-pub async fn run_cli(
-    program: &Path,
-    args: &[String],
-    stdin_data: &str,
-    envs: &[(String, String)],
-    parse: fn(&str) -> CliLine,
-    on_delta: impl FnMut(&str),
+    mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let mut command = Command::new(program);
     command
@@ -598,34 +571,20 @@ pub async fn run_cli(
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
     let mut child = command.spawn()?;
-    let stdin = child.stdin.take().expect("stdin piped");
-    let stdout = child.stdout.take().expect("stdout piped");
-    let stderr = child.stderr.take().expect("stderr piped");
-    let wait = async move { child.wait().await.map(|status| status.to_string()) };
-    pump(stdin, stdout, stderr, stdin_data, wait, parse, on_delta).await
-}
 
-/// 送 prompt→逐行解析→收尾判定，與行程怎麼生出來無關。
-#[allow(clippy::too_many_arguments)]
-async fn pump(
-    mut stdin: impl AsyncWriteExt + Unpin,
-    stdout: impl AsyncReadExt + Unpin,
-    mut stderr: impl AsyncReadExt + Unpin + Send + 'static,
-    stdin_data: &str,
-    wait: impl std::future::Future<Output = std::io::Result<String>>,
-    parse: fn(&str) -> CliLine,
-    mut on_delta: impl FnMut(&str),
-) -> DataResult<String> {
+    let mut stdin = child.stdin.take().expect("stdin piped");
     stdin.write_all(stdin_data.as_bytes()).await?;
     drop(stdin); // 關閉讓 CLI 知道輸入結束
 
     // stderr 另開 task 排空，避免管線塞滿造成死鎖
+    let mut stderr = child.stderr.take().expect("stderr piped");
     let stderr_task = tokio::spawn(async move {
         let mut buffer = String::new();
         let _ = stderr.read_to_string(&mut buffer).await;
         buffer
     });
 
+    let stdout = child.stdout.take().expect("stdout piped");
     let mut lines = BufReader::new(stdout).lines();
     let mut full_text = String::new();
     let mut done: Option<(String, bool)> = None;
@@ -640,7 +599,7 @@ async fn pump(
         }
     }
 
-    let status = wait.await?;
+    let status = child.wait().await?;
     let stderr_text = stderr_task.await.unwrap_or_default();
     if let Some((text, true)) = &done {
         return Err(format!("CLI 回覆錯誤：{text}").into());
