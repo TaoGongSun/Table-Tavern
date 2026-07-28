@@ -190,6 +190,7 @@ const zh = {
   aiGenTrialNote: "免費試用剩 {n} 次",
   aiGenerating: "生成中，約需 1–2 分鐘…",
   aiGenFailed: "生圖失敗：這個來源沒有把圖傳回來。換一個生圖來源或模型再試，抱歉！",
+  aiGenSourceNoImage: "{provider} 不會生圖，它只能輸出文字。請改選其他生圖來源。",
   aiGenLockedTitle: "AI 生成角色圖（贊助者功能）",
   aiGenLockedBody: "免費生成次數已用完。贊助解鎖後不限次數——用你自己的 AI 連線生成全身角色圖，並自動接上頭像裁切。",
   makeAvatarBtn: "製作頭像",
@@ -278,6 +279,7 @@ const zh = {
   // AI 失敗訊息分流（對話與生圖共用；認不出來就不顯示這兩句，原文照舊附在小字）
   errQuota: "這個 AI 來源的額度用完了。換一個 AI 來源，或等額度重置再試。",
   errAuth: "這個 AI 來源還沒登入，或憑證已過期。到設定重新連線後再試。",
+  errNoImage: "這個來源不能生圖：生圖額度不足，或方案沒有包含生圖。換一個生圖來源再試。",
 } as const;
 
 export type MsgKey = keyof typeof zh;
@@ -463,6 +465,7 @@ const en: Record<MsgKey, string> = {
   aiGenTrialNote: "{n} free tries left",
   aiGenerating: "Generating, takes 1–2 minutes…",
   aiGenFailed: "Generation failed: this source didn't return an image. Try another source or model, sorry!",
+  aiGenSourceNoImage: "{provider} can't generate images — it only outputs text. Pick a different image source.",
   aiGenLockedTitle: "AI Character Art (sponsor feature)",
   aiGenLockedBody: "Free generations used up. Sponsoring unlocks unlimited runs — generate full-body art with your own AI connection, wired into the avatar flow.",
   makeAvatarBtn: "Make avatar",
@@ -555,6 +558,7 @@ const en: Record<MsgKey, string> = {
 
   errQuota: "This AI source is out of quota. Switch to another AI source, or wait for the quota to reset.",
   errAuth: "This AI source isn't signed in, or its credentials expired. Reconnect it in Settings and try again.",
+  errNoImage: "This source can't generate images: it's out of image credits, or its plan doesn't include image generation. Try another image source.",
 };
 
 const MESSAGES: Record<Lang, Record<MsgKey, string>> = { "zh-TW": zh, en };

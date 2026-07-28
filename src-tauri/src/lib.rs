@@ -573,10 +573,14 @@ async fn stream_via_transport(
                 .and_then(|value| value.as_str())
                 .map(str::trim)
                 .unwrap_or("");
-            let envs = if base_url.is_empty() {
-                Vec::new()
-            } else {
-                let mut envs = vec![("ANTHROPIC_BASE_URL".to_owned(), base_url.to_owned())];
+            // Claude Code 開場會自建 macOS 沙盒，系統因此以「Table Tavern」的名義向玩家要
+            // 桌面／音樂資料夾權限（tccd 日誌實證：accessing=claude-code、responsible=本 app）。
+            // 這個變數告訴它「你已經在沙盒裡」，想省掉那組彈窗；實測仍會被要求媒體資料庫權限，
+            // 效果未定但無害（我們給的是 --tools ""，它本來就不需要那些資料夾）。
+            // 彈窗文案改由 Info.plist 的 NSAppleMusicUsageDescription 等鍵說明。
+            let mut envs = vec![("CLAUDE_CODE_SANDBOXED".to_owned(), "1".to_owned())];
+            if !base_url.is_empty() {
+                envs.push(("ANTHROPIC_BASE_URL".to_owned(), base_url.to_owned()));
                 if let Some(api_key) = config
                     .api_keys
                     .get("claude_compat")
@@ -586,8 +590,7 @@ async fn stream_via_transport(
                 {
                     envs.push(("ANTHROPIC_AUTH_TOKEN".to_owned(), api_key.to_owned()));
                 }
-                envs
-            };
+            }
             cli::run_cli(
                 &program,
                 &args,
@@ -895,7 +898,14 @@ async fn generate_character_image(
             }
             ImageRef::Path(_) => None,
         })
-        .unwrap_or_else(|| Err("回覆中沒有圖片".to_owned()))?;
+        // NO_IMAGE 是上面 prompt 跟 CLI 約好的暗號：來源自己說生不出圖，前端據此換一句人話
+        .unwrap_or_else(|| {
+            Err(if reply.contains("NO_IMAGE") {
+                "NO_IMAGE：來源回報無法生圖".to_owned()
+            } else {
+                "回覆中沒有圖片".to_owned()
+            })
+        })?;
     save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
     Ok(image)
 }
