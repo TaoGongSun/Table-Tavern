@@ -2,7 +2,7 @@
 
 ## In progress
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28），另待拍板：提示詞標籤、Ko-fi 導購歧義
-- [release-4-theme-pack](tasks/release-4-theme-pack.md) — 發佈 4：佈景主題引擎＋贊助包（回禮內容） — 下一步：贊助解鎖檔案（.ttpack）實作完成、自驗全綠，等使用者實機驗收匯入流程；Ko-fi 商品上架後換作者頁連結；主題引擎為後續段
+- [release-4-theme-pack](tasks/release-4-theme-pack.md) — 發佈 4：佈景主題引擎＋贊助包（回禮內容） — 下一步：贊助解鎖檔案（.ttpack）2026-07-28 實機驗收通過；等 Ko-fi 開店上架後換商品頁連結；主題引擎為後續段
 - [ui-overhaul](tasks/ui-overhaul.md) — UI 全面改版：Emblem 設計系統（桌遊組件卡＋playbill 對話＋token 化） — 下一步：第一輪實作完成（npm build 綠＋淺色實跑驗證），淺色主題去黃調色已驗收定案，等英文合作者實機驗收深色模式與實聊 playbill
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：verify 綠（run 30165056516）＋打包出爐（run 30165448004，commit 194fb86 含四項 UX 修正），Mac DMG 同步重打（00:22 版），等轉交測試者回報；併驗 cli-connected-badge 移交過來的 grok 新探針與 pre_probe
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：兩平台產物已出爐並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 artifact）後結案
