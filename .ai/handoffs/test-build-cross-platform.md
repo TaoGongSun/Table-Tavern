@@ -7,7 +7,9 @@ Status: in_progress
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
 
 ## Current state
-兩平台產物都已出爐並自動驗證通過，剩使用者實機驗收：Mac DMG 待拷去 MacBook Air 測 Gatekeeper 實況；Windows artifact 待在真 Windows 機下載安裝驗收。
+產線可用，每次下令即可重打。最新一輪 0.2.0（2026-07-28）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`）＋Windows [run 30330974311](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30330974311) success、artifact `table-tavern-windows-unsigned`（8.2MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
+
+打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。
 
 ## Completed
 - Mac：`npm run tauri build` 成功（rc=0），產出 `src-tauri/target/release/bundle/dmg/Table Tavern_0.1.0_aarch64.dmg`（4.5MB）
