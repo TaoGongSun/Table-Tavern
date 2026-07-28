@@ -25,7 +25,11 @@
     "active": true,
     "targets": "all",
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "files": {
+        "Resources/en.lproj/InfoPlist.strings": "macos/en.lproj/InfoPlist.strings",
+        "Resources/zh-Hant.lproj/InfoPlist.strings": "macos/zh-Hant.lproj/InfoPlist.strings"
+      }
     },
     "icon": [
       "icons/32x32.png",
