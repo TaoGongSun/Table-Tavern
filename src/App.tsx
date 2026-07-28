@@ -145,6 +145,10 @@ const DEFAULT_AVATAR = "🎭";
 const AVATAR_MAX_CHARS = 4;
 // GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
 const PLAYER_SENTINEL = "__PLAYER__";
+// 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
+const GM_TARGET = "__GM__";
+// GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
+const GM_COLOR = "#8a6a3c";
 
 // 以「看得到的字元」為單位截斷：input 的 maxLength 算的是 UTF-16 單元，
 // 一顆 🗡️ 就佔 3 個，拿來限長會讓 emoji 只打得下一顆。
@@ -2739,12 +2743,22 @@ function App() {
   }
 
   // 主欄開著任何畫面時側欄＝導覽（點卡＝開它的編輯頁）；只有聊天畫面點卡才是選發言對象
+  // 再點一次已選中的卡＝取消對象，讓玩家能描述動作或對全場說話
   async function selectCard(id: string) {
     if (mainView) {
       await editCard(id);
       return;
     }
-    setSpeaker(id);
+    setSpeaker((current) => (current === id ? "" : id));
+  }
+
+  // GM 卡與角色卡同一套：聊天畫面點擊＝選／取消發言對象，其他畫面＝導覽到世界設定
+  async function selectGm() {
+    if (mainView) {
+      await openWorldEditor();
+      return;
+    }
+    setSpeaker((current) => (current === GM_TARGET ? "" : GM_TARGET));
   }
 
   async function openWorldEditor() {
@@ -2913,10 +2927,16 @@ function App() {
     }
   }
 
+  // 請目前的發言對象接話：GM 以旁白回應（讀得到世界設定與全部角色卡），角色就點名接話
+  async function replyFromTarget() {
+    if (speaker === GM_TARGET) await gmNarrate();
+    else if (speaker) await requestReply(speaker);
+  }
+
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = input.trim();
-    if (!text || !speaker || generating !== null) return;
+    if (!text || generating !== null) return;
     setError("");
     setInput("");
     try {
@@ -2925,10 +2945,15 @@ function App() {
       setError(String(reason));
       return;
     }
-    await requestReply(speaker);
+    // 沒指定對象＝只把這句留在桌上（描述動作或對全場說），不點名任何人接話
+    await replyFromTarget();
   }
 
   const metaOf = (id: string) => characters.find((c) => c.id === id);
+
+  // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
+  const gmTargeted = speaker === GM_TARGET;
+  const targetName = gmTargeted ? "GM" : (metaOf(speaker)?.name ?? speaker);
 
   // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算
   const sceneDisplayLabel = (n: number) => {
@@ -3043,17 +3068,21 @@ function App() {
         </details>
         <section className="character-panel" aria-label={t("castAria")}>
           <div className="character-list">
-            {/* GM 卡：與角色卡同款同尺寸（GM 是桌上最重要的一位），但不可選為發言對象；整張點擊開世界設定＋世界書 */}
+            {/* GM 卡：與角色卡同款同尺寸同操作（GM 是桌上最重要的一位）——點擊選為發言對象，右下編輯鈕開世界設定＋世界書 */}
             <div
               role="button"
               tabIndex={0}
-              className="tcard tcard-gm"
-              title={t("worldSummary")}
-              onClick={() => void openWorldEditor()}
+              className={`tcard tcard-gm ${selectedCard === GM_TARGET ? "tcard-selected" : ""}`}
+              title={
+                !mainView && speaker === GM_TARGET
+                  ? t("gmTargetHintClear")
+                  : t("gmTargetHint")
+              }
+              onClick={() => void selectGm()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  void openWorldEditor();
+                  void selectGm();
                 }
               }}
             >
@@ -3065,9 +3094,18 @@ function App() {
                   <span className="tcard-plate">GM</span>
                 </span>
               </span>
-              <span className="gm-cfg" aria-hidden="true">
-                ⚙
-              </span>
+              <button
+                type="button"
+                className="character-card-edit"
+                aria-label={t("worldSummary")}
+                title={t("worldSummary")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void openWorldEditor();
+                }}
+              >
+                {t("editBtn")}
+              </button>
             </div>
             <div
               role="button"
@@ -3123,7 +3161,11 @@ function App() {
                     void selectCard(c.id);
                   }
                 }}
-                title={`${t("castHint", { name: c.name })}｜${t("dragToReorder")}`}
+                title={`${
+                  !mainView && speaker === c.id
+                    ? t("castHintClear", { name: c.name })
+                    : t("castHint", { name: c.name })
+                }｜${t("dragToReorder")}`}
                 {...castDrag.rowProps(c)}
               >
                 <span className="tcard-art">
@@ -3427,15 +3469,28 @@ function App() {
                 <div className="composer-opts">
                   <span
                     className="opt-target"
-                    title={t("castHint", { name: metaOf(speaker)?.name ?? speaker })}
-                    style={{ ["--fac" as string]: metaOf(speaker)?.color ?? "#888888" }}
+                    title={gmTargeted ? t("gmTargetHint") : t("castHint", { name: targetName })}
+                    style={{
+                      ["--fac" as string]: gmTargeted ? GM_COLOR : (metaOf(speaker)?.color ?? "#888888"),
+                    }}
                   >
-                    {characterAvatars[speaker] ? (
+                    {gmTargeted ? (
+                      <img className="opt-avatar" src={gmBook} alt="" />
+                    ) : characterAvatars[speaker] ? (
                       <img className="avatar-round opt-avatar" src={characterAvatars[speaker]} alt="" />
                     ) : (
                       <span aria-hidden="true">{metaOf(speaker)?.avatar ?? "🎭"}</span>
                     )}
-                    {metaOf(speaker)?.name ?? speaker}
+                    {targetName}
+                    <button
+                      type="button"
+                      className="opt-target-clear"
+                      aria-label={t("clearTarget")}
+                      title={t("clearTarget")}
+                      onClick={() => setSpeaker("")}
+                    >
+                      ✕
+                    </button>
                   </span>
                 </div>
               )}
@@ -3446,25 +3501,30 @@ function App() {
                 onChange={(e) => setInput(e.currentTarget.value)}
                 placeholder={
                   speaker
-                    ? t("composerPlaceholder", { name: metaOf(speaker)?.name ?? speaker })
-                    : t("composerNoCharacter")
+                    ? t("composerPlaceholder", { name: targetName })
+                    : activeCharacters.length === 0
+                      ? t("composerNoCharacter")
+                      : t("composerNoTarget")
                 }
-                disabled={!speaker || generating !== null}
+                disabled={(!speaker && activeCharacters.length === 0) || generating !== null}
               />
               {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
                   （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
               <div className="composer-send">
-                <button type="submit" disabled={!speaker || generating !== null}>
+                <button
+                  type="submit"
+                  disabled={(!speaker && activeCharacters.length === 0) || generating !== null}
+                >
                   {t("send")} ➤
                 </button>
                 <span className="spacer" />
                 <button
                   type="button"
-                  onClick={() => requestReply(speaker)}
+                  onClick={() => void replyFromTarget()}
                   disabled={!speaker || generating !== null}
                   title={t("requestReplyHint")}
                 >
-                  {t("requestReplyBtn", { name: metaOf(speaker)?.name ?? t("characterFallback") })}
+                  {t("requestReplyBtn", { name: speaker ? targetName : t("characterFallback") })}
                 </button>
                 <button
                   type="button"
