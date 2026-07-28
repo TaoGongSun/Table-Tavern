@@ -2,6 +2,8 @@
 node_modules
 dist
 src-tauri/target
+# codex CLI 生圖時會把圖落在這裡（本機暫存，非產物）
+src-tauri/output
 
 # .ai 交接 Markdown 要進版控（! 規則蓋過全域 gitignore 的排除）；本機狀態檔仍排除
 !.ai/
