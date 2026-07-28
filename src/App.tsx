@@ -2299,7 +2299,11 @@ function App() {
     kind: "dialogue" | "narration";
   } | null>(null);
   const [streamText, setStreamText] = useState("");
-  const [editingName, setEditingName] = useState<string | null>(null);
+  // 改桌名可從兩處進入：主欄標題（header）與側欄目前桌那一列（list）；at 決定輸入框長在哪
+  const [editingName, setEditingName] = useState<{
+    at: "header" | "list";
+    value: string;
+  } | null>(null);
   // false＝關閉；字串＝開啟並落在該分頁（生圖對話框的「AI 連線設定」鈕直開 ai 分頁）
   const [settingsOpen, setSettingsOpen] = useState<false | "appearance" | "ai">(false);
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
@@ -2581,6 +2585,36 @@ function App() {
     } catch (reason) {
       setError(String(reason));
     }
+  }
+
+  // 改桌名的輸入框（主欄標題與側欄共用）：包成表單讓 Enter 走瀏覽器的表單送出，
+  // 中文輸入法組字中的 Enter 會被輸入法吃掉（對話輸入框同款做法），不會誤判成確認改名
+  function renameForm(className: string) {
+    const value = editingName?.value ?? "";
+    return (
+      <form
+        className="table-title-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          renameTable(value);
+        }}
+      >
+        <input
+          className={className}
+          autoFocus
+          value={value}
+          aria-label={t("tableNameAria")}
+          onChange={(e) => {
+            const next = e.currentTarget.value;
+            setEditingName((previous) => (previous ? { ...previous, value: next } : previous));
+          }}
+          onBlur={() => renameTable(value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setEditingName(null);
+          }}
+        />
+      </form>
+    );
   }
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
@@ -2976,12 +3010,22 @@ function App() {
             <nav className="table-list" aria-label={t("tableListAria")}>
               {worlds.map((w) => (
                 <div className="table-row" key={w.id}>
-                  <button
-                    className={`table-item ${w.id === table ? "table-item-active" : ""}`}
-                    onClick={() => switchTable(w.id)}
-                  >
-                    {w.name}
-                  </button>
+                  {/* 目前這桌再點一次＝改名（切桌沒意義），與主欄標題同一個入口 */}
+                  {editingName?.at === "list" && w.id === table ? (
+                    renameForm("table-item-input")
+                  ) : (
+                    <button
+                      className={`table-item ${w.id === table ? "table-item-active" : ""}`}
+                      title={w.id === table ? t("renameHint") : undefined}
+                      onClick={() =>
+                        w.id === table
+                          ? setEditingName({ at: "list", value: w.name })
+                          : switchTable(w.id)
+                      }
+                    >
+                      {w.name}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="table-delete"
@@ -3185,36 +3229,16 @@ function App() {
 
       <main className="chat-main">
         <header className="chat-header">
-          {editingName === null ? (
+          {editingName?.at === "header" ? (
+            renameForm("table-title-input")
+          ) : (
             <button
               className="table-title"
               title={t("renameHint")}
-              onClick={() => setEditingName(tableName)}
+              onClick={() => setEditingName({ at: "header", value: tableName })}
             >
               {tableName}
             </button>
-          ) : (
-            // 包成表單：Enter 的確認交給瀏覽器的表單送出，中文輸入法組字中的
-            // Enter 會被輸入法吃掉（對話輸入框同款做法），不會誤判成確認改名
-            <form
-              className="table-title-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                renameTable(editingName);
-              }}
-            >
-              <input
-                className="table-title-input"
-                autoFocus
-                value={editingName}
-                aria-label={t("tableNameAria")}
-                onChange={(e) => setEditingName(e.currentTarget.value)}
-                onBlur={() => renameTable(editingName)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setEditingName(null);
-                }}
-              />
-            </form>
           )}
           <div className="chat-header-actions">
             {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
