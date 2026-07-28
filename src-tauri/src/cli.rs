@@ -494,7 +494,8 @@ pub fn parse_codex_line(line: &str) -> CliLine {
                 kind,
                 item.and_then(|i| i.get("text")).and_then(|t| t.as_str()),
             ) {
-                (Some("agent_message"), Some(text)) => CliLine::Delta(text.to_owned()),
+                // 一回合可能有多則 agent_message（前導說明＋結論），補換行才不會黏成一句
+                (Some("agent_message"), Some(text)) => CliLine::Delta(format!("{text}\n")),
                 _ => CliLine::Other,
             }
         }
@@ -693,7 +694,7 @@ mod tests {
             parse_codex_line(
                 r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"測試"}}"#
             ),
-            CliLine::Delta("測試".to_owned())
+            CliLine::Delta("測試\n".to_owned())
         );
         // 非致命警告（真實輸出：hooks 提示）不可視為失敗
         assert_eq!(
