@@ -1,0 +1,3 @@
+"NSDocumentsFolderUsageDescription" = "Table Tavern keeps your character cards, world notes, and session logs in Documents/TableTavern.";
+"NSAppleMusicUsageDescription" = "Table Tavern never reads your music. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.";
+"NSDesktopFolderUsageDescription" = "Table Tavern never reads your Desktop. This request comes from the AI command-line tool it launches; denying it changes nothing in the game.";
