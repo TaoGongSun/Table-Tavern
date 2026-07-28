@@ -1,9 +1,9 @@
 # Task
 Task-ID: ai-error-messages
 Title: AI 失敗訊息人話化：額度用完與未登入分流
-Status: in-progress
+Status: completed
 Created: 2026-07-28T00:00:00+08:00
-Updated: 2026-07-28T00:00:00+08:00
+Updated: 2026-07-28T13:15:00+08:00
 
 ## Summary
 2026-07-28 使用者提出並拍板：對話與生圖失敗時，玩家看到的是後端／CLI 原樣吐回的英文（例：`You've reached your free Grok Build usage limit`），會誤判成 app 壞掉並重試燒額度。
@@ -22,7 +22,7 @@ Updated: 2026-07-28T00:00:00+08:00
 - 原始錯誤字串一律保留在小字，玩家與協助者仍看得到真相。
 
 ## Next action
-- 三段實作完成（i18n 兩鍵、`explainAiError()` 分類器、對話與生圖接入），npm build 綠＋13 例樣本測試零誤判，等使用者實機看一眼（詳見 handoffs/ai-error-messages.md）
+- 已結案（2026-07-28 使用者實機確認兩類訊息都正常顯示）。現場見 [handoffs/archive/ai-error-messages.md](../handoffs/archive/ai-error-messages.md)
 
 ## Constraints
 - 關鍵字比對只在前端顯示層做，不動後端錯誤字串本身（`String(reason)` 原文須完整保留在小字）。

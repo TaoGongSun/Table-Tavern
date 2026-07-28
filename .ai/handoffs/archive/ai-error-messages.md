@@ -1,7 +1,7 @@
 # Handoff: ai-error-messages
 
 ## Current state
-額度／未登入兩類的人話文案已實作，`npm run build` 綠、分類器 13 例樣本測試全對。GUI 未實跑（要真的打爆額度才會觸發），等使用者實機看一眼。
+已結案。2026-07-28 使用者實機確認兩類訊息都正常顯示。
 
 ## Completed
 - i18n zh/en 兩鍵：`errQuota`（額度用完，請換來源或等重置）、`errAuth`（未登入或憑證過期，到設定重新連線）——src/i18n.ts:279、src/i18n.ts:556
@@ -11,6 +11,7 @@
 
 ## Verification
 - `npm run build` exit 0（tsc + vite 皆綠）
+- 2026-07-28 使用者實機驗收：兩類訊息都正確顯示（commit 957b9eb）
 - 分類器樣本測試 13 例全對：Grok「free Grok Build usage limit」／OpenRouter 402 Insufficient credits／Claude「usage limit reached」／Codex「hit your usage limit」／Gemini 429 RESOURCE_EXHAUSTED／OpenRouter 429 rate limit → 全判額度；「尚未設定 API key」／「Not logged in」／401 No auth credentials → 全判未登入；空名 invalid name／檔案 permission denied／CLI 逾時／內容政策拒繪 → 全走保底原文（零誤判）
 
 ## Remaining

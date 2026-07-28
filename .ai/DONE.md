@@ -2,6 +2,7 @@
 
 結案任務按結案時間新到舊排列。進行中與待辦見 [TASKS.md](TASKS.md)。
 
+- [ai-error-messages](tasks/ai-error-messages.md) — AI 失敗訊息人話化：額度用完與未登入分流 — 2026-07-28 使用者實機確認兩類訊息都正常顯示，結案
 - [drag-reorder-lists](tasks/drag-reorder-lists.md) — 角色卡與世界書條目改拖曳排序（GM 固定最上、刪 ↑↓ 鈕、列不可反白） — 2026-07-27 使用者九項實測全通過（含順序持久化與舊卡不跳位回歸），結案
 - [character-image-avatar](tasks/character-image-avatar.md) — 角色圖片管理：加入／更換／移除全身圖＋圓形頭像取代 emoji＋lightbox＋透明 app 圖示 — 2026-07-27 使用者實測通過（含五輪回饋修訂與 Mac DMG 0.2.0 打包驗證），結案
 - [post-mvp-more-cli-providers](tasks/post-mvp-more-cli-providers.md) — 擴充 CLI 訂閱供應商（agy／Gemini CLI 端到端＋一鍵安裝＋Grok CLI） — 2026-07-24 使用者實測三路全過（agy 實聊、一鍵安裝終端機流程、grok 實聊），結案
