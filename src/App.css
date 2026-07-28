@@ -492,14 +492,6 @@ textarea {
   object-fit: contain;
 }
 
-.gm-cfg {
-  position: absolute;
-  right: 0.5rem;
-  bottom: 0.25rem;
-  opacity: 0.65;
-  font-size: var(--fs-meta);
-}
-
 /* 角色卡＝桌遊組件卡：左圖窗（角色色染底）＋名字 wedge＋檔位寶石。
    卡內另有編輯鈕故外層是 div role=button（HTML 不能巢狀 button） */
 .tcard {
@@ -527,7 +519,7 @@ textarea {
 
 /* GM 卡與玩家卡＝桌上兩個真人席位，共用「書皮」樣式：角色卡是跟主題走的白牌，
    這兩張用皮革底＋燙金內框，與有陣營色的角色卡自然區隔。
-   整張點擊開對應編輯畫面，GM 右下的 ⚙ 只是指示，不是另一顆按鈕。
+   GM 卡與角色卡同操作（點擊選發言對象、右下編輯鈕開世界設定），玩家卡整張點擊開編輯。
    （放在 .tcard 之後：同權重靠順序蓋掉基底底色） */
 .tcard-gm,
 .tcard-player {
@@ -748,7 +740,7 @@ textarea {
   border-radius: 3px;
   font: 600 12px/1.2 var(--font-ui);
   color: var(--ink-2);
-  background: var(--surface-3);
+  background: none;
 }
 
 .character-card-edit:hover:not(:disabled) {
@@ -1334,6 +1326,21 @@ textarea {
   background: color-mix(in srgb, var(--fac, #888888) 22%, var(--surface-1));
   border: 1px solid var(--fac, #888888);
   color: var(--ink-1);
+}
+
+/* 晶片右緣的取消鈕：拿掉發言對象，回到「描述動作／對全場說」 */
+.opt-target-clear {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0 0.1em;
+  margin-right: -0.3em;
+  line-height: 1;
+  color: var(--ink-3);
+}
+
+.opt-target-clear:hover:not(:disabled) {
+  color: var(--danger);
 }
 
 .composer .writebox {
