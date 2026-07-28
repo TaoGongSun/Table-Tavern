@@ -3,6 +3,8 @@ mod data;
 mod import;
 #[allow(dead_code)]
 mod install;
+#[cfg(target_os = "macos")]
+mod spawn_macos;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
