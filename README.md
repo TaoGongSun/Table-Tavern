@@ -1,58 +1,69 @@
-# Table Tavern（桌面酒館）
+# Table Tavern
 
-桌面 App：多角色 AI 桌上角色扮演。每個角色一份獨立上下文與一張角色卡（公開＋私有設定），一位讀得到世界設定的 GM 導演負責旁白、點名與推進劇情——角色只知道 GM 說出口的內容，資訊邊界由敘事天然實現。
+**[繁體中文 →](README.zh-TW.md)**
 
-## 特色
+A desktop app where AI plays a whole table of characters — and the Game Master too.
 
-- **多角色群聊**：每個角色獨立上下文、逐角色打字指示、點名發言。
-- **GM 導演**：讀得到世界設定與全部角色卡，負責旁白與推進回合。
-- **世界書**：SillyTavern 相容條目格式，一鍵匯入匯出；條目可指定角色可見，形成資訊邊界。
-- **角色卡匯入**：直接吃 SillyTavern V2 角色卡 PNG，含角色圖顯示開關。
-- **場景管理**：換幕、場景摘要、前幕歷史瀏覽、單幕匯出。
-- **跑團紀錄匯出**：一鍵存成 Markdown，位置自選。
-- **雙語介面**：繁體中文（台灣）／English，範例桌內容跟著語系走。
-- **資料全在本機**：純 Markdown／JSONL，可自行備份或直接編輯。
+Play it as simple or as deep as you like: drop in a single character card and just chat, or run a full campaign with a world setting, a lorebook, scene changes, and a GM who narrates and decides who speaks next. Each character only knows what the GM says out loud, so secrets stay secret until the story reveals them — in a typical AI chat, secrets survive only as long as the AI keeps pretending not to know; here, the characters genuinely don't know.
 
-## 平台
+Interface in English and Traditional Chinese; the built-in sample table follows your language.
 
-- **macOS**（Apple Silicon）：DMG，目前為 ad-hoc 簽章測試版（未公證）。
-- **Windows**：未簽章測試包由 CI 產出（推 `test-v*` tag 或手動觸發），正式簽章發佈籌備中。
+## Download & Install
 
-## 安裝（macOS）
+> Current builds are **test versions** — expect rough edges.
 
-1. 下載 `Table Tavern_x.y.z_aarch64.dmg`（目前最新為 0.2.0），雙擊掛載。
-2. 把 `Table Tavern.app` 拖進「應用程式」資料夾。
-3. 雙擊開啟。
+**macOS** (Apple Silicon): download the `.dmg`, drag `Table Tavern.app` into Applications, double-click.
 
-### 第一次開啟被 Gatekeeper 擋下？
+If macOS says the app can't be verified: press **Done**, open **System Settings → Privacy & Security**, scroll to the bottom, click **Open Anyway**, confirm once. That's it — the warning appears because this test build isn't notarized with Apple yet.
 
-本 App 未上架、未經 Apple 公證（ad-hoc 簽章），第一次開啟會看到「Apple 無法驗證『Table Tavern』是否為惡意軟體」。兩種解法擇一：
+**Windows**: download the installer from the release page. Windows may show an "unknown publisher" warning — click **More info → Run anyway**.
 
-- **系統設定**：在對話框按「完成」，開「系統設定 → 隱私權與安全性」，捲到頁面底部按「仍要打開」，再確認一次即可。（macOS 15 之後，右鍵「打開」已不再提供例外選項。）
-- **終端機**：`xattr -cr "/Applications/Table Tavern.app"` 之後正常雙擊。
+## Getting Started
 
-## 開通（二選一）
+1. First launch drops you straight into a sample table. Poke around freely.
+2. To make characters talk, the app needs an AI service. The standard way: register at [OpenRouter](https://openrouter.ai/), top up a small amount, paste your key into the in-app guide. One key gives you many models, and the GM and each character can use different ones. Pay only for what you use — there is no subscription.
+3. That's all. Write a card, join the table, play.
 
-- **自備 API key（標準）**：首次開啟會直接落在內建範例桌，畫面上的引導會帶你註冊 [OpenRouter](https://openrouter.ai/)、儲值小額並貼上 key——一把 key 通吃多家模型，角色與 GM 可以用不同檔位。除 key 外沒有任何必填欄位。
-- **官方 CLI 訂閱模式（進階）**：已有 Claude、ChatGPT、Google 或 Grok 訂閱的使用者，可在「AI 設定」改以官方 CLI（Claude Code／Codex／Gemini CLI／Grok CLI）為傳輸層；四家都提供一鍵安裝——App 開啟可見的終端機視窗跑官方安裝腳本並引導登入，全程不經手帳密與 token。注意：供應商條款禁止第三方工具使用訂閱憑證，啟用前 App 會顯示具體風險告知，後果由你自己的帳號承擔。
+Already paying for Claude, ChatGPT, Gemini, or Grok? You can route conversations through their official command-line tools instead and spend your existing subscription — see the Q&A below.
 
-## 資料存放
+## Q&A
 
-- 桌（世界）、角色卡、對話紀錄：`~/Documents/TableTavern/worlds/`（純 Markdown／JSONL，可自行備份或編輯）。資料夾與檔名是一串代碼，桌名與角色名存在檔案裡（`state.json` 的 `name`、角色卡開頭的 `name`）——改名因此不會動到任何路徑。
-- 全域設定與 API key：`~/Library/Application Support/TableTavern/config.json`（檔案權限 0600）
+**Is the app free?**
+Yes — free and open source. The only cost is what your AI provider charges for usage, paid by you directly to them.
 
-## 開發
+**Can I sponsor the project?**
+We're still in the testing period — **please don't feel any need to sponsor yet.** The sponsor perks (five extra color themes and AI character-art generation) are finished, and sponsoring unlocks them right now; we just don't feel right asking for money while the experience is still being polished.
+
+**Is my data uploaded anywhere?**
+No. Tables, cards, and chat logs live on your computer as plain files, and your API key is stored only on your machine. Conversations go directly from you to the AI provider you chose — there is no middleman server.
+
+**Can I use my SillyTavern character cards?**
+Yes. Import V2 card PNGs directly, and export your cards back out as PNG or JSON.
+
+**Can characters "peek" at things they shouldn't know?**
+No. Only the GM reads the world setting and everyone's cards. A character learns something only when the GM actually says it in the story — you can even mark lorebook entries as visible to specific characters only.
+
+**Can I play on my existing Claude / ChatGPT / Gemini / Grok subscription?**
+Yes — in AI settings, switch the transport to that provider's official CLI (one-click install included). Provider policies on this kind of use differ and change; the app shows each provider's risk notes before you enable it, so you can decide for yourself.
+
+**Where is my data? How do I back it up?**
+Everything is in `Documents/TableTavern/` — copy that folder and you've backed up every table, card, and log. Settings and keys are in the system app-config folder, separate from your stories.
+
+**The app won't open / got blocked.**
+See the install section above — it's the standard warning for unsigned test builds, not a malware verdict.
+
+## For Developers
+
+Tauri 2 (Rust) + Vite + React + TypeScript. Product spec in `NewPlan.md`, engineering kickoff in `KICKOFF.md`, changes in [CHANGELOG.md](CHANGELOG.md).
 
 ```bash
 npm install
-npm run tauri dev    # 開發模式
-npm run tauri build  # 產出 .app 與 DMG（src-tauri/target/release/bundle/）
-cd src-tauri && cargo test   # Rust 測試
-npm run build        # 前端型別檢查＋建置
+npm run tauri dev    # dev mode
+npm run tauri build  # .app / DMG / installer
+cd src-tauri && cargo test
+npm run build        # front-end type check + build
 ```
 
-技術棧：Tauri 2（Rust）＋ Vite + React + TypeScript。產品規格見 `NewPlan.md`，工程起手見 `KICKOFF.md`，版本異動見 [CHANGELOG.md](CHANGELOG.md)。
+## License
 
-## 授權
-
-[AGPL-3.0-only](LICENSE)。
+[AGPL-3.0-only](LICENSE).
