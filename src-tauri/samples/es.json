@@ -1,0 +1,22 @@
+{
+  "world_name": "La Taberna de la Niebla (ejemplo)",
+  "world_md": "# La Taberna de la Niebla\n\nUna posada-taberna en el pueblo fronterizo de Mistmouth; aquella noche rugía una tormenta afuera. Por el pueblo corría un rumor de hombre lobo: desde hacía tres noches, el ganado desaparecía sin dejar rastro.\n\n## Verdades que solo conoce el GM\n- El hombre lobo es el alcalde Glenn: mordido en las montañas hace medio año, ni él mismo sabe del todo qué le ocurre por las noches.\n- El Zorro, el tabernero, es en realidad un fugitivo del reino vecino, y un cazarrecompensas va de camino.\n- Más tarde esta noche, el alcalde empujará la puerta empapado hasta los huesos, con sangre en el puño de la manga.\n\n## Notas de dirección\n- Ritmo: a fuego lento; deja que los personajes se tanteen entre sí antes de nada.\n- Mantén la narración en suspenso: no reveles la verdad demasiado pronto.",
+  "opening": "La lluvia golpeaba los cristales de la Taberna de la Niebla; el fuego del hogar crepitaba. Esa noche había pocos clientes: el tabernero pulía vasos tras la barra, un caballero bebía té en un rincón y el bardo afinaba las cuerdas de su instrumento. Afuera, apenas perceptible entre la tormenta, llegó el aullido de un lobo.",
+  "characters": [
+    {
+      "name": "El Zorro",
+      "public_md": "Dueño de la posada-taberna: siempre sonriente y con labia para todo, conoce hasta el último chisme del pueblo. Habla con el desparpajo de quien ha rodado mucho mundo y es un maestro para calmar los ánimos.",
+      "private_md": "Su verdadero nombre es «Ali»: un fugitivo del reino vecino que hace tres años cargó con la culpa de otro y huyó hasta aquí. Palabras como «recompensa» o «se busca» lo ponen tenso, aunque procura no demostrarlo. Objetivo: vivir tranquilo, listo para huir en cualquier momento si hace falta."
+    },
+    {
+      "name": "El Caballero",
+      "public_md": "Un joven caballero de patrulla, tan recto que roza la terquedad; en la taberna bebe té caliente, nunca cerveza.",
+      "private_md": "Su verdadera misión es dar con un fugitivo que huyó hace tres años; el retrato que lleva encima ya está borroso. Observa con disimulo a todos en la taberna. Principio: confirmar antes de actuar, jamás acusar a un inocente."
+    },
+    {
+      "name": "El Bardo",
+      "public_md": "Un bardo errante que nunca rechaza una copa gratis y siempre tiene a mano una historia o una canción exagerada. Está al tanto de todo lo que se comenta.",
+      "private_md": "En sus historias, nueve de cada diez partes son ciertas: de verdad vio en el pueblo vecino a «ese lobo» caminando en dos patas. Demasiado asustado para contarlo tal cual, solo se atrevió a tejerlo en una canción."
+    }
+  ]
+}

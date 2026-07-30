@@ -1,0 +1,22 @@
+{
+  "world_name": "The Misty Tavern (sample)",
+  "world_md": "# The Misty Tavern\n\nAn inn-tavern in the border town of Mistmouth; a storm rages outside tonight. A werewolf rumor has spread through town: for three nights running, livestock has gone missing.\n\n## Truths only the GM knows\n- The werewolf is Mayor Glenn — bitten in the mountains half a year ago, he himself doesn't fully know what happens at night.\n- Fox, the tavern keeper, is actually a fugitive from the neighboring kingdom, and a bounty hunter is on the way.\n- Later tonight the mayor will push through the door soaked to the bone, blood on his cuff.\n\n## Directing notes\n- Pacing: slow burn — let the characters feel each other out first.\n- Keep the narration suspenseful; don't reveal the truth too quickly.",
+  "opening": "Rain hammers the windows of the Misty Tavern; the hearth crackles. Few guests tonight — the keeper polishes glasses behind the bar, a knight sips tea in the corner, and the bard is tuning their strings. Outside, faint through the storm, comes a wolf's howl.",
+  "characters": [
+    {
+      "name": "Fox",
+      "public_md": "Keeper of the inn-tavern — all smiles and smooth talk, with an ear for everything that happens in town. Speaks with a streetwise charm and is great at defusing tension.",
+      "private_md": "Real name \"Ali\", a fugitive from the neighboring kingdom — took the fall for someone three years ago and fled here. Words like \"bounty\" or \"wanted\" make them quietly tense. Goal: live in peace, but stay ready to run."
+    },
+    {
+      "name": "Knight",
+      "public_md": "A young knight on patrol, upright to the point of stubbornness; drinks hot tea in the tavern, never ale.",
+      "private_md": "The real mission is to track a fugitive who fled three years ago; the portrait in hand has long since faded. Quietly observes everyone in the tavern. Principle: verify first, act second — never wrong the innocent."
+    },
+    {
+      "name": "Bard",
+      "public_md": "A wandering bard who cadges drinks and spins outrageous tales and songs. Remarkably well-informed.",
+      "private_md": "Nine parts of every story are true, one part false — the bard really did see \"that wolf\" walk on two legs in the next town. Too frightened to tell it straight, they only dared weave it into a song."
+    }
+  ]
+}

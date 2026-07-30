@@ -11,14 +11,28 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 pub const DEFAULT_IMAGE_MODEL: &str = "google/gemini-3.1-flash-image";
 
-/// 角色與 GM system prompt 共用的語言規範，依使用者語系（config.preferences.language）注入：
-/// zh 系防止簡中飄移；en 因提示詞模板仍是中文、需明講才不會被帶成中文輸出。
+/// 角色與 GM system prompt 共用的語言規範，依使用者語系（config.preferences.language）注入。
+/// 規範一律用該語言本身書寫，模型才不會被中文提示詞模板帶成中文輸出；
+/// 兩岸中文互相加反向禁令，防止字體與用語飄移。
+/// 新增語系：在此加一條 match arm，並補前端字典（src/i18n/）與範例桌（src-tauri/samples/）。
 fn language_rule(lang: &str) -> &'static str {
-    if lang.starts_with("zh") {
-        "所有輸出一律使用繁體中文與台灣慣用語，禁止中國大陸用語與簡體字\
-         （例如：說「影片」不說「視頻」、說「品質」不說「質量」、說「訊息」不說「信息」）。"
-    } else {
-        "All of your output must be in natural, fluent English."
+    match lang {
+        "zh-CN" => {
+            "所有输出一律使用简体中文与中国大陆通行用语，禁止繁体字与台湾用语\
+             （例如：说「视频」不说「影片」、说「质量」不说「品质」、说「信息」不说「讯息」）。"
+        }
+        "ja" => "出力はすべて自然で流暢な日本語で書くこと。",
+        "ko" => "모든 출력은 자연스럽고 유창한 한국어로 작성할 것.",
+        "es" => "Todo tu texto debe estar en español natural y fluido.",
+        "pt-BR" => "Todo o seu texto deve estar em português do Brasil natural e fluente.",
+        "de" => "Alle Ausgaben müssen in natürlichem, flüssigem Deutsch erfolgen.",
+        "fr" => "Tout ton texte doit être rédigé dans un français naturel et fluide.",
+        "ru" => "Весь твой текст должен быть на естественном, беглом русском языке.",
+        _ if lang.starts_with("zh") => {
+            "所有輸出一律使用繁體中文與台灣慣用語，禁止中國大陸用語與簡體字\
+             （例如：說「影片」不說「視頻」、說「品質」不說「質量」、說「訊息」不說「信息」）。"
+        }
+        _ => "All of your output must be in natural, fluent English.",
     }
 }
 
@@ -811,6 +825,27 @@ mod tests {
 
         let gm_en = assemble_gm_messages("", &[], None, &[], &[], "en");
         assert!(gm_en[0].content.contains("in natural, fluent English"));
+
+        // 其餘八個語系各自注入自己語言寫的規範，且不殘留繁中規範
+        for (lang, needle) in [
+            ("zh-CN", "简体中文"),
+            ("ja", "日本語"),
+            ("ko", "한국어"),
+            ("es", "español"),
+            ("pt-BR", "português do Brasil"),
+            ("de", "Deutsch"),
+            ("fr", "français"),
+            ("ru", "русском"),
+        ] {
+            let messages = assemble_messages(&fox, None, &[], &[], lang);
+            assert!(messages[0].content.contains(needle), "{lang} 規範沒注入");
+            assert!(
+                !messages[0].content.contains("繁體中文"),
+                "{lang} 誤注入繁中規範"
+            );
+            let gm = assemble_gm_messages("", &[], None, &[], &[], lang);
+            assert!(gm[0].content.contains(needle), "{lang} GM 規範沒注入");
+        }
 
         let mut config = AppConfig::default();
         assert_eq!(ui_language(&config), "zh-TW");

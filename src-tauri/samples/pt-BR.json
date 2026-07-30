@@ -1,0 +1,22 @@
+{
+  "world_name": "A Taverna da Névoa (exemplo)",
+  "world_md": "# A Taverna da Névoa\n\nUma taverna-estalagem na cidade fronteiriça de Mistmouth; esta noite uma tempestade cai lá fora. Um boato de lobisomem tomou conta da cidade: há três noites seguidas, animais têm desaparecido.\n\n## Verdades que só o GM conhece\n- O lobisomem é o Prefeito Glenn — mordido nas montanhas há meio ano, ele mesmo não sabe ao certo o que lhe acontece durante a noite.\n- A Raposa, dona da taverna, é na verdade uma fugitiva do reino vizinho, e um caçador de recompensas está a caminho.\n- Mais tarde esta noite, o prefeito vai entrar empurrando a porta, encharcado até os ossos, com sangue na manga.\n\n## Notas de direção\n- Ritmo: comece devagar — deixe os personagens se estudarem primeiro.\n- Mantenha a narração em suspense; não revele a verdade cedo demais.",
+  "opening": "A chuva forte castiga as janelas da Taverna da Névoa; a lareira crepita. Poucos clientes esta noite — a dona do bar limpa copos atrás do balcão, um cavaleiro toma chá no canto, e o bardo afina as cordas do instrumento. Lá fora, fraco em meio à tempestade, ouve-se o uivo de um lobo.",
+  "characters": [
+    {
+      "name": "A Raposa",
+      "public_md": "Dona da taverna-estalagem — sempre sorridente e de trato fácil, sabe de tudo o que acontece na cidade. Fala com uma malandragem de rua e tem talento raro para apaziguar qualquer bate-boca.",
+      "private_md": "Seu verdadeiro nome é “Ali”, uma fugitiva do reino vizinho — assumiu a culpa no lugar de outra pessoa há três anos e fugiu para cá. Palavras como “recompensa” ou “procurada” a deixam tensa por dentro, sem que nada transpareça no rosto. Objetivo: viver em paz, mas sempre pronta para fugir de novo."
+    },
+    {
+      "name": "O Cavaleiro",
+      "public_md": "Um jovem cavaleiro em patrulha, íntegro a ponto de ser teimoso; na taverna, bebe chá quente — nunca cerveja.",
+      "private_md": "Sua verdadeira missão é rastrear um fugitivo foragido há três anos; o retrato que carrega já está desbotado pelo tempo. Observa discretamente todos na taverna. Princípio: confirmar antes de agir — nunca acusar um inocente."
+    },
+    {
+      "name": "O Bardo",
+      "public_md": "Um bardo errante que vagueia de vila em vila sempre em busca de uma bebida grátis, contando histórias e canções cada vez mais exageradas. Bem informado — sabe de tudo o que se passa por aí.",
+      "private_md": "Em cada uma de suas histórias, nove partes são verdade e só uma é mentira — ele realmente viu, com os próprios olhos, “aquele lobo” andando sobre as duas patas de trás, na vila vizinha. Com medo demais para contar a verdade sem rodeios, só teve coragem de tecê-la numa canção."
+    }
+  ]
+}

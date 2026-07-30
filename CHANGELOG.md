@@ -2,6 +2,16 @@
 
 格式依 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號依 [Semantic Versioning](https://semver.org/lang/zh-TW/)。尚未正式對外發佈，以下皆為內部測試版。
 
+## [Unreleased]
+
+### 新增
+- 介面擴充到十國語言（繁體中文、简体中文、English、日本語、한국어、Español、Português (Brasil)、Deutsch、Français、Русский）：介面字典、首開範例桌內容、AI 輸出語言規範三處同步上齊。
+- `npm run check:i18n`：語系字典體檢（佔位符一致性＋按鈕文字寬度），改文案或加語系後跑。
+
+### 變更
+- 語系字典拆成每語言一檔（`src/i18n/`），範例桌內容抽成資料檔（`src-tauri/samples/`）：新增語系不必動程式邏輯。
+- 切換語言時同步更新網頁語言標記，中日韓字形與斷行才會正確。
+
 ## [0.2.0] — 2026-07-24（內部測試版）
 
 ### 新增
