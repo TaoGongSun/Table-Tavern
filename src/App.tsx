@@ -3120,6 +3120,9 @@ function App() {
   // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
   const gmTargeted = speaker === GM_TARGET;
   const targetName = gmTargeted ? "GM" : (metaOf(speaker)?.name ?? speaker);
+  const requestReplyLabel = t("requestReplyBtn", {
+    name: speaker ? targetName : t("characterFallback"),
+  });
 
   // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算
   const sceneDisplayLabel = (n: number) => {
@@ -3678,37 +3681,42 @@ function App() {
               {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
                   （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
               <div className="composer-send">
-                <button
-                  type="submit"
-                  disabled={(!speaker && activeCharacters.length === 0) || generating !== null}
-                >
-                  {t("send")} ➤
-                </button>
-                <span className="spacer" />
-                <button
-                  type="button"
-                  onClick={() => void replyFromTarget()}
-                  disabled={!speaker || generating !== null}
-                  title={t("requestReplyHint")}
-                >
-                  {t("requestReplyBtn", { name: speaker ? targetName : t("characterFallback") })}
-                </button>
-                <button
-                  type="button"
-                  onClick={gmNarrate}
-                  disabled={generating !== null}
-                  title={t("gmNarrateHint")}
-                >
-                  {t("gmNarrate")}
-                </button>
-                <button
-                  type="button"
-                  onClick={gmAdvance}
-                  disabled={generating !== null || activeCharacters.length === 0}
-                  title={t("gmAdvanceHint")}
-                >
-                  {t("gmAdvance")}
-                </button>
+                <div className="composer-primary-action">
+                  <button
+                    type="submit"
+                    disabled={(!speaker && activeCharacters.length === 0) || generating !== null}
+                  >
+                    {t("send")} ➤
+                  </button>
+                </div>
+                <div className="composer-ai-actions">
+                  <button
+                    className="request-reply"
+                    type="button"
+                    onClick={() => void replyFromTarget()}
+                    disabled={!speaker || generating !== null}
+                    title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
+                    aria-label={requestReplyLabel}
+                  >
+                    <span className="request-reply-label">{requestReplyLabel}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={gmNarrate}
+                    disabled={generating !== null}
+                    title={t("gmNarrateHint")}
+                  >
+                    {t("gmNarrate")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={gmAdvance}
+                    disabled={generating !== null || activeCharacters.length === 0}
+                    title={t("gmAdvanceHint")}
+                  >
+                    {t("gmAdvance")}
+                  </button>
+                </div>
               </div>
             </form>
           </>

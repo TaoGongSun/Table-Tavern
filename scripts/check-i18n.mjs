@@ -33,6 +33,7 @@ const placeholders = (text) => (String(text).match(/\{[a-zA-Z]+\}/g) ?? []).sort
 
 // 按鈕與頁籤：只有真的放在窄容器裡的字才受寬度限制
 const app = readFileSync(join(ROOT, "src/App.tsx"), "utf8");
+const css = readFileSync(join(ROOT, "src/App.css"), "utf8");
 const buttonKeys = new Set();
 for (const match of app.matchAll(/<button\b[\s\S]*?<\/button>/g)) {
   const body = match[0].slice(match[0].indexOf(">") + 1);
@@ -44,16 +45,39 @@ for (const hit of app.matchAll(/\bt\("([a-zA-Z0-9_]*Tab)"/g)) buttonKeys.add(hit
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/;
 const width = (text) => [...String(text)].reduce((n, c) => n + (WIDE.test(c) ? 2 : 1), 0);
 
-// 語言本身沒有更短的地道說法，硬塞會更糟——逐顆判斷後保留
-const ACCEPTED_LONG = new Set(["de:editBtn", "de:hideActs", "ru:removeImageBtn", "ru:worldbookSaveEntry"]);
+// 語言本身沒有更短的地道說法，且所在列已有折行或充足寬度保護
+const WRAP_SAFE_LONG = new Set([
+  "de:editBtn",
+  "de:hideActs",
+  "fr:onboardSaveBtn",
+  "ru:removeImageBtn",
+  "ru:send",
+  "ru:worldbookSaveEntry",
+]);
+
+// 寬度估算只守單顆文案；真正防溢出的版面契約也一併鎖住
+const layoutContracts = [
+  ["一般按鈕列可折行", /\.row\s*\{[^}]*flex-wrap:\s*wrap/s],
+  ["桌面標題列操作可折行", /\.chat-header-actions\s*\{[^}]*flex-wrap:\s*wrap/s],
+  ["輸入區操作可折行", /\.composer-send\s*\{[^}]*flex-wrap:\s*wrap/s],
+  ["角色名按鈕有寬度上限", /\.request-reply\s*\{[^}]*max-width:/s],
+  ["角色名過長時省略", /\.request-reply-label\s*\{[^}]*text-overflow:\s*ellipsis/s],
+];
+const missingLayoutContracts = layoutContracts
+  .filter(([, pattern]) => !pattern.test(css))
+  .map(([name]) => name);
 
 let failed = false;
+if (missingLayoutContracts.length) {
+  failed = true;
+  console.log(`FAIL layout: 缺少 ${missingLayoutContracts.join("、")}`);
+}
 for (const code of Object.keys(dicts).sort()) {
   if (code === "zh-TW") continue;
   const dict = dicts[code];
   const badPlaceholders = keys.filter((k) => placeholders(canon[k]) !== placeholders(dict[k]));
   const tooWide = [...buttonKeys]
-    .filter((k) => k in canon && !ACCEPTED_LONG.has(`${code}:${k}`))
+    .filter((k) => k in canon && !WRAP_SAFE_LONG.has(`${code}:${k}`))
     .map((k) => ({ k, w: width(dict[k]), budget: Math.ceil(Math.max(width(canon[k]), width(en[k])) * 1.3) + 2 }))
     .filter((x) => x.w > x.budget);
 
@@ -68,6 +92,6 @@ for (const code of Object.keys(dicts).sort()) {
 }
 
 if (failed) {
-  console.log("\n若某顆按鈕確實沒有更短的地道說法，把 <語系>:<鍵> 加進 ACCEPTED_LONG。");
+  console.log("\n若某顆按鈕沒有更短的地道說法，先確認所在按鈕列可折行，再加入 WRAP_SAFE_LONG。");
   process.exit(1);
 }

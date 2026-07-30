@@ -230,6 +230,7 @@ body {
 
 .row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
@@ -1128,16 +1129,22 @@ textarea {
 .chat-header {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.4rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--line);
 }
 
 .chat-header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.4rem;
   margin-left: auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名 */
@@ -1359,12 +1366,34 @@ textarea {
 
 .composer-send {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
 
-.composer-send .spacer {
-  flex: 1;
+.composer-primary-action {
+  flex: none;
+}
+
+.composer-ai-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.request-reply {
+  max-width: min(22rem, 55vw);
+  min-width: 0;
+}
+
+.request-reply-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ============ 表單／設定 ============ */
