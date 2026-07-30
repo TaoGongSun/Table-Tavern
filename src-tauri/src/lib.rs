@@ -874,14 +874,22 @@ async fn generate_character_image(
     description: String,
     extra_prompt: String,
     source: Option<String>,
+    framing: Option<String>,
 ) -> Result<String, String> {
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    // 構圖二選一：half＝半身特寫，其餘一律全身（含舊前端沒傳的情況）
+    let shot = match framing.as_deref() {
+        Some("half") => "waist-up half-body",
+        _ => "full-body",
+    };
     let mut prompt = format!(
-        "Generate a single full-body character illustration, portrait orientation 2:3. No text, no watermark, plain background.\nCharacter name: {name}\nCharacter description:\n{description}"
+        "Generate a single {shot} character illustration, portrait orientation 2:3. No text, no watermark, plain background.\nCharacter name: {name}\nCharacter description:\n{description}"
     );
     if !extra_prompt.trim().is_empty() {
-        prompt.push_str(&format!("\nAdditional art direction: {extra_prompt}"));
+        prompt.push_str(&format!(
+            "\nAdditional art direction (takes priority over the defaults above): {extra_prompt}"
+        ));
     }
     // 生圖來源可與聊天連線分開選（source 覆寫；空值＝跟隨 preferences.transport）
     let transport_kind = source
@@ -1007,7 +1015,7 @@ async fn chat_with_character(
         &transport::ui_language(&config),
     );
     let closing = format!(
-        "現在輪到「{}」回應。請直接輸出台詞與動作描寫，不要加名字前綴、不要任何角色之外的說明。",
+        "現在輪到「{}」回應。請直接以角色視角輸出台詞、動作與心理描寫，不要加名字前綴、不要任何角色之外的說明。",
         card.name
     );
     let emit = |delta: &str| {
