@@ -4,7 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
+import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -2397,33 +2397,6 @@ function ActReader({
   );
 }
 
-// 首開先選語言再建範例桌（sample-world-i18n 拍板）：預選跟系統語系走，選單即選即換介面語言
-function FirstRun({ onStart }: { onStart: (lang: Lang) => void }) {
-  const [choice, setChoice] = useState<Lang>(() =>
-    navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en",
-  );
-  setLang(choice);
-
-  return (
-    <main className="container first-run">
-      <h1>{t("firstRunTitle")}</h1>
-      <p>{t("firstRunIntro")}</p>
-      <select
-        aria-label={t("languageLabel")}
-        value={choice}
-        onChange={(e) => setChoice(normalizeLang(e.currentTarget.value))}
-      >
-        {LANGUAGE_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <button onClick={() => onStart(choice)}>{t("firstRunStart")}</button>
-    </main>
-  );
-}
-
 function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
   // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
@@ -2494,7 +2467,8 @@ function App() {
         : speaker;
   // 前幕清單浮層：只是開關狀態，不佔版面高度（NewPlan §9.4 主欄閱讀優先改造）
   const [actsOpen, setActsOpen] = useState(false);
-  const [firstRun, setFirstRun] = useState(false);
+  // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
+  const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -2621,16 +2595,18 @@ function App() {
         ]);
         setConfig(loaded);
         if (worldList.length === 0) {
-          // 首開（沒有任何桌也沒選過語言）：先讓使用者選語言，選完才建範例桌
-          if (loaded.preferences["language"] === undefined) {
-            setFirstRun(true);
-            return;
+          // 首開：語言跟系統語系走並存起來，範例桌直接用該語系生，不擋選語言畫面（設定頁可改）
+          let start = loaded;
+          if (start.preferences["language"] === undefined) {
+            start = { ...start, preferences: { ...start.preferences, language: detectLang() } };
+            await invoke("write_config", { config: start });
+            setConfig(start);
           }
           const id = await invoke<string>("create_sample_world", {
-            lang: normalizeLang(loaded.preferences["language"]),
+            lang: normalizeLang(start.preferences["language"]),
           });
           setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-          await enterTable(id, loaded);
+          await enterTable(id, start);
           return;
         }
         setWorlds(worldList);
@@ -3131,29 +3107,37 @@ function App() {
   };
   const generatingMeta = generating !== null ? metaOf(generating.id) : undefined;
 
-  async function startFirstRun(lang: Lang) {
-    if (!config) return;
+  // 設定頁改語言時：既有範例桌內容還是舊語言，問一次要不要用新語言重生（答過就記住，之後改語言不再問）
+  async function changeSettingPreference(key: string, value: unknown) {
+    const before = normalizeLang(chatConfigRef.current?.preferences["language"]);
+    const asked = chatConfigRef.current?.preferences["sample_regen_asked"] === true;
+    await changePreference(key, value);
+    if (key === "language" && value !== before && !asked) setRegenAsk(before);
+  }
+
+  async function answerRegen(answer: "regen" | "keep" | "cancel") {
+    const before = regenAsk;
+    setRegenAsk(null);
+    if (before === null) return;
+    // 取消＝把語言退回原本的，讓玩家在設定頁重新選（不算問過）
+    if (answer === "cancel") {
+      await changePreference("language", before);
+      return;
+    }
+    await changePreference("sample_regen_asked", true);
+    if (answer === "keep") return;
+    const current = chatConfigRef.current;
+    if (!current) return;
     setError("");
     try {
-      const updated = { ...config, preferences: { ...config.preferences, language: lang } };
-      await invoke("write_config", { config: updated });
-      setConfig(updated);
-      const id = await invoke<string>("create_sample_world", { lang });
+      const id = await invoke<string>("create_sample_world", {
+        lang: normalizeLang(current.preferences["language"]),
+      });
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-      await enterTable(id, updated);
-      setFirstRun(false);
+      await enterTable(id, current);
     } catch (reason) {
       setError(String(reason));
     }
-  }
-
-  if (firstRun && config) {
-    return (
-      <>
-        <FirstRun onStart={(lang) => void startFirstRun(lang)} />
-        {error && <ErrorNote text={error} />}
-      </>
-    );
   }
 
   if (!config || !table) {
@@ -3730,12 +3714,39 @@ function App() {
         <SettingsWindow
           config={config}
           onSaved={setConfig}
-          onPreference={(key, value) => void changePreference(key, value)}
+          onPreference={(key, value) => void changeSettingPreference(key, value)}
           sponsorUnlocked={sponsorUnlocked}
           onSponsorUnlocked={() => setSponsorUnlocked(true)}
           onClose={() => setSettingsOpen(false)}
           initialTab={settingsOpen}
         />
+      )}
+
+      {/* 疊在設定視窗之上：換語言後範例桌要不要重生，一輩子只問這一次 */}
+      {regenAsk !== null && (
+        <div className="modal-overlay" onClick={() => void answerRegen("cancel")}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("sampleRegenTitle")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>{t("sampleRegenTitle")}</h2>
+            <p>{t("sampleRegenBody")}</p>
+            <div className="ai-gen-footer">
+              <button type="button" onClick={() => void answerRegen("cancel")}>
+                {t("sampleRegenCancel")}
+              </button>
+              <button type="button" onClick={() => void answerRegen("keep")}>
+                {t("sampleRegenKeep")}
+              </button>
+              <button type="button" onClick={() => void answerRegen("regen")}>
+                {t("sampleRegenConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

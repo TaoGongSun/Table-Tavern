@@ -19,10 +19,12 @@ export const en: Record<MsgKey, string> = {
   onboardCliHint:
     "Advanced users who already installed and logged into an official CLI can instead enable CLI subscription mode under “Settings → AI Connection” in the lower left.",
 
-  firstRunTitle: "Welcome to Table Tavern",
-  firstRunIntro:
-    "Choose the language for the interface and the sample table — you can change it anytime under Settings → Appearance.",
-  firstRunStart: "Start",
+  sampleRegenTitle: "Create a new sample table in the new language?",
+  sampleRegenBody:
+    "The interface is now in the new language, but the characters and world settings in your existing sample table are still in the old one. Table Tavern can create a fresh sample table in the new language and open it for you; the old one stays in your table list. You will only be asked this once.",
+  sampleRegenConfirm: "Create",
+  sampleRegenKeep: "No thanks",
+  sampleRegenCancel: "Cancel, pick a language again",
 
   settingsBtn: "Settings",
   appearanceTab: "Appearance",
