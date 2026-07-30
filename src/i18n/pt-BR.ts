@@ -140,7 +140,6 @@ export const ptBR: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Excluir imagem gerada",
   aiGalleryDeleteConfirm: "Excluir esta imagem gerada? Esta ação não pode ser desfeita.",
   worldbookImported: "Importadas {n} entradas",
-  worldbookReadError: "Não foi possível ler o arquivo JSON",
   worldbookJson: "JSON",
   unsavedChanges: "{n} alterações não salvas",
   unsavedLeaveTitle: "Alterações não salvas",

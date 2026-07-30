@@ -1381,14 +1381,8 @@ function WorldEditor({
   async function importWorldbook(file: File) {
     setWorldbookMessage("");
     try {
-      const jsonText = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () =>
-          typeof reader.result === "string" ? resolve(reader.result) : reject(t("worldbookReadError"));
-        reader.onerror = () => reject(reader.error ?? new Error(t("worldbookReadError")));
-        reader.readAsText(file);
-      });
-      const count = await invoke<number>("import_worldbook", { worldId: world, jsonText });
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const count = await invoke<number>("import_worldbook", { worldId: world, data: Array.from(bytes) });
       await refreshWorldbook();
       setWorldbookMessage(t("worldbookImported", { n: count }));
     } catch (reason) {
@@ -1446,7 +1440,7 @@ function WorldEditor({
           <input
             ref={importInputRef}
             type="file"
-            accept=".json,application/json"
+            accept=".json,.png,application/json,image/png"
             hidden
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];

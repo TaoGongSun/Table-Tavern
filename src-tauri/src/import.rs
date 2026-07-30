@@ -404,6 +404,24 @@ fn private_markdown(data: &Value) -> String {
         .join("\n")
 }
 
+/// 世界書匯入的前處理：PNG 卡先解出內嵌 JSON；整包若是角色卡（社群發佈的世界書卡），
+/// 剝到 character_book 那層再交給 data::import_worldbook
+pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
+    let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+        decode_png_character(bytes)?
+    } else {
+        bytes.to_vec()
+    };
+    let value: Value = serde_json::from_slice(&json_bytes)
+        .map_err(|error| data::invalid_data(format!("世界書 JSON 無法解析：{error}")))?;
+    let book = value
+        .get("data")
+        .and_then(|data| data.get("character_book"))
+        .or_else(|| value.get("character_book"))
+        .unwrap_or(&value);
+    Ok(book.to_string())
+}
+
 fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
     let mut offset = PNG_MAGIC.len();
     while offset < bytes.len() {
@@ -861,5 +879,34 @@ mod tests {
         delete_character_image(root.path(), &world_id, &meta.id).unwrap();
         delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
         delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
+    }
+
+    /// 世界書卡（PNG 或 JSON 的假角色卡）要能整包匯進世界書；keys 為 null 的常駐條目不能炸
+    #[test]
+    fn worldbook_json_unwraps_lorebook_cards() {
+        let card = r#"{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"根源重塑","character_book":{"name":"根源重塑","entries":[{"keys":["森林"],"content":"古老盟約","comment":"盟約","enabled":true,"insertion_order":3},{"keys":null,"constant":true,"content":"世界觀常駐","comment":"世界觀","enabled":true}]}}}"#;
+
+        let root = TestRoot::new("worldbook-card");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        // PNG 卡與純 JSON 卡走同一條路，各匯一次
+        let png = minimal_png(card);
+        for bytes in [png.as_slice(), card.as_bytes()] {
+            let json = worldbook_json(bytes).unwrap();
+            assert_eq!(data::import_worldbook(root.path(), &world_id, &json).unwrap(), 2);
+        }
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[0].title, "盟約");
+        assert_eq!(entries[0].keys, ["森林"]);
+        assert_eq!(entries[0].order, 3);
+        assert!(entries[1].constant);
+        assert!(entries[1].keys.is_empty());
+        assert_eq!(entries[1].content, "世界觀常駐");
+
+        // 不是卡的一般世界書 JSON 原樣通過
+        let plain = r#"{"entries":{"0":{"uid":0,"key":["龍"],"content":"沉睡"}}}"#;
+        let round_trip: Value =
+            serde_json::from_str(&worldbook_json(plain.as_bytes()).unwrap()).unwrap();
+        assert_eq!(round_trip, serde_json::from_str::<Value>(plain).unwrap());
     }
 }

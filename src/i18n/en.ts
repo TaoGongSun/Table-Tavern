@@ -156,7 +156,6 @@ export const en: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Delete generated image",
   aiGalleryDeleteConfirm: "Delete this generated image? This cannot be undone.",
   worldbookImported: "Imported {n} entries",
-  worldbookReadError: "Could not read the JSON file",
   worldbookJson: "JSON",
   unsavedChanges: "{n} unsaved changes",
   unsavedLeaveTitle: "Unsaved changes",

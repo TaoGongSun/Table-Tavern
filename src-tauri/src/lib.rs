@@ -288,8 +288,9 @@ fn delete_worldbook_entry(app: tauri::AppHandle, world_id: String, uid: u64) -> 
 fn import_worldbook(
     app: tauri::AppHandle,
     world_id: String,
-    json_text: String,
+    data: Vec<u8>,
 ) -> Result<usize, String> {
+    let json_text = import::worldbook_json(&data).map_err(|error| error.to_string())?;
     data::import_worldbook(&data_root(&app)?, &world_id, &json_text)
         .map_err(|error| error.to_string())
 }

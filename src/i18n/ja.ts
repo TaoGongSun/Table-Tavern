@@ -140,7 +140,6 @@ export const ja: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "生成画像を削除",
   aiGalleryDeleteConfirm: "本当にこの生成画像を削除しますか？この操作は取り消せません。",
   worldbookImported: "{n} 件の項目をインポートしました",
-  worldbookReadError: "JSONファイルを読み込めませんでした",
   worldbookJson: "JSON",
   unsavedChanges: "未保存の変更が {n} 件あります",
   unsavedLeaveTitle: "未保存の変更",

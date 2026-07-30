@@ -140,7 +140,6 @@ export const ko: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "생성된 이미지 삭제",
   aiGalleryDeleteConfirm: "이 생성 이미지를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
   worldbookImported: "{n}개 항목 가져옴",
-  worldbookReadError: "JSON 파일을 읽을 수 없습니다",
   worldbookJson: "JSON",
   unsavedChanges: "저장되지 않은 변경사항 {n}개",
   unsavedLeaveTitle: "저장되지 않은 변경사항",

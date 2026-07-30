@@ -155,7 +155,6 @@ export const zh = {
   aiGalleryDeleteTitle: "刪除生成圖",
   aiGalleryDeleteConfirm: "確定要刪除這張生成圖嗎？此操作不可復原。",
   worldbookImported: "已匯入 {n} 條",
-  worldbookReadError: "無法讀取 JSON 檔案",
   worldbookJson: "JSON",
   unsavedChanges: "有 {n} 項修改未儲存",
   unsavedLeaveTitle: "尚未儲存",
