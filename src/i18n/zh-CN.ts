@@ -69,6 +69,8 @@ export const zhCN: Record<MsgKey, string> = {
   cliInstallStageVerify: "正在验证登录状态…",
   cliInstallStageDone: "安装与登录已完成",
   cliInstallStageError: "安装或验证失败",
+  cliInstallHintFileLocked:
+    "安装文件被其他程序占用了（常见是杀毒软件正在扫描，或该工具还在运行中）。请关闭该工具、稍候再重试；仍失败就重启电脑后再装一次。",
   cliInstallLogPath: "记录：{path}",
   riskTitle: "启用前请了解具体风险：",
   risk1: "供应商条款禁止第三方工具使用订阅凭证；Google 已对同类工具的用户执行账号封禁且申诉无果；Anthropic 保留不经通知执法的权利。",

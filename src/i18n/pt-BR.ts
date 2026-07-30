@@ -69,6 +69,8 @@ export const ptBR: Record<MsgKey, string> = {
   cliInstallStageVerify: "Verificando status de login…",
   cliInstallStageDone: "Instalação e login concluídos",
   cliInstallStageError: "Falha na instalação ou verificação",
+  cliInstallHintFileLocked:
+    "O arquivo de instalação está bloqueado por outro programa (geralmente um antivírus verificando, ou a ferramenta ainda está em execução). Feche a ferramenta e tente novamente em instantes; se continuar falhando, reinicie o computador e instale de novo.",
   cliInstallLogPath: "Log: {path}",
   riskTitle: "Entenda os riscos específicos antes de ativar:",
   risk1: "Os termos dos provedores proíbem o uso de credenciais de assinatura por ferramentas de terceiros; o Google já suspendeu contas de usuários de ferramentas semelhantes sem direito a recurso, e a Anthropic se reserva o direito de aplicar punições sem aviso prévio.",

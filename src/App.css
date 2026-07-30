@@ -1668,6 +1668,10 @@ textarea {
   white-space: pre-wrap;
 }
 
+.cli-install-hint {
+  overflow-wrap: anywhere;
+}
+
 .cli-install-progress small {
   opacity: 0.75;
   overflow-wrap: anywhere;

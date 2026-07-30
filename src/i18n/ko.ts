@@ -69,6 +69,8 @@ export const ko: Record<MsgKey, string> = {
   cliInstallStageVerify: "로그인 상태 확인 중…",
   cliInstallStageDone: "설치 및 로그인 완료",
   cliInstallStageError: "설치 또는 인증 실패",
+  cliInstallHintFileLocked:
+    "설치 파일이 다른 프로그램에 의해 사용 중입니다(보통 백신이 검사 중이거나 해당 도구가 아직 실행 중인 경우입니다). 도구를 닫고 잠시 후 다시 시도하세요. 계속 실패하면 재부팅 후 다시 설치하세요.",
   cliInstallLogPath: "로그: {path}",
   riskTitle: "활성화 전 다음 리스크를 반드시 확인해 주세요:",
   risk1: "제공사의 약관은 제3자 도구가 구독 크리덴셜을 사용하는 것을 금지합니다. Google은 유사한 도구를 사용한 사용자의 계정을 정지했으며 이의 제기도 받아들여지지 않았습니다. Anthropic 역시 사전 고지 없이 제재를 가할 권리를 보유합니다.",

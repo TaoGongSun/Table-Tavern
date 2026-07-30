@@ -69,6 +69,8 @@ export const ja: Record<MsgKey, string> = {
   cliInstallStageVerify: "ログイン状態を検証中…",
   cliInstallStageDone: "インストールとログインが完了しました",
   cliInstallStageError: "インストールまたは認証に失敗しました",
+  cliInstallHintFileLocked:
+    "インストールファイルが他のプログラムに使用されています（ウイルス対策ソフトのスキャン中か、ツールがまだ実行中の場合が多いです）。ツールを閉じて少し待ってから再試行してください。それでも失敗する場合は、再起動後にもう一度インストールしてください。",
   cliInstallLogPath: "ログ：{path}",
   riskTitle: "有効化する前に、以下のリスクをご理解ください：",
   risk1: "プロバイダーの規約はサードパーティ製ツールによるサブスクリプション認証情報の使用を禁止しています。Googleは同種のツールを使うユーザーのアカウントを停止しており、異議申し立ても認められていません。Anthropicも予告なく取り締まる権利を留保しています。",

@@ -76,6 +76,8 @@ export const zh = {
   cliInstallStageVerify: "正在驗證登入狀態…",
   cliInstallStageDone: "安裝與登入已完成",
   cliInstallStageError: "安裝或驗證失敗",
+  cliInstallHintFileLocked:
+    "安裝檔被其他程式佔住了（常見是防毒軟體正在掃描，或該工具還在執行中）。請關閉該工具、稍候再重試；仍失敗就重開機後再裝一次。",
   cliInstallLogPath: "記錄：{path}",
   riskTitle: "啟用前請了解具體風險：",
   risk1:
