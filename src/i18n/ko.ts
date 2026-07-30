@@ -240,7 +240,7 @@ export const ko: Record<MsgKey, string> = {
   composerAria: "플레이어 입력창",
   composerPlaceholder: "“{name}”에게 말하기…",
   composerNoTarget: "내 행동을 묘사하거나 모두에게 말하기…",
-  composerNoCharacter: "캐릭터를 먼저 생성해 주세요",
+  composerNoCharacter: "캐릭터를 만들거나, 월드북을 불러온 뒤 GM에게 말을 걸어 보세요",
   clearTarget: "대화 대상 지정 취소",
   send: "전송",
   characterFallback: "캐릭터",

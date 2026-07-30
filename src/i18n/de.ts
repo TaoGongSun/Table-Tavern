@@ -240,7 +240,7 @@ export const de: Record<MsgKey, string> = {
   composerAria: "Spielereingabe",
   composerPlaceholder: "Zu „{name}“ sprechen…",
   composerNoTarget: "Beschreibe deine Aktion oder sprich in die Runde…",
-  composerNoCharacter: "Erstelle zuerst einen Charakter",
+  composerNoCharacter: "Erstelle einen Charakter oder importiere ein Weltbuch und sprich mit dem GM",
   clearTarget: "Ziel aufheben",
   send: "Senden",
   characterFallback: "der Charakter",

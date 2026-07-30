@@ -240,7 +240,7 @@ export const zhCN: Record<MsgKey, string> = {
   composerAria: "玩家输入",
   composerPlaceholder: "对“{name}”发言…",
   composerNoTarget: "描述你的动作，或对全场发言…",
-  composerNoCharacter: "先创建一个角色",
+  composerNoCharacter: "创建角色，或导入世界书后找 GM 开局",
   clearTarget: "取消发言对象",
   send: "发送",
   characterFallback: "该角色",

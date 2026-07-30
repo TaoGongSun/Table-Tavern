@@ -1199,11 +1199,14 @@ function WorldEditor({
   world,
   onBack,
   leaveGuard,
+  onImported,
 }: {
   world: string;
   onBack: () => void;
   /** 側欄要離開世界設定時先問過這裡（未儲存確認與返回鈕同一條） */
   leaveGuard: { current: (() => Promise<boolean>) | null };
+  /** 世界書匯入成功（至少一條）時通知 App：純世界書開局要自動選 GM */
+  onImported: () => void;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -1392,6 +1395,7 @@ function WorldEditor({
       const count = await invoke<number>("import_worldbook", { worldId: world, data: Array.from(bytes) });
       await refreshWorldbook();
       setWorldbookMessage(t("worldbookImported", { n: count }));
+      if (count > 0) onImported();
     } catch (reason) {
       setWorldbookMessage(String(reason));
     }
@@ -3546,7 +3550,14 @@ function App() {
           </EditPane>
         ) : mainView?.kind === "world" ? (
           <EditPane title={t("worldSummary")}>
-            <WorldEditor world={table} onBack={() => setMainView(null)} leaveGuard={leaveGuard} />
+            <WorldEditor
+              world={table}
+              onBack={() => setMainView(null)}
+              leaveGuard={leaveGuard}
+              onImported={() => {
+                if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+              }}
+            />
           </EditPane>
         ) : (
           <>

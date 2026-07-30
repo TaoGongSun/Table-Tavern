@@ -260,7 +260,7 @@ export const zh = {
   composerAria: "玩家輸入",
   composerPlaceholder: "對「{name}」發言…",
   composerNoTarget: "描述你的動作，或對全場發言…",
-  composerNoCharacter: "先建立一個角色",
+  composerNoCharacter: "建立角色，或匯入世界書後找 GM 開局",
   clearTarget: "取消發言對象",
   send: "送出",
   characterFallback: "角色",
