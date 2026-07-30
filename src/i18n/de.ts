@@ -69,6 +69,8 @@ export const de: Record<MsgKey, string> = {
   cliInstallStageVerify: "Login-Status wird verifiziert…",
   cliInstallStageDone: "Installation und Login abgeschlossen",
   cliInstallStageError: "Installation oder Verifizierung fehlgeschlagen",
+  cliInstallHintFileLocked:
+    "Die Installationsdatei wird von einem anderen Programm blockiert (meist scannt gerade ein Virenschutz, oder das Tool läuft noch). Schließe das Tool und versuche es gleich erneut; hilft das nicht, starte den Rechner neu und installiere noch einmal.",
   cliInstallLogPath: "Protokoll: {path}",
   riskTitle: "Bitte beachte vor der Aktivierung die konkreten Risiken:",
   risk1: "Die Nutzungsbedingungen der Anbieter verbieten die Verwendung von Abonnement-Anmeldedaten durch Drittanbieter-Tools. Google hat bereits Konten von Nutzern ähnlicher Tools gesperrt (Einsprüche wurden abgelehnt); Anthropic behält sich das Recht vor, dies ohne Vorankündigung durchzusetzen.",

@@ -210,6 +210,21 @@ function cliInstallStageText(stage: CliInstallStage) {
   }
 }
 
+// PowerShell 的錯誤代號與安裝腳本自身的訊息固定為英文，不受系統語言影響，
+// 可靠地認出「安裝檔被其他程序鎖住」（防毒掃描中、工具還在跑）這類失敗
+const FILE_LOCKED_MARKERS = [
+  "RemoveFileSystemItemIOError",
+  "being used by another process",
+  "Failed to install",
+];
+
+function cliInstallErrorHint(detail: string | undefined) {
+  if (detail && FILE_LOCKED_MARKERS.some((marker) => detail.includes(marker))) {
+    return t("cliInstallHintFileLocked");
+  }
+  return null;
+}
+
 const CLI_LABELS: Record<string, string> = {
   claude: "Claude Code CLI",
   codex: "Codex CLI",
@@ -659,6 +674,9 @@ function Settings({
                     role={progress.stage === "error" ? "alert" : "status"}
                   >
                     <strong>{cliInstallStageText(progress.stage)}</strong>
+                    {progress.stage === "error" && cliInstallErrorHint(progress.detail) && (
+                      <span className="cli-install-hint">{cliInstallErrorHint(progress.detail)}</span>
+                    )}
                     {progress.detail && (
                       <span className="cli-install-detail">{progress.detail}</span>
                     )}

@@ -69,6 +69,8 @@ export const fr: Record<MsgKey, string> = {
   cliInstallStageVerify: "Vérification de l'état de connexion…",
   cliInstallStageDone: "Installation et connexion terminées",
   cliInstallStageError: "Échec de l'installation ou de la validation",
+  cliInstallHintFileLocked:
+    "Le fichier d'installation est verrouillé par un autre programme (souvent un antivirus en train de l'analyser, ou l'outil encore en cours d'exécution). Ferme l'outil et réessaie dans un instant ; si l'échec persiste, redémarre puis réinstalle.",
   cliInstallLogPath: "Journal : {path}",
   riskTitle: "Comprends les risques concrets avant d'activer :",
   risk1: "Les conditions d'utilisation des fournisseurs interdisent l'usage des identifiants d'abonnement par des outils tiers. Google a déjà suspendu les comptes d'utilisateurs d'outils similaires sans possibilité de recours, et Anthropic se réserve le droit d'agir sans préavis.",

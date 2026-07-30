@@ -74,6 +74,8 @@ export const en: Record<MsgKey, string> = {
   cliInstallStageVerify: "Verifying sign-in status…",
   cliInstallStageDone: "Installation and sign-in complete",
   cliInstallStageError: "Installation or verification failed",
+  cliInstallHintFileLocked:
+    "The installer file is locked by another program (usually an antivirus scanning it, or the tool is still running). Close the tool and retry in a moment; if it keeps failing, reboot and install again.",
   cliInstallLogPath: "Log: {path}",
   riskTitle: "Understand the concrete risks before enabling:",
   risk1:
