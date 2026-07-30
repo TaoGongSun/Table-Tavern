@@ -69,6 +69,8 @@ export const de: Record<MsgKey, string> = {
   cliInstallStageVerify: "Login-Status wird verifiziert…",
   cliInstallStageDone: "Installation und Login abgeschlossen",
   cliInstallStageError: "Installation oder Verifizierung fehlgeschlagen",
+  cliInstallHintNetwork:
+    "Falls dieser Dienst in deiner Region VPN/Proxy braucht: Aktiviere im Proxy-Programm den System-Proxy oder den Global-/TUN-Modus und versuche es erneut (die App reicht den System-Proxy automatisch an CLI-Tools weiter). Dieser Fehler erscheint auch, wenn das Fenster vor Abschluss des Browser-Logins geschlossen wurde.",
   cliInstallHintFileLocked:
     "Die Installationsdatei wird von einem anderen Programm blockiert (meist scannt gerade ein Virenschutz, oder das Tool läuft noch). Schließe das Tool und versuche es gleich erneut; hilft das nicht, starte den Rechner neu und installiere noch einmal.",
   cliInstallLogPath: "Protokoll: {path}",

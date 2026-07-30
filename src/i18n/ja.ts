@@ -69,6 +69,8 @@ export const ja: Record<MsgKey, string> = {
   cliInstallStageVerify: "ログイン状態を検証中…",
   cliInstallStageDone: "インストールとログインが完了しました",
   cliInstallStageError: "インストールまたは認証に失敗しました",
+  cliInstallHintNetwork:
+    "このサービスに VPN／プロキシが必要な地域の場合：プロキシソフトの「システムプロキシ」またはグローバル／TUN モードを有効にして再試行してください（アプリはシステムプロキシを CLI ツールに自動で引き渡します）。ブラウザでログインを完了せずにウィンドウを閉じた場合も、このエラーが表示されます。",
   cliInstallHintFileLocked:
     "インストールファイルが他のプログラムに使用されています（ウイルス対策ソフトのスキャン中か、ツールがまだ実行中の場合が多いです）。ツールを閉じて少し待ってから再試行してください。それでも失敗する場合は、再起動後にもう一度インストールしてください。",
   cliInstallLogPath: "ログ：{path}",

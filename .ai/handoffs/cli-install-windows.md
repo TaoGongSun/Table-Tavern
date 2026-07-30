@@ -1,8 +1,9 @@
 # Handoff: cli-install-windows（Windows 安裝流程改 Rust 引擎）
 
-Updated: 2026-07-31 +0800（回報者 Grok 安裝失敗診斷＋「檔案被佔用」白話提示；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
+Updated: 2026-07-31 +0800（系統代理自動下傳＋連線失敗白話提示；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
 
 ## Current state：v2 包朋友實測影片已診斷完，閃視窗＋設定未儲存兩根因已修，待 CI verify＋重打包
+- **系統代理自動下傳＋連線提示（2026-07-31）**：Grok 回報者續報「空白登入視窗→失敗」，本機沙盒實測定根因＝`grok login` 連 auth.x.ai 被牆丟包時吊死不印字；回報者手動在 cmd 設 `HTTPS_PROXY` 本地端口後登入成功——梯子只開「系統代理」時瀏覽器吃得到、CLI 吃不到。治本：新模組 src-tauri/src/proxy.rs 讀 Windows 註冊表系統代理（ProxyEnable＋ProxyServer，兩種格式解析，新依賴 winreg 0.56），掛到 install.rs run_hidden／run_terminal 與 cli.rs run_cli 三處子程序；使用者自設環境變數或 app 內 envs 一律優先（先掛代理後掛 envs，同名覆蓋），PAC 不處理。提示：App.tsx 加 NETWORK_MARKERS（irm 下載錯誤代號＋登入逾時字串）→ 十語系 `cliInstallHintNetwork`（開系統代理／全域 TUN 再試；沒登入完關窗也會看到）。驗證：cargo test 122 綠（含新 5 個解析測試）、tsc＋npm build 綠；winreg 讀取段是 Windows 專屬碼，待 CI verify。
 - **回報者 Grok 安裝失敗（2026-07-31，簡中 Windows）**：錯在 xAI 官方 install.ps1 第 205 行 `Remove-Item`——`.grok\downloads\grok-windows-x86_64.exe` 被別的程序鎖住（防毒掃描／grok 還在跑／前次安裝未死），下載寫入與清理都失敗。非本 app 程式碼問題；app 端 PROVIDER_GUARDS 防重複觸發正常。已加前端白話提示：錯誤 detail 含 `RemoveFileSystemItemIOError`／`being used by another process`／`Failed to install` 任一（PowerShell 錯誤代號不受系統語言翻譯，簡中亂碼也認得到）→ 錯誤區塊上方多一行「安裝檔被其他程式佔住…關閉／稍候／重開機再試」（src/App.tsx:213 比對邏輯、i18n 十語系 `cliInstallHintFileLocked`）。驗證：tsc --noEmit 綠（語系逐鍵型別檢查，十語系缺鍵會報錯）。附帶發現記錄不擋：包裝指令的 `$ErrorActionPreference='Stop'`（install.rs:162）會讓官方腳本的清理 Remove-Item 變致命，蓋掉真正的「下載失敗＋網址」訊息。
 - **朋友影片診斷（2026-07-26，43s 錄影逐格看完）**：Gemini 登入其實**成功**（影片 32s「安裝與登入已完成」；朋友手動 `agy -p ok` 也有正常回覆）；掛在畫面的紅框「verification failed」是 Grok 的舊錯誤（log 路徑 install-grok-*）。最後不能聊的真因＝**transport 仍是 "api"**：風險勾選框沒勾＋用右上 ✕ 關窗（✕ 只關不存），聊天照走 OpenRouter → 402（帳戶額度見底）。朋友自救步驟：選 Gemini CLI→勾風險→按儲存。
 - **「多次閃視窗」根因與修復**：60s 冷卻只擋登入啟動；真正閃的是沒設 CREATE_NO_WINDOW 的 console 子程序——detect_clis 的 `--version`（每次偵測最多 4 閃）、agy/grok `models`、run_cli 每輪聊天、run_terminal 外層 `cmd /C` 多餘黑窗。修：cli.rs 三處＋新 `hidden_output()` helper、install.rs run_terminal 補 `creation_flags(0x08000000)`（內層 start 開的登入視窗不受影響）。
@@ -27,7 +28,8 @@ Updated: 2026-07-31 +0800（回報者 Grok 安裝失敗診斷＋「檔案被佔�
 ## Next action
 - 2026-07-28 併入（原 cli-connected-badge，該案已結）：grok 的 Windows 探針改 `grok models` ＋ `InstallSpec.probe_expect` 字串比對（stdout 須含 `You are logged in`）＋ `pre_probe: true`（src-tauri/src/install.rs:18、245-265、421）。舊探針 `grok -p "ok"` 本機實測 26.0 秒，逼近 `run_probe` 的 30 秒上限，Windows 更慢很可能一直逾時。測試者要驗：已登入時直接打勾不彈登入視窗、未登入時仍正常走登入。這輪重打包要先併入。
 1. **打包已完成（2026-07-26 使用者下令）**：verify 綠 run 30165056516 → 打包綠 run 30165448004（commit 194fb86，artifact `table-tavern-windows-unsigned` 7MB）：https://github.com/TaoGongSun/Table-Tavern/actions/runs/30165448004 。同 commit 另含兩項 ui-overhaul 順手修：故事欄行寬填滿（刪 42rem 上限）、OpenRouter 專屬欄位（API key／base URL）只在 API 直連時顯示。Mac DMG 同步重打（ad-hoc，00:22 版，四項修正齊）。
-2. artifact 轉交測試者複測，重點三項：①偵測／聊天不再閃黑窗；②設定頁選 Gemini CLI→勾風險→按置頂「儲存設定」→實聊走 CLI 不再 402；③未儲存時按「不儲存返回」有確認框。「檔案被佔用」白話提示（2026-07-31）尚未進已打的包，下次重打包自然帶上；Grok 回報者先照提示內容口頭引導（關 grok／等防毒／刪 `.grok\downloads`／重開機再裝）。
+2. artifact 轉交測試者複測，重點三項：①偵測／聊天不再閃黑窗；②設定頁選 Gemini CLI→勾風險→按置頂「儲存設定」→實聊走 CLI 不再 402；③未儲存時按「不儲存返回」有確認框。
+3. 2026-07-31 兩輪修正（檔案被佔用提示、系統代理下傳＋連線提示）尚未進包：CI verify → 重打包 → 請 Grok 回報者**清掉手動設的代理環境變數、只開梯子的「系統代理」**走一輪安裝→登入→聊天；聊天必驗（代理有沒有真的傳進聊天子程序只有這關能證明）。
 3. 回報結果：綠＝本任務關閉；紅＝讀 app 的 install-logs（UI 有顯示 log 路徑）修復。
 3. 安裝階段是否也開可見視窗、Stage C（每週金絲雀排程、診斷打包按鈕、mac 收編引擎）等使用者拍板，不自動開工。
 
@@ -36,8 +38,8 @@ Updated: 2026-07-31 +0800（回報者 Grok 安裝失敗診斷＋「檔案被佔�
 - grok -p 未登入行為官方無載（已以 30s timeout 防禦）；grok 需 SuperGrok／Premium+ 訂閱，失敗訊息有手動安裝引導。
 - CI 的 rust-cache 在 job 失敗時不存檔＝紅輪後下一輪仍冷編譯（≈40 分）。
 
-## 派工紀錄（本輪：Grok 安裝失敗診斷＋白話提示）
-- 主線（Fable 5）全程：讀 repo＋抓官方 install.ps1 比對定根因、前端比對邏輯與十語系實作、tsc 驗證、交接。無外包（改動小、驗證成本＝重讀 diff，不符外包判準）。
+## 派工紀錄（本輪：空白視窗診斷＋系統代理下傳）
+- 主線（Fable 5）全程：假 HOME＋假代理沙盒實測定根因（丟包＝吊死不印字）、proxy.rs 實作與三處掛點、十語系提示、cargo test／tsc／build 驗證、交接。無外包（規格已在對話中定案，委派比直寫貴）。
 
 ## Constraints（承前）
 app 不碰帳密 token；只用官方安裝指令；grok 訂閱門檻不特判；不支援 Windows 的家顯示手動安裝引導；CI 觸發恢復「等使用者下令」常規（目標模式已結束）。

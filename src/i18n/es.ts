@@ -69,6 +69,8 @@ export const es: Record<MsgKey, string> = {
   cliInstallStageVerify: "Verificando inicio de sesión…",
   cliInstallStageDone: "Instalación e inicio de sesión completados",
   cliInstallStageError: "Error de instalación o verificación",
+  cliInstallHintNetwork:
+    "Si este servicio requiere VPN/proxy en tu región: activa el proxy del sistema o el modo global/TUN de tu aplicación de proxy y vuelve a intentarlo (la app pasa el proxy del sistema a las herramientas CLI automáticamente). Este error también aparece si cerraste la ventana antes de completar el inicio de sesión en el navegador.",
   cliInstallHintFileLocked:
     "El archivo de instalación está bloqueado por otro programa (normalmente un antivirus analizándolo, o la herramienta sigue en ejecución). Cierra la herramienta y vuelve a intentarlo en un momento; si sigue fallando, reinicia el equipo e instala de nuevo.",
   cliInstallLogPath: "Registro: {path}",

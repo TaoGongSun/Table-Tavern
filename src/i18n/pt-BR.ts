@@ -69,6 +69,8 @@ export const ptBR: Record<MsgKey, string> = {
   cliInstallStageVerify: "Verificando status de login…",
   cliInstallStageDone: "Instalação e login concluídos",
   cliInstallStageError: "Falha na instalação ou verificação",
+  cliInstallHintNetwork:
+    "Se este serviço exige VPN/proxy na sua região: ative o proxy do sistema ou o modo global/TUN do seu aplicativo de proxy e tente novamente (o app repassa o proxy do sistema às ferramentas CLI automaticamente). Este erro também aparece se a janela foi fechada antes de concluir o login no navegador.",
   cliInstallHintFileLocked:
     "O arquivo de instalação está bloqueado por outro programa (geralmente um antivírus verificando, ou a ferramenta ainda está em execução). Feche a ferramenta e tente novamente em instantes; se continuar falhando, reinicie o computador e instale de novo.",
   cliInstallLogPath: "Log: {path}",

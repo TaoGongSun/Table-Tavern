@@ -560,6 +560,8 @@ pub async fn run_cli(
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let mut command = Command::new(program);
+    // 先掛系統代理再掛使用者 envs，同名時使用者設定蓋過代理
+    crate::proxy::apply_system_proxy(&mut command);
     command
         .current_dir(working_dir)
         .args(args)

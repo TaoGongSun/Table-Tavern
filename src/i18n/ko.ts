@@ -69,6 +69,8 @@ export const ko: Record<MsgKey, string> = {
   cliInstallStageVerify: "로그인 상태 확인 중…",
   cliInstallStageDone: "설치 및 로그인 완료",
   cliInstallStageError: "설치 또는 인증 실패",
+  cliInstallHintNetwork:
+    "이 서비스에 VPN/프록시가 필요한 지역이라면: 프록시 앱의 시스템 프록시 또는 전역/TUN 모드를 켜고 다시 시도하세요(앱이 시스템 프록시를 CLI 도구에 자동으로 전달합니다). 브라우저에서 로그인을 마치기 전에 창을 닫아도 이 오류가 표시됩니다.",
   cliInstallHintFileLocked:
     "설치 파일이 다른 프로그램에 의해 사용 중입니다(보통 백신이 검사 중이거나 해당 도구가 아직 실행 중인 경우입니다). 도구를 닫고 잠시 후 다시 시도하세요. 계속 실패하면 재부팅 후 다시 설치하세요.",
   cliInstallLogPath: "로그: {path}",

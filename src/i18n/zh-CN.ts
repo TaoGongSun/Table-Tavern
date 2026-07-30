@@ -69,6 +69,8 @@ export const zhCN: Record<MsgKey, string> = {
   cliInstallStageVerify: "正在验证登录状态…",
   cliInstallStageDone: "安装与登录已完成",
   cliInstallStageError: "安装或验证失败",
+  cliInstallHintNetwork:
+    "若这家服务需要 VPN／代理才能连上：请开启代理软件的「系统代理」或「全局／TUN」模式后再试一次（app 会自动把系统代理传给命令行工具）。没在浏览器完成登录就关闭窗口，也会看到这个错误。",
   cliInstallHintFileLocked:
     "安装文件被其他程序占用了（常见是杀毒软件正在扫描，或该工具还在运行中）。请关闭该工具、稍候再重试；仍失败就重启电脑后再装一次。",
   cliInstallLogPath: "记录：{path}",
