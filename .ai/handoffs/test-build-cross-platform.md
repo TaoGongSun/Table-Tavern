@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: test-build-cross-platform
-Updated: 2026-07-24T14:45:00+08:00
+Updated: 2026-07-30T14:42:00+08:00
 Status: in_progress
 
 ## Goal
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
 
 ## Current state
-產線可用，每次下令即可重打。最新一輪 0.2.0（2026-07-28 16:36，HEAD 9d71876）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過）＋Windows [run 30342814136](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30342814136) success、artifact `table-tavern-windows-unsigned` 含 `Table Tavern_0.2.0_x64-setup.exe`（NSIS 3.3MB）與 `Table Tavern_0.2.0_x64_en-US.msi`（4.7MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
+產線可用，每次下令即可重打。最新一輪 0.2.0（2026-07-30 14:39，HEAD b9e6db1，含十語系介面與 Ko-fi 商品頁連結）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，`--verify --deep --strict` 通過）＋Windows [run 30520213008](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30520213008) success、artifact `table-tavern-windows-unsigned` 含 `Table Tavern_0.2.0_x64-setup.exe`（NSIS 3.4MB）與 `Table Tavern_0.2.0_x64_en-US.msi`（4.8MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
 
 打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。
 
