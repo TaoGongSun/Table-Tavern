@@ -340,89 +340,77 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
     Ok(id)
 }
 
+#[derive(Deserialize)]
+struct SampleCharacterText {
+    name: String,
+    public_md: String,
+    private_md: String,
+}
+
+#[derive(Deserialize)]
+struct SampleWorldText {
+    world_name: String,
+    world_md: String,
+    opening: String,
+    characters: Vec<SampleCharacterText>,
+}
+
+fn sample_world_text(lang: &str) -> DataResult<SampleWorldText> {
+    // 新增語系時只需新增 JSON 檔，並在這張對應表加一行；範例內容會隨執行檔靜態內嵌。
+    let source = match lang {
+        "zh-CN" => include_str!("../samples/zh-CN.json"),
+        "en" => include_str!("../samples/en.json"),
+        "ja" => include_str!("../samples/ja.json"),
+        "ko" => include_str!("../samples/ko.json"),
+        "es" => include_str!("../samples/es.json"),
+        "pt-BR" => include_str!("../samples/pt-BR.json"),
+        "de" => include_str!("../samples/de.json"),
+        "fr" => include_str!("../samples/fr.json"),
+        "ru" => include_str!("../samples/ru.json"),
+        _ => include_str!("../samples/zh-TW.json"),
+    };
+    serde_json::from_str(source)
+        .map_err(|error| invalid_data(format!("invalid embedded sample world JSON: {error}")))
+}
+
 /// 範例桌內容依語系產生（首開先選語言再建桌）；lang 非 en 一律走 zh-TW
 pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
-    let english = lang == "en";
-    let world_name = if english {
-        "The Misty Tavern (sample)"
-    } else {
-        "迷霧酒館（範例）"
-    };
+    let sample = sample_world_text(lang)?;
     // 冪等：範例桌已在就直接沿用，避免重複呼叫（dev 的 StrictMode 雙跑）噴重複資料
     if let Some(existing) = list_worlds(root)?
         .into_iter()
-        .find(|meta| meta.name == world_name)
+        .find(|meta| meta.name == sample.world_name)
     {
         return Ok(existing.id);
     }
-    let world_id = create_world(root, world_name)?;
-    write_world_md(
-        root,
-        &world_id,
-        if english {
-            "# The Misty Tavern\n\nAn inn-tavern in the border town of Mistmouth; a storm rages outside tonight. A werewolf rumor has spread through town: for three nights running, livestock has gone missing.\n\n## Truths only the GM knows\n- The werewolf is Mayor Glenn — bitten in the mountains half a year ago, he himself doesn't fully know what happens at night.\n- Fox, the tavern keeper, is actually a fugitive from the neighboring kingdom, and a bounty hunter is on the way.\n- Later tonight the mayor will push through the door soaked to the bone, blood on his cuff.\n\n## Directing notes\n- Pacing: slow burn — let the characters feel each other out first.\n- Keep the narration suspenseful; don't reveal the truth too quickly."
-        } else {
-            "# 迷霧酒館\n\n邊境小鎮「霧口鎮」的一間旅店酒館，今晚外頭下著暴雨。鎮上最近流傳狼人傳說：三天前開始，每晚都有牲口失蹤。\n\n## 只有 GM 知道的真相\n- 狼人是鎮長葛倫——他半年前在山裡被咬傷，自己也不完全清楚夜裡發生的事。\n- 酒館老闆狐狸其實是鄰國的通緝犯，賞金獵人正在路上。\n- 今晚稍後，渾身濕透的鎮長會推門進來，袖口沾著血。\n\n## 導演方針\n- 步調：慢熱，讓角色先互相試探。\n- 旁白保持懸疑，不要太快揭露真相。"
-        },
-    )?;
+    let world_id = create_world(root, &sample.world_name)?;
+    write_world_md(root, &world_id, &sample.world_md)?;
 
-    let texts: [(&str, &str, &str); 3] = if english {
-        [
-            (
-                "Fox",
-                "Keeper of the inn-tavern — all smiles and smooth talk, with an ear for everything that happens in town. Speaks with a streetwise charm and is great at defusing tension.",
-                "Real name \"Ali\", a fugitive from the neighboring kingdom — took the fall for someone three years ago and fled here. Words like \"bounty\" or \"wanted\" make them quietly tense. Goal: live in peace, but stay ready to run.",
-            ),
-            (
-                "Knight",
-                "A young knight on patrol, upright to the point of stubbornness; drinks hot tea in the tavern, never ale.",
-                "The real mission is to track a fugitive who fled three years ago; the portrait in hand has long since faded. Quietly observes everyone in the tavern. Principle: verify first, act second — never wrong the innocent.",
-            ),
-            (
-                "Bard",
-                "A wandering bard who cadges drinks and spins outrageous tales and songs. Remarkably well-informed.",
-                "Nine parts of every story are true, one part false — the bard really did see \"that wolf\" walk on two legs in the next town. Too frightened to tell it straight, they only dared weave it into a song.",
-            ),
-        ]
-    } else {
-        [
-            (
-                "狐狸",
-                "旅店酒館的老闆，笑口常開、八面玲瓏，對鎮上大小事瞭若指掌。說話帶點江湖氣，擅長打圓場。",
-                "真名「阿狸」，是鄰國的通緝犯——三年前替人頂罪後逃亡至此。聽到「賞金」「通緝」等字眼會不動聲色地緊張。目標：安穩活下去，必要時準備隨時跑路。",
-            ),
-            (
-                "騎士",
-                "巡邏至此的年輕騎士，個性正直到近乎固執，在酒館喝的是熱茶不是酒。",
-                "此行真正任務是追查一名逃亡三年的通緝犯，手上的畫像已經模糊。暗中觀察酒館裡的每個人。原則：先確認再行動，不冤枉好人。",
-            ),
-            (
-                "吟遊詩人",
-                "雲遊四方的吟遊詩人，愛蹭酒喝，滿嘴誇張的故事與歌謠。消息靈通。",
-                "他的故事九分真一分假——他真的在鄰鎮親眼看過「那頭狼」用兩條腿走路。因為太害怕沒敢說全，只敢把它編進歌裡。",
-            ),
-        ]
-    };
     let style = [
         ("#e07a5f", "🦊", Tier::Balanced),
         ("#3d84a8", "🛡️", Tier::Balanced),
         ("#f2a541", "🪕", Tier::Fast),
     ];
-    for ((name, public_md, private_md), (color, avatar, tier)) in texts.into_iter().zip(style) {
+    if sample.characters.len() != style.len() {
+        return Err(invalid_data(
+            "sample world must contain exactly three characters",
+        ));
+    }
+    for (text, (color, avatar, tier)) in sample.characters.into_iter().zip(style) {
         write_character(
             root,
             &world_id,
             &CharacterCard {
                 id: new_id(),
-                name: name.to_owned(),
+                name: text.name,
                 color: color.to_owned(),
                 avatar: avatar.to_owned(),
                 tier,
                 show_image: true,
                 archived: false,
                 gen_prompt: String::new(),
-                public_md: public_md.to_owned(),
-                private_md: private_md.to_owned(),
+                public_md: text.public_md,
+                private_md: text.private_md,
             },
         )?;
     }
@@ -436,12 +424,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
             kind: TranscriptKind::Narration,
-            text: if english {
-                "Rain hammers the windows of the Misty Tavern; the hearth crackles. Few guests tonight — the keeper polishes glasses behind the bar, a knight sips tea in the corner, and the bard is tuning their strings. Outside, faint through the storm, comes a wolf's howl."
-            } else {
-                "暴雨拍打著迷霧酒館的窗，爐火劈啪作響。今晚店裡客人不多——老闆在吧檯後擦著杯子，一名騎士坐在角落喝茶，吟遊詩人正調著琴弦。門外，隱約傳來一聲狼嚎。"
-            }
-            .to_owned(),
+            text: sample.opening,
         },
     )?;
 
@@ -2213,6 +2196,44 @@ mod tests {
             .contains("Mistmouth"));
         let transcript = read_transcript(root.path(), &world_id, 0).unwrap();
         assert!(transcript[0].text.starts_with("Rain hammers"));
+    }
+
+    /// 驗收：每個上架語系都有自己的範例桌內容且建得起來——
+    /// 少一個 samples/<lang>.json、欄位漏了、或桌名忘了翻，都會在這裡爆
+    #[test]
+    fn sample_world_ready_in_every_language() {
+        let zh_root = TestRoot::new("sample-world-lang-zh");
+        let zh_id = create_sample_world(zh_root.path(), "zh-TW").unwrap();
+        let zh_name = read_state(zh_root.path(), &zh_id).unwrap().name;
+
+        for lang in ["zh-CN", "en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru"] {
+            let root = TestRoot::new(&format!("sample-world-lang-{lang}"));
+            let world_id = create_sample_world(root.path(), lang).unwrap();
+
+            let characters = list_characters(root.path(), &world_id).unwrap();
+            assert_eq!(characters.len(), 3, "{lang} 角色數不對");
+            for meta in &characters {
+                assert!(!meta.name.trim().is_empty(), "{lang} 角色沒名字");
+                let card = read_character(root.path(), &world_id, &meta.id).unwrap();
+                assert!(!card.public_md.trim().is_empty(), "{lang} 缺公開設定");
+                assert!(!card.private_md.trim().is_empty(), "{lang} 缺 GM 秘密");
+            }
+
+            assert!(
+                !read_world_md(root.path(), &world_id).unwrap().trim().is_empty(),
+                "{lang} 世界設定是空的"
+            );
+
+            let transcript = read_transcript(root.path(), &world_id, 0).unwrap();
+            assert_eq!(transcript.len(), 1, "{lang} 開場旁白數不對");
+            assert!(!transcript[0].text.trim().is_empty(), "{lang} 開場旁白是空的");
+
+            assert_ne!(
+                read_state(root.path(), &world_id).unwrap().name,
+                zh_name,
+                "{lang} 桌名沒翻"
+            );
+        }
     }
 
     #[cfg(unix)]

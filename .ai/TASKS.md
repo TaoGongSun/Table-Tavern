@@ -7,6 +7,8 @@
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：verify 綠（run 30165056516）＋打包出爐（run 30165448004，commit 194fb86 含四項 UX 修正），Mac DMG 同步重打（00:22 版），等轉交測試者回報；併驗 cli-connected-badge 移交過來的 grok 新探針與 pre_probe
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：兩平台產物已出爐並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 artifact）後結案
 
+- [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；另有四件待拍板（日文世界書用詞、範例桌地名處理不統一等）
+
 ## Done
 
 見 [DONE.md](DONE.md)（25 項）。
@@ -18,7 +20,6 @@
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：等使用者加入 Apple Developer Program（99 美元/年）後開工：設 Developer ID 憑證＋notarytool 公證流程，憑證再併入 release-2 的 CI secrets
 - [release-3-kofi](tasks/release-3-kofi.md) — 發佈 3：Ko-fi 開帳與金流（多為使用者本人操作） — 下一步：使用者操作：PayPal 升級商業帳戶 → 開 Ko-fi 帳號並「切至 Free 檔」（新帳號預設 Contributor 檔抽 5%）→ 建 Shop 商品（10 美元主題包，檔案自動發貨）→ 提領設 USD 進玉山外匯戶自行換匯。商品檔案本身等 release-4-theme-pack 產出
 - [theme-pack-component-skins](tasks/theme-pack-component-skins.md) — 主題包元件裝飾：華麗發言送出鈕（贊助包 v2 回購誘因） — 下一步：等 release-4-theme-pack 主題檔格式定案時預留「元件裝飾」schema，v1 不實作
-- [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：定目標語系清單與字典品質驗證流程，再一次擴 i18n／範例桌／LANGUAGE_RULE
 - [cli-auto-connect](tasks/cli-auto-connect.md) — CLI 自動連接：背景偵測＋登入跳轉自動回 — 下一步：查證 claude／codex CLI 的登入觸發與完成偵知介面，再定 UX 流程（風險告知仍前置）
 - [easy-pay-onboarding](tasks/easy-pay-onboarding.md) — 簡易付費入口：OAuth 一鍵連接 →（條件觸發）App 內儲值 — 下一步：遠期構想，等 BYOK 版初步測試後先做第一階段 OAuth；完整路線圖與合規前提見任務檔
 

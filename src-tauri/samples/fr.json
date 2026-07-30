@@ -1,0 +1,22 @@
+{
+  "world_name": "La Taverne des Brumes (exemple)",
+  "world_md": "# La Taverne des Brumes\n\nUne auberge-taverne dans la ville-frontière de Bouche-de-Brume ; ce soir, l'orage gronde dehors. Une rumeur de loup-garou court en ville : depuis trois nuits, du bétail disparaît chaque nuit.\n\n## Vérités connues du seul MJ\n- Le loup-garou, c'est le maire Glenn — mordu dans les montagnes il y a six mois, il ne sait pas bien lui-même ce qui se passe la nuit.\n- Le Renard, le tenancier de la taverne, est en réalité un fugitif du royaume voisin ; un chasseur de primes est en chemin.\n- Plus tard ce soir, le maire poussera la porte, trempé jusqu'aux os, du sang sur sa manche.\n\n## Notes de mise en scène\n- Rythme : lent — laisser les personnages se jauger d'abord.\n- Garder la narration suspensive, ne pas révéler la vérité trop vite.",
+  "opening": "La pluie martèle les fenêtres de la Taverne des Brumes ; l'âtre crépite. Peu de clients ce soir — le tenancier essuie des verres derrière le comptoir, un chevalier sirote du thé dans un coin, et le barde accorde ses cordes. Dehors, à peine audible dans la tempête, monte le hurlement d'un loup.",
+  "characters": [
+    {
+      "name": "Le Renard",
+      "public_md": "Tenancier de l'auberge-taverne, tout sourire et beau parleur, à l'affût de tout ce qui se trame en ville. Un ton canaille et un art consommé pour désamorcer les tensions.",
+      "private_md": "Vrai nom : « Ali », fugitif du royaume voisin — a couvert quelqu'un d'autre il y a trois ans, puis a fui jusqu'ici. Les mots « prime » ou « recherché » suffisent à le crisper, sans qu'il n'en laisse jamais rien paraître. Objectif : vivre en paix, tout en restant prêt à décamper au besoin."
+    },
+    {
+      "name": "Le Chevalier",
+      "public_md": "Jeune chevalier de passage, en patrouille, d'une droiture confinant à l'entêtement — il commande du thé chaud à la taverne, jamais de bière.",
+      "private_md": "Sa vraie mission : traquer un fugitif en cavale depuis trois ans — le portrait qu'il garde sur lui est déjà tout effacé. Il observe discrètement chaque personne présente à la taverne. Son principe : vérifier avant d'agir, ne jamais accuser un innocent."
+    },
+    {
+      "name": "Le Barde",
+      "public_md": "Barde itinérant qui écume les tournées gratuites et débite contes extravagants et chansons à foison. Étonnamment bien informé.",
+      "private_md": "Dans ses histoires, neuf parts sur dix sont vraies, une est inventée — il a vraiment vu, dans le bourg voisin, « ce loup » marcher sur ses pattes arrière. Trop terrifié pour le raconter tel quel, il n'a osé le glisser que dans une chanson."
+    }
+  ]
+}

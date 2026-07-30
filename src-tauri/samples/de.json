@@ -1,0 +1,22 @@
+{
+  "world_name": "Die Nebeltaverne (Beispiel)",
+  "world_md": "# Die Nebeltaverne\n\nEin Gasthaus in der Grenzstadt Nebelmund; draußen tobte in dieser Nacht ein Unwetter. In der Stadt ging seit Kurzem die Sage vom Werwolf um: Seit drei Nächten in Folge verschwand Vieh.\n\n## Wahrheiten, die nur der GM kennt\n- Der Werwolf war Bürgermeister Glenn – gebissen vor einem halben Jahr in den Bergen, wusste er selbst nicht genau, was des Nachts mit ihm geschah.\n- Der Fuchs, der Wirt der Taverne, war in Wahrheit ein Flüchtling aus dem Nachbarreich, und ein Kopfgeldjäger war bereits unterwegs.\n- Später in dieser Nacht würde der Bürgermeister durchnässt zur Tür hereinkommen, Blut am Ärmel.\n\n## Regieanweisungen\n- Tempo: langsam anheizen – die Figuren zunächst gegenseitig abtasten lassen.\n- Die Erzählung spannungsgeladen halten; die Wahrheit nicht zu schnell verraten.",
+  "opening": "Der Regen peitschte gegen die Fenster der Nebeltaverne, im Kamin knisterte das Feuer. Nur wenige Gäste waren heute Nacht da – der Wirt polierte hinter dem Tresen die Gläser, ein Ritter nippte in der Ecke an seinem Tee, und der Barde stimmte seine Saiten. Draußen, kaum hörbar durch den Sturm, ertönte ein Wolfsgeheul.",
+  "characters": [
+    {
+      "name": "Der Fuchs",
+      "public_md": "Der Wirt des Gasthauses – stets lächelnd und gewandt im Umgang mit jedermann, wusste er über jede Kleinigkeit in der Stadt Bescheid. Seine Sprache hatte einen Hauch von Gassenschläue, und niemand verstand es besser, Streit zu schlichten.",
+      "private_md": "Sein wahrer Name war „Ali“, ein Flüchtling aus dem Nachbarreich – vor drei Jahren hatte er für einen anderen die Schuld auf sich genommen und war hierher geflohen. Bei Worten wie „Kopfgeld“ oder „gesucht“ spannte er sich innerlich an, ohne es sich anmerken zu lassen. Sein Ziel: in Ruhe leben, aber jederzeit bereit sein zu fliehen."
+    },
+    {
+      "name": "Der Ritter",
+      "public_md": "Ein junger Ritter auf Patrouille, aufrecht bis zur Sturheit; in der Taverne trank er heißen Tee, niemals Bier.",
+      "private_md": "Sein eigentlicher Auftrag war es, einen seit drei Jahren flüchtigen Gesuchten aufzuspüren; das Bildnis in seiner Hand war längst verblasst. Verstohlen beobachtete er jeden in der Taverne. Sein Grundsatz: erst prüfen, dann handeln – niemals einen Unschuldigen verdächtigen."
+    },
+    {
+      "name": "Der Barde",
+      "public_md": "Ein umherziehender Barde, der gern auf Kosten anderer trank und mit übertriebenen Geschichten und Liedern um sich warf. Erstaunlich gut informiert.",
+      "private_md": "Seine Geschichten waren zu neun Teilen wahr und zu einem Teil erfunden – er hatte im Nachbarort tatsächlich mit eigenen Augen gesehen, wie „jener Wolf“ auf zwei Beinen ging. Zu verängstigt, um es offen zu erzählen, wagte er es nur, die Wahrheit in ein Lied zu weben."
+    }
+  ]
+}

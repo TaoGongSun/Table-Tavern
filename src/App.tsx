@@ -2606,6 +2606,11 @@ function App() {
     document.documentElement.dataset.theme = resolveTheme(config, sponsorUnlocked);
   }, [config, sponsorUnlocked]);
 
+  // 中日韓共用同一批 Unicode 碼位但字形不同，斷行規則也各異，靠 lang 屬性讓 webview 挑對字形
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
     (async () => {
