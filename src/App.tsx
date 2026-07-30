@@ -1794,6 +1794,7 @@ function CardEditor({
   const [aiGenLockedOpen, setAiGenLockedOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiSource, setAiSource] = useState("api");
+  const [aiFraming, setAiFraming] = useState("full");
   const [aiClis, setAiClis] = useState<CliInfo[]>([]);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenError, setAiGenError] = useState("");
@@ -1873,6 +1874,7 @@ function CardEditor({
         setAiSource(savedSource === "api" ? savedSource : fallback);
       });
     setAiPrompt(card?.gen_prompt ?? "");
+    setAiFraming(config.preferences["image_framing"] === "half" ? "half" : "full");
     setAiGenError("");
     setAiGenOpen(true);
     void refreshGallery().catch(() => {
@@ -1893,11 +1895,13 @@ function CardEditor({
         description: card?.public_md ?? "",
         extraPrompt: aiPrompt,
         source: aiSource,
+        framing: aiFraming,
       });
       // 追加描寫記進草稿，跟其他欄位一起等按儲存才落地
       setCard((current) => (current ? { ...current, gen_prompt: aiPrompt } : current));
       await refreshGallery();
       await onPreference("image_source", aiSource);
+      await onPreference("image_framing", aiFraming);
       if (!sponsorUnlocked) await onPreference("ai_image_trials_used", trialsUsed + 1);
     } catch (reason) {
       setAiGenError(String(reason));
@@ -2241,6 +2245,21 @@ function CardEditor({
           <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenTitle")} onClick={(event) => event.stopPropagation()}>
             <h2>{t("aiGenTitle")}</h2>
             <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
+            <fieldset className="ai-gen-framing">
+              <legend>{t("aiGenFramingLabel")}</legend>
+              {(["full", "half"] as const).map((framing) => (
+                <label key={framing}>
+                  <input
+                    type="radio"
+                    name="ai-gen-framing"
+                    checked={aiFraming === framing}
+                    disabled={aiGenerating}
+                    onChange={() => setAiFraming(framing)}
+                  />
+                  {framing === "full" ? t("aiGenFramingFull") : t("aiGenFramingHalf")}
+                </label>
+              ))}
+            </fieldset>
             <label>{t("aiGenSourceLabel")}
               <div className="row">
                 <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
