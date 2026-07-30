@@ -48,6 +48,30 @@ export const LANGUAGE_OPTIONS: { value: Lang; label: string }[] = [
   { value: "ru", label: "Русский" },
 ];
 
+// 系統語系帶地區（pt-PT、es-419、fr-CA…）一律收斂到本 app 有的那一份
+const BY_BASE: Record<string, Lang> = {
+  en: "en",
+  ja: "ja",
+  ko: "ko",
+  es: "es",
+  pt: "pt-BR",
+  de: "de",
+  fr: "fr",
+  ru: "ru",
+};
+
+/** 首開語系：依序比對系統偏好語系，中文分繁簡，都對不到就英文 */
+export function detectLang(): Lang {
+  const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const tag of tags) {
+    const lower = tag.toLowerCase();
+    if (lower.startsWith("zh")) return /hans|-cn|-sg|-my/.test(lower) ? "zh-CN" : "zh-TW";
+    const mapped = BY_BASE[lower.split("-")[0]];
+    if (mapped) return mapped;
+  }
+  return "en";
+}
+
 let lang: Lang = "zh-TW";
 
 export function normalizeLang(value: unknown): Lang {

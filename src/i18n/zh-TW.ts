@@ -19,10 +19,13 @@ export const zh = {
   onboardCliHint:
     "已自行安裝並登入官方 CLI 的進階使用者，也可以改到左下角「設定 → AI 連線」啟用 CLI 訂閱模式。",
 
-  // 首開語言選擇
-  firstRunTitle: "歡迎來到 Table Tavern",
-  firstRunIntro: "選擇介面與範例桌的語言，之後隨時可在「設定 → 外觀」更改。",
-  firstRunStart: "開始",
+  // 設定頁換語言後問一次：要不要用新語言新增範例桌
+  sampleRegenTitle: "要用新語言新增範例桌嗎？",
+  sampleRegenBody:
+    "介面已經換成新語言，但現有範例桌的角色與世界設定還是舊語言。可以用新語言另生一張範例桌並直接進去，原本那張會留在桌列表裡。這個問題只會出現這一次。",
+  sampleRegenConfirm: "新增範例桌",
+  sampleRegenKeep: "不用",
+  sampleRegenCancel: "取消，重新選語言",
 
   // 設定視窗
   settingsBtn: "設定",
