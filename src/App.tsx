@@ -9,7 +9,7 @@ import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
 
-const KOFI_URL = "https://ko-fi.com/taogongsun";
+const KOFI_URL = "https://ko-fi.com/s/027754730c";
 const GALLERY_PAGE_SIZE = 12;
 // 主題清單：free 兩套隨點隨存；sponsor 五套未解鎖只能試看（關設定視窗即復原）
 const FREE_THEMES = ["dark", "light"] as const;
