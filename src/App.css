@@ -1589,6 +1589,15 @@ textarea {
   padding: 0.75rem;
 }
 
+/* 生圖構圖二選一：橫排即可，兩個選項不需要縱向清單 */
+.ai-gen-framing {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 1rem;
+  padding: 0.6rem 0.8rem;
+}
+
 .worldbook-visibility,
 .worldbook-characters {
   border: 1px solid var(--line);

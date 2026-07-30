@@ -15,7 +15,10 @@
 
 - 生成歷史圖庫（2026-07-27 實測後追加）：生成原圖落地 `{world}/gen-gallery/{name}/{unix_ms}.png`（不設上限）；生成成功不再自動開裁切，改刷新對話框內縮圖列（新在前、每批 12 張「載入更多」）；點縮圖＝重開 2:3 裁切重選範圍並套用（同一張可反覆重裁）；縮圖 X＋確認＝真刪。後端三 command（list／read／delete_gallery_image）含路徑逃逸防護與自寫 base64 decoder。生圖 UX 另修：生成鈕右下角主色（置頂例外拍板）、✨ 鈕描邊、來源旁「⚙ AI 連線」直開設定 ai 分頁（設定視窗移版面尾端修疊層）、CLI 生圖呼叫開工具權限（codex workspace-write／agy skip-permissions／grok always-approve，聊天路徑不動）。
 
+- 構圖二選一（2026-07-30，取代「常用提示詞標籤」議程）：生圖對話框加「構圖」全身／半身（預設全身，記 `preferences.image_framing`），後端 `generate_character_image` 收 `framing`，prompt 開頭 `full-body`／`waist-up half-body`；追加描寫改標「takes priority over the defaults above」，讓玩家用文字推翻素背景等預設。2:3 直式不放開（角色卡版面吃這個比例）。舊前端沒傳參數＝全身。
+
 ## Verification
+- 構圖二選一（2026-07-30）：`npx tsc --noEmit` 0 錯、`npm run check:i18n` 十語系 OK、`cargo test --lib` 117 綠、`npm run build` exit 0。實際出圖待使用者實機。
 - 後端：`cargo test` 85 綠（基線 77，+8 新測試：Images API mock 兩案、extract_image_from_text 三案、gen_prompt roundtrip 等）；`cargo clippy --all-targets` 0 error
 - 前端：`npm run build` exit 0
 - CLI 生圖能力：真發請求實測（見 Completed 第三條），非自我宣稱
@@ -27,7 +30,8 @@
 - Ko-fi 導購歧義方案待討論（任務檔議程）
 
 ## Next action
-1. 拍板任務檔「待討論議程」兩項：常用提示詞標籤（主線建議 v1 內建精選清單，分析見任務檔）、Ko-fi 導購歧義。
-2. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原；重置免費次數改 `ai_image_trials_used`（手改 config.json 的舊旗標已失效）。
+1. 拍板任務檔「待討論議程」：Ko-fi 導購歧義。（提示詞標籤 2026-07-30 已用構圖二選一結案，見下）
+2. 使用者實機驗收構圖二選一：生圖對話框選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
+3. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原；重置免費次數改 `ai_image_trials_used`（手改 config.json 的舊旗標已失效）。
 
 （2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）
