@@ -335,6 +335,7 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
+    crate::proxy::apply_system_proxy(&mut child);
     child
         .args(args)
         .env_remove("PSModulePath")
@@ -369,6 +370,7 @@ async fn run_terminal(command: &[String], timeout: Duration) -> Result<CommandOu
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
+    crate::proxy::apply_system_proxy(&mut child);
     child.args(args).kill_on_drop(true);
     // 隱藏外層 cmd 自己的黑視窗；使用者看到的登入視窗由內層 start 另開，不受影響
     #[cfg(target_os = "windows")]

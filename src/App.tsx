@@ -218,9 +218,23 @@ const FILE_LOCKED_MARKERS = [
   "Failed to install",
 ];
 
+// 連不上服務商（下載失敗的 PowerShell 錯誤代號）或登入視窗沒走完（我們自己的錯誤字串）
+const NETWORK_MARKERS = [
+  "InvokeRestMethodCommand",
+  "InvokeWebRequestCommand",
+  "login window closed or timed out",
+  "verification failed",
+];
+
 function cliInstallErrorHint(detail: string | undefined) {
-  if (detail && FILE_LOCKED_MARKERS.some((marker) => detail.includes(marker))) {
+  if (!detail) {
+    return null;
+  }
+  if (FILE_LOCKED_MARKERS.some((marker) => detail.includes(marker))) {
     return t("cliInstallHintFileLocked");
+  }
+  if (NETWORK_MARKERS.some((marker) => detail.includes(marker))) {
+    return t("cliInstallHintNetwork");
   }
   return null;
 }
@@ -3206,7 +3220,7 @@ function App() {
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
 
-  // 換場提醒：粗估目前場景累計字元數，超過門檻就在換場鈕旁小字提醒（不擋操作）
+  // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
   const sceneTooLong =
     events.reduce((sum, event) => sum + event.text.length, 0) > SCENE_LENGTH_HINT_CHARS;
 
@@ -3496,7 +3510,6 @@ function App() {
             </button>
           )}
           <div className="chat-header-actions">
-            {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
             <button
               type="button"
               title={t("sceneAdvanceHint")}
@@ -3740,6 +3753,7 @@ function App() {
                     {t("send")} ➤
                   </button>
                 </div>
+                {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
                 <div className="composer-ai-actions">
                   <button
                     className="request-reply"

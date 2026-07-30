@@ -74,6 +74,8 @@ export const en: Record<MsgKey, string> = {
   cliInstallStageVerify: "Verifying sign-in status…",
   cliInstallStageDone: "Installation and sign-in complete",
   cliInstallStageError: "Installation or verification failed",
+  cliInstallHintNetwork:
+    "If this service needs a VPN/proxy in your region: turn on your proxy app's system proxy or global/TUN mode and try again (the app passes the system proxy to CLI tools automatically). You'll also see this error if the window was closed before finishing sign-in in the browser.",
   cliInstallHintFileLocked:
     "The installer file is locked by another program (usually an antivirus scanning it, or the tool is still running). Close the tool and retry in a moment; if it keeps failing, reboot and install again.",
   cliInstallLogPath: "Log: {path}",

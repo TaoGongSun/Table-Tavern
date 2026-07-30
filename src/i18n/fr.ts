@@ -69,6 +69,8 @@ export const fr: Record<MsgKey, string> = {
   cliInstallStageVerify: "Vérification de l'état de connexion…",
   cliInstallStageDone: "Installation et connexion terminées",
   cliInstallStageError: "Échec de l'installation ou de la validation",
+  cliInstallHintNetwork:
+    "Si ce service nécessite un VPN/proxy dans ta région : active le proxy système ou le mode global/TUN de ton application proxy puis réessaie (l'app transmet automatiquement le proxy système aux outils CLI). Cette erreur apparaît aussi si la fenêtre a été fermée avant la fin de la connexion dans le navigateur.",
   cliInstallHintFileLocked:
     "Le fichier d'installation est verrouillé par un autre programme (souvent un antivirus en train de l'analyser, ou l'outil encore en cours d'exécution). Ferme l'outil et réessaie dans un instant ; si l'échec persiste, redémarre puis réinstalle.",
   cliInstallLogPath: "Journal : {path}",
