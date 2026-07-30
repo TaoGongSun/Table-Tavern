@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, Fragment, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import Cropper, { Area } from "react-easy-crop";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -1215,6 +1215,7 @@ function WorldEditor({
   // 條目表單開啟當下的快照，用來判斷「有沒有改過」（未儲存提示）
   const [draftOrigin, setDraftOrigin] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const draftFormRef = useRef<HTMLFormElement>(null);
   const entryDrag = useDragReorder(
     entries,
     (entry) => String(entry.uid),
@@ -1241,6 +1242,12 @@ function WorldEditor({
       .then((cast) => setCharacters(cast.filter((character) => !character.archived)))
       .catch((reason) => setWorldbookMessage(String(reason)));
   }, [world]);
+
+  // 新增的空白表單排在清單底部，展開時可能在畫面外，捲到看得見
+  // （不用 smooth：長清單的平滑捲動會被後續 render 打斷，停在半路）
+  useEffect(() => {
+    draftFormRef.current?.scrollIntoView({ block: "nearest" });
+  }, [draftOrigin]);
 
   if (text === null) return message ? <p role="alert">{message}</p> : null;
 
@@ -1404,6 +1411,111 @@ function WorldEditor({
     }
   }
 
+  // 條目表單就地展開：編輯取代原本那一列、新增排在清單底部（2026-07-30 使用者回饋——
+  // 表單固定在頂端時，點下方條目的編輯完全看不出反應）。按鈕照全 app 慣例置頂。
+  const entryForm = draft && (
+    <form ref={draftFormRef} className="settings-form worldbook-form" onSubmit={saveEntry}>
+      <div className="row">
+        <button type="submit">{t("worldbookSaveEntry")}</button>
+        <button type="button" onClick={() => setDraft(null)}>
+          {t("worldbookCancel")}
+        </button>
+      </div>
+      <label>
+        {t("worldbookEntryTitle")}
+        <input
+          value={draft.title}
+          onChange={(event) => setDraft({ ...draft, title: event.currentTarget.value })}
+        />
+      </label>
+      <label>
+        {t("worldbookKeys")}
+        <input
+          value={draft.keys}
+          placeholder={t("worldbookKeysHint")}
+          onChange={(event) => setDraft({ ...draft, keys: event.currentTarget.value })}
+        />
+      </label>
+      <label>
+        {t("worldbookContent")}
+        <textarea
+          rows={7}
+          value={draft.content}
+          onChange={(event) => setDraft({ ...draft, content: event.currentTarget.value })}
+        />
+      </label>
+      <label className="inline">
+        <input
+          type="checkbox"
+          checked={draft.constant}
+          onChange={(event) => setDraft({ ...draft, constant: event.currentTarget.checked })}
+        />
+        {t("worldbookConstantLabel")}
+      </label>
+      <label className="inline">
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          onChange={(event) => setDraft({ ...draft, enabled: event.currentTarget.checked })}
+        />
+        {t("worldbookEnabled")}
+      </label>
+      <fieldset className="worldbook-visibility">
+        <legend>{t("worldbookVisibility")}</legend>
+        {(["gm", "public", "characters"] as const).map((visibility) => (
+          <label className="inline" key={visibility}>
+            <input
+              type="radio"
+              name="worldbook-visibility"
+              value={visibility}
+              checked={draft.visibility === visibility}
+              onChange={() => {
+                setDraft({ ...draft, visibility });
+                // 點「指定角色」當下重抓在場角色：畫面開著時可能剛從隱藏區還原角色
+                if (visibility === "characters") {
+                  void invoke<CharacterMeta[]>("list_characters", { worldId: world }).then((cast) =>
+                    setCharacters(cast.filter((character) => !character.archived)),
+                  );
+                }
+              }}
+            />
+            {visibility === "gm"
+              ? t("worldbookVisibilityGm")
+              : visibility === "public"
+                ? t("worldbookVisibilityPublic")
+                : t("worldbookVisibilityCharacters")}
+          </label>
+        ))}
+      </fieldset>
+      {draft.visibility === "characters" && (
+        <fieldset className="worldbook-characters">
+          <legend>{t("worldbookChooseCharacters")}</legend>
+          {characters.length === 0 ? (
+            <span>{t("worldbookNoCharacters")}</span>
+          ) : (
+            characters.map((character) => (
+              <label className="inline" key={character.id}>
+                <input
+                  type="checkbox"
+                  checked={draft.characters.includes(character.id)}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      characters: event.currentTarget.checked
+                        ? [...draft.characters, character.id]
+                        : draft.characters.filter((id) => id !== character.id),
+                    })
+                  }
+                />
+                {character.name}
+              </label>
+            ))
+          )}
+        </fieldset>
+      )}
+    </form>
+  );
+
   return (
     <>
       <form onSubmit={saveWorldSettings} className="settings-form">
@@ -1453,122 +1565,14 @@ function WorldEditor({
           </button>
         </div>
 
-        {draft && (
-          <form className="settings-form worldbook-form" onSubmit={saveEntry}>
-            <label>
-              {t("worldbookEntryTitle")}
-              <input
-                value={draft.title}
-                onChange={(event) =>
-                  setDraft({ ...draft, title: event.currentTarget.value })
-                }
-              />
-            </label>
-            <label>
-              {t("worldbookKeys")}
-              <input
-                value={draft.keys}
-                placeholder={t("worldbookKeysHint")}
-                onChange={(event) => setDraft({ ...draft, keys: event.currentTarget.value })}
-              />
-            </label>
-            <label>
-              {t("worldbookContent")}
-              <textarea
-                rows={7}
-                value={draft.content}
-                onChange={(event) =>
-                  setDraft({ ...draft, content: event.currentTarget.value })
-                }
-              />
-            </label>
-            <label className="inline">
-              <input
-                type="checkbox"
-                checked={draft.constant}
-                onChange={(event) =>
-                  setDraft({ ...draft, constant: event.currentTarget.checked })
-                }
-              />
-              {t("worldbookConstantLabel")}
-            </label>
-            <label className="inline">
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) =>
-                  setDraft({ ...draft, enabled: event.currentTarget.checked })
-                }
-              />
-              {t("worldbookEnabled")}
-            </label>
-            <fieldset className="worldbook-visibility">
-              <legend>{t("worldbookVisibility")}</legend>
-              {(["gm", "public", "characters"] as const).map((visibility) => (
-                <label className="inline" key={visibility}>
-                  <input
-                    type="radio"
-                    name="worldbook-visibility"
-                    value={visibility}
-                    checked={draft.visibility === visibility}
-                    onChange={() => {
-                      setDraft({ ...draft, visibility });
-                      // 點「指定角色」當下重抓在場角色：畫面開著時可能剛從隱藏區還原角色
-                      if (visibility === "characters") {
-                        void invoke<CharacterMeta[]>("list_characters", { worldId: world }).then((cast) =>
-                          setCharacters(cast.filter((character) => !character.archived)),
-                        );
-                      }
-                    }}
-                  />
-                  {visibility === "gm"
-                    ? t("worldbookVisibilityGm")
-                    : visibility === "public"
-                      ? t("worldbookVisibilityPublic")
-                      : t("worldbookVisibilityCharacters")}
-                </label>
-              ))}
-            </fieldset>
-            {draft.visibility === "characters" && (
-              <fieldset className="worldbook-characters">
-                <legend>{t("worldbookChooseCharacters")}</legend>
-                {characters.length === 0 ? (
-                  <span>{t("worldbookNoCharacters")}</span>
-                ) : (
-                  characters.map((character) => (
-                    <label className="inline" key={character.id}>
-                      <input
-                        type="checkbox"
-                        checked={draft.characters.includes(character.id)}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            characters: event.currentTarget.checked
-                              ? [...draft.characters, character.id]
-                              : draft.characters.filter((id) => id !== character.id),
-                          })
-                        }
-                      />
-                      {character.name}
-                    </label>
-                  ))
-                )}
-              </fieldset>
-            )}
-            <div className="row">
-              <button type="submit">{t("worldbookSaveEntry")}</button>
-              <button type="button" onClick={() => setDraft(null)}>
-                {t("worldbookCancel")}
-              </button>
-            </div>
-          </form>
-        )}
-
         {entries.length === 0 ? (
           <p className="worldbook-empty">{t("worldbookEmpty")}</p>
         ) : (
           <div className="worldbook-list">
-            {entryDrag.order.map((entry) => (
+            {entryDrag.order.map((entry) =>
+              draft && draft.uid === entry.uid ? (
+                <Fragment key={entry.uid}>{entryForm}</Fragment>
+              ) : (
               <div
                 className={`worldbook-row${entry.disabled ? " worldbook-row-disabled" : ""}${
                   entryDrag.draggingKey === String(entry.uid) ? " row-dragging" : ""
@@ -1608,9 +1612,11 @@ function WorldEditor({
                   </button>
                 </div>
               </div>
-            ))}
+              ),
+            )}
           </div>
         )}
+        {draft && draft.uid === null && entryForm}
         {worldbookMessage && <p role="status">{worldbookMessage}</p>}
       </section>
     </>
