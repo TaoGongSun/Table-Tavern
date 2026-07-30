@@ -236,7 +236,7 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
          followed by a blank line before the recap. \
          Summarize everything that happened in this scene as a recap, covering: \
          location and time, who is present and their state, key events, relationship changes, \
-         and unresolved threads — as a compact bulleted list. Keep it under about 200 words. \
+         and unresolved threads — as a compact bulleted list. \
          Output only the summary body, in English."
             .to_owned()
     } else {
@@ -245,7 +245,6 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
              回覆第一行固定輸出「標題：〈10 字內的幕名〉」，空一行後才是摘要條列。\
              請把本場景發生的一切壓成一則前情提要，條列涵蓋：\
              地點與時間、在場人物與狀態、關鍵事件、關係變化、未解懸念。\
-             長度上限約 300 字。\
              {language_rule}",
             language_rule = language_rule(lang),
         )
@@ -295,8 +294,8 @@ pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
 pub fn narrate_instruction() -> ChatMessage {
     message(
         "user",
-        "（導演指示）請插入一段簡短旁白：描述場景變化、世界反應或劇情推進，一到三句。\
-         只輸出旁白本文，不要替任何角色說話。"
+        "（導演指示）請插入一段旁白：描述場景變化、世界反應或劇情推進，\
+         篇幅不設限，依劇情需要自由發揮。只輸出旁白本文，不要替任何角色說話。"
             .to_owned(),
     )
 }
@@ -867,7 +866,6 @@ mod tests {
         let zh = summary_messages(&events, "zh-TW");
         assert_eq!(zh[0].role, "system");
         assert!(zh[0].content.contains("前情提要"));
-        assert!(zh[0].content.contains("300 字"));
         let joined: String = zh.iter().map(|m| m.content.as_str()).collect();
         assert!(joined.contains("（旁白）夜幕低垂"));
         assert!(joined.contains("玩家：老闆，來杯麥酒"));
@@ -875,7 +873,6 @@ mod tests {
 
         let en = summary_messages(&events, "en");
         assert!(en[0].content.contains("recap"));
-        assert!(en[0].content.contains("200 words"));
     }
 
     /// 驗收：換幕順手取幕名——有標題行／無標題行／en 前綴，都不能報錯
