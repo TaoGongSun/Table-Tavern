@@ -6,7 +6,7 @@ A desktop app where AI plays a whole table of characters — and the Game Master
 
 Play it as simple or as deep as you like: drop in a single character card and just chat, or run a full campaign with a world setting, a lorebook, scene changes, and a GM who narrates and decides who speaks next. Each character only knows what the GM says out loud, so secrets stay secret until the story reveals them — in a typical AI chat, secrets survive only as long as the AI keeps pretending not to know; here, the characters genuinely don't know.
 
-Interface in English and Traditional Chinese; the built-in sample table follows your language.
+Interface in ten languages — English, 繁體中文, 简体中文, 日本語, 한국어, Español, Português (Brasil), Deutsch, Français, Русский. The built-in sample table follows your language, and you can regenerate it anytime after switching.
 
 ## Download & Install
 
