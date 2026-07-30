@@ -240,7 +240,7 @@ export const ja: Record<MsgKey, string> = {
   composerAria: "プレイヤー入力",
   composerPlaceholder: "「{name}」に話しかける…",
   composerNoTarget: "行動を描写するか、全体に向けて発言する…",
-  composerNoCharacter: "先にキャラクターを作成してください",
+  composerNoCharacter: "キャラクターを作成するか、ロアブックをインポートしてGMに話しかけよう",
   clearTarget: "話しかける相手をクリア",
   send: "送信",
   characterFallback: "キャラクター",

@@ -240,7 +240,7 @@ export const ptBR: Record<MsgKey, string> = {
   composerAria: "Entrada do jogador",
   composerPlaceholder: "Falar com “{name}”…",
   composerNoTarget: "Descreva sua ação ou fale com todos na mesa…",
-  composerNoCharacter: "Crie um personagem primeiro",
+  composerNoCharacter: "Crie um personagem, ou importe um livro do mundo e fale com o GM",
   clearTarget: "Limpar alvo",
   send: "Enviar",
   characterFallback: "o personagem",

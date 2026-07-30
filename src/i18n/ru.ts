@@ -240,7 +240,7 @@ export const ru: Record<MsgKey, string> = {
   composerAria: "Ввод игрока",
   composerPlaceholder: "Обратиться к «{name}»…",
   composerNoTarget: "Опиши свои действия или обратись ко всем…",
-  composerNoCharacter: "Сначала создай персонажа",
+  composerNoCharacter: "Создай персонажа или импортируй книгу мира и поговори с ГМ",
   clearTarget: "Сбросить цель",
   send: "Отправить",
   characterFallback: "персонаж",

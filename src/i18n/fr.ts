@@ -240,7 +240,7 @@ export const fr: Record<MsgKey, string> = {
   composerAria: "Saisie du joueur",
   composerPlaceholder: "Parler à « {name} »…",
   composerNoTarget: "Décris ton action, ou parle à tout le monde…",
-  composerNoCharacter: "Crée d'abord un personnage",
+  composerNoCharacter: "Crée un personnage, ou importe une encyclopédie et parle au MJ",
   clearTarget: "Effacer le destinataire",
   send: "Envoyer",
   characterFallback: "le personnage",
