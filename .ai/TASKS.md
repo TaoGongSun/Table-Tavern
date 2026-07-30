@@ -8,7 +8,7 @@
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：verify 綠（run 30165056516）＋打包出爐（run 30165448004，commit 194fb86 含四項 UX 修正），Mac DMG 同步重打（00:22 版），等轉交測試者回報；併驗 cli-connected-badge 移交過來的 grok 新探針與 pre_probe
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：兩平台產物已出爐並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 artifact）後結案
 
-- [worldbook-card-import](tasks/worldbook-card-import.md) — 世界書卡（PNG）匯入＋條目就地展開編輯 — 下一步：兩項實作皆自驗全綠（cargo test 117、真卡 17 條煙霧、瀏覽器實測就地展開），等使用者實機驗收後結案
+- [worldbook-card-import](tasks/worldbook-card-import.md) — 世界書卡（PNG）匯入＋條目就地展開編輯＋純世界書開局 — 下一步：三項實作皆自驗全綠（cargo test 117、真卡 17 條煙霧、tsc＋i18n 檢查），等使用者實機驗收（含零角色匯入自動選 GM）後結案
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；另有四件待拍板（日文世界書用詞、範例桌地名處理不統一等）
 
 ## Done
