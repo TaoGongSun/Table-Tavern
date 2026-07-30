@@ -1254,8 +1254,8 @@ function WorldEditor({
 
   if (text === null) return message ? <p role="alert">{message}</p> : null;
 
-  const unsavedCount =
-    (text !== savedText ? 1 : 0) + (draft && JSON.stringify(draft) !== draftOrigin ? 1 : 0);
+  const draftDirty = draft !== null && JSON.stringify(draft) !== draftOrigin;
+  const unsavedCount = (text !== savedText ? 1 : 0) + (draftDirty ? 1 : 0);
 
   async function saveWorldSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1287,14 +1287,28 @@ function WorldEditor({
     setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world }));
   }
 
-  function openDraft(next: WorldbookDraft) {
+  // 條目表單改到一半就取消／換編輯對象＝丟資料，先過同一條未儲存確認
+  async function confirmDiscardDraft() {
+    if (!draftDirty) return true;
+    return await confirm(t("unsavedLeaveConfirm", { n: 1 }), {
+      title: t("unsavedLeaveTitle"),
+      kind: "warning",
+    });
+  }
+
+  async function openDraft(next: WorldbookDraft) {
+    if (!(await confirmDiscardDraft())) return;
     setWorldbookMessage("");
     setDraft(next);
     setDraftOrigin(JSON.stringify(next));
   }
 
+  async function closeDraft() {
+    if (await confirmDiscardDraft()) setDraft(null);
+  }
+
   function addEntry() {
-    openDraft({
+    void openDraft({
       uid: null,
       title: "",
       keys: "",
@@ -1308,7 +1322,7 @@ function WorldEditor({
   }
 
   function editEntry(entry: WorldbookEntry) {
-    openDraft({
+    void openDraft({
       uid: entry.uid,
       title: entry.title,
       keys: entry.keys.join("、"),
@@ -1421,7 +1435,7 @@ function WorldEditor({
     <form ref={draftFormRef} className="settings-form worldbook-form" onSubmit={saveEntry}>
       <div className="row">
         <button type="submit">{t("worldbookSaveEntry")}</button>
-        <button type="button" onClick={() => setDraft(null)}>
+        <button type="button" onClick={() => void closeDraft()}>
           {t("worldbookCancel")}
         </button>
       </div>
@@ -2626,6 +2640,11 @@ function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events, generating, streamText]);
+
+  // 從世界設定／卡片編輯／單幕閱讀切回對話時，訊息區是重新掛載的，直接跳到底（不跑動畫）
+  useEffect(() => {
+    if (mainView === null) bottomRef.current?.scrollIntoView();
+  }, [mainView]);
 
   async function enterTable(id: string, loaded: AppConfig) {
     const state = await invoke<WorldState>("read_state", { worldId: id });
