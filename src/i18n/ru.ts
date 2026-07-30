@@ -140,7 +140,6 @@ export const ru: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Удалить изображение",
   aiGalleryDeleteConfirm: "Удалить это изображение? Это действие нельзя отменить.",
   worldbookImported: "Импортировано записей: {n}",
-  worldbookReadError: "Не удалось прочитать JSON-файл",
   worldbookJson: "JSON",
   unsavedChanges: "Несохраненных изменений: {n}",
   unsavedLeaveTitle: "Не сохранено",

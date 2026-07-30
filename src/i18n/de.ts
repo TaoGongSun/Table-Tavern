@@ -140,7 +140,6 @@ export const de: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Generiertes Bild löschen",
   aiGalleryDeleteConfirm: "Möchtest du dieses generierte Bild wirklich löschen? Dies kann nicht rückgängig gemacht werden.",
   worldbookImported: "{n} Einträge importiert",
-  worldbookReadError: "JSON-Datei konnte nicht gelesen werden",
   worldbookJson: "JSON",
   unsavedChanges: "{n} ungespeicherte Änderungen",
   unsavedLeaveTitle: "Ungespeicherte Änderungen",

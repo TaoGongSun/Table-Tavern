@@ -140,7 +140,6 @@ export const es: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Eliminar imagen generada",
   aiGalleryDeleteConfirm: "¿Eliminar esta imagen generada? Esta acción no se puede deshacer.",
   worldbookImported: "Se importaron {n} entradas",
-  worldbookReadError: "No se pudo leer el archivo JSON",
   worldbookJson: "JSON",
   unsavedChanges: "{n} cambios sin guardar",
   unsavedLeaveTitle: "Cambios sin guardar",

@@ -140,7 +140,6 @@ export const zhCN: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "删除生成图",
   aiGalleryDeleteConfirm: "确定要删除这张生成图吗？此操作不可撤销。",
   worldbookImported: "已导入 {n} 条",
-  worldbookReadError: "无法读取 JSON 文件",
   worldbookJson: "JSON",
   unsavedChanges: "有 {n} 项修改未保存",
   unsavedLeaveTitle: "尚未保存",
