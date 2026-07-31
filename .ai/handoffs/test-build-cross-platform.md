@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: test-build-cross-platform
-Updated: 2026-07-31T01:50:00+08:00
+Updated: 2026-07-31T20:15:00+08:00
 Status: in_progress
 
 ## Goal
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
 
 ## Current state
-產線可用，每次下令即可重打。最新一輪 0.2.0（2026-07-31 01:50，HEAD 5586d55，比上輪多帶 CLI 安裝的系統代理自動下傳＋連線失敗白話提示）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過）＋Windows [run 30567254467](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30567254467) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.4MB＋x64_en-US.msi 4.8MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
+產線可用，每次下令即可重打。最新一輪 0.2.0（2026-07-31 20:15，HEAD 41e3a3d，比上輪多帶世界書卡匯入＋條目就地編輯）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過）＋Windows [run 30629664595](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30629664595) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.4MB＋x64_en-US.msi 4.8MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
 
 打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。
 
@@ -25,7 +25,7 @@ Status: in_progress
 ## Working context
 - Repo: /Users/pachelo/GitHub/Table-Tavern
 - Branch: main
-- HEAD: 5586d55
+- HEAD: 41e3a3d
 
 ## Remaining
 - 使用者：把 DMG（路徑見上）拷去 MacBook Air 實測——期望顯示「Apple 無法驗證…」走系統設定「仍要打開」，不得再出現「已損毀」
