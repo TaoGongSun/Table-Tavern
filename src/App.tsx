@@ -1287,7 +1287,9 @@ function WorldEditor({
   if (text === null) return message ? <p role="alert">{message}</p> : null;
 
   const draftDirty = draft !== null && JSON.stringify(draft) !== draftOrigin;
-  const unsavedCount = (text !== savedText ? 1 : 0) + (draftDirty ? 1 : 0);
+  // 既有條目改到一半離開時會自動存，不算未儲存；只有還沒存過的新條目要提醒
+  const newEntryDirty = draftDirty && draft?.uid === null;
+  const unsavedCount = (text !== savedText ? 1 : 0) + (newEntryDirty ? 1 : 0);
 
   async function saveWorldSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1302,6 +1304,11 @@ function WorldEditor({
   }
 
   async function confirmLeave() {
+    // 開著的既有條目照換編輯對象那套：先存起來再走，存不起來就別走
+    if (draft && draftDirty && draft.uid !== null) {
+      if (!(await persistDraft(draft))) return false;
+      setDraft(null);
+    }
     if (unsavedCount === 0) return true;
     return await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
       title: t("unsavedLeaveTitle"),
@@ -1319,7 +1326,7 @@ function WorldEditor({
     setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world }));
   }
 
-  // 條目表單改到一半就取消／換編輯對象＝丟資料，先過同一條未儲存確認
+  // 條目表單按取消＝丟資料，先問過（自動存只走切換編輯對象那條路）
   async function confirmDiscardDraft() {
     if (!draftDirty) return true;
     return await confirm(t("unsavedLeaveConfirm", { n: 1 }), {
@@ -1328,9 +1335,19 @@ function WorldEditor({
     });
   }
 
+  // 換編輯對象＝把手上這條存起來就走（條目本來就是即時寫檔，多問一次只是擋路）。
+  // 還沒存過的新條目例外：直接存會把半成品留在清單上，照舊問。
   async function openDraft(next: WorldbookDraft) {
-    if (!(await confirmDiscardDraft())) return;
-    setWorldbookMessage("");
+    let autoSaved = false;
+    if (draft && draftDirty) {
+      if (draft.uid === null) {
+        if (!(await confirmDiscardDraft())) return;
+      } else {
+        if (!(await persistDraft(draft))) return;
+        autoSaved = true;
+      }
+    }
+    setWorldbookMessage(autoSaved ? t("worldbookEntrySaved") : "");
     setDraft(next);
     setDraftOrigin(JSON.stringify(next));
   }
@@ -1367,40 +1384,47 @@ function WorldEditor({
     });
   }
 
-  async function saveEntry(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft) return;
-    setWorldbookMessage("");
+  /** 把表單寫回世界書；失敗時把原因留在清單訊息列並回傳 false（表單不關） */
+  async function persistDraft(source: WorldbookDraft) {
     const visibility: Visibility =
-      draft.visibility === "characters"
+      source.visibility === "characters"
         ? {
             type: "characters",
-            characters: draft.characters.filter((id) =>
+            characters: source.characters.filter((id) =>
               characters.some((character) => character.id === id),
             ),
           }
-        : { type: draft.visibility };
+        : { type: source.visibility };
     const entry: WorldbookEntry = {
-      uid: draft.uid ?? Number.MAX_SAFE_INTEGER,
-      title: draft.title.trim(),
-      keys: draft.keys
+      uid: source.uid ?? Number.MAX_SAFE_INTEGER,
+      title: source.title.trim(),
+      keys: source.keys
         .split(/[,、]/)
         .map((key) => key.trim())
         .filter(Boolean),
-      content: draft.content,
-      constant: draft.constant,
-      order: draft.order,
-      disabled: !draft.enabled,
+      content: source.content,
+      constant: source.constant,
+      order: source.order,
+      disabled: !source.enabled,
       visibility,
     };
     try {
       await invoke<number>("upsert_worldbook_entry", { worldId: world, entry });
       await refreshWorldbook();
-      setDraft(null);
-      setWorldbookMessage(t("worldbookEntrySaved"));
+      return true;
     } catch (reason) {
       setWorldbookMessage(String(reason));
+      return false;
     }
+  }
+
+  async function saveEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft) return;
+    setWorldbookMessage("");
+    if (!(await persistDraft(draft))) return;
+    setDraft(null);
+    setWorldbookMessage(t("worldbookEntrySaved"));
   }
 
   async function deleteEntry(entry: WorldbookEntry) {
