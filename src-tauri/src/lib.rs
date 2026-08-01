@@ -1,5 +1,6 @@
 mod cli;
 mod data;
+mod genesis;
 mod import;
 #[allow(dead_code)]
 mod install;
@@ -7,7 +8,7 @@ mod proxy;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
@@ -1264,6 +1265,84 @@ async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, S
         .map_err(|error| error.to_string())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutlineOutcome {
+    parsed: Option<genesis::Outline>,
+    raw: String,
+}
+
+#[tauri::command]
+async fn generate_table_outline(
+    app: tauri::AppHandle,
+    input: String,
+    genres: Vec<String>,
+) -> Result<OutlineOutcome, String> {
+    let input = input.trim();
+    if input.is_empty() && genres.is_empty() {
+        return Err("EMPTY_INPUT".to_owned());
+    }
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let messages = genesis::outline_messages(input, &genres, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        "GM",
+        "Generate the campaign outline exactly in the requested structure.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(OutlineOutcome {
+        parsed: genesis::parse_outline(&raw),
+        raw,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExpandOutcome {
+    world_id: Option<String>,
+    raw: String,
+}
+
+#[tauri::command]
+async fn generate_table_expand(
+    app: tauri::AppHandle,
+    input: String,
+    genres: Vec<String>,
+    outline_raw: String,
+) -> Result<ExpandOutcome, String> {
+    let input = input.trim();
+    if input.is_empty() && genres.is_empty() {
+        return Err("EMPTY_INPUT".to_owned());
+    }
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let messages = genesis::expand_messages(input, &genres, &outline_raw, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        "GM",
+        "Generate the full campaign materials exactly in the requested structure.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    let world_id = genesis::parse_expand(&raw)
+        .map(|expanded| genesis::materialize(&data_root(&app)?, &expanded))
+        .transpose()
+        .map_err(|error| error.to_string())?;
+    Ok(ExpandOutcome { world_id, raw })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1321,7 +1400,9 @@ pub fn run() {
             delete_gallery_image,
             gm_narrate,
             gm_suggest_speaker,
-            advance_scene
+            advance_scene,
+            generate_table_outline,
+            generate_table_expand
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
