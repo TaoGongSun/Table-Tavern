@@ -748,12 +748,16 @@ fn is_image_extension(path: &std::path::Path) -> bool {
 
 /// CLI 沙盒只能寫工作目錄，生圖時會把圖搬進來，只為了回一個 app 讀得到的路徑。
 /// 圖讀進圖庫後這份就沒用了：三家 CLI 一律在生圖收尾清掉（含失敗那次留下的），免得越堆越多。
+/// CLI 會自己開子目錄（codex 的 output/imagegen/），所以往下遞迴；清空的目錄順手移除。
 fn clear_cli_workspace_images(workspace: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(workspace) else {
         return;
     };
     for path in entries.flatten().map(|entry| entry.path()) {
-        if path.is_file() && is_image_extension(&path) {
+        if path.is_dir() {
+            clear_cli_workspace_images(&path);
+            let _ = std::fs::remove_dir(&path); // 只有真的空了才成功，留有其他檔案的目錄不動
+        } else if is_image_extension(&path) {
             let _ = std::fs::remove_file(path);
         }
     }
@@ -983,14 +987,19 @@ async fn generate_character_image(
         |_| {},
     )
     .await?;
+    let workspace = cli_workspace(&app)?;
     let found = extract_image_refs(&reply)
         .into_iter()
         .find_map(|found| match found {
             ImageRef::DataUrl(data_url) => Some(Ok(data_url)),
-            ImageRef::Path(path) if std::fs::metadata(&path).is_ok() => {
-                Some(image_file_data_url(&path))
+            // CLI 常回相對於自己工作目錄的路徑（codex 的 imagegen 存進 output/imagegen/）；
+            // 補上基準才讀得到，絕對路徑 join 後維持原樣
+            ImageRef::Path(path) => {
+                let path = workspace.join(path);
+                std::fs::metadata(&path)
+                    .is_ok()
+                    .then(|| image_file_data_url(&path))
             }
-            ImageRef::Path(_) => None,
         })
         // NO_IMAGE 是上面 prompt 跟 CLI 約好的暗號：來源自己說生不出圖，前端據此換一句人話
         .unwrap_or_else(|| {
@@ -1001,7 +1010,7 @@ async fn generate_character_image(
             })
         });
     // 圖已經讀進記憶體，中轉檔失去用途；成功與失敗都清
-    clear_cli_workspace_images(&cli_workspace(&app)?);
+    clear_cli_workspace_images(&workspace);
     let image = found?;
     save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
     Ok(image)
@@ -1358,6 +1367,16 @@ mod tests {
         ))));
     }
 
+    /// codex 的 imagegen 把圖存進工作目錄的子目錄，回覆給的是相對路徑
+    #[test]
+    fn extract_image_refs_keeps_relative_path() {
+        assert!(
+            extract_image_refs("Saved to output/imagegen/fox.png").contains(&ImageRef::Path(
+                PathBuf::from("output/imagegen/fox.png")
+            ))
+        );
+    }
+
     /// Windows 路徑沒有斜線可切，使用者名稱帶空格時同樣會斷
     #[test]
     fn extract_image_refs_keeps_windows_path_with_spaces() {
@@ -1369,23 +1388,25 @@ mod tests {
         ))));
     }
 
-    /// 中轉檔清理只碰工作目錄裡的圖片，其他檔案與子目錄留著
+    /// 中轉檔清理連 CLI 自開的子目錄一起掃，非圖片與還有東西的目錄留著
     #[test]
-    fn clear_cli_workspace_images_removes_only_images() {
+    fn clear_cli_workspace_images_removes_images_and_empty_dirs() {
         let workspace = std::env::temp_dir().join(format!(
             "table-tavern-workspace-{}-{}",
             std::process::id(),
             NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::create_dir_all(workspace.join("sub")).unwrap();
+        std::fs::create_dir_all(workspace.join("output/imagegen")).unwrap();
+        std::fs::create_dir_all(workspace.join("keep")).unwrap();
         std::fs::write(workspace.join("fox.PNG"), b"png").unwrap();
-        std::fs::write(workspace.join("shot.jpeg"), b"jpeg").unwrap();
+        std::fs::write(workspace.join("output/imagegen/deep.png"), b"png").unwrap();
         std::fs::write(workspace.join("note.txt"), b"keep").unwrap();
+        std::fs::write(workspace.join("keep/data.txt"), b"keep").unwrap();
         clear_cli_workspace_images(&workspace);
         assert!(!workspace.join("fox.PNG").exists());
-        assert!(!workspace.join("shot.jpeg").exists());
+        assert!(!workspace.join("output").exists());
         assert!(workspace.join("note.txt").exists());
-        assert!(workspace.join("sub").exists());
+        assert!(workspace.join("keep/data.txt").exists());
         std::fs::remove_dir_all(workspace).unwrap();
     }
 
