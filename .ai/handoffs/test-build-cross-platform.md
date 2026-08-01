@@ -1,13 +1,13 @@
 # Task handoff
 Task-ID: test-build-cross-platform
-Updated: 2026-08-01T15:55:00+08:00
+Updated: 2026-08-02T02:35:00+08:00
 Status: in_progress
 
 ## Goal
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
 
 ## Current state
-產線可用，每次下令即可重打。最新一輪 0.2.0（2026-08-01 15:55，HEAD 68a28ea，比上輪多帶「收回上一句」功能）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過、Designated Requirement 滿足、.app 啟動 6 秒存活且 AppleScript quit 正常）＋Windows [run 30690547893](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30690547893) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.4MB＋x64_en-US.msi 4.8MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
+產線可用，每次下令即可重打。最新一輪 0.2.0（2026-08-02 02:35，HEAD ffd447b，比上輪多帶「一句話開桌 AI 生成」）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.8MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過、Designated Requirement 滿足、.app 啟動 6 秒存活且 AppleScript quit 正常）＋Windows [run 30712558617](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30712558617) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.5MB＋x64_en-US.msi 4.9MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
 
 打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。`spctl -a` 對 ad-hoc 版必定 rejected（未公證，預期內），判斷基準看 `codesign --verify` 是否 valid。
 
