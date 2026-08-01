@@ -80,6 +80,29 @@ pub fn expand_messages(
     }]
 }
 
+pub fn character_messages(
+    input: &str,
+    genres: &[String],
+    outline_raw: &str,
+    hint: &str,
+    lang: &str,
+) -> Vec<ChatMessage> {
+    let genres = genre_line(genres);
+    let hint = hint.trim();
+    let character_request = if hint.is_empty() {
+        "Character request: (none — invent someone who fits the world and fills a gap in the cast)"
+            .to_owned()
+    } else {
+        format!("Character request: {hint}")
+    };
+    vec![ChatMessage {
+        role: "user".to_owned(),
+        content: format!(
+            "You are a tabletop RPG game master. The player is drafting a campaign outline and wants one more NPC for it.\n\nPlayer's idea: {input}\n{genres}Current outline:\n{outline_raw}\n\n{character_request}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using this exact English marker at line start:\n\n## CHARACTER: <name>\n<one line: who they are and their relation to the player>\n\nRules:\n- Exactly one character. Do not duplicate or rename characters already in the outline.\n- No text outside the section."
+        ),
+    }]
+}
+
 pub fn parse_outline(raw: &str) -> Option<Outline> {
     let sections = parse_sections(raw);
     let title = sections.title?.trim().to_owned();
@@ -108,6 +131,24 @@ pub fn parse_outline(raw: &str) -> Option<Outline> {
         world,
         characters,
     })
+}
+
+pub fn parse_character(raw: &str) -> Option<OutlineCharacter> {
+    parse_sections(raw)
+        .characters
+        .into_iter()
+        .find_map(|character| {
+            let name = character.name.trim().to_owned();
+            (!name.is_empty()).then(|| OutlineCharacter {
+                tagline: character
+                    .lines
+                    .iter()
+                    .find(|line| !line.trim().is_empty())
+                    .map(|line| line.trim().to_owned())
+                    .unwrap_or_default(),
+                name,
+            })
+        })
 }
 
 pub fn parse_expand(raw: &str) -> Option<Expanded> {
@@ -321,7 +362,10 @@ fn join_lines(lines: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{materialize, parse_expand, parse_outline, Expanded, ExpandedCharacter};
+    use super::{
+        character_messages, materialize, parse_character, parse_expand, parse_outline, Expanded,
+        ExpandedCharacter,
+    };
     use crate::data;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -372,6 +416,65 @@ mod tests {
         let outline = parse_outline(" ### wOrLd： 夜港\n迷霧籠罩碼頭。").unwrap();
         assert_eq!(outline.title, "夜港");
         assert_eq!(outline.characters.len(), 0);
+    }
+
+    #[test]
+    fn character_messages_omits_empty_genres_and_uses_default_hint() {
+        let messages = character_messages("海港冒險", &[], "## WORLD: 夜港", "  ", "zh-Hant");
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].content.contains("Player's idea: 海港冒險\nCurrent outline:"));
+        assert!(!messages[0].content.contains("Genre hints:"));
+        assert!(messages[0]
+            .content
+            .contains("Character request: (none — invent someone who fits the world and fills a gap in the cast)"));
+    }
+
+    #[test]
+    fn character_messages_includes_genres_and_trimmed_hint() {
+        let messages = character_messages(
+            "海港冒險",
+            &["mystery".to_owned(), "fantasy".to_owned()],
+            "## WORLD: 夜港",
+            "  尋找一位可靠的嚮導  ",
+            "zh-Hant",
+        );
+        assert!(messages[0]
+            .content
+            .contains("Genre hints: mystery, fantasy\nCurrent outline:"));
+        assert!(messages[0]
+            .content
+            .contains("Character request: 尋找一位可靠的嚮導\n\nAll content"));
+    }
+
+    #[test]
+    fn character_parses_heading_prefix_and_fullwidth_colon() {
+        let character = parse_character("### cHaRaCtEr： 伊利亞\n\n欠玩家人情的走私客。")
+            .unwrap();
+        assert_eq!(character.name, "伊利亞");
+        assert_eq!(character.tagline, "欠玩家人情的走私客。");
+    }
+
+    #[test]
+    fn character_uses_first_character_section() {
+        let character = parse_character(
+            "## CHARACTER: Ilya\nA smuggler.\n## CHARACTER: Moss\nA watch captain.",
+        )
+        .unwrap();
+        assert_eq!(character.name, "Ilya");
+        assert_eq!(character.tagline, "A smuggler.");
+    }
+
+    #[test]
+    fn character_is_none_without_character_section() {
+        assert!(parse_character("夜港籠罩在迷霧中。玩家正尋找失蹤的船長。").is_none());
+    }
+
+    #[test]
+    fn character_skips_empty_name_section() {
+        let character = parse_character("## CHARACTER:   \n無名者。\n## CHARACTER: Moss\nA watch captain.")
+            .unwrap();
+        assert_eq!(character.name, "Moss");
+        assert_eq!(character.tagline, "A watch captain.");
     }
 
     #[test]

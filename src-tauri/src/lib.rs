@@ -1272,6 +1272,13 @@ struct OutlineOutcome {
     raw: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterOutcome {
+    parsed: Option<genesis::OutlineCharacter>,
+    raw: String,
+}
+
 #[tauri::command]
 async fn generate_table_outline(
     app: tauri::AppHandle,
@@ -1299,6 +1306,36 @@ async fn generate_table_outline(
     .await?;
     Ok(OutlineOutcome {
         parsed: genesis::parse_outline(&raw),
+        raw,
+    })
+}
+
+#[tauri::command]
+async fn generate_table_character(
+    app: tauri::AppHandle,
+    input: String,
+    genres: Vec<String>,
+    outline_raw: String,
+    hint: String,
+) -> Result<CharacterOutcome, String> {
+    let input = input.trim();
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let messages = genesis::character_messages(input, &genres, &outline_raw, &hint, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        "GM",
+        "Generate exactly one character in the requested structure.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(CharacterOutcome {
+        parsed: genesis::parse_character(&raw),
         raw,
     })
 }
@@ -1402,6 +1439,7 @@ pub fn run() {
             gm_suggest_speaker,
             advance_scene,
             generate_table_outline,
+            generate_table_character,
             generate_table_expand
         ])
         .run(tauri::generate_context!())
