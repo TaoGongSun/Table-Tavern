@@ -214,6 +214,8 @@ export const ja: Record<MsgKey, string> = {
   genQuotaNote: "生成では設定したAIを呼び出し、あなた自身の利用枠を使います。",
   genGenerating: "概要を生成中…",
   genCharListTitle: "登場キャラクター",
+  genAddCharacter: "キャラクターを追加",
+  genRemoveCharacter: "このキャラクターを削除",
   genRerollBtn: "振り直す",
   genCreateBtn: "この卓を開始",
   genExpanding: "卓を開始中…",

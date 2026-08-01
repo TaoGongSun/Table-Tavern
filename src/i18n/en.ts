@@ -235,6 +235,8 @@ export const en: Record<MsgKey, string> = {
   genQuotaNote: "Generation calls your configured AI and uses your own quota.",
   genGenerating: "Generating outline…",
   genCharListTitle: "Characters",
+  genAddCharacter: "Add character",
+  genRemoveCharacter: "Remove character",
   genRerollBtn: "Reroll",
   genCreateBtn: "Start This Table",
   genExpanding: "Starting table…",

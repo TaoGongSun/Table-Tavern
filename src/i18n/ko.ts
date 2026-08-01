@@ -214,6 +214,8 @@ export const ko: Record<MsgKey, string> = {
   genQuotaNote: "생성할 때 설정한 AI를 호출하며, 사용자의 사용 한도를 사용합니다.",
   genGenerating: "개요 생성 중…",
   genCharListTitle: "등장 캐릭터",
+  genAddCharacter: "캐릭터 추가",
+  genRemoveCharacter: "이 캐릭터 삭제",
   genRerollBtn: "다시 생성",
   genCreateBtn: "이 테이블로 시작",
   genExpanding: "테이블 시작 중…",

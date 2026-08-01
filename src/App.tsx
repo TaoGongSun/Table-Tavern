@@ -77,6 +77,15 @@ interface GenerateExpandResult {
   raw: string;
 }
 
+function serializeGeneratedOutline(outline: GeneratedOutline): string {
+  const sections = [`## WORLD: ${outline.title.trim()}\n${outline.world.trim()}`];
+  for (const character of outline.characters) {
+    const name = character.name.trim();
+    if (name) sections.push(`## CHARACTER: ${name}\n${character.tagline.trim()}`);
+  }
+  return sections.join("\n\n");
+}
+
 interface WorldState {
   id: string;
   name: string;
@@ -2865,7 +2874,7 @@ function App() {
   }
 
   async function createGeneratedTable() {
-    if (genOutlineRaw === null) return;
+    if (!genOutline || !genOutline.title.trim() || !genOutline.world.trim()) return;
     const input = genInput.trim();
     setGenBusy("expand");
     setGenError("");
@@ -2874,10 +2883,9 @@ function App() {
       const result = await invoke<GenerateExpandResult>("generate_table_expand", {
         input,
         genres: genGenres.map((key) => t(key as typeof GENRE_KEYS[number])),
-        outlineRaw: genOutlineRaw,
+        outlineRaw: serializeGeneratedOutline(genOutline),
       });
       if (!result.worldId) {
-        setGenOutline(null);
         setGenResultRaw(result.raw);
         return;
       }
@@ -3460,14 +3468,64 @@ function App() {
             </div>
             {genOutline && (
               <section className="gen-outline-preview">
-                <strong>{genOutline.title}</strong>
-                {genOutline.world.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-                {genOutline.characters.length > 0 && (
-                  <>
-                    <h3>{t("genCharListTitle")}</h3>
-                    <ul>{genOutline.characters.map((character, index) => <li key={`${character.name}-${index}`}>{character.name} — {character.tagline}</li>)}</ul>
-                  </>
-                )}
+                <input
+                  value={genOutline.title}
+                  disabled={genBusy !== null}
+                  onChange={(event) => setGenOutline((current) => current && { ...current, title: event.currentTarget.value })}
+                />
+                <textarea
+                  rows={6}
+                  value={genOutline.world}
+                  disabled={genBusy !== null}
+                  onChange={(event) => setGenOutline((current) => current && { ...current, world: event.currentTarget.value })}
+                />
+                <h3>{t("genCharListTitle")}</h3>
+                <div className="gen-character-list">
+                  {genOutline.characters.map((character, index) => (
+                    <div className="gen-character-row" key={index}>
+                      <input
+                        className="gen-character-name"
+                        value={character.name}
+                        disabled={genBusy !== null}
+                        onChange={(event) => setGenOutline((current) => current && {
+                          ...current,
+                          characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.currentTarget.value } : item),
+                        })}
+                      />
+                      <input
+                        value={character.tagline}
+                        disabled={genBusy !== null}
+                        onChange={(event) => setGenOutline((current) => current && {
+                          ...current,
+                          characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, tagline: event.currentTarget.value } : item),
+                        })}
+                      />
+                      <button
+                        type="button"
+                        className="gen-remove-character"
+                        aria-label={t("genRemoveCharacter")}
+                        disabled={genBusy !== null}
+                        onClick={() => setGenOutline((current) => current && {
+                          ...current,
+                          characters: current.characters.filter((_, itemIndex) => itemIndex !== index),
+                        })}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="gen-add-character"
+                  disabled={genBusy !== null}
+                  onClick={() => setGenOutline((current) => current && {
+                    ...current,
+                    characters: [...current.characters, { name: "", tagline: "" }],
+                  })}
+                >
+                  ＋ {t("genAddCharacter")}
+                </button>
               </section>
             )}
             {(genResultRaw !== null || genError) && (
@@ -3479,7 +3537,7 @@ function App() {
             {genOutlineRaw !== null && (
               <div className="gen-result-actions">
                 <button type="button" disabled={genBusy !== null} onClick={() => void generateTableOutline()}>{t("genRerollBtn")}</button>
-                <button type="button" className="gen-submit" disabled={genBusy !== null} onClick={() => void createGeneratedTable()}>
+                <button type="button" className="gen-submit" disabled={genBusy !== null || !genOutline || !genOutline.title.trim() || !genOutline.world.trim()} onClick={() => void createGeneratedTable()}>
                   {genBusy === "expand" ? t("genExpanding") : t("genCreateBtn")}
                 </button>
               </div>

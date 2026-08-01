@@ -214,6 +214,8 @@ export const ru: Record<MsgKey, string> = {
   genQuotaNote: "Для генерации используется настроенный ИИ и твой лимит.",
   genGenerating: "Генерируем план…",
   genCharListTitle: "Персонажи",
+  genAddCharacter: "Добавить персонажа",
+  genRemoveCharacter: "Удалить персонажа",
   genRerollBtn: "Повторить",
   genCreateBtn: "Открыть этот стол",
   genExpanding: "Открываем стол…",
