@@ -214,6 +214,8 @@ export const de: Record<MsgKey, string> = {
   genQuotaNote: "Die Generierung nutzt deine konfigurierte KI und dein eigenes Kontingent.",
   genGenerating: "Outline wird erstellt…",
   genCharListTitle: "Charaktere",
+  genAddCharacter: "Hinzufügen",
+  genRemoveCharacter: "Charakter entfernen",
   genRerollBtn: "Nochmal",
   genCreateBtn: "Tisch starten",
   genExpanding: "Tisch wird gestartet…",

@@ -214,6 +214,8 @@ export const es: Record<MsgKey, string> = {
   genQuotaNote: "La generación usa la IA configurada y tu propia cuota.",
   genGenerating: "Generando esquema…",
   genCharListTitle: "Personajes",
+  genAddCharacter: "Añadir personaje",
+  genRemoveCharacter: "Quitar personaje",
   genRerollBtn: "Repetir",
   genCreateBtn: "Empezar esta mesa",
   genExpanding: "Abriendo mesa…",

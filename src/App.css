@@ -910,14 +910,47 @@ textarea {
   margin: 0.5rem 0;
 }
 
+.gen-outline-preview > input,
+.gen-outline-preview > textarea {
+  width: 100%;
+}
+
+.gen-outline-preview > textarea {
+  margin-top: 0.5rem;
+}
+
 .gen-outline-preview h3 {
   margin: 0.75rem 0 0.35rem;
   font-size: var(--fs-meta);
 }
 
-.gen-outline-preview ul {
-  margin: 0;
-  padding-left: 1.25rem;
+.gen-character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gen-character-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.gen-character-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.gen-character-row .gen-character-name {
+  flex: 0 1 9rem;
+}
+
+.gen-remove-character {
+  flex: 0 0 var(--control-h);
+  padding: 0;
+}
+
+.gen-add-character {
+  margin-top: 0.5rem;
 }
 
 .gen-result-error pre {

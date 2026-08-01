@@ -214,6 +214,8 @@ export const ptBR: Record<MsgKey, string> = {
   genQuotaNote: "A geração usa a IA configurada e a sua própria cota.",
   genGenerating: "Gerando sinopse…",
   genCharListTitle: "Personagens",
+  genAddCharacter: "Adicionar",
+  genRemoveCharacter: "Remover personagem",
   genRerollBtn: "Repetir",
   genCreateBtn: "Começar esta mesa",
   genExpanding: "Abrindo mesa…",

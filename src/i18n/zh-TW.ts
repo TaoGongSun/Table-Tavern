@@ -233,6 +233,8 @@ export const zh = {
   genQuotaNote: "生成會呼叫你設定的 AI，用你自己的額度。",
   genGenerating: "大綱生成中…",
   genCharListTitle: "登場角色",
+  genAddCharacter: "加一個角色",
+  genRemoveCharacter: "移除這個角色",
   genRerollBtn: "重骰",
   genCreateBtn: "照這份開桌",
   genExpanding: "開桌中…",

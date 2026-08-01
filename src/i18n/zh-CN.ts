@@ -214,6 +214,8 @@ export const zhCN: Record<MsgKey, string> = {
   genQuotaNote: "生成会调用你设置的 AI，并使用你自己的额度。",
   genGenerating: "大纲生成中…",
   genCharListTitle: "登场角色",
+  genAddCharacter: "添加角色",
+  genRemoveCharacter: "移除这个角色",
   genRerollBtn: "重抽",
   genCreateBtn: "按这份开桌",
   genExpanding: "开桌中…",
