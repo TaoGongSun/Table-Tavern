@@ -11,6 +11,7 @@
 - [worldbook-card-import](tasks/worldbook-card-import.md) — 世界書卡（PNG）匯入＋條目就地展開編輯＋純世界書開局 — 下一步：四項實作皆自驗全綠（cargo test 117、真卡 17 條煙霧、tsc＋i18n 檢查），等使用者實機驗收（含零角色匯入自動選 GM、條目切換自動存）後結案
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；另有四件待拍板（日文世界書用詞、範例桌地名處理不統一等）
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
+- [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：2026-08-02 開工，目標模式：後端→前端→i18n 逐塊外包＋主線驗收
 
 ## Done
 
@@ -18,7 +19,6 @@
 
 ## Todo
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態三項升級：匯入腳本提示＋訊息 Markdown＋GM 狀態欄 — 下一步：計畫已拍板（2026-08-01），依序開工第一項匯入腳本提示（半天級），規格與安全紅線見任務檔
-- [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：規格全拍板（2026-08-02，標記文字大綱＋角色數模型自判不錨定），調度計畫入檔，等使用者口令開工
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
