@@ -932,12 +932,19 @@ textarea {
 
 .gen-character-row {
   display: flex;
+  align-items: flex-start;
   gap: 0.4rem;
 }
 
-.gen-character-row input {
+.gen-character-row input,
+.gen-character-row textarea {
   min-width: 0;
   flex: 1;
+}
+
+.gen-character-row textarea {
+  resize: none;
+  overflow: hidden;
 }
 
 .gen-character-row .gen-character-name {
@@ -951,6 +958,17 @@ textarea {
 
 .gen-add-character {
   margin-top: 0.5rem;
+}
+
+.gen-add-character-ai {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.gen-add-character-ai input {
+  min-width: 0;
+  flex: 1;
 }
 
 .gen-result-error pre {
