@@ -1,17 +1,15 @@
 # Task handoff
 Task-ID: test-build-cross-platform
-Updated: 2026-08-01T15:25:00+08:00
+Updated: 2026-08-01T15:55:00+08:00
 Status: in_progress
 
 ## Goal
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
 
 ## Current state
-產線可用，每次下令即可重打。最新一輪 0.2.0（2026-08-01 15:25，HEAD c8ac2e4，比上輪多帶生圖三修：含空格路徑、相對路徑、被拒專屬訊息）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過、Designated Requirement 滿足）＋Windows [run 30689273274](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30689273274) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.4MB＋x64_en-US.msi 4.8MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
+產線可用，每次下令即可重打。最新一輪 0.2.0（2026-08-01 15:55，HEAD 68a28ea，比上輪多帶「收回上一句」功能）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.7MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過、Designated Requirement 滿足、.app 啟動 6 秒存活且 AppleScript quit 正常）＋Windows [run 30690547893](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30690547893) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.4MB＋x64_en-US.msi 4.8MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
 
-打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。
-
-本輪異常（不擋發佈）：.app 啟動 6 秒存活正常，但 `osascript ... to quit` 未關掉行程（前幾輪可正常 quit），改 `pkill` 才停。若後續實機出現「關不掉視窗」再回頭查。
+打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。`spctl -a` 對 ad-hoc 版必定 rejected（未公證，預期內），判斷基準看 `codesign --verify` 是否 valid。
 
 ## Completed
 - Mac：`npm run tauri build` 成功（rc=0），產出 `src-tauri/target/release/bundle/dmg/Table Tavern_0.1.0_aarch64.dmg`（4.5MB）
@@ -27,7 +25,7 @@ Status: in_progress
 ## Working context
 - Repo: /Users/pachelo/GitHub/Table-Tavern
 - Branch: main
-- HEAD: c8ac2e4
+- HEAD: 68a28ea
 
 ## Remaining
 - 使用者：把 DMG（路徑見上）拷去 MacBook Air 實測——期望顯示「Apple 無法驗證…」走系統設定「仍要打開」，不得再出現「已損毀」
