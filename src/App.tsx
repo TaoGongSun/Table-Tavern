@@ -61,6 +61,22 @@ interface WorldMeta {
   name: string;
 }
 
+interface GeneratedOutline {
+  title: string;
+  world: string;
+  characters: { name: string; tagline: string }[];
+}
+
+interface GenerateOutlineResult {
+  parsed: GeneratedOutline | null;
+  raw: string;
+}
+
+interface GenerateExpandResult {
+  worldId: string | null;
+  raw: string;
+}
+
 interface WorldState {
   id: string;
   name: string;
@@ -167,6 +183,14 @@ const TABLE_LIST_OPEN_KEY = "table_list_open";
 const SIDEBAR_DEFAULT_WIDTH = 224;
 const SIDEBAR_MIN_WIDTH = 176;
 const SIDEBAR_KEY_STEP = 16;
+const GENRE_KEYS = [
+  "genGenreFantasy",
+  "genGenreScifi",
+  "genGenreUrban",
+  "genGenreWuxia",
+  "genGenreSchool",
+  "genGenreApocalypse",
+] as const;
 
 interface CliInfo {
   id: string;
@@ -2585,6 +2609,14 @@ function App() {
   const [tableListOpen, setTableListOpen] = useState(
     () => localStorage.getItem(TABLE_LIST_OPEN_KEY) !== "false",
   );
+  const [genTableOpen, setGenTableOpen] = useState(false);
+  const [genInput, setGenInput] = useState("");
+  const [genGenres, setGenGenres] = useState<string[]>([]);
+  const [genOutline, setGenOutline] = useState<GeneratedOutline | null>(null);
+  const [genOutlineRaw, setGenOutlineRaw] = useState<string | null>(null);
+  const [genResultRaw, setGenResultRaw] = useState<string | null>(null);
+  const [genError, setGenError] = useState("");
+  const [genBusy, setGenBusy] = useState<"outline" | "expand" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -2803,6 +2835,62 @@ function App() {
       }
     } catch (reason) {
       setError(String(reason));
+    }
+  }
+
+  async function generateTableOutline() {
+    const input = genInput.trim();
+    if (!input && genGenres.length === 0) return;
+    setGenBusy("outline");
+    setGenOutline(null);
+    setGenOutlineRaw(null);
+    setGenResultRaw(null);
+    setGenError("");
+    try {
+      const result = await invoke<GenerateOutlineResult>("generate_table_outline", {
+        input,
+        genres: genGenres.map((key) => t(key as typeof GENRE_KEYS[number])),
+      });
+      setGenOutlineRaw(result.raw);
+      if (result.parsed) {
+        setGenOutline(result.parsed);
+      } else {
+        setGenResultRaw(result.raw);
+      }
+    } catch (reason) {
+      setGenError(String(reason));
+    } finally {
+      setGenBusy(null);
+    }
+  }
+
+  async function createGeneratedTable() {
+    if (genOutlineRaw === null) return;
+    const input = genInput.trim();
+    setGenBusy("expand");
+    setGenError("");
+    setGenResultRaw(null);
+    try {
+      const result = await invoke<GenerateExpandResult>("generate_table_expand", {
+        input,
+        genres: genGenres.map((key) => t(key as typeof GENRE_KEYS[number])),
+        outlineRaw: genOutlineRaw,
+      });
+      if (!result.worldId) {
+        setGenOutline(null);
+        setGenResultRaw(result.raw);
+        return;
+      }
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      await enterTable(result.worldId, config!);
+      setGenTableOpen(false);
+      setGenOutline(null);
+      setGenOutlineRaw(null);
+      setGenResultRaw(null);
+    } catch (reason) {
+      setGenError(String(reason));
+    } finally {
+      setGenBusy(null);
     }
   }
 
@@ -3332,6 +3420,73 @@ function App() {
 
   return (
     <div className="app-shell">
+      {genTableOpen && (
+        <div className="modal-overlay" onClick={() => !genBusy && setGenTableOpen(false)}>
+          <div className="modal gen-table-modal" role="dialog" aria-modal="true" aria-label={t("genTitle")} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <strong>{t("genTitle")}</strong>
+              <button type="button" className="modal-close" aria-label={t("closeBtn")} disabled={genBusy !== null} onClick={() => setGenTableOpen(false)}>×</button>
+            </div>
+            <textarea
+              rows={4}
+              value={genInput}
+              placeholder={t("genInputPlaceholder")}
+              aria-label={t("genInputPlaceholder")}
+              disabled={genBusy !== null}
+              onChange={(event) => setGenInput(event.currentTarget.value)}
+            />
+            <div className="gen-genres">
+              {GENRE_KEYS.map((key) => {
+                const selected = genGenres.includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`gen-genre${selected ? " gen-genre-selected" : ""}`}
+                    aria-pressed={selected}
+                    disabled={genBusy !== null}
+                    onClick={() => setGenGenres((current) => selected ? current.filter((genre) => genre !== key) : [...current, key])}
+                  >
+                    {t(key)}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="gen-submit-row">
+              <button type="button" className="gen-submit" disabled={genBusy !== null || (!genInput.trim() && genGenres.length === 0)} onClick={() => void generateTableOutline()}>
+                {genBusy === "outline" ? t("genGenerating") : t("genGenerateBtn")}
+              </button>
+              <small>{t("genQuotaNote")}</small>
+            </div>
+            {genOutline && (
+              <section className="gen-outline-preview">
+                <strong>{genOutline.title}</strong>
+                {genOutline.world.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+                {genOutline.characters.length > 0 && (
+                  <>
+                    <h3>{t("genCharListTitle")}</h3>
+                    <ul>{genOutline.characters.map((character, index) => <li key={`${character.name}-${index}`}>{character.name} — {character.tagline}</li>)}</ul>
+                  </>
+                )}
+              </section>
+            )}
+            {(genResultRaw !== null || genError) && (
+              <section className="gen-result-error" role="alert">
+                <p>{genError || t("genParseFail")}</p>
+                <pre>{genError || genResultRaw}</pre>
+              </section>
+            )}
+            {genOutlineRaw !== null && (
+              <div className="gen-result-actions">
+                <button type="button" disabled={genBusy !== null} onClick={() => void generateTableOutline()}>{t("genRerollBtn")}</button>
+                <button type="button" className="gen-submit" disabled={genBusy !== null} onClick={() => void createGeneratedTable()}>
+                  {genBusy === "expand" ? t("genExpanding") : t("genCreateBtn")}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <aside className="sidebar" style={{ width: sidebarWidth }}>
         <details
           className="table-section"
@@ -3346,6 +3501,9 @@ function App() {
           <div className="table-section-content">
             <button className="new-table" onClick={newTable} disabled={generating !== null}>
               {t("newTable")}
+            </button>
+            <button className="gen-table" onClick={() => setGenTableOpen(true)} disabled={generating !== null}>
+              {t("genTableBtn")}
             </button>
             <nav className="table-list" aria-label={t("tableListAria")}>
               {worlds.map((w) => (
