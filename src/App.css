@@ -392,7 +392,8 @@ textarea {
   padding-top: 0.35rem;
 }
 
-.new-table {
+.new-table,
+.gen-table {
   justify-content: flex-start;
 }
 
@@ -854,6 +855,80 @@ textarea {
 .modal-close {
   border: none;
   padding: 0 0.7em;
+}
+
+.gen-table-modal textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.gen-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.gen-genre {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.gen-genre-selected,
+.gen-submit {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface-0);
+}
+
+.gen-submit-row,
+.gen-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.gen-submit-row small {
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.gen-outline-preview,
+.gen-result-error {
+  max-height: 18rem;
+  overflow-y: auto;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+}
+
+.gen-outline-preview p,
+.gen-result-error p {
+  margin: 0.5rem 0;
+}
+
+.gen-outline-preview h3 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: var(--fs-meta);
+}
+
+.gen-outline-preview ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.gen-result-error pre {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: var(--fs-meta) / 1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.gen-result-actions {
+  justify-content: flex-end;
 }
 
 /* AI 生成鈕：強調色描邊，與一般檔案操作鈕區隔 */
