@@ -278,6 +278,9 @@ export const zh = {
   gmNarrateHint: "請 GM 插入一段場景旁白（GM 讀得到世界設定與全部角色卡）",
   gmAdvance: "GM 推進",
   gmAdvanceHint: "GM 點名下一位角色接話並接力推進，遇「輪到玩家」或達每回合上限即停",
+  undoLast: "收回上一句",
+  undoLastHint: "刪掉紀錄最後一則，可連按往回收；只收這一幕的",
+  undoRestore: "復原剛收回的",
 
   // AI 失敗訊息分流（對話與生圖共用；認不出來就不顯示這兩句，原文照舊附在小字）
   errQuota: "這個 AI 來源的額度用完了。換一個 AI 來源，或等額度重置再試。",

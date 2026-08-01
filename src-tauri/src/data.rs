@@ -1266,6 +1266,22 @@ pub fn append_transcript(
     Ok(())
 }
 
+/// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
+/// 回傳是否真的刪了——這一幕已經空了就是 false，收不會倒退咬到上一幕。
+pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<bool> {
+    let mut events = read_transcript(root, world_id, scene)?;
+    if events.pop().is_none() {
+        return Ok(false);
+    }
+    let mut buffer = String::new();
+    for event in &events {
+        buffer.push_str(&serde_json::to_string(event)?);
+        buffer.push('\n');
+    }
+    fs::write(transcript_path(root, world_id, scene)?, buffer)?;
+    Ok(true)
+}
+
 pub fn read_transcript(
     root: &Path,
     world_id: &str,
@@ -2873,6 +2889,48 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("line 4"), "{error}");
+    }
+
+    #[test]
+    fn pop_transcript_removes_last_event_until_scene_is_empty() {
+        let root = TestRoot::new("transcript-pop");
+        let world_id = create_world(root.path(), "收回桌").unwrap();
+        let events: Vec<TranscriptEvent> = ["序幕", "我推開門", "誰在那裡？"]
+            .iter()
+            .enumerate()
+            .map(|(index, text)| TranscriptEvent {
+                ts: format!("2026-08-01T10:00:0{index}+08:00"),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: TranscriptKind::Narration,
+                text: (*text).to_owned(),
+            })
+            .collect();
+        for event in &events {
+            append_transcript(root.path(), &world_id, 0, event).unwrap();
+        }
+
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert_eq!(
+            read_transcript(root.path(), &world_id, 0).unwrap(),
+            events[..2]
+        );
+        // 重寫後仍是合法 JSONL：行數對齊事件數，沒有殘留的半行
+        let path = root.path().join(format!("worlds/{world_id}/transcript/0.jsonl"));
+        assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 2);
+
+        // 連按到底：收乾淨後再按回 false，不會倒退咬到別的幕
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert!(!pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert!(read_transcript(root.path(), &world_id, 0).unwrap().is_empty());
+
+        // 沒開始過的幕：不建檔也不報錯
+        assert!(!pop_transcript(root.path(), &world_id, 9).unwrap());
+        assert!(!root
+            .path()
+            .join(format!("worlds/{world_id}/transcript/9.jsonl"))
+            .exists());
     }
 
     #[test]

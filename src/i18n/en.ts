@@ -283,6 +283,9 @@ export const en: Record<MsgKey, string> = {
   gmAdvance: "GM Advance",
   gmAdvanceHint:
     "The GM calls on the next character and keeps the scene moving, stopping at the player's turn or the per-round cap",
+  undoLast: "Undo last",
+  undoLastHint: "Delete the last entry in the log; press again to keep going back, within this scene only",
+  undoRestore: "Restore that line",
 
   errQuota: "This AI source is out of quota. Switch to another AI source, or wait for the quota to reset.",
   errAuth: "This AI source isn't signed in, or its credentials expired. Reconnect it in Settings and try again.",
