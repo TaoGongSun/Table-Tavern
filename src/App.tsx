@@ -2522,9 +2522,16 @@ function App() {
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
-  // 剛收回的那一句：手滑按到還放得回去。只留最後一次，並記下當時的桌與幕——
-  // 換桌換幕後這筆自動失效（比對不上就不顯示），免得放回錯的地方
-  const [undone, setUndone] = useState<{ table: string; scene: number; event: TranscriptEvent } | null>(null);
+  // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
+  // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
+  const [undone, setUndone] = useState<{
+    table: string;
+    scene: number;
+    events: TranscriptEvent[];
+  } | null>(null);
+  // 連按時前一次的寫檔還沒回來就再按，兩次會讀到同一份舊狀態而重複收回／放回同一則；
+  // 用旗標讓同一時間只跑一次（寫檔是毫秒級，擋掉的那下感覺不出來）
+  const undoBusy = useRef(false);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
   // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
@@ -3093,34 +3100,50 @@ function App() {
   async function appendEvent(event: TranscriptEvent) {
     await invoke("append_transcript", { worldId: table, scene, event });
     setEvents((previous) => [...previous, event]);
-    // 桌上一有新內容，剛收回的那句就不能再放回去了——它的位置已經被後面的話蓋掉
+    // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
     setUndone(null);
   }
 
   // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
   async function undoLast() {
-    if (generating !== null || events.length === 0) return;
+    if (generating !== null || events.length === 0 || undoBusy.current) return;
+    undoBusy.current = true;
     setError("");
     const last = events[events.length - 1];
     try {
       if (!(await invoke<boolean>("pop_transcript", { worldId: table, scene }))) return;
       setEvents((previous) => previous.slice(0, -1));
-      setUndone({ table, scene, event: last });
+      setUndone((previous) =>
+        previous && previous.table === table && previous.scene === scene
+          ? { ...previous, events: [...previous.events, last] }
+          : { table, scene, events: [last] },
+      );
     } catch (reason) {
       setError(String(reason));
+    } finally {
+      undoBusy.current = false;
     }
   }
 
+  // 復原一次放回一則，可連按把整輪收回逐則倒回去。
+  // 這裡不走 appendEvent——放回舊句不該把剩下那幾句一起作廢，只消耗疊頂那一則
   async function restoreUndone() {
-    if (!undone || generating !== null) return;
+    if (!undone || !canRestore || generating !== null || undoBusy.current) return;
+    undoBusy.current = true;
+    const event = undone.events[undone.events.length - 1];
     setError("");
-    const pending = undone;
     try {
-      await appendEvent(pending.event);
+      await invoke("append_transcript", { worldId: table, scene, event });
+      setEvents((previous) => [...previous, event]);
+      setUndone((previous) =>
+        previous && previous.events.length > 1
+          ? { ...previous, events: previous.events.slice(0, -1) }
+          : null,
+      );
     } catch (reason) {
-      // 放不回去就把復原鈕留著，讓使用者能再按一次
-      setUndone(pending);
       setError(String(reason));
+    } finally {
+      undoBusy.current = false;
     }
   }
 
