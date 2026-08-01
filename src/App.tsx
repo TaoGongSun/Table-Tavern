@@ -2522,6 +2522,9 @@ function App() {
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
+  // 剛收回的那一句：手滑按到還放得回去。只留最後一次，並記下當時的桌與幕——
+  // 換桌換幕後這筆自動失效（比對不上就不顯示），免得放回錯的地方
+  const [undone, setUndone] = useState<{ table: string; scene: number; event: TranscriptEvent } | null>(null);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
   // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
@@ -3090,6 +3093,35 @@ function App() {
   async function appendEvent(event: TranscriptEvent) {
     await invoke("append_transcript", { worldId: table, scene, event });
     setEvents((previous) => [...previous, event]);
+    // 桌上一有新內容，剛收回的那句就不能再放回去了——它的位置已經被後面的話蓋掉
+    setUndone(null);
+  }
+
+  // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
+  async function undoLast() {
+    if (generating !== null || events.length === 0) return;
+    setError("");
+    const last = events[events.length - 1];
+    try {
+      if (!(await invoke<boolean>("pop_transcript", { worldId: table, scene }))) return;
+      setEvents((previous) => previous.slice(0, -1));
+      setUndone({ table, scene, event: last });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function restoreUndone() {
+    if (!undone || generating !== null) return;
+    setError("");
+    const pending = undone;
+    try {
+      await appendEvent(pending.event);
+    } catch (reason) {
+      // 放不回去就把復原鈕留著，讓使用者能再按一次
+      setUndone(pending);
+      setError(String(reason));
+    }
   }
 
   // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
@@ -3196,6 +3228,9 @@ function App() {
   }
 
   const metaOf = (id: string) => characters.find((c) => c.id === id);
+
+  // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）
+  const canRestore = undone !== null && undone.table === table && undone.scene === scene;
 
   // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
   const gmTargeted = speaker === GM_TARGET;
@@ -3724,6 +3759,13 @@ function App() {
                   )}
                 </div>
               )}
+              {canRestore && generating === null && (
+                <div className="undo-restore">
+                  <button type="button" onClick={() => void restoreUndone()}>
+                    ↩ {t("undoRestore")}
+                  </button>
+                </div>
+              )}
               <div ref={bottomRef} />
             </section>
 
@@ -3785,6 +3827,15 @@ function App() {
                 </div>
                 {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
                 <div className="composer-ai-actions">
+                  <button
+                    className="undo-last"
+                    type="button"
+                    onClick={() => void undoLast()}
+                    disabled={generating !== null || events.length === 0}
+                    title={t("undoLastHint")}
+                  >
+                    ↩ {t("undoLast")}
+                  </button>
                   <button
                     className="request-reply"
                     type="button"

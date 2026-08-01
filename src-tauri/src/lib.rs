@@ -476,6 +476,12 @@ fn read_transcript(
     data::read_transcript(&data_root(&app)?, &world_id, scene).map_err(|error| error.to_string())
 }
 
+// 收回上一句：只砍當前這一幕的最後一筆，可連按；回傳 false＝這一幕已經收乾淨了
+#[tauri::command]
+fn pop_transcript(app: tauri::AppHandle, world_id: String, scene: u64) -> Result<bool, String> {
+    data::pop_transcript(&data_root(&app)?, &world_id, scene).map_err(|error| error.to_string())
+}
+
 // 存檔位置由前端的「另存新檔」對話框決定，這裡只負責產內容寫入該路徑
 #[tauri::command]
 fn export_transcript(app: tauri::AppHandle, world_id: String, path: String) -> Result<(), String> {
@@ -1295,6 +1301,7 @@ pub fn run() {
             delete_character_avatar,
             append_transcript,
             read_transcript,
+            pop_transcript,
             export_transcript,
             export_scene,
             read_state,

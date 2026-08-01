@@ -1396,6 +1396,18 @@ textarea {
   white-space: nowrap;
 }
 
+/* 收回上一句：虛線邊框＋淡字＝反向動作，跟右邊那幾顆「請 AI 生」分得開，減少誤按 */
+.undo-last {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+
+/* 手滑救援：剛收回的那一句還放得回去，提示就長在它被收掉的位置 */
+.undo-restore {
+  display: flex;
+  justify-content: center;
+}
+
 /* ============ 表單／設定 ============ */
 .link {
   background: none;
