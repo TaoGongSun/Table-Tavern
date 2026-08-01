@@ -261,4 +261,5 @@ export const de: Record<MsgKey, string> = {
   errQuota: "Das Kontingent dieser KI-Quelle ist aufgebraucht. Wechsle zu einer anderen KI-Quelle oder warte auf die Zurücksetzung.",
   errAuth: "Diese KI-Quelle ist nicht angemeldet oder die Anmeldedaten sind abgelaufen. Verbinde sie in den Einstellungen neu und versuche es noch einmal.",
   errNoImage: "Diese Quelle kann keine Bilder generieren: Entweder ist das Bildguthaben aufgebraucht oder das Bild-Abonnement fehlt. Versuche eine andere Bildquelle.",
+  errRefused: "Die Bildquelle hat diese Beschreibung abgelehnt, meist wegen der Inhaltsrichtlinien. Formuliere sie um oder versuche eine andere Bildquelle.",
 };

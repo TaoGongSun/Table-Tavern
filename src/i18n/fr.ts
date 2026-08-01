@@ -261,4 +261,5 @@ export const fr: Record<MsgKey, string> = {
   errQuota: "Le quota de cette source d'IA est épuisé. Passe à une autre source d'IA, ou attends la réinitialisation de ton quota.",
   errAuth: "Cette source d'IA n'est pas connectée, ou ses identifiants ont expiré. Reconnecte-la dans les Paramètres, puis réessaie.",
   errNoImage: "Cette source ne peut pas générer d'images : crédit insuffisant, ou formule ne comprenant pas la génération d'images. Essaie une autre source.",
+  errRefused: "La source a refusé cette description, généralement à cause des règles de contenu. Reformule-la, ou essaie une autre source.",
 };
