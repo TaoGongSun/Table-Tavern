@@ -19,7 +19,10 @@
 
 - CLI 生圖路徑解析修正＋中轉檔清理（2026-08-01）：回覆改先「整行掃」——從路徑起點（POSIX `/` 或 Windows `C:\`）吃到最後一個圖片副檔名，含空格的路徑與尾隨標點都不再被切斷，逐詞切法留作保底、候選去重（`extract_image_refs`／新增 `path_span`）；相對路徑改以 CLI 工作目錄為基準解析（絕對路徑 join 後不變）。生圖收尾一律清掉工作目錄裡的圖片中轉檔（成功與失敗都清，三家 CLI 通用，遞迴進 CLI 自開的子目錄、清空即移除，Windows 檔案被佔用時跳過），工作目錄準備抽成 `cli_workspace` 供聊天與生圖共用。
 
+- 生圖失敗訊息分流（2026-08-01）：CLI prompt 改問兩個暗號——`NO_IMAGE`（根本不會生圖）與 `REFUSED`（不肯生這一張），前端 `explainAiError` 各對一句人話（新增十語系 `errRefused`）；模型不照暗號回時，再用拒絕字樣（content policy／can't generate／無法生成／拒絕等）保底歸類。兩者都沒對上時，錯誤小字附上 CLI 最後一句原話（截 200 字，`last_sentence`），不再只顯示「回覆中沒有圖片」。
+
 ## Verification
+- 生圖失敗訊息分流（2026-08-01）：codex 實測比對——同一段被拒的描述，只給 `NO_IMAGE` 選項時它回 `NO_IMAGE`（會被誤讀成「來源不會生圖」），加上 `REFUSED` 選項後改回 `REFUSED`，分流可靠。`cargo test` 126 綠、`npx tsc --noEmit` 0 錯、`npm run check:i18n` 十語系 OK、`npm run build` exit 0；08-01 15:0x 使用者實機驗收通過。
 - CLI 生圖路徑修正（2026-08-01）：`cargo test` 126 綠（+4：macOS 含空格路徑、Windows 反斜線含空格路徑、CLI 相對路徑、中轉檔清理遞迴且只刪圖片）；clippy／fmt 與改動前逐項相同（既有 6 項與本次無關）。08-01 14:54 使用者實機驗收通過：codex 出圖進圖庫（md5 與 `~/.codex/generated_images/` 該次一致），cli-workspace 清空無殘留。codex 回報路徑有三種形態，都要接：①`~/.codex/generated_images/` 原始絕對路徑（無空格，舊版剛好會過）②複製到 `cli-workspace/` 的絕對路徑（被 `Application Support` 的空格切碎）③複製到 `cli-workspace/output/imagegen/` 後回相對路徑（要補工作目錄基準）。它照 `~/.codex/skills/.system/imagegen/SKILL.md` 的規定不把成品留在自己家，所以②③會出現。
 - 構圖二選一（2026-07-30）：`npx tsc --noEmit` 0 錯、`npm run check:i18n` 十語系 OK、`cargo test --lib` 117 綠、`npm run build` exit 0。實際出圖待使用者實機。
 - 後端：`cargo test` 85 綠（基線 77，+8 新測試：Images API mock 兩案、extract_image_from_text 三案、gen_prompt roundtrip 等）；`cargo clippy --all-targets` 0 error

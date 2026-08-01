@@ -261,4 +261,5 @@ export const zhCN: Record<MsgKey, string> = {
   errQuota: "该 AI 来源的额度已用尽。请更换 AI 来源，或等待额度重置后重试。",
   errAuth: "该 AI 来源尚未登录，或凭证已过期。请前往设置重新连接后重试。",
   errNoImage: "该来源无法生图：生图额度不足，或套餐未包含生图。请更换生图来源重试。",
+  errRefused: "这段描述被生图来源拒绝了，多半卡到内容规范。换个说法，或改用其他生图来源重试。",
 };

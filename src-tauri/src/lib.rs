@@ -739,6 +739,16 @@ pub fn extract_image_refs(text: &str) -> Vec<ImageRef> {
     refs
 }
 
+/// 沒抓到圖時附上 CLI 的最後一句（截 200 字）：模型不照暗號時，拒絕理由通常寫在那裡
+fn last_sentence(reply: &str) -> Option<String> {
+    let line = reply
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .next_back()?;
+    Some(line.chars().take(200).collect())
+}
+
 fn is_image_extension(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -965,8 +975,9 @@ async fn generate_character_image(
         return Ok(image);
     }
     // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）會存檔回路徑，其餘掃不到圖就失敗
+    // 兩個暗號分開問：生不出（沒能力／沒額度）與不肯生（內容規範）要給玩家不同的下一步
     prompt.push_str(
-        "\nIf you are able to generate images, generate it now, save it as a PNG file, and reply with the absolute file path of the saved image. If you cannot generate images, reply exactly: NO_IMAGE",
+        "\nIf you are able to generate images, generate it now, save it as a PNG file, and reply with the absolute file path of the saved image. If you cannot generate images at all, reply exactly: NO_IMAGE. If you decline this particular request, reply exactly: REFUSED",
     );
     if transport_kind == "codex" {
         prompt = format!("$imagegen {prompt}");
@@ -1001,12 +1012,18 @@ async fn generate_character_image(
                     .then(|| image_file_data_url(&path))
             }
         })
-        // NO_IMAGE 是上面 prompt 跟 CLI 約好的暗號：來源自己說生不出圖，前端據此換一句人話
+        // REFUSED／NO_IMAGE 是上面 prompt 跟 CLI 約好的暗號，前端據此各換一句人話；
+        // 兩個都沒對上時附最後一句原話，模型不照暗號時的拒絕理由通常就寫在那
         .unwrap_or_else(|| {
-            Err(if reply.contains("NO_IMAGE") {
+            Err(if reply.contains("REFUSED") {
+                "REFUSED：來源拒絕生成這段內容".to_owned()
+            } else if reply.contains("NO_IMAGE") {
                 "NO_IMAGE：來源回報無法生圖".to_owned()
             } else {
-                "回覆中沒有圖片".to_owned()
+                match last_sentence(&reply) {
+                    Some(tail) => format!("回覆中沒有圖片：{tail}"),
+                    None => "回覆中沒有圖片".to_owned(),
+                }
             })
         });
     // 圖已經讀進記憶體，中轉檔失去用途；成功與失敗都清
