@@ -17,6 +17,7 @@
 見 [DONE.md](DONE.md)（25 項）。
 
 ## Todo
+- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態三項升級：匯入腳本提示＋訊息 Markdown＋GM 狀態欄 — 下一步：計畫已拍板（2026-08-01），依序開工第一項匯入腳本提示（半天級），規格與安全紅線見任務檔
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
