@@ -17,7 +17,10 @@
 
 - 構圖二選一（2026-07-30，取代「常用提示詞標籤」議程）：生圖對話框加「構圖」全身／半身（預設全身，記 `preferences.image_framing`），後端 `generate_character_image` 收 `framing`，prompt 開頭 `full-body`／`waist-up half-body`；追加描寫改標「takes priority over the defaults above」，讓玩家用文字推翻素背景等預設。2:3 直式不放開（角色卡版面吃這個比例）。舊前端沒傳參數＝全身。
 
+- CLI 生圖路徑解析修正＋中轉檔清理（2026-08-01）：回覆改先「整行掃」——從路徑起點（POSIX `/` 或 Windows `C:\`）吃到最後一個圖片副檔名，含空格的路徑與尾隨標點都不再被切斷，逐詞切法留作保底、候選去重（`extract_image_refs`／新增 `path_span`）。生圖收尾一律清掉 CLI 工作目錄裡的圖片中轉檔（成功與失敗都清，三家 CLI 通用，Windows 檔案被佔用時跳過），工作目錄準備抽成 `cli_workspace` 供聊天與生圖共用。
+
 ## Verification
+- CLI 生圖路徑修正（2026-08-01）：`cargo test` 125 綠（+3：macOS 含空格路徑、Windows 反斜線含空格路徑、中轉檔清理只刪圖片留其他檔）；clippy／fmt 與改動前逐項相同（既有 6 項與本次無關）。根因實證：codex 把圖複製到 `Application Support/TableTavern/cli-workspace/` 再回絕對路徑，舊解析被 `Application Support` 的空格切碎（同一 md5 同時存在 `~/.codex/generated_images/` 與 cli-workspace，圖庫則沒有）。**尚未實機驗證**：08-01 14:31 那次成功跑的是 07-31 20:11 build 的舊版，該次 codex 直接回 `~/.codex/generated_images/` 原始路徑（無空格）才過關——codex 兩種回法都會出現，本次修正涵蓋的是帶空格那條。
 - 構圖二選一（2026-07-30）：`npx tsc --noEmit` 0 錯、`npm run check:i18n` 十語系 OK、`cargo test --lib` 117 綠、`npm run build` exit 0。實際出圖待使用者實機。
 - 後端：`cargo test` 85 綠（基線 77，+8 新測試：Images API mock 兩案、extract_image_from_text 三案、gen_prompt roundtrip 等）；`cargo clippy --all-targets` 0 error
 - 前端：`npm run build` exit 0
@@ -32,6 +35,7 @@
 ## Next action
 1. 拍板任務檔「待討論議程」：Ko-fi 導購歧義。（提示詞標籤 2026-07-30 已用構圖二選一結案，見下）
 2. 使用者實機驗收構圖二選一：生圖對話框選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
-3. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原；重置免費次數改 `ai_image_trials_used`（手改 config.json 的舊旗標已失效）。
+3. 重新 build 後複驗 CLI 生圖：確認 codex 走「複製到工作目錄」那條路也能成圖，且生圖後 `Application Support/TableTavern/cli-workspace/` 沒有殘留圖片（現有殘留 fox_tavern_owner.png 會被首次生圖清掉）。
+4. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原；重置免費次數改 `ai_image_trials_used`（手改 config.json 的舊旗標已失效）。
 
 （2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）

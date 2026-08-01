@@ -27,6 +27,15 @@ fn config_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
+/// CLI 的工作目錄。Finder 啟動的 macOS app 工作目錄可能是根目錄；CLI 若繼承後做專案探索，
+/// 會掃到桌面、下載項目等受 TCC 保護的位置。固定在專用空目錄，避免無關權限彈窗。
+fn cli_workspace(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let workspace = config_root(app)?.join("cli-workspace");
+    std::fs::create_dir_all(&workspace)
+        .map_err(|error| format!("無法準備 CLI 工作目錄：{error}"))?;
+    Ok(workspace)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct InstallMessages {
@@ -562,11 +571,7 @@ async fn stream_via_transport(
         .into_iter()
         .find(|info| info.id == transport_kind)
         .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
-    // Finder 啟動的 macOS app 工作目錄可能是根目錄；CLI 若繼承後做專案探索，
-    // 會掃到桌面、下載項目等受 TCC 保護的位置。固定在專用空目錄，避免無關權限彈窗。
-    let cli_working_dir = config_root(app)?.join("cli-workspace");
-    std::fs::create_dir_all(&cli_working_dir)
-        .map_err(|error| format!("無法準備 CLI 工作目錄：{error}"))?;
+    let cli_working_dir = cli_workspace(app)?;
 
     let (system, prompt) = cli::flatten_messages(assistant_label, cli_closing, messages);
     let program = std::path::PathBuf::from(&info.path);
@@ -669,7 +674,30 @@ pub enum ImageRef {
     Path(PathBuf),
 }
 
-/// 回覆裡的圖片候選，依出現順序；呼叫端挑第一個真的讀得到的。
+/// 一行裡從路徑起點（POSIX 的「/」或 Windows 的「C:\」）切到最後一個圖片副檔名結尾。
+/// 兩邊的工作資料夾都可能帶空格（macOS 的「Application Support」、Windows 帶空格的使用者名），
+/// 逐詞切會把路徑攔腰切斷，改用這個切法連空格與尾隨標點一起處理。
+fn path_span(line: &str) -> Option<&str> {
+    let bytes = line.as_bytes();
+    // 磁碟機字母前不接英數，才不會把「https://…」的「s:/」當成路徑開頭
+    let drive = (0..bytes.len()).find(|&index| {
+        bytes[index].is_ascii_alphabetic()
+            && (index == 0 || !bytes[index - 1].is_ascii_alphanumeric())
+            && bytes.get(index + 1) == Some(&b':')
+            && matches!(bytes.get(index + 2), Some(b'\\' | b'/'))
+    });
+    let start = [drive, line.find('/')].into_iter().flatten().min()?;
+    let lowered = line.to_ascii_lowercase();
+    let end = [".png", ".jpg", ".jpeg", ".webp"]
+        .into_iter()
+        .filter_map(|extension| lowered.rfind(extension).map(|at| at + extension.len()))
+        .filter(|end| *end > start)
+        .max()?;
+    Some(&line[start..end])
+}
+
+/// 回覆裡的圖片候選，依出現順序去重；呼叫端挑第一個真的讀得到的。
+/// 先整行切（吃得下含空格的路徑），再退回逐詞切；
 /// 前導說明可能緊貼著路徑（「…浮水印。/Users/…png」），所以每個詞另外補一個「從斜線起算」的切法。
 pub fn extract_image_refs(text: &str) -> Vec<ImageRef> {
     if let Some(start) = text.find("data:image/") {
@@ -683,7 +711,11 @@ pub fn extract_image_refs(text: &str) -> Vec<ImageRef> {
             return vec![ImageRef::DataUrl(data_url.to_owned())];
         }
     }
-    text.split_whitespace()
+    let mut refs = Vec::new();
+    for candidate in text
+        .lines()
+        .filter_map(path_span)
+        .chain(text.split_whitespace())
         .flat_map(|token| {
             let token = token.trim_matches(|character: char| {
                 matches!(
@@ -697,17 +729,34 @@ pub fn extract_image_refs(text: &str) -> Vec<ImageRef> {
                 .map(|start| &token[start..]);
             [Some(token), from_slash].into_iter().flatten()
         })
-        .filter(|candidate| {
-            PathBuf::from(candidate)
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .map(str::to_ascii_lowercase)
-                .is_some_and(|extension| {
-                    matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp")
-                })
-        })
-        .map(|candidate| ImageRef::Path(PathBuf::from(candidate)))
-        .collect()
+        .filter(|candidate| is_image_extension(std::path::Path::new(candidate)))
+    {
+        let found = ImageRef::Path(PathBuf::from(candidate));
+        if !refs.contains(&found) {
+            refs.push(found);
+        }
+    }
+    refs
+}
+
+fn is_image_extension(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|extension| matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp"))
+}
+
+/// CLI 沙盒只能寫工作目錄，生圖時會把圖搬進來，只為了回一個 app 讀得到的路徑。
+/// 圖讀進圖庫後這份就沒用了：三家 CLI 一律在生圖收尾清掉（含失敗那次留下的），免得越堆越多。
+fn clear_cli_workspace_images(workspace: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(workspace) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path.is_file() && is_image_extension(&path) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 fn encode_base64(bytes: &[u8]) -> String {
@@ -934,7 +983,7 @@ async fn generate_character_image(
         |_| {},
     )
     .await?;
-    let image = extract_image_refs(&reply)
+    let found = extract_image_refs(&reply)
         .into_iter()
         .find_map(|found| match found {
             ImageRef::DataUrl(data_url) => Some(Ok(data_url)),
@@ -950,7 +999,10 @@ async fn generate_character_image(
             } else {
                 "回覆中沒有圖片".to_owned()
             })
-        })?;
+        });
+    // 圖已經讀進記憶體，中轉檔失去用途；成功與失敗都清
+    clear_cli_workspace_images(&cli_workspace(&app)?);
+    let image = found?;
     save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
     Ok(image)
 }
@@ -1245,8 +1297,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cli_install_script, decode_base64, encode_base64, extract_image_refs,
-        list_gallery_image_files, validate_gallery_component, ImageRef, InstallMessages, PathBuf,
+        clear_cli_workspace_images, cli_install_script, decode_base64, encode_base64,
+        extract_image_refs, list_gallery_image_files, validate_gallery_component, ImageRef,
+        InstallMessages, PathBuf,
     };
     use crate::data;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1292,6 +1345,48 @@ mod tests {
             .contains(&ImageRef::Path(PathBuf::from(
                 "/Users/me/.codex/generated_images/abc/call_x.png"
             ))));
+    }
+
+    /// macOS 的 CLI 工作資料夾在「Application Support」底下，逐詞切會把路徑攔腰切斷
+    #[test]
+    fn extract_image_refs_keeps_path_with_spaces() {
+        assert!(extract_image_refs(
+            "已存到 /Users/me/Library/Application Support/TableTavern/cli-workspace/fox.png，請查收"
+        )
+        .contains(&ImageRef::Path(PathBuf::from(
+            "/Users/me/Library/Application Support/TableTavern/cli-workspace/fox.png"
+        ))));
+    }
+
+    /// Windows 路徑沒有斜線可切，使用者名稱帶空格時同樣會斷
+    #[test]
+    fn extract_image_refs_keeps_windows_path_with_spaces() {
+        assert!(extract_image_refs(
+            "Saved to C:\\Users\\John Smith\\AppData\\Roaming\\TableTavern\\cli-workspace\\fox.PNG"
+        )
+        .contains(&ImageRef::Path(PathBuf::from(
+            "C:\\Users\\John Smith\\AppData\\Roaming\\TableTavern\\cli-workspace\\fox.PNG"
+        ))));
+    }
+
+    /// 中轉檔清理只碰工作目錄裡的圖片，其他檔案與子目錄留著
+    #[test]
+    fn clear_cli_workspace_images_removes_only_images() {
+        let workspace = std::env::temp_dir().join(format!(
+            "table-tavern-workspace-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(workspace.join("sub")).unwrap();
+        std::fs::write(workspace.join("fox.PNG"), b"png").unwrap();
+        std::fs::write(workspace.join("shot.jpeg"), b"jpeg").unwrap();
+        std::fs::write(workspace.join("note.txt"), b"keep").unwrap();
+        clear_cli_workspace_images(&workspace);
+        assert!(!workspace.join("fox.PNG").exists());
+        assert!(!workspace.join("shot.jpeg").exists());
+        assert!(workspace.join("note.txt").exists());
+        assert!(workspace.join("sub").exists());
+        std::fs::remove_dir_all(workspace).unwrap();
     }
 
     #[test]
