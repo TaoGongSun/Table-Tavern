@@ -77,6 +77,11 @@ interface GenerateExpandResult {
   raw: string;
 }
 
+interface GenerateCharacterResult {
+  parsed: { name: string; tagline: string } | null;
+  raw: string;
+}
+
 function serializeGeneratedOutline(outline: GeneratedOutline): string {
   const sections = [`## WORLD: ${outline.title.trim()}\n${outline.world.trim()}`];
   for (const character of outline.characters) {
@@ -84,6 +89,11 @@ function serializeGeneratedOutline(outline: GeneratedOutline): string {
     if (name) sections.push(`## CHARACTER: ${name}\n${character.tagline.trim()}`);
   }
   return sections.join("\n\n");
+}
+
+function resizeGeneratedCharacterTagline(target: HTMLTextAreaElement) {
+  target.style.height = "auto";
+  target.style.height = `${target.scrollHeight}px`;
 }
 
 interface WorldState {
@@ -2624,8 +2634,10 @@ function App() {
   const [genOutline, setGenOutline] = useState<GeneratedOutline | null>(null);
   const [genOutlineRaw, setGenOutlineRaw] = useState<string | null>(null);
   const [genResultRaw, setGenResultRaw] = useState<string | null>(null);
+  const [genResultMessage, setGenResultMessage] = useState<"outline" | "character">("outline");
   const [genError, setGenError] = useState("");
-  const [genBusy, setGenBusy] = useState<"outline" | "expand" | null>(null);
+  const [genBusy, setGenBusy] = useState<"outline" | "character" | "expand" | null>(null);
+  const [genCharacterHint, setGenCharacterHint] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -2854,6 +2866,7 @@ function App() {
     setGenOutline(null);
     setGenOutlineRaw(null);
     setGenResultRaw(null);
+    setGenResultMessage("outline");
     setGenError("");
     try {
       const result = await invoke<GenerateOutlineResult>("generate_table_outline", {
@@ -2873,12 +2886,43 @@ function App() {
     }
   }
 
+  async function generateTableCharacter() {
+    if (!genOutline) return;
+    setGenBusy("character");
+    setGenResultRaw(null);
+    setGenResultMessage("character");
+    setGenError("");
+    try {
+      const result = await invoke<GenerateCharacterResult>("generate_table_character", {
+        input: genInput.trim(),
+        genres: genGenres.map((key) => t(key as typeof GENRE_KEYS[number])),
+        outlineRaw: serializeGeneratedOutline(genOutline),
+        hint: genCharacterHint,
+      });
+      if (result.parsed) {
+        const character = result.parsed;
+        setGenOutline((current) => current && {
+          ...current,
+          characters: [...current.characters, character],
+        });
+        setGenCharacterHint("");
+      } else {
+        setGenResultRaw(result.raw);
+      }
+    } catch (reason) {
+      setGenError(String(reason));
+    } finally {
+      setGenBusy(null);
+    }
+  }
+
   async function createGeneratedTable() {
     if (!genOutline || !genOutline.title.trim() || !genOutline.world.trim()) return;
     const input = genInput.trim();
     setGenBusy("expand");
     setGenError("");
     setGenResultRaw(null);
+    setGenResultMessage("outline");
     try {
       const result = await invoke<GenerateExpandResult>("generate_table_expand", {
         input,
@@ -3429,7 +3473,7 @@ function App() {
   return (
     <div className="app-shell">
       {genTableOpen && (
-        <div className="modal-overlay" onClick={() => !genBusy && setGenTableOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal gen-table-modal" role="dialog" aria-modal="true" aria-label={t("genTitle")} onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <strong>{t("genTitle")}</strong>
@@ -3492,9 +3536,14 @@ function App() {
                           characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.currentTarget.value } : item),
                         })}
                       />
-                      <input
+                      <textarea
+                        rows={2}
                         value={character.tagline}
                         disabled={genBusy !== null}
+                        ref={(element) => {
+                          if (element) resizeGeneratedCharacterTagline(element);
+                        }}
+                        onInput={(event) => resizeGeneratedCharacterTagline(event.currentTarget)}
                         onChange={(event) => setGenOutline((current) => current && {
                           ...current,
                           characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, tagline: event.currentTarget.value } : item),
@@ -3526,11 +3575,27 @@ function App() {
                 >
                   ＋ {t("genAddCharacter")}
                 </button>
+                <div className="gen-add-character-ai">
+                  <input
+                    value={genCharacterHint}
+                    placeholder={t("genCharHintPlaceholder")}
+                    aria-label={t("genCharHintPlaceholder")}
+                    disabled={genBusy !== null}
+                    onChange={(event) => setGenCharacterHint(event.currentTarget.value)}
+                  />
+                  <button
+                    type="button"
+                    disabled={genBusy !== null}
+                    onClick={() => void generateTableCharacter()}
+                  >
+                    {genBusy === "character" ? t("genCharGenerating") : t("genAddCharacterAI")}
+                  </button>
+                </div>
               </section>
             )}
             {(genResultRaw !== null || genError) && (
               <section className="gen-result-error" role="alert">
-                <p>{genError || t("genParseFail")}</p>
+                <p>{genError || t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
                 <pre>{genError || genResultRaw}</pre>
               </section>
             )}
