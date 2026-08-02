@@ -431,8 +431,8 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
     Ok(world_id)
 }
 
-/// 空桌回收（NewPlan §9.3）：只回收完全未動過的桌——零訊息、零角色、world.md 空白；
-/// 任一項有內容即保留，防資料遺失。回傳是否真的刪了。
+/// 空桌回收（NewPlan §9.3）：只回收完全未動過的桌——零訊息、零角色、零世界書條目、
+/// world.md 空白；任一項有內容即保留，防資料遺失。回傳是否真的刪了。
 pub fn reclaim_world_if_empty(root: &Path, world_id: &str) -> DataResult<bool> {
     let directory = world_dir(root, world_id)?;
     if !directory.exists() {
@@ -448,8 +448,17 @@ pub fn reclaim_world_if_empty(root: &Path, world_id: &str) -> DataResult<bool> {
     let has_characters = fs::read_dir(directory.join("characters"))
         .map(|mut entries| entries.next().is_some())
         .unwrap_or(false);
+    // 世界書讀不動（檔案壞了）就當作有內容，寧可留著讓使用者自己處理，也不要刪掉
+    let has_worldbook = read_worldbook_value(root, world_id)
+        .map(|value| {
+            value
+                .get("entries")
+                .and_then(serde_json::Value::as_object)
+                .is_none_or(|entries| !entries.is_empty())
+        })
+        .unwrap_or(true);
     let world_md = fs::read_to_string(directory.join("world.md")).unwrap_or_default();
-    if has_messages || has_characters || !world_md.trim().is_empty() {
+    if has_messages || has_characters || has_worldbook || !world_md.trim().is_empty() {
         return Ok(false);
     }
     fs::remove_dir_all(directory)?;
@@ -2614,6 +2623,21 @@ mod tests {
         let has_setting = create_world(root.path(), "有設定").unwrap();
         write_world_md(root.path(), &has_setting, "海島世界").unwrap();
         assert!(!reclaim_world_if_empty(root.path(), &has_setting).unwrap());
+
+        // 匯入世界書但還沒改桌名、也還沒開聊，一樣算動過（回歸：曾被誤刪整桌）
+        let has_worldbook = create_world(root.path(), "有世界書").unwrap();
+        upsert_worldbook_entry(root.path(), &has_worldbook, worldbook_entry(1, "霧之港")).unwrap();
+        assert!(!reclaim_world_if_empty(root.path(), &has_worldbook).unwrap());
+
+        // 世界書檔案壞掉時保守保留，不刪
+        let broken_worldbook = create_world(root.path(), "壞世界書").unwrap();
+        fs::write(
+            root.path()
+                .join(format!("worlds/{broken_worldbook}/worldbook.json")),
+            "{ not json",
+        )
+        .unwrap();
+        assert!(!reclaim_world_if_empty(root.path(), &broken_worldbook).unwrap());
     }
 
     #[test]

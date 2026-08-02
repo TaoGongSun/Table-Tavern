@@ -1,7 +1,7 @@
 # Handoff: worldbook-card-import
 
 ## Current state
-匯入實作完成、自驗全綠；追加條目「就地展開編輯」UX 改版、「純世界書開局」（匯入成功自動選 GM＋零角色提示改寫）與「條目換編輯對象自動儲存」皆完成。等使用者實機驗收後結案。
+匯入實作完成、自驗全綠；追加條目「就地展開編輯」UX 改版、「純世界書開局」（匯入成功自動選 GM＋零角色提示改寫）與「條目換編輯對象自動儲存」皆完成；2026-08-02 修掉實測踩到的資料遺失（匯完世界書的新桌被空桌回收整包刪掉）。等使用者實機驗收後結案。
 
 ## Completed
 - 後端：`import::worldbook_json`（src-tauri/src/import.rs:407 起）——PNG 先解 chara chunk，角色卡剝到 `character_book` 層；`import_worldbook` 命令改收位元組（src-tauri/src/lib.rs:288）。
@@ -14,6 +14,8 @@
 
 - 條目換編輯對象改自動儲存（2026-07-31 使用者回饋：一條條整理世界書時，每次切換都跳未儲存確認、要回去點儲存太擋路——1cc4ea7 補的那道確認反而變成阻力）：條目本來就是即時寫檔，切換編輯對象或離開世界設定時直接存起來就走。`saveEntry` 抽出不依賴表單事件的 `persistDraft`（src/App.tsx:1388），由 `openDraft`（:1340）與 `confirmLeave`（:1306）共用；存檔失敗不切走，錯誤留在清單訊息列。還沒存過的新條目維持確認（免得半成品留在清單上），表單「取消」鈕也維持確認；既有條目的改動不再計入未儲存提示（:1291）。commit 132a997。
 
+- 空桌回收誤刪世界書（2026-08-02 使用者實測回報：新桌匯完世界書、桌名還沒改，點別桌整桌連世界書一起消失）：`reclaim_world_if_empty` 判空只看訊息／角色／world.md 三項，世界書就躺在同一個資料夾的 worldbook.json 裡，跟著 `remove_dir_all` 一起沒了。判空加上世界書條目數（src-tauri/src/data.rs:436），讀不出來（檔案損毀）一律當有內容保留，不因讀取失敗刪桌。前端桌名那道防線本來就對——改過名的桌直接跳過回收，不看空不空（src/App.tsx:2929），已驗。
+
 ## Verification
 - `cargo test`：117 passed, 0 failed。
 - 真卡煙霧（TestCards/b3d7fd3600ab58d3252e8b38340390c4.png，臨時測試已移除）：`real card imported 17 entries`，抽查條目標題「世界观」「app-求治者」等與 constant 旗標正確。
@@ -22,11 +24,13 @@
 - 踩雷已修：新掛的 useEffect 一度放在元件早退 return 之後，觸發 Rules of Hooks 全黑畫面——已移到早退前；scrollIntoView 的 smooth 會被後續 render 打斷停在半路，改瞬間捲動。
 - 純世界書開局：`npx tsc --noEmit` exit 0、`npm run check:i18n` 十語系全 OK。自動選 GM 的行為需 Tauri 後端（瀏覽器 vite 預覽 `invoke` 不存在、載不起來），留給實機驗收。
 - 條目自動存：`npx tsc --noEmit` exit 0、`npm run check:i18n` 十語系全 OK（未動字串）。同樣需 Tauri 後端才點得到，留給實機驗收。
+- 空桌回收：`cargo test` 151 passed, 0 failed；`reclaims_only_untouched_worlds` 補兩個回歸情境（匯了世界書的新桌不回收、worldbook.json 損毀的桌不回收）。`cargo clippy --all-targets` 新增行零警告（既有 7 個警告不在改動範圍）。
 
 ## Remaining / Next action
 - 使用者實機：世界設定 → 世界書「匯入」選該 PNG → 確認 17 條入列；點下方條目「編輯」確認就地展開；「新增條目」確認底部展開並捲到可見。
 - 使用者實機（條目自動存）：改條目 A 內容 → 直接點條目 B 的「編輯」，確認沒彈窗、清單下方顯示「條目已儲存」、A 的改動有留下；改到一半按「返回」也應自動存；「新增條目」填一半跳走仍會問。
 - 使用者實機（純世界書開局）：開一張零角色新桌 → 確認輸入框提示是新文案 → 匯入世界書卡 → 回聊天畫面確認發言對象已是 GM、直接打字 GM 會旁白接話。回報後結案。
+- 使用者實機（空桌回收修復，需重新打包）：開新桌 → 不改桌名直接匯世界書 → 點別桌 → 回頭確認那桌還在、世界書條目都在。已被舊版刪掉的桌救不回來（`remove_dir_all`，無回收桶）。
 - 使用者實機（長度限制刪除＋配角／心理描寫解禁）：需重新打包（已裝的 0.2.0 仍是舊行為），跑同一張世界書卡確認 GM 旁白篇幅放開、配角會開口說話、角色回覆有內心戲。
 
 ## Constraints
