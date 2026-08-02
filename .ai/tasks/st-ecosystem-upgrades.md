@@ -3,7 +3,7 @@ Task-ID: st-ecosystem-upgrades
 Title: SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉
 Status: in_progress
 Created: 2026-08-01T21:23:00+08:00
-Updated: 2026-08-02T14:15:00+08:00
+Updated: 2026-08-02T14:50:00+08:00
 
 ## Summary
 2026-08-01 與使用者討論拍板，2026-08-02 拆兩張實卡驗證後定稿為四項。背景：SillyTavern 中文社群靠三個擴充把角色卡演化成自帶介面與遊戲邏輯的小程式——酒館助手（JS-Slash-Runner：卡內 JavaScript 在 iframe 執行，訊息變成互動 HTML 狀態欄）、MVU（MagVarUpdate：AI 按約定格式輸出變數更新，框架解析後畫進狀態欄）、EJS（ST-Prompt-Template：提示詞內嵌 `<% %>` 程式，送模型前先執行）。
@@ -70,8 +70,8 @@ Updated: 2026-08-02T14:15:00+08:00
 驗收：卡 2 的 Rigurd 條目一鍵轉卡、內容無損；未使用卡反向轉回條目；使用中的卡被擋並提示；cargo test 蓋雙向轉換（含內容完整性）。
 
 ## Next action
-- 目標模式進行中（2026-08-02 起，範圍一→二→三→五）：第一項完成待實機驗收，續跑第二項巨集替換；現場見 handoffs/st-ecosystem-upgrades.md
-- 第四項動工前先讀 undo-last-message 交接檔的資料流，並與使用者拍板狀態區塊格式（含卡片包裹認列清單）——目標模式至此停
+- 一、二、三、五項實作完成自驗全綠（2026-08-02 目標模式一輪跑完），等使用者實機驗收；現場與驗收清單見 handoffs/st-ecosystem-upgrades.md
+- 第四項停在閘門：狀態區塊格式拍板題已出（行格式／快照位置／包裹認列清單），拍板後開第一期
 
 ## Constraints
 - 安全紅線：Tauri webview 內 XSS 摸得到本機檔案與 invoke 指令。卡片與訊息內容永遠當資料處理、永不執行；第三項白名單必須明列且附測試。樣本卡的酒館助手腳本自 CDN 動態載入遠端程式碼——紅線實證。

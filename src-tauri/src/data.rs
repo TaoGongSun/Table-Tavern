@@ -875,6 +875,128 @@ pub fn delete_worldbook_entry(root: &Path, world_id: &str, uid: u64) -> DataResu
     Ok(())
 }
 
+/// 把世界書條目搬成可上桌的角色卡。
+pub fn worldbook_entry_to_character(
+    root: &Path,
+    world_id: &str,
+    uid: u64,
+    color: String,
+    as_player: bool,
+) -> DataResult<CharacterMeta> {
+    let worldbook = read_worldbook_value(root, world_id)?;
+    let entries = entries_object(&worldbook)?;
+    let entry = entries
+        .iter()
+        .find(|(key, value)| entry_uid(key, value) == Some(uid))
+        .map(|(key, value)| entry_view(value, key.parse().ok()))
+        .ok_or_else(|| invalid_data("找不到世界書條目"))?;
+    if entry.title.trim().is_empty() {
+        return Err(invalid_data("條目沒有標題，先給標題再轉"));
+    }
+    validate_single_line("name", &entry.title)?;
+
+    let mut state = if as_player {
+        let state = read_state(root, world_id)?;
+        if state.player_card_id.is_some() {
+            return Err(invalid_data("這桌已經有玩家卡"));
+        }
+        Some(state)
+    } else {
+        None
+    };
+    let card = CharacterCard {
+        id: new_id(),
+        name: entry.title,
+        color,
+        avatar: "🎭".to_owned(),
+        tier: Tier::Balanced,
+        show_image: true,
+        archived: false,
+        gen_prompt: String::new(),
+        public_md: entry.content.trim().to_owned(),
+        private_md: String::new(),
+    };
+
+    write_character(root, world_id, &card)?;
+    if let Some(state) = state.as_mut() {
+        state.player_card_id = Some(card.id.clone());
+        write_state(root, world_id, state)?;
+    }
+    delete_worldbook_entry(root, world_id, uid)?;
+
+    Ok(CharacterMeta {
+        id: card.id,
+        name: card.name,
+        color: card.color,
+        avatar: card.avatar,
+        tier: card.tier,
+        show_image: card.show_image,
+        archived: card.archived,
+        display_index: None,
+    })
+}
+
+/// 把封存角色卡搬回世界書。
+pub fn character_to_worldbook_entry(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<()> {
+    let card = read_character(root, world_id, character_id)?;
+    if !card.archived {
+        return Err(invalid_data("這張卡還在桌上"));
+    }
+    let state = read_state(root, world_id)?;
+    if state.player_card_id.as_deref() == Some(character_id) {
+        return Err(invalid_data("玩家卡不能轉"));
+    }
+
+    let content = match (card.public_md.is_empty(), card.private_md.is_empty()) {
+        (false, false) => format!("{}\n\n## 私有\n{}", card.public_md, card.private_md),
+        (false, true) => card.public_md,
+        (true, false) => card.private_md,
+        (true, true) => String::new(),
+    };
+    let entry = WorldbookEntry {
+        uid: 0,
+        title: card.name,
+        keys: Vec::new(),
+        content,
+        constant: true,
+        order: 100,
+        disabled: false,
+        visibility: Visibility::Gm,
+    };
+    let mut worldbook = read_worldbook_value(root, world_id)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let uid = next_uid(entries)?;
+    let keys = sorted_entry_keys(entries);
+    let has_missing_display_index = entries.values().any(|value| {
+        value
+            .get("displayIndex")
+            .and_then(serde_json::Value::as_u64)
+            .is_none()
+    });
+    if has_missing_display_index {
+        normalize_display_indices(entries, &keys)?;
+    }
+    for key in keys {
+        let value = entries
+            .get_mut(&key)
+            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
+        let display_index = value
+            .get("displayIndex")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?
+            .checked_add(1)
+            .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))?;
+        set_display_index(value, display_index)?;
+    }
+    entries.insert(uid.to_string(), new_entry_value(&entry, uid, 0));
+    write_worldbook_value(root, world_id, &worldbook)?;
+    delete_character(root, world_id, character_id)
+}
+
 fn normalize_imported_entry(
     mut value: serde_json::Value,
     character_book: bool,
@@ -1893,6 +2015,173 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1]
         );
+    }
+
+    #[test]
+    fn worldbook_entry_to_character_moves_content_and_keeps_other_entries() {
+        let root = TestRoot::new("worldbook-entry-to-character");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let mut source = worldbook_entry(u64::MAX, "霧港船長");
+        source.content = "第一段\n\n第二段".to_owned();
+        let source_uid = upsert_worldbook_entry(root.path(), &world_id, source).unwrap();
+        let other_uid = upsert_worldbook_entry(
+            root.path(),
+            &world_id,
+            worldbook_entry(u64::MAX, "留下的條目"),
+        )
+        .unwrap();
+
+        let meta = worldbook_entry_to_character(
+            root.path(),
+            &world_id,
+            source_uid,
+            "#123456".to_owned(),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(meta.name, "霧港船長");
+        assert_eq!(
+            read_character(root.path(), &world_id, &meta.id)
+                .unwrap()
+                .public_md,
+            "第一段\n\n第二段"
+        );
+        assert_eq!(
+            read_worldbook(root.path(), &world_id)
+                .unwrap()
+                .iter()
+                .map(|entry| entry.uid)
+                .collect::<Vec<_>>(),
+            [other_uid]
+        );
+    }
+
+    #[test]
+    fn worldbook_entry_to_player_card_sets_state_and_rejects_second_card() {
+        let root = TestRoot::new("worldbook-entry-to-player");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let first_uid = upsert_worldbook_entry(
+            root.path(),
+            &world_id,
+            worldbook_entry(u64::MAX, "玩家"),
+        )
+        .unwrap();
+        let second_uid = upsert_worldbook_entry(
+            root.path(),
+            &world_id,
+            worldbook_entry(u64::MAX, "候補玩家"),
+        )
+        .unwrap();
+
+        let player = worldbook_entry_to_character(
+            root.path(),
+            &world_id,
+            first_uid,
+            "#abcdef".to_owned(),
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            read_state(root.path(), &world_id).unwrap().player_card_id,
+            Some(player.id)
+        );
+
+        assert_eq!(
+            worldbook_entry_to_character(
+                root.path(),
+                &world_id,
+                second_uid,
+                "#abcdef".to_owned(),
+                true,
+            )
+            .unwrap_err()
+            .to_string(),
+            "這桌已經有玩家卡"
+        );
+        assert!(read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.uid == second_uid));
+    }
+
+    #[test]
+    fn worldbook_entry_to_character_rejects_empty_title_without_deleting() {
+        let root = TestRoot::new("worldbook-entry-empty-title");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let uid = upsert_worldbook_entry(
+            root.path(),
+            &world_id,
+            worldbook_entry(u64::MAX, "  "),
+        )
+        .unwrap();
+
+        assert_eq!(
+            worldbook_entry_to_character(
+                root.path(),
+                &world_id,
+                uid,
+                "#abcdef".to_owned(),
+                false,
+            )
+            .unwrap_err()
+            .to_string(),
+            "條目沒有標題，先給標題再轉"
+        );
+        assert!(read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.uid == uid));
+    }
+
+    #[test]
+    fn character_to_worldbook_entry_moves_archived_card_and_private_content() {
+        let root = TestRoot::new("character-to-worldbook-entry");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let mut card = character_card(&new_id(), "封存船長");
+        card.archived = true;
+        card.public_md = "公開設定".to_owned();
+        card.private_md = "GM 秘密".to_owned();
+        write_character(root.path(), &world_id, &card).unwrap();
+
+        character_to_worldbook_entry(root.path(), &world_id, &card.id).unwrap();
+
+        let entries = read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "封存船長");
+        assert_eq!(entries[0].content, "公開設定\n\n## 私有\nGM 秘密");
+        assert!(entries[0].constant);
+        assert_eq!(entries[0].visibility, Visibility::Gm);
+        assert_eq!(entries[0].order, 100);
+        assert!(read_character(root.path(), &world_id, &card.id).is_err());
+    }
+
+    #[test]
+    fn character_to_worldbook_entry_rejects_active_and_player_cards() {
+        let root = TestRoot::new("character-to-worldbook-rejects");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let active = character_card(&new_id(), "還在桌上");
+        write_character(root.path(), &world_id, &active).unwrap();
+        assert_eq!(
+            character_to_worldbook_entry(root.path(), &world_id, &active.id)
+                .unwrap_err()
+                .to_string(),
+            "這張卡還在桌上"
+        );
+
+        let mut player = character_card(&new_id(), "玩家");
+        player.archived = true;
+        write_character(root.path(), &world_id, &player).unwrap();
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state.player_card_id = Some(player.id.clone());
+        write_state(root.path(), &world_id, &state).unwrap();
+        assert_eq!(
+            character_to_worldbook_entry(root.path(), &world_id, &player.id)
+                .unwrap_err()
+                .to_string(),
+            "玩家卡不能轉"
+        );
+        assert!(read_character(root.path(), &world_id, &player.id).is_ok());
     }
 
     #[test]
