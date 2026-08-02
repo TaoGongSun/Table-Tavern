@@ -296,6 +296,28 @@ fn delete_worldbook_entry(app: tauri::AppHandle, world_id: String, uid: u64) -> 
 }
 
 #[tauri::command]
+fn worldbook_entry_to_character(
+    app: tauri::AppHandle,
+    world_id: String,
+    uid: u64,
+    color: String,
+    as_player: bool,
+) -> Result<CharacterMeta, String> {
+    data::worldbook_entry_to_character(&data_root(&app)?, &world_id, uid, color, as_player)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn character_to_worldbook_entry(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+) -> Result<(), String> {
+    data::character_to_worldbook_entry(&data_root(&app)?, &world_id, &character_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn import_worldbook(
     app: tauri::AppHandle,
     world_id: String,
@@ -1404,6 +1426,8 @@ pub fn run() {
             upsert_worldbook_entry,
             reorder_worldbook_entries,
             delete_worldbook_entry,
+            worldbook_entry_to_character,
+            character_to_worldbook_entry,
             import_worldbook,
             export_worldbook,
             list_characters,

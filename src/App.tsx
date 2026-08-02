@@ -1293,6 +1293,9 @@ function WorldEditor({
   onBack,
   leaveGuard,
   onImported,
+  convertColor,
+  hasPlayerCard,
+  onEntryConverted,
 }: {
   world: string;
   onBack: () => void;
@@ -1300,6 +1303,9 @@ function WorldEditor({
   leaveGuard: { current: (() => Promise<boolean>) | null };
   /** 世界書匯入成功（至少一條）時通知 App：純世界書開局要自動選 GM */
   onImported: () => void;
+  convertColor: string;
+  hasPlayerCard: boolean;
+  onEntryConverted: (asPlayer: boolean) => Promise<void>;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -1555,6 +1561,34 @@ function WorldEditor({
     }
   }
 
+  async function convertEntryToCharacter() {
+    if (!draft || draft.uid === null) return;
+    setWorldbookMessage("");
+    try {
+      const asPlayer =
+        !hasPlayerCard && /\{\{\s*user\s*\}\}/i.test(draft.content)
+          ? await confirm(t("convertEntryPersonaAsk"), {
+              title: t("convertEntryToCard"),
+              kind: "info",
+              okLabel: t("convertEntryPersonaOk"),
+              cancelLabel: t("convertEntryPersonaCancel"),
+            })
+          : false;
+      const meta = await invoke<CharacterMeta>("worldbook_entry_to_character", {
+        worldId: world,
+        uid: draft.uid,
+        color: convertColor,
+        asPlayer,
+      });
+      setDraft(null);
+      await refreshWorldbook();
+      setWorldbookMessage(t("convertEntryDone", { name: meta.name }));
+      await onEntryConverted(asPlayer);
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
   // 條目表單就地展開：編輯取代原本那一列、新增排在清單底部（2026-07-30 使用者回饋——
   // 表單固定在頂端時，點下方條目的編輯完全看不出反應）。按鈕照全 app 慣例置頂。
   const entryForm = draft && (
@@ -1564,6 +1598,11 @@ function WorldEditor({
         <button type="button" onClick={() => void closeDraft()}>
           {t("worldbookCancel")}
         </button>
+        {draft.uid !== null && (
+          <button type="button" onClick={() => void convertEntryToCharacter()}>
+            {t("convertEntryToCard")}
+          </button>
+        )}
       </div>
       <label>
         {t("worldbookEntryTitle")}
@@ -1884,6 +1923,7 @@ function CardEditor({
   onPreference,
   onOpenAiSettings,
   isPlayer = false,
+  onConverted,
 }: {
   world: string;
   /** 開編輯器前已由 new_id 拿好，草稿期生圖與存檔用同一個 id */
@@ -1905,6 +1945,7 @@ function CardEditor({
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
   isPlayer?: boolean;
+  onConverted: () => Promise<void>;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [savedCardJson, setSavedCardJson] = useState("");
@@ -2153,6 +2194,31 @@ function CardEditor({
     }
   }
 
+  async function convertCardToWorldbookEntry() {
+    setMessage("");
+    if (!card) return;
+    if (unsavedCount > 0) {
+      await showMessage(t("convertCardUnsaved"), { title: t("convertCardToEntry") });
+      return;
+    }
+    if (card.archived === false) {
+      await showMessage(t("convertCardInUse"), { title: t("convertCardToEntry") });
+      return;
+    }
+    const accepted = await confirm(t("convertCardConfirm"), {
+      title: t("convertCardToEntry"),
+      kind: "warning",
+    });
+    if (!accepted) return;
+    try {
+      await invoke("character_to_worldbook_entry", { worldId: world, characterId });
+      await showMessage(t("convertCardDone"));
+      await onConverted();
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
   function chooseImage(file: File) {
     const reader = new FileReader();
     reader.onload = () => setPendingImage(typeof reader.result === "string" ? reader.result : null);
@@ -2190,6 +2256,11 @@ function CardEditor({
                 <button type="button" title={t("exportCardHint")} onClick={() => void exportCard()}>
                   {t("exportCard")}
                 </button>
+                {!isPlayer && (
+                  <button type="button" onClick={() => void convertCardToWorldbookEntry()}>
+                    {t("convertCardToEntry")}
+                  </button>
+                )}
                 {!isPlayer && (
                   <button type="button" className="archive-button" onClick={archive}>
                     {t("archiveCharacter")}
@@ -4029,6 +4100,7 @@ function App() {
               sponsorUnlocked={sponsorUnlocked}
               onPreference={changePreference}
               onOpenAiSettings={() => setSettingsOpen("ai")}
+              onConverted={() => finishRemoval(cardView.id)}
             />
           </EditPane>
         ) : mainView?.kind === "world" ? (
@@ -4039,6 +4111,15 @@ function App() {
               leaveGuard={leaveGuard}
               onImported={() => {
                 if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+              }}
+              convertColor={PALETTE[characters.length % PALETTE.length]}
+              hasPlayerCard={playerCard !== null}
+              onEntryConverted={async (asPlayer) => {
+                await refreshCharacters();
+                if (asPlayer) {
+                  const state = await invoke<WorldState>("read_state", { worldId: table });
+                  await loadPlayerCard(table, state.player_card_id);
+                }
               }}
             />
           </EditPane>
