@@ -8,7 +8,7 @@
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 下一步：07-31 系統代理自動下傳＋兩條失敗白話提示已實作自驗綠（Grok 回報者兩案：鎖檔＋牆內空白登入視窗），等 CI verify→重打包→回報者只開系統代理走安裝→登入→聊天全流程
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：2026-08-02 以 HEAD ffd447b 重打兩平台並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 artifact）後結案
 
-- [worldbook-card-import](tasks/worldbook-card-import.md) — 世界書卡（PNG）匯入＋條目就地展開編輯＋純世界書開局 — 下一步：四項實作皆自驗全綠（cargo test 117、真卡 17 條煙霧、tsc＋i18n 檢查），等使用者實機驗收（含零角色匯入自動選 GM、條目切換自動存）後結案
+- [worldbook-card-import](tasks/worldbook-card-import.md) — 世界書卡（PNG）匯入＋條目就地展開編輯＋純世界書開局 — 下一步：四項實作皆自驗全綠（cargo test 151、真卡 17 條煙霧、tsc＋i18n 檢查），2026-08-02 補修空桌回收誤刪世界書（判空納入 worldbook.json），等使用者實機驗收（含零角色匯入自動選 GM、條目切換自動存、匯完世界書切桌不被刪）後結案
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；另有四件待拍板（日文世界書用詞、範例桌地名處理不統一等）
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
