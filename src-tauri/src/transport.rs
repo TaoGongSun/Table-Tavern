@@ -36,6 +36,47 @@ fn language_rule(lang: &str) -> &'static str {
     }
 }
 
+/// 沒有玩家卡時，依語系補上玩家稱呼。
+fn player_fallback_name(lang: &str) -> &'static str {
+    match lang {
+        "zh-CN" => "玩家",
+        "ja" => "プレイヤー",
+        "ko" => "플레이어",
+        "es" => "Jugador",
+        "pt-BR" => "Jogador",
+        "de" => "Spieler",
+        "fr" => "Joueur",
+        "ru" => "Игрок",
+        _ if lang.starts_with("zh") => "玩家",
+        _ => "Player",
+    }
+}
+
+/// 只替換 SillyTavern 的玩家與角色巨集，其餘巨集保持原樣。
+fn replace_st_macros(text: &str, user_name: &str, char_name: Option<&str>) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < text.len() {
+        let rest = &text[index..];
+        if rest.len() >= 8 && rest.as_bytes()[..8].eq_ignore_ascii_case(b"{{user}}") {
+            result.push_str(user_name);
+            index += 8;
+        } else if rest.len() >= 8 && rest.as_bytes()[..8].eq_ignore_ascii_case(b"{{char}}") {
+            if let Some(char_name) = char_name {
+                result.push_str(char_name);
+            } else {
+                result.push_str(&rest[..8]);
+            }
+            index += 8;
+        } else {
+            let character = rest.chars().next().expect("index 必在字串範圍內");
+            result.push(character);
+            index += character.len_utf8();
+        }
+    }
+    result
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -95,6 +136,9 @@ pub fn assemble_messages(
     worldbook: &[WorldbookEntry],
     lang: &str,
 ) -> Vec<ChatMessage> {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
     let mut system = format!(
         "你正在一場多人桌上角色扮演中扮演「{name}」。\
          請一律以「{name}」的第一人稱視角與口吻回應，輸出這個角色的台詞、動作與心理描寫，\
@@ -104,12 +148,12 @@ pub fn assemble_messages(
          ## 你的公開設定（其他人也認識的你）\n{public}\n",
         name = card.name,
         language_rule = language_rule(lang),
-        public = card.public_md.trim(),
+        public = replace_st_macros(card.public_md.trim(), user_name, Some(&card.name)),
     );
     if !card.private_md.trim().is_empty() {
         system.push_str(&format!(
             "\n## 你的私有設定（只有你自己知道；除非劇情走到，不要主動說破）\n{}\n",
-            card.private_md.trim()
+            replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
         ));
     }
     if let Some(player) = player {
@@ -118,7 +162,10 @@ pub fn assemble_messages(
             player.name
         ));
         if !player.public_md.trim().is_empty() {
-            system.push_str(&format!("\n{}\n", player.public_md.trim()));
+            system.push_str(&format!(
+                "\n{}\n",
+                replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
+            ));
         }
     }
     let visible: Vec<_> = worldbook
@@ -134,7 +181,11 @@ pub fn assemble_messages(
     if !active.is_empty() {
         system.push_str("\n## 你知道的世界情報\n");
         for entry in active {
-            system.push_str(&format!("### {}\n{}\n", entry.title, entry.content));
+            system.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, Some(&card.name)),
+                replace_st_macros(&entry.content, user_name, Some(&card.name))
+            ));
         }
     }
 
@@ -168,6 +219,9 @@ pub fn assemble_gm_messages(
     worldbook: &[WorldbookEntry],
     lang: &str,
 ) -> Vec<ChatMessage> {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
     let mut system = format!(
         "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
          推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
@@ -181,14 +235,18 @@ pub fn assemble_gm_messages(
     if !world_md.trim().is_empty() {
         system.push_str(&format!(
             "\n## 世界設定（只進你的上下文，角色只知道你說出口的內容）\n{}\n",
-            world_md.trim()
+            replace_st_macros(world_md.trim(), user_name, None)
         ));
     }
     let active = active_worldbook_entries(worldbook, events);
     if !active.is_empty() {
         system.push_str("\n## 世界書（只進你的上下文）\n");
         for entry in active {
-            system.push_str(&format!("### {}\n{}\n", entry.title, entry.content));
+            system.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, None),
+                replace_st_macros(&entry.content, user_name, None)
+            ));
         }
     }
     if !cards.is_empty() {
@@ -196,12 +254,15 @@ pub fn assemble_gm_messages(
         for card in cards {
             system.push_str(&format!("### {}\n", card.name));
             if !card.public_md.trim().is_empty() {
-                system.push_str(&format!("公開設定：\n{}\n", card.public_md.trim()));
+                system.push_str(&format!(
+                    "公開設定：\n{}\n",
+                    replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
+                ));
             }
             if !card.private_md.trim().is_empty() {
                 system.push_str(&format!(
                     "私有設定（僅你與該角色知道）：\n{}\n",
-                    card.private_md.trim()
+                    replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
                 ));
             }
         }
@@ -212,7 +273,10 @@ pub fn assemble_gm_messages(
             player.name
         ));
         if !player.public_md.trim().is_empty() {
-            system.push_str(&format!("\n{}\n", player.public_md.trim()));
+            system.push_str(&format!(
+                "\n{}\n",
+                replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
+            ));
         }
     }
 
@@ -609,6 +673,51 @@ mod tests {
         let instruction = suggest_instruction(&["狐狸".to_owned()], Some("阿濤")).content;
         assert!(instruction.contains("阿濤"));
         assert!(instruction.contains(PLAYER_SENTINEL));
+    }
+
+    #[test]
+    fn st_macros_use_player_name_and_keep_other_macros() {
+        let fox = card(
+            "fox-id",
+            "狐狸",
+            "我是 {{char}}，認識 {{user}}，{{random}} 保留。",
+            "",
+        );
+        let player = card("player-id", "阿濤", "", "");
+        let mut entry = worldbook_entry(0, "{{USER}} 的情報", &[], true, 0, false, Visibility::Public);
+        entry.content = "{{user}} 來過這裡。".to_owned();
+
+        let character = assemble_messages(&fox, Some(&player), &[], &[entry.clone()], "zh-TW");
+        let character_system = &character[0].content;
+        assert!(character_system.contains("我是 狐狸，認識 阿濤，{{random}} 保留。"));
+        assert!(character_system.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
+
+        let gm = assemble_gm_messages("世界 {{CHAR}}", &[fox], Some(&player), &[], &[entry], "zh-TW");
+        assert!(gm[0].content.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
+        assert!(gm[0].content.contains("世界 {{CHAR}}"));
+    }
+
+    #[test]
+    fn st_macros_fall_back_to_localized_player_name_without_player_card() {
+        let fox = card("fox-id", "狐狸", "{{user}}", "");
+
+        let zh = assemble_messages(&fox, None, &[], &[], "zh-TW");
+        assert!(zh[0].content.contains("你的公開設定（其他人也認識的你）\n玩家\n"));
+
+        let en = assemble_messages(&fox, None, &[], &[], "en");
+        assert!(en[0].content.contains("你的公開設定（其他人也認識的你）\nPlayer\n"));
+    }
+
+    #[test]
+    fn gm_card_macros_use_each_cards_own_name() {
+        let fox = card("fox-id", "狐狸", "A {{char}}", "");
+        let knight = card("knight-id", "騎士", "B {{char}}", "");
+        let gm = assemble_gm_messages("", &[fox, knight], None, &[], &[], "zh-TW");
+        let system = &gm[0].content;
+
+        assert!(system.contains("公開設定：\nA 狐狸\n"));
+        assert!(system.contains("公開設定：\nB 騎士\n"));
+        assert!(!system.contains("公開設定：\nA 騎士\n"));
     }
 
     #[test]
