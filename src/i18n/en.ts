@@ -207,6 +207,15 @@ export const en: Record<MsgKey, string> = {
   importCard: "Import",
   importCardHint:
     "Import a SillyTavern character card (PNG or JSON); the original file is kept in the table folder",
+  importScriptNotice:
+    "This card contains SillyTavern-only scripts. Only the character text was imported; the original file is kept beside the card.",
+  worldbookScriptNotice:
+    "This worldbook contains SillyTavern-only scripts. Only its text content was imported.",
+  importLorebookRedirect:
+    "Most of this card is worldbook content, with very little character text. Import it as a worldbook instead?",
+  importRedirectOk: "Import as worldbook",
+  importRedirectCancel: "Import as character card",
+  importRedirectDone: "Imported {n} entries into the worldbook.",
   exportCard: "Export",
   exportCardHint:
     "Save as a SillyTavern character card (PNG or JSON), rebuilt from this card's current text",

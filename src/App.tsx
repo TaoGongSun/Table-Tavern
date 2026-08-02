@@ -2,7 +2,7 @@ import { FormEvent, Fragment, PointerEvent as ReactPointerEvent, useEffect, useR
 import Cropper, { Area } from "react-easy-crop";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import taoIcon from "./assets/tao-icon.png";
@@ -44,6 +44,12 @@ interface CharacterCard extends CharacterMeta {
   public_md: string;
   private_md: string;
   gen_prompt: string;
+}
+
+interface ImportProbe {
+  scripts: string[];
+  lorebook_heavy: boolean;
+  alternate_greetings: number;
 }
 
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
@@ -1511,10 +1517,19 @@ function WorldEditor({
     setWorldbookMessage("");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      let probe: ImportProbe = { scripts: [], lorebook_heavy: false, alternate_greetings: 0 };
+      try {
+        probe = await invoke<ImportProbe>("probe_import", { data: Array.from(bytes) });
+      } catch {
+        // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
+      }
       const count = await invoke<number>("import_worldbook", { worldId: world, data: Array.from(bytes) });
       await refreshWorldbook();
       setWorldbookMessage(t("worldbookImported", { n: count }));
       if (count > 0) onImported();
+      if (probe.scripts.length > 0) {
+        await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
+      }
     } catch (reason) {
       setWorldbookMessage(String(reason));
     }
@@ -3057,15 +3072,39 @@ function App() {
     setError("");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      const data = Array.from(bytes);
+      let probe: ImportProbe = { scripts: [], lorebook_heavy: false, alternate_greetings: 0 };
+      try {
+        probe = await invoke<ImportProbe>("probe_import", { data });
+      } catch {
+        // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
+      }
+      if (probe.lorebook_heavy) {
+        const redirect = await confirm(t("importLorebookRedirect"), {
+          title: t("importCard"),
+          kind: "info",
+          okLabel: t("importRedirectOk"),
+          cancelLabel: t("importRedirectCancel"),
+        });
+        if (redirect) {
+          const count = await invoke<number>("import_worldbook", { worldId: table, data });
+          await showMessage(t("importRedirectDone", { n: count }), { title: t("importCard") });
+          if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+          return;
+        }
+      }
       const meta = await invoke<CharacterMeta>("import_character", {
         worldId: table,
-        data: Array.from(bytes),
+        data,
         color: PALETTE[characters.length % PALETTE.length],
       });
       const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: table });
       setCharacters(cast);
       await loadCharacterImages(table, cast);
       setSpeaker(meta.id);
+      if (probe.scripts.length > 0) {
+        await showMessage(t("importScriptNotice"), { title: t("importCard") });
+      }
     } catch (reason) {
       setError(String(reason));
     }

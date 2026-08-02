@@ -14,6 +14,70 @@ const PUBLIC_SECTIONS: [(&str, &str); 5] = [
     ("語氣範例", "mes_example"),
 ];
 
+#[derive(serde::Serialize, Default, Debug, PartialEq)]
+pub struct ImportProbe {
+    pub scripts: Vec<String>,
+    pub lorebook_heavy: bool,
+    pub alternate_greetings: usize,
+}
+
+/// 匯入前只提示可能無法保留的內容；真正的格式錯誤仍交給匯入處理。
+pub fn probe_import(bytes: &[u8]) -> ImportProbe {
+    let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+        match decode_png_character(bytes) {
+            Ok(bytes) => bytes,
+            Err(_) => return ImportProbe::default(),
+        }
+    } else {
+        bytes.to_vec()
+    };
+    let value: Value = match serde_json::from_slice(&json_bytes) {
+        Ok(value) => value,
+        Err(_) => return ImportProbe::default(),
+    };
+    let card_data = value
+        .get("data")
+        .filter(|data| data.is_object())
+        .unwrap_or(&value);
+    let mut probe = ImportProbe::default();
+    let benign_extensions = ["talkativeness", "fav", "world", "depth_prompt"];
+    if card_data
+        .get("extensions")
+        .and_then(Value::as_object)
+        .is_some_and(|extensions| {
+            extensions
+                .keys()
+                .any(|key| !benign_extensions.contains(&key.as_str()))
+        })
+    {
+        probe.scripts.push("extensions".to_owned());
+    }
+    let serialized = serde_json::to_string(&value).unwrap_or_default();
+    if serialized.contains("<script") {
+        probe.scripts.push("script_tag".to_owned());
+    }
+    if serialized.contains("<%") {
+        probe.scripts.push("template".to_owned());
+    }
+    probe.lorebook_heavy = card_data
+        .get("character_book")
+        .and_then(|book| book.get("entries"))
+        .and_then(Value::as_array)
+        .is_some_and(|entries| {
+            entries.len() >= 3
+                && ["description", "personality", "scenario"]
+                    .into_iter()
+                    .map(|field| string_field(card_data, field).unwrap_or("").trim().chars().count())
+                    .sum::<usize>()
+                    < 200
+        });
+    probe.alternate_greetings = card_data
+        .get("alternate_greetings")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    probe
+}
+
 /// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
 pub fn import_character(
     root: &Path,
@@ -380,7 +444,9 @@ fn public_markdown(data: &Value) -> String {
 }
 
 fn private_markdown(data: &Value) -> String {
-    data.get("character_book")
+    // 條目維持單換行緊湊排列；備用開場白各成一段，段間空行
+    let entry_block = data
+        .get("character_book")
         .and_then(|book| book.get("entries"))
         .and_then(Value::as_array)
         .into_iter()
@@ -401,7 +467,23 @@ fn private_markdown(data: &Value) -> String {
             Some(format!("- **{keys}**：{content}"))
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    let mut sections = if entry_block.is_empty() {
+        Vec::new()
+    } else {
+        vec![entry_block]
+    };
+    sections.extend(
+        data.get("alternate_greetings")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|greeting| !greeting.is_empty())
+            .enumerate()
+            .map(|(index, greeting)| format!("### 備用開場白 {}\n{greeting}", index + 1)),
+    );
+    sections.join("\n\n")
 }
 
 /// 世界書匯入的前處理：PNG 卡先解出內嵌 JSON；整包若是角色卡（社群發佈的世界書卡），
@@ -637,6 +719,70 @@ mod tests {
         .unwrap();
         let card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
         assert_eq!(card.public_md, "### 人格與語氣\n直率");
+    }
+
+    #[test]
+    fn probe_ignores_benign_extensions_and_flags_other_extensions() {
+        let benign = probe_import(
+            r#"{"data":{"extensions":{"talkativeness":0.5,"fav":true,"world":"酒館","depth_prompt":"提示"}}}"#
+                .as_bytes(),
+        );
+        assert!(benign.scripts.is_empty());
+
+        let flagged = probe_import(&minimal_png(
+            r#"{"data":{"extensions":{"tavern_helper":{"enabled":true}}}}"#,
+        ));
+        assert_eq!(flagged.scripts, ["extensions"]);
+    }
+
+    #[test]
+    fn probe_finds_script_and_template_text_and_ignores_invalid_bytes() {
+        let probe = probe_import(
+            br#"{"data":{"description":"<script>alert(1)</script>","personality":"<% user.name %>"}}"#,
+        );
+        assert!(probe.scripts.contains(&"script_tag".to_owned()));
+        assert!(probe.scripts.contains(&"template".to_owned()));
+        assert_eq!(probe_import(b"not a card"), ImportProbe::default());
+    }
+
+    #[test]
+    fn probe_identifies_lorebook_heavy_cards() {
+        let entries = json!([{"content":"一"}, {"content":"二"}, {"content":"三"}]);
+        let sparse = probe_import(
+            json!({"data":{"character_book":{"entries":entries},"description":" ","personality":"","scenario":""}})
+                .to_string()
+                .as_bytes(),
+        );
+        assert!(sparse.lorebook_heavy);
+
+        let detailed = probe_import(
+            json!({"data":{"character_book":{"entries":[{}, {}, {}]},"description":"長".repeat(300)}})
+                .to_string()
+                .as_bytes(),
+        );
+        assert!(!detailed.lorebook_heavy);
+    }
+
+    #[test]
+    fn imports_alternate_greetings_into_private_markdown() {
+        let root = TestRoot::new("alternate-greetings");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = r#"{"data":{"name":"莉亞","character_book":{"entries":[{"keys":["森林"],"content":"古老盟約"}]},"alternate_greetings":["第二次見面。","雨天再訪。"]}}"#;
+
+        assert_eq!(probe_import(raw.as_bytes()).alternate_greetings, 2);
+        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let private_md = data::read_character(root.path(), &world_id, &meta.id)
+            .unwrap()
+            .private_md;
+        for expected in [
+            "- **森林**：古老盟約",
+            "### 備用開場白 1",
+            "第二次見面。",
+            "### 備用開場白 2",
+            "雨天再訪。",
+        ] {
+            assert!(private_md.contains(expected), "missing {expected}");
+        }
     }
 
     /// 測試清單 #12：匯入 ST 角色卡產生新 id、name 照原值（含原本會被擋的字元）；
