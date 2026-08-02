@@ -2,8 +2,8 @@
 //! API 直連與（之後的）CLI 傳輸都必須經由 assemble_messages 取得上下文（KICKOFF §4）。
 
 use crate::data::{
-    AppConfig, CharacterCard, DataResult, Tier, TranscriptEvent, TranscriptKind, Visibility,
-    WorldbookEntry,
+    AppConfig, CharacterCard, DataResult, TableState, Tier, TranscriptEvent, TranscriptKind,
+    Visibility, WorldbookEntry,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -217,6 +217,7 @@ pub fn assemble_gm_messages(
     player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
     worldbook: &[WorldbookEntry],
+    state: &TableState,
     lang: &str,
 ) -> Vec<ChatMessage> {
     let user_name = player
@@ -247,6 +248,21 @@ pub fn assemble_gm_messages(
                 replace_st_macros(&entry.title, user_name, None),
                 replace_st_macros(&entry.content, user_name, None)
             ));
+        }
+    }
+    if !state.table.is_empty() {
+        system.push_str("\n## 目前狀態（這桌的檯面，接續它往下演）\n");
+        for (key, value) in &state.table {
+            let display_name = match (lang, key.as_str()) {
+                ("en", "time") => "Time",
+                ("en", "place") => "Place",
+                ("en", "present") => "Present",
+                (_, "time") => "時間",
+                (_, "place") => "地點",
+                (_, "present") => "在場人物",
+                _ => key,
+            };
+            system.push_str(&format!("{display_name}：{value}\n"));
         }
     }
     if !cards.is_empty() {
@@ -358,14 +374,172 @@ pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
 }
 
 /// 導演指示：插入旁白（附加在 GM 上下文最後）
-pub fn narrate_instruction() -> ChatMessage {
-    message(
-        "user",
+pub fn narrate_instruction(lang: &str) -> ChatMessage {
+    let instruction = if lang == "en" {
+        "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
+         Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
+         After the narration, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
+         Always output `time`, `place`, and `present`; write values in the player's language, separate multiple present characters with `、`, and repeat unchanged values too. \
+         Do not add any explanation outside the narration and fence."
+            .to_owned()
+    } else {
         "（導演指示）請插入一段旁白：描述場景變化、世界反應或劇情推進，\
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
-         不要替「登場角色」名單上的角色或玩家說話。只輸出旁白本文。"
-            .to_owned(),
+         不要替「登場角色」名單上的角色或玩家說話。旁白本文結束後另起一行，輸出一個 ```state 圍欄，\
+         圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
+         值用玩家的語言寫，present 的多人用頓號分隔，沒有變化的欄位也照抄目前值。\
+         圍欄以外不要有多餘說明。"
+            .to_owned()
+    };
+    message(
+        "user",
+        instruction,
     )
+}
+
+/// 從 GM 回覆剝出狀態區塊：回傳（欄位對, 剝除後的顯示文字）。
+/// 標籤比對一律走 to_ascii_lowercase——full lowercase 會改變某些字母的長度（如土耳其文 İ），
+/// 算出的位移拿回原字串切片就會切在非字元邊界上 panic。
+pub fn extract_state_block(reply: &str) -> (Vec<(String, String)>, String) {
+    let mut display = reply.to_owned();
+    let mut blocks = Vec::new();
+    let mut removed = false;
+
+    let mut details_cursor = 0;
+    while let Some(offset) = display[details_cursor..].to_ascii_lowercase().find("<details") {
+        let start = details_cursor + offset;
+        let Some(open_end) = display[start..].find('>').map(|index| start + index) else {
+            break;
+        };
+        let lower = display.to_ascii_lowercase();
+        let Some(end_start) = lower[open_end + 1..]
+            .find("</details>")
+            .map(|index| open_end + 1 + index)
+        else {
+            break;
+        };
+        let inner = &display[open_end + 1..end_start];
+        let inner_lower = inner.to_ascii_lowercase();
+        let Some(summary_start) = inner_lower.find("<summary") else {
+            details_cursor = end_start + "</details>".len();
+            continue;
+        };
+        let Some(summary_open_end) = inner[summary_start..]
+            .find('>')
+            .map(|index| summary_start + index)
+        else {
+            details_cursor = end_start + "</details>".len();
+            continue;
+        };
+        let Some(summary_end) = inner_lower[summary_open_end + 1..]
+            .find("</summary>")
+            .map(|index| summary_open_end + 1 + index)
+        else {
+            details_cursor = end_start + "</details>".len();
+            continue;
+        };
+        let summary = &inner[summary_open_end + 1..summary_end];
+        let summary_lower = summary.to_ascii_lowercase();
+        if !(summary_lower.contains("状态")
+            || summary_lower.contains("狀態")
+            || summary_lower.contains("status"))
+        {
+            details_cursor = end_start + "</details>".len();
+            continue;
+        }
+        blocks.push(inner[summary_end + "</summary>".len()..].to_owned());
+        display.replace_range(start..end_start + "</details>".len(), "");
+        details_cursor = start;
+        removed = true;
+    }
+
+    for tag in ["status", "updatevariable"] {
+        loop {
+            let lower = display.to_ascii_lowercase();
+            let opening = format!("<{tag}>");
+            let closing = format!("</{tag}>");
+            let Some(start) = lower.find(&opening) else {
+                break;
+            };
+            let content_start = start + opening.len();
+            let Some(end_start) = lower[content_start..]
+                .find(&closing)
+                .map(|index| content_start + index)
+            else {
+                break;
+            };
+            // UpdateVariable 是 MVU 的 JSON patch，第二期才解數值；這期只把它從旁白裡拿掉。
+            if tag == "status" {
+                blocks.push(display[content_start..end_start].to_owned());
+            }
+            display.replace_range(start..end_start + closing.len(), "");
+            removed = true;
+        }
+    }
+
+    let mut fences = Vec::new();
+    let mut cursor = 0;
+    while let Some(open_offset) = display[cursor..].find("```") {
+        let start = cursor + open_offset;
+        let opening_end = start + 3;
+        let Some(close_offset) = display[opening_end..].find("```") else {
+            break;
+        };
+        let end_start = opening_end + close_offset;
+        let header_end = display[opening_end..end_start]
+            .find('\n')
+            .map(|index| opening_end + index);
+        let Some(header_end) = header_end else {
+            cursor = end_start + 3;
+            continue;
+        };
+        let info = display[opening_end..header_end].trim();
+        let info_lower = info.to_ascii_lowercase();
+        let is_state = matches!(info_lower.as_str(), "state" | "status" | "状态栏" | "狀態欄");
+        let is_trailing_plain = info.is_empty() && display[end_start + 3..].trim().is_empty();
+        if is_state || is_trailing_plain {
+            fences.push((start, end_start + 3, display[header_end + 1..end_start].to_owned()));
+        }
+        cursor = end_start + 3;
+    }
+    let fence_blocks: Vec<_> = fences.iter().map(|(_, _, block)| block.clone()).collect();
+    for (start, end, _) in fences.into_iter().rev() {
+        display.replace_range(start..end, "");
+        removed = true;
+    }
+    blocks.extend(fence_blocks);
+
+    if !removed {
+        return (Vec::new(), reply.to_owned());
+    }
+
+    let mut fields = Vec::new();
+    for block in blocks {
+        for line in block.lines() {
+            let line = line.trim_start_matches(|character: char| {
+                matches!(character, '-' | '*' | '#' | '+' | '>' | ' ' | '\t')
+            });
+            let Some((index, _)) = line
+                .char_indices()
+                .find(|(_, character)| matches!(character, ':' | '：'))
+            else {
+                continue;
+            };
+            let key = line[..index].trim();
+            let value = line[index + line[index..].chars().next().unwrap().len_utf8()..].trim();
+            if key.is_empty() || value.is_empty() {
+                continue;
+            }
+            let normalized = match key.to_ascii_lowercase().as_str() {
+                "time" | "時間" | "时间" => "time".to_owned(),
+                "place" | "location" | "地點" | "地点" => "place".to_owned(),
+                "present" | "在場" | "在场" | "在場人物" | "在场人物" => "present".to_owned(),
+                _ => key.to_owned(),
+            };
+            fields.push((normalized, value.to_owned()));
+        }
+    }
+    (fields, display.trim_end().to_owned())
 }
 
 /// 導演指示：從名單選出下一位發言者
@@ -630,6 +804,7 @@ mod tests {
             speaker_name: speaker_name.to_owned(),
             kind,
             text: text.to_owned(),
+            state: None,
         }
     }
 
@@ -665,7 +840,16 @@ mod tests {
         assert!(character_system.contains("遠道而來的商隊護衛"));
 
         let gm_system =
-            &assemble_gm_messages("世界總覽", &[fox], Some(&player), &[], &[], "zh-TW")[0].content;
+            &assemble_gm_messages(
+                "世界總覽",
+                &[fox],
+                Some(&player),
+                &[],
+                &[],
+                &TableState::default(),
+                "zh-TW",
+            )[0]
+                .content;
         assert!(gm_system.contains("阿濤"));
         assert!(gm_system.contains("遠道而來的商隊護衛"));
 
@@ -692,7 +876,15 @@ mod tests {
         assert!(character_system.contains("我是 狐狸，認識 阿濤，{{random}} 保留。"));
         assert!(character_system.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
 
-        let gm = assemble_gm_messages("世界 {{CHAR}}", &[fox], Some(&player), &[], &[entry], "zh-TW");
+        let gm = assemble_gm_messages(
+            "世界 {{CHAR}}",
+            &[fox],
+            Some(&player),
+            &[],
+            &[entry],
+            &TableState::default(),
+            "zh-TW",
+        );
         assert!(gm[0].content.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
         assert!(gm[0].content.contains("世界 {{CHAR}}"));
     }
@@ -712,7 +904,15 @@ mod tests {
     fn gm_card_macros_use_each_cards_own_name() {
         let fox = card("fox-id", "狐狸", "A {{char}}", "");
         let knight = card("knight-id", "騎士", "B {{char}}", "");
-        let gm = assemble_gm_messages("", &[fox, knight], None, &[], &[], "zh-TW");
+        let gm = assemble_gm_messages(
+            "",
+            &[fox, knight],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            "zh-TW",
+        );
         let system = &gm[0].content;
 
         assert!(system.contains("公開設定：\nA 狐狸\n"));
@@ -732,7 +932,15 @@ mod tests {
         assert!(!character[0].content.contains("## 你知道的世界情報"));
         assert_eq!(character[1], message("user", "玩家：你好".to_owned()));
 
-        let gm = assemble_gm_messages("世界總覽", &[fox], None, &events, &[], "zh-TW");
+        let gm = assemble_gm_messages(
+            "世界總覽",
+            &[fox],
+            None,
+            &events,
+            &[],
+            &TableState::default(),
+            "zh-TW",
+        );
         assert_eq!(gm.len(), 2);
         assert!(gm[0].content.contains("## 世界設定"));
         assert!(gm[0].content.contains("## 登場角色"));
@@ -806,7 +1014,16 @@ mod tests {
         assert!(!knight_system.contains("狐狸情報"));
 
         let gm_system =
-            &assemble_gm_messages("世界總覽", &[], None, &[], &entries, "zh-TW")[0].content;
+            &assemble_gm_messages(
+                "世界總覽",
+                &[],
+                None,
+                &[],
+                &entries,
+                &TableState::default(),
+                "zh-TW",
+            )[0]
+                .content;
         assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n"));
         for title in ["GM 祕密", "公開情報", "狐狸情報", "騎士情報"] {
             assert!(gm_system.contains(title));
@@ -909,7 +1126,15 @@ mod tests {
             event(TranscriptKind::Narration, "", "GM", "門外傳來馬蹄聲"),
         ];
         let messages =
-            assemble_gm_messages("酒館位於邊境小鎮", &cards, None, &events, &[], "zh-TW");
+            assemble_gm_messages(
+                "酒館位於邊境小鎮",
+                &cards,
+                None,
+                &events,
+                &[],
+                &TableState::default(),
+                "zh-TW",
+            );
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -935,7 +1160,15 @@ mod tests {
         assert!(en[0].content.contains("in natural, fluent English"));
         assert!(!en[0].content.contains("繁體中文"));
 
-        let gm_en = assemble_gm_messages("", &[], None, &[], &[], "en");
+        let gm_en = assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            "en",
+        );
         assert!(gm_en[0].content.contains("in natural, fluent English"));
 
         // 其餘八個語系各自注入自己語言寫的規範，且不殘留繁中規範
@@ -955,7 +1188,15 @@ mod tests {
                 !messages[0].content.contains("繁體中文"),
                 "{lang} 誤注入繁中規範"
             );
-            let gm = assemble_gm_messages("", &[], None, &[], &[], lang);
+            let gm = assemble_gm_messages(
+                "",
+                &[],
+                None,
+                &[],
+                &[],
+                &TableState::default(),
+                lang,
+            );
             assert!(gm[0].content.contains(needle), "{lang} GM 規範沒注入");
         }
 
@@ -1220,5 +1461,109 @@ mod tests {
             extract_delta(r#"{"choices":[{"delta":{"content":"嗨"}}]}"#).unwrap(),
             "嗨"
         );
+    }
+
+    /// 狀態是 GM 的檯面：角色只知道自己被說出口的部分，提示詞裡不該出現整張狀態表
+    #[test]
+    fn table_state_reaches_the_gm_only() {
+        let fox = card("fox-id", "狐狸", "公開", "");
+        let state = TableState {
+            table: std::collections::BTreeMap::from([
+                ("time".to_owned(), "午夜".to_owned()),
+                ("沦陷天数".to_owned(), "第 3 天".to_owned()),
+            ]),
+            characters: std::collections::BTreeMap::new(),
+        };
+        let gm = assemble_gm_messages("", &[fox.clone()], None, &[], &[], &state, "zh-TW");
+        assert!(gm[0].content.contains("## 目前狀態"));
+        assert!(gm[0].content.contains("時間：午夜"));
+        assert!(gm[0].content.contains("沦陷天数：第 3 天"));
+
+        let character = assemble_messages(&fox, None, &[], &[], "zh-TW");
+        assert!(!character[0].content.contains("午夜"));
+        assert!(!character[0].content.contains("目前狀態"));
+    }
+
+    #[test]
+    fn extract_state_fence_returns_fields_and_hides_fence() {
+        let (fields, display) = extract_state_block(
+            "雨停了。\n```state\ntime: 午夜\nplace：舊碼頭\npresent: 阿濤、船長\n```",
+        );
+        assert_eq!(
+            fields,
+            vec![
+                ("time".to_owned(), "午夜".to_owned()),
+                ("place".to_owned(), "舊碼頭".to_owned()),
+                ("present".to_owned(), "阿濤、船長".to_owned()),
+            ]
+        );
+        assert_eq!(display, "雨停了。");
+    }
+
+    #[test]
+    fn extract_state_discards_bad_lines_without_losing_valid_fields() {
+        let (fields, display) = extract_state_block(
+            "旁白\n```state\n- time: 清晨\n沒有冒號\nplace:   \n# 自訂：有效\n```",
+        );
+        assert_eq!(
+            fields,
+            vec![
+                ("time".to_owned(), "清晨".to_owned()),
+                ("自訂".to_owned(), "有效".to_owned()),
+            ]
+        );
+        assert_eq!(display, "旁白");
+    }
+
+    #[test]
+    fn extract_state_details_summary_is_parsed_and_hidden() {
+        let (fields, display) = extract_state_block(
+            "港口傳來鐘聲。<details><summary>状态栏</summary>时间：黃昏\n地点：港口</details>",
+        );
+        assert_eq!(
+            fields,
+            vec![
+                ("time".to_owned(), "黃昏".to_owned()),
+                ("place".to_owned(), "港口".to_owned()),
+            ]
+        );
+        assert_eq!(display, "港口傳來鐘聲。");
+    }
+
+    #[test]
+    fn extract_status_tag_is_parsed_and_hidden() {
+        let (fields, display) =
+            extract_state_block("門開了。<STATUS>time: 午夜\nplace: 走廊</status>剩下的話。");
+        assert_eq!(
+            fields,
+            vec![
+                ("time".to_owned(), "午夜".to_owned()),
+                ("place".to_owned(), "走廊".to_owned()),
+            ]
+        );
+        assert_eq!(display, "門開了。剩下的話。");
+    }
+
+    #[test]
+    fn extract_update_variable_hides_json_without_parsing_it() {
+        let (fields, display) = extract_state_block(
+            "她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>",
+        );
+        assert!(fields.is_empty());
+        assert_eq!(display, "她點頭。");
+    }
+
+    #[test]
+    fn extract_state_keeps_unwrapped_narration_byte_for_byte() {
+        let reply = "純旁白\n保留尾端空行\n\n";
+        assert_eq!(extract_state_block(reply), (Vec::new(), reply.to_owned()));
+    }
+
+    #[test]
+    fn extract_state_keeps_middle_code_fence_but_removes_trailing_plain_fence() {
+        let reply = "提示：\n```rust\nlet time = 1;\n```\n旁白\n```\ntime: 午夜\n```";
+        let (fields, display) = extract_state_block(reply);
+        assert_eq!(fields, vec![("time".to_owned(), "午夜".to_owned())]);
+        assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
     }
 }

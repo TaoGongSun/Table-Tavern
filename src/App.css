@@ -1273,6 +1273,79 @@ textarea {
   min-width: 0;
 }
 
+/* 訊息區獨立捲動時，這塊仍留在劇情標題下方，方便隨時核對眼前局勢。 */
+.state-bar {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+  font: var(--fs-meta) / 1.4 var(--font-ui);
+}
+
+.state-bar summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  padding: 0.4rem 0.6rem;
+}
+
+.state-bar-title {
+  font-weight: 600;
+}
+
+.state-bar:not([open]) .state-bar-title,
+.state-bar[open] .state-bar-summary {
+  display: none;
+}
+
+.state-bar-fields {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0 0.6rem 0.55rem;
+}
+
+.state-bar-field {
+  display: grid;
+  grid-template-columns: minmax(6rem, 30%) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.state-bar-label {
+  color: var(--ink-3);
+}
+
+.state-bar-value {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.state-bar-value:hover:not(:disabled),
+.state-bar-value:focus-visible {
+  color: var(--accent);
+}
+
+.state-bar-field-form {
+  min-width: 0;
+}
+
+.state-bar-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+}
+
 /* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名 */
 .table-title {
   height: auto;

@@ -12,7 +12,7 @@
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；另有四件待拍板（日文世界書用詞、範例桌地名處理不統一等）
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
-- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉 — 下一步：目標模式本輪結束——一二三五項全數自驗全綠（cargo test 151＋npm test＋tsc＋i18n＋build），等實機驗收；第四項停在閘門，等狀態區塊格式拍板（題已出）
+- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉 — 下一步：五項全數實作完成、自驗全綠（cargo test 162＋npm test＋tsc＋i18n＋build），等實機驗收；第四項第一期 GM 狀態欄已上（狀態欄在對話上方、可收合可手改），第二期等驗收後細拍
 
 ## Done
 

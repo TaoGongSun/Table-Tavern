@@ -157,6 +157,8 @@ pub struct TranscriptEvent {
     pub speaker_name: String,
     pub kind: TranscriptKind,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<TableState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,6 +182,15 @@ pub struct WorldbookEntry {
     pub visibility: Visibility,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TableState {
+    #[serde(default)]
+    pub table: BTreeMap<String, String>,
+    // 先保留角色數值紙的位置，第二期加入時才不必遷移既有存檔。
+    #[serde(default)]
+    pub characters: BTreeMap<String, BTreeMap<String, String>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldState {
     pub id: String,
@@ -195,6 +206,8 @@ pub struct WorldState {
     // 換幕順手取的幕名：key 是場景號字串（比照 catchup_summaries），沒取到就不進這個表
     #[serde(default)]
     pub scene_titles: BTreeMap<String, String>,
+    #[serde(default)]
+    pub state: TableState,
 }
 
 /// 側欄桌列表用的精簡視圖
@@ -332,6 +345,7 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
         current_scene: 0,
         catchup_summaries: BTreeMap::new(),
         scene_titles: BTreeMap::new(),
+        state: TableState::default(),
     };
     fs::write(
         directory.join("state.json"),
@@ -425,6 +439,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
             speaker_name: "GM".to_owned(),
             kind: TranscriptKind::Narration,
             text: sample.opening,
+            state: None,
         },
     )?;
 
@@ -1388,12 +1403,27 @@ pub fn append_transcript(
     scene: u64,
     event: &TranscriptEvent,
 ) -> DataResult<()> {
+    let mut event = event.clone();
+    if event.state.is_none() {
+        // 復原舊句子會帶回當時快照，只有新事件才借用目前檯面。
+        event.state = read_state(root, world_id).ok().map(|state| state.state);
+    }
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(transcript_path(root, world_id, scene)?)?;
-    serde_json::to_writer(&mut file, event)?;
+    serde_json::to_writer(&mut file, &event)?;
     file.write_all(b"\n")?;
+    // 目前值恆等於最後一則事件的快照，復原舊句時狀態才會跟著回到那一刻。
+    // 快取寫失敗不該把「事件已經寫進去了」這件事變成錯誤，權威在 transcript。
+    if let Some(snapshot) = event.state {
+        if let Ok(mut world) = read_state(root, world_id) {
+            if world.state != snapshot {
+                world.state = snapshot;
+                let _ = write_state(root, world_id, &world);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1407,6 +1437,45 @@ pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<boo
     let mut buffer = String::new();
     for event in &events {
         buffer.push_str(&serde_json::to_string(event)?);
+        buffer.push('\n');
+    }
+    fs::write(transcript_path(root, world_id, scene)?, buffer)?;
+    let mut state = read_state(root, world_id)?;
+    state.state = events
+        .iter()
+        .rev()
+        .find_map(|entry| entry.state.clone())
+        .or_else(|| {
+            scene.checked_sub(1).and_then(|previous_scene| {
+                read_transcript(root, world_id, previous_scene)
+                    .ok()
+                    .and_then(|previous_events| {
+                        previous_events
+                            .iter()
+                            .rev()
+                            .find_map(|entry| entry.state.clone())
+                    })
+            })
+        })
+        .unwrap_or_default();
+    write_state(root, world_id, &state)?;
+    Ok(true)
+}
+
+pub fn set_last_transcript_state(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    state: &TableState,
+) -> DataResult<bool> {
+    let mut events = read_transcript(root, world_id, scene)?;
+    let Some(entry) = events.last_mut() else {
+        return Ok(false);
+    };
+    entry.state = Some(state.clone());
+    let mut buffer = String::new();
+    for entry in &events {
+        buffer.push_str(&serde_json::to_string(entry)?);
         buffer.push('\n');
     }
     fs::write(transcript_path(root, world_id, scene)?, buffer)?;
@@ -1586,6 +1655,7 @@ pub fn begin_next_scene(
             speaker_name: "GM".to_owned(),
             kind: TranscriptKind::Narration,
             text,
+            state: None,
         },
     )?;
     if let Some(name) = title.map(str::trim).filter(|name| !name.is_empty()) {
@@ -2579,6 +2649,7 @@ mod tests {
             speaker_name: "玩家".to_owned(),
             kind: TranscriptKind::Player,
             text: "你好".to_owned(),
+            state: None,
         };
         append_transcript(root.path(), &first, 0, &event).unwrap();
         assert_eq!(
@@ -2607,6 +2678,7 @@ mod tests {
             speaker_name: "玩家".to_owned(),
             kind: TranscriptKind::Player,
             text: "留著".to_owned(),
+            state: None,
         };
         append_transcript(root.path(), &has_message, 0, &event).unwrap();
         assert!(!reclaim_world_if_empty(root.path(), &has_message).unwrap());
@@ -2931,6 +3003,7 @@ mod tests {
                 speaker_name: "舊名".to_owned(),
                 kind: TranscriptKind::Dialogue,
                 text: "舊名說了一句話".to_owned(),
+                state: None,
             },
         )
         .unwrap();
@@ -3158,6 +3231,7 @@ mod tests {
                 speaker_name: "旁白".to_owned(),
                 kind: TranscriptKind::Narration,
                 text: "序幕".to_owned(),
+                state: None,
             },
             TranscriptEvent {
                 ts: "2026-07-19T10:00:01+08:00".to_owned(),
@@ -3165,6 +3239,7 @@ mod tests {
                 speaker_name: "玩家".to_owned(),
                 kind: TranscriptKind::Player,
                 text: "第一行\n仍是同一事件".to_owned(),
+                state: None,
             },
             TranscriptEvent {
                 ts: "2026-07-19T10:00:02+08:00".to_owned(),
@@ -3172,12 +3247,21 @@ mod tests {
                 speaker_name: "角色".to_owned(),
                 kind: TranscriptKind::Dialogue,
                 text: "你好".to_owned(),
+                state: None,
             },
         ];
         for event in &events {
             append_transcript(root.path(), &world_id, 7, event).unwrap();
         }
-        assert_eq!(read_transcript(root.path(), &world_id, 7).unwrap(), events);
+        let expected: Vec<_> = events
+            .iter()
+            .cloned()
+            .map(|mut event| {
+                event.state = Some(TableState::default());
+                event
+            })
+            .collect();
+        assert_eq!(read_transcript(root.path(), &world_id, 7).unwrap(), expected);
 
         let path = root
             .path()
@@ -3217,6 +3301,7 @@ mod tests {
                 speaker_name: "GM".to_owned(),
                 kind: TranscriptKind::Narration,
                 text: (*text).to_owned(),
+                state: None,
             })
             .collect();
         for event in &events {
@@ -3224,9 +3309,17 @@ mod tests {
         }
 
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        let expected: Vec<_> = events[..2]
+            .iter()
+            .cloned()
+            .map(|mut event| {
+                event.state = Some(TableState::default());
+                event
+            })
+            .collect();
         assert_eq!(
             read_transcript(root.path(), &world_id, 0).unwrap(),
-            events[..2]
+            expected
         );
         // 重寫後仍是合法 JSONL：行數對齊事件數，沒有殘留的半行
         let path = root.path().join(format!("worlds/{world_id}/transcript/0.jsonl"));
@@ -3247,6 +3340,125 @@ mod tests {
     }
 
     #[test]
+    fn append_transcript_uses_current_snapshot_without_overwriting_supplied_state() {
+        let root = TestRoot::new("transcript-state-snapshot");
+        let world_id = create_world(root.path(), "狀態桌").unwrap();
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state
+            .state
+            .table
+            .insert("time".to_owned(), "清晨".to_owned());
+        write_state(root.path(), &world_id, &state).unwrap();
+        let event = TranscriptEvent {
+            ts: "now".to_owned(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: TranscriptKind::Narration,
+            text: "第一句".to_owned(),
+            state: None,
+        };
+        append_transcript(root.path(), &world_id, 0, &event).unwrap();
+        assert_eq!(
+            read_transcript(root.path(), &world_id, 0).unwrap()[0]
+                .state
+                .as_ref()
+                .unwrap()
+                .table
+                .get("time"),
+            Some(&"清晨".to_owned())
+        );
+
+        let supplied = TableState {
+            table: BTreeMap::from([("time".to_owned(), "午夜".to_owned())]),
+            characters: BTreeMap::new(),
+        };
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                ts: "later".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: TranscriptKind::Narration,
+                text: "第二句".to_owned(),
+                state: Some(supplied.clone()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_transcript(root.path(), &world_id, 0).unwrap()[1].state,
+            Some(supplied)
+        );
+    }
+
+    #[test]
+    fn pop_transcript_restores_the_previous_event_snapshot() {
+        let root = TestRoot::new("transcript-state-pop");
+        let world_id = create_world(root.path(), "回收狀態桌").unwrap();
+        let first = TableState {
+            table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
+            characters: BTreeMap::new(),
+        };
+        let second = TableState {
+            table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
+            characters: BTreeMap::new(),
+        };
+        for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
+            append_transcript(
+                root.path(),
+                &world_id,
+                0,
+                &TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker_id: String::new(),
+                    speaker_name: "GM".to_owned(),
+                    kind: TranscriptKind::Narration,
+                    text: text.to_owned(),
+                    state: Some(snapshot),
+                },
+            )
+            .unwrap();
+        }
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state.state = second;
+        write_state(root.path(), &world_id, &state).unwrap();
+
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, first);
+    }
+
+    /// 復原＝把帶著自身快照的舊事件原樣寫回，目前值要跟著回到那一刻
+    /// （否則狀態欄會停在收回後的舊值，跟桌上最後一句對不起來）
+    #[test]
+    fn restoring_an_undone_event_puts_its_snapshot_back() {
+        let root = TestRoot::new("transcript-state-restore");
+        let world_id = create_world(root.path(), "復原狀態桌").unwrap();
+        let snapshots = ["清晨", "午夜"].map(|time| TableState {
+            table: BTreeMap::from([("time".to_owned(), time.to_owned())]),
+            characters: BTreeMap::new(),
+        });
+        let event = |text: &str, snapshot: &TableState| TranscriptEvent {
+            ts: "now".to_owned(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: TranscriptKind::Narration,
+            text: text.to_owned(),
+            state: Some(snapshot.clone()),
+        };
+        for (text, snapshot) in [("第一句", &snapshots[0]), ("第二句", &snapshots[1])] {
+            append_transcript(root.path(), &world_id, 0, &event(text, snapshot)).unwrap();
+        }
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshots[1]);
+
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshots[0]);
+
+        append_transcript(root.path(), &world_id, 0, &event("第二句", &snapshots[1])).unwrap();
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshots[1]);
+    }
+
+    #[test]
     fn exports_all_transcript_scenes_as_localized_markdown() {
         let root = TestRoot::new("transcript-export");
         let world_id = create_world(root.path(), "海風桌").unwrap();
@@ -3259,6 +3471,7 @@ mod tests {
                     speaker_name: "船長".to_owned(),
                     kind: TranscriptKind::Dialogue,
                     text: "我們啟航。".to_owned(),
+                    state: None,
                 },
             ),
             (
@@ -3269,6 +3482,7 @@ mod tests {
                     speaker_name: "GM".to_owned(),
                     kind: TranscriptKind::Narration,
                     text: "霧氣升起。\n港口安靜。".to_owned(),
+                    state: None,
                 },
             ),
             (
@@ -3279,6 +3493,7 @@ mod tests {
                     speaker_name: "玩家".to_owned(),
                     kind: TranscriptKind::Player,
                     text: "我登上甲板。".to_owned(),
+                    state: None,
                 },
             ),
             (
@@ -3289,6 +3504,7 @@ mod tests {
                     speaker_name: "GM".to_owned(),
                     kind: TranscriptKind::System,
                     text: "第一幕開始".to_owned(),
+                    state: None,
                 },
             ),
         ] {
@@ -3331,6 +3547,7 @@ mod tests {
                     speaker_name: "GM".to_owned(),
                     kind: TranscriptKind::Narration,
                     text: "霧氣升起。".to_owned(),
+                    state: None,
                 },
             ),
             (
@@ -3341,6 +3558,7 @@ mod tests {
                     speaker_name: "船長".to_owned(),
                     kind: TranscriptKind::Dialogue,
                     text: "我們啟航。".to_owned(),
+                    state: None,
                 },
             ),
         ] {
@@ -3375,6 +3593,7 @@ mod tests {
             speaker_name: "玩家".to_owned(),
             kind: TranscriptKind::Player,
             text: "第一場的對話".to_owned(),
+            state: None,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
@@ -3408,6 +3627,7 @@ mod tests {
             speaker_name: "玩家".to_owned(),
             kind: TranscriptKind::Player,
             text: "第一幕的對話".to_owned(),
+            state: None,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 

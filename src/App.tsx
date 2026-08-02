@@ -61,6 +61,17 @@ interface TranscriptEvent {
   speaker_name: string;
   kind: "dialogue" | "narration" | "player" | "system";
   text: string;
+  state?: {
+    table: Record<string, string>;
+    characters: Record<string, Record<string, string>>;
+  };
+}
+
+// 串流中的旁白尾端會冒出狀態區塊，整則寫完才由後端剝乾淨；
+// 這裡先切掉，免得玩家每回合都看到一段圍欄或標籤閃過去
+function narrationStreamText(text: string) {
+  const marker = text.search(/```|<details|<status|<UpdateVariable/i);
+  return marker === -1 ? text : text.slice(0, marker);
 }
 
 function StoryText({ text }: { text: string }) {
@@ -117,6 +128,10 @@ interface WorldState {
   catchup_summaries: Record<string, string>;
   // 換幕順手取的幕名：key 是內部場號字串（0 起算），對應後端 WorldState.scene_titles
   scene_titles: Record<string, string>;
+  state: {
+    table: Record<string, string>;
+    characters: Record<string, Record<string, string>>;
+  };
 }
 
 type Visibility =
@@ -211,6 +226,7 @@ function clampChars(value: string, max: number) {
 // 下限擋在這裡，上限交給 CSS 的 max-width: 50%（視窗縮小時自動夾住）。
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
 const TABLE_LIST_OPEN_KEY = "table_list_open";
+const STATE_BAR_OPEN_KEY = "state_bar_open";
 const SIDEBAR_DEFAULT_WIDTH = 224;
 const SIDEBAR_MIN_WIDTH = 176;
 const SIDEBAR_KEY_STEP = 16;
@@ -2656,6 +2672,7 @@ function App() {
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
+  const [tableState, setTableState] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
   // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
@@ -2667,6 +2684,9 @@ function App() {
   // 連按時前一次的寫檔還沒回來就再按，兩次會讀到同一份舊狀態而重複收回／放回同一則；
   // 用旗標讓同一時間只跑一次（寫檔是毫秒級，擋掉的那下感覺不出來）
   const undoBusy = useRef(false);
+  // Enter 送出會接著觸發 blur，Esc 也會先失焦；旗標避免重複送出或把取消誤存。
+  const stateFieldSaveBusy = useRef(false);
+  const stateFieldEditCancelled = useRef(false);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
   // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
@@ -2720,6 +2740,13 @@ function App() {
   const [tableListOpen, setTableListOpen] = useState(
     () => localStorage.getItem(TABLE_LIST_OPEN_KEY) !== "false",
   );
+  const [stateBarOpen, setStateBarOpen] = useState(
+    () => localStorage.getItem(STATE_BAR_OPEN_KEY) === "true",
+  );
+  const [editingStateField, setEditingStateField] = useState<{
+    key: string;
+    value: string;
+  } | null>(null);
   const [genTableOpen, setGenTableOpen] = useState(false);
   const [genInput, setGenInput] = useState("");
   const [genGenres, setGenGenres] = useState<string[]>([]);
@@ -2892,12 +2919,14 @@ function App() {
     setTable(id);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
+    setTableState(state.state?.table ?? {});
     setEvents(transcript);
     setCharacters(cast);
     await loadCharacterImages(id, cast);
     await loadPlayerCard(id, state.player_card_id);
     setSpeaker(cast.find((character) => !character.archived)?.id ?? "");
     setEditingName(null);
+    setEditingStateField(null);
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
     setMainView(null);
     setActsOpen(false);
@@ -3107,6 +3136,64 @@ function App() {
         />
       </form>
     );
+  }
+
+  // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。
+  async function saveTableState(key: string, value: string) {
+    if (stateFieldSaveBusy.current || stateFieldEditCancelled.current) return;
+    setEditingStateField(null);
+    if (value === (tableState[key] ?? "")) return;
+    stateFieldSaveBusy.current = true;
+    setError("");
+    try {
+      await invoke("set_table_state", { worldId: table, fields: { [key]: value } });
+      setTableState((previous) => {
+        if (value) return { ...previous, [key]: value };
+        const { [key]: _removed, ...remaining } = previous;
+        return remaining;
+      });
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      stateFieldSaveBusy.current = false;
+    }
+  }
+
+  // 表單交給瀏覽器處理 Enter，中文輸入法選字時不會提前送出。
+  function stateFieldForm(key: string, label: string) {
+    const value = editingStateField?.value ?? "";
+    return (
+      <form
+        className="state-bar-field-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void saveTableState(key, value);
+        }}
+      >
+        <input
+          className="state-bar-input"
+          autoFocus
+          value={value}
+          aria-label={label}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setEditingStateField((previous) => (previous ? { ...previous, value: next } : previous));
+          }}
+          onBlur={() => void saveTableState(key, value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              stateFieldEditCancelled.current = true;
+              setEditingStateField(null);
+            }
+          }}
+        />
+      </form>
+    );
+  }
+
+  async function refreshTableState() {
+    const state = await invoke<WorldState>("read_state", { worldId: table });
+    setTableState(state.state?.table ?? {});
   }
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
@@ -3374,6 +3461,7 @@ function App() {
           ? { ...previous, events: [...previous.events, last] }
           : { table, scene, events: [last] },
       );
+      await refreshTableState();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -3396,6 +3484,7 @@ function App() {
           ? { ...previous, events: previous.events.slice(0, -1) }
           : null,
       );
+      await refreshTableState();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -3445,6 +3534,7 @@ function App() {
       onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
       const full = await invoke<string>("gm_narrate", { worldId: table, onDelta });
       await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text: full });
+      await refreshTableState();
       await markCliConnectedFromChat();
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
@@ -3563,6 +3653,15 @@ function App() {
   }
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
+  const stateFields = [
+    { key: "time", label: t("stateFieldTime") },
+    { key: "place", label: t("stateFieldPlace") },
+    { key: "present", label: t("stateFieldPresent") },
+    ...Object.keys(tableState)
+      .filter((key) => !["time", "place", "present"].includes(key))
+      .map((key) => ({ key, label: key })),
+  ];
+  const stateValue = (key: string) => tableState[key] || t("stateEmptyValue");
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
   const sceneTooLong =
@@ -4020,6 +4119,46 @@ function App() {
           </div>
         </header>
 
+        <details
+          className="state-bar"
+          open={stateBarOpen}
+          onToggle={(event) => {
+            const next = event.currentTarget.open;
+            setStateBarOpen(next);
+            localStorage.setItem(STATE_BAR_OPEN_KEY, String(next));
+          }}
+        >
+          <summary>
+            <span className="state-bar-title">{t("stateBarTitle")}</span>
+            <span className="state-bar-summary">
+              {stateValue("time")} ｜ {stateValue("place")} ｜ {t("stateSummaryPresent")}
+              {stateValue("present")}
+            </span>
+          </summary>
+          <div className="state-bar-fields">
+            {stateFields.map(({ key, label }) => (
+              <div className="state-bar-field" key={key}>
+                <span className="state-bar-label">{label}</span>
+                {editingStateField?.key === key ? (
+                  stateFieldForm(key, label)
+                ) : (
+                  <button
+                    className="state-bar-value"
+                    type="button"
+                    title={t("stateEditHint")}
+                    onClick={() => {
+                      stateFieldEditCancelled.current = false;
+                      setEditingStateField({ key, value: tableState[key] ?? "" });
+                    }}
+                  >
+                    {stateValue(key)}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+
         <div className="chat-body">
         {actsOpen && scene > 0 && (
           <div className="acts-flyout">
@@ -4178,8 +4317,8 @@ function App() {
               )}
               {generating !== null && generating.kind === "narration" && (
                 <div className="message message-narration">
-                  {streamText ? (
-                    <span className="text">{streamText}</span>
+                  {narrationStreamText(streamText) ? (
+                    <span className="text">{narrationStreamText(streamText)}</span>
                   ) : (
                     <span className="typing" aria-label={t("typing", { name: "GM" })}>
                       <i />

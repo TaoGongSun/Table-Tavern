@@ -261,6 +261,13 @@ export const zh = {
   genParseFail: "模型這次的輸出不成格式，原文如下——直接重骰就好。",
   newTableName: "新的一桌",
   tableListAria: "桌列表",
+  stateBarTitle: "狀態",
+  stateFieldTime: "時間",
+  stateFieldPlace: "地點",
+  stateFieldPresent: "在場人物",
+  stateSummaryPresent: "在場：",
+  stateEmptyValue: "—",
+  stateEditHint: "點一下可以改",
   renameHint: "點一下改名",
   deleteTableTitle: "永久刪除這桌",
   deleteTableConfirm:

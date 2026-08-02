@@ -266,6 +266,13 @@ export const en: Record<MsgKey, string> = {
   genParseFail: "The model's output wasn't in the expected format. Here is the original text — just reroll.",
   newTableName: "New table",
   tableListAria: "Table list",
+  stateBarTitle: "Status",
+  stateFieldTime: "Time",
+  stateFieldPlace: "Place",
+  stateFieldPresent: "Present",
+  stateSummaryPresent: "Present: ",
+  stateEmptyValue: "—",
+  stateEditHint: "Click to edit",
   renameHint: "Click to rename",
   deleteTableTitle: "Delete this table permanently",
   deleteTableConfirm:
