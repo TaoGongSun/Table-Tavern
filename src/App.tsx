@@ -1,10 +1,11 @@
-import { FormEvent, Fragment, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, Fragment, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import Cropper, { Area } from "react-easy-crop";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
+import { renderStoryMarkdown } from "./story-markdown";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -60,6 +61,11 @@ interface TranscriptEvent {
   speaker_name: string;
   kind: "dialogue" | "narration" | "player" | "system";
   text: string;
+}
+
+function StoryText({ text }: { text: string }) {
+  const html = useMemo(() => renderStoryMarkdown(text), [text]);
+  return <span className="text rendered" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 interface WorldMeta {
@@ -2544,7 +2550,7 @@ function ActReader({
               {(event.kind === "dialogue" || event.kind === "player") && (
                 <span className="speaker">{event.speaker_name}</span>
               )}
-              <span className="text">{event.text}</span>
+              <StoryText text={event.text} />
             </div>
           ))
         )}
@@ -4060,13 +4066,13 @@ function App() {
                       <div className="pb-name">
                         <span className="pb-plate">{event.speaker_name}</span>
                       </div>
-                      <span className="text">{event.text}</span>
+                      <StoryText text={event.text} />
                     </div>
                   );
                 }
                 return (
                   <div key={index} className={`message message-${event.kind}`}>
-                    <span className="text">{event.text}</span>
+                    <StoryText text={event.text} />
                   </div>
                 );
               })}

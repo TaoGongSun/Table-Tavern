@@ -3,7 +3,7 @@ Task-ID: st-ecosystem-upgrades
 Title: SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉
 Status: in_progress
 Created: 2026-08-01T21:23:00+08:00
-Updated: 2026-08-02T13:45:00+08:00
+Updated: 2026-08-02T14:15:00+08:00
 
 ## Summary
 2026-08-01 與使用者討論拍板，2026-08-02 拆兩張實卡驗證後定稿為四項。背景：SillyTavern 中文社群靠三個擴充把角色卡演化成自帶介面與遊戲邏輯的小程式——酒館助手（JS-Slash-Runner：卡內 JavaScript 在 iframe 執行，訊息變成互動 HTML 狀態欄）、MVU（MagVarUpdate：AI 按約定格式輸出變數更新，框架解析後畫進狀態欄）、EJS（ST-Prompt-Template：提示詞內嵌 `<% %>` 程式，送模型前先執行）。
