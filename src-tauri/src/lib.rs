@@ -546,6 +546,27 @@ fn write_state(app: tauri::AppHandle, world_id: String, state: WorldState) -> Re
 }
 
 #[tauri::command]
+async fn set_table_state(
+    app: tauri::AppHandle,
+    world_id: String,
+    fields: std::collections::BTreeMap<String, String>,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    for (key, value) in fields {
+        if value.is_empty() {
+            state.state.table.remove(&key);
+        } else {
+            state.state.table.insert(key, value);
+        }
+    }
+    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())?;
+    data::set_last_transcript_state(&root, &world_id, state.current_scene, &state.state)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn read_config(app: tauri::AppHandle) -> Result<AppConfig, String> {
     data::read_config(&config_root(&app)?).map_err(|error| error.to_string())
 }
@@ -1176,6 +1197,7 @@ fn assemble_gm(root: &std::path::Path, world_id: &str, lang: &str) -> Result<GmA
         player.as_ref(),
         &events,
         &worldbook,
+        &state.state,
         lang,
     );
     Ok((cards, player, messages))
@@ -1189,27 +1211,41 @@ async fn gm_narrate(
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
     let (_, _, mut messages) = assemble_gm(
         &data_root(&app)?,
         &world_id,
-        &transport::ui_language(&config),
+        &lang,
     )?;
-    messages.push(transport::narrate_instruction());
+    messages.push(transport::narrate_instruction(&lang));
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    stream_via_transport(
+    let reply = stream_via_transport(
         &app,
         &config,
         None,
         false,
         transport::gm_tier(&config),
         "GM",
-        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文，不要加名字前綴。",
+        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。",
         &messages,
         emit,
     )
-    .await
+    .await?;
+    let (fields, display) = transport::extract_state_block(&reply);
+    // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
+    if !fields.is_empty() {
+        if let Ok(root) = data_root(&app) {
+            if let Ok(mut state) = data::read_state(&root, &world_id) {
+                for (key, value) in fields {
+                    state.state.table.insert(key, value);
+                }
+                let _ = data::write_state(&root, &world_id, &state);
+            }
+        }
+    }
+    Ok(display)
 }
 
 /// 簡易導演：GM 建議下一位發言者（NewPlan §6.1）。
@@ -1452,6 +1488,7 @@ pub fn run() {
             export_scene,
             read_state,
             write_state,
+            set_table_state,
             read_config,
             write_config,
             detect_clis,

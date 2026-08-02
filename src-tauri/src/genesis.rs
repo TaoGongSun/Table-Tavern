@@ -214,6 +214,7 @@ pub fn materialize(root: &Path, expanded: &Expanded) -> DataResult<String> {
                 speaker_name: "GM".to_owned(),
                 kind: TranscriptKind::Narration,
                 text: expanded.opening.clone(),
+                state: None,
             },
         )?;
     }
