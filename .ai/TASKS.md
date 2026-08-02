@@ -12,13 +12,13 @@
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；另有四件待拍板（日文世界書用詞、範例桌地名處理不統一等）
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
+- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉 — 下一步：目標模式進行中——第一項匯入補強自驗全綠（cargo test 143＋tsc＋i18n 十語系），等實機驗收；續跑第二項巨集替換
 
 ## Done
 
 見 [DONE.md](DONE.md)（25 項）。
 
 ## Todo
-- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉 — 下一步：規格已定稿（2026-08-02 兩張實卡驗證），依序開工第一項匯入補強（一天級，含世界書誤匯改道），規格與安全紅線見任務檔
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式

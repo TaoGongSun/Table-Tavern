@@ -378,6 +378,11 @@ fn import_character(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn probe_import(data: Vec<u8>) -> Result<import::ImportProbe, String> {
+    Ok(import::probe_import(&data))
+}
+
 // 存檔位置由前端的「另存新檔」對話框決定；副檔名決定 PNG 或 JSON
 #[tauri::command]
 fn export_character(
@@ -1407,6 +1412,7 @@ pub fn run() {
             write_character,
             set_character_archived,
             delete_character,
+            probe_import,
             import_character,
             export_character,
             read_character_image,
