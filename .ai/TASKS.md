@@ -13,6 +13,7 @@
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態五項升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉 — 下一步：五項全數實作完成、自驗全綠（cargo test 162＋npm test＋tsc＋i18n＋build），等實機驗收；第四項第一期 GM 狀態欄已上（狀態欄在對話上方、可收合可手改），第二期等驗收後細拍
+- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點 — 下一步：A 穩定前綴重構完成（keyword 條目與 GM 狀態搬尾端獨立 user 訊息，cargo test 164 全綠，2026-08-03）；接著實測遵循度＋做 C 命中率量測
 
 ## Done
 
@@ -20,7 +21,6 @@
 
 ## Todo
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
-- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點 — 下一步：2026-08-03 分析完成（見 handoffs/prompt-cache-optimization.md），從 A 開工：GM「目前狀態」與 keyword 世界書條目搬出 system prompt
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）

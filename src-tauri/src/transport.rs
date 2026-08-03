@@ -129,6 +129,7 @@ pub fn active_worldbook_entries<'a>(
 
 /// 組裝單一角色的上下文。只餵入該角色自己的卡、可見世界書條目與公開 transcript：
 /// 他人私有設定與 world.md 不在介面中；GM 專有條目組裝時一律排除，永不傳入模型。
+/// keyword 觸發的條目放 transcript 尾端獨立 user 訊息（快取友善），constant 條目留在 system。
 pub fn assemble_messages(
     card: &CharacterCard,
     player: Option<&CharacterCard>,
@@ -177,10 +178,16 @@ pub fn assemble_messages(
         })
         .cloned()
         .collect();
-    let active = active_worldbook_entries(&visible, events);
-    if !active.is_empty() {
+    // 快取友善（prompt-cache-optimization A）：constant 條目穩定，留在 system；
+    // keyword 條目隨最近事件進出，若拼在 system 會從 context 第一段打破前綴，
+    // 改放 transcript 尾端的一則獨立 user 訊息（最新事件附近，條目翻動只影響尾端）。
+    let (constant_entries, keyword_entries): (Vec<_>, Vec<_>) =
+        active_worldbook_entries(&visible, events)
+            .into_iter()
+            .partition(|entry| entry.constant);
+    if !constant_entries.is_empty() {
         system.push_str("\n## 你知道的世界情報\n");
-        for entry in active {
+        for entry in constant_entries {
             system.push_str(&format!(
                 "### {}\n{}\n",
                 replace_st_macros(&entry.title, user_name, Some(&card.name)),
@@ -202,6 +209,18 @@ pub fn assemble_messages(
         };
         push_merged(&mut messages, role, line);
     }
+    if !keyword_entries.is_empty() {
+        let mut block = "## 你知道的世界情報\n".to_owned();
+        for entry in keyword_entries {
+            block.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, Some(&card.name)),
+                replace_st_macros(&entry.content, user_name, Some(&card.name))
+            ));
+        }
+        // 刻意不走 push_merged：動態情報維持獨立一則的語意邊界，不黏進玩家發言
+        messages.push(message("user", block.trim_end().to_owned()));
+    }
     messages
 }
 
@@ -211,6 +230,8 @@ pub const PLAYER_SENTINEL: &str = "__PLAYER__";
 
 /// 組裝 GM 上下文：world.md（只有 GM 看得到）＋全部角色卡（含私有，NewPlan §7.0）
 /// ＋公開 transcript。GM 自己的旁白是 assistant，其餘事件是 user。
+/// keyword 條目與「目前狀態」放 transcript 尾端獨立 user 訊息（快取友善），
+/// constant 條目與角色卡留在 system（穩定且需要高遵循度）。
 pub fn assemble_gm_messages(
     world_md: &str,
     cards: &[CharacterCard],
@@ -239,30 +260,20 @@ pub fn assemble_gm_messages(
             replace_st_macros(world_md.trim(), user_name, None)
         ));
     }
-    let active = active_worldbook_entries(worldbook, events);
-    if !active.is_empty() {
+    // 快取友善（prompt-cache-optimization A）：keyword 條目與「目前狀態」每輪翻動，
+    // 移到 transcript 尾端的一則獨立 user 訊息；constant 條目穩定，留在 system。
+    let (constant_entries, keyword_entries): (Vec<_>, Vec<_>) =
+        active_worldbook_entries(worldbook, events)
+            .into_iter()
+            .partition(|entry| entry.constant);
+    if !constant_entries.is_empty() {
         system.push_str("\n## 世界書（只進你的上下文）\n");
-        for entry in active {
+        for entry in constant_entries {
             system.push_str(&format!(
                 "### {}\n{}\n",
                 replace_st_macros(&entry.title, user_name, None),
                 replace_st_macros(&entry.content, user_name, None)
             ));
-        }
-    }
-    if !state.table.is_empty() {
-        system.push_str("\n## 目前狀態（這桌的檯面，接續它往下演）\n");
-        for (key, value) in &state.table {
-            let display_name = match (lang, key.as_str()) {
-                ("en", "time") => "Time",
-                ("en", "place") => "Place",
-                ("en", "present") => "Present",
-                (_, "time") => "時間",
-                (_, "place") => "地點",
-                (_, "present") => "在場人物",
-                _ => key,
-            };
-            system.push_str(&format!("{display_name}：{value}\n"));
         }
     }
     if !cards.is_empty() {
@@ -306,6 +317,39 @@ pub fn assemble_gm_messages(
             TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
         };
         push_merged(&mut messages, role, line);
+    }
+    let mut dynamic = String::new();
+    if !keyword_entries.is_empty() {
+        dynamic.push_str("## 世界書（只進你的上下文）\n");
+        for entry in keyword_entries {
+            dynamic.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, None),
+                replace_st_macros(&entry.content, user_name, None)
+            ));
+        }
+    }
+    if !state.table.is_empty() {
+        if !dynamic.is_empty() {
+            dynamic.push('\n');
+        }
+        dynamic.push_str("## 目前狀態（這桌的檯面，接續它往下演）\n");
+        for (key, value) in &state.table {
+            let display_name = match (lang, key.as_str()) {
+                ("en", "time") => "Time",
+                ("en", "place") => "Place",
+                ("en", "present") => "Present",
+                (_, "time") => "時間",
+                (_, "place") => "地點",
+                (_, "present") => "在場人物",
+                _ => key,
+            };
+            dynamic.push_str(&format!("{display_name}：{value}\n"));
+        }
+    }
+    if !dynamic.is_empty() {
+        // 刻意不走 push_merged：動態塊維持獨立一則的語意邊界，不黏進最後一則發言
+        messages.push(message("user", dynamic.trim_end().to_owned()));
     }
     messages
 }
@@ -1475,13 +1519,114 @@ mod tests {
             characters: std::collections::BTreeMap::new(),
         };
         let gm = assemble_gm_messages("", &[fox.clone()], None, &[], &[], &state, "zh-TW");
-        assert!(gm[0].content.contains("## 目前狀態"));
-        assert!(gm[0].content.contains("時間：午夜"));
-        assert!(gm[0].content.contains("沦陷天数：第 3 天"));
+        // 快取友善：狀態每輪更新，搬到尾端獨立 user 訊息，system 不再內嵌
+        assert!(!gm[0].content.contains("目前狀態"));
+        let tail = gm.last().unwrap();
+        assert_eq!(tail.role, "user");
+        assert!(tail.content.contains("## 目前狀態"));
+        assert!(tail.content.contains("時間：午夜"));
+        assert!(tail.content.contains("沦陷天数：第 3 天"));
 
         let character = assemble_messages(&fox, None, &[], &[], "zh-TW");
-        assert!(!character[0].content.contains("午夜"));
-        assert!(!character[0].content.contains("目前狀態"));
+        let joined: String = character.iter().map(|m| m.content.as_str()).collect();
+        assert!(!joined.contains("午夜"));
+        assert!(!joined.contains("目前狀態"));
+    }
+
+    /// 快取友善（prompt-cache-optimization A）：keyword 條目搬到尾端獨立 user 訊息，
+    /// constant 條目留在 system；GM 的動態塊還併入「目前狀態」。
+    #[test]
+    fn keyword_entries_move_to_tail_message_constant_stay_in_system() {
+        let entries = [
+            worldbook_entry(0, "常駐情報", &[], true, 0, false, Visibility::Public),
+            worldbook_entry(1, "龍的傳說", &["dragon"], false, 1, false, Visibility::Public),
+        ];
+        let events = [event(TranscriptKind::Player, "", "玩家", "we saw a DRAGON")];
+        let fox = card("fox-id", "狐狸", "公開", "");
+
+        let character = assemble_messages(&fox, None, &events, &entries, "zh-TW");
+        assert!(character[0].content.contains("### 常駐情報"));
+        assert!(!character[0].content.contains("龍的傳說"));
+        let tail = character.last().unwrap();
+        assert_eq!(tail.role, "user");
+        assert!(tail.content.starts_with("## 你知道的世界情報"));
+        assert!(tail.content.contains("### 龍的傳說\n龍的傳說內容"));
+        // 動態塊獨立一則，不與前一則玩家發言合併
+        assert_eq!(
+            character[character.len() - 2].content,
+            "玩家：we saw a DRAGON"
+        );
+
+        let mut state = TableState::default();
+        state.table.insert("time".to_owned(), "午夜".to_owned());
+        let gm = assemble_gm_messages("世界", &[fox], None, &events, &entries, &state, "zh-TW");
+        assert!(gm[0].content.contains("### 常駐情報"));
+        assert!(!gm[0].content.contains("龍的傳說"));
+        assert!(!gm[0].content.contains("目前狀態"));
+        let gm_tail = gm.last().unwrap();
+        assert_eq!(gm_tail.role, "user");
+        assert!(gm_tail.content.starts_with("## 世界書（只進你的上下文）"));
+        assert!(gm_tail.content.contains("### 龍的傳說"));
+        // 同一則動態塊內：世界書在前、目前狀態在後
+        assert!(
+            gm_tail.content.find("龍的傳說").unwrap()
+                < gm_tail.content.find("## 目前狀態").unwrap()
+        );
+        assert!(gm_tail.content.contains("時間：午夜"));
+    }
+
+    /// 快取友善驗收：連續兩輪組裝，去掉尾端動態塊與最新事件後，前綴逐字相同——
+    /// 條目進出與狀態更新只影響尾端，不再從 context 第一段打破快取前綴。
+    #[test]
+    fn consecutive_rounds_share_verbatim_prefix_except_tail() {
+        let entries = [
+            worldbook_entry(0, "常駐", &[], true, 0, false, Visibility::Public),
+            worldbook_entry(1, "龍", &["dragon"], false, 1, false, Visibility::Public),
+            worldbook_entry(2, "碼頭", &["dock"], false, 2, false, Visibility::Public),
+        ];
+        let fox = card("fox-id", "狐狸", "公開", "私有");
+        let mut round1_state = TableState::default();
+        round1_state.table.insert("time".to_owned(), "黃昏".to_owned());
+        let mut round2_state = TableState::default();
+        round2_state.table.insert("time".to_owned(), "午夜".to_owned());
+
+        let round1_events = vec![
+            event(TranscriptKind::Narration, "", "GM", "你們遇見 dragon"),
+            event(TranscriptKind::Player, "", "玩家", "先撤退"),
+        ];
+        let mut round2_events = round1_events.clone();
+        round2_events.push(event(TranscriptKind::Narration, "", "GM", "你們逃到 dock"));
+
+        let gm1 = assemble_gm_messages(
+            "世界",
+            std::slice::from_ref(&fox),
+            None,
+            &round1_events,
+            &entries,
+            &round1_state,
+            "zh-TW",
+        );
+        let gm2 = assemble_gm_messages(
+            "世界",
+            std::slice::from_ref(&fox),
+            None,
+            &round2_events,
+            &entries,
+            &round2_state,
+            "zh-TW",
+        );
+        // gm1 去尾端動態塊；gm2 去尾端動態塊＋最新事件——前綴逐字相同
+        assert_eq!(gm1[..gm1.len() - 1], gm2[..gm2.len() - 2]);
+        // 兩輪動態塊確實不同（條目進出＋狀態更新），只影響尾端一則
+        assert_ne!(gm1.last(), gm2.last());
+
+        // 角色路徑同理；新事件用自己的台詞（assistant），才不會與前一則 user 合併
+        let mut round2_character_events = round1_events.clone();
+        round2_character_events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "撤到 dock 去"));
+        let character1 = assemble_messages(&fox, None, &round1_events, &entries, "zh-TW");
+        let character2 = assemble_messages(&fox, None, &round2_character_events, &entries, "zh-TW");
+        assert_eq!(character1[..character1.len() - 1], character2[..character2.len() - 2]);
+        assert_ne!(character1.last(), character2.last());
     }
 
     #[test]

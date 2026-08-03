@@ -1,9 +1,9 @@
 # Task
 Task-ID: prompt-cache-optimization
 Title: 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點
-Status: todo
+Status: in-progress
 Created: 2026-08-03T15:14:00+08:00
-Updated: 2026-08-03T15:14:00+08:00
+Updated: 2026-08-03T15:35:00+08:00
 
 ## Summary
 
@@ -16,7 +16,7 @@ Updated: 2026-08-03T15:14:00+08:00
 - **B Claude 顯式斷點**：`ChatMessage` content 支援 multipart 陣列，模型 id 屬 anthropic 系時在穩定前綴尾標 `cache_control: {"type": "ephemeral"}`；其他模型 request 形狀零變化。
 
 ## Next action
-- 從 A 開工：改 `assemble_gm_messages`／`assemble_messages`（狀態與 keyword 條目搬到尾端訊息）＋既有測試對齊，cargo test 綠後接 C。細節見 handoffs/prompt-cache-optimization.md。
+- A 已完成（2026-08-03，cargo test 164 全綠；細節與行號見 handoffs/prompt-cache-optimization.md）。接著：實測遵循度（開桌比對敘事品質，變差則回退）＋做 C 命中率量測（usage include＋SSE 尾塊解析）。
 
 ## 待拍板
 - 條目與狀態搬到尾端對模型遵循度的影響（A 完成後實測比對；若明顯變差，該項改回 system 並記錄取捨）。
