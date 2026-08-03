@@ -4,7 +4,7 @@
 //! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.3、grok 0.2.111。
 
 use crate::data::{DataResult, Tier};
-use crate::transport::ChatMessage;
+use crate::transport::{ChatMessage, PromptCacheUsage};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -480,6 +480,60 @@ pub fn parse_claude_line(line: &str) -> CliLine {
     }
 }
 
+/// 各家收尾事件裡的 token 用量。usage 只出現在收尾那一行，增量行不含 "usage" 字串——
+/// 先做字串預檢，串流上千行也只有收尾那行真的解析 JSON。
+fn usage_event(line: &str, kind: &str) -> Option<serde_json::Value> {
+    if !line.contains("\"usage\"") {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("type").and_then(|t| t.as_str()) != Some(kind) {
+        return None;
+    }
+    Some(value)
+}
+
+fn token_count(usage: &serde_json::Value, field: &str) -> u64 {
+    usage.get(field).and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+/// claude result 事件的用量。input_tokens **不含**快取部分（實測：讀滿快取時 input_tokens=1、
+/// cache_read=4771），總輸入要把建快取與讀快取加回來。
+pub fn parse_claude_usage(line: &str) -> Option<PromptCacheUsage> {
+    let value = usage_event(line, "result")?;
+    let usage = value.get("usage")?;
+    let cached = token_count(usage, "cache_read_input_tokens");
+    Some(PromptCacheUsage {
+        prompt_tokens: token_count(usage, "input_tokens")
+            + token_count(usage, "cache_creation_input_tokens")
+            + cached,
+        cached_tokens: cached,
+    })
+}
+
+/// codex turn.completed 事件的用量。input_tokens **已含** cached_input_tokens
+/// （codex 自己的顯示邏輯是「非快取輸入＝input − cached」），不再加總。
+pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
+    let value = usage_event(line, "turn.completed")?;
+    let usage = value.get("usage")?;
+    Some(PromptCacheUsage {
+        prompt_tokens: token_count(usage, "input_tokens"),
+        cached_tokens: token_count(usage, "cached_input_tokens"),
+    })
+}
+
+/// grok end 事件的用量。input_tokens **不含** cache_read_input_tokens
+/// （實測讀取數可遠大於輸入數：input=31509、cache_read=146304），總輸入要加總。
+pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
+    let value = usage_event(line, "end")?;
+    let usage = value.get("usage")?;
+    let cached = token_count(usage, "cache_read_input_tokens");
+    Some(PromptCacheUsage {
+        prompt_tokens: token_count(usage, "input_tokens") + cached,
+        cached_tokens: cached,
+    })
+}
+
 /// codex exec --json 逐行解析：agent_message 為增量（通常一則），turn.completed 收尾。
 /// item.type=="error" 可能只是非致命警告（例如 hooks 提示），不當失敗。
 pub fn parse_codex_line(line: &str) -> CliLine {
@@ -549,6 +603,16 @@ pub fn parse_grok_line(line: &str) -> CliLine {
     }
 }
 
+/// CLI 路徑的快取命中率落檔設定（prompt-cache-optimization：CLI 量測）。
+/// 帶著就在收尾事件把用量追加到 log，與 API 那條共用同一份檔案與格式。
+pub struct UsageLog<'a> {
+    pub path: &'a Path,
+    /// log 的 transport 欄位，例如 "claude"。
+    pub transport: &'a str,
+    pub model: &'a str,
+    pub parse: fn(&str) -> Option<PromptCacheUsage>,
+}
+
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
 pub async fn run_cli(
     program: &Path,
@@ -557,6 +621,7 @@ pub async fn run_cli(
     stdin_data: &str,
     envs: &[(String, String)],
     parse: fn(&str) -> CliLine,
+    usage_log: Option<UsageLog<'_>>,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let mut command = Command::new(program);
@@ -593,6 +658,19 @@ pub async fn run_cli(
     let mut full_text = String::new();
     let mut done: Option<(String, bool)> = None;
     while let Some(line) = lines.next_line().await? {
+        if let Some(log) = &usage_log {
+            if let Some(usage) = (log.parse)(&line) {
+                eprintln!(
+                    "[prompt-cache] transport={} model={} prompt_tokens={} cached_tokens={} hit_rate={:.0}%",
+                    log.transport,
+                    log.model,
+                    usage.prompt_tokens,
+                    usage.cached_tokens,
+                    usage.hit_rate(),
+                );
+                crate::transport::append_usage_log(log.path, log.transport, log.model, usage);
+            }
+        }
         match parse(&line) {
             CliLine::Delta(text) => {
                 on_delta(&text);
@@ -690,6 +768,84 @@ mod tests {
             }
         );
         assert_eq!(parse_claude_line("not json"), CliLine::Other);
+    }
+
+    /// 樣本取自 2026-08-03 真實冒煙輸出（同一段 system prompt 連跑兩次：第一次建快取、
+    /// 第二次全命中）。各家 input_tokens 語意不同，這裡鎖住換算後的「總輸入／讀快取」。
+    #[test]
+    fn parses_claude_usage_adding_cache_tokens_to_input() {
+        // 第一次：建快取 4771，讀 0 → 總輸入 4772、命中 0%
+        assert_eq!(
+            parse_claude_usage(
+                r#"{"type":"result","usage":{"input_tokens":1,"cache_creation_input_tokens":4771,"cache_read_input_tokens":0,"output_tokens":3}}"#
+            ),
+            Some(PromptCacheUsage {
+                prompt_tokens: 4772,
+                cached_tokens: 0
+            })
+        );
+        // 第二次：讀滿 4771 → 總輸入 4772、命中 100%
+        let hit = parse_claude_usage(
+            r#"{"type":"result","usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":4771,"output_tokens":3}}"#
+        )
+        .expect("result 事件有 usage");
+        assert_eq!(hit.prompt_tokens, 4772);
+        assert_eq!(hit.cached_tokens, 4771);
+        assert!((hit.hit_rate() - 99.98).abs() < 0.01);
+        // 增量行與非收尾事件不出數字
+        assert_eq!(
+            parse_claude_usage(
+                r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"好"}}}"#
+            ),
+            None
+        );
+        assert_eq!(parse_claude_usage("not json"), None);
+    }
+
+    /// codex 的 input_tokens 已含 cached_input_tokens，不可再加總（會虛報分母、低估命中率）。
+    #[test]
+    fn parses_codex_usage_without_double_counting_cached_input() {
+        let usage = parse_codex_usage(
+            r#"{"type":"turn.completed","usage":{"input_tokens":23144,"cached_input_tokens":11008,"cache_write_input_tokens":0,"output_tokens":5}}"#
+        )
+        .expect("turn.completed 有 usage");
+        assert_eq!(usage.prompt_tokens, 23144);
+        assert_eq!(usage.cached_tokens, 11008);
+        assert!((usage.hit_rate() - 47.56).abs() < 0.01);
+        assert_eq!(parse_codex_usage(r#"{"type":"turn.started"}"#), None);
+    }
+
+    /// grok 的 cache_read 可遠大於 input_tokens，證明兩者不重疊，總輸入要加總。
+    #[test]
+    fn parses_grok_usage_adding_cache_read_to_input() {
+        let usage = parse_grok_usage(
+            r#"{"type":"end","stopReason":"EndTurn","usage":{"input_tokens":31509,"cache_read_input_tokens":146304,"output_tokens":1416,"total_tokens":179229}}"#
+        )
+        .expect("end 事件有 usage");
+        assert_eq!(usage.prompt_tokens, 177813);
+        assert_eq!(usage.cached_tokens, 146304);
+        assert!((usage.hit_rate() - 82.28).abs() < 0.01);
+        assert_eq!(parse_grok_usage(r#"{"type":"text","data":"好"}"#), None);
+    }
+
+    /// 缺欄位當 0，不可 panic 也不可整筆丟掉（CLI 版本變動時仍留下可讀的一行）。
+    #[test]
+    fn missing_usage_fields_count_as_zero() {
+        assert_eq!(
+            parse_claude_usage(r#"{"type":"result","usage":{"input_tokens":12}}"#),
+            Some(PromptCacheUsage {
+                prompt_tokens: 12,
+                cached_tokens: 0
+            })
+        );
+        assert_eq!(
+            PromptCacheUsage {
+                prompt_tokens: 0,
+                cached_tokens: 0
+            }
+            .hit_rate(),
+            0.0
+        );
     }
 
     #[test]
@@ -896,7 +1052,7 @@ mod tests {
                 "echo '{\"type\":\"system\",\"subtype\":\"init\"}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}}'\n",
-                "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"你好\\\"}\"\n",
+                "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"你好\\\",\\\"usage\\\":{\\\"input_tokens\\\":1,\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":99}}\"\n",
                 "test \"$input\" = \"提示詞\" || exit 9\n",
             ),
         )
@@ -904,6 +1060,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
+        let log_path = dir.join("prompt-cache.log");
         let mut deltas = Vec::new();
         let full = run_cli(
             &script,
@@ -912,14 +1069,27 @@ mod tests {
             "提示詞",
             &[],
             parse_claude_line,
-            |delta| {
+            Some(UsageLog {
+                path: &log_path,
+                transport: "claude",
+                model: "sonnet",
+                parse: parse_claude_usage,
+            }),
+            |delta: &str| {
                 deltas.push(delta.to_owned());
             },
         )
         .await
         .unwrap();
+        let logged = std::fs::read_to_string(&log_path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["你", "好"]);
+        // 收尾事件落一行：總輸入 100（1＋0＋99）、讀快取 99 → 99%
+        assert_eq!(logged.lines().count(), 1);
+        assert!(
+            logged.contains("transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 hit_rate=99%"),
+            "log 行不符預期：{logged}"
+        );
     }
 }
