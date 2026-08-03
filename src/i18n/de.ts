@@ -269,6 +269,7 @@ export const de: Record<MsgKey, string> = {
   sceneAdvance: "Neuer Akt",
   sceneAdvanceHint: "Diesen Akt beenden: Das aktuelle Protokoll als Zusammenfassung komprimieren und einen neuen Akt starten",
   sceneTooLongHint: "Das Protokoll ist so lang, dass das Modell frühere Ereignisse aus dem Blick verlieren kann — ein neuer Akt komprimiert es",
+  sceneAwayHint: "Die Pause war lang — der zwischengespeicherte Kontext wurde verworfen; ein neuer Akt komprimiert das Protokoll",
   pastScenes: "Frühere Akte ({count})",
   sceneLabel: "Akt {n}",
   sceneWithTitle: "Akt {n}: {title}",

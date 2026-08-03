@@ -269,6 +269,7 @@ export const es: Record<MsgKey, string> = {
   sceneAdvance: "Nuevo acto",
   sceneAdvanceHint: "Terminar acto: comprime el historial actual en un resumen y comienza un nuevo acto",
   sceneTooLongHint: "El historial es tan largo que el modelo puede perder de vista lo ocurrido antes; un nuevo acto lo resume",
+  sceneAwayHint: "La pausa fue larga: la caché del contexto se borró; un nuevo acto comprime el historial",
   pastScenes: "Actos previos ({count})",
   sceneLabel: "Acto {n}",
   sceneWithTitle: "Acto {n}: {title}",

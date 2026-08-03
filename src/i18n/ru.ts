@@ -269,6 +269,7 @@ export const ru: Record<MsgKey, string> = {
   sceneAdvance: "Новый акт",
   sceneAdvanceHint: "Завершить акт: сжать текущий лог в краткий пересказ и начать новый акт",
   sceneTooLongHint: "Лог настолько длинный, что модель может упускать более ранние события — новый акт сожмёт его",
+  sceneAwayHint: "Перерыв был долгим — кэш контекста очищен; новый акт сожмёт лог",
   pastScenes: "Прошлые акты ({count})",
   sceneLabel: "Акт {n}",
   sceneWithTitle: "Акт {n}: {title}",

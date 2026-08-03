@@ -1521,6 +1521,19 @@ async fn gm_narrate(
     })
 }
 
+/// 保溫 ping（包 7）：玩家還在、快取快到期時由前端呼叫，替這桌每條活著的線刷新五分鐘壽命。
+/// 回傳實際保溫的線數——claude 以外的傳輸、或這桌還沒開過線時回 0，前端據此不再重試。
+#[tauri::command]
+async fn keepalive_lanes(app: tauri::AppHandle, world_id: String) -> Result<usize, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    if chat_transport(&config) != "claude" {
+        return Ok(0);
+    }
+    let root = data_root(&app)?;
+    let call = prepare_claude_call(&app, &config, transport::gm_tier(&config)).await?;
+    lanes::keepalive(&call, &root, &world_id).await
+}
+
 /// 換場：把當前場景公開紀錄壓成一則摘要，寫進新場景開頭，current_scene +1（NewPlan 換場＋場景摘要）。
 /// 摘要走既有 stream_via_transport＋GM 檔位，不新開連線路徑、不新增設定項。
 #[tauri::command]
@@ -1734,6 +1747,7 @@ pub fn run() {
             read_gallery_image,
             delete_gallery_image,
             gm_narrate,
+            keepalive_lanes,
             advance_scene,
             generate_table_outline,
             generate_table_character,

@@ -269,6 +269,7 @@ export const ptBR: Record<MsgKey, string> = {
   sceneAdvance: "Novo Ato",
   sceneAdvanceHint: "Terminar este ato: comprime o histórico atual em um resumo e inicia um novo ato",
   sceneTooLongHint: "O histórico está tão longo que o modelo pode perder de vista o que aconteceu antes — um novo ato o comprime",
+  sceneAwayHint: "A pausa foi longa — o cache do contexto foi limpo; um novo ato comprime o histórico",
   pastScenes: "Atos Anteriores ({count})",
   sceneLabel: "Ato {n}",
   sceneWithTitle: "Ato {n}: {title}",

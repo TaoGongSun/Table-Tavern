@@ -15,6 +15,7 @@
 //! - `no-cache`：這條路完全沒有快取（模型或 CLI 不支援）。
 //! - `single`：單發模式（API／codex／grok），只記數字不做續聊診斷。
 //! - `drop-lane`：回合後改寫失敗，這條線丟棄重來（`reason` 說明原因）。
+//! - `ping`：保溫呼叫（包 7），不推進劇情、只為刷新快取壽命；花費與劇情輪分開統計。
 
 use crate::lanes::CACHE_TTL_SECS;
 use crate::transport::PromptCacheUsage;
@@ -32,6 +33,7 @@ pub enum Diag {
     NoCache,
     Single,
     DropLane,
+    Ping,
 }
 
 impl Diag {
@@ -45,6 +47,7 @@ impl Diag {
             Self::NoCache => "no-cache",
             Self::Single => "single",
             Self::DropLane => "drop-lane",
+            Self::Ping => "ping",
         }
     }
 }
@@ -67,6 +70,8 @@ pub struct LaneContext {
     pub expected_cached: u64,
     pub system_tokens: u64,
     pub system_hash: String,
+    /// 保溫 ping（包 7）：不推進劇情，花費與劇情輪分開統計
+    pub ping: bool,
 }
 
 /// 九成以上算正常：CLI 端 token 計數與分段邊界本來就會有零頭出入。
@@ -77,6 +82,9 @@ fn diagnose(lane: Option<&LaneContext>, usage: &PromptCacheUsage) -> Diag {
     let Some(lane) = lane else {
         return Diag::Single;
     };
+    if lane.ping {
+        return Diag::Ping;
+    }
     if lane.reopen.is_some() {
         return Diag::Warmup;
     }
@@ -211,6 +219,7 @@ mod tests {
             expected_cached,
             system_tokens: 4_000,
             system_hash: text_hash("凍結素材"),
+            ping: false,
         }
     }
 
@@ -249,6 +258,10 @@ mod tests {
             diagnose(Some(&reopened), &usage(9_300, 0, 9_300)),
             Diag::Warmup
         );
+        // 保溫呼叫自成一類：花費要和劇情輪分開統計，命中與否不代表劇情線有問題
+        let mut ping = lane(200, 9_000);
+        ping.ping = true;
+        assert_eq!(diagnose(Some(&ping), &usage(9_000, 9_000, 0)), Diag::Ping);
         // 單發路徑不做續聊診斷
         assert_eq!(diagnose(None, &usage(100, 0, 0)), Diag::Single);
     }
