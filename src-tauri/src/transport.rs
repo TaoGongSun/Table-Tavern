@@ -695,6 +695,52 @@ impl SseParser {
     }
 }
 
+/// OpenRouter usage accounting 的快取命中數字（prompt-cache-optimization C）。
+/// OpenRouter 目前不回報寫入快取的 token 數（官方文件明言不支援），只有讀取命中。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PromptCacheUsage {
+    pub prompt_tokens: u64,
+    pub cached_tokens: u64,
+}
+
+/// 從一則 SSE payload 取出 usage 統計；增量塊的 `"usage": null` 與缺欄位一律回 None。
+/// 欄位名依 OpenRouter usage accounting：usage.prompt_tokens、
+/// usage.prompt_tokens_details.cached_tokens（https://openrouter.ai/docs/use-cases/usage-accounting）。
+pub fn extract_usage(payload: &str) -> Option<PromptCacheUsage> {
+    let value: serde_json::Value = serde_json::from_str(payload).ok()?;
+    let usage = value.get("usage")?;
+    let prompt_tokens = usage.get("prompt_tokens")?.as_u64()?;
+    let cached_tokens = usage
+        .get("prompt_tokens_details")
+        .and_then(|details| details.get("cached_tokens"))
+        .and_then(|tokens| tokens.as_u64())
+        .unwrap_or(0);
+    Some(PromptCacheUsage {
+        prompt_tokens,
+        cached_tokens,
+    })
+}
+
+/// chat/completions 請求本體。usage accounting 是 OpenRouter 專屬參數，
+/// 只對 OpenRouter 端點帶上：其他 OpenAI-compatible 端點不認得頂層 "usage"，
+/// 寬鬆的（ollama／LM Studio）會忽略，嚴格的（OpenAI 官方）會直接拒絕請求，
+/// 所以非 OpenRouter 端點的請求形狀必須與加此功能前逐位元相同。
+fn chat_request_body(
+    model: &str,
+    messages: &[ChatMessage],
+    include_usage: bool,
+) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": true,
+    });
+    if include_usage {
+        body["usage"] = serde_json::json!({ "include": true });
+    }
+    body
+}
+
 /// 從一則 SSE payload 取出增量文字；非增量塊（usage、空 choices）回 None。
 pub fn extract_delta(payload: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(payload).ok()?;
@@ -728,13 +774,11 @@ pub async fn stream_chat(
         return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
     }
 
+    // 命中率量測（prompt-cache-optimization C）：只對 OpenRouter 端點開 usage accounting
+    let include_usage = base.contains("openrouter.ai");
     let mut request = reqwest::Client::new()
         .post(format!("{base}/chat/completions"))
-        .json(&serde_json::json!({
-            "model": model,
-            "messages": messages,
-            "stream": true,
-        }));
+        .json(&chat_request_body(model, messages, include_usage));
     if let Some(key) = api_key {
         request = request.bearer_auth(key);
     }
@@ -749,16 +793,32 @@ pub async fn stream_chat(
     let mut stream = response.bytes_stream();
     let mut parser = SseParser::default();
     let mut full_text = String::new();
+    let mut usage = None;
     'outer: while let Some(chunk) = stream.next().await {
         for payload in parser.push(&chunk?) {
             if payload == "[DONE]" {
                 break 'outer;
+            }
+            if let Some(parsed) = extract_usage(&payload) {
+                usage = Some(parsed);
             }
             if let Some(delta) = extract_delta(&payload) {
                 on_delta(&delta);
                 full_text.push_str(&delta);
             }
         }
+    }
+    // 先用 stderr log 驗證 A 的效果；正式 UI 位置待拍板（見 .ai/tasks/prompt-cache-optimization.md）
+    if let Some(usage) = usage {
+        let hit_rate = if usage.prompt_tokens == 0 {
+            0.0
+        } else {
+            usage.cached_tokens as f64 * 100.0 / usage.prompt_tokens as f64
+        };
+        eprintln!(
+            "[prompt-cache] model={model} prompt_tokens={} cached_tokens={} hit_rate={hit_rate:.0}%",
+            usage.prompt_tokens, usage.cached_tokens,
+        );
     }
     Ok(full_text)
 }
@@ -1491,6 +1551,101 @@ mod tests {
             generate_image(&config, "畫一位角色").await.unwrap_err(),
             "模型沒有回傳圖片"
         );
+    }
+
+    /// 命中率量測（prompt-cache-optimization C）：usage accounting 只對 OpenRouter 開；
+    /// 其他端點的請求本體必須與加此功能前逐位元相同（嚴格端點會拒絕未知參數）。
+    #[test]
+    fn chat_request_body_adds_usage_only_when_asked_and_stays_bytewise_identical_otherwise() {
+        let messages = [message("user", "嗨".to_owned())];
+        let plain = chat_request_body("test/model", &messages, false);
+        // 與舊版 stream_chat 內聯的 json! 完全同一種構造：內容相等即代表位元組相同
+        assert_eq!(
+            plain,
+            serde_json::json!({
+                "model": "test/model",
+                "messages": [{"role": "user", "content": "嗨"}],
+                "stream": true,
+            })
+        );
+        assert!(plain.get("usage").is_none());
+
+        let with_usage = chat_request_body("test/model", &messages, true);
+        assert_eq!(with_usage["usage"], serde_json::json!({ "include": true }));
+        assert_eq!(with_usage["model"], "test/model");
+        assert_eq!(with_usage["stream"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn extract_usage_reads_final_chunk_and_ignores_delta_chunks() {
+        // OpenRouter 尾塊：prompt_tokens_details.cached_tokens 是快取命中數
+        let usage = extract_usage(
+            r#"{"choices":[],"usage":{"prompt_tokens":194,"prompt_tokens_details":{"cached_tokens":150,"audio_tokens":0},"completion_tokens":2,"total_tokens":196}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            usage,
+            PromptCacheUsage {
+                prompt_tokens: 194,
+                cached_tokens: 150,
+            }
+        );
+
+        // 缺 details（隱式快取沒命中時部分供應商省略）：cached 記 0，不當錯誤
+        let without_details =
+            extract_usage(r#"{"usage":{"prompt_tokens":10,"completion_tokens":1}}"#).unwrap();
+        assert_eq!(without_details.cached_tokens, 0);
+
+        // 增量塊：usage 為 null 或不存在，一律回 None
+        assert_eq!(
+            extract_usage(r#"{"choices":[{"delta":{"content":"嗨"}}],"usage":null}"#),
+            None
+        );
+        assert_eq!(
+            extract_usage(r#"{"choices":[{"delta":{"content":"嗨"}}]}"#),
+            None
+        );
+        assert_eq!(extract_usage("not json"), None);
+    }
+
+    /// 尾端 usage 塊混在串流裡：增量文字照常回傳，usage 塊不產生任何 delta
+    #[tokio::test]
+    async fn stream_chat_passes_usage_chunk_through_without_breaking_deltas() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request);
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}],\"usage\":null}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}],\"usage\":null}\n\n",
+                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"prompt_tokens_details\":{\"cached_tokens\":12}}}\n\n",
+                "data: [DONE]\n\n",
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+
+        let mut config = AppConfig::default();
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String(format!("http://{address}")),
+        );
+        let messages = [message("user", "嗨".to_owned())];
+        let mut deltas = Vec::new();
+        let full = stream_chat(&config, "test/model", &messages, |delta| {
+            deltas.push(delta.to_owned());
+        })
+        .await
+        .unwrap();
+        assert_eq!(full, "你好");
+        assert_eq!(deltas, ["你", "好"]);
     }
 
     #[test]
