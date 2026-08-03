@@ -721,10 +721,36 @@ pub fn extract_usage(payload: &str) -> Option<PromptCacheUsage> {
     })
 }
 
+/// Anthropic 系模型走顯式快取（prompt-cache-optimization B）：未標 cache_control＝完全不快取。
+/// content 轉 multipart 陣列（斷點只能掛在 content 分段上），在穩定前綴尾標
+/// `cache_control: {"type": "ephemeral"}`——具體是 system（角色卡／world.md／constant 條目，
+/// 換卡前不變）與最後一則 assistant（其後只剩會變動的東西：可能被 push_merged 續寫的
+/// 最後一則 user、每輪翻動的動態塊、導演指示）。transcript 逐輪增長，斷點位置跟著前移；
+/// Anthropic 查快取時會回看斷點前約 20 個 content block，前一輪寫下的快取點仍在回看範圍內，
+/// 逐輪增量命中。斷點上限 4 個，這裡用 2 個。
+fn anthropic_messages(messages: &[ChatMessage]) -> serde_json::Value {
+    let last_assistant = messages
+        .iter()
+        .rposition(|message| message.role == "assistant");
+    let entries = messages
+        .iter()
+        .enumerate()
+        .map(|(index, message)| {
+            let mut part = serde_json::json!({ "type": "text", "text": message.content });
+            if message.role == "system" || Some(index) == last_assistant {
+                part["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+            }
+            serde_json::json!({ "role": message.role, "content": [part] })
+        })
+        .collect();
+    serde_json::Value::Array(entries)
+}
+
 /// chat/completions 請求本體。usage accounting 是 OpenRouter 專屬參數，
 /// 只對 OpenRouter 端點帶上：其他 OpenAI-compatible 端點不認得頂層 "usage"，
-/// 寬鬆的（ollama／LM Studio）會忽略，嚴格的（OpenAI 官方）會直接拒絕請求，
-/// 所以非 OpenRouter 端點的請求形狀必須與加此功能前逐位元相同。
+/// 寬鬆的（ollama／LM Studio）會忽略，嚴格的（OpenAI 官方）會直接拒絕請求。
+/// anthropic/ 系模型另走顯式快取斷點（見 anthropic_messages）；
+/// 兩者皆不適用時，請求形狀必須與加這些功能前逐位元相同。
 fn chat_request_body(
     model: &str,
     messages: &[ChatMessage],
@@ -735,6 +761,9 @@ fn chat_request_body(
         "messages": messages,
         "stream": true,
     });
+    if model.starts_with("anthropic/") {
+        body["messages"] = anthropic_messages(messages);
+    }
     if include_usage {
         body["usage"] = serde_json::json!({ "include": true });
     }
@@ -1574,6 +1603,52 @@ mod tests {
         assert_eq!(with_usage["usage"], serde_json::json!({ "include": true }));
         assert_eq!(with_usage["model"], "test/model");
         assert_eq!(with_usage["stream"], serde_json::Value::Bool(true));
+    }
+
+    /// Claude 顯式斷點（prompt-cache-optimization B）：anthropic/ 系模型 content 轉 multipart，
+    /// 斷點恰好兩個——system 與最後一則 assistant；其他模型維持純字串 content。
+    #[test]
+    fn anthropic_models_get_multipart_content_with_two_breakpoints() {
+        let messages = [
+            message("system", "設定".to_owned()),
+            message("assistant", "旁白一".to_owned()),
+            message("user", "玩家：嗨".to_owned()),
+            message("assistant", "旁白二".to_owned()),
+            message("user", "動態塊".to_owned()),
+        ];
+        let body = chat_request_body("anthropic/claude-sonnet-4.5", &messages, true);
+        let out = body["messages"].as_array().unwrap();
+        assert_eq!(out.len(), 5);
+        // multipart：每則 content 是單一 text 分段，role 與文字照舊
+        assert_eq!(out[2]["role"], "user");
+        assert_eq!(out[2]["content"][0]["type"], "text");
+        assert_eq!(out[2]["content"][0]["text"], "玩家：嗨");
+        // 斷點恰好兩個：system（index 0）與最後一則 assistant（index 3）
+        let marked: Vec<usize> = out
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry["content"][0].get("cache_control").is_some())
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(marked, [0, 3]);
+        assert_eq!(
+            out[0]["content"][0]["cache_control"],
+            serde_json::json!({ "type": "ephemeral" })
+        );
+
+        // 非 anthropic 模型：content 維持純字串（形狀逐位元不變由上一條測試保證）
+        let plain = chat_request_body("test/model", &messages, false);
+        assert!(plain["messages"][0]["content"].is_string());
+
+        // 開桌第一輪沒有 assistant：只標 system，不出錯
+        let fresh = [
+            message("system", "設定".to_owned()),
+            message("user", "嗨".to_owned()),
+        ];
+        let fresh_body = chat_request_body("anthropic/claude-haiku", &fresh, false);
+        let fresh_out = fresh_body["messages"].as_array().unwrap();
+        assert!(fresh_out[0]["content"][0].get("cache_control").is_some());
+        assert!(fresh_out[1]["content"][0].get("cache_control").is_none());
     }
 
     #[test]
