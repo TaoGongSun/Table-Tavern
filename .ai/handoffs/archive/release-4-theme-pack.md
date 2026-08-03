@@ -1,7 +1,7 @@
 # Handoff: release-4-theme-pack
 
 ## Current state
-贊助解鎖檔案（提前段）實作完成、實機驗收通過；Ko-fi 商品頁已上線且 app 內連結已換為商品頁。主題引擎等原任務 scope 未動工。
+**已結案（2026-08-03 使用者拍板縮減 scope）。** 贊助解鎖檔案（提前段）實作完成、實機驗收通過；Ko-fi 商品頁已上線且 app 內連結已換為商品頁。主題載入引擎等原任務 scope 確認**不做**，五套贊助配色維持寫死在 `App.css`。
 
 ## Completed
 - 贊助包檔案格式定案：單一 JSON 檔、副檔名 `.ttpack`，必要欄位 `type: "table-tavern-sponsor-pack"` 與 `format`（正整數），其他欄位一律忽略（向前相容；未來要裝主題資產再升容器格式，匯入口先認格式）。榮譽制已拍板，不做簽章。
@@ -18,7 +18,7 @@
 - 連結替換：App.tsx:12 單一常數，`grep -n "ko-fi.com" src` 僅此一處定義、三處引用；`npm run build` exit 0（2026-07-30）
 
 ## Remaining
-- 原任務 scope：主題檔格式與載入引擎＋基礎白色主題 → 五套贊助包資產與自選桌布 → AI 產生主題（v1 可不上）；主題檔格式定案時預留「元件裝飾」schema（theme-pack-component-skins）。
+無。原任務 scope（主題檔格式與載入引擎＋基礎白色主題 → 五套贊助包資產與自選桌布 → AI 產生主題）2026-08-03 拍板不做，NewPlan §16.1 已同步縮減；連帶關閉 theme-pack-component-skins。
 
 ## Next action
-主題檔格式與載入引擎動工前先拍板格式（含元件裝飾 schema 預留）。使用者重跑 app 點任一贊助鈕確認開到商品頁（連結替換的實機驗收）。
+無（已結案）。日後若要重啟主題引擎，起點是：ui-overhaul 已把 `App.css` 全面 token 化，主題檔＝一組 token 覆寫值，引擎只需驗格式＋注入 CSS 變數，成本低於原規劃；格式定案時再一併吃回「元件裝飾」schema。

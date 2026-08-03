@@ -1,5 +1,7 @@
 # Handoff: cli-install-windows（Windows 安裝流程改 Rust 引擎）
 
+> **已結案 2026-08-03**：Grok 回報者確認連上，Windows 全流程（安裝→登入→聊天）通過。以下為結案時的完整現場。
+
 Updated: 2026-07-31 +0800（系統代理自動下傳＋連線失敗白話提示；任務背景與四家查證表見 ../tasks/cli-install-windows.md）
 
 ## Current state：v2 包朋友實測影片已診斷完，閃視窗＋設定未儲存兩根因已修，待 CI verify＋重打包
@@ -29,7 +31,8 @@ Updated: 2026-07-31 +0800（系統代理自動下傳＋連線失敗白話提示�
 - 2026-07-28 併入（原 cli-connected-badge，該案已結）：grok 的 Windows 探針改 `grok models` ＋ `InstallSpec.probe_expect` 字串比對（stdout 須含 `You are logged in`）＋ `pre_probe: true`（src-tauri/src/install.rs:18、245-265、421）。舊探針 `grok -p "ok"` 本機實測 26.0 秒，逼近 `run_probe` 的 30 秒上限，Windows 更慢很可能一直逾時。測試者要驗：已登入時直接打勾不彈登入視窗、未登入時仍正常走登入。這輪重打包要先併入。
 1. **打包已完成（2026-07-26 使用者下令）**：verify 綠 run 30165056516 → 打包綠 run 30165448004（commit 194fb86，artifact `table-tavern-windows-unsigned` 7MB）：https://github.com/TaoGongSun/Table-Tavern/actions/runs/30165448004 。同 commit 另含兩項 ui-overhaul 順手修：故事欄行寬填滿（刪 42rem 上限）、OpenRouter 專屬欄位（API key／base URL）只在 API 直連時顯示。Mac DMG 同步重打（ad-hoc，00:22 版，四項修正齊）。
 2. artifact 轉交測試者複測，重點三項：①偵測／聊天不再閃黑窗；②設定頁選 Gemini CLI→勾風險→按置頂「儲存設定」→實聊走 CLI 不再 402；③未儲存時按「不儲存返回」有確認框。
-3. 2026-07-31 兩輪修正（檔案被佔用提示、系統代理下傳＋連線提示）尚未進包：CI verify → 重打包 → 請 Grok 回報者**清掉手動設的代理環境變數、只開梯子的「系統代理」**走一輪安裝→登入→聊天；聊天必驗（代理有沒有真的傳進聊天子程序只有這關能證明）。
+3. **2026-07-31 兩輪修正早已進包**（2026-08-03 對 commit 更正，原記「尚未進包」有誤）：`7158e65`（檔案被佔用提示）進 07-31 00:42 的重打（`b74bbb0`）、`9a17562`（系統代理下傳＋連線提示）進 07-31 01:48 的重打（`5586d55`），之後每次重打皆含；最新包＝`c16c92e`（08-02 02:32，HEAD `ffd447b`，Mac DMG＋Windows 安裝檔兩平台自驗綠）。驗證：`git merge-base --is-ancestor` 逐一核對兩個 commit 對 `b74bbb0`／`5586d55`／`ffd447b`／`HEAD` 皆為真。**不需要再 CI verify 或重打包**（除非要一併帶上 08-02 之後的 st-ecosystem／prompt-cache 等新功能，那是另一件事）。
+4. 唯一剩餘＝把現成包交給 Grok 回報者跑一輪：請他**清掉手動設的代理環境變數、只開梯子的「系統代理」**走 安裝→登入→聊天；聊天必驗（代理有沒有真的傳進聊天子程序只有這關能證明）。
 3. 回報結果：綠＝本任務關閉；紅＝讀 app 的 install-logs（UI 有顯示 log 路徑）修復。
 3. 安裝階段是否也開可見視窗、Stage C（每週金絲雀排程、診斷打包按鈕、mac 收編引擎）等使用者拍板，不自動開工。
 

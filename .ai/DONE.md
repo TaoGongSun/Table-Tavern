@@ -2,6 +2,10 @@
 
 結案任務按結案時間新到舊排列。進行中與待辦見 [TASKS.md](TASKS.md)。
 
+- [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 2026-08-03 Grok 回報者確認連上，Windows 全流程（一鍵安裝→登入→聊天）通過，系統代理自動下傳同時獲證（代理確實傳進聊天子程序）；含鎖檔白話提示、系統代理下傳、grok 探針換 `grok models` ＋ pre_probe，結案（Stage C 與安裝階段可見視窗留待日後拍板）
+- [release-4-theme-pack](tasks/release-4-theme-pack.md) — 發佈 4：佈景主題引擎＋贊助包（回禮內容） — 2026-08-03 使用者拍板縮減結案：贊助解鎖檔（`.ttpack`）與 Ko-fi 商品頁連結已上線並實機驗收；原 scope 的主題載入引擎／自選桌布／AI 產生主題確認不做，五套贊助配色維持寫死在 App.css，NewPlan §16.1 同步縮減，結案
+- [theme-pack-component-skins](tasks/theme-pack-component-skins.md) — 主題包元件裝飾：華麗發言送出鈕（贊助包 v2 回購誘因） — 2026-08-03 隨 release-4 主題引擎不做一併關閉：沒有主題檔格式可掛「元件裝飾」schema，免費版送出鈕功能完整不受影響；日後若重啟主題引擎再一併復活，結案
+- [cli-auto-connect](tasks/cli-auto-connect.md) — CLI 自動連接：背景偵測＋登入跳轉自動回 — 2026-08-03 使用者拍板不做：cli-install-windows 的一鍵安裝已解掉最痛的安裝段，CLI 登入是一次性動作；且「風險告知勾選不可被自動化繞過」使自動化上限本來就低，投報比不足，結案（未做前置查證即關閉）
 - [ai-error-messages](tasks/ai-error-messages.md) — AI 失敗訊息人話化：額度用完與未登入分流 — 2026-07-28 使用者實機確認兩類訊息都正常顯示，結案
 - [drag-reorder-lists](tasks/drag-reorder-lists.md) — 角色卡與世界書條目改拖曳排序（GM 固定最上、刪 ↑↓ 鈕、列不可反白） — 2026-07-27 使用者九項實測全通過（含順序持久化與舊卡不跳位回歸），結案
 - [character-image-avatar](tasks/character-image-avatar.md) — 角色圖片管理：加入／更換／移除全身圖＋圓形頭像取代 emoji＋lightbox＋透明 app 圖示 — 2026-07-27 使用者實測通過（含五輪回饋修訂與 Mac DMG 0.2.0 打包驗證），結案

@@ -1,7 +1,7 @@
 # Handoff: sponsor-features
 
 ## Current state
-三項全部實作完成（作者頁、配色 +5、AI 生成角色圖），cargo 85 綠＋npm build 綠，等使用者實測。待討論議程：Ko-fi 導購歧義（見任務檔）。
+三項全部實作完成（作者頁、配色 +5、AI 生成角色圖），cargo 85 綠＋npm build 綠，等使用者實測。**待討論議程已全數結案（2026-08-03）**，本任務唯一剩餘＝實機驗收。
 
 ## Completed
 - AI 生圖後端：`generate_character_image(world, name, extraPrompt, source)` 回圖片 data URL。api 來源走 OpenRouter 專用 Images API（POST {base}/images，aspect_ratio 2:3、resolution 1K，模型讀 preferences.image_model、預設 google/gemini-3.1-flash-image，回應取 data[0].b64_json）；CLI 來源照送請求（prompt 加「能生圖就存 PNG 回絕對路徑」指示，codex 加 `$imagegen` 前綴），回覆掃 data URL 或存在的圖片路徑（extract_image_from_text），掃不到回錯。追加描寫存卡（gen_prompt frontmatter 欄位，換行轉空白）。stream_via_transport 加 transport_override 參數供生圖指定與聊天不同的連線。
@@ -32,12 +32,11 @@
 
 ## Remaining
 - 使用者實測三項（尤其 AI 生圖各來源實跑）
-- 未解鎖介紹 modal 目前純文字＋Ko-fi 鈕，範例圖等功能上線後生幾張好圖再補
-- Ko-fi 導購歧義方案待討論（任務檔議程）
+- 未解鎖介紹 modal 目前純文字＋Ko-fi 鈕，範例圖等功能上線後生幾張好圖再補（不擋結案）
+- 議程已清空：提示詞標籤（07-30 構圖二選一）、色情詞句失敗處理（08-01 失敗訊息分流）、Ko-fi 導購歧義（08-03 連結已直指商品頁）三項皆結案
 
 ## Next action
-1. 拍板任務檔「待討論議程」：Ko-fi 導購歧義。（提示詞標籤 2026-07-30 已用構圖二選一結案，見下）
-2. 使用者實機驗收構圖二選一：生圖對話框選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
+1. 使用者實機驗收構圖二選一：生圖對話框選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
 3. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原；重置免費次數改 `ai_image_trials_used`（手改 config.json 的舊旗標已失效）。
 
 （2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）
