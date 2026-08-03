@@ -358,6 +358,9 @@ const SCENE_LENGTH_HINT_CHARS = 30000;
 const KEEPALIVE_TICK_MS = 30 * 1000;
 const KEEPALIVE_AFTER_MS = 3.5 * 60 * 1000;
 const KEEPALIVE_MAX_PINGS = 3;
+// 離開太久的換幕提醒還要紀錄夠長才有意義：短紀錄重建本來就便宜，換幕反而多花一次摘要錢。
+// 保溫仍照樣停在三次（那是省錢邏輯），這個門檻只決定要不要出聲提醒。
+const SCENE_AWAY_HINT_MIN_CHARS = 8000;
 
 function nowTs() {
   return new Date().toISOString();
@@ -3836,8 +3839,10 @@ function App() {
   const stateValue = (key: string) => tableState[key] || t("stateEmptyValue");
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
-  const sceneTooLong =
-    events.reduce((sum, event) => sum + event.text.length, 0) > SCENE_LENGTH_HINT_CHARS;
+  const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
+  const sceneTooLong = sceneChars > SCENE_LENGTH_HINT_CHARS;
+  // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
+  const showAwayHint = awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
 
   // 拖曳分隔線調側欄寬度：上限由 CSS max-width 夾住，這裡只擋下限
   function resizeSidebar(next: number) {
@@ -4574,7 +4579,7 @@ function App() {
                   </button>
                 </div>
                 {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
-                {awayTooLong ? (
+                {showAwayHint ? (
                   <span className="scene-length-hint">{t("sceneAwayHint")}</span>
                 ) : sceneTooLong ? (
                   <span className="scene-length-hint">{t("sceneTooLongHint")}</span>
