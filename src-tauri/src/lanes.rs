@@ -11,9 +11,12 @@
 use crate::cli;
 use crate::data::{self, TranscriptEvent, TranscriptKind};
 use crate::session_file;
+use crate::snapshot_patch;
 use crate::transport;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Lane {
@@ -46,7 +49,7 @@ pub(crate) struct TurnInput<'a> {
     pub lane: Lane,
     pub scene: u64,
     pub events: &'a [TranscriptEvent],
-    /// 本輪重組的凍結 system；與存檔快照逐字不同＝素材變動＝重開線（包 3 改為補丁）
+    /// 本輪重組的最新素材全文；與已傳達版本（applied）不同時，快取存活走補丁、過期走追平
     pub frozen_system: String,
     /// 回合尾段（transport::chars_lane_turn／gm_lane_turn 的 tail）
     pub tail: String,
@@ -77,15 +80,17 @@ struct LaneState {
     sent_events: usize,
     /// 已反映事件的指紋，偵測外部改動（改字、收回）
     sent_hash: String,
-    /// 凍結 system 快照全文（resume 每輪重帶同一份，E7：動一字整條快取全滅）
+    /// 本輪實際傳給 CLI 的 system 全文；快取存活時維持舊字串，避免一字變動就失效
     snapshot: String,
+    /// 最新已傳達的素材全文（快照加上歷來補丁）；下輪補丁只傳尚未傳達的差異
+    applied: String,
     /// 呼叫前先寫、抹寫完成後清空——中途崩潰時下一輪看到未清的 pending 就整線重開，
     /// 機密段不會留在 session 歷史裡被下一個角色看到
     pending_rewrite: Option<PendingRewrite>,
     /// 上輪回覆應以此形狀出現在水位位置（前端呼叫返回後才落 transcript）
     expected_reply: Option<ExpectedReply>,
-    /// 追平判斷用（包 3：距上輪 >5 分鐘＝快取已死，改寫快照零成本）
-    last_call_at: String,
+    /// 追平判斷用（距上輪超過五分鐘＝快取已死，改寫快照零成本）
+    last_call_epoch: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,30 +164,74 @@ fn new_session_id() -> String {
 }
 
 enum TurnPlan {
-    Resume { session_id: String, base: usize },
-    Reopen,
+    Resume {
+        session_id: String,
+        base: usize,
+        /// 本輪實際傳給 CLI 的 --system-prompt。
+        system: String,
+        patch: Option<String>,
+        /// 追平只供用量 log 區分；不改變續聊流程。
+        rebased: bool,
+    },
+    Reopen {
+        reason: ReopenReason,
+    },
 }
 
+#[derive(Clone, Copy)]
+enum ReopenReason {
+    FirstTurn,
+    PendingRewrite,
+    SceneChanged,
+    HistoryRewound,
+    HistoryEdited,
+    ReplyDiverged,
+    ResumeFailed,
+}
+
+impl ReopenReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FirstTurn => "first-turn",
+            Self::PendingRewrite => "pending-rewrite",
+            Self::SceneChanged => "scene-changed",
+            Self::HistoryRewound => "history-rewound",
+            Self::HistoryEdited => "history-edited",
+            Self::ReplyDiverged => "reply-diverged",
+            Self::ResumeFailed => "resume-failed",
+        }
+    }
+}
+
+const CACHE_TTL_SECS: u64 = 300;
+
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
-fn plan_turn(state: Option<&LaneState>, input: &TurnInput<'_>) -> TurnPlan {
+fn plan_turn(state: Option<&LaneState>, input: &TurnInput<'_>, now_epoch: u64) -> TurnPlan {
     let Some(state) = state else {
-        return TurnPlan::Reopen;
+        return TurnPlan::Reopen {
+            reason: ReopenReason::FirstTurn,
+        };
     };
     if state.pending_rewrite.is_some() {
-        return TurnPlan::Reopen; // 上一輪中途斷掉，session 內容不可信（可能殘留機密段）
+        return TurnPlan::Reopen {
+            reason: ReopenReason::PendingRewrite,
+        }; // 上一輪中途斷掉，session 內容不可信（可能殘留機密段）
     }
     if state.scene != input.scene {
-        return TurnPlan::Reopen; // 換場＝重開（拍板行為）
-    }
-    if state.snapshot != input.frozen_system {
-        return TurnPlan::Reopen; // 凍結素材變動（包 3 改為補丁＋追平）
+        return TurnPlan::Reopen {
+            reason: ReopenReason::SceneChanged,
+        }; // 換場＝重開（拍板行為）
     }
     let mut base = state.sent_events;
     if base > input.events.len() {
-        return TurnPlan::Reopen; // 正典被收回到水位之前
+        return TurnPlan::Reopen {
+            reason: ReopenReason::HistoryRewound,
+        }; // 正典被收回到水位之前
     }
     if events_fingerprint(&input.events[..base]) != state.sent_hash {
-        return TurnPlan::Reopen; // 已送段被改動
+        return TurnPlan::Reopen {
+            reason: ReopenReason::HistoryEdited,
+        }; // 已送段被改動
     }
     if let Some(expected) = &state.expected_reply {
         match input.events.get(base) {
@@ -193,19 +242,63 @@ fn plan_turn(state: Option<&LaneState>, input: &TurnInput<'_>) -> TurnPlan {
             {
                 base += 1; // 上輪回覆已在 session 裡（assistant），跳過不重送
             }
-            _ => return TurnPlan::Reopen, // 回覆沒落檔或被改＝session 與正典分岔
+            _ => {
+                return TurnPlan::Reopen {
+                    reason: ReopenReason::ReplyDiverged,
+                }
+            } // 回覆沒落檔或被改＝session 與正典分岔
         }
+    }
+    let age = now_epoch.saturating_sub(state.last_call_epoch);
+    if age > CACHE_TTL_SECS {
+        return TurnPlan::Resume {
+            session_id: state.session_id.clone(),
+            base,
+            system: input.frozen_system.clone(),
+            patch: None,
+            rebased: state.snapshot != input.frozen_system,
+        };
     }
     TurnPlan::Resume {
         session_id: state.session_id.clone(),
         base,
+        system: state.snapshot.clone(),
+        patch: snapshot_patch::render_patch(&state.applied, &input.frozen_system),
+        rebased: false,
     }
+}
+
+fn now_epoch() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// 一行一事件追加到用量 log；寫入失敗不影響對話，避免診斷設施反過來中斷回覆。
+fn log_lane_action(log: Option<&Path>, key: &str, action: &str, reason: Option<&str>) {
+    let Some(path) = log else {
+        return;
+    };
+    let timestamp = data::local_timestamp_seconds().unwrap_or_default();
+    let mut line = format!("{timestamp} transport=claude lane={key} action={action}");
+    if let Some(reason) = reason {
+        line.push_str(&format!(" reason={reason}"));
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| writeln!(file, "{line}"));
 }
 
 /// 組本輪 prompt：水位之後的新事件＋回合尾段。開線（全量重建）帶對話紀錄標頭，
 /// 形狀比照單發 flatten；續聊只送增量，與 session 內既有歷史逐字銜接。
 fn build_prompt(events: &[TranscriptEvent], base: usize, tail: &str, opening: bool) -> String {
-    let lines: Vec<String> = events[base..].iter().map(transport::lane_event_line).collect();
+    let lines: Vec<String> = events[base..]
+        .iter()
+        .map(transport::lane_event_line)
+        .collect();
     if lines.is_empty() {
         return tail.to_owned();
     }
@@ -269,34 +362,71 @@ pub(crate) async fn run_turn(
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
     let key = lane_key(input.lane, &call.model);
     let mut store = read_store(&store_path);
-    let mut plan = plan_turn(store.get(&key), &input);
+    let call_epoch = now_epoch();
+    let mut plan = plan_turn(store.get(&key), &input, call_epoch);
 
     loop {
-        let (session_id, base, opening) = match &plan {
-            TurnPlan::Resume { session_id, base } => (session_id.clone(), *base, false),
-            TurnPlan::Reopen => (new_session_id(), 0, true),
+        let (session_id, base, opening, system, patch) = match &plan {
+            TurnPlan::Resume {
+                session_id,
+                base,
+                system,
+                patch,
+                rebased,
+            } => {
+                if patch.is_some() {
+                    log_lane_action(call.usage_log.as_deref(), &key, "patch", None);
+                }
+                if *rebased {
+                    log_lane_action(call.usage_log.as_deref(), &key, "rebase", None);
+                }
+                (
+                    session_id.clone(),
+                    *base,
+                    false,
+                    system.clone(),
+                    patch.clone(),
+                )
+            }
+            TurnPlan::Reopen { reason } => {
+                log_lane_action(
+                    call.usage_log.as_deref(),
+                    &key,
+                    "reopen",
+                    Some(reason.as_str()),
+                );
+                (new_session_id(), 0, true, input.frozen_system.clone(), None)
+            }
         };
-        let prompt = build_prompt(input.events, base, &input.tail, opening);
+        let tail = patch
+            .as_ref()
+            .map(|patch| format!("{patch}\n\n{}", input.tail))
+            .unwrap_or_else(|| input.tail.clone());
+        let prompt = build_prompt(input.events, base, &tail, opening);
         let session = if opening {
             cli::ClaudeSession::Open(&session_id)
         } else {
             cli::ClaudeSession::Resume(&session_id)
         };
-        let args = cli::claude_session_args(&call.model, &input.frozen_system, &session);
+        let args = cli::claude_session_args(&call.model, &system, &session);
 
-        store.insert(key.clone(), LaneState {
-            session_id: session_id.clone(),
-            scene: input.scene,
-            sent_events: input.events.len(),
-            sent_hash: events_fingerprint(input.events),
-            snapshot: input.frozen_system.clone(),
-            pending_rewrite: Some(PendingRewrite {
-                confidential: input.confidential.clone(),
-                prefix: input.prefix.clone(),
-            }),
-            expected_reply: None,
-            last_call_at: data::local_timestamp_seconds().unwrap_or_default(),
-        });
+        store.insert(
+            key.clone(),
+            LaneState {
+                session_id: session_id.clone(),
+                scene: input.scene,
+                sent_events: input.events.len(),
+                sent_hash: events_fingerprint(input.events),
+                snapshot: system,
+                applied: input.frozen_system.clone(),
+                pending_rewrite: Some(PendingRewrite {
+                    confidential: input.confidential.clone(),
+                    prefix: input.prefix.clone(),
+                }),
+                expected_reply: None,
+                last_call_epoch: call_epoch,
+            },
+        );
         write_store(&store_path, &store)?;
 
         let result = cli::run_cli(
@@ -333,6 +463,12 @@ pub(crate) async fn run_turn(
                     }
                     // 抹寫失敗＝session 內容不可信，丟線；下一輪自動重開全量，本輪回覆照常送回
                     Err(_) => {
+                        log_lane_action(
+                            call.usage_log.as_deref(),
+                            &key,
+                            "drop-lane",
+                            Some("rewrite-failed"),
+                        );
                         store.remove(&key);
                     }
                 }
@@ -341,7 +477,9 @@ pub(crate) async fn run_turn(
             }
             // 續聊失敗（session 檔認不得、CLI 拒絕 resume 等）＝丟線重開全量再試一次
             Err(_) if !opening => {
-                plan = TurnPlan::Reopen;
+                plan = TurnPlan::Reopen {
+                    reason: ReopenReason::ResumeFailed,
+                };
             }
             Err(error) => {
                 store.remove(&key);
@@ -389,9 +527,10 @@ mod tests {
             sent_events: events.len(),
             sent_hash: events_fingerprint(events),
             snapshot: "凍結A".to_owned(),
+            applied: "凍結A".to_owned(),
             pending_rewrite: None,
             expected_reply: None,
-            last_call_at: String::new(),
+            last_call_epoch: 1_000,
         }
     }
 
@@ -435,15 +574,22 @@ mod tests {
         ];
         let input = turn_input(&events, 0);
 
-        assert!(matches!(plan_turn(None, &input), TurnPlan::Reopen));
+        assert!(matches!(
+            plan_turn(None, &input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::FirstTurn
+            }
+        ));
 
         let good = lane_state(&events, 0);
-        match plan_turn(Some(&good), &input) {
-            TurnPlan::Resume { session_id, base } => {
+        match plan_turn(Some(&good), &input, 1_010) {
+            TurnPlan::Resume {
+                session_id, base, ..
+            } => {
                 assert_eq!(session_id, "sid-1");
                 assert_eq!(base, 2);
             }
-            TurnPlan::Reopen => panic!("狀態齊備必須續聊"),
+            TurnPlan::Reopen { .. } => panic!("狀態齊備必須續聊"),
         }
 
         let mut pending = good.clone();
@@ -451,25 +597,40 @@ mod tests {
             confidential: None,
             prefix: None,
         });
-        assert!(matches!(plan_turn(Some(&pending), &input), TurnPlan::Reopen));
+        assert!(matches!(
+            plan_turn(Some(&pending), &input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::PendingRewrite
+            }
+        ));
 
         let mut scene_changed = good.clone();
         scene_changed.scene = 1;
         assert!(matches!(
-            plan_turn(Some(&scene_changed), &input),
-            TurnPlan::Reopen
+            plan_turn(Some(&scene_changed), &input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::SceneChanged
+            }
         ));
 
-        let mut snapshot_changed = good.clone();
-        snapshot_changed.snapshot = "凍結B".to_owned();
-        assert!(matches!(
-            plan_turn(Some(&snapshot_changed), &input),
-            TurnPlan::Reopen
-        ));
+        let mut changed_input = turn_input(&events, 0);
+        changed_input.frozen_system = "凍結B".to_owned();
+        match plan_turn(Some(&good), &changed_input, 1_010) {
+            TurnPlan::Resume { system, patch, .. } => {
+                assert_eq!(system, "凍結A");
+                assert!(patch.is_some());
+            }
+            TurnPlan::Reopen { .. } => panic!("快取存活時素材變動必須走補丁"),
+        }
 
         let mut ahead = good.clone();
         ahead.sent_events = 3; // 正典被收回到水位前
-        assert!(matches!(plan_turn(Some(&ahead), &input), TurnPlan::Reopen));
+        assert!(matches!(
+            plan_turn(Some(&ahead), &input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::HistoryRewound
+            }
+        ));
 
         // 已送段被改動（收回重寫第一句）
         let edited = [
@@ -478,8 +639,10 @@ mod tests {
         ];
         let edited_input = turn_input(&edited, 0);
         assert!(matches!(
-            plan_turn(Some(&good), &edited_input),
-            TurnPlan::Reopen
+            plan_turn(Some(&good), &edited_input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::HistoryEdited
+            }
         ));
     }
 
@@ -497,9 +660,9 @@ mod tests {
 
         let with_reply = [before[0].clone(), reply.clone()];
         let input = turn_input(&with_reply, 0);
-        match plan_turn(Some(&state), &input) {
+        match plan_turn(Some(&state), &input, 1_010) {
             TurnPlan::Resume { base, .. } => assert_eq!(base, 2),
-            TurnPlan::Reopen => panic!("回覆已落檔必須續聊"),
+            TurnPlan::Reopen { .. } => panic!("回覆已落檔必須續聊"),
         }
 
         // 回覆事件被玩家改字＝session 與正典分岔
@@ -509,16 +672,42 @@ mod tests {
         ];
         let tampered_input = turn_input(&tampered, 0);
         assert!(matches!(
-            plan_turn(Some(&state), &tampered_input),
-            TurnPlan::Reopen
+            plan_turn(Some(&state), &tampered_input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::ReplyDiverged
+            }
         ));
 
         // 回覆還沒落檔（前端沒寫進 transcript）
         let missing_input = turn_input(&before, 0);
         assert!(matches!(
-            plan_turn(Some(&state), &missing_input),
-            TurnPlan::Reopen
+            plan_turn(Some(&state), &missing_input, 1_010),
+            TurnPlan::Reopen {
+                reason: ReopenReason::ReplyDiverged
+            }
         ));
+    }
+
+    #[test]
+    fn plan_rebases_changed_material_after_cache_expires() {
+        let events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+        let mut input = turn_input(&events, 0);
+        input.frozen_system = "凍結B".to_owned();
+        let state = lane_state(&events, 0);
+
+        match plan_turn(Some(&state), &input, 1_301) {
+            TurnPlan::Resume {
+                system,
+                patch,
+                rebased,
+                ..
+            } => {
+                assert_eq!(system, "凍結B");
+                assert!(patch.is_none());
+                assert!(rebased);
+            }
+            TurnPlan::Reopen { .. } => panic!("快取過期時素材變動必須追平"),
+        }
     }
 
     #[test]
@@ -708,9 +897,15 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             usage_log: None,
             claude_home: call.claude_home.clone(),
         };
-        run_turn(&haiku_call, &root, &world_id, turn_input(&events, 0), |_| {})
-            .await
-            .unwrap();
+        run_turn(
+            &haiku_call,
+            &root,
+            &world_id,
+            turn_input(&events, 0),
+            |_| {},
+        )
+        .await
+        .unwrap();
         let (args6, _) = calls(5);
         assert!(args6.contains(&"--session-id".to_owned())); // haiku 沒有既有線，全量開新
         let lanes_json =
@@ -718,6 +913,132 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         assert!(lanes_json.contains("chars:sonnet"));
         assert!(lanes_json.contains("chars:haiku"));
 
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 素材變動先用補丁保住快取；超過五分鐘才把新素材追平進凍結快照，並留下可供額度頁讀取的原因紀錄。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn lane_patches_material_then_rebases_after_cache_expiry() {
+        let dir = std::env::temp_dir().join(format!("tt-lanes-patch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let working_dir = dir.join("ws");
+        let claude_home = dir.join("claude-home");
+        let root = dir.join("root");
+        let usage_log = dir.join("usage.log");
+        let world_id = ulid::Ulid::generate().to_string();
+        std::fs::create_dir_all(&working_dir).unwrap();
+        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        let script = dir.join("fake-claude.py");
+        std::fs::write(
+            &script,
+            r#"#!/usr/bin/env python3
+import json, sys, os, uuid
+args = sys.argv[1:]
+def flag(name):
+    return args[args.index(name) + 1] if name in args else None
+sid, rid = flag('--session-id'), flag('--resume')
+prompt = sys.stdin.read()
+d = os.environ['FAKE_SESSION_DIR']
+with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
+    f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
+path = os.path.join(d, (sid or rid) + '.jsonl')
+if rid and not os.path.exists(path):
+    sys.exit(3)
+u, a = str(uuid.uuid4()), str(uuid.uuid4())
+with open(path, 'a') as f:
+    f.write(json.dumps({'type': 'user', 'uuid': u,
+                        'message': {'role': 'user', 'content': prompt}}) + '\n')
+    f.write(json.dumps({'type': 'assistant', 'uuid': a,
+                        'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': '回覆'}]}}) + '\n')
+print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆'}))
+"#,
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let call = ClaudeCall {
+            program: script,
+            working_dir: working_dir.clone(),
+            envs: vec![(
+                "FAKE_SESSION_DIR".to_owned(),
+                session_dir.to_string_lossy().into_owned(),
+            )],
+            model: "sonnet".to_owned(),
+            usage_log: Some(usage_log.clone()),
+            claude_home,
+        };
+        let calls = |index: usize| -> (Vec<String>, String) {
+            let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
+            let line: serde_json::Value =
+                serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
+            (
+                line["args"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|value| value.as_str().unwrap().to_owned())
+                    .collect(),
+                line["prompt"].as_str().unwrap().to_owned(),
+            )
+        };
+        let old_system = "## 角色卡\n舊設定\n";
+        let new_system = "## 角色卡\n新設定\n";
+        let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第一句")];
+        let mut first = turn_input(&events, 0);
+        first.frozen_system = old_system.to_owned();
+        first.prefix = None;
+        run_turn(&call, &root, &world_id, first, |_| {})
+            .await
+            .unwrap();
+
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆"));
+        events.push(event(TranscriptKind::Player, "", "阿濤", "第二句"));
+        let mut patched = turn_input(&events, 0);
+        patched.frozen_system = new_system.to_owned();
+        patched.prefix = None;
+        run_turn(&call, &root, &world_id, patched, |_| {})
+            .await
+            .unwrap();
+        let (patch_args, patch_prompt) = calls(1);
+        assert!(patch_args
+            .windows(2)
+            .any(|window| window == ["--system-prompt", old_system]));
+        assert!(patch_prompt.contains("## 設定更新"));
+        assert!(patch_prompt.contains("## 角色卡\n新設定\n"));
+
+        let lanes_path = data::lanes_path(&root, &world_id).unwrap();
+        let mut lanes: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&lanes_path).unwrap()).unwrap();
+        let epoch = lanes["chars:sonnet"]["last_call_epoch"].as_u64().unwrap();
+        lanes["chars:sonnet"]["last_call_epoch"] = serde_json::Value::from(epoch - 3_600);
+        std::fs::write(&lanes_path, serde_json::to_string_pretty(&lanes).unwrap()).unwrap();
+
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆"));
+        events.push(event(TranscriptKind::Player, "", "阿濤", "第三句"));
+        let mut rebased = turn_input(&events, 0);
+        rebased.frozen_system = new_system.to_owned();
+        rebased.prefix = None;
+        run_turn(&call, &root, &world_id, rebased, |_| {})
+            .await
+            .unwrap();
+        let (rebase_args, rebase_prompt) = calls(2);
+        assert!(rebase_args
+            .windows(2)
+            .any(|window| window == ["--system-prompt", new_system]));
+        assert!(!rebase_prompt.contains("## 設定更新"));
+
+        let log = std::fs::read_to_string(&usage_log).unwrap();
+        assert!(log.contains("action=reopen reason=first-turn"));
+        assert!(log.contains("action=patch"));
+        assert!(log.contains("action=rebase"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

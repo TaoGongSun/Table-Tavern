@@ -3,7 +3,7 @@ Task-ID: prompt-cache-optimization
 Title: 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點
 Status: in-progress
 Created: 2026-08-03T15:14:00+08:00
-Updated: 2026-08-03T23:59:00+08:00
+Updated: 2026-08-03T23:51:00+08:00
 
 ## Summary
 
@@ -16,7 +16,7 @@ Updated: 2026-08-03T23:59:00+08:00
 - **B Claude 顯式斷點**：`ChatMessage` content 支援 multipart 陣列，模型 id 屬 anthropic 系時在穩定前綴尾標 `cache_control: {"type": "ephemeral"}`；其他模型 request 形狀零變化。
 
 ## Next action
-- 2026-08-03 晚：七個對照實驗鎖死 claude CLI 快取規則（塊級匹配、5 分鐘壽命、續聊＝99.7% 命中），拍板翻案 §8.1 改 `--resume` 續聊架構＋案 C（角色共用一條 session、私設注入後從本機 session 檔抹寫）＋GM 合併呼叫＋log 升級（遠期通設定頁額度/命中率分頁）。範圍收束只做 claude，OpenRouter／API 驗收擱置。完整規格與拆包順序見交接檔。實作進行中：**包 1（session 檔操作）＋包 2（resume 流程地基）完成**（2026-08-03，cargo test 201 綠；案 C 改寫-resume 機制已實機驗證），claude 模式三個呼叫已走續聊線；lane 按「線種:實際模型」分池（同模型角色共用、GM 獨立，2026-08-03 深夜拍板，單角色長聊玩法即單線全命中）。下一步包 3 凍結快照補丁 → 包 4 log → 包 5 GM 合併 → ping 最後拍。
+- 2026-08-03 晚：七個對照實驗鎖死 claude CLI 快取規則（塊級匹配、5 分鐘壽命、續聊＝99.7% 命中），拍板翻案 §8.1 改 `--resume` 續聊架構＋案 C（角色共用一條 session、私設注入後從本機 session 檔抹寫）＋GM 合併呼叫＋log 升級（遠期通設定頁額度/命中率分頁）。範圍收束只做 claude，OpenRouter／API 驗收擱置。完整規格與拆包順序見交接檔。實作進行中：**包 1（session 檔操作）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼落 log）完成**（2026-08-03，cargo test 209 綠；案 C 改寫-resume 機制已實機驗證），claude 模式三個呼叫已走續聊線；lane 按「線種:實際模型」分池（同模型角色共用、GM 獨立）；改卡／改世界書當輪不再重開線（快取存活走補丁、過期走追平）。2026-08-03 追加拍板額度分頁需求：包 4 log 改 JSONL＋定死診斷標籤清單，新增包 6 額度分頁 UI（排真桌驗收之後）。下一步包 4 log 升級 → 包 5 GM 合併 → 包 6 UI → ping 最後拍。
 
 ## 待拍板
 - 補丁塊與私設後置的遵循度（實機驗收比對，明顯變差再議）。

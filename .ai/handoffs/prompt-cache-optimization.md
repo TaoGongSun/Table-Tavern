@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）完成**，cargo test 201 全綠、零警告（2026-08-03 深夜本機）。claude 訂閱模式的角色對話／GM 旁白／GM 點名已全部走 resume 續聊線，下一步包 3 凍結快照補丁。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）完成**，cargo test 209 全綠、零警告（2026-08-03 本機）。claude 訂閱模式的角色對話／GM 旁白／GM 點名已全部走 resume 續聊線，改卡／改世界書當輪不再重開線。下一步包 4 log 升級。
 
 **2026-08-03 晚拍板收束範圍：只打 CLI（claude 訂閱）這條路**——OpenRouter／API 模式、1h 快取、模型體質表、開桌預熱、GM 全代演全部出局。A／B／C 的 API 驗收擱置。
 
@@ -58,6 +58,12 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `lib.rs:8` 加 `mod session_file;`；模組頂 `#![allow(dead_code)]`（包 2 接線後移除）。
   - 單測 10 條（假 JSONL 照真檔格式、雜項行穿插）：munge、快樂路徑、壞 JSON／斷鏈／content 型錯三失敗路徑、round-trip、抹段（含 0 次／2 次 Err）、前綴（改最後一條＋冪等＋無 assistant Err）、截尾（尾隨雜項行一併截）、原子寫實檔覆寫＋回讀。
 
+- **包 3 凍結快照＋補丁＋追平＋原因代碼**（2026-08-03，本次新完成；規格主線寫〔scratchpad/pkg3-spec.md，session 失效後以程式碼為準〕、實作外派 codex terra、主線親讀 diff 驗收）：
+  - 新檔 `snapshot_patch.rs`：`render_patch(applied, current)` 純函式——素材切塊（`## `／`### ` 標題行為界，前導指示自成一塊，同名標題靠出現序配對），變更／新增段落照 current 順序原文輸出在「## 設定更新」標頭下，移除段落列於「（已移除段落：…）」，無變化回 None。單測 6 條。
+  - `lanes.rs`：`plan_turn` 刪「快照不合＝重開」——對齊檢查全過後看距上輪呼叫秒差（`last_call_epoch`，取代原 `last_call_at` 字串；舊 lanes.json 缺欄位 parse 失敗＝全部重開一次，既定降級）：>300 秒＝快取已死，直接把新素材換進 `--system-prompt` 追平（零成本）；≤300 秒＝system 沿用舊快照逐字不變、變動走補丁附在回合尾段最前。LaneState 新增 `applied`（已傳達素材＝快照＋歷來補丁合成），補丁 diff 基準是 applied 不是 snapshot，已送過的補丁不重送。
+  - **原因代碼落 log**（額度分頁地基）：`log_lane_action` 追加到 prompt-cache.log（寫失敗靜默）——`action=reopen reason=first-turn|pending-rewrite|scene-changed|history-rewound|history-edited|reply-diverged|resume-failed`、`action=patch`、`action=rebase`、`action=drop-lane reason=rewrite-failed`；正常續聊不記（用量行由 cli.rs 照舊）。
+  - 測試新增 8 條：snapshot_patch 6＋plan_turn 補丁／追平 2，另既有 e2e 之外新增一條端到端（假 CLI）：素材改動→續聊帶舊 system＋prompt 含「## 設定更新」；手改 lanes.json epoch 減 3600→追平帶新 system、無補丁；log 斷言 reopen／patch／rebase 三種行都在。
+  - codex 越界順手跑了 cargo fmt 動到六個範圍外檔案，主線已還原（`git checkout` 六檔＋lib.rs 重做最小 diff），實質改動只有規格內三檔。
 - **包 2 resume 流程地基**（2026-08-03 深夜，本次新完成；主線直寫）：
   - **案 C 核心假設先實測鎖死**（3 次 haiku 迷你呼叫，材料在 scratchpad/rewrite-probe/）：改寫過的 session 檔（抹段＋補「狐狸：」前綴）resume **照樣接受**，且只滅尾端快取——r1 開線 create=8865；改檔後 r2 read=8717／create=751；r3 read=9468／create=299＝理想增量形狀。另證實 resume 沿用同一 session id、續寫同一檔（--fork-session 才分叉），故 id 由本程式產生（--session-id）、不需捕捉。
   - `lanes.rs`（新檔）：`lanes.json`（worlds/<id>/ 下，壞檔＝重開線）記每線 session_id／scene／水位 sent_events／FNV-1a 指紋 sent_hash／凍結快照 snapshot／pending_rewrite／expected_reply／last_call_at。`plan_turn` 一項對不上就重開：pending 未清（上輪中途崩潰）、換場、快照變動、水位超前、已送段指紋不合、回覆事件沒落檔或被改。`run_turn`：呼叫前先落 pending_rewrite（崩潰安全）→ CLI → 回合後抹寫（機密段＋名字前綴，原子寫＋回讀）→ 落 expected_reply；續聊呼叫失敗同輪內自動降級重開全量，抹寫失敗丟線。
@@ -67,18 +73,20 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - 測試新增 13 條：transport lane 組裝 4（快照只含共通素材、機密段恰出現一次且抹後公開內容仍在、GM 快照素材、事件行格式）、cli 旗標 1、session_file 定位 1、lanes 7（指紋、UUID v4、plan 決策矩陣、echo 跳過／分岔、prompt 形狀、端到端假 CLI：開線→抹寫→續聊只送增量→改字自動重開→session 檔被刪同輪降級重開）。
 
 ## Verification
-- `cargo test`：**201 passed; 0 failed**、cargo 零警告（2026-08-03 深夜本機真跑，含包 2 新 13 條）。
+- `cargo test`：**209 passed; 0 failed**、cargo 零警告（2026-08-03 本機真跑，含包 3 新 8 條）。
 - 案 C 改寫-resume 機制為實機查證（見上，scratchpad/rewrite-probe/probe.sh 可重跑；實驗腳本需 `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN`）。
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
-### 包 2 已知限制
+### 已知限制
 - ~~角色檔位混用會打散快取~~ **已解**（2026-08-03 深夜拍板＋實作）：lane 改按「線種:實際模型」分池，同模型角色共用、跨模型各自一條（便宜檔沒快取無所謂）；GM 獨立不硬合，理由見目標架構。
-- 改卡／改世界書／改玩家卡＝快照變動＝重開線全量（正確但當輪不省），包 3 補丁機制解。
+- ~~改卡／改世界書／改玩家卡＝重開線全量~~ **已解**（包 3）：快取存活走補丁、過期走追平，皆不重開。
 - 收回上一句＝指紋不合＝重開線（正確），undo 截尾優化（truncate_from 已備好）排後續包。
 - session 檔的 queue-operation／last-prompt 雜項行留有整包 prompt 副本（含機密段）：那些行不進模型上下文，私設隔離（模型可見面）不受影響；磁碟上正典檔本來就有這些資料。
 
 ## Remaining / Next action
-**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。下一步：**包 3 凍結快照＋補丁**（素材變動改送補丁訊息、>5 分鐘或重開時併回快照），並先向使用者拍板「包 2 已知限制」第一條（檔位混用）。以下為定稿規格。
+**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。下一步：**包 4 log 升級**（規格見實作拆包順序第 4 項）。以下為定稿規格。
+
+**2026-08-03 追加拍板（額度分頁需求）**：使用者要額度計量分頁顯示命中率＋顏色燈號＋壞狀況原因句，且原因由 app 純規則判定（不靠 AI）。影響：(1) 包 3 順手把**線重開／降級的原因代碼**落 log（重開當下記，事後推不回來）——已隨包 3 完成；(2) 包 4 log 改**結構化 JSONL**＋診斷標籤定死成有限清單（正常／前綴斷於第幾段／過期／重開-原因X／已降級），資料齊到 UI 拿來就能畫；(3) **包 6 額度分頁 UI** 新增，排在真桌驗收**之後**再補。
 
 ### 目標架構（claude lane 專屬；其他 CLI 維持現行單發 flatten）
 - **每桌按「線種:實際模型」分線**（2026-08-03 深夜拍板）：`chars:<model>`（解析到同一模型的角色共用一條；看解析後真正傳給 CLI 的模型字串，不看檔位——高中檔都覆寫成 sonnet 就同一條）＋`gm:<model>`（GM 獨立）。lane 概念取代「每角色一線」。GM 不與同模型角色硬合線：GM 凍結 system 多了 world.md／私設／GM 條目（憲法不能給角色看），硬合就得每輪注入抹掉、整包重付（真桌約一萬 token 級），比獨立線更貴；「貴模型只有 GM 用」的桌，GM 線本來就獨享快取。
@@ -101,11 +109,12 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 ### 實作拆包順序（外派照 model-dispatch.md）
 1. ~~包 1 session 檔操作模組~~ **完成**（2026-08-03，見 Completed；規格存主線 scratchpad/pkg1-spec.md 已隨 session 失效，內容即 session_file.rs 本身）。
 2. ~~包 2 resume 流程地基~~ **完成**（2026-08-03 深夜，見 Completed）。
-3. **包 3 凍結快照＋補丁**（assemble 層＋追平規則）。
-4. **包 4 log 升級**（使用者需求，遠期通到設定頁「額度花費＋命中率」分頁）：組裝層對每段記 hash＋token 估計量；比對「本輪 vs 上輪共同前綴＝理論可中量」與實際 read，自動標診斷（PREFIX_BROKEN 指出第一個變動段／EXPIRED／OK）；log 補 `cost`（CLI result 的 `total_cost_usd`）與 `lane` 欄——三輪 0% 當初就是缺 lane 與 expected 才誤診。
+3. ~~包 3 凍結快照＋補丁＋追平＋原因代碼~~ **完成**（2026-08-03，見 Completed）。
+4. **包 4 log 升級**（通到包 6 額度分頁）：log 改結構化 JSONL；組裝層對每段記 hash＋token 估計量；比對「本輪 vs 上輪共同前綴＝理論可中量」與實際 read，診斷標籤定死成有限清單（正常／前綴斷於第幾段／過期／重開-原因X／已降級），純規則判定、每標籤對一句玩家中文；log 補 `cost`（CLI result 的 `total_cost_usd`）與 `lane` 欄——三輪 0% 當初就是缺 lane 與 expected 才誤診。
 5. **包 5 GM 旁白＋點名合併成一次呼叫**（已拍板）：旁白尾固定附「下一位：」行，`extract_state_block` 同族解析；**需先查前端回合 orchestration**（narrate／suggest 現為兩個 Tauri command，前端流程要跟著併）。
-6. **保溫 ping**（已拍板可考慮，最後做）：距上輪近 4 分鐘且玩家還在（視窗聚焦／打字中）發迷你訊息刷新壽命；ping 後把垃圾訊息從 session 檔截掉（快取時鐘已被讀取刷新，截尾不影響）。細節實作時拍。
-7. agy 量測（未拍板，擱置）。
+6. **包 6 額度分頁 UI**（2026-08-03 拍板，排真桌驗收之後）：設定頁「額度花費＋命中率」分頁，讀 JSONL log 畫花費＋命中率＋顏色燈號＋原因句。
+7. **保溫 ping**（已拍板可考慮，最後做）：距上輪近 4 分鐘且玩家還在（視窗聚焦／打字中）發迷你訊息刷新壽命；ping 後把垃圾訊息從 session 檔截掉（快取時鐘已被讀取刷新，截尾不影響）。細節實作時拍。
+8. agy 量測（未拍板，擱置）。
 
 ### 驗收（整包完成後）
 真桌實測看 `文件/TableTavern/prompt-cache.log`：連續數輪 hit_rate ≥66%（目標「只有最後一句沒中」＝90%+）；中途改世界書／改卡當輪照樣命中；收回上一句後下一輪照樣命中；改寫失敗時自動降級重建、聊天不中斷。
