@@ -268,7 +268,7 @@ export const de: Record<MsgKey, string> = {
   exportFileName: "{table} Spielprotokoll {stamp}",
   sceneAdvance: "Neuer Akt",
   sceneAdvanceHint: "Diesen Akt beenden: Das aktuelle Protokoll als Zusammenfassung komprimieren und einen neuen Akt starten",
-  sceneTooLongHint: "Dieses Protokoll wird langsam lang — ziehe einen neuen Akt in Betracht, um es zu komprimieren",
+  sceneTooLongHint: "Das Protokoll ist so lang, dass das Modell frühere Ereignisse aus dem Blick verlieren kann — ein neuer Akt komprimiert es",
   pastScenes: "Frühere Akte ({count})",
   sceneLabel: "Akt {n}",
   sceneWithTitle: "Akt {n}: {title}",

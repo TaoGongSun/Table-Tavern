@@ -268,7 +268,7 @@ export const ru: Record<MsgKey, string> = {
   exportFileName: "{table} лог игры {stamp}",
   sceneAdvance: "Новый акт",
   sceneAdvanceHint: "Завершить акт: сжать текущий лог в краткий пересказ и начать новый акт",
-  sceneTooLongHint: "Лог затягивается — рекомендуется начать новый акт, чтобы сжать контекст",
+  sceneTooLongHint: "Лог настолько длинный, что модель может упускать более ранние события — новый акт сожмёт его",
   pastScenes: "Прошлые акты ({count})",
   sceneLabel: "Акт {n}",
   sceneWithTitle: "Акт {n}: {title}",

@@ -268,7 +268,7 @@ export const ko: Record<MsgKey, string> = {
   exportFileName: "{table} 플레이 기록 {stamp}",
   sceneAdvance: "새 막 시작",
   sceneAdvanceHint: "이번 막 종료: 지금까지의 로그를 요약으로 압축하고 새 막을 시작합니다.",
-  sceneTooLongHint: "로그가 길어졌습니다. 새 막으로 넘어가 내용을 압축하는 것을 추천합니다.",
+  sceneTooLongHint: "로그가 길어져 모델이 앞부분을 놓칠 수 있습니다. 새 막으로 압축하는 것을 추천합니다.",
   pastScenes: "지난 막 ({count}개)",
   sceneLabel: "제{n}막",
   sceneWithTitle: "제{n}막: {title}",

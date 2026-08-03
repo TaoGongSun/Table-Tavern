@@ -268,7 +268,7 @@ export const ptBR: Record<MsgKey, string> = {
   exportFileName: "mesa {table} - histórico {stamp}",
   sceneAdvance: "Novo Ato",
   sceneAdvanceHint: "Terminar este ato: comprime o histórico atual em um resumo e inicia um novo ato",
-  sceneTooLongHint: "Este histórico está ficando longo — considere iniciar um novo ato para comprimi-lo",
+  sceneTooLongHint: "O histórico está tão longo que o modelo pode perder de vista o que aconteceu antes — um novo ato o comprime",
   pastScenes: "Atos Anteriores ({count})",
   sceneLabel: "Ato {n}",
   sceneWithTitle: "Ato {n}: {title}",

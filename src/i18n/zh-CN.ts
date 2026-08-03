@@ -268,7 +268,7 @@ export const zhCN: Record<MsgKey, string> = {
   exportFileName: "{table} 跑团记录 {stamp}",
   sceneAdvance: "换幕",
   sceneAdvanceHint: "结束本幕：将当前记录压缩为前情提要，开启新幕",
-  sceneTooLongHint: "记录较长，建议换幕以压缩前情",
+  sceneTooLongHint: "记录很长，模型可能顾不上前面，建议换幕压缩",
   pastScenes: "前幕（{count}）",
   sceneLabel: "第 {n} 幕",
   sceneWithTitle: "第 {n} 幕：{title}",
