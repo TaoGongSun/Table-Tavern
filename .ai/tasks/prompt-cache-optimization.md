@@ -3,7 +3,7 @@ Task-ID: prompt-cache-optimization
 Title: 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點
 Status: in-progress
 Created: 2026-08-03T15:14:00+08:00
-Updated: 2026-08-03T16:15:00+08:00
+Updated: 2026-08-03T16:40:00+08:00
 
 ## Summary
 
@@ -16,13 +16,13 @@ Updated: 2026-08-03T16:15:00+08:00
 - **B Claude 顯式斷點**：`ChatMessage` content 支援 multipart 陣列，模型 id 屬 anthropic 系時在穩定前綴尾標 `cache_control: {"type": "ephemeral"}`；其他模型 request 形狀零變化。
 
 ## Next action
-- A＋B＋C 三塊全部完成（2026-08-03，cargo test 168 全綠；細節與行號見 handoffs/prompt-cache-optimization.md）。程式面收工，剩實機驗收：終端機啟動 app、同桌連續兩輪看 stderr 的 `[prompt-cache]` 命中率（隱式模型與 Claude 系都應 >0），並比對搬尾端後的敘事品質（變差則回退）。驗收過後只剩「命中率正式 UI」一項待拍板。
+- A＋B＋C＋命中率落檔全部完成（2026-08-03，cargo test 168 全綠；細節與行號見 handoffs/prompt-cache-optimization.md）。程式面收工，唯一剩餘：實機驗收——開桌玩幾輪後看「文件/TableTavern/prompt-cache.log」的 hit_rate（隱式模型與 Claude 系都應 >0），並比對搬尾端後的敘事品質（變差則回退）。驗收通過即可結案。
 - 注意：C 查證後修正一項分析假設——OpenRouter 不回報快取寫入 token 數（官方文件明言不支援），只有讀取命中 cached_tokens；usage accounting 只對 OpenRouter 端點帶。B 未改 ChatMessage 型別，multipart 轉換只在請求序列化邊界（見交接檔）。
 
 ## 待拍板
-- 條目與狀態搬到尾端對模型遵循度的影響（A 完成後實測比對；若明顯變差，該項改回 system 並記錄取捨）。
-- 命中率顯示的正式 UI 位置（對話頁角落 vs 設定／除錯區）與是否對一般使用者可見。
-- B 的優先度：使用者目前檔位若不用 Claude 系模型可延後。
+- 條目與狀態搬到尾端對模型遵循度的影響（實機驗收時比對；若明顯變差，該項改回 system 並記錄取捨）。
+- ~~命中率顯示的正式 UI~~ 已拍板（2026-08-03）：不做正式 UI，逐行落檔「文件/TableTavern/prompt-cache.log」，日後介面改動打破前綴可隨時查。
+- ~~B 的優先度~~ 已拍板（2026-08-03）：現在做，已完成。
 
 ## Constraints
 - 送進模型的資訊總量與可見性規則不變：GM 專有條目永不進角色 context、私有設定規則照舊（transport.rs 頂部註解與 KICKOFF §4）。

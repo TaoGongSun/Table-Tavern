@@ -786,12 +786,33 @@ pub fn extract_delta(payload: &str) -> Option<String> {
     }
 }
 
+/// 命中率落檔（使用者拍板 2026-08-03：不做正式 UI，寫 log 隨時可查——
+/// 日後介面／組裝改動若打破前綴，看這檔的 hit_rate 立刻現形）。
+/// 一次呼叫一行：本機時間戳＋模型＋token 數＋命中率；寫檔失敗不影響聊天（盡力而為）。
+/// 無輪替：一行約百位元組，量極小。
+fn append_usage_log(path: &std::path::Path, model: &str, usage: PromptCacheUsage, hit_rate: f64) {
+    use std::io::Write;
+    let timestamp =
+        crate::data::local_timestamp().unwrap_or_else(|_| "unknown-time".to_owned());
+    let line = format!(
+        "{timestamp} model={model} prompt_tokens={} cached_tokens={} hit_rate={hit_rate:.0}%\n",
+        usage.prompt_tokens, usage.cached_tokens,
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| file.write_all(line.as_bytes()));
+}
+
 /// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
 /// 每個增量經 on_delta 回傳，結束後回傳完整文字。
+/// usage_log 給路徑就把快取命中率逐行追加到該檔（見 append_usage_log）。
 pub async fn stream_chat(
     config: &AppConfig,
     model: &str,
     messages: &[ChatMessage],
+    usage_log: Option<&std::path::Path>,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let base = base_url(config);
@@ -837,17 +858,20 @@ pub async fn stream_chat(
             }
         }
     }
-    // 先用 stderr log 驗證 A 的效果；正式 UI 位置待拍板（見 .ai/tasks/prompt-cache-optimization.md）
     if let Some(usage) = usage {
         let hit_rate = if usage.prompt_tokens == 0 {
             0.0
         } else {
             usage.cached_tokens as f64 * 100.0 / usage.prompt_tokens as f64
         };
+        // stderr 一行（終端機啟動時直接看）＋落檔一行（事後隨時查）
         eprintln!(
             "[prompt-cache] model={model} prompt_tokens={} cached_tokens={} hit_rate={hit_rate:.0}%",
             usage.prompt_tokens, usage.cached_tokens,
         );
+        if let Some(path) = usage_log {
+            append_usage_log(path, model, usage, hit_rate);
+        }
     }
     Ok(full_text)
 }
@@ -1507,7 +1531,7 @@ mod tests {
         // 預設 OpenRouter endpoint 且沒 key：呼叫前就擋下
         let mut config = AppConfig::default();
         let messages = [message("user", "嗨".to_owned())];
-        let error = stream_chat(&config, "test/model", &messages, |_| {})
+        let error = stream_chat(&config, "test/model", &messages, None, |_| {})
             .await
             .unwrap_err()
             .to_string();
@@ -1519,7 +1543,7 @@ mod tests {
             serde_json::Value::String(format!("http://{address}")),
         );
         let mut deltas = Vec::new();
-        let full = stream_chat(&config, "test/model", &messages, |delta| {
+        let full = stream_chat(&config, "test/model", &messages, None, |delta| {
             deltas.push(delta.to_owned());
         })
         .await
@@ -1713,14 +1737,28 @@ mod tests {
             serde_json::Value::String(format!("http://{address}")),
         );
         let messages = [message("user", "嗨".to_owned())];
+        let log_path = std::env::temp_dir().join(format!(
+            "tt-prompt-cache-test-{}.log",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&log_path);
         let mut deltas = Vec::new();
-        let full = stream_chat(&config, "test/model", &messages, |delta| {
+        let full = stream_chat(&config, "test/model", &messages, Some(&log_path), |delta| {
             deltas.push(delta.to_owned());
         })
         .await
         .unwrap();
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["你", "好"]);
+
+        // usage 落檔：一行含時間戳、模型、token 數與命中率（12/20 = 60%）
+        let logged = std::fs::read_to_string(&log_path).unwrap();
+        assert_eq!(logged.lines().count(), 1);
+        assert!(logged.contains("model=test/model"));
+        assert!(logged.contains("prompt_tokens=20"));
+        assert!(logged.contains("cached_tokens=12"));
+        assert!(logged.contains("hit_rate=60%"));
+        let _ = std::fs::remove_file(&log_path);
     }
 
     #[test]

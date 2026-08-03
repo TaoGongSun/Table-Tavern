@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）三塊全部實作完成＋自驗綠（2026-08-03，Cowork 雲端會話；cargo test 168 全綠＝前次 162＋A 2＋C 3＋B 1）。程式面收工，等實機驗收：開桌看 A 的遵循度、stderr 看 `[prompt-cache]` 命中率（含 Claude 系模型應開始 >0）。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）三塊全部實作完成＋自驗綠，命中率並已落檔（使用者拍板：不做正式 UI，寫 log）。cargo test 168 全綠（2026-08-03，Cowork 雲端會話）。程式面收工，等實機驗收：開桌看 A 的遵循度、看 `[prompt-cache]` 命中率（隱式模型與 Claude 系都應 >0）。
 
 ## Completed
 - 分析階段（2026-08-03 上午，唯讀）：快取現況、兩個打破前綴的設計、三塊方案已拍板（證據行號以 HEAD f8801e8 核對，詳見 git 歷史中本檔前一版）。
@@ -21,14 +21,17 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `chat_request_body`：模型 id 以 `anthropic/` 開頭時，messages 轉 multipart（每則 content＝單一 text 分段）並標兩個 `cache_control: {"type": "ephemeral"}` 斷點（transport.rs:764-766）。
   - **斷點策略**：標在 system（角色卡／world.md／constant 條目，換卡前不變）與**最後一則 assistant**（其後只剩會變動的東西：可能被 push_merged 續寫的最後一則 user、動態塊、導演指示）。transcript 逐輪增長、斷點跟著前移；Anthropic 查快取會回看斷點前約 20 個 content block，前一輪的快取點仍在回看範圍內 → 逐輪增量命中。上限 4 個斷點，用 2 個。
   - 測試 1 條：`anthropic_models_get_multipart_content_with_two_breakpoints`（transport.rs:1611）——斷點位置恰為 [0, 最後 assistant]、multipart 文字照舊、非 anthropic 維持純字串 content、無 assistant（開桌第一輪）只標 system。
+- **命中率落檔**（2026-08-03，使用者拍板：不做正式 UI、寫 log 隨時可查；日後介面／組裝改動若打破前綴，看 log 立刻現形）：
+  - `append_usage_log`：一次呼叫一行，`data::local_timestamp()` 時間戳＋model＋prompt_tokens＋cached_tokens＋hit_rate，append 模式、寫檔失敗不影響聊天、無輪替（一行約百位元組）。
+  - `stream_chat` 加 `usage_log: Option<&Path>` 參數；`stream_via_transport`（lib.rs API 分支）傳 `data_root/prompt-cache.log`——即「文件/TableTavern/prompt-cache.log」，與世界資料同目錄，好找。stderr 的 `[prompt-cache]` 行保留（終端機啟動時即時看）。
+  - 測試：`stream_chat_passes_usage_chunk_through_without_breaking_deltas` 擴充——mock 串流後斷言 log 檔恰一行、含 model／token 數／hit_rate=60%。
 
 ## Verification
 - `cargo test`：168 passed; 0 failed（2026-08-03，雲端 Linux 容器、rustc 1.95.0）。A 2 條、C 3 條、B 1 條新測試逐一確認 ok（名稱見上）。
 - 注意：本次在雲端容器編譯測試，未在本機跑過；下一手開工時本機重跑 `cargo test` 確認一次即可。
 
 ## Remaining / Next action
-1. **實機驗收 A＋B＋C**（使用者本人）：終端機啟動 app（stderr 才看得到 log），同一桌連續讓 GM／角色各說兩輪，看 `[prompt-cache]` 行——隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）與 Claude 系（anthropic/，靠 B 的顯式斷點）第二輪起 cached_tokens 都應明顯大於 0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。注意 Anthropic 顯式快取有最低門檻（約 1024 tokens），太小的桌可能不寫快取，屬預期。
-2. 命中率顯示的正式 UI（對話頁角落 vs 設定／除錯區）待拍板後實作。
+1. **實機驗收 A＋B＋C**（使用者本人，唯一剩餘項）：直接開 app 玩即可，事後看「文件/TableTavern/prompt-cache.log」——同一桌連續兩輪起，隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）與 Claude 系（anthropic/，靠 B 的顯式斷點）的 cached_tokens 都應明顯大於 0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。注意 Anthropic 顯式快取有最低門檻（約 1024 tokens），太小的桌可能不寫快取，屬預期。驗收通過即可結案。
 
 ## Constraints
 同 tasks 檔。另注意：constant 條目與角色卡留在 system 是刻意的（穩定且需要高遵循度）；A 實測若條目放尾端遵循度明顯變差，該項回退並在任務檔記錄取捨。
