@@ -11,7 +11,7 @@
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白 — 下一步：六項全部實作完成（cargo test 174 綠）；第一、二、三、五、六項與狀態列條件顯示（只給帶狀態列規則的桌）2026-08-03 實機驗收通過，剩第四項狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）待驗
-- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點 — 下一步：A＋B＋C＋命中率落檔（文件/TableTavern/prompt-cache.log）全部完成、cargo test 168 全綠（2026-08-03）；剩實機驗收（開桌後看 log 的 hit_rate 應 >0＋比對敘事品質）即可結案
+- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點 — 下一步：A＋B＋C＋D（CLI 路徑量測）全部完成、cargo test 178 全綠（2026-08-03）；剩實機驗收——CLI 模式開桌兩輪看 log 出現 transport=claude 且 hit_rate >0（A／B 只作用在 API 模式，要另外切過去驗）
 
 ## Done
 

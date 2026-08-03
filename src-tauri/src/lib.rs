@@ -662,10 +662,11 @@ async fn stream_via_transport(
             .unwrap_or("api")
             .to_owned()
     });
+    // 快取命中率逐行落在資料目錄的 prompt-cache.log（拍板：不做 UI，log 隨時可查）。
+    // API 與 CLI 兩條路共用同一份檔案，靠行內的 transport 欄位分辨。
+    let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.log"));
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
-        // 快取命中率逐行落在資料目錄的 prompt-cache.log（拍板：不做 UI，log 隨時可查）
-        let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.log"));
         return transport::stream_chat(config, &model, messages, usage_log.as_deref(), emit)
             .await
             .map_err(|error| error.to_string());
@@ -720,6 +721,12 @@ async fn stream_via_transport(
                 &prompt,
                 &envs,
                 cli::parse_claude_line,
+                usage_log.as_deref().map(|path| cli::UsageLog {
+                    path,
+                    transport: "claude",
+                    model,
+                    parse: cli::parse_claude_usage,
+                }),
                 emit,
             )
             .await
@@ -736,6 +743,12 @@ async fn stream_via_transport(
                 &combined,
                 &[],
                 cli::parse_codex_line,
+                usage_log.as_deref().map(|path| cli::UsageLog {
+                    path,
+                    transport: "codex",
+                    model: model.unwrap_or("(CLI 預設)"),
+                    parse: cli::parse_codex_usage,
+                }),
                 emit,
             )
             .await
@@ -752,6 +765,7 @@ async fn stream_via_transport(
                 "",
                 &[],
                 cli::parse_agy_line,
+                None, // agy 走純文字輸出，拿不到用量（換 JSON 格式才有，未拍板）
                 emit,
             )
             .await
@@ -768,6 +782,12 @@ async fn stream_via_transport(
                 "",
                 &[],
                 cli::parse_grok_line,
+                usage_log.as_deref().map(|path| cli::UsageLog {
+                    path,
+                    transport: "grok",
+                    model: model.unwrap_or("(CLI 預設)"),
+                    parse: cli::parse_grok_usage,
+                }),
                 emit,
             )
             .await

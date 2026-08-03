@@ -709,12 +709,25 @@ impl SseParser {
     }
 }
 
-/// OpenRouter usage accounting 的快取命中數字（prompt-cache-optimization C）。
+/// 快取命中數字（prompt-cache-optimization C）。API 走 OpenRouter usage accounting，
+/// CLI 走各家收尾事件（見 cli::parse_*_usage）。
 /// OpenRouter 目前不回報寫入快取的 token 數（官方文件明言不支援），只有讀取命中。
+/// prompt_tokens 一律是「總輸入」（含快取部分），各家語意差異在抽取時就換算掉。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PromptCacheUsage {
     pub prompt_tokens: u64,
     pub cached_tokens: u64,
+}
+
+impl PromptCacheUsage {
+    /// 讀自快取的輸入佔總輸入的百分比；沒有輸入時算 0。
+    pub fn hit_rate(&self) -> f64 {
+        if self.prompt_tokens == 0 {
+            0.0
+        } else {
+            self.cached_tokens as f64 * 100.0 / self.prompt_tokens as f64
+        }
+    }
 }
 
 /// 從一則 SSE payload 取出 usage 統計；增量塊的 `"usage": null` 與缺欄位一律回 None。
@@ -802,15 +815,22 @@ pub fn extract_delta(payload: &str) -> Option<String> {
 
 /// 命中率落檔（使用者拍板 2026-08-03：不做正式 UI，寫 log 隨時可查——
 /// 日後介面／組裝改動若打破前綴，看這檔的 hit_rate 立刻現形）。
-/// 一次呼叫一行：本機時間戳＋模型＋token 數＋命中率；寫檔失敗不影響聊天（盡力而為）。
+/// 一次呼叫一行：本機時間戳＋傳輸層＋模型＋token 數＋命中率；寫檔失敗不影響聊天（盡力而為）。
+/// transport 欄位分辨 API 與各支 CLI——同一份 log 混著兩條路的紀錄。
 /// 無輪替：一行約百位元組，量極小。
-fn append_usage_log(path: &std::path::Path, model: &str, usage: PromptCacheUsage, hit_rate: f64) {
+pub(crate) fn append_usage_log(
+    path: &std::path::Path,
+    transport: &str,
+    model: &str,
+    usage: PromptCacheUsage,
+) {
     use std::io::Write;
-    let timestamp =
-        crate::data::local_timestamp().unwrap_or_else(|_| "unknown-time".to_owned());
+    let timestamp = crate::data::local_timestamp().unwrap_or_else(|_| "unknown-time".to_owned());
     let line = format!(
-        "{timestamp} model={model} prompt_tokens={} cached_tokens={} hit_rate={hit_rate:.0}%\n",
-        usage.prompt_tokens, usage.cached_tokens,
+        "{timestamp} transport={transport} model={model} prompt_tokens={} cached_tokens={} hit_rate={:.0}%\n",
+        usage.prompt_tokens,
+        usage.cached_tokens,
+        usage.hit_rate(),
     );
     let _ = std::fs::OpenOptions::new()
         .create(true)
@@ -873,18 +893,15 @@ pub async fn stream_chat(
         }
     }
     if let Some(usage) = usage {
-        let hit_rate = if usage.prompt_tokens == 0 {
-            0.0
-        } else {
-            usage.cached_tokens as f64 * 100.0 / usage.prompt_tokens as f64
-        };
         // stderr 一行（終端機啟動時直接看）＋落檔一行（事後隨時查）
         eprintln!(
-            "[prompt-cache] model={model} prompt_tokens={} cached_tokens={} hit_rate={hit_rate:.0}%",
-            usage.prompt_tokens, usage.cached_tokens,
+            "[prompt-cache] transport=api model={model} prompt_tokens={} cached_tokens={} hit_rate={:.0}%",
+            usage.prompt_tokens,
+            usage.cached_tokens,
+            usage.hit_rate(),
         );
         if let Some(path) = usage_log {
-            append_usage_log(path, model, usage, hit_rate);
+            append_usage_log(path, "api", model, usage);
         }
     }
     Ok(full_text)

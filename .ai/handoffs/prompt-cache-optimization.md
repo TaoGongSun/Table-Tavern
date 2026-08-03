@@ -1,7 +1,9 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）三塊全部實作完成＋自驗綠，命中率並已落檔（使用者拍板：不做正式 UI，寫 log）。cargo test 168 全綠（2026-08-03，Cowork 雲端會話）。程式面收工，等實機驗收：開桌看 A 的遵循度、看 `[prompt-cache]` 命中率（隱式模型與 Claude 系都應 >0）。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成，cargo test 178 全綠（2026-08-03 本機重跑）。等實機驗收。
+
+**A／B／C 只作用在 API 模式**：CLI 訂閱模式走 `cli::flatten_messages` 攤平後交給 CLI，前綴重構與顯式斷點都不經過，快取由 CLI 自己那端決定。使用者目前設定是 `transport=claude`，故 A／B 的驗收需先切到 API 模式；D 補上的是 CLI 這條路的命中率能見度。
 
 ## Completed
 - 分析階段（2026-08-03 上午，唯讀）：快取現況、兩個打破前綴的設計、三塊方案已拍板（證據行號以 HEAD f8801e8 核對，詳見 git 歷史中本檔前一版）。
@@ -26,12 +28,22 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `stream_chat` 加 `usage_log: Option<&Path>` 參數；`stream_via_transport`（lib.rs API 分支）傳 `data_root/prompt-cache.log`——即「文件/TableTavern/prompt-cache.log」，與世界資料同目錄，好找。stderr 的 `[prompt-cache]` 行保留（終端機啟動時即時看）。
   - 測試：`stream_chat_passes_usage_chunk_through_without_breaking_deltas` 擴充——mock 串流後斷言 log 檔恰一行、含 model／token 數／hit_rate=60%。
 
+- **D CLI 路徑量測**（2026-08-03，本次新完成——起因：使用者用 CLI 模式跑劇情後 log 一行都沒有，因為量測只掛在 API 那條）：
+  - 四支 CLI 實測輸出確認（scratchpad 真實冒煙）：claude 的 `result`、codex 的 `turn.completed`、grok 的 `end` 事件都帶 usage；**agy 吃純文字輸出拿不到**，要換 `--output-format stream-json` 並重寫 `parse_agy_line`，使用者拍板「先做三支，agy 之後再說」。
+  - **各家 input_tokens 語意不同，是這塊最容易算錯的地方**：claude／grok 的 `input_tokens` **不含**快取部分（claude 實測讀滿快取時 input_tokens=1、cache_read=4771；grok 實測 cache_read 146304 > input 31509），總輸入要加總；codex 的 `input_tokens` **已含** `cached_input_tokens`，再加就會虛報分母、低估命中率。`parse_claude_usage`／`parse_codex_usage`／`parse_grok_usage` 各自換算成統一語意的「總輸入／讀快取」（cli.rs:485-538）。
+  - `CliLine` 刻意不動（13 處既有斷言零波及）：usage 走獨立抽取函式，`run_cli` 逐行呼叫，並以 `line.contains("\"usage\"")` 預檢——串流上千行只有收尾那行真的解析 JSON。
+  - `UsageLog { path, transport, model, parse }` 打包落檔設定當 `run_cli` 的一個參數（避免簽名長出四個平行參數）；lib.rs 三支 CLI 分支各自帶入，agy 傳 None。
+  - log 格式加 `transport=` 欄位（api／claude／codex／grok），兩條路共用同一份檔案；命中率計算收進 `PromptCacheUsage::hit_rate()` 兩邊共用。
+  - 測試新增 4 條：三支 parser 各一條（樣本取自真實冒煙輸出，鎖住換算語意與缺欄位當 0），加端到端——既有假 CLI 測試的 result 行補上 usage，斷言 log 恰一行且內容為 `transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 hit_rate=99%`。
+
 ## Verification
-- `cargo test`：168 passed; 0 failed（2026-08-03，雲端 Linux 容器、rustc 1.95.0）。A 2 條、C 3 條、B 1 條新測試逐一確認 ok（名稱見上）。
-- 注意：本次在雲端容器編譯測試，未在本機跑過；下一手開工時本機重跑 `cargo test` 確認一次即可。
+- `cargo test`：178 passed; 0 failed（2026-08-03 本機，含前一手雲端容器寫的 A／B／C 測試重跑）。
+- CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
 ## Remaining / Next action
-1. **實機驗收 A＋B＋C**（使用者本人，唯一剩餘項）：直接開 app 玩即可，事後看「文件/TableTavern/prompt-cache.log」——同一桌連續兩輪起，隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）與 Claude 系（anthropic/，靠 B 的顯式斷點）的 cached_tokens 都應明顯大於 0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。注意 Anthropic 顯式快取有最低門檻（約 1024 tokens），太小的桌可能不寫快取，屬預期。驗收通過即可結案。
+1. **實機驗收 D（CLI 量測）**：維持現在的 claude CLI 模式開桌跑兩輪以上，看「文件/TableTavern/prompt-cache.log」出現 `transport=claude` 行且第二輪起 hit_rate 明顯 >0。
+2. **實機驗收 A＋B＋C**（需切到 API 模式＋貼 OpenRouter key，會花錢）：看 `transport=api` 行的 cached_tokens——隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）與 Claude 系（anthropic/，靠 B 的顯式斷點）都應 >0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。注意 Anthropic 顯式快取有最低門檻（約 1024 tokens），太小的桌可能不寫快取，屬預期。
+3. **agy 量測**（未拍板）：要換 `--output-format stream-json` 並重寫 `parse_agy_line`（usage 在 `result` 事件的 `cache_read_tokens`，格式用 `event` 欄位而非 `type`）。風險是改壞 agy 那條線的回覆解析，需實測串流輸出確認回覆不斷行。
 
 ## Constraints
 同 tasks 檔。另注意：constant 條目與角色卡留在 system 是刻意的（穩定且需要高遵循度）；A 實測若條目放尾端遵循度明顯變差，該項回退並在任務檔記錄取捨。
