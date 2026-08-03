@@ -53,6 +53,12 @@ interface ImportProbe {
   alternate_greetings: number;
 }
 
+/** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
+interface WorldbookImport {
+  imported: number;
+  skipped: number;
+}
+
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
 // speaker_name 是當下顯示名快照——改名後舊事件不動（2026-07-27 拍板），顯示一律讀這欄
 interface TranscriptEvent {
@@ -346,6 +352,16 @@ const SCENE_LENGTH_HINT_CHARS = 8000;
 
 function nowTs() {
   return new Date().toISOString();
+}
+
+function openingPreview(text: string) {
+  const preview = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ");
+  return preview.length > 120 ? `${preview.slice(0, 119)}…` : preview;
 }
 
 // AI 失敗訊息分流：各家 CLI／API 的錯誤格式不一，只認額度與未登入兩類最痛的，
@@ -1309,6 +1325,7 @@ function WorldEditor({
   onBack,
   leaveGuard,
   onImported,
+  onOpening,
   convertColor,
   hasPlayerCard,
   onEntryConverted,
@@ -1319,6 +1336,8 @@ function WorldEditor({
   leaveGuard: { current: (() => Promise<boolean>) | null };
   /** 世界書匯入成功（至少一條）時通知 App：純世界書開局要自動選 GM */
   onImported: () => void;
+  /** 匯入檔帶開場白時交回 App 問玩家要不要讓 GM 貼出來（transcript 在 App 手上） */
+  onOpening: (data: number[]) => Promise<void>;
   convertColor: string;
   hasPlayerCard: boolean;
   onEntryConverted: (asPlayer: boolean) => Promise<void>;
@@ -1551,13 +1570,39 @@ function WorldEditor({
       } catch {
         // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
       }
-      const count = await invoke<number>("import_worldbook", { worldId: world, data: Array.from(bytes) });
+      const result = await invoke<WorldbookImport>("import_worldbook", { worldId: world, data: Array.from(bytes) });
       await refreshWorldbook();
-      setWorldbookMessage(t("worldbookImported", { n: count }));
-      if (count > 0) onImported();
+      setWorldbookMessage(
+        t("worldbookImported", { n: result.imported }) +
+          (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
+      );
+      if (result.imported > 0) onImported();
       if (probe.scripts.length > 0) {
         await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
       }
+      await onOpening(Array.from(bytes));
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
+  // 去重上線前重複匯入過的桌，用這顆自己收拾：同內容只留排最前面那條
+  async function dedupeWorldbook() {
+    setWorldbookMessage("");
+    try {
+      const accepted = await confirm(t("worldbookDedupeConfirm"), {
+        title: t("worldbookDedupe"),
+        kind: "warning",
+      });
+      if (!accepted) return;
+      const removed = await invoke<number>("dedupe_worldbook", { worldId: world });
+      if (removed > 0) {
+        await refreshWorldbook();
+        onImported();
+      }
+      setWorldbookMessage(
+        removed > 0 ? t("worldbookDedupeDone", { n: removed }) : t("worldbookDedupeNone"),
+      );
     } catch (reason) {
       setWorldbookMessage(String(reason));
     }
@@ -1759,6 +1804,9 @@ function WorldEditor({
               if (file) void importWorldbook(file);
             }}
           />
+          <button type="button" onClick={() => void dedupeWorldbook()}>
+            {t("worldbookDedupe")}
+          </button>
           <button type="button" onClick={() => void exportWorldbook()}>
             {t("worldbookExport")}
           </button>
@@ -2176,10 +2224,15 @@ function CardEditor({
     if (await confirmLeave()) onBack();
   }
 
-  async function archive() {
+  // 同一顆鈕雙向切換：隱藏區進來的卡按它就是還原，免得編輯器裡出現按了沒意義的「隱藏角色」
+  async function toggleArchived() {
     setMessage("");
     try {
-      await invoke("set_character_archived", { worldId: world, characterId, archived: true });
+      await invoke("set_character_archived", {
+        worldId: world,
+        characterId,
+        archived: card?.archived !== true,
+      });
       await onArchived();
     } catch (reason) {
       setMessage(String(reason));
@@ -2278,8 +2331,12 @@ function CardEditor({
                   </button>
                 )}
                 {!isPlayer && (
-                  <button type="button" className="archive-button" onClick={archive}>
-                    {t("archiveCharacter")}
+                  <button
+                    type="button"
+                    className="archive-button"
+                    onClick={() => void toggleArchived()}
+                  >
+                    {card?.archived === true ? t("restoreCharacter") : t("archiveCharacter")}
                   </button>
                 )}
                 <button type="button" className="delete-character" onClick={() => void onDeleted()}>
@@ -2733,6 +2790,9 @@ function App() {
   const [actsOpen, setActsOpen] = useState(false);
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
+  const [openingChoice, setOpeningChoice] = useState<string[] | null>(null);
+  // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
+  const [openingExpanded, setOpeningExpanded] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -3251,9 +3311,14 @@ function App() {
           cancelLabel: t("importRedirectCancel"),
         });
         if (redirect) {
-          const count = await invoke<number>("import_worldbook", { worldId: table, data });
-          await showMessage(t("importRedirectDone", { n: count }), { title: t("importCard") });
+          const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data });
+          await showMessage(
+            t("importRedirectDone", { n: result.imported }) +
+              (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
+            { title: t("importCard") },
+          );
           if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+          await offerOpeningLine(data);
           return;
         }
       }
@@ -3272,6 +3337,20 @@ function App() {
     } catch (reason) {
       setError(String(reason));
     }
+  }
+
+  // 只在世界書路徑問（面板匯入與角色卡改道）：匯成角色卡＝這張卡是要上桌的角色，開場白已在卡上，
+  // 不必再由 GM 貼一次。開場是 GM 的事，所以貼成旁白而不是角色發言；主開場白常是使用說明
+  // （真正的劇情藏在備用開場白），所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
+  async function offerOpeningLine(data: number[]) {
+    const openings = await invoke<string[]>("card_openings", {
+      worldId: table,
+      data,
+      lang: language,
+    });
+    if (openings.length === 0) return;
+    setOpeningExpanded(null);
+    setOpeningChoice(openings);
   }
 
   async function refreshCharacters() {
@@ -3445,6 +3524,19 @@ function App() {
     setEvents((previous) => [...previous, event]);
     // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
     setUndone(null);
+  }
+
+  async function postOpening(text: string) {
+    setError("");
+    try {
+      const event = await invoke<TranscriptEvent>("post_opening", { worldId: table, scene, ts: nowTs(), text });
+      setEvents((previous) => [...previous, event]);
+      setUndone(null);
+      await refreshTableState();
+      setOpeningChoice(null);
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
@@ -4018,6 +4110,10 @@ function App() {
                 {archivedCharacters.map((character) => (
                   <div className="archive-row" key={character.id}>
                     <span>{character.name}</span>
+                    {/* 隱藏卡也要進得了編輯器：轉成世界書條目只能在隱藏狀態下按 */}
+                    <button type="button" onClick={() => void editCard(character.id)}>
+                      {t("editBtn")}
+                    </button>
                     <button type="button" onClick={() => void restoreCharacter(character.id)}>
                       {t("restoreCharacter")}
                     </button>
@@ -4251,6 +4347,7 @@ function App() {
               onImported={() => {
                 if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
               }}
+              onOpening={offerOpeningLine}
               convertColor={PALETTE[characters.length % PALETTE.length]}
               hasPlayerCard={playerCard !== null}
               onEntryConverted={async (asPlayer) => {
@@ -4475,6 +4572,55 @@ function App() {
               <button type="button" onClick={() => void answerRegen("regen")}>
                 {t("sampleRegenConfirm")}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openingChoice !== null && (
+        <div className="modal-overlay" onClick={() => setOpeningChoice(null)}>
+          <div
+            className="modal opening-choice-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("openingChoiceTitle")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <strong>{t("openingChoiceTitle")}</strong>
+              <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={() => setOpeningChoice(null)}>×</button>
+            </div>
+            <p>{t("openingLineAsk")}</p>
+            <div className="opening-choice-list">
+              {openingChoice.map((opening, index) => {
+                // 點列只展開全文，貼出另給一顆鈕——開場白動輒上千字，光看兩行預覽選不出來，
+                // 也不該讓「想看清楚」的一下手就貼進對話
+                const expanded = openingExpanded === index;
+                return (
+                  <div className="opening-choice-item" key={index}>
+                    <button
+                      type="button"
+                      className="opening-choice-head"
+                      aria-expanded={expanded}
+                      onClick={() => setOpeningExpanded(expanded ? null : index)}
+                    >
+                      <strong>{t("openingChoiceItem", { n: index + 1 })}</strong>
+                      <span>{expanded ? "" : openingPreview(opening)}</span>
+                    </button>
+                    {expanded && (
+                      <>
+                        <div className="opening-choice-full">{opening}</div>
+                        <button type="button" onClick={() => void postOpening(opening)}>
+                          {t("openingLineOk")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="ai-gen-footer">
+              <button type="button" onClick={() => setOpeningChoice(null)}>{t("openingLineCancel")}</button>
             </div>
           </div>
         </div>

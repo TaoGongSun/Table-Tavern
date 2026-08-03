@@ -184,6 +184,49 @@ fn character_card_v2(card: &CharacterCard) -> Value {
     Value::Object(root)
 }
 
+/// 世界書卡不會先建成角色，仍要直接從匯入檔取得所有可選開場白。
+pub fn card_openings(bytes: &[u8]) -> Option<(String, Vec<String>)> {
+    let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+        decode_png_character(bytes).ok()?
+    } else {
+        bytes.to_vec()
+    };
+    let value: Value = serde_json::from_slice(&json_bytes).ok()?;
+    let card_data = value
+        .get("data")
+        .filter(|data| data.is_object())
+        .unwrap_or(&value);
+    let mut openings = Vec::new();
+    if let Some(opening) = string_field(card_data, "first_mes") {
+        let opening = opening.trim();
+        if !opening.is_empty() {
+            openings.push(opening.to_owned());
+        }
+    }
+    if let Some(alternates) = card_data
+        .get("alternate_greetings")
+        .and_then(Value::as_array)
+    {
+        openings.extend(
+            alternates
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(|opening| {
+                    let opening = opening.trim();
+                    (!opening.is_empty()).then(|| opening.to_owned())
+                }),
+        );
+    }
+    if openings.is_empty() {
+        return None;
+    }
+    let name = string_field(card_data, "name")
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
+    Some((name, openings))
+}
+
 /// public_markdown 的反向：認得的 `### 標題` 各自回原欄位，其餘（App 內手寫的卡）全歸簡介
 fn split_public_markdown(markdown: &str) -> [String; PUBLIC_SECTIONS.len()] {
     let mut sections: [String; PUBLIC_SECTIONS.len()] = Default::default();
@@ -1027,6 +1070,49 @@ mod tests {
         delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
     }
 
+    /// 世界書卡不會建成角色，開場白仍須保留給前端選擇。
+    #[test]
+    fn card_openings_reads_all_greetings_from_import_bytes() {
+        let card = r#"{"spec":"chara_card_v3","data":{"name":"兽人的洞穴","first_mes":" 夜色落下。 ","alternate_greetings":["另一個開場。","  ","最後一個開場。"],"character_book":{"entries":[]}}}"#;
+        assert_eq!(
+            card_openings(card.as_bytes()),
+            Some((
+                "兽人的洞穴".to_owned(),
+                vec![
+                    "夜色落下。".to_owned(),
+                    "另一個開場。".to_owned(),
+                    "最後一個開場。".to_owned(),
+                ],
+            ))
+        );
+        // PNG 卡與 JSON 卡必須走同一條解析路徑。
+        assert_eq!(
+            card_openings(&minimal_png(card)),
+            Some((
+                "兽人的洞穴".to_owned(),
+                vec![
+                    "夜色落下。".to_owned(),
+                    "另一個開場。".to_owned(),
+                    "最後一個開場。".to_owned(),
+                ],
+            ))
+        );
+        // 有些卡只把真正開場寫在替代開場白。
+        assert_eq!(
+            card_openings(
+                r#"{"data":{"name":"莉亞","first_mes":"  ","alternate_greetings":["在這裡。"]}}"#
+                    .as_bytes(),
+            ),
+            Some(("莉亞".to_owned(), vec!["在這裡。".to_owned()]))
+        );
+        // 完全沒有可顯示的開場白時，前端不應開啟選擇面板。
+        assert_eq!(
+            card_openings(r#"{"data":{"name":"莉亞"}}"#.as_bytes()),
+            None
+        );
+        assert_eq!(card_openings(b"not a card"), None);
+    }
+
     /// 世界書卡（PNG 或 JSON 的假角色卡）要能整包匯進世界書；keys 為 null 的常駐條目不能炸
     #[test]
     fn worldbook_json_unwraps_lorebook_cards() {
@@ -1034,14 +1120,17 @@ mod tests {
 
         let root = TestRoot::new("worldbook-card");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
-        // PNG 卡與純 JSON 卡走同一條路，各匯一次
+        // PNG 卡與純 JSON 卡走同一條路，各匯一次；同一份書第二次全被當重複略過
         let png = minimal_png(card);
+        let mut results = Vec::new();
         for bytes in [png.as_slice(), card.as_bytes()] {
             let json = worldbook_json(bytes).unwrap();
-            assert_eq!(data::import_worldbook(root.path(), &world_id, &json).unwrap(), 2);
+            results.push(data::import_worldbook(root.path(), &world_id, &json).unwrap());
         }
+        assert_eq!(results[0].imported, 2);
+        assert_eq!(results[1], data::WorldbookImport { imported: 0, skipped: 2 });
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].title, "盟約");
         assert_eq!(entries[0].keys, ["森林"]);
         assert_eq!(entries[0].order, 3);

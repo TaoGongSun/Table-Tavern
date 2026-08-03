@@ -52,6 +52,20 @@ fn player_fallback_name(lang: &str) -> &'static str {
     }
 }
 
+/// 要直接貼上畫面的文字（開場白）先把巨集換成當桌實名——存進 transcript 的就是玩家看到的樣子。
+pub fn resolve_display_macros(
+    text: &str,
+    player_name: Option<&str>,
+    char_name: &str,
+    lang: &str,
+) -> String {
+    let user = player_name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| player_fallback_name(lang));
+    replace_st_macros(text, user, Some(char_name))
+}
+
 /// 只替換 SillyTavern 的玩家與角色巨集，其餘巨集保持原樣。
 fn replace_st_macros(text: &str, user_name: &str, char_name: Option<&str>) -> String {
     let mut result = String::with_capacity(text.len());
