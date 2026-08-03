@@ -16,13 +16,11 @@ Updated: 2026-08-03T16:40:00+08:00
 - **B Claude 顯式斷點**：`ChatMessage` content 支援 multipart 陣列，模型 id 屬 anthropic 系時在穩定前綴尾標 `cache_control: {"type": "ephemeral"}`；其他模型 request 形狀零變化。
 
 ## Next action
-- A＋B＋C＋命中率落檔全部完成（2026-08-03，cargo test 168 全綠；細節與行號見 handoffs/prompt-cache-optimization.md）。程式面收工，唯一剩餘：實機驗收——開桌玩幾輪後看「文件/TableTavern/prompt-cache.log」的 hit_rate（隱式模型與 Claude 系都應 >0），並比對搬尾端後的敘事品質（變差則回退）。驗收通過即可結案。
-- 注意：C 查證後修正一項分析假設——OpenRouter 不回報快取寫入 token 數（官方文件明言不支援），只有讀取命中 cached_tokens；usage accounting 只對 OpenRouter 端點帶。B 未改 ChatMessage 型別，multipart 轉換只在請求序列化邊界（見交接檔）。
+- 2026-08-03 晚：七個對照實驗鎖死 claude CLI 快取規則（塊級匹配、5 分鐘壽命、續聊＝99.7% 命中），拍板翻案 §8.1 改 `--resume` 續聊架構＋案 C（角色共用一條 session、私設注入後從本機 session 檔抹寫）＋GM 合併呼叫＋log 升級（遠期通設定頁額度/命中率分頁）。範圍收束只做 claude，OpenRouter／API 驗收擱置。完整規格與拆包順序見交接檔——**下一對話照交接檔開工實作**（包 1 session 檔操作 → 包 2 resume 地基 → 包 3 凍結快照 → 包 4 log → 包 5 GM 合併 → ping 最後拍）。
 
 ## 待拍板
-- 條目與狀態搬到尾端對模型遵循度的影響（實機驗收時比對；若明顯變差，該項改回 system 並記錄取捨）。
-- ~~命中率顯示的正式 UI~~ 已拍板（2026-08-03）：不做正式 UI，逐行落檔「文件/TableTavern/prompt-cache.log」，日後介面改動打破前綴可隨時查。
-- ~~B 的優先度~~ 已拍板（2026-08-03）：現在做，已完成。
+- 補丁塊與私設後置的遵循度（實機驗收比對，明顯變差再議）。
+- 保溫 ping 的觸發細節（實作輪拍）。
 
 ## Constraints
 - 送進模型的資訊總量與可見性規則不變：GM 專有條目永不進角色 context、私有設定規則照舊（transport.rs 頂部註解與 KICKOFF §4）。
