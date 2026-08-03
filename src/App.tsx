@@ -347,8 +347,10 @@ function cliNoticeKey(id: string) {
 
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
-// 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token，超過就提示玩家可以換場省額度
-const SCENE_LENGTH_HINT_CHARS = 8000;
+// 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
+// 快取上線後換幕不再省額度（摘要與換幕後首輪都全額計價，約等於連跑四輪），
+// 提醒的理由改成「紀錄長到模型顧不上前面」，門檻從 8000 提到 30000（2026-08-04 實測拍板）。
+const SCENE_LENGTH_HINT_CHARS = 30000;
 
 function nowTs() {
   return new Date().toISOString();

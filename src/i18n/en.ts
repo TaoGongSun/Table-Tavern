@@ -293,7 +293,7 @@ export const en: Record<MsgKey, string> = {
   exportFileName: "{table} transcript {stamp}",
   sceneAdvance: "New Act",
   sceneAdvanceHint: "End this act: compress the current log into a recap and start a new act",
-  sceneTooLongHint: "This log is getting long — consider starting a new act to compress it",
+  sceneTooLongHint: "The log is long enough that the model may lose track of earlier events — a new act compresses it",
   pastScenes: "Past Acts ({count})",
   sceneLabel: "Act {n}",
   sceneWithTitle: "Act {n}: {title}",

@@ -288,7 +288,7 @@ export const zh = {
   exportFileName: "{table} 跑團紀錄 {stamp}",
   sceneAdvance: "換幕",
   sceneAdvanceHint: "結束本幕：把目前紀錄壓成前情提要，開新幕",
-  sceneTooLongHint: "紀錄較長，建議換幕壓縮前情",
+  sceneTooLongHint: "紀錄很長，模型可能顧不上前面，建議換幕壓縮",
   pastScenes: "前幕（{count}）",
   sceneLabel: "第 {n} 幕",
   sceneWithTitle: "第 {n} 幕：{title}",

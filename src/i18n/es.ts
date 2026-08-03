@@ -268,7 +268,7 @@ export const es: Record<MsgKey, string> = {
   exportFileName: "Transcripción de {table} {stamp}",
   sceneAdvance: "Nuevo acto",
   sceneAdvanceHint: "Terminar acto: comprime el historial actual en un resumen y comienza un nuevo acto",
-  sceneTooLongHint: "El historial es muy largo; considera comenzar un nuevo acto para resumirlo",
+  sceneTooLongHint: "El historial es tan largo que el modelo puede perder de vista lo ocurrido antes; un nuevo acto lo resume",
   pastScenes: "Actos previos ({count})",
   sceneLabel: "Acto {n}",
   sceneWithTitle: "Acto {n}: {title}",

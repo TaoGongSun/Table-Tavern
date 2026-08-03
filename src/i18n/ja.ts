@@ -268,7 +268,7 @@ export const ja: Record<MsgKey, string> = {
   exportFileName: "{table} セッションログ {stamp}",
   sceneAdvance: "新しい幕",
   sceneAdvanceHint: "この幕を終了：現在のログをあらすじとして圧縮し、新しい幕を開始します",
-  sceneTooLongHint: "ログが長くなっています。新しい幕を開いてあらすじを圧縮することをお勧めします",
+  sceneTooLongHint: "ログが長く、モデルが前半の出来事を見失うおそれがあります。新しい幕であらすじを圧縮しましょう",
   pastScenes: "過去の幕（{count}）",
   sceneLabel: "第 {n} 幕",
   sceneWithTitle: "第 {n} 幕：{title}",
