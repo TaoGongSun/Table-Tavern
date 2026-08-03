@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）與 C（命中率量測）實作完成＋自驗綠（2026-08-03，Cowork 雲端會話；cargo test 167 全綠＝前次 162＋A 的 2 條＋C 的 3 條）。等實機驗收：開桌看 A 的遵循度、stderr 看 `[prompt-cache]` 命中率。B（Claude 顯式斷點）未動工。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）三塊全部實作完成＋自驗綠（2026-08-03，Cowork 雲端會話；cargo test 168 全綠＝前次 162＋A 2＋C 3＋B 1）。程式面收工，等實機驗收：開桌看 A 的遵循度、stderr 看 `[prompt-cache]` 命中率（含 Claude 系模型應開始 >0）。
 
 ## Completed
 - 分析階段（2026-08-03 上午，唯讀）：快取現況、兩個打破前綴的設計、三塊方案已拍板（證據行號以 HEAD f8801e8 核對，詳見 git 歷史中本檔前一版）。
@@ -16,15 +16,19 @@ A（穩定前綴重構）與 C（命中率量測）實作完成＋自驗綠（20
   - 串流結束後 `eprintln!` 一行 `[prompt-cache] model=… prompt_tokens=… cached_tokens=… hit_rate=…%`（transport.rs:810-822）；正式 UI 位置仍待拍板。
   - **重要修正**：OpenRouter 官方文件明言「不支援回報寫入快取的 token 數」——先前分析假設的 cache_write_tokens 欄位不存在，只有讀取命中 cached_tokens（https://openrouter.ai/docs/use-cases/usage-accounting）。
   - 測試新增 3 條：`chat_request_body_adds_usage_only_when_asked_and_stays_bytewise_identical_otherwise`、`extract_usage_reads_final_chunk_and_ignores_delta_chunks`、`stream_chat_passes_usage_chunk_through_without_breaking_deltas`（mock SSE 含 usage 尾塊，增量不受影響）。
+- **B Claude 顯式斷點**（2026-08-03，本次新完成，使用者拍板「現在做」）：
+  - **實作方式與原計畫的差異**：不改 `ChatMessage` 型別（原計畫是 content 改 multipart 陣列）——multipart 轉換只發生在請求序列化邊界 `anthropic_messages`（transport.rs:731-748），組裝層／CLI 層／測試全部零波及，非 anthropic 模型逐位元不變也因此不證自明（同一 json! 構造路徑）。
+  - `chat_request_body`：模型 id 以 `anthropic/` 開頭時，messages 轉 multipart（每則 content＝單一 text 分段）並標兩個 `cache_control: {"type": "ephemeral"}` 斷點（transport.rs:764-766）。
+  - **斷點策略**：標在 system（角色卡／world.md／constant 條目，換卡前不變）與**最後一則 assistant**（其後只剩會變動的東西：可能被 push_merged 續寫的最後一則 user、動態塊、導演指示）。transcript 逐輪增長、斷點跟著前移；Anthropic 查快取會回看斷點前約 20 個 content block，前一輪的快取點仍在回看範圍內 → 逐輪增量命中。上限 4 個斷點，用 2 個。
+  - 測試 1 條：`anthropic_models_get_multipart_content_with_two_breakpoints`（transport.rs:1611）——斷點位置恰為 [0, 最後 assistant]、multipart 文字照舊、非 anthropic 維持純字串 content、無 assistant（開桌第一輪）只標 system。
 
 ## Verification
-- `cargo test`：167 passed; 0 failed（2026-08-03，雲端 Linux 容器、rustc 1.95.0）。A 的 2 條與 C 的 3 條新測試逐一確認 ok（名稱見上）。
+- `cargo test`：168 passed; 0 failed（2026-08-03，雲端 Linux 容器、rustc 1.95.0）。A 2 條、C 3 條、B 1 條新測試逐一確認 ok（名稱見上）。
 - 注意：本次在雲端容器編譯測試，未在本機跑過；下一手開工時本機重跑 `cargo test` 確認一次即可。
 
 ## Remaining / Next action
-1. **實機驗收 A＋C**（使用者本人）：終端機啟動 app（stderr 才看得到 log），同一桌連續讓 GM／角色各說兩輪，看 `[prompt-cache]` 行——隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）第二輪起 cached_tokens 應明顯大於 0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。
-2. **B Claude 顯式斷點**（等拍板優先度——使用者目前檔位若不用 Claude 系模型可延後）：`ChatMessage.content` 改支援 multipart 陣列，僅模型 id 屬 anthropic 系時在穩定前綴尾標 `cache_control: {"type": "ephemeral"}`；其他模型序列化結果需與現狀逐位元相同（加測試）。
-3. 命中率顯示的正式 UI（對話頁角落 vs 設定／除錯區）待拍板後實作。
+1. **實機驗收 A＋B＋C**（使用者本人）：終端機啟動 app（stderr 才看得到 log），同一桌連續讓 GM／角色各說兩輪，看 `[prompt-cache]` 行——隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）與 Claude 系（anthropic/，靠 B 的顯式斷點）第二輪起 cached_tokens 都應明顯大於 0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。注意 Anthropic 顯式快取有最低門檻（約 1024 tokens），太小的桌可能不寫快取，屬預期。
+2. 命中率顯示的正式 UI（對話頁角落 vs 設定／除錯區）待拍板後實作。
 
 ## Constraints
 同 tasks 檔。另注意：constant 條目與角色卡留在 system 是刻意的（穩定且需要高遵循度）；A 實測若條目放尾端遵循度明顯變差，該項回退並在任務檔記錄取捨。
