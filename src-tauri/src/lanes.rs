@@ -37,11 +37,9 @@ pub(crate) struct ClaudeCall {
 
 /// 回覆會以什麼形狀落回正典 transcript（下一輪靠它跳過 session 裡已有的自家回覆）。
 pub(crate) enum ReplyEcho {
-    /// 不落 transcript（GM 點名）
-    None,
     /// 角色台詞：事件原文＝回覆原文
     Dialogue { speaker_id: String },
-    /// GM 旁白：事件原文＝剝掉狀態欄後的顯示文字
+    /// GM 旁白：事件原文＝剝掉狀態欄與「下一位」點名行後的顯示文字
     Narration,
 }
 
@@ -319,20 +317,19 @@ fn apply_rewrite(
     session_file::write_atomic(&path, &file)
 }
 
-fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> Option<ExpectedReply> {
+fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
     match echo {
-        ReplyEcho::None => None,
-        ReplyEcho::Dialogue { speaker_id } => Some(ExpectedReply {
+        ReplyEcho::Dialogue { speaker_id } => ExpectedReply {
             speaker_id: speaker_id.clone(),
             kind: TranscriptKind::Dialogue,
             text: reply.to_owned(),
-        }),
-        // 前端落 transcript 的是剝掉狀態欄的顯示文字（gm_narrate 的既有行為）
-        ReplyEcho::Narration => Some(ExpectedReply {
+        },
+        // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）
+        ReplyEcho::Narration => ExpectedReply {
             speaker_id: String::new(),
             kind: TranscriptKind::Narration,
-            text: transport::extract_state_block(reply).1,
-        }),
+            text: transport::extract_next_speaker(&transport::extract_state_block(reply).1).1,
+        },
     }
 }
 
@@ -462,7 +459,7 @@ pub(crate) async fn run_turn(
                     Ok(()) => {
                         if let Some(state) = store.get_mut(&key) {
                             state.pending_rewrite = None;
-                            state.expected_reply = expected_reply_for(&input.echo, &reply);
+                            state.expected_reply = Some(expected_reply_for(&input.echo, &reply));
                             state.last_prompt_tokens =
                                 prompt_tokens.load(std::sync::atomic::Ordering::Relaxed);
                         }
@@ -721,11 +718,10 @@ mod tests {
 
     #[test]
     fn narration_echo_expects_display_text_without_state_fence() {
-        let reply = "夜更深了。\n```state\ntime: 午夜\n```";
-        let expected = expected_reply_for(&ReplyEcho::Narration, reply).unwrap();
+        let reply = "夜更深了。\n```state\ntime: 午夜\n```\n下一位：狐狸";
+        let expected = expected_reply_for(&ReplyEcho::Narration, reply);
         assert_eq!(expected.kind, TranscriptKind::Narration);
         assert_eq!(expected.text, "夜更深了。");
-        assert!(expected_reply_for(&ReplyEcho::None, reply).is_none());
     }
 
     #[test]

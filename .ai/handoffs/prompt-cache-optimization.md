@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）＋包 4（log 升級 JSONL＋診斷標籤）完成**，cargo test 212 全綠、零警告（2026-08-04 本機）。claude 訂閱模式的角色對話／GM 旁白／GM 點名已全部走 resume 續聊線，改卡／改世界書當輪不再重開線。下一步包 5 GM 合併。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）＋包 4（log 升級 JSONL＋診斷標籤）＋包 5（GM 旁白＋點名合併）完成**，cargo test 213 全綠、零警告（2026-08-04 本機）。claude 訂閱模式的角色對話與 GM 呼叫已全部走 resume 續聊線，改卡／改世界書當輪不再重開線；GM 每輪推進由兩次 CLI 呼叫（旁白＋點名）併成一次。下一步真桌驗收。
 
 **2026-08-03 晚拍板收束範圍：只打 CLI（claude 訂閱）這條路**——OpenRouter／API 模式、1h 快取、模型體質表、開桌預熱、GM 全代演全部出局。A／B／C 的 API 驗收擱置。
 
@@ -81,9 +81,17 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `PromptCacheUsage` 補 `output_tokens`＋`cost_usd`（claude 的 `total_cost_usd`，四支只有它直接回報金額；其餘 None 由包 6 靠有值的行加總）。
   - 測試新增 3 條（usage_log：七標籤判定矩陣、JSONL 行形狀含 lane／cost／省略旗標、token 粗估與 hash），改寫 3 條既有（cli e2e、transport stream_chat、lanes 補丁／追平 e2e 改斷言三筆 JSONL：warmup+first-turn／ok+patched+expected_cached=100／expired+rebased+age≥3600）。
 
+- **包 5 GM 旁白＋點名合併**（2026-08-04，本次新完成；主線直寫）：
+  - `transport.rs`：`narrate_instruction` 加 roster／player 參數——名單非空時指示尾端追加「圍欄之後最後另起一行輸出『下一位：〈名字〉』」（含玩家哨兵；名單空＝純世界書開局退回純旁白，不要求點名行）；新增 `extract_next_speaker`（與 extract_state_block 同族：只認整行、行首「下一位」／「Next」＋冒號，掃到多行取最後一行，剝行後回傳點名原文＋顯示文字；行首普通英文 Next 無冒號不誤判）；`suggest_instruction` 刪除，`pick_speaker` 留用對名字。
+  - `lib.rs`：`gm_narrate` 回傳改 `GmNarration { text, next }`——剝完狀態欄再剝點名行，`pick_speaker` 對回角色 id（玩家哨兵原樣、對不上＝None 不當錯誤）；`gm_suggest_speaker` 命令刪除。claude lane 與單發兩條路同一份指示與解析。
+  - `lanes.rs`：旁白 echo 的 expected_reply 同步改「剝狀態欄＋剝點名行」（與前端落 transcript 的顯示文字逐字一致，續聊對點才成立）；`ReplyEcho::None` 唯一使用者是點名，隨之刪除（`expected_reply_for` 收掉 Option）。
+  - `App.tsx`：抽 `narrateOnce`（串流旁白→落 transcript→回傳 next），旁白鈕沿用但忽略 next（讓玩家自己決定下一步）；`gmAdvance` 迴圈改「旁白→點名紀錄→角色接話」，GM 沒點名＝就地停下，輪到玩家／每回合上限照舊。GM 每輪推進少打一次 CLI 呼叫，session 尾巴也少一組「指示→名字」。
+  - 11 語系 `gmAdvanceHint` 改述「先旁白再點名」。測試：transport 新增 `extract_next_speaker` 4 情境＋旁白指示驗名單／哨兵／空名單退回，lanes 旁白 echo 測試補點名行。
+- 舊 log 遺留：資料目錄裡的 `prompt-cache.log`（純文字舊格式）不再寫入，包 6 只讀 `.jsonl`。
+
 ## Verification
-- `cargo test`：**212 passed; 0 failed**、cargo 零警告（2026-08-04 本機真跑，含包 4 新 3 條、改寫 3 條）。
-- 包 4 未再花使用者額度做實機呼叫（機制由假 CLI e2e 覆蓋）；真桌驗收時看 `文件/TableTavern/prompt-cache.jsonl` 即可一次確認欄位與標籤。
+- `cargo test`：**213 passed; 0 failed**、cargo 零警告（2026-08-04 本機真跑，含包 5 新 2 條、改寫 2 條）；`npm run build`＋`check:i18n` 全綠。
+- 包 4／包 5 未再花使用者額度做實機呼叫（機制由假 CLI e2e 覆蓋）；「模型是否乖乖輸出下一位行」屬真桌驗收項，看 `文件/TableTavern/prompt-cache.jsonl` 與推進行為即可確認。
 - 案 C 改寫-resume 機制為實機查證（見上，scratchpad/rewrite-probe/probe.sh 可重跑；實驗腳本需 `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN`）。
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
@@ -94,7 +102,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 - session 檔的 queue-operation／last-prompt 雜項行留有整包 prompt 副本（含機密段）：那些行不進模型上下文，私設隔離（模型可見面）不受影響；磁碟上正典檔本來就有這些資料。
 
 ## Remaining / Next action
-**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。下一步：**包 5 GM 旁白＋點名合併**（規格見實作拆包順序第 5 項）。以下為定稿規格。
+**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。程式面包 1–5 全部完成，下一步：**真桌驗收**（見下方驗收段），通過後補包 6 額度分頁 UI。以下為定稿規格。
 
 **2026-08-03 追加拍板（額度分頁需求）**：使用者要額度計量分頁顯示命中率＋顏色燈號＋壞狀況原因句，且原因由 app 純規則判定（不靠 AI）。影響：(1) 包 3 順手把**線重開／降級的原因代碼**落 log（重開當下記，事後推不回來）——已隨包 3 完成；(2) 包 4 log 改**結構化 JSONL**＋診斷標籤定死成有限清單（正常／前綴斷於第幾段／過期／重開-原因X／已降級），資料齊到 UI 拿來就能畫；(3) **包 6 額度分頁 UI** 新增，排在真桌驗收**之後**再補。
 
@@ -121,7 +129,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 2. ~~包 2 resume 流程地基~~ **完成**（2026-08-03 深夜，見 Completed）。
 3. ~~包 3 凍結快照＋補丁＋追平＋原因代碼~~ **完成**（2026-08-03，見 Completed）。
 4. ~~包 4 log 升級~~ **完成**（2026-08-04，見 Completed；標籤清單與欄位以 `usage_log.rs` 模組頂註解為準）。
-5. **包 5 GM 旁白＋點名合併成一次呼叫**（已拍板）：旁白尾固定附「下一位：」行，`extract_state_block` 同族解析；**需先查前端回合 orchestration**（narrate／suggest 現為兩個 Tauri command，前端流程要跟著併）。
+5. ~~包 5 GM 旁白＋點名合併成一次呼叫~~ **完成**（2026-08-04，見 Completed）。
 6. **包 6 額度分頁 UI**（2026-08-03 拍板，排真桌驗收之後）：設定頁「額度花費＋命中率」分頁，讀 JSONL log 畫花費＋命中率＋顏色燈號＋原因句。
 7. **保溫 ping**（已拍板可考慮，最後做）：距上輪近 4 分鐘且玩家還在（視窗聚焦／打字中）發迷你訊息刷新壽命；ping 後把垃圾訊息從 session 檔截掉（快取時鐘已被讀取刷新，截尾不影響）。細節實作時拍。
 8. agy 量測（未拍板，擱置）。

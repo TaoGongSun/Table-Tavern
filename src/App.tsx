@@ -3631,19 +3631,29 @@ function App() {
     }
   }
 
-  // 簡易導演：GM 插入旁白（NewPlan §6.1、MVP 第 9 項）
+  // 單次 GM 旁白＋點名（不含 busy 防護）：後端一次呼叫完成，旁白落 transcript，
+  // 回傳下一位發言者（角色 id／玩家哨兵／null＝GM 沒點名）；失敗往外拋由呼叫端收尾
+  async function narrateOnce(): Promise<string | null> {
+    setGenerating({ id: "", kind: "narration" });
+    setStreamText("");
+    const onDelta = new Channel<string>();
+    onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
+    const { text, next } = await invoke<{ text: string; next: string | null }>("gm_narrate", {
+      worldId: table,
+      onDelta,
+    });
+    await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text });
+    await refreshTableState();
+    await markCliConnectedFromChat();
+    return next;
+  }
+
+  // 簡易導演：GM 插入旁白（NewPlan §6.1、MVP 第 9 項）；一併回來的點名這裡不用，讓玩家自己決定下一步
   async function gmNarrate() {
     if (generating !== null) return;
     setError("");
-    setGenerating({ id: "", kind: "narration" });
-    setStreamText("");
     try {
-      const onDelta = new Channel<string>();
-      onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-      const full = await invoke<string>("gm_narrate", { worldId: table, onDelta });
-      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text: full });
-      await refreshTableState();
-      await markCliConnectedFromChat();
+      await narrateOnce();
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
@@ -3653,25 +3663,24 @@ function App() {
     }
   }
 
-  // 簡易導演：GM 點名→角色接話的接力，至「玩家」哨兵或每回合上限停下（NewPlan §6.1）
+  // 簡易導演：GM 旁白＋點名→角色接話的接力，至「輪到玩家」、GM 沒點名或每回合上限停下（NewPlan §6.1）
   async function gmAdvance() {
     if (!config || generating !== null || activeCharacters.length === 0) return;
     setError("");
     const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
     try {
       for (let turn = 0; turn < max; turn += 1) {
-        setGenerating({ id: "", kind: "narration" });
-        setStreamText("");
-        const characterId = await invoke<string>("gm_suggest_speaker", { worldId: table });
+        const next = await narrateOnce();
+        if (next === null) break;
         // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
-        if (characterId === PLAYER_SENTINEL) {
+        if (next === PLAYER_SENTINEL) {
           const you = playerCard?.name || t("playerLabel");
           await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name: you }) });
           break;
         }
-        const name = metaOf(characterId)?.name ?? characterId;
+        const name = metaOf(next)?.name ?? next;
         await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
-        await replyOnce(characterId);
+        await replyOnce(next);
       }
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {

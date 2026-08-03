@@ -313,7 +313,7 @@ export const ja: Record<MsgKey, string> = {
   gmNarrate: "GMナレーション",
   gmNarrateHint: "GMにシーンのナレーションを挿入させます（GMは世界設定とすべてのキャラクターシートを参照できます）",
   gmAdvance: "GM展開",
-  gmAdvanceHint: "GMが次のキャラクターを指名してシーンを進行させます。「プレイヤーの番」になるか、ラウンド上限に達すると停止します",
+  gmAdvanceHint: "GMがナレーションを入れてから次のキャラクターを指名し、シーンを進行させます。「プレイヤーの番」になるか、ラウンド上限に達すると停止します",
   undoLast: "取り消す",
   undoLastHint: "記録の最後の1件を削除します。続けて押せばさらに遡れます（この幕の中だけ）",
   undoRestore: "取り消した1件を戻す",

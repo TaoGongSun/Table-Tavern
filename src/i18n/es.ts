@@ -313,7 +313,7 @@ export const es: Record<MsgKey, string> = {
   gmNarrate: "Narración GM",
   gmNarrateHint: "Pedir al GM que narre la escena (tiene acceso a los ajustes del mundo y a todas las fichas)",
   gmAdvance: "Avance GM",
-  gmAdvanceHint: "El GM hace hablar al siguiente personaje para avanzar la trama, y se detiene al llegar al turno del jugador o al límite de ronda",
+  gmAdvanceHint: "El GM narra y luego hace hablar al siguiente personaje para avanzar la trama, y se detiene al llegar al turno del jugador o al límite de ronda",
   undoLast: "Deshacer",
   undoLastHint: "Borra la última entrada del registro; pulsa de nuevo para seguir retrocediendo, solo dentro de esta escena",
   undoRestore: "Restaurar lo deshecho",

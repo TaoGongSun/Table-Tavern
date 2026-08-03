@@ -313,7 +313,7 @@ export const fr: Record<MsgKey, string> = {
   gmNarrate: "Narration du MJ",
   gmNarrateHint: "Demander au MJ d'insérer une narration de scène (le MJ a accès aux paramètres du monde et à toutes les fiches de personnage)",
   gmAdvance: "Avancée du MJ",
-  gmAdvanceHint: "Le MJ donne la parole au personnage suivant et fait progresser l'histoire. S'arrête au tour du joueur ou à la limite par round",
+  gmAdvanceHint: "Le MJ narre puis donne la parole au personnage suivant pour faire progresser l'histoire. S'arrête au tour du joueur ou à la limite par round",
   undoLast: "Annuler",
   undoLastHint: "Supprime la dernière entrée du journal ; appuyez encore pour remonter, dans cette scène uniquement",
   undoRestore: "Restaurer",

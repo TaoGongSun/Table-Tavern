@@ -1416,23 +1416,43 @@ async fn gm_lane_reply(
     .await
 }
 
-/// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
+/// gm_narrate 回傳：剝乾淨的旁白顯示文字＋下一位發言者（角色 id 或玩家哨兵）。
+/// GM 沒點名或名字對不上名單＝None，前端就地停下、不當錯誤。
+#[derive(Serialize)]
+struct GmNarration {
+    text: String,
+    next: Option<String>,
+}
+
+/// 簡易導演：GM 旁白＋點名一次呼叫完成（NewPlan §6.1＋快取包 5）。
+/// 旁白串流回前端後由前端落 transcript；點名行與狀態欄在這裡剝掉，不進顯示文字。
 #[tauri::command]
 async fn gm_narrate(
     app: tauri::AppHandle,
     world_id: String,
     on_delta: tauri::ipc::Channel<String>,
-) -> Result<String, String> {
+) -> Result<GmNarration, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
     let materials = gm_materials(&root, &world_id)?;
-    let closing = "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。";
+    let roster: Vec<String> = materials
+        .cards
+        .iter()
+        .map(|card| card.name.clone())
+        .collect();
+    let player_name = materials.player.as_ref().map(|card| card.name.as_str());
+    let instruction_message = transport::narrate_instruction(&lang, &roster, player_name);
+    let closing = if roster.is_empty() {
+        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
+    } else {
+        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
+    };
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
     let reply = if chat_transport(&config) == "claude" {
-        let instruction = format!("{}\n{closing}", transport::narrate_instruction(&lang).content);
+        let instruction = format!("{}\n{closing}", instruction_message.content);
         gm_lane_reply(
             &app,
             &config,
@@ -1455,7 +1475,7 @@ async fn gm_narrate(
             &materials.state.state,
             &lang,
         );
-        messages.push(transport::narrate_instruction(&lang));
+        messages.push(instruction_message);
         stream_via_transport(
             &app,
             &config,
@@ -1470,6 +1490,7 @@ async fn gm_narrate(
         .await?
     };
     let (fields, display) = transport::extract_state_block(&reply);
+    let (next_raw, display) = transport::extract_next_speaker(&display);
     // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
     if !fields.is_empty() {
         if let Ok(root) = data_root(&app) {
@@ -1481,78 +1502,23 @@ async fn gm_narrate(
             }
         }
     }
-    Ok(display)
-}
-
-/// 簡易導演：GM 建議下一位發言者（NewPlan §6.1）。
-/// LLM 只認名字，點名後對回角色 id 名單（同名取第一個）；玩家哨兵原樣回傳。
-#[tauri::command]
-async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<String, String> {
-    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let lang = transport::ui_language(&config);
-    let root = data_root(&app)?;
-    let materials = gm_materials(&root, &world_id)?;
-    if materials.cards.is_empty() {
-        return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
-    }
-    let roster: Vec<String> = materials
-        .cards
-        .iter()
-        .map(|card| card.name.clone())
-        .collect();
-    let player_name = materials.player.as_ref().map(|card| card.name.as_str());
-    let instruction_message = transport::suggest_instruction(&roster, player_name);
-    let closing = "現在請執行上述導演指示，只輸出一個名字。";
-    let reply = if chat_transport(&config) == "claude" {
-        // 點名不落 transcript（echo None），session 只多一組「指示→名字」的小尾巴
-        let instruction = format!("{}\n{closing}", instruction_message.content);
-        gm_lane_reply(
-            &app,
-            &config,
-            &root,
-            &world_id,
-            &materials,
-            &instruction,
-            lanes::ReplyEcho::None,
-            &lang,
-            |_| {},
-        )
-        .await?
-    } else {
-        let mut messages = transport::assemble_gm_messages(
-            &materials.world_md,
-            &materials.cards,
-            materials.player.as_ref(),
-            &materials.events,
-            &materials.worldbook,
-            &materials.state.state,
-            &lang,
-        );
-        messages.push(instruction_message);
-        stream_via_transport(
-            &app,
-            &config,
-            None,
-            false,
-            transport::gm_tier(&config),
-            "GM",
-            closing,
-            &messages,
-            |_| {},
-        )
-        .await?
-    };
-    let picked = transport::pick_speaker(&reply, &roster, player_name)
-        .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))?;
-    if picked == transport::PLAYER_SENTINEL {
-        return Ok(picked);
-    }
-    materials
-        .cards
-        .iter()
-        .find(|card| card.name == picked)
-        .map(|card| card.id.clone())
-        .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))
+    // LLM 只認名字，點名後對回角色 id（同名取第一個）；玩家哨兵原樣回傳
+    let next = next_raw
+        .and_then(|raw| transport::pick_speaker(&raw, &roster, player_name))
+        .and_then(|picked| {
+            if picked == transport::PLAYER_SENTINEL {
+                return Some(picked);
+            }
+            materials
+                .cards
+                .iter()
+                .find(|card| card.name == picked)
+                .map(|card| card.id.clone())
+        });
+    Ok(GmNarration {
+        text: display,
+        next,
+    })
 }
 
 /// 換場：把當前場景公開紀錄壓成一則摘要，寫進新場景開頭，current_scene +1（NewPlan 換場＋場景摘要）。
@@ -1768,7 +1734,6 @@ pub fn run() {
             read_gallery_image,
             delete_gallery_image,
             gm_narrate,
-            gm_suggest_speaker,
             advance_scene,
             generate_table_outline,
             generate_table_character,
