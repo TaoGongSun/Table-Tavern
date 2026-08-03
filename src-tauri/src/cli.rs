@@ -571,6 +571,7 @@ pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
 /// grok end 事件的用量。input_tokens **不含** cache_read_input_tokens
 /// （實測讀取數可遠大於輸入數：input=31509、cache_read=146304），總輸入要加總。
 /// grok 不回報寫入快取的 token 數（實測 usage 只有 read），created 恆為 0。
+/// 金額在 end 事件頂層的 total_cost_usd（grok 0.2.111 實測），缺欄照慣例當 None。
 pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     let value = usage_event(line, "end")?;
     let usage = value.get("usage")?;
@@ -580,7 +581,7 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
         cached_tokens: cached,
         created_tokens: 0,
         output_tokens: token_count(usage, "output_tokens"),
-        cost_usd: None,
+        cost_usd: value.get("total_cost_usd").and_then(|cost| cost.as_f64()),
     })
 }
 
@@ -657,6 +658,8 @@ pub fn parse_grok_line(line: &str) -> CliLine {
 /// 帶著就在收尾事件把這次呼叫追加成一行 JSONL，與 API 那條共用同一份檔案與格式。
 pub struct UsageLog<'a> {
     pub path: &'a Path,
+    /// 這次呼叫屬於哪一桌；None＝開桌生成等不屬於任何一桌的呼叫。
+    pub world: Option<&'a str>,
     /// log 的 transport 欄位，例如 "claude"。
     pub transport: &'a str,
     pub model: &'a str,
@@ -726,6 +729,7 @@ pub async fn run_cli(
                 );
                 crate::usage_log::append_call(
                     log.path,
+                    log.world,
                     log.transport,
                     log.model,
                     log.lane.as_ref(),
@@ -884,15 +888,23 @@ mod tests {
     }
 
     /// grok 的 cache_read 可遠大於 input_tokens，證明兩者不重疊，總輸入要加總。
+    /// 金額在頂層 total_cost_usd（包 6 額度分頁要顯示），缺欄時仍能解析、只是沒金額。
     #[test]
     fn parses_grok_usage_adding_cache_read_to_input() {
         let usage = parse_grok_usage(
-            r#"{"type":"end","stopReason":"EndTurn","usage":{"input_tokens":31509,"cache_read_input_tokens":146304,"output_tokens":1416,"total_tokens":179229}}"#
+            r#"{"type":"end","stopReason":"EndTurn","total_cost_usd":0.0421,"usage":{"input_tokens":31509,"cache_read_input_tokens":146304,"output_tokens":1416,"total_tokens":179229}}"#
         )
         .expect("end 事件有 usage");
         assert_eq!(usage.prompt_tokens, 177813);
         assert_eq!(usage.cached_tokens, 146304);
+        assert_eq!(usage.cost_usd, Some(0.0421));
         assert!((usage.hit_rate() - 82.28).abs() < 0.01);
+        assert_eq!(
+            parse_grok_usage(r#"{"type":"end","usage":{"input_tokens":10}}"#)
+                .expect("缺金額欄仍解析")
+                .cost_usd,
+            None
+        );
         assert_eq!(parse_grok_usage(r#"{"type":"text","data":"好"}"#), None);
     }
 
@@ -1160,6 +1172,7 @@ mod tests {
             parse_claude_line,
             Some(UsageLog {
                 path: &log_path,
+                world: Some("w1"),
                 transport: "claude",
                 model: "sonnet",
                 parse: parse_claude_usage,
@@ -1180,6 +1193,7 @@ mod tests {
         assert_eq!(logged.lines().count(), 1);
         let record: serde_json::Value = serde_json::from_str(logged.trim()).unwrap();
         assert_eq!(record["transport"], "claude");
+        assert_eq!(record["world"], "w1");
         assert_eq!(record["model"], "sonnet");
         assert_eq!(record["prompt_tokens"], 100);
         assert_eq!(record["cached_tokens"], 99);

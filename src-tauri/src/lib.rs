@@ -10,6 +10,7 @@ mod session_file;
 mod snapshot_patch;
 mod transport;
 mod usage_log;
+mod usage_report;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
 use serde::{Deserialize, Serialize};
@@ -728,6 +729,7 @@ async fn stream_via_transport(
     transport_override: Option<&str>,
     allow_cli_tools: bool,
     tier: data::Tier,
+    world: Option<&str>,
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
@@ -743,7 +745,7 @@ async fn stream_via_transport(
     let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
-        return transport::stream_chat(config, &model, messages, usage_log.as_deref(), emit)
+        return transport::stream_chat(config, &model, messages, usage_log.as_deref(), world, emit)
             .await
             .map_err(|error| error.to_string());
     }
@@ -776,6 +778,7 @@ async fn stream_via_transport(
                 cli::parse_claude_line,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     path,
+                    world,
                     transport: "claude",
                     model,
                     parse: cli::parse_claude_usage,
@@ -800,6 +803,7 @@ async fn stream_via_transport(
                 cli::parse_codex_line,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     path,
+                    world,
                     transport: "codex",
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_codex_usage,
@@ -815,7 +819,7 @@ async fn stream_via_transport(
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::agy_args(model, &combined, allow_cli_tools);
-            cli::run_cli(
+            let reply = cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
@@ -825,7 +829,14 @@ async fn stream_via_transport(
                 None, // agy 走純文字輸出，拿不到用量（換 JSON 格式才有，未拍板）
                 emit,
             )
-            .await
+            .await;
+            // 額度分頁至少要看得到「這一輪發生過」，否則 agy 整條路在分頁上等於不存在
+            if reply.is_ok() {
+                if let Some(path) = usage_log.as_deref() {
+                    usage_log::append_unreported(path, world, "agy", model.unwrap_or("(CLI 預設)"));
+                }
+            }
+            reply
         }
         "grok" => {
             // grok 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
@@ -841,6 +852,7 @@ async fn stream_via_transport(
                 cli::parse_grok_line,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     path,
+                    world,
                     transport: "grok",
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_grok_usage,
@@ -1180,6 +1192,7 @@ async fn generate_character_image(
         Some(&transport_kind),
         true,
         transport::gm_tier(&config),
+        Some(&world_id),
         "",
         "",
         &messages,
@@ -1322,6 +1335,7 @@ async fn chat_with_character(
         None,
         false,
         card.tier,
+        Some(&world_id),
         &card.name,
         &closing,
         &messages,
@@ -1482,6 +1496,7 @@ async fn gm_narrate(
             None,
             false,
             transport::gm_tier(&config),
+            Some(&world_id),
             "GM",
             closing,
             &messages,
@@ -1521,6 +1536,52 @@ async fn gm_narrate(
     })
 }
 
+/// 目前設定實際會用到的（來源, 模型），供額度分頁標出「使用中」。
+/// 看的是解析後真正傳給連線的模型字串，與 log 的欄位同一把尺。
+fn current_models(config: &data::AppConfig) -> Vec<(String, String)> {
+    let source = chat_transport(config);
+    let tiers = [data::Tier::Best, data::Tier::Balanced, data::Tier::Fast];
+    tiers
+        .into_iter()
+        .filter_map(|tier| {
+            let model = match source.as_str() {
+                "api" => transport::resolve_model(tier, config).ok()?,
+                "claude" => cli::tier_override(&config.tier_models, "claude", tier)
+                    .unwrap_or_else(|| cli::claude_model_for(tier))
+                    .to_owned(),
+                cli_id => cli::tier_override(&config.tier_models, cli_id, tier)
+                    .unwrap_or("(CLI 預設)")
+                    .to_owned(),
+            };
+            Some((source.clone(), model))
+        })
+        .collect()
+}
+
+/// 額度分頁（包 6）：把資料目錄的 prompt-cache.jsonl 彙總成報表。
+/// world_id 為 None＝所有桌總計；空字串＝未標桌（加桌欄位之前的舊紀錄）。
+#[tauri::command]
+fn usage_report(
+    app: tauri::AppHandle,
+    world_id: Option<String>,
+) -> Result<usage_report::UsageReport, String> {
+    let root = data_root(&app)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    // 讀不到（還沒跑過任何呼叫）就當空檔，分頁顯示「還沒有紀錄」
+    let log = std::fs::read_to_string(root.join("prompt-cache.jsonl")).unwrap_or_default();
+    let names: Vec<(String, String)> = data::list_worlds(&root)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|world| (world.id, world.name))
+        .collect();
+    Ok(usage_report::summarize(
+        &log,
+        world_id.as_deref(),
+        &names,
+        &current_models(&config),
+    ))
+}
+
 /// 保溫 ping（包 7）：玩家還在、快取快到期時由前端呼叫，替這桌每條活著的線刷新五分鐘壽命。
 /// 回傳實際保溫的線數——claude 以外的傳輸、或這桌還沒開過線時回 0，前端據此不再重試。
 #[tauri::command]
@@ -1555,6 +1616,7 @@ async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, S
         None,
         false,
         transport::gm_tier(&config),
+        Some(&world_id),
         "GM",
         "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
         &messages,
@@ -1601,6 +1663,7 @@ async fn generate_table_outline(
         None,
         false,
         transport::gm_tier(&config),
+        None,
         "GM",
         "Generate the campaign outline exactly in the requested structure.",
         &messages,
@@ -1631,6 +1694,7 @@ async fn generate_table_character(
         None,
         false,
         transport::gm_tier(&config),
+        None,
         "GM",
         "Generate exactly one character in the requested structure.",
         &messages,
@@ -1670,6 +1734,7 @@ async fn generate_table_expand(
         None,
         false,
         transport::gm_tier(&config),
+        None,
         "GM",
         "Generate the full campaign materials exactly in the requested structure.",
         &messages,
@@ -1748,6 +1813,7 @@ pub fn run() {
             delete_gallery_image,
             gm_narrate,
             keepalive_lanes,
+            usage_report,
             advance_scene,
             generate_table_outline,
             generate_table_character,

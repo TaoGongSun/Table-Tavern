@@ -126,8 +126,10 @@ pub fn text_hash(text: &str) -> String {
 }
 
 /// 一次呼叫一行。lane 為 None＝單發路徑（API／codex／grok），只記數字。
+/// world 為 None＝不屬於任何一桌（開桌生成）；加欄前的舊行同樣沒有，額度分頁歸「未標桌」。
 pub fn append_call(
     path: &Path,
+    world: Option<&str>,
     transport: &str,
     model: &str,
     lane: Option<&LaneContext>,
@@ -135,6 +137,9 @@ pub fn append_call(
 ) {
     let mut fields = Map::new();
     fields.insert("transport".to_owned(), json!(transport));
+    if let Some(world) = world {
+        fields.insert("world".to_owned(), json!(world));
+    }
     fields.insert("model".to_owned(), json!(model));
     fields.insert("diag".to_owned(), json!(diagnose(lane, &usage).as_str()));
     fields.insert("prompt_tokens".to_owned(), json!(usage.prompt_tokens));
@@ -167,10 +172,26 @@ pub fn append_call(
     append(path, fields);
 }
 
+/// 完全不回報用量的來源（agy）：只記一輪，額度分頁顯示「輪數＋不回報用量」。
+pub fn append_unreported(path: &Path, world: Option<&str>, transport: &str, model: &str) {
+    let mut fields = Map::new();
+    fields.insert("transport".to_owned(), json!(transport));
+    if let Some(world) = world {
+        fields.insert("world".to_owned(), json!(world));
+    }
+    fields.insert("model".to_owned(), json!(model));
+    fields.insert("diag".to_owned(), json!(Diag::Single.as_str()));
+    fields.insert("unreported".to_owned(), json!(true));
+    append(path, fields);
+}
+
 /// 沒有用量數字的線事件（目前只有抹寫失敗丟線）。
-pub fn append_event(path: &Path, lane: &str, diag: Diag, reason: &str) {
+pub fn append_event(path: &Path, world: Option<&str>, lane: &str, diag: Diag, reason: &str) {
     let mut fields = Map::new();
     fields.insert("transport".to_owned(), json!("claude"));
+    if let Some(world) = world {
+        fields.insert("world".to_owned(), json!(world));
+    }
     fields.insert("lane".to_owned(), json!(lane));
     fields.insert("diag".to_owned(), json!(diag.as_str()));
     fields.insert("reason".to_owned(), json!(reason));
@@ -277,21 +298,30 @@ mod tests {
         patched.patched = true;
         append_call(
             &path,
+            Some("w1"),
             "claude",
             "sonnet",
             Some(&patched),
             usage(9_300, 9_000, 300),
         );
-        append_event(&path, "chars:sonnet", Diag::DropLane, "rewrite-failed");
+        append_event(
+            &path,
+            Some("w1"),
+            "chars:sonnet",
+            Diag::DropLane,
+            "rewrite-failed",
+        );
+        append_unreported(&path, None, "agy", "(CLI 預設)");
 
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 3);
 
         let call: Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(call["ts"].as_str().unwrap().len(), 19); // 秒級：分不出五分鐘過期線就沒用
         assert_eq!(call["transport"], json!("claude"));
+        assert_eq!(call["world"], json!("w1"));
         assert_eq!(call["lane"], json!("chars:sonnet"));
         assert_eq!(call["diag"], json!("ok"));
         assert_eq!(call["prompt_tokens"], json!(9_300));
@@ -309,6 +339,12 @@ mod tests {
         assert_eq!(event["diag"], json!("drop-lane"));
         assert_eq!(event["reason"], json!("rewrite-failed"));
         assert!(event.get("prompt_tokens").is_none());
+
+        // 不回報用量的來源只留下「這輪發生過」，沒有桌就不佔欄位
+        let unreported: Value = serde_json::from_str(lines[2]).unwrap();
+        assert_eq!(unreported["transport"], json!("agy"));
+        assert_eq!(unreported["unreported"], json!(true));
+        assert!(unreported.get("world").is_none());
     }
 
     /// 中日韓一字約一 token、英數約四字元一 token；只求同一個數量級。

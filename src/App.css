@@ -2025,3 +2025,131 @@ textarea {
   font-size: var(--fs-ui);
   opacity: 0.8;
 }
+
+/* 額度分頁（快取包 6）：一桌一份的小計表，token 是主軸、金額只是附註 */
+.usage-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  font-size: var(--fs-ui);
+}
+
+.usage-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.usage-empty {
+  opacity: 0.75;
+}
+
+.usage-latest {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  border-left: 4px solid currentColor;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.usage-latest-ts {
+  margin-left: auto;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-dot {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.usage-good {
+  color: var(--ok);
+}
+
+.usage-warn {
+  color: var(--amber);
+}
+
+.usage-bad {
+  color: var(--danger);
+}
+
+.usage-idle {
+  color: var(--ink-1);
+  opacity: 0.75;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table th,
+.usage-table td {
+  padding: 0.35rem 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-1) 12%, transparent);
+}
+
+.usage-table thead th,
+.usage-table tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+
+.usage-table tfoot th,
+.usage-table tfoot td {
+  border-bottom: none;
+  border-top: 2px solid color-mix(in srgb, var(--ink-1) 30%, transparent);
+  font-weight: 700;
+}
+
+.usage-ping-row {
+  opacity: 0.75;
+}
+
+.usage-source {
+  opacity: 0.6;
+}
+
+.usage-badge {
+  margin-left: 0.35rem;
+  border: 1px solid var(--ok);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  color: var(--ok);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+.usage-muted {
+  opacity: 0.6;
+}
+
+.usage-diags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.usage-chip {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.9em;
+}
+
+.usage-note {
+  margin: 0;
+  opacity: 0.7;
+  font-size: 0.9em;
+}

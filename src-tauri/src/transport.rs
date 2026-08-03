@@ -1106,6 +1106,7 @@ pub async fn stream_chat(
     model: &str,
     messages: &[ChatMessage],
     usage_log: Option<&std::path::Path>,
+    world: Option<&str>,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let base = base_url(config);
@@ -1161,7 +1162,7 @@ pub async fn stream_chat(
             usage.hit_rate(),
         );
         if let Some(path) = usage_log {
-            crate::usage_log::append_call(path, "api", model, None, usage);
+            crate::usage_log::append_call(path, world, "api", model, None, usage);
         }
     }
     Ok(full_text)
@@ -1845,7 +1846,7 @@ mod tests {
         // 預設 OpenRouter endpoint 且沒 key：呼叫前就擋下
         let mut config = AppConfig::default();
         let messages = [message("user", "嗨".to_owned())];
-        let error = stream_chat(&config, "test/model", &messages, None, |_| {})
+        let error = stream_chat(&config, "test/model", &messages, None, None, |_| {})
             .await
             .unwrap_err()
             .to_string();
@@ -1857,7 +1858,7 @@ mod tests {
             serde_json::Value::String(format!("http://{address}")),
         );
         let mut deltas = Vec::new();
-        let full = stream_chat(&config, "test/model", &messages, None, |delta| {
+        let full = stream_chat(&config, "test/model", &messages, None, None, |delta| {
             deltas.push(delta.to_owned());
         })
         .await
@@ -2058,7 +2059,7 @@ mod tests {
             std::env::temp_dir().join(format!("tt-prompt-cache-test-{}.jsonl", std::process::id()));
         let _ = std::fs::remove_file(&log_path);
         let mut deltas = Vec::new();
-        let full = stream_chat(&config, "test/model", &messages, Some(&log_path), |delta| {
+        let full = stream_chat(&config, "test/model", &messages, Some(&log_path), Some("w1"), |delta| {
             deltas.push(delta.to_owned());
         })
         .await

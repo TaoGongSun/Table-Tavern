@@ -1022,6 +1022,202 @@ const TEXT_SIZE_LABEL_KEYS = {
 } as const;
 const TEXT_SIZE_DEFAULT = "l";
 
+type UsageRow = {
+  source: string;
+  model: string;
+  rounds: number;
+  prompt_tokens: number;
+  cached_tokens: number;
+  output_tokens: number;
+  hit_rate: number;
+  cost_usd: number | null;
+  cost_partial: boolean;
+  unreported: number;
+  in_use: boolean;
+};
+type UsageReport = {
+  worlds: { id: string; name: string; rounds: number }[];
+  rows: UsageRow[];
+  total: UsageRow;
+  ping: UsageRow;
+  diags: { diag: string; rounds: number }[];
+  latest: { ts: string; diag: string; reason: string | null } | null;
+};
+
+// 診斷標籤字典（後端 usage_log.rs 模組頂註解那張表）：短名給統計、長句給最近一輪。
+// 燈號純規則：正常綠、暖機／過期黃、該中沒中紅、單發模式不打分。
+const DIAG_KEYS = {
+  ok: ["usageDiagOk", "usageWhyOk", "good"],
+  ping: ["usageDiagPing", "usageWhyPing", "good"],
+  warmup: ["usageDiagWarmup", "usageWhyWarmup", "warn"],
+  expired: ["usageDiagExpired", "usageWhyExpired", "warn"],
+  single: ["usageDiagSingle", "usageWhySingle", "idle"],
+  "prefix-broken": ["usageDiagPrefixBroken", "usageWhyPrefixBroken", "bad"],
+  "cache-skipped": ["usageDiagCacheSkipped", "usageWhyCacheSkipped", "bad"],
+  "no-cache": ["usageDiagNoCache", "usageWhyNoCache", "bad"],
+  "drop-lane": ["usageDiagDropLane", "usageWhyDropLane", "bad"],
+} as const;
+const REASON_KEYS = {
+  "first-turn": "usageReasonFirstTurn",
+  "pending-rewrite": "usageReasonPendingRewrite",
+  "scene-changed": "usageReasonSceneChanged",
+  "history-rewound": "usageReasonHistoryRewound",
+  "history-edited": "usageReasonHistoryEdited",
+  "reply-diverged": "usageReasonReplyDiverged",
+  "resume-failed": "usageReasonResumeFailed",
+  "rewrite-failed": "usageReasonRewriteFailed",
+  "ping-truncate-failed": "usageReasonPingTruncateFailed",
+} as const;
+
+function diagEntry(diag: string) {
+  return DIAG_KEYS[diag as keyof typeof DIAG_KEYS];
+}
+
+function tokens(value: number) {
+  return value.toLocaleString();
+}
+
+// 金額一律轉述 CLI 官方回報值，app 不自算牌價（分不出玩家是訂閱還是 API 計費）
+function money(value: number | null, partial: boolean) {
+  if (value === null) return "—";
+  return `${partial ? "≥ " : ""}$${value.toFixed(3)}`;
+}
+
+// 額度分頁（快取包 6）：讀後端彙總好的 prompt-cache.jsonl，以桌為主視圖、桌內按模型分行
+function UsageTab({ currentWorld }: { currentWorld: string }) {
+  // null＝所有桌總計；"" ＝未標桌（加桌欄位之前的舊紀錄）
+  const [scope, setScope] = useState<string | null>(currentWorld || null);
+  const [report, setReport] = useState<UsageReport | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let stale = false;
+    invoke<UsageReport>("usage_report", { worldId: scope })
+      .then((loaded) => {
+        if (!stale) setReport(loaded);
+      })
+      .catch((reason) => {
+        if (!stale) setError(String(reason));
+      });
+    return () => {
+      stale = true;
+    };
+  }, [scope]);
+
+  if (error) return <ErrorNote text={error} />;
+  if (!report) return null;
+  if (report.worlds.length === 0) return <p className="usage-empty">{t("usageEmpty")}</p>;
+
+  const latest = report.latest;
+  const entry = latest ? diagEntry(latest.diag) : undefined;
+  const reasonKey = latest?.reason ? REASON_KEYS[latest.reason as keyof typeof REASON_KEYS] : undefined;
+  const bodyRows = [...report.rows];
+  if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
+
+  return (
+    <div className="usage-tab">
+      <label className="usage-scope">
+        {t("usageScopeLabel")}
+        <select
+          value={scope ?? "*"}
+          onChange={(event) => setScope(event.currentTarget.value === "*" ? null : event.currentTarget.value)}
+        >
+          <option value="*">{t("usageAllTables")}</option>
+          {report.worlds.map((world) => (
+            <option key={world.id} value={world.id}>
+              {world.name || t("usageUnlabeled")}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {bodyRows.length === 0 && <p className="usage-empty">{t("usageEmpty")}</p>}
+
+      {entry && latest && (
+        <p className={`usage-latest usage-${entry[2]}`}>
+          <span className="usage-dot" aria-hidden="true" />
+          <strong>{t(entry[0])}</strong>
+          {" — "}
+          {t(entry[1])}
+          {reasonKey && `（${t(reasonKey)}）`}
+          <span className="usage-latest-ts">{latest.ts}</span>
+        </p>
+      )}
+
+      {bodyRows.length > 0 && (
+        <table className="usage-table">
+          <thead>
+            <tr>
+              <th>{t("usageModel")}</th>
+              <th>{t("usageRounds")}</th>
+              <th>{t("usageInputTokens")}</th>
+              <th>{t("usageCached")}</th>
+              <th>{t("usageHitRate")}</th>
+              <th>{t("usageOutput")}</th>
+              <th>{t("usageCost")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bodyRows.map((row) => (
+              <tr key={`${row.source}/${row.model}`} className={row.model === "ping" ? "usage-ping-row" : undefined}>
+                <th scope="row">
+                  {row.model === "ping" ? (
+                    t("usagePing")
+                  ) : (
+                    <>
+                      <span className="usage-source">{row.source}</span> {row.model}
+                      {row.in_use && <span className="usage-badge">{t("usageInUse")}</span>}
+                    </>
+                  )}
+                </th>
+                <td>{row.rounds}</td>
+                <td colSpan={row.unreported === row.rounds ? 4 : 1}>
+                  {row.unreported === row.rounds ? (
+                    <span className="usage-muted">{t("usageNoUsage")}</span>
+                  ) : (
+                    tokens(row.prompt_tokens)
+                  )}
+                </td>
+                {row.unreported !== row.rounds && (
+                  <>
+                    <td>{tokens(row.cached_tokens)}</td>
+                    <td>{row.hit_rate.toFixed(1)}%</td>
+                    <td>{tokens(row.output_tokens)}</td>
+                  </>
+                )}
+                <td>{money(row.cost_usd, row.cost_partial)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">{t("usageTotal")}</th>
+              <td>{report.total.rounds}</td>
+              <td>{tokens(report.total.prompt_tokens)}</td>
+              <td>{tokens(report.total.cached_tokens)}</td>
+              <td>{report.total.hit_rate.toFixed(1)}%</td>
+              <td>{tokens(report.total.output_tokens)}</td>
+              <td>{money(report.total.cost_usd, report.total.cost_partial)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+
+      <p className="usage-diags">
+        {report.diags.map((count) => {
+          const label = diagEntry(count.diag);
+          return label ? (
+            <span key={count.diag} className={`usage-chip usage-${label[2]}`}>
+              {t(label[0])} ×{count.rounds}
+            </span>
+          ) : null;
+        })}
+      </p>
+      <p className="usage-note">{t("usageCostNote")}</p>
+    </div>
+  );
+}
+
 // 單一設定入口內分頁（NewPlan §9.4）：外觀為預設頁，不碰 AI 的人打開只見外觀
 function SettingsWindow({
   config,
@@ -1031,6 +1227,7 @@ function SettingsWindow({
   onSponsorUnlocked,
   onClose,
   initialTab = "appearance",
+  currentWorld,
 }: {
   config: AppConfig;
   onSaved: (c: AppConfig) => void;
@@ -1039,8 +1236,9 @@ function SettingsWindow({
   onSponsorUnlocked: () => void;
   onClose: () => void;
   initialTab?: "appearance" | "ai" | "author";
+  currentWorld: string;
 }) {
-  const [tab, setTab] = useState<"appearance" | "ai" | "author">(initialTab);
+  const [tab, setTab] = useState<"appearance" | "ai" | "usage" | "author">(initialTab);
   const [previewTheme, setPreviewTheme] = useState<ThemeId | null>(null);
   const [sponsorPackError, setSponsorPackError] = useState("");
   const sponsorPackInputRef = useRef<HTMLInputElement>(null);
@@ -1060,7 +1258,7 @@ function SettingsWindow({
     if (await confirmDiscard()) onClose();
   }
 
-  async function switchTab(target: "appearance" | "author") {
+  async function switchTab(target: "appearance" | "usage" | "author") {
     if (await confirmDiscard()) setTab(target);
   }
 
@@ -1120,6 +1318,12 @@ function SettingsWindow({
             </button>
             <button className={tab === "ai" ? "tab tab-active" : "tab"} onClick={() => setTab("ai")}>
               {t("aiTab")}
+            </button>
+            <button
+              className={tab === "usage" ? "tab tab-active" : "tab"}
+              onClick={() => void switchTab("usage")}
+            >
+              {t("usageTab")}
             </button>
             <button
               className={tab === "author" ? "tab tab-active" : "tab"}
@@ -1209,6 +1413,8 @@ function SettingsWindow({
               </select>
             </label>
           </div>
+        ) : tab === "usage" ? (
+          <UsageTab currentWorld={currentWorld} />
         ) : tab === "author" ? (
           <div className="author-page">
             <img src={taoIcon} alt="TaoGongSun" className="avatar-round author-avatar" />
@@ -4639,6 +4845,7 @@ function App() {
           onSponsorUnlocked={() => setSponsorUnlocked(true)}
           onClose={() => setSettingsOpen(false)}
           initialTab={settingsOpen}
+          currentWorld={table}
         />
       )}
 
