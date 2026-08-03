@@ -2803,6 +2803,8 @@ function App() {
   const [stateBarOpen, setStateBarOpen] = useState(
     () => localStorage.getItem(STATE_BAR_OPEN_KEY) === "true",
   );
+  // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
+  const [hasStateBar, setHasStateBar] = useState(false);
   const [editingStateField, setEditingStateField] = useState<{
     key: string;
     value: string;
@@ -2968,6 +2970,20 @@ function App() {
   useEffect(() => {
     if (mainView === null) bottomRef.current?.scrollIntoView();
   }, [mainView]);
+
+  // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列
+  useEffect(() => {
+    if (!table) return;
+    let stale = false;
+    invoke<boolean>("world_has_state_bar", { worldId: table })
+      .then((has) => {
+        if (!stale) setHasStateBar(has);
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [table, mainView, characters]);
 
   async function enterTable(id: string, loaded: AppConfig) {
     const state = await invoke<WorldState>("read_state", { worldId: id });
@@ -4215,6 +4231,7 @@ function App() {
           </div>
         </header>
 
+        {hasStateBar && (
         <details
           className="state-bar"
           open={stateBarOpen}
@@ -4254,6 +4271,7 @@ function App() {
             ))}
           </div>
         </details>
+        )}
 
         <div className="chat-body">
         {actsOpen && scene > 0 && (

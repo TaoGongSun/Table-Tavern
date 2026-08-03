@@ -1,7 +1,7 @@
 # Handoff: st-ecosystem-upgrades
 
 ## Current state
-2026-08-03：六項全部實作完成（cargo test 172 綠）。第一、二、三、五、六項實機驗收通過；當日回報的五個問題全數修掉（見下方「實機驗收修補」）。剩第四項狀態欄的後續鏈待驗（見 Remaining）。
+2026-08-03：六項全部實作完成（cargo test 174 綠）。第一、二、三、五、六項實機驗收通過；當日回報的五個問題全數修掉（見下方「實機驗收修補」）。狀態列改成條件顯示並已驗收。剩第四項狀態欄的後續鏈待驗（見 Remaining）。
 
 ## Completed
 - 第一項匯入補強（後端＋前端各一包 codex gpt-5.6-terra 平行實作、主線審過）：
@@ -19,7 +19,8 @@
   - 解析：`transport::extract_state_block`（transport.rs:404）認四種包裹——```state/status/状态栏/狀態欄 圍欄、尾端無 info 圍欄、`<details><summary>…状态…`、`<status>`／`<UpdateVariable>`（後者只剝除不解析，JSON patch 歸第二期）。鍵值行容錯：行首 `-*#+>` 剝掉、全形半形冒號皆認、壞行只丟該行；`time`／`place`／`present` 認在地化別名折回英文鍵。標籤比對一律 `to_ascii_lowercase`（主線修：full lowercase 會改變 İ 等字母長度，位移拿回原字串切片會 panic）。
   - 提示詞：`assemble_gm_messages` 多收 `&TableState`，「## 目前狀態」插在登場角色前，只進 GM；`narrate_instruction(lang)` 中英雙版要求 ```state 圍欄三鍵。`gm_narrate` 剝除後回傳顯示文字、欄位合併進快取（主線修：狀態寫檔改盡力而為，IO 失敗不再讓整段旁白連帶丟失）。
   - 前端：`.state-bar`（App.tsx:4114）在 chat-header 與 chat-body 之間、sticky 黏頂；預設收起顯示一行摘要、展開一欄一列，值點擊就地編輯送 `set_table_state`。切桌／旁白完成／收回／復原四個時機刷新。串流中的旁白遇 ```／`<details`／`<status` 就截斷顯示（主線補：否則每回合都看到圍欄閃過）。i18n 新 7 鍵 ×10 語系。
-- 第四項設計偏差（主線拍板，理由已寫進 tasks 檔）：狀態存 world.json 不另立檔；第 6 點「世界書偵測到就問要不要開狀態欄」取消——三欄常駐沒有開關可開。
+- 第四項設計偏差（主線拍板，理由已寫進 tasks 檔）：狀態存 world.json 不另立檔。
+- 第四項狀態列條件顯示（2026-08-03 使用者要求，主線 Opus 5 直寫）：狀態列只給帶狀態列規則的桌，其餘桌整條不掛（看不到也點不開）。`data::world_has_state_bar`（data.rs:805）依序掃 world.md → 世界書啟用條目（content＋title）→ 全部角色卡（public_md＋private_md），任一處命中 `STATE_BAR_MARKERS` 十一個詞（`状态栏`／`狀態欄`／`状态条`／`狀態條`／`状态面板`／`狀態面板`／`status bar`／`statusbar`／`<status`／`<updatevariable`／```` ```state ````，全走 `to_ascii_lowercase`）即為真；比對詞刻意對齊 `extract_state_block` 認得的包裹——認得的才畫得出欄位。指令 `world_has_state_bar`（lib.rs:320）。前端 `hasStateBar`（App.tsx:2806）由一個 effect 在 `[table, mainView, characters]` 變動時重問，`.state-bar` 整段條件掛載（App.tsx:4247）；invoke 失敗當作沒有。三處都掃的理由：卡片可能把狀態列規則放世界書、也可能留在卡片內文（匯入角色卡時 character_book 會併進 private_md）。只提到「狀態」兩字不算（如獸人卡的「猎物状态设定」）。
 
 - 實機驗收修補（2026-08-03，主線 Opus 5 直寫，cargo test 171＋tsc＋check:i18n 70 鈕＋build＋npm test 全綠）：
   - 狀態欄長值溢出：`.state-bar-value` 是按鈕，吃到全域 button 的 nowrap＋置中，長句子衝出面板壓到旁白。App.css:1309/1320 覆寫成 block＋white-space normal＋overflow-wrap anywhere，欄位 align-items 改 start。
@@ -44,9 +45,10 @@
 - 第六項主線驗證：親跑 `cargo test` 172 passed; 0 failed（171→172：card_openings 清單／PNG 同路徑／只有備用開場白／全空回 None 一例整併，append_opening 併欄位＋快照＋pop 倒回一例）、`npx tsc --noEmit` ✓、`npm run build` ✓、`npm run check:i18n` 十語系 OK（72 鈕）、`npm test` ✓。兩份 diff 逐段親讀；主線補三處註解（post_opening 不變式、offerOpeningLine 拍板理由、import.rs 被插斷的測試註解歸位）。UI 外觀未實跑（Tauri 原生視窗，照慣例交實機驗收）。
 - 第五項主線驗證：親跑 cargo test 151 passed（146→151：雙向搬移＋玩家卡 state＋空標題擋＋在桌上擋＋玩家卡擋五例）、tsc ✓、check:i18n 九非正典語系 OK（69 鈕）、npm test ✓、build ✓ 587ms；轉換順序與擋條件逐段親讀。
 - 測卡 TestCards/（已 gitignore）三張皆拆內嵌 JSON 驗過規則命中：兽人的洞穴（18 條書厚身薄＋開場白 3＋tavern_helper＋{{user}} 30 處）、根源重塑app（`<script`＋{{user}} 45 處）、勇者养成指南（`<%` ×446、100 條）。
+- 狀態列條件顯示主線驗證：親跑 `cargo test` 174 passed; 0 failed（172→174：只提「狀態」不算＋世界書寫出狀態列格式才算、規則寫在卡片私有段也算）、`npx tsc --noEmit` ✓、`npm test` ✓、`npm run check:i18n` 十語系 OK（73 鈕，未新增字串）、`cargo clippy` 新碼零警告。拿使用者實機資料（文件/TableTavern/worlds）逐桌跑判定：性奴世界／史萊姆的獸人世界／新的一桌 1・2・3 顯示，迷霧酒館（含範例）／My Pirate Husbandos／猛獸學園隱藏——與三張測卡（獸人洞穴 `<details><summary>状态栏</summary>`、另兩張 `<UpdateVariable>`＋`<status>`）預期一致。使用者實機驗收通過。
 
 ## Remaining / Next action
-1. 使用者實機驗收剩餘項（第一、二、三、五、六項 2026-08-03 全數驗收通過，不再列）：
+1. 使用者實機驗收剩餘項（第一、二、三、五、六項與狀態列條件顯示 2026-08-03 全數驗收通過，不再列）：
    - 四：GM 說話後狀態欄跟著變、對話看不到圍欄；點欄位改字後 GM 照新的演；收回／復原狀態同步倒回；壞格式不報錯。（狀態欄本身與 `<details>` 剝除已驗過）
 2. 第四項第二期（自訂數值欄位＋MVU 增量 patch 解析）等第一期實機驗收後細拍；掛點已備：`TableState.characters`、`extract_state_block` 的 UpdateVariable 分支。狀態欄自訂欄與基礎三欄語意重疊（地點／当前环境、在場人物／駐留角色各報一次）＝卡片自身格式造成，使用者 2026-08-03 拍板不列議程。
 
