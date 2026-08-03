@@ -11,7 +11,7 @@
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白 — 下一步：六項全部實作完成（cargo test 174 綠）；第一、二、三、五、六項與狀態列條件顯示（只給帶狀態列規則的桌）2026-08-03 實機驗收通過，剩第四項狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）待驗
-- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：包 1–3 完成（2026-08-03，改卡當輪不再重開線，重開原因已落 log）；接著包 4 log 升級（JSONL＋診斷標籤）→ 包 5 GM 合併，真桌驗收 hit_rate ≥66% 後補包 6 額度分頁 UI
+- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：包 1–4 完成（2026-08-04，用量與線動作合成一行 JSONL＋七個診斷標籤）；接著包 5 GM 合併，真桌驗收 hit_rate ≥66% 後補包 6 額度分頁 UI
 
 ## Done
 
