@@ -341,7 +341,7 @@ export const en: Record<MsgKey, string> = {
     "Ask the GM to insert scene narration (the GM can read the world settings and every character card)",
   gmAdvance: "GM Advance",
   gmAdvanceHint:
-    "The GM calls on the next character and keeps the scene moving, stopping at the player's turn or the per-round cap",
+    "The GM narrates, then calls on the next character to keep the scene moving, stopping at the player's turn or the per-round cap",
   undoLast: "Undo last",
   undoLastHint: "Delete the last entry in the log; press again to keep going back, within this scene only",
   undoRestore: "Restore that line",

@@ -313,7 +313,7 @@ export const ko: Record<MsgKey, string> = {
   gmNarrate: "GM 내레이션",
   gmNarrateHint: "GM에게 장면 내레이션 삽입을 요청합니다 (GM은 세계관 설정과 모든 캐릭터 카드를 참조합니다)",
   gmAdvance: "GM 진행",
-  gmAdvanceHint: "GM이 다음 캐릭터를 지목하여 장면을 계속 진행시킵니다. “플레이어 차례”가 오거나 라운드당 진행 한도에 도달하면 멈춥니다.",
+  gmAdvanceHint: "GM이 내레이션을 넣은 뒤 다음 캐릭터를 지목하여 장면을 계속 진행시킵니다. “플레이어 차례”가 오거나 라운드당 진행 한도에 도달하면 멈춥니다.",
   undoLast: "되돌리기",
   undoLastHint: "기록의 마지막 한 줄을 지웁니다. 계속 누르면 더 되돌아갑니다(이 장면 안에서만)",
   undoRestore: "방금 지운 줄 되살리기",

@@ -313,7 +313,7 @@ export const zhCN: Record<MsgKey, string> = {
   gmNarrate: "GM 旁白",
   gmNarrateHint: "请 GM 插入一段场景旁白（GM 能读取世界设定与所有角色卡）",
   gmAdvance: "GM 推进",
-  gmAdvanceHint: "GM 点名下一位角色接话并接力推进，遇“轮到玩家”或达每轮上限即停",
+  gmAdvanceHint: "GM 先旁白再点名下一位角色接话，接力推进；遇“轮到玩家”或达每轮上限即停",
   undoLast: "收回上一句",
   undoLastHint: "删掉记录最后一条，可连按往回收；只收这一幕的",
   undoRestore: "恢复刚收回的",

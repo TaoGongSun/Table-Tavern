@@ -313,7 +313,7 @@ export const ptBR: Record<MsgKey, string> = {
   gmNarrate: "Narração do GM",
   gmNarrateHint: "Pedir para o GM narrar a cena (o GM pode ler as configurações de mundo e todas as fichas de personagem)",
   gmAdvance: "Avanço do GM",
-  gmAdvanceHint: "O GM chama o próximo personagem e mantém a cena fluindo, parando na vez do jogador ou no limite por rodada",
+  gmAdvanceHint: "O GM narra e depois chama o próximo personagem para manter a cena fluindo, parando na vez do jogador ou no limite por rodada",
   undoLast: "Desfazer",
   undoLastHint: "Apaga a última entrada do registro; pressione de novo para continuar voltando, apenas nesta cena",
   undoRestore: "Restaurar",

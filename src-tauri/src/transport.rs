@@ -574,7 +574,7 @@ pub fn gm_lane_system(
     gm_system_prompt(world_md, cards, player, &constants, user_name, lang)
 }
 
-/// gm 線回合尾段：keyword 條目＋目前狀態＋導演指示（narrate／suggest 由呼叫端組好傳入）。
+/// gm 線回合尾段：keyword 條目＋目前狀態＋導演指示（旁白＋點名合併版，由呼叫端組好傳入）。
 pub fn gm_lane_turn(
     events: &[TranscriptEvent],
     worldbook: &[WorldbookEntry],
@@ -666,9 +666,10 @@ pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
     }
 }
 
-/// 導演指示：插入旁白（附加在 GM 上下文最後）
-pub fn narrate_instruction(lang: &str) -> ChatMessage {
-    let instruction = if lang == "en" {
+/// 導演指示：插入旁白（附加在 GM 上下文最後）；有名單時尾端固定要一行「下一位：」點名，
+/// 旁白與點名一次呼叫完成（包 5 拍板）。
+pub fn narrate_instruction(lang: &str, roster: &[String], player_name: Option<&str>) -> ChatMessage {
+    let mut instruction = if lang == "en" {
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
          After the narration, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
@@ -684,10 +685,61 @@ pub fn narrate_instruction(lang: &str) -> ChatMessage {
          圍欄以外不要有多餘說明。"
             .to_owned()
     };
+    if !roster.is_empty() {
+        let call = if lang == "en" {
+            format!(
+                " After the fence, end with exactly one final line `Next: <name>`, choosing the next speaker from: {}. \
+                 If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
+                roster.join("、"),
+                player = player_name.map_or(String::new(), |name| format!(" ({name})")),
+            )
+        } else {
+            format!(
+                "圍欄之後最後再另起一行，固定輸出「下一位：〈名字〉」，\
+                 從名單中選出下一位最適合發言的角色：{}。\
+                 若現在應該輪到玩家{player}行動，就寫「下一位：{PLAYER_SENTINEL}」。",
+                roster.join("、"),
+                // 沒玩家卡時是空字串，句子與加玩家卡前逐字相同
+                player = player_name.map_or(String::new(), |name| format!("（{name}）")),
+            )
+        };
+        instruction.push_str(&call);
+    }
     message(
         "user",
         instruction,
     )
+}
+
+/// 從旁白剝出尾端的「下一位：」點名行：回傳（點名原文, 剝除後的顯示文字）。
+/// 與 extract_state_block 同族：只認整行、行首標記，掃到多行取最後一行；沒有就原樣返回。
+pub fn extract_next_speaker(reply: &str) -> (Option<String>, String) {
+    let hit = reply.lines().rev().find_map(|line| {
+        let trimmed = line.trim();
+        let rest = ["下一位", "next"].iter().find_map(|marker| {
+            if trimmed.len() < marker.len() || !trimmed.is_char_boundary(marker.len()) {
+                return None;
+            }
+            let (head, tail) = trimmed.split_at(marker.len());
+            if head.to_ascii_lowercase() != *marker {
+                return None;
+            }
+            let tail = tail.trim_start();
+            tail.strip_prefix('：').or_else(|| tail.strip_prefix(':'))
+        })?;
+        let name = rest.trim();
+        if name.is_empty() {
+            return None;
+        }
+        Some((line.to_owned(), name.to_owned()))
+    });
+    match hit {
+        Some((line, name)) => {
+            let display = reply.replacen(&line, "", 1).trim_end().to_owned();
+            (Some(name), display)
+        }
+        None => (None, reply.to_owned()),
+    }
 }
 
 /// 從 GM 回覆剝出狀態區塊：回傳（欄位對, 剝除後的顯示文字）。
@@ -833,20 +885,6 @@ pub fn extract_state_block(reply: &str) -> (Vec<(String, String)>, String) {
         }
     }
     (fields, display.trim_end().to_owned())
-}
-
-/// 導演指示：從名單選出下一位發言者
-pub fn suggest_instruction(roster: &[String], player_name: Option<&str>) -> ChatMessage {
-    message(
-        "user",
-        format!(
-            "（導演指示）根據目前劇情，從名單中選出下一位最適合發言的角色：{}。\
-             若現在應該輪到玩家{player}行動，就輸出：{PLAYER_SENTINEL}。只輸出名字，不要任何其他文字。",
-            roster.join("、"),
-            // 沒玩家卡時是空字串，句子與加玩家卡前逐字相同
-            player = player_name.map_or(String::new(), |name| format!("（{name}）")),
-        ),
-    )
 }
 
 /// 從 GM 點名回覆解析出角色名（或玩家代號）。
@@ -1263,10 +1301,33 @@ mod tests {
         assert!(gm_system.contains("阿濤"));
         assert!(gm_system.contains("遠道而來的商隊護衛"));
 
-        // 點名 prompt 要告知玩家名字，GM 才知道喊誰；哨兵本身不變
-        let instruction = suggest_instruction(&["狐狸".to_owned()], Some("阿濤")).content;
+        // 旁白指示併入點名（包 5）：要告知名單與玩家名字，GM 才知道喊誰；哨兵本身不變
+        let instruction = narrate_instruction("zh-TW", &["狐狸".to_owned()], Some("阿濤")).content;
+        assert!(instruction.contains("狐狸"));
         assert!(instruction.contains("阿濤"));
         assert!(instruction.contains(PLAYER_SENTINEL));
+        assert!(instruction.contains("下一位"));
+        // 名單空（純世界書開局等）＝退回純旁白，不要求點名行
+        let solo = narrate_instruction("zh-TW", &[], None).content;
+        assert!(!solo.contains("下一位"));
+    }
+
+    #[test]
+    fn extract_next_speaker_strips_trailing_line_and_tolerates_variants() {
+        // 標準形：旁白＋狀態欄剝除後尾端剩點名行
+        let (name, display) = extract_next_speaker("夜更深了。\n下一位：狐狸");
+        assert_eq!(name.as_deref(), Some("狐狸"));
+        assert_eq!(display, "夜更深了。");
+        // 英文標記與半形冒號、前後空白
+        let (name, display) = extract_next_speaker("The night deepens.\nNext:  Fox ");
+        assert_eq!(name.as_deref(), Some("Fox"));
+        assert_eq!(display, "The night deepens.");
+        // 玩家哨兵原文帶回，由 pick_speaker 對回代號
+        let (name, _) = extract_next_speaker(format!("門開了。\n下一位：{PLAYER_SENTINEL}").as_str());
+        assert_eq!(name.as_deref(), Some(PLAYER_SENTINEL));
+        // 沒有點名行＝原樣返回；行首是普通英文 Next 不誤判
+        let plain = "夜更深了。\nNext, the door opened.";
+        assert_eq!(extract_next_speaker(plain), (None, plain.to_owned()));
     }
 
     #[test]

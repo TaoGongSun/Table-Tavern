@@ -313,7 +313,7 @@ export const de: Record<MsgKey, string> = {
   gmNarrate: "GM-Erzählung",
   gmNarrateHint: "Den GM bitten, eine Szenenerzählung einzufügen (er kennt die Welteinstellungen und alle Charakterkarten)",
   gmAdvance: "GM: weiter",
-  gmAdvanceHint: "Der GM ruft den nächsten Charakter auf und treibt die Szene voran; stoppt, sobald der Spieler an der Reihe ist oder das Rundenlimit erreicht ist",
+  gmAdvanceHint: "Der GM erzählt und ruft dann den nächsten Charakter auf, um die Szene voranzutreiben; stoppt, sobald der Spieler an der Reihe ist oder das Rundenlimit erreicht ist",
   undoLast: "Zurücknehmen",
   undoLastHint: "Löscht den letzten Eintrag im Protokoll; erneut drücken, um weiter zurückzugehen – nur innerhalb dieser Szene",
   undoRestore: "Wiederherstellen",
