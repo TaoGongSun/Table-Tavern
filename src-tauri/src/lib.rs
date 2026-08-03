@@ -5,6 +5,7 @@ mod import;
 #[allow(dead_code)]
 mod install;
 mod proxy;
+mod session_file;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};

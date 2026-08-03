@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成，cargo test 178 全綠（2026-08-03 本機重跑）。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構開工，**包 1（session 檔操作模組）完成**，cargo test 188 全綠（2026-08-03 本機）。
 
 **2026-08-03 晚拍板收束範圍：只打 CLI（claude 訂閱）這條路**——OpenRouter／API 模式、1h 快取、模型體質表、開桌預熱、GM 全代演全部出局。A／B／C 的 API 驗收擱置。
 
@@ -53,8 +53,13 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - **第一版落檔漏了診斷關鍵欄位，已補**（2026-08-03 實測後）：只記讀快取時，命中率 0 分不出「根本沒建」與「建了但讀不到」。`PromptCacheUsage` 加 `created_tokens`（claude `cache_creation_input_tokens`／codex `cache_write_input_tokens`／grok 與 OpenRouter 不回報恆 0）；時間戳改秒級（`data::local_timestamp_seconds`，由 `local_time_parts` 與既有分鐘級共用，存檔用的 `local_timestamp` 格式不變），分鐘精度看不出是否踩到 5 分鐘過期線。
   - 測試新增 4 條：三支 parser 各一條（樣本取自真實冒煙輸出，鎖住換算語意與缺欄位當 0），加端到端——既有假 CLI 測試的 result 行補上 usage，斷言 log 恰一行且內容為 `transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 hit_rate=99%`。
 
+- **包 1 session 檔操作模組**（2026-08-03 晚，本次新完成；規格主線寫、實作外派 codex terra、主線親讀驗收）：
+  - 新檔 `src-tauri/src/session_file.rs`：`SessionFile` 全程 `serde_json::Value` 保留未知欄位；8 個純函式——`session_file_path`（munge：非 ASCII 英數一律轉 `-`）、`parse`（逐行驗證：type／uuid／parentUuid 鏈／user content 字串／assistant content 陣列，錯誤含行號）、`serialize`、`erase_user_segment`（片段必須恰出現一次，0 或 ≥2 次 Err）、`prefix_last_assistant`（最後一條 assistant 首個 text 分段前插 prefix，冪等）、`truncate_from`（截指定對話行與其後所有行含雜項行）、`write_atomic`（同目錄暫存檔＋rename＋回讀逐行比對）、`load`。
+  - `lib.rs:8` 加 `mod session_file;`；模組頂 `#![allow(dead_code)]`（包 2 接線後移除）。
+  - 單測 10 條（假 JSONL 照真檔格式、雜項行穿插）：munge、快樂路徑、壞 JSON／斷鏈／content 型錯三失敗路徑、round-trip、抹段（含 0 次／2 次 Err）、前綴（改最後一條＋冪等＋無 assistant Err）、截尾（尾隨雜項行一併截）、原子寫實檔覆寫＋回讀。
+
 ## Verification
-- `cargo test`：178 passed; 0 failed（2026-08-03 本機，含前一手雲端容器寫的 A／B／C 測試重跑）。
+- `cargo test`：188 passed; 0 failed（2026-08-03 晚本機真跑，含 session_file 新 10 條；codex 沙箱 4 條 TCP 假紅在真機全過）。
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
 ## Remaining / Next action
@@ -78,8 +83,8 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 ### 資料結構（app 資料目錄 per world，如 `lanes.json`；屬本機狀態、不進 .ai/）
 每 lane 記：`session_id`、`sent_event` 水位（正典 transcript 的已送出位置）、`snapshot`（凍結素材全文或其檔案）＋hash、`pending_rewrite`（上輪注入段的定位描述，供回合後抹寫）、`last_call_at`（追平判斷用）。正典與 session 對齊靠水位；水位對不上（外部改動）＝重開。
 
-### 實作拆包順序（新對話照此執行；外派照 model-dispatch.md，包 1 自包含可發 codex）
-1. **包 1 session 檔操作模組**（純函式＋假 JSONL 單測）：定位、解析驗證、抹段、補名字前綴、截尾、原子寫＋回讀驗證。
+### 實作拆包順序（外派照 model-dispatch.md）
+1. ~~包 1 session 檔操作模組~~ **完成**（2026-08-03，見 Completed；規格存主線 scratchpad/pkg1-spec.md 已隨 session 失效，內容即 session_file.rs 本身）。
 2. **包 2 resume 流程地基**：lanes.json 存取、claude lane 分流走 resume＋增量組裝、首輪全量、降級鏈。與現有 assemble／flatten／run_cli 耦合深，主線或 opus subagent。
 3. **包 3 凍結快照＋補丁**（assemble 層＋追平規則）。
 4. **包 4 log 升級**（使用者需求，遠期通到設定頁「額度花費＋命中率」分頁）：組裝層對每段記 hash＋token 估計量；比對「本輪 vs 上輪共同前綴＝理論可中量」與實際 read，自動標診斷（PREFIX_BROKEN 指出第一個變動段／EXPIRED／OK）；log 補 `cost`（CLI result 的 `total_cost_usd`）與 `lane` 欄——三輪 0% 當初就是缺 lane 與 expected 才誤診。
