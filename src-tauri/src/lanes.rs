@@ -1,5 +1,8 @@
 //! claude lane resume 續聊（prompt-cache-optimization 包 2）。
-//! 每桌兩條 session：chars（全角色共用）＋gm。凍結 system 每輪逐字重帶、只送新事件與回合尾段，
+//! 每桌按「線種:實際模型」分線（2026-08-03 拍板）：chars:<model>（解析到同一個模型的角色
+//! 共用一條，快取按模型分池、跨模型本來就不共用）＋gm:<model>（GM 獨立——GM 的凍結 system
+//! 多了 world.md／私設／GM 條目，依可見性憲法不能和角色同線）。
+//! 凍結 system 每輪逐字重帶、只送新事件與回合尾段，
 //! 快取命中率的天花板因此變成「只有最後一句沒中」（實驗 E6：99.7%）。
 //! 正典 transcript 與 session 歷史靠水位＋指紋＋回覆對點對齊；任何對不上、任何改寫或呼叫失敗，
 //! 一律丟線重開全量重建（降級鏈永遠可用，聊天不中斷）。
@@ -54,21 +57,16 @@ pub(crate) struct TurnInput<'a> {
     pub echo: ReplyEcho,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct LaneStore {
-    #[serde(default)]
-    chars: Option<LaneState>,
-    #[serde(default)]
-    gm: Option<LaneState>,
-}
+/// 線名（key）→ 線狀態。key＝「線種:實際模型」，模型看解析後真正傳給 CLI 的字串，
+/// 不看檔位：高中檔都覆寫成 sonnet 就同一條 chars:sonnet。
+type LaneStore = std::collections::BTreeMap<String, LaneState>;
 
-impl LaneStore {
-    fn lane_mut(&mut self, lane: Lane) -> &mut Option<LaneState> {
-        match lane {
-            Lane::Chars => &mut self.chars,
-            Lane::Gm => &mut self.gm,
-        }
-    }
+fn lane_key(lane: Lane, model: &str) -> String {
+    let kind = match lane {
+        Lane::Chars => "chars",
+        Lane::Gm => "gm",
+    };
+    format!("{kind}:{model}")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,8 +267,9 @@ pub(crate) async fn run_turn(
     mut emit: impl FnMut(&str),
 ) -> Result<String, String> {
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
+    let key = lane_key(input.lane, &call.model);
     let mut store = read_store(&store_path);
-    let mut plan = plan_turn(store.lane_mut(input.lane).as_ref(), &input);
+    let mut plan = plan_turn(store.get(&key), &input);
 
     loop {
         let (session_id, base, opening) = match &plan {
@@ -285,7 +284,7 @@ pub(crate) async fn run_turn(
         };
         let args = cli::claude_session_args(&call.model, &input.frozen_system, &session);
 
-        *store.lane_mut(input.lane) = Some(LaneState {
+        store.insert(key.clone(), LaneState {
             session_id: session_id.clone(),
             scene: input.scene,
             sent_events: input.events.len(),
@@ -325,16 +324,17 @@ pub(crate) async fn run_turn(
                     input.confidential.as_deref(),
                     input.prefix.as_deref(),
                 );
-                let slot = store.lane_mut(input.lane);
                 match rewrite {
                     Ok(()) => {
-                        if let Some(state) = slot.as_mut() {
+                        if let Some(state) = store.get_mut(&key) {
                             state.pending_rewrite = None;
                             state.expected_reply = expected_reply_for(&input.echo, &reply);
                         }
                     }
                     // 抹寫失敗＝session 內容不可信，丟線；下一輪自動重開全量，本輪回覆照常送回
-                    Err(_) => *slot = None,
+                    Err(_) => {
+                        store.remove(&key);
+                    }
                 }
                 write_store(&store_path, &store)?;
                 return Ok(reply);
@@ -344,7 +344,7 @@ pub(crate) async fn run_turn(
                 plan = TurnPlan::Reopen;
             }
             Err(error) => {
-                *store.lane_mut(input.lane) = None;
+                store.remove(&key);
                 write_store(&store_path, &store)?;
                 return Err(error.to_string());
             }
@@ -697,6 +697,26 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let (args5, prompt5) = calls(4);
         assert!(args5.contains(&"--session-id".to_owned())); // 降級重開
         assert!(prompt5.starts_with("以下是到目前為止的對話紀錄："));
+
+        // 第五輪換模型（同桌 haiku 角色）：另開自己的線，sonnet 線不受影響（按模型分池）
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply4));
+        let haiku_call = ClaudeCall {
+            model: "haiku".to_owned(),
+            program: call.program.clone(),
+            working_dir: call.working_dir.clone(),
+            envs: call.envs.clone(),
+            usage_log: None,
+            claude_home: call.claude_home.clone(),
+        };
+        run_turn(&haiku_call, &root, &world_id, turn_input(&events, 0), |_| {})
+            .await
+            .unwrap();
+        let (args6, _) = calls(5);
+        assert!(args6.contains(&"--session-id".to_owned())); // haiku 沒有既有線，全量開新
+        let lanes_json =
+            std::fs::read_to_string(data::lanes_path(&root, &world_id).unwrap()).unwrap();
+        assert!(lanes_json.contains("chars:sonnet"));
+        assert!(lanes_json.contains("chars:haiku"));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
