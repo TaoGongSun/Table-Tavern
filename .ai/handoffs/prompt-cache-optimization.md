@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）完成**，cargo test 209 全綠、零警告（2026-08-03 本機）。claude 訂閱模式的角色對話／GM 旁白／GM 點名已全部走 resume 續聊線，改卡／改世界書當輪不再重開線。下一步包 4 log 升級。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）＋包 4（log 升級 JSONL＋診斷標籤）完成**，cargo test 212 全綠、零警告（2026-08-04 本機）。claude 訂閱模式的角色對話／GM 旁白／GM 點名已全部走 resume 續聊線，改卡／改世界書當輪不再重開線。下一步包 5 GM 合併。
 
 **2026-08-03 晚拍板收束範圍：只打 CLI（claude 訂閱）這條路**——OpenRouter／API 模式、1h 快取、模型體質表、開桌預熱、GM 全代演全部出局。A／B／C 的 API 驗收擱置。
 
@@ -72,8 +72,18 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `lib.rs`：`chat_with_character`／`gm_narrate`／`gm_suggest_speaker` 在 transport=claude 時分流 lane（chars／gm／gm+echo None）；`claude_cli_envs`／`prepare_claude_call`／`gm_materials`／`load_active_cards` 抽共用，舊 `assemble_gm` 併入。前端已核對：回覆原樣落 transcript（App.tsx replyOnce／gmNarrate 的 `text: full`），echo 逐字對點成立。
   - 測試新增 13 條：transport lane 組裝 4（快照只含共通素材、機密段恰出現一次且抹後公開內容仍在、GM 快照素材、事件行格式）、cli 旗標 1、session_file 定位 1、lanes 7（指紋、UUID v4、plan 決策矩陣、echo 跳過／分岔、prompt 形狀、端到端假 CLI：開線→抹寫→續聊只送增量→改字自動重開→session 檔被刪同輪降級重開）。
 
+- **包 4 log 升級**（2026-08-04，本次新完成；主線直寫）：
+  - 新檔 `usage_log.rs`：log 檔改 `prompt-cache.jsonl`（原 `prompt-cache.log` 純文字格式作廢，舊檔留在資料目錄不動、包 6 只讀 .jsonl）。**一次呼叫一行 JSONL**，線的動作與該次用量寫在同一筆——原本分成「用量行」與「線動作行」兩種行，命中率為什麼掉得靠時間戳自己接，接錯就誤診（三輪 0% 的誤判即出於此）。
+  - 欄位：ts（秒級）／transport／model／diag／lane／reason／patched／rebased／prompt_tokens／cached_tokens／created_tokens／output_tokens／hit_rate／cost_usd／expected_cached／age_secs／system_tokens／system_hash。沒發生的旗標與沒有的值不佔位（省略而非寫 null）。
+  - **診斷標籤定死七個**（`Diag` enum，純規則判定；每個標籤對一句玩家中文，表在 `usage_log.rs` 模組頂註解，包 6 照它配 i18n）：`ok`／`warmup`（重開，reason 帶包 3 的七種原因代碼）／`expired`（age > 300 秒）／`prefix-broken`（該中沒中，cached 對 expected 差一成以上）／`no-cache`（cached 與 created 皆 0）／`single`（API／codex／grok 單發，不做續聊診斷）／`drop-lane`（抹寫失敗丟線）。
+  - **判定不從 token 反推**：重開與否、隔幾秒、上輪送多少，全是 app 自己的決策，`LaneContext` 帶著走。原規格的「前綴斷於第幾段」在續聊架構下只剩 system／對話兩段，改用 `expected_cached` 對 `cached_tokens`（差多少）＋ `system_tokens` 粗估（cached 接近它＝只有設定段中）表達，不另建分段 hash 框架。
+  - 「上輪總輸入」＝這輪的理論可中量，存進 lanes.json 的 `last_prompt_tokens`（`#[serde(default)]`，舊檔不觸發重開）；`run_cli` 經 `UsageLog.prompt_tokens_out`（AtomicU64，跨 await 需 Sync）回填給 lane。
+  - `PromptCacheUsage` 補 `output_tokens`＋`cost_usd`（claude 的 `total_cost_usd`，四支只有它直接回報金額；其餘 None 由包 6 靠有值的行加總）。
+  - 測試新增 3 條（usage_log：七標籤判定矩陣、JSONL 行形狀含 lane／cost／省略旗標、token 粗估與 hash），改寫 3 條既有（cli e2e、transport stream_chat、lanes 補丁／追平 e2e 改斷言三筆 JSONL：warmup+first-turn／ok+patched+expected_cached=100／expired+rebased+age≥3600）。
+
 ## Verification
-- `cargo test`：**209 passed; 0 failed**、cargo 零警告（2026-08-03 本機真跑，含包 3 新 8 條）。
+- `cargo test`：**212 passed; 0 failed**、cargo 零警告（2026-08-04 本機真跑，含包 4 新 3 條、改寫 3 條）。
+- 包 4 未再花使用者額度做實機呼叫（機制由假 CLI e2e 覆蓋）；真桌驗收時看 `文件/TableTavern/prompt-cache.jsonl` 即可一次確認欄位與標籤。
 - 案 C 改寫-resume 機制為實機查證（見上，scratchpad/rewrite-probe/probe.sh 可重跑；實驗腳本需 `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN`）。
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
@@ -84,7 +94,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 - session 檔的 queue-operation／last-prompt 雜項行留有整包 prompt 副本（含機密段）：那些行不進模型上下文，私設隔離（模型可見面）不受影響；磁碟上正典檔本來就有這些資料。
 
 ## Remaining / Next action
-**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。下一步：**包 4 log 升級**（規格見實作拆包順序第 4 項）。以下為定稿規格。
+**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。下一步：**包 5 GM 旁白＋點名合併**（規格見實作拆包順序第 5 項）。以下為定稿規格。
 
 **2026-08-03 追加拍板（額度分頁需求）**：使用者要額度計量分頁顯示命中率＋顏色燈號＋壞狀況原因句，且原因由 app 純規則判定（不靠 AI）。影響：(1) 包 3 順手把**線重開／降級的原因代碼**落 log（重開當下記，事後推不回來）——已隨包 3 完成；(2) 包 4 log 改**結構化 JSONL**＋診斷標籤定死成有限清單（正常／前綴斷於第幾段／過期／重開-原因X／已降級），資料齊到 UI 拿來就能畫；(3) **包 6 額度分頁 UI** 新增，排在真桌驗收**之後**再補。
 
@@ -104,20 +114,20 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 - JSONL 一行一物件：`type` 為 `user`／`assistant`（帶 `uuid`＋`parentUuid` 鏈、`message.role`＋`message.content`——user 為字串、assistant 為分段陣列）；雜項行（`queue-operation`／`ai-title`／`last-prompt`／`mode`）原樣保留不動。截尾＝刪葉端 user/assistant 行，uuid 鏈自然完整。
 
 ### 資料結構（app 資料目錄 per world，如 `lanes.json`；屬本機狀態、不進 .ai/）
-每 lane 記：`session_id`、`sent_event` 水位（正典 transcript 的已送出位置）、`snapshot`（凍結素材全文或其檔案）＋hash、`pending_rewrite`（上輪注入段的定位描述，供回合後抹寫）、`last_call_at`（追平判斷用）。正典與 session 對齊靠水位；水位對不上（外部改動）＝重開。
+每 lane 記：`session_id`、`sent_events` 水位（正典 transcript 的已送出位置）＋`sent_hash`、`snapshot`（凍結素材全文）＋`applied`（含歷來補丁的已傳達版本）、`pending_rewrite`（上輪注入段，供回合後抹寫）、`expected_reply`、`last_call_epoch`（追平判斷用）、`last_prompt_tokens`（下輪的理論可中量，診斷用）。正典與 session 對齊靠水位；水位對不上（外部改動）＝重開。
 
 ### 實作拆包順序（外派照 model-dispatch.md）
 1. ~~包 1 session 檔操作模組~~ **完成**（2026-08-03，見 Completed；規格存主線 scratchpad/pkg1-spec.md 已隨 session 失效，內容即 session_file.rs 本身）。
 2. ~~包 2 resume 流程地基~~ **完成**（2026-08-03 深夜，見 Completed）。
 3. ~~包 3 凍結快照＋補丁＋追平＋原因代碼~~ **完成**（2026-08-03，見 Completed）。
-4. **包 4 log 升級**（通到包 6 額度分頁）：log 改結構化 JSONL；組裝層對每段記 hash＋token 估計量；比對「本輪 vs 上輪共同前綴＝理論可中量」與實際 read，診斷標籤定死成有限清單（正常／前綴斷於第幾段／過期／重開-原因X／已降級），純規則判定、每標籤對一句玩家中文；log 補 `cost`（CLI result 的 `total_cost_usd`）與 `lane` 欄——三輪 0% 當初就是缺 lane 與 expected 才誤診。
+4. ~~包 4 log 升級~~ **完成**（2026-08-04，見 Completed；標籤清單與欄位以 `usage_log.rs` 模組頂註解為準）。
 5. **包 5 GM 旁白＋點名合併成一次呼叫**（已拍板）：旁白尾固定附「下一位：」行，`extract_state_block` 同族解析；**需先查前端回合 orchestration**（narrate／suggest 現為兩個 Tauri command，前端流程要跟著併）。
 6. **包 6 額度分頁 UI**（2026-08-03 拍板，排真桌驗收之後）：設定頁「額度花費＋命中率」分頁，讀 JSONL log 畫花費＋命中率＋顏色燈號＋原因句。
 7. **保溫 ping**（已拍板可考慮，最後做）：距上輪近 4 分鐘且玩家還在（視窗聚焦／打字中）發迷你訊息刷新壽命；ping 後把垃圾訊息從 session 檔截掉（快取時鐘已被讀取刷新，截尾不影響）。細節實作時拍。
 8. agy 量測（未拍板，擱置）。
 
 ### 驗收（整包完成後）
-真桌實測看 `文件/TableTavern/prompt-cache.log`：連續數輪 hit_rate ≥66%（目標「只有最後一句沒中」＝90%+）；中途改世界書／改卡當輪照樣命中；收回上一句後下一輪照樣命中；改寫失敗時自動降級重建、聊天不中斷。
+真桌實測看 `文件/TableTavern/prompt-cache.jsonl`：連續數輪 hit_rate ≥66%（目標「只有最後一句沒中」＝90%+）；中途改世界書／改卡當輪照樣命中；收回上一句後下一輪照樣命中；改寫失敗時自動降級重建、聊天不中斷。
 
 ## Constraints
 同 tasks 檔。另：私設隔離憲法規則（transport.rs 頂部）在 chars 共用線靠「注入→回合後抹寫」維持——使用者已明示接受此實作（案 C，2026-08-03）＋接受「演出內容隱含私設影子」的殘餘洩漏。實驗腳本跑 claude CLI 必須 `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN`（本會話環境會蓋掉訂閱登入、401）。

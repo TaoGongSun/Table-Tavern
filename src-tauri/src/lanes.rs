@@ -13,8 +13,8 @@ use crate::data::{self, TranscriptEvent, TranscriptKind};
 use crate::session_file;
 use crate::snapshot_patch;
 use crate::transport;
+use crate::usage_log;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -91,6 +91,9 @@ struct LaneState {
     expected_reply: Option<ExpectedReply>,
     /// 追平判斷用（距上輪超過五分鐘＝快取已死，改寫快照零成本）
     last_call_epoch: u64,
+    /// 上次成功呼叫的總輸入＝下輪的理論可中量（診斷用；舊檔沒這欄位當 0，不觸發重開）
+    #[serde(default)]
+    last_prompt_tokens: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,7 +206,7 @@ impl ReopenReason {
     }
 }
 
-const CACHE_TTL_SECS: u64 = 300;
+pub(crate) const CACHE_TTL_SECS: u64 = 300;
 
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
 fn plan_turn(state: Option<&LaneState>, input: &TurnInput<'_>, now_epoch: u64) -> TurnPlan {
@@ -273,23 +276,6 @@ fn now_epoch() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
-}
-
-/// 一行一事件追加到用量 log；寫入失敗不影響對話，避免診斷設施反過來中斷回覆。
-fn log_lane_action(log: Option<&Path>, key: &str, action: &str, reason: Option<&str>) {
-    let Some(path) = log else {
-        return;
-    };
-    let timestamp = data::local_timestamp_seconds().unwrap_or_default();
-    let mut line = format!("{timestamp} transport=claude lane={key} action={action}");
-    if let Some(reason) = reason {
-        line.push_str(&format!(" reason={reason}"));
-    }
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .and_then(|mut file| writeln!(file, "{line}"));
 }
 
 /// 組本輪 prompt：水位之後的新事件＋回合尾段。開線（全量重建）帶對話紀錄標頭，
@@ -363,10 +349,15 @@ pub(crate) async fn run_turn(
     let key = lane_key(input.lane, &call.model);
     let mut store = read_store(&store_path);
     let call_epoch = now_epoch();
-    let mut plan = plan_turn(store.get(&key), &input, call_epoch);
+    let prior = store.get(&key);
+    // 診斷用（包 4）：距上輪幾秒、上輪送了多少（＝這輪的理論可中量）
+    let age_secs = prior.map_or(0, |state| call_epoch.saturating_sub(state.last_call_epoch));
+    let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
+    let mut plan = plan_turn(prior, &input, call_epoch);
+    let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
 
     loop {
-        let (session_id, base, opening, system, patch) = match &plan {
+        let (session_id, base, opening, system, patch, lane_log) = match &plan {
             TurnPlan::Resume {
                 session_id,
                 base,
@@ -374,28 +365,38 @@ pub(crate) async fn run_turn(
                 patch,
                 rebased,
             } => {
-                if patch.is_some() {
-                    log_lane_action(call.usage_log.as_deref(), &key, "patch", None);
-                }
-                if *rebased {
-                    log_lane_action(call.usage_log.as_deref(), &key, "rebase", None);
-                }
+                let lane_log = usage_log::LaneContext {
+                    lane: key.clone(),
+                    reopen: None,
+                    patched: patch.is_some(),
+                    rebased: *rebased,
+                    age_secs,
+                    expected_cached,
+                    system_tokens: usage_log::estimate_tokens(system),
+                    system_hash: usage_log::text_hash(system),
+                };
                 (
                     session_id.clone(),
                     *base,
                     false,
                     system.clone(),
                     patch.clone(),
+                    lane_log,
                 )
             }
             TurnPlan::Reopen { reason } => {
-                log_lane_action(
-                    call.usage_log.as_deref(),
-                    &key,
-                    "reopen",
-                    Some(reason.as_str()),
-                );
-                (new_session_id(), 0, true, input.frozen_system.clone(), None)
+                let system = input.frozen_system.clone();
+                let lane_log = usage_log::LaneContext {
+                    lane: key.clone(),
+                    reopen: Some(reason.as_str()),
+                    patched: false,
+                    rebased: false,
+                    age_secs,
+                    expected_cached: 0, // 重開＝從零建快取
+                    system_tokens: usage_log::estimate_tokens(&system),
+                    system_hash: usage_log::text_hash(&system),
+                };
+                (new_session_id(), 0, true, system, None, lane_log)
             }
         };
         let tail = patch
@@ -425,6 +426,7 @@ pub(crate) async fn run_turn(
                 }),
                 expected_reply: None,
                 last_call_epoch: call_epoch,
+                last_prompt_tokens: 0,
             },
         );
         write_store(&store_path, &store)?;
@@ -441,6 +443,8 @@ pub(crate) async fn run_turn(
                 transport: "claude",
                 model: &call.model,
                 parse: cli::parse_claude_usage,
+                lane: Some(lane_log),
+                prompt_tokens_out: Some(&prompt_tokens),
             }),
             &mut emit,
         )
@@ -459,16 +463,20 @@ pub(crate) async fn run_turn(
                         if let Some(state) = store.get_mut(&key) {
                             state.pending_rewrite = None;
                             state.expected_reply = expected_reply_for(&input.echo, &reply);
+                            state.last_prompt_tokens =
+                                prompt_tokens.load(std::sync::atomic::Ordering::Relaxed);
                         }
                     }
                     // 抹寫失敗＝session 內容不可信，丟線；下一輪自動重開全量，本輪回覆照常送回
                     Err(_) => {
-                        log_lane_action(
-                            call.usage_log.as_deref(),
-                            &key,
-                            "drop-lane",
-                            Some("rewrite-failed"),
-                        );
+                        if let Some(path) = call.usage_log.as_deref() {
+                            usage_log::append_event(
+                                path,
+                                &key,
+                                usage_log::Diag::DropLane,
+                                "rewrite-failed",
+                            );
+                        }
                         store.remove(&key);
                     }
                 }
@@ -531,6 +539,7 @@ mod tests {
             pending_rewrite: None,
             expected_reply: None,
             last_call_epoch: 1_000,
+            last_prompt_tokens: 0,
         }
     }
 
@@ -957,7 +966,10 @@ with open(path, 'a') as f:
                         'message': {'role': 'user', 'content': prompt}}) + '\n')
     f.write(json.dumps({'type': 'assistant', 'uuid': a,
                         'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': '回覆'}]}}) + '\n')
-print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆'}))
+print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
+                  'total_cost_usd': 0.002,
+                  'usage': {'input_tokens': 10, 'cache_creation_input_tokens': 0,
+                            'cache_read_input_tokens': 90, 'output_tokens': 5}}))
 "#,
         )
         .unwrap();
@@ -1035,10 +1047,33 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆'}))
             .any(|window| window == ["--system-prompt", new_system]));
         assert!(!rebase_prompt.contains("## 設定更新"));
 
+        // log（包 4）：一次呼叫一行 JSONL，線的動作與該次用量寫在同一筆
         let log = std::fs::read_to_string(&usage_log).unwrap();
-        assert!(log.contains("action=reopen reason=first-turn"));
-        assert!(log.contains("action=patch"));
-        assert!(log.contains("action=rebase"));
+        let records: Vec<serde_json::Value> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(records.len(), 3);
+        for record in &records {
+            assert_eq!(record["lane"], "chars:sonnet");
+            assert_eq!(record["prompt_tokens"], 100); // 10＋0＋90
+            assert_eq!(record["cached_tokens"], 90);
+            assert_eq!(record["cost_usd"], 0.002);
+            assert!(record["system_tokens"].as_u64().unwrap() > 0);
+        }
+        // 第一輪開線＝暖機，理論可中量 0
+        assert_eq!(records[0]["diag"], "warmup");
+        assert_eq!(records[0]["reason"], "first-turn");
+        assert_eq!(records[0]["expected_cached"], 0);
+        // 第二輪走補丁：上輪送了 100，這輪中 90＝正常
+        assert_eq!(records[1]["diag"], "ok");
+        assert_eq!(records[1]["patched"], true);
+        assert_eq!(records[1]["expected_cached"], 100);
+        // 第三輪快取已過期（手改 epoch 減 3600）＝追平，換上新素材
+        assert_eq!(records[2]["diag"], "expired");
+        assert_eq!(records[2]["rebased"], true);
+        assert!(records[2]["age_secs"].as_u64().unwrap() >= 3_600);
+        assert_ne!(records[2]["system_hash"], records[1]["system_hash"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

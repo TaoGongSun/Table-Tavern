@@ -9,6 +9,7 @@ mod lanes;
 mod session_file;
 mod snapshot_patch;
 mod transport;
+mod usage_log;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
 use serde::{Deserialize, Serialize};
@@ -714,7 +715,7 @@ async fn prepare_claude_call(
         working_dir: cli_workspace(app)?,
         envs: claude_cli_envs(config),
         model,
-        usage_log: data_root(app).ok().map(|root| root.join("prompt-cache.log")),
+        usage_log: data_root(app).ok().map(|root| root.join("prompt-cache.jsonl")),
         claude_home: claude_home_dir(),
     })
 }
@@ -737,9 +738,9 @@ async fn stream_via_transport(
     let transport_kind = transport_override
         .map(str::to_owned)
         .unwrap_or_else(|| chat_transport(config));
-    // 快取命中率逐行落在資料目錄的 prompt-cache.log（拍板：不做 UI，log 隨時可查）。
+    // 每次呼叫的用量落成一行 JSONL（資料目錄的 prompt-cache.jsonl），供額度分頁讀。
     // API 與 CLI 兩條路共用同一份檔案，靠行內的 transport 欄位分辨。
-    let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.log"));
+    let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
         return transport::stream_chat(config, &model, messages, usage_log.as_deref(), emit)
@@ -778,6 +779,8 @@ async fn stream_via_transport(
                     transport: "claude",
                     model,
                     parse: cli::parse_claude_usage,
+                    lane: None,
+                    prompt_tokens_out: None,
                 }),
                 emit,
             )
@@ -800,6 +803,8 @@ async fn stream_via_transport(
                     transport: "codex",
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_codex_usage,
+                    lane: None,
+                    prompt_tokens_out: None,
                 }),
                 emit,
             )
@@ -839,6 +844,8 @@ async fn stream_via_transport(
                     transport: "grok",
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_grok_usage,
+                    lane: None,
+                    prompt_tokens_out: None,
                 }),
                 emit,
             )

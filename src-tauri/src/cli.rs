@@ -539,6 +539,7 @@ fn token_count(usage: &serde_json::Value, field: &str) -> u64 {
 
 /// claude result 事件的用量。input_tokens **不含**快取部分（實測：讀滿快取時 input_tokens=1、
 /// cache_read=4771），總輸入要把建快取與讀快取加回來。
+/// 四支 CLI 只有 claude 直接回報金額（total_cost_usd），額度分頁的花費以它為準。
 pub fn parse_claude_usage(line: &str) -> Option<PromptCacheUsage> {
     let value = usage_event(line, "result")?;
     let usage = value.get("usage")?;
@@ -548,6 +549,8 @@ pub fn parse_claude_usage(line: &str) -> Option<PromptCacheUsage> {
         prompt_tokens: token_count(usage, "input_tokens") + created + cached,
         cached_tokens: cached,
         created_tokens: created,
+        output_tokens: token_count(usage, "output_tokens"),
+        cost_usd: value.get("total_cost_usd").and_then(|cost| cost.as_f64()),
     })
 }
 
@@ -560,6 +563,8 @@ pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
         prompt_tokens: token_count(usage, "input_tokens"),
         cached_tokens: token_count(usage, "cached_input_tokens"),
         created_tokens: token_count(usage, "cache_write_input_tokens"),
+        output_tokens: token_count(usage, "output_tokens"),
+        cost_usd: None,
     })
 }
 
@@ -574,6 +579,8 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
         prompt_tokens: token_count(usage, "input_tokens") + cached,
         cached_tokens: cached,
         created_tokens: 0,
+        output_tokens: token_count(usage, "output_tokens"),
+        cost_usd: None,
     })
 }
 
@@ -646,14 +653,18 @@ pub fn parse_grok_line(line: &str) -> CliLine {
     }
 }
 
-/// CLI 路徑的快取命中率落檔設定（prompt-cache-optimization：CLI 量測）。
-/// 帶著就在收尾事件把用量追加到 log，與 API 那條共用同一份檔案與格式。
+/// CLI 路徑的用量落檔設定（prompt-cache-optimization：CLI 量測）。
+/// 帶著就在收尾事件把這次呼叫追加成一行 JSONL，與 API 那條共用同一份檔案與格式。
 pub struct UsageLog<'a> {
     pub path: &'a Path,
     /// log 的 transport 欄位，例如 "claude"。
     pub transport: &'a str,
     pub model: &'a str,
     pub parse: fn(&str) -> Option<PromptCacheUsage>,
+    /// 續聊線的脈絡；None＝單發路徑，只記數字不做診斷。
+    pub lane: Option<crate::usage_log::LaneContext>,
+    /// 回填本輪總輸入，供 lane 記成下輪的理論可中量（跨 await 需 Sync，故用 atomic）。
+    pub prompt_tokens_out: Option<&'a std::sync::atomic::AtomicU64>,
 }
 
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
@@ -704,15 +715,25 @@ pub async fn run_cli(
         if let Some(log) = &usage_log {
             if let Some(usage) = (log.parse)(&line) {
                 eprintln!(
-                    "[prompt-cache] transport={} model={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%",
+                    "[prompt-cache] transport={} model={} lane={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%",
                     log.transport,
                     log.model,
+                    log.lane.as_ref().map_or("-", |lane| lane.lane.as_str()),
                     usage.prompt_tokens,
                     usage.cached_tokens,
                     usage.created_tokens,
                     usage.hit_rate(),
                 );
-                crate::transport::append_usage_log(log.path, log.transport, log.model, usage);
+                crate::usage_log::append_call(
+                    log.path,
+                    log.transport,
+                    log.model,
+                    log.lane.as_ref(),
+                    usage,
+                );
+                if let Some(slot) = log.prompt_tokens_out {
+                    slot.store(usage.prompt_tokens, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         }
         match parse(&line) {
@@ -818,15 +839,17 @@ mod tests {
     /// 第二次全命中）。各家 input_tokens 語意不同，這裡鎖住換算後的「總輸入／讀快取」。
     #[test]
     fn parses_claude_usage_adding_cache_tokens_to_input() {
-        // 第一次：建快取 4771，讀 0 → 總輸入 4772、命中 0%
+        // 第一次：建快取 4771，讀 0 → 總輸入 4772、命中 0%；金額直接取 CLI 回報值
         assert_eq!(
             parse_claude_usage(
-                r#"{"type":"result","usage":{"input_tokens":1,"cache_creation_input_tokens":4771,"cache_read_input_tokens":0,"output_tokens":3}}"#
+                r#"{"type":"result","total_cost_usd":0.0179,"usage":{"input_tokens":1,"cache_creation_input_tokens":4771,"cache_read_input_tokens":0,"output_tokens":3}}"#
             ),
             Some(PromptCacheUsage {
                 prompt_tokens: 4772,
                 cached_tokens: 0,
-                created_tokens: 4771
+                created_tokens: 4771,
+                output_tokens: 3,
+                cost_usd: Some(0.0179),
             })
         );
         // 第二次：讀滿 4771 → 總輸入 4772、命中 100%
@@ -881,14 +904,18 @@ mod tests {
             Some(PromptCacheUsage {
                 prompt_tokens: 12,
                 cached_tokens: 0,
-                created_tokens: 0
+                created_tokens: 0,
+                output_tokens: 0,
+                cost_usd: None, // 沒回報金額就不記，額度分頁靠有值的那些行加總
             })
         );
         assert_eq!(
             PromptCacheUsage {
                 prompt_tokens: 0,
                 cached_tokens: 0,
-                created_tokens: 0
+                created_tokens: 0,
+                output_tokens: 0,
+                cost_usd: None,
             }
             .hit_rate(),
             0.0
@@ -1113,7 +1140,7 @@ mod tests {
                 "echo '{\"type\":\"system\",\"subtype\":\"init\"}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}}'\n",
-                "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"你好\\\",\\\"usage\\\":{\\\"input_tokens\\\":1,\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":99}}\"\n",
+                "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"你好\\\",\\\"total_cost_usd\\\":0.0015,\\\"usage\\\":{\\\"input_tokens\\\":1,\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":99,\\\"output_tokens\\\":2}}\"\n",
                 "test \"$input\" = \"提示詞\" || exit 9\n",
             ),
         )
@@ -1121,7 +1148,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let log_path = dir.join("prompt-cache.log");
+        let log_path = dir.join("prompt-cache.jsonl");
+        let seen = std::sync::atomic::AtomicU64::new(0);
         let mut deltas = Vec::new();
         let full = run_cli(
             &script,
@@ -1135,6 +1163,8 @@ mod tests {
                 transport: "claude",
                 model: "sonnet",
                 parse: parse_claude_usage,
+                lane: None,
+                prompt_tokens_out: Some(&seen),
             }),
             |delta: &str| {
                 deltas.push(delta.to_owned());
@@ -1146,14 +1176,21 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["你", "好"]);
-        // 收尾事件落一行：總輸入 100（1＋0＋99）、讀快取 99 → 99%
+        // 收尾事件落一行 JSONL：總輸入 100（1＋0＋99）、讀快取 99 → 99%
         assert_eq!(logged.lines().count(), 1);
-        assert!(
-            logged.contains("transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 created_tokens=0 hit_rate=99%"),
-            "log 行不符預期：{logged}"
-        );
-        // 時間戳到秒（分鐘精度分不出是否踩到 5 分鐘過期線）
-        let timestamp = logged.split(" transport=").next().unwrap();
-        assert_eq!(timestamp.len(), 19, "時間戳應為 yyyy-mm-dd hh:mm:ss：{timestamp}");
+        let record: serde_json::Value = serde_json::from_str(logged.trim()).unwrap();
+        assert_eq!(record["transport"], "claude");
+        assert_eq!(record["model"], "sonnet");
+        assert_eq!(record["prompt_tokens"], 100);
+        assert_eq!(record["cached_tokens"], 99);
+        assert_eq!(record["created_tokens"], 0);
+        assert_eq!(record["output_tokens"], 2);
+        assert_eq!(record["hit_rate"], 99.0);
+        assert_eq!(record["cost_usd"], 0.0015);
+        // 非續聊路徑不做診斷；時間戳到秒（分鐘精度分不出是否踩到 5 分鐘過期線）
+        assert_eq!(record["diag"], "single");
+        assert_eq!(record["ts"].as_str().unwrap().len(), 19);
+        // 總輸入回填給呼叫端，續聊線用它當下輪的理論可中量
+        assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 100);
     }
 }

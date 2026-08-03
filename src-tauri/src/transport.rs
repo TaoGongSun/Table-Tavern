@@ -944,17 +944,20 @@ impl SseParser {
     }
 }
 
-/// 快取命中數字（prompt-cache-optimization C）。API 走 OpenRouter usage accounting，
+/// 一次呼叫的用量（prompt-cache-optimization C）。API 走 OpenRouter usage accounting，
 /// CLI 走各家收尾事件（見 cli::parse_*_usage）。
 /// prompt_tokens 一律是「總輸入」（含快取部分），各家語意差異在抽取時就換算掉。
 /// created_tokens（寫入快取）是診斷關鍵：命中率 0 時，它 >0 代表「有建但沒讀到」
 /// （前綴變了或過了 5 分鐘），=0 代表「根本沒建快取」。
 /// OpenRouter 不回報寫入數（官方文件明言不支援），該路徑恆為 0。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// output_tokens 與 cost_usd 供額度分頁算花費；只有 claude 直接回報金額，其餘為 None。
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PromptCacheUsage {
     pub prompt_tokens: u64,
     pub cached_tokens: u64,
     pub created_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_usd: Option<f64>,
 }
 
 impl PromptCacheUsage {
@@ -984,6 +987,11 @@ pub fn extract_usage(payload: &str) -> Option<PromptCacheUsage> {
         prompt_tokens,
         cached_tokens,
         created_tokens: 0, // OpenRouter 不回報寫入數
+        output_tokens: usage
+            .get("completion_tokens")
+            .and_then(|tokens| tokens.as_u64())
+            .unwrap_or(0),
+        cost_usd: None,
     })
 }
 
@@ -1052,37 +1060,9 @@ pub fn extract_delta(payload: &str) -> Option<String> {
     }
 }
 
-/// 命中率落檔（使用者拍板 2026-08-03：不做正式 UI，寫 log 隨時可查——
-/// 日後介面／組裝改動若打破前綴，看這檔的 hit_rate 立刻現形）。
-/// 一次呼叫一行：本機時間戳＋傳輸層＋模型＋token 數＋命中率；寫檔失敗不影響聊天（盡力而為）。
-/// transport 欄位分辨 API 與各支 CLI——同一份 log 混著兩條路的紀錄。
-/// 無輪替：一行約百位元組，量極小。
-pub(crate) fn append_usage_log(
-    path: &std::path::Path,
-    transport: &str,
-    model: &str,
-    usage: PromptCacheUsage,
-) {
-    use std::io::Write;
-    let timestamp =
-        crate::data::local_timestamp_seconds().unwrap_or_else(|_| "unknown-time".to_owned());
-    let line = format!(
-        "{timestamp} transport={transport} model={model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%\n",
-        usage.prompt_tokens,
-        usage.cached_tokens,
-        usage.created_tokens,
-        usage.hit_rate(),
-    );
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .and_then(|mut file| file.write_all(line.as_bytes()));
-}
-
 /// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
 /// 每個增量經 on_delta 回傳，結束後回傳完整文字。
-/// usage_log 給路徑就把快取命中率逐行追加到該檔（見 append_usage_log）。
+/// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage_log）。
 pub async fn stream_chat(
     config: &AppConfig,
     model: &str,
@@ -1143,7 +1123,7 @@ pub async fn stream_chat(
             usage.hit_rate(),
         );
         if let Some(path) = usage_log {
-            append_usage_log(path, "api", model, usage);
+            crate::usage_log::append_call(path, "api", model, None, usage);
         }
     }
     Ok(full_text)
@@ -1961,6 +1941,8 @@ mod tests {
                 prompt_tokens: 194,
                 cached_tokens: 150,
                 created_tokens: 0, // OpenRouter 不回報寫入數
+                output_tokens: 2,
+                cost_usd: None, // 金額只有 claude CLI 直接回報
             }
         );
 
@@ -2011,10 +1993,8 @@ mod tests {
             serde_json::Value::String(format!("http://{address}")),
         );
         let messages = [message("user", "嗨".to_owned())];
-        let log_path = std::env::temp_dir().join(format!(
-            "tt-prompt-cache-test-{}.log",
-            std::process::id()
-        ));
+        let log_path =
+            std::env::temp_dir().join(format!("tt-prompt-cache-test-{}.jsonl", std::process::id()));
         let _ = std::fs::remove_file(&log_path);
         let mut deltas = Vec::new();
         let full = stream_chat(&config, "test/model", &messages, Some(&log_path), |delta| {
@@ -2025,13 +2005,16 @@ mod tests {
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["你", "好"]);
 
-        // usage 落檔：一行含時間戳、模型、token 數與命中率（12/20 = 60%）
+        // usage 落檔：一行 JSONL 含時間戳、模型、token 數與命中率（12/20 = 60%）
         let logged = std::fs::read_to_string(&log_path).unwrap();
         assert_eq!(logged.lines().count(), 1);
-        assert!(logged.contains("model=test/model"));
-        assert!(logged.contains("prompt_tokens=20"));
-        assert!(logged.contains("cached_tokens=12"));
-        assert!(logged.contains("hit_rate=60%"));
+        let record: serde_json::Value = serde_json::from_str(logged.trim()).unwrap();
+        assert_eq!(record["transport"], "api");
+        assert_eq!(record["model"], "test/model");
+        assert_eq!(record["prompt_tokens"], 20);
+        assert_eq!(record["cached_tokens"], 12);
+        assert_eq!(record["hit_rate"], 60.0);
+        assert_eq!(record["diag"], "single");
         let _ = std::fs::remove_file(&log_path);
     }
 
