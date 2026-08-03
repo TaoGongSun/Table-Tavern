@@ -258,6 +258,43 @@ pub fn assemble_gm_messages(
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
+    // 快取友善（prompt-cache-optimization A）：keyword 條目與「目前狀態」每輪翻動，
+    // 移到 transcript 尾端的一則獨立 user 訊息；constant 條目穩定，留在 system。
+    let (constant_entries, keyword_entries): (Vec<_>, Vec<_>) =
+        active_worldbook_entries(worldbook, events)
+            .into_iter()
+            .partition(|entry| entry.constant);
+    let system = gm_system_prompt(world_md, cards, player, &constant_entries, user_name, lang);
+
+    let mut messages = vec![message("system", system)];
+    for event in events {
+        let (role, line) = match event.kind {
+            TranscriptKind::Narration => ("assistant", event.text.clone()),
+            TranscriptKind::Dialogue | TranscriptKind::Player => {
+                ("user", format!("{}：{}", event.speaker_name, event.text))
+            }
+            TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
+        };
+        push_merged(&mut messages, role, line);
+    }
+    let dynamic = gm_dynamic_block(&keyword_entries, state, user_name, lang);
+    if !dynamic.is_empty() {
+        // 刻意不走 push_merged：動態塊維持獨立一則的語意邊界，不黏進最後一則發言
+        messages.push(message("user", dynamic));
+    }
+    messages
+}
+
+/// GM 的 system prompt 本體：GM 指示＋world.md＋constant 條目＋全卡（含私設）＋玩家卡。
+/// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。
+fn gm_system_prompt(
+    world_md: &str,
+    cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
+    constant_entries: &[&WorldbookEntry],
+    user_name: &str,
+    lang: &str,
+) -> String {
     let mut system = format!(
         "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
          推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
@@ -274,12 +311,6 @@ pub fn assemble_gm_messages(
             replace_st_macros(world_md.trim(), user_name, None)
         ));
     }
-    // 快取友善（prompt-cache-optimization A）：keyword 條目與「目前狀態」每輪翻動，
-    // 移到 transcript 尾端的一則獨立 user 訊息；constant 條目穩定，留在 system。
-    let (constant_entries, keyword_entries): (Vec<_>, Vec<_>) =
-        active_worldbook_entries(worldbook, events)
-            .into_iter()
-            .partition(|entry| entry.constant);
     if !constant_entries.is_empty() {
         system.push_str("\n## 世界書（只進你的上下文）\n");
         for entry in constant_entries {
@@ -320,18 +351,17 @@ pub fn assemble_gm_messages(
             ));
         }
     }
+    system
+}
 
-    let mut messages = vec![message("system", system)];
-    for event in events {
-        let (role, line) = match event.kind {
-            TranscriptKind::Narration => ("assistant", event.text.clone()),
-            TranscriptKind::Dialogue | TranscriptKind::Player => {
-                ("user", format!("{}：{}", event.speaker_name, event.text))
-            }
-            TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
-        };
-        push_merged(&mut messages, role, line);
-    }
+/// GM 的回合動態塊：keyword 條目＋「目前狀態」。
+/// assemble_gm_messages（尾端獨立訊息）與 gm_lane_turn（resume 續聊回合尾段）共用。
+fn gm_dynamic_block(
+    keyword_entries: &[&WorldbookEntry],
+    state: &TableState,
+    user_name: &str,
+    lang: &str,
+) -> String {
     let mut dynamic = String::new();
     if !keyword_entries.is_empty() {
         dynamic.push_str("## 世界書（只進你的上下文）\n");
@@ -361,11 +391,216 @@ pub fn assemble_gm_messages(
             dynamic.push_str(&format!("{display_name}：{value}\n"));
         }
     }
-    if !dynamic.is_empty() {
-        // 刻意不走 push_merged：動態塊維持獨立一則的語意邊界，不黏進最後一則發言
-        messages.push(message("user", dynamic.trim_end().to_owned()));
+    dynamic.trim_end().to_owned()
+}
+
+/// resume 續聊線（prompt-cache-optimization 包 2）的回合尾段。
+/// tail 是跟在新事件後送出的動態文字；confidential 是 tail 內回合結束後
+/// 要從 session 檔抹掉的子段（chars 線的私設＋限定條目，防洩漏給下一個被點的角色）。
+pub struct LaneTurn {
+    pub tail: String,
+    pub confidential: Option<String>,
+}
+
+/// 事件在 lane prompt 裡的一行。續聊線的歷史全部以名字標注成純文字
+/// （誰說的靠「X：」前綴分辨，不靠 role），與 session 內既有歷史逐字銜接。
+pub fn lane_event_line(event: &TranscriptEvent) -> String {
+    match event.kind {
+        TranscriptKind::Dialogue | TranscriptKind::Player => {
+            format!("{}：{}", event.speaker_name, event.text)
+        }
+        TranscriptKind::Narration => format!("（旁白）{}", event.text),
+        TranscriptKind::System => format!("（系統）{}", event.text),
     }
-    messages
+}
+
+/// chars 線凍結 system（快照）：中性扮演引擎指示＋全部公開角色卡＋玩家卡＋Public constant 條目。
+/// 全角色共用一條 session，這一輪演誰由回合尾段指定；私設與限定條目不進快照
+/// （E7：凍結 system 動一字整條快取全滅，快照只能放全員共通且穩定的素材）。
+pub fn chars_lane_system(
+    cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
+    worldbook: &[WorldbookEntry],
+    lang: &str,
+) -> String {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
+    let mut system = format!(
+        "你是這場多人桌上角色扮演的扮演引擎，「登場角色」名單上的角色都可能由你扮演，\
+         每一輪的結尾會指定你這一輪演誰。請一律以被指定角色的第一人稱視角與口吻回應，\
+         輸出這個角色的台詞、動作與心理描寫，也可以寫他眼中所見的環境與感受；\
+         不要跳出角色、不要以 AI 助理的身分說話、不要替其他角色或玩家代言。\
+         {language_rule}\n",
+        language_rule = language_rule(lang),
+    );
+    if !cards.is_empty() {
+        system.push_str("\n## 登場角色（公開設定）\n");
+        for card in cards {
+            system.push_str(&format!("### {}\n", card.name));
+            if !card.public_md.trim().is_empty() {
+                system.push_str(&format!(
+                    "{}\n",
+                    replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
+                ));
+            }
+        }
+    }
+    if let Some(player) = player {
+        system.push_str(&format!(
+            "\n## 玩家角色（真人扮演，逐字稿裡的「{}」就是他）",
+            player.name
+        ));
+        if !player.public_md.trim().is_empty() {
+            system.push_str(&format!(
+                "\n{}\n",
+                replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
+            ));
+        }
+    }
+    let mut constants: Vec<&WorldbookEntry> = worldbook
+        .iter()
+        .filter(|entry| {
+            !entry.disabled && entry.constant && matches!(entry.visibility, Visibility::Public)
+        })
+        .collect();
+    constants.sort_by_key(|entry| (entry.order, entry.uid));
+    if !constants.is_empty() {
+        system.push_str("\n## 你知道的世界情報\n");
+        for entry in constants {
+            system.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, None),
+                replace_st_macros(&entry.content, user_name, None)
+            ));
+        }
+    }
+    system
+}
+
+/// chars 線回合尾段：公開 keyword 條目＋機密段（本輪角色的私設＋限定可見條目）＋本輪指定。
+/// 機密段回合結束後從 session 檔抹掉；Public constant 條目已在凍結快照，不重複。
+pub fn chars_lane_turn(
+    card: &CharacterCard,
+    player: Option<&CharacterCard>,
+    events: &[TranscriptEvent],
+    worldbook: &[WorldbookEntry],
+    lang: &str,
+) -> LaneTurn {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
+    let visible: Vec<WorldbookEntry> = worldbook
+        .iter()
+        .filter(|entry| match &entry.visibility {
+            Visibility::Gm => false,
+            Visibility::Public => true,
+            Visibility::Characters(ids) => ids.iter().any(|id| id == &card.id),
+        })
+        .cloned()
+        .collect();
+    let mut public_keyword = Vec::new();
+    let mut limited = Vec::new();
+    for entry in active_worldbook_entries(&visible, events) {
+        match &entry.visibility {
+            Visibility::Public if entry.constant => {} // 已在凍結快照
+            Visibility::Public => public_keyword.push(entry),
+            _ => limited.push(entry), // Characters 限定：不論 constant 都走回合注入
+        }
+    }
+
+    let mut tail = String::new();
+    if !public_keyword.is_empty() {
+        tail.push_str("## 你知道的世界情報\n");
+        for entry in public_keyword {
+            tail.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, Some(&card.name)),
+                replace_st_macros(&entry.content, user_name, Some(&card.name))
+            ));
+        }
+        tail.push('\n');
+    }
+    let mut confidential = String::new();
+    if !card.private_md.trim().is_empty() {
+        confidential.push_str(&format!(
+            "## 「{}」的私有設定（只有他自己知道；除非劇情走到，不要主動說破）\n{}\n",
+            card.name,
+            replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
+        ));
+    }
+    if !limited.is_empty() {
+        confidential.push_str(&format!("## 只有「{}」知道的世界情報\n", card.name));
+        for entry in limited {
+            confidential.push_str(&format!(
+                "### {}\n{}\n",
+                replace_st_macros(&entry.title, user_name, Some(&card.name)),
+                replace_st_macros(&entry.content, user_name, Some(&card.name))
+            ));
+        }
+    }
+    if !confidential.is_empty() {
+        tail.push_str(&confidential);
+        tail.push('\n');
+    }
+    tail.push_str(&format!(
+        "現在你是「{name}」。請直接以「{name}」的第一人稱視角輸出台詞、動作與心理描寫，\
+         不要加名字前綴、不要任何角色之外的說明。",
+        name = card.name
+    ));
+    LaneTurn {
+        tail,
+        confidential: (!confidential.is_empty()).then_some(confidential),
+    }
+}
+
+/// gm 線凍結 system（快照）：GM 指示＋world.md＋全 constant 條目＋全卡（含私設）＋玩家卡。
+/// GM 看得到一切，constant 條目不分可見性全部進快照。
+pub fn gm_lane_system(
+    world_md: &str,
+    cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
+    worldbook: &[WorldbookEntry],
+    lang: &str,
+) -> String {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
+    let mut constants: Vec<&WorldbookEntry> = worldbook
+        .iter()
+        .filter(|entry| !entry.disabled && entry.constant)
+        .collect();
+    constants.sort_by_key(|entry| (entry.order, entry.uid));
+    gm_system_prompt(world_md, cards, player, &constants, user_name, lang)
+}
+
+/// gm 線回合尾段：keyword 條目＋目前狀態＋導演指示（narrate／suggest 由呼叫端組好傳入）。
+pub fn gm_lane_turn(
+    events: &[TranscriptEvent],
+    worldbook: &[WorldbookEntry],
+    player: Option<&CharacterCard>,
+    state: &TableState,
+    instruction: &str,
+    lang: &str,
+) -> LaneTurn {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
+    let keyword_entries: Vec<&WorldbookEntry> = active_worldbook_entries(worldbook, events)
+        .into_iter()
+        .filter(|entry| !entry.constant)
+        .collect();
+    let dynamic = gm_dynamic_block(&keyword_entries, state, user_name, lang);
+    let mut tail = String::new();
+    if !dynamic.is_empty() {
+        tail.push_str(&dynamic);
+        tail.push_str("\n\n");
+    }
+    tail.push_str(instruction);
+    LaneTurn {
+        tail,
+        confidential: None,
+    }
 }
 
 /// 組裝「換場摘要」上下文：GM 檔位讀公開 transcript，把本場景壓成一則前情提要。
@@ -2017,5 +2252,142 @@ mod tests {
         let (fields, display) = extract_state_block(reply);
         assert_eq!(fields, vec![("time".to_owned(), "午夜".to_owned())]);
         assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
+    }
+
+    /// chars 線凍結快照只能有全員共通且穩定的素材：公開卡＋玩家卡＋Public constant。
+    /// 私設、GM 專有、角色限定、keyword 條目一律不進快照（回合注入或不可見）。
+    #[test]
+    fn chars_lane_snapshot_holds_shared_public_material_only() {
+        let fox = card("fox-id", "狐狸", "旅店老闆", "其實是通緝犯");
+        let knight = card("knight-id", "騎士", "遊歷的騎士", "");
+        let player = card("player-id", "阿濤", "商隊護衛", "");
+        let entries = [
+            worldbook_entry(1, "公開常識", &[], true, 0, false, Visibility::Public),
+            worldbook_entry(2, "GM專有", &[], true, 0, false, Visibility::Gm),
+            worldbook_entry(
+                3,
+                "狐狸限定",
+                &[],
+                true,
+                0,
+                false,
+                Visibility::Characters(vec!["fox-id".to_owned()]),
+            ),
+            worldbook_entry(4, "關鍵字條目", &["寶箱"], false, 0, false, Visibility::Public),
+        ];
+        let snapshot = chars_lane_system(
+            &[fox.clone(), knight.clone()],
+            Some(&player),
+            &entries,
+            "zh-TW",
+        );
+        assert!(snapshot.contains("扮演引擎"));
+        assert!(snapshot.contains("旅店老闆"));
+        assert!(snapshot.contains("遊歷的騎士"));
+        assert!(snapshot.contains("阿濤"));
+        assert!(snapshot.contains("公開常識內容"));
+        assert!(!snapshot.contains("通緝犯"));
+        assert!(!snapshot.contains("GM專有"));
+        assert!(!snapshot.contains("狐狸限定"));
+        assert!(!snapshot.contains("關鍵字條目"));
+        // 快照不依賴 events，本質上逐輪穩定；再組一次逐字相同
+        assert_eq!(
+            snapshot,
+            chars_lane_system(&[fox, knight], Some(&player), &entries, "zh-TW")
+        );
+    }
+
+    /// chars 線回合尾段：公開 keyword 條目留在 tail、私設與限定條目集中在 confidential；
+    /// confidential 在 tail 中恰好出現一次（回合後靠這個子段從 session 檔抹掉）。
+    #[test]
+    fn chars_lane_turn_isolates_confidential_segment() {
+        let fox = card("fox-id", "狐狸", "旅店老闆", "其實是通緝犯");
+        let events = [event(TranscriptKind::Player, "", "阿濤", "打開寶箱，讀羊皮卷")];
+        let entries = [
+            worldbook_entry(1, "公開常識", &[], true, 0, false, Visibility::Public),
+            worldbook_entry(2, "寶箱情報", &["寶箱"], false, 0, false, Visibility::Public),
+            worldbook_entry(
+                3,
+                "羊皮卷密文",
+                &["羊皮卷"],
+                false,
+                0,
+                false,
+                Visibility::Characters(vec!["fox-id".to_owned()]),
+            ),
+            worldbook_entry(
+                4,
+                "狐狸長設",
+                &[],
+                true,
+                0,
+                false,
+                Visibility::Characters(vec!["fox-id".to_owned()]),
+            ),
+        ];
+        let turn = chars_lane_turn(&fox, None, &events, &entries, "zh-TW");
+        let confidential = turn.confidential.expect("私設＋限定條目必須進機密段");
+        assert!(confidential.contains("通緝犯"));
+        assert!(confidential.contains("羊皮卷密文內容"));
+        assert!(confidential.contains("狐狸長設內容")); // 限定 constant 也走回合注入
+        assert!(!confidential.contains("寶箱情報"));
+        assert_eq!(turn.tail.matches(confidential.as_str()).count(), 1);
+        // 抹掉機密段後，公開條目與本輪指定仍在（session 歷史剩這些）
+        let erased = turn.tail.replacen(confidential.as_str(), "", 1);
+        assert!(erased.contains("寶箱情報內容"));
+        assert!(erased.contains("現在你是「狐狸」"));
+        assert!(!erased.contains("公開常識")); // constant 已在快照，不重複
+        // 沒有私設也沒有限定條目時不產生機密段
+        let knight = card("knight-id", "騎士", "遊歷的騎士", "");
+        let plain = chars_lane_turn(&knight, None, &events, &entries[..2], "zh-TW");
+        assert!(plain.confidential.is_none());
+        assert!(plain.tail.contains("現在你是「騎士」"));
+    }
+
+    /// gm 線凍結快照＝GM 單發 system 的同等素材（全 constant＋全卡含私設＋world.md）；
+    /// 回合尾段＝keyword 條目＋目前狀態＋導演指示。
+    #[test]
+    fn gm_lane_snapshot_and_turn_cover_gm_material() {
+        let fox = card("fox-id", "狐狸", "旅店老闆", "其實是通緝犯");
+        let events = [event(TranscriptKind::Player, "", "阿濤", "打開寶箱")];
+        let entries = [
+            worldbook_entry(1, "GM專有", &[], true, 0, false, Visibility::Gm),
+            worldbook_entry(2, "寶箱情報", &["寶箱"], false, 0, false, Visibility::Public),
+        ];
+        let snapshot = gm_lane_system("世界總覽", &[fox], None, &entries, "zh-TW");
+        assert!(snapshot.contains("世界總覽"));
+        assert!(snapshot.contains("GM專有內容"));
+        assert!(snapshot.contains("通緝犯"));
+        assert!(!snapshot.contains("寶箱情報"));
+
+        let mut state = TableState::default();
+        state
+            .table
+            .insert("place".to_owned(), "酒館".to_owned());
+        let turn = gm_lane_turn(&events, &entries, None, &state, "（導演指示）請插入旁白。", "zh-TW");
+        assert!(turn.confidential.is_none());
+        assert!(turn.tail.contains("寶箱情報內容"));
+        assert!(turn.tail.contains("地點：酒館"));
+        assert!(turn.tail.ends_with("（導演指示）請插入旁白。"));
+    }
+
+    #[test]
+    fn lane_event_line_labels_every_kind_by_name() {
+        assert_eq!(
+            lane_event_line(&event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安")),
+            "狐狸：晚安"
+        );
+        assert_eq!(
+            lane_event_line(&event(TranscriptKind::Player, "", "阿濤", "好啊")),
+            "阿濤：好啊"
+        );
+        assert_eq!(
+            lane_event_line(&event(TranscriptKind::Narration, "", "GM", "夜深了")),
+            "（旁白）夜深了"
+        );
+        assert_eq!(
+            lane_event_line(&event(TranscriptKind::System, "", "", "擲骰 3")),
+            "（系統）擲骰 3"
+        );
     }
 }

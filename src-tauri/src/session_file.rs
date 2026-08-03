@@ -1,5 +1,3 @@
-#![allow(dead_code)] // 後續 resume 流程接線後移除。
-
 use serde_json::Value;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -93,6 +91,31 @@ pub(crate) fn erase_user_segment(
     Ok(())
 }
 
+/// 找出內容含指定片段的 user 對話行。恰好一行才回其 uuid：
+/// 0 行＝注入段不在檔內（CLI 行為變了），≥2 行＝片段不夠獨特，都不能安全抹寫。
+pub(crate) fn find_user_line_with_segment(
+    session_file: &SessionFile,
+    segment: &str,
+) -> Result<String, String> {
+    let mut matches = session_file.lines.iter().filter(|line| {
+        conversation_type(line) == Some("user")
+            && line
+                .pointer("/message/content")
+                .and_then(Value::as_str)
+                .is_some_and(|content| content.contains(segment))
+    });
+    let hit = matches
+        .next()
+        .ok_or_else(|| "找不到含指定片段的 user 對話行".to_owned())?;
+    if matches.next().is_some() {
+        return Err("含指定片段的 user 對話行超過一行，無法安全抹寫".to_owned());
+    }
+    hit.get("uuid")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| "含指定片段的 user 對話行缺少 uuid".to_owned())
+}
+
 pub(crate) fn prefix_last_assistant(
     session_file: &mut SessionFile,
     prefix: &str,
@@ -125,6 +148,8 @@ pub(crate) fn prefix_last_assistant(
     Ok(())
 }
 
+// undo 截尾優化（快取匹配到截點）排在後續包，先保留實作。
+#[allow(dead_code)]
 pub(crate) fn truncate_from(session_file: &mut SessionFile, uuid: &str) -> Result<(), String> {
     let index = session_file
         .lines
@@ -349,6 +374,18 @@ mod tests {
         let mut repeated = parse(r#"{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"x secret x secret"}}
 "#).unwrap();
         assert!(erase_user_segment(&mut repeated, "u1", "secret").is_err());
+    }
+
+    #[test]
+    fn finds_the_single_user_line_holding_a_segment() {
+        let session_file = parse(SAMPLE).unwrap();
+        assert_eq!(
+            find_user_line_with_segment(&session_file, "[private]").unwrap(),
+            "u1"
+        );
+        assert!(find_user_line_with_segment(&session_file, "missing").is_err());
+        // 兩行都含片段＝不夠獨特，拒絕
+        assert!(find_user_line_with_segment(&session_file, "e").is_err());
     }
 
     #[test]

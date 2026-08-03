@@ -1,7 +1,7 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構開工，**包 1（session 檔操作模組）完成**，cargo test 188 全綠（2026-08-03 本機）。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）完成**，cargo test 201 全綠、零警告（2026-08-03 深夜本機）。claude 訂閱模式的角色對話／GM 旁白／GM 點名已全部走 resume 續聊線，下一步包 3 凍結快照補丁。
 
 **2026-08-03 晚拍板收束範圍：只打 CLI（claude 訂閱）這條路**——OpenRouter／API 模式、1h 快取、模型體質表、開桌預熱、GM 全代演全部出局。A／B／C 的 API 驗收擱置。
 
@@ -58,12 +58,27 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `lib.rs:8` 加 `mod session_file;`；模組頂 `#![allow(dead_code)]`（包 2 接線後移除）。
   - 單測 10 條（假 JSONL 照真檔格式、雜項行穿插）：munge、快樂路徑、壞 JSON／斷鏈／content 型錯三失敗路徑、round-trip、抹段（含 0 次／2 次 Err）、前綴（改最後一條＋冪等＋無 assistant Err）、截尾（尾隨雜項行一併截）、原子寫實檔覆寫＋回讀。
 
+- **包 2 resume 流程地基**（2026-08-03 深夜，本次新完成；主線直寫）：
+  - **案 C 核心假設先實測鎖死**（3 次 haiku 迷你呼叫，材料在 scratchpad/rewrite-probe/）：改寫過的 session 檔（抹段＋補「狐狸：」前綴）resume **照樣接受**，且只滅尾端快取——r1 開線 create=8865；改檔後 r2 read=8717／create=751；r3 read=9468／create=299＝理想增量形狀。另證實 resume 沿用同一 session id、續寫同一檔（--fork-session 才分叉），故 id 由本程式產生（--session-id）、不需捕捉。
+  - `lanes.rs`（新檔）：`lanes.json`（worlds/<id>/ 下，壞檔＝重開線）記每線 session_id／scene／水位 sent_events／FNV-1a 指紋 sent_hash／凍結快照 snapshot／pending_rewrite／expected_reply／last_call_at。`plan_turn` 一項對不上就重開：pending 未清（上輪中途崩潰）、換場、快照變動、水位超前、已送段指紋不合、回覆事件沒落檔或被改。`run_turn`：呼叫前先落 pending_rewrite（崩潰安全）→ CLI → 回合後抹寫（機密段＋名字前綴，原子寫＋回讀）→ 落 expected_reply；續聊呼叫失敗同輪內自動降級重開全量，抹寫失敗丟線。
+  - `transport.rs`：`chars_lane_system`（中性扮演引擎指示＋全公開卡＋玩家卡＋Public constant）／`chars_lane_turn`（公開 keyword 條目＋機密段〔私設＋Characters 限定條目，含 constant〕＋本輪指定，機密段回傳供抹寫）／`gm_lane_system`／`gm_lane_turn`／`lane_event_line`；GM 的 system 與動態塊抽成 `gm_system_prompt`／`gm_dynamic_block` 與單發共用，單發組裝零行為變化。
+  - `cli.rs`：`claude_session_args`（同組旗標、無 --no-session-persistence，Open 帶 --session-id／Resume 帶 --resume；旗標組合已在 rewrite-probe 以真 CLI 驗過）。`session_file.rs`：`find_user_line_with_segment`（恰一行才准抹）；模組級 dead_code 移除，僅 `truncate_from`（undo 截尾，後續包）單獨保留。
+  - `lib.rs`：`chat_with_character`／`gm_narrate`／`gm_suggest_speaker` 在 transport=claude 時分流 lane（chars／gm／gm+echo None）；`claude_cli_envs`／`prepare_claude_call`／`gm_materials`／`load_active_cards` 抽共用，舊 `assemble_gm` 併入。前端已核對：回覆原樣落 transcript（App.tsx replyOnce／gmNarrate 的 `text: full`），echo 逐字對點成立。
+  - 測試新增 13 條：transport lane 組裝 4（快照只含共通素材、機密段恰出現一次且抹後公開內容仍在、GM 快照素材、事件行格式）、cli 旗標 1、session_file 定位 1、lanes 7（指紋、UUID v4、plan 決策矩陣、echo 跳過／分岔、prompt 形狀、端到端假 CLI：開線→抹寫→續聊只送增量→改字自動重開→session 檔被刪同輪降級重開）。
+
 ## Verification
-- `cargo test`：188 passed; 0 failed（2026-08-03 晚本機真跑，含 session_file 新 10 條；codex 沙箱 4 條 TCP 假紅在真機全過）。
+- `cargo test`：**201 passed; 0 failed**、cargo 零警告（2026-08-03 深夜本機真跑，含包 2 新 13 條）。
+- 案 C 改寫-resume 機制為實機查證（見上，scratchpad/rewrite-probe/probe.sh 可重跑；實驗腳本需 `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN`）。
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
+### 包 2 已知限制（拍板前先記著）
+- **角色檔位混用會打散快取**：快取按模型分池，chars 線共用一條 session，若同桌角色 tier 不同（opus/sonnet 交錯）就輪輪 miss。包 2 忠實沿用每卡 tier；要不要「claude 模式整桌鎖一個模型」待使用者拍板。
+- 改卡／改世界書／改玩家卡＝快照變動＝重開線全量（正確但當輪不省），包 3 補丁機制解。
+- 收回上一句＝指紋不合＝重開線（正確），undo 截尾優化（truncate_from 已備好）排後續包。
+- session 檔的 queue-operation／last-prompt 雜項行留有整包 prompt 副本（含機密段）：那些行不進模型上下文，私設隔離（模型可見面）不受影響；磁碟上正典檔本來就有這些資料。
+
 ## Remaining / Next action
-**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**，思考結束，實作交新對話冷啟動（省主線額度）。以下為定稿規格。
+**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。下一步：**包 3 凍結快照＋補丁**（素材變動改送補丁訊息、>5 分鐘或重開時併回快照），並先向使用者拍板「包 2 已知限制」第一條（檔位混用）。以下為定稿規格。
 
 ### 目標架構（claude lane 專屬；其他 CLI 維持現行單發 flatten）
 - **每桌兩條 session**：`chars`（全角色共用）＋`gm`。lane 概念取代「每角色一線」。
@@ -85,7 +100,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 
 ### 實作拆包順序（外派照 model-dispatch.md）
 1. ~~包 1 session 檔操作模組~~ **完成**（2026-08-03，見 Completed；規格存主線 scratchpad/pkg1-spec.md 已隨 session 失效，內容即 session_file.rs 本身）。
-2. **包 2 resume 流程地基**：lanes.json 存取、claude lane 分流走 resume＋增量組裝、首輪全量、降級鏈。與現有 assemble／flatten／run_cli 耦合深，主線或 opus subagent。
+2. ~~包 2 resume 流程地基~~ **完成**（2026-08-03 深夜，見 Completed）。
 3. **包 3 凍結快照＋補丁**（assemble 層＋追平規則）。
 4. **包 4 log 升級**（使用者需求，遠期通到設定頁「額度花費＋命中率」分頁）：組裝層對每段記 hash＋token 估計量；比對「本輪 vs 上輪共同前綴＝理論可中量」與實際 read，自動標診斷（PREFIX_BROKEN 指出第一個變動段／EXPIRED／OK）；log 補 `cost`（CLI result 的 `total_cost_usd`）與 `lane` 欄——三輪 0% 當初就是缺 lane 與 expected 才誤診。
 5. **包 5 GM 旁白＋點名合併成一次呼叫**（已拍板）：旁白尾固定附「下一位：」行，`extract_state_block` 同族解析；**需先查前端回合 orchestration**（narrate／suggest 現為兩個 Tauri command，前端流程要跟著併）。
