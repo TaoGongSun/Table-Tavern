@@ -10,6 +10,7 @@ src-tauri/output
 !.ai/**
 .ai/*.json
 .ai/*.jsonl
+.ai/**/.DS_Store
 
 # Claude Code 個人設定不共享（launch.json 是本機預覽用的 dev server 設定）
 .claude/settings.local.json
