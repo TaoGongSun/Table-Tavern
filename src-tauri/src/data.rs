@@ -802,6 +802,47 @@ pub fn read_worldbook(root: &Path, world_id: &str) -> DataResult<Vec<WorldbookEn
     Ok(entries.into_iter().map(|(_, _, entry)| entry).collect())
 }
 
+/// 狀態列的顯示格式一律由匯入的內容自己帶。比對詞跟 transport::extract_state_block
+/// 認得的區塊一致——認得的才剝得出欄位，也才有東西可顯示。
+const STATE_BAR_MARKERS: [&str; 11] = [
+    "状态栏",
+    "狀態欄",
+    "状态条",
+    "狀態條",
+    "状态面板",
+    "狀態面板",
+    "status bar",
+    "statusbar",
+    "<status",
+    "<updatevariable",
+    "```state",
+];
+
+fn declares_state_bar(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    STATE_BAR_MARKERS
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+/// 這桌要不要顯示狀態列：世界設定、世界書條目、角色卡任一處講到狀態列就顯示。
+/// 匯入的卡有可能把狀態列規則放在世界書、也可能放在卡片內文，三處都掃才不會漏。
+pub fn world_has_state_bar(root: &Path, world_id: &str) -> DataResult<bool> {
+    if read_world_md(root, world_id).is_ok_and(|world_md| declares_state_bar(&world_md)) {
+        return Ok(true);
+    }
+    if read_worldbook(root, world_id)?.iter().any(|entry| {
+        !entry.disabled && (declares_state_bar(&entry.content) || declares_state_bar(&entry.title))
+    }) {
+        return Ok(true);
+    }
+    Ok(list_characters(root, world_id)?.iter().any(|meta| {
+        read_character(root, world_id, &meta.id).is_ok_and(|card| {
+            declares_state_bar(&card.public_md) || declares_state_bar(&card.private_md)
+        })
+    }))
+}
+
 pub fn upsert_worldbook_entry(
     root: &Path,
     world_id: &str,
@@ -2384,6 +2425,37 @@ mod tests {
             .unwrap()
             .iter()
             .any(|entry| entry.uid == second_uid));
+    }
+
+    /// 狀態列只跟著匯入內容走：光提到「狀態」不算，要有狀態列輸出格式才算。
+    #[test]
+    fn state_bar_follows_imported_content() {
+        let root = TestRoot::new("state-bar-detection");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        assert!(!world_has_state_bar(root.path(), &world_id).unwrap());
+
+        let mut prose = worldbook_entry(u64::MAX, "獵物狀態設定");
+        prose.content = "User 的身體狀態具備超高耐受。".to_owned();
+        upsert_worldbook_entry(root.path(), &world_id, prose).unwrap();
+        assert!(!world_has_state_bar(root.path(), &world_id).unwrap());
+
+        let mut rules = worldbook_entry(u64::MAX, "Day Counter");
+        rules.content = "<details>\n<summary>状态栏</summary>\n- 沦陷天数：第 [X] 天\n</details>"
+            .to_owned();
+        upsert_worldbook_entry(root.path(), &world_id, rules).unwrap();
+        assert!(world_has_state_bar(root.path(), &world_id).unwrap());
+    }
+
+    /// 狀態列規則也可能寫在卡片內文（匯入角色卡時世界書會併進私有段）
+    #[test]
+    fn state_bar_detected_in_character_card() {
+        let root = TestRoot::new("state-bar-character");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let mut card = character_card(&new_id(), "教官");
+        card.private_md = "每次回覆結尾輸出 <UpdateVariable> 區塊。".to_owned();
+        write_character(root.path(), &world_id, &card).unwrap();
+
+        assert!(world_has_state_bar(root.path(), &world_id).unwrap());
     }
 
     #[test]

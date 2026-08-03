@@ -317,6 +317,12 @@ fn character_to_worldbook_entry(
         .map_err(|error| error.to_string())
 }
 
+/// 狀態列是否顯示：沒有匯入狀態列規則的桌，整條狀態列不掛上去。
+#[tauri::command]
+fn world_has_state_bar(app: tauri::AppHandle, world_id: String) -> Result<bool, String> {
+    data::world_has_state_bar(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn import_worldbook(
     app: tauri::AppHandle,
@@ -1512,6 +1518,7 @@ pub fn run() {
             delete_worldbook_entry,
             worldbook_entry_to_character,
             character_to_worldbook_entry,
+            world_has_state_bar,
             card_openings,
             import_worldbook,
             dedupe_worldbook,
