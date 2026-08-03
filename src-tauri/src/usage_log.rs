@@ -10,6 +10,8 @@
 //! - `expired`：距上一句超過五分鐘，快取自然過期，這句重建。
 //! - `prefix-broken`：照理該命中卻沒中；`expected_cached` 對 `cached_tokens` 看差多少，
 //!   `cached_tokens` 接近 `system_tokens` 代表只有設定段中、對話段斷了。
+//! - `cache-skipped`：CLI 這一句沒帶快取標記（claude CLI resume 已知毛病，2026-08 實證：
+//!   同一線隔輪出現，讀寫皆 0、整句付全額；上輪有送內容才判此標，與整條路不支援區分）。
 //! - `no-cache`：這條路完全沒有快取（模型或 CLI 不支援）。
 //! - `single`：單發模式（API／codex／grok），只記數字不做續聊診斷。
 //! - `drop-lane`：回合後改寫失敗，這條線丟棄重來（`reason` 說明原因）。
@@ -26,6 +28,7 @@ pub enum Diag {
     Warmup,
     Expired,
     PrefixBroken,
+    CacheSkipped,
     NoCache,
     Single,
     DropLane,
@@ -38,6 +41,7 @@ impl Diag {
             Self::Warmup => "warmup",
             Self::Expired => "expired",
             Self::PrefixBroken => "prefix-broken",
+            Self::CacheSkipped => "cache-skipped",
             Self::NoCache => "no-cache",
             Self::Single => "single",
             Self::DropLane => "drop-lane",
@@ -77,6 +81,10 @@ fn diagnose(lane: Option<&LaneContext>, usage: &PromptCacheUsage) -> Diag {
         return Diag::Warmup;
     }
     if usage.cached_tokens == 0 && usage.created_tokens == 0 {
+        // 上輪送過內容＝這條路支援快取，讀寫皆 0 是 CLI 這句沒帶標記
+        if lane.expected_cached > 0 {
+            return Diag::CacheSkipped;
+        }
         return Diag::NoCache;
     }
     if lane.age_secs > CACHE_TTL_SECS {
@@ -224,9 +232,14 @@ mod tests {
             diagnose(Some(&lane(600, 9_000)), &usage(9_300, 0, 9_300)),
             Diag::Expired
         );
-        // 完全沒有快取數字（模型或 CLI 不支援）優先於過期判定
+        // 讀寫皆 0 但上輪送過內容＝CLI 這句沒帶標記，優先於過期判定
         assert_eq!(
             diagnose(Some(&lane(600, 9_000)), &usage(9_300, 0, 0)),
+            Diag::CacheSkipped
+        );
+        // 讀寫皆 0 且上輪也沒有可中量＝這條路整個不支援快取
+        assert_eq!(
+            diagnose(Some(&lane(30, 0)), &usage(9_300, 0, 0)),
             Diag::NoCache
         );
         // 重開線＝暖機，不論數字
