@@ -439,6 +439,7 @@ pub(crate) async fn run_turn(
             cli::parse_claude_line,
             call.usage_log.as_deref().map(|path| cli::UsageLog {
                 path,
+                world: Some(world_id),
                 transport: "claude",
                 model: &call.model,
                 parse: cli::parse_claude_usage,
@@ -471,6 +472,7 @@ pub(crate) async fn run_turn(
                         if let Some(path) = call.usage_log.as_deref() {
                             usage_log::append_event(
                                 path,
+                                Some(world_id),
                                 &key,
                                 usage_log::Diag::DropLane,
                                 "rewrite-failed",
@@ -561,6 +563,7 @@ pub(crate) async fn keepalive(
             cli::parse_claude_line,
             call.usage_log.as_deref().map(|path| cli::UsageLog {
                 path,
+                world: Some(world_id),
                 transport: "claude",
                 model,
                 parse: cli::parse_claude_usage,
@@ -584,6 +587,7 @@ pub(crate) async fn keepalive(
                 if let Some(path) = call.usage_log.as_deref() {
                     usage_log::append_event(
                         path,
+                        Some(world_id),
                         &key,
                         usage_log::Diag::DropLane,
                         "ping-truncate-failed",
