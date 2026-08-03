@@ -7,6 +7,7 @@ mod install;
 mod proxy;
 mod lanes;
 mod session_file;
+mod snapshot_patch;
 mod transport;
 
 use data::{AppConfig, CharacterCard, CharacterMeta, TranscriptEvent, WorldState};
