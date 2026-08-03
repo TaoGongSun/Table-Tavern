@@ -352,6 +352,13 @@ const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 // 提醒的理由改成「紀錄長到模型顧不上前面」，門檻從 8000 提到 30000（2026-08-04 實測拍板）。
 const SCENE_LENGTH_HINT_CHARS = 30000;
 
+// 保溫 ping（prompt-cache-optimization 包 7）：快取只活五分鐘，玩家慢慢想的時候先讀一次
+// 既有快取把壽命重新計時，代價約為讓它過期重建的十二分之一。連三次（約十二分鐘）都沒等到
+// 玩家推進就收手改提示換幕——人真的離開時，長紀錄每次回來都要全額重建，那時短紀錄才便宜。
+const KEEPALIVE_TICK_MS = 30 * 1000;
+const KEEPALIVE_AFTER_MS = 3.5 * 60 * 1000;
+const KEEPALIVE_MAX_PINGS = 3;
+
 function nowTs() {
   return new Date().toISOString();
 }
@@ -2754,6 +2761,13 @@ function App() {
     kind: "dialogue" | "narration";
   } | null>(null);
   const [streamText, setStreamText] = useState("");
+  // 保溫 ping 的節奏狀態：上次真正推進的時刻、已連發幾次、這桌是否根本沒得保溫（非 claude 模式）
+  const generatingRef = useRef<{ id: string; kind: "dialogue" | "narration" } | null>(null);
+  generatingRef.current = generating;
+  const lastTurnAt = useRef(Date.now());
+  const pingCount = useRef(0);
+  const keepaliveOff = useRef(false);
+  const [awayTooLong, setAwayTooLong] = useState(false);
   // 改桌名可從兩處進入：主欄標題（header）與側欄目前桌那一列（list）；at 決定輸入框長在哪
   const [editingName, setEditingName] = useState<{
     at: "header" | "list";
@@ -3282,6 +3296,7 @@ function App() {
     try {
       await invoke<number>("advance_scene", { worldId: table });
       await enterTable(table, config!);
+      noteTurnDone();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -3602,6 +3617,42 @@ function App() {
     }
   }
 
+  // 玩家真的推進了一步：保溫節奏重新開始，離開提示收掉
+  function noteTurnDone() {
+    lastTurnAt.current = Date.now();
+    pingCount.current = 0;
+    keepaliveOff.current = false;
+    setAwayTooLong(false);
+  }
+
+  // 保溫 ping：視窗在前景且距上次推進夠久才發，連三次都沒等到玩家就收手改提示換幕。
+  // 視窗不在前景一律不發——人不在還持續扣錢是最糟的情況。
+  useEffect(() => {
+    if (!table) return;
+    const timer = setInterval(async () => {
+      if (keepaliveOff.current || generatingRef.current !== null) return;
+      if (Date.now() - lastTurnAt.current < KEEPALIVE_AFTER_MS) return;
+      if (pingCount.current >= KEEPALIVE_MAX_PINGS) {
+        setAwayTooLong(true);
+        return;
+      }
+      if (!document.hasFocus()) return;
+      try {
+        const lanes = await invoke<number>("keepalive_lanes", { worldId: table });
+        // 沒有線可保（非 claude 模式、或這桌還沒開過線）：靜靜停掉，不算進次數也不提示離開
+        if (lanes === 0) {
+          keepaliveOff.current = true;
+          return;
+        }
+        pingCount.current += 1;
+        lastTurnAt.current = Date.now();
+      } catch {
+        keepaliveOff.current = true;
+      }
+    }, KEEPALIVE_TICK_MS);
+    return () => clearInterval(timer);
+  }, [table]);
+
   // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
   async function replyOnce(characterId: string) {
     setGenerating({ id: characterId, kind: "dialogue" });
@@ -3616,6 +3667,7 @@ function App() {
     const name = metaOf(characterId)?.name ?? "";
     await appendEvent({ ts: nowTs(), speaker_id: characterId, speaker_name: name, kind: "dialogue", text: full });
     await markCliConnectedFromChat();
+    noteTurnDone();
   }
 
   // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
@@ -3647,6 +3699,7 @@ function App() {
     await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text });
     await refreshTableState();
     await markCliConnectedFromChat();
+    noteTurnDone();
     return next;
   }
 
@@ -4520,7 +4573,12 @@ function App() {
                     {t("send")} ➤
                   </button>
                 </div>
-                {sceneTooLong && <span className="scene-length-hint">{t("sceneTooLongHint")}</span>}
+                {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
+                {awayTooLong ? (
+                  <span className="scene-length-hint">{t("sceneAwayHint")}</span>
+                ) : sceneTooLong ? (
+                  <span className="scene-length-hint">{t("sceneTooLongHint")}</span>
+                ) : null}
                 <div className="composer-ai-actions">
                   <button
                     className="undo-last"

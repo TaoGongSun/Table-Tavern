@@ -148,8 +148,8 @@ pub(crate) fn prefix_last_assistant(
     Ok(())
 }
 
-// undo 截尾優化（快取匹配到截點）排在後續包，先保留實作。
-#[allow(dead_code)]
+/// 截掉指定對話行與其後所有行（含雜項行）。保溫 ping 的問答用它清掉；
+/// undo 收回上一句的截尾優化日後共用同一支。
 pub(crate) fn truncate_from(session_file: &mut SessionFile, uuid: &str) -> Result<(), String> {
     let index = session_file
         .lines

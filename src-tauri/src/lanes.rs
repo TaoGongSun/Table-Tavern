@@ -371,6 +371,7 @@ pub(crate) async fn run_turn(
                     expected_cached,
                     system_tokens: usage_log::estimate_tokens(system),
                     system_hash: usage_log::text_hash(system),
+                    ping: false,
                 };
                 (
                     session_id.clone(),
@@ -392,6 +393,7 @@ pub(crate) async fn run_turn(
                     expected_cached: 0, // 重開＝從零建快取
                     system_tokens: usage_log::estimate_tokens(&system),
                     system_hash: usage_log::text_hash(&system),
+                    ping: false,
                 };
                 (new_session_id(), 0, true, system, None, lane_log)
             }
@@ -495,9 +497,208 @@ pub(crate) async fn run_turn(
     }
 }
 
+/// 保溫訊息本文：兼作截尾時的定位片段，所以要夠獨特、不可能出現在劇情裡。
+const PING_PROMPT: &str = "（系統保溫訊息，不是劇情，也不要記進故事。請只回覆 ok。）";
+/// 剛呼叫完的線不必保溫（前端節奏之外的第二道防呆）。
+const PING_MIN_AGE_SECS: u64 = 180;
+
+/// 保溫 ping（包 7）：對每條快取還活著的線送一則極短訊息，讀一次既有快取就能把
+/// 五分鐘壽命重新計時，代價約為讓快取死掉重建的十二分之一。ping 的問答隨即從
+/// session 檔截掉——快取時鐘已被那次讀取刷新，截尾不改變已快取的前綴內容，
+/// 下一輪照樣命中，劇情與正典 transcript 也完全不受影響。
+/// 回傳實際保溫成功的線數。ping 失敗不當錯誤（保溫是省錢手段，不該中斷聊天）；
+/// 截尾失敗則丟線，避免垃圾問答在 session 裡越積越多。
+pub(crate) async fn keepalive(
+    call: &ClaudeCall,
+    root: &Path,
+    world_id: &str,
+) -> Result<usize, String> {
+    let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
+    let mut store = read_store(&store_path);
+    let now = now_epoch();
+    // 先挑出該保溫的線再逐條呼叫：迴圈中要改 store，不能同時借著它疊代
+    let targets: Vec<(String, LaneState)> = store
+        .iter()
+        .filter(|(_, state)| state.pending_rewrite.is_none())
+        .filter(|(_, state)| {
+            let age = now.saturating_sub(state.last_call_epoch);
+            (PING_MIN_AGE_SECS..=CACHE_TTL_SECS).contains(&age)
+        })
+        .map(|(key, state)| (key.clone(), state.clone()))
+        .collect();
+    if targets.is_empty() {
+        return Ok(0);
+    }
+
+    let mut pinged = 0;
+    for (key, state) in targets {
+        // 線名＝「線種:實際模型」，保溫要用該線自己的模型才會匹配到它的快取
+        let Some((_, model)) = key.split_once(':') else {
+            continue;
+        };
+        let args = cli::claude_session_args(
+            model,
+            &state.snapshot,
+            &cli::ClaudeSession::Resume(&state.session_id),
+        );
+        let lane_log = usage_log::LaneContext {
+            lane: key.clone(),
+            reopen: None,
+            patched: false,
+            rebased: false,
+            age_secs: now.saturating_sub(state.last_call_epoch),
+            expected_cached: state.last_prompt_tokens,
+            system_tokens: usage_log::estimate_tokens(&state.snapshot),
+            system_hash: usage_log::text_hash(&state.snapshot),
+            ping: true,
+        };
+        let result = cli::run_cli(
+            &call.program,
+            &call.working_dir,
+            &args,
+            PING_PROMPT,
+            &call.envs,
+            cli::parse_claude_line,
+            call.usage_log.as_deref().map(|path| cli::UsageLog {
+                path,
+                transport: "claude",
+                model,
+                parse: cli::parse_claude_usage,
+                lane: Some(lane_log),
+                prompt_tokens_out: None,
+            }),
+            &mut |_: &str| {},
+        )
+        .await;
+        if result.is_err() {
+            continue;
+        }
+        match truncate_ping(call, &state.session_id) {
+            Ok(()) => {
+                if let Some(state) = store.get_mut(&key) {
+                    state.last_call_epoch = now_epoch();
+                }
+                pinged += 1;
+            }
+            Err(_) => {
+                if let Some(path) = call.usage_log.as_deref() {
+                    usage_log::append_event(
+                        path,
+                        &key,
+                        usage_log::Diag::DropLane,
+                        "ping-truncate-failed",
+                    );
+                }
+                store.remove(&key);
+            }
+        }
+    }
+    write_store(&store_path, &store)?;
+    Ok(pinged)
+}
+
+/// 把保溫問答從 session 檔截掉：定位那則 ping user 行，截掉它與其後所有行
+/// （模型的 ok 回覆一併消失），檔案回到 ping 前的形狀。
+fn truncate_ping(call: &ClaudeCall, session_id: &str) -> Result<(), String> {
+    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
+    let mut file = session_file::load(&path)?;
+    let uuid = session_file::find_user_line_with_segment(&file, PING_PROMPT)?;
+    session_file::truncate_from(&mut file, &uuid)?;
+    session_file::write_atomic(&path, &file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct FakeCli {
+        dir: PathBuf,
+        call: ClaudeCall,
+        root: PathBuf,
+        world_id: String,
+        session_dir: PathBuf,
+        claude_home: PathBuf,
+        working_dir: PathBuf,
+    }
+
+    /// 假 claude CLI：照真檔格式寫 session JSONL、逐次把拿到的旗標與 prompt 記進 calls.jsonl，
+    /// resume 找不到 session 檔就以非零碼結束（降級鏈用）。
+    #[cfg(unix)]
+    fn fake_claude(tag: &str) -> FakeCli {
+        let dir = std::env::temp_dir().join(format!("tt-lanes-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let working_dir = dir.join("ws");
+        let claude_home = dir.join("claude-home");
+        let root = dir.join("root");
+        let world_id = ulid::Ulid::generate().to_string();
+        std::fs::create_dir_all(&working_dir).unwrap();
+        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        // 假 CLI 寫 session 檔的位置＝真實 munged 路徑，lanes 的抹寫才找得到
+        let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let script = dir.join("fake-claude.py");
+        std::fs::write(
+            &script,
+            r#"#!/usr/bin/env python3
+import json, sys, os, uuid
+args = sys.argv[1:]
+def flag(name):
+    return args[args.index(name) + 1] if name in args else None
+sid, rid = flag('--session-id'), flag('--resume')
+prompt = sys.stdin.read()
+d = os.environ['FAKE_SESSION_DIR']
+with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
+    f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
+path = os.path.join(d, (sid or rid) + '.jsonl')
+lines, last = [], None
+if rid:
+    if not os.path.exists(path):
+        sys.exit(3)
+    for l in open(path):
+        o = json.loads(l)
+        lines.append(o)
+        if o.get('type') in ('user', 'assistant'):
+            last = o['uuid']
+u, a = str(uuid.uuid4()), str(uuid.uuid4())
+lines.append({'type': 'user', 'uuid': u, 'parentUuid': last,
+              'message': {'role': 'user', 'content': prompt}})
+reply = '回覆' + str(sum(1 for o in lines if o.get('type') == 'user'))
+lines.append({'type': 'assistant', 'uuid': a, 'parentUuid': u,
+              'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]}})
+with open(path, 'w') as f:
+    for o in lines:
+        f.write(json.dumps(o, ensure_ascii=False) + '\n')
+print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
+"#,
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let call = ClaudeCall {
+            program: script,
+            working_dir: working_dir.clone(),
+            envs: vec![(
+                "FAKE_SESSION_DIR".to_owned(),
+                session_dir.to_string_lossy().into_owned(),
+            )],
+            model: "sonnet".to_owned(),
+            usage_log: None,
+            claude_home: claude_home.clone(),
+        };
+        FakeCli {
+            dir,
+            call,
+            root,
+            world_id,
+            session_dir,
+            claude_home,
+            working_dir,
+        }
+    }
 
     fn event(kind: TranscriptKind, speaker_id: &str, name: &str, text: &str) -> TranscriptEvent {
         TranscriptEvent {
@@ -743,71 +944,15 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn lane_turns_open_rewrite_resume_and_degrade() {
-        let dir = std::env::temp_dir().join(format!("tt-lanes-e2e-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let working_dir = dir.join("ws");
-        let claude_home = dir.join("claude-home");
-        let root = dir.join("root");
-        let world_id = ulid::Ulid::generate().to_string();
-        std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
-        // 假 CLI 寫 session 檔的位置＝真實 munged 路徑，lanes 的抹寫才找得到
-        let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
-            .parent()
-            .unwrap()
-            .to_path_buf();
-        std::fs::create_dir_all(&session_dir).unwrap();
-
-        let script = dir.join("fake-claude.py");
-        std::fs::write(
-            &script,
-            r#"#!/usr/bin/env python3
-import json, sys, os, uuid
-args = sys.argv[1:]
-def flag(name):
-    return args[args.index(name) + 1] if name in args else None
-sid, rid = flag('--session-id'), flag('--resume')
-prompt = sys.stdin.read()
-d = os.environ['FAKE_SESSION_DIR']
-with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
-path = os.path.join(d, (sid or rid) + '.jsonl')
-lines, last = [], None
-if rid:
-    if not os.path.exists(path):
-        sys.exit(3)
-    for l in open(path):
-        o = json.loads(l)
-        lines.append(o)
-        if o.get('type') in ('user', 'assistant'):
-            last = o['uuid']
-u, a = str(uuid.uuid4()), str(uuid.uuid4())
-lines.append({'type': 'user', 'uuid': u, 'parentUuid': last,
-              'message': {'role': 'user', 'content': prompt}})
-reply = '回覆' + str(sum(1 for o in lines if o.get('type') == 'user'))
-lines.append({'type': 'assistant', 'uuid': a, 'parentUuid': u,
-              'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]}})
-with open(path, 'w') as f:
-    for o in lines:
-        f.write(json.dumps(o, ensure_ascii=False) + '\n')
-print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
-"#,
-        )
-        .unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        let call = ClaudeCall {
-            program: script,
-            working_dir: working_dir.clone(),
-            envs: vec![(
-                "FAKE_SESSION_DIR".to_owned(),
-                session_dir.to_string_lossy().into_owned(),
-            )],
-            model: "sonnet".to_owned(),
-            usage_log: None,
-            claude_home: claude_home.clone(),
-        };
+        let FakeCli {
+            dir,
+            call,
+            root,
+            world_id,
+            session_dir,
+            claude_home,
+            working_dir,
+        } = fake_claude("e2e");
         let calls = |index: usize| -> (Vec<String>, String) {
             let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
             let line: serde_json::Value =
@@ -917,6 +1062,108 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             std::fs::read_to_string(data::lanes_path(&root, &world_id).unwrap()).unwrap();
         assert!(lanes_json.contains("chars:sonnet"));
         assert!(lanes_json.contains("chars:haiku"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn set_lane_epoch(store_path: &Path, epoch: u64) {
+        let mut store = read_store(store_path);
+        for state in store.values_mut() {
+            state.last_call_epoch = epoch;
+        }
+        write_store(store_path, &store).unwrap();
+    }
+
+    /// 端到端（假 CLI）：保溫 ping 讀一次既有快取後把問答截掉，session 檔逐字回到 ping 前，
+    /// 下一輪照樣續聊只送增量（回覆編號沒被 ping 墊高＝真的截乾淨）；
+    /// 剛呼叫完、快取已過期、上輪沒收尾的線都不浪費這筆錢。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn keepalive_pings_live_lanes_and_leaves_no_trace() {
+        let FakeCli {
+            dir,
+            call,
+            root,
+            world_id,
+            session_dir,
+            claude_home,
+            working_dir,
+        } = fake_claude("ping");
+        let calls = |index: usize| -> (Vec<String>, String) {
+            let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
+            let line: serde_json::Value =
+                serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
+            (
+                line["args"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap().to_owned())
+                    .collect(),
+                line["prompt"].as_str().unwrap().to_owned(),
+            )
+        };
+
+        let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+        let reply1 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(reply1, "回覆1");
+        let store_path = data::lanes_path(&root, &world_id).unwrap();
+        let session_id = read_store(&store_path)
+            .values()
+            .next()
+            .unwrap()
+            .session_id
+            .clone();
+        let session_path = session_file::session_file_path(&claude_home, &working_dir, &session_id);
+        let before = std::fs::read_to_string(&session_path).unwrap();
+
+        // 剛呼叫完：快取還很新，不必花這筆
+        assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 0);
+
+        // 距上輪 200 秒＝快取還活著，正是該保溫的時候
+        set_lane_epoch(&store_path, now_epoch() - 200);
+        assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 1);
+        let (ping_args, ping_prompt) = calls(1);
+        assert!(ping_args
+            .windows(2)
+            .any(|w| w == ["--resume", session_id.as_str()]));
+        assert_eq!(ping_prompt, PING_PROMPT);
+        // 問答已截掉：檔案逐字回到 ping 前，正典 transcript 也沒被碰過
+        assert_eq!(std::fs::read_to_string(&session_path).unwrap(), before);
+        // 保溫成功＝壽命重新計時
+        assert!(now_epoch() - read_store(&store_path)[&"chars:sonnet".to_owned()].last_call_epoch < 5);
+
+        // 快取已過期：保了也只是全額重建，不如留給下一輪自己重開
+        set_lane_epoch(&store_path, now_epoch() - 3600);
+        assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 0);
+
+        // 上輪沒收尾（pending 未清）的線不碰：下一輪本來就要重開
+        set_lane_epoch(&store_path, now_epoch() - 200);
+        let mut store = read_store(&store_path);
+        store.values_mut().next().unwrap().pending_rewrite = Some(PendingRewrite {
+            confidential: None,
+            prefix: None,
+        });
+        write_store(&store_path, &store).unwrap();
+        assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 0);
+        store.values_mut().next().unwrap().pending_rewrite = None;
+        write_store(&store_path, &store).unwrap();
+
+        // ping 過的線照樣續聊：回覆編號是 2 而不是 3＝session 裡真的沒留下保溫問答
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply1));
+        events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
+        let reply2 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(reply2, "回覆2");
+        let (args, prompt) = calls(2);
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--resume", session_id.as_str()]));
+        assert!(prompt.contains("阿濤：來一杯麥酒"));
+        assert!(!prompt.contains("老闆晚安"));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

@@ -11,7 +11,7 @@
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白 — 下一步：六項全部實作完成（cargo test 174 綠）；第一、二、三、五、六項與狀態列條件顯示（只給帶狀態列規則的桌）2026-08-03 實機驗收通過，剩第四項狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）待驗
-- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：包 1–5 完成且 Opus 四輪真桌驗收全過（2–4 輪 85–88% 命中）＝架構驗收通過；Sonnet 命中率受 CLI 官方 bug 壓制、app 端無解不發 issue；換幕提醒門檻已提到 3 萬字元；開工包 6 額度分頁 UI
+- [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：包 1–5 完成且 Opus 四輪真桌驗收全過（2–4 輪 85–88% 命中）＝架構驗收通過；Sonnet 命中率受 CLI 官方 bug 壓制、app 端無解不發 issue；換幕提醒門檻已提到 3 萬字元；包 7 保溫 ping 完成（提前做，好讓額度分頁一併驗）；下一步包 6 額度分頁 UI
 
 ## Done
 

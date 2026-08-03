@@ -269,6 +269,7 @@ export const zhCN: Record<MsgKey, string> = {
   sceneAdvance: "换幕",
   sceneAdvanceHint: "结束本幕：将当前记录压缩为前情提要，开启新幕",
   sceneTooLongHint: "记录很长，模型可能顾不上前面，建议换幕压缩",
+  sceneAwayHint: "间隔太久，系统缓存已清除，建议换幕压缩",
   pastScenes: "前幕（{count}）",
   sceneLabel: "第 {n} 幕",
   sceneWithTitle: "第 {n} 幕：{title}",
