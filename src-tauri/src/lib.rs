@@ -612,7 +612,9 @@ async fn stream_via_transport(
     });
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
-        return transport::stream_chat(config, &model, messages, emit)
+        // 快取命中率逐行落在資料目錄的 prompt-cache.log（拍板：不做 UI，log 隨時可查）
+        let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.log"));
+        return transport::stream_chat(config, &model, messages, usage_log.as_deref(), emit)
             .await
             .map_err(|error| error.to_string());
     }
