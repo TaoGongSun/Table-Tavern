@@ -30,7 +30,8 @@ unsafe extern "C" {
 
 pub type DataResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
-pub fn local_timestamp() -> DataResult<String> {
+/// 本機時間的 (年, 月, 日, 時, 分, 秒)。
+fn local_time_parts() -> DataResult<(i32, i32, i32, i32, i32, i32)> {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map_err(|error| invalid_data(format!("system clock is before the Unix epoch: {error}")))?
@@ -44,13 +45,13 @@ pub fn local_timestamp() -> DataResult<String> {
             return Err(invalid_data("could not convert local time"));
         }
         let local = unsafe { local.assume_init() };
-        return Ok(format!(
-            "{:04}-{:02}-{:02} {:02}:{:02}",
+        return Ok((
             local.tm_year + 1900,
             local.tm_mon + 1,
             local.tm_mday,
             local.tm_hour,
-            local.tm_min
+            local.tm_min,
+            local.tm_sec,
         ));
     }
 
@@ -59,12 +60,29 @@ pub fn local_timestamp() -> DataResult<String> {
         // Tauri's supported Unix targets use localtime_r above. Keep a dependency-free fallback
         // for other targets; its value is UTC when no platform local-time API is available.
         let minutes = seconds / 60;
-        Ok(format!(
-            "1970-01-01 {:02}:{:02}",
-            (minutes / 60) % 24,
-            minutes % 60
+        Ok((
+            1970,
+            1,
+            1,
+            ((minutes / 60) % 24) as i32,
+            (minutes % 60) as i32,
+            (seconds % 60) as i32,
         ))
     }
+}
+
+pub fn local_timestamp() -> DataResult<String> {
+    let (year, month, day, hour, minute, _) = local_time_parts()?;
+    Ok(format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}"))
+}
+
+/// 秒級時間戳。給需要判斷短間隔的紀錄用——快取命中率 log 要看得出兩次呼叫相隔幾秒，
+/// 分鐘精度分不出是否踩到 Anthropic 的 5 分鐘過期線。
+pub fn local_timestamp_seconds() -> DataResult<String> {
+    let (year, month, day, hour, minute, second) = local_time_parts()?;
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}"
+    ))
 }
 
 /// 產生新的定址代碼（ULID）。世界與角色的存檔路徑一律用這個，顯示名只是檔案內的一個欄位。

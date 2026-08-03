@@ -503,11 +503,11 @@ pub fn parse_claude_usage(line: &str) -> Option<PromptCacheUsage> {
     let value = usage_event(line, "result")?;
     let usage = value.get("usage")?;
     let cached = token_count(usage, "cache_read_input_tokens");
+    let created = token_count(usage, "cache_creation_input_tokens");
     Some(PromptCacheUsage {
-        prompt_tokens: token_count(usage, "input_tokens")
-            + token_count(usage, "cache_creation_input_tokens")
-            + cached,
+        prompt_tokens: token_count(usage, "input_tokens") + created + cached,
         cached_tokens: cached,
+        created_tokens: created,
     })
 }
 
@@ -519,11 +519,13 @@ pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
     Some(PromptCacheUsage {
         prompt_tokens: token_count(usage, "input_tokens"),
         cached_tokens: token_count(usage, "cached_input_tokens"),
+        created_tokens: token_count(usage, "cache_write_input_tokens"),
     })
 }
 
 /// grok end 事件的用量。input_tokens **不含** cache_read_input_tokens
 /// （實測讀取數可遠大於輸入數：input=31509、cache_read=146304），總輸入要加總。
+/// grok 不回報寫入快取的 token 數（實測 usage 只有 read），created 恆為 0。
 pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     let value = usage_event(line, "end")?;
     let usage = value.get("usage")?;
@@ -531,6 +533,7 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     Some(PromptCacheUsage {
         prompt_tokens: token_count(usage, "input_tokens") + cached,
         cached_tokens: cached,
+        created_tokens: 0,
     })
 }
 
@@ -661,11 +664,12 @@ pub async fn run_cli(
         if let Some(log) = &usage_log {
             if let Some(usage) = (log.parse)(&line) {
                 eprintln!(
-                    "[prompt-cache] transport={} model={} prompt_tokens={} cached_tokens={} hit_rate={:.0}%",
+                    "[prompt-cache] transport={} model={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%",
                     log.transport,
                     log.model,
                     usage.prompt_tokens,
                     usage.cached_tokens,
+                    usage.created_tokens,
                     usage.hit_rate(),
                 );
                 crate::transport::append_usage_log(log.path, log.transport, log.model, usage);
@@ -781,7 +785,8 @@ mod tests {
             ),
             Some(PromptCacheUsage {
                 prompt_tokens: 4772,
-                cached_tokens: 0
+                cached_tokens: 0,
+                created_tokens: 4771
             })
         );
         // 第二次：讀滿 4771 → 總輸入 4772、命中 100%
@@ -835,13 +840,15 @@ mod tests {
             parse_claude_usage(r#"{"type":"result","usage":{"input_tokens":12}}"#),
             Some(PromptCacheUsage {
                 prompt_tokens: 12,
-                cached_tokens: 0
+                cached_tokens: 0,
+                created_tokens: 0
             })
         );
         assert_eq!(
             PromptCacheUsage {
                 prompt_tokens: 0,
-                cached_tokens: 0
+                cached_tokens: 0,
+                created_tokens: 0
             }
             .hit_rate(),
             0.0
@@ -1088,8 +1095,11 @@ mod tests {
         // 收尾事件落一行：總輸入 100（1＋0＋99）、讀快取 99 → 99%
         assert_eq!(logged.lines().count(), 1);
         assert!(
-            logged.contains("transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 hit_rate=99%"),
+            logged.contains("transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 created_tokens=0 hit_rate=99%"),
             "log 行不符預期：{logged}"
         );
+        // 時間戳到秒（分鐘精度分不出是否踩到 5 分鐘過期線）
+        let timestamp = logged.split(" transport=").next().unwrap();
+        assert_eq!(timestamp.len(), 19, "時間戳應為 yyyy-mm-dd hh:mm:ss：{timestamp}");
     }
 }
