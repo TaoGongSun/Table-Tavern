@@ -1,7 +1,9 @@
 # Handoff: prompt-cache-optimization
 
 ## Current state
-A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）＋包 4（log 升級 JSONL＋診斷標籤）＋包 5（GM 旁白＋點名合併）完成**，cargo test 213 全綠、零警告（2026-08-04 本機）。claude 訂閱模式的角色對話與 GM 呼叫已全部走 resume 續聊線，改卡／改世界書當輪不再重開線；GM 每輪推進由兩次 CLI 呼叫（旁白＋點名）併成一次。下一步真桌驗收。
+A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）＋D（CLI 路徑量測）全部實作完成；resume 續聊架構**包 1（session 檔操作模組）＋包 2（resume 流程地基）＋包 3（凍結快照補丁＋追平＋原因代碼）＋包 4（log 升級 JSONL＋診斷標籤）＋包 5（GM 旁白＋點名合併）完成**，cargo test 213 全綠、零警告（2026-08-04 本機）。claude 訂閱模式的角色對話與 GM 呼叫已全部走 resume 續聊線，改卡／改世界書當輪不再重開線；GM 每輪推進由兩次 CLI 呼叫（旁白＋點名）併成一次。
+
+**2026-08-04 凌晨真桌驗收兩場（各四輪 GM 線）未達標，根因鎖死在 claude CLI 本身**：CLI session 檔逐筆 usage 證明**單數輪請求完全不帶快取標記**（讀寫皆 0、整句全額計費），雙數輪正常寫讀；第 4 輪精準讀到第 2 輪寫入的 18,020 tokens＝app 組的前綴穩定、包 2／3／5 機制無誤（log 的 prefix-broken 標籤在此情境是誤導，實為前一輪沒寫）。乾淨環境同旗標三連發重現「寫入隔輪消失」，排除 app 傳參與環境變數。官方 changelog 至 2.1.217 無對症修復；本機 2.1.210。社群修復（本機 proxy 攔請求／regex 改 cli.js）否決：proxy 位在玩家憑證路徑上、兩者都綁 CLI 版本養維護債、且修的是「前綴被改壞」變體，對我們「隔輪不帶標記」對症存疑。
 
 **2026-08-03 晚拍板收束範圍：只打 CLI（claude 訂閱）這條路**——OpenRouter／API 模式、1h 快取、模型體質表、開桌預熱、GM 全代演全部出局。A／B／C 的 API 驗收擱置。
 
@@ -88,21 +90,28 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `App.tsx`：抽 `narrateOnce`（串流旁白→落 transcript→回傳 next），旁白鈕沿用但忽略 next（讓玩家自己決定下一步）；`gmAdvance` 迴圈改「旁白→點名紀錄→角色接話」，GM 沒點名＝就地停下，輪到玩家／每回合上限照舊。GM 每輪推進少打一次 CLI 呼叫，session 尾巴也少一組「指示→名字」。
   - 11 語系 `gmAdvanceHint` 改述「先旁白再點名」。測試：transport 新增 `extract_next_speaker` 4 情境＋旁白指示驗名單／哨兵／空名單退回，lanes 旁白 echo 測試補點名行。
 - 舊 log 遺留：資料目錄裡的 `prompt-cache.log`（純文字舊格式）不再寫入，包 6 只讀 `.jsonl`。
+- **真桌驗收第一輪＋根因鎖死＋`cache-skipped` 標籤**（2026-08-04 凌晨，主線直做）：兩場四輪 hit_rate 0／62.3／0／0 與 0／0／0／58.8，取證與根因見 Current state。診斷規則補第八個標籤 `cache-skipped`——續聊輪、上輪送過內容（expected_cached>0）、讀寫皆 0＝CLI 這句沒帶標記，與整條路不支援的 `no-cache` 分開（usage_log.rs，判定加一個分支＋測試 2 條，commit 0b4ca49）。
 
 ## Verification
 - `cargo test`：**213 passed; 0 failed**、cargo 零警告（2026-08-04 本機真跑，含包 5 新 2 條、改寫 2 條）；`npm run build`＋`check:i18n` 全綠。
 - 包 4／包 5 未再花使用者額度做實機呼叫（機制由假 CLI e2e 覆蓋）；「模型是否乖乖輸出下一位行」屬真桌驗收項，看 `文件/TableTavern/prompt-cache.jsonl` 與推進行為即可確認。
 - 案 C 改寫-resume 機制為實機查證（見上，scratchpad/rewrite-probe/probe.sh 可重跑；實驗腳本需 `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN`）。
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
+- 2026-08-04 根因取證：CLI session 檔（`~/.claude/projects/-Users-pachelo-Library-Application-Support-TableTavern-cli-workspace/*.jsonl`）逐筆 usage 為據；官方單價反推 cost 與 usage 逐筆吻合（第 3 輪全裸 22,395 tokens 分毫不差＝usage 可信）；乾淨環境同旗標三連發（`env -u` 清認證）寫入 0→138→0 隔輪消失。cargo test 213 綠（含 cache-skipped 新斷言）。
 
 ### 已知限制
 - ~~角色檔位混用會打散快取~~ **已解**（2026-08-03 深夜拍板＋實作）：lane 改按「線種:實際模型」分池，同模型角色共用、跨模型各自一條（便宜檔沒快取無所謂）；GM 獨立不硬合，理由見目標架構。
 - ~~改卡／改世界書／改玩家卡＝重開線全量~~ **已解**（包 3）：快取存活走補丁、過期走追平，皆不重開。
 - 收回上一句＝指紋不合＝重開線（正確），undo 截尾優化（truncate_from 已備好）排後續包。
 - session 檔的 queue-operation／last-prompt 雜項行留有整包 prompt 副本（含機密段）：那些行不進模型上下文，私設隔離（模型可見面）不受影響；磁碟上正典檔本來就有這些資料。
+- **claude CLI 2.1.210 resume 隔輪不帶快取標記**（官方問題，app 端無旗標可解；唯一相關旗標 `--exclude-dynamic-system-prompt-sections` 在自帶 `--system-prompt` 時明文忽略）＝命中率天花板被壓到「約一半輪次全額計費」，升級 CLI 前 66% 目標無法達成。
 
 ## Remaining / Next action
-**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。程式面包 1–5 全部完成，下一步：**真桌驗收**（見下方驗收段），通過後補包 6 額度分頁 UI。以下為定稿規格。
+**2026-08-03 晚全部拍板完畢（案 C＋只做 claude，其他 CLI 日後分別實測）**。程式面包 1–5 完成；真桌驗收卡在 CLI 官方毛病（見 Current state）。下一步：
+1. **升級 claude CLI**（`claude update`，現 2.1.210 → ≥2.1.217；2.1.216 修過快取計費迴歸與 resume 訊息處理，有機會順帶好）。
+2. **重開 app 再跑四輪**，看 `文件/TableTavern/prompt-cache.jsonl`——出現 `cache-skipped` 行＝毛病仍在。
+3. 仍在＝三選一拍板：等官方修（省工）／claude 線改 API 直連（重工，等於再開一包）／接受現狀先做包 6。社群 proxy 已否決，理由見 Current state。
+通過驗收後補包 6 額度分頁 UI。以下為定稿規格。
 
 **2026-08-03 追加拍板（額度分頁需求）**：使用者要額度計量分頁顯示命中率＋顏色燈號＋壞狀況原因句，且原因由 app 純規則判定（不靠 AI）。影響：(1) 包 3 順手把**線重開／降級的原因代碼**落 log（重開當下記，事後推不回來）——已隨包 3 完成；(2) 包 4 log 改**結構化 JSONL**＋診斷標籤定死成有限清單（正常／前綴斷於第幾段／過期／重開-原因X／已降級），資料齊到 UI 拿來就能畫；(3) **包 6 額度分頁 UI** 新增，排在真桌驗收**之後**再補。
 
