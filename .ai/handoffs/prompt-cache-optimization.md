@@ -34,6 +34,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
   - `CliLine` 刻意不動（13 處既有斷言零波及）：usage 走獨立抽取函式，`run_cli` 逐行呼叫，並以 `line.contains("\"usage\"")` 預檢——串流上千行只有收尾那行真的解析 JSON。
   - `UsageLog { path, transport, model, parse }` 打包落檔設定當 `run_cli` 的一個參數（避免簽名長出四個平行參數）；lib.rs 三支 CLI 分支各自帶入，agy 傳 None。
   - log 格式加 `transport=` 欄位（api／claude／codex／grok），兩條路共用同一份檔案；命中率計算收進 `PromptCacheUsage::hit_rate()` 兩邊共用。
+  - **第一版落檔漏了診斷關鍵欄位，已補**（2026-08-03 實測後）：只記讀快取時，命中率 0 分不出「根本沒建」與「建了但讀不到」。`PromptCacheUsage` 加 `created_tokens`（claude `cache_creation_input_tokens`／codex `cache_write_input_tokens`／grok 與 OpenRouter 不回報恆 0）；時間戳改秒級（`data::local_timestamp_seconds`，由 `local_time_parts` 與既有分鐘級共用，存檔用的 `local_timestamp` 格式不變），分鐘精度看不出是否踩到 5 分鐘過期線。
   - 測試新增 4 條：三支 parser 各一條（樣本取自真實冒煙輸出，鎖住換算語意與缺欄位當 0），加端到端——既有假 CLI 測試的 result 行補上 usage，斷言 log 恰一行且內容為 `transport=claude model=sonnet prompt_tokens=100 cached_tokens=99 hit_rate=99%`。
 
 ## Verification
@@ -41,7 +42,14 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 - CLI 用量欄位為實機冒煙查證，非文件推測：claude 同段 system prompt 連跑兩次，第一次 cache_creation=4771／cache_read=0（$0.0179），第二次 cache_creation=0／cache_read=4771（$0.0015）——快取在 CLI 端本來就自動運作。
 
 ## Remaining / Next action
-1. **實機驗收 D（CLI 量測）**：維持現在的 claude CLI 模式開桌跑兩輪以上，看「文件/TableTavern/prompt-cache.log」出現 `transport=claude` 行且第二輪起 hit_rate 明顯 >0。
+1. **實機驗收 D（CLI 量測）＋釐清 0% 命中**：第一次實測（20:22／20:25／20:29 三輪，claude CLI）落檔三行但 **hit_rate 全 0**。已用該桌真實素材（角色卡＋16 條 constant，system 18470 字元）直接跑 claude CLI 四輪定位，快取機制本身正常：
+   | 輪次 | 未快取輸入 | 建快取 | 讀快取 |
+   |---|---|---|---|
+   | 1 | 10901 | 0 | 0 |
+   | 2 | 2 | 10870 | 0 |
+   | 3 | 61 | 0 | 10840 |
+   | 4 | 2 | 133 | 10737 |
+   即 **第一輪不建、第二輪才建、第三輪起才讀得到**。已排除前綴不穩定：constant 集合與 events 無關（`active_worldbook_entries` 對 constant 直接放行）、排序 `(order, uid)` 穩定、`replace_st_macros` 只替換 `{{user}}`／`{{char}}` 這種固定值 → system 逐輪逐字相同。**主假設：使用者三輪間隔 3～4 分鐘，第二輪建好的快取在第三輪送出前就過了 Anthropic 的 5 分鐘 TTL。** 驗證方式：連續快跑三、四輪（不中間停頓），看 `created_tokens` 與 `cached_tokens` 的節奏——第二輪起 created>0、第三輪起 cached>0 即確認為 TTL 問題而非程式問題；若 created 恆 0 則另查 CLI 是否對此組合不下快取斷點。
 2. **實機驗收 A＋B＋C**（需切到 API 模式＋貼 OpenRouter key，會花錢）：看 `transport=api` 行的 cached_tokens——隱式快取模型（GPT／DeepSeek／Gemini 2.5／Grok）與 Claude 系（anthropic/，靠 B 的顯式斷點）都應 >0；同時比對條目與狀態搬尾端後的敘事品質，若明顯變差，該項回退進 system 並在任務檔記錄取捨。注意 Anthropic 顯式快取有最低門檻（約 1024 tokens），太小的桌可能不寫快取，屬預期。
 3. **agy 量測**（未拍板）：要換 `--output-format stream-json` 並重寫 `parse_agy_line`（usage 在 `result` 事件的 `cache_read_tokens`，格式用 `event` 欄位而非 `type`）。風險是改壞 agy 那條線的回覆解析，需實測串流輸出確認回覆不斷行。
 

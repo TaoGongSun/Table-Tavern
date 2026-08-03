@@ -711,12 +711,15 @@ impl SseParser {
 
 /// 快取命中數字（prompt-cache-optimization C）。API 走 OpenRouter usage accounting，
 /// CLI 走各家收尾事件（見 cli::parse_*_usage）。
-/// OpenRouter 目前不回報寫入快取的 token 數（官方文件明言不支援），只有讀取命中。
 /// prompt_tokens 一律是「總輸入」（含快取部分），各家語意差異在抽取時就換算掉。
+/// created_tokens（寫入快取）是診斷關鍵：命中率 0 時，它 >0 代表「有建但沒讀到」
+/// （前綴變了或過了 5 分鐘），=0 代表「根本沒建快取」。
+/// OpenRouter 不回報寫入數（官方文件明言不支援），該路徑恆為 0。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PromptCacheUsage {
     pub prompt_tokens: u64,
     pub cached_tokens: u64,
+    pub created_tokens: u64,
 }
 
 impl PromptCacheUsage {
@@ -745,6 +748,7 @@ pub fn extract_usage(payload: &str) -> Option<PromptCacheUsage> {
     Some(PromptCacheUsage {
         prompt_tokens,
         cached_tokens,
+        created_tokens: 0, // OpenRouter 不回報寫入數
     })
 }
 
@@ -825,11 +829,13 @@ pub(crate) fn append_usage_log(
     usage: PromptCacheUsage,
 ) {
     use std::io::Write;
-    let timestamp = crate::data::local_timestamp().unwrap_or_else(|_| "unknown-time".to_owned());
+    let timestamp =
+        crate::data::local_timestamp_seconds().unwrap_or_else(|_| "unknown-time".to_owned());
     let line = format!(
-        "{timestamp} transport={transport} model={model} prompt_tokens={} cached_tokens={} hit_rate={:.0}%\n",
+        "{timestamp} transport={transport} model={model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%\n",
         usage.prompt_tokens,
         usage.cached_tokens,
+        usage.created_tokens,
         usage.hit_rate(),
     );
     let _ = std::fs::OpenOptions::new()
@@ -895,9 +901,10 @@ pub async fn stream_chat(
     if let Some(usage) = usage {
         // stderr 一行（終端機啟動時直接看）＋落檔一行（事後隨時查）
         eprintln!(
-            "[prompt-cache] transport=api model={model} prompt_tokens={} cached_tokens={} hit_rate={:.0}%",
+            "[prompt-cache] transport=api model={model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%",
             usage.prompt_tokens,
             usage.cached_tokens,
+            usage.created_tokens,
             usage.hit_rate(),
         );
         if let Some(path) = usage_log {
@@ -1718,6 +1725,7 @@ mod tests {
             PromptCacheUsage {
                 prompt_tokens: 194,
                 cached_tokens: 150,
+                created_tokens: 0, // OpenRouter 不回報寫入數
             }
         );
 
