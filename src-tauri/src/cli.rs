@@ -372,6 +372,46 @@ pub fn claude_args(model: &str, system: &str) -> Vec<String> {
     .to_vec()
 }
 
+/// claude lane 續聊（prompt-cache-optimization 包 2）的 session 指定方式。
+pub enum ClaudeSession<'a> {
+    /// 開新線：session id 由本程式產生（UUID），之後靠它 resume 與定位 session 檔。
+    Open(&'a str),
+    /// 續聊既有線：實測 resume 沿用同一 id、續寫同一檔（不分叉）。
+    Resume(&'a str),
+}
+
+/// claude lane 續聊參數：與 claude_args 同組旗標，但保留 session 落檔
+/// （resume 架構的快取命中靠 CLI 自身 session，非 §8.1 無狀態單發）。
+pub fn claude_session_args(model: &str, system: &str, session: &ClaudeSession<'_>) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "-p",
+        "--verbose", // --print 的 stream-json 硬性要求
+        "--safe-mode",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--tools",
+        "",
+        "--system-prompt",
+        system,
+        "--model",
+        model,
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    match session {
+        ClaudeSession::Open(id) => {
+            args.push("--session-id".to_owned());
+            args.push((*id).to_owned());
+        }
+        ClaudeSession::Resume(id) => {
+            args.push("--resume".to_owned());
+            args.push((*id).to_owned());
+        }
+    }
+    args
+}
+
 /// codex 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// --ignore-user-config：跳過使用者 config.toml（hooks／MCP），auth 不受影響（--help 查證）。
 /// allow_tools：生圖呼叫需要 $imagegen 寫檔，沙盒放寬到 workspace-write；聊天一律唯讀。
@@ -975,6 +1015,20 @@ mod tests {
         let args = claude_args(claude_model_for(Tier::Fast), "系統");
         assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
         assert!(args.windows(2).any(|w| w == ["--system-prompt", "系統"]));
+    }
+
+    /// lane 續聊參數必須保留 session 落檔（無 --no-session-persistence），
+    /// 開線帶 --session-id、續聊帶 --resume，其餘旗標與單發相同。
+    #[test]
+    fn claude_session_args_keep_persistence_and_pick_session_flag() {
+        let opened = claude_session_args("sonnet", "系統", &ClaudeSession::Open("uuid-1"));
+        assert!(!opened.contains(&"--no-session-persistence".to_owned()));
+        assert!(opened.windows(2).any(|w| w == ["--session-id", "uuid-1"]));
+        assert!(opened.windows(2).any(|w| w == ["--system-prompt", "系統"]));
+        assert!(opened.windows(2).any(|w| w == ["--model", "sonnet"]));
+        let resumed = claude_session_args("sonnet", "系統", &ClaudeSession::Resume("uuid-1"));
+        assert!(resumed.windows(2).any(|w| w == ["--resume", "uuid-1"]));
+        assert!(!resumed.contains(&"--session-id".to_owned()));
     }
 
     #[test]

@@ -5,6 +5,7 @@ mod import;
 #[allow(dead_code)]
 mod install;
 mod proxy;
+mod lanes;
 mod session_file;
 mod transport;
 
@@ -640,6 +641,83 @@ fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
     cli::cli_model_catalog(&cli)
 }
 
+/// 使用者選定的聊天傳輸層（preferences.transport，預設 api）。
+fn chat_transport(config: &data::AppConfig) -> String {
+    config
+        .preferences
+        .get("transport")
+        .and_then(|value| value.as_str())
+        .unwrap_or("api")
+        .to_owned()
+}
+
+/// claude CLI 的環境變數：沙盒告知＋（設了相容端點時）BASE_URL 與 token。
+/// 單發（stream_via_transport）與 lane 續聊共用。
+fn claude_cli_envs(config: &data::AppConfig) -> Vec<(String, String)> {
+    // Claude Code 開場會自建 macOS 沙盒，系統因此以「Table Tavern」的名義向玩家要
+    // 桌面／音樂資料夾權限（tccd 日誌實證：accessing=claude-code、responsible=本 app）。
+    // 這個變數告訴它「你已經在沙盒裡」，想省掉那組彈窗；實測仍會被要求媒體資料庫權限，
+    // 效果未定但無害（我們給的是 --tools ""，它本來就不需要那些資料夾）。
+    // 彈窗文案改由 Info.plist 的 NSAppleMusicUsageDescription 等鍵說明。
+    let mut envs = vec![("CLAUDE_CODE_SANDBOXED".to_owned(), "1".to_owned())];
+    let base_url = config
+        .preferences
+        .get("claude_base_url")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if !base_url.is_empty() {
+        envs.push(("ANTHROPIC_BASE_URL".to_owned(), base_url.to_owned()));
+        if let Some(api_key) = config
+            .api_keys
+            .get("claude_compat")
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+        {
+            envs.push(("ANTHROPIC_AUTH_TOKEN".to_owned(), api_key.to_owned()));
+        }
+    }
+    envs
+}
+
+/// claude CLI 的 session 檔目錄（resume 續聊的抹寫要直接讀寫它）。
+fn claude_home_dir() -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")))
+        .or_else(|| std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".claude")))
+        .unwrap_or_else(|| PathBuf::from(".claude"))
+}
+
+/// 準備 claude lane 呼叫素材：風險告知檢查＋CLI 偵測＋模型解析＋env。
+/// lane 續聊（chat／narrate／suggest）專用；其餘呼叫照走 stream_via_transport 單發。
+async fn prepare_claude_call(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    tier: data::Tier,
+) -> Result<lanes::ClaudeCall, String> {
+    if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
+        return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
+    }
+    let info = cli::detect_clis()
+        .await
+        .into_iter()
+        .find(|info| info.id == "claude")
+        .ok_or_else(|| "找不到 claude CLI，請確認已安裝並登入".to_owned())?;
+    let model = cli::tier_override(&config.tier_models, "claude", tier)
+        .unwrap_or_else(|| cli::claude_model_for(tier))
+        .to_owned();
+    Ok(lanes::ClaudeCall {
+        program: PathBuf::from(info.path),
+        working_dir: cli_workspace(app)?,
+        envs: claude_cli_envs(config),
+        model,
+        usage_log: data_root(app).ok().map(|root| root.join("prompt-cache.log")),
+        claude_home: claude_home_dir(),
+    })
+}
+
 /// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
 async fn stream_via_transport(
@@ -655,14 +733,9 @@ async fn stream_via_transport(
 ) -> Result<String, String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
     // allow_cli_tools：只有生圖呼叫為 true——CLI 生圖工具要寫檔／跑指令，聊天一律鎖死工具。
-    let transport_kind = transport_override.map(str::to_owned).unwrap_or_else(|| {
-        config
-            .preferences
-            .get("transport")
-            .and_then(|value| value.as_str())
-            .unwrap_or("api")
-            .to_owned()
-    });
+    let transport_kind = transport_override
+        .map(str::to_owned)
+        .unwrap_or_else(|| chat_transport(config));
     // 快取命中率逐行落在資料目錄的 prompt-cache.log（拍板：不做 UI，log 隨時可查）。
     // API 與 CLI 兩條路共用同一份檔案，靠行內的 transport 欄位分辨。
     let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.log"));
@@ -691,30 +764,7 @@ async fn stream_via_transport(
             let model = cli::tier_override(&config.tier_models, "claude", tier)
                 .unwrap_or_else(|| cli::claude_model_for(tier));
             let args = cli::claude_args(model, &system);
-            let base_url = config
-                .preferences
-                .get("claude_base_url")
-                .and_then(|value| value.as_str())
-                .map(str::trim)
-                .unwrap_or("");
-            // Claude Code 開場會自建 macOS 沙盒，系統因此以「Table Tavern」的名義向玩家要
-            // 桌面／音樂資料夾權限（tccd 日誌實證：accessing=claude-code、responsible=本 app）。
-            // 這個變數告訴它「你已經在沙盒裡」，想省掉那組彈窗；實測仍會被要求媒體資料庫權限，
-            // 效果未定但無害（我們給的是 --tools ""，它本來就不需要那些資料夾）。
-            // 彈窗文案改由 Info.plist 的 NSAppleMusicUsageDescription 等鍵說明。
-            let mut envs = vec![("CLAUDE_CODE_SANDBOXED".to_owned(), "1".to_owned())];
-            if !base_url.is_empty() {
-                envs.push(("ANTHROPIC_BASE_URL".to_owned(), base_url.to_owned()));
-                if let Some(api_key) = config
-                    .api_keys
-                    .get("claude_compat")
-                    .map(String::as_str)
-                    .map(str::trim)
-                    .filter(|key| !key.is_empty())
-                {
-                    envs.push(("ANTHROPIC_AUTH_TOKEN".to_owned(), api_key.to_owned()));
-                }
-            }
+            let envs = claude_cli_envs(config);
             cli::run_cli(
                 &program,
                 &cli_working_dir,
@@ -1216,6 +1266,37 @@ async fn chat_with_character(
     let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
 
     let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
+    let emit = |delta: &str| {
+        let _ = on_delta.send(delta.to_owned());
+    };
+    // claude 訂閱走 resume 續聊線（prompt-cache-optimization 包 2）：全角色共用一條 session，
+    // 凍結 system 逐輪重帶、只送新事件；私設回合注入、回合後從 session 檔抹掉（案 C）。
+    if chat_transport(&config) == "claude" {
+        let lang = transport::ui_language(&config);
+        let cards = load_active_cards(&root, &world_id)?;
+        let frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);
+        let turn = transport::chars_lane_turn(&card, player.as_ref(), &events, &worldbook, &lang);
+        let call = prepare_claude_call(&app, &config, card.tier).await?;
+        return lanes::run_turn(
+            &call,
+            &root,
+            &world_id,
+            lanes::TurnInput {
+                lane: lanes::Lane::Chars,
+                scene: state.current_scene,
+                events: &events,
+                frozen_system: frozen,
+                tail: turn.tail,
+                confidential: turn.confidential,
+                prefix: Some(format!("{}：", card.name)),
+                echo: lanes::ReplyEcho::Dialogue {
+                    speaker_id: card.id.clone(),
+                },
+            },
+            emit,
+        )
+        .await;
+    }
     let messages = transport::assemble_messages(
         &card,
         player.as_ref(),
@@ -1227,9 +1308,6 @@ async fn chat_with_character(
         "現在輪到「{}」回應。請直接以角色視角輸出台詞、動作與心理描寫，不要加名字前綴、不要任何角色之外的說明。",
         card.name
     );
-    let emit = |delta: &str| {
-        let _ = on_delta.send(delta.to_owned());
-    };
     stream_via_transport(
         &app,
         &config,
@@ -1244,38 +1322,90 @@ async fn chat_with_character(
     .await
 }
 
-/// GM 上下文＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
-/// 回傳（在場角色卡, 組裝好的訊息）；roster（點名用名單）由呼叫端從角色卡取名字。
-type GmAssembly = (
-    Vec<data::CharacterCard>,
-    Option<data::CharacterCard>,
-    Vec<transport::ChatMessage>,
-);
-
-fn assemble_gm(root: &std::path::Path, world_id: &str, lang: &str) -> Result<GmAssembly, String> {
-    let world_md = data::read_world_md(root, world_id).map_err(|error| error.to_string())?;
-    let worldbook = data::read_worldbook(root, world_id).map_err(|error| error.to_string())?;
-    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
-    let events = data::read_transcript(root, world_id, state.current_scene)
-        .map_err(|error| error.to_string())?;
-    let cards: Vec<data::CharacterCard> = data::list_characters(root, world_id)
+/// 這一桌未封存的角色卡（GM 上下文與 chars 續聊線的快照都要全卡）。
+fn load_active_cards(
+    root: &std::path::Path,
+    world_id: &str,
+) -> Result<Vec<data::CharacterCard>, String> {
+    data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|meta| !meta.archived)
-        .map(|meta| data::read_character(root, world_id, &meta.id))
-        .collect::<Result<_, _>>()
+        .map(|meta| data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string()))
+        .collect()
+}
+
+/// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
+/// 單發組裝與 claude lane 續聊共用同一份素材。
+struct GmMaterials {
+    world_md: String,
+    worldbook: Vec<data::WorldbookEntry>,
+    state: data::WorldState,
+    events: Vec<data::TranscriptEvent>,
+    cards: Vec<data::CharacterCard>,
+    player: Option<data::CharacterCard>,
+}
+
+fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, String> {
+    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
-    let player = data::read_player_card(root, world_id).map_err(|error| error.to_string())?;
-    let messages = transport::assemble_gm_messages(
-        &world_md,
-        &cards,
-        player.as_ref(),
-        &events,
-        &worldbook,
-        &state.state,
+    Ok(GmMaterials {
+        world_md: data::read_world_md(root, world_id).map_err(|error| error.to_string())?,
+        worldbook: data::read_worldbook(root, world_id).map_err(|error| error.to_string())?,
+        state,
+        events,
+        cards: load_active_cards(root, world_id)?,
+        player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
+    })
+}
+
+/// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
+/// （keyword 條目＋狀態＋導演指示）。narrate 與 suggest 共用，差別只在指示與 echo。
+async fn gm_lane_reply(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    root: &std::path::Path,
+    world_id: &str,
+    materials: &GmMaterials,
+    instruction: &str,
+    echo: lanes::ReplyEcho,
+    lang: &str,
+    emit: impl FnMut(&str),
+) -> Result<String, String> {
+    let frozen = transport::gm_lane_system(
+        &materials.world_md,
+        &materials.cards,
+        materials.player.as_ref(),
+        &materials.worldbook,
         lang,
     );
-    Ok((cards, player, messages))
+    let turn = transport::gm_lane_turn(
+        &materials.events,
+        &materials.worldbook,
+        materials.player.as_ref(),
+        &materials.state.state,
+        instruction,
+        lang,
+    );
+    let call = prepare_claude_call(app, config, transport::gm_tier(config)).await?;
+    lanes::run_turn(
+        &call,
+        root,
+        world_id,
+        lanes::TurnInput {
+            lane: lanes::Lane::Gm,
+            scene: materials.state.current_scene,
+            events: &materials.events,
+            frozen_system: frozen,
+            tail: turn.tail,
+            confidential: None,
+            prefix: None,
+            echo,
+        },
+        emit,
+    )
+    .await
 }
 
 /// 簡易導演：GM 插入旁白（NewPlan §6.1），串流回前端後由前端落 transcript。
@@ -1287,27 +1417,50 @@ async fn gm_narrate(
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let (_, _, mut messages) = assemble_gm(
-        &data_root(&app)?,
-        &world_id,
-        &lang,
-    )?;
-    messages.push(transport::narrate_instruction(&lang));
+    let root = data_root(&app)?;
+    let materials = gm_materials(&root, &world_id)?;
+    let closing = "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。";
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    let reply = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::gm_tier(&config),
-        "GM",
-        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。",
-        &messages,
-        emit,
-    )
-    .await?;
+    let reply = if chat_transport(&config) == "claude" {
+        let instruction = format!("{}\n{closing}", transport::narrate_instruction(&lang).content);
+        gm_lane_reply(
+            &app,
+            &config,
+            &root,
+            &world_id,
+            &materials,
+            &instruction,
+            lanes::ReplyEcho::Narration,
+            &lang,
+            emit,
+        )
+        .await?
+    } else {
+        let mut messages = transport::assemble_gm_messages(
+            &materials.world_md,
+            &materials.cards,
+            materials.player.as_ref(),
+            &materials.events,
+            &materials.worldbook,
+            &materials.state.state,
+            &lang,
+        );
+        messages.push(transport::narrate_instruction(&lang));
+        stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::gm_tier(&config),
+            "GM",
+            closing,
+            &messages,
+            emit,
+        )
+        .await?
+    };
     let (fields, display) = transport::extract_state_block(&reply);
     // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
     if !fields.is_empty() {
@@ -1328,41 +1481,66 @@ async fn gm_narrate(
 #[tauri::command]
 async fn gm_suggest_speaker(app: tauri::AppHandle, world_id: String) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let (cards, player, mut messages) = assemble_gm(
-        &data_root(&app)?,
-        &world_id,
-        &transport::ui_language(&config),
-    )?;
-    if cards.is_empty() {
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let materials = gm_materials(&root, &world_id)?;
+    if materials.cards.is_empty() {
         return Err("這一桌還沒有角色，先建立角色再讓 GM 點名".to_owned());
     }
-    let roster: Vec<String> = cards.iter().map(|card| card.name.clone()).collect();
-    messages.push(transport::suggest_instruction(
-        &roster,
-        player.as_ref().map(|card| card.name.as_str()),
-    ));
-    let reply = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::gm_tier(&config),
-        "GM",
-        "現在請執行上述導演指示，只輸出一個名字。",
-        &messages,
-        |_| {},
-    )
-    .await?;
-    let picked = transport::pick_speaker(
-        &reply,
-        &roster,
-        player.as_ref().map(|card| card.name.as_str()),
-    )
-    .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))?;
+    let roster: Vec<String> = materials
+        .cards
+        .iter()
+        .map(|card| card.name.clone())
+        .collect();
+    let player_name = materials.player.as_ref().map(|card| card.name.as_str());
+    let instruction_message = transport::suggest_instruction(&roster, player_name);
+    let closing = "現在請執行上述導演指示，只輸出一個名字。";
+    let reply = if chat_transport(&config) == "claude" {
+        // 點名不落 transcript（echo None），session 只多一組「指示→名字」的小尾巴
+        let instruction = format!("{}\n{closing}", instruction_message.content);
+        gm_lane_reply(
+            &app,
+            &config,
+            &root,
+            &world_id,
+            &materials,
+            &instruction,
+            lanes::ReplyEcho::None,
+            &lang,
+            |_| {},
+        )
+        .await?
+    } else {
+        let mut messages = transport::assemble_gm_messages(
+            &materials.world_md,
+            &materials.cards,
+            materials.player.as_ref(),
+            &materials.events,
+            &materials.worldbook,
+            &materials.state.state,
+            &lang,
+        );
+        messages.push(instruction_message);
+        stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::gm_tier(&config),
+            "GM",
+            closing,
+            &messages,
+            |_| {},
+        )
+        .await?
+    };
+    let picked = transport::pick_speaker(&reply, &roster, player_name)
+        .ok_or_else(|| format!("GM 的點名無法對應任何角色：{reply}"))?;
     if picked == transport::PLAYER_SENTINEL {
         return Ok(picked);
     }
-    cards
+    materials
+        .cards
         .iter()
         .find(|card| card.name == picked)
         .map(|card| card.id.clone())

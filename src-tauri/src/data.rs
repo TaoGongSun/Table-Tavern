@@ -286,6 +286,12 @@ pub(crate) fn character_path(
         .join(format!("{character_id}.md")))
 }
 
+/// claude lane 續聊狀態檔（prompt-cache-optimization 包 2）：worlds/<world_id>/lanes.json。
+/// 本機工具狀態，壞檔或缺檔都只是重開續聊線，不影響正典資料。
+pub(crate) fn lanes_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("lanes.json"))
+}
+
 /// 生成圖庫目錄，落在世界目錄內：worlds/<world_id>/gen-gallery/<character_id>。
 pub(crate) fn gallery_dir(root: &Path, world_id: &str, character_id: &str) -> DataResult<PathBuf> {
     validate_id(character_id)?;
