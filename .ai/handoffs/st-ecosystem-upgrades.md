@@ -1,7 +1,7 @@
 # Handoff: st-ecosystem-upgrades
 
 ## Current state
-2026-08-02：五項全部實作完成、主線驗收全綠（cargo test 162），等使用者實機驗收。第四項第一期於同日 UI 拍板後完成（位置與樣子見 tasks 檔第 5 點）。
+2026-08-03：六項全部實作完成（cargo test 172 綠）。第一、二、三、五、六項實機驗收通過；當日回報的五個問題全數修掉（見下方「實機驗收修補」）。剩第四項狀態欄的後續鏈待驗（見 Remaining）。
 
 ## Completed
 - 第一項匯入補強（後端＋前端各一包 codex gpt-5.6-terra 平行實作、主線審過）：
@@ -21,23 +21,34 @@
   - 前端：`.state-bar`（App.tsx:4114）在 chat-header 與 chat-body 之間、sticky 黏頂；預設收起顯示一行摘要、展開一欄一列，值點擊就地編輯送 `set_table_state`。切桌／旁白完成／收回／復原四個時機刷新。串流中的旁白遇 ```／`<details`／`<status` 就截斷顯示（主線補：否則每回合都看到圍欄閃過）。i18n 新 7 鍵 ×10 語系。
 - 第四項設計偏差（主線拍板，理由已寫進 tasks 檔）：狀態存 world.json 不另立檔；第 6 點「世界書偵測到就問要不要開狀態欄」取消——三欄常駐沒有開關可開。
 
+- 實機驗收修補（2026-08-03，主線 Opus 5 直寫，cargo test 171＋tsc＋check:i18n 70 鈕＋build＋npm test 全綠）：
+  - 狀態欄長值溢出：`.state-bar-value` 是按鈕，吃到全域 button 的 nowrap＋置中，長句子衝出面板壓到旁白。App.css:1309/1320 覆寫成 block＋white-space normal＋overflow-wrap anywhere，欄位 align-items 改 start。
+  - 隱藏卡進不了編輯器（＝「轉成世界書條目」永遠按不到）：隱藏區每列加「編輯」鈕（App.tsx archive-row，複用 editBtn 鍵）；編輯器那顆鈕依 card.archived 在「隱藏角色／還原」間切換（toggleArchived），convertCardInUse 文案十語系改指向該鈕。
+  - 世界書重複匯入：data.rs entry_fingerprint（comment＋content＋key＋keysecondary，trim、關鍵字排序）＋import_worldbook 回傳 `WorldbookImport { imported, skipped }`；世界書面板加「清理重複」鈕→`dedupe_worldbook`（同指紋只留 sorted_entry_keys 最前那條）。i18n 新 5 鍵×10。
+  - 開場白貼成 GM 開場旁白：`import::card_opening(bytes)` 直接讀匯入檔的 first_mes（回 `(name, first_mes)`），所以世界書改道那條（不建卡）也拿得到；`transport::resolve_display_macros` 先把 {{user}}/{{char}} 換成實名。指令 `card_opening`，三個入口（世界書面板匯入、角色卡匯入改道、照樣匯成角色卡）都問一句，答好貼 `kind: narration`／speaker GM。**設計拍板**：開場是 GM 的事，不掛角色頭上（第一版曾做成角色發言，使用者當場否掉）。
+  - 測卡在 open panel 變灰無法選：檔案本身完好（PNG 結構、UTI public.png、QuickLook 皆正常），複製一份乾淨副本 TestCards/orc-cave-copy.png 即可選；原因未定案，非程式問題。
+
+- 第六項開場白選擇＋起始狀態匯入（後端＋前端各一包 codex 平行、主線審過並補註解）：
+  - 後端：`import::card_openings`（import.rs:187）取代 `card_opening`，回 `(卡名, 全部開場白)`＝first_mes＋alternate_greetings 依序、空條略過、一條都沒有回 None。指令 `card_openings`（lib.rs:327）逐條過 `resolve_display_macros`。
+  - 貼出走單一指令 `post_opening`（lib.rs:529）：`extract_state_block` 剝除狀態區塊 →`data::append_opening`（data.rs:1509）把欄位併進檯面、事件自帶合併後快照寫入 transcript，回傳事件給前端。前端不碰狀態，不變式（目前值＝最後一則事件快照）由後端一手守住，收回上一句自動倒回。
+  - 前端：`offerOpeningLine` 改成拿清單開自製面板（App.tsx 約 4577，比照 gen-table 面板寫法），一條一列、標籤「開場白 N」＋前兩行預覽（120 字截斷、CSS 兩行夾住）；點列＝展開全文（`openingExpanded` 一次只開一條，`.opening-choice-full` max-height 18rem 自帶卷軸），展開後的「貼出這條」才呼叫 `post_opening`→推事件＋`refreshTableState`；overlay／關閉鈕／「先不要」皆＝不貼。i18n 新 2 鍵（openingChoiceTitle／openingChoiceItem）×10，openingLineOk 改當「貼出這條」。
+  - 掛點只留世界書路徑（世界書面板匯入、角色卡改道）：匯成角色卡不跳面板——那張卡是要上桌的角色，開場白已在卡上（2026-08-03 使用者拍板）。
+  - 卡片自訂欄（例如「沦陷天数」）不必特別處理：狀態欄本來就把基礎三欄以外的鍵一併列出（App.tsx stateFields）。
+
 ## Verification
 - 第一項主線實跑：`cargo test` 143 passed（139→143：probe 三例＋開場白一例）；`npx tsc --noEmit` ✓；`npm run check:i18n` 十語系 OK（67 鈕）；全部 diff 逐段親讀；ja/ru/en 翻譯抽查自然。
 - 第二項主線實跑：`cargo test` 146 passed; 0 failed（143→146：大小寫混用＋fallback 雙語＋GM 逐卡 char 三例）；diff 逐段親讀——替換函式索引只落字元邊界不會 panic、{{random}} 保留、GM 世界書 {{char}} 不誤代。
 - 第三項主線驗證：親跑 `npm test`（story-markdown.test.ts 2 塊 10 情境：em/strong/br/blockquote/li/code 白名單通過；`<script>` 無標籤且轉義文字可見、`<img onerror>`／`javascript:` 連結／onclick 全滅）✓、`npx tsc --noEmit` ✓、`npm run build` ✓ 557ms；story-markdown.ts 逐行親審（雙層防線：renderer 轉義＋DOMPurify 白名單，dangerouslySetInnerHTML 只吃 sanitize 出口）。
 - 第五項互轉（後端＋前端各一包 codex gpt-5.6-terra 平行、主線審過）：data.rs worldbook_entry_to_character（先驗後動：條目在、標題非空、as_player 時無現任玩家卡→寫卡→補 state.player_card_id→刪條目；後段失敗兩邊都在不遺失）＋character_to_worldbook_entry（archived 才能轉、玩家卡擋；公開＋「## 私有」併一條 constant、order 100、GM 可見、插在清單最上面；先寫條目再刪卡）。lib.rs 兩指令註冊。前端：條目表單頂列「轉成角色卡」（僅既有條目；無玩家卡且內文含 {{user}} 時先問「轉玩家卡？」，粗判只拿來發問、決定權在玩家）；卡編輯器頂列「轉成世界書條目」（isNew／isPlayer 隱藏；未儲存擋、未封存擋、warning 確認）；接線 finishRemoval／refreshCharacters／loadPlayerCard。新 10 鍵 ×10 語系。
 - 第四項主線驗證：親跑 `cargo test` 162 passed; 0 failed（151→162：狀態解析七例＋快照借用／不覆寫／pop 回滾／復原放回／GM 專屬隔離）——codex 自驗回報的 5 紅是它沙箱不給開 loopback TCP，主線環境全綠；`npx tsc --noEmit` ✓、`npm run build` ✓、`npm test` ✓、`npm run check:i18n` 十語系 OK（69 鈕）。四份 diff 逐段親讀。專案既有 rustfmt 就有 41 處漂移（含未改動的 cli.rs），本次不跑全域 fmt 免動到範圍外。
+- 第六項主線驗證：親跑 `cargo test` 172 passed; 0 failed（171→172：card_openings 清單／PNG 同路徑／只有備用開場白／全空回 None 一例整併，append_opening 併欄位＋快照＋pop 倒回一例）、`npx tsc --noEmit` ✓、`npm run build` ✓、`npm run check:i18n` 十語系 OK（72 鈕）、`npm test` ✓。兩份 diff 逐段親讀；主線補三處註解（post_opening 不變式、offerOpeningLine 拍板理由、import.rs 被插斷的測試註解歸位）。UI 外觀未實跑（Tauri 原生視窗，照慣例交實機驗收）。
 - 第五項主線驗證：親跑 cargo test 151 passed（146→151：雙向搬移＋玩家卡 state＋空標題擋＋在桌上擋＋玩家卡擋五例）、tsc ✓、check:i18n 九非正典語系 OK（69 鈕）、npm test ✓、build ✓ 587ms；轉換順序與擋條件逐段親讀。
 - 測卡 TestCards/（已 gitignore）三張皆拆內嵌 JSON 驗過規則命中：兽人的洞穴（18 條書厚身薄＋開場白 3＋tavern_helper＋{{user}} 30 處）、根源重塑app（`<script`＋{{user}} 45 處）、勇者养成指南（`<%` ×446、100 條）。
 
 ## Remaining / Next action
-1. 第四項第二期（自訂數值欄位＋MVU 增量 patch 解析）等第一期實機驗收後細拍；掛點已備：`TableState.characters`、`extract_state_block` 的 UpdateVariable 分支。
-2. 使用者實機驗收：
-   - 一：三張測卡匯入各跳改道詢問；接受→條目進當桌世界書；拒絕→照建卡＋腳本提示；兽人的洞穴卡私有筆記見備用開場白 1–3；素卡不跳提示。
-   - 二：帶 {{user}} 的卡開聊，提示詞與模型回覆都用玩家名。
-   - 三：模型輸出 `*動作*` 顯示斜體；貼 `<script>alert(1)</script>` 進對話以文字顯示不執行；前幕回看對話列改「名字在上、內文在下」與即時聊天一致（版面小變化，順帶驗收）。
-   - 四：GM 說一段話後狀態欄跟著劇情變、對話裡看不到 ```state 圍欄；點欄位改字後 GM 下一回合照新的演；收回上一句狀態跟著倒回、復原又回來；模型亂輸出格式時遊戲照跑不報錯；「兽人的洞穴」實測 `<details>` 區塊從對話剝除、四個自訂欄（天數／環境／駐留角色／劇情階段）排在基礎三欄下面。
-   - 五：世界書條目編輯表單一鍵轉角色卡（含 {{user}} 人設條目會問要不要當玩家卡）、轉出的條目原地消失；封存卡編輯畫面一鍵轉條目（在桌上／未儲存會被擋）、轉出條目排世界書最上面。
+1. 使用者實機驗收剩餘項（第一、二、三、五、六項 2026-08-03 全數驗收通過，不再列）：
+   - 四：GM 說話後狀態欄跟著變、對話看不到圍欄；點欄位改字後 GM 照新的演；收回／復原狀態同步倒回；壞格式不報錯。（狀態欄本身與 `<details>` 剝除已驗過）
+2. 第四項第二期（自訂數值欄位＋MVU 增量 patch 解析）等第一期實機驗收後細拍；掛點已備：`TableState.characters`、`extract_state_block` 的 UpdateVariable 分支。狀態欄自訂欄與基礎三欄語意重疊（地點／当前环境、在場人物／駐留角色各報一次）＝卡片自身格式造成，使用者 2026-08-03 拍板不列議程。
 
 ## Constraints
 - 規格與安全紅線見 tasks/st-ecosystem-upgrades.md（XSS 紅線、不做清單、五項互不依賴、小→大順序）。

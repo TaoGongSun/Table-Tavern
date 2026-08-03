@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -1058,7 +1058,53 @@ fn normalize_imported_entry(
     Ok(value)
 }
 
-pub fn import_worldbook(root: &Path, world_id: &str, json_text: &str) -> DataResult<usize> {
+/// 條目的實質內容指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。
+/// 只看標題、內文與兩組關鍵字——uid、順序、可見度等隨匯入產生的欄位不算差異。
+fn entry_fingerprint(entry: &serde_json::Value) -> String {
+    let text = |field: &str| {
+        entry
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    };
+    let keys = |field: &str| {
+        let mut items: Vec<String> = entry
+            .get(field)
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(|key| key.trim().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        items.sort();
+        items.join("\u{1f}")
+    };
+    format!(
+        "{}\u{1e}{}\u{1e}{}\u{1e}{}",
+        text("comment"),
+        text("content"),
+        keys("key"),
+        keys("keysecondary"),
+    )
+}
+
+/// 匯入結果：`imported`＝真的寫進去的條數，`skipped`＝內容重複被略過的條數。
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct WorldbookImport {
+    pub imported: usize,
+    pub skipped: usize,
+}
+
+pub fn import_worldbook(
+    root: &Path,
+    world_id: &str,
+    json_text: &str,
+) -> DataResult<WorldbookImport> {
     let imported: serde_json::Value = serde_json::from_str(json_text)
         .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
     let source = imported
@@ -1076,17 +1122,50 @@ pub fn import_worldbook(root: &Path, world_id: &str, json_text: &str) -> DataRes
 
     let mut worldbook = read_worldbook_value(root, world_id)?;
     let entries = entries_object_mut(&mut worldbook)?;
-    let imported_count = source_entries.len();
+    let total = source_entries.len();
+    let mut seen: HashSet<String> = entries.values().map(entry_fingerprint).collect();
     let mut uid = next_uid(entries)?;
+    let mut imported = 0;
     for source_entry in source_entries {
         let entry = normalize_imported_entry(source_entry, character_book, uid)?;
+        // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容
+        if !seen.insert(entry_fingerprint(&entry)) {
+            continue;
+        }
         entries.insert(uid.to_string(), entry);
         uid = uid
             .checked_add(1)
             .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
+        imported += 1;
     }
     write_worldbook_value(root, world_id, &worldbook)?;
-    Ok(imported_count)
+    Ok(WorldbookImport {
+        imported,
+        skipped: total - imported,
+    })
+}
+
+/// 清掉內容重複的條目：同一份指紋只留顯示順序最前的那條，回傳刪掉幾條。
+/// 給去重上線前就已經重複匯入的桌收拾用。
+pub fn dedupe_worldbook(root: &Path, world_id: &str) -> DataResult<usize> {
+    let mut worldbook = read_worldbook_value(root, world_id)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let mut seen = HashSet::new();
+    let duplicates: Vec<String> = sorted_entry_keys(entries)
+        .into_iter()
+        .filter(|key| {
+            entries
+                .get(key)
+                .is_some_and(|entry| !seen.insert(entry_fingerprint(entry)))
+        })
+        .collect();
+    for key in &duplicates {
+        entries.remove(key);
+    }
+    if !duplicates.is_empty() {
+        write_worldbook_value(root, world_id, &worldbook)?;
+    }
+    Ok(duplicates.len())
 }
 
 pub fn export_worldbook(root: &Path, world_id: &str, path: &Path) -> DataResult<()> {
@@ -1425,6 +1504,31 @@ pub fn append_transcript(
         }
     }
     Ok(())
+}
+
+/// 開場白也要存成快照，收回時檯面才能回到貼上前的最後一句。
+pub fn append_opening(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    ts: &str,
+    text: &str,
+    fields: &[(String, String)],
+) -> DataResult<TranscriptEvent> {
+    let mut state = read_state(root, world_id)?;
+    for (key, value) in fields {
+        state.state.table.insert(key.clone(), value.clone());
+    }
+    let event = TranscriptEvent {
+        ts: ts.to_owned(),
+        speaker_id: String::new(),
+        speaker_name: "GM".to_owned(),
+        kind: TranscriptKind::Narration,
+        text: text.to_owned(),
+        state: Some(state.state),
+    };
+    append_transcript(root, world_id, scene, &event)?;
+    Ok(event)
 }
 
 /// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
@@ -1913,7 +2017,7 @@ mod tests {
             }
         });
         assert_eq!(
-            import_worldbook(root.path(), &source, &imported.to_string()).unwrap(),
+            import_worldbook(root.path(), &source, &imported.to_string()).unwrap().imported,
             2
         );
 
@@ -1947,13 +2051,111 @@ mod tests {
         let destination = create_world(root.path(), "目的").unwrap();
         let exported_text = fs::read_to_string(exported).unwrap();
         assert_eq!(
-            import_worldbook(root.path(), &destination, &exported_text).unwrap(),
+            import_worldbook(root.path(), &destination, &exported_text).unwrap().imported,
             entries.len()
         );
         assert_eq!(
             read_worldbook(root.path(), &destination).unwrap().len(),
             entries.len()
         );
+    }
+
+    #[test]
+    fn import_skips_entries_identical_to_existing_ones() {
+        let root = TestRoot::new("worldbook-dedupe");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let book = serde_json::json!({
+            "entries": {
+                "0": {
+                    "uid": 0,
+                    "key": ["城門", "夜"],
+                    "comment": "城門",
+                    "content": "城門已關。",
+                    "constant": false,
+                    "order": 1,
+                    "disable": false
+                },
+                "1": {
+                    "uid": 1,
+                    "key": ["市集"],
+                    "comment": "市集",
+                    "content": "市集喧鬧。",
+                    "constant": false,
+                    "order": 2,
+                    "disable": false
+                }
+            }
+        });
+        let first = import_worldbook(root.path(), &world_id, &book.to_string()).unwrap();
+        assert_eq!(first, WorldbookImport { imported: 2, skipped: 0 });
+
+        // 同一份書再匯一次：內容一模一樣，全部略過
+        let again = import_worldbook(root.path(), &world_id, &book.to_string()).unwrap();
+        assert_eq!(again, WorldbookImport { imported: 0, skipped: 2 });
+        assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 2);
+
+        // 關鍵字順序不同、內文前後有空白＝同一條；改過內文的才算新條目
+        let mixed = serde_json::json!({
+            "entries": {
+                "0": {
+                    "uid": 0,
+                    "key": ["夜", "城門"],
+                    "comment": "城門",
+                    "content": "  城門已關。  ",
+                    "constant": false,
+                    "order": 1,
+                    "disable": false
+                },
+                "1": {
+                    "uid": 1,
+                    "key": ["市集"],
+                    "comment": "市集",
+                    "content": "市集已散。",
+                    "constant": false,
+                    "order": 2,
+                    "disable": false
+                }
+            }
+        });
+        let third = import_worldbook(root.path(), &world_id, &mixed.to_string()).unwrap();
+        assert_eq!(third, WorldbookImport { imported: 1, skipped: 1 });
+        assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn dedupe_keeps_first_of_each_duplicate_group() {
+        let root = TestRoot::new("worldbook-dedupe-command");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let entry = |uid: u64, comment: &str, content: &str, order: u64| {
+            serde_json::json!({
+                "uid": uid,
+                "key": ["k"],
+                "comment": comment,
+                "content": content,
+                "constant": false,
+                "order": order,
+                "disable": false
+            })
+        };
+        let book = serde_json::json!({
+            "entries": {
+                "0": entry(0, "城門", "城門已關。", 1),
+                "1": entry(1, "市集", "市集喧鬧。", 2),
+                "2": entry(2, "城門", "城門已關。", 3),
+                "3": entry(3, "城門", "城門大開。", 4)
+            }
+        });
+        write_worldbook_value(root.path(), &world_id, &book).unwrap();
+
+        assert_eq!(dedupe_worldbook(root.path(), &world_id).unwrap(), 1);
+        let entries = read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 3);
+        // 留下的是排在最前面那條，被留下的內容一條不少
+        assert_eq!(entries[0].uid, 0);
+        assert_eq!(entries[1].uid, 1);
+        assert_eq!(entries[2].content, "城門大開。");
+        // 再按一次沒東西可清
+        assert_eq!(dedupe_worldbook(root.path(), &world_id).unwrap(), 0);
     }
 
     #[test]
@@ -1998,7 +2200,7 @@ mod tests {
             ]
         });
         assert_eq!(
-            import_worldbook(root.path(), &world_id, &character_book.to_string()).unwrap(),
+            import_worldbook(root.path(), &world_id, &character_book.to_string()).unwrap().imported,
             2
         );
 
@@ -3390,6 +3592,59 @@ mod tests {
             read_transcript(root.path(), &world_id, 0).unwrap()[1].state,
             Some(supplied)
         );
+    }
+
+    #[test]
+    fn append_opening_merges_state_and_pop_restores_previous_snapshot() {
+        let root = TestRoot::new("opening-state");
+        let world_id = create_world(root.path(), "開場狀態桌").unwrap();
+        let previous = TableState {
+            table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
+            characters: BTreeMap::new(),
+        };
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                ts: "before".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: TranscriptKind::Narration,
+                text: "前一則".to_owned(),
+                state: Some(previous.clone()),
+            },
+        )
+        .unwrap();
+
+        let event = append_opening(
+            root.path(),
+            &world_id,
+            0,
+            "opening",
+            "開場旁白",
+            &[
+                ("place".to_owned(), "碼頭".to_owned()),
+                ("time".to_owned(), "午夜".to_owned()),
+            ],
+        )
+        .unwrap();
+        let expected = TableState {
+            table: BTreeMap::from([
+                ("place".to_owned(), "碼頭".to_owned()),
+                ("time".to_owned(), "午夜".to_owned()),
+            ]),
+            characters: BTreeMap::new(),
+        };
+        assert_eq!(event.state, Some(expected.clone()));
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
+        assert_eq!(
+            read_transcript(root.path(), &world_id, 0).unwrap()[1],
+            event
+        );
+
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, previous);
     }
 
     #[test]

@@ -322,10 +322,41 @@ fn import_worldbook(
     app: tauri::AppHandle,
     world_id: String,
     data: Vec<u8>,
-) -> Result<usize, String> {
+) -> Result<data::WorldbookImport, String> {
     let json_text = import::worldbook_json(&data).map_err(|error| error.to_string())?;
     data::import_worldbook(&data_root(&app)?, &world_id, &json_text)
         .map_err(|error| error.to_string())
+}
+
+/// 選項要先換成當桌實名，前端貼入逐字稿時才不會留下卡片巨集。
+#[tauri::command]
+fn card_openings(
+    app: tauri::AppHandle,
+    world_id: String,
+    data: Vec<u8>,
+    lang: String,
+) -> Result<Vec<String>, String> {
+    let Some((name, openings)) = import::card_openings(&data) else {
+        return Ok(Vec::new());
+    };
+    let root = data_root(&app)?;
+    let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
+    Ok(openings
+        .iter()
+        .map(|opening| {
+            transport::resolve_display_macros(
+                opening,
+                player.as_ref().map(|card| card.name.as_str()),
+                &name,
+                &lang,
+            )
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn dedupe_worldbook(app: tauri::AppHandle, world_id: String) -> Result<usize, String> {
+    data::dedupe_worldbook(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 // 存檔位置由前端的「另存新檔」對話框決定
@@ -492,6 +523,21 @@ fn append_transcript(
     event: TranscriptEvent,
 ) -> Result<(), String> {
     data::append_transcript(&data_root(&app)?, &world_id, scene, &event)
+        .map_err(|error| error.to_string())
+}
+
+/// 貼開場白＝GM 旁白，但狀態區塊要走與 GM 回覆同一條解析。剝除、併進檯面、事件帶快照
+/// 三件事由這一個指令一次做完——前端各寫一半會破壞「目前值＝最後一則事件快照」的不變式。
+#[tauri::command]
+fn post_opening(
+    app: tauri::AppHandle,
+    world_id: String,
+    scene: u64,
+    ts: String,
+    text: String,
+) -> Result<TranscriptEvent, String> {
+    let (fields, display) = transport::extract_state_block(&text);
+    data::append_opening(&data_root(&app)?, &world_id, scene, &ts, &display, &fields)
         .map_err(|error| error.to_string())
 }
 
@@ -1466,7 +1512,9 @@ pub fn run() {
             delete_worldbook_entry,
             worldbook_entry_to_character,
             character_to_worldbook_entry,
+            card_openings,
             import_worldbook,
+            dedupe_worldbook,
             export_worldbook,
             list_characters,
             reorder_characters,
@@ -1484,6 +1532,7 @@ pub fn run() {
             save_character_avatar,
             delete_character_avatar,
             append_transcript,
+            post_opening,
             read_transcript,
             pop_transcript,
             export_transcript,
