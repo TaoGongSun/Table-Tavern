@@ -2044,6 +2044,62 @@ textarea {
   opacity: 0.75;
 }
 
+.usage-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 1.15em;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-headline-cost {
+  font-weight: 600;
+}
+
+/* 一條看完快取比例：綠色是讀到快取省下的、灰色是全額付的 */
+.usage-bar {
+  display: flex;
+  height: 1.9rem;
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink-1) 12%, transparent);
+}
+
+.usage-bar-hit,
+.usage-bar-full {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+.usage-bar-hit {
+  background: var(--ok);
+  color: var(--surface-1);
+}
+
+.usage-bar-full {
+  background: color-mix(in srgb, var(--ink-1) 22%, transparent);
+  color: var(--ink-1);
+}
+
+.usage-details > summary {
+  cursor: pointer;
+  padding: 0.2rem 0;
+  opacity: 0.8;
+}
+
+.usage-details[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
 .usage-latest {
   display: flex;
   align-items: baseline;

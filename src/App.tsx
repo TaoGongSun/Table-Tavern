@@ -1113,6 +1113,17 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
   const reasonKey = latest?.reason ? REASON_KEYS[latest.reason as keyof typeof REASON_KEYS] : undefined;
   const bodyRows = [...report.rows];
   if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
+  // 第一眼只給三件事：長條圖、快取比例、花費。保溫也是真的花掉的錢，一併算進來
+  const spent = {
+    prompt_tokens: report.total.prompt_tokens + report.ping.prompt_tokens,
+    cached_tokens: report.total.cached_tokens + report.ping.cached_tokens,
+    cost_usd:
+      report.total.cost_usd === null && report.ping.cost_usd === null
+        ? null
+        : (report.total.cost_usd ?? 0) + (report.ping.cost_usd ?? 0),
+    cost_partial: report.total.cost_partial || report.ping.cost_partial,
+  };
+  const hit = spent.prompt_tokens === 0 ? 0 : (spent.cached_tokens * 100) / spent.prompt_tokens;
 
   return (
     <div className="usage-tab">
@@ -1133,18 +1144,57 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
 
       {bodyRows.length === 0 && <p className="usage-empty">{t("usageEmpty")}</p>}
 
-      {entry && latest && (
+      {spent.prompt_tokens > 0 && (
+        <>
+          <p className="usage-headline">
+            <span>
+              {tokens(spent.prompt_tokens)} {t("usageTokensLabel")}
+            </span>
+            <span className="usage-headline-cost">
+              {t("usageCostAbout")} {money(spent.cost_usd, spent.cost_partial)}
+            </span>
+          </p>
+          <div
+            className="usage-bar"
+            role="img"
+            aria-label={`${t("usageBarHit")} ${hit.toFixed(0)}%`}
+          >
+            <span className="usage-bar-hit" style={{ width: `${hit}%` }} title={t("usageBarHit")}>
+              {hit >= 18 && `${t("usageBarHit")} ${hit.toFixed(0)}%`}
+            </span>
+            <span className="usage-bar-full" style={{ width: `${100 - hit}%` }} title={t("usageBarFull")}>
+              {hit <= 82 && `${t("usageBarFull")} ${(100 - hit).toFixed(0)}%`}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* 狀況不正常時才在收合狀態出聲；一切正常就別佔版面 */}
+      {entry && latest && entry[2] !== "good" && entry[2] !== "idle" && (
         <p className={`usage-latest usage-${entry[2]}`}>
           <span className="usage-dot" aria-hidden="true" />
           <strong>{t(entry[0])}</strong>
           {" — "}
           {t(entry[1])}
           {reasonKey && `（${t(reasonKey)}）`}
-          <span className="usage-latest-ts">{latest.ts}</span>
         </p>
       )}
 
       {bodyRows.length > 0 && (
+      <details className="usage-details">
+        <summary>{t("usageDetailsToggle")}</summary>
+
+        {entry && latest && (
+          <p className={`usage-latest usage-${entry[2]}`}>
+            <span className="usage-dot" aria-hidden="true" />
+            <strong>{t(entry[0])}</strong>
+            {" — "}
+            {t(entry[1])}
+            {reasonKey && `（${t(reasonKey)}）`}
+            <span className="usage-latest-ts">{latest.ts}</span>
+          </p>
+        )}
+
         <table className="usage-table">
           <thead>
             <tr>
@@ -1201,19 +1251,20 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
             </tr>
           </tfoot>
         </table>
-      )}
 
-      <p className="usage-diags">
-        {report.diags.map((count) => {
-          const label = diagEntry(count.diag);
-          return label ? (
-            <span key={count.diag} className={`usage-chip usage-${label[2]}`}>
-              {t(label[0])} ×{count.rounds}
-            </span>
-          ) : null;
-        })}
-      </p>
-      <p className="usage-note">{t("usageCostNote")}</p>
+        <p className="usage-diags">
+          {report.diags.map((count) => {
+            const label = diagEntry(count.diag);
+            return label ? (
+              <span key={count.diag} className={`usage-chip usage-${label[2]}`}>
+                {t(label[0])} ×{count.rounds}
+              </span>
+            ) : null;
+          })}
+        </p>
+        <p className="usage-note">{t("usageCostNote")}</p>
+      </details>
+      )}
     </div>
   );
 }
