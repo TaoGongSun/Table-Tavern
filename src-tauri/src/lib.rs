@@ -1,5 +1,6 @@
 mod cli;
 mod data;
+mod ejs;
 mod genesis;
 mod import;
 #[allow(dead_code)]
@@ -564,8 +565,18 @@ fn post_opening(
 ) -> Result<TranscriptEvent, String> {
     let block = transport::extract_state_block(&text);
     let root = data_root(&app)?;
-    let (event, outcome) = data::append_opening(&root, &world_id, scene, &ts, &text, &block)
-        .map_err(|error| error.to_string())?;
+    let config = data::read_config(&config_root(&app)?).unwrap_or_default();
+    let lang = transport::ui_language(&config);
+    let player_name = data::read_player_card(&root, &world_id)
+        .ok()
+        .flatten()
+        .map(|card| card.name);
+    let user_name = player_name
+        .as_deref()
+        .unwrap_or_else(|| transport::player_fallback_name(&lang));
+    let (event, outcome) =
+        data::append_opening(&root, &world_id, scene, &ts, &text, &block, user_name)
+            .map_err(|error| error.to_string())?;
     mechanism::append_log(&root, &world_id, scene, &outcome.records);
     Ok(event)
 }
@@ -1683,16 +1694,15 @@ async fn gm_narrate(
         || !block.updates.is_empty()
         || materials.state.mechanism.incremental
     {
+        let user_name = player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
         if let Ok(mut state) = data::read_state(&root, &world_id) {
             let scene = state.current_scene;
-            let outcome = mechanism::apply_block(&mut state, &block);
+            let outcome = mechanism::apply_block(&mut state, &block, user_name);
             if align {
                 state.aligned_scene = Some(scene);
             }
             if data::write_state(&root, &world_id, &state).is_ok() {
                 mechanism::append_log(&root, &world_id, scene, &outcome.records);
-                let user_name =
-                    player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
                 state_updates =
                     transport::snapshot_updates(&state.state, &state.mechanism, user_name)
                         .into_iter()
