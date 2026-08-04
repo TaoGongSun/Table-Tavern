@@ -138,6 +138,11 @@ pub fn import_character(
     import_table_tavern_extension(root, world_id, &name, card_data);
     if let Some(book) = card_data.get("character_book") {
         import_mechanism(root, world_id, book);
+        // 卡片隨身的設定條目也帶進這桌世界書：以前整包丟掉，模型看不到這角色的家鄉家人秘密，
+        // 卡片自訂的輸出格式規定也一併消失（同名條目由 import_worldbook 自行去重）
+        if let Ok(text) = serde_json::to_string(book) {
+            let _ = data::import_worldbook(root, world_id, &text);
+        }
     }
 
     Ok(CharacterMeta {
@@ -1719,6 +1724,23 @@ mod tests {
                 .as_bytes(),
         );
         assert!(!detailed.lorebook_heavy);
+    }
+
+    #[test]
+    fn character_card_brings_its_own_lorebook_entries_to_the_table() {
+        let card = r#"{"data":{"name":"薇拉","description":"北境來的斥候","character_book":{"entries":[{"keys":["故鄉"],"content":"北境的漁村","comment":"故鄉"},{"keys":["家人"],"content":"雙親早逝","comment":"家人"}]}}}"#;
+        let root = TestRoot::new("character-lorebook");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+
+        import_character(root.path(), &world_id, card.as_bytes(), "#ffffff").unwrap();
+
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|entry| entry.content == "北境的漁村"));
+
+        // 同一張卡再匯一次：條目由去重擋下，不會長出第二份
+        import_character(root.path(), &world_id, card.as_bytes(), "#ffffff").unwrap();
+        assert_eq!(data::read_worldbook(root.path(), &world_id).unwrap().len(), 2);
     }
 
     #[test]
