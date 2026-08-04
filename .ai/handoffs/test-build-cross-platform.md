@@ -1,15 +1,15 @@
 # Task handoff
 Task-ID: test-build-cross-platform
-Updated: 2026-08-02T02:35:00+08:00
+Updated: 2026-08-04T09:16:00+08:00
 Status: in_progress
 
 ## Goal
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
 
 ## Current state
-產線可用，每次下令即可重打。最新一輪 0.2.0（2026-08-02 02:35，HEAD ffd447b，比上輪多帶「一句話開桌 AI 生成」）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（4.8MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過、Designated Requirement 滿足、.app 啟動 6 秒存活且 AppleScript quit 正常）＋Windows [run 30712558617](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30712558617) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.5MB＋x64_en-US.msi 4.9MB）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows artifact 在真 Windows 機安裝。
+產線可用，每次下令即可重打。最新一輪 0.2.0（2026-08-04 09:14，HEAD 97cbbc4，比上輪多帶 st-ecosystem 與 prompt-cache 兩批功能）：Mac `src-tauri/target/release/bundle/dmg/Table Tavern_0.2.0_aarch64.dmg`（5.0MB，codesign `adhoc,runtime`，乾淨路徑掛載後 `--verify --deep --strict` 通過、Designated Requirement 滿足、.app 啟動 6 秒存活）＋Windows [run 30867927346](https://github.com/TaoGongSun/Table-Tavern/actions/runs/30867927346) success、artifact `table-tavern-windows-unsigned`（NSIS setup.exe 3.6MB＋x64_en-US.msi 5.1MB，已下載到 `src-tauri/target/release/bundle/windows-ci/`）。剩使用者實機驗收：Mac DMG 拷去 MacBook Air 測 Gatekeeper、Windows 安裝檔在真 Windows 機安裝。
 
-打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。`spctl -a` 對 ad-hoc 版必定 rejected（未公證，預期內），判斷基準看 `codesign --verify` 是否 valid。
+打包踩雷：Mac 端 `bundle_dmg.sh` 失敗時先看 `/Volumes/dmg.*` 有沒有上一輪殘留的暫存掛載卷，`hdiutil detach` 卸掉再重打即過（2026-07-28 實例）。`spctl -a` 對 ad-hoc 版必定 rejected（未公證，預期內），判斷基準看 `codesign --verify` 是否 valid。收尾關掉測試用 .app 別用 AppleScript `quit`（會卡在自動化權限對話框沒回應，2026-08-04 實例），直接 `pkill -f` 進程即可。
 
 ## Completed
 - Mac：`npm run tauri build` 成功（rc=0），產出 `src-tauri/target/release/bundle/dmg/Table Tavern_0.1.0_aarch64.dmg`（4.5MB）
@@ -25,7 +25,7 @@ Status: in_progress
 ## Working context
 - Repo: /Users/pachelo/GitHub/Table-Tavern
 - Branch: main
-- HEAD: 68a28ea
+- HEAD: 97cbbc4
 
 ## Remaining
 - 使用者：把 DMG（路徑見上）拷去 MacBook Air 實測——期望顯示「Apple 無法驗證…」走系統設定「仍要打開」，不得再出現「已損毀」
