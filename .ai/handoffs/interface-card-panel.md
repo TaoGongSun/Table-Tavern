@@ -1,7 +1,7 @@
 # Handoff: interface-card-panel
 
 ## Current state
-2026-08-04 開工。包 1（Rust 讀取端）、包 2（前端渲染＋覆蓋層）完成並自驗綠，含西幻真卡端對端驗證。剩包 3（匯入提示分流＋真 app 實測），**尚未在真 app 裡跑過**。
+2026-08-04 v1 三包全數實作完成、自驗全綠，並在真瀏覽器（Chromium／vite dev）用西幻真卡跑完互動實測：介面畫得出來、按鈕文字送得回來。**剩使用者在真 app（Tauri／macOS WKWebView）匯入實卡驗收**。
 
 ## 拍板（2026-08-04 使用者）
 - 面板形式＝**全螢幕覆蓋層**：點按鈕整個蓋掉聊天，關掉回對話。殼是整頁設計、頗高，覆蓋層才拿得到完整寬高不破版。
@@ -21,6 +21,9 @@
   - 墊片（`interface-card.ts:129-207`）：iframe 內放隱藏誘餌 `<textarea id="send_textarea">`，卡片照原樣寫 `.value` 並 dispatch input，我們攔下來 postMessage 給宿主；另備 `triggerSlash` 墊片（認 `/send`、`/trigger`）。`window.parent`／`top` 的 `defineProperty` 覆寫包在 try/catch，**能不能覆寫仍未在真 app 實測**，備案是字面取代。
   - 主線在驗收時補的兩處（子代理沒想到的實際使用問題）：誘餌送出後**立刻清空**（卡片寫法是「舊值有東西就接在後面」，不清會讓連點兩個推薦行動黏成一串）；選擇器比對改成關鍵字比對（真卡實測有 `#send_textarea`／`textarea#send_textarea`／`#chat-input`／`#user-input`／`#prompt-textarea` 五種寫法輪流試）。
   - `App.tsx`：`cardInterfaces` 狀態＋切桌重讀（3317-3330）、`cardInterfaceShell` useMemo（由後往前掃最近 10 則、跳過玩家發言，讓開場那種只出現一次的殼也抓得到，3333-3346）、postMessage 橋接只認 `source === "table-tavern-card"` 且**只填輸入框不代送**（3349-3363）、Esc 關閉（3364-3372）、標題列開關鈕（4772-4777，沒殼的桌不出現）、覆蓋層 JSX（5114-5132，`sandbox="allow-scripts"`、無 same-origin）。`App.css` 檔尾新增覆蓋層區塊（z-index 9，低於設定視窗的 10）。i18n 十語系各補 `cardInterfaceOpen`／`cardInterfaceClose`。
+- **包 3 收邊**（App.tsx 主線直寫，十語系文案外包 general-purpose subagent `model: sonnet`）：
+  - 匯入提示依這張卡實際畫不畫得出介面分流（`App.tsx:3844-3861`）：匯完角色卡後重讀一次 `card_interfaces`，依結果挑 `importCardInterface`（有介面，告訴玩家在哪開）／`importCardScrypt`（加密卡）／`importCardRemoteLoader`（介面在作者網站）／`importScriptNotice`（只有非顯示型腳本，沿用舊句）／不提示。順手把新讀到的清單餵給 `cardInterfaces`，匯完當下入口就會出現，不必切桌。
+  - 十語系各補三個鍵。文案一律講「玩家會遇到什麼」，不出現 regex／iframe／腳本這類字眼。
 - **順手修（上一個任務留下的紅燈，與本任務無關）**：`scripts/check-i18n.mjs` 的 `WRAP_SAFE_LONG` 加 `ja:playerLabel`。`playerLabel` 是「沒有玩家卡時的代稱」不是按鈕文案，它在 state-values-mvu 包 5 被放進狀態欄的值按鈕後就一直讓 `check:i18n` 紅（HEAD 版本實測同樣紅）；值欄是 1fr 彈性欄本來就放得下整句狀態，故列入白名單而非改動日文用詞。
 
 ## Verification
@@ -32,18 +35,27 @@
   2. 作者自寫的輸出範本（世界書『回复规则』裡的 `<GoldenRPG_UI>` 樣板，3,143 字、五大區塊齊全）→ 殼裡出現 `$1` 的劇情文字、`PlayerAt`、`阿斯加德`、`委托名称1`（即五個 capture group 都換進去了），且 `$&` 沒殘留。
   3. `buildShellDocument` 產出的文件含誘餌 `send_textarea`／`__ttHost`／`triggerSlash`，且**不再含 `window.parent.document`**。
   4. 純文字旁白 → 回 null（沒介面）；腳本清單第一支是壞樣式時後面兩支照常運作。
+- 包 3：`npx tsc --noEmit` 無輸出、`npm run check:i18n` 十語系全 OK、`npm run build` → `✓ built in 564ms`。
+- **真瀏覽器互動實測（Chromium／vite dev，2026-08-04）**：把 `buildShellDocument` 的真實產物放進 `public/__tt-test/`（驗完刪除），用一個 `sandbox="allow-scripts"` 的 iframe 載入並監聽 postMessage：
+  1. 一般回合殼：五個分頁（當前視角／世界地圖／當前區域／公會終端／個人資訊）、劇情欄、環境探測、物品技能、推薦行動全部畫出來，版面完整。
+  2. 點「推薦行動1」→ 宿主收到 `{"source":"table-tavern-card","kind":"input","text":"推荐行动1"}`。
+  3. 再點「推薦行動2」→ 收到的是 `"推荐行动2"`（**證明誘餌清空那個修正有效**，沒有黏成「推荐行动1 推荐行动2」）。
+  4. 開場殼：角色選擇畫面（命运之卷）完整渲染，點某個角色會把該角色資料填進下方自訂表單，按「踏入命运」→ 宿主收到整句「种族：月精灵族，职业：咒术法师，身份：…」。這條走的是另一套「輪流試七種輸入框選擇器＋setNativeValue」的程式碼，與推薦行動那條不同路，兩條都通。
+  5. console 無任何錯誤。
 - 西幻殼的按鈕代送寫法：`window.parent.document.getElementById('send_textarea')` 直接戳宿主輸入框（`wf-西幻.html:288-302` 的 `insertToInput`），外層包 try/catch，抓不到就 `console.error` → 沙盒下天然不會爆，只是按了沒反應。尋道卡則走 `triggerSlash('/send …')`。
 
 ## Remaining
-**包 3 收邊與實機驗收**
-1. 匯入提示分流：現有的 `importScriptNotice`（`src/i18n/zh-TW.ts:275`，「已只讀入人設文字」）**已經過時**——腳本現在真的會用來顯示。匯入後依 `card_interfaces` 的結果分四種說法：有可渲染的介面／`scrypt`（加密卡，介面不顯示、其餘照常匯入）／`remote_loader`（介面要從網路載入、不支援）／只有非顯示型腳本（沿用舊句）。掛在 `App.tsx:3776` 那段（`probe.scripts.length > 0` → `showMessage`）。十語系字串一起補。
-2. **真 app 實測**（`npm run tauri dev`，macOS 走 WKWebView）：
-   - `Object.defineProperty(window, 'parent', …)` 在沙盒 iframe 內能不能覆寫。規格上 `parent` 不是 LegacyUnforgeable（`top`／`document`／`location` 才是），Chrome 可覆寫但 WKWebView 未知。**覆寫不成也不致命**——`buildShellDocument` 已經先把殼裡的 `window.parent` 字面換成 `window.__ttHost`，覆寫只是替動態組字串的卡片補漏。（本次想先用瀏覽器窗格測，`preview_start`／`navigate` 兩次都 300s 逾時，只好留到真 app。）
-   - 匯入西幻卡開桌：開場那則就該能開出角色選擇畫面（不必等模型回應、不花額度）。
-3. 實卡驗收四項：面板出現同款介面、開闔自如、點推薦行動文字進輸入框（不自動送出）；關面板照常玩、原生狀態欄不受影響；殼壞／regex 不合時正文照常顯示；SCrypt 卡匯入有提示、其餘欄位照常。
+**只剩使用者實機驗收**（真 app＝Tauri／macOS WKWebView；瀏覽器那關已過，剩下的是 WebKit 與真實匯入流程）：
+1. 匯入西幻卡（`TestCards/WestFantsy.png`）→ 應跳出「這張卡自帶介面畫面」提示；聊天標題列出現「卡片介面」鈕。
+2. 開場那則就能開出角色選擇畫面（**不必等模型回應、不花額度**——卡片 `first_mes` 就是「请选择你的身份」七個字）；選角色、按「踏入命运」→ 文字進輸入框且**沒有自動送出**；Esc／✕ 關得掉。
+3. 關掉面板照常玩，原生狀態欄不受影響；沒帶介面的桌完全看不到那顆鈕。
+4. SCrypt 卡（`TestCards/SCrypted_WestFantasy.png`）匯入 → 提示介面被加密保護、其餘照常匯入。
+5. 訓帝卡（`TestCards/TrainEmperor.png`）匯入 → 提示介面要連作者網站、本 app 不支援。
+
+技術上唯一沒實測到的點：`Object.defineProperty(window, 'parent', …)` 在 WKWebView 沙盒 iframe 內能不能覆寫。**不致命**——`buildShellDocument` 已先把殼裡的 `window.parent` 字面改指墊片，覆寫只是替「動態組字串取用 parent」的卡片補漏，這兩張真卡都不靠它。
 
 ## Next action
-從包 3 第 1 項開工（匯入提示分流，純前端＋i18n），接著開 `npm run tauri dev` 做第 2、3 項實測。
+等使用者實機驗收上面五項。驗收後若要續做 v2，候選：多張卡各自的介面切換（目前是全桌腳本攤平、抓第一個對得上的殼）、面板內圖片／外部資源的離線退路、代送開關（每桌）。
 
 ## Constraints
 - 卡內腳本一律沙盒、無任何 app API；橋只有「文字入輸入框」一條單向道。

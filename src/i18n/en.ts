@@ -408,4 +408,11 @@ export const en: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "Card Interface",
   cardInterfaceClose: "Close Interface",
+
+  importCardInterface:
+    "This card comes with its own interface. Once you're at the table, click \"Card Interface\" above the chat to open it full-screen.",
+  importCardScrypt:
+    "This card's interface is encrypted by its author, so it can't be shown. The character and worldbook still import normally, and chat is unaffected.",
+  importCardRemoteLoader:
+    "This card's interface can only load by connecting to the author's website, which this app doesn't support. The character and worldbook still import normally, and chat is unaffected.",
 };

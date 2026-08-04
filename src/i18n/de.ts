@@ -379,4 +379,11 @@ export const de: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "Kartenoberfläche",
   cardInterfaceClose: "Oberfläche schließen",
+
+  importCardInterface:
+    "Diese Karte bringt eine eigene Oberfläche mit. Klicke am Tisch auf „Kartenoberfläche“ über dem Chat, um sie vollflächig zu öffnen.",
+  importCardScrypt:
+    "Die Oberfläche dieser Karte ist vom Autor verschlüsselt und kann nicht angezeigt werden. Charakter und Weltbuch werden trotzdem normal importiert, der Chat funktioniert wie gewohnt.",
+  importCardRemoteLoader:
+    "Die Oberfläche dieser Karte lädt nur über die Website des Autors, das unterstützt diese App nicht. Charakter und Weltbuch werden trotzdem normal importiert, der Chat funktioniert wie gewohnt.",
 };

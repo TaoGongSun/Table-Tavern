@@ -3843,9 +3843,23 @@ function App() {
       setCharacters(cast);
       await loadCharacterImages(table, cast);
       setSpeaker(meta.id);
-      if (probe.scripts.length > 0) {
-        await showMessage(t("importScriptNotice"), { title: t("importCard") });
-      }
+      // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
+      const interfaces = await invoke<CardInterface[]>("card_interfaces", { worldId: table }).catch(
+        () => [] as CardInterface[],
+      );
+      setCardInterfaces(interfaces);
+      const mine = interfaces.find((card) => card.character_id === meta.id);
+      const notice =
+        mine?.unsupported === "scrypt"
+          ? t("importCardScrypt")
+          : mine?.unsupported === "remote_loader"
+            ? t("importCardRemoteLoader")
+            : mine && mine.scripts.length > 0
+              ? t("importCardInterface")
+              : probe.scripts.length > 0
+                ? t("importScriptNotice")
+                : "";
+      if (notice) await showMessage(notice, { title: t("importCard") });
     } catch (reason) {
       setError(String(reason));
     }
