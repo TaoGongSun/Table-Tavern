@@ -401,4 +401,12 @@ export const es: Record<MsgKey, string> = {
     "La interfaz de esta carta está protegida con cifrado por su autor, así que no se puede mostrar. El personaje y el libro del mundo se importan con normalidad y el chat funciona sin problemas.",
   importCardRemoteLoader:
     "La interfaz de esta carta solo carga conectándose al sitio del autor, y esta app no lo permite. El personaje y el libro del mundo se importan con normalidad y el chat funciona sin problemas.",
+
+  // Enrutamiento de la segunda carta (solo aparece si esta mesa ya tiene una importación)
+  importRouteAskTitle: "¿Importar a qué mesa?",
+  importRouteAskBody: "Esta mesa ya tiene una importación — esta carta nueva probablemente sea para una mesa nueva.",
+  importRouteBlockTitle: "Esta mesa ya tiene un libro del mundo",
+  importRouteBlockBody: "No se pueden apilar dos libros del mundo en la misma mesa — abre una mesa nueva para este.",
+  importRouteNewTable: "Nueva mesa + importar",
+  importRouteThisTable: "Importar aquí",
 };

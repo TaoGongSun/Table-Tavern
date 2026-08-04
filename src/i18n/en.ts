@@ -429,4 +429,12 @@ export const en: Record<MsgKey, string> = {
     "This card's interface is encrypted by its author, so it can't be shown. The character and worldbook still import normally, and chat is unaffected.",
   importCardRemoteLoader:
     "This card's interface can only load by connecting to the author's website, which this app doesn't support. The character and worldbook still import normally, and chat is unaffected.",
+
+  // Second-card routing dialog (only shows up once this table already has an import)
+  importRouteAskTitle: "Import to which table?",
+  importRouteAskBody: "This table already has an import — this new card is probably meant for a new table.",
+  importRouteBlockTitle: "This table already has a world book",
+  importRouteBlockBody: "Two world books can't stack on the same table — open a new table for this one.",
+  importRouteNewTable: "New Table + Import",
+  importRouteThisTable: "Import Here",
 };

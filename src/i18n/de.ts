@@ -401,4 +401,14 @@ export const de: Record<MsgKey, string> = {
     "Die Oberfläche dieser Karte ist vom Autor verschlüsselt und kann nicht angezeigt werden. Charakter und Weltbuch werden trotzdem normal importiert, der Chat funktioniert wie gewohnt.",
   importCardRemoteLoader:
     "Die Oberfläche dieser Karte lädt nur über die Website des Autors, das unterstützt diese App nicht. Charakter und Weltbuch werden trotzdem normal importiert, der Chat funktioniert wie gewohnt.",
+
+  // Zweite-Karte-Routing (erscheint nur, wenn an diesem Tisch schon einmal importiert wurde)
+  importRouteAskTitle: "In welchen Tisch importieren?",
+  importRouteAskBody:
+    "An diesem Tisch wurde schon importiert — diese neue Karte ist wahrscheinlich für einen neuen Tisch gedacht.",
+  importRouteBlockTitle: "Dieser Tisch hat bereits ein Weltbuch",
+  importRouteBlockBody:
+    "Zwei Weltbücher passen nicht auf denselben Tisch — für dieses hier einen neuen Tisch öffnen.",
+  importRouteNewTable: "Neuer Tisch + Import",
+  importRouteThisTable: "Hier importieren",
 };

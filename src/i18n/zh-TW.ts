@@ -425,6 +425,14 @@ export const zh = {
   importCardInterface: "這張卡自帶介面畫面。開桌後點聊天上方的「卡片介面」就能整面打開。",
   importCardScrypt: "這張卡的介面被作者加密保護，沒辦法顯示；人設與世界書照常匯入，對話不受影響。",
   importCardRemoteLoader: "這張卡的介面要連到作者的網站才畫得出來，本 app 不支援；人設與世界書照常匯入，對話不受影響。",
+
+  // 第二張卡路由框（桌上已有匯入紀錄才會跳出來）
+  importRouteAskTitle: "匯到哪一桌？",
+  importRouteAskBody: "這桌已經匯入過卡，這張新卡通常是要開一桌新的。",
+  importRouteBlockTitle: "這桌已經有一份世界書了",
+  importRouteBlockBody: "兩份世界書沒辦法疊在同一桌，開新桌匯入這一份。",
+  importRouteNewTable: "開新桌並匯入",
+  importRouteThisTable: "匯進這桌",
 } as const;
 
 export type MsgKey = keyof typeof zh;

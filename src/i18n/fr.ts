@@ -401,4 +401,14 @@ export const fr: Record<MsgKey, string> = {
     "L'interface de cette carte est chiffrée par son auteur et ne peut pas s'afficher. Le personnage et le livre du monde s'importent normalement, la conversation n'est pas affectée.",
   importCardRemoteLoader:
     "L'interface de cette carte ne se charge qu'en se connectant au site de l'auteur, ce que l'app ne prend pas en charge. Le personnage et le livre du monde s'importent normalement, la conversation n'est pas affectée.",
+
+  // Routage de la deuxième carte (n'apparaît que si cette table a déjà un import)
+  importRouteAskTitle: "Importer dans quelle table ?",
+  importRouteAskBody:
+    "Cette table a déjà un import — cette nouvelle carte est sans doute destinée à une nouvelle table.",
+  importRouteBlockTitle: "Cette table a déjà une encyclopédie",
+  importRouteBlockBody:
+    "Deux encyclopédies ne peuvent pas coexister sur la même table — ouvre une nouvelle table pour celle-ci.",
+  importRouteNewTable: "Nouvelle table + import",
+  importRouteThisTable: "Importer ici",
 };
