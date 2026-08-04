@@ -1,9 +1,9 @@
 # Task
 Task-ID: state-values-mvu
 Title: 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表
-Status: todo
+Status: in-progress
 Created: 2026-08-04T12:05:00+08:00
-Updated: 2026-08-04T12:15:00+08:00
+Updated: 2026-08-04T14:40:00+08:00
 
 ## Summary
 接 [st-ecosystem-upgrades](st-ecosystem-upgrades.md) 第四項第一期（狀態欄容器、逐則快照回滾、條件顯示）。二期把**數值**搬上檯面且**由 app 自己算**：模型只說「動多少」，加減、邊界、擲骰、事件觸發全在本地做，數字不再被幻覺弄錯。
@@ -58,7 +58,7 @@ Updated: 2026-08-04T12:15:00+08:00
 22. 樹裡 `World.Time`／`Location` 與第一期基礎三欄語意重疊：維持 2026-08-03 拍板，不處理、各報各的。面板不求精美：樹狀折疊，預設展開桌級與玩家自己那支。
 
 ## 分包（小→大，各自獨立驗收出貨）
-### 包 1：標籤放寬＋`<maintext>` 剝除（小）
+### 包 1：標籤放寬＋`<maintext>` 剝除（小）— 完成 2026-08-04
 `transport::extract_state_block` 改前綴比對（`<status` 開頭皆認，開閉標籤同後綴配對），另認 `<maintext>` 剝成正文；`data::STATE_BAR_MARKERS` 同步對齊。
 驗收：五張卡狀態區塊都不裸露；cargo test 蓋標籤變體＋`<maintext>` 拆正文。
 

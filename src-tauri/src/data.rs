@@ -828,7 +828,7 @@ pub fn read_worldbook(root: &Path, world_id: &str) -> DataResult<Vec<WorldbookEn
 
 /// 狀態列的顯示格式一律由匯入的內容自己帶。比對詞跟 transport::extract_state_block
 /// 認得的區塊一致——認得的才剝得出欄位，也才有東西可顯示。
-const STATE_BAR_MARKERS: [&str; 11] = [
+const STATE_BAR_MARKERS: [&str; 12] = [
     "状态栏",
     "狀態欄",
     "状态条",
@@ -837,9 +837,11 @@ const STATE_BAR_MARKERS: [&str; 11] = [
     "狀態面板",
     "status bar",
     "statusbar",
+    // 標籤名各家自取，`<status` 開頭一律算（`<StatusData>`、`<Status_block>`）
     "<status",
     "<updatevariable",
     "```state",
+    "```status",
 ];
 
 fn declares_state_bar(text: &str) -> bool {
