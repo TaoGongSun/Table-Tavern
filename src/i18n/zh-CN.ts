@@ -57,7 +57,7 @@ export const zhCN: Record<MsgKey, string> = {
   usageDiagExpired: "缓存过期",
   usageWhyExpired: "距上一句超过五分钟，缓存自然清掉，这轮重新建立。",
   usageDiagSingle: "单发",
-  usageWhySingle: "这条路径每次都送整包，不做续聊缓存诊断。",
+  usageWhySingle: "这次是单发调用（换幕摘要、开桌生成，或这条连接本来就不支持续聊），整包重新计费。",
   usageDiagPrefixBroken: "该中没中",
   usageWhyPrefixBroken: "按理应该命中却没命中——设置或记录的前段被改过。",
   usageDiagCacheSkipped: "CLI 没带缓存",

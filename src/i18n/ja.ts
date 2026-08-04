@@ -57,7 +57,7 @@ export const ja: Record<MsgKey, string> = {
   usageDiagExpired: "キャッシュ期限切れ",
   usageWhyExpired: "前回のメッセージから5分以上経過し、キャッシュが自然に消えたため、このラウンドで作り直します。",
   usageDiagSingle: "単発",
-  usageWhySingle: "この経路は毎回すべてを送信するため、継続チャットのキャッシュ診断を行いません。",
+  usageWhySingle: "単発の呼び出しです（幕の要約、卓の生成、または継続に対応していない接続）。毎回すべてが課金されます。",
   usageDiagPrefixBroken: "ヒットせず",
   usageWhyPrefixBroken: "本来ヒットするはずでしたが、設定またはログの先頭部分が変更されています。",
   usageDiagCacheSkipped: "CLIがキャッシュ未使用",

@@ -57,7 +57,7 @@ export const fr: Record<MsgKey, string> = {
   usageDiagExpired: "Cache expiré",
   usageWhyExpired: "Plus de cinq minutes se sont écoulées depuis le dernier message : le cache a expiré et ce tour le reconstruit.",
   usageDiagSingle: "Requête unique",
-  usageWhySingle: "Cette voie envoie le paquet complet à chaque fois ; elle ne vérifie pas le cache de continuation.",
+  usageWhySingle: "Un appel isolé (résumé d'acte, création de table, ou une connexion qui ne poursuit pas la session) : tout le paquet est refacturé.",
   usageDiagPrefixBroken: "Cache manqué",
   usageWhyPrefixBroken: "Le cache aurait dû être utilisé, mais ne l'a pas été : le début de la configuration ou de l'historique a changé.",
   usageDiagCacheSkipped: "CLI sans cache",

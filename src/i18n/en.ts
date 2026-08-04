@@ -62,7 +62,7 @@ export const en: Record<MsgKey, string> = {
   usageDiagExpired: "Cache expired",
   usageWhyExpired: "More than five minutes have passed since the previous message; the cache expired naturally, so this round rebuilds it.",
   usageDiagSingle: "Single request",
-  usageWhySingle: "This path sends the full bundle every time; it does not diagnose continuation caching.",
+  usageWhySingle: "A one-off call (act summary, table setup, or a connection that never continues a session): the whole bundle is billed again.",
   usageDiagPrefixBroken: "Expected hit missed",
   usageWhyPrefixBroken: "It should have hit but did not—the beginning of the setup or transcript changed.",
   usageDiagCacheSkipped: "CLI skipped cache",
