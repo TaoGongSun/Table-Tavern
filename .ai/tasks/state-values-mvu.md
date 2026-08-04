@@ -3,7 +3,7 @@ Task-ID: state-values-mvu
 Title: 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表
 Status: in-progress
 Created: 2026-08-04T12:05:00+08:00
-Updated: 2026-08-04T14:40:00+08:00
+Updated: 2026-08-04T13:30:00+08:00
 
 ## Summary
 接 [st-ecosystem-upgrades](st-ecosystem-upgrades.md) 第四項第一期（狀態欄容器、逐則快照回滾、條件顯示）。二期把**數值**搬上檯面且**由 app 自己算**：模型只說「動多少」，加減、邊界、擲骰、事件觸發全在本地做，數字不再被幻覺弄錯。
@@ -66,9 +66,8 @@ Updated: 2026-08-04T14:40:00+08:00
 `TableState` 升任意巢狀樹＋欄位規則層（型別、上下限、更新方式、注入等級、分支歸屬），整包可序列化匯出。逐則快照、`pop_transcript` 回滾、手動改欄位三條第一期不變式沿用。面板樹狀折疊。規範文件見 [MECHANISM-FORMAT.md](../reference/MECHANISM-FORMAT.md)。
 驗收：三層樹可顯示、點葉子可改、收回上一句整棵倒回；欄位規則跟著匯出匯入；cargo test 蓋巢狀快照回滾＋規則序列化。
 
-### 包 3：`[initvar]` 匯入（中）
-認 `[initvar]` 條目解析成初始樹寫進該桌（`{{user}}` 存字面）；解析失敗一律略過不擋匯入（同 `probe_import` 慣例）。
-驗收：兩張 MVU 卡匯入即有完整初始樹；壞 YAML 不擋匯入；cargo test 蓋兩卡樹形。
+### 包 3：`[initvar]` 匯入（中）— 完成 2026-08-04
+認 `[initvar]` 條目（comment 前綴＋已停用雙硬標記）解析成初始樹補進該桌，只補不覆蓋；`{{user}}` 存字面、注入前代換；`{}` 保留成空分支。角色卡與世界書兩條匯入路徑都吃。格式見 [MECHANISM-FORMAT.md](../reference/MECHANISM-FORMAT.md)。
 
 ### 包 4：增量解析＋本地權威算術＋統一協定（大，核心）
 `<JSONPatch>` 五種 op 解析；依欄位規則收更新（拍板 5–7）；拒收／夾限／硬錯誤記帳落檔；拒收回饋（拍板 8）；統一協定聲明進快照（只在有增量樹的桌注入）；機制條目收編（拍板 17）。`<Analysis>` 段只剝除不解析。
