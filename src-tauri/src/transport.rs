@@ -2,8 +2,8 @@
 //! API 直連與（之後的）CLI 傳輸都必須經由 assemble_messages 取得上下文（KICKOFF §4）。
 
 use crate::data::{
-    AppConfig, CharacterCard, DataResult, TableState, Tier, TranscriptEvent, TranscriptKind,
-    Visibility, WorldbookEntry,
+    AppConfig, CharacterCard, DataResult, StateNode, TableState, Tier, TranscriptEvent,
+    TranscriptKind, Visibility, WorldbookEntry,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -373,7 +373,7 @@ fn gm_dynamic_block(
             ));
         }
     }
-    if !state.table.is_empty() {
+    if !state.table.is_empty() || !state.tree.is_empty() {
         if !dynamic.is_empty() {
             dynamic.push('\n');
         }
@@ -390,8 +390,28 @@ fn gm_dynamic_block(
             };
             dynamic.push_str(&format!("{display_name}：{value}\n"));
         }
+        render_state_tree(&mut dynamic, &state.tree, 0);
     }
     dynamic.trim_end().to_owned()
+}
+
+/// 樹沿用模型最容易產生的 YAML 形狀，讓本期全量注入不因資料升級漏掉任何狀態。
+fn render_state_tree(
+    output: &mut String,
+    tree: &std::collections::BTreeMap<String, StateNode>,
+    depth: usize,
+) {
+    for (key, node) in tree {
+        match node {
+            StateNode::Leaf(value) => {
+                output.push_str(&format!("{}{}：{}\n", "  ".repeat(depth), key, value))
+            }
+            StateNode::Branch(children) => {
+                output.push_str(&format!("{}{}：\n", "  ".repeat(depth), key));
+                render_state_tree(output, children, depth + 1);
+            }
+        }
+    }
 }
 
 /// resume 續聊線（prompt-cache-optimization 包 2）的回合尾段。
@@ -668,7 +688,11 @@ pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
 
 /// 導演指示：插入旁白（附加在 GM 上下文最後）；有名單時尾端固定要一行「下一位：」點名，
 /// 旁白與點名一次呼叫完成（包 5 拍板）。
-pub fn narrate_instruction(lang: &str, roster: &[String], player_name: Option<&str>) -> ChatMessage {
+pub fn narrate_instruction(
+    lang: &str,
+    roster: &[String],
+    player_name: Option<&str>,
+) -> ChatMessage {
     let mut instruction = if lang == "en" {
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
@@ -705,10 +729,7 @@ pub fn narrate_instruction(lang: &str, roster: &[String], player_name: Option<&s
         };
         instruction.push_str(&call);
     }
-    message(
-        "user",
-        instruction,
-    )
+    message("user", instruction)
 }
 
 /// 從旁白剝出尾端的「下一位：」點名行：回傳（點名原文, 剝除後的顯示文字）。
@@ -796,13 +817,16 @@ fn find_state_tag(display: &str) -> Option<StateTag> {
 /// 從 GM 回覆剝出狀態區塊：回傳（欄位對, 剝除後的顯示文字）。
 /// 標籤比對一律走 to_ascii_lowercase——full lowercase 會改變某些字母的長度（如土耳其文 İ），
 /// 算出的位移拿回原字串切片就會切在非字元邊界上 panic。
-pub fn extract_state_block(reply: &str) -> (Vec<(String, String)>, String) {
+pub fn extract_state_block(reply: &str) -> (Vec<(Vec<String>, String)>, String) {
     let mut display = reply.to_owned();
     let mut blocks = Vec::new();
     let mut removed = false;
 
     let mut details_cursor = 0;
-    while let Some(offset) = display[details_cursor..].to_ascii_lowercase().find("<details") {
+    while let Some(offset) = display[details_cursor..]
+        .to_ascii_lowercase()
+        .find("<details")
+    {
         let start = details_cursor + offset;
         let Some(open_end) = display[start..].find('>').map(|index| start + index) else {
             break;
@@ -893,10 +917,17 @@ pub fn extract_state_block(reply: &str) -> (Vec<(String, String)>, String) {
         };
         let info = display[opening_end..header_end].trim();
         let info_lower = info.to_ascii_lowercase();
-        let is_state = matches!(info_lower.as_str(), "state" | "status" | "状态栏" | "狀態欄");
+        let is_state = matches!(
+            info_lower.as_str(),
+            "state" | "status" | "状态栏" | "狀態欄"
+        );
         let is_trailing_plain = info.is_empty() && display[end_start + 3..].trim().is_empty();
         if is_state || is_trailing_plain {
-            fences.push((start, end_start + 3, display[header_end + 1..end_start].to_owned()));
+            fences.push((
+                start,
+                end_start + 3,
+                display[header_end + 1..end_start].to_owned(),
+            ));
         }
         cursor = end_start + 3;
     }
@@ -913,28 +944,70 @@ pub fn extract_state_block(reply: &str) -> (Vec<(String, String)>, String) {
 
     let mut fields = Vec::new();
     for block in blocks {
+        let mut stack = Vec::<(usize, String)>::new();
         for line in block.lines() {
-            let line = line.trim_start_matches(|character: char| {
-                matches!(character, '-' | '*' | '#' | '+' | '>' | ' ' | '\t')
-            });
-            let Some((index, _)) = line
+            let mut indent = 0;
+            let mut offset = 0;
+            for (index, character) in line.char_indices() {
+                match character {
+                    ' ' => indent += 1,
+                    '\t' => indent += 4,
+                    _ => {
+                        offset = index;
+                        break;
+                    }
+                }
+                offset = index + character.len_utf8();
+            }
+            let mut line = &line[offset..];
+            if let Some(stripped) = line.strip_prefix("- ") {
+                line = stripped;
+                indent += 2;
+            }
+            line = line.trim_start_matches(['#', '*', '+', '>']).trim_start();
+            if line.is_empty() {
+                continue;
+            }
+            let Some((index, separator)) = line
                 .char_indices()
                 .find(|(_, character)| matches!(character, ':' | '：'))
             else {
                 continue;
             };
             let key = line[..index].trim();
-            let value = line[index + line[index..].chars().next().unwrap().len_utf8()..].trim();
-            if key.is_empty() || value.is_empty() {
+            if key.is_empty() {
                 continue;
             }
-            let normalized = match key.to_ascii_lowercase().as_str() {
-                "time" | "時間" | "时间" => "time".to_owned(),
-                "place" | "location" | "地點" | "地点" => "place".to_owned(),
-                "present" | "在場" | "在场" | "在場人物" | "在场人物" => "present".to_owned(),
-                _ => key.to_owned(),
-            };
-            fields.push((normalized, value.to_owned()));
+            let mut value = line[index + separator.len_utf8()..].trim();
+            if value.len() >= 2
+                && ((value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\'')))
+            {
+                value = &value[1..value.len() - 1];
+            }
+            while stack
+                .last()
+                .is_some_and(|(parent_indent, _)| *parent_indent >= indent)
+            {
+                stack.pop();
+            }
+            let mut path: Vec<String> = stack.iter().map(|(_, parent)| parent.clone()).collect();
+            path.push(key.to_owned());
+            if value.is_empty() {
+                stack.push((indent, key.to_owned()));
+                continue;
+            }
+            if path.len() == 1 {
+                path[0] = match key.to_ascii_lowercase().as_str() {
+                    "time" | "時間" | "时间" => "time".to_owned(),
+                    "place" | "location" | "地點" | "地点" => "place".to_owned(),
+                    "present" | "在場" | "在场" | "在場人物" | "在场人物" => {
+                        "present".to_owned()
+                    }
+                    _ => key.to_owned(),
+                };
+            }
+            fields.push((path, value.to_owned()));
         }
     }
     (fields, display.trim_end().to_owned())
@@ -1337,21 +1410,21 @@ mod tests {
         let fox = card("fox-id", "狐狸", "旅店老闆", "通緝犯");
         let player = card("player-id", "阿濤", "遠道而來的商隊護衛", "");
 
-        let character_system = &assemble_messages(&fox, Some(&player), &[], &[], "zh-TW")[0].content;
+        let character_system =
+            &assemble_messages(&fox, Some(&player), &[], &[], "zh-TW")[0].content;
         assert!(character_system.contains("阿濤"));
         assert!(character_system.contains("遠道而來的商隊護衛"));
 
-        let gm_system =
-            &assemble_gm_messages(
-                "世界總覽",
-                &[fox],
-                Some(&player),
-                &[],
-                &[],
-                &TableState::default(),
-                "zh-TW",
-            )[0]
-                .content;
+        let gm_system = &assemble_gm_messages(
+            "世界總覽",
+            &[fox],
+            Some(&player),
+            &[],
+            &[],
+            &TableState::default(),
+            "zh-TW",
+        )[0]
+        .content;
         assert!(gm_system.contains("阿濤"));
         assert!(gm_system.contains("遠道而來的商隊護衛"));
 
@@ -1377,7 +1450,8 @@ mod tests {
         assert_eq!(name.as_deref(), Some("Fox"));
         assert_eq!(display, "The night deepens.");
         // 玩家哨兵原文帶回，由 pick_speaker 對回代號
-        let (name, _) = extract_next_speaker(format!("門開了。\n下一位：{PLAYER_SENTINEL}").as_str());
+        let (name, _) =
+            extract_next_speaker(format!("門開了。\n下一位：{PLAYER_SENTINEL}").as_str());
         assert_eq!(name.as_deref(), Some(PLAYER_SENTINEL));
         // 沒有點名行＝原樣返回；行首是普通英文 Next 不誤判
         let plain = "夜更深了。\nNext, the door opened.";
@@ -1393,7 +1467,15 @@ mod tests {
             "",
         );
         let player = card("player-id", "阿濤", "", "");
-        let mut entry = worldbook_entry(0, "{{USER}} 的情報", &[], true, 0, false, Visibility::Public);
+        let mut entry = worldbook_entry(
+            0,
+            "{{USER}} 的情報",
+            &[],
+            true,
+            0,
+            false,
+            Visibility::Public,
+        );
         entry.content = "{{user}} 來過這裡。".to_owned();
 
         let character = assemble_messages(&fox, Some(&player), &[], &[entry.clone()], "zh-TW");
@@ -1419,10 +1501,14 @@ mod tests {
         let fox = card("fox-id", "狐狸", "{{user}}", "");
 
         let zh = assemble_messages(&fox, None, &[], &[], "zh-TW");
-        assert!(zh[0].content.contains("你的公開設定（其他人也認識的你）\n玩家\n"));
+        assert!(zh[0]
+            .content
+            .contains("你的公開設定（其他人也認識的你）\n玩家\n"));
 
         let en = assemble_messages(&fox, None, &[], &[], "en");
-        assert!(en[0].content.contains("你的公開設定（其他人也認識的你）\nPlayer\n"));
+        assert!(en[0]
+            .content
+            .contains("你的公開設定（其他人也認識的你）\nPlayer\n"));
     }
 
     #[test]
@@ -1538,17 +1624,16 @@ mod tests {
         assert!(knight_system.contains("騎士情報"));
         assert!(!knight_system.contains("狐狸情報"));
 
-        let gm_system =
-            &assemble_gm_messages(
-                "世界總覽",
-                &[],
-                None,
-                &[],
-                &entries,
-                &TableState::default(),
-                "zh-TW",
-            )[0]
-                .content;
+        let gm_system = &assemble_gm_messages(
+            "世界總覽",
+            &[],
+            None,
+            &[],
+            &entries,
+            &TableState::default(),
+            "zh-TW",
+        )[0]
+        .content;
         assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n"));
         for title in ["GM 祕密", "公開情報", "狐狸情報", "騎士情報"] {
             assert!(gm_system.contains(title));
@@ -1650,16 +1735,15 @@ mod tests {
             event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
             event(TranscriptKind::Narration, "", "GM", "門外傳來馬蹄聲"),
         ];
-        let messages =
-            assemble_gm_messages(
-                "酒館位於邊境小鎮",
-                &cards,
-                None,
-                &events,
-                &[],
-                &TableState::default(),
-                "zh-TW",
-            );
+        let messages = assemble_gm_messages(
+            "酒館位於邊境小鎮",
+            &cards,
+            None,
+            &events,
+            &[],
+            &TableState::default(),
+            "zh-TW",
+        );
 
         let system = &messages[0];
         assert_eq!(system.role, "system");
@@ -1685,15 +1769,7 @@ mod tests {
         assert!(en[0].content.contains("in natural, fluent English"));
         assert!(!en[0].content.contains("繁體中文"));
 
-        let gm_en = assemble_gm_messages(
-            "",
-            &[],
-            None,
-            &[],
-            &[],
-            &TableState::default(),
-            "en",
-        );
+        let gm_en = assemble_gm_messages("", &[], None, &[], &[], &TableState::default(), "en");
         assert!(gm_en[0].content.contains("in natural, fluent English"));
 
         // 其餘八個語系各自注入自己語言寫的規範，且不殘留繁中規範
@@ -1713,15 +1789,7 @@ mod tests {
                 !messages[0].content.contains("繁體中文"),
                 "{lang} 誤注入繁中規範"
             );
-            let gm = assemble_gm_messages(
-                "",
-                &[],
-                None,
-                &[],
-                &[],
-                &TableState::default(),
-                lang,
-            );
+            let gm = assemble_gm_messages("", &[], None, &[], &[], &TableState::default(), lang);
             assert!(gm[0].content.contains(needle), "{lang} GM 規範沒注入");
         }
 
@@ -2112,9 +2180,16 @@ mod tests {
             std::env::temp_dir().join(format!("tt-prompt-cache-test-{}.jsonl", std::process::id()));
         let _ = std::fs::remove_file(&log_path);
         let mut deltas = Vec::new();
-        let full = stream_chat(&config, "test/model", &messages, Some(&log_path), Some("w1"), |delta| {
-            deltas.push(delta.to_owned());
-        })
+        let full = stream_chat(
+            &config,
+            "test/model",
+            &messages,
+            Some(&log_path),
+            Some("w1"),
+            |delta| {
+                deltas.push(delta.to_owned());
+            },
+        )
         .await
         .unwrap();
         assert_eq!(full, "你好");
@@ -2156,7 +2231,7 @@ mod tests {
                 ("time".to_owned(), "午夜".to_owned()),
                 ("沦陷天数".to_owned(), "第 3 天".to_owned()),
             ]),
-            characters: std::collections::BTreeMap::new(),
+            tree: std::collections::BTreeMap::new(),
         };
         let gm = assemble_gm_messages("", &[fox.clone()], None, &[], &[], &state, "zh-TW");
         // 快取友善：狀態每輪更新，搬到尾端獨立 user 訊息，system 不再內嵌
@@ -2179,7 +2254,15 @@ mod tests {
     fn keyword_entries_move_to_tail_message_constant_stay_in_system() {
         let entries = [
             worldbook_entry(0, "常駐情報", &[], true, 0, false, Visibility::Public),
-            worldbook_entry(1, "龍的傳說", &["dragon"], false, 1, false, Visibility::Public),
+            worldbook_entry(
+                1,
+                "龍的傳說",
+                &["dragon"],
+                false,
+                1,
+                false,
+                Visibility::Public,
+            ),
         ];
         let events = [event(TranscriptKind::Player, "", "玩家", "we saw a DRAGON")];
         let fox = card("fox-id", "狐狸", "公開", "");
@@ -2226,9 +2309,13 @@ mod tests {
         ];
         let fox = card("fox-id", "狐狸", "公開", "私有");
         let mut round1_state = TableState::default();
-        round1_state.table.insert("time".to_owned(), "黃昏".to_owned());
+        round1_state
+            .table
+            .insert("time".to_owned(), "黃昏".to_owned());
         let mut round2_state = TableState::default();
-        round2_state.table.insert("time".to_owned(), "午夜".to_owned());
+        round2_state
+            .table
+            .insert("time".to_owned(), "午夜".to_owned());
 
         let round1_events = vec![
             event(TranscriptKind::Narration, "", "GM", "你們遇見 dragon"),
@@ -2262,10 +2349,18 @@ mod tests {
 
         // 角色路徑同理；新事件用自己的台詞（assistant），才不會與前一則 user 合併
         let mut round2_character_events = round1_events.clone();
-        round2_character_events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "撤到 dock 去"));
+        round2_character_events.push(event(
+            TranscriptKind::Dialogue,
+            "fox-id",
+            "狐狸",
+            "撤到 dock 去",
+        ));
         let character1 = assemble_messages(&fox, None, &round1_events, &entries, "zh-TW");
         let character2 = assemble_messages(&fox, None, &round2_character_events, &entries, "zh-TW");
-        assert_eq!(character1[..character1.len() - 1], character2[..character2.len() - 2]);
+        assert_eq!(
+            character1[..character1.len() - 1],
+            character2[..character2.len() - 2]
+        );
         assert_ne!(character1.last(), character2.last());
     }
 
@@ -2277,12 +2372,48 @@ mod tests {
         assert_eq!(
             fields,
             vec![
-                ("time".to_owned(), "午夜".to_owned()),
-                ("place".to_owned(), "舊碼頭".to_owned()),
-                ("present".to_owned(), "阿濤、船長".to_owned()),
+                (vec!["time".to_owned()], "午夜".to_owned()),
+                (vec!["place".to_owned()], "舊碼頭".to_owned()),
+                (vec!["present".to_owned()], "阿濤、船長".to_owned()),
             ]
         );
         assert_eq!(display, "雨停了。");
+    }
+
+    #[test]
+    fn extract_state_block_collects_nested_yaml_and_skips_plain_list_items() {
+        let (fields, _) = extract_state_block(
+            "<Status_block>World:\n  - 城市:\n      名稱: \"晨港\"\n      - 純清單項\n      人口: '1200'\n</Status_block>",
+        );
+        assert_eq!(
+            fields,
+            vec![
+                (
+                    vec!["World".to_owned(), "城市".to_owned(), "名稱".to_owned()],
+                    "晨港".to_owned(),
+                ),
+                (
+                    vec!["World".to_owned(), "城市".to_owned(), "人口".to_owned()],
+                    "1200".to_owned(),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn gm_dynamic_block_renders_nested_tree() {
+        let state = TableState {
+            table: std::collections::BTreeMap::new(),
+            tree: std::collections::BTreeMap::from([(
+                "World".to_owned(),
+                StateNode::Branch(std::collections::BTreeMap::from([(
+                    "城市".to_owned(),
+                    StateNode::Leaf("晨港".to_owned()),
+                )])),
+            )]),
+        };
+        let dynamic = gm_dynamic_block(&[], &state, "阿濤", "zh-TW");
+        assert!(dynamic.contains("World：\n  城市：晨港"));
     }
 
     #[test]
@@ -2293,8 +2424,8 @@ mod tests {
         assert_eq!(
             fields,
             vec![
-                ("time".to_owned(), "清晨".to_owned()),
-                ("自訂".to_owned(), "有效".to_owned()),
+                (vec!["time".to_owned()], "清晨".to_owned()),
+                (vec!["自訂".to_owned()], "有效".to_owned()),
             ]
         );
         assert_eq!(display, "旁白");
@@ -2308,8 +2439,8 @@ mod tests {
         assert_eq!(
             fields,
             vec![
-                ("time".to_owned(), "黃昏".to_owned()),
-                ("place".to_owned(), "港口".to_owned()),
+                (vec!["time".to_owned()], "黃昏".to_owned()),
+                (vec!["place".to_owned()], "港口".to_owned()),
             ]
         );
         assert_eq!(display, "港口傳來鐘聲。");
@@ -2322,8 +2453,8 @@ mod tests {
         assert_eq!(
             fields,
             vec![
-                ("time".to_owned(), "午夜".to_owned()),
-                ("place".to_owned(), "走廊".to_owned()),
+                (vec!["time".to_owned()], "午夜".to_owned()),
+                (vec!["place".to_owned()], "走廊".to_owned()),
             ]
         );
         assert_eq!(display, "門開了。剩下的話。");
@@ -2331,9 +2462,8 @@ mod tests {
 
     #[test]
     fn extract_update_variable_hides_json_without_parsing_it() {
-        let (fields, display) = extract_state_block(
-            "她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>",
-        );
+        let (fields, display) =
+            extract_state_block("她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>");
         assert!(fields.is_empty());
         assert_eq!(display, "她點頭。");
     }
@@ -2349,10 +2479,10 @@ mod tests {
         assert_eq!(
             fields,
             vec![
-                ("体力".to_owned(), "60".to_owned()),
-                ("好感".to_owned(), "20".to_owned()),
-                ("time".to_owned(), "戌时".to_owned()),
-                ("place".to_owned(), "浴房".to_owned()),
+                (vec!["体力".to_owned()], "60".to_owned()),
+                (vec!["好感".to_owned()], "20".to_owned()),
+                (vec!["time".to_owned()], "戌时".to_owned()),
+                (vec!["place".to_owned()], "浴房".to_owned()),
             ]
         );
         assert_eq!(display, "地下城。之後。");
@@ -2377,7 +2507,7 @@ mod tests {
         let (fields, display) = extract_state_block(
             "<maintext>\n夜色濃重。\n</maintext>\n<Status_block>时间: 戌时</Status_block>",
         );
-        assert_eq!(fields, vec![("time".to_owned(), "戌时".to_owned())]);
+        assert_eq!(fields, vec![(vec!["time".to_owned()], "戌时".to_owned())]);
         assert_eq!(display, "\n夜色濃重。");
     }
 
@@ -2399,7 +2529,7 @@ mod tests {
     fn extract_state_keeps_middle_code_fence_but_removes_trailing_plain_fence() {
         let reply = "提示：\n```rust\nlet time = 1;\n```\n旁白\n```\ntime: 午夜\n```";
         let (fields, display) = extract_state_block(reply);
-        assert_eq!(fields, vec![("time".to_owned(), "午夜".to_owned())]);
+        assert_eq!(fields, vec![(vec!["time".to_owned()], "午夜".to_owned())]);
         assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
     }
 
@@ -2422,7 +2552,15 @@ mod tests {
                 false,
                 Visibility::Characters(vec!["fox-id".to_owned()]),
             ),
-            worldbook_entry(4, "關鍵字條目", &["寶箱"], false, 0, false, Visibility::Public),
+            worldbook_entry(
+                4,
+                "關鍵字條目",
+                &["寶箱"],
+                false,
+                0,
+                false,
+                Visibility::Public,
+            ),
         ];
         let snapshot = chars_lane_system(
             &[fox.clone(), knight.clone()],
@@ -2451,10 +2589,23 @@ mod tests {
     #[test]
     fn chars_lane_turn_isolates_confidential_segment() {
         let fox = card("fox-id", "狐狸", "旅店老闆", "其實是通緝犯");
-        let events = [event(TranscriptKind::Player, "", "阿濤", "打開寶箱，讀羊皮卷")];
+        let events = [event(
+            TranscriptKind::Player,
+            "",
+            "阿濤",
+            "打開寶箱，讀羊皮卷",
+        )];
         let entries = [
             worldbook_entry(1, "公開常識", &[], true, 0, false, Visibility::Public),
-            worldbook_entry(2, "寶箱情報", &["寶箱"], false, 0, false, Visibility::Public),
+            worldbook_entry(
+                2,
+                "寶箱情報",
+                &["寶箱"],
+                false,
+                0,
+                false,
+                Visibility::Public,
+            ),
             worldbook_entry(
                 3,
                 "羊皮卷密文",
@@ -2486,7 +2637,7 @@ mod tests {
         assert!(erased.contains("寶箱情報內容"));
         assert!(erased.contains("現在你是「狐狸」"));
         assert!(!erased.contains("公開常識")); // constant 已在快照，不重複
-        // 沒有私設也沒有限定條目時不產生機密段
+                                               // 沒有私設也沒有限定條目時不產生機密段
         let knight = card("knight-id", "騎士", "遊歷的騎士", "");
         let plain = chars_lane_turn(&knight, None, &events, &entries[..2], "zh-TW");
         assert!(plain.confidential.is_none());
@@ -2501,7 +2652,15 @@ mod tests {
         let events = [event(TranscriptKind::Player, "", "阿濤", "打開寶箱")];
         let entries = [
             worldbook_entry(1, "GM專有", &[], true, 0, false, Visibility::Gm),
-            worldbook_entry(2, "寶箱情報", &["寶箱"], false, 0, false, Visibility::Public),
+            worldbook_entry(
+                2,
+                "寶箱情報",
+                &["寶箱"],
+                false,
+                0,
+                false,
+                Visibility::Public,
+            ),
         ];
         let snapshot = gm_lane_system("世界總覽", &[fox], None, &entries, "zh-TW");
         assert!(snapshot.contains("世界總覽"));
@@ -2510,10 +2669,15 @@ mod tests {
         assert!(!snapshot.contains("寶箱情報"));
 
         let mut state = TableState::default();
-        state
-            .table
-            .insert("place".to_owned(), "酒館".to_owned());
-        let turn = gm_lane_turn(&events, &entries, None, &state, "（導演指示）請插入旁白。", "zh-TW");
+        state.table.insert("place".to_owned(), "酒館".to_owned());
+        let turn = gm_lane_turn(
+            &events,
+            &entries,
+            None,
+            &state,
+            "（導演指示）請插入旁白。",
+            "zh-TW",
+        );
         assert!(turn.confidential.is_none());
         assert!(turn.tail.contains("寶箱情報內容"));
         assert!(turn.tail.contains("地點：酒館"));
