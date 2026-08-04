@@ -1094,7 +1094,14 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
     let stale = false;
     invoke<UsageReport>("usage_report", { worldId: scope })
       .then((loaded) => {
-        if (!stale) setReport(loaded);
+        if (stale) return;
+        // 當前這桌一筆紀錄都沒有（例如剛開的桌）＝下拉沒有這個選項，
+        // select 會退回顯示第一個選項，看起來就像「選了總計卻是空的」。退回總計。
+        if (scope !== null && !loaded.worlds.some((world) => world.id === scope)) {
+          setScope(null);
+          return;
+        }
+        setReport(loaded);
       })
       .catch((reason) => {
         if (!stale) setError(String(reason));
