@@ -289,6 +289,11 @@ export const en: Record<MsgKey, string> = {
   importRedirectOk: "Import",
   importRedirectCancel: "Cancel",
   importRedirectDone: "Imported {n} entries into the worldbook.",
+  undoLastImport: "Undo Last Import",
+  undoLastImportHint: "Undo the last import: any character card and worldbook entries it brought in will be removed",
+  undoLastImportConfirm: "Undo the import of “{label}”? Any character card and worldbook entries it brought in will be removed. This cannot be undone.",
+  undoLastImportDone: "Last import undone.",
+  undoLastImportKept: " ({n} worldbook entries kept because you edited them)",
   exportCard: "Export",
   exportCardHint:
     "Save as a SillyTavern character card (PNG or JSON), rebuilt from this card's current text",

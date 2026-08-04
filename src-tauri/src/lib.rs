@@ -8,6 +8,7 @@ mod install;
 mod lanes;
 mod mechanism;
 mod proxy;
+mod receipts;
 mod session_file;
 mod snapshot_patch;
 mod transport;
@@ -341,15 +342,18 @@ fn import_worldbook(
     app: tauri::AppHandle,
     world_id: String,
     data: Vec<u8>,
+    label: String,
 ) -> Result<data::WorldbookImport, String> {
     let json_text = import::worldbook_json(&data).map_err(|error| error.to_string())?;
     let root = data_root(&app)?;
+    let before = receipts::snapshot(&root, &world_id);
     let result =
         data::import_worldbook(&root, &world_id, &json_text).map_err(|error| error.to_string())?;
     import::save_world_card(&root, &world_id, &data);
     if let Ok(book) = serde_json::from_str(&json_text) {
         import::import_mechanism(&root, &world_id, &book);
     }
+    receipts::record_worldbook_import(&root, &world_id, &label, before);
     Ok(result)
 }
 
@@ -452,13 +456,39 @@ fn import_character(
     data: Vec<u8>,
     color: String,
 ) -> Result<CharacterMeta, String> {
-    import::import_character(&data_root(&app)?, &world_id, &data, &color)
-        .map_err(|error| error.to_string())
+    let root = data_root(&app)?;
+    let before = receipts::snapshot(&root, &world_id);
+    let meta = import::import_character(&root, &world_id, &data, &color)
+        .map_err(|error| error.to_string())?;
+    receipts::record_character_import(&root, &world_id, &meta.id, &meta.name, before);
+    Ok(meta)
 }
 
 #[tauri::command]
 fn probe_import(data: Vec<u8>) -> Result<import::ImportProbe, String> {
     Ok(import::probe_import(&data))
+}
+
+/// 側欄按鈕判斷要不要顯示「復原上次匯入」；未來路由框也靠這份摘要判身分。
+#[tauri::command]
+fn list_import_receipts(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<Vec<receipts::ImportReceiptSummary>, String> {
+    Ok(receipts::list_import_receipts(&data_root(&app)?, &world_id))
+}
+
+/// 逆向最後一筆匯入收據：刪角色、刪未經玩家修改的世界書條目、退回機制寫入與桌名。
+#[tauri::command]
+fn undo_last_import(app: tauri::AppHandle, world_id: String) -> Result<receipts::UndoReport, String> {
+    receipts::undo_last_import(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
+/// adoptImportName 改名成功後呼叫：把舊桌名補進最後一筆收據，undo 才能把桌名退回去。
+#[tauri::command]
+fn record_import_rename(app: tauri::AppHandle, world_id: String, old_name: String) -> Result<(), String> {
+    receipts::record_last_import_rename(&data_root(&app)?, &world_id, &old_name);
+    Ok(())
 }
 
 #[tauri::command]
@@ -2012,6 +2042,9 @@ pub fn run() {
             probe_import,
             card_interfaces,
             import_character,
+            list_import_receipts,
+            undo_last_import,
+            record_import_rename,
             export_character,
             read_character_image,
             save_character_image,
