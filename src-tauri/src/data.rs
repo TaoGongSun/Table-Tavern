@@ -1,3 +1,4 @@
+use crate::mechanism::{self, Outcome, Record, RecordKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
@@ -177,6 +178,10 @@ pub struct TranscriptEvent {
     pub speaker_name: String,
     pub kind: TranscriptKind,
     pub text: String,
+    /// 剝殼前的模型原文：狀態區塊與點名行都還在，供卡片自帶的面板重畫歷史訊息用。
+    /// 與 text 相同（沒剝到東西）時不存，舊檔沒有這欄也照樣讀得起來。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<TableState>,
 }
@@ -208,6 +213,9 @@ pub struct TableState {
     pub table: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tree: BTreeMap<String, StateNode>,
+    /// 拒收回饋句：上一輪被系統擋下的更新，跟著逐則快照走，供下一輪模型自癒。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。
@@ -264,7 +272,6 @@ pub struct FieldRule {
 }
 
 impl FieldRule {
-    #[allow(dead_code)]
     pub fn for_kind(kind: FieldKind) -> Self {
         let (update, inject) = match kind {
             FieldKind::Number | FieldKind::Pair | FieldKind::Counter => {
@@ -297,6 +304,13 @@ pub struct Mechanism {
     pub version: u32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rules: BTreeMap<String, FieldRule>,
+    /// 這桌的數值走增量協定、由本地記帳（MVU 卡匯入後開啟）。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub incremental: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 impl Default for Mechanism {
@@ -304,13 +318,14 @@ impl Default for Mechanism {
         Self {
             version: mechanism_version(),
             rules: BTreeMap::new(),
+            incremental: false,
         }
     }
 }
 
 impl Mechanism {
     pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
+        self.rules.is_empty() && !self.incremental
     }
 }
 
@@ -447,6 +462,11 @@ pub(crate) fn character_path(
 /// 本機工具狀態，壞檔或缺檔都只是重開續聊線，不影響正典資料。
 pub(crate) fn lanes_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
     Ok(world_dir(root, world_id)?.join("lanes.json"))
+}
+
+/// 機制記帳落檔：worlds/<world_id>/mechanism-log.jsonl。
+pub(crate) fn mechanism_log_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("mechanism-log.jsonl"))
 }
 
 /// 生成圖庫目錄，落在世界目錄內：worlds/<world_id>/gen-gallery/<character_id>。
@@ -616,6 +636,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
         &world_id,
         0,
         &TranscriptEvent {
+            raw: None,
             ts: "2026-07-20T00:00:00+08:00".to_owned(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -1280,7 +1301,31 @@ fn normalize_imported_entry(
     if !has_visibility {
         set_visibility(&mut value, &Visibility::Gm);
     }
+    if is_mechanism_scaffold(&value) {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("disable".to_owned(), serde_json::Value::Bool(true));
+        }
+    }
     Ok(value)
+}
+
+/// 機制鷹架條目：`[initvar]`／`[mvu_update]` 規則表、或 ST 把整棵變數樹塞回提示詞的巨集。
+/// 本地已接管這些內容，不該再送進模型上下文燒字數。
+fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
+    let marker = entry
+        .get("comment")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| entry.get("title").and_then(serde_json::Value::as_str))
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if marker.starts_with("[initvar]") || marker.starts_with("[mvu_update]") {
+        return true;
+    }
+    entry
+        .get("content")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|content| content.contains("{{format_message_variable::"))
 }
 
 /// 條目的實質內容指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。
@@ -1351,11 +1396,24 @@ pub fn import_worldbook(
     let mut seen: HashSet<String> = entries.values().map(entry_fingerprint).collect();
     let mut uid = next_uid(entries)?;
     let mut imported = 0;
+    let mut absorbed = Vec::new();
     for source_entry in source_entries {
         let entry = normalize_imported_entry(source_entry, character_book, uid)?;
         // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容
         if !seen.insert(entry_fingerprint(&entry)) {
             continue;
+        }
+        if is_mechanism_scaffold(&entry) {
+            let title = entry
+                .get("comment")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            absorbed.push(Record {
+                kind: RecordKind::Absorbed,
+                path: title,
+                detail: "機制鷹架條目，已由本地機制接管，不再送入提示詞。".to_owned(),
+            });
         }
         entries.insert(uid.to_string(), entry);
         uid = uid
@@ -1364,6 +1422,12 @@ pub fn import_worldbook(
         imported += 1;
     }
     write_worldbook_value(root, world_id, &worldbook)?;
+    if !absorbed.is_empty() {
+        let scene = read_state(root, world_id)
+            .map(|state| state.current_scene)
+            .unwrap_or(0);
+        crate::mechanism::append_log(root, world_id, scene, &absorbed);
+    }
     Ok(WorldbookImport {
         imported,
         skipped: total - imported,
@@ -1731,33 +1795,29 @@ pub fn append_transcript(
     Ok(())
 }
 
-/// 開場白也要存成快照，收回時檯面才能回到貼上前的最後一句。
+/// 開場白也要存成快照，收回時檯面才能回到貼上前的最後一句；狀態區塊走與 GM 回覆同一條
+/// 本地權威（mechanism::apply_block），增量桌的數值一開場就是本機在算。
 pub fn append_opening(
     root: &Path,
     world_id: &str,
     scene: u64,
     ts: &str,
-    text: &str,
-    fields: &[(Vec<String>, String)],
-) -> DataResult<TranscriptEvent> {
-    let mut state = read_state(root, world_id)?;
-    for (path, value) in fields {
-        if path.len() == 1 {
-            state.state.table.insert(path[0].clone(), value.clone());
-        } else {
-            set_tree_value(&mut state.state.tree, path, value);
-        }
-    }
+    raw: &str,
+    block: &crate::transport::StateBlock,
+) -> DataResult<(TranscriptEvent, Outcome)> {
+    let mut world = read_state(root, world_id)?;
+    let outcome = mechanism::apply_block(&mut world, block);
     let event = TranscriptEvent {
         ts: ts.to_owned(),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),
         kind: TranscriptKind::Narration,
-        text: text.to_owned(),
-        state: Some(state.state),
+        text: block.display.clone(),
+        raw: (raw != block.display).then(|| raw.to_owned()),
+        state: Some(world.state),
     };
     append_transcript(root, world_id, scene, &event)?;
-    Ok(event)
+    Ok((event, outcome))
 }
 
 /// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
@@ -1983,6 +2043,7 @@ pub fn begin_next_scene(
         world_id,
         next_scene,
         &TranscriptEvent {
+            raw: None,
             ts: local_timestamp()?,
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -2373,6 +2434,49 @@ mod tests {
             }
         );
         assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 3);
+    }
+
+    /// 機制鷹架條目（[initvar]／[mvu_update]／整棵樹重送巨集）匯入後要被系統關掉，
+    /// 不再送模型；一般條目完全不受影響。
+    #[test]
+    fn import_worldbook_disables_mechanism_scaffold_entries_and_leaves_others_alone() {
+        let root = TestRoot::new("worldbook-absorb");
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let book = serde_json::json!({
+            "entries": [
+                {
+                    "keys": ["初始"],
+                    "comment": "[initvar] 初始值",
+                    "content": "World:\n  Time: 清晨",
+                    "enabled": false
+                },
+                {
+                    "keys": [],
+                    "comment": "[mvu_update] 規則",
+                    "content": "规则:\n  World:\n    HP:\n      type: number",
+                    "enabled": true
+                },
+                {
+                    "keys": [],
+                    "comment": "整棵樹重送",
+                    "content": "{{format_message_variable::World}}",
+                    "enabled": true
+                },
+                {
+                    "keys": ["城門"],
+                    "comment": "城門",
+                    "content": "城門已關。",
+                    "enabled": true
+                }
+            ]
+        });
+        import_worldbook(root.path(), &world_id, &book.to_string()).unwrap();
+        let entries = read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 4);
+        for entry in &entries {
+            let should_be_disabled = entry.title != "城門";
+            assert_eq!(entry.disabled, should_be_disabled, "{}", entry.title);
+        }
     }
 
     #[test]
@@ -3125,6 +3229,7 @@ mod tests {
 
         // 對名稱排序居後的甲桌寫一筆訊息，活動排序應把它推到最前
         let event = TranscriptEvent {
+            raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
             speaker_name: "玩家".to_owned(),
@@ -3154,6 +3259,7 @@ mod tests {
 
         let has_message = create_world(root.path(), "有訊息").unwrap();
         let event = TranscriptEvent {
+            raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
             speaker_name: "玩家".to_owned(),
@@ -3479,6 +3585,7 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                raw: None,
                 ts: "2026-07-27 12:00".to_owned(),
                 speaker_id: card.id.clone(),
                 speaker_name: "舊名".to_owned(),
@@ -3707,6 +3814,7 @@ mod tests {
         let world_id = create_world(root.path(), "劇場").unwrap();
         let events = vec![
             TranscriptEvent {
+                raw: None,
                 ts: "2026-07-19T10:00:00+08:00".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "旁白".to_owned(),
@@ -3715,6 +3823,7 @@ mod tests {
                 state: None,
             },
             TranscriptEvent {
+                raw: None,
                 ts: "2026-07-19T10:00:01+08:00".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "玩家".to_owned(),
@@ -3723,6 +3832,7 @@ mod tests {
                 state: None,
             },
             TranscriptEvent {
+                raw: None,
                 ts: "2026-07-19T10:00:02+08:00".to_owned(),
                 speaker_id: "角色代碼".to_owned(),
                 speaker_name: "角色".to_owned(),
@@ -3780,6 +3890,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(index, text)| TranscriptEvent {
+                raw: None,
                 ts: format!("2026-08-01T10:00:0{index}+08:00"),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -3838,6 +3949,7 @@ mod tests {
             .insert("time".to_owned(), "清晨".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
         let event = TranscriptEvent {
+            raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -3859,12 +3971,14 @@ mod tests {
         let supplied = TableState {
             table: BTreeMap::from([("time".to_owned(), "午夜".to_owned())]),
             tree: BTreeMap::new(),
+            notes: Vec::new(),
         };
         append_transcript(
             root.path(),
             &world_id,
             0,
             &TranscriptEvent {
+                raw: None,
                 ts: "later".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -3881,18 +3995,41 @@ mod tests {
     }
 
     #[test]
+    fn append_opening_skips_raw_when_nothing_was_stripped() {
+        let root = TestRoot::new("opening-raw");
+        let world_id = create_world(root.path(), "純正文桌").unwrap();
+        let raw = "只有旁白，沒有狀態欄。";
+        let (event, _) = append_opening(
+            root.path(),
+            &world_id,
+            0,
+            "opening",
+            raw,
+            &crate::transport::extract_state_block(raw),
+        )
+        .unwrap();
+        assert_eq!(event.text, raw);
+        assert_eq!(event.raw, None);
+        // 舊檔沒有 raw 欄位也讀得起來，序列化時同樣不憑空多一欄
+        let line = serde_json::to_string(&event).unwrap();
+        assert!(!line.contains("\"raw\""));
+    }
+
+    #[test]
     fn append_opening_merges_state_and_pop_restores_previous_snapshot() {
         let root = TestRoot::new("opening-state");
         let world_id = create_world(root.path(), "開場狀態桌").unwrap();
         let previous = TableState {
             table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
             tree: BTreeMap::new(),
+            notes: Vec::new(),
         };
         append_transcript(
             root.path(),
             &world_id,
             0,
             &TranscriptEvent {
+                raw: None,
                 ts: "before".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -3903,24 +4040,27 @@ mod tests {
         )
         .unwrap();
 
-        let event = append_opening(
+        let raw = "開場旁白<status>place: 碼頭\ntime: 午夜</status>";
+        let (event, outcome) = append_opening(
             root.path(),
             &world_id,
             0,
             "opening",
-            "開場旁白",
-            &[
-                (vec!["place".to_owned()], "碼頭".to_owned()),
-                (vec!["time".to_owned()], "午夜".to_owned()),
-            ],
+            raw,
+            &crate::transport::extract_state_block(raw),
         )
         .unwrap();
+        assert!(outcome.records.is_empty());
+        // 畫面只留正文，模型原文整段另存一份（面板要靠它重畫歷史訊息）
+        assert_eq!(event.text, "開場旁白");
+        assert_eq!(event.raw.as_deref(), Some(raw));
         let expected = TableState {
             table: BTreeMap::from([
                 ("place".to_owned(), "碼頭".to_owned()),
                 ("time".to_owned(), "午夜".to_owned()),
             ]),
             tree: BTreeMap::new(),
+            notes: Vec::new(),
         };
         assert_eq!(event.state, Some(expected.clone()));
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
@@ -3940,10 +4080,12 @@ mod tests {
         let first = TableState {
             table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
             tree: BTreeMap::new(),
+            notes: Vec::new(),
         };
         let second = TableState {
             table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
             tree: BTreeMap::new(),
+            notes: Vec::new(),
         };
         for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
             append_transcript(
@@ -3951,6 +4093,7 @@ mod tests {
                 &world_id,
                 0,
                 &TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
                     speaker_name: "GM".to_owned(),
@@ -3978,8 +4121,10 @@ mod tests {
         let snapshots = ["清晨", "午夜"].map(|time| TableState {
             table: BTreeMap::from([("time".to_owned(), time.to_owned())]),
             tree: BTreeMap::new(),
+            notes: Vec::new(),
         });
         let event = |text: &str, snapshot: &TableState| TranscriptEvent {
+            raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -4016,6 +4161,7 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: "船長代碼".to_owned(),
                     speaker_name: "船長".to_owned(),
@@ -4027,6 +4173,7 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
                     speaker_name: "GM".to_owned(),
@@ -4038,6 +4185,7 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
                     speaker_name: "玩家".to_owned(),
@@ -4049,6 +4197,7 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
                     speaker_name: "GM".to_owned(),
@@ -4092,6 +4241,7 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
                     speaker_name: "GM".to_owned(),
@@ -4103,6 +4253,7 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: "船長代碼".to_owned(),
                     speaker_name: "船長".to_owned(),
@@ -4138,6 +4289,7 @@ mod tests {
         let root = TestRoot::new("begin-next-scene");
         let world_id = create_world(root.path(), "換場桌").unwrap();
         let event = TranscriptEvent {
+            raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
             speaker_name: "玩家".to_owned(),
@@ -4172,6 +4324,7 @@ mod tests {
         let root = TestRoot::new("begin-next-scene-title");
         let world_id = create_world(root.path(), "取名桌").unwrap();
         let event = TranscriptEvent {
+            raw: None,
             ts: "2026-07-24T00:00:00Z".to_owned(),
             speaker_id: String::new(),
             speaker_name: "玩家".to_owned(),
@@ -4287,6 +4440,7 @@ mod tests {
                     )])),
                 )])),
             )]),
+            notes: Vec::new(),
         };
         let second = TableState {
             table: BTreeMap::new(),
@@ -4300,6 +4454,7 @@ mod tests {
                     )])),
                 )])),
             )]),
+            notes: Vec::new(),
         };
         for snapshot in [first.clone(), second.clone()] {
             append_transcript(
@@ -4307,6 +4462,7 @@ mod tests {
                 &world_id,
                 0,
                 &TranscriptEvent {
+                    raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
                     speaker_name: "GM".to_owned(),

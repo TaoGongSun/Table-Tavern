@@ -209,6 +209,7 @@ pub fn materialize(root: &Path, expanded: &Expanded) -> DataResult<String> {
             &world_id,
             0,
             &TranscriptEvent {
+                raw: None,
                 ts: "2026-07-20T00:00:00+08:00".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),

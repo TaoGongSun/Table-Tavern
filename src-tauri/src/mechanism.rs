@@ -1,0 +1,1531 @@
+//! MVU 機制格式：解析模型吐出的 `<UpdateVariable>` JSON Patch，依欄位規則本地決定收不收。
+//! 模型只說「這一幕變動多少」，加減／夾邊界／擲骰全在這裡做——模型算數字會幻覺，
+//! 本地帳才是真相。容錯是紅線：格式壞的那一筆丟掉沿用舊值，絕不 panic、絕不中斷整批更新。
+
+use crate::data::{self, FieldKind, FieldRule, Mechanism, StateNode, UpdateMode};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::Path;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchOp {
+    Replace,
+    Delta,
+    Insert,
+    Remove,
+    Move,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Patch {
+    pub op: PatchOp,
+    pub path: Vec<String>,
+    /// 只有 Move 用得到；其餘 op 固定空。
+    pub from: Vec<String>,
+    pub value: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordKind {
+    Rejected,
+    Clamped,
+    Error,
+    /// 機制鷹架條目（[initvar]／[mvu_update]／整棵樹重送巨集）已被系統接管，不再送模型。
+    Absorbed,
+}
+
+/// 一筆記帳，供面板列「哪些更新被擋下」用。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Record {
+    pub kind: RecordKind,
+    pub path: String,
+    pub detail: String,
+}
+
+impl Record {
+    fn new(kind: RecordKind, path: String, detail: String) -> Self {
+        Self { kind, path, detail }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct Outcome {
+    pub records: Vec<Record>,
+    /// 自癒回饋句：只從 Rejected 記錄產生，給下一輪模型看該怎麼改。
+    pub notes: Vec<String>,
+}
+
+// ---------------------------------------------------------------------
+// 解析：<UpdateVariable> 原文 → Vec<Patch>
+// ---------------------------------------------------------------------
+
+/// 從 `<UpdateVariable>` 原始內容取出更新指令；解析不出來就回空 Vec，絕不 panic。
+pub fn parse_updates(block: &str) -> Vec<Patch> {
+    let without_analysis = strip_analysis(block);
+    let section = extract_json_patch_section(&without_analysis);
+    let candidate = strip_code_fences(&section);
+    let candidate = candidate.trim();
+
+    let objects: Vec<serde_json::Value> =
+        match serde_json::from_str::<Vec<serde_json::Value>>(candidate) {
+            Ok(values) => values,
+            // 模型漏逗號等格式壞掉：退回逐個掃出最外層平衡的 {…} 物件，好的照收壞的跳過。
+            Err(_) => scan_balanced_objects(candidate)
+                .into_iter()
+                .filter_map(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+                .collect(),
+        };
+
+    objects.iter().filter_map(value_to_patch).collect()
+}
+
+fn strip_analysis(block: &str) -> String {
+    let lower = block.to_ascii_lowercase();
+    let (Some(start), Some(open_end)) = (
+        lower.find("<analysis"),
+        lower
+            .find("<analysis")
+            .and_then(|start| lower[start..].find('>').map(|offset| start + offset)),
+    ) else {
+        return block.to_owned();
+    };
+    let Some(close_start) = lower[open_end + 1..]
+        .find("</analysis>")
+        .map(|offset| open_end + 1 + offset)
+    else {
+        return block.to_owned();
+    };
+    let close_end = close_start + "</analysis>".len();
+    format!("{}{}", &block[..start], &block[close_end..])
+}
+
+fn extract_json_patch_section(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    if let Some(start) = lower.find("<jsonpatch") {
+        if let Some(open_end) = lower[start..].find('>').map(|offset| start + offset) {
+            if let Some(close_start) = lower[open_end + 1..]
+                .find("</jsonpatch>")
+                .map(|offset| open_end + 1 + offset)
+            {
+                return text[open_end + 1..close_start].to_owned();
+            }
+        }
+    }
+    text.to_owned()
+}
+
+/// 剝掉包住整段候選文字的 ``` 圍欄（含 ```json 這種帶語言標記的開頭）。
+fn strip_code_fences(text: &str) -> String {
+    let trimmed = text.trim();
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return trimmed.to_owned();
+    };
+    let rest = match rest.find('\n') {
+        Some(index) => &rest[index + 1..],
+        None => rest,
+    };
+    rest.strip_suffix("```").unwrap_or(rest).trim().to_owned()
+}
+
+/// 逐個掃出最外層平衡的 `{…}` 物件，正確跳過字串內的引號與跳脫字元。
+fn scan_balanced_objects(text: &str) -> Vec<&str> {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut result = Vec::new();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index].1 != '{' {
+            index += 1;
+            continue;
+        }
+        let start = chars[index].0;
+        let mut depth = 0i32;
+        let mut in_string = false;
+        let mut escape = false;
+        let mut end = None;
+        let mut cursor = index;
+        while cursor < chars.len() {
+            let (byte_pos, character) = chars[cursor];
+            if in_string {
+                if escape {
+                    escape = false;
+                } else if character == '\\' {
+                    escape = true;
+                } else if character == '"' {
+                    in_string = false;
+                }
+            } else {
+                match character {
+                    '"' => in_string = true,
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(byte_pos + character.len_utf8());
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            cursor += 1;
+        }
+        match end {
+            Some(end) => {
+                result.push(&text[start..end]);
+                index = cursor + 1;
+            }
+            None => break, // 沒收尾：後面已經壞掉，寧可少收也不要瞎猜
+        }
+    }
+    result
+}
+
+fn value_to_patch(value: &serde_json::Value) -> Option<Patch> {
+    let obj = value.as_object()?;
+    let op = match obj.get("op")?.as_str()? {
+        "replace" => PatchOp::Replace,
+        "delta" => PatchOp::Delta,
+        "insert" => PatchOp::Insert,
+        "remove" => PatchOp::Remove,
+        "move" => PatchOp::Move,
+        _ => return None,
+    };
+    if op == PatchOp::Move {
+        let from = obj
+            .get("from")
+            .and_then(|v| v.as_str())
+            .map(parse_pointer)?;
+        let path = obj.get("to").and_then(|v| v.as_str()).map(parse_pointer)?;
+        if from.is_empty() || path.is_empty() {
+            return None;
+        }
+        return Some(Patch {
+            op,
+            path,
+            from,
+            value: None,
+        });
+    }
+    let path = obj
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(parse_pointer)?;
+    if path.is_empty() {
+        return None;
+    }
+    Some(Patch {
+        op,
+        path,
+        from: Vec::new(),
+        value: obj.get("value").cloned(),
+    })
+}
+
+/// JSON Pointer 拆段：`~1`→`/`、`~0`→`~`，開頭的 `/` 忽略；
+/// 容錯：整串沒有 `/` 但有 `.` 時改用 `.` 拆（模型有時給點分路徑）。
+fn parse_pointer(raw: &str) -> Vec<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    if !raw.contains('/') && raw.contains('.') {
+        return raw
+            .split('.')
+            .map(str::to_owned)
+            .filter(|segment| !segment.is_empty())
+            .collect();
+    }
+    let raw = raw.strip_prefix('/').unwrap_or(raw);
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    raw.split('/')
+        .map(|segment| segment.replace("~1", "/").replace("~0", "~"))
+        .collect()
+}
+
+// ---------------------------------------------------------------------
+// 套用：依欄位規則把 Patch 套進狀態樹
+// ---------------------------------------------------------------------
+
+/// 依欄位規則把更新套進狀態樹，回傳記帳與下一輪要給模型的自癒回饋句。
+pub fn apply_updates(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patches: &[Patch],
+) -> Outcome {
+    let mut records = Vec::new();
+    for patch in patches {
+        apply_one(tree, mechanism, patch, &mut records);
+    }
+    let notes = build_notes(&records);
+    Outcome { records, notes }
+}
+
+fn apply_one(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patch: &Patch,
+    records: &mut Vec<Record>,
+) {
+    if let Some(offending) = readonly_violation(patch) {
+        records.push(Record::new(
+            RecordKind::Rejected,
+            offending.clone(),
+            format!("{offending} 是唯讀欄位（底線開頭），不接受更新。"),
+        ));
+        return;
+    }
+    match patch.op {
+        PatchOp::Delta => apply_delta(tree, mechanism, patch, records),
+        PatchOp::Replace => apply_replace(tree, mechanism, patch, records),
+        PatchOp::Insert => apply_insert(tree, mechanism, patch, records),
+        PatchOp::Remove => apply_remove(tree, patch, records),
+        PatchOp::Move => apply_move(tree, patch, records),
+    }
+}
+
+fn readonly_violation(patch: &Patch) -> Option<String> {
+    if patch.path.iter().any(|segment| segment.starts_with('_')) {
+        return Some(patch.path.join("."));
+    }
+    if patch.op == PatchOp::Move && patch.from.iter().any(|segment| segment.starts_with('_')) {
+        return Some(patch.from.join("."));
+    }
+    None
+}
+
+fn apply_delta(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patch: &Patch,
+    records: &mut Vec<Record>,
+) {
+    let path_str = patch.path.join(".");
+    let Some(node) = get_node(tree, &patch.path) else {
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("路徑不存在：{path_str}"),
+        ));
+        return;
+    };
+    let Some(current) = leaf_value(node).map(str::to_owned) else {
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("{path_str} 是分支，不能做增減。"),
+        ));
+        return;
+    };
+    let Some(delta) = value_as_f64(patch.value.as_ref()) else {
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("{path_str} 的更新值不是數字。"),
+        ));
+        return;
+    };
+    let rule = rule_for(mechanism, &patch.path, Some(&current));
+    match rule.update {
+        UpdateMode::Local => {
+            records.push(Record::new(
+                RecordKind::Rejected,
+                path_str.clone(),
+                format!("{path_str} 由系統本地擲骰，請勿更新。"),
+            ));
+            return;
+        }
+        UpdateMode::Reject => {
+            records.push(Record::new(
+                RecordKind::Rejected,
+                path_str.clone(),
+                format!("{path_str} 是唯讀欄位，不接受更新。"),
+            ));
+            return;
+        }
+        UpdateMode::Delta | UpdateMode::Replace => {}
+    }
+    match rule.kind {
+        FieldKind::Pair => {
+            let Some((current_value, max)) = split_pair(&current) else {
+                records.push(Record::new(
+                    RecordKind::Error,
+                    path_str.clone(),
+                    format!("{path_str} 現值格式不是「現值/上限」。"),
+                ));
+                return;
+            };
+            let min = rule.min.unwrap_or(0.0);
+            let raw_next = current_value + delta;
+            let next = raw_next.clamp(min, max);
+            data::set_tree_value(
+                tree,
+                &patch.path,
+                &format!("{}/{}", format_num(next), format_num(max)),
+            );
+            if next != raw_next {
+                records.push(Record::new(
+                    RecordKind::Clamped,
+                    path_str.clone(),
+                    format!(
+                        "{path_str} 已夾在範圍內，目前值 {}/{}。",
+                        format_num(next),
+                        format_num(max)
+                    ),
+                ));
+            }
+        }
+        FieldKind::Number | FieldKind::Counter => {
+            let Ok(current_value) = current.trim().parse::<f64>() else {
+                records.push(Record::new(
+                    RecordKind::Error,
+                    path_str.clone(),
+                    format!("{path_str} 現值不是數字，無法增減。"),
+                ));
+                return;
+            };
+            let mut next = current_value + delta;
+            let mut clamped = false;
+            if let Some(min) = rule.min {
+                if next < min {
+                    next = min;
+                    clamped = true;
+                }
+            }
+            if let Some(max) = rule.max {
+                if next > max {
+                    next = max;
+                    clamped = true;
+                }
+            }
+            data::set_tree_value(tree, &patch.path, &format_num(next));
+            if clamped {
+                records.push(Record::new(
+                    RecordKind::Clamped,
+                    path_str.clone(),
+                    format!("{path_str} 已夾在範圍內，目前值 {}。", format_num(next)),
+                ));
+            }
+        }
+        FieldKind::Text
+        | FieldKind::List
+        | FieldKind::Roll
+        | FieldKind::ReadOnly
+        | FieldKind::Derived => {
+            records.push(Record::new(
+                RecordKind::Error,
+                path_str.clone(),
+                format!("{path_str} 是文字欄位，不能做增減。"),
+            ));
+        }
+    }
+}
+
+fn apply_replace(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patch: &Patch,
+    records: &mut Vec<Record>,
+) {
+    let path_str = patch.path.join(".");
+    let Some(node) = get_node(tree, &patch.path) else {
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("路徑不存在：{path_str}"),
+        ));
+        return;
+    };
+    let current_leaf = leaf_value(node).map(str::to_owned);
+    replace_existing(
+        tree,
+        mechanism,
+        &patch.path,
+        path_str,
+        current_leaf,
+        patch.value.as_ref(),
+        records,
+    );
+}
+
+/// Replace 與「Insert 目標已存在」共用的規則：一律照 Replace 的語意走。
+fn replace_existing(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    path: &[String],
+    path_str: String,
+    current_leaf: Option<String>,
+    value: Option<&serde_json::Value>,
+    records: &mut Vec<Record>,
+) {
+    let rule = rule_for(mechanism, path, current_leaf.as_deref());
+    match rule.update {
+        UpdateMode::Replace => {
+            let node = json_to_node(value.unwrap_or(&serde_json::Value::Null));
+            let _ = insert_node(tree, path, node);
+        }
+        UpdateMode::Local => {
+            records.push(Record::new(
+                RecordKind::Rejected,
+                path_str.clone(),
+                format!("{path_str} 由系統本地擲骰，請勿更新。"),
+            ));
+        }
+        UpdateMode::Reject => {
+            records.push(Record::new(
+                RecordKind::Rejected,
+                path_str.clone(),
+                format!("{path_str} 是唯讀欄位，不接受更新。"),
+            ));
+        }
+        UpdateMode::Delta if rule.kind == FieldKind::Pair => {
+            let Some(current) = current_leaf else {
+                records.push(Record::new(
+                    RecordKind::Error,
+                    path_str.clone(),
+                    format!("{path_str} 是分支，不能替換。"),
+                ));
+                return;
+            };
+            let Some((current_value, max)) = split_pair(&current) else {
+                records.push(Record::new(
+                    RecordKind::Error,
+                    path_str.clone(),
+                    format!("{path_str} 現值格式不是「現值/上限」。"),
+                ));
+                return;
+            };
+            let Some((new_value, new_max)) = value.and_then(|v| v.as_str()).and_then(split_pair)
+            else {
+                records.push(Record::new(
+                    RecordKind::Rejected,
+                    path_str.clone(),
+                    format!("{path_str} 新值不是「現值/上限」格式，已忽略。"),
+                ));
+                return;
+            };
+            if new_value != current_value {
+                records.push(Record::new(
+                    RecordKind::Rejected,
+                    path_str.clone(),
+                    format!(
+                        "{path_str} 現值 {}/{}，請用增減量（delta）而不是絕對值。",
+                        format_num(current_value),
+                        format_num(max)
+                    ),
+                ));
+            }
+            if new_max != max {
+                data::set_tree_value(
+                    tree,
+                    path,
+                    &format!("{}/{}", format_num(current_value), format_num(new_max)),
+                );
+            }
+        }
+        UpdateMode::Delta => {
+            let current_display = current_leaf.unwrap_or_default();
+            records.push(Record::new(
+                RecordKind::Rejected,
+                path_str.clone(),
+                format!("{path_str} 現值 {current_display}，請用增減量（delta）而不是絕對值。"),
+            ));
+        }
+    }
+}
+
+fn apply_insert(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patch: &Patch,
+    records: &mut Vec<Record>,
+) {
+    let path_str = patch.path.join(".");
+    if let Some(node) = get_node(tree, &patch.path) {
+        let current_leaf = leaf_value(node).map(str::to_owned);
+        replace_existing(
+            tree,
+            mechanism,
+            &patch.path,
+            path_str,
+            current_leaf,
+            patch.value.as_ref(),
+            records,
+        );
+        return;
+    }
+    let node = json_to_node(patch.value.as_ref().unwrap_or(&serde_json::Value::Null));
+    if insert_node(tree, &patch.path, node).is_err() {
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("{path_str} 中間層已被其他欄位占用，無法建立。"),
+        ));
+    }
+}
+
+fn apply_remove(tree: &mut BTreeMap<String, StateNode>, patch: &Patch, records: &mut Vec<Record>) {
+    let path_str = patch.path.join(".");
+    if get_node(tree, &patch.path).is_none() {
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("路徑不存在，無法刪除：{path_str}"),
+        ));
+        return;
+    }
+    // 空字串＝刪除，並沿用 set_tree_value 既有的「因此變空的父分支一併剪掉」行為。
+    data::set_tree_value(tree, &patch.path, "");
+}
+
+fn apply_move(tree: &mut BTreeMap<String, StateNode>, patch: &Patch, records: &mut Vec<Record>) {
+    let from_str = patch.from.join(".");
+    let Some(node) = take_node(tree, &patch.from) else {
+        records.push(Record::new(
+            RecordKind::Error,
+            from_str.clone(),
+            format!("路徑不存在：{from_str}"),
+        ));
+        return;
+    };
+    if insert_node(tree, &patch.path, node.clone()).is_err() {
+        let _ = insert_node(tree, &patch.from, node); // 寫不進去就放回原位，不憑空丟資料
+        let path_str = patch.path.join(".");
+        records.push(Record::new(
+            RecordKind::Error,
+            path_str.clone(),
+            format!("{path_str} 中間層已被其他欄位占用，搬移失敗。"),
+        ));
+    }
+}
+
+fn build_notes(records: &[Record]) -> Vec<String> {
+    let mut notes = Vec::new();
+    for record in records {
+        if record.kind != RecordKind::Rejected {
+            continue;
+        }
+        if notes.contains(&record.detail) {
+            continue;
+        }
+        notes.push(record.detail.clone());
+        if notes.len() >= 5 {
+            break;
+        }
+    }
+    notes
+}
+
+// ---------------------------------------------------------------------
+// 樹操作小工具（本檔自用，data::set_tree_value 只覆蓋葉子字串的情形）
+// ---------------------------------------------------------------------
+
+fn get_node<'a>(tree: &'a BTreeMap<String, StateNode>, path: &[String]) -> Option<&'a StateNode> {
+    let (first, rest) = path.split_first()?;
+    let node = tree.get(first)?;
+    if rest.is_empty() {
+        return Some(node);
+    }
+    match node {
+        StateNode::Branch(children) => get_node(children, rest),
+        StateNode::Leaf(_) => None,
+    }
+}
+
+fn leaf_value(node: &StateNode) -> Option<&str> {
+    match node {
+        StateNode::Leaf(value) => Some(value),
+        StateNode::Branch(_) => None,
+    }
+}
+
+/// 在 path 寫入任意節點（含整棵子樹），缺的中間層自動補成 Branch；
+/// 撞到既有葉子擋路就放棄，回傳 Err 不動樹。路徑最後一段是 `-` 時，
+/// 在該 Branch 用「目前沒被用掉的最小非負整數」當 key 附加。
+fn insert_node(
+    branch: &mut BTreeMap<String, StateNode>,
+    path: &[String],
+    node: StateNode,
+) -> Result<(), ()> {
+    let (first, rest) = path.split_first().ok_or(())?;
+    if rest.is_empty() {
+        let key = if first == "-" {
+            next_free_key(branch)
+        } else {
+            first.clone()
+        };
+        branch.insert(key, node);
+        return Ok(());
+    }
+    let entry = branch
+        .entry(first.clone())
+        .or_insert_with(|| StateNode::Branch(BTreeMap::new()));
+    match entry {
+        StateNode::Branch(children) => insert_node(children, rest, node),
+        StateNode::Leaf(_) => Err(()),
+    }
+}
+
+fn next_free_key(branch: &BTreeMap<String, StateNode>) -> String {
+    let mut candidate = 0u64;
+    loop {
+        let key = candidate.to_string();
+        if !branch.contains_key(&key) {
+            return key;
+        }
+        candidate += 1;
+    }
+}
+
+/// 取出並刪除 path 上的節點，因此變空的父分支一併剪掉。
+fn take_node(branch: &mut BTreeMap<String, StateNode>, path: &[String]) -> Option<StateNode> {
+    let (first, rest) = path.split_first()?;
+    if rest.is_empty() {
+        return branch.remove(first);
+    }
+    let StateNode::Branch(children) = branch.get_mut(first)? else {
+        return None;
+    };
+    let removed = take_node(children, rest)?;
+    if let Some(StateNode::Branch(children)) = branch.get(first) {
+        if children.is_empty() {
+            branch.remove(first);
+        }
+    }
+    Some(removed)
+}
+
+/// JSON 值轉狀態樹節點：物件→Branch（遞迴）、陣列→以 0/1/… 為 key 的 Branch、
+/// 純量→Leaf 字串（整數不印成 5.0）。
+fn json_to_node(value: &serde_json::Value) -> StateNode {
+    match value {
+        serde_json::Value::Object(map) => StateNode::Branch(
+            map.iter()
+                .map(|(k, v)| (k.clone(), json_to_node(v)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => StateNode::Branch(
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index.to_string(), json_to_node(item)))
+                .collect(),
+        ),
+        serde_json::Value::String(text) => StateNode::Leaf(text.clone()),
+        serde_json::Value::Number(number) => StateNode::Leaf(format_json_number(number)),
+        serde_json::Value::Bool(flag) => StateNode::Leaf(flag.to_string()),
+        serde_json::Value::Null => StateNode::Leaf(String::new()),
+    }
+}
+
+fn format_json_number(number: &serde_json::Number) -> String {
+    if let Some(value) = number.as_i64() {
+        return value.to_string();
+    }
+    if let Some(value) = number.as_u64() {
+        return value.to_string();
+    }
+    number.to_string()
+}
+
+fn format_num(value: f64) -> String {
+    if value.is_finite() && value == value.trunc() && value.abs() < 1e15 {
+        (value as i64).to_string()
+    } else {
+        format!("{value}")
+    }
+}
+
+fn split_pair(value: &str) -> Option<(f64, f64)> {
+    let mut parts = value.splitn(2, '/');
+    let current = parts.next()?.trim().parse::<f64>().ok()?;
+    let max = parts.next()?.trim().parse::<f64>().ok()?;
+    Some((current, max))
+}
+
+fn value_as_f64(value: Option<&serde_json::Value>) -> Option<f64> {
+    match value? {
+        serde_json::Value::Number(number) => number.as_f64(),
+        serde_json::Value::String(text) => text.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+/// 找欄位規則：先精確比對 path 的點分路徑，沒有就找同段數、每段相同或為 `*`
+/// 的萬用規則（多筆命中取萬用段最少的那筆），都沒有就依現值形狀推定 kind。
+fn rule_for(mechanism: &Mechanism, path: &[String], current: Option<&str>) -> FieldRule {
+    let key = path.join(".");
+    if let Some(rule) = mechanism.rules.get(&key) {
+        return rule.clone();
+    }
+    if let Some(rule) = wildcard_rule(mechanism, path) {
+        return rule.clone();
+    }
+    let kind = match current {
+        Some(value) if split_pair(value).is_some() => FieldKind::Pair,
+        Some(value) if value.trim().parse::<f64>().is_ok() => FieldKind::Number,
+        _ => FieldKind::Text,
+    };
+    FieldRule::for_kind(kind)
+}
+
+fn wildcard_rule<'a>(mechanism: &'a Mechanism, path: &[String]) -> Option<&'a FieldRule> {
+    let mut best: Option<(usize, &FieldRule)> = None;
+    for (rule_path, rule) in &mechanism.rules {
+        let segments: Vec<&str> = rule_path.split('.').collect();
+        if segments.len() != path.len() {
+            continue;
+        }
+        let mut wildcard_count = 0usize;
+        let matched = segments.iter().zip(path.iter()).all(|(segment, actual)| {
+            if *segment == "*" {
+                wildcard_count += 1;
+                true
+            } else {
+                segment == actual
+            }
+        });
+        if matched && best.is_none_or(|(count, _)| wildcard_count < count) {
+            best = Some((wildcard_count, rule));
+        }
+    }
+    best.map(|(_, rule)| rule)
+}
+
+// ---------------------------------------------------------------------
+// 骰值欄每回合本地重擲
+// ---------------------------------------------------------------------
+
+/// 骰值欄（kind == Roll）每回合本地重擲一次真隨機，寫回樹裡。
+pub fn reroll(tree: &mut BTreeMap<String, StateNode>, mechanism: &Mechanism) {
+    let mut path = Vec::new();
+    reroll_branch(tree, mechanism, &mut path);
+}
+
+fn reroll_branch(
+    branch: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    path: &mut Vec<String>,
+) {
+    let keys: Vec<String> = branch.keys().cloned().collect();
+    for key in keys {
+        path.push(key.clone());
+        let is_leaf = matches!(branch.get(&key), Some(StateNode::Leaf(_)));
+        if is_leaf {
+            let rule = rule_for(mechanism, path, None);
+            if rule.kind == FieldKind::Roll {
+                let min = rule.min.unwrap_or(1.0);
+                let max = rule.max.unwrap_or(100.0);
+                branch.insert(
+                    key.clone(),
+                    StateNode::Leaf(random_int_in_range(min, max).to_string()),
+                );
+            }
+        } else if let Some(StateNode::Branch(children)) = branch.get_mut(&key) {
+            reroll_branch(children, mechanism, path);
+        }
+        path.pop();
+    }
+}
+
+fn random_int_in_range(min: f64, max: f64) -> i64 {
+    let low = min.round() as i64;
+    let high = max.round() as i64;
+    if high <= low {
+        return low;
+    }
+    let span = (high - low + 1) as u128;
+    let random_bits = ulid::Ulid::generate().random();
+    low + (random_bits % span) as i64
+}
+
+// ---------------------------------------------------------------------
+// 回合套用：平欄／樹欄照舊套用＋增量走本地權威＋骰值每回合重擲
+// ---------------------------------------------------------------------
+
+/// 把一則回覆的狀態區塊套進這桌：平欄照舊、增量走本地權威、骰值每回合重擲。
+pub fn apply_block(world: &mut data::WorldState, block: &crate::transport::StateBlock) -> Outcome {
+    for (path, value) in &block.fields {
+        if path.len() == 1 {
+            world.state.table.insert(path[0].clone(), value.clone());
+        } else {
+            data::set_tree_value(&mut world.state.tree, path, value);
+        }
+    }
+    let patches: Vec<Patch> = block
+        .updates
+        .iter()
+        .flat_map(|update| parse_updates(update))
+        .collect();
+    let outcome = apply_updates(&mut world.state.tree, &world.mechanism, &patches);
+    if world.mechanism.incremental {
+        reroll(&mut world.state.tree, &world.mechanism);
+    }
+    world.state.notes = outcome.notes.clone();
+    outcome
+}
+
+// ---------------------------------------------------------------------
+// 記帳落檔：worlds/<world_id>/mechanism-log.jsonl
+// ---------------------------------------------------------------------
+
+/// 每筆記錄落一行 JSON；寫檔失敗一律吞掉，記帳設施不該反過來中斷遊戲。
+pub fn append_log(root: &Path, world_id: &str, scene: u64, records: &[Record]) {
+    if records.is_empty() {
+        return;
+    }
+    let Ok(path) = data::mechanism_log_path(root, world_id) else {
+        return;
+    };
+    let ts = data::local_timestamp_seconds().unwrap_or_else(|_| "unknown-time".to_owned());
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    else {
+        return;
+    };
+    use std::io::Write;
+    for record in records {
+        let line = serde_json::json!({
+            "ts": ts,
+            "scene": scene,
+            "kind": record.kind,
+            "path": record.path,
+            "detail": record.detail,
+        });
+        if let Ok(text) = serde_json::to_string(&line) {
+            let _ = writeln!(file, "{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::InjectLevel;
+
+    fn tree_from(pairs: &[(&str, &str)]) -> BTreeMap<String, StateNode> {
+        let mut tree = BTreeMap::new();
+        for (path, value) in pairs {
+            let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
+            data::set_tree_value(&mut tree, &segments, value);
+        }
+        tree
+    }
+
+    fn rule(kind: FieldKind, min: Option<f64>, max: Option<f64>) -> FieldRule {
+        let mut rule = FieldRule::for_kind(kind);
+        rule.min = min;
+        rule.max = max;
+        rule
+    }
+
+    fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
+        Mechanism {
+            version: 1,
+            rules: rules
+                .iter()
+                .map(|(path, rule)| ((*path).to_owned(), rule.clone()))
+                .collect(),
+            incremental: false,
+        }
+    }
+
+    // ---- parse_updates ----
+
+    #[test]
+    fn parse_updates_reads_all_five_ops_from_the_documented_shape() {
+        let block = r#"<Analysis>english analysis, discarded</Analysis>
+<JSONPatch>
+[
+  { "op": "replace", "path": "/World/Location", "value": "晨港" },
+  { "op": "delta",   "path": "/Heroes/亚瑟·晨光/Affection", "value": 5 },
+  { "op": "insert",  "path": "/Player/Inventory/藥水", "value": { "描述": "紅色的", "數量": 2 } },
+  { "op": "remove",  "path": "/Player/Inventory/舊劍" },
+  { "op": "move",    "from": "/NPCs/A", "to": "/Heroes/鴉" }
+]
+</JSONPatch>"#;
+        let patches = parse_updates(block);
+        assert_eq!(patches.len(), 5);
+        assert_eq!(patches[0].op, PatchOp::Replace);
+        assert_eq!(patches[0].path, vec!["World", "Location"]);
+        assert_eq!(patches[1].op, PatchOp::Delta);
+        assert_eq!(patches[1].path, vec!["Heroes", "亚瑟·晨光", "Affection"]);
+        assert_eq!(patches[2].op, PatchOp::Insert);
+        assert_eq!(patches[3].op, PatchOp::Remove);
+        assert_eq!(patches[3].path, vec!["Player", "Inventory", "舊劍"]);
+        assert_eq!(patches[4].op, PatchOp::Move);
+        assert_eq!(patches[4].from, vec!["NPCs", "A"]);
+        assert_eq!(patches[4].path, vec!["Heroes", "鴉"]);
+    }
+
+    #[test]
+    fn parse_updates_skips_the_broken_object_but_keeps_the_rest() {
+        // 陣列漏逗號：整段 parse 會失敗，退回逐個掃物件，壞的跳過、好的照收。
+        let block = r#"<JSONPatch>[{"op":"delta","path":"/a","value":1} {"op":"delta","path":"/b","value":2}]</JSONPatch>"#;
+        let patches = parse_updates(block);
+        assert_eq!(patches.len(), 2);
+        assert_eq!(patches[0].path, vec!["a"]);
+        assert_eq!(patches[1].path, vec!["b"]);
+    }
+
+    #[test]
+    fn parse_updates_accepts_dot_path_and_code_fence_without_jsonpatch_tag() {
+        let block = "```json\n[{\"op\":\"delta\",\"path\":\"World.HP\",\"value\":-3}]\n```";
+        let patches = parse_updates(block);
+        assert_eq!(patches.len(), 1);
+        assert_eq!(patches[0].path, vec!["World", "HP"]);
+    }
+
+    #[test]
+    fn parse_updates_returns_empty_on_garbage() {
+        assert!(parse_updates("這回覆完全沒有 JSON。").is_empty());
+    }
+
+    // ---- apply_updates：五種 op 各一條 ----
+
+    #[test]
+    fn delta_adds_to_current_value_within_bounds() {
+        let mut tree = tree_from(&[("World.HP", "10")]);
+        let mechanism =
+            mechanism_with(&[("World.HP", rule(FieldKind::Number, Some(0.0), Some(100.0)))]);
+        let patches = vec![Patch {
+            op: PatchOp::Delta,
+            path: vec!["World".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(5)),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert!(outcome.records.is_empty());
+        assert_eq!(tree.get("World"), {
+            let mut inner = BTreeMap::new();
+            inner.insert("HP".to_owned(), StateNode::Leaf("15".to_owned()));
+            Some(&StateNode::Branch(inner))
+        });
+    }
+
+    #[test]
+    fn replace_overwrites_text_field() {
+        let mut tree = tree_from(&[("World.Location", "舊城")]);
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Replace,
+            path: vec!["World".to_owned(), "Location".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!("晨港")),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert!(outcome.records.is_empty());
+        assert_eq!(
+            tree.get("World"),
+            Some(&StateNode::Branch(BTreeMap::from([(
+                "Location".to_owned(),
+                StateNode::Leaf("晨港".to_owned())
+            )])))
+        );
+    }
+
+    #[test]
+    fn insert_creates_missing_branches_and_leaf() {
+        let mut tree: BTreeMap<String, StateNode> = BTreeMap::new();
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Insert,
+            path: vec![
+                "Player".to_owned(),
+                "Inventory".to_owned(),
+                "藥水".to_owned(),
+            ],
+            from: Vec::new(),
+            value: Some(serde_json::json!({ "數量": 2 })),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert!(outcome.records.is_empty());
+        let StateNode::Branch(player) = tree.get("Player").unwrap() else {
+            panic!("Player 應該是分支");
+        };
+        let StateNode::Branch(inventory) = player.get("Inventory").unwrap() else {
+            panic!("Inventory 應該是分支");
+        };
+        assert!(inventory.contains_key("藥水"));
+    }
+
+    #[test]
+    fn remove_deletes_leaf_and_prunes_empty_parent() {
+        let mut tree = tree_from(&[("Player.Inventory.舊劍", "鏽")]);
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Remove,
+            path: vec![
+                "Player".to_owned(),
+                "Inventory".to_owned(),
+                "舊劍".to_owned(),
+            ],
+            from: Vec::new(),
+            value: None,
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert!(outcome.records.is_empty());
+        // Inventory 底下只有這一項，刪掉後 Inventory、Player 都該一併被剪掉。
+        assert!(!tree.contains_key("Player"));
+    }
+
+    #[test]
+    fn move_relocates_subtree_without_recording_anything() {
+        let mut tree = tree_from(&[("NPCs.A.HP", "10")]);
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Move,
+            path: vec!["Heroes".to_owned(), "鴉".to_owned()],
+            from: vec!["NPCs".to_owned(), "A".to_owned()],
+            value: None,
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert!(outcome.records.is_empty());
+        assert!(!tree.contains_key("NPCs"));
+        let StateNode::Branch(heroes) = tree.get("Heroes").unwrap() else {
+            panic!("Heroes 應該是分支");
+        };
+        assert!(heroes.contains_key("鴉"));
+    }
+
+    // ---- 拒收與夾邊界 ----
+
+    #[test]
+    fn replace_absolute_value_on_number_field_is_rejected_and_local_state_unchanged() {
+        let mut tree = tree_from(&[("World.HP", "80")]);
+        let mechanism =
+            mechanism_with(&[("World.HP", rule(FieldKind::Number, Some(0.0), Some(100.0)))]);
+        let patches = vec![Patch {
+            op: PatchOp::Replace,
+            path: vec!["World".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(999)),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+        let StateNode::Branch(world) = tree.get("World").unwrap() else {
+            panic!("World 應該是分支");
+        };
+        assert_eq!(world.get("HP"), Some(&StateNode::Leaf("80".to_owned())));
+    }
+
+    #[test]
+    fn delta_clamps_to_max_and_records_clamped() {
+        let mut tree = tree_from(&[("World.HP", "95")]);
+        let mechanism =
+            mechanism_with(&[("World.HP", rule(FieldKind::Number, Some(0.0), Some(100.0)))]);
+        let patches = vec![Patch {
+            op: PatchOp::Delta,
+            path: vec!["World".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(50)),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Clamped);
+        let StateNode::Branch(world) = tree.get("World").unwrap() else {
+            panic!("World 應該是分支");
+        };
+        assert_eq!(world.get("HP"), Some(&StateNode::Leaf("100".to_owned())));
+    }
+
+    #[test]
+    fn pair_delta_moves_current_value_and_replace_only_changes_cap() {
+        let mut tree = tree_from(&[("亚瑟·晨光.HP", "480/500")]);
+        let mechanism = mechanism_with(&[(
+            "亚瑟·晨光.HP",
+            rule(FieldKind::Pair, Some(0.0), Some(500.0)),
+        )]);
+        let delta_patch = Patch {
+            op: PatchOp::Delta,
+            path: vec!["亚瑟·晨光".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(-30)),
+        };
+        let outcome = apply_updates(&mut tree, &mechanism, std::slice::from_ref(&delta_patch));
+        assert!(outcome.records.is_empty());
+        let StateNode::Branch(character) = tree.get("亚瑟·晨光").unwrap() else {
+            panic!("角色應該是分支");
+        };
+        assert_eq!(
+            character.get("HP"),
+            Some(&StateNode::Leaf("450/500".to_owned()))
+        );
+
+        // replace 只認上限：升級成 450/600（現值不變才收，現值變了要記一筆）。
+        let upgrade_patch = Patch {
+            op: PatchOp::Replace,
+            path: vec!["亚瑟·晨光".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!("450/600")),
+        };
+        let outcome = apply_updates(&mut tree, &mechanism, std::slice::from_ref(&upgrade_patch));
+        assert!(outcome.records.is_empty());
+        let StateNode::Branch(character) = tree.get("亚瑟·晨光").unwrap() else {
+            panic!("角色應該是分支");
+        };
+        assert_eq!(
+            character.get("HP"),
+            Some(&StateNode::Leaf("450/600".to_owned()))
+        );
+
+        // replace 想連現值一起改：上限照改，但現值變動被拒收，本地帳沿用舊現值。
+        let bad_patch = Patch {
+            op: PatchOp::Replace,
+            path: vec!["亚瑟·晨光".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!("999/700")),
+        };
+        let outcome = apply_updates(&mut tree, &mechanism, std::slice::from_ref(&bad_patch));
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+        assert_eq!(
+            outcome.records[0].detail,
+            "亚瑟·晨光.HP 現值 450/600，請用增減量（delta）而不是絕對值。"
+        );
+        let StateNode::Branch(character) = tree.get("亚瑟·晨光").unwrap() else {
+            panic!("角色應該是分支");
+        };
+        assert_eq!(
+            character.get("HP"),
+            Some(&StateNode::Leaf("450/700".to_owned()))
+        );
+    }
+
+    #[test]
+    fn delta_on_missing_path_is_a_hard_error() {
+        let mut tree: BTreeMap<String, StateNode> = BTreeMap::new();
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Delta,
+            path: vec!["World".to_owned(), "HP".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(5)),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Error);
+    }
+
+    #[test]
+    fn delta_on_text_field_is_a_hard_error() {
+        let mut tree = tree_from(&[("World.Location", "晨港")]);
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Delta,
+            path: vec!["World".to_owned(), "Location".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(5)),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Error);
+        let StateNode::Branch(world) = tree.get("World").unwrap() else {
+            panic!("World 應該是分支");
+        };
+        assert_eq!(
+            world.get("Location"),
+            Some(&StateNode::Leaf("晨港".to_owned()))
+        );
+    }
+
+    #[test]
+    fn remove_on_missing_path_is_a_hard_error() {
+        let mut tree: BTreeMap<String, StateNode> = BTreeMap::new();
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Remove,
+            path: vec![
+                "Player".to_owned(),
+                "Inventory".to_owned(),
+                "舊劍".to_owned(),
+            ],
+            from: Vec::new(),
+            value: None,
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Error);
+    }
+
+    #[test]
+    fn underscore_prefixed_field_is_rejected_and_untouched() {
+        let mut tree = tree_from(&[("World._Secret", "隱藏")]);
+        let mechanism = Mechanism::default();
+        let patches = vec![Patch {
+            op: PatchOp::Replace,
+            path: vec!["World".to_owned(), "_Secret".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!("洩漏")),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+        let StateNode::Branch(world) = tree.get("World").unwrap() else {
+            panic!("World 應該是分支");
+        };
+        assert_eq!(
+            world.get("_Secret"),
+            Some(&StateNode::Leaf("隱藏".to_owned()))
+        );
+    }
+
+    #[test]
+    fn wildcard_rule_clamps_any_hero_affection_between_0_and_200() {
+        let mut tree = tree_from(&[("Heroes.亚瑟·晨光.Affection", "190")]);
+        let mechanism = mechanism_with(&[(
+            "Heroes.*.Affection",
+            rule(FieldKind::Number, Some(0.0), Some(200.0)),
+        )]);
+        let patches = vec![Patch {
+            op: PatchOp::Delta,
+            path: vec![
+                "Heroes".to_owned(),
+                "亚瑟·晨光".to_owned(),
+                "Affection".to_owned(),
+            ],
+            from: Vec::new(),
+            value: Some(serde_json::json!(50)),
+        }];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Clamped);
+        let StateNode::Branch(heroes) = tree.get("Heroes").unwrap() else {
+            panic!("Heroes 應該是分支");
+        };
+        let StateNode::Branch(hero) = heroes.get("亚瑟·晨光").unwrap() else {
+            panic!("角色應該是分支");
+        };
+        assert_eq!(
+            hero.get("Affection"),
+            Some(&StateNode::Leaf("200".to_owned()))
+        );
+    }
+
+    // ---- notes：只從 Rejected 產生 ----
+
+    #[test]
+    fn notes_are_deduped_and_capped_at_five() {
+        let mut tree = tree_from(&[("World.Roll100", "42")]);
+        let mechanism = mechanism_with(&[(
+            "World.Roll100",
+            FieldRule {
+                kind: FieldKind::Roll,
+                min: Some(1.0),
+                max: Some(100.0),
+                update: crate::data::UpdateMode::Local,
+                inject: InjectLevel::Turn,
+                branch: None,
+            },
+        )]);
+        let patch = Patch {
+            op: PatchOp::Delta,
+            path: vec!["World".to_owned(), "Roll100".to_owned()],
+            from: Vec::new(),
+            value: Some(serde_json::json!(1)),
+        };
+        let patches = vec![patch.clone(), patch.clone(), patch];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.records.len(), 3);
+        assert_eq!(
+            outcome.notes,
+            vec!["World.Roll100 由系統本地擲骰，請勿更新。".to_owned()]
+        );
+    }
+
+    // ---- reroll ----
+
+    #[test]
+    fn reroll_always_lands_in_range_and_changes_the_value() {
+        let mut tree = tree_from(&[("World.Roll100", "1")]);
+        let mechanism = mechanism_with(&[(
+            "World.Roll100",
+            FieldRule {
+                kind: FieldKind::Roll,
+                min: Some(1.0),
+                max: Some(6.0),
+                update: crate::data::UpdateMode::Local,
+                inject: InjectLevel::Turn,
+                branch: None,
+            },
+        )]);
+        let mut saw_change = false;
+        for _ in 0..30 {
+            reroll(&mut tree, &mechanism);
+            let StateNode::Branch(world) = tree.get("World").unwrap() else {
+                panic!("World 應該是分支");
+            };
+            let StateNode::Leaf(value) = world.get("Roll100").unwrap() else {
+                panic!("Roll100 應該是葉子");
+            };
+            let parsed: i64 = value.parse().expect("骰值應該是整數字串");
+            assert!((1..=6).contains(&parsed));
+            if value != "1" {
+                saw_change = true;
+            }
+        }
+        assert!(saw_change, "30 次重擲全部落在同一個值，機率上不合理");
+    }
+
+    // ---- 整合測試：從一段完整的 <UpdateVariable> 原文一路跑到樹被更新 ----
+
+    #[test]
+    fn full_update_variable_block_parses_and_applies_to_the_tree() {
+        let mut tree = tree_from(&[
+            ("World.Location", "舊港"),
+            ("Heroes.亚瑟·晨光.Affection", "10"),
+            ("Player.Inventory.舊劍", "鏽蝕"),
+        ]);
+        let mechanism = mechanism_with(&[(
+            "Heroes.*.Affection",
+            rule(FieldKind::Number, Some(0.0), Some(200.0)),
+        )]);
+        let block = r#"<Analysis>Some english reasoning about the scene.</Analysis>
+<JSONPatch>
+[
+  { "op": "replace", "path": "/World/Location", "value": "晨港" },
+  { "op": "delta",   "path": "/Heroes/亚瑟·晨光/Affection", "value": 5 },
+  { "op": "insert",  "path": "/Player/Inventory/藥水", "value": { "描述": "紅色的", "數量": 2 } },
+  { "op": "remove",  "path": "/Player/Inventory/舊劍" }
+]
+</JSONPatch>"#;
+        let patches = parse_updates(block);
+        assert_eq!(patches.len(), 4);
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert!(outcome.records.is_empty());
+
+        let StateNode::Branch(world) = tree.get("World").unwrap() else {
+            panic!("World 應該是分支");
+        };
+        assert_eq!(
+            world.get("Location"),
+            Some(&StateNode::Leaf("晨港".to_owned()))
+        );
+
+        let StateNode::Branch(heroes) = tree.get("Heroes").unwrap() else {
+            panic!("Heroes 應該是分支");
+        };
+        let StateNode::Branch(hero) = heroes.get("亚瑟·晨光").unwrap() else {
+            panic!("角色應該是分支");
+        };
+        assert_eq!(
+            hero.get("Affection"),
+            Some(&StateNode::Leaf("15".to_owned()))
+        );
+
+        let StateNode::Branch(player) = tree.get("Player").unwrap() else {
+            panic!("Player 應該是分支");
+        };
+        let StateNode::Branch(inventory) = player.get("Inventory").unwrap() else {
+            panic!("Inventory 應該是分支");
+        };
+        assert!(inventory.contains_key("藥水"));
+        assert!(!inventory.contains_key("舊劍"));
+    }
+
+    // ---- apply_block：平欄／樹欄套用＋增量本地權威一次跑完 ----
+
+    fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::WorldState {
+        data::WorldState {
+            id: "01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            name: "測試桌".to_owned(),
+            model_bindings: BTreeMap::new(),
+            player_card_id: None,
+            current_scene: 0,
+            catchup_summaries: BTreeMap::new(),
+            scene_titles: BTreeMap::new(),
+            state: data::TableState {
+                table: BTreeMap::new(),
+                tree: tree_from(pairs),
+                notes: Vec::new(),
+            },
+            mechanism,
+        }
+    }
+
+    #[test]
+    fn apply_block_merges_fields_applies_updates_and_records_notes_onto_state() {
+        let mechanism =
+            mechanism_with(&[("World.HP", rule(FieldKind::Number, Some(0.0), Some(100.0)))]);
+        let mut world = world_with(&[("World.HP", "80")], mechanism);
+        let block = crate::transport::StateBlock {
+            fields: vec![(
+                vec!["World".to_owned(), "Location".to_owned()],
+                "晨港".to_owned(),
+            )],
+            updates: vec![
+                r#"<JSONPatch>[{"op":"replace","path":"/World/HP","value":999}]</JSONPatch>"#
+                    .to_owned(),
+            ],
+            display: String::new(),
+        };
+
+        let outcome = apply_block(&mut world, &block);
+
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+        assert!(!world.state.notes.is_empty());
+        assert_eq!(world.state.notes, outcome.notes);
+
+        let StateNode::Branch(world_branch) = world.state.tree.get("World").unwrap() else {
+            panic!("World 應該是分支");
+        };
+        // 絕對值被拒收，本地帳沿用舊值；平欄套用的 Location 正常寫入。
+        assert_eq!(
+            world_branch.get("HP"),
+            Some(&StateNode::Leaf("80".to_owned()))
+        );
+        assert_eq!(
+            world_branch.get("Location"),
+            Some(&StateNode::Leaf("晨港".to_owned()))
+        );
+    }
+
+    // ---- append_log：記帳落檔 ----
+
+    #[test]
+    fn append_log_writes_one_json_line_per_record_with_all_fields() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-mechanism-log-{}",
+            ulid::Ulid::generate()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+
+        let records = vec![
+            Record::new(
+                RecordKind::Rejected,
+                "World.HP".to_owned(),
+                "World.HP 現值 80，請用增減量（delta）而不是絕對值。".to_owned(),
+            ),
+            Record::new(
+                RecordKind::Absorbed,
+                "[mvu_update] 規則".to_owned(),
+                "機制鷹架條目，已由本地機制接管，不再送入提示詞。".to_owned(),
+            ),
+        ];
+        append_log(&root, &world_id, 3, &records);
+
+        let text =
+            std::fs::read_to_string(data::mechanism_log_path(&root, &world_id).unwrap()).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2);
+        for (line, record) in lines.iter().zip(&records) {
+            let value: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert!(value
+                .get("ts")
+                .and_then(serde_json::Value::as_str)
+                .is_some());
+            assert_eq!(value["scene"].as_u64(), Some(3));
+            assert_eq!(value["path"].as_str(), Some(record.path.as_str()));
+            assert_eq!(value["detail"].as_str(), Some(record.detail.as_str()));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

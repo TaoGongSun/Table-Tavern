@@ -328,7 +328,7 @@ fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
         ReplyEcho::Narration => ExpectedReply {
             speaker_id: String::new(),
             kind: TranscriptKind::Narration,
-            text: transport::extract_next_speaker(&transport::extract_state_block(reply).1).1,
+            text: transport::extract_next_speaker(&transport::extract_state_block(reply).display).1,
         },
     }
 }
@@ -706,6 +706,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
 
     fn event(kind: TranscriptKind, speaker_id: &str, name: &str, text: &str) -> TranscriptEvent {
         TranscriptEvent {
+            raw: None,
             ts: "2026-08-03T21:00:00+08:00".to_owned(),
             speaker_id: speaker_id.to_owned(),
             speaker_name: name.to_owned(),

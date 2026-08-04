@@ -67,9 +67,12 @@ interface TranscriptEvent {
   speaker_name: string;
   kind: "dialogue" | "narration" | "player" | "system";
   text: string;
+  // 剝殼前的模型原文（狀態區塊與點名行都還在）；沒剝到東西就沒這欄
+  raw?: string;
   state?: {
     table: Record<string, string>;
-    characters: Record<string, Record<string, string>>;
+    tree?: Record<string, unknown>;
+    notes?: string[];
   };
 }
 
@@ -4016,11 +4019,11 @@ function App() {
     setStreamText("");
     const onDelta = new Channel<string>();
     onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-    const { text, next } = await invoke<{ text: string; next: string | null }>("gm_narrate", {
+    const { text, raw, next } = await invoke<{ text: string; raw: string | null; next: string | null }>("gm_narrate", {
       worldId: table,
       onDelta,
     });
-    await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text });
+    await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) });
     await refreshTableState();
     await markCliConnectedFromChat();
     noteTurnDone();
