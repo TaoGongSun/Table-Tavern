@@ -66,6 +66,7 @@ interface CardInterface {
   character_name: string;
   scripts: InterfaceScript[];
   unsupported: string | null;
+  opening: string | null;
 }
 
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
@@ -3331,9 +3332,8 @@ function App() {
 
   // 目前要顯示的卡片介面殼：由近到遠掃最近 10 則，跳過玩家發言（介面藏在 GM／角色那則的原文標籤裡）
   const cardInterfaceShell = useMemo(() => {
-    const scripts = cardInterfaces
-      .filter((card) => card.unsupported === null)
-      .flatMap((card) => card.scripts);
+    const cards = cardInterfaces.filter((card) => card.unsupported === null);
+    const scripts = cards.flatMap((card) => card.scripts);
     if (scripts.length === 0) return null;
     const recent = events.slice(-10);
     for (let i = recent.length - 1; i >= 0; i -= 1) {
@@ -3341,6 +3341,13 @@ function App() {
       if (event.kind === "player") continue;
       const shell = extractShell(applyScripts(event.raw ?? event.text, scripts));
       if (shell !== null) return shell;
+    }
+    // 空桌退回卡片自己的開場白：這類卡的開場就是一整頁選角畫面，玩家得先在那裡選了才有第一句話
+    if (events.length === 0) {
+      for (const card of cards) {
+        const shell = card.opening && extractShell(applyScripts(card.opening, scripts));
+        if (shell) return shell;
+      }
     }
     return null;
   }, [events, cardInterfaces]);
@@ -3815,24 +3822,29 @@ function App() {
       } catch {
         // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
       }
+      // 世界書卡沒有「照樣匯成角色卡」這條路：那樣會把整包設定條目（含輸出格式規定）丟掉，卡就玩不動了
       if (probe.lorebook_heavy) {
-        const redirect = await confirm(t("importLorebookRedirect"), {
+        const go = await confirm(t("importLorebookRedirect"), {
           title: t("importCard"),
           kind: "info",
           okLabel: t("importRedirectOk"),
           cancelLabel: t("importRedirectCancel"),
         });
-        if (redirect) {
-          const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data });
-          await showMessage(
-            t("importRedirectDone", { n: result.imported }) +
-              (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
-            { title: t("importCard") },
-          );
-          if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
-          await offerOpeningLine(data);
-          return;
-        }
+        if (!go) return;
+        const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data });
+        await showMessage(
+          t("importRedirectDone", { n: result.imported }) +
+            (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
+          { title: t("importCard") },
+        );
+        if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+        setCardInterfaces(
+          await invoke<CardInterface[]>("card_interfaces", { worldId: table }).catch(
+            () => [] as CardInterface[],
+          ),
+        );
+        await offerOpeningLine(data);
+        return;
       }
       const meta = await invoke<CharacterMeta>("import_character", {
         worldId: table,

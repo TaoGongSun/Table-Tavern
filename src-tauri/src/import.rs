@@ -62,23 +62,30 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     if serialized.contains("<%") {
         probe.scripts.push("template".to_owned());
     }
+    // 世界書卡＝內容重心壓倒性地在世界書條目上，看比重而非人設絕對字數：
+    // 這種卡匯成角色卡會把整包條目（含輸出格式規定）丟掉，卡就玩不動了。
+    // 真卡實測：西幻卡人設 988 字、世界書 21,678 字（22 倍），舊的「人設少於 200 字」條件漏判它。
     probe.lorebook_heavy = card_data
         .get("character_book")
         .and_then(|book| book.get("entries"))
         .and_then(Value::as_array)
         .is_some_and(|entries| {
-            entries.len() >= 3
-                && ["description", "personality", "scenario"]
-                    .into_iter()
-                    .map(|field| {
-                        string_field(card_data, field)
-                            .unwrap_or("")
-                            .trim()
-                            .chars()
-                            .count()
-                    })
-                    .sum::<usize>()
-                    < 200
+            let book: usize = entries
+                .iter()
+                .filter_map(|entry| entry.get("content").and_then(Value::as_str))
+                .map(|content| content.chars().count())
+                .sum();
+            let persona: usize = ["description", "personality", "scenario", "mes_example"]
+                .into_iter()
+                .map(|field| {
+                    string_field(card_data, field)
+                        .unwrap_or("")
+                        .trim()
+                        .chars()
+                        .count()
+                })
+                .sum();
+            entries.len() >= 3 && book >= persona.saturating_mul(3)
         });
     probe.alternate_greetings = card_data
         .get("alternate_greetings")
@@ -163,6 +170,9 @@ pub struct CardInterface {
     pub character_name: String,
     pub scripts: Vec<InterfaceScript>,
     pub unsupported: Option<String>,
+    /// 卡片自帶的開場白原文。空桌（一則訊息都還沒有）時，面板拿它當來源，
+    /// 這樣「開場就是一整頁角色選擇畫面」的卡片一匯入就看得到入口。
+    pub opening: Option<String>,
 }
 
 /// 掃描每張已匯入卡的原始卡檔（PNG／.import.json），抽出可渲染的顯示腳本。
@@ -198,10 +208,71 @@ pub fn read_card_interfaces(root: &Path, world_id: &str) -> DataResult<Vec<CardI
             .unwrap_or(&value);
         result.push(card_interface(&meta.id, &meta.name, card_data));
     }
+    for extension in ["png", "import.json"] {
+        let Ok(raw_path) = data::world_card_path(root, world_id, extension) else {
+            continue;
+        };
+        let Ok(bytes) = fs::read(&raw_path) else {
+            continue;
+        };
+        let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+            match decode_png_character(&bytes) {
+                Ok(bytes) => bytes,
+                Err(_) => continue,
+            }
+        } else {
+            bytes
+        };
+        let Ok(value) = serde_json::from_slice::<Value>(&json_bytes) else {
+            continue;
+        };
+        let card_data = value
+            .get("data")
+            .filter(|data| data.is_object())
+            .unwrap_or(&value);
+        let name = string_field(card_data, "name").unwrap_or("");
+        result.push(card_interface("", name, card_data));
+    }
     Ok(result)
 }
 
+/// 世界書路徑也把原始卡檔留下來——那張卡的介面殼還在裡面。
+/// 只有真的帶顯示腳本的卡才留，純世界書檔不必白存一份。回傳有沒有留。
+pub fn save_world_card(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
+    let (json_bytes, extension): (Vec<u8>, &str) = if bytes.starts_with(PNG_MAGIC) {
+        match decode_png_character(bytes) {
+            Ok(json_bytes) => (json_bytes, "png"),
+            Err(_) => return false,
+        }
+    } else {
+        (bytes.to_vec(), "import.json")
+    };
+    let Ok(value) = serde_json::from_slice::<Value>(&json_bytes) else {
+        return false;
+    };
+    let card_data = value
+        .get("data")
+        .filter(|data| data.is_object())
+        .unwrap_or(&value);
+    let has_regex_scripts = card_data
+        .get("extensions")
+        .and_then(|extensions| extensions.get("regex_scripts"))
+        .and_then(Value::as_array)
+        .is_some_and(|scripts| !scripts.is_empty());
+    if !has_regex_scripts {
+        return false;
+    }
+    let Ok(path) = data::world_card_path(root, world_id, extension) else {
+        return false;
+    };
+    fs::write(path, bytes).is_ok()
+}
+
 fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -> CardInterface {
+    let opening = string_field(card_data, "first_mes")
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned);
     let is_scrypt = [
         string_field(card_data, "first_mes"),
         string_field(card_data, "description"),
@@ -215,6 +286,7 @@ fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -
             character_name: character_name.to_owned(),
             scripts: Vec::new(),
             unsupported: Some("scrypt".to_owned()),
+            opening,
         };
     }
 
@@ -234,6 +306,7 @@ fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -
         character_name: character_name.to_owned(),
         scripts: if is_remote_loader { Vec::new() } else { scripts },
         unsupported: is_remote_loader.then(|| "remote_loader".to_owned()),
+        opening,
     }
 }
 
@@ -1609,6 +1682,37 @@ mod tests {
         );
         assert!(sparse.lorebook_heavy);
 
+        // 西幻真卡的比例：人設 988 字、世界書 21,678 字。人設不算短，重心仍壓倒性在世界書
+        let simulator = probe_import(
+            json!({"data":{
+                "character_book":{"entries":[
+                    {"content":"世".repeat(7000)},
+                    {"content":"界".repeat(7000)},
+                    {"content":"書".repeat(7678)},
+                ]},
+                "description":"長".repeat(988),
+            }})
+            .to_string()
+            .as_bytes(),
+        );
+        assert!(simulator.lorebook_heavy);
+
+        // 一般角色卡：帶著自己的隨身設定，但重心還在人設上
+        let character = probe_import(
+            json!({"data":{
+                "character_book":{"entries":[
+                    {"content":"故鄉".repeat(200)},
+                    {"content":"家人".repeat(200)},
+                    {"content":"秘密".repeat(200)},
+                ]},
+                "description":"人".repeat(2000),
+                "mes_example":"例".repeat(1000),
+            }})
+            .to_string()
+            .as_bytes(),
+        );
+        assert!(!character.lorebook_heavy);
+
         let detailed = probe_import(
             json!({"data":{"character_book":{"entries":[{}, {}, {}]},"description":"長".repeat(300)}})
                 .to_string()
@@ -2153,6 +2257,80 @@ mod tests {
             meta.id
         ));
         fs::write(&raw_path, b"\xff\xfe not json").unwrap();
+
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert!(interfaces.is_empty());
+    }
+
+    /// 世界書路徑：帶顯示腳本的卡存下來後，讀出的介面與角色卡路徑篩選結果一致。
+    #[test]
+    fn save_world_card_persists_display_scripts_for_worldbook_path() {
+        let root = TestRoot::new("world-card-scripts");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "extensions": {
+                    "regex_scripts": [{
+                        "scriptName": "顯示介面",
+                        "findRegex": "/.+/s",
+                        "replaceString": "<div>ok</div>",
+                        "placement": [2]
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        assert!(save_world_card(root.path(), &world_id, raw.as_bytes()));
+
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces[0].character_id, "");
+        assert_eq!(interfaces[0].character_name, "莉亞");
+        assert_eq!(interfaces[0].unsupported, None);
+        assert_eq!(interfaces[0].scripts.len(), 1);
+        assert_eq!(interfaces[0].scripts[0].name, "顯示介面");
+    }
+
+    /// 純世界書 JSON（沒有 regex_scripts）不必白存一份原始卡檔。
+    #[test]
+    fn save_world_card_skips_plain_worldbook_json() {
+        let root = TestRoot::new("world-card-plain");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = r#"{"entries":{"0":{"uid":0,"key":["龍"],"content":"沉睡"}}}"#;
+
+        assert!(!save_world_card(root.path(), &world_id, raw.as_bytes()));
+
+        let png_path = data::world_card_path(root.path(), &world_id, "png").unwrap();
+        let json_path = data::world_card_path(root.path(), &world_id, "import.json").unwrap();
+        assert!(!png_path.exists());
+        assert!(!json_path.exists());
+    }
+
+    /// 卡片自帶開場白：有值就填入、空字串當沒有。
+    #[test]
+    fn card_interface_fills_opening_from_first_mes() {
+        let with_opening = card_interface(
+            "id-1",
+            "莉亞",
+            &json!({"name": "莉亞", "first_mes": "妳來了。"}),
+        );
+        assert_eq!(with_opening.opening, Some("妳來了。".to_owned()));
+
+        let without_opening =
+            card_interface("id-2", "莉亞", &json!({"name": "莉亞", "first_mes": ""}));
+        assert_eq!(without_opening.opening, None);
+    }
+
+    /// 世界層級的原始卡檔壞掉，一樣只能略過，不能讓整份清單報錯。
+    #[test]
+    fn read_card_interfaces_skips_corrupted_world_level_card() {
+        let root = TestRoot::new("world-card-corrupt");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let path = data::world_card_path(root.path(), &world_id, "import.json").unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"\xff\xfe not json").unwrap();
 
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert!(interfaces.is_empty());

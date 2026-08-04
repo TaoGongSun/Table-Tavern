@@ -494,6 +494,12 @@ pub(crate) fn mechanism_log_path(root: &Path, world_id: &str) -> DataResult<Path
     Ok(world_dir(root, world_id)?.join("mechanism-log.jsonl"))
 }
 
+/// 世界書路徑匯入的原始卡檔：worlds/<world_id>/source-card.<png|import.json>。
+/// 卡片自帶介面要靠它，角色卡路徑則是留在角色檔旁邊。
+pub(crate) fn world_card_path(root: &Path, world_id: &str, extension: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join(format!("source-card.{extension}")))
+}
+
 /// 生成圖庫目錄，落在世界目錄內：worlds/<world_id>/gen-gallery/<character_id>。
 pub(crate) fn gallery_dir(root: &Path, world_id: &str, character_id: &str) -> DataResult<PathBuf> {
     validate_id(character_id)?;
