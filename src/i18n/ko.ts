@@ -379,4 +379,8 @@ export const ko: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "카드 인터페이스",
   cardInterfaceClose: "인터페이스 닫기",
+
+  importCardInterface: "이 카드에는 전용 화면이 들어 있습니다. 테이블을 연 뒤 채팅 위쪽의 「카드 인터페이스」를 누르면 전체 화면으로 열립니다.",
+  importCardScrypt: "이 카드의 화면은 제작자가 암호화해 놓아 표시할 수 없습니다. 캐릭터 설정과 세계관 자료는 평소대로 가져오며 대화에는 영향이 없습니다.",
+  importCardRemoteLoader: "이 카드의 화면은 제작자 사이트에 접속해야만 표시되며, 본 앱은 이를 지원하지 않습니다. 캐릭터 설정과 세계관 자료는 평소대로 가져오며 대화에는 영향이 없습니다.",
 };

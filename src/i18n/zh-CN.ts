@@ -379,4 +379,8 @@ export const zhCN: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "卡片界面",
   cardInterfaceClose: "关闭界面",
+
+  importCardInterface: "这张卡自带界面画面。开桌后点聊天上方的「卡片界面」就能整面打开。",
+  importCardScrypt: "这张卡的界面被作者加密保护，无法显示；人设与世界书照常导入，对话不受影响。",
+  importCardRemoteLoader: "这张卡的界面需要连接作者的网站才能显示，本 app 不支持；人设与世界书照常导入，对话不受影响。",
 };

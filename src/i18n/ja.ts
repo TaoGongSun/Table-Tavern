@@ -379,4 +379,8 @@ export const ja: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "カード画面",
   cardInterfaceClose: "画面を閉じる",
+
+  importCardInterface: "このカードには専用の画面が付いています。卓を開いたらチャット上部の「カード画面」を押すと全画面で開けます。",
+  importCardScrypt: "このカードの画面は作者によって暗号化されていて表示できません。設定と世界観資料は通常どおり読み込まれ、会話にも影響しません。",
+  importCardRemoteLoader: "このカードの画面は作者のサイトに接続しないと表示できず、本アプリでは対応していません。設定と世界観資料は通常どおり読み込まれ、会話にも影響しません。",
 };

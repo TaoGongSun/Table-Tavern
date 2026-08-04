@@ -379,4 +379,11 @@ export const ptBR: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "Interface da Carta",
   cardInterfaceClose: "Fechar interface",
+
+  importCardInterface:
+    "Este cartão vem com sua própria interface. Depois de abrir a mesa, clique em \"Interface da Carta\" acima do chat para abri-la em tela cheia.",
+  importCardScrypt:
+    "A interface deste cartão foi criptografada pelo autor e não pode ser exibida. O personagem e o livro do mundo são importados normalmente, e o chat não é afetado.",
+  importCardRemoteLoader:
+    "A interface deste cartão só carrega conectando ao site do autor, o que este app não suporta. O personagem e o livro do mundo são importados normalmente, e o chat não é afetado.",
 };
