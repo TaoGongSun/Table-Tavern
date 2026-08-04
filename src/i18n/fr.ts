@@ -376,4 +376,7 @@ export const fr: Record<MsgKey, string> = {
   errAuth: "Cette source d'IA n'est pas connectée, ou ses identifiants ont expiré. Reconnecte-la dans les Paramètres, puis réessaie.",
   errNoImage: "Cette source ne peut pas générer d'images : crédit insuffisant, ou formule ne comprenant pas la génération d'images. Essaie une autre source.",
   errRefused: "La source a refusé cette description, généralement à cause des règles de contenu. Reformule-la, ou essaie une autre source.",
+
+  cardInterfaceOpen: "Interface de carte",
+  cardInterfaceClose: "Fermer l'interface",
 };

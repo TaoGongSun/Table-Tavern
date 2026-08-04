@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- [interface-card-panel](tasks/interface-card-panel.md) — 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板） — 下一步：2026-08-04 開工分三包，包 1 Rust 讀取端完成（cargo test 277 綠）；面板拍板為全螢幕覆蓋層、只渲染最新一則；下次做包 2 前端渲染（`src/interface-card.ts` 三個純函式起）
+- [interface-card-panel](tasks/interface-card-panel.md) — 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板） — 下一步：2026-08-04 包 1（Rust 讀取端）＋包 2（前端渲染＋全螢幕覆蓋層）完成，cargo test 277／vitest 14／tsc／check:i18n／build 全綠，西幻真卡端對端四項過（開場畫面、五大區塊、橋接墊片、壞殼回退）；剩包 3＝匯入提示分流＋真 app 實測
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：包 1–5 完成（2026-08-04，cargo test 272 綠；勇者實卡回合尾 3,127→530 字元）；剩包 6–8，下次挑包 7（觸發表＋固定型 EJS 解析）
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28）；待討論議程三項全數結案（提示詞標籤 07-30、生圖失敗訊息分流 08-01、Ko-fi 導購歧義 08-03 連結已直指商品頁），唯一剩餘＝使用者實測三項
 - [release-3-kofi](tasks/release-3-kofi.md) — 發佈 3：Ko-fi 開帳與金流（多為使用者本人操作） — 下一步：商品頁已上線（2026-07-30，連結已進 app）；剩確認 .ttpack 掛檔發貨、說明文案定稿、首筆提領實測
