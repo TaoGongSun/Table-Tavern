@@ -3,7 +3,7 @@ Task-ID: card-import-flow
 Title: 匯入流程 v2：單一入口＋收據復原＋第二張卡路由
 Status: in-progress
 Created: 2026-08-04T19:00:00+08:00
-Updated: 2026-08-04T19:00:00+08:00
+Updated: 2026-08-05T00:40:00+08:00
 
 ## Summary
 匯入卡的流程整修（2026-08-04 兩輪拍板）：一顆按鈕進、問不問看檔案內容；每次匯入記收據可一鍵倒退；第二張卡跳「開新桌？」路由框治「忘了開新桌」誤按，雙世界書硬擋；卡名自動當桌名；世界書匯入後目標一律指 GM。AI 重構按鈕另案（等狀態欄二期真桌實跑後細拍）。
@@ -17,18 +17,18 @@ Updated: 2026-08-04T19:00:00+08:00
 6. **世界書匯入後一律 setSpeaker(GM)**：兩條路徑（GM 編輯區、選擇框世界書分支）都改，現況只有零角色才指。
 7. 第二張角色卡零說教零警告（路由框即誤按攔截）；衝突善後交給收據復原。
 
-## 分包（依序執行，2–4 都動同一區程式碼禁並行）
-### 包 1：小件主線直改（小）
+## 分包（依序執行，2–4 都動同一區程式碼禁並行）— 四包全數完成 2026-08-05
+### 包 1：小件主線直改（小）— 完成
 世界書匯入後一律指 GM（拍板 6）＋匯入成功後自動名桌改卡名（拍板 5 的桌內半段）。零新 i18n 字串。
 
-### 包 2：匯入收據＋復原（大）
-後端收據落 `worlds/<id>/import-receipts.json`：import_character／import_worldbook 兩路徑記實際新增（含 import_mechanism、import_table_tavern_extension、save_world_card 寫入面）；undo 指令逐筆倒退（拍板 3 邊界）。前端側欄匯入鈕旁「復原上次匯入」（有收據才顯示），復原後若 speaker 指向被刪角色改回 GM。
+### 包 2：匯入收據＋復原（大）— 完成
+後端收據落 `worlds/<id>/import-receipts.json`（receipts.rs，快照 diff 手法；空匯入不留收據）：import_character／import_worldbook 兩路徑記實際新增（含 import_mechanism、import_table_tavern_extension、save_world_card 寫入面）；undo 指令逐筆倒退（拍板 3 邊界）。前端側欄匯入鈕旁「復原上次匯入」（有收據才顯示），復原後若 speaker 指向被刪角色改回 GM。
 
-### 包 3：單一入口＋類型選擇框（中）
-拍板 1＋2。i18n 新字串十語系全補。
+### 包 3：單一入口＋類型選擇框（中）— 完成
+拍板 1＋2。probe 訊號：parsed／name／book_entries／book_shaped（主線驗收時補：V2 獨立世界書 JSON 頂層自帶書名＋entries，靠它不被誤判成角色卡，書名並用作桌名）。
 
-### 包 4：第二張卡路由框（中）
-拍板 4＋「開新桌並匯入」（create_world(卡名)→進桌→匯入，原桌不動；沿用包 1 桌名邏輯）。i18n 新字串十語系全補。
+### 包 4：第二張卡路由框（中）— 完成
+拍板 4＋「開新桌並匯入」（create_world(label)→顯式 worldId 匯入→enterTable，原桌不動）。路由決策抽純函式 src/import-routing.ts＋vitest 5 例。
 
 ## 不做清單
 - **AI 卡重構按鈕**：另案，等 state-values-mvu 真桌實跑的未收編帳本分佈再細拍。入口方向已拍（帳本非空才問、帳本區可補按、旗標防重複、產物走收據可倒退）。

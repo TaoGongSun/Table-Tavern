@@ -401,4 +401,12 @@ export const ptBR: Record<MsgKey, string> = {
     "A interface deste cartão foi criptografada pelo autor e não pode ser exibida. O personagem e o livro do mundo são importados normalmente, e o chat não é afetado.",
   importCardRemoteLoader:
     "A interface deste cartão só carrega conectando ao site do autor, o que este app não suporta. O personagem e o livro do mundo são importados normalmente, e o chat não é afetado.",
+
+  // Roteamento do segundo cartão (só aparece quando esta mesa já tem uma importação)
+  importRouteAskTitle: "Importar para qual mesa?",
+  importRouteAskBody: "Esta mesa já tem uma importação — este cartão novo provavelmente é para uma mesa nova.",
+  importRouteBlockTitle: "Esta mesa já tem um livro do mundo",
+  importRouteBlockBody: "Não dá para empilhar dois livros do mundo na mesma mesa — abra uma mesa nova para este.",
+  importRouteNewTable: "Nova mesa + importar",
+  importRouteThisTable: "Importar aqui",
 };

@@ -398,4 +398,12 @@ export const ko: Record<MsgKey, string> = {
   importCardInterface: "이 카드에는 전용 화면이 들어 있습니다. 테이블을 연 뒤 채팅 위쪽의 「카드 인터페이스」를 누르면 전체 화면으로 열립니다.",
   importCardScrypt: "이 카드의 화면은 제작자가 암호화해 놓아 표시할 수 없습니다. 캐릭터 설정과 세계관 자료는 평소대로 가져오며 대화에는 영향이 없습니다.",
   importCardRemoteLoader: "이 카드의 화면은 제작자 사이트에 접속해야만 표시되며, 본 앱은 이를 지원하지 않습니다. 캐릭터 설정과 세계관 자료는 평소대로 가져오며 대화에는 영향이 없습니다.",
+
+  // 두 번째 카드 라우팅 (이 테이블에 이미 가져온 기록이 있을 때만 나타남)
+  importRouteAskTitle: "어느 테이블에 가져올까요?",
+  importRouteAskBody: "이 테이블에는 이미 가져온 카드가 있습니다. 이 새 카드는 아마 새 테이블용일 거예요.",
+  importRouteBlockTitle: "이 테이블에는 이미 월드북이 있습니다",
+  importRouteBlockBody: "월드북은 한 테이블에 두 개를 쌓을 수 없습니다. 이 카드는 새 테이블에서 열어 주세요.",
+  importRouteNewTable: "새 테이블로 가져오기",
+  importRouteThisTable: "여기로 가져오기",
 };

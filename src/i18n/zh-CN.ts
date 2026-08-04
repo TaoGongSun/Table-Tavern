@@ -397,4 +397,12 @@ export const zhCN: Record<MsgKey, string> = {
   importCardInterface: "这张卡自带界面画面。开桌后点聊天上方的「卡片界面」就能整面打开。",
   importCardScrypt: "这张卡的界面被作者加密保护，无法显示；人设与世界书照常导入，对话不受影响。",
   importCardRemoteLoader: "这张卡的界面需要连接作者的网站才能显示，本 app 不支持；人设与世界书照常导入，对话不受影响。",
+
+  // 第二张卡路由框（桌上已有导入记录才会跳出来）
+  importRouteAskTitle: "导入到哪一桌？",
+  importRouteAskBody: "这桌已经导入过卡，这张新卡通常是要开一桌新的。",
+  importRouteBlockTitle: "这桌已经有一份世界书了",
+  importRouteBlockBody: "两份世界书没办法叠在同一桌，开新桌导入这一份。",
+  importRouteNewTable: "新开一桌并导入",
+  importRouteThisTable: "导入这桌",
 };
