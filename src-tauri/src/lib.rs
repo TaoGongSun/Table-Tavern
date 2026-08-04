@@ -1745,6 +1745,10 @@ async fn generate_table_expand(
         .map(|expanded| genesis::materialize(&data_root(&app)?, &expanded))
         .transpose()
         .map_err(|error| error.to_string())?;
+    // 開桌這幾次呼叫的額度就是為這桌花的：桌一建好就把剛才那些行認領回來（見 usage_log）
+    if let (Some(id), Ok(root)) = (&world_id, data_root(&app)) {
+        usage_log::assign_pending_world(&root.join("prompt-cache.jsonl"), id);
+    }
     Ok(ExpandOutcome { world_id, raw })
 }
 

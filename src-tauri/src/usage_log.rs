@@ -185,6 +185,35 @@ pub fn append_unreported(path: &Path, world: Option<&str>, transport: &str, mode
     append(path, fields);
 }
 
+/// 開桌生成的呼叫發生在桌建出來之前，落檔當下還不知道桌 id。桌一建好就把還沒認領的行
+/// （沒有 `world` 欄的）補上——那些額度就是為這桌花的。前一次半途放棄的開桌嘗試若還留著
+/// 未認領的行，會一起算進這桌：同樣是開桌花的錢，比留一個看不懂的分類好。
+/// 暫存檔＋rename，中途失敗不會把 log 寫壞；任何一步失敗就放著不動。
+pub fn assign_pending_world(path: &Path, world: &str) {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let mut changed = false;
+    let claimed: Vec<String> = text
+        .lines()
+        .map(|line| match serde_json::from_str::<Value>(line) {
+            Ok(Value::Object(mut fields)) if !fields.contains_key("world") => {
+                fields.insert("world".to_owned(), json!(world));
+                changed = true;
+                serde_json::to_string(&Value::Object(fields)).unwrap_or_else(|_| line.to_owned())
+            }
+            _ => line.to_owned(),
+        })
+        .collect();
+    if !changed {
+        return;
+    }
+    let temporary = path.with_extension("jsonl.tmp");
+    if std::fs::write(&temporary, claimed.join("\n") + "\n").is_ok() {
+        let _ = std::fs::rename(&temporary, path);
+    }
+}
+
 /// 沒有用量數字的線事件（目前只有抹寫失敗丟線）。
 pub fn append_event(path: &Path, world: Option<&str>, lane: &str, diag: Diag, reason: &str) {
     let mut fields = Map::new();
@@ -345,6 +374,32 @@ mod tests {
         assert_eq!(unreported["transport"], json!("agy"));
         assert_eq!(unreported["unreported"], json!(true));
         assert!(unreported.get("world").is_none());
+    }
+
+    /// 開桌生成落檔時桌還沒建出來；桌一建好，那幾行要認到這桌名下，已經有桌的不受影響。
+    #[test]
+    fn pending_lines_are_claimed_by_the_table_they_created() {
+        let dir = std::env::temp_dir().join(format!("tt-usage-claim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("prompt-cache.jsonl");
+
+        append_call(&path, None, "claude", "opus", None, usage(500, 0, 0)); // 開桌大綱
+        append_call(&path, None, "claude", "opus", None, usage(900, 0, 0)); // 開桌展開
+        append_call(&path, Some("w9"), "claude", "sonnet", None, usage(100, 0, 0)); // 別桌，不該被動到
+        assign_pending_world(&path, "w1");
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let worlds: Vec<String> = text
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap()["world"].to_string())
+            .collect();
+        assert_eq!(worlds, ["\"w1\"", "\"w1\"", "\"w9\""]);
+        // 其餘欄位原樣保留
+        let first: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+        assert_eq!(first["prompt_tokens"], json!(500));
+        assert_eq!(first["diag"], json!("single"));
     }
 
     /// 中日韓一字約一 token、英數約四字元一 token；只求同一個數量級。
