@@ -334,6 +334,10 @@ export const zh = {
   stateSummaryPresent: "在場：",
   stateEmptyValue: "—",
   stateEditHint: "點一下可以改",
+  stateBranchUnbound: "未指認",
+  stateBranchBindAria: "指認這支狀態屬於誰",
+  stateBranchBindHint: "指認後，這支狀態只會送進這個角色自己的上下文",
+  stateUpdateHeader: "狀態更新",
   renameHint: "點一下改名",
   deleteTableTitle: "永久刪除這桌",
   deleteTableConfirm:

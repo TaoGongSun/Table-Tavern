@@ -333,6 +333,10 @@ export const en: Record<MsgKey, string> = {
   stateSummaryPresent: "Present: ",
   stateEmptyValue: "—",
   stateEditHint: "Click to edit",
+  stateBranchUnbound: "Unassigned",
+  stateBranchBindAria: "Assign this branch to a character",
+  stateBranchBindHint: "Once assigned, this branch only goes into that character's own context",
+  stateUpdateHeader: "State update",
   renameHint: "Click to rename",
   deleteTableTitle: "Delete this table permanently",
   deleteTableConfirm:

@@ -216,6 +216,9 @@ pub struct TableState {
     /// 拒收回饋句：上一輪被系統擋下的更新，跟著逐則快照走，供下一輪模型自癒。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    /// 上一輪本地套用的變動：路徑（點分）→ 顯示標記（"+5"／"-80"／"更新"）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub changes: BTreeMap<String, String>,
 }
 
 /// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。
@@ -379,6 +382,22 @@ pub fn set_tree_value(
     write(tree, path, value).unwrap_or(false)
 }
 
+/// 取路徑上的節點；路徑不存在或中途撞到葉子就是 None。
+pub fn node_at<'a>(
+    tree: &'a BTreeMap<String, StateNode>,
+    path: &[String],
+) -> Option<&'a StateNode> {
+    let (first, rest) = path.split_first()?;
+    let node = tree.get(first)?;
+    if rest.is_empty() {
+        return Some(node);
+    }
+    match node {
+        StateNode::Branch(children) => node_at(children, rest),
+        StateNode::Leaf(_) => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldState {
     pub id: String,
@@ -398,6 +417,12 @@ pub struct WorldState {
     pub state: TableState,
     #[serde(default, skip_serializing_if = "Mechanism::is_empty")]
     pub mechanism: Mechanism,
+    /// 已做過全樹對齊的場景號；與 current_scene 不同＝這一幕還沒對齊，下一輪 GM 回合送全樹。
+    #[serde(default)]
+    pub aligned_scene: Option<u64>,
+    /// 面板指認的分支綁定：角色卡 id → 狀態樹路徑。沒指認的靠同名自動比對。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub branch_bindings: BTreeMap<String, Vec<String>>,
 }
 
 /// 側欄桌列表用的精簡視圖
@@ -548,6 +573,8 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
         scene_titles: BTreeMap::new(),
         state: TableState::default(),
         mechanism: Mechanism::default(),
+        aligned_scene: None,
+        branch_bindings: BTreeMap::new(),
     };
     fs::write(
         directory.join("state.json"),
@@ -3972,6 +3999,7 @@ mod tests {
             table: BTreeMap::from([("time".to_owned(), "午夜".to_owned())]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -4023,6 +4051,7 @@ mod tests {
             table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -4061,6 +4090,7 @@ mod tests {
             ]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         assert_eq!(event.state, Some(expected.clone()));
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
@@ -4081,11 +4111,13 @@ mod tests {
             table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
             append_transcript(
@@ -4122,6 +4154,7 @@ mod tests {
             table: BTreeMap::from([("time".to_owned(), time.to_owned())]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         });
         let event = |text: &str, snapshot: &TableState| TranscriptEvent {
             raw: None,
@@ -4441,6 +4474,7 @@ mod tests {
                 )])),
             )]),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::new(),
@@ -4455,6 +4489,7 @@ mod tests {
                 )])),
             )]),
             notes: Vec::new(),
+            changes: BTreeMap::new(),
         };
         for snapshot in [first.clone(), second.clone()] {
             append_transcript(
@@ -4504,5 +4539,21 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o600);
         }
+    }
+
+    /// 舊存檔沒有 aligned_scene／branch_bindings（WorldState）與 changes（TableState）
+    /// 三個新欄位也要讀得起來，且各自落回預設值（狀態欄二期包 5）。
+    #[test]
+    fn old_state_json_without_pack5_fields_still_deserializes() {
+        let json = r#"{
+            "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "name": "舊桌",
+            "state": { "table": { "time": "清晨" } }
+        }"#;
+        let state: WorldState = serde_json::from_str(json).unwrap();
+        assert_eq!(state.aligned_scene, None);
+        assert!(state.branch_bindings.is_empty());
+        assert!(state.state.changes.is_empty());
+        assert_eq!(state.state.table.get("time"), Some(&"清晨".to_owned()));
     }
 }

@@ -1,7 +1,7 @@
 # Handoff: state-values-mvu
 
 ## Current state
-2026-08-04：包 1（標籤放寬）、包 2（機制格式核心）、包 3（`[initvar]` 匯入）、包 4（增量解析＋本地權威＋統一協定）完成，cargo test 262 綠、勇者實卡煙霧驗過。下一步＝包 5（注入策略＋分支切割，大）。
+2026-08-04：包 1（標籤放寬）、包 2（機制格式核心）、包 3（`[initvar]` 匯入）、包 4（增量解析＋本地權威＋統一協定）、包 5（注入策略＋分支切割）完成，cargo test 272 綠、勇者實卡提示詞煙霧驗過。下一步＝包 7（觸發表＋固定型 EJS 解析，大）。
 
 ## Completed
 - 包 1 標籤放寬（主線直寫）：`transport::find_state_tag` 前綴比對（`<StatusData>`、`<Status_block>` 皆認，`<combatStatus>` 不誤剝）；`<maintext>` 只拆殼留正文；`data::STATE_BAR_MARKERS` 補 ```` ```status ````。
@@ -28,9 +28,21 @@
   - 統一協定聲明（拍板 9）進 GM 凍結快照，只在 `mechanism.incremental` 的桌出現；zh／en 兩份。lane 那條走 `snapshot_patch` 補丁送達，舊線不必重開。
   - 拒收回饋（拍板 8）：`TableState.notes` 跟著逐則快照走，回合尾以「上一輪被系統擋下的更新」印出，收回上一句連回饋一起倒回。
   - 記帳落檔 `worlds/<id>/mechanism-log.jsonl`（ts／scene／kind／path／detail，四種 kind），寫檔失敗吞掉。包 8 的帳本直接讀它。
+- 包 5 注入策略＋分支切割（規格與驗收主線，實作外包兩隻 general-purpose subagent `model: opus`，一隻後端一隻前端）：
+  - 回合尾只送相關分支：桌級＋玩家＋在場角色。在場名單取平欄 `present`，`present` 空著就不裁（模型漏報一欄不該讓它整桌瞎掉）。
+  - **手足規則（主線煙霧測試後補的）**：容器裡有一支綁到角色卡，同容器其他分支就一律當人看、不在場照裁。只在容器不是樹根時生效——頂層是 World／Player 這類桌級分支，套下去整桌被裁光。沒有這條的話勇者卡 15 個英雄只裁得掉有卡的那幾個。
+  - 分支綁定：面板指認（`WorldState.branch_bindings`，卡 id → 路徑）優先，其次全樹同名比對（BFS、深度上限 3、取最淺）。指令 `set_branch_binding`（換綁自動移除同路徑舊綁定）／`branch_bindings`（含自動比對結果，`auto` 標記）。
+  - 注入等級落地（拍板 18 依 Fable 修正改寫）：`turn` 每輪送、`rare` 不送、`snapshot`（長文字欄）平常輪不送——**變動落成 transcript 系統事件**，不放回合尾動態塊：動態塊每輪重組、不落歷史，API 那條傳輸路模型下一輪就看不到；transcript 兩條路都重播且吃快取。`gm_narrate` 回傳 `state_updates`，前端補一則 system 事件。凍結快照維持完全不含狀態文字。
+  - 換幕全樹對齊：`WorldState.aligned_scene` != `current_scene` 就在該幕第一輪 GM 回合送整棵樹（排除 `rare`），標題明寫「以此為準」；模型真的收到才記，呼叫失敗下一輪再送。
+  - 變動標記：`TableState.changes`（路徑 → `+5`／`-80`／`更新`）跟著逐則快照走，回合尾接在值後面（`HP：3920/4000（-80）`）。
+  - 角色線只拿自己那支（含 `snapshot` 級、排除 `rare`），放**機密段**——chars 線全角色共用一條 session，放一般段下一個被點的角色就看得到別人的數值。API 單發那條路同樣帶。
+  - 面板：每個分支 summary 一個指認下拉（未指認＋角色卡清單），`{{user}}` 只在顯示時換成玩家名（編輯框仍是原字面），玩家那支與其祖先預設展開。
 - 順手帶（interface-card-panel 交界）：`TranscriptEvent` 加 `raw` 欄位存剝殼前的模型原文，只在真的剝到東西時才存，舊檔沒這欄照樣讀。`gm_narrate` 回傳 `raw`、前端存進事件；角色台詞本來就沒剝殼，不需要。
 
 ## Verification
+- 包 5：`cargo test` 272 passed（262→272，新增 10）；clippy 比改動前少一個警告（lib 8／lib test 9，基準 9／10）；`cargo fmt --check` 本包四個檔乾淨（subagent 兩次順手全檔 fmt 的 6 個無關檔案已 revert）；`npx tsc --noEmit` 與 `npm run build` 綠。
+- 包 5 勇者實卡提示詞煙霧（跑完即刪，**沒有呼叫任何模型**）：匯入勇者卡→建兩張英雄卡＋一張玩家卡（分支靠同名自動比對）→餵一則 `<UpdateVariable>`（第一位英雄 HP -80、World.Location 改晨港碼頭）。結果：HP 4000/4000→3920/4000 帶 `（-80）` 標記；不在場的 14 個英雄分支全裁掉（有卡的 1 個＋手足 13 個）；回合尾 **3,127→530 字元**，換幕對齊輪 9,571 字元；角色線自己那支 506 字元、別人的名字沒漏進去；`World.Location` 沒出現在回合尾，改由 `snapshot_updates` 交給 transcript 系統事件；骰值欄 Roll100／Roll20 每輪本地重擲。
+- 包 5 沒做：真桌實跑（要開 app 打真模型、花使用者額度，沒代做）；面板指認下拉只驗到型別與編譯，沒實機點過。
 - 包 4：`cargo test` 262 passed（234→262，新增 28）；clippy 與 fmt 逐字持平（lib 9／lib test 10、既有 6 檔不符 rustfmt）。
 - 包 4 勇者實卡煙霧（跑完即刪）：抽出 19 條規則（`World.Invasion` 0–100、`World.Roll100`／`Roll20` 判成骰值欄、`Heroes.*.HP` pair、`Heroes.*.Affection` 0–200、`Player.Level` 的「零阶-六阶」不填 min/max），`incremental=true`。餵一段含壞逗號的 `<UpdateVariable>`：HP delta -80 → 500/500 變 420/500；Invasion 給絕對值 77 被拒、本地帳留 1；Affection +500 夾到 200；模型改 Roll100 被拒、本地連擲 12 次得 11 個不同值；壞逗號後面的 Location 照樣套用成「晨港」；不存在的路徑記硬錯誤。正文只剩「亞瑟握緊了劍。」。
 - 包 1–3：`cargo test` 234 passed（228→234，新增 6：初始樹形狀／只補不覆蓋／壞 YAML 不擋匯入／啟用中的同名條目略過／`parse_indented_fields` 分支標記／樹葉 `{{user}}` 代換）。主線自跑（codex 沙箱那 4 個 loopback 測試在主線是綠的）。
@@ -38,8 +50,8 @@
 - 一次性煙霧測試（跑完即刪）：兩張實卡走角色卡與世界書兩條路徑，樹形與獨立寫的 python 參考解析器逐項相同——勇者卡 5 個頂層／491 葉／94 分支／3 空容器，根源重塑 4／340／136／17，兩條路徑產出的樹 `assert_eq!` 相等。抽查值正確：`Player.Name = "{{user}}"`（字面）、`Heroes.亚瑟·晨光.HP = "500/500"`、`World.Title = "序章: 灵魂的降临"`（引號內的冒號沒被切）、`Player.Inventory = {}`（空分支）。
 
 ## Remaining
-包 5–8 未開工，內容見 [tasks/state-values-mvu.md](../tasks/state-values-mvu.md) 分包段。順序建議：包 5 → 包 7 → 包 6／包 8。包 5／7 各自吃滿一次對話。
-包 4 沒做、留給後面的：真桌實跑（本包只有煙霧測試，沒開 app 跑過真模型回合）；面板還沒有地方看 `mechanism-log.jsonl`（包 8）。
+包 6–8 未開工，內容見 [tasks/state-values-mvu.md](../tasks/state-values-mvu.md) 分包段。順序建議：包 7 → 包 6／包 8。包 7 吃滿一次對話。
+包 4／5 沒做、留給後面的：真桌實跑（至今只有提示詞煙霧，沒開 app 跑過真模型回合）；面板還沒有地方看 `mechanism-log.jsonl`（包 8）。
 
 ## Notes
 - 樣本卡在 TestCards/（gitignore）。從 PNG 取卡片 JSON：讀 tEXt chunk 的 `chara`（base64 JSON），五張卡都有。
