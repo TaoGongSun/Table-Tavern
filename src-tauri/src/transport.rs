@@ -2,7 +2,7 @@
 //! API 直連與（之後的）CLI 傳輸都必須經由 assemble_messages 取得上下文（KICKOFF §4）。
 
 use crate::data::{
-    AppConfig, CharacterCard, DataResult, StateNode, TableState, Tier, TranscriptEvent,
+    AppConfig, CharacterCard, DataResult, Mechanism, StateNode, TableState, Tier, TranscriptEvent,
     TranscriptKind, Visibility, WorldbookEntry,
 };
 use futures_util::StreamExt;
@@ -246,6 +246,7 @@ pub const PLAYER_SENTINEL: &str = "__PLAYER__";
 /// ＋公開 transcript。GM 自己的旁白是 assistant，其餘事件是 user。
 /// keyword 條目與「目前狀態」放 transcript 尾端獨立 user 訊息（快取友善），
 /// constant 條目與角色卡留在 system（穩定且需要高遵循度）。
+#[allow(clippy::too_many_arguments)]
 pub fn assemble_gm_messages(
     world_md: &str,
     cards: &[CharacterCard],
@@ -253,6 +254,7 @@ pub fn assemble_gm_messages(
     events: &[TranscriptEvent],
     worldbook: &[WorldbookEntry],
     state: &TableState,
+    mechanism: &Mechanism,
     lang: &str,
 ) -> Vec<ChatMessage> {
     let user_name = player
@@ -264,7 +266,15 @@ pub fn assemble_gm_messages(
         active_worldbook_entries(worldbook, events)
             .into_iter()
             .partition(|entry| entry.constant);
-    let system = gm_system_prompt(world_md, cards, player, &constant_entries, user_name, lang);
+    let system = gm_system_prompt(
+        world_md,
+        cards,
+        player,
+        &constant_entries,
+        user_name,
+        mechanism,
+        lang,
+    );
 
     let mut messages = vec![message("system", system)];
     for event in events {
@@ -293,6 +303,7 @@ fn gm_system_prompt(
     player: Option<&CharacterCard>,
     constant_entries: &[&WorldbookEntry],
     user_name: &str,
+    mechanism: &Mechanism,
     lang: &str,
 ) -> String {
     let mut system = format!(
@@ -351,7 +362,57 @@ fn gm_system_prompt(
             ));
         }
     }
+    if mechanism.incremental {
+        system.push('\n');
+        system.push_str(mechanism_protocol(lang));
+    }
     system
+}
+
+/// 增量桌統一協定聲明：數值由系統本地記帳，模型只回報這一幕的變動量。
+/// 原文照貼進凍結快照，不要改寫措辭——改一字整條快取全滅。
+fn mechanism_protocol(lang: &str) -> &'static str {
+    if lang == "en" {
+        "## State Update Protocol v1 (this table's numbers are system-managed)\n\n\
+         Numbers are computed and tracked locally by the system — you only need to say \
+         \"how much changed this scene.\" End every reply with an update block:\n\n\
+         <UpdateVariable>\n\
+         <JSONPatch>\n\
+         [\n\
+         \x20 { \"op\": \"delta\", \"path\": \"/Heroes/Arthur/Affection\", \"value\": 5 },\n\
+         \x20 { \"op\": \"replace\", \"path\": \"/World/Location\", \"value\": \"Dawnport Docks\" }\n\
+         ]\n\
+         </JSONPatch>\n\
+         </UpdateVariable>\n\n\
+         - Paths are `/`-separated; only include fields that actually changed this scene.\n\
+         - Number fields always use delta for the change amount (e.g. 5, -10), never an \
+         absolute value — absolute values will be rejected.\n\
+         - \"current/max\" fields (e.g. \"480/500\"): delta moves the current value; only use \
+         replace (e.g. \"480/600\") when the max changes (a level-up).\n\
+         - Text fields use replace with the new value; use insert to add, remove to delete, \
+         move to relocate.\n\
+         - Dice fields are rolled locally by the system each turn — you only read them, never \
+         write them.\n\
+         - Bounds and rejections are enforced by the system; rejected fields will tell you the \
+         current value next turn."
+    } else {
+        "## 狀態更新協定 v1（這桌的數值由系統保管）\n\n\
+         數值由系統本地計算與記帳，你只要說「這一幕變動了多少」。每次回覆的最後附上更新區塊：\n\n\
+         <UpdateVariable>\n\
+         <JSONPatch>\n\
+         [\n\
+         \x20 { \"op\": \"delta\", \"path\": \"/Heroes/亞瑟/Affection\", \"value\": 5 },\n\
+         \x20 { \"op\": \"replace\", \"path\": \"/World/Location\", \"value\": \"晨港碼頭\" }\n\
+         ]\n\
+         </JSONPatch>\n\
+         </UpdateVariable>\n\n\
+         - path 用 `/` 分層，只寫這一幕真的變動的欄位，沒變的不要寫。\n\
+         - 數字欄一律用 delta 給增減量（例 5、-10），不要給絕對值——給絕對值會被系統擋下。\n\
+         - 「現值/上限」欄（例 \"480/500\"）：delta 動現值；只有上限改變（升級）才用 replace 寫成 \"480/600\"。\n\
+         - 文字欄用 replace 寫新值；新增項目用 insert、刪除用 remove、搬移用 move。\n\
+         - 骰值欄由系統每回合擲，你只讀不寫。\n\
+         - 上下限與拒收由系統把關，被擋下的欄位會在下一輪告訴你目前值。"
+    }
 }
 
 /// GM 的回合動態塊：keyword 條目＋「目前狀態」。
@@ -391,6 +452,15 @@ fn gm_dynamic_block(
             dynamic.push_str(&format!("{display_name}：{value}\n"));
         }
         render_state_tree(&mut dynamic, &state.tree, user_name, 0);
+    }
+    if !state.notes.is_empty() {
+        if !dynamic.is_empty() {
+            dynamic.push('\n');
+        }
+        dynamic.push_str("## 上一輪被系統擋下的更新（請照這些現值修正）\n");
+        for note in &state.notes {
+            dynamic.push_str(&format!("{note}\n"));
+        }
     }
     dynamic.trim_end().to_owned()
 }
@@ -585,6 +655,7 @@ pub fn gm_lane_system(
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     worldbook: &[WorldbookEntry],
+    mechanism: &Mechanism,
     lang: &str,
 ) -> String {
     let user_name = player
@@ -595,7 +666,9 @@ pub fn gm_lane_system(
         .filter(|entry| !entry.disabled && entry.constant)
         .collect();
     constants.sort_by_key(|entry| (entry.order, entry.uid));
-    gm_system_prompt(world_md, cards, player, &constants, user_name, lang)
+    gm_system_prompt(
+        world_md, cards, player, &constants, user_name, mechanism, lang,
+    )
 }
 
 /// gm 線回合尾段：keyword 條目＋目前狀態＋導演指示（旁白＋點名合併版，由呼叫端組好傳入）。
@@ -818,12 +891,22 @@ fn find_state_tag(display: &str) -> Option<StateTag> {
     None
 }
 
-/// 從 GM 回覆剝出狀態區塊：回傳（欄位對, 剝除後的顯示文字）。
+/// extract_state_block 的回傳：欄位對、原始 `<UpdateVariable>` 內容（供 mechanism 解析）、
+/// 剝除後的顯示文字。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateBlock {
+    pub fields: Vec<(Vec<String>, String)>,
+    pub updates: Vec<String>,
+    pub display: String,
+}
+
+/// 從 GM 回覆剝出狀態區塊。
 /// 標籤比對一律走 to_ascii_lowercase——full lowercase 會改變某些字母的長度（如土耳其文 İ），
 /// 算出的位移拿回原字串切片就會切在非字元邊界上 panic。
-pub fn extract_state_block(reply: &str) -> (Vec<(Vec<String>, String)>, String) {
+pub fn extract_state_block(reply: &str) -> StateBlock {
     let mut display = reply.to_owned();
     let mut blocks = Vec::new();
+    let mut updates = Vec::new();
     let mut removed = false;
 
     let mut details_cursor = 0;
@@ -878,9 +961,12 @@ pub fn extract_state_block(reply: &str) -> (Vec<(Vec<String>, String)>, String) 
     }
 
     while let Some(tag) = find_state_tag(&display) {
-        // UpdateVariable 是 MVU 的 JSON patch，第二期才解數值；這期只把它從旁白裡拿掉。
+        let content = display[tag.content_start..tag.content_end].to_owned();
         if tag.collect {
-            blocks.push(display[tag.content_start..tag.content_end].to_owned());
+            blocks.push(content);
+        } else {
+            // UpdateVariable 是 MVU 的 JSON patch，原始內容交給 mechanism::parse_updates 解析。
+            updates.push(content);
         }
         display.replace_range(tag.start..tag.end, "");
         removed = true;
@@ -943,7 +1029,11 @@ pub fn extract_state_block(reply: &str) -> (Vec<(Vec<String>, String)>, String) 
     blocks.extend(fence_blocks);
 
     if !removed {
-        return (Vec::new(), reply.to_owned());
+        return StateBlock {
+            fields: Vec::new(),
+            updates: Vec::new(),
+            display: reply.to_owned(),
+        };
     }
 
     let fields = blocks
@@ -964,7 +1054,11 @@ pub fn extract_state_block(reply: &str) -> (Vec<(Vec<String>, String)>, String) 
             Some((path, value))
         })
         .collect();
-    (fields, display.trim_end().to_owned())
+    StateBlock {
+        fields,
+        updates,
+        display: display.trim_end().to_owned(),
+    }
 }
 
 /// 將縮排區塊解析成路徑和值；壞行略過，空值與空字典只標記分支而不終止解析。
@@ -1390,6 +1484,7 @@ mod tests {
         text: &str,
     ) -> TranscriptEvent {
         TranscriptEvent {
+            raw: None,
             ts: "2026-07-19T12:00:00+08:00".to_owned(),
             speaker_id: speaker_id.to_owned(),
             speaker_name: speaker_name.to_owned(),
@@ -1438,6 +1533,7 @@ mod tests {
             &[],
             &[],
             &TableState::default(),
+            &Mechanism::default(),
             "zh-TW",
         )[0]
         .content;
@@ -1506,6 +1602,7 @@ mod tests {
             &[],
             &[entry],
             &TableState::default(),
+            &Mechanism::default(),
             "zh-TW",
         );
         assert!(gm[0].content.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
@@ -1538,6 +1635,7 @@ mod tests {
             &[],
             &[],
             &TableState::default(),
+            &Mechanism::default(),
             "zh-TW",
         );
         let system = &gm[0].content;
@@ -1566,6 +1664,7 @@ mod tests {
             &events,
             &[],
             &TableState::default(),
+            &Mechanism::default(),
             "zh-TW",
         );
         assert_eq!(gm.len(), 2);
@@ -1647,6 +1746,7 @@ mod tests {
             &[],
             &entries,
             &TableState::default(),
+            &Mechanism::default(),
             "zh-TW",
         )[0]
         .content;
@@ -1758,6 +1858,7 @@ mod tests {
             &events,
             &[],
             &TableState::default(),
+            &Mechanism::default(),
             "zh-TW",
         );
 
@@ -1785,7 +1886,16 @@ mod tests {
         assert!(en[0].content.contains("in natural, fluent English"));
         assert!(!en[0].content.contains("繁體中文"));
 
-        let gm_en = assemble_gm_messages("", &[], None, &[], &[], &TableState::default(), "en");
+        let gm_en = assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            &Mechanism::default(),
+            "en",
+        );
         assert!(gm_en[0].content.contains("in natural, fluent English"));
 
         // 其餘八個語系各自注入自己語言寫的規範，且不殘留繁中規範
@@ -1805,7 +1915,16 @@ mod tests {
                 !messages[0].content.contains("繁體中文"),
                 "{lang} 誤注入繁中規範"
             );
-            let gm = assemble_gm_messages("", &[], None, &[], &[], &TableState::default(), lang);
+            let gm = assemble_gm_messages(
+                "",
+                &[],
+                None,
+                &[],
+                &[],
+                &TableState::default(),
+                &Mechanism::default(),
+                lang,
+            );
             assert!(gm[0].content.contains(needle), "{lang} GM 規範沒注入");
         }
 
@@ -1816,6 +1935,52 @@ mod tests {
             serde_json::Value::String("en".to_owned()),
         );
         assert_eq!(ui_language(&config), "en");
+    }
+
+    /// 統一協定聲明只在這桌是增量桌（mechanism.incremental）時才出現在 GM 的 system prompt。
+    #[test]
+    fn mechanism_protocol_only_appears_when_table_is_incremental() {
+        let fox = card("fox-id", "狐狸", "公開", "");
+        let plain = assemble_gm_messages(
+            "",
+            std::slice::from_ref(&fox),
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            &Mechanism::default(),
+            "zh-TW",
+        );
+        assert!(!plain[0].content.contains("狀態更新協定"));
+
+        let incremental = Mechanism {
+            incremental: true,
+            ..Mechanism::default()
+        };
+        let with_protocol = assemble_gm_messages(
+            "",
+            &[fox],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            &incremental,
+            "zh-TW",
+        );
+        assert!(with_protocol[0].content.contains("## 狀態更新協定 v1"));
+        assert!(with_protocol[0].content.contains("<UpdateVariable>"));
+
+        let en = assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            &incremental,
+            "en",
+        );
+        assert!(en[0].content.contains("State Update Protocol v1"));
     }
 
     /// 驗收：換場摘要指示依語系切換，且 transcript 事件正確攤平成 user 訊息
@@ -2248,8 +2413,18 @@ mod tests {
                 ("沦陷天数".to_owned(), "第 3 天".to_owned()),
             ]),
             tree: std::collections::BTreeMap::new(),
+            notes: Vec::new(),
         };
-        let gm = assemble_gm_messages("", &[fox.clone()], None, &[], &[], &state, "zh-TW");
+        let gm = assemble_gm_messages(
+            "",
+            &[fox.clone()],
+            None,
+            &[],
+            &[],
+            &state,
+            &Mechanism::default(),
+            "zh-TW",
+        );
         // 快取友善：狀態每輪更新，搬到尾端獨立 user 訊息，system 不再內嵌
         assert!(!gm[0].content.contains("目前狀態"));
         let tail = gm.last().unwrap();
@@ -2298,7 +2473,16 @@ mod tests {
 
         let mut state = TableState::default();
         state.table.insert("time".to_owned(), "午夜".to_owned());
-        let gm = assemble_gm_messages("世界", &[fox], None, &events, &entries, &state, "zh-TW");
+        let gm = assemble_gm_messages(
+            "世界",
+            &[fox],
+            None,
+            &events,
+            &entries,
+            &state,
+            &Mechanism::default(),
+            "zh-TW",
+        );
         assert!(gm[0].content.contains("### 常駐情報"));
         assert!(!gm[0].content.contains("龍的傳說"));
         assert!(!gm[0].content.contains("目前狀態"));
@@ -2347,6 +2531,7 @@ mod tests {
             &round1_events,
             &entries,
             &round1_state,
+            &Mechanism::default(),
             "zh-TW",
         );
         let gm2 = assemble_gm_messages(
@@ -2356,6 +2541,7 @@ mod tests {
             &round2_events,
             &entries,
             &round2_state,
+            &Mechanism::default(),
             "zh-TW",
         );
         // gm1 去尾端動態塊；gm2 去尾端動態塊＋最新事件——前綴逐字相同
@@ -2382,7 +2568,9 @@ mod tests {
 
     #[test]
     fn extract_state_fence_returns_fields_and_hides_fence() {
-        let (fields, display) = extract_state_block(
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block(
             "雨停了。\n```state\ntime: 午夜\nplace：舊碼頭\npresent: 阿濤、船長\n```",
         );
         assert_eq!(
@@ -2398,7 +2586,7 @@ mod tests {
 
     #[test]
     fn extract_state_block_collects_nested_yaml_and_skips_plain_list_items() {
-        let (fields, _) = extract_state_block(
+        let StateBlock { fields, .. } = extract_state_block(
             "<Status_block>World:\n  - 城市:\n      名稱: \"晨港\"\n      - 純清單項\n      人口: '1200'\n</Status_block>",
         );
         assert_eq!(
@@ -2443,6 +2631,7 @@ mod tests {
                     StateNode::Leaf("晨港".to_owned()),
                 )])),
             )]),
+            notes: Vec::new(),
         };
         let dynamic = gm_dynamic_block(&[], &state, "阿濤", "zh-TW");
         assert!(dynamic.contains("World：\n  城市：晨港"));
@@ -2460,6 +2649,7 @@ mod tests {
                     StateNode::Leaf("{{user}}".to_owned()),
                 )])),
             )]),
+            notes: Vec::new(),
         };
 
         let dynamic = gm_dynamic_block(&[], &state, "阿濤", "zh-TW");
@@ -2468,8 +2658,26 @@ mod tests {
     }
 
     #[test]
+    fn gm_dynamic_block_prints_notes_after_current_state_and_hides_when_empty() {
+        let with_notes = TableState {
+            table: std::collections::BTreeMap::new(),
+            tree: std::collections::BTreeMap::new(),
+            notes: vec!["World.HP 已夾在範圍內，目前值 100。".to_owned()],
+        };
+        let dynamic = gm_dynamic_block(&[], &with_notes, "阿濤", "zh-TW");
+        assert!(dynamic.contains("## 上一輪被系統擋下的更新（請照這些現值修正）"));
+        assert!(dynamic.contains("World.HP 已夾在範圍內，目前值 100。"));
+
+        let without_notes = TableState::default();
+        let dynamic = gm_dynamic_block(&[], &without_notes, "阿濤", "zh-TW");
+        assert!(!dynamic.contains("上一輪被系統擋下的更新"));
+    }
+
+    #[test]
     fn extract_state_discards_bad_lines_without_losing_valid_fields() {
-        let (fields, display) = extract_state_block(
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block(
             "旁白\n```state\n- time: 清晨\n沒有冒號\nplace:   \n# 自訂：有效\n```",
         );
         assert_eq!(
@@ -2484,7 +2692,9 @@ mod tests {
 
     #[test]
     fn extract_state_details_summary_is_parsed_and_hidden() {
-        let (fields, display) = extract_state_block(
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block(
             "港口傳來鐘聲。<details><summary>状态栏</summary>时间：黃昏\n地点：港口</details>",
         );
         assert_eq!(
@@ -2499,8 +2709,9 @@ mod tests {
 
     #[test]
     fn extract_status_tag_is_parsed_and_hidden() {
-        let (fields, display) =
-            extract_state_block("門開了。<STATUS>time: 午夜\nplace: 走廊</status>剩下的話。");
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block("門開了。<STATUS>time: 午夜\nplace: 走廊</status>剩下的話。");
         assert_eq!(
             fields,
             vec![
@@ -2513,9 +2724,13 @@ mod tests {
 
     #[test]
     fn extract_update_variable_hides_json_without_parsing_it() {
-        let (fields, display) =
-            extract_state_block("她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>");
+        let StateBlock {
+            fields,
+            updates,
+            display,
+        } = extract_state_block("她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>");
         assert!(fields.is_empty());
+        assert_eq!(updates, vec!["{\"time\":\"午夜\"}".to_owned()]);
         assert_eq!(display, "她點頭。");
     }
 
@@ -2523,7 +2738,9 @@ mod tests {
     /// 開頭是 status 就認；同名才配對，`<statusdata>` 不會被 `</status_block>` 收掉。
     #[test]
     fn extract_state_accepts_any_status_prefixed_tag() {
-        let (fields, display) = extract_state_block(
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block(
             "地下城。<StatusData>体力:60\n好感:20</StatusData>之後。\
              <Status_block>时间: 戌时\n地点: 浴房</Status_block>",
         );
@@ -2543,19 +2760,35 @@ mod tests {
     #[test]
     fn extract_state_leaves_unclosed_status_tag_alone() {
         let reply = "他開口。<StatusData>体力:60\n後面還有很多話。";
-        assert_eq!(extract_state_block(reply), (Vec::new(), reply.to_owned()));
+        assert_eq!(
+            extract_state_block(reply),
+            StateBlock {
+                fields: Vec::new(),
+                updates: Vec::new(),
+                display: reply.to_owned(),
+            }
+        );
     }
 
     /// 名字裡帶 status 但不是開頭的（`<combatStatus>`）是卡片自訂欄位，不能當狀態區塊剝掉。
     #[test]
     fn extract_state_ignores_tags_merely_containing_status() {
         let reply = "他喘著氣。<combatStatus>負傷</combatStatus>";
-        assert_eq!(extract_state_block(reply), (Vec::new(), reply.to_owned()));
+        assert_eq!(
+            extract_state_block(reply),
+            StateBlock {
+                fields: Vec::new(),
+                updates: Vec::new(),
+                display: reply.to_owned(),
+            }
+        );
     }
 
     #[test]
     fn extract_state_unwraps_maintext_into_narration() {
-        let (fields, display) = extract_state_block(
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block(
             "<maintext>\n夜色濃重。\n</maintext>\n<Status_block>时间: 戌时</Status_block>",
         );
         assert_eq!(fields, vec![(vec!["time".to_owned()], "戌时".to_owned())]);
@@ -2565,7 +2798,9 @@ mod tests {
     /// 只有正文外殼、沒有狀態區塊時，一樣要拆掉外殼。
     #[test]
     fn extract_state_unwraps_maintext_without_state_block() {
-        let (fields, display) = extract_state_block("<mainText>夜色濃重。</mainText>");
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block("<mainText>夜色濃重。</mainText>");
         assert!(fields.is_empty());
         assert_eq!(display, "夜色濃重。");
     }
@@ -2573,13 +2808,22 @@ mod tests {
     #[test]
     fn extract_state_keeps_unwrapped_narration_byte_for_byte() {
         let reply = "純旁白\n保留尾端空行\n\n";
-        assert_eq!(extract_state_block(reply), (Vec::new(), reply.to_owned()));
+        assert_eq!(
+            extract_state_block(reply),
+            StateBlock {
+                fields: Vec::new(),
+                updates: Vec::new(),
+                display: reply.to_owned(),
+            }
+        );
     }
 
     #[test]
     fn extract_state_keeps_middle_code_fence_but_removes_trailing_plain_fence() {
         let reply = "提示：\n```rust\nlet time = 1;\n```\n旁白\n```\ntime: 午夜\n```";
-        let (fields, display) = extract_state_block(reply);
+        let StateBlock {
+            fields, display, ..
+        } = extract_state_block(reply);
         assert_eq!(fields, vec![(vec!["time".to_owned()], "午夜".to_owned())]);
         assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
     }
@@ -2713,7 +2957,14 @@ mod tests {
                 Visibility::Public,
             ),
         ];
-        let snapshot = gm_lane_system("世界總覽", &[fox], None, &entries, "zh-TW");
+        let snapshot = gm_lane_system(
+            "世界總覽",
+            &[fox],
+            None,
+            &entries,
+            &Mechanism::default(),
+            "zh-TW",
+        );
         assert!(snapshot.contains("世界總覽"));
         assert!(snapshot.contains("GM專有內容"));
         assert!(snapshot.contains("通緝犯"));

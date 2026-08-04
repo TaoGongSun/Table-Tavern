@@ -1,4 +1,6 @@
-use crate::data::{self, CharacterCard, CharacterMeta, DataResult, FieldRule, StateNode, Tier};
+use crate::data::{
+    self, CharacterCard, CharacterMeta, DataResult, FieldKind, FieldRule, StateNode, Tier,
+};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::fs;
@@ -128,7 +130,7 @@ pub fn import_character(
     fs::write(md_path.with_extension(raw_extension), bytes)?;
     import_table_tavern_extension(root, world_id, &name, card_data);
     if let Some(book) = card_data.get("character_book") {
-        import_initial_tree(root, world_id, book);
+        import_mechanism(root, world_id, book);
     }
 
     Ok(CharacterMeta {
@@ -301,8 +303,9 @@ fn merge_state_node(existing: &mut StateNode, incoming: StateNode, overwrite: bo
     }
 }
 
-/// 匯入 MVU 停用的 `[initvar]` 條目，壞格式一律略過且只補齊既有狀態樹的缺口。
-pub fn import_initial_tree(root: &Path, world_id: &str, book: &Value) {
+/// 匯入 MVU 機制鷹架：`[initvar]` 停用條目給初始狀態樹、`[mvu_update]` 條目給欄位規則表；
+/// 一次掃完只寫一次 state.json。壞格式一律略過，只補齊缺口，不阻斷角色與世界書的正常匯入。
+pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
     let Some(entries) = book.get("entries") else {
         return;
     };
@@ -311,46 +314,245 @@ pub fn import_initial_tree(root: &Path, world_id: &str, book: &Value) {
         Value::Object(entries) => entries.values().collect(),
         _ => return,
     };
-    let Some(entry) = entries.into_iter().find(|entry| {
-        let Some(marker) = entry
-            .get("comment")
-            .and_then(Value::as_str)
-            .or_else(|| entry.get("title").and_then(Value::as_str))
-        else {
+
+    let initial_tree = extract_initial_tree(&entries);
+    let (rules, mvu_seen) = extract_field_rules(&entries);
+    let incremental = initial_tree.is_some() || mvu_seen;
+    if initial_tree.is_none() && rules.is_empty() && !incremental {
+        return;
+    }
+
+    let Ok(mut world) = data::read_state(root, world_id) else {
+        return;
+    };
+    if let Some(tree) = initial_tree {
+        for (key, node) in tree {
+            match world.state.tree.get_mut(&key) {
+                Some(existing) => merge_state_node(existing, node, false),
+                None => {
+                    world.state.tree.insert(key, node);
+                }
+            }
+        }
+    }
+    for (path, rule) in rules {
+        world.mechanism.rules.insert(path, rule);
+    }
+    if incremental {
+        world.mechanism.incremental = true;
+    }
+    let _ = data::write_state(root, world_id, &world);
+}
+
+fn entry_marker(entry: &Value) -> Option<String> {
+    entry
+        .get("comment")
+        .and_then(Value::as_str)
+        .or_else(|| entry.get("title").and_then(Value::as_str))
+        .map(|marker| marker.trim().to_ascii_lowercase())
+}
+
+/// `[initvar]` 初始狀態樹：只認第一條「停用且標記匹配」的條目，內容壞掉就整段放棄。
+fn extract_initial_tree(entries: &[&Value]) -> Option<BTreeMap<String, StateNode>> {
+    let entry = entries.iter().find(|entry| {
+        let Some(marker) = entry_marker(entry) else {
             return false;
         };
         let disabled = entry.get("enabled").and_then(Value::as_bool) == Some(false)
             || entry.get("disable").and_then(Value::as_bool) == Some(true);
-        disabled && marker.trim().to_ascii_lowercase().starts_with("[initvar]")
-    }) else {
-        return;
-    };
-    let Some(content) = entry.get("content").and_then(Value::as_str) else {
-        return;
-    };
+        disabled && marker.starts_with("[initvar]")
+    })?;
+    let content = entry.get("content").and_then(Value::as_str)?;
     if content.trim().is_empty() {
-        return;
+        return None;
     }
-
-    let mut initial = BTreeMap::new();
+    let mut tree = BTreeMap::new();
     for (path, value) in crate::transport::parse_indented_fields(content) {
-        insert_initial_tree_node(&mut initial, &path, value);
+        insert_initial_tree_node(&mut tree, &path, value);
     }
-    if initial.is_empty() {
-        return;
+    (!tree.is_empty()).then_some(tree)
+}
+
+/// `[mvu_update]` 欄位規則表：逐條處理（可能不只一條）；回傳規則表與是否掃到過標記
+/// （掃到但抽不出任何規則，這桌仍要標成增量桌——模型已經在照協定回覆）。
+fn extract_field_rules(entries: &[&Value]) -> (BTreeMap<String, FieldRule>, bool) {
+    let mut rules = BTreeMap::new();
+    let mut seen = false;
+    for entry in entries {
+        let Some(marker) = entry_marker(entry) else {
+            continue;
+        };
+        if !marker.starts_with("[mvu_update]") {
+            continue;
+        }
+        seen = true;
+        if let Some(content) = entry.get("content").and_then(Value::as_str) {
+            collect_field_rules(content, &mut rules);
+        }
     }
-    let Ok(mut world) = data::read_state(root, world_id) else {
-        return;
-    };
-    for (key, node) in initial {
-        match world.state.tree.get_mut(&key) {
-            Some(existing) => merge_state_node(existing, node, false),
-            None => {
-                world.state.tree.insert(key, node);
+    (rules, seen)
+}
+
+/// 一條規則路徑抽到的三個屬性值（type, range, format），同一條路徑的多筆屬性合併於此。
+type RuleAttrValues = (Option<String>, Option<String>, Option<String>);
+
+/// 從一段規則表文字抽欄位規則：只收路徑長度 ≥ 3 且最後一段是 type／range／format 的項目
+/// （這條過濾就把同前綴的「輸出格式」說明條目整條擋掉，不必特判）；規則路徑＝去掉根與屬性名，
+/// 任何一段是 check 就丟掉；同一條路徑的多個屬性合併成一條規則。
+fn collect_field_rules(content: &str, rules: &mut BTreeMap<String, FieldRule>) {
+    let mut attrs: BTreeMap<Vec<String>, RuleAttrValues> = BTreeMap::new();
+    for (path, value) in crate::transport::parse_indented_fields(content) {
+        let Some(value) = value else { continue };
+        if path.len() < 3 || path.iter().any(|segment| segment == "check") {
+            continue;
+        }
+        let attribute = path[path.len() - 1].as_str();
+        if !matches!(attribute, "type" | "range" | "format") {
+            continue;
+        }
+        let Some(expanded) = expand_rule_paths(&path[1..path.len() - 1]) else {
+            continue;
+        };
+        for rule_path in expanded {
+            let entry = attrs.entry(rule_path).or_insert((None, None, None));
+            match attribute {
+                "type" => entry.0 = Some(value.clone()),
+                "range" => entry.1 = Some(value.clone()),
+                "format" => entry.2 = Some(value.clone()),
+                _ => unreachable!("已由上面的 matches! 篩過"),
             }
         }
     }
-    let _ = data::write_state(root, world_id, &world);
+    for (rule_path, (type_value, range_value, format_value)) in attrs {
+        let Some(rule) = build_field_rule(
+            &rule_path,
+            type_value.as_deref(),
+            range_value.as_deref(),
+            format_value.as_deref(),
+        ) else {
+            continue;
+        };
+        rules.insert(rule_path.join("."), rule);
+    }
+}
+
+/// ST 怪癖正規化（只准關在這裡）：剝引號、拆 `.` 合併段、展開 `${a|b}`（多選一）／
+/// `${x}`（換成萬用段 `*`）／`a/b/c`（同層併寫的多個欄位）；組合數超過 32 就整條放棄。
+fn expand_rule_paths(raw_segments: &[String]) -> Option<Vec<Vec<String>>> {
+    let mut segments = Vec::new();
+    for raw in raw_segments {
+        for part in strip_enclosing_quotes(raw).split('.') {
+            if !part.is_empty() {
+                segments.push(part.to_owned());
+            }
+        }
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    let choices: Vec<Vec<String>> = segments
+        .iter()
+        .map(|segment| expand_segment(segment))
+        .collect();
+    let total = choices
+        .iter()
+        .try_fold(1usize, |acc, choice| acc.checked_mul(choice.len()))?;
+    if total == 0 || total > 32 {
+        return None;
+    }
+    let mut results = vec![Vec::new()];
+    for choice in &choices {
+        let mut next = Vec::with_capacity(results.len() * choice.len());
+        for existing in &results {
+            for candidate in choice {
+                let mut combo = existing.clone();
+                combo.push(candidate.clone());
+                next.push(combo);
+            }
+        }
+        results = next;
+    }
+    Some(results)
+}
+
+fn strip_enclosing_quotes(segment: &str) -> String {
+    let trimmed = segment.trim();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= 2
+        && ((bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\''))
+    {
+        return trimmed[1..trimmed.len() - 1].to_owned();
+    }
+    trimmed.to_owned()
+}
+
+fn expand_segment(segment: &str) -> Vec<String> {
+    if let Some(inner) = segment
+        .strip_prefix("${")
+        .and_then(|rest| rest.strip_suffix('}'))
+    {
+        if inner.contains('|') {
+            let parts: Vec<String> = inner
+                .split('|')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(str::to_owned)
+                .collect();
+            if !parts.is_empty() {
+                return parts;
+            }
+        }
+        return vec!["*".to_owned()];
+    }
+    if segment.contains('/') {
+        let parts: Vec<&str> = segment.split('/').collect();
+        if parts
+            .iter()
+            .all(|part| !part.is_empty() && !part.contains(char::is_whitespace))
+        {
+            return parts.into_iter().map(str::to_owned).collect();
+        }
+    }
+    vec![segment.to_owned()]
+}
+
+/// 屬性三元組（type／range／format）→ FieldRule；完全推不出 kind 的路徑不建規則。
+fn build_field_rule(
+    rule_path: &[String],
+    type_value: Option<&str>,
+    range_value: Option<&str>,
+    format_value: Option<&str>,
+) -> Option<FieldRule> {
+    let is_pair_format = format_value
+        .is_some_and(|value| value.contains("当前值/上限值") || value.contains("當前值/上限值"));
+    let kind = if is_pair_format {
+        Some(FieldKind::Pair)
+    } else {
+        match type_value {
+            Some("number") => Some(FieldKind::Number),
+            Some("string") => Some(FieldKind::Text),
+            _ => None,
+        }
+    };
+    let mut kind = kind?;
+    let last = rule_path.last()?.to_ascii_lowercase();
+    if kind == FieldKind::Number
+        && last
+            .strip_prefix("roll")
+            .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        kind = FieldKind::Roll;
+    }
+    let mut rule = FieldRule::for_kind(kind);
+    if let Some((min, max)) = range_value.and_then(|range| range.split_once('-')) {
+        if let (Ok(min), Ok(max)) = (min.trim().parse::<f64>(), max.trim().parse::<f64>()) {
+            rule.min = Some(min);
+            rule.max = Some(max);
+        }
+    }
+    rule.branch = rule_path.first().cloned();
+    Some(rule)
 }
 
 fn insert_initial_tree_node(
@@ -1086,6 +1288,111 @@ mod tests {
             .state
             .tree
             .is_empty());
+    }
+
+    /// 真實形狀的 `[mvu_update]` 規則表：type／range／format 三個屬性各種組合都要抽對，
+    /// 抽不出數字上下限的路徑（非數字 range）不填 min/max，匯入後這桌要標成增量桌。
+    #[test]
+    fn mvu_update_entry_extracts_field_rules_and_marks_incremental_table() {
+        let root = TestRoot::new("mvu-rules");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let content = "变量更新规则:\n\
+             \x20 World:\n\
+             \x20   Invasion:\n\
+             \x20     type: number\n\
+             \x20     range: 0-100\n\
+             \x20     check:\n\
+             \x20       - 初始为1% (魔王降临前兆)。\n\
+             \x20   Roll100:\n\
+             \x20     type: number\n\
+             \x20     range: 1-100\n\
+             \x20     check:\n\
+             \x20       - 每次剧情输出开始时输出的第一个随机数\n\
+             \x20 Player:\n\
+             \x20   Level:\n\
+             \x20     type: string\n\
+             \x20     range: 零阶-六阶\n\
+             \x20   HP/SP/MP:\n\
+             \x20     type: string\n\
+             \x20     format: \"当前值/上限值\"\n\
+             \x20 Heroes:\n\
+             \x20   '${勇者姓名}':\n\
+             \x20     Affection:\n\
+             \x20       type: number\n\
+             \x20       range: 0-200\n";
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[mvu_update]变量更新规则",
+                        "enabled": true,
+                        "content": content
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        assert!(state.mechanism.incremental);
+        let rules = &state.mechanism.rules;
+
+        let invasion = &rules["World.Invasion"];
+        assert_eq!(invasion.kind, data::FieldKind::Number);
+        assert_eq!(invasion.min, Some(0.0));
+        assert_eq!(invasion.max, Some(100.0));
+
+        assert_eq!(rules["World.Roll100"].kind, data::FieldKind::Roll);
+
+        for field in ["HP", "SP", "MP"] {
+            assert_eq!(
+                rules[&format!("Player.{field}")].kind,
+                data::FieldKind::Pair
+            );
+        }
+
+        let level = &rules["Player.Level"];
+        assert_eq!(level.kind, data::FieldKind::Text);
+        assert_eq!(level.min, None);
+        assert_eq!(level.max, None);
+
+        let affection = &rules["Heroes.*.Affection"];
+        assert_eq!(affection.kind, data::FieldKind::Number);
+        assert_eq!(affection.min, Some(0.0));
+        assert_eq!(affection.max, Some(200.0));
+    }
+
+    /// ST 的 `${a|b}` 多選一寫法：同一條規則要展開成各自獨立的規則。
+    #[test]
+    fn wildcard_pipe_segment_expands_into_multiple_rules() {
+        let root = TestRoot::new("mvu-expand");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[mvu_update]规则",
+                        "enabled": true,
+                        "content": "规则:\n  Player:\n    Outfit.${上装|下装}:\n      type: string\n"
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        assert_eq!(
+            state.mechanism.rules["Player.Outfit.上装"].kind,
+            data::FieldKind::Text
+        );
+        assert_eq!(
+            state.mechanism.rules["Player.Outfit.下装"].kind,
+            data::FieldKind::Text
+        );
     }
 
     #[test]

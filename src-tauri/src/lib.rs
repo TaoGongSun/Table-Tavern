@@ -5,6 +5,7 @@ mod import;
 #[allow(dead_code)]
 mod install;
 mod lanes;
+mod mechanism;
 mod proxy;
 mod session_file;
 mod snapshot_patch;
@@ -339,7 +340,7 @@ fn import_worldbook(
     let result =
         data::import_worldbook(&root, &world_id, &json_text).map_err(|error| error.to_string())?;
     if let Ok(book) = serde_json::from_str(&json_text) {
-        import::import_initial_tree(&root, &world_id, &book);
+        import::import_mechanism(&root, &world_id, &book);
     }
     Ok(result)
 }
@@ -552,9 +553,12 @@ fn post_opening(
     ts: String,
     text: String,
 ) -> Result<TranscriptEvent, String> {
-    let (fields, display) = transport::extract_state_block(&text);
-    data::append_opening(&data_root(&app)?, &world_id, scene, &ts, &display, &fields)
-        .map_err(|error| error.to_string())
+    let block = transport::extract_state_block(&text);
+    let root = data_root(&app)?;
+    let (event, outcome) = data::append_opening(&root, &world_id, scene, &ts, &text, &block)
+        .map_err(|error| error.to_string())?;
+    mechanism::append_log(&root, &world_id, scene, &outcome.records);
+    Ok(event)
 }
 
 #[tauri::command]
@@ -1429,6 +1433,7 @@ async fn gm_lane_reply(
         &materials.cards,
         materials.player.as_ref(),
         &materials.worldbook,
+        &materials.state.mechanism,
         lang,
     );
     let turn = transport::gm_lane_turn(
@@ -1464,6 +1469,8 @@ async fn gm_lane_reply(
 #[derive(Serialize)]
 struct GmNarration {
     text: String,
+    /// 剝殼前的模型原文；與 text 相同就是 None，前端照樣存進事件裡
+    raw: Option<String>,
     next: Option<String>,
 }
 
@@ -1516,6 +1523,7 @@ async fn gm_narrate(
             &materials.events,
             &materials.worldbook,
             &materials.state.state,
+            &materials.state.mechanism,
             &lang,
         );
         messages.push(instruction_message);
@@ -1533,20 +1541,19 @@ async fn gm_narrate(
         )
         .await?
     };
-    let (fields, display) = transport::extract_state_block(&reply);
-    let (next_raw, display) = transport::extract_next_speaker(&display);
+    let block = transport::extract_state_block(&reply);
+    let (next_raw, display) = transport::extract_next_speaker(&block.display);
     // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
-    if !fields.is_empty() {
-        if let Ok(root) = data_root(&app) {
-            if let Ok(mut state) = data::read_state(&root, &world_id) {
-                for (path, value) in fields {
-                    if path.len() == 1 {
-                        state.state.table.insert(path[0].clone(), value);
-                    } else {
-                        data::set_tree_value(&mut state.state.tree, &path, &value);
-                    }
-                }
-                let _ = data::write_state(&root, &world_id, &state);
+    // 骰值要每回合重擲，就算這一輪模型完全沒吐更新也要跑一次。
+    if !block.fields.is_empty()
+        || !block.updates.is_empty()
+        || materials.state.mechanism.incremental
+    {
+        if let Ok(mut state) = data::read_state(&root, &world_id) {
+            let scene = state.current_scene;
+            let outcome = mechanism::apply_block(&mut state, &block);
+            if data::write_state(&root, &world_id, &state).is_ok() {
+                mechanism::append_log(&root, &world_id, scene, &outcome.records);
             }
         }
     }
@@ -1564,6 +1571,7 @@ async fn gm_narrate(
                 .map(|card| card.id.clone())
         });
     Ok(GmNarration {
+        raw: (reply != display).then_some(reply),
         text: display,
         next,
     })
