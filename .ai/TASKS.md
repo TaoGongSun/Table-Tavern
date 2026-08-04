@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：包 1（標籤放寬＋`<maintext>` 剝除）2026-08-04 完成、cargo test 222 綠、五張樣本卡自驗過；剩包 2–8，下次挑包 3 或包 2
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28）；待討論議程三項全數結案（提示詞標籤 07-30、生圖失敗訊息分流 08-01、Ko-fi 導購歧義 08-03 連結已直指商品頁），唯一剩餘＝使用者實測三項
 - [release-3-kofi](tasks/release-3-kofi.md) — 發佈 3：Ko-fi 開帳與金流（多為使用者本人操作） — 下一步：商品頁已上線（2026-07-30，連結已進 app）；剩確認 .ttpack 掛檔發貨、說明文案定稿、首筆提領實測
 - [ui-overhaul](tasks/ui-overhaul.md) — UI 全面改版：Emblem 設計系統（桌遊組件卡＋playbill 對話＋token 化） — 下一步：第一輪實作完成（npm build 綠＋淺色實跑驗證），淺色主題去黃調色已驗收定案，等實機驗收深色模式與實聊 playbill
@@ -17,7 +18,6 @@
 見 [DONE.md](DONE.md)（30 項）。
 
 ## Todo
-- [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：2026-08-04 三輪拍板後計畫全面改寫（五張卡驗證、機制格式、觸發表、收編原則），分八包＋格式規範文件，等新對話開工（先做包 1 標籤放寬）
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式

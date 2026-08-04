@@ -742,6 +742,57 @@ pub fn extract_next_speaker(reply: &str) -> (Option<String>, String) {
     }
 }
 
+struct StateTag {
+    start: usize,
+    content_start: usize,
+    content_end: usize,
+    end: usize,
+    /// UpdateVariable 只剝不收；狀態標籤才收欄位。
+    collect: bool,
+}
+
+/// 掃出下一個狀態標籤。標籤名走前綴比對——`<StatusData>`、`<Status_block>` 各家自己取名，
+/// 開頭是 status 就算；開閉標籤要同名才配對，免得吃掉後面不相干的內容。
+fn find_state_tag(display: &str) -> Option<StateTag> {
+    let lower = display.to_ascii_lowercase();
+    let mut cursor = 0;
+    while let Some(offset) = lower[cursor..].find('<') {
+        let start = cursor + offset;
+        cursor = start + 1;
+        let Some(name_end) = lower[cursor..]
+            .find(|character: char| {
+                character == '>' || character == '/' || character.is_whitespace()
+            })
+            .map(|index| cursor + index)
+        else {
+            break;
+        };
+        let name = &lower[cursor..name_end];
+        let collect = name.starts_with("status");
+        if !collect && name != "updatevariable" {
+            continue;
+        }
+        let Some(open_end) = lower[name_end..].find('>').map(|index| name_end + index) else {
+            break;
+        };
+        let closing = format!("</{name}>");
+        let Some(close_start) = lower[open_end + 1..]
+            .find(&closing)
+            .map(|index| open_end + 1 + index)
+        else {
+            continue;
+        };
+        return Some(StateTag {
+            start,
+            content_start: open_end + 1,
+            content_end: close_start,
+            end: close_start + closing.len(),
+            collect,
+        });
+    }
+    None
+}
+
 /// 從 GM 回覆剝出狀態區塊：回傳（欄位對, 剝除後的顯示文字）。
 /// 標籤比對一律走 to_ascii_lowercase——full lowercase 會改變某些字母的長度（如土耳其文 İ），
 /// 算出的位移拿回原字串切片就會切在非字元邊界上 panic。
@@ -798,28 +849,30 @@ pub fn extract_state_block(reply: &str) -> (Vec<(String, String)>, String) {
         removed = true;
     }
 
-    for tag in ["status", "updatevariable"] {
-        loop {
-            let lower = display.to_ascii_lowercase();
-            let opening = format!("<{tag}>");
-            let closing = format!("</{tag}>");
-            let Some(start) = lower.find(&opening) else {
-                break;
-            };
-            let content_start = start + opening.len();
-            let Some(end_start) = lower[content_start..]
-                .find(&closing)
-                .map(|index| content_start + index)
-            else {
-                break;
-            };
-            // UpdateVariable 是 MVU 的 JSON patch，第二期才解數值；這期只把它從旁白裡拿掉。
-            if tag == "status" {
-                blocks.push(display[content_start..end_start].to_owned());
-            }
-            display.replace_range(start..end_start + closing.len(), "");
-            removed = true;
+    while let Some(tag) = find_state_tag(&display) {
+        // UpdateVariable 是 MVU 的 JSON patch，第二期才解數值；這期只把它從旁白裡拿掉。
+        if tag.collect {
+            blocks.push(display[tag.content_start..tag.content_end].to_owned());
         }
+        display.replace_range(tag.start..tag.end, "");
+        removed = true;
+    }
+
+    // 鎮北王府那類把正文包在 <maintext> 裡：拆掉外殼留正文，標籤不裸露在畫面上。
+    loop {
+        let lower = display.to_ascii_lowercase();
+        let Some(start) = lower.find("<maintext>") else {
+            break;
+        };
+        let content_start = start + "<maintext>".len();
+        if let Some(close_start) = lower[content_start..]
+            .find("</maintext>")
+            .map(|index| content_start + index)
+        {
+            display.replace_range(close_start..close_start + "</maintext>".len(), "");
+        }
+        display.replace_range(start..content_start, "");
+        removed = true;
     }
 
     let mut fences = Vec::new();
@@ -2283,6 +2336,57 @@ mod tests {
         );
         assert!(fields.is_empty());
         assert_eq!(display, "她點頭。");
+    }
+
+    /// 各家標籤名不同（donass 的 `<StatusData>`、鎮北王府的 `<Status_block>`），
+    /// 開頭是 status 就認；同名才配對，`<statusdata>` 不會被 `</status_block>` 收掉。
+    #[test]
+    fn extract_state_accepts_any_status_prefixed_tag() {
+        let (fields, display) = extract_state_block(
+            "地下城。<StatusData>体力:60\n好感:20</StatusData>之後。\
+             <Status_block>时间: 戌时\n地点: 浴房</Status_block>",
+        );
+        assert_eq!(
+            fields,
+            vec![
+                ("体力".to_owned(), "60".to_owned()),
+                ("好感".to_owned(), "20".to_owned()),
+                ("time".to_owned(), "戌时".to_owned()),
+                ("place".to_owned(), "浴房".to_owned()),
+            ]
+        );
+        assert_eq!(display, "地下城。之後。");
+    }
+
+    /// 沒有配對收尾的標籤整段留著：寧可讓玩家看到半截標籤，也不吞掉後面的旁白。
+    #[test]
+    fn extract_state_leaves_unclosed_status_tag_alone() {
+        let reply = "他開口。<StatusData>体力:60\n後面還有很多話。";
+        assert_eq!(extract_state_block(reply), (Vec::new(), reply.to_owned()));
+    }
+
+    /// 名字裡帶 status 但不是開頭的（`<combatStatus>`）是卡片自訂欄位，不能當狀態區塊剝掉。
+    #[test]
+    fn extract_state_ignores_tags_merely_containing_status() {
+        let reply = "他喘著氣。<combatStatus>負傷</combatStatus>";
+        assert_eq!(extract_state_block(reply), (Vec::new(), reply.to_owned()));
+    }
+
+    #[test]
+    fn extract_state_unwraps_maintext_into_narration() {
+        let (fields, display) = extract_state_block(
+            "<maintext>\n夜色濃重。\n</maintext>\n<Status_block>时间: 戌时</Status_block>",
+        );
+        assert_eq!(fields, vec![("time".to_owned(), "戌时".to_owned())]);
+        assert_eq!(display, "\n夜色濃重。");
+    }
+
+    /// 只有正文外殼、沒有狀態區塊時，一樣要拆掉外殼。
+    #[test]
+    fn extract_state_unwraps_maintext_without_state_block() {
+        let (fields, display) = extract_state_block("<mainText>夜色濃重。</mainText>");
+        assert!(fields.is_empty());
+        assert_eq!(display, "夜色濃重。");
     }
 
     #[test]
