@@ -302,6 +302,12 @@ fn delete_worldbook_entry(app: tauri::AppHandle, world_id: String, uid: u64) -> 
         .map_err(|error| error.to_string())
 }
 
+/// 世界書分頁「機制帳本」面板：哪些條目被本地機制接管／跳過，供玩家切回「照原文送模型」。
+#[tauri::command]
+fn mechanism_ledger(app: tauri::AppHandle, world_id: String) -> Result<mechanism::Ledger, String> {
+    Ok(mechanism::read_ledger(&data_root(&app)?, &world_id))
+}
+
 #[tauri::command]
 fn worldbook_entry_to_character(
     app: tauri::AppHandle,
@@ -694,6 +700,28 @@ fn set_branch_binding(
             state.branch_bindings.remove(&character_id);
         }
     }
+    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())
+}
+
+/// 面板記號：玩家把某欄標成計數器（例如卡片自訂的「第 N 天」，時間跳躍是那張卡的明文
+/// 功能），以後全量桌跳動比對不再對它示警。寫一條 Counter 規則釘死，並清掉這一輪
+/// 已經標出來的那筆警示（不然要等下一輪重算才會消失）。
+#[tauri::command]
+fn mark_state_counter(
+    app: tauri::AppHandle,
+    world_id: String,
+    path: Vec<String>,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let Some(first) = path.first() else {
+        return Ok(());
+    };
+    let mut rule = data::FieldRule::for_kind(data::FieldKind::Counter);
+    rule.branch = Some(first.clone());
+    let key = path.join(".");
+    state.mechanism.rules.insert(key.clone(), rule);
+    state.state.jumps.remove(&key);
     data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())
 }
 
@@ -1967,6 +1995,7 @@ pub fn run() {
             upsert_worldbook_entry,
             reorder_worldbook_entries,
             delete_worldbook_entry,
+            mechanism_ledger,
             worldbook_entry_to_character,
             character_to_worldbook_entry,
             world_has_state_bar,
@@ -2002,6 +2031,7 @@ pub fn run() {
             set_state_path,
             set_branch_binding,
             branch_bindings,
+            mark_state_counter,
             read_config,
             write_config,
             detect_clis,

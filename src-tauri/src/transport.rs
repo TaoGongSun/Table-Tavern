@@ -2955,6 +2955,7 @@ mod tests {
             notes: Vec::new(),
             changes: std::collections::BTreeMap::new(),
             triggers: std::collections::BTreeMap::new(),
+            jumps: std::collections::BTreeMap::new(),
         };
         let gm = assemble_gm_messages(
             "",
@@ -3215,6 +3216,7 @@ mod tests {
             notes: Vec::new(),
             changes: std::collections::BTreeMap::new(),
             triggers: std::collections::BTreeMap::new(),
+            jumps: std::collections::BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3242,6 +3244,7 @@ mod tests {
             notes: Vec::new(),
             changes: std::collections::BTreeMap::new(),
             triggers: std::collections::BTreeMap::new(),
+            jumps: std::collections::BTreeMap::new(),
         };
 
         let dynamic = gm_dynamic_block(
@@ -3264,6 +3267,7 @@ mod tests {
             notes: vec!["World.HP 已夾在範圍內，目前值 100。".to_owned()],
             changes: std::collections::BTreeMap::new(),
             triggers: std::collections::BTreeMap::new(),
+            jumps: std::collections::BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3316,6 +3320,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
+            jumps: BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3345,6 +3350,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3379,6 +3385,7 @@ mod tests {
                 ("亞瑟關係".to_owned(), "亞瑟關係文本".to_owned()),
                 ("世界氛圍".to_owned(), "世界氛圍文本".to_owned()),
             ]),
+            jumps: BTreeMap::new(),
         };
         let hidden = vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]];
         let scope = StateScope {
@@ -3415,6 +3422,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::from([("亞瑟細節".to_owned(), "亞瑟細節文本".to_owned())]),
+            jumps: BTreeMap::new(),
         };
         let scope = StateScope {
             hidden: vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]],
@@ -3442,6 +3450,7 @@ mod tests {
                 ("甲".to_owned(), "甲文本".to_owned()),
                 ("乙".to_owned(), "乙文本".to_owned()),
             ]),
+            jumps: BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3465,6 +3474,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
+            jumps: BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],

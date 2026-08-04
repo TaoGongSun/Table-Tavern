@@ -141,6 +141,8 @@ interface WorldState {
   state: {
     table: Record<string, string>;
     tree: Record<string, StateNode>;
+    // 全量桌的跳動警示：路徑（點分）→ 顯示標記（"+40"／"-80"），增量桌一律是空物件
+    jumps?: Record<string, string>;
   };
 }
 
@@ -199,6 +201,27 @@ interface WorldbookDraft {
   visibility: Visibility["type"];
   characters: string[];
 }
+
+// 機制帳本：世界書分頁「哪些條目被本地機制接管／跳過」面板，對應 mechanism.rs 的 Ledger。
+type RecordKind = "rejected" | "clamped" | "error" | "absorbed" | "skipped" | "jump";
+
+interface LedgerEntry {
+  uid: number;
+  title: string;
+  kind: RecordKind;
+  detail: string;
+  sent: boolean;
+}
+
+interface Ledger {
+  entries: LedgerEntry[];
+  rejected: number;
+  clamped: number;
+  errors: number;
+  jumps: number;
+}
+
+const EMPTY_LEDGER: Ledger = { entries: [], rejected: 0, clamped: 0, errors: 0, jumps: 0 };
 
 interface AppConfig {
   api_keys: Record<string, string>;
@@ -1652,6 +1675,7 @@ function WorldEditor({
   const [savedText, setSavedText] = useState("");
   const [message, setMessage] = useState("");
   const [entries, setEntries] = useState<WorldbookEntry[]>([]);
+  const [ledger, setLedger] = useState<Ledger>(EMPTY_LEDGER);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const [worldbookMessage, setWorldbookMessage] = useState("");
   const [draft, setDraft] = useState<WorldbookDraft | null>(null);
@@ -1670,6 +1694,7 @@ function WorldEditor({
     setWorldbookMessage("");
     setText(null);
     setEntries([]);
+    setLedger(EMPTY_LEDGER);
     setCharacters([]);
     setDraft(null);
     invoke<string>("read_world_md", { worldId: world })
@@ -1681,6 +1706,10 @@ function WorldEditor({
     invoke<WorldbookEntry[]>("read_worldbook", { worldId: world })
       .then(setEntries)
       .catch((reason) => setWorldbookMessage(String(reason)));
+    // 帳本掛掉不該擋住世界書編輯：失敗就當空，不彈錯誤。
+    invoke<Ledger>("mechanism_ledger", { worldId: world })
+      .then(setLedger)
+      .catch(() => setLedger(EMPTY_LEDGER));
     invoke<CharacterMeta[]>("list_characters", { worldId: world })
       .then((cast) => setCharacters(cast.filter((character) => !character.archived)))
       .catch((reason) => setWorldbookMessage(String(reason)));
@@ -1732,6 +1761,32 @@ function WorldEditor({
 
   async function refreshWorldbook() {
     setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world }));
+  }
+
+  async function refreshLedger() {
+    try {
+      setLedger(await invoke<Ledger>("mechanism_ledger", { worldId: world }));
+    } catch {
+      setLedger(EMPTY_LEDGER);
+    }
+  }
+
+  // 帳本的「照原文送模型」開關＝重用既有 upsert_worldbook_entry 反轉該條目的 disabled；
+  // 找不到該 uid 就跳過（條目已被刪，不是這裡的錯）。
+  async function toggleLedgerEntry(ledgerEntry: LedgerEntry) {
+    const target = entries.find((entry) => entry.uid === ledgerEntry.uid);
+    if (!target) return;
+    setWorldbookMessage("");
+    try {
+      await invoke<number>("upsert_worldbook_entry", {
+        worldId: world,
+        entry: { ...target, disabled: !target.disabled },
+      });
+      await refreshWorldbook();
+      await refreshLedger();
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
   }
 
   // 條目表單按取消＝丟資料，先問過（自動存只走切換編輯對象那條路）
@@ -2117,6 +2172,52 @@ function WorldEditor({
             {t("worldbookExport")}
           </button>
         </div>
+
+        {/* 標準流程零必看：只有真的有東西被接管／跳過，或有記帳次數時才出現這塊。 */}
+        {(ledger.entries.length > 0 ||
+          ledger.rejected > 0 ||
+          ledger.clamped > 0 ||
+          ledger.errors > 0 ||
+          ledger.jumps > 0) && (
+          <details className="mechanism-ledger">
+            <summary>{t("ledgerTitle")}</summary>
+            {ledger.entries.length > 0 && (
+              <div className="mechanism-ledger-list">
+                {ledger.entries.map((entry) => (
+                  <div className="mechanism-ledger-row" key={entry.uid}>
+                    <div className="mechanism-ledger-summary">
+                      <strong>{entry.title}</strong>
+                      <span className="worldbook-badge">
+                        {entry.kind === "absorbed" ? t("ledgerAbsorbed") : t("ledgerSkipped")}
+                      </span>
+                      <span className="mechanism-ledger-detail">{entry.detail}</span>
+                    </div>
+                    <label className="mechanism-ledger-toggle">
+                      <input
+                        type="checkbox"
+                        checked={entry.sent}
+                        onChange={() => void toggleLedgerEntry(entry)}
+                      />
+                      {t("ledgerSendRaw")}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(ledger.rejected > 0 || ledger.clamped > 0 || ledger.errors > 0 || ledger.jumps > 0) && (
+              <p className="mechanism-ledger-stats">
+                {[
+                  ledger.rejected > 0 && t("ledgerStatsRejected", { n: ledger.rejected }),
+                  ledger.clamped > 0 && t("ledgerStatsClamped", { n: ledger.clamped }),
+                  ledger.errors > 0 && t("ledgerStatsErrors", { n: ledger.errors }),
+                  ledger.jumps > 0 && t("ledgerStatsJumps", { n: ledger.jumps }),
+                ]
+                  .filter(Boolean)
+                  .join("　")}
+              </p>
+            )}
+          </details>
+        )}
 
         {entries.length === 0 ? (
           <p className="worldbook-empty">{t("worldbookEmpty")}</p>
@@ -3039,6 +3140,7 @@ function App() {
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
+  const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
   // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
@@ -3396,6 +3498,7 @@ function App() {
     setSceneTitles(state.scene_titles ?? {});
     setTableState(state.state?.table ?? {});
     setTableTree(state.state?.tree ?? {});
+    setTableJumps(state.state?.jumps ?? {});
     setBranchBindings(await loadBranchBindings(id));
     setEvents(transcript);
     setCharacters(cast);
@@ -3677,23 +3780,36 @@ function App() {
       editingStateField.path.length === path.length &&
       editingStateField.path.every((segment, index) => segment === path[index]);
     const value = tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? "");
+    const jumpMark = tableJumps[path.join(".")];
     return (
       <div className="state-bar-field" key={path.join(" ")}>
         <span className="state-bar-label">{label}</span>
         {editing ? (
           stateFieldForm(path, tree, label)
         ) : (
-          <button
-            className="state-bar-value"
-            type="button"
-            title={t("stateEditHint")}
-            onClick={() => {
-              stateFieldEditCancelled.current = false;
-              setEditingStateField({ path, tree, value });
-            }}
-          >
-            {value ? displayUserMacro(value, playerCard?.name || t("playerLabel")) : t("stateEmptyValue")}
-          </button>
+          <div className="state-bar-value-row">
+            <button
+              className="state-bar-value"
+              type="button"
+              title={t("stateEditHint")}
+              onClick={() => {
+                stateFieldEditCancelled.current = false;
+                setEditingStateField({ path, tree, value });
+              }}
+            >
+              {value ? displayUserMacro(value, playerCard?.name || t("playerLabel")) : t("stateEmptyValue")}
+            </button>
+            {jumpMark && (
+              <button
+                className="state-bar-jump"
+                type="button"
+                title={t("stateJumpHint")}
+                onClick={() => void markStateCounter(path)}
+              >
+                {"⚠ " + jumpMark}
+              </button>
+            )}
+          </div>
         )}
       </div>
     );
@@ -3762,7 +3878,19 @@ function App() {
     const state = await invoke<WorldState>("read_state", { worldId: table });
     setTableState(state.state?.table ?? {});
     setTableTree(state.state?.tree ?? {});
+    setTableJumps(state.state?.jumps ?? {});
     setBranchBindings(await loadBranchBindings(table));
+  }
+
+  // 玩家點跳動記號：把該欄永久標成計數器，之後全量桌跳動比對不再對它示警
+  async function markStateCounter(path: string[]) {
+    setError("");
+    try {
+      await invoke("mark_state_counter", { worldId: table, path });
+      await refreshTableState();
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   // 綁定清單載入失敗就當空陣列——面板本來就能在沒有綁定資料時正常運作，不因此整個掛掉
