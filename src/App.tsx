@@ -1112,6 +1112,8 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
   const latest = scope === null ? null : report.latest;
   const entry = latest ? diagEntry(latest.diag) : undefined;
   const reasonKey = latest?.reason ? REASON_KEYS[latest.reason as keyof typeof REASON_KEYS] : undefined;
+  // 非綠燈＝值得在收合狀態就看到；正常與單發留在細項裡就好
+  const alert = entry && latest && entry[2] !== "good" && entry[2] !== "idle";
   const bodyRows = [...report.rows];
   if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
   // 第一眼只給三件事：長條圖、快取比例、花費。保溫也是真的花掉的錢，一併算進來
@@ -1170,8 +1172,8 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
         </>
       )}
 
-      {/* 狀況不正常時才在收合狀態出聲；一切正常就別佔版面 */}
-      {entry && latest && entry[2] !== "good" && entry[2] !== "idle" && (
+      {/* 狀況不正常時在收合狀態出聲，正常就只留在細項裡——同一句話不重複出現兩次 */}
+      {alert && (
         <p className={`usage-latest usage-${entry[2]}`}>
           <span className="usage-dot" aria-hidden="true" />
           <strong>{t(entry[0])}</strong>
@@ -1185,7 +1187,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
       <details className="usage-details">
         <summary>{t("usageDetailsToggle")}</summary>
 
-        {entry && latest && (
+        {entry && latest && !alert && (
           <p className={`usage-latest usage-${entry[2]}`}>
             <span className="usage-dot" aria-hidden="true" />
             <strong>{t(entry[0])}</strong>
