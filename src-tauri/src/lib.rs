@@ -650,6 +650,70 @@ async fn set_state_path(
     Ok(())
 }
 
+/// 面板指認：把角色卡綁到狀態樹的某個分支；path 為 None／空陣列＝解除綁定。
+/// 一支分支只屬於一個角色，換綁時把指到同一條路徑的舊綁定一併移除。
+/// branch_bindings 在 WorldState 上、不在 TableState 裡，不需要同步 transcript 快照。
+#[tauri::command]
+fn set_branch_binding(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+    path: Option<Vec<String>>,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    match path.filter(|path| !path.is_empty()) {
+        Some(path) => {
+            // 一支分支只屬於一個角色：先清掉其他卡指到同一條路徑的舊綁定。
+            state
+                .branch_bindings
+                .retain(|other_id, bound| *other_id == character_id || *bound != path);
+            state.branch_bindings.insert(character_id, path);
+        }
+        None => {
+            state.branch_bindings.remove(&character_id);
+        }
+    }
+    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())
+}
+
+/// 面板要畫的有效綁定（含自動同名比對的結果）；解析不到分支的卡不進清單。
+#[tauri::command]
+fn branch_bindings(app: tauri::AppHandle, world_id: String) -> Result<Vec<BranchBinding>, String> {
+    let root = data_root(&app)?;
+    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let cards = load_active_cards(&root, &world_id)?;
+    Ok(cards
+        .into_iter()
+        .filter_map(|card| {
+            let path = transport::resolve_branch(
+                &state.state.tree,
+                &state.branch_bindings,
+                &card.id,
+                &card.name,
+            )?;
+            let auto = state.branch_bindings.get(&card.id) != Some(&path);
+            Some(BranchBinding {
+                path,
+                character_id: card.id,
+                character_name: card.name,
+                auto,
+            })
+        })
+        .collect())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BranchBinding {
+    /// 狀態樹路徑
+    path: Vec<String>,
+    character_id: String,
+    character_name: String,
+    /// true＝同名自動比對的結果（沒存進 state.json）
+    auto: bool,
+}
+
 #[tauri::command]
 fn read_config(app: tauri::AppHandle) -> Result<AppConfig, String> {
     data::read_config(&config_root(&app)?).map_err(|error| error.to_string())
@@ -1318,6 +1382,13 @@ async fn chat_with_character(
     let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
 
     let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
+    // 角色自己那支的狀態（面板指認優先，其次同名比對），只有這條分支會塞進提示詞。
+    let branch = transport::resolve_branch(
+        &state.state.tree,
+        &state.branch_bindings,
+        &character_id,
+        &card.name,
+    );
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
@@ -1327,7 +1398,16 @@ async fn chat_with_character(
         let lang = transport::ui_language(&config);
         let cards = load_active_cards(&root, &world_id)?;
         let frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);
-        let turn = transport::chars_lane_turn(&card, player.as_ref(), &events, &worldbook, &lang);
+        let turn = transport::chars_lane_turn(
+            &card,
+            player.as_ref(),
+            &events,
+            &worldbook,
+            &state.state,
+            &state.mechanism,
+            branch.as_deref(),
+            &lang,
+        );
         let call = prepare_claude_call(&app, &config, card.tier).await?;
         return lanes::run_turn(
             &call,
@@ -1354,6 +1434,9 @@ async fn chat_with_character(
         player.as_ref(),
         &events,
         &worldbook,
+        &state.state,
+        &state.mechanism,
+        branch.as_deref(),
         &transport::ui_language(&config),
     );
     let closing = format!(
@@ -1417,12 +1500,14 @@ fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, S
 
 /// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
 /// （keyword 條目＋狀態＋導演指示）。narrate 與 suggest 共用，差別只在指示與 echo。
+#[allow(clippy::too_many_arguments)]
 async fn gm_lane_reply(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
     root: &std::path::Path,
     world_id: &str,
     materials: &GmMaterials,
+    scope: &transport::StateScope,
     instruction: &str,
     echo: lanes::ReplyEcho,
     lang: &str,
@@ -1441,6 +1526,8 @@ async fn gm_lane_reply(
         &materials.worldbook,
         materials.player.as_ref(),
         &materials.state.state,
+        &materials.state.mechanism,
+        scope,
         instruction,
         lang,
     );
@@ -1472,6 +1559,14 @@ struct GmNarration {
     /// 剝殼前的模型原文；與 text 相同就是 None，前端照樣存進事件裡
     raw: Option<String>,
     next: Option<String>,
+    /// 長文字欄這一輪的新值；前端接到就補一則 system 事件進 transcript。空的就不補。
+    state_updates: Vec<StateUpdate>,
+}
+
+#[derive(Serialize)]
+struct StateUpdate {
+    path: String,
+    value: String,
 }
 
 /// 簡易導演：GM 旁白＋點名一次呼叫完成（NewPlan §6.1＋快取包 5）。
@@ -1492,6 +1587,17 @@ async fn gm_narrate(
         .map(|card| card.name.clone())
         .collect();
     let player_name = materials.player.as_ref().map(|card| card.name.as_str());
+    // 換幕後第一輪 GM 回合送整棵樹對齊；之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
+    let align = materials.state.mechanism.incremental
+        && materials.state.aligned_scene != Some(materials.state.current_scene);
+    let scope = transport::state_scope(
+        &materials.state.state,
+        &materials.state.mechanism,
+        &materials.cards,
+        materials.player.as_ref(),
+        &materials.state.branch_bindings,
+        align,
+    );
     let instruction_message = transport::narrate_instruction(&lang, &roster, player_name);
     let closing = if roster.is_empty() {
         "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
@@ -1509,6 +1615,7 @@ async fn gm_narrate(
             &root,
             &world_id,
             &materials,
+            &scope,
             &instruction,
             lanes::ReplyEcho::Narration,
             &lang,
@@ -1524,6 +1631,7 @@ async fn gm_narrate(
             &materials.worldbook,
             &materials.state.state,
             &materials.state.mechanism,
+            &scope,
             &lang,
         );
         messages.push(instruction_message);
@@ -1543,6 +1651,7 @@ async fn gm_narrate(
     };
     let block = transport::extract_state_block(&reply);
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
+    let mut state_updates = Vec::new();
     // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
     // 骰值要每回合重擲，就算這一輪模型完全沒吐更新也要跑一次。
     if !block.fields.is_empty()
@@ -1552,8 +1661,18 @@ async fn gm_narrate(
         if let Ok(mut state) = data::read_state(&root, &world_id) {
             let scene = state.current_scene;
             let outcome = mechanism::apply_block(&mut state, &block);
+            if align {
+                state.aligned_scene = Some(scene);
+            }
             if data::write_state(&root, &world_id, &state).is_ok() {
                 mechanism::append_log(&root, &world_id, scene, &outcome.records);
+                let user_name =
+                    player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
+                state_updates =
+                    transport::snapshot_updates(&state.state, &state.mechanism, user_name)
+                        .into_iter()
+                        .map(|(path, value)| StateUpdate { path, value })
+                        .collect();
             }
         }
     }
@@ -1574,6 +1693,7 @@ async fn gm_narrate(
         raw: (reply != display).then_some(reply),
         text: display,
         next,
+        state_updates,
     })
 }
 
@@ -1844,6 +1964,8 @@ pub fn run() {
             write_state,
             set_table_state,
             set_state_path,
+            set_branch_binding,
+            branch_bindings,
             read_config,
             write_config,
             detect_clis,

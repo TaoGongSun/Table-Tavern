@@ -1385,6 +1385,21 @@ textarea {
   padding-top: 0.25rem;
 }
 
+/* 分支指認下拉：跟在分支名後面的小字，別把 summary 那行撐高 */
+.state-tree-bind {
+  margin-left: 0.5rem;
+  padding: 0 0.15rem;
+  height: 1.4em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 400;
+  cursor: pointer;
+}
+
 /* 狀態值常是整句劇情描述，覆寫全域按鈕的 nowrap／置中，長值照欄寬折行 */
 .state-bar-value {
   display: block;

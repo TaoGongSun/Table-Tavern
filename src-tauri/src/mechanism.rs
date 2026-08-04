@@ -54,6 +54,9 @@ pub struct Outcome {
     pub records: Vec<Record>,
     /// 自癒回饋句：只從 Rejected 記錄產生，給下一輪模型看該怎麼改。
     pub notes: Vec<String>,
+    /// 這一輪真的改到樹的變動：路徑（點分）→ 顯示標記。被拒收／硬錯誤不進來，
+    /// 骰值本地重擲也不算（狀態欄二期包 5：回合尾注入策略要靠這個標「哪裡變了」）。
+    pub changes: BTreeMap<String, String>,
 }
 
 // ---------------------------------------------------------------------
@@ -249,18 +252,23 @@ fn parse_pointer(raw: &str) -> Vec<String> {
 // 套用：依欄位規則把 Patch 套進狀態樹
 // ---------------------------------------------------------------------
 
-/// 依欄位規則把更新套進狀態樹，回傳記帳與下一輪要給模型的自癒回饋句。
+/// 依欄位規則把更新套進狀態樹，回傳記帳、下一輪要給模型的自癒回饋句、以及這一輪真的改到樹的變動。
 pub fn apply_updates(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patches: &[Patch],
 ) -> Outcome {
     let mut records = Vec::new();
+    let mut changes = BTreeMap::new();
     for patch in patches {
-        apply_one(tree, mechanism, patch, &mut records);
+        apply_one(tree, mechanism, patch, &mut records, &mut changes);
     }
     let notes = build_notes(&records);
-    Outcome { records, notes }
+    Outcome {
+        records,
+        notes,
+        changes,
+    }
 }
 
 fn apply_one(
@@ -268,6 +276,7 @@ fn apply_one(
     mechanism: &Mechanism,
     patch: &Patch,
     records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
 ) {
     if let Some(offending) = readonly_violation(patch) {
         records.push(Record::new(
@@ -278,11 +287,21 @@ fn apply_one(
         return;
     }
     match patch.op {
-        PatchOp::Delta => apply_delta(tree, mechanism, patch, records),
-        PatchOp::Replace => apply_replace(tree, mechanism, patch, records),
-        PatchOp::Insert => apply_insert(tree, mechanism, patch, records),
-        PatchOp::Remove => apply_remove(tree, patch, records),
-        PatchOp::Move => apply_move(tree, patch, records),
+        PatchOp::Delta => apply_delta(tree, mechanism, patch, records, changes),
+        PatchOp::Replace => apply_replace(tree, mechanism, patch, records, changes),
+        PatchOp::Insert => apply_insert(tree, mechanism, patch, records, changes),
+        PatchOp::Remove => apply_remove(tree, patch, records, changes),
+        PatchOp::Move => apply_move(tree, patch, records, changes),
+    }
+}
+
+/// delta 的變動標記：帶號數字，正數補 `+`（負數 `format_num` 本身就帶 `-`）。
+/// 標記照原始 delta 寫——被夾邊界也算改到，記的是模型要求的量，不是夾完的量。
+fn signed_delta_mark(delta: f64) -> String {
+    if delta >= 0.0 {
+        format!("+{}", format_num(delta))
+    } else {
+        format_num(delta)
     }
 }
 
@@ -301,9 +320,10 @@ fn apply_delta(
     mechanism: &Mechanism,
     patch: &Patch,
     records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
 ) {
     let path_str = patch.path.join(".");
-    let Some(node) = get_node(tree, &patch.path) else {
+    let Some(node) = data::node_at(tree, &patch.path) else {
         records.push(Record::new(
             RecordKind::Error,
             path_str.clone(),
@@ -365,6 +385,7 @@ fn apply_delta(
                 &patch.path,
                 &format!("{}/{}", format_num(next), format_num(max)),
             );
+            changes.insert(path_str.clone(), signed_delta_mark(delta));
             if next != raw_next {
                 records.push(Record::new(
                     RecordKind::Clamped,
@@ -401,6 +422,7 @@ fn apply_delta(
                 }
             }
             data::set_tree_value(tree, &patch.path, &format_num(next));
+            changes.insert(path_str.clone(), signed_delta_mark(delta));
             if clamped {
                 records.push(Record::new(
                     RecordKind::Clamped,
@@ -428,9 +450,10 @@ fn apply_replace(
     mechanism: &Mechanism,
     patch: &Patch,
     records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
 ) {
     let path_str = patch.path.join(".");
-    let Some(node) = get_node(tree, &patch.path) else {
+    let Some(node) = data::node_at(tree, &patch.path) else {
         records.push(Record::new(
             RecordKind::Error,
             path_str.clone(),
@@ -447,10 +470,12 @@ fn apply_replace(
         current_leaf,
         patch.value.as_ref(),
         records,
+        changes,
     );
 }
 
 /// Replace 與「Insert 目標已存在」共用的規則：一律照 Replace 的語意走。
+#[allow(clippy::too_many_arguments)]
 fn replace_existing(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
@@ -459,12 +484,15 @@ fn replace_existing(
     current_leaf: Option<String>,
     value: Option<&serde_json::Value>,
     records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
 ) {
     let rule = rule_for(mechanism, path, current_leaf.as_deref());
     match rule.update {
         UpdateMode::Replace => {
             let node = json_to_node(value.unwrap_or(&serde_json::Value::Null));
-            let _ = insert_node(tree, path, node);
+            if insert_node(tree, path, node).is_ok() {
+                changes.insert(path_str.clone(), "更新".to_owned());
+            }
         }
         UpdateMode::Local => {
             records.push(Record::new(
@@ -523,6 +551,7 @@ fn replace_existing(
                     path,
                     &format!("{}/{}", format_num(current_value), format_num(new_max)),
                 );
+                changes.insert(path_str.clone(), "更新".to_owned());
             }
         }
         UpdateMode::Delta => {
@@ -541,9 +570,10 @@ fn apply_insert(
     mechanism: &Mechanism,
     patch: &Patch,
     records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
 ) {
     let path_str = patch.path.join(".");
-    if let Some(node) = get_node(tree, &patch.path) {
+    if let Some(node) = data::node_at(tree, &patch.path) {
         let current_leaf = leaf_value(node).map(str::to_owned);
         replace_existing(
             tree,
@@ -553,11 +583,14 @@ fn apply_insert(
             current_leaf,
             patch.value.as_ref(),
             records,
+            changes,
         );
         return;
     }
     let node = json_to_node(patch.value.as_ref().unwrap_or(&serde_json::Value::Null));
-    if insert_node(tree, &patch.path, node).is_err() {
+    if insert_node(tree, &patch.path, node).is_ok() {
+        changes.insert(path_str, "更新".to_owned());
+    } else {
         records.push(Record::new(
             RecordKind::Error,
             path_str.clone(),
@@ -566,9 +599,14 @@ fn apply_insert(
     }
 }
 
-fn apply_remove(tree: &mut BTreeMap<String, StateNode>, patch: &Patch, records: &mut Vec<Record>) {
+fn apply_remove(
+    tree: &mut BTreeMap<String, StateNode>,
+    patch: &Patch,
+    records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
+) {
     let path_str = patch.path.join(".");
-    if get_node(tree, &patch.path).is_none() {
+    if data::node_at(tree, &patch.path).is_none() {
         records.push(Record::new(
             RecordKind::Error,
             path_str.clone(),
@@ -578,9 +616,15 @@ fn apply_remove(tree: &mut BTreeMap<String, StateNode>, patch: &Patch, records: 
     }
     // 空字串＝刪除，並沿用 set_tree_value 既有的「因此變空的父分支一併剪掉」行為。
     data::set_tree_value(tree, &patch.path, "");
+    changes.insert(path_str, "移除".to_owned());
 }
 
-fn apply_move(tree: &mut BTreeMap<String, StateNode>, patch: &Patch, records: &mut Vec<Record>) {
+fn apply_move(
+    tree: &mut BTreeMap<String, StateNode>,
+    patch: &Patch,
+    records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
+) {
     let from_str = patch.from.join(".");
     let Some(node) = take_node(tree, &patch.from) else {
         records.push(Record::new(
@@ -590,9 +634,11 @@ fn apply_move(tree: &mut BTreeMap<String, StateNode>, patch: &Patch, records: &m
         ));
         return;
     };
-    if insert_node(tree, &patch.path, node.clone()).is_err() {
+    let path_str = patch.path.join(".");
+    if insert_node(tree, &patch.path, node.clone()).is_ok() {
+        changes.insert(path_str, "搬移".to_owned());
+    } else {
         let _ = insert_node(tree, &patch.from, node); // 寫不進去就放回原位，不憑空丟資料
-        let path_str = patch.path.join(".");
         records.push(Record::new(
             RecordKind::Error,
             path_str.clone(),
@@ -621,18 +667,6 @@ fn build_notes(records: &[Record]) -> Vec<String> {
 // ---------------------------------------------------------------------
 // 樹操作小工具（本檔自用，data::set_tree_value 只覆蓋葉子字串的情形）
 // ---------------------------------------------------------------------
-
-fn get_node<'a>(tree: &'a BTreeMap<String, StateNode>, path: &[String]) -> Option<&'a StateNode> {
-    let (first, rest) = path.split_first()?;
-    let node = tree.get(first)?;
-    if rest.is_empty() {
-        return Some(node);
-    }
-    match node {
-        StateNode::Branch(children) => get_node(children, rest),
-        StateNode::Leaf(_) => None,
-    }
-}
 
 fn leaf_value(node: &StateNode) -> Option<&str> {
     match node {
@@ -753,6 +787,11 @@ fn value_as_f64(value: Option<&serde_json::Value>) -> Option<f64> {
     }
 }
 
+/// `rule_for` 的公開包裝，給 `transport.rs` 依路徑取欄位規則（渲染狀態樹要知道 inject 層級）。
+pub fn rule_for_path(mechanism: &Mechanism, path: &[String], current: Option<&str>) -> FieldRule {
+    rule_for(mechanism, path, current)
+}
+
 /// 找欄位規則：先精確比對 path 的點分路徑，沒有就找同段數、每段相同或為 `*`
 /// 的萬用規則（多筆命中取萬用段最少的那筆），都沒有就依現值形狀推定 kind。
 fn rule_for(mechanism: &Mechanism, path: &[String], current: Option<&str>) -> FieldRule {
@@ -864,6 +903,7 @@ pub fn apply_block(world: &mut data::WorldState, block: &crate::transport::State
         reroll(&mut world.state.tree, &world.mechanism);
     }
     world.state.notes = outcome.notes.clone();
+    world.state.changes = outcome.changes.clone();
     outcome
 }
 
@@ -1443,8 +1483,11 @@ mod tests {
                 table: BTreeMap::new(),
                 tree: tree_from(pairs),
                 notes: Vec::new(),
+                changes: BTreeMap::new(),
             },
             mechanism,
+            aligned_scene: None,
+            branch_bindings: BTreeMap::new(),
         }
     }
 
@@ -1484,6 +1527,117 @@ mod tests {
             world_branch.get("Location"),
             Some(&StateNode::Leaf("晨港".to_owned()))
         );
+    }
+
+    // ---- outcome.changes：只有真的改到樹的更新才記帳（狀態欄二期包 5）----
+
+    #[test]
+    fn accepted_delta_records_signed_mark_but_rejection_and_error_do_not() {
+        let mut tree = tree_from(&[("World.HP", "80"), ("World.Location", "舊城")]);
+        let mechanism =
+            mechanism_with(&[("World.HP", rule(FieldKind::Number, Some(0.0), Some(100.0)))]);
+        let patches = vec![
+            // 收下的 delta：標記照原始量寫，即使之後會被夾邊界。
+            Patch {
+                op: PatchOp::Delta,
+                path: vec!["World".to_owned(), "HP".to_owned()],
+                from: Vec::new(),
+                value: Some(serde_json::json!(50)),
+            },
+            // 絕對值頂替 delta 欄＝拒收，不進 changes。
+            Patch {
+                op: PatchOp::Replace,
+                path: vec!["World".to_owned(), "HP".to_owned()],
+                from: Vec::new(),
+                value: Some(serde_json::json!(999)),
+            },
+            // 路徑不存在＝硬錯誤，不進 changes。
+            Patch {
+                op: PatchOp::Delta,
+                path: vec!["World".to_owned(), "沒有這欄".to_owned()],
+                from: Vec::new(),
+                value: Some(serde_json::json!(1)),
+            },
+        ];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(
+            outcome.changes.get("World.HP"),
+            Some(&"+50".to_owned()),
+            "標記要帶原始 delta（+50），不是夾完的 +20"
+        );
+        assert_eq!(outcome.changes.len(), 1, "拒收與硬錯誤都不該進 changes");
+    }
+
+    #[test]
+    fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark() {
+        let mut tree = tree_from(&[
+            ("World.HP", "480/500"),
+            ("World.Location", "舊城"),
+            ("Player.Inventory.舊劍", "鏽"),
+            ("NPCs.A.HP", "10"),
+        ]);
+        let mechanism =
+            mechanism_with(&[("World.HP", rule(FieldKind::Pair, Some(0.0), Some(500.0)))]);
+        let patches = vec![
+            // pair delta：負數本身帶「-」，標記不再重複加號。
+            Patch {
+                op: PatchOp::Delta,
+                path: vec!["World".to_owned(), "HP".to_owned()],
+                from: Vec::new(),
+                value: Some(serde_json::json!(-80)),
+            },
+            // replace：文字欄收下＝「更新」。
+            Patch {
+                op: PatchOp::Replace,
+                path: vec!["World".to_owned(), "Location".to_owned()],
+                from: Vec::new(),
+                value: Some(serde_json::json!("晨港")),
+            },
+            // insert：新建路徑＝「更新」。
+            Patch {
+                op: PatchOp::Insert,
+                path: vec![
+                    "Player".to_owned(),
+                    "Inventory".to_owned(),
+                    "藥水".to_owned(),
+                ],
+                from: Vec::new(),
+                value: Some(serde_json::json!({ "數量": 2 })),
+            },
+            // remove：刪除既有路徑＝「移除」。
+            Patch {
+                op: PatchOp::Remove,
+                path: vec![
+                    "Player".to_owned(),
+                    "Inventory".to_owned(),
+                    "舊劍".to_owned(),
+                ],
+                from: Vec::new(),
+                value: None,
+            },
+            // move：搬移成功＝「搬移」，記在目的地路徑。
+            Patch {
+                op: PatchOp::Move,
+                path: vec!["Heroes".to_owned(), "鴉".to_owned()],
+                from: vec!["NPCs".to_owned(), "A".to_owned()],
+                value: None,
+            },
+        ];
+        let outcome = apply_updates(&mut tree, &mechanism, &patches);
+        assert_eq!(outcome.changes.get("World.HP"), Some(&"-80".to_owned()));
+        assert_eq!(
+            outcome.changes.get("World.Location"),
+            Some(&"更新".to_owned())
+        );
+        assert_eq!(
+            outcome.changes.get("Player.Inventory.藥水"),
+            Some(&"更新".to_owned())
+        );
+        assert_eq!(
+            outcome.changes.get("Player.Inventory.舊劍"),
+            Some(&"移除".to_owned())
+        );
+        assert_eq!(outcome.changes.get("Heroes.鴉"), Some(&"搬移".to_owned()));
     }
 
     // ---- append_log：記帳落檔 ----

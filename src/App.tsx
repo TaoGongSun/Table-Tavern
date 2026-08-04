@@ -156,6 +156,21 @@ function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
   return typeof node === "string" ? node : "";
 }
 
+// 分支指認清單：auto＝後端同名自動比對出來的結果，還沒真的存進 state.json
+interface BranchBinding {
+  path: string[];
+  characterId: string;
+  characterName: string;
+  auto: boolean;
+}
+
+// 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；
+// 大小寫不分、容許中間空白（{{ user }}），其他巨集不動
+const USER_MACRO = /\{\{\s*user\s*\}\}/gi;
+function displayUserMacro(value: string, playerName: string): string {
+  return value.replace(USER_MACRO, playerName);
+}
+
 type Visibility =
   | { type: "gm" }
   | { type: "public" }
@@ -3002,6 +3017,8 @@ function App() {
   const [sponsorUnlocked, setSponsorUnlocked] = useState(false);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
+  // 分支指認清單：每條狀態樹分支目前綁給哪個角色，換桌／讀狀態一起重載
+  const [branchBindings, setBranchBindings] = useState<BranchBinding[]>([]);
   const activeCharacters = characters.filter((character) => !character.archived);
   const archivedCharacters = characters.filter((character) => character.archived);
   const castDrag = useDragReorder(
@@ -3297,6 +3314,7 @@ function App() {
     setSceneTitles(state.scene_titles ?? {});
     setTableState(state.state?.table ?? {});
     setTableTree(state.state?.tree ?? {});
+    setBranchBindings(await loadBranchBindings(id));
     setEvents(transcript);
     setCharacters(cast);
     await loadCharacterImages(id, cast);
@@ -3587,22 +3605,66 @@ function App() {
               setEditingStateField({ path, tree, value });
             }}
           >
-            {value || t("stateEmptyValue")}
+            {value ? displayUserMacro(value, playerCard?.name || t("playerLabel")) : t("stateEmptyValue")}
           </button>
         )}
       </div>
     );
   }
 
-  // 樹狀折疊：分支一層層收起來，預設只展開第一層（玩家自己那支的自動展開等分支綁定做好）
+  // 玩家卡目前指認到的分支路徑，含所有祖先（自己與上面每一層都要預設展開），沒指認就是空集合
+  const openBranchPaths = useMemo(() => {
+    const bound = playerCard && branchBindings.find((b) => b.characterId === playerCard.id);
+    const set = new Set<string>();
+    if (bound) {
+      for (let depth = 1; depth <= bound.path.length; depth += 1) {
+        set.add(bound.path.slice(0, depth).join("/"));
+      }
+    }
+    return set;
+  }, [playerCard, branchBindings]);
+
+  // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉
   function stateTreeNodes(nodes: Record<string, StateNode>, path: string[], depth: number) {
     return Object.entries(nodes).map(([key, node]) => {
       const childPath = [...path, key];
-      return typeof node === "string" ? (
-        stateLeafRow(childPath, true, key)
-      ) : (
-        <details className="state-tree-branch" key={key} open={depth === 0}>
-          <summary>{key}</summary>
+      if (typeof node === "string") return stateLeafRow(childPath, true, key);
+      const bound = branchBindings.find(
+        (binding) =>
+          binding.path.length === childPath.length &&
+          binding.path.every((segment, index) => segment === childPath[index]),
+      );
+      return (
+        <details
+          className="state-tree-branch"
+          key={key}
+          open={depth === 0 || openBranchPaths.has(childPath.join("/"))}
+        >
+          <summary>
+            {key}
+            {characters.length > 0 && (
+              <select
+                className="state-tree-bind"
+                aria-label={t("stateBranchBindAria")}
+                title={t("stateBranchBindHint")}
+                value={bound?.characterId ?? ""}
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onChange={(event) => {
+                  const nextId = event.currentTarget.value;
+                  if (nextId) void bindBranch(nextId, childPath);
+                  else if (bound) void bindBranch(bound.characterId, null);
+                }}
+              >
+                <option value="">{t("stateBranchUnbound")}</option>
+                {activeCharacters.map((character) => (
+                  <option key={character.id} value={character.id}>
+                    {character.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </summary>
           <div className="state-tree-children">{stateTreeNodes(node, childPath, depth + 1)}</div>
         </details>
       );
@@ -3613,6 +3675,26 @@ function App() {
     const state = await invoke<WorldState>("read_state", { worldId: table });
     setTableState(state.state?.table ?? {});
     setTableTree(state.state?.tree ?? {});
+    setBranchBindings(await loadBranchBindings(table));
+  }
+
+  // 綁定清單載入失敗就當空陣列——面板本來就能在沒有綁定資料時正常運作，不因此整個掛掉
+  async function loadBranchBindings(worldId: string): Promise<BranchBinding[]> {
+    try {
+      return await invoke<BranchBinding[]>("branch_bindings", { worldId });
+    } catch {
+      return [];
+    }
+  }
+
+  // 指認／解除分支給角色；成功後重載綁定清單，失敗照面板既有規矩交給 setError
+  async function bindBranch(characterId: string, path: string[] | null) {
+    try {
+      await invoke("set_branch_binding", { worldId: table, characterId, path });
+      setBranchBindings(await loadBranchBindings(table));
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
@@ -4019,11 +4101,29 @@ function App() {
     setStreamText("");
     const onDelta = new Channel<string>();
     onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-    const { text, raw, next } = await invoke<{ text: string; raw: string | null; next: string | null }>("gm_narrate", {
+    const { text, raw, next, state_updates } = await invoke<{
+      text: string;
+      raw: string | null;
+      next: string | null;
+      // 後端還沒上線這欄時是 undefined，當空陣列處理，別讓面板炸掉
+      state_updates?: { path: string; value: string }[];
+    }>("gm_narrate", {
       worldId: table,
       onDelta,
     });
     await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) });
+    // 長文字欄（外貌、貼文…）改用一則系統事件記變動，不再每輪塞回提示詞——
+    // 歷史會被兩條傳輸路每輪重播且吃快取，回合尾動態塊每輪重組、不落歷史
+    const updates = state_updates ?? [];
+    if (updates.length > 0) {
+      await appendEvent({
+        ts: nowTs(),
+        speaker_id: "",
+        speaker_name: "GM",
+        kind: "system",
+        text: [t("stateUpdateHeader"), ...updates.map((u) => `${u.path}：${u.value}`)].join("\n"),
+      });
+    }
     await refreshTableState();
     await markCliConnectedFromChat();
     noteTurnDone();
