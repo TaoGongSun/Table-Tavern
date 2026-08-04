@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { applyScripts, buildShellDocument, extractShell, parseStRegex, type InterfaceScript } from "./interface-card";
+import {
+  applyScripts,
+  buildShellDocument,
+  extractShell,
+  findShell,
+  parseStRegex,
+  type CardInterface,
+  type InterfaceScript,
+} from "./interface-card";
 
 function makeScript(overrides: Partial<InterfaceScript>): InterfaceScript {
   return {
@@ -120,5 +128,32 @@ describe("buildShellDocument", () => {
 
     expect(doc).toContain("window.__ttHost.document.getElementById('x')");
     expect(doc).not.toContain("window.parent.document.getElementById('x')");
+  });
+});
+
+describe("findShell", () => {
+  const card = (over: Partial<CardInterface> = {}): CardInterface => ({
+    character_id: "c1",
+    character_name: "卡",
+    scripts: [
+      { name: "殼", find_regex: "/<UI>([\\s\\S]*?)<\\/UI>/s", replace_string: "```html\n<!DOCTYPE html><body>$1</body>\n```", trim_strings: [], min_depth: null, max_depth: null },
+    ],
+    unsupported: null,
+    opening: "<UI>開場</UI>",
+    ...over,
+  });
+
+  it("依序試候選文字，先命中的先用", () => {
+    const shell = findShell([card()], ["沒有標籤的旁白", "<UI>最新一則</UI>", "<UI>更舊的</UI>"]);
+    expect(shell).toContain("最新一則");
+  });
+
+  it("畫不出來的卡（DRM／雲端載入器）不參與，沒腳本就回 null", () => {
+    expect(findShell([card({ unsupported: "scrypt" })], ["<UI>開場</UI>"])).toBeNull();
+    expect(findShell([card({ scripts: [] })], ["<UI>開場</UI>"])).toBeNull();
+  });
+
+  it("候選文字全對不上就回 null，空值直接跳過", () => {
+    expect(findShell([card()], [null, undefined, "", "純文字"])).toBeNull();
   });
 });

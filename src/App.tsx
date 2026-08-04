@@ -6,7 +6,7 @@ import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import { renderStoryMarkdown } from "./story-markdown";
-import { applyScripts, buildShellDocument, extractShell, InterfaceScript } from "./interface-card";
+import { buildShellDocument, CardInterface, findShell } from "./interface-card";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -58,15 +58,6 @@ interface ImportProbe {
 interface WorldbookImport {
   imported: number;
   skipped: number;
-}
-
-// unsupported 非 null（DRM 加密卡／雲端載入器卡）代表這張卡沒有可用腳本
-interface CardInterface {
-  character_id: string;
-  character_name: string;
-  scripts: InterfaceScript[];
-  unsupported: string | null;
-  opening: string | null;
 }
 
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
@@ -3332,24 +3323,14 @@ function App() {
 
   // 目前要顯示的卡片介面殼：由近到遠掃最近 10 則，跳過玩家發言（介面藏在 GM／角色那則的原文標籤裡）
   const cardInterfaceShell = useMemo(() => {
-    const cards = cardInterfaces.filter((card) => card.unsupported === null);
-    const scripts = cards.flatMap((card) => card.scripts);
-    if (scripts.length === 0) return null;
-    const recent = events.slice(-10);
-    for (let i = recent.length - 1; i >= 0; i -= 1) {
-      const event = recent[i];
-      if (event.kind === "player") continue;
-      const shell = extractShell(applyScripts(event.raw ?? event.text, scripts));
-      if (shell !== null) return shell;
-    }
+    const recent = events
+      .slice(-10)
+      .filter((event) => event.kind !== "player")
+      .reverse()
+      .map((event) => event.raw ?? event.text);
     // 空桌退回卡片自己的開場白：這類卡的開場就是一整頁選角畫面，玩家得先在那裡選了才有第一句話
-    if (events.length === 0) {
-      for (const card of cards) {
-        const shell = card.opening && extractShell(applyScripts(card.opening, scripts));
-        if (shell) return shell;
-      }
-    }
-    return null;
+    const openings = events.length === 0 ? cardInterfaces.map((card) => card.opening) : [];
+    return findShell(cardInterfaces, [...recent, ...openings]);
   }, [events, cardInterfaces]);
 
   // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來；只填輸入框，絕不代按送出
@@ -3810,6 +3791,20 @@ function App() {
     }
   }
 
+  async function refreshCardInterfaces() {
+    const list = await invoke<CardInterface[]>("card_interfaces", { worldId: table }).catch(
+      () => [] as CardInterface[],
+    );
+    setCardInterfaces(list);
+    return list;
+  }
+
+  // 匯入完畫得出來就直接打開一次：這類卡的開場本來就是一整頁畫面，
+  // 玩家不主動點按鈕不會知道有這東西（聊天裡只看得到孤零零一句「请选择你的身份」）
+  function openCardInterface(list: CardInterface[]) {
+    if (findShell(list, list.map((card) => card.opening)) !== null) setCardUiOpen(true);
+  }
+
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端解析，顏色沿用建卡輪選
   async function importCharacter(file: File) {
     setError("");
@@ -3838,12 +3833,8 @@ function App() {
           { title: t("importCard") },
         );
         if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
-        setCardInterfaces(
-          await invoke<CardInterface[]>("card_interfaces", { worldId: table }).catch(
-            () => [] as CardInterface[],
-          ),
-        );
         await offerOpeningLine(data);
+        openCardInterface(await refreshCardInterfaces());
         return;
       }
       const meta = await invoke<CharacterMeta>("import_character", {
@@ -3856,10 +3847,7 @@ function App() {
       await loadCharacterImages(table, cast);
       setSpeaker(meta.id);
       // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
-      const interfaces = await invoke<CardInterface[]>("card_interfaces", { worldId: table }).catch(
-        () => [] as CardInterface[],
-      );
-      setCardInterfaces(interfaces);
+      const interfaces = await refreshCardInterfaces();
       const mine = interfaces.find((card) => card.character_id === meta.id);
       const notice =
         mine?.unsupported === "scrypt"
@@ -3872,6 +3860,7 @@ function App() {
                 ? t("importScriptNotice")
                 : "";
       if (notice) await showMessage(notice, { title: t("importCard") });
+      openCardInterface(interfaces);
     } catch (reason) {
       setError(String(reason));
     }
