@@ -57,7 +57,7 @@ export const ko: Record<MsgKey, string> = {
   usageDiagExpired: "캐시 만료",
   usageWhyExpired: "마지막 메시지 후 5분이 지나 캐시가 자연히 지워졌습니다. 이번 라운드에 다시 만듭니다.",
   usageDiagSingle: "단일 전송",
-  usageWhySingle: "이 경로는 매번 전체 묶음을 보내며, 이어하기 캐시를 진단하지 않습니다.",
+  usageWhySingle: "단발 호출입니다(막 요약, 테이블 생성, 또는 이어하기를 지원하지 않는 연결). 전체가 매번 과금됩니다.",
   usageDiagPrefixBroken: "캐시 적중 실패",
   usageWhyPrefixBroken: "적중해야 했지만 그러지 못했습니다. 설정이나 기록 앞부분이 변경되었습니다.",
   usageDiagCacheSkipped: "CLI 캐시 누락",

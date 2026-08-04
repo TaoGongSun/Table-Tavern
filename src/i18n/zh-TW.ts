@@ -68,7 +68,7 @@ export const zh = {
   usageDiagExpired: "快取過期",
   usageWhyExpired: "距上一句超過五分鐘，快取自然清掉，這輪重建。",
   usageDiagSingle: "單發",
-  usageWhySingle: "這條路每次都送整包，不做續聊快取診斷。",
+  usageWhySingle: "這次是單發呼叫（換幕摘要、開桌生成，或這條連線本來就不支援續聊），整包重新計費。",
   usageDiagPrefixBroken: "該中沒中",
   usageWhyPrefixBroken: "照理該命中卻沒中——設定或紀錄的前段被動過。",
   usageDiagCacheSkipped: "CLI 沒帶快取",

@@ -57,7 +57,7 @@ export const ptBR: Record<MsgKey, string> = {
   usageDiagExpired: "Cache expirado",
   usageWhyExpired: "Já se passaram mais de cinco minutos desde a última mensagem; o cache expirou e esta rodada será reconstruída.",
   usageDiagSingle: "Envio único",
-  usageWhySingle: "Este caminho envia o pacote completo toda vez; não diagnostica o cache de continuação.",
+  usageWhySingle: "Uma chamada avulsa (resumo do ato, criação da mesa ou uma conexão que não continua a sessão): o pacote inteiro é cobrado de novo.",
   usageDiagPrefixBroken: "Acerto perdido",
   usageWhyPrefixBroken: "Deveria ter acertado, mas não acertou: o início da configuração ou do histórico foi alterado.",
   usageDiagCacheSkipped: "CLI sem cache",

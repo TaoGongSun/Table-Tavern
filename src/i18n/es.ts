@@ -57,7 +57,7 @@ export const es: Record<MsgKey, string> = {
   usageDiagExpired: "Caché caducada",
   usageWhyExpired: "Han pasado más de cinco minutos desde el último mensaje; la caché se borró y esta ronda se reconstruye.",
   usageDiagSingle: "Envío único",
-  usageWhySingle: "Este camino envía el paquete completo cada vez; no diagnostica la caché de continuación.",
+  usageWhySingle: "Una llamada suelta (resumen de acto, creación de mesa o una conexión que no continúa sesión): se cobra el paquete entero.",
   usageDiagPrefixBroken: "Acierto perdido",
   usageWhyPrefixBroken: "Debería haber acertado, pero no: se modificó el principio de la configuración o del historial.",
   usageDiagCacheSkipped: "CLI sin caché",
