@@ -198,7 +198,7 @@ pub fn append_event(path: &Path, world: Option<&str>, lane: &str, diag: Diag, re
     append(path, fields);
 }
 
-/// 時間戳固定排第一個 key（JSON 物件保序），肉眼掃 log 時一行讀得下去。
+/// 每筆補上時間戳（serde_json 的 Map 是 BTreeMap，實際輸出照鍵的字母序）。
 /// 寫檔失敗一律吞掉：診斷設施不該反過來中斷回覆。
 fn append(path: &Path, fields: Map<String, Value>) {
     let timestamp =

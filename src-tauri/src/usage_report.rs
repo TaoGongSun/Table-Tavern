@@ -11,7 +11,9 @@
 use serde::Serialize;
 use serde_json::Value;
 
-/// 有紀錄的桌；`id` 空字串＝未標桌（加桌欄位之前的舊行、開桌生成的呼叫）。
+/// 下拉選單的一項：app 現有的每一桌都在（沒紀錄就 0 輪）。
+/// 另有兩種沒有名字的項目——`id` 空字串＝開桌生成（那時桌還沒建出來），
+/// `id` 有值但 `name` 空＝這桌已經被刪掉，紀錄還在。
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct WorldOption {
     pub id: String,
@@ -108,7 +110,15 @@ pub fn summarize(
     names: &[(String, String)],
     in_use: &[(String, String)],
 ) -> UsageReport {
-    let mut worlds: Vec<WorldOption> = Vec::new();
+    // app 現有的桌先全部列進去（沒紀錄就顯示 0 輪），順序照桌列表
+    let mut worlds: Vec<WorldOption> = names
+        .iter()
+        .map(|(id, name)| WorldOption {
+            id: id.clone(),
+            name: name.clone(),
+            rounds: 0,
+        })
+        .collect();
     let mut rows: Vec<UsageRow> = Vec::new();
     let mut total = UsageRow::default();
     let mut ping = UsageRow::default();
@@ -120,14 +130,12 @@ pub fn summarize(
             continue; // 壞行跳過：診斷設施本來就是盡力而為
         };
         let world = text(&line, "world");
+        // 對不上現有桌＝開桌生成或已刪掉的桌，接在桌列表後面
         match worlds.iter_mut().find(|option| option.id == world) {
             Some(option) => option.rounds += 1,
             None => worlds.push(WorldOption {
                 id: world.clone(),
-                name: names
-                    .iter()
-                    .find(|(id, _)| *id == world)
-                    .map_or_else(|| world.clone(), |(_, name)| name.clone()),
+                name: String::new(),
                 rounds: 1,
             }),
         }
@@ -189,9 +197,8 @@ pub fn summarize(
     for row in rows.iter_mut().chain([&mut total, &mut ping]) {
         row.hit_rate = hit_rate(row.prompt_tokens, row.cached_tokens);
     }
-    // 花得最多的排前面；桌下拉照輪數，未標桌自然墊底
+    // 花得最多的排前面（桌下拉不排序，照桌列表原順序）
     rows.sort_by_key(|row| std::cmp::Reverse(row.prompt_tokens));
-    worlds.sort_by_key(|world| std::cmp::Reverse(world.rounds));
     diags.sort_by_key(|count| std::cmp::Reverse(count.rounds));
 
     UsageReport {
@@ -223,6 +230,7 @@ mod tests {
         vec![
             ("w1".to_owned(), "第一桌".to_owned()),
             ("w2".to_owned(), "第二桌".to_owned()),
+            ("w3".to_owned(), "還沒玩過的桌".to_owned()),
         ]
     }
 
@@ -236,12 +244,14 @@ mod tests {
             &[("claude".to_owned(), "sonnet".to_owned())],
         );
 
-        // 下拉不受選桌影響：w1 五筆、w2 一筆、未標桌一筆（api 那行沒有 world）
+        // 下拉列出 app 現有的每一桌（沒紀錄的照列 0 輪）、不受選桌影響；
+        // 對不上桌的紀錄（開桌生成）接在最後，名字留空由前端配字
         assert_eq!(
             report.worlds,
             vec![
                 WorldOption { id: "w1".to_owned(), name: "第一桌".to_owned(), rounds: 5 },
                 WorldOption { id: "w2".to_owned(), name: "第二桌".to_owned(), rounds: 1 },
+                WorldOption { id: "w3".to_owned(), name: "還沒玩過的桌".to_owned(), rounds: 0 },
                 WorldOption { id: String::new(), name: String::new(), rounds: 1 },
             ]
         );
