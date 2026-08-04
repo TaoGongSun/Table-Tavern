@@ -1198,62 +1198,64 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
           </p>
         )}
 
-        <table className="usage-table">
-          <thead>
-            <tr>
-              <th>{t("usageModel")}</th>
-              <th>{t("usageRounds")}</th>
-              <th>{t("usageInputTokens")}</th>
-              <th>{t("usageCached")}</th>
-              <th>{t("usageHitRate")}</th>
-              <th>{t("usageOutput")}</th>
-              <th>{t("usageCost")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bodyRows.map((row) => (
-              <tr key={`${row.source}/${row.model}`} className={row.model === "ping" ? "usage-ping-row" : undefined}>
-                <th scope="row">
-                  {row.model === "ping" ? (
-                    t("usagePing")
-                  ) : (
+        <div className="usage-table-wrap">
+          <table className="usage-table">
+            <thead>
+              <tr>
+                <th>{t("usageModel")}</th>
+                <th>{t("usageRounds")}</th>
+                <th>{t("usageInputTokens")}</th>
+                <th>{t("usageCached")}</th>
+                <th>{t("usageHitRate")}</th>
+                <th>{t("usageOutput")}</th>
+                <th>{t("usageCost")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row) => (
+                <tr key={`${row.source}/${row.model}`} className={row.model === "ping" ? "usage-ping-row" : undefined}>
+                  <th scope="row">
+                    {row.model === "ping" ? (
+                      t("usagePing")
+                    ) : (
+                      <>
+                        <span className="usage-source">{row.source}</span> {row.model}
+                        {row.in_use && <span className="usage-badge">{t("usageInUse")}</span>}
+                      </>
+                    )}
+                  </th>
+                  <td>{row.rounds}</td>
+                  <td colSpan={row.unreported === row.rounds ? 4 : 1}>
+                    {row.unreported === row.rounds ? (
+                      <span className="usage-muted">{t("usageNoUsage")}</span>
+                    ) : (
+                      tokens(row.prompt_tokens)
+                    )}
+                  </td>
+                  {row.unreported !== row.rounds && (
                     <>
-                      <span className="usage-source">{row.source}</span> {row.model}
-                      {row.in_use && <span className="usage-badge">{t("usageInUse")}</span>}
+                      <td>{tokens(row.cached_tokens)}</td>
+                      <td>{row.hit_rate.toFixed(1)}%</td>
+                      <td>{tokens(row.output_tokens)}</td>
                     </>
                   )}
-                </th>
-                <td>{row.rounds}</td>
-                <td colSpan={row.unreported === row.rounds ? 4 : 1}>
-                  {row.unreported === row.rounds ? (
-                    <span className="usage-muted">{t("usageNoUsage")}</span>
-                  ) : (
-                    tokens(row.prompt_tokens)
-                  )}
-                </td>
-                {row.unreported !== row.rounds && (
-                  <>
-                    <td>{tokens(row.cached_tokens)}</td>
-                    <td>{row.hit_rate.toFixed(1)}%</td>
-                    <td>{tokens(row.output_tokens)}</td>
-                  </>
-                )}
-                <td>{money(row.cost_usd, row.cost_partial)}</td>
+                  <td>{money(row.cost_usd, row.cost_partial)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">{t("usageTotal")}</th>
+                <td>{report.total.rounds}</td>
+                <td>{tokens(report.total.prompt_tokens)}</td>
+                <td>{tokens(report.total.cached_tokens)}</td>
+                <td>{report.total.hit_rate.toFixed(1)}%</td>
+                <td>{tokens(report.total.output_tokens)}</td>
+                <td>{money(report.total.cost_usd, report.total.cost_partial)}</td>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row">{t("usageTotal")}</th>
-              <td>{report.total.rounds}</td>
-              <td>{tokens(report.total.prompt_tokens)}</td>
-              <td>{tokens(report.total.cached_tokens)}</td>
-              <td>{report.total.hit_rate.toFixed(1)}%</td>
-              <td>{tokens(report.total.output_tokens)}</td>
-              <td>{money(report.total.cost_usd, report.total.cost_partial)}</td>
-            </tr>
-          </tfoot>
-        </table>
+            </tfoot>
+          </table>
+        </div>
 
         <p className="usage-diags">
           {report.diags.map((count) => {
