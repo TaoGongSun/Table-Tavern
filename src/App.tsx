@@ -3333,17 +3333,31 @@ function App() {
     return findShell(cardInterfaces, [...recent, ...openings]);
   }, [events, cardInterfaces]);
 
-  // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來；只填輸入框，絕不代按送出
+  // 每次 render 換上最新的送出函式：訊息監聽只掛一次，不能讓它抓著開面板當下的舊狀態
+  const submitTextRef = useRef((_text: string) => Promise.resolve());
+  submitTextRef.current = submitText;
+
+  // 卡片自己觸發一回合是 ST 上的正常用法，照送；但我們每收到新訊息就重載 iframe，
+  // 「載入就送」會滾成無限迴圈。煞車：玩家沒動作的期間只准自動送一次，玩家一動就歸零
+  const autoSentIdle = useRef(false);
+
+  // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來。送得出去就直接送、畫面留在介面裡等回覆
+  // （跟 ST 一樣不必進出對話）；被煞車擋下的改成填進輸入框、關回對話讓玩家自己決定
   useEffect(() => {
     if (!cardUiOpen) return;
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
       if (typeof data !== "object" || data === null || data.source !== "table-tavern-card") return;
-      if (data.kind === "input") {
-        const text = String(data.text ?? "");
-        setInput((prev) => (prev && text ? `${prev} ${text}` : prev + text));
-        setCardUiOpen(false);
+      if (data.kind !== "input") return;
+      const text = String(data.text ?? "");
+      const byPlayer = data.gesture === true;
+      if (text.trim() && (byPlayer || !autoSentIdle.current)) {
+        autoSentIdle.current = !byPlayer;
+        void submitTextRef.current(text);
+        return;
       }
+      setInput((prev) => (prev && text ? `${prev} ${text}` : prev + text));
+      setCardUiOpen(false);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -3383,6 +3397,7 @@ function App() {
     setMainView(null);
     setActsOpen(false);
     setCardUiOpen(false);
+    autoSentIdle.current = false;
     if (loaded.preferences["last_world"] !== id) {
       const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
       await invoke("write_config", { config: next });
@@ -4266,7 +4281,12 @@ function App() {
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const text = input.trim();
+    autoSentIdle.current = false;
+    await submitText(input);
+  }
+
+  async function submitText(raw: string) {
+    const text = raw.trim();
     if (!text || generating !== null) return;
     setError("");
     setInput("");
@@ -5129,6 +5149,16 @@ function App() {
       {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄 */}
       {cardUiOpen && cardInterfaceShell !== null && (
         <div className="card-interface-overlay">
+          {generating !== null && (
+            <div className="card-interface-status" role="status">
+              {t("typing", { name: generating.kind === "narration" ? "GM" : (generatingMeta?.name ?? "GM") })}
+              <span className="typing">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          )}
           <button
             type="button"
             className="modal-close card-interface-close"
