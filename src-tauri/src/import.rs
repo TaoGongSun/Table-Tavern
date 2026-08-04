@@ -25,6 +25,12 @@ pub struct ImportProbe {
     pub alternate_greetings: usize,
     /// 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名
     pub name: Option<String>,
+    /// 頂層就是世界書本體（V2 獨立書 JSON 自帶 name＋entries）：有 name 也要走世界書
+    pub book_shaped: bool,
+    /// JSON／PNG 成功解析才 true：前端靠這個分辨「格式錯誤」與「解析成功但沒有名字」
+    pub parsed: bool,
+    /// character_book.entries 的條目數，沒有這個欄位就是 0
+    pub book_entries: usize,
 }
 
 /// 匯入前只提示可能無法保留的內容；真正的格式錯誤仍交給匯入處理。
@@ -45,7 +51,10 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
         .get("data")
         .filter(|data| data.is_object())
         .unwrap_or(&value);
-    let mut probe = ImportProbe::default();
+    let mut probe = ImportProbe {
+        parsed: true,
+        ..ImportProbe::default()
+    };
     let benign_extensions = ["talkativeness", "fav", "world", "depth_prompt"];
     if card_data
         .get("extensions")
@@ -65,31 +74,32 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     if serialized.contains("<%") {
         probe.scripts.push("template".to_owned());
     }
+    let book_entries = card_data
+        .get("character_book")
+        .and_then(|book| book.get("entries"))
+        .and_then(Value::as_array);
+    probe.book_entries = book_entries.map_or(0, Vec::len);
     // 世界書卡＝內容重心壓倒性地在世界書條目上，看比重而非人設絕對字數：
     // 這種卡匯成角色卡會把整包條目（含輸出格式規定）丟掉，卡就玩不動了。
     // 真卡實測：西幻卡人設 988 字、世界書 21,678 字（22 倍），舊的「人設少於 200 字」條件漏判它。
-    probe.lorebook_heavy = card_data
-        .get("character_book")
-        .and_then(|book| book.get("entries"))
-        .and_then(Value::as_array)
-        .is_some_and(|entries| {
-            let book: usize = entries
-                .iter()
-                .filter_map(|entry| entry.get("content").and_then(Value::as_str))
-                .map(|content| content.chars().count())
-                .sum();
-            let persona: usize = ["description", "personality", "scenario", "mes_example"]
-                .into_iter()
-                .map(|field| {
-                    string_field(card_data, field)
-                        .unwrap_or("")
-                        .trim()
-                        .chars()
-                        .count()
-                })
-                .sum();
-            entries.len() >= 3 && book >= persona.saturating_mul(3)
-        });
+    probe.lorebook_heavy = book_entries.is_some_and(|entries| {
+        let book: usize = entries
+            .iter()
+            .filter_map(|entry| entry.get("content").and_then(Value::as_str))
+            .map(|content| content.chars().count())
+            .sum();
+        let persona: usize = ["description", "personality", "scenario", "mes_example"]
+            .into_iter()
+            .map(|field| {
+                string_field(card_data, field)
+                    .unwrap_or("")
+                    .trim()
+                    .chars()
+                    .count()
+            })
+            .sum();
+        entries.len() >= 3 && book >= persona.saturating_mul(3)
+    });
     probe.alternate_greetings = card_data
         .get("alternate_greetings")
         .and_then(Value::as_array)
@@ -97,6 +107,10 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     probe.name = string_field(card_data, "name")
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty());
+    // V2 規格的獨立世界書 JSON 頂層就是書本體：自帶 name（書名）＋entries。
+    // 角色卡的 entries 只會在 character_book 底下，頂層有 entries＝這包是世界書，別當角色卡。
+    probe.book_shaped =
+        card_data.get("character_book").is_none() && card_data.get("entries").is_some();
     probe
 }
 
@@ -1906,6 +1920,58 @@ if (invasion >= 50 && done === false) { _%>
                 .as_bytes(),
         );
         assert!(!detailed.lorebook_heavy);
+    }
+
+    /// 前端匯入分流靠 parsed／name／book_entries 三個欄位判斷純世界書、純角色卡、
+    /// 兩種身分都有料、格式錯誤這四種情況，四種都要顧到。
+    #[test]
+    fn probe_reports_parsed_state_and_book_entry_count() {
+        // 純世界書 JSON：頂層就是書本體（entries 在最外層），沒有 name 欄位
+        let worldbook = probe_import(
+            json!({"entries": [{"keys": ["森林"], "content": "古老盟約"}]})
+                .to_string()
+                .as_bytes(),
+        );
+        assert!(worldbook.parsed);
+        assert_eq!(worldbook.name, None);
+        assert!(worldbook.book_shaped);
+
+        // V2 獨立世界書 JSON：頂層是書本體，自帶 name（書名）＋entries——有 name 也是世界書
+        let named_book = probe_import(
+            json!({"name": "北境設定集", "entries": [{"keys": ["漁村"], "content": "北境的漁村"}]})
+                .to_string()
+                .as_bytes(),
+        );
+        assert!(named_book.parsed);
+        assert_eq!(named_book.name.as_deref(), Some("北境設定集"));
+        assert!(named_book.book_shaped);
+
+        // 損毀 JSON：解析不了，parsed 維持 false（沿用原本走角色路徑報格式錯誤那條）
+        let broken = probe_import(b"{not json");
+        assert!(!broken.parsed);
+
+        // 有 name 但沒有 character_book：純角色卡
+        let character_only = probe_import(
+            json!({"data": {"name": "莉亞", "description": "精靈遊俠"}})
+                .to_string()
+                .as_bytes(),
+        );
+        assert!(character_only.parsed);
+        assert_eq!(character_only.name.as_deref(), Some("莉亞"));
+        assert_eq!(character_only.book_entries, 0);
+        assert!(!character_only.book_shaped);
+
+        // 有 name 也帶 character_book：角色與世界書兩種身分都有料
+        let both = probe_import(
+            json!({"data": {
+                "name": "薇拉",
+                "character_book": {"entries": [{"content": "北境的漁村"}, {"content": "雙親早逝"}]},
+            }})
+            .to_string()
+            .as_bytes(),
+        );
+        assert!(both.parsed);
+        assert_eq!(both.book_entries, 2);
     }
 
     #[test]
