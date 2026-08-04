@@ -6,6 +6,7 @@ import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
 import { renderStoryMarkdown } from "./story-markdown";
+import { applyScripts, buildShellDocument, extractShell, InterfaceScript } from "./interface-card";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -57,6 +58,14 @@ interface ImportProbe {
 interface WorldbookImport {
   imported: number;
   skipped: number;
+}
+
+// unsupported 非 null（DRM 加密卡／雲端載入器卡）代表這張卡沒有可用腳本
+interface CardInterface {
+  character_id: string;
+  character_name: string;
+  scripts: InterfaceScript[];
+  unsupported: string | null;
 }
 
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
@@ -3120,6 +3129,9 @@ function App() {
   );
   // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
   const [hasStateBar, setHasStateBar] = useState(false);
+  // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
+  const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
+  const [cardUiOpen, setCardUiOpen] = useState(false);
   // 編輯中的欄位：path 是樹裡的完整路徑，平欄則是長度 1 的路徑（tree=false，走舊的單層存檔）
   const [editingStateField, setEditingStateField] = useState<{
     path: string[];
@@ -3302,6 +3314,63 @@ function App() {
     };
   }, [table, mainView, characters]);
 
+  // 切桌重問這桌各卡的介面腳本；先清空避免上一桌的介面殼閃現，讀失敗就當這桌沒有
+  useEffect(() => {
+    setCardInterfaces([]);
+    if (!table) return;
+    let stale = false;
+    invoke<CardInterface[]>("card_interfaces", { worldId: table })
+      .then((list) => {
+        if (!stale) setCardInterfaces(list);
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [table]);
+
+  // 目前要顯示的卡片介面殼：由近到遠掃最近 10 則，跳過玩家發言（介面藏在 GM／角色那則的原文標籤裡）
+  const cardInterfaceShell = useMemo(() => {
+    const scripts = cardInterfaces
+      .filter((card) => card.unsupported === null)
+      .flatMap((card) => card.scripts);
+    if (scripts.length === 0) return null;
+    const recent = events.slice(-10);
+    for (let i = recent.length - 1; i >= 0; i -= 1) {
+      const event = recent[i];
+      if (event.kind === "player") continue;
+      const shell = extractShell(applyScripts(event.raw ?? event.text, scripts));
+      if (shell !== null) return shell;
+    }
+    return null;
+  }, [events, cardInterfaces]);
+
+  // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來；只填輸入框，絕不代按送出
+  useEffect(() => {
+    if (!cardUiOpen) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (typeof data !== "object" || data === null || data.source !== "table-tavern-card") return;
+      if (data.kind === "input") {
+        const text = String(data.text ?? "");
+        setInput((prev) => (prev && text ? `${prev} ${text}` : prev + text));
+        setCardUiOpen(false);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [cardUiOpen]);
+
+  // Esc 關閉卡片介面覆蓋層；只在開著時掛，避免和其他 Esc 行為（如取消改名）互相搶
+  useEffect(() => {
+    if (!cardUiOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCardUiOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cardUiOpen]);
+
   async function enterTable(id: string, loaded: AppConfig) {
     const state = await invoke<WorldState>("read_state", { worldId: id });
     const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
@@ -3325,6 +3394,7 @@ function App() {
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
     setMainView(null);
     setActsOpen(false);
+    setCardUiOpen(false);
     if (loaded.preferences["last_world"] !== id) {
       const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
       await invoke("write_config", { config: next });
@@ -4699,6 +4769,12 @@ function App() {
             </button>
           )}
           <div className="chat-header-actions">
+            {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面 */}
+            {cardInterfaceShell !== null && (
+              <button type="button" onClick={() => setCardUiOpen(true)}>
+                {t("cardInterfaceOpen")}
+              </button>
+            )}
             <button
               type="button"
               title={t("sceneAdvanceHint")}
@@ -5034,6 +5110,26 @@ function App() {
         </div>
         {error && <ErrorNote text={error} />}
       </main>
+
+      {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄 */}
+      {cardUiOpen && cardInterfaceShell !== null && (
+        <div className="card-interface-overlay">
+          <button
+            type="button"
+            className="modal-close card-interface-close"
+            aria-label={t("cardInterfaceClose")}
+            onClick={() => setCardUiOpen(false)}
+          >
+            ✕
+          </button>
+          <iframe
+            className="card-interface-frame"
+            sandbox="allow-scripts"
+            srcDoc={buildShellDocument(cardInterfaceShell)}
+            title={t("cardInterfaceOpen")}
+          />
+        </div>
+      )}
 
       {/* 放整個版面最後：設定視窗永遠疊在其他 modal（含生圖對話框）之上 */}
       {settingsOpen !== false && (

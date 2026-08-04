@@ -405,4 +405,7 @@ export const en: Record<MsgKey, string> = {
   errAuth: "This AI source isn't signed in, or its credentials expired. Reconnect it in Settings and try again.",
   errNoImage: "This source can't generate images: it's out of image credits, or its plan doesn't include image generation. Try another image source.",
   errRefused: "The image source declined this description, usually a content-policy block. Reword it, or try another image source.",
+
+  cardInterfaceOpen: "Card Interface",
+  cardInterfaceClose: "Close Interface",
 };

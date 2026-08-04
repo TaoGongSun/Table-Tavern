@@ -376,4 +376,7 @@ export const ptBR: Record<MsgKey, string> = {
   errAuth: "Esta origem de IA não está conectada ou suas credenciais expiraram. Reconecte-a nas Configurações e tente novamente.",
   errNoImage: "Esta origem não pode gerar imagens: está sem créditos de imagem ou o plano contratado não inclui geração de imagens. Tente outra origem.",
   errRefused: "A origem recusou esta descrição, geralmente por política de conteúdo. Reescreva-a ou tente outra origem.",
+
+  cardInterfaceOpen: "Interface da Carta",
+  cardInterfaceClose: "Fechar interface",
 };

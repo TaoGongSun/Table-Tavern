@@ -376,4 +376,7 @@ export const es: Record<MsgKey, string> = {
   errAuth: "No se ha iniciado sesión en este origen de IA o las credenciales caducaron. Vuelve a conectarlo en Ajustes.",
   errNoImage: "Este origen no puede generar imágenes: no tiene créditos suficientes o tu plan no las incluye. Intenta con otro origen.",
   errRefused: "El origen rechazó esta descripción, normalmente por las políticas de contenido. Reescríbela o intenta con otro origen.",
+
+  cardInterfaceOpen: "Interfaz de carta",
+  cardInterfaceClose: "Cerrar interfaz",
 };

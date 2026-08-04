@@ -404,6 +404,9 @@ export const zh = {
   errAuth: "這個 AI 來源還沒登入，或憑證已過期。到設定重新連線後再試。",
   errNoImage: "這個來源不能生圖：生圖額度不足，或方案沒有包含生圖。換一個生圖來源再試。",
   errRefused: "這段描述被生圖來源拒絕了，多半卡到內容規範。換個說法，或改用其他生圖來源再試。",
+
+  cardInterfaceOpen: "卡片介面",
+  cardInterfaceClose: "關閉介面",
 } as const;
 
 export type MsgKey = keyof typeof zh;

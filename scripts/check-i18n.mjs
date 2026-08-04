@@ -47,6 +47,8 @@ const width = (text) => [...String(text)].reduce((n, c) => n + (WIDE.test(c) ? 2
 
 // 語言本身沒有更短的地道說法，且所在列已有折行或充足寬度保護
 const WRAP_SAFE_LONG = new Set([
+  // 這不是按鈕文案，是沒有玩家卡時的代稱（狀態欄的值欄是 1fr 彈性欄，本來就放得下整句狀態）
+  "ja:playerLabel",
   "de:editBtn",
   "de:hideActs",
   "fr:onboardSaveBtn",
