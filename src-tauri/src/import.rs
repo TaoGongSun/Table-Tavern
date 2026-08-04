@@ -23,6 +23,8 @@ pub struct ImportProbe {
     pub scripts: Vec<String>,
     pub lorebook_heavy: bool,
     pub alternate_greetings: usize,
+    /// 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名
+    pub name: Option<String>,
 }
 
 /// 匯入前只提示可能無法保留的內容；真正的格式錯誤仍交給匯入處理。
@@ -92,6 +94,9 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
         .get("alternate_greetings")
         .and_then(Value::as_array)
         .map_or(0, Vec::len);
+    probe.name = string_field(card_data, "name")
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty());
     probe
 }
 
