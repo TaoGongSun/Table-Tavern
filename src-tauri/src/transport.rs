@@ -1133,6 +1133,31 @@ pub fn narrate_instruction(
     message("user", instruction)
 }
 
+/// 卡片自帶介面的桌：卡片自己規定了輸出格式，我們不再要求旁白＋state 圍欄，
+/// 否則兩套指令打架、模型會照我們的寫，卡片的介面就永遠對不上。
+pub fn card_format_instruction(lang: &str, entry_title: Option<&str>) -> ChatMessage {
+    let instruction = if lang == "en" {
+        let format_source = entry_title
+            .map(|title| format!(" (see the worldbook entry \"{title}\")"))
+            .unwrap_or_default();
+        format!(
+            "(Director instruction) This table uses the interface that ships with the card, and the card already defines the reply format{format_source}. \
+             Follow that specification exactly for this turn: same tags, same block order, same counts, same required fields, with the content advancing the story. \
+             Do not rewrite it as ordinary narration, and do not output anything outside that format."
+        )
+    } else {
+        let format_source = entry_title
+            .map(|title| format!("（見世界書「{title}」）"))
+            .unwrap_or_default();
+        format!(
+            "（導演指示）這桌使用卡片自帶的介面，卡片已經規定了回覆的輸出格式{format_source}。\
+             請完全依照那份規定產生本回合的回覆：標籤、區塊順序、數量與必填欄位都照規定，內容依劇情推進。\
+             不要改寫成一般旁白，也不要輸出規定格式以外的任何說明或狀態欄。"
+        )
+    };
+    message("user", instruction)
+}
+
 /// 從旁白剝出尾端的「下一位：」點名行：回傳（點名原文, 剝除後的顯示文字）。
 /// 與 extract_state_block 同族：只認整行、行首標記，掃到多行取最後一行；沒有就原樣返回。
 pub fn extract_next_speaker(reply: &str) -> (Option<String>, String) {
@@ -1883,6 +1908,27 @@ mod tests {
         // 名單空（純世界書開局等）＝退回純旁白，不要求點名行
         let solo = narrate_instruction("zh-TW", &[], None).content;
         assert!(!solo.contains("下一位"));
+    }
+
+    /// 卡片自帶介面時的導演指示：點名世界書那條格式規定的標題，且不再要求舊版的
+    /// state 圍欄／下一位點名——那是兩邊指令打架的根因。
+    #[test]
+    fn card_format_instruction_points_to_worldbook_entry_and_drops_old_format_asks() {
+        let zh_with_title = card_format_instruction("zh-TW", Some("回复规则")).content;
+        assert!(zh_with_title.contains("回复规则"));
+        assert!(!zh_with_title.contains("```state"));
+        assert!(!zh_with_title.contains("下一位"));
+
+        let zh_without_title = card_format_instruction("zh-TW", None).content;
+        assert!(!zh_without_title.contains("見世界書"));
+
+        let en_with_title = card_format_instruction("en", Some("Response Rules")).content;
+        assert!(en_with_title.contains("Response Rules"));
+        assert!(!en_with_title.contains("```"));
+        assert!(!en_with_title.contains("Next:"));
+
+        let en_without_title = card_format_instruction("en", None).content;
+        assert!(!en_without_title.contains("see the worldbook entry"));
     }
 
     #[test]
