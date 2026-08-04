@@ -3348,6 +3348,9 @@ function App() {
     );
   }, [cardInterfaceShell, frontSlot]);
 
+  // 送出後最新一則是玩家發言、算不出新殼，但介面得留著等 GM 回話，所以看的是「現在有沒有殼可顯示」
+  const cardShellReady = cardInterfaceShell !== null || shellSlots[frontSlot] !== null;
+
   const shellDocs = useMemo(
     () => shellSlots.map((shell) => (shell ? buildShellDocument(shell) : "")),
     [shellSlots],
@@ -3398,13 +3401,17 @@ function App() {
     setCharacters(cast);
     await loadCharacterImages(id, cast);
     await loadPlayerCard(id, state.player_card_id);
-    setSpeaker(cast.find((character) => !character.archived)?.id ?? "");
+    // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的
+    setSpeaker(cast.find((character) => !character.archived)?.id ?? GM_TARGET);
     setEditingName(null);
     setEditingStateField(null);
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
     setMainView(null);
     setActsOpen(false);
     setCardUiOpen(false);
+    // 兩格緩衝一起清掉，否則上一桌的介面會被當成這桌的、按鈕出現在沒有介面的桌上
+    setShellSlots([null, null]);
+    setFrontSlot(0);
     if (loaded.preferences["last_world"] !== id) {
       const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
       await invoke("write_config", { config: next });
@@ -4816,7 +4823,7 @@ function App() {
           )}
           <div className="chat-header-actions">
             {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面 */}
-            {cardInterfaceShell !== null && (
+            {cardShellReady && (
               <button type="button" onClick={() => setCardUiOpen(true)}>
                 {t("cardInterfaceOpen")}
               </button>
@@ -5158,7 +5165,7 @@ function App() {
       </main>
 
       {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄 */}
-      {cardUiOpen && cardInterfaceShell !== null && (
+      {cardUiOpen && cardShellReady && (
         <div className="card-interface-overlay">
           {generating !== null && (
             <div className="card-interface-status" role="status">
