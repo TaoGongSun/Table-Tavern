@@ -37,7 +37,8 @@ export const zh = {
   // 額度分頁（快取包 6）：token 是主軸，金額只轉述 CLI 回報值
   usageScopeLabel: "看哪一桌",
   usageAllTables: "所有桌總計",
-  usageUnlabeled: "未標桌",
+  usageGenesis: "開桌生成",
+  usageDeletedTable: "已刪掉的桌",
   usageEmpty: "還沒有任何呼叫紀錄，開始玩之後這裡就會有數字。",
   usageTokensLabel: "tokens",
   usageCostAbout: "約",
