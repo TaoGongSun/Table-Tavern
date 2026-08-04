@@ -219,6 +219,9 @@ pub struct TableState {
     /// 上一輪本地套用的變動：路徑（點分）→ 顯示標記（"+5"／"-80"／"更新"）。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub changes: BTreeMap<String, String>,
+    /// 上一輪觸發表命中的文本：trigger id → 已代換好的文本，跟著逐則快照走。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub triggers: BTreeMap<String, String>,
 }
 
 /// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。
@@ -296,6 +299,71 @@ impl FieldRule {
     }
 }
 
+/// 觸發條件三型（拍板 13 的四種：計數器門檻與數值區間判斷邏輯逐字相同，
+/// 差別只在欄位型別，共用 `Range` 不另立型別）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Condition {
+    /// 數值區間：`min`／`max` 任一可省，`*_exclusive` 為真＝嚴格大於／小於。
+    Range {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<f64>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        min_exclusive: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        max_exclusive: bool,
+        /// 路徑不存在時當成這個值（來源腳本的 `{defaults: 0}`）；沒填就當條件不成立。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default: Option<f64>,
+    },
+    /// 字串包含：任一命中即成立。路徑不存在視為空字串。
+    Contains { path: String, any: Vec<String> },
+    /// 旗標：`expect` 為 false＝「還沒發生過」。路徑不存在視為 false。
+    Flag { path: String, expect: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerMode {
+    /// 區間型：條件成立就持續注入（關係階段、環境氛圍）。
+    Range,
+    /// 一次性事件：命中後把旗標釘成 true，模型翻不了案——事件演過就是演過。
+    Once,
+}
+
+/// 一組觸發：來源是一條卡片腳本，`cases` 保留它 if／else-if 鏈的順序語意。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Trigger {
+    /// 穩定 id（來源條目標題正規化），`TableState.triggers` 與面板都用它對帳。
+    pub id: String,
+    pub title: String,
+    pub mode: TriggerMode,
+    /// 依序求值，第一個命中就停；空 `when` 的那筆＝else 兜底。
+    pub cases: Vec<TriggerCase>,
+    /// 命中文本前固定加的一段（來源腳本前言，通常是「當隱藏背景、別複述」）。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preamble: String,
+    /// 這組觸發看的是哪一支分支（點分路徑分段）——該支不在場就不注入，沿用包 5 的裁切。
+    /// 空＝桌級，永遠注入。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<String>,
+    /// `Once` 專用：命中後要釘成 `true` 的旗標路徑（點分）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TriggerCase {
+    /// 全部成立才算命中（AND）；空＝else 兜底。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub when: Vec<Condition>,
+    /// 命中要注入的文本。`{{state:World.Invasion}}` 這種佔位在注入前換成現值。
+    pub text: String,
+}
+
 fn mechanism_version() -> u32 {
     1
 }
@@ -307,6 +375,9 @@ pub struct Mechanism {
     pub version: u32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rules: BTreeMap<String, FieldRule>,
+    /// 觸發表：每回合本地求值，命中文本進下一輪回合尾。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<Trigger>,
     /// 這桌的數值走增量協定、由本地記帳（MVU 卡匯入後開啟）。
     #[serde(default, skip_serializing_if = "is_false")]
     pub incremental: bool,
@@ -321,6 +392,7 @@ impl Default for Mechanism {
         Self {
             version: mechanism_version(),
             rules: BTreeMap::new(),
+            triggers: Vec::new(),
             incremental: false,
         }
     }
@@ -328,7 +400,7 @@ impl Default for Mechanism {
 
 impl Mechanism {
     pub fn is_empty(&self) -> bool {
-        self.rules.is_empty() && !self.incremental
+        self.rules.is_empty() && self.triggers.is_empty() && !self.incremental
     }
 }
 
@@ -1342,8 +1414,8 @@ fn normalize_imported_entry(
     Ok(value)
 }
 
-/// 機制鷹架條目：`[initvar]`／`[mvu_update]` 規則表、或 ST 把整棵變數樹塞回提示詞的巨集。
-/// 本地已接管這些內容，不該再送進模型上下文燒字數。
+/// 機制鷹架條目：`[initvar]`／`[mvu_update]` 規則表、原生 EJS 腳本，或 ST 把整棵變數樹塞回提示詞的巨集。
+/// 本地已接管或原本就不會交給模型的內容，不該再送進模型上下文燒字數。
 fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
     let marker = entry
         .get("comment")
@@ -1358,7 +1430,9 @@ fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
     entry
         .get("content")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|content| content.contains("{{format_message_variable::"))
+        .is_some_and(|content| {
+            content.contains("{{format_message_variable::") || content.contains("<%")
+        })
 }
 
 /// 條目的實質內容指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。
@@ -1837,9 +1911,10 @@ pub fn append_opening(
     ts: &str,
     raw: &str,
     block: &crate::transport::StateBlock,
+    user_name: &str,
 ) -> DataResult<(TranscriptEvent, Outcome)> {
     let mut world = read_state(root, world_id)?;
-    let outcome = mechanism::apply_block(&mut world, block);
+    let outcome = mechanism::apply_block(&mut world, block, user_name);
     let event = TranscriptEvent {
         ts: ts.to_owned(),
         speaker_id: String::new(),
@@ -4006,6 +4081,7 @@ mod tests {
             tree: BTreeMap::new(),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -4040,6 +4116,7 @@ mod tests {
             "opening",
             raw,
             &crate::transport::extract_state_block(raw),
+            "阿濤",
         )
         .unwrap();
         assert_eq!(event.text, raw);
@@ -4058,6 +4135,7 @@ mod tests {
             tree: BTreeMap::new(),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -4083,6 +4161,7 @@ mod tests {
             "opening",
             raw,
             &crate::transport::extract_state_block(raw),
+            "阿濤",
         )
         .unwrap();
         assert!(outcome.records.is_empty());
@@ -4097,6 +4176,7 @@ mod tests {
             tree: BTreeMap::new(),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         assert_eq!(event.state, Some(expected.clone()));
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
@@ -4118,12 +4198,14 @@ mod tests {
             tree: BTreeMap::new(),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
             tree: BTreeMap::new(),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
             append_transcript(
@@ -4161,6 +4243,7 @@ mod tests {
             tree: BTreeMap::new(),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         });
         let event = |text: &str, snapshot: &TableState| TranscriptEvent {
             raw: None,
@@ -4481,6 +4564,7 @@ mod tests {
             )]),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::new(),
@@ -4496,6 +4580,7 @@ mod tests {
             )]),
             notes: Vec::new(),
             changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
         };
         for snapshot in [first.clone(), second.clone()] {
             append_transcript(

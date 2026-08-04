@@ -1,6 +1,7 @@
 use crate::data::{
     self, CharacterCard, CharacterMeta, DataResult, FieldKind, FieldRule, StateNode, Tier,
 };
+use crate::mechanism::{self, Record, RecordKind};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::fs;
@@ -189,9 +190,12 @@ pub fn read_card_interfaces(root: &Path, world_id: &str) -> DataResult<Vec<CardI
             continue;
         }
         let md_path = data::character_path(root, world_id, &meta.id)?;
-        let raw_path = [md_path.with_extension("png"), md_path.with_extension("import.json")]
-            .into_iter()
-            .find(|path| path.exists());
+        let raw_path = [
+            md_path.with_extension("png"),
+            md_path.with_extension("import.json"),
+        ]
+        .into_iter()
+        .find(|path| path.exists());
         let Some(raw_path) = raw_path else { continue };
         let Ok(bytes) = fs::read(&raw_path) else {
             continue;
@@ -309,7 +313,11 @@ fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -
     CardInterface {
         character_id: character_id.to_owned(),
         character_name: character_name.to_owned(),
-        scripts: if is_remote_loader { Vec::new() } else { scripts },
+        scripts: if is_remote_loader {
+            Vec::new()
+        } else {
+            scripts
+        },
         unsupported: is_remote_loader.then(|| "remote_loader".to_owned()),
         opening,
     }
@@ -317,7 +325,10 @@ fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -
 
 /// 只留「輸出後套用」且啟用中的顯示腳本：關閉、僅套 prompt、或不作用在模型輸出（placement 沒有 2）都不算。
 fn is_display_script(script: &Value) -> bool {
-    !script.get("disabled").and_then(Value::as_bool).unwrap_or(false)
+    !script
+        .get("disabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
         && !script
             .get("promptOnly")
             .and_then(Value::as_bool)
@@ -332,7 +343,9 @@ fn interface_script(script: &Value) -> InterfaceScript {
     InterfaceScript {
         name: string_field(script, "scriptName").unwrap_or("").to_owned(),
         find_regex: string_field(script, "findRegex").unwrap_or("").to_owned(),
-        replace_string: string_field(script, "replaceString").unwrap_or("").to_owned(),
+        replace_string: string_field(script, "replaceString")
+            .unwrap_or("")
+            .to_owned(),
         trim_strings: script
             .get("trimStrings")
             .and_then(Value::as_array)
@@ -410,7 +423,10 @@ fn format_tags(scripts: &[InterfaceScript]) -> Vec<String> {
                 continue;
             }
             j += 1;
-            while chars.get(j).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_') {
+            while chars
+                .get(j)
+                .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_')
+            {
                 j += 1;
             }
             if chars.get(j) == Some(&'>') {
@@ -585,8 +601,8 @@ fn merge_state_node(existing: &mut StateNode, incoming: StateNode, overwrite: bo
     }
 }
 
-/// 匯入 MVU 機制鷹架：`[initvar]` 停用條目給初始狀態樹、`[mvu_update]` 條目給欄位規則表；
-/// 一次掃完只寫一次 state.json。壞格式一律略過，只補齊缺口，不阻斷角色與世界書的正常匯入。
+/// 匯入 MVU 機制鷹架與固定型 EJS：`[initvar]` 停用條目給初始狀態樹、`[mvu_update]` 條目給欄位規則表，
+/// EJS 只收成可本地求值的觸發表；一次掃完只寫一次 state.json。壞格式一律略過，不阻斷正常匯入。
 pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
     let Some(entries) = book.get("entries") else {
         return;
@@ -599,8 +615,9 @@ pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
 
     let initial_tree = extract_initial_tree(&entries);
     let (rules, mvu_seen) = extract_field_rules(&entries);
+    let (triggers, skipped) = extract_triggers(&entries);
     let incremental = initial_tree.is_some() || mvu_seen;
-    if initial_tree.is_none() && rules.is_empty() && !incremental {
+    if initial_tree.is_none() && rules.is_empty() && triggers.is_empty() && !incremental {
         return;
     }
 
@@ -620,10 +637,64 @@ pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
     for (path, rule) in rules {
         world.mechanism.rules.insert(path, rule);
     }
+    for trigger in triggers {
+        if let Some(flag) = trigger.flag.as_ref() {
+            let mut rule = FieldRule::for_kind(FieldKind::ReadOnly);
+            rule.branch = flag.split('.').next().map(str::to_owned);
+            world.mechanism.rules.insert(flag.clone(), rule);
+        }
+        if let Some(index) = world
+            .mechanism
+            .triggers
+            .iter()
+            .position(|existing| existing.id == trigger.id)
+        {
+            world.mechanism.triggers[index] = trigger;
+        } else {
+            world.mechanism.triggers.push(trigger);
+        }
+    }
     if incremental {
         world.mechanism.incremental = true;
     }
     let _ = data::write_state(root, world_id, &world);
+    mechanism::append_log(root, world_id, world.current_scene, &skipped);
+}
+
+/// EJS 原文從不送模型：可辨識的才轉成觸發表，其餘留一筆記帳讓玩家知道沒有偷偷執行。
+fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
+    let mut triggers = Vec::new();
+    let mut skipped = Vec::new();
+    for entry in entries {
+        let Some(content) = entry.get("content").and_then(Value::as_str) else {
+            continue;
+        };
+        if !content.contains("<%") {
+            continue;
+        }
+        let title = entry
+            .get("comment")
+            .and_then(Value::as_str)
+            .or_else(|| entry.get("title").and_then(Value::as_str))
+            .unwrap_or_default();
+        if let Some(trigger) = crate::ejs::parse_triggers(title, content) {
+            if let Some(index) = triggers
+                .iter()
+                .position(|existing: &data::Trigger| existing.id == trigger.id)
+            {
+                triggers[index] = trigger;
+            } else {
+                triggers.push(trigger);
+            }
+        } else {
+            skipped.push(Record {
+                kind: RecordKind::Skipped,
+                path: title.to_owned(),
+                detail: "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+            });
+        }
+    }
+    (triggers, skipped)
 }
 
 fn entry_marker(entry: &Value) -> Option<String> {
@@ -1646,6 +1717,48 @@ mod tests {
         assert_eq!(affection.max, Some(200.0));
     }
 
+    /// EJS 只收可靜態還原的觸發表；認不出的原文仍停用並留 skipped 記帳。
+    #[test]
+    fn ejs_entries_become_triggers_and_log_unrecognized_scripts() {
+        let root = TestRoot::new("ejs-triggers");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let supported = r#"<%_
+var invasion = getvar('stat_data.World.Invasion', { defaults: 0 });
+var done = getvar('stat_data.Events.鐘聲', { defaults: false });
+if (invasion >= 50 && done === false) { _%>
+鐘聲響起 <%= invasion %><%_ setvar('stat_data.Events.鐘聲', true); } _%>"#;
+        let unsupported =
+            r#"<%_ var roll = _.random(1, 2); _%><%_ if (roll === 1) { _%>隨機<%_ } _%>"#;
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [
+                        {"comment": "[Event] 鐘聲", "content": supported},
+                        {"comment": "[Script] 隨機", "content": unsupported}
+                    ]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        assert_eq!(state.mechanism.triggers.len(), 1);
+        assert_eq!(
+            state.mechanism.triggers[0].flag.as_deref(),
+            Some("Events.鐘聲")
+        );
+        assert_eq!(
+            state.mechanism.rules["Events.鐘聲"].kind,
+            data::FieldKind::ReadOnly
+        );
+        assert!(!state.mechanism.incremental);
+        let log =
+            fs::read_to_string(data::mechanism_log_path(root.path(), &world_id).unwrap()).unwrap();
+        assert_eq!(log.matches("\"kind\":\"skipped\"").count(), 1);
+    }
+
     /// ST 的 `${a|b}` 多選一寫法：同一條規則要展開成各自獨立的規則。
     #[test]
     fn wildcard_pipe_segment_expands_into_multiple_rules() {
@@ -1804,7 +1917,10 @@ mod tests {
 
         // 同一張卡再匯一次：條目由去重擋下，不會長出第二份
         import_character(root.path(), &world_id, card.as_bytes(), "#ffffff").unwrap();
-        assert_eq!(data::read_worldbook(root.path(), &world_id).unwrap().len(), 2);
+        assert_eq!(
+            data::read_worldbook(root.path(), &world_id).unwrap().len(),
+            2
+        );
     }
 
     #[test]

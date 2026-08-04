@@ -69,7 +69,7 @@ pub fn resolve_display_macros(
 }
 
 /// 只替換 SillyTavern 的玩家與角色巨集，其餘巨集保持原樣。
-fn replace_st_macros(text: &str, user_name: &str, char_name: Option<&str>) -> String {
+pub(crate) fn replace_st_macros(text: &str, user_name: &str, char_name: Option<&str>) -> String {
     let mut result = String::with_capacity(text.len());
     let mut index = 0;
     while index < text.len() {
@@ -494,6 +494,28 @@ fn gm_dynamic_block(
         }
         dynamic.push_str(&tree_text);
     }
+    if mechanism.incremental && !state.triggers.is_empty() {
+        let lines: Vec<&str> = mechanism
+            .triggers
+            .iter()
+            .filter(|trigger| scope.align || !trigger_scope_hidden(&trigger.scope, &scope.hidden))
+            .filter_map(|trigger| state.triggers.get(&trigger.id))
+            .map(String::as_str)
+            .collect();
+        if !lines.is_empty() {
+            if !dynamic.is_empty() {
+                dynamic.push('\n');
+            }
+            dynamic.push_str("## 當前情境（系統依狀態表判定的隱藏背景，不要在回覆裡複述本段）\n");
+            for (index, text) in lines.iter().enumerate() {
+                if index > 0 {
+                    dynamic.push('\n');
+                }
+                dynamic.push_str(text);
+                dynamic.push('\n');
+            }
+        }
+    }
     if !state.notes.is_empty() {
         if !dynamic.is_empty() {
             dynamic.push('\n');
@@ -575,6 +597,15 @@ fn render_state_tree(
         }
         path.pop();
     }
+}
+
+/// 觸發表裁切：`trigger_scope` 正好是 `hidden` 某一條、或是其後代路徑，就該裁掉
+/// （不在場角色的關係階段文本不該送）。空 `trigger_scope`＝桌級，永遠不裁。
+fn trigger_scope_hidden(trigger_scope: &[String], hidden: &[Vec<String>]) -> bool {
+    !trigger_scope.is_empty()
+        && hidden.iter().any(|branch| {
+            trigger_scope.len() >= branch.len() && trigger_scope[..branch.len()] == branch[..]
+        })
 }
 
 /// 這一輪要裁掉哪些分支、要不要送全樹對齊——回合尾注入策略（包 5）。
@@ -2923,6 +2954,7 @@ mod tests {
             tree: std::collections::BTreeMap::new(),
             notes: Vec::new(),
             changes: std::collections::BTreeMap::new(),
+            triggers: std::collections::BTreeMap::new(),
         };
         let gm = assemble_gm_messages(
             "",
@@ -3182,6 +3214,7 @@ mod tests {
             )]),
             notes: Vec::new(),
             changes: std::collections::BTreeMap::new(),
+            triggers: std::collections::BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3208,6 +3241,7 @@ mod tests {
             )]),
             notes: Vec::new(),
             changes: std::collections::BTreeMap::new(),
+            triggers: std::collections::BTreeMap::new(),
         };
 
         let dynamic = gm_dynamic_block(
@@ -3229,6 +3263,7 @@ mod tests {
             tree: std::collections::BTreeMap::new(),
             notes: vec!["World.HP 已夾在範圍內，目前值 100。".to_owned()],
             changes: std::collections::BTreeMap::new(),
+            triggers: std::collections::BTreeMap::new(),
         };
         let dynamic = gm_dynamic_block(
             &[],
@@ -3251,6 +3286,196 @@ mod tests {
             "zh-TW",
         );
         assert!(!dynamic.contains("上一輪被系統擋下的更新"));
+    }
+
+    // ---- gm_dynamic_block：觸發表命中文本的「當前情境」段 ----
+
+    fn trigger_with_scope(id: &str, scope: &[&str]) -> data::Trigger {
+        data::Trigger {
+            id: id.to_owned(),
+            title: id.to_owned(),
+            mode: data::TriggerMode::Range,
+            cases: Vec::new(),
+            preamble: String::new(),
+            scope: scope.iter().map(|segment| (*segment).to_owned()).collect(),
+            flag: None,
+        }
+    }
+
+    #[test]
+    fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
+        let mechanism = Mechanism {
+            version: 1,
+            rules: BTreeMap::new(),
+            triggers: vec![trigger_with_scope("侵略", &[])],
+            incremental: true,
+        };
+        let state = TableState {
+            table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
+        };
+        let dynamic = gm_dynamic_block(
+            &[],
+            &state,
+            "阿濤",
+            &mechanism,
+            &StateScope::default(),
+            "zh-TW",
+        );
+        let state_pos = dynamic.find("## 目前狀態").expect("目前狀態應該有印");
+        let trigger_pos = dynamic.find("## 當前情境").expect("當前情境應該有印");
+        assert!(trigger_pos > state_pos);
+        assert!(dynamic.contains("戰雲密布"));
+    }
+
+    #[test]
+    fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
+        let mechanism = Mechanism {
+            version: 1,
+            rules: BTreeMap::new(),
+            triggers: vec![trigger_with_scope("侵略", &[])],
+            incremental: true,
+        };
+        let state = TableState {
+            table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
+        };
+        let dynamic = gm_dynamic_block(
+            &[],
+            &state,
+            "阿濤",
+            &mechanism,
+            &StateScope::default(),
+            "zh-TW",
+        );
+        assert!(!dynamic.contains("當前情境"));
+    }
+
+    /// 不在場角色那支被裁掉時，牽到那支的觸發文本不該送；`align`（換幕全樹對齊）
+    /// 忽略裁切，照樣全印。
+    #[test]
+    fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_aligned() {
+        let mechanism = Mechanism {
+            version: 1,
+            rules: BTreeMap::new(),
+            triggers: vec![
+                trigger_with_scope("亞瑟關係", &["Heroes", "亞瑟"]),
+                trigger_with_scope("世界氛圍", &[]),
+            ],
+            incremental: true,
+        };
+        let state = TableState {
+            table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::from([
+                ("亞瑟關係".to_owned(), "亞瑟關係文本".to_owned()),
+                ("世界氛圍".to_owned(), "世界氛圍文本".to_owned()),
+            ]),
+        };
+        let hidden = vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]];
+        let scope = StateScope {
+            hidden: hidden.clone(),
+            align: false,
+        };
+        let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &scope, "zh-TW");
+        assert!(!dynamic.contains("亞瑟關係文本"));
+        assert!(dynamic.contains("世界氛圍文本"));
+
+        let aligned = StateScope {
+            hidden,
+            align: true,
+        };
+        let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &aligned, "zh-TW");
+        assert!(dynamic.contains("亞瑟關係文本"));
+    }
+
+    /// scope 比隱藏分支更深（後代路徑）也要跟著裁——亞瑟底下的好感細節同樣屬於他那支。
+    #[test]
+    fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
+        let mechanism = Mechanism {
+            version: 1,
+            rules: BTreeMap::new(),
+            triggers: vec![trigger_with_scope(
+                "亞瑟細節",
+                &["Heroes", "亞瑟", "Affection"],
+            )],
+            incremental: true,
+        };
+        let state = TableState {
+            table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::from([("亞瑟細節".to_owned(), "亞瑟細節文本".to_owned())]),
+        };
+        let scope = StateScope {
+            hidden: vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]],
+            align: false,
+        };
+        let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &scope, "zh-TW");
+        assert!(!dynamic.contains("亞瑟細節文本"));
+    }
+
+    #[test]
+    fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
+        let mechanism = Mechanism {
+            version: 1,
+            rules: BTreeMap::new(),
+            // 刻意讓清單順序跟字典序相反，確認印出順序跟著 Vec 走。
+            triggers: vec![trigger_with_scope("乙", &[]), trigger_with_scope("甲", &[])],
+            incremental: true,
+        };
+        let state = TableState {
+            table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::from([
+                ("甲".to_owned(), "甲文本".to_owned()),
+                ("乙".to_owned(), "乙文本".to_owned()),
+            ]),
+        };
+        let dynamic = gm_dynamic_block(
+            &[],
+            &state,
+            "阿濤",
+            &mechanism,
+            &StateScope::default(),
+            "zh-TW",
+        );
+        let pos_b = dynamic.find("乙文本").unwrap();
+        let pos_a = dynamic.find("甲文本").unwrap();
+        assert!(pos_b < pos_a);
+    }
+
+    /// 全量桌（`!mechanism.incremental`）逐字維持現狀：就算 `state.triggers` 有值也不印。
+    #[test]
+    fn gm_dynamic_block_never_prints_trigger_section_for_a_full_snapshot_table() {
+        let state = TableState {
+            table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
+        };
+        let dynamic = gm_dynamic_block(
+            &[],
+            &state,
+            "阿濤",
+            &Mechanism::default(),
+            &StateScope::default(),
+            "zh-TW",
+        );
+        assert!(!dynamic.contains("當前情境"));
+        assert!(!dynamic.contains("戰雲密布"));
     }
 
     #[test]

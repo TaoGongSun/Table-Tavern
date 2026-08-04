@@ -1,7 +1,7 @@
 # Handoff: state-values-mvu
 
 ## Current state
-2026-08-04：包 1（標籤放寬）、包 2（機制格式核心）、包 3（`[initvar]` 匯入）、包 4（增量解析＋本地權威＋統一協定）、包 5（注入策略＋分支切割）完成，cargo test 272 綠、勇者實卡提示詞煙霧驗過。下一步＝包 7（觸發表＋固定型 EJS 解析，大）。
+2026-08-04：包 1（標籤放寬）、包 2（機制格式核心）、包 3（`[initvar]` 匯入）、包 4（增量解析＋本地權威＋統一協定）、包 5（注入策略＋分支切割）、包 7（觸發表＋固定型 EJS 解析）完成，cargo test 309 綠、勇者實卡提示詞煙霧驗過。下一步＝包 6（全量型跳動標記，小）或包 8（未收編帳本，小），兩包互不相干、順序隨意。
 
 ## Completed
 - 包 1 標籤放寬（主線直寫）：`transport::find_state_tag` 前綴比對（`<StatusData>`、`<Status_block>` 皆認，`<combatStatus>` 不誤剝）；`<maintext>` 只拆殼留正文；`data::STATE_BAR_MARKERS` 補 ```` ```status ````。
@@ -39,7 +39,20 @@
   - 面板：每個分支 summary 一個指認下拉（未指認＋角色卡清單），`{{user}}` 只在顯示時換成玩家名（編輯框仍是原字面），玩家那支與其祖先預設展開。
 - 順手帶（interface-card-panel 交界）：`TranscriptEvent` 加 `raw` 欄位存剝殼前的模型原文，只在真的剝到東西時才存，舊檔沒這欄照樣讀。`gm_narrate` 回傳 `raw`、前端存進事件；角色台詞本來就沒剝殼，不需要。
 
+- 包 7 觸發表＋固定型 EJS 解析（schema 與規範文件主線直寫，實作外派兩包並行：辨識器 codex `gpt-5.6-terra`、求值與注入 general-purpose subagent `model: opus`）：
+  - 觸發表 schema 進 `Mechanism.triggers`（不進逐則快照）：一組 `Trigger{id,title,mode,cases,preamble,scope,flag}`＝卡片一條腳本。`cases` **依序求值、第一個命中就停**，空 `when` 是兜底——來源 if／else-if 鏈（含巢狀優先級）攤平成一層，每筆帶上祖先條件，語意等價。命中文本存 `TableState.triggers`（id → 文本，跟著逐則快照走，收回上一句自動倒回）。
+  - 條件三型：`Range`（含 exclusive 與 `default`，`"480/500"` 取現值）／`Contains`（任一子字串）／`Flag`。拍板 13 的第四型「計數器門檻」與數值區間判斷邏輯逐字相同，共用 `Range` 不另立型別。`min`／`max` 全空的 `Range` 兼作「這條路徑存在且是數字」。
+  - `mode`：`range` 條件成立就持續注入；`once` 命中後把旗標路徑釘成 `"true"`（記一筆 `Absorbed`），下一輪條件自然不成立——事件演過就是演過。旗標路徑匯入時自動配一條 `read_only` 規則，模型改不動。
+  - 新模組 `ejs.rs`（774 行，手寫掃描、零新依賴、**從不執行腳本**）：收 `getvar('stat_data.…')` 變數表（認 `Number(x)` 別名）、tokenize `<% %>`／`<%_ _%>`／`<%=`、遞迴解析 if 鏈、`<%= 變數 %>` 換成佔位 `{{state:<路徑>}}`。出現 `_.random`／`for (`／`.split(`／`Math.`／運算式內插／任一分支沒文本＝整條回 `None`。
+  - **存在性守衛不能整層丟掉（主線煙霧後補的）**：卡片把整段腳本包在 `typeof X !== 'undefined' && X !== null` 裡，守衛剝掉後條件跟著蒸發，那個欄位還沒出現在樹上時兜底分支會無條件注入一段空值文本（灰烬侵蚀度／暴露度實測中招）。改成剝守衛時把變數收起來，每個 case 補一條存在性 `Range`。
+  - 收編：content 含 `<%` 的條目匯入即停用（辨識成功與失敗都不送——原生 ST 是外掛執行腳本、模型本來看不到原文），認不出的記一筆新的 `RecordKind::Skipped` 進帳本，包 8 的開關直接讀它。
+  - 注入：回合尾在「目前狀態」之後、拒收回饋之前插「## 當前情境（系統依狀態表判定的隱藏背景，不要在回覆裡複述本段）」，依 `mechanism.triggers` 順序印。**裁切沿用包 5**：trigger 的 `scope` 落在 `StateScope.hidden`（或其後代）就不印，換幕對齊時全印，全量桌整段不出現。
+  - 連帶：`apply_block`／`append_opening`／`post_opening` 補 `user_name` 參數（觸發文本要代換 `{{user}}`）；`replace_st_macros` 開成 `pub(crate)`。
+
 ## Verification
+- 包 7：`cargo test` 309 passed（272→309，新增 37）；clippy 逐字持平（lib 8／lib test 9）；`cargo fmt --check` 本包四個檔乾淨（codex 順手全檔 fmt 的 6 個無關檔案已 revert，維持 repo 原狀）；`npx tsc --noEmit` 與 `npm run build` 綠。
+- 包 7 勇者實卡煙霧（跑完即刪，**沒有呼叫任何模型**）：30 條 EJS 抽出 **21 組觸發表**（13 條角色關係階段各 13 個 case、4 條環境氛圍、4 條國家事件），9 條認不出進帳本（擲隨機數的事件庫／報紙生成器、跑迴圈統計的決戰判定與通天塔啟示、算百分比的生理機能、沒有 `getvar` 來源的決心值監測、分支全空的區域自動加載）。4 個事件旗標各配到 `read_only` 規則。餵一則更新（亞瑟好感 5→60、欲望 0→20、侵略度 1→56、地點改聖葉國）：亞瑟關係階段換成「暧昧萌芽」；聖葉國一次性事件觸發、`Events.Ecclesia_Conflict_Triggered` 釘成 `"true"`、記一筆 `Absorbed`；不在場的 12 個英雄關係文本全裁掉，回合尾 1,884 字元；第二輪什麼都不改，事件文本消失、關係階段照留、回合尾 1,449 字元。
+- 包 7 沒做：真桌實跑（要開 app 打真模型、花使用者額度，沒代做——包 4／5 也都欠這筆）；面板還沒有地方看觸發表與帳本（包 8）。
 - 包 5：`cargo test` 272 passed（262→272，新增 10）；clippy 比改動前少一個警告（lib 8／lib test 9，基準 9／10）；`cargo fmt --check` 本包四個檔乾淨（subagent 兩次順手全檔 fmt 的 6 個無關檔案已 revert）；`npx tsc --noEmit` 與 `npm run build` 綠。
 - 包 5 勇者實卡提示詞煙霧（跑完即刪，**沒有呼叫任何模型**）：匯入勇者卡→建兩張英雄卡＋一張玩家卡（分支靠同名自動比對）→餵一則 `<UpdateVariable>`（第一位英雄 HP -80、World.Location 改晨港碼頭）。結果：HP 4000/4000→3920/4000 帶 `（-80）` 標記；不在場的 14 個英雄分支全裁掉（有卡的 1 個＋手足 13 個）；回合尾 **3,127→530 字元**，換幕對齊輪 9,571 字元；角色線自己那支 506 字元、別人的名字沒漏進去；`World.Location` 沒出現在回合尾，改由 `snapshot_updates` 交給 transcript 系統事件；骰值欄 Roll100／Roll20 每輪本地重擲。
 - 包 5 沒做：真桌實跑（要開 app 打真模型、花使用者額度，沒代做）；面板指認下拉只驗到型別與編譯，沒實機點過。
@@ -50,10 +63,12 @@
 - 一次性煙霧測試（跑完即刪）：兩張實卡走角色卡與世界書兩條路徑，樹形與獨立寫的 python 參考解析器逐項相同——勇者卡 5 個頂層／491 葉／94 分支／3 空容器，根源重塑 4／340／136／17，兩條路徑產出的樹 `assert_eq!` 相等。抽查值正確：`Player.Name = "{{user}}"`（字面）、`Heroes.亚瑟·晨光.HP = "500/500"`、`World.Title = "序章: 灵魂的降临"`（引號內的冒號沒被切）、`Player.Inventory = {}`（空分支）。
 
 ## Remaining
-包 6–8 未開工，內容見 [tasks/state-values-mvu.md](../tasks/state-values-mvu.md) 分包段。順序建議：包 7 → 包 6／包 8。包 7 吃滿一次對話。
-包 4／5 沒做、留給後面的：真桌實跑（至今只有提示詞煙霧，沒開 app 跑過真模型回合）；面板還沒有地方看 `mechanism-log.jsonl`（包 8）。
+包 6（全量型跳動標記，小）與包 8（未收編帳本，小）未開工，內容見 [tasks/state-values-mvu.md](../tasks/state-values-mvu.md) 分包段；兩包互不相干、順序隨意，各自吃不滿一次對話。
+包 4／5／7 沒做、留給後面的：真桌實跑（至今只有提示詞煙霧，沒開 app 跑過真模型回合）；面板還沒有地方看 `mechanism-log.jsonl` 與觸發表（包 8）。
+已知取捨：`state.triggers` 存的是**求值時全部**的命中文本（勇者卡 16 組約 3KB），裁切在注入時才做——求值階段拿不到在場名單（`apply_block` 沒有角色卡），且若依在場裁切會讓逐則快照的內容隨在場變動，收回上一句就對不上。
 
 ## Notes
 - 樣本卡在 TestCards/（gitignore）。從 PNG 取卡片 JSON：讀 tEXt chunk 的 `chara`（base64 JSON），五張卡都有。
 - 面板顯示仍是 `{{user}}` 字面（拍板 21 說顯示也該代換）：前端要拿到玩家名才改得動，併進包 5 的面板工作一起做。
+- 辨識器目前「任一分支沒文本就整條放棄」比規格更嚴（規格只要求「全部分支都沒文本才放棄」）：勇者卡 5 個可辨識樣本不受影響，若日後撞到「某一階段刻意留空」的卡再放寬。
 - 勇者卡另有一組 `<CloverArchive>` 全回應 XML，是 ST 前端渲染用的另一套殼，本期不處理。
