@@ -2142,6 +2142,11 @@ textarea {
   opacity: 0.75;
 }
 
+/* 表格自己橫向捲，任何語系或超長模型 id 都不會把整個設定視窗撐寬 */
+.usage-table-wrap {
+  overflow-x: auto;
+}
+
 .usage-table {
   width: 100%;
   border-collapse: collapse;
