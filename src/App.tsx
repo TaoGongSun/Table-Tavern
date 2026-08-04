@@ -1108,7 +1108,8 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
   if (!report) return null;
   if (report.worlds.length === 0) return <p className="usage-empty">{t("usageEmpty")}</p>;
 
-  const latest = report.latest;
+  // 「最近一輪怎麼樣」是某一桌的事；看總計時沒有「最近一輪」這回事，不出這句話
+  const latest = scope === null ? null : report.latest;
   const entry = latest ? diagEntry(latest.diag) : undefined;
   const reasonKey = latest?.reason ? REASON_KEYS[latest.reason as keyof typeof REASON_KEYS] : undefined;
   const bodyRows = [...report.rows];
