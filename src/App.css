@@ -1332,8 +1332,11 @@ textarea {
   z-index: 4;
   border: 1px solid var(--line);
   border-radius: var(--radius-s);
-  background: var(--paper);
+  background: var(--surface-2);
   font: var(--fs-meta) / 1.4 var(--font-ui);
+  /* 樹展開後可以很長：自己捲，別把後面的訊息擠掉 */
+  max-height: 45vh;
+  overflow-y: auto;
 }
 
 .state-bar summary {
@@ -1366,6 +1369,20 @@ textarea {
 
 .state-bar-label {
   color: var(--ink-3);
+}
+
+/* 樹的分支：一層縮一格，深層資料照樣看得出從屬關係 */
+.state-tree-branch > summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.state-tree-children {
+  display: grid;
+  gap: 0.25rem;
+  margin-left: 0.75rem;
+  padding-top: 0.25rem;
 }
 
 /* 狀態值常是整句劇情描述，覆寫全域按鈕的 nowrap／置中，長值照欄寬折行 */

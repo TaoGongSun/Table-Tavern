@@ -4,8 +4,8 @@ mod genesis;
 mod import;
 #[allow(dead_code)]
 mod install;
-mod proxy;
 mod lanes;
+mod proxy;
 mod session_file;
 mod snapshot_patch;
 mod transport;
@@ -624,6 +624,24 @@ async fn set_table_state(
 }
 
 #[tauri::command]
+async fn set_state_path(
+    app: tauri::AppHandle,
+    world_id: String,
+    path: Vec<String>,
+    value: String,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    if !data::set_tree_value(&mut state.state.tree, &path, &value) {
+        return Ok(());
+    }
+    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())?;
+    data::set_last_transcript_state(&root, &world_id, state.current_scene, &state.state)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn read_config(app: tauri::AppHandle) -> Result<AppConfig, String> {
     data::read_config(&config_root(&app)?).map_err(|error| error.to_string())
 }
@@ -716,7 +734,9 @@ async fn prepare_claude_call(
         working_dir: cli_workspace(app)?,
         envs: claude_cli_envs(config),
         model,
-        usage_log: data_root(app).ok().map(|root| root.join("prompt-cache.jsonl")),
+        usage_log: data_root(app)
+            .ok()
+            .map(|root| root.join("prompt-cache.jsonl")),
         claude_home: claude_home_dir(),
     })
 }
@@ -742,7 +762,9 @@ async fn stream_via_transport(
         .unwrap_or_else(|| chat_transport(config));
     // 每次呼叫的用量落成一行 JSONL（資料目錄的 prompt-cache.jsonl），供額度分頁讀。
     // API 與 CLI 兩條路共用同一份檔案，靠行內的 transport 欄位分辨。
-    let usage_log = data_root(app).ok().map(|root| root.join("prompt-cache.jsonl"));
+    let usage_log = data_root(app)
+        .ok()
+        .map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
         return transport::stream_chat(config, &model, messages, usage_log.as_deref(), world, emit)
@@ -1353,7 +1375,9 @@ fn load_active_cards(
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|meta| !meta.archived)
-        .map(|meta| data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string()))
+        .map(|meta| {
+            data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string())
+        })
         .collect()
 }
 
@@ -1510,8 +1534,12 @@ async fn gm_narrate(
     if !fields.is_empty() {
         if let Ok(root) = data_root(&app) {
             if let Ok(mut state) = data::read_state(&root, &world_id) {
-                for (key, value) in fields {
-                    state.state.table.insert(key, value);
+                for (path, value) in fields {
+                    if path.len() == 1 {
+                        state.state.table.insert(path[0].clone(), value);
+                    } else {
+                        data::set_tree_value(&mut state.state.tree, &path, &value);
+                    }
                 }
                 let _ = data::write_state(&root, &world_id, &state);
             }
@@ -1802,6 +1830,7 @@ pub fn run() {
             read_state,
             write_state,
             set_table_state,
+            set_state_path,
             read_config,
             write_config,
             detect_clis,
@@ -1874,10 +1903,12 @@ mod tests {
     /// 真實 codex 輸出：前導說明與路徑之間沒有空白，整段當路徑會讀不到檔
     #[test]
     fn extract_image_refs_recovers_path_glued_to_preceding_sentence() {
-        assert!(extract_image_refs("不含浮水印。/Users/me/.codex/generated_images/abc/call_x.png")
-            .contains(&ImageRef::Path(PathBuf::from(
-                "/Users/me/.codex/generated_images/abc/call_x.png"
-            ))));
+        assert!(
+            extract_image_refs("不含浮水印。/Users/me/.codex/generated_images/abc/call_x.png")
+                .contains(&ImageRef::Path(PathBuf::from(
+                    "/Users/me/.codex/generated_images/abc/call_x.png"
+                )))
+        );
     }
 
     /// macOS 的 CLI 工作資料夾在「Application Support」底下，逐詞切會把路徑攔腰切斷
@@ -1894,11 +1925,8 @@ mod tests {
     /// codex 的 imagegen 把圖存進工作目錄的子目錄，回覆給的是相對路徑
     #[test]
     fn extract_image_refs_keeps_relative_path() {
-        assert!(
-            extract_image_refs("Saved to output/imagegen/fox.png").contains(&ImageRef::Path(
-                PathBuf::from("output/imagegen/fox.png")
-            ))
-        );
+        assert!(extract_image_refs("Saved to output/imagegen/fox.png")
+            .contains(&ImageRef::Path(PathBuf::from("output/imagegen/fox.png"))));
     }
 
     /// Windows 路徑沒有斜線可切，使用者名稱帶空格時同樣會斷

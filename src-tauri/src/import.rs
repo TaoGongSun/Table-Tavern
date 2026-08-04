@@ -1,5 +1,6 @@
-use crate::data::{self, CharacterCard, CharacterMeta, DataResult, Tier};
+use crate::data::{self, CharacterCard, CharacterMeta, DataResult, FieldRule, StateNode, Tier};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -67,7 +68,13 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
             entries.len() >= 3
                 && ["description", "personality", "scenario"]
                     .into_iter()
-                    .map(|field| string_field(card_data, field).unwrap_or("").trim().chars().count())
+                    .map(|field| {
+                        string_field(card_data, field)
+                            .unwrap_or("")
+                            .trim()
+                            .chars()
+                            .count()
+                    })
                     .sum::<usize>()
                     < 200
         });
@@ -119,6 +126,7 @@ pub fn import_character(
     };
     data::write_character(root, world_id, &card)?;
     fs::write(md_path.with_extension(raw_extension), bytes)?;
+    import_table_tavern_extension(root, world_id, &name, card_data);
 
     Ok(CharacterMeta {
         id,
@@ -141,19 +149,22 @@ pub fn export_character(
     path: &Path,
 ) -> DataResult<()> {
     let card = data::read_character(root, world_id, character_id)?;
-    let json = serde_json::to_vec_pretty(&character_card_v2(&card))?;
+    let json = serde_json::to_vec_pretty(&character_card_v2(root, world_id, &card))?;
     if path
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
     {
         fs::write(path, json)?;
     } else {
-        fs::write(path, embed_chara_chunk(&export_base_png(root, world_id, character_id)?, &json)?)?;
+        fs::write(
+            path,
+            embed_chara_chunk(&export_base_png(root, world_id, character_id)?, &json)?,
+        )?;
     }
     Ok(())
 }
 
-fn character_card_v2(card: &CharacterCard) -> Value {
+fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> Value {
     let sections = split_public_markdown(&card.public_md);
     let mut data = serde_json::Map::new();
     for ((_, field), content) in PUBLIC_SECTIONS.into_iter().zip(sections) {
@@ -169,7 +180,10 @@ fn character_card_v2(card: &CharacterCard) -> Value {
         ("tags", json!([])),
         ("creator", json!("")),
         ("character_version", json!("")),
-        ("extensions", json!({})),
+        (
+            "extensions",
+            table_tavern_extension(root_dir, world_id, &card.name),
+        ),
     ] {
         data.insert(field.to_owned(), value);
     }
@@ -182,6 +196,105 @@ fn character_card_v2(card: &CharacterCard) -> Value {
     root.insert("spec_version".to_owned(), json!("2.0"));
     root.insert("data".to_owned(), Value::Object(data));
     Value::Object(root)
+}
+
+/// 機制資料是附加資訊；讀不到這桌狀態時仍要讓玩家帶走可用的普通角色卡。
+fn table_tavern_extension(root: &Path, world_id: &str, name: &str) -> Value {
+    let Ok(world) = data::read_state(root, world_id) else {
+        return json!({});
+    };
+    let prefix = format!("{name}.");
+    let rules: BTreeMap<_, _> = world
+        .mechanism
+        .rules
+        .iter()
+        .filter_map(|(path, rule)| {
+            (rule.branch.as_deref() == Some(name))
+                .then(|| {
+                    path.strip_prefix(&prefix)
+                        .map(|relative| (relative.to_owned(), rule.clone()))
+                })
+                .flatten()
+        })
+        .collect();
+    let initial = world.state.tree.get(name).cloned();
+    if rules.is_empty() && initial.is_none() {
+        return json!({});
+    }
+    let mut table_tavern = serde_json::Map::new();
+    table_tavern.insert("version".to_owned(), json!(1));
+    if !rules.is_empty() {
+        table_tavern.insert(
+            "rules".to_owned(),
+            serde_json::to_value(rules).unwrap_or_default(),
+        );
+    }
+    if let Some(initial) = initial {
+        table_tavern.insert(
+            "initial".to_owned(),
+            serde_json::to_value(initial).unwrap_or_default(),
+        );
+    }
+    json!({ "table_tavern": table_tavern })
+}
+
+/// 壞掉的擴充資料只略過，因為角色本體已經安全存檔，不能被可選機制拖垮。
+fn import_table_tavern_extension(root: &Path, world_id: &str, name: &str, card_data: &Value) {
+    let Some(extension) = card_data
+        .get("extensions")
+        .and_then(|extensions| extensions.get("table_tavern"))
+    else {
+        return;
+    };
+    let Ok(mut world) = data::read_state(root, world_id) else {
+        return;
+    };
+    let mut changed = false;
+    if let Some(rules) = extension.get("rules") {
+        if let Ok(rules) = serde_json::from_value::<BTreeMap<String, FieldRule>>(rules.clone()) {
+            for (relative, mut rule) in rules {
+                if relative.is_empty() {
+                    continue;
+                }
+                rule.branch = Some(name.to_owned());
+                world
+                    .mechanism
+                    .rules
+                    .insert(format!("{name}.{relative}"), rule);
+                changed = true;
+            }
+        }
+    }
+    if let Some(initial) = extension.get("initial") {
+        if let Ok(initial) = serde_json::from_value::<StateNode>(initial.clone()) {
+            match world.state.tree.get_mut(name) {
+                Some(existing) => merge_state_node(existing, initial),
+                None => {
+                    world.state.tree.insert(name.to_owned(), initial);
+                }
+            }
+            changed = true;
+        }
+    }
+    if changed {
+        let _ = data::write_state(root, world_id, &world);
+    }
+}
+
+fn merge_state_node(existing: &mut StateNode, incoming: StateNode) {
+    match (existing, incoming) {
+        (StateNode::Branch(existing), StateNode::Branch(incoming)) => {
+            for (key, node) in incoming {
+                match existing.get_mut(&key) {
+                    Some(current) => merge_state_node(current, node),
+                    None => {
+                        existing.insert(key, node);
+                    }
+                }
+            }
+        }
+        (existing, incoming) => *existing = incoming,
+    }
 }
 
 /// 世界書卡不會先建成角色，仍要直接從匯入檔取得所有可選開場白。
@@ -261,7 +374,10 @@ fn character_book(private_md: &str, name: &str) -> Option<Value> {
             .and_then(|rest| rest.split_once("**："))
         {
             Some((keys, content)) if !content.trim().is_empty() => entries.push((
-                keys.split('、').map(str::trim).filter(|key| !key.is_empty()).collect(),
+                keys.split('、')
+                    .map(str::trim)
+                    .filter(|key| !key.is_empty())
+                    .collect(),
                 content.trim().to_owned(),
             )),
             _ => loose.push(line),
@@ -878,22 +994,76 @@ mod tests {
         export_character(root.path(), &world_id, &source.id, &target).unwrap();
 
         let exported = fs::read(&target).unwrap();
-        let value: Value = serde_json::from_slice(&decode_png_character(&exported).unwrap()).unwrap();
+        let value: Value =
+            serde_json::from_slice(&decode_png_character(&exported).unwrap()).unwrap();
         assert_eq!(value["spec"], "chara_card_v2");
         assert_eq!(value["name"], "莉亞");
         assert_eq!(value["data"]["personality"], "冷靜");
-        assert_eq!(value["data"]["character_book"]["entries"][0]["keys"][1], "月亮");
-        assert_eq!(value["data"]["character_book"]["entries"][0]["content"], "古老盟約");
+        assert_eq!(
+            value["data"]["character_book"]["entries"][0]["keys"][1],
+            "月亮"
+        );
+        assert_eq!(
+            value["data"]["character_book"]["entries"][0]["content"],
+            "古老盟約"
+        );
 
         let round_trip = import_character(root.path(), &world_id, &exported, "#000000").unwrap();
         assert_eq!(
-            data::read_character(root.path(), &world_id, &round_trip.id).unwrap().public_md,
-            data::read_character(root.path(), &world_id, &source.id).unwrap().public_md
+            data::read_character(root.path(), &world_id, &round_trip.id)
+                .unwrap()
+                .public_md,
+            data::read_character(root.path(), &world_id, &source.id)
+                .unwrap()
+                .public_md
         );
         assert_eq!(
-            data::read_character(root.path(), &world_id, &round_trip.id).unwrap().private_md,
+            data::read_character(root.path(), &world_id, &round_trip.id)
+                .unwrap()
+                .private_md,
             "- **森林、月亮**：古老盟約"
         );
+    }
+
+    #[test]
+    fn character_export_import_round_trips_rules_and_initial_tree() {
+        let root = TestRoot::new("mechanism-round-trip");
+        let source_world = data::create_world(root.path(), "來源桌").unwrap();
+        let source = import_character(
+            root.path(),
+            &source_world,
+            r#"{"data":{"name":"亞瑟","description":"騎士"}}"#.as_bytes(),
+            "#3366ff",
+        )
+        .unwrap();
+        let mut state = data::read_state(root.path(), &source_world).unwrap();
+        let mut rule = data::FieldRule::for_kind(data::FieldKind::Pair);
+        rule.branch = Some("亞瑟".to_owned());
+        state
+            .mechanism
+            .rules
+            .insert("亞瑟.能力.HP".to_owned(), rule);
+        let initial = StateNode::Branch(BTreeMap::from([(
+            "能力".to_owned(),
+            StateNode::Branch(BTreeMap::from([(
+                "HP".to_owned(),
+                StateNode::Leaf("50/50".to_owned()),
+            )])),
+        )]));
+        state.state.tree.insert("亞瑟".to_owned(), initial.clone());
+        data::write_state(root.path(), &source_world, &state).unwrap();
+
+        let export_path = root.path().join("亞瑟.json");
+        export_character(root.path(), &source_world, &source.id, &export_path).unwrap();
+        let exported = fs::read(&export_path).unwrap();
+        let target_world = data::create_world(root.path(), "目標桌").unwrap();
+        import_character(root.path(), &target_world, &exported, "#000000").unwrap();
+        let target = data::read_state(root.path(), &target_world).unwrap();
+        assert_eq!(
+            target.mechanism.rules["亞瑟.能力.HP"].branch.as_deref(),
+            Some("亞瑟")
+        );
+        assert_eq!(target.state.tree["亞瑟"], initial);
     }
 
     /// App 內手寫的卡沒有那五個標題，全部併進 description；私有筆記進常駐條目
@@ -974,9 +1144,16 @@ mod tests {
         export_character(root.path(), &world_id, &meta.id, &target).unwrap();
 
         let exported = fs::read(&target).unwrap();
-        let value: Value = serde_json::from_slice(&decode_png_character(&exported).unwrap()).unwrap();
+        let value: Value =
+            serde_json::from_slice(&decode_png_character(&exported).unwrap()).unwrap();
         assert_eq!(value["name"], "新名");
-        assert_eq!(exported.windows(6).filter(|window| *window == b"chara\0").count(), 1);
+        assert_eq!(
+            exported
+                .windows(6)
+                .filter(|window| *window == b"chara\0")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -1128,7 +1305,13 @@ mod tests {
             results.push(data::import_worldbook(root.path(), &world_id, &json).unwrap());
         }
         assert_eq!(results[0].imported, 2);
-        assert_eq!(results[1], data::WorldbookImport { imported: 0, skipped: 2 });
+        assert_eq!(
+            results[1],
+            data::WorldbookImport {
+                imported: 0,
+                skipped: 2
+            }
+        );
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].title, "盟約");

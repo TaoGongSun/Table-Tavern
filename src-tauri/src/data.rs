@@ -73,7 +73,9 @@ fn local_time_parts() -> DataResult<(i32, i32, i32, i32, i32, i32)> {
 
 pub fn local_timestamp() -> DataResult<String> {
     let (year, month, day, hour, minute, _) = local_time_parts()?;
-    Ok(format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}"))
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}"
+    ))
 }
 
 /// 秒級時間戳。給需要判斷短間隔的紀錄用——快取命中率 log 要看得出兩次呼叫相隔幾秒，
@@ -204,12 +206,165 @@ pub struct WorldbookEntry {
 pub struct TableState {
     #[serde(default)]
     pub table: BTreeMap<String, String>,
-    // 先保留角色數值紙的位置，第二期加入時才不必遷移既有存檔。
-    #[serde(default)]
-    pub characters: BTreeMap<String, BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tree: BTreeMap<String, StateNode>,
 }
 
+/// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StateNode {
+    Leaf(String),
+    Branch(BTreeMap<String, StateNode>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FieldKind {
+    #[default]
+    Number,
+    Pair,
+    Roll,
+    Text,
+    List,
+    Counter,
+    ReadOnly,
+    Derived,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateMode {
+    Delta,
+    Replace,
+    Local,
+    Reject,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InjectLevel {
+    Snapshot,
+    Turn,
+    Rare,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FieldRule {
+    pub kind: FieldKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    pub update: UpdateMode,
+    pub inject: InjectLevel,
+    /// 角色卡只帶走自己的分支，避免把整桌的規則偷偷塞進單張卡。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+impl FieldRule {
+    #[allow(dead_code)]
+    pub fn for_kind(kind: FieldKind) -> Self {
+        let (update, inject) = match kind {
+            FieldKind::Number | FieldKind::Pair | FieldKind::Counter => {
+                (UpdateMode::Delta, InjectLevel::Turn)
+            }
+            FieldKind::Roll => (UpdateMode::Local, InjectLevel::Turn),
+            FieldKind::Text => (UpdateMode::Replace, InjectLevel::Snapshot),
+            FieldKind::List => (UpdateMode::Replace, InjectLevel::Turn),
+            FieldKind::ReadOnly | FieldKind::Derived => (UpdateMode::Reject, InjectLevel::Rare),
+        };
+        Self {
+            kind,
+            min: None,
+            max: None,
+            update,
+            inject,
+            branch: None,
+        }
+    }
+}
+
+fn mechanism_version() -> u32 {
+    1
+}
+
+/// 規則留在桌級設定，逐則快照只存會隨對話改變的狀態值。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Mechanism {
+    #[serde(default = "mechanism_version")]
+    pub version: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rules: BTreeMap<String, FieldRule>,
+}
+
+impl Default for Mechanism {
+    fn default() -> Self {
+        Self {
+            version: mechanism_version(),
+            rules: BTreeMap::new(),
+        }
+    }
+}
+
+impl Mechanism {
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty()
+    }
+}
+
+/// 手動編輯撞到既有葉子時不覆寫資料夾，避免壞路徑把完整子樹吃掉。
+pub fn set_tree_value(
+    tree: &mut BTreeMap<String, StateNode>,
+    path: &[String],
+    value: &str,
+) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+
+    fn write(
+        branch: &mut BTreeMap<String, StateNode>,
+        path: &[String],
+        value: &str,
+    ) -> Option<bool> {
+        let key = &path[0];
+        if path.len() == 1 {
+            if value.is_empty() {
+                return Some(branch.remove(key).is_some());
+            }
+            let next = StateNode::Leaf(value.to_owned());
+            let changed = branch.get(key) != Some(&next);
+            if changed {
+                branch.insert(key.clone(), next);
+            }
+            return Some(changed);
+        }
+
+        let child = match branch.get_mut(key) {
+            Some(StateNode::Branch(child)) => child,
+            Some(StateNode::Leaf(_)) => return None,
+            None if value.is_empty() => return Some(false),
+            None => {
+                branch.insert(key.clone(), StateNode::Branch(BTreeMap::new()));
+                let Some(StateNode::Branch(child)) = branch.get_mut(key) else {
+                    return None;
+                };
+                child
+            }
+        };
+        let changed = write(child, &path[1..], value)?;
+        if changed && child.is_empty() {
+            branch.remove(key);
+        }
+        Some(changed)
+    }
+
+    write(tree, path, value).unwrap_or(false)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldState {
     pub id: String,
     pub name: String,
@@ -226,6 +381,8 @@ pub struct WorldState {
     pub scene_titles: BTreeMap<String, String>,
     #[serde(default)]
     pub state: TableState,
+    #[serde(default, skip_serializing_if = "Mechanism::is_empty")]
+    pub mechanism: Mechanism,
 }
 
 /// 側欄桌列表用的精簡視圖
@@ -370,6 +527,7 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
         catchup_summaries: BTreeMap::new(),
         scene_titles: BTreeMap::new(),
         state: TableState::default(),
+        mechanism: Mechanism::default(),
     };
     fs::write(
         directory.join("state.json"),
@@ -1580,11 +1738,15 @@ pub fn append_opening(
     scene: u64,
     ts: &str,
     text: &str,
-    fields: &[(String, String)],
+    fields: &[(Vec<String>, String)],
 ) -> DataResult<TranscriptEvent> {
     let mut state = read_state(root, world_id)?;
-    for (key, value) in fields {
-        state.state.table.insert(key.clone(), value.clone());
+    for (path, value) in fields {
+        if path.len() == 1 {
+            state.state.table.insert(path[0].clone(), value.clone());
+        } else {
+            set_tree_value(&mut state.state.tree, path, value);
+        }
     }
     let event = TranscriptEvent {
         ts: ts.to_owned(),
@@ -1883,9 +2045,7 @@ pub fn validate_sponsor_pack(bytes: &[u8]) -> DataResult<()> {
         .as_object()
         .ok_or_else(|| invalid_data("贊助包必須是 JSON 物件"))?;
 
-    if object.get("type").and_then(serde_json::Value::as_str)
-        != Some("table-tavern-sponsor-pack")
-    {
+    if object.get("type").and_then(serde_json::Value::as_str) != Some("table-tavern-sponsor-pack") {
         return Err(invalid_data("贊助包的 type 不正確"));
     }
 
@@ -1906,9 +2066,11 @@ pub fn sponsor_pack_active(root: &Path) -> bool {
     };
 
     entries.flatten().any(|entry| {
-        entry.path().extension().is_some_and(|extension| extension == "ttpack")
-            && fs::read(entry.path())
-                .is_ok_and(|bytes| validate_sponsor_pack(&bytes).is_ok())
+        entry
+            .path()
+            .extension()
+            .is_some_and(|extension| extension == "ttpack")
+            && fs::read(entry.path()).is_ok_and(|bytes| validate_sponsor_pack(&bytes).is_ok())
     })
 }
 
@@ -1998,7 +2160,9 @@ mod tests {
 
     #[test]
     fn validates_a_valid_sponsor_pack() {
-        assert!(validate_sponsor_pack(br#"{"type":"table-tavern-sponsor-pack","format":1}"#).is_ok());
+        assert!(
+            validate_sponsor_pack(br#"{"type":"table-tavern-sponsor-pack","format":1}"#).is_ok()
+        );
     }
 
     #[test]
@@ -2084,7 +2248,9 @@ mod tests {
             }
         });
         assert_eq!(
-            import_worldbook(root.path(), &source, &imported.to_string()).unwrap().imported,
+            import_worldbook(root.path(), &source, &imported.to_string())
+                .unwrap()
+                .imported,
             2
         );
 
@@ -2118,7 +2284,9 @@ mod tests {
         let destination = create_world(root.path(), "目的").unwrap();
         let exported_text = fs::read_to_string(exported).unwrap();
         assert_eq!(
-            import_worldbook(root.path(), &destination, &exported_text).unwrap().imported,
+            import_worldbook(root.path(), &destination, &exported_text)
+                .unwrap()
+                .imported,
             entries.len()
         );
         assert_eq!(
@@ -2154,11 +2322,23 @@ mod tests {
             }
         });
         let first = import_worldbook(root.path(), &world_id, &book.to_string()).unwrap();
-        assert_eq!(first, WorldbookImport { imported: 2, skipped: 0 });
+        assert_eq!(
+            first,
+            WorldbookImport {
+                imported: 2,
+                skipped: 0
+            }
+        );
 
         // 同一份書再匯一次：內容一模一樣，全部略過
         let again = import_worldbook(root.path(), &world_id, &book.to_string()).unwrap();
-        assert_eq!(again, WorldbookImport { imported: 0, skipped: 2 });
+        assert_eq!(
+            again,
+            WorldbookImport {
+                imported: 0,
+                skipped: 2
+            }
+        );
         assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 2);
 
         // 關鍵字順序不同、內文前後有空白＝同一條；改過內文的才算新條目
@@ -2185,7 +2365,13 @@ mod tests {
             }
         });
         let third = import_worldbook(root.path(), &world_id, &mixed.to_string()).unwrap();
-        assert_eq!(third, WorldbookImport { imported: 1, skipped: 1 });
+        assert_eq!(
+            third,
+            WorldbookImport {
+                imported: 1,
+                skipped: 1
+            }
+        );
         assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 3);
     }
 
@@ -2267,7 +2453,9 @@ mod tests {
             ]
         });
         assert_eq!(
-            import_worldbook(root.path(), &world_id, &character_book.to_string()).unwrap().imported,
+            import_worldbook(root.path(), &world_id, &character_book.to_string())
+                .unwrap()
+                .imported,
             2
         );
 
@@ -2409,12 +2597,9 @@ mod tests {
     fn worldbook_entry_to_player_card_sets_state_and_rejects_second_card() {
         let root = TestRoot::new("worldbook-entry-to-player");
         let world_id = create_world(root.path(), "世界").unwrap();
-        let first_uid = upsert_worldbook_entry(
-            root.path(),
-            &world_id,
-            worldbook_entry(u64::MAX, "玩家"),
-        )
-        .unwrap();
+        let first_uid =
+            upsert_worldbook_entry(root.path(), &world_id, worldbook_entry(u64::MAX, "玩家"))
+                .unwrap();
         let second_uid = upsert_worldbook_entry(
             root.path(),
             &world_id,
@@ -2466,8 +2651,8 @@ mod tests {
         assert!(!world_has_state_bar(root.path(), &world_id).unwrap());
 
         let mut rules = worldbook_entry(u64::MAX, "Day Counter");
-        rules.content = "<details>\n<summary>状态栏</summary>\n- 沦陷天数：第 [X] 天\n</details>"
-            .to_owned();
+        rules.content =
+            "<details>\n<summary>状态栏</summary>\n- 沦陷天数：第 [X] 天\n</details>".to_owned();
         upsert_worldbook_entry(root.path(), &world_id, rules).unwrap();
         assert!(world_has_state_bar(root.path(), &world_id).unwrap());
     }
@@ -2488,23 +2673,13 @@ mod tests {
     fn worldbook_entry_to_character_rejects_empty_title_without_deleting() {
         let root = TestRoot::new("worldbook-entry-empty-title");
         let world_id = create_world(root.path(), "世界").unwrap();
-        let uid = upsert_worldbook_entry(
-            root.path(),
-            &world_id,
-            worldbook_entry(u64::MAX, "  "),
-        )
-        .unwrap();
+        let uid = upsert_worldbook_entry(root.path(), &world_id, worldbook_entry(u64::MAX, "  "))
+            .unwrap();
 
         assert_eq!(
-            worldbook_entry_to_character(
-                root.path(),
-                &world_id,
-                uid,
-                "#abcdef".to_owned(),
-                false,
-            )
-            .unwrap_err()
-            .to_string(),
+            worldbook_entry_to_character(root.path(), &world_id, uid, "#abcdef".to_owned(), false,)
+                .unwrap_err()
+                .to_string(),
             "條目沒有標題，先給標題再轉"
         );
         assert!(read_worldbook(root.path(), &world_id)
@@ -2904,13 +3079,19 @@ mod tests {
             }
 
             assert!(
-                !read_world_md(root.path(), &world_id).unwrap().trim().is_empty(),
+                !read_world_md(root.path(), &world_id)
+                    .unwrap()
+                    .trim()
+                    .is_empty(),
                 "{lang} 世界設定是空的"
             );
 
             let transcript = read_transcript(root.path(), &world_id, 0).unwrap();
             assert_eq!(transcript.len(), 1, "{lang} 開場旁白數不對");
-            assert!(!transcript[0].text.trim().is_empty(), "{lang} 開場旁白是空的");
+            assert!(
+                !transcript[0].text.trim().is_empty(),
+                "{lang} 開場旁白是空的"
+            );
 
             assert_ne!(
                 read_state(root.path(), &world_id).unwrap().name,
@@ -3561,7 +3742,10 @@ mod tests {
                 event
             })
             .collect();
-        assert_eq!(read_transcript(root.path(), &world_id, 7).unwrap(), expected);
+        assert_eq!(
+            read_transcript(root.path(), &world_id, 7).unwrap(),
+            expected
+        );
 
         let path = root
             .path()
@@ -3622,14 +3806,18 @@ mod tests {
             expected
         );
         // 重寫後仍是合法 JSONL：行數對齊事件數，沒有殘留的半行
-        let path = root.path().join(format!("worlds/{world_id}/transcript/0.jsonl"));
+        let path = root
+            .path()
+            .join(format!("worlds/{world_id}/transcript/0.jsonl"));
         assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 2);
 
         // 連按到底：收乾淨後再按回 false，不會倒退咬到別的幕
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
         assert!(!pop_transcript(root.path(), &world_id, 0).unwrap());
-        assert!(read_transcript(root.path(), &world_id, 0).unwrap().is_empty());
+        assert!(read_transcript(root.path(), &world_id, 0)
+            .unwrap()
+            .is_empty());
 
         // 沒開始過的幕：不建檔也不報錯
         assert!(!pop_transcript(root.path(), &world_id, 9).unwrap());
@@ -3670,7 +3858,7 @@ mod tests {
 
         let supplied = TableState {
             table: BTreeMap::from([("time".to_owned(), "午夜".to_owned())]),
-            characters: BTreeMap::new(),
+            tree: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -3698,7 +3886,7 @@ mod tests {
         let world_id = create_world(root.path(), "開場狀態桌").unwrap();
         let previous = TableState {
             table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
-            characters: BTreeMap::new(),
+            tree: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -3722,8 +3910,8 @@ mod tests {
             "opening",
             "開場旁白",
             &[
-                ("place".to_owned(), "碼頭".to_owned()),
-                ("time".to_owned(), "午夜".to_owned()),
+                (vec!["place".to_owned()], "碼頭".to_owned()),
+                (vec!["time".to_owned()], "午夜".to_owned()),
             ],
         )
         .unwrap();
@@ -3732,7 +3920,7 @@ mod tests {
                 ("place".to_owned(), "碼頭".to_owned()),
                 ("time".to_owned(), "午夜".to_owned()),
             ]),
-            characters: BTreeMap::new(),
+            tree: BTreeMap::new(),
         };
         assert_eq!(event.state, Some(expected.clone()));
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
@@ -3751,11 +3939,11 @@ mod tests {
         let world_id = create_world(root.path(), "回收狀態桌").unwrap();
         let first = TableState {
             table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
-            characters: BTreeMap::new(),
+            tree: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
-            characters: BTreeMap::new(),
+            tree: BTreeMap::new(),
         };
         for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
             append_transcript(
@@ -3789,7 +3977,7 @@ mod tests {
         let world_id = create_world(root.path(), "復原狀態桌").unwrap();
         let snapshots = ["清晨", "午夜"].map(|time| TableState {
             table: BTreeMap::from([("time".to_owned(), time.to_owned())]),
-            characters: BTreeMap::new(),
+            tree: BTreeMap::new(),
         });
         let event = |text: &str, snapshot: &TableState| TranscriptEvent {
             ts: "now".to_owned(),
@@ -3802,13 +3990,22 @@ mod tests {
         for (text, snapshot) in [("第一句", &snapshots[0]), ("第二句", &snapshots[1])] {
             append_transcript(root.path(), &world_id, 0, &event(text, snapshot)).unwrap();
         }
-        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshots[1]);
+        assert_eq!(
+            read_state(root.path(), &world_id).unwrap().state,
+            snapshots[1]
+        );
 
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
-        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshots[0]);
+        assert_eq!(
+            read_state(root.path(), &world_id).unwrap().state,
+            snapshots[0]
+        );
 
         append_transcript(root.path(), &world_id, 0, &event("第二句", &snapshots[1])).unwrap();
-        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshots[1]);
+        assert_eq!(
+            read_state(root.path(), &world_id).unwrap().state,
+            snapshots[1]
+        );
     }
 
     #[test]
@@ -4021,6 +4218,107 @@ mod tests {
             .insert("水手代碼".to_owned(), "錯過了序幕".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
         assert_eq!(read_state(root.path(), &world_id).unwrap(), state);
+    }
+
+    #[test]
+    fn mechanism_round_trips_and_old_state_defaults_to_empty() {
+        let root = TestRoot::new("mechanism-state");
+        let world_id = create_world(root.path(), "機制桌").unwrap();
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        let mut rule = FieldRule::for_kind(FieldKind::Pair);
+        rule.min = Some(0.0);
+        rule.max = Some(500.0);
+        rule.branch = Some("亞瑟".to_owned());
+        state.mechanism.rules.insert("亞瑟.HP".to_owned(), rule);
+        write_state(root.path(), &world_id, &state).unwrap();
+        assert_eq!(read_state(root.path(), &world_id).unwrap(), state);
+
+        fs::write(
+            root.path().join(format!("worlds/{world_id}/state.json")),
+            r#"{"id":"old","name":"舊桌"}"#,
+        )
+        .unwrap();
+        assert!(read_state(root.path(), &world_id)
+            .unwrap()
+            .mechanism
+            .is_empty());
+    }
+
+    #[test]
+    fn set_tree_value_creates_overwrites_prunes_and_preserves_leaf_collisions() {
+        let path = ["World", "城市", "聲望"].map(str::to_owned);
+        let mut tree = BTreeMap::new();
+        assert!(!set_tree_value(&mut tree, &path, ""));
+        assert!(tree.is_empty());
+        assert!(set_tree_value(&mut tree, &path, "10"));
+        assert!(set_tree_value(&mut tree, &path, "12"));
+        assert_eq!(
+            tree["World"],
+            StateNode::Branch(BTreeMap::from([(
+                "城市".to_owned(),
+                StateNode::Branch(BTreeMap::from([(
+                    "聲望".to_owned(),
+                    StateNode::Leaf("12".to_owned()),
+                )])),
+            )]))
+        );
+        assert!(set_tree_value(&mut tree, &path, ""));
+        assert!(tree.is_empty());
+
+        tree.insert("World".to_owned(), StateNode::Leaf("不可展開".to_owned()));
+        let before = tree.clone();
+        assert!(!set_tree_value(&mut tree, &path, "13"));
+        assert_eq!(tree, before);
+    }
+
+    #[test]
+    fn pop_transcript_restores_entire_nested_tree_snapshot() {
+        let root = TestRoot::new("nested-state-pop");
+        let world_id = create_world(root.path(), "巢狀桌").unwrap();
+        let first = TableState {
+            table: BTreeMap::new(),
+            tree: BTreeMap::from([(
+                "World".to_owned(),
+                StateNode::Branch(BTreeMap::from([(
+                    "城市".to_owned(),
+                    StateNode::Branch(BTreeMap::from([(
+                        "聲望".to_owned(),
+                        StateNode::Leaf("10".to_owned()),
+                    )])),
+                )])),
+            )]),
+        };
+        let second = TableState {
+            table: BTreeMap::new(),
+            tree: BTreeMap::from([(
+                "World".to_owned(),
+                StateNode::Branch(BTreeMap::from([(
+                    "城市".to_owned(),
+                    StateNode::Branch(BTreeMap::from([(
+                        "聲望".to_owned(),
+                        StateNode::Leaf("20".to_owned()),
+                    )])),
+                )])),
+            )]),
+        };
+        for snapshot in [first.clone(), second.clone()] {
+            append_transcript(
+                root.path(),
+                &world_id,
+                0,
+                &TranscriptEvent {
+                    ts: "now".to_owned(),
+                    speaker_id: String::new(),
+                    speaker_name: "GM".to_owned(),
+                    kind: TranscriptKind::Narration,
+                    text: "旁白".to_owned(),
+                    state: Some(snapshot),
+                },
+            )
+            .unwrap();
+        }
+        assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, first);
     }
 
     #[test]

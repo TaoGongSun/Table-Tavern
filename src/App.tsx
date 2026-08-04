@@ -136,8 +136,21 @@ interface WorldState {
   scene_titles: Record<string, string>;
   state: {
     table: Record<string, string>;
-    characters: Record<string, Record<string, string>>;
+    tree: Record<string, StateNode>;
   };
+}
+
+// 狀態樹節點：葉子是值，分支是子節點（對應後端 StateNode 的 untagged 序列化）
+type StateNode = string | { [key: string]: StateNode };
+
+// 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
+function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
+  let node: StateNode | undefined = tree[path[0]];
+  for (const key of path.slice(1)) {
+    if (typeof node !== "object" || node === null) return "";
+    node = node[key];
+  }
+  return typeof node === "string" ? node : "";
 }
 
 type Visibility =
@@ -3004,6 +3017,7 @@ function App() {
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [tableState, setTableState] = useState<Record<string, string>>({});
+  const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
   // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
@@ -3086,8 +3100,10 @@ function App() {
   );
   // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
   const [hasStateBar, setHasStateBar] = useState(false);
+  // 編輯中的欄位：path 是樹裡的完整路徑，平欄則是長度 1 的路徑（tree=false，走舊的單層存檔）
   const [editingStateField, setEditingStateField] = useState<{
-    key: string;
+    path: string[];
+    tree: boolean;
     value: string;
   } | null>(null);
   const [genTableOpen, setGenTableOpen] = useState(false);
@@ -3277,6 +3293,7 @@ function App() {
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
     setTableState(state.state?.table ?? {});
+    setTableTree(state.state?.tree ?? {});
     setEvents(transcript);
     setCharacters(cast);
     await loadCharacterImages(id, cast);
@@ -3496,19 +3513,16 @@ function App() {
   }
 
   // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。
-  async function saveTableState(key: string, value: string) {
+  async function saveStateField(path: string[], tree: boolean, value: string) {
     if (stateFieldSaveBusy.current || stateFieldEditCancelled.current) return;
     setEditingStateField(null);
-    if (value === (tableState[key] ?? "")) return;
+    if (value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
     stateFieldSaveBusy.current = true;
     setError("");
     try {
-      await invoke("set_table_state", { worldId: table, fields: { [key]: value } });
-      setTableState((previous) => {
-        if (value) return { ...previous, [key]: value };
-        const { [key]: _removed, ...remaining } = previous;
-        return remaining;
-      });
+      if (tree) await invoke("set_state_path", { worldId: table, path, value });
+      else await invoke("set_table_state", { worldId: table, fields: { [path[0]]: value } });
+      await refreshTableState();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -3517,14 +3531,14 @@ function App() {
   }
 
   // 表單交給瀏覽器處理 Enter，中文輸入法選字時不會提前送出。
-  function stateFieldForm(key: string, label: string) {
+  function stateFieldForm(path: string[], tree: boolean, label: string) {
     const value = editingStateField?.value ?? "";
     return (
       <form
         className="state-bar-field-form"
         onSubmit={(event) => {
           event.preventDefault();
-          void saveTableState(key, value);
+          void saveStateField(path, tree, value);
         }}
       >
         <input
@@ -3536,7 +3550,7 @@ function App() {
             const next = event.currentTarget.value;
             setEditingStateField((previous) => (previous ? { ...previous, value: next } : previous));
           }}
-          onBlur={() => void saveTableState(key, value)}
+          onBlur={() => void saveStateField(path, tree, value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               stateFieldEditCancelled.current = true;
@@ -3548,9 +3562,54 @@ function App() {
     );
   }
 
+  // 一列點著就能改的欄位：平欄與樹葉子共用，差別只在存回哪裡
+  function stateLeafRow(path: string[], tree: boolean, label: string) {
+    const editing =
+      editingStateField?.tree === tree &&
+      editingStateField.path.length === path.length &&
+      editingStateField.path.every((segment, index) => segment === path[index]);
+    const value = tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? "");
+    return (
+      <div className="state-bar-field" key={path.join(" ")}>
+        <span className="state-bar-label">{label}</span>
+        {editing ? (
+          stateFieldForm(path, tree, label)
+        ) : (
+          <button
+            className="state-bar-value"
+            type="button"
+            title={t("stateEditHint")}
+            onClick={() => {
+              stateFieldEditCancelled.current = false;
+              setEditingStateField({ path, tree, value });
+            }}
+          >
+            {value || t("stateEmptyValue")}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // 樹狀折疊：分支一層層收起來，預設只展開第一層（玩家自己那支的自動展開等分支綁定做好）
+  function stateTreeNodes(nodes: Record<string, StateNode>, path: string[], depth: number) {
+    return Object.entries(nodes).map(([key, node]) => {
+      const childPath = [...path, key];
+      return typeof node === "string" ? (
+        stateLeafRow(childPath, true, key)
+      ) : (
+        <details className="state-tree-branch" key={key} open={depth === 0}>
+          <summary>{key}</summary>
+          <div className="state-tree-children">{stateTreeNodes(node, childPath, depth + 1)}</div>
+        </details>
+      );
+    });
+  }
+
   async function refreshTableState() {
     const state = await invoke<WorldState>("read_state", { worldId: table });
     setTableState(state.state?.table ?? {});
+    setTableTree(state.state?.tree ?? {});
   }
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
@@ -4562,7 +4621,7 @@ function App() {
           </div>
         </header>
 
-        {hasStateBar && (
+        {(hasStateBar || Object.keys(tableTree).length > 0) && (
         <details
           className="state-bar"
           open={stateBarOpen}
@@ -4580,26 +4639,8 @@ function App() {
             </span>
           </summary>
           <div className="state-bar-fields">
-            {stateFields.map(({ key, label }) => (
-              <div className="state-bar-field" key={key}>
-                <span className="state-bar-label">{label}</span>
-                {editingStateField?.key === key ? (
-                  stateFieldForm(key, label)
-                ) : (
-                  <button
-                    className="state-bar-value"
-                    type="button"
-                    title={t("stateEditHint")}
-                    onClick={() => {
-                      stateFieldEditCancelled.current = false;
-                      setEditingStateField({ key, value: tableState[key] ?? "" });
-                    }}
-                  >
-                    {stateValue(key)}
-                  </button>
-                )}
-              </div>
-            ))}
+            {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}
+            {stateTreeNodes(tableTree, [], 0)}
           </div>
         </details>
         )}
