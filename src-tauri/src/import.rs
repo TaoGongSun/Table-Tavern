@@ -145,6 +145,146 @@ pub fn import_character(
     })
 }
 
+/// 卡片自帶介面：SillyTavern 的 `extensions.regex_scripts` 裡「模型輸出後套用」的顯示腳本，
+/// 交給前端在沙盒 iframe 渲染；DRM 加密卡與雲端載入器卡不解密、不繞過，只回報不支援。
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct InterfaceScript {
+    pub name: String,
+    pub find_regex: String,
+    pub replace_string: String,
+    pub trim_strings: Vec<String>,
+    pub min_depth: Option<i64>,
+    pub max_depth: Option<i64>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct CardInterface {
+    pub character_id: String,
+    pub character_name: String,
+    pub scripts: Vec<InterfaceScript>,
+    pub unsupported: Option<String>,
+}
+
+/// 掃描每張已匯入卡的原始卡檔（PNG／.import.json），抽出可渲染的顯示腳本。
+/// 面板是選配功能：壞卡、非匯入卡、解析失敗一律跳過該角色，絕不讓錯誤擋住呼叫端。
+pub fn read_card_interfaces(root: &Path, world_id: &str) -> DataResult<Vec<CardInterface>> {
+    let mut result = Vec::new();
+    for meta in data::list_characters(root, world_id)? {
+        if meta.archived {
+            continue;
+        }
+        let md_path = data::character_path(root, world_id, &meta.id)?;
+        let raw_path = [md_path.with_extension("png"), md_path.with_extension("import.json")]
+            .into_iter()
+            .find(|path| path.exists());
+        let Some(raw_path) = raw_path else { continue };
+        let Ok(bytes) = fs::read(&raw_path) else {
+            continue;
+        };
+        let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+            match decode_png_character(&bytes) {
+                Ok(bytes) => bytes,
+                Err(_) => continue,
+            }
+        } else {
+            bytes
+        };
+        let Ok(value) = serde_json::from_slice::<Value>(&json_bytes) else {
+            continue;
+        };
+        let card_data = value
+            .get("data")
+            .filter(|data| data.is_object())
+            .unwrap_or(&value);
+        result.push(card_interface(&meta.id, &meta.name, card_data));
+    }
+    Ok(result)
+}
+
+fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -> CardInterface {
+    let is_scrypt = [
+        string_field(card_data, "first_mes"),
+        string_field(card_data, "description"),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|text| text.to_ascii_uppercase().contains("SCRYPT"));
+    if is_scrypt {
+        return CardInterface {
+            character_id: character_id.to_owned(),
+            character_name: character_name.to_owned(),
+            scripts: Vec::new(),
+            unsupported: Some("scrypt".to_owned()),
+        };
+    }
+
+    let scripts: Vec<InterfaceScript> = card_data
+        .get("extensions")
+        .and_then(|extensions| extensions.get("regex_scripts"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|script| is_display_script(script))
+        .map(interface_script)
+        .collect();
+    let is_remote_loader = scripts.iter().any(is_remote_loader_script);
+
+    CardInterface {
+        character_id: character_id.to_owned(),
+        character_name: character_name.to_owned(),
+        scripts: if is_remote_loader { Vec::new() } else { scripts },
+        unsupported: is_remote_loader.then(|| "remote_loader".to_owned()),
+    }
+}
+
+/// 只留「輸出後套用」且啟用中的顯示腳本：關閉、僅套 prompt、或不作用在模型輸出（placement 沒有 2）都不算。
+fn is_display_script(script: &Value) -> bool {
+    !script.get("disabled").and_then(Value::as_bool).unwrap_or(false)
+        && !script
+            .get("promptOnly")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        && script
+            .get("placement")
+            .and_then(Value::as_array)
+            .is_some_and(|placement| placement.iter().any(|value| value.as_i64() == Some(2)))
+}
+
+fn interface_script(script: &Value) -> InterfaceScript {
+    InterfaceScript {
+        name: string_field(script, "scriptName").unwrap_or("").to_owned(),
+        find_regex: string_field(script, "findRegex").unwrap_or("").to_owned(),
+        replace_string: string_field(script, "replaceString").unwrap_or("").to_owned(),
+        trim_strings: script
+            .get("trimStrings")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect(),
+        min_depth: script.get("minDepth").and_then(Value::as_i64),
+        max_depth: script.get("maxDepth").and_then(Value::as_i64),
+    }
+}
+
+/// 雲端載入器流派：整段輸出被換成一行從外部網址載入前端 app，沙盒 iframe 天生跑不起來。
+fn is_remote_loader_script(script: &InterfaceScript) -> bool {
+    script.replace_string.len() < 2000
+        && script.replace_string.contains(".load(")
+        && is_catch_all_regex(&script.find_regex)
+}
+
+/// find_regex 去掉 `/…/flags` 外殼、去掉前後 `^`／`$` 後，是否為「吞掉整段輸出」的萬用式。
+fn is_catch_all_regex(find_regex: &str) -> bool {
+    let body = find_regex
+        .strip_prefix('/')
+        .and_then(|rest| rest.rfind('/').map(|end| &rest[..end]))
+        .unwrap_or(find_regex);
+    let body = body.strip_prefix('^').unwrap_or(body);
+    let body = body.strip_suffix('$').unwrap_or(body);
+    matches!(body, ".+" | ".*" | r"[\s\S]*" | r"[\s\S]+")
+}
+
 /// 匯出成 SillyTavern chara_card_v2：內容一律由現在的卡重建（匯入後改過的字才會跟著出去）。
 /// 副檔名 .json 直接寫 JSON，其餘寫 PNG——把 JSON 塞進 tEXt chara chunk，底圖用這張卡的圖。
 pub fn export_character(
@@ -1881,5 +2021,140 @@ mod tests {
         let round_trip: Value =
             serde_json::from_str(&worldbook_json(plain.as_bytes()).unwrap()).unwrap();
         assert_eq!(round_trip, serde_json::from_str::<Value>(plain).unwrap());
+    }
+
+    #[test]
+    fn read_card_interfaces_filters_to_output_display_scripts() {
+        let root = TestRoot::new("interfaces-filter");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "extensions": {
+                    "regex_scripts": [
+                        {
+                            "scriptName": "顯示介面",
+                            "findRegex": "/.+/s",
+                            "replaceString": "<div>ok</div>",
+                            "trimStrings": ["a"],
+                            "minDepth": 1,
+                            "maxDepth": 2,
+                            "placement": [2]
+                        },
+                        {
+                            "scriptName": "已停用",
+                            "findRegex": "/x/",
+                            "replaceString": "y",
+                            "disabled": true,
+                            "placement": [2]
+                        },
+                        {
+                            "scriptName": "只套提示詞",
+                            "findRegex": "/x/",
+                            "replaceString": "y",
+                            "promptOnly": true,
+                            "placement": [2]
+                        },
+                        {
+                            "scriptName": "作用在使用者輸入",
+                            "findRegex": "/x/",
+                            "replaceString": "y",
+                            "placement": [1]
+                        }
+                    ]
+                }
+            }
+        })
+        .to_string();
+
+        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces[0].character_id, meta.id);
+        assert_eq!(interfaces[0].unsupported, None);
+        assert_eq!(interfaces[0].scripts.len(), 1);
+        let script = &interfaces[0].scripts[0];
+        assert_eq!(script.name, "顯示介面");
+        assert_eq!(script.find_regex, "/.+/s");
+        assert_eq!(script.replace_string, "<div>ok</div>");
+        assert_eq!(script.trim_strings, vec!["a".to_owned()]);
+        assert_eq!(script.min_depth, Some(1));
+        assert_eq!(script.max_depth, Some(2));
+    }
+
+    #[test]
+    fn read_card_interfaces_detects_scrypt_cards() {
+        let root = TestRoot::new("interfaces-scrypt");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "first_mes": "<!--SCRYPT PROTECTED-->"
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces[0].unsupported, Some("scrypt".to_owned()));
+        assert!(interfaces[0].scripts.is_empty());
+    }
+
+    #[test]
+    fn read_card_interfaces_detects_remote_loader_cards() {
+        let root = TestRoot::new("interfaces-remote-loader");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "extensions": {
+                    "regex_scripts": [{
+                        "scriptName": "雲端介面",
+                        "findRegex": "/.+/s",
+                        "replaceString": "```\n<body>\n<script>\n$('body').load('https://example.github.io/x/index.html')\n</script>\n</body>\n```",
+                        "placement": [2]
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces[0].unsupported, Some("remote_loader".to_owned()));
+        assert!(interfaces[0].scripts.is_empty());
+    }
+
+    #[test]
+    fn read_card_interfaces_handles_plain_cards_without_extensions() {
+        let root = TestRoot::new("interfaces-plain");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({"data": {"name": "莉亞"}}).to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert_eq!(interfaces.len(), 1);
+        assert!(interfaces[0].scripts.is_empty());
+        assert_eq!(interfaces[0].unsupported, None);
+    }
+
+    /// 原始卡檔壞掉（非法 JSON）只能略過該角色，不能讓整份清單報錯。
+    #[test]
+    fn read_card_interfaces_skips_characters_with_corrupted_raw_file() {
+        let root = TestRoot::new("interfaces-corrupt");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({"data": {"name": "莉亞"}}).to_string();
+        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+
+        let raw_path = root.path().join(format!(
+            "worlds/{world_id}/characters/{}.import.json",
+            meta.id
+        ));
+        fs::write(&raw_path, b"\xff\xfe not json").unwrap();
+
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert!(interfaces.is_empty());
     }
 }

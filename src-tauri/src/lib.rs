@@ -453,6 +453,14 @@ fn probe_import(data: Vec<u8>) -> Result<import::ImportProbe, String> {
     Ok(import::probe_import(&data))
 }
 
+#[tauri::command]
+fn card_interfaces(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<Vec<import::CardInterface>, String> {
+    import::read_card_interfaces(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
 // 存檔位置由前端的「另存新檔」對話框決定；副檔名決定 PNG 或 JSON
 #[tauri::command]
 fn export_character(
@@ -1946,6 +1954,7 @@ pub fn run() {
             set_character_archived,
             delete_character,
             probe_import,
+            card_interfaces,
             import_character,
             export_character,
             read_character_image,
