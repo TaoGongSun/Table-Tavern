@@ -3124,6 +3124,9 @@ function App() {
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
   const [cardUiOpen, setCardUiOpen] = useState(false);
+  // 雙緩衝的兩格與目前露臉的那一格：新殼永遠先塞進背面那格，載好才翻面（見覆蓋層那段）
+  const [shellSlots, setShellSlots] = useState<[string | null, string | null]>([null, null]);
+  const [frontSlot, setFrontSlot] = useState(0);
   // 編輯中的欄位：path 是樹裡的完整路徑，平欄則是長度 1 的路徑（tree=false，走舊的單層存檔）
   const [editingStateField, setEditingStateField] = useState<{
     path: string[];
@@ -3333,31 +3336,36 @@ function App() {
     return findShell(cardInterfaces, [...recent, ...openings]);
   }, [events, cardInterfaces]);
 
+  // 新殼一律先塞進背面那格去載；載好了才由 onLoad 翻面
+  useEffect(() => {
+    if (cardInterfaceShell === null) return;
+    setShellSlots((slots) =>
+      slots.includes(cardInterfaceShell)
+        ? slots
+        : frontSlot === 0
+          ? [slots[0], cardInterfaceShell]
+          : [cardInterfaceShell, slots[1]],
+    );
+  }, [cardInterfaceShell, frontSlot]);
+
+  const shellDocs = useMemo(
+    () => shellSlots.map((shell) => (shell ? buildShellDocument(shell) : "")),
+    [shellSlots],
+  );
+
   // 每次 render 換上最新的送出函式：訊息監聽只掛一次，不能讓它抓著開面板當下的舊狀態
   const submitTextRef = useRef((_text: string) => Promise.resolve());
   submitTextRef.current = submitText;
 
-  // 卡片自己觸發一回合是 ST 上的正常用法，照送；但我們每收到新訊息就重載 iframe，
-  // 「載入就送」會滾成無限迴圈。煞車：玩家沒動作的期間只准自動送一次，玩家一動就歸零
-  const autoSentIdle = useRef(false);
-
-  // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來。送得出去就直接送、畫面留在介面裡等回覆
-  // （跟 ST 一樣不必進出對話）；被煞車擋下的改成填進輸入框、關回對話讓玩家自己決定
+  // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來，直接送出、畫面留在介面裡等回覆——
+  // 跟 ST 一樣不必進出對話，也不擋卡片自己觸發回合（那在 ST 上是正常用法，會壞的卡在 ST 也會壞）
   useEffect(() => {
     if (!cardUiOpen) return;
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
       if (typeof data !== "object" || data === null || data.source !== "table-tavern-card") return;
       if (data.kind !== "input") return;
-      const text = String(data.text ?? "");
-      const byPlayer = data.gesture === true;
-      if (text.trim() && (byPlayer || !autoSentIdle.current)) {
-        autoSentIdle.current = !byPlayer;
-        void submitTextRef.current(text);
-        return;
-      }
-      setInput((prev) => (prev && text ? `${prev} ${text}` : prev + text));
-      setCardUiOpen(false);
+      void submitTextRef.current(String(data.text ?? ""));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -3397,7 +3405,6 @@ function App() {
     setMainView(null);
     setActsOpen(false);
     setCardUiOpen(false);
-    autoSentIdle.current = false;
     if (loaded.preferences["last_world"] !== id) {
       const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
       await invoke("write_config", { config: next });
@@ -4281,13 +4288,17 @@ function App() {
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    autoSentIdle.current = false;
     await submitText(input);
   }
 
   async function submitText(raw: string) {
     const text = raw.trim();
-    if (!text || generating !== null) return;
+    if (generating !== null) return;
+    // 卡片只按了 /trigger（沒帶文字）＝直接要對象接話，不留玩家發言
+    if (!text) {
+      await replyFromTarget();
+      return;
+    }
     setError("");
     setInput("");
     try {
@@ -5167,12 +5178,21 @@ function App() {
           >
             ✕
           </button>
-          <iframe
-            className="card-interface-frame"
-            sandbox="allow-scripts"
-            srcDoc={buildShellDocument(cardInterfaceShell)}
-            title={t("cardInterfaceOpen")}
-          />
+          {/* 雙緩衝：新畫面先在背面那格載好才翻上來，在那之前舊畫面一直在，中途不會空白
+              （ST 是每則訊息各自一個 iframe、舊的留著，這是單格版本的等效作法）。
+              key 固定成格號：換 key 會重新掛載，等於白載一次。 */}
+          {([0, 1] as const).map((slot) => (
+            <iframe
+              key={slot}
+              className={`card-interface-frame${slot === frontSlot ? "" : " card-interface-preload"}`}
+              sandbox="allow-scripts"
+              srcDoc={shellDocs[slot]}
+              title={t("cardInterfaceOpen")}
+              onLoad={() => {
+                if (slot !== frontSlot && shellSlots[slot] === cardInterfaceShell) setFrontSlot(slot);
+              }}
+            />
+          ))}
         </div>
       )}
 
