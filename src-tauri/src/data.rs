@@ -570,6 +570,11 @@ pub(crate) fn mechanism_log_path(root: &Path, world_id: &str) -> DataResult<Path
     Ok(world_dir(root, world_id)?.join("mechanism-log.jsonl"))
 }
 
+/// 匯入收據落檔：worlds/<world_id>/import-receipts.json（JSON 陣列，append）。
+pub(crate) fn import_receipts_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("import-receipts.json"))
+}
+
 /// 世界書路徑匯入的原始卡檔：worlds/<world_id>/source-card.<png|import.json>。
 /// 卡片自帶介面要靠它，角色卡路徑則是留在角色檔旁邊。
 pub(crate) fn world_card_path(root: &Path, world_id: &str, extension: &str) -> DataResult<PathBuf> {

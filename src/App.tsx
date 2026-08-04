@@ -62,6 +62,22 @@ interface WorldbookImport {
   skipped: number;
 }
 
+/** 匯入收據摘要：側欄「復原上次匯入」按鈕靠這份判斷要不要顯示 */
+interface ImportReceiptSummary {
+  kind: "character" | "worldbook";
+  label: string;
+  timestamp: string;
+  character_id?: string | null;
+}
+
+/** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
+interface UndoReport {
+  removed_character?: string | null;
+  removed_entries: number;
+  kept_entries: number;
+  renamed_back: boolean;
+}
+
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
 // speaker_name 是當下顯示名快照——改名後舊事件不動（2026-07-27 拍板），顯示一律讀這欄
 interface TranscriptEvent {
@@ -1933,14 +1949,19 @@ function WorldEditor({
       } catch {
         // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
       }
-      const result = await invoke<WorldbookImport>("import_worldbook", { worldId: world, data: Array.from(bytes) });
+      // 純世界書 JSON 常沒有卡名，退而用檔名（去副檔名）當桌名候選；同一個值也交給後端當收據的顯示標籤
+      const label = probe.name ?? file.name.replace(/\.[^.]+$/, "");
+      const result = await invoke<WorldbookImport>("import_worldbook", {
+        worldId: world,
+        data: Array.from(bytes),
+        label,
+      });
       await refreshWorldbook();
       setWorldbookMessage(
         t("worldbookImported", { n: result.imported }) +
           (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
       );
-      // 純世界書 JSON 常沒有卡名，退而用檔名（去副檔名）當桌名候選
-      if (result.imported > 0) onImported(probe.name ?? file.name.replace(/\.[^.]+$/, ""));
+      if (result.imported > 0) onImported(label);
       if (probe.scripts.length > 0) {
         await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
       }
@@ -3227,6 +3248,10 @@ function App() {
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
   const [cardUiOpen, setCardUiOpen] = useState(false);
+  // 這桌的匯入收據摘要：非空才顯示「復原上次匯入」按鈕
+  const [importReceipts, setImportReceipts] = useState<ImportReceiptSummary[]>([]);
+  // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
+  const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
   // 雙緩衝的兩格與目前露臉的那一格：新殼永遠先塞進背面那格，載好才翻面（見覆蓋層那段）
   const [shellSlots, setShellSlots] = useState<[string | null, string | null]>([null, null]);
   const [frontSlot, setFrontSlot] = useState(0);
@@ -3505,6 +3530,9 @@ function App() {
     setCharacters(cast);
     await loadCharacterImages(id, cast);
     await loadPlayerCard(id, state.player_card_id);
+    setImportReceipts(
+      await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []),
+    );
     // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的
     setSpeaker(cast.find((character) => !character.archived)?.id ?? GM_TARGET);
     setEditingName(null);
@@ -3553,10 +3581,15 @@ function App() {
   async function adoptImportName(name: string | null | undefined) {
     const trimmed = name?.trim();
     if (!trimmed) return;
-    if (!hasAutoName(worlds.find((w) => w.id === table)?.name)) return;
+    const oldName = worlds.find((w) => w.id === table)?.name;
+    if (!hasAutoName(oldName)) return;
     try {
       await invoke("rename_world", { worldId: table, newName: trimmed });
       setWorlds((previous) => previous.map((w) => (w.id === table ? { ...w, name: trimmed } : w)));
+      // 把舊桌名補進這次匯入的收據：復原時桌名才退得回去；記帳失敗不影響改名已經成功
+      if (oldName !== undefined) {
+        await invoke("record_import_rename", { worldId: table, oldName }).catch(() => {});
+      }
     } catch {
       // 改名失敗不影響匯入，桌名維持原樣
     }
@@ -3980,6 +4013,44 @@ function App() {
     if (findShell(list, list.map((card) => card.opening)) !== null) setCardUiOpen(true);
   }
 
+  async function refreshImportReceipts() {
+    setImportReceipts(
+      await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: table }).catch(() => []),
+    );
+  }
+
+  // 側欄「復原上次匯入」：逆向收據清單最後一筆，逐筆倒退
+  async function undoLastImport() {
+    if (importReceipts.length === 0) return;
+    setError("");
+    const last = importReceipts[importReceipts.length - 1];
+    try {
+      const accepted = await confirm(t("undoLastImportConfirm", { label: last.label }), {
+        title: t("undoLastImport"),
+        kind: "warning",
+      });
+      if (!accepted) return;
+      const report = await invoke<UndoReport>("undo_last_import", { worldId: table });
+      const cast = await refreshCharacters();
+      // 發言對象指向的角色被這次復原刪掉了（不管是不是巧合）就改回 GM，不然輸入框對著空氣
+      if (speaker && speaker !== GM_TARGET && !cast.some((character) => character.id === speaker)) {
+        setSpeaker(GM_TARGET);
+      }
+      await refreshCardInterfaces();
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
+      setWorldEditorRefreshKey((key) => key + 1);
+      await refreshImportReceipts();
+      await showMessage(
+        t("undoLastImportDone") +
+          (report.kept_entries > 0 ? t("undoLastImportKept", { n: report.kept_entries }) : ""),
+        { title: t("undoLastImport") },
+      );
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端解析，顏色沿用建卡輪選
   async function importCharacter(file: File) {
     setError("");
@@ -4001,7 +4072,8 @@ function App() {
           cancelLabel: t("importRedirectCancel"),
         });
         if (!go) return;
-        const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data });
+        const label = probe.name ?? file.name.replace(/\.[^.]+$/, "");
+        const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data, label });
         await showMessage(
           t("importRedirectDone", { n: result.imported }) +
             (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
@@ -4010,6 +4082,7 @@ function App() {
         // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
         setSpeaker(GM_TARGET);
         await adoptImportName(probe.name);
+        await refreshImportReceipts();
         await offerOpeningLine(data);
         openCardInterface(await refreshCardInterfaces());
         return;
@@ -4024,6 +4097,7 @@ function App() {
       await loadCharacterImages(table, cast);
       setSpeaker(meta.id);
       await adoptImportName(meta.name);
+      await refreshImportReceipts();
       // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
       const interfaces = await refreshCardInterfaces();
       const mine = interfaces.find((card) => card.character_id === meta.id);
@@ -4933,6 +5007,15 @@ function App() {
                 if (file) void importCharacter(file);
               }}
             />
+            {importReceipts.length > 0 && (
+              <button
+                type="button"
+                title={t("undoLastImportHint")}
+                onClick={() => void undoLastImport()}
+              >
+                {t("undoLastImport")}
+              </button>
+            )}
           </div>
         </section>
         <div className="sidebar-footer">
@@ -5112,6 +5195,7 @@ function App() {
         ) : mainView?.kind === "world" ? (
           <EditPane title={t("worldSummary")}>
             <WorldEditor
+              key={worldEditorRefreshKey}
               world={table}
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
@@ -5119,6 +5203,7 @@ function App() {
                 // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
                 setSpeaker(GM_TARGET);
                 void adoptImportName(name);
+                void refreshImportReceipts();
               }}
               onOpening={offerOpeningLine}
               convertColor={PALETTE[characters.length % PALETTE.length]}
