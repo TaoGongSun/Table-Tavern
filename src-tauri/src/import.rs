@@ -363,6 +363,70 @@ fn is_catch_all_regex(find_regex: &str) -> bool {
     matches!(body, ".+" | ".*" | r"[\s\S]*" | r"[\s\S]+")
 }
 
+/// 卡片的顯示腳本期待模型吐出哪些標籤，教模型那個格式的就是世界書裡提到同樣標籤的條目。
+/// 回合尾要點名它，模型才不會照我們自己的旁白規矩寫。回傳那條的標題。
+pub fn card_format_entry(
+    scripts: &[InterfaceScript],
+    worldbook: &[data::WorldbookEntry],
+) -> Option<String> {
+    let tags = format_tags(scripts);
+    if tags.is_empty() {
+        return None;
+    }
+    worldbook
+        .iter()
+        .filter(|entry| !entry.disabled)
+        .filter_map(|entry| {
+            let hits = tags
+                .iter()
+                .filter(|tag| entry.content.contains(tag.as_str()))
+                .count();
+            (hits > 0).then_some((entry, hits))
+        })
+        .max_by_key(|(entry, hits)| (*hits, entry.content.len()))
+        .map(|(entry, _)| entry.title.clone())
+}
+
+/// 從顯示腳本的 find_regex 掃出字面的開頭標籤（`<Xxx>` 形式），跳過收尾 `</…>` 標籤；
+/// 先去掉反斜線轉義（`\/`、`\<` 等），標籤才會露出原樣。
+fn format_tags(scripts: &[InterfaceScript]) -> Vec<String> {
+    let mut tags = Vec::new();
+    for script in scripts {
+        let chars: Vec<char> = script.find_regex.chars().filter(|c| *c != '\\').collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] != '<' {
+                i += 1;
+                continue;
+            }
+            let mut j = i + 1;
+            if chars.get(j) == Some(&'/') {
+                i += 1; // 收尾標籤，跳過
+                continue;
+            }
+            let Some(&first) = chars.get(j) else { break };
+            if !(first.is_ascii_alphabetic() || first == '_') {
+                i += 1;
+                continue;
+            }
+            j += 1;
+            while chars.get(j).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_') {
+                j += 1;
+            }
+            if chars.get(j) == Some(&'>') {
+                let tag: String = chars[i..=j].iter().collect();
+                if !tags.contains(&tag) {
+                    tags.push(tag);
+                }
+                i = j + 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
+    tags
+}
+
 /// 匯出成 SillyTavern chara_card_v2：內容一律由現在的卡重建（匯入後改過的字才會跟著出去）。
 /// 副檔名 .json 直接寫 JSON，其餘寫 PNG——把 JSON 塞進 tEXt chara chunk，底圖用這張卡的圖。
 pub fn export_character(
@@ -2356,5 +2420,77 @@ mod tests {
 
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert!(interfaces.is_empty());
+    }
+
+    fn interface_script_for_test(find_regex: &str) -> InterfaceScript {
+        InterfaceScript {
+            name: "顯示".to_owned(),
+            find_regex: find_regex.to_owned(),
+            replace_string: String::new(),
+            trim_strings: Vec::new(),
+            min_depth: None,
+            max_depth: None,
+        }
+    }
+
+    fn worldbook_entry_for_test(
+        uid: u64,
+        title: &str,
+        content: &str,
+        disabled: bool,
+    ) -> data::WorldbookEntry {
+        data::WorldbookEntry {
+            uid,
+            title: title.to_owned(),
+            keys: Vec::new(),
+            content: content.to_owned(),
+            constant: true,
+            order: 0,
+            disabled,
+            visibility: data::Visibility::Gm,
+        }
+    }
+
+    /// 西幻卡的真實 find_regex：世界書裡含同款標籤的條目才是模型該照的格式規定；
+    /// 停用的條目就算含標籤也不能選中；命中標籤數較多的條目優先。
+    #[test]
+    fn card_format_entry_picks_matching_worldbook_entry() {
+        let find_regex = r"/<GoldenRPG_UI>.*?<CurrentView>([\s\S]*?)<\/CurrentView>.*?<WorldSystem>([\s\S]*?)<\/WorldSystem>.*?<LocalSystem>([\s\S]*?)<\/LocalSystem>.*?<GuildBoard>([\s\S]*?)<\/GuildBoard>.*?<CharSheet>([\s\S]*?)<\/CharSheet>.*?<\/GoldenRPG_UI>/s";
+        let scripts = vec![interface_script_for_test(find_regex)];
+        let worldbook = vec![
+            worldbook_entry_for_test(
+                1,
+                "回复规则",
+                "你的每次回复【必须且只能】输出一个标准的XML格式数据块：<GoldenRPG_UI><CurrentView>…</CurrentView></GoldenRPG_UI>",
+                false,
+            ),
+            worldbook_entry_for_test(2, "世界觀", "這是一個劍與魔法的大陸。", false),
+            worldbook_entry_for_test(
+                3,
+                "停用格式條目",
+                "<GoldenRPG_UI><CurrentView>備用格式</CurrentView></GoldenRPG_UI>",
+                true,
+            ),
+        ];
+
+        assert_eq!(
+            card_format_entry(&scripts, &worldbook),
+            Some("回复规则".to_owned())
+        );
+    }
+
+    /// 世界書完全沒提到卡片格式要的標籤，就沒有可點名的條目。
+    #[test]
+    fn card_format_entry_none_when_no_worldbook_entry_matches() {
+        let find_regex = r"/<GoldenRPG_UI>.*?<\/GoldenRPG_UI>/s";
+        let scripts = vec![interface_script_for_test(find_regex)];
+        let worldbook = vec![worldbook_entry_for_test(
+            1,
+            "世界觀",
+            "這是一個劍與魔法的大陸。",
+            false,
+        )];
+
+        assert_eq!(card_format_entry(&scripts, &worldbook), None);
     }
 }

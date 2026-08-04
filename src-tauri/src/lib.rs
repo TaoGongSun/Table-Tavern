@@ -1607,11 +1607,27 @@ async fn gm_narrate(
         &materials.state.branch_bindings,
         align,
     );
-    let instruction_message = transport::narrate_instruction(&lang, &roster, player_name);
-    let closing = if roster.is_empty() {
-        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
+    // 卡片自帶介面時，卡片自己規定了輸出格式，導演指示要讓路，否則模型會照我們的旁白規矩寫，介面永遠對不上。
+    let card_scripts: Vec<import::InterfaceScript> = import::read_card_interfaces(&root, &world_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|interface| interface.unsupported.is_none())
+        .flat_map(|interface| interface.scripts)
+        .collect();
+    let (instruction_message, closing) = if card_scripts.is_empty() {
+        let instruction_message = transport::narrate_instruction(&lang, &roster, player_name);
+        let closing = if roster.is_empty() {
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
+        } else {
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
+        };
+        (instruction_message, closing)
     } else {
-        "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
+        let entry_title = import::card_format_entry(&card_scripts, &materials.worldbook);
+        let instruction_message = transport::card_format_instruction(&lang, entry_title.as_deref());
+        let closing =
+            "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。";
+        (instruction_message, closing)
     };
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
