@@ -390,7 +390,7 @@ fn gm_dynamic_block(
             };
             dynamic.push_str(&format!("{display_name}：{value}\n"));
         }
-        render_state_tree(&mut dynamic, &state.tree, 0);
+        render_state_tree(&mut dynamic, &state.tree, user_name, 0);
     }
     dynamic.trim_end().to_owned()
 }
@@ -399,16 +399,20 @@ fn gm_dynamic_block(
 fn render_state_tree(
     output: &mut String,
     tree: &std::collections::BTreeMap<String, StateNode>,
+    user_name: &str,
     depth: usize,
 ) {
     for (key, node) in tree {
         match node {
-            StateNode::Leaf(value) => {
-                output.push_str(&format!("{}{}：{}\n", "  ".repeat(depth), key, value))
-            }
+            StateNode::Leaf(value) => output.push_str(&format!(
+                "{}{}：{}\n",
+                "  ".repeat(depth),
+                key,
+                replace_st_macros(value, user_name, None)
+            )),
             StateNode::Branch(children) => {
                 output.push_str(&format!("{}{}：\n", "  ".repeat(depth), key));
-                render_state_tree(output, children, depth + 1);
+                render_state_tree(output, children, user_name, depth + 1);
             }
         }
     }
@@ -942,75 +946,87 @@ pub fn extract_state_block(reply: &str) -> (Vec<(Vec<String>, String)>, String) 
         return (Vec::new(), reply.to_owned());
     }
 
-    let mut fields = Vec::new();
-    for block in blocks {
-        let mut stack = Vec::<(usize, String)>::new();
-        for line in block.lines() {
-            let mut indent = 0;
-            let mut offset = 0;
-            for (index, character) in line.char_indices() {
-                match character {
-                    ' ' => indent += 1,
-                    '\t' => indent += 4,
-                    _ => {
-                        offset = index;
-                        break;
-                    }
-                }
-                offset = index + character.len_utf8();
-            }
-            let mut line = &line[offset..];
-            if let Some(stripped) = line.strip_prefix("- ") {
-                line = stripped;
-                indent += 2;
-            }
-            line = line.trim_start_matches(['#', '*', '+', '>']).trim_start();
-            if line.is_empty() {
-                continue;
-            }
-            let Some((index, separator)) = line
-                .char_indices()
-                .find(|(_, character)| matches!(character, ':' | '：'))
-            else {
-                continue;
-            };
-            let key = line[..index].trim();
-            if key.is_empty() {
-                continue;
-            }
-            let mut value = line[index + separator.len_utf8()..].trim();
-            if value.len() >= 2
-                && ((value.starts_with('"') && value.ends_with('"'))
-                    || (value.starts_with('\'') && value.ends_with('\'')))
-            {
-                value = &value[1..value.len() - 1];
-            }
-            while stack
-                .last()
-                .is_some_and(|(parent_indent, _)| *parent_indent >= indent)
-            {
-                stack.pop();
-            }
-            let mut path: Vec<String> = stack.iter().map(|(_, parent)| parent.clone()).collect();
-            path.push(key.to_owned());
-            if value.is_empty() {
-                stack.push((indent, key.to_owned()));
-                continue;
-            }
+    let fields = blocks
+        .iter()
+        .flat_map(|block| parse_indented_fields(block))
+        .filter_map(|(mut path, value)| {
+            let value = value?;
             if path.len() == 1 {
-                path[0] = match key.to_ascii_lowercase().as_str() {
+                path[0] = match path[0].to_ascii_lowercase().as_str() {
                     "time" | "時間" | "时间" => "time".to_owned(),
                     "place" | "location" | "地點" | "地点" => "place".to_owned(),
                     "present" | "在場" | "在场" | "在場人物" | "在场人物" => {
                         "present".to_owned()
                     }
-                    _ => key.to_owned(),
+                    _ => path[0].clone(),
                 };
             }
-            fields.push((path, value.to_owned()));
-        }
-    }
+            Some((path, value))
+        })
+        .collect();
     (fields, display.trim_end().to_owned())
+}
+
+/// 將縮排區塊解析成路徑和值；壞行略過，空值與空字典只標記分支而不終止解析。
+pub fn parse_indented_fields(block: &str) -> Vec<(Vec<String>, Option<String>)> {
+    let mut fields = Vec::new();
+    let mut stack = Vec::<(usize, String)>::new();
+    for line in block.lines() {
+        let mut indent = 0;
+        let mut offset = 0;
+        for (index, character) in line.char_indices() {
+            match character {
+                ' ' => indent += 1,
+                '\t' => indent += 4,
+                _ => {
+                    offset = index;
+                    break;
+                }
+            }
+            offset = index + character.len_utf8();
+        }
+        let mut line = &line[offset..];
+        if let Some(stripped) = line.strip_prefix("- ") {
+            line = stripped;
+            indent += 2;
+        }
+        line = line.trim_start_matches(['#', '*', '+', '>']).trim_start();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((index, separator)) = line
+            .char_indices()
+            .find(|(_, character)| matches!(character, ':' | '：'))
+        else {
+            continue;
+        };
+        let key = line[..index].trim();
+        if key.is_empty() {
+            continue;
+        }
+        let mut value = line[index + separator.len_utf8()..].trim();
+        if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            value = &value[1..value.len() - 1];
+        }
+        while stack
+            .last()
+            .is_some_and(|(parent_indent, _)| *parent_indent >= indent)
+        {
+            stack.pop();
+        }
+        let mut path: Vec<String> = stack.iter().map(|(_, parent)| parent.clone()).collect();
+        path.push(key.to_owned());
+        if value.is_empty() || matches!(value, "{}" | "{ }") {
+            fields.push((path, None));
+            stack.push((indent, key.to_owned()));
+            continue;
+        }
+        fields.push((path, Some(value.to_owned())));
+    }
+    fields
 }
 
 /// 從 GM 點名回覆解析出角色名（或玩家代號）。
@@ -2400,6 +2416,22 @@ mod tests {
         );
     }
 
+    /// 縮排行與空字典都要保留成分支標記，葉子則保留實際值。
+    #[test]
+    fn parse_indented_fields_marks_branch_lines() {
+        assert_eq!(
+            parse_indented_fields("World:\n  Time: 清晨\n  Inventory: {}"),
+            vec![
+                (vec!["World".to_owned()], None),
+                (
+                    vec!["World".to_owned(), "Time".to_owned()],
+                    Some("清晨".to_owned()),
+                ),
+                (vec!["World".to_owned(), "Inventory".to_owned()], None),
+            ]
+        );
+    }
+
     #[test]
     fn gm_dynamic_block_renders_nested_tree() {
         let state = TableState {
@@ -2414,6 +2446,25 @@ mod tests {
         };
         let dynamic = gm_dynamic_block(&[], &state, "阿濤", "zh-TW");
         assert!(dynamic.contains("World：\n  城市：晨港"));
+    }
+
+    /// 初始樹保留的玩家巨集只在送進這桌模型上下文前才換成實名。
+    #[test]
+    fn gm_dynamic_block_replaces_user_macro_in_tree_leaves() {
+        let state = TableState {
+            table: std::collections::BTreeMap::new(),
+            tree: std::collections::BTreeMap::from([(
+                "Player".to_owned(),
+                StateNode::Branch(std::collections::BTreeMap::from([(
+                    "Name".to_owned(),
+                    StateNode::Leaf("{{user}}".to_owned()),
+                )])),
+            )]),
+        };
+
+        let dynamic = gm_dynamic_block(&[], &state, "阿濤", "zh-TW");
+        assert!(dynamic.contains("Name：阿濤"));
+        assert!(!dynamic.contains("{{user}}"));
     }
 
     #[test]

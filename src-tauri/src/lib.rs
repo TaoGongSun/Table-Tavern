@@ -335,8 +335,13 @@ fn import_worldbook(
     data: Vec<u8>,
 ) -> Result<data::WorldbookImport, String> {
     let json_text = import::worldbook_json(&data).map_err(|error| error.to_string())?;
-    data::import_worldbook(&data_root(&app)?, &world_id, &json_text)
-        .map_err(|error| error.to_string())
+    let root = data_root(&app)?;
+    let result =
+        data::import_worldbook(&root, &world_id, &json_text).map_err(|error| error.to_string())?;
+    if let Ok(book) = serde_json::from_str(&json_text) {
+        import::import_initial_tree(&root, &world_id, &book);
+    }
+    Ok(result)
 }
 
 /// 選項要先換成當桌實名，前端貼入逐字稿時才不會留下卡片巨集。

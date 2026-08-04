@@ -1,7 +1,7 @@
 # Handoff: state-values-mvu
 
 ## Current state
-2026-08-04：包 1（標籤放寬）、包 2（機制格式核心）完成，cargo test 228 綠、面板實機驗過。下一步＝包 3（`[initvar]` 匯入，中）或包 4（增量解析＋本地權威，大且核心）。
+2026-08-04：包 1（標籤放寬）、包 2（機制格式核心）、包 3（`[initvar]` 匯入）完成，cargo test 234 綠、兩張 MVU 實卡煙霧驗過。下一步＝包 4（增量解析＋本地權威，大且核心）。
 
 ## Completed
 - 包 1 標籤放寬（主線直寫）：`transport::find_state_tag` 前綴比對（`<StatusData>`、`<Status_block>` 皆認，`<combatStatus>` 不誤剝）；`<maintext>` 只拆殼留正文；`data::STATE_BAR_MARKERS` 補 ```` ```status ````。
@@ -13,17 +13,21 @@
   - 面板：狀態列下方樹狀折疊，第一層預設展開、深層收起；葉子點一下變輸入框，存回走新的 `set_state_path` command（空值＝刪葉子並剪掉空分支）。順手修好狀態列的 `background: var(--paper)`（這個變數整份 CSS 沒定義，一直是透明的，樹一長就看到底下文字透上來）→ 改 `--surface-2` 並加 `max-height: 45vh; overflow-y: auto`。
   - 匯出匯入：角色卡 `extensions.table_tavern = {version, rules, initial}`，rules 只帶 `branch == 卡名` 的、key 去掉分支前綴；匯入補回前綴並掛回 `state.tree.<卡名>`。壞資料略過不擋匯入。
   - 規範文件 `.ai/reference/MECHANISM-FORMAT.md`（欄位規則型別表、路徑寫法、存放位置、匯出格式、翻譯判準；協定聲明與觸發表待包 4／7 補）。
+- 包 3 `[initvar]` 匯入（規格與驗收主線，實作外包 codex `gpt-5.6-terra`）：
+  - 包 2 那段縮排解析器從 `extract_state_block` 抽成 `transport::parse_indented_fields(&str) -> Vec<(Vec<String>, Option<String>)>`；`None`＝這行只開一層分支（空值或 `{}`）。`extract_state_block` 濾掉 `None` 後行為逐字不變（既有測試原封通過）。
+  - `import::import_initial_tree(root, world_id, book)`：認 comment 以 `[initvar]` 開頭**且已停用**（`enabled:false` 或 `disable:true`）的條目，內容解析成樹補進 `state.tree`。**只補不覆蓋**（`merge_state_node` 加 `overwrite` 參數，本 app 自家 extension 匯入仍傳 `true` 維持原行為）——玩到一半重匯不會把數值倒回初始。`{}` 保留成空分支；中途撞到既有葉子就跳過該筆。
+  - 兩條匯入路徑都吃：`import_character`（卡片的 `character_book`）與 lib.rs `import_worldbook` command。
+  - `{{user}}` 存字面，`render_state_tree` 注入前才過 `replace_st_macros` 換成這桌玩家名。
 
 ## Verification
-- `cargo test` 228 passed（222→228，新增 6 個：規則序列化往返＋舊檔預設空、`set_tree_value` 四情境、巢狀快照回滾、巢狀 YAML 解析、卡片匯出匯入往返、樹注入渲染）。主線自跑一次（codex 沙箱那 4 個 loopback 測試在主線是綠的）。
-- `cargo clippy --all-targets` 與改動前逐字相同（lib 9、lib test 10），無新增；`cargo fmt --check` 本包四個檔乾淨（codex 順手全檔 fmt 的 6 個無關檔案已 revert）。
-- 一次性煙霧測試（跑完即刪）：鎮北王府形狀輸出 → 四層樹、正文乾淨無裸露標籤；donass 形狀 → 仍是平欄。
-- 面板實機驗收（tauri dev＋臨時假後端，驗完刪乾淨）：三層樹顯示正確、點葉子改值存得回去、按「收回上一句」整棵樹倒回前一則快照。
+- `cargo test` 234 passed（228→234，新增 6：初始樹形狀／只補不覆蓋／壞 YAML 不擋匯入／啟用中的同名條目略過／`parse_indented_fields` 分支標記／樹葉 `{{user}}` 代換）。主線自跑（codex 沙箱那 4 個 loopback 測試在主線是綠的）。
+- `cargo clippy --all-targets` 與改動前逐字相同（lib 9、lib test 10）；`cargo fmt --check` 本包三個檔乾淨（codex 順手全檔 fmt 的 6 個無關檔案已 revert；repo 本來就有 6 個檔不符 rustfmt，維持原狀）。
+- 一次性煙霧測試（跑完即刪）：兩張實卡走角色卡與世界書兩條路徑，樹形與獨立寫的 python 參考解析器逐項相同——勇者卡 5 個頂層／491 葉／94 分支／3 空容器，根源重塑 4／340／136／17，兩條路徑產出的樹 `assert_eq!` 相等。抽查值正確：`Player.Name = "{{user}}"`（字面）、`Heroes.亚瑟·晨光.HP = "500/500"`、`World.Title = "序章: 灵魂的降临"`（引號內的冒號沒被切）、`Player.Inventory = {}`（空分支）。
 
 ## Remaining
-包 3–8 未開工，內容見 [tasks/state-values-mvu.md](../tasks/state-values-mvu.md) 分包段。順序建議：包 3（中）→ 包 4（大，核心）→ 包 5 → 包 7 → 包 6／包 8。包 4／5／7 各自吃滿一次對話。
+包 4–8 未開工，內容見 [tasks/state-values-mvu.md](../tasks/state-values-mvu.md) 分包段。順序建議：包 4（大，核心）→ 包 5 → 包 7 → 包 6／包 8。包 4／5／7 各自吃滿一次對話。
 
 ## Notes
-- 樣本卡在 TestCards/（gitignore）。從 PNG 取卡片 JSON：讀 tEXt/zTXt chunk 的 `chara`／`ccv3`（base64 JSON）。
-- 包 3 的 `[initvar]` 是完整 YAML 文件（勇者卡 10,840 字元），本包這套容錯縮排解析器是為模型輸出寫的；真的擋不住再考慮引 YAML crate（目前零新依賴）。
+- 樣本卡在 TestCards/（gitignore）。從 PNG 取卡片 JSON：讀 tEXt chunk 的 `chara`（base64 JSON），五張卡都有。
+- 面板顯示仍是 `{{user}}` 字面（拍板 21 說顯示也該代換）：前端要拿到玩家名才改得動，併進包 5 的面板工作一起做。
 - 勇者卡另有一組 `<CloverArchive>` 全回應 XML，是 ST 前端渲染用的另一套殼，本期不處理。

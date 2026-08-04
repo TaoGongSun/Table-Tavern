@@ -127,6 +127,9 @@ pub fn import_character(
     data::write_character(root, world_id, &card)?;
     fs::write(md_path.with_extension(raw_extension), bytes)?;
     import_table_tavern_extension(root, world_id, &name, card_data);
+    if let Some(book) = card_data.get("character_book") {
+        import_initial_tree(root, world_id, book);
+    }
 
     Ok(CharacterMeta {
         id,
@@ -268,7 +271,7 @@ fn import_table_tavern_extension(root: &Path, world_id: &str, name: &str, card_d
     if let Some(initial) = extension.get("initial") {
         if let Ok(initial) = serde_json::from_value::<StateNode>(initial.clone()) {
             match world.state.tree.get_mut(name) {
-                Some(existing) => merge_state_node(existing, initial),
+                Some(existing) => merge_state_node(existing, initial, true),
                 None => {
                     world.state.tree.insert(name.to_owned(), initial);
                 }
@@ -281,19 +284,101 @@ fn import_table_tavern_extension(root: &Path, world_id: &str, name: &str, card_d
     }
 }
 
-fn merge_state_node(existing: &mut StateNode, incoming: StateNode) {
+fn merge_state_node(existing: &mut StateNode, incoming: StateNode, overwrite: bool) {
     match (existing, incoming) {
         (StateNode::Branch(existing), StateNode::Branch(incoming)) => {
             for (key, node) in incoming {
                 match existing.get_mut(&key) {
-                    Some(current) => merge_state_node(current, node),
+                    Some(current) => merge_state_node(current, node, overwrite),
                     None => {
                         existing.insert(key, node);
                     }
                 }
             }
         }
-        (existing, incoming) => *existing = incoming,
+        (existing, incoming) if overwrite => *existing = incoming,
+        _ => {}
+    }
+}
+
+/// 匯入 MVU 停用的 `[initvar]` 條目，壞格式一律略過且只補齊既有狀態樹的缺口。
+pub fn import_initial_tree(root: &Path, world_id: &str, book: &Value) {
+    let Some(entries) = book.get("entries") else {
+        return;
+    };
+    let entries: Vec<&Value> = match entries {
+        Value::Array(entries) => entries.iter().collect(),
+        Value::Object(entries) => entries.values().collect(),
+        _ => return,
+    };
+    let Some(entry) = entries.into_iter().find(|entry| {
+        let Some(marker) = entry
+            .get("comment")
+            .and_then(Value::as_str)
+            .or_else(|| entry.get("title").and_then(Value::as_str))
+        else {
+            return false;
+        };
+        let disabled = entry.get("enabled").and_then(Value::as_bool) == Some(false)
+            || entry.get("disable").and_then(Value::as_bool) == Some(true);
+        disabled && marker.trim().to_ascii_lowercase().starts_with("[initvar]")
+    }) else {
+        return;
+    };
+    let Some(content) = entry.get("content").and_then(Value::as_str) else {
+        return;
+    };
+    if content.trim().is_empty() {
+        return;
+    }
+
+    let mut initial = BTreeMap::new();
+    for (path, value) in crate::transport::parse_indented_fields(content) {
+        insert_initial_tree_node(&mut initial, &path, value);
+    }
+    if initial.is_empty() {
+        return;
+    }
+    let Ok(mut world) = data::read_state(root, world_id) else {
+        return;
+    };
+    for (key, node) in initial {
+        match world.state.tree.get_mut(&key) {
+            Some(existing) => merge_state_node(existing, node, false),
+            None => {
+                world.state.tree.insert(key, node);
+            }
+        }
+    }
+    let _ = data::write_state(root, world_id, &world);
+}
+
+fn insert_initial_tree_node(
+    children: &mut BTreeMap<String, StateNode>,
+    path: &[String],
+    value: Option<String>,
+) {
+    let Some((key, rest)) = path.split_first() else {
+        return;
+    };
+    if rest.is_empty() {
+        match value {
+            Some(value) => {
+                children.insert(key.clone(), StateNode::Leaf(value));
+            }
+            None => {
+                children
+                    .entry(key.clone())
+                    .or_insert_with(|| StateNode::Branch(BTreeMap::new()));
+            }
+        }
+        return;
+    }
+    let child = children
+        .entry(key.clone())
+        .or_insert_with(|| StateNode::Branch(BTreeMap::new()));
+    if let StateNode::Branch(children) = child {
+        insert_initial_tree_node(children, rest, value);
     }
 }
 
@@ -838,6 +923,169 @@ mod tests {
             .unwrap(),
             raw
         );
+    }
+
+    /// [initvar] 初始樹要保留巢狀容器、引號內值與玩家巨集字面。
+    #[test]
+    fn initvar_entry_becomes_initial_tree() {
+        let root = TestRoot::new("initvar-tree");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[initvar]变量初始化勿开",
+                        "enabled": false,
+                        "content": "World:\n  Time: \"清晨\"\n  Invasion: 1\nPlayer:\n  Name: \"{{user}}\"\n  HP: \"10/10\"\n  Inventory: {}\nHeroes:\n  亞瑟:\n    Outfit:\n      上装: \"白袍\""
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        let world = match state.state.tree.get("World") {
+            Some(StateNode::Branch(children)) => children,
+            _ => panic!("缺少 World 分支"),
+        };
+        let player = match state.state.tree.get("Player") {
+            Some(StateNode::Branch(children)) => children,
+            _ => panic!("缺少 Player 分支"),
+        };
+        let heroes = match state.state.tree.get("Heroes") {
+            Some(StateNode::Branch(children)) => children,
+            _ => panic!("缺少 Heroes 分支"),
+        };
+        let arthur = match heroes.get("亞瑟") {
+            Some(StateNode::Branch(children)) => children,
+            _ => panic!("缺少亞瑟分支"),
+        };
+        let outfit = match arthur.get("Outfit") {
+            Some(StateNode::Branch(children)) => children,
+            _ => panic!("缺少 Outfit 分支"),
+        };
+        assert_eq!(world.get("Time"), Some(&StateNode::Leaf("清晨".to_owned())));
+        assert_eq!(
+            player.get("Name"),
+            Some(&StateNode::Leaf("{{user}}".to_owned()))
+        );
+        assert_eq!(
+            player.get("Inventory"),
+            Some(&StateNode::Branch(BTreeMap::new()))
+        );
+        assert_eq!(
+            outfit.get("上装"),
+            Some(&StateNode::Leaf("白袍".to_owned()))
+        );
+    }
+
+    /// 重複匯入初始樹只能補空缺，已經演進的狀態不可倒回初始值。
+    #[test]
+    fn initvar_fills_gaps_without_overwriting_existing_values() {
+        let root = TestRoot::new("initvar-merge");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let mut state = data::read_state(root.path(), &world_id).unwrap();
+        state.state.tree.insert(
+            "World".to_owned(),
+            StateNode::Branch(BTreeMap::from([(
+                "Time".to_owned(),
+                StateNode::Leaf("深夜".to_owned()),
+            )])),
+        );
+        data::write_state(root.path(), &world_id, &state).unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[initvar] 初始值",
+                        "disable": true,
+                        "content": "World:\n  Time: 清晨\n  Invasion: 1\nPlayer:\n  HP: 10/10"
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        let world = match state.state.tree.get("World") {
+            Some(StateNode::Branch(children)) => children,
+            _ => panic!("缺少 World 分支"),
+        };
+        assert_eq!(world.get("Time"), Some(&StateNode::Leaf("深夜".to_owned())));
+        assert_eq!(
+            world.get("Invasion"),
+            Some(&StateNode::Leaf("1".to_owned()))
+        );
+        assert_eq!(
+            state.state.tree.get("Player"),
+            Some(&StateNode::Branch(BTreeMap::from([(
+                "HP".to_owned(),
+                StateNode::Leaf("10/10".to_owned()),
+            )])))
+        );
+    }
+
+    /// 壞掉的 [initvar] 內容不可阻斷角色與世界書條目的正常匯入。
+    #[test]
+    fn broken_initvar_never_blocks_import() {
+        let root = TestRoot::new("initvar-broken");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[initvar] 初始值",
+                        "enabled": false,
+                        "keys": ["初始"],
+                        "content": "這不是 YAML"
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        assert!(data::read_character(root.path(), &world_id, &meta.id)
+            .unwrap()
+            .private_md
+            .contains("- **初始**：這不是 YAML"));
+        assert!(data::read_state(root.path(), &world_id)
+            .unwrap()
+            .state
+            .tree
+            .is_empty());
+    }
+
+    /// 啟用中的同名條目不是 MVU 初始狀態樹，必須完全略過。
+    #[test]
+    fn enabled_initvar_entry_is_ignored() {
+        let root = TestRoot::new("initvar-enabled");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[initvar] 初始值",
+                        "enabled": true,
+                        "content": "World:\n  Time: 清晨"
+                    }]
+                }
+            }
+        })
+        .to_string();
+
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        assert!(data::read_state(root.path(), &world_id)
+            .unwrap()
+            .state
+            .tree
+            .is_empty());
     }
 
     #[test]
