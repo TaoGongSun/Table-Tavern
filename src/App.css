@@ -1424,6 +1424,37 @@ textarea {
   color: var(--accent);
 }
 
+/* 跳動記號跟值併排：值照舊占滿可用寬度，記號縮到內容寬度貼在後面 */
+.state-bar-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.state-bar-value-row .state-bar-value {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.state-bar-jump {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.85em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.state-bar-jump:hover:not(:disabled),
+.state-bar-jump:focus-visible {
+  text-decoration: underline;
+}
+
 .state-bar-field-form {
   min-width: 0;
 }
@@ -1933,6 +1964,66 @@ textarea {
 
 .worldbook-empty {
   color: var(--ink-3);
+}
+
+.mechanism-ledger {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.mechanism-ledger summary {
+  cursor: pointer;
+  font: 600 var(--fs-meta) / 1.4 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mechanism-ledger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.mechanism-ledger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+}
+
+.mechanism-ledger-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.mechanism-ledger-detail {
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.mechanism-ledger-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+}
+
+.mechanism-ledger-stats {
+  margin: 0.65rem 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
 }
 
 .worldbook-form {

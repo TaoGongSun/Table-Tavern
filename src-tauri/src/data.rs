@@ -222,6 +222,10 @@ pub struct TableState {
     /// 上一輪觸發表命中的文本：trigger id → 已代換好的文本，跟著逐則快照走。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub triggers: BTreeMap<String, String>,
+    /// 全量桌的跳動警示：路徑（點分）→ 顯示標記（"+40"／"-80"）。只給玩家看，不進提示詞；
+    /// 每回合重算，跟著逐則快照走，不需另外處理回滾。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub jumps: BTreeMap<String, String>,
 }
 
 /// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。
@@ -4082,6 +4086,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -4136,6 +4141,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         append_transcript(
             root.path(),
@@ -4177,6 +4183,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         assert_eq!(event.state, Some(expected.clone()));
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
@@ -4199,6 +4206,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
@@ -4206,6 +4214,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
             append_transcript(
@@ -4244,6 +4253,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         });
         let event = |text: &str, snapshot: &TableState| TranscriptEvent {
             raw: None,
@@ -4565,6 +4575,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         let second = TableState {
             table: BTreeMap::new(),
@@ -4581,6 +4592,7 @@ mod tests {
             notes: Vec::new(),
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
         };
         for snapshot in [first.clone(), second.clone()] {
             append_transcript(
