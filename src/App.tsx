@@ -52,6 +52,8 @@ interface ImportProbe {
   scripts: string[];
   lorebook_heavy: boolean;
   alternate_greetings: number;
+  /** 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名 */
+  name?: string | null;
 }
 
 /** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
@@ -1663,8 +1665,8 @@ function WorldEditor({
   onBack: () => void;
   /** 側欄要離開世界設定時先問過這裡（未儲存確認與返回鈕同一條） */
   leaveGuard: { current: (() => Promise<boolean>) | null };
-  /** 世界書匯入成功（至少一條）時通知 App：純世界書開局要自動選 GM */
-  onImported: () => void;
+  /** 世界書匯入成功（至少一條）時通知 App：自動選 GM＋自動名桌改成卡名／檔名 */
+  onImported: (name?: string | null) => void;
   /** 匯入檔帶開場白時交回 App 問玩家要不要讓 GM 貼出來（transcript 在 App 手上） */
   onOpening: (data: number[]) => Promise<void>;
   convertColor: string;
@@ -1937,7 +1939,8 @@ function WorldEditor({
         t("worldbookImported", { n: result.imported }) +
           (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
       );
-      if (result.imported > 0) onImported();
+      // 純世界書 JSON 常沒有卡名，退而用檔名（去副檔名）當桌名候選
+      if (result.imported > 0) onImported(probe.name ?? file.name.replace(/\.[^.]+$/, ""));
       if (probe.scripts.length > 0) {
         await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
       }
@@ -1956,11 +1959,9 @@ function WorldEditor({
         kind: "warning",
       });
       if (!accepted) return;
+      // 去重只刪東西，別觸發匯入後的選 GM／改桌名
       const removed = await invoke<number>("dedupe_worldbook", { worldId: world });
-      if (removed > 0) {
-        await refreshWorldbook();
-        onImported();
-      }
+      if (removed > 0) await refreshWorldbook();
       setWorldbookMessage(
         removed > 0 ? t("worldbookDedupeDone", { n: removed }) : t("worldbookDedupeNone"),
       );
@@ -3535,13 +3536,30 @@ function App() {
     }
   }
 
+  // 還掛著自動名（「新桌」「新桌 2」…）＝使用者沒投入過命名
+  function hasAutoName(name: string | undefined) {
+    const base = t("newTableName");
+    return name === base || (name?.startsWith(`${base} `) ?? false);
+  }
+
   // 空桌回收（NewPlan §9.3）：零訊息、零角色、無設定的桌離開時自動收掉。
   // 但名字改過就代表使用者投入過，即使還沒放內容也不回收——只回收還掛著自動名的桌。
   async function reclaimIfUntouched(id: string) {
-    const base = t("newTableName");
-    const name = worlds.find((w) => w.id === id)?.name;
-    if (name !== base && !name?.startsWith(`${base} `)) return;
+    if (!hasAutoName(worlds.find((w) => w.id === id)?.name)) return;
     await invoke("reclaim_world_if_empty", { worldId: id });
+  }
+
+  // 一桌一卡：匯入成功後，還掛自動名的桌直接改成卡名；自訂過名字的桌不動
+  async function adoptImportName(name: string | null | undefined) {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    if (!hasAutoName(worlds.find((w) => w.id === table)?.name)) return;
+    try {
+      await invoke("rename_world", { worldId: table, newName: trimmed });
+      setWorlds((previous) => previous.map((w) => (w.id === table ? { ...w, name: trimmed } : w)));
+    } catch {
+      // 改名失敗不影響匯入，桌名維持原樣
+    }
   }
 
   async function newTable() {
@@ -3989,7 +4007,9 @@ function App() {
             (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
           { title: t("importCard") },
         );
-        if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+        // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
+        setSpeaker(GM_TARGET);
+        await adoptImportName(probe.name);
         await offerOpeningLine(data);
         openCardInterface(await refreshCardInterfaces());
         return;
@@ -4003,6 +4023,7 @@ function App() {
       setCharacters(cast);
       await loadCharacterImages(table, cast);
       setSpeaker(meta.id);
+      await adoptImportName(meta.name);
       // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
       const interfaces = await refreshCardInterfaces();
       const mine = interfaces.find((card) => card.character_id === meta.id);
@@ -5094,8 +5115,10 @@ function App() {
               world={table}
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
-              onImported={() => {
-                if (activeCharacters.length === 0) setSpeaker(GM_TARGET);
+              onImported={(name) => {
+                // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
+                setSpeaker(GM_TARGET);
+                void adoptImportName(name);
               }}
               onOpening={offerOpeningLine}
               convertColor={PALETTE[characters.length % PALETTE.length]}
