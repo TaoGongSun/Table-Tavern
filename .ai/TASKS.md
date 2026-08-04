@@ -10,7 +10,7 @@
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；原四件待拍板（日文世界書用詞、範例桌地名處理等）已於 2026-07-30 全數拍板
 - [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
-- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白 — 下一步：六項全部實作完成（cargo test 174 綠）；第一、二、三、五、六項與狀態列條件顯示（只給帶狀態列規則的桌）2026-08-03 實機驗收通過，剩第四項狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）待驗
+- [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白 — 下一步：六項全部實作完成（cargo test 174 綠）並全數實機驗收通過（第四項狀態欄後續鏈四條 2026-08-04 收尾），第一期結案；只剩第四項第二期（自訂數值欄位＋MVU 增量 patch 解析）待細部拍板
 - [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：本任務主體完成——包 1–7 全數實作並通過實機驗收（架構 85–88% 命中、額度分頁九項過、保溫 ping 94.6%）；剩 grok／agy 顯示驗收延後與 OpenRouter 計量未接，見交接檔 Remaining
 
 ## Done
