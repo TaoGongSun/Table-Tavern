@@ -54,6 +54,12 @@ interface ImportProbe {
   alternate_greetings: number;
   /** 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名 */
   name?: string | null;
+  /** JSON／PNG 成功解析才 true：分辨「格式錯誤」與「解析成功但沒有名字」 */
+  parsed: boolean;
+  /** character_book.entries 的條目數，沒有這個欄位就是 0 */
+  book_entries: number;
+  /** 頂層就是世界書本體（V2 獨立書 JSON 自帶 name＋entries）：有 name 也要走世界書 */
+  book_shaped: boolean;
 }
 
 /** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
@@ -1671,8 +1677,6 @@ function WorldEditor({
   world,
   onBack,
   leaveGuard,
-  onImported,
-  onOpening,
   convertColor,
   hasPlayerCard,
   onEntryConverted,
@@ -1681,10 +1685,6 @@ function WorldEditor({
   onBack: () => void;
   /** 側欄要離開世界設定時先問過這裡（未儲存確認與返回鈕同一條） */
   leaveGuard: { current: (() => Promise<boolean>) | null };
-  /** 世界書匯入成功（至少一條）時通知 App：自動選 GM＋自動名桌改成卡名／檔名 */
-  onImported: (name?: string | null) => void;
-  /** 匯入檔帶開場白時交回 App 問玩家要不要讓 GM 貼出來（transcript 在 App 手上） */
-  onOpening: (data: number[]) => Promise<void>;
   convertColor: string;
   hasPlayerCard: boolean;
   onEntryConverted: (asPlayer: boolean) => Promise<void>;
@@ -1699,7 +1699,6 @@ function WorldEditor({
   const [draft, setDraft] = useState<WorldbookDraft | null>(null);
   // 條目表單開啟當下的快照，用來判斷「有沒有改過」（未儲存提示）
   const [draftOrigin, setDraftOrigin] = useState("");
-  const importInputRef = useRef<HTMLInputElement>(null);
   const draftFormRef = useRef<HTMLFormElement>(null);
   const entryDrag = useDragReorder(
     entries,
@@ -1939,38 +1938,6 @@ function WorldEditor({
     }
   }
 
-  async function importWorldbook(file: File) {
-    setWorldbookMessage("");
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let probe: ImportProbe = { scripts: [], lorebook_heavy: false, alternate_greetings: 0 };
-      try {
-        probe = await invoke<ImportProbe>("probe_import", { data: Array.from(bytes) });
-      } catch {
-        // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
-      }
-      // 純世界書 JSON 常沒有卡名，退而用檔名（去副檔名）當桌名候選；同一個值也交給後端當收據的顯示標籤
-      const label = probe.name ?? file.name.replace(/\.[^.]+$/, "");
-      const result = await invoke<WorldbookImport>("import_worldbook", {
-        worldId: world,
-        data: Array.from(bytes),
-        label,
-      });
-      await refreshWorldbook();
-      setWorldbookMessage(
-        t("worldbookImported", { n: result.imported }) +
-          (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
-      );
-      if (result.imported > 0) onImported(label);
-      if (probe.scripts.length > 0) {
-        await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
-      }
-      await onOpening(Array.from(bytes));
-    } catch (reason) {
-      setWorldbookMessage(String(reason));
-    }
-  }
-
   // 去重上線前重複匯入過的桌，用這顆自己收拾：同內容只留排最前面那條
   async function dedupeWorldbook() {
     setWorldbookMessage("");
@@ -2173,20 +2140,6 @@ function WorldEditor({
           <button type="button" onClick={addEntry}>
             {t("worldbookAddEntry")}
           </button>
-          <button type="button" onClick={() => importInputRef.current?.click()}>
-            {t("worldbookImport")}
-          </button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json,.png,application/json,image/png"
-            hidden
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              if (file) void importWorldbook(file);
-            }}
-          />
           <button type="button" onClick={() => void dedupeWorldbook()}>
             {t("worldbookDedupe")}
           </button>
@@ -3233,6 +3186,10 @@ function App() {
   const [openingChoice, setOpeningChoice] = useState<string[] | null>(null);
   // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
   const [openingExpanded, setOpeningExpanded] = useState<number | null>(null);
+  // 匯入卡角色與世界書都有料：等玩家在三鍵對話框挑一種，data 與 probe 原樣留著給兩條路徑共用
+  const [importChoice, setImportChoice] = useState<{ data: number[]; probe: ImportProbe; name: string } | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -4051,74 +4008,114 @@ function App() {
     }
   }
 
-  // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端解析，顏色沿用建卡輪選
+  // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端探測，依探測結果分流——
+  // 純世界書、純角色卡都零詢問直接匯入；角色與世界書兩種身分都有料才彈三鍵對話框問玩家要哪個。
   async function importCharacter(file: File) {
     setError("");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const data = Array.from(bytes);
-      let probe: ImportProbe = { scripts: [], lorebook_heavy: false, alternate_greetings: 0 };
+      let probe: ImportProbe = {
+        scripts: [],
+        lorebook_heavy: false,
+        alternate_greetings: 0,
+        parsed: false,
+        book_entries: 0,
+        book_shaped: false,
+      };
       try {
         probe = await invoke<ImportProbe>("probe_import", { data });
       } catch {
         // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
       }
-      // 世界書卡沒有「照樣匯成角色卡」這條路：那樣會把整包設定條目（含輸出格式規定）丟掉，卡就玩不動了
-      if (probe.lorebook_heavy) {
-        const go = await confirm(t("importLorebookRedirect"), {
-          title: t("importCard"),
-          kind: "info",
-          okLabel: t("importRedirectOk"),
-          cancelLabel: t("importRedirectCancel"),
-        });
-        if (!go) return;
-        const label = probe.name ?? file.name.replace(/\.[^.]+$/, "");
-        const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data, label });
-        await showMessage(
-          t("importRedirectDone", { n: result.imported }) +
-            (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
-          { title: t("importCard") },
-        );
-        // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
-        setSpeaker(GM_TARGET);
-        await adoptImportName(probe.name);
-        await refreshImportReceipts();
-        await offerOpeningLine(data);
-        openCardInterface(await refreshCardInterfaces());
+      if (probe.parsed && (!probe.name || probe.book_shaped)) {
+        // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，不必問，直接匯世界書
+        await importAsWorldbook(data, probe.name ?? file.name.replace(/\.[^.]+$/, ""), probe);
         return;
       }
-      const meta = await invoke<CharacterMeta>("import_character", {
-        worldId: table,
-        data,
-        color: PALETTE[characters.length % PALETTE.length],
-      });
-      const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: table });
-      setCharacters(cast);
-      await loadCharacterImages(table, cast);
-      setSpeaker(meta.id);
-      await adoptImportName(meta.name);
-      await refreshImportReceipts();
-      // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
-      const interfaces = await refreshCardInterfaces();
-      const mine = interfaces.find((card) => card.character_id === meta.id);
-      const notice =
-        mine?.unsupported === "scrypt"
-          ? t("importCardScrypt")
-          : mine?.unsupported === "remote_loader"
-            ? t("importCardRemoteLoader")
-            : mine && mine.scripts.length > 0
-              ? t("importCardInterface")
-              : probe.scripts.length > 0
-                ? t("importScriptNotice")
-                : "";
-      if (notice) await showMessage(notice, { title: t("importCard") });
-      openCardInterface(interfaces);
+      if (probe.parsed && probe.name && probe.book_entries === 0) {
+        // 純角色卡：沒有隨附的世界書份量，不必問
+        await importAsCharacter(data, probe);
+        return;
+      }
+      if (probe.parsed && probe.name && probe.book_entries > 0) {
+        // 角色與世界書兩種身分都有料，交給三鍵對話框問玩家要哪一種
+        setImportChoice({ data, probe, name: probe.name });
+        return;
+      }
+      // 解析失敗：照舊走角色路徑，讓後端報原本的格式錯誤
+      await importAsCharacter(data, probe);
     } catch (reason) {
       setError(String(reason));
     }
   }
 
-  // 只在世界書路徑問（面板匯入與角色卡改道）：匯成角色卡＝這張卡是要上桌的角色，開場白已在卡上，
+  // 三鍵對話框的作答：取消什麼都不做，另外兩個選項各自走現成路徑
+  async function answerImportChoice(choice: "character" | "worldbook" | "cancel") {
+    const pending = importChoice;
+    setImportChoice(null);
+    if (!pending || choice === "cancel") return;
+    setError("");
+    try {
+      if (choice === "character") {
+        await importAsCharacter(pending.data, pending.probe);
+      } else {
+        await importAsWorldbook(pending.data, pending.name, pending.probe);
+      }
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function importAsCharacter(data: number[], probe: ImportProbe) {
+    const meta = await invoke<CharacterMeta>("import_character", {
+      worldId: table,
+      data,
+      color: PALETTE[characters.length % PALETTE.length],
+    });
+    const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: table });
+    setCharacters(cast);
+    await loadCharacterImages(table, cast);
+    setSpeaker(meta.id);
+    await adoptImportName(meta.name);
+    await refreshImportReceipts();
+    // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
+    const interfaces = await refreshCardInterfaces();
+    const mine = interfaces.find((card) => card.character_id === meta.id);
+    const notice =
+      mine?.unsupported === "scrypt"
+        ? t("importCardScrypt")
+        : mine?.unsupported === "remote_loader"
+          ? t("importCardRemoteLoader")
+          : mine && mine.scripts.length > 0
+            ? t("importCardInterface")
+            : probe.scripts.length > 0
+              ? t("importScriptNotice")
+              : "";
+    if (notice) await showMessage(notice, { title: t("importCard") });
+    openCardInterface(interfaces);
+  }
+
+  // 世界書匯入共用流程：側欄按鈕分流出的純世界書檔、三鍵對話框選了世界書都走這裡
+  async function importAsWorldbook(data: number[], label: string, probe: ImportProbe) {
+    const result = await invoke<WorldbookImport>("import_worldbook", { worldId: table, data, label });
+    await showMessage(
+      t("worldbookImportDone", { n: result.imported }) +
+        (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
+      { title: t("importCard") },
+    );
+    if (probe.scripts.length > 0) {
+      await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
+    }
+    // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
+    setSpeaker(GM_TARGET);
+    await adoptImportName(label);
+    await refreshImportReceipts();
+    await offerOpeningLine(data);
+    openCardInterface(await refreshCardInterfaces());
+  }
+
+  // 只在世界書路徑問（importAsWorldbook 專用）：匯成角色卡＝這張卡是要上桌的角色，開場白已在卡上，
   // 不必再由 GM 貼一次。開場是 GM 的事，所以貼成旁白而不是角色發言；主開場白常是使用說明
   // （真正的劇情藏在備用開場白），所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
   async function offerOpeningLine(data: number[]) {
@@ -5199,13 +5196,6 @@ function App() {
               world={table}
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
-              onImported={(name) => {
-                // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
-                setSpeaker(GM_TARGET);
-                void adoptImportName(name);
-                void refreshImportReceipts();
-              }}
-              onOpening={offerOpeningLine}
               convertColor={PALETTE[characters.length % PALETTE.length]}
               hasPlayerCard={playerCard !== null}
               onEntryConverted={async (asPlayer) => {
@@ -5475,6 +5465,46 @@ function App() {
               <button type="button" onClick={() => void answerRegen("regen")}>
                 {t("sampleRegenConfirm")}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 匯入卡角色與世界書都有料：問清楚要哪一種，份量重的那邊當主按鈕 */}
+      {importChoice !== null && (
+        <div className="modal-overlay" onClick={() => void answerImportChoice("cancel")}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("importChoiceTitle")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>{t("importChoiceTitle")}</h2>
+            <p>{t("importChoiceBody", { n: importChoice.probe.book_entries })}</p>
+            <div className="ai-gen-footer">
+              <button type="button" onClick={() => void answerImportChoice("cancel")}>
+                {t("importChoiceCancel")}
+              </button>
+              {importChoice.probe.lorebook_heavy ? (
+                <>
+                  <button type="button" onClick={() => void answerImportChoice("character")}>
+                    {t("importChoiceCharacter")}
+                  </button>
+                  <button type="button" className="ai-gen-submit" onClick={() => void answerImportChoice("worldbook")}>
+                    {t("importChoiceWorldbook")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => void answerImportChoice("worldbook")}>
+                    {t("importChoiceWorldbook")}
+                  </button>
+                  <button type="button" className="ai-gen-submit" onClick={() => void answerImportChoice("character")}>
+                    {t("importChoiceCharacter")}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
