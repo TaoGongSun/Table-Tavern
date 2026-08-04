@@ -10,6 +10,30 @@ export interface InterfaceScript {
   max_depth: number | null;
 }
 
+/** 後端 `card_interfaces` 回傳的一張卡；`unsupported` 非 null＝DRM 卡或雲端載入器卡，畫不出來。 */
+export interface CardInterface {
+  character_id: string;
+  character_name: string;
+  scripts: InterfaceScript[];
+  unsupported: string | null;
+  opening: string | null;
+}
+
+/**
+ * 從幾段候選文字裡挑出第一個畫得出來的殼（依序試，先命中先用）。
+ * 面板與匯入流程共用同一套判斷，才不會出現「按鈕說有、打開卻空的」。
+ */
+export function findShell(cards: CardInterface[], texts: (string | null | undefined)[]): string | null {
+  const scripts = cards.filter((card) => card.unsupported === null).flatMap((card) => card.scripts);
+  if (scripts.length === 0) return null;
+  for (const text of texts) {
+    if (!text) continue;
+    const shell = extractShell(applyScripts(text, scripts));
+    if (shell !== null) return shell;
+  }
+  return null;
+}
+
 // JS 認得的旗標；ST 卡常常寫上 JS 沒有的旗標（例如 ST 自家的擴充），直接丟掉即可。
 const VALID_JS_FLAGS = new Set(["d", "g", "i", "m", "s", "u", "v", "y"]);
 
