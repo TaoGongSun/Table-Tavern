@@ -157,21 +157,9 @@ function buildHostBridgeShim(): string {
 (function () {
   var parentRef = window.parent;
 
-  // 標記這則是不是玩家真的動手點出來的。卡片自己觸發一回合是 ST 上的正常用法（照送），
-  // 但我們每收到新訊息就重載整個 iframe，「載入就送」會變成無限迴圈——宿主靠這個旗標踩煞車。
-  var lastGesture = 0;
-  ["click", "keydown", "touchend"].forEach(function (type) {
-    document.addEventListener(type, function (event) { if (event.isTrusted) lastGesture = Date.now(); }, true);
-  });
-
   function notifyHost(text) {
     try {
-      parentRef.postMessage({
-        source: "table-tavern-card",
-        kind: "input",
-        text: text,
-        gesture: Date.now() - lastGesture < 1500,
-      }, "*");
+      parentRef.postMessage({ source: "table-tavern-card", kind: "input", text: text }, "*");
     } catch (error) {
       console.warn("[table-tavern] 無法送出訊息給宿主", error);
     }
