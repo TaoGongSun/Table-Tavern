@@ -2182,6 +2182,8 @@ textarea {
 }
 
 .usage-badge {
+  display: inline-block;
+  white-space: nowrap;
   margin-left: 0.35rem;
   border: 1px solid var(--ok);
   border-radius: 999px;
