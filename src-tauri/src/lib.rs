@@ -339,6 +339,7 @@ fn import_worldbook(
     let root = data_root(&app)?;
     let result =
         data::import_worldbook(&root, &world_id, &json_text).map_err(|error| error.to_string())?;
+    import::save_world_card(&root, &world_id, &data);
     if let Ok(book) = serde_json::from_str(&json_text) {
         import::import_mechanism(&root, &world_id, &book);
     }

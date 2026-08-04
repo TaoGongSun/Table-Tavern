@@ -277,9 +277,9 @@ export const en: Record<MsgKey, string> = {
   worldbookScriptNotice:
     "This worldbook contains SillyTavern-only scripts. Only its text content was imported.",
   importLorebookRedirect:
-    "Most of this card is worldbook content, with very little character text. Import it as a worldbook instead?",
-  importRedirectOk: "Import as worldbook",
-  importRedirectCancel: "Import as character card",
+    "This card is a worldbook — it holds world settings, not a character. Confirming will import it as this table's worldbook.",
+  importRedirectOk: "Import",
+  importRedirectCancel: "Cancel",
   importRedirectDone: "Imported {n} entries into the worldbook.",
   exportCard: "Export",
   exportCardHint:
