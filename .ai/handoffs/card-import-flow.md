@@ -1,7 +1,7 @@
 # Handoff: card-import-flow
 
 ## Current state
-四包全部實作完成、主線逐包複驗綠、逐包 commit。2026-08-05 實機驗收挖出身分框文案誤導並已改寫（見 Completed 末條），雙世界書封鎖驗收通過。剩其餘實機項目（清單見 Remaining）。
+四包全部實作完成、主線逐包複驗綠、逐包 commit。2026-08-05 一輪實機驗收挖出四件並全數修完、逐項通過（身分框文案、腳本提示、開場白按鈕位置、兩路徑對等化），雙世界書封鎖也過。剩 Remaining 清單其餘五項未驗。
 
 ## Completed
 - 包 1：世界書匯入（兩路徑）後一律 setSpeaker(GM)；匯入成功後自動名桌改成卡名（probe 新增 name；純世界書檔退用檔名）；去重不再觸發選 GM。
@@ -22,7 +22,7 @@
 - 刪腳本提示自驗（2026-08-05）：cargo test 326 綠（原 327，刪掉兩個只驗 scripts 欄位的測試、新增 probe_ignores_invalid_bytes 保留格式錯誤那條斷言）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK；殘留檢查 grep importScriptNotice／worldbookScriptNotice = 0。淨變化 −75 行。
 - 開場白按鈕改位自驗＋使用者實機確認通過（2026-08-05）：npm run build ✓、vitest 22 綠、check:i18n 九語系 OK。
 - 世界書路徑說明自驗（2026-08-05）：npm run build ✓、vitest 22 綠、check:i18n 九語系 OK。原始卡檔實地拆解見 history 當日紀錄。
-- 路徑對等化自驗（2026-08-05）：cargo test 326 綠（既有 round-trip 測試延伸驗「同一份匯出檔改用世界書身分匯入，機制照樣收進來」）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK。
+- 路徑對等化：使用者實機測試通過（2026-08-05）。自驗：cargo test 326 綠（既有 round-trip 測試延伸驗「同一份匯出檔改用世界書身分匯入，機制照樣收進來」）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK。
 - 實機驗收第 6 項通過（2026-08-05 使用者）：新開的桌匯過世界書後再匯世界書會被擋。舊桌（收據功能之前建立的）沒有 `import-receipts.json` 擋不住——使用者拍板**不補**，新功能不覆蓋舊桌可接受。
 - 逐包 commit：548905a（包 1）、1939af6（包 2）、d8abe8b（包 3）、包 4 見本次 commit。
 - 主線抽讀確認：decideImportRoute 決策表逐條符合拍板；路由框 block 版 JSX 只有取消＋開新桌（App.tsx 搜 -a "importRoute !== null"）；openNewTableAndImport 的 worldId 全程來自 create_world 回傳值。
@@ -38,7 +38,8 @@
 7. 有角色卡的桌補匯配套世界書 JSON → 不跳框直接進。
 
 ## Next action
-等使用者實機驗收上列七項；過了就結案（狀態改 completed、TASKS.md 行移 DONE.md、本檔 Completed 搬 archive）。驗收若挖出問題，修完再走一輪四件套。
+等使用者實機驗收 Remaining 剩下的五項（1、2、3、4、5、7 扣掉已過的 6）；過了就結案（狀態改 completed、TASKS.md 行移 DONE.md、本檔 Completed 搬 archive）。驗收若再挖出問題，修完再走一輪四件套。
+專案下一件事不在本任務：[ai-card-refactor](../tasks/ai-card-refactor.md) 的免費前置——樣本卡逐一匯入、看未收編帳本分佈（零額度），據分佈細拍分包。訓帝卡的診斷結論（雲端載入器卡、介面在作者網站上）已記在上面，那類卡的介面本地化正是該任務拍板 3 的目標。
 
 ## Constraints
 - AI 卡重構按鈕另案（等 state-values-mvu 真桌實跑的帳本分佈再細拍）；入口方向已拍進任務檔不做清單。
