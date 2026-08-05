@@ -50,9 +50,7 @@ interface CharacterCard extends CharacterMeta {
 }
 
 interface ImportProbe {
-  scripts: string[];
   lorebook_heavy: boolean;
-  alternate_greetings: number;
   /** 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名 */
   name?: string | null;
   /** JSON／PNG 成功解析才 true：分辨「格式錯誤」與「解析成功但沒有名字」 */
@@ -3194,7 +3192,6 @@ function App() {
   // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝三鍵、block＝雙世界書封死「匯進這桌」
   const [importRoute, setImportRoute] = useState<{
     data: number[];
-    probe: ImportProbe;
     identity: "character" | "worldbook";
     label: string;
     route: "ask" | "block_double_worldbook";
@@ -4026,9 +4023,7 @@ function App() {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const data = Array.from(bytes);
       let probe: ImportProbe = {
-        scripts: [],
         lorebook_heavy: false,
-        alternate_greetings: 0,
         parsed: false,
         book_entries: 0,
         book_shaped: false,
@@ -4040,12 +4035,12 @@ function App() {
       }
       if (probe.parsed && (!probe.name || probe.book_shaped)) {
         // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，不必問身分
-        await routeImport("worldbook", true, data, probe, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
+        await routeImport("worldbook", true, data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
         return;
       }
       if (probe.parsed && probe.name && probe.book_entries === 0) {
         // 純角色卡：沒有隨附的世界書份量，不必問身分
-        await routeImport("character", false, data, probe, probe.name);
+        await routeImport("character", false, data, probe.name);
         return;
       }
       if (probe.parsed && probe.name && probe.book_entries > 0) {
@@ -4054,7 +4049,7 @@ function App() {
         return;
       }
       // 解析失敗：照舊走角色路徑，讓後端報原本的格式錯誤，不算第二張卡場景，不過路由
-      await importAsCharacter(table, data, probe);
+      await importAsCharacter(table, data);
     } catch (reason) {
       setError(String(reason));
     }
@@ -4067,7 +4062,7 @@ function App() {
     if (!pending || choice === "cancel") return;
     setError("");
     try {
-      await routeImport(choice, false, pending.data, pending.probe, pending.name);
+      await routeImport(choice, false, pending.data, pending.name);
     } catch (reason) {
       setError(String(reason));
     }
@@ -4079,7 +4074,6 @@ function App() {
     identity: "character" | "worldbook",
     isPureWorldbookFile: boolean,
     data: number[],
-    probe: ImportProbe,
     label: string,
   ) {
     const route = decideImportRoute(
@@ -4088,11 +4082,11 @@ function App() {
       importReceipts.map((receipt) => receipt.kind),
     );
     if (route === "direct" || route === "companion") {
-      if (identity === "worldbook") await importAsWorldbook(table, data, label, probe);
-      else await importAsCharacter(table, data, probe);
+      if (identity === "worldbook") await importAsWorldbook(table, data, label);
+      else await importAsCharacter(table, data);
       return;
     }
-    setImportRoute({ data, probe, identity, label, route });
+    setImportRoute({ data, identity, label, route });
   }
 
   // 路由框作答：取消什麼都不做；匯進這桌走現行匯入函式（雙世界書封死這個選項，不會傳 this_table 進來）；
@@ -4105,9 +4099,9 @@ function App() {
     try {
       if (choice === "this_table") {
         if (pending.identity === "worldbook") {
-          await importAsWorldbook(table, pending.data, pending.label, pending.probe);
+          await importAsWorldbook(table, pending.data, pending.label);
         } else {
-          await importAsCharacter(table, pending.data, pending.probe);
+          await importAsCharacter(table, pending.data);
         }
       } else {
         await openNewTableAndImport(pending);
@@ -4122,7 +4116,6 @@ function App() {
   // adoptImportName 不需要跑：新桌從一開始就用 label 命名。沿用 newTable／switchTable 的生成中防呆。
   async function openNewTableAndImport(pending: {
     data: number[];
-    probe: ImportProbe;
     identity: "character" | "worldbook";
     label: string;
   }) {
@@ -4131,15 +4124,15 @@ function App() {
     setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     await enterTable(id, config);
     if (pending.identity === "worldbook") {
-      await importAsWorldbook(id, pending.data, pending.label, pending.probe, false);
+      await importAsWorldbook(id, pending.data, pending.label, false);
     } else {
-      await importAsCharacter(id, pending.data, pending.probe, false);
+      await importAsCharacter(id, pending.data, false);
     }
   }
 
   // worldId 顯式帶入（不吃 table 這個 closure）：開新桌並匯入時 table 當下還是舊桌值。
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
-  async function importAsCharacter(worldId: string, data: number[], probe: ImportProbe, adoptName = true) {
+  async function importAsCharacter(worldId: string, data: number[], adoptName = true) {
     const meta = await invoke<CharacterMeta>("import_character", {
       worldId,
       data,
@@ -4151,7 +4144,7 @@ function App() {
     setSpeaker(meta.id);
     if (adoptName) await adoptImportName(meta.name);
     await refreshImportReceipts(worldId);
-    // 匯入提示看這張卡實際畫不畫得出介面：畫得出來就告訴玩家在哪開，畫不出來要講清楚是哪一種情況
+    // 匯入提示只講畫得出／畫不出介面：畫得出來告訴玩家在哪開，解不開的兩種卡要講清楚是哪一種
     const interfaces = await refreshCardInterfaces(worldId);
     const mine = interfaces.find((card) => card.character_id === meta.id);
     const notice =
@@ -4161,25 +4154,20 @@ function App() {
           ? t("importCardRemoteLoader")
           : mine && mine.scripts.length > 0
             ? t("importCardInterface")
-            : probe.scripts.length > 0
-              ? t("importScriptNotice")
-              : "";
+            : "";
     if (notice) await showMessage(notice, { title: t("importCard") });
     openCardInterface(interfaces);
   }
 
   // 世界書匯入共用流程：側欄按鈕分流出的純世界書檔、三鍵對話框選了世界書都走這裡。
   // worldId 顯式帶入、adoptName 預設 true，理由同 importAsCharacter。
-  async function importAsWorldbook(worldId: string, data: number[], label: string, probe: ImportProbe, adoptName = true) {
+  async function importAsWorldbook(worldId: string, data: number[], label: string, adoptName = true) {
     const result = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
     await showMessage(
       t("worldbookImportDone", { n: result.imported }) +
         (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
       { title: t("importCard") },
     );
-    if (probe.scripts.length > 0) {
-      await showMessage(t("worldbookScriptNotice"), { title: t("worldbookTitle") });
-    }
     // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
     setSpeaker(GM_TARGET);
     if (adoptName) await adoptImportName(label);

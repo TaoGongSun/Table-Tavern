@@ -260,8 +260,6 @@ export const ja: Record<MsgKey, string> = {
   zoomLabel: "ズーム",
   importCard: "インポート",
   importCardHint: "SillyTavernのキャラクターシート（PNGまたはJSON）をインポートします。元のファイルはその卓のフォルダーに保持されます",
-  importScriptNotice: "このカードにはSillyTavern専用スクリプトが含まれています。キャラクター設定のテキストだけを読み込み、元ファイルはカードのそばに残しています。",
-  worldbookScriptNotice: "この世界書にはSillyTavern専用スクリプトが含まれています。テキスト内容だけを読み込みました。",
   worldbookImportDone: "世界書に {n} 件の項目を読み込みました。",
   importChoiceCharacterTitle: "このカードはキャラクターカードのようです",
   importChoiceCharacterBody:

@@ -20,9 +20,7 @@ const PUBLIC_SECTIONS: [(&str, &str); 5] = [
 
 #[derive(serde::Serialize, Default, Debug, PartialEq)]
 pub struct ImportProbe {
-    pub scripts: Vec<String>,
     pub lorebook_heavy: bool,
-    pub alternate_greetings: usize,
     /// 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名
     pub name: Option<String>,
     /// 頂層就是世界書本體（V2 獨立書 JSON 自帶 name＋entries）：有 name 也要走世界書
@@ -55,25 +53,6 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
         parsed: true,
         ..ImportProbe::default()
     };
-    let benign_extensions = ["talkativeness", "fav", "world", "depth_prompt"];
-    if card_data
-        .get("extensions")
-        .and_then(Value::as_object)
-        .is_some_and(|extensions| {
-            extensions
-                .keys()
-                .any(|key| !benign_extensions.contains(&key.as_str()))
-        })
-    {
-        probe.scripts.push("extensions".to_owned());
-    }
-    let serialized = serde_json::to_string(&value).unwrap_or_default();
-    if serialized.contains("<script") {
-        probe.scripts.push("script_tag".to_owned());
-    }
-    if serialized.contains("<%") {
-        probe.scripts.push("template".to_owned());
-    }
     let book_entries = card_data
         .get("character_book")
         .and_then(|book| book.get("entries"))
@@ -100,10 +79,6 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
             .sum();
         entries.len() >= 3 && book >= persona.saturating_mul(3)
     });
-    probe.alternate_greetings = card_data
-        .get("alternate_greetings")
-        .and_then(Value::as_array)
-        .map_or(0, Vec::len);
     probe.name = string_field(card_data, "name")
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty());
@@ -1850,26 +1825,7 @@ if (invasion >= 50 && done === false) { _%>
     }
 
     #[test]
-    fn probe_ignores_benign_extensions_and_flags_other_extensions() {
-        let benign = probe_import(
-            r#"{"data":{"extensions":{"talkativeness":0.5,"fav":true,"world":"酒館","depth_prompt":"提示"}}}"#
-                .as_bytes(),
-        );
-        assert!(benign.scripts.is_empty());
-
-        let flagged = probe_import(&minimal_png(
-            r#"{"data":{"extensions":{"tavern_helper":{"enabled":true}}}}"#,
-        ));
-        assert_eq!(flagged.scripts, ["extensions"]);
-    }
-
-    #[test]
-    fn probe_finds_script_and_template_text_and_ignores_invalid_bytes() {
-        let probe = probe_import(
-            br#"{"data":{"description":"<script>alert(1)</script>","personality":"<% user.name %>"}}"#,
-        );
-        assert!(probe.scripts.contains(&"script_tag".to_owned()));
-        assert!(probe.scripts.contains(&"template".to_owned()));
+    fn probe_ignores_invalid_bytes() {
         assert_eq!(probe_import(b"not a card"), ImportProbe::default());
     }
 
@@ -2000,7 +1956,6 @@ if (invasion >= 50 && done === false) { _%>
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let raw = r#"{"data":{"name":"莉亞","character_book":{"entries":[{"keys":["森林"],"content":"古老盟約"}]},"alternate_greetings":["第二次見面。","雨天再訪。"]}}"#;
 
-        assert_eq!(probe_import(raw.as_bytes()).alternate_greetings, 2);
         let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
         let private_md = data::read_character(root.path(), &world_id, &meta.id)
             .unwrap()

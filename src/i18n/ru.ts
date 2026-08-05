@@ -260,8 +260,6 @@ export const ru: Record<MsgKey, string> = {
   zoomLabel: "Масштаб",
   importCard: "Импорт",
   importCardHint: "Импортировать карточку SillyTavern (PNG или JSON); оригинал останется в папке стола",
-  importScriptNotice: "В этой карточке есть скрипты только для SillyTavern. Импортирован только текст персонажа, а исходный файл остался рядом с карточкой.",
-  worldbookScriptNotice: "В этой мировой книге есть скрипты только для SillyTavern. Импортировано только текстовое содержимое.",
   worldbookImportDone: "В мировую книгу импортировано {n} записей.",
   importChoiceCharacterTitle: "Похоже, это карточка персонажа",
   importChoiceCharacterBody:

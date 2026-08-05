@@ -260,8 +260,6 @@ export const es: Record<MsgKey, string> = {
   zoomLabel: "Zoom",
   importCard: "Importar",
   importCardHint: "Importa una ficha de SillyTavern (PNG o JSON); el archivo original se conservará en la carpeta de la mesa",
-  importScriptNotice: "Esta ficha incluye scripts exclusivos de SillyTavern. Solo se importó el texto del personaje; el archivo original queda junto a la ficha.",
-  worldbookScriptNotice: "Este libro de mundo incluye scripts exclusivos de SillyTavern. Solo se importó el contenido de texto.",
   worldbookImportDone: "Se importaron {n} entradas en el libro de mundo.",
   importChoiceCharacterTitle: "Esta ficha parece un personaje",
   importChoiceCharacterBody:
