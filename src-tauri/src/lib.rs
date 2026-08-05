@@ -353,6 +353,7 @@ fn import_worldbook(
     if let Ok(book) = serde_json::from_str(&json_text) {
         import::import_mechanism(&root, &world_id, &book);
     }
+    import::import_card_extension(&root, &world_id, &label, &data);
     receipts::record_worldbook_import(&root, &world_id, &label, before);
     Ok(result)
 }
@@ -455,13 +456,28 @@ fn import_character(
     world_id: String,
     data: Vec<u8>,
     color: String,
-) -> Result<CharacterMeta, String> {
+) -> Result<CharacterImport, String> {
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
+    let entries_before = data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len());
     let meta = import::import_character(&root, &world_id, &data, &color)
         .map_err(|error| error.to_string())?;
     receipts::record_character_import(&root, &world_id, &meta.id, &meta.name, before);
-    Ok(meta)
+    // 卡片隨身的世界書條目也要跟世界書路徑一樣回報進來幾條、重複跳過幾條
+    let imported =
+        data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len() - entries_before);
+    let skipped = import::probe_import(&data).book_entries.saturating_sub(imported);
+    Ok(CharacterImport {
+        meta,
+        book: data::WorldbookImport { imported, skipped },
+    })
+}
+
+/// 角色卡匯入的完整結果：新角色本體＋卡片隨身世界書的收編數字。
+#[derive(serde::Serialize)]
+struct CharacterImport {
+    meta: CharacterMeta,
+    book: data::WorldbookImport,
 }
 
 #[tauri::command]

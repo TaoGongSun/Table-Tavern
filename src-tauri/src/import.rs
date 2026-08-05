@@ -536,6 +536,27 @@ fn table_tavern_extension(root: &Path, world_id: &str, name: &str) -> Value {
 }
 
 /// 壞掉的擴充資料只略過，因為角色本體已經安全存檔，不能被可選機制拖垮。
+/// 世界書路徑用：從原始卡檔（PNG／JSON）取出本 app 自己匯出的 `extensions.table_tavern` 再套用。
+/// 角色卡路徑在 import_character 內已直接套過；兩條路徑都要收，同一張卡不會因為換個身分匯入就少半套機制。
+pub fn import_card_extension(root: &Path, world_id: &str, name: &str, bytes: &[u8]) {
+    let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+        match decode_png_character(bytes) {
+            Ok(json_bytes) => json_bytes,
+            Err(_) => return,
+        }
+    } else {
+        bytes.to_vec()
+    };
+    let Ok(value) = serde_json::from_slice::<Value>(&json_bytes) else {
+        return;
+    };
+    let card_data = value
+        .get("data")
+        .filter(|data| data.is_object())
+        .unwrap_or(&value);
+    import_table_tavern_extension(root, world_id, name, card_data);
+}
+
 fn import_table_tavern_extension(root: &Path, world_id: &str, name: &str, card_data: &Value) {
     let Some(extension) = card_data
         .get("extensions")
@@ -2091,6 +2112,16 @@ if (invasion >= 50 && done === false) { _%>
             Some("亞瑟")
         );
         assert_eq!(target.state.tree["亞瑟"], initial);
+
+        // 同一份匯出檔改用世界書身分匯入，機制照樣要收進來（兩條路徑對等）
+        let book_world = data::create_world(root.path(), "世界書桌").unwrap();
+        import_card_extension(root.path(), &book_world, "亞瑟", &exported);
+        let book_state = data::read_state(root.path(), &book_world).unwrap();
+        assert_eq!(
+            book_state.mechanism.rules["亞瑟.能力.HP"].branch.as_deref(),
+            Some("亞瑟")
+        );
+        assert_eq!(book_state.state.tree["亞瑟"], initial);
     }
 
     /// App 內手寫的卡沒有那五個標題，全部併進 description；私有筆記進常駐條目

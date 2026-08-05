@@ -49,6 +49,11 @@ interface CharacterCard extends CharacterMeta {
   gen_prompt: string;
 }
 
+interface CharacterImport {
+  meta: CharacterMeta;
+  book: WorldbookImport;
+}
+
 interface ImportProbe {
   lorebook_heavy: boolean;
   /** 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名 */
@@ -4133,7 +4138,7 @@ function App() {
   // worldId 顯式帶入（不吃 table 這個 closure）：開新桌並匯入時 table 當下還是舊桌值。
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
   async function importAsCharacter(worldId: string, data: number[], adoptName = true) {
-    const meta = await invoke<CharacterMeta>("import_character", {
+    const { meta, book } = await invoke<CharacterImport>("import_character", {
       worldId,
       data,
       color: PALETTE[characters.length % PALETTE.length],
@@ -4144,43 +4149,47 @@ function App() {
     setSpeaker(meta.id);
     if (adoptName) await adoptImportName(meta.name);
     await refreshImportReceipts(worldId);
-    // 匯入提示只講畫得出／畫不出介面：畫得出來告訴玩家在哪開，解不開的要講清楚是哪一種
-    const interfaces = await refreshCardInterfaces(worldId);
-    const mine = interfaces.find((card) => card.character_id === meta.id);
-    const notice =
-      mine && mine.scripts.length > 0 ? t("importCardInterface") : unsupportedInterfaceNotice(mine);
-    if (notice) await showMessage(notice, { title: t("importCard") });
-    openCardInterface(interfaces);
+    // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話
+    if (book.imported > 0) await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
+    await tellAboutInterface(worldId, meta.id);
   }
 
   // 世界書匯入共用流程：側欄按鈕分流出的純世界書檔、三鍵對話框選了世界書都走這裡。
   // worldId 顯式帶入、adoptName 預設 true，理由同 importAsCharacter。
   async function importAsWorldbook(worldId: string, data: number[], label: string, adoptName = true) {
-    const result = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
-    await showMessage(
-      t("worldbookImportDone", { n: result.imported }) +
-        (result.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: result.skipped }) : ""),
-      { title: t("importCard") },
-    );
+    const book = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
+    await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
     // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
     setSpeaker(GM_TARGET);
     if (adoptName) await adoptImportName(label);
     await refreshImportReceipts(worldId);
     await offerOpeningLine(worldId, data);
-    // 世界書路徑的介面殼掛在桌上（character_id 空字串）：解不開時同樣要說明白，
-    // 否則玩家只看到滿螢幕的原始標記，也不知道介面按鈕為什麼不出現
-    const interfaces = await refreshCardInterfaces(worldId);
-    const shell = interfaces.find((card) => card.character_id === "");
-    const notice = unsupportedInterfaceNotice(shell);
-    if (notice) await showMessage(notice, { title: t("importCard") });
-    openCardInterface(interfaces);
+    // 這桌等級的介面殼 character_id 是空字串（角色卡的是那張卡的 id）
+    await tellAboutInterface(worldId, "");
   }
 
-  // 卡片自帶介面但我們畫不出來的兩種情況：加密卡、介面存在別人網站上的雲端載入器卡
-  function unsupportedInterfaceNotice(card: CardInterface | undefined) {
-    if (card?.unsupported === "scrypt") return t("importCardScrypt");
-    if (card?.unsupported === "remote_loader") return t("importCardRemoteLoader");
-    return "";
+  function worldbookImportedMessage(book: WorldbookImport) {
+    return (
+      t("worldbookImportDone", { n: book.imported }) +
+      (book.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: book.skipped }) : "")
+    );
+  }
+
+  // 兩條匯入路徑共用：畫得出來就告訴玩家在哪開並直接開一次，解不開的講清楚是哪一種
+  // （加密卡、介面存在別人網站上的雲端載入器卡）。沒有介面的卡什麼都不說。
+  async function tellAboutInterface(worldId: string, characterId: string) {
+    const interfaces = await refreshCardInterfaces(worldId);
+    const mine = interfaces.find((card) => card.character_id === characterId);
+    const notice =
+      mine && mine.scripts.length > 0
+        ? t("importCardInterface")
+        : mine?.unsupported === "scrypt"
+          ? t("importCardScrypt")
+          : mine?.unsupported === "remote_loader"
+            ? t("importCardRemoteLoader")
+            : "";
+    if (notice) await showMessage(notice, { title: t("importCard") });
+    openCardInterface(interfaces);
   }
 
   // 只在世界書路徑問（importAsWorldbook 專用）：匯成角色卡＝這張卡是要上桌的角色，開場白已在卡上，
