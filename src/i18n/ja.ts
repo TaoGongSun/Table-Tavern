@@ -263,11 +263,14 @@ export const ja: Record<MsgKey, string> = {
   importScriptNotice: "このカードにはSillyTavern専用スクリプトが含まれています。キャラクター設定のテキストだけを読み込み、元ファイルはカードのそばに残しています。",
   worldbookScriptNotice: "この世界書にはSillyTavern専用スクリプトが含まれています。テキスト内容だけを読み込みました。",
   worldbookImportDone: "世界書に {n} 件の項目を読み込みました。",
-  importChoiceTitle: "このカードはキャラクターと世界書の両方を含みます",
-  importChoiceBody:
-    "キャラクター設定と世界書の項目が {n} 件入っています。「キャラクターをインポート」は両方取り込み、「世界書のみ」はキャラクターを作成しません。",
-  importChoiceCharacter: "キャラクターをインポート",
-  importChoiceWorldbook: "世界書のみ",
+  importChoiceCharacterTitle: "このカードはキャラクターカードのようです",
+  importChoiceCharacterBody:
+    "キャラクターカードとしてインポートしますか？世界書としてインポートすると遊べない場合があります。",
+  importChoiceBookTitle: "このカードは世界書のようです",
+  importChoiceBookBody:
+    "世界書としてインポートしますか？キャラクターカードとしてインポートすると遊べない場合があります。",
+  importChoiceCharacter: "キャラクターとして取込",
+  importChoiceWorldbook: "世界書として取込",
   importChoiceCancel: "キャンセル",
   undoLastImport: "インポート取消",
   undoLastImportHint: "直前のインポートを取り消します。読み込んだキャラクターシートと世界書の項目は削除されます",

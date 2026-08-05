@@ -263,11 +263,14 @@ export const ptBR: Record<MsgKey, string> = {
   importScriptNotice: "Este cartão tem scripts exclusivos do SillyTavern. Só o texto do personagem foi importado; o arquivo original ficou ao lado do cartão.",
   worldbookScriptNotice: "Este livro de mundo tem scripts exclusivos do SillyTavern. Só o conteúdo em texto foi importado.",
   worldbookImportDone: "Foram importadas {n} entradas para o livro de mundo.",
-  importChoiceTitle: "Esta ficha tem tanto um personagem quanto um livro do mundo",
-  importChoiceBody:
-    "Ela traz dados de personagem e {n} entradas do livro do mundo. “Importar como personagem” traz os dois; “Só o livro do mundo” não cria personagem.",
+  importChoiceCharacterTitle: "Esta ficha parece um personagem",
+  importChoiceCharacterBody:
+    "Importar como personagem? Importar como livro do mundo pode deixá-la injogável.",
+  importChoiceBookTitle: "Esta ficha parece um livro do mundo",
+  importChoiceBookBody:
+    "Importar como livro do mundo? Importar como personagem pode deixá-la injogável.",
   importChoiceCharacter: "Importar como personagem",
-  importChoiceWorldbook: "Só o livro do mundo",
+  importChoiceWorldbook: "Importar como livro",
   importChoiceCancel: "Cancelar",
   undoLastImport: "Desfazer importação",
   undoLastImportHint: "Desfaz a última importação: a ficha de personagem e as entradas do livro de mundo trazidas por ela serão removidas",

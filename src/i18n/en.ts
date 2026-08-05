@@ -283,11 +283,14 @@ export const en: Record<MsgKey, string> = {
   worldbookScriptNotice:
     "This worldbook contains SillyTavern-only scripts. Only its text content was imported.",
   worldbookImportDone: "Imported {n} entries into the worldbook.",
-  importChoiceTitle: "This card is both a character and a world book",
-  importChoiceBody:
-    "It has character info plus {n} worldbook entries. “Import as Character” brings in both; “Worldbook Only” skips the character.",
+  importChoiceCharacterTitle: "This looks like a character card",
+  importChoiceCharacterBody:
+    "Import it as a character card? Importing it as a worldbook may leave it unplayable.",
+  importChoiceBookTitle: "This looks like a worldbook",
+  importChoiceBookBody:
+    "Import it as a worldbook? Importing it as a character card may leave it unplayable.",
   importChoiceCharacter: "Import as Character",
-  importChoiceWorldbook: "Worldbook Only",
+  importChoiceWorldbook: "Import as Worldbook",
   importChoiceCancel: "Cancel",
   undoLastImport: "Undo Last Import",
   undoLastImportHint: "Undo the last import: any character card and worldbook entries it brought in will be removed",
