@@ -278,10 +278,6 @@ export const en: Record<MsgKey, string> = {
   importCard: "Import",
   importCardHint:
     "Import a SillyTavern character card (PNG or JSON); the original file is kept in the table folder",
-  importScriptNotice:
-    "This card contains SillyTavern-only scripts. Only the character text was imported; the original file is kept beside the card.",
-  worldbookScriptNotice:
-    "This worldbook contains SillyTavern-only scripts. Only its text content was imported.",
   worldbookImportDone: "Imported {n} entries into the worldbook.",
   importChoiceCharacterTitle: "This looks like a character card",
   importChoiceCharacterBody:

@@ -260,8 +260,6 @@ export const ko: Record<MsgKey, string> = {
   zoomLabel: "배율 조정",
   importCard: "가져오기",
   importCardHint: "SillyTavern 캐릭터 카드(PNG 또는 JSON)를 가져옵니다. 원본 파일은 해당 테이블 폴더에 유지됩니다.",
-  importScriptNotice: "이 카드에는 SillyTavern 전용 스크립트가 있습니다. 캐릭터 설정 텍스트만 가져왔고 원본 파일은 카드 옆에 남아 있습니다.",
-  worldbookScriptNotice: "이 세계서에는 SillyTavern 전용 스크립트가 있습니다. 텍스트 내용만 가져왔습니다.",
   worldbookImportDone: "세계서에 항목 {n}개를 가져왔습니다.",
   importChoiceCharacterTitle: "이 카드는 캐릭터 카드로 보입니다",
   importChoiceCharacterBody:
