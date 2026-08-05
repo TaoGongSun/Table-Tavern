@@ -4144,17 +4144,11 @@ function App() {
     setSpeaker(meta.id);
     if (adoptName) await adoptImportName(meta.name);
     await refreshImportReceipts(worldId);
-    // 匯入提示只講畫得出／畫不出介面：畫得出來告訴玩家在哪開，解不開的兩種卡要講清楚是哪一種
+    // 匯入提示只講畫得出／畫不出介面：畫得出來告訴玩家在哪開，解不開的要講清楚是哪一種
     const interfaces = await refreshCardInterfaces(worldId);
     const mine = interfaces.find((card) => card.character_id === meta.id);
     const notice =
-      mine?.unsupported === "scrypt"
-        ? t("importCardScrypt")
-        : mine?.unsupported === "remote_loader"
-          ? t("importCardRemoteLoader")
-          : mine && mine.scripts.length > 0
-            ? t("importCardInterface")
-            : "";
+      mine && mine.scripts.length > 0 ? t("importCardInterface") : unsupportedInterfaceNotice(mine);
     if (notice) await showMessage(notice, { title: t("importCard") });
     openCardInterface(interfaces);
   }
@@ -4173,7 +4167,20 @@ function App() {
     if (adoptName) await adoptImportName(label);
     await refreshImportReceipts(worldId);
     await offerOpeningLine(worldId, data);
-    openCardInterface(await refreshCardInterfaces(worldId));
+    // 世界書路徑的介面殼掛在桌上（character_id 空字串）：解不開時同樣要說明白，
+    // 否則玩家只看到滿螢幕的原始標記，也不知道介面按鈕為什麼不出現
+    const interfaces = await refreshCardInterfaces(worldId);
+    const shell = interfaces.find((card) => card.character_id === "");
+    const notice = unsupportedInterfaceNotice(shell);
+    if (notice) await showMessage(notice, { title: t("importCard") });
+    openCardInterface(interfaces);
+  }
+
+  // 卡片自帶介面但我們畫不出來的兩種情況：加密卡、介面存在別人網站上的雲端載入器卡
+  function unsupportedInterfaceNotice(card: CardInterface | undefined) {
+    if (card?.unsupported === "scrypt") return t("importCardScrypt");
+    if (card?.unsupported === "remote_loader") return t("importCardRemoteLoader");
+    return "";
   }
 
   // 只在世界書路徑問（importAsWorldbook 專用）：匯成角色卡＝這張卡是要上桌的角色，開場白已在卡上，
