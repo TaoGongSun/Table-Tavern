@@ -5621,8 +5621,8 @@ function App() {
             <p>{t("openingLineAsk")}</p>
             <div className="opening-choice-list">
               {openingChoice.map((opening, index) => {
-                // 點列只展開全文，貼出另給一顆鈕——開場白動輒上千字，光看兩行預覽選不出來，
-                // 也不該讓「想看清楚」的一下手就貼進對話
+                // 點列只展開全文，貼出的鈕在框外底部——開場白動輒上千字，按鈕若跟在全文後面
+                // 得整段捲到底才按得到，而滿是標記的開場白根本沒必要逐字看完
                 const expanded = openingExpanded === index;
                 return (
                   <div className="opening-choice-item" key={index}>
@@ -5635,19 +5635,21 @@ function App() {
                       <strong>{t("openingChoiceItem", { n: index + 1 })}</strong>
                       <span>{expanded ? "" : openingPreview(opening)}</span>
                     </button>
-                    {expanded && (
-                      <>
-                        <div className="opening-choice-full">{opening}</div>
-                        <button type="button" onClick={() => void postOpening(opening)}>
-                          {t("openingLineOk")}
-                        </button>
-                      </>
-                    )}
+                    {expanded && <div className="opening-choice-full">{opening}</div>}
                   </div>
                 );
               })}
             </div>
             <div className="ai-gen-footer">
+              {openingExpanded !== null && openingChoice[openingExpanded] !== undefined && (
+                <button
+                  type="button"
+                  className="footer-lead"
+                  onClick={() => void postOpening(openingChoice[openingExpanded])}
+                >
+                  {t("openingLineOk")}
+                </button>
+              )}
               <button type="button" onClick={() => setOpeningChoice(null)}>{t("openingLineCancel")}</button>
             </div>
           </div>
