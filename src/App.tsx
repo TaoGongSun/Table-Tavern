@@ -5543,18 +5543,18 @@ function App() {
         </div>
       )}
 
-      {/* 匯入卡角色與世界書都有料：問清楚要哪一種，份量重的那邊當主按鈕 */}
+      {/* 匯入卡角色與世界書都有料：直說偵測到哪一種，該身分當主按鈕，另一邊只警告可能玩不動 */}
       {importChoice !== null && (
         <div className="modal-overlay" onClick={() => void answerImportChoice("cancel")}>
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t("importChoiceTitle")}
+            aria-label={t(importChoice.probe.lorebook_heavy ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}
             onClick={(event) => event.stopPropagation()}
           >
-            <h2>{t("importChoiceTitle")}</h2>
-            <p>{t("importChoiceBody", { n: importChoice.probe.book_entries })}</p>
+            <h2>{t(importChoice.probe.lorebook_heavy ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}</h2>
+            <p>{t(importChoice.probe.lorebook_heavy ? "importChoiceBookBody" : "importChoiceCharacterBody")}</p>
             <div className="ai-gen-footer">
               <button type="button" onClick={() => void answerImportChoice("cancel")}>
                 {t("importChoiceCancel")}

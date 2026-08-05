@@ -263,11 +263,14 @@ export const fr: Record<MsgKey, string> = {
   importScriptNotice: "Cette fiche contient des scripts réservés à SillyTavern. Seul le texte du personnage a été importé ; le fichier d'origine reste à côté de la fiche.",
   worldbookScriptNotice: "Ce livre de monde contient des scripts réservés à SillyTavern. Seul le contenu textuel a été importé.",
   worldbookImportDone: "{n} entrées ont été importées dans le livre de monde.",
-  importChoiceTitle: "Cette fiche contient à la fois un personnage et une encyclopédie",
-  importChoiceBody:
-    "Elle contient des infos de personnage et {n} entrées d'encyclopédie. « Importer comme personnage » récupère les deux ; « Encyclopédie seule » n'importe pas de personnage.",
+  importChoiceCharacterTitle: "Cette fiche ressemble à un personnage",
+  importChoiceCharacterBody:
+    "L'importer comme personnage ? Importée comme encyclopédie, elle risque d'être injouable.",
+  importChoiceBookTitle: "Cette fiche ressemble à une encyclopédie",
+  importChoiceBookBody:
+    "L'importer comme encyclopédie ? Importée comme personnage, elle risque d'être injouable.",
   importChoiceCharacter: "Importer comme personnage",
-  importChoiceWorldbook: "Encyclopédie seule",
+  importChoiceWorldbook: "Importer comme encyclopédie",
   importChoiceCancel: "Annuler",
   undoLastImport: "Annuler l'import",
   undoLastImportHint: "Annule le dernier import : la fiche de personnage et les entrées du livre de monde importées seront supprimées",

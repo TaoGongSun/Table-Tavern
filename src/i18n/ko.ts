@@ -263,11 +263,14 @@ export const ko: Record<MsgKey, string> = {
   importScriptNotice: "이 카드에는 SillyTavern 전용 스크립트가 있습니다. 캐릭터 설정 텍스트만 가져왔고 원본 파일은 카드 옆에 남아 있습니다.",
   worldbookScriptNotice: "이 세계서에는 SillyTavern 전용 스크립트가 있습니다. 텍스트 내용만 가져왔습니다.",
   worldbookImportDone: "세계서에 항목 {n}개를 가져왔습니다.",
-  importChoiceTitle: "이 카드는 캐릭터와 세계서 내용을 모두 담고 있습니다",
-  importChoiceBody:
-    "캐릭터 설정과 세계서 항목 {n}개가 함께 들어 있습니다. 「캐릭터로 가져오기」는 둘 다 가져오고, 「세계서만 가져오기」는 캐릭터를 만들지 않습니다.",
+  importChoiceCharacterTitle: "이 카드는 캐릭터 카드로 보입니다",
+  importChoiceCharacterBody:
+    "캐릭터 카드로 가져올까요? 세계서로 가져오면 플레이가 안 될 수 있습니다.",
+  importChoiceBookTitle: "이 카드는 세계서로 보입니다",
+  importChoiceBookBody:
+    "세계서로 가져올까요? 캐릭터 카드로 가져오면 플레이가 안 될 수 있습니다.",
   importChoiceCharacter: "캐릭터로 가져오기",
-  importChoiceWorldbook: "세계서만 가져오기",
+  importChoiceWorldbook: "세계서로 가져오기",
   importChoiceCancel: "취소",
   undoLastImport: "가져오기 되돌리기",
   undoLastImportHint: "마지막 가져오기를 되돌립니다: 불러온 캐릭터 카드와 세계서 항목이 함께 제거됩니다",

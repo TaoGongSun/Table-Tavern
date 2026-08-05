@@ -263,11 +263,14 @@ export const de: Record<MsgKey, string> = {
   importScriptNotice: "Diese Karte enthält Skripte nur für SillyTavern. Importiert wurde nur der Charaktertext; die Originaldatei bleibt neben der Karte.",
   worldbookScriptNotice: "Dieses Weltbuch enthält Skripte nur für SillyTavern. Importiert wurde nur der Textinhalt.",
   worldbookImportDone: "{n} Einträge wurden ins Weltbuch importiert.",
-  importChoiceTitle: "Diese Karte enthält sowohl einen Charakter als auch ein Weltbuch",
-  importChoiceBody:
-    "Sie enthält Charakterdaten und {n} Weltbuch-Einträge. „Als Charakter importieren“ übernimmt beides; „Nur Weltbuch“ importiert keinen Charakter.",
+  importChoiceCharacterTitle: "Diese Karte sieht nach einem Charakter aus",
+  importChoiceCharacterBody:
+    "Als Charakter importieren? Als Weltbuch importiert ist sie womöglich nicht spielbar.",
+  importChoiceBookTitle: "Diese Karte sieht nach einem Weltbuch aus",
+  importChoiceBookBody:
+    "Als Weltbuch importieren? Als Charakter importiert ist sie womöglich nicht spielbar.",
   importChoiceCharacter: "Als Charakter importieren",
-  importChoiceWorldbook: "Nur Weltbuch",
+  importChoiceWorldbook: "Als Weltbuch importieren",
   importChoiceCancel: "Abbrechen",
   undoLastImport: "Import rückgängig",
   undoLastImportHint: "Macht den letzten Import rückgängig: die importierte Charakterkarte und Weltbuch-Einträge werden entfernt",
