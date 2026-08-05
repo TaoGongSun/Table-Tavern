@@ -1048,6 +1048,11 @@ textarea {
   margin-top: 1rem;
 }
 
+/* 靠左的那顆：其餘按鈕照舊靠右 */
+.ai-gen-footer .footer-lead {
+  margin-right: auto;
+}
+
 .ai-gen-submit {
   background: var(--accent);
   color: var(--accent-ink);

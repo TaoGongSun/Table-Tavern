@@ -12,11 +12,13 @@
 - 身分框文案改寫（2026-08-05 實機驗收後）：舊的共用文案「這張卡角色與世界書都有料…」語氣像在推薦匯入成角色卡，世界書卡照做會玩不動。改成偵測到哪一種就只講那一種——`importChoiceCharacterTitle/Body`（這張卡看起來是角色卡／要匯入成角色卡嗎？匯入成世界書可能無法遊玩。）與 `importChoiceBookTitle/Body`（世界書版對調），舊 `importChoiceTitle/Body` 兩鍵刪除，按鈕改「匯入成角色卡／匯入成世界書」；十語系同步，App.tsx 依 lorebook_heavy 選字串。
 
 - 兩句「已只讀入…」腳本提示整組刪除（世界書路徑與角色卡路徑各一句，十語系鍵一併移除）。連帶清掉死線路：importAsCharacter／importAsWorldbook 的 probe 參數、路由框狀態與 routeImport 的 probe 欄位、後端 ImportProbe 的 `scripts`／`alternate_greetings` 兩個欄位與偵測程式（改由機制帳本負責交代）。查證：條目全部原樣存進 worldbook.json（只改欄位名對應、配 uid、預設 GM 可見），`<%` 原文也留著；不執行、不送模型的那些都在機制帳本有記（Absorbed／Skipped），唯一真的被丟的是指紋重複的條目，另有「N 條重複跳過」提示。舊提示只要檔案出現 `<%` 就跳，連已成功轉成觸發表的卡也跳，字面又像在說內容被捨棄。
+- 開場白選擇框的「貼出這條」搬到框外左下（原本跟在全文後面，長開場白要整段捲到底才按得到）；`footer-lead` class 靠 margin-right:auto 推左，右下維持「先不要」。展開哪一條就貼哪一條，沒展開時不顯示。（承自已結案的 st-ecosystem-upgrades 第六項，實機驗收後的修正）
 
 ## Verification
 - 最終四件套（2026-08-05 主線複驗）：cargo test 327 綠、vitest 22 綠（含 import-routing 5 例）、npm run build ✓、check:i18n 十語系 82 鈕 OK。
 - 文案改寫自驗（2026-08-05）：npm run build ✓、vitest 22 綠、check:i18n 九語系 OK（按鈕加長後仍在寬度上限內）；接線見 [App.tsx:5546](../../src/App.tsx:5546)。
 - 刪腳本提示自驗（2026-08-05）：cargo test 326 綠（原 327，刪掉兩個只驗 scripts 欄位的測試、新增 probe_ignores_invalid_bytes 保留格式錯誤那條斷言）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK；殘留檢查 grep importScriptNotice／worldbookScriptNotice = 0。淨變化 −75 行。
+- 開場白按鈕改位自驗＋使用者實機確認通過（2026-08-05）：npm run build ✓、vitest 22 綠、check:i18n 九語系 OK。
 - 實機驗收第 6 項通過（2026-08-05 使用者）：新開的桌匯過世界書後再匯世界書會被擋。舊桌（收據功能之前建立的）沒有 `import-receipts.json` 擋不住——使用者拍板**不補**，新功能不覆蓋舊桌可接受。
 - 逐包 commit：548905a（包 1）、1939af6（包 2）、d8abe8b（包 3）、包 4 見本次 commit。
 - 主線抽讀確認：decideImportRoute 決策表逐條符合拍板；路由框 block 版 JSX 只有取消＋開新桌（App.tsx 搜 -a "importRoute !== null"）；openNewTableAndImport 的 worldId 全程來自 create_world 回傳值。
