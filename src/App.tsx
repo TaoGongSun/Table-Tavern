@@ -316,6 +316,9 @@ function clampChars(value: string, max: number) {
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
 const TABLE_LIST_OPEN_KEY = "table_list_open";
 const STATE_BAR_OPEN_KEY = "state_bar_open";
+// 這桌向 AI 發過對話請求了沒（每桌一把）。開演之後復原＝把演到一半的角色卡連同後續編輯一起刪掉，
+// 所以按鈕要收起來；記在瀏覽器端，重開 app 也不該讓它又冒出來讓人誤按。
+const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
 const SIDEBAR_DEFAULT_WIDTH = 224;
 const SIDEBAR_MIN_WIDTH = 176;
 const SIDEBAR_KEY_STEP = 16;
@@ -3209,12 +3212,12 @@ function App() {
   const [importChoice, setImportChoice] = useState<{ data: number[]; probe: ImportProbe; name: string } | null>(
     null,
   );
-  // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝三鍵、block＝雙世界書封死「匯進這桌」
+  // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝一般第二張卡、merge_worldbook＝第二本世界書會合成一本
   const [importRoute, setImportRoute] = useState<{
     data: number[];
     identity: "character" | "worldbook";
     label: string;
-    route: "ask" | "block_double_worldbook";
+    route: "ask" | "merge_worldbook";
   } | null>(null);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
@@ -3231,8 +3234,9 @@ function App() {
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
   const [cardUiOpen, setCardUiOpen] = useState(false);
-  // 這桌的匯入收據摘要：非空才顯示「復原上次匯入」按鈕
+  // 這桌的匯入收據摘要：非空、且還沒開始跟 AI 對話，才顯示「復原上次匯入」按鈕
   const [importReceipts, setImportReceipts] = useState<ImportReceiptSummary[]>([]);
+  const [chattedSinceImport, setChattedSinceImport] = useState(false);
   // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
   // 雙緩衝的兩格與目前露臉的那一格：新殼永遠先塞進背面那格，載好才翻面（見覆蓋層那段）
@@ -3516,6 +3520,7 @@ function App() {
     setImportReceipts(
       await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []),
     );
+    setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
     // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的
     setSpeaker(cast.find((character) => !character.archived)?.id ?? GM_TARGET);
     setEditingName(null);
@@ -3816,7 +3821,7 @@ function App() {
     const value = tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? "");
     const jumpMark = tableJumps[path.join(".")];
     return (
-      <div className="state-bar-field" key={path.join(" ")}>
+      <div className="state-bar-field" key={path.join("\0")}>
         <span className="state-bar-label">{label}</span>
         {editing ? (
           stateFieldForm(path, tree, label)
@@ -4000,6 +4005,16 @@ function App() {
     setImportReceipts(
       await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId }).catch(() => []),
     );
+    // 剛匯入（或剛復原一筆）＝又回到「還沒開演」的狀態，按鈕重新給
+    localStorage.removeItem(chattedKey(worldId));
+    setChattedSinceImport(false);
+  }
+
+  // 向 AI 發出對話請求：從這一刻起收掉「復原上次匯入」，免得演到一半誤按整張卡沒了
+  function noteChatRequest() {
+    if (!table) return;
+    localStorage.setItem(chattedKey(table), "true");
+    setChattedSinceImport(true);
   }
 
   // 側欄「復原上次匯入」：逆向收據清單最後一筆，逐筆倒退
@@ -4109,7 +4124,7 @@ function App() {
     setImportRoute({ data, identity, label, route });
   }
 
-  // 路由框作答：取消什麼都不做；匯進這桌走現行匯入函式（雙世界書封死這個選項，不會傳 this_table 進來）；
+  // 路由框作答：取消什麼都不做；匯進這桌走現行匯入函式（第二本世界書走同一條，後端會接在既有條目後面並去重）；
   // 開新桌並匯入另開一桌後再匯，見 openNewTableAndImport
   async function answerImportRoute(choice: "this_table" | "new_table" | "cancel") {
     const pending = importRoute;
@@ -4490,6 +4505,7 @@ function App() {
 
   // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
   async function replyOnce(characterId: string) {
+    noteChatRequest();
     setGenerating({ id: characterId, kind: "dialogue" });
     setStreamText("");
     const onDelta = new Channel<string>();
@@ -4523,6 +4539,7 @@ function App() {
   // 單次 GM 旁白＋點名（不含 busy 防護）：後端一次呼叫完成，旁白落 transcript，
   // 回傳下一位發言者（角色 id／玩家哨兵／null＝GM 沒點名）；失敗往外拋由呼叫端收尾
   async function narrateOnce(): Promise<string | null> {
+    noteChatRequest();
     setGenerating({ id: "", kind: "narration" });
     setStreamText("");
     const onDelta = new Channel<string>();
@@ -5096,7 +5113,7 @@ function App() {
                 if (file) void importCharacter(file);
               }}
             />
-            {importReceipts.length > 0 && (
+            {importReceipts.length > 0 && !chattedSinceImport && (
               <button
                 type="button"
                 title={t("undoLastImportHint")}
@@ -5602,27 +5619,26 @@ function App() {
         </div>
       )}
 
-      {/* 第二張卡路由框：桌上已有匯入紀錄才會跳出來。雙世界書封死「匯進這桌」，其餘給三個選項，開新桌是主按鈕 */}
+      {/* 第二張卡路由框：桌上已有匯入紀錄才會跳出來。三個選項都給，開新桌是主按鈕；
+          第二本世界書換標題與文案（會合成一本），中間那顆改叫「仍要匯入」 */}
       {importRoute !== null && (
         <div className="modal-overlay" onClick={() => void answerImportRoute("cancel")}>
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t(importRoute.route === "block_double_worldbook" ? "importRouteBlockTitle" : "importRouteAskTitle")}
+            aria-label={t(importRoute.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}
             onClick={(event) => event.stopPropagation()}
           >
-            <h2>{t(importRoute.route === "block_double_worldbook" ? "importRouteBlockTitle" : "importRouteAskTitle")}</h2>
-            <p>{t(importRoute.route === "block_double_worldbook" ? "importRouteBlockBody" : "importRouteAskBody")}</p>
+            <h2>{t(importRoute.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}</h2>
+            <p>{t(importRoute.route === "merge_worldbook" ? "importRouteMergeBody" : "importRouteAskBody")}</p>
             <div className="ai-gen-footer">
               <button type="button" onClick={() => void answerImportRoute("cancel")}>
                 {t("importChoiceCancel")}
               </button>
-              {importRoute.route === "ask" && (
-                <button type="button" onClick={() => void answerImportRoute("this_table")}>
-                  {t("importRouteThisTable")}
-                </button>
-              )}
+              <button type="button" onClick={() => void answerImportRoute("this_table")}>
+                {t(importRoute.route === "merge_worldbook" ? "importRouteMergeAnyway" : "importRouteThisTable")}
+              </button>
               <button
                 type="button"
                 className="ai-gen-submit"

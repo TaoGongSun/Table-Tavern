@@ -406,8 +406,10 @@ export const ptBR: Record<MsgKey, string> = {
   // Roteamento do segundo cartão (só aparece quando esta mesa já tem uma importação)
   importRouteAskTitle: "Importar para qual mesa?",
   importRouteAskBody: "Esta mesa já tem uma importação — este cartão novo provavelmente é para uma mesa nova.",
-  importRouteBlockTitle: "Esta mesa já tem um livro do mundo",
-  importRouteBlockBody: "Não dá para empilhar dois livros do mundo na mesma mesa — abra uma mesa nova para este.",
+  importRouteMergeTitle: "Esta mesa já tem um livro do mundo",
+  importRouteMergeBody:
+    "Importar outro funde os dois em um livro só; entradas idênticas são ignoradas. Abra uma mesa nova para mantê-los separados.",
   importRouteNewTable: "Nova mesa + importar",
   importRouteThisTable: "Importar aqui",
+  importRouteMergeAnyway: "Juntar mesmo assim",
 };

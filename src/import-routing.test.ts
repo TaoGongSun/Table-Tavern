@@ -15,10 +15,10 @@ describe("decideImportRoute", () => {
     expect(decideImportRoute("worldbook", false, ["character"])).toBe("ask");
   });
 
-  it("收據已有 worldbook 筆＋世界書身分＝封死匯進這桌", () => {
-    expect(decideImportRoute("worldbook", false, ["worldbook"])).toBe("block_double_worldbook");
-    // 純世界書檔也一樣封死：companion 只在桌上還沒有 worldbook 收據時才成立
-    expect(decideImportRoute("worldbook", true, ["character", "worldbook"])).toBe("block_double_worldbook");
+  it("收據已有 worldbook 筆＋世界書身分＝提醒會合成一本", () => {
+    expect(decideImportRoute("worldbook", false, ["worldbook"])).toBe("merge_worldbook");
+    // 純世界書檔也一樣要問：companion 零打擾只在桌上還沒有 worldbook 收據時才成立
+    expect(decideImportRoute("worldbook", true, ["character", "worldbook"])).toBe("merge_worldbook");
   });
 
   it("第二張角色卡（身分 character，收據非空）＝ask", () => {

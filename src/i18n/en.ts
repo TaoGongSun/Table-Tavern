@@ -432,8 +432,10 @@ export const en: Record<MsgKey, string> = {
   // Second-card routing dialog (only shows up once this table already has an import)
   importRouteAskTitle: "Import to which table?",
   importRouteAskBody: "This table already has an import — this new card is probably meant for a new table.",
-  importRouteBlockTitle: "This table already has a world book",
-  importRouteBlockBody: "Two world books can't stack on the same table — open a new table for this one.",
+  importRouteMergeTitle: "This table already has a world book",
+  importRouteMergeBody:
+    "Importing another one merges it into the existing book; identical entries are skipped. Open a new table to keep them apart.",
   importRouteNewTable: "New Table + Import",
   importRouteThisTable: "Import Here",
+  importRouteMergeAnyway: "Import Anyway",
 };

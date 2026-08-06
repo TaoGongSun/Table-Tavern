@@ -407,9 +407,10 @@ export const fr: Record<MsgKey, string> = {
   importRouteAskTitle: "Importer dans quelle table ?",
   importRouteAskBody:
     "Cette table a déjà un import — cette nouvelle carte est sans doute destinée à une nouvelle table.",
-  importRouteBlockTitle: "Cette table a déjà une encyclopédie",
-  importRouteBlockBody:
-    "Deux encyclopédies ne peuvent pas coexister sur la même table — ouvre une nouvelle table pour celle-ci.",
+  importRouteMergeTitle: "Cette table a déjà une encyclopédie",
+  importRouteMergeBody:
+    "Une seconde encyclopédie fusionne avec la première ; les entrées identiques sont ignorées. Ouvre une nouvelle table pour les garder séparées.",
   importRouteNewTable: "Nouvelle table + import",
   importRouteThisTable: "Importer ici",
+  importRouteMergeAnyway: "Importer quand même",
 };
