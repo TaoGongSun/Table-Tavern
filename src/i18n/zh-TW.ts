@@ -332,6 +332,8 @@ export const zh = {
   exportCardJson: "角色卡 JSON",
   exportCardNeedsSave: "先儲存再匯出",
   archiveSectionTitle: "隱藏角色",
+  // 隱藏區裡跟手動封存卡並列的小標籤，區分「劇情自動隱藏」與「玩家手動封存」
+  autoHiddenBadge: "自動隱藏",
   archiveCharacter: "隱藏角色",
   restoreCharacter: "還原",
   deleteCharacter: "刪除",

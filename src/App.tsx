@@ -8,6 +8,7 @@ import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from ".
 import { renderStoryMarkdown } from "./story-markdown";
 import { buildShellDocument, CardInterface, findShell } from "./interface-card";
 import { decideImportRoute } from "./import-routing";
+import { isCharacterHidden } from "./character-visibility";
 import {
   buildRefactorExpandQueue,
   defaultRefactorSelection,
@@ -55,6 +56,8 @@ interface CharacterMeta {
   tier: Tier;
   show_image: boolean;
   archived: boolean;
+  // 換幕結算的自動隱藏（劇情帶出場就解除）；archived 是玩家手動封存，兩者正交
+  auto_hidden: boolean;
 }
 
 interface CharacterCard extends CharacterMeta {
@@ -2796,6 +2799,7 @@ function CardEditor({
         tier: "balanced",
         show_image: true,
         archived: false,
+        auto_hidden: false,
         public_md: "",
         private_md: "",
         gen_prompt: "",
@@ -3468,8 +3472,11 @@ function App() {
   const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
   // 分支指認清單：每條狀態樹分支目前綁給哪個角色，換桌／讀狀態一起重載
   const [branchBindings, setBranchBindings] = useState<BranchBinding[]>([]);
-  const activeCharacters = characters.filter((character) => !character.archived);
-  const archivedCharacters = characters.filter((character) => character.archived);
+  // 本幕出場集合：換桌／切幕由 enterTable 呼叫 scene_appearances 初始化，
+  // 之後每次 gm_narrate 回傳的 arrived_characters 併入——auto_hidden 卡一登場就立刻從隱藏區移回主區
+  const [sceneAppearances, setSceneAppearances] = useState<Set<string>>(new Set());
+  const activeCharacters = characters.filter((character) => !isCharacterHidden(character, sceneAppearances));
+  const archivedCharacters = characters.filter((character) => isCharacterHidden(character, sceneAppearances));
   const castDrag = useDragReorder(
     activeCharacters,
     (character) => character.id,
@@ -3868,14 +3875,22 @@ function App() {
     setBranchBindings(await loadBranchBindings(id));
     setEvents(transcript);
     setCharacters(cast);
+    // 本幕已出場集合：auto_hidden 卡是否落在主區靠這份初始化，讀不到就當空集合（全部從隱藏區起算）
+    const appearances = await invoke<{ character_ids: string[]; person_titles: string[] }>(
+      "scene_appearances",
+      { worldId: id },
+    ).catch(() => ({ character_ids: [], person_titles: [] }));
+    const appearanceIds = new Set(appearances.character_ids);
+    setSceneAppearances(appearanceIds);
     await loadCharacterImages(id, cast);
     await loadPlayerCard(id, state.player_card_id);
     setImportReceipts(
       await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []),
     );
     setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
-    // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的
-    setSpeaker(cast.find((character) => !character.archived)?.id ?? GM_TARGET);
+    // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的；
+    // 隱藏區的卡（含本幕還沒出場的 auto_hidden）不當預設對象，跟側欄主區顯示一致
+    setSpeaker(cast.find((character) => !isCharacterHidden(character, appearanceIds))?.id ?? GM_TARGET);
     setEditingName(null);
     setEditingStateField(null);
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
@@ -4676,7 +4691,7 @@ function App() {
   async function finishRemoval(id: string) {
     const cast = await refreshCharacters();
     if (speaker === id) {
-      setSpeaker(cast.find((character) => !character.archived)?.id ?? "");
+      setSpeaker(cast.find((character) => !isCharacterHidden(character, sceneAppearances))?.id ?? "");
     }
     setMainView(null);
   }
@@ -4749,10 +4764,12 @@ function App() {
   }
 
   // 側欄拖曳排序：先樂觀套用，寫檔失敗才回捲
+  // 用 archivedCharacters（非 characters.filter(archived)）補回其餘卡片：
+  // 這幕沒出場的 auto_hidden 卡不在 archived 裡，漏掉會在拖曳當下從 state 消失
   async function reorderCast(ordered: CharacterMeta[]) {
     setError("");
     const previous = characters;
-    setCharacters([...ordered, ...characters.filter((character) => character.archived)]);
+    setCharacters([...ordered, ...archivedCharacters]);
     try {
       await invoke("reorder_characters", {
         worldId: table,
@@ -4768,6 +4785,17 @@ function App() {
     setError("");
     try {
       await invoke("set_character_archived", { worldId: table, characterId: id, archived: false });
+      await refreshCharacters();
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  // 隱藏區裡 auto_hidden 卡的「拉回」：解除自動隱藏（不是解除封存），下次換幕結算才會重新判定
+  async function restoreAutoHidden(id: string) {
+    setError("");
+    try {
+      await invoke("set_character_auto_hidden", { worldId: table, characterId: id, autoHidden: false });
       await refreshCharacters();
     } catch (reason) {
       setError(String(reason));
@@ -4953,16 +4981,21 @@ function App() {
     setStreamText("");
     const onDelta = new Channel<string>();
     onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-    const { text, raw, next, state_updates } = await invoke<{
+    const { text, raw, next, state_updates, arrived_characters } = await invoke<{
       text: string;
       raw: string | null;
       next: string | null;
       // 後端還沒上線這欄時是 undefined，當空陣列處理，別讓面板炸掉
       state_updates?: { path: string; value: string }[];
+      // 這輪劇情帶出場的卡 id：併入本幕出場集合，auto_hidden 卡立刻從隱藏區移回主區
+      arrived_characters?: string[];
     }>("gm_narrate", {
       worldId: table,
       onDelta,
     });
+    if (arrived_characters && arrived_characters.length > 0) {
+      setSceneAppearances((previous) => new Set([...previous, ...arrived_characters]));
+    }
     await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) });
     // 長文字欄（外貌、貼文…）改用一則系統事件記變動，不再每輪塞回提示詞——
     // 歷史會被兩條傳輸路每輪重播且吃快取，回合尾動態塊每輪重組、不落歷史
@@ -5495,25 +5528,39 @@ function App() {
             <details className="archive-section">
               <summary>{t("archiveSectionTitle")}</summary>
               <div className="archive-list">
-                {archivedCharacters.map((character) => (
-                  <div className="archive-row" key={character.id}>
-                    <span>{character.name}</span>
-                    {/* 隱藏卡也要進得了編輯器：轉成世界書條目只能在隱藏狀態下按 */}
-                    <button type="button" onClick={() => void editCard(character.id)}>
-                      {t("editBtn")}
-                    </button>
-                    <button type="button" onClick={() => void restoreCharacter(character.id)}>
-                      {t("restoreCharacter")}
-                    </button>
-                    <button
-                      type="button"
-                      className="delete-character"
-                      onClick={() => void deleteCharacter(character.id)}
-                    >
-                      {t("deleteCharacter")}
-                    </button>
-                  </div>
-                ))}
+                {archivedCharacters.map((character) => {
+                  // 沒被玩家手動封存、純粹本幕還沒出場才算自動隱藏；封存優先於自動隱藏顯示
+                  const isAutoHidden = !character.archived && character.auto_hidden;
+                  return (
+                    <div className="archive-row" key={character.id}>
+                      <span className="archive-row-name">
+                        <span className="archive-row-name-text">{character.name}</span>
+                        {isAutoHidden && (
+                          <span className="archive-row-badge">{t("autoHiddenBadge")}</span>
+                        )}
+                      </span>
+                      {/* 隱藏卡也要進得了編輯器：轉成世界書條目只能在隱藏狀態下按 */}
+                      <button type="button" onClick={() => void editCard(character.id)}>
+                        {t("editBtn")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (isAutoHidden ? restoreAutoHidden(character.id) : restoreCharacter(character.id))
+                        }
+                      >
+                        {t("restoreCharacter")}
+                      </button>
+                      <button
+                        type="button"
+                        className="delete-character"
+                        onClick={() => void deleteCharacter(character.id)}
+                      >
+                        {t("deleteCharacter")}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </details>
           )}

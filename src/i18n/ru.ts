@@ -311,6 +311,7 @@ export const ru: Record<MsgKey, string> = {
   exportCardJson: "Карточка JSON",
   exportCardNeedsSave: "Сначала сохрани карточку",
   archiveSectionTitle: "Скрытые персонажи",
+  autoHiddenBadge: "Автоскрытие",
   archiveCharacter: "Скрыть персонажа",
   restoreCharacter: "Вернуть",
   deleteCharacter: "Удалить",

@@ -313,6 +313,7 @@ export const de: Record<MsgKey, string> = {
   exportCardJson: "Charakterkarte JSON",
   exportCardNeedsSave: "Karte vor dem Exportieren speichern",
   archiveSectionTitle: "Versteckte Charaktere",
+  autoHiddenBadge: "Auto-versteckt",
   archiveCharacter: "Verstecken",
   restoreCharacter: "Einblenden",
   deleteCharacter: "Löschen",

@@ -309,6 +309,7 @@ export const zhCN: Record<MsgKey, string> = {
   exportCardJson: "角色卡 JSON",
   exportCardNeedsSave: "先保存再导出",
   archiveSectionTitle: "隐藏角色",
+  autoHiddenBadge: "自动隐藏",
   archiveCharacter: "隐藏角色",
   restoreCharacter: "还原",
   deleteCharacter: "删除",

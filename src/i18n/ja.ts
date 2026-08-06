@@ -311,6 +311,7 @@ export const ja: Record<MsgKey, string> = {
   exportCardJson: "キャラクターシート JSON",
   exportCardNeedsSave: "エクスポートする前に保存してください",
   archiveSectionTitle: "非表示のキャラクター",
+  autoHiddenBadge: "自動非表示",
   archiveCharacter: "キャラクターを非表示",
   restoreCharacter: "元に戻す",
   deleteCharacter: "削除",
