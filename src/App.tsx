@@ -23,6 +23,7 @@ import {
   type RefactorSelection,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
+import { fillShellPlaceholders } from "./refactor-shell";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -3592,6 +3593,8 @@ function App() {
   const [hasStateBar, setHasStateBar] = useState(false);
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
+  // AI 重構套用介面規則時可能順便產的靜態渲染殼；沒重構過或那次沒產殼就是 null，退回卡片自帶殼／event.raw 找殼
+  const [refactorShell, setRefactorShell] = useState<string | null>(null);
   const [cardUiOpen, setCardUiOpen] = useState(false);
   // 這桌的匯入收據摘要：非空、且還沒開始跟 AI 對話，才顯示「復原上次匯入」按鈕
   const [importReceipts, setImportReceipts] = useState<ImportReceiptSummary[]>([]);
@@ -3798,8 +3801,24 @@ function App() {
     };
   }, [table]);
 
-  // 目前要顯示的卡片介面殼：由近到遠掃最近 10 則，跳過玩家發言（介面藏在 GM／角色那則的原文標籤裡）
+  // 切桌重問這桌的 AI 重構介面殼；沒重構過或那次沒產殼就是 null，cardInterfaceShell 退回既有找殼路徑
+  useEffect(() => {
+    setRefactorShell(null);
+    if (!table) return;
+    let stale = false;
+    invoke<string | null>("refactor_interface_shell", { worldId: table })
+      .then((shell) => {
+        if (!stale) setRefactorShell(shell);
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [table]);
+
+  // 目前要顯示的卡片介面殼：AI 重構產過殼就優先用它（狀態樹填值），沒有才退回既有「近 10 則掃 event.raw」路徑
   const cardInterfaceShell = useMemo(() => {
+    if (refactorShell !== null) return fillShellPlaceholders(refactorShell, tableTree);
     const recent = events
       .slice(-10)
       .filter((event) => event.kind !== "player")
@@ -3808,7 +3827,7 @@ function App() {
     // 空桌退回卡片自己的開場白：這類卡的開場就是一整頁選角畫面，玩家得先在那裡選了才有第一句話
     const openings = events.length === 0 ? cardInterfaces.map((card) => card.opening) : [];
     return findShell(cardInterfaces, [...recent, ...openings]);
-  }, [events, cardInterfaces]);
+  }, [refactorShell, tableTree, events, cardInterfaces]);
 
   // 新殼一律先塞進背面那格去載；載好了才由 onLoad 翻面
   useEffect(() => {
@@ -4412,10 +4431,21 @@ function App() {
     return list;
   }
 
+  async function refreshRefactorShell(worldId: string) {
+    const shell = await invoke<string | null>("refactor_interface_shell", { worldId }).catch(() => null);
+    setRefactorShell(shell);
+    return shell;
+  }
+
   // 匯入完畫得出來就直接打開一次：這類卡的開場本來就是一整頁畫面，
   // 玩家不主動點按鈕不會知道有這東西（聊天裡只看得到孤零零一句「请选择你的身份」）
   function openCardInterface(list: CardInterface[]) {
     if (findShell(list, list.map((card) => card.opening)) !== null) setCardUiOpen(true);
+  }
+
+  // ⓘ 鈕：AI 重構殼偶爾畫壞，先講「換更聰明的模型重來」這條路，比默默卡住好
+  function showRefactorShellInfo() {
+    void showMessage(t("refactorShellInfoBody"), { title: t("refactorShellInfoBtn") });
   }
 
   async function refreshImportReceipts(worldId: string) {
@@ -4452,6 +4482,8 @@ function App() {
         setSpeaker(GM_TARGET);
       }
       await refreshCardInterfaces(table);
+      // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次
+      await refreshRefactorShell(table);
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
       setWorldEditorRefreshKey((key) => key + 1);
@@ -5792,6 +5824,7 @@ function App() {
               onRefactorApplied={async () => {
                 await refreshCharacters();
                 await refreshCardInterfaces(table);
+                await refreshRefactorShell(table);
                 await refreshTableState();
                 await refreshImportReceipts(table);
               }}
@@ -6012,14 +6045,28 @@ function App() {
               </span>
             </div>
           )}
-          <button
-            type="button"
-            className="modal-close card-interface-close"
-            aria-label={t("cardInterfaceClose")}
-            onClick={() => setCardUiOpen(false)}
-          >
-            ✕
-          </button>
+          <div className="card-interface-toolbar">
+            {/* 只在殼是 AI 重構產的時候出現：卡片自帶殼／event.raw 找殼那條路沒有這顆鈕 */}
+            {refactorShell !== null && (
+              <button
+                type="button"
+                className="modal-close card-interface-info"
+                aria-label={t("refactorShellInfoBtn")}
+                title={t("refactorShellInfoBtn")}
+                onClick={showRefactorShellInfo}
+              >
+                ⓘ
+              </button>
+            )}
+            <button
+              type="button"
+              className="modal-close card-interface-close"
+              aria-label={t("cardInterfaceClose")}
+              onClick={() => setCardUiOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
           {/* 雙緩衝：新畫面先在背面那格載好才翻上來，在那之前舊畫面一直在，中途不會空白
               （ST 是每則訊息各自一個 iframe、舊的留著，這是單格版本的等效作法）。
               key 固定成格號：換 key 會重新掛載，等於白載一次。 */}

@@ -432,6 +432,10 @@ export const ja: Record<MsgKey, string> = {
   cardInterfaceOpen: "カード画面",
   cardInterfaceClose: "画面を閉じる",
 
+  refactorShellInfoBtn: "AI再構成インターフェース",
+  refactorShellInfoBody:
+    "この画面は AI 再構成で生成されたものです。表示が崩れる場合、より高性能なモデルで再構成し直すと直ることが多いです。この画面を閉じてサイドバーの状況欄を見ることもできます。",
+
   importCardInterface: "このカードには専用の画面が付いています。卓を開いたらチャット上部の「カード画面」を押すと全画面で開けます。",
   importCardScrypt: "このカードの画面は作者によって暗号化されていて表示できません。設定と世界観資料は通常どおり読み込まれ、会話にも影響しません。",
   importCardRemoteLoader: "このカードの画面は作者のサイトに接続しないと表示できず、本アプリでは対応していません。設定と世界観資料は通常どおり読み込まれ、会話にも影響しません。",

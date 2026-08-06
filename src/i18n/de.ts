@@ -434,6 +434,10 @@ export const de: Record<MsgKey, string> = {
   cardInterfaceOpen: "Kartenoberfläche",
   cardInterfaceClose: "Oberfläche schließen",
 
+  refactorShellInfoBtn: "KI-umgebaute Oberfläche",
+  refactorShellInfoBody:
+    "Diese Oberfläche wurde durch den KI-Umbau erzeugt. Wird sie falsch angezeigt, hilft es meist, mit einem leistungsfähigeren Modell neu umzubauen. Du kannst diese Ebene auch schließen und stattdessen die Status-Leiste in der Seitenleiste nutzen.",
+
   importCardInterface:
     "Diese Karte bringt eine eigene Oberfläche mit. Klicke am Tisch auf „Kartenoberfläche“ über dem Chat, um sie vollflächig zu öffnen.",
   importCardScrypt:

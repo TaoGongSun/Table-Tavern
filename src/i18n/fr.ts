@@ -432,6 +432,10 @@ export const fr: Record<MsgKey, string> = {
   cardInterfaceOpen: "Interface de carte",
   cardInterfaceClose: "Fermer l'interface",
 
+  refactorShellInfoBtn: "Interface réorganisée par IA",
+  refactorShellInfoBody:
+    "Cette interface a été générée par la réorganisation IA. Si l'affichage est incorrect, la refaire avec un modèle plus performant règle généralement le problème. Tu peux aussi fermer cette couche et consulter le panneau d'état dans la barre latérale.",
+
   importCardInterface:
     "Cette carte a sa propre interface. Une fois à table, clique sur « Interface de carte » au-dessus du chat pour l'ouvrir en plein écran.",
   importCardScrypt:
