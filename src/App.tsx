@@ -4199,6 +4199,7 @@ function App() {
     await refreshImportReceipts(worldId);
     // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話
     if (book.imported > 0) await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
+    await offerOpeningLine(worldId, data);
     await tellAboutInterface(worldId, meta.id);
   }
 
@@ -4240,9 +4241,9 @@ function App() {
     openCardInterface(interfaces);
   }
 
-  // 只在世界書路徑問（importAsWorldbook 專用）：匯成角色卡＝這張卡是要上桌的角色，開場白已在卡上，
-  // 不必再由 GM 貼一次。開場是 GM 的事，所以貼成旁白而不是角色發言；主開場白常是使用說明
-  // （真正的劇情藏在備用開場白），所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
+  // 兩條匯入路徑共用。一律貼成旁白而不是角色發言——開場白不一定是那個角色說的話，
+  // 也常是場景或角色本身的描寫。主開場白常是使用說明（真正的劇情藏在備用開場白），
+  // 所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
   async function offerOpeningLine(worldId: string, data: number[]) {
     const openings = await invoke<string[]>("card_openings", {
       worldId,
