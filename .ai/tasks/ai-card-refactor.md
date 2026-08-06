@@ -1,9 +1,9 @@
 # Task
 Task-ID: ai-card-refactor
 Title: AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡（產物人審）
-Status: todo
+Status: in_progress
 Created: 2026-08-05T14:00:00+08:00
-Updated: 2026-08-06T11:18:04+08:00
+Updated: 2026-08-06T20:21:00+08:00
 
 ## Summary
 接 [state-values-mvu](state-values-mvu.md) 不做清單「下期按鈕」與 [card-import-flow](card-import-flow.md) 另案。按鈕＝AI 讀整張卡，依 [MECHANISM-FORMAT.md](../reference/MECHANISM-FORMAT.md) 一次產三類產物：機制殘渣抽成欄位規則＋觸發表、介面規則抽成狀態樹（app 本地渲染）、人物合集條目切成角色卡候選。產物一律人審後套用。

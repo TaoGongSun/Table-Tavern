@@ -9,6 +9,7 @@ mod lanes;
 mod mechanism;
 mod proxy;
 mod receipts;
+mod refactor;
 mod session_file;
 mod snapshot_patch;
 mod transport;
@@ -505,6 +506,29 @@ fn undo_last_import(app: tauri::AppHandle, world_id: String) -> Result<receipts:
 fn record_import_rename(app: tauri::AppHandle, world_id: String, old_name: String) -> Result<(), String> {
     receipts::record_last_import_rename(&data_root(&app)?, &world_id, &old_name);
     Ok(())
+}
+
+/// AI 卡重構套用：玩家勾選的角色／介面／機制落檔，收據記「實際套用的那份」供一鍵倒退。
+#[tauri::command]
+fn refactor_apply(
+    app: tauri::AppHandle,
+    world_id: String,
+    outcome: refactor::RefactorOutcome,
+    selection: refactor::RefactorSelection,
+) -> Result<refactor::RefactorApplySummary, String> {
+    let root = data_root(&app)?;
+    let before = receipts::snapshot(&root, &world_id);
+    let result =
+        refactor::apply(&root, &world_id, &outcome, &selection).map_err(|error| error.to_string())?;
+    receipts::record_refactor_apply(
+        &root,
+        &world_id,
+        "AI 卡重構",
+        result.character_ids,
+        result.rewritten_entries,
+        before,
+    );
+    Ok(result.summary)
 }
 
 #[tauri::command]
@@ -2124,6 +2148,7 @@ pub fn run() {
             list_import_receipts,
             undo_last_import,
             record_import_rename,
+            refactor_apply,
             export_character,
             read_character_image,
             save_character_image,

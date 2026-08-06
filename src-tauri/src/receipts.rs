@@ -77,11 +77,15 @@ impl MechanismUndo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImportReceipt {
-    kind: String, // "character" | "worldbook"
+    kind: String, // "character" | "worldbook" | "refactor"
     label: String,
     timestamp: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     character_id: Option<String>,
+    /// AI 卡重構一次套用可能新增多張角色卡；`character_id` 留給既有單張路徑，
+    /// 兩欄位互斥（各自的 record_* 函式只填自己那個），undo 兩邊都掃一次。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    character_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     worldbook_entries: Vec<ReceiptWorldbookEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -92,6 +96,10 @@ struct ImportReceipt {
     world_card_created: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     renamed_from: Option<String>,
+    /// 這次操作改寫或停用了既有世界書條目（AI 卡重構的來源條目改寫、介面／機制的
+    /// source_uid 停用）：整條原文快照，undo 時整條覆寫回去。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    rewritten_entries: Vec<WorldbookEntry>,
 }
 
 /// 前端側欄按鈕與未來路由框用的摘要：不帶復原用的內部細節（指紋、機制差異）。
@@ -105,8 +113,10 @@ pub struct ImportReceiptSummary {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct UndoReport {
-    /// 被刪角色的名字（給前端組訊息用；id 已經沒意義了）
+    /// 被刪角色的名字（給前端組訊息用；id 已經沒意義了）——單張角色匯入路徑專用。
     pub removed_character: Option<String>,
+    /// AI 卡重構等一次套用多張角色卡的路徑：這次 undo 刪掉的角色名字清單。
+    pub removed_characters: Vec<String>,
     pub removed_entries: usize,
     /// 玩家改過內容而保留下來的世界書條目數
     pub kept_entries: usize,
@@ -292,10 +302,12 @@ pub fn record_character_import(
             label: label.to_owned(),
             timestamp: data::local_timestamp().unwrap_or_default(),
             character_id: Some(character_id.to_owned()),
+            character_ids: Vec::new(),
             worldbook_entries,
             mechanism,
             world_card_created: None,
             renamed_from: None,
+            rewritten_entries: Vec::new(),
         },
     );
 }
@@ -318,10 +330,50 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             label: label.to_owned(),
             timestamp: data::local_timestamp().unwrap_or_default(),
             character_id: None,
+            character_ids: Vec::new(),
             worldbook_entries,
             mechanism,
             world_card_created,
             renamed_from: None,
+            rewritten_entries: Vec::new(),
+        },
+    );
+}
+
+/// refactor_apply 指令成功後呼叫：AI 卡重構可能一次新增多張角色卡、多條世界書條目，
+/// 並改寫或停用既有條目——收據記「實際套用的那份」，undo 才能逐項退回。
+/// 跟 record_worldbook_import 一樣：實際套用為零就不留空收據。
+pub fn record_refactor_apply(
+    root: &Path,
+    world_id: &str,
+    label: &str,
+    character_ids: Vec<String>,
+    rewritten_entries: Vec<WorldbookEntry>,
+    before: Snapshot,
+) {
+    let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
+    let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
+    if character_ids.is_empty()
+        && worldbook_entries.is_empty()
+        && mechanism.is_none()
+        && rewritten_entries.is_empty()
+    {
+        return;
+    }
+    append_receipt(
+        root,
+        world_id,
+        ImportReceipt {
+            kind: "refactor".to_owned(),
+            label: label.to_owned(),
+            timestamp: data::local_timestamp().unwrap_or_default(),
+            character_id: None,
+            character_ids,
+            worldbook_entries,
+            mechanism,
+            world_card_created: None,
+            renamed_from: None,
+            rewritten_entries,
         },
     );
 }
@@ -378,6 +430,21 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
             let _ = fs::remove_file(character_path.with_extension("import.json"));
         }
     }
+    // AI 卡重構等一次套用多張角色卡的路徑：character_id／character_ids 兩欄位互斥，
+    // 沒有共用的「單一 label＝角色名」可用，逐張讀當下名字再刪。
+    for character_id in &receipt.character_ids {
+        let name = data::read_character(root, world_id, character_id)
+            .ok()
+            .map(|card| card.name);
+        if data::delete_character(root, world_id, character_id).is_ok() {
+            if let Some(name) = name {
+                report.removed_characters.push(name);
+            }
+            if let Ok(character_path) = data::character_path(root, world_id, character_id) {
+                let _ = fs::remove_file(character_path.with_extension("import.json"));
+            }
+        }
+    }
 
     // 2. 世界書條目：uid 還在且指紋沒變才刪；指紋變了＝玩家改過，保留並計數。
     let current = data::read_worldbook(root, world_id).unwrap_or_default();
@@ -393,7 +460,20 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
-    // 3. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。
+    // 3. 被改寫或停用的既有條目（AI 卡重構的來源條目改寫、介面／機制的 source_uid 停用）：
+    // 整條覆寫回原文快照。uid 已經不在了（玩家自己刪過）就略過，不當新條目生回來。
+    let current_uids: HashSet<u64> = data::read_worldbook(root, world_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|entry| entry.uid)
+        .collect();
+    for original in &receipt.rewritten_entries {
+        if current_uids.contains(&original.uid) {
+            let _ = data::upsert_worldbook_entry(root, world_id, original.clone());
+        }
+    }
+
+    // 4. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。
     if let Some(mechanism) = &receipt.mechanism {
         if let Ok(mut state) = data::read_state(root, world_id) {
             apply_map_undo(
@@ -418,14 +498,14 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
-    // 4. 這次匯入新建的卡片介面殼：匯入前就有的不動。
+    // 5. 這次匯入新建的卡片介面殼：匯入前就有的不動。
     if let Some(extension) = &receipt.world_card_created {
         if let Ok(card_path) = data::world_card_path(root, world_id, extension) {
             let _ = fs::remove_file(card_path);
         }
     }
 
-    // 5. 桌名：這次匯入有改過名字才退回去。
+    // 6. 桌名：這次匯入有改過名字才退回去。
     if let Some(old_name) = &receipt.renamed_from {
         if data::rename_world(root, world_id, old_name).is_ok() {
             report.renamed_back = true;
@@ -507,6 +587,7 @@ mod tests {
                 order: 1,
                 disabled: false,
                 visibility: data::Visibility::Gm,
+                is_person: false,
             },
         )
         .unwrap();
@@ -751,5 +832,38 @@ mod tests {
 
         undo_last_import(root.path(), &world_id).unwrap();
         assert!(list_import_receipts(root.path(), &world_id).is_empty());
+    }
+
+    /// 舊格式收據 JSON（沒有 character_ids／rewritten_entries 這兩個新欄位）照樣能解析，
+    /// undo 照常運作——新欄位一律 #[serde(default)]，向後相容。
+    #[test]
+    fn undo_reads_old_format_receipt_without_new_fields() {
+        let root = TestRoot::new("legacy-format");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let meta = import::import_character(
+            root.path(),
+            &world_id,
+            &character_book_card("莉亞", serde_json::json!([])),
+            "#3366ff",
+        )
+        .unwrap();
+
+        // 手寫舊格式收據：只有新欄位加入前就存在的那些鍵。
+        let legacy_json = serde_json::json!([{
+            "kind": "character",
+            "label": "莉亞",
+            "timestamp": "2026-01-01 00:00",
+            "character_id": meta.id,
+        }]);
+        fs::write(
+            data::import_receipts_path(root.path(), &world_id).unwrap(),
+            serde_json::to_string_pretty(&legacy_json).unwrap(),
+        )
+        .unwrap();
+
+        let report = undo_last_import(root.path(), &world_id).unwrap();
+        assert_eq!(report.removed_character, Some("莉亞".to_owned()));
+        assert!(report.removed_characters.is_empty());
+        assert!(data::read_character(root.path(), &world_id, &meta.id).is_err());
     }
 }

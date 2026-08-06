@@ -1892,6 +1892,7 @@ mod tests {
             order,
             disabled,
             visibility,
+            is_person: false,
         }
     }
 
