@@ -8,7 +8,7 @@ use crate::data::{
 use crate::mechanism;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 pub const DEFAULT_IMAGE_MODEL: &str = "google/gemini-3.1-flash-image";
@@ -315,6 +315,7 @@ pub fn assemble_gm_messages(
 
 /// GM 的 system prompt 本體：GM 指示＋world.md＋constant 條目＋全卡（含私設）＋玩家卡。
 /// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。
+/// constant 條目裡的 is_person 條目改走名冊行，不進全文（包 4a，見 split_person_roster）。
 fn gm_system_prompt(
     world_md: &str,
     cards: &[CharacterCard],
@@ -340,7 +341,8 @@ fn gm_system_prompt(
             replace_st_macros(world_md.trim(), user_name, None)
         ));
     }
-    if !constant_entries.is_empty() {
+    let (constant_entries, roster) = split_person_roster(constant_entries);
+    if !constant_entries.is_empty() || roster.is_some() {
         system.push_str("\n## 世界書（只進你的上下文）\n");
         for entry in constant_entries {
             system.push_str(&format!(
@@ -348,6 +350,10 @@ fn gm_system_prompt(
                 replace_st_macros(&entry.title, user_name, None),
                 replace_st_macros(&entry.content, user_name, None)
             ));
+        }
+        if let Some(roster) = roster {
+            system.push_str(&roster);
+            system.push('\n');
         }
     }
     if !cards.is_empty() {
@@ -695,6 +701,102 @@ pub fn state_scope(
     StateScope { hidden, align }
 }
 
+// ---------------------------------------------------------------------
+// AI 卡重構包 4a：世界書人物條目在場過濾。人物條目全部常駐 system 會吃爆快取
+// 前綴，改成 system 只留一行名冊，某人首次在場才把全文 append 進歷史當系統事件
+// （進場付一次全文，之後吃快取價；離場不拔——拔會改動已快取的 system 前綴）。
+// ---------------------------------------------------------------------
+
+/// 世界書條目分流：`is_person && !disabled` 的不進 system 全文，只收 title 湊一行名冊；
+/// `is_person && disabled` 兩邊都不進（呼叫端本來就會先濾掉，這裡防禦性地跟著蓋掉，
+/// 不能讓停用的人物條目落回全文那邊）；沒有人物條目時 roster 是 `None`——呼叫端據此
+/// 完全不印這一行，既有輸出逐字不變。
+fn split_person_roster<'a>(
+    entries: &[&'a WorldbookEntry],
+) -> (Vec<&'a WorldbookEntry>, Option<String>) {
+    let mut rest = Vec::new();
+    let mut names = Vec::new();
+    for entry in entries {
+        if !entry.is_person {
+            rest.push(*entry);
+        } else if !entry.disabled {
+            names.push(entry.title.as_str());
+        }
+    }
+    let roster = (!names.is_empty()).then(|| format!("這桌還有這些人：{}", names.join("、")));
+    (rest, roster)
+}
+
+/// 人物登場事件的固定前綴，接著是〈title〉那一行；`append_transcript` 寫進去的格式，
+/// 也是掃「本幕已登場集合」與下一包前端顯示唯一依據的字面。
+pub const PERSON_ARRIVAL_PREFIX: &str = "（人物登場）";
+
+/// 從一則事件文字剝出登場標題（前綴＋〈title〉開頭那一行）；不是登場事件就回 `None`。
+fn arrival_title(text: &str) -> Option<String> {
+    let rest = text.strip_prefix(PERSON_ARRIVAL_PREFIX)?.strip_prefix('〈')?;
+    let end = rest.find('〉')?;
+    Some(rest[..end].to_owned())
+}
+
+/// 本幕已登場集合：掃 transcript 裡帶登場前綴的 System 事件取出標題。換幕是新 jsonl，
+/// 這個集合自然歸零，不必另外存狀態檔。
+pub fn appeared_person_titles(events: &[TranscriptEvent]) -> BTreeSet<String> {
+    events
+        .iter()
+        .filter(|event| event.kind == TranscriptKind::System)
+        .filter_map(|event| arrival_title(&event.text))
+        .collect()
+}
+
+/// present 欄的斷詞規則，逐字沿用 `state_scope`（頓號／逗號／斜線／分號，trim 後濾空）。
+/// `state_scope` 是凍結 system 的一部分不能動，這裡獨立一份、邏輯保持同步而非重寫。
+fn split_present_names(raw: &str) -> Vec<String> {
+    raw.split(['、', '，', ',', '／', '/', '；', ';'])
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// 在場名字跟條目標題比對：雙向包含，「亞歷山大」對得上「亞歷山大・馮・史特勞斯」。
+fn name_matches(name: &str, title: &str) -> bool {
+    title.contains(name) || name.contains(title)
+}
+
+/// 這一輪新面孔：`is_person && !disabled` 條目裡，present 名單比對得上、且不在
+/// `already_appeared` 裡的那些，依世界書順序回傳；呼叫端逐一 append 成登場事件。
+///
+/// - `present` 是 `None`（table 沒有這個鍵）：退回正文比對，`reply_body` 包含 title 即命中。
+/// - `present` 是 `Some("")`（鍵存在但空／裁完是空清單）：只信 present，不做正文比對。
+pub fn detect_new_arrivals<'a>(
+    worldbook: &'a [WorldbookEntry],
+    present: Option<&str>,
+    reply_body: &str,
+    already_appeared: &BTreeSet<String>,
+) -> Vec<&'a WorldbookEntry> {
+    let present_names = present.map(split_present_names);
+    worldbook
+        .iter()
+        .filter(|entry| entry.is_person && !entry.disabled)
+        .filter(|entry| !already_appeared.contains(&entry.title))
+        .filter(|entry| match &present_names {
+            Some(names) => names.iter().any(|name| name_matches(name, &entry.title)),
+            None => reply_body.contains(&entry.title),
+        })
+        .collect()
+}
+
+/// 人物登場事件的內文：固定前綴＋〈title〉一行（原文，供比對回抽），接條目全文
+/// （`{{user}}` 已代換——事件一旦落進 transcript 就不會再過巨集代換一次）。
+pub fn person_arrival_text(entry: &WorldbookEntry, user_name: &str) -> String {
+    format!(
+        "{}〈{}〉\n{}",
+        PERSON_ARRIVAL_PREFIX,
+        entry.title,
+        replace_st_macros(&entry.content, user_name, None)
+    )
+}
+
 /// 角色卡對應的狀態樹分支：面板指認優先，其次全樹同名比對。
 /// 指認的路徑若在樹裡不存在或不是分支，視為失效、退回自動比對。
 pub fn resolve_branch(
@@ -853,6 +955,7 @@ pub fn lane_event_line(event: &TranscriptEvent) -> String {
 /// chars 線凍結 system（快照）：中性扮演引擎指示＋全部公開角色卡＋玩家卡＋Public constant 條目。
 /// 全角色共用一條 session，這一輪演誰由回合尾段指定；私設與限定條目不進快照
 /// （E7：凍結 system 動一字整條快取全滅，快照只能放全員共通且穩定的素材）。
+/// Public constant 裡的 is_person 條目改走名冊行，不進全文（包 4a，見 split_person_roster）。
 pub fn chars_lane_system(
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
@@ -901,7 +1004,8 @@ pub fn chars_lane_system(
         })
         .collect();
     constants.sort_by_key(|entry| (entry.order, entry.uid));
-    if !constants.is_empty() {
+    let (constants, roster) = split_person_roster(&constants);
+    if !constants.is_empty() || roster.is_some() {
         system.push_str("\n## 你知道的世界情報\n");
         for entry in constants {
             system.push_str(&format!(
@@ -909,6 +1013,10 @@ pub fn chars_lane_system(
                 replace_st_macros(&entry.title, user_name, None),
                 replace_st_macros(&entry.content, user_name, None)
             ));
+        }
+        if let Some(roster) = roster {
+            system.push_str(&roster);
+            system.push('\n');
         }
     }
     system
@@ -4230,5 +4338,220 @@ mod tests {
 
         // 全量桌一律回空
         assert!(snapshot_updates(&state, &Mechanism::default(), "阿濤").is_empty());
+    }
+
+    // ---- AI 卡重構包 4a：世界書人物條目在場過濾 ----
+
+    /// 規格 (a)：沒有 is_person 條目時，三處 system 組裝都不能多出名冊行——
+    /// 既有桌（沒有人物條目）的輸出必須逐字不變。
+    #[test]
+    fn person_roster_absent_without_is_person_entries() {
+        let entries = [
+            worldbook_entry(1, "公開常識", &[], true, 0, false, Visibility::Public),
+            worldbook_entry(2, "GM專有", &[], true, 1, false, Visibility::Gm),
+        ];
+        let gm_system = &assemble_gm_messages(
+            "世界總覽",
+            &[],
+            None,
+            &[],
+            &entries,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            "zh-TW",
+        )[0]
+        .content;
+        assert!(!gm_system.contains("這桌還有這些人"));
+
+        let lane_system =
+            gm_lane_system("世界總覽", &[], None, &entries, &Mechanism::default(), "zh-TW");
+        assert!(!lane_system.contains("這桌還有這些人"));
+
+        let chars_system = chars_lane_system(&[], None, &entries, "zh-TW");
+        assert!(!chars_system.contains("這桌還有這些人"));
+    }
+
+    /// 規格 (b)：is_person 條目不進 system 全文，改收進名冊行；disabled 的人物條目不列進名冊。
+    #[test]
+    fn person_entries_become_roster_line_not_full_text() {
+        let normal = worldbook_entry(1, "小鎮傳說", &[], true, 0, false, Visibility::Public);
+        let alice = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(2, "愛麗絲", &[], true, 1, false, Visibility::Public)
+        };
+        let bob = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(3, "鮑伯", &[], true, 2, false, Visibility::Public)
+        };
+        let disabled_person = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(4, "已停用的人", &[], true, 3, true, Visibility::Public)
+        };
+        let entries = [normal, alice, bob, disabled_person];
+
+        let gm_system = &assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &entries,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            "zh-TW",
+        )[0]
+        .content;
+        assert!(gm_system.contains("小鎮傳說內容"));
+        assert!(!gm_system.contains("愛麗絲內容"));
+        assert!(!gm_system.contains("鮑伯內容"));
+        assert!(!gm_system.contains("已停用的人"));
+        assert!(gm_system.contains("這桌還有這些人：愛麗絲、鮑伯"));
+
+        let chars_system = chars_lane_system(&[], None, &entries, "zh-TW");
+        assert!(chars_system.contains("小鎮傳說內容"));
+        assert!(!chars_system.contains("愛麗絲內容"));
+        assert!(chars_system.contains("這桌還有這些人：愛麗絲、鮑伯"));
+    }
+
+    /// split_person_roster 自己也擋 disabled——縱使目前三個呼叫端都已經先濾過一次，
+    /// helper 本身仍要對規格「is_person && !disabled」單獨成立，不依賴呼叫端不出錯。
+    #[test]
+    fn split_person_roster_excludes_disabled_person_entries_defensively() {
+        let alice = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
+        };
+        let disabled = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(2, "隱藏人物", &[], true, 1, true, Visibility::Public)
+        };
+        let refs: Vec<&WorldbookEntry> = vec![&alice, &disabled];
+        let (rest, roster) = split_person_roster(&refs);
+        assert!(rest.is_empty());
+        assert_eq!(roster, Some("這桌還有這些人：愛麗絲".to_owned()));
+    }
+
+    /// 邊界情況：constant 條目清一色是人物時，非人物清單濾完是空的，但名冊行仍要印出來
+    /// （標頭不能因為「沒有全文條目」就整段消失）。
+    #[test]
+    fn person_roster_line_appears_even_when_all_constant_entries_are_people() {
+        let alice = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Gm)
+        };
+        let entries = [alice];
+        let gm_system = &assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &entries,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            "zh-TW",
+        )[0]
+        .content;
+        assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n這桌還有這些人：愛麗絲\n"));
+    }
+
+    /// 規格 (c)(g)：present 名單有新面孔就命中，名字用雙向包含比對
+    /// （「亞歷山大」對得上「亞歷山大・馮・史特勞斯」）。
+    #[test]
+    fn detect_new_arrivals_matches_present_names_with_bidirectional_contains() {
+        let alexander = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(
+                1,
+                "亞歷山大・馮・史特勞斯",
+                &[],
+                true,
+                0,
+                false,
+                Visibility::Public,
+            )
+        };
+        let entries = [alexander];
+        let already = BTreeSet::new();
+        let arrivals = detect_new_arrivals(&entries, Some("亞歷山大、船長"), "", &already);
+        assert_eq!(arrivals.len(), 1);
+        assert_eq!(arrivals[0].title, "亞歷山大・馮・史特勞斯");
+    }
+
+    /// 規格 (d)：本幕已登場過的人（already_appeared 裡有）就算 present 再報也不重複回傳。
+    #[test]
+    fn detect_new_arrivals_skips_already_appeared_titles() {
+        let alice = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
+        };
+        let entries = [alice];
+        let already: BTreeSet<String> = BTreeSet::from(["愛麗絲".to_owned()]);
+        let arrivals = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already);
+        assert!(arrivals.is_empty());
+    }
+
+    /// 規格 (c)(d)(e) 打通：`person_arrival_text` 寫出的格式，`appeared_person_titles`
+    /// 要能原樣掃回標題；同幕重複比對會被擋掉，換幕後（另一批空事件）比對又重新命中。
+    #[test]
+    fn arrival_text_round_trips_through_appeared_titles_and_dedupes_per_scene() {
+        let alice = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
+        };
+        let entries = [alice];
+
+        // 本幕：愛麗絲已經登場過一次（transcript 有一則登場事件）
+        let arrival_event = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            &person_arrival_text(&entries[0], "阿濤"),
+        );
+        let this_scene_events = [arrival_event];
+        let already_this_scene = appeared_person_titles(&this_scene_events);
+        assert_eq!(already_this_scene, BTreeSet::from(["愛麗絲".to_owned()]));
+
+        // 同幕再報 present 有她 → 不重複 append
+        let repeat = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already_this_scene);
+        assert!(repeat.is_empty());
+
+        // 換幕：新場景的 transcript 是空的，已登場集合自然歸零
+        let next_scene_events: [TranscriptEvent; 0] = [];
+        let already_next_scene = appeared_person_titles(&next_scene_events);
+        let reappear = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already_next_scene);
+        assert_eq!(reappear.len(), 1);
+    }
+
+    /// 規格 (f)：present 鍵不存在就退回正文比對；鍵存在但是空字串只信 present、
+    /// 不做正文比對（就算正文裡有 title 也不算數）。
+    #[test]
+    fn detect_new_arrivals_falls_back_to_reply_body_only_when_present_key_is_absent() {
+        let alice = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
+        };
+        let entries = [alice];
+        let already = BTreeSet::new();
+
+        let via_body = detect_new_arrivals(&entries, None, "愛麗絲推門進來。", &already);
+        assert_eq!(via_body.len(), 1);
+
+        let empty_present = detect_new_arrivals(&entries, Some(""), "愛麗絲推門進來。", &already);
+        assert!(empty_present.is_empty());
+    }
+
+    /// 登場事件文字格式：固定前綴＋〈title〉一行（原文，供比對），接著條目全文，
+    /// `{{user}}` 已代換。
+    #[test]
+    fn person_arrival_text_has_prefix_title_line_and_macro_replaced_content() {
+        let alice = WorldbookEntry {
+            is_person: true,
+            content: "{{user}} 認識她。".to_owned(),
+            ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
+        };
+        let text = person_arrival_text(&alice, "阿濤");
+        assert_eq!(text, "（人物登場）〈愛麗絲〉\n阿濤 認識她。");
     }
 }
