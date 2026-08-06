@@ -24,6 +24,8 @@
   2. probe 加回 `alternate_greetings: usize`（包 4 之後刪過，這次是判準用途不是提示）。
   3. 前端分流從三條縮成兩條：`!name || book_shaped` 維持零打擾直匯（沒有角色可建），**其餘一律跳身分框**。判準抽成 `looksLikeWorldbook()`（[App.tsx:73](../../src/App.tsx:73)）＝`book_shaped || lorebook_heavy || alternate_greetings > 0`，只決定主按鈕與文案講哪一種。`importChoice` 狀態由存整包 `probe` 改成只存算好的 `booksFirst`。零新 i18n 字串（兩種文案本來就都在）。
 
+- **收據為空時的條目保險**（2026-08-06 實機踩到）：純世界書檔匯進「有內容但沒有收據」的桌（收據功能之前的舊桌／手建桌／範例桌）不會跳確認框，第二本書無聲合進去（使用者靠復原救回）。`decideImportRoute` 加第四個參數 `tableHasWorldbookEntries`，**只在 `receiptKinds` 為空那一格生效、且只管世界書身分**；收據非空時決策表一字未動。使用者立規：**收據為主，條目最多當保險**——不為測試期間的意外改寫長期判準，等所有桌都有收據後那一格自然不再觸發。前端 `tableHasWorldbookEntries()` 現讀 `read_worldbook`（條目歸 WorldEditor 管，App 沒有同步的一份），讀不到當有——寧可多問一句。
+
 ## Verification
 - 最終四件套（2026-08-05 主線複驗）：cargo test 327 綠、vitest 22 綠（含 import-routing 5 例）、npm run build ✓、check:i18n 十語系 82 鈕 OK。
 - 文案改寫自驗（2026-08-05）：npm run build ✓、vitest 22 綠、check:i18n 九語系 OK（按鈕加長後仍在寬度上限內）；接線見 [App.tsx:5546](../../src/App.tsx:5546)。
@@ -35,6 +37,7 @@
 - 雙世界書改可融合自驗（2026-08-06）：npm run build ✓、vitest 22 綠、check:i18n 十語系 81 鈕 OK；殘留檢查 grep `importRouteBlock|block_double_worldbook` = 0；淨變化 +75 −42 行（13 檔）。**使用者實機驗收通過**（2026-08-06）。
 - 身分判定改版自驗（2026-08-06）：cargo test **327** 綠（原 326，新增 `worldbook_json_converts_persona_fields_when_card_has_no_entries`，並在既有 probe 測試補情境卡案例）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK；淨變化 +152 −22 行（2 檔）。
 - **真卡端到端**（2026-08-06，臨時測試跑完即刪）：`main_furry-male-scenarios-36317429ed88` → `alt_greetings=29`、`book_entries=0`、匯入 1 條常駐條目 1882 字、標題「Furry male Scenarios」、`card_openings` 30 條；`…-d88115666fe1` → 10／0／1895 字／11 條。1882 = description 1873 ＋ `\n\n` ＋ mes_example 7，開場白確實沒被收進條目。
+- 條目保險自驗（2026-08-06）：npm run build ✓、vitest **23** 綠（+1 組保險案例，含「角色卡帶進來的條目不會把配套世界書從 companion 變成要問」這條反向釘樁）、check:i18n 九語系 OK；Rust 未動（cargo 維持 327）。
 - 逐包 commit：548905a（包 1）、1939af6（包 2）、d8abe8b（包 3）、包 4 見 b4acab7、雙世界書融合見 a73ca94。
 - 主線抽讀確認：decideImportRoute 決策表逐條符合拍板；路由框 block 版 JSX 只有取消＋開新桌（App.tsx 搜 -a "importRoute !== null"）；openNewTableAndImport 的 worldId 全程來自 create_world 回傳值。
 
@@ -63,7 +66,7 @@
 等使用者實機驗收身分判定改版四項：
 - (a) 匯 `main_furry-male-scenarios-*` → 跳身分框、**主按鈕指「匯入成世界書」**、按下去成功匯進 1 條常駐條目、接著跳出 29／10 條開場白選單、對話目標在 GM。
 - (b) 匯一般角色卡（如 `塞拉菲·内藤.png`）→ 跳身分框、主按鈕指「匯入成角色卡」。
-- (c) 匯 `main_Furry_Anthro Anatomy_world_info.json` → **不跳身分框**直接進（沒有角色可建）。
+- (c) 匯 `main_Furry_Anthro Anatomy_world_info.json` → **不跳身分框**（沒有角色可建）；空桌直接進，匯進已有世界書條目的桌要跳「已經有一份世界書了」確認框（2026-08-06 已修，見 Completed 的條目保險）。
 - (d) 匯 `main_furry-football-team`（判準抓不到、主按鈕指角色卡）→ 手動選「匯入成世界書」也要成功，desc 6707 字進成一條條目。
 **已知待觀察**：有匯入紀錄的桌再匯卡現在會連跳兩個框（先問身分、再問哪一桌）。空桌只有一個框。這是「都讓玩家選」的直接後果，若實機覺得煩，下一步是把兩框併成一個。
 

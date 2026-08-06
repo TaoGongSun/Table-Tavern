@@ -4108,18 +4108,21 @@ function App() {
     }
   }
 
-  // 第二張卡路由：身分已定，看桌上收據決定要不要跳「開新桌？」框。
-  // direct／companion 零打擾直接匯；ask／block 開框，框裡選完才真的匯（見 answerImportRoute）。
+  // 第二張卡路由：身分已定，看這桌現況決定要不要跳提醒框。
+  // direct／companion 零打擾直接匯；ask／merge_worldbook 開框，框裡選完才真的匯（見 answerImportRoute）。
   async function routeImport(
     identity: "character" | "worldbook",
     isPureWorldbookFile: boolean,
     data: number[],
     label: string,
   ) {
+    // 收據為空才問條目：那可能是收據功能之前的舊桌、手建的桌或範例桌
+    const needsFallback = identity === "worldbook" && importReceipts.length === 0;
     const route = decideImportRoute(
       identity,
       isPureWorldbookFile,
       importReceipts.map((receipt) => receipt.kind),
+      needsFallback && (await tableHasWorldbookEntries()),
     );
     if (route === "direct" || route === "companion") {
       if (identity === "worldbook") await importAsWorldbook(table, data, label);
@@ -4127,6 +4130,16 @@ function App() {
       return;
     }
     setImportRoute({ data, identity, label, route });
+  }
+
+  // 收據為空時的保險（見 decideImportRoute）。現讀而不吃 state：世界書條目歸 WorldEditor 管，
+  // App 這邊沒有同步的一份。讀不到就當有——寧可多問一句，也不要把書無聲合進有內容的桌。
+  async function tableHasWorldbookEntries() {
+    try {
+      return (await invoke<WorldbookEntry[]>("read_worldbook", { worldId: table })).length > 0;
+    } catch {
+      return true;
+    }
   }
 
   // 路由框作答：取消什麼都不做；匯進這桌走現行匯入函式（第二本世界書走同一條，後端會接在既有條目後面並去重）；
