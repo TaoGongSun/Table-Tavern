@@ -9,14 +9,18 @@ import { renderStoryMarkdown } from "./story-markdown";
 import { buildShellDocument, CardInterface, findShell } from "./interface-card";
 import { decideImportRoute } from "./import-routing";
 import {
+  buildRefactorExpandQueue,
   defaultRefactorSelection,
+  mergeRefactorExpandResults,
   parseRefactorOutcome,
   refactorSummaryCounts,
   sourceEntryTitle,
   toggleIndex,
   type RefactorApplySummary,
+  type RefactorExpandOutcome,
   type RefactorOutcome,
   type RefactorSelection,
+  type RefactorSurveyOutcome,
 } from "./refactor-review";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
@@ -1762,12 +1766,17 @@ function WorldEditor({
     (entry) => String(entry.uid),
     (ordered) => void reorderEntries(ordered),
   );
-  // AI 卡重構：包 1 用「選一份產物 JSON」餵入口，真的呼叫 AI 是下一包的事（TODO）
+  // AI 卡重構：結果卡（產物讀進來後的人審／套用）與下面的「盤點→展開」進度是兩段獨立狀態，
+  // 交會點是 setRefactorOutcome——AI 兩階段跑完、或選檔路徑讀完 JSON，都寫進同一份結果卡。
   const [refactorOutcome, setRefactorOutcome] = useState<RefactorOutcome | null>(null);
   const [refactorSelection, setRefactorSelection] = useState<RefactorSelection | null>(null);
   const [refactorDetail, setRefactorDetail] = useState(false);
   const [refactorBusy, setRefactorBusy] = useState(false);
   const refactorInputRef = useRef<HTMLInputElement>(null);
+  // 非 null＝AI 盤點／展開跑中，modal 顯示 text；cancelling 只管取消鈕的 disabled，不影響迴圈判斷。
+  const [refactorProgress, setRefactorProgress] = useState<{ text: string; cancelling: boolean } | null>(null);
+  // 迴圈裡讀取的取消旗標——用 ref 而非 state：async 迴圈裡的閉包看不到後續 setState，只有 ref.current 每次都讀最新值。
+  const refactorCancelRef = useRef(false);
 
   async function refreshCast() {
     try {
@@ -2042,8 +2051,63 @@ function WorldEditor({
     }
   }
 
-  // AI 卡重構包 1：先用「選一份產物 JSON」當餵入口驗證整條套用路徑，真的呼叫 AI 是下一包的事。
-  // TODO(包 2)：這裡改成打 AI 直接生一份 RefactorOutcome，不用挑檔案。
+  // AI 卡重構：盤點→展開兩階段跑真 AI。盤點一次拿到人物／介面／機制候選，展開逐條 await
+  // （序列、不並行——後端 system 提示詞快取要先由第一條呼叫建立），逐條把進度字寫給玩家看。
+  async function runAiRefactor() {
+    if (refactorProgress) return;
+    setWorldbookMessage("");
+    refactorCancelRef.current = false;
+    setRefactorProgress({ text: t("refactorSurveying"), cancelling: false });
+    try {
+      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world });
+      const queue = buildRefactorExpandQueue(survey);
+      if (queue.length === 0) {
+        setRefactorProgress(null);
+        setWorldbookMessage(t("refactorNothingToDo"));
+        return;
+      }
+      const results: RefactorExpandOutcome[] = [];
+      const failedTitles: string[] = [];
+      for (let i = 0; i < queue.length; i++) {
+        if (refactorCancelRef.current) break;
+        const item = queue[i];
+        const title = sourceEntryTitle(entries, item.uid);
+        setRefactorProgress({ text: t("refactorExpanding", { name: title, i: i + 1, n: queue.length }), cancelling: false });
+        try {
+          results.push(
+            await invoke<RefactorExpandOutcome>("refactor_expand", {
+              worldId: world,
+              entryUid: item.uid,
+              kind: item.kind,
+            }),
+          );
+        } catch {
+          failedTitles.push(title);
+        }
+      }
+      setRefactorProgress(null);
+      if (results.length > 0) {
+        const outcome = mergeRefactorExpandResults(results);
+        setRefactorOutcome(outcome);
+        setRefactorSelection(defaultRefactorSelection(outcome));
+        setRefactorDetail(false);
+      }
+      if (failedTitles.length > 0) {
+        setWorldbookMessage(t("refactorPartialFailed", { n: failedTitles.length, names: failedTitles.join("、") }));
+      }
+    } catch (reason) {
+      setRefactorProgress(null);
+      setWorldbookMessage(String(reason));
+    }
+  }
+
+  // 取消：只擋「還沒發的下一條」，當前這條 await 讓它跑完（或失敗）——錢已經花了，東西要拿得到。
+  function cancelAiRefactor() {
+    refactorCancelRef.current = true;
+    setRefactorProgress((current) => current && { ...current, cancelling: true });
+  }
+
+  // AI 卡重構：零額度測試用入口——直接餵一份產物 JSON，跳過真 AI 呼叫，驗證人審／套用路徑用。
   async function pickRefactorOutcome(file: File) {
     setWorldbookMessage("");
     try {
@@ -2284,9 +2348,18 @@ function WorldEditor({
             type="button"
             className="ai-gen-btn"
             title={t("refactorBtnHint")}
-            onClick={() => refactorInputRef.current?.click()}
+            disabled={refactorProgress !== null}
+            onClick={() => void runAiRefactor()}
           >
             ✨ {t("refactorBtn")}
+          </button>
+          <button
+            type="button"
+            title={t("refactorImportBtnHint")}
+            disabled={refactorProgress !== null}
+            onClick={() => refactorInputRef.current?.click()}
+          >
+            {t("refactorImportBtn")}
           </button>
           <input
             ref={refactorInputRef}
@@ -2401,6 +2474,20 @@ function WorldEditor({
         {draft && draft.uid === null && entryForm}
         {worldbookMessage && <p role="status">{worldbookMessage}</p>}
       </section>
+
+      {refactorProgress && (
+        <div className="modal-overlay">
+          <div className="modal" role="dialog" aria-modal="true" aria-label={t("refactorBtn")}>
+            <h2>{t("refactorBtn")}</h2>
+            <p role="status">{refactorProgress.text}</p>
+            <div className="ai-gen-footer">
+              <button type="button" disabled={refactorProgress.cancelling} onClick={cancelAiRefactor}>
+                {t("refactorCancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {refactorOutcome && refactorSelection && (
         <div className="modal-overlay" onClick={() => !refactorBusy && closeRefactor()}>

@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRefactorExpandQueue,
   defaultRefactorSelection,
+  mergeRefactorExpandResults,
+  mergeRefactorInterfaces,
   parseRefactorOutcome,
   refactorSummaryCounts,
   sourceEntryTitle,
   toggleIndex,
   type RefactorCharacter,
+  type RefactorExpandOutcome,
   type RefactorMechanism,
   type RefactorOutcome,
+  type RefactorSurveyOutcome,
 } from "./refactor-review";
 
 function makeOutcome(overrides: Partial<RefactorOutcome> = {}): RefactorOutcome {
@@ -27,6 +32,79 @@ function makeCharacter(sourceUid: string): RefactorCharacter {
 function makeMechanism(sourceUid: string): RefactorMechanism {
   return { source_uid: sourceUid, rules: {}, triggers: [] };
 }
+
+function makeSurvey(overrides: Partial<RefactorSurveyOutcome> = {}): RefactorSurveyOutcome {
+  return { persons: [], interface_uids: [], mechanism_uids: [], raw: "", ...overrides };
+}
+
+function makeExpandOutcome(overrides: Partial<RefactorExpandOutcome> = {}): RefactorExpandOutcome {
+  return { characters: [], rewrite: null, interface: null, mechanism: null, raw: "", ...overrides };
+}
+
+describe("buildRefactorExpandQueue", () => {
+  it("人物合集→介面→機制依序展開，各自標好 kind（序列 await 靠這個順序建 system 快取）", () => {
+    const queue = buildRefactorExpandQueue(
+      makeSurvey({
+        persons: [{ uid: "1", names: ["阿福"] }, { uid: "2", names: [] }],
+        interface_uids: ["8"],
+        mechanism_uids: ["19", "20"],
+      }),
+    );
+    expect(queue).toEqual([
+      { uid: "1", kind: "person" },
+      { uid: "2", kind: "person" },
+      { uid: "8", kind: "interface" },
+      { uid: "19", kind: "mechanism" },
+      { uid: "20", kind: "mechanism" },
+    ]);
+  });
+
+  it("三區都空＝空佇列", () => {
+    expect(buildRefactorExpandQueue(makeSurvey())).toEqual([]);
+  });
+});
+
+describe("mergeRefactorInterfaces", () => {
+  it("零條回傳 null", () => {
+    expect(mergeRefactorInterfaces([])).toBeNull();
+  });
+
+  it("state_fields 兩邊都是物件＝淺合併、後蓋前；source_uids 串聯；raw 空行接起來", () => {
+    const merged = mergeRefactorInterfaces([
+      { state_fields: { hp: 10, mp: 5 }, source_uids: ["1"], raw: "第一段" },
+      { state_fields: { hp: 20 }, source_uids: ["2"], raw: "第二段" },
+    ]);
+    expect(merged).toEqual({ state_fields: { hp: 20, mp: 5 }, source_uids: ["1", "2"], raw: "第一段\n\n第二段" });
+  });
+
+  it("state_fields 不是物件（解析失敗退原文之類）＝後者整個蓋掉前者", () => {
+    const merged = mergeRefactorInterfaces([
+      { state_fields: { hp: 10 }, source_uids: [], raw: "" },
+      { state_fields: "解析失敗的原文", source_uids: [], raw: "" },
+    ]);
+    expect(merged?.state_fields).toBe("解析失敗的原文");
+  });
+});
+
+describe("mergeRefactorExpandResults", () => {
+  it("角色與機制全累積、rewrite 過濾掉 null、介面走多條合併規則", () => {
+    const outcome = mergeRefactorExpandResults([
+      makeExpandOutcome({ characters: [makeCharacter("1")], rewrite: { uid: "1", remainder_md: "剩下的" } }),
+      makeExpandOutcome({ interface: { state_fields: { hp: 10 }, source_uids: ["8"], raw: "介面段" } }),
+      makeExpandOutcome({ mechanism: makeMechanism("19") }),
+    ]);
+    expect(outcome).toEqual({
+      characters: [makeCharacter("1")],
+      interface: { state_fields: { hp: 10 }, source_uids: ["8"], raw: "介面段" },
+      mechanisms: [makeMechanism("19")],
+      rewrites: [{ uid: "1", remainder_md: "剩下的" }],
+    });
+  });
+
+  it("零條展開結果＝空殼 outcome（介面 null，其餘空陣列）", () => {
+    expect(mergeRefactorExpandResults([])).toEqual(makeOutcome());
+  });
+});
 
 describe("parseRefactorOutcome", () => {
   it("完整 JSON 原樣解析", () => {

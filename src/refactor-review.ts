@@ -37,12 +37,89 @@ export interface RefactorSelection {
   mechanism_indices: number[];
 }
 
+// 盤點／展開階段的型別，對照後端 src-tauri/src/refactor_ai.rs 的 RefactorSurveyOutcome／RefactorExpandOutcome。
+export interface RefactorSurveyPerson {
+  uid: string;
+  names: string[];
+}
+
+export interface RefactorSurveyOutcome {
+  persons: RefactorSurveyPerson[];
+  interface_uids: string[];
+  mechanism_uids: string[];
+  raw: string;
+}
+
+export interface RefactorExpandOutcome {
+  characters: RefactorCharacter[];
+  rewrite: { uid: string; remainder_md: string } | null;
+  interface: RefactorInterface | null;
+  mechanism: RefactorMechanism | null;
+  raw: string;
+}
+
+export type RefactorEntryKind = "person" | "interface" | "mechanism";
+
+export interface RefactorQueueItem {
+  uid: string;
+  kind: RefactorEntryKind;
+}
+
 export interface RefactorApplySummary {
   new_characters: number;
   new_entries: number;
   rewritten_entries: number;
   interface_applied: boolean;
   mechanisms_applied: number;
+}
+
+/** 盤點結果組展開佇列：人物合集每條、介面每條、機制每條，依序（人物→介面→機制）序列展開——
+ * 後端 system 提示詞快取要先由第一條呼叫建立，逐條 await 不可並行。 */
+export function buildRefactorExpandQueue(survey: RefactorSurveyOutcome): RefactorQueueItem[] {
+  return [
+    ...survey.persons.map((person): RefactorQueueItem => ({ uid: person.uid, kind: "person" })),
+    ...survey.interface_uids.map((uid): RefactorQueueItem => ({ uid, kind: "interface" })),
+    ...survey.mechanism_uids.map((uid): RefactorQueueItem => ({ uid, kind: "mechanism" })),
+  ];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 多條介面候選合併成一條：state_fields 兩邊都是物件就淺合併（後蓋前），否則後者整個蓋掉；
+ * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。零條回傳 null。 */
+export function mergeRefactorInterfaces(interfaces: RefactorInterface[]): RefactorInterface | null {
+  if (interfaces.length === 0) return null;
+  let stateFields: unknown;
+  for (const candidate of interfaces) {
+    stateFields =
+      isPlainObject(stateFields) && isPlainObject(candidate.state_fields)
+        ? { ...stateFields, ...candidate.state_fields }
+        : candidate.state_fields;
+  }
+  return {
+    state_fields: stateFields,
+    source_uids: interfaces.flatMap((candidate) => candidate.source_uids),
+    raw: interfaces.map((candidate) => candidate.raw).join("\n\n"),
+  };
+}
+
+/** 逐條展開結果（序列 await 累積出來的陣列）合併成一份 RefactorOutcome：角色與機制全累積，
+ * rewrite 過濾掉 null 的（沒有來源條目要改寫的那些 kind），介面走多條合併規則。 */
+export function mergeRefactorExpandResults(results: RefactorExpandOutcome[]): RefactorOutcome {
+  return {
+    characters: results.flatMap((result) => result.characters),
+    interface: mergeRefactorInterfaces(
+      results.map((result) => result.interface).filter((candidate): candidate is RefactorInterface => candidate !== null),
+    ),
+    mechanisms: results
+      .map((result) => result.mechanism)
+      .filter((candidate): candidate is RefactorMechanism => candidate !== null),
+    rewrites: results
+      .map((result) => result.rewrite)
+      .filter((candidate): candidate is { uid: string; remainder_md: string } => candidate !== null),
+  };
 }
 
 /** JSON 檔文字解析成產物；缺頂層鍵比照後端 #[serde(default)] 補空，格式不對就丟例外給呼叫端接。 */

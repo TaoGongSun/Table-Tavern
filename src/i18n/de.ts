@@ -218,7 +218,15 @@ export const de: Record<MsgKey, string> = {
   ledgerStatsJumps: "{n} verdächtige Sprünge",
   refactorBtn: "Umbauen",
   refactorBtnHint:
-    "Lädt eine JSON-Datei mit einem KI-Umbauvorschlag; wähle aus, was übernommen wird, und wende es an",
+    "Lässt die KI die ganze Karte lesen und in Charakter-/Oberflächen-/Mechanik-Kandidaten aufteilen, die du prüfen kannst",
+  refactorImportBtn: "JSON importieren",
+  refactorImportBtnHint:
+    "Lädt eine JSON-Datei mit einem KI-Umbauvorschlag und wähle aus, was übernommen wird (zum Testen, verbraucht kein Kontingent)",
+  refactorSurveying: "Karte wird durchsucht…",
+  refactorExpanding: "„{name}“ wird sortiert {i}/{n}",
+  refactorCancel: "Abbrechen",
+  refactorNothingToDo: "Diese Karte enthält nichts zum Umbauen",
+  refactorPartialFailed: "{n} fehlgeschlagen ({names})",
   refactorResultTitle: "Fertig sortiert",
   refactorSummaryCharacters: "{n} Charaktere herausgelöst",
   refactorSummaryInterface: "Spieloberfläche in die App übernommen",
