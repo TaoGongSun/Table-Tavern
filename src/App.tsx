@@ -64,6 +64,14 @@ interface ImportProbe {
   book_entries: number;
   /** 頂層就是世界書本體（V2 獨立書 JSON 自帶 name＋entries）：有 name 也要走世界書 */
   book_shaped: boolean;
+  /** 備用開場白數：備了好幾個開局＝這是一座舞台不是一個人（first_mes 每張卡都有，不看） */
+  alternate_greetings: number;
+}
+
+/** 身分框主按鈕指向世界書的條件。判準只決定哪顆是主按鈕與文案講哪一種，
+ *  兩條路玩家都選得到——判錯的代價是多看一眼，不是卡壞掉。 */
+function looksLikeWorldbook(probe: ImportProbe): boolean {
+  return probe.book_shaped || probe.lorebook_heavy || probe.alternate_greetings > 0;
 }
 
 /** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
@@ -3208,8 +3216,9 @@ function App() {
   const [openingChoice, setOpeningChoice] = useState<string[] | null>(null);
   // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
   const [openingExpanded, setOpeningExpanded] = useState<number | null>(null);
-  // 匯入卡角色與世界書都有料：等玩家在三鍵對話框挑一種，data 與 probe 原樣留著給兩條路徑共用
-  const [importChoice, setImportChoice] = useState<{ data: number[]; probe: ImportProbe; name: string } | null>(
+  // 匯入身分框：等玩家在三鍵框挑一種，data 原樣留著給兩條路徑共用；
+  // booksFirst＝主按鈕指世界書（探測結果只用來算這個，算完就不必留著）
+  const [importChoice, setImportChoice] = useState<{ data: number[]; name: string; booksFirst: boolean } | null>(
     null,
   );
   // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝一般第二張卡、merge_worldbook＝第二本世界書會合成一本
@@ -4062,6 +4071,7 @@ function App() {
         parsed: false,
         book_entries: 0,
         book_shaped: false,
+        alternate_greetings: 0,
       };
       try {
         probe = await invoke<ImportProbe>("probe_import", { data });
@@ -4069,18 +4079,13 @@ function App() {
         // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
       }
       if (probe.parsed && (!probe.name || probe.book_shaped)) {
-        // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，不必問身分
+        // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，「匯入成角色卡」是假選項，不問
         await routeImport("worldbook", true, data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
         return;
       }
-      if (probe.parsed && probe.name && probe.book_entries === 0) {
-        // 純角色卡：沒有隨附的世界書份量，不必問身分
-        await routeImport("character", false, data, probe.name);
-        return;
-      }
-      if (probe.parsed && probe.name && probe.book_entries > 0) {
-        // 角色與世界書兩種身分都有料，交給三鍵對話框問玩家要哪一種
-        setImportChoice({ data, probe, name: probe.name });
+      if (probe.parsed && probe.name) {
+        // 其餘一律問身分：判準只決定主按鈕，判錯玩家仍有另一條路（見 booksFirst）
+        setImportChoice({ data, name: probe.name, booksFirst: looksLikeWorldbook(probe) });
         return;
       }
       // 解析失敗：照舊走角色路徑，讓後端報原本的格式錯誤，不算第二張卡場景，不過路由
@@ -5579,23 +5584,23 @@ function App() {
         </div>
       )}
 
-      {/* 匯入卡角色與世界書都有料：直說偵測到哪一種，該身分當主按鈕，另一邊只警告可能玩不動 */}
+      {/* 匯入身分框：有名字的卡一律問。直說偵測到哪一種，該身分當主按鈕，另一邊只警告可能玩不動 */}
       {importChoice !== null && (
         <div className="modal-overlay" onClick={() => void answerImportChoice("cancel")}>
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t(importChoice.probe.lorebook_heavy ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}
+            aria-label={t(importChoice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}
             onClick={(event) => event.stopPropagation()}
           >
-            <h2>{t(importChoice.probe.lorebook_heavy ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}</h2>
-            <p>{t(importChoice.probe.lorebook_heavy ? "importChoiceBookBody" : "importChoiceCharacterBody")}</p>
+            <h2>{t(importChoice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}</h2>
+            <p>{t(importChoice.booksFirst ? "importChoiceBookBody" : "importChoiceCharacterBody")}</p>
             <div className="ai-gen-footer">
               <button type="button" onClick={() => void answerImportChoice("cancel")}>
                 {t("importChoiceCancel")}
               </button>
-              {importChoice.probe.lorebook_heavy ? (
+              {importChoice.booksFirst ? (
                 <>
                   <button type="button" onClick={() => void answerImportChoice("character")}>
                     {t("importChoiceCharacter")}
