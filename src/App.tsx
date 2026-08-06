@@ -1113,8 +1113,10 @@ type UsageRow = {
   cached_tokens: number;
   output_tokens: number;
   hit_rate: number;
-  cost_usd: number | null;
-  cost_partial: boolean;
+  saved_tokens: number;
+  priced_tokens: number;
+  saved_usd: number | null;
+  saved_partial: boolean;
   unreported: number;
   in_use: boolean;
 };
@@ -1160,10 +1162,11 @@ function tokens(value: number) {
   return value.toLocaleString();
 }
 
-// 金額一律轉述 CLI 官方回報值，app 不自算牌價（分不出玩家是訂閱還是 API 計費）
+// 已省金額（後端估好的）。部分輪次估不出就標「≥」——只會少報不會多報。
+// 建快取那幾輪還沒回本會是負的，對外收到 0 就好，別讓玩家看到「省下 -$0.003」
 function money(value: number | null, partial: boolean) {
   if (value === null) return "—";
-  return `${partial ? "≥ " : ""}$${value.toFixed(3)}`;
+  return `${partial ? "≥ " : ""}$${Math.max(0, value).toFixed(3)}`;
 }
 
 // 額度分頁（快取包 6）：讀後端彙總好的 prompt-cache.jsonl，以桌為主視圖、桌內按模型分行
@@ -1199,17 +1202,23 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
   const alert = entry && latest && entry[2] !== "good" && entry[2] !== "idle";
   const bodyRows = [...report.rows];
   if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
-  // 第一眼只給三件事：長條圖、快取比例、花費。保溫也是真的花掉的錢，一併算進來
-  const spent = {
+  // 第一眼只講省下多少（總用量與花費留在細項）。保溫也是真的花掉的錢，一併算進來
+  const totals = {
     prompt_tokens: report.total.prompt_tokens + report.ping.prompt_tokens,
     cached_tokens: report.total.cached_tokens + report.ping.cached_tokens,
-    cost_usd:
-      report.total.cost_usd === null && report.ping.cost_usd === null
+    saved_tokens: report.total.saved_tokens + report.ping.saved_tokens,
+    priced_tokens: report.total.priced_tokens + report.ping.priced_tokens,
+    saved_usd:
+      report.total.saved_usd === null && report.ping.saved_usd === null
         ? null
-        : (report.total.cost_usd ?? 0) + (report.ping.cost_usd ?? 0),
-    cost_partial: report.total.cost_partial || report.ping.cost_partial,
+        : (report.total.saved_usd ?? 0) + (report.ping.saved_usd ?? 0),
+    saved_partial: report.total.saved_partial || report.ping.saved_partial,
   };
-  const hit = spent.prompt_tokens === 0 ? 0 : (spent.cached_tokens * 100) / spent.prompt_tokens;
+  const hit = totals.prompt_tokens === 0 ? 0 : (totals.cached_tokens * 100) / totals.prompt_tokens;
+  const savedPct =
+    totals.priced_tokens === 0 ? 0 : Math.max(0, (totals.saved_tokens * 100) / totals.priced_tokens);
+  // 金額湊不齊（混了不回報用量或計價不明的來源）就不出現在第一眼，改由細項逐列交代
+  const showSavedUsd = totals.saved_usd !== null && !totals.saved_partial;
 
   return (
     <div className="usage-tab">
@@ -1230,16 +1239,20 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
 
       {bodyRows.length === 0 && <p className="usage-empty">{t("usageEmpty")}</p>}
 
-      {spent.prompt_tokens > 0 && (
+      {totals.prompt_tokens > 0 && (
         <>
-          <p className="usage-headline">
-            <span>
-              {tokens(spent.prompt_tokens)} {t("usageTokensLabel")}
-            </span>
-            <span className="usage-headline-cost">
-              {t("usageCostAbout")} {money(spent.cost_usd, spent.cost_partial)}
-            </span>
-          </p>
+          {totals.priced_tokens > 0 && (
+            <p className="usage-headline">
+              <span className="usage-headline-saved">
+                {t("usageSavedHeadline", { pct: savedPct.toFixed(0) })}
+              </span>
+              {showSavedUsd && (
+                <span className="usage-headline-cost">
+                  {t("usageSavedAbout")} {money(totals.saved_usd, false)}
+                </span>
+              )}
+            </p>
+          )}
           <div
             className="usage-bar"
             role="img"
@@ -1291,7 +1304,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
                 <th>{t("usageCached")}</th>
                 <th>{t("usageHitRate")}</th>
                 <th>{t("usageOutput")}</th>
-                <th>{t("usageCost")}</th>
+                <th>{t("usageSavedCost")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1322,7 +1335,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
                       <td>{tokens(row.output_tokens)}</td>
                     </>
                   )}
-                  <td>{money(row.cost_usd, row.cost_partial)}</td>
+                  <td>{money(row.saved_usd, row.saved_partial)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1334,7 +1347,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
                 <td>{tokens(report.total.cached_tokens)}</td>
                 <td>{report.total.hit_rate.toFixed(1)}%</td>
                 <td>{tokens(report.total.output_tokens)}</td>
-                <td>{money(report.total.cost_usd, report.total.cost_partial)}</td>
+                <td>{money(report.total.saved_usd, report.total.saved_partial)}</td>
               </tr>
             </tfoot>
           </table>
@@ -1350,7 +1363,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
             ) : null;
           })}
         </p>
-        <p className="usage-note">{t("usageCostNote")}</p>
+        <p className="usage-note">{t("usageSavedNote")}</p>
       </details>
       )}
     </div>

@@ -3,8 +3,9 @@
 //!
 //! 兩條規矩：
 //! - **token 是主軸**：四家 CLI 的 token 語意已在 cli.rs 換算成同一把尺，可以直接相加比較。
-//! - **金額只轉述**：app 不自算牌價、不建價目表——分不出玩家是訂閱制還是 API 計費，
-//!   只把各 CLI 自己回報的 `cost_usd` 加起來，並標記「有些輪次沒回報」。
+//! - **只講省下多少**：畫面不出總花費（看了只會焦慮），改算快取省了幾成、省了多少錢。
+//!   app 仍不建價目表——金額拿各 CLI 自己回報的 `cost_usd` 反推該輪的輸入單價，
+//!   再乘回省下的 token；估不出來的輪次標 `saved_partial`，由前端決定閉嘴或改列細項。
 //!
 //! 診斷標籤與原因代碼原樣送到前端配 i18n（字典見 usage_log.rs 模組頂註解）。
 
@@ -31,10 +32,14 @@ pub struct UsageRow {
     pub cached_tokens: u64,
     pub output_tokens: u64,
     pub hit_rate: f64,
-    /// 各 CLI 官方回報值的加總；一筆都沒有＝None（前端顯示「—」）
-    pub cost_usd: Option<f64>,
-    /// 有輪次沒回報金額，加總只是部分
-    pub cost_partial: bool,
+    /// 快取省下的輸入等值 token：沒快取要付的（全額）減掉實際付的
+    pub saved_tokens: f64,
+    /// 上面那筆的分母：算得出省下多少的輸入 token（計價不明的來源不進來）
+    pub priced_tokens: u64,
+    /// 省下的錢；一筆都估不出＝None（前端顯示「—」）
+    pub saved_usd: Option<f64>,
+    /// 有輪次估不出（沒回報金額或計價不明），加總只是部分
+    pub saved_partial: bool,
     /// 完全不回報用量的輪數（agy）
     pub unreported: u64,
     /// 這個模型是目前設定在用的
@@ -86,19 +91,53 @@ fn hit_rate(prompt_tokens: u64, cached_tokens: u64) -> f64 {
     (rate * 10.0).round() / 10.0
 }
 
+/// 快取計價係數（相對一般輸入價）：`(讀快取, 寫快取)`。讀便宜、寫（Anthropic）反而貴，
+/// 兩邊都算進去才不會把「省下多少」灌水。沒列到的來源不估——agy 完全不回報用量，
+/// api 走哪個模型不定。
+fn cache_price(transport: &str) -> Option<(f64, f64)> {
+    match transport {
+        "claude" => Some((0.1, 1.25)), // Anthropic：讀一折、寫加價兩成半
+        "codex" => Some((0.1, 1.0)),   // OpenAI：讀一折、寫不加價
+        "grok" => Some((0.5, 1.0)),    // xAI 折扣落在五到七五折，取最保守的那頭
+        _ => None,
+    }
+}
+
+/// 輸出價是輸入價的幾倍（Anthropic 與 xAI 全系列都是 5 倍）。
+/// 用途：把 CLI 回報的整輪金額拆回「一個輸入 token 值多少錢」，才不必自建價目表。
+const OUTPUT_MULTIPLE: f64 = 5.0;
+
 fn accumulate(row: &mut UsageRow, line: &Value) {
     row.rounds += 1;
     if line.get("unreported").and_then(Value::as_bool) == Some(true) {
         row.unreported += 1;
-        row.cost_partial = true;
+        row.saved_partial = true;
         return;
     }
-    row.prompt_tokens += number(line, "prompt_tokens");
-    row.cached_tokens += number(line, "cached_tokens");
-    row.output_tokens += number(line, "output_tokens");
+    let prompt = number(line, "prompt_tokens");
+    let cached = number(line, "cached_tokens");
+    let created = number(line, "created_tokens");
+    let output = number(line, "output_tokens");
+    row.prompt_tokens += prompt;
+    row.cached_tokens += cached;
+    row.output_tokens += output;
+
+    // 省下多少一輪一算再累加：每輪的單價與命中結構都不同，先加總會算錯
+    let Some((read_mult, write_mult)) = cache_price(&text(line, "transport")) else {
+        row.saved_partial = true;
+        return;
+    };
+    row.priced_tokens += prompt;
+    let fresh = prompt.saturating_sub(cached + created) as f64;
+    let paid = fresh + read_mult * cached as f64 + write_mult * created as f64;
+    let saved = prompt as f64 - paid;
+    row.saved_tokens += saved;
+    let charged = paid + OUTPUT_MULTIPLE * output as f64;
     match line.get("cost_usd").and_then(Value::as_f64) {
-        Some(cost) => row.cost_usd = Some(row.cost_usd.unwrap_or(0.0) + cost),
-        None => row.cost_partial = true,
+        Some(cost) if charged > 0.0 => {
+            row.saved_usd = Some(row.saved_usd.unwrap_or(0.0) + cost / charged * saved);
+        }
+        _ => row.saved_partial = true,
     }
 }
 
@@ -275,22 +314,30 @@ mod tests {
         assert_eq!(sonnet.prompt_tokens, 2_200); // ping 的 1200 不算進去
         assert_eq!(sonnet.cached_tokens, 1_000);
         assert!((sonnet.hit_rate - 45.5).abs() < 0.05);
-        assert_eq!(sonnet.cost_usd, Some(0.03));
+        // 省下多少一輪一算：建快取那輪反而多付 250（寫入加價兩成半），
+        // 讀到快取那輪省下 850，兩輪淨省 600 個輸入 token 的錢
+        assert_eq!(sonnet.saved_tokens, 600.0);
+        assert_eq!(sonnet.priced_tokens, 2_200);
+        assert!((sonnet.saved_usd.expect("claude 有回報金額") - 0.006_090).abs() < 1e-5);
+        assert!(!sonnet.saved_partial);
 
-        // 不回報用量的來源：只知道跑過一輪
+        // 不回報用量的來源：只知道跑過一輪，省下多少無從估起
         let agy = &report.rows[2];
         assert_eq!(agy.unreported, 1);
         assert_eq!(agy.prompt_tokens, 0);
-        assert!(agy.cost_partial);
+        assert_eq!(agy.priced_tokens, 0);
+        assert_eq!(agy.saved_usd, None);
+        assert!(agy.saved_partial);
 
         // 總計含整體命中率，保溫另計
         assert_eq!(report.total.rounds, 4);
         assert_eq!(report.total.prompt_tokens, 6_200);
         assert_eq!(report.total.cached_tokens, 4_600);
         assert!((report.total.hit_rate - 74.2).abs() < 0.05);
-        assert!(report.total.cost_partial); // agy 那輪沒金額
+        assert_eq!(report.total.saved_tokens, 3_740.0); // sonnet 600 ＋ opus 3140
+        assert!(report.total.saved_partial); // agy 那輪估不出
         assert_eq!(report.ping.rounds, 1);
-        assert_eq!(report.ping.cost_usd, Some(0.001));
+        assert!((report.ping.saved_usd.expect("保溫也有金額") - 0.007_448).abs() < 1e-5);
 
         // 燈號看最近一筆非保溫紀錄
         assert_eq!(
@@ -314,6 +361,9 @@ mod tests {
 
         assert_eq!(report.total.rounds, 6); // 兩桌劇情輪＋未標桌那筆，丟線事件不算一輪
         assert_eq!(report.total.prompt_tokens, 7_500);
+        // api 那筆的快取怎麼計價不明，500 個輸入 token 不進「省了幾成」的分母
+        assert_eq!(report.total.priced_tokens, 7_000);
+        assert_eq!(report.total.saved_tokens, 4_100.0);
         assert_eq!(
             report.diags.iter().find(|count| count.diag == "ok").map(|count| count.rounds),
             Some(3)
