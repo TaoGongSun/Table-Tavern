@@ -1,6 +1,7 @@
 mod cli;
 mod data;
 mod ejs;
+mod evaluator;
 mod genesis;
 mod import;
 #[allow(dead_code)]

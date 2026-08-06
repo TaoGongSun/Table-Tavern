@@ -282,6 +282,11 @@ pub struct FieldRule {
     /// 角色卡只帶走自己的分支，避免把整桌的規則偷偷塞進單張卡。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// `derived` 專用：算式（見 `evaluator.rs`），以狀態樹為取值來源算出這一欄的值。
+    /// 規範書 v1 對 `derived` 只定義「schema 預留，未實作」，沒定公式欄位名——沿用最
+    /// 直覺的 `formula`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formula: Option<String>,
 }
 
 impl FieldRule {
@@ -302,6 +307,7 @@ impl FieldRule {
             update,
             inject,
             branch: None,
+            formula: None,
         }
     }
 }
