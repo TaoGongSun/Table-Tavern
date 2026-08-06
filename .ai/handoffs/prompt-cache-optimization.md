@@ -7,7 +7,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 
 **包 6 額度分頁完成並通過實機驗收**（2026-08-04）：設定頁「額度」分頁，收合只給第一眼數字＋長條圖，細項點開才出現。驗收九項通過、當場修掉六個顯示問題，grok 金額與 agy 那一列因無額度／CLI 計量未定延後（見 Verification）。**程式面包 1–7 至此全部完成。**
 
-**2026-08-06 額度分頁改成「省下多少」口徑**（使用者要求：減少額度焦慮）：第一眼＝「已省 X% 費用」＋「約省下 $Y」，總用量與總花費退到細項，細項的「花費」欄改成「已省金額」。金額仍不建價目表——拿各 CLI 自己回報的該輪 `cost_usd` 反推輸入單價，再乘回快取省下的 token；估不出的來源整列標 `saved_partial`，只要有一列估不出第一眼就不出金額，改由細項逐列交代。
+**2026-08-06 額度分頁改成「省下多少」口徑**（使用者要求：減少額度焦慮）：第一眼＝「已省 X% 費用」＋「約省下 $Y」，總 token 與總花費退到細項。**細項維持花費不動**——那裡有保溫 ping 這種本來就沒有「省下」可言的列，改成已省會讓該列與總計列都變得莫名其妙（2026-08-06 使用者看畫面後回頭修正）。已省金額仍不建價目表：拿各 CLI 自己回報的該輪 `cost_usd` 反推輸入單價，再乘回快取省下的 token；估不出的來源整列標 `saved_partial`，只要有一列估不出第一眼就不出金額。
 
 **2026-08-04 凌晨真桌驗收兩場（各四輪 GM 線）未達標，根因鎖死在 claude CLI 本身**：CLI session 檔逐筆 usage 證明**單數輪請求完全不帶快取標記**（讀寫皆 0、整句全額計費），雙數輪正常寫讀；第 4 輪精準讀到第 2 輪寫入的 18,020 tokens＝app 組的前綴穩定、包 2／3／5 機制無誤（log 的 prefix-broken 標籤在此情境是誤導，實為前一輪沒寫）。乾淨環境同旗標三連發重現「寫入隔輪消失」，排除 app 傳參與環境變數。社群修復（本機 proxy 攔請求／regex 改 cli.js）否決：proxy 位在玩家憑證路徑上、兩者都綁 CLI 版本養維護債、且修的是「前綴被改壞」變體，對我們「隔輪不帶標記」對症存疑。
 
@@ -33,10 +33,10 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 
 ## Completed
 - **額度分頁改省下口徑**（2026-08-06，本次新完成）：
-  - `usage_report.rs`：`UsageRow` 的 `cost_usd`／`cost_partial` 換成 `saved_tokens`／`priced_tokens`／`saved_usd`／`saved_partial`。省下多少**一輪一算再累加**（每輪單價與命中結構都不同，先加總會算錯）：`paid = fresh + read×cached + write×created`、`saved = prompt − paid`；金額用 `cost /(paid + OUTPUT_MULTIPLE×output)` 反推該輪輸入單價再乘回 `saved`。
+  - `usage_report.rs`：`UsageRow` 在 `cost_usd`／`cost_partial`（純轉述，餵細項）之外多出 `saved_tokens`／`priced_tokens`／`saved_usd`／`saved_partial`（估算，餵第一眼）。省下多少**一輪一算再累加**（每輪單價與命中結構都不同，先加總會算錯）：`paid = fresh + read×cached + write×created`、`saved = prompt − paid`；金額用 `cost /(paid + OUTPUT_MULTIPLE×output)` 反推該輪輸入單價再乘回 `saved`。
   - 快取計價係數 `cache_price` 只列有把握的三家——claude `(0.1, 1.25)`、codex `(0.1, 1.0)`、grok `(0.5, 1.0)`（xAI 折扣落在五到七五折，取保守那頭）；`OUTPUT_MULTIPLE = 5`（Anthropic 與 xAI 全系列輸出價都是輸入的 5 倍）。沒列到的來源（agy 不回報用量、api 走哪個模型不定）不進 `priced_tokens` 分母，也不估金額。
-  - `App.tsx`：頭條改「已省 X% 費用」（`usage-headline-saved`，綠字）＋「約省下 $Y」，金額湊不齊就整個不出現；建快取還沒回本的負值對外收斂成 0；細項表頭與總計列改吃 `saved_usd`。
-  - i18n 十語系：刪 `usageTokensLabel`、`usageCostAbout`→`usageSavedAbout`（「約省下」）、`usageCost`→`usageSavedCost`（「已省金額」）、`usageCostNote`→`usageSavedNote`（改寫成推估說明），新增 `usageSavedHeadline`。
+  - `App.tsx`：頭條改「已省 X% 費用」（`usage-headline-saved`，綠字）＋「約省下 $Y」，金額湊不齊就整個不出現；建快取還沒回本的負值對外收斂成 0。細項表原樣（花費欄照舊吃 `cost_usd`）。
+  - i18n 十語系：刪 `usageTokensLabel`、`usageCostAbout`→`usageSavedAbout`（「約省下」），新增 `usageSavedHeadline`；`usageCostNote` 改寫成「花費是 CLI 回報的牌價，上面的已省金額由它推估」一句串起兩者。
 - 分析階段（2026-08-03 上午，唯讀）：快取現況、兩個打破前綴的設計、三塊方案已拍板（證據行號以 HEAD f8801e8 核對，詳見 git 歷史中本檔前一版）。
 - **A 穩定前綴重構**（2026-08-03 下午，本次新完成）：
   - `assemble_messages`：世界書條目以 `partition` 拆 constant／keyword，constant 留在 system（transport.rs:181-199）；keyword 條目改為 events 迴圈後附加的一則獨立 user 訊息，標頭沿用「## 你知道的世界情報」（transport.rs:212-223）。
@@ -126,7 +126,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 ## Verification
 
 ### 省下口徑（2026-08-06）
-`cargo test` **326 passed**（`usage_report` 兩條測試改寫：鎖住「建快取那輪反而多付 250、讀到快取那輪省下 850」與「計價不明的 api 那筆不進 `priced_tokens` 分母」）、`npm run build`＋`npm test` 22＋`check:i18n` 十語系全綠。畫面本身在瀏覽器預覽跑不了（Tauri `usage_report` 拿不到），改以本機 `文件/TableTavern/prompt-cache.jsonl` 46 筆重算預覽：那桌 811,962 tokens／命中 63% → 已省 51%、約省下 $1.968；混過一筆 codex 的桌只出百分比（33%），正是「金額湊不齊退到細項」的預期形狀。**使用者當日實機看過**，唯一回饋＝右上金額語意有歧義，「約 $1.968」改成「約省下 $1.968」，已改。
+`cargo test` **326 passed**（`usage_report` 兩條測試改寫：鎖住「建快取那輪反而多付 250、讀到快取那輪省下 850」與「計價不明的 api 那筆不進 `priced_tokens` 分母」）、`npm run build`＋`npm test` 22＋`check:i18n` 十語系全綠。畫面本身在瀏覽器預覽跑不了（Tauri `usage_report` 拿不到），改以本機 `文件/TableTavern/prompt-cache.jsonl` 46 筆重算預覽：那桌 811,962 tokens／命中 63% → 已省 51%、約省下 $1.968；混過一筆 codex 的桌只出百分比（33%），正是「金額湊不齊退到細項」的預期形狀。**使用者當日實機看過**，兩件回饋都已改完並再次確認：右上金額語意有歧義，「約 $1.968」→「約省下 $1.968」；細項表退回花費欄（見 Current state）。
 
 ### 包 6＋包 7 實機驗收（2026-08-04，使用者真桌逐項跑過）
 程式面：`cargo test` **217 passed**、clippy 無新增警告、`npm run build`（含 tsc）＋`check:i18n`＋`npm test` 全綠。

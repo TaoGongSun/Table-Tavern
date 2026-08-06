@@ -1113,6 +1113,8 @@ type UsageRow = {
   cached_tokens: number;
   output_tokens: number;
   hit_rate: number;
+  cost_usd: number | null;
+  cost_partial: boolean;
   saved_tokens: number;
   priced_tokens: number;
   saved_usd: number | null;
@@ -1162,8 +1164,8 @@ function tokens(value: number) {
   return value.toLocaleString();
 }
 
-// 已省金額（後端估好的）。部分輪次估不出就標「≥」——只會少報不會多報。
-// 建快取那幾輪還沒回本會是負的，對外收到 0 就好，別讓玩家看到「省下 -$0.003」
+// 細項的花費是 CLI 官方回報值，收合處的已省金額是後端拿它估的；兩邊都可能只湊到一部分（標「≥」）。
+// 已省在建快取那幾輪還沒回本會是負的，對外收到 0 就好，別讓玩家看到「省下 -$0.003」
 function money(value: number | null, partial: boolean) {
   if (value === null) return "—";
   return `${partial ? "≥ " : ""}$${Math.max(0, value).toFixed(3)}`;
@@ -1304,7 +1306,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
                 <th>{t("usageCached")}</th>
                 <th>{t("usageHitRate")}</th>
                 <th>{t("usageOutput")}</th>
-                <th>{t("usageSavedCost")}</th>
+                <th>{t("usageCost")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1335,7 +1337,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
                       <td>{tokens(row.output_tokens)}</td>
                     </>
                   )}
-                  <td>{money(row.saved_usd, row.saved_partial)}</td>
+                  <td>{money(row.cost_usd, row.cost_partial)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1347,7 +1349,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
                 <td>{tokens(report.total.cached_tokens)}</td>
                 <td>{report.total.hit_rate.toFixed(1)}%</td>
                 <td>{tokens(report.total.output_tokens)}</td>
-                <td>{money(report.total.saved_usd, report.total.saved_partial)}</td>
+                <td>{money(report.total.cost_usd, report.total.cost_partial)}</td>
               </tr>
             </tfoot>
           </table>
@@ -1363,7 +1365,7 @@ function UsageTab({ currentWorld }: { currentWorld: string }) {
             ) : null;
           })}
         </p>
-        <p className="usage-note">{t("usageSavedNote")}</p>
+        <p className="usage-note">{t("usageCostNote")}</p>
       </details>
       )}
     </div>

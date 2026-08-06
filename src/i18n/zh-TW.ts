@@ -51,12 +51,12 @@ export const zh = {
   usageCached: "讀到快取",
   usageHitRate: "命中率",
   usageOutput: "輸出",
-  usageSavedCost: "已省金額",
+  usageCost: "花費",
   usageTotal: "總計",
   usagePing: "保溫呼叫",
   usageInUse: "使用中",
   usageNoUsage: "這個來源不回報用量",
-  usageSavedNote: "已省金額是拿各家 CLI 回報的花費與快取折扣推估的；訂閱制實際不會這樣扣，只當相對比較用。",
+  usageCostNote: "花費是各家 CLI 自己回報的參考牌價，上面的已省金額由它推估；訂閱制實際不會這樣扣，只當相對比較用。",
 
   // 診斷標籤（後端 usage_log.rs 那張表）：短名給統計、長句給最近一輪
   usageDiagOk: "正常",
