@@ -1,6 +1,6 @@
 use crate::mechanism::{self, Outcome, Record, RecordKind};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -138,6 +138,11 @@ pub struct CharacterMeta {
     pub show_image: bool,
     #[serde(default)]
     pub archived: bool,
+    /// 自動隱藏（AI 卡重構包 4b）：換幕結算時系統判斷「這幕沒出現」才打開，劇情拉回來就
+    /// 自動關掉；跟 `archived`（玩家手動封存，系統永不自動改動）是獨立的兩軸，見
+    /// `settle_card_visibility` 與 `set_character_auto_hidden`。
+    #[serde(default)]
+    pub auto_hidden: bool,
     /// 側欄卡片的顯示順序；只在後端流通（前端拿到的已是排好的清單）
     #[serde(skip)]
     pub display_index: Option<u32>,
@@ -184,6 +189,10 @@ pub struct TranscriptEvent {
     pub raw: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<TableState>,
+    /// 這則系統事件的全文只給 GM 看；chars 續聊線遇到只留第一行（AI 卡重構包 4b，
+    /// 補 4a 遺留的 visibility 洩漏——非 Public 世界書人物的登場全文不該流進扮演引擎）。
+    #[serde(default)]
+    pub gm_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -799,6 +808,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
             kind: TranscriptKind::Narration,
             text: sample.opening,
             state: None,
+            gm_only: false,
         },
     )?;
 
@@ -1393,6 +1403,7 @@ pub fn worldbook_entry_to_character(
         tier: card.tier,
         show_image: card.show_image,
         archived: card.archived,
+        auto_hidden: false,
         display_index: None,
     })
 }
@@ -1678,6 +1689,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
     let mut tier = None;
     let mut show_image = true;
     let mut archived = false;
+    let mut auto_hidden = false;
     let mut display_index = None;
     let mut gen_prompt = String::new();
     for line in frontmatter.lines() {
@@ -1697,6 +1709,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
             "tier" => tier = Some(Tier::parse(value)?),
             "show_image" => show_image = value != "false",
             "archived" => archived = value == "true",
+            "auto_hidden" => auto_hidden = value == "true",
             "display_index" => display_index = value.parse().ok(),
             "gen_prompt" => gen_prompt = value.to_owned(),
             _ => {}
@@ -1715,6 +1728,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
             tier: tier.ok_or_else(|| invalid_data("frontmatter is missing tier"))?,
             show_image,
             archived,
+            auto_hidden,
             display_index,
         },
         gen_prompt,
@@ -1764,11 +1778,14 @@ fn parse_sections(body: &str) -> (String, String) {
     (public_md, private_md)
 }
 
-fn serialize_character(card: &CharacterCard, display_index: u32) -> String {
+/// `auto_hidden` 不是 `CharacterCard` 的欄位（那樣每個手動建卡的呼叫端都要補這個跟編輯
+/// 無關的欄位）：呼叫端自己決定要延續舊值（`write_character`）還是寫新值
+/// （`set_character_auto_hidden`），見兩者呼叫這支的方式。
+fn serialize_character(card: &CharacterCard, display_index: u32, auto_hidden: bool) -> String {
     // frontmatter 逐行解析，生成提示詞中的換行須在寫入前攤平。
     let gen_prompt = card.gen_prompt.replace(['\n', '\r'], " ");
     format!(
-        "---\nid: {}\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\ndisplay_index: {}\ngen_prompt: {}\n---\n## 公開\n{}\n## 私有\n{}",
+        "---\nid: {}\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\nauto_hidden: {}\ndisplay_index: {}\ngen_prompt: {}\n---\n## 公開\n{}\n## 私有\n{}",
         card.id,
         card.name,
         card.color,
@@ -1776,6 +1793,7 @@ fn serialize_character(card: &CharacterCard, display_index: u32) -> String {
         card.tier.as_str(),
         card.show_image,
         card.archived,
+        auto_hidden,
         display_index,
         gen_prompt,
         card.public_md,
@@ -1865,10 +1883,10 @@ pub fn reorder_characters(root: &Path, world_id: &str, ids: &[String]) -> DataRe
         let index =
             u32::try_from(index).map_err(|_| invalid_data("character display_index overflow"))?;
         let card = read_character(root, world_id, id)?;
-        fs::write(
-            character_path(root, world_id, id)?,
-            serialize_character(&card, index),
-        )?;
+        let path = character_path(root, world_id, id)?;
+        // 拖曳排序只改 display_index，跟 write_character 一樣延續磁碟上原有的 auto_hidden。
+        let auto_hidden = existing_auto_hidden(&path);
+        fs::write(path, serialize_character(&card, index, auto_hidden))?;
     }
     Ok(())
 }
@@ -1911,16 +1929,29 @@ pub fn read_player_card(root: &Path, world_id: &str) -> DataResult<Option<Charac
     read_character(root, world_id, &character_id).map(Some)
 }
 
+/// 這張卡目前落地的 auto_hidden 值；檔案不存在或解析失敗（新卡）一律當 false。
+fn existing_auto_hidden(path: &Path) -> bool {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return false;
+    };
+    parse_frontmatter(&contents)
+        .map(|(meta, _, _)| meta.auto_hidden)
+        .unwrap_or(false)
+}
+
 /// id 由呼叫端先跟 new_id 要好（草稿期生圖需要落在正確的圖庫路徑）；空 id 直接回錯。
+/// `CharacterCard` 不帶 auto_hidden（AI 卡重構包 4b：那是換幕結算的持久欄位，不是編輯表單
+/// 的一部分），這裡改寫其他欄位時，延續磁碟上原有的 auto_hidden，不會被前端編輯捎帶清掉。
 pub fn write_character(root: &Path, world_id: &str, card: &CharacterCard) -> DataResult<()> {
     validate_id(&card.id)?;
     validate_single_line("name", &card.name)?;
     validate_single_line("color", &card.color)?;
     validate_single_line("avatar", &card.avatar)?;
     let path = character_path(root, world_id, &card.id)?;
+    let auto_hidden = existing_auto_hidden(&path);
     ensure_display_indices(root, world_id)?;
     let display_index = display_index_for(root, world_id, &path)?;
-    fs::write(path, serialize_character(card, display_index))?;
+    fs::write(path, serialize_character(card, display_index, auto_hidden))?;
     Ok(())
 }
 
@@ -1933,6 +1964,21 @@ pub fn set_character_archived(
     let mut card = read_character(root, world_id, character_id)?;
     card.archived = archived;
     write_character(root, world_id, &card)
+}
+
+/// 換幕結算（`settle_card_visibility`）專用：直接寫入新的 auto_hidden 值，其餘欄位原樣保留。
+/// 不走 `write_character`（那支會延續磁碟舊值，寫不進新值）。
+pub fn set_character_auto_hidden(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    auto_hidden: bool,
+) -> DataResult<()> {
+    let card = read_character(root, world_id, character_id)?;
+    let path = character_path(root, world_id, character_id)?;
+    let display_index = display_index_for(root, world_id, &path)?;
+    fs::write(path, serialize_character(&card, display_index, auto_hidden))?;
+    Ok(())
 }
 
 pub fn delete_character(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
@@ -2010,6 +2056,7 @@ pub fn append_opening(
         text: block.display.clone(),
         raw: (raw != block.display).then(|| raw.to_owned()),
         state: Some(world.state),
+        gm_only: false,
     };
     append_transcript(root, world_id, scene, &event)?;
     Ok((event, outcome))
@@ -2091,6 +2138,46 @@ pub fn read_transcript(
         events.push(event);
     }
     Ok(events)
+}
+
+// ---------------------------------------------------------------------
+// AI 卡重構包 4b：角色卡自動上下場共用的登場掃描原語。人物（transport::PERSON_ARRIVAL_PREFIX）
+// 與角色卡（CARD_ARRIVAL_PREFIX）登場比對邏輯相同、鍵不同，這裡放兩邊都用得到、且
+// 換幕結算（本檔 begin_next_scene）必須直接呼叫、不能反過來依賴 transport 的最小共用集合。
+// ---------------------------------------------------------------------
+
+/// 角色卡回歸事件的固定前綴，接著是〈name〉那一行——跟世界書人物的登場前綴
+/// （transport::PERSON_ARRIVAL_PREFIX）分開，掃 transcript 或前端呈現時才分得出兩種來源。
+pub const CARD_ARRIVAL_PREFIX: &str = "（角色回歸）";
+
+/// 從一則事件文字剝出前綴後的〈title〉；prefix 不符或沒有〈〉包住就回 None。
+pub(crate) fn bracket_title(text: &str, prefix: &str) -> Option<String> {
+    let rest = text.strip_prefix(prefix)?.strip_prefix('〈')?;
+    let end = rest.find('〉')?;
+    Some(rest[..end].to_owned())
+}
+
+/// 本幕已登場（依指定前綴）集合：掃 System 事件取出〈title〉。
+pub(crate) fn appeared_titles(events: &[TranscriptEvent], prefix: &str) -> BTreeSet<String> {
+    events
+        .iter()
+        .filter(|event| event.kind == TranscriptKind::System)
+        .filter_map(|event| bracket_title(&event.text, prefix))
+        .collect()
+}
+
+/// present 欄的斷詞規則：頓號／逗號／斜線／分號，trim 後濾空。
+pub(crate) fn split_present_names(raw: &str) -> Vec<String> {
+    raw.split(['、', '，', ',', '／', '/', '；', ';'])
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// 在場名字跟標題比對：雙向包含，「亞歷山大」對得上「亞歷山大・馮・史特勞斯」。
+pub(crate) fn name_matches(name: &str, title: &str) -> bool {
+    title.contains(name) || name.contains(title)
 }
 
 /// 把單一事件渲染成一行（或多行）Markdown，整桌／單場匯出共用同一份格式。
@@ -2301,6 +2388,7 @@ pub fn begin_next_scene(
             kind: TranscriptKind::Narration,
             text: format_scene_summary(summary_text, lang),
             state: None,
+            gm_only: false,
         },
     )?;
     if let Some(name) = title.map(str::trim).filter(|name| !name.is_empty()) {
@@ -2321,7 +2409,45 @@ pub fn begin_next_scene(
     );
     state.current_scene = next_scene;
     write_state(root, world_id, &state)?;
+    settle_card_visibility(
+        root,
+        world_id,
+        old_scene,
+        state.state.table.get("present").map(String::as_str),
+    );
     Ok(next_scene)
+}
+
+/// 換幕結算角色卡自動隱藏（AI 卡重構包 4b；鐵律：auto_hidden 這個持久欄位只在換幕動，
+/// 幕中回合的登場偵測只 append 事件不改欄位，見 lib.rs record_card_arrivals）。
+///
+/// 出現過＝(a) 剛結束那幕的角色卡回歸事件集合 ∪ (b) 換幕當下 present 名單比對命中。
+/// 出現過→auto_hidden=false（拉回主區）；沒出現過→auto_hidden=true（收進隱藏區）；
+/// archived（手動封存）的卡完全不動，自動判斷不能覆蓋玩家的手動決定。
+///
+/// 已知限制：幕開始就在主區、全程活躍，但最後一輪 GM 忘記把它列進 present、
+/// 這幕本文也沒有登場事件（因為它本來就沒被隱藏過）的卡，會在這裡被判定「沒出現」
+/// 而轉為隱藏——(a)(b) 都掃不到這種情況；真正掃「正文有沒有提到名字」(c) 成本較高
+/// （要跑完整幕全部旁白文字），先不做，之後真的常誤判再考慮補。
+///
+/// 結算失敗一律吞掉：換幕本身已經成功，auto_hidden 記帳不該反過來讓換幕報錯。
+fn settle_card_visibility(root: &Path, world_id: &str, ended_scene: u64, present: Option<&str>) {
+    let Ok(characters) = list_characters(root, world_id) else {
+        return;
+    };
+    let events = read_transcript(root, world_id, ended_scene).unwrap_or_default();
+    let arrived = appeared_titles(&events, CARD_ARRIVAL_PREFIX);
+    let present_names = present.map(split_present_names);
+    for meta in characters {
+        if meta.archived {
+            continue;
+        }
+        let appeared = arrived.iter().any(|name| name_matches(name, &meta.name))
+            || present_names
+                .as_ref()
+                .is_some_and(|names| names.iter().any(|name| name_matches(name, &meta.name)));
+        let _ = set_character_auto_hidden(root, world_id, &meta.id, !appeared);
+    }
 }
 
 /// 退回前幕：換幕的精確反向操作，純本地檔案處理不必呼叫模型。
@@ -3409,6 +3535,7 @@ mod tests {
                 tier: npc.tier,
                 show_image: npc.show_image,
                 archived: npc.archived,
+                auto_hidden: false,
                 display_index: Some(1),
             }]
         );
@@ -3578,6 +3705,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "你好".to_owned(),
             state: None,
+            gm_only: false,
         };
         append_transcript(root.path(), &first, 0, &event).unwrap();
         assert_eq!(
@@ -3608,6 +3736,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "留著".to_owned(),
             state: None,
+            gm_only: false,
         };
         append_transcript(root.path(), &has_message, 0, &event).unwrap();
         assert!(!reclaim_world_if_empty(root.path(), &has_message).unwrap());
@@ -3759,6 +3888,7 @@ mod tests {
                 tier: Tier::Best,
                 show_image: true,
                 archived: true,
+                auto_hidden: false,
                 display_index: Some(0),
             }]
         );
@@ -3788,6 +3918,7 @@ mod tests {
                 "tier",
                 "show_image",
                 "archived",
+                "auto_hidden",
                 "display_index",
                 "gen_prompt"
             ]
@@ -3934,6 +4065,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "舊名說了一句話".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4163,6 +4295,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "序幕".to_owned(),
                 state: None,
+                gm_only: false,
             },
             TranscriptEvent {
                 raw: None,
@@ -4172,6 +4305,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "第一行\n仍是同一事件".to_owned(),
                 state: None,
+                gm_only: false,
             },
             TranscriptEvent {
                 raw: None,
@@ -4181,6 +4315,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "你好".to_owned(),
                 state: None,
+                gm_only: false,
             },
         ];
         for event in &events {
@@ -4239,6 +4374,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: (*text).to_owned(),
                 state: None,
+                gm_only: false,
             })
             .collect();
         for event in &events {
@@ -4298,6 +4434,7 @@ mod tests {
             kind: TranscriptKind::Narration,
             text: "第一句".to_owned(),
             state: None,
+            gm_only: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
         assert_eq!(
@@ -4330,6 +4467,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "第二句".to_owned(),
                 state: Some(supplied.clone()),
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4385,6 +4523,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "前一則".to_owned(),
                 state: Some(previous.clone()),
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4459,6 +4598,7 @@ mod tests {
                     kind: TranscriptKind::Narration,
                     text: text.to_owned(),
                     state: Some(snapshot),
+                    gm_only: false,
                 },
             )
             .unwrap();
@@ -4493,6 +4633,7 @@ mod tests {
             kind: TranscriptKind::Narration,
             text: text.to_owned(),
             state: Some(snapshot.clone()),
+            gm_only: false,
         };
         for (text, snapshot) in [("第一句", &snapshots[0]), ("第二句", &snapshots[1])] {
             append_transcript(root.path(), &world_id, 0, &event(text, snapshot)).unwrap();
@@ -4530,6 +4671,7 @@ mod tests {
                     kind: TranscriptKind::Dialogue,
                     text: "我們啟航。".to_owned(),
                     state: None,
+                    gm_only: false,
                 },
             ),
             (
@@ -4542,6 +4684,7 @@ mod tests {
                     kind: TranscriptKind::Narration,
                     text: "霧氣升起。\n港口安靜。".to_owned(),
                     state: None,
+                    gm_only: false,
                 },
             ),
             (
@@ -4554,6 +4697,7 @@ mod tests {
                     kind: TranscriptKind::Player,
                     text: "我登上甲板。".to_owned(),
                     state: None,
+                    gm_only: false,
                 },
             ),
             (
@@ -4566,6 +4710,7 @@ mod tests {
                     kind: TranscriptKind::System,
                     text: "第一幕開始".to_owned(),
                     state: None,
+                    gm_only: false,
                 },
             ),
         ] {
@@ -4610,6 +4755,7 @@ mod tests {
                     kind: TranscriptKind::Narration,
                     text: "霧氣升起。".to_owned(),
                     state: None,
+                    gm_only: false,
                 },
             ),
             (
@@ -4622,6 +4768,7 @@ mod tests {
                     kind: TranscriptKind::Dialogue,
                     text: "我們啟航。".to_owned(),
                     state: None,
+                    gm_only: false,
                 },
             ),
         ] {
@@ -4658,6 +4805,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "第一場的對話".to_owned(),
             state: None,
+            gm_only: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
@@ -4693,6 +4841,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "第一幕的對話".to_owned(),
             state: None,
+            gm_only: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
@@ -4737,6 +4886,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "第一幕的對話".to_owned(),
                 state: Some(snapshot.clone()),
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4775,6 +4925,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "序幕".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4792,6 +4943,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "新的一句".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4834,6 +4986,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "序幕".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4880,6 +5033,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "玩家的第一句".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4925,6 +5079,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "序幕".to_owned(),
                 state: Some(snapshot.clone()),
+                gm_only: false,
             },
         )
         .unwrap();
@@ -4960,6 +5115,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "啟航前的最後一夜。".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -5017,6 +5173,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "這次我們往南走。".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -5083,6 +5240,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "序幕".to_owned(),
                 state: None,
+                gm_only: false,
             },
         )
         .unwrap();
@@ -5259,6 +5417,7 @@ mod tests {
                     kind: TranscriptKind::Narration,
                     text: "旁白".to_owned(),
                     state: Some(snapshot),
+                    gm_only: false,
                 },
             )
             .unwrap();
@@ -5310,5 +5469,101 @@ mod tests {
         assert!(state.branch_bindings.is_empty());
         assert!(state.state.changes.is_empty());
         assert_eq!(state.state.table.get("time"), Some(&"清晨".to_owned()));
+    }
+
+    /// 舊角色卡 meta 沒有 auto_hidden（AI 卡重構包 4b 新欄位，封存三態的其中一態）
+    /// 也要讀得起來，落回預設值 false。
+    #[test]
+    fn old_character_meta_json_without_auto_hidden_still_deserializes() {
+        let json = r##"{
+            "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "name": "阿藍",
+            "color": "#3366ff",
+            "avatar": "avatars/blue.png",
+            "tier": "balanced"
+        }"##;
+        let meta: CharacterMeta = serde_json::from_str(json).unwrap();
+        assert!(!meta.auto_hidden);
+        assert!(!meta.archived);
+    }
+
+    /// AI 卡重構包 4b：write_character（前端編輯表單走的路徑，CharacterCard 本身不帶
+    /// auto_hidden）改其他欄位時，延續磁碟上原有的 auto_hidden，不會被編輯表單悄悄清掉。
+    #[test]
+    fn write_character_preserves_auto_hidden_across_unrelated_edit() {
+        let root = TestRoot::new("preserve-auto-hidden");
+        let world_id = create_world(root.path(), "測試桌").unwrap();
+        let mut card = character_card(&new_id(), "狐狸");
+        write_character(root.path(), &world_id, &card).unwrap();
+        set_character_auto_hidden(root.path(), &world_id, &card.id, true).unwrap();
+
+        card.color = "#ff0000".to_owned();
+        write_character(root.path(), &world_id, &card).unwrap();
+
+        let meta = list_characters(root.path(), &world_id)
+            .unwrap()
+            .into_iter()
+            .find(|meta| meta.id == card.id)
+            .unwrap();
+        assert!(meta.auto_hidden);
+        assert_eq!(meta.color, "#ff0000");
+    }
+
+    /// AI 卡重構包 4b：換幕結算角色卡自動隱藏。出現過＝本幕有回歸事件 (a) 或換幕當下
+    /// present 名單命中 (b)；兩者都沒有（就算幕開始時本來在主區）結算成隱藏；
+    /// archived 的卡完全不受結算影響。
+    #[test]
+    fn begin_next_scene_settles_card_auto_hidden() {
+        let root = TestRoot::new("card-settlement");
+        let world_id = create_world(root.path(), "測試桌").unwrap();
+
+        let fox = character_card(&new_id(), "狐狸"); // (a) 本幕有回歸事件
+        let bear = character_card(&new_id(), "熊"); // (b) present 命中
+        let badger = character_card(&new_id(), "獾"); // 兩者都沒有 → 結算成隱藏
+        let ghost = character_card(&new_id(), "亡靈"); // archived → 完全不動
+        for card in [&fox, &bear, &badger, &ghost] {
+            write_character(root.path(), &world_id, card).unwrap();
+        }
+        set_character_auto_hidden(root.path(), &world_id, &fox.id, true).unwrap();
+        set_character_auto_hidden(root.path(), &world_id, &bear.id, true).unwrap();
+        set_character_auto_hidden(root.path(), &world_id, &badger.id, false).unwrap();
+        set_character_auto_hidden(root.path(), &world_id, &ghost.id, false).unwrap();
+        set_character_archived(root.path(), &world_id, &ghost.id, true).unwrap();
+
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                ts: "now".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: TranscriptKind::System,
+                text: "（角色回歸）〈狐狸〉\n尾巴很大。".to_owned(),
+                raw: None,
+                state: None,
+                gm_only: false,
+            },
+        )
+        .unwrap();
+
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state
+            .state
+            .table
+            .insert("present".to_owned(), "狐狸、熊".to_owned());
+        write_state(root.path(), &world_id, &state).unwrap();
+
+        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+
+        let metas = list_characters(root.path(), &world_id).unwrap();
+        let auto_hidden_of = |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
+        assert!(!auto_hidden_of(&fox.id), "本幕有回歸事件的卡應該結算成主區");
+        assert!(!auto_hidden_of(&bear.id), "present 命中的卡應該結算成主區");
+        assert!(
+            auto_hidden_of(&badger.id),
+            "沒出現過的卡（就算原本在主區）應該結算成隱藏"
+        );
+        assert!(!auto_hidden_of(&ghost.id), "archived 的卡完全不受結算影響");
     }
 }

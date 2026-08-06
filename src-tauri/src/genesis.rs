@@ -216,6 +216,7 @@ pub fn materialize(root: &Path, expanded: &Expanded) -> DataResult<String> {
                 kind: TranscriptKind::Narration,
                 text: expanded.opening.clone(),
                 state: None,
+                gm_only: false,
             },
         )?;
     }

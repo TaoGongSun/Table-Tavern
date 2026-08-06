@@ -225,7 +225,7 @@ pub fn assemble_messages(
             TranscriptKind::Dialogue => ("user", format!("{}：{}", event.speaker_name, event.text)),
             TranscriptKind::Player => ("user", format!("{}：{}", event.speaker_name, event.text)),
             TranscriptKind::Narration => ("user", format!("（旁白）{}", event.text)),
-            TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
+            TranscriptKind::System => ("user", format!("（系統）{}", system_event_text(event, true))),
         };
         push_merged(&mut messages, role, line);
     }
@@ -748,21 +748,10 @@ pub fn appeared_person_titles(events: &[TranscriptEvent]) -> BTreeSet<String> {
         .collect()
 }
 
-/// present 欄的斷詞規則，逐字沿用 `state_scope`（頓號／逗號／斜線／分號，trim 後濾空）。
-/// `state_scope` 是凍結 system 的一部分不能動，這裡獨立一份、邏輯保持同步而非重寫。
-fn split_present_names(raw: &str) -> Vec<String> {
-    raw.split(['、', '，', ',', '／', '/', '；', ';'])
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
-/// 在場名字跟條目標題比對：雙向包含，「亞歷山大」對得上「亞歷山大・馮・史特勞斯」。
-fn name_matches(name: &str, title: &str) -> bool {
-    title.contains(name) || name.contains(title)
-}
-
+/// present 欄斷詞／在場名字比對現在是 `data::split_present_names`／`data::name_matches`
+/// （包 4b 拉出去給角色卡換幕結算共用，data 層不能反過來依賴 transport）；
+/// `state_scope` 是凍結 system 的一部分不能動，仍照舊獨立一份、邏輯保持同步而非重寫。
+///
 /// 這一輪新面孔：`is_person && !disabled` 條目裡，present 名單比對得上、且不在
 /// `already_appeared` 裡的那些，依世界書順序回傳；呼叫端逐一 append 成登場事件。
 ///
@@ -774,13 +763,15 @@ pub fn detect_new_arrivals<'a>(
     reply_body: &str,
     already_appeared: &BTreeSet<String>,
 ) -> Vec<&'a WorldbookEntry> {
-    let present_names = present.map(split_present_names);
+    let present_names = present.map(data::split_present_names);
     worldbook
         .iter()
         .filter(|entry| entry.is_person && !entry.disabled)
         .filter(|entry| !already_appeared.contains(&entry.title))
         .filter(|entry| match &present_names {
-            Some(names) => names.iter().any(|name| name_matches(name, &entry.title)),
+            Some(names) => names
+                .iter()
+                .any(|name| data::name_matches(name, &entry.title)),
             None => reply_body.contains(&entry.title),
         })
         .collect()
@@ -795,6 +786,61 @@ pub fn person_arrival_text(entry: &WorldbookEntry, user_name: &str) -> String {
         entry.title,
         replace_st_macros(&entry.content, user_name, None)
     )
+}
+
+// ---------------------------------------------------------------------
+// AI 卡重構包 4b：角色卡自動上下場，鏡射上面 4a 的世界書人物在場機制。角色卡的持久
+// 隱藏欄位（data::CharacterMeta.auto_hidden）只在換幕結算（data::begin_next_scene）改動，
+// 這裡（回合中）只偵測與 append 事件，不碰欄位本身。
+// ---------------------------------------------------------------------
+
+/// 本幕已回歸的角色卡集合：掃 transcript 裡帶 `data::CARD_ARRIVAL_PREFIX` 的 System 事件
+/// 取出卡名。命名對齊 4a 的 `appeared_person_titles`。
+pub fn appeared_card_names(events: &[TranscriptEvent]) -> BTreeSet<String> {
+    data::appeared_titles(events, data::CARD_ARRIVAL_PREFIX)
+}
+
+/// 這一輪新回歸的角色卡：`auto_hidden && !archived` 的卡裡，present 名單比對得上（缺席退回
+/// 正文比對）、且本幕還沒回歸過的，依卡片清單順序回傳；呼叫端逐一 append 成回歸事件。
+/// 鏡射 `detect_new_arrivals`，鍵從世界書 title 換成卡片 name。
+pub fn detect_new_card_arrivals<'a>(
+    cards: &'a [CharacterCard],
+    present: Option<&str>,
+    reply_body: &str,
+    already_appeared: &BTreeSet<String>,
+) -> Vec<&'a CharacterCard> {
+    let present_names = present.map(data::split_present_names);
+    cards
+        .iter()
+        .filter(|card| !already_appeared.contains(&card.name))
+        .filter(|card| match &present_names {
+            Some(names) => names
+                .iter()
+                .any(|name| data::name_matches(name, &card.name)),
+            None => reply_body.contains(&card.name),
+        })
+        .collect()
+}
+
+/// 角色卡回歸事件的內文：固定前綴＋〈name〉一行，接公開設定＋私有設定全文
+/// （`{{user}}`／`{{char}}` 已代換）。格式對照 gm_system_prompt 的全卡呈現；
+/// chars 快照本來就含全卡（lib.rs load_active_cards 註解），回歸事件不算新洩漏，
+/// 呼叫端一律標 gm_only=false。
+pub fn card_arrival_text(card: &CharacterCard, user_name: &str) -> String {
+    let mut text = format!("{}〈{}〉", data::CARD_ARRIVAL_PREFIX, card.name);
+    if !card.public_md.trim().is_empty() {
+        text.push_str(&format!(
+            "\n公開設定：\n{}",
+            replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
+        ));
+    }
+    if !card.private_md.trim().is_empty() {
+        text.push_str(&format!(
+            "\n私有設定：\n{}",
+            replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
+        ));
+    }
+    text
 }
 
 /// 角色卡對應的狀態樹分支：面板指認優先，其次全樹同名比對。
@@ -940,15 +986,27 @@ pub struct LaneTurn {
     pub confidential: Option<String>,
 }
 
+/// System 事件的顯示文字：`redact_gm_only` 為真且該事件 `gm_only` 時只留第一行（前綴＋標題），
+/// 不含全文；其餘一律原文（AI 卡重構包 4b）。chars 線（單發 assemble_messages／chars lane）
+/// 傳真，GM 線一律傳假——GM 看得到一切，這是既有可見性憲法。
+fn system_event_text(event: &TranscriptEvent, redact_gm_only: bool) -> String {
+    if redact_gm_only && event.gm_only {
+        event.text.lines().next().unwrap_or_default().to_owned()
+    } else {
+        event.text.clone()
+    }
+}
+
 /// 事件在 lane prompt 裡的一行。續聊線的歷史全部以名字標注成純文字
 /// （誰說的靠「X：」前綴分辨，不靠 role），與 session 內既有歷史逐字銜接。
-pub fn lane_event_line(event: &TranscriptEvent) -> String {
+/// `redact_gm_only`：chars lane 傳真（洩漏修正），GM lane 傳假（全文）。
+pub fn lane_event_line(event: &TranscriptEvent, redact_gm_only: bool) -> String {
     match event.kind {
         TranscriptKind::Dialogue | TranscriptKind::Player => {
             format!("{}：{}", event.speaker_name, event.text)
         }
         TranscriptKind::Narration => format!("（旁白）{}", event.text),
-        TranscriptKind::System => format!("（系統）{}", event.text),
+        TranscriptKind::System => format!("（系統）{}", system_event_text(event, redact_gm_only)),
     }
 }
 
@@ -1979,6 +2037,7 @@ mod tests {
             kind,
             text: text.to_owned(),
             state: None,
+            gm_only: false,
         }
     }
 
@@ -3933,19 +3992,19 @@ mod tests {
     #[test]
     fn lane_event_line_labels_every_kind_by_name() {
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安")),
+            lane_event_line(&event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"), false),
             "狐狸：晚安"
         );
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::Player, "", "阿濤", "好啊")),
+            lane_event_line(&event(TranscriptKind::Player, "", "阿濤", "好啊"), false),
             "阿濤：好啊"
         );
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::Narration, "", "GM", "夜深了")),
+            lane_event_line(&event(TranscriptKind::Narration, "", "GM", "夜深了"), false),
             "（旁白）夜深了"
         );
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::System, "", "", "擲骰 3")),
+            lane_event_line(&event(TranscriptKind::System, "", "", "擲骰 3"), false),
             "（系統）擲骰 3"
         );
     }
@@ -4553,5 +4612,86 @@ mod tests {
         };
         let text = person_arrival_text(&alice, "阿濤");
         assert_eq!(text, "（人物登場）〈愛麗絲〉\n阿濤 認識她。");
+    }
+
+    // ---- AI 卡重構包 4b：角色卡自動上下場，鏡射上面 4a 的四則 detect_new_arrivals 測試 ----
+
+    /// present 名單雙向包含比對得上就算命中。
+    #[test]
+    fn detect_new_card_arrivals_matches_present_names_with_bidirectional_contains() {
+        let alexander = card("alex-id", "亞歷山大・馮・史特勞斯", "", "");
+        let hidden = [alexander];
+        let already = BTreeSet::new();
+        let arrivals = detect_new_card_arrivals(&hidden, Some("亞歷山大、船長"), "", &already);
+        assert_eq!(arrivals.len(), 1);
+        assert_eq!(arrivals[0].name, "亞歷山大・馮・史特勞斯");
+    }
+
+    /// 本幕已回歸過的卡（already_appeared 裡有）就算 present 再報也不重複回傳。
+    #[test]
+    fn detect_new_card_arrivals_skips_already_appeared_names() {
+        let fox = card("fox-id", "狐狸", "", "");
+        let hidden = [fox];
+        let already: BTreeSet<String> = BTreeSet::from(["狐狸".to_owned()]);
+        let arrivals = detect_new_card_arrivals(&hidden, Some("狐狸"), "", &already);
+        assert!(arrivals.is_empty());
+    }
+
+    /// present 鍵不存在就退回正文比對；鍵存在但是空字串只信 present，
+    /// 就算正文裡有名字也不算數。
+    #[test]
+    fn detect_new_card_arrivals_falls_back_to_reply_body_only_when_present_key_is_absent() {
+        let fox = card("fox-id", "狐狸", "", "");
+        let hidden = [fox];
+        let already = BTreeSet::new();
+
+        let via_body = detect_new_card_arrivals(&hidden, None, "狐狸從陰影裡走出來。", &already);
+        assert_eq!(via_body.len(), 1);
+
+        let empty_present =
+            detect_new_card_arrivals(&hidden, Some(""), "狐狸從陰影裡走出來。", &already);
+        assert!(empty_present.is_empty());
+    }
+
+    /// 回歸事件文字格式：固定前綴＋〈name〉一行，接公開設定與私有設定全文（`{{user}}` 已代換）；
+    /// 空的欄位不印該段標題。
+    #[test]
+    fn card_arrival_text_has_prefix_title_line_and_sections() {
+        let fox = card("fox-id", "狐狸", "{{user}} 認識牠。", "其實是隻妖狐。");
+        let text = card_arrival_text(&fox, "阿濤");
+        assert_eq!(
+            text,
+            "（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。\n私有設定：\n其實是隻妖狐。"
+        );
+
+        let no_private = card("fox-id", "狐狸", "公開內容", "");
+        assert_eq!(
+            card_arrival_text(&no_private, "阿濤"),
+            "（角色回歸）〈狐狸〉\n公開設定：\n公開內容"
+        );
+    }
+
+    /// visibility 洩漏修正（包 4b）：gm_only 事件在 chars 線（`redact_gm_only=true`）只留
+    /// 前綴＋標題那一行；GM 線（`redact_gm_only=false`）與非 gm_only 事件一律全文。
+    #[test]
+    fn lane_event_line_redacts_gm_only_text_for_chars_lane_only() {
+        let mut secret = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            "（人物登場）〈密探〉\n只有 GM 知道的全文。",
+        );
+        secret.gm_only = true;
+        assert_eq!(
+            lane_event_line(&secret, true),
+            "（系統）（人物登場）〈密探〉"
+        );
+        assert_eq!(
+            lane_event_line(&secret, false),
+            "（系統）（人物登場）〈密探〉\n只有 GM 知道的全文。"
+        );
+
+        let public = event(TranscriptKind::System, "", "GM", "擲骰 3");
+        assert_eq!(lane_event_line(&public, true), "（系統）擲骰 3");
     }
 }
