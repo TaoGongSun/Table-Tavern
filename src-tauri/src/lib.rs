@@ -10,6 +10,7 @@ mod mechanism;
 mod proxy;
 mod receipts;
 mod refactor;
+mod refactor_ai;
 mod session_file;
 mod snapshot_patch;
 mod transport;
@@ -529,6 +530,67 @@ fn refactor_apply(
         before,
     );
     Ok(result.summary)
+}
+
+/// AI 卡重構讀卡（盤點階段）：AI 讀整張卡的世界書，把條目分成人物合集／介面／機制三類候選。
+#[tauri::command]
+async fn refactor_survey(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<refactor_ai::RefactorSurveyOutcome, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let messages = refactor_ai::survey_messages(&context, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        Some(&world_id),
+        "GM",
+        "Output exactly in the requested marker format, nothing else.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(refactor_ai::parse_survey(&raw))
+}
+
+/// AI 卡重構讀卡（展開階段）：system 與盤點同一字串（快取命中），逐條展開成結構化產物。
+#[tauri::command]
+async fn refactor_expand(
+    app: tauri::AppHandle,
+    world_id: String,
+    entry_uid: String,
+    kind: String,
+) -> Result<refactor_ai::RefactorExpandOutcome, String> {
+    let entry_kind = refactor_ai::EntryKind::parse(&kind)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
+        .map_err(|error| error.to_string())?;
+    let messages = refactor_ai::expand_messages(&context, &entry_uid, &entry_text, entry_kind, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        Some(&world_id),
+        "GM",
+        "Output exactly in the requested marker format, nothing else.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(refactor_ai::parse_expand(entry_kind, &entry_uid, &raw))
 }
 
 #[tauri::command]
@@ -2149,6 +2211,8 @@ pub fn run() {
             undo_last_import,
             record_import_rename,
             refactor_apply,
+            refactor_survey,
+            refactor_expand,
             export_character,
             read_character_image,
             save_character_image,
