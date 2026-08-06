@@ -1,8 +1,7 @@
 # Handoff: card-import-flow
 
 ## Current state
-四包＋後續十項修正全部實作完成，最初的實機驗收清單七項**全數通過**。2026-08-06 收工時無未完成的實作，也無已知缺陷。
-驗收第 7 項通過的同時暴露出 companion 路徑的前提是假的，當場拍板拿掉（見下）。任務可結案。
+**已結案（2026-08-06）**：四包＋後續十項修正全部實作完成，實機驗收清單七項全數通過，無已知缺陷。
 
 ## Completed
 全部已驗收，明細與證據見 [archive/card-import-flow-completed.md](archive/card-import-flow-completed.md)。
@@ -20,9 +19,9 @@
 無。
 
 ## Next action
-結案：狀態改 completed、從 TASKS.md「In progress」移出、那一行搬 [DONE.md](../DONE.md)。
+無。已結案，那一行在 [DONE.md](../DONE.md)。
 
-**已知待觀察（非缺陷）**：有匯入紀錄的桌再匯卡會連跳兩個框——先問身分，再問哪一桌；空桌只有一個框。這是「所有卡都讓玩家選身分」的直接後果，實機覺得煩才把兩框併一個。
+**使用者已接受、不再追蹤**：有匯入紀錄的桌再匯卡會連跳兩個框（先問身分、再問哪一桌），空桌只有一個框。這是「所有卡都讓玩家選身分」的直接後果，2026-08-06 實機確認可接受，不併。
 
 ## Constraints
 - AI 卡重構按鈕另案（[ai-card-refactor](../tasks/ai-card-refactor.md)）；入口方向已拍進該任務檔。
