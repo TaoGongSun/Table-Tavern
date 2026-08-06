@@ -2384,11 +2384,13 @@ textarea {
   flex-direction: column;
 }
 
-.card-interface-close {
+.card-interface-toolbar {
   position: absolute;
   top: 0.6rem;
   right: 0.6rem;
   z-index: 1;
+  display: flex;
+  gap: 0.4rem;
 }
 
 /* 送出後畫面留在介面裡，得看得出模型在跑（貼左上角，卡片自己的版面多半從中間起） */

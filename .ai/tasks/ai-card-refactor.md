@@ -3,7 +3,7 @@ Task-ID: ai-card-refactor
 Title: AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡（產物人審）
 Status: in_progress
 Created: 2026-08-05T14:00:00+08:00
-Updated: 2026-08-06T20:21:00+08:00
+Updated: 2026-08-07T00:40:00+08:00
 
 ## Summary
 接 [state-values-mvu](state-values-mvu.md) 不做清單「下期按鈕」與 [card-import-flow](card-import-flow.md) 另案。按鈕＝AI 讀整張卡，依 [MECHANISM-FORMAT.md](../reference/MECHANISM-FORMAT.md) 一次產三類產物：機制殘渣抽成欄位規則＋觸發表、介面規則抽成狀態樹（app 本地渲染）、人物合集條目切成角色卡候選。產物一律人審後套用。
@@ -21,8 +21,8 @@ Updated: 2026-08-06T20:21:00+08:00
 兩型樣本齊備，不需再匯卡。
 
 ## 順序
-1. 依 [CARD-REFACTOR-SPEC.md](../reference/CARD-REFACTOR-SPEC.md) 實作包 1–7（2026-08-06 逐包定案）。
-2. **合併實測**：按鈕完成後開西幻重構桌，一次驗按鈕產物＋狀態欄二期執行期行為（本地算術、拒收回饋、觸發表）；增量路徑另用勇者卡便宜檔位煙霧幾輪即可。
+1. ~~依 [CARD-REFACTOR-SPEC.md](../reference/CARD-REFACTOR-SPEC.md) 實作包 1–7~~——**2026-08-06–07 七包全部實作完成**（十一個 commit，cargo test 406／vitest 53／build／i18n 全綠），細節見[交接檔](../handoffs/ai-card-refactor.md)。
+2. **合併實測**：照交接檔「待實測清單」A–E 段逐項勾（含狀態欄二期執行期合併驗收與勇者卡增量煙霧），全過即結案。
 
 ## Constraints
 - 地基（皆已完成）：機制格式規範文件、未收編帳本（state-values-mvu 包 8）、匯入收據（card-import-flow 包 2）。
