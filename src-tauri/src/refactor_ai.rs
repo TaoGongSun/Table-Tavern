@@ -188,11 +188,25 @@ const INTERFACE_BODY: &str = r#"這條目在定義介面／狀態欄格式，請
 物件，深度不限（例如 {"World": {"Time": "清晨"}, "亞瑟": {"HP": "480/500"}}）。只轉真的是狀態欄位的部分
 （地圖、時間、地點、物品、進度……），故事性敘述不要放進去。
 
-嚴格照以下標記輸出，JSON 前後用三個反引號加 json 圍起來，標記之外不要有任何文字：
+接著請依這條規則描述的版面，額外設計一份給玩家看的「靜態 HTML 渲染殼」：一個自包含單檔 HTML，CSS／JS 一律
+寫成 inline，不能引用任何外部資源（外部字型、CDN、圖片網址一律不行）。資料一律用 `{{狀態樹路徑}}` 佔位符
+表示（例如 `{{World.Time}}`、`{{亞瑟.HP}}`，路徑對應上面 STATE 輸出的樹），佔位符會被替換成 HTML escape
+過的純文字，殼不能依賴佔位符注入 HTML 標籤或執行任何邏輯。需要互動按鈕就呼叫 `window.triggerSlash("/send 文字內容")`
+（等同玩家在輸入框打了這段文字並送出）或 `window.triggerSlash("/trigger")`（不帶文字，只觸發一次行動）；
+沒有把握能正確做出互動就純展示，不要硬加按鈕。
+
+嚴格照以下標記輸出，兩個區塊都要有、緊接著彼此，JSON／HTML 前後各用三個反引號加對應語言圍起來，標記之外
+不要有任何文字：
 
 ## STATE
 ```json
 { ... }
+```
+
+## SHELL
+```html
+<!DOCTYPE html>
+...
 ```"#;
 
 const MECHANISM_BODY: &str = r#"這條目在定義數值規則或觸發判定，請轉成「欄位規則」與「觸發表」兩份 JSON。
@@ -384,6 +398,18 @@ fn strip_json_fence(text: &str) -> &str {
     trimmed.strip_suffix("```").unwrap_or(trimmed).trim()
 }
 
+/// 剝掉 AI 常見的 ```html ... ``` 圍欄；沒有圍欄的內容原樣放行。截斷輸出（沒有結尾 ``` ）
+/// 一樣安全：strip_suffix 找不到就原樣放行，不 panic。
+fn strip_html_fence(text: &str) -> &str {
+    let trimmed = text.trim();
+    let trimmed = trimmed
+        .strip_prefix("```html")
+        .or_else(|| trimmed.strip_prefix("```HTML"))
+        .or_else(|| trimmed.strip_prefix("```"))
+        .unwrap_or(trimmed);
+    trimmed.strip_suffix("```").unwrap_or(trimmed).trim()
+}
+
 /// 盤點結果：三類 uid（字串——避免前端 JS number 精度問題），人物合集另帶人名清單。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefactorSurveyPerson {
@@ -538,16 +564,24 @@ fn parse_person_expand(raw: &str, entry_uid: &str) -> (Vec<RefactorCharacter>, O
 }
 
 /// interface 展開：STATE 區塊剝 ```json 圍欄後整段當 JSON 解；標記缺席或 JSON 壞掉一律 None，
-/// 呼叫端退回 ExpandOutcome.raw（雙軌保底）。
+/// 呼叫端退回 ExpandOutcome.raw（雙軌保底）。SHELL 區塊（```html 圍欄，AI 順便產的渲染殼，
+/// 選配）另外抽：缺席或抽出來是空字串就 shell=None，不影響 state_fields 這邊解不解析得出來；
+/// 輸出被截斷（沒有結尾圍欄）也不會壞事，能抽多少算多少，沿用既有 raw 雙軌保底的精神。
 fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterface> {
-    let blocks = parse_blocks(raw, &["STATE"]);
-    let block = blocks.iter().find(|block| block.marker == "STATE")?;
-    let text = join_trim(&block.lines);
+    let blocks = parse_blocks(raw, &["STATE", "SHELL"]);
+    let state_block = blocks.iter().find(|block| block.marker == "STATE")?;
+    let text = join_trim(&state_block.lines);
     let state_fields: serde_json::Value = serde_json::from_str(strip_json_fence(&text)).ok()?;
+    let shell = blocks
+        .iter()
+        .find(|block| block.marker == "SHELL")
+        .map(|block| strip_html_fence(&join_trim(&block.lines)).to_owned())
+        .filter(|shell| !shell.is_empty());
     Some(RefactorInterface {
         state_fields,
         source_uids: vec![entry_uid.to_owned()],
         raw: text,
+        shell,
     })
 }
 
@@ -803,6 +837,47 @@ mod tests {
         let outcome = parse_expand(EntryKind::Interface, "7", raw);
         assert!(outcome.interface.is_none());
         assert_eq!(outcome.raw, raw);
+    }
+
+    // ---- SHELL 區塊（渲染殼 5a）----
+
+    #[test]
+    fn parse_expand_interface_with_shell_extracts_html_shell() {
+        let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n\
+                   ## SHELL\n```html\n<!DOCTYPE html><html><body>{{World.Time}}</body></html>\n```\n";
+        let outcome = parse_expand(EntryKind::Interface, "7", raw);
+        let interface = outcome.interface.unwrap();
+        assert_eq!(
+            interface.shell.as_deref(),
+            Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>")
+        );
+    }
+
+    #[test]
+    fn parse_expand_interface_without_shell_marker_yields_none() {
+        let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n";
+        let outcome = parse_expand(EntryKind::Interface, "7", raw);
+        let interface = outcome.interface.unwrap();
+        assert!(interface.shell.is_none());
+    }
+
+    #[test]
+    fn parse_expand_interface_empty_shell_fence_yields_none() {
+        let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n## SHELL\n```html\n```\n";
+        let outcome = parse_expand(EntryKind::Interface, "7", raw);
+        let interface = outcome.interface.unwrap();
+        assert!(interface.shell.is_none());
+    }
+
+    // 截斷輸出（SHELL 圍欄沒收尾）：能抽多少算多少，不 panic、不因此讓 state_fields 跟著失敗——
+    // 跟 person 展開截斷時保留部分內容是同一種「純文字沒有解析失敗概念」的精神。
+    #[test]
+    fn parse_expand_interface_truncated_shell_keeps_partial_content_without_panic() {
+        let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n\
+                   ## SHELL\n```html\n<!DOCTYPE html><html><body>{{World.Time}} 寫到一半突然斷";
+        let outcome = parse_expand(EntryKind::Interface, "7", raw);
+        let interface = outcome.interface.unwrap();
+        assert!(interface.shell.unwrap().contains("寫到一半突然斷"));
     }
 
     // ---- (e) mechanism 展開 ----

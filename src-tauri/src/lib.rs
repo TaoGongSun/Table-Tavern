@@ -607,6 +607,13 @@ async fn refactor_expand(
     Ok(refactor_ai::parse_expand(entry_kind, &entry_uid, &raw))
 }
 
+/// 讀 AI 卡重構套用介面時可能順便產的靜態渲染殼（interface-shell.html）；沒套用過或那次沒
+/// 產出殼就回 None，前端退回保底狀態欄／卡片自帶殼（既有兩層，零改動）。
+#[tauri::command]
+fn refactor_interface_shell(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
+    data::read_interface_shell(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn card_interfaces(
     app: tauri::AppHandle,
@@ -2400,6 +2407,7 @@ pub fn run() {
             refactor_apply,
             refactor_survey,
             refactor_expand,
+            refactor_interface_shell,
             export_character,
             read_character_image,
             save_character_image,
