@@ -2,6 +2,7 @@
 
 結案任務按結案時間新到舊排列。進行中與待辦見 [TASKS.md](TASKS.md)。
 
+- [card-import-flow](tasks/card-import-flow.md) — 匯入流程 v2：單一入口＋收據復原＋第二張卡路由 — 2026-08-06 實機驗收清單七項全數通過，結案。四包（指 GM／收據復原／單一入口分流／第二張卡路由）＋十項後續修正；最後一輪由樣本卡實測驅動的四件：雙世界書由硬擋改成可融合、身分判定改版（世界書內容寫在人設欄的卡也匯得進來，備用開場白數當主按鈕判準）、收據為空時拿條目當保險、角色卡路徑也給開場白。三條被推翻的原拍板：雙世界書硬擋、純角色卡零詢問直匯、配套世界書 companion 零打擾（配套與否程式偵測不出來，只有玩家知道）。明細見 [handoffs/archive/card-import-flow-completed.md](handoffs/archive/card-import-flow-completed.md)
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白選擇 — 2026-08-04 六項全部實作完成（cargo test 174 綠）並全數實機驗收通過，狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）末四條收尾；第四項第二期的數值機制拆成獨立任務 [state-values-mvu](tasks/state-values-mvu.md)，結案
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 2026-08-03 Grok 回報者確認連上，Windows 全流程（一鍵安裝→登入→聊天）通過，系統代理自動下傳同時獲證（代理確實傳進聊天子程序）；含鎖檔白話提示、系統代理下傳、grok 探針換 `grok models` ＋ pre_probe，結案（Stage C 與安裝階段可見視窗留待日後拍板）
 - [release-4-theme-pack](tasks/release-4-theme-pack.md) — 發佈 4：佈景主題引擎＋贊助包（回禮內容） — 2026-08-03 使用者拍板縮減結案：贊助解鎖檔（`.ttpack`）與 Ko-fi 商品頁連結已上線並實機驗收；原 scope 的主題載入引擎／自選桌布／AI 產生主題確認不做，五套贊助配色維持寫死在 App.css，NewPlan §16.1 同步縮減，結案
