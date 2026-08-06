@@ -1860,6 +1860,7 @@ mod tests {
             current_scene: 0,
             catchup_summaries: BTreeMap::new(),
             scene_titles: BTreeMap::new(),
+            scene_labels: BTreeMap::new(),
             state: data::TableState {
                 table: BTreeMap::new(),
                 tree: tree_from(pairs),

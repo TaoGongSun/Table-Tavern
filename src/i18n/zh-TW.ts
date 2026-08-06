@@ -366,6 +366,12 @@ export const zh = {
   sceneRevertHint: "這一幕還沒開始：刪掉前情提要，回到上一幕接著玩",
   sceneSummaryRetry: "重寫前情提要",
   sceneSummaryRetryHint: "不滿意就讓 AI 重寫一份，會再花一次呼叫",
+  sceneFork: "從這一幕繼續",
+  sceneForkTitle: "從這一幕繼續",
+  sceneForkConfirm:
+    "會把這一幕的全部紀錄複製成新的一幕接著玩，原本的紀錄不受影響。這一幕越長，接下來第一次生成要送的內容越多，費用也越高。",
+  sceneLabelVersioned: "第 {n} 幕 ({v})",
+  sceneWithTitleVersioned: "第 {n} 幕 ({v})：{title}",
   sceneTooLongHint: "紀錄很長，模型可能顧不上前面，建議換幕壓縮",
   sceneAwayHint: "間隔太久，系統快取已清除，建議換幕壓縮",
   pastScenes: "前幕（{count}）",

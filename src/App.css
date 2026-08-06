@@ -1171,6 +1171,10 @@ textarea {
   gap: 0.75rem;
 }
 
+.act-fork {
+  margin-left: auto;
+}
+
 .edit-pane-body {
   flex: 1;
   min-height: 0;

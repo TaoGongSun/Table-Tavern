@@ -1,9 +1,9 @@
 # Task
 Task-ID: scene-revert
 Title: 換幕可復原：退回前幕＋重新生成摘要
-Status: in_progress
+Status: completed
 Created: 2026-08-06T00:00:00+08:00
-Updated: 2026-08-06T00:00:00+08:00
+Updated: 2026-08-06T17:30:00+08:00
 
 ## Summary
 
@@ -19,7 +19,7 @@ Updated: 2026-08-06T00:00:00+08:00
 守門條件兩者共用：**新幕只有那則摘要、還沒開始玩**才給按（`events.length === 1`）。一有新內容鈕就消失——同「收回上一句」那疊的失效原則（位置已被後話蓋掉）。
 
 ## Next action
-- 實作完成、四項自驗全綠（cargo 332／build／check:i18n／vitest 22），等使用者實機驗收六項後結案。清單見 `.ai/handoffs/scene-revert.md` 的 Next action。
+- 已結案（2026-08-06 實機驗收六項全數通過）。明細見 [handoffs/archive/scene-revert-completed.md](../handoffs/archive/scene-revert-completed.md)。
 
 ## Constraints
 - 守門只認「這幕只有一則」，不去解析那則是不是摘要——`begin_next_scene` 保證新幕第一則就是摘要。

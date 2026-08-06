@@ -342,6 +342,12 @@ export const ko: Record<MsgKey, string> = {
   sceneRevertHint: "이번 막은 아직 시작되지 않았습니다: 요약을 삭제하고 이전 막으로 돌아가 계속 진행합니다",
   sceneSummaryRetry: "요약 다시 쓰기",
   sceneSummaryRetryHint: "마음에 들지 않으면 AI에게 다시 쓰게 합니다: 호출이 한 번 더 발생합니다",
+  sceneFork: "이 막에서 계속하기",
+  sceneForkTitle: "이 막에서 계속하기",
+  sceneForkConfirm:
+    "이 막의 전체 로그를 복사해 새 막으로 이어서 진행합니다. 원본 로그는 그대로 유지됩니다. 이 막이 길수록 다음 생성 때 보낼 내용이 많아지고, 비용도 늘어납니다.",
+  sceneLabelVersioned: "제{n}막 ({v})",
+  sceneWithTitleVersioned: "제{n}막 ({v}): {title}",
   sceneTooLongHint: "로그가 길어져 모델이 앞부분을 놓칠 수 있습니다. 새 막으로 압축하는 것을 추천합니다.",
   sceneAwayHint: "간격이 길어져 시스템 캐시가 지워졌습니다. 새 막으로 압축하는 것을 추천합니다.",
   pastScenes: "지난 막 ({count}개)",

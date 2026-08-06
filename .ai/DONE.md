@@ -2,6 +2,7 @@
 
 結案任務按結案時間新到舊排列。進行中與待辦見 [TASKS.md](TASKS.md)。
 
+- [scene-revert](tasks/scene-revert.md) — 換幕可復原：退回前幕＋重新生成摘要 — 2026-08-06 實機驗收六項全數通過，結案。換幕在資料層本來就可逆（begin_next_scene 只是開新檔＋場號 +1，前幕 jsonl 一個字沒動），據此補兩條補救路：退回前幕（純本地檔案操作不花錢）、重寫前情提要（重跑摘要覆寫那一則，要再花一次呼叫）。守門共用一條：這幕只有那則摘要才給按，玩家一發言就自動收掉。第三條「摘要就地手改」評估後不做（app 沒有訊息就地編輯機制，要新開一套 UI）。明細見 [handoffs/archive/scene-revert-completed.md](handoffs/archive/scene-revert-completed.md)
 - [card-import-flow](tasks/card-import-flow.md) — 匯入流程 v2：單一入口＋收據復原＋第二張卡路由 — 2026-08-06 實機驗收清單七項全數通過，結案。四包（指 GM／收據復原／單一入口分流／第二張卡路由）＋十項後續修正；最後一輪由樣本卡實測驅動的四件：雙世界書由硬擋改成可融合、身分判定改版（世界書內容寫在人設欄的卡也匯得進來，備用開場白數當主按鈕判準）、收據為空時拿條目當保險、角色卡路徑也給開場白。三條被推翻的原拍板：雙世界書硬擋、純角色卡零詢問直匯、配套世界書 companion 零打擾（配套與否程式偵測不出來，只有玩家知道）。明細見 [handoffs/archive/card-import-flow-completed.md](handoffs/archive/card-import-flow-completed.md)
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白選擇 — 2026-08-04 六項全部實作完成（cargo test 174 綠）並全數實機驗收通過，狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）末四條收尾；第四項第二期的數值機制拆成獨立任務 [state-values-mvu](tasks/state-values-mvu.md)，結案
 - [cli-install-windows](tasks/cli-install-windows.md) — CLI 一鍵安裝 Windows 支援（PowerShell 分支） — 2026-08-03 Grok 回報者確認連上，Windows 全流程（一鍵安裝→登入→聊天）通過，系統代理自動下傳同時獲證（代理確實傳進聊天子程序）；含鎖檔白話提示、系統代理下傳、grok 探針換 `grok models` ＋ pre_probe，結案（Stage C 與安裝階段可見視窗留待日後拍板）

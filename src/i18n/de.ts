@@ -342,6 +342,12 @@ export const de: Record<MsgKey, string> = {
   sceneRevertHint: "Dieser Akt hat noch nicht begonnen: Zusammenfassung verwerfen und mit dem vorherigen Akt fortfahren",
   sceneSummaryRetry: "Neu zusammenfassen",
   sceneSummaryRetryHint: "Nicht zufrieden? Lass die KI eine neue schreiben — kostet einen weiteren Aufruf",
+  sceneFork: "Von hier fortsetzen",
+  sceneForkTitle: "Von hier fortsetzen",
+  sceneForkConfirm:
+    "Kopiert den gesamten Akt in einen neuen, um von dort fortzufahren; das Original bleibt unverändert. Je länger dieser Akt ist, desto mehr wird bei der nächsten Generierung gesendet – und desto teurer wird es.",
+  sceneLabelVersioned: "Akt {n} ({v})",
+  sceneWithTitleVersioned: "Akt {n} ({v}): {title}",
   sceneTooLongHint: "Das Protokoll ist so lang, dass das Modell frühere Ereignisse aus dem Blick verlieren kann — ein neuer Akt komprimiert es",
   sceneAwayHint: "Die Pause war lang — der zwischengespeicherte Kontext wurde verworfen; ein neuer Akt komprimiert das Protokoll",
   pastScenes: "Frühere Akte ({count})",

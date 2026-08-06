@@ -1907,6 +1907,13 @@ fn revert_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> 
     data::revert_scene(&root, &world_id).map_err(|error| error.to_string())
 }
 
+/// 從前幕分岔：把那一幕的紀錄複製成新的一幕接著玩，純本地檔案處理不必等模型回覆。
+#[tauri::command]
+fn fork_scene(app: tauri::AppHandle, world_id: String, scene: u64) -> Result<u64, String> {
+    let root = data_root(&app)?;
+    data::fork_scene(&root, &world_id, scene).map_err(|error| error.to_string())
+}
+
 /// 重寫前情提要：結構照 advance_scene，差別是摘要對象換成「前一幕」的紀錄，
 /// 換出來的文字覆寫目前這幕既有的那則摘要，而不是開一個新場景。
 #[tauri::command]
@@ -1916,8 +1923,12 @@ async fn regenerate_scene_summary(app: tauri::AppHandle, world_id: String) -> Re
     let lang = transport::ui_language(&config);
     let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     let scene = state.current_scene;
-    if scene == 0 {
+    let label = data::scene_label(&state, scene);
+    let Some(previous_scene) = label.parent else {
         return Err("第一幕沒有前情提要可以重寫".to_owned());
+    };
+    if label.forked {
+        return Err("這一幕是從前幕接續來的，開頭不是前情提要".to_owned());
     }
     let current_events =
         data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
@@ -1926,7 +1937,7 @@ async fn regenerate_scene_summary(app: tauri::AppHandle, world_id: String) -> Re
         return Err("這一幕已經有新內容，不能重寫前情提要".to_owned());
     }
 
-    let previous_events = data::read_transcript(&root, &world_id, scene - 1)
+    let previous_events = data::read_transcript(&root, &world_id, previous_scene)
         .map_err(|error| error.to_string())?;
     if previous_events.is_empty() {
         return Err("前一幕還沒有任何紀錄，沒東西可以重新摘要".to_owned());
@@ -2151,6 +2162,7 @@ pub fn run() {
             usage_report,
             advance_scene,
             revert_scene,
+            fork_scene,
             regenerate_scene_summary,
             generate_table_outline,
             generate_table_character,
