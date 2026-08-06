@@ -58,17 +58,19 @@ pub fn assemble_card_context(root: &Path, world_id: &str) -> DataResult<String> 
     }
 
     if !ledger.entries.is_empty() {
-        out.push_str("\n### 機制帳本（唯讀脈絡，以下條目已被系統接管或跳過，不必再拆）\n");
+        out.push_str("\n### 機制帳本（唯讀脈絡）\n");
         for entry in &ledger.entries {
-            let label = match entry.kind {
-                RecordKind::Absorbed => "已接管",
-                RecordKind::Skipped => "已跳過",
-                _ => continue,
-            };
-            out.push_str(&format!(
-                "- uid={} 《{}》{}：{}\n",
-                entry.uid, entry.title, label, entry.detail
-            ));
+            match entry.kind {
+                RecordKind::Absorbed => out.push_str(&format!(
+                    "- uid={} 《{}》已接管，不必再拆：{}\n",
+                    entry.uid, entry.title, entry.detail
+                )),
+                RecordKind::Skipped => out.push_str(&format!(
+                    "- uid={} 《{}》曾嘗試接管失敗（原因：{}），是重構目標\n",
+                    entry.uid, entry.title, entry.detail
+                )),
+                _ => {}
+            }
         }
     }
 
@@ -136,7 +138,7 @@ const SURVEY_BODY: &str = r#"現在是「盤點」階段。請逐條檢查上面
   在說故事或角色。
 - 機制（mechanism）：條目在定義數值怎麼變動、什麼條件觸發什麼文字（屬性規則、關係階段、事件判定……）。
 
-已經被「機制帳本」標記接管或跳過的條目不用再列進介面／機制。只列你有把握的高信心項目。
+已被「機制帳本」標記接管的條目不用再列；標記跳過的條目是重構目標，屬機制類候選，有把握時列進 MECHANISM。只列你有把握的高信心項目。
 
 嚴格照以下標記輸出，標記之外不要有任何文字：
 
