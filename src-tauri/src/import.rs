@@ -9,6 +9,10 @@ use std::path::Path;
 
 const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
+/// 人設欄：既是 lorebook_heavy 秤重時的「人設份量」，也是沒有條目的卡轉成世界書時要收的內容。
+/// 不含 first_mes——開場白走 card_openings 讓玩家挑，收進條目會每回合重複注入。
+const PERSONA_FIELDS: [&str; 4] = ["description", "personality", "scenario", "mes_example"];
+
 /// 公開段落與 SillyTavern 欄位的對照表：匯入時拆成 `### 標題`，匯出時再併回欄位
 const PUBLIC_SECTIONS: [(&str, &str); 5] = [
     ("簡介", "description"),
@@ -29,6 +33,9 @@ pub struct ImportProbe {
     pub parsed: bool,
     /// character_book.entries 的條目數，沒有這個欄位就是 0
     pub book_entries: usize,
+    /// 備用開場白數：一張卡備了好幾個開局＝這是一座舞台不是一個人。
+    /// 不看 first_mes——每張角色卡都有，零鑑別力（TestCards 22 檔實測 18／18 有值）。
+    pub alternate_greetings: usize,
 }
 
 /// 匯入前只提示可能無法保留的內容；真正的格式錯誤仍交給匯入處理。
@@ -67,7 +74,7 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
             .filter_map(|entry| entry.get("content").and_then(Value::as_str))
             .map(|content| content.chars().count())
             .sum();
-        let persona: usize = ["description", "personality", "scenario", "mes_example"]
+        let persona: usize = PERSONA_FIELDS
             .into_iter()
             .map(|field| {
                 string_field(card_data, field)
@@ -79,6 +86,10 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
             .sum();
         entries.len() >= 3 && book >= persona.saturating_mul(3)
     });
+    probe.alternate_greetings = card_data
+        .get("alternate_greetings")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
     probe.name = string_field(card_data, "name")
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty());
@@ -1301,7 +1312,7 @@ fn private_markdown(data: &Value) -> String {
 }
 
 /// 世界書匯入的前處理：PNG 卡先解出內嵌 JSON；整包若是角色卡（社群發佈的世界書卡），
-/// 剝到 character_book 那層再交給 data::import_worldbook
+/// 剝到 character_book 那層再交給 data::import_worldbook；卡上沒有條目時改走人設欄轉換
 pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
     let json_bytes = if bytes.starts_with(PNG_MAGIC) {
         decode_png_character(bytes)?
@@ -1310,12 +1321,61 @@ pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
     };
     let value: Value = serde_json::from_slice(&json_bytes)
         .map_err(|error| data::invalid_data(format!("世界書 JSON 無法解析：{error}")))?;
-    let book = value
+    let card_data = value
         .get("data")
-        .and_then(|data| data.get("character_book"))
-        .or_else(|| value.get("character_book"))
+        .filter(|data| data.is_object())
         .unwrap_or(&value);
-    Ok(book.to_string())
+    let has_entries = |book: &Value| {
+        book.get("entries")
+            .and_then(Value::as_array)
+            .is_some_and(|entries| !entries.is_empty())
+    };
+    if let Some(book) = card_data.get("character_book").filter(|b| has_entries(b)) {
+        return Ok(book.to_string());
+    }
+    // 頂層就是世界書本體（V2 獨立書 JSON，entries 是物件不是陣列）
+    if card_data.get("entries").is_some() {
+        return Ok(card_data.to_string());
+    }
+    persona_as_worldbook(card_data)
+        .map(|book| book.to_string())
+        .ok_or_else(|| data::invalid_data("這張卡沒有世界書條目，人設欄也是空的"))
+}
+
+/// 世界書內容被作者寫在人設欄、`character_book` 卻是空的那種卡（實例：furry-male-scenarios，
+/// 1873 字全在 description）：把非空人設欄合成一條沒有關鍵字的常駐條目。
+/// 開場白不收——那條走 card_openings 讓玩家挑，收進來會每回合重複注入。
+fn persona_as_worldbook(card_data: &Value) -> Option<Value> {
+    let content = PERSONA_FIELDS
+        .iter()
+        .filter_map(|field| {
+            let text = string_field(card_data, field)?.trim();
+            (!text.is_empty()).then_some(text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if content.is_empty() {
+        return None;
+    }
+    let name = string_field(card_data, "name").unwrap_or_default().trim();
+    Some(json!({
+        "name": name,
+        "entries": [{
+            "id": 0,
+            "keys": [],
+            "secondary_keys": [],
+            "comment": name,
+            "content": content,
+            "constant": true,
+            "selective": false,
+            "insertion_order": 0,
+            "enabled": true,
+            "position": "before_char",
+            "case_sensitive": false,
+            "extensions": {},
+        }],
+        "extensions": {},
+    }))
 }
 
 fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
@@ -1937,6 +1997,22 @@ if (invasion >= 50 && done === false) { _%>
         assert_eq!(character_only.name.as_deref(), Some("莉亞"));
         assert_eq!(character_only.book_entries, 0);
         assert!(!character_only.book_shaped);
+        assert_eq!(character_only.alternate_greetings, 0);
+
+        // 情境卡：零條目、人設全塞在 description，靠備用開場白數認出來（實例 furry-male-scenarios）
+        let scenarios = probe_import(
+            json!({"data": {
+                "name": "Furry male Scenarios",
+                "description": "{{char}} is not a person but a scenario",
+                "first_mes": "開場",
+                "alternate_greetings": ["公車站", "海灘", "廚房"],
+            }})
+            .to_string()
+            .as_bytes(),
+        );
+        assert_eq!(scenarios.book_entries, 0);
+        assert!(!scenarios.lorebook_heavy);
+        assert_eq!(scenarios.alternate_greetings, 3);
 
         // 有 name 也帶 character_book：角色與世界書兩種身分都有料
         let both = probe_import(
@@ -2384,6 +2460,55 @@ if (invasion >= 50 && done === false) { _%>
         let round_trip: Value =
             serde_json::from_str(&worldbook_json(plain.as_bytes()).unwrap()).unwrap();
         assert_eq!(round_trip, serde_json::from_str::<Value>(plain).unwrap());
+    }
+
+    /// 世界書內容寫在人設欄、character_book 空著的卡：轉成一條沒關鍵字的常駐條目才進得來
+    #[test]
+    fn worldbook_json_converts_persona_fields_when_card_has_no_entries() {
+        let card = json!({"spec": "chara_card_v2", "spec_version": "2.0", "data": {
+            "name": "Furry male Scenarios",
+            "description": "{{char}} is not a person but a scenario",
+            "personality": "",
+            "scenario": "毛毛大陸",
+            "first_mes": "開場白不該進條目",
+            "alternate_greetings": ["公車站", "海灘"],
+        }})
+        .to_string();
+
+        let root = TestRoot::new("persona-as-book");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let json = worldbook_json(card.as_bytes()).unwrap();
+        assert_eq!(
+            data::import_worldbook(root.path(), &world_id, &json).unwrap(),
+            data::WorldbookImport {
+                imported: 1,
+                skipped: 0
+            }
+        );
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "Furry male Scenarios");
+        assert!(entries[0].constant);
+        assert!(entries[0].keys.is_empty());
+        // 非空人設欄照 PERSONA_FIELDS 順序併起來，開場白留給 card_openings
+        assert_eq!(
+            entries[0].content,
+            "{{char}} is not a person but a scenario\n\n毛毛大陸"
+        );
+        assert!(!entries[0].content.contains("開場白不該進條目"));
+
+        // character_book 在但條目是空陣列：一樣走轉換，不會匯進一本空書
+        let empty_book = json!({"data": {
+            "name": "空書卡", "description": "設定都在這裡", "character_book": {"entries": []},
+        }})
+        .to_string();
+        let converted: Value =
+            serde_json::from_str(&worldbook_json(empty_book.as_bytes()).unwrap()).unwrap();
+        assert_eq!(converted["entries"][0]["content"], "設定都在這裡");
+
+        // 人設欄全空＝真的沒東西可匯，明講而不是靜默塞一本空書
+        let hollow = json!({"data": {"name": "空殼", "first_mes": "只有開場白"}}).to_string();
+        assert!(worldbook_json(hollow.as_bytes()).is_err());
     }
 
     #[test]

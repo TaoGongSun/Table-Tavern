@@ -2,7 +2,7 @@
 
 ## Current state
 四包全部實作完成、主線逐包複驗綠、逐包 commit。2026-08-05 一輪實機驗收挖出四件並全數修完、逐項通過（身分框文案、腳本提示、開場白按鈕位置、兩路徑對等化）。驗收七項通過五項，剩 4、7 卡在沒有合適樣本卡。
-2026-08-06 追加兩件（樣本卡實測驅動）：雙世界書由封鎖改成可融合（已驗收）；身分判定改版（進行中，見 Remaining 的三步）。
+2026-08-06 追加兩件（樣本卡實測驅動）：雙世界書由封鎖改成可融合（已驗收）；身分判定改版三步全數實作、自驗四件套全綠、真卡端到端過，等實機驗收。
 
 ## Completed
 - 包 1：世界書匯入（兩路徑）後一律 setSpeaker(GM)；匯入成功後自動名桌改成卡名（probe 新增 name；純世界書檔退用檔名）；去重不再觸發選 GM。
@@ -19,6 +19,11 @@
 
 - **雙世界書改成可融合**（2026-08-06 拍板並驗收，推翻拍板 4 的「硬擋」）：路由框第二本世界書也給三顆鈕，中間那顆叫「仍要匯入」。資料層本來就支援——`data::import_worldbook` 讀既有書、新條目配新 uid 接在後面、指紋重複自動略過；收據先拍既有 uid 快照只記自己新增那批，所以兩本書各一筆收據、退第二本不誤傷第一本。路由名 `block_double_worldbook`→`merge_worldbook`、i18n 鍵 `importRouteBlock*`→`importRouteMerge*`，新增 `importRouteMergeAnyway`（十語系），文案改成「再匯一份會跟原本那份合成同一本；一模一樣的條目會自動略過。要分開放就開新桌」。
 
+- **身分判定改版**（2026-08-06 三步全做完，推翻拍板 1 的「純角色卡零詢問直匯」）：
+  1. `worldbook_json` 改成三段判斷——`character_book` 條目非空就剝那層（原行為）／頂層有 `entries` 原樣通過（V2 獨立書）／兩者皆無時走新的 `persona_as_worldbook()`，把非空人設欄併成一條沒關鍵字的常駐條目（`comment` 用卡名當標題）。人設欄清單抽成 `PERSONA_FIELDS`，`lorebook_heavy` 秤重改用同一份（原本內嵌重複一次）。**刻意不含 `first_mes`**——開場白走 card_openings 讓玩家挑，收進條目會每回合重複注入。**有條目的卡完全不動**（人設欄要不要一併收另案，避免回歸既有驗收）。人設欄全空回錯不靜默塞空書。
+  2. probe 加回 `alternate_greetings: usize`（包 4 之後刪過，這次是判準用途不是提示）。
+  3. 前端分流從三條縮成兩條：`!name || book_shaped` 維持零打擾直匯（沒有角色可建），**其餘一律跳身分框**。判準抽成 `looksLikeWorldbook()`（[App.tsx:73](../../src/App.tsx:73)）＝`book_shaped || lorebook_heavy || alternate_greetings > 0`，只決定主按鈕與文案講哪一種。`importChoice` 狀態由存整包 `probe` 改成只存算好的 `booksFirst`。零新 i18n 字串（兩種文案本來就都在）。
+
 ## Verification
 - 最終四件套（2026-08-05 主線複驗）：cargo test 327 綠、vitest 22 綠（含 import-routing 5 例）、npm run build ✓、check:i18n 十語系 82 鈕 OK。
 - 文案改寫自驗（2026-08-05）：npm run build ✓、vitest 22 綠、check:i18n 九語系 OK（按鈕加長後仍在寬度上限內）；接線見 [App.tsx:5546](../../src/App.tsx:5546)。
@@ -28,7 +33,9 @@
 - 路徑對等化：使用者實機測試通過（2026-08-05）。自驗：cargo test 326 綠（既有 round-trip 測試延伸驗「同一份匯出檔改用世界書身分匯入，機制照樣收進來」）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK。
 - 實機驗收第 6 項通過（2026-08-05 使用者）：新開的桌匯過世界書後再匯世界書會被擋。舊桌（收據功能之前建立的）沒有 `import-receipts.json` 擋不住——使用者拍板**不補**，新功能不覆蓋舊桌可接受。
 - 雙世界書改可融合自驗（2026-08-06）：npm run build ✓、vitest 22 綠、check:i18n 十語系 81 鈕 OK；殘留檢查 grep `importRouteBlock|block_double_worldbook` = 0；淨變化 +75 −42 行（13 檔）。**使用者實機驗收通過**（2026-08-06）。
-- 逐包 commit：548905a（包 1）、1939af6（包 2）、d8abe8b（包 3）、包 4 見 b4acab7。
+- 身分判定改版自驗（2026-08-06）：cargo test **327** 綠（原 326，新增 `worldbook_json_converts_persona_fields_when_card_has_no_entries`，並在既有 probe 測試補情境卡案例）、npm run build ✓、vitest 22 綠、check:i18n 九語系 OK；淨變化 +152 −22 行（2 檔）。
+- **真卡端到端**（2026-08-06，臨時測試跑完即刪）：`main_furry-male-scenarios-36317429ed88` → `alt_greetings=29`、`book_entries=0`、匯入 1 條常駐條目 1882 字、標題「Furry male Scenarios」、`card_openings` 30 條；`…-d88115666fe1` → 10／0／1895 字／11 條。1882 = description 1873 ＋ `\n\n` ＋ mes_example 7，開場白確實沒被收進條目。
+- 逐包 commit：548905a（包 1）、1939af6（包 2）、d8abe8b（包 3）、包 4 見 b4acab7、雙世界書融合見 a73ca94。
 - 主線抽讀確認：decideImportRoute 決策表逐條符合拍板；路由框 block 版 JSX 只有取消＋開新桌（App.tsx 搜 -a "importRoute !== null"）；openNewTableAndImport 的 worldId 全程來自 create_world 回傳值。
 
 ## Remaining
@@ -46,12 +53,21 @@
 
 樣本統計（TestCards 22 檔）定的判準：`first_mes` 18／18 全有值（6–4359 字，世界書卡也都有）＝零鑑別力，**不可用**；`alternate_greetings` 只 4 張有（29／10／3／1），後兩張本來就被 `lorebook_heavy` 判成世界書，**樣本上零誤判，不設門檻**。
 
+**三步已全部實作完成（見 Completed），以下留判準推導供後續調整參考。**
+
 1. **接「人設欄→條目」轉換路**（先做，否則第 2 步的主按鈕按下去會爆）：[import.rs:1305](../../src-tauri/src/import.rs:1305) `worldbook_json` 只剝 `character_book`，沒那層時 fallback 成整包卡 JSON，`data::import_worldbook` 找不到 `entries` 報錯。改成沒有條目時把非空人設欄合成一條沒關鍵字的常駐條目（`constant: true`，同匯出方向 [import.rs:1020](../../src-tauri/src/import.rs:1020) 的做法）。**有條目的卡維持原樣不動**（避免回歸既有驗收，人設欄是否也該收另案）。
 2. **判準改主按鈕**：probe 加回 `alternate_greetings: usize`（包 4 之後刪過，這次是判準用途）；主按鈕條件＝`book_shaped || lorebook_heavy || alternate_greetings > 0`。
 3. **身分框全開**：拿掉「純角色卡零詢問直匯」，一律跳身分框、判準只決定主按鈕與文案。**唯一例外保留**：`!name || book_shaped`（頂層就是 entries 的獨立書，沒有角色可建，「匯入成角色卡」是假選項）維持零打擾直匯。
 
 ## Next action
-從上面「身分判定改版」第 1 步開工。做完再回頭看：驗收七項只剩 4、7 兩項，且都卡在**沒有合適的樣本卡**（4 要能疊出多筆匯入紀錄的一批卡，7 要一組成對的角色卡＋世界書 JSON）。取得素材後補驗即可結案（狀態改 completed、TASKS.md 行移 DONE.md、本檔 Completed 搬 archive）；在那之前本任務等同做完，不必再排工。
+等使用者實機驗收身分判定改版四項：
+- (a) 匯 `main_furry-male-scenarios-*` → 跳身分框、**主按鈕指「匯入成世界書」**、按下去成功匯進 1 條常駐條目、接著跳出 29／10 條開場白選單、對話目標在 GM。
+- (b) 匯一般角色卡（如 `塞拉菲·内藤.png`）→ 跳身分框、主按鈕指「匯入成角色卡」。
+- (c) 匯 `main_Furry_Anthro Anatomy_world_info.json` → **不跳身分框**直接進（沒有角色可建）。
+- (d) 匯 `main_furry-football-team`（判準抓不到、主按鈕指角色卡）→ 手動選「匯入成世界書」也要成功，desc 6707 字進成一條條目。
+**已知待觀察**：有匯入紀錄的桌再匯卡現在會連跳兩個框（先問身分、再問哪一桌）。空桌只有一個框。這是「都讓玩家選」的直接後果，若實機覺得煩，下一步是把兩框併成一個。
+
+做完再回頭看：驗收七項只剩 4、7 兩項，且都卡在**沒有合適的樣本卡**（4 要能疊出多筆匯入紀錄的一批卡，7 要一組成對的角色卡＋世界書 JSON）。取得素材後補驗即可結案（狀態改 completed、TASKS.md 行移 DONE.md、本檔 Completed 搬 archive）；在那之前本任務等同做完，不必再排工。
 專案下一件事不在本任務：[ai-card-refactor](../tasks/ai-card-refactor.md) 的免費前置——樣本卡逐一匯入、看未收編帳本分佈（零額度），據分佈細拍分包。那件事本來就要一批樣本卡，屆時順手把 4、7 一起驗掉。訓帝卡的診斷結論（雲端載入器卡、介面在作者網站上）已記在上面，那類卡的介面本地化正是該任務拍板 3 的目標。
 
 ## Constraints
