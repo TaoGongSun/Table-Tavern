@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- [card-import-flow](tasks/card-import-flow.md) — 匯入流程 v2：單一入口＋收據復原＋第二張卡路由 — 下一步：身分判定改版三步全數實作完成、cargo 327／build／vitest 22／i18n 全綠、真卡端到端過，等實機驗收四項（見交接檔 Next action）；雙世界書改可融合已驗收。原驗收七項過五項，4／7 仍缺樣本卡
+- [card-import-flow](tasks/card-import-flow.md) — 匯入流程 v2：單一入口＋收據復原＋第二張卡路由 — 下一步：2026-08-06 追加四件（雙世界書可融合／身分判定改版／收據為空時的條目保險／角色卡也給開場白）全數實作並實機驗收通過；只剩最初驗收清單第 4、7 項沒跑，素材已足、配方見交接檔，驗完即結案
 - [interface-card-panel](tasks/interface-card-panel.md) — 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板） — 下一步：2026-08-04 v1 完成且**實機驗收全數通過**（匯入→開介面→點行動→送出→GM 照卡片格式回覆→介面就地換新畫面）；聊天收合 XML 已拍板不做；v2 首要＝省額度（歷史裡每輪整包 XML 重送，要留正文砍掉重複區塊）
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 [ai-card-refactor](tasks/ai-card-refactor.md) 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28）；待討論議程三項全數結案（提示詞標籤 07-30、生圖失敗訊息分流 08-01、Ko-fi 導購歧義 08-03 連結已直指商品頁），唯一剩餘＝使用者實測三項
