@@ -1900,6 +1900,58 @@ async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, S
         .map_err(|error| error.to_string())
 }
 
+/// 退回前幕：換幕的精確反向操作，純本地檔案處理不必等模型回覆。
+#[tauri::command]
+fn revert_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> {
+    let root = data_root(&app)?;
+    data::revert_scene(&root, &world_id).map_err(|error| error.to_string())
+}
+
+/// 重寫前情提要：結構照 advance_scene，差別是摘要對象換成「前一幕」的紀錄，
+/// 換出來的文字覆寫目前這幕既有的那則摘要，而不是開一個新場景。
+#[tauri::command]
+async fn regenerate_scene_summary(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let scene = state.current_scene;
+    if scene == 0 {
+        return Err("第一幕沒有前情提要可以重寫".to_owned());
+    }
+    let current_events =
+        data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
+    if current_events.len() != 1 {
+        // 早退：這一幕已經有新內容，不值得先花一次模型呼叫才發現不能用
+        return Err("這一幕已經有新內容，不能重寫前情提要".to_owned());
+    }
+
+    let previous_events = data::read_transcript(&root, &world_id, scene - 1)
+        .map_err(|error| error.to_string())?;
+    if previous_events.is_empty() {
+        return Err("前一幕還沒有任何紀錄，沒東西可以重新摘要".to_owned());
+    }
+
+    let messages = transport::summary_messages(&previous_events, &lang);
+    let reply = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        Some(&world_id),
+        "GM",
+        "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
+        &messages,
+        |_| {},
+    )
+    .await?;
+
+    let (title, summary) = transport::extract_scene_title(&reply);
+    data::replace_scene_summary(&root, &world_id, &summary, &lang, title.as_deref())
+        .map_err(|error| error.to_string())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OutlineOutcome {
@@ -2098,6 +2150,8 @@ pub fn run() {
             keepalive_lanes,
             usage_report,
             advance_scene,
+            revert_scene,
+            regenerate_scene_summary,
             generate_table_outline,
             generate_table_character,
             generate_table_expand
