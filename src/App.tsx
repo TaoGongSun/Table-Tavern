@@ -174,12 +174,24 @@ interface WorldState {
   catchup_summaries: Record<string, string>;
   // 換幕順手取的幕名：key 是內部場號字串（0 起算），對應後端 WorldState.scene_titles
   scene_titles: Record<string, string>;
+  // 分岔後內部場號與顯示編號脫鉤：沒進這張表的幕＝原線，顯示編號就是內部場號
+  scene_labels: Record<string, SceneLabel>;
   state: {
     table: Record<string, string>;
     tree: Record<string, StateNode>;
     // 全量桌的跳動警示：路徑（點分）→ 顯示標記（"+40"／"-80"），增量桌一律是空物件
     jumps?: Record<string, string>;
   };
+}
+
+// 分岔幕的顯示身分：base＝玩家看到的幕號（0 起算），version＝同編號的第幾條，
+// parent＝上一幕的內部場號（退回前幕靠它，分岔之後「場號 −1」不再成立）
+interface SceneLabel {
+  base: number;
+  version: number;
+  parent: number | null;
+  // 分岔複製來的幕：開頭那則是真實對話而非前情提要，換幕的兩條補救路都不適用
+  forked?: boolean;
 }
 
 // 狀態樹節點：葉子是值，分支是子節點（對應後端 StateNode 的 untagged 序列化）
@@ -3050,12 +3062,14 @@ function ActReader({
   scene,
   label,
   onBack,
+  onFork,
 }: {
   world: string;
   worldName: string;
   scene: number;
   label: string;
   onBack: () => void;
+  onFork: () => void;
 }) {
   const [events, setEvents] = useState<TranscriptEvent[] | null>(null);
   const [error, setError] = useState("");
@@ -3095,6 +3109,10 @@ function ActReader({
         </button>
         <button type="button" onClick={onBack}>
           {t("backToNow")}
+        </button>
+        {/* 分岔續玩：整面畫面唯一往前推進的動作，靠右與唯讀那幾顆分開 */}
+        <button type="button" className="act-fork" onClick={onFork}>
+          {t("sceneFork")}
         </button>
       </div>
       <section className="messages" aria-label={label}>
@@ -3143,6 +3161,7 @@ function App() {
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
+  const [sceneLabels, setSceneLabels] = useState<Record<string, SceneLabel>>({});
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
@@ -3518,6 +3537,7 @@ function App() {
     setTable(id);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
+    setSceneLabels(state.scene_labels ?? {});
     setTableState(state.state?.table ?? {});
     setTableTree(state.state?.tree ?? {});
     setTableJumps(state.state?.jumps ?? {});
@@ -3974,6 +3994,24 @@ function App() {
     } finally {
       setGenerating(null);
       setStreamText("");
+    }
+  }
+
+  // 從前幕分岔續玩：把那一幕的紀錄複製成新的一幕，原本的歷史原封不動。
+  // 整幕複製會讓下一次生成要送的內容變多，所以先跳確認框讓玩家自己決定
+  async function forkScene(from: number) {
+    const accepted = await confirm(t("sceneForkConfirm"), {
+      title: t("sceneForkTitle"),
+      kind: "warning",
+    });
+    if (!accepted) return;
+    setError("");
+    try {
+      await invoke<number>("fork_scene", { worldId: table, scene: from });
+      setMainView(null);
+      await enterTable(table, config!);
+    } catch (reason) {
+      setError(String(reason));
     }
   }
 
@@ -4697,8 +4735,13 @@ function App() {
   const canRestore = undone !== null && undone.table === table && undone.scene === scene;
 
   // 剛換完幕、這一幕只有那則前情提要＝還沒開始玩，兩條補救路都還來得及。
-  // 一有新內容就作廢（同復原疊的道理：位置已被後話蓋掉，退回會連新句子一起丟）
-  const canUndoScene = scene > 0 && events.length === 1 && generating === null;
+  // 一有新內容就作廢（同復原疊的道理：位置已被後話蓋掉，退回會連新句子一起丟）。
+  // 分岔來的幕排除掉：那一則是複製來的真實對話，重寫會直接把它蓋成摘要
+  const canUndoScene =
+    scene > 0 &&
+    events.length === 1 &&
+    generating === null &&
+    !sceneLabels[String(scene)]?.forked;
 
   // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
   const gmTargeted = speaker === GM_TARGET;
@@ -4707,10 +4750,19 @@ function App() {
     name: speaker ? targetName : t("characterFallback"),
   });
 
-  // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算
+  // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算。
+  // 分岔出來的幕顯示編號跟著源頭走、後面掛版本號（第 1 幕 (2)），沒進 scene_labels 的就是原線
   const sceneDisplayLabel = (n: number) => {
     const title = sceneTitles[String(n)];
-    return title ? t("sceneWithTitle", { n: n + 1, title }) : t("sceneLabel", { n: n + 1 });
+    const label = sceneLabels[String(n)];
+    const shown = (label?.base ?? n) + 1;
+    const v = label?.version ?? 1;
+    if (v > 1) {
+      return title
+        ? t("sceneWithTitleVersioned", { n: shown, v, title })
+        : t("sceneLabelVersioned", { n: shown, v });
+    }
+    return title ? t("sceneWithTitle", { n: shown, title }) : t("sceneLabel", { n: shown });
   };
   const generatingMeta = generating !== null ? metaOf(generating.id) : undefined;
 
@@ -5292,6 +5344,7 @@ function App() {
             scene={mainView.n}
             label={sceneDisplayLabel(mainView.n)}
             onBack={() => setMainView(null)}
+            onFork={() => void forkScene(mainView.n)}
           />
         ) : cardView ? (
           <EditPane

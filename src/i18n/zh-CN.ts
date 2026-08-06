@@ -340,6 +340,12 @@ export const zhCN: Record<MsgKey, string> = {
   sceneRevertHint: "这一幕还没开始：删掉前情提要，回到上一幕接着玩",
   sceneSummaryRetry: "重写前情提要",
   sceneSummaryRetryHint: "不满意就让 AI 重写一份，会再花一次调用",
+  sceneFork: "从这一幕继续",
+  sceneForkTitle: "从这一幕继续",
+  sceneForkConfirm:
+    "会把这一幕的全部记录复制成新的一幕接着玩，原本的记录不受影响。这一幕越长，接下来第一次生成要送的内容越多，费用也越高。",
+  sceneLabelVersioned: "第 {n} 幕 ({v})",
+  sceneWithTitleVersioned: "第 {n} 幕 ({v})：{title}",
   sceneTooLongHint: "记录很长，模型可能顾不上前面，建议换幕压缩",
   sceneAwayHint: "间隔太久，系统缓存已清除，建议换幕压缩",
   pastScenes: "前幕（{count}）",

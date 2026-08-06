@@ -364,6 +364,12 @@ export const en: Record<MsgKey, string> = {
   sceneRevertHint: "This act hasn't started: discard the recap and continue the previous act",
   sceneSummaryRetry: "Rewrite the recap",
   sceneSummaryRetryHint: "Not happy with it? Have the AI write a new one — costs another call",
+  sceneFork: "Continue from here",
+  sceneForkTitle: "Continue from here",
+  sceneForkConfirm:
+    "This copies the whole act into a new one to continue from; the original stays untouched. The longer this act is, the more gets sent on the next generation — and the more it costs.",
+  sceneLabelVersioned: "Act {n} ({v})",
+  sceneWithTitleVersioned: "Act {n} ({v}): {title}",
   sceneTooLongHint: "The log is long enough that the model may lose track of earlier events — a new act compresses it",
   sceneAwayHint: "It has been a while — the cached context was cleared; a new act compresses the log",
   pastScenes: "Past Acts ({count})",

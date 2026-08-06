@@ -342,6 +342,12 @@ export const ja: Record<MsgKey, string> = {
   sceneRevertHint: "この幕はまだ始まっていません：あらすじを削除し、前の幕に戻って続けます",
   sceneSummaryRetry: "あらすじを書き直す",
   sceneSummaryRetryHint: "気に入らない場合はAIに書き直させます：呼び出しがもう1回分かかります",
+  sceneFork: "この幕から続ける",
+  sceneForkTitle: "この幕から続ける",
+  sceneForkConfirm:
+    "この幕のログをすべて複製して新しい幕として続けます。元のログはそのまま残ります。この幕が長いほど、次の生成で送る内容が増え、費用も高くなります。",
+  sceneLabelVersioned: "第 {n} 幕 ({v})",
+  sceneWithTitleVersioned: "第 {n} 幕 ({v})：{title}",
   sceneTooLongHint: "ログが長く、モデルが前半の出来事を見失うおそれがあります。新しい幕であらすじを圧縮しましょう",
   sceneAwayHint: "間隔が空き、システムのキャッシュは破棄されました。新しい幕であらすじを圧縮しましょう",
   pastScenes: "過去の幕（{count}）",

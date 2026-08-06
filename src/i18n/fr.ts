@@ -342,6 +342,12 @@ export const fr: Record<MsgKey, string> = {
   sceneRevertHint: "Cet acte n'a pas encore commencé : supprime le résumé et continue l'acte précédent",
   sceneSummaryRetry: "Réécrire le résumé",
   sceneSummaryRetryHint: "Pas convaincu ? Laisse l'IA en écrire un nouveau — ça coûte un appel de plus",
+  sceneFork: "Continuer à partir d'ici",
+  sceneForkTitle: "Continuer à partir d'ici",
+  sceneForkConfirm:
+    "Copie tout l'acte dans un nouvel acte pour continuer à partir de là ; l'original reste inchangé. Plus cet acte est long, plus la prochaine génération enverra de contenu — et plus ça coûtera cher.",
+  sceneLabelVersioned: "Acte {n} ({v})",
+  sceneWithTitleVersioned: "Acte {n} ({v}) : {title}",
   sceneTooLongHint: "L'historique est si long que le modèle peut perdre de vue les événements passés — un nouvel acte le compresse",
   sceneAwayHint: "La pause a été longue — le cache du contexte a été vidé ; un nouvel acte compresse l'historique",
   pastScenes: "Actes précédents ({count})",
