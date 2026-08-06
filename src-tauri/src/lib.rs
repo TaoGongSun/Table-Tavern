@@ -1869,6 +1869,18 @@ async fn gm_narrate(
                         .into_iter()
                         .map(|(path, value)| StateUpdate { path, value })
                         .collect();
+                // 人物在場登場（AI 卡重構包 4a）：present 套用後檢查新面孔，
+                // 命中就把世界書全文記進歷史，system 那邊只留一行名冊。
+                record_person_arrivals(
+                    &root,
+                    &world_id,
+                    scene,
+                    &materials.worldbook,
+                    &materials.events,
+                    state.state.table.get("present").map(String::as_str),
+                    &display,
+                    user_name,
+                );
             }
         }
     }
@@ -1891,6 +1903,40 @@ async fn gm_narrate(
         next,
         state_updates,
     })
+}
+
+/// 世界書人物條目首次在場（AI 卡重構包 4a）：present 名單（缺席就退回本文比對）比對得上、
+/// 本幕還沒登場過的 is_person 條目，逐一把全文 append 成一則系統事件；同一人本幕只記一次，
+/// 離場不拔。寫檔失敗一律吞掉，登場記錄不該反過來中斷旁白。
+#[allow(clippy::too_many_arguments)]
+fn record_person_arrivals(
+    root: &std::path::Path,
+    world_id: &str,
+    scene: u64,
+    worldbook: &[data::WorldbookEntry],
+    events: &[data::TranscriptEvent],
+    present: Option<&str>,
+    reply_body: &str,
+    user_name: &str,
+) {
+    let already = transport::appeared_person_titles(events);
+    let arrivals = transport::detect_new_arrivals(worldbook, present, reply_body, &already);
+    if arrivals.is_empty() {
+        return;
+    }
+    let ts = data::local_timestamp().unwrap_or_default();
+    for entry in arrivals {
+        let event = data::TranscriptEvent {
+            ts: ts.clone(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: data::TranscriptKind::System,
+            text: transport::person_arrival_text(entry, user_name),
+            raw: None,
+            state: None,
+        };
+        let _ = data::append_transcript(root, world_id, scene, &event);
+    }
 }
 
 /// 目前設定實際會用到的（來源, 模型），供額度分頁標出「使用中」。
@@ -2266,8 +2312,8 @@ pub fn run() {
 mod tests {
     use super::{
         clear_cli_workspace_images, cli_install_script, decode_base64, encode_base64,
-        extract_image_refs, list_gallery_image_files, validate_gallery_component, ImageRef,
-        InstallMessages, PathBuf,
+        extract_image_refs, list_gallery_image_files, record_person_arrivals,
+        validate_gallery_component, ImageRef, InstallMessages, PathBuf,
     };
     use crate::data;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2504,5 +2550,55 @@ mod tests {
             .unwrap()
             .contains("'don'\"'\"'t'"));
         assert!(cli_install_script("unknown", &messages()).is_err());
+    }
+
+    /// AI 卡重構包 4a 規格 (c)(d)(e)：present 有新面孔就把世界書全文 append 成一則系統事件；
+    /// 同一幕重複比對不重複 append；換幕（新場景號、空 events）同名要重新 append 一次。
+    #[test]
+    fn record_person_arrivals_appends_once_per_scene_and_resets_on_new_scene() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-person-arrivals-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+
+        let alice = data::WorldbookEntry {
+            uid: 1,
+            title: "愛麗絲".to_owned(),
+            keys: Vec::new(),
+            content: "愛麗絲是旅店老闆娘。".to_owned(),
+            constant: true,
+            order: 0,
+            disabled: false,
+            visibility: data::Visibility::Public,
+            is_person: true,
+        };
+        let worldbook = [alice];
+
+        // 第一輪：present 有愛麗絲 → append 一則登場事件
+        record_person_arrivals(&root, &world_id, 0, &worldbook, &[], Some("愛麗絲"), "", "阿濤");
+        let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
+        assert_eq!(scene0.len(), 1);
+        assert_eq!(scene0[0].kind, data::TranscriptKind::System);
+        assert_eq!(scene0[0].speaker_id, "");
+        assert_eq!(scene0[0].speaker_name, "GM");
+        assert!(scene0[0].text.starts_with("（人物登場）〈愛麗絲〉\n"));
+        assert!(scene0[0].text.contains("愛麗絲是旅店老闆娘。"));
+
+        // 第二輪：present 還是愛麗絲，本幕 events 已含前一則登場事件 → 不重複
+        record_person_arrivals(
+            &root, &world_id, 0, &worldbook, &scene0, Some("愛麗絲"), "", "阿濤",
+        );
+        assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
+
+        // 換幕：scene 1 是新 jsonl、events 是空的 → 同名重新 append
+        record_person_arrivals(&root, &world_id, 1, &worldbook, &[], Some("愛麗絲"), "", "阿濤");
+        let scene1 = data::read_transcript(&root, &world_id, 1).unwrap();
+        assert_eq!(scene1.len(), 1);
+        assert!(scene1[0].text.starts_with("（人物登場）〈愛麗絲〉\n"));
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
