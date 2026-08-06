@@ -4080,7 +4080,7 @@ function App() {
       }
       if (probe.parsed && (!probe.name || probe.book_shaped)) {
         // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，「匯入成角色卡」是假選項，不問
-        await routeImport("worldbook", true, data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
+        await routeImport("worldbook", data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
         return;
       }
       if (probe.parsed && probe.name) {
@@ -4102,29 +4102,23 @@ function App() {
     if (!pending || choice === "cancel") return;
     setError("");
     try {
-      await routeImport(choice, false, pending.data, pending.name);
+      await routeImport(choice, pending.data, pending.name);
     } catch (reason) {
       setError(String(reason));
     }
   }
 
   // 第二張卡路由：身分已定，看這桌現況決定要不要跳提醒框。
-  // direct／companion 零打擾直接匯；ask／merge_worldbook 開框，框裡選完才真的匯（見 answerImportRoute）。
-  async function routeImport(
-    identity: "character" | "worldbook",
-    isPureWorldbookFile: boolean,
-    data: number[],
-    label: string,
-  ) {
+  // direct 零打擾直接匯；ask／merge_worldbook 開框，框裡選完才真的匯（見 answerImportRoute）。
+  async function routeImport(identity: "character" | "worldbook", data: number[], label: string) {
     // 收據為空才問條目：那可能是收據功能之前的舊桌、手建的桌或範例桌
     const needsFallback = identity === "worldbook" && importReceipts.length === 0;
     const route = decideImportRoute(
       identity,
-      isPureWorldbookFile,
       importReceipts.map((receipt) => receipt.kind),
       needsFallback && (await tableHasWorldbookEntries()),
     );
-    if (route === "direct" || route === "companion") {
+    if (route === "direct") {
       if (identity === "worldbook") await importAsWorldbook(table, data, label);
       else await importAsCharacter(table, data);
       return;
