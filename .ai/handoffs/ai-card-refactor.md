@@ -8,6 +8,7 @@
 - 包 1b（2026-08-06）：`src/refactor-review.ts` 新檔（契約型別＋5 純函式＋12 vitest）；App.tsx 世界書分頁「✨ 重構」按鈕（包 1 階段選產物 JSON 檔餵入，TODO 包 2 換真 AI）＋結果卡 modal（摘要只列有產物的區）＋展開細看三區 checkbox 預設全勾＋套用／不要＋undo 訊息含多張角色；十語系各 +18 鍵。
 - 包 2b（2026-08-06）：「✨ 重構」按鈕接真 AI 兩階段（survey→序列逐條 expand→merge→餵 1b 面板）＋進度字＋取消（擋下一條、當前條跑完、已完成的照樣進結果卡）＋單條失敗略過列名；「匯入重構產物」選檔鈕保留為零額度測試入口；refactor-review.ts 加佇列組裝／介面淺合併／結果合併三純函式＋7 測試；十語系補齊。**包 2 整包完成。**
 - 包 3（2026-08-06 結案）：內容已被 1a＋2a 全覆蓋——欄位對應與 PALETTE 配色（1a 落卡）、CHARACTER/REMAINDER 拆法與翻譯（2a 提示詞）、沒勾的人各自成條＋is_person（1a）、收據原文快照（1a）、worldbook_entry_to_character 並存（未動）。無獨立實作項。
+- 包 4b2（2026-08-06）：`src/character-visibility.ts` 新檔（isCharacterHidden 判準：archived 一律隱藏；auto_hidden 卡本幕出場即回主區）＋5 vitest；App.tsx 側欄分流、enterTable 初始化 scene_appearances、narrateOnce 併入 arrived_characters、隱藏區「自動隱藏」標籤＋拉回走 set_character_auto_hidden；reorderCast 與預設發言對象統一同判準（避免誤選隱藏卡）；十語系 autoHiddenBadge。**包 4 全部完成。**
 - 包 6（2026-08-06）：SURVEY_BODY 與組卡脈絡帳本段修正（absorbed＝不必再拆；skipped＝重構目標、機制候選）；apply() 機制套用即記帳本 Absorbed 一筆（skipped 靠「同標題最新一筆」語意自動蓋掉）；帳本是獨立 append-only 檔 `mechanism-log.jsonl`，收據新增 `added_ledger_lines` 快照、undo 第 5 步整段挖除（不整檔覆寫——期間新產生的遊玩紀錄不動）。既有缺口記錄：character/worldbook 匯入路徑的帳本寫入原本就不回退，非本包新增，未動。
 - 包 4b1（2026-08-06）：CharacterMeta.auto_hidden 三態（archived＝手動永不自動動）＋卡登場檢測（前綴「（角色回歸）〈名字〉」，掛 4a 同點，幕中只 append 不動欄位）＋begin_next_scene 換幕結算（出現過＝回歸事件∪換幕當下 present；失敗吞掉不擋換幕）＋`scene_appearances(world_id) -> { character_ids, person_titles }`＋gm_narrate 回傳補 `arrived_characters`／`arrived_persons`＋TranscriptEvent.gm_only 洩漏修正（chars 線 System 事件遮成前綴行、GM 線全文）；主線補 command `set_character_auto_hidden`（隱藏區手動拉回用）。
 - 包 4a（2026-08-06）：transport.rs `split_person_roster`（is_person 條目不進 system 全文，名冊行「這桌還有這些人：甲、乙」，無人物條目時整行不出現）＋`PERSON_ARRIVAL_PREFIX`「（人物登場）〈title〉」＋`appeared_person_titles`（掃本幕 transcript，換幕自然歸零）＋`detect_new_arrivals`（present 雙向包含比對；鍵不存在退正文比對、空值只信 present）；lib.rs `record_person_arrivals` 掛 gm_narrate 的 apply_block 之後。gm_lane_system 委派 gm_system_prompt 自動受益。
@@ -19,6 +20,7 @@
 - 包 1b：主線親跑 npm build 0／check:i18n 0／**vitest 34 全綠**（基線 22＋新增 12）；主線審過 refactor-review.ts 全檔＋App.tsx diff（產物文字純 JSX 插值無 innerHTML、套用後 worldbook/ledger/cast/App 四層刷新、「不要」不落檔）；PALETTE 前後端同組同序已由執行者比對確認。
 - 包 2a：主線親跑 cargo test **355 全綠**（342＋13）；主線親審提示詞全文（scratchpad/pkg2a-prompts.md）＝防注入雙層、快取一致位元組級測試鎖住、單人條目不列（與免費升格不重疊）、kind/update/inject 值域抽查對齊 MECHANISM-FORMAT.md（derived 未實作明確禁用）；stream_via_transport 參數對照 genesis 既有呼叫同型同位（world 參數改帶 Some(world_id) 計量歸戶）。
 - 包 2b：主線親跑 npm build 0／check:i18n 0／**vitest 41 全綠**（34＋7）；主線審過 runAiRefactor 全函式（序列 await、取消語意、失敗略過）與三個 merge 純函式。
+- 包 4b2：主線親跑 npm build 0／check:i18n 0／**vitest 46 全綠**（41＋5）；主線審過 character-visibility.ts 判準全檔。
 - 包 6：主線親跑 cargo test **398 全綠**（395＋3）；主線審過 undo 挖除段（rfind 對應最近一筆收據）與提示詞修正字面。
 - 包 4b1：主線親跑 cargo test **395 全綠**（383＋12，含主線補 command 後重跑）；主線審過 settle_card_visibility（archived 保護、(a)∪(b) 判定、失敗吞掉）與 system_event_text／lane_event_line 遮蔽段。已知限制記 Remaining：邊緣誤隱藏與 revert/fork 不復原結算。
 - 包 4a：主線親跑 cargo test **383 全綠**（373＋10）；主線審過 split_person_roster／arrival 檢測全段（disabled 三分支防禦、斷詞與 state_scope 同步不重寫、{{user}} 代換時點）＋掛點覆蓋（apply_block 唯一生產呼叫端緊接檢測）；visibility 洩漏風險主線查證後定案歸 4b 修（chars 線 Gm 隔離是既有紅線）。執行者自抓 disabled 條目洩進 system 的 bug 並修正。

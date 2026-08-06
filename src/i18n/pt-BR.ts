@@ -311,6 +311,7 @@ export const ptBR: Record<MsgKey, string> = {
   exportCardJson: "Ficha de personagem em JSON",
   exportCardNeedsSave: "Salve a ficha antes de exportar",
   archiveSectionTitle: "Personagens ocultos",
+  autoHiddenBadge: "Auto-oculto",
   archiveCharacter: "Ocultar",
   restoreCharacter: "Restaurar",
   deleteCharacter: "Excluir",

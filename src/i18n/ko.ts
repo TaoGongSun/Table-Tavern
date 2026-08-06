@@ -311,6 +311,7 @@ export const ko: Record<MsgKey, string> = {
   exportCardJson: "캐릭터 카드 JSON",
   exportCardNeedsSave: "내보내기 전에 먼저 저장하세요",
   archiveSectionTitle: "숨겨진 캐릭터",
+  autoHiddenBadge: "자동 숨김",
   archiveCharacter: "캐릭터 숨기기",
   restoreCharacter: "복원",
   deleteCharacter: "삭제",

@@ -311,6 +311,7 @@ export const es: Record<MsgKey, string> = {
   exportCardJson: "Ficha en JSON",
   exportCardNeedsSave: "Guarda la ficha antes de exportar",
   archiveSectionTitle: "Personajes ocultos",
+  autoHiddenBadge: "Auto-oculto",
   archiveCharacter: "Ocultar personaje",
   restoreCharacter: "Restaurar",
   deleteCharacter: "Eliminar",

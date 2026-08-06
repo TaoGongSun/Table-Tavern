@@ -775,13 +775,28 @@ textarea {
   gap: 0.35rem;
 }
 
-.archive-row span {
+/* 名字＋自動隱藏標籤同一列；ellipsis 要落在文字本身，flex 容器上不會生效（比照 tcard-name-row） */
+.archive-row-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   min-width: 0;
   flex: 1;
+}
+
+.archive-row-name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--fs-ui);
+}
+
+/* 自動隱藏卡在隱藏區的次要標籤，跟手動封存卡區分開來 */
+.archive-row-badge {
+  flex: none;
+  font: 600 var(--fs-meta) / 1 var(--font-ui);
+  color: var(--ink-3);
 }
 
 .archive-row button,
