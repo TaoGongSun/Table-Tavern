@@ -8,6 +8,16 @@ import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from ".
 import { renderStoryMarkdown } from "./story-markdown";
 import { buildShellDocument, CardInterface, findShell } from "./interface-card";
 import { decideImportRoute } from "./import-routing";
+import {
+  defaultRefactorSelection,
+  parseRefactorOutcome,
+  refactorSummaryCounts,
+  sourceEntryTitle,
+  toggleIndex,
+  type RefactorApplySummary,
+  type RefactorOutcome,
+  type RefactorSelection,
+} from "./refactor-review";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -91,6 +101,8 @@ interface ImportReceiptSummary {
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
 interface UndoReport {
   removed_character?: string | null;
+  /** AI 卡重構等一次套用多張角色卡的路徑：這次 undo 刪掉的角色名字清單 */
+  removed_characters: string[];
   removed_entries: number;
   kept_entries: number;
   renamed_back: boolean;
@@ -1722,6 +1734,7 @@ function WorldEditor({
   convertColor,
   hasPlayerCard,
   onEntryConverted,
+  onRefactorApplied,
 }: {
   world: string;
   onBack: () => void;
@@ -1730,6 +1743,8 @@ function WorldEditor({
   convertColor: string;
   hasPlayerCard: boolean;
   onEntryConverted: (asPlayer: boolean) => Promise<void>;
+  /** AI 卡重構套用成功後：角色清單／卡片介面／桌面狀態都可能變了，交回 App 層重載 */
+  onRefactorApplied: () => Promise<void>;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -1747,6 +1762,21 @@ function WorldEditor({
     (entry) => String(entry.uid),
     (ordered) => void reorderEntries(ordered),
   );
+  // AI 卡重構：包 1 用「選一份產物 JSON」餵入口，真的呼叫 AI 是下一包的事（TODO）
+  const [refactorOutcome, setRefactorOutcome] = useState<RefactorOutcome | null>(null);
+  const [refactorSelection, setRefactorSelection] = useState<RefactorSelection | null>(null);
+  const [refactorDetail, setRefactorDetail] = useState(false);
+  const [refactorBusy, setRefactorBusy] = useState(false);
+  const refactorInputRef = useRef<HTMLInputElement>(null);
+
+  async function refreshCast() {
+    try {
+      const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: world });
+      setCharacters(cast.filter((character) => !character.archived));
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
 
   useEffect(() => {
     setMessage("");
@@ -1769,9 +1799,7 @@ function WorldEditor({
     invoke<Ledger>("mechanism_ledger", { worldId: world })
       .then(setLedger)
       .catch(() => setLedger(EMPTY_LEDGER));
-    invoke<CharacterMeta[]>("list_characters", { worldId: world })
-      .then((cast) => setCharacters(cast.filter((character) => !character.archived)))
-      .catch((reason) => setWorldbookMessage(String(reason)));
+    void refreshCast();
   }, [world]);
 
   // 新增的空白表單排在清單底部，展開時可能在畫面外，捲到看得見
@@ -2014,6 +2042,60 @@ function WorldEditor({
     }
   }
 
+  // AI 卡重構包 1：先用「選一份產物 JSON」當餵入口驗證整條套用路徑，真的呼叫 AI 是下一包的事。
+  // TODO(包 2)：這裡改成打 AI 直接生一份 RefactorOutcome，不用挑檔案。
+  async function pickRefactorOutcome(file: File) {
+    setWorldbookMessage("");
+    try {
+      const outcome = parseRefactorOutcome(await file.text());
+      setRefactorOutcome(outcome);
+      setRefactorSelection(defaultRefactorSelection(outcome));
+      setRefactorDetail(false);
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    }
+  }
+
+  function closeRefactor() {
+    setRefactorOutcome(null);
+    setRefactorSelection(null);
+    setRefactorDetail(false);
+  }
+
+  function refactorApplyMessage(summary: RefactorApplySummary) {
+    return [
+      summary.new_characters > 0 && t("refactorApplyDoneCharacters", { n: summary.new_characters }),
+      summary.new_entries > 0 && t("refactorApplyDoneEntries", { n: summary.new_entries }),
+      summary.interface_applied && t("refactorApplyDoneInterface"),
+      summary.mechanisms_applied > 0 && t("refactorApplyDoneMechanisms", { n: summary.mechanisms_applied }),
+    ]
+      .filter(Boolean)
+      .join("・");
+  }
+
+  async function applyRefactor(selection: RefactorSelection) {
+    if (!refactorOutcome || refactorBusy) return;
+    setWorldbookMessage("");
+    setRefactorBusy(true);
+    try {
+      const summary = await invoke<RefactorApplySummary>("refactor_apply", {
+        worldId: world,
+        outcome: refactorOutcome,
+        selection,
+      });
+      closeRefactor();
+      await refreshWorldbook();
+      await refreshLedger();
+      await refreshCast();
+      await onRefactorApplied();
+      await showMessage(refactorApplyMessage(summary), { title: t("refactorBtn") });
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
+    } finally {
+      setRefactorBusy(false);
+    }
+  }
+
   async function convertEntryToCharacter() {
     if (!draft || draft.uid === null) return;
     setWorldbookMessage("");
@@ -2152,6 +2234,16 @@ function WorldEditor({
     </form>
   );
 
+  // 結果卡摘要行只列有產物的區：「拆出 N 個角色」「介面」「收編 N 條規則」以「・」串接
+  const refactorCounts = refactorOutcome ? refactorSummaryCounts(refactorOutcome) : null;
+  const refactorSummaryParts = refactorCounts
+    ? [
+        refactorCounts.characters > 0 && t("refactorSummaryCharacters", { n: refactorCounts.characters }),
+        refactorCounts.hasInterface && t("refactorSummaryInterface"),
+        refactorCounts.mechanisms > 0 && t("refactorSummaryMechanisms", { n: refactorCounts.mechanisms }),
+      ].filter((part): part is string => Boolean(part))
+    : [];
+
   return (
     <>
       <form onSubmit={saveWorldSettings} className="settings-form">
@@ -2188,6 +2280,25 @@ function WorldEditor({
           <button type="button" onClick={() => void exportWorldbook()}>
             {t("worldbookExport")}
           </button>
+          <button
+            type="button"
+            className="ai-gen-btn"
+            title={t("refactorBtnHint")}
+            onClick={() => refactorInputRef.current?.click()}
+          >
+            ✨ {t("refactorBtn")}
+          </button>
+          <input
+            ref={refactorInputRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (file) void pickRefactorOutcome(file);
+            }}
+          />
         </div>
 
         {/* 標準流程零必看：只有真的有東西被接管／跳過，或有記帳次數時才出現這塊。 */}
@@ -2290,6 +2401,132 @@ function WorldEditor({
         {draft && draft.uid === null && entryForm}
         {worldbookMessage && <p role="status">{worldbookMessage}</p>}
       </section>
+
+      {refactorOutcome && refactorSelection && (
+        <div className="modal-overlay" onClick={() => !refactorBusy && closeRefactor()}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("refactorResultTitle")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>{t("refactorResultTitle")}</h2>
+            {!refactorDetail ? (
+              <>
+                {refactorSummaryParts.length > 0 && <p>{refactorSummaryParts.join("・")}</p>}
+                <div className="ai-gen-footer">
+                  <button type="button" disabled={refactorBusy} onClick={closeRefactor}>
+                    {t("refactorDismiss")}
+                  </button>
+                  <button type="button" disabled={refactorBusy} onClick={() => setRefactorDetail(true)}>
+                    {t("refactorExpand")}
+                  </button>
+                  <button
+                    type="button"
+                    className="ai-gen-submit"
+                    disabled={refactorBusy}
+                    onClick={() => void applyRefactor(defaultRefactorSelection(refactorOutcome))}
+                  >
+                    {t("refactorApplyAll")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {refactorOutcome.characters.length > 0 && (
+                  <section>
+                    <h3>{t("refactorSectionCharacters")}</h3>
+                    <div className="mechanism-ledger-list">
+                      {refactorOutcome.characters.map((character, index) => (
+                        <label className="inline" key={index}>
+                          <input
+                            type="checkbox"
+                            checked={refactorSelection.character_indices.includes(index)}
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked;
+                              setRefactorSelection(
+                                (selection) =>
+                                  selection && {
+                                    ...selection,
+                                    character_indices: toggleIndex(selection.character_indices, index, checked),
+                                  },
+                              );
+                            }}
+                          />
+                          {character.emoji} {character.name}
+                          <span className="mechanism-ledger-detail">
+                            {sourceEntryTitle(entries, character.source_uid)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {refactorOutcome.interface && (
+                  <section>
+                    <h3>{t("refactorSectionInterface")}</h3>
+                    <div className="mechanism-ledger-list">
+                      <label className="inline">
+                        <input
+                          type="checkbox"
+                          checked={refactorSelection.apply_interface}
+                          onChange={(event) => {
+                            const checked = event.currentTarget.checked;
+                            setRefactorSelection((selection) => selection && { ...selection, apply_interface: checked });
+                          }}
+                        />
+                        {t("refactorSummaryInterface")}
+                        <span className="mechanism-ledger-detail">
+                          {(refactorOutcome.interface?.source_uids ?? [])
+                            .map((uid) => sourceEntryTitle(entries, uid))
+                            .join("、")}
+                        </span>
+                      </label>
+                    </div>
+                  </section>
+                )}
+                {refactorOutcome.mechanisms.length > 0 && (
+                  <section>
+                    <h3>{t("refactorSectionMechanisms")}</h3>
+                    <div className="mechanism-ledger-list">
+                      {refactorOutcome.mechanisms.map((mechanism, index) => (
+                        <label className="inline" key={index}>
+                          <input
+                            type="checkbox"
+                            checked={refactorSelection.mechanism_indices.includes(index)}
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked;
+                              setRefactorSelection(
+                                (selection) =>
+                                  selection && {
+                                    ...selection,
+                                    mechanism_indices: toggleIndex(selection.mechanism_indices, index, checked),
+                                  },
+                              );
+                            }}
+                          />
+                          {sourceEntryTitle(entries, mechanism.source_uid)}
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                <div className="ai-gen-footer">
+                  <button
+                    type="button"
+                    className="ai-gen-submit"
+                    disabled={refactorBusy}
+                    onClick={() => void applyRefactor(refactorSelection)}
+                  >
+                    {t("refactorApplyBtn")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -4119,6 +4356,9 @@ function App() {
       await refreshImportReceipts(table);
       await showMessage(
         t("undoLastImportDone") +
+          (report.removed_characters.length > 0
+            ? t("undoLastImportRemovedCharacters", { names: report.removed_characters.join("、") })
+            : "") +
           (report.kept_entries > 0 ? t("undoLastImportKept", { n: report.kept_entries }) : ""),
         { title: t("undoLastImport") },
       );
@@ -5414,6 +5654,12 @@ function App() {
                   const state = await invoke<WorldState>("read_state", { worldId: table });
                   await loadPlayerCard(table, state.player_card_id);
                 }
+              }}
+              onRefactorApplied={async () => {
+                await refreshCharacters();
+                await refreshCardInterfaces(table);
+                await refreshTableState();
+                await refreshImportReceipts(table);
               }}
             />
           </EditPane>
