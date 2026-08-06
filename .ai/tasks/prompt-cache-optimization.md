@@ -3,7 +3,7 @@ Task-ID: prompt-cache-optimization
 Title: 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點
 Status: in-progress
 Created: 2026-08-03T15:14:00+08:00
-Updated: 2026-08-04T09:20:00+08:00
+Updated: 2026-08-06T10:40:00+08:00
 
 ## Summary
 
@@ -11,6 +11,7 @@ Updated: 2026-08-04T09:20:00+08:00
 
 ## Next action
 - 現況：**包 1–7 全部完成並通過實機驗收**（2026-08-04：架構 Opus 四輪 85–88% 命中；額度分頁九項過、當場修掉六個顯示問題；保溫 ping 實機成立 94.6%）。Sonnet 命中率受 claude CLI 官方 bug（#29966）壓制，app 端無事可做。
+- 2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑（總用量與花費退到細項），使用者實機看過。
 - **剩餘皆非必要**：grok 金額／agy 那一列的顯示驗收（無額度、CLI 計量未定，延後）、OpenRouter 實際扣款計量（不接）、undo 截尾優化、等官方修 CLI。清單見交接檔 Remaining。
 
 ## 待拍板

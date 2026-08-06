@@ -34,14 +34,14 @@ export const zh = {
   usageTab: "額度",
   authorTab: "作者",
 
-  // 額度分頁（快取包 6）：token 是主軸，金額只轉述 CLI 回報值
+  // 額度分頁（快取包 6）：第一眼只講快取省下多少，用量與明細留在「看細項」
   usageScopeLabel: "看哪一桌",
   usageAllTables: "所有桌總計",
   usageGenesis: "開桌生成",
   usageDeletedTable: "已刪掉的桌",
   usageEmpty: "還沒有任何呼叫紀錄，開始玩之後這裡就會有數字。",
-  usageTokensLabel: "tokens",
-  usageCostAbout: "約",
+  usageSavedHeadline: "已省 {pct}% 費用",
+  usageSavedAbout: "約省下",
   usageBarHit: "讀到快取",
   usageBarFull: "全額",
   usageDetailsToggle: "看細項",
@@ -51,12 +51,12 @@ export const zh = {
   usageCached: "讀到快取",
   usageHitRate: "命中率",
   usageOutput: "輸出",
-  usageCost: "花費",
+  usageSavedCost: "已省金額",
   usageTotal: "總計",
   usagePing: "保溫呼叫",
   usageInUse: "使用中",
   usageNoUsage: "這個來源不回報用量",
-  usageCostNote: "花費是各家 CLI 自己回報的參考牌價；訂閱制實際不會這樣扣，只當相對比較用。",
+  usageSavedNote: "已省金額是拿各家 CLI 回報的花費與快取折扣推估的；訂閱制實際不會這樣扣，只當相對比較用。",
 
   // 診斷標籤（後端 usage_log.rs 那張表）：短名給統計、長句給最近一輪
   usageDiagOk: "正常",

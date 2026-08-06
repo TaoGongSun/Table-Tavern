@@ -2182,8 +2182,16 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* 第一眼就看到省了多少：跟長條圖「讀到快取」同一個綠 */
+.usage-headline-saved {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: var(--ok);
+}
+
 .usage-headline-cost {
   font-weight: 600;
+  color: var(--ok);
 }
 
 /* 一條看完快取比例：綠色是讀到快取省下的、灰色是全額付的 */
