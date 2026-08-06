@@ -405,7 +405,7 @@ pub struct Mechanism {
     pub incremental: bool,
 }
 
-fn is_false(value: &bool) -> bool {
+pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 
@@ -629,6 +629,13 @@ pub(crate) fn import_receipts_path(root: &Path, world_id: &str) -> DataResult<Pa
 /// 卡片自帶介面要靠它，角色卡路徑則是留在角色檔旁邊。
 pub(crate) fn world_card_path(root: &Path, world_id: &str, extension: &str) -> DataResult<PathBuf> {
     Ok(world_dir(root, world_id)?.join(format!("source-card.{extension}")))
+}
+
+/// 介面渲染殼檔：worlds/<world_id>/interface-shell.html。AI 卡重構展開介面規則時，除了狀態樹
+/// 初始值（state_fields）還可能多產一份自包含 HTML 殼；前端拿狀態樹的值替換殼內 `{{路徑}}`
+/// 佔位符後塞進既有卡片沙盒 iframe（interface-card.ts buildShellDocument，下一包串接）。
+pub(crate) fn interface_shell_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("interface-shell.html"))
 }
 
 /// 生成圖庫目錄，落在世界目錄內：worlds/<world_id>/gen-gallery/<character_id>。
@@ -874,6 +881,20 @@ pub fn read_world_md(root: &Path, world_id: &str) -> DataResult<String> {
 
 pub fn write_world_md(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
     fs::write(world_dir(root, world_id)?.join("world.md"), content)?;
+    Ok(())
+}
+
+/// 讀介面渲染殼檔；沒產過或還沒套用就是 None（前端退回既有沙盒殼／保底狀態欄，不是錯誤）。
+pub fn read_interface_shell(root: &Path, world_id: &str) -> DataResult<Option<String>> {
+    let path = interface_shell_path(root, world_id)?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(fs::read_to_string(path)?))
+}
+
+pub fn write_interface_shell(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
+    fs::write(interface_shell_path(root, world_id)?, content)?;
     Ok(())
 }
 

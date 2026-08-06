@@ -36,6 +36,10 @@ pub struct RefactorInterface {
     pub source_uids: Vec<String>,
     /// 解析失敗退原文的雙軌保底。
     pub raw: String,
+    /// AI 順便產的完整 HTML 渲染殼（自包含單檔，佔位符待前端替換）；None＝沒產出或抽不出來，
+    /// 不影響 state_fields——渲染殼是錦上添花，不是介面套用成不成立的條件。
+    #[serde(default)]
+    pub shell: Option<String>,
 }
 
 /// 欄位規則＋觸發表候選；rules／triggers 直接複用 data.rs 既有機制型別，不新造平行型別。
@@ -187,6 +191,9 @@ pub fn apply(
             state_dirty = true;
             for uid in &interface.source_uids {
                 disable_source_entry(root, world_id, uid, &mut rewritten)?;
+            }
+            if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
+                data::write_interface_shell(root, world_id, shell)?;
             }
             interface_applied = true;
         }
@@ -602,6 +609,7 @@ mod tests {
                 }),
                 source_uids: vec![source_uid.to_string()],
                 raw: "描述如何顯示狀態欄的散文".to_owned(),
+                shell: None,
             }),
             mechanisms: Vec::new(),
             rewrites: Vec::new(),
@@ -640,6 +648,114 @@ mod tests {
             .find(|entry| entry.uid == source_uid)
             .unwrap();
         assert!(!source_entry_after.disabled);
+    }
+
+    /// 契約相容：AI 展開產物落地成 JSON 沒有 shell 鍵（舊版產物）照樣要能反序列化，shell 落
+    /// None，不能因為多了新欄位就 fail closed。
+    #[test]
+    fn refactor_interface_deserializes_legacy_json_without_shell_field() {
+        let legacy = serde_json::json!({
+            "state_fields": { "World": { "Time": "清晨" } },
+            "source_uids": ["7"],
+            "raw": "原文",
+        });
+        let interface: RefactorInterface = serde_json::from_value(legacy).unwrap();
+        assert!(interface.shell.is_none());
+        assert_eq!(interface.source_uids, vec!["7"]);
+        assert_eq!(interface.state_fields["World"]["Time"].as_str(), Some("清晨"));
+    }
+
+    /// 介面套用帶殼：world 目錄落一份 interface-shell.html，data::read_interface_shell（讀
+    /// command 背後的邏輯層）讀得回來、內容一致。
+    #[test]
+    fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
+        let root = TestRoot::new("interface-shell-write");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
+        let shell_html = "<!DOCTYPE html><html><body>{{World.Time}}</body></html>";
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
+                source_uids: vec![source_uid.to_string()],
+                raw: "描述如何顯示狀態欄的散文".to_owned(),
+                shell: Some(shell_html.to_owned()),
+            }),
+            mechanisms: Vec::new(),
+            rewrites: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+        };
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+
+        let read_back = data::read_interface_shell(root.path(), &world_id).unwrap();
+        assert_eq!(read_back.as_deref(), Some(shell_html));
+    }
+
+    /// 介面套用沒帶殼（shell=None）：不落任何殼檔。
+    #[test]
+    fn apply_interface_without_shell_creates_no_shell_file() {
+        let root = TestRoot::new("interface-shell-absent");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
+                source_uids: vec![source_uid.to_string()],
+                raw: "描述如何顯示狀態欄的散文".to_owned(),
+                shell: None,
+            }),
+            mechanisms: Vec::new(),
+            rewrites: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+        };
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+
+        assert!(data::read_interface_shell(root.path(), &world_id).unwrap().is_none());
+    }
+
+    /// 介面套用帶殼 → undo：殼檔是這次套用新建的，undo 要把它刪掉（比照 world_card_created
+    /// 的參考模式：只刪這次新建的，套用前就有的不動——這裡每次都是新桌，天然滿足這個條件）。
+    #[test]
+    fn apply_interface_shell_then_undo_deletes_shell_file() {
+        let root = TestRoot::new("interface-shell-undo");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
+                source_uids: vec![source_uid.to_string()],
+                raw: "描述如何顯示狀態欄的散文".to_owned(),
+                shell: Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>".to_owned()),
+            }),
+            mechanisms: Vec::new(),
+            rewrites: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+        };
+
+        apply_recorded(root.path(), &world_id, &outcome, &selection);
+        assert!(data::read_interface_shell(root.path(), &world_id).unwrap().is_some());
+
+        receipts::undo_last_import(root.path(), &world_id).unwrap();
+        assert!(data::read_interface_shell(root.path(), &world_id).unwrap().is_none());
     }
 
     /// (e) 帳本轉換：來源條目原本在帳本裡是 Skipped（例如認不出的 EJS），套用機制後帳本要

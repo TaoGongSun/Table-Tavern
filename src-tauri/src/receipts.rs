@@ -17,6 +17,9 @@ pub struct Snapshot {
     state: Option<WorldState>,
     worldbook_uids: HashSet<u64>,
     world_card: (bool, bool), // (png 已存在, import.json 已存在)
+    /// AI 卡重構的介面渲染殼檔（interface-shell.html）快照時是否已存在——比照 world_card 的
+    /// 存在性 diff 手法：undo 只該刪這次操作新建的殼，不動套用前就有的。
+    interface_shell_existed: bool,
     /// 機制帳本（mechanism-log.jsonl）快照時的原始內容；這檔是純 append，記著這份就能在
     /// undo 時精準挖掉「這次操作自己追加的那一段」，不牽連期間新產生的遊玩紀錄。
     mechanism_log_before: String,
@@ -34,6 +37,8 @@ pub fn snapshot(root: &Path, world_id: &str) -> Snapshot {
             data::world_card_path(root, world_id, "png").is_ok_and(|path| path.exists()),
             data::world_card_path(root, world_id, "import.json").is_ok_and(|path| path.exists()),
         ),
+        interface_shell_existed: data::interface_shell_path(root, world_id)
+            .is_ok_and(|path| path.exists()),
         mechanism_log_before: data::mechanism_log_path(root, world_id)
             .ok()
             .and_then(|path| fs::read_to_string(path).ok())
@@ -101,6 +106,11 @@ struct ImportReceipt {
     /// 匯入前就有的殼不記，undo 不動它（不是這次匯入造成的，不該被這次 undo 清掉）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     world_card_created: Option<String>,
+    /// 這次操作新建了 AI 卡重構的介面渲染殼檔（interface-shell.html）；套用前就有的殼不記，
+    /// undo 不動它。跟 world_card_created 是兩回事：那個是「卡片自帶殼」的原始檔，這個是
+    /// AI 依狀態樹規則另外產的靜態渲染殼。
+    #[serde(default, skip_serializing_if = "data::is_false")]
+    interface_shell_created: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     renamed_from: Option<String>,
     /// 這次操作改寫或停用了既有世界書條目（AI 卡重構的來源條目改寫、介面／機制的
@@ -305,6 +315,12 @@ fn detect_world_card_created(root: &Path, world_id: &str, before: &Snapshot) -> 
     None
 }
 
+/// 這次操作是否新建了介面渲染殼檔（interface-shell.html）；套用前就有的殼不算。
+fn detect_interface_shell_created(root: &Path, world_id: &str, before: &Snapshot) -> bool {
+    !before.interface_shell_existed
+        && data::interface_shell_path(root, world_id).is_ok_and(|path| path.exists())
+}
+
 /// import_character 指令成功後呼叫：新角色卡本身永遠是這次匯入的具體產物，一律留一筆收據
 /// （即使卡片沒帶世界書／機制資料，「刪掉這張新卡」仍然是有意義的復原動作）。
 pub fn record_character_import(
@@ -331,6 +347,7 @@ pub fn record_character_import(
             renamed_from: None,
             rewritten_entries: Vec::new(),
             added_ledger_lines: String::new(),
+            interface_shell_created: false,
         },
     );
 }
@@ -360,6 +377,7 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             renamed_from: None,
             rewritten_entries: Vec::new(),
             added_ledger_lines: String::new(),
+            interface_shell_created: false,
         },
     );
 }
@@ -378,11 +396,13 @@ pub fn record_refactor_apply(
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
     let added_ledger_lines = diff_ledger_suffix(&before.mechanism_log_before, root, world_id);
+    let interface_shell_created = detect_interface_shell_created(root, world_id, &before);
     if character_ids.is_empty()
         && worldbook_entries.is_empty()
         && mechanism.is_none()
         && rewritten_entries.is_empty()
         && added_ledger_lines.is_empty()
+        && !interface_shell_created
     {
         return;
     }
@@ -401,6 +421,7 @@ pub fn record_refactor_apply(
             renamed_from: None,
             rewritten_entries,
             added_ledger_lines,
+            interface_shell_created,
         },
     );
 }
@@ -545,7 +566,14 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
-    // 7. 桌名：這次匯入有改過名字才退回去。
+    // 7. 這次操作新建的介面渲染殼檔（AI 卡重構產物）：套用前就有的不動。
+    if receipt.interface_shell_created {
+        if let Ok(shell_path) = data::interface_shell_path(root, world_id) {
+            let _ = fs::remove_file(shell_path);
+        }
+    }
+
+    // 8. 桌名：這次匯入有改過名字才退回去。
     if let Some(old_name) = &receipt.renamed_from {
         if data::rename_world(root, world_id, old_name).is_ok() {
             report.renamed_back = true;
