@@ -278,10 +278,12 @@ fn now_epoch() -> u64 {
 
 /// 組本輪 prompt：水位之後的新事件＋回合尾段。開線（全量重建）帶對話紀錄標頭，
 /// 形狀比照單發 flatten；續聊只送增量，與 session 內既有歷史逐字銜接。
-fn build_prompt(events: &[TranscriptEvent], base: usize, tail: &str, opening: bool) -> String {
+/// `lane`：chars 線的 gm_only System 事件降一行，GM 線一律全文（AI 卡重構包 4b）。
+fn build_prompt(events: &[TranscriptEvent], base: usize, tail: &str, opening: bool, lane: Lane) -> String {
+    let redact_gm_only = lane == Lane::Chars;
     let lines: Vec<String> = events[base..]
         .iter()
-        .map(transport::lane_event_line)
+        .map(|event| transport::lane_event_line(event, redact_gm_only))
         .collect();
     if lines.is_empty() {
         return tail.to_owned();
@@ -402,7 +404,7 @@ pub(crate) async fn run_turn(
             .as_ref()
             .map(|patch| format!("{patch}\n\n{}", input.tail))
             .unwrap_or_else(|| input.tail.clone());
-        let prompt = build_prompt(input.events, base, &tail, opening);
+        let prompt = build_prompt(input.events, base, &tail, opening, input.lane);
         let session = if opening {
             cli::ClaudeSession::Open(&session_id)
         } else {
@@ -713,6 +715,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             kind,
             text: text.to_owned(),
             state: None,
+            gm_only: false,
         }
     }
 
@@ -936,12 +939,12 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             event(TranscriptKind::Player, "", "阿濤", "你好"),
             event(TranscriptKind::Narration, "", "GM", "夜深了"),
         ];
-        let full = build_prompt(&events, 0, "尾段", true);
+        let full = build_prompt(&events, 0, "尾段", true, Lane::Chars);
         assert!(full.starts_with("以下是到目前為止的對話紀錄：\n\n阿濤：你好\n\n（旁白）夜深了"));
         assert!(full.ends_with("——\n尾段"));
-        let increment = build_prompt(&events, 1, "尾段", false);
+        let increment = build_prompt(&events, 1, "尾段", false, Lane::Chars);
         assert_eq!(increment, "（旁白）夜深了\n\n——\n尾段");
-        assert_eq!(build_prompt(&events, 2, "尾段", false), "尾段");
+        assert_eq!(build_prompt(&events, 2, "尾段", false, Lane::Chars), "尾段");
     }
 
     /// 端到端（假 CLI）：開線→抹寫→續聊只送增量→正典被改→自動重開；

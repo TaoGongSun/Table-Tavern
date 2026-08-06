@@ -443,6 +443,19 @@ fn set_character_archived(
         .map_err(|error| error.to_string())
 }
 
+/// 玩家從隱藏區手動拉回自動隱藏的卡（或手動收進去）。玩家意志優先於自動結算，
+/// 幕中按下快取代價玩家自付——與 set_character_archived 同款語意。
+#[tauri::command]
+fn set_character_auto_hidden(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+    auto_hidden: bool,
+) -> Result<(), String> {
+    data::set_character_auto_hidden(&data_root(&app)?, &world_id, &character_id, auto_hidden)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn delete_character(
     app: tauri::AppHandle,
@@ -727,6 +740,40 @@ fn read_transcript(
     scene: u64,
 ) -> Result<Vec<TranscriptEvent>, String> {
     data::read_transcript(&data_root(&app)?, &world_id, scene).map_err(|error| error.to_string())
+}
+
+/// 這一幕已經出場的角色卡與世界書人物（AI 卡重構包 4b）：前端載入時用來初始化本地分區，
+/// 不必自己重掃 transcript 猜前綴。卡登場記的是名字，這裡拿現有卡清單反查回 id。
+#[derive(Serialize)]
+struct SceneAppearances {
+    character_ids: Vec<String>,
+    person_titles: Vec<String>,
+}
+
+fn scene_appearances_at(
+    root: &std::path::Path,
+    world_id: &str,
+) -> Result<SceneAppearances, String> {
+    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    let events = data::read_transcript(root, world_id, state.current_scene)
+        .map_err(|error| error.to_string())?;
+    let person_titles = transport::appeared_person_titles(&events).into_iter().collect();
+    let card_names = data::appeared_titles(&events, data::CARD_ARRIVAL_PREFIX);
+    let character_ids = data::list_characters(root, world_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|meta| card_names.iter().any(|name| data::name_matches(name, &meta.name)))
+        .map(|meta| meta.id)
+        .collect();
+    Ok(SceneAppearances {
+        character_ids,
+        person_titles,
+    })
+}
+
+#[tauri::command]
+fn scene_appearances(app: tauri::AppHandle, world_id: String) -> Result<SceneAppearances, String> {
+    scene_appearances_at(&data_root(&app)?, &world_id)
 }
 
 // 收回上一句：只砍當前這一幕的最後一筆，可連按；回傳 false＝這一幕已經收乾淨了
@@ -1639,7 +1686,8 @@ async fn chat_with_character(
     .await
 }
 
-/// 這一桌未封存的角色卡（GM 上下文與 chars 續聊線的快照都要全卡）。
+/// 這一桌未封存、也沒被自動隱藏的角色卡（GM 上下文與 chars 續聊線的快照都要全卡）；
+/// auto_hidden 的卡在別桌上場前先不進凍結快照，見 record_card_arrivals／load_hidden_cards。
 fn load_active_cards(
     root: &std::path::Path,
     world_id: &str,
@@ -1647,7 +1695,23 @@ fn load_active_cards(
     data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
-        .filter(|meta| !meta.archived)
+        .filter(|meta| !meta.archived && !meta.auto_hidden)
+        .map(|meta| {
+            data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string())
+        })
+        .collect()
+}
+
+/// 這一桌自動隱藏、且未手動封存的角色卡（回合登場檢測用，AI 卡重構包 4b）；
+/// 與 load_active_cards 互補，present 名單命中就是「回歸」。
+fn load_hidden_cards(
+    root: &std::path::Path,
+    world_id: &str,
+) -> Result<Vec<data::CharacterCard>, String> {
+    data::list_characters(root, world_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|meta| meta.auto_hidden && !meta.archived)
         .map(|meta| {
             data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string())
         })
@@ -1742,6 +1806,12 @@ struct GmNarration {
     next: Option<String>,
     /// 長文字欄這一輪的新值；前端接到就補一則 system 事件進 transcript。空的就不補。
     state_updates: Vec<StateUpdate>,
+    /// 這輪剛回歸（登場）的角色卡 id（AI 卡重構包 4b）；前端拿它把卡從隱藏區搬回主區。
+    #[serde(default)]
+    arrived_characters: Vec<String>,
+    /// 這輪剛登場的世界書人物 title（4a 就有登場事件，4b 才在回傳裡帶出來）。
+    #[serde(default)]
+    arrived_persons: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -1849,6 +1919,8 @@ async fn gm_narrate(
     let block = transport::extract_state_block(&reply);
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
     let mut state_updates = Vec::new();
+    let mut arrived_persons = Vec::new();
+    let mut arrived_characters = Vec::new();
     // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
     // 骰值要每回合重擲，就算這一輪模型完全沒吐更新也要跑一次。
     if !block.fields.is_empty()
@@ -1869,18 +1941,33 @@ async fn gm_narrate(
                         .into_iter()
                         .map(|(path, value)| StateUpdate { path, value })
                         .collect();
+                let present = state.state.table.get("present").map(String::as_str);
                 // 人物在場登場（AI 卡重構包 4a）：present 套用後檢查新面孔，
                 // 命中就把世界書全文記進歷史，system 那邊只留一行名冊。
-                record_person_arrivals(
+                arrived_persons = record_person_arrivals(
                     &root,
                     &world_id,
                     scene,
                     &materials.worldbook,
                     &materials.events,
-                    state.state.table.get("present").map(String::as_str),
+                    present,
                     &display,
                     user_name,
                 );
+                // 角色卡自動回歸（AI 卡重構包 4b）：鏡射人物登場，鍵換成卡名；
+                // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）。
+                if let Ok(hidden_cards) = load_hidden_cards(&root, &world_id) {
+                    arrived_characters = record_card_arrivals(
+                        &root,
+                        &world_id,
+                        scene,
+                        &hidden_cards,
+                        &materials.events,
+                        present,
+                        &display,
+                        user_name,
+                    );
+                }
             }
         }
     }
@@ -1902,12 +1989,17 @@ async fn gm_narrate(
         text: display,
         next,
         state_updates,
+        arrived_characters,
+        arrived_persons,
     })
 }
 
 /// 世界書人物條目首次在場（AI 卡重構包 4a）：present 名單（缺席就退回本文比對）比對得上、
 /// 本幕還沒登場過的 is_person 條目，逐一把全文 append 成一則系統事件；同一人本幕只記一次，
-/// 離場不拔。寫檔失敗一律吞掉，登場記錄不該反過來中斷旁白。
+/// 離場不拔。寫檔失敗一律吞掉，登場記錄不該反過來中斷旁白。回傳這輪實際記上的標題清單
+/// （成功寫檔才算），供 gm_narrate 回傳給前端本地移區。
+/// visibility 非 Public 的條目帶 gm_only=true（包 4b）：這種條目原本就限定 GM 或特定角色
+/// 看得到，全文登場事件不能透過 chars 續聊線的共用歷史洩漏給所有角色。
 #[allow(clippy::too_many_arguments)]
 fn record_person_arrivals(
     root: &std::path::Path,
@@ -1918,13 +2010,14 @@ fn record_person_arrivals(
     present: Option<&str>,
     reply_body: &str,
     user_name: &str,
-) {
+) -> Vec<String> {
     let already = transport::appeared_person_titles(events);
     let arrivals = transport::detect_new_arrivals(worldbook, present, reply_body, &already);
     if arrivals.is_empty() {
-        return;
+        return Vec::new();
     }
     let ts = data::local_timestamp().unwrap_or_default();
+    let mut titles = Vec::new();
     for entry in arrivals {
         let event = data::TranscriptEvent {
             ts: ts.clone(),
@@ -1934,9 +2027,55 @@ fn record_person_arrivals(
             text: transport::person_arrival_text(entry, user_name),
             raw: None,
             state: None,
+            gm_only: !matches!(entry.visibility, data::Visibility::Public),
         };
-        let _ = data::append_transcript(root, world_id, scene, &event);
+        if data::append_transcript(root, world_id, scene, &event).is_ok() {
+            titles.push(entry.title.clone());
+        }
     }
+    titles
+}
+
+/// 角色卡自動回歸（AI 卡重構包 4b）：present 名單（缺席就退回本文比對）比對得上、
+/// 本幕還沒回歸過的 auto_hidden 卡，逐一把完整設定 append 成一則系統事件；同一張卡
+/// 本幕只記一次。鏡射 record_person_arrivals，鍵從世界書 title 換成卡片 name；
+/// **不改 auto_hidden 欄位本身**（鐵律：持久欄位只在換幕結算，見 data::begin_next_scene）。
+/// chars 快照本來就含全卡，回歸事件不算新洩漏，一律 gm_only=false。
+/// 回傳這輪實際記上的卡 id 清單（成功寫檔才算）。
+#[allow(clippy::too_many_arguments)]
+fn record_card_arrivals(
+    root: &std::path::Path,
+    world_id: &str,
+    scene: u64,
+    hidden_cards: &[data::CharacterCard],
+    events: &[data::TranscriptEvent],
+    present: Option<&str>,
+    reply_body: &str,
+    user_name: &str,
+) -> Vec<String> {
+    let already = transport::appeared_card_names(events);
+    let arrivals = transport::detect_new_card_arrivals(hidden_cards, present, reply_body, &already);
+    if arrivals.is_empty() {
+        return Vec::new();
+    }
+    let ts = data::local_timestamp().unwrap_or_default();
+    let mut ids = Vec::new();
+    for card in arrivals {
+        let event = data::TranscriptEvent {
+            ts: ts.clone(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: data::TranscriptKind::System,
+            text: transport::card_arrival_text(card, user_name),
+            raw: None,
+            state: None,
+            gm_only: false,
+        };
+        if data::append_transcript(root, world_id, scene, &event).is_ok() {
+            ids.push(card.id.clone());
+        }
+    }
+    ids
 }
 
 /// 目前設定實際會用到的（來源, 模型），供額度分頁標出「使用中」。
@@ -2250,6 +2389,7 @@ pub fn run() {
             read_character,
             write_character,
             set_character_archived,
+            set_character_auto_hidden,
             delete_character,
             probe_import,
             card_interfaces,
@@ -2270,6 +2410,7 @@ pub fn run() {
             append_transcript,
             post_opening,
             read_transcript,
+            scene_appearances,
             pop_transcript,
             export_transcript,
             export_scene,
@@ -2312,8 +2453,9 @@ pub fn run() {
 mod tests {
     use super::{
         clear_cli_workspace_images, cli_install_script, decode_base64, encode_base64,
-        extract_image_refs, list_gallery_image_files, record_person_arrivals,
-        validate_gallery_component, ImageRef, InstallMessages, PathBuf,
+        extract_image_refs, list_gallery_image_files, load_active_cards, record_card_arrivals,
+        record_person_arrivals, scene_appearances_at, validate_gallery_component, ImageRef,
+        InstallMessages, PathBuf,
     };
     use crate::data;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2598,6 +2740,181 @@ mod tests {
         let scene1 = data::read_transcript(&root, &world_id, 1).unwrap();
         assert_eq!(scene1.len(), 1);
         assert!(scene1[0].text.starts_with("（人物登場）〈愛麗絲〉\n"));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn character_card(id: &str, name: &str) -> data::CharacterCard {
+        data::CharacterCard {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            color: "#336699".to_owned(),
+            avatar: "🦊".to_owned(),
+            tier: data::Tier::Balanced,
+            show_image: true,
+            archived: false,
+            gen_prompt: String::new(),
+            public_md: String::new(),
+            private_md: String::new(),
+        }
+    }
+
+    /// AI 卡重構包 4b：load_active_cards 濾掉 auto_hidden（跟既有的 archived 並列），
+    /// 只有沒被隱藏、也沒被封存的卡才進 GM／chars 凍結快照。
+    #[test]
+    fn load_active_cards_filters_auto_hidden_and_archived() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-load-active-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+
+        let visible = character_card(&data::new_id(), "在場");
+        let hidden = character_card(&data::new_id(), "隱藏");
+        let archived = character_card(&data::new_id(), "封存");
+        data::write_character(&root, &world_id, &visible).unwrap();
+        data::write_character(&root, &world_id, &hidden).unwrap();
+        data::write_character(&root, &world_id, &archived).unwrap();
+        data::set_character_auto_hidden(&root, &world_id, &hidden.id, true).unwrap();
+        data::set_character_archived(&root, &world_id, &archived.id, true).unwrap();
+
+        let active = load_active_cards(&root, &world_id).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, visible.id);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// AI 卡重構包 4b，鏡射 4a：present 有隱藏卡的名字就把完整設定 append 成一則回歸事件；
+    /// 同一幕重複比對不重複 append；不改 auto_hidden 欄位本身（鐵律，換幕才結算）。
+    #[test]
+    fn record_card_arrivals_appends_once_per_scene_and_does_not_touch_auto_hidden() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-card-arrivals-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+
+        let mut fox = character_card(&data::new_id(), "狐狸");
+        fox.public_md = "尾巴很大。".to_owned();
+        data::write_character(&root, &world_id, &fox).unwrap();
+        data::set_character_auto_hidden(&root, &world_id, &fox.id, true).unwrap();
+        let hidden_cards = vec![fox.clone()];
+
+        // 第一輪：present 有狐狸 → append 一則回歸事件
+        record_card_arrivals(&root, &world_id, 0, &hidden_cards, &[], Some("狐狸"), "", "阿濤");
+        let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
+        assert_eq!(scene0.len(), 1);
+        assert_eq!(scene0[0].kind, data::TranscriptKind::System);
+        assert!(!scene0[0].gm_only);
+        assert!(scene0[0].text.starts_with("（角色回歸）〈狐狸〉\n"));
+        assert!(scene0[0].text.contains("尾巴很大。"));
+
+        // 第二輪：present 還是狐狸，本幕 events 已含前一則回歸事件 → 不重複
+        record_card_arrivals(
+            &root, &world_id, 0, &hidden_cards, &scene0, Some("狐狸"), "", "阿濤",
+        );
+        assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
+
+        // 不碰 auto_hidden 欄位本身：磁碟上仍是 true，要等換幕結算才會變 false
+        let meta = data::list_characters(&root, &world_id)
+            .unwrap()
+            .into_iter()
+            .find(|meta| meta.id == fox.id)
+            .unwrap();
+        assert!(meta.auto_hidden);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// AI 卡重構包 4b：visibility 非 Public 的世界書人物條目登場時，事件帶 gm_only=true
+    /// （chars 續聊線只看得到前綴那一行，不洩漏全文）；這是 4a 遺留的洩漏修正。
+    #[test]
+    fn record_person_arrivals_marks_gm_only_for_non_public_visibility() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-person-gm-only-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+
+        let spy = data::WorldbookEntry {
+            uid: 1,
+            title: "密探".to_owned(),
+            keys: Vec::new(),
+            content: "其實是反派的眼線。".to_owned(),
+            constant: true,
+            order: 0,
+            disabled: false,
+            visibility: data::Visibility::Gm,
+            is_person: true,
+        };
+        let worldbook = [spy];
+
+        record_person_arrivals(&root, &world_id, 0, &worldbook, &[], Some("密探"), "", "阿濤");
+        let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
+        assert_eq!(scene0.len(), 1);
+        assert!(scene0[0].gm_only);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// AI 卡重構包 4b：scene_appearances 掃現在這幕的 transcript，角色卡回歸事件反查回 id，
+    /// 世界書人物登場事件直接回 title；兩種前綴互不干擾。
+    #[test]
+    fn scene_appearances_at_scans_both_prefixes() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-scene-appearances-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+
+        let fox = character_card(&data::new_id(), "狐狸");
+        data::write_character(&root, &world_id, &fox).unwrap();
+
+        data::append_transcript(
+            &root,
+            &world_id,
+            0,
+            &data::TranscriptEvent {
+                ts: "now".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: data::TranscriptKind::System,
+                text: "（角色回歸）〈狐狸〉\n尾巴很大。".to_owned(),
+                raw: None,
+                state: None,
+                gm_only: false,
+            },
+        )
+        .unwrap();
+        data::append_transcript(
+            &root,
+            &world_id,
+            0,
+            &data::TranscriptEvent {
+                ts: "now".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: data::TranscriptKind::System,
+                text: "（人物登場）〈愛麗絲〉\n旅店老闆娘。".to_owned(),
+                raw: None,
+                state: None,
+                gm_only: false,
+            },
+        )
+        .unwrap();
+
+        let result = scene_appearances_at(&root, &world_id).unwrap();
+        assert_eq!(result.character_ids, vec![fox.id.clone()]);
+        assert_eq!(result.person_titles, vec!["愛麗絲".to_owned()]);
 
         std::fs::remove_dir_all(&root).unwrap();
     }

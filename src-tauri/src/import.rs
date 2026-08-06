@@ -159,6 +159,7 @@ pub fn import_character(
         tier: Tier::Balanced,
         show_image: true,
         archived: false,
+        auto_hidden: false,
         display_index: None,
     })
 }
@@ -191,7 +192,7 @@ pub struct CardInterface {
 pub fn read_card_interfaces(root: &Path, world_id: &str) -> DataResult<Vec<CardInterface>> {
     let mut result = Vec::new();
     for meta in data::list_characters(root, world_id)? {
-        if meta.archived {
+        if meta.archived || meta.auto_hidden {
             continue;
         }
         let md_path = data::character_path(root, world_id, &meta.id)?;
@@ -1532,7 +1533,7 @@ mod tests {
         )
         .unwrap();
         assert!(markdown.contains(&format!(
-            "---\nid: {}\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: balanced\nshow_image: true\narchived: false\ndisplay_index: 0\ngen_prompt: \n---",
+            "---\nid: {}\nname: 莉亞\ncolor: #3366ff\navatar: 🎭\ntier: balanced\nshow_image: true\narchived: false\nauto_hidden: false\ndisplay_index: 0\ngen_prompt: \n---",
             meta.id
         )));
         for section in [
