@@ -3,9 +3,10 @@
 //!
 //! 兩條規矩：
 //! - **token 是主軸**：四家 CLI 的 token 語意已在 cli.rs 換算成同一把尺，可以直接相加比較。
-//! - **只講省下多少**：畫面不出總花費（看了只會焦慮），改算快取省了幾成、省了多少錢。
-//!   app 仍不建價目表——金額拿各 CLI 自己回報的 `cost_usd` 反推該輪的輸入單價，
-//!   再乘回省下的 token；估不出來的輪次標 `saved_partial`，由前端決定閉嘴或改列細項。
+//! - **第一眼只講省下多少**：收合處出「已省幾成、省了多少錢」（總花費看了只會焦慮），
+//!   花費留在細項——那裡有保溫 ping 這種本來就沒有「省下」可言的列。
+//! - **金額只轉述**：app 不自算牌價、不建價目表，`cost_usd` 照舊是各 CLI 自己回報值的加總；
+//!   省下的錢再拿它反推該輪的輸入單價乘回省下的 token，估不出的輪次標 `saved_partial`。
 //!
 //! 診斷標籤與原因代碼原樣送到前端配 i18n（字典見 usage_log.rs 模組頂註解）。
 
@@ -32,6 +33,10 @@ pub struct UsageRow {
     pub cached_tokens: u64,
     pub output_tokens: u64,
     pub hit_rate: f64,
+    /// 各 CLI 官方回報值的加總；一筆都沒有＝None（前端顯示「—」）
+    pub cost_usd: Option<f64>,
+    /// 有輪次沒回報金額，加總只是部分
+    pub cost_partial: bool,
     /// 快取省下的輸入等值 token：沒快取要付的（全額）減掉實際付的
     pub saved_tokens: f64,
     /// 上面那筆的分母：算得出省下多少的輸入 token（計價不明的來源不進來）
@@ -111,6 +116,7 @@ fn accumulate(row: &mut UsageRow, line: &Value) {
     row.rounds += 1;
     if line.get("unreported").and_then(Value::as_bool) == Some(true) {
         row.unreported += 1;
+        row.cost_partial = true;
         row.saved_partial = true;
         return;
     }
@@ -121,6 +127,11 @@ fn accumulate(row: &mut UsageRow, line: &Value) {
     row.prompt_tokens += prompt;
     row.cached_tokens += cached;
     row.output_tokens += output;
+    let cost = line.get("cost_usd").and_then(Value::as_f64);
+    match cost {
+        Some(value) => row.cost_usd = Some(row.cost_usd.unwrap_or(0.0) + value),
+        None => row.cost_partial = true,
+    }
 
     // 省下多少一輪一算再累加：每輪的單價與命中結構都不同，先加總會算錯
     let Some((read_mult, write_mult)) = cache_price(&text(line, "transport")) else {
@@ -133,9 +144,9 @@ fn accumulate(row: &mut UsageRow, line: &Value) {
     let saved = prompt as f64 - paid;
     row.saved_tokens += saved;
     let charged = paid + OUTPUT_MULTIPLE * output as f64;
-    match line.get("cost_usd").and_then(Value::as_f64) {
-        Some(cost) if charged > 0.0 => {
-            row.saved_usd = Some(row.saved_usd.unwrap_or(0.0) + cost / charged * saved);
+    match cost {
+        Some(value) if charged > 0.0 => {
+            row.saved_usd = Some(row.saved_usd.unwrap_or(0.0) + value / charged * saved);
         }
         _ => row.saved_partial = true,
     }
@@ -314,6 +325,7 @@ mod tests {
         assert_eq!(sonnet.prompt_tokens, 2_200); // ping 的 1200 不算進去
         assert_eq!(sonnet.cached_tokens, 1_000);
         assert!((sonnet.hit_rate - 45.5).abs() < 0.05);
+        assert_eq!(sonnet.cost_usd, Some(0.03));
         // 省下多少一輪一算：建快取那輪反而多付 250（寫入加價兩成半），
         // 讀到快取那輪省下 850，兩輪淨省 600 個輸入 token 的錢
         assert_eq!(sonnet.saved_tokens, 600.0);
@@ -327,7 +339,7 @@ mod tests {
         assert_eq!(agy.prompt_tokens, 0);
         assert_eq!(agy.priced_tokens, 0);
         assert_eq!(agy.saved_usd, None);
-        assert!(agy.saved_partial);
+        assert!(agy.cost_partial && agy.saved_partial);
 
         // 總計含整體命中率，保溫另計
         assert_eq!(report.total.rounds, 4);
@@ -335,8 +347,9 @@ mod tests {
         assert_eq!(report.total.cached_tokens, 4_600);
         assert!((report.total.hit_rate - 74.2).abs() < 0.05);
         assert_eq!(report.total.saved_tokens, 3_740.0); // sonnet 600 ＋ opus 3140
-        assert!(report.total.saved_partial); // agy 那輪估不出
+        assert!(report.total.cost_partial && report.total.saved_partial); // agy 那輪兩樣都缺
         assert_eq!(report.ping.rounds, 1);
+        assert_eq!(report.ping.cost_usd, Some(0.001));
         assert!((report.ping.saved_usd.expect("保溫也有金額") - 0.007_448).abs() < 1e-5);
 
         // 燈號看最近一筆非保溫紀錄
