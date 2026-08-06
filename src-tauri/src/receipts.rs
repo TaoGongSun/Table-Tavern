@@ -17,6 +17,9 @@ pub struct Snapshot {
     state: Option<WorldState>,
     worldbook_uids: HashSet<u64>,
     world_card: (bool, bool), // (png 已存在, import.json 已存在)
+    /// 機制帳本（mechanism-log.jsonl）快照時的原始內容；這檔是純 append，記著這份就能在
+    /// undo 時精準挖掉「這次操作自己追加的那一段」，不牽連期間新產生的遊玩紀錄。
+    mechanism_log_before: String,
 }
 
 pub fn snapshot(root: &Path, world_id: &str) -> Snapshot {
@@ -31,6 +34,10 @@ pub fn snapshot(root: &Path, world_id: &str) -> Snapshot {
             data::world_card_path(root, world_id, "png").is_ok_and(|path| path.exists()),
             data::world_card_path(root, world_id, "import.json").is_ok_and(|path| path.exists()),
         ),
+        mechanism_log_before: data::mechanism_log_path(root, world_id)
+            .ok()
+            .and_then(|path| fs::read_to_string(path).ok())
+            .unwrap_or_default(),
     }
 }
 
@@ -100,6 +107,10 @@ struct ImportReceipt {
     /// source_uid 停用）：整條原文快照，undo 時整條覆寫回去。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rewritten_entries: Vec<WorldbookEntry>,
+    /// 這次操作往「機制帳本」（mechanism-log.jsonl）追加的原文；undo 時整段挖掉，其餘
+    /// （含期間新產生的遊玩紀錄）不動。目前只有 AI 卡重構套用機制那條路會寫非空值。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    added_ledger_lines: String,
 }
 
 /// 前端側欄按鈕與未來路由框用的摘要：不帶復原用的內部細節（指紋、機制差異）。
@@ -231,6 +242,17 @@ fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> O
     (!undo.is_empty()).then_some(undo)
 }
 
+/// 機制帳本是純 append 檔，這次操作新增的內容＝目前檔案內容扣掉快照時的舊內容那段前綴。
+/// 對不上前綴（檔案被外力改過，理論上不會發生）就當沒有新增，undo 那端找不到片段時
+/// 本來就會靜默放棄，不會誤刪玩家的合法紀錄。
+fn diff_ledger_suffix(before: &str, root: &Path, world_id: &str) -> String {
+    let Ok(path) = data::mechanism_log_path(root, world_id) else {
+        return String::new();
+    };
+    let after = fs::read_to_string(path).unwrap_or_default();
+    after.strip_prefix(before).unwrap_or_default().to_owned()
+}
+
 /// 條目的復原用指紋：標題／內文／關鍵字／恆定／順序／停用／可見度，字段等值就當「沒改過」。
 /// FNV-1a（跨執行穩定，做法比照 lanes.rs 的 events_fingerprint）。
 fn worldbook_entry_fingerprint(entry: &WorldbookEntry) -> String {
@@ -308,6 +330,7 @@ pub fn record_character_import(
             world_card_created: None,
             renamed_from: None,
             rewritten_entries: Vec::new(),
+            added_ledger_lines: String::new(),
         },
     );
 }
@@ -336,6 +359,7 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             world_card_created,
             renamed_from: None,
             rewritten_entries: Vec::new(),
+            added_ledger_lines: String::new(),
         },
     );
 }
@@ -353,10 +377,12 @@ pub fn record_refactor_apply(
 ) {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
+    let added_ledger_lines = diff_ledger_suffix(&before.mechanism_log_before, root, world_id);
     if character_ids.is_empty()
         && worldbook_entries.is_empty()
         && mechanism.is_none()
         && rewritten_entries.is_empty()
+        && added_ledger_lines.is_empty()
     {
         return;
     }
@@ -374,6 +400,7 @@ pub fn record_refactor_apply(
             world_card_created: None,
             renamed_from: None,
             rewritten_entries,
+            added_ledger_lines,
         },
     );
 }
@@ -498,14 +525,27 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
-    // 5. 這次匯入新建的卡片介面殼：匯入前就有的不動。
+    // 5. 機制帳本：這次操作自己追加的那段原文整段挖掉，其餘（含期間新產生的遊玩紀錄）不動。
+    if !receipt.added_ledger_lines.is_empty() {
+        if let Ok(path) = data::mechanism_log_path(root, world_id) {
+            if let Ok(current) = fs::read_to_string(&path) {
+                if let Some(index) = current.rfind(receipt.added_ledger_lines.as_str()) {
+                    let mut restored = current[..index].to_owned();
+                    restored.push_str(&current[index + receipt.added_ledger_lines.len()..]);
+                    let _ = fs::write(&path, restored);
+                }
+            }
+        }
+    }
+
+    // 6. 這次匯入新建的卡片介面殼：匯入前就有的不動。
     if let Some(extension) = &receipt.world_card_created {
         if let Ok(card_path) = data::world_card_path(root, world_id, extension) {
             let _ = fs::remove_file(card_path);
         }
     }
 
-    // 6. 桌名：這次匯入有改過名字才退回去。
+    // 7. 桌名：這次匯入有改過名字才退回去。
     if let Some(old_name) = &receipt.renamed_from {
         if data::rename_world(root, world_id, old_name).is_ok() {
             report.renamed_back = true;

@@ -6,6 +6,7 @@ use crate::data::{
     self, CharacterCard, DataResult, FieldRule, StateNode, Tier, Trigger, Visibility,
     WorldbookEntry,
 };
+use crate::mechanism;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -192,6 +193,7 @@ pub fn apply(
     }
 
     let mut mechanisms_applied = 0usize;
+    let mut ledger_records = Vec::new();
     for &index in &selection.mechanism_indices {
         let Some(mechanism) = outcome.mechanisms.get(index) else {
             continue;
@@ -201,12 +203,18 @@ pub fn apply(
         }
         state.mechanism.triggers.extend(mechanism.triggers.iter().cloned());
         state_dirty = true;
+        if let Some(record) = absorbed_ledger_record(root, world_id, &mechanism.source_uid) {
+            ledger_records.push(record);
+        }
         disable_source_entry(root, world_id, &mechanism.source_uid, &mut rewritten)?;
         mechanisms_applied += 1;
     }
 
     if state_dirty {
         data::write_state(root, world_id, &state)?;
+    }
+    if !ledger_records.is_empty() {
+        mechanism::append_log(root, world_id, state.current_scene, &ledger_records);
     }
 
     Ok(RefactorApplyResult {
@@ -275,6 +283,22 @@ fn disable_source_entry(
     updated.disabled = true;
     data::upsert_worldbook_entry(root, world_id, updated)?;
     Ok(())
+}
+
+/// 機制套用後記一筆已接管：來源條目原本在帳本裡是 Skipped，append_log 落檔後 read_ledger
+/// 取「同標題最新一筆」會直接蓋成 Absorbed；原本不在帳本裡的純散文條目則等於新增一筆，
+/// 讓玩家在帳本分頁看得到這條被收編了。uid 解不出來或條目已經不在就不記。
+fn absorbed_ledger_record(root: &Path, world_id: &str, uid_str: &str) -> Option<mechanism::Record> {
+    let uid: u64 = uid_str.parse().ok()?;
+    let entry = data::read_worldbook(root, world_id)
+        .ok()?
+        .into_iter()
+        .find(|entry| entry.uid == uid)?;
+    Some(mechanism::Record {
+        kind: mechanism::RecordKind::Absorbed,
+        path: entry.title,
+        detail: "AI 卡重構已收編此機制條目，併入欄位規則／觸發表，不再送入提示詞。".to_owned(),
+    })
 }
 
 /// state_fields 併入狀態樹：頂層鍵整支覆寫——AI 產出的介面欄位最小可懂、也最好復原的合併
@@ -616,5 +640,152 @@ mod tests {
             .find(|entry| entry.uid == source_uid)
             .unwrap();
         assert!(!source_entry_after.disabled);
+    }
+
+    /// (e) 帳本轉換：來源條目原本在帳本裡是 Skipped（例如認不出的 EJS），套用機制後帳本要
+    /// 改記 Absorbed——玩家在帳本分頁看到的是「已被收編」，不再是「跳過」。
+    #[test]
+    fn apply_mechanism_converts_ledger_entry_from_skipped_to_absorbed() {
+        let root = TestRoot::new("ledger-skipped-to-absorbed");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "詭異的機制腳本", "<% 認不出的 EJS %>");
+        mechanism::append_log(
+            root.path(),
+            &world_id,
+            0,
+            &[mechanism::Record {
+                kind: mechanism::RecordKind::Skipped,
+                path: "詭異的機制腳本".to_owned(),
+                detail: "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+            }],
+        );
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: vec![RefactorMechanism {
+                source_uid: source_uid.to_string(),
+                rules: BTreeMap::from([(
+                    "World.詭異值".to_owned(),
+                    FieldRule::for_kind(data::FieldKind::Number),
+                )]),
+                triggers: Vec::new(),
+            }],
+            rewrites: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: vec![0],
+        };
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+
+        let ledger = mechanism::read_ledger(root.path(), &world_id);
+        let entry = ledger
+            .entries
+            .iter()
+            .find(|entry| entry.title == "詭異的機制腳本")
+            .unwrap();
+        assert_eq!(entry.kind, mechanism::RecordKind::Absorbed);
+    }
+
+    /// (f) 帳本新增：純散文機制條目（帳本裡原本沒有這條）套用後要新增一筆 Absorbed 記錄。
+    #[test]
+    fn apply_mechanism_adds_absorbed_ledger_entry_for_entry_with_no_prior_record() {
+        let root = TestRoot::new("ledger-new-absorbed");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "純散文機制", "打鬥時擲骰決勝負。");
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: vec![RefactorMechanism {
+                source_uid: source_uid.to_string(),
+                rules: BTreeMap::from([(
+                    "World.戰鬥值".to_owned(),
+                    FieldRule::for_kind(data::FieldKind::Number),
+                )]),
+                triggers: Vec::new(),
+            }],
+            rewrites: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: vec![0],
+        };
+
+        assert!(mechanism::read_ledger(root.path(), &world_id).entries.is_empty());
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+
+        let ledger = mechanism::read_ledger(root.path(), &world_id);
+        let entry = ledger
+            .entries
+            .iter()
+            .find(|entry| entry.title == "純散文機制")
+            .unwrap();
+        assert_eq!(entry.kind, mechanism::RecordKind::Absorbed);
+    }
+
+    /// (g) undo 帳本回退：套用前是 Skipped，套用後變 Absorbed，undo 之後帳本要退回原本的
+    /// Skipped 記錄。
+    #[test]
+    fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
+        let root = TestRoot::new("ledger-undo");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "詭異的機制腳本二號", "<% 認不出的 EJS %>");
+        mechanism::append_log(
+            root.path(),
+            &world_id,
+            0,
+            &[mechanism::Record {
+                kind: mechanism::RecordKind::Skipped,
+                path: "詭異的機制腳本二號".to_owned(),
+                detail: "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+            }],
+        );
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: vec![RefactorMechanism {
+                source_uid: source_uid.to_string(),
+                rules: BTreeMap::from([(
+                    "World.詭異值二".to_owned(),
+                    FieldRule::for_kind(data::FieldKind::Number),
+                )]),
+                triggers: Vec::new(),
+            }],
+            rewrites: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: vec![0],
+        };
+
+        apply_recorded(root.path(), &world_id, &outcome, &selection);
+        let applied = mechanism::read_ledger(root.path(), &world_id);
+        assert_eq!(
+            applied
+                .entries
+                .iter()
+                .find(|entry| entry.title == "詭異的機制腳本二號")
+                .unwrap()
+                .kind,
+            mechanism::RecordKind::Absorbed
+        );
+
+        receipts::undo_last_import(root.path(), &world_id).unwrap();
+
+        let after_undo = mechanism::read_ledger(root.path(), &world_id);
+        let entry = after_undo
+            .entries
+            .iter()
+            .find(|entry| entry.title == "詭異的機制腳本二號")
+            .unwrap();
+        assert_eq!(entry.kind, mechanism::RecordKind::Skipped);
     }
 }
