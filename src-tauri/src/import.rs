@@ -2746,6 +2746,7 @@ if (invasion >= 50 && done === false) { _%>
             order: 0,
             disabled,
             visibility: data::Visibility::Gm,
+            is_person: false,
         }
     }
 

@@ -205,6 +205,9 @@ pub struct WorldbookEntry {
     pub order: i64,
     pub disabled: bool,
     pub visibility: Visibility,
+    /// AI 卡重構切出來、玩家選擇「不升格為角色卡」的人物條目標記；一般條目一律 false。
+    #[serde(default)]
+    pub is_person: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -946,6 +949,38 @@ fn set_visibility(value: &mut serde_json::Value, visibility: &Visibility) {
         .insert("visibility".to_owned(), visibility_value(visibility));
 }
 
+fn is_person_from_value(value: &serde_json::Value) -> bool {
+    value
+        .get("extensions")
+        .and_then(|value| value.get("table_tavern"))
+        .and_then(|value| value.get("is_person"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn set_is_person(value: &mut serde_json::Value, is_person: bool) {
+    let Some(entry) = value.as_object_mut() else {
+        return;
+    };
+    let extensions = entry
+        .entry("extensions")
+        .or_insert_with(|| serde_json::json!({}));
+    if !extensions.is_object() {
+        *extensions = serde_json::json!({});
+    }
+    let extensions = extensions.as_object_mut().expect("object set above");
+    let table_tavern = extensions
+        .entry("table_tavern")
+        .or_insert_with(|| serde_json::json!({}));
+    if !table_tavern.is_object() {
+        *table_tavern = serde_json::json!({});
+    }
+    table_tavern
+        .as_object_mut()
+        .expect("object set above")
+        .insert("is_person".to_owned(), serde_json::Value::Bool(is_person));
+}
+
 fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> WorldbookEntry {
     WorldbookEntry {
         uid: value
@@ -986,6 +1021,7 @@ fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> Worldbook
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false),
         visibility: visibility_from_value(value),
+        is_person: is_person_from_value(value),
     }
 }
 
@@ -1091,6 +1127,7 @@ fn update_entry_fields(value: &mut serde_json::Value, entry: &WorldbookEntry) {
         serde_json::Value::Bool(entry.disabled),
     );
     set_visibility(value, &entry.visibility);
+    set_is_person(value, entry.is_person);
 }
 
 fn new_entry_value(entry: &WorldbookEntry, uid: u64, display_index: u64) -> serde_json::Value {
@@ -1129,6 +1166,7 @@ fn new_entry_value(entry: &WorldbookEntry, uid: u64, display_index: u64) -> serd
         "displayIndex": display_index
     });
     set_visibility(&mut value, &entry.visibility);
+    set_is_person(&mut value, entry.is_person);
     value
 }
 
@@ -1383,6 +1421,7 @@ pub fn character_to_worldbook_entry(
         order: 100,
         disabled: false,
         visibility: Visibility::Gm,
+        is_person: false,
     };
     let mut worldbook = read_worldbook_value(root, world_id)?;
     let entries = entries_object_mut(&mut worldbook)?;
@@ -2492,6 +2531,7 @@ mod tests {
             order: 10,
             disabled: false,
             visibility: Visibility::Gm,
+            is_person: false,
         }
     }
 
