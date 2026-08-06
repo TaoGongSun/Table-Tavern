@@ -2137,6 +2137,15 @@ pub fn export_scene_markdown(
     Ok(format!("{title}\n\n{}\n", entries.join("\n\n")))
 }
 
+/// 換幕摘要固定前綴：新幕開頭與重寫前情提要共用同一套語系文案，避免兩處各自維護。
+fn format_scene_summary(summary_text: &str, lang: &str) -> String {
+    if lang == "en" {
+        format!("Previously:\n{summary_text}")
+    } else {
+        format!("【前情提要】\n{summary_text}")
+    }
+}
+
 /// 換場：把摘要包成一則 GM 旁白 append 到下一場景開頭，再把 current_scene +1 並存檔。
 /// 回傳新場景號。摘要文字本身由呼叫端（單發 LLM）產生，這裡只負責落地與推進場次。
 /// title 有值就存進「舊場景」（bump 前的 current_scene）的 scene_titles，與場次 +1 同一次 write_state。
@@ -2150,11 +2159,6 @@ pub fn begin_next_scene(
     let mut state = read_state(root, world_id)?;
     let old_scene = state.current_scene;
     let next_scene = old_scene + 1;
-    let text = if lang == "en" {
-        format!("Previously:\n{summary_text}")
-    } else {
-        format!("【前情提要】\n{summary_text}")
-    };
     append_transcript(
         root,
         world_id,
@@ -2165,7 +2169,7 @@ pub fn begin_next_scene(
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
             kind: TranscriptKind::Narration,
-            text,
+            text: format_scene_summary(summary_text, lang),
             state: None,
         },
     )?;
@@ -2177,6 +2181,78 @@ pub fn begin_next_scene(
     state.current_scene = next_scene;
     write_state(root, world_id, &state)?;
     Ok(next_scene)
+}
+
+/// 退回前幕：換幕的精確反向操作，純本地檔案處理不必呼叫模型。
+/// 只認「這一幕剛好一則事件」——begin_next_scene 保證新幕開頭就是那則摘要，
+/// 多於一則代表玩家已經在這一幕行動過，退回會悄悄吃掉那些內容，所以直接擋，
+/// 且擋下時故意先不動任何檔案／狀態（讀完才判斷），錯誤路徑不留副作用。
+pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
+    let mut state = read_state(root, world_id)?;
+    let scene = state.current_scene;
+    if scene == 0 {
+        return Err(invalid_data("已經是第一幕，沒有前幕可以退回"));
+    }
+    let events = read_transcript(root, world_id, scene)?;
+    if events.len() != 1 {
+        return Err(invalid_data("這一幕已經有新內容，不能退回前幕"));
+    }
+
+    fs::remove_file(transcript_path(root, world_id, scene)?)?;
+    let previous_scene = scene - 1;
+    state.current_scene = previous_scene;
+    state.scene_titles.remove(&previous_scene.to_string());
+    // current_scene 落回前幕，前幕本來就對齊過了，aligned_scene 不用跟著動。
+    state.state = read_transcript(root, world_id, previous_scene)?
+        .iter()
+        .rev()
+        .find_map(|event| event.state.clone())
+        .unwrap_or_default();
+    write_state(root, world_id, &state)?;
+    Ok(previous_scene)
+}
+
+/// 重寫目前這幕唯一那則摘要：摘要不滿意可以直接原地覆寫，不必先退回再重新換幕一次。
+pub fn replace_scene_summary(
+    root: &Path,
+    world_id: &str,
+    summary_text: &str,
+    lang: &str,
+    title: Option<&str>,
+) -> DataResult<()> {
+    let mut state = read_state(root, world_id)?;
+    let scene = state.current_scene;
+    if scene == 0 {
+        return Err(invalid_data("第一幕沒有前情提要可以重寫"));
+    }
+    let mut events = read_transcript(root, world_id, scene)?;
+    if events.len() != 1 {
+        return Err(invalid_data("這一幕已經有新內容，不能重寫前情提要"));
+    }
+
+    // 重寫的只有文字，其餘欄位原樣留著——尤其 state 那份快照：
+    // 摘要是這一幕唯一一則，快照掉了之後退回這一幕會把狀態欄清成空的。
+    let event = &mut events[0];
+    event.text = format_scene_summary(summary_text, lang);
+    event.ts = local_timestamp()?;
+    fs::write(
+        transcript_path(root, world_id, scene)?,
+        format!("{}\n", serde_json::to_string(event)?),
+    )?;
+
+    let previous_scene = scene - 1;
+    match title.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(name) => {
+            state
+                .scene_titles
+                .insert(previous_scene.to_string(), name.to_owned());
+        }
+        None => {
+            state.scene_titles.remove(&previous_scene.to_string());
+        }
+    }
+    write_state(root, world_id, &state)?;
+    Ok(())
 }
 
 pub fn read_state(root: &Path, world_id: &str) -> DataResult<WorldState> {
@@ -4486,6 +4562,197 @@ mod tests {
         let state = read_state(root.path(), &world_id).unwrap();
         assert!(!state.scene_titles.contains_key("1"));
         assert!(!state.scene_titles.contains_key("2"));
+    }
+
+    #[test]
+    fn revert_scene_returns_to_previous_scene_and_drops_title() {
+        let root = TestRoot::new("revert-scene");
+        let world_id = create_world(root.path(), "退幕桌").unwrap();
+        let snapshot = TableState {
+            table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
+        };
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                raw: None,
+                ts: "2026-08-06T00:00:00Z".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "玩家".to_owned(),
+                kind: TranscriptKind::Player,
+                text: "第一幕的對話".to_owned(),
+                state: Some(snapshot.clone()),
+            },
+        )
+        .unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", Some("酒館夜話")).unwrap();
+        assert_eq!(read_state(root.path(), &world_id).unwrap().current_scene, 1);
+
+        let previous = revert_scene(root.path(), &world_id).unwrap();
+        assert_eq!(previous, 0);
+
+        let state = read_state(root.path(), &world_id).unwrap();
+        assert_eq!(state.current_scene, 0);
+        // 前幕最後一則帶快照事件的 state 要跟著回來，不是砍完就放著預設值
+        assert_eq!(state.state, snapshot);
+        assert!(!state.scene_titles.contains_key("0"));
+        assert!(!root
+            .path()
+            .join(format!("worlds/{world_id}/transcript/1.jsonl"))
+            .exists());
+        // 舊幕本身完全沒被動過
+        assert_eq!(read_transcript(root.path(), &world_id, 0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn revert_scene_rejects_extra_events_without_touching_anything() {
+        let root = TestRoot::new("revert-scene-blocked");
+        let world_id = create_world(root.path(), "退幕擋桌").unwrap();
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                raw: None,
+                ts: "2026-08-06T00:00:00Z".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "玩家".to_owned(),
+                kind: TranscriptKind::Player,
+                text: "序幕".to_owned(),
+                state: None,
+            },
+        )
+        .unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+        // 這一幕除了摘要之外，玩家已經多說了一句——不是「剛好一則」了
+        append_transcript(
+            root.path(),
+            &world_id,
+            1,
+            &TranscriptEvent {
+                raw: None,
+                ts: "2026-08-06T00:01:00Z".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "玩家".to_owned(),
+                kind: TranscriptKind::Player,
+                text: "新的一句".to_owned(),
+                state: None,
+            },
+        )
+        .unwrap();
+
+        let before_state = read_state(root.path(), &world_id).unwrap();
+        let before_events = read_transcript(root.path(), &world_id, 1).unwrap();
+
+        let error = revert_scene(root.path(), &world_id).unwrap_err().to_string();
+        assert!(error.contains("不能退回前幕"));
+
+        // 擋下時檔案與 state 都沒被動過
+        assert_eq!(read_state(root.path(), &world_id).unwrap(), before_state);
+        assert_eq!(
+            read_transcript(root.path(), &world_id, 1).unwrap(),
+            before_events
+        );
+    }
+
+    #[test]
+    fn revert_scene_rejects_at_first_scene() {
+        let root = TestRoot::new("revert-scene-first");
+        let world_id = create_world(root.path(), "第一幕桌").unwrap();
+        let error = revert_scene(root.path(), &world_id).unwrap_err().to_string();
+        assert!(error.contains("沒有前幕可以退回"));
+    }
+
+    #[test]
+    fn replace_scene_summary_overwrites_text_and_drops_title_when_none() {
+        let root = TestRoot::new("replace-scene-summary");
+        let world_id = create_world(root.path(), "重寫摘要桌").unwrap();
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                raw: None,
+                ts: "2026-08-06T00:00:00Z".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "玩家".to_owned(),
+                kind: TranscriptKind::Player,
+                text: "序幕".to_owned(),
+                state: None,
+            },
+        )
+        .unwrap();
+        begin_next_scene(root.path(), &world_id, "舊摘要", "zh-TW", Some("舊標題")).unwrap();
+        assert_eq!(
+            read_state(root.path(), &world_id)
+                .unwrap()
+                .scene_titles
+                .get("0")
+                .map(String::as_str),
+            Some("舊標題")
+        );
+
+        replace_scene_summary(root.path(), &world_id, "新摘要", "zh-TW", None).unwrap();
+
+        let events = read_transcript(root.path(), &world_id, 1).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].text, "【前情提要】\n新摘要");
+        assert_eq!(events[0].speaker_name, "GM");
+        assert_eq!(events[0].kind, TranscriptKind::Narration);
+
+        // title 傳 None：舊幕名被移除，不留上一次的殘留
+        assert!(!read_state(root.path(), &world_id)
+            .unwrap()
+            .scene_titles
+            .contains_key("0"));
+    }
+
+    /// 重寫摘要只換文字：那則的狀態快照要留著。摘要是這一幕唯一一則，
+    /// 快照掉了的話，之後退回這一幕就只能把狀態欄清成空的。
+    #[test]
+    fn replace_scene_summary_keeps_snapshot_for_later_revert() {
+        let root = TestRoot::new("replace-scene-summary-snapshot");
+        let world_id = create_world(root.path(), "快照保留桌").unwrap();
+        let snapshot = TableState {
+            table: BTreeMap::from([("place".to_owned(), "酒館".to_owned())]),
+            tree: BTreeMap::new(),
+            notes: Vec::new(),
+            changes: BTreeMap::new(),
+            triggers: BTreeMap::new(),
+            jumps: BTreeMap::new(),
+        };
+        append_transcript(
+            root.path(),
+            &world_id,
+            0,
+            &TranscriptEvent {
+                raw: None,
+                ts: "now".to_owned(),
+                speaker_id: String::new(),
+                speaker_name: "GM".to_owned(),
+                kind: TranscriptKind::Narration,
+                text: "序幕".to_owned(),
+                state: Some(snapshot.clone()),
+            },
+        )
+        .unwrap();
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state.state = snapshot.clone();
+        write_state(root.path(), &world_id, &state).unwrap();
+
+        begin_next_scene(root.path(), &world_id, "舊摘要", "zh-TW", None).unwrap();
+        replace_scene_summary(root.path(), &world_id, "新摘要", "zh-TW", None).unwrap();
+        // 再換一幕：這時第 1 幕那則摘要成了回推狀態的唯一來源
+        begin_next_scene(root.path(), &world_id, "第二幕摘要", "zh-TW", None).unwrap();
+
+        assert_eq!(revert_scene(root.path(), &world_id).unwrap(), 1);
+        assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshot);
     }
 
     #[test]

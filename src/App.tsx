@@ -3977,6 +3977,37 @@ function App() {
     }
   }
 
+  // 太早按到換幕的補救：這一幕還只有那則前情提要時，刪掉它退回上一幕接著玩。
+  // 前幕紀錄從來沒被動過（換幕只是開新檔），所以退回不會掉任何內容
+  async function revertScene() {
+    if (!canUndoScene) return;
+    setError("");
+    try {
+      await invoke<number>("revert_scene", { worldId: table });
+      await enterTable(table, config!);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  // 前情提要不滿意就重寫一份。拿前幕原始紀錄重跑一次摘要，蓋掉這幕唯一那則
+  async function regenerateSummary() {
+    if (!canUndoScene) return;
+    setError("");
+    setGenerating({ id: "", kind: "narration" });
+    setStreamText("");
+    try {
+      await invoke("regenerate_scene_summary", { worldId: table });
+      await enterTable(table, config!);
+      noteTurnDone();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setGenerating(null);
+      setStreamText("");
+    }
+  }
+
   // 存哪裡由使用者決定：跳原生「另存新檔」對話框，取消就什麼都不做
   async function exportTranscript() {
     setError("");
@@ -4664,6 +4695,10 @@ function App() {
 
   // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）
   const canRestore = undone !== null && undone.table === table && undone.scene === scene;
+
+  // 剛換完幕、這一幕只有那則前情提要＝還沒開始玩，兩條補救路都還來得及。
+  // 一有新內容就作廢（同復原疊的道理：位置已被後話蓋掉，退回會連新句子一起丟）
+  const canUndoScene = scene > 0 && events.length === 1 && generating === null;
 
   // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
   const gmTargeted = speaker === GM_TARGET;
@@ -5399,6 +5434,25 @@ function App() {
                 <div className="undo-restore">
                   <button type="button" onClick={() => void restoreUndone()}>
                     ↩ {t("undoRestore")}
+                  </button>
+                </div>
+              )}
+              {/* 換幕的兩條補救路：只在這一幕還沒開始玩時出現，玩家一發言就自動收掉 */}
+              {canUndoScene && (
+                <div className="undo-restore">
+                  <button
+                    type="button"
+                    title={t("sceneSummaryRetryHint")}
+                    onClick={() => void regenerateSummary()}
+                  >
+                    ↻ {t("sceneSummaryRetry")}
+                  </button>
+                  <button
+                    type="button"
+                    title={t("sceneRevertHint")}
+                    onClick={() => void revertScene()}
+                  >
+                    ↩ {t("sceneRevert")}
                   </button>
                 </div>
               )}

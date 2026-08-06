@@ -1783,6 +1783,7 @@ textarea {
 .undo-restore {
   display: flex;
   justify-content: center;
+  gap: 0.5rem;
 }
 
 /* ============ 表單／設定 ============ */
