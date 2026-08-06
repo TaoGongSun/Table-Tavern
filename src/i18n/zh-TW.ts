@@ -429,10 +429,11 @@ export const zh = {
   // 第二張卡路由框（桌上已有匯入紀錄才會跳出來）
   importRouteAskTitle: "匯到哪一桌？",
   importRouteAskBody: "這桌已經匯入過卡，這張新卡通常是要開一桌新的。",
-  importRouteBlockTitle: "這桌已經有一份世界書了",
-  importRouteBlockBody: "兩份世界書沒辦法疊在同一桌，開新桌匯入這一份。",
+  importRouteMergeTitle: "這桌已經有一份世界書了",
+  importRouteMergeBody: "再匯一份會跟原本那份合成同一本；一模一樣的條目會自動略過。要分開放就開新桌。",
   importRouteNewTable: "開新桌並匯入",
   importRouteThisTable: "匯進這桌",
+  importRouteMergeAnyway: "仍要匯入",
 } as const;
 
 export type MsgKey = keyof typeof zh;

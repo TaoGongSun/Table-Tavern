@@ -403,8 +403,10 @@ export const ko: Record<MsgKey, string> = {
   // 두 번째 카드 라우팅 (이 테이블에 이미 가져온 기록이 있을 때만 나타남)
   importRouteAskTitle: "어느 테이블에 가져올까요?",
   importRouteAskBody: "이 테이블에는 이미 가져온 카드가 있습니다. 이 새 카드는 아마 새 테이블용일 거예요.",
-  importRouteBlockTitle: "이 테이블에는 이미 월드북이 있습니다",
-  importRouteBlockBody: "월드북은 한 테이블에 두 개를 쌓을 수 없습니다. 이 카드는 새 테이블에서 열어 주세요.",
+  importRouteMergeTitle: "이 테이블에는 이미 월드북이 있습니다",
+  importRouteMergeBody:
+    "한 권 더 가져오면 기존 월드북과 하나로 합쳐집니다. 똑같은 항목은 자동으로 건너뜁니다. 따로 두려면 새 테이블에서 여세요.",
   importRouteNewTable: "새 테이블로 가져오기",
   importRouteThisTable: "여기로 가져오기",
+  importRouteMergeAnyway: "그래도 가져오기",
 };

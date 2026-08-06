@@ -406,8 +406,10 @@ export const es: Record<MsgKey, string> = {
   // Enrutamiento de la segunda carta (solo aparece si esta mesa ya tiene una importación)
   importRouteAskTitle: "¿Importar a qué mesa?",
   importRouteAskBody: "Esta mesa ya tiene una importación — esta carta nueva probablemente sea para una mesa nueva.",
-  importRouteBlockTitle: "Esta mesa ya tiene un libro del mundo",
-  importRouteBlockBody: "No se pueden apilar dos libros del mundo en la misma mesa — abre una mesa nueva para este.",
+  importRouteMergeTitle: "Esta mesa ya tiene un libro del mundo",
+  importRouteMergeBody:
+    "Importar otro lo fusiona con el que ya está; las entradas idénticas se omiten. Abre una mesa nueva para mantenerlos separados.",
   importRouteNewTable: "Nueva mesa + importar",
   importRouteThisTable: "Importar aquí",
+  importRouteMergeAnyway: "Importar igual",
 };

@@ -407,9 +407,10 @@ export const de: Record<MsgKey, string> = {
   importRouteAskTitle: "In welchen Tisch importieren?",
   importRouteAskBody:
     "An diesem Tisch wurde schon importiert — diese neue Karte ist wahrscheinlich für einen neuen Tisch gedacht.",
-  importRouteBlockTitle: "Dieser Tisch hat bereits ein Weltbuch",
-  importRouteBlockBody:
-    "Zwei Weltbücher passen nicht auf denselben Tisch — für dieses hier einen neuen Tisch öffnen.",
+  importRouteMergeTitle: "Dieser Tisch hat bereits ein Weltbuch",
+  importRouteMergeBody:
+    "Ein weiteres Weltbuch verschmilzt mit dem vorhandenen zu einem; identische Einträge werden übersprungen. Für getrennte Bücher einen neuen Tisch öffnen.",
   importRouteNewTable: "Neuer Tisch + Import",
   importRouteThisTable: "Hier importieren",
+  importRouteMergeAnyway: "Dennoch importieren",
 };

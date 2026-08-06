@@ -401,8 +401,9 @@ export const zhCN: Record<MsgKey, string> = {
   // 第二张卡路由框（桌上已有导入记录才会跳出来）
   importRouteAskTitle: "导入到哪一桌？",
   importRouteAskBody: "这桌已经导入过卡，这张新卡通常是要开一桌新的。",
-  importRouteBlockTitle: "这桌已经有一份世界书了",
-  importRouteBlockBody: "两份世界书没办法叠在同一桌，开新桌导入这一份。",
+  importRouteMergeTitle: "这桌已经有一份世界书了",
+  importRouteMergeBody: "再导入一份会跟原本那份合成同一本；一模一样的条目会自动略过。要分开放就新开一桌。",
   importRouteNewTable: "新开一桌并导入",
   importRouteThisTable: "导入这桌",
+  importRouteMergeAnyway: "仍要导入",
 };

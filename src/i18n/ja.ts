@@ -403,8 +403,10 @@ export const ja: Record<MsgKey, string> = {
   // 二枚目のカードのルーティング（この卓にすでにインポート済みのカードがあるときだけ出る）
   importRouteAskTitle: "どの卓にインポートしますか？",
   importRouteAskBody: "この卓はすでにインポート済みです。この新しいカードはたぶん新しい卓向けです。",
-  importRouteBlockTitle: "この卓にはすでに世界書があります",
-  importRouteBlockBody: "世界書は一つの卓に二つ重ねられません。このカードは新しい卓で開いてください。",
+  importRouteMergeTitle: "この卓にはすでに世界書があります",
+  importRouteMergeBody:
+    "もう一冊入れると元の世界書と一つに合体します。まったく同じ項目は自動で飛ばします。分けたいなら新しい卓で開いてください。",
   importRouteNewTable: "新しい卓でインポート",
   importRouteThisTable: "ここにインポート",
+  importRouteMergeAnyway: "それでもインポート",
 };
