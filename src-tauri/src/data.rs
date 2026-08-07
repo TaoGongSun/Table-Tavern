@@ -631,6 +631,12 @@ pub(crate) fn world_card_path(root: &Path, world_id: &str, extension: &str) -> D
     Ok(world_dir(root, world_id)?.join(format!("source-card.{extension}")))
 }
 
+/// GM 卡的圖：worlds/<world_id>/gm.png。世界書匯入的若是 PNG 卡就存這張，側欄 GM 卡改用它
+/// 取代內建書本圖；沒有這檔就回退書本圖。
+pub(crate) fn gm_image_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("gm.png"))
+}
+
 /// 介面渲染殼檔：worlds/<world_id>/interface-shell.html。AI 卡重構展開介面規則時，除了狀態樹
 /// 初始值（state_fields）還可能多產一份自包含 HTML 殼；前端拿狀態樹的值替換殼內 `{{路徑}}`
 /// 佔位符後塞進既有卡片沙盒 iframe（interface-card.ts buildShellDocument，下一包串接）。

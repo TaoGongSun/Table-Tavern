@@ -17,6 +17,9 @@ pub struct Snapshot {
     state: Option<WorldState>,
     worldbook_uids: HashSet<u64>,
     world_card: (bool, bool), // (png 已存在, import.json 已存在)
+    /// GM 卡的圖（gm.png）快照時是否已存在——比照 world_card：undo 只刪這次匯入新建的那張，
+    /// 匯入前就有的圖不動（被這次 PNG 覆寫掉的舊圖不還原，原始卡檔還在使用者手上）。
+    gm_image_existed: bool,
     /// AI 卡重構的介面渲染殼檔（interface-shell.html）快照時是否已存在——比照 world_card 的
     /// 存在性 diff 手法：undo 只該刪這次操作新建的殼，不動套用前就有的。
     interface_shell_existed: bool,
@@ -37,6 +40,7 @@ pub fn snapshot(root: &Path, world_id: &str) -> Snapshot {
             data::world_card_path(root, world_id, "png").is_ok_and(|path| path.exists()),
             data::world_card_path(root, world_id, "import.json").is_ok_and(|path| path.exists()),
         ),
+        gm_image_existed: data::gm_image_path(root, world_id).is_ok_and(|path| path.exists()),
         interface_shell_existed: data::interface_shell_path(root, world_id)
             .is_ok_and(|path| path.exists()),
         mechanism_log_before: data::mechanism_log_path(root, world_id)
@@ -106,6 +110,9 @@ struct ImportReceipt {
     /// 匯入前就有的殼不記，undo 不動它（不是這次匯入造成的，不該被這次 undo 清掉）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     world_card_created: Option<String>,
+    /// 這次匯入新建了 GM 卡的圖（gm.png）；匯入前就有的圖不記，undo 不動它。
+    #[serde(default, skip_serializing_if = "data::is_false")]
+    gm_image_created: bool,
     /// 這次操作新建了 AI 卡重構的介面渲染殼檔（interface-shell.html）；套用前就有的殼不記，
     /// undo 不動它。跟 world_card_created 是兩回事：那個是「卡片自帶殼」的原始檔，這個是
     /// AI 依狀態樹規則另外產的靜態渲染殼。
@@ -315,6 +322,12 @@ fn detect_world_card_created(root: &Path, world_id: &str, before: &Snapshot) -> 
     None
 }
 
+/// 這次匯入是否新建了 GM 卡的圖（gm.png）；匯入前就有的不算（含被覆寫掉的舊圖）。
+fn detect_gm_image_created(root: &Path, world_id: &str, before: &Snapshot) -> bool {
+    !before.gm_image_existed
+        && data::gm_image_path(root, world_id).is_ok_and(|path| path.exists())
+}
+
 /// 這次操作是否新建了介面渲染殼檔（interface-shell.html）；套用前就有的殼不算。
 fn detect_interface_shell_created(root: &Path, world_id: &str, before: &Snapshot) -> bool {
     !before.interface_shell_existed
@@ -344,6 +357,7 @@ pub fn record_character_import(
             worldbook_entries,
             mechanism,
             world_card_created: None,
+            gm_image_created: false,
             renamed_from: None,
             rewritten_entries: Vec::new(),
             added_ledger_lines: String::new(),
@@ -359,7 +373,12 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
     let world_card_created = detect_world_card_created(root, world_id, &before);
-    if worldbook_entries.is_empty() && mechanism.is_none() && world_card_created.is_none() {
+    let gm_image_created = detect_gm_image_created(root, world_id, &before);
+    if worldbook_entries.is_empty()
+        && mechanism.is_none()
+        && world_card_created.is_none()
+        && !gm_image_created
+    {
         return;
     }
     append_receipt(
@@ -374,6 +393,7 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             worldbook_entries,
             mechanism,
             world_card_created,
+            gm_image_created,
             renamed_from: None,
             rewritten_entries: Vec::new(),
             added_ledger_lines: String::new(),
@@ -418,6 +438,7 @@ pub fn record_refactor_apply(
             worldbook_entries,
             mechanism,
             world_card_created: None,
+            gm_image_created: false,
             renamed_from: None,
             rewritten_entries,
             added_ledger_lines,
@@ -563,6 +584,13 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
     if let Some(extension) = &receipt.world_card_created {
         if let Ok(card_path) = data::world_card_path(root, world_id, extension) {
             let _ = fs::remove_file(card_path);
+        }
+    }
+
+    // 6b. 這次匯入新建的 GM 卡圖：匯入前就有的不動。
+    if receipt.gm_image_created {
+        if let Ok(image_path) = data::gm_image_path(root, world_id) {
+            let _ = fs::remove_file(image_path);
         }
     }
 
@@ -732,6 +760,39 @@ mod tests {
         assert_eq!(report.removed_entries, 1);
         assert!(report.removed_character.is_none());
         assert!(data::read_worldbook(root.path(), &world_id).unwrap().is_empty());
+    }
+
+    /// PNG 世界書匯入→undo：這次新建的 GM 卡圖跟著收掉（回到內建書本圖）；
+    /// 第二張 PNG 只是覆寫既有的圖，undo 不刪——那張圖不是這次匯入生出來的。
+    #[test]
+    fn undo_worldbook_import_removes_only_gm_image_created_this_time() {
+        let root = TestRoot::new("worldbook-gm-image");
+        let world_id = data::create_world(root.path(), "世界").unwrap();
+        let image_path = data::gm_image_path(root.path(), &world_id).unwrap();
+        let book = |content: &str| {
+            serde_json::json!({
+                "entries": {
+                    "0": {"uid": 0, "key": ["城門"], "comment": "城門", "content": content, "constant": false, "order": 1, "disable": false}
+                }
+            })
+            .to_string()
+        };
+        let import_png = |label: &str, json_text: &str, png: &[u8]| {
+            let before = snapshot(root.path(), &world_id);
+            data::import_worldbook(root.path(), &world_id, json_text).unwrap();
+            assert!(import::save_gm_image(root.path(), &world_id, png));
+            record_worldbook_import(root.path(), &world_id, label, before);
+        };
+
+        import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
+        assert!(image_path.exists());
+        undo_last_import(root.path(), &world_id).unwrap();
+        assert!(!image_path.exists());
+
+        import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
+        import_png("第二張.png", &book("城門又開了。"), b"\x89PNG\r\n\x1a\nsecond");
+        undo_last_import(root.path(), &world_id).unwrap();
+        assert_eq!(fs::read(&image_path).unwrap(), b"\x89PNG\r\n\x1a\nsecond");
     }
 
     /// 全部重複、機制／介面殼都沒變化的世界書匯入不留收據——不該亮出可以「復原」的按鈕。

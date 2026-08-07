@@ -613,6 +613,8 @@ textarea {
 
 .tcard-avatar { width: 2rem; height: 2rem; }
 .opt-avatar { width: 1.25rem; height: 1.25rem; }
+/* GM 的目標晶片頭像用的是整張卡圖（GM 沒有另外的頭像檔），對齊上緣才看得到臉 */
+.gm-opt-avatar { object-position: top; }
 .card-editor-avatar-round { width: 6rem; height: 6rem; }
 
 /* 欄位下方的說明小字（例：改名不會動到劇情正文裡的舊名） */

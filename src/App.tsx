@@ -3490,6 +3490,8 @@ function App() {
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
   const [playerImage, setPlayerImage] = useState<string | null>(null);
   const [playerAvatar, setPlayerAvatar] = useState<string | null>(null);
+  // GM 卡的圖：世界書匯入的是 PNG 卡時後端存下的那張，null＝回退內建書本圖
+  const [gmImage, setGmImage] = useState<string | null>(null);
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
@@ -3643,6 +3645,11 @@ function App() {
         entries.filter(([, , avatar]) => avatar !== null).map(([id, , avatar]) => [id, `data:image/png;base64,${avatar}`]),
       ),
     );
+  }
+
+  async function loadGmImage(worldId: string) {
+    const image = await invoke<string | null>("read_gm_image", { worldId }).catch(() => null);
+    setGmImage(image ? `data:image/png;base64,${image}` : null);
   }
 
   async function loadPlayerCard(worldId: string, playerCardId: string | null) {
@@ -3902,6 +3909,7 @@ function App() {
     const appearanceIds = new Set(appearances.character_ids);
     setSceneAppearances(appearanceIds);
     await loadCharacterImages(id, cast);
+    await loadGmImage(id);
     await loadPlayerCard(id, state.player_card_id);
     setImportReceipts(
       await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []),
@@ -4484,6 +4492,8 @@ function App() {
       await refreshCardInterfaces(table);
       // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次
       await refreshRefactorShell(table);
+      // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
+      await loadGmImage(table);
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
       setWorldEditorRefreshKey((key) => key + 1);
@@ -4644,6 +4654,8 @@ function App() {
   // worldId 顯式帶入、adoptName 預設 true，理由同 importAsCharacter。
   async function importAsWorldbook(worldId: string, data: number[], label: string, adoptName = true) {
     const book = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
+    // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
+    await loadGmImage(worldId);
     await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
     // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
     setSpeaker(GM_TARGET);
@@ -5443,7 +5455,11 @@ function App() {
               }}
             >
               <span className="tcard-art">
-                <img className="gm-book" src={gmBook} alt="" />
+                {gmImage ? (
+                  <img className="tcard-image" src={gmImage} alt="" />
+                ) : (
+                  <img className="gm-book" src={gmBook} alt="" />
+                )}
               </span>
               <span className="tcard-body">
                 <span className="tcard-name-row">
@@ -5937,7 +5953,11 @@ function App() {
                     }}
                   >
                     {gmTargeted ? (
-                      <img className="opt-avatar" src={gmBook} alt="" />
+                      gmImage ? (
+                        <img className="avatar-round opt-avatar gm-opt-avatar" src={gmImage} alt="" />
+                      ) : (
+                        <img className="opt-avatar" src={gmBook} alt="" />
+                      )
                     ) : characterAvatars[speaker] ? (
                       <img className="avatar-round opt-avatar" src={characterAvatars[speaker]} alt="" />
                     ) : (
