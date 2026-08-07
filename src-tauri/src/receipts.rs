@@ -50,6 +50,13 @@ pub fn snapshot(root: &Path, world_id: &str) -> Snapshot {
     }
 }
 
+/// 貼到檯面上的開場白：靠場景號＋事件時間戳定位，undo 時只刪這一則。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PostedOpening {
+    scene: u64,
+    ts: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ReceiptWorldbookEntry {
     uid: u64,
@@ -113,6 +120,10 @@ struct ImportReceipt {
     /// 這次匯入新建了 GM 卡的圖（gm.png）；匯入前就有的圖不記，undo 不動它。
     #[serde(default, skip_serializing_if = "data::is_false")]
     gm_image_created: bool,
+    /// 匯完之後玩家從卡片挑了一則貼上檯面的開場白；undo 要連它一起收掉，
+    /// 不然重匯同一張卡想換一則時，舊的那則還壓在開局上。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    opening: Option<PostedOpening>,
     /// 這次操作新建了 AI 卡重構的介面渲染殼檔（interface-shell.html）；套用前就有的殼不記，
     /// undo 不動它。跟 world_card_created 是兩回事：那個是「卡片自帶殼」的原始檔，這個是
     /// AI 依狀態樹規則另外產的靜態渲染殼。
@@ -149,6 +160,8 @@ pub struct UndoReport {
     /// 玩家改過內容而保留下來的世界書條目數
     pub kept_entries: usize,
     pub renamed_back: bool,
+    /// 這次 undo 把匯完貼上檯面的那則開場白也收掉了；前端據此重載逐字稿。
+    pub removed_opening: bool,
 }
 
 fn read_receipts(root: &Path, world_id: &str) -> Vec<ImportReceipt> {
@@ -172,6 +185,21 @@ fn write_receipts(root: &Path, world_id: &str, receipts: &[ImportReceipt]) -> Da
 fn append_receipt(root: &Path, world_id: &str, receipt: ImportReceipt) {
     let mut receipts = read_receipts(root, world_id);
     receipts.push(receipt);
+    let _ = write_receipts(root, world_id, &receipts);
+}
+
+/// post_opening 成功後呼叫：把剛貼上檯面的開場白掛到最後一筆收據，undo 時一併收掉。
+/// 沒有收據（整份重複、什麼都沒新增的匯入）就不掛——那種匯入本來就沒東西可復原。
+/// 同 append_receipt 的容錯原則：記帳失敗不影響開場白已經貼成功這件事。
+pub fn record_posted_opening(root: &Path, world_id: &str, scene: u64, ts: &str) {
+    let mut receipts = read_receipts(root, world_id);
+    let Some(last) = receipts.last_mut() else {
+        return;
+    };
+    last.opening = Some(PostedOpening {
+        scene,
+        ts: ts.to_owned(),
+    });
     let _ = write_receipts(root, world_id, &receipts);
 }
 
@@ -358,6 +386,7 @@ pub fn record_character_import(
             mechanism,
             world_card_created: None,
             gm_image_created: false,
+            opening: None,
             renamed_from: None,
             rewritten_entries: Vec::new(),
             added_ledger_lines: String::new(),
@@ -394,6 +423,7 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             mechanism,
             world_card_created,
             gm_image_created,
+            opening: None,
             renamed_from: None,
             rewritten_entries: Vec::new(),
             added_ledger_lines: String::new(),
@@ -439,6 +469,7 @@ pub fn record_refactor_apply(
             mechanism,
             world_card_created: None,
             gm_image_created: false,
+            opening: None,
             renamed_from: None,
             rewritten_entries,
             added_ledger_lines,
@@ -587,6 +618,14 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
+    // 6a. 匯完貼上檯面的開場白：一併收掉，重匯同一張卡才能乾淨地改挑一則。
+    //     玩家自己先收回過就刪不到，回 false，前端不必多提一句。
+    if let Some(opening) = &receipt.opening {
+        report.removed_opening =
+            data::remove_transcript_event(root, world_id, opening.scene, &opening.ts)
+                .unwrap_or(false);
+    }
+
     // 6b. 這次匯入新建的 GM 卡圖：匯入前就有的不動。
     if receipt.gm_image_created {
         if let Ok(image_path) = data::gm_image_path(root, world_id) {
@@ -656,6 +695,19 @@ mod tests {
         let before = snapshot(root, world_id);
         data::import_worldbook(root, world_id, json_text).unwrap();
         record_worldbook_import(root, world_id, label, before);
+    }
+
+    fn transcript_event(ts: &str, text: &str) -> data::TranscriptEvent {
+        data::TranscriptEvent {
+            ts: ts.to_owned(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: data::TranscriptKind::Narration,
+            text: text.to_owned(),
+            raw: None,
+            state: None,
+            gm_only: false,
+        }
     }
 
     fn character_book_card(name: &str, entries: serde_json::Value) -> Vec<u8> {
@@ -793,6 +845,65 @@ mod tests {
         import_png("第二張.png", &book("城門又開了。"), b"\x89PNG\r\n\x1a\nsecond");
         undo_last_import(root.path(), &world_id).unwrap();
         assert_eq!(fs::read(&image_path).unwrap(), b"\x89PNG\r\n\x1a\nsecond");
+    }
+
+    /// 匯完貼上檯面的開場白→undo：那則跟著收掉，玩家自己後來加的話原封不動。
+    /// 重匯同一張多開場白的卡想改挑一則時，舊的那則不該還壓在開局上。
+    #[test]
+    fn undo_import_removes_the_posted_opening_but_keeps_later_events() {
+        let root = TestRoot::new("posted-opening");
+        let world_id = data::create_world(root.path(), "世界").unwrap();
+        let book = serde_json::json!({
+            "entries": {
+                "0": {"uid": 0, "key": ["城門"], "comment": "城門", "content": "城門已關。", "constant": false, "order": 1, "disable": false}
+            }
+        });
+        import_worldbook_recorded(root.path(), &world_id, "卡.png", &book.to_string());
+
+        let opening = transcript_event("2026-08-07T10:00:00.000Z", "開場白配圖那一段");
+        let mine = transcript_event("2026-08-07T10:05:00.000Z", "玩家後來自己加的一句");
+        data::append_transcript(root.path(), &world_id, 0, &opening).unwrap();
+        data::append_transcript(root.path(), &world_id, 0, &mine).unwrap();
+        record_posted_opening(root.path(), &world_id, 0, &opening.ts);
+
+        let report = undo_last_import(root.path(), &world_id).unwrap();
+        assert!(report.removed_opening);
+        let left = data::read_transcript(root.path(), &world_id, 0).unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].ts, mine.ts);
+    }
+
+    /// 玩家自己先把開場白收回去了：undo 找不到那則，回報沒收掉，不誤刪別的事件。
+    #[test]
+    fn undo_import_reports_no_opening_when_player_already_took_it_back() {
+        let root = TestRoot::new("posted-opening-gone");
+        let world_id = data::create_world(root.path(), "世界").unwrap();
+        let book = serde_json::json!({
+            "entries": {
+                "0": {"uid": 0, "key": ["城門"], "comment": "城門", "content": "城門已關。", "constant": false, "order": 1, "disable": false}
+            }
+        });
+        import_worldbook_recorded(root.path(), &world_id, "卡.png", &book.to_string());
+
+        let opening = transcript_event("2026-08-07T10:00:00.000Z", "開場白");
+        data::append_transcript(root.path(), &world_id, 0, &opening).unwrap();
+        record_posted_opening(root.path(), &world_id, 0, &opening.ts);
+        assert!(data::pop_transcript(root.path(), &world_id, 0).unwrap());
+
+        let report = undo_last_import(root.path(), &world_id).unwrap();
+        assert!(!report.removed_opening);
+    }
+
+    /// 什麼都沒新增的匯入沒留收據，這時貼開場白不該掛到更早那筆收據上，
+    /// 否則復原上一筆匯入會連帶刪掉不相干的開場白。
+    #[test]
+    fn record_posted_opening_without_any_receipt_is_a_no_op() {
+        let root = TestRoot::new("posted-opening-no-receipt");
+        let world_id = data::create_world(root.path(), "世界").unwrap();
+
+        record_posted_opening(root.path(), &world_id, 0, "2026-08-07T10:00:00.000Z");
+
+        assert!(list_import_receipts(root.path(), &world_id).is_empty());
     }
 
     /// 全部重複、機制／介面殼都沒變化的世界書匯入不留收據——不該亮出可以「復原」的按鈕。

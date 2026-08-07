@@ -114,6 +114,8 @@ interface UndoReport {
   removed_entries: number;
   kept_entries: number;
   renamed_back: boolean;
+  /** 匯完貼上檯面的那則開場白也被收掉了：前端據此重載逐字稿 */
+  removed_opening: boolean;
 }
 
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
@@ -4505,6 +4507,11 @@ function App() {
       await refreshRefactorShell(table);
       // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
       await loadGmImage(table);
+      // 貼出的開場白被一起收掉：檯面與狀態快照都變了，重讀這一幕
+      if (report.removed_opening) {
+        setEvents(await invoke<TranscriptEvent[]>("read_transcript", { worldId: table, scene }));
+        await refreshTableState();
+      }
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
       setWorldEditorRefreshKey((key) => key + 1);
