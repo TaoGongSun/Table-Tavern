@@ -84,6 +84,12 @@ struct MechanismUndo {
     added_state_keys: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     restored_state: BTreeMap<String, StateNode>,
+    /// 這次操作把玩家卡指定到某張新卡（AI 卡重構的人物合併升格）；refactor::apply 的一桌一張
+    /// 限制已經保證這種情況發生時桌上原本沒有玩家卡，undo 一律退回 None，不需要另外記「原本
+    /// 是誰」——用 Option<Option<String>> 記還會撞上 serde 把巢狀 None 序列化成 JSON null、
+    /// 反序列化時分不出「沒變」還是「變成 None」的坑，乾脆用布林更直接。
+    #[serde(default, skip_serializing_if = "data::is_false")]
+    player_card_assigned: bool,
 }
 
 impl MechanismUndo {
@@ -95,6 +101,7 @@ impl MechanismUndo {
             && self.incremental_before.is_none()
             && self.added_state_keys.is_empty()
             && self.restored_state.is_empty()
+            && !self.player_card_assigned
     }
 }
 
@@ -135,6 +142,11 @@ struct ImportReceipt {
     /// source_uid 停用）：整條原文快照，undo 時整條覆寫回去。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rewritten_entries: Vec<WorldbookEntry>,
+    /// 這次操作整條刪除的世界書條目（人物合併升格：專屬條目、收尾判定可刪的共用合集條目）：
+    /// 整條原文快照，undo 時不論 uid 現在還在不在，一律無條件插回——這些是我們自己刪的，
+    /// 不是玩家刪的，跟 rewritten_entries 的「uid 還在才復原」語意不同。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    deleted_entries: Vec<WorldbookEntry>,
     /// 這次操作往「機制帳本」（mechanism-log.jsonl）追加的原文；undo 時整段挖掉，其餘
     /// （含期間新產生的遊玩紀錄）不動。目前只有 AI 卡重構套用機制那條路會寫非空值。
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -275,6 +287,8 @@ fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> O
     let (added_state_keys, restored_state) =
         diff_added_and_overwritten(&before.state.tree, &after.state.tree);
 
+    let player_card_assigned = before.player_card_id.is_none() && after.player_card_id.is_some();
+
     let undo = MechanismUndo {
         added_rule_keys,
         restored_rules,
@@ -283,6 +297,7 @@ fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> O
         incremental_before,
         added_state_keys,
         restored_state,
+        player_card_assigned,
     };
     (!undo.is_empty()).then_some(undo)
 }
@@ -389,6 +404,7 @@ pub fn record_character_import(
             opening: None,
             renamed_from: None,
             rewritten_entries: Vec::new(),
+            deleted_entries: Vec::new(),
             added_ledger_lines: String::new(),
             interface_shell_created: false,
         },
@@ -426,6 +442,7 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             opening: None,
             renamed_from: None,
             rewritten_entries: Vec::new(),
+            deleted_entries: Vec::new(),
             added_ledger_lines: String::new(),
             interface_shell_created: false,
         },
@@ -441,6 +458,7 @@ pub fn record_refactor_apply(
     label: &str,
     character_ids: Vec<String>,
     rewritten_entries: Vec<WorldbookEntry>,
+    deleted_entries: Vec<WorldbookEntry>,
     before: Snapshot,
 ) {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
@@ -451,6 +469,7 @@ pub fn record_refactor_apply(
         && worldbook_entries.is_empty()
         && mechanism.is_none()
         && rewritten_entries.is_empty()
+        && deleted_entries.is_empty()
         && added_ledger_lines.is_empty()
         && !interface_shell_created
     {
@@ -472,6 +491,7 @@ pub fn record_refactor_apply(
             opening: None,
             renamed_from: None,
             rewritten_entries,
+            deleted_entries,
             added_ledger_lines,
             interface_shell_created,
         },
@@ -573,6 +593,14 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
+    // 3a. 這次操作整條刪除的條目（人物合併升格的專屬條目或收尾判定可刪的共用合集條目）：
+    // 不論 uid 現在還在不在，一律無條件插回——這些是這次操作自己刪的，不是玩家刪的，
+    // 跟上一步「uid 還在才復原」的語意不同。uid 一定會變（upsert 對不存在的 uid 重新分配），
+    // 原樣回來看的是內容，不是 uid。
+    for original in &receipt.deleted_entries {
+        let _ = data::upsert_worldbook_entry(root, world_id, original.clone());
+    }
+
     // 4. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。
     if let Some(mechanism) = &receipt.mechanism {
         if let Ok(mut state) = data::read_state(root, world_id) {
@@ -594,6 +622,11 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
                 &mechanism.added_state_keys,
                 &mechanism.restored_state,
             );
+            // AI 卡重構可能把某張新卡指定為玩家卡；退回 None，不然桌上已經沒有那張卡了，
+            // player_card_id 卻還指著它，之後永遠建不了新的玩家卡。
+            if mechanism.player_card_assigned {
+                state.player_card_id = None;
+            }
             let _ = data::write_state(root, world_id, &state);
         }
     }

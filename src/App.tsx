@@ -10,16 +10,24 @@ import { buildShellDocument, CardInterface, findShell } from "./interface-card";
 import { decideImportRoute } from "./import-routing";
 import { isCharacterHidden } from "./character-visibility";
 import {
-  buildRefactorExpandQueue,
+  assembleRefactorOutcome,
+  buildRefactorPersonPlan,
+  buildSharedEntryDraws,
   defaultRefactorSelection,
-  mergeRefactorExpandResults,
   parseRefactorOutcome,
   refactorSummaryCounts,
+  setPlayerIndex,
   sourceEntryTitle,
+  sourceEntryTitles,
   toggleIndex,
+  unselectCharacter,
   type RefactorApplySummary,
+  type RefactorCharacter,
   type RefactorExpandOutcome,
+  type RefactorInterface,
+  type RefactorMechanism,
   type RefactorOutcome,
+  type RefactorPersonExpandOutcome,
   type RefactorSelection,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
@@ -1753,7 +1761,6 @@ function WorldEditor({
   onBack,
   leaveGuard,
   convertColor,
-  hasPlayerCard,
   onEntryConverted,
   onRefactorApplied,
 }: {
@@ -1762,8 +1769,7 @@ function WorldEditor({
   /** 側欄要離開世界設定時先問過這裡（未儲存確認與返回鈕同一條） */
   leaveGuard: { current: (() => Promise<boolean>) | null };
   convertColor: string;
-  hasPlayerCard: boolean;
-  onEntryConverted: (asPlayer: boolean) => Promise<void>;
+  onEntryConverted: () => Promise<void>;
   /** AI 卡重構套用成功後：角色清單／卡片介面／桌面狀態都可能變了，交回 App 層重載 */
   onRefactorApplied: () => Promise<void>;
 }) {
@@ -2068,8 +2074,10 @@ function WorldEditor({
     }
   }
 
-  // AI 卡重構：盤點→展開兩階段跑真 AI。盤點一次拿到人物／介面／機制候選，展開逐條 await
-  // （序列、不並行——後端 system 提示詞快取要先由第一條呼叫建立），逐條把進度字寫給玩家看。
+  // AI 卡重構：盤點→展開→收尾三段跑真 AI。盤點一次認出人物（可能散在好幾條裡）／介面／機制
+  // 候選；單一專屬來源的人本地轉換、不用展開呼叫（認人近乎免費，合併才要花展開呼叫），其餘
+  // 逐項 await（序列、不並行——後端 system 提示詞快取要先由第一條呼叫建立）；全部人物展開完
+  // 後，共用合集條目才收尾判斷刪不刪（要點 8）。逐步把進度字寫給玩家看。
   async function runAiRefactor() {
     if (refactorProgress) return;
     setWorldbookMessage("");
@@ -2077,34 +2085,77 @@ function WorldEditor({
     setRefactorProgress({ text: t("refactorSurveying"), cancelling: false });
     try {
       const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world });
-      const queue = buildRefactorExpandQueue(survey);
-      if (queue.length === 0) {
+      const { local, queue } = buildRefactorPersonPlan(survey, entries);
+      const sharedDraws = buildSharedEntryDraws(survey);
+      const totalSteps =
+        queue.length + survey.interface_uids.length + survey.mechanism_uids.length + (sharedDraws.length > 0 ? 1 : 0);
+      if (totalSteps === 0 && local.length === 0) {
         setRefactorProgress(null);
         setWorldbookMessage(t("refactorNothingToDo"));
         return;
       }
-      const results: RefactorExpandOutcome[] = [];
+
+      const characters: RefactorCharacter[] = [...local];
+      const interfaces: RefactorInterface[] = [];
+      const mechanisms: RefactorMechanism[] = [];
       const failedTitles: string[] = [];
-      for (let i = 0; i < queue.length; i++) {
+      let step = 0;
+
+      for (const item of queue) {
         if (refactorCancelRef.current) break;
-        const item = queue[i];
-        const title = sourceEntryTitle(entries, item.uid);
-        setRefactorProgress({ text: t("refactorExpanding", { name: title, i: i + 1, n: queue.length }), cancelling: false });
+        step++;
+        setRefactorProgress({ text: t("refactorExpanding", { name: item.name, i: step, n: totalSteps }), cancelling: false });
         try {
-          results.push(
-            await invoke<RefactorExpandOutcome>("refactor_expand", {
-              worldId: world,
-              entryUid: item.uid,
-              kind: item.kind,
-            }),
-          );
+          const result = await invoke<RefactorPersonExpandOutcome>("refactor_expand_person", {
+            worldId: world,
+            name: item.name,
+            uids: item.uids,
+            isPlayer: item.is_player,
+          });
+          if (result.character) characters.push(result.character);
+          else failedTitles.push(item.name);
+        } catch {
+          failedTitles.push(item.name);
+        }
+      }
+
+      const interfaceAndMechanismQueue = [
+        ...survey.interface_uids.map((uid) => ({ uid, kind: "interface" as const })),
+        ...survey.mechanism_uids.map((uid) => ({ uid, kind: "mechanism" as const })),
+      ];
+      for (const item of interfaceAndMechanismQueue) {
+        if (refactorCancelRef.current) break;
+        step++;
+        const title = sourceEntryTitle(entries, item.uid);
+        setRefactorProgress({ text: t("refactorExpanding", { name: title, i: step, n: totalSteps }), cancelling: false });
+        try {
+          const result = await invoke<RefactorExpandOutcome>("refactor_expand", {
+            worldId: world,
+            entryUid: item.uid,
+            kind: item.kind,
+          });
+          if (result.interface) interfaces.push(result.interface);
+          if (result.mechanism) mechanisms.push(result.mechanism);
+          if (!result.interface && !result.mechanism) failedTitles.push(title);
         } catch {
           failedTitles.push(title);
         }
       }
+
+      let deletableSharedUids: string[] = [];
+      if (sharedDraws.length > 0 && !refactorCancelRef.current) {
+        step++;
+        setRefactorProgress({ text: t("refactorFinishing"), cancelling: false });
+        try {
+          deletableSharedUids = await invoke<string[]>("refactor_finish_shared", { worldId: world, shared: sharedDraws });
+        } catch {
+          // 收尾失敗＝條目原樣保留：deletableSharedUids 維持空陣列，不擋前面已經跑出來的結果。
+        }
+      }
+
       setRefactorProgress(null);
-      if (results.length > 0) {
-        const outcome = mergeRefactorExpandResults(results);
+      if (characters.length > 0 || interfaces.length > 0 || mechanisms.length > 0) {
+        const outcome = assembleRefactorOutcome({ characters, interfaces, mechanisms, deletableSharedUids });
         setRefactorOutcome(outcome);
         setRefactorSelection(defaultRefactorSelection(outcome));
         setRefactorDetail(false);
@@ -2146,7 +2197,9 @@ function WorldEditor({
   function refactorApplyMessage(summary: RefactorApplySummary) {
     return [
       summary.new_characters > 0 && t("refactorApplyDoneCharacters", { n: summary.new_characters }),
+      summary.player_assigned && t("refactorApplyDonePlayer"),
       summary.new_entries > 0 && t("refactorApplyDoneEntries", { n: summary.new_entries }),
+      summary.deleted_entries > 0 && t("refactorApplyDoneDeleted", { n: summary.deleted_entries }),
       summary.interface_applied && t("refactorApplyDoneInterface"),
       summary.mechanisms_applied > 0 && t("refactorApplyDoneMechanisms", { n: summary.mechanisms_applied }),
     ]
@@ -2177,29 +2230,22 @@ function WorldEditor({
     }
   }
 
+  // 手動「轉成角色卡」一律轉一般卡——玩家卡另有從頭建立的入口，AI 卡重構的勾選畫面也能指定
+  // 玩家卡（要點 4），這顆按鈕不再問「要不要轉成玩家卡」。
   async function convertEntryToCharacter() {
     if (!draft || draft.uid === null) return;
     setWorldbookMessage("");
     try {
-      const asPlayer =
-        !hasPlayerCard && /\{\{\s*user\s*\}\}/i.test(draft.content)
-          ? await confirm(t("convertEntryPersonaAsk"), {
-              title: t("convertEntryToCard"),
-              kind: "info",
-              okLabel: t("convertEntryPersonaOk"),
-              cancelLabel: t("convertEntryPersonaCancel"),
-            })
-          : false;
       const meta = await invoke<CharacterMeta>("worldbook_entry_to_character", {
         worldId: world,
         uid: draft.uid,
         color: convertColor,
-        asPlayer,
+        asPlayer: false,
       });
       setDraft(null);
       await refreshWorldbook();
       setWorldbookMessage(t("convertEntryDone", { name: meta.name }));
-      await onEntryConverted(asPlayer);
+      await onEntryConverted();
     } catch (reason) {
       setWorldbookMessage(String(reason));
     }
@@ -2543,27 +2589,50 @@ function WorldEditor({
                     <h3>{t("refactorSectionCharacters")}</h3>
                     <div className="mechanism-ledger-list">
                       {refactorOutcome.characters.map((character, index) => (
-                        <label className="inline" key={index}>
-                          <input
-                            type="checkbox"
-                            checked={refactorSelection.character_indices.includes(index)}
-                            onChange={(event) => {
-                              const checked = event.currentTarget.checked;
-                              setRefactorSelection(
-                                (selection) =>
-                                  selection && {
-                                    ...selection,
-                                    character_indices: toggleIndex(selection.character_indices, index, checked),
-                                  },
-                              );
-                            }}
-                          />
-                          {character.emoji} {character.name}
-                          <span className="mechanism-ledger-detail">
-                            {sourceEntryTitle(entries, character.source_uid)}
-                          </span>
-                        </label>
+                        <div className="mechanism-ledger-row" key={index}>
+                          <label className="inline">
+                            <input
+                              type="checkbox"
+                              checked={refactorSelection.character_indices.includes(index)}
+                              onChange={(event) => {
+                                const checked = event.currentTarget.checked;
+                                setRefactorSelection(
+                                  (selection) =>
+                                    selection &&
+                                    (checked
+                                      ? { ...selection, character_indices: toggleIndex(selection.character_indices, index, true) }
+                                      : unselectCharacter(selection, index)),
+                                );
+                              }}
+                            />
+                            {character.emoji} {character.name}
+                            <span className="mechanism-ledger-detail">
+                              {sourceEntryTitles(entries, character.source_uids)}
+                            </span>
+                          </label>
+                          <label className="mechanism-ledger-toggle">
+                            <input
+                              type="radio"
+                              name="refactor-player"
+                              checked={refactorSelection.player_index === index}
+                              onChange={() => setRefactorSelection((selection) => selection && setPlayerIndex(selection, index))}
+                            />
+                            {t("refactorPlayerRadioLabel")}
+                          </label>
+                        </div>
                       ))}
+                      <div className="mechanism-ledger-row">
+                        <span className="mechanism-ledger-detail">{t("refactorPlayerNone")}</span>
+                        <label className="mechanism-ledger-toggle">
+                          <input
+                            type="radio"
+                            name="refactor-player"
+                            checked={refactorSelection.player_index === null}
+                            onChange={() => setRefactorSelection((selection) => selection && setPlayerIndex(selection, null))}
+                          />
+                          {t("refactorPlayerRadioLabel")}
+                        </label>
+                      </div>
                     </div>
                   </section>
                 )}
@@ -5847,16 +5916,15 @@ function App() {
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
               convertColor={PALETTE[characters.length % PALETTE.length]}
-              hasPlayerCard={playerCard !== null}
-              onEntryConverted={async (asPlayer) => {
+              onEntryConverted={async () => {
                 await refreshCharacters();
-                if (asPlayer) {
-                  const state = await invoke<WorldState>("read_state", { worldId: table });
-                  await loadPlayerCard(table, state.player_card_id);
-                }
               }}
               onRefactorApplied={async () => {
                 await refreshCharacters();
+                // 合併升格可能把某位角色指定為玩家卡（要點 4），跟單條「轉成角色卡」的
+                // asPlayer 分支一樣重讀一次，讓側欄玩家卡即時反映。
+                const state = await invoke<WorldState>("read_state", { worldId: table });
+                await loadPlayerCard(table, state.player_card_id);
                 await refreshCardInterfaces(table);
                 await refreshRefactorShell(table);
                 await refreshTableState();
