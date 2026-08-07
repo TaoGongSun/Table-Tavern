@@ -542,12 +542,14 @@ fn refactor_apply(
         "AI 卡重構",
         result.character_ids,
         result.rewritten_entries,
+        result.deleted_entries,
         before,
     );
     Ok(result.summary)
 }
 
-/// AI 卡重構讀卡（盤點階段）：AI 讀整張卡的世界書，把條目分成人物合集／介面／機制三類候選。
+/// AI 卡重構讀卡（盤點階段）：AI 讀整張卡的世界書，認出人物（可能散在好幾條裡）／介面／機制
+/// 三類候選。
 #[tauri::command]
 async fn refactor_survey(
     app: tauri::AppHandle,
@@ -575,7 +577,8 @@ async fn refactor_survey(
     Ok(refactor_ai::parse_survey(&raw))
 }
 
-/// AI 卡重構讀卡（展開階段）：system 與盤點同一字串（快取命中），逐條展開成結構化產物。
+/// AI 卡重構讀卡（展開階段，介面／機制）：system 與盤點同一字串（快取命中），逐條展開成
+/// 結構化產物。人物展開走專屬的 refactor_expand_person（一人一次呼叫、可能帶多條來源）。
 #[tauri::command]
 async fn refactor_expand(
     app: tauri::AppHandle,
@@ -606,6 +609,77 @@ async fn refactor_expand(
     )
     .await?;
     Ok(refactor_ai::parse_expand(entry_kind, &entry_uid, &raw))
+}
+
+/// AI 卡重構讀卡（展開階段，人物）：一人一次呼叫，帶上他名下全部來源條目全文（要點 8）；
+/// is_player 由盤點結果直接帶過來，不是這裡自己判斷。
+#[tauri::command]
+async fn refactor_expand_person(
+    app: tauri::AppHandle,
+    world_id: String,
+    name: String,
+    uids: Vec<String>,
+    is_player: bool,
+) -> Result<refactor_ai::RefactorPersonExpandOutcome, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let mut sources = Vec::with_capacity(uids.len());
+    for uid in &uids {
+        let text =
+            refactor_ai::entry_full_text(&root, &world_id, uid).map_err(|error| error.to_string())?;
+        sources.push((uid.clone(), text));
+    }
+    let messages = refactor_ai::person_expand_messages(&context, &name, &sources, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        Some(&world_id),
+        "GM",
+        "Output exactly in the requested marker format, nothing else.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(refactor_ai::parse_person_expand(&raw, &name, &uids, is_player))
+}
+
+/// AI 卡重構讀卡（收尾階段）：全部人物展開完後一次呼叫，逐條共用合集條目判斷刪不刪
+/// （要點 7、8）；沒有共用條目時前端不會送這個請求，這裡也順手擋一次。
+#[tauri::command]
+async fn refactor_finish_shared(
+    app: tauri::AppHandle,
+    world_id: String,
+    shared: Vec<refactor_ai::SharedEntryDraw>,
+) -> Result<Vec<String>, String> {
+    if shared.is_empty() {
+        return Ok(Vec::new());
+    }
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let messages = refactor_ai::finish_messages(&context, &shared, &lang);
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        transport::gm_tier(&config),
+        Some(&world_id),
+        "GM",
+        "Output exactly in the requested marker format, nothing else.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(refactor_ai::parse_finish(&raw))
 }
 
 /// 讀 AI 卡重構套用介面時可能順便產的靜態渲染殼（interface-shell.html）；沒套用過或那次沒
@@ -2417,6 +2491,8 @@ pub fn run() {
             refactor_apply,
             refactor_survey,
             refactor_expand,
+            refactor_expand_person,
+            refactor_finish_shared,
             refactor_interface_shell,
             export_character,
             read_character_image,

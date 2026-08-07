@@ -8,7 +8,7 @@ use crate::data::{
 };
 use crate::mechanism;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// 新角色卡色票，跟前端 App.tsx 的 PALETTE 同一組；新卡依桌上目前角色數輪替。
@@ -16,17 +16,20 @@ const PALETTE: [&str; 6] = [
     "#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399",
 ];
 
-/// 人物合集條目切出來的一位角色候選。
+/// 認人後的一位角色候選：資料可能併自好幾條世界書條目（人物合併，person-promote）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefactorCharacter {
     pub name: String,
     pub emoji: String,
     pub public_md: String,
     pub private_md: String,
-    /// 這位角色是從哪條世界書條目切出來的；同一條目切出多人時 uid 重複。
-    pub source_uid: String,
+    /// 這位角色的資料來源條目 uid 清單；只有單一專屬來源時長度為 1。
+    pub source_uids: Vec<String>,
     /// 此人不升格為角色卡時，自己獨立世界書條目的全文。
     pub solo_entry_md: String,
+    /// 盤點階段 AI 標記的疑似玩家本人；整份 RefactorOutcome.characters 至多一筆為 true。
+    #[serde(default)]
+    pub suspected_player: bool,
 }
 
 /// 散文介面指令抽成的狀態樹候選。
@@ -52,13 +55,6 @@ pub struct RefactorMechanism {
     pub triggers: Vec<Trigger>,
 }
 
-/// 來源條目套用後剩下的總述。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SourceRewrite {
-    pub uid: String,
-    pub remainder_md: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefactorOutcome {
     #[serde(default)]
@@ -67,8 +63,10 @@ pub struct RefactorOutcome {
     pub interface: Option<RefactorInterface>,
     #[serde(default)]
     pub mechanisms: Vec<RefactorMechanism>,
+    /// 收尾階段判定「刪了只剩殘渣」的共用合集條目 uid；套用時還要所有共用這條的人都被勾選
+    /// 才會真的刪（要點 7：基準是優先保留而非刪除）。
     #[serde(default)]
-    pub rewrites: Vec<SourceRewrite>,
+    pub deletable_shared_uids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +77,10 @@ pub struct RefactorSelection {
     pub apply_interface: bool,
     #[serde(default)]
     pub mechanism_indices: Vec<usize>,
+    /// characters 裡要設成玩家卡的那一位；None＝不指定。不在 character_indices 裡的索引視同
+    /// None（沒同時勾選成卡就不可能是玩家卡）。
+    #[serde(default)]
+    pub player_index: Option<usize>,
 }
 
 /// 套用摘要，前端顯示用。
@@ -86,23 +88,32 @@ pub struct RefactorSelection {
 pub struct RefactorApplySummary {
     pub new_characters: usize,
     pub new_entries: usize,
+    /// 合併升格後整條刪除的來源世界書條目數（專屬條目＋收尾判定可刪的共用合集條目）。
+    pub deleted_entries: usize,
     pub rewritten_entries: usize,
     pub interface_applied: bool,
     pub mechanisms_applied: usize,
+    pub player_assigned: bool,
 }
 
 /// apply() 的完整結果：summary 給前端，其餘給呼叫端組收據（receipts::record_refactor_apply）。
+#[derive(Debug)]
 pub struct RefactorApplyResult {
     pub summary: RefactorApplySummary,
     pub character_ids: Vec<String>,
     pub rewritten_entries: Vec<WorldbookEntry>,
+    /// 整條刪除的來源條目原文快照；undo 時不論 uid 現在還在不在，一律無條件插回。
+    pub deleted_entries: Vec<WorldbookEntry>,
 }
 
 /// 套用一份重構產物。落檔規則：
-/// - 勾中的角色 → 新增角色卡（emoji 進頭像欄，其餘欄位比照 worldbook_entry_to_character 的預設）。
-/// - 同來源條目沒勾的人：那條目至少一人被勾才逐一新增獨立條目（is_person=true）；
-///   一人都沒勾＝條目原樣不動，也不產獨立條目。
-/// - 有人被勾的來源條目 → 內容整條改寫成對應的 remainder_md。
+/// - 勾中的人合併成一張卡（emoji 進頭像欄，其餘欄位比照舊有預設）；同時指定為玩家的人設玩家卡
+///   （沿用一桌一張限制：桌上已有玩家卡就整批失敗、不寫入，讓玩家看得懂為什麼沒套用）。
+/// - 勾中的人名下每條來源條目：只他專屬（沒有別人共用）的整條刪除；跟別人共用的合集條目，
+///   只有收尾階段判斷「刪了只剩殘渣」且所有共用這條的人都被勾了才刪，其餘一律原樣保留
+///   （要點 7：基準是優先保留而非刪除，判斷不出來或還有人沒勾就不動）。
+/// - 沒勾的人：維持現行機制，各自新增一條獨立世界書條目（is_person=true，內容是 solo_entry_md），
+///   來源條目不動——即使他的資料原本散在好幾條裡，未升格就不觸碰原始條目。
 /// - 介面勾了套用 → state_fields 併入狀態樹頂層、來源條目停用。
 /// - 勾中的機制 → rules／triggers 併入 mechanism、來源條目停用。
 pub fn apply(
@@ -111,53 +122,36 @@ pub fn apply(
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
 ) -> DataResult<RefactorApplyResult> {
-    let mut character_ids = Vec::new();
-    let mut new_entries = 0usize;
-    let mut rewritten: BTreeMap<u64, WorldbookEntry> = BTreeMap::new();
+    let mut state = data::read_state(root, world_id)?;
+    // 無效索引（沒同時勾選成卡）靜默當作沒指定；桌上已有玩家卡就整批失敗、不寫入任何東西。
+    let player_index = selection
+        .player_index
+        .filter(|index| selection.character_indices.contains(index));
+    if player_index.is_some() && state.player_card_id.is_some() {
+        return Err(data::invalid_data("這桌已經有玩家卡"));
+    }
     let existing_character_count = data::list_characters(root, world_id)?.len();
 
-    let mut by_source: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    // uid → 引用它的角色 index 清單：判斷一條來源條目是「專屬」還是「共用」的依據，
+    // 不看選取狀態（選取只決定「刪不刪」，不決定「算不算共用」）。
+    let mut uid_owners: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
     for (index, character) in outcome.characters.iter().enumerate() {
-        by_source
-            .entry(character.source_uid.as_str())
-            .or_default()
-            .push(index);
+        for uid_str in &character.source_uids {
+            if let Ok(uid) = uid_str.parse::<u64>() {
+                uid_owners.entry(uid).or_default().push(index);
+            }
+        }
     }
 
-    for (source_uid, indices) in &by_source {
-        let selected: Vec<usize> = indices
-            .iter()
-            .copied()
-            .filter(|index| selection.character_indices.contains(index))
-            .collect();
-        if selected.is_empty() {
-            continue; // 沒勾的一律不動：這條目沒人被勾，原樣留著，也不產獨立條目。
-        }
+    let mut character_ids = Vec::new();
+    let mut new_entries = 0usize;
+    let mut deleted_entries: Vec<WorldbookEntry> = Vec::new();
+    let mut deleted_uids: BTreeSet<u64> = BTreeSet::new();
+    let mut player_assigned = false;
 
-        for &index in &selected {
-            let character = &outcome.characters[index];
-            let card = CharacterCard {
-                id: data::new_id(),
-                name: character.name.clone(),
-                color: PALETTE[(existing_character_count + character_ids.len()) % PALETTE.len()]
-                    .to_owned(),
-                avatar: character.emoji.clone(),
-                tier: Tier::Balanced,
-                show_image: true,
-                archived: false,
-                gen_prompt: String::new(),
-                public_md: character.public_md.clone(),
-                private_md: character.private_md.clone(),
-            };
-            data::write_character(root, world_id, &card)?;
-            character_ids.push(card.id);
-        }
-
-        for &index in indices {
-            if selected.contains(&index) {
-                continue;
-            }
-            let character = &outcome.characters[index];
+    for (index, character) in outcome.characters.iter().enumerate() {
+        if !selection.character_indices.contains(&index) {
+            // 沒勾：維持現行機制，獨立成一條 is_person 條目；來源條目不動，資料不會憑空消失。
             // uid: u64::MAX 是「一定不會撞到既有條目」的哨兵——upsert 找不到既有 uid 才會
             // 真的新建，實際落檔的 uid 由 upsert_worldbook_entry 內部重新分配（見 data.rs）。
             data::upsert_worldbook_entry(
@@ -176,13 +170,50 @@ pub fn apply(
                 },
             )?;
             new_entries += 1;
+            continue;
         }
 
-        rewrite_source_entry(root, world_id, source_uid, outcome, &mut rewritten)?;
+        let card = CharacterCard {
+            id: data::new_id(),
+            name: character.name.clone(),
+            color: PALETTE[(existing_character_count + character_ids.len()) % PALETTE.len()]
+                .to_owned(),
+            avatar: character.emoji.clone(),
+            tier: Tier::Balanced,
+            show_image: true,
+            archived: false,
+            gen_prompt: String::new(),
+            public_md: character.public_md.clone(),
+            private_md: character.private_md.clone(),
+        };
+        data::write_character(root, world_id, &card)?;
+        if player_index == Some(index) {
+            state.player_card_id = Some(card.id.clone());
+            player_assigned = true;
+        }
+        character_ids.push(card.id);
+
+        for uid_str in &character.source_uids {
+            let Ok(uid) = uid_str.parse::<u64>() else {
+                continue;
+            };
+            if deleted_uids.contains(&uid) {
+                continue; // 跟別人共用、已經被別人那輪刪過了。
+            }
+            let owners = uid_owners.get(&uid).map(Vec::as_slice).unwrap_or_default();
+            let exclusive = owners.len() <= 1;
+            let shared_deletable = outcome.deletable_shared_uids.iter().any(|shared| shared == uid_str)
+                && owners.iter().all(|owner| selection.character_indices.contains(owner));
+            if !exclusive && !shared_deletable {
+                continue; // 基準是優先保留：判斷不出來，或還有共用這條的人沒勾，整條留著。
+            }
+            delete_source_entry(root, world_id, uid, &mut deleted_entries)?;
+            deleted_uids.insert(uid);
+        }
     }
 
-    let mut state = data::read_state(root, world_id)?;
-    let mut state_dirty = false;
+    let mut state_dirty = player_assigned;
+    let mut rewritten: BTreeMap<u64, WorldbookEntry> = BTreeMap::new();
 
     let mut interface_applied = false;
     if selection.apply_interface {
@@ -228,40 +259,35 @@ pub fn apply(
         summary: RefactorApplySummary {
             new_characters: character_ids.len(),
             new_entries,
+            deleted_entries: deleted_entries.len(),
             rewritten_entries: rewritten.len(),
             interface_applied,
             mechanisms_applied,
+            player_assigned,
         },
         character_ids,
         rewritten_entries: rewritten.into_values().collect(),
+        deleted_entries,
     })
 }
 
-/// 有人被勾的來源條目：內容整條改寫成對應的 remainder_md；找不到 uid 或沒有對應的 rewrite
-/// 就略過（不讓一條資料缺角拖垮整包套用）。改寫前的原文先記進 `rewritten`，undo 用。
-fn rewrite_source_entry(
+/// 人物合併升格後，整條屬於他（專屬）或收尾階段判定可刪（共用）的來源條目：整條刪除，原文
+/// 記進 `deleted_entries`——跟 disable_source_entry 的「改寫留痕」不同，這裡是真的刪除，
+/// undo 要無條件插回（見 receipts::undo_last_import）。條目已經不在就略過。
+fn delete_source_entry(
     root: &Path,
     world_id: &str,
-    source_uid: &str,
-    outcome: &RefactorOutcome,
-    rewritten: &mut BTreeMap<u64, WorldbookEntry>,
+    uid: u64,
+    deleted_entries: &mut Vec<WorldbookEntry>,
 ) -> DataResult<()> {
-    let Some(rewrite) = outcome.rewrites.iter().find(|item| item.uid == source_uid) else {
-        return Ok(());
-    };
-    let Ok(uid) = source_uid.parse::<u64>() else {
-        return Ok(());
-    };
     let Some(entry) = data::read_worldbook(root, world_id)?
         .into_iter()
         .find(|entry| entry.uid == uid)
     else {
         return Ok(());
     };
-    rewritten.entry(uid).or_insert_with(|| entry.clone());
-    let mut updated = entry;
-    updated.content = rewrite.remainder_md.clone();
-    data::upsert_worldbook_entry(root, world_id, updated)?;
+    data::delete_worldbook_entry(root, world_id, uid)?;
+    deleted_entries.push(entry);
     Ok(())
 }
 
@@ -394,14 +420,24 @@ mod tests {
         .unwrap()
     }
 
-    fn character(name: &str, source_uid: u64) -> RefactorCharacter {
+    fn character(name: &str, source_uids: &[u64]) -> RefactorCharacter {
         RefactorCharacter {
             name: name.to_owned(),
             emoji: "🙂".to_owned(),
             public_md: format!("{name}的公開設定"),
             private_md: format!("{name}的私密設定"),
-            source_uid: source_uid.to_string(),
+            source_uids: source_uids.iter().map(u64::to_string).collect(),
             solo_entry_md: format!("{name}的獨立條目"),
+            suspected_player: false,
+        }
+    }
+
+    fn no_player_selection(character_indices: Vec<usize>) -> RefactorSelection {
+        RefactorSelection {
+            character_indices,
+            apply_interface: false,
+            mechanism_indices: Vec::new(),
+            player_index: None,
         }
     }
 
@@ -420,118 +456,160 @@ mod tests {
             "AI 卡重構",
             result.character_ids.clone(),
             result.rewritten_entries.clone(),
+            result.deleted_entries.clone(),
             before,
         );
         result
     }
 
-    /// (a) 全勾套用：角色卡落檔、來源條目＝remainder、機制併入 state → undo → 逐項回原樣。
+    /// (a) 合併升格＋玩家指定：兩條專屬來源併成一張卡、指定為玩家 → 兩條來源條目整條刪除、
+    /// 玩家卡指定寫進 state → undo → 角色卡、來源條目（原樣回來，不是新造的 is_person 條目）、
+    /// 玩家卡指定都回原樣。
     #[test]
-    fn apply_all_selected_then_undo_restores_everything() {
-        let root = TestRoot::new("all-selected");
+    fn apply_merges_multi_source_person_deletes_exclusive_entries_and_sets_player_then_undo_restores() {
+        let root = TestRoot::new("merge-player");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
-        let source_uid = seed_entry(root.path(), &world_id, "旅人們", "莉亞與可可的合集設定");
-        let mechanism_uid = seed_entry(root.path(), &world_id, "[mvu_update]规则", "HP 規則腳本");
+        let bio_uid = seed_entry(root.path(), &world_id, "亞瑟人物设定", "亞瑟：劍術高超。");
+        let personality_uid = seed_entry(root.path(), &world_id, "亞瑟性格", "亞瑟：沉默寡言。");
 
         let outcome = RefactorOutcome {
-            characters: vec![character("莉亞", source_uid)],
+            characters: vec![character("亞瑟", &[bio_uid, personality_uid])],
             interface: None,
-            mechanisms: vec![RefactorMechanism {
-                source_uid: mechanism_uid.to_string(),
-                rules: BTreeMap::from([(
-                    "Player.HP".to_owned(),
-                    FieldRule::for_kind(data::FieldKind::Number),
-                )]),
-                triggers: Vec::new(),
-            }],
-            rewrites: vec![SourceRewrite {
-                uid: source_uid.to_string(),
-                remainder_md: "莉亞已升格，剩下的旅人待補".to_owned(),
-            }],
+            mechanisms: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
-            character_indices: vec![0],
-            apply_interface: false,
-            mechanism_indices: vec![0],
+            player_index: Some(0),
+            ..no_player_selection(vec![0])
         };
 
+        let before_len = data::read_worldbook(root.path(), &world_id).unwrap().len();
         let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
         assert_eq!(result.summary.new_characters, 1);
-        assert_eq!(result.summary.new_entries, 0);
-        assert_eq!(result.summary.rewritten_entries, 2); // 來源條目改寫 + 機制來源停用
-        assert_eq!(result.summary.mechanisms_applied, 1);
+        assert_eq!(result.summary.deleted_entries, 2);
+        assert!(result.summary.player_assigned);
 
         let character_id = result.character_ids[0].clone();
         assert!(data::read_character(root.path(), &world_id, &character_id).is_ok());
-        let rewritten = data::read_worldbook(root.path(), &world_id)
-            .unwrap()
-            .into_iter()
-            .find(|entry| entry.uid == source_uid)
-            .unwrap();
-        assert_eq!(rewritten.content, "莉亞已升格，剩下的旅人待補");
         let state = data::read_state(root.path(), &world_id).unwrap();
-        assert!(state.mechanism.rules.contains_key("Player.HP"));
-        let mechanism_entry = data::read_worldbook(root.path(), &world_id)
-            .unwrap()
-            .into_iter()
-            .find(|entry| entry.uid == mechanism_uid)
-            .unwrap();
-        assert!(mechanism_entry.disabled);
+        assert_eq!(state.player_card_id.as_deref(), Some(character_id.as_str()));
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), before_len - 2);
+        assert!(entries.iter().all(|entry| entry.uid != bio_uid && entry.uid != personality_uid));
 
         receipts::undo_last_import(root.path(), &world_id).unwrap();
         assert!(data::read_character(root.path(), &world_id, &character_id).is_err());
-        let restored = data::read_worldbook(root.path(), &world_id)
-            .unwrap()
-            .into_iter()
-            .find(|entry| entry.uid == source_uid)
-            .unwrap();
-        assert_eq!(restored.content, "莉亞與可可的合集設定");
-        let restored_mechanism_entry = data::read_worldbook(root.path(), &world_id)
-            .unwrap()
-            .into_iter()
-            .find(|entry| entry.uid == mechanism_uid)
-            .unwrap();
-        assert!(!restored_mechanism_entry.disabled);
         let state_after = data::read_state(root.path(), &world_id).unwrap();
-        assert!(!state_after.mechanism.rules.contains_key("Player.HP"));
+        assert!(state_after.player_card_id.is_none());
+        let restored = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(restored.len(), before_len);
+        // 刪除後靠 upsert 插回，新 uid 跟原本不同——原樣回來看內容，不看 uid 是否相同。
+        let restored_bio = restored.iter().find(|entry| entry.content == "亞瑟：劍術高超。").unwrap();
+        assert!(!restored_bio.is_person);
+        assert!(restored.iter().any(|entry| entry.content == "亞瑟：沉默寡言。"));
     }
 
-    /// (b) 一條來源條目切出七人只勾兩人：角色卡 +2、沒勾的五人各生一條 is_person 條目、
-    /// 原條目＝remainder → undo → 逐項回原樣。也驗證新條目靠既有 uid 集合 diff 就能刪乾淨，
-    /// 不需要額外補記 uid 清單。
+    /// (b) 玩家卡限制：桌上已有玩家卡時，指定第二張要整批失敗、不寫入任何東西
+    /// （沿用 data.rs 既有的一桌一張限制與錯誤訊息）。
     #[test]
-    fn apply_partial_group_selection_creates_person_entries_for_the_rest() {
+    fn apply_rejects_second_player_card_and_writes_nothing() {
+        let root = TestRoot::new("second-player");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let existing_player = CharacterCard {
+            id: data::new_id(),
+            name: "既有玩家".to_owned(),
+            color: "#fff".to_owned(),
+            avatar: "🧑".to_owned(),
+            tier: Tier::Balanced,
+            show_image: true,
+            archived: false,
+            gen_prompt: String::new(),
+            public_md: String::new(),
+            private_md: String::new(),
+        };
+        data::write_character(root.path(), &world_id, &existing_player).unwrap();
+        let mut state = data::read_state(root.path(), &world_id).unwrap();
+        state.player_card_id = Some(existing_player.id.clone());
+        data::write_state(root.path(), &world_id, &state).unwrap();
+
+        let uid = seed_entry(root.path(), &world_id, "新來的人", "新來的人的設定");
+        let outcome = RefactorOutcome {
+            characters: vec![character("新來的人", &[uid])],
+            interface: None,
+            mechanisms: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            player_index: Some(0),
+            ..no_player_selection(vec![0])
+        };
+
+        let error = apply(root.path(), &world_id, &outcome, &selection).unwrap_err();
+        assert_eq!(error.to_string(), "這桌已經有玩家卡");
+        assert_eq!(data::list_characters(root.path(), &world_id).unwrap().len(), 0); // list_characters 排除玩家卡本人，新卡也沒寫入
+        assert!(data::read_worldbook(root.path(), &world_id).unwrap().iter().any(|entry| entry.uid == uid)); // 沒被刪
+    }
+
+    /// (c) 沒勾的人一律維持現行機制，各自生一條獨立 is_person 條目；勾了的人專屬來源條目
+    /// 整條刪除。兩件事對每個人各自獨立成立，不因為同一次套用裡有人選中有人沒選就互相影響。
+    #[test]
+    fn apply_unselected_person_gets_independent_person_entry_selected_persons_source_deleted() {
+        let root = TestRoot::new("zero-selected");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let picked_uid = seed_entry(root.path(), &world_id, "被選中的條目", "會被升格的人");
+        let ignored_uid = seed_entry(root.path(), &world_id, "沒被勾的條目", "沒人被勾的人");
+
+        let outcome = RefactorOutcome {
+            characters: vec![character("阿明", &[picked_uid]), character("小華", &[ignored_uid])],
+            interface: None,
+            mechanisms: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = no_player_selection(vec![0]); // 只勾阿明；小華（index 1）沒勾
+
+        let before_len = data::read_worldbook(root.path(), &world_id).unwrap().len();
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert_eq!(result.summary.new_characters, 1);
+        assert_eq!(result.summary.new_entries, 1); // 小華獨立成一條 is_person 條目
+        assert_eq!(result.summary.deleted_entries, 1); // 阿明的專屬來源條目整條刪除
+
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), before_len); // 少一條（阿明來源刪除）多一條（小華新增），淨零
+        assert!(!entries.iter().any(|entry| entry.uid == picked_uid));
+        let ignored_entry = entries.iter().find(|entry| entry.uid == ignored_uid).unwrap();
+        assert_eq!(ignored_entry.content, "沒人被勾的人"); // 小華的原始專屬條目原樣不動
+        let person_entry = entries.iter().find(|entry| entry.is_person).unwrap();
+        assert_eq!(person_entry.title, "小華");
+    }
+
+    /// (b2) 七人共用一條合集，只勾兩人：兩張角色卡＋五條獨立 is_person 條目；沒有收尾判定，
+    /// 合集條目原樣保留（基準是優先保留）→ undo → 角色卡與新條目都回原樣。
+    #[test]
+    fn apply_partial_group_selection_creates_person_entries_for_the_rest_and_keeps_shared_source() {
         let root = TestRoot::new("partial-group");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let source_uid = seed_entry(root.path(), &world_id, "旅團", "七人旅團的合集設定");
 
         let names = ["甲", "乙", "丙", "丁", "戊", "己", "庚"];
         let characters: Vec<RefactorCharacter> =
-            names.iter().map(|name| character(name, source_uid)).collect();
+            names.iter().map(|name| character(name, &[source_uid])).collect();
         let outcome = RefactorOutcome {
             characters,
             interface: None,
             mechanisms: Vec::new(),
-            rewrites: vec![SourceRewrite {
-                uid: source_uid.to_string(),
-                remainder_md: "剩下五人待補".to_owned(),
-            }],
+            deletable_shared_uids: Vec::new(),
         };
-        let selection = RefactorSelection {
-            character_indices: vec![0, 1], // 甲、乙
-            apply_interface: false,
-            mechanism_indices: Vec::new(),
-        };
+        let selection = no_player_selection(vec![0, 1]); // 甲、乙
 
         let before_entries = data::read_worldbook(root.path(), &world_id).unwrap().len();
         let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
         assert_eq!(result.summary.new_characters, 2);
         assert_eq!(result.summary.new_entries, 5);
-        assert_eq!(result.summary.rewritten_entries, 1);
+        assert_eq!(result.summary.deleted_entries, 0);
         assert_eq!(data::list_characters(root.path(), &world_id).unwrap().len(), 2);
 
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();
-        assert_eq!(entries.len(), before_entries + 5);
+        assert_eq!(entries.len(), before_entries + 5); // 合集條目原樣保留，沒被刪也沒被改寫
         let person_names: Vec<&str> = entries
             .iter()
             .filter(|entry| entry.is_person)
@@ -541,57 +619,75 @@ mod tests {
         for name in ["丙", "丁", "戊", "己", "庚"] {
             assert!(person_names.contains(&name));
         }
-        let rewritten = entries.iter().find(|entry| entry.uid == source_uid).unwrap();
-        assert_eq!(rewritten.content, "剩下五人待補");
+        let source_entry = entries.iter().find(|entry| entry.uid == source_uid).unwrap();
+        assert_eq!(source_entry.content, "七人旅團的合集設定");
 
         receipts::undo_last_import(root.path(), &world_id).unwrap();
         assert_eq!(data::list_characters(root.path(), &world_id).unwrap().len(), 0);
         let after_undo = data::read_worldbook(root.path(), &world_id).unwrap();
         assert_eq!(after_undo.len(), before_entries);
-        let restored = after_undo.iter().find(|entry| entry.uid == source_uid).unwrap();
-        assert_eq!(restored.content, "七人旅團的合集設定");
     }
 
-    /// (c) 某來源條目一人都沒勾：原樣不動，也不產獨立條目——即使該 uid 有對應的 rewrite。
+    /// (h) 共用合集條目，finishing 判定可刪，但只有一位共用者被勾：條目原樣保留
+    /// （要點 7：判斷不出來或還有人沒勾就不動）。
     #[test]
-    fn apply_skips_untouched_source_entry_when_nobody_selected() {
-        let root = TestRoot::new("zero-selected");
+    fn apply_shared_uid_kept_when_not_all_owners_selected() {
+        let root = TestRoot::new("shared-uid-partial");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
-        let picked_uid = seed_entry(root.path(), &world_id, "被選中的條目", "會被升格的人");
-        let ignored_uid = seed_entry(root.path(), &world_id, "沒被勾的條目", "沒人被勾的合集設定");
+        let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
 
         let outcome = RefactorOutcome {
-            characters: vec![character("阿明", picked_uid), character("小華", ignored_uid)],
+            characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
-            rewrites: vec![
-                SourceRewrite {
-                    uid: picked_uid.to_string(),
-                    remainder_md: "阿明已升格".to_owned(),
-                },
-                SourceRewrite {
-                    uid: ignored_uid.to_string(),
-                    remainder_md: "不該套用到這裡".to_owned(),
-                },
-            ],
+            deletable_shared_uids: vec![shared_uid.to_string()],
         };
-        let selection = RefactorSelection {
-            character_indices: vec![0], // 只勾阿明；小華（index 1）沒勾
-            apply_interface: false,
-            mechanism_indices: Vec::new(),
-        };
+        let selection = no_player_selection(vec![0]); // 只勾霍玄
 
-        let before_len = data::read_worldbook(root.path(), &world_id).unwrap().len();
         let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
-        assert_eq!(result.summary.new_characters, 1);
-        assert_eq!(result.summary.new_entries, 0); // 小華那條目沒人被勾，不產獨立條目
-        assert_eq!(result.summary.rewritten_entries, 1); // 只有 picked_uid 被改寫
+        assert_eq!(result.summary.deleted_entries, 0);
+        assert!(data::read_worldbook(root.path(), &world_id).unwrap().iter().any(|entry| entry.uid == shared_uid));
+    }
 
-        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
-        assert_eq!(entries.len(), before_len); // 沒有新增條目
-        let ignored_entry = entries.iter().find(|entry| entry.uid == ignored_uid).unwrap();
-        assert_eq!(ignored_entry.content, "沒人被勾的合集設定"); // 原樣不動
-        assert!(!ignored_entry.is_person);
+    /// (i) 共用合集條目，finishing 判定可刪、全部共用者都被勾：整條刪除，且只刪一次
+    /// （兩人都指到同一 uid，不因此刪兩次）。
+    #[test]
+    fn apply_shared_uid_deleted_once_when_all_owners_selected_and_verdict_deletable() {
+        let root = TestRoot::new("shared-uid-full");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
+
+        let outcome = RefactorOutcome {
+            characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
+            interface: None,
+            mechanisms: Vec::new(),
+            deletable_shared_uids: vec![shared_uid.to_string()],
+        };
+        let selection = no_player_selection(vec![0, 1]);
+
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert_eq!(result.summary.deleted_entries, 1);
+        assert!(!data::read_worldbook(root.path(), &world_id).unwrap().iter().any(|entry| entry.uid == shared_uid));
+    }
+
+    /// (j) 共用合集條目沒有收尾判定（不在 deletable_shared_uids）：即使全部共用者都被勾，
+    /// 一樣原樣保留——沒把握就不動是保底，不是漏做。
+    #[test]
+    fn apply_shared_uid_kept_without_finish_verdict_even_if_all_owners_selected() {
+        let root = TestRoot::new("shared-uid-no-verdict");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
+
+        let outcome = RefactorOutcome {
+            characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
+            interface: None,
+            mechanisms: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = no_player_selection(vec![0, 1]);
+
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert_eq!(result.summary.deleted_entries, 0);
     }
 
     /// (d) 介面套用：state_fields 併入狀態樹頂層、來源條目停用 → undo → 都退回去。
@@ -612,12 +708,13 @@ mod tests {
                 shell: None,
             }),
             mechanisms: Vec::new(),
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            player_index: None,
         };
 
         let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
@@ -683,12 +780,13 @@ mod tests {
                 shell: Some(shell_html.to_owned()),
             }),
             mechanisms: Vec::new(),
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            player_index: None,
         };
 
         apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -713,12 +811,13 @@ mod tests {
                 shell: None,
             }),
             mechanisms: Vec::new(),
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            player_index: None,
         };
 
         apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -743,12 +842,13 @@ mod tests {
                 shell: Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>".to_owned()),
             }),
             mechanisms: Vec::new(),
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            player_index: None,
         };
 
         apply_recorded(root.path(), &world_id, &outcome, &selection);
@@ -787,12 +887,13 @@ mod tests {
                 )]),
                 triggers: Vec::new(),
             }],
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: false,
             mechanism_indices: vec![0],
+            player_index: None,
         };
 
         apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -824,12 +925,13 @@ mod tests {
                 )]),
                 triggers: Vec::new(),
             }],
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: false,
             mechanism_indices: vec![0],
+            player_index: None,
         };
 
         assert!(mechanism::read_ledger(root.path(), &world_id).entries.is_empty());
@@ -874,12 +976,13 @@ mod tests {
                 )]),
                 triggers: Vec::new(),
             }],
-            rewrites: Vec::new(),
+            deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: false,
             mechanism_indices: vec![0],
+            player_index: None,
         };
 
         apply_recorded(root.path(), &world_id, &outcome, &selection);
