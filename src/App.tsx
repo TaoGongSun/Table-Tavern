@@ -142,7 +142,18 @@ function narrationStreamText(text: string) {
 
 function StoryText({ text }: { text: string }) {
   const html = useMemo(() => renderStoryMarkdown(text), [text]);
-  return <span className="text rendered" dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <span
+      className="text rendered"
+      // 卡片內嵌的圖是熱連作者自己的圖床，失效是常態（擋熱連、圖被刪、玩家離線）：
+      // 載不到就整張藏掉，故事中間留一個破圖示比沒有更糟。img 的 error 不冒泡，只能用 capture 收
+      onErrorCapture={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.tagName === "IMG") target.classList.add("img-failed");
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 interface WorldMeta {
@@ -6249,7 +6260,11 @@ function App() {
                       <strong>{t("openingChoiceItem", { n: index + 1 })}</strong>
                       <span>{expanded ? "" : openingPreview(opening)}</span>
                     </button>
-                    {expanded && <div className="opening-choice-full">{opening}</div>}
+                    {expanded && (
+                      <div className="opening-choice-full">
+                        <StoryText text={opening} />
+                      </div>
+                    )}
                   </div>
                 );
               })}
