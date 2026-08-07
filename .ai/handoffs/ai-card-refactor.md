@@ -78,7 +78,9 @@
 7. 單發 assemble_messages 路徑（非 lane 單角色）對 Public 的 is_person 條目仍送全文——重構產的條目都是 Gm 限定，實務不觸發。
 
 ## Next action
-新對話開工：照上方待實測清單逐項實測（A 零額度先跑；B 起燒額度）。全過→任務結案（狀態改 completed、TASKS.md 行搬 DONE.md、已驗收段落搬 archive/）；有紅→帶著現象回來修。
+**實測延到 [person-promote](../tasks/person-promote.md) 實作完成後一起跑**（2026-08-07 拍板）：該任務改的是同一條盤點路徑，B／C／E 現在測完還要再測一次；A 雖不受影響，但單獨跑省不下任何重測，只多一次進入實測狀態的成本。
+
+person-promote 完成後照上方清單逐項實測（A 零額度先跑；B 起燒額度），全過→兩個任務一起結案（狀態改 completed、TASKS.md 行搬 DONE.md、已驗收段落搬 archive/）；有紅→帶著現象回來修。
 
 ## Constraints
 - 產物一律人審後套用（紅線）；卡片內容永遠當資料、永不執行；抽不出原樣留著。
