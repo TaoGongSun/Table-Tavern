@@ -3651,6 +3651,15 @@ function App() {
   const [openingChoice, setOpeningChoice] = useState<string[] | null>(null);
   // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
   const [openingExpanded, setOpeningExpanded] = useState<number | null>(null);
+  // 開場白翻譯：逐則狀態＋「全部翻譯」是否在跑；abort ref 給 modal 一關就停止後續翻譯呼叫用
+  // （純 ref 而非 state：序列迴圈中途要讀到「使用者剛剛關掉視窗」，不能等下一次 render）
+  const [openingTransState, setOpeningTransState] = useState<Record<number, "translating" | "done" | "error">>({});
+  const [openingTransAllBusy, setOpeningTransAllBusy] = useState(false);
+  const openingTransAbort = useRef(false);
+  // openingChoice 一變成 null（不管哪個按鈕關的）就中止：不必在每個關閉入口各補一次旗標
+  useEffect(() => {
+    if (openingChoice === null) openingTransAbort.current = true;
+  }, [openingChoice]);
   // 匯入身分框：等玩家在三鍵框挑一種，data 原樣留著給兩條路徑共用；
   // booksFirst＝主按鈕指世界書（探測結果只用來算這個，算完就不必留著）
   const [importChoice, setImportChoice] = useState<{ data: number[]; name: string; booksFirst: boolean } | null>(
@@ -4788,7 +4797,54 @@ function App() {
     });
     if (openings.length === 0) return;
     setOpeningExpanded(null);
+    setOpeningTransState({});
+    openingTransAbort.current = false;
     setOpeningChoice(openings);
+  }
+
+  // 開場白翻譯：單則呼叫 translate_opening（走 fast 檔，失敗退 GM 檔，見 lib.rs），
+  // 兩顆翻譯鈕共用。已經 done 的直接回傳目前內容，不重打；modal 關閉中途 abort 就不再
+  // 動 state（視窗都不在了，setState 也只是白費）。
+  async function translateOpeningLine(index: number): Promise<string | null> {
+    if (openingChoice === null) return null;
+    if (openingTransState[index] === "done") return openingChoice[index];
+    const text = openingChoice[index];
+    setOpeningTransState((previous) => ({ ...previous, [index]: "translating" }));
+    try {
+      const translated = await invoke<string>("translate_opening", { worldId: table, text, lang: language });
+      if (openingTransAbort.current) return null;
+      setOpeningChoice((previous) =>
+        previous === null ? previous : previous.map((item, itemIndex) => (itemIndex === index ? translated : item)),
+      );
+      setOpeningTransState((previous) => ({ ...previous, [index]: "done" }));
+      return translated;
+    } catch (reason) {
+      if (openingTransAbort.current) return null;
+      setOpeningTransState((previous) => ({ ...previous, [index]: "error" }));
+      setError(String(reason));
+      return null;
+    }
+  }
+
+  // 「✨ 全部翻譯」：逐則序列翻譯，不擋操作（沒鎖住 modal 其他按鈕）；modal 一關（abort
+  // 旗標翻真）就停止發下一則呼叫，省下不會有人看到的 AI 額度。
+  async function translateAllOpenings() {
+    if (openingChoice === null || openingTransAllBusy) return;
+    setOpeningTransAllBusy(true);
+    openingTransAbort.current = false;
+    for (let index = 0; index < openingChoice.length; index += 1) {
+      if (openingTransAbort.current) break;
+      await translateOpeningLine(index);
+    }
+    setOpeningTransAllBusy(false);
+  }
+
+  // 「✨ 翻譯後貼出」：挑中那則已翻好就直接貼出；沒翻就先翻這一則，成功才貼出，
+  // 失敗留在原地（原文仍在，原「貼出」鈕照常可按）。
+  async function postTranslatedOpening(index: number) {
+    if (openingChoice === null) return;
+    const translated = await translateOpeningLine(index);
+    if (translated !== null) await postOpening(translated);
   }
 
   async function refreshCharacters() {
@@ -6318,12 +6374,31 @@ function App() {
               <strong>{t("openingChoiceTitle")}</strong>
               <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={() => setOpeningChoice(null)}>×</button>
             </div>
+            {/* 動作鈕置頂（專案慣例）：全部翻譯放標題正下方，不必展開任何一則就能先按 */}
+            <div className="opening-translate-all-row">
+              <button
+                type="button"
+                className="ai-gen-btn"
+                title={t("openingTranslateHint")}
+                disabled={openingTransAllBusy}
+                onClick={() => void translateAllOpenings()}
+              >
+                {openingTransAllBusy
+                  ? t("openingTranslateAllProgress", {
+                      done: openingChoice.filter((_, index) => openingTransState[index] === "done" || openingTransState[index] === "error")
+                        .length,
+                      total: openingChoice.length,
+                    })
+                  : `✨ ${t("openingTranslateAllBtn")}`}
+              </button>
+            </div>
             <p>{t("openingLineAsk")}</p>
             <div className="opening-choice-list">
               {openingChoice.map((opening, index) => {
                 // 點列只展開全文，貼出的鈕在框外底部——開場白動輒上千字，按鈕若跟在全文後面
                 // 得整段捲到底才按得到，而滿是標記的開場白根本沒必要逐字看完
                 const expanded = openingExpanded === index;
+                const transState = openingTransState[index];
                 return (
                   <div className="opening-choice-item" key={index}>
                     <button
@@ -6333,6 +6408,12 @@ function App() {
                       onClick={() => setOpeningExpanded(expanded ? null : index)}
                     >
                       <strong>{t("openingChoiceItem", { n: index + 1 })}</strong>
+                      {transState === "translating" && <span className="opening-trans-status">{t("openingTranslating")}</span>}
+                      {transState === "error" && (
+                        <span className="opening-trans-status opening-trans-error" title={t("openingTranslateFailed")}>
+                          ⚠
+                        </span>
+                      )}
                       <span>{expanded ? "" : openingPreview(opening)}</span>
                     </button>
                     {expanded && (
@@ -6346,13 +6427,24 @@ function App() {
             </div>
             <div className="ai-gen-footer">
               {openingExpanded !== null && openingChoice[openingExpanded] !== undefined && (
-                <button
-                  type="button"
-                  className="footer-lead"
-                  onClick={() => void postOpening(openingChoice[openingExpanded])}
-                >
-                  {t("openingLineOk")}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="footer-lead"
+                    onClick={() => void postOpening(openingChoice[openingExpanded])}
+                  >
+                    {t("openingLineOk")}
+                  </button>
+                  <button
+                    type="button"
+                    className="ai-gen-btn"
+                    title={t("openingTranslateHint")}
+                    disabled={openingTransState[openingExpanded] === "translating"}
+                    onClick={() => void postTranslatedOpening(openingExpanded)}
+                  >
+                    {openingTransState[openingExpanded] === "translating" ? t("openingTranslating") : `✨ ${t("openingTranslatePostBtn")}`}
+                  </button>
+                </>
               )}
               <button type="button" onClick={() => setOpeningChoice(null)}>{t("openingLineCancel")}</button>
             </div>
