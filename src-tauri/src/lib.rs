@@ -353,6 +353,7 @@ fn import_worldbook(
     let result =
         data::import_worldbook(&root, &world_id, &json_text).map_err(|error| error.to_string())?;
     import::save_world_card(&root, &world_id, &data);
+    import::save_gm_image(&root, &world_id, &data);
     if let Ok(book) = serde_json::from_str(&json_text) {
         import::import_mechanism(&root, &world_id, &book);
     }
@@ -699,6 +700,12 @@ fn delete_character_avatar(
 ) -> Result<(), String> {
     import::delete_character_avatar(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
+}
+
+/// GM 卡的圖：世界書匯入 PNG 卡時存下的那張，沒有回 None（前端回退內建書本圖）
+#[tauri::command]
+fn read_gm_image(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
+    import::gm_image(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -2415,6 +2422,7 @@ pub fn run() {
             read_character_avatar,
             save_character_avatar,
             delete_character_avatar,
+            read_gm_image,
             append_transcript,
             post_opening,
             read_transcript,

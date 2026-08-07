@@ -283,6 +283,27 @@ pub fn save_world_card(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
     fs::write(path, bytes).is_ok()
 }
 
+/// 世界書匯入的檔案若是 PNG 卡，整張圖存成 GM 卡的圖（worlds/<world_id>/gm.png）；
+/// 純 JSON 世界書不動舊圖——換書不該讓 GM 卡突然變回內建書本圖。
+pub fn save_gm_image(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
+    if !bytes.starts_with(PNG_MAGIC) {
+        return false;
+    }
+    let Ok(path) = data::gm_image_path(root, world_id) else {
+        return false;
+    };
+    fs::write(path, bytes).is_ok()
+}
+
+/// GM 卡的圖；沒有回 None，前端拿 base64 組 data URL 顯示，比照 character_image
+pub fn gm_image(root: &Path, world_id: &str) -> DataResult<Option<String>> {
+    let path = data::gm_image_path(root, world_id)?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(base64_encode(&fs::read(path)?)))
+}
+
 fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -> CardInterface {
     let opening = string_field(card_data, "first_mes")
         .map(str::trim)
@@ -2691,6 +2712,35 @@ if (invasion >= 50 && done === false) { _%>
         let json_path = data::world_card_path(root.path(), &world_id, "import.json").unwrap();
         assert!(!png_path.exists());
         assert!(!json_path.exists());
+    }
+
+    /// GM 卡的圖：匯的是 PNG 卡就整張存起來，純 JSON 世界書不存也不刪舊圖
+    /// （換書不該讓 GM 卡突然變回內建書本圖）。
+    #[test]
+    fn save_gm_image_stores_png_and_keeps_it_for_plain_json() {
+        let root = TestRoot::new("gm-image");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        // 還沒匯過 PNG：沒有圖，前端據此回退內建書本圖
+        assert_eq!(gm_image(root.path(), &world_id).unwrap(), None);
+
+        let png = embed_chara_chunk(&blank_png(), r#"{"name":"莉亞"}"#.as_bytes()).unwrap();
+        assert!(save_gm_image(root.path(), &world_id, &png));
+        let stored = fs::read(data::gm_image_path(root.path(), &world_id).unwrap()).unwrap();
+        assert_eq!(stored, png);
+        assert_eq!(
+            gm_image(root.path(), &world_id).unwrap(),
+            Some(base64_encode(&png))
+        );
+
+        assert!(!save_gm_image(
+            root.path(),
+            &world_id,
+            r#"{"entries":{"0":{"uid":0,"key":["龍"],"content":"沉睡"}}}"#.as_bytes()
+        ));
+        assert_eq!(
+            gm_image(root.path(), &world_id).unwrap(),
+            Some(base64_encode(&png))
+        );
     }
 
     /// 卡片自帶開場白：有值就填入、空字串當沒有。
