@@ -1,9 +1,9 @@
 # Task
 Task-ID: opening-translation
 Title: 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔
-Status: todo
+Status: in_progress
 Created: 2026-08-08T03:22:00+08:00
-Updated: 2026-08-08T03:22:00+08:00
+Updated: 2026-08-08T04:10:00+08:00
 
 ## Summary
 2026-08-08 討論立案。匯入卡片後玩家第一眼要看懂的是開場白，但它不經 AI 重構——重構三類展開（人物／介面／機制）的提示詞都已要求玩家語言輸出（[refactor_ai.rs:165](../../src-tauri/src/refactor_ai.rs#L165)、295、332），純設定條目與開場白則完全不在輸出裡。翻譯掛在開場白選擇視窗（[App.tsx:4780](../../src/App.tsx#L4780)，兩條匯入路徑共用）而非重構管線：需求時點就在「貼出前」，單則翻譯只是幾秒的小呼叫，綁進分鐘級的重構只會製造匯入等待與撤回重問等新機制。
@@ -19,7 +19,7 @@ Updated: 2026-08-08T03:22:00+08:00
 6. **重構管線一字不動**：重構產物本來就是玩家語言，兩者各管各的。
 
 ## Next action
-- 未排程（2026-08-08 立案時使用者保留延伸問題待問）。開工點：後端加 fast 檔翻譯 command（單則進單則出）＋前端 openingChoice modal（[App.tsx:6308](../../src/App.tsx#L6308)）加雙鈕與逐則狀態＋十語系鍵。
+- 實作完成、四項自驗全綠（cargo 426／vitest 71／build／check:i18n，2026-08-08），等實機驗收；現場與待實測清單 T1–T7 見[交接檔](../handoffs/opening-translation.md)，全過即結案。
 
 ## Constraints
 - 翻譯呼叫必須玩家主動觸發，不自動跑。

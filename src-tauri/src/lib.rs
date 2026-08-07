@@ -14,6 +14,7 @@ mod refactor;
 mod refactor_ai;
 mod session_file;
 mod snapshot_patch;
+mod translate;
 mod transport;
 mod usage_log;
 mod usage_report;
@@ -822,6 +823,41 @@ fn post_opening(
     // 不然重匯同一張卡想改挑一則時，舊的那則還壓在開局上
     receipts::record_posted_opening(&root, &world_id, scene, &ts);
     Ok(event)
+}
+
+/// 開場白翻譯：選擇視窗按下「翻譯」時呼叫，把單則開場白譯成玩家語言方便挑選、貼出。
+/// 一律走 fast 檔（單則翻譯用不到 GM 檔的推理力，要點 3）；API 模式沒設定 fast 模型時
+/// 退回 GM 檔，讓按鈕在任何設定下都能用。lang 由前端帶入（玩家介面語言），這裡不再另外查。
+#[tauri::command]
+async fn translate_opening(
+    app: tauri::AppHandle,
+    world_id: String,
+    text: String,
+    lang: String,
+) -> Result<String, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let messages = translate::opening_messages(&text, &lang);
+    let tier = if chat_transport(&config) == "api"
+        && transport::resolve_model(data::Tier::Fast, &config).is_err()
+    {
+        transport::gm_tier(&config)
+    } else {
+        data::Tier::Fast
+    };
+    let raw = stream_via_transport(
+        &app,
+        &config,
+        None,
+        false,
+        tier,
+        Some(&world_id),
+        "GM",
+        "Output only the translated text itself, nothing else.",
+        &messages,
+        |_| {},
+    )
+    .await?;
+    Ok(raw.trim().to_owned())
 }
 
 #[tauri::command]
@@ -2504,6 +2540,7 @@ pub fn run() {
             read_gm_image,
             append_transcript,
             post_opening,
+            translate_opening,
             read_transcript,
             scene_appearances,
             pop_transcript,
