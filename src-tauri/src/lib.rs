@@ -744,6 +744,9 @@ fn post_opening(
         data::append_opening(&root, &world_id, scene, &ts, &text, &block, user_name)
             .map_err(|error| error.to_string())?;
     mechanism::append_log(&root, &world_id, scene, &outcome.records);
+    // 掛到剛才那筆匯入收據上：復原匯入時這則開場白要跟著收掉，
+    // 不然重匯同一張卡想改挑一則時，舊的那則還壓在開局上
+    receipts::record_posted_opening(&root, &world_id, scene, &ts);
     Ok(event)
 }
 

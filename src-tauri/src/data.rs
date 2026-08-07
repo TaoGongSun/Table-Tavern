@@ -2089,15 +2089,16 @@ pub fn append_opening(
     Ok((event, outcome))
 }
 
-/// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
-/// 回傳是否真的刪了——這一幕已經空了就是 false，收不會倒退咬到上一幕。
-pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<bool> {
-    let mut events = read_transcript(root, world_id, scene)?;
-    if events.pop().is_none() {
-        return Ok(false);
-    }
+/// 整檔重寫這一幕，並把檯面退回剩下事件的最後一份快照（這一幕沒了就往前一幕找）。
+/// 刪事件的兩條路（收回上一句、復原匯入收掉開場白）共用。
+fn rewrite_scene(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    events: &[TranscriptEvent],
+) -> DataResult<()> {
     let mut buffer = String::new();
-    for event in &events {
+    for event in events {
         buffer.push_str(&serde_json::to_string(event)?);
         buffer.push('\n');
     }
@@ -2121,6 +2122,35 @@ pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<boo
         })
         .unwrap_or_default();
     write_state(root, world_id, &state)?;
+    Ok(())
+}
+
+/// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
+/// 回傳是否真的刪了——這一幕已經空了就是 false，收不會倒退咬到上一幕。
+pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<bool> {
+    let mut events = read_transcript(root, world_id, scene)?;
+    if events.pop().is_none() {
+        return Ok(false);
+    }
+    rewrite_scene(root, world_id, scene, &events)?;
+    Ok(true)
+}
+
+/// 復原匯入用：從這一幕刪掉時間戳相符的那一則（貼出的開場白），其餘事件原位不動。
+/// 回傳是否真的刪到——玩家自己先收回過就是 false。
+pub fn remove_transcript_event(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    ts: &str,
+) -> DataResult<bool> {
+    let mut events = read_transcript(root, world_id, scene)?;
+    let before = events.len();
+    events.retain(|event| event.ts != ts);
+    if events.len() == before {
+        return Ok(false);
+    }
+    rewrite_scene(root, world_id, scene, &events)?;
     Ok(true)
 }
 
