@@ -2224,6 +2224,7 @@ mod tests {
                 disabled: true,
                 visibility: data::Visibility::Gm,
                 is_person: false,
+                locked: false,
             },
         )
         .unwrap();
@@ -2240,6 +2241,7 @@ mod tests {
                 disabled: false,
                 visibility: data::Visibility::Gm,
                 is_person: false,
+                locked: false,
             },
         )
         .unwrap();
@@ -2306,6 +2308,7 @@ mod tests {
                 disabled: true,
                 visibility: data::Visibility::Gm,
                 is_person: false,
+                locked: false,
             },
         )
         .unwrap();

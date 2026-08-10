@@ -532,20 +532,23 @@ fn refactor_apply(
     world_id: String,
     outcome: refactor::RefactorOutcome,
     selection: refactor::RefactorSelection,
+    record_receipt: Option<bool>,
 ) -> Result<refactor::RefactorApplySummary, String> {
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
     let result =
         refactor::apply(&root, &world_id, &outcome, &selection).map_err(|error| error.to_string())?;
-    receipts::record_refactor_apply(
-        &root,
-        &world_id,
-        "AI 卡重構",
-        result.character_ids,
-        result.rewritten_entries,
-        result.deleted_entries,
-        before,
-    );
+    if record_receipt.unwrap_or(true) {
+        receipts::record_refactor_apply(
+            &root,
+            &world_id,
+            "AI 卡重構",
+            result.character_ids,
+            result.rewritten_entries,
+            result.deleted_entries,
+            before,
+        );
+    }
     Ok(result.summary)
 }
 
@@ -555,6 +558,7 @@ fn refactor_apply(
 async fn refactor_survey(
     app: tauri::AppHandle,
     world_id: String,
+    on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorSurveyOutcome, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -572,13 +576,15 @@ async fn refactor_survey(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
-        |_| {},
+        |delta| {
+            let _ = on_delta.send(delta.to_owned());
+        },
     )
     .await?;
     Ok(refactor_ai::parse_survey(&raw))
 }
 
-/// AI 卡重構讀卡（展開階段，介面／機制）：system 與盤點同一字串（快取命中），逐條展開成
+/// AI 卡重構讀卡（展開階段，介面）：system 與盤點同一字串（快取命中），逐條展開成
 /// 結構化產物。人物展開走專屬的 refactor_expand_person（一人一次呼叫、可能帶多條來源）。
 #[tauri::command]
 async fn refactor_expand(
@@ -586,6 +592,8 @@ async fn refactor_expand(
     world_id: String,
     entry_uid: String,
     kind: String,
+    known_fields: Option<Vec<String>>,
+    on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
     let entry_kind = refactor_ai::EntryKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
@@ -595,7 +603,15 @@ async fn refactor_expand(
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
         .map_err(|error| error.to_string())?;
-    let messages = refactor_ai::expand_messages(&context, &entry_uid, &entry_text, entry_kind, &lang);
+    let known_fields = known_fields.unwrap_or_default();
+    let messages = refactor_ai::expand_messages(
+        &context,
+        &entry_uid,
+        &entry_text,
+        entry_kind,
+        &known_fields,
+        &lang,
+    );
     let raw = stream_via_transport(
         &app,
         &config,
@@ -606,7 +622,9 @@ async fn refactor_expand(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
-        |_| {},
+        |delta| {
+            let _ = on_delta.send(delta.to_owned());
+        },
     )
     .await?;
     Ok(refactor_ai::parse_expand(entry_kind, &entry_uid, &raw))
@@ -621,6 +639,7 @@ async fn refactor_expand_person(
     name: String,
     uids: Vec<String>,
     is_player: bool,
+    on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorPersonExpandOutcome, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -644,29 +663,42 @@ async fn refactor_expand_person(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
-        |_| {},
+        |delta| {
+            let _ = on_delta.send(delta.to_owned());
+        },
     )
     .await?;
     Ok(refactor_ai::parse_person_expand(&raw, &name, &uids, is_player))
 }
 
-/// AI 卡重構讀卡（收尾階段）：全部人物展開完後一次呼叫，逐條共用合集條目判斷刪不刪
-/// （要點 7、8）；沒有共用條目時前端不會送這個請求，這裡也順手擋一次。
+/// AI 卡重構讀卡（條目重寫階段）：照盤點 PLAN 一條新條目一次呼叫，帶上全部來源條目全文，
+/// 重寫成乾淨敘事（setting）或「可讀機制說明＋本地可執行 RULES/TRIGGERS」（mechanism）。
+/// known_fields＝前面呼叫已定下的狀態欄位名，由前端逐次累積傳入（欄位命名單一權威）。
 #[tauri::command]
-async fn refactor_finish_shared(
+async fn refactor_rewrite_entry(
     app: tauri::AppHandle,
     world_id: String,
-    shared: Vec<refactor_ai::SharedEntryDraw>,
-) -> Result<Vec<String>, String> {
-    if shared.is_empty() {
-        return Ok(Vec::new());
-    }
+    title: String,
+    kind: String,
+    uids: Vec<String>,
+    known_fields: Option<Vec<String>>,
+    on_delta: tauri::ipc::Channel<String>,
+) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
+    let plan_kind = refactor_ai::PlanKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
-    let messages = refactor_ai::finish_messages(&context, &shared, &lang);
+    let mut sources = Vec::with_capacity(uids.len());
+    for uid in &uids {
+        let text =
+            refactor_ai::entry_full_text(&root, &world_id, uid).map_err(|error| error.to_string())?;
+        sources.push((uid.clone(), text));
+    }
+    let known_fields = known_fields.unwrap_or_default();
+    let messages =
+        refactor_ai::rewrite_messages(&context, &title, plan_kind, &sources, &known_fields, &lang);
     let raw = stream_via_transport(
         &app,
         &config,
@@ -677,10 +709,12 @@ async fn refactor_finish_shared(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
-        |_| {},
+        |delta| {
+            let _ = on_delta.send(delta.to_owned());
+        },
     )
     .await?;
-    Ok(refactor_ai::parse_finish(&raw))
+    Ok(refactor_ai::parse_rewrite(&raw, &title, plan_kind, &uids))
 }
 
 /// 讀 AI 卡重構套用介面時可能順便產的靜態渲染殼（interface-shell.html）；沒套用過或那次沒
@@ -688,6 +722,32 @@ async fn refactor_finish_shared(
 #[tauri::command]
 fn refactor_interface_shell(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
     data::read_interface_shell(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
+/// AI 卡重構匯出（結果卡摘要頁用）：產物來自前端 state（就算還沒套用過也能匯出），
+/// 直接序列化寫到玩家選的路徑，供之後用「匯入重構產物」讀回重玩。
+#[tauri::command]
+fn refactor_export_outcome(outcome: refactor::RefactorOutcome, path: String) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?;
+    std::fs::write(&path, json).map_err(|error| error.to_string())
+}
+
+/// AI 卡重構匯出（世界書工具列用）：讀 apply() 套用成功時桌內落下的存檔；沒有就回固定錯誤
+/// 字串（前端比對 "refactor-export-none" 顯示對應提示）。
+#[tauri::command]
+fn refactor_export_saved(app: tauri::AppHandle, world_id: String, path: String) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let content = data::read_refactor_outcome(&root, &world_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "refactor-export-none".to_owned())?;
+    std::fs::write(&path, content).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn refactor_outcome_exists(app: tauri::AppHandle, world_id: String) -> Result<bool, String> {
+    Ok(data::read_refactor_outcome(&data_root(&app)?, &world_id)
+        .map_err(|e| e.to_string())?
+        .is_some())
 }
 
 #[tauri::command]
@@ -2528,8 +2588,11 @@ pub fn run() {
             refactor_survey,
             refactor_expand,
             refactor_expand_person,
-            refactor_finish_shared,
+            refactor_rewrite_entry,
             refactor_interface_shell,
+            refactor_export_outcome,
+            refactor_export_saved,
+            refactor_outcome_exists,
             export_character,
             read_character_image,
             save_character_image,
@@ -2848,6 +2911,7 @@ mod tests {
             disabled: false,
             visibility: data::Visibility::Public,
             is_person: true,
+            locked: false,
         };
         let worldbook = [alice];
 
@@ -2985,6 +3049,7 @@ mod tests {
             disabled: false,
             visibility: data::Visibility::Gm,
             is_person: true,
+            locked: false,
         };
         let worldbook = [spy];
 

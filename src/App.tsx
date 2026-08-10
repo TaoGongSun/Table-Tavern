@@ -12,10 +12,10 @@ import { isCharacterHidden } from "./character-visibility";
 import {
   assembleRefactorOutcome,
   buildRefactorPersonPlan,
-  buildSharedEntryDraws,
   defaultRefactorSelection,
   parseRefactorOutcome,
   refactorSummaryCounts,
+  REFACTOR_IMPORT_INVALID,
   setPlayerIndex,
   sourceEntryTitle,
   sourceEntryTitles,
@@ -25,7 +25,8 @@ import {
   type RefactorCharacter,
   type RefactorExpandOutcome,
   type RefactorInterface,
-  type RefactorMechanism,
+  type RefactorNewEntry,
+  type RefactorRewriteOutcome,
   type RefactorOutcome,
   type RefactorPersonExpandOutcome,
   type RefactorSelection,
@@ -276,6 +277,7 @@ interface WorldbookEntry {
   constant: boolean;
   order: number;
   disabled: boolean;
+  locked: boolean;
   visibility: Visibility;
 }
 
@@ -1755,9 +1757,16 @@ function useDragReorder<T>(
   };
 }
 
+// 重構卡存檔對話框預設檔名：桌名可能含檔名非法字元，一律代換成 -；空桌名就不接前綴，只用在地化字尾
+function refactorCardFileName(tableName: string): string {
+  const safe = tableName.replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, "-");
+  return `${safe ? `${safe}-` : ""}${t("refactorExportFileName")}.json`;
+}
+
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 function WorldEditor({
   world,
+  worldName,
   onBack,
   leaveGuard,
   convertColor,
@@ -1765,6 +1774,7 @@ function WorldEditor({
   onRefactorApplied,
 }: {
   world: string;
+  worldName: string;
   onBack: () => void;
   /** 側欄要離開世界設定時先問過這裡（未儲存確認與返回鈕同一條） */
   leaveGuard: { current: (() => Promise<boolean>) | null };
@@ -1793,11 +1803,12 @@ function WorldEditor({
   // 交會點是 setRefactorOutcome——AI 兩階段跑完、或選檔路徑讀完 JSON，都寫進同一份結果卡。
   const [refactorOutcome, setRefactorOutcome] = useState<RefactorOutcome | null>(null);
   const [refactorSelection, setRefactorSelection] = useState<RefactorSelection | null>(null);
+  const [refactorOrigin, setRefactorOrigin] = useState<"ai" | "import" | null>(null);
   const [refactorDetail, setRefactorDetail] = useState(false);
   const [refactorBusy, setRefactorBusy] = useState(false);
   const refactorInputRef = useRef<HTMLInputElement>(null);
   // 非 null＝AI 盤點／展開跑中，modal 顯示 text；cancelling 只管取消鈕的 disabled，不影響迴圈判斷。
-  const [refactorProgress, setRefactorProgress] = useState<{ text: string; cancelling: boolean } | null>(null);
+  const [refactorProgress, setRefactorProgress] = useState<{ text: string; cancelling: boolean; tail: string } | null>(null);
   // 迴圈裡讀取的取消旗標——用 ref 而非 state：async 迴圈裡的閉包看不到後續 setState，只有 ref.current 每次都讀最新值。
   const refactorCancelRef = useRef(false);
 
@@ -1894,7 +1905,7 @@ function WorldEditor({
   // 找不到該 uid 就跳過（條目已被刪，不是這裡的錯）。
   async function toggleLedgerEntry(ledgerEntry: LedgerEntry) {
     const target = entries.find((entry) => entry.uid === ledgerEntry.uid);
-    if (!target) return;
+    if (!target || target.locked) return;
     setWorldbookMessage("");
     try {
       await invoke<number>("upsert_worldbook_entry", {
@@ -1988,6 +1999,7 @@ function WorldEditor({
       constant: source.constant,
       order: source.order,
       disabled: !source.enabled,
+      locked: false,
       visibility,
     };
     try {
@@ -2074,21 +2086,52 @@ function WorldEditor({
     }
   }
 
-  // AI 卡重構：盤點→展開→收尾三段跑真 AI。盤點一次認出人物（可能散在好幾條裡）／介面／機制
-  // 候選；單一專屬來源的人本地轉換、不用展開呼叫（認人近乎免費，合併才要花展開呼叫），其餘
-  // 逐項 await（序列、不並行——後端 system 提示詞快取要先由第一條呼叫建立）；全部人物展開完
-  // 後，共用合集條目才收尾判斷刪不刪（要點 8）。逐步把進度字寫給玩家看。
+  // 匯出這桌先前套用過的重構產物（apply() 落檔），重玩同一張卡不必再燒 AI 額度重新展開。
+  async function exportSavedRefactorOutcome() {
+    setWorldbookMessage("");
+    try {
+      const path = await saveDialog({
+        defaultPath: refactorCardFileName(worldName),
+        filters: [{ name: t("refactorOutcomeJson"), extensions: ["json"] }],
+      });
+      if (!path) return;
+      await invoke("refactor_export_saved", { worldId: world, path });
+      await revealItemInDir(path);
+    } catch (reason) {
+      setWorldbookMessage(
+        String(reason).includes("refactor-export-none") ? t("refactorExportNone") : String(reason),
+      );
+    }
+  }
+
+  // AI 卡重構：盤點（PERSONS＋INTERFACE 含 playable＋PLAN）→人物展開→PLAN 逐條重寫→介面
+  // 展開，全程序列 await（後端 system 提示詞快取要先由第一條呼叫建立）。單一專屬來源的人
+  // 本地轉換、不花展開呼叫；knownFields 逐呼叫累積傳入＝欄位命名單一權威；來源條目刪不刪
+  // 由套用端「全部引用產物都套用才刪」決定。逐步把進度字寫給玩家看。
   async function runAiRefactor() {
     if (refactorProgress) return;
+    if (await invoke<boolean>("refactor_outcome_exists", { worldId: world })) {
+      const rerun = await confirm(t("refactorRerunWarnBody"), {
+        title: t("refactorBtn"),
+        kind: "warning",
+      });
+      if (!rerun) return;
+    }
     setWorldbookMessage("");
     refactorCancelRef.current = false;
-    setRefactorProgress({ text: t("refactorSurveying"), cancelling: false });
+    setRefactorProgress({ text: t("refactorSurveying"), cancelling: false, tail: "" });
     try {
-      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world });
+      let tailBuffer = "";
+      const onDelta = new Channel<string>();
+      onDelta.onmessage = (delta) => {
+        tailBuffer = (tailBuffer + delta).slice(-2000);
+        setRefactorProgress((current) =>
+          current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
+        );
+      };
+      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, onDelta });
       const { local, queue } = buildRefactorPersonPlan(survey, entries);
-      const sharedDraws = buildSharedEntryDraws(survey);
-      const totalSteps =
-        queue.length + survey.interface_uids.length + survey.mechanism_uids.length + (sharedDraws.length > 0 ? 1 : 0);
+      const totalSteps = queue.length + survey.plan.length + survey.interface_uids.length;
       if (totalSteps === 0 && local.length === 0) {
         setRefactorProgress(null);
         setWorldbookMessage(t("refactorNothingToDo"));
@@ -2097,20 +2140,30 @@ function WorldEditor({
 
       const characters: RefactorCharacter[] = [...local];
       const interfaces: RefactorInterface[] = [];
-      const mechanisms: RefactorMechanism[] = [];
+      const refactorEntries: RefactorNewEntry[] = [];
       const failedTitles: string[] = [];
+      const knownFields: string[] = [];
       let step = 0;
 
       for (const item of queue) {
         if (refactorCancelRef.current) break;
         step++;
-        setRefactorProgress({ text: t("refactorExpanding", { name: item.name, i: step, n: totalSteps }), cancelling: false });
+        setRefactorProgress({ text: t("refactorExpanding", { name: item.name, i: step, n: totalSteps }), cancelling: false, tail: "" });
         try {
+          let tailBuffer = "";
+          const onDelta = new Channel<string>();
+          onDelta.onmessage = (delta) => {
+            tailBuffer = (tailBuffer + delta).slice(-2000);
+            setRefactorProgress((current) =>
+              current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
+            );
+          };
           const result = await invoke<RefactorPersonExpandOutcome>("refactor_expand_person", {
             worldId: world,
             name: item.name,
             uids: item.uids,
             isPlayer: item.is_player,
+            onDelta,
           });
           if (result.character) characters.push(result.character);
           else failedTitles.push(item.name);
@@ -2119,45 +2172,79 @@ function WorldEditor({
         }
       }
 
-      const interfaceAndMechanismQueue = [
-        ...survey.interface_uids.map((uid) => ({ uid, kind: "interface" as const })),
-        ...survey.mechanism_uids.map((uid) => ({ uid, kind: "mechanism" as const })),
-      ];
-      for (const item of interfaceAndMechanismQueue) {
+      for (const plan of survey.plan) {
         if (refactorCancelRef.current) break;
         step++;
-        const title = sourceEntryTitle(entries, item.uid);
-        setRefactorProgress({ text: t("refactorExpanding", { name: title, i: step, n: totalSteps }), cancelling: false });
+        setRefactorProgress({ text: t("refactorRewriting", { title: plan.title, i: step, n: totalSteps }), cancelling: false, tail: "" });
         try {
+          let tailBuffer = "";
+          const onDelta = new Channel<string>();
+          onDelta.onmessage = (delta) => {
+            tailBuffer = (tailBuffer + delta).slice(-2000);
+            setRefactorProgress((current) =>
+              current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
+            );
+          };
+          const result = await invoke<RefactorRewriteOutcome>("refactor_rewrite_entry", {
+            worldId: world,
+            title: plan.title,
+            kind: plan.kind,
+            uids: plan.uids,
+            knownFields,
+            onDelta,
+          });
+          if (result.entry) {
+            const entry = { ...result.entry, rules: result.entry.rules ?? {}, triggers: result.entry.triggers ?? [] };
+            refactorEntries.push(entry);
+            for (const field of Object.keys(entry.rules)) {
+              if (!knownFields.includes(field)) knownFields.push(field);
+            }
+          } else failedTitles.push(plan.title);
+        } catch {
+          failedTitles.push(plan.title);
+        }
+      }
+
+      for (const uid of survey.interface_uids) {
+        if (refactorCancelRef.current) break;
+        step++;
+        const title = sourceEntryTitle(entries, uid);
+        setRefactorProgress({ text: t("refactorExpanding", { name: title, i: step, n: totalSteps }), cancelling: false, tail: "" });
+        try {
+          let tailBuffer = "";
+          const onDelta = new Channel<string>();
+          onDelta.onmessage = (delta) => {
+            tailBuffer = (tailBuffer + delta).slice(-2000);
+            setRefactorProgress((current) =>
+              current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
+            );
+          };
           const result = await invoke<RefactorExpandOutcome>("refactor_expand", {
             worldId: world,
-            entryUid: item.uid,
-            kind: item.kind,
+            entryUid: uid,
+            kind: survey.playable_interface_uids.includes(uid) ? "interface_shell" : "interface",
+            knownFields,
+            onDelta,
           });
-          if (result.interface) interfaces.push(result.interface);
-          if (result.mechanism) mechanisms.push(result.mechanism);
-          if (!result.interface && !result.mechanism) failedTitles.push(title);
+          if (result.interface) {
+            interfaces.push(result.interface);
+            if (typeof result.interface.state_fields === "object" && result.interface.state_fields !== null && !Array.isArray(result.interface.state_fields)) {
+              for (const field of Object.keys(result.interface.state_fields)) {
+                if (!knownFields.includes(field)) knownFields.push(field);
+              }
+            }
+          } else failedTitles.push(title);
         } catch {
           failedTitles.push(title);
         }
       }
 
-      let deletableSharedUids: string[] = [];
-      if (sharedDraws.length > 0 && !refactorCancelRef.current) {
-        step++;
-        setRefactorProgress({ text: t("refactorFinishing"), cancelling: false });
-        try {
-          deletableSharedUids = await invoke<string[]>("refactor_finish_shared", { worldId: world, shared: sharedDraws });
-        } catch {
-          // 收尾失敗＝條目原樣保留：deletableSharedUids 維持空陣列，不擋前面已經跑出來的結果。
-        }
-      }
-
       setRefactorProgress(null);
-      if (characters.length > 0 || interfaces.length > 0 || mechanisms.length > 0) {
-        const outcome = assembleRefactorOutcome({ characters, interfaces, mechanisms, deletableSharedUids });
+      if (characters.length > 0 || interfaces.length > 0 || refactorEntries.length > 0) {
+        const outcome = assembleRefactorOutcome({ characters, interfaces, entries: refactorEntries });
         setRefactorOutcome(outcome);
         setRefactorSelection(defaultRefactorSelection(outcome));
+        setRefactorOrigin("ai");
         setRefactorDetail(false);
       }
       if (failedTitles.length > 0) {
@@ -2182,15 +2269,18 @@ function WorldEditor({
       const outcome = parseRefactorOutcome(await file.text());
       setRefactorOutcome(outcome);
       setRefactorSelection(defaultRefactorSelection(outcome));
+      setRefactorOrigin("import");
       setRefactorDetail(false);
     } catch (reason) {
-      setWorldbookMessage(String(reason));
+      const invalid = reason instanceof Error && reason.message === REFACTOR_IMPORT_INVALID;
+      setWorldbookMessage(invalid ? t("refactorImportInvalid") : String(reason));
     }
   }
 
   function closeRefactor() {
     setRefactorOutcome(null);
     setRefactorSelection(null);
+    setRefactorOrigin(null);
     setRefactorDetail(false);
   }
 
@@ -2216,6 +2306,7 @@ function WorldEditor({
         worldId: world,
         outcome: refactorOutcome,
         selection,
+        recordReceipt: refactorOrigin !== "ai",
       });
       closeRefactor();
       await refreshWorldbook();
@@ -2227,6 +2318,23 @@ function WorldEditor({
       setWorldbookMessage(String(reason));
     } finally {
       setRefactorBusy(false);
+    }
+  }
+
+  // 匯出結果卡上這份還沒套用（或剛套用完）的產物，供之後用「匯入重構卡」讀回重玩。
+  async function exportRefactorOutcome() {
+    if (!refactorOutcome || refactorBusy) return;
+    setWorldbookMessage("");
+    try {
+      const path = await saveDialog({
+        defaultPath: refactorCardFileName(worldName),
+        filters: [{ name: t("refactorOutcomeJson"), extensions: ["json"] }],
+      });
+      if (!path) return;
+      await invoke("refactor_export_outcome", { outcome: refactorOutcome, path });
+      await revealItemInDir(path);
+    } catch (reason) {
+      setWorldbookMessage(String(reason));
     }
   }
 
@@ -2367,6 +2475,7 @@ function WorldEditor({
     ? [
         refactorCounts.characters > 0 && t("refactorSummaryCharacters", { n: refactorCounts.characters }),
         refactorCounts.hasInterface && t("refactorSummaryInterface"),
+        refactorCounts.entries > 0 && t("refactorSummaryEntries", { n: refactorCounts.entries }),
         refactorCounts.mechanisms > 0 && t("refactorSummaryMechanisms", { n: refactorCounts.mechanisms }),
       ].filter((part): part is string => Boolean(part))
     : [];
@@ -2424,6 +2533,13 @@ function WorldEditor({
           >
             {t("refactorImportBtn")}
           </button>
+          <button
+            type="button"
+            disabled={refactorProgress !== null}
+            onClick={() => void exportSavedRefactorOutcome()}
+          >
+            {t("refactorExportSavedBtn")}
+          </button>
           <input
             ref={refactorInputRef}
             type="file"
@@ -2456,6 +2572,7 @@ function WorldEditor({
                       </span>
                       <span className="mechanism-ledger-detail">{entry.detail}</span>
                     </div>
+                    {!entries.find((worldbookEntry) => worldbookEntry.uid === entry.uid)?.locked && (
                     <label className="mechanism-ledger-toggle">
                       <input
                         type="checkbox"
@@ -2464,6 +2581,7 @@ function WorldEditor({
                       />
                       {t("ledgerSendRaw")}
                     </label>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2519,9 +2637,10 @@ function WorldEditor({
                     {entry.disabled && (
                       <span className="worldbook-badge">{t("worldbookDisabled")}</span>
                     )}
+                    {entry.locked && <span className="worldbook-badge">🔒 {t("worldbookLocked")}</span>}
                   </div>
                 </div>
-                <div className="worldbook-row-actions">
+                {!entry.locked && <div className="worldbook-row-actions">
                   <button type="button" onClick={() => editEntry(entry)}>
                     {t("editBtn")}
                   </button>
@@ -2529,6 +2648,7 @@ function WorldEditor({
                     {t("worldbookDelete")}
                   </button>
                 </div>
+                }
               </div>
               ),
             )}
@@ -2543,6 +2663,7 @@ function WorldEditor({
           <div className="modal" role="dialog" aria-modal="true" aria-label={t("refactorBtn")}>
             <h2>{t("refactorBtn")}</h2>
             <p role="status">{refactorProgress.text}</p>
+            {refactorProgress.tail && <pre className="refactor-stream-tail">{refactorProgress.tail}</pre>}
             <div className="ai-gen-footer">
               <button type="button" disabled={refactorProgress.cancelling} onClick={cancelAiRefactor}>
                 {t("refactorCancel")}
@@ -2569,6 +2690,9 @@ function WorldEditor({
                   <button type="button" disabled={refactorBusy} onClick={closeRefactor}>
                     {t("refactorDismiss")}
                   </button>
+                  <button type="button" disabled={refactorBusy} onClick={() => void exportRefactorOutcome()}>
+                    {t("refactorExportBtn")}
+                  </button>
                   <button type="button" disabled={refactorBusy} onClick={() => setRefactorDetail(true)}>
                     {t("refactorExpand")}
                   </button>
@@ -2590,10 +2714,13 @@ function WorldEditor({
                     <div className="mechanism-ledger-list">
                       {refactorOutcome.characters.map((character, index) => (
                         <div className="mechanism-ledger-row" key={index}>
-                          <label className="inline">
+                          <details>
+                            <summary>
+                              <label className="inline" onClick={(event) => event.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={refactorSelection.character_indices.includes(index)}
+                              onClick={(event) => event.stopPropagation()}
                               onChange={(event) => {
                                 const checked = event.currentTarget.checked;
                                 setRefactorSelection(
@@ -2606,33 +2733,71 @@ function WorldEditor({
                               }}
                             />
                             {character.emoji} {character.name}
-                            <span className="mechanism-ledger-detail">
-                              {sourceEntryTitles(entries, character.source_uids)}
-                            </span>
                           </label>
-                          <label className="mechanism-ledger-toggle">
-                            <input
-                              type="radio"
-                              name="refactor-player"
-                              checked={refactorSelection.player_index === index}
-                              onChange={() => setRefactorSelection((selection) => selection && setPlayerIndex(selection, index))}
-                            />
-                            {t("refactorPlayerRadioLabel")}
-                          </label>
+                            </summary>
+                            <span className="refactor-source">{t("refactorSourceLabel", { titles: sourceEntryTitles(entries, character.source_uids) })}</span>
+                            <p>{t("refactorCharPublic")}</p>
+                            <div style={{ whiteSpace: "pre-wrap" }}>{character.public_md}</div>
+                            <p>{t("refactorCharPrivate")}</p>
+                            <div style={{ whiteSpace: "pre-wrap" }}>{character.private_md}</div>
+                          </details>
+                          {/* 玩家卡只問 AI 認定是 {{user}} 的那一位：多數卡都預設好玩家是誰，
+                              讓任意角色都能被選成玩家卡不符合卡的設計。 */}
+                          {character.suspected_player && (
+                            <label className="mechanism-ledger-toggle">
+                              <input
+                                type="checkbox"
+                                checked={refactorSelection.player_index === index}
+                                onChange={(event) =>
+                                  setRefactorSelection(
+                                    (selection) =>
+                                      selection && setPlayerIndex(selection, event.currentTarget.checked ? index : null),
+                                  )
+                                }
+                              />
+                              {t("refactorPlayerCheckLabel")}
+                            </label>
+                          )}
                         </div>
                       ))}
-                      <div className="mechanism-ledger-row">
-                        <span className="mechanism-ledger-detail">{t("refactorPlayerNone")}</span>
-                        <label className="mechanism-ledger-toggle">
-                          <input
-                            type="radio"
-                            name="refactor-player"
-                            checked={refactorSelection.player_index === null}
-                            onChange={() => setRefactorSelection((selection) => selection && setPlayerIndex(selection, null))}
-                          />
-                          {t("refactorPlayerRadioLabel")}
-                        </label>
-                      </div>
+                    </div>
+                  </section>
+                )}
+                {refactorOutcome.entries.length > 0 && (
+                  <section>
+                    <h3>{t("refactorSectionEntries")}</h3>
+                    <div className="mechanism-ledger-list">
+                      {refactorOutcome.entries.map((entry, index) => (
+                        <div className="mechanism-ledger-row" key={index}>
+                          <details>
+                            <summary>
+                              <label className="inline" onClick={(event) => event.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={refactorSelection.entry_indices.includes(index)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) => {
+                                    const checked = event.currentTarget.checked;
+                                    setRefactorSelection((selection) => selection && {
+                                      ...selection,
+                                      entry_indices: toggleIndex(selection.entry_indices, index, checked),
+                                    });
+                                  }}
+                                />
+                                {entry.title}
+                              </label>
+                              <span className="worldbook-badge">
+                                {entry.kind === "setting" ? t("refactorEntryKindSetting") : t("refactorEntryKindMechanism")}
+                              </span>
+                              {entry.kind === "mechanism" && (Object.keys(entry.rules ?? {}).length > 0 || (entry.triggers?.length ?? 0) > 0) && (
+                                <span className="worldbook-badge">🔒 {t("worldbookLocked")}</span>
+                              )}
+                            </summary>
+                            <span className="refactor-source">{t("refactorSourceLabel", { titles: sourceEntryTitles(entries, entry.source_uids) })}</span>
+                            <div style={{ whiteSpace: "pre-wrap" }}>{entry.content}</div>
+                          </details>
+                        </div>
+                      ))}
                     </div>
                   </section>
                 )}
@@ -2640,22 +2805,26 @@ function WorldEditor({
                   <section>
                     <h3>{t("refactorSectionInterface")}</h3>
                     <div className="mechanism-ledger-list">
-                      <label className="inline">
+                      <details>
+                        <summary>
+                        <label className="inline" onClick={(event) => event.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={refactorSelection.apply_interface}
+                          onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
                             const checked = event.currentTarget.checked;
                             setRefactorSelection((selection) => selection && { ...selection, apply_interface: checked });
                           }}
                         />
                         {t("refactorSummaryInterface")}
-                        <span className="mechanism-ledger-detail">
-                          {(refactorOutcome.interface?.source_uids ?? [])
-                            .map((uid) => sourceEntryTitle(entries, uid))
-                            .join("、")}
-                        </span>
                       </label>
+                        </summary>
+                        <span className="refactor-source">
+                          {t("refactorSourceLabel", { titles: sourceEntryTitles(entries, refactorOutcome.interface.source_uids) })}
+                        </span>
+                        <div>{t("refactorInterfaceFields", { names: typeof refactorOutcome.interface.state_fields === "object" && refactorOutcome.interface.state_fields !== null && !Array.isArray(refactorOutcome.interface.state_fields) ? Object.keys(refactorOutcome.interface.state_fields).join("、") : "" })}</div>
+                      </details>
                     </div>
                   </section>
                 )}
@@ -5825,8 +5994,8 @@ function App() {
             </button>
           )}
           <div className="chat-header-actions">
-            {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面 */}
-            {cardShellReady && (
+            {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面；且只在遊玩畫面（mainView === null）出現 */}
+            {mainView === null && cardShellReady && (
               <button type="button" onClick={() => setCardUiOpen(true)}>
                 {t("cardInterfaceOpen")}
               </button>
@@ -5856,7 +6025,7 @@ function App() {
           </div>
         </header>
 
-        {(hasStateBar || Object.keys(tableTree).length > 0) && (
+        {mainView === null && (hasStateBar || Object.keys(tableTree).length > 0) && (
         <details
           className="state-bar"
           open={stateBarOpen}
@@ -5969,6 +6138,7 @@ function App() {
             <WorldEditor
               key={worldEditorRefreshKey}
               world={table}
+              worldName={tableName}
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
               convertColor={PALETTE[characters.length % PALETTE.length]}
@@ -6194,8 +6364,9 @@ function App() {
         {error && <ErrorNote text={error} />}
       </main>
 
-      {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄 */}
-      {cardUiOpen && cardShellReady && (
+      {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄；且只在遊玩畫面出現——
+          切去編輯畫面時 mainView 不再是 null，這裡直接不渲染，覆蓋層就跟著消失，不用另外清 cardUiOpen */}
+      {mainView === null && cardUiOpen && cardShellReady && (
         <div className="card-interface-overlay">
           {generating !== null && (
             <div className="card-interface-status" role="status">

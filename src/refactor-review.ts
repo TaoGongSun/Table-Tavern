@@ -18,6 +18,8 @@ export interface RefactorInterface {
   state_fields: unknown;
   source_uids: string[];
   raw: string;
+  /** AI 順便產的 HTML 渲染殼；沒產出就沒有這個欄位（後端 Option<String>）。 */
+  shell?: string;
 }
 
 export interface RefactorMechanism {
@@ -26,9 +28,24 @@ export interface RefactorMechanism {
   triggers: unknown[];
 }
 
+export interface RefactorNewEntry {
+  title: string;
+  kind: "setting" | "mechanism";
+  content: string;
+  source_uids: string[];
+  rules?: Record<string, unknown>;
+  triggers?: unknown[];
+}
+
+export interface RefactorRewriteOutcome {
+  entry: RefactorNewEntry | null;
+  raw: string;
+}
+
 export interface RefactorOutcome {
   characters: RefactorCharacter[];
   interface: RefactorInterface | null;
+  entries: RefactorNewEntry[];
   mechanisms: RefactorMechanism[];
   /** 收尾階段判定「刪了只剩殘渣」的共用合集條目 uid；套用時還要所有共用這條的人都被勾選
    * 才會真的刪（要點 7：基準是優先保留而非刪除）。 */
@@ -39,6 +56,7 @@ export interface RefactorSelection {
   character_indices: number[];
   apply_interface: boolean;
   mechanism_indices: number[];
+  entry_indices: number[];
   /** characters 裡要設成玩家卡的那一位；null＝不指定。 */
   player_index: number | null;
 }
@@ -54,14 +72,20 @@ export interface RefactorSurveyPerson {
 export interface RefactorSurveyOutcome {
   persons: RefactorSurveyPerson[];
   interface_uids: string[];
-  mechanism_uids: string[];
+  playable_interface_uids: string[];
+  plan: RefactorPlanEntry[];
   raw: string;
+}
+
+export interface RefactorPlanEntry {
+  title: string;
+  kind: string;
+  uids: string[];
 }
 
 // 展開階段（介面／機制）：對照後端 RefactorExpandOutcome，一 uid 一次呼叫的形狀。
 export interface RefactorExpandOutcome {
   interface: RefactorInterface | null;
-  mechanism: RefactorMechanism | null;
   raw: string;
 }
 
@@ -87,20 +111,24 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** 多條介面候選合併成一條：state_fields 兩邊都是物件就淺合併（後蓋前），否則後者整個蓋掉；
- * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。零條回傳 null。 */
+ * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。渲染殼是整份 HTML，合併沒有意義——
+ * 取最後一個非空的（與 state_fields 後蓋前同向）。零條回傳 null。 */
 export function mergeRefactorInterfaces(interfaces: RefactorInterface[]): RefactorInterface | null {
   if (interfaces.length === 0) return null;
   let stateFields: unknown;
+  let shell = "";
   for (const candidate of interfaces) {
     stateFields =
       isPlainObject(stateFields) && isPlainObject(candidate.state_fields)
         ? { ...stateFields, ...candidate.state_fields }
         : candidate.state_fields;
+    if (candidate.shell) shell = candidate.shell;
   }
   return {
     state_fields: stateFields,
     source_uids: interfaces.flatMap((candidate) => candidate.source_uids),
     raw: interfaces.map((candidate) => candidate.raw).join("\n\n"),
+    ...(shell ? { shell } : {}),
   };
 }
 
@@ -166,45 +194,137 @@ export function buildRefactorPersonPlan(
   return { local, queue };
 }
 
-export interface RefactorSharedEntryDraw {
-  uid: string;
-  drawn_by: string[];
-}
-
-/** 共用來源條目（uid 被兩人以上列為來源）：整理成收尾呼叫要送的「已被誰抽走」清單；
- * 沒有共用條目時回空陣列，呼叫端據此跳過收尾呼叫。 */
-export function buildSharedEntryDraws(survey: RefactorSurveyOutcome): RefactorSharedEntryDraw[] {
-  const byUid = groupPersonsByUid(survey.persons);
-  return [...byUid.entries()]
-    .filter(([, names]) => names.length >= 2)
-    .map(([uid, drawn_by]) => ({ uid, drawn_by }));
-}
-
-/** 三段呼叫（人物展開＋介面展開＋機制展開）累積出的候選，加上收尾判定，組成最終產物。 */
+/** 人物、世界書條目與介面展開結果組成最終產物。舊機制欄位保留為空，讓舊版匯入卡仍可套用。 */
 export function assembleRefactorOutcome(parts: {
   characters: RefactorCharacter[];
   interfaces: RefactorInterface[];
-  mechanisms: RefactorMechanism[];
-  deletableSharedUids: string[];
+  entries: RefactorNewEntry[];
 }): RefactorOutcome {
   return {
     characters: parts.characters,
     interface: mergeRefactorInterfaces(parts.interfaces),
-    mechanisms: parts.mechanisms,
-    deletable_shared_uids: parts.deletableSharedUids,
+    entries: parts.entries,
+    mechanisms: [],
+    deletable_shared_uids: [],
   };
 }
 
-/** JSON 檔文字解析成產物；缺頂層鍵比照後端 #[serde(default)] 補空，格式不對就丟例外給呼叫端接。 */
-export function parseRefactorOutcome(text: string): RefactorOutcome {
-  const raw = JSON.parse(text) as Partial<RefactorOutcome> | null;
-  if (!raw || typeof raw !== "object") throw new Error("not an object");
+/** 匯入產物的例外訊息；呼叫端認這個字串換成玩家看得懂的一句話。 */
+export const REFACTOR_IMPORT_INVALID = "refactor-import-invalid";
+
+function invalid(): Error {
+  return new Error(REFACTOR_IMPORT_INVALID);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 缺鍵補預設（比照後端 #[serde(default)]），有值但型別不對就整份拒收。 */
+function readArray(source: Record<string, unknown>, key: string): unknown[] {
+  const value = source[key];
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw invalid();
+  return value;
+}
+
+function readString(source: Record<string, unknown>, key: string, required = false): string {
+  const value = source[key];
+  if (value === undefined || value === null) {
+    if (required) throw invalid();
+    return "";
+  }
+  if (typeof value !== "string") throw invalid();
+  if (required && value === "") throw invalid();
+  return value;
+}
+
+function readStringArray(source: Record<string, unknown>, key: string): string[] {
+  return readArray(source, key).map((item) => {
+    if (typeof item !== "string") throw invalid();
+    return item;
+  });
+}
+
+function parseCharacter(raw: unknown): RefactorCharacter {
+  if (!isRecord(raw)) throw invalid();
+  const source_uids = readStringArray(raw, "source_uids");
+  // 每位角色都得指得出來源條目：空的多半是舊版單數 source_uid 格式，放行只會在畫面上炸開。
+  if (source_uids.length === 0) throw invalid();
   return {
-    characters: raw.characters ?? [],
-    interface: raw.interface ?? null,
-    mechanisms: raw.mechanisms ?? [],
-    deletable_shared_uids: raw.deletable_shared_uids ?? [],
+    name: readString(raw, "name", true),
+    emoji: readString(raw, "emoji"),
+    public_md: readString(raw, "public_md"),
+    private_md: readString(raw, "private_md"),
+    source_uids,
+    solo_entry_md: readString(raw, "solo_entry_md"),
+    suspected_player: raw.suspected_player === true,
   };
+}
+
+function parseInterface(raw: unknown): RefactorInterface {
+  if (!isRecord(raw)) throw invalid();
+  if (raw.state_fields === undefined || raw.state_fields === null) throw invalid();
+  const shell = readString(raw, "shell");
+  return {
+    state_fields: raw.state_fields,
+    source_uids: readStringArray(raw, "source_uids"),
+    raw: readString(raw, "raw"),
+    ...(shell ? { shell } : {}),
+  };
+}
+
+function parseMechanism(raw: unknown): RefactorMechanism {
+  if (!isRecord(raw)) throw invalid();
+  if (raw.rules !== undefined && raw.rules !== null && !isRecord(raw.rules)) throw invalid();
+  return {
+    source_uid: readString(raw, "source_uid", true),
+    rules: (raw.rules as Record<string, unknown>) ?? {},
+    triggers: readArray(raw, "triggers"),
+  };
+}
+
+function parseNewEntry(raw: unknown): RefactorNewEntry {
+  if (!isRecord(raw)) throw invalid();
+  const kind = readString(raw, "kind", true);
+  if (kind !== "setting" && kind !== "mechanism") throw invalid();
+  if (raw.rules !== undefined && raw.rules !== null && !isRecord(raw.rules)) throw invalid();
+  return {
+    title: readString(raw, "title", true),
+    kind,
+    content: readString(raw, "content", true),
+    source_uids: (() => {
+      const sourceUids = readStringArray(raw, "source_uids");
+      if (sourceUids.length === 0) throw invalid();
+      return sourceUids;
+    })(),
+    rules: (raw.rules as Record<string, unknown>) ?? {},
+    triggers: readArray(raw, "triggers"),
+  };
+}
+
+/** JSON 檔文字解析成產物。玩家自己選的檔＝信任邊界，逐欄檢查型別後才進面板——
+ * 半信半疑地放行，缺欄位會在展開細看時炸成白畫面。格式不對整份拒收，訊息交呼叫端翻譯。 */
+export function parseRefactorOutcome(text: string): RefactorOutcome {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw invalid();
+  }
+  if (!isRecord(raw)) throw invalid();
+  const outcome: RefactorOutcome = {
+    characters: readArray(raw, "characters").map(parseCharacter),
+    interface: raw.interface === undefined || raw.interface === null ? null : parseInterface(raw.interface),
+    entries: readArray(raw, "entries").map(parseNewEntry),
+    mechanisms: readArray(raw, "mechanisms").map(parseMechanism),
+    deletable_shared_uids: readStringArray(raw, "deletable_shared_uids"),
+  };
+  // 三區全空＝這檔案沒有任何可套用的東西，多半根本不是重構產物。
+  if (outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 && outcome.mechanisms.length === 0) {
+    throw invalid();
+  }
+  return outcome;
 }
 
 /** 產物剛讀進來的預設勾選：全勾——玩家看到的第一印象是「照單全收」，要拿掉自己取消；
@@ -215,6 +335,7 @@ export function defaultRefactorSelection(outcome: RefactorOutcome): RefactorSele
     character_indices: outcome.characters.map((_, index) => index),
     apply_interface: outcome.interface !== null,
     mechanism_indices: outcome.mechanisms.map((_, index) => index),
+    entry_indices: outcome.entries.map((_, index) => index),
     player_index: playerIndex === -1 ? null : playerIndex,
   };
 }
@@ -223,6 +344,7 @@ export interface RefactorSummaryCounts {
   characters: number;
   hasInterface: boolean;
   mechanisms: number;
+  entries: number;
 }
 
 /** 結果卡摘要行只列有產物的區：三個欄位對應「拆出 N 個角色」「介面」「收編 N 條規則」。 */
@@ -231,6 +353,7 @@ export function refactorSummaryCounts(outcome: RefactorOutcome): RefactorSummary
     characters: outcome.characters.length,
     hasInterface: outcome.interface !== null,
     mechanisms: outcome.mechanisms.length,
+    entries: outcome.entries.length,
   };
 }
 

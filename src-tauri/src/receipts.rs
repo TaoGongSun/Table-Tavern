@@ -769,6 +769,7 @@ mod tests {
                 disabled: false,
                 visibility: data::Visibility::Gm,
                 is_person: false,
+                locked: false,
             },
         )
         .unwrap();
