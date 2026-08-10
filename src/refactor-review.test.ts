@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   assembleRefactorOutcome,
   buildRefactorPersonPlan,
-  buildSharedEntryDraws,
   defaultRefactorSelection,
   localConvertPerson,
   mergeRefactorInterfaces,
   parseRefactorOutcome,
   refactorSummaryCounts,
+  REFACTOR_IMPORT_INVALID,
   setPlayerIndex,
   sourceEntryTitle,
   sourceEntryTitles,
@@ -15,6 +15,7 @@ import {
   unselectCharacter,
   type RefactorCharacter,
   type RefactorMechanism,
+  type RefactorNewEntry,
   type RefactorOutcome,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
@@ -23,6 +24,7 @@ function makeOutcome(overrides: Partial<RefactorOutcome> = {}): RefactorOutcome 
   return {
     characters: [],
     interface: null,
+    entries: [],
     mechanisms: [],
     deletable_shared_uids: [],
     ...overrides,
@@ -46,8 +48,12 @@ function makeMechanism(sourceUid: string): RefactorMechanism {
   return { source_uid: sourceUid, rules: {}, triggers: [] };
 }
 
+function makeEntry(overrides: Partial<RefactorNewEntry> = {}): RefactorNewEntry {
+  return { title: "酒館規矩", kind: "setting", content: "晚間禁鬥毆。", source_uids: ["9"], rules: {}, triggers: [], ...overrides };
+}
+
 function makeSurvey(overrides: Partial<RefactorSurveyOutcome> = {}): RefactorSurveyOutcome {
-  return { persons: [], interface_uids: [], mechanism_uids: [], raw: "", ...overrides };
+  return { persons: [], interface_uids: [], playable_interface_uids: [], plan: [], raw: "", ...overrides };
 }
 
 describe("mergeRefactorInterfaces", () => {
@@ -61,6 +67,15 @@ describe("mergeRefactorInterfaces", () => {
       { state_fields: { hp: 20 }, source_uids: ["2"], raw: "第二段" },
     ]);
     expect(merged).toEqual({ state_fields: { hp: 20, mp: 5 }, source_uids: ["1", "2"], raw: "第一段\n\n第二段" });
+  });
+
+  it("渲染殼取最後一個非空的（整份 HTML 沒得合併）", () => {
+    const merged = mergeRefactorInterfaces([
+      { state_fields: {}, source_uids: [], raw: "", shell: "<p>舊</p>" },
+      { state_fields: {}, source_uids: [], raw: "" },
+      { state_fields: {}, source_uids: [], raw: "", shell: "<p>新</p>" },
+    ]);
+    expect(merged?.shell).toBe("<p>新</p>");
   });
 
   it("state_fields 不是物件（解析失敗退原文之類）＝後者整個蓋掉前者", () => {
@@ -153,41 +168,24 @@ describe("buildRefactorPersonPlan", () => {
   });
 });
 
-describe("buildSharedEntryDraws", () => {
-  it("uid 只被一人列為來源＝專屬，不算共用，不出現在清單裡", () => {
-    const survey = makeSurvey({ persons: [{ name: "小華", uids: ["3"], is_player: false }] });
-    expect(buildSharedEntryDraws(survey)).toEqual([]);
-  });
-
-  it("uid 被兩人以上列為來源＝共用，整理成「已被誰抽走」清單", () => {
-    const survey = makeSurvey({
-      persons: [
-        { name: "霍玄", uids: ["4", "5"], is_player: false },
-        { name: "長老", uids: ["4"], is_player: false },
-      ],
-    });
-    expect(buildSharedEntryDraws(survey)).toEqual([{ uid: "4", drawn_by: ["霍玄", "長老"] }]);
-  });
-});
-
 describe("assembleRefactorOutcome", () => {
-  it("三段呼叫的候選＋收尾判定組成最終產物，介面走多條合併規則", () => {
+  it("人物、世界書條目與介面候選組成最終產物，介面走多條合併規則", () => {
     const outcome = assembleRefactorOutcome({
       characters: [makeCharacter(["1"])],
       interfaces: [{ state_fields: { hp: 10 }, source_uids: ["8"], raw: "介面段" }],
-      mechanisms: [makeMechanism("19")],
-      deletableSharedUids: ["4"],
+      entries: [makeEntry()],
     });
     expect(outcome).toEqual({
       characters: [makeCharacter(["1"])],
       interface: { state_fields: { hp: 10 }, source_uids: ["8"], raw: "介面段" },
-      mechanisms: [makeMechanism("19")],
-      deletable_shared_uids: ["4"],
+      entries: [makeEntry()],
+      mechanisms: [],
+      deletable_shared_uids: [],
     });
   });
 
   it("三段都空＝空殼 outcome（介面 null，其餘空陣列）", () => {
-    expect(assembleRefactorOutcome({ characters: [], interfaces: [], mechanisms: [], deletableSharedUids: [] })).toEqual(
+    expect(assembleRefactorOutcome({ characters: [], interfaces: [], entries: [] })).toEqual(
       makeOutcome(),
     );
   });
@@ -200,12 +198,39 @@ describe("parseRefactorOutcome", () => {
     expect(outcome.characters[0].source_uids).toEqual(["12"]);
   });
 
-  it("缺頂層鍵比照後端 #[serde(default)] 補空陣列／null", () => {
-    expect(parseRefactorOutcome("{}")).toEqual(makeOutcome());
+  it("角色缺選配欄位補空字串／false，不當成壞檔", () => {
+    const outcome = parseRefactorOutcome(JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }] }));
+    expect(outcome.characters[0]).toEqual(makeCharacter(["1"], { emoji: "", public_md: "", private_md: "" }));
   });
 
-  it("格式錯誤的 JSON 丟例外", () => {
-    expect(() => parseRefactorOutcome("{not json")).toThrow();
+  it("介面的渲染殼一路保留到產物（套用時才寫得出 HTML 殼）", () => {
+    const json = JSON.stringify({ interface: { state_fields: { hp: 1 }, source_uids: ["3"], raw: "", shell: "<p>殼</p>" } });
+    expect(parseRefactorOutcome(json).interface?.shell).toBe("<p>殼</p>");
+  });
+
+  it("新世界書條目解析，省略 rules／triggers 時補預設", () => {
+    expect(parseRefactorOutcome(JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }] })).entries)
+      .toEqual([makeEntry({ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] })]);
+  });
+
+  it("舊版卡沒有 entries 仍照舊解析", () => {
+    expect(parseRefactorOutcome(JSON.stringify({ characters: [makeCharacter(["12"])] })).entries).toEqual([]);
+  });
+
+  it.each([
+    ["格式錯誤的 JSON", "{not json"],
+    ["空殼：三區全空＝根本不是產物", "{}"],
+    ["頂層不是物件", "[]"],
+    ["角色不是物件", JSON.stringify({ characters: ["阿福"] })],
+    ["角色缺名字", JSON.stringify({ characters: [{ source_uids: ["1"] }] })],
+    ["角色沒有來源條目（舊版單數 source_uid 格式）", JSON.stringify({ characters: [{ name: "阿福", source_uid: "1" }] })],
+    ["characters 不是陣列", JSON.stringify({ characters: { name: "阿福" } })],
+    ["source_uids 混進非字串", JSON.stringify({ characters: [{ name: "阿福", source_uids: [1] }] })],
+    ["介面缺 state_fields", JSON.stringify({ interface: { source_uids: ["3"], raw: "" } })],
+    ["機制缺 source_uid", JSON.stringify({ mechanisms: [{ rules: {} }] })],
+    ["新條目 kind 不合法", JSON.stringify({ entries: [{ title: "規矩", kind: "other", content: "內容", source_uids: ["3"] }] })],
+  ])("拒收：%s", (_label, json) => {
+    expect(() => parseRefactorOutcome(json)).toThrow(REFACTOR_IMPORT_INVALID);
   });
 });
 
@@ -215,11 +240,13 @@ describe("defaultRefactorSelection", () => {
       characters: [makeCharacter(["12"]), makeCharacter(["12"]), makeCharacter(["30"])],
       interface: { state_fields: {}, source_uids: ["8"], raw: "" },
       mechanisms: [makeMechanism("19"), makeMechanism("20")],
+      entries: [makeEntry()],
     });
     expect(defaultRefactorSelection(outcome)).toEqual({
       character_indices: [0, 1, 2],
       apply_interface: true,
       mechanism_indices: [0, 1],
+      entry_indices: [0],
       player_index: null,
     });
   });
@@ -243,11 +270,11 @@ describe("refactorSummaryCounts", () => {
       interface: { state_fields: {}, source_uids: [], raw: "" },
       mechanisms: [makeMechanism("19")],
     });
-    expect(refactorSummaryCounts(outcome)).toEqual({ characters: 1, hasInterface: true, mechanisms: 1 });
+    expect(refactorSummaryCounts(outcome)).toEqual({ characters: 1, hasInterface: true, mechanisms: 1, entries: 0 });
   });
 
   it("空產物三區皆零／false", () => {
-    expect(refactorSummaryCounts(makeOutcome())).toEqual({ characters: 0, hasInterface: false, mechanisms: 0 });
+    expect(refactorSummaryCounts(makeOutcome())).toEqual({ characters: 0, hasInterface: false, mechanisms: 0, entries: 0 });
   });
 });
 
@@ -296,7 +323,7 @@ describe("toggleIndex", () => {
 });
 
 describe("setPlayerIndex", () => {
-  const base = { character_indices: [0], apply_interface: false, mechanism_indices: [], player_index: null };
+  const base = { character_indices: [0], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: null };
 
   it("指定已勾選的角色為玩家：character_indices 不變", () => {
     expect(setPlayerIndex(base, 0)).toEqual({ ...base, player_index: 0 });
@@ -313,12 +340,12 @@ describe("setPlayerIndex", () => {
 
 describe("unselectCharacter", () => {
   it("取消勾選的角色不是目前指定的玩家：player_index 不受影響", () => {
-    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], player_index: 0 };
+    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 0 };
     expect(unselectCharacter(selection, 1)).toEqual({ ...selection, character_indices: [0], player_index: 0 });
   });
 
   it("取消勾選的角色正是目前指定的玩家：一併清掉玩家指定", () => {
-    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], player_index: 1 };
+    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 1 };
     expect(unselectCharacter(selection, 1)).toEqual({ ...selection, character_indices: [0], player_index: null });
   });
 });

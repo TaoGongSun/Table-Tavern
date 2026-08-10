@@ -2060,6 +2060,7 @@ mod tests {
             disabled,
             visibility,
             is_person: false,
+            locked: false,
         }
     }
 

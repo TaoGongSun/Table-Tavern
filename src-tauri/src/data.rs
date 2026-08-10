@@ -217,6 +217,9 @@ pub struct WorldbookEntry {
     /// AI 卡重構切出來、玩家選擇「不升格為角色卡」的人物條目標記；一般條目一律 false。
     #[serde(default)]
     pub is_person: bool,
+    /// 被 app 接管的機制條目唯讀標記；資料層只負責原樣保存。
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -644,6 +647,12 @@ pub(crate) fn interface_shell_path(root: &Path, world_id: &str) -> DataResult<Pa
     Ok(world_dir(root, world_id)?.join("interface-shell.html"))
 }
 
+/// AI 卡重構產物存檔：worlds/<world_id>/refactor-outcome.json。套用成功後落一份完整產物，供
+/// 玩家之後從世界書工具列直接匯出重玩，不必重燒 AI 額度重新展開同一張卡；二次套用直接覆寫。
+pub(crate) fn refactor_outcome_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("refactor-outcome.json"))
+}
+
 /// 生成圖庫目錄，落在世界目錄內：worlds/<world_id>/gen-gallery/<character_id>。
 pub(crate) fn gallery_dir(root: &Path, world_id: &str, character_id: &str) -> DataResult<PathBuf> {
     validate_id(character_id)?;
@@ -904,6 +913,21 @@ pub fn write_interface_shell(root: &Path, world_id: &str, content: &str) -> Data
     Ok(())
 }
 
+/// 讀 AI 卡重構套用成功時落下的完整產物（已是 to_string_pretty 過的 JSON 原文）；沒套用過
+/// 就是 None（前端匯出鈕靠這個判斷要不要顯示「這桌還沒有重構產物」）。
+pub fn read_refactor_outcome(root: &Path, world_id: &str) -> DataResult<Option<String>> {
+    let path = refactor_outcome_path(root, world_id)?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(fs::read_to_string(path)?))
+}
+
+pub fn write_refactor_outcome(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
+    fs::write(refactor_outcome_path(root, world_id)?, content)?;
+    Ok(())
+}
+
 fn worldbook_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
     Ok(world_dir(root, world_id)?.join("worldbook.json"))
 }
@@ -1024,6 +1048,38 @@ fn set_is_person(value: &mut serde_json::Value, is_person: bool) {
         .insert("is_person".to_owned(), serde_json::Value::Bool(is_person));
 }
 
+fn locked_from_value(value: &serde_json::Value) -> bool {
+    value
+        .get("extensions")
+        .and_then(|value| value.get("table_tavern"))
+        .and_then(|value| value.get("locked"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn set_locked(value: &mut serde_json::Value, locked: bool) {
+    let Some(entry) = value.as_object_mut() else {
+        return;
+    };
+    let extensions = entry
+        .entry("extensions")
+        .or_insert_with(|| serde_json::json!({}));
+    if !extensions.is_object() {
+        *extensions = serde_json::json!({});
+    }
+    let extensions = extensions.as_object_mut().expect("object set above");
+    let table_tavern = extensions
+        .entry("table_tavern")
+        .or_insert_with(|| serde_json::json!({}));
+    if !table_tavern.is_object() {
+        *table_tavern = serde_json::json!({});
+    }
+    table_tavern
+        .as_object_mut()
+        .expect("object set above")
+        .insert("locked".to_owned(), serde_json::Value::Bool(locked));
+}
+
 fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> WorldbookEntry {
     WorldbookEntry {
         uid: value
@@ -1065,6 +1121,7 @@ fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> Worldbook
             .unwrap_or(false),
         visibility: visibility_from_value(value),
         is_person: is_person_from_value(value),
+        locked: locked_from_value(value),
     }
 }
 
@@ -1171,6 +1228,7 @@ fn update_entry_fields(value: &mut serde_json::Value, entry: &WorldbookEntry) {
     );
     set_visibility(value, &entry.visibility);
     set_is_person(value, entry.is_person);
+    set_locked(value, entry.locked);
 }
 
 fn new_entry_value(entry: &WorldbookEntry, uid: u64, display_index: u64) -> serde_json::Value {
@@ -1210,6 +1268,7 @@ fn new_entry_value(entry: &WorldbookEntry, uid: u64, display_index: u64) -> serd
     });
     set_visibility(&mut value, &entry.visibility);
     set_is_person(&mut value, entry.is_person);
+    set_locked(&mut value, entry.locked);
     value
 }
 
@@ -1466,6 +1525,7 @@ pub fn character_to_worldbook_entry(
         disabled: false,
         visibility: Visibility::Gm,
         is_person: false,
+        locked: false,
     };
     let mut worldbook = read_worldbook_value(root, world_id)?;
     let entries = entries_object_mut(&mut worldbook)?;
@@ -2721,6 +2781,7 @@ mod tests {
             disabled: false,
             visibility: Visibility::Gm,
             is_person: false,
+            locked: false,
         }
     }
 

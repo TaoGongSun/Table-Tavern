@@ -17,7 +17,7 @@ const PALETTE: [&str; 6] = [
 ];
 
 /// 認人後的一位角色候選：資料可能併自好幾條世界書條目（人物合併，person-promote）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefactorCharacter {
     pub name: String,
     pub emoji: String,
@@ -33,7 +33,7 @@ pub struct RefactorCharacter {
 }
 
 /// 散文介面指令抽成的狀態樹候選。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefactorInterface {
     pub state_fields: serde_json::Value,
     pub source_uids: Vec<String>,
@@ -46,7 +46,7 @@ pub struct RefactorInterface {
 }
 
 /// 欄位規則＋觸發表候選；rules／triggers 直接複用 data.rs 既有機制型別，不新造平行型別。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefactorMechanism {
     pub source_uid: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -55,7 +55,7 @@ pub struct RefactorMechanism {
     pub triggers: Vec<Trigger>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefactorOutcome {
     #[serde(default)]
     pub characters: Vec<RefactorCharacter>,
@@ -63,6 +63,8 @@ pub struct RefactorOutcome {
     pub interface: Option<RefactorInterface>,
     #[serde(default)]
     pub mechanisms: Vec<RefactorMechanism>,
+    #[serde(default)]
+    pub entries: Vec<crate::refactor_ai::RefactorNewEntry>,
     /// 收尾階段判定「刪了只剩殘渣」的共用合集條目 uid；套用時還要所有共用這條的人都被勾選
     /// 才會真的刪（要點 7：基準是優先保留而非刪除）。
     #[serde(default)]
@@ -77,6 +79,8 @@ pub struct RefactorSelection {
     pub apply_interface: bool,
     #[serde(default)]
     pub mechanism_indices: Vec<usize>,
+    #[serde(default)]
+    pub entry_indices: Vec<usize>,
     /// characters 裡要設成玩家卡的那一位；None＝不指定。不在 character_indices 裡的索引視同
     /// None（沒同時勾選成卡就不可能是玩家卡）。
     #[serde(default)]
@@ -114,8 +118,8 @@ pub struct RefactorApplyResult {
 ///   （要點 7：基準是優先保留而非刪除，判斷不出來或還有人沒勾就不動）。
 /// - 沒勾的人：維持現行機制，各自新增一條獨立世界書條目（is_person=true，內容是 solo_entry_md），
 ///   來源條目不動——即使他的資料原本散在好幾條裡，未升格就不觸碰原始條目。
-/// - 介面勾了套用 → state_fields 併入狀態樹頂層、來源條目停用。
-/// - 勾中的機制 → rules／triggers 併入 mechanism、來源條目停用。
+/// - 勾中的重寫條目直接新增；帶規則／觸發表的機制條目同時併入本地機制。
+/// - 來源條目只在所有引用它的產物都已套用時整條刪除，絕不再停用留墓地。
 pub fn apply(
     root: &Path,
     world_id: &str,
@@ -143,10 +147,67 @@ pub fn apply(
         }
     }
 
+    // 每個來源 uid 的所有產物是否都被套用。角色的共用合集仍額外受
+    // deletable_shared_uids 保護；其餘產物只要有一個沒勾，就絕不刪來源。
+    let mut source_consumers: BTreeMap<u64, Vec<bool>> = BTreeMap::new();
+    let mut deletion_candidates: BTreeSet<u64> = BTreeSet::new();
+    let mut add_consumer = |uid_str: &str, applied: bool, candidate: bool| {
+        let Ok(uid) = uid_str.parse::<u64>() else {
+            return;
+        };
+        source_consumers.entry(uid).or_default().push(applied);
+        if candidate {
+            deletion_candidates.insert(uid);
+        }
+    };
+    for (index, character) in outcome.characters.iter().enumerate() {
+        let applied = selection.character_indices.contains(&index);
+        for uid in &character.source_uids {
+            let Ok(parsed_uid) = uid.parse::<u64>() else {
+                continue;
+            };
+            let owners = uid_owners.get(&parsed_uid).map(Vec::as_slice).unwrap_or_default();
+            let character_deletable = owners.len() <= 1
+                || (outcome.deletable_shared_uids.iter().any(|shared| shared == uid)
+                    && owners.iter().all(|owner| selection.character_indices.contains(owner)));
+            add_consumer(uid, applied, applied && character_deletable);
+        }
+    }
+    for (index, entry) in outcome.entries.iter().enumerate() {
+        let applied = selection.entry_indices.contains(&index);
+        for uid in &entry.source_uids {
+            add_consumer(uid, applied, applied);
+        }
+    }
+    if let Some(interface) = &outcome.interface {
+        for uid in &interface.source_uids {
+            add_consumer(uid, selection.apply_interface, selection.apply_interface);
+        }
+    }
+    for (index, mechanism) in outcome.mechanisms.iter().enumerate() {
+        let applied = selection.mechanism_indices.contains(&index);
+        add_consumer(&mechanism.source_uid, applied, applied);
+    }
+
+    let existing_entries = data::read_worldbook(root, world_id)?;
+    let mut next_entry_uid = existing_entries
+        .iter()
+        .map(|entry| entry.uid)
+        .max()
+        .map(|uid| uid.checked_add(1).ok_or_else(|| data::invalid_data("worldbook uid overflow")))
+        .transpose()?
+        .unwrap_or(0);
+    let mut next_entry_order = existing_entries
+        .iter()
+        .map(|entry| entry.order)
+        .max()
+        .map(|order| order.checked_add(1).ok_or_else(|| data::invalid_data("worldbook order overflow")))
+        .transpose()?
+        .unwrap_or(0);
+
     let mut character_ids = Vec::new();
     let mut new_entries = 0usize;
     let mut deleted_entries: Vec<WorldbookEntry> = Vec::new();
-    let mut deleted_uids: BTreeSet<u64> = BTreeSet::new();
     let mut player_assigned = false;
 
     for (index, character) in outcome.characters.iter().enumerate() {
@@ -167,6 +228,7 @@ pub fn apply(
                     disabled: false,
                     visibility: Visibility::Gm,
                     is_person: true,
+                    locked: false,
                 },
             )?;
             new_entries += 1;
@@ -193,36 +255,54 @@ pub fn apply(
         }
         character_ids.push(card.id);
 
-        for uid_str in &character.source_uids {
-            let Ok(uid) = uid_str.parse::<u64>() else {
-                continue;
-            };
-            if deleted_uids.contains(&uid) {
-                continue; // 跟別人共用、已經被別人那輪刪過了。
-            }
-            let owners = uid_owners.get(&uid).map(Vec::as_slice).unwrap_or_default();
-            let exclusive = owners.len() <= 1;
-            let shared_deletable = outcome.deletable_shared_uids.iter().any(|shared| shared == uid_str)
-                && owners.iter().all(|owner| selection.character_indices.contains(owner));
-            if !exclusive && !shared_deletable {
-                continue; // 基準是優先保留：判斷不出來，或還有共用這條的人沒勾，整條留著。
-            }
-            delete_source_entry(root, world_id, uid, &mut deleted_entries)?;
-            deleted_uids.insert(uid);
-        }
     }
 
     let mut state_dirty = player_assigned;
-    let mut rewritten: BTreeMap<u64, WorldbookEntry> = BTreeMap::new();
+
+    let mut ledger_records = Vec::new();
+    for &index in &selection.entry_indices {
+        let Some(entry) = outcome.entries.get(index) else {
+            continue;
+        };
+        let locked = entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
+        data::upsert_worldbook_entry(
+            root,
+            world_id,
+            WorldbookEntry {
+                uid: next_entry_uid,
+                title: entry.title.clone(),
+                keys: Vec::new(),
+                content: entry.content.clone(),
+                constant: false,
+                order: next_entry_order,
+                disabled: false,
+                visibility: Visibility::Gm,
+                is_person: false,
+                locked,
+            },
+        )?;
+        next_entry_uid = next_entry_uid
+            .checked_add(1)
+            .ok_or_else(|| data::invalid_data("worldbook uid overflow"))?;
+        next_entry_order = next_entry_order
+            .checked_add(1)
+            .ok_or_else(|| data::invalid_data("worldbook order overflow"))?;
+        new_entries += 1;
+        if locked {
+            for (path, rule) in &entry.rules {
+                state.mechanism.rules.insert(path.clone(), rule.clone());
+            }
+            state.mechanism.triggers.extend(entry.triggers.iter().cloned());
+            state_dirty = true;
+            ledger_records.push(absorbed_ledger_record_for_title(&entry.title));
+        }
+    }
 
     let mut interface_applied = false;
     if selection.apply_interface {
         if let Some(interface) = &outcome.interface {
             merge_state_fields(&mut state.state.tree, &interface.state_fields);
             state_dirty = true;
-            for uid in &interface.source_uids {
-                disable_source_entry(root, world_id, uid, &mut rewritten)?;
-            }
             if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
                 data::write_interface_shell(root, world_id, shell)?;
             }
@@ -231,7 +311,6 @@ pub fn apply(
     }
 
     let mut mechanisms_applied = 0usize;
-    let mut ledger_records = Vec::new();
     for &index in &selection.mechanism_indices {
         let Some(mechanism) = outcome.mechanisms.get(index) else {
             continue;
@@ -244,7 +323,6 @@ pub fn apply(
         if let Some(record) = absorbed_ledger_record(root, world_id, &mechanism.source_uid) {
             ledger_records.push(record);
         }
-        disable_source_entry(root, world_id, &mechanism.source_uid, &mut rewritten)?;
         mechanisms_applied += 1;
     }
 
@@ -254,26 +332,34 @@ pub fn apply(
     if !ledger_records.is_empty() {
         mechanism::append_log(root, world_id, state.current_scene, &ledger_records);
     }
+    for (uid, consumers) in source_consumers {
+        if deletion_candidates.contains(&uid) && consumers.iter().all(|applied| *applied) {
+            delete_source_entry(root, world_id, uid, &mut deleted_entries)?;
+        }
+    }
+
+    // 套用成功後存一份完整產物，供玩家之後直接匯出重玩、不必重燒 AI 額度重新展開同一張卡；
+    // undo 與收據不動這個檔（零改動），二次套用直接覆寫。
+    data::write_refactor_outcome(root, world_id, &serde_json::to_string_pretty(outcome)?)?;
 
     Ok(RefactorApplyResult {
         summary: RefactorApplySummary {
             new_characters: character_ids.len(),
             new_entries,
             deleted_entries: deleted_entries.len(),
-            rewritten_entries: rewritten.len(),
+            rewritten_entries: 0,
             interface_applied,
             mechanisms_applied,
             player_assigned,
         },
         character_ids,
-        rewritten_entries: rewritten.into_values().collect(),
+        rewritten_entries: Vec::new(),
         deleted_entries,
     })
 }
 
-/// 人物合併升格後，整條屬於他（專屬）或收尾階段判定可刪（共用）的來源條目：整條刪除，原文
-/// 記進 `deleted_entries`——跟 disable_source_entry 的「改寫留痕」不同，這裡是真的刪除，
-/// undo 要無條件插回（見 receipts::undo_last_import）。條目已經不在就略過。
+/// 被套用產物消耗掉的來源條目：整條刪除，原文記進 `deleted_entries`——匯入路徑的 undo 要
+/// 無條件插回（見 receipts::undo_last_import）。條目已經不在就略過。
 fn delete_source_entry(
     root: &Path,
     world_id: &str,
@@ -291,33 +377,6 @@ fn delete_source_entry(
     Ok(())
 }
 
-/// 介面／機制套用後，來源條目停用（disabled=true）；已經是停用狀態就不重複記一筆
-/// （undo 不該把「匯入前就關著」的條目意外打開）。
-fn disable_source_entry(
-    root: &Path,
-    world_id: &str,
-    uid_str: &str,
-    rewritten: &mut BTreeMap<u64, WorldbookEntry>,
-) -> DataResult<()> {
-    let Ok(uid) = uid_str.parse::<u64>() else {
-        return Ok(());
-    };
-    let Some(entry) = data::read_worldbook(root, world_id)?
-        .into_iter()
-        .find(|entry| entry.uid == uid)
-    else {
-        return Ok(());
-    };
-    if entry.disabled {
-        return Ok(());
-    }
-    rewritten.entry(uid).or_insert_with(|| entry.clone());
-    let mut updated = entry;
-    updated.disabled = true;
-    data::upsert_worldbook_entry(root, world_id, updated)?;
-    Ok(())
-}
-
 /// 機制套用後記一筆已接管：來源條目原本在帳本裡是 Skipped，append_log 落檔後 read_ledger
 /// 取「同標題最新一筆」會直接蓋成 Absorbed；原本不在帳本裡的純散文條目則等於新增一筆，
 /// 讓玩家在帳本分頁看得到這條被收編了。uid 解不出來或條目已經不在就不記。
@@ -327,11 +386,15 @@ fn absorbed_ledger_record(root: &Path, world_id: &str, uid_str: &str) -> Option<
         .ok()?
         .into_iter()
         .find(|entry| entry.uid == uid)?;
-    Some(mechanism::Record {
+    Some(absorbed_ledger_record_for_title(&entry.title))
+}
+
+fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
+    mechanism::Record {
         kind: mechanism::RecordKind::Absorbed,
-        path: entry.title,
-        detail: "AI 卡重構已收編此機制條目，併入欄位規則／觸發表，不再送入提示詞。".to_owned(),
-    })
+        path: title.to_owned(),
+        detail: "AI 卡重構產生的機制條目：欄位規則／觸發表由 App 本地執行，說明文留在世界書（唯讀）照常可讀。".to_owned(),
+    }
 }
 
 /// state_fields 併入狀態樹：頂層鍵整支覆寫——AI 產出的介面欄位最小可懂、也最好復原的合併
@@ -415,6 +478,7 @@ mod tests {
                 disabled: false,
                 visibility: Visibility::Gm,
                 is_person: false,
+                locked: false,
             },
         )
         .unwrap()
@@ -437,6 +501,7 @@ mod tests {
             character_indices,
             apply_interface: false,
             mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
             player_index: None,
         }
     }
@@ -476,6 +541,7 @@ mod tests {
             characters: vec![character("亞瑟", &[bio_uid, personality_uid])],
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
@@ -537,6 +603,7 @@ mod tests {
             characters: vec![character("新來的人", &[uid])],
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
@@ -563,6 +630,7 @@ mod tests {
             characters: vec![character("阿明", &[picked_uid]), character("小華", &[ignored_uid])],
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = no_player_selection(vec![0]); // 只勾阿明；小華（index 1）沒勾
@@ -597,6 +665,7 @@ mod tests {
             characters,
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = no_player_selection(vec![0, 1]); // 甲、乙
@@ -640,6 +709,7 @@ mod tests {
             characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: vec![shared_uid.to_string()],
         };
         let selection = no_player_selection(vec![0]); // 只勾霍玄
@@ -661,6 +731,7 @@ mod tests {
             characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: vec![shared_uid.to_string()],
         };
         let selection = no_player_selection(vec![0, 1]);
@@ -682,6 +753,7 @@ mod tests {
             characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = no_player_selection(vec![0, 1]);
@@ -690,9 +762,9 @@ mod tests {
         assert_eq!(result.summary.deleted_entries, 0);
     }
 
-    /// (d) 介面套用：state_fields 併入狀態樹頂層、來源條目停用 → undo → 都退回去。
+    /// (d) 介面套用：state_fields 併入狀態樹頂層、來源條目整條刪除 → undo → 都退回去。
     #[test]
-    fn apply_interface_merges_state_and_disables_source_then_undo_restores() {
+    fn apply_interface_merges_state_and_deletes_source_then_undo_restores() {
         let root = TestRoot::new("interface");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
@@ -708,18 +780,21 @@ mod tests {
                 shell: None,
             }),
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
         let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
         assert!(result.summary.interface_applied);
-        assert_eq!(result.summary.rewritten_entries, 1);
+        assert_eq!(result.summary.deleted_entries, 1);
+        assert_eq!(result.summary.rewritten_entries, 0);
 
         let state = data::read_state(root.path(), &world_id).unwrap();
         assert_eq!(
@@ -729,12 +804,10 @@ mod tests {
                 ("Weather".to_owned(), StateNode::Leaf("晴".to_owned())),
             ])))
         );
-        let source_entry = data::read_worldbook(root.path(), &world_id)
+        assert!(!data::read_worldbook(root.path(), &world_id)
             .unwrap()
-            .into_iter()
-            .find(|entry| entry.uid == source_uid)
-            .unwrap();
-        assert!(source_entry.disabled);
+            .iter()
+            .any(|entry| entry.uid == source_uid));
 
         receipts::undo_last_import(root.path(), &world_id).unwrap();
         let state_after = data::read_state(root.path(), &world_id).unwrap();
@@ -744,7 +817,7 @@ mod tests {
             .into_iter()
             .find(|entry| entry.uid == source_uid)
             .unwrap();
-        assert!(!source_entry_after.disabled);
+        assert_eq!(source_entry_after.content, "描述如何顯示狀態欄的散文");
     }
 
     /// 契約相容：AI 展開產物落地成 JSON 沒有 shell 鍵（舊版產物）照樣要能反序列化，shell 落
@@ -760,6 +833,121 @@ mod tests {
         assert!(interface.shell.is_none());
         assert_eq!(interface.source_uids, vec!["7"]);
         assert_eq!(interface.state_fields["World"]["Time"].as_str(), Some("清晨"));
+    }
+
+    #[test]
+    fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_and_deletes_shared_source() {
+        let root = TestRoot::new("rewritten-entries-full");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "舊設定", "舊世界書全文");
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: vec![
+                crate::refactor_ai::RefactorNewEntry {
+                    title: "新世界觀".to_owned(),
+                    kind: "setting".to_owned(),
+                    content: "重寫的世界觀".to_owned(),
+                    source_uids: vec![source_uid.to_string()],
+                    rules: BTreeMap::new(),
+                    triggers: Vec::new(),
+                },
+                crate::refactor_ai::RefactorNewEntry {
+                    title: "新戰鬥規則".to_owned(),
+                    kind: "mechanism".to_owned(),
+                    content: "重寫的戰鬥說明".to_owned(),
+                    source_uids: vec![source_uid.to_string()],
+                    rules: BTreeMap::from([(
+                        "World.戰鬥值".to_owned(),
+                        FieldRule::for_kind(data::FieldKind::Number),
+                    )]),
+                    triggers: Vec::new(),
+                },
+            ],
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: Vec::new(),
+            entry_indices: vec![0, 1],
+            player_index: None,
+        };
+
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert_eq!(result.summary.new_entries, 2);
+        assert_eq!(result.summary.deleted_entries, 1);
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert!(!entries.iter().any(|entry| entry.uid == source_uid));
+        assert!(entries.iter().any(|entry| entry.title == "新世界觀" && !entry.locked));
+        assert!(entries.iter().any(|entry| entry.title == "新戰鬥規則" && entry.locked));
+        assert!(data::read_state(root.path(), &world_id)
+            .unwrap()
+            .mechanism
+            .rules
+            .contains_key("World.戰鬥值"));
+        assert_eq!(
+            mechanism::read_ledger(root.path(), &world_id)
+                .entries
+                .iter()
+                .find(|entry| entry.title == "新戰鬥規則")
+                .unwrap()
+                .kind,
+            mechanism::RecordKind::Absorbed
+        );
+    }
+
+    #[test]
+    fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
+        let root = TestRoot::new("rewritten-entries-partial");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "舊設定", "舊世界書全文");
+        let entry = |title: &str| crate::refactor_ai::RefactorNewEntry {
+            title: title.to_owned(),
+            kind: "setting".to_owned(),
+            content: format!("{title} 重寫內容"),
+            source_uids: vec![source_uid.to_string()],
+            rules: BTreeMap::new(),
+            triggers: Vec::new(),
+        };
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: vec![entry("新設定甲"), entry("新設定乙")],
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: Vec::new(),
+            entry_indices: vec![0],
+            player_index: None,
+        };
+
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert_eq!(result.summary.new_entries, 1);
+        assert_eq!(result.summary.deleted_entries, 0);
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert!(entries.iter().any(|entry| entry.uid == source_uid));
+        assert!(entries.iter().any(|entry| entry.title == "新設定甲"));
+    }
+
+    #[test]
+    fn legacy_outcome_without_entries_deserializes_and_applies() {
+        let outcome: RefactorOutcome = serde_json::from_value(serde_json::json!({
+            "characters": [],
+            "interface": null,
+            "mechanisms": [],
+            "deletable_shared_uids": []
+        }))
+        .unwrap();
+        assert!(outcome.entries.is_empty());
+        let root = TestRoot::new("legacy-outcome-no-entries");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let selection: RefactorSelection = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(apply(root.path(), &world_id, &outcome, &selection).unwrap().summary.new_entries, 0);
     }
 
     /// 介面套用帶殼：world 目錄落一份 interface-shell.html，data::read_interface_shell（讀
@@ -780,12 +968,14 @@ mod tests {
                 shell: Some(shell_html.to_owned()),
             }),
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
@@ -811,12 +1001,14 @@ mod tests {
                 shell: None,
             }),
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
@@ -842,12 +1034,14 @@ mod tests {
                 shell: Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>".to_owned()),
             }),
             mechanisms: Vec::new(),
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: true,
             mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
@@ -861,7 +1055,7 @@ mod tests {
     /// (e) 帳本轉換：來源條目原本在帳本裡是 Skipped（例如認不出的 EJS），套用機制後帳本要
     /// 改記 Absorbed——玩家在帳本分頁看到的是「已被收編」，不再是「跳過」。
     #[test]
-    fn apply_mechanism_converts_ledger_entry_from_skipped_to_absorbed() {
+    fn apply_mechanism_deletes_source_after_recording_absorption() {
         let root = TestRoot::new("ledger-skipped-to-absorbed");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let source_uid = seed_entry(root.path(), &world_id, "詭異的機制腳本", "<% 認不出的 EJS %>");
@@ -887,29 +1081,28 @@ mod tests {
                 )]),
                 triggers: Vec::new(),
             }],
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: false,
             mechanism_indices: vec![0],
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
         apply(root.path(), &world_id, &outcome, &selection).unwrap();
 
-        let ledger = mechanism::read_ledger(root.path(), &world_id);
-        let entry = ledger
-            .entries
+        assert!(!data::read_worldbook(root.path(), &world_id)
+            .unwrap()
             .iter()
-            .find(|entry| entry.title == "詭異的機制腳本")
-            .unwrap();
-        assert_eq!(entry.kind, mechanism::RecordKind::Absorbed);
+            .any(|entry| entry.uid == source_uid));
     }
 
     /// (f) 帳本新增：純散文機制條目（帳本裡原本沒有這條）套用後要新增一筆 Absorbed 記錄。
     #[test]
-    fn apply_mechanism_adds_absorbed_ledger_entry_for_entry_with_no_prior_record() {
+    fn apply_mechanism_deletes_source_with_no_prior_ledger_record() {
         let root = TestRoot::new("ledger-new-absorbed");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let source_uid = seed_entry(root.path(), &world_id, "純散文機制", "打鬥時擲骰決勝負。");
@@ -925,12 +1118,14 @@ mod tests {
                 )]),
                 triggers: Vec::new(),
             }],
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: false,
             mechanism_indices: vec![0],
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
@@ -938,13 +1133,10 @@ mod tests {
 
         apply(root.path(), &world_id, &outcome, &selection).unwrap();
 
-        let ledger = mechanism::read_ledger(root.path(), &world_id);
-        let entry = ledger
-            .entries
+        assert!(!data::read_worldbook(root.path(), &world_id)
+            .unwrap()
             .iter()
-            .find(|entry| entry.title == "純散文機制")
-            .unwrap();
-        assert_eq!(entry.kind, mechanism::RecordKind::Absorbed);
+            .any(|entry| entry.uid == source_uid));
     }
 
     /// (g) undo 帳本回退：套用前是 Skipped，套用後變 Absorbed，undo 之後帳本要退回原本的
@@ -976,26 +1168,22 @@ mod tests {
                 )]),
                 triggers: Vec::new(),
             }],
+            entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
             apply_interface: false,
             mechanism_indices: vec![0],
+            entry_indices: Vec::new(),
             player_index: None,
         };
 
         apply_recorded(root.path(), &world_id, &outcome, &selection);
-        let applied = mechanism::read_ledger(root.path(), &world_id);
-        assert_eq!(
-            applied
-                .entries
-                .iter()
-                .find(|entry| entry.title == "詭異的機制腳本二號")
-                .unwrap()
-                .kind,
-            mechanism::RecordKind::Absorbed
-        );
+        assert!(!data::read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.uid == source_uid));
 
         receipts::undo_last_import(root.path(), &world_id).unwrap();
 
@@ -1006,5 +1194,53 @@ mod tests {
             .find(|entry| entry.title == "詭異的機制腳本二號")
             .unwrap();
         assert_eq!(entry.kind, mechanism::RecordKind::Skipped);
+    }
+
+    /// 匯出重構產物包 (a)：apply 成功後 data::read_refactor_outcome 讀得回來，serde 反序列化
+    /// 回 RefactorOutcome 與送進去的一致（round-trip）。
+    #[test]
+    fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
+        let root = TestRoot::new("export-outcome-roundtrip");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let uid = seed_entry(root.path(), &world_id, "亞瑟人物设定", "亞瑟：劍術高超。");
+
+        let outcome = RefactorOutcome {
+            characters: vec![character("亞瑟", &[uid])],
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = no_player_selection(vec![0]);
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+
+        let saved = data::read_refactor_outcome(root.path(), &world_id).unwrap().unwrap();
+        let round_tripped: RefactorOutcome = serde_json::from_str(&saved).unwrap();
+        assert_eq!(round_tripped, outcome);
+    }
+
+    /// 匯出重構產物包 (b)：apply 後跑既有 undo 流程，產物檔仍然存在——undo 與收據不動這個檔
+    /// （零改動）。
+    #[test]
+    fn apply_then_undo_keeps_refactor_outcome_file() {
+        let root = TestRoot::new("export-outcome-undo-keeps-file");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let uid = seed_entry(root.path(), &world_id, "亞瑟人物设定", "亞瑟：劍術高超。");
+
+        let outcome = RefactorOutcome {
+            characters: vec![character("亞瑟", &[uid])],
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = no_player_selection(vec![0]);
+
+        apply_recorded(root.path(), &world_id, &outcome, &selection);
+        assert!(data::read_refactor_outcome(root.path(), &world_id).unwrap().is_some());
+
+        receipts::undo_last_import(root.path(), &world_id).unwrap();
+        assert!(data::read_refactor_outcome(root.path(), &world_id).unwrap().is_some());
     }
 }

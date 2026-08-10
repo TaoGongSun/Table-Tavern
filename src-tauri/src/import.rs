@@ -2798,6 +2798,7 @@ if (invasion >= 50 && done === false) { _%>
             disabled,
             visibility: data::Visibility::Gm,
             is_person: false,
+            locked: false,
         }
     }
 
