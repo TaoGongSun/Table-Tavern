@@ -190,6 +190,10 @@ pub fn apply(
     }
 
     let existing_entries = data::read_worldbook(root, world_id)?;
+    // 套用前就存在的 uid 集合：來源刪除只准刪這裡面的條目。產物的來源 uid 在這桌不存在時
+    // （例如重構卡匯到新桌），剛落地的新條目會拿到同一批小號 uid，不設這道閘會被誤刪，
+    // 且誤刪快照進收據後，undo 會把它們當「被消耗的來源」原樣插回，鎖定條目變成孤兒。
+    let preexisting_uids: BTreeSet<u64> = existing_entries.iter().map(|entry| entry.uid).collect();
     let mut next_entry_uid = existing_entries
         .iter()
         .map(|entry| entry.uid)
@@ -333,7 +337,10 @@ pub fn apply(
         mechanism::append_log(root, world_id, state.current_scene, &ledger_records);
     }
     for (uid, consumers) in source_consumers {
-        if deletion_candidates.contains(&uid) && consumers.iter().all(|applied| *applied) {
+        if preexisting_uids.contains(&uid)
+            && deletion_candidates.contains(&uid)
+            && consumers.iter().all(|applied| *applied)
+        {
             delete_source_entry(root, world_id, uid, &mut deleted_entries)?;
         }
     }
@@ -1242,5 +1249,62 @@ mod tests {
 
         receipts::undo_last_import(root.path(), &world_id).unwrap();
         assert!(data::read_refactor_outcome(root.path(), &world_id).unwrap().is_some());
+    }
+
+    /// 重構卡匯到新桌（來源 uid 在這桌不存在）：來源刪除不得誤刪剛落地的新條目（uid 撞號），
+    /// undo 要把新條目（含 locked 機制條目）整批收回，不得靠「已刪來源」快照把它們插回來——
+    /// 插回來的 locked 條目沒有編輯／刪除鈕，會變成玩家永遠動不了的孤兒。
+    #[test]
+    fn undo_removes_new_entries_including_locked() {
+        let root = TestRoot::new("undo-removes-new-entries");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: vec![
+                crate::refactor_ai::RefactorNewEntry {
+                    title: "獸人部落文化".to_owned(),
+                    kind: "setting".to_owned(),
+                    content: "氏族階級制。".to_owned(),
+                    source_uids: vec!["1".to_owned()],
+                    rules: std::collections::BTreeMap::new(),
+                    triggers: Vec::new(),
+                },
+                crate::refactor_ai::RefactorNewEntry {
+                    title: "天數計時".to_owned(),
+                    kind: "mechanism".to_owned(),
+                    content: "每日推進。".to_owned(),
+                    source_uids: vec!["1".to_owned()],
+                    rules: std::collections::BTreeMap::from([(
+                        "World.淪陷天數".to_owned(),
+                        FieldRule::for_kind(crate::data::FieldKind::Number),
+                    )]),
+                    triggers: Vec::new(),
+                },
+            ],
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: Vec::new(),
+            entry_indices: vec![0, 1],
+            player_index: None,
+        };
+
+        apply_recorded(root.path(), &world_id, &outcome, &selection);
+        let applied = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(applied.len(), 2);
+        assert!(applied.iter().any(|entry| entry.locked));
+
+        receipts::undo_last_import(root.path(), &world_id).unwrap();
+        let after = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(
+            after.iter().map(|entry| entry.title.as_str()).collect::<Vec<_>>(),
+            Vec::<&str>::new(),
+            "undo 後新條目應整批收回"
+        );
     }
 }
