@@ -2,6 +2,10 @@
 
 結案任務按結案時間新到舊排列。進行中與待辦見 [TASKS.md](TASKS.md)。
 
+- [refactor-output-redesign](tasks/refactor-output-redesign.md) — 重構產出重新設計：以「能玩」為驗收標準 — 2026-08-11 八條標準拍板當日全案實作＋orc-cave 真跑逐項驗收通過，結案。新拓撲（盤點 PLAN／playable→人物展開→條目重寫→介面展開，known_fields 單一命名權威）＋套用端整本重寫：機制條目鎖定唯讀可展開、來源「全引用產物都套用才刪」、AI 路徑無 undo＋重跑警告、狀態欄／介面限遊玩畫面、套用介面整份重建清殘渣（同名鍵沿用現值）、進度小框思考字尾。實測抓三 bug 當日修畢（思考洩入旁白串流、重構卡匯新桌誤刪新條目＋undo 復活鎖定孤兒、清單分支誤掛指認下拉）。明細見 [handoffs/archive/refactor-output-redesign-completed.md](handoffs/archive/refactor-output-redesign-completed.md)
+- [refactor-outcome-export](tasks/refactor-outcome-export.md) — 重構產物匯出：重構一次，之後重玩同一張卡免再燒額度 — 2026-08-11 匯出檔名帶桌名（「兽人的洞穴-重構卡.json」實測）＋匯出→新桌匯入→套用→復原全流程零額度重放驗收通過，結案。明細見 [handoffs/archive/refactor-outcome-export-completed.md](handoffs/archive/refactor-outcome-export-completed.md)
+- [refactor-review-detail](tasks/refactor-review-detail.md) — 人審面板展開詳細：角色／介面／機制行可展開看內容 — 2026-08-11 併入 refactor-output-redesign 批次實作（四區 details 展開全文＋出處灰字獨立行），實測通過，結案
+- [refactor-stream-progress](tasks/refactor-stream-progress.md) — 重構進度小框：modal 固定 3–4 行 tail 播放 AI 字流 — 2026-08-11 併入 refactor-output-redesign 批次實作（四命令 Channel 轉發＋末 4 行 tail＋盤點思考增量），實測通過，結案
 - [scene-revert](tasks/scene-revert.md) — 換幕可復原：退回前幕＋重新生成摘要 — 2026-08-06 實機驗收六項全數通過，結案。換幕在資料層本來就可逆（begin_next_scene 只是開新檔＋場號 +1，前幕 jsonl 一個字沒動），據此補兩條補救路：退回前幕（純本地檔案操作不花錢）、重寫前情提要（重跑摘要覆寫那一則，要再花一次呼叫）。守門共用一條：這幕只有那則摘要才給按，玩家一發言就自動收掉。第三條「摘要就地手改」評估後不做（app 沒有訊息就地編輯機制，要新開一套 UI）。明細見 [handoffs/archive/scene-revert-completed.md](handoffs/archive/scene-revert-completed.md)
 - [card-import-flow](tasks/card-import-flow.md) — 匯入流程 v2：單一入口＋收據復原＋第二張卡路由 — 2026-08-06 實機驗收清單七項全數通過，結案。四包（指 GM／收據復原／單一入口分流／第二張卡路由）＋十項後續修正；最後一輪由樣本卡實測驅動的四件：雙世界書由硬擋改成可融合、身分判定改版（世界書內容寫在人設欄的卡也匯得進來，備用開場白數當主按鈕判準）、收據為空時拿條目當保險、角色卡路徑也給開場白。三條被推翻的原拍板：雙世界書硬擋、純角色卡零詢問直匯、配套世界書 companion 零打擾（配套與否程式偵測不出來，只有玩家知道）。明細見 [handoffs/archive/card-import-flow-completed.md](handoffs/archive/card-import-flow-completed.md)
 - [st-ecosystem-upgrades](tasks/st-ecosystem-upgrades.md) — SillyTavern 生態升級：匯入補強＋巨集替換＋訊息 Markdown＋GM 狀態欄＋條目互轉＋開場白選擇 — 2026-08-04 六項全部實作完成（cargo test 174 綠）並全數實機驗收通過，狀態欄後續鏈（GM 更新／手改／收回倒回／壞格式）末四條收尾；第四項第二期的數值機制拆成獨立任務 [state-values-mvu](tasks/state-values-mvu.md)，結案

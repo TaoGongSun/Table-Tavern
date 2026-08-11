@@ -18,6 +18,7 @@ Updated: 2026-08-08T03:35:00+08:00
 2. 檔位下放點：`refactor_survey`／`refactor_expand`／`refactor_expand_person`／finish 目前都取 `transport::gm_tier`（[lib.rs:554](../../src-tauri/src/lib.rs#L554)、583、617、674），改為依呼叫類型給檔位；未設定的檔位退 GM 檔（同 opening-translation 慣例）。
 3. 機制展開（EJS→JSON 契約）是下放品質最敏感點，實測不行單獨升回 balanced→best。
 4. CLI 路徑並行＝同時多個 process，遇 429 退避；並行上限先取保守值。
+5. **取消改成可中止在途呼叫**（2026-08-11 Dark Wolf 實測補立）：現行「在途跑完才停」對盤點不成立（第一條被取消＝整輪作廢，跑完純燒額度）；並行下取消＝殺全部 in-flight 子程序。順帶處理 app 退出的孤兒子程序（現況 Cmd-Q 後 CLI 呼叫繼續跑完）。
 
 ## Next action
 - 未排程。**前置：[ai-card-refactor](ai-card-refactor.md)＋[person-promote](person-promote.md) A–E 實測結案**（2026-08-08 拍板）——先建立現行管線的品質與時間費用基線，下放檔位後才有得比。

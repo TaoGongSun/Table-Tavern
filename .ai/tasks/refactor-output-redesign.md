@@ -2,8 +2,8 @@
 Task-ID: refactor-output-redesign
 Title: 重構產出重新設計：以「能玩」為驗收標準
 Created: 2026-08-11T00:30:00+08:00
-Updated: 2026-08-11T13:30:00+08:00
-Status: in_progress
+Updated: 2026-08-11T09:40:21+08:00
+Status: done
 
 ## Summary
 2026-08-11 orc-cave 真卡實測總結（使用者裁決）：機制面跑得通（重構→匯出→匯入→套用→復原都動作），但產出不合格、不能玩。產出面整個重新設計；拆法 2026-08-11 拍板開工。原 refactor-mechanism-remainder 案併入本案。
@@ -29,7 +29,8 @@ Status: in_progress
 順序：1 與 3b 並行 → 2 → 3a、4 → 5 → 6 → 7。
 
 ## Next action
-進度與現場見交接檔 [refactor-output-redesign](../handoffs/refactor-output-redesign.md)。
+2026-08-11 結案：全案實作＋orc-cave 真跑逐項驗收通過（使用者終判）。明細見 [歸檔交接](../handoffs/archive/refactor-output-redesign-completed.md)。後續：[refactor-dispatch](refactor-dispatch.md)（下一輪）、[character-presence](character-presence.md)（待辦）。
+
 
 ## Constraints
 - 產物一律人審後套用；卡片內容永遠當資料、永不執行。
