@@ -4546,6 +4546,9 @@ function App() {
           binding.path.length === childPath.length &&
           binding.path.every((segment, index) => segment === childPath[index]),
       );
+      // 清單出身的分支（鍵全是數字索引，如「氣味標記者：0→利格魯德」的名冊）不是誰的狀態包，
+      // 掛指認下拉會被讀成「挑誰出場」；只有名字鍵的物件分支才提供指認。
+      const isList = Object.keys(node).every((childKey) => /^\d+$/.test(childKey));
       return (
         <details
           className="state-tree-branch"
@@ -4554,7 +4557,7 @@ function App() {
         >
           <summary>
             {key}
-            {characters.length > 0 && (
+            {characters.length > 0 && !isList && (
               <select
                 className="state-tree-bind"
                 aria-label={t("stateBranchBindAria")}
