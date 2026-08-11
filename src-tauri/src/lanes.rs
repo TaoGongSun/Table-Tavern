@@ -954,6 +954,9 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
     #[cfg(unix)]
     #[tokio::test]
     async fn lane_turns_open_rewrite_resume_and_degrade() {
+        // run_cli 會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children 的
+        // 測試（inflight.rs）不分青紅皂白殺表上全部 pid，故用同一把鎖互斥執行。
+        let _serial = crate::inflight::lock_real_process_tests();
         let FakeCli {
             dir,
             call,
@@ -1090,6 +1093,9 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
     #[cfg(unix)]
     #[tokio::test]
     async fn keepalive_pings_live_lanes_and_leaves_no_trace() {
+        // run_cli 會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children 的
+        // 測試（inflight.rs）不分青紅皂白殺表上全部 pid，故用同一把鎖互斥執行。
+        let _serial = crate::inflight::lock_real_process_tests();
         let FakeCli {
             dir,
             call,
@@ -1182,6 +1188,9 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
     #[cfg(unix)]
     #[tokio::test]
     async fn lane_patches_material_then_rebases_after_cache_expiry() {
+        // run_cli 會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children 的
+        // 測試（inflight.rs）不分青紅皂白殺表上全部 pid，故用同一把鎖互斥執行。
+        let _serial = crate::inflight::lock_real_process_tests();
         let dir = std::env::temp_dir().join(format!("tt-lanes-patch-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let working_dir = dir.join("ws");

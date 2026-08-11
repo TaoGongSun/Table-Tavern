@@ -6,6 +6,7 @@ mod genesis;
 mod import;
 #[allow(dead_code)]
 mod install;
+mod inflight;
 mod lanes;
 mod mechanism;
 mod proxy;
@@ -525,6 +526,9 @@ fn record_import_rename(app: tauri::AppHandle, world_id: String, old_name: Strin
     Ok(())
 }
 
+/// AI 卡重構中止時的錯誤字串 sentinel：前端靠它分流「玩家主動取消」與其他失敗，一字不差。
+pub(crate) const REFACTOR_ABORTED: &str = "refactor-aborted";
+
 /// AI 卡重構套用：玩家勾選的角色／介面／機制落檔，收據記「實際套用的那份」供一鍵倒退。
 #[tauri::command]
 fn refactor_apply(
@@ -566,22 +570,26 @@ async fn refactor_survey(
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let messages = refactor_ai::survey_messages(&context, &lang);
-    let raw = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::gm_tier(&config),
-        Some(&world_id),
-        "GM",
-        "Output exactly in the requested marker format, nothing else.",
-        &messages,
-        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
-        |delta| {
-            let _ = on_delta.send(delta.to_owned());
-        },
-    )
-    .await?;
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::gm_tier(&config),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
     Ok(refactor_ai::parse_survey(&raw))
 }
 
@@ -613,22 +621,26 @@ async fn refactor_expand(
         &known_fields,
         &lang,
     );
-    let raw = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::refactor_expand_tier(&config, &chat_transport(&config)),
-        Some(&world_id),
-        "GM",
-        "Output exactly in the requested marker format, nothing else.",
-        &messages,
-        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
-        |delta| {
-            let _ = on_delta.send(delta.to_owned());
-        },
-    )
-    .await?;
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::refactor_expand_tier(&config, &chat_transport(&config)),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
     Ok(refactor_ai::parse_expand(entry_kind, &entry_uid, &raw))
 }
 
@@ -655,22 +667,26 @@ async fn refactor_expand_person(
         sources.push((uid.clone(), text));
     }
     let messages = refactor_ai::person_expand_messages(&context, &name, &sources, &lang);
-    let raw = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::refactor_expand_tier(&config, &chat_transport(&config)),
-        Some(&world_id),
-        "GM",
-        "Output exactly in the requested marker format, nothing else.",
-        &messages,
-        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
-        |delta| {
-            let _ = on_delta.send(delta.to_owned());
-        },
-    )
-    .await?;
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::refactor_expand_tier(&config, &chat_transport(&config)),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
     Ok(refactor_ai::parse_person_expand(&raw, &name, &uids, is_player))
 }
 
@@ -702,23 +718,33 @@ async fn refactor_rewrite_entry(
     let known_fields = known_fields.unwrap_or_default();
     let messages =
         refactor_ai::rewrite_messages(&context, &title, plan_kind, &sources, &known_fields, &lang);
-    let raw = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::refactor_expand_tier(&config, &chat_transport(&config)),
-        Some(&world_id),
-        "GM",
-        "Output exactly in the requested marker format, nothing else.",
-        &messages,
-        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
-        |delta| {
-            let _ = on_delta.send(delta.to_owned());
-        },
-    )
-    .await?;
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::refactor_expand_tier(&config, &chat_transport(&config)),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
     Ok(refactor_ai::parse_rewrite(&raw, &title, plan_kind, &uids))
+}
+
+/// AI 卡重構中止：立即殺該桌全部在途呼叫（CLI 殺子程序、API 斷線即停止計費）。
+#[tauri::command]
+fn refactor_abort(world_id: String) {
+    inflight::abort_world(&world_id);
 }
 
 /// 讀 AI 卡重構套用介面時可能順便產的靜態渲染殼（interface-shell.html）；沒套用過或那次沒
@@ -2608,6 +2634,7 @@ pub fn run() {
             refactor_expand,
             refactor_expand_person,
             refactor_rewrite_entry,
+            refactor_abort,
             refactor_interface_shell,
             refactor_export_outcome,
             refactor_export_saved,
@@ -2659,8 +2686,14 @@ pub fn run() {
             generate_table_character,
             generate_table_expand
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_handle, event| {
+            // app 退出：殺全部在途 CLI 子程序，避免孤兒繼續跑、繼續燒錢。
+            if let tauri::RunEvent::Exit = event {
+                inflight::kill_all_children();
+            }
+        });
 }
 
 #[cfg(test)]
