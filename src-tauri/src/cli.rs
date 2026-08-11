@@ -683,6 +683,9 @@ pub async fn run_cli(
     stdin_data: &str,
     envs: &[(String, String)],
     parse: fn(&str) -> CliLine,
+    // 思考增量要不要餵給 on_delta：只有「進度字尾」型顯示（卡重構）開 true；
+    // 聊天／旁白的 on_delta 是劇情正文串流，思考混進去會出戲。
+    thinking_to_delta: bool,
     usage_log: Option<UsageLog<'_>>,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
@@ -750,7 +753,11 @@ pub async fn run_cli(
                 on_delta(&text);
                 full_text.push_str(&text);
             }
-            CliLine::Thinking(text) => on_delta(&text),
+            CliLine::Thinking(text) => {
+                if thinking_to_delta {
+                    on_delta(&text);
+                }
+            }
             CliLine::Done { text, is_error } => done = Some((text, is_error)),
             CliLine::Other => {}
         }
@@ -1177,6 +1184,7 @@ mod tests {
             "提示詞",
             &[],
             parse_claude_line,
+            true,
             Some(UsageLog {
                 path: &log_path,
                 world: Some("w1"),
@@ -1192,8 +1200,27 @@ mod tests {
         )
         .await
         .unwrap();
+        // 同一份輸出、關掉思考轉發：聊天正文串流不得混進思考
+        let mut quiet_deltas = Vec::new();
+        let quiet = run_cli(
+            &script,
+            &working_dir,
+            &[],
+            "提示詞",
+            &[],
+            parse_claude_line,
+            false,
+            None,
+            |delta: &str| {
+                quiet_deltas.push(delta.to_owned());
+            },
+        )
+        .await
+        .unwrap();
         let logged = std::fs::read_to_string(&log_path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(quiet, "你好");
+        assert_eq!(quiet_deltas, ["你", "好"]);
         // 思考增量進顯示流、不進正文
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["想", "你", "好"]);

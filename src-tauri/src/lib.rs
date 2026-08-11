@@ -576,6 +576,7 @@ async fn refactor_survey(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
+        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
         |delta| {
             let _ = on_delta.send(delta.to_owned());
         },
@@ -622,6 +623,7 @@ async fn refactor_expand(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
+        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
         |delta| {
             let _ = on_delta.send(delta.to_owned());
         },
@@ -663,6 +665,7 @@ async fn refactor_expand_person(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
+        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
         |delta| {
             let _ = on_delta.send(delta.to_owned());
         },
@@ -709,6 +712,7 @@ async fn refactor_rewrite_entry(
         "GM",
         "Output exactly in the requested marker format, nothing else.",
         &messages,
+        true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
         |delta| {
             let _ = on_delta.send(delta.to_owned());
         },
@@ -914,6 +918,7 @@ async fn translate_opening(
         "GM",
         "Output only the translated text itself, nothing else.",
         &messages,
+        false,
         |_| {},
     )
     .await?;
@@ -1241,6 +1246,8 @@ async fn stream_via_transport(
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
+    // 思考增量進不進 emit：只有卡重構的進度字尾開 true（emit＝正文串流的呼叫端一律 false）。
+    thinking_to_delta: bool,
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
@@ -1286,6 +1293,7 @@ async fn stream_via_transport(
                 &prompt,
                 &envs,
                 cli::parse_claude_line,
+                thinking_to_delta,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     path,
                     world,
@@ -1311,6 +1319,7 @@ async fn stream_via_transport(
                 &combined,
                 &[],
                 cli::parse_codex_line,
+                false, // 只有 claude 解析器會產思考增量
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     path,
                     world,
@@ -1336,6 +1345,7 @@ async fn stream_via_transport(
                 "",
                 &[],
                 cli::parse_agy_line,
+                false,
                 None, // agy 走純文字輸出，拿不到用量（換 JSON 格式才有，未拍板）
                 emit,
             )
@@ -1360,6 +1370,7 @@ async fn stream_via_transport(
                 "",
                 &[],
                 cli::parse_grok_line,
+                false,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     path,
                     world,
@@ -1706,6 +1717,7 @@ async fn generate_character_image(
         "",
         "",
         &messages,
+        false,
         |_| {},
     )
     .await?;
@@ -1868,6 +1880,7 @@ async fn chat_with_character(
         &card.name,
         &closing,
         &messages,
+        false,
         emit,
     )
     .await
@@ -2099,6 +2112,7 @@ async fn gm_narrate(
             "GM",
             closing,
             &messages,
+            false,
             emit,
         )
         .await?
@@ -2349,6 +2363,7 @@ async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, S
         "GM",
         "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
         &messages,
+        false,
         |_| {},
     )
     .await?;
@@ -2413,6 +2428,7 @@ async fn regenerate_scene_summary(app: tauri::AppHandle, world_id: String) -> Re
         "GM",
         "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
         &messages,
+        false,
         |_| {},
     )
     .await?;
@@ -2459,6 +2475,7 @@ async fn generate_table_outline(
         "GM",
         "Generate the campaign outline exactly in the requested structure.",
         &messages,
+        false,
         |_| {},
     )
     .await?;
@@ -2490,6 +2507,7 @@ async fn generate_table_character(
         "GM",
         "Generate exactly one character in the requested structure.",
         &messages,
+        false,
         |_| {},
     )
     .await?;
@@ -2530,6 +2548,7 @@ async fn generate_table_expand(
         "GM",
         "Generate the full campaign materials exactly in the requested structure.",
         &messages,
+        false,
         |_| {},
     )
     .await?;
