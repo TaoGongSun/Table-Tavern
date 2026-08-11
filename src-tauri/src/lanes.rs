@@ -439,6 +439,7 @@ pub(crate) async fn run_turn(
             &prompt,
             &call.envs,
             cli::parse_claude_line,
+            false, // 聊天正文串流，思考不進畫面
             call.usage_log.as_deref().map(|path| cli::UsageLog {
                 path,
                 world: Some(world_id),
@@ -563,6 +564,7 @@ pub(crate) async fn keepalive(
             PING_PROMPT,
             &call.envs,
             cli::parse_claude_line,
+            false, // 聊天正文串流，思考不進畫面
             call.usage_log.as_deref().map(|path| cli::UsageLog {
                 path,
                 world: Some(world_id),
