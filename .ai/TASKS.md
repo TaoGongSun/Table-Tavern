@@ -17,12 +17,10 @@
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 [refactor-outcome-export](tasks/refactor-outcome-export.md)，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 [person-promote](tasks/person-promote.md) 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 [ai-card-refactor](tasks/ai-card-refactor.md) 的 A–E 一起實機驗收、兩案一起結案
 - [opening-translation](tasks/opening-translation.md) — 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔 — 下一步：實作完成、四項自驗全綠（cargo 426／vitest 71／build／i18n，2026-08-08），等實機驗收 T1–T7（見交接檔）後結案
-- [refactor-outcome-export](tasks/refactor-outcome-export.md) — 重構產物匯出：重構一次，之後重玩同一張卡免再燒額度 — 下一步：實作完成四項全綠、B1 真跑 orc-cave 已完成且產物已匯出（2026-08-10）；剩 [ai-card-refactor](tasks/ai-card-refactor.md) A 段實測（A4／A7 驗本功能）；匯出檔名前置桌名已併入 [refactor-output-redesign](tasks/refactor-output-redesign.md) 批次
-- [refactor-output-redesign](tasks/refactor-output-redesign.md) — 重構產出重新設計：以「能玩」為驗收標準 — 下一步：2026-08-11 八條標準與拆法拍板開工（整本重寫、機制條目鎖定唯讀、AI 路徑無 undo、重跑警告、三小項併批）；主線提示詞重寫完成（cargo 440 綠）、3b 顯示層完成，套用端與後續包進行中，見交接檔
 
 ## Done
 
-見 [DONE.md](DONE.md)（32 項）。
+見 [DONE.md](DONE.md)（36 項）。
 
 ## Todo
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
@@ -34,8 +32,6 @@
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 [vn-mode](tasks/vn-mode.md) 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [refactor-dispatch](tasks/refactor-dispatch.md) — AI 重構提速省費：展開並行＋展開下放檔位 — 下一步：2026-08-08 討論立案；前置＝[ai-card-refactor](tasks/ai-card-refactor.md)＋[person-promote](tasks/person-promote.md) 實測結案（先立品質基線再優化）
-- [refactor-stream-progress](tasks/refactor-stream-progress.md) — 重構進度小框：modal 固定 3–4 行 tail 播放 AI 字流 — 下一步：2026-08-10 拍板（玩家只需知道 AI 在工作，不求可讀；不做累積清單與聊天室化）；等使用者通知後開工、實作叫代理
-- [refactor-review-detail](tasks/refactor-review-detail.md) — 人審面板展開詳細：角色／介面／機制行可展開看內容 — 下一步：2026-08-10 B1 實測發現只有標題無內容、玩家無從判斷要不要勾，已拍板要做；等使用者通知與 refactor-stream-progress 同批開工（含出處灰字黏名字的樣式修正、匯出檔名前置桌名記在 [refactor-outcome-export](tasks/refactor-outcome-export.md) 待辦）
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：2026-08-10 立案；重構面板只在 AI 認人時問一次，之後改主意需要這條路，兩項待拍板（已有玩家卡時換不換、能不能反向取消）
 - [character-presence](tasks/character-presence.md) — 角色在場/退場狀態管理：自動上下場＋在場過濾 — 下一步：2026-08-11 立案；地基見 CARD-REFACTOR-SPEC 包 4，開工前逐點重拍板，排序在 refactor-dispatch 之後
 

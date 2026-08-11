@@ -2,8 +2,8 @@
 Task-ID: refactor-outcome-export
 Title: 重構產物匯出：重構一次，之後重玩同一張卡免再燒額度
 Created: 2026-08-10T22:30:00+08:00
-Updated: 2026-08-10T23:30:00+08:00
-Status: in_progress
+Updated: 2026-08-11T09:40:21+08:00
+Status: done
 
 ## Summary
 玩家花額度重構一張卡後，產物只活在當下結果卡的 state 裡（[App.tsx:1794](../../src/App.tsx#L1794)），套用或關掉就丟了；重玩同一張卡得再燒一次 AI。本功能把產物（RefactorOutcome JSON）存檔可匯出，重玩時匯入直接進人審面板。
@@ -22,7 +22,8 @@ Status: in_progress
 - **匯出檔名前置桌名**：兩個入口的 saveDialog defaultPath 目前固定 `refactor-outcome.json`，存多張卡認不出來；改成「{桌名}-重構卡.json」（桌名含檔名非法字元時的處理實作時定）。等使用者通知與 [refactor-stream-progress](refactor-stream-progress.md)／[refactor-review-detail](refactor-review-detail.md) 同批開工。
 
 ## Next action
-實作完成、四項驗證全綠（2026-08-10）；B1 真跑 orc-cave 已完成、產物已匯出。剩：[ai-card-refactor](ai-card-refactor.md) A 段用真產物實測（A4／A7 驗本功能）＋上方待辦一項。
+2026-08-11 結案：匯出檔名帶桌名＋匯出/匯入零額度重放全流程實測通過。
+
 
 ## Constraints
 - 匯入是信任邊界：玩家自己選的檔一律逐欄驗證後才進面板。

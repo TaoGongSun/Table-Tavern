@@ -18,8 +18,7 @@
 - 3b：代理跑 npm build 0 錯、vitest 82/82、grep state-bar 單渲染點；主線抽查條件式回報合理，整合驗證合併在第 6 項自驗。
 
 ## Remaining
-1. **盤點字尾實測**：下次任何一輪重構開跑，第一分鐘內就該有思考文字在流動（0165ca2 落地後尚未真跑過；不值得為它單獨燒額度，跟下一張卡的重構順驗即可）。
-2. 過了→本案結案；下輪開新對話做 [refactor-dispatch](../tasks/refactor-dispatch.md)（並行＋分檔位，使用者拍板排下一輪；備忘三項見下）。
+無——2026-08-11 結案。盤點字尾以 Dark Wolf 卡真跑驗證（思考文字第一時間流動），實測清單全數通過，使用者終判成功。
 
 ## 下輪備忘（refactor-dispatch 一併處理）
 - 本地轉換的單一來源人物不經 AI、保留原卡語言（實測見格洛克簡中內文）——要不要翻譯＝每人多一次呼叫，與分檔位一起拍。
@@ -27,7 +26,7 @@
 - 重跑警告的 confirm 按鈕是系統預設英文 Cancel/OK——可帶自訂中文標籤。
 
 ## Next action
-使用者下次重構順驗盤點字尾→結案。驗「殘渣清理」零額度法：在兽人的洞穴按「匯入重構卡」讀回匯出檔→只勾介面套用→狀態欄的簡體舊欄位應消失（此路徑可 undo）。
+無。後續：[refactor-dispatch](../tasks/refactor-dispatch.md)（下一輪、開新對話，備忘三項見上）、[character-presence](../tasks/character-presence.md)（待辦）。
 
 ## Constraints
 - 產物一律人審後套用；卡片內容永遠當資料。AI 重構套用無 undo（拍板 #7）；匯入重構卡照舊可 undo。
