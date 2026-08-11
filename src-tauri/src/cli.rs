@@ -483,12 +483,15 @@ pub fn grok_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<St
 #[derive(Debug, PartialEq)]
 pub enum CliLine {
     Delta(String),
+    /// 思考增量：只餵進度顯示（on_delta），不進正文——長思考段（如卡重構盤點）若無它，
+    /// 進度小框會整段空白，玩家分不出「在想」與「掛了」。
+    Thinking(String),
     Done { text: String, is_error: bool },
     Other,
 }
 
 /// claude --output-format stream-json 逐行解析：
-/// 只取 text_delta（thinking／signature 不進對話），result 事件收尾。
+/// text_delta 進正文；thinking_delta 只餵進度顯示（signature 仍略過）；result 事件收尾。
 pub fn parse_claude_line(line: &str) -> CliLine {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
         return CliLine::Other;
@@ -500,8 +503,10 @@ pub fn parse_claude_line(line: &str) -> CliLine {
             match (
                 kind,
                 delta.and_then(|d| d.get("text")).and_then(|t| t.as_str()),
+                delta.and_then(|d| d.get("thinking")).and_then(|t| t.as_str()),
             ) {
-                (Some("text_delta"), Some(text)) => CliLine::Delta(text.to_owned()),
+                (Some("text_delta"), Some(text), _) => CliLine::Delta(text.to_owned()),
+                (Some("thinking_delta"), _, Some(text)) => CliLine::Thinking(text.to_owned()),
                 _ => CliLine::Other,
             }
         }
@@ -745,6 +750,7 @@ pub async fn run_cli(
                 on_delta(&text);
                 full_text.push_str(&text);
             }
+            CliLine::Thinking(text) => on_delta(&text),
             CliLine::Done { text, is_error } => done = Some((text, is_error)),
             CliLine::Other => {}
         }
@@ -816,7 +822,7 @@ mod tests {
             parse_claude_line(
                 r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"内心"}}}"#
             ),
-            CliLine::Other
+            CliLine::Thinking("内心".to_owned())
         );
         assert_eq!(
             parse_claude_line(
@@ -1150,6 +1156,7 @@ mod tests {
                 "input=$(cat)\n", // 必須把 stdin 讀完，證明 prompt 有送達
                 "test -f ./cwd-marker || exit 8\n",
                 "echo '{\"type\":\"system\",\"subtype\":\"init\"}'\n",
+                "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"想\"}}}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}}'\n",
                 "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}}'\n",
                 "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"你好\\\",\\\"total_cost_usd\\\":0.0015,\\\"usage\\\":{\\\"input_tokens\\\":1,\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":99,\\\"output_tokens\\\":2}}\"\n",
@@ -1187,8 +1194,9 @@ mod tests {
         .unwrap();
         let logged = std::fs::read_to_string(&log_path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
+        // 思考增量進顯示流、不進正文
         assert_eq!(full, "你好");
-        assert_eq!(deltas, ["你", "好"]);
+        assert_eq!(deltas, ["想", "你", "好"]);
         // 收尾事件落一行 JSONL：總輸入 100（1＋0＋99）、讀快取 99 → 99%
         assert_eq!(logged.lines().count(), 1);
         let record: serde_json::Value = serde_json::from_str(logged.trim()).unwrap();
