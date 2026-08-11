@@ -675,6 +675,19 @@ pub struct UsageLog<'a> {
     pub prompt_tokens_out: Option<&'a std::sync::atomic::AtomicU64>,
 }
 
+/// `run_cli` spawn 後掛的反登記保險：不論提早 return、`?` 冒出的錯誤，還是外層 future
+/// 被 select 取消（中止在途呼叫）整個被 drop，這個 guard 的 Drop 都會觸發，
+/// 確保 inflight 的子程序 PID 表不留殘影。
+struct ChildPidGuard(Option<u32>);
+
+impl Drop for ChildPidGuard {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0 {
+            crate::inflight::unregister_child(pid);
+        }
+    }
+}
+
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
 pub async fn run_cli(
     program: &Path,
@@ -704,7 +717,13 @@ pub async fn run_cli(
         .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
+    // 呼叫端 future 被 drop（中止在途呼叫時 select 輸掉的分支）時，tokio 順手殺子程序。
+    command.kill_on_drop(true);
     let mut child = command.spawn()?;
+    if let Some(pid) = child.id() {
+        crate::inflight::register_child(pid);
+    }
+    let _pid_guard = ChildPidGuard(child.id());
 
     let mut stdin = child.stdin.take().expect("stdin piped");
     stdin.write_all(stdin_data.as_bytes()).await?;
@@ -1150,6 +1169,9 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
+        // run_cli 現在會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children
+        // 的測試（inflight.rs）會不分青紅皂白殺表上全部 pid，故用同一把鎖互斥執行。
+        let _serial = crate::inflight::lock_real_process_tests();
         let dir = std::env::temp_dir().join(format!("tt-fake-cli-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let working_dir = dir.join("workspace");
