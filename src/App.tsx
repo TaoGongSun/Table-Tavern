@@ -4,7 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t } from "./i18n";
+import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t, type MsgKey } from "./i18n";
 import { renderStoryMarkdown } from "./story-markdown";
 import { buildShellDocument, CardInterface, findShell } from "./interface-card";
 import { decideImportRoute } from "./import-routing";
@@ -16,6 +16,7 @@ import {
   parseRefactorOutcome,
   refactorSummaryCounts,
   REFACTOR_IMPORT_INVALID,
+  restoreDropped,
   setPlayerIndex,
   sourceEntryTitle,
   sourceEntryTitles,
@@ -1767,6 +1768,19 @@ function refactorCardFileName(tableName: string): string {
   return `${safe ? `${safe}-` : ""}${t("refactorExportFileName")}.json`;
 }
 
+// 淘汰理由 rule／稽核 kind 都是後端固定枚舉，本地寫死對照 i18n 鍵；查不到就退第一種，不讓畫面空白。
+const REFACTOR_DROPPED_RULE_KEYS: Record<number, MsgKey> = {
+  1: "refactorDroppedRule1",
+  2: "refactorDroppedRule2",
+  3: "refactorDroppedRule3",
+};
+const REFACTOR_AUDIT_KIND_KEYS: Record<string, MsgKey> = {
+  coverage: "refactorAuditKindCoverage",
+  mechanism: "refactorAuditKindMechanism",
+  split: "refactorAuditKindSplit",
+  drop_rule: "refactorAuditKindDropRule",
+};
+
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 function WorldEditor({
   world,
@@ -2334,6 +2348,14 @@ function WorldEditor({
     setRefactorSelection(null);
     setRefactorOrigin(null);
     setRefactorDetail(false);
+  }
+
+  // 已淘汰清單的「放回」：零後端行為，走既有 entries 勾選路徑——套用時跟其他世界書條目一視同仁。
+  function restoreDroppedItem(index: number) {
+    if (!refactorOutcome || !refactorSelection) return;
+    const result = restoreDropped(refactorOutcome, refactorSelection, index);
+    setRefactorOutcome(result.outcome);
+    setRefactorSelection(result.selection);
   }
 
   function refactorApplyMessage(summary: RefactorApplySummary) {
@@ -2917,6 +2939,68 @@ function WorldEditor({
                           />
                           {sourceEntryTitle(entries, mechanism.source_uid)}
                         </label>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {/* 已淘汰：判官整條／半條丟棄的內容快照，預設收起——玩家想確認才展開，救回來就是
+                    普通世界書條目，走下面既有的套用路徑，沒有新的後端行為。 */}
+                {refactorOutcome.dropped.length > 0 && (
+                  <details className="mechanism-ledger">
+                    <summary>{t("refactorDroppedSection", { n: refactorOutcome.dropped.length })}</summary>
+                    <div className="mechanism-ledger-list">
+                      {refactorOutcome.dropped.map((item, index) => (
+                        <div className="mechanism-ledger-row" key={index}>
+                          <details>
+                            <summary>
+                              {item.title}{" "}
+                              <span className="worldbook-badge">
+                                {t(REFACTOR_DROPPED_RULE_KEYS[item.rule] ?? "refactorDroppedRule1")}
+                              </span>
+                            </summary>
+                            <div style={{ whiteSpace: "pre-wrap" }}>{item.content}</div>
+                          </details>
+                          <button type="button" onClick={() => restoreDroppedItem(index)}>
+                            {t("refactorDroppedRestore")}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {/* 未接管機制：純資訊，原文已經照搬進 GM 規則條目——不會遺失，只是還沒有系統畫面。 */}
+                {refactorOutcome.unabsorbed.length > 0 && (
+                  <section>
+                    <h3>{t("refactorUnabsorbedSection", { n: refactorOutcome.unabsorbed.length })}</h3>
+                    <p className="mechanism-ledger-detail">{t("refactorUnabsorbedHint")}</p>
+                    <div className="mechanism-ledger-list">
+                      {refactorOutcome.unabsorbed.map((item, index) => (
+                        <div className="mechanism-ledger-row" key={index}>
+                          <div className="mechanism-ledger-summary">
+                            <strong>{item.title}</strong>
+                            <span className="mechanism-ledger-detail">{item.note}</span>
+                            <span className="refactor-source">{item.span || item.uid}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {/* 稽核：機械檢查抓到的紅字，純資訊不影響套用——detail 是後端已經寫好的繁中一句。 */}
+                {refactorOutcome.audit.length > 0 && (
+                  <section>
+                    <h3>{t("refactorAuditSection")}</h3>
+                    <div className="mechanism-ledger-list">
+                      {refactorOutcome.audit.map((item, index) => (
+                        <div className="mechanism-ledger-row" key={index}>
+                          <div className="mechanism-ledger-summary">
+                            <span className="worldbook-badge">
+                              {t(REFACTOR_AUDIT_KIND_KEYS[item.kind] ?? "refactorAuditKindCoverage")}
+                            </span>
+                            <span className="refactor-source">{item.span || item.uid}</span>
+                            <span className="usage-bad">{item.detail}</span>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </section>
