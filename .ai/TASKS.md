@@ -37,6 +37,7 @@
 - [refactor-stream-progress](tasks/refactor-stream-progress.md) — 重構進度小框：modal 固定 3–4 行 tail 播放 AI 字流 — 下一步：2026-08-10 拍板（玩家只需知道 AI 在工作，不求可讀；不做累積清單與聊天室化）；等使用者通知後開工、實作叫代理
 - [refactor-review-detail](tasks/refactor-review-detail.md) — 人審面板展開詳細：角色／介面／機制行可展開看內容 — 下一步：2026-08-10 B1 實測發現只有標題無內容、玩家無從判斷要不要勾，已拍板要做；等使用者通知與 refactor-stream-progress 同批開工（含出處灰字黏名字的樣式修正、匯出檔名前置桌名記在 [refactor-outcome-export](tasks/refactor-outcome-export.md) 待辦）
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：2026-08-10 立案；重構面板只在 AI 認人時問一次，之後改主意需要這條路，兩項待拍板（已有玩家卡時換不換、能不能反向取消）
+- [character-presence](tasks/character-presence.md) — 角色在場/退場狀態管理：自動上下場＋在場過濾 — 下一步：2026-08-11 立案；地基見 CARD-REFACTOR-SPEC 包 4，開工前逐點重拍板，排序在 refactor-dispatch 之後
 
 ## Blocked
 - None.

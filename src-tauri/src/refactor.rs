@@ -120,6 +120,7 @@ pub struct RefactorApplyResult {
 ///   來源條目不動——即使他的資料原本散在好幾條裡，未升格就不觸碰原始條目。
 /// - 勾中的重寫條目直接新增；帶規則／觸發表的機制條目同時併入本地機制。
 /// - 來源條目只在所有引用它的產物都已套用時整條刪除，絕不再停用留墓地。
+/// - 勾中介面時，狀態樹整份重建為新欄位集；同名頂層鍵保留目前遊玩中的整支節點。
 pub fn apply(
     root: &Path,
     world_id: &str,
@@ -305,7 +306,7 @@ pub fn apply(
     let mut interface_applied = false;
     if selection.apply_interface {
         if let Some(interface) = &outcome.interface {
-            merge_state_fields(&mut state.state.tree, &interface.state_fields);
+            rebuild_state_fields(&mut state.state.tree, &mut state.state.jumps, &interface.state_fields);
             state_dirty = true;
             if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
                 data::write_interface_shell(root, world_id, shell)?;
@@ -404,15 +405,18 @@ fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
     }
 }
 
-/// state_fields 併入狀態樹：頂層鍵整支覆寫——AI 產出的介面欄位最小可懂、也最好復原的合併
-/// 語意，undo 端的 diff_mechanism 拿前後快照就能算出要退回的鍵，不用另外設計合併演算法。
-fn merge_state_fields(tree: &mut BTreeMap<String, StateNode>, state_fields: &serde_json::Value) {
+/// state_fields 是物件時整份重建狀態樹：同名頂層鍵保留目前值，其餘舊鍵一律捨棄；非物件產物
+/// 則不動任何狀態，避免壞產物清空整桌。新欄位的 JSON 轉換集中在 json_to_state_node。
+fn rebuild_state_fields(tree: &mut BTreeMap<String, StateNode>, jumps: &mut BTreeMap<String, String>, state_fields: &serde_json::Value) {
     let Some(object) = state_fields.as_object() else {
         return;
     };
-    for (key, value) in object {
-        tree.insert(key.clone(), json_to_state_node(value));
-    }
+    let rebuilt = object.iter().map(|(key, value)| (
+        key.clone(),
+        tree.get(key).cloned().unwrap_or_else(|| json_to_state_node(value)),
+    )).collect();
+    *tree = rebuilt;
+    jumps.retain(|path, _| tree.contains_key(path.split('.').next().unwrap_or_default()));
 }
 
 fn json_to_state_node(value: &serde_json::Value) -> StateNode {
@@ -769,18 +773,31 @@ mod tests {
         assert_eq!(result.summary.deleted_entries, 0);
     }
 
-    /// (d) 介面套用：state_fields 併入狀態樹頂層、來源條目整條刪除 → undo → 都退回去。
+    /// (d) 介面套用重建狀態樹：同名頂層鍵保留進度、舊 schema 殘渣清掉 → undo 後逐鍵回復。
     #[test]
-    fn apply_interface_merges_state_and_deletes_source_then_undo_restores() {
+    fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         let root = TestRoot::new("interface");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
+        let mut before_state = data::read_state(root.path(), &world_id).unwrap();
+        before_state.state.tree = BTreeMap::from([
+            ("沦陷天数".to_owned(), StateNode::Leaf("7".to_owned())),
+            ("淪陷天數".to_owned(), StateNode::Leaf("42".to_owned())),
+            ("舊欄位".to_owned(), StateNode::Leaf("殘渣".to_owned())),
+        ]);
+        before_state.state.jumps = BTreeMap::from([
+            ("沦陷天数".to_owned(), "+1".to_owned()),
+            ("淪陷天數".to_owned(), "+1".to_owned()),
+        ]);
+        let before_tree = before_state.state.tree.clone();
+        data::write_state(root.path(), &world_id, &before_state).unwrap();
 
         let outcome = RefactorOutcome {
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!({
-                    "World": { "Time": "清晨", "Weather": "晴" }
+                    "淪陷天數": "0",
+                    "世界": { "時間": "清晨" }
                 }),
                 source_uids: vec![source_uid.to_string()],
                 raw: "描述如何顯示狀態欄的散文".to_owned(),
@@ -805,12 +822,13 @@ mod tests {
 
         let state = data::read_state(root.path(), &world_id).unwrap();
         assert_eq!(
-            state.state.tree.get("World"),
-            Some(&StateNode::Branch(BTreeMap::from([
-                ("Time".to_owned(), StateNode::Leaf("清晨".to_owned())),
-                ("Weather".to_owned(), StateNode::Leaf("晴".to_owned())),
-            ])))
+            state.state.tree,
+            BTreeMap::from([
+                ("淪陷天數".to_owned(), StateNode::Leaf("42".to_owned())),
+                ("世界".to_owned(), StateNode::Branch(BTreeMap::from([("時間".to_owned(), StateNode::Leaf("清晨".to_owned()))]))),
+            ])
         );
+        assert_eq!(state.state.jumps, BTreeMap::from([("淪陷天數".to_owned(), "+1".to_owned())]));
         assert!(!data::read_worldbook(root.path(), &world_id)
             .unwrap()
             .iter()
@@ -818,13 +836,46 @@ mod tests {
 
         receipts::undo_last_import(root.path(), &world_id).unwrap();
         let state_after = data::read_state(root.path(), &world_id).unwrap();
-        assert!(state_after.state.tree.get("World").is_none());
+        assert_eq!(state_after.state.tree, before_tree);
         let source_entry_after = data::read_worldbook(root.path(), &world_id)
             .unwrap()
             .into_iter()
             .find(|entry| entry.uid == source_uid)
             .unwrap();
         assert_eq!(source_entry_after.content, "描述如何顯示狀態欄的散文");
+    }
+
+    #[test]
+    fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
+        let root = TestRoot::new("interface-invalid-state-fields");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let mut state = data::read_state(root.path(), &world_id).unwrap();
+        state.state.tree = BTreeMap::from([("既有欄位".to_owned(), StateNode::Leaf("進度".to_owned()))]);
+        let before_tree = state.state.tree.clone();
+        data::write_state(root.path(), &world_id, &state).unwrap();
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!(["壞產物"]),
+                source_uids: Vec::new(),
+                raw: String::new(),
+                shell: None,
+            }),
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
+            player_index: None,
+        };
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+
+        assert_eq!(data::read_state(root.path(), &world_id).unwrap().state.tree, before_tree);
     }
 
     /// 契約相容：AI 展開產物落地成 JSON 沒有 shell 鍵（舊版產物）照樣要能反序列化，shell 落

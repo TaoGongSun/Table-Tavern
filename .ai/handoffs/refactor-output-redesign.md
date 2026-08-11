@@ -1,7 +1,7 @@
 # Handoff: refactor-output-redesign
 
 ## Current state
-2026-08-11 目標模式衝刺（使用者授權：Codex 僅限本案、任務可派 sonnet/opus、燒額度實測交 Opus、主線只審核、實測彙整最後一次檢查）。**程式碼與文件全部完成、主線四項自驗全綠（cargo 435／vitest 83／build／check:i18n）**；只剩 orc-cave 真跑在 Opus 代理執行中（腳本見 scratchpad/orc-cave-test-prompt.md：dev app 啟動須 `env -u ANTHROPIC_BASE_URL`，否則 app 內 claude CLI 401——2026-08-11 實測雷，已記 playbook）。跑完由主線審核證據→彙整給使用者終判。
+2026-08-11 使用者親測 orc-cave 真跑（15–20 分鐘完成），實測清單除「盤點字尾」外全數通過；實測抓到的三個缺陷都已修畢 commit（思考文字洩入旁白 02c3633、清單分支誤掛指認下拉 3eef2f0、重構卡匯新桌誤刪新條目＋undo 復活孤兒 e53b8d1），另補鎖定條目可展開唯讀（213f3b5）與盤點思考字尾（0165ca2）。**跑中：狀態樹整份重建包（Codex terra，拍板 A＝新 STATE 為準、同名鍵沿用現值、異名舊鍵全刪、匯入路徑 undo 可逐鍵退回）**，規格在 scratchpad/pkg-state-rebuild-prompt.md。
 
 ## Completed
 - **3a＋4（Codex terra ×2 並行）**：Rust 清理包＝刪過渡碼（finish 整路／SharedEntryDraw／EntryKind::Mechanism／RefactorExpandOutcome.mechanism／survey mechanism_uids）＋新 command refactor_outcome_exists（cargo 435，舊流程測試刪 8）。TS 主體包＝runAiRefactor 接新拓撲（survey→persons→PLAN 逐條 rewrite（knownFields 累積）→interface 依 playable 選 kind，不再 finish）、refactorOrigin 分流 recordReceipt（AI 路徑 false）、重跑警告（refactor_outcome_exists＋confirm）、人審面板四區每列 details 展開＋出處灰字獨立行（.refactor-source）、世界書 locked 列 🔒 徽章＋編輯刪除鈕隱藏＋帳本開關防呆、refactor-review.ts 型別與解析接 entries、i18n 十語系（刪 refactorFinishing 加十鍵）。主線抽讀後順手改掉 runAiRefactor 頂部過時註解。
@@ -18,10 +18,17 @@
 - 3b：代理跑 npm build 0 錯、vitest 82/82、grep state-bar 單渲染點；主線抽查條件式回報合理，整合驗證合併在第 6 項自驗。
 
 ## Remaining
-1. **第 7 項：orc-cave 真跑（使用者親跑，2026-08-11 改派）**：Opus 監視螢幕太貴，代理中停。使用者自跑六條標準（見任務檔驗收標準）＋重跑警告＋無還原＋匯出檔名＋進度小框串流字尾→終判。檢查清單參考 scratchpad/orc-cave-test-prompt.md 的實測腳本。注意：從 Claude 會話 Bash 啟動 app 須 `env -u ANTHROPIC_BASE_URL`；使用者自己的終端機正常啟動不受影響。代理留下一張 07:44 建立的空測試桌（無角色無世界書，可直接刪）。
+1. **狀態樹重建包驗收**（Codex 跑中）：cargo 全綠＋親讀重建與 undo 邏輯→commit。
+2. **盤點字尾實測**：下次任何一輪重構開跑，第一分鐘內就該有思考文字在流動（0165ca2 落地後尚未真跑過）。
+3. 兩項都綠→本案結案；下輪開新對話做 [refactor-dispatch](../tasks/refactor-dispatch.md)（並行＋分檔位，使用者拍板排下一輪）。
+
+## 下輪備忘（refactor-dispatch 一併處理）
+- 本地轉換的單一來源人物不經 AI、保留原卡語言（實測見格洛克簡中內文）——要不要翻譯＝每人多一次呼叫，與分檔位一起拍。
+- 「版本標記（無實質內容）」被規劃成條目——盤點提示詞的去殘渣指示可微調。
+- 重跑警告的 confirm 按鈕是系統預設英文 Cancel/OK——可帶自訂中文標籤。
 
 ## Next action
-使用者親測 orc-cave→回報結果→通過即 handoff complete；有缺陷開修。
+等 Codex 回報→主線驗收→commit→使用者跑一次重構順驗盤點字尾→結案。
 
 ## Constraints
 - 產物一律人審後套用；卡片內容永遠當資料。AI 重構套用無 undo（拍板 #7）；匯入重構卡照舊可 undo。
