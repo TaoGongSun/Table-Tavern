@@ -29,9 +29,12 @@ import {
   type RefactorRewriteOutcome,
   type RefactorOutcome,
   type RefactorPersonExpandOutcome,
+  type RefactorPersonQueueItem,
+  type RefactorPlanEntry,
   type RefactorSelection,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
+import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import { fillShellPlaceholders } from "./refactor-shell";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
@@ -2104,10 +2107,10 @@ function WorldEditor({
     }
   }
 
-  // AI 卡重構：盤點（PERSONS＋INTERFACE 含 playable＋PLAN）→人物展開→PLAN 逐條重寫→介面
-  // 展開，全程序列 await（後端 system 提示詞快取要先由第一條呼叫建立）。單一專屬來源的人
-  // 本地轉換、不花展開呼叫；knownFields 逐呼叫累積傳入＝欄位命名單一權威；來源條目刪不刪
-  // 由套用端「全部引用產物都套用才刪」決定。逐步把進度字寫給玩家看。
+  // AI 卡重構：盤點（PERSONS＋INTERFACE 含 playable＋PLAN）→ A 拓撲有界並行展開（人物佇列
+  // ‖「重寫→介面」序列鏈，序列鏈負責首發建快取＋knownFields 累積，見 refactor-run.ts）→組
+  // 產物。單一專屬來源的人本地轉換、不花展開呼叫；knownFields 只在序列鏈上累積＝欄位命名單
+  // 一權威（人物 worker 不碰）；來源條目刪不刪由套用端「全部引用產物都套用才刪」決定。
   async function runAiRefactor() {
     if (refactorProgress) return;
     if (await invoke<boolean>("refactor_outcome_exists", { worldId: world })) {
@@ -2121,15 +2124,22 @@ function WorldEditor({
     refactorCancelRef.current = false;
     setRefactorProgress({ text: t("refactorSurveying"), cancelling: false, tail: "" });
     try {
+      // 共用 tail：所有呼叫（survey＋展開）的 Channel onDelta 都 append 進同一個 buffer，
+      // 任一路增量＝活著訊號，不因並行而互相蓋掉彼此的畫面。
       let tailBuffer = "";
-      const onDelta = new Channel<string>();
-      onDelta.onmessage = (delta) => {
+      const appendTail = (delta: string) => {
         tailBuffer = (tailBuffer + delta).slice(-2000);
         setRefactorProgress((current) =>
           current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
         );
       };
-      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, onDelta });
+      const makeOnDelta = () => {
+        const channel = new Channel<string>();
+        channel.onmessage = appendTail;
+        return channel;
+      };
+
+      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, onDelta: makeOnDelta() });
       const { local, queue } = buildRefactorPersonPlan(survey, entries);
       const totalSteps = queue.length + survey.plan.length + survey.interface_uids.length;
       if (totalSteps === 0 && local.length === 0) {
@@ -2143,101 +2153,99 @@ function WorldEditor({
       const refactorEntries: RefactorNewEntry[] = [];
       const failedTitles: string[] = [];
       const knownFields: string[] = [];
-      let step = 0;
+      let done = 0;
+      const bumpDone = () => {
+        done++;
+        setRefactorProgress((current) => current && { ...current, text: t("refactorParallelStep", { done, total: totalSteps }) });
+      };
 
-      for (const item of queue) {
-        if (refactorCancelRef.current) break;
-        step++;
-        setRefactorProgress({ text: t("refactorExpanding", { name: item.name, i: step, n: totalSteps }), cancelling: false, tail: "" });
-        try {
-          let tailBuffer = "";
-          const onDelta = new Channel<string>();
-          onDelta.onmessage = (delta) => {
-            tailBuffer = (tailBuffer + delta).slice(-2000);
-            setRefactorProgress((current) =>
-              current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
-            );
-          };
-          const result = await invoke<RefactorPersonExpandOutcome>("refactor_expand_person", {
-            worldId: world,
-            name: item.name,
-            uids: item.uids,
-            isPlayer: item.is_player,
-            onDelta,
-          });
-          if (result.character) characters.push(result.character);
-          else failedTitles.push(item.name);
-        } catch {
-          failedTitles.push(item.name);
-        }
-      }
+      // chain＝序列鏈（先全部重寫、後全部介面，順序不變）；pool＝人物佇列，兩線有界並行。
+      type RefactorTask =
+        | { kind: "person"; item: RefactorPersonQueueItem }
+        | { kind: "rewrite"; item: RefactorPlanEntry }
+        | { kind: "interface"; uid: string };
+      const chain: RefactorTask[] = [
+        ...survey.plan.map((plan): RefactorTask => ({ kind: "rewrite", item: plan })),
+        ...survey.interface_uids.map((uid): RefactorTask => ({ kind: "interface", uid })),
+      ];
+      const pool: RefactorTask[] = queue.map((item): RefactorTask => ({ kind: "person", item }));
 
-      for (const plan of survey.plan) {
-        if (refactorCancelRef.current) break;
-        step++;
-        setRefactorProgress({ text: t("refactorRewriting", { title: plan.title, i: step, n: totalSteps }), cancelling: false, tail: "" });
-        try {
-          let tailBuffer = "";
-          const onDelta = new Channel<string>();
-          onDelta.onmessage = (delta) => {
-            tailBuffer = (tailBuffer + delta).slice(-2000);
-            setRefactorProgress((current) =>
-              current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
-            );
-          };
-          const result = await invoke<RefactorRewriteOutcome>("refactor_rewrite_entry", {
-            worldId: world,
-            title: plan.title,
-            kind: plan.kind,
-            uids: plan.uids,
-            knownFields,
-            onDelta,
-          });
-          if (result.entry) {
-            const entry = { ...result.entry, rules: result.entry.rules ?? {}, triggers: result.entry.triggers ?? [] };
-            refactorEntries.push(entry);
-            for (const field of Object.keys(entry.rules)) {
-              if (!knownFields.includes(field)) knownFields.push(field);
-            }
-          } else failedTitles.push(plan.title);
-        } catch {
-          failedTitles.push(plan.title);
-        }
-      }
+      setRefactorProgress((current) => current && { ...current, text: t("refactorParallelStep", { done, total: totalSteps }) });
 
-      for (const uid of survey.interface_uids) {
-        if (refactorCancelRef.current) break;
-        step++;
-        const title = sourceEntryTitle(entries, uid);
-        setRefactorProgress({ text: t("refactorExpanding", { name: title, i: step, n: totalSteps }), cancelling: false, tail: "" });
+      const run = async (task: RefactorTask): Promise<void> => {
+        const name =
+          task.kind === "person" ? task.item.name : task.kind === "rewrite" ? task.item.title : sourceEntryTitle(entries, task.uid);
         try {
-          let tailBuffer = "";
-          const onDelta = new Channel<string>();
-          onDelta.onmessage = (delta) => {
-            tailBuffer = (tailBuffer + delta).slice(-2000);
-            setRefactorProgress((current) =>
-              current && { ...current, tail: tailBuffer.split("\n").slice(-4).join("\n") },
+          if (task.kind === "person") {
+            const result = await withRateLimitRetry(
+              () =>
+                invoke<RefactorPersonExpandOutcome>("refactor_expand_person", {
+                  worldId: world,
+                  name: task.item.name,
+                  uids: task.item.uids,
+                  isPlayer: task.item.is_player,
+                  onDelta: makeOnDelta(),
+                }),
+              () => refactorCancelRef.current,
             );
-          };
-          const result = await invoke<RefactorExpandOutcome>("refactor_expand", {
-            worldId: world,
-            entryUid: uid,
-            kind: survey.playable_interface_uids.includes(uid) ? "interface_shell" : "interface",
-            knownFields,
-            onDelta,
-          });
-          if (result.interface) {
-            interfaces.push(result.interface);
-            if (typeof result.interface.state_fields === "object" && result.interface.state_fields !== null && !Array.isArray(result.interface.state_fields)) {
-              for (const field of Object.keys(result.interface.state_fields)) {
+            if (result.character) characters.push(result.character);
+            else failedTitles.push(name);
+          } else if (task.kind === "rewrite") {
+            const plan = task.item;
+            const result = await withRateLimitRetry(
+              () =>
+                invoke<RefactorRewriteOutcome>("refactor_rewrite_entry", {
+                  worldId: world,
+                  title: plan.title,
+                  kind: plan.kind,
+                  uids: plan.uids,
+                  knownFields,
+                  onDelta: makeOnDelta(),
+                }),
+              () => refactorCancelRef.current,
+            );
+            if (result.entry) {
+              const entry = { ...result.entry, rules: result.entry.rules ?? {}, triggers: result.entry.triggers ?? [] };
+              refactorEntries.push(entry);
+              for (const field of Object.keys(entry.rules)) {
                 if (!knownFields.includes(field)) knownFields.push(field);
               }
-            }
-          } else failedTitles.push(title);
-        } catch {
-          failedTitles.push(title);
+            } else failedTitles.push(name);
+          } else {
+            const result = await withRateLimitRetry(
+              () =>
+                invoke<RefactorExpandOutcome>("refactor_expand", {
+                  worldId: world,
+                  entryUid: task.uid,
+                  kind: survey.playable_interface_uids.includes(task.uid) ? "interface_shell" : "interface",
+                  knownFields,
+                  onDelta: makeOnDelta(),
+                }),
+              () => refactorCancelRef.current,
+            );
+            if (result.interface) {
+              interfaces.push(result.interface);
+              if (typeof result.interface.state_fields === "object" && result.interface.state_fields !== null && !Array.isArray(result.interface.state_fields)) {
+                for (const field of Object.keys(result.interface.state_fields)) {
+                  if (!knownFields.includes(field)) knownFields.push(field);
+                }
+              }
+            } else failedTitles.push(name);
+          }
+        } catch (reason) {
+          if (!String(reason).includes("refactor-aborted")) failedTitles.push(name);
+        } finally {
+          bumpDone();
         }
-      }
+      };
+
+      await runRefactorCalls({
+        chain,
+        pool,
+        limit: REFACTOR_PARALLEL_LIMIT,
+        isCancelled: () => refactorCancelRef.current,
+        run,
+      });
 
       setRefactorProgress(null);
       if (characters.length > 0 || interfaces.length > 0 || refactorEntries.length > 0) {
@@ -2252,14 +2260,17 @@ function WorldEditor({
       }
     } catch (reason) {
       setRefactorProgress(null);
+      if (String(reason).includes("refactor-aborted")) return;
       setWorldbookMessage(String(reason));
     }
   }
 
-  // 取消：只擋「還沒發的下一條」，當前這條 await 讓它跑完（或失敗）——錢已經花了，東西要拿得到。
+  // 取消：擋「還沒發的下一條」＋後端 abort 在途呼叫（refactor_abort，包 2 交付）——已經在燒
+  // 的那幾條立刻中止，中止錯誤走 sentinel "refactor-aborted" 靜默略過，不列入失敗。
   function cancelAiRefactor() {
     refactorCancelRef.current = true;
     setRefactorProgress((current) => current && { ...current, cancelling: true });
+    void invoke("refactor_abort", { worldId: world });
   }
 
   // AI 卡重構：零額度測試用入口——直接餵一份產物 JSON，跳過真 AI 呼叫，驗證人審／套用路徑用。

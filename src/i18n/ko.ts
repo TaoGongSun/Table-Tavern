@@ -230,6 +230,7 @@ export const ko: Record<MsgKey, string> = {
   refactorOutcomeJson: "재구성 카드 JSON",
   refactorExportFileName: "재구성 카드",
   refactorSurveying: "카드 확인 중…",
+  refactorParallelStep: "완료 {done}/{total}",
   refactorExpanding: "“{name}” 정리 중 {i}/{n}",
   refactorRerunWarnBody: "이 테이블에는 이미 재구성 카드가 있습니다. 다시 재구성하면 할당량을 쓰고 현재 결과를 덮어씁니다.",
   refactorRewriting: "“{title}” 다시 작성 중 {i}/{n}",

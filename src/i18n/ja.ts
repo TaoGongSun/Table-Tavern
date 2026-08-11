@@ -230,6 +230,7 @@ export const ja: Record<MsgKey, string> = {
   refactorOutcomeJson: "再構成カードのJSON",
   refactorExportFileName: "再構成カード",
   refactorSurveying: "カードを確認中…",
+  refactorParallelStep: "完了 {done}/{total}",
   refactorExpanding: "「{name}」を整理中 {i}/{n}",
   refactorRerunWarnBody: "この卓にはすでに再構成カードがあります。もう一度実行すると利用枠を消費し、現在の結果を上書きします。",
   refactorRewriting: "「{title}」を書き直し中 {i}/{n}",

@@ -230,6 +230,7 @@ export const ru: Record<MsgKey, string> = {
   refactorOutcomeJson: "JSON карты разбора",
   refactorExportFileName: "карта разбора",
   refactorSurveying: "Изучаем карту…",
+  refactorParallelStep: "Готово {done}/{total}",
   refactorExpanding: "Разбор «{name}» {i}/{n}",
   refactorRerunWarnBody: "У этого стола уже есть карта разбора. Повторный разбор потратит квоту и перезапишет текущий результат.",
   refactorRewriting: "Переписываем «{title}» {i}/{n}",

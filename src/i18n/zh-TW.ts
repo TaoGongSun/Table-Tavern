@@ -240,6 +240,7 @@ export const zh = {
   refactorOutcomeJson: "重構卡 JSON",
   refactorExportFileName: "重構卡",
   refactorSurveying: "盤點中…",
+  refactorParallelStep: "整理中 完成 {done}/{total}",
   refactorExpanding: "整理『{name}』 {i}/{n}",
   refactorRerunWarnBody: "這桌已經有一張重構卡。再跑一次會重花額度，並覆蓋現有結果。",
   refactorRewriting: "重寫『{title}』 {i}/{n}",

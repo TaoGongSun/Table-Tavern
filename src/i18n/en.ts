@@ -246,6 +246,7 @@ export const en: Record<MsgKey, string> = {
   refactorOutcomeJson: "Refactor card JSON",
   refactorExportFileName: "refactor-card",
   refactorSurveying: "Surveying the card…",
+  refactorParallelStep: "Done {done}/{total}",
   refactorExpanding: "Sorting “{name}” {i}/{n}",
   refactorRerunWarnBody: "This table already has a refactor card. Refactoring again will spend quota and overwrite the current result.",
   refactorRewriting: "Rewriting “{title}” {i}/{n}",

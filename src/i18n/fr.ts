@@ -230,6 +230,7 @@ export const fr: Record<MsgKey, string> = {
   refactorOutcomeJson: "JSON de la carte réorganisée",
   refactorExportFileName: "carte réorganisée",
   refactorSurveying: "Analyse de la carte…",
+  refactorParallelStep: "Terminé {done}/{total}",
   refactorExpanding: "Tri de « {name} » {i}/{n}",
   refactorRerunWarnBody: "Cette table possède déjà une carte de réorganisation. Relancer la réorganisation consommera du quota et remplacera le résultat actuel.",
   refactorRewriting: "Réécriture de « {title} » {i}/{n}",

@@ -230,6 +230,7 @@ export const ptBR: Record<MsgKey, string> = {
   refactorOutcomeJson: "JSON do cartão reorganizado",
   refactorExportFileName: "cartão reorganizado",
   refactorSurveying: "Analisando a carta…",
+  refactorParallelStep: "Concluído {done}/{total}",
   refactorExpanding: "Organizando “{name}” {i}/{n}",
   refactorRerunWarnBody: "Esta mesa já tem um cartão de reorganização. Reorganizar novamente gastará a cota e substituirá o resultado atual.",
   refactorRewriting: "Reescrevendo “{title}” {i}/{n}",
