@@ -115,7 +115,7 @@ pub fn assemble_local(
     })
 }
 
-fn build_meta(entry: &WorldbookEntry) -> RefactorEntryMeta {
+pub(crate) fn build_meta(entry: &WorldbookEntry) -> RefactorEntryMeta {
     RefactorEntryMeta {
         keys: entry.keys.clone(),
         constant: entry.constant,
@@ -157,7 +157,7 @@ fn parse_span_ref(text: &str) -> Option<(u64, usize)> {
 
 /// 解析段落引用並取得對應的來源條目與段落區間；uid 不存在、段號不合法或越界都回 None——
 /// 小抄合約：「該路由無效視同未路由」。
-fn resolve_span<'a>(
+pub(crate) fn resolve_span<'a>(
     by_uid: &BTreeMap<u64, &'a WorldbookEntry>,
     span_ref: &str,
 ) -> Option<(&'a WorldbookEntry, EntrySpan)> {

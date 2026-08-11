@@ -706,34 +706,44 @@ async fn refactor_expand_person(
     Ok(refactor_ai::parse_person_expand(&raw, &name, &uids, is_player))
 }
 
-/// AI 卡重構讀卡（條目重寫階段）：照盤點 PLAN 一條新條目一次呼叫，帶上全部來源條目全文，
-/// 重寫成乾淨敘事（setting）或「可讀機制說明＋本地可執行 RULES/TRIGGERS」（mechanism）。
-/// known_fields＝前面呼叫已定下的狀態欄位名，由前端逐次累積傳入（欄位命名單一權威）。
+/// `expand_span_placeholders` 的查表：接 `refactor_assemble::resolve_span` 找段落原文（trim
+/// 過）；找不到（uid／段號無效）就回 None，讓佔位符原樣保留。absorb／split_group 共用。
+fn span_lookup<'a>(
+    by_uid: &'a std::collections::BTreeMap<u64, &'a data::WorldbookEntry>,
+) -> impl Fn(&str) -> Option<String> + 'a {
+    move |span_ref: &str| {
+        refactor_assemble::resolve_span(by_uid, span_ref)
+            .map(|(entry, span)| entry.content[span.start..span.end].trim().to_owned())
+    }
+}
+
+/// AI 卡重構讀卡（接管階段）：ENTRIES 判 absorb 的條目一條一次呼叫。本文由 App 原文照搬＋
+/// 鎖定，AI 只補可本地執行的 RULES／TRIGGERS——輸出天生短，取代舊「條目重寫」機制分支。
+/// 觸發敘事裡的 `{{span:uid#sN}}` 指位在這裡換回原文全文；解析全空（抽不出規則）也照樣回
+/// entry，本文照搬仍然成立，套用端看 rules／triggers 是否非空決定要不要鎖。
 #[tauri::command]
-async fn refactor_rewrite_entry(
+async fn refactor_absorb_entry(
     app: tauri::AppHandle,
     world_id: String,
-    title: String,
-    kind: String,
-    uids: Vec<String>,
+    entry_uid: String,
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
-    let plan_kind = refactor_ai::PlanKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
-    let mut sources = Vec::with_capacity(uids.len());
-    for uid in &uids {
-        let text =
-            refactor_ai::entry_full_text(&root, &world_id, uid).map_err(|error| error.to_string())?;
-        sources.push((uid.clone(), text));
-    }
+    let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
+    let source = worldbook
+        .iter()
+        .find(|entry| entry.uid.to_string() == entry_uid)
+        .ok_or_else(|| format!("找不到 uid={entry_uid} 的世界書條目"))?;
+    let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
+        .map_err(|error| error.to_string())?;
     let known_fields = known_fields.unwrap_or_default();
     let messages =
-        refactor_ai::rewrite_messages(&context, &title, plan_kind, &sources, &known_fields, &lang);
+        refactor_ai::absorb_messages(&context, &entry_uid, &entry_text, &known_fields, &lang);
     let (_guard, mut cancel) = inflight::register(&world_id);
     let raw = tokio::select! {
         biased;
@@ -754,7 +764,171 @@ async fn refactor_rewrite_entry(
             },
         ) => result?,
     };
-    Ok(refactor_ai::parse_rewrite(&raw, &title, plan_kind, &uids))
+    let outcome = refactor_ai::parse_absorb(&raw);
+    let by_uid: std::collections::BTreeMap<u64, &data::WorldbookEntry> =
+        worldbook.iter().map(|entry| (entry.uid, entry)).collect();
+    let lookup = span_lookup(&by_uid);
+    let triggers = outcome
+        .triggers
+        .into_iter()
+        .map(|mut trigger| {
+            trigger.preamble = refactor_ai::expand_span_placeholders(&trigger.preamble, &lookup);
+            for case in &mut trigger.cases {
+                case.text = refactor_ai::expand_span_placeholders(&case.text, &lookup);
+            }
+            trigger
+        })
+        .collect();
+    Ok(refactor_ai::RefactorRewriteOutcome {
+        entry: Some(refactor_ai::RefactorNewEntry {
+            title: source.title.clone(),
+            kind: "mechanism".to_owned(),
+            content: source.content.clone(),
+            source_uids: vec![entry_uid.clone()],
+            rules: outcome.rules,
+            triggers,
+            meta: Some(refactor_assemble::build_meta(source)),
+        }),
+        raw: outcome.raw,
+    })
+}
+
+/// AI 卡重構讀卡（合組階段）：SPLITS 標 group 的 span 們合組成一條新條目——一組一次呼叫，拆出
+/// 屬於這個主題的資訊、合併改寫（小抄合約 v1 GROUPS 區塊）。CONTENT 裡的 `{{span:uid#sN}}`
+/// 指位（大組保險）在這裡換回原文全文。
+#[tauri::command]
+async fn refactor_split_group(
+    app: tauri::AppHandle,
+    world_id: String,
+    group_id: String,
+    title: String,
+    kind: String,
+    spans: Vec<String>,
+    known_fields: Option<Vec<String>>,
+    on_delta: tauri::ipc::Channel<String>,
+) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
+    let group_kind = refactor_ai::GroupKind::parse(&kind)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
+    let by_uid: std::collections::BTreeMap<u64, &data::WorldbookEntry> =
+        worldbook.iter().map(|entry| (entry.uid, entry)).collect();
+    let mut materials = Vec::with_capacity(spans.len());
+    let mut source_uids: Vec<String> = Vec::new();
+    for span_ref in &spans {
+        let (entry, span) = refactor_assemble::resolve_span(&by_uid, span_ref)
+            .ok_or_else(|| format!("合組 {group_id}（{title}）找不到段落引用：{span_ref}"))?;
+        materials.push((
+            span_ref.clone(),
+            entry.content[span.start..span.end].trim().to_owned(),
+        ));
+        let uid = entry.uid.to_string();
+        if !source_uids.contains(&uid) {
+            source_uids.push(uid);
+        }
+    }
+    let known_fields = known_fields.unwrap_or_default();
+    let messages = refactor_ai::group_messages(
+        &context,
+        &title,
+        group_kind,
+        &materials,
+        &known_fields,
+        &lang,
+    );
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::refactor_expand_tier(&config, &chat_transport(&config)),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
+    let mut outcome = refactor_ai::parse_group(&raw, &title, group_kind, &source_uids);
+    if let Some(entry) = outcome.entry.as_mut() {
+        let lookup = span_lookup(&by_uid);
+        entry.content = refactor_ai::expand_span_placeholders(&entry.content, &lookup);
+    }
+    Ok(outcome)
+}
+
+/// AI 卡重構讀卡（展開階段，statusbar 段）：SPLITS route=statusbar 的段落材料＝該條全部
+/// statusbar 段原文串接，走既有 interface 型呼叫（只抽 STATE、永不產殼——這些段落本來就只是
+/// 介面格式，不是完整可玩介面）。spans 內每個引用共享同一個來源 uid（route=statusbar 不跨
+/// 條目），entry_uid 只用來標記結果的 source_uids。
+#[tauri::command]
+async fn refactor_expand_spans(
+    app: tauri::AppHandle,
+    world_id: String,
+    entry_uid: String,
+    spans: Vec<String>,
+    known_fields: Option<Vec<String>>,
+    on_delta: tauri::ipc::Channel<String>,
+) -> Result<refactor_ai::RefactorExpandOutcome, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
+    let by_uid: std::collections::BTreeMap<u64, &data::WorldbookEntry> =
+        worldbook.iter().map(|entry| (entry.uid, entry)).collect();
+    let mut parts = Vec::with_capacity(spans.len());
+    for span_ref in &spans {
+        let (entry, span) = refactor_assemble::resolve_span(&by_uid, span_ref)
+            .ok_or_else(|| format!("找不到段落引用：{span_ref}"))?;
+        parts.push(entry.content[span.start..span.end].trim().to_owned());
+    }
+    let material = parts.join("\n\n");
+    let known_fields = known_fields.unwrap_or_default();
+    let messages = refactor_ai::expand_messages(
+        &context,
+        &entry_uid,
+        &material,
+        refactor_ai::EntryKind::Interface,
+        &known_fields,
+        &lang,
+    );
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::refactor_expand_tier(&config, &chat_transport(&config)),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
+    Ok(refactor_ai::parse_expand(
+        refactor_ai::EntryKind::Interface,
+        &entry_uid,
+        &raw,
+    ))
 }
 
 /// AI 卡重構中止：立即殺該桌全部在途呼叫（CLI 殺子程序、API 斷線即停止計費）。
@@ -2650,7 +2824,9 @@ pub fn run() {
             refactor_assemble_local,
             refactor_expand,
             refactor_expand_person,
-            refactor_rewrite_entry,
+            refactor_expand_spans,
+            refactor_absorb_entry,
+            refactor_split_group,
             refactor_abort,
             refactor_interface_shell,
             refactor_export_outcome,
