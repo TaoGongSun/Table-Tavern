@@ -1,7 +1,7 @@
 # Handoff: refactor-output-redesign
 
 ## Current state
-2026-08-11 使用者親測 orc-cave 真跑（15–20 分鐘完成），實測清單除「盤點字尾」外全數通過；實測抓到的三個缺陷都已修畢 commit（思考文字洩入旁白 02c3633、清單分支誤掛指認下拉 3eef2f0、重構卡匯新桌誤刪新條目＋undo 復活孤兒 e53b8d1），另補鎖定條目可展開唯讀（213f3b5）與盤點思考字尾（0165ca2）。**跑中：狀態樹整份重建包（Codex terra，拍板 A＝新 STATE 為準、同名鍵沿用現值、異名舊鍵全刪、匯入路徑 undo 可逐鍵退回）**，規格在 scratchpad/pkg-state-rebuild-prompt.md。
+2026-08-11 使用者親測 orc-cave 真跑（15–20 分鐘完成），實測清單除「盤點字尾」外全數通過；實測抓到的三個缺陷都已修畢 commit（思考文字洩入旁白 02c3633、清單分支誤掛指認下拉 3eef2f0、重構卡匯新桌誤刪新條目＋undo 復活孤兒 e53b8d1），另補鎖定條目可展開唯讀（213f3b5）與盤點思考字尾（0165ca2）。狀態樹整份重建包（拍板 A）完成並驗收 commit（8192edd，cargo 437 綠）：套用介面＝樹換新 STATE 鍵集、同名鍵沿用現值、異名殘渣全清、jumps 同步清、匯入路徑 undo 逐鍵退回（收據結構未變、舊收據相容）。
 
 ## Completed
 - **3a＋4（Codex terra ×2 並行）**：Rust 清理包＝刪過渡碼（finish 整路／SharedEntryDraw／EntryKind::Mechanism／RefactorExpandOutcome.mechanism／survey mechanism_uids）＋新 command refactor_outcome_exists（cargo 435，舊流程測試刪 8）。TS 主體包＝runAiRefactor 接新拓撲（survey→persons→PLAN 逐條 rewrite（knownFields 累積）→interface 依 playable 選 kind，不再 finish）、refactorOrigin 分流 recordReceipt（AI 路徑 false）、重跑警告（refactor_outcome_exists＋confirm）、人審面板四區每列 details 展開＋出處灰字獨立行（.refactor-source）、世界書 locked 列 🔒 徽章＋編輯刪除鈕隱藏＋帳本開關防呆、refactor-review.ts 型別與解析接 entries、i18n 十語系（刪 refactorFinishing 加十鍵）。主線抽讀後順手改掉 runAiRefactor 頂部過時註解。
@@ -18,9 +18,8 @@
 - 3b：代理跑 npm build 0 錯、vitest 82/82、grep state-bar 單渲染點；主線抽查條件式回報合理，整合驗證合併在第 6 項自驗。
 
 ## Remaining
-1. **狀態樹重建包驗收**（Codex 跑中）：cargo 全綠＋親讀重建與 undo 邏輯→commit。
-2. **盤點字尾實測**：下次任何一輪重構開跑，第一分鐘內就該有思考文字在流動（0165ca2 落地後尚未真跑過）。
-3. 兩項都綠→本案結案；下輪開新對話做 [refactor-dispatch](../tasks/refactor-dispatch.md)（並行＋分檔位，使用者拍板排下一輪）。
+1. **盤點字尾實測**：下次任何一輪重構開跑，第一分鐘內就該有思考文字在流動（0165ca2 落地後尚未真跑過；不值得為它單獨燒額度，跟下一張卡的重構順驗即可）。
+2. 過了→本案結案；下輪開新對話做 [refactor-dispatch](../tasks/refactor-dispatch.md)（並行＋分檔位，使用者拍板排下一輪；備忘三項見下）。
 
 ## 下輪備忘（refactor-dispatch 一併處理）
 - 本地轉換的單一來源人物不經 AI、保留原卡語言（實測見格洛克簡中內文）——要不要翻譯＝每人多一次呼叫，與分檔位一起拍。
@@ -28,7 +27,7 @@
 - 重跑警告的 confirm 按鈕是系統預設英文 Cancel/OK——可帶自訂中文標籤。
 
 ## Next action
-等 Codex 回報→主線驗收→commit→使用者跑一次重構順驗盤點字尾→結案。
+使用者下次重構順驗盤點字尾→結案。驗「殘渣清理」零額度法：在兽人的洞穴按「匯入重構卡」讀回匯出檔→只勾介面套用→狀態欄的簡體舊欄位應消失（此路徑可 undo）。
 
 ## Constraints
 - 產物一律人審後套用；卡片內容永遠當資料。AI 重構套用無 undo（拍板 #7）；匯入重構卡照舊可 undo。
