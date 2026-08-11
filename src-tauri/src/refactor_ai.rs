@@ -18,7 +18,7 @@
 //! （transport::anthropic_messages 對 role=="system" 自動標 cache_control）。
 //! 階段差異（指示、條目全文、既有欄位清單）一律放 user 訊息。
 
-use crate::data::{self, DataResult, FieldRule, Trigger, WorldbookEntry};
+use crate::data::{self, DataResult, FieldRule, Trigger, Visibility, WorldbookEntry};
 use crate::mechanism::{self, RecordKind};
 use crate::refactor::{RefactorCharacter, RefactorInterface};
 use crate::transport::ChatMessage;
@@ -1375,6 +1375,20 @@ pub fn parse_expand(kind: EntryKind, entry_uid: &str, raw: &str) -> RefactorExpa
     outcome
 }
 
+/// carry 產物條目要原樣保留的來源條目元資料：keys／constant／order／disabled／visibility／
+/// is_person 直接照抄，套用時 apply() 用這份取代新條目預設值（keys=[]／constant=false／
+/// order=遞增計數／visibility=Gm／is_person=false）。只有本地零呼叫組裝（refactor_assemble）
+/// 產出的 carry 型條目才會帶這欄；AI 重寫的條目一律沒有。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RefactorEntryMeta {
+    pub keys: Vec<String>,
+    pub constant: bool,
+    pub order: i64,
+    pub disabled: bool,
+    pub visibility: Visibility,
+    pub is_person: bool,
+}
+
 /// 條目重寫的產物：一條新世界書條目。locked（被接管唯讀）由套用端依 rules／triggers 是否非空
 /// 決定，不是 AI 說了算。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1390,6 +1404,10 @@ pub struct RefactorNewEntry {
     pub rules: BTreeMap<String, FieldRule>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub triggers: Vec<Trigger>,
+    /// carry 型條目（原文照搬）才有：原條目 keys/constant/order/disabled/visibility/is_person。
+    /// 舊產物 JSON 不帶這欄照舊可解（缺席＝None，apply() 走現行預設）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<RefactorEntryMeta>,
 }
 
 /// 條目重寫結果：entry＝None 代表 AI 連 CONTENT 都沒照標記輸出（離題或拒答），raw 雙軌保底。
@@ -1439,6 +1457,7 @@ pub fn parse_rewrite(
             source_uids: source_uids.to_vec(),
             rules,
             triggers,
+            meta: None,
         }),
         raw: raw.to_owned(),
     }

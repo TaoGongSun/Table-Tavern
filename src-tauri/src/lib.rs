@@ -13,6 +13,7 @@ mod proxy;
 mod receipts;
 mod refactor;
 mod refactor_ai;
+mod refactor_assemble;
 mod session_file;
 mod snapshot_patch;
 mod translate;
@@ -593,6 +594,19 @@ async fn refactor_survey(
         ) => result?,
     };
     Ok(refactor_ai::parse_survey(&raw))
+}
+
+/// AI 卡重構本地組裝（小抄合約 v1）：判官定案後，carry／drop 整條／split 逐段路由／clean
+/// 人物這幾類不必再問 AI，App 本地零呼叫組裝＋四項機械稽核。純本地、無 AI 呼叫、不落檔——
+/// 產物由前端後續彙整進 RefactorOutcome 送 refactor_apply。
+#[tauri::command]
+fn refactor_assemble_local(
+    app: tauri::AppHandle,
+    world_id: String,
+    survey: refactor_ai::RefactorSurveyOutcome,
+) -> Result<refactor_assemble::RefactorLocalAssembly, String> {
+    let root = data_root(&app)?;
+    refactor_assemble::assemble_local(&root, &world_id, &survey).map_err(|error| error.to_string())
 }
 
 /// AI 卡重構讀卡（展開階段，介面）：system 與盤點同一字串（快取命中），逐條展開成
@@ -2633,6 +2647,7 @@ pub fn run() {
             record_import_rename,
             refactor_apply,
             refactor_survey,
+            refactor_assemble_local,
             refactor_expand,
             refactor_expand_person,
             refactor_rewrite_entry,

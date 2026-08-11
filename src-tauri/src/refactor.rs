@@ -69,6 +69,16 @@ pub struct RefactorOutcome {
     /// 才會真的刪（要點 7：基準是優先保留而非刪除）。
     #[serde(default)]
     pub deletable_shared_uids: Vec<String>,
+    /// 本地零呼叫組裝（refactor_assemble::assemble_local）淘汰的整條／半條內容：預設不套用，
+    /// 純粹隨產物保留供玩家展開查看、一鍵放回。apply() 不處理這三欄——落檔與否是前端 UI 的事。
+    #[serde(default)]
+    pub dropped: Vec<crate::refactor_assemble::RefactorDroppedEntry>,
+    /// app 尚無執行機構、原文已照搬進 GM 規則條目的機制清單（資訊性，內容不會遺失）。
+    #[serde(default)]
+    pub unabsorbed: Vec<crate::refactor_assemble::RefactorUnabsorbedItem>,
+    /// 機械稽核紅字：涵蓋漏網／機制守恆／拆組守恆／淘汰稽核，四類之一。
+    #[serde(default)]
+    pub audit: Vec<crate::refactor_assemble::RefactorAuditItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,28 +280,51 @@ pub fn apply(
             continue;
         };
         let locked = entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
+        // carry 型條目帶 meta：keys/constant/order/disabled/visibility/is_person 原樣照抄，
+        // order 直接用 meta 的值、不吃 next_entry_order 遞增（那個號碼留給沒有 meta 的真新條目）；
+        // 沒帶 meta（AI 重寫／本地合組的新條目）→ 現行預設不變。
+        let (keys, constant, order, disabled, visibility, is_person) = match &entry.meta {
+            Some(meta) => (
+                meta.keys.clone(),
+                meta.constant,
+                meta.order,
+                meta.disabled,
+                meta.visibility.clone(),
+                meta.is_person,
+            ),
+            None => (
+                Vec::new(),
+                false,
+                next_entry_order,
+                false,
+                Visibility::Gm,
+                false,
+            ),
+        };
         data::upsert_worldbook_entry(
             root,
             world_id,
             WorldbookEntry {
                 uid: next_entry_uid,
                 title: entry.title.clone(),
-                keys: Vec::new(),
+                keys,
                 content: entry.content.clone(),
-                constant: false,
-                order: next_entry_order,
-                disabled: false,
-                visibility: Visibility::Gm,
-                is_person: false,
+                constant,
+                order,
+                disabled,
+                visibility,
+                is_person,
                 locked,
             },
         )?;
         next_entry_uid = next_entry_uid
             .checked_add(1)
             .ok_or_else(|| data::invalid_data("worldbook uid overflow"))?;
-        next_entry_order = next_entry_order
-            .checked_add(1)
-            .ok_or_else(|| data::invalid_data("worldbook order overflow"))?;
+        if entry.meta.is_none() {
+            next_entry_order = next_entry_order
+                .checked_add(1)
+                .ok_or_else(|| data::invalid_data("worldbook order overflow"))?;
+        }
         new_entries += 1;
         if locked {
             for (path, rule) in &entry.rules {
@@ -554,6 +587,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             player_index: Some(0),
@@ -616,6 +652,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             player_index: Some(0),
@@ -643,6 +682,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0]); // 只勾阿明；小華（index 1）沒勾
 
@@ -678,6 +720,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0, 1]); // 甲、乙
 
@@ -722,6 +767,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: vec![shared_uid.to_string()],
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0]); // 只勾霍玄
 
@@ -744,6 +792,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: vec![shared_uid.to_string()],
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0, 1]);
 
@@ -766,6 +817,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0, 1]);
 
@@ -806,6 +860,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -864,6 +921,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -910,6 +970,7 @@ mod tests {
                     source_uids: vec![source_uid.to_string()],
                     rules: BTreeMap::new(),
                     triggers: Vec::new(),
+                    meta: None,
                 },
                 crate::refactor_ai::RefactorNewEntry {
                     title: "新戰鬥規則".to_owned(),
@@ -921,9 +982,13 @@ mod tests {
                         FieldRule::for_kind(data::FieldKind::Number),
                     )]),
                     triggers: Vec::new(),
+                    meta: None,
                 },
             ],
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -968,6 +1033,7 @@ mod tests {
             source_uids: vec![source_uid.to_string()],
             rules: BTreeMap::new(),
             triggers: Vec::new(),
+            meta: None,
         };
         let outcome = RefactorOutcome {
             characters: Vec::new(),
@@ -975,6 +1041,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: vec![entry("新設定甲"), entry("新設定乙")],
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1028,6 +1097,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1061,6 +1133,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1094,6 +1169,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1141,6 +1219,9 @@ mod tests {
             }],
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1178,6 +1259,9 @@ mod tests {
             }],
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1228,6 +1312,9 @@ mod tests {
             }],
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1268,6 +1355,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0]);
 
@@ -1292,6 +1382,9 @@ mod tests {
             mechanisms: Vec::new(),
             entries: Vec::new(),
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = no_player_selection(vec![0]);
 
@@ -1322,6 +1415,7 @@ mod tests {
                     source_uids: vec!["1".to_owned()],
                     rules: std::collections::BTreeMap::new(),
                     triggers: Vec::new(),
+                    meta: None,
                 },
                 crate::refactor_ai::RefactorNewEntry {
                     title: "天數計時".to_owned(),
@@ -1333,9 +1427,13 @@ mod tests {
                         FieldRule::for_kind(crate::data::FieldKind::Number),
                     )]),
                     triggers: Vec::new(),
+                    meta: None,
                 },
             ],
             deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
         };
         let selection = RefactorSelection {
             character_indices: Vec::new(),
@@ -1357,5 +1455,85 @@ mod tests {
             Vec::<&str>::new(),
             "undo 後新條目應整批收回"
         );
+    }
+
+    /// 包 2：entries[].meta 有值時，套用後的世界書條目直接照抄 keys/constant/order/disabled/
+    /// visibility/is_person；沒有 meta 的條目走現行預設（keys=[]／constant=false／order 用
+    /// 遞增計數／visibility=Gm／is_person=false）——兩種條目同一次套用互不干擾。
+    #[test]
+    fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
+        let root = TestRoot::new("entry-meta-preservation");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: vec![
+                crate::refactor_ai::RefactorNewEntry {
+                    title: "照搬條目".to_owned(),
+                    kind: "setting".to_owned(),
+                    content: "原文照搬。".to_owned(),
+                    source_uids: vec!["1".to_owned()],
+                    rules: BTreeMap::new(),
+                    triggers: Vec::new(),
+                    meta: Some(crate::refactor_ai::RefactorEntryMeta {
+                        keys: vec!["關鍵字".to_owned()],
+                        constant: true,
+                        order: 99,
+                        disabled: true,
+                        visibility: Visibility::Characters(vec!["char-1".to_owned()]),
+                        is_person: true,
+                    }),
+                },
+                crate::refactor_ai::RefactorNewEntry {
+                    title: "新組裝條目".to_owned(),
+                    kind: "setting".to_owned(),
+                    content: "本地組裝的新內容。".to_owned(),
+                    source_uids: vec!["2".to_owned()],
+                    rules: BTreeMap::new(),
+                    triggers: Vec::new(),
+                    meta: None,
+                },
+            ],
+            deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: false,
+            mechanism_indices: Vec::new(),
+            entry_indices: vec![0, 1],
+            player_index: None,
+        };
+
+        apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+
+        let with_meta = entries
+            .iter()
+            .find(|entry| entry.title == "照搬條目")
+            .unwrap();
+        assert_eq!(with_meta.keys, vec!["關鍵字".to_owned()]);
+        assert!(with_meta.constant);
+        assert_eq!(with_meta.order, 99);
+        assert!(with_meta.disabled);
+        assert_eq!(
+            with_meta.visibility,
+            Visibility::Characters(vec!["char-1".to_owned()])
+        );
+        assert!(with_meta.is_person);
+
+        let without_meta = entries
+            .iter()
+            .find(|entry| entry.title == "新組裝條目")
+            .unwrap();
+        assert!(without_meta.keys.is_empty());
+        assert!(!without_meta.constant);
+        assert!(!without_meta.disabled);
+        assert_eq!(without_meta.visibility, Visibility::Gm);
+        assert!(!without_meta.is_person);
     }
 }
