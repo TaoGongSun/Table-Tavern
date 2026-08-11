@@ -230,6 +230,7 @@ export const es: Record<MsgKey, string> = {
   refactorOutcomeJson: "JSON de la carta reorganizada",
   refactorExportFileName: "carta reorganizada",
   refactorSurveying: "Revisando la carta…",
+  refactorParallelStep: "Listo {done}/{total}",
   refactorExpanding: "Ordenando «{name}» {i}/{n}",
   refactorRerunWarnBody: "Esta mesa ya tiene una carta de reorganización. Reorganizar de nuevo gastará cuota y sobrescribirá el resultado actual.",
   refactorRewriting: "Reescribiendo «{title}» {i}/{n}",

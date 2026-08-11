@@ -1,9 +1,9 @@
 # Task
 Task-ID: refactor-dispatch
 Title: AI 重構提速省費：展開並行（時間）＋展開下放檔位（費用）＋取消真停
-Status: todo
+Status: in_progress
 Created: 2026-08-08T03:35:00+08:00
-Updated: 2026-08-11T00:00:00+08:00
+Updated: 2026-08-11T12:00:00+08:00
 
 ## Summary
 重構管線（survey → 人物展開 → PLAN 重寫 → 介面展開）現況全走 GM 檔、序列執行、取消殺不掉在途呼叫。三個改動，全傳輸通用（CLI 與 API 直連皆受益）：
@@ -14,10 +14,10 @@ Updated: 2026-08-11T00:00:00+08:00
 
 「模型內部自派子代理」評估後不採：重建脈絡 token 更多、拆掉逐條解析與取消保底、不可信卡片內容會接觸有工具的代理、僅 claude CLI 支援。
 
-2026-08-11 目標、工作清單、分工定案（見[交接檔](../handoffs/refactor-dispatch.md)）；並行拓撲拍板 A（人物並行＋重寫介面序列鏈，兩線並跑）。
+2026-08-11 拓撲拍板 A 後包 1–3 當日實作完成（三 commit，cargo 442／vitest 94／build／i18n 全綠）；剩包 4 實機驗收。
 
 ## Next action
-- **前置：[ai-card-refactor](ai-card-refactor.md)＋[person-promote](person-promote.md) 實測結案**（先立品質時間費用基線）→ 照交接檔包 1→2→3→4 開工；包 2（取消）無前置可提前單獨做。
+- 使用者 `claude login`（CLI OAuth 已過期）→ 拍板 P7 基線時序 a/b → 照[交接檔](../handoffs/refactor-dispatch.md) P1–P8 實測，全過結案；P2／P7 可與 [ai-card-refactor](ai-card-refactor.md) B 段真跑合併省額度。
 
 ## Constraints
 - survey／expand 共用 system 逐位元組相同的快取紅線照舊，不碰 system 組裝。

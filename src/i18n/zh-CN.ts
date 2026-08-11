@@ -219,6 +219,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorOutcomeJson: "重构卡 JSON",
   refactorExportFileName: "重构卡",
   refactorSurveying: "盘点中…",
+  refactorParallelStep: "整理中 完成 {done}/{total}",
   refactorExpanding: "整理『{name}』 {i}/{n}",
   refactorRerunWarnBody: "这桌已经有一张重构卡。再跑一次会重花额度，并覆盖现有结果。",
   refactorRewriting: "重写『{title}』 {i}/{n}",
