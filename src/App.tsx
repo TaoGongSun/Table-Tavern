@@ -2618,27 +2618,42 @@ function WorldEditor({
                 {...entryDrag.rowProps(entry)}
               >
                 <div className="worldbook-summary">
-                  <strong>{entry.title || entry.uid}</strong>
-                  <span>{entry.keys.join("、") || t("worldbookNoKeys")}</span>
-                  <div className="worldbook-badges">
-                    {entry.constant && (
-                      <span className="worldbook-badge">{t("worldbookConstant")}</span>
-                    )}
-                    {/* 可見範圍＝資訊邊界：全 app 統一的虛線琥珀機密記號 */}
-                    <span className="worldbook-badge worldbook-badge-visibility">
-                      {entry.visibility.type === "gm"
-                        ? t("worldbookVisibilityGm")
-                        : entry.visibility.type === "public"
-                          ? t("worldbookVisibilityPublic")
-                          : t("worldbookCharacterCount", {
-                              n: entry.visibility.characters.length,
-                            })}
-                    </span>
-                    {entry.disabled && (
-                      <span className="worldbook-badge">{t("worldbookDisabled")}</span>
-                    )}
-                    {entry.locked && <span className="worldbook-badge">🔒 {t("worldbookLocked")}</span>}
-                  </div>
+                  {(() => {
+                    const head = (
+                      <>
+                        <strong>{entry.title || entry.uid}</strong>
+                        <span>{entry.keys.join("、") || t("worldbookNoKeys")}</span>
+                        <div className="worldbook-badges">
+                          {entry.constant && (
+                            <span className="worldbook-badge">{t("worldbookConstant")}</span>
+                          )}
+                          {/* 可見範圍＝資訊邊界：全 app 統一的虛線琥珀機密記號 */}
+                          <span className="worldbook-badge worldbook-badge-visibility">
+                            {entry.visibility.type === "gm"
+                              ? t("worldbookVisibilityGm")
+                              : entry.visibility.type === "public"
+                                ? t("worldbookVisibilityPublic")
+                                : t("worldbookCharacterCount", {
+                                    n: entry.visibility.characters.length,
+                                  })}
+                          </span>
+                          {entry.disabled && (
+                            <span className="worldbook-badge">{t("worldbookDisabled")}</span>
+                          )}
+                          {entry.locked && <span className="worldbook-badge">🔒 {t("worldbookLocked")}</span>}
+                        </div>
+                      </>
+                    );
+                    // 鎖定條目不能編輯，但說明文的家就在世界書：標題列可展開唯讀全文。
+                    return entry.locked ? (
+                      <details className="worldbook-locked-view">
+                        <summary>{head}</summary>
+                        <div className="worldbook-locked-content">{entry.content}</div>
+                      </details>
+                    ) : (
+                      head
+                    );
+                  })()}
                 </div>
                 {!entry.locked && <div className="worldbook-row-actions">
                   <button type="button" onClick={() => editEntry(entry)}>
