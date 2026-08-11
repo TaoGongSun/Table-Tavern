@@ -1719,6 +1719,17 @@ pub fn gm_tier(config: &AppConfig) -> Tier {
         .unwrap_or(Tier::Best)
 }
 
+/// 重構展開檔位：展開／重寫照盤點規格產出，下放 balanced 省費（survey 留 GM 檔）；
+/// API 模式未設 balanced 模型時退 GM 檔讓按鈕照常能用（同 translate_opening 慣例），
+/// CLI 檔位一律有內建對應不用退。
+pub fn refactor_expand_tier(config: &AppConfig, transport_kind: &str) -> Tier {
+    if transport_kind == "api" && resolve_model(Tier::Balanced, config).is_err() {
+        gm_tier(config)
+    } else {
+        Tier::Balanced
+    }
+}
+
 /// 檔位→模型解析。模型 id 一律來自設定檔（config.tier_models），程式不內建。
 pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
     let key = tier.as_str();
@@ -2771,6 +2782,20 @@ mod tests {
             serde_json::Value::String("impossible".to_owned()),
         );
         assert_eq!(gm_tier(&config), Tier::Best);
+    }
+
+    #[test]
+    fn refactor_expand_tier_falls_back_only_on_api_without_balanced_model() {
+        let mut config = AppConfig::default();
+        // API 模式未設 balanced 模型 → 退 GM 檔（預設 best）
+        assert_eq!(refactor_expand_tier(&config, "api"), Tier::Best);
+        // CLI 模式一律 balanced（CLI 有內建檔位對應，不用退）
+        assert_eq!(refactor_expand_tier(&config, "claude"), Tier::Balanced);
+        // API 模式設了 balanced 模型 → balanced
+        config
+            .tier_models
+            .insert("balanced".to_owned(), "vendor/mid-model".to_owned());
+        assert_eq!(refactor_expand_tier(&config, "api"), Tier::Balanced);
     }
 
     #[test]
