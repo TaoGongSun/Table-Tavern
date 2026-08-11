@@ -8,6 +8,7 @@ import {
   parseRefactorOutcome,
   refactorSummaryCounts,
   REFACTOR_IMPORT_INVALID,
+  restoreDropped,
   setPlayerIndex,
   sourceEntryTitle,
   sourceEntryTitles,
@@ -17,6 +18,7 @@ import {
   type RefactorMechanism,
   type RefactorNewEntry,
   type RefactorOutcome,
+  type RefactorSelection,
   type RefactorSurveyOutcome,
   type RefactorSurveyPerson,
 } from "./refactor-review";
@@ -420,5 +422,51 @@ describe("unselectCharacter", () => {
   it("取消勾選的角色正是目前指定的玩家：一併清掉玩家指定", () => {
     const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 1 };
     expect(unselectCharacter(selection, 1)).toEqual({ ...selection, character_indices: [0], player_index: null });
+  });
+});
+
+describe("restoreDropped", () => {
+  const baseSelection: RefactorSelection = {
+    character_indices: [],
+    apply_interface: false,
+    mechanism_indices: [],
+    entry_indices: [0],
+    player_index: null,
+  };
+
+  it("整條放回（span 空字串）：標題原樣，轉成 setting 條目附加到 entries 尾端並勾選", () => {
+    const outcome = makeOutcome({
+      entries: [makeEntry()],
+      dropped: [{ uid: "5", span: "", title: "舊版本標記", content: "v1.2 更新", rule: 2 }],
+    });
+    const { outcome: next, selection } = restoreDropped(outcome, baseSelection, 0);
+    expect(next.dropped).toEqual([]);
+    expect(next.entries).toEqual([
+      makeEntry(),
+      { title: "舊版本標記", kind: "setting", content: "v1.2 更新", source_uids: ["5"], rules: {}, triggers: [] },
+    ]);
+    expect(selection.entry_indices).toEqual([0, 1]);
+  });
+
+  it("段放回（span 非空）：標題後綴 span 的 sN 段當區分標記", () => {
+    const outcome = makeOutcome({
+      entries: [],
+      dropped: [{ uid: "16", span: "16#s6", title: "戰鬥流程", content: "擲骰檢定內容", rule: 3 }],
+    });
+    const { outcome: next, selection } = restoreDropped(outcome, { ...baseSelection, entry_indices: [] }, 0);
+    expect(next.entries).toEqual([
+      { title: "戰鬥流程 ⟦s6⟧", kind: "setting", content: "擲骰檢定內容", source_uids: ["16"], rules: {}, triggers: [] },
+    ]);
+    expect(selection.entry_indices).toEqual([0]);
+  });
+
+  it("回傳新的 outcome／selection 物件，不動原本傳入的那份（不可變更新）", () => {
+    const outcome = makeOutcome({ dropped: [{ uid: "1", span: "", title: "t", content: "c", rule: 1 }] });
+    const selection: RefactorSelection = { ...baseSelection, entry_indices: [] };
+    const result = restoreDropped(outcome, selection, 0);
+    expect(result.outcome).not.toBe(outcome);
+    expect(result.selection).not.toBe(selection);
+    expect(outcome.dropped).toHaveLength(1);
+    expect(selection.entry_indices).toEqual([]);
   });
 });

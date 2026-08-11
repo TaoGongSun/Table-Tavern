@@ -18,7 +18,7 @@
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 [ai-card-refactor](tasks/ai-card-refactor.md) 的 A–E 一起實機驗收、兩案一起結案
 - [opening-translation](tasks/opening-translation.md) — 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔 — 下一步：實作完成、四項自驗全綠（cargo 426／vitest 71／build／i18n，2026-08-08），等實機驗收 T1–T7（見交接檔）後結案
 - [refactor-dispatch](tasks/refactor-dispatch.md) — AI 重構提速省費：展開並行＋展開下放檔位＋取消真停 — 下一步：包 1–3 實作完成（2026-08-11 三 commit，cargo 442／vitest 94／build／i18n 全綠）；2026-08-11 實機開跑：P1/P3 綠、P2 紅（~24 分）、P7-b 品質紅——提速與品質由 refactor-survey-spans 接手，剩 P4–P6/P8 等新案後合併驗
-- [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：2026-08-11 開工，盤點完成＋小抄合約 v1 定稿（見交接檔），包 1（span＋新 survey 契約＋解析）發包中，包 1–5 後三卡實機驗收（orc-cave <5 分硬指標）
+- [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：2026-08-11 五包實作完成（cargo 470／vitest 108／build／i18n 全綠、五 commit），**新對話照交接檔實測清單 T1–T4 驗收**（orc-cave <5 分硬指標；過＝與 refactor-dispatch 一起結案）
 
 ## Done
 
