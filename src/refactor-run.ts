@@ -4,12 +4,14 @@
 export const REFACTOR_PARALLEL_LIMIT = 4;
 
 /**
- * A 拓撲排程：chain＝序列鏈（逐項 await，順序不變——人物合併知識沿鏈累積）；
- * pool＝有界並行（同時在途數上限 limit，工人迴圈式逐項取件，不 Promise.all 一次全發）。
+ * A 拓撲排程：chain＝序列鏈（逐項 await，順序不變）；pool＝有界並行（同時在途數上限 limit，
+ * 工人迴圈式逐項取件，不 Promise.all 一次全發）。
  *
- * 首發建快取：後端 system 提示詞快取要第一次呼叫落地才有效，所以永遠先讓「唯一一條」呼叫
- * 獨自跑完才放行其餘——chain 非空就是 chain[0]（跑完後放行 pool 全部＋chain 其餘並行）；
- * chain 空則退而求其次讓 pool[0] 頂替（跑完後放行 pool 其餘）。
+ * 首發建快取：後端 system 提示詞快取要第一次呼叫落地才有效，預設（warmed=false）永遠先讓
+ * 「唯一一條」呼叫獨自跑完才放行其餘——chain 非空就是 chain[0]（跑完後放行 pool 全部＋chain
+ * 其餘並行）；chain 空則退而求其次讓 pool[0] 頂替（跑完後放行 pool 其餘）。
+ * warmed=true：呼叫端保證快取已在同一 run 的更早呼叫（如盤點）建好，不必再獨跑——chain 與
+ * pool 從一開始就並行開跑（chain 內部順序仍不變，只是不再等它跑完才放行 pool）。
  *
  * isCancelled()＝true 後不再「發新項」，已經在途的呼叫不受影響（由呼叫端另外 abort）。
  * run 的 contract：呼叫端保證它永不 reject（內部自行 try/catch），這裡不接 catch。
@@ -21,8 +23,9 @@ export async function runRefactorCalls<T>(opts: {
   limit: number;
   isCancelled: () => boolean;
   run: (item: T) => Promise<void>;
+  warmed?: boolean;
 }): Promise<void> {
-  const { chain, pool, limit, isCancelled, run } = opts;
+  const { chain, pool, limit, isCancelled, run, warmed = false } = opts;
 
   async function runChain(items: T[]): Promise<void> {
     for (const item of items) {
@@ -42,6 +45,12 @@ export async function runRefactorCalls<T>(opts: {
       }
     });
     await Promise.all(workers);
+  }
+
+  if (warmed) {
+    if (isCancelled()) return;
+    await Promise.all([runChain(chain), runPool(pool)]);
+    return;
   }
 
   if (chain.length > 0) {

@@ -28,6 +28,17 @@ export interface RefactorMechanism {
   triggers: unknown[];
 }
 
+/** carry 型條目（原文照搬）才有：原條目 keys/constant/order/disabled/visibility/is_person 原樣
+ * 保留，套用時取代新條目預設值。AI 重寫的條目一律沒有這欄。 */
+export interface RefactorEntryMeta {
+  keys: string[];
+  constant: boolean;
+  order: number;
+  disabled: boolean;
+  visibility: unknown;
+  is_person: boolean;
+}
+
 export interface RefactorNewEntry {
   title: string;
   kind: "setting" | "mechanism";
@@ -35,11 +46,40 @@ export interface RefactorNewEntry {
   source_uids: string[];
   rules?: Record<string, unknown>;
   triggers?: unknown[];
+  meta?: RefactorEntryMeta;
 }
 
 export interface RefactorRewriteOutcome {
   entry: RefactorNewEntry | null;
   raw: string;
+}
+
+/** 整條淘汰（ENTRIES action=drop）或半條淘汰（SPLITS route=drop）的內容快照，供玩家展開查看、
+ * 一鍵放回（轉 carry 進 entries）；span=""＝整條淘汰。 */
+export interface RefactorDroppedEntry {
+  uid: string;
+  span: string;
+  title: string;
+  content: string;
+  rule: number;
+}
+
+/** app 尚無執行機構的機制段：原文已經照搬進對應的 GM 規則條目（資料不會遺失），這裡只是給
+ * 玩家看「有哪些機制還沒被系統接管」的清單。 */
+export interface RefactorUnabsorbedItem {
+  uid: string;
+  span: string;
+  title: string;
+  note: string;
+}
+
+/** 機械稽核紅字：kind 是 coverage／mechanism／split／drop_rule 之一；span 空字串代表整條層級
+ * 的稽核項（沒有特定段落）。 */
+export interface RefactorAuditItem {
+  kind: string;
+  uid: string;
+  span: string;
+  detail: string;
 }
 
 export interface RefactorOutcome {
@@ -50,6 +90,12 @@ export interface RefactorOutcome {
   /** 收尾階段判定「刪了只剩殘渣」的共用合集條目 uid；套用時還要所有共用這條的人都被勾選
    * 才會真的刪（要點 7：基準是優先保留而非刪除）。 */
   deletable_shared_uids: string[];
+  /** 本地零呼叫組裝淘汰的整條／半條內容：預設不套用，純粹隨產物保留供玩家展開查看、一鍵放回。 */
+  dropped: RefactorDroppedEntry[];
+  /** app 尚無執行機構、原文已照搬進 GM 規則條目的機制清單（資訊性，內容不會遺失）。 */
+  unabsorbed: RefactorUnabsorbedItem[];
+  /** 機械稽核紅字：涵蓋漏網／機制守恆／拆組守恆／淘汰稽核，四類之一。 */
+  audit: RefactorAuditItem[];
 }
 
 export interface RefactorSelection {
@@ -61,26 +107,74 @@ export interface RefactorSelection {
   player_index: number | null;
 }
 
-// 盤點階段的型別，對照後端 src-tauri/src/refactor_ai.rs 的 RefactorSurveyOutcome。
+// 盤點階段的型別，對照後端 src-tauri/src/refactor_ai.rs 的 RefactorSurveyOutcome（小抄合約 v1）。
 // 人物已經是「認人」後的結果——一人一筆，來源 uid 可能多條。
 export interface RefactorSurveyPerson {
   name: string;
   uids: string[];
   is_player: boolean;
+  /** ""｜"clean"｜"tangled"：clean＝spans 原文可零呼叫組裝成卡，tangled＝照現行 person_expand。 */
+  mode: string;
+  /** mode="clean" 時這個人全部段落引用（`uid#sN`）；mode 非 clean 不使用。 */
+  spans: string[];
+  /** spans 之中屬於私密段的子集；mode 非 clean 不使用。 */
+  private_spans: string[];
+}
+
+/** ENTRIES 一行：uid 這條原始條目該怎麼處置。rule 只有 action="drop" 才有意義。 */
+export interface RefactorEntryVerdict {
+  uid: string;
+  action: "carry" | "absorb" | "drop" | "split";
+  rule: number | null;
+  reason: string;
+}
+
+/** SPLITS 一行：某個 span 的去處；rule／name／title／group／note 依 route 種類擇一使用。 */
+export interface RefactorSpanRoute {
+  span: string;
+  route: string;
+  rule: number | null;
+  name: string;
+  title: string;
+  group: string;
+  note: string;
+}
+
+/** GROUPS 一行：SPLITS 標 group 的 span 們合組成的一條新條目。 */
+export interface RefactorSplitGroup {
+  id: string;
+  title: string;
+  /** "setting"|"mechanism"。 */
+  kind: string;
+  spans: string[];
 }
 
 export interface RefactorSurveyOutcome {
   persons: RefactorSurveyPerson[];
+  /** 全部介面條目 uid（含 playable 與否）。 */
   interface_uids: string[];
+  /** 其中盤點判 playable 的介面條目 uid：展開時走 interface_shell、產殼；其餘走 interface。 */
   playable_interface_uids: string[];
-  plan: RefactorPlanEntry[];
+  /** 非純人物、非純介面條目的分類判定：一條原始條目一筆。 */
+  verdicts: RefactorEntryVerdict[];
+  /** action=split 條目的逐 span 路由。 */
+  splits: RefactorSpanRoute[];
+  /** SPLITS 用到的 group id 對應的合組宣告。 */
+  groups: RefactorSplitGroup[];
+  /** 狀態欄位命名唯一權威：後續每次展開呼叫的 knownFields 都從這裡固定取用（不再沿鏈累積）。 */
+  fields: string[];
   raw: string;
 }
 
-export interface RefactorPlanEntry {
-  title: string;
-  kind: string;
-  uids: string[];
+/** 本地零呼叫組裝的完整產物，對照後端 src-tauri/src/refactor_assemble.rs 的 RefactorLocalAssembly。 */
+export interface RefactorLocalAssembly {
+  entries: RefactorNewEntry[];
+  characters: RefactorCharacter[];
+  /** 已由 mode="clean" 零呼叫組裝產出的人名；buildRefactorPersonPlan 用來跳過，避免重複處理。 */
+  clean_person_names: string[];
+  dropped: RefactorDroppedEntry[];
+  unabsorbed: RefactorUnabsorbedItem[];
+  audit: RefactorAuditItem[];
 }
 
 // 展開階段（介面／機制）：對照後端 RefactorExpandOutcome，一 uid 一次呼叫的形狀。
@@ -173,16 +267,19 @@ export interface RefactorPersonQueueItem {
   is_player: boolean;
 }
 
-/** 盤點結果分流：專屬單一來源的人走本地轉換（0 呼叫）；其餘（多來源，或唯一來源被別人
- * 共用）進展開佇列，一人一次呼叫（要點 8）。 */
+/** 盤點結果分流：cleanNames 裡的人已由本地零呼叫組裝（mode="clean"）產出卡片，直接跳過；
+ * 其餘專屬單一來源的人走本地轉換（0 呼叫），其餘（多來源，或唯一來源被別人共用）進展開
+ * 佇列，一人一次呼叫（要點 8）。 */
 export function buildRefactorPersonPlan(
   survey: RefactorSurveyOutcome,
   entries: { uid: number; content: string }[],
+  cleanNames: string[],
 ): { local: RefactorCharacter[]; queue: RefactorPersonQueueItem[] } {
   const byUid = groupPersonsByUid(survey.persons);
   const local: RefactorCharacter[] = [];
   const queue: RefactorPersonQueueItem[] = [];
   for (const person of survey.persons) {
+    if (cleanNames.includes(person.name)) continue;
     const exclusive = person.uids.length === 1 && (byUid.get(person.uids[0])?.length ?? 0) <= 1;
     const converted = exclusive ? localConvertPerson(person, entries) : null;
     if (converted) {
@@ -194,11 +291,15 @@ export function buildRefactorPersonPlan(
   return { local, queue };
 }
 
-/** 人物、世界書條目與介面展開結果組成最終產物。舊機制欄位保留為空，讓舊版匯入卡仍可套用。 */
+/** 人物、世界書條目與介面展開結果組成最終產物。舊機制欄位保留為空，讓舊版匯入卡仍可套用；
+ * dropped/unabsorbed/audit 是本地零呼叫組裝的透傳資訊，省略時預設空陣列。 */
 export function assembleRefactorOutcome(parts: {
   characters: RefactorCharacter[];
   interfaces: RefactorInterface[];
   entries: RefactorNewEntry[];
+  dropped?: RefactorDroppedEntry[];
+  unabsorbed?: RefactorUnabsorbedItem[];
+  audit?: RefactorAuditItem[];
 }): RefactorOutcome {
   return {
     characters: parts.characters,
@@ -206,6 +307,9 @@ export function assembleRefactorOutcome(parts: {
     entries: parts.entries,
     mechanisms: [],
     deletable_shared_uids: [],
+    dropped: parts.dropped ?? [],
+    unabsorbed: parts.unabsorbed ?? [],
+    audit: parts.audit ?? [],
   };
 }
 
@@ -244,6 +348,16 @@ function readStringArray(source: Record<string, unknown>, key: string): string[]
     if (typeof item !== "string") throw invalid();
     return item;
   });
+}
+
+function readNumber(source: Record<string, unknown>, key: string, required = false): number {
+  const value = source[key];
+  if (value === undefined || value === null) {
+    if (required) throw invalid();
+    return 0;
+  }
+  if (typeof value !== "number") throw invalid();
+  return value;
 }
 
 function parseCharacter(raw: unknown): RefactorCharacter {
@@ -289,6 +403,9 @@ function parseNewEntry(raw: unknown): RefactorNewEntry {
   const kind = readString(raw, "kind", true);
   if (kind !== "setting" && kind !== "mechanism") throw invalid();
   if (raw.rules !== undefined && raw.rules !== null && !isRecord(raw.rules)) throw invalid();
+  // meta 是物件才收（carry 型條目才有），否則整份拒收；缺席（AI 重寫的條目、舊產物 JSON）
+  // 就直接不帶這欄，原樣通過不逐欄驗證——套用端只認這個結構是不是物件。
+  if (raw.meta !== undefined && raw.meta !== null && !isRecord(raw.meta)) throw invalid();
   return {
     title: readString(raw, "title", true),
     kind,
@@ -300,6 +417,38 @@ function parseNewEntry(raw: unknown): RefactorNewEntry {
     })(),
     rules: (raw.rules as Record<string, unknown>) ?? {},
     triggers: readArray(raw, "triggers"),
+    ...(isRecord(raw.meta) ? { meta: raw.meta as unknown as RefactorEntryMeta } : {}),
+  };
+}
+
+function parseDropped(raw: unknown): RefactorDroppedEntry {
+  if (!isRecord(raw)) throw invalid();
+  return {
+    uid: readString(raw, "uid", true),
+    span: readString(raw, "span"),
+    title: readString(raw, "title"),
+    content: readString(raw, "content"),
+    rule: readNumber(raw, "rule", true),
+  };
+}
+
+function parseUnabsorbed(raw: unknown): RefactorUnabsorbedItem {
+  if (!isRecord(raw)) throw invalid();
+  return {
+    uid: readString(raw, "uid", true),
+    span: readString(raw, "span"),
+    title: readString(raw, "title"),
+    note: readString(raw, "note"),
+  };
+}
+
+function parseAuditItem(raw: unknown): RefactorAuditItem {
+  if (!isRecord(raw)) throw invalid();
+  return {
+    kind: readString(raw, "kind", true),
+    uid: readString(raw, "uid"),
+    span: readString(raw, "span"),
+    detail: readString(raw, "detail"),
   };
 }
 
@@ -319,6 +468,10 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
     entries: readArray(raw, "entries").map(parseNewEntry),
     mechanisms: readArray(raw, "mechanisms").map(parseMechanism),
     deletable_shared_uids: readStringArray(raw, "deletable_shared_uids"),
+    // 三欄缺席（舊產物 JSON，包 4 之前存的重構卡）＝[]，照舊可解；有值但不是陣列才拒收。
+    dropped: readArray(raw, "dropped").map(parseDropped),
+    unabsorbed: readArray(raw, "unabsorbed").map(parseUnabsorbed),
+    audit: readArray(raw, "audit").map(parseAuditItem),
   };
   // 三區全空＝這檔案沒有任何可套用的東西，多半根本不是重構產物。
   if (outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 && outcome.mechanisms.length === 0) {

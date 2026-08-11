@@ -18,6 +18,7 @@ import {
   type RefactorNewEntry,
   type RefactorOutcome,
   type RefactorSurveyOutcome,
+  type RefactorSurveyPerson,
 } from "./refactor-review";
 
 function makeOutcome(overrides: Partial<RefactorOutcome> = {}): RefactorOutcome {
@@ -27,6 +28,9 @@ function makeOutcome(overrides: Partial<RefactorOutcome> = {}): RefactorOutcome 
     entries: [],
     mechanisms: [],
     deletable_shared_uids: [],
+    dropped: [],
+    unabsorbed: [],
+    audit: [],
     ...overrides,
   };
 }
@@ -53,7 +57,21 @@ function makeEntry(overrides: Partial<RefactorNewEntry> = {}): RefactorNewEntry 
 }
 
 function makeSurvey(overrides: Partial<RefactorSurveyOutcome> = {}): RefactorSurveyOutcome {
-  return { persons: [], interface_uids: [], playable_interface_uids: [], plan: [], raw: "", ...overrides };
+  return {
+    persons: [],
+    interface_uids: [],
+    playable_interface_uids: [],
+    verdicts: [],
+    splits: [],
+    groups: [],
+    fields: [],
+    raw: "",
+    ...overrides,
+  };
+}
+
+function makePerson(uids: string[], overrides: Partial<RefactorSurveyPerson> = {}): RefactorSurveyPerson {
+  return { name: "阿福", uids, is_player: false, mode: "", spans: [], private_spans: [], ...overrides };
 }
 
 describe("mergeRefactorInterfaces", () => {
@@ -94,7 +112,7 @@ describe("localConvertPerson", () => {
   ];
 
   it("單一專屬來源：直接拿條目內容當公開設定，trim 掉前後空白，PRIVATE 留空", () => {
-    const character = localConvertPerson({ name: "亞瑟", uids: ["12"], is_player: false }, entries);
+    const character = localConvertPerson(makePerson(["12"], { name: "亞瑟" }), entries);
     expect(character).toEqual({
       name: "亞瑟",
       emoji: "🎭",
@@ -107,16 +125,16 @@ describe("localConvertPerson", () => {
   });
 
   it("疑似玩家旗標原樣帶進 suspected_player", () => {
-    const character = localConvertPerson({ name: "亞瑟", uids: ["12"], is_player: true }, entries);
+    const character = localConvertPerson(makePerson(["12"], { name: "亞瑟", is_player: true }), entries);
     expect(character?.suspected_player).toBe(true);
   });
 
   it("多來源（uids 長度 >1）不是本地轉換的範圍，回 null", () => {
-    expect(localConvertPerson({ name: "霍玄", uids: ["30", "31"], is_player: false }, entries)).toBeNull();
+    expect(localConvertPerson(makePerson(["30", "31"], { name: "霍玄" }), entries)).toBeNull();
   });
 
   it("uid 對不到任何條目（條目已刪或資料不一致）回 null", () => {
-    expect(localConvertPerson({ name: "查無此人", uids: ["999"], is_player: false }, entries)).toBeNull();
+    expect(localConvertPerson(makePerson(["999"], { name: "查無此人" }), entries)).toBeNull();
   });
 });
 
@@ -129,8 +147,8 @@ describe("buildRefactorPersonPlan", () => {
   ];
 
   it("單一專屬來源的人走本地轉換，不進展開佇列", () => {
-    const survey = makeSurvey({ persons: [{ name: "小華", uids: ["3"], is_player: false }] });
-    const { local, queue } = buildRefactorPersonPlan(survey, entries);
+    const survey = makeSurvey({ persons: [makePerson(["3"], { name: "小華" })] });
+    const { local, queue } = buildRefactorPersonPlan(survey, entries, []);
     expect(local).toHaveLength(1);
     expect(local[0].name).toBe("小華");
     expect(queue).toHaveLength(0);
@@ -138,33 +156,36 @@ describe("buildRefactorPersonPlan", () => {
 
   it("多來源的人（自己專屬條目＋共用速覽）進展開佇列，帶齊全部來源 uid", () => {
     const survey = makeSurvey({
-      persons: [
-        { name: "亞瑟", uids: ["1", "2"], is_player: false },
-        { name: "小華", uids: ["3"], is_player: false },
-      ],
+      persons: [makePerson(["1", "2"], { name: "亞瑟" }), makePerson(["3"], { name: "小華" })],
     });
-    const { local, queue } = buildRefactorPersonPlan(survey, entries);
+    const { local, queue } = buildRefactorPersonPlan(survey, entries, []);
     expect(local.map((c) => c.name)).toEqual(["小華"]);
     expect(queue).toEqual([{ name: "亞瑟", uids: ["1", "2"], is_player: false }]);
   });
 
   it("唯一來源但那條被別人共用（合集）：不算專屬，一樣進展開佇列", () => {
     const survey = makeSurvey({
-      persons: [
-        { name: "霍玄", uids: ["4"], is_player: false },
-        { name: "長老", uids: ["4"], is_player: false },
-      ],
+      persons: [makePerson(["4"], { name: "霍玄" }), makePerson(["4"], { name: "長老" })],
     });
-    const { local, queue } = buildRefactorPersonPlan(survey, entries);
+    const { local, queue } = buildRefactorPersonPlan(survey, entries, []);
     expect(local).toHaveLength(0);
     expect(queue.map((item) => item.name)).toEqual(["霍玄", "長老"]);
   });
 
   it("本地轉換找不到對應條目（資料不一致）：退回展開佇列，不悄悄漏掉這個人", () => {
-    const survey = makeSurvey({ persons: [{ name: "查無此人", uids: ["999"], is_player: false }] });
-    const { local, queue } = buildRefactorPersonPlan(survey, entries);
+    const survey = makeSurvey({ persons: [makePerson(["999"], { name: "查無此人" })] });
+    const { local, queue } = buildRefactorPersonPlan(survey, entries, []);
     expect(local).toHaveLength(0);
     expect(queue).toEqual([{ name: "查無此人", uids: ["999"], is_player: false }]);
+  });
+
+  it("cleanNames 裡的人已由本地零呼叫組裝（mode=clean）產出卡片，整個跳過不重複處理", () => {
+    const survey = makeSurvey({
+      persons: [makePerson(["1", "2"], { name: "亞瑟", mode: "clean" }), makePerson(["3"], { name: "小華" })],
+    });
+    const { local, queue } = buildRefactorPersonPlan(survey, entries, ["亞瑟"]);
+    expect(local.map((c) => c.name)).toEqual(["小華"]);
+    expect(queue).toHaveLength(0);
   });
 });
 
@@ -181,6 +202,9 @@ describe("assembleRefactorOutcome", () => {
       entries: [makeEntry()],
       mechanisms: [],
       deletable_shared_uids: [],
+      dropped: [],
+      unabsorbed: [],
+      audit: [],
     });
   });
 
@@ -188,6 +212,20 @@ describe("assembleRefactorOutcome", () => {
     expect(assembleRefactorOutcome({ characters: [], interfaces: [], entries: [] })).toEqual(
       makeOutcome(),
     );
+  });
+
+  it("dropped/unabsorbed/audit 透傳；省略時預設空陣列", () => {
+    const outcome = assembleRefactorOutcome({
+      characters: [],
+      interfaces: [],
+      entries: [],
+      dropped: [{ uid: "5", span: "", title: "舊版本標記", content: "v1.2 更新", rule: 2 }],
+      unabsorbed: [{ uid: "16", span: "16#s6", title: "戰鬥流程", note: "擲骰檢定" }],
+      audit: [{ kind: "coverage", uid: "9", span: "", detail: "漏網自動補照搬" }],
+    });
+    expect(outcome.dropped).toEqual([{ uid: "5", span: "", title: "舊版本標記", content: "v1.2 更新", rule: 2 }]);
+    expect(outcome.unabsorbed).toEqual([{ uid: "16", span: "16#s6", title: "戰鬥流程", note: "擲骰檢定" }]);
+    expect(outcome.audit).toEqual([{ kind: "coverage", uid: "9", span: "", detail: "漏網自動補照搬" }]);
   });
 });
 
@@ -213,8 +251,40 @@ describe("parseRefactorOutcome", () => {
       .toEqual([makeEntry({ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] })]);
   });
 
+  it("carry 型條目的 meta 是物件就原樣通過", () => {
+    const meta = { keys: ["hook"], constant: true, order: 3, disabled: false, visibility: { type: "gm" }, is_person: false };
+    const json = JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"], meta }] });
+    expect(parseRefactorOutcome(json).entries[0].meta).toEqual(meta);
+  });
+
+  it("條目沒有 meta（AI 重寫的條目）＝不帶這欄，不當成壞檔", () => {
+    const json = JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }] });
+    expect(parseRefactorOutcome(json).entries[0].meta).toBeUndefined();
+  });
+
   it("舊版卡沒有 entries 仍照舊解析", () => {
     expect(parseRefactorOutcome(JSON.stringify({ characters: [makeCharacter(["12"])] })).entries).toEqual([]);
+  });
+
+  it("dropped/unabsorbed/audit 三欄逐欄解析，rule 是數字", () => {
+    const json = JSON.stringify({
+      entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }],
+      dropped: [{ uid: "5", span: "", title: "舊版本標記", content: "v1.2 更新", rule: 2 }],
+      unabsorbed: [{ uid: "16", span: "16#s6", title: "戰鬥流程", note: "擲骰檢定" }],
+      audit: [{ kind: "coverage", uid: "9", span: "", detail: "漏網自動補照搬" }],
+    });
+    const outcome = parseRefactorOutcome(json);
+    expect(outcome.dropped).toEqual([{ uid: "5", span: "", title: "舊版本標記", content: "v1.2 更新", rule: 2 }]);
+    expect(outcome.unabsorbed).toEqual([{ uid: "16", span: "16#s6", title: "戰鬥流程", note: "擲骰檢定" }]);
+    expect(outcome.audit).toEqual([{ kind: "coverage", uid: "9", span: "", detail: "漏網自動補照搬" }]);
+  });
+
+  it("舊產物 JSON（包 4 之前存的重構卡）沒有 dropped/unabsorbed/audit 三欄，仍照舊可解", () => {
+    const json = JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }] });
+    const outcome = parseRefactorOutcome(json);
+    expect(outcome.dropped).toEqual([]);
+    expect(outcome.unabsorbed).toEqual([]);
+    expect(outcome.audit).toEqual([]);
   });
 
   it.each([
@@ -229,6 +299,9 @@ describe("parseRefactorOutcome", () => {
     ["介面缺 state_fields", JSON.stringify({ interface: { source_uids: ["3"], raw: "" } })],
     ["機制缺 source_uid", JSON.stringify({ mechanisms: [{ rules: {} }] })],
     ["新條目 kind 不合法", JSON.stringify({ entries: [{ title: "規矩", kind: "other", content: "內容", source_uids: ["3"] }] })],
+    ["條目 meta 不是物件", JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "內容", source_uids: ["3"], meta: "壞掉" }] })],
+    ["dropped 不是陣列", JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "內容", source_uids: ["3"] }], dropped: {} })],
+    ["dropped 元素缺 rule 數字", JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "內容", source_uids: ["3"] }], dropped: [{ uid: "5", title: "x", content: "y" }] })],
   ])("拒收：%s", (_label, json) => {
     expect(() => parseRefactorOutcome(json)).toThrow(REFACTOR_IMPORT_INVALID);
   });

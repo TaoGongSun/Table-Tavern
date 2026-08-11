@@ -119,6 +119,52 @@ describe("runRefactorCalls", () => {
     // chain 空＝pool[0] 先行；它一結束就置換取消旗標，後續 worker 迴圈永遠取不到下一項。
     expect(started).toEqual(["p0"]);
   });
+
+  it("T5 warmed=true：跳過首發獨跑，pool 全部項目一開始就併發起跑（不像 T2 只發 p0）", async () => {
+    const events: string[] = [];
+    const run = async (item: string) => {
+      events.push(`start:${item}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      events.push(`end:${item}`);
+    };
+    await runRefactorCalls({
+      chain: [],
+      pool: ["p0", "p1", "p2", "p3"],
+      limit: 4,
+      isCancelled: () => false,
+      run,
+      warmed: true,
+    });
+    // 4 項全部併發起跑：每一項的 start 都排在任何一項的 end 之前——不像非 warmed 模式
+    // （T2）要等 p0 單獨跑完才放行其餘。
+    const firstEnd = events.findIndex((event) => event.startsWith("end:"));
+    for (const item of ["p0", "p1", "p2", "p3"]) {
+      expect(events.indexOf(`start:${item}`)).toBeLessThan(firstEnd);
+    }
+  });
+
+  it("T5 warmed=true：chain 與 pool 同時開跑（非 chain[0] 獨跑），chain 內部順序仍不變", async () => {
+    const events: string[] = [];
+    const run = async (item: string) => {
+      events.push(`start:${item}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      events.push(`end:${item}`);
+    };
+    await runRefactorCalls({
+      chain: ["c0", "c1"],
+      pool: ["p0", "p1"],
+      limit: 4,
+      isCancelled: () => false,
+      run,
+      warmed: true,
+    });
+    // c0 與 pool 併發起跑：p0/p1 的 start 排在 c0 的 end 之前——不是等 c0 獨跑完才放行。
+    const c0End = events.indexOf("end:c0");
+    expect(events.indexOf("start:p0")).toBeLessThan(c0End);
+    expect(events.indexOf("start:p1")).toBeLessThan(c0End);
+    // chain 鏈上順序不變：c1 要等 c0 結束才開始。
+    expect(events.indexOf("start:c1")).toBeGreaterThan(c0End);
+  });
 });
 
 describe("isRateLimitError", () => {

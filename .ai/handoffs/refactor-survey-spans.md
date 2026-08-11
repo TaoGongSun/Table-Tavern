@@ -1,9 +1,10 @@
 # Handoff: refactor-survey-spans
 
 ## Current state
-2026-08-11 開工：主線盤點完成、小抄合約 v1 定稿（本檔＝實作規格權威）；包 1 完成（cargo 455 綠、主線複驗過），包 2 實作中。
+2026-08-11 開工：主線盤點完成、小抄合約 v1 定稿（本檔＝實作規格權威）；包 1（feb1cdc）＋包 2（bc3eef7）完成，包 3 實作中。
 
 ## Completed
+- **包2**（sonnet 代理＋主線複驗，cargo 455→463，commit bc3eef7）：新模組 [refactor_assemble.rs](../../src-tauri/src/refactor_assemble.rs)（assemble_local:66——carry 含元資料 byte 相等、split 七路由組裝＋餘段兜底、clean 人物組卡、四項稽核 coverage/mechanism/split/drop_rule）；RefactorEntryMeta＋RefactorNewEntry.meta（refactor_ai.rs:1383）；apply() meta 雙軌落檔（refactor.rs:286，meta.order 不吃遞增）；RefactorOutcome 加 dropped/unabsorbed/audit 三欄；lib.rs:603 command refactor_assemble_local。
 - **包1**（sonnet 代理＋主線複驗，cargo 442→455）：EntrySpan/segment_spans（refactor_ai.rs:103/112，空行切段、byte 相等 property 測試）＋⟦sN⟧ 標記（mark_entry_spans:164）＋PrescanSignal/prescan_worldbook（:215/:238，trigger:/rule:/逐日 regex）＋新 SURVEY_BODY 六區塊（:313）＋survey_messages 帶 signals（:420，lib.rs:569 接線）＋新 structs（RefactorSurveyPerson 擴充 mode/spans/private_spans、RefactorEntryVerdict、RefactorSpanRoute、RefactorSplitGroup、RefactorSurveyOutcome 刪 plan 改 verdicts/splits/groups/fields）＋六區塊解析器（locate_fields 固定欄序通用抽取）。RefactorPlanEntry／rewrite 舊中段保留待包 3 刪。
 
 ## 盤點結論（2026-08-11，主線親查）
@@ -78,8 +79,16 @@ RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。�
 5. **包5** 淘汰/未接管 UI＋audit 顯示＋i18n 十語系。驗收：build＋check:i18n。
 - 包1–4 期間 refactor 功能為過渡態（cargo/vitest 各自綠），端到端於包 4 復原；包 5 補 UI。
 
+## 實測清單（新對話實機驗收用；2026-08-11 拍板：實作對話 context 過大，驗收另開對話）
+環境：`npm run tauri dev`（Bash 啟動一律 `env -u ANTHROPIC_BASE_URL`）；時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`。
+- **T1 orc-cave（主指標）**：①總時長 <5 分（jsonl 佐證）②豺狼人／深藍狼／巨魔等純設定＝carry，套用後 content byte 相等＋keys/constant 保留 ③「巴古克與古茲卡入侵劇情線」（逐日）＝absorb：kind=mechanism、locked、RULES/TRIGGERS 非空、帳本記已接管 ④版本標記條蓋 drop rule 2：入已淘汰清單、預設不套用、展開看全文、一鍵放回 ⑤audit 無紅字。
+- **T2 NorthHall（23 條八角色）**：①每人「速览段＋人物設定＋性格」跨條合成一張完整卡不碎裂 ②三條「剧情-」觸發歸機制線（absorb 或 group mechanism）③「格式增强Plus」整條淘汰 ④「美化状态栏」三路拆＝欄位綱要→STATE（emoji 標籤留值）、行動選項→GM 規則條目、容器紀律→drop①。
+- **T3 Transfur（16 條盲測定案）**：①目錄四條＋keyed 地區四條 carry 含元資料（keys 在）②核心設定歷史年表 carry 且該行附 reason（預掃衝突）③「格式」「COT」多路拆＝欄位綱要→STATE、敘事行為指令→GM 規則、gametext 容器→drop①、擲骰／ASCII 地圖→unabsorbed 清單可見。
+- **T4 通用**：①取消鍵中止在途＋Cmd-Q 無孤兒（refactor-dispatch P4–P6）②API 未設 balanced 退 GM（P8）③舊 refactor-outcome.json（無 meta/dropped 三欄）匯入照舊可套用 ④淘汰／未接管面板十語系文字正常。
+全過＝本案＋refactor-dispatch 一起結案。
+
 ## Next action
-包 2 實作（規格見上）；完成即 commit。
+包 3 實作（規格見上）；完成即 commit。包 3／包 4 依序 commit 後發包 5（淘汰/未接管/audit UI＋i18n）；包 5 收完＝本對話收工（更新本檔＋TASKS.md＋history），實機驗收照上面清單在新對話跑。
 
 ## Constraints
 - 新格式規格放 survey user 訊息端；survey／expand 共用 system 逐位元組相同紅線零觸碰（既有測試把關，span 標記在 context 內、各階段共用不破相等）。

@@ -25,13 +25,14 @@ import {
   type RefactorCharacter,
   type RefactorExpandOutcome,
   type RefactorInterface,
+  type RefactorLocalAssembly,
   type RefactorNewEntry,
   type RefactorRewriteOutcome,
   type RefactorOutcome,
   type RefactorPersonExpandOutcome,
   type RefactorPersonQueueItem,
-  type RefactorPlanEntry,
   type RefactorSelection,
+  type RefactorSplitGroup,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
@@ -2107,10 +2108,10 @@ function WorldEditor({
     }
   }
 
-  // AI 卡重構：盤點（PERSONS＋INTERFACE 含 playable＋PLAN）→ A 拓撲有界並行展開（人物佇列
-  // ‖「重寫→介面」序列鏈，序列鏈負責首發建快取＋knownFields 累積，見 refactor-run.ts）→組
-  // 產物。單一專屬來源的人本地轉換、不花展開呼叫；knownFields 只在序列鏈上累積＝欄位命名單
-  // 一權威（人物 worker 不碰）；來源條目刪不刪由套用端「全部引用產物都套用才刪」決定。
+  // AI 卡重構：盤點出六區塊小抄（PERSONS／INTERFACE／ENTRIES／SPLITS／GROUPS／FIELDS）→本地
+  // 零呼叫組裝（refactor_assemble_local：carry 照搬＋split 零呼叫路由＋clean 人物組卡）→剩餘
+  // AI 呼叫全並行（人物佇列＋absorb＋group＋statusbar＋interface，上限 4、無序列鏈）→組產物。
+  // knownFields 是 survey.fields 固定一份，所有呼叫共用，不再沿呼叫鏈累積。
   async function runAiRefactor() {
     if (refactorProgress) return;
     if (await invoke<boolean>("refactor_outcome_exists", { worldId: world })) {
@@ -2140,41 +2141,56 @@ function WorldEditor({
       };
 
       const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, onDelta: makeOnDelta() });
-      const { local, queue } = buildRefactorPersonPlan(survey, entries);
-      const totalSteps = queue.length + survey.plan.length + survey.interface_uids.length;
-      if (totalSteps === 0 && local.length === 0) {
+      // 本地零呼叫組裝：carry／split 各路由／clean 人物，毫秒級、不算進並行呼叫額度。
+      const local = await invoke<RefactorLocalAssembly>("refactor_assemble_local", { worldId: world, survey });
+      const { local: localPersons, queue } = buildRefactorPersonPlan(survey, entries, local.clean_person_names);
+
+      const absorbUids = survey.verdicts.filter((verdict) => verdict.action === "absorb").map((verdict) => verdict.uid);
+      // statusbar 段依來源 uid 分組：同一條原始條目的多個 statusbar span 合成一次呼叫。
+      const statusbarByUid = new Map<string, string[]>();
+      for (const route of survey.splits) {
+        if (route.route !== "statusbar") continue;
+        const uid = route.span.split("#")[0];
+        statusbarByUid.set(uid, [...(statusbarByUid.get(uid) ?? []), route.span]);
+      }
+
+      // 全部呼叫進同一個 pool，上限 4 有界並行；不再有「重寫→介面」序列鏈。
+      type RefactorTask =
+        | { kind: "person"; item: RefactorPersonQueueItem }
+        | { kind: "absorb"; uid: string }
+        | { kind: "group"; group: RefactorSplitGroup }
+        | { kind: "statusbar"; uid: string; spans: string[] }
+        | { kind: "interface"; uid: string };
+      const pool: RefactorTask[] = [
+        ...queue.map((item): RefactorTask => ({ kind: "person", item })),
+        ...absorbUids.map((uid): RefactorTask => ({ kind: "absorb", uid })),
+        ...survey.groups.map((group): RefactorTask => ({ kind: "group", group })),
+        ...[...statusbarByUid.entries()].map(([uid, spans]): RefactorTask => ({ kind: "statusbar", uid, spans })),
+        ...survey.interface_uids.map((uid): RefactorTask => ({ kind: "interface", uid })),
+      ];
+      const totalSteps = pool.length;
+
+      const characters: RefactorCharacter[] = [...local.characters, ...localPersons];
+      const refactorEntries: RefactorNewEntry[] = [...local.entries];
+      if (totalSteps === 0 && characters.length === 0 && refactorEntries.length === 0) {
         setRefactorProgress(null);
         setWorldbookMessage(t("refactorNothingToDo"));
         return;
       }
 
-      const characters: RefactorCharacter[] = [...local];
       const interfaces: RefactorInterface[] = [];
-      const refactorEntries: RefactorNewEntry[] = [];
       const failedTitles: string[] = [];
-      const knownFields: string[] = [];
+      const knownFields = survey.fields; // 命名唯一權威，全呼叫共用同一份、不累積。
       let done = 0;
       const bumpDone = () => {
         done++;
         setRefactorProgress((current) => current && { ...current, text: t("refactorParallelStep", { done, total: totalSteps }) });
       };
 
-      // chain＝序列鏈（先全部重寫、後全部介面，順序不變）；pool＝人物佇列，兩線有界並行。
-      type RefactorTask =
-        | { kind: "person"; item: RefactorPersonQueueItem }
-        | { kind: "rewrite"; item: RefactorPlanEntry }
-        | { kind: "interface"; uid: string };
-      const chain: RefactorTask[] = [
-        ...survey.plan.map((plan): RefactorTask => ({ kind: "rewrite", item: plan })),
-        ...survey.interface_uids.map((uid): RefactorTask => ({ kind: "interface", uid })),
-      ];
-      const pool: RefactorTask[] = queue.map((item): RefactorTask => ({ kind: "person", item }));
-
       setRefactorProgress((current) => current && { ...current, text: t("refactorParallelStep", { done, total: totalSteps }) });
 
       const run = async (task: RefactorTask): Promise<void> => {
-        const name =
-          task.kind === "person" ? task.item.name : task.kind === "rewrite" ? task.item.title : sourceEntryTitle(entries, task.uid);
+        const name = task.kind === "person" ? task.item.name : task.kind === "group" ? task.group.title : sourceEntryTitle(entries, task.uid);
         try {
           if (task.kind === "person") {
             const result = await withRateLimitRetry(
@@ -2190,27 +2206,49 @@ function WorldEditor({
             );
             if (result.character) characters.push(result.character);
             else failedTitles.push(name);
-          } else if (task.kind === "rewrite") {
-            const plan = task.item;
+          } else if (task.kind === "absorb") {
             const result = await withRateLimitRetry(
               () =>
-                invoke<RefactorRewriteOutcome>("refactor_rewrite_entry", {
+                invoke<RefactorRewriteOutcome>("refactor_absorb_entry", {
                   worldId: world,
-                  title: plan.title,
-                  kind: plan.kind,
-                  uids: plan.uids,
+                  entryUid: task.uid,
                   knownFields,
                   onDelta: makeOnDelta(),
                 }),
               () => refactorCancelRef.current,
             );
-            if (result.entry) {
-              const entry = { ...result.entry, rules: result.entry.rules ?? {}, triggers: result.entry.triggers ?? [] };
-              refactorEntries.push(entry);
-              for (const field of Object.keys(entry.rules)) {
-                if (!knownFields.includes(field)) knownFields.push(field);
-              }
-            } else failedTitles.push(name);
+            if (result.entry) refactorEntries.push(result.entry);
+            else failedTitles.push(name);
+          } else if (task.kind === "group") {
+            const result = await withRateLimitRetry(
+              () =>
+                invoke<RefactorRewriteOutcome>("refactor_split_group", {
+                  worldId: world,
+                  groupId: task.group.id,
+                  title: task.group.title,
+                  kind: task.group.kind,
+                  spans: task.group.spans,
+                  knownFields,
+                  onDelta: makeOnDelta(),
+                }),
+              () => refactorCancelRef.current,
+            );
+            if (result.entry) refactorEntries.push(result.entry);
+            else failedTitles.push(name);
+          } else if (task.kind === "statusbar") {
+            const result = await withRateLimitRetry(
+              () =>
+                invoke<RefactorExpandOutcome>("refactor_expand_spans", {
+                  worldId: world,
+                  entryUid: task.uid,
+                  spans: task.spans,
+                  knownFields,
+                  onDelta: makeOnDelta(),
+                }),
+              () => refactorCancelRef.current,
+            );
+            if (result.interface) interfaces.push(result.interface);
+            else failedTitles.push(name);
           } else {
             const result = await withRateLimitRetry(
               () =>
@@ -2223,14 +2261,8 @@ function WorldEditor({
                 }),
               () => refactorCancelRef.current,
             );
-            if (result.interface) {
-              interfaces.push(result.interface);
-              if (typeof result.interface.state_fields === "object" && result.interface.state_fields !== null && !Array.isArray(result.interface.state_fields)) {
-                for (const field of Object.keys(result.interface.state_fields)) {
-                  if (!knownFields.includes(field)) knownFields.push(field);
-                }
-              }
-            } else failedTitles.push(name);
+            if (result.interface) interfaces.push(result.interface);
+            else failedTitles.push(name);
           }
         } catch (reason) {
           if (!String(reason).includes("refactor-aborted")) failedTitles.push(name);
@@ -2239,17 +2271,26 @@ function WorldEditor({
         }
       };
 
+      // chain 恆空：survey 同一 run 已建快取，warmed=true 跳過首發獨跑，pool 直接全並行開跑。
       await runRefactorCalls({
-        chain,
+        chain: [],
         pool,
         limit: REFACTOR_PARALLEL_LIMIT,
         isCancelled: () => refactorCancelRef.current,
         run,
+        warmed: true,
       });
 
       setRefactorProgress(null);
       if (characters.length > 0 || interfaces.length > 0 || refactorEntries.length > 0) {
-        const outcome = assembleRefactorOutcome({ characters, interfaces, entries: refactorEntries });
+        const outcome = assembleRefactorOutcome({
+          characters,
+          interfaces,
+          entries: refactorEntries,
+          dropped: local.dropped,
+          unabsorbed: local.unabsorbed,
+          audit: local.audit,
+        });
         setRefactorOutcome(outcome);
         setRefactorSelection(defaultRefactorSelection(outcome));
         setRefactorOrigin("ai");
