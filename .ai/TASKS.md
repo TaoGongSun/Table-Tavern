@@ -17,7 +17,8 @@
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 [refactor-outcome-export](tasks/refactor-outcome-export.md)，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 [person-promote](tasks/person-promote.md) 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 [ai-card-refactor](tasks/ai-card-refactor.md) 的 A–E 一起實機驗收、兩案一起結案
 - [opening-translation](tasks/opening-translation.md) — 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔 — 下一步：實作完成、四項自驗全綠（cargo 426／vitest 71／build／i18n，2026-08-08），等實機驗收 T1–T7（見交接檔）後結案
-- [refactor-dispatch](tasks/refactor-dispatch.md) — AI 重構提速省費：展開並行＋展開下放檔位＋取消真停 — 下一步：包 1–3 實作完成（2026-08-11 三 commit，cargo 442／vitest 94／build／i18n 全綠）；使用者 claude login → 拍板 P7 基線 a/b → 實機驗收 P1–P8（見交接檔），P2/P7 可與 ai-card-refactor B 段合併跑
+- [refactor-dispatch](tasks/refactor-dispatch.md) — AI 重構提速省費：展開並行＋展開下放檔位＋取消真停 — 下一步：包 1–3 實作完成（2026-08-11 三 commit，cargo 442／vitest 94／build／i18n 全綠）；2026-08-11 實機開跑：P1/P3 綠、P2 紅（~24 分）、P7-b 品質紅——提速與品質由 refactor-survey-spans 接手，剩 P4–P6/P8 等新案後合併驗
+- [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：2026-08-11 開工，盤點完成＋小抄合約 v1 定稿（見交接檔），包 1（span＋新 survey 契約＋解析）發包中，包 1–5 後三卡實機驗收（orc-cave <5 分硬指標）
 
 ## Done
 

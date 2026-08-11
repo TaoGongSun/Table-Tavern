@@ -569,7 +569,9 @@ async fn refactor_survey(
     let root = data_root(&app)?;
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
-    let messages = refactor_ai::survey_messages(&context, &lang);
+    let entries = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
+    let signals = refactor_ai::prescan_worldbook(&entries);
+    let messages = refactor_ai::survey_messages(&context, &signals, &lang);
     let (_guard, mut cancel) = inflight::register(&world_id);
     let raw = tokio::select! {
         biased;
