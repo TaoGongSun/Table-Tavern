@@ -1,9 +1,12 @@
 //! AI 卡重構讀卡：組卡脈絡＋提示詞＋標記式解析。落檔／套用邏輯在 refactor.rs；這裡只管
 //! 「餵一張卡給 AI，讀回結構化產物」。
 //!
-//! 呼叫拓撲（refactor-output-redesign 拍板）：
-//! 1. 盤點（survey）：整本讀完，產 PERSONS（認人）＋INTERFACE（含 playable 判定）＋PLAN
-//!    （新世界書結構規劃：設定歸設定條目、機制歸機制條目，塊數 AI 判斷）。
+//! 呼叫拓撲（refactor-survey-spans 拍板，取代舊 PLAN 版）：
+//! 1. 盤點（survey）：整本讀完，產出一份給 App 照抄執行的「小抄」——PERSONS（認人，含清爽個案
+//!    零呼叫組裝用的 mode/spans/private）＋INTERFACE（含 playable 判定）＋ENTRIES（逐條蓋章
+//!    carry／absorb／drop／split）＋SPLITS（split 條目逐 span 路由）＋GROUPS（span 跨條目合組
+//!    成新條目）＋FIELDS（狀態欄位命名唯一權威）。四分類與路由封閉字彙見
+//!    .ai/handoffs/refactor-survey-spans.md「小抄合約 v1」。
 //! 2. 人物展開（person expand）：一人一次呼叫，產角色卡欄位。
 //! 3. 條目重寫（rewrite）：照 PLAN 一條新條目一次呼叫，重寫成乾淨敘事（setting）或
 //!    「可讀機制說明＋本地可執行 RULES/TRIGGERS」（mechanism）。機制合併由 app 本地做，
@@ -89,6 +92,85 @@ pub fn assemble_card_context(root: &Path, world_id: &str) -> DataResult<String> 
     Ok(out)
 }
 
+// ---------------------------------------------------------------------
+// Span 切分
+// ---------------------------------------------------------------------
+
+/// 條目內容依「空行」切出的一段：start/end 是原文（`WorldbookEntry.content`）的 byte 區間
+/// （左閉右開）。id 從 1 起編，各條目各自從 s1 起編，對應 `format_worldbook_entry` 注入的
+/// `⟦sN⟧` 標記與小抄裡的 `uid#sN` 引用寫法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntrySpan {
+    pub id: usize,
+    pub start: usize,
+    pub end: usize,
+}
+
+/// 把條目內容依空行切成一組 span：分隔用的空行 byte 併入前一個 span 尾端，所以全部 span 依序
+/// 串接（原 byte 區間）必定等於原文——span 之間不留縫、不重疊。整段沒有空行（或全是空行、沒有
+/// 任何實質內容）＝一個 span；空字串沒有內容可切，回空 Vec。
+pub fn segment_spans(content: &str) -> Vec<EntrySpan> {
+    if content.is_empty() {
+        return Vec::new();
+    }
+    // 逐行取得 (start, end, 是否空行)；end 含換行字元，方便直接拿來當下一行的 start。
+    let mut lines: Vec<(usize, usize, bool)> = Vec::new();
+    let mut pos = 0usize;
+    for line in content.split_inclusive('\n') {
+        let end = pos + line.len();
+        let stripped = line.strip_suffix('\n').unwrap_or(line);
+        let stripped = stripped.strip_suffix('\r').unwrap_or(stripped);
+        lines.push((pos, end, stripped.trim().is_empty()));
+        pos = end;
+    }
+
+    let mut spans = Vec::new();
+    let mut span_start = 0usize;
+    let mut index = 0usize;
+    let mut seen_content = false;
+    while index < lines.len() {
+        if !lines[index].2 {
+            seen_content = true;
+            index += 1;
+            continue;
+        }
+        // 空行 run：吃到下一個非空行（或結尾）為止。
+        while index < lines.len() && lines[index].2 {
+            index += 1;
+        }
+        // 前面已經有內容、後面還有內容 → 這個空行 run 才是真正的段落分界；純前導或純尾隨空行
+        // 併入唯一相鄰的那個 span，不獨立成段。
+        if seen_content && index < lines.len() {
+            let boundary = lines[index].0;
+            spans.push(EntrySpan {
+                id: spans.len() + 1,
+                start: span_start,
+                end: boundary,
+            });
+            span_start = boundary;
+            seen_content = false;
+        }
+    }
+    spans.push(EntrySpan {
+        id: spans.len() + 1,
+        start: span_start,
+        end: content.len(),
+    });
+    spans
+}
+
+/// 把條目內容依 span 切分後，在每個 span 第一行行首插入 `⟦sN⟧` 標記（各條各自從 s1 起編）；
+/// span 恰好互不重疊地串成整段原文，插入標記不會遺漏或錯位任何一個 byte。
+fn mark_entry_spans(content: &str) -> String {
+    let spans = segment_spans(content);
+    let mut marked = String::with_capacity(content.len() + spans.len() * 8);
+    for span in &spans {
+        marked.push_str(&format!("⟦s{}⟧", span.id));
+        marked.push_str(&content[span.start..span.end]);
+    }
+    marked
+}
+
 fn format_worldbook_entry(entry: &WorldbookEntry) -> String {
     let mut flags = Vec::new();
     if entry.constant {
@@ -104,7 +186,10 @@ fn format_worldbook_entry(entry: &WorldbookEntry) -> String {
     };
     format!(
         "#### uid={} {}{}\n{}\n",
-        entry.uid, entry.title, flags, entry.content
+        entry.uid,
+        entry.title,
+        flags,
+        mark_entry_spans(&entry.content)
     )
 }
 
@@ -118,6 +203,65 @@ pub fn entry_full_text(root: &Path, world_id: &str, entry_uid: &str) -> DataResu
         .find(|entry| entry.uid == uid)
         .ok_or_else(|| data::invalid_data(format!("找不到 uid={uid} 的世界書條目")))?;
     Ok(format_worldbook_entry(&entry))
+}
+
+// ---------------------------------------------------------------------
+// 結構預掃
+// ---------------------------------------------------------------------
+
+/// 結構預掃訊號：某條目某個 span 的原文（不含 `⟦sN⟧` 標記）不分大小寫比對到封閉字彙 pattern
+/// 之一，隨 survey user 訊息注入判官參考；一個 span 命中多個 pattern 各記一筆。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrescanSignal {
+    pub uid: String,
+    /// "uid#sN" 格式，對應 `format_worldbook_entry` 標記的 span 引用寫法。
+    pub span: String,
+    /// 命中的封閉字彙：`"trigger:"`／`"rule:"`／`"逐日樣式"`（第 X 天、每日、day N 三個子樣式
+    /// 合併算一個 pattern，命中其中之一即算，不重複計）。
+    pub pattern: String,
+}
+
+/// 逐日樣式 regex：`第[一二三四五六七八九十\d]+天`／`每日`／`\bday ?\d`，三選一命中即算；只編譯
+/// 一次（全模組共用，內容不變）。
+fn daily_style_regex() -> &'static regex::Regex {
+    static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    PATTERN.get_or_init(|| {
+        regex::Regex::new(r"(?i)第[一二三四五六七八九十\d]+天|每日|\bday ?\d")
+            .expect("硬編碼 regex 必為合法樣式")
+    })
+}
+
+/// 對世界書全部條目做結構預掃：逐條切 span，各 span 原文不分大小寫比對 `trigger:`／`rule:`／
+/// 逐日樣式；一個 span 命中多個 pattern 各記一筆。純粹的關鍵字掃描，不代表一定要 absorb——只是
+/// 給判官一份「這裡可能有機制」的參考清單，判定衝突（例如命中卻判 carry）由判官在 ENTRIES 附
+/// reason 說明。
+pub fn prescan_worldbook(entries: &[WorldbookEntry]) -> Vec<PrescanSignal> {
+    let daily = daily_style_regex();
+    let mut signals = Vec::new();
+    for entry in entries {
+        for span in segment_spans(&entry.content) {
+            let text = &entry.content[span.start..span.end];
+            let lower = text.to_lowercase();
+            let span_ref = format!("{}#s{}", entry.uid, span.id);
+            let mut push = |pattern: &str| {
+                signals.push(PrescanSignal {
+                    uid: entry.uid.to_string(),
+                    span: span_ref.clone(),
+                    pattern: pattern.to_owned(),
+                });
+            };
+            if lower.contains("trigger:") {
+                push("trigger:");
+            }
+            if lower.contains("rule:") {
+                push("rule:");
+            }
+            if daily.is_match(text) {
+                push("逐日樣式");
+            }
+        }
+    }
+    signals
 }
 
 // ---------------------------------------------------------------------
@@ -166,52 +310,121 @@ fn known_fields_line(known_fields: &[String]) -> String {
     }
 }
 
-const SURVEY_BODY: &str = r#"現在是「盤點」階段。請把上面「世界書條目」整本讀完，產出三份清單：人物（PERSONS）、介面（INTERFACE）、
-新世界書結構規劃（PLAN）。
+const SURVEY_BODY: &str = r#"現在是「盤點」階段。請把上面「世界書條目」整本讀完，產出一份給 App 照抄執行的「小抄」：
+不重寫任何條目原文，只對每條內容蓋章分類、標好去處，實際搬移／改寫都由 App 依你的分類機械執行。
+
+上面「世界書條目」裡每條內容都被切成一段一段，每段開頭都標了 `⟦s1⟧`、`⟦s2⟧`……（各條各自從 s1 起編）；
+下面凡是要你引用「某條目的某一段」的地方，一律寫成 `<uid>#s<段號>`（例如條目 12 第 2 段就是 `12#s2`）。
 
 一、人物（PERSONS）：條目在描述具體「人」的設定（性格、外觀、背景、關係……），可以升格成角色卡；單人專屬
 條目、多人合集都要列，不要因為一條只寫一個人就跳過。組織、勢力、職稱／頭銜（例如「教會」「賢者議會」
-「聖堂侍從」）不是人，不要列。同一個人的資料散在好幾條時（自己專屬的條目、跟別人共用的合集條目裡的一段……）
-合併成一筆，把他所有的來源條目 uid 都列出來；同一人有多語言重複版本時（例如中文版與英文版），只留跟玩家
-語言較接近的那一版 uid，另一版不要列，也不要另外算一個人。整張卡最多標記一人為疑似玩家本人（玩家在玩的
-那個角色，內文常見 {{user}} 或明顯是「你」的視角）；沒把握是誰就不要標，最多一人。
+「聖堂侍從」）不是人，不要列。同一個人的資料散在好幾條時（自己專屬的條目、跟別人共用的合集條目裡的一段
+……）合併成一筆，把他所有的來源條目 uid 都列出來；同一人有多語言重複版本時（例如中文版與英文版），只留
+跟玩家語言較接近的那一版 uid，另一版不要列，也不要另外算一個人。整張卡最多標記一人為疑似玩家本人（玩家
+在玩的那個角色，內文常見 {{user}} 或明顯是「你」的視角）；沒把握是誰就不要標，最多一人。
+額外判斷 mode（選填，沒把握就不寫）：
+- clean：這個人全部設定已經是乾淨可用的原文——spans 引用的段落直接照原文拼起來就是一份完整角色卡，
+  不需要摘要、合併、翻譯或格式調整；spans 列出這個人全部段落（可以橫跨他的好幾個來源 uid），private
+  再從中挑出屬於祕密／只有扮演者該知道的段落，沒有私密內容就不寫這欄。
+- tangled：這個人的設定需要真的整理過（原文零散、跟別人的段落糾纏、需要摘要或潤飾）。
+沒把握該選哪個就不寫 mode，效果等同 tangled，不會出錯，只是這個人省不到這次的零呼叫組裝。
 
 二、介面（INTERFACE）：條目在定義狀態欄／介面的格式（結構化欄位怎麼顯示），不是在說故事。每條加註
 playable 判定——playable: yes 只給「卡片定義了一個玩家可以完全在裡面遊玩的介面」：有劇情正文顯示區、
 有行動入口，遊玩過程發生在這個介面裡。只是狀態欄、屬性面板、資訊模板（顯示數值、天數、環境之類），一律
 playable: no。沒把握就 no。
 
-三、新世界書結構規劃（PLAN）：把除了「被 PERSONS 完整吸收的人物專屬內容」之外的全部世界書內容，重新規劃
-成一組乾淨的新條目——設定歸設定條目（kind: setting），機制歸機制條目（kind: mechanism）：
-- setting：世界觀、地理、種族、勢力、歷史、事件與劇情背景等敘事設定。
-- mechanism：數值怎麼變動、什麼條件觸發什麼的規則（屬性、天數、階段、關係、事件判定……）。
-- 條目數量你判斷：同類內容可以合併成一條，龐雜主題可以拆成幾條；原卡分條分得亂就不要跟著亂。
-- 每一條原始條目的 uid 都必須出現在 PERSONS、INTERFACE、PLAN 至少一處；內容混合的條目可以同時出現在
-  多處（例如一條裡既有人物段落又有規則段落，就同時列在 PERSONS 與 PLAN）。不准有任何 uid 三處都沒出現
-  ——整本重構，不留孤兒內容。
-- 機制帳本標記「已接管」的條目不用列；標記「跳過」的條目是重構目標，照樣規劃進 PLAN。
+三、其餘條目分類（ENTRIES）：PERSONS 完整收走的人物專屬條目、INTERFACE 完整收走的介面格式條目不用再列；
+其餘每一條世界書條目都要在這裡出現一行，action 四選一：
+- carry（照搬，沒把握就選這個）：整條原文照搬進新世界書，不重寫、不加工。
+- absorb（接管，僅限三種）：條目在描述「逐日排程」（第幾天發生什麼）、「觸發條件」（什麼數值到什麼範圍
+  觸發什麼）、或「App 需要追蹤並隨劇情更新的狀態欄位」。靜態目錄（勢力／地點／物品列表，只是條列說明）
+  與歷史年表（事件按時間排列的敘事）都不算，屬於設定，一律 carry。
+- drop（淘汰，僅限三種，必附 rule 編號）：① 輸出容器紀律——原卡寫給別的平台的輸出格式指令（例如「請用
+  以下格式回覆」），本 App 有自己的介面機制，這類指令沒有意義；② 版本標記／更新日誌——版本號、更新
+  歷程、製作心得，不是遊玩內容；③ ST 引擎專屬鉤子——只有原平台看得懂的巨集／腳本語法，本 App 無法執行。
+  不在這三種之列或拿不準——一律不淘汰，改選 carry；作者設計的世界觀、規則、劇情內容永遠不准淘汰。
+- split（需拆）：一條裡混了兩種以上去處（例如介面格式段落＋機制段落、人物段落＋設定段落、該接管的機制＋
+  該照搬的設定），沒辦法整條歸一類——這裡標 split，實際去處逐段寫進 SPLITS。
+下面「結構預掃訊號」列出的段落如果落在你判給 carry 的條目裡，這行要附一句 reason 說明為什麼不需要
+absorb（例如訊號誤判、或那段其實是歷史紀錄不是即時機制）。
+
+四、拆條目（SPLITS）：ENTRIES 標 split 的條目，把它每一段都指定去處，route 七選一：
+- statusbar：這段在定義狀態欄／介面格式（跟 INTERFACE 條目性質一樣，只是混在別的條目裡）。
+- gm：這段是敘事性的行為指令（GM 該怎麼描述、怎麼引導劇情），原文會照搬進一條「GM 規則」條目。
+- drop rule: <1|2|3>：這段屬於上面淘汰清單三種之一。
+- person name: <人名>：這段是某個人的專屬內容，人名必須是 PERSONS 裡出現過的名字，會併入他的角色卡。
+- entry title: <新條目標題>：這段是設定內容，同一個 title 底下的所有段會依原文順序串接成一條新設定
+  條目，原文照搬、你不用重寫。
+- group id: <gN>：這段要跟其他條目的段一起組成新條目，id 對應下面 GROUPS 區塊的宣告，用在同一個機制
+  被拆散在好幾條原始條目裡的情況。
+- unabsorbed note: <一句話>：這段描述的機制目前 App 還沒有對應的執行機構，抽不成結構化規則，但也不是
+  要丟掉——原文會照搬進 GM 規則條目，note 講清楚這是什麼機制，方便之後告訴玩家哪些機制還沒被系統接管。
+一段只能有一個去處；沒把握歸哪一類，設定內容就走 entry（原文照搬永遠安全），機制內容就走 unabsorbed。
+
+五、合組（GROUPS）：SPLITS 裡標 group 的段，在這裡宣告它們組成的新條目：id 要跟 SPLITS 對應，kind 決定
+這組內容怎麼處理（setting｜mechanism），spans 是這組全部成員（逗號分隔，順序就是新條目裡的原文順序，
+可以橫跨好幾個不同的來源 uid）。
+
+六、狀態欄位命名（FIELDS）：把 ENTRIES／SPLITS 會用到的全部狀態欄位名（statusbar、absorb、group 裡
+kind=mechanism 會抽出來的欄位）在這裡一次列全，一行一個——這是這張卡全部狀態欄位命名的唯一權威，後面
+每一次實際執行都只能沿用這裡列出的名字，不准另創同義詞。欄位名一律玩家語言，機器好處理（數字欄位就是
+數字，不要「第 1 天」這種帶敘述的字串）。
 
 嚴格照以下標記輸出，標記之外不要有任何文字：
 
 ## PERSONS
-- name: <人名> uids: <來源條目 uid，逗號分隔，可以只有一個> player: <疑似玩家本人就寫 yes，最多一人；其餘不寫這欄>
-（一行一人；一個都沒有就把這區塊留空，不要寫「無」）
+- name: <人名> uids: <來源條目 uid，逗號分隔> player: <疑似玩家本人寫 yes，最多一人；其餘不寫> mode: <clean|tangled，沒把握不寫> spans: <mode: clean 才需要，逗號分隔> private: <從 spans 挑出的私密段，沒有不寫>
+（一行一人；一個都沒有就留空，不要寫「無」）
 
 ## INTERFACE
 - uid=<條目 uid> playable: <yes|no>
 （一行一條；沒有就留空）
 
-## PLAN
-- title: <新條目標題> kind: <setting|mechanism> uids: <這條新條目取材的原始條目 uid，逗號分隔>
-（一行一條新條目，順序就是新世界書的條目順序；世界書完全沒有內容可規劃時才留空）"#;
+## ENTRIES
+- uid=<條目 uid> action: <carry|absorb|drop|split> rule: <僅 drop 需要，1|2|3> reason: <選填，跟預掃訊號衝突時必填>
+（一行一條，見上面說明哪些條目不用列；沒有就留空）
 
-pub fn survey_messages(context: &str, lang: &str) -> Vec<ChatMessage> {
+## SPLITS
+- span: <uid#s段號> route: <statusbar|gm|drop rule: N|person name: X|entry title: T|group id: gN|unabsorbed note: 說明>
+（只有 ENTRIES 標 split 的條目才需要；那條目的每一段都要出現一次；沒有 split 條目就留空）
+
+## GROUPS
+- id: <gN> title: <新條目標題> kind: <setting|mechanism> spans: <成員段落，逗號分隔>
+（只有 SPLITS 用到的 group id 才需要在這裡宣告；沒有就留空）
+
+## FIELDS
+- <欄位名>
+（一行一個；完全沒有狀態欄位就留空）"#;
+
+/// 結構預掃訊號列成一段文字，隨 survey user 訊息注入判官參考；沒有訊號也要講清楚沒有，避免
+/// AI 誤以為是漏列。
+fn signals_line(signals: &[PrescanSignal]) -> String {
+    if signals.is_empty() {
+        "結構預掃訊號：（無）".to_owned()
+    } else {
+        let mut lines = vec![
+            "結構預掃訊號（app 對條目原文做的關鍵字掃描，僅供參考，不代表一定要 absorb；你的判定\
+            如果跟訊號衝突，例如訊號命中的段落所在條目你判給 carry，ENTRIES 那一行要附 reason 說明\
+            為什麼）："
+                .to_owned(),
+        ];
+        for signal in signals {
+            lines.push(format!("- uid={} 含 {}", signal.span, signal.pattern));
+        }
+        lines.join("\n")
+    }
+}
+
+/// 盤點階段訊息：signals＝app 結構預掃訊號（見 `prescan_worldbook`），隨 user 訊息注入判官參考。
+pub fn survey_messages(context: &str, signals: &[PrescanSignal], lang: &str) -> Vec<ChatMessage> {
     vec![
         system_message(context),
         ChatMessage {
             role: "user".to_owned(),
             content: format!(
-                "{SURVEY_BODY}\n\n全部內容（人名與專有名詞以外）使用 BCP-47 語言代碼「{lang}」對應的語言；PLAN 的 title 也用這個語言。"
+                "{SURVEY_BODY}\n\n{}\n\n全部內容（人名與專有名詞以外）使用 BCP-47 語言代碼「{lang}」對應的語言；GROUPS／SPLITS 的 title 也用這個語言。",
+                signals_line(signals)
             ),
         },
     ]
@@ -587,12 +800,23 @@ fn strip_html_fence(text: &str) -> &str {
 
 /// 盤點結果：人物已經是「認人」後的結果——一人一筆，來源 uid 可能多條（字串——避免前端 JS
 /// number 精度問題）；is_player＝盤點階段 AI 標記的疑似玩家本人，整份輸出至多一筆為 true。
+/// mode／spans／private_spans 是清爽個案零呼叫組裝用的選配欄：mode="clean" 時 spans 是這個人
+/// 全部段落引用（`uid#sN`，行內欄名 `spans:`），private_spans 是其中屬於私密段的子集（行內
+/// 欄名 `private:`）；mode 缺席（沿舊格式）或="tangled" 一律照現行 person_expand 流程處理，
+/// spans／private_spans 不使用。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefactorSurveyPerson {
     pub name: String,
     pub uids: Vec<String>,
     #[serde(default)]
     pub is_player: bool,
+    /// ""｜"clean"｜"tangled"。
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub spans: Vec<String>,
+    #[serde(default)]
+    pub private_spans: Vec<String>,
 }
 
 /// PLAN 的一條新條目規劃：title＋kind（"setting"|"mechanism"）＋來源 uid。
@@ -601,6 +825,48 @@ pub struct RefactorPlanEntry {
     pub title: String,
     pub kind: String,
     pub uids: Vec<String>,
+}
+
+/// ENTRIES 一行的判定：uid 這條原始條目該怎麼處置。action 是封閉字彙 carry／absorb／drop／
+/// split；rule 只有 action="drop" 才有意義（1|2|3，對應淘汰三理由）；reason 選填，跟結構
+/// 預掃訊號衝突（例如訊號命中卻判 carry）時判官必須附一句。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RefactorEntryVerdict {
+    pub uid: String,
+    pub action: String,
+    #[serde(default)]
+    pub rule: Option<u8>,
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// SPLITS 一行：某個 span 的去處。route 封閉字彙 statusbar｜gm｜drop｜person｜entry｜group｜
+/// unabsorbed；rule／name／title／group／note 依 route 種類擇一使用（見 `parse_split_line`），
+/// 其餘欄位維持空值。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RefactorSpanRoute {
+    pub span: String,
+    pub route: String,
+    #[serde(default)]
+    pub rule: Option<u8>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub group: String,
+    #[serde(default)]
+    pub note: String,
+}
+
+/// GROUPS 一行：SPLITS 標 group 的 span 們合組成的一條新條目。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RefactorSplitGroup {
+    pub id: String,
+    pub title: String,
+    /// "setting"|"mechanism"。
+    pub kind: String,
+    pub spans: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -614,9 +880,18 @@ pub struct RefactorSurveyOutcome {
     /// 其餘介面條目走 interface、只抽 STATE。
     #[serde(default)]
     pub playable_interface_uids: Vec<String>,
-    /// 新世界書結構規劃：一條＝一次條目重寫呼叫。
+    /// 非純人物、非純介面條目的分類判定：一條原始條目一筆。
     #[serde(default)]
-    pub plan: Vec<RefactorPlanEntry>,
+    pub verdicts: Vec<RefactorEntryVerdict>,
+    /// action=split 條目的逐 span 路由。
+    #[serde(default)]
+    pub splits: Vec<RefactorSpanRoute>,
+    /// SPLITS 用到的 group id 對應的合組宣告。
+    #[serde(default)]
+    pub groups: Vec<RefactorSplitGroup>,
+    /// 狀態欄位命名唯一權威：後續每次展開呼叫的 known_fields 都從這裡起算。
+    #[serde(default)]
+    pub fields: Vec<String>,
     #[serde(default)]
     pub raw: String,
 }
@@ -632,48 +907,97 @@ fn parse_uid_line(line: &str) -> Option<u64> {
     trimmed[4..].trim().split_whitespace().next()?.parse().ok()
 }
 
+/// 判斷欄位值是不是「肯定」（yes／true／是開頭，大小寫不拘）；INTERFACE 的 playable 與 PERSONS
+/// 的 player 共用同一套寬鬆判斷。
+fn is_affirmative(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    lower.starts_with("yes") || lower.starts_with("true") || lower.starts_with('是')
+}
+
 /// INTERFACE 區塊行：`- uid=12 playable: yes`。抽不到合法 uid 整行略過；playable 欄缺席或
 /// 值不是 yes/true/是 一律當 no（沒把握就 no 的保守基準落在解析端再兜一層）。
 fn parse_interface_line(line: &str) -> Option<(u64, bool)> {
     let uid = parse_uid_line(line)?;
     let lower = line.to_ascii_lowercase();
-    let playable = lower.find("playable:").is_some_and(|pos| {
-        let value = lower[pos + "playable:".len()..].trim();
-        value.starts_with("yes") || value.starts_with("true") || value.starts_with('是')
-    });
+    let playable = lower
+        .find("playable:")
+        .is_some_and(|pos| is_affirmative(&lower[pos + "playable:".len()..]));
     Some((uid, playable))
 }
 
-/// 從盤點 PERSONS 區塊裡的一行（`- name: 霍玄 uids: 12,45 player: yes`）抽出人名、來源 uid
-/// 清單、疑似玩家旗標；固定欄位順序 name→uids→player（跟提示詞範本一致），抽不到名字或一個
-/// 合法 uid 都沒有的行整行略過——garbage in 無聲跳過，不 panic。
+/// 依宣告順序找一組欄位鍵在字串裡的位置（大小寫不拘）；欄位之間必須維持宣告順序，缺席的欄位
+/// 就跳過不找、不影響後面欄位的搜尋起點。回傳陣列與 `keys` 一一對應，缺席回 None。搭配
+/// `field_value` 切出每欄的值——PERSONS／ENTRIES／SPLITS／GROUPS 等固定欄序、部分欄可選的
+/// 區塊行共用這套抽取邏輯。
+fn locate_fields(lower: &str, keys: &[&str]) -> Vec<Option<usize>> {
+    let mut positions = vec![None; keys.len()];
+    let mut search_from = 0usize;
+    for (index, key) in keys.iter().enumerate() {
+        if let Some(relative) = lower.get(search_from..).and_then(|rest| rest.find(key)) {
+            let pos = search_from + relative;
+            positions[index] = Some(pos);
+            search_from = pos + key.len();
+        }
+    }
+    positions
+}
+
+/// 配 `locate_fields` 使用：取第 `index` 個欄位的值（欄名之後到下一個「有出現」欄位之前，trim
+/// 過）；該欄缺席回 None。`text` 必須是取得 `lower`／`positions` 的同一段原文（byte 位置才會
+/// 對得上——`to_ascii_lowercase` 不改變位元組長度與邊界，位置可以直接套用）。
+fn field_value<'a>(
+    text: &'a str,
+    positions: &[Option<usize>],
+    keys: &[&str],
+    index: usize,
+) -> Option<&'a str> {
+    let start = positions[index]? + keys[index].len();
+    let end = positions[index + 1..]
+        .iter()
+        .flatten()
+        .next()
+        .copied()
+        .unwrap_or(text.len());
+    text.get(start..end).map(str::trim)
+}
+
+const PERSON_FIELD_KEYS: [&str; 6] = ["name:", "uids:", "player:", "mode:", "spans:", "private:"];
+
+/// 從盤點 PERSONS 區塊裡的一行抽出人名、來源 uid 清單、疑似玩家旗標、mode／spans／private；
+/// 固定欄位順序 name→uids→player→mode→spans→private（跟提示詞範本一致），後四欄選配、缺席
+/// 就是空值——舊格式行（只有 name／uids／player）照樣解析成功。抽不到名字或一個合法 uid 都
+/// 沒有的行整行略過——garbage in 無聲跳過，不 panic。
 fn parse_person_line(line: &str) -> Option<RefactorSurveyPerson> {
     let trimmed = line.trim().trim_start_matches('-').trim();
     let lower = trimmed.to_ascii_lowercase();
-    let name_pos = lower.find("name:")?;
-    let uids_pos = lower.find("uids:")?;
-    if uids_pos <= name_pos {
-        return None;
-    }
-    let name = trimmed[name_pos + "name:".len()..uids_pos].trim();
+    let positions = locate_fields(&lower, &PERSON_FIELD_KEYS);
+    let name = field_value(trimmed, &positions, &PERSON_FIELD_KEYS, 0)?;
     if name.is_empty() {
         return None;
     }
-    let player_pos = lower.find("player:");
-    let uids_end = player_pos.unwrap_or(trimmed.len());
-    let uids_part = &trimmed[uids_pos + "uids:".len()..uids_end];
-    let uids = parse_uid_list(uids_part);
+    let uids = parse_uid_list(field_value(trimmed, &positions, &PERSON_FIELD_KEYS, 1)?);
     if uids.is_empty() {
         return None;
     }
-    let is_player = player_pos.is_some_and(|pos| {
-        let value = trimmed[pos + "player:".len()..].trim().to_ascii_lowercase();
-        value.starts_with("yes") || value.starts_with("true") || value.starts_with('是')
-    });
+    let is_player =
+        field_value(trimmed, &positions, &PERSON_FIELD_KEYS, 2).is_some_and(is_affirmative);
+    let mode = field_value(trimmed, &positions, &PERSON_FIELD_KEYS, 3)
+        .map(str::to_ascii_lowercase)
+        .filter(|mode| mode.as_str() == "clean" || mode.as_str() == "tangled")
+        .unwrap_or_default();
+    let spans = field_value(trimmed, &positions, &PERSON_FIELD_KEYS, 4)
+        .map(parse_span_list)
+        .unwrap_or_default();
+    let private_spans = field_value(trimmed, &positions, &PERSON_FIELD_KEYS, 5)
+        .map(parse_span_list)
+        .unwrap_or_default();
     Some(RefactorSurveyPerson {
         name: name.to_owned(),
         uids,
         is_player,
+        mode,
+        spans,
+        private_spans,
     })
 }
 
@@ -685,42 +1009,199 @@ fn parse_uid_list(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// PLAN 區塊行：`- title: 獸人氏族 kind: setting uids: 3,7`。固定欄位順序 title→kind→uids；
-/// 標題空、kind 不是 setting/mechanism、或一個合法 uid 都沒有的行整行略過。
-fn parse_plan_line(line: &str) -> Option<RefactorPlanEntry> {
+/// `uid#sN` 格式檢查：uid 與段號都必須是合法數字，中間用 `#s` 分隔。
+fn is_valid_span_ref(text: &str) -> bool {
+    let Some((uid, span_id)) = text.split_once("#s") else {
+        return false;
+    };
+    !span_id.is_empty()
+        && uid.parse::<u64>().is_ok()
+        && span_id.chars().all(|ch| ch.is_ascii_digit())
+}
+
+fn parse_span_list(text: &str) -> Vec<String> {
+    text.split([',', '、', '，'])
+        .map(str::trim)
+        .filter(|token| is_valid_span_ref(token))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// 把一段文字從第一個空白處切開：回傳（第一個 token，去掉前導空白的其餘部分）。SPLITS 的 route
+/// 欄先抽出關鍵字本身，剩下的部分再找 route 專屬的附欄（rule／name／title／id／note）。
+fn split_first_token(text: &str) -> (&str, &str) {
+    let text = text.trim_start();
+    match text.find(char::is_whitespace) {
+        Some(index) => (&text[..index], text[index..].trim_start()),
+        None => (text, ""),
+    }
+}
+
+/// 在一段文字裡找 `key`（大小寫不拘），回傳鍵之後到這段文字結尾、trim 過的內容；找不到或抽出來
+/// 是空字串都回 None。用在「這欄一定是這段文字裡最後一個已知欄位」的情境（SPLITS route 的附欄）。
+fn find_trailing_field<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    let lower = text.to_ascii_lowercase();
+    let pos = lower.find(key)?;
+    let value = text[pos + key.len()..].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn parse_rule_field(text: &str) -> Option<u8> {
+    find_trailing_field(text, "rule:")?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+const ENTRY_ACTIONS: [&str; 4] = ["carry", "absorb", "drop", "split"];
+const ENTRY_FIELD_KEYS: [&str; 3] = ["action:", "rule:", "reason:"];
+
+/// ENTRIES 區塊行：`- uid=5 action: drop rule: 2 reason: ...`。uid 沿用 `parse_uid_line`
+/// （跟 INTERFACE 同一種 `uid=` 寫法）；action 不在封閉字彙整行略過；rule／reason 都選填，
+/// rule 就算 action 不是 drop 也照抽——drop 缺 rule 照收，交給後續稽核包退回，這裡不擋。
+fn parse_entry_line(line: &str) -> Option<RefactorEntryVerdict> {
+    let uid = parse_uid_line(line)?;
     let trimmed = line.trim().trim_start_matches('-').trim();
     let lower = trimmed.to_ascii_lowercase();
-    let title_pos = lower.find("title:")?;
-    let kind_pos = lower.find("kind:")?;
-    let uids_pos = lower.find("uids:")?;
-    if kind_pos <= title_pos || uids_pos <= kind_pos {
+    let positions = locate_fields(&lower, &ENTRY_FIELD_KEYS);
+    let action = field_value(trimmed, &positions, &ENTRY_FIELD_KEYS, 0)?.to_ascii_lowercase();
+    if !ENTRY_ACTIONS.contains(&action.as_str()) {
         return None;
     }
-    let title = trimmed[title_pos + "title:".len()..kind_pos].trim();
-    if title.is_empty() {
-        return None;
-    }
-    let kind = lower[kind_pos + "kind:".len()..uids_pos].trim();
-    if PlanKind::parse(kind).is_err() {
-        return None;
-    }
-    let uids = parse_uid_list(&trimmed[uids_pos + "uids:".len()..]);
-    if uids.is_empty() {
-        return None;
-    }
-    Some(RefactorPlanEntry {
-        title: title.to_owned(),
-        kind: kind.to_owned(),
-        uids,
+    let rule = field_value(trimmed, &positions, &ENTRY_FIELD_KEYS, 1)
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|token| token.parse::<u8>().ok());
+    let reason = field_value(trimmed, &positions, &ENTRY_FIELD_KEYS, 2)
+        .unwrap_or_default()
+        .to_owned();
+    Some(RefactorEntryVerdict {
+        uid: uid.to_string(),
+        action,
+        rule,
+        reason,
     })
 }
 
+const SPLIT_ROUTES: [&str; 7] = [
+    "statusbar",
+    "gm",
+    "drop",
+    "person",
+    "entry",
+    "group",
+    "unabsorbed",
+];
+const SPLIT_FIELD_KEYS: [&str; 2] = ["span:", "route:"];
+
+/// SPLITS 區塊行：`- span: 7#s1 route: statusbar` 之類；route 後視關鍵字附對應欄位（drop→
+/// rule、person→name、entry→title、group→id、unabsorbed→note，statusbar／gm 無附欄）。span
+/// 格式不合法、route 不在封閉字彙、或 person／entry／group 缺對應附欄，整行略過（那個 span
+/// 就此沒有路由，留給後續稽核包的「拆組守恆」兜底併回照搬）。
+fn parse_split_line(line: &str) -> Option<RefactorSpanRoute> {
+    let trimmed = line.trim().trim_start_matches('-').trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let positions = locate_fields(&lower, &SPLIT_FIELD_KEYS);
+    let span = field_value(trimmed, &positions, &SPLIT_FIELD_KEYS, 0)?;
+    if !is_valid_span_ref(span) {
+        return None;
+    }
+    let rest = field_value(trimmed, &positions, &SPLIT_FIELD_KEYS, 1)?;
+    let (route, remainder) = split_first_token(rest);
+    let route = route.to_ascii_lowercase();
+    if !SPLIT_ROUTES.contains(&route.as_str()) {
+        return None;
+    }
+    let mut result = RefactorSpanRoute {
+        span: span.to_owned(),
+        route: route.clone(),
+        rule: None,
+        name: String::new(),
+        title: String::new(),
+        group: String::new(),
+        note: String::new(),
+    };
+    match route.as_str() {
+        "drop" => result.rule = parse_rule_field(remainder),
+        "person" => result.name = find_trailing_field(remainder, "name:")?.to_owned(),
+        "entry" => result.title = find_trailing_field(remainder, "title:")?.to_owned(),
+        "group" => result.group = find_trailing_field(remainder, "id:")?.to_owned(),
+        "unabsorbed" => {
+            result.note = find_trailing_field(remainder, "note:")
+                .unwrap_or_default()
+                .to_owned()
+        }
+        _ => {}
+    }
+    Some(result)
+}
+
+const GROUP_FIELD_KEYS: [&str; 4] = ["id:", "title:", "kind:", "spans:"];
+
+/// GROUPS 區塊行：`- id: g1 title: 格式與行為 kind: mechanism spans: 16#s2,16#s5,18#s1`。
+/// 固定欄位順序 id→title→kind→spans；id／title 空、kind 不是 setting/mechanism、或一個合法
+/// span 引用都沒有的行整行略過。
+fn parse_group_line(line: &str) -> Option<RefactorSplitGroup> {
+    let trimmed = line.trim().trim_start_matches('-').trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let positions = locate_fields(&lower, &GROUP_FIELD_KEYS);
+    let id = field_value(trimmed, &positions, &GROUP_FIELD_KEYS, 0)?;
+    if id.is_empty() {
+        return None;
+    }
+    let title = field_value(trimmed, &positions, &GROUP_FIELD_KEYS, 1)?;
+    if title.is_empty() {
+        return None;
+    }
+    let kind = field_value(trimmed, &positions, &GROUP_FIELD_KEYS, 2)?.to_ascii_lowercase();
+    if kind.as_str() != "setting" && kind.as_str() != "mechanism" {
+        return None;
+    }
+    let spans = parse_span_list(field_value(trimmed, &positions, &GROUP_FIELD_KEYS, 3)?);
+    if spans.is_empty() {
+        return None;
+    }
+    Some(RefactorSplitGroup {
+        id: id.to_owned(),
+        title: title.to_owned(),
+        kind,
+        spans,
+    })
+}
+
+/// FIELDS 區塊行：`- 好感度`，去掉開頭 `-` 與空白就是欄位名；空行略過。
+fn parse_field_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_start_matches('-').trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
+    }
+}
+
 pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
-    let blocks = parse_blocks(raw, &["PERSONS", "INTERFACE", "PLAN"]);
+    let blocks = parse_blocks(
+        raw,
+        &[
+            "PERSONS",
+            "INTERFACE",
+            "ENTRIES",
+            "SPLITS",
+            "GROUPS",
+            "FIELDS",
+        ],
+    );
     let mut persons = Vec::new();
     let mut interface_uids = Vec::new();
     let mut playable_interface_uids = Vec::new();
-    let mut plan = Vec::new();
+    let mut verdicts = Vec::new();
+    let mut splits = Vec::new();
+    let mut groups = Vec::new();
+    let mut fields = Vec::new();
     for block in &blocks {
         match block.marker {
             "PERSONS" => persons.extend(
@@ -741,7 +1222,12 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
                     }
                 }
             }
-            "PLAN" => plan.extend(block.lines.iter().filter_map(|line| parse_plan_line(line))),
+            "ENTRIES" => {
+                verdicts.extend(block.lines.iter().filter_map(|line| parse_entry_line(line)))
+            }
+            "SPLITS" => splits.extend(block.lines.iter().filter_map(|line| parse_split_line(line))),
+            "GROUPS" => groups.extend(block.lines.iter().filter_map(|line| parse_group_line(line))),
+            "FIELDS" => fields.extend(block.lines.iter().filter_map(|line| parse_field_line(line))),
             _ => {}
         }
     }
@@ -749,7 +1235,10 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         persons,
         interface_uids,
         playable_interface_uids,
-        plan,
+        verdicts,
+        splits,
+        groups,
+        fields,
         raw: raw.to_owned(),
     }
 }
@@ -1048,36 +1537,292 @@ mod tests {
         assert!(context.contains("已接管") && context.contains("偵測到 [initvar] 標記"));
     }
 
-    // ---- 盤點：PERSONS／INTERFACE(playable)／PLAN ----
+    // ---- span 切分 ----
+
+    /// 把 span 依序切片串接回去；用來驗證「span 依序串接必得原文 byte 相等」這條不變量。
+    fn reassemble(content: &str, spans: &[EntrySpan]) -> String {
+        spans
+            .iter()
+            .map(|span| &content[span.start..span.end])
+            .collect()
+    }
+
+    // 單段（無空行）＝整條一個 span
+    #[test]
+    fn segment_spans_single_paragraph_yields_one_span() {
+        let content = "整段沒有空行的內容。";
+        let spans = segment_spans(content);
+        assert_eq!(
+            spans,
+            vec![EntrySpan {
+                id: 1,
+                start: 0,
+                end: content.len()
+            }]
+        );
+    }
+
+    // property 式檢查：不管內容長什麼樣子，span 依序串接（含分隔空行）都必須等於原文 byte
+    // 相等，而且 id 從 1 連號、彼此不重疊不留縫。涵蓋多段、多重空行、前導／尾隨空行、全空白、
+    // 空字串、中英文與 emoji 混排等形狀。
+    #[test]
+    fn segment_spans_reassembly_is_byte_identical_to_original_for_various_shapes() {
+        let samples = [
+            "第一段。\n\n第二段。\n\n第三段。",
+            "第一段。\n\n\n第二段（前面兩個空行）。",
+            "只有一段，結尾帶換行。\n",
+            "\n\n前導空行後才有內容。\n\n又一段。",
+            "中英文與 emoji 混排 🎲\n\ntrigger: 第七天 🔥\n\n每日簽到 day 3",
+            "",
+            "   \n\n   ",
+        ];
+        for content in samples {
+            let spans = segment_spans(content);
+            assert_eq!(reassemble(content, &spans), content, "樣本：{content:?}");
+            let mut expected_start = 0usize;
+            for (index, span) in spans.iter().enumerate() {
+                assert_eq!(span.id, index + 1, "樣本：{content:?}");
+                assert_eq!(span.start, expected_start, "樣本：{content:?}");
+                expected_start = span.end;
+            }
+            assert_eq!(expected_start, content.len(), "樣本：{content:?}");
+        }
+    }
+
+    // 空字串沒有內容可切
+    #[test]
+    fn segment_spans_empty_content_yields_no_spans() {
+        assert!(segment_spans("").is_empty());
+    }
+
+    // ---- format_worldbook_entry：⟦sN⟧ 標記 ----
 
     #[test]
-    fn parse_survey_extracts_persons_interface_playable_and_plan() {
+    fn format_worldbook_entry_injects_span_markers_at_each_segment_head() {
+        let entry = WorldbookEntry {
+            uid: 7,
+            title: "測試條目".to_owned(),
+            keys: Vec::new(),
+            content: "第一段內容。\n\n第二段內容。".to_owned(),
+            constant: false,
+            order: 0,
+            disabled: false,
+            visibility: Visibility::Gm,
+            is_person: false,
+            locked: false,
+        };
+        let formatted = format_worldbook_entry(&entry);
+        assert!(formatted.contains("⟦s1⟧第一段內容。"));
+        assert!(formatted.contains("⟦s2⟧第二段內容。"));
+        // 標記拿掉就是原文，沒有遺漏或錯位任何 byte。
+        let stripped = formatted.replace("⟦s1⟧", "").replace("⟦s2⟧", "");
+        assert!(stripped.contains(&entry.content));
+    }
+
+    // ---- 結構預掃 ----
+
+    fn sample_entry(uid: u64, content: &str) -> WorldbookEntry {
+        WorldbookEntry {
+            uid,
+            title: format!("條目{uid}"),
+            keys: Vec::new(),
+            content: content.to_owned(),
+            constant: false,
+            order: 0,
+            disabled: false,
+            visibility: Visibility::Gm,
+            is_person: false,
+            locked: false,
+        }
+    }
+
+    // trigger:／rule: 不分大小寫都要命中
+    #[test]
+    fn prescan_worldbook_matches_trigger_and_rule_case_insensitively() {
+        let entries = vec![
+            sample_entry(1, "Trigger: 好感度 >= 50 時觸發告白"),
+            sample_entry(2, "RULE: 每次戰鬥扣血"),
+        ];
+        let signals = prescan_worldbook(&entries);
+        assert_eq!(signals.len(), 2);
+        assert_eq!(signals[0].uid, "1");
+        assert_eq!(signals[0].span, "1#s1");
+        assert_eq!(signals[0].pattern, "trigger:");
+        assert_eq!(signals[1].uid, "2");
+        assert_eq!(signals[1].pattern, "rule:");
+    }
+
+    // 逐日樣式三個子樣式（第 X 天／每日／day N）都要命中，且不分大小寫
+    #[test]
+    fn prescan_worldbook_matches_daily_style_variants() {
+        let entries = vec![
+            sample_entry(1, "第七天會有商隊經過"),
+            sample_entry(2, "每日簽到可以領獎勵"),
+            sample_entry(3, "Day 3 之後解鎖新地圖"),
+        ];
+        let signals = prescan_worldbook(&entries);
+        assert_eq!(signals.len(), 3);
+        for signal in &signals {
+            assert_eq!(signal.pattern, "逐日樣式");
+        }
+    }
+
+    // 一個 span 命中多個 pattern 各記一筆
+    #[test]
+    fn prescan_worldbook_records_one_signal_per_pattern_hit_on_same_span() {
+        let entries = vec![sample_entry(9, "trigger: 第七天 rule: 扣血")];
+        let signals = prescan_worldbook(&entries);
+        assert_eq!(signals.len(), 3);
+        assert!(signals.iter().all(|signal| signal.span == "9#s1"));
+        let patterns: Vec<&str> = signals
+            .iter()
+            .map(|signal| signal.pattern.as_str())
+            .collect();
+        assert!(patterns.contains(&"trigger:"));
+        assert!(patterns.contains(&"rule:"));
+        assert!(patterns.contains(&"逐日樣式"));
+    }
+
+    // 不含任何封閉字彙的條目沒有訊號
+    #[test]
+    fn prescan_worldbook_yields_no_signal_for_plain_narrative() {
+        let entries = vec![sample_entry(
+            1,
+            "這裡只是單純的世界觀敘述，沒有任何機制字樣。",
+        )];
+        assert!(prescan_worldbook(&entries).is_empty());
+    }
+
+    // 多段條目：訊號要標對 span 序號
+    #[test]
+    fn prescan_worldbook_references_correct_span_id_across_multiple_paragraphs() {
+        let entries = vec![sample_entry(
+            4,
+            "第一段是單純敘述。\n\n第二段才有 trigger: 條件。",
+        )];
+        let signals = prescan_worldbook(&entries);
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].span, "4#s2");
+    }
+
+    // signals 注入 user 訊息：有訊號要看得到 uid#sN 與 pattern，沒有訊號要講清楚「無」
+    #[test]
+    fn survey_messages_injects_prescan_signals_into_user_message() {
+        let with_signals = survey_messages(
+            "ctx",
+            &[PrescanSignal {
+                uid: "3".to_owned(),
+                span: "3#s2".to_owned(),
+                pattern: "trigger:".to_owned(),
+            }],
+            "zh-TW",
+        );
+        assert!(with_signals[1].content.contains("uid=3#s2"));
+        assert!(with_signals[1].content.contains("trigger:"));
+
+        let without_signals = survey_messages("ctx", &[], "zh-TW");
+        assert!(without_signals[1].content.contains("結構預掃訊號：（無）"));
+    }
+
+    // ---- 盤點：PERSONS／INTERFACE／ENTRIES／SPLITS／GROUPS／FIELDS ----
+
+    // 六區塊完整解析：PERSONS 舊格式（亞瑟，無新欄）與新格式（霍玄，mode/spans/private）並存、
+    // INTERFACE、ENTRIES 四種 action、SPLITS 七種 route、GROUPS、FIELDS 一次覆蓋（內容取材小抄
+    // 合約 v1 的範例）。
+    #[test]
+    fn parse_survey_extracts_all_six_blocks() {
         let raw = "## PERSONS\n\
                    - name: 亞瑟 uids: 101 player: yes\n\
-                   - name: 霍玄 uids: 102,103,104\n\
+                   - name: 霍玄 uids: 12,45 mode: clean spans: 12#s1,45#s2 private: 45#s3\n\
                    \n\
                    ## INTERFACE\n\
                    - uid=201 playable: no\n\
                    - uid=202 playable: yes\n\
                    \n\
-                   ## PLAN\n\
-                   - title: 獸人氏族與世界觀 kind: setting uids: 1,2,102\n\
-                   - title: 天數與里程碑 kind: mechanism uids: 301,302\n";
+                   ## ENTRIES\n\
+                   - uid=3 action: carry\n\
+                   - uid=4 action: carry reason: 歷史年表非機制\n\
+                   - uid=9 action: absorb\n\
+                   - uid=5 action: drop rule: 2\n\
+                   - uid=7 action: split\n\
+                   \n\
+                   ## SPLITS\n\
+                   - span: 7#s1 route: statusbar\n\
+                   - span: 7#s2 route: gm\n\
+                   - span: 7#s3 route: drop rule: 1\n\
+                   - span: 23#s2 route: person name: 霍玄\n\
+                   - span: 23#s4 route: entry title: 王府概況\n\
+                   - span: 16#s2 route: group id: g1\n\
+                   - span: 16#s6 route: unabsorbed note: 擲骰檢定\n\
+                   \n\
+                   ## GROUPS\n\
+                   - id: g1 title: 格式與行為 kind: mechanism spans: 16#s2,16#s5,18#s1\n\
+                   \n\
+                   ## FIELDS\n\
+                   - 好感度\n\
+                   - 淪陷天數\n";
         let outcome = parse_survey(raw);
+
         assert_eq!(outcome.persons.len(), 2);
         assert_eq!(outcome.persons[0].name, "亞瑟");
-        assert_eq!(outcome.persons[0].uids, vec!["101"]);
         assert!(outcome.persons[0].is_player);
-        assert_eq!(outcome.persons[1].uids, vec!["102", "103", "104"]);
-        assert!(!outcome.persons[1].is_player);
+        assert_eq!(outcome.persons[0].mode, "");
+        assert!(outcome.persons[0].spans.is_empty());
+        assert_eq!(outcome.persons[1].name, "霍玄");
+        assert_eq!(outcome.persons[1].uids, vec!["12", "45"]);
+        assert_eq!(outcome.persons[1].mode, "clean");
+        assert_eq!(outcome.persons[1].spans, vec!["12#s1", "45#s2"]);
+        assert_eq!(outcome.persons[1].private_spans, vec!["45#s3"]);
+
         assert_eq!(outcome.interface_uids, vec!["201", "202"]);
         assert_eq!(outcome.playable_interface_uids, vec!["202"]);
-        assert_eq!(outcome.plan.len(), 2);
-        assert_eq!(outcome.plan[0].title, "獸人氏族與世界觀");
-        assert_eq!(outcome.plan[0].kind, "setting");
-        assert_eq!(outcome.plan[0].uids, vec!["1", "2", "102"]);
-        assert_eq!(outcome.plan[1].kind, "mechanism");
+
+        assert_eq!(outcome.verdicts.len(), 5);
+        assert_eq!(outcome.verdicts[0].action, "carry");
+        assert_eq!(outcome.verdicts[0].reason, "");
+        assert_eq!(outcome.verdicts[1].action, "carry");
+        assert_eq!(outcome.verdicts[1].reason, "歷史年表非機制");
+        assert_eq!(outcome.verdicts[2].action, "absorb");
+        assert_eq!(outcome.verdicts[3].action, "drop");
+        assert_eq!(outcome.verdicts[3].rule, Some(2));
+        assert_eq!(outcome.verdicts[4].action, "split");
+
+        assert_eq!(outcome.splits.len(), 7);
+        assert_eq!(outcome.splits[0].route, "statusbar");
+        assert_eq!(outcome.splits[1].route, "gm");
+        assert_eq!(outcome.splits[2].route, "drop");
+        assert_eq!(outcome.splits[2].rule, Some(1));
+        assert_eq!(outcome.splits[3].route, "person");
+        assert_eq!(outcome.splits[3].name, "霍玄");
+        assert_eq!(outcome.splits[4].route, "entry");
+        assert_eq!(outcome.splits[4].title, "王府概況");
+        assert_eq!(outcome.splits[5].route, "group");
+        assert_eq!(outcome.splits[5].group, "g1");
+        assert_eq!(outcome.splits[6].route, "unabsorbed");
+        assert_eq!(outcome.splits[6].note, "擲骰檢定");
+
+        assert_eq!(outcome.groups.len(), 1);
+        assert_eq!(outcome.groups[0].id, "g1");
+        assert_eq!(outcome.groups[0].title, "格式與行為");
+        assert_eq!(outcome.groups[0].kind, "mechanism");
+        assert_eq!(outcome.groups[0].spans, vec!["16#s2", "16#s5", "18#s1"]);
+
+        assert_eq!(outcome.fields, vec!["好感度", "淪陷天數"]);
         assert_eq!(outcome.raw, raw);
+    }
+
+    // 舊格式（無 mode/spans/private 欄）獨立照舊解析成功，新欄一律預設空值——回歸保護。
+    #[test]
+    fn parse_survey_persons_old_format_line_parses_without_new_fields() {
+        let raw = "## PERSONS\n- name: 亞瑟 uids: 101 player: yes\n";
+        let outcome = parse_survey(raw);
+        let person = &outcome.persons[0];
+        assert_eq!(person.name, "亞瑟");
+        assert_eq!(person.uids, vec!["101"]);
+        assert!(person.is_player);
+        assert_eq!(person.mode, "");
+        assert!(person.spans.is_empty());
+        assert!(person.private_spans.is_empty());
     }
 
     // playable 欄缺席＝no（保守基準落在解析端再兜一層）
@@ -1092,7 +1837,7 @@ mod tests {
     // 單人專屬條目（uids 只有一條）也要列——person-promote 定案。
     #[test]
     fn parse_survey_includes_single_source_person() {
-        let raw = "## PERSONS\n- name: 酒館老闆 uids: 55\n\n## INTERFACE\n\n## PLAN\n";
+        let raw = "## PERSONS\n- name: 酒館老闆 uids: 55\n\n## INTERFACE\n";
         let outcome = parse_survey(raw);
         assert_eq!(outcome.persons.len(), 1);
         assert_eq!(outcome.persons[0].uids, vec!["55"]);
@@ -1104,12 +1849,12 @@ mod tests {
         let raw = "好的，以下是我的盤點結果：\n\n\
                    ## PERSONS\n\
                    - name: 小明 uids: 1\n\n\
-                   ## PLAN\n\
-                   - title: 世界觀 kind: setting uids: 9\n\n\
+                   ## ENTRIES\n\
+                   - uid=9 action: carry\n\n\
                    以上就是全部分類，如有需要再讓我知道！";
         let outcome = parse_survey(raw);
         assert_eq!(outcome.persons.len(), 1);
-        assert_eq!(outcome.plan.len(), 1);
+        assert_eq!(outcome.verdicts.len(), 1);
     }
 
     // 抽不出名字或一個合法 uid 都沒有的行整行略過，不 panic
@@ -1121,17 +1866,41 @@ mod tests {
         assert_eq!(outcome.persons[0].name, "好人");
     }
 
-    // PLAN 壞行（缺欄位、kind 不合法、沒有合法 uid）整行略過
+    // ENTRIES 壞行（action 不在封閉字彙、找不到 action 欄）整行略過，不 panic
     #[test]
-    fn parse_survey_skips_malformed_plan_lines() {
-        let raw = "## PLAN\n\
-                   - title: 缺 kind uids: 1\n\
-                   - title: 壞種類 kind: ghost uids: 2\n\
-                   - title: 沒 uid kind: setting uids: 無\n\
-                   - title: 好條目 kind: setting uids: 3\n";
+    fn parse_survey_skips_malformed_entries_lines() {
+        let raw = "## ENTRIES\n\
+                   - uid=1 action: ghost\n\
+                   - uid=2 這行沒有 action 欄\n\
+                   - uid=3 action: carry\n";
         let outcome = parse_survey(raw);
-        assert_eq!(outcome.plan.len(), 1);
-        assert_eq!(outcome.plan[0].title, "好條目");
+        assert_eq!(outcome.verdicts.len(), 1);
+        assert_eq!(outcome.verdicts[0].uid, "3");
+    }
+
+    // SPLITS 壞行（span 格式壞、route 不在封閉字彙、person 缺 name 附欄）整行略過，不 panic
+    #[test]
+    fn parse_survey_skips_malformed_splits_lines() {
+        let raw = "## SPLITS\n\
+                   - span: abc route: statusbar\n\
+                   - span: 7#s1 route: ghost\n\
+                   - span: 7#s2 route: person\n\
+                   - span: 7#s3 route: gm\n";
+        let outcome = parse_survey(raw);
+        assert_eq!(outcome.splits.len(), 1);
+        assert_eq!(outcome.splits[0].span, "7#s3");
+    }
+
+    // GROUPS 壞行（缺 spans 欄、kind 不合法）整行略過，不 panic
+    #[test]
+    fn parse_survey_skips_malformed_groups_lines() {
+        let raw = "## GROUPS\n\
+                   - id: g1 title: 缺欄位 kind: setting\n\
+                   - id: g2 title: 壞種類 kind: ghost spans: 1#s1\n\
+                   - id: g3 title: 好組 kind: mechanism spans: 1#s1,2#s2\n";
+        let outcome = parse_survey(raw);
+        assert_eq!(outcome.groups.len(), 1);
+        assert_eq!(outcome.groups[0].id, "g3");
     }
 
     // ---- person 展開 ----
@@ -1369,7 +2138,7 @@ mod tests {
     #[test]
     fn all_stage_system_messages_are_byte_identical_for_same_context() {
         let context = "測試脈絡";
-        let survey = survey_messages(context, "zh-TW");
+        let survey = survey_messages(context, &[], "zh-TW");
         let expand = expand_messages(context, "1", "條目全文", EntryKind::Interface, &[], "zh-TW");
         let person = person_expand_messages(
             context,

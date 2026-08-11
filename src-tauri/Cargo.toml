@@ -28,6 +28,7 @@ futures-util = { version = "0.3", default-features = false }
 tokio = { version = "1", features = ["process", "io-util", "rt", "macros", "time", "sync"] }
 tauri-plugin-dialog = "2"
 ulid = "3"
+regex = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

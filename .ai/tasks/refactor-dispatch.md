@@ -3,7 +3,7 @@ Task-ID: refactor-dispatch
 Title: AI 重構提速省費：展開並行（時間）＋展開下放檔位（費用）＋取消真停
 Status: in_progress
 Created: 2026-08-08T03:35:00+08:00
-Updated: 2026-08-11T12:00:00+08:00
+Updated: 2026-08-11T15:00:00+08:00
 
 ## Summary
 重構管線（survey → 人物展開 → PLAN 重寫 → 介面展開）現況全走 GM 檔、序列執行、取消殺不掉在途呼叫。三個改動，全傳輸通用（CLI 與 API 直連皆受益）：
@@ -17,7 +17,7 @@ Updated: 2026-08-11T12:00:00+08:00
 2026-08-11 拓撲拍板 A 後包 1–3 當日實作完成（三 commit，cargo 442／vitest 94／build／i18n 全綠）；剩包 4 實機驗收。
 
 ## Next action
-- 使用者 `claude login`（CLI OAuth 已過期）→ 拍板 P7 基線時序 a/b → 照[交接檔](../handoffs/refactor-dispatch.md) P1–P8 實測，全過結案；P2／P7 可與 [ai-card-refactor](ai-card-refactor.md) B 段真跑合併省額度。
+- 2026-08-11 實機開跑（orc-cave）：P1 檔位✓、P3 快取✓（log 實證），P2 提速✗（總時長 ~24 分）、P7-b 品質✗（純設定整篇重寫、入侵劇情線未接管）——提速與品質由 [refactor-survey-spans](refactor-survey-spans.md) 接手；本案剩 P4–P6／P8 等新案完成後合併驗收，過即結案。
 
 ## Constraints
 - survey／expand 共用 system 逐位元組相同的快取紅線照舊，不碰 system 組裝。
