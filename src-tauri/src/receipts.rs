@@ -284,8 +284,12 @@ fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> O
     let incremental_before = (before.mechanism.incremental != after.mechanism.incremental)
         .then_some(before.mechanism.incremental);
 
-    let (added_state_keys, restored_state) =
+    let (added_state_keys, mut restored_state) =
         diff_added_and_overwritten(&before.state.tree, &after.state.tree);
+    // 介面套用會整份重建狀態樹；被新 schema 淘汰的舊頂層鍵也要記回原值，讓 undo 能插回。
+    restored_state.extend(before.state.tree.iter()
+        .filter(|(key, _)| !after.state.tree.contains_key(*key))
+        .map(|(key, value)| (key.clone(), value.clone())));
 
     let player_card_assigned = before.player_card_id.is_none() && after.player_card_id.is_some();
 
