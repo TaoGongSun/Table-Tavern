@@ -2467,3 +2467,11 @@ textarea {
   word-break: break-word;
   font-size: var(--fs-meta);
 }
+
+/* pool 失敗原因（結果視窗紅字段內逐行列出，同因去重） */
+.refactor-fail-reason {
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.9em;
+  word-break: break-all;
+}

@@ -1826,7 +1826,7 @@ function WorldEditor({
   const [refactorDetail, setRefactorDetail] = useState(false);
   // pool 呼叫失敗的條目名單（2026-08-12 B 拍板）：顯示在結果視窗頂部紅字段——以前塞頁面
   // 角落的一行狀態文字，被結果 modal 蓋住玩家看不到。
-  const [refactorFailures, setRefactorFailures] = useState<string[]>([]);
+  const [refactorFailures, setRefactorFailures] = useState<{ name: string; reason: string }[]>([]);
   const [refactorBusy, setRefactorBusy] = useState(false);
   const refactorInputRef = useRef<HTMLInputElement>(null);
   // 非 null＝AI 盤點／展開跑中，modal 顯示 text；cancelling 只管取消鈕的 disabled，不影響迴圈判斷。
@@ -2197,7 +2197,8 @@ function WorldEditor({
       }
 
       const interfaces: RefactorInterface[] = [];
-      const failedTitles: string[] = [];
+      // reason 帶原始錯誤文字（去重顯示在結果視窗）：玩家看得到「模型呼叫失敗」這類可修正原因。
+      const failedTitles: { name: string; reason: string }[] = [];
       const knownFields = survey.fields; // 命名唯一權威，全呼叫共用同一份、不累積。
       let done = 0;
       const bumpDone = () => {
@@ -2223,7 +2224,7 @@ function WorldEditor({
               () => refactorCancelRef.current,
             );
             if (result.character) characters.push(result.character);
-            else failedTitles.push(name);
+            else failedTitles.push({ name, reason: "" });
           } else if (task.kind === "absorb") {
             const result = await withRateLimitRetry(
               () =>
@@ -2236,7 +2237,7 @@ function WorldEditor({
               () => refactorCancelRef.current,
             );
             if (result.entry) refactorEntries.push(result.entry);
-            else failedTitles.push(name);
+            else failedTitles.push({ name, reason: "" });
           } else if (task.kind === "group") {
             const result = await withRateLimitRetry(
               () =>
@@ -2252,7 +2253,7 @@ function WorldEditor({
               () => refactorCancelRef.current,
             );
             if (result.entry) refactorEntries.push(result.entry);
-            else failedTitles.push(name);
+            else failedTitles.push({ name, reason: "" });
           } else if (task.kind === "statusbar") {
             const result = await withRateLimitRetry(
               () =>
@@ -2266,7 +2267,7 @@ function WorldEditor({
               () => refactorCancelRef.current,
             );
             if (result.interface) interfaces.push(result.interface);
-            else failedTitles.push(name);
+            else failedTitles.push({ name, reason: "" });
           } else {
             const result = await withRateLimitRetry(
               () =>
@@ -2280,10 +2281,10 @@ function WorldEditor({
               () => refactorCancelRef.current,
             );
             if (result.interface) interfaces.push(result.interface);
-            else failedTitles.push(name);
+            else failedTitles.push({ name, reason: "" });
           }
         } catch (reason) {
-          if (!String(reason).includes("refactor-aborted")) failedTitles.push(name);
+          if (!String(reason).includes("refactor-aborted")) failedTitles.push({ name, reason: String(reason).slice(0, 200) });
         } finally {
           bumpDone();
         }
@@ -2777,7 +2778,12 @@ function WorldEditor({
             <h2>{refactorFailures.length > 0 ? t("refactorResultPartialTitle") : t("refactorResultTitle")}</h2>
             {refactorFailures.length > 0 && (
               <p className="usage-bad" role="alert">
-                {t("refactorPartialFailed", { n: refactorFailures.length, names: refactorFailures.join("、") })}
+                {t("refactorPartialFailed", { n: refactorFailures.length, names: refactorFailures.map((f) => f.name).join("、") })}
+                {[...new Set(refactorFailures.map((f) => f.reason).filter(Boolean))].map((reason) => (
+                  <span key={reason} className="refactor-fail-reason">
+                    {t("refactorFailReason", { reason })}
+                  </span>
+                ))}
               </p>
             )}
             {!refactorDetail ? (

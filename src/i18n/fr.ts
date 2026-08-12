@@ -239,6 +239,7 @@ export const fr: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} en échec ({names})",
   refactorResultTitle: "Réorganisation terminée",
   refactorResultPartialTitle: "Réorganisation partiellement terminée",
+  refactorFailReason: "Cause : {reason}",
   refactorSummaryCharacters: "{n} personnages extraits",
   refactorSummaryInterface: "Interface de jeu intégrée à l'app",
   refactorSummaryMechanisms: "{n} règles intégrées",

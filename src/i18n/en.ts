@@ -254,6 +254,7 @@ export const en: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} failed ({names})",
   refactorResultTitle: "Refactor complete",
   refactorResultPartialTitle: "Refactor partially complete",
+  refactorFailReason: "Reason: {reason}",
   refactorSummaryCharacters: "Split out {n} characters",
   refactorSummaryInterface: "Game interface moved into the app",
   refactorSummaryMechanisms: "Adopted {n} rules",

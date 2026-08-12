@@ -228,6 +228,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} 条失败（{names}）",
   refactorResultTitle: "重构完成",
   refactorResultPartialTitle: "重构部分完成",
+  refactorFailReason: "原因：{reason}",
   refactorSummaryCharacters: "拆出 {n} 个角色",
   refactorSummaryInterface: "游戏界面搬进 app",
   refactorSummaryMechanisms: "收编 {n} 条规则",
