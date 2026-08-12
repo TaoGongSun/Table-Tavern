@@ -155,8 +155,7 @@ export const en: Record<MsgKey, string> = {
   cliDefaultOption: "CLI default",
   customModelOption: "Custom model id…",
   customModelPlaceholder: "Full model id",
-  cliCatalogClaude:
-    "List comes from the Claude CLI's local model cache; use “Custom” for anything missing",
+  cliCatalogClaude: "List comes from the model table built into the Claude CLI binary and follows CLI updates; use “Custom” for anything missing",
   cliCatalogCodex:
     "List comes from the Codex local model cache; tiers also map to reasoning effort High→high, Medium→medium, Low→low",
   cliCatalogAgy:
@@ -254,6 +253,7 @@ export const en: Record<MsgKey, string> = {
   refactorNothingToDo: "Nothing on this card needs sorting",
   refactorPartialFailed: "{n} failed ({names})",
   refactorResultTitle: "Refactor complete",
+  refactorResultPartialTitle: "Refactor partially complete",
   refactorSummaryCharacters: "Split out {n} characters",
   refactorSummaryInterface: "Game interface moved into the app",
   refactorSummaryMechanisms: "Adopted {n} rules",

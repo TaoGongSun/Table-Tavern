@@ -161,7 +161,7 @@ export const zh = {
   cliDefaultOption: "預設（CLI）",
   customModelOption: "自訂模型 id…",
   customModelPlaceholder: "完整模型 id",
-  cliCatalogClaude: "清單讀自 Claude CLI 的本機模型快取；沒列到的用「自訂」手填",
+  cliCatalogClaude: "清單讀自 Claude CLI 執行檔內建的模型表，CLI 更新即自動跟上；沒列到的用「自訂」手填",
   cliCatalogCodex:
     "清單讀自 Codex 的本機模型快取；檔位另固定對應推理力度 高→high、中→medium、低→low",
   cliCatalogAgy:
@@ -248,6 +248,7 @@ export const zh = {
   refactorNothingToDo: "這張卡沒有需要整理的東西",
   refactorPartialFailed: "{n} 條失敗（{names}）",
   refactorResultTitle: "重構完成",
+  refactorResultPartialTitle: "重構部分完成",
   refactorSummaryCharacters: "拆出 {n} 個角色",
   refactorSummaryInterface: "遊戲介面搬進 app",
   refactorSummaryMechanisms: "收編 {n} 條規則",
