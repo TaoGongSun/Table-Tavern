@@ -3,10 +3,13 @@ import {
   applyScripts,
   buildShellDocument,
   buildStorageShimSource,
+  CARD_STORAGE_LIMIT,
   extractShell,
   findShell,
   parseStRegex,
+  sanitizeCardStorage,
   type CardInterface,
+  type CardStorage,
   type InterfaceScript,
 } from "./interface-card";
 
@@ -160,20 +163,24 @@ describe("findShell", () => {
 });
 
 describe("buildStorageShimSource", () => {
-  const run = (win: Record<string, unknown>) => {
-    new Function("window", "console", buildStorageShimSource())(win, console);
+  // 沙盒 iframe 的 window：Storage 一碰就拋，parent 收得到 postMessage
+  const sandboxWindow = (sent: unknown[] = []) => ({
+    parent: { postMessage: (message: unknown) => sent.push(message) },
+    get localStorage(): Storage {
+      throw new Error("SecurityError");
+    },
+    get sessionStorage(): Storage {
+      throw new Error("SecurityError");
+    },
+  });
+
+  const run = (win: Record<string, unknown>, seed?: CardStorage) => {
+    new Function("window", "console", buildStorageShimSource(seed))(win, console);
     return win;
   };
 
   it("Storage 一碰就拋（沙盒 iframe 的 opaque origin）時換成記憶體版", () => {
-    const win = run({
-      get localStorage(): Storage {
-        throw new Error("SecurityError");
-      },
-      get sessionStorage(): Storage {
-        throw new Error("SecurityError");
-      },
-    });
+    const win = run(sandboxWindow());
 
     const local = win.localStorage as Storage;
     expect(local.getItem("gameSettings")).toBeNull();
@@ -194,5 +201,61 @@ describe("buildStorageShimSource", () => {
 
     expect(win.localStorage).toBe(real);
     expect(win.sessionStorage).toBe(real);
+  });
+
+  it("seed 開場就在 localStorage 裡，sessionStorage 不吃 seed", () => {
+    const win = run(sandboxWindow(), { gameSettings: '{"theme":"synthwave"}' });
+
+    expect((win.localStorage as Storage).getItem("gameSettings")).toBe('{"theme":"synthwave"}');
+    expect((win.sessionStorage as Storage).getItem("gameSettings")).toBeNull();
+  });
+
+  it("localStorage 每次寫入把整份快照送回宿主，sessionStorage 不外送", () => {
+    const sent: any[] = [];
+    const win = run(sandboxWindow(sent), { theme: "nord" });
+
+    (win.localStorage as Storage).setItem("fontSize", "1.2");
+    expect(sent).toEqual([
+      { source: "table-tavern-card", kind: "storage", entries: { theme: "nord", fontSize: "1.2" } },
+    ]);
+
+    (win.localStorage as Storage).removeItem("theme");
+    expect(sent[1].entries).toEqual({ fontSize: "1.2" });
+
+    (win.sessionStorage as Storage).setItem("tab", "map");
+    expect(sent).toHaveLength(2);
+  });
+
+  it("卡片塞爆上限就不送回宿主，沙盒裡照樣讀得到", () => {
+    const sent: unknown[] = [];
+    const win = run(sandboxWindow(sent));
+
+    (win.localStorage as Storage).setItem("blob", "x".repeat(CARD_STORAGE_LIMIT + 1));
+
+    expect(sent).toEqual([]);
+    expect((win.localStorage as Storage).getItem("blob")).toHaveLength(CARD_STORAGE_LIMIT + 1);
+  });
+
+  it("值裡的 </script> 不會提前關掉墊片那支 script", () => {
+    const doc = buildShellDocument("<html><head></head><body>殼</body></html>", {
+      evil: "</script><script>window.pwned=1</script>",
+    });
+
+    expect(doc).not.toContain("</script><script>window.pwned=1");
+    expect(doc).toContain("\\u003c/script>");
+  });
+});
+
+describe("sanitizeCardStorage", () => {
+  it("只留字串值，物件以外的形狀一律回 null", () => {
+    expect(sanitizeCardStorage({ theme: "nord", size: 3, nested: { a: 1 } })).toEqual({ theme: "nord" });
+    expect(sanitizeCardStorage(null)).toBeNull();
+    expect(sanitizeCardStorage(["theme"])).toBeNull();
+    expect(sanitizeCardStorage("theme")).toBeNull();
+  });
+
+  it("整份超過上限回 null，宿主當作沒這份快照", () => {
+    expect(sanitizeCardStorage({ blob: "x".repeat(CARD_STORAGE_LIMIT) })).toBeNull();
+    expect(sanitizeCardStorage({ blob: "x".repeat(100) })).not.toBeNull();
   });
 });
