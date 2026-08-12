@@ -502,6 +502,19 @@ fn assemble_coverage(
 ) {
     let mut covered: HashSet<u64> = HashSet::new();
     for person in &survey.persons {
+        // clean 模式只有 spans／private 實際引用的 uid 會進卡片產物；uids 欄多列的（判官
+        // 敷衍亂塞）名義有下落、實際無產物，套用後原條殘留——不算 covered，讓漏網補 carry
+        // 接住（2026-08-12 镇北王府實測洞）。tangled／未標 mode 是整條餵 AI，uids 全算。
+        if person.mode == "clean" {
+            for span_ref in person.spans.iter().chain(person.private_spans.iter()) {
+                if let Some((uid, _)) = span_ref.split_once('#') {
+                    if let Ok(uid) = uid.parse::<u64>() {
+                        covered.insert(uid);
+                    }
+                }
+            }
+            continue;
+        }
         for uid in &person.uids {
             if let Ok(uid) = uid.parse::<u64>() {
                 covered.insert(uid);
@@ -948,6 +961,34 @@ mod tests {
         assert_eq!(assembly.audit.len(), 1);
         assert_eq!(assembly.audit[0].kind, "coverage");
         assert_eq!(assembly.audit[0].uid, uid.to_string());
+    }
+
+    // clean 人物的 uids 欄多列了 spans 沒引用的 uid（判官敷衍亂塞）：名義下落不算 covered，
+    // 必須補 carry＋紅字（2026-08-12 镇北王府實測洞：兩條舊條無聲殘留）
+    #[test]
+    fn assemble_local_clean_person_extra_uid_without_span_reference_still_counts_uncovered() {
+        let root = TestRoot::new();
+        let world_id = data::create_world(&root.0, "測試").unwrap();
+        let used_uid = seed(&root.0, &world_id, "人物條目", "霍玄的完整設定。");
+        let stray_uid = seed(&root.0, &world_id, "美化状态栏", "| 体力 | 心情 |\n| 100 | 好 |");
+        let mut survey = empty_survey();
+        survey.persons = vec![RefactorSurveyPerson {
+            name: "霍玄".to_owned(),
+            uids: vec![used_uid.to_string(), stray_uid.to_string()],
+            is_player: false,
+            mode: "clean".to_owned(),
+            spans: vec![format!("{used_uid}#s1")],
+            private_spans: Vec::new(),
+        }];
+
+        let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+        // stray uid 被漏網稽核接住：補 carry＋coverage 紅字；used uid 是人物來源不補
+        assert!(assembly.entries.iter().any(|e| e.title == "美化状态栏"));
+        assert!(assembly
+            .audit
+            .iter()
+            .any(|a| a.kind == "coverage" && a.uid == stray_uid.to_string()));
+        assert!(!assembly.entries.iter().any(|e| e.title == "人物條目"));
     }
 
     // ---- 機制守恆：carry 無 reason 觸發 audit，有 reason 放行 ----
