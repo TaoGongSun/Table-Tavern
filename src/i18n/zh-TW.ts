@@ -499,9 +499,6 @@ export const zh = {
   cardInterfaceOpen: "卡片介面",
   cardInterfaceClose: "關閉介面",
 
-  refactorShellInfoBtn: "AI 重構介面",
-  refactorShellInfoBody:
-    "這個介面是 AI 重構產生的。如果畫面顯示不正常，用更聰明的模型重新重構通常會好；也可以關掉這層直接看側欄狀態欄。",
 
   importCardInterface: "這張卡自帶介面畫面。開桌後點聊天上方的「卡片介面」就能整面打開。",
   importCardScrypt: "這張卡的介面被作者加密保護，沒辦法顯示；人設與世界書照常匯入，對話不受影響。",

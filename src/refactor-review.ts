@@ -20,6 +20,10 @@ export interface RefactorInterface {
   raw: string;
   /** AI 順便產的 HTML 渲染殼；沒產出就沒有這個欄位（後端 Option<String>）。 */
   shell?: string;
+  /** 這張卡自己的欄位規則（點分路徑→規則），介面接管才有。 */
+  rules?: Record<string, unknown>;
+  /** 這張卡自己的回報指引，套用後跟著進 GM 的系統提示詞。 */
+  guide?: string;
 }
 
 export interface RefactorMechanism {
@@ -205,24 +209,31 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** 多條介面候選合併成一條：state_fields 兩邊都是物件就淺合併（後蓋前），否則後者整個蓋掉；
- * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。渲染殼是整份 HTML，合併沒有意義——
- * 取最後一個非空的（與 state_fields 後蓋前同向）。零條回傳 null。 */
+ * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。欄位規則同樣淺合併（後蓋前）。
+ * 渲染殼是整份 HTML、回報指引是一段完整文字，合併沒有意義——各取最後一個非空的（與 state_fields
+ * 後蓋前同向）。零條回傳 null。 */
 export function mergeRefactorInterfaces(interfaces: RefactorInterface[]): RefactorInterface | null {
   if (interfaces.length === 0) return null;
   let stateFields: unknown;
   let shell = "";
+  let guide = "";
+  const rules: Record<string, unknown> = {};
   for (const candidate of interfaces) {
     stateFields =
       isPlainObject(stateFields) && isPlainObject(candidate.state_fields)
         ? { ...stateFields, ...candidate.state_fields }
         : candidate.state_fields;
     if (candidate.shell) shell = candidate.shell;
+    if (candidate.guide) guide = candidate.guide;
+    Object.assign(rules, candidate.rules ?? {});
   }
   return {
     state_fields: stateFields,
     source_uids: interfaces.flatMap((candidate) => candidate.source_uids),
     raw: interfaces.map((candidate) => candidate.raw).join("\n\n"),
     ...(shell ? { shell } : {}),
+    ...(Object.keys(rules).length > 0 ? { rules } : {}),
+    ...(guide ? { guide } : {}),
   };
 }
 
@@ -380,11 +391,14 @@ function parseInterface(raw: unknown): RefactorInterface {
   if (!isRecord(raw)) throw invalid();
   if (raw.state_fields === undefined || raw.state_fields === null) throw invalid();
   const shell = readString(raw, "shell");
+  const guide = readString(raw, "guide");
   return {
     state_fields: raw.state_fields,
     source_uids: readStringArray(raw, "source_uids"),
     raw: readString(raw, "raw"),
     ...(shell ? { shell } : {}),
+    ...(isRecord(raw.rules) ? { rules: raw.rules } : {}),
+    ...(guide ? { guide } : {}),
   };
 }
 

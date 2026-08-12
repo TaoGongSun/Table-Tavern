@@ -472,9 +472,6 @@ export const ptBR: Record<MsgKey, string> = {
   cardInterfaceOpen: "Interface da Carta",
   cardInterfaceClose: "Fechar interface",
 
-  refactorShellInfoBtn: "Interface reorganizada por IA",
-  refactorShellInfoBody:
-    "Esta interface foi gerada pela reorganização com IA. Se não aparecer corretamente, reorganizar de novo com um modelo mais inteligente costuma resolver. Você também pode fechar essa camada e conferir o painel de estado na barra lateral.",
 
   importCardInterface:
     "Este cartão vem com sua própria interface. Depois de abrir a mesa, clique em \"Interface da Carta\" acima do chat para abri-la em tela cheia.",

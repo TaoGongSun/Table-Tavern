@@ -389,6 +389,17 @@ fn gm_system_prompt(
     if mechanism.incremental {
         system.push('\n');
         system.push_str(mechanism_protocol(lang));
+        // 卡專屬規矩接在通用協定後面：這張卡哪些欄位每回合必報、哪些只在變動時報，
+        // 由重構照卡原文產出，通用協定的「只寫變動的欄位」到這裡以卡的規定為準。
+        // 介面歸屬聲明壓在最後——卡原文往往要求模型每回合重印整包狀態才畫得出畫面，
+        // 這裡畫面由 App 組，不講清楚模型會照卡的老規矩再印一份；而且要壓在欄位說明
+        // 之後，否則模型會照說明的 markdown 排版把狀態寫進正文（兩者實測都踩過）。
+        if !mechanism.guide.trim().is_empty() {
+            system.push_str("\n\n");
+            system.push_str(mechanism.guide.trim());
+            system.push_str("\n\n");
+            system.push_str(interface_owned_notice(lang));
+        }
     }
     system
 }
@@ -436,6 +447,32 @@ fn mechanism_protocol(lang: &str) -> &'static str {
          - 文字欄用 replace 寫新值；新增項目用 insert、刪除用 remove、搬移用 move。\n\
          - 骰值欄由系統每回合擲，你只讀不寫。\n\
          - 上下限與拒收由系統把關，被擋下的欄位會在下一輪告訴你目前值。"
+    }
+}
+
+/// 介面歸屬聲明：只有介面被 App 接管的桌（mechanism.guide 非空）才附，而且排在欄位說明之後——
+/// 模型會模仿最後讀到的排版，欄位說明擺最後它就照那份說明的 markdown 逐條寫在正文裡（實測踩過）。
+/// 與 mechanism_protocol 一樣是凍結快照的一部分，措辭不要隨手改。
+fn interface_owned_notice(lang: &str) -> &'static str {
+    if lang == "en" {
+        "## Who draws the interface\n\n\
+         The field spec above is a specification of what each value looks like — its layout is not \
+         your output format.\n\
+         This table's game interface (status panels, maps, lists) is rendered by the app from the \
+         state tree it keeps. If the card's own rules tell you to reprint a whole interface block \
+         every turn (a multi-module `<...UI>` dump), do not — the app draws that itself.\n\
+         Your reply is exactly two things: this turn's story, then the `<UpdateVariable>` update \
+         block. That block is bookkeeping for the system, not interface output — every state value \
+         goes inside it as JSONPatch. Never report state as prose, lists, or bold headings in the \
+         story body."
+    } else {
+        "## 介面由誰畫\n\n\
+         上面的欄位說明是規格書，講的是每個欄位的值長什麼樣；**它的排版不是你的輸出格式**。\n\
+         這桌的遊戲介面（狀態面板、地圖、清單）由 App 拿系統帳上的狀態樹組裝並渲染。卡原文若要求\
+         你每回合重印整包介面（`<...UI>` 那種多模块資料塊），一律不要照做——那些 App 自己會畫。\n\
+         你的回覆就兩樣東西：這一回合的劇情正文，然後是 `<UpdateVariable>` 更新區塊。那個區塊不是\
+         介面輸出、是給系統記帳用的，**每一個狀態值都寫在裡面**（照上面協定的 JSONPatch 寫法）。\
+         不要改用條列、粗體標題或任何其他形式把狀態寫在劇情正文裡。"
     }
 }
 
@@ -2688,6 +2725,31 @@ mod tests {
         assert!(with_protocol[0].content.contains("## 狀態更新協定 v1"));
         assert!(with_protocol[0].content.contains("<UpdateVariable>"));
 
+        // 卡自訂的回報指引接在通用協定後面（介面接管的卡才有）
+        let with_guide = Mechanism {
+            incremental: true,
+            guide: "每回合都要重報 CurrentView.Time 與 CurrentView.SuggestedActions。".to_owned(),
+            ..Mechanism::default()
+        };
+        let carded = assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            &with_guide,
+            &StateScope::default(),
+            "zh-TW",
+        );
+        // 順序：協定 → 卡的欄位說明 → 介面歸屬（歸屬壓最後，模型才不會模仿說明的排版）
+        let protocol_at = carded[0].content.find("## 狀態更新協定 v1").unwrap();
+        let guide_at = carded[0].content.find("CurrentView.SuggestedActions").unwrap();
+        let notice_at = carded[0].content.find("## 介面由誰畫").unwrap();
+        assert!(protocol_at < guide_at && guide_at < notice_at);
+        // 介面歸屬只在接管桌出現：沒有卡專屬指引的增量桌不該看到這段
+        assert!(!with_protocol[0].content.contains("## 介面由誰畫"));
+
         let en = assemble_gm_messages(
             "",
             &[],
@@ -3507,6 +3569,7 @@ mod tests {
             rules: BTreeMap::new(),
             triggers: vec![trigger_with_scope("侵略", &[])],
             incremental: true,
+            guide: String::new(),
         };
         let state = TableState {
             table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -3537,6 +3600,7 @@ mod tests {
             rules: BTreeMap::new(),
             triggers: vec![trigger_with_scope("侵略", &[])],
             incremental: true,
+            guide: String::new(),
         };
         let state = TableState {
             table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -3569,6 +3633,7 @@ mod tests {
                 trigger_with_scope("世界氛圍", &[]),
             ],
             incremental: true,
+            guide: String::new(),
         };
         let state = TableState {
             table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -3609,6 +3674,7 @@ mod tests {
                 &["Heroes", "亞瑟", "Affection"],
             )],
             incremental: true,
+            guide: String::new(),
         };
         let state = TableState {
             table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -3634,6 +3700,7 @@ mod tests {
             // 刻意讓清單順序跟字典序相反，確認印出順序跟著 Vec 走。
             triggers: vec![trigger_with_scope("乙", &[]), trigger_with_scope("甲", &[])],
             incremental: true,
+            guide: String::new(),
         };
         let state = TableState {
             table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -4174,6 +4241,7 @@ mod tests {
     fn incremental_round_tail_hides_absent_branch_snapshot_and_rare_but_shows_turn_with_marks() {
         let mechanism = Mechanism {
             incremental: true,
+            guide: String::new(),
             rules: BTreeMap::from([(
                 "World.Secret".to_owned(),
                 FieldRule::for_kind(FieldKind::ReadOnly),
@@ -4240,6 +4308,7 @@ mod tests {
     fn full_scale_table_renders_everything_verbatim_ignoring_rules_scope_and_changes() {
         let mechanism = Mechanism {
             incremental: false,
+            guide: String::new(),
             rules: BTreeMap::from([(
                 "World.Secret".to_owned(),
                 FieldRule::for_kind(FieldKind::ReadOnly),
@@ -4275,6 +4344,7 @@ mod tests {
     fn character_state_block_shows_only_own_branch_with_marks_and_excludes_rare() {
         let mechanism = Mechanism {
             incremental: true,
+            guide: String::new(),
             rules: BTreeMap::from([(
                 "Heroes.亞瑟.Hidden".to_owned(),
                 FieldRule::for_kind(FieldKind::ReadOnly),

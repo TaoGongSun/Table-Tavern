@@ -514,18 +514,47 @@ const INTERFACE_STATE_RULES: &str = r#"這條目在定義狀態欄／介面格�
 - 欄位名一律玩家語言；值用機器好處理的形式（數字欄就放數字，不要「第 1 天」這種帶敘述的字串——顯示格式
   是介面的事，不是資料的事）。"#;
 
-/// 渲染殼規格：只有盤點判 playable 的介面條目才會收到這段（不無中生有介面——原卡只是狀態欄
-/// 格式就不產殼，狀態值走 App 內建狀態欄顯示）。
-const INTERFACE_SHELL_RULES: &str = r#"這條介面已判定為「玩家可以完全在裡面遊玩」，請額外依它描述的版面設計一份「靜態 HTML 渲染殼」：一個
-自包含單檔 HTML，CSS／JS 一律寫成 inline，不能引用任何外部資源（外部字型、CDN、圖片網址一律不行）。
-資料一律用 `{{狀態樹路徑}}` 佔位符表示（例如 `{{World.Time}}`，路徑對應上面 STATE 輸出的樹），佔位符會被
-替換成 HTML escape 過的純文字，殼不能依賴佔位符注入 HTML 標籤或執行任何邏輯。需要互動按鈕就呼叫
-`window.triggerSlash("/send 文字內容")`（等同玩家在輸入框打了這段文字並送出）或 `window.triggerSlash("/trigger")`
-（不帶文字，只觸發一次行動）；沒有把握能正確做出互動就純展示，不要硬加按鈕。殼只顯示狀態樹裡有的欄位，
-不要自己畫事件清單或把觸發條件攤出來。"#;
+/// 介面接管骨架規格：只有盤點判 playable 的介面條目才會收到這段。AI 不設計任何介面——渲染照舊
+/// 由卡自己的顯示腳本（regex＋模板）負責；這裡只把卡規定的「模型每回合要輸出的格式」照搬成一份
+/// 骨架，運行時 App 用狀態樹填佔位符、餵給卡的顯示腳本，模型從此不必每回合重印整包格式。
+const INTERFACE_SHELL_RULES: &str = r#"這條介面已判定為「玩家可以完全在裡面遊玩」。條目裡會規定模型每回合要輸出的結構化格式（XML 或類似
+標記，通常附完整範例）。請把那個格式「照搬」成一份骨架：
+- 逐字保留卡原文規定的結構：標籤名、巢狀層級、段落順序、固定文字全部照抄，不翻譯、不改名、不增刪
+  段落——卡的顯示腳本要靠這個結構才認得出來，骨架跟卡原文長得不一樣就是錯。
+- 只把「會隨遊玩變動的內容」挖掉，換成 `{{狀態樹路徑}}` 佔位符，路徑對應上面 STATE 輸出的樹；被
+  佔位符引用的欄位一定要出現在 STATE 裡，初始值照卡原文（範例、初始設定）填。全量清單（道具、
+  技能、裝備欄……）整份做成一個欄位、一個佔位符，值一律是**一個字串**（多筆就照卡原文的分隔寫法
+  串在同一個字串裡），不要用 JSON 陣列或物件——分好層的資料填不回卡的格式，畫面上那一格會是空的。
+- 卡要求每回合輸出、但內容從頭到尾不變的資料（地圖矩陣、地名白名單表、固定編號表……），照抄成骨架
+  裡的固定文字：**不挖佔位符、不做成 STATE 欄位**。App 每回合照原樣送出去，模型不必也不該碰它。
+  判準是「這份資料會不會變」，不是「卡有沒有要求每回合輸出」——卡要求重印是因為原平台不保管狀態。
+- 劇情正文那一格（每回合模型新寫的敘事）用固定佔位符 `{{本回合.正文}}`，App 每回合會拿模型的訊息
+  正文填進去；其他每回合會變的內容（建議行動之類）一律做成狀態樹欄位。
+- 這份骨架是資料不是畫面：不要寫任何 HTML 版面、CSS、JS，不要設計介面，不要加卡原文沒有的東西。
+- STATE 的欄位名與層級沿用卡原文的詞彙（佔位符路徑要對得上），這條優先於「欄位名一律玩家語言」。"#;
 
-/// 欄位規則＋觸發表的 JSON 形狀說明：舊 mechanism 展開與新的機制條目重寫共用。
-const MECHANISM_SCHEMA: &str = r#"欄位規則：每個規則掛在一個路徑（點分字串，不含分支前綴，例如 HP、好感度）底下，形狀是：
+/// 介面接管的回報規矩：骨架挖成佔位符的每一格，日後都要 GM 回報才會有值。這段要 AI 從卡原文抽出
+/// 「這張卡自己的更新規矩」——RULES 給本地記帳判欄位形狀，GUIDE 原文進 GM 系統提示詞。
+/// 卡原文的規定要分開看：值的格式（條目寫法、數量、白名單）照搬，殼靠它渲染；輸出容器與「每回合
+/// 重印整包」那類傳輸規定一律丟掉——那是原平台不保管狀態的產物，抄進來 GM 就會多印一份廢資料。
+const INTERFACE_UPDATE_RULES: &str = r#"骨架的每個佔位符，日後都要靠 GM 回報才會有值，所以還要一併產出這張卡自己的更新規矩：
+- RULES：STATE 裡每個「會隨遊玩變動」的葉子路徑各一條欄位規則（點分路徑，例如 CurrentView.Time）。
+  這些欄位都在畫面上，`inject` 一律填 `turn`（不要用下表的 snapshot／rare 預設）——每回合都要讓
+  GM 看到現值，它才不會把沒變的欄位重報成別的值。
+- GUIDE：寫給接手這張卡的 GM 看的一段短指引，**只照搬「每個欄位的值長什麼樣」**：條目寫法（例
+  `<i>名稱</i>`）、數量要求、白名單詞彙一字不改照搬——殼要靠這些才渲染得出來。欄位一律用 STATE 的
+  點分路徑稱呼，GM 才抄得出正確的 path。
+- 卡原文關於「每回合要輸出哪幾個模块、輸出成什麼容器、不准輸出容器以外的東西」這類**傳輸規定一律
+  不要寫進 GUIDE**：那是原平台不保管狀態、只能靠模型每回合重印整包才畫得出畫面；這裡介面由 App 用
+  狀態樹組裝，把那些規定抄進來只會讓 GM 每回合多印一份沒人看的資料。
+- 卡原文要求「所有欄位每回合重報」同理不要照抄。改成依欄位性質分兩組寫進 GUIDE：值跟著每回合劇情走
+  的（當前時間、所在地點、當下可用的物品與技能、推薦行動之類）列為每回合必報；世界層面慢變的（委託、
+  傳聞、可探索地點、積分、裝備、角色基本資料、冒險筆記之類）列為只在劇情真的動到時才報。
+- 劇情正文不要列進 RULES／GUIDE：那一格由 App 拿 GM 的訊息正文填，GM 不必也不該回報。
+- GUIDE 用卡原文的語言與詞彙寫。"#;
+
+/// 欄位規則的 JSON 形狀說明：機制條目重寫、舊 mechanism 展開、介面接管的回報規矩共用。
+const MECHANISM_FIELD_SCHEMA: &str = r#"欄位規則：每個規則掛在一個路徑（點分字串，不含分支前綴，例如 HP、好感度）底下，形狀是：
 { "kind": "number|pair|roll|text|list|counter|read_only", "update": "delta|replace|local|reject",
   "inject": "turn|snapshot|rare", "min": <數字，可省>, "max": <數字，可省>, "branch": "<分支名，可省>" }
 kind／update／inject 三個一定要填（不要省略）；不確定 update／inject 就照下表填對應的預設值；
@@ -540,8 +569,11 @@ min／max／branch 沒把握就不寫。不要用 "derived"（未實作）。
 | list | 清單／字典 | replace | turn |
 | counter | 計數器，允許大跳 | delta | turn |
 | read_only | 唯讀 | reject | rare |
+欄位路徑命名：優先沿用使用者訊息附上的「既有狀態欄位」清單裡的名字；清單裡沒有的概念才新命名，一律玩家
+語言。"#;
 
-觸發表：一組觸發＝一段「條件成立就印出一段文字」的判定，形狀是：
+/// 觸發表的 JSON 形狀說明：只有機制類展開需要，介面接管不產觸發表。
+const MECHANISM_TRIGGER_SCHEMA: &str = r#"觸發表：一組觸發＝一段「條件成立就印出一段文字」的判定，形狀是：
 { "id": "<穩定 id，用標題正規化即可>", "title": "<標題>", "mode": "range|once",
   "cases": [ { "when": [ <條件, ...> ], "text": "<命中時要印出的文字>" } ],
   "preamble": "<可省，命中文本前固定加的一段>", "scope": ["<可省，分支路徑分段，空＝桌級>"],
@@ -555,9 +587,7 @@ id／title／mode／cases 一定要填；preamble／scope／flag 沒有就不寫
   "max_exclusive": <可省，預設false>, "default": <可省> }
 { "kind": "contains", "path": "...", "any": ["...", "..."] }
 { "kind": "flag", "path": "...", "expect": true|false }
-
-欄位路徑命名：優先沿用使用者訊息附上的「既有狀態欄位」清單裡的名字；清單裡沒有的概念才新命名，一律玩家
-語言。觸發表的 text 是給 GM 的劇情素材，照原卡內容寫，不必迴避劇透——它只在觸發時才會出現。"#;
+觸發表的 text 是給 GM 的劇情素材，照原卡內容寫，不必迴避劇透——它只在觸發時才會出現。"#;
 
 /// 展開類型：對應前端傳來的 `kind` 字串。人物走專屬的 person_expand_messages、接管走
 /// absorb_messages、合組走 group_messages，都不經這裡。
@@ -600,11 +630,9 @@ pub fn expand_messages(
         ),
         EntryKind::InterfaceShell => (
             format!(
-                "{INTERFACE_STATE_RULES}\n\n{INTERFACE_SHELL_RULES}\n\n嚴格照以下標記輸出，兩個區塊都要有、緊接著彼此，JSON／HTML 前後各用三個反引號加對應語言圍起來，標記之外不要有任何文字：\n\n## STATE\n```json\n{{ ... }}\n```\n\n## SHELL\n```html\n<!DOCTYPE html>\n...\n```"
+                "{INTERFACE_STATE_RULES}\n\n{INTERFACE_SHELL_RULES}\n\n{INTERFACE_UPDATE_RULES}\n\n{MECHANISM_FIELD_SCHEMA}\n\n嚴格照以下標記輸出，四個區塊都要有、依序緊接著彼此，JSON／骨架前後各用三個反引號加對應語言圍起來，標記之外不要有任何文字：\n\n## STATE\n```json\n{{ ... }}\n```\n\n## SHELL\n```xml\n<...>\n...\n```\n\n## RULES\n```json\n{{ \"路徑\": {{ \"kind\": ..., \"update\": ..., \"inject\": ... }} }}\n```\n\n## GUIDE\n<給 GM 的回報指引，純文字，不要圍欄>"
             ),
-            format!(
-                "全部內容（含 JSON 的 key 與值、殼裡的顯示文字）使用 BCP-47 語言代碼「{lang}」對應的語言，專有名詞可保留原文。"
-            ),
+            "骨架的固定文字與 STATE 的 key、初始值、GUIDE 的用詞一律沿用卡原文的語言與詞彙，照搬不翻譯。".to_owned(),
         ),
     };
     let content = format!(
@@ -684,7 +712,9 @@ fn absorb_body() -> String {
         r#"這條世界書條目的本文，App 會原文照搬並鎖定，你**只**需要把其中可以由 App 本地執行的部分抽成
 結構化規則。
 
-{MECHANISM_SCHEMA}
+{MECHANISM_FIELD_SCHEMA}
+
+{MECHANISM_TRIGGER_SCHEMA}
 
 TRIGGERS 的 text／preamble 如果要引用原文段落，直接寫 `{{{{span:uid#sN}}}}`（例如 `{{{{span:9#s3}}}}`）
 佔位即可，不要重新抄一次原文——App 組裝時會把它換成該段全文。
@@ -769,7 +799,9 @@ fn group_body(title: &str, kind: GroupKind, materials: &[(String, String)]) -> S
 
 二、RULES／TRIGGERS——把其中可以由 App 本地執行的部分抽成結構化 JSON。
 
-{MECHANISM_SCHEMA}
+{MECHANISM_FIELD_SCHEMA}
+
+{MECHANISM_TRIGGER_SCHEMA}
 
 抽不出可本地執行的部分就把 RULES 給 {{}}、TRIGGERS 給 []——CONTENT 照樣要寫。{large_group_note}
 
@@ -907,12 +939,16 @@ fn strip_json_fence(text: &str) -> &str {
 /// 一樣安全：strip_suffix 找不到就原樣放行，不 panic。
 fn strip_html_fence(text: &str) -> &str {
     let trimmed = text.trim();
-    let trimmed = trimmed
-        .strip_prefix("```html")
-        .or_else(|| trimmed.strip_prefix("```HTML"))
-        .or_else(|| trimmed.strip_prefix("```"))
-        .unwrap_or(trimmed);
-    trimmed.strip_suffix("```").unwrap_or(trimmed).trim()
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return trimmed.strip_suffix("```").unwrap_or(trimmed).trim();
+    };
+    // 開頭那行剩下的語言標記（```xml 的 xml、```html 的 html）連著換行一起剝掉——
+    // 只剝反引號會把標記留在骨架第一行，跟著寫進 interface-shell.html。
+    let body = match rest.split_once('\n') {
+        Some((tag, body)) if tag.trim().chars().all(|char| char.is_ascii_alphanumeric()) => body,
+        _ => rest,
+    };
+    body.strip_suffix("```").unwrap_or(body).trim()
 }
 
 /// 盤點結果：人物已經是「認人」後的結果——一人一筆，來源 uid 可能多條（字串——避免前端 JS
@@ -1441,7 +1477,7 @@ pub fn parse_person_expand(
 /// 變體會產，選配）另外抽：缺席或抽出來是空字串就 shell=None，不影響 state_fields 解不解析得
 /// 出來；輸出被截斷（沒有結尾圍欄）也不會壞事，能抽多少算多少。
 fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterface> {
-    let blocks = parse_blocks(raw, &["STATE", "SHELL"]);
+    let blocks = parse_blocks(raw, &["STATE", "SHELL", "RULES", "GUIDE"]);
     let state_block = blocks.iter().find(|block| block.marker == "STATE")?;
     let text = join_trim(&state_block.lines);
     let state_fields: serde_json::Value = serde_json::from_str(strip_json_fence(&text)).ok()?;
@@ -1450,11 +1486,20 @@ fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterfac
         .find(|block| block.marker == "SHELL")
         .map(|block| strip_html_fence(&join_trim(&block.lines)).to_owned())
         .filter(|shell| !shell.is_empty());
+    let rules = parse_json_block(blocks.iter().find(|block| block.marker == "RULES"))
+        .unwrap_or_default();
+    let guide = blocks
+        .iter()
+        .find(|block| block.marker == "GUIDE")
+        .map(|block| join_trim(&block.lines))
+        .unwrap_or_default();
     Some(RefactorInterface {
         state_fields,
         source_uids: vec![entry_uid.to_owned()],
         raw: text,
         shell,
+        rules,
+        guide,
     })
 }
 
@@ -2212,14 +2257,64 @@ mod tests {
         assert!(interface.shell.unwrap().contains("寫到一半突然斷"));
     }
 
-    // 無殼變體的提示詞不含 SHELL 指示；有殼變體才含（不無中生有介面）
+    // 骨架用 ```xml 圍欄：語言標記要連著換行剝掉，留著就會寫進 interface-shell.html 第一行
+    #[test]
+    fn parse_expand_interface_shell_strips_language_tag_from_fence() {
+        let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n\
+                   ## SHELL\n```xml\n<UI>{{World.Time}}</UI>\n```\n";
+        let outcome = parse_expand(EntryKind::InterfaceShell, "7", raw);
+        assert_eq!(
+            outcome.interface.unwrap().shell.as_deref(),
+            Some("<UI>{{World.Time}}</UI>")
+        );
+    }
+
+    // 接管卡的回報規矩逐卡產：RULES 進機制、GUIDE 進 GM 提示詞；缺席就是空的（不是失敗）
+    #[test]
+    fn parse_expand_interface_shell_extracts_card_rules_and_guide() {
+        let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n\
+                   ## SHELL\n```xml\n<UI>{{World.Time}}</UI>\n```\n\n\
+                   ## RULES\n```json\n{\"World.Time\": {\"kind\": \"text\", \"update\": \"replace\", \"inject\": \"turn\"}}\n```\n\n\
+                   ## GUIDE\n每回合都要重報 World.Time。\n";
+        let interface = parse_expand(EntryKind::InterfaceShell, "7", raw)
+            .interface
+            .unwrap();
+        assert_eq!(
+            interface.rules.get("World.Time").map(|rule| rule.kind),
+            Some(data::FieldKind::Text)
+        );
+        assert_eq!(interface.guide, "每回合都要重報 World.Time。");
+
+        let without = parse_expand(
+            EntryKind::InterfaceShell,
+            "7",
+            "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n",
+        )
+        .interface
+        .unwrap();
+        assert!(without.rules.is_empty());
+        assert!(without.guide.is_empty());
+    }
+
+    // 無殼變體的提示詞不含 SHELL 指示；有殼變體才含，且是「照搬骨架」契約——AI 不設計介面
     #[test]
     fn expand_messages_shell_instructions_only_for_playable_kind() {
         let plain = expand_messages("ctx", "1", "全文", EntryKind::Interface, &[], "zh-TW");
         let playable = expand_messages("ctx", "1", "全文", EntryKind::InterfaceShell, &[], "zh-TW");
         assert!(!plain[1].content.contains("## SHELL"));
         assert!(playable[1].content.contains("## SHELL"));
-        assert!(playable[1].content.contains("triggerSlash"));
+        assert!(playable[1].content.contains("{{本回合.正文}}"));
+        assert!(playable[1].content.contains("照搬"));
+        assert!(!playable[1].content.contains("triggerSlash"));
+        // 接管卡才要產回報規矩，且只帶欄位規則、不帶觸發表
+        assert!(playable[1].content.contains("## RULES"));
+        assert!(playable[1].content.contains("## GUIDE"));
+        assert!(playable[1].content.contains("欄位規則："));
+        assert!(!playable[1].content.contains("觸發表："));
+        assert!(!plain[1].content.contains("## GUIDE"));
+        // 卡原文的傳輸規定不准抄進 GUIDE，固定資產不准做成欄位——兩個實測踩過的坑
+        assert!(playable[1].content.contains("傳輸規定一律"));
+        assert!(playable[1].content.contains("不挖佔位符、不做成 STATE 欄位"));
     }
 
     // 防劇透與欄位命名基準寫進介面展開指示

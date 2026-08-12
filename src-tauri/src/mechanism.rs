@@ -1424,6 +1424,7 @@ mod tests {
                 .collect(),
             triggers: Vec::new(),
             incremental: false,
+            guide: String::new(),
         }
     }
 
@@ -2574,6 +2575,7 @@ mod tests {
                 flag: None,
             }],
             incremental: true,
+            guide: String::new(),
         };
 
         let high = tree_from(&[("World.Invasion", "90")]);
@@ -2614,6 +2616,7 @@ mod tests {
                 flag: None,
             }],
             incremental: true,
+            guide: String::new(),
         };
         let tree = tree_from(&[("World.Invasion", "10")]);
         let outcome = evaluate_triggers(&tree, &mechanism, "阿濤");
@@ -2639,6 +2642,7 @@ mod tests {
                 flag: None,
             }],
             incremental: true,
+            guide: String::new(),
         };
         let tree = tree_from(&[("World.Location", "晨港")]);
         let outcome = evaluate_triggers(&tree, &mechanism, "阿濤");
@@ -2683,6 +2687,7 @@ mod tests {
                 flag: Some("Events.國變".to_owned()),
             }],
             incremental: true,
+            guide: String::new(),
         }
     }
 

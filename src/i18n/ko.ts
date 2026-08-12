@@ -472,9 +472,6 @@ export const ko: Record<MsgKey, string> = {
   cardInterfaceOpen: "카드 인터페이스",
   cardInterfaceClose: "인터페이스 닫기",
 
-  refactorShellInfoBtn: "AI 재구성 인터페이스",
-  refactorShellInfoBody:
-    "이 인터페이스는 AI 재구성으로 생성되었습니다. 화면이 제대로 나오지 않으면 더 똑똑한 모델로 다시 재구성하면 대개 나아집니다. 이 화면을 닫고 사이드바의 상태 패널을 보셔도 됩니다.",
 
   importCardInterface: "이 카드에는 전용 화면이 들어 있습니다. 테이블을 연 뒤 채팅 위쪽의 「카드 인터페이스」를 누르면 전체 화면으로 열립니다.",
   importCardScrypt: "이 카드의 화면은 제작자가 암호화해 놓아 표시할 수 없습니다. 캐릭터 설정과 세계관 자료는 평소대로 가져오며 대화에는 영향이 없습니다.",
