@@ -545,17 +545,16 @@ export function unselectCharacter(selection: RefactorSelection, index: number): 
 }
 
 /** 放回被判官淘汰的整條或半條：從 dropped 移除，轉成新的 setting 條目 push 進 entries 尾端並預設
- * 勾選——玩家主動救回來的東西不該還要再手動勾一次。span 非空（半條淘汰）時標題後綴區分標記
- * （取 "uid#sN" 的 "sN" 段），避免看不出這條是從哪個原段落救回來的。不可變更新，回傳新物件。 */
+ * 勾選——玩家主動救回來的東西不該還要再手動勾一次。title 一律用原標題（2026-08-12 拍板：
+ * 內部段標不露出，同條多段救回同名可接受）。不可變更新，回傳新物件。 */
 export function restoreDropped(
   outcome: RefactorOutcome,
   selection: RefactorSelection,
   index: number,
 ): { outcome: RefactorOutcome; selection: RefactorSelection } {
   const item = outcome.dropped[index];
-  const marker = item.span.includes("#") ? item.span.slice(item.span.indexOf("#") + 1) : item.span;
   const entry: RefactorNewEntry = {
-    title: item.span ? `${item.title} ⟦${marker}⟧` : item.title,
+    title: item.title,
     kind: "setting",
     content: item.content,
     source_uids: [item.uid],

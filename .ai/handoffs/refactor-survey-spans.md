@@ -6,9 +6,11 @@
 - 大查詢派新對話或代理，別堆本對話 context。
 
 ## Current state
-2026-08-12 實機驗收進行中。第二輪（11:15）survey 中途死亡：CLI 子程序消失、app 卡「盤點中」不收尾、jsonl 無筆（dev 終端先死＝app 成孤兒，CLI 死因不明）。當場**已修兩件**（cargo **474** 綠，未 commit）：
-- **思考字尾（拍板 A）**：4.7 世代 CLI 隱去思考本文（`thinking:""` 只剩 estimated_tokens，4.6 時代有本文）→cli.rs 空思考增量轉「⋯」心跳點（約每 50 tok 一顆），非空本文路徑保留。
-- **CLI 死法全收網（run_cli，跨平台 tokio API）**：①程序退出但管線不 EOF（孫程序握 fd）→退出後 800ms 強制收尾 ②活著但斷流→120 秒無任何行＝殺程序＋⚠ 字尾＋回錯 ③stdin 餵不進→60 秒逾時中止 ④crash 無收尾事件（exit 非零）→報「CLI 異常結束＋stderr 尾巴」，殘缺正文不再靜默往下走（新測試把關）。
+2026-08-12 **T1 全過收檔**（第三輪 11:42 實測）：①時長使用者裁決滿意（survey 11:42:43 快取 100% 中→pool 完 11:44:43 共 2 分，總成本 $0.67 vs 首輪 $0.86）②③首輪過 ④放回實點過（3→2 條、進條目區勾選、outcome 檔同步）⑤audit=[] 紅字歸零＋Rigurd (EN VER.) 標④ ⑥盤點中心跳點顯示。跨模型快取 miss 議題收掉不調（成本 ~$0.05/輪，使用者裁示不糾結）。
+當日三批修（62695e9／63100e1／本批）：
+- **放回標題去段標（B 拍板，本批）**：restoreDropped title 一律用原標題，內部 ⟦sN⟧ 不露出（refactor-review.ts，vitest 108 綠）。
+- **思考字尾心跳點（A 拍板，63100e1）**：4.7 世代 CLI 隱去思考本文（`thinking:""` 只剩 estimated_tokens）→cli.rs 空思考增量轉「⋯」，約每 50 tok 一顆。
+- **CLI 死法全收網（63100e1，跨平台 tokio API）**：①程序退出但管線不 EOF→800ms 強制收尾 ②斷流→120 秒無行＝殺程序＋⚠ 字尾回錯 ③stdin 餵不進→60 秒逾時 ④crash 無收尾事件→報「CLI 異常結束＋stderr 尾巴」，殘缺正文不靜默往下走（新測試把關）。第二輪 11:15 卡死事故（CLI 消失、app 卡「盤點中」、dev 終端先死成孤兒）由此收網。
 
 前一輪三修（已 commit 62695e9）：
 1. **淘汰理由④內容重複**：語言重複版（Rigurd EN VER.）以前被 survey 指示「不要列」→必觸發漏網紅字；現在通用規則「重複內容取一捨餘」，棄用版標 `drop rule: 4` 進淘汰清單。改點：refactor_ai.rs prompt（PERSONS＋drop 四種＋SPLITS）、refactor_assemble.rs 範圍 1–4、App.tsx rule map、十語系 +refactorDroppedRule4。
@@ -93,8 +95,7 @@ RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。�
 
 ## 實測清單（新對話實機驗收用）
 環境：先重編譯再驗（本輪三修未進昨晚的 app）：裸 `npm run tauri dev` 即可（app 已自清 ANTHROPIC_*）。時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`（ts＝完成時刻，diag single＝重構呼叫）。世界目錄 `~/Documents/TableTavern/worlds/<id>/`（refactor-outcome.json／worldbook.json／mechanism-log.jsonl 可機械核對）。
-- **T1 補驗（重匯 orc-cave 重跑）**：①總時長再量 ④放回鍵實點一次 ⑤紅字歸零＋Rigurd (EN VER.) 入淘汰清單標④ ⑥「盤點中」階段進度字尾必須有思考動態（2026-08-12 實測：正文出來前兩分鐘字尾全空，不過）。②③首輪已過不重驗。
-  - ⑥根因（已定位）：新版 claude CLI 把 thinking_delta 的思考本文隱去（`"thinking": ""`，只給 `estimated_tokens`），run_cli 餵給字尾的全是空字串；解析鏈（stream_event→thinking_delta→on_delta）與 survey 旗標 true 都正常。修法待拍板。
+- ~~T1 補驗~~：**全過收檔**（2026-08-12，見 Current state）。
 - ~~T1 首輪原文~~：①總時長 <5 分（jsonl 佐證）②純設定 carry byte 相等＋keys/constant 保留 ③逐日劇情線 absorb：kind=mechanism、locked、RULES/TRIGGERS 非空、帳本記已接管 ④drop rule 2 入淘汰清單、預設不套用、展開全文、一鍵放回 ⑤audit 無紅字。
 - **T2 NorthHall（23 條八角色）**：①每人「速览段＋人物設定＋性格」跨條合成一張完整卡不碎裂 ②三條「剧情-」觸發歸機制線（absorb 或 group mechanism）③「格式增强Plus」整條淘汰 ④「美化状态栏」三路拆＝欄位綱要→STATE（emoji 標籤留值）、行動選項→GM 規則條目、容器紀律→drop①。
 - **T3 Transfur（16 條盲測定案）**：①目錄四條＋keyed 地區四條 carry 含元資料（keys 在）②核心設定歷史年表 carry 且該行附 reason（預掃衝突）③「格式」「COT」多路拆＝欄位綱要→STATE、敘事行為指令→GM 規則、gametext 容器→drop①、擲骰／ASCII 地圖→unabsorbed 清單可見。
@@ -102,11 +103,9 @@ RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。�
 全過＝本案＋refactor-dispatch 一起結案。
 
 ## Next action
-1. commit 心跳點＋死法收網（cargo 474 綠）。
-2. 殺掉卡死的孤兒 app（PID 20264）→ 新終端裸 `npm run tauri dev`（Rust 重編譯吃新碼）→ 重跑 T1 補驗①④⑤⑥；一項一行過/不過，發現問題帶本檔開修。
-3. 環境殘留 ANTHROPIC_* 的本機清理＝獨立對話（提示詞已交使用者），與本案驗收互不擋路。
-4. 全過＝本案結案＋refactor-dispatch P4–P6/P8 一起收（兩案 completed、TASKS.md 行搬 DONE.md、已驗收段搬 archive/）。
-待拍板遺留：T1 時長超標要不要追、跨模型快取 miss 要不要調。
+1. T2 NorthHall（镇北王府）→ T3 Transfur（毛絨轉變）→ T4 通用；一項一行過/不過，發現問題帶本檔開修。app 重啟後吃本批新碼（放回標題）再測 T2。
+2. 環境殘留 ANTHROPIC_* 的本機清理＝獨立對話（提示詞已交使用者），與本案驗收互不擋路。
+3. 全過＝本案結案＋refactor-dispatch P4–P6/P8 一起收（兩案 completed、TASKS.md 行搬 DONE.md、已驗收段搬 archive/）。
 
 ## Constraints
 - 新格式規格放 survey user 訊息端；survey／expand 共用 system 逐位元組相同紅線零觸碰（既有測試把關，span 標記在 context 內、各階段共用不破相等）。

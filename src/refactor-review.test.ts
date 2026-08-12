@@ -448,14 +448,14 @@ describe("restoreDropped", () => {
     expect(selection.entry_indices).toEqual([0, 1]);
   });
 
-  it("段放回（span 非空）：標題後綴 span 的 sN 段當區分標記", () => {
+  it("段放回（span 非空）：標題用原標題，內部段標不露出（2026-08-12 拍板）", () => {
     const outcome = makeOutcome({
       entries: [],
       dropped: [{ uid: "16", span: "16#s6", title: "戰鬥流程", content: "擲骰檢定內容", rule: 3 }],
     });
     const { outcome: next, selection } = restoreDropped(outcome, { ...baseSelection, entry_indices: [] }, 0);
     expect(next.entries).toEqual([
-      { title: "戰鬥流程 ⟦s6⟧", kind: "setting", content: "擲骰檢定內容", source_uids: ["16"], rules: {}, triggers: [] },
+      { title: "戰鬥流程", kind: "setting", content: "擲骰檢定內容", source_uids: ["16"], rules: {}, triggers: [] },
     ]);
     expect(selection.entry_indices).toEqual([0]);
   });
