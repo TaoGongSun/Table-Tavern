@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyScripts,
   buildShellDocument,
+  buildStorageShimSource,
   extractShell,
   findShell,
   parseStRegex,
@@ -155,5 +156,43 @@ describe("findShell", () => {
 
   it("候選文字全對不上就回 null，空值直接跳過", () => {
     expect(findShell([card()], [null, undefined, "", "純文字"])).toBeNull();
+  });
+});
+
+describe("buildStorageShimSource", () => {
+  const run = (win: Record<string, unknown>) => {
+    new Function("window", "console", buildStorageShimSource())(win, console);
+    return win;
+  };
+
+  it("Storage 一碰就拋（沙盒 iframe 的 opaque origin）時換成記憶體版", () => {
+    const win = run({
+      get localStorage(): Storage {
+        throw new Error("SecurityError");
+      },
+      get sessionStorage(): Storage {
+        throw new Error("SecurityError");
+      },
+    });
+
+    const local = win.localStorage as Storage;
+    expect(local.getItem("gameSettings")).toBeNull();
+    local.setItem("gameSettings", '{"theme":"nord"}');
+    expect(local.getItem("gameSettings")).toBe('{"theme":"nord"}');
+    expect(local.length).toBe(1);
+    expect(local.key(0)).toBe("gameSettings");
+    local.removeItem("gameSettings");
+    expect(local.length).toBe(0);
+    // 兩份各自獨立，卡片拿 sessionStorage 當暫存不會污染 localStorage
+    (win.sessionStorage as Storage).setItem("tab", "map");
+    expect(local.getItem("tab")).toBeNull();
+  });
+
+  it("Storage 本來就能用就原封不動", () => {
+    const real = { getItem: () => null } as unknown as Storage;
+    const win = run({ localStorage: real, sessionStorage: real });
+
+    expect(win.localStorage).toBe(real);
+    expect(win.sessionStorage).toBe(real);
   });
 });
