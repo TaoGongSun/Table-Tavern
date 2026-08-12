@@ -245,6 +245,14 @@ interface SceneLabel {
 type StateNode = string | { [key: string]: StateNode };
 
 // 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
+// 殼字串的短指紋（djb2）：card-interface iframe 的 key 用，殼一換 key 就換。
+function shellFingerprint(shell: string | null): string {
+  if (shell === null) return "empty";
+  let hash = 5381;
+  for (let i = 0; i < shell.length; i++) hash = ((hash << 5) + hash + shell.charCodeAt(i)) | 0;
+  return String(hash >>> 0);
+}
+
 function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
   let node: StateNode | undefined = tree[path[0]];
   for (const key of path.slice(1)) {
@@ -4034,9 +4042,6 @@ function App() {
   const [chattedSinceImport, setChattedSinceImport] = useState(false);
   // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
-  // 雙緩衝的兩格與目前露臉的那一格：新殼永遠先塞進背面那格，載好才翻面（見覆蓋層那段）
-  const [shellSlots, setShellSlots] = useState<[string | null, string | null]>([null, null]);
-  const [frontSlot, setFrontSlot] = useState(0);
   // 編輯中的欄位：path 是樹裡的完整路徑，平欄則是長度 1 的路徑（tree=false，走舊的單層存檔）
   const [editingStateField, setEditingStateField] = useState<{
     path: string[];
@@ -4267,25 +4272,16 @@ function App() {
     return findShell(cardInterfaces, [...recent, ...openings]);
   }, [refactorShell, tableTree, events, cardInterfaces]);
 
-  // 新殼一律先塞進背面那格去載；載好了才由 onLoad 翻面
-  useEffect(() => {
-    if (cardInterfaceShell === null) return;
-    setShellSlots((slots) =>
-      slots.includes(cardInterfaceShell)
-        ? slots
-        : frontSlot === 0
-          ? [slots[0], cardInterfaceShell]
-          : [cardInterfaceShell, slots[1]],
-    );
-  }, [cardInterfaceShell, frontSlot]);
+  const cardShellReady = cardInterfaceShell !== null;
 
-  // 送出後最新一則是玩家發言、算不出新殼，但介面得留著等 GM 回話，所以看的是「現在有沒有殼可顯示」
-  const cardShellReady = cardInterfaceShell !== null || shellSlots[frontSlot] !== null;
-
-  const shellDocs = useMemo(
-    () => shellSlots.map((shell) => (shell ? buildShellDocument(shell) : "")),
-    [shellSlots],
+  // 殼的沙盒包裝與內容指紋：指紋當 iframe key，殼一換整支 iframe 重掛——初始掛載必然載入
+  // srcdoc，不依賴 WebKit 對 srcDoc 屬性更新／load 事件的行為（雙緩衝翻面機制在 WKWebView
+  // 上塞殼與翻面都不可靠，三次卡片介面空白事故後整台拆除，換單 iframe 直繪）。
+  const cardShellDoc = useMemo(
+    () => (cardInterfaceShell === null ? null : buildShellDocument(cardInterfaceShell)),
+    [cardInterfaceShell],
   );
+  const cardShellKey = useMemo(() => shellFingerprint(cardInterfaceShell), [cardInterfaceShell]);
 
   // 每次 render 換上最新的送出函式：訊息監聽只掛一次，不能讓它抓著開面板當下的舊狀態
   const submitTextRef = useRef((_text: string) => Promise.resolve());
@@ -4355,9 +4351,6 @@ function App() {
     setMainView(null);
     setActsOpen(false);
     setCardUiOpen(false);
-    // 兩格緩衝一起清掉，否則上一桌的介面會被當成這桌的、按鈕出現在沒有介面的桌上
-    setShellSlots([null, null]);
-    setFrontSlot(0);
     if (loaded.preferences["last_world"] !== id) {
       const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
       await invoke("write_config", { config: next });
@@ -6574,21 +6567,17 @@ function App() {
               ✕
             </button>
           </div>
-          {/* 雙緩衝：新畫面先在背面那格載好才翻上來，在那之前舊畫面一直在，中途不會空白
-              （ST 是每則訊息各自一個 iframe、舊的留著，這是單格版本的等效作法）。
-              key 固定成格號：換 key 會重新掛載，等於白載一次。 */}
-          {([0, 1] as const).map((slot) => (
+          {/* 單 iframe 直繪：key＝殼指紋，殼一換整支重掛（掛載時 srcdoc 就在，必然載入）。
+              殼更新瞬間可能閃一下白，換來顯示的確定性。 */}
+          {cardShellDoc !== null && (
             <iframe
-              key={slot}
-              className={`card-interface-frame${slot === frontSlot ? "" : " card-interface-preload"}`}
+              key={cardShellKey}
+              className="card-interface-frame"
               sandbox="allow-scripts"
-              srcDoc={shellDocs[slot]}
+              srcDoc={cardShellDoc}
               title={t("cardInterfaceOpen")}
-              onLoad={() => {
-                if (slot !== frontSlot && shellSlots[slot] === cardInterfaceShell) setFrontSlot(slot);
-              }}
             />
-          ))}
+          )}
         </div>
       )}
 

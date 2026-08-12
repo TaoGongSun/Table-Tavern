@@ -2447,13 +2447,6 @@ textarea {
   border: 0;
 }
 
-/* 預載中的那份疊在上面但看不見，載完才由 onLoad 換成正式的那份 */
-.card-interface-preload {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
 
 /* 鎖定條目的唯讀展開：標題列就是開關，內文與標題間一條淡分隔線 */
 .worldbook-locked-view summary {

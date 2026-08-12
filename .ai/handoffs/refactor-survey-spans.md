@@ -6,12 +6,12 @@
 - 拍板請求必附：問題主體＋成因＋各選項後果；沒問題的項目至多一行。
 - 大查詢派新對話或代理，別堆本對話 context。
 
-## Current state（2026-08-12 15:35，A+B+C 三案落地，待 T2 重驗）
-**13:44 真新碼輪三問題（②三條「剧情-」被 reason 開脫 carry、8 人 tangled 重寫＋簡轉繁、reason 看不到內容）的三案修正已實作（cargo 477／vitest 108／build／i18n 綠），待使用者重跑镇北王府：**
-- **A 人物判準防重寫**：PERSONS mode 段重寫（refactor_ai.rs SURVEY_BODY）——資料散在多條／多區塊不算糾纏，各段原文完整可讀＝clean，原文語言照搬不因換語言改判；tangled 收窄到「同一段落多人混寫非拆不可」。
-- **B absorb 直給樣式**：absorb 判準補「條目本身就是 trigger:/condition: 一行條件接演出劇本→直接 absorb；包在 <story> 容器也算，是待觸發機制不是歷史紀錄」。
-- **C 判官理由落檔顯示**：audit_mechanism_conservation 放行分支記 {kind:"excused", detail:"照搬理由：{reason}"}（refactor_assemble.rs）；App.tsx 稽核列 excused 用非紅字樣式＋REFACTOR_AUDIT_KIND_KEYS 加 excused；十語系 +refactorAuditKindExcused（zh-TW「照搬放行」）。
-- A/B 動 survey user 訊息端，同卡重跑首輪 survey 段快取 miss（幾毛錢）。驗收判據：剧情三條 kind=mechanism＋App 接管中標；人物卡簡體原文入卡不重寫；附 reason 的照搬在稽核列表以非紅字顯示理由原文。
+## Current state（2026-08-12 16:00，T2 第三輪驗畢：B 過／A 擱置觀察／C 待 T3）
+三案（A 人物判準防重寫、B absorb 直給樣式、C 判官理由落檔 excused）已實作 commit eed37f2。15:39 重跑镇北王府（survey opus out=5,444 hit=0% 快取重建＋pool 12 筆 sonnet，共 ≈$2.14、6分45秒）結果：
+- **B 過**：三條「剧情-」全數 kind=mechanism＋App 接管中；③格式增强PLUS drop①、④美化状态栏拆介面欄位維持過。
+- **A 不過→使用者裁示擱置**：8 人仍 tangled 重寫（pool 12=8 人＋3 absorb＋1 介面）。裁示：**不再加壓 prompt**（自創 ST 卡混寫本來就多，加壓過頭易錯判），只加診斷水印、繼續測其他卡看成效。已在 lib.rs refactor_survey 收尾加 `[survey-persons]` eprintln（name/mode/uids/spans，分辨「沒寫 mode」vs「明判 tangled」，隨 43dde2b 入庫）——**驗完即刪**。
+- **C 路徑就緒、本輪無畫面＝正常**：三條剧情直接接管→無 carry 需開脫→audit=[]→稽核節整個不顯示。C 的 UI 實測落在 T3 年表 carry+reason 項。
+- **卡片介面空白已根治（2026-08-12 17:00，毛絨桌實測恢復）**：三次幽靈空白（結果視窗、全桌介面、毛絨桌持續壞）root cause＝雙格＋onLoad 翻面雙緩衝在 WKWebView 不可靠（devtools 水印實證：帶 script 的 srcdoc iframe load 事件不 fire、塞格 setState 無聲失效，殼一路健康到狀態機門口被弄丟、front 永遠指著空格）。修法＝狀態機整台拆除，單 iframe 直繪＋key 綁殼指紋（App.tsx，vitest 108／build 綠）。代價（殼更新閃白）已立案 [shell-update-flash](../tasks/shell-update-flash.md)（postMessage ready 重建雙緩衝，未排程）。
 
 ### 環境陷阱（驗收必讀）
 - **proxy usage 罐頭**：prompt_tokens/cached_tokens 恆報 28492/28486（跨不同 prompt 與 world）＝不可信，禁拿它判 prompt 新舊；驗 prompt 生效看 survey out 量級變化或臨時 eprintln 水印。
