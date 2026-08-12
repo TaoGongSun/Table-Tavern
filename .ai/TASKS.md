@@ -25,7 +25,7 @@
 見 [DONE.md](DONE.md)（36 項）。
 
 ## Todo
-- [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構介面軌重寫（AI 只照搬骨架、永不產介面；source-card 原封當介面來源） — 下一步：實作完成未 commit（提示詞＋骨架運行時＋direct-first 空白修正，見交接檔）；西幻卡實測到「面板空白已修未驗」，續驗選角→主介面→GM 更新入樹三關，過後才清舊產殼路線＋補多語系
+- [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：三項驗收全過（西幻卡三回合實測 5944→2670 字省 55%、劇情 ×2.8、零拒收，commit d3f8a7e）；接著做「拆角色 vs 保留介面交給玩家選擇」（介面判 playable 時角色組預設不勾），再逐型驗其他卡（MVU 前端型 bcd368 優先），最後清舊產殼路線
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
