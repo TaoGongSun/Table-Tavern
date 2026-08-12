@@ -239,6 +239,7 @@ export const ru: Record<MsgKey, string> = {
   refactorPartialFailed: "Не удалось: {n} ({names})",
   refactorResultTitle: "Разбор завершён",
   refactorResultPartialTitle: "Разбор завершён частично",
+  refactorFailReason: "Причина: {reason}",
   refactorSummaryCharacters: "Выделено персонажей: {n}",
   refactorSummaryInterface: "Игровой интерфейс перенесён в приложение",
   refactorSummaryMechanisms: "Принято правил: {n}",

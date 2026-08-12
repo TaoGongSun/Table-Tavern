@@ -241,6 +241,7 @@ export const de: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} fehlgeschlagen ({names})",
   refactorResultTitle: "Reorganisation abgeschlossen",
   refactorResultPartialTitle: "Reorganisation teilweise abgeschlossen",
+  refactorFailReason: "Grund: {reason}",
   refactorSummaryCharacters: "{n} Charaktere herausgelöst",
   refactorSummaryInterface: "Spieloberfläche in die App übernommen",
   refactorSummaryMechanisms: "{n} Regeln übernommen",

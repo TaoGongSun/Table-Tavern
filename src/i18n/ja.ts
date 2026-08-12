@@ -239,6 +239,7 @@ export const ja: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} 件失敗（{names}）",
   refactorResultTitle: "再構成が完了しました",
   refactorResultPartialTitle: "再構成は一部のみ完了しました",
+  refactorFailReason: "原因：{reason}",
   refactorSummaryCharacters: "{n} 人のキャラクターに分割",
   refactorSummaryInterface: "ゲーム画面をアプリに統合",
   refactorSummaryMechanisms: "ルール {n} 件を統合",

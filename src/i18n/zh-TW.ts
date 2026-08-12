@@ -249,6 +249,7 @@ export const zh = {
   refactorPartialFailed: "{n} 條失敗（{names}）",
   refactorResultTitle: "重構完成",
   refactorResultPartialTitle: "重構部分完成",
+  refactorFailReason: "原因：{reason}",
   refactorSummaryCharacters: "拆出 {n} 個角色",
   refactorSummaryInterface: "遊戲介面搬進 app",
   refactorSummaryMechanisms: "收編 {n} 條規則",
