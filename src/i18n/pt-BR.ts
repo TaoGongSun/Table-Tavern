@@ -279,6 +279,7 @@ export const ptBR: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "Conservação de mecânica",
   refactorAuditKindSplit: "Conservação de divisão",
   refactorAuditKindDropRule: "Regra de descarte",
+  refactorAuditKindExcused: "Isenção justificada",
   unsavedChanges: "{n} alterações não salvas",
   unsavedLeaveTitle: "Alterações não salvas",
   unsavedLeaveConfirm: "Você tem {n} alterações não salvas. Deseja sair mesmo assim? Elas serão perdidas.",

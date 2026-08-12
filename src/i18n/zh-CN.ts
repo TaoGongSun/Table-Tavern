@@ -268,6 +268,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "机制守恒",
   refactorAuditKindSplit: "拆组守恒",
   refactorAuditKindDropRule: "淘汰规则",
+  refactorAuditKindExcused: "照搬放行",
   unsavedChanges: "有 {n} 项修改未保存",
   unsavedLeaveTitle: "尚未保存",
   unsavedLeaveConfirm: "有 {n} 项修改未保存，确定要离开吗？离开后修改将丢失。",

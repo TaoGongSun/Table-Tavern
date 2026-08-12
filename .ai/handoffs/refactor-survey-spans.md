@@ -6,14 +6,12 @@
 - 拍板請求必附：問題主體＋成因＋各選項後果；沒問題的項目至多一行。
 - 大查詢派新對話或代理，別堆本對話 context。
 
-## Current state（2026-08-12 14:00 交接，額度見底收尾）
-**T2 镇北王府驗收中，13:44 真新碼輪（debug 水印證實判準/預掃已上場，survey out 11,980）結果：③淘汰①過；②仍不過——三條「剧情-」（trigger:＋<story> 演出劇本）判官附 reason 堅持 carry（reason 未落檔看不到內容）；8 人被判 tangled 逐人重寫（且被「玩家語言輸出」規則簡轉繁＝改寫原文）；美化状态栏整條走 interface。使用者未套用該輪。**
-
-### 已拍板未動工（新對話第一件事，A+B+C 全做）
-- **A 人物判準防重寫**：SURVEY_BODY PERSONS mode 段（refactor_ai.rs，`- tangled：` 行附近）加「資料散在多條／多區塊不算糾纏，各段原文完整可讀＝clean；同一段落多人混寫非拆不可才 tangled」。目標：這類卡 8 人走 clean 零呼叫原文拼裝、不再翻譯。
-- **B absorb 直給樣式**：absorb 判準（refactor_ai.rs:386 附近）補「條目本身就是 trigger:／condition: 一行條件接演出劇本的（包在 <story> 這類容器也算）→absorb」。
-- **C 判官理由落檔顯示（使用者：調整階段必要檢查資料）**：refactor_assemble.rs audit_mechanism_conservation 放行分支（is_effective_carry 且 reason 非空，~:612）補記 audit {kind:"excused", uid, span, detail:"照搬理由：{reason}"}；App.tsx:3008 稽核列表 kind=="excused" 改非紅字（現全 usage-bad）；REFACTOR_AUDIT_KIND_KEYS 加 excused 鍵＋十語系；測試 assemble_local_mechanism_signal_needs_reason_to_pass_carry 的 audit 筆數斷言要跟著更新。
-- 改 A/B 後同卡重跑首輪快取重建（幾毛錢）。驗收判據：剧情三條 kind=mechanism＋App 接管中標；人物卡簡體原文入卡不重寫。
+## Current state（2026-08-12 15:35，A+B+C 三案落地，待 T2 重驗）
+**13:44 真新碼輪三問題（②三條「剧情-」被 reason 開脫 carry、8 人 tangled 重寫＋簡轉繁、reason 看不到內容）的三案修正已實作（cargo 477／vitest 108／build／i18n 綠），待使用者重跑镇北王府：**
+- **A 人物判準防重寫**：PERSONS mode 段重寫（refactor_ai.rs SURVEY_BODY）——資料散在多條／多區塊不算糾纏，各段原文完整可讀＝clean，原文語言照搬不因換語言改判；tangled 收窄到「同一段落多人混寫非拆不可」。
+- **B absorb 直給樣式**：absorb 判準補「條目本身就是 trigger:/condition: 一行條件接演出劇本→直接 absorb；包在 <story> 容器也算，是待觸發機制不是歷史紀錄」。
+- **C 判官理由落檔顯示**：audit_mechanism_conservation 放行分支記 {kind:"excused", detail:"照搬理由：{reason}"}（refactor_assemble.rs）；App.tsx 稽核列 excused 用非紅字樣式＋REFACTOR_AUDIT_KIND_KEYS 加 excused；十語系 +refactorAuditKindExcused（zh-TW「照搬放行」）。
+- A/B 動 survey user 訊息端，同卡重跑首輪 survey 段快取 miss（幾毛錢）。驗收判據：剧情三條 kind=mechanism＋App 接管中標；人物卡簡體原文入卡不重寫；附 reason 的照搬在稽核列表以非紅字顯示理由原文。
 
 ### 環境陷阱（驗收必讀）
 - **proxy usage 罐頭**：prompt_tokens/cached_tokens 恆報 28492/28486（跨不同 prompt 與 world）＝不可信，禁拿它判 prompt 新舊；驗 prompt 生效看 survey out 量級變化或臨時 eprintln 水印。

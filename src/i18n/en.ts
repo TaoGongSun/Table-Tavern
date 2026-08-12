@@ -294,6 +294,7 @@ export const en: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "Mechanism conservation",
   refactorAuditKindSplit: "Split conservation",
   refactorAuditKindDropRule: "Drop rule",
+  refactorAuditKindExcused: "Carry excused",
   unsavedChanges: "{n} unsaved changes",
   unsavedLeaveTitle: "Unsaved changes",
   unsavedLeaveConfirm: "You have {n} unsaved changes. Leave anyway? They will be lost.",

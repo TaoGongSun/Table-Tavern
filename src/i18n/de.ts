@@ -281,6 +281,7 @@ export const de: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "Mechanik-Erhaltung",
   refactorAuditKindSplit: "Split-Erhaltung",
   refactorAuditKindDropRule: "Verwerfungsregel",
+  refactorAuditKindExcused: "Begründete Ausnahme",
   unsavedChanges: "{n} ungespeicherte Änderungen",
   unsavedLeaveTitle: "Ungespeicherte Änderungen",
   unsavedLeaveConfirm: "Du hast {n} ungespeicherte Änderungen. Trotzdem gehen? Sie werden verworfen.",

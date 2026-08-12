@@ -279,6 +279,7 @@ export const fr: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "Conservation des mécaniques",
   refactorAuditKindSplit: "Conservation des scissions",
   refactorAuditKindDropRule: "Règle d'exclusion",
+  refactorAuditKindExcused: "Exemption justifiée",
   unsavedChanges: "{n} modifs non enregistrées",
   unsavedLeaveTitle: "Modifications non enregistrées",
   unsavedLeaveConfirm: "Tu as {n} modifs non enregistrées. Veux-tu vraiment quitter ? Elles seront perdues.",

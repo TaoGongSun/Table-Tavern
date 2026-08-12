@@ -1780,6 +1780,7 @@ const REFACTOR_AUDIT_KIND_KEYS: Record<string, MsgKey> = {
   mechanism: "refactorAuditKindMechanism",
   split: "refactorAuditKindSplit",
   drop_rule: "refactorAuditKindDropRule",
+  excused: "refactorAuditKindExcused",
 };
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
@@ -3012,7 +3013,9 @@ function WorldEditor({
                               {t(REFACTOR_AUDIT_KIND_KEYS[item.kind] ?? "refactorAuditKindCoverage")}
                             </span>
                             <span className="refactor-source">{item.span || item.uid}</span>
-                            <span className="usage-bad">{item.detail}</span>
+                            <span className={item.kind === "excused" ? "mechanism-ledger-detail" : "usage-bad"}>
+                              {item.detail}
+                            </span>
                           </div>
                         </div>
                       ))}

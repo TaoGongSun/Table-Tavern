@@ -279,6 +279,7 @@ export const ru: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "Сохранность механик",
   refactorAuditKindSplit: "Сохранность разбиения",
   refactorAuditKindDropRule: "Правило отбрасывания",
+  refactorAuditKindExcused: "Обоснованное исключение",
   unsavedChanges: "Несохраненных изменений: {n}",
   unsavedLeaveTitle: "Не сохранено",
   unsavedLeaveConfirm: "Несохраненных изменений: {n}. Всё равно выйти? Они будут потеряны.",

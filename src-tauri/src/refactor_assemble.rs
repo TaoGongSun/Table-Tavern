@@ -609,7 +609,10 @@ fn audit_mechanism_conservation(
         // 剩下：uid 判 carry（含隱性——沒有 verdict 就是涵蓋稽核會自動補 carry，等同判 carry）。
         let is_effective_carry = verdict.map(|v| v.action == "carry").unwrap_or(true);
         let reason = verdict.map(|v| v.reason.as_str()).unwrap_or("");
-        if is_effective_carry && reason.is_empty() {
+        if !is_effective_carry {
+            continue;
+        }
+        if reason.is_empty() {
             audit.push(RefactorAuditItem {
                 kind: "mechanism".to_owned(),
                 uid: uid_str.clone(),
@@ -627,6 +630,13 @@ fn audit_mechanism_conservation(
                     .map(|entry| entry.title.clone())
                     .unwrap_or_default(),
                 note: "預掃訊號落在照搬條目".to_owned(),
+            });
+        } else {
+            audit.push(RefactorAuditItem {
+                kind: "excused".to_owned(),
+                uid: uid_str,
+                span: signal.span,
+                detail: format!("照搬理由：{reason}"),
             });
         }
     }
@@ -1032,6 +1042,15 @@ mod tests {
             .collect();
         assert_eq!(mechanism_audits.len(), 1);
         assert_eq!(mechanism_audits[0].uid, flagged_uid.to_string());
+        // 附了 reason 的放行照搬要落一筆 excused，理由原文可見（調整階段檢查資料）。
+        let excused_audits: Vec<_> = assembly
+            .audit
+            .iter()
+            .filter(|item| item.kind == "excused")
+            .collect();
+        assert_eq!(excused_audits.len(), 1);
+        assert_eq!(excused_audits[0].uid, excused_uid.to_string());
+        assert_eq!(excused_audits[0].detail, "照搬理由：歷史紀錄，非即時機制");
         assert!(assembly
             .unabsorbed
             .iter()
