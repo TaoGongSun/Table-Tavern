@@ -150,12 +150,61 @@ export function extractShell(rendered: string): string | null {
   return null;
 }
 
+/**
+ * Storage 墊片原始碼（純 JS，供 shim 內嵌）：沙盒 iframe 沒有 allow-same-origin，origin 是
+ * opaque，碰 localStorage／sessionStorage 一律拋 SecurityError。卡片殼常在初始化就讀設定
+ * （Vue setup 裡一句 getItem 就讓整支 app 掛不起來，配上 `[v-cloak] { display: none }` 就是整片白），
+ * 所以拿不到就換成同介面的記憶體版；拿得到的環境原封不動。
+ */
+export function buildStorageShimSource(): string {
+  return `
+  function installStorageShim(name) {
+    try {
+      window[name].getItem("table-tavern-probe");
+      return;
+    } catch (error) {
+      // 這個環境給不出 Storage，往下換記憶體版
+    }
+    var memory = {};
+    var storage = {
+      getItem: function (key) {
+        return Object.prototype.hasOwnProperty.call(memory, String(key)) ? memory[String(key)] : null;
+      },
+      setItem: function (key, value) {
+        memory[String(key)] = String(value);
+      },
+      removeItem: function (key) {
+        delete memory[String(key)];
+      },
+      clear: function () {
+        memory = {};
+      },
+      key: function (index) {
+        var keys = Object.keys(memory);
+        return index < keys.length ? keys[index] : null;
+      },
+      get length() {
+        return Object.keys(memory).length;
+      },
+    };
+    try {
+      Object.defineProperty(window, name, { value: storage, configurable: true });
+    } catch (error) {
+      console.warn("[table-tavern] 無法替換 " + name, error);
+    }
+  }
+  installStorageShim("localStorage");
+  installStorageShim("sessionStorage");
+`;
+}
+
 // 宿主橋接墊片：沙盒 iframe 是 allow-scripts、沒有 allow-same-origin，碰不到宿主 DOM，
 // 所以在 iframe 內偽造一個誘餌輸入框，把卡片戳 window.parent/window.top 的動作攔下來轉成 postMessage。
 function buildHostBridgeShim(): string {
   return `<script>
 (function () {
   var parentRef = window.parent;
+${buildStorageShimSource()}
 
   function notifyHost(text) {
     try {
