@@ -506,7 +506,13 @@ pub fn parse_claude_line(line: &str) -> CliLine {
                 delta.and_then(|d| d.get("thinking")).and_then(|t| t.as_str()),
             ) {
                 (Some("text_delta"), Some(text), _) => CliLine::Delta(text.to_owned()),
-                (Some("thinking_delta"), _, Some(text)) => CliLine::Thinking(text.to_owned()),
+                // opus 4.7 世代 CLI 隱去思考本文（thinking 恆空、只剩 estimated_tokens），
+                // 空增量轉一顆心跳點（約每 50 tok 一筆），字尾才看得出「在想」不是「掛了」。
+                (Some("thinking_delta"), _, Some(text)) => CliLine::Thinking(if text.is_empty() {
+                    "⋯".to_owned()
+                } else {
+                    text.to_owned()
+                }),
                 _ => CliLine::Other,
             }
         }
@@ -757,7 +763,13 @@ pub async fn run_cli(
     let _pid_guard = ChildPidGuard(child.id());
 
     let mut stdin = child.stdin.take().expect("stdin piped");
-    stdin.write_all(stdin_data.as_bytes()).await?;
+    // 死法③：CLI 起來但不收 stdin（掛在啟動）＝write_all 永卡，60 秒收不完就中止
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        stdin.write_all(stdin_data.as_bytes()),
+    )
+    .await
+    .map_err(|_| "CLI 60 秒收不進提示詞，已中止")??;
     drop(stdin); // 關閉讓 CLI 知道輸入結束
 
     // stderr 逐行即時讀（同時兼排空防死鎖）：CLI 的「API Error…重試中」通知走 stderr，
@@ -772,8 +784,15 @@ pub async fn run_cli(
     let mut done: Option<(String, bool)> = None;
     let mut stdout_open = true;
     let mut stderr_open = true;
+    // 子程序死法收網（2026-08-12，跨平台 tokio API）：
+    // ①程序退出但管線不 EOF（孫程序繼承 fd）：退出後 800ms 沒新行＝強制收尾；
+    // ②程序活著但斷流（網路死、CLI 內部卡死）：120 秒無任何 stdout/stderr 行＝殺程序回錯；
+    // ③stdin 餵不進（上方 60 秒逾時）；④crash 無收尾事件（迴圈後 exit status 檢查）。
+    let mut exited = false;
+    let mut stall: Option<String> = None;
     while stdout_open || stderr_open {
         let line = tokio::select! {
+            biased;
             line = lines.next_line(), if stdout_open => match line? {
                 Some(line) => line,
                 None => {
@@ -800,6 +819,21 @@ pub async fn run_cli(
                     None => stderr_open = false,
                 }
                 continue;
+            },
+            status = child.wait(), if !exited => {
+                let _ = status?;
+                exited = true;
+                continue;
+            },
+            _ = tokio::time::sleep(std::time::Duration::from_millis(800)), if exited => {
+                // 程序已亡、管線遲不 EOF＝孫程序繼承了 fd，放棄排空強制收尾
+                stdout_open = false;
+                stderr_open = false;
+                continue;
+            },
+            _ = tokio::time::sleep(std::time::Duration::from_secs(120)), if !exited => {
+                stall = Some("CLI 120 秒無任何輸出（網路或程序卡死），已中止".to_owned());
+                break;
             },
         };
         if let Some(log) = &usage_log {
@@ -842,9 +876,30 @@ pub async fn run_cli(
         }
     }
 
+    if let Some(msg) = stall {
+        let _ = child.start_kill();
+        if thinking_to_delta {
+            on_delta(&format!("\n⚠ {msg}\n"));
+        }
+        return Err(format!("CLI 回覆錯誤：{msg}").into());
+    }
     let status = child.wait().await?;
     if let Some((text, true)) = &done {
         return Err(format!("CLI 回覆錯誤：{text}").into());
+    }
+    if done.is_none() && !status.success() {
+        // 死法④：CLI crash／被系統殺（無收尾事件＋exit 非零）——殘缺正文不能往下走
+        let tail: String = stderr_text
+            .lines()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let msg = format!("CLI 異常結束（{status}）：{tail}");
+        if thinking_to_delta {
+            on_delta(&format!("\n⚠ {msg}\n"));
+        }
+        return Err(format!("CLI 回覆錯誤：{msg}").into());
     }
     if full_text.is_empty() {
         // 串流沒抓到增量時退回收尾文字（例如未來旗標行為變動）
@@ -908,6 +963,13 @@ mod tests {
                 r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"内心"}}}"#
             ),
             CliLine::Thinking("内心".to_owned())
+        );
+        // 2026-08-12 實測樣本：4.7 世代 CLI 思考本文隱去，空增量轉心跳點
+        assert_eq!(
+            parse_claude_line(
+                r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"","estimated_tokens":50}}}"#
+            ),
+            CliLine::Thinking("⋯".to_owned())
         );
         assert_eq!(
             parse_claude_line(
@@ -1365,6 +1427,49 @@ mod tests {
         assert!(error.contains("unknown provider"), "錯誤要帶原文：{error}");
         // 進度字尾也要同步看到錯誤行
         assert!(deltas.iter().any(|d| d.contains("API Error")));
+    }
+
+    #[tokio::test]
+    async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial_text() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let dir = std::env::temp_dir().join(format!("tt-fake-cli-crash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("fake-claude-crash.sh");
+        // 吐一筆正文增量後 crash（無 result 收尾事件）：殘缺正文不得當成功返回
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "cat > /dev/null\n",
+                "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"殘\"}}}'\n",
+                "echo 'proxy connection reset' >&2\n",
+                "exit 3\n",
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut deltas = Vec::new();
+        let error = run_cli(
+            &script,
+            &dir,
+            &[],
+            "提示詞",
+            &[],
+            parse_claude_line,
+            true,
+            None,
+            |delta: &str| deltas.push(delta.to_owned()),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(error.contains("CLI 異常結束"), "要報 crash 而非靜默：{error}");
+        assert!(error.contains("proxy connection reset"), "要帶 stderr 尾巴：{error}");
+        // 進度字尾同步看到 ⚠，玩家不用等到收尾才知道
+        assert!(deltas.iter().any(|d| d.contains('⚠')));
     }
 
     #[tokio::test]
