@@ -6,7 +6,7 @@ import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, LANGUAGE_OPTIONS, normalizeLang, setLang, t, type MsgKey } from "./i18n";
 import { renderStoryMarkdown } from "./story-markdown";
-import { buildShellDocument, CardInterface, findShell } from "./interface-card";
+import { buildShellDocument, CardInterface, CardStorage, findShell, sanitizeCardStorage } from "./interface-card";
 import { decideImportRoute } from "./import-routing";
 import { isCharacterHidden } from "./character-visibility";
 import {
@@ -251,6 +251,30 @@ function shellFingerprint(shell: string | null): string {
   let hash = 5381;
   for (let i = 0; i < shell.length; i++) hash = ((hash << 5) + hash + shell.charCodeAt(i)) | 0;
   return String(hash >>> 0);
+}
+
+// 卡片介面殼在沙盒裡的 localStorage 存這裡（一桌一份）：殼每次重掛都是全新的沙盒，玩家在卡片
+// 設定分頁調的主題／字級要靠宿主這側留著再回填。內容是第三方 JS 寫的，讀寫都先過 sanitize。
+const CARD_STORAGE_PREFIX = "card-storage:";
+
+function readCardStorage(worldId: string | null): CardStorage {
+  if (worldId === null) return {};
+  try {
+    const raw = window.localStorage.getItem(CARD_STORAGE_PREFIX + worldId);
+    return raw === null ? {} : (sanitizeCardStorage(JSON.parse(raw)) ?? {});
+  } catch {
+    return {};
+  }
+}
+
+function writeCardStorage(worldId: string | null, entries: unknown): void {
+  const clean = worldId === null ? null : sanitizeCardStorage(entries);
+  if (clean === null) return;
+  try {
+    window.localStorage.setItem(CARD_STORAGE_PREFIX + worldId, JSON.stringify(clean));
+  } catch {
+    // 宿主這側寫不進去（配額滿等）：卡片設定這回合留在沙盒記憶體裡，不影響畫面
+  }
 }
 
 function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
@@ -4295,9 +4319,11 @@ function App() {
   // 殼的沙盒包裝與內容指紋：指紋當 iframe key，殼一換整支 iframe 重掛——初始掛載必然載入
   // srcdoc，不依賴 WebKit 對 srcDoc 屬性更新／load 事件的行為（雙緩衝翻面機制在 WKWebView
   // 上塞殼與翻面都不可靠，三次卡片介面空白事故後整台拆除，換單 iframe 直繪）。
+  // 存下的卡片設定在這裡讀進殼。刻意不進依賴：卡片一存設定就重算 doc 的話，srcdoc 跟著換，
+  // 玩家拉個字級就整支 iframe 重繪閃白——殼本來就要重掛的時候（殼變了）才順手帶上最新的一份。
   const cardShellDoc = useMemo(
-    () => (cardInterfaceShell === null ? null : buildShellDocument(cardInterfaceShell)),
-    [cardInterfaceShell],
+    () => (cardInterfaceShell === null ? null : buildShellDocument(cardInterfaceShell, readCardStorage(table))),
+    [cardInterfaceShell, table],
   );
   const cardShellKey = useMemo(() => shellFingerprint(cardInterfaceShell), [cardInterfaceShell]);
 
@@ -4312,12 +4338,17 @@ function App() {
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
       if (typeof data !== "object" || data === null || data.source !== "table-tavern-card") return;
+      // 卡片存設定：只落到宿主存檔，不碰 state——這裡一改 state 就會連動 srcdoc 重繪
+      if (data.kind === "storage") {
+        writeCardStorage(table, data.entries);
+        return;
+      }
       if (data.kind !== "input") return;
       void submitTextRef.current(String(data.text ?? ""));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [cardUiOpen]);
+  }, [cardUiOpen, table]);
 
   // Esc 關閉卡片介面覆蓋層；只在開著時掛，避免和其他 Esc 行為（如取消改名）互相搶
   useEffect(() => {

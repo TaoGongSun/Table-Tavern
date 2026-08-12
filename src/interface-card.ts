@@ -150,34 +150,76 @@ export function extractShell(rendered: string): string | null {
   return null;
 }
 
+/** 卡片殼寫在沙盒 localStorage 裡的東西（設定分頁的主題、字級等）；宿主原樣存、原樣回填。 */
+export type CardStorage = Record<string, string>;
+
+// 卡片殼能往宿主存的上限。殼只該存設定這種小東西，第三方 JS 不能無限往宿主存檔寫。
+export const CARD_STORAGE_LIMIT = 64 * 1024;
+
+/**
+ * 把來路不明的值（沙盒 postMessage 過來的、宿主存檔讀回來的）收成乾淨的 CardStorage；
+ * 型別不對或整份超過上限回 null，呼叫端當作沒有這份快照。
+ */
+export function sanitizeCardStorage(value: unknown): CardStorage | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const entries = Object.entries(value).filter(([, item]) => typeof item === "string") as [string, string][];
+  const clean = Object.fromEntries(entries);
+  return JSON.stringify(clean).length > CARD_STORAGE_LIMIT ? null : clean;
+}
+
 /**
  * Storage 墊片原始碼（純 JS，供 shim 內嵌）：沙盒 iframe 沒有 allow-same-origin，origin 是
  * opaque，碰 localStorage／sessionStorage 一律拋 SecurityError。卡片殼常在初始化就讀設定
  * （Vue setup 裡一句 getItem 就讓整支 app 掛不起來，配上 `[v-cloak] { display: none }` 就是整片白），
  * 所以拿不到就換成同介面的記憶體版；拿得到的環境原封不動。
+ *
+ * localStorage 那份額外接宿主：開場用 seed 回填上次的值，之後每次寫入把整份快照 postMessage
+ * 回去存，殼重掛才留得住玩家調過的設定。sessionStorage 照其語意只活在這次掛載，不外送。
  */
-export function buildStorageShimSource(): string {
+export function buildStorageShimSource(seed: CardStorage = {}): string {
+  // seed 的值是卡片自己寫的內容，可能含 `</script>`：跳脫 `<` 才不會提前關掉這支 script。
+  const seedLiteral = JSON.stringify(seed).replace(/</g, "\\u003c");
   return `
-  function installStorageShim(name) {
+  function installStorageShim(name, seed, persist) {
     try {
       window[name].getItem("table-tavern-probe");
       return;
     } catch (error) {
       // 這個環境給不出 Storage，往下換記憶體版
     }
+    var hostRef = window.parent;
     var memory = {};
+    for (var seedKey in seed) {
+      if (Object.prototype.hasOwnProperty.call(seed, seedKey)) memory[seedKey] = seed[seedKey];
+    }
+    function sync() {
+      if (!persist) return;
+      try {
+        var payload = JSON.stringify(memory);
+        if (payload.length > ${CARD_STORAGE_LIMIT}) {
+          console.warn("[table-tavern] 卡片存的設定超過上限，這次不存回宿主");
+          return;
+        }
+        hostRef.postMessage({ source: "table-tavern-card", kind: "storage", entries: JSON.parse(payload) }, "*");
+      } catch (error) {
+        console.warn("[table-tavern] 無法把卡片設定存回宿主", error);
+      }
+    }
     var storage = {
       getItem: function (key) {
         return Object.prototype.hasOwnProperty.call(memory, String(key)) ? memory[String(key)] : null;
       },
       setItem: function (key, value) {
         memory[String(key)] = String(value);
+        sync();
       },
       removeItem: function (key) {
         delete memory[String(key)];
+        sync();
       },
       clear: function () {
         memory = {};
+        sync();
       },
       key: function (index) {
         var keys = Object.keys(memory);
@@ -193,18 +235,18 @@ export function buildStorageShimSource(): string {
       console.warn("[table-tavern] 無法替換 " + name, error);
     }
   }
-  installStorageShim("localStorage");
-  installStorageShim("sessionStorage");
+  installStorageShim("localStorage", ${seedLiteral}, true);
+  installStorageShim("sessionStorage", {}, false);
 `;
 }
 
 // 宿主橋接墊片：沙盒 iframe 是 allow-scripts、沒有 allow-same-origin，碰不到宿主 DOM，
 // 所以在 iframe 內偽造一個誘餌輸入框，把卡片戳 window.parent/window.top 的動作攔下來轉成 postMessage。
-function buildHostBridgeShim(): string {
+function buildHostBridgeShim(seed: CardStorage): string {
   return `<script>
 (function () {
   var parentRef = window.parent;
-${buildStorageShimSource()}
+${buildStorageShimSource(seed)}
 
   function notifyHost(text) {
     try {
@@ -286,9 +328,10 @@ ${buildStorageShimSource()}
 
 /**
  * 把殼包成可直接餵給沙盒 iframe srcdoc 的完整文件（含宿主橋接墊片）。
+ * seed＝這桌上次存下的卡片設定，開場回填進沙盒 localStorage。
  */
-export function buildShellDocument(shell: string): string {
-  const shim = buildHostBridgeShim();
+export function buildShellDocument(shell: string, seed: CardStorage = {}): string {
+  const shim = buildHostBridgeShim(seed);
   // 墊片攔不到的備案：把殼原始碼裡完整字面的 window.parent／window.top 直接改指向誘餌，
   // \b 確保只換完整字面，不誤傷 window.parentNode 或 node.parent.foo 這類正常寫法。
   const processedShell = shell.replace(/window\.parent\b/g, "window.__ttHost").replace(/window\.top\b/g, "window.__ttHost");
