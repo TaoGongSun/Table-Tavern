@@ -15,6 +15,7 @@
 ### T2 镇北王府首輪（2026-08-12 12:18，opus 4.7）：①八人一人一卡過；②③④全不過——survey 只吐 620 tok 敷衍（sonnet 兩筆 out=0 待查），零 absorb 零 drop，美化状态栏／格式增强Plus 判官塞進人物 uids 名義下落、實際無產物、無聲殘留。兩刀已修（cargo 476 綠）：
 - **預掃改語言無關結構特徵（拍板）**：模板變數（排除 {{user}}/{{char}}）、表格 ≥3 行、代碼塊/HTML 標籤、百分比數值＋原有逐日；trigger:/rule: 詞彙降為免費加分。中文卡機制條目 carry 無 reason 從此會亮機制守恆紅字。
 - **涵蓋稽核收緊**：clean 人物只認 spans/private 實際引用的 uid，uids 欄多列的不算下落→漏網補 carry＋紅字（镇北王府殘留洞的根治）。
+- **absorb 判準擴事件劇本（A 拍板）**：survey prompt「觸發條件（數值）」改「觸發事件（數值、情境都算，trigger:/condition:＋演出劇本）」，歷史年表分界加「已經發生過的」——「剧情-」類事件劇本從此該判 absorb。改 user 訊息端，同卡重跑首輪 survey 段快取 miss（幾毛錢級）。reason 存檔顯示（B 案）記待辦不擋驗收。
 
 前一輪三修（已 commit 62695e9）：
 1. **淘汰理由④內容重複**：語言重複版（Rigurd EN VER.）以前被 survey 指示「不要列」→必觸發漏網紅字；現在通用規則「重複內容取一捨餘」，棄用版標 `drop rule: 4` 進淘汰清單。改點：refactor_ai.rs prompt（PERSONS＋drop 四種＋SPLITS）、refactor_assemble.rs 範圍 1–4、App.tsx rule map、十語系 +refactorDroppedRule4。
