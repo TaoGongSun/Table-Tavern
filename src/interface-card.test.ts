@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyScripts,
+  buildImeGuardSource,
   buildShellDocument,
   buildStorageShimSource,
   CARD_STORAGE_LIMIT,
@@ -243,6 +244,64 @@ describe("buildStorageShimSource", () => {
 
     expect(doc).not.toContain("</script><script>window.pwned=1");
     expect(doc).toContain("\\u003c/script>");
+  });
+});
+
+describe("buildImeGuardSource", () => {
+  // 卡片殼的 handler 綁在 window（bubble）；守衛在 capture 階段先跑，攔下就傳不到卡片
+  const install = () => {
+    const registered: { type: string; handler: (event: unknown) => void; capture: unknown }[] = [];
+    const win = {
+      addEventListener: (type: string, handler: (event: unknown) => void, capture: unknown) =>
+        registered.push({ type, handler, capture }),
+    };
+    new Function("window", buildImeGuardSource())(win);
+    return registered[0];
+  };
+
+  const keydown = (over: Record<string, unknown>) => {
+    const calls = { stopped: 0, prevented: 0 };
+    const event = {
+      key: "Enter",
+      isComposing: false,
+      keyCode: 13,
+      stopImmediatePropagation: () => calls.stopped++,
+      preventDefault: () => calls.prevented++,
+      ...over,
+    };
+    return { event, calls };
+  };
+
+  it("掛在 window 的 capture 階段，才搶得贏卡片自己的 keydown", () => {
+    const guard = install();
+
+    expect(guard.type).toBe("keydown");
+    expect(guard.capture).toBe(true);
+  });
+
+  it("組字中的按鍵不往下傳，但不擋預設行為（輸入法照樣選字）", () => {
+    const guard = install();
+
+    const composing = keydown({ isComposing: true, keyCode: 229 });
+    guard.handler(composing.event);
+    expect(composing.calls).toEqual({ stopped: 1, prevented: 0 });
+
+    // isComposing 在 WebKit 某些狀態下拿不到，只靠 keyCode 229 也要攔得住
+    const legacy = keydown({ isComposing: undefined, keyCode: 229 });
+    guard.handler(legacy.event);
+    expect(legacy.calls.stopped).toBe(1);
+  });
+
+  it("組字結束後的按鍵照常放行，卡片的 Enter 送出還是能用", () => {
+    const guard = install();
+
+    const plain = keydown({});
+    guard.handler(plain.event);
+    expect(plain.calls).toEqual({ stopped: 0, prevented: 0 });
+
+    const escape = keydown({ key: "Escape", keyCode: 27 });
+    guard.handler(escape.event);
+    expect(escape.calls.stopped).toBe(0);
   });
 });
 
