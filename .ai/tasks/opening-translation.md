@@ -1,25 +1,19 @@
 # Task
 Task-ID: opening-translation
 Title: 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔
-Status: in_progress
-Created: 2026-08-08T03:22:00+08:00
-Updated: 2026-08-08T04:10:00+08:00
+Status: in-progress
+Created: 2026-08-13T00:30:00.811394+08:00
+Updated: 2026-08-13T00:30:00.811394+08:00
 
 ## Summary
 2026-08-08 討論立案。匯入卡片後玩家第一眼要看懂的是開場白，但它不經 AI 重構——重構三類展開（人物／介面／機制）的提示詞都已要求玩家語言輸出（[refactor_ai.rs:165](../../src-tauri/src/refactor_ai.rs#L165)、295、332），純設定條目與開場白則完全不在輸出裡。翻譯掛在開場白選擇視窗（[App.tsx:4780](../../src/App.tsx#L4780)，兩條匯入路徑共用）而非重構管線：需求時點就在「貼出前」，單則翻譯只是幾秒的小呼叫，綁進分鐘級的重構只會製造匯入等待與撤回重問等新機制。
 
 量化（TestCards 實測）：最壞卡 furry-male-scenarios 29 則備用開場白共 26,375 字元，fast 檔（Haiku 級 $1／$5 每百萬 token）全翻約 $0.1–0.2 美元、序列 2–3 分鐘；一般卡不到一分錢、幾秒。
 
-## 設計要點
-1. **兩顆鈕，同一條翻譯呼叫**：視窗上方「全部翻譯」（逐則背景填入、不擋操作，每則有翻譯中狀態）；挑中一則後「翻譯後貼出」與原「貼出」並列（只翻挑中那則）。
-2. **一律玩家主動按**（不替玩家花錢紅線）；需要 AI 的按鈕都加 AI 標記，讓玩家知道會用額度。
-3. **走 fast 檔**：claude CLI→haiku、codex→low effort、API→tier_models 的 fast 鍵（[cli.rs:336](../../src-tauri/src/cli.rs#L336)）；fast 未設定時退 GM 檔，按鈕永遠可用。
-4. **貼出語意照舊**：貼出的譯文就是一般旁白，undo／重匯機制不動；不新增旗標、不撤回重問。預覽清單維持原文。
-5. **翻譯提示詞**：開場白內容一律當資料（防注入聲明照重構慣例）；保留 markdown／HTML 標記與內嵌圖片語法，只翻文字；巨集已由 card_openings 換成實名（[lib.rs:381](../../src-tauri/src/lib.rs#L381)），不必處理。
-6. **重構管線一字不動**：重構產物本來就是玩家語言，兩者各管各的。
+規格細節（設計要點）見 [plans/opening-translation.md](../plans/opening-translation.md)。
 
 ## Next action
-- 實作完成、四項自驗全綠（cargo 426／vitest 71／build／check:i18n，2026-08-08），等實機驗收；現場與待實測清單 T1–T7 見[交接檔](../handoffs/opening-translation.md)，全過即結案。
+- 實作完成、四項自驗全綠（cargo 426／vitest 71／build／i18n，2026-08-08），等實機驗收 T1–T7（見交接檔）後結案
 
 ## Constraints
 - 翻譯呼叫必須玩家主動觸發，不自動跑。

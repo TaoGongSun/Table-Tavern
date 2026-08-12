@@ -4,7 +4,7 @@
 **已結案（2026-08-06）**：四包＋後續十項修正全部實作完成，實機驗收清單七項全數通過，無已知缺陷。
 
 ## Completed
-全部已驗收，明細與證據見 [archive/card-import-flow-completed.md](archive/card-import-flow-completed.md)。
+全部已驗收，明細與證據見 [card-import-flow-completed.md](card-import-flow-completed.md)。
 
 ### companion 路徑刪除（2026-08-06 驗收第 7 項當場拍板，推翻拍板 4 的配套例外）
 第 7 項「有角色卡的桌補匯配套世界書 → 不跳框直接進」照配方跑過了，但使用者當場指出：拿來驗的 `塞拉菲·内藤` 與 `Anthro Anatomy` **根本不配套**，卻一樣走了零打擾路徑。原因是 `isPureWorldbookFile` 只知道「這是不是一份純世界書檔」，講不出它跟桌上那張卡有沒有關係——**配套與否只有玩家知道，程式偵測不出來**。
@@ -19,11 +19,11 @@
 無。
 
 ## Next action
-無。已結案，那一行在 [DONE.md](../DONE.md)。
+無。已結案，那一行在 [DONE.md](../../DONE.md)。
 
 **使用者已接受、不再追蹤**：有匯入紀錄的桌再匯卡會連跳兩個框（先問身分、再問哪一桌），空桌只有一個框。這是「所有卡都讓玩家選身分」的直接後果，2026-08-06 實機確認可接受，不併。
 
 ## Constraints
-- AI 卡重構按鈕另案（[ai-card-refactor](../tasks/ai-card-refactor.md)）；入口方向已拍進該任務檔。
+- AI 卡重構按鈕另案（[ai-card-refactor](../../tasks/ai-card-refactor.md)）；入口方向已拍進該任務檔。
 - 新 UI 字串十語系逐鍵（zh-TW 正典）；驗證四件套：cargo test＋npm run build＋npm test＋check:i18n。
 - **收據為主，條目最多當保險**（2026-08-06 使用者立規）：路由判準以匯入收據為準，不為測試期間才有的舊桌問題改寫長期標準。

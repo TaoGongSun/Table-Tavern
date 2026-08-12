@@ -1,7 +1,7 @@
 # Handoff: refactor-outcome-export
 
 ## Current state
-**實作完成、主線四項驗證全綠**（2026-08-10）。剩使用者實機操作：orc-cave 桌真跑 B1→結果卡「匯出」存真產物→接 [ai-card-refactor](ai-card-refactor.md) A 段實測（A4／A7 驗本功能）。
+**實作完成、主線四項驗證全綠**（2026-08-10）。剩使用者實機操作：orc-cave 桌真跑 B1→結果卡「匯出」存真產物→接 [ai-card-refactor](../../tasks/ai-card-refactor.md) A 段實測（A4／A7 驗本功能）。
 
 ## Spec（發包規格）
 後端（src-tauri/src/）：
@@ -22,4 +22,4 @@
 已知限制：apply 尾端寫產物檔若失敗（磁碟錯誤等罕見情況），套用其實已完成但玩家會看到錯誤——與既有「中途 Err 已落檔無收據可退」同型，不阻塞。
 
 ## Next action
-主線驗證四項全綠→commit→使用者拿實際測試卡（orc-cave）真跑 B1→結果卡「匯出」存 TestCards/→接 [ai-card-refactor](ai-card-refactor.md) A 段真產物實測。
+主線驗證四項全綠→commit→使用者拿實際測試卡（orc-cave）真跑 B1→結果卡「匯出」存 TestCards/→接 [ai-card-refactor](../../tasks/ai-card-refactor.md) A 段真產物實測。

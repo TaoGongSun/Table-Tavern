@@ -1,8 +1,9 @@
 # Task
 Task-ID: interface-takeover-spike
 Title: 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面
-Created: 2026-08-12T17:40:00+08:00
-Status: in-progress
+Status: todo
+Created: 2026-08-13T00:30:00.710331+08:00
+Updated: 2026-08-13T00:30:00.710331+08:00
 
 ## Summary
 2026-08-12 立案並完成驗證。規格：**AI 永不產介面**，重構只把卡規定的每回合輸出格式照搬成骨架、變動處挖 `{{狀態樹路徑}}`，運行時 app 用狀態樹填值、過卡自己的顯示腳本渲染；`source-card.png` 原封留桌上當介面唯一來源。
@@ -14,7 +15,7 @@ Status: in-progress
 `TestCards/` 分型完成：資料槽型只有西幻一張（已過）；另有 MVU 前端型（bcd368、HeroTrainingUnderSide，帶變數更新腳本，協定同源應最順）、整頁前端非 MVU（DongeonMaster／Transfur／RPGImmortal）、狀態欄＋真人物多（NorthHall，預期結論是拆角色不接管介面）、雲端載入器（TrainEmperor，該被 unsupported 擋掉）。
 
 ## Next action
-拆角色 vs 保留介面交給玩家選擇（介面判 playable 時重構結果對話框的角色組預設不勾、組標題掛一句「NPC 由 GM 代言」），之後逐型驗其他卡（MVU 前端型 bcd368 優先），細節與陷阱見 .ai/handoffs/interface-takeover-spike.md
+- 三項驗收全過（西幻卡三回合實測 5944→2670 字省 55%、劇情 ×2.8、零拒收，commit d3f8a7e）；接著做「拆角色 vs 保留介面交給玩家選擇」（介面判 playable 時角色組預設不勾），再逐型驗其他卡（MVU 前端型 bcd368 優先），最後清舊產殼路線
 
 ## Constraints
 - AI 永不產介面 HTML；模板／regex 一律取自卡檔原文，每卡自訂、禁 app 統一文法。

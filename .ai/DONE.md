@@ -1,6 +1,6 @@
 # 已完成任務
 
-結案任務按結案時間新到舊排列。進行中與待辦見 [TASKS.md](TASKS.md)。
+2026-08-13 以前的結案清單，按結案時間新到舊排列，**已凍結不再增修**；此後結案由 `handoff task complete` 寫入 [history/](history/)。進行中與待辦見 [TASKS.md](TASKS.md)。
 
 - [refactor-output-redesign](tasks/refactor-output-redesign.md) — 重構產出重新設計：以「能玩」為驗收標準 — 2026-08-11 八條標準拍板當日全案實作＋orc-cave 真跑逐項驗收通過，結案。新拓撲（盤點 PLAN／playable→人物展開→條目重寫→介面展開，known_fields 單一命名權威）＋套用端整本重寫：機制條目鎖定唯讀可展開、來源「全引用產物都套用才刪」、AI 路徑無 undo＋重跑警告、狀態欄／介面限遊玩畫面、套用介面整份重建清殘渣（同名鍵沿用現值）、進度小框思考字尾。實測抓三 bug 當日修畢（思考洩入旁白串流、重構卡匯新桌誤刪新條目＋undo 復活鎖定孤兒、清單分支誤掛指認下拉）。明細見 [handoffs/archive/refactor-output-redesign-completed.md](handoffs/archive/refactor-output-redesign-completed.md)
 - [refactor-outcome-export](tasks/refactor-outcome-export.md) — 重構產物匯出：重構一次，之後重玩同一張卡免再燒額度 — 2026-08-11 匯出檔名帶桌名（「兽人的洞穴-重構卡.json」實測）＋匯出→新桌匯入→套用→復原全流程零額度重放驗收通過，結案。明細見 [handoffs/archive/refactor-outcome-export-completed.md](handoffs/archive/refactor-outcome-export-completed.md)
