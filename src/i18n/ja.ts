@@ -279,6 +279,7 @@ export const ja: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "メカニクス保存",
   refactorAuditKindSplit: "分割保存",
   refactorAuditKindDropRule: "除外ルール",
+  refactorAuditKindExcused: "保存免除",
   unsavedChanges: "未保存の変更が {n} 件あります",
   unsavedLeaveTitle: "未保存の変更",
   unsavedLeaveConfirm: "未保存の変更が {n} 件あります。このまま移動しますか？変更内容は失われます。",

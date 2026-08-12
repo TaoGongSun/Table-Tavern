@@ -289,6 +289,7 @@ export const zh = {
   refactorAuditKindMechanism: "機制守恆",
   refactorAuditKindSplit: "拆組守恆",
   refactorAuditKindDropRule: "淘汰規則",
+  refactorAuditKindExcused: "照搬放行",
   unsavedChanges: "有 {n} 項修改未儲存",
   unsavedLeaveTitle: "尚未儲存",
   unsavedLeaveConfirm: "有 {n} 項修改未儲存，確定要離開嗎？離開後修改將遺失。",

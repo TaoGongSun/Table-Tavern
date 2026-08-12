@@ -279,6 +279,7 @@ export const ko: Record<MsgKey, string> = {
   refactorAuditKindMechanism: "메커니즘 보존",
   refactorAuditKindSplit: "분할 보존",
   refactorAuditKindDropRule: "제외 규칙",
+  refactorAuditKindExcused: "보존 예외",
   unsavedChanges: "저장되지 않은 변경사항 {n}개",
   unsavedLeaveTitle: "저장되지 않은 변경사항",
   unsavedLeaveConfirm: "저장되지 않은 변경사항이 {n}개 있습니다. 그래도 나가시겠습니까? 변경사항은 사라집니다.",
