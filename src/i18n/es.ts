@@ -268,6 +268,7 @@ export const es: Record<MsgKey, string> = {
   refactorDroppedRule1: "① Disciplina del contenedor de salida",
   refactorDroppedRule2: "② Marca de versión / registro de cambios",
   refactorDroppedRule3: "③ Gancho exclusivo del motor ST",
+  refactorDroppedRule4: "④ Contenido duplicado",
   refactorDroppedRestore: "Restaurar",
   refactorUnabsorbedSection: "{n} mecánicas no incorporadas",
   refactorUnabsorbedHint: "El texto original se conserva en la entrada de reglas del GM; podrá pasar a gestión de la app cuando se implemente el soporte.",

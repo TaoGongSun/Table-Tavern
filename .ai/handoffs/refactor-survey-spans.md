@@ -1,7 +1,20 @@
 # Handoff: refactor-survey-spans
 
+## ⚠ 對話紀律（2026-08-12 使用者嚴令）
+- **禁止長思考**：驗收＝一項一條指令一行過/不過；查帳題直答；異常先一行列出問使用者要不要追，禁自行開挖（uid 考古、快取歸因這類旁支全禁）。思考超過一分鐘會被打斷。
+- 拍板請求必附：問題主體＋成因＋各選項後果；沒問題的項目至多一行。
+- 大查詢派新對話或代理，別堆本對話 context。
+
 ## Current state
-2026-08-11 五包全部實作完成、主線逐包複驗全綠（cargo **470**／vitest **108**／build 0／check:i18n 十語系 0）；**尚未實機驗收**——實作對話 context 過大，驗收在新對話照下方「實測清單」跑，全過與 refactor-dispatch 一起結案。
+2026-08-12 實機驗收進行中。T1 首輪已跑（含套用），發現三問題**已修**（cargo **473**／vitest 108／build／check:i18n 全綠，未 commit）：
+1. **淘汰理由④內容重複**：語言重複版（Rigurd EN VER.）以前被 survey 指示「不要列」→必觸發漏網紅字；現在通用規則「重複內容取一捨餘」，棄用版標 `drop rule: 4` 進淘汰清單。改點：refactor_ai.rs prompt（PERSONS＋drop 四種＋SPLITS）、refactor_assemble.rs 範圍 1–4、App.tsx rule map、十語系 +refactorDroppedRule4。
+2. **502 發呆三分鐘**：CLI「API Error…」走 stderr、以前收尾才讀。現在 run_cli stderr 逐行讀：錯誤行立即進進度字尾（⚠ 前綴）；設定類（unknown provider/401/404…）立即殺程序回錯（api_error_kind 分類）。
+3. **環境劫持自清**：run_cli 起子程序前拔掉所有繼承 `ANTHROPIC_*`（四家 CLI 全蓋），接閘道唯一通道＝app 設定 claude_base_url。根因：老分頁殘留 Sol 代理 export（BASE_URL=127.0.0.1:8317＋cpa_ token），環境本身的清理另開對話處理（提示詞已交使用者）。
+
+### T1 首輪結果（兽人的洞穴 …ESK6MN，2026-08-11 20:58–21:03）
+- 4 呼叫：survey opus 8,612 tok＋sonnet 並行 783/3,216/14,507；$0.86；jsonl 首末筆 3分37秒，含 survey 生成全程 **≈5.5–6 分（超標 <5 分）**，超標主因＝survey 輸出量＋並行③ 14.5k tok 長尾。舊制同卡 30.6 分／17 筆／$1.85。**時長要不要追（prompt 層瘦身）待使用者拍板**。
+- ② byte 相等 9/9＋constant 保留 ✓ ③ 接管 kind=mechanism＋規則＋6 觸發器＋帳本 ✓ ④ 淘汰 rule2 ✓（放回鍵未實點）⑤ 漏網紅字 1（＝問題 1，已修待重跑驗）。
+- 快取觀察：survey=opus、pool=sonnet 跨模型快取不共用，並行齊發 3 筆中 2 筆 miss（多 ~$0.05/輪，時間無損）。要不要調待拍板。
 
 ## Completed
 - **包5**（sonnet 代理＋主線複驗，vitest 105→108，隨包 5 commit）：結果面板三新區——已淘汰（收合、逐項 rule 標籤＋展開全文＋「放回」走 restoreDropped 純函式轉 carry 進 entries 並勾選，App.tsx:2948 起）、未接管機制清單、稽核紅字；i18n 十語系各 +12 鍵。
@@ -74,16 +87,21 @@
 ### 產物與 UI
 RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。淘汰清單 UI：預設不套用、收合列表、逐條展開看全文、一鍵放回（轉 carry 進 entries 並勾選）。未接管機制＝資訊列表（內容已在 GM 規則條目裡）。
 
-## 實測清單（新對話實機驗收用；2026-08-11 拍板：實作對話 context 過大，驗收另開對話）
-環境：`npm run tauri dev`（Bash 啟動一律 `env -u ANTHROPIC_BASE_URL`）；時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`。
-- **T1 orc-cave（主指標）**：①總時長 <5 分（jsonl 佐證）②豺狼人／深藍狼／巨魔等純設定＝carry，套用後 content byte 相等＋keys/constant 保留 ③「巴古克與古茲卡入侵劇情線」（逐日）＝absorb：kind=mechanism、locked、RULES/TRIGGERS 非空、帳本記已接管 ④版本標記條蓋 drop rule 2：入已淘汰清單、預設不套用、展開看全文、一鍵放回 ⑤audit 無紅字。
+## 實測清單（新對話實機驗收用）
+環境：先重編譯再驗（本輪三修未進昨晚的 app）：裸 `npm run tauri dev` 即可（app 已自清 ANTHROPIC_*）。時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`（ts＝完成時刻，diag single＝重構呼叫）。世界目錄 `~/Documents/TableTavern/worlds/<id>/`（refactor-outcome.json／worldbook.json／mechanism-log.jsonl 可機械核對）。
+- **T1 補驗（重匯 orc-cave 重跑）**：①總時長再量 ④放回鍵實點一次 ⑤紅字歸零＋Rigurd (EN VER.) 入淘汰清單標④。②③首輪已過不重驗。
+- ~~T1 首輪原文~~：①總時長 <5 分（jsonl 佐證）②純設定 carry byte 相等＋keys/constant 保留 ③逐日劇情線 absorb：kind=mechanism、locked、RULES/TRIGGERS 非空、帳本記已接管 ④drop rule 2 入淘汰清單、預設不套用、展開全文、一鍵放回 ⑤audit 無紅字。
 - **T2 NorthHall（23 條八角色）**：①每人「速览段＋人物設定＋性格」跨條合成一張完整卡不碎裂 ②三條「剧情-」觸發歸機制線（absorb 或 group mechanism）③「格式增强Plus」整條淘汰 ④「美化状态栏」三路拆＝欄位綱要→STATE（emoji 標籤留值）、行動選項→GM 規則條目、容器紀律→drop①。
 - **T3 Transfur（16 條盲測定案）**：①目錄四條＋keyed 地區四條 carry 含元資料（keys 在）②核心設定歷史年表 carry 且該行附 reason（預掃衝突）③「格式」「COT」多路拆＝欄位綱要→STATE、敘事行為指令→GM 規則、gametext 容器→drop①、擲骰／ASCII 地圖→unabsorbed 清單可見。
 - **T4 通用**：①取消鍵中止在途＋Cmd-Q 無孤兒（refactor-dispatch P4–P6）②API 未設 balanced 退 GM（P8）③舊 refactor-outcome.json（無 meta/dropped 三欄）匯入照舊可套用 ④淘汰／未接管面板十語系文字正常。
 全過＝本案＋refactor-dispatch 一起結案。
 
 ## Next action
-新對話實機驗收：`npm run tauri dev`（Bash 啟動帶 `env -u ANTHROPIC_BASE_URL`）匯入三張測試卡（TestCards/）照上方實測清單 T1–T4 逐項驗；發現問題帶本檔開修。全過＝本案結案＋refactor-dispatch P4–P6/P8 一起收（兩案狀態 completed、TASKS.md 行搬 DONE.md、已驗收段搬 archive/）。
+1. 先 commit 本輪三修（cargo 473／vitest 108／build／i18n 已綠）。
+2. 重啟 app（裸 `npm run tauri dev`，先讓 Rust 重編譯）→ 照實測清單跑 T1 補驗 → T2 → T3 → T4；一項一行過/不過，發現問題帶本檔開修。
+3. 環境殘留 ANTHROPIC_* 的本機清理＝獨立對話（提示詞已交使用者），與本案驗收互不擋路。
+4. 全過＝本案結案＋refactor-dispatch P4–P6/P8 一起收（兩案 completed、TASKS.md 行搬 DONE.md、已驗收段搬 archive/）。
+待拍板遺留：T1 時長超標要不要追、跨模型快取 miss 要不要調。
 
 ## Constraints
 - 新格式規格放 survey user 訊息端；survey／expand 共用 system 逐位元組相同紅線零觸碰（既有測試把關，span 標記在 context 內、各階段共用不破相等）。

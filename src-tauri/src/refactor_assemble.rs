@@ -7,7 +7,7 @@
 //! - "coverage"：世界書條目沒出現在 PERSONS／INTERFACE／ENTRIES 任何一處，自動補照搬。
 //! - "mechanism"：結構預掃訊號落在沒附 reason 的照搬條目，可能漏接了機制。
 //! - "split"：split 條目有段落沒被任何有效路由接住，自動併入「（餘段）」照搬條目。
-//! - "drop_rule"：淘汰缺編號或編號不在 1–3，自動退回照搬。
+//! - "drop_rule"：淘汰缺編號或編號不在 1–4，自動退回照搬。
 
 use crate::data::{self, DataResult, WorldbookEntry};
 use crate::refactor::RefactorCharacter;
@@ -169,7 +169,7 @@ pub(crate) fn resolve_span<'a>(
     Some((entry, span))
 }
 
-/// ENTRIES 逐條：carry 整條照搬；drop 有效編號進淘汰清單，編號缺席或不在 1–3 自動退回照搬＋
+/// ENTRIES 逐條：carry 整條照搬；drop 有效編號進淘汰清單，編號缺席或不在 1–4 自動退回照搬＋
 /// audit。absorb／split 不在這裡處理（absorb 是包 3 的事；split 見 `assemble_splits`）。
 fn assemble_verdicts(
     survey: &RefactorSurveyOutcome,
@@ -189,7 +189,7 @@ fn assemble_verdicts(
         match verdict.action.as_str() {
             "carry" => push_carry(entry, entries, used_titles),
             "drop" => match verdict.rule {
-                Some(rule) if (1..=3).contains(&rule) => dropped.push(RefactorDroppedEntry {
+                Some(rule) if (1..=4).contains(&rule) => dropped.push(RefactorDroppedEntry {
                     uid: verdict.uid.clone(),
                     span: String::new(),
                     title: entry.title.clone(),
@@ -202,7 +202,7 @@ fn assemble_verdicts(
                         kind: "drop_rule".to_owned(),
                         uid: verdict.uid.clone(),
                         span: String::new(),
-                        detail: "淘汰缺編號或編號不在 1–3，自動退回照搬。".to_owned(),
+                        detail: "淘汰缺編號或編號不在 1–4，自動退回照搬。".to_owned(),
                     });
                 }
             },
@@ -285,7 +285,7 @@ fn assemble_splits(
                 routed.insert((uid, span_id));
             }
             "drop" => match route.rule {
-                Some(rule) if (1..=3).contains(&rule) => {
+                Some(rule) if (1..=4).contains(&rule) => {
                     dropped.push(RefactorDroppedEntry {
                         uid: uid.to_string(),
                         span: route.span.clone(),
@@ -299,7 +299,7 @@ fn assemble_splits(
                     kind: "drop_rule".to_owned(),
                     uid: uid.to_string(),
                     span: route.span.clone(),
-                    detail: "淘汰缺編號或編號不在 1–3，此段改併入餘段照搬。".to_owned(),
+                    detail: "淘汰缺編號或編號不在 1–4，此段改併入餘段照搬。".to_owned(),
                 }),
             },
             "person" => {
@@ -580,14 +580,14 @@ fn audit_mechanism_conservation(
                 .get(&(uid, span_id))
                 .is_some_and(|route| match route.route.as_str() {
                     "statusbar" | "gm" | "unabsorbed" => true,
-                    "drop" => route.rule.is_some_and(|rule| (1..=3).contains(&rule)),
+                    "drop" => route.rule.is_some_and(|rule| (1..=4).contains(&rule)),
                     "group" => {
                         group_kind_by_id.get(route.group.as_str()).copied() == Some("mechanism")
                     }
                     _ => false,
                 })
             || verdict.is_some_and(|v| {
-                v.action == "drop" && v.rule.is_some_and(|rule| (1..=3).contains(&rule))
+                v.action == "drop" && v.rule.is_some_and(|rule| (1..=4).contains(&rule))
             });
         if ok {
             continue;

@@ -270,6 +270,7 @@ export const de: Record<MsgKey, string> = {
   refactorDroppedRule1: "① Ausgabe-Container-Disziplin",
   refactorDroppedRule2: "② Versionsmarkierung / Änderungsprotokoll",
   refactorDroppedRule3: "③ ST-Engine-exklusiver Hook",
+  refactorDroppedRule4: "④ Doppelter Inhalt",
   refactorDroppedRestore: "Zurückholen",
   refactorUnabsorbedSection: "{n} nicht übernommene Mechaniken",
   refactorUnabsorbedHint: "Der Originaltext bleibt im GM-Regeleintrag erhalten und kann später, sobald die App das unterstützt, in die App-Verwaltung übernommen werden.",

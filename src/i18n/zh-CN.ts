@@ -257,6 +257,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorDroppedRule1: "①输出容器纪律",
   refactorDroppedRule2: "②版本标记／更新日志",
   refactorDroppedRule3: "③ST 引擎专属钩子",
+  refactorDroppedRule4: "④内容重复",
   refactorDroppedRestore: "放回",
   refactorUnabsorbedSection: "未接管机制 {n} 项",
   refactorUnabsorbedHint: "原文已保留在 GM 规则条目，之后系统支持时可升级接管。",

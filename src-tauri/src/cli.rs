@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -689,6 +689,29 @@ impl Drop for ChildPidGuard {
 }
 
 /// headless 單發：prompt 走 stdin，逐行讀 stdout 解析、增量回呼，回傳完整文字。
+/// stderr 行的 API 錯誤偵測：None＝不是錯誤行；Some(false)＝暫時性（讓 CLI 自己重試，
+/// 但進度要立刻看得到）；Some(true)＝設定類（模型不存在／認證／權限），重試不會好，立即中止。
+fn api_error_kind(line: &str) -> Option<bool> {
+    let lower = line.to_lowercase();
+    if !lower.contains("api error") {
+        return None;
+    }
+    const FATAL: [&str; 8] = [
+        "unknown provider",
+        "not_found",
+        "not found",
+        "invalid",
+        "authentication",
+        "unauthorized",
+        "permission",
+        "billing",
+    ];
+    Some(
+        FATAL.iter().any(|kw| lower.contains(kw))
+            || ["401", "403", "404"].iter().any(|code| lower.contains(code)),
+    )
+}
+
 pub async fn run_cli(
     program: &Path,
     working_dir: &Path,
@@ -705,6 +728,14 @@ pub async fn run_cli(
     let mut command = Command::new(program);
     // 先掛系統代理再掛使用者 envs，同名時使用者設定蓋過代理
     crate::proxy::apply_system_proxy(&mut command);
+    // CLI 子程序一律不繼承 ANTHROPIC_*：啟動 app 的 shell 若殘留閘道變數（例如指向
+    // 本機代理的 ANTHROPIC_BASE_URL＋AUTH_TOKEN），整批呼叫會被劫走。要接第三方閘道
+    // 一律走 app 設定欄，claude_cli_envs 會在下面的 envs 顯式補回。
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("ANTHROPIC_") {
+            command.env_remove(&key);
+        }
+    }
     command
         .current_dir(working_dir)
         .args(args)
@@ -729,19 +760,48 @@ pub async fn run_cli(
     stdin.write_all(stdin_data.as_bytes()).await?;
     drop(stdin); // 關閉讓 CLI 知道輸入結束
 
-    // stderr 另開 task 排空，避免管線塞滿造成死鎖
-    let mut stderr = child.stderr.take().expect("stderr piped");
-    let stderr_task = tokio::spawn(async move {
-        let mut buffer = String::new();
-        let _ = stderr.read_to_string(&mut buffer).await;
-        buffer
-    });
+    // stderr 逐行即時讀（同時兼排空防死鎖）：CLI 的「API Error…重試中」通知走 stderr，
+    // 整包等結束才讀會讓玩家對著靜止的進度框發呆到 CLI 重試放棄為止。
+    let stderr = child.stderr.take().expect("stderr piped");
+    let mut stderr_lines = BufReader::new(stderr).lines();
+    let mut stderr_text = String::new();
 
     let stdout = child.stdout.take().expect("stdout piped");
     let mut lines = BufReader::new(stdout).lines();
     let mut full_text = String::new();
     let mut done: Option<(String, bool)> = None;
-    while let Some(line) = lines.next_line().await? {
+    let mut stdout_open = true;
+    let mut stderr_open = true;
+    while stdout_open || stderr_open {
+        let line = tokio::select! {
+            line = lines.next_line(), if stdout_open => match line? {
+                Some(line) => line,
+                None => {
+                    stdout_open = false;
+                    continue;
+                }
+            },
+            line = stderr_lines.next_line(), if stderr_open => {
+                match line? {
+                    Some(line) => {
+                        if let Some(fatal) = api_error_kind(&line) {
+                            // 進度字尾型顯示（卡重構）立刻看得到錯誤；正文串流不混入
+                            if thinking_to_delta {
+                                on_delta(&format!("\n⚠ {line}\n"));
+                            }
+                            if fatal {
+                                // 設定類錯誤重試不會好，立即中止（kill_on_drop 收掉子程序）
+                                return Err(format!("CLI 回覆錯誤：{line}").into());
+                            }
+                        }
+                        stderr_text.push_str(&line);
+                        stderr_text.push('\n');
+                    }
+                    None => stderr_open = false,
+                }
+                continue;
+            },
+        };
         if let Some(log) = &usage_log {
             if let Some(usage) = (log.parse)(&line) {
                 eprintln!(
@@ -783,7 +843,6 @@ pub async fn run_cli(
     }
 
     let status = child.wait().await?;
-    let stderr_text = stderr_task.await.unwrap_or_default();
     if let Some((text, true)) = &done {
         return Err(format!("CLI 回覆錯誤：{text}").into());
     }
@@ -1263,5 +1322,100 @@ mod tests {
         assert_eq!(record["ts"].as_str().unwrap().len(), 19);
         // 總輸入回填給呼叫端，續聊線用它當下輪的理論可中量
         assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 100);
+    }
+
+    #[tokio::test]
+    async fn run_cli_aborts_instantly_on_fatal_stderr_api_error_and_shows_it_in_tail() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let dir = std::env::temp_dir().join(format!("tt-fake-cli-fatal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("fake-claude-fatal.sh");
+        // stderr 吐設定類 API 錯誤後長睡（模擬 CLI 自己退避重試）；沒有立即中止就會撞測試逾時
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "cat > /dev/null\n",
+                "echo 'API Error: 502 unknown provider for model claude-opus-4-7' >&2\n",
+                "sleep 30\n",
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut deltas = Vec::new();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            run_cli(
+                &script,
+                &dir,
+                &[],
+                "提示詞",
+                &[],
+                parse_claude_line,
+                true,
+                None,
+                |delta: &str| deltas.push(delta.to_owned()),
+            ),
+        )
+        .await
+        .expect("設定類錯誤必須立即中止，不得等 CLI 睡完");
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("unknown provider"), "錯誤要帶原文：{error}");
+        // 進度字尾也要同步看到錯誤行
+        assert!(deltas.iter().any(|d| d.contains("API Error")));
+    }
+
+    #[tokio::test]
+    async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let dir = std::env::temp_dir().join(format!("tt-fake-cli-env-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("fake-claude-env.sh");
+        // 繼承的 ANTHROPIC_BASE_URL 必須被拔掉；顯式 envs 傳入的 MARKER 必須到位
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "cat > /dev/null\n",
+                "test -z \"$ANTHROPIC_BASE_URL\" || exit 7\n",
+                "test \"$ANTHROPIC_MARKER\" = \"explicit\" || exit 9\n",
+                "echo '{\"type\":\"result\",\"is_error\":false,\"result\":\"ok\"}'\n",
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        std::env::set_var("ANTHROPIC_BASE_URL", "http://127.0.0.1:9999");
+        let result = run_cli(
+            &script,
+            &dir,
+            &[],
+            "提示詞",
+            &[("ANTHROPIC_MARKER".to_owned(), "explicit".to_owned())],
+            parse_claude_line,
+            false,
+            None,
+            |_: &str| {},
+        )
+        .await;
+        std::env::remove_var("ANTHROPIC_BASE_URL");
+        assert_eq!(result.unwrap(), "ok");
+    }
+
+    #[test]
+    fn api_error_kind_classifies_fatal_vs_transient() {
+        // 暫時性：讓 CLI 重試，但 Some(false) 表示要餵進度
+        assert_eq!(api_error_kind("API Error: 529 overloaded, retrying"), Some(false));
+        // 設定類：模型不存在／認證，立即中止
+        assert_eq!(
+            api_error_kind("API Error: 502 unknown provider for model x"),
+            Some(true)
+        );
+        assert_eq!(api_error_kind("API Error: 401 authentication_error"), Some(true));
+        // 非錯誤行不動作
+        assert_eq!(api_error_kind("thinking hard..."), None);
     }
 }
