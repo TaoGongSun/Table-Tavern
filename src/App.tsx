@@ -37,7 +37,7 @@ import {
   type RefactorSurveyOutcome,
 } from "./refactor-review";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
-import { fillShellPlaceholders } from "./refactor-shell";
+import { fillShellPlaceholders, fillSkeletonPlaceholders } from "./refactor-shell";
 import taoIcon from "./assets/tao-icon.png";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -4259,9 +4259,27 @@ function App() {
     };
   }, [table]);
 
-  // 目前要顯示的卡片介面殼：AI 重構產過殼就優先用它（狀態樹填值），沒有才退回既有「近 10 則掃 event.raw」路徑
+  // 目前要顯示的卡片介面殼：AI 重構產過介面產物就優先用它，沒有才退回既有「近 10 則掃 event.raw」路徑。
+  // 重構產物兩種：整頁 HTML（舊制殼，狀態樹填值直接顯示）；XML 骨架（照搬卡的每回合輸出格式，
+  // 填值後要過卡自己的顯示腳本 regex＋模板才是畫面，`{{本回合.正文}}` 吃最新一則 GM 訊息正文）。
   const cardInterfaceShell = useMemo(() => {
-    if (refactorShell !== null) return fillShellPlaceholders(refactorShell, tableTree);
+    if (refactorShell !== null) {
+      if (/<!DOCTYPE|<html/i.test(refactorShell)) return fillShellPlaceholders(refactorShell, tableTree);
+      const latestGm = [...events].reverse().find((event) => event.kind !== "player");
+      if (latestGm !== undefined) {
+        // 先照直玩語意讓卡腳本試原文：開場（選角）這類訊息卡自己就畫得出來，
+        // 硬塞進骨架反而讓兩支腳本互咬（選角殼插進主介面模板中間，抽殼變碎片）
+        const direct = findShell(cardInterfaces, [latestGm.raw ?? latestGm.text]);
+        if (direct !== null) return direct;
+        const filled = fillSkeletonPlaceholders(refactorShell, {
+          ...tableTree,
+          本回合: { 正文: latestGm.text },
+        });
+        const fromSkeleton = findShell(cardInterfaces, [filled]);
+        if (fromSkeleton !== null) return fromSkeleton;
+      }
+      // 剛開桌還沒有 GM 回合，或骨架沒過卡的顯示腳本：退回既有路徑（開場白選角殼等）
+    }
     const recent = events
       .slice(-10)
       .filter((event) => event.kind !== "player")
@@ -4876,11 +4894,6 @@ function App() {
   // 玩家不主動點按鈕不會知道有這東西（聊天裡只看得到孤零零一句「请选择你的身份」）
   function openCardInterface(list: CardInterface[]) {
     if (findShell(list, list.map((card) => card.opening)) !== null) setCardUiOpen(true);
-  }
-
-  // ⓘ 鈕：AI 重構殼偶爾畫壞，先講「換更聰明的模型重來」這條路，比默默卡住好
-  function showRefactorShellInfo() {
-    void showMessage(t("refactorShellInfoBody"), { title: t("refactorShellInfoBtn") });
   }
 
   async function refreshImportReceipts(worldId: string) {
@@ -6314,6 +6327,9 @@ function App() {
               }}
               onRefactorApplied={async () => {
                 await refreshCharacters();
+                // 重構把原卡拆成一群 NPC：發言對象一律撥回 GM，
+                // 不然玩家一開口變成在跟其中一名拆出來的角色對話，回覆完全對不上
+                setSpeaker(GM_TARGET);
                 // 合併升格可能把某位角色指定為玩家卡（要點 4），跟單條「轉成角色卡」的
                 // asPlayer 分支一樣重讀一次，讓側欄玩家卡即時反映。
                 const state = await invoke<WorldState>("read_state", { worldId: table });
@@ -6546,18 +6562,6 @@ function App() {
             </div>
           )}
           <div className="card-interface-toolbar">
-            {/* 只在殼是 AI 重構產的時候出現：卡片自帶殼／event.raw 找殼那條路沒有這顆鈕 */}
-            {refactorShell !== null && (
-              <button
-                type="button"
-                className="modal-close card-interface-info"
-                aria-label={t("refactorShellInfoBtn")}
-                title={t("refactorShellInfoBtn")}
-                onClick={showRefactorShellInfo}
-              >
-                ⓘ
-              </button>
-            )}
             <button
               type="button"
               className="modal-close card-interface-close"

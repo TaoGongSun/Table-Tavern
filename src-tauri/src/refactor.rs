@@ -43,6 +43,14 @@ pub struct RefactorInterface {
     /// 不影響 state_fields——渲染殼是錦上添花，不是介面套用成不成立的條件。
     #[serde(default)]
     pub shell: Option<String>,
+    /// 這張卡自己的欄位規則（點分路徑→規則）：數值欄要 delta、清單欄整份 replace 都靠它。
+    /// 只有接管（interface_shell）變體會產，空的就照現值形狀推定。
+    #[serde(default)]
+    pub rules: BTreeMap<String, FieldRule>,
+    /// 這張卡自己的回報指引：每回合必報哪些欄位、哪些變動才報，照卡原文的規定寫。
+    /// 卡與卡的規矩差很多（有的每回合全量重印道具，有的只在變動時提），不能用一套通則蓋過去。
+    #[serde(default)]
+    pub guide: String,
 }
 
 /// 欄位規則＋觸發表候選；rules／triggers 直接複用 data.rs 既有機制型別，不新造平行型別。
@@ -343,6 +351,15 @@ pub fn apply(
             state_dirty = true;
             if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
                 data::write_interface_shell(root, world_id, shell)?;
+                // 接管後畫面上的每個欄位都靠模型回報才會動：開增量協定讓它拿得到更新語法，
+                // 併入卡自訂的欄位規則與回報指引，卡的規矩才不會被通則蓋掉。
+                state.mechanism.incremental = true;
+                for (path, rule) in &interface.rules {
+                    state.mechanism.rules.insert(path.clone(), rule.clone());
+                }
+                if !interface.guide.trim().is_empty() {
+                    state.mechanism.guide = interface.guide.trim().to_owned();
+                }
             }
             interface_applied = true;
         }
@@ -366,6 +383,9 @@ pub fn apply(
 
     if state_dirty {
         data::write_state(root, world_id, &state)?;
+        // 重建狀態樹沒有經過逐字稿，事件快照還停在套用前的舊欄位——不補上去，
+        // 玩家一按收回（或換幕）就把重構剛建好的樹換回去。
+        data::sync_scene_state_tree(root, world_id, &state)?;
     }
     if !ledger_records.is_empty() {
         mechanism::append_log(root, world_id, state.current_scene, &ledger_records);
@@ -856,6 +876,8 @@ mod tests {
                 source_uids: vec![source_uid.to_string()],
                 raw: "描述如何顯示狀態欄的散文".to_owned(),
                 shell: None,
+                rules: BTreeMap::new(),
+                guide: String::new(),
             }),
             mechanisms: Vec::new(),
             entries: Vec::new(),
@@ -902,6 +924,71 @@ mod tests {
         assert_eq!(source_entry_after.content, "描述如何顯示狀態欄的散文");
     }
 
+    /// 介面套用要把新樹補進這一幕的事件快照：否則玩家一按收回，檯面就退回套用前的空樹，
+    /// 佔位符全部填空、面板欄位一片空白（2026-08-12 實測踩到）。
+    #[test]
+    fn apply_interface_syncs_new_tree_into_scene_snapshots() {
+        let root = TestRoot::new("interface-snapshot-sync");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
+        for text in ["開場白", "玩家選角"] {
+            data::append_transcript(
+                root.path(),
+                &world_id,
+                0,
+                &data::TranscriptEvent {
+                    ts: "2026-08-12T10:00:00.000Z".to_owned(),
+                    speaker_id: String::new(),
+                    speaker_name: "GM".to_owned(),
+                    kind: data::TranscriptKind::Narration,
+                    text: text.to_owned(),
+                    raw: None,
+                    state: None,
+                    gm_only: false,
+                },
+            )
+            .unwrap();
+        }
+
+        let outcome = RefactorOutcome {
+            characters: Vec::new(),
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!({ "世界": { "時間": "清晨" } }),
+                source_uids: vec![source_uid.to_string()],
+                raw: "描述如何顯示狀態欄的散文".to_owned(),
+                shell: None,
+                rules: BTreeMap::new(),
+                guide: String::new(),
+            }),
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
+            player_index: None,
+        };
+        apply_recorded(root.path(), &world_id, &outcome, &selection);
+
+        let expected = data::read_state(root.path(), &world_id).unwrap().state.tree;
+        assert!(expected.contains_key("世界"));
+        let events = data::read_transcript(root.path(), &world_id, 0).unwrap();
+        assert_eq!(events.len(), 2);
+        for event in &events {
+            assert_eq!(event.state.as_ref().unwrap().tree, expected);
+        }
+
+        // 收回上一句後檯面退回前一則的快照，樹要還在
+        assert!(data::pop_transcript(root.path(), &world_id, 0).unwrap());
+        assert_eq!(data::read_state(root.path(), &world_id).unwrap().state.tree, expected);
+    }
+
     #[test]
     fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
         let root = TestRoot::new("interface-invalid-state-fields");
@@ -917,6 +1004,8 @@ mod tests {
                 source_uids: Vec::new(),
                 raw: String::new(),
                 shell: None,
+                rules: BTreeMap::new(),
+                guide: String::new(),
             }),
             mechanisms: Vec::new(),
             entries: Vec::new(),
@@ -1093,6 +1182,11 @@ mod tests {
                 source_uids: vec![source_uid.to_string()],
                 raw: "描述如何顯示狀態欄的散文".to_owned(),
                 shell: Some(shell_html.to_owned()),
+                rules: BTreeMap::from([(
+                    "World.Time".to_owned(),
+                    FieldRule::for_kind(data::FieldKind::Text),
+                )]),
+                guide: "每回合都要重報 World.Time。".to_owned(),
             }),
             mechanisms: Vec::new(),
             entries: Vec::new(),
@@ -1113,6 +1207,14 @@ mod tests {
 
         let read_back = data::read_interface_shell(root.path(), &world_id).unwrap();
         assert_eq!(read_back.as_deref(), Some(shell_html));
+        // 接管卡的每一格都靠 GM 回報才會動：增量協定要開，卡自訂的欄位規則與回報指引要落檔
+        let mechanism = data::read_state(root.path(), &world_id).unwrap().mechanism;
+        assert!(mechanism.incremental);
+        assert_eq!(
+            mechanism.rules.get("World.Time").map(|rule| rule.kind),
+            Some(data::FieldKind::Text)
+        );
+        assert_eq!(mechanism.guide, "每回合都要重報 World.Time。");
     }
 
     /// 介面套用沒帶殼（shell=None）：不落任何殼檔。
@@ -1129,6 +1231,8 @@ mod tests {
                 source_uids: vec![source_uid.to_string()],
                 raw: "描述如何顯示狀態欄的散文".to_owned(),
                 shell: None,
+                rules: BTreeMap::new(),
+                guide: String::new(),
             }),
             mechanisms: Vec::new(),
             entries: Vec::new(),
@@ -1165,6 +1269,8 @@ mod tests {
                 source_uids: vec![source_uid.to_string()],
                 raw: "描述如何顯示狀態欄的散文".to_owned(),
                 shell: Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>".to_owned()),
+                rules: BTreeMap::new(),
+                guide: String::new(),
             }),
             mechanisms: Vec::new(),
             entries: Vec::new(),

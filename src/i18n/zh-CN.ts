@@ -470,9 +470,6 @@ export const zhCN: Record<MsgKey, string> = {
   cardInterfaceOpen: "卡片界面",
   cardInterfaceClose: "关闭界面",
 
-  refactorShellInfoBtn: "AI 重构界面",
-  refactorShellInfoBody:
-    "这个界面是 AI 重构生成的。如果画面显示不正常，换用更聪明的模型重新重构通常会改善；也可以关掉这层，直接看侧栏状态栏。",
 
   importCardInterface: "这张卡自带界面画面。开桌后点聊天上方的「卡片界面」就能整面打开。",
   importCardScrypt: "这张卡的界面被作者加密保护，无法显示；人设与世界书照常导入，对话不受影响。",

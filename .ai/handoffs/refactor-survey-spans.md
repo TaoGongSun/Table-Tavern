@@ -6,6 +6,9 @@
 - 拍板請求必附：問題主體＋成因＋各選項後果；沒問題的項目至多一行。
 - 大查詢派新對話或代理，別堆本對話 context。
 
+## ⚠ 介面軌重大裁決（2026-08-12 17:30，蓋過下方 T3 介面相關驗收項）
+T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合格**——模型發明新介面＋GM 輸出格式變質＝卡變成另一張卡。新規格：介面渲染永遠照搬原卡模板（regex_scripts 的 replaceString），AI 永不發明介面；省額度靠 app 組 XML 餵殼。生死由 [interface-takeover-spike](../tasks/interface-takeover-spike.md)（西幻卡三步實測）決定：全過＝介面接管重寫、任一不過＝介面軌刪除只留人物＋世界書。本案 T3/T4 驗收照舊，但介面相關項（毛絨殼、美化状态栏拆分）不再是結案判準。
+
 ## Current state（2026-08-12 16:00，T2 第三輪驗畢：B 過／A 擱置觀察／C 待 T3）
 三案（A 人物判準防重寫、B absorb 直給樣式、C 判官理由落檔 excused）已實作 commit eed37f2。15:39 重跑镇北王府（survey opus out=5,444 hit=0% 快取重建＋pool 12 筆 sonnet，共 ≈$2.14、6分45秒）結果：
 - **B 過**：三條「剧情-」全數 kind=mechanism＋App 接管中；③格式增强PLUS drop①、④美化状态栏拆介面欄位維持過。

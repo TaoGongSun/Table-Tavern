@@ -406,6 +406,10 @@ pub struct Mechanism {
     /// 這桌的數值走增量協定、由本地記帳（MVU 卡匯入後開啟）。
     #[serde(default, skip_serializing_if = "is_false")]
     pub incremental: bool,
+    /// 這張卡自己的回報指引：介面接管後跟在通用協定後面進系統提示詞，講這張卡每回合
+    /// 必報哪些欄位、哪些只在變動時報。空＝這桌沒有卡專屬規矩，只走通用協定。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub guide: String,
 }
 
 pub(crate) fn is_false(value: &bool) -> bool {
@@ -419,6 +423,7 @@ impl Default for Mechanism {
             rules: BTreeMap::new(),
             triggers: Vec::new(),
             incremental: false,
+            guide: String::new(),
         }
     }
 }
@@ -2182,6 +2187,30 @@ fn rewrite_scene(
         })
         .unwrap_or_default();
     write_state(root, world_id, &state)?;
+    Ok(())
+}
+
+/// 狀態樹被逐字稿以外的路徑換掉（重構套用重建欄位）之後，把新樹補進這一幕每一則事件的快照。
+/// 收回上一句與換幕都拿事件快照當回捲基準，不補的話玩家一收回，介面就被打回重構前的舊欄位。
+/// 補整幕而不是只補最後一則：連按收回會一路往前吃，任何一則留著舊欄位都會在那一下現形。
+/// 只換 tree／jumps——劇情面的欄位（table、changes、notes）照舊跟著各自那一刻走。
+pub fn sync_scene_state_tree(root: &Path, world_id: &str, state: &WorldState) -> DataResult<()> {
+    let scene = state.current_scene;
+    let mut events = read_transcript(root, world_id, scene)?;
+    let mut touched = false;
+    for event in events.iter_mut() {
+        let Some(snapshot) = event.state.as_mut() else {
+            continue;
+        };
+        if snapshot.tree != state.state.tree || snapshot.jumps != state.state.jumps {
+            snapshot.tree = state.state.tree.clone();
+            snapshot.jumps = state.state.jumps.clone();
+            touched = true;
+        }
+    }
+    if touched {
+        rewrite_scene(root, world_id, scene, &events)?;
+    }
     Ok(())
 }
 

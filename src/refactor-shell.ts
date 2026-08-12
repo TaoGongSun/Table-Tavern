@@ -42,3 +42,15 @@ export function fillShellPlaceholders(shell: string, tree: Record<string, StateN
     return escapeHtml(lookupPath(tree, path));
   });
 }
+
+/**
+ * XML 骨架版填值：不 escape，值原文放回。骨架填完是餵給卡自己顯示腳本（regex＋模板）的
+ * 「每回合輸出」，清單欄位的值照卡原文含內層標籤（如 `<Item>…</Item>`），escape 會讓卡的殼
+ * 解析不到；信任模型與直玩餵 event.raw 相同——模型原文進沙盒 iframe，不多做一層。
+ */
+export function fillSkeletonPlaceholders(skeleton: string, tree: Record<string, StateNode>): string {
+  return skeleton.replace(PLACEHOLDER_REGEX, (_match, rawPath: string) => {
+    const path = rawPath.trim().split(".");
+    return lookupPath(tree, path);
+  });
+}
