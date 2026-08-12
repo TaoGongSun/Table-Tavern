@@ -593,7 +593,15 @@ async fn refactor_survey(
             },
         ) => result?,
     };
-    Ok(refactor_ai::parse_survey(&raw))
+    let outcome = refactor_ai::parse_survey(&raw);
+    // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
+    for person in &outcome.persons {
+        eprintln!(
+            "[survey-persons] name={} mode={:?} uids={:?} spans={:?}",
+            person.name, person.mode, person.uids, person.spans
+        );
+    }
+    Ok(outcome)
 }
 
 /// AI 卡重構本地組裝（小抄合約 v1）：判官定案後，carry／drop 整條／split 逐段路由／clean
