@@ -240,12 +240,34 @@ export function buildStorageShimSource(seed: CardStorage = {}): string {
 `;
 }
 
+/**
+ * IME 守衛原始碼（純 JS，供 shim 內嵌）：卡片殼常自己 listen window 的 keydown，只認
+ * `event.key === "Enter"` 就送出——注音／拼音選字那個 Enter 會被當成送出（同一張卡在 ST 上
+ * 也這樣）。墊片跑在卡片的 script 之前，先在 capture 階段攔下組字中的按鍵，傳不到卡片的
+ * handler；不碰 preventDefault，輸入法照常選字。
+ *
+ * 攔的是組字中的所有按鍵而不只 Enter：選字窗的方向鍵、數字鍵、取消組字的 Esc 同樣不該被
+ * 卡片的快捷鍵吃掉。isComposing 在 WebKit 某些輸入法狀態下不可靠，補看傳統的 keyCode 229。
+ */
+export function buildImeGuardSource(): string {
+  return `
+  window.addEventListener(
+    "keydown",
+    function (event) {
+      if (event.isComposing || event.keyCode === 229) event.stopImmediatePropagation();
+    },
+    true
+  );
+`;
+}
+
 // 宿主橋接墊片：沙盒 iframe 是 allow-scripts、沒有 allow-same-origin，碰不到宿主 DOM，
 // 所以在 iframe 內偽造一個誘餌輸入框，把卡片戳 window.parent/window.top 的動作攔下來轉成 postMessage。
 function buildHostBridgeShim(seed: CardStorage): string {
   return `<script>
 (function () {
   var parentRef = window.parent;
+${buildImeGuardSource()}
 ${buildStorageShimSource(seed)}
 
   function notifyHost(text) {
