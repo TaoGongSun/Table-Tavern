@@ -235,12 +235,38 @@ fn daily_style_regex() -> &'static regex::Regex {
     })
 }
 
-/// 對世界書全部條目做結構預掃：逐條切 span，各 span 原文不分大小寫比對 `trigger:`／`rule:`／
-/// 逐日樣式；一個 span 命中多個 pattern 各記一筆。純粹的關鍵字掃描，不代表一定要 absorb——只是
-/// 給判官一份「這裡可能有機制」的參考清單，判定衝突（例如命中卻判 carry）由判官在 ENTRIES 附
-/// reason 說明。
+/// 語言無關結構特徵（2026-08-12 拍板：詞彙 regex 逐語言堆是打地鼠，改抓卡片生態跨語言的
+/// 「形」）。模板變數排除 {{user}}／{{char}}——人稱代換是敘事慣用法，留著會把大半設定文本
+/// 都標成機制訊號。
+fn template_var_regex() -> &'static regex::Regex {
+    static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    PATTERN.get_or_init(|| {
+        regex::Regex::new(r"\{\{\s*([^}]{1,40})\}\}").expect("硬編碼 regex 必為合法樣式")
+    })
+}
+
+fn html_tag_regex() -> &'static regex::Regex {
+    static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    PATTERN.get_or_init(|| {
+        regex::Regex::new(r"(?i)</?[a-z][a-z0-9]*(\s[^>]*)?>").expect("硬編碼 regex 必為合法樣式")
+    })
+}
+
+fn percent_regex() -> &'static regex::Regex {
+    static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    PATTERN.get_or_init(|| regex::Regex::new(r"\d+\s*[%％]").expect("硬編碼 regex 必為合法樣式"))
+}
+
+/// 對世界書全部條目做結構預掃：逐條切 span，各 span 比對語言無關的結構特徵——模板變數
+/// （{{…}}，排除 user/char）、表格（`|…|` 行 ≥3）、代碼塊（```）、HTML 標籤、百分比數值、
+/// 逐日樣式，加上 `trigger:`／`rule:` 詞彙（免費加分，非主力）；一個 span 命中多個 pattern
+/// 各記一筆。純粹的機械掃描，不代表一定要 absorb——只是給判官一份「這裡可能有機制／格式」
+/// 的參考清單，判定衝突（例如命中卻判 carry）由判官在 ENTRIES 附 reason 說明。
 pub fn prescan_worldbook(entries: &[WorldbookEntry]) -> Vec<PrescanSignal> {
     let daily = daily_style_regex();
+    let template = template_var_regex();
+    let html = html_tag_regex();
+    let percent = percent_regex();
     let mut signals = Vec::new();
     for entry in entries {
         for span in segment_spans(&entry.content) {
@@ -262,6 +288,21 @@ pub fn prescan_worldbook(entries: &[WorldbookEntry]) -> Vec<PrescanSignal> {
             }
             if daily.is_match(text) {
                 push("逐日樣式");
+            }
+            if template.captures_iter(text).any(|cap| {
+                let name = cap[1].trim().to_lowercase();
+                name != "user" && name != "char"
+            }) {
+                push("模板變數");
+            }
+            if text.lines().filter(|line| line.trim_start().starts_with('|')).count() >= 3 {
+                push("表格");
+            }
+            if text.contains("```") || html.is_match(text) {
+                push("代碼或標籤");
+            }
+            if percent.is_match(text) {
+                push("百分比數值");
             }
         }
     }
@@ -1827,6 +1868,29 @@ mod tests {
             "這裡只是單純的世界觀敘述，沒有任何機制字樣。",
         )];
         assert!(prescan_worldbook(&entries).is_empty());
+    }
+
+    // 語言無關結構特徵（2026-08-12）：模板變數／表格／代碼標籤／百分比跨語言命中；
+    // {{user}}／{{char}} 是敘事人稱代換，不算訊號
+    #[test]
+    fn prescan_worldbook_matches_language_agnostic_structural_features() {
+        let entries = vec![
+            sample_entry(1, "好感度用 {{affection}} 追蹤，衰減見下表。"),
+            sample_entry(
+                2,
+                "| 阶段 | 天数 | 效果 |\n| 一 | 3 | 无 |\n| 二 | 7 | 强化 |",
+            ),
+            sample_entry(3, "输出格式：<status>体力值</status> 包裹。"),
+            sample_entry(4, "成功率基础 30％，每级加 5%。"),
+            sample_entry(5, "{{user}}與{{char}}在王府相遇，純敘事。"),
+        ];
+        let signals = prescan_worldbook(&entries);
+        let hit = |uid: &str, pattern: &str| signals.iter().any(|s| s.uid == uid && s.pattern == pattern);
+        assert!(hit("1", "模板變數"));
+        assert!(hit("2", "表格"));
+        assert!(hit("3", "代碼或標籤"));
+        assert!(hit("4", "百分比數值"));
+        assert!(!signals.iter().any(|s| s.uid == "5"), "純人稱變數不得成訊號：{signals:?}");
     }
 
     // 多段條目：訊號要標對 span 序號

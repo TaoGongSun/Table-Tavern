@@ -12,6 +12,10 @@
 - **思考字尾心跳點（A 拍板，63100e1）**：4.7 世代 CLI 隱去思考本文（`thinking:""` 只剩 estimated_tokens）→cli.rs 空思考增量轉「⋯」，約每 50 tok 一顆。
 - **CLI 死法全收網（63100e1，跨平台 tokio API）**：①程序退出但管線不 EOF→800ms 強制收尾 ②斷流→120 秒無行＝殺程序＋⚠ 字尾回錯 ③stdin 餵不進→60 秒逾時 ④crash 無收尾事件→報「CLI 異常結束＋stderr 尾巴」，殘缺正文不靜默往下走（新測試把關）。第二輪 11:15 卡死事故（CLI 消失、app 卡「盤點中」、dev 終端先死成孤兒）由此收網。
 
+### T2 镇北王府首輪（2026-08-12 12:18，opus 4.7）：①八人一人一卡過；②③④全不過——survey 只吐 620 tok 敷衍（sonnet 兩筆 out=0 待查），零 absorb 零 drop，美化状态栏／格式增强Plus 判官塞進人物 uids 名義下落、實際無產物、無聲殘留。兩刀已修（cargo 476 綠）：
+- **預掃改語言無關結構特徵（拍板）**：模板變數（排除 {{user}}/{{char}}）、表格 ≥3 行、代碼塊/HTML 標籤、百分比數值＋原有逐日；trigger:/rule: 詞彙降為免費加分。中文卡機制條目 carry 無 reason 從此會亮機制守恆紅字。
+- **涵蓋稽核收緊**：clean 人物只認 spans/private 實際引用的 uid，uids 欄多列的不算下落→漏網補 carry＋紅字（镇北王府殘留洞的根治）。
+
 前一輪三修（已 commit 62695e9）：
 1. **淘汰理由④內容重複**：語言重複版（Rigurd EN VER.）以前被 survey 指示「不要列」→必觸發漏網紅字；現在通用規則「重複內容取一捨餘」，棄用版標 `drop rule: 4` 進淘汰清單。改點：refactor_ai.rs prompt（PERSONS＋drop 四種＋SPLITS）、refactor_assemble.rs 範圍 1–4、App.tsx rule map、十語系 +refactorDroppedRule4。
 2. **502 發呆三分鐘**：CLI「API Error…」走 stderr、以前收尾才讀。現在 run_cli stderr 逐行讀：錯誤行立即進進度字尾（⚠ 前綴）；設定類（unknown provider/401/404…）立即殺程序回錯（api_error_kind 分類）。
