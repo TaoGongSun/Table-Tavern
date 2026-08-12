@@ -1,6 +1,7 @@
 # Handoff: refactor-survey-spans
 
 ## ⚠ 對話紀律（2026-08-12 使用者嚴令）
+- **驗 Rust 改動先認 Compiling 行**：這台機器 tauri dev 冷啟動不重編 Rust（cargo fingerprint 誤判 0.2–0.5s Finished 沿用舊 binary），只有 watch 偵測檔案變更才真的編（會印 Compiling）。改完 Rust 要嘛看到 watch 的 Compiling＋relaunch，要嘛 survey 快取 miss（hit<100%）才算新碼上場——13:21／13:30 兩輪都是舊 binary 白跑。
 - **禁止長思考**：驗收＝一項一條指令一行過/不過；查帳題直答；異常先一行列出問使用者要不要追，禁自行開挖（uid 考古、快取歸因這類旁支全禁）。思考超過一分鐘會被打斷。
 - 拍板請求必附：問題主體＋成因＋各選項後果；沒問題的項目至多一行。
 - 大查詢派新對話或代理，別堆本對話 context。
