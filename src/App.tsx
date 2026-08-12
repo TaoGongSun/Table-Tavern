@@ -2764,13 +2764,13 @@ function WorldEditor({
       )}
 
       {refactorOutcome && refactorSelection && (
-        <div className="modal-overlay" onClick={() => !refactorBusy && closeRefactor()}>
+        // 點視窗外不關閉（2026-08-12 拍板）：誤觸一下整份重構結果就丟了，關閉只走「不要」鍵
+        <div className="modal-overlay">
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
             aria-label={t("refactorResultTitle")}
-            onClick={(event) => event.stopPropagation()}
           >
             <h2>{t("refactorResultTitle")}</h2>
             {!refactorDetail ? (
@@ -3007,6 +3007,9 @@ function WorldEditor({
                   </section>
                 )}
                 <div className="ai-gen-footer">
+                  <button type="button" disabled={refactorBusy} onClick={() => setRefactorDetail(false)}>
+                    {t("settingsBack")}
+                  </button>
                   <button
                     type="button"
                     className="ai-gen-submit"
