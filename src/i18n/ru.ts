@@ -268,6 +268,7 @@ export const ru: Record<MsgKey, string> = {
   refactorDroppedRule1: "① Дисциплина контейнера вывода",
   refactorDroppedRule2: "② Метка версии / журнал изменений",
   refactorDroppedRule3: "③ Хук только для движка ST",
+  refactorDroppedRule4: "④ Дублирующийся контент",
   refactorDroppedRestore: "Вернуть",
   refactorUnabsorbedSection: "Непринятые механики: {n}",
   refactorUnabsorbedHint: "Исходный текст сохранён в записи правил Мастера; со временем, когда появится поддержка, его можно будет передать под управление приложения.",

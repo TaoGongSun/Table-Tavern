@@ -268,6 +268,7 @@ export const ptBR: Record<MsgKey, string> = {
   refactorDroppedRule1: "① Disciplina do contêiner de saída",
   refactorDroppedRule2: "② Marca de versão / changelog",
   refactorDroppedRule3: "③ Gancho exclusivo do motor ST",
+  refactorDroppedRule4: "④ Conteúdo duplicado",
   refactorDroppedRestore: "Restaurar",
   refactorUnabsorbedSection: "{n} mecânicas não incorporadas",
   refactorUnabsorbedHint: "O texto original é mantido na entrada de regras do GM; poderá passar a ser gerenciado pelo app quando houver suporte.",

@@ -268,6 +268,7 @@ export const ja: Record<MsgKey, string> = {
   refactorDroppedRule1: "①出力コンテナ規律",
   refactorDroppedRule2: "②バージョン表記／更新履歴",
   refactorDroppedRule3: "③ST専用フック",
+  refactorDroppedRule4: "④内容の重複",
   refactorDroppedRestore: "戻す",
   refactorUnabsorbedSection: "未対応メカニクス {n} 件",
   refactorUnabsorbedHint: "原文は GM ルール条目に保持されています。今後アプリが対応すればアップグレードで管理を引き継げます。",

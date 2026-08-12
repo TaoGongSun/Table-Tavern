@@ -268,6 +268,7 @@ export const ko: Record<MsgKey, string> = {
   refactorDroppedRule1: "①출력 컨테이너 규율",
   refactorDroppedRule2: "②버전 표기/업데이트 로그",
   refactorDroppedRule3: "③ST 엔진 전용 훅",
+  refactorDroppedRule4: "④ 중복 내용",
   refactorDroppedRestore: "복원",
   refactorUnabsorbedSection: "미편입 메커니즘 {n}건",
   refactorUnabsorbedHint: "원문은 GM 규칙 항목에 보존되어 있으며, 이후 앱이 지원하면 업그레이드로 관리를 넘길 수 있습니다.",

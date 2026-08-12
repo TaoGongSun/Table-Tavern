@@ -1773,6 +1773,7 @@ const REFACTOR_DROPPED_RULE_KEYS: Record<number, MsgKey> = {
   1: "refactorDroppedRule1",
   2: "refactorDroppedRule2",
   3: "refactorDroppedRule3",
+  4: "refactorDroppedRule4",
 };
 const REFACTOR_AUDIT_KIND_KEYS: Record<string, MsgKey> = {
   coverage: "refactorAuditKindCoverage",

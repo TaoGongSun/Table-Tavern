@@ -284,6 +284,7 @@ export const en: Record<MsgKey, string> = {
   refactorDroppedRule1: "① Output container discipline",
   refactorDroppedRule2: "② Version tag / changelog",
   refactorDroppedRule3: "③ ST-engine-only hook",
+  refactorDroppedRule4: "④ Duplicate content",
   refactorDroppedRestore: "Restore",
   refactorUnabsorbedSection: "{n} unadopted mechanisms",
   refactorUnabsorbedHint: "The original text is kept in the GM rule entry; it can be upgraded to app-managed once supported.",

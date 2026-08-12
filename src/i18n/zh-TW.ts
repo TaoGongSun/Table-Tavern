@@ -278,6 +278,7 @@ export const zh = {
   refactorDroppedRule1: "①輸出容器紀律",
   refactorDroppedRule2: "②版本標記／更新日誌",
   refactorDroppedRule3: "③ST 引擎專屬鉤子",
+  refactorDroppedRule4: "④內容重複",
   refactorDroppedRestore: "放回",
   refactorUnabsorbedSection: "未接管機制 {n} 項",
   refactorUnabsorbedHint: "原文已保留在 GM 規則條目，之後系統支援時可升級接管。",

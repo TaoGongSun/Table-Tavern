@@ -268,6 +268,7 @@ export const fr: Record<MsgKey, string> = {
   refactorDroppedRule1: "① Discipline du conteneur de sortie",
   refactorDroppedRule2: "② Marqueur de version / journal des modifications",
   refactorDroppedRule3: "③ Hook exclusif au moteur ST",
+  refactorDroppedRule4: "④ Contenu en double",
   refactorDroppedRestore: "Restaurer",
   refactorUnabsorbedSection: "{n} mécaniques non intégrées",
   refactorUnabsorbedHint: "Le texte original reste dans l'entrée de règles du MJ ; il pourra passer sous gestion de l'app dès que ce sera pris en charge.",
