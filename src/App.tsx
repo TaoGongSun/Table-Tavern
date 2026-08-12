@@ -1824,6 +1824,9 @@ function WorldEditor({
   const [refactorSelection, setRefactorSelection] = useState<RefactorSelection | null>(null);
   const [refactorOrigin, setRefactorOrigin] = useState<"ai" | "import" | null>(null);
   const [refactorDetail, setRefactorDetail] = useState(false);
+  // pool 呼叫失敗的條目名單（2026-08-12 B 拍板）：顯示在結果視窗頂部紅字段——以前塞頁面
+  // 角落的一行狀態文字，被結果 modal 蓋住玩家看不到。
+  const [refactorFailures, setRefactorFailures] = useState<string[]>([]);
   const [refactorBusy, setRefactorBusy] = useState(false);
   const refactorInputRef = useRef<HTMLInputElement>(null);
   // 非 null＝AI 盤點／展開跑中，modal 顯示 text；cancelling 只管取消鈕的 disabled，不影響迴圈判斷。
@@ -2311,9 +2314,7 @@ function WorldEditor({
         setRefactorOrigin("ai");
         setRefactorDetail(false);
       }
-      if (failedTitles.length > 0) {
-        setWorldbookMessage(t("refactorPartialFailed", { n: failedTitles.length, names: failedTitles.join("、") }));
-      }
+      setRefactorFailures(failedTitles);
     } catch (reason) {
       setRefactorProgress(null);
       if (String(reason).includes("refactor-aborted")) return;
@@ -2349,6 +2350,7 @@ function WorldEditor({
     setRefactorSelection(null);
     setRefactorOrigin(null);
     setRefactorDetail(false);
+    setRefactorFailures([]);
   }
 
   // 已淘汰清單的「放回」：零後端行為，走既有 entries 勾選路徑——套用時跟其他世界書條目一視同仁。
@@ -2772,7 +2774,12 @@ function WorldEditor({
             aria-modal="true"
             aria-label={t("refactorResultTitle")}
           >
-            <h2>{t("refactorResultTitle")}</h2>
+            <h2>{refactorFailures.length > 0 ? t("refactorResultPartialTitle") : t("refactorResultTitle")}</h2>
+            {refactorFailures.length > 0 && (
+              <p className="usage-bad" role="alert">
+                {t("refactorPartialFailed", { n: refactorFailures.length, names: refactorFailures.join("、") })}
+              </p>
+            )}
             {!refactorDetail ? (
               <>
                 {refactorSummaryParts.length > 0 && <p>{refactorSummaryParts.join("・")}</p>}
