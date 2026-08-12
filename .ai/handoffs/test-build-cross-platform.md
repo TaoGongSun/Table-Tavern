@@ -1,7 +1,7 @@
 # Task handoff
 Task-ID: test-build-cross-platform
-Updated: 2026-08-04T09:16:00+08:00
-Status: in_progress
+Updated: 2026-08-12T16:40:18.490708+00:00
+Status: in-progress
 
 ## Goal
 出一版可獨立運行的測試版：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（GitHub Actions 出未簽章 .msi/.exe）。正式簽章公證歸 release-1。
@@ -25,7 +25,9 @@ Status: in_progress
 ## Working context
 - Repo: /Users/pachelo/GitHub/Table-Tavern
 - Branch: main
-- HEAD: 97cbbc4
+- HEAD: fd52b8a610d8ca013fff408856b41f37e4298e31
+- Dirty: true
+- Dirty fingerprint: 3e25c5cb02118ee61b369490ce6f9ea09f8b2f81e0c1a4f2e7021bfd6bef7168
 
 ## Remaining
 - 使用者：把 DMG（路徑見上）拷去 MacBook Air 實測——期望顯示「Apple 無法驗證…」走系統設定「仍要打開」，不得再出現「已損毀」

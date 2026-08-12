@@ -1,6 +1,6 @@
 # Completed: card-import-flow
 
-（自交接檔搬出的已完成項目與驗證證據，全部已通過使用者實機驗收；現場狀態見 [../card-import-flow.md](../card-import-flow.md)）
+（自交接檔搬出的已完成項目與驗證證據，全部已通過使用者實機驗收；現場狀態見 [card-import-flow.md](card-import-flow.md)）
 
 ## Completed
 - 包 1：世界書匯入（兩路徑）後一律 setSpeaker(GM)；匯入成功後自動名桌改成卡名（probe 新增 name；純世界書檔退用檔名）；去重不再觸發選 GM。

@@ -1,9 +1,9 @@
 # Task
 Task-ID: ai-table-generator
-Title: 一句話開桌：AI 生成世界觀＋角色（範例桌進階版，免費基礎功能）
-Status: in_progress
-Created: 2026-08-02T12:00:00+08:00
-Updated: 2026-08-02T15:30:00+08:00
+Title: 一句話開桌：AI 生成世界觀＋角色（免費基礎功能）
+Status: in-progress
+Created: 2026-08-13T00:29:59.930104+08:00
+Updated: 2026-08-13T00:29:59.930104+08:00
 
 ## Summary
 2026-08-02 與使用者討論拍板。目的：入門門檻降到「寫一兩句就能玩」，玩家免想世界觀與角色設定；為衝玩家數做成免費基礎功能（拍板：不當贊助回禮）。
@@ -21,7 +21,7 @@ Updated: 2026-08-02T15:30:00+08:00
 驗收：兩句輸入→大綱→重骰→開桌全流程可跑；模型輸出壞格式時不留半套桌；cargo test 蓋輸出解析與填桌；npm build＋check:i18n 綠。
 
 ## Next action
-- 2026-08-02 三塊實作完成、自驗全綠（cargo test 133、npm build、check:i18n 九語系）；等使用者實機驗收四項（清單見 handoffs/ai-table-generator.md）後結案
+- 三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 
 ## Constraints
 - 玩家可接任意模型，兩段輸出的解析必須容錯：格式壞＝顯示原文讓玩家重骰，絕不建出半套桌。

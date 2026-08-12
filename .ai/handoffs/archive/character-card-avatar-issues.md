@@ -18,7 +18,7 @@
 - 側欄描邊改綁 `selectedCard`（App.tsx:2273）：編輯畫面時是正在編輯的卡，建卡時不描任何一張，其餘畫面才是發言對象。**編輯不改發言對象**是刻意的——換編輯目標不該偷改待會兒誰講話。
 
 ## Next action
-1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。刪桌與刪角色都已各自補上清圖庫，但 `rename_world` 仍只搬 `worlds/{名}`＝改桌名後整個生成圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），15 分鐘的事。**但先別動**：使用者提案改用代碼定址（見 [stable-id-storage](../tasks/stable-id-storage.md)），若採用則此 bug 自動消失，現在修是白工。等那個提案拍板後再決定。
+1. **生成圖庫目錄放錯層**：`gallery_dir` 落在 `{data_root}/{world}/gen-gallery/{角色}`，但世界資料夾是 `{data_root}/worlds/{world}`——圖庫是 `worlds/` 的兄弟目錄，不在世界裡。刪桌與刪角色都已各自補上清圖庫，但 `rename_world` 仍只搬 `worlds/{名}`＝改桌名後整個生成圖庫失聯。修法是移到世界資料夾內並加一次性搬移（舊路徑存在且新路徑沒有就搬），15 分鐘的事。**但先別動**：使用者提案改用代碼定址（見 [stable-id-storage](../../tasks/stable-id-storage.md)），若採用則此 bug 自動消失，現在修是白工。等那個提案拍板後再決定。
 
 ## Constraints
 - 沿用 character-image-avatar 既有拍板：頭像存正方形 PNG、圓框走 CSS；移除全身圖不連動刪頭像；刪角色清兩檔。

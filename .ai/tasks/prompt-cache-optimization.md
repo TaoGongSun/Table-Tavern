@@ -1,21 +1,17 @@
 # Task
 Task-ID: prompt-cache-optimization
-Title: 提示詞快取優化：穩定前綴重構＋命中率量測＋Claude 顯式斷點
+Title: 提示詞快取優化：resume 續聊架構（claude lane）
 Status: in-progress
-Created: 2026-08-03T15:14:00+08:00
-Updated: 2026-08-06T10:40:00+08:00
+Created: 2026-08-13T00:30:01.008157+08:00
+Updated: 2026-08-13T00:30:01.008157+08:00
 
 ## Summary
-
 2026-08-03 分析提示詞快取行為後開任務：system prompt 內嵌 keyword 條目與 GM 動態狀態，前綴每輪被打破、Anthropic 系命中率恆 0。同日深夜拍板改走 **claude CLI resume 續聊架構**（案 C：lane 分線＋凍結 system＋每輪只送新訊息＋回合後改寫 session 檔），範圍只做 claude；OpenRouter／API 的穩定前綴重構與顯式斷點擱置。完整架構與拆包見交接檔。
 
-## Next action
-- 現況：**包 1–7 全部完成並通過實機驗收**（2026-08-04：架構 Opus 四輪 85–88% 命中；額度分頁九項過、當場修掉六個顯示問題；保溫 ping 實機成立 94.6%）。Sonnet 命中率受 claude CLI 官方 bug（#29966）壓制，app 端無事可做。
-- 2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑（總用量與花費退到細項），使用者實機看過。
-- **剩餘皆非必要**：grok 金額／agy 那一列的顯示驗收（無額度、CLI 計量未定，延後）、OpenRouter 實際扣款計量（不接）、undo 截尾優化、等官方修 CLI。清單見交接檔 Remaining。
+規格細節（待拍板）見 [plans/prompt-cache-optimization.md](../plans/prompt-cache-optimization.md)。
 
-## 待拍板
-- 補丁塊與私設後置的遵循度（實機驗收比對，明顯變差再議）。
+## Next action
+- 本任務主體完成——包 1–7 全數實作並通過實機驗收（架構 85–88% 命中、額度分頁九項過、保溫 ping 94.6%）；2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑並實機看過；剩 grok／agy 顯示驗收延後與 OpenRouter 計量未接，見交接檔 Remaining
 
 ## Constraints
 - 送進模型的資訊總量與可見性規則不變：GM 專有條目永不進角色 context、私有設定規則照舊（transport.rs 頂部註解與 KICKOFF §4）。

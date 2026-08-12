@@ -1,6 +1,6 @@
 # Completed: character-card-avatar-issues
 
-（自交接檔搬出的已完成項目與驗證證據；現場狀態見 [../character-card-avatar-issues.md](../character-card-avatar-issues.md)）
+（自交接檔搬出的已完成項目與驗證證據；現場狀態見 [character-card-avatar-issues.md](character-card-avatar-issues.md)）
 
 ## 使用者原文（2026-07-27）
 1. 人物有頭像後，這個頭像和文字太近了，讓他間隔多一點

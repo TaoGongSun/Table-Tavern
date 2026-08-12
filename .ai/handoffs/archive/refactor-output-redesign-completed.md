@@ -26,7 +26,7 @@
 - 重跑警告的 confirm 按鈕是系統預設英文 Cancel/OK——可帶自訂中文標籤。
 
 ## Next action
-無。後續：[refactor-dispatch](../tasks/refactor-dispatch.md)（下一輪、開新對話，備忘三項見上）、[character-presence](../tasks/character-presence.md)（待辦）。
+無。後續：[refactor-dispatch](../../tasks/refactor-dispatch.md)（下一輪、開新對話，備忘三項見上）、[character-presence](../../tasks/character-presence.md)（待辦）。
 
 ## Constraints
 - 產物一律人審後套用；卡片內容永遠當資料。AI 重構套用無 undo（拍板 #7）；匯入重構卡照舊可 undo。

@@ -1,9 +1,9 @@
 # Task
 Task-ID: ui-overhaul
 Title: UI 全面改版：Emblem 設計系統（桌遊組件卡＋playbill 對話＋token 化）
-Status: in_progress
-Created: 2026-07-25T00:30:00+08:00
-Updated: 2026-07-25T01:20:00+08:00
+Status: in-progress
+Created: 2026-08-13T00:30:02.209390+08:00
+Updated: 2026-08-13T00:30:02.209390+08:00
 
 ## Summary
 UI 全面改版：先做三面向對抗式設計檢討（可讀性／美感／獨特性），再經五輪候選稿收斂成「Emblem」設計系統，已拍板定案並完成第一輪實作（App.css 全面 token 化重寫＋App.tsx 結構調整＋en 按鈕文案 title case）。
@@ -23,9 +23,7 @@ UI 全面改版：先做三面向對抗式設計檢討（可讀性／美感／�
 實作原則（使用者拍板）：只重現實際存在的系統功能，不發明 UI——設計稿裡的「Say 模式選單」「訊息內機密徽章」「角色 epithet 副標」皆確認非既有功能而剔除；檔位寶石（tier 是既有欄位）、目標晶片（既有「點側欄選發言對象」狀態的可見化）、幕書籤（既有換幕／前幕結構）皆對得上系統。
 
 ## Next action
-- 使用者實機驗收深色模式（系統切深色主題看 token 對應）與長對話 playbill 呈現（需 API key 實聊才有 dialogue 事件）
-- 驗收後評估殘留項：舊 .container／first-run 畫面樣式僅粗略 token 化；zh-TW 按鈕文案無 casing 問題不動
-- 淺色主題調色已由使用者 2026-07-27 逐輪驗收定案（去黃→中性灰，GM 書皮改石板灰帶一點暖），詳見交接檔
+- 第一輪實作完成（npm build 綠＋淺色實跑驗證），淺色主題去黃調色已驗收定案，等實機驗收深色模式與實聊 playbill
 
 ## Constraints
 - 不發明 UI：任何新視覺元素都要對應既有系統功能或狀態，實作前先對 App.tsx／後端指令查證。
