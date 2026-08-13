@@ -39,7 +39,8 @@ export interface ChatController {
   hydrate: (transcript: TranscriptEvent[]) => void;
   /** 檯面被外部改動（復原匯入收掉開場白）後重讀這一幕 */
   reload: () => Promise<void>;
-  postOpening: (text: string) => Promise<void>;
+  /** 貼出開場白；true＝真的貼上檯面了，呼叫端據此收掉開場白面板（失敗時面板留著） */
+  postOpening: (text: string) => Promise<boolean>;
   undoLast: () => Promise<void>;
   restoreUndone: () => Promise<void>;
   send: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -71,7 +72,6 @@ export function useChatController({
   refreshWorlds,
   noteChatStarted,
   markCliConnected,
-  closeOpeningChoice,
   onError,
 }: {
   worldId: string;
@@ -91,7 +91,6 @@ export function useChatController({
   refreshWorlds: () => Promise<void>;
   noteChatStarted: () => void;
   markCliConnected: () => Promise<void>;
-  closeOpeningChoice: () => void;
   onError: (message: string) => void;
 }): ChatController {
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
@@ -150,12 +149,13 @@ export function useChatController({
         setEvents((previous) => [...previous, event]);
         setUndone(null);
         await refreshState();
-        closeOpeningChoice();
+        return true;
       } catch (reason) {
         onError(String(reason));
+        return false;
       }
     },
-    [worldId, scene, refreshState, closeOpeningChoice, onError],
+    [worldId, scene, refreshState, onError],
   );
 
   // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
