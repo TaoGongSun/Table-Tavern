@@ -31,15 +31,21 @@ const en = dicts["en"];
 const keys = Object.keys(canon);
 const placeholders = (text) => (String(text).match(/\{[a-zA-Z]+\}/g) ?? []).sort().join(",");
 
-// 按鈕與頁籤：只有真的放在窄容器裡的字才受寬度限制
-const app = readFileSync(join(ROOT, "src/App.tsx"), "utf8");
+// 按鈕與頁籤：只有真的放在窄容器裡的字才受寬度限制。
+// 掃 src 下所有 .tsx——元件搬出 App.tsx 後按鈕仍在掃描範圍內，數字下降即代表漏掃。
+const tsxFiles = readdirSync(join(ROOT, "src"), { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith(".tsx"))
+  .map((entry) => join(entry.parentPath, entry.name));
 const css = readFileSync(join(ROOT, "src/App.css"), "utf8");
 const buttonKeys = new Set();
-for (const match of app.matchAll(/<button\b[\s\S]*?<\/button>/g)) {
-  const body = match[0].slice(match[0].indexOf(">") + 1);
-  for (const hit of body.matchAll(/\bt\("([a-zA-Z0-9_]+)"/g)) buttonKeys.add(hit[1]);
+for (const file of tsxFiles) {
+  const source = readFileSync(file, "utf8");
+  for (const match of source.matchAll(/<button\b[\s\S]*?<\/button>/g)) {
+    const body = match[0].slice(match[0].indexOf(">") + 1);
+    for (const hit of body.matchAll(/\bt\("([a-zA-Z0-9_]+)"/g)) buttonKeys.add(hit[1]);
+  }
+  for (const hit of source.matchAll(/\bt\("([a-zA-Z0-9_]*Tab)"/g)) buttonKeys.add(hit[1]);
 }
-for (const hit of app.matchAll(/\bt\("([a-zA-Z0-9_]*Tab)"/g)) buttonKeys.add(hit[1]);
 
 // 中日韓字佔兩格；上限取中英兩版較寬者的 1.3 倍＋2，因為介面本來就容得下那兩版
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/;

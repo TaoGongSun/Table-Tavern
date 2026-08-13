@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [app-split](tasks/app-split.md) — App.tsx 拆分：三批 15 切片（元件搬移→controller hook→受控 view） — 下一步：切片 1（前置，必須先做）：`scripts/check-i18n.mjs:35` hardcode 只讀 src/App.tsx，改成遞迴掃 src 下所有 .tsx，改完驗證按鈕數仍為 99、全語言全綠——不先做這步，第一批搬走元件後 i18n 按鈕寬度檢查會靜默失效（照樣印 OK）
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 `refactor-outcome-export`，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 `person-promote` 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 `ai-card-refactor` 的 A–E 一起實機驗收、兩案一起結案
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 `ai-card-refactor` 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
