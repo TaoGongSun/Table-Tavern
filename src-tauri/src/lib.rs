@@ -1373,10 +1373,11 @@ async fn detect_clis() -> Vec<cli::CliInfo> {
     cli::detect_clis().await
 }
 
-/// 設定 UI 下拉用：列出 CLI 訂閱模式可選的模型（讀 CLI 本機快取，見 cli::cli_model_catalog）
+/// 設定 UI 下拉用：列出 CLI 訂閱模式可選的模型（見 cli::cli_model_catalog）。
+/// 必須是 async：同步 command 跑在主執行緒，抓取期間整個視窗會凍住。
 #[tauri::command]
-fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
-    cli::cli_model_catalog(&cli)
+async fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
+    cli::cli_model_catalog(&cli).await
 }
 
 /// 使用者選定的聊天傳輸層（preferences.transport，預設 api）。

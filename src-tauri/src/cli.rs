@@ -79,18 +79,18 @@ pub(crate) fn find_binary(name: &str) -> Option<PathBuf> {
         .find(|path| is_executable(path))
 }
 
-/// 同步跑 `<program> <arg>` 並取 stdout，Windows 下隱藏主控台視窗。
-fn hidden_output(program: std::path::PathBuf, arg: &str) -> Option<std::process::Output> {
-    let mut command = std::process::Command::new(program);
-    command.arg(arg);
+/// 跑 `<program> <arg>` 取 stdout，Windows 下隱藏主控台視窗。
+/// 10 秒上限＋kill_on_drop：agy／grok 的 models 是即時網路查詢，卡住時不能無限期
+/// 掛著呼叫端（比 probe_cli 的 5 秒寬，因為這條路在背景跑、慢網路多等無妨）。
+async fn hidden_output(program: PathBuf, arg: &str) -> Option<std::process::Output> {
+    let mut command = Command::new(program);
+    command.arg(arg).kill_on_drop(true);
     #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    command
-        .output()
+    command.creation_flags(0x08000000);
+    timeout(Duration::from_secs(10), command.output())
+        .await
         .ok()
+        .and_then(Result::ok)
         .filter(|output| output.status.success())
 }
 
@@ -251,6 +251,22 @@ pub fn parse_claude_registry(source: impl std::io::Read) -> Vec<ModelOption> {
     options
 }
 
+/// agy models 每列是 `id\t顯示名`；只有第一欄能當 id 傳回 CLI（整列含顯示名會被拒）。
+/// 進度訊息走 stderr，這裡讀的 stdout 只有模型列。
+pub fn parse_agy_catalog(output: &str) -> Vec<ModelOption> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (id, label) = line.split_once('\t').unwrap_or((line, line));
+            let id = id.trim();
+            (!id.is_empty()).then(|| ModelOption {
+                id: id.to_owned(),
+                label: label.trim().to_owned(),
+            })
+        })
+        .collect()
+}
+
 /// grok models 只認縮排列；保留原列為 label，去掉預設標記後作為可傳入的 id。
 pub fn parse_grok_catalog(output: &str) -> Vec<ModelOption> {
     output
@@ -269,7 +285,7 @@ pub fn parse_grok_catalog(output: &str) -> Vec<ModelOption> {
 
 /// 組下拉目錄：claude 固定前置官方別名（CLI 穩定介面）再接快取；快取讀不到就只剩別名。
 /// codex 純靠快取；agy／grok 即時讀 CLI 輸出，讀不到回空（UI 都保留「自訂」手填逃生口）。
-pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
+pub async fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
     let read = |rel: &[&str]| -> Option<String> {
         let mut path = PathBuf::from(std::env::var_os("HOME")?);
         for part in rel {
@@ -286,34 +302,38 @@ pub fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
                     label: format!("{alias}（官方別名）"),
                 })
                 .collect();
-            options.extend(
-                find_binary("claude")
-                    .and_then(|path| std::fs::File::open(path).ok())
-                    .map(parse_claude_registry)
+            // 掃數百 MB 執行檔是 CPU 密集的同步工作，丟去 blocking 池免得佔住 async worker
+            if let Some(path) = find_binary("claude") {
+                options.extend(
+                    tokio::task::spawn_blocking(move || {
+                        std::fs::File::open(path)
+                            .ok()
+                            .map(parse_claude_registry)
+                            .unwrap_or_default()
+                    })
+                    .await
                     .unwrap_or_default(),
-            );
+                );
+            }
             options
         }
         "codex" => read(&[".codex", "models_cache.json"])
             .map(|json| parse_codex_catalog(&json))
             .unwrap_or_default(),
-        "agy" => find_binary("agy")
-            .and_then(|program| hidden_output(program, "models"))
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(|line| ModelOption {
-                        id: line.to_owned(),
-                        label: line.to_owned(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        "grok" => find_binary("grok")
-            .and_then(|program| hidden_output(program, "models"))
-            .map(|output| parse_grok_catalog(&String::from_utf8_lossy(&output.stdout)))
-            .unwrap_or_default(),
+        "agy" => match find_binary("agy") {
+            Some(program) => hidden_output(program, "models")
+                .await
+                .map(|output| parse_agy_catalog(&String::from_utf8_lossy(&output.stdout)))
+                .unwrap_or_default(),
+            None => Vec::new(),
+        },
+        "grok" => match find_binary("grok") {
+            Some(program) => hidden_output(program, "models")
+                .await
+                .map(|output| parse_grok_catalog(&String::from_utf8_lossy(&output.stdout)))
+                .unwrap_or_default(),
+            None => Vec::new(),
+        },
         _ => Vec::new(),
     }
 }
@@ -1278,6 +1298,25 @@ mod tests {
         let options = parse_claude_registry(binary.as_bytes());
         assert_eq!(options.len(), 1);
         assert_eq!(options[0].id, "claude-opus-5");
+    }
+
+    #[test]
+    fn agy_catalog_takes_id_column_only() {
+        // 實測輸出：每列 `id\t顯示名`，整列當 id 會讓 CLI 拒收
+        let output = "gemini-3.6-flash-high\tGemini 3.6 Flash (High)\nclaude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)\n\n";
+        assert_eq!(
+            parse_agy_catalog(output),
+            vec![
+                ModelOption {
+                    id: "gemini-3.6-flash-high".to_owned(),
+                    label: "Gemini 3.6 Flash (High)".to_owned()
+                },
+                ModelOption {
+                    id: "claude-sonnet-4-6".to_owned(),
+                    label: "Claude Sonnet 4.6 (Thinking)".to_owned()
+                },
+            ]
+        );
     }
 
     #[test]
