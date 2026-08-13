@@ -19,10 +19,10 @@ App.tsx 6890 行（佔前端 9438 行的七成）拆成多支檔案。目的是�
 - 切片 3（8280a35）：WorldEditor → `views/WorldEditor.tsx`（1351，規格表已預先接受超出 800）。外抽 `drag-reorder.ts`、`backend-contracts.ts` 增 Visibility／WorldbookEntry。6046→4630。
 - 切片 4（50fb5d1）：使用者拍板拆兩支——`views/SettingsWindow.tsx`（265）＋`views/SettingsForm.tsx`（609）；另出 `views/UsageTab.tsx`（271）、`views/atoms.tsx`（15，ErrorNote）、`model-catalog-store.ts`（70）。`appearance.ts`／`cli.ts` 各有增補。4630→3368。
 - 切片 5（ba27149）：StoryText／EditPane／ActReader → `views/atoms.tsx`（15→131）。**`narrationStreamText` 經 grep 確認只在 App() 內用**；跨界的是 `TranscriptEvent` → `backend-contracts.ts`。3368→3241。
-- **第二批進行中（切片 6、7、8 完成）。App.tsx 3241→2828，App() 2908→2577 行／59→43 state／105→82 區塊。**
+- **第二批進行中（切片 6、7、8 完成）。App.tsx 3241→2829，App() 2908→2577 行／59→43 state／105→82 區塊。**
 - 切片 6（0d68393）：`controllers/useCardInterfaceController.ts`（233）。搬走 cardInterfaces／refactorShell／cardUiOpen、殼 memo 群、兩支載入 effect、message／Esc effect、shellFingerprint／readCardStorage／writeCardStorage，三支函式改 useCallback。hook 掛在原 useEffect@671 的位置，全 App effect 宣告順序不變。3241→3085。
 - 切片 7（74c2656）：`controllers/useTableStateController.ts`（187）。搬走 tableState／tableTree／tableJumps／branchBindings／editingStateField＋兩支旗標 ref，四支函式改 useCallback，treeValueAt／loadBranchBindings 提到 module 級並 export，新增 hydrate／beginEdit／changeEditValue／cancelEdit／clearEdit。此域無 useEffect。後端契約 StateNode／SceneLabel／WorldState／BranchBinding 進 `backend-contracts.ts`。3085→2966。
-- 切片 8：`controllers/useCharacterController.ts`（322）。搬走 characters／sceneAppearances／playerCard／characterImages／characterAvatars／playerImage／playerAvatar／gmImage＋三支載入函式＋reorderCast／restoreCharacter／restoreAutoHidden／deleteCharacter／deletePlayerCard／refreshCharacters／metaOf／active／archived。2966→2828。
+- 切片 8：`controllers/useCharacterController.ts`（363）。搬走 characters／sceneAppearances／playerCard／characterImages／characterAvatars／playerImage／playerAvatar／gmImage＋三支載入函式＋reorderCast／restoreCharacter／restoreAutoHidden／deleteCharacter／deletePlayerCard／refreshCharacters／metaOf／active／archived。2966→2829。
   - **硬約束 4 落地**：enterTable 三支 `await load*` 改由 controller 三支 effect 延後載入（deps 各為 `[worldId, 排序後的 id 集合]`／`[worldId]`／`[worldId, playerCardId]`），`hydrate` 同步清掉上一桌的圖與玩家卡，換桌不再閃舊圖。`scene_appearances` 與 `list_import_receipts` 的 await 一併提到同步區之前，同步提交區現在完全沒有 await。
   - 新增 `playerCardId` state（玩家卡載入 effect 的依據）與三個世代號 ref（換桌／重讀時丟掉舊回應，避免慢回來的舊桌圖蓋掉新桌）。
   - speaker 留在 App：controller 只給 `noteRemoved(id, speaker)` 回報「該撥給誰」；`remove`／`removePlayer` 只做確認框＋刪檔，關畫面與撥發言對象仍在 App 的 finishRemoval／deleteCharacter／deletePlayerCard。
