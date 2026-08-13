@@ -1,7 +1,6 @@
 # Project tasks
 
 ## In progress
-- [app-split](tasks/app-split.md) — App.tsx 拆分：三批 15 切片（元件搬移→controller hook→受控 view） — 下一步：切片 14：把 messages＋composer 那段 JSX（約 315 行）抽成 `views/PlayView.tsx` 受控元件，收尾跑三綠＋逐行 diff＋回歸第 6、7、1 項與 A→B→A。
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 `refactor-outcome-export`，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 `person-promote` 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 `ai-card-refactor` 的 A–E 一起實機驗收、兩案一起結案
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 `ai-card-refactor` 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
@@ -21,8 +20,6 @@
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 
 ## Todo
-- [act-fork-missing](tasks/act-fork-missing.md) — 單幕閱讀的「從這一幕繼續」按鈕沒有渲染出來 — 下一步：用 `npm run tauri dev` 起開發版（webview 可右鍵檢查元素），開任一桌的前幕，在 Elements 面板確認 `.act-fork` 節點是否存在、computed style 的 display／width／position 各是什麼，據此判斷是修樣式還是重做這顆按鈕。
-- [leave-guard-switch-table](tasks/leave-guard-switch-table.md) — 換桌不問未儲存，編輯中的角色卡會靜默丟失 — 下一步：在 `switchTable`（以及刪桌／開新桌等會換掉 `table` 的入口）進入點前加上 `await canLeaveEditor()` 的檢查，回傳 false 就中止換桌。
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
