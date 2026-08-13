@@ -1,3 +1,4 @@
+use crate::cli::ModelOption;
 use crate::mechanism::{self, Outcome, Record, RecordKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -2709,6 +2710,29 @@ pub fn write_config(root: &Path, config: &AppConfig) -> DataResult<()> {
     // mode() 只在建檔時生效；補 set_permissions 修復既存檔的過寬權限
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+/// 模型清單快取：可重建的資料，跟 config.json 分家——設定檔含 API key（0600）且每次
+/// 存設定就整份重寫，不該再馱著幾十 KB 的清單；快取壞掉也只是重抓一次，不連累設定。
+/// 形狀為 `{供應商 id: [{id, label}, …]}`，內容由前端組好整份寫入。
+pub fn read_model_catalog(root: &Path) -> DataResult<BTreeMap<String, Vec<ModelOption>>> {
+    let path = root.join("model_catalog.json");
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    Ok(serde_json::from_str(&fs::read_to_string(path)?).unwrap_or_default())
+}
+
+pub fn write_model_catalog(
+    root: &Path,
+    catalog: &BTreeMap<String, Vec<ModelOption>>,
+) -> DataResult<()> {
+    fs::create_dir_all(root)?;
+    fs::write(
+        root.join("model_catalog.json"),
+        serde_json::to_string(catalog)?,
+    )?;
     Ok(())
 }
 
@@ -5571,6 +5595,29 @@ mod tests {
         }
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, first);
+    }
+
+    /// 「先秀舊的」靠這條往返：開 app 讀得回上次存的清單，玩家點進設定才即刻有東西可選。
+    #[test]
+    fn model_catalog_round_trips_and_missing_file_is_empty() {
+        let root = TestRoot::new("catalog");
+        // 還沒預熱過就是空的，不是錯誤
+        assert!(read_model_catalog(root.path()).unwrap().is_empty());
+
+        let mut catalog = BTreeMap::new();
+        catalog.insert(
+            "agy".to_owned(),
+            vec![ModelOption {
+                id: "gemini-3.6-flash-high".to_owned(),
+                label: "Gemini 3.6 Flash (High)".to_owned(),
+            }],
+        );
+        write_model_catalog(root.path(), &catalog).unwrap();
+        assert_eq!(read_model_catalog(root.path()).unwrap(), catalog);
+
+        // 快取壞掉只是重抓一次，不能讓開 app 失敗
+        fs::write(root.path().join("model_catalog.json"), "{ 壞掉的 json").unwrap();
+        assert!(read_model_catalog(root.path()).unwrap().is_empty());
     }
 
     #[test]

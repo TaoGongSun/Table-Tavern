@@ -1380,6 +1380,22 @@ async fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
     cli::cli_model_catalog(&cli).await
 }
 
+/// 模型清單快取：開 app 時先拿上次的結果直接顯示，背景抓到新的再覆蓋。
+#[tauri::command]
+fn read_model_catalog(
+    app: tauri::AppHandle,
+) -> Result<std::collections::BTreeMap<String, Vec<cli::ModelOption>>, String> {
+    data::read_model_catalog(&config_root(&app)?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn write_model_catalog(
+    app: tauri::AppHandle,
+    catalog: std::collections::BTreeMap<String, Vec<cli::ModelOption>>,
+) -> Result<(), String> {
+    data::write_model_catalog(&config_root(&app)?, &catalog).map_err(|error| error.to_string())
+}
+
 /// 使用者選定的聊天傳輸層（preferences.transport，預設 api）。
 fn chat_transport(config: &data::AppConfig) -> String {
     config
@@ -2874,6 +2890,8 @@ pub fn run() {
             sponsor_status,
             import_sponsor_pack,
             list_cli_models,
+            read_model_catalog,
+            write_model_catalog,
             chat_with_character,
             generate_character_image,
             list_gallery_images,

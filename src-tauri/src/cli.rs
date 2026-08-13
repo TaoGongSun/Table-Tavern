@@ -5,7 +5,7 @@
 
 use crate::data::{DataResult, Tier};
 use crate::transport::{ChatMessage, PromptCacheUsage};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -167,7 +167,7 @@ pub fn flatten_messages(
 /// 設定 UI 下拉用的模型選項。清單讀自各 CLI 自身（codex：~/.codex/models_cache.json；
 /// claude：執行檔內建的模型註冊表），非本程式寫死的正典；
 /// 實際用哪個模型仍由 config 的覆寫決定。
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModelOption {
     pub id: String,
     pub label: String,

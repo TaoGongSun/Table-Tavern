@@ -10,6 +10,14 @@ import { buildShellDocument, CardInterface, CardStorage, findShell, sanitizeCard
 import { decideImportRoute } from "./import-routing";
 import { isCharacterHidden } from "./character-visibility";
 import {
+  applyCachedCatalogs,
+  CATALOG_SOURCES,
+  mergeCatalog,
+  parseOpenRouterModels,
+  type ModelCatalogs,
+  type ModelOption,
+} from "./model-catalog";
+import {
   assembleRefactorOutcome,
   buildRefactorPersonPlan,
   defaultRefactorSelection,
@@ -438,13 +446,74 @@ interface CliInfo {
 }
 
 // 偵測結果跨畫面／跨設定頁開關快取：null＝本次啟動還沒偵測過。
-// 設定頁重開時先吃上次結果，不再讓使用者重看一次「偵測中」。
+// 設定頁重開時直接吃上次結果，不重探也不再讓使用者看一次「偵測中」。
 let cliCache: CliInfo[] | null = null;
 
-async function detectClis(): Promise<CliInfo[]> {
+async function detectClis(force = false): Promise<CliInfo[]> {
+  if (!force && cliCache) return cliCache;
   const detected = await invoke<CliInfo[]>("detect_clis");
   cliCache = detected;
   return detected;
+}
+
+// 模型清單接線：合併規則與 OpenRouter 解析在 model-catalog.ts，這裡只管抓取、落地與訂閱
+let catalogStore: ModelCatalogs = {};
+const catalogListeners = new Set<() => void>();
+let catalogPrefetched = false;
+
+function publishCatalogs(next: ModelCatalogs) {
+  catalogStore = next;
+  catalogListeners.forEach((listener) => listener());
+}
+
+/// 訂閱模組級清單：抓取在背景完成，回來時所有掛著的畫面一起換上新的。
+function useModelCatalogs(): ModelCatalogs {
+  const [snapshot, setSnapshot] = useState(catalogStore);
+  useEffect(() => {
+    const listener = () => setSnapshot(catalogStore);
+    catalogListeners.add(listener);
+    listener(); // 掛上前抓完的那幾支要補回來
+    return () => {
+      catalogListeners.delete(listener);
+    };
+  }, []);
+  return snapshot;
+}
+
+async function fetchCatalog(id: string): Promise<ModelOption[]> {
+  if (id === "api") {
+    // OpenRouter 公開清單（免 key）；拿不到就退化成純手動輸入
+    return parseOpenRouterModels(await (await fetch("https://openrouter.ai/api/v1/models")).json());
+  }
+  return invoke<ModelOption[]>("list_cli_models", { cli: id });
+}
+
+/// 抓一支並落地；抓到空的由 mergeCatalog 留住上次的結果。
+/// catalogStore 一律在 await 之後才讀：五家並行預熱，拿抓取前的舊值去算會互相覆蓋。
+async function refreshCatalog(id: string): Promise<void> {
+  try {
+    const fetched = await fetchCatalog(id);
+    const merged = mergeCatalog(catalogStore, id, fetched);
+    if (merged === catalogStore) return;
+    publishCatalogs(merged);
+    await invoke("write_model_catalog", { catalog: catalogStore });
+  } catch {
+    /* 抓不到就沿用快取 */
+  }
+}
+
+/// 開 app 時跑一次：先把上次存的清單擺上（玩家點進設定即刻有東西可選），
+/// 再五家並行重抓，回來一支換一支。
+async function prefetchModelCatalogs(): Promise<void> {
+  if (catalogPrefetched) return;
+  catalogPrefetched = true;
+  try {
+    const cached = await invoke<ModelCatalogs>("read_model_catalog");
+    publishCatalogs(applyCachedCatalogs(catalogStore, cached));
+  } catch {
+    /* 沒有快取檔就等抓取回來 */
+  }
+  await Promise.all(CATALOG_SOURCES.map((id) => refreshCatalog(id)));
 }
 
 type CliInstallStage = "detect" | "install" | "login" | "verify" | "done" | "error";
@@ -683,8 +752,7 @@ function Settings({
   const [permissionNotice, setPermissionNotice] = useState("");
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[] | null>(cliCache);
-  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
-  const [cliCatalogs, setCliCatalogs] = useState<Record<string, { id: string; label: string }[]>>({});
+  const catalogs = useModelCatalogs();
   const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
   const [installingCli, setInstallingCli] = useState<string | null>(null);
@@ -700,19 +768,8 @@ function Settings({
 
   useEffect(() => {
     detectClis().then(setClis).catch(() => setClis([]));
-    // CLI 模型下拉目錄：讀各 CLI 本機快取（後端 list_cli_models）
-    for (const id of ["claude", "codex", "agy", "grok"]) {
-      invoke<{ id: string; label: string }[]>("list_cli_models", { cli: id })
-        .then((options) => setCliCatalogs((prev) => ({ ...prev, [id]: options })))
-        .catch(() => {});
-    }
-    // OpenRouter 公開模型清單（免 key）；拿不到就退化成純手動輸入
-    fetch("https://openrouter.ai/api/v1/models")
-      .then((res) => res.json())
-      .then((body: { data?: { id?: string; name?: string }[] }) =>
-        setModels((body.data ?? []).flatMap((m) => (m.id ? [{ id: m.id, name: m.name ?? m.id }] : []))),
-      )
-      .catch(() => {});
+    // 模型清單不在這裡抓：開 app 就預熱好了（見 prefetchModelCatalogs），
+    // 這裡只透過 useModelCatalogs 訂閱結果
     return stopCliPolling;
   }, []);
 
@@ -741,7 +798,10 @@ function Settings({
         };
         void invoke("write_config", { config: next }).then(() => onSavedRef.current(next)).catch(() => {});
         if (event.payload.stage === "done") {
-          void detectClis().then(setClis).catch(() => {});
+          void detectClis(true).then(setClis).catch(() => {});
+          // 剛登入完才拿得到完整清單（未登入時 grok 只回得出一個預設模型），
+          // 預熱那次抓的是登入前的結果，這裡補抓一次
+          void refreshCatalog(event.payload.provider);
         }
       }
     }).then((unlisten) => {
@@ -793,7 +853,8 @@ function Settings({
     stopCliPolling();
     cliPollRef.current = setInterval(() => {
       elapsed += 3_000;
-      void detectClis().then(setClis).catch(() => {});
+      // 輪詢的目的就是等 CLI 裝好出現，必須繞過快取重探
+      void detectClis(true).then(setClis).catch(() => {});
       // 安裝流程跑在獨立終端機／背景工作裡，只能靠 cli_verified 印記知道登入驗證過了沒
       invoke<boolean>("cli_verified", { provider })
         .then((verified) => {
@@ -1068,9 +1129,9 @@ function Settings({
               </label>
             ))}
             <datalist id="openrouter-models">
-              {models.map((m) => (
+              {(catalogs["api"] ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
+                  {m.label}
                 </option>
               ))}
             </datalist>
@@ -1080,7 +1141,7 @@ function Settings({
             {(["best", "balanced", "fast"] as const).map((tier) => {
               const key = `${transport}:${tier}`;
               const value = tierModels[key] ?? "";
-              const catalog = cliCatalogs[transport] ?? [];
+              const catalog = catalogs[transport] ?? [];
               const custom =
                 customTiers[key] ?? (value !== "" && !catalog.some((m) => m.id === value));
               return (
@@ -4198,6 +4259,8 @@ function App() {
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
+    // 模型清單背景預熱，不擋開桌：玩家走到設定頁時清單早就備好了
+    void prefetchModelCatalogs();
     (async () => {
       try {
         const [worldList, loaded] = await Promise.all([
