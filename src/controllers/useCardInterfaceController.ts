@@ -166,6 +166,11 @@ export function useCardInterfaceController(input: {
         writeCardStorage(worldId, data.entries);
         return;
       }
+      // 焦點在沙盒 iframe 裡時的 Esc：keydown 不跨 document 冒泡，只能由墊片回報
+      if (data.kind === "close") {
+        setCardUiOpen(false);
+        return;
+      }
       if (data.kind !== "input") return;
       void submitTextRef.current(String(data.text ?? ""));
     };
@@ -173,7 +178,8 @@ export function useCardInterfaceController(input: {
     return () => window.removeEventListener("message", onMessage);
   }, [cardUiOpen, worldId]);
 
-  // Esc 關閉卡片介面覆蓋層；只在開著時掛，避免和其他 Esc 行為（如取消改名）互相搶
+  // Esc 關閉卡片介面覆蓋層；只在開著時掛，避免和其他 Esc 行為（如取消改名）互相搶。
+  // 這條只管焦點還在宿主的時候；焦點進了沙盒 iframe 之後走墊片回報的 kind: "close"。
   useEffect(() => {
     if (!cardUiOpen) return;
     const onKey = (event: KeyboardEvent) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyScripts,
+  buildEscapeShimSource,
   buildImeGuardSource,
   buildShellDocument,
   buildStorageShimSource,
@@ -302,6 +303,62 @@ describe("buildImeGuardSource", () => {
     const escape = keydown({ key: "Escape", keyCode: 27 });
     guard.handler(escape.event);
     expect(escape.calls.stopped).toBe(0);
+  });
+});
+
+describe("buildEscapeShimSource", () => {
+  // 焦點一進沙盒 iframe，keydown 只在 iframe 自己的 document 發生，宿主的 window 監聽收不到
+  const install = () => {
+    const registered: { type: string; handler: (event: unknown) => void; capture: unknown }[] = [];
+    const sent: unknown[] = [];
+    const win = {
+      addEventListener: (type: string, handler: (event: unknown) => void, capture: unknown) =>
+        registered.push({ type, handler, capture }),
+    };
+    const parentRef = { postMessage: (data: unknown) => sent.push(data) };
+    new Function("window", "parentRef", "console", buildEscapeShimSource())(win, parentRef, console);
+    return { listener: registered[0], sent };
+  };
+
+  const keydown = (key: string) => {
+    const calls = { stopped: 0, prevented: 0 };
+    const event = {
+      key,
+      stopPropagation: () => calls.stopped++,
+      preventDefault: () => calls.prevented++,
+    };
+    return { event, calls };
+  };
+
+  it("掛在 window 的 capture 階段，第三方卡的 handler 吃不掉 Esc", () => {
+    const { listener } = install();
+
+    expect(listener.type).toBe("keydown");
+    expect(listener.capture).toBe(true);
+  });
+
+  it("Esc 回報宿主關面板，同時不擋卡片自己的 handler", () => {
+    const { listener, sent } = install();
+
+    const escape = keydown("Escape");
+    listener.handler(escape.event);
+    expect(sent).toEqual([{ source: "table-tavern-card", kind: "close" }]);
+    expect(escape.calls).toEqual({ stopped: 0, prevented: 0 });
+  });
+
+  it("其他按鍵不回報：在介面裡打字不會把面板關掉", () => {
+    const { listener, sent } = install();
+
+    listener.handler(keydown("Enter").event);
+    listener.handler(keydown("a").event);
+    expect(sent).toEqual([]);
+  });
+
+  it("內嵌在 IME 守衛之後，注音選字按 Esc 取消組字時不誤關面板", () => {
+    const doc = buildShellDocument("<html><head></head><body>殼</body></html>");
+
+    // 守衛靠 stopImmediatePropagation 吃掉組字中的按鍵，前提是它比這支先註冊
+    expect(doc.indexOf("event.isComposing")).toBeLessThan(doc.indexOf(`kind: "close"`));
   });
 });
 

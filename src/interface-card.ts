@@ -261,6 +261,32 @@ export function buildImeGuardSource(): string {
 `;
 }
 
+/**
+ * Esc 回報墊片原始碼（純 JS，供 shim 內嵌）：宿主那條 Esc 監聽掛在自己的 window 上，玩家一點
+ * 介面裡的東西焦點就進了這支沙盒 iframe，keydown 發生在另一個 document、不跨 document 冒泡，
+ * 宿主再也收不到——介面本來就是拿來點的，等於 Esc 必死。改由 iframe 這側回報給宿主。
+ *
+ * capture 階段且不碰 preventDefault／stopPropagation：Esc 一定關得掉覆蓋層（第三方卡的 handler
+ * 吃不掉它），卡片自己的 handler 照樣收到。內嵌位置必須在 IME 守衛之後——注音選字按 Esc 是取消
+ * 組字，守衛的 stopImmediatePropagation 會先把它吃掉，面板才不會誤關。
+ */
+export function buildEscapeShimSource(): string {
+  return `
+  window.addEventListener(
+    "keydown",
+    function (event) {
+      if (event.key !== "Escape") return;
+      try {
+        parentRef.postMessage({ source: "table-tavern-card", kind: "close" }, "*");
+      } catch (error) {
+        console.warn("[table-tavern] 無法通知宿主關閉卡片介面", error);
+      }
+    },
+    true
+  );
+`;
+}
+
 // 宿主橋接墊片：沙盒 iframe 是 allow-scripts、沒有 allow-same-origin，碰不到宿主 DOM，
 // 所以在 iframe 內偽造一個誘餌輸入框，把卡片戳 window.parent/window.top 的動作攔下來轉成 postMessage。
 function buildHostBridgeShim(seed: CardStorage): string {
@@ -268,6 +294,7 @@ function buildHostBridgeShim(seed: CardStorage): string {
 (function () {
   var parentRef = window.parent;
 ${buildImeGuardSource()}
+${buildEscapeShimSource()}
 ${buildStorageShimSource(seed)}
 
   function notifyHost(text) {
