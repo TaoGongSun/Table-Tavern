@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -9,7 +9,6 @@ import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "./appearance";
 import {
   AppConfig,
   SceneLabel,
-  StateNode,
   TranscriptEvent,
   WorldMeta,
   WorldState,
@@ -20,12 +19,13 @@ import { useCardInterfaceController } from "./controllers/useCardInterfaceContro
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
 import { useImportController } from "./controllers/useImportController";
-import { loadBranchBindings, treeValueAt, useTableStateController } from "./controllers/useTableStateController";
+import { loadBranchBindings, useTableStateController } from "./controllers/useTableStateController";
 import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
 import { GenerateTableDialog } from "./views/GenerateTableDialog";
 import { SettingsWindow } from "./views/SettingsWindow";
 import { TableSidebar } from "./views/TableSidebar";
+import { StateBar, WorkspaceHeader } from "./views/WorkspaceHeader";
 import { WorldEditor } from "./views/WorldEditor";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -49,19 +49,11 @@ function narrationStreamText(text: string) {
   return marker === -1 ? text : text.slice(0, marker);
 }
 
-// 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；
-// 大小寫不分、容許中間空白（{{ user }}），其他巨集不動
-const USER_MACRO = /\{\{\s*user\s*\}\}/gi;
-function displayUserMacro(value: string, playerName: string): string {
-  return value.replace(USER_MACRO, playerName);
-}
-
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 const GM_TARGET = "__GM__";
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
 const GM_COLOR = "#8a6a3c";
 
-const STATE_BAR_OPEN_KEY = "state_bar_open";
 // 這桌向 AI 發過對話請求了沒（每桌一把）。開演之後復原＝把演到一半的角色卡連同後續編輯一起刪掉，
 // 所以按鈕要收起來；記在瀏覽器端，重開 app 也不該讓它又冒出來讓人誤按。
 const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
@@ -200,9 +192,6 @@ function App() {
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");
-  const [stateBarOpen, setStateBarOpen] = useState(
-    () => localStorage.getItem(STATE_BAR_OPEN_KEY) === "true",
-  );
   // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
   const [hasStateBar, setHasStateBar] = useState(false);
   // 這桌向 AI 開演了沒：聊天域寫、匯入域清、側欄的「復原上次匯入」讀，留在 App 當共用旗標
@@ -616,139 +605,6 @@ function App() {
     );
   }
 
-  // 表單交給瀏覽器處理 Enter，中文輸入法選字時不會提前送出。
-  function stateFieldForm(path: string[], tree: boolean, label: string) {
-    const value = tableState.editing?.value ?? "";
-    return (
-      <form
-        className="state-bar-field-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void tableState.save(path, tree, value);
-        }}
-      >
-        <input
-          className="state-bar-input"
-          autoFocus
-          value={value}
-          aria-label={label}
-          onChange={(event) => {
-            const next = event.currentTarget.value;
-            tableState.changeEditValue(next);
-          }}
-          onBlur={() => void tableState.save(path, tree, value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              tableState.cancelEdit();
-            }
-          }}
-        />
-      </form>
-    );
-  }
-
-  // 一列點著就能改的欄位：平欄與樹葉子共用，差別只在存回哪裡
-  function stateLeafRow(path: string[], tree: boolean, label: string) {
-    const editing =
-      tableState.editing?.tree === tree &&
-      tableState.editing.path.length === path.length &&
-      tableState.editing.path.every((segment, index) => segment === path[index]);
-    const value = tree ? treeValueAt(tableState.tree, path) : (tableState.fields[path[0]] ?? "");
-    const jumpMark = tableState.jumps[path.join(".")];
-    return (
-      <div className="state-bar-field" key={path.join("\0")}>
-        <span className="state-bar-label">{label}</span>
-        {editing ? (
-          stateFieldForm(path, tree, label)
-        ) : (
-          <div className="state-bar-value-row">
-            <button
-              className="state-bar-value"
-              type="button"
-              title={t("stateEditHint")}
-              onClick={() => tableState.beginEdit(path, tree, value)}
-            >
-              {value ? displayUserMacro(value, characters.player?.name || t("playerLabel")) : t("stateEmptyValue")}
-            </button>
-            {jumpMark && (
-              <button
-                className="state-bar-jump"
-                type="button"
-                title={t("stateJumpHint")}
-                onClick={() => void tableState.markCounter(path)}
-              >
-                {"⚠ " + jumpMark}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // 玩家卡目前指認到的分支路徑，含所有祖先（自己與上面每一層都要預設展開），沒指認就是空集合
-  const openBranchPaths = useMemo(() => {
-    const player = characters.player;
-    const bound = player && tableState.bindings.find((b) => b.characterId === player.id);
-    const set = new Set<string>();
-    if (bound) {
-      for (let depth = 1; depth <= bound.path.length; depth += 1) {
-        set.add(bound.path.slice(0, depth).join("/"));
-      }
-    }
-    return set;
-  }, [characters.player, tableState.bindings]);
-
-  // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉
-  function stateTreeNodes(nodes: Record<string, StateNode>, path: string[], depth: number) {
-    return Object.entries(nodes).map(([key, node]) => {
-      const childPath = [...path, key];
-      if (typeof node === "string") return stateLeafRow(childPath, true, key);
-      const bound = tableState.bindings.find(
-        (binding) =>
-          binding.path.length === childPath.length &&
-          binding.path.every((segment, index) => segment === childPath[index]),
-      );
-      // 清單出身的分支（鍵全是數字索引，如「氣味標記者：0→利格魯德」的名冊）不是誰的狀態包，
-      // 掛指認下拉會被讀成「挑誰出場」；只有名字鍵的物件分支才提供指認。
-      const isList = Object.keys(node).every((childKey) => /^\d+$/.test(childKey));
-      return (
-        <details
-          className="state-tree-branch"
-          key={key}
-          open={depth === 0 || openBranchPaths.has(childPath.join("/"))}
-        >
-          <summary>
-            {key}
-            {characters.list.length > 0 && !isList && (
-              <select
-                className="state-tree-bind"
-                aria-label={t("stateBranchBindAria")}
-                title={t("stateBranchBindHint")}
-                value={bound?.characterId ?? ""}
-                onClick={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-                onChange={(event) => {
-                  const nextId = event.currentTarget.value;
-                  if (nextId) void tableState.bind(nextId, childPath);
-                  else if (bound) void tableState.bind(bound.characterId, null);
-                }}
-              >
-                <option value="">{t("stateBranchUnbound")}</option>
-                {characters.active.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </summary>
-          <div className="state-tree-children">{stateTreeNodes(node, childPath, depth + 1)}</div>
-        </details>
-      );
-    });
-  }
-
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
   async function advanceScene() {
     setError("");
@@ -1063,15 +919,6 @@ function App() {
   }
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
-  const stateFields = [
-    { key: "time", label: t("stateFieldTime") },
-    { key: "place", label: t("stateFieldPlace") },
-    { key: "present", label: t("stateFieldPresent") },
-    ...Object.keys(tableState.fields)
-      .filter((key) => !["time", "place", "present"].includes(key))
-      .map((key) => ({ key, label: key })),
-  ];
-  const stateValue = (key: string) => tableState.fields[key] || t("stateEmptyValue");
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
   const sceneChars = chat.events.reduce((sum, event) => sum + event.text.length, 0);
@@ -1125,72 +972,38 @@ function App() {
       />
 
       <main className="chat-main">
-        <header className="chat-header">
-          {editingName?.at === "header" ? (
-            renameForm("table-title-input")
-          ) : (
-            <button
-              className="table-title"
-              title={t("renameHint")}
-              onClick={() => setEditingName({ at: "header", value: tableName })}
-            >
-              {tableName}
-            </button>
-          )}
-          <div className="chat-header-actions">
-            {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面；且只在遊玩畫面（mainView === null）出現 */}
-            {mainView === null && cardInterface.shellReady && (
-              <button type="button" onClick={() => cardInterface.open()}>
-                {t("cardInterfaceOpen")}
-              </button>
-            )}
-            <button
-              type="button"
-              title={t("sceneAdvanceHint")}
-              aria-label={t("sceneAdvance")}
-              disabled={chat.busy || chat.events.length === 0}
-              onClick={advanceScene}
-            >
-              {t("sceneAdvance")}
-            </button>
-            <button
-              type="button"
-              title={t("exportTranscriptHint")}
-              aria-label={t("exportTranscript")}
-              onClick={exportTranscript}
-            >
-              {t("exportTranscript")}
-            </button>
-            {scene > 0 && (
-              <button type="button" onClick={() => setActsOpen((open) => !open)}>
-                {t("pastScenes", { count: scene })}
-              </button>
-            )}
-          </div>
-        </header>
+        <WorkspaceHeader
+          tableName={tableName}
+          renaming={editingName?.at === "header"}
+          renameForm={renameForm}
+          onStartRename={(name) => setEditingName({ at: "header", value: name })}
+          showCardInterface={mainView === null && cardInterface.shellReady}
+          onOpenCardInterface={() => cardInterface.open()}
+          busy={chat.busy}
+          hasEvents={chat.events.length > 0}
+          onAdvanceScene={advanceScene}
+          onExportTranscript={exportTranscript}
+          scene={scene}
+          onToggleActs={() => setActsOpen((open) => !open)}
+        />
 
         {mainView === null && (hasStateBar || Object.keys(tableState.tree).length > 0) && (
-        <details
-          className="state-bar"
-          open={stateBarOpen}
-          onToggle={(event) => {
-            const next = event.currentTarget.open;
-            setStateBarOpen(next);
-            localStorage.setItem(STATE_BAR_OPEN_KEY, String(next));
-          }}
-        >
-          <summary>
-            <span className="state-bar-title">{t("stateBarTitle")}</span>
-            <span className="state-bar-summary">
-              {stateValue("time")} ｜ {stateValue("place")} ｜ {t("stateSummaryPresent")}
-              {stateValue("present")}
-            </span>
-          </summary>
-          <div className="state-bar-fields">
-            {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}
-            {stateTreeNodes(tableState.tree, [], 0)}
-          </div>
-        </details>
+          <StateBar
+            fields={tableState.fields}
+            tree={tableState.tree}
+            jumps={tableState.jumps}
+            bindings={tableState.bindings}
+            editing={tableState.editing}
+            onBeginEdit={tableState.beginEdit}
+            onChangeEditValue={tableState.changeEditValue}
+            onSave={(path, tree, value) => void tableState.save(path, tree, value)}
+            onCancelEdit={tableState.cancelEdit}
+            onMarkCounter={(path) => void tableState.markCounter(path)}
+            onBind={(characterId, path) => void tableState.bind(characterId, path)}
+            player={characters.player}
+            castCount={characters.list.length}
+            cast={characters.active}
+          />
         )}
 
         <div className="chat-body">
