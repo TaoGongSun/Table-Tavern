@@ -3,18 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, setLang, t } from "./i18n";
-import { decideImportRoute } from "./import-routing";
 import { isCharacterHidden } from "./character-visibility";
 import { tierLabel } from "./model-catalog";
 import { prefetchModelCatalogs } from "./model-catalog-store";
 import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "./appearance";
-import { AppConfig, SceneLabel, StateNode, TranscriptEvent, WorldbookEntry, WorldState } from "./backend-contracts";
+import { AppConfig, SceneLabel, StateNode, TranscriptEvent, WorldState } from "./backend-contracts";
 import { CharacterMeta, PALETTE } from "./card-model";
 import { cliConnectedKey } from "./cli";
 import { useDragReorder } from "./drag-reorder";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
+import { useImportController } from "./controllers/useImportController";
 import { loadBranchBindings, treeValueAt, useTableStateController } from "./controllers/useTableStateController";
 import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
@@ -22,45 +22,6 @@ import { SettingsWindow } from "./views/SettingsWindow";
 import { WorldEditor } from "./views/WorldEditor";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
-
-interface CharacterImport {
-  meta: CharacterMeta;
-  book: WorldbookImport;
-}
-
-interface ImportProbe {
-  lorebook_heavy: boolean;
-  /** 卡名（世界書卡也有）：匯入後自動名桌拿它當桌名 */
-  name?: string | null;
-  /** JSON／PNG 成功解析才 true：分辨「格式錯誤」與「解析成功但沒有名字」 */
-  parsed: boolean;
-  /** character_book.entries 的條目數，沒有這個欄位就是 0 */
-  book_entries: number;
-  /** 頂層就是世界書本體（V2 獨立書 JSON 自帶 name＋entries）：有 name 也要走世界書 */
-  book_shaped: boolean;
-  /** 備用開場白數：備了好幾個開局＝這是一座舞台不是一個人（first_mes 每張卡都有，不看） */
-  alternate_greetings: number;
-}
-
-/** 身分框主按鈕指向世界書的條件。判準只決定哪顆是主按鈕與文案講哪一種，
- *  兩條路玩家都選得到——判錯的代價是多看一眼，不是卡壞掉。 */
-function looksLikeWorldbook(probe: ImportProbe): boolean {
-  return probe.book_shaped || probe.lorebook_heavy || probe.alternate_greetings > 0;
-}
-
-/** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
-interface WorldbookImport {
-  imported: number;
-  skipped: number;
-}
-
-/** 匯入收據摘要：側欄「復原上次匯入」按鈕靠這份判斷要不要顯示 */
-interface ImportReceiptSummary {
-  kind: "character" | "worldbook";
-  label: string;
-  timestamp: string;
-  character_id?: string | null;
-}
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
 interface UndoReport {
@@ -287,30 +248,6 @@ function App() {
   const [actsOpen, setActsOpen] = useState(false);
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
-  const [openingChoice, setOpeningChoice] = useState<string[] | null>(null);
-  // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
-  const [openingExpanded, setOpeningExpanded] = useState<number | null>(null);
-  // 開場白翻譯：逐則狀態＋「全部翻譯」是否在跑；abort ref 給 modal 一關就停止後續翻譯呼叫用
-  // （純 ref 而非 state：序列迴圈中途要讀到「使用者剛剛關掉視窗」，不能等下一次 render）
-  const [openingTransState, setOpeningTransState] = useState<Record<number, "translating" | "done" | "error">>({});
-  const [openingTransAllBusy, setOpeningTransAllBusy] = useState(false);
-  const openingTransAbort = useRef(false);
-  // openingChoice 一變成 null（不管哪個按鈕關的）就中止：不必在每個關閉入口各補一次旗標
-  useEffect(() => {
-    if (openingChoice === null) openingTransAbort.current = true;
-  }, [openingChoice]);
-  // 匯入身分框：等玩家在三鍵框挑一種，data 原樣留著給兩條路徑共用；
-  // booksFirst＝主按鈕指世界書（探測結果只用來算這個，算完就不必留著）
-  const [importChoice, setImportChoice] = useState<{ data: number[]; name: string; booksFirst: boolean } | null>(
-    null,
-  );
-  // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝一般第二張卡、merge_worldbook＝第二本世界書會合成一本
-  const [importRoute, setImportRoute] = useState<{
-    data: number[];
-    identity: "character" | "worldbook";
-    label: string;
-    route: "ask" | "merge_worldbook";
-  } | null>(null);
   const [error, setError] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -323,8 +260,7 @@ function App() {
   );
   // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
   const [hasStateBar, setHasStateBar] = useState(false);
-  // 這桌的匯入收據摘要：非空、且還沒開始跟 AI 對話，才顯示「復原上次匯入」按鈕
-  const [importReceipts, setImportReceipts] = useState<ImportReceiptSummary[]>([]);
+  // 這桌向 AI 開演了沒：聊天域寫、匯入域清、側欄的「復原上次匯入」讀，留在 App 當共用旗標
   const [chattedSinceImport, setChattedSinceImport] = useState(false);
   // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
@@ -463,8 +399,6 @@ function App() {
     setChattedSinceImport(true);
   }, [table]);
 
-  const closeOpeningChoice = useCallback(() => setOpeningChoice(null), []);
-
   // 發言對象可能是 GM（沒有角色卡）：送出走旁白那條，晶片的名字與顏色也另一套
   const gmTargeted = speaker === GM_TARGET;
 
@@ -484,7 +418,6 @@ function App() {
     refreshWorlds,
     noteChatStarted: noteChatRequest,
     markCliConnected: markCliConnectedFromChat,
-    closeOpeningChoice,
     onError: setError,
   });
 
@@ -520,6 +453,70 @@ function App() {
     submitText: chat.submitText,
   });
 
+  // 一桌一卡：匯入成功後，還掛自動名的桌直接改成卡名；自訂過名字的桌不動
+  // （匯入 controller 要注入這支，所以擺在 hook 之前；hasAutoName 是宣告式函式，往下找得到）
+  const adoptImportName = useCallback(
+    async (name: string | null | undefined) => {
+      const trimmed = name?.trim();
+      if (!trimmed) return;
+      const oldName = worlds.find((w) => w.id === table)?.name;
+      if (!hasAutoName(oldName)) return;
+      try {
+        await invoke("rename_world", { worldId: table, newName: trimmed });
+        setWorlds((previous) => previous.map((w) => (w.id === table ? { ...w, name: trimmed } : w)));
+        // 把舊桌名補進這次匯入的收據：復原時桌名才退得回去；記帳失敗不影響改名已經成功
+        if (oldName !== undefined) {
+          await invoke("record_import_rename", { worldId: table, oldName }).catch(() => {});
+        }
+      } catch {
+        // 改名失敗不影響匯入，桌名維持原樣
+      }
+    },
+    [worlds, table],
+  );
+
+  // 匯完把對話目標指過去；null＝指到 GM（GM_TARGET 與 speaker 都留在 App）
+  const focusSpeaker = useCallback((characterId: string | null) => setSpeaker(characterId ?? GM_TARGET), []);
+
+  // 「開新桌並匯入」的開桌那一半：建好就進去，回傳新桌 id 給匯入流程顯式帶入。
+  // 原桌完全不動（不回收、不改名），沿用 newTable／switchTable 的生成中防呆。
+  const openTableForImport = useCallback(
+    async (label: string) => {
+      if (!config || chat.busy) return null;
+      const id = await invoke<string>("create_world", { name: label });
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      await enterTable(id, config);
+      return id;
+    },
+    [config, chat.busy],
+  );
+
+  const resetChatted = useCallback((worldId: string) => {
+    localStorage.removeItem(chattedKey(worldId));
+    setChattedSinceImport(false);
+  }, []);
+
+  // 匯入身分框、第二張卡路由、匯入收據與匯完跳出的開場白面板都在 controller 裡。
+  // 掛在最後：它要吃 characters 與 cardInterface 的具名 action。chat 要的 noteChatStarted
+  // 與開場白面板的關閉留在 App，否則 chat→imports→cardInterface→chat 會繞成環。
+  const imports = useImportController({
+    worldId: table,
+    lang: language,
+    castSize: characters.list.length,
+    refreshCharacters: characters.refresh,
+    reloadGmImage: characters.reloadGmImage,
+    refreshInterfaces: cardInterface.refreshInterfaces,
+    openIfDrawable: cardInterface.openIfDrawable,
+    adoptTableName: adoptImportName,
+    focusSpeaker,
+    openTableForImport,
+    resetChatted,
+    onError: setError,
+  });
+  // 開場白面板的兩個值先落成區域變數：面板底部的按鈕在 callback 裡也要吃到「不是 null」的收斂
+  const openings = imports.openings;
+  const openingExpanded = imports.expanded;
+
   async function enterTable(id: string, loaded: AppConfig) {
     const state = await invoke<WorldState>("read_state", { worldId: id });
     const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
@@ -536,7 +533,7 @@ function App() {
       { worldId: id },
     ).catch(() => ({ character_ids: [], person_titles: [] }));
     const appearanceIds = new Set(appearances.character_ids);
-    const receipts = await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []);
+    const receipts = await imports.loadReceipts(id);
     setTable(id);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
@@ -546,7 +543,7 @@ function App() {
     // 角色圖／GM 圖／玩家卡由 controller 自己的 effect 補：hydrate 先把上一桌的清掉，
     // 這裡一路同步提交，不讓 await 把 React batch 切成跨桌混合的中間畫面
     characters.hydrate(cast, appearanceIds, state.player_card_id);
-    setImportReceipts(receipts);
+    imports.hydrate(receipts);
     setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
     // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的；
     // 隱藏區的卡（含本幕還沒出場的 auto_hidden）不當預設對象，跟側欄主區顯示一致
@@ -588,24 +585,6 @@ function App() {
   async function reclaimIfUntouched(id: string) {
     if (!hasAutoName(worlds.find((w) => w.id === id)?.name)) return;
     await invoke("reclaim_world_if_empty", { worldId: id });
-  }
-
-  // 一桌一卡：匯入成功後，還掛自動名的桌直接改成卡名；自訂過名字的桌不動
-  async function adoptImportName(name: string | null | undefined) {
-    const trimmed = name?.trim();
-    if (!trimmed) return;
-    const oldName = worlds.find((w) => w.id === table)?.name;
-    if (!hasAutoName(oldName)) return;
-    try {
-      await invoke("rename_world", { worldId: table, newName: trimmed });
-      setWorlds((previous) => previous.map((w) => (w.id === table ? { ...w, name: trimmed } : w)));
-      // 把舊桌名補進這次匯入的收據：復原時桌名才退得回去；記帳失敗不影響改名已經成功
-      if (oldName !== undefined) {
-        await invoke("record_import_rename", { worldId: table, oldName }).catch(() => {});
-      }
-    } catch {
-      // 改名失敗不影響匯入，桌名維持原樣
-    }
   }
 
   async function newTable() {
@@ -1001,20 +980,12 @@ function App() {
     }
   }
 
-  async function refreshImportReceipts(worldId: string) {
-    setImportReceipts(
-      await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId }).catch(() => []),
-    );
-    // 剛匯入（或剛復原一筆）＝又回到「還沒開演」的狀態，按鈕重新給
-    localStorage.removeItem(chattedKey(worldId));
-    setChattedSinceImport(false);
-  }
-
-  // 側欄「復原上次匯入」：逆向收據清單最後一筆，逐筆倒退
+  // 側欄「復原上次匯入」：逆向收據清單最後一筆，逐筆倒退。
+  // 一次動到角色、卡片介面、檯面、狀態樹與世界設定五個域，留在 App 當跨域協調
   async function undoLastImport() {
-    if (importReceipts.length === 0) return;
+    if (imports.receipts.length === 0) return;
     setError("");
-    const last = importReceipts[importReceipts.length - 1];
+    const last = imports.receipts[imports.receipts.length - 1];
     try {
       const accepted = await confirm(t("undoLastImportConfirm", { label: last.label }), {
         title: t("undoLastImport"),
@@ -1040,7 +1011,7 @@ function App() {
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
       setWorldEditorRefreshKey((key) => key + 1);
-      await refreshImportReceipts(table);
+      await imports.refreshReceipts(table);
       await showMessage(
         t("undoLastImportDone") +
           (report.removed_characters.length > 0
@@ -1054,242 +1025,17 @@ function App() {
     }
   }
 
-  // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端探測，依探測結果分流——
-  // 純世界書、純角色卡都零詢問直接判定身分（還要再過第二張卡路由）；
-  // 角色與世界書兩種身分都有料才彈三鍵對話框問玩家要哪個，答完一樣過路由。
-  async function importCharacter(file: File) {
-    setError("");
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const data = Array.from(bytes);
-      let probe: ImportProbe = {
-        lorebook_heavy: false,
-        parsed: false,
-        book_entries: 0,
-        book_shaped: false,
-        alternate_greetings: 0,
-      };
-      try {
-        probe = await invoke<ImportProbe>("probe_import", { data });
-      } catch {
-        // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
-      }
-      if (probe.parsed && (!probe.name || probe.book_shaped)) {
-        // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，「匯入成角色卡」是假選項，不問
-        await routeImport("worldbook", data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
-        return;
-      }
-      if (probe.parsed && probe.name) {
-        // 其餘一律問身分：判準只決定主按鈕，判錯玩家仍有另一條路（見 booksFirst）
-        setImportChoice({ data, name: probe.name, booksFirst: looksLikeWorldbook(probe) });
-        return;
-      }
-      // 解析失敗：照舊走角色路徑，讓後端報原本的格式錯誤，不算第二張卡場景，不過路由
-      await importAsCharacter(table, data);
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 三鍵對話框的作答：取消什麼都不做，另外兩個選項答出身分後都要過第二張卡路由
-  async function answerImportChoice(choice: "character" | "worldbook" | "cancel") {
-    const pending = importChoice;
-    setImportChoice(null);
-    if (!pending || choice === "cancel") return;
-    setError("");
-    try {
-      await routeImport(choice, pending.data, pending.name);
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 第二張卡路由：身分已定，看這桌現況決定要不要跳提醒框。
-  // direct 零打擾直接匯；ask／merge_worldbook 開框，框裡選完才真的匯（見 answerImportRoute）。
-  async function routeImport(identity: "character" | "worldbook", data: number[], label: string) {
-    // 收據為空才問條目：那可能是收據功能之前的舊桌、手建的桌或範例桌
-    const needsFallback = identity === "worldbook" && importReceipts.length === 0;
-    const route = decideImportRoute(
-      identity,
-      importReceipts.map((receipt) => receipt.kind),
-      needsFallback && (await tableHasWorldbookEntries()),
-    );
-    if (route === "direct") {
-      if (identity === "worldbook") await importAsWorldbook(table, data, label);
-      else await importAsCharacter(table, data);
-      return;
-    }
-    setImportRoute({ data, identity, label, route });
-  }
-
-  // 收據為空時的保險（見 decideImportRoute）。現讀而不吃 state：世界書條目歸 WorldEditor 管，
-  // App 這邊沒有同步的一份。讀不到就當有——寧可多問一句，也不要把書無聲合進有內容的桌。
-  async function tableHasWorldbookEntries() {
-    try {
-      return (await invoke<WorldbookEntry[]>("read_worldbook", { worldId: table })).length > 0;
-    } catch {
-      return true;
-    }
-  }
-
-  // 路由框作答：取消什麼都不做；匯進這桌走現行匯入函式（第二本世界書走同一條，後端會接在既有條目後面並去重）；
-  // 開新桌並匯入另開一桌後再匯，見 openNewTableAndImport
-  async function answerImportRoute(choice: "this_table" | "new_table" | "cancel") {
-    const pending = importRoute;
-    setImportRoute(null);
-    if (!pending || choice === "cancel") return;
-    setError("");
-    try {
-      if (choice === "this_table") {
-        if (pending.identity === "worldbook") {
-          await importAsWorldbook(table, pending.data, pending.label);
-        } else {
-          await importAsCharacter(table, pending.data);
-        }
-      } else {
-        await openNewTableAndImport(pending);
-      }
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 開新桌並匯入：桌名直接用卡名／書名／檔名（pending.label），create_world 回傳的新 id
-  // 全程顯式帶入（不靠 table 這個 closure，切桌當下它還是舊值），原桌完全不動（不回收、不改名）。
-  // adoptImportName 不需要跑：新桌從一開始就用 label 命名。沿用 newTable／switchTable 的生成中防呆。
-  async function openNewTableAndImport(pending: {
-    data: number[];
-    identity: "character" | "worldbook";
-    label: string;
-  }) {
-    if (!config || chat.busy) return;
-    const id = await invoke<string>("create_world", { name: pending.label });
-    setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-    await enterTable(id, config);
-    if (pending.identity === "worldbook") {
-      await importAsWorldbook(id, pending.data, pending.label, false);
-    } else {
-      await importAsCharacter(id, pending.data, false);
-    }
-  }
-
-  // worldId 顯式帶入（不吃 table 這個 closure）：開新桌並匯入時 table 當下還是舊桌值。
-  // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
-  async function importAsCharacter(worldId: string, data: number[], adoptName = true) {
-    const { meta, book } = await invoke<CharacterImport>("import_character", {
-      worldId,
-      data,
-      color: PALETTE[characters.list.length % PALETTE.length],
-    });
-    await characters.refresh(worldId);
-    setSpeaker(meta.id);
-    if (adoptName) await adoptImportName(meta.name);
-    await refreshImportReceipts(worldId);
-    // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話
-    if (book.imported > 0) await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
-    await offerOpeningLine(worldId, data);
-    await tellAboutInterface(worldId, meta.id);
-  }
-
-  // 世界書匯入共用流程：側欄按鈕分流出的純世界書檔、三鍵對話框選了世界書都走這裡。
-  // worldId 顯式帶入、adoptName 預設 true，理由同 importAsCharacter。
-  async function importAsWorldbook(worldId: string, data: number[], label: string, adoptName = true) {
-    const book = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
-    // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
-    await characters.reloadGmImage(worldId);
-    await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
-    // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
-    setSpeaker(GM_TARGET);
-    if (adoptName) await adoptImportName(label);
-    await refreshImportReceipts(worldId);
-    await offerOpeningLine(worldId, data);
-    // 這桌等級的介面殼 character_id 是空字串（角色卡的是那張卡的 id）
-    await tellAboutInterface(worldId, "");
-  }
-
-  function worldbookImportedMessage(book: WorldbookImport) {
-    return (
-      t("worldbookImportDone", { n: book.imported }) +
-      (book.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: book.skipped }) : "")
-    );
-  }
-
-  // 兩條匯入路徑共用：畫得出來就告訴玩家在哪開並直接開一次，解不開的講清楚是哪一種
-  // （加密卡、介面存在別人網站上的雲端載入器卡）。沒有介面的卡什麼都不說。
-  async function tellAboutInterface(worldId: string, characterId: string) {
-    const interfaces = await cardInterface.refreshInterfaces(worldId);
-    const mine = interfaces.find((card) => card.character_id === characterId);
-    const notice =
-      mine && mine.scripts.length > 0
-        ? t("importCardInterface")
-        : mine?.unsupported === "scrypt"
-          ? t("importCardScrypt")
-          : mine?.unsupported === "remote_loader"
-            ? t("importCardRemoteLoader")
-            : "";
-    if (notice) await showMessage(notice, { title: t("importCard") });
-    cardInterface.openIfDrawable(interfaces);
-  }
-
-  // 兩條匯入路徑共用。一律貼成旁白而不是角色發言——開場白不一定是那個角色說的話，
-  // 也常是場景或角色本身的描寫。主開場白常是使用說明（真正的劇情藏在備用開場白），
-  // 所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
-  async function offerOpeningLine(worldId: string, data: number[]) {
-    const openings = await invoke<string[]>("card_openings", {
-      worldId,
-      data,
-      lang: language,
-    });
-    if (openings.length === 0) return;
-    setOpeningExpanded(null);
-    setOpeningTransState({});
-    openingTransAbort.current = false;
-    setOpeningChoice(openings);
-  }
-
-  // 開場白翻譯：單則呼叫 translate_opening（走 fast 檔，失敗退 GM 檔，見 lib.rs），
-  // 兩顆翻譯鈕共用。已經 done 的直接回傳目前內容，不重打；modal 關閉中途 abort 就不再
-  // 動 state（視窗都不在了，setState 也只是白費）。
-  async function translateOpeningLine(index: number): Promise<string | null> {
-    if (openingChoice === null) return null;
-    if (openingTransState[index] === "done") return openingChoice[index];
-    const text = openingChoice[index];
-    setOpeningTransState((previous) => ({ ...previous, [index]: "translating" }));
-    try {
-      const translated = await invoke<string>("translate_opening", { worldId: table, text, lang: language });
-      if (openingTransAbort.current) return null;
-      setOpeningChoice((previous) =>
-        previous === null ? previous : previous.map((item, itemIndex) => (itemIndex === index ? translated : item)),
-      );
-      setOpeningTransState((previous) => ({ ...previous, [index]: "done" }));
-      return translated;
-    } catch (reason) {
-      if (openingTransAbort.current) return null;
-      setOpeningTransState((previous) => ({ ...previous, [index]: "error" }));
-      setError(String(reason));
-      return null;
-    }
-  }
-
-  // 「✨ 全部翻譯」：逐則序列翻譯，不擋操作（沒鎖住 modal 其他按鈕）；modal 一關（abort
-  // 旗標翻真）就停止發下一則呼叫，省下不會有人看到的 AI 額度。
-  async function translateAllOpenings() {
-    if (openingChoice === null || openingTransAllBusy) return;
-    setOpeningTransAllBusy(true);
-    openingTransAbort.current = false;
-    for (let index = 0; index < openingChoice.length; index += 1) {
-      if (openingTransAbort.current) break;
-      await translateOpeningLine(index);
-    }
-    setOpeningTransAllBusy(false);
+  // 貼出開場白：真的落到檯面上了才收掉選擇面板（貼失敗時面板留著，玩家可改挑一則或重按）
+  async function postOpening(text: string) {
+    if (await chat.postOpening(text)) imports.closeOpenings();
   }
 
   // 「✨ 翻譯後貼出」：挑中那則已翻好就直接貼出；沒翻就先翻這一則，成功才貼出，
   // 失敗留在原地（原文仍在，原「貼出」鈕照常可按）。
   async function postTranslatedOpening(index: number) {
-    if (openingChoice === null) return;
-    const translated = await translateOpeningLine(index);
-    if (translated !== null) await chat.postOpening(translated);
+    if (imports.openings === null) return;
+    const translated = await imports.translateOpening(index);
+    if (translated !== null) await postOpening(translated);
   }
 
   // 建卡或改名存檔後：名單與圖片重載；id 全程不變，只有「新卡剛存下」要轉正畫面並選為發言對象
@@ -1891,10 +1637,10 @@ function App() {
               onChange={(e) => {
                 const file = e.currentTarget.files?.[0];
                 e.currentTarget.value = "";
-                if (file) void importCharacter(file);
+                if (file) void imports.importFile(file);
               }}
             />
-            {importReceipts.length > 0 && !chattedSinceImport && (
+            {imports.receipts.length > 0 && !chattedSinceImport && (
               <button
                 type="button"
                 title={t("undoLastImportHint")}
@@ -2104,7 +1850,7 @@ function App() {
                 await cardInterface.refreshInterfaces(table);
                 await cardInterface.refreshShell(table);
                 await tableState.refresh();
-                await refreshImportReceipts(table);
+                await imports.refreshReceipts(table);
               }}
             />
           </EditPane>
@@ -2394,36 +2140,36 @@ function App() {
       )}
 
       {/* 匯入身分框：有名字的卡一律問。直說偵測到哪一種，該身分當主按鈕，另一邊只警告可能玩不動 */}
-      {importChoice !== null && (
-        <div className="modal-overlay" onClick={() => void answerImportChoice("cancel")}>
+      {imports.choice !== null && (
+        <div className="modal-overlay" onClick={() => void imports.answerChoice("cancel")}>
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t(importChoice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}
+            aria-label={t(imports.choice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}
             onClick={(event) => event.stopPropagation()}
           >
-            <h2>{t(importChoice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}</h2>
-            <p>{t(importChoice.booksFirst ? "importChoiceBookBody" : "importChoiceCharacterBody")}</p>
+            <h2>{t(imports.choice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}</h2>
+            <p>{t(imports.choice.booksFirst ? "importChoiceBookBody" : "importChoiceCharacterBody")}</p>
             <div className="ai-gen-footer">
-              <button type="button" onClick={() => void answerImportChoice("cancel")}>
+              <button type="button" onClick={() => void imports.answerChoice("cancel")}>
                 {t("importChoiceCancel")}
               </button>
-              {importChoice.booksFirst ? (
+              {imports.choice.booksFirst ? (
                 <>
-                  <button type="button" onClick={() => void answerImportChoice("character")}>
+                  <button type="button" onClick={() => void imports.answerChoice("character")}>
                     {t("importChoiceCharacter")}
                   </button>
-                  <button type="button" className="ai-gen-submit" onClick={() => void answerImportChoice("worldbook")}>
+                  <button type="button" className="ai-gen-submit" onClick={() => void imports.answerChoice("worldbook")}>
                     {t("importChoiceWorldbook")}
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="button" onClick={() => void answerImportChoice("worldbook")}>
+                  <button type="button" onClick={() => void imports.answerChoice("worldbook")}>
                     {t("importChoiceWorldbook")}
                   </button>
-                  <button type="button" className="ai-gen-submit" onClick={() => void answerImportChoice("character")}>
+                  <button type="button" className="ai-gen-submit" onClick={() => void imports.answerChoice("character")}>
                     {t("importChoiceCharacter")}
                   </button>
                 </>
@@ -2435,28 +2181,28 @@ function App() {
 
       {/* 第二張卡路由框：桌上已有匯入紀錄才會跳出來。三個選項都給，開新桌是主按鈕；
           第二本世界書換標題與文案（會合成一本），中間那顆改叫「仍要匯入」 */}
-      {importRoute !== null && (
-        <div className="modal-overlay" onClick={() => void answerImportRoute("cancel")}>
+      {imports.route !== null && (
+        <div className="modal-overlay" onClick={() => void imports.answerRoute("cancel")}>
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t(importRoute.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}
+            aria-label={t(imports.route.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}
             onClick={(event) => event.stopPropagation()}
           >
-            <h2>{t(importRoute.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}</h2>
-            <p>{t(importRoute.route === "merge_worldbook" ? "importRouteMergeBody" : "importRouteAskBody")}</p>
+            <h2>{t(imports.route.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}</h2>
+            <p>{t(imports.route.route === "merge_worldbook" ? "importRouteMergeBody" : "importRouteAskBody")}</p>
             <div className="ai-gen-footer">
-              <button type="button" onClick={() => void answerImportRoute("cancel")}>
+              <button type="button" onClick={() => void imports.answerRoute("cancel")}>
                 {t("importChoiceCancel")}
               </button>
-              <button type="button" onClick={() => void answerImportRoute("this_table")}>
-                {t(importRoute.route === "merge_worldbook" ? "importRouteMergeAnyway" : "importRouteThisTable")}
+              <button type="button" onClick={() => void imports.answerRoute("this_table")}>
+                {t(imports.route.route === "merge_worldbook" ? "importRouteMergeAnyway" : "importRouteThisTable")}
               </button>
               <button
                 type="button"
                 className="ai-gen-submit"
-                onClick={() => void answerImportRoute("new_table")}
+                onClick={() => void imports.answerRoute("new_table")}
                 disabled={chat.busy}
               >
                 {t("importRouteNewTable")}
@@ -2466,8 +2212,8 @@ function App() {
         </div>
       )}
 
-      {openingChoice !== null && (
-        <div className="modal-overlay" onClick={() => setOpeningChoice(null)}>
+      {openings !== null && (
+        <div className="modal-overlay" onClick={() => imports.closeOpenings()}>
           <div
             className="modal opening-choice-modal"
             role="dialog"
@@ -2477,7 +2223,7 @@ function App() {
           >
             <div className="modal-header">
               <strong>{t("openingChoiceTitle")}</strong>
-              <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={() => setOpeningChoice(null)}>×</button>
+              <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={() => imports.closeOpenings()}>×</button>
             </div>
             {/* 動作鈕置頂（專案慣例）：全部翻譯放標題正下方，不必展開任何一則就能先按 */}
             <div className="opening-translate-all-row">
@@ -2485,32 +2231,32 @@ function App() {
                 type="button"
                 className="ai-gen-btn"
                 title={t("openingTranslateHint")}
-                disabled={openingTransAllBusy}
-                onClick={() => void translateAllOpenings()}
+                disabled={imports.transAllBusy}
+                onClick={() => void imports.translateAllOpenings()}
               >
-                {openingTransAllBusy
+                {imports.transAllBusy
                   ? t("openingTranslateAllProgress", {
-                      done: openingChoice.filter((_, index) => openingTransState[index] === "done" || openingTransState[index] === "error")
+                      done: openings.filter((_, index) => imports.transState[index] === "done" || imports.transState[index] === "error")
                         .length,
-                      total: openingChoice.length,
+                      total: openings.length,
                     })
                   : `✨ ${t("openingTranslateAllBtn")}`}
               </button>
             </div>
             <p>{t("openingLineAsk")}</p>
             <div className="opening-choice-list">
-              {openingChoice.map((opening, index) => {
+              {openings.map((opening, index) => {
                 // 點列只展開全文，貼出的鈕在框外底部——開場白動輒上千字，按鈕若跟在全文後面
                 // 得整段捲到底才按得到，而滿是標記的開場白根本沒必要逐字看完
                 const expanded = openingExpanded === index;
-                const transState = openingTransState[index];
+                const transState = imports.transState[index];
                 return (
                   <div className="opening-choice-item" key={index}>
                     <button
                       type="button"
                       className="opening-choice-head"
                       aria-expanded={expanded}
-                      onClick={() => setOpeningExpanded(expanded ? null : index)}
+                      onClick={() => imports.setExpanded(expanded ? null : index)}
                     >
                       <strong>{t("openingChoiceItem", { n: index + 1 })}</strong>
                       {transState === "translating" && <span className="opening-trans-status">{t("openingTranslating")}</span>}
@@ -2531,12 +2277,12 @@ function App() {
               })}
             </div>
             <div className="ai-gen-footer">
-              {openingExpanded !== null && openingChoice[openingExpanded] !== undefined && (
+              {openingExpanded !== null && openings[openingExpanded] !== undefined && (
                 <>
                   <button
                     type="button"
                     className="footer-lead"
-                    onClick={() => void chat.postOpening(openingChoice[openingExpanded])}
+                    onClick={() => void postOpening(openings[openingExpanded])}
                   >
                     {t("openingLineOk")}
                   </button>
@@ -2544,14 +2290,14 @@ function App() {
                     type="button"
                     className="ai-gen-btn"
                     title={t("openingTranslateHint")}
-                    disabled={openingTransState[openingExpanded] === "translating"}
+                    disabled={imports.transState[openingExpanded] === "translating"}
                     onClick={() => void postTranslatedOpening(openingExpanded)}
                   >
-                    {openingTransState[openingExpanded] === "translating" ? t("openingTranslating") : `✨ ${t("openingTranslatePostBtn")}`}
+                    {imports.transState[openingExpanded] === "translating" ? t("openingTranslating") : `✨ ${t("openingTranslatePostBtn")}`}
                   </button>
                 </>
               )}
-              <button type="button" onClick={() => setOpeningChoice(null)}>{t("openingLineCancel")}</button>
+              <button type="button" onClick={() => imports.closeOpenings()}>{t("openingLineCancel")}</button>
             </div>
           </div>
         </div>

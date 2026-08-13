@@ -19,24 +19,30 @@ App.tsx 6890 行（佔前端 9438 行的七成）拆成多支檔案。目的是�
 - 切片 3（8280a35）：WorldEditor → `views/WorldEditor.tsx`（1351，規格表已預先接受超出 800）。外抽 `drag-reorder.ts`、`backend-contracts.ts` 增 Visibility／WorldbookEntry。6046→4630。
 - 切片 4（50fb5d1）：使用者拍板拆兩支——`views/SettingsWindow.tsx`（265）＋`views/SettingsForm.tsx`（609）；另出 `views/UsageTab.tsx`（271）、`views/atoms.tsx`（15，ErrorNote）、`model-catalog-store.ts`（70）。`appearance.ts`／`cli.ts` 各有增補。4630→3368。
 - 切片 5（ba27149）：StoryText／EditPane／ActReader → `views/atoms.tsx`（15→131）。**`narrationStreamText` 經 grep 確認只在 App() 內用**；跨界的是 `TranscriptEvent` → `backend-contracts.ts`。3368→3241。
-- **第二批進行中（切片 6、7、8 完成）。App.tsx 3241→2829，App() 2908→2577 行／59→43 state／105→82 區塊。**
+- **第二批進行中（切片 6、7、8、9 完成）。App.tsx 3241→2563，App() 2908→2322 行／59→37 state／105→70 區塊。**
 - 切片 6（0d68393）：`controllers/useCardInterfaceController.ts`（233）。搬走 cardInterfaces／refactorShell／cardUiOpen、殼 memo 群、兩支載入 effect、message／Esc effect、shellFingerprint／readCardStorage／writeCardStorage，三支函式改 useCallback。hook 掛在原 useEffect@671 的位置，全 App effect 宣告順序不變。3241→3085。
 - 切片 7（74c2656）：`controllers/useTableStateController.ts`（187）。搬走 tableState／tableTree／tableJumps／branchBindings／editingStateField＋兩支旗標 ref，四支函式改 useCallback，treeValueAt／loadBranchBindings 提到 module 級並 export，新增 hydrate／beginEdit／changeEditValue／cancelEdit／clearEdit。此域無 useEffect。後端契約 StateNode／SceneLabel／WorldState／BranchBinding 進 `backend-contracts.ts`。3085→2966。
-- 切片 8：`controllers/useCharacterController.ts`（363）。搬走 characters／sceneAppearances／playerCard／characterImages／characterAvatars／playerImage／playerAvatar／gmImage＋三支載入函式＋reorderCast／restoreCharacter／restoreAutoHidden／deleteCharacter／deletePlayerCard／refreshCharacters／metaOf／active／archived。2966→2829。
+- 切片 8（41cb387）：`controllers/useCharacterController.ts`（363）。搬走 characters／sceneAppearances／playerCard／characterImages／characterAvatars／playerImage／playerAvatar／gmImage＋三支載入函式＋reorderCast／restoreCharacter／restoreAutoHidden／deleteCharacter／deletePlayerCard／refreshCharacters／metaOf／active／archived。2966→2829。
   - **硬約束 4 落地**：enterTable 三支 `await load*` 改由 controller 三支 effect 延後載入（deps 各為 `[worldId, 排序後的 id 集合]`／`[worldId]`／`[worldId, playerCardId]`），`hydrate` 同步清掉上一桌的圖與玩家卡，換桌不再閃舊圖。`scene_appearances` 與 `list_import_receipts` 的 await 一併提到同步區之前，同步提交區現在完全沒有 await。
-  - 新增 `playerCardId` state（玩家卡載入 effect 的依據）與三個世代號 ref（換桌／重讀時丟掉舊回應，避免慢回來的舊桌圖蓋掉新桌）。
-  - speaker 留在 App：controller 只給 `noteRemoved(id, speaker)` 回報「該撥給誰」；`remove`／`removePlayer` 只做確認框＋刪檔，關畫面與撥發言對象仍在 App 的 finishRemoval／deleteCharacter／deletePlayerCard。
-  - 換名：characters→characters.list、activeCharacters→.active、archivedCharacters→.archived、characterImages→.images、characterAvatars→.avatars、playerCard→.player、playerImage／playerAvatar／gmImage→同名屬性、metaOf→.metaOf、refreshCharacters()→.refresh()、reorderCast→.reorder、restoreCharacter→.restore、loadGmImage(x)→.reloadGmImage(x?)、loadPlayerCard(table,id)→.reloadPlayer(id)、loadCharacterImages(table,characters)→.reloadImages()、setSceneAppearances(...arrived)→.onArrived()；controller 內 setError→onError、`worldId: table`→`worldId`。`loadCharacterImages` 簽名由 `(worldId, cast)` 改 `(worldId, ids)`（本體只用得到 id）。
-- 行為對照（第二批用逐行 diff 而非整段逐字）：切片 6／7 的搬移區塊與前一 commit 對應行在換名後 diff 為空；切片 8 的三支載入函式、reorder、restore／restoreAutoHidden、remove、removePlayer 與 74c2656 對應行逐行 diff 亦為空，差異只有上面那批換名與新增的世代號檢查三行。App 自己的 10 支 useEffect 宣告順序三個切片後完全不變（`node scripts/app-structure.mjs` 對照）。
-- 三切片驗證：vitest 126／tsc／build／check:i18n 99 顆（10 語系）全綠。
+  - speaker 留在 App：controller 只給 `noteRemoved(id, speaker)` 回報「該撥給誰」。
+  - 換名：characters→characters.list／.active／.archived／.images／.avatars／.player／.metaOf／.refresh()／.reorder／.restore／.reloadGmImage／.reloadPlayer／.reloadImages／.onArrived；controller 內 setError→onError、`worldId: table`→`worldId`。
+- 切片 9（6a0fc3e）：`controllers/useChatController.ts`（464）。搬走 events／undone／undoBusy／input／generating／streamText／generatingRef／lastTurnAt／pingCount／keepaliveOff／awayTooLong＋appendEvent／postOpening／undoLast／restoreUndone／noteTurnDone／keepalive effect／replyOnce／requestReply／narrateOnce／gmNarrate／gmAdvance／replyFromTarget／send／submitText／canRestore，以及 PLAYER_SENTINEL／KEEPALIVE_*／nowTs。2829→2563。
+  - hook 掛在開桌 effect 與 bottomRef effect 之間（cardInterface 之前，那支要吃 chat.submitText）；App 自己剩下的 9 支 useEffect 宣告順序不變。
+  - 換名（controller 內）：table→worldId、setError→onError、characters.metaOf→metaOf、characters.player?.name→playerName、characters.active.length→castCount、characters.onArrived→onArrived、tableState.refresh→refreshState、noteChatRequest→noteChatStarted、markCliConnectedFromChat→markCliConnected、setOpeningChoice(null)→closeOpeningChoice()、setWorlds(await list_worlds)→refreshWorlds()、undone.table→undone.worldId。
+  - 換名（App 端）：events／generating／streamText／input／awayTooLong／canRestore→chat.*；`generating !== null`→chat.busy；setEvents(transcript)→chat.hydrate；undoLastImport 的 setEvents(await read_transcript)→chat.reload()；advanceScene／regenerateSummary 的 setGenerating+setStreamText 對→chat.beginNarration()／chat.endNarration()。
+  - App 端 markCliConnectedFromChat 與 noteChatRequest 改 useCallback（本體逐字相同，後者移到 chat 掛載點之前），新增 refreshWorlds／closeOpeningChoice，gmTargeted 提前；submitText 提到 send 之前、canRestore 提到 restoreUndone 之前（useCallback 有 TDZ）。requestReply 不對外公開（唯一使用者是 controller 內部的 replyFromTarget）。
+- 行為對照（第二批用逐行 diff 而非整段逐字）：切片 6／7 的搬移區塊與前一 commit 對應行在換名後 diff 為空；切片 8 差異只有換名與世代號檢查三行；切片 9 與 50de5ae:src/App.tsx 1413-1664 換名後逐行 diff，差異只有 useCallback 包裝、上述換名、keepalive effect 多一行 latest-ref 說明註解，與 send／submitText、canRestore 的宣告位置。
+- 四切片驗證：vitest 126／tsc／build／check:i18n 99 顆（10 語系）全綠。
 - **第一批完整 16 項回歸（2026-08-13）**：通過＝1、2、3、4、10 開關半、11、13 前半、14、15、16。三張測試桌全刪，磁碟確認 26 桌零改動。
 - **切片 6／7 針對回歸（2026-08-13）**：第 10、16、9 項與 A→B→A 全通過。
-- **切片 8 針對回歸（2026-08-13，打當前碼的 release 包、自建測試桌）**：第 15 項通過（建卡→裁圖→存檔→側欄縮圖更新→封存→隱藏區還原→建玩家卡→刪玩家卡→刪角色卡，確認框都帶對名字，未儲存離開 guard 有攔且 Cancel 留在編輯器）；第 2 項通過（匯入角色卡直匯這桌，再匯第二張走路由框選「開新桌並匯入」，新桌名／角色／狀態列／卡片介面都正確）；第 16 項通過（復原後角色卡收回、發言對象撥回 GM、卡片介面鈕與復原鈕一起消失、GM 圖回到書本圖）；A→B→A 通過（兩桌各有角色圖，來回切換零殘留，狀態列／狀態樹隨桌正確出現與消失）。兩張測試桌已刪，26 桌今天零改動（僅使用者自己 03:05／09:04 玩過的兩桌），last_world 復原成 Furry World。
+- **切片 8 針對回歸（2026-08-13，打當前碼的 release 包、自建測試桌）**：第 15、2、16 項與 A→B→A 全通過。兩張測試桌已刪，26 桌零改動，last_world 復原成 Furry World。
+- **切片 9 針對回歸（2026-08-13，打當前碼的 release 包、自建兩張測試桌）**：第 14 項通過（改名 header 與側欄同步、A↔B 切換、刪非當前桌不影響當前桌、刪當前桌自動跳到最後活動那桌，確認框都帶對名字）；第 8 項通過（匯入卡的開場白貼上檯面→收回→訊息消失且「復原剛收回的」出現→復原→訊息回來且該鈕消失，收回／換幕鈕的 enabled 狀態全程正確）；A→B→A 通過（訊息／角色／發言對象／卡片介面鈕／復原上次匯入鈕全部隨桌切換，零殘留）；第 6、7 項只驗到按鈕狀態（空桌 disabled、有訊息有角色後 enabled），實際送出與換幕花額度留給使用者。順帶通過第 2 項（匯入角色卡＋38 條世界書）、第 5 項的面板部分（開得出來、展得開、貼得出、貼完自動關）、第 10 項的開關半（匯入後卡片介面自動打開、✕ 關得掉）。兩張測試桌已刪，26 桌今天零改動（僅使用者自己玩過的兩桌），last_world 復原成 Furry World。
+- **非迴歸的觀察**：Furry World 那桌「GM 推進」是 disabled，測試桌匯入角色後立刻 enabled——條件 `characters.active.length === 0` 拆分前後逐字相同，該桌的角色應是 auto_hidden 未出場。
 - **留給使用者的**：5（開場白翻譯語感）、6（聊天一輪）、7（換幕／分岔／退回／重生摘要）、8（收回訊息＋復原）、9 的計數器與分支綁定實際套用、10 的殼內按鈕送出、12（AI 生成新桌／世界書 AI 重構，已欠三輪）、13 後半與 14 的「無桌時補範例桌」。
 - **三個既有問題（非拆分造成，等使用者決定要不要另立案）**：(a) ActReader 的「從這一幕繼續」按鈕在 app 裡不渲染——JSX 與 App.css 從拆分起點 591a2e0 至今零差異；(b) 編輯角色卡有未儲存變更時從側欄換桌不會攔，`canLeaveEditor()` 拆分前後都只掛在 editCard／openPlayerCard／openWorldEditor 三處；(c) 卡片介面覆蓋層開著時按 Esc 關不掉（切片 6 實測，切片 8 再次確認要用 ✕ 才關得掉）。(c) 推斷是鍵盤焦點落在沙盒 iframe、宿主 window 收不到 keydown，非本次拆分造成。
 
 ## Next action
-切片 9：把 events／undone／generating／streamText／input／undo 與 keepalive ref／對話 handler 抽成 `src/controllers/useChatController.ts`（generating 對外公開為 chat.busy 給桌次操作讀，注入 tableState.refresh／refreshWorlds／imports.noteChatStarted／characters.onArrived／onError），收尾跑三綠＋逐行 diff＋回歸第 6、7、8、14 項（花額度的部分留給使用者）與 A→B→A。
+切片 10：把 importChoice／importRoute／importReceipts／chattedSinceImport／17 支匯入流程／開場白選擇（openingChoice／openingExpanded／openingTransState／openingTransAllBusy／openingTransAbort）抽成 `src/controllers/useImportController.ts`（注入 characters.refresh／tableState.refresh／cardInterface.refresh／refreshWorlds／enterTable／chat.reload／onError），收尾跑三綠＋逐行 diff＋回歸第 2、3、4、5、16 項與 A→B→A（第 5 項的翻譯花額度，只驗面板開得出來、選得到、關得掉）。
 
 ## Constraints
 - 一個對話做 1–2 個切片；每個對話結束要產出下一棒的起手提示詞。
