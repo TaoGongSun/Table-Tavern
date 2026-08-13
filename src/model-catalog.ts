@@ -3,6 +3,16 @@
 //
 // 清單一律開 app 預熱一次就放著（見 App.tsx 的 prefetchModelCatalogs）：抓一支要
 // 0.9～2.2 秒（agy／grok 走網路查詢），擺在設定頁裡抓等於每次點開都罰站。
+import { t } from "./i18n";
+
+// 檔位只是三個插槽，UI 以品質高低命名；內部 key（卡片 frontmatter／config.json）維持不變
+const TIER_LABEL_KEYS = {
+  best: "tierBest",
+  balanced: "tierBalanced",
+  fast: "tierFast",
+} as const;
+
+export const tierLabel = (tier: keyof typeof TIER_LABEL_KEYS) => t(TIER_LABEL_KEYS[tier]);
 
 export interface ModelOption {
   id: string;
