@@ -28,3 +28,7 @@ export async function detectClis(force = false): Promise<CliInfo[]> {
   cliCache = detected;
   return detected;
 }
+
+export function cliConnectedKey(id: string) {
+  return `cli_connected:${id}`;
+}
