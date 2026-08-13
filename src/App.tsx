@@ -8,11 +8,12 @@ import { isCharacterHidden } from "./character-visibility";
 import { tierLabel } from "./model-catalog";
 import { prefetchModelCatalogs } from "./model-catalog-store";
 import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "./appearance";
-import { AppConfig, TranscriptEvent, WorldbookEntry } from "./backend-contracts";
+import { AppConfig, SceneLabel, StateNode, TranscriptEvent, WorldbookEntry, WorldState } from "./backend-contracts";
 import { CharacterCard, CharacterMeta, PALETTE } from "./card-model";
 import { cliConnectedKey } from "./cli";
 import { useDragReorder } from "./drag-reorder";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
+import { loadBranchBindings, treeValueAt, useTableStateController } from "./controllers/useTableStateController";
 import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
 import { SettingsWindow } from "./views/SettingsWindow";
@@ -116,56 +117,6 @@ function serializeGeneratedOutline(outline: GeneratedOutline): string {
 function resizeGeneratedCharacterTagline(target: HTMLTextAreaElement) {
   target.style.height = "auto";
   target.style.height = `${target.scrollHeight}px`;
-}
-
-interface WorldState {
-  id: string;
-  name: string;
-  player_card_id: string | null;
-  model_bindings: Record<string, string>;
-  current_scene: number;
-  catchup_summaries: Record<string, string>;
-  // 換幕順手取的幕名：key 是內部場號字串（0 起算），對應後端 WorldState.scene_titles
-  scene_titles: Record<string, string>;
-  // 分岔後內部場號與顯示編號脫鉤：沒進這張表的幕＝原線，顯示編號就是內部場號
-  scene_labels: Record<string, SceneLabel>;
-  state: {
-    table: Record<string, string>;
-    tree: Record<string, StateNode>;
-    // 全量桌的跳動警示：路徑（點分）→ 顯示標記（"+40"／"-80"），增量桌一律是空物件
-    jumps?: Record<string, string>;
-  };
-}
-
-// 分岔幕的顯示身分：base＝玩家看到的幕號（0 起算），version＝同編號的第幾條，
-// parent＝上一幕的內部場號（退回前幕靠它，分岔之後「場號 −1」不再成立）
-interface SceneLabel {
-  base: number;
-  version: number;
-  parent: number | null;
-  // 分岔複製來的幕：開頭那則是真實對話而非前情提要，換幕的兩條補救路都不適用
-  forked?: boolean;
-}
-
-// 狀態樹節點：葉子是值，分支是子節點（對應後端 StateNode 的 untagged 序列化）
-type StateNode = string | { [key: string]: StateNode };
-
-// 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
-function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
-  let node: StateNode | undefined = tree[path[0]];
-  for (const key of path.slice(1)) {
-    if (typeof node !== "object" || node === null) return "";
-    node = node[key];
-  }
-  return typeof node === "string" ? node : "";
-}
-
-// 分支指認清單：auto＝後端同名自動比對出來的結果，還沒真的存進 state.json
-interface BranchBinding {
-  path: string[];
-  characterId: string;
-  characterName: string;
-  auto: boolean;
 }
 
 // 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；
@@ -304,8 +255,6 @@ function App() {
   const [sponsorUnlocked, setSponsorUnlocked] = useState(false);
   const [characters, setCharacters] = useState<CharacterMeta[]>([]);
   const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
-  // 分支指認清單：每條狀態樹分支目前綁給哪個角色，換桌／讀狀態一起重載
-  const [branchBindings, setBranchBindings] = useState<BranchBinding[]>([]);
   // 本幕出場集合：換桌／切幕由 enterTable 呼叫 scene_appearances 初始化，
   // 之後每次 gm_narrate 回傳的 arrived_characters 併入——auto_hidden 卡一登場就立刻從隱藏區移回主區
   const [sceneAppearances, setSceneAppearances] = useState<Set<string>>(new Set());
@@ -329,9 +278,6 @@ function App() {
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [sceneLabels, setSceneLabels] = useState<Record<string, SceneLabel>>({});
-  const [tableState, setTableState] = useState<Record<string, string>>({});
-  const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
-  const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
   // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
@@ -343,9 +289,6 @@ function App() {
   // 連按時前一次的寫檔還沒回來就再按，兩次會讀到同一份舊狀態而重複收回／放回同一則；
   // 用旗標讓同一時間只跑一次（寫檔是毫秒級，擋掉的那下感覺不出來）
   const undoBusy = useRef(false);
-  // Enter 送出會接著觸發 blur，Esc 也會先失焦；旗標避免重複送出或把取消誤存。
-  const stateFieldSaveBusy = useRef(false);
-  const stateFieldEditCancelled = useRef(false);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
   // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
@@ -440,12 +383,6 @@ function App() {
   const [chattedSinceImport, setChattedSinceImport] = useState(false);
   // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
-  // 編輯中的欄位：path 是樹裡的完整路徑，平欄則是長度 1 的路徑（tree=false，走舊的單層存檔）
-  const [editingStateField, setEditingStateField] = useState<{
-    path: string[];
-    tree: boolean;
-    value: string;
-  } | null>(null);
   const [genTableOpen, setGenTableOpen] = useState(false);
   const [genInput, setGenInput] = useState("");
   const [genGenres, setGenGenres] = useState<string[]>([]);
@@ -458,6 +395,10 @@ function App() {
   const [genCharacterHint, setGenCharacterHint] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // 狀態列／狀態樹：平欄、樹、跳動記號、分支指認與編輯中的那一格都在 controller 裡。
+  // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
+  const tableState = useTableStateController({ worldId: table, onError: setError });
 
   async function loadCharacterImages(worldId: string, cast: CharacterMeta[]) {
     const entries = await Promise.all(
@@ -634,7 +575,7 @@ function App() {
   const cardInterface = useCardInterfaceController({
     worldId: table,
     events,
-    tableTree,
+    tableTree: tableState.tree,
     submitText,
   });
 
@@ -645,14 +586,14 @@ function App() {
       scene: state.current_scene,
     });
     const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: id });
+    // 綁定清單先讀完再進同步區：hydrate 只做 state commit，中間不留 await（免得 React batch
+    // 被切斷，畫面出現「新桌的狀態樹＋舊桌的訊息」這種跨桌混合）
+    const bindings = await loadBranchBindings(id);
     setTable(id);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
     setSceneLabels(state.scene_labels ?? {});
-    setTableState(state.state?.table ?? {});
-    setTableTree(state.state?.tree ?? {});
-    setTableJumps(state.state?.jumps ?? {});
-    setBranchBindings(await loadBranchBindings(id));
+    tableState.hydrate(state.state, bindings);
     setEvents(transcript);
     setCharacters(cast);
     // 本幕已出場集合：auto_hidden 卡是否落在主區靠這份初始化，讀不到就當空集合（全部從隱藏區起算）
@@ -673,7 +614,7 @@ function App() {
     // 隱藏區的卡（含本幕還沒出場的 auto_hidden）不當預設對象，跟側欄主區顯示一致
     setSpeaker(cast.find((character) => !isCharacterHidden(character, appearanceIds))?.id ?? GM_TARGET);
     setEditingName(null);
-    setEditingStateField(null);
+    tableState.clearEdit();
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
     setMainView(null);
     setActsOpen(false);
@@ -908,33 +849,15 @@ function App() {
     );
   }
 
-  // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。
-  async function saveStateField(path: string[], tree: boolean, value: string) {
-    if (stateFieldSaveBusy.current || stateFieldEditCancelled.current) return;
-    setEditingStateField(null);
-    if (value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
-    stateFieldSaveBusy.current = true;
-    setError("");
-    try {
-      if (tree) await invoke("set_state_path", { worldId: table, path, value });
-      else await invoke("set_table_state", { worldId: table, fields: { [path[0]]: value } });
-      await refreshTableState();
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      stateFieldSaveBusy.current = false;
-    }
-  }
-
   // 表單交給瀏覽器處理 Enter，中文輸入法選字時不會提前送出。
   function stateFieldForm(path: string[], tree: boolean, label: string) {
-    const value = editingStateField?.value ?? "";
+    const value = tableState.editing?.value ?? "";
     return (
       <form
         className="state-bar-field-form"
         onSubmit={(event) => {
           event.preventDefault();
-          void saveStateField(path, tree, value);
+          void tableState.save(path, tree, value);
         }}
       >
         <input
@@ -944,13 +867,12 @@ function App() {
           aria-label={label}
           onChange={(event) => {
             const next = event.currentTarget.value;
-            setEditingStateField((previous) => (previous ? { ...previous, value: next } : previous));
+            tableState.changeEditValue(next);
           }}
-          onBlur={() => void saveStateField(path, tree, value)}
+          onBlur={() => void tableState.save(path, tree, value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              stateFieldEditCancelled.current = true;
-              setEditingStateField(null);
+              tableState.cancelEdit();
             }
           }}
         />
@@ -961,11 +883,11 @@ function App() {
   // 一列點著就能改的欄位：平欄與樹葉子共用，差別只在存回哪裡
   function stateLeafRow(path: string[], tree: boolean, label: string) {
     const editing =
-      editingStateField?.tree === tree &&
-      editingStateField.path.length === path.length &&
-      editingStateField.path.every((segment, index) => segment === path[index]);
-    const value = tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? "");
-    const jumpMark = tableJumps[path.join(".")];
+      tableState.editing?.tree === tree &&
+      tableState.editing.path.length === path.length &&
+      tableState.editing.path.every((segment, index) => segment === path[index]);
+    const value = tree ? treeValueAt(tableState.tree, path) : (tableState.fields[path[0]] ?? "");
+    const jumpMark = tableState.jumps[path.join(".")];
     return (
       <div className="state-bar-field" key={path.join("\0")}>
         <span className="state-bar-label">{label}</span>
@@ -977,10 +899,7 @@ function App() {
               className="state-bar-value"
               type="button"
               title={t("stateEditHint")}
-              onClick={() => {
-                stateFieldEditCancelled.current = false;
-                setEditingStateField({ path, tree, value });
-              }}
+              onClick={() => tableState.beginEdit(path, tree, value)}
             >
               {value ? displayUserMacro(value, playerCard?.name || t("playerLabel")) : t("stateEmptyValue")}
             </button>
@@ -989,7 +908,7 @@ function App() {
                 className="state-bar-jump"
                 type="button"
                 title={t("stateJumpHint")}
-                onClick={() => void markStateCounter(path)}
+                onClick={() => void tableState.markCounter(path)}
               >
                 {"⚠ " + jumpMark}
               </button>
@@ -1002,7 +921,7 @@ function App() {
 
   // 玩家卡目前指認到的分支路徑，含所有祖先（自己與上面每一層都要預設展開），沒指認就是空集合
   const openBranchPaths = useMemo(() => {
-    const bound = playerCard && branchBindings.find((b) => b.characterId === playerCard.id);
+    const bound = playerCard && tableState.bindings.find((b) => b.characterId === playerCard.id);
     const set = new Set<string>();
     if (bound) {
       for (let depth = 1; depth <= bound.path.length; depth += 1) {
@@ -1010,14 +929,14 @@ function App() {
       }
     }
     return set;
-  }, [playerCard, branchBindings]);
+  }, [playerCard, tableState.bindings]);
 
   // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉
   function stateTreeNodes(nodes: Record<string, StateNode>, path: string[], depth: number) {
     return Object.entries(nodes).map(([key, node]) => {
       const childPath = [...path, key];
       if (typeof node === "string") return stateLeafRow(childPath, true, key);
-      const bound = branchBindings.find(
+      const bound = tableState.bindings.find(
         (binding) =>
           binding.path.length === childPath.length &&
           binding.path.every((segment, index) => segment === childPath[index]),
@@ -1043,8 +962,8 @@ function App() {
                 onPointerDown={(event) => event.stopPropagation()}
                 onChange={(event) => {
                   const nextId = event.currentTarget.value;
-                  if (nextId) void bindBranch(nextId, childPath);
-                  else if (bound) void bindBranch(bound.characterId, null);
+                  if (nextId) void tableState.bind(nextId, childPath);
+                  else if (bound) void tableState.bind(bound.characterId, null);
                 }}
               >
                 <option value="">{t("stateBranchUnbound")}</option>
@@ -1060,44 +979,6 @@ function App() {
         </details>
       );
     });
-  }
-
-  async function refreshTableState() {
-    const state = await invoke<WorldState>("read_state", { worldId: table });
-    setTableState(state.state?.table ?? {});
-    setTableTree(state.state?.tree ?? {});
-    setTableJumps(state.state?.jumps ?? {});
-    setBranchBindings(await loadBranchBindings(table));
-  }
-
-  // 玩家點跳動記號：把該欄永久標成計數器，之後全量桌跳動比對不再對它示警
-  async function markStateCounter(path: string[]) {
-    setError("");
-    try {
-      await invoke("mark_state_counter", { worldId: table, path });
-      await refreshTableState();
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 綁定清單載入失敗就當空陣列——面板本來就能在沒有綁定資料時正常運作，不因此整個掛掉
-  async function loadBranchBindings(worldId: string): Promise<BranchBinding[]> {
-    try {
-      return await invoke<BranchBinding[]>("branch_bindings", { worldId });
-    } catch {
-      return [];
-    }
-  }
-
-  // 指認／解除分支給角色；成功後重載綁定清單，失敗照面板既有規矩交給 setError
-  async function bindBranch(characterId: string, path: string[] | null) {
-    try {
-      await invoke("set_branch_binding", { worldId: table, characterId, path });
-      setBranchBindings(await loadBranchBindings(table));
-    } catch (reason) {
-      setError(String(reason));
-    }
   }
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
@@ -1226,7 +1107,7 @@ function App() {
       // 貼出的開場白被一起收掉：檯面與狀態快照都變了，重讀這一幕
       if (report.removed_opening) {
         setEvents(await invoke<TranscriptEvent[]>("read_transcript", { worldId: table, scene }));
-        await refreshTableState();
+        await tableState.refresh();
       }
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
@@ -1677,7 +1558,7 @@ function App() {
       const event = await invoke<TranscriptEvent>("post_opening", { worldId: table, scene, ts: nowTs(), text });
       setEvents((previous) => [...previous, event]);
       setUndone(null);
-      await refreshTableState();
+      await tableState.refresh();
       setOpeningChoice(null);
     } catch (reason) {
       setError(String(reason));
@@ -1698,7 +1579,7 @@ function App() {
           ? { ...previous, events: [...previous.events, last] }
           : { table, scene, events: [last] },
       );
-      await refreshTableState();
+      await tableState.refresh();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -1721,7 +1602,7 @@ function App() {
           ? { ...previous, events: previous.events.slice(0, -1) }
           : null,
       );
-      await refreshTableState();
+      await tableState.refresh();
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -1834,7 +1715,7 @@ function App() {
         text: [t("stateUpdateHeader"), ...updates.map((u) => `${u.path}：${u.value}`)].join("\n"),
       });
     }
-    await refreshTableState();
+    await tableState.refresh();
     await markCliConnectedFromChat();
     noteTurnDone();
     return next;
@@ -1993,11 +1874,11 @@ function App() {
     { key: "time", label: t("stateFieldTime") },
     { key: "place", label: t("stateFieldPlace") },
     { key: "present", label: t("stateFieldPresent") },
-    ...Object.keys(tableState)
+    ...Object.keys(tableState.fields)
       .filter((key) => !["time", "place", "present"].includes(key))
       .map((key) => ({ key, label: key })),
   ];
-  const stateValue = (key: string) => tableState[key] || t("stateEmptyValue");
+  const stateValue = (key: string) => tableState.fields[key] || t("stateEmptyValue");
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
   const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
@@ -2494,7 +2375,7 @@ function App() {
           </div>
         </header>
 
-        {mainView === null && (hasStateBar || Object.keys(tableTree).length > 0) && (
+        {mainView === null && (hasStateBar || Object.keys(tableState.tree).length > 0) && (
         <details
           className="state-bar"
           open={stateBarOpen}
@@ -2513,7 +2394,7 @@ function App() {
           </summary>
           <div className="state-bar-fields">
             {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}
-            {stateTreeNodes(tableTree, [], 0)}
+            {stateTreeNodes(tableState.tree, [], 0)}
           </div>
         </details>
         )}
@@ -2625,7 +2506,7 @@ function App() {
                 await loadPlayerCard(table, state.player_card_id);
                 await cardInterface.refreshInterfaces(table);
                 await cardInterface.refreshShell(table);
-                await refreshTableState();
+                await tableState.refresh();
                 await refreshImportReceipts(table);
               }}
             />
