@@ -2091,8 +2091,10 @@ async fn chat_with_character(
         &transport::ui_language(&config),
     );
     let closing = format!(
-        "現在輪到「{}」回應。請直接以角色視角輸出台詞、動作與心理描寫，不要加名字前綴、不要任何角色之外的說明。",
-        card.name
+        "現在輪到「{name}」回應。請直接用第三人稱輸出「{name}」的動作、台詞與心理描寫，\
+         敘述主詞是「{name}」或「他／她」、不要用「我」，說出口的話寫在引號裡；\
+         不要加名字前綴、不要任何角色之外的說明。",
+        name = card.name
     );
     stream_via_transport(
         &app,
