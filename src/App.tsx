@@ -60,8 +60,11 @@ function App() {
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [sponsorUnlocked, setSponsorUnlocked] = useState(false);
-  // 角色卡編輯器每次 render 掛上「可以離開嗎」；側欄任何會換掉編輯畫面的入口都先問它
+  // 角色卡編輯器每次 render 掛上「可以離開嗎」；任何會換掉編輯畫面的入口都先問它
   const leaveGuard = useRef<(() => Promise<boolean>) | null>(null);
+  // 守門有入口落在 controller 的 callback 裡（匯入路由框的「開新桌並匯入」），那些閉包不隨
+  // 主欄畫面重建，走 ref 才問得到當下這個畫面（比照 chatConfigRef）
+  const canLeaveRef = useRef<() => Promise<boolean>>(async () => true);
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
@@ -306,6 +309,7 @@ function App() {
   const openTableForImport = useCallback(
     async (label: string) => {
       if (!config || chat.busy) return null;
+      if (!(await canLeaveRef.current())) return null;
       const id = await invoke<string>("create_world", { name: label });
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       await enterTable(id, config);
@@ -381,8 +385,12 @@ function App() {
     }
   }
 
+  // 換桌／換幕／跳單幕閱讀都會清掉主欄的編輯畫面（enterTable 尾端 setMainView(null)），
+  // 所以每個入口都要在動任何檔案之前先問未儲存——守門不能收進 enterTable，
+  // 那時 create_world 之類的副作用已經發生，取消就會留下半張桌
   async function switchTable(id: string) {
     if (!config || id === table || chat.busy) return;
+    if (!(await canLeaveEditor())) return;
     setError("");
     try {
       const previous = table;
@@ -409,6 +417,7 @@ function App() {
 
   async function newTable() {
     if (!config || chat.busy) return;
+    if (!(await canLeaveEditor())) return;
     setError("");
     try {
       const existingNames = worlds.map((w) => w.name);
@@ -426,6 +435,13 @@ function App() {
     } catch (reason) {
       setError(String(reason));
     }
+  }
+
+  // 一句話開桌的守門在「開對話框」這一刻，不在生成完成之後：等 AI 生完才問未儲存，
+  // 玩家答取消就白花一次生成、磁碟上還多一張進不去的桌
+  async function openGenerateTable() {
+    if (!(await canLeaveEditor())) return;
+    setGenTableOpen(true);
   }
 
   // AI 把綱要展開成一張真的桌之後：桌次清單重讀，直接進去新桌
@@ -507,6 +523,8 @@ function App() {
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
   async function advanceScene() {
+    // 標題列不隨主欄畫面收起，編輯角色卡時這顆鈕照樣按得到
+    if (!(await canLeaveEditor())) return;
     setError("");
     chat.beginNarration();
     try {
@@ -681,6 +699,7 @@ function App() {
     if (ok) leaveGuard.current = null;
     return ok;
   }
+  canLeaveRef.current = canLeaveEditor;
 
   async function editCard(id: string) {
     if (mainView?.kind === "character" && mainView.id === id) return;
@@ -736,6 +755,13 @@ function App() {
     } catch (reason) {
       setError(String(reason));
     }
+  }
+
+  // 前幕浮層點一幕＝整面換成單幕閱讀，一樣會蓋掉編輯畫面
+  async function openSceneReader(n: number) {
+    if (!(await canLeaveEditor())) return;
+    setMainView({ kind: "scene", n });
+    setActsOpen(false);
   }
 
   // 隱藏區與角色卡編輯畫面共用同一條刪除路徑：確認框與刪檔在 controller，這裡接善後
@@ -802,6 +828,8 @@ function App() {
     if (answer === "keep") return;
     const current = chatConfigRef.current;
     if (!current) return;
+    // 重生完會直接進新的範例桌，等於換桌
+    if (!(await canLeaveEditor())) return;
     setError("");
     try {
       const id = await invoke<string>("create_sample_world", {
@@ -835,7 +863,7 @@ function App() {
         renameForm={renameForm}
         onStartRename={(name) => setEditingName({ at: "list", value: name })}
         onNewTable={() => void newTable()}
-        onGenerateTable={() => setGenTableOpen(true)}
+        onGenerateTable={() => void openGenerateTable()}
         onSwitchTable={(id) => void switchTable(id)}
         onDeleteTable={(id) => void deleteTable(id)}
         gmId={GM_TARGET}
@@ -904,10 +932,7 @@ function App() {
           actsOpen={actsOpen && scene > 0}
           scene={scene}
           onHideActs={() => setActsOpen(false)}
-          onOpenScene={(n) => {
-            setMainView({ kind: "scene", n });
-            setActsOpen(false);
-          }}
+          onOpenScene={(n) => void openSceneReader(n)}
           sceneLabelOf={sceneDisplayLabel}
           world={table}
           worldName={tableName}
