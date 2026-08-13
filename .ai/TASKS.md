@@ -1,7 +1,7 @@
 # Project tasks
 
 ## In progress
-- [app-split](tasks/app-split.md) — App.tsx 拆分：三批 15 切片（元件搬移→controller hook→受控 view） — 下一步：切片 10：把 importChoice／importRoute／importReceipts／chattedSinceImport／17 支匯入流程／開場白選擇（openingChoice／openingExpanded／openingTransState／openingTransAllBusy／openingTransAbort）抽成 `src/controllers/useImportController.ts`（注入 characters.refresh／tableState.refresh／cardInterface.refresh／refreshWorlds／enterTable／chat.reload／onError），收尾跑三綠＋逐行 diff＋回歸第 2、3、4、5、16 項與 A→B→A（第 5 項的翻譯花額度，只驗面板開得出來、選得到、關得掉）。
+- [app-split](tasks/app-split.md) — App.tsx 拆分：三批 15 切片（元件搬移→controller hook→受控 view） — 下一步：切片 12：把桌次＋角色側欄那段 JSX（約 270 行）抽成 `views/TableSidebar.tsx` 受控元件，只吃 controller 的 view model 與 actions，收尾跑三綠＋逐行 diff＋回歸第 1、15 項與 A→B→A。
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 `refactor-outcome-export`，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 `person-promote` 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 `ai-card-refactor` 的 A–E 一起實機驗收、兩案一起結案
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 `ai-card-refactor` 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
