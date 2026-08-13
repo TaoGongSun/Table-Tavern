@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, setLang, t } from "./i18n";
@@ -14,6 +14,7 @@ import { cliConnectedKey } from "./cli";
 import { useDragReorder } from "./drag-reorder";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
+import { useChatController } from "./controllers/useChatController";
 import { loadBranchBindings, treeValueAt, useTableStateController } from "./controllers/useTableStateController";
 import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
@@ -127,8 +128,6 @@ function displayUserMacro(value: string, playerName: string): string {
   return value.replace(USER_MACRO, playerName);
 }
 
-// GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
-const PLAYER_SENTINEL = "__PLAYER__";
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 const GM_TARGET = "__GM__";
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
@@ -161,19 +160,9 @@ const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;
 // 提醒的理由改成「紀錄長到模型顧不上前面」，門檻從 8000 提到 30000（2026-08-04 實測拍板）。
 const SCENE_LENGTH_HINT_CHARS = 30000;
 
-// 保溫 ping（prompt-cache-optimization 包 7）：快取只活五分鐘，玩家慢慢想的時候先讀一次
-// 既有快取把壽命重新計時，代價約為讓它過期重建的十二分之一。連三次（約十二分鐘）都沒等到
-// 玩家推進就收手改提示換幕——人真的離開時，長紀錄每次回來都要全額重建，那時短紀錄才便宜。
-const KEEPALIVE_TICK_MS = 30 * 1000;
-const KEEPALIVE_AFTER_MS = 3.5 * 60 * 1000;
-const KEEPALIVE_MAX_PINGS = 3;
 // 離開太久的換幕提醒還要紀錄夠長才有意義：短紀錄重建本來就便宜，換幕反而多花一次摘要錢。
 // 保溫仍照樣停在三次（那是省錢邏輯），這個門檻只決定要不要出聲提醒。
 const SCENE_AWAY_HINT_MIN_CHARS = 8000;
-
-function nowTs() {
-  return new Date().toISOString();
-}
 
 function openingPreview(text: string) {
   const preview = text
@@ -260,32 +249,6 @@ function App() {
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [sceneLabels, setSceneLabels] = useState<Record<string, SceneLabel>>({});
-  const [events, setEvents] = useState<TranscriptEvent[]>([]);
-  // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
-  // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
-  const [undone, setUndone] = useState<{
-    table: string;
-    scene: number;
-    events: TranscriptEvent[];
-  } | null>(null);
-  // 連按時前一次的寫檔還沒回來就再按，兩次會讀到同一份舊狀態而重複收回／放回同一則；
-  // 用旗標讓同一時間只跑一次（寫檔是毫秒級，擋掉的那下感覺不出來）
-  const undoBusy = useRef(false);
-  const [input, setInput] = useState("");
-  // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
-  // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 characters.metaOf(id) 即時查
-  const [generating, setGenerating] = useState<{
-    id: string;
-    kind: "dialogue" | "narration";
-  } | null>(null);
-  const [streamText, setStreamText] = useState("");
-  // 保溫 ping 的節奏狀態：上次真正推進的時刻、已連發幾次、這桌是否根本沒得保溫（非 claude 模式）
-  const generatingRef = useRef<{ id: string; kind: "dialogue" | "narration" } | null>(null);
-  generatingRef.current = generating;
-  const lastTurnAt = useRef(Date.now());
-  const pingCount = useRef(0);
-  const keepaliveOff = useRef(false);
-  const [awayTooLong, setAwayTooLong] = useState(false);
   // 改桌名可從兩處進入：主欄標題（header）與側欄目前桌那一列（list）；at 決定輸入框長在哪
   const [editingName, setEditingName] = useState<{
     at: "header" | "list";
@@ -412,7 +375,7 @@ function App() {
   // 串流期間 config 可能已被設定頁改寫，走 ref 取最新值，避免舊閉包蓋掉剛存的設定
   const chatConfigRef = useRef(config);
   chatConfigRef.current = config;
-  async function markCliConnectedFromChat() {
+  const markCliConnectedFromChat = useCallback(async () => {
     const current = chatConfigRef.current;
     if (!current) return;
     const transport = current.preferences["transport"];
@@ -429,7 +392,7 @@ function App() {
     } catch (reason) {
       setError(String(reason));
     }
-  }
+  }, []);
 
   const textSize = String(config?.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
   useEffect(() => {
@@ -488,9 +451,46 @@ function App() {
     })();
   }, []);
 
+  // AI 回一輪後桌次依最後活動重排，聊天流程收尾要重讀清單
+  const refreshWorlds = useCallback(async () => {
+    setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+  }, []);
+
+  // 向 AI 發出對話請求：從這一刻起收掉「復原上次匯入」，免得演到一半誤按整張卡沒了
+  const noteChatRequest = useCallback(() => {
+    if (!table) return;
+    localStorage.setItem(chattedKey(table), "true");
+    setChattedSinceImport(true);
+  }, [table]);
+
+  const closeOpeningChoice = useCallback(() => setOpeningChoice(null), []);
+
+  // 發言對象可能是 GM（沒有角色卡）：送出走旁白那條，晶片的名字與顏色也另一套
+  const gmTargeted = speaker === GM_TARGET;
+
+  // 逐字稿、收回堆疊、生成中狀態、輸入框與整條對話流程都在 controller 裡。
+  // 掛在 cardInterface 之前：那支要吃這裡的 submitText。
+  const chat = useChatController({
+    worldId: table,
+    scene,
+    config,
+    speaker,
+    gmTargeted,
+    metaOf: characters.metaOf,
+    playerName: characters.player?.name,
+    castCount: characters.active.length,
+    onArrived: characters.onArrived,
+    refreshState: tableState.refresh,
+    refreshWorlds,
+    noteChatStarted: noteChatRequest,
+    markCliConnected: markCliConnectedFromChat,
+    closeOpeningChoice,
+    onError: setError,
+  });
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events, generating, streamText]);
+  }, [chat.events, chat.generating, chat.streamText]);
 
   // 從世界設定／卡片編輯／單幕閱讀切回對話時，訊息區是重新掛載的，直接跳到底（不跑動畫）
   useEffect(() => {
@@ -512,12 +512,12 @@ function App() {
   }, [table, mainView, characters.list]);
 
   // 卡片介面：介面腳本／重構殼／覆蓋層開關與沙盒訊息都在 controller 裡，
-  // 這裡只餵它需要的四樣（submitText 是 hoisted 函式宣告，controller 內用 latest-ref 收）
+  // 這裡只餵它需要的四樣（送出函式會隨對話狀態換新，controller 內用 latest-ref 收）
   const cardInterface = useCardInterfaceController({
     worldId: table,
-    events,
+    events: chat.events,
     tableTree: tableState.tree,
-    submitText,
+    submitText: chat.submitText,
   });
 
   async function enterTable(id: string, loaded: AppConfig) {
@@ -542,7 +542,7 @@ function App() {
     setSceneTitles(state.scene_titles ?? {});
     setSceneLabels(state.scene_labels ?? {});
     tableState.hydrate(state.state, bindings);
-    setEvents(transcript);
+    chat.hydrate(transcript);
     // 角色圖／GM 圖／玩家卡由 controller 自己的 effect 補：hydrate 先把上一桌的清掉，
     // 這裡一路同步提交，不讓 await 把 React batch 切成跨桌混合的中間畫面
     characters.hydrate(cast, appearanceIds, state.player_card_id);
@@ -565,7 +565,7 @@ function App() {
   }
 
   async function switchTable(id: string) {
-    if (!config || id === table || generating !== null) return;
+    if (!config || id === table || chat.busy) return;
     setError("");
     try {
       const previous = table;
@@ -609,7 +609,7 @@ function App() {
   }
 
   async function newTable() {
-    if (!config || generating !== null) return;
+    if (!config || chat.busy) return;
     setError("");
     try {
       const existingNames = worlds.map((w) => w.name);
@@ -719,7 +719,7 @@ function App() {
   // 刪桌：整桌的角色、紀錄、世界設定一起沒，故確認框把後果講白。
   // 刪掉最後一桌就補一張範例桌——App 不留「沒有桌」的空狀態（NewPlan §9.3 零精靈）
   async function deleteTable(id: string) {
-    if (!config || generating !== null) return;
+    if (!config || chat.busy) return;
     const displayName = worlds.find((w) => w.id === id)?.name ?? id;
     const accepted = await confirm(t("deleteTableConfirm", { name: displayName }), {
       title: t("deleteTableTitle"),
@@ -923,17 +923,15 @@ function App() {
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
   async function advanceScene() {
     setError("");
-    setGenerating({ id: "", kind: "narration" });
-    setStreamText("");
+    chat.beginNarration();
     try {
       await invoke<number>("advance_scene", { worldId: table });
       await enterTable(table, config!);
-      noteTurnDone();
+      chat.noteTurnDone();
     } catch (reason) {
       setError(String(reason));
     } finally {
-      setGenerating(null);
-      setStreamText("");
+      chat.endNarration();
     }
   }
 
@@ -972,17 +970,15 @@ function App() {
   async function regenerateSummary() {
     if (!canUndoScene) return;
     setError("");
-    setGenerating({ id: "", kind: "narration" });
-    setStreamText("");
+    chat.beginNarration();
     try {
       await invoke("regenerate_scene_summary", { worldId: table });
       await enterTable(table, config!);
-      noteTurnDone();
+      chat.noteTurnDone();
     } catch (reason) {
       setError(String(reason));
     } finally {
-      setGenerating(null);
-      setStreamText("");
+      chat.endNarration();
     }
   }
 
@@ -1014,13 +1010,6 @@ function App() {
     setChattedSinceImport(false);
   }
 
-  // 向 AI 發出對話請求：從這一刻起收掉「復原上次匯入」，免得演到一半誤按整張卡沒了
-  function noteChatRequest() {
-    if (!table) return;
-    localStorage.setItem(chattedKey(table), "true");
-    setChattedSinceImport(true);
-  }
-
   // 側欄「復原上次匯入」：逆向收據清單最後一筆，逐筆倒退
   async function undoLastImport() {
     if (importReceipts.length === 0) return;
@@ -1045,7 +1034,7 @@ function App() {
       await characters.reloadGmImage();
       // 貼出的開場白被一起收掉：檯面與狀態快照都變了，重讀這一幕
       if (report.removed_opening) {
-        setEvents(await invoke<TranscriptEvent[]>("read_transcript", { worldId: table, scene }));
+        await chat.reload();
         await tableState.refresh();
       }
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
@@ -1173,7 +1162,7 @@ function App() {
     identity: "character" | "worldbook";
     label: string;
   }) {
-    if (!config || generating !== null) return;
+    if (!config || chat.busy) return;
     const id = await invoke<string>("create_world", { name: pending.label });
     setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     await enterTable(id, config);
@@ -1300,7 +1289,7 @@ function App() {
   async function postTranslatedOpening(index: number) {
     if (openingChoice === null) return;
     const translated = await translateOpeningLine(index);
-    if (translated !== null) await postOpening(translated);
+    if (translated !== null) await chat.postOpening(translated);
   }
 
   // 建卡或改名存檔後：名單與圖片重載；id 全程不變，只有「新卡剛存下」要轉正畫面並選為發言對象
@@ -1410,270 +1399,15 @@ function App() {
     if (await characters.removePlayer(id)) setMainView(null);
   }
 
-  async function appendEvent(event: TranscriptEvent) {
-    await invoke("append_transcript", { worldId: table, scene, event });
-    setEvents((previous) => [...previous, event]);
-    // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
-    setUndone(null);
-  }
-
-  async function postOpening(text: string) {
-    setError("");
-    try {
-      const event = await invoke<TranscriptEvent>("post_opening", { worldId: table, scene, ts: nowTs(), text });
-      setEvents((previous) => [...previous, event]);
-      setUndone(null);
-      await tableState.refresh();
-      setOpeningChoice(null);
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
-  async function undoLast() {
-    if (generating !== null || events.length === 0 || undoBusy.current) return;
-    undoBusy.current = true;
-    setError("");
-    const last = events[events.length - 1];
-    try {
-      if (!(await invoke<boolean>("pop_transcript", { worldId: table, scene }))) return;
-      setEvents((previous) => previous.slice(0, -1));
-      setUndone((previous) =>
-        previous && previous.table === table && previous.scene === scene
-          ? { ...previous, events: [...previous.events, last] }
-          : { table, scene, events: [last] },
-      );
-      await tableState.refresh();
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      undoBusy.current = false;
-    }
-  }
-
-  // 復原一次放回一則，可連按把整輪收回逐則倒回去。
-  // 這裡不走 appendEvent——放回舊句不該把剩下那幾句一起作廢，只消耗疊頂那一則
-  async function restoreUndone() {
-    if (!undone || !canRestore || generating !== null || undoBusy.current) return;
-    undoBusy.current = true;
-    const event = undone.events[undone.events.length - 1];
-    setError("");
-    try {
-      await invoke("append_transcript", { worldId: table, scene, event });
-      setEvents((previous) => [...previous, event]);
-      setUndone((previous) =>
-        previous && previous.events.length > 1
-          ? { ...previous, events: previous.events.slice(0, -1) }
-          : null,
-      );
-      await tableState.refresh();
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      undoBusy.current = false;
-    }
-  }
-
-  // 玩家真的推進了一步：保溫節奏重新開始，離開提示收掉
-  function noteTurnDone() {
-    lastTurnAt.current = Date.now();
-    pingCount.current = 0;
-    keepaliveOff.current = false;
-    setAwayTooLong(false);
-  }
-
-  // 保溫 ping：視窗在前景且距上次推進夠久才發，連三次都沒等到玩家就收手改提示換幕。
-  // 視窗不在前景一律不發——人不在還持續扣錢是最糟的情況。
-  useEffect(() => {
-    if (!table) return;
-    const timer = setInterval(async () => {
-      if (keepaliveOff.current || generatingRef.current !== null) return;
-      if (Date.now() - lastTurnAt.current < KEEPALIVE_AFTER_MS) return;
-      if (pingCount.current >= KEEPALIVE_MAX_PINGS) {
-        setAwayTooLong(true);
-        return;
-      }
-      if (!document.hasFocus()) return;
-      try {
-        const lanes = await invoke<number>("keepalive_lanes", { worldId: table });
-        // 沒有線可保（非 claude 模式、或這桌還沒開過線）：靜靜停掉，不算進次數也不提示離開
-        if (lanes === 0) {
-          keepaliveOff.current = true;
-          return;
-        }
-        pingCount.current += 1;
-        lastTurnAt.current = Date.now();
-      } catch {
-        keepaliveOff.current = true;
-      }
-    }, KEEPALIVE_TICK_MS);
-    return () => clearInterval(timer);
-  }, [table]);
-
-  // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
-  async function replyOnce(characterId: string) {
-    noteChatRequest();
-    setGenerating({ id: characterId, kind: "dialogue" });
-    setStreamText("");
-    const onDelta = new Channel<string>();
-    onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-    const full = await invoke<string>("chat_with_character", {
-      worldId: table,
-      characterId,
-      onDelta,
-    });
-    const name = characters.metaOf(characterId)?.name ?? "";
-    await appendEvent({ ts: nowTs(), speaker_id: characterId, speaker_name: name, kind: "dialogue", text: full });
-    await markCliConnectedFromChat();
-    noteTurnDone();
-  }
-
-  // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
-  async function requestReply(characterId: string) {
-    if (!characterId || generating !== null) return;
-    setError("");
-    try {
-      await replyOnce(characterId);
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setGenerating(null);
-      setStreamText("");
-    }
-  }
-
-  // 單次 GM 旁白＋點名（不含 busy 防護）：後端一次呼叫完成，旁白落 transcript，
-  // 回傳下一位發言者（角色 id／玩家哨兵／null＝GM 沒點名）；失敗往外拋由呼叫端收尾
-  async function narrateOnce(): Promise<string | null> {
-    noteChatRequest();
-    setGenerating({ id: "", kind: "narration" });
-    setStreamText("");
-    const onDelta = new Channel<string>();
-    onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
-    const { text, raw, next, state_updates, arrived_characters } = await invoke<{
-      text: string;
-      raw: string | null;
-      next: string | null;
-      // 後端還沒上線這欄時是 undefined，當空陣列處理，別讓面板炸掉
-      state_updates?: { path: string; value: string }[];
-      // 這輪劇情帶出場的卡 id：併入本幕出場集合，auto_hidden 卡立刻從隱藏區移回主區
-      arrived_characters?: string[];
-    }>("gm_narrate", {
-      worldId: table,
-      onDelta,
-    });
-    if (arrived_characters && arrived_characters.length > 0) {
-      characters.onArrived(arrived_characters);
-    }
-    await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) });
-    // 長文字欄（外貌、貼文…）改用一則系統事件記變動，不再每輪塞回提示詞——
-    // 歷史會被兩條傳輸路每輪重播且吃快取，回合尾動態塊每輪重組、不落歷史
-    const updates = state_updates ?? [];
-    if (updates.length > 0) {
-      await appendEvent({
-        ts: nowTs(),
-        speaker_id: "",
-        speaker_name: "GM",
-        kind: "system",
-        text: [t("stateUpdateHeader"), ...updates.map((u) => `${u.path}：${u.value}`)].join("\n"),
-      });
-    }
-    await tableState.refresh();
-    await markCliConnectedFromChat();
-    noteTurnDone();
-    return next;
-  }
-
-  // 簡易導演：GM 插入旁白（NewPlan §6.1、MVP 第 9 項）；一併回來的點名這裡不用，讓玩家自己決定下一步
-  async function gmNarrate() {
-    if (generating !== null) return;
-    setError("");
-    try {
-      await narrateOnce();
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setGenerating(null);
-      setStreamText("");
-    }
-  }
-
-  // 簡易導演：GM 旁白＋點名→角色接話的接力，至「輪到玩家」、GM 沒點名或每回合上限停下（NewPlan §6.1）
-  async function gmAdvance() {
-    if (!config || generating !== null || characters.active.length === 0) return;
-    setError("");
-    const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
-    try {
-      for (let turn = 0; turn < max; turn += 1) {
-        const next = await narrateOnce();
-        if (next === null) break;
-        // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
-        if (next === PLAYER_SENTINEL) {
-          const you = characters.player?.name || t("playerLabel");
-          await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name: you }) });
-          break;
-        }
-        const name = characters.metaOf(next)?.name ?? next;
-        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
-        await replyOnce(next);
-      }
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setGenerating(null);
-      setStreamText("");
-    }
-  }
-
-  // 請目前的發言對象接話：GM 以旁白回應（讀得到世界設定與全部角色卡），角色就點名接話
-  async function replyFromTarget() {
-    if (speaker === GM_TARGET) await gmNarrate();
-    else if (speaker) await requestReply(speaker);
-  }
-
-  async function send(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await submitText(input);
-  }
-
-  async function submitText(raw: string) {
-    const text = raw.trim();
-    if (generating !== null) return;
-    // 卡片只按了 /trigger（沒帶文字）＝直接要對象接話，不留玩家發言
-    if (!text) {
-      await replyFromTarget();
-      return;
-    }
-    setError("");
-    setInput("");
-    try {
-      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: characters.player?.name || t("playerLabel"), kind: "player", text });
-    } catch (reason) {
-      setError(String(reason));
-      return;
-    }
-    // 沒指定對象＝只把這句留在桌上（描述動作或對全場說），不點名任何人接話
-    await replyFromTarget();
-  }
-
-  // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）
-  const canRestore = undone !== null && undone.table === table && undone.scene === scene;
-
   // 剛換完幕、這一幕只有那則前情提要＝還沒開始玩，兩條補救路都還來得及。
   // 一有新內容就作廢（同復原疊的道理：位置已被後話蓋掉，退回會連新句子一起丟）。
   // 分岔來的幕排除掉：那一則是複製來的真實對話，重寫會直接把它蓋成摘要
   const canUndoScene =
     scene > 0 &&
-    events.length === 1 &&
-    generating === null &&
+    chat.events.length === 1 &&
+    !chat.busy &&
     !sceneLabels[String(scene)]?.forked;
 
-  // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
-  const gmTargeted = speaker === GM_TARGET;
   const targetName = gmTargeted ? "GM" : (characters.metaOf(speaker)?.name ?? speaker);
   const requestReplyLabel = t("requestReplyBtn", {
     name: speaker ? targetName : t("characterFallback"),
@@ -1693,7 +1427,7 @@ function App() {
     }
     return title ? t("sceneWithTitle", { n: shown, title }) : t("sceneLabel", { n: shown });
   };
-  const generatingMeta = generating !== null ? characters.metaOf(generating.id) : undefined;
+  const generatingMeta = chat.generating !== null ? characters.metaOf(chat.generating.id) : undefined;
 
   // 設定頁改語言時：既有範例桌內容還是舊語言，問一次要不要用新語言重生（答過就記住，之後改語言不再問）
   async function changeSettingPreference(key: string, value: unknown) {
@@ -1744,10 +1478,10 @@ function App() {
   const stateValue = (key: string) => tableState.fields[key] || t("stateEmptyValue");
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
-  const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
+  const sceneChars = chat.events.reduce((sum, event) => sum + event.text.length, 0);
   const sceneTooLong = sceneChars > SCENE_LENGTH_HINT_CHARS;
   // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
-  const showAwayHint = awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
+  const showAwayHint = chat.awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
 
   // 拖曳分隔線調側欄寬度：上限由 CSS max-width 夾住，這裡只擋下限
   function resizeSidebar(next: number) {
@@ -1919,10 +1653,10 @@ function App() {
         >
           <summary>{t("tableListAria")}</summary>
           <div className="table-section-content">
-            <button className="new-table" onClick={newTable} disabled={generating !== null}>
+            <button className="new-table" onClick={newTable} disabled={chat.busy}>
               {t("newTable")}
             </button>
-            <button className="gen-table" onClick={() => setGenTableOpen(true)} disabled={generating !== null}>
+            <button className="gen-table" onClick={() => setGenTableOpen(true)} disabled={chat.busy}>
               {t("genTableBtn")}
             </button>
             <nav className="table-list" aria-label={t("tableListAria")}>
@@ -1949,7 +1683,7 @@ function App() {
                     className="table-delete"
                     aria-label={t("deleteTableTitle")}
                     title={t("deleteTableTitle")}
-                    disabled={generating !== null}
+                    disabled={chat.busy}
                     onClick={() => void deleteTable(w.id)}
                   >
                     ✕
@@ -2217,7 +1951,7 @@ function App() {
               type="button"
               title={t("sceneAdvanceHint")}
               aria-label={t("sceneAdvance")}
-              disabled={generating !== null || events.length === 0}
+              disabled={chat.busy || chat.events.length === 0}
               onClick={advanceScene}
             >
               {t("sceneAdvance")}
@@ -2383,7 +2117,7 @@ function App() {
               <div className="act-divider">
                 <span className="act-tag">{sceneDisplayLabel(scene)}</span>
               </div>
-              {events.map((event, index) => {
+              {chat.events.map((event, index) => {
                 if (event.kind === "dialogue" || event.kind === "player") {
                   const meta = characters.metaOf(event.speaker_id);
                   const isPlayer = event.kind === "player";
@@ -2408,7 +2142,7 @@ function App() {
                   </div>
                 );
               })}
-              {generating !== null && generating.kind === "dialogue" && (
+              {chat.generating !== null && chat.generating.kind === "dialogue" && (
                 <div
                   className="message message-dialogue"
                   style={{ ["--fac" as string]: generatingMeta?.color ?? "#888888" }}
@@ -2416,8 +2150,8 @@ function App() {
                   <div className="pb-name">
                     <span className="pb-plate">{generatingMeta?.name ?? ""}</span>
                   </div>
-                  {streamText ? (
-                    <span className="text">{streamText}</span>
+                  {chat.streamText ? (
+                    <span className="text">{chat.streamText}</span>
                   ) : (
                     <span className="typing" aria-label={t("typing", { name: generatingMeta?.name ?? "" })}>
                       <i />
@@ -2427,10 +2161,10 @@ function App() {
                   )}
                 </div>
               )}
-              {generating !== null && generating.kind === "narration" && (
+              {chat.generating !== null && chat.generating.kind === "narration" && (
                 <div className="message message-narration">
-                  {narrationStreamText(streamText) ? (
-                    <span className="text">{narrationStreamText(streamText)}</span>
+                  {narrationStreamText(chat.streamText) ? (
+                    <span className="text">{narrationStreamText(chat.streamText)}</span>
                   ) : (
                     <span className="typing" aria-label={t("typing", { name: "GM" })}>
                       <i />
@@ -2440,9 +2174,9 @@ function App() {
                   )}
                 </div>
               )}
-              {canRestore && generating === null && (
+              {chat.canRestore && !chat.busy && (
                 <div className="undo-restore">
-                  <button type="button" onClick={() => void restoreUndone()}>
+                  <button type="button" onClick={() => void chat.restoreUndone()}>
                     ↩ {t("undoRestore")}
                   </button>
                 </div>
@@ -2470,7 +2204,7 @@ function App() {
             </section>
 
             {/* Composer 改整寬書寫面（ui-overhaul 拍板）：目標晶片只是把「點側欄選發言對象」既有狀態可見化 */}
-            <form className="composer" onSubmit={send}>
+            <form className="composer" onSubmit={chat.send}>
               {speaker && (
                 <div className="composer-opts">
                   <span
@@ -2507,8 +2241,8 @@ function App() {
               <input
                 className="writebox"
                 aria-label={t("composerAria")}
-                value={input}
-                onChange={(e) => setInput(e.currentTarget.value)}
+                value={chat.input}
+                onChange={(e) => chat.setInput(e.currentTarget.value)}
                 placeholder={
                   speaker
                     ? t("composerPlaceholder", { name: targetName })
@@ -2516,7 +2250,7 @@ function App() {
                       ? t("composerNoCharacter")
                       : t("composerNoTarget")
                 }
-                disabled={(!speaker && characters.active.length === 0) || generating !== null}
+                disabled={(!speaker && characters.active.length === 0) || chat.busy}
               />
               {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
                   （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
@@ -2524,7 +2258,7 @@ function App() {
                 <div className="composer-primary-action">
                   <button
                     type="submit"
-                    disabled={(!speaker && characters.active.length === 0) || generating !== null}
+                    disabled={(!speaker && characters.active.length === 0) || chat.busy}
                   >
                     {t("send")} ➤
                   </button>
@@ -2539,8 +2273,8 @@ function App() {
                   <button
                     className="undo-last"
                     type="button"
-                    onClick={() => void undoLast()}
-                    disabled={generating !== null || events.length === 0}
+                    onClick={() => void chat.undoLast()}
+                    disabled={chat.busy || chat.events.length === 0}
                     title={t("undoLastHint")}
                   >
                     ↩ {t("undoLast")}
@@ -2548,8 +2282,8 @@ function App() {
                   <button
                     className="request-reply"
                     type="button"
-                    onClick={() => void replyFromTarget()}
-                    disabled={!speaker || generating !== null}
+                    onClick={() => void chat.replyFromTarget()}
+                    disabled={!speaker || chat.busy}
                     title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
                     aria-label={requestReplyLabel}
                   >
@@ -2557,16 +2291,16 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={gmNarrate}
-                    disabled={generating !== null}
+                    onClick={chat.gmNarrate}
+                    disabled={chat.busy}
                     title={t("gmNarrateHint")}
                   >
                     {t("gmNarrate")}
                   </button>
                   <button
                     type="button"
-                    onClick={gmAdvance}
-                    disabled={generating !== null || characters.active.length === 0}
+                    onClick={chat.gmAdvance}
+                    disabled={chat.busy || characters.active.length === 0}
                     title={t("gmAdvanceHint")}
                   >
                     {t("gmAdvance")}
@@ -2584,9 +2318,9 @@ function App() {
           切去編輯畫面時 mainView 不再是 null，這裡直接不渲染，覆蓋層就跟著消失，不用另外清 cardUiOpen */}
       {mainView === null && cardInterface.uiOpen && cardInterface.shellReady && (
         <div className="card-interface-overlay">
-          {generating !== null && (
+          {chat.generating !== null && (
             <div className="card-interface-status" role="status">
-              {t("typing", { name: generating.kind === "narration" ? "GM" : (generatingMeta?.name ?? "GM") })}
+              {t("typing", { name: chat.generating.kind === "narration" ? "GM" : (generatingMeta?.name ?? "GM") })}
               <span className="typing">
                 <i />
                 <i />
@@ -2723,7 +2457,7 @@ function App() {
                 type="button"
                 className="ai-gen-submit"
                 onClick={() => void answerImportRoute("new_table")}
-                disabled={generating !== null}
+                disabled={chat.busy}
               >
                 {t("importRouteNewTable")}
               </button>
@@ -2802,7 +2536,7 @@ function App() {
                   <button
                     type="button"
                     className="footer-lead"
-                    onClick={() => void postOpening(openingChoice[openingExpanded])}
+                    onClick={() => void chat.postOpening(openingChoice[openingExpanded])}
                   >
                     {t("openingLineOk")}
                   </button>
