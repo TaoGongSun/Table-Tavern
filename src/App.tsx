@@ -9,10 +9,11 @@ import { tierLabel } from "./model-catalog";
 import { prefetchModelCatalogs } from "./model-catalog-store";
 import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "./appearance";
 import { AppConfig, SceneLabel, StateNode, TranscriptEvent, WorldbookEntry, WorldState } from "./backend-contracts";
-import { CharacterCard, CharacterMeta, PALETTE } from "./card-model";
+import { CharacterMeta, PALETTE } from "./card-model";
 import { cliConnectedKey } from "./cli";
 import { useDragReorder } from "./drag-reorder";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
+import { useCharacterController } from "./controllers/useCharacterController";
 import { loadBranchBindings, treeValueAt, useTableStateController } from "./controllers/useTableStateController";
 import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
@@ -253,27 +254,8 @@ function App() {
   const [table, setTable] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [sponsorUnlocked, setSponsorUnlocked] = useState(false);
-  const [characters, setCharacters] = useState<CharacterMeta[]>([]);
-  const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
-  // 本幕出場集合：換桌／切幕由 enterTable 呼叫 scene_appearances 初始化，
-  // 之後每次 gm_narrate 回傳的 arrived_characters 併入——auto_hidden 卡一登場就立刻從隱藏區移回主區
-  const [sceneAppearances, setSceneAppearances] = useState<Set<string>>(new Set());
-  const activeCharacters = characters.filter((character) => !isCharacterHidden(character, sceneAppearances));
-  const archivedCharacters = characters.filter((character) => isCharacterHidden(character, sceneAppearances));
-  const castDrag = useDragReorder(
-    activeCharacters,
-    (character) => character.id,
-    (ordered) => void reorderCast(ordered),
-  );
   // 角色卡編輯器每次 render 掛上「可以離開嗎」；側欄任何會換掉編輯畫面的入口都先問它
   const leaveGuard = useRef<(() => Promise<boolean>) | null>(null);
-  // 角色圖快取：角色 id → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
-  const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
-  const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
-  const [playerImage, setPlayerImage] = useState<string | null>(null);
-  const [playerAvatar, setPlayerAvatar] = useState<string | null>(null);
-  // GM 卡的圖：世界書匯入的是 PNG 卡時後端存下的那張，null＝回退內建書本圖
-  const [gmImage, setGmImage] = useState<string | null>(null);
   const [speaker, setSpeaker] = useState("");
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
@@ -291,7 +273,7 @@ function App() {
   const undoBusy = useRef(false);
   const [input, setInput] = useState("");
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
-  // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
+  // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 characters.metaOf(id) 即時查
   const [generating, setGenerating] = useState<{
     id: string;
     kind: "dialogue" | "narration";
@@ -400,55 +382,14 @@ function App() {
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
   const tableState = useTableStateController({ worldId: table, onError: setError });
 
-  async function loadCharacterImages(worldId: string, cast: CharacterMeta[]) {
-    const entries = await Promise.all(
-      cast.map(async (c) => {
-        const [image, avatar] = await Promise.all([
-          invoke<string | null>("read_character_image", { worldId, characterId: c.id }).catch(() => null),
-          invoke<string | null>("read_character_avatar", { worldId, characterId: c.id }).catch(() => null),
-        ]);
-        return [c.id, image, avatar] as const;
-      }),
-    );
-    setCharacterImages(
-      Object.fromEntries(
-        entries.filter(([, image]) => image !== null).map(([id, image]) => [id, `data:image/png;base64,${image}`]),
-      ),
-    );
-    setCharacterAvatars(
-      Object.fromEntries(
-        entries.filter(([, , avatar]) => avatar !== null).map(([id, , avatar]) => [id, `data:image/png;base64,${avatar}`]),
-      ),
-    );
-  }
-
-  async function loadGmImage(worldId: string) {
-    const image = await invoke<string | null>("read_gm_image", { worldId }).catch(() => null);
-    setGmImage(image ? `data:image/png;base64,${image}` : null);
-  }
-
-  async function loadPlayerCard(worldId: string, playerCardId: string | null) {
-    if (!playerCardId) {
-      setPlayerCard(null);
-      setPlayerImage(null);
-      setPlayerAvatar(null);
-      return;
-    }
-    try {
-      const [card, image, avatar] = await Promise.all([
-        invoke<CharacterCard>("read_character", { worldId, characterId: playerCardId }),
-        invoke<string | null>("read_character_image", { worldId, characterId: playerCardId }).catch(() => null),
-        invoke<string | null>("read_character_avatar", { worldId, characterId: playerCardId }).catch(() => null),
-      ]);
-      setPlayerCard(card);
-      setPlayerImage(image ? `data:image/png;base64,${image}` : null);
-      setPlayerAvatar(avatar ? `data:image/png;base64,${avatar}` : null);
-    } catch {
-      setPlayerCard(null);
-      setPlayerImage(null);
-      setPlayerAvatar(null);
-    }
-  }
+  // 角色名單、本幕出場集合、玩家卡與角色圖／GM 圖三份快取都在 controller 裡。
+  // 發言對象留在 App（聊天域也要用），角色被刪時由 characters.noteRemoved 回報該撥給誰。
+  const characters = useCharacterController({ worldId: table, onError: setError });
+  const castDrag = useDragReorder(
+    characters.active,
+    (character) => character.id,
+    (ordered) => void characters.reorder(ordered),
+  );
 
   // 語系跟著 config 走；render 前同步進 i18n 模組，之後子樹的 t() 都拿到正確語言
   const language = normalizeLang(config?.preferences["language"]);
@@ -568,7 +509,7 @@ function App() {
     return () => {
       stale = true;
     };
-  }, [table, mainView, characters]);
+  }, [table, mainView, characters.list]);
 
   // 卡片介面：介面腳本／重構殼／覆蓋層開關與沙盒訊息都在 controller 裡，
   // 這裡只餵它需要的四樣（submitText 是 hoisted 函式宣告，controller 內用 latest-ref 收）
@@ -589,26 +530,23 @@ function App() {
     // 綁定清單先讀完再進同步區：hydrate 只做 state commit，中間不留 await（免得 React batch
     // 被切斷，畫面出現「新桌的狀態樹＋舊桌的訊息」這種跨桌混合）
     const bindings = await loadBranchBindings(id);
-    setTable(id);
-    setScene(state.current_scene);
-    setSceneTitles(state.scene_titles ?? {});
-    setSceneLabels(state.scene_labels ?? {});
-    tableState.hydrate(state.state, bindings);
-    setEvents(transcript);
-    setCharacters(cast);
     // 本幕已出場集合：auto_hidden 卡是否落在主區靠這份初始化，讀不到就當空集合（全部從隱藏區起算）
     const appearances = await invoke<{ character_ids: string[]; person_titles: string[] }>(
       "scene_appearances",
       { worldId: id },
     ).catch(() => ({ character_ids: [], person_titles: [] }));
     const appearanceIds = new Set(appearances.character_ids);
-    setSceneAppearances(appearanceIds);
-    await loadCharacterImages(id, cast);
-    await loadGmImage(id);
-    await loadPlayerCard(id, state.player_card_id);
-    setImportReceipts(
-      await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []),
-    );
+    const receipts = await invoke<ImportReceiptSummary[]>("list_import_receipts", { worldId: id }).catch(() => []);
+    setTable(id);
+    setScene(state.current_scene);
+    setSceneTitles(state.scene_titles ?? {});
+    setSceneLabels(state.scene_labels ?? {});
+    tableState.hydrate(state.state, bindings);
+    setEvents(transcript);
+    // 角色圖／GM 圖／玩家卡由 controller 自己的 effect 補：hydrate 先把上一桌的清掉，
+    // 這裡一路同步提交，不讓 await 把 React batch 切成跨桌混合的中間畫面
+    characters.hydrate(cast, appearanceIds, state.player_card_id);
+    setImportReceipts(receipts);
     setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
     // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的；
     // 隱藏區的卡（含本幕還沒出場的 auto_hidden）不當預設對象，跟側欄主區顯示一致
@@ -901,7 +839,7 @@ function App() {
               title={t("stateEditHint")}
               onClick={() => tableState.beginEdit(path, tree, value)}
             >
-              {value ? displayUserMacro(value, playerCard?.name || t("playerLabel")) : t("stateEmptyValue")}
+              {value ? displayUserMacro(value, characters.player?.name || t("playerLabel")) : t("stateEmptyValue")}
             </button>
             {jumpMark && (
               <button
@@ -921,7 +859,8 @@ function App() {
 
   // 玩家卡目前指認到的分支路徑，含所有祖先（自己與上面每一層都要預設展開），沒指認就是空集合
   const openBranchPaths = useMemo(() => {
-    const bound = playerCard && tableState.bindings.find((b) => b.characterId === playerCard.id);
+    const player = characters.player;
+    const bound = player && tableState.bindings.find((b) => b.characterId === player.id);
     const set = new Set<string>();
     if (bound) {
       for (let depth = 1; depth <= bound.path.length; depth += 1) {
@@ -929,7 +868,7 @@ function App() {
       }
     }
     return set;
-  }, [playerCard, tableState.bindings]);
+  }, [characters.player, tableState.bindings]);
 
   // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉
   function stateTreeNodes(nodes: Record<string, StateNode>, path: string[], depth: number) {
@@ -952,7 +891,7 @@ function App() {
         >
           <summary>
             {key}
-            {characters.length > 0 && !isList && (
+            {characters.list.length > 0 && !isList && (
               <select
                 className="state-tree-bind"
                 aria-label={t("stateBranchBindAria")}
@@ -967,7 +906,7 @@ function App() {
                 }}
               >
                 <option value="">{t("stateBranchUnbound")}</option>
-                {activeCharacters.map((character) => (
+                {characters.active.map((character) => (
                   <option key={character.id} value={character.id}>
                     {character.name}
                   </option>
@@ -1094,7 +1033,7 @@ function App() {
       });
       if (!accepted) return;
       const report = await invoke<UndoReport>("undo_last_import", { worldId: table });
-      const cast = await refreshCharacters();
+      const cast = await characters.refresh();
       // 發言對象指向的角色被這次復原刪掉了（不管是不是巧合）就改回 GM，不然輸入框對著空氣
       if (speaker && speaker !== GM_TARGET && !cast.some((character) => character.id === speaker)) {
         setSpeaker(GM_TARGET);
@@ -1103,7 +1042,7 @@ function App() {
       // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次
       await cardInterface.refreshShell(table);
       // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
-      await loadGmImage(table);
+      await characters.reloadGmImage();
       // 貼出的開場白被一起收掉：檯面與狀態快照都變了，重讀這一幕
       if (report.removed_opening) {
         setEvents(await invoke<TranscriptEvent[]>("read_transcript", { worldId: table, scene }));
@@ -1251,11 +1190,9 @@ function App() {
     const { meta, book } = await invoke<CharacterImport>("import_character", {
       worldId,
       data,
-      color: PALETTE[characters.length % PALETTE.length],
+      color: PALETTE[characters.list.length % PALETTE.length],
     });
-    const cast = await invoke<CharacterMeta[]>("list_characters", { worldId });
-    setCharacters(cast);
-    await loadCharacterImages(worldId, cast);
+    await characters.refresh(worldId);
     setSpeaker(meta.id);
     if (adoptName) await adoptImportName(meta.name);
     await refreshImportReceipts(worldId);
@@ -1270,7 +1207,7 @@ function App() {
   async function importAsWorldbook(worldId: string, data: number[], label: string, adoptName = true) {
     const book = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
     // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
-    await loadGmImage(worldId);
+    await characters.reloadGmImage(worldId);
     await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
     // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
     setSpeaker(GM_TARGET);
@@ -1366,17 +1303,10 @@ function App() {
     if (translated !== null) await postOpening(translated);
   }
 
-  async function refreshCharacters() {
-    const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: table });
-    setCharacters(cast);
-    await loadCharacterImages(table, cast);
-    return cast;
-  }
-
   // 建卡或改名存檔後：名單與圖片重載；id 全程不變，只有「新卡剛存下」要轉正畫面並選為發言對象
   async function finishCardSaved(id: string) {
     const wasNew = mainView?.kind === "new-character";
-    await refreshCharacters();
+    await characters.refresh();
     if (wasNew) {
       setMainView({ kind: "character", id });
       setSpeaker(id);
@@ -1390,15 +1320,13 @@ function App() {
       await invoke("write_state", { worldId: table, state: { ...state, player_card_id: id } });
       setMainView({ kind: "player", id });
     }
-    await loadPlayerCard(table, id);
+    await characters.reloadPlayer(id);
   }
 
-  // 角色被隱藏或刪除後的善後：名單重載、發言對象改人、關掉編輯面板
+  // 角色被隱藏或刪除後的善後：名單重載（controller）、發言對象改人、關掉編輯面板
   async function finishRemoval(id: string) {
-    const cast = await refreshCharacters();
-    if (speaker === id) {
-      setSpeaker(cast.find((character) => !isCharacterHidden(character, sceneAppearances))?.id ?? "");
-    }
+    const nextSpeaker = await characters.noteRemoved(id, speaker);
+    if (nextSpeaker !== null) setSpeaker(nextSpeaker);
     setMainView(null);
   }
 
@@ -1421,8 +1349,8 @@ function App() {
   async function openPlayerCard() {
     if (mainView?.kind === "player" || mainView?.kind === "new-player") return;
     if (!(await canLeaveEditor())) return;
-    if (playerCard) {
-      setMainView({ kind: "player", id: playerCard.id });
+    if (characters.player) {
+      setMainView({ kind: "player", id: characters.player.id });
       return;
     }
     try {
@@ -1469,80 +1397,17 @@ function App() {
     }
   }
 
-  // 側欄拖曳排序：先樂觀套用，寫檔失敗才回捲
-  // 用 archivedCharacters（非 characters.filter(archived)）補回其餘卡片：
-  // 這幕沒出場的 auto_hidden 卡不在 archived 裡，漏掉會在拖曳當下從 state 消失
-  async function reorderCast(ordered: CharacterMeta[]) {
-    setError("");
-    const previous = characters;
-    setCharacters([...ordered, ...archivedCharacters]);
-    try {
-      await invoke("reorder_characters", {
-        worldId: table,
-        ids: ordered.map((character) => character.id),
-      });
-    } catch (reason) {
-      setCharacters(previous);
-      setError(String(reason));
-    }
-  }
-
-  async function restoreCharacter(id: string) {
-    setError("");
-    try {
-      await invoke("set_character_archived", { worldId: table, characterId: id, archived: false });
-      await refreshCharacters();
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 隱藏區裡 auto_hidden 卡的「拉回」：解除自動隱藏（不是解除封存），下次換幕結算才會重新判定
-  async function restoreAutoHidden(id: string) {
-    setError("");
-    try {
-      await invoke("set_character_auto_hidden", { worldId: table, characterId: id, autoHidden: false });
-      await refreshCharacters();
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 隱藏區與角色卡編輯畫面共用同一條刪除路徑（確認框＋善後）
+  // 隱藏區與角色卡編輯畫面共用同一條刪除路徑：確認框與刪檔在 controller，這裡接善後
   async function deleteCharacter(id: string) {
-    setError("");
     try {
-      const name = metaOf(id)?.name ?? id;
-      const accepted = await confirm(t("deleteCharacterConfirm", { name }), {
-        title: t("deleteCharacterTitle"),
-        kind: "warning",
-      });
-      if (!accepted) return;
-      await invoke("delete_character", { worldId: table, characterId: id });
-      await finishRemoval(id);
+      if (await characters.remove(id)) await finishRemoval(id);
     } catch (reason) {
       setError(String(reason));
     }
   }
 
   async function deletePlayerCard(id: string) {
-    setError("");
-    try {
-      const accepted = await confirm(t("deleteCharacterConfirm", { name: playerCard?.name ?? id }), {
-        title: t("deleteCharacterTitle"),
-        kind: "warning",
-      });
-      if (!accepted) return;
-      await invoke("delete_character", { worldId: table, characterId: id });
-      const state = await invoke<WorldState>("read_state", { worldId: table });
-      await invoke("write_state", { worldId: table, state: { ...state, player_card_id: null } });
-      setPlayerCard(null);
-      setPlayerImage(null);
-      setPlayerAvatar(null);
-      setMainView(null);
-    } catch (reason) {
-      setError(String(reason));
-    }
+    if (await characters.removePlayer(id)) setMainView(null);
   }
 
   async function appendEvent(event: TranscriptEvent) {
@@ -1658,7 +1523,7 @@ function App() {
       characterId,
       onDelta,
     });
-    const name = metaOf(characterId)?.name ?? "";
+    const name = characters.metaOf(characterId)?.name ?? "";
     await appendEvent({ ts: nowTs(), speaker_id: characterId, speaker_name: name, kind: "dialogue", text: full });
     await markCliConnectedFromChat();
     noteTurnDone();
@@ -1700,7 +1565,7 @@ function App() {
       onDelta,
     });
     if (arrived_characters && arrived_characters.length > 0) {
-      setSceneAppearances((previous) => new Set([...previous, ...arrived_characters]));
+      characters.onArrived(arrived_characters);
     }
     await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) });
     // 長文字欄（外貌、貼文…）改用一則系統事件記變動，不再每輪塞回提示詞——
@@ -1738,7 +1603,7 @@ function App() {
 
   // 簡易導演：GM 旁白＋點名→角色接話的接力，至「輪到玩家」、GM 沒點名或每回合上限停下（NewPlan §6.1）
   async function gmAdvance() {
-    if (!config || generating !== null || activeCharacters.length === 0) return;
+    if (!config || generating !== null || characters.active.length === 0) return;
     setError("");
     const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
     try {
@@ -1747,11 +1612,11 @@ function App() {
         if (next === null) break;
         // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
         if (next === PLAYER_SENTINEL) {
-          const you = playerCard?.name || t("playerLabel");
+          const you = characters.player?.name || t("playerLabel");
           await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name: you }) });
           break;
         }
-        const name = metaOf(next)?.name ?? next;
+        const name = characters.metaOf(next)?.name ?? next;
         await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
         await replyOnce(next);
       }
@@ -1786,7 +1651,7 @@ function App() {
     setError("");
     setInput("");
     try {
-      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: playerCard?.name || t("playerLabel"), kind: "player", text });
+      await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: characters.player?.name || t("playerLabel"), kind: "player", text });
     } catch (reason) {
       setError(String(reason));
       return;
@@ -1794,8 +1659,6 @@ function App() {
     // 沒指定對象＝只把這句留在桌上（描述動作或對全場說），不點名任何人接話
     await replyFromTarget();
   }
-
-  const metaOf = (id: string) => characters.find((c) => c.id === id);
 
   // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）
   const canRestore = undone !== null && undone.table === table && undone.scene === scene;
@@ -1811,7 +1674,7 @@ function App() {
 
   // 發言對象可能是 GM（沒有角色卡），顯示名與顏色在這裡收斂一次
   const gmTargeted = speaker === GM_TARGET;
-  const targetName = gmTargeted ? "GM" : (metaOf(speaker)?.name ?? speaker);
+  const targetName = gmTargeted ? "GM" : (characters.metaOf(speaker)?.name ?? speaker);
   const requestReplyLabel = t("requestReplyBtn", {
     name: speaker ? targetName : t("characterFallback"),
   });
@@ -1830,7 +1693,7 @@ function App() {
     }
     return title ? t("sceneWithTitle", { n: shown, title }) : t("sceneLabel", { n: shown });
   };
-  const generatingMeta = generating !== null ? metaOf(generating.id) : undefined;
+  const generatingMeta = generating !== null ? characters.metaOf(generating.id) : undefined;
 
   // 設定頁改語言時：既有範例桌內容還是舊語言，問一次要不要用新語言重生（答過就記住，之後改語言不再問）
   async function changeSettingPreference(key: string, value: unknown) {
@@ -2117,8 +1980,8 @@ function App() {
               }}
             >
               <span className="tcard-art">
-                {gmImage ? (
-                  <img className="tcard-image" src={gmImage} alt="" />
+                {characters.gmImage ? (
+                  <img className="tcard-image" src={characters.gmImage} alt="" />
                 ) : (
                   <img className="gm-book" src={gmBook} alt="" />
                 )}
@@ -2144,8 +2007,8 @@ function App() {
             <div
               role="button"
               tabIndex={0}
-              className={`tcard tcard-player${playerCard ? "" : " tcard-player-empty"}`}
-              title={t(playerCard ? "playerCardHint" : "playerCardEmptyHint")}
+              className={`tcard tcard-player${characters.player ? "" : " tcard-player-empty"}`}
+              title={t(characters.player ? "playerCardHint" : "playerCardEmptyHint")}
               onClick={() => void openPlayerCard()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -2154,20 +2017,20 @@ function App() {
                 }
               }}
             >
-              {playerCard ? (
+              {characters.player ? (
                 <>
                   <span className="tcard-art">
-                    {playerCard.show_image && playerImage ? (
-                      <img className="tcard-image" src={playerImage} alt="" />
-                    ) : playerAvatar ? (
-                      <img className="avatar-round tcard-avatar" src={playerAvatar} alt="" />
+                    {characters.player.show_image && characters.playerImage ? (
+                      <img className="tcard-image" src={characters.playerImage} alt="" />
+                    ) : characters.playerAvatar ? (
+                      <img className="avatar-round tcard-avatar" src={characters.playerAvatar} alt="" />
                     ) : (
-                      <span aria-hidden="true">{playerCard.avatar}</span>
+                      <span aria-hidden="true">{characters.player.avatar}</span>
                     )}
                   </span>
                   <span className="tcard-body">
                     <span className="tcard-name-row">
-                      <span className="tcard-plate">{playerCard.name}</span>
+                      <span className="tcard-plate">{characters.player.name}</span>
                     </span>
                   </span>
                 </>
@@ -2203,10 +2066,10 @@ function App() {
                 {...castDrag.rowProps(c)}
               >
                 <span className="tcard-art">
-                  {c.show_image && characterImages[c.id] ? (
-                    <img className="tcard-image" src={characterImages[c.id]} alt="" />
-                  ) : characterAvatars[c.id] ? (
-                    <img className="avatar-round tcard-avatar" src={characterAvatars[c.id]} alt="" />
+                  {c.show_image && characters.images[c.id] ? (
+                    <img className="tcard-image" src={characters.images[c.id]} alt="" />
+                  ) : characters.avatars[c.id] ? (
+                    <img className="avatar-round tcard-avatar" src={characters.avatars[c.id]} alt="" />
                   ) : (
                     <span aria-hidden="true">{c.avatar}</span>
                   )}
@@ -2234,11 +2097,11 @@ function App() {
               </div>
             ))}
           </div>
-          {archivedCharacters.length > 0 && (
+          {characters.archived.length > 0 && (
             <details className="archive-section">
               <summary>{t("archiveSectionTitle")}</summary>
               <div className="archive-list">
-                {archivedCharacters.map((character) => {
+                {characters.archived.map((character) => {
                   // 沒被玩家手動封存、純粹本幕還沒出場才算自動隱藏；封存優先於自動隱藏顯示
                   const isAutoHidden = !character.archived && character.auto_hidden;
                   return (
@@ -2256,7 +2119,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() =>
-                          void (isAutoHidden ? restoreAutoHidden(character.id) : restoreCharacter(character.id))
+                          void (isAutoHidden ? characters.restoreAutoHidden(character.id) : characters.restore(character.id))
                         }
                       >
                         {t("restoreCharacter")}
@@ -2439,7 +2302,7 @@ function App() {
                   ? t("newPlayerCardTitle")
                   : cardView.kind === "player"
                     ? t("editPlayerCardTitle")
-                    : t("editCardSummary", { name: metaOf(cardView.id)?.name ?? "" })
+                    : t("editCardSummary", { name: characters.metaOf(cardView.id)?.name ?? "" })
             }
           >
             <CardEditor
@@ -2447,17 +2310,17 @@ function App() {
               characterId={cardView.id}
               isNew={cardView.kind === "new-character" || cardView.kind === "new-player"}
               isPlayer={editingPlayerCard}
-              newCardColor={PALETTE[characters.length % PALETTE.length]}
+              newCardColor={PALETTE[characters.list.length % PALETTE.length]}
               imageDataUrl={
-                editingPlayerCard ? playerImage ?? undefined : characterImages[cardView.id]
+                editingPlayerCard ? characters.playerImage ?? undefined : characters.images[cardView.id]
               }
               avatarImgUrl={
-                editingPlayerCard ? playerAvatar ?? undefined : characterAvatars[cardView.id]
+                editingPlayerCard ? characters.playerAvatar ?? undefined : characters.avatars[cardView.id]
               }
               onImagesChanged={() =>
                 editingPlayerCard
-                  ? loadPlayerCard(table, playerCard?.id ?? null)
-                  : loadCharacterImages(table, characters)
+                  ? characters.reloadPlayer(characters.player?.id ?? null)
+                  : characters.reloadImages()
               }
               onSaved={(saved) =>
                 void (editingPlayerCard ? finishPlayerCardSaved(saved) : finishCardSaved(saved))
@@ -2491,19 +2354,19 @@ function App() {
               worldName={tableName}
               onBack={() => setMainView(null)}
               leaveGuard={leaveGuard}
-              convertColor={PALETTE[characters.length % PALETTE.length]}
+              convertColor={PALETTE[characters.list.length % PALETTE.length]}
               onEntryConverted={async () => {
-                await refreshCharacters();
+                await characters.refresh();
               }}
               onRefactorApplied={async () => {
-                await refreshCharacters();
+                await characters.refresh();
                 // 重構把原卡拆成一群 NPC：發言對象一律撥回 GM，
                 // 不然玩家一開口變成在跟其中一名拆出來的角色對話，回覆完全對不上
                 setSpeaker(GM_TARGET);
                 // 合併升格可能把某位角色指定為玩家卡（要點 4），跟單條「轉成角色卡」的
                 // asPlayer 分支一樣重讀一次，讓側欄玩家卡即時反映。
                 const state = await invoke<WorldState>("read_state", { worldId: table });
-                await loadPlayerCard(table, state.player_card_id);
+                await characters.reloadPlayer(state.player_card_id);
                 await cardInterface.refreshInterfaces(table);
                 await cardInterface.refreshShell(table);
                 await tableState.refresh();
@@ -2522,7 +2385,7 @@ function App() {
               </div>
               {events.map((event, index) => {
                 if (event.kind === "dialogue" || event.kind === "player") {
-                  const meta = metaOf(event.speaker_id);
+                  const meta = characters.metaOf(event.speaker_id);
                   const isPlayer = event.kind === "player";
                   return (
                     <div
@@ -2614,19 +2477,19 @@ function App() {
                     className="opt-target"
                     title={gmTargeted ? t("gmTargetHint") : t("castHint", { name: targetName })}
                     style={{
-                      ["--fac" as string]: gmTargeted ? GM_COLOR : (metaOf(speaker)?.color ?? "#888888"),
+                      ["--fac" as string]: gmTargeted ? GM_COLOR : (characters.metaOf(speaker)?.color ?? "#888888"),
                     }}
                   >
                     {gmTargeted ? (
-                      gmImage ? (
-                        <img className="avatar-round opt-avatar gm-opt-avatar" src={gmImage} alt="" />
+                      characters.gmImage ? (
+                        <img className="avatar-round opt-avatar gm-opt-avatar" src={characters.gmImage} alt="" />
                       ) : (
                         <img className="opt-avatar" src={gmBook} alt="" />
                       )
-                    ) : characterAvatars[speaker] ? (
-                      <img className="avatar-round opt-avatar" src={characterAvatars[speaker]} alt="" />
+                    ) : characters.avatars[speaker] ? (
+                      <img className="avatar-round opt-avatar" src={characters.avatars[speaker]} alt="" />
                     ) : (
-                      <span aria-hidden="true">{metaOf(speaker)?.avatar ?? "🎭"}</span>
+                      <span aria-hidden="true">{characters.metaOf(speaker)?.avatar ?? "🎭"}</span>
                     )}
                     {targetName}
                     <button
@@ -2649,11 +2512,11 @@ function App() {
                 placeholder={
                   speaker
                     ? t("composerPlaceholder", { name: targetName })
-                    : activeCharacters.length === 0
+                    : characters.active.length === 0
                       ? t("composerNoCharacter")
                       : t("composerNoTarget")
                 }
-                disabled={(!speaker && activeCharacters.length === 0) || generating !== null}
+                disabled={(!speaker && characters.active.length === 0) || generating !== null}
               />
               {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
                   （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
@@ -2661,7 +2524,7 @@ function App() {
                 <div className="composer-primary-action">
                   <button
                     type="submit"
-                    disabled={(!speaker && activeCharacters.length === 0) || generating !== null}
+                    disabled={(!speaker && characters.active.length === 0) || generating !== null}
                   >
                     {t("send")} ➤
                   </button>
@@ -2703,7 +2566,7 @@ function App() {
                   <button
                     type="button"
                     onClick={gmAdvance}
-                    disabled={generating !== null || activeCharacters.length === 0}
+                    disabled={generating !== null || characters.active.length === 0}
                     title={t("gmAdvanceHint")}
                   >
                     {t("gmAdvance")}
