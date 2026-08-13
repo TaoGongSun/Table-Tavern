@@ -1,7 +1,7 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, setLang, t } from "./i18n";
 import { isCharacterHidden } from "./character-visibility";
 import { prefetchModelCatalogs } from "./model-catalog-store";
@@ -20,9 +20,12 @@ import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
 import { useImportController } from "./controllers/useImportController";
 import { loadBranchBindings, useTableStateController } from "./controllers/useTableStateController";
-import { ErrorNote, StoryText } from "./views/atoms";
+import { ErrorNote } from "./views/atoms";
+import { CardInterfaceOverlay } from "./views/CardInterfaceOverlay";
 import { GenerateTableDialog } from "./views/GenerateTableDialog";
+import { ImportDialogs } from "./views/ImportDialogs";
 import { MainView } from "./views/MainView";
+import { Onboarding } from "./views/Onboarding";
 import { PlayView } from "./views/PlayView";
 import { SettingsWindow } from "./views/SettingsWindow";
 import { TableSidebar } from "./views/TableSidebar";
@@ -50,79 +53,6 @@ const GM_COLOR = "#8a6a3c";
 // 所以按鈕要收起來；記在瀏覽器端，重開 app 也不該讓它又冒出來讓人誤按。
 const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
 const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;
-
-function openingPreview(text: string) {
-  const preview = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(" ");
-  return preview.length > 120 ? `${preview.slice(0, 119)}…` : preview;
-}
-
-function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
-  const [apiKey, setApiKey] = useState("");
-  const [message, setMessage] = useState("");
-  const transport = config.preferences["transport"] ?? "api";
-
-  if (transport !== "api" || (config.api_keys["openrouter"] ?? "").trim()) return null;
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage("");
-    const next: AppConfig = {
-      ...config,
-      api_keys: { ...config.api_keys, openrouter: apiKey.trim() },
-    };
-    try {
-      await invoke("write_config", { config: next });
-      onSaved(next);
-    } catch (reason) {
-      setMessage(String(reason));
-    }
-  }
-
-  return (
-    <section className="settings onboarding" role="note">
-      <form className="settings-form" onSubmit={save}>
-        <strong>{t("onboardTitle")}</strong>
-        <p>{t("onboardIntro")}</p>
-        <ol>
-          <li>
-            {t("onboardStep1")}
-            <button type="button" onClick={() => void openUrl("https://openrouter.ai/")}>
-              {t("onboardStep1Btn")}
-            </button>
-          </li>
-          <li>{t("onboardStep2")}</li>
-          <li>
-            {t("onboardStep3")}
-            <button
-              type="button"
-              onClick={() => void openUrl("https://openrouter.ai/settings/keys")}
-            >
-              {t("onboardStep3Btn")}
-            </button>
-          </li>
-        </ol>
-        <p>{t("onboardCost")}</p>
-        <div className="row">
-          <input
-            type="password"
-            aria-label={t("apiKeyLabel")}
-            value={apiKey}
-            onChange={(event) => setApiKey(event.currentTarget.value)}
-            placeholder="sk-or-..."
-          />
-          <button type="submit">{t("onboardSaveBtn")}</button>
-        </div>
-        {message && <span role="alert">{message}</span>}
-        <small>{t("onboardCliHint")}</small>
-      </form>
-    </section>
-  );
-}
 
 function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
@@ -406,9 +336,6 @@ function App() {
     resetChatted,
     onError: setError,
   });
-  // 開場白面板的兩個值先落成區域變數：面板底部的按鈕在 callback 裡也要吃到「不是 null」的收斂
-  const openings = imports.openings;
-  const openingExpanded = imports.expanded;
 
   async function enterTable(id: string, loaded: AppConfig) {
     const state = await invoke<WorldState>("read_state", { worldId: id });
@@ -1077,39 +1004,18 @@ function App() {
       {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄；且只在遊玩畫面出現——
           切去編輯畫面時 mainView 不再是 null，這裡直接不渲染，覆蓋層就跟著消失，不用另外清 cardUiOpen */}
       {mainView === null && cardInterface.uiOpen && cardInterface.shellReady && (
-        <div className="card-interface-overlay">
-          {chat.generating !== null && (
-            <div className="card-interface-status" role="status">
-              {t("typing", { name: chat.generating.kind === "narration" ? "GM" : (generatingMeta?.name ?? "GM") })}
-              <span className="typing">
-                <i />
-                <i />
-                <i />
-              </span>
-            </div>
-          )}
-          <div className="card-interface-toolbar">
-            <button
-              type="button"
-              className="modal-close card-interface-close"
-              aria-label={t("cardInterfaceClose")}
-              onClick={() => cardInterface.close()}
-            >
-              ✕
-            </button>
-          </div>
-          {/* 單 iframe 直繪：key＝殼指紋，殼一換整支重掛（掛載時 srcdoc 就在，必然載入）。
-              殼更新瞬間可能閃一下白，換來顯示的確定性。 */}
-          {cardInterface.shellDoc !== null && (
-            <iframe
-              key={cardInterface.shellKey}
-              className="card-interface-frame"
-              sandbox="allow-scripts"
-              srcDoc={cardInterface.shellDoc}
-              title={t("cardInterfaceOpen")}
-            />
-          )}
-        </div>
+        <CardInterfaceOverlay
+          generatingName={
+            chat.generating === null
+              ? null
+              : chat.generating.kind === "narration"
+                ? "GM"
+                : (generatingMeta?.name ?? "GM")
+          }
+          shellDoc={cardInterface.shellDoc}
+          shellKey={cardInterface.shellKey}
+          onClose={() => cardInterface.close()}
+        />
       )}
 
       {/* 放整個版面最後：設定視窗永遠疊在其他 modal（含生圖對話框）之上 */}
@@ -1153,169 +1059,22 @@ function App() {
         </div>
       )}
 
-      {/* 匯入身分框：有名字的卡一律問。直說偵測到哪一種，該身分當主按鈕，另一邊只警告可能玩不動 */}
-      {imports.choice !== null && (
-        <div className="modal-overlay" onClick={() => void imports.answerChoice("cancel")}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t(imports.choice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>{t(imports.choice.booksFirst ? "importChoiceBookTitle" : "importChoiceCharacterTitle")}</h2>
-            <p>{t(imports.choice.booksFirst ? "importChoiceBookBody" : "importChoiceCharacterBody")}</p>
-            <div className="ai-gen-footer">
-              <button type="button" onClick={() => void imports.answerChoice("cancel")}>
-                {t("importChoiceCancel")}
-              </button>
-              {imports.choice.booksFirst ? (
-                <>
-                  <button type="button" onClick={() => void imports.answerChoice("character")}>
-                    {t("importChoiceCharacter")}
-                  </button>
-                  <button type="button" className="ai-gen-submit" onClick={() => void imports.answerChoice("worldbook")}>
-                    {t("importChoiceWorldbook")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => void imports.answerChoice("worldbook")}>
-                    {t("importChoiceWorldbook")}
-                  </button>
-                  <button type="button" className="ai-gen-submit" onClick={() => void imports.answerChoice("character")}>
-                    {t("importChoiceCharacter")}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 第二張卡路由框：桌上已有匯入紀錄才會跳出來。三個選項都給，開新桌是主按鈕；
-          第二本世界書換標題與文案（會合成一本），中間那顆改叫「仍要匯入」 */}
-      {imports.route !== null && (
-        <div className="modal-overlay" onClick={() => void imports.answerRoute("cancel")}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t(imports.route.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>{t(imports.route.route === "merge_worldbook" ? "importRouteMergeTitle" : "importRouteAskTitle")}</h2>
-            <p>{t(imports.route.route === "merge_worldbook" ? "importRouteMergeBody" : "importRouteAskBody")}</p>
-            <div className="ai-gen-footer">
-              <button type="button" onClick={() => void imports.answerRoute("cancel")}>
-                {t("importChoiceCancel")}
-              </button>
-              <button type="button" onClick={() => void imports.answerRoute("this_table")}>
-                {t(imports.route.route === "merge_worldbook" ? "importRouteMergeAnyway" : "importRouteThisTable")}
-              </button>
-              <button
-                type="button"
-                className="ai-gen-submit"
-                onClick={() => void imports.answerRoute("new_table")}
-                disabled={chat.busy}
-              >
-                {t("importRouteNewTable")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {openings !== null && (
-        <div className="modal-overlay" onClick={() => imports.closeOpenings()}>
-          <div
-            className="modal opening-choice-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("openingChoiceTitle")}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="modal-header">
-              <strong>{t("openingChoiceTitle")}</strong>
-              <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={() => imports.closeOpenings()}>×</button>
-            </div>
-            {/* 動作鈕置頂（專案慣例）：全部翻譯放標題正下方，不必展開任何一則就能先按 */}
-            <div className="opening-translate-all-row">
-              <button
-                type="button"
-                className="ai-gen-btn"
-                title={t("openingTranslateHint")}
-                disabled={imports.transAllBusy}
-                onClick={() => void imports.translateAllOpenings()}
-              >
-                {imports.transAllBusy
-                  ? t("openingTranslateAllProgress", {
-                      done: openings.filter((_, index) => imports.transState[index] === "done" || imports.transState[index] === "error")
-                        .length,
-                      total: openings.length,
-                    })
-                  : `✨ ${t("openingTranslateAllBtn")}`}
-              </button>
-            </div>
-            <p>{t("openingLineAsk")}</p>
-            <div className="opening-choice-list">
-              {openings.map((opening, index) => {
-                // 點列只展開全文，貼出的鈕在框外底部——開場白動輒上千字，按鈕若跟在全文後面
-                // 得整段捲到底才按得到，而滿是標記的開場白根本沒必要逐字看完
-                const expanded = openingExpanded === index;
-                const transState = imports.transState[index];
-                return (
-                  <div className="opening-choice-item" key={index}>
-                    <button
-                      type="button"
-                      className="opening-choice-head"
-                      aria-expanded={expanded}
-                      onClick={() => imports.setExpanded(expanded ? null : index)}
-                    >
-                      <strong>{t("openingChoiceItem", { n: index + 1 })}</strong>
-                      {transState === "translating" && <span className="opening-trans-status">{t("openingTranslating")}</span>}
-                      {transState === "error" && (
-                        <span className="opening-trans-status opening-trans-error" title={t("openingTranslateFailed")}>
-                          ⚠
-                        </span>
-                      )}
-                      <span>{expanded ? "" : openingPreview(opening)}</span>
-                    </button>
-                    {expanded && (
-                      <div className="opening-choice-full">
-                        <StoryText text={opening} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="ai-gen-footer">
-              {openingExpanded !== null && openings[openingExpanded] !== undefined && (
-                <>
-                  <button
-                    type="button"
-                    className="footer-lead"
-                    onClick={() => void postOpening(openings[openingExpanded])}
-                  >
-                    {t("openingLineOk")}
-                  </button>
-                  <button
-                    type="button"
-                    className="ai-gen-btn"
-                    title={t("openingTranslateHint")}
-                    disabled={imports.transState[openingExpanded] === "translating"}
-                    onClick={() => void postTranslatedOpening(openingExpanded)}
-                  >
-                    {imports.transState[openingExpanded] === "translating" ? t("openingTranslating") : `✨ ${t("openingTranslatePostBtn")}`}
-                  </button>
-                </>
-              )}
-              <button type="button" onClick={() => imports.closeOpenings()}>{t("openingLineCancel")}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ImportDialogs
+        busy={chat.busy}
+        choice={imports.choice}
+        onAnswerChoice={(answer) => void imports.answerChoice(answer)}
+        route={imports.route}
+        onAnswerRoute={(answer) => void imports.answerRoute(answer)}
+        openings={imports.openings}
+        expanded={imports.expanded}
+        translationState={imports.transState}
+        translateAllBusy={imports.transAllBusy}
+        onSetExpanded={imports.setExpanded}
+        onCloseOpenings={imports.closeOpenings}
+        onTranslateAll={() => void imports.translateAllOpenings()}
+        onPostOpening={(text) => void postOpening(text)}
+        onTranslateAndPost={(index) => void postTranslatedOpening(index)}
+      />
     </div>
   );
 }

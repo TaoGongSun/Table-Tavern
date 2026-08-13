@@ -57,27 +57,37 @@ function worldbookImportedMessage(book: WorldbookImport) {
 }
 
 /** 待作答的第二張卡路由：身分已定、資料原樣留著，等玩家在框裡選匯哪張桌 */
-interface PendingRoute {
+export interface PendingImportRoute {
   data: number[];
   identity: "character" | "worldbook";
   label: string;
   route: "ask" | "merge_worldbook";
 }
 
+/** 待作答的匯入身分：data 原樣留著給兩條路徑共用，booksFirst＝主按鈕指世界書 */
+export interface PendingImportChoice {
+  data: number[];
+  name: string;
+  booksFirst: boolean;
+}
+
+/** 開場白面板的逐則翻譯狀態，key＝該則在清單裡的索引 */
+export type OpeningTranslationState = Record<number, "translating" | "done" | "error">;
+
 export interface ImportController {
   /** 這桌的匯入收據摘要：側欄「復原上次匯入」按鈕靠它決定出不出現 */
   receipts: ImportReceiptSummary[];
   /** 匯入身分框：等玩家在三鍵框挑一種，null＝沒開 */
-  choice: { data: number[]; name: string; booksFirst: boolean } | null;
+  choice: PendingImportChoice | null;
   /** 第二張卡路由框：null＝沒開 */
-  route: PendingRoute | null;
+  route: PendingImportRoute | null;
   /** 匯完跳出的開場白清單；null＝面板沒開 */
   openings: string[] | null;
   /** 面板裡展開的那一則（一次只展開一條） */
   expanded: number | null;
   setExpanded: (index: number | null) => void;
   /** 逐則翻譯狀態 */
-  transState: Record<number, "translating" | "done" | "error">;
+  transState: OpeningTranslationState;
   /** 「全部翻譯」跑著沒 */
   transAllBusy: boolean;
   closeOpenings: () => void;
@@ -135,15 +145,15 @@ export function useImportController(input: {
   const [receipts, setReceipts] = useState<ImportReceiptSummary[]>([]);
   // 匯入身分框：等玩家在三鍵框挑一種，data 原樣留著給兩條路徑共用；
   // booksFirst＝主按鈕指世界書（探測結果只用來算這個，算完就不必留著）
-  const [choice, setChoice] = useState<{ data: number[]; name: string; booksFirst: boolean } | null>(null);
+  const [choice, setChoice] = useState<PendingImportChoice | null>(null);
   // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝一般第二張卡、merge_worldbook＝第二本世界書會合成一本
-  const [route, setRoute] = useState<PendingRoute | null>(null);
+  const [route, setRoute] = useState<PendingImportRoute | null>(null);
   const [openings, setOpenings] = useState<string[] | null>(null);
   // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
   const [expanded, setExpanded] = useState<number | null>(null);
   // 開場白翻譯：逐則狀態＋「全部翻譯」是否在跑；abort ref 給 modal 一關就停止後續翻譯呼叫用
   // （純 ref 而非 state：序列迴圈中途要讀到「使用者剛剛關掉視窗」，不能等下一次 render）
-  const [transState, setTransState] = useState<Record<number, "translating" | "done" | "error">>({});
+  const [transState, setTransState] = useState<OpeningTranslationState>({});
   const [transAllBusy, setTransAllBusy] = useState(false);
   const transAbort = useRef(false);
   // openings 一變成 null（不管哪個按鈕關的）就中止：不必在每個關閉入口各補一次旗標
