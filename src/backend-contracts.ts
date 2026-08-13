@@ -21,3 +21,20 @@ export interface WorldbookEntry {
   locked: boolean;
   visibility: Visibility;
 }
+
+// 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
+// speaker_name 是當下顯示名快照——改名後舊事件不動（2026-07-27 拍板），顯示一律讀這欄
+export interface TranscriptEvent {
+  ts: string;
+  speaker_id: string;
+  speaker_name: string;
+  kind: "dialogue" | "narration" | "player" | "system";
+  text: string;
+  // 剝殼前的模型原文（狀態區塊與點名行都還在）；沒剝到東西就沒這欄
+  raw?: string;
+  state?: {
+    table: Record<string, string>;
+    tree?: Record<string, unknown>;
+    notes?: string[];
+  };
+}
