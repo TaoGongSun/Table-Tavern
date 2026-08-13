@@ -23,11 +23,11 @@ import { loadBranchBindings, useTableStateController } from "./controllers/useTa
 import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
 import { GenerateTableDialog } from "./views/GenerateTableDialog";
+import { PlayView } from "./views/PlayView";
 import { SettingsWindow } from "./views/SettingsWindow";
 import { TableSidebar } from "./views/TableSidebar";
 import { StateBar, WorkspaceHeader } from "./views/WorkspaceHeader";
 import { WorldEditor } from "./views/WorldEditor";
-import gmBook from "./assets/gm-book.png";
 import "./App.css";
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
@@ -42,13 +42,6 @@ interface UndoReport {
   removed_opening: boolean;
 }
 
-// 串流中的旁白尾端會冒出狀態區塊，整則寫完才由後端剝乾淨；
-// 這裡先切掉，免得玩家每回合都看到一段圍欄或標籤閃過去
-function narrationStreamText(text: string) {
-  const marker = text.search(/```|<details|<status|<UpdateVariable/i);
-  return marker === -1 ? text : text.slice(0, marker);
-}
-
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 const GM_TARGET = "__GM__";
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
@@ -58,15 +51,6 @@ const GM_COLOR = "#8a6a3c";
 // 所以按鈕要收起來；記在瀏覽器端，重開 app 也不該讓它又冒出來讓人誤按。
 const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
 const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;
-
-// 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
-// 快取上線後換幕不再省額度（摘要與換幕後首輪都全額計價，約等於連跑四輪），
-// 提醒的理由改成「紀錄長到模型顧不上前面」，門檻從 8000 提到 30000（2026-08-04 實測拍板）。
-const SCENE_LENGTH_HINT_CHARS = 30000;
-
-// 離開太久的換幕提醒還要紀錄夠長才有意義：短紀錄重建本來就便宜，換幕反而多花一次摘要錢。
-// 保溫仍照樣停在三次（那是省錢邏輯），這個門檻只決定要不要出聲提醒。
-const SCENE_AWAY_HINT_MIN_CHARS = 8000;
 
 function openingPreview(text: string) {
   const preview = text
@@ -200,7 +184,6 @@ function App() {
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
   // 生成對話框只留開關在 App：草稿與三支生成流程都在 GenerateTableDialog 自己身上
   const [genTableOpen, setGenTableOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   // 狀態列／狀態樹：平欄、樹、跳動記號、分支指認與編輯中的那一格都在 controller 裡。
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
@@ -340,15 +323,6 @@ function App() {
     markCliConnected: markCliConnectedFromChat,
     onError: setError,
   });
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat.events, chat.generating, chat.streamText]);
-
-  // 從世界設定／卡片編輯／單幕閱讀切回對話時，訊息區是重新掛載的，直接跳到底（不跑動畫）
-  useEffect(() => {
-    if (mainView === null) bottomRef.current?.scrollIntoView();
-  }, [mainView]);
 
   // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列
   useEffect(() => {
@@ -920,12 +894,6 @@ function App() {
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
 
-  // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
-  const sceneChars = chat.events.reduce((sum, event) => sum + event.text.length, 0);
-  const sceneTooLong = sceneChars > SCENE_LENGTH_HINT_CHARS;
-  // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
-  const showAwayHint = chat.awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
-
   return (
     <div className="app-shell">
       <GenerateTableDialog
@@ -1119,206 +1087,38 @@ function App() {
             />
           </EditPane>
         ) : (
-          <>
-            <Onboarding config={config} onSaved={setConfig} />
-
-            <section className="messages" aria-label={t("messagesAria")}>
-              {/* 幕書籤：目前這一幕的既有系統標籤（換幕／前幕／單幕匯出同一套資料） */}
-              <div className="act-divider">
-                <span className="act-tag">{sceneDisplayLabel(scene)}</span>
-              </div>
-              {chat.events.map((event, index) => {
-                if (event.kind === "dialogue" || event.kind === "player") {
-                  const meta = characters.metaOf(event.speaker_id);
-                  const isPlayer = event.kind === "player";
-                  return (
-                    <div
-                      key={index}
-                      className={`message message-${event.kind}`}
-                      style={
-                        isPlayer ? undefined : { ["--fac" as string]: meta?.color ?? "#888888" }
-                      }
-                    >
-                      <div className="pb-name">
-                        <span className="pb-plate">{event.speaker_name}</span>
-                      </div>
-                      <StoryText text={event.text} />
-                    </div>
-                  );
-                }
-                return (
-                  <div key={index} className={`message message-${event.kind}`}>
-                    <StoryText text={event.text} />
-                  </div>
-                );
-              })}
-              {chat.generating !== null && chat.generating.kind === "dialogue" && (
-                <div
-                  className="message message-dialogue"
-                  style={{ ["--fac" as string]: generatingMeta?.color ?? "#888888" }}
-                >
-                  <div className="pb-name">
-                    <span className="pb-plate">{generatingMeta?.name ?? ""}</span>
-                  </div>
-                  {chat.streamText ? (
-                    <span className="text">{chat.streamText}</span>
-                  ) : (
-                    <span className="typing" aria-label={t("typing", { name: generatingMeta?.name ?? "" })}>
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  )}
-                </div>
-              )}
-              {chat.generating !== null && chat.generating.kind === "narration" && (
-                <div className="message message-narration">
-                  {narrationStreamText(chat.streamText) ? (
-                    <span className="text">{narrationStreamText(chat.streamText)}</span>
-                  ) : (
-                    <span className="typing" aria-label={t("typing", { name: "GM" })}>
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  )}
-                </div>
-              )}
-              {chat.canRestore && !chat.busy && (
-                <div className="undo-restore">
-                  <button type="button" onClick={() => void chat.restoreUndone()}>
-                    ↩ {t("undoRestore")}
-                  </button>
-                </div>
-              )}
-              {/* 換幕的兩條補救路：只在這一幕還沒開始玩時出現，玩家一發言就自動收掉 */}
-              {canUndoScene && (
-                <div className="undo-restore">
-                  <button
-                    type="button"
-                    title={t("sceneSummaryRetryHint")}
-                    onClick={() => void regenerateSummary()}
-                  >
-                    ↻ {t("sceneSummaryRetry")}
-                  </button>
-                  <button
-                    type="button"
-                    title={t("sceneRevertHint")}
-                    onClick={() => void revertScene()}
-                  >
-                    ↩ {t("sceneRevert")}
-                  </button>
-                </div>
-              )}
-              <div ref={bottomRef} />
-            </section>
-
-            {/* Composer 改整寬書寫面（ui-overhaul 拍板）：目標晶片只是把「點側欄選發言對象」既有狀態可見化 */}
-            <form className="composer" onSubmit={chat.send}>
-              {speaker && (
-                <div className="composer-opts">
-                  <span
-                    className="opt-target"
-                    title={gmTargeted ? t("gmTargetHint") : t("castHint", { name: targetName })}
-                    style={{
-                      ["--fac" as string]: gmTargeted ? GM_COLOR : (characters.metaOf(speaker)?.color ?? "#888888"),
-                    }}
-                  >
-                    {gmTargeted ? (
-                      characters.gmImage ? (
-                        <img className="avatar-round opt-avatar gm-opt-avatar" src={characters.gmImage} alt="" />
-                      ) : (
-                        <img className="opt-avatar" src={gmBook} alt="" />
-                      )
-                    ) : characters.avatars[speaker] ? (
-                      <img className="avatar-round opt-avatar" src={characters.avatars[speaker]} alt="" />
-                    ) : (
-                      <span aria-hidden="true">{characters.metaOf(speaker)?.avatar ?? "🎭"}</span>
-                    )}
-                    {targetName}
-                    <button
-                      type="button"
-                      className="opt-target-clear"
-                      aria-label={t("clearTarget")}
-                      title={t("clearTarget")}
-                      onClick={() => setSpeaker("")}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                </div>
-              )}
-              <input
-                className="writebox"
-                aria-label={t("composerAria")}
-                value={chat.input}
-                onChange={(e) => chat.setInput(e.currentTarget.value)}
-                placeholder={
-                  speaker
-                    ? t("composerPlaceholder", { name: targetName })
-                    : characters.active.length === 0
-                      ? t("composerNoCharacter")
-                      : t("composerNoTarget")
-                }
-                disabled={(!speaker && characters.active.length === 0) || chat.busy}
-              />
-              {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
-                  （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
-              <div className="composer-send">
-                <div className="composer-primary-action">
-                  <button
-                    type="submit"
-                    disabled={(!speaker && characters.active.length === 0) || chat.busy}
-                  >
-                    {t("send")} ➤
-                  </button>
-                </div>
-                {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
-                {showAwayHint ? (
-                  <span className="scene-length-hint">{t("sceneAwayHint")}</span>
-                ) : sceneTooLong ? (
-                  <span className="scene-length-hint">{t("sceneTooLongHint")}</span>
-                ) : null}
-                <div className="composer-ai-actions">
-                  <button
-                    className="undo-last"
-                    type="button"
-                    onClick={() => void chat.undoLast()}
-                    disabled={chat.busy || chat.events.length === 0}
-                    title={t("undoLastHint")}
-                  >
-                    ↩ {t("undoLast")}
-                  </button>
-                  <button
-                    className="request-reply"
-                    type="button"
-                    onClick={() => void chat.replyFromTarget()}
-                    disabled={!speaker || chat.busy}
-                    title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
-                    aria-label={requestReplyLabel}
-                  >
-                    <span className="request-reply-label">{requestReplyLabel}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={chat.gmNarrate}
-                    disabled={chat.busy}
-                    title={t("gmNarrateHint")}
-                  >
-                    {t("gmNarrate")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={chat.gmAdvance}
-                    disabled={chat.busy || characters.active.length === 0}
-                    title={t("gmAdvanceHint")}
-                  >
-                    {t("gmAdvance")}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </>
+          <PlayView
+            onboarding={<Onboarding config={config} onSaved={setConfig} />}
+            sceneLabel={sceneDisplayLabel(scene)}
+            events={chat.events}
+            metaOf={characters.metaOf}
+            generating={chat.generating}
+            generatingMeta={generatingMeta}
+            streamText={chat.streamText}
+            busy={chat.busy}
+            canRestore={chat.canRestore}
+            onRestoreUndone={() => void chat.restoreUndone()}
+            canUndoScene={canUndoScene}
+            onRegenerateSummary={() => void regenerateSummary()}
+            onRevertScene={() => void revertScene()}
+            awayTooLong={chat.awayTooLong}
+            speaker={speaker}
+            gmTargeted={gmTargeted}
+            targetName={targetName}
+            targetColor={gmTargeted ? GM_COLOR : (characters.metaOf(speaker)?.color ?? "#888888")}
+            targetImage={gmTargeted ? characters.gmImage : (characters.avatars[speaker] ?? null)}
+            targetEmoji={characters.metaOf(speaker)?.avatar ?? "🎭"}
+            onClearTarget={() => setSpeaker("")}
+            input={chat.input}
+            onInputChange={chat.setInput}
+            castEmpty={characters.active.length === 0}
+            onSubmit={chat.send}
+            requestReplyLabel={requestReplyLabel}
+            onUndoLast={() => void chat.undoLast()}
+            onRequestReply={() => void chat.replyFromTarget()}
+            onGmNarrate={chat.gmNarrate}
+            onGmAdvance={chat.gmAdvance}
+          />
         )}
         </div>
         {error && <ErrorNote text={error} />}
