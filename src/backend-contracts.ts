@@ -4,3 +4,20 @@ export interface AppConfig {
   tier_models: Record<string, string>;
   preferences: Record<string, unknown>;
 }
+
+export type Visibility =
+  | { type: "gm" }
+  | { type: "public" }
+  | { type: "characters"; characters: string[] };
+
+export interface WorldbookEntry {
+  uid: number;
+  title: string;
+  keys: string[];
+  content: string;
+  constant: boolean;
+  order: number;
+  disabled: boolean;
+  locked: boolean;
+  visibility: Visibility;
+}
