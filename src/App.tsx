@@ -20,14 +20,13 @@ import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
 import { useImportController } from "./controllers/useImportController";
 import { loadBranchBindings, useTableStateController } from "./controllers/useTableStateController";
-import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
-import { CardEditor } from "./views/CardEditor";
+import { ErrorNote, StoryText } from "./views/atoms";
 import { GenerateTableDialog } from "./views/GenerateTableDialog";
+import { MainView } from "./views/MainView";
 import { PlayView } from "./views/PlayView";
 import { SettingsWindow } from "./views/SettingsWindow";
 import { TableSidebar } from "./views/TableSidebar";
 import { StateBar, WorkspaceHeader } from "./views/WorkspaceHeader";
-import { WorldEditor } from "./views/WorldEditor";
 import "./App.css";
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
@@ -974,153 +973,104 @@ function App() {
           />
         )}
 
-        <div className="chat-body">
-        {actsOpen && scene > 0 && (
-          <div className="acts-flyout">
-            <button type="button" className="acts-flyout-hide" onClick={() => setActsOpen(false)}>
-              {t("hideActs")}
-            </button>
-            <div className="acts-flyout-list">
-              {Array.from({ length: scene }, (_, n) => n).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => {
-                    setMainView({ kind: "scene", n });
-                    setActsOpen(false);
-                  }}
-                >
-                  {sceneDisplayLabel(n)}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {mainView?.kind === "scene" ? (
-          <ActReader
-            world={table}
-            worldName={tableName}
-            scene={mainView.n}
-            label={sceneDisplayLabel(mainView.n)}
-            onBack={() => setMainView(null)}
-            onFork={() => void forkScene(mainView.n)}
-          />
-        ) : cardView ? (
-          <EditPane
-            title={
-              cardView.kind === "new-character"
-                ? t("newCardTitle")
-                : cardView.kind === "new-player"
-                  ? t("newPlayerCardTitle")
-                  : cardView.kind === "player"
-                    ? t("editPlayerCardTitle")
-                    : t("editCardSummary", { name: characters.metaOf(cardView.id)?.name ?? "" })
-            }
-          >
-            <CardEditor
-              world={table}
-              characterId={cardView.id}
-              isNew={cardView.kind === "new-character" || cardView.kind === "new-player"}
-              isPlayer={editingPlayerCard}
-              newCardColor={PALETTE[characters.list.length % PALETTE.length]}
-              imageDataUrl={
-                editingPlayerCard ? characters.playerImage ?? undefined : characters.images[cardView.id]
-              }
-              avatarImgUrl={
-                editingPlayerCard ? characters.playerAvatar ?? undefined : characters.avatars[cardView.id]
-              }
-              onImagesChanged={() =>
-                editingPlayerCard
-                  ? characters.reloadPlayer(characters.player?.id ?? null)
-                  : characters.reloadImages()
-              }
-              onSaved={(saved) =>
-                void (editingPlayerCard ? finishPlayerCardSaved(saved) : finishCardSaved(saved))
-              }
-              onArchived={
-                cardView.kind === "character"
-                  ? () => finishRemoval(cardView.id)
-                  : async () => setMainView(null)
-              }
-              onDeleted={
-                cardView.kind === "character"
-                  ? () => deleteCharacter(cardView.id)
-                  : cardView.kind === "player"
-                    ? () => deletePlayerCard(cardView.id)
-                    : async () => setMainView(null)
-              }
-              onBack={() => setMainView(null)}
-              leaveGuard={leaveGuard}
-              config={config}
-              sponsorUnlocked={sponsorUnlocked}
-              onPreference={changePreference}
-              onOpenAiSettings={() => setSettingsOpen("ai")}
-              onConverted={() => finishRemoval(cardView.id)}
+        <MainView
+          actsOpen={actsOpen && scene > 0}
+          scene={scene}
+          onHideActs={() => setActsOpen(false)}
+          onOpenScene={(n) => {
+            setMainView({ kind: "scene", n });
+            setActsOpen(false);
+          }}
+          sceneLabelOf={sceneDisplayLabel}
+          world={table}
+          worldName={tableName}
+          sceneReading={mainView?.kind === "scene" ? mainView.n : null}
+          onFork={(n) => void forkScene(n)}
+          cardKind={cardView?.kind ?? null}
+          cardId={cardView?.id ?? ""}
+          cardName={characters.metaOf(cardView?.id ?? "")?.name ?? ""}
+          editingPlayerCard={editingPlayerCard}
+          nextColor={PALETTE[characters.list.length % PALETTE.length]}
+          cardImage={
+            editingPlayerCard
+              ? (characters.playerImage ?? undefined)
+              : characters.images[cardView?.id ?? ""]
+          }
+          cardAvatar={
+            editingPlayerCard
+              ? (characters.playerAvatar ?? undefined)
+              : characters.avatars[cardView?.id ?? ""]
+          }
+          onImagesChanged={() =>
+            editingPlayerCard
+              ? characters.reloadPlayer(characters.player?.id ?? null)
+              : characters.reloadImages()
+          }
+          onCardSaved={finishCardSaved}
+          onPlayerCardSaved={finishPlayerCardSaved}
+          onFinishRemoval={finishRemoval}
+          onDeleteCharacter={deleteCharacter}
+          onDeletePlayerCard={deletePlayerCard}
+          onClose={() => setMainView(null)}
+          leaveGuard={leaveGuard}
+          config={config}
+          sponsorUnlocked={sponsorUnlocked}
+          onPreference={changePreference}
+          onOpenAiSettings={() => setSettingsOpen("ai")}
+          worldOpen={mainView?.kind === "world"}
+          worldEditorRefreshKey={worldEditorRefreshKey}
+          onEntryConverted={async () => {
+            await characters.refresh();
+          }}
+          onRefactorApplied={async () => {
+            await characters.refresh();
+            // 重構把原卡拆成一群 NPC：發言對象一律撥回 GM，
+            // 不然玩家一開口變成在跟其中一名拆出來的角色對話，回覆完全對不上
+            setSpeaker(GM_TARGET);
+            // 合併升格可能把某位角色指定為玩家卡（要點 4），跟單條「轉成角色卡」的
+            // asPlayer 分支一樣重讀一次，讓側欄玩家卡即時反映。
+            const state = await invoke<WorldState>("read_state", { worldId: table });
+            await characters.reloadPlayer(state.player_card_id);
+            await cardInterface.refreshInterfaces(table);
+            await cardInterface.refreshShell(table);
+            await tableState.refresh();
+            await imports.refreshReceipts(table);
+          }}
+          playView={
+            <PlayView
+              onboarding={<Onboarding config={config} onSaved={setConfig} />}
+              sceneLabel={sceneDisplayLabel(scene)}
+              events={chat.events}
+              metaOf={characters.metaOf}
+              generating={chat.generating}
+              generatingMeta={generatingMeta}
+              streamText={chat.streamText}
+              busy={chat.busy}
+              canRestore={chat.canRestore}
+              onRestoreUndone={() => void chat.restoreUndone()}
+              canUndoScene={canUndoScene}
+              onRegenerateSummary={() => void regenerateSummary()}
+              onRevertScene={() => void revertScene()}
+              awayTooLong={chat.awayTooLong}
+              speaker={speaker}
+              gmTargeted={gmTargeted}
+              targetName={targetName}
+              targetColor={gmTargeted ? GM_COLOR : (characters.metaOf(speaker)?.color ?? "#888888")}
+              targetImage={gmTargeted ? characters.gmImage : (characters.avatars[speaker] ?? null)}
+              targetEmoji={characters.metaOf(speaker)?.avatar ?? "🎭"}
+              onClearTarget={() => setSpeaker("")}
+              input={chat.input}
+              onInputChange={chat.setInput}
+              castEmpty={characters.active.length === 0}
+              onSubmit={chat.send}
+              requestReplyLabel={requestReplyLabel}
+              onUndoLast={() => void chat.undoLast()}
+              onRequestReply={() => void chat.replyFromTarget()}
+              onGmNarrate={chat.gmNarrate}
+              onGmAdvance={chat.gmAdvance}
             />
-          </EditPane>
-        ) : mainView?.kind === "world" ? (
-          <EditPane title={t("worldSummary")}>
-            <WorldEditor
-              key={worldEditorRefreshKey}
-              world={table}
-              worldName={tableName}
-              onBack={() => setMainView(null)}
-              leaveGuard={leaveGuard}
-              convertColor={PALETTE[characters.list.length % PALETTE.length]}
-              onEntryConverted={async () => {
-                await characters.refresh();
-              }}
-              onRefactorApplied={async () => {
-                await characters.refresh();
-                // 重構把原卡拆成一群 NPC：發言對象一律撥回 GM，
-                // 不然玩家一開口變成在跟其中一名拆出來的角色對話，回覆完全對不上
-                setSpeaker(GM_TARGET);
-                // 合併升格可能把某位角色指定為玩家卡（要點 4），跟單條「轉成角色卡」的
-                // asPlayer 分支一樣重讀一次，讓側欄玩家卡即時反映。
-                const state = await invoke<WorldState>("read_state", { worldId: table });
-                await characters.reloadPlayer(state.player_card_id);
-                await cardInterface.refreshInterfaces(table);
-                await cardInterface.refreshShell(table);
-                await tableState.refresh();
-                await imports.refreshReceipts(table);
-              }}
-            />
-          </EditPane>
-        ) : (
-          <PlayView
-            onboarding={<Onboarding config={config} onSaved={setConfig} />}
-            sceneLabel={sceneDisplayLabel(scene)}
-            events={chat.events}
-            metaOf={characters.metaOf}
-            generating={chat.generating}
-            generatingMeta={generatingMeta}
-            streamText={chat.streamText}
-            busy={chat.busy}
-            canRestore={chat.canRestore}
-            onRestoreUndone={() => void chat.restoreUndone()}
-            canUndoScene={canUndoScene}
-            onRegenerateSummary={() => void regenerateSummary()}
-            onRevertScene={() => void revertScene()}
-            awayTooLong={chat.awayTooLong}
-            speaker={speaker}
-            gmTargeted={gmTargeted}
-            targetName={targetName}
-            targetColor={gmTargeted ? GM_COLOR : (characters.metaOf(speaker)?.color ?? "#888888")}
-            targetImage={gmTargeted ? characters.gmImage : (characters.avatars[speaker] ?? null)}
-            targetEmoji={characters.metaOf(speaker)?.avatar ?? "🎭"}
-            onClearTarget={() => setSpeaker("")}
-            input={chat.input}
-            onInputChange={chat.setInput}
-            castEmpty={characters.active.length === 0}
-            onSubmit={chat.send}
-            requestReplyLabel={requestReplyLabel}
-            onUndoLast={() => void chat.undoLast()}
-            onRequestReply={() => void chat.replyFromTarget()}
-            onGmNarrate={chat.gmNarrate}
-            onGmAdvance={chat.gmAdvance}
-          />
-        )}
-        </div>
+          }
+        />
         {error && <ErrorNote text={error} />}
       </main>
 
