@@ -1,4 +1,11 @@
 // 後端資料契約：src-tauri 回傳的結構，畫面與 controller 共用。
+
+/** list_worlds 的一列：桌 id 與顯示名 */
+export interface WorldMeta {
+  id: string;
+  name: string;
+}
+
 export interface AppConfig {
   api_keys: Record<string, string>;
   tier_models: Record<string, string>;

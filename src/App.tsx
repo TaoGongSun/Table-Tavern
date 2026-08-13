@@ -4,13 +4,18 @@ import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, setLang, t } from "./i18n";
 import { isCharacterHidden } from "./character-visibility";
-import { tierLabel } from "./model-catalog";
 import { prefetchModelCatalogs } from "./model-catalog-store";
 import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "./appearance";
-import { AppConfig, SceneLabel, StateNode, TranscriptEvent, WorldState } from "./backend-contracts";
+import {
+  AppConfig,
+  SceneLabel,
+  StateNode,
+  TranscriptEvent,
+  WorldMeta,
+  WorldState,
+} from "./backend-contracts";
 import { CharacterMeta, PALETTE } from "./card-model";
 import { cliConnectedKey } from "./cli";
-import { useDragReorder } from "./drag-reorder";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
@@ -20,6 +25,7 @@ import { ActReader, EditPane, ErrorNote, StoryText } from "./views/atoms";
 import { CardEditor } from "./views/CardEditor";
 import { GenerateTableDialog } from "./views/GenerateTableDialog";
 import { SettingsWindow } from "./views/SettingsWindow";
+import { TableSidebar } from "./views/TableSidebar";
 import { WorldEditor } from "./views/WorldEditor";
 import gmBook from "./assets/gm-book.png";
 import "./App.css";
@@ -43,11 +49,6 @@ function narrationStreamText(text: string) {
   return marker === -1 ? text : text.slice(0, marker);
 }
 
-interface WorldMeta {
-  id: string;
-  name: string;
-}
-
 // 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；
 // 大小寫不分、容許中間空白（{{ user }}），其他巨集不動
 const USER_MACRO = /\{\{\s*user\s*\}\}/gi;
@@ -60,17 +61,10 @@ const GM_TARGET = "__GM__";
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
 const GM_COLOR = "#8a6a3c";
 
-// 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。
-// 下限擋在這裡，上限交給 CSS 的 max-width: 50%（視窗縮小時自動夾住）。
-const SIDEBAR_WIDTH_KEY = "sidebar_width";
-const TABLE_LIST_OPEN_KEY = "table_list_open";
 const STATE_BAR_OPEN_KEY = "state_bar_open";
 // 這桌向 AI 發過對話請求了沒（每桌一把）。開演之後復原＝把演到一半的角色卡連同後續編輯一起刪掉，
 // 所以按鈕要收起來；記在瀏覽器端，重開 app 也不該讓它又冒出來讓人誤按。
 const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
-const SIDEBAR_DEFAULT_WIDTH = 224;
-const SIDEBAR_MIN_WIDTH = 176;
-const SIDEBAR_KEY_STEP = 16;
 const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
@@ -206,12 +200,6 @@ function App() {
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");
-  const [sidebarWidth, setSidebarWidth] = useState(
-    () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
-  );
-  const [tableListOpen, setTableListOpen] = useState(
-    () => localStorage.getItem(TABLE_LIST_OPEN_KEY) !== "false",
-  );
   const [stateBarOpen, setStateBarOpen] = useState(
     () => localStorage.getItem(STATE_BAR_OPEN_KEY) === "true",
   );
@@ -224,7 +212,6 @@ function App() {
   // 生成對話框只留開關在 App：草稿與三支生成流程都在 GenerateTableDialog 自己身上
   const [genTableOpen, setGenTableOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
 
   // 狀態列／狀態樹：平欄、樹、跳動記號、分支指認與編輯中的那一格都在 controller 裡。
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
@@ -233,11 +220,6 @@ function App() {
   // 角色名單、本幕出場集合、玩家卡與角色圖／GM 圖三份快取都在 controller 裡。
   // 發言對象留在 App（聊天域也要用），角色被刪時由 characters.noteRemoved 回報該撥給誰。
   const characters = useCharacterController({ worldId: table, onError: setError });
-  const castDrag = useDragReorder(
-    characters.active,
-    (character) => character.id,
-    (ordered) => void characters.reorder(ordered),
-  );
 
   // 語系跟著 config 走；render 前同步進 i18n 模組，之後子樹的 t() 都拿到正確語言
   const language = normalizeLang(config?.preferences["language"]);
@@ -1097,24 +1079,6 @@ function App() {
   // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
   const showAwayHint = chat.awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
 
-  // 拖曳分隔線調側欄寬度：上限由 CSS max-width 夾住，這裡只擋下限
-  function resizeSidebar(next: number) {
-    const clamped = Math.min(Math.max(next, SIDEBAR_MIN_WIDTH), window.innerWidth / 2);
-    setSidebarWidth(clamped);
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(clamped)));
-  }
-
-  function startSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const onMove = (moveEvent: PointerEvent) => resizeSidebar(moveEvent.clientX);
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }
-
   return (
     <div className="app-shell">
       <GenerateTableDialog
@@ -1122,290 +1086,42 @@ function App() {
         onClose={() => setGenTableOpen(false)}
         onCreated={enterGeneratedTable}
       />
-      <aside className="sidebar" style={{ width: sidebarWidth }}>
-        <details
-          className="table-section"
-          open={tableListOpen}
-          onToggle={(event) => {
-            const next = event.currentTarget.open;
-            setTableListOpen(next);
-            localStorage.setItem(TABLE_LIST_OPEN_KEY, String(next));
-          }}
-        >
-          <summary>{t("tableListAria")}</summary>
-          <div className="table-section-content">
-            <button className="new-table" onClick={newTable} disabled={chat.busy}>
-              {t("newTable")}
-            </button>
-            <button className="gen-table" onClick={() => setGenTableOpen(true)} disabled={chat.busy}>
-              {t("genTableBtn")}
-            </button>
-            <nav className="table-list" aria-label={t("tableListAria")}>
-              {worlds.map((w) => (
-                <div className="table-row" key={w.id}>
-                  {/* 目前這桌再點一次＝改名（切桌沒意義），與主欄標題同一個入口 */}
-                  {editingName?.at === "list" && w.id === table ? (
-                    renameForm("table-item-input")
-                  ) : (
-                    <button
-                      className={`table-item ${w.id === table ? "table-item-active" : ""}`}
-                      title={w.id === table ? t("renameHint") : undefined}
-                      onClick={() =>
-                        w.id === table
-                          ? setEditingName({ at: "list", value: w.name })
-                          : switchTable(w.id)
-                      }
-                    >
-                      {w.name}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="table-delete"
-                    aria-label={t("deleteTableTitle")}
-                    title={t("deleteTableTitle")}
-                    disabled={chat.busy}
-                    onClick={() => void deleteTable(w.id)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </nav>
-          </div>
-        </details>
-        <section className="character-panel" aria-label={t("castAria")}>
-          <div className="character-list">
-            {/* GM 卡：與角色卡同款同尺寸同操作（GM 是桌上最重要的一位）——點擊選為發言對象，右下編輯鈕開世界設定＋世界書 */}
-            <div
-              role="button"
-              tabIndex={0}
-              className={`tcard tcard-gm ${selectedCard === GM_TARGET ? "tcard-selected" : ""}`}
-              title={
-                !mainView && speaker === GM_TARGET
-                  ? t("gmTargetHintClear")
-                  : t("gmTargetHint")
-              }
-              onClick={() => void selectGm()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  void selectGm();
-                }
-              }}
-            >
-              <span className="tcard-art">
-                {characters.gmImage ? (
-                  <img className="tcard-image" src={characters.gmImage} alt="" />
-                ) : (
-                  <img className="gm-book" src={gmBook} alt="" />
-                )}
-              </span>
-              <span className="tcard-body">
-                <span className="tcard-name-row">
-                  <span className="tcard-plate">GM</span>
-                </span>
-              </span>
-              <button
-                type="button"
-                className="character-card-edit"
-                aria-label={t("worldSummary")}
-                title={t("worldSummary")}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void openWorldEditor();
-                }}
-              >
-                {t("editBtn")}
-              </button>
-            </div>
-            <div
-              role="button"
-              tabIndex={0}
-              className={`tcard tcard-player${characters.player ? "" : " tcard-player-empty"}`}
-              title={t(characters.player ? "playerCardHint" : "playerCardEmptyHint")}
-              onClick={() => void openPlayerCard()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  void openPlayerCard();
-                }
-              }}
-            >
-              {characters.player ? (
-                <>
-                  <span className="tcard-art">
-                    {characters.player.show_image && characters.playerImage ? (
-                      <img className="tcard-image" src={characters.playerImage} alt="" />
-                    ) : characters.playerAvatar ? (
-                      <img className="avatar-round tcard-avatar" src={characters.playerAvatar} alt="" />
-                    ) : (
-                      <span aria-hidden="true">{characters.player.avatar}</span>
-                    )}
-                  </span>
-                  <span className="tcard-body">
-                    <span className="tcard-name-row">
-                      <span className="tcard-plate">{characters.player.name}</span>
-                    </span>
-                  </span>
-                </>
-              ) : (
-                <span className="tcard-body">{t("playerCardEmpty")}</span>
-              )}
-            </div>
-            {/* 角色卡＝桌遊組件卡：圖窗＋名字 wedge＋檔位寶石（中＝預設檔位，不掛寶石） */}
-            {castDrag.order.map((c) => (
-              <div
-                key={c.id}
-                role="button"
-                tabIndex={0}
-                className={`tcard ${selectedCard === c.id ? "tcard-selected" : ""}${
-                  castDrag.draggingKey === c.id ? " row-dragging" : ""
-                }`}
-                style={{ ["--fac" as string]: c.color }}
-                onClick={() => {
-                  if (castDrag.justDragged()) return;
-                  void selectCard(c.id);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    void selectCard(c.id);
-                  }
-                }}
-                title={`${
-                  !mainView && speaker === c.id
-                    ? t("castHintClear", { name: c.name })
-                    : t("castHint", { name: c.name })
-                }｜${t("dragToReorder")}`}
-                {...castDrag.rowProps(c)}
-              >
-                <span className="tcard-art">
-                  {c.show_image && characters.images[c.id] ? (
-                    <img className="tcard-image" src={characters.images[c.id]} alt="" />
-                  ) : characters.avatars[c.id] ? (
-                    <img className="avatar-round tcard-avatar" src={characters.avatars[c.id]} alt="" />
-                  ) : (
-                    <span aria-hidden="true">{c.avatar}</span>
-                  )}
-                </span>
-                <span className="tcard-body">
-                  <span className="tcard-name-row">
-                    <span className="tcard-plate">{c.name}</span>
-                    {c.tier !== "balanced" && (
-                      <span className="tcard-gem">{tierLabel(c.tier)}</span>
-                    )}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="character-card-edit"
-                  aria-label={t("editCardSummary", { name: c.name })}
-                  title={t("editCardSummary", { name: c.name })}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void editCard(c.id);
-                  }}
-                >
-                  {t("editBtn")}
-                </button>
-              </div>
-            ))}
-          </div>
-          {characters.archived.length > 0 && (
-            <details className="archive-section">
-              <summary>{t("archiveSectionTitle")}</summary>
-              <div className="archive-list">
-                {characters.archived.map((character) => {
-                  // 沒被玩家手動封存、純粹本幕還沒出場才算自動隱藏；封存優先於自動隱藏顯示
-                  const isAutoHidden = !character.archived && character.auto_hidden;
-                  return (
-                    <div className="archive-row" key={character.id}>
-                      <span className="archive-row-name">
-                        <span className="archive-row-name-text">{character.name}</span>
-                        {isAutoHidden && (
-                          <span className="archive-row-badge">{t("autoHiddenBadge")}</span>
-                        )}
-                      </span>
-                      {/* 隱藏卡也要進得了編輯器：轉成世界書條目只能在隱藏狀態下按 */}
-                      <button type="button" onClick={() => void editCard(character.id)}>
-                        {t("editBtn")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void (isAutoHidden ? characters.restoreAutoHidden(character.id) : characters.restore(character.id))
-                        }
-                      >
-                        {t("restoreCharacter")}
-                      </button>
-                      <button
-                        type="button"
-                        className="delete-character"
-                        onClick={() => void deleteCharacter(character.id)}
-                      >
-                        {t("deleteCharacter")}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
-          )}
-          {/* 建卡＝直接開空白角色卡編輯器，名字與內容都在那邊填（2026-07-27 使用者拍板） */}
-          <div className="character-create">
-            <button type="button" onClick={() => void openNewCard()}>
-              {t("createCard")}
-            </button>
-            <button
-              type="button"
-              title={t("importCardHint")}
-              onClick={() => importInputRef.current?.click()}
-            >
-              {t("importCard")}
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".png,.json,image/png,application/json"
-              hidden
-              onChange={(e) => {
-                const file = e.currentTarget.files?.[0];
-                e.currentTarget.value = "";
-                if (file) void imports.importFile(file);
-              }}
-            />
-            {imports.receipts.length > 0 && !chattedSinceImport && (
-              <button
-                type="button"
-                title={t("undoLastImportHint")}
-                onClick={() => void undoLastImport()}
-              >
-                {t("undoLastImport")}
-              </button>
-            )}
-          </div>
-        </section>
-        <div className="sidebar-footer">
-          <button className="settings-open" onClick={() => setSettingsOpen("appearance")}>
-            ⚙️ {t("settingsBtn")}
-          </button>
-        </div>
-      </aside>
-
-      <div
-        className="sidebar-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("sidebarResizerAria")}
-        aria-valuenow={Math.round(sidebarWidth)}
-        tabIndex={0}
-        onPointerDown={startSidebarResize}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") resizeSidebar(sidebarWidth - SIDEBAR_KEY_STEP);
-          if (e.key === "ArrowRight") resizeSidebar(sidebarWidth + SIDEBAR_KEY_STEP);
-        }}
-        onDoubleClick={() => resizeSidebar(SIDEBAR_DEFAULT_WIDTH)}
+      <TableSidebar
+        worlds={worlds}
+        table={table}
+        busy={chat.busy}
+        renamingTable={editingName?.at === "list"}
+        renameForm={renameForm}
+        onStartRename={(name) => setEditingName({ at: "list", value: name })}
+        onNewTable={() => void newTable()}
+        onGenerateTable={() => setGenTableOpen(true)}
+        onSwitchTable={(id) => void switchTable(id)}
+        onDeleteTable={(id) => void deleteTable(id)}
+        gmId={GM_TARGET}
+        selectedCard={selectedCard}
+        speakingCard={mainView ? "" : speaker}
+        gmImage={characters.gmImage}
+        player={characters.player}
+        playerImage={characters.playerImage}
+        playerAvatar={characters.playerAvatar}
+        cast={characters.active}
+        images={characters.images}
+        avatars={characters.avatars}
+        archived={characters.archived}
+        onReorder={(ordered) => void characters.reorder(ordered)}
+        onSelectGm={() => void selectGm()}
+        onOpenWorldEditor={() => void openWorldEditor()}
+        onOpenPlayerCard={() => void openPlayerCard()}
+        onSelectCard={(id) => void selectCard(id)}
+        onEditCard={(id) => void editCard(id)}
+        onRestore={(id) => void characters.restore(id)}
+        onRestoreAutoHidden={(id) => void characters.restoreAutoHidden(id)}
+        onDeleteCharacter={(id) => void deleteCharacter(id)}
+        onCreateCard={() => void openNewCard()}
+        onImportFile={(file) => void imports.importFile(file)}
+        canUndoImport={imports.receipts.length > 0 && !chattedSinceImport}
+        onUndoImport={() => void undoLastImport()}
+        onOpenSettings={() => setSettingsOpen("appearance")}
       />
 
       <main className="chat-main">
