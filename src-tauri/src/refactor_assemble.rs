@@ -355,7 +355,13 @@ fn assemble_splits(
                 routed.insert((uid, span_id));
             }
             "group" => {
-                if survey.groups.iter().any(|group| group.id == route.group) {
+                // 宣告的 spans 必須真包含此段才算有下落：group AI 呼叫的材料只拿宣告清單，
+                // 沒列到的段不會進產物——該路由無效視同未路由，落餘段兜底＋audit。
+                if survey
+                    .groups
+                    .iter()
+                    .any(|group| group.id == route.group && group.spans.contains(&route.span))
+                {
                     routed.insert((uid, span_id)); // 本包不組裝，算已有下落（包 3 的 AI 呼叫材料）
                 }
             }
@@ -682,7 +688,7 @@ fn audit_mechanism_conservation(
 mod tests {
     use super::*;
     use crate::data::Visibility;
-    use crate::refactor_ai::RefactorSurveyPerson;
+    use crate::refactor_ai::{RefactorSplitGroup, RefactorSurveyPerson};
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -829,6 +835,60 @@ mod tests {
         assert_eq!(assembly.entries[0].content, "v1.2 更新內容");
         assert_eq!(assembly.audit.len(), 1);
         assert_eq!(assembly.audit[0].kind, "drop_rule");
+    }
+
+    /// group 宣告不含被 route 的段＝該路由無效：不算已下落，落餘段兜底——否則該段不進
+    /// 產物（group 呼叫材料只拿宣告清單）也不進餘段，套用刪源後內容就消失了。
+    #[test]
+    fn assemble_local_group_route_without_span_in_declaration_falls_to_leftover() {
+        let root = TestRoot::new();
+        let world_id = data::create_world(&root.0, "測試").unwrap();
+        let uid = seed(&root.0, &world_id, "身世條目", "秘密身世。\n\n城市設定。");
+
+        let survey = RefactorSurveyOutcome {
+            persons: Vec::new(),
+            interface_uids: Vec::new(),
+            playable_interface_uids: Vec::new(),
+            verdicts: vec![verdict(uid, "split")],
+            splits: vec![
+                RefactorSpanRoute {
+                    span: format!("{uid}#s1"),
+                    route: "group".to_owned(),
+                    rule: None,
+                    name: String::new(),
+                    title: String::new(),
+                    group: "g1".to_owned(),
+                    note: String::new(),
+                },
+                RefactorSpanRoute {
+                    span: format!("{uid}#s2"),
+                    route: "group".to_owned(),
+                    rule: None,
+                    name: String::new(),
+                    title: String::new(),
+                    group: "g1".to_owned(),
+                    note: String::new(),
+                },
+            ],
+            groups: vec![RefactorSplitGroup {
+                id: "g1".to_owned(),
+                title: "城市沿革".to_owned(),
+                kind: "setting".to_owned(),
+                spans: vec![format!("{uid}#s2")], // 宣告漏列 s1
+            }],
+            fields: Vec::new(),
+            mode: String::new(),
+            raw: String::new(),
+        };
+
+        let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+        let leftover = assembly
+            .entries
+            .iter()
+            .find(|entry| entry.title == "身世條目（餘段）")
+            .unwrap();
+        assert_eq!(leftover.content, "秘密身世。");
+        assert!(assembly.audit.iter().any(|item| item.span == format!("{uid}#s1")));
     }
 
     // ---- split 全路由組裝：entry 跨條目串接／gm+unabsorbed 合條／person 段併卡／餘段兜底 ----
