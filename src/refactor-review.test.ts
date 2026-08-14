@@ -259,6 +259,13 @@ describe("parseRefactorOutcome", () => {
     expect(() => parseRefactorOutcome(json)).toThrow("refactor-import-invalid");
   });
 
+  it("dropped-only 產物（純介面卡選 characters）匯出後讀得回來", () => {
+    const json = JSON.stringify({ dropped: [{ uid: "7", span: "", title: "主介面", content: "<div/>", rule: 5 }], mode: "characters" });
+    const outcome = parseRefactorOutcome(json);
+    expect(outcome.dropped).toHaveLength(1);
+    expect(outcome.mode).toBe("characters");
+  });
+
   it("新世界書條目解析，省略 rules／triggers 時補預設", () => {
     expect(parseRefactorOutcome(JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }] })).entries)
       .toEqual([makeEntry({ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] })]);

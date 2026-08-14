@@ -1513,8 +1513,9 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
 }
 
 /// MODE 行為正規化（refactor-mode-split）：回聲字串核過只保證「整份沒跑錯模式」；模式對了
-/// 但判官違規吐出不該有的區塊（interface 模式吐 PERSONS）由這裡清掉——被清人物認領的 uid／
-/// span 交給 assemble 的涵蓋稽核與餘段兜底機械照搬（內容不丟、audit 玩家可見），人物不拆卡。
+/// 但判官違規吐出不該有的區塊（interface 模式吐 PERSONS）由這裡清掉——人物認領作廢後交回
+/// 其餘判定：span／uid 另有合法 route 或 verdict 照原判（drop 進淘汰、statusbar／group 進
+/// 產物、absorb 進規則），無下落者由涵蓋稽核與餘段兜底自動補 carry。內容全有下落、不拆卡。
 /// characters 側的 INTERFACE／statusbar 已由 rule 5 淘汰與前端 pool 過濾涵蓋，這裡不動。
 pub fn normalize_survey_for_mode(outcome: &mut RefactorSurveyOutcome) {
     if outcome.mode == "interface" {

@@ -516,6 +516,21 @@ fn json_to_state_node(value: &serde_json::Value) -> StateNode {
     }
 }
 
+/// 讀取端玩法標記正規化：舊版可能已落地 "Characters"／帶空白的值——合法值就地修正大小寫
+/// 與空白，真未知值回 Err 讓 controller 維持未知（fail-closed 不 fallback），不回 None
+/// 冒充「確定沒標記」。
+pub fn normalize_stored_mode(stored: Option<String>) -> Result<Option<String>, String> {
+    let Some(raw) = stored else {
+        return Ok(None);
+    };
+    let mode = raw.trim().to_ascii_lowercase();
+    if mode == "interface" || mode == "characters" {
+        Ok(Some(mode))
+    } else {
+        Err("refactor-mode-invalid".to_owned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,6 +747,21 @@ mod tests {
             data::read_state(root.path(), &world_id).unwrap().refactor_mode.as_deref(),
             Some("characters")
         );
+    }
+
+    /// 讀取端正規化：舊版落地的 "Characters"／空白修成合法值，未知值回 Err（fail-closed）。
+    #[test]
+    fn normalize_stored_mode_fixes_legacy_case_and_rejects_unknown() {
+        assert_eq!(normalize_stored_mode(None), Ok(None));
+        assert_eq!(
+            normalize_stored_mode(Some(" Characters ".to_owned())),
+            Ok(Some("characters".to_owned()))
+        );
+        assert_eq!(
+            normalize_stored_mode(Some("interface".to_owned())),
+            Ok(Some("interface".to_owned()))
+        );
+        assert!(normalize_stored_mode(Some("both".to_owned())).is_err());
     }
 
     /// (b) 玩家卡限制：桌上已有玩家卡時，指定第二張要整批失敗、不寫入任何東西

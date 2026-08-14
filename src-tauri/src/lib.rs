@@ -1058,12 +1058,14 @@ fn refactor_interface_shell(app: tauri::AppHandle, world_id: String) -> Result<O
 }
 
 /// 桌面玩法標記（refactor-mode-split）：重構套用時寫入；"characters"＝前端停用這桌的
-/// 卡片介面 fallback（覆蓋層按鈕不出現、近 10 則掃 raw 的路徑不啟動）。
+/// 卡片介面 fallback（覆蓋層按鈕不出現、近 10 則掃 raw 的路徑不啟動）。讀取端正規化
+/// 舊版壞值：合法大小寫就地修正、未知值回 Err，controller 維持未知不 fallback。
 #[tauri::command]
 fn refactor_table_mode(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
-    Ok(data::read_state(&data_root(&app)?, &world_id)
+    let stored = data::read_state(&data_root(&app)?, &world_id)
         .map_err(|error| error.to_string())?
-        .refactor_mode)
+        .refactor_mode;
+    refactor::normalize_stored_mode(stored)
 }
 
 /// AI 卡重構匯出（結果卡摘要頁用）：產物來自前端 state（就算還沒套用過也能匯出），

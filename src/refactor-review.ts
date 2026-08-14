@@ -498,10 +498,13 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
   const mode = readString(raw, "mode").trim().toLowerCase();
   if (mode === "interface" || mode === "characters") outcome.mode = mode;
   else if (mode !== "") throw invalid();
-  // 三區全空＝這檔案沒有任何可套用的東西，多半根本不是重構產物。
-  if (outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 && outcome.mechanisms.length === 0) {
-    throw invalid();
-  }
+  // 全區皆空＝這檔案沒有任何內容，多半根本不是重構產物；dropped／unabsorbed／audit 有其一
+  // 仍算合法產物——純介面卡選 characters 的 dropped-only 匯出要能讀回重玩（套用落 mode）。
+  const empty =
+    outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 &&
+    outcome.mechanisms.length === 0 && outcome.dropped.length === 0 &&
+    outcome.unabsorbed.length === 0 && outcome.audit.length === 0;
+  if (empty) throw invalid();
   return outcome;
 }
 
