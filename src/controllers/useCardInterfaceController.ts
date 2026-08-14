@@ -74,6 +74,9 @@ export function useCardInterfaceController(input: {
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
   // AI 重構套用介面規則時可能順便產的靜態渲染殼；沒重構過或那次沒產殼就是 null，退回卡片自帶殼／event.raw 找殼
   const [refactorShell, setRefactorShell] = useState<string | null>(null);
+  // 桌面玩法標記（refactor-mode-split）："characters"＝玩家選了多角色對話，這桌的卡片介面
+  // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；null＝沒重構過或介面優先，照舊。
+  const [tableMode, setTableMode] = useState<string | null>(null);
   const [cardUiOpen, setCardUiOpen] = useState(false);
 
   // 切桌重問這桌各卡的介面腳本；先清空避免上一桌的介面殼閃現，讀失敗就當這桌沒有
@@ -91,14 +94,20 @@ export function useCardInterfaceController(input: {
     };
   }, [worldId]);
 
-  // 切桌重問這桌的 AI 重構介面殼；沒重構過或那次沒產殼就是 null，cardInterfaceShell 退回既有找殼路徑
+  // 切桌重問這桌的 AI 重構介面殼與玩法標記；沒重構過殼是 null、標記是 null，照既有路徑
   useEffect(() => {
     setRefactorShell(null);
+    setTableMode(null);
     if (!worldId) return;
     let stale = false;
     invoke<string | null>("refactor_interface_shell", { worldId })
       .then((shell) => {
         if (!stale) setRefactorShell(shell);
+      })
+      .catch(() => {});
+    invoke<string | null>("refactor_table_mode", { worldId })
+      .then((mode) => {
+        if (!stale) setTableMode(mode);
       })
       .catch(() => {});
     return () => {
@@ -110,6 +119,9 @@ export function useCardInterfaceController(input: {
   // 重構產物兩種：整頁 HTML（舊制殼，狀態樹填值直接顯示）；XML 骨架（照搬卡的每回合輸出格式，
   // 填值後要過卡自己的顯示腳本 regex＋模板才是畫面，`{{本回合.正文}}` 吃最新一則 GM 訊息正文）。
   const cardInterfaceShell = useMemo(() => {
+    // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構殼、卡片自帶殼、
+    // 掃 raw 的 fallback 整組短路，永遠沒有殼。
+    if (tableMode === "characters") return null;
     if (refactorShell !== null) {
       if (/<!DOCTYPE|<html/i.test(refactorShell)) return fillShellPlaceholders(refactorShell, tableTree);
       const latestGm = [...events].reverse().find((event) => event.kind !== "player");
@@ -135,7 +147,7 @@ export function useCardInterfaceController(input: {
     // 空桌退回卡片自己的開場白：這類卡的開場就是一整頁選角畫面，玩家得先在那裡選了才有第一句話
     const openings = events.length === 0 ? cardInterfaces.map((card) => card.opening) : [];
     return findShell(cardInterfaces, [...recent, ...openings]);
-  }, [refactorShell, tableTree, events, cardInterfaces]);
+  }, [tableMode, refactorShell, tableTree, events, cardInterfaces]);
 
   const cardShellReady = cardInterfaceShell !== null;
 
@@ -201,8 +213,13 @@ export function useCardInterfaceController(input: {
   }, []);
 
   const refreshShell = useCallback(async (id: string) => {
-    const shell = await invoke<string | null>("refactor_interface_shell", { worldId: id }).catch(() => null);
+    // 殼與玩法標記一起刷新：套用重構後呼叫端只叫這一支，characters 桌立刻停用介面
+    const [shell, mode] = await Promise.all([
+      invoke<string | null>("refactor_interface_shell", { worldId: id }).catch(() => null),
+      invoke<string | null>("refactor_table_mode", { worldId: id }).catch(() => null),
+    ]);
     setRefactorShell(shell);
+    setTableMode(mode);
     return shell;
   }, []);
 

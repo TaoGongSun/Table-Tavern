@@ -2002,6 +2002,7 @@ mod tests {
             mechanism,
             aligned_scene: None,
             branch_bindings: BTreeMap::new(),
+            refactor_mode: None,
         }
     }
 

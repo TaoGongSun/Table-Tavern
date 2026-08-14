@@ -639,7 +639,7 @@ async fn refactor_survey(
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let entries = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
     let signals = refactor_ai::prescan_worldbook(&entries);
-    let messages = refactor_ai::survey_messages(&context, &signals, &lang);
+    let messages = refactor_ai::survey_messages(&context, &signals, &lang, &mode);
     let (_guard, mut cancel) = inflight::register(&world_id);
     let resumed = match (run_id.as_deref(), fingerprint.as_deref()) {
         (Some(rid), Some(fp))
@@ -692,8 +692,12 @@ async fn refactor_survey(
             ) => result?,
         },
     };
-    let mut outcome = refactor_ai::parse_survey(&raw);
-    outcome.mode = mode;
+    let outcome = refactor_ai::parse_survey(&raw);
+    // MODE 回聲核對（refactor-mode-split 拍板）：判官回寫的玩法必須與玩家選定一致才收，
+    // 跑錯模式的小抄整份拒收；回聲缺席＝無法核對，同樣拒收，前端顯示錯誤讓玩家重跑。
+    if outcome.mode != mode {
+        return Err("refactor-mode-mismatch".to_owned());
+    }
     // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
     for person in &outcome.persons {
         eprintln!(
@@ -1050,6 +1054,15 @@ fn refactor_abort(world_id: String) {
 #[tauri::command]
 fn refactor_interface_shell(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
     data::read_interface_shell(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
+/// 桌面玩法標記（refactor-mode-split）：重構套用時寫入；"characters"＝前端停用這桌的
+/// 卡片介面 fallback（覆蓋層按鈕不出現、近 10 則掃 raw 的路徑不啟動）。
+#[tauri::command]
+fn refactor_table_mode(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
+    Ok(data::read_state(&data_root(&app)?, &world_id)
+        .map_err(|error| error.to_string())?
+        .refactor_mode)
 }
 
 /// AI 卡重構匯出（結果卡摘要頁用）：產物來自前端 state（就算還沒套用過也能匯出），
@@ -2957,6 +2970,7 @@ pub fn run() {
             refactor_split_group,
             refactor_abort,
             refactor_interface_shell,
+            refactor_table_mode,
             refactor_export_outcome,
             refactor_export_saved,
             refactor_outcome_exists,

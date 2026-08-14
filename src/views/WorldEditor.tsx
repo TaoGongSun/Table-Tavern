@@ -82,6 +82,7 @@ const REFACTOR_DROPPED_RULE_KEYS: Record<number, MsgKey> = {
   2: "refactorDroppedRule2",
   3: "refactorDroppedRule3",
   4: "refactorDroppedRule4",
+  5: "refactorDroppedRule5",
 };
 const REFACTOR_AUDIT_KIND_KEYS: Record<string, MsgKey> = {
   coverage: "refactorAuditKindCoverage",
@@ -705,6 +706,11 @@ export function WorldEditor({
     } catch (reason) {
       setRefactorProgress(null);
       if (String(reason).includes("refactor-aborted")) return;
+      // MODE 回聲核對不過：判官跑錯玩法整份拒收（後端固定字串），換成玩家看得懂的一句
+      if (String(reason).includes("refactor-mode-mismatch")) {
+        setWorldbookMessage(t("refactorModeMismatch"));
+        return;
+      }
       setWorldbookMessage(String(reason));
     }
   }

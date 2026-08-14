@@ -285,6 +285,8 @@ export const ptBR: Record<MsgKey, string> = {
   refactorDroppedRule2: "② Marca de versão / changelog",
   refactorDroppedRule3: "③ Gancho exclusivo do motor ST",
   refactorDroppedRule4: "④ Conteúdo duplicado",
+  refactorDroppedRule5: "⑤ Descartado pelo estilo de jogo (a conversa multipersonagem não cria interface de carta)",
+  refactorModeMismatch: "A IA produziu o estilo de jogo errado (não bate com sua escolha). Este resultado foi descartado — rode a reestruturação de novo.",
   refactorDroppedRestore: "Restaurar",
   refactorUnabsorbedSection: "{n} mecânicas não incorporadas",
   refactorUnabsorbedHint: "O texto original é mantido na entrada de regras do GM; poderá passar a ser gerenciado pelo app quando houver suporte.",

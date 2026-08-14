@@ -274,6 +274,8 @@ export const zhCN: Record<MsgKey, string> = {
   refactorDroppedRule2: "②版本标记／更新日志",
   refactorDroppedRule3: "③ST 引擎专属钩子",
   refactorDroppedRule4: "④内容重复",
+  refactorDroppedRule5: "⑤按玩法舍弃（多角色对话不建卡片界面）",
+  refactorModeMismatch: "AI 跑错玩法（产出与你选的不一致），这份结果不采用，请再按一次重构。",
   refactorDroppedRestore: "放回",
   refactorUnabsorbedSection: "未接管机制 {n} 项",
   refactorUnabsorbedHint: "原文已保留在 GM 规则条目，之后系统支持时可升级接管。",

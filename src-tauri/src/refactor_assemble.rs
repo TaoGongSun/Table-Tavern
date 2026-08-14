@@ -78,6 +78,23 @@ pub fn assemble_local(
     let mut unabsorbed = Vec::new();
     let mut audit = Vec::new();
 
+    // 角色優先＝介面產物一律不建（refactor-mode-split）：INTERFACE 條目整條進淘汰清單
+    // （rule 5 依模式捨棄），零呼叫、玩家可見可放回；涵蓋稽核視 interface_uids 為已有下落。
+    if survey.mode == "characters" {
+        for uid_str in &survey.interface_uids {
+            let Some(&entry) = uid_str.parse::<u64>().ok().and_then(|uid| by_uid.get(&uid)) else {
+                continue;
+            };
+            dropped.push(RefactorDroppedEntry {
+                uid: uid_str.clone(),
+                span: String::new(),
+                title: entry.title.clone(),
+                content: entry.content.clone(),
+                rule: 5,
+            });
+        }
+    }
+
     assemble_verdicts(
         survey,
         &by_uid,
@@ -268,7 +285,18 @@ fn assemble_splits(
 
         match route.route.as_str() {
             "statusbar" => {
-                routed.insert((uid, span_id)); // 本包不組裝，算已有下落（包 3 的 AI 呼叫材料）
+                if survey.mode == "characters" {
+                    // 角色優先＝介面產物一律不建：狀態欄格式段不發 AI 呼叫，進淘汰清單
+                    // （rule 5 依模式捨棄）保留可放回；混寫條目的其他段照樣拆出，不整條陪葬。
+                    dropped.push(RefactorDroppedEntry {
+                        uid: uid.to_string(),
+                        span: route.span.clone(),
+                        title: entry.title.clone(),
+                        content: text.clone(),
+                        rule: 5,
+                    });
+                }
+                routed.insert((uid, span_id)); // interface 模式：本包不組裝（AI 呼叫材料）
             }
             "gm" => {
                 gm_groups
@@ -303,7 +331,15 @@ fn assemble_splits(
                 }),
             },
             "person" => {
-                if survey
+                if survey.mode == "interface" {
+                    // 介面優先＝人物不拆卡、person route 停用（提示詞已禁）：判官仍吐出來時
+                    // 兜底成以人名為題的設定條目照搬，人物設定不丟。
+                    entry_groups
+                        .entry(route.name.clone())
+                        .or_default()
+                        .push((uid.to_string(), text));
+                    routed.insert((uid, span_id));
+                } else if survey
                     .persons
                     .iter()
                     .any(|person| person.name == route.name)
@@ -1060,5 +1096,95 @@ mod tests {
             .unabsorbed
             .iter()
             .any(|item| item.uid == excused_uid.to_string()));
+    }
+
+    /// characters 模式（refactor-mode-split）：INTERFACE 條目整條、statusbar 段半條都進
+    /// dropped rule 5（依模式捨棄），零呼叫可放回；混寫條目其他段照樣拆出，不整條陪葬。
+    #[test]
+    fn characters_mode_drops_interface_entries_and_statusbar_spans_as_rule5() {
+        let root = TestRoot::new();
+        let world_id = data::create_world(&root.0, "測試桌").unwrap();
+        let ui_uid = seed(&root.0, &world_id, "介面條目", "整頁介面定義");
+        let mixed_uid = seed(&root.0, &world_id, "混寫條目", "狀態欄欄位定義\n\n世界設定段");
+        let survey = RefactorSurveyOutcome {
+            interface_uids: vec![ui_uid.to_string()],
+            verdicts: vec![verdict(mixed_uid, "split")],
+            splits: vec![
+                RefactorSpanRoute {
+                    span: format!("{mixed_uid}#s1"),
+                    route: "statusbar".to_owned(),
+                    rule: None,
+                    name: String::new(),
+                    title: String::new(),
+                    group: String::new(),
+                    note: String::new(),
+                },
+                RefactorSpanRoute {
+                    span: format!("{mixed_uid}#s2"),
+                    route: "entry".to_owned(),
+                    rule: None,
+                    name: String::new(),
+                    title: "世界設定".to_owned(),
+                    group: String::new(),
+                    note: String::new(),
+                },
+            ],
+            mode: "characters".to_owned(),
+            ..empty_survey()
+        };
+        let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+        assert!(assembly.dropped.iter().any(|item| item.uid == ui_uid.to_string()
+            && item.rule == 5
+            && item.span.is_empty()
+            && item.content == "整頁介面定義"));
+        assert!(assembly
+            .dropped
+            .iter()
+            .any(|item| item.rule == 5 && item.span == format!("{mixed_uid}#s1") && item.content == "狀態欄欄位定義"));
+        assert!(assembly
+            .entries
+            .iter()
+            .any(|entry| entry.title == "世界設定" && entry.content == "世界設定段"));
+        assert!(assembly.audit.is_empty());
+    }
+
+    /// interface 模式：person route 停用（提示詞已禁）——判官仍吐出來時兜底成
+    /// 以人名為題的設定條目照搬，人物設定不丟、不拆卡。
+    #[test]
+    fn interface_mode_falls_person_route_back_to_entry_by_name() {
+        let root = TestRoot::new();
+        let world_id = data::create_world(&root.0, "測試桌").unwrap();
+        let uid = seed(&root.0, &world_id, "混寫", "霍玄的人物設定\n\n其他設定");
+        let survey = RefactorSurveyOutcome {
+            verdicts: vec![verdict(uid, "split")],
+            splits: vec![
+                RefactorSpanRoute {
+                    span: format!("{uid}#s1"),
+                    route: "person".to_owned(),
+                    rule: None,
+                    name: "霍玄".to_owned(),
+                    title: String::new(),
+                    group: String::new(),
+                    note: String::new(),
+                },
+                RefactorSpanRoute {
+                    span: format!("{uid}#s2"),
+                    route: "entry".to_owned(),
+                    rule: None,
+                    name: String::new(),
+                    title: "其他".to_owned(),
+                    group: String::new(),
+                    note: String::new(),
+                },
+            ],
+            mode: "interface".to_owned(),
+            ..empty_survey()
+        };
+        let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+        assert!(assembly.characters.is_empty());
+        assert!(assembly
+            .entries
+            .iter()
+            .any(|entry| entry.title == "霍玄" && entry.content == "霍玄的人物設定"));
     }
 }
