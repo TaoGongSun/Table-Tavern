@@ -147,7 +147,8 @@ fn events_fingerprint(events: &[TranscriptEvent]) -> String {
 
 /// 產生 claude CLI 接受的 UUID v4 字串。亂數取自兩顆 ulid（時間戳頭 6 bytes 換成
 /// 第二顆的隨機尾），不為此多引一個 uuid/rand 依賴。
-fn new_session_id() -> String {
+/// pub(crate)：refactor_session（重構兩段判官）開線也用同一套 id。
+pub(crate) fn new_session_id() -> String {
     let mut bytes = u128::from(ulid::Ulid::generate()).to_be_bytes();
     let filler = u128::from(ulid::Ulid::generate()).to_be_bytes();
     bytes[..6].copy_from_slice(&filler[10..]);

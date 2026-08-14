@@ -14,6 +14,7 @@ mod receipts;
 mod refactor;
 mod refactor_ai;
 mod refactor_assemble;
+mod refactor_session;
 mod session_file;
 mod snapshot_patch;
 mod translate;
@@ -559,6 +560,8 @@ fn refactor_apply(
 
 /// AI 卡重構定向（初判）：supported 卡在玩家二選一之前的快速判斷，帶全卡只出
 /// RECOMMEND＋EVIDENCE 兩行。解析不出合法建議＝Err，前端照拍板走「不偽造證據、預設介面優先」。
+/// claude lane 開短命 session（refactor_session）並回 run_id＋卡片指紋，第二段憑它 resume
+/// 承前綴快取；其餘 transport 走無狀態單發、run_id 空。
 #[tauri::command]
 async fn refactor_recommend(
     app: tauri::AppHandle,
@@ -572,6 +575,27 @@ async fn refactor_recommend(
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let messages = refactor_ai::recommend_messages(&context, &lang);
     let (_guard, mut cancel) = inflight::register(&world_id);
+    if chat_transport(&config) == "claude" {
+        let call = prepare_claude_call(&app, &config, transport::gm_tier(&config)).await?;
+        let (raw, session_id) = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+            result = refactor_session::open_stage(
+                &call,
+                &world_id,
+                &messages[0].content,
+                &messages[1].content,
+                |delta| {
+                    let _ = on_delta.send(delta.to_owned());
+                },
+            ) => result?,
+        };
+        let mut outcome = refactor_ai::parse_recommend(&raw)
+            .ok_or_else(|| "refactor-recommend-unparsable".to_owned())?;
+        outcome.run_id = session_id;
+        outcome.fingerprint = usage_log::text_hash(&context);
+        return Ok(outcome);
+    }
     let raw = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -597,11 +621,15 @@ async fn refactor_recommend(
 /// AI 卡重構讀卡（盤點階段）：AI 讀整張卡的世界書，認出人物（可能散在好幾條裡）／介面／機制
 /// 三類候選。mode＝玩家選定的玩法（interface｜characters），包 1 先透傳進產物供路由與
 /// 持久化；模式專屬提示詞與 MODE 回聲核對由包 3 接手。
+/// run_id／fingerprint（包 2）＝初判開的短命 session：claude lane＋指紋沒變才 resume 承
+/// 快取（只送盤點指示、卡片不重送）；條件不合或 resume 失敗一律降級單發重送全卡。
 #[tauri::command]
 async fn refactor_survey(
     app: tauri::AppHandle,
     world_id: String,
     mode: String,
+    run_id: Option<String>,
+    fingerprint: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorSurveyOutcome, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
@@ -613,24 +641,56 @@ async fn refactor_survey(
     let signals = refactor_ai::prescan_worldbook(&entries);
     let messages = refactor_ai::survey_messages(&context, &signals, &lang);
     let (_guard, mut cancel) = inflight::register(&world_id);
-    let raw = tokio::select! {
-        biased;
-        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
-        result = stream_via_transport(
-            &app,
-            &config,
-            None,
-            false,
-            transport::gm_tier(&config),
-            Some(&world_id),
-            "GM",
-            "Output exactly in the requested marker format, nothing else.",
-            &messages,
-            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
-            |delta| {
-                let _ = on_delta.send(delta.to_owned());
-            },
-        ) => result?,
+    let resumed = match (run_id.as_deref(), fingerprint.as_deref()) {
+        (Some(rid), Some(fp))
+            if !rid.is_empty()
+                && chat_transport(&config) == "claude"
+                && fp == usage_log::text_hash(&context) =>
+        {
+            match prepare_claude_call(&app, &config, transport::gm_tier(&config)).await {
+                Ok(call) => {
+                    let result = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+                        result = refactor_session::resume_stage(
+                            &call,
+                            &world_id,
+                            rid,
+                            &messages[0].content,
+                            &messages[1].content,
+                            |delta| {
+                                let _ = on_delta.send(delta.to_owned());
+                            },
+                        ) => result,
+                    };
+                    result.ok()
+                }
+                Err(_) => None,
+            }
+        }
+        _ => None,
+    };
+    let raw = match resumed {
+        Some(raw) => raw,
+        None => tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+            result = stream_via_transport(
+                &app,
+                &config,
+                None,
+                false,
+                transport::gm_tier(&config),
+                Some(&world_id),
+                "GM",
+                "Output exactly in the requested marker format, nothing else.",
+                &messages,
+                true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+                |delta| {
+                    let _ = on_delta.send(delta.to_owned());
+                },
+            ) => result?,
+        },
     };
     let mut outcome = refactor_ai::parse_survey(&raw);
     outcome.mode = mode;

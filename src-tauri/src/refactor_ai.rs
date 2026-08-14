@@ -511,10 +511,16 @@ pub fn recommend_messages(context: &str, lang: &str) -> Vec<ChatMessage> {
 
 /// 初判結果。recommend 只有 "interface"／"characters" 兩值；解析不出合法值＝整個呼叫回 Err，
 /// 由前端照拍板走「不偽造證據、預設介面優先」。
+/// run_id／fingerprint（包 2）：claude lane 開了短命 session 時帶回，第二段憑它 resume 承
+/// 快取；run_id 空字串＝單發（非 claude lane），第二段直接重送全卡。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefactorRecommendOutcome {
     pub recommend: String,
     pub evidence: String,
+    #[serde(default)]
+    pub run_id: String,
+    #[serde(default)]
+    pub fingerprint: String,
     #[serde(default)]
     pub raw: String,
 }
@@ -539,6 +545,8 @@ pub fn parse_recommend(raw: &str) -> Option<RefactorRecommendOutcome> {
     Some(RefactorRecommendOutcome {
         recommend: recommend?,
         evidence,
+        run_id: String::new(),
+        fingerprint: String::new(),
         raw: raw.to_owned(),
     })
 }

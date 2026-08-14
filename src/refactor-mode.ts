@@ -17,9 +17,18 @@ export function detectRefactorTristate(cards: CardInterface[]): RefactorTristate
 
 export type RefactorMode = "interface" | "characters";
 
-/** 後端 refactor_recommend 的初判結果（對照 refactor_ai.rs RefactorRecommendOutcome）。 */
+/** 後端 refactor_recommend 的初判結果（對照 refactor_ai.rs RefactorRecommendOutcome）。
+ * run_id 非空＝claude lane 開了短命 session，第二段憑 run_id＋fingerprint resume 承快取。 */
 export interface RefactorRecommendOutcome {
   recommend: string;
   evidence: string;
+  run_id: string;
+  fingerprint: string;
   raw: string;
+}
+
+/** 第二段 resume 憑證：初判回傳的 session id＋卡片內容指紋。 */
+export interface RefactorRunTicket {
+  runId: string;
+  fingerprint: string;
 }
