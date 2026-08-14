@@ -87,6 +87,10 @@ pub struct RefactorOutcome {
     /// 機械稽核紅字：涵蓋漏網／機制守恆／拆組守恆／淘汰稽核，四類之一。
     #[serde(default)]
     pub audit: Vec<crate::refactor_assemble::RefactorAuditItem>,
+    /// 產出時玩家選定的玩法："interface"｜"characters"；None＝舊產物，照 interface 行為。
+    /// 套用時寫進 WorldState.refactor_mode；characters 並停用卡片介面 fallback。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -365,6 +369,18 @@ pub fn apply(
         }
     }
 
+    // 玩法標記持久化（refactor-mode-split）：兩模式都寫進桌面狀態；characters 順手清掉舊
+    // interface 套用殘留的殼檔（fallback 抑制第一層；controller 讀 mode 是第二層）。
+    if let Some(mode) = outcome.mode.as_deref().filter(|mode| !mode.is_empty()) {
+        state.refactor_mode = Some(mode.to_owned());
+        state_dirty = true;
+        if mode == "characters" {
+            if let Ok(path) = data::interface_shell_path(root, world_id) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+
     let mut mechanisms_applied = 0usize;
     for &index in &selection.mechanism_indices {
         let Some(mechanism) = outcome.mechanisms.get(index) else {
@@ -602,6 +618,7 @@ mod tests {
         let personality_uid = seed_entry(root.path(), &world_id, "亞瑟性格", "亞瑟：沉默寡言。");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("亞瑟", &[bio_uid, personality_uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -642,6 +659,48 @@ mod tests {
         assert!(restored.iter().any(|entry| entry.content == "亞瑟：沉默寡言。"));
     }
 
+    /// 玩法標記持久化（refactor-mode-split）：套用把 outcome.mode 寫進桌面狀態；
+    /// characters 並清掉舊 interface 套用殘留的殼檔（fallback 抑制第一層）。
+    #[test]
+    fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
+        let root = TestRoot::new("mode-persist");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        data::write_interface_shell(root.path(), &world_id, "<html>舊殼</html>").unwrap();
+        let outcome = RefactorOutcome {
+            mode: Some("characters".to_owned()),
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        apply(root.path(), &world_id, &outcome, &no_player_selection(Vec::new())).unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        assert_eq!(state.refactor_mode.as_deref(), Some("characters"));
+        assert!(data::read_interface_shell(root.path(), &world_id).unwrap().is_none());
+
+        // interface 模式：mode 照寫、殼不動（這輪沒產殼也不清別輪的——interface 殼由套用介面那段管）
+        let mut interface_outcome = outcome.clone();
+        interface_outcome.mode = Some("interface".to_owned());
+        apply(root.path(), &world_id, &interface_outcome, &no_player_selection(Vec::new())).unwrap();
+        assert_eq!(
+            data::read_state(root.path(), &world_id).unwrap().refactor_mode.as_deref(),
+            Some("interface")
+        );
+
+        // 舊產物（mode 缺席）：不動既有標記
+        let mut legacy = outcome.clone();
+        legacy.mode = None;
+        apply(root.path(), &world_id, &legacy, &no_player_selection(Vec::new())).unwrap();
+        assert_eq!(
+            data::read_state(root.path(), &world_id).unwrap().refactor_mode.as_deref(),
+            Some("interface")
+        );
+    }
+
     /// (b) 玩家卡限制：桌上已有玩家卡時，指定第二張要整批失敗、不寫入任何東西
     /// （沿用 data.rs 既有的一桌一張限制與錯誤訊息）。
     #[test]
@@ -667,6 +726,7 @@ mod tests {
 
         let uid = seed_entry(root.path(), &world_id, "新來的人", "新來的人的設定");
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("新來的人", &[uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -697,6 +757,7 @@ mod tests {
         let ignored_uid = seed_entry(root.path(), &world_id, "沒被勾的條目", "沒人被勾的人");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("阿明", &[picked_uid]), character("小華", &[ignored_uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -735,6 +796,7 @@ mod tests {
         let characters: Vec<RefactorCharacter> =
             names.iter().map(|name| character(name, &[source_uid])).collect();
         let outcome = RefactorOutcome {
+            mode: None,
             characters,
             interface: None,
             mechanisms: Vec::new(),
@@ -782,6 +844,7 @@ mod tests {
         let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -807,6 +870,7 @@ mod tests {
         let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -832,6 +896,7 @@ mod tests {
         let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("霍玄", &[shared_uid]), character("長老", &[shared_uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -867,6 +932,7 @@ mod tests {
         data::write_state(root.path(), &world_id, &before_state).unwrap();
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!({
@@ -951,6 +1017,7 @@ mod tests {
         }
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!({ "世界": { "時間": "清晨" } }),
@@ -998,6 +1065,7 @@ mod tests {
         let before_tree = state.state.tree.clone();
         data::write_state(root.path(), &world_id, &state).unwrap();
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!(["壞產物"]),
@@ -1048,6 +1116,7 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let source_uid = seed_entry(root.path(), &world_id, "舊設定", "舊世界書全文");
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: Vec::new(),
@@ -1125,6 +1194,7 @@ mod tests {
             meta: None,
         };
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: Vec::new(),
@@ -1176,6 +1246,7 @@ mod tests {
         let shell_html = "<!DOCTYPE html><html><body>{{World.Time}}</body></html>";
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
@@ -1225,6 +1296,7 @@ mod tests {
         let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
@@ -1263,6 +1335,7 @@ mod tests {
         let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: Some(RefactorInterface {
                 state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
@@ -1313,6 +1386,7 @@ mod tests {
         );
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: vec![RefactorMechanism {
@@ -1353,6 +1427,7 @@ mod tests {
         let source_uid = seed_entry(root.path(), &world_id, "純散文機制", "打鬥時擲骰決勝負。");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: vec![RefactorMechanism {
@@ -1406,6 +1481,7 @@ mod tests {
         );
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: vec![RefactorMechanism {
@@ -1456,6 +1532,7 @@ mod tests {
         let uid = seed_entry(root.path(), &world_id, "亞瑟人物设定", "亞瑟：劍術高超。");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("亞瑟", &[uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -1483,6 +1560,7 @@ mod tests {
         let uid = seed_entry(root.path(), &world_id, "亞瑟人物设定", "亞瑟：劍術高超。");
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: vec![character("亞瑟", &[uid])],
             interface: None,
             mechanisms: Vec::new(),
@@ -1510,6 +1588,7 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: Vec::new(),
@@ -1572,6 +1651,7 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
 
         let outcome = RefactorOutcome {
+            mode: None,
             characters: Vec::new(),
             interface: None,
             mechanisms: Vec::new(),

@@ -285,6 +285,8 @@ export const ru: Record<MsgKey, string> = {
   refactorDroppedRule2: "② Метка версии / журнал изменений",
   refactorDroppedRule3: "③ Хук только для движка ST",
   refactorDroppedRule4: "④ Дублирующийся контент",
+  refactorDroppedRule5: "⑤ Отброшено по стилю игры (мультиперсонажный чат не строит интерфейс карты)",
+  refactorModeMismatch: "ИИ выдал не тот стиль игры (не совпадает с вашим выбором). Результат отброшен — запустите перестройку ещё раз.",
   refactorDroppedRestore: "Вернуть",
   refactorUnabsorbedSection: "Непринятые механики: {n}",
   refactorUnabsorbedHint: "Исходный текст сохранён в записи правил Мастера; со временем, когда появится поддержка, его можно будет передать под управление приложения.",

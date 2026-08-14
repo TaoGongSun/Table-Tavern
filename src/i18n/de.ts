@@ -287,6 +287,8 @@ export const de: Record<MsgKey, string> = {
   refactorDroppedRule2: "② Versionsmarkierung / Änderungsprotokoll",
   refactorDroppedRule3: "③ ST-Engine-exklusiver Hook",
   refactorDroppedRule4: "④ Doppelter Inhalt",
+  refactorDroppedRule5: "⑤ Wegen Spielweise verworfen (Mehrcharakter-Chat baut keine Kartenoberfläche)",
+  refactorModeMismatch: "Die KI hat die falsche Spielweise ausgegeben (passt nicht zu deiner Wahl). Dieses Ergebnis wurde verworfen — bitte den Umbau erneut starten.",
   refactorDroppedRestore: "Zurückholen",
   refactorUnabsorbedSection: "{n} nicht übernommene Mechaniken",
   refactorUnabsorbedHint: "Der Originaltext bleibt im GM-Regeleintrag erhalten und kann später, sobald die App das unterstützt, in die App-Verwaltung übernommen werden.",

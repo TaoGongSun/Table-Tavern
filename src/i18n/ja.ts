@@ -285,6 +285,8 @@ export const ja: Record<MsgKey, string> = {
   refactorDroppedRule2: "②バージョン表記／更新履歴",
   refactorDroppedRule3: "③ST専用フック",
   refactorDroppedRule4: "④内容の重複",
+  refactorDroppedRule5: "⑤モードにより破棄（マルチキャラクター会話ではカードUIを作りません）",
+  refactorModeMismatch: "AIが選択と違う遊び方で出力したため、この結果は破棄しました。もう一度リファクタリングしてください。",
   refactorDroppedRestore: "戻す",
   refactorUnabsorbedSection: "未対応メカニクス {n} 件",
   refactorUnabsorbedHint: "原文は GM ルール条目に保持されています。今後アプリが対応すればアップグレードで管理を引き継げます。",

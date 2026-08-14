@@ -285,6 +285,8 @@ export const es: Record<MsgKey, string> = {
   refactorDroppedRule2: "② Marca de versión / registro de cambios",
   refactorDroppedRule3: "③ Gancho exclusivo del motor ST",
   refactorDroppedRule4: "④ Contenido duplicado",
+  refactorDroppedRule5: "⑤ Descartado por estilo de juego (el chat multipersonaje no crea interfaz de carta)",
+  refactorModeMismatch: "La IA produjo el estilo de juego equivocado (no coincide con tu elección). Este resultado se descartó; vuelve a ejecutar la reestructuración.",
   refactorDroppedRestore: "Restaurar",
   refactorUnabsorbedSection: "{n} mecánicas no incorporadas",
   refactorUnabsorbedHint: "El texto original se conserva en la entrada de reglas del GM; podrá pasar a gestión de la app cuando se implemente el soporte.",

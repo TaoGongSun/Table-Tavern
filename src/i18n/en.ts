@@ -300,6 +300,8 @@ export const en: Record<MsgKey, string> = {
   refactorDroppedRule2: "② Version tag / changelog",
   refactorDroppedRule3: "③ ST-engine-only hook",
   refactorDroppedRule4: "④ Duplicate content",
+  refactorDroppedRule5: "⑤ Dropped by play style (multi-character chat builds no card interface)",
+  refactorModeMismatch: "The AI produced the wrong play style (it doesn't match your choice). This result was discarded — please run refactoring again.",
   refactorDroppedRestore: "Restore",
   refactorUnabsorbedSection: "{n} unadopted mechanisms",
   refactorUnabsorbedHint: "The original text is kept in the GM rule entry; it can be upgraded to app-managed once supported.",

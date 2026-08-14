@@ -529,6 +529,10 @@ pub struct WorldState {
     /// 面板指認的分支綁定：角色卡 id → 狀態樹路徑。沒指認的靠同名自動比對。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub branch_bindings: BTreeMap<String, Vec<String>>,
+    /// AI 卡重構套用時選定的玩法："interface"｜"characters"；None＝沒重構過或舊存檔。
+    /// characters＝這桌的卡片介面 fallback 全面停用（refactor-mode-split）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refactor_mode: Option<String>,
 }
 
 /// 分岔幕的顯示編號：內部幕號單調遞增不變，玩家看到的編號靠這個脫鉤。
@@ -741,6 +745,7 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
         mechanism: Mechanism::default(),
         aligned_scene: None,
         branch_bindings: BTreeMap::new(),
+        refactor_mode: None,
     };
     fs::write(
         directory.join("state.json"),

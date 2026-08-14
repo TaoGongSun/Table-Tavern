@@ -295,6 +295,8 @@ export const zh = {
   refactorDroppedRule2: "②版本標記／更新日誌",
   refactorDroppedRule3: "③ST 引擎專屬鉤子",
   refactorDroppedRule4: "④內容重複",
+  refactorDroppedRule5: "⑤依模式捨棄（多角色對話不建卡片介面）",
+  refactorModeMismatch: "AI 跑錯玩法（產出與你選的不一致），這份結果不採用，請再按一次重構。",
   refactorDroppedRestore: "放回",
   refactorUnabsorbedSection: "未接管機制 {n} 項",
   refactorUnabsorbedHint: "原文已保留在 GM 規則條目，之後系統支援時可升級接管。",

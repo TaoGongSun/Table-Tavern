@@ -285,6 +285,8 @@ export const ko: Record<MsgKey, string> = {
   refactorDroppedRule2: "②버전 표기/업데이트 로그",
   refactorDroppedRule3: "③ST 엔진 전용 훅",
   refactorDroppedRule4: "④ 중복 내용",
+  refactorDroppedRule5: "⑤ 모드에 따라 폐기(다중 캐릭터 대화는 카드 인터페이스를 만들지 않음)",
+  refactorModeMismatch: "AI가 선택과 다른 플레이 방식으로 출력해 이 결과는 버렸습니다. 리팩터링을 다시 실행해 주세요.",
   refactorDroppedRestore: "복원",
   refactorUnabsorbedSection: "미편입 메커니즘 {n}건",
   refactorUnabsorbedHint: "원문은 GM 규칙 항목에 보존되어 있으며, 이후 앱이 지원하면 업그레이드로 관리를 넘길 수 있습니다.",

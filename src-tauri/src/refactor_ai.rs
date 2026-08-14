@@ -468,14 +468,48 @@ fn signals_line(signals: &[PrescanSignal]) -> String {
     }
 }
 
-/// 盤點階段訊息：signals＝app 結構預掃訊號（見 `prescan_worldbook`），隨 user 訊息注入判官參考。
-pub fn survey_messages(context: &str, signals: &[PrescanSignal], lang: &str) -> Vec<ChatMessage> {
+/// 模式段（refactor-mode-split）：玩家選定玩法後的判定調整＋MODE 回聲指示。放 user 訊息端，
+/// system 逐位元組相同的快取紅線零觸碰。
+const INTERFACE_MODE_BODY: &str = r#"玩家已為這張卡選定玩法：保留原卡玩法（interface）。本次盤點依此調整：
+- 人物一律不拆出：PERSONS 區塊固定留空（一行都不要寫）。純人物條目在 ENTRIES 給 `action: carry`
+  （照搬進世界書，遊玩時由 GM 代言這些人物）；人物與其他內容混寫的條目照樣走 split，但人物段落改走
+  `entry title: <人名>`（照搬成以人名為題的設定條目），`person name:` 這個 route 本次不可使用。
+- 介面（INTERFACE）、狀態欄段落（statusbar）與其他判定照常。
+輸出時在最前面多一行（放在 ## PERSONS 之前），逐字照寫，供 App 核對玩法沒有跑錯：
+
+## MODE: interface"#;
+
+const CHARACTERS_MODE_BODY: &str = r#"玩家已為這張卡選定玩法：改成多角色對話（characters）。本次盤點依此調整：
+- 人物照常認（PERSONS 完整輸出），他們會被拆成本 App 的角色卡。
+- 介面判定照常輸出（INTERFACE 區塊與 statusbar route 照判）：App 不會為這張卡建任何介面產物，
+  這些判定只用來記錄條目下落，介面格式內容會進「已淘汰」清單保留。
+輸出時在最前面多一行（放在 ## PERSONS 之前），逐字照寫，供 App 核對玩法沒有跑錯：
+
+## MODE: characters"#;
+
+fn mode_body(mode: &str) -> &'static str {
+    if mode == "characters" {
+        CHARACTERS_MODE_BODY
+    } else {
+        INTERFACE_MODE_BODY
+    }
+}
+
+/// 盤點階段訊息：signals＝app 結構預掃訊號（見 `prescan_worldbook`），隨 user 訊息注入判官參考；
+/// mode＝玩家選定玩法（interface｜characters），決定模式段文本與 MODE 回聲要求。
+pub fn survey_messages(
+    context: &str,
+    signals: &[PrescanSignal],
+    lang: &str,
+    mode: &str,
+) -> Vec<ChatMessage> {
     vec![
         system_message(context),
         ChatMessage {
             role: "user".to_owned(),
             content: format!(
-                "{SURVEY_BODY}\n\n{}\n\n全部內容（人名與專有名詞以外）使用 BCP-47 語言代碼「{lang}」對應的語言；GROUPS／SPLITS 的 title 也用這個語言。",
+                "{SURVEY_BODY}\n\n{}\n\n{}\n\n全部內容（人名與專有名詞以外）使用 BCP-47 語言代碼「{lang}」對應的語言；GROUPS／SPLITS 的 title 也用這個語言。",
+                mode_body(mode),
                 signals_line(signals)
             ),
         },
@@ -1405,6 +1439,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
     let blocks = parse_blocks(
         raw,
         &[
+            "MODE",
             "PERSONS",
             "INTERFACE",
             "ENTRIES",
@@ -1420,8 +1455,23 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
     let mut splits = Vec::new();
     let mut groups = Vec::new();
     let mut fields = Vec::new();
+    let mut mode = String::new();
     for block in &blocks {
         match block.marker {
+            // MODE 回聲：值在標記同行冒號後（`## MODE: interface`——值不可單獨成行，
+            // 會被上面的掃描認成 INTERFACE 標記）；容錯也看區塊首行。合法值才收，
+            // 其餘留空（呼叫端核對不過＝整份拒收）。
+            "MODE" => {
+                let candidate = if block.value.trim().is_empty() {
+                    block.lines.iter().map(|line| line.trim()).find(|line| !line.is_empty()).unwrap_or("").to_owned()
+                } else {
+                    block.value.trim().to_owned()
+                };
+                let lower = candidate.to_ascii_lowercase();
+                if lower == "interface" || lower == "characters" {
+                    mode = lower;
+                }
+            }
             "PERSONS" => persons.extend(
                 block
                     .lines
@@ -1457,8 +1507,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         splits,
         groups,
         fields,
-        // 包 1：mode 由呼叫端（lib.rs）以玩家選定值填入；包 3 換成解析 AI 的 MODE 回聲後核對。
-        mode: String::new(),
+        mode,
         raw: raw.to_owned(),
     }
 }
@@ -2049,11 +2098,41 @@ mod tests {
     fn recommend_messages_share_survey_system_byte_identical() {
         let context = "## 世界書條目\n測試";
         let recommend = recommend_messages(context, "zh-TW");
-        let survey = survey_messages(context, &[], "zh-TW");
-        // 兩段同 session 承前綴快取的前提：system 逐位元組相同
+        let survey = survey_messages(context, &[], "zh-TW", "interface");
+        // 兩段同 session 承前綴快取的前提：system 逐位元組相同（characters 版也同一份 system）
         assert_eq!(recommend[0].content, survey[0].content);
+        assert_eq!(
+            recommend[0].content,
+            survey_messages(context, &[], "zh-TW", "characters")[0].content
+        );
         assert_eq!(recommend[0].role, "system");
         assert!(recommend[1].content.contains("RECOMMEND:"));
+    }
+
+    /// 模式段只動 user 訊息端：interface 版禁 person route＋PERSONS 留空；characters 版
+    /// 人物照認；兩版都要求 MODE 回聲。
+    #[test]
+    fn survey_messages_carry_mode_specific_user_instructions() {
+        let interface = &survey_messages("ctx", &[], "zh-TW", "interface")[1].content;
+        assert!(interface.contains("## MODE: interface"));
+        assert!(interface.contains("PERSONS 區塊固定留空"));
+        assert!(interface.contains("`person name:` 這個 route 本次不可使用"));
+        let characters = &survey_messages("ctx", &[], "zh-TW", "characters")[1].content;
+        assert!(characters.contains("## MODE: characters"));
+        assert!(characters.contains("人物照常認"));
+    }
+
+    /// MODE 回聲解析：合法值收、亂值留空（呼叫端核對不過整份拒收）。
+    #[test]
+    fn parse_survey_reads_mode_echo() {
+        let echoed = parse_survey("## MODE: interface\n\n## PERSONS\n\n## ENTRIES\n- uid=3 action: carry\n");
+        assert_eq!(echoed.mode, "interface");
+        assert_eq!(parse_survey("## MODE: Characters\n\n## PERSONS\n").mode, "characters");
+        // 值誤寫成獨立一行：characters 不撞標記、容錯收下；interface 會被吃成 INTERFACE 標記行，
+        // 收不到＝呼叫端拒收重跑（提示詞已要求單行逐字照寫）
+        assert_eq!(parse_survey("## MODE\ncharacters\n\n## PERSONS\n").mode, "characters");
+        assert_eq!(parse_survey("## MODE: both\n\n## PERSONS\n").mode, "");
+        assert_eq!(parse_survey("## PERSONS\n").mode, "");
     }
 
     #[test]
@@ -2066,11 +2145,12 @@ mod tests {
                 pattern: "trigger:".to_owned(),
             }],
             "zh-TW",
+            "interface",
         );
         assert!(with_signals[1].content.contains("uid=3#s2"));
         assert!(with_signals[1].content.contains("trigger:"));
 
-        let without_signals = survey_messages("ctx", &[], "zh-TW");
+        let without_signals = survey_messages("ctx", &[], "zh-TW", "interface");
         assert!(without_signals[1].content.contains("結構預掃訊號：（無）"));
     }
 
@@ -2627,7 +2707,7 @@ mod tests {
     #[test]
     fn all_stage_system_messages_are_byte_identical_for_same_context() {
         let context = "測試脈絡";
-        let survey = survey_messages(context, &[], "zh-TW");
+        let survey = survey_messages(context, &[], "zh-TW", "interface");
         let expand = expand_messages(context, "1", "條目全文", EntryKind::Interface, &[], "zh-TW");
         let person = person_expand_messages(
             context,
