@@ -17,6 +17,7 @@ T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合�
 - **卡片介面空白已根治（2026-08-12 17:00，毛絨桌實測恢復）**：三次幽靈空白（結果視窗、全桌介面、毛絨桌持續壞）root cause＝雙格＋onLoad 翻面雙緩衝在 WKWebView 不可靠（devtools 水印實證：帶 script 的 srcdoc iframe load 事件不 fire、塞格 setState 無聲失效，殼一路健康到狀態機門口被弄丟、front 永遠指著空格）。修法＝狀態機整台拆除，單 iframe 直繪＋key 綁殼指紋（App.tsx，vitest 108／build 綠）。代價（殼更新閃白）已立案 [shell-update-flash](../tasks/shell-update-flash.md)（postMessage ready 重建雙緩衝，未排程）。
 
 ### 環境陷阱（驗收必讀）
+- **供應商隔離只有 claude／codex 有**（2026-08-14 實證）：claude 帶 `--safe-mode`（官方定義：CLAUDE.md／skills／plugins／hooks／MCP／自訂指令全關）、codex 帶 `--ignore-user-config`＋`--ephemeral`；`grok_args`／`agy_args` 無等價旗標（grok 只關工具：`--deny *`／`--disable-web-search`／`--no-plan`／`--no-subagents`），grok 還會寫 `~/.grok/sessions`／`memtrace` 跨會話記憶。當天兩輪盤點誤設成 grok，模型從「盤點世界書」滑成「跟操作者交涉」（畫面吐「沒拍板前不會輸出半成品盤點」「停鉤仍失敗」），**不報錯、直接產爛盤點**。補隔離（grok `--no-memory` 等）延後到重構按鈕做完。
 - **proxy usage 罐頭**：prompt_tokens/cached_tokens 恆報 28492/28486（跨不同 prompt 與 world）＝不可信，禁拿它判 prompt 新舊；驗 prompt 生效看 survey out 量級變化或臨時 eprintln 水印。
 - balanced 檔位曾指死模型 claude-sonnet-4-20250514（秒死 out=0），使用者已換 sonnet-4-6 可用。
 
@@ -114,18 +115,27 @@ T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合�
 RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。淘汰清單 UI：預設不套用、收合列表、逐條展開看全文、一鍵放回（轉 carry 進 entries 並勾選）。未接管機制＝資訊列表（內容已在 GM 規則條目裡）。
 
 ## 實測清單（新對話實機驗收用）
-環境：先重編譯再驗（本輪三修未進昨晚的 app）：裸 `npm run tauri dev` 即可（app 已自清 ANTHROPIC_*）。時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`（ts＝完成時刻，diag single＝重構呼叫）。世界目錄 `~/Documents/TableTavern/worlds/<id>/`（refactor-outcome.json／worldbook.json／mechanism-log.jsonl 可機械核對）。
-- ~~T1 補驗~~：**全過收檔**（2026-08-12，見 Current state）。
-- ~~T1 首輪原文~~：①總時長 <5 分（jsonl 佐證）②純設定 carry byte 相等＋keys/constant 保留 ③逐日劇情線 absorb：kind=mechanism、locked、RULES/TRIGGERS 非空、帳本記已接管 ④drop rule 2 入淘汰清單、預設不套用、展開全文、一鍵放回 ⑤audit 無紅字。
-- **T2 NorthHall（23 條八角色）**：①每人「速览段＋人物設定＋性格」跨條合成一張完整卡不碎裂 ②三條「剧情-」觸發歸機制線（absorb 或 group mechanism）③「格式增强Plus」整條淘汰 ④「美化状态栏」三路拆＝欄位綱要→STATE（emoji 標籤留值）、行動選項→GM 規則條目、容器紀律→drop①。
-- **T3 Transfur（16 條盲測定案）**：①目錄四條＋keyed 地區四條 carry 含元資料（keys 在）②核心設定歷史年表 carry 且該行附 reason（預掃衝突）③「格式」「COT」多路拆＝欄位綱要→STATE、敘事行為指令→GM 規則、gametext 容器→drop①、擲骰／ASCII 地圖→unabsorbed 清單可見。
-- **T4 通用**：①取消鍵中止在途＋Cmd-Q 無孤兒（refactor-dispatch P4–P6）②API 未設 balanced 退 GM（P8）③舊 refactor-outcome.json（無 meta/dropped 三欄）匯入照舊可套用 ④淘汰／未接管面板十語系文字正常。
-全過＝本案＋refactor-dispatch 一起結案。
+**2026-08-14 拍板：T1–T3（卡片盤點品質）全部擱置到重構按鈕做完再測**——做完＝[refactor-mode-split](../tasks/refactor-mode-split.md) 兩段式定向落地＋[interface-takeover-spike](../tasks/interface-takeover-spike.md) 介面接管收尾。管線還要改，現在測產物品質等於拿舊管線當判準。**今天只跑 T4。**
+
+環境：先重編譯再驗（裸 `npm run tauri dev`，app 已自清 ANTHROPIC_*）。時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`（ts＝完成時刻，diag single＝重構呼叫）。世界目錄 `~/Documents/TableTavern/worlds/<id>/`（refactor-outcome.json／worldbook.json／mechanism-log.jsonl 可機械核對）。**供應商只認 claude／codex**——grok／agy 無隔離旗標（見環境陷阱），切過去測出來的盤點不算數。
+- ~~T1 兽人的洞穴~~：**全過收檔**（2026-08-12，見 Current state）。
+- **T2 NorthHall（23 條八角色）｜擱置**：①每人「速览段＋人物設定＋性格」跨條合成一張完整卡不碎裂 ②三條「剧情-」觸發歸機制線（absorb 或 group mechanism）③「格式增强Plus」整條淘汰 ④「美化状态栏」三路拆＝欄位綱要→STATE（emoji 標籤留值）、行動選項→GM 規則條目、容器紀律→drop①。
+- **T3 Transfur（16 條盲測定案）｜擱置**：①目錄四條＋keyed 地區四條 carry 含元資料（keys 在）②核心設定歷史年表 carry 且該行附 reason（預掃衝突）③「格式」「COT」多路拆＝敘事行為指令→GM 規則、gametext 容器→drop①、擲骰／ASCII 地圖→unabsorbed 清單可見（欄位綱要→STATE 那半條已因 08-12 17:30 裁決降級為非判準）。
+- **T4 通用｜今天跑**：①取消鍵中止在途＋Cmd-Q 無孤兒（refactor-dispatch P4–P6）②API 未設 balanced 退 GM（P8）③舊 refactor-outcome.json（無 meta/dropped 三欄）匯入照舊可套用 ④淘汰／未接管面板十語系文字正常。
+  - ①-a **單發取消過**（2026-08-14 11:00，主線 ps＋jsonl 雙證）：survey 子程序（ppid＝app）取消後 1 秒內消失、無 ppid=1 孤兒、app 存活、prompt-cache.jsonl 零新增＝沒跑完沒計費。
+  - ①-b **並行取消：底層過、UI 不過**（2026-08-14 11:20，orc-cave）。底層＝兩支在途（76685／76687）同時消失、app 存活、兩支皆無用量記錄。UI＝取消後彈出「**重構完成**」面板（拆出 6 角色・介面搬進 app・重建 8 條），跑到 1/3 按取消卻拿到可直接「全部套用」的半成品。根因 [WorldEditor.tsx:610](../../src/views/WorldEditor.tsx)：`runRefactorCalls` 取消只是提早 return，後面無條件 `assembleRefactorOutcome` 出面板；被中止的 pool 項在 :594 走 `refactor-aborted` sentinel 靜默略過，連 failedTitles 都不列，面板上看不出少東西。**拍板（2026-08-14 使用者）：保留面板、加註「這是取消後的部分產出」，並把主按鈕從「全部套用」換成「不要」**（僅取消造成部分產出時；不做預設不勾／未完成清單）。同輪實證這個洞為何危險：被殺的呼叫裡含機制接管，`剧情时间线跳跃补全指令` 因此退回 kind=setting 照搬——**缺件不缺畫面**，成品看起來與完整跑完幾乎無異。
+  - ①-b **已修（2026-08-14，主線直寫，未 commit）**：`refactorCancelled` 狀態（run 起始清零、組裝面板時記錄 `refactorCancelRef`）→ 標題改 `refactorResultCancelledTitle`、加紅字 `refactorCancelledNotice`、主按鈕（`ai-gen-submit`）從「全部套用」換到「不要」。十語系各 +2 鍵。自驗：tsc 0／vitest 130／check:i18n 十語系 OK／build ✓。**待實機看畫面**。
+  - ①-c **Cmd-Q 無孤兒過**（2026-08-14 11:34）：survey 子程序 84579（父＝app 84134）在途時 Cmd-Q，子程序與 app／tauri dev／vite 全數消失、零 `父1` 殘留、jsonl 無新增。（11:31 前一次不算數：當時在途 0 支，沒走到 `kill_all_children`。）
+  - ③ **舊產物相容過**（2026-08-14，使用者實測）：`worlds/01KZQ1G6Z6XCZEDCPX5ZGMFX71/refactor-outcome.json`（08-11 08:23，無 meta／無 dropped／無 audit）匯入 → 同桌與新桌都正常展開套用，角色與條目齊全、`陣營推進日程` 仍標「App 接管中」。新桌不改桌名＝預期行為。
+  - ④ **已過**（2026-08-14 實看）：手工測試產物（淘汰 4／未接管 2／稽核 3）匯入後，面板骨架十語系正常切換——英、俄逐項看過（Dropped N items／Unadopted mechanisms／Audit／Missed content｜ОТБРОШЕНО／Непринятые механики／Аудит／Пропущенный контент），無爆版無漏翻；未翻的只有產物資料本文（title／note／detail），那是卡片內容不是 i18n 範圍。**惟新重構按鈕的淘汰機制若改寫，這幾塊字要重驗**（使用者拍板：屆時再看，不擋今天）。
+  - ② **單元測試綠、實機延後**（2026-08-14 拍板）。**CLI 模式測不到這條**：[transport.rs:1767](../../src-tauri/src/transport.rs) `refactor_expand_tier` 只在 `transport_kind == "api"` 且 balanced 模型解析失敗時退 GM，CLI 一律 balanced。要實機得切 API 模式＋清空 balanced 模型跑一次（API 模式不生子程序，證據看 jsonl 的 lane 欄），成本比 CLI 訂閱高一個量級。現況把關＝三分支單元測試（transport.rs:2855）＋五處呼叫（absorb／group／person／statusbar／interface）接線主線逐處核過。哪天真用 API 模式時順手看一眼 lane 即可。
+  - 存檔產物三份的 dropped／unabsorbed／audit **都是空陣列**（兽人的洞穴 ×2、西幻魔法世界模拟器 ×1），驗這兩個面板一律要自製產物走「匯入重構卡」。
 
 ## Next action
-1. T2 NorthHall（镇北王府）→ T3 Transfur（毛絨轉變）→ T4 通用；一項一行過/不過，發現問題帶本檔開修。app 重啟後吃本批新碼（放回標題）再測 T2。
-2. 環境殘留 ANTHROPIC_* 的本機清理＝獨立對話（提示詞已交使用者），與本案驗收互不擋路。
-3. 全過＝本案結案＋refactor-dispatch P4–P6/P8 一起收（兩案 completed、TASKS.md 行搬 DONE.md、已驗收段搬 archive/）。
+1. **T4 於 2026-08-14 收工**：①取消／Cmd-Q 過（UI 半成品洞已修，待實機看畫面）、③舊產物相容過、④十語系過（新按鈕改淘汰機制後重驗）、②單元測試綠實機延後。refactor-dispatch 的 P4–P6 隨 ① 一起綠，P8 同 ② 延後。
+2. 取消面板修正（`refactorCancelled`）**尚未 commit**；實機看新畫面要等下次真跑（survey 完成後中途取消才會出現）。
+3. 本案結案仍等 T1–T3——重構按鈕做完（refactor-mode-split 落地＋介面接管收尾）後補測。
+4. 延後項：grok／agy 供應商隔離（補旗標＋實測）、環境殘留 ANTHROPIC_* 的本機清理（提示詞已交使用者）、lib.rs:600 `[survey-persons]` 診斷 eprintln 待刪。
 
 ## Constraints
 - 新格式規格放 survey user 訊息端；survey／expand 共用 system 逐位元組相同紅線零觸碰（既有測試把關，span 標記在 context 內、各階段共用不破相等）。

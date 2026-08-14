@@ -249,6 +249,8 @@ export const zh = {
   refactorPartialFailed: "{n} 條失敗（{names}）",
   refactorResultTitle: "重構完成",
   refactorResultPartialTitle: "重構部分完成",
+  refactorResultCancelledTitle: "已取消（部分產出）",
+  refactorCancelledNotice: "你按了取消，這裡只有中止前跑完的部分；沒跑完的機制與介面不會出現在清單裡。",
   refactorFailReason: "原因：{reason}",
   refactorSummaryCharacters: "拆出 {n} 個角色",
   refactorSummaryInterface: "遊戲介面搬進 app",

@@ -239,6 +239,8 @@ export const ru: Record<MsgKey, string> = {
   refactorPartialFailed: "Не удалось: {n} ({names})",
   refactorResultTitle: "Разбор завершён",
   refactorResultPartialTitle: "Разбор завершён частично",
+  refactorResultCancelledTitle: "Отменено (частичный результат)",
+  refactorCancelledNotice: "Вы отменили запуск. Здесь только то, что завершилось до остановки — незаконченные механики и интерфейсы в списке отсутствуют.",
   refactorFailReason: "Причина: {reason}",
   refactorSummaryCharacters: "Выделено персонажей: {n}",
   refactorSummaryInterface: "Игровой интерфейс перенесён в приложение",

@@ -241,6 +241,8 @@ export const de: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} fehlgeschlagen ({names})",
   refactorResultTitle: "Reorganisation abgeschlossen",
   refactorResultPartialTitle: "Reorganisation teilweise abgeschlossen",
+  refactorResultCancelledTitle: "Abgebrochen (Teilergebnis)",
+  refactorCancelledNotice: "Du hast abgebrochen. Hier steht nur, was vor dem Stopp fertig wurde – unfertige Mechaniken und Oberflächen fehlen in der Liste.",
   refactorFailReason: "Grund: {reason}",
   refactorSummaryCharacters: "{n} Charaktere herausgelöst",
   refactorSummaryInterface: "Spieloberfläche in die App übernommen",

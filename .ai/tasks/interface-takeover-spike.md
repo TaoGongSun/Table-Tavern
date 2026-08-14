@@ -2,8 +2,6 @@
 Task-ID: interface-takeover-spike
 Title: 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面
 Status: todo
-Created: 2026-08-13T00:30:00.710331+08:00
-Updated: 2026-08-13T00:30:00.710331+08:00
 
 ## Summary
 2026-08-12 立案並完成驗證。規格：**AI 永不產介面**，重構只把卡規定的每回合輸出格式照搬成骨架、變動處挖 `{{狀態樹路徑}}`，運行時 app 用狀態樹填值、過卡自己的顯示腳本渲染；`source-card.png` 原封留桌上當介面唯一來源。
@@ -14,10 +12,12 @@ Updated: 2026-08-13T00:30:00.710331+08:00
 
 `TestCards/` 分型完成：資料槽型只有西幻一張（已過）；另有 MVU 前端型（bcd368、HeroTrainingUnderSide，帶變數更新腳本，協定同源應最順）、整頁前端非 MVU（DongeonMaster／Transfur／RPGImmortal）、狀態欄＋真人物多（NorthHall，預期結論是拆角色不接管介面）、雲端載入器（TrainEmperor，該被 unsupported 擋掉）。
 
+原待辦 1「拆角色 vs 保留介面交給玩家選擇」已於 2026-08-13 升級成獨立任務 [refactor-mode-split](refactor-mode-split.md)（兩段式定向＋模式專屬解析），本案不再追蹤。
+
 ## Next action
-- 三項驗收全過（西幻卡三回合實測 5944→2670 字省 55%、劇情 ×2.8、零拒收，commit d3f8a7e）；接著做「拆角色 vs 保留介面交給玩家選擇」（介面判 playable 時角色組預設不勾），再逐型驗其他卡（MVU 前端型 bcd368 優先），最後清舊產殼路線
+- 逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
 
 ## Constraints
 - AI 永不產介面 HTML；模板／regex 一律取自卡檔原文，每卡自訂、禁 app 統一文法。
-- 拆角色與保留介面二選一交由玩家決定，app 不自動判斷（「有幾位真人物」本機猜不準，是盤點階段 AI 的工作）。
+- 拆角色與保留介面二選一交由玩家決定，app 不自動判斷（「有幾位真人物」本機猜不準，是盤點階段 AI 的工作）——具體化見 [refactor-mode-split](refactor-mode-split.md)。
 - 與 [shell-update-flash](shell-update-flash.md) 的關聯：殼的餵入源已換成 app 組裝，閃白議題在新架構下重新評估。

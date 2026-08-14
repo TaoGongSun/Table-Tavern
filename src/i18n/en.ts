@@ -254,6 +254,8 @@ export const en: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} failed ({names})",
   refactorResultTitle: "Refactor complete",
   refactorResultPartialTitle: "Refactor partially complete",
+  refactorResultCancelledTitle: "Cancelled (partial output)",
+  refactorCancelledNotice: "You cancelled the run. Only what finished before the stop is here — unfinished mechanisms and interfaces are missing from the list.",
   refactorFailReason: "Reason: {reason}",
   refactorSummaryCharacters: "Split out {n} characters",
   refactorSummaryInterface: "Game interface moved into the app",
