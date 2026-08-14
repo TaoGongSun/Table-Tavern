@@ -159,6 +159,31 @@ pub fn apply(
     }
     let existing_character_count = data::list_characters(root, world_id)?.len();
 
+    // 玩法閘門：mode 必須在來源消耗判定與任何寫入之前解析成單一有效值——characters 產物
+    // 即使 selection 勾了介面也整段不套。晚一步解析的話，來源條目會先被記成「已被介面
+    // 消耗」而刪除，介面卻沒套，條目憑空消失。非二值常值同讀取端語意：當 None（舊產物
+    // 照 interface 行為）。
+    let mode = outcome
+        .mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|mode| matches!(*mode, "interface" | "characters"));
+    let apply_interface = selection.apply_interface && mode != Some("characters");
+
+    // 介面產物 preflight：路徑正規化（雙套鏡像折疊）在任何寫入之前跑，衝突拒套時零落檔
+    // ——interface 段在函式中段才跑的話，Err 當下角色卡已落檔，變成沒有收據的半套用。
+    let normalized_interface = match &outcome.interface {
+        Some(interface) if apply_interface => Some(
+            normalize_interface_paths(
+                &interface.state_fields,
+                interface.shell.as_deref(),
+                &interface.rules,
+            )
+            .map_err(data::invalid_data)?,
+        ),
+        _ => None,
+    };
+
     // uid → 引用它的角色 index 清單：判斷一條來源條目是「專屬」還是「共用」的依據，
     // 不看選取狀態（選取只決定「刪不刪」，不決定「算不算共用」）。
     let mut uid_owners: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
@@ -204,7 +229,7 @@ pub fn apply(
     }
     if let Some(interface) = &outcome.interface {
         for uid in &interface.source_uids {
-            add_consumer(uid, selection.apply_interface, selection.apply_interface);
+            add_consumer(uid, apply_interface, apply_interface);
         }
     }
     for (index, mechanism) in outcome.mechanisms.iter().enumerate() {
@@ -349,35 +374,30 @@ pub fn apply(
     }
 
     let mut interface_applied = false;
-    if selection.apply_interface {
-        if let Some(interface) = &outcome.interface {
-            rebuild_state_fields(&mut state.state.tree, &mut state.state.jumps, &interface.state_fields);
-            state_dirty = true;
-            if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
-                data::write_interface_shell(root, world_id, shell)?;
-                // 接管後畫面上的每個欄位都靠模型回報才會動：開增量協定讓它拿得到更新語法，
-                // 併入卡自訂的欄位規則與回報指引，卡的規矩才不會被通則蓋掉。
-                state.mechanism.incremental = true;
-                for (path, rule) in &interface.rules {
-                    state.mechanism.rules.insert(path.clone(), rule.clone());
-                }
-                if !interface.guide.trim().is_empty() {
-                    state.mechanism.guide = interface.guide.trim().to_owned();
-                }
+    if let (Some(interface), Some((state_fields, rules))) =
+        (&outcome.interface, &normalized_interface)
+    {
+        rebuild_state_fields(&mut state.state.tree, &mut state.state.jumps, state_fields);
+        state_dirty = true;
+        if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
+            data::write_interface_shell(root, world_id, shell)?;
+            // 接管後畫面上的每個欄位都靠模型回報才會動：開增量協定讓它拿得到更新語法，
+            // 併入卡自訂的欄位規則與回報指引，卡的規矩才不會被通則蓋掉。
+            state.mechanism.incremental = true;
+            for (path, rule) in rules {
+                state.mechanism.rules.insert(path.clone(), rule.clone());
             }
-            interface_applied = true;
+            if !interface.guide.trim().is_empty() {
+                state.mechanism.guide = interface.guide.trim().to_owned();
+            }
         }
+        interface_applied = true;
     }
 
     // 玩法標記持久化（refactor-mode-split）：兩模式都寫進桌面狀態；characters 順手清掉舊
     // interface 套用殘留的殼檔（fallback 抑制第一層；controller 讀 mode 是第二層）。
-    // 只收二值列舉：手改匯入檔的 "Characters"／尾空白等非常值不落地，抑制判斷不被騙過。
-    if let Some(mode) = outcome
-        .mode
-        .as_deref()
-        .map(str::trim)
-        .filter(|mode| matches!(*mode, "interface" | "characters"))
-    {
+    // 只收二值列舉（函式開頭解析）：手改匯入檔的 "Characters"／尾空白等非常值不落地。
+    if let Some(mode) = mode {
         state.refactor_mode = Some(mode.to_owned());
         state_dirty = true;
         if mode == "characters" {
@@ -421,6 +441,32 @@ pub fn apply(
         }
     }
 
+    // 整條淘汰的既有條目停用：dropped 是玩家沒放回的最終清單（放回的已在前端轉成 entries
+    // 勾選）。不停用的話 constant 條目照常每輪注入，characters 桌的 GM 仍照卡片介面協定
+    // 輸出。只停整條（span 空）：半條的條目其餘段落還在服役。停用前原樣快照走
+    // rewritten_entries 進收據（undo 覆寫復原）；條目留在世界書掛停用徽章，玩家看得到全文。
+    let deleted_uids: BTreeSet<u64> = deleted_entries.iter().map(|entry| entry.uid).collect();
+    let mut rewritten_entries: Vec<WorldbookEntry> = Vec::new();
+    let whole_entry_drops: BTreeSet<u64> = outcome
+        .dropped
+        .iter()
+        .filter(|item| item.span.is_empty())
+        .filter_map(|item| item.uid.parse().ok())
+        .filter(|uid| preexisting_uids.contains(uid) && !deleted_uids.contains(uid))
+        .collect();
+    if !whole_entry_drops.is_empty() {
+        for entry in data::read_worldbook(root, world_id)? {
+            if whole_entry_drops.contains(&entry.uid) && !entry.disabled {
+                rewritten_entries.push(entry.clone());
+                data::upsert_worldbook_entry(
+                    root,
+                    world_id,
+                    WorldbookEntry { disabled: true, ..entry },
+                )?;
+            }
+        }
+    }
+
     // 套用成功後存一份完整產物，供玩家之後直接匯出重玩、不必重燒 AI 額度重新展開同一張卡；
     // undo 與收據不動這個檔（零改動），二次套用直接覆寫。
     data::write_refactor_outcome(root, world_id, &serde_json::to_string_pretty(outcome)?)?;
@@ -430,13 +476,13 @@ pub fn apply(
             new_characters: character_ids.len(),
             new_entries,
             deleted_entries: deleted_entries.len(),
-            rewritten_entries: 0,
+            rewritten_entries: rewritten_entries.len(),
             interface_applied,
             mechanisms_applied,
             player_assigned,
         },
         character_ids,
-        rewritten_entries: Vec::new(),
+        rewritten_entries,
         deleted_entries,
     })
 }
@@ -478,6 +524,197 @@ fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
         path: title.to_owned(),
         detail: "AI 卡重構產生的機制條目：欄位規則／觸發表由 App 本地執行，說明文留在世界書（唯讀）照常可讀。".to_owned(),
     }
+}
+
+/// 介面產物的路徑正規化：模型會把同一份狀態欄輸出成兩套重複結構（頂層一套＋「状态栏」
+/// 之類的頂層分支再鏡像一套），殼佔位符只綁其中一側，GM 執行期挑另一側寫，殼綁那側
+/// 永遠空字串、面板死在初始文字。只認精確別名 `W.p ↔ p`，不採相似度：
+/// - 有殼：佔位符引用哪側，哪側是正典；兩側都被引用＝產物自相矛盾，Err 拒套不猜。
+/// - 無殼（或殼沒引用任何別名對）：分支下每葉在根層都有精確對應（完整鏡像）才折疊，
+///   正典取根層短路徑；不是完整鏡像就整份不動。
+/// 至少兩對別名才算鏡像分支（單葉同名視為巧合）。值合併：別名側空＝取正典；正典空＝搬
+/// 別名值；兩側非空且不同＝Err。別名分支多出的葉改掛正典側路徑；rules 跟著 remap（同
+/// key 規則不同＝Err），最後剔除不在正規化後葉集合的懸空規則。呼叫端必須在 apply 寫入
+/// 任何檔之前跑（preflight），Err 才能保證零落檔。
+fn normalize_interface_paths(
+    state_fields: &serde_json::Value,
+    shell: Option<&str>,
+    rules: &BTreeMap<String, FieldRule>,
+) -> Result<(serde_json::Value, BTreeMap<String, FieldRule>), String> {
+    let Some(root_object) = state_fields.as_object() else {
+        return Ok((state_fields.clone(), rules.clone()));
+    };
+    let mut leaves = BTreeMap::new();
+    flatten_leaves("", state_fields, &mut leaves);
+    let placeholders = shell.map(shell_placeholders).unwrap_or_default();
+
+    let mut merged = leaves.clone();
+    // 別名葉路徑 → 正典葉路徑；rules remap 靠它。
+    let mut alias_of: BTreeMap<String, String> = BTreeMap::new();
+
+    for (branch, value) in root_object {
+        if !value.is_object() {
+            continue;
+        }
+        let prefix = format!("{branch}.");
+        let branch_leaves: Vec<&String> =
+            leaves.keys().filter(|path| path.starts_with(&prefix)).collect();
+        // 別名對：剝掉分支前綴後，樹上其他位置有一模一樣的葉路徑。
+        let pairs: Vec<(String, String)> = branch_leaves
+            .iter()
+            .filter_map(|nested| {
+                let stripped = &nested[prefix.len()..];
+                (!stripped.starts_with(&prefix) && leaves.contains_key(stripped))
+                    .then(|| ((*nested).clone(), stripped.to_owned()))
+            })
+            .collect();
+        if pairs.len() < 2 {
+            continue;
+        }
+        let nested_referenced = pairs.iter().any(|(nested, _)| placeholders.contains(nested));
+        let root_referenced = pairs.iter().any(|(_, root)| placeholders.contains(root));
+        let canon_is_root = match (nested_referenced, root_referenced) {
+            (true, true) => {
+                return Err(format!(
+                    "介面產物自相矛盾：渲染殼同時綁定「{branch}.…」與頂層兩套路徑，請重新執行重構"
+                ));
+            }
+            (true, false) => false,
+            (false, true) => true,
+            // 殼沒表態：完整鏡像（分支每葉都有對應）才折疊，正典取根層短路徑。
+            (false, false) => {
+                if pairs.len() != branch_leaves.len() {
+                    continue;
+                }
+                true
+            }
+        };
+        for (nested, root_path) in &pairs {
+            let (canon, alias) = if canon_is_root { (root_path, nested) } else { (nested, root_path) };
+            let canon_value = merged.get(canon).cloned().unwrap_or(serde_json::Value::Null);
+            let alias_value = merged.get(alias).cloned().unwrap_or(serde_json::Value::Null);
+            if !is_empty_value(&alias_value) {
+                if is_empty_value(&canon_value) {
+                    merged.insert(canon.clone(), alias_value);
+                } else if canon_value != alias_value {
+                    return Err(format!(
+                        "介面產物同一欄位兩套初始值不一致：「{alias}」＝{alias_value}、「{canon}」＝{canon_value}，請重新執行重構"
+                    ));
+                }
+            }
+            merged.remove(alias);
+            alias_of.insert(alias.clone(), canon.clone());
+        }
+        // 正典在根層時，鏡像分支多出的葉（根層沒有對應的）改掛根層路徑，值不丟。
+        if canon_is_root {
+            for nested in &branch_leaves {
+                let stripped = nested[prefix.len()..].to_owned();
+                if let Some(value) = merged.remove(*nested) {
+                    if let Some(existing) = merged.get(&stripped) {
+                        if !is_empty_value(existing) && !is_empty_value(&value) && *existing != value {
+                            return Err(format!(
+                                "介面產物同一欄位兩套初始值不一致：「{nested}」＝{value}、「{stripped}」＝{existing}，請重新執行重構"
+                            ));
+                        }
+                        if is_empty_value(existing) && !is_empty_value(&value) {
+                            merged.insert(stripped.clone(), value);
+                        }
+                    } else {
+                        merged.insert(stripped.clone(), value);
+                    }
+                    alias_of.insert((*nested).clone(), stripped);
+                }
+            }
+        }
+    }
+
+    let mut normalized_rules: BTreeMap<String, FieldRule> = BTreeMap::new();
+    for (path, rule) in rules {
+        let target = alias_of.get(path).cloned().unwrap_or_else(|| path.clone());
+        if let Some(existing) = normalized_rules.get(&target) {
+            if existing != rule {
+                return Err(format!(
+                    "介面產物同一欄位兩套規則不一致：「{path}」與「{target}」，請重新執行重構"
+                ));
+            }
+            continue;
+        }
+        normalized_rules.insert(target, rule.clone());
+    }
+    normalized_rules.retain(|path, _| merged.contains_key(path));
+
+    Ok((unflatten(&merged)?, normalized_rules))
+}
+
+/// 深度優先攤平：葉＝任何非物件值（字串／數字／陣列都原樣保留），路徑點分。空物件沒有葉，
+/// 攤平後自然消失——空分支對狀態樹沒有意義。
+fn flatten_leaves(
+    prefix: &str,
+    value: &serde_json::Value,
+    out: &mut BTreeMap<String, serde_json::Value>,
+) {
+    match value.as_object() {
+        Some(object) => {
+            for (key, child) in object {
+                let path =
+                    if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+                flatten_leaves(&path, child, out);
+            }
+        }
+        None => {
+            out.insert(prefix.to_owned(), value.clone());
+        }
+    }
+}
+
+/// 葉路徑集合還原成巢狀物件。路徑互為前綴（「地點」既是葉又是「地點.x」的分支）＝結構
+/// 矛盾，Err——正常攤平不會產生，只有折疊搬移撞到才會。
+fn unflatten(leaves: &BTreeMap<String, serde_json::Value>) -> Result<serde_json::Value, String> {
+    let mut root = serde_json::Map::new();
+    for (path, value) in leaves {
+        let mut node = &mut root;
+        let mut segments = path.split('.').peekable();
+        while let Some(segment) = segments.next() {
+            if segments.peek().is_none() {
+                if node.get(segment).is_some_and(serde_json::Value::is_object) {
+                    return Err(format!("介面產物欄位路徑互相衝突：「{path}」，請重新執行重構"));
+                }
+                node.insert(segment.to_owned(), value.clone());
+            } else {
+                let child = node
+                    .entry(segment.to_owned())
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                match child.as_object_mut() {
+                    Some(_) => {
+                        node = child.as_object_mut().unwrap();
+                    }
+                    None => {
+                        return Err(format!(
+                            "介面產物欄位路徑互相衝突：「{path}」，請重新執行重構"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(serde_json::Value::Object(root))
+}
+
+fn is_empty_value(value: &serde_json::Value) -> bool {
+    value.is_null() || value.as_str().is_some_and(|text| text.trim().is_empty())
+}
+
+/// 殼裡所有 `{{路徑}}` 佔位符（trim 過）。
+fn shell_placeholders(shell: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut rest = shell;
+    while let Some(start) = rest.find("{{") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else { break };
+        out.insert(after[..end].trim().to_owned());
+        rest = &after[end + 2..];
+    }
+    out
 }
 
 /// state_fields 是物件時整份重建狀態樹：同名頂層鍵保留目前值，其餘舊鍵一律捨棄；非物件產物
@@ -534,6 +771,7 @@ pub fn normalize_stored_mode(stored: Option<String>) -> Result<Option<String>, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{FieldKind, InjectLevel, UpdateMode};
     use crate::receipts;
     use std::fs;
     use std::path::PathBuf;
@@ -1051,6 +1289,274 @@ mod tests {
             .find(|entry| entry.uid == source_uid)
             .unwrap();
         assert_eq!(source_entry_after.content, "描述如何顯示狀態欄的散文");
+    }
+
+    /// characters 產物即使 selection 勾了介面（匯入路徑會全勾）也整段不套：狀態樹不動、
+    /// 不開增量協定、不寫殼檔、介面來源條目不因「已消耗」被刪——mode 閘門必須在來源消耗
+    /// 判定之前生效（GUI 回歸：C2 桌套出五棵介面狀態樹）。
+    #[test]
+    fn apply_characters_mode_skips_interface_and_keeps_sources() {
+        let root = TestRoot::new("characters-skips-interface");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "描述如何顯示狀態欄的散文");
+
+        let outcome = RefactorOutcome {
+            mode: Some("characters".to_owned()),
+            characters: Vec::new(),
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!({ "世界": { "時間": "清晨" } }),
+                source_uids: vec![source_uid.to_string()],
+                raw: "描述如何顯示狀態欄的散文".to_owned(),
+                shell: Some("<div>{{世界.時間}}</div>".to_owned()),
+                rules: BTreeMap::from([(
+                    "世界.時間".to_owned(),
+                    FieldRule {
+                        kind: FieldKind::Text,
+                        min: None,
+                        max: None,
+                        update: UpdateMode::Replace,
+                        inject: InjectLevel::Turn,
+                        branch: None,
+                        formula: None,
+                    },
+                )]),
+                guide: "每回合報時間".to_owned(),
+            }),
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: Vec::new(),
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
+            player_index: None,
+        };
+
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert!(!result.summary.interface_applied);
+        assert_eq!(result.summary.deleted_entries, 0);
+
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        assert_eq!(state.refactor_mode.as_deref(), Some("characters"));
+        assert!(state.state.tree.is_empty());
+        assert!(!state.mechanism.incremental);
+        assert!(state.mechanism.rules.is_empty());
+        assert!(!data::interface_shell_path(root.path(), &world_id).unwrap().exists());
+        assert!(data::read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.uid == source_uid));
+    }
+
+    /// 整條淘汰（rule 5／判官 rule 1–4，span 空）且玩家沒放回的既有條目：套用時停用、
+    /// 快照進 rewritten_entries，undo 覆寫回原樣；半條淘汰（span 非空）的條目其餘段落
+    /// 還在服役，不停用（GUI 回歸：A 桌「格式」「COT」constant 條目照常注入）。
+    #[test]
+    fn apply_disables_whole_entry_drops_and_undo_restores() {
+        let root = TestRoot::new("disable-dropped");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let whole_uid = seed_entry(root.path(), &world_id, "格式", "<mainPage>卡片介面輸出協定</mainPage>");
+        let partial_uid = seed_entry(root.path(), &world_id, "混合條目", "第一段。\n\n第二段。");
+
+        let outcome = RefactorOutcome {
+            mode: Some("characters".to_owned()),
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+            dropped: vec![
+                crate::refactor_assemble::RefactorDroppedEntry {
+                    uid: whole_uid.to_string(),
+                    span: String::new(),
+                    title: "格式".to_owned(),
+                    content: "<mainPage>卡片介面輸出協定</mainPage>".to_owned(),
+                    rule: 5,
+                },
+                crate::refactor_assemble::RefactorDroppedEntry {
+                    uid: partial_uid.to_string(),
+                    span: "s1".to_owned(),
+                    title: "混合條目".to_owned(),
+                    content: "第二段。".to_owned(),
+                    rule: 2,
+                },
+            ],
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        let selection = no_player_selection(Vec::new());
+
+        let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
+        assert_eq!(result.summary.rewritten_entries, 1);
+        assert_eq!(result.rewritten_entries.len(), 1);
+        assert_eq!(result.rewritten_entries[0].uid, whole_uid);
+        assert!(!result.rewritten_entries[0].disabled);
+
+        let worldbook = data::read_worldbook(root.path(), &world_id).unwrap();
+        let whole = worldbook.iter().find(|entry| entry.uid == whole_uid).unwrap();
+        assert!(whole.disabled);
+        assert_eq!(whole.content, "<mainPage>卡片介面輸出協定</mainPage>");
+        let partial = worldbook.iter().find(|entry| entry.uid == partial_uid).unwrap();
+        assert!(!partial.disabled);
+
+        receipts::undo_last_import(root.path(), &world_id).unwrap();
+        let restored = data::read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.uid == whole_uid)
+            .unwrap();
+        assert!(!restored.disabled);
+    }
+
+    /// NorthHall 實測樣態縮小版：模型把狀態欄輸出成頂層＋「状态栏」鏡像分支兩套，殼只綁
+    /// 頂層。正規化要把分支的非空初始值收進頂層、多出的葉改掛頂層路徑、rules 全部 remap
+    /// 去重，分支整個消失——否則 GM 照分支路徑寫，殼綁的頂層值永遠空字串。
+    #[test]
+    fn normalize_collapses_mirror_branch_with_shell_deciding_canon() {
+        let rule = |kind: FieldKind| FieldRule {
+            kind,
+            min: None,
+            max: None,
+            update: UpdateMode::Replace,
+            inject: InjectLevel::Turn,
+            branch: None,
+            formula: None,
+        };
+        let state_fields = serde_json::json!({
+            "地點": "",
+            "日期時間": "",
+            "霍玄": { "行動": "" },
+            "行動選項": { "選項1": "" },
+            "状态栏": {
+                "地點": "📍 霍府",
+                "日期時間": "⏰ 大梁年間",
+                "霍玄": { "行動": "站著", "名字": "霍玄" },
+                "行動選項": { "選項1": "選A" }
+            }
+        });
+        let shell = "<div>{{地點}}{{日期時間}}{{霍玄.行動}}{{行動選項.選項1}}{{本回合.正文}}</div>";
+        let rules = BTreeMap::from([
+            ("地點".to_owned(), rule(FieldKind::Text)),
+            ("状态栏.地點".to_owned(), rule(FieldKind::Text)),
+            ("状态栏.霍玄.名字".to_owned(), rule(FieldKind::ReadOnly)),
+        ]);
+
+        let (fields, rules) = normalize_interface_paths(&state_fields, Some(shell), &rules).unwrap();
+
+        assert_eq!(
+            fields,
+            serde_json::json!({
+                "地點": "📍 霍府",
+                "日期時間": "⏰ 大梁年間",
+                "霍玄": { "行動": "站著", "名字": "霍玄" },
+                "行動選項": { "選項1": "選A" }
+            })
+        );
+        assert_eq!(
+            rules.keys().cloned().collect::<Vec<_>>(),
+            vec!["地點".to_owned(), "霍玄.名字".to_owned()]
+        );
+        assert_eq!(rules["霍玄.名字"].kind, FieldKind::ReadOnly);
+    }
+
+    /// 同一欄位兩套非空初始值不一致＝產物自相矛盾，Err 拒套不猜；殼同時綁兩套路徑同理。
+    #[test]
+    fn normalize_rejects_conflicting_values_and_double_referenced_shell() {
+        let state_fields = serde_json::json!({
+            "地點": "王府",
+            "日期時間": "清晨",
+            "状态栏": { "地點": "霍府", "日期時間": "清晨" }
+        });
+        let error = normalize_interface_paths(&state_fields, Some("<div>{{地點}}</div>"), &BTreeMap::new())
+            .unwrap_err();
+        assert!(error.contains("初始值不一致"), "{error}");
+
+        let mirrored = serde_json::json!({
+            "地點": "",
+            "日期時間": "",
+            "状态栏": { "地點": "霍府", "日期時間": "清晨" }
+        });
+        let error = normalize_interface_paths(
+            &mirrored,
+            Some("<div>{{地點}}{{状态栏.日期時間}}</div>"),
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(error.contains("自相矛盾"), "{error}");
+    }
+
+    /// 無殼＝state_fields 是權威：完整鏡像（分支每葉根層都有對應）才折疊；分支多一個
+    /// 根層沒有的葉就不是鏡像，整份不動——沒有殼表態時不做任何有損猜測。
+    #[test]
+    fn normalize_without_shell_folds_only_complete_mirror() {
+        let mirror = serde_json::json!({
+            "地點": "",
+            "日期時間": "清晨",
+            "状态栏": { "地點": "霍府", "日期時間": "" }
+        });
+        let (fields, _) = normalize_interface_paths(&mirror, None, &BTreeMap::new()).unwrap();
+        assert_eq!(fields, serde_json::json!({ "地點": "霍府", "日期時間": "清晨" }));
+
+        let not_mirror = serde_json::json!({
+            "地點": "",
+            "日期時間": "",
+            "状态栏": { "地點": "霍府", "日期時間": "", "額外欄": "值" }
+        });
+        let (fields, _) = normalize_interface_paths(&not_mirror, None, &BTreeMap::new()).unwrap();
+        assert_eq!(fields, not_mirror);
+    }
+
+    /// 衝突產物在 preflight 就拒套：apply 回 Err，世界書、狀態樹、殼檔零變化——
+    /// preflight 晚於任何寫入的話會變成沒有收據的半套用。
+    #[test]
+    fn apply_rejects_conflicting_interface_before_any_write() {
+        let root = TestRoot::new("normalize-preflight");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let source_uid = seed_entry(root.path(), &world_id, "介面腳本", "狀態欄散文");
+
+        let outcome = RefactorOutcome {
+            mode: Some("interface".to_owned()),
+            characters: vec![character("亞瑟", &[source_uid])],
+            interface: Some(RefactorInterface {
+                state_fields: serde_json::json!({
+                    "地點": "王府",
+                    "日期時間": "清晨",
+                    "状态栏": { "地點": "霍府", "日期時間": "清晨" }
+                }),
+                source_uids: vec![source_uid.to_string()],
+                raw: "狀態欄散文".to_owned(),
+                shell: Some("<div>{{地點}}</div>".to_owned()),
+                rules: BTreeMap::new(),
+                guide: String::new(),
+            }),
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        let selection = RefactorSelection {
+            character_indices: vec![0],
+            apply_interface: true,
+            mechanism_indices: Vec::new(),
+            entry_indices: Vec::new(),
+            player_index: None,
+        };
+
+        assert!(apply(root.path(), &world_id, &outcome, &selection).is_err());
+        assert!(data::list_characters(root.path(), &world_id).unwrap().is_empty());
+        assert!(data::read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.uid == source_uid));
+        assert!(data::read_state(root.path(), &world_id).unwrap().state.tree.is_empty());
+        assert!(!data::interface_shell_path(root.path(), &world_id).unwrap().exists());
     }
 
     /// 介面套用要把新樹補進這一幕的事件快照：否則玩家一按收回，檯面就退回套用前的空樹，
