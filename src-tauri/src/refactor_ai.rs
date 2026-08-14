@@ -1512,6 +1512,16 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
     }
 }
 
+/// MODE 行為正規化（refactor-mode-split）：回聲字串核過只保證「整份沒跑錯模式」；模式對了
+/// 但判官違規吐出不該有的區塊（interface 模式吐 PERSONS）由這裡清掉——被清人物認領的 uid／
+/// span 交給 assemble 的涵蓋稽核與餘段兜底機械照搬（內容不丟、audit 玩家可見），人物不拆卡。
+/// characters 側的 INTERFACE／statusbar 已由 rule 5 淘汰與前端 pool 過濾涵蓋，這裡不動。
+pub fn normalize_survey_for_mode(outcome: &mut RefactorSurveyOutcome) {
+    if outcome.mode == "interface" {
+        outcome.persons.clear();
+    }
+}
+
 /// 展開結果（介面）：raw 永遠回傳（模型原始輸出，
 /// 前端與除錯用，也是解析失敗時的雙軌保底）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2242,6 +2252,23 @@ mod tests {
     }
 
     // 舊格式（無 mode/spans/private 欄）獨立照舊解析成功，新欄一律預設空值——回歸保護。
+    /// MODE 正規化：interface 模式判官違規吐 PERSONS＝整區清掉（內容由涵蓋稽核照搬），
+    /// characters 模式人物照留。
+    #[test]
+    fn normalize_survey_clears_persons_only_in_interface_mode() {
+        let mut violating = parse_survey(
+            "## MODE: interface\n\n## PERSONS\n- name: 亞瑟 uids: 101\n\n## ENTRIES\n- uid=9 action: carry\n",
+        );
+        assert_eq!(violating.persons.len(), 1);
+        normalize_survey_for_mode(&mut violating);
+        assert!(violating.persons.is_empty());
+        assert_eq!(violating.verdicts.len(), 1);
+
+        let mut kept = parse_survey("## MODE: characters\n\n## PERSONS\n- name: 亞瑟 uids: 101\n");
+        normalize_survey_for_mode(&mut kept);
+        assert_eq!(kept.persons.len(), 1);
+    }
+
     #[test]
     fn parse_survey_persons_old_format_line_parses_without_new_fields() {
         let raw = "## PERSONS\n- name: 亞瑟 uids: 101 player: yes\n";

@@ -493,9 +493,11 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
     unabsorbed: readArray(raw, "unabsorbed").map(parseUnabsorbed),
     audit: readArray(raw, "audit").map(parseAuditItem),
   };
-  // 玩法標記（refactor-mode-split）：缺席＝舊產物照 interface 行為，有值就跟著匯出入走。
-  const mode = readString(raw, "mode");
-  if (mode !== "") outcome.mode = mode;
+  // 玩法標記（refactor-mode-split）：缺席＝舊產物照 interface 行為；有值先正規化大小寫與
+  // 前後空白，只收二值列舉，其餘值＝壞檔拒收（抑制判斷不被手改檔的非常值騙過）。
+  const mode = readString(raw, "mode").trim().toLowerCase();
+  if (mode === "interface" || mode === "characters") outcome.mode = mode;
+  else if (mode !== "") throw invalid();
   // 三區全空＝這檔案沒有任何可套用的東西，多半根本不是重構產物。
   if (outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 && outcome.mechanisms.length === 0) {
     throw invalid();

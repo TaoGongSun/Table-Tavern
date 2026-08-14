@@ -249,6 +249,16 @@ describe("parseRefactorOutcome", () => {
     expect(parseRefactorOutcome(json).interface?.shell).toBe("<p>殼</p>");
   });
 
+  it("玩法標記大小寫與前後空白正規化後照收", () => {
+    const json = JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }], mode: " Characters " });
+    expect(parseRefactorOutcome(json).mode).toBe("characters");
+  });
+
+  it("玩法標記未知值＝壞檔拒收", () => {
+    const json = JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }], mode: "both" });
+    expect(() => parseRefactorOutcome(json)).toThrow("refactor-import-invalid");
+  });
+
   it("新世界書條目解析，省略 rules／triggers 時補預設", () => {
     expect(parseRefactorOutcome(JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }] })).entries)
       .toEqual([makeEntry({ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] })]);
