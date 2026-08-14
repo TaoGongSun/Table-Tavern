@@ -557,12 +557,51 @@ fn refactor_apply(
     Ok(result.summary)
 }
 
+/// AI 卡重構定向（初判）：supported 卡在玩家二選一之前的快速判斷，帶全卡只出
+/// RECOMMEND＋EVIDENCE 兩行。解析不出合法建議＝Err，前端照拍板走「不偽造證據、預設介面優先」。
+#[tauri::command]
+async fn refactor_recommend(
+    app: tauri::AppHandle,
+    world_id: String,
+    on_delta: tauri::ipc::Channel<String>,
+) -> Result<refactor_ai::RefactorRecommendOutcome, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let root = data_root(&app)?;
+    let context =
+        refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
+    let messages = refactor_ai::recommend_messages(&context, &lang);
+    let (_guard, mut cancel) = inflight::register(&world_id);
+    let raw = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
+        result = stream_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            transport::gm_tier(&config),
+            Some(&world_id),
+            "GM",
+            "Output exactly in the requested marker format, nothing else.",
+            &messages,
+            true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+            |delta| {
+                let _ = on_delta.send(delta.to_owned());
+            },
+        ) => result?,
+    };
+    refactor_ai::parse_recommend(&raw).ok_or_else(|| "refactor-recommend-unparsable".to_owned())
+}
+
 /// AI 卡重構讀卡（盤點階段）：AI 讀整張卡的世界書，認出人物（可能散在好幾條裡）／介面／機制
-/// 三類候選。
+/// 三類候選。mode＝玩家選定的玩法（interface｜characters），包 1 先透傳進產物供路由與
+/// 持久化；模式專屬提示詞與 MODE 回聲核對由包 3 接手。
 #[tauri::command]
 async fn refactor_survey(
     app: tauri::AppHandle,
     world_id: String,
+    mode: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorSurveyOutcome, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
@@ -593,7 +632,8 @@ async fn refactor_survey(
             },
         ) => result?,
     };
-    let outcome = refactor_ai::parse_survey(&raw);
+    let mut outcome = refactor_ai::parse_survey(&raw);
+    outcome.mode = mode;
     // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
     for person in &outcome.persons {
         eprintln!(
@@ -2847,6 +2887,7 @@ pub fn run() {
             undo_last_import,
             record_import_rename,
             refactor_apply,
+            refactor_recommend,
             refactor_survey,
             refactor_assemble_local,
             refactor_expand,

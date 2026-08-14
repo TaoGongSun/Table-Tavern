@@ -100,6 +100,8 @@ export interface RefactorOutcome {
   unabsorbed: RefactorUnabsorbedItem[];
   /** 機械稽核紅字：涵蓋漏網／機制守恆／拆組守恆／淘汰稽核，四類之一。 */
   audit: RefactorAuditItem[];
+  /** 產出時玩家選定的玩法："interface"｜"characters"；缺席（舊產物）＝照 interface 行為。 */
+  mode?: string;
 }
 
 export interface RefactorSelection {
@@ -167,6 +169,8 @@ export interface RefactorSurveyOutcome {
   groups: RefactorSplitGroup[];
   /** 狀態欄位命名唯一權威：後續每次展開呼叫的 knownFields 都從這裡固定取用（不再沿鏈累積）。 */
   fields: string[];
+  /** 這份小抄依哪種玩法產出："interface"｜"characters"；舊產物空字串＝照 interface 行為。 */
+  mode: string;
   raw: string;
 }
 
@@ -311,6 +315,7 @@ export function assembleRefactorOutcome(parts: {
   dropped?: RefactorDroppedEntry[];
   unabsorbed?: RefactorUnabsorbedItem[];
   audit?: RefactorAuditItem[];
+  mode?: string;
 }): RefactorOutcome {
   return {
     characters: parts.characters,
@@ -321,6 +326,7 @@ export function assembleRefactorOutcome(parts: {
     dropped: parts.dropped ?? [],
     unabsorbed: parts.unabsorbed ?? [],
     audit: parts.audit ?? [],
+    ...(parts.mode ? { mode: parts.mode } : {}),
   };
 }
 
@@ -487,6 +493,9 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
     unabsorbed: readArray(raw, "unabsorbed").map(parseUnabsorbed),
     audit: readArray(raw, "audit").map(parseAuditItem),
   };
+  // 玩法標記（refactor-mode-split）：缺席＝舊產物照 interface 行為，有值就跟著匯出入走。
+  const mode = readString(raw, "mode");
+  if (mode !== "") outcome.mode = mode;
   // 三區全空＝這檔案沒有任何可套用的東西，多半根本不是重構產物。
   if (outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 && outcome.mechanisms.length === 0) {
     throw invalid();

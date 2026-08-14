@@ -31,6 +31,8 @@ import {
   type RefactorSurveyOutcome,
 } from "../refactor-review";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "../refactor-run";
+import { detectRefactorTristate, type RefactorMode, type RefactorRecommendOutcome } from "../refactor-mode";
+import { type CardInterface } from "../interface-card";
 import { Visibility, WorldbookEntry } from "../backend-contracts";
 import { CharacterMeta } from "../card-model";
 import { useDragReorder } from "../drag-reorder";
@@ -134,6 +136,14 @@ export function WorldEditor({
   // 取消後仍組出的半成品：中止的呼叫不會留下任何痕跡（產物沒 push、也不列失敗），
   // 面板自己說出來才看得見缺件——標題改「已取消」、主按鈕換成「不要」。
   const [refactorCancelled, setRefactorCancelled] = useState(false);
+  // 二選一對話框（refactor-mode-split）：recommend null＝初判失敗（不偽造證據、直接展開兩選項
+  // 預設介面優先）；expanded＝玩家按了「自己選」看得到兩張選項卡。
+  const [refactorModeAsk, setRefactorModeAsk] = useState<{
+    recommend: RefactorMode | null;
+    evidence: string;
+    expanded: boolean;
+    picked: RefactorMode;
+  } | null>(null);
   // pool 呼叫失敗的條目名單（2026-08-12 B 拍板）：顯示在結果視窗頂部紅字段——以前塞頁面
   // 角落的一行狀態文字，被結果 modal 蓋住玩家看不到。
   const [refactorFailures, setRefactorFailures] = useState<{ name: string; reason: string }[]>([]);
@@ -440,6 +450,8 @@ export function WorldEditor({
   // 零呼叫組裝（refactor_assemble_local：carry 照搬＋split 零呼叫路由＋clean 人物組卡）→剩餘
   // AI 呼叫全並行（人物佇列＋absorb＋group＋statusbar＋interface，上限 4、無序列鏈）→組產物。
   // knownFields 是 survey.fields 固定一份，所有呼叫共用，不再沿呼叫鏈累積。
+  // 入口：三態偵測分流（refactor-mode-split）。supported 卡先跑初判再彈二選一；
+  // none 是唯一免問的路（直跑角色線）；unsupported（DRM／雲端載入器）擋下不跑。
   async function runAiRefactor() {
     if (refactorProgress) return;
     if (await invoke<boolean>("refactor_outcome_exists", { worldId: world })) {
@@ -450,6 +462,48 @@ export function WorldEditor({
       if (!rerun) return;
     }
     setWorldbookMessage("");
+    const cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world }).catch(
+      () => [] as CardInterface[],
+    );
+    const tristate = detectRefactorTristate(cards);
+    if (tristate === "unsupported") {
+      setWorldbookMessage(t("refactorUnsupportedCard"));
+      return;
+    }
+    if (tristate === "none") {
+      await startRefactorRun("characters");
+      return;
+    }
+    // supported：初判帶全卡只出兩行；取消走既有 refactor_abort 路。
+    refactorCancelRef.current = false;
+    setRefactorCancelled(false);
+    setRefactorProgress({ text: t("refactorProbing"), cancelling: false, tail: "" });
+    try {
+      let probeTail = "";
+      const channel = new Channel<string>();
+      channel.onmessage = (delta: string) => {
+        probeTail = (probeTail + delta).slice(-2000);
+        setRefactorProgress((current) =>
+          current && { ...current, tail: probeTail.split("\n").slice(-4).join("\n") },
+        );
+      };
+      const probe = await invoke<RefactorRecommendOutcome>("refactor_recommend", {
+        worldId: world,
+        onDelta: channel,
+      });
+      setRefactorProgress(null);
+      const recommend: RefactorMode = probe.recommend === "characters" ? "characters" : "interface";
+      setRefactorModeAsk({ recommend, evidence: probe.evidence, expanded: false, picked: recommend });
+    } catch (reason) {
+      setRefactorProgress(null);
+      if (String(reason).includes("refactor-aborted")) return;
+      // 初判失敗＝不偽造證據：no 判官句、直接展開兩選項、預設介面優先（2026-08-14 拍板）
+      setRefactorModeAsk({ recommend: null, evidence: "", expanded: true, picked: "interface" });
+    }
+  }
+
+  // 玩家選定玩法後的重構主體（none 卡直接以 characters 進來）。
+  async function startRefactorRun(mode: RefactorMode) {
     refactorCancelRef.current = false;
     setRefactorCancelled(false);
     setRefactorProgress({ text: t("refactorSurveying"), cancelling: false, tail: "" });
@@ -469,7 +523,7 @@ export function WorldEditor({
         return channel;
       };
 
-      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, onDelta: makeOnDelta() });
+      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, mode, onDelta: makeOnDelta() });
       // 本地零呼叫組裝：carry／split 各路由／clean 人物，毫秒級、不算進並行呼叫額度。
       const local = await invoke<RefactorLocalAssembly>("refactor_assemble_local", { worldId: world, survey });
       const { local: localPersons, queue } = buildRefactorPersonPlan(survey, entries, local.clean_person_names);
@@ -490,12 +544,17 @@ export function WorldEditor({
         | { kind: "group"; group: RefactorSplitGroup }
         | { kind: "statusbar"; uid: string; spans: string[] }
         | { kind: "interface"; uid: string };
+      // 角色優先＝介面產物一律不建：interface／statusbar 呼叫整個不發（refactor-mode-split；
+      // 這些條目與段落的下落改由 mode-aware 稽核記入 dropped，包 3）。
+      const buildInterfaces = mode !== "characters";
       const pool: RefactorTask[] = [
         ...queue.map((item): RefactorTask => ({ kind: "person", item })),
         ...absorbUids.map((uid): RefactorTask => ({ kind: "absorb", uid })),
         ...survey.groups.map((group): RefactorTask => ({ kind: "group", group })),
-        ...[...statusbarByUid.entries()].map(([uid, spans]): RefactorTask => ({ kind: "statusbar", uid, spans })),
-        ...survey.interface_uids.map((uid): RefactorTask => ({ kind: "interface", uid })),
+        ...(buildInterfaces
+          ? [...statusbarByUid.entries()].map(([uid, spans]): RefactorTask => ({ kind: "statusbar", uid, spans }))
+          : []),
+        ...(buildInterfaces ? survey.interface_uids.map((uid): RefactorTask => ({ kind: "interface", uid })) : []),
       ];
       const totalSteps = pool.length;
 
@@ -620,6 +679,7 @@ export function WorldEditor({
           dropped: local.dropped,
           unabsorbed: local.unabsorbed,
           audit: local.audit,
+          mode,
         });
         setRefactorOutcome(outcome);
         setRefactorSelection(defaultRefactorSelection(outcome));
@@ -1073,6 +1133,66 @@ export function WorldEditor({
             <div className="ai-gen-footer">
               <button type="button" disabled={refactorProgress.cancelling} onClick={cancelAiRefactor}>
                 {t("refactorCancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {refactorModeAsk && (
+        // 二選一（refactor-mode-split，2026-08-14 拍板文案）：一鍵照建議＋展開自己選兩層都有。
+        // 取消＝整個不跑，反悔路是重按重構鈕重跑（原卡 PNG 留檔）。
+        <div className="modal-overlay">
+          <div className="modal" role="dialog" aria-modal="true" aria-label={t("refactorModeTitle")}>
+            <h2>{t("refactorModeTitle")}</h2>
+            {refactorModeAsk.recommend !== null && (
+              <p>
+                {refactorModeAsk.recommend === "interface"
+                  ? t("refactorModeSuggestInterface", { evidence: refactorModeAsk.evidence })
+                  : t("refactorModeSuggestCharacters", { evidence: refactorModeAsk.evidence })}
+              </p>
+            )}
+            {refactorModeAsk.expanded && (
+              <div className="refactor-mode-options">
+                {(["interface", "characters"] as const).map((option) => (
+                  <label key={option} className="refactor-mode-option">
+                    <input
+                      type="radio"
+                      name="refactor-mode"
+                      checked={refactorModeAsk.picked === option}
+                      onChange={() => setRefactorModeAsk({ ...refactorModeAsk, picked: option })}
+                    />
+                    <span>
+                      <strong>{option === "interface" ? t("refactorModeOptInterface") : t("refactorModeOptCharacters")}</strong>
+                      <br />
+                      {option === "interface" ? t("refactorModeOptInterfaceDesc") : t("refactorModeOptCharactersDesc")}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="ai-gen-footer">
+              <button type="button" onClick={() => setRefactorModeAsk(null)}>
+                {t("refactorCancel")}
+              </button>
+              {!refactorModeAsk.expanded && (
+                <button
+                  type="button"
+                  onClick={() => setRefactorModeAsk({ ...refactorModeAsk, expanded: true })}
+                >
+                  {t("refactorModeChoose")}
+                </button>
+              )}
+              <button
+                type="button"
+                className="ai-gen-submit"
+                onClick={() => {
+                  const mode = refactorModeAsk.picked;
+                  setRefactorModeAsk(null);
+                  void startRefactorRun(mode);
+                }}
+              >
+                {refactorModeAsk.expanded ? t("refactorModeGo") : t("refactorModeGoRecommended")}
               </button>
             </div>
           </div>

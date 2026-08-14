@@ -482,6 +482,67 @@ pub fn survey_messages(context: &str, signals: &[PrescanSignal], lang: &str) -> 
     ]
 }
 
+/// 定向階段（初判）：supported 卡在玩家二選一之前先跑的快速判斷，帶全卡只出兩行。
+/// system 與盤點逐位元組相同（同一 session 內第二段承前綴快取）。
+const RECOMMEND_BODY: &str = r#"現在是「定向」階段。這張卡接下來會被重構成兩種玩法之一，由玩家二選一：
+- interface（保留原卡玩法）：卡片自帶的遊戲介面照原樣接管，人物不拆出，玩法與原卡完全相同。
+- characters（多角色對話）：卡裡的人物拆成本 App 的角色卡，用多角色對話玩，卡片介面不再使用。
+
+請把上面整張卡讀完，判斷哪種玩法比較符合這張卡的設計意圖。參考基準：卡片有完整可遊玩介面（有劇情
+正文顯示區、有行動入口，遊玩過程發生在介面裡）通常代表作者設計就是介面玩法；卡片以多位帶完整設定的
+人物為主、介面只是狀態欄點綴，則適合多角色對話。
+
+嚴格只輸出以下兩行，此外不要有任何文字：
+
+RECOMMEND: <interface|characters>
+EVIDENCE: <一句人話證據，講這張卡最關鍵的特徵，例如「這張卡有完整遊戲介面」或「卡內有 8 位帶完整設定的人物」>"#;
+
+pub fn recommend_messages(context: &str, lang: &str) -> Vec<ChatMessage> {
+    vec![
+        system_message(context),
+        ChatMessage {
+            role: "user".to_owned(),
+            content: format!(
+                "{RECOMMEND_BODY}\n\nEVIDENCE 使用 BCP-47 語言代碼「{lang}」對應的語言。"
+            ),
+        },
+    ]
+}
+
+/// 初判結果。recommend 只有 "interface"／"characters" 兩值；解析不出合法值＝整個呼叫回 Err，
+/// 由前端照拍板走「不偽造證據、預設介面優先」。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefactorRecommendOutcome {
+    pub recommend: String,
+    pub evidence: String,
+    #[serde(default)]
+    pub raw: String,
+}
+
+pub fn parse_recommend(raw: &str) -> Option<RefactorRecommendOutcome> {
+    let mut recommend = None;
+    let mut evidence = String::new();
+    for line in raw.lines() {
+        let trimmed = line.trim().trim_start_matches('-').trim();
+        let lower = trimmed.to_ascii_lowercase();
+        if let Some(rest) = lower.strip_prefix("recommend:") {
+            let value = rest.trim();
+            if value.starts_with("interface") {
+                recommend = Some("interface".to_owned());
+            } else if value.starts_with("characters") {
+                recommend = Some("characters".to_owned());
+            }
+        } else if lower.starts_with("evidence:") {
+            evidence = trimmed["evidence:".len()..].trim().to_owned();
+        }
+    }
+    Some(RefactorRecommendOutcome {
+        recommend: recommend?,
+        evidence,
+        raw: raw.to_owned(),
+    })
+}
+
 /// 展開階段（人物）：一人一次呼叫，帶上他名下所有來源條目全文，AI 只挑這個人的段落、忽略同條裡
 /// 其他人的部分——來源條目剩下的內容由接管（absorb）／合組（group）階段接手。
 fn person_body(name: &str) -> String {
@@ -1037,6 +1098,10 @@ pub struct RefactorSurveyOutcome {
     /// 狀態欄位命名唯一權威：後續每次展開呼叫的 known_fields 都從這裡起算。
     #[serde(default)]
     pub fields: Vec<String>,
+    /// 這份小抄依哪種玩法產出："interface"（保留原卡玩法）｜"characters"（多角色對話）。
+    /// 舊產物缺席＝空字串，前端照 interface 行為處理。
+    #[serde(default)]
+    pub mode: String,
     #[serde(default)]
     pub raw: String,
 }
@@ -1384,6 +1449,8 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         splits,
         groups,
         fields,
+        // 包 1：mode 由呼叫端（lib.rs）以玩家選定值填入；包 3 換成解析 AI 的 MODE 回聲後核對。
+        mode: String::new(),
         raw: raw.to_owned(),
     }
 }
@@ -1955,6 +2022,32 @@ mod tests {
     }
 
     // signals 注入 user 訊息：有訊號要看得到 uid#sN 與 pattern，沒有訊號要講清楚「無」
+    #[test]
+    fn recommend_parses_two_lines_and_rejects_garbage() {
+        let ok = parse_recommend("RECOMMEND: interface\nEVIDENCE: 這張卡有完整遊戲介面。").unwrap();
+        assert_eq!(ok.recommend, "interface");
+        assert_eq!(ok.evidence, "這張卡有完整遊戲介面。");
+        // 大小寫與前置雜訊容忍；characters 值
+        let loose = parse_recommend("recommend: Characters 多角色\nevidence: 卡內有 8 位帶完整設定的人物").unwrap();
+        assert_eq!(loose.recommend, "characters");
+        // 缺 RECOMMEND 或值不合法＝None（前端走預設介面優先，不偽造證據）
+        assert!(parse_recommend("EVIDENCE: 只有證據沒有建議").is_none());
+        assert!(parse_recommend("RECOMMEND: both\nEVIDENCE: 亂答").is_none());
+        // EVIDENCE 缺席仍成立（證據空字串，前端不顯判官句）
+        assert_eq!(parse_recommend("RECOMMEND: interface").unwrap().evidence, "");
+    }
+
+    #[test]
+    fn recommend_messages_share_survey_system_byte_identical() {
+        let context = "## 世界書條目\n測試";
+        let recommend = recommend_messages(context, "zh-TW");
+        let survey = survey_messages(context, &[], "zh-TW");
+        // 兩段同 session 承前綴快取的前提：system 逐位元組相同
+        assert_eq!(recommend[0].content, survey[0].content);
+        assert_eq!(recommend[0].role, "system");
+        assert!(recommend[1].content.contains("RECOMMEND:"));
+    }
+
     #[test]
     fn survey_messages_injects_prescan_signals_into_user_message() {
         let with_signals = survey_messages(
