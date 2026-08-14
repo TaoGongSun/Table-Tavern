@@ -31,7 +31,7 @@ import {
   type RefactorSurveyOutcome,
 } from "../refactor-review";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "../refactor-run";
-import { detectRefactorTristate, type RefactorMode, type RefactorRecommendOutcome } from "../refactor-mode";
+import { detectRefactorTristate, type RefactorMode, type RefactorRecommendOutcome, type RefactorRunTicket } from "../refactor-mode";
 import { type CardInterface } from "../interface-card";
 import { Visibility, WorldbookEntry } from "../backend-contracts";
 import { CharacterMeta } from "../card-model";
@@ -143,6 +143,8 @@ export function WorldEditor({
     evidence: string;
     expanded: boolean;
     picked: RefactorMode;
+    /** 第二段 resume 憑證；null＝初判失敗或非 claude lane，第二段直接重送全卡。 */
+    ticket: RefactorRunTicket | null;
   } | null>(null);
   // pool 呼叫失敗的條目名單（2026-08-12 B 拍板）：顯示在結果視窗頂部紅字段——以前塞頁面
   // 角落的一行狀態文字，被結果 modal 蓋住玩家看不到。
@@ -493,17 +495,23 @@ export function WorldEditor({
       });
       setRefactorProgress(null);
       const recommend: RefactorMode = probe.recommend === "characters" ? "characters" : "interface";
-      setRefactorModeAsk({ recommend, evidence: probe.evidence, expanded: false, picked: recommend });
+      setRefactorModeAsk({
+        recommend,
+        evidence: probe.evidence,
+        expanded: false,
+        picked: recommend,
+        ticket: probe.run_id ? { runId: probe.run_id, fingerprint: probe.fingerprint } : null,
+      });
     } catch (reason) {
       setRefactorProgress(null);
       if (String(reason).includes("refactor-aborted")) return;
       // 初判失敗＝不偽造證據：no 判官句、直接展開兩選項、預設介面優先（2026-08-14 拍板）
-      setRefactorModeAsk({ recommend: null, evidence: "", expanded: true, picked: "interface" });
+      setRefactorModeAsk({ recommend: null, evidence: "", expanded: true, picked: "interface", ticket: null });
     }
   }
 
-  // 玩家選定玩法後的重構主體（none 卡直接以 characters 進來）。
-  async function startRefactorRun(mode: RefactorMode) {
+  // 玩家選定玩法後的重構主體（none 卡直接以 characters 進來、無 resume 憑證）。
+  async function startRefactorRun(mode: RefactorMode, ticket: RefactorRunTicket | null = null) {
     refactorCancelRef.current = false;
     setRefactorCancelled(false);
     setRefactorProgress({ text: t("refactorSurveying"), cancelling: false, tail: "" });
@@ -523,7 +531,13 @@ export function WorldEditor({
         return channel;
       };
 
-      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", { worldId: world, mode, onDelta: makeOnDelta() });
+      const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", {
+        worldId: world,
+        mode,
+        runId: ticket?.runId ?? null,
+        fingerprint: ticket?.fingerprint ?? null,
+        onDelta: makeOnDelta(),
+      });
       // 本地零呼叫組裝：carry／split 各路由／clean 人物，毫秒級、不算進並行呼叫額度。
       const local = await invoke<RefactorLocalAssembly>("refactor_assemble_local", { worldId: world, survey });
       const { local: localPersons, queue } = buildRefactorPersonPlan(survey, entries, local.clean_person_names);
@@ -1187,9 +1201,9 @@ export function WorldEditor({
                 type="button"
                 className="ai-gen-submit"
                 onClick={() => {
-                  const mode = refactorModeAsk.picked;
+                  const { picked, ticket } = refactorModeAsk;
                   setRefactorModeAsk(null);
-                  void startRefactorRun(mode);
+                  void startRefactorRun(picked, ticket);
                 }}
               >
                 {refactorModeAsk.expanded ? t("refactorModeGo") : t("refactorModeGoRecommended")}
