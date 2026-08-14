@@ -76,7 +76,9 @@ export function useCardInterfaceController(input: {
   const [refactorShell, setRefactorShell] = useState<string | null>(null);
   // 桌面玩法標記（refactor-mode-split）："characters"＝玩家選了多角色對話，這桌的卡片介面
   // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；null＝沒重構過或介面優先，照舊。
-  const [tableMode, setTableMode] = useState<string | null>(null);
+  // undefined＝還不知道（載入中或讀取失敗）、null＝確定沒標記；未知一律先不顯示殼
+  // （fail-closed），角色桌才不會在切桌瞬間或讀取失敗時閃出介面 fallback。
+  const [tableMode, setTableMode] = useState<string | null | undefined>(undefined);
   const [cardUiOpen, setCardUiOpen] = useState(false);
 
   // 切桌重問這桌各卡的介面腳本；先清空避免上一桌的介面殼閃現，讀失敗就當這桌沒有
@@ -94,10 +96,10 @@ export function useCardInterfaceController(input: {
     };
   }, [worldId]);
 
-  // 切桌重問這桌的 AI 重構介面殼與玩法標記；沒重構過殼是 null、標記是 null，照既有路徑
+  // 切桌重問這桌的 AI 重構介面殼與玩法標記；殼讀失敗當這桌沒有，標記讀失敗維持未知不顯示殼
   useEffect(() => {
     setRefactorShell(null);
-    setTableMode(null);
+    setTableMode(undefined);
     if (!worldId) return;
     let stale = false;
     invoke<string | null>("refactor_interface_shell", { worldId })
@@ -120,8 +122,9 @@ export function useCardInterfaceController(input: {
   // 填值後要過卡自己的顯示腳本 regex＋模板才是畫面，`{{本回合.正文}}` 吃最新一則 GM 訊息正文）。
   const cardInterfaceShell = useMemo(() => {
     // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構殼、卡片自帶殼、
-    // 掃 raw 的 fallback 整組短路，永遠沒有殼。
-    if (tableMode === "characters") return null;
+    // 掃 raw 的 fallback 整組短路，永遠沒有殼。標記還沒讀回（undefined）也先不顯示，
+    // 未知就放行會在角色桌切桌瞬間閃出介面。
+    if (tableMode === undefined || tableMode === "characters") return null;
     if (refactorShell !== null) {
       if (/<!DOCTYPE|<html/i.test(refactorShell)) return fillShellPlaceholders(refactorShell, tableTree);
       const latestGm = [...events].reverse().find((event) => event.kind !== "player");
@@ -216,7 +219,7 @@ export function useCardInterfaceController(input: {
     // 殼與玩法標記一起刷新：套用重構後呼叫端只叫這一支，characters 桌立刻停用介面
     const [shell, mode] = await Promise.all([
       invoke<string | null>("refactor_interface_shell", { worldId: id }).catch(() => null),
-      invoke<string | null>("refactor_table_mode", { worldId: id }).catch(() => null),
+      invoke<string | null>("refactor_table_mode", { worldId: id }).catch(() => undefined),
     ]);
     setRefactorShell(shell);
     setTableMode(mode);

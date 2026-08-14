@@ -575,7 +575,10 @@ export function WorldEditor({
 
       const characters: RefactorCharacter[] = [...local.characters, ...localPersons];
       const refactorEntries: RefactorNewEntry[] = [...local.entries];
-      if (totalSteps === 0 && characters.length === 0 && refactorEntries.length === 0) {
+      // 淘汰／未收編／稽核有東西＝不是「無事可做」：純介面卡選 characters 時產物只剩 rule 5
+      // 淘汰清單，也要開結果視窗——玩家看得到可放回，套用後 mode 才落地、介面 fallback 才停。
+      const localNotes = local.dropped.length + local.unabsorbed.length + local.audit.length;
+      if (totalSteps === 0 && characters.length === 0 && refactorEntries.length === 0 && localNotes === 0) {
         setRefactorProgress(null);
         setWorldbookMessage(t("refactorNothingToDo"));
         return;
@@ -686,7 +689,7 @@ export function WorldEditor({
       });
 
       setRefactorProgress(null);
-      if (characters.length > 0 || interfaces.length > 0 || refactorEntries.length > 0) {
+      if (characters.length > 0 || interfaces.length > 0 || refactorEntries.length > 0 || localNotes > 0) {
         const outcome = assembleRefactorOutcome({
           characters,
           interfaces,

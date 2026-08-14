@@ -692,12 +692,13 @@ async fn refactor_survey(
             ) => result?,
         },
     };
-    let outcome = refactor_ai::parse_survey(&raw);
+    let mut outcome = refactor_ai::parse_survey(&raw);
     // MODE 回聲核對（refactor-mode-split 拍板）：判官回寫的玩法必須與玩家選定一致才收，
     // 跑錯模式的小抄整份拒收；回聲缺席＝無法核對，同樣拒收，前端顯示錯誤讓玩家重跑。
     if outcome.mode != mode {
         return Err("refactor-mode-mismatch".to_owned());
     }
+    refactor_ai::normalize_survey_for_mode(&mut outcome);
     // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
     for person in &outcome.persons {
         eprintln!(

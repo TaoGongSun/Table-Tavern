@@ -371,7 +371,13 @@ pub fn apply(
 
     // 玩法標記持久化（refactor-mode-split）：兩模式都寫進桌面狀態；characters 順手清掉舊
     // interface 套用殘留的殼檔（fallback 抑制第一層；controller 讀 mode 是第二層）。
-    if let Some(mode) = outcome.mode.as_deref().filter(|mode| !mode.is_empty()) {
+    // 只收二值列舉：手改匯入檔的 "Characters"／尾空白等非常值不落地，抑制判斷不被騙過。
+    if let Some(mode) = outcome
+        .mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|mode| matches!(*mode, "interface" | "characters"))
+    {
         state.refactor_mode = Some(mode.to_owned());
         state_dirty = true;
         if mode == "characters" {
@@ -698,6 +704,33 @@ mod tests {
         assert_eq!(
             data::read_state(root.path(), &world_id).unwrap().refactor_mode.as_deref(),
             Some("interface")
+        );
+    }
+
+    /// mode 只收二值列舉：手改匯入檔的大小寫／未知值不落地，trim 後合法照收。
+    #[test]
+    fn apply_ignores_invalid_mode_values() {
+        let root = TestRoot::new("mode-enum");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let mut outcome = RefactorOutcome {
+            mode: Some("Characters".to_owned()),
+            characters: Vec::new(),
+            interface: None,
+            mechanisms: Vec::new(),
+            entries: Vec::new(),
+            deletable_shared_uids: Vec::new(),
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+        };
+        apply(root.path(), &world_id, &outcome, &no_player_selection(Vec::new())).unwrap();
+        assert_eq!(data::read_state(root.path(), &world_id).unwrap().refactor_mode, None);
+
+        outcome.mode = Some(" characters ".to_owned());
+        apply(root.path(), &world_id, &outcome, &no_player_selection(Vec::new())).unwrap();
+        assert_eq!(
+            data::read_state(root.path(), &world_id).unwrap().refactor_mode.as_deref(),
+            Some("characters")
         );
     }
 
