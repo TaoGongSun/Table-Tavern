@@ -67,6 +67,7 @@ function makeSurvey(overrides: Partial<RefactorSurveyOutcome> = {}): RefactorSur
     splits: [],
     groups: [],
     fields: [],
+    mode: "",
     raw: "",
     ...overrides,
   };

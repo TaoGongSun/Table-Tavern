@@ -2068,6 +2068,32 @@ textarea {
   overflow: hidden;
 }
 
+/* 二選一對話框（refactor-mode-split）：兩張選項卡，radio＋標題行＋後果行 */
+.refactor-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.refactor-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.refactor-mode-option:has(input:checked) {
+  border-color: var(--accent, currentColor);
+}
+
+.refactor-mode-option input {
+  margin-top: 0.2rem;
+}
+
 .mechanism-ledger-toggle {
   display: flex;
   align-items: center;

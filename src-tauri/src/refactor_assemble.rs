@@ -701,6 +701,7 @@ mod tests {
             splits: Vec::new(),
             groups: Vec::new(),
             fields: Vec::new(),
+            mode: String::new(),
             raw: String::new(),
         }
     }
