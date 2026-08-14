@@ -1,6 +1,7 @@
 # Project tasks
 
 ## In progress
+- [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：**T4 通用 2026-08-14 收工**：①取消在途＋Cmd-Q 無孤兒過（並行取消殺得乾淨、零孤兒、未完成不計費）、③舊產物相容過、④十語系面板骨架過、②API 退 GM 檔＝單元測試綠但 CLI 模式測不到，實機延後到哪天真用 API 模式時看 jsonl lane。refactor-dispatch 的 P4–P6 隨 ① 綠、P8 同 ② 延後。
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 `refactor-outcome-export`，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 `person-promote` 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 `ai-card-refactor` 的 A–E 一起實機驗收、兩案一起結案
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 `ai-card-refactor` 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
@@ -11,7 +12,6 @@
 - [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：2026-08-04 以 HEAD 97cbbc4 重打兩平台並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 .exe／.msi）後結案
 - [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28）；待討論議程三項全數結案（提示詞標籤 07-30、生圖失敗訊息分流 08-01、Ko-fi 導購歧義 08-03 連結已直指商品頁），唯一剩餘＝使用者實測三項
 - [release-3-kofi](tasks/release-3-kofi.md) — 發佈 3：Ko-fi 開帳與金流（多為使用者本人操作） — 下一步：商品頁已上線（2026-07-30，連結已進 app）；剩確認 .ttpack 掛檔發貨、說明文案定稿、首筆提領實測
-- [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：2026-08-11 五包實作完成（cargo 470／vitest 108／build／i18n 全綠、五 commit），**新對話照交接檔實測清單 T1–T4 驗收**（orc-cave <5 分硬指標；過＝與 refactor-dispatch 一起結案）
 - [refactor-dispatch](tasks/refactor-dispatch.md) — AI 重構提速省費：展開並行＋展開下放檔位＋取消真停 — 下一步：包 1–3 實作完成（2026-08-11 三 commit，cargo 442／vitest 94／build／i18n 全綠）；2026-08-11 實機開跑：P1/P3 綠、P2 紅（~24 分）、P7-b 品質紅——提速與品質由 refactor-survey-spans 接手，剩 P4–P6/P8 等新案後合併驗
 - [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：本任務主體完成——包 1–7 全數實作並通過實機驗收（架構 85–88% 命中、額度分頁九項過、保溫 ping 94.6%）；2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑並實機看過；剩 grok／agy 顯示驗收延後與 OpenRouter 計量未接，見交接檔 Remaining
 - [opening-translation](tasks/opening-translation.md) — 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔 — 下一步：實作完成、四項自驗全綠（cargo 426／vitest 71／build／i18n，2026-08-08），等實機驗收 T1–T7（見交接檔）後結案
@@ -20,18 +20,20 @@
 - [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
 
 ## Todo
+- [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
+- [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
 - [shell-update-flash](tasks/shell-update-flash.md) — 卡片介面殼更新無閃白：postMessage ready 取代 load 事件重建雙緩衝 — 下一步：2026-08-12 立案；現行單 iframe 直繪是正確基線，開工前先實測閃白痛感（每回合一次、毫秒級）再定優先序
 - [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：等使用者加入 Apple Developer Program（99 美元/年）後開工：設 Developer ID 憑證＋notarytool 公證流程，憑證再併入 release-2 的 CI secrets
-- [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：三項驗收全過（西幻卡三回合實測 5944→2670 字省 55%、劇情 ×2.8、零拒收，commit d3f8a7e）；接著做「拆角色 vs 保留介面交給玩家選擇」（介面判 playable 時角色組預設不勾），再逐型驗其他卡（MVU 前端型 bcd368 優先），最後清舊產殼路線
 - [easy-pay-onboarding](tasks/easy-pay-onboarding.md) — 簡易付費入口：OAuth 一鍵連接 →（條件觸發）App 內儲值 — 下一步：遠期構想，等 BYOK 版初步測試後先做第一階段 OAuth；完整路線圖與合規前提見任務檔
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：2026-08-10 立案；重構面板只在 AI 認人時問一次，之後改主意需要這條路，兩項待拍板（已有玩家卡時換不換、能不能反向取消）
 - [character-presence](tasks/character-presence.md) — 角色在場/退場狀態管理：自動上下場＋在場過濾 — 下一步：2026-08-11 立案；地基見 CARD-REFACTOR-SPEC 包 4，開工前逐點重拍板，排序在 refactor-dispatch 之後
+- [refactor-mode-split](tasks/refactor-mode-split.md) — 重構雙軌定向：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析） — 下一步：規格全數拍板（2026-08-14）；前置縮成 **refactor-survey-spans T4 通用驗收**（T1–T3 卡片品質已改為等重構按鈕做完再測，本案就是「做完」的一部分，不能互相卡）——T4 過後照底稿四包發包動工（提示詞出稿與收貨驗證留主線）
 
 ## Blocked
 - None.

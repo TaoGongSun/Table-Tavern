@@ -239,6 +239,8 @@ export const ptBR: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} falharam ({names})",
   refactorResultTitle: "Reorganização concluída",
   refactorResultPartialTitle: "Reorganização parcialmente concluída",
+  refactorResultCancelledTitle: "Cancelado (resultado parcial)",
+  refactorCancelledNotice: "Você cancelou. Aqui está apenas o que terminou antes da parada; mecanismos e interfaces incompletos não aparecem na lista.",
   refactorFailReason: "Motivo: {reason}",
   refactorSummaryCharacters: "{n} personagens separados",
   refactorSummaryInterface: "Interface do jogo integrada ao app",

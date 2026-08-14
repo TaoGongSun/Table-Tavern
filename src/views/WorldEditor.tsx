@@ -131,6 +131,9 @@ export function WorldEditor({
   const [refactorSelection, setRefactorSelection] = useState<RefactorSelection | null>(null);
   const [refactorOrigin, setRefactorOrigin] = useState<"ai" | "import" | null>(null);
   const [refactorDetail, setRefactorDetail] = useState(false);
+  // 取消後仍組出的半成品：中止的呼叫不會留下任何痕跡（產物沒 push、也不列失敗），
+  // 面板自己說出來才看得見缺件——標題改「已取消」、主按鈕換成「不要」。
+  const [refactorCancelled, setRefactorCancelled] = useState(false);
   // pool 呼叫失敗的條目名單（2026-08-12 B 拍板）：顯示在結果視窗頂部紅字段——以前塞頁面
   // 角落的一行狀態文字，被結果 modal 蓋住玩家看不到。
   const [refactorFailures, setRefactorFailures] = useState<{ name: string; reason: string }[]>([]);
@@ -448,6 +451,7 @@ export function WorldEditor({
     }
     setWorldbookMessage("");
     refactorCancelRef.current = false;
+    setRefactorCancelled(false);
     setRefactorProgress({ text: t("refactorSurveying"), cancelling: false, tail: "" });
     try {
       // 共用 tail：所有呼叫（survey＋展開）的 Channel onDelta 都 append 進同一個 buffer，
@@ -621,6 +625,7 @@ export function WorldEditor({
         setRefactorSelection(defaultRefactorSelection(outcome));
         setRefactorOrigin("ai");
         setRefactorDetail(false);
+        setRefactorCancelled(refactorCancelRef.current);
       }
       setRefactorFailures(failedTitles);
     } catch (reason) {
@@ -659,6 +664,7 @@ export function WorldEditor({
     setRefactorOrigin(null);
     setRefactorDetail(false);
     setRefactorFailures([]);
+    setRefactorCancelled(false);
   }
 
   // 已淘汰清單的「放回」：零後端行為，走既有 entries 勾選路徑——套用時跟其他世界書條目一視同仁。
@@ -1082,7 +1088,18 @@ export function WorldEditor({
             aria-modal="true"
             aria-label={t("refactorResultTitle")}
           >
-            <h2>{refactorFailures.length > 0 ? t("refactorResultPartialTitle") : t("refactorResultTitle")}</h2>
+            <h2>
+              {refactorCancelled
+                ? t("refactorResultCancelledTitle")
+                : refactorFailures.length > 0
+                  ? t("refactorResultPartialTitle")
+                  : t("refactorResultTitle")}
+            </h2>
+            {refactorCancelled && (
+              <p className="usage-bad" role="alert">
+                {t("refactorCancelledNotice")}
+              </p>
+            )}
             {refactorFailures.length > 0 && (
               <p className="usage-bad" role="alert">
                 {t("refactorPartialFailed", { n: refactorFailures.length, names: refactorFailures.map((f) => f.name).join("、") })}
@@ -1097,7 +1114,13 @@ export function WorldEditor({
               <>
                 {refactorSummaryParts.length > 0 && <p>{refactorSummaryParts.join("・")}</p>}
                 <div className="ai-gen-footer">
-                  <button type="button" disabled={refactorBusy} onClick={closeRefactor}>
+                  {/* 取消造成的半成品：主按鈕換成「不要」，套用降級成次要鈕（2026-08-14 拍板）。 */}
+                  <button
+                    type="button"
+                    className={refactorCancelled ? "ai-gen-submit" : undefined}
+                    disabled={refactorBusy}
+                    onClick={closeRefactor}
+                  >
                     {t("refactorDismiss")}
                   </button>
                   <button type="button" disabled={refactorBusy} onClick={() => void exportRefactorOutcome()}>
@@ -1108,7 +1131,7 @@ export function WorldEditor({
                   </button>
                   <button
                     type="button"
-                    className="ai-gen-submit"
+                    className={refactorCancelled ? undefined : "ai-gen-submit"}
                     disabled={refactorBusy}
                     onClick={() => void applyRefactor(defaultRefactorSelection(refactorOutcome))}
                   >

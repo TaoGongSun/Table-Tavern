@@ -239,6 +239,8 @@ export const ko: Record<MsgKey, string> = {
   refactorPartialFailed: "{n}개 실패 ({names})",
   refactorResultTitle: "재구성 완료",
   refactorResultPartialTitle: "재구성이 일부만 완료되었습니다",
+  refactorResultCancelledTitle: "취소됨 (일부 결과)",
+  refactorCancelledNotice: "취소했기 때문에 중단 전에 끝난 부분만 표시됩니다. 완료되지 않은 메커니즘과 인터페이스는 목록에 없습니다.",
   refactorFailReason: "원인: {reason}",
   refactorSummaryCharacters: "캐릭터 {n}명으로 분리",
   refactorSummaryInterface: "게임 인터페이스를 앱으로 이전",

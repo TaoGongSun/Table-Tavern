@@ -228,6 +228,8 @@ export const zhCN: Record<MsgKey, string> = {
   refactorPartialFailed: "{n} 条失败（{names}）",
   refactorResultTitle: "重构完成",
   refactorResultPartialTitle: "重构部分完成",
+  refactorResultCancelledTitle: "已取消（部分产出）",
+  refactorCancelledNotice: "你按了取消，这里只有中止前跑完的部分；没跑完的机制与界面不会出现在清单里。",
   refactorFailReason: "原因：{reason}",
   refactorSummaryCharacters: "拆出 {n} 个角色",
   refactorSummaryInterface: "游戏界面搬进 app",
