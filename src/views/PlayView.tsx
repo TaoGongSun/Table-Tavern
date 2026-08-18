@@ -1,6 +1,6 @@
 // 遊玩畫面：這一幕的訊息清單與底下的 composer。整支是受控元件——
 // 逐字稿、生成狀態、輸入框與所有動作都由 chat controller 擁有，這裡只負責畫與回報。
-import { FormEvent, ReactNode, useEffect, useRef } from "react";
+import { FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { t } from "../i18n";
 import { TranscriptEvent } from "../backend-contracts";
 import { CharacterMeta } from "../card-model";
@@ -99,16 +99,20 @@ export function PlayView({
   onGmAdvance,
 }: PlayViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLElement>(null);
 
+  // 逐字稿整份換掉（切桌／換幕／分岔）或多一則：直接跳到底，不跑動畫。
+  // 動畫在這裡會停在錯的位置——分岔是先掛載舊幕再換成新幕的紀錄，容器高度中途劇變，
+  // smooth 捲到的是換掉前算出來的座標，玩家看到的是一片空白（scene-fork 實機驗收抓到）
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [events]);
+
+  // 串流跟隨：這條高度是一個字一個字長的，用動畫才不會一跳一跳
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events, generating, streamText]);
-
-  // 從世界設定／卡片編輯／單幕閱讀切回對話時，訊息區是重新掛載的，直接跳到底（不跑動畫）。
-  // 原本在 App 掛著、依 mainView 觸發；元件化後掛載即等同「切回對話」，故改成掛載時跑一次
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView();
-  }, []);
+  }, [generating, streamText]);
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
   const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
@@ -120,7 +124,7 @@ export function PlayView({
     <>
       {onboarding}
 
-      <section className="messages" aria-label={t("messagesAria")}>
+      <section className="messages" aria-label={t("messagesAria")} ref={listRef}>
         {/* 幕書籤：目前這一幕的既有系統標籤（換幕／前幕／單幕匯出同一套資料） */}
         <div className="act-divider">
           <span className="act-tag">{sceneLabel}</span>

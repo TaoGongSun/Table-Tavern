@@ -69,6 +69,10 @@ export function useCharacterController(input: {
   const imagesLoad = useRef(0);
   const gmLoad = useRef(0);
   const playerLoad = useRef(0);
+  // hydrate 會把圖與玩家卡同步清空，補回來的是下面三支 effect。同一張桌裡換幕／分岔時
+  // worldId、角色清單、玩家卡 id 都沒變，effect 不會重跑，畫面就停在清空後的空狀態
+  // （分岔完角色圖與玩家卡整排消失，切走再切回來才回得來——scene-fork 實機驗收抓到）
+  const [hydration, setHydration] = useState(0);
 
   const loadCharacterImages = useCallback(async (worldId: string, ids: string[]) => {
     const mine = ++imagesLoad.current;
@@ -145,17 +149,17 @@ export function useCharacterController(input: {
   useEffect(() => {
     if (!worldId) return;
     void loadCharacterImages(worldId, castIdsKey === "" ? [] : castIdsKey.split("\n"));
-  }, [worldId, castIdsKey, loadCharacterImages]);
+  }, [worldId, castIdsKey, hydration, loadCharacterImages]);
 
   useEffect(() => {
     if (!worldId) return;
     void loadGmImage(worldId);
-  }, [worldId, loadGmImage]);
+  }, [worldId, hydration, loadGmImage]);
 
   useEffect(() => {
     if (!worldId) return;
     void loadPlayerCard(worldId, playerCardId);
-  }, [worldId, playerCardId, loadPlayerCard]);
+  }, [worldId, playerCardId, hydration, loadPlayerCard]);
 
   const hydrate = useCallback((cast: CharacterMeta[], appearances: Set<string>, playerCardId: string | null) => {
     // 上一桌還在飛的三份載入一律作廢，免得回應晚到、把舊桌的圖補進新桌
@@ -172,6 +176,7 @@ export function useCharacterController(input: {
     setPlayerAvatar(null);
     setGmImage(null);
     setPlayerCard(null);
+    setHydration((generation) => generation + 1);
   }, []);
 
   const refresh = useCallback(
