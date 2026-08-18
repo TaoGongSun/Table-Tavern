@@ -874,6 +874,32 @@ textarea {
   padding: 0 0.7em;
 }
 
+/* 翻譯工具列：檔位挑選器就站在「全部翻譯」旁邊——玩家不必翻說明也知道這次要用哪個模型，
+   翻不出來時往上調一檔再重翻。選項字帶實際模型 id，會比一般下拉長，給個上限別撐爆面板 */
+.opening-translate-all-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.opening-tier-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--ink-2);
+}
+
+.opening-tier-pick select {
+  max-width: 20rem;
+}
+
+/* 批次翻譯途中鎖住換檔（同一批不能翻到一半偷偷換模型）。全域只有 button:disabled 有變淡，
+   select 沒有，不補這條會看起來能點卻點不動 */
+.opening-tier-pick select:disabled {
+  opacity: 0.45;
+}
+
 .opening-choice-list {
   display: flex;
   flex-direction: column;

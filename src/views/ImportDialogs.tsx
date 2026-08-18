@@ -6,8 +6,21 @@ import {
   OpeningTranslationState,
   PendingImportChoice,
   PendingImportRoute,
+  Tier,
+  TierModel,
 } from "../controllers/useImportController";
 import { StoryText } from "./atoms";
+
+/** 檔位選項的字：「低 · claude-haiku-4-5」。同一家的不同世代對同樣內容的容忍度不一樣，
+    只寫「sonnet」分不出 4.6 與 5，所以顯示實際 id。model 為 null＝走 CLI 預設模型。 */
+function tierLabel(tier: Tier, models: TierModel[]) {
+  const name = t(tier === "fast" ? "tierFast" : tier === "balanced" ? "tierBalanced" : "tierBest");
+  const found = models.find((entry) => entry.tier === tier);
+  if (!found) return name;
+  const model =
+    found.model ?? t("openingTierCliDefault") + (found.effort ? ` · ${found.effort}` : "");
+  return `${name} · ${model}`;
+}
 
 function openingPreview(text: string) {
   const preview = text
@@ -34,15 +47,24 @@ interface ImportDialogsProps {
   expanded: number | null;
   /** 逐則翻譯狀態 */
   translationState: OpeningTranslationState;
+  /** 已收到的譯文：有值就顯示這個，沒有才顯示 openings 的原文 */
+  translations: Record<number, string>;
   /** 「全部翻譯」跑著沒 */
   translateAllBusy: boolean;
+  /** 這次視窗的翻譯檔位（不動全域設定） */
+  tier: Tier;
+  onSetTier: (tier: Tier) => void;
+  /** 三檔各自實際會叫的模型，後端解析 */
+  tierModels: TierModel[];
   onSetExpanded: (index: number | null) => void;
   onCloseOpenings: () => void;
   onTranslateAll: () => void;
-  /** 貼出這一則原文 */
+  /** 貼出這一則（有譯文就是譯文） */
   onPostOpening: (text: string) => void;
   /** 翻譯後貼出：沒翻過就先翻這一則 */
   onTranslateAndPost: (index: number) => void;
+  /** 重新翻譯這一則：用原文重打，會再花一次額度 */
+  onRetranslate: (index: number) => void;
 }
 
 export function ImportDialogs({
@@ -54,12 +76,17 @@ export function ImportDialogs({
   openings,
   expanded,
   translationState,
+  translations,
   translateAllBusy,
+  tier,
+  onSetTier,
+  tierModels,
   onSetExpanded,
   onCloseOpenings,
   onTranslateAll,
   onPostOpening,
   onTranslateAndPost,
+  onRetranslate,
 }: ImportDialogsProps) {
   return (
     <>
@@ -149,8 +176,24 @@ export function ImportDialogs({
               <strong>{t("openingChoiceTitle")}</strong>
               <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={() => onCloseOpenings()}>×</button>
             </div>
-            {/* 動作鈕置頂（專案慣例）：全部翻譯放標題正下方，不必展開任何一則就能先按 */}
+            {/* 動作鈕置頂（專案慣例）：全部翻譯放標題正下方，不必展開任何一則就能先按。
+                檔位挑選器就長在鈕旁邊——玩家不必翻說明也知道翻譯用的是哪個模型，
+                翻不出來（模型拒譯）時往上調一檔再重新翻譯。只影響這次視窗，不寫回設定。 */}
             <div className="opening-translate-all-row">
+              <label className="opening-tier-pick">
+                {t("openingTranslateTier")}
+                <select
+                  value={tier}
+                  disabled={translateAllBusy}
+                  onChange={(event) => onSetTier(event.target.value as Tier)}
+                >
+                  {(["fast", "balanced", "best"] as Tier[]).map((option) => (
+                    <option key={option} value={option}>
+                      {tierLabel(option, tierModels)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 className="ai-gen-btn"
@@ -174,6 +217,9 @@ export function ImportDialogs({
                 // 得整段捲到底才按得到，而滿是標記的開場白根本沒必要逐字看完
                 const isExpanded = expanded === index;
                 const transState = translationState[index];
+                // 譯文一到就取代畫面上的原文（玩家看不懂原文，留著沒意義）；
+                // 原文仍在 openings 裡，重新翻譯拿它當輸入
+                const shown = translations[index] ?? opening;
                 return (
                   <div className="opening-choice-item" key={index}>
                     <button
@@ -189,11 +235,11 @@ export function ImportDialogs({
                           ⚠
                         </span>
                       )}
-                      <span>{isExpanded ? "" : openingPreview(opening)}</span>
+                      <span>{isExpanded ? "" : openingPreview(shown)}</span>
                     </button>
                     {isExpanded && (
                       <div className="opening-choice-full">
-                        <StoryText text={opening} />
+                        <StoryText text={shown} />
                       </div>
                     )}
                   </div>
@@ -206,10 +252,23 @@ export function ImportDialogs({
                   <button
                     type="button"
                     className="footer-lead"
-                    onClick={() => onPostOpening(openings[expanded])}
+                    onClick={() => onPostOpening(translations[expanded] ?? openings[expanded])}
                   >
                     {t("openingLineOk")}
                   </button>
+                  {/* 翻過（成功或失敗）才出現：模型翻不出來或翻壞了，調高上方檔位再打一次。
+                      同樣檔位連按不擋——同一個模型重跑本來就可能給出不一樣的結果 */}
+                  {translationState[expanded] !== undefined && (
+                    <button
+                      type="button"
+                      className="ai-gen-btn"
+                      title={t("openingTranslateHint")}
+                      disabled={translationState[expanded] === "translating"}
+                      onClick={() => onRetranslate(expanded)}
+                    >
+                      {t("openingRetranslateBtn")}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="ai-gen-btn"

@@ -74,6 +74,19 @@ export interface PendingImportChoice {
 /** 開場白面板的逐則翻譯狀態，key＝該則在清單裡的索引 */
 export type OpeningTranslationState = Record<number, "translating" | "done" | "error">;
 
+export type Tier = "fast" | "balanced" | "best";
+
+/** 後端 translate_tier_models 回的一檔：解析與真正送出時同源，前端只負責顯示 */
+export interface TierModel {
+  tier: Tier;
+  /** 實際生效的檔位：API 模式該檔沒設模型時會退 GM 檔 */
+  effective_tier: Tier;
+  /** 實際送出的模型 id；null＝走 CLI 預設模型 */
+  model: string | null;
+  /** codex 專用：檔位映射到的 reasoning effort */
+  effort: string | null;
+}
+
 export interface ImportController {
   /** 這桌的匯入收據摘要：側欄「復原上次匯入」按鈕靠它決定出不出現 */
   receipts: ImportReceiptSummary[];
@@ -88,8 +101,14 @@ export interface ImportController {
   setExpanded: (index: number | null) => void;
   /** 逐則翻譯狀態 */
   transState: OpeningTranslationState;
+  /** 已收到的 AI 回覆：index → 譯文。原文留在 openings，玩家看到的是這裡有值就顯示這裡 */
+  translations: Record<number, string>;
   /** 「全部翻譯」跑著沒 */
   transAllBusy: boolean;
+  /** 這次視窗要用的檔位（不動全域設定）與三檔各自實際會叫的模型 */
+  transTier: Tier;
+  setTransTier: (tier: Tier) => void;
+  tierModels: TierModel[];
   closeOpenings: () => void;
   /** 換桌：這桌的收據整份換掉（只做 state commit，不得有 await） */
   hydrate: (receipts: ImportReceiptSummary[]) => void;
@@ -101,8 +120,8 @@ export interface ImportController {
   importFile: (file: File) => Promise<void>;
   answerChoice: (choice: "character" | "worldbook" | "cancel") => Promise<void>;
   answerRoute: (choice: "this_table" | "new_table" | "cancel") => Promise<void>;
-  /** 翻好的那一則；null＝翻譯失敗或面板已關 */
-  translateOpening: (index: number) => Promise<string | null>;
+  /** 翻好的那一則；null＝翻譯失敗或面板已關。force＝重新翻譯（忽略已有回覆，用原文重打） */
+  translateOpening: (index: number, force?: boolean) => Promise<string | null>;
   translateAllOpenings: () => Promise<void>;
 }
 
@@ -157,7 +176,13 @@ export function useImportController(input: {
   // 開場白翻譯：逐則狀態＋「全部翻譯」是否在跑；abort ref 給 modal 一關就停止後續翻譯呼叫用
   // （純 ref 而非 state：序列迴圈中途要讀到「使用者剛剛關掉視窗」，不能等下一次 render）
   const [transState, setTransState] = useState<OpeningTranslationState>({});
+  // 譯文與原文分開放：openings 永遠是原文（玩家看不到，但重新翻譯要拿它當輸入——
+  // 模型回的可能是拒絕語，拿回覆再翻一次只會越翻越偏）
+  const [translations, setTranslations] = useState<Record<number, string>>({});
   const [transAllBusy, setTransAllBusy] = useState(false);
+  // 檔位只影響這次視窗，不寫回設定：玩家為了翻一張卡調高檔，不該連帶把整桌遊玩的 AI 換掉
+  const [transTier, setTransTier] = useState<Tier>("fast");
+  const [tierModels, setTierModels] = useState<TierModel[]>([]);
   const transAbort = useRef(false);
   // openings 一變成 null（不管哪個按鈕關的）就中止：不必在每個關閉入口各補一次旗標
   useEffect(() => {
@@ -214,8 +239,12 @@ export function useImportController(input: {
       if (list.length === 0) return;
       setExpanded(null);
       setTransState({});
+      setTranslations({});
+      setTransTier("fast");
       transAbort.current = false;
       setOpenings(list);
+      // 檔位選項讀失敗不擋匯入：選單少了模型名照樣能翻（預設低檔）
+      setTierModels(await invoke<TierModel[]>("translate_tier_models").catch(() => []));
     },
     [lang],
   );
@@ -411,27 +440,33 @@ export function useImportController(input: {
   // 兩顆翻譯鈕共用。已經 done 的直接回傳目前內容，不重打；modal 關閉中途 abort 就不再
   // 動 state（視窗都不在了，setState 也只是白費）。
   const translateOpening = useCallback(
-    async (index: number): Promise<string | null> => {
+    async (index: number, force = false): Promise<string | null> => {
       if (openings === null) return null;
-      if (transState[index] === "done") return openings[index];
+      // 已有回覆就直接拿（「翻譯後貼出」不重打）；force＝玩家按了重新翻譯，明知會再花一次
+      if (!force && transState[index] === "done") return translations[index] ?? null;
       const text = openings[index];
       setTransState((previous) => ({ ...previous, [index]: "translating" }));
       try {
-        const translated = await invoke<string>("translate_opening", { worldId, text, lang });
+        const translated = await invoke<string>("translate_opening", {
+          worldId,
+          text,
+          lang,
+          tier: transTier,
+        });
         if (transAbort.current) return null;
-        setOpenings((previous) =>
-          previous === null ? previous : previous.map((item, itemIndex) => (itemIndex === index ? translated : item)),
-        );
+        // 新回覆到齊才換掉畫面上的舊譯文（重翻期間玩家看的仍是上一版）
+        setTranslations((previous) => ({ ...previous, [index]: translated }));
         setTransState((previous) => ({ ...previous, [index]: "done" }));
         return translated;
       } catch (reason) {
         if (transAbort.current) return null;
+        // 失敗不清掉已有的譯文：重翻失敗至少還留著上一次的結果
         setTransState((previous) => ({ ...previous, [index]: "error" }));
         onError(String(reason));
         return null;
       }
     },
-    [openings, transState, worldId, lang, onError],
+    [openings, transState, translations, worldId, lang, transTier, onError],
   );
 
   // 「✨ 全部翻譯」：逐則序列翻譯，不擋操作（沒鎖住 modal 其他按鈕）；modal 一關（abort
@@ -456,7 +491,11 @@ export function useImportController(input: {
       expanded,
       setExpanded,
       transState,
+      translations,
       transAllBusy,
+      transTier,
+      setTransTier,
+      tierModels,
       closeOpenings,
       hydrate,
       loadReceipts,
@@ -474,7 +513,10 @@ export function useImportController(input: {
       openings,
       expanded,
       transState,
+      translations,
       transAllBusy,
+      transTier,
+      tierModels,
       closeOpenings,
       hydrate,
       loadReceipts,

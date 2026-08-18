@@ -1238,15 +1238,22 @@ async fn translate_opening(
     world_id: String,
     text: String,
     lang: String,
+    tier: Option<String>,
 ) -> Result<String, String> {
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let messages = translate::opening_messages(&text, &lang);
+    // 檔位由開場白視窗的挑選器帶來（省額度預設低檔，翻不出來的玩家自己調高再重翻）；
+    // 沒帶＝維持舊行為的低檔。未知值 fail-closed，不默默降級成別的檔位。
+    let requested = match tier.as_deref() {
+        None => data::Tier::Fast,
+        Some(value) => data::Tier::parse(value).map_err(|error| error.to_string())?,
+    };
     let tier = if chat_transport(&config) == "api"
-        && transport::resolve_model(data::Tier::Fast, &config).is_err()
+        && transport::resolve_model(requested, &config).is_err()
     {
         transport::gm_tier(&config)
     } else {
-        data::Tier::Fast
+        requested
     };
     let raw = stream_via_transport(
         &app,
@@ -1263,6 +1270,19 @@ async fn translate_opening(
     )
     .await?;
     Ok(raw.trim().to_owned())
+}
+
+/// 開場白視窗的檔位挑選器選項：低／中／高各自實際會叫的模型，解析與真正送出時同源。
+/// 玩家看得到「低檔＝claude-haiku-4-5」，拒譯時才知道要往上調哪一檔（同一家的不同世代
+/// 對同樣內容的容忍度不一樣，只顯示「sonnet」分不出 4.6 與 5）。
+#[tauri::command]
+fn translate_tier_models(app: tauri::AppHandle) -> Result<Vec<transport::TierModel>, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let kind = chat_transport(&config);
+    Ok([data::Tier::Fast, data::Tier::Balanced, data::Tier::Best]
+        .into_iter()
+        .map(|tier| transport::tier_model(&config, &kind, tier))
+        .collect())
 }
 
 #[tauri::command]
@@ -2988,6 +3008,7 @@ pub fn run() {
             append_transcript,
             post_opening,
             translate_opening,
+            translate_tier_models,
             read_transcript,
             scene_appearances,
             pop_transcript,
