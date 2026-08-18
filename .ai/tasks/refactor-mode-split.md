@@ -9,7 +9,7 @@ Status: in-progress
 設計底稿見 [plans/refactor-mode-split.md](../plans/refactor-mode-split.md)；2026-08-14 全數拍板（含對話框文案稿、初判失敗預設介面優先），規格齊備。
 
 ## Next action
-- 2026-08-14 開工（前置 refactor-survey-spans T4 已收工）：照底稿四包順序發包，執行者使用者點名 Opus（外部背景 claude -p）；判官提示詞出稿與收貨驗證留主線；包 4 實跑（燒額度）歸使用者。
+- 包 1–3 全部實作完成（2026-08-14 主線直寫，三 commit 25ca9cd／8c2ce17／a711287，cargo 490／vitest 134／build／i18n 十語系全綠）；剩包 4 實機驗收矩陣歸使用者實跑：WestFantsy／bcd368／Transfur／NorthHall／TrainEmperor（該被擋）＋同卡連跑三次，清單見交接檔 Remaining。
 
 ## Constraints
 - 有介面卡一律問玩家，只有無介面卡免問直接角色線；unsupported（雲端載入器型）擋下不進二選一；選項必須寫明各自會發生什麼。
