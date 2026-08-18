@@ -1097,12 +1097,17 @@ function App() {
         openings={imports.openings}
         expanded={imports.expanded}
         translationState={imports.transState}
+        translations={imports.translations}
         translateAllBusy={imports.transAllBusy}
+        tier={imports.transTier}
+        onSetTier={imports.setTransTier}
+        tierModels={imports.tierModels}
         onSetExpanded={imports.setExpanded}
         onCloseOpenings={imports.closeOpenings}
         onTranslateAll={() => void imports.translateAllOpenings()}
         onPostOpening={(text) => void postOpening(text)}
         onTranslateAndPost={(index) => void postTranslatedOpening(index)}
+        onRetranslate={(index) => void imports.translateOpening(index, true)}
       />
     </div>
   );

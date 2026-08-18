@@ -1783,6 +1783,54 @@ pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
         .ok_or_else(|| format!("尚未設定「{key}」檔位對應的模型，請先到設定填寫"))
 }
 
+/// 開場白翻譯的檔位挑選器要顯示的「這一檔實際會叫哪個模型」。解析與 `stream_via_transport`
+/// 同源：tier_models 有覆寫就是覆寫值，沒有才是 CLI 內建對應——前端自己拼會拼錯（同樣是
+/// 「低」檔，設了 claude:fast 的機器跑 claude-haiku-4-5，沒設的跑別名 haiku）。
+/// 文案留給前端組：model=None 代表走 CLI 預設模型，後端不吐中文。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TierModel {
+    /// 被問的檔位
+    pub tier: String,
+    /// 實際生效的檔位：API 模式該檔位沒設模型時會退 GM 檔（translate_opening 既有慣例）
+    pub effective_tier: String,
+    /// 實際送出的模型 id；None＝用 CLI 預設模型（codex／agy／grok 未覆寫時）
+    pub model: Option<String>,
+    /// codex 專用：檔位映射到的 reasoning effort，其他傳輸層為 None
+    pub effort: Option<String>,
+}
+
+pub fn tier_model(config: &AppConfig, transport_kind: &str, tier: Tier) -> TierModel {
+    if transport_kind == "api" {
+        let (effective, model) = match resolve_model(tier, config) {
+            Ok(model) => (tier, Some(model)),
+            // 該檔沒設就退 GM 檔；GM 檔也沒設時 model 留 None，前端顯示「未設定」
+            Err(_) => {
+                let fallback = gm_tier(config);
+                (fallback, resolve_model(fallback, config).ok())
+            }
+        };
+        return TierModel {
+            tier: tier.as_str().to_owned(),
+            effective_tier: effective.as_str().to_owned(),
+            model,
+            effort: None,
+        };
+    }
+    let override_model =
+        crate::cli::tier_override(&config.tier_models, transport_kind, tier).map(str::to_owned);
+    let model = match transport_kind {
+        // claude 未覆寫時有內建別名，永遠有值
+        "claude" => Some(override_model.unwrap_or_else(|| crate::cli::claude_model_for(tier).to_owned())),
+        _ => override_model,
+    };
+    TierModel {
+        tier: tier.as_str().to_owned(),
+        effective_tier: tier.as_str().to_owned(),
+        model,
+        effort: (transport_kind == "codex").then(|| crate::cli::codex_effort_for(tier).to_owned()),
+    }
+}
+
 pub fn base_url(config: &AppConfig) -> String {
     config
         .preferences
@@ -2863,6 +2911,35 @@ mod tests {
             .tier_models
             .insert("balanced".to_owned(), "vendor/mid-model".to_owned());
         assert_eq!(refactor_expand_tier(&config, "api"), Tier::Balanced);
+    }
+
+    #[test]
+    fn tier_model_matches_what_actually_gets_sent() {
+        let mut config = AppConfig::default();
+        // claude 未覆寫：內建別名，永遠有值
+        let fast = tier_model(&config, "claude", Tier::Fast);
+        assert_eq!(fast.model.as_deref(), Some("haiku"));
+        assert_eq!(fast.effective_tier, "fast");
+        assert!(fast.effort.is_none());
+        // claude 有覆寫：顯示覆寫後的實際 id（同樣是「低」檔，兩台機器送的不一樣）
+        config
+            .tier_models
+            .insert("claude:fast".to_owned(), "claude-haiku-4-5".to_owned());
+        assert_eq!(
+            tier_model(&config, "claude", Tier::Fast).model.as_deref(),
+            Some("claude-haiku-4-5")
+        );
+        // codex 未覆寫：走 CLI 預設模型（model=None），檔位落在 reasoning effort
+        let codex = tier_model(&config, "codex", Tier::Best);
+        assert_eq!(codex.model, None);
+        assert_eq!(codex.effort.as_deref(), Some("high"));
+        // API 模式該檔沒設模型 → 照實反映會退到 GM 檔
+        config
+            .tier_models
+            .insert("best".to_owned(), "vendor/big-model".to_owned());
+        let api_fast = tier_model(&config, "api", Tier::Fast);
+        assert_eq!(api_fast.effective_tier, "best");
+        assert_eq!(api_fast.model.as_deref(), Some("vendor/big-model"));
     }
 
     #[test]
