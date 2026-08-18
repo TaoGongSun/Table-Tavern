@@ -2,25 +2,18 @@
 
 ## In progress
 - [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：**T4 通用 2026-08-14 收工**：①取消在途＋Cmd-Q 無孤兒過（並行取消殺得乾淨、零孤兒、未完成不計費）、③舊產物相容過、④十語系面板骨架過、②API 退 GM 檔＝單元測試綠但 CLI 模式測不到，實機延後到哪天真用 API 模式時看 jsonl lane。refactor-dispatch 的 P4–P6 隨 ① 綠、P8 同 ② 延後。
-- [refactor-mode-split](tasks/refactor-mode-split.md) — 重構雙軌定向：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析） — 下一步：2026-08-14 開工（前置 refactor-survey-spans T4 已收工）：照底稿四包順序發包，執行者使用者點名 Opus（外部背景 claude -p）；判官提示詞出稿與收貨驗證留主線；包 4 實跑（燒額度）歸使用者。
+- [refactor-mode-split](tasks/refactor-mode-split.md) — 重構雙軌定向：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析） — 下一步：包 1–3 全部實作完成（2026-08-14 主線直寫，三 commit 25ca9cd／8c2ce17／a711287，cargo 490／vitest 134／build／i18n 十語系全綠）；剩包 4 實機驗收矩陣歸使用者實跑：WestFantsy／bcd368／Transfur／NorthHall／TrainEmperor（該被擋）＋同卡連跑三次，清單見交接檔 Remaining。
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 `refactor-outcome-export`，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 `person-promote` 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 `ai-card-refactor` 的 A–E 一起實機驗收、兩案一起結案
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 `ai-card-refactor` 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
-- [scene-fork](tasks/scene-fork.md) — 從前幕分岔續玩（顯示編號帶版本號，不覆蓋歷史） — 下一步：實作完成、四項自驗全綠（cargo 337／build／check:i18n／vitest 22），等使用者實機驗收五項後結案
-- [worldbook-card-import](tasks/worldbook-card-import.md) — 世界書卡（PNG）匯入＋條目就地展開編輯＋純世界書開局 — 下一步：四項實作皆自驗全綠（cargo test 151、真卡 17 條煙霧、tsc＋i18n 檢查），2026-08-02 補修空桌回收誤刪世界書（判空納入 worldbook.json），等使用者實機驗收（含零角色匯入自動選 GM、條目切換自動存、匯完世界書切桌不被刪）後結案
-- [undo-last-message](tasks/undo-last-message.md) — 收回上一句（一次一則、可連按往回收；復原同樣可連按逐則倒回） — 下一步：實作＋三項自驗全綠（cargo test 127、npm build、check:i18n），等使用者實機驗收六項後結案
-- [ui-overhaul](tasks/ui-overhaul.md) — UI 全面改版：Emblem 設計系統（桌遊組件卡＋playbill 對話＋token 化） — 下一步：第一輪實作完成（npm build 綠＋淺色實跑驗證），淺色主題去黃調色已驗收定案，等實機驗收深色模式與實聊 playbill
-- [test-build-cross-platform](tasks/test-build-cross-platform.md) — 測試版打包：Mac DMG（ad-hoc 簽章）＋Windows 安裝檔（CI 未簽章） — 下一步：2026-08-04 以 HEAD 97cbbc4 重打兩平台並自驗通過，等使用者實機驗收（MacBook Air 測 DMG、真 Windows 機裝 .exe／.msi）後結案
-- [sponsor-features](tasks/sponsor-features.md) — 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖 — 下一步：三項＋生成歷史圖庫全部實作並實測通過（圖庫 2026-07-28 驗收）；匯入贊助包入口已由 release-4 補上（2026-07-28）；待討論議程三項全數結案（提示詞標籤 07-30、生圖失敗訊息分流 08-01、Ko-fi 導購歧義 08-03 連結已直指商品頁），唯一剩餘＝使用者實測三項
-- [release-3-kofi](tasks/release-3-kofi.md) — 發佈 3：Ko-fi 開帳與金流（多為使用者本人操作） — 下一步：商品頁已上線（2026-07-30，連結已進 app）；剩確認 .ttpack 掛檔發貨、說明文案定稿、首筆提領實測
 - [refactor-dispatch](tasks/refactor-dispatch.md) — AI 重構提速省費：展開並行＋展開下放檔位＋取消真停 — 下一步：包 1–3 實作完成（2026-08-11 三 commit，cargo 442／vitest 94／build／i18n 全綠）；2026-08-11 實機開跑：P1/P3 綠、P2 紅（~24 分）、P7-b 品質紅——提速與品質由 refactor-survey-spans 接手，剩 P4–P6/P8 等新案後合併驗
 - [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：本任務主體完成——包 1–7 全數實作並通過實機驗收（架構 85–88% 命中、額度分頁九項過、保溫 ping 94.6%）；2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑並實機看過；剩 grok／agy 顯示驗收延後與 OpenRouter 計量未接，見交接檔 Remaining
 - [opening-translation](tasks/opening-translation.md) — 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔 — 下一步：實作完成、四項自驗全綠（cargo 426／vitest 71／build／i18n，2026-08-08），等實機驗收 T1–T7（見交接檔）後結案
 - [interface-card-panel](tasks/interface-card-panel.md) — 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板） — 下一步：2026-08-04 v1 完成且**實機驗收全數通過**（匯入→開介面→點行動→送出→GM 照卡片格式回覆→介面就地換新畫面）；聊天收合 XML 已拍板不做；v2 首要＝省額度（歷史裡每輪整包 XML 重送，要留正文砍掉重複區塊）
-- [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：十語系三處全部上齊、npm build 與 cargo test 116 全綠，等實機逐語系看畫面驗收；原四件待拍板（日文世界書用詞、範例桌地名處理等）已於 2026-07-30 全數拍板
-- [ai-table-generator](tasks/ai-table-generator.md) — 一句話開桌：AI 生成世界觀＋角色（免費基礎功能） — 下一步：三塊實作完成、自驗全綠（cargo test 133、build、check:i18n），等使用者實機驗收四項後結案
+- [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：**改為全 app 功能定案後一次驗，現在不動手**（2026-08-17 拍板）。原驗收單已過期——基準 2026-07-30 是 247 鍵／55 顆按鈕（commit 9a17562），2026-08-17 已成 474 鍵／102 顆按鈕、期間 50 次 commit 動過 src/i18n/，最終要驗多少項無法預估，功能全數完工前不重排。機械關卡持續有效（缺鍵 TypeScript 編譯不過、`npm run check:i18n` 十語系佔位符與按鈕寬度全綠），缺的是人眼：07-30 之後新增的鍵未經逐語系審校，新功能畫面沒人切語系看過
 
 ## Todo
+- [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。
 - [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
 - [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式

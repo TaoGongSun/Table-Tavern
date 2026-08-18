@@ -124,6 +124,8 @@ export function useImportController(input: {
   openTableForImport: (label: string) => Promise<string | null>;
   /** 剛匯入＝又回到「還沒開演」的狀態，把這桌的開演記號清掉 */
   resetChatted: (worldId: string) => void;
+  /** 匯完重讀狀態樹與分支指認：卡片的 [initvar] 是匯入當下才建好樹的 */
+  refreshState: () => Promise<void>;
   onError: (message: string) => void;
 }): ImportController {
   const {
@@ -138,6 +140,7 @@ export function useImportController(input: {
     focusSpeaker,
     openTableForImport,
     resetChatted,
+    refreshState,
     onError,
   } = input;
 
@@ -232,10 +235,20 @@ export function useImportController(input: {
       await refreshReceipts(worldId);
       // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話
       if (book.imported > 0) await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
+      await refreshState();
       await offerOpeningLine(worldId, data);
       await tellAboutInterface(worldId, meta.id);
     },
-    [castSize, refreshCharacters, focusSpeaker, adoptTableName, refreshReceipts, offerOpeningLine, tellAboutInterface],
+    [
+      castSize,
+      refreshCharacters,
+      focusSpeaker,
+      adoptTableName,
+      refreshReceipts,
+      refreshState,
+      offerOpeningLine,
+      tellAboutInterface,
+    ],
   );
 
   // 世界書匯入共用流程：側欄按鈕分流出的純世界書檔、三鍵對話框選了世界書都走這裡。
@@ -250,11 +263,20 @@ export function useImportController(input: {
       focusSpeaker(null);
       if (adoptName) await adoptTableName(label);
       await refreshReceipts(worldId);
+      await refreshState();
       await offerOpeningLine(worldId, data);
       // 這桌等級的介面殼 character_id 是空字串（角色卡的是那張卡的 id）
       await tellAboutInterface(worldId, "");
     },
-    [reloadGmImage, focusSpeaker, adoptTableName, refreshReceipts, offerOpeningLine, tellAboutInterface],
+    [
+      reloadGmImage,
+      focusSpeaker,
+      adoptTableName,
+      refreshReceipts,
+      refreshState,
+      offerOpeningLine,
+      tellAboutInterface,
+    ],
   );
 
   // 收據為空時的保險（見 decideImportRoute）。現讀而不吃 state：世界書條目歸 WorldEditor 管，

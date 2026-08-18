@@ -72,11 +72,11 @@
 ## 實作定案（2026-08-14 主線親查 codebase 後拍定，發包依此）
 
 - **三態判定**（前端純函式，素材＝`card_interfaces` 回傳的 `CardInterface[]`）：任一卡 `unsupported===null && scripts.length>0`→`supported`；否則任一卡 `unsupported!==null`→`unsupported`（擋下顯示訊息，不跑重構）；否則→`none`（mode=characters 直跑 survey，無初判）。
-- **兩段呼叫**：兩段同用 `gm_tier`；system＝現行 `system_message(context)` 逐位元組共用（快取前綴）。第一段輸出 `RECOMMEND:`＋`EVIDENCE:` 兩行；transport≠claude 一律單發。指紋＝`usage_log::text_hash(context)`，第二段 Rust 端重算比對，不合→單發。session id 生成復用 `lanes::new_session_id`（pub 化）；不進 lanes.json、不保溫、不清 session 檔。
-- **mode 欄位鏈**：`RefactorSurveyOutcome.mode`（包 1 由 app 填、包 3 改 AI `## MODE` 回聲核對，不一致＝Err）→`RefactorOutcome.mode: Option<String>`（serde default；`None`＝舊產物＝照 interface 行為）→套用時寫 `WorldState.refactor_mode`；匯出／匯入全程保留。
+- **兩段呼叫**：兩段同用 `gm_tier`；system＝現行 `system_message(context)` 逐位元組共用（快取前綴）。第一段輸出 `RECOMMEND:`＋`EVIDENCE:` 兩行；transport≠claude 一律單發。指紋＝`usage_log::text_hash(context)`，第二段 Rust 端重算比對，不合→單發；指紋是 64-bit 雜湊等價、非逐位元組證明——正常 UI 等價成立，雜湊碰撞／異常 caller 理論可繞（2026-08-14 審查拍板：記錄即可，不加固）。session id 生成復用 `lanes::new_session_id`（pub 化）；不進 lanes.json、不保溫、不清 session 檔。
+- **mode 欄位鏈**：`RefactorSurveyOutcome.mode`（包 1 由 app 填、包 3 改 AI `## MODE` 回聲核對，不一致＝Err）→`RefactorOutcome.mode: Option<String>`（serde default；`None`＝舊產物＝照 interface 行為）→套用時寫 `WorldState.refactor_mode`；匯出／匯入全程保留。mode 只收 interface／characters 二值：匯入端正規化大小寫與前後空白、未知值拒收，套用端 trim 後非法值不落地。
 - **characters 模式行為**：interface／statusbar 呼叫不發；INTERFACE 條目與 statusbar spans 進 dropped **rule 5「依模式捨棄」**（可見、可放回成 carry 條目）；absorb／group／FIELDS 照舊（app 狀態樹與機制不受模式影響）；apply 時防禦性刪 interface-shell.html；涵蓋與機制守恆稽核把 rule 5 算「已處置」。
-- **interface 模式行為**：判官 PERSONS 留空、`person name:` route 停用（提示詞禁用；仍出現時 app 以 `entry title:<人名>` 照搬兜底）；人物條目走 ENTRIES carry。
-- **fallback 抑制**：新 command `refactor_table_mode(world_id)->Option<String>` 讀 `WorldState.refactor_mode`；`useCardInterfaceController` 讀到 `"characters"` 時 `cardInterfaceShell` 恆 null（開介面鈕不出現、近 10 則掃 raw 的 fallback 不啟動）。
+- **interface 模式行為**：判官 PERSONS 留空、`person name:` route 停用（提示詞禁用；仍出現時 app 以 `entry title:<人名>` 照搬兜底）；人物條目走 ENTRIES carry；MODE 回聲核過後後端再清空違規 PERSONS（`normalize_survey_for_mode`）——認領作廢、其餘 route／verdict 照原判，無下落者由涵蓋稽核與餘段兜底補 carry（內容全有下落，非全走照搬）。
+- **fallback 抑制**：新 command `refactor_table_mode(world_id)->Option<String>` 讀 `WorldState.refactor_mode`；`useCardInterfaceController` 讀到 `"characters"` 時 `cardInterfaceShell` 恆 null（開介面鈕不出現、近 10 則掃 raw 的 fallback 不啟動）；tableMode 三態——undefined（載入中或讀失敗）同樣不顯殼，未知不放行；重構結果只剩 dropped／unabsorbed／audit 也開結果視窗（此類產物匯出後匯入端照收，round-trip 不拒），純介面卡選 characters 才有產物可套、mode 才落地；讀取端（`refactor_table_mode`）正規化舊版壞值——合法大小寫就地修正、未知值回 Err，controller 維持未知不 fallback。
 - **二選一 UI**（自製 modal，比照結果面板）：第一層＝標題＋判官句（`建議…：{EVIDENCE 直出}`）＋主鈕「照建議繼續」＋次鈕「自己選」＋可 Esc／取消；按「自己選」展開兩張選項卡（radio 預選建議項、各附後果行）＋確認鈕。初判失敗＝不顯判官句、預選 interface。none 卡不彈框。
 - **初判進度**：refactorProgress 顯示新鍵 `refactorProbing`；兩段皆走 `inflight::register` 可取消。
 

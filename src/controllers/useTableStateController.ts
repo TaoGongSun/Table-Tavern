@@ -78,12 +78,19 @@ export function useTableStateController(input: {
     setBranchBindings(bindings);
   }, []);
 
+  // 重讀是兩趟非同步，中途換桌的話上一桌的結果會晚一步蓋掉新桌的畫面；
+  // 回來時比對現在還是不是同一桌，不是就整份丟掉
+  const currentWorldId = useRef(worldId);
+  currentWorldId.current = worldId;
+
   const refresh = useCallback(async () => {
     const state = await invoke<WorldState>("read_state", { worldId });
+    const bindings = await loadBranchBindings(worldId);
+    if (currentWorldId.current !== worldId) return;
     setTableState(state.state?.table ?? {});
     setTableTree(state.state?.tree ?? {});
     setTableJumps(state.state?.jumps ?? {});
-    setBranchBindings(await loadBranchBindings(worldId));
+    setBranchBindings(bindings);
   }, [worldId]);
 
   // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。

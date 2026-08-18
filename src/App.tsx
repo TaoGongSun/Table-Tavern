@@ -256,7 +256,9 @@ function App() {
     onError: setError,
   });
 
-  // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列
+  // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列。
+  // 狀態樹與分支指認一起重讀：匯入卡才建好的樹、建卡才比對上的同名分支，
+  // 都只在這幾個時機變動，不重讀的話畫面要切走再切回來才看得到
   useEffect(() => {
     if (!table) return;
     let stale = false;
@@ -265,10 +267,11 @@ function App() {
         if (!stale) setHasStateBar(has);
       })
       .catch(() => {});
+    void tableState.refresh();
     return () => {
       stale = true;
     };
-  }, [table, mainView, characters.list]);
+  }, [table, mainView, characters.list, tableState.refresh]);
 
   // 卡片介面：介面腳本／重構殼／覆蓋層開關與沙盒訊息都在 controller 裡，
   // 這裡只餵它需要的四樣（送出函式會隨對話狀態換新，controller 內用 latest-ref 收）
@@ -338,6 +341,7 @@ function App() {
     focusSpeaker,
     openTableForImport,
     resetChatted,
+    refreshState: tableState.refresh,
     onError: setError,
   });
 

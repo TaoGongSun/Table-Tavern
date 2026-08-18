@@ -7,4 +7,3 @@ Unfinished long-task handoffs tracked in this repository.
 
 ## Paused or blocked
 - [refactor-mode-split](handoffs/refactor-mode-split.md) — paused / in-progress
-- [test-build-cross-platform](handoffs/test-build-cross-platform.md) — paused / in-progress
