@@ -914,6 +914,19 @@ textarea {
   -webkit-line-clamp: 2;
 }
 
+/* 逐則翻譯狀態（翻譯中…／⚠）：上面那條是給預覽文字的兩行截斷，套到標記上會把
+   「翻譯中…」折成兩行、把 ⚠ 壓成看不出是警告的一撇，這裡整條擋掉 */
+.opening-choice-head .opening-trans-status {
+  display: inline;
+  flex: none;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+
+.opening-choice-head .opening-trans-error {
+  color: var(--danger);
+}
+
 /* 展開的全文自己吃卷軸，長開場白不會把整張面板撐爆。
    內容走 StoryText 渲染（卡片常在開場白內嵌配圖），換行交給 <br>，不再 pre-wrap */
 .opening-choice-full {
