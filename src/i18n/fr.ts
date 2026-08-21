@@ -485,6 +485,9 @@ export const fr: Record<MsgKey, string> = {
   undoRestore: "Restaurer",
   errQuota: "Le quota de cette source d'IA est épuisé. Passe à une autre source d'IA, ou attends la réinitialisation de ton quota.",
   errAuth: "Cette source d'IA n'est pas connectée, ou ses identifiants ont expiré. Reconnecte-la dans les Paramètres, puis réessaie.",
+  errEmptyReply: "L'IA n'a rien renvoyé cette fois, donc rien n'a été ajouté à l'histoire. Réessaie ; si cela persiste, change de modèle ou de source d'IA.",
+  errIncompleteReply: "La réponse de l'IA a été coupée avant la fin, donc rien n'a été ajouté à l'histoire. Réessaie ; si cela persiste, change de modèle ou de source d'IA.",
+  errFiltered: "Cette source d'IA a bloqué la réponse. Reformule, ou passe à un autre modèle.",
   errNoImage: "Cette source ne peut pas générer d'images : crédit insuffisant, ou formule ne comprenant pas la génération d'images. Essaie une autre source.",
   errRefused: "La source a refusé cette description, généralement à cause des règles de contenu. Reformule-la, ou essaie une autre source.",
 

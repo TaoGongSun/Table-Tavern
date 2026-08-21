@@ -5,7 +5,22 @@ const AUTH_ERROR = /not logged in|not authenticated|unauthorized|authentication|
 const REFUSAL_ERROR =
   /content polic|guideline|safety system|can'?t (create|generate|make|help)|cannot (create|generate|make)|won'?t (create|generate)|unable to (create|generate)|declin|無法(生成|產生|製作)|不能生成|拒絕|违反|違反/i;
 
-export function explainAiError(raw: string): "errQuota" | "errAuth" | "errNoImage" | "errRefused" | null {
+// 傳輸層判定的失敗態帶穩定前綴（見 .ai/plans/stream-failure-visible.md）：串流正常走完
+// 卻零內容、被截斷、被內容過濾，三者玩家的下一步不同。用 includes 不用 startsWith——
+// 同一個錯誤字串在不同呼叫層可能被包裝過。
+const FAILURE_CODES = [
+  ["AI_EMPTY_RESPONSE", "errEmptyReply"],
+  ["AI_INCOMPLETE_RESPONSE", "errIncompleteReply"],
+  ["AI_CONTENT_FILTERED", "errFiltered"],
+] as const;
+
+export function explainAiError(
+  raw: string,
+): "errQuota" | "errAuth" | "errNoImage" | "errRefused" | "errEmptyReply" | "errIncompleteReply" | "errFiltered" | null {
+  // 帶碼的先認碼；供應商中途送的 error 塊刻意不帶碼，原話往下走既有正則
+  // （免費層 429 的原話會被 QUOTA_ERROR 接住，玩家看到「額度用完」而非籠統錯誤）
+  const coded = FAILURE_CODES.find(([prefix]) => raw.includes(prefix));
+  if (coded) return coded[1];
   // REFUSED／NO_IMAGE 是生圖 prompt 跟 CLI 約好的暗號：不肯生這一張（內容規範）
   // 與根本生不出圖（多半是生圖額度或方案），玩家的下一步不同
   if (raw.includes("REFUSED")) return "errRefused";

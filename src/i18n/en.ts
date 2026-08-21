@@ -510,6 +510,9 @@ export const en: Record<MsgKey, string> = {
 
   errQuota: "This AI source is out of quota. Switch to another AI source, or wait for the quota to reset.",
   errAuth: "This AI source isn't signed in, or its credentials expired. Reconnect it in Settings and try again.",
+  errEmptyReply: "The AI returned nothing this time, so nothing was added to the story. Try again; if it keeps happening, switch model or AI source.",
+  errIncompleteReply: "The AI's reply was cut off before it finished, so nothing was added to the story. Try again; if it keeps happening, switch model or AI source.",
+  errFiltered: "This AI source blocked the reply. Rephrase it, or switch to another model.",
   errNoImage: "This source can't generate images: it's out of image credits, or its plan doesn't include image generation. Try another image source.",
   errRefused: "The image source declined this description, usually a content-policy block. Reword it, or try another image source.",
 

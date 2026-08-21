@@ -2498,6 +2498,15 @@ async fn gm_narrate(
     };
     let block = transport::extract_state_block(&reply);
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
+    // 剝掉 state／next 控制欄後沒有正文＝這一輪沒東西寫進故事。必須擋在下面的
+    // apply_block 之前：狀態套用只要 incremental 為真就必跑，失敗回合會白白重擲一輪骰
+    // （stream-failure-visible）。CLI 那條路沒有 stream_chat 的收工判定，這裡是唯一防線。
+    if display.trim().is_empty() {
+        return Err(format!(
+            "AI_EMPTY_RESPONSE: 剝除控制欄後沒有正文 raw_len={}",
+            reply.chars().count()
+        ));
+    }
     let mut state_updates = Vec::new();
     let mut arrived_persons = Vec::new();
     let mut arrived_characters = Vec::new();

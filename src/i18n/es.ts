@@ -485,6 +485,9 @@ export const es: Record<MsgKey, string> = {
   undoRestore: "Restaurar lo deshecho",
   errQuota: "Este origen de IA se quedó sin cuota. Elige otro origen o espera a que se restablezca.",
   errAuth: "No se ha iniciado sesión en este origen de IA o las credenciales caducaron. Vuelve a conectarlo en Ajustes.",
+  errEmptyReply: "La IA no devolvió nada esta vez, así que no se añadió nada a la historia. Inténtalo de nuevo; si sigue pasando, cambia de modelo u origen de IA.",
+  errIncompleteReply: "La respuesta de la IA se cortó antes de terminar, así que no se añadió nada a la historia. Inténtalo de nuevo; si sigue pasando, cambia de modelo u origen de IA.",
+  errFiltered: "Este origen de IA bloqueó la respuesta. Redáctalo de otra forma o cambia de modelo.",
   errNoImage: "Este origen no puede generar imágenes: no tiene créditos suficientes o tu plan no las incluye. Intenta con otro origen.",
   errRefused: "El origen rechazó esta descripción, normalmente por las políticas de contenido. Reescríbela o intenta con otro origen.",
 
