@@ -1611,8 +1611,29 @@ async fn prepare_claude_call(
     })
 }
 
+/// 「真的把話送出去給模型、而它沒能回話」才掛這個碼——前端據此給一句保底人話。
+/// 沒掛碼的失敗（讀設定、找不到 CLI、風險告知沒確認、寫檔）本身就是精確可行動的訊息，
+/// 套上「AI 沒回應」只會蓋掉重點、害玩家跑去換模型瞎試。
+///
+/// 已有更精確的碼就原樣放行；只認這份白名單，不用 `AI_` 開頭一概放行——
+/// 錯誤字串可能整包來自供應商，讓它自帶前綴就能繞過分流。
+fn ai_call_failure(error: String) -> String {
+    const CODED: [&str; 4] = [
+        "AI_HTTP_STATUS_",
+        "AI_EMPTY_RESPONSE:",
+        "AI_INCOMPLETE_RESPONSE:",
+        "AI_CONTENT_FILTERED:",
+    ];
+    if CODED.iter().any(|code| error.starts_with(code)) {
+        error
+    } else {
+        format!("AI_CALL_FAILED: {error}")
+    }
+}
+
 /// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
+#[allow(clippy::too_many_arguments)]
 async fn stream_via_transport(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
@@ -1641,7 +1662,7 @@ async fn stream_via_transport(
         let model = transport::resolve_model(tier, config)?;
         return transport::stream_chat(config, &model, messages, usage_log.as_deref(), world, emit)
             .await
-            .map_err(|error| error.to_string());
+            .map_err(|error| ai_call_failure(error.to_string()));
     }
 
     // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
@@ -1763,7 +1784,7 @@ async fn stream_via_transport(
         }
         other => Err(format!("未知傳輸層：{other}").into()),
     }
-    .map_err(|error| error.to_string())
+    .map_err(|error| ai_call_failure(error.to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2231,7 +2252,8 @@ async fn chat_with_character(
             },
             emit,
         )
-        .await;
+        .await
+        .map_err(ai_call_failure);
     }
     let messages = transport::assemble_messages(
         &card,
@@ -2373,6 +2395,7 @@ async fn gm_lane_reply(
         emit,
     )
     .await
+    .map_err(ai_call_failure)
 }
 
 /// gm_narrate 回傳：剝乾淨的旁白顯示文字＋下一位發言者（角色 id 或玩家哨兵）。
@@ -3069,15 +3092,41 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        clear_cli_workspace_images, cli_install_script, decode_base64, encode_base64,
-        extract_image_refs, list_gallery_image_files, load_active_cards, record_card_arrivals,
-        record_person_arrivals, scene_appearances_at, validate_gallery_component, ImageRef,
-        InstallMessages, PathBuf,
+        ai_call_failure, clear_cli_workspace_images, cli_install_script, decode_base64,
+        encode_base64, extract_image_refs, list_gallery_image_files, load_active_cards,
+        record_card_arrivals, record_person_arrivals, scene_appearances_at,
+        validate_gallery_component, ImageRef, InstallMessages, PathBuf,
     };
     use crate::data;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    /// 只有真的送出去給模型、而它沒回話的失敗才掛碼：讀卡、寫逐字稿、找不到 CLI
+    /// 都不經過這裡，前端才不會把「檔案寫不進去」講成「AI 沒回應」害玩家換模型瞎試
+    #[test]
+    fn ai_call_failure_marks_only_uncoded_errors() {
+        // 沒碼的一律掛上（連不上、串流中途斷掉）
+        assert_eq!(
+            ai_call_failure("error sending request".to_owned()),
+            "AI_CALL_FAILED: error sending request"
+        );
+        // 已經分得更細的碼原樣放行，不可被籠統的一句蓋掉
+        for coded in [
+            "AI_HTTP_STATUS_503: API 回應 503",
+            "AI_EMPTY_RESPONSE: 空白回合",
+            "AI_INCOMPLETE_RESPONSE: 被截斷",
+            "AI_CONTENT_FILTERED: 被擋",
+        ] {
+            assert_eq!(ai_call_failure(coded.to_owned()), coded);
+        }
+        // 白名單以外的 AI_ 開頭不算碼：錯誤字串可能整包來自供應商，
+        // 讓它自帶前綴就能繞過分流
+        assert_eq!(
+            ai_call_failure("AI_SOMETHING_ELSE: 供應商自己寫的".to_owned()),
+            "AI_CALL_FAILED: AI_SOMETHING_ELSE: 供應商自己寫的"
+        );
+    }
 
     fn messages() -> InstallMessages {
         InstallMessages {

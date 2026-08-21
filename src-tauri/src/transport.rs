@@ -2081,6 +2081,27 @@ impl StreamOutcome {
     }
 }
 
+/// 非 2xx 的錯誤字串：開頭掛穩定碼給前端分流（比照 AI_EMPTY_RESPONSE 慣例），
+/// 後面照舊附人看得懂的狀態與原文。前端只認開頭那個碼、不解析 body——
+/// 聚合 router 常把上游錯誤整包塞進 body，body 裡的數字（如轉包的 429）
+/// 不該蓋掉真正的 HTTP 狀態。
+///
+/// 原文留到 2000 字：request id、欄位細節、說明網址常在後段，玩家要拿這串去問供應商。
+/// 真的超長才截，並且明講截了——看似完整其實殘缺的 JSON 比明說截斷更難查。
+fn http_error(status: reqwest::StatusCode, body: &str) -> String {
+    const LIMIT: usize = 2000;
+    let kept: String = body.chars().take(LIMIT).collect();
+    let cut = if body.chars().nth(LIMIT).is_some() {
+        "…（原始回應已截斷）"
+    } else {
+        ""
+    };
+    format!(
+        "AI_HTTP_STATUS_{}: API 回應 {status}：{kept}{cut}",
+        status.as_u16(),
+    )
+}
+
 /// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
 /// 每個增量經 on_delta 回傳，結束後回傳完整文字。
 /// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage_log）。
@@ -2112,7 +2133,7 @@ pub async fn stream_chat(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("API 回應 {status}：{body}").into());
+        return Err(http_error(status, &body).into());
     }
 
     let mut stream = response.bytes_stream();
@@ -2187,10 +2208,7 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "API 回應 {status}：{}",
-            body.chars().take(200).collect::<String>()
-        ));
+        return Err(http_error(status, &body));
     }
     let value: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
     let image = value.get("data").and_then(|data| data.get(0));
@@ -3233,6 +3251,34 @@ mod tests {
         outcome.absorb(r#"{"choices":[{"finish_reason":"stop"}]}"#);
         outcome.saw_done = true;
         assert_eq!(outcome.failure("旁白", "test/model"), None);
+    }
+
+    /// 非 2xx 一律掛開頭碼給前端分流：碼取自真正的 HTTP 狀態，
+    /// 不受 body 裡那些上游轉包的數字影響（今天實測的 503 body 就長這樣）
+    #[test]
+    fn http_error_prefixes_real_status_not_body_digits() {
+        let real = r#"{"error":{"message":"openai_error","type":"bad_response_status_code"},"id":157975}"#;
+        let text = http_error(reqwest::StatusCode::SERVICE_UNAVAILABLE, real);
+        assert!(text.starts_with("AI_HTTP_STATUS_503: "), "{text}");
+        assert!(text.contains("bad_response_status_code"), "{text}");
+
+        // body 自稱 429，狀態是 503：碼必須跟著狀態走
+        let lying = r#"{"error":{"message":"upstream said 429 rate limit"}}"#;
+        let text = http_error(reqwest::StatusCode::SERVICE_UNAVAILABLE, lying);
+        assert!(text.starts_with("AI_HTTP_STATUS_503: "), "{text}");
+
+        // 沒超過上限就不留截斷字樣（玩家複製到的是完整原文）
+        let short = "毒".repeat(2000);
+        let text = http_error(reqwest::StatusCode::BAD_GATEWAY, &short);
+        assert_eq!(text.matches('毒').count(), 2000);
+        assert!(!text.contains("已截斷"), "{text}");
+
+        // 超長才截，且一定標記出來：看似完整其實殘缺的 JSON 比明說截斷更難查
+        let long = "毒".repeat(2500);
+        let text = http_error(reqwest::StatusCode::BAD_GATEWAY, &long);
+        assert!(text.starts_with("AI_HTTP_STATUS_502: "), "{text}");
+        assert_eq!(text.matches('毒').count(), 2000);
+        assert!(text.ends_with("…（原始回應已截斷）"), "{text}");
     }
 
     /// 增量塊的 finish_reason 是 null，真正的收尾原因在最後一塊：取最後一則有值的
