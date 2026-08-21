@@ -52,6 +52,36 @@ fn cli_workspace(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(workspace)
 }
 
+/// grok 專用 profile：回傳 (假 HOME, GROK_HOME)。grok 會自動吃 `$HOME/.claude` 下的
+/// hooks／skills／CLAUDE.md（官方無 opt-out），玩家的 coding hook 因此擋停過旁白。
+/// 這兩個目錄讓 grok 只看得到 app 自己這套，登入態也存在這裡，與使用者終端機的
+/// `~/.grok` 互不干擾（2026-08-21 拍板：不共用，避免 CLI 與 app 狀態混淆）。
+fn grok_profile(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    let root = config_root(app)?;
+    let home = root.join("cli-home");
+    let grok_home = root.join("grok-home");
+    for path in [&home, &grok_home] {
+        std::fs::create_dir_all(path)
+            .map_err(|error| format!("無法準備 grok 設定目錄：{error}"))?;
+        // 憑證存在這裡，收成 0700 不讓同機其他使用者讀
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+        }
+    }
+    Ok((home, grok_home))
+}
+
+/// 四處呼叫 grok 的地方共用這組環境；其餘 CLI 不需要隔離，回空陣列。
+fn cli_envs(app: &tauri::AppHandle, provider: &str) -> Result<Vec<(String, String)>, String> {
+    if provider != "grok" {
+        return Ok(Vec::new());
+    }
+    let (home, grok_home) = grok_profile(app)?;
+    Ok(cli::grok_envs(&home, &grok_home))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct InstallMessages {
@@ -65,7 +95,22 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<String, String> {
+/// `envs`：登入與探針要跑在哪組環境（grok 用 app 專用 profile）。
+/// 安裝那步刻意不套前綴——安裝腳本要把 binary 裝進使用者真正的家目錄。
+fn cli_install_script(
+    provider: &str,
+    messages: &InstallMessages,
+    envs: &[(String, String)],
+) -> Result<String, String> {
+    let env_prefix = if envs.is_empty() {
+        String::new()
+    } else {
+        let pairs: Vec<String> = envs
+            .iter()
+            .map(|(key, value)| format!("{key}={}", shell_quote(value)))
+            .collect();
+        format!("env {} ", pairs.join(" "))
+    };
     let start = shell_quote(&messages.start);
     let login_hint = shell_quote(&messages.login_hint);
     let success = shell_quote(&messages.success);
@@ -101,8 +146,9 @@ fn cli_install_script(provider: &str, messages: &InstallMessages) -> Result<Stri
         _ => return Err(format!("unsupported CLI provider: {provider}")),
     };
     let login_flow = login_command
-        .map(|command| format!("  {command} || {{ echo {fail}; exit 1; }}\n"))
+        .map(|command| format!("  {env_prefix}{command} || {{ echo {fail}; exit 1; }}\n"))
         .unwrap_or_default();
+    let probe_command = format!("{env_prefix}{probe_command}");
     let sentinel = cli_sentinel_name(provider);
     Ok(format!(
         r#"#!/bin/bash
@@ -174,10 +220,12 @@ fn install_cli(
         use std::time::Duration;
         use tauri::Emitter;
 
-        let spec = install::windows_specs()?
+        let mut spec = install::windows_specs()?
             .into_iter()
             .find(|spec| spec.id == provider)
             .ok_or_else(|| format!("unsupported CLI provider: {provider}"))?;
+        // 登入與探針都跑在 app 自己的 profile，否則會登在使用者的 ~/.grok 卻用不到
+        spec.envs = cli_envs(&app, &provider)?;
         let token = match install::try_begin(&provider, Duration::from_secs(60)) {
             install::BeginOutcome::Started(token) => token,
             install::BeginOutcome::AlreadyRunning => {
@@ -212,7 +260,7 @@ fn install_cli(
                 .map_err(|error| error.to_string())?;
             return Ok(());
         }
-        let script = cli_install_script(&provider, &messages)?;
+        let script = cli_install_script(&provider, &messages, &cli_envs(&app, &provider)?)?;
         let script_path = directory.join(format!("install-{provider}.command"));
         std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
         #[cfg(unix)]
@@ -1512,8 +1560,13 @@ async fn detect_clis() -> Vec<cli::CliInfo> {
 /// 設定 UI 下拉用：列出 CLI 訂閱模式可選的模型（見 cli::cli_model_catalog）。
 /// 必須是 async：同步 command 跑在主執行緒，抓取期間整個視窗會凍住。
 #[tauri::command]
-async fn list_cli_models(cli: String) -> Vec<cli::ModelOption> {
-    cli::cli_model_catalog(&cli).await
+async fn list_cli_models(app: tauri::AppHandle, cli: String) -> Vec<cli::ModelOption> {
+    // 環境備不出來就回空清單。退回無環境等於讓 grok 摸回使用者真正的 ~/.grok，
+    // 設定頁會顯示終端機的登入態，與旁白實跑的 app profile 對不起來。
+    let Ok(envs) = cli_envs(&app, &cli) else {
+        return Vec::new();
+    };
+    cli::cli_model_catalog(&cli, &envs).await
 }
 
 /// 模型清單快取：開 app 時先拿上次的結果直接顯示，背景抓到新的再覆蓋。
@@ -1761,12 +1814,13 @@ async fn stream_via_transport(
             let model = cli::tier_override(&config.tier_models, "grok", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::grok_args(model, &combined, allow_cli_tools);
+            let envs = cli_envs(app, "grok")?;
             cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
                 "",
-                &[],
+                &envs,
                 cli::parse_grok_line,
                 false,
                 usage_log.as_deref().map(|path| cli::UsageLog {
@@ -3295,7 +3349,7 @@ mod tests {
 
     #[test]
     fn claude_install_script_contains_messages_and_flow() {
-        let script = cli_install_script("claude", &messages()).unwrap();
+        let script = cli_install_script("claude", &messages(), &[]).unwrap();
         assert_messages(&script);
         assert!(script.contains("curl -fsSL https://claude.ai/install.sh | bash"));
         assert!(script.contains("claude auth login"));
@@ -3305,7 +3359,7 @@ mod tests {
 
     #[test]
     fn codex_install_script_contains_messages_and_flow() {
-        let script = cli_install_script("codex", &messages()).unwrap();
+        let script = cli_install_script("codex", &messages(), &[]).unwrap();
         assert_messages(&script);
         assert!(script.contains("curl -fsSL https://chatgpt.com/codex/install.sh | sh"));
         assert!(script.contains("codex login"));
@@ -3315,7 +3369,7 @@ mod tests {
 
     #[test]
     fn agy_provider_script_contains_messages_and_flow() {
-        let script = cli_install_script("agy", &messages()).unwrap();
+        let script = cli_install_script("agy", &messages(), &[]).unwrap();
         assert_messages(&script);
         assert!(script.contains("curl -fsSL https://antigravity.google/cli/install.sh | bash"));
         assert!(!script.contains("claude auth login"));
@@ -3328,7 +3382,7 @@ mod tests {
 
     #[test]
     fn grok_install_script_contains_messages_and_flow() {
-        let script = cli_install_script("grok", &messages()).unwrap();
+        let script = cli_install_script("grok", &messages(), &[]).unwrap();
         assert_messages(&script);
         assert!(script.contains("curl -fsSL https://x.ai/cli/install.sh | bash"));
         assert!(script.contains("grok login"));
@@ -3337,8 +3391,24 @@ mod tests {
     }
 
     #[test]
+    fn grok_install_script_runs_login_and_probe_in_the_app_profile() {
+        let envs = crate::cli::grok_envs(
+            &PathBuf::from("/app/cli-home"),
+            &PathBuf::from("/app/grok-home"),
+        );
+        let script = cli_install_script("grok", &messages(), &envs).unwrap();
+        // 登入與探針都要掛上 env 前綴，否則會登在使用者的 ~/.grok、或探到終端機的登入態
+        assert!(script.contains(
+            "env HOME='/app/cli-home' USERPROFILE='/app/cli-home' GROK_HOME='/app/grok-home' grok login"
+        ));
+        assert!(script.contains("GROK_HOME='/app/grok-home' grok models 2>/dev/null"));
+        // 安裝那行不帶：安裝腳本要把 binary 裝進使用者真正的家目錄
+        assert!(script.contains("  curl -fsSL https://x.ai/cli/install.sh | bash ||"));
+    }
+
+    #[test]
     fn install_script_touches_sentinel_only_after_verification_passes() {
-        let script = cli_install_script("claude", &messages()).unwrap();
+        let script = cli_install_script("claude", &messages(), &[]).unwrap();
         let touch = script
             .find("touch \"$(dirname \"$0\")/.verified-claude\"")
             .unwrap();
@@ -3354,10 +3424,10 @@ mod tests {
             success: "success".to_owned(),
             fail: "fail".to_owned(),
         };
-        assert!(cli_install_script("agy", &quoted_messages)
+        assert!(cli_install_script("agy", &quoted_messages, &[])
             .unwrap()
             .contains("'don'\"'\"'t'"));
-        assert!(cli_install_script("unknown", &messages()).is_err());
+        assert!(cli_install_script("unknown", &messages(), &[]).is_err());
     }
 
     /// AI 卡重構包 4a 規格 (c)(d)(e)：present 有新面孔就把世界書全文 append 成一則系統事件；
