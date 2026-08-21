@@ -367,6 +367,12 @@ function App() {
     ).catch(() => ({ character_ids: [], person_titles: [] }));
     const appearanceIds = new Set(appearances.character_ids);
     const receipts = await imports.loadReceipts(id);
+    // GM 卡空不空：世界設定有字或世界書有條目都算有料，兩邊全空才把預設對象讓給第一張角色卡
+    const [worldMd, worldbook] = await Promise.all([
+      invoke<string>("read_world_md", { worldId: id }).catch(() => ""),
+      invoke<unknown[]>("read_worldbook", { worldId: id }).catch(() => []),
+    ]);
+    const gmHasContent = worldMd.trim().length > 0 || worldbook.length > 0;
     setTable(id);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
@@ -378,9 +384,13 @@ function App() {
     characters.hydrate(cast, appearanceIds, state.player_card_id);
     imports.hydrate(receipts);
     setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
-    // 一個角色都沒有的桌（純世界書開局）對象預設 GM：不然送出去沒人接、輸入框也是鎖的；
-    // 隱藏區的卡（含本幕還沒出場的 auto_hidden）不當預設對象，跟側欄主區顯示一致
-    setSpeaker(cast.find((character) => !isCharacterHidden(character, appearanceIds))?.id ?? GM_TARGET);
+    // GM 有世界設定或世界書就由它起頭；GM 全空才退回第一張可見角色卡（隱藏區與本幕未出場的
+    // auto_hidden 不算，跟側欄主區顯示一致），連角色都沒有時仍指 GM，免得輸入框鎖著沒人接
+    setSpeaker(
+      gmHasContent
+        ? GM_TARGET
+        : (cast.find((character) => !isCharacterHidden(character, appearanceIds))?.id ?? GM_TARGET),
+    );
     setEditingName(null);
     tableState.clearEdit();
     // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
