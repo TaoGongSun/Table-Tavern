@@ -310,7 +310,8 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
             ) : null;
           })}
         </p>
-        {report.total.observed_rounds < report.total.rounds && (
+        {/* 全盲時首頁那句已經講過，這裡只補「部分輪次量不到」的情況 */}
+        {hit !== null && report.total.observed_rounds < report.total.rounds && (
           <p className="usage-note">{t("usageCacheBlind")}</p>
         )}
         <p className="usage-note">{t("usageCostNote")}</p>

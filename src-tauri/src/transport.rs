@@ -3429,6 +3429,21 @@ mod tests {
             (Some(100), Some(200))
         );
 
+        // 混合 schema（相容層改版或雙格式轉送都可能同時吐出 normalized 與 upstream-native
+        // 欄位）：讀、寫各自挑第一個有值的來源，寫入數不可遮蔽掉另一組的讀取數
+        let mixed = extract_usage(
+            r#"{"usage":{"prompt_tokens":100,"prompt_tokens_details":{"cache_write_tokens":20},"prompt_cache_hit_tokens":80,"completion_tokens":1}}"#,
+        )
+        .unwrap();
+        assert_eq!((mixed.cached_tokens, mixed.created_tokens), (Some(80), Some(20)));
+
+        // 兩組讀取欄位同時存在＝第一順位（OpenRouter）勝出，不做衝突偵測
+        let both_reads = extract_usage(
+            r#"{"usage":{"prompt_tokens":100,"prompt_tokens_details":{"cached_tokens":70},"prompt_cache_hit_tokens":50,"completion_tokens":1}}"#,
+        )
+        .unwrap();
+        assert_eq!(both_reads.cached_tokens, Some(70));
+
         // DeepSeek 原生欄位（中轉站照抄這組、不回 prompt_tokens_details）：
         // 讀錯這裡正是額度分頁對 API 路顯示假 0.0% 的根因，2026-08-21 對 tokenrouter 實測取證
         let deepseek = extract_usage(
