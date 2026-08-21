@@ -470,6 +470,22 @@ pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<S
     args
 }
 
+/// agy 的 `--output-format` 與 usage 回報是 1.1.8 才有的；更舊的版本會因為不認得旗標
+/// 當場失敗。偵測到的版本字串解析不出來時放行——寧可讓呼叫失敗時帶著 CLI 自己的錯誤訊息，
+/// 也不要因為版本字串換了格式就把整條路擋死。
+pub fn agy_supports_stream_json(version: &str) -> bool {
+    let numbers: Vec<u64> = version
+        .split(|ch: char| !ch.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .take(3)
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    match numbers.as_slice() {
+        [major, minor, patch] => (*major, *minor, *patch) >= (1, 1, 8),
+        _ => true,
+    }
+}
+
 /// agy 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// -p 必須直接帶整包 prompt；聊天維持安全預設不開工具。
 /// allow_tools：agy 的生圖工具在無頭模式需要 command 權限、提示彈不出來會被自動拒絕
@@ -660,8 +676,12 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
 
 /// agy result 事件的用量（agy 1.1.8 起回報，1.1.17 實測）。欄位在 `result.usage`，
 /// 事件的判別鍵是 `event` 而非 `type`，所以不走 `usage_event`。
-/// `input_tokens` **已含** `cache_read_tokens`（實測 total = input + output，快取為其子集）。
 /// agy 不回報寫入快取的 token 數，created 為 None（沒回報，不是 0）；也不回報金額。
+///
+/// `input_tokens` 含不含 `cache_read_tokens` 沒有文件可查，實測那筆快取剛好是 0、驗不出來。
+/// 這裡不猜，改用 `total_tokens` 當契約判別：對得上哪一式就照哪一式算，兩式都對不上
+/// （或讀取數大於輸入數）就回 `cached_tokens: None`——額度分頁顯示「—」代表量不到，
+/// 好過用猜測算出一個 >100% 的命中率、讓玩家去修一個不存在的問題。
 pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
     if !line.contains("\"usage\"") {
         return None;
@@ -671,11 +691,22 @@ pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
         return None;
     }
     let usage = value.pointer("/result/usage")?;
+    let input = token_count(usage, "input_tokens");
+    let output = token_count(usage, "output_tokens");
+    let cached = token_count(usage, "cache_read_tokens");
+    let total = token_count(usage, "total_tokens");
+    let (prompt_tokens, cached_tokens) = if total == input + output && cached <= input {
+        (input, Some(cached)) // input 已含 cache_read
+    } else if total == input + cached + output {
+        (input + cached, Some(cached)) // input 未含，要加回
+    } else {
+        (input, None) // 兩式都對不上：記數字、不產生命中率
+    };
     Some(PromptCacheUsage {
-        prompt_tokens: token_count(usage, "input_tokens"),
-        cached_tokens: Some(token_count(usage, "cache_read_tokens")),
+        prompt_tokens,
+        cached_tokens,
         created_tokens: None,
-        output_tokens: token_count(usage, "output_tokens"),
+        output_tokens: output,
         cost_usd: None,
     })
 }
@@ -744,8 +775,14 @@ pub fn parse_agy_line(line: &str) -> CliLine {
                 .and_then(|status| status.as_str())
                 .unwrap_or("");
             match status {
+                // response 是全文重述：run_cli 只在完全沒收到增量時才用它（見 full_text
+                // is_empty 那段），所以放進來是零增量的保險，不會讓正文重播兩次
                 "SUCCESS" => CliLine::Done {
-                    text: String::new(),
+                    text: value
+                        .pointer("/result/response")
+                        .and_then(|text| text.as_str())
+                        .unwrap_or_default()
+                        .to_owned(),
                     is_error: false,
                 },
                 other => CliLine::Done {
@@ -1270,10 +1307,11 @@ mod tests {
         );
         assert_eq!(parse_agy_line(r#"{"event":"init","init":{"cwd":"/x"}}"#), CliLine::Other);
         // result 收尾：response 是全文重述，不可當增量，否則正文出現兩次
+        // response 進 Done.text 當零增量 fallback：run_cli 只在完全沒收到增量時才用它
         assert_eq!(
             parse_agy_line(r#"{"event":"result","result":{"status":"SUCCESS","response":"好的\n"}}"#),
             CliLine::Done {
-                text: String::new(),
+                text: "好的\n".to_owned(),
                 is_error: false,
             }
         );
@@ -1326,6 +1364,47 @@ mod tests {
         )
         .is_none());
         assert!(parse_agy_usage(r#"{"event":"result","result":{"status":"SUCCESS"}}"#).is_none());
+    }
+
+    /// `input_tokens` 含不含 `cache_read_tokens` 沒有文件可查，靠 `total_tokens` 判別。
+    /// 對不上就不產生命中率——寧可顯示「—」，也不要猜出一個 >100% 的數字。
+    #[test]
+    fn agy_usage_picks_contract_by_total_and_bails_out_when_neither_fits() {
+        let build = |input: u64, cached: u64, output: u64, total: u64| {
+            parse_agy_usage(&format!(
+                r#"{{"event":"result","result":{{"usage":{{"input_tokens":{input},"cache_read_tokens":{cached},"output_tokens":{output},"total_tokens":{total}}}}}}}"#
+            ))
+            .expect("有 usage 就要解得出來")
+        };
+        // total = input + output → input 已含 cache_read
+        let included = build(1_000, 400, 100, 1_100);
+        assert_eq!(included.prompt_tokens, 1_000);
+        assert_eq!(included.cached_tokens, Some(400));
+        // total = input + cache_read + output → input 未含，要加回
+        let excluded = build(1_000, 400, 100, 1_500);
+        assert_eq!(excluded.prompt_tokens, 1_400);
+        assert_eq!(excluded.cached_tokens, Some(400));
+        // 兩式都對不上：記數字、不產生命中率
+        let unknown = build(1_000, 400, 100, 9_999);
+        assert_eq!(unknown.prompt_tokens, 1_000);
+        assert_eq!(unknown.cached_tokens, None);
+        // 讀取數大於輸入數又不符第二式：一樣不猜
+        assert_eq!(build(100, 900, 50, 150).cached_tokens, None);
+    }
+
+    /// agy 1.1.8 以下不認 --output-format，要在打過去之前擋下；版本字串認不得就放行，
+    /// 讓呼叫失敗時帶著 CLI 自己的錯誤訊息，而不是因為格式換了就把整條路擋死。
+    #[test]
+    fn agy_stream_json_support_gates_on_1_1_8() {
+        assert!(!agy_supports_stream_json("1.1.7"));
+        assert!(!agy_supports_stream_json("1.0.99"));
+        assert!(!agy_supports_stream_json("0.9.9"));
+        assert!(agy_supports_stream_json("1.1.8"));
+        assert!(agy_supports_stream_json("1.1.17"));
+        assert!(agy_supports_stream_json("2.0.0"));
+        assert!(agy_supports_stream_json("agy version 1.1.17 (darwin)"));
+        assert!(agy_supports_stream_json("")); // 認不得就放行
+        assert!(agy_supports_stream_json("nightly"));
     }
 
     /// 共線後 messages 已自足：label 傳空就不再補名字前綴（否則「加爾：雷恩：……」），
