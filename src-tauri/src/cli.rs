@@ -578,8 +578,8 @@ pub fn parse_claude_usage(line: &str) -> Option<PromptCacheUsage> {
     let created = token_count(usage, "cache_creation_input_tokens");
     Some(PromptCacheUsage {
         prompt_tokens: token_count(usage, "input_tokens") + created + cached,
-        cached_tokens: cached,
-        created_tokens: created,
+        cached_tokens: Some(cached),
+        created_tokens: Some(created),
         output_tokens: token_count(usage, "output_tokens"),
         cost_usd: value.get("total_cost_usd").and_then(|cost| cost.as_f64()),
     })
@@ -592,8 +592,8 @@ pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
     let usage = value.get("usage")?;
     Some(PromptCacheUsage {
         prompt_tokens: token_count(usage, "input_tokens"),
-        cached_tokens: token_count(usage, "cached_input_tokens"),
-        created_tokens: token_count(usage, "cache_write_input_tokens"),
+        cached_tokens: Some(token_count(usage, "cached_input_tokens")),
+        created_tokens: Some(token_count(usage, "cache_write_input_tokens")),
         output_tokens: token_count(usage, "output_tokens"),
         cost_usd: None,
     })
@@ -601,7 +601,7 @@ pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
 
 /// grok end 事件的用量。input_tokens **不含** cache_read_input_tokens
 /// （實測讀取數可遠大於輸入數：input=31509、cache_read=146304），總輸入要加總。
-/// grok 不回報寫入快取的 token 數（實測 usage 只有 read），created 恆為 0。
+/// grok 不回報寫入快取的 token 數（實測 usage 只有 read），created 為 None（沒回報，不是 0）。
 /// 金額在 end 事件頂層的 total_cost_usd（grok 0.2.111 實測），缺欄照慣例當 None。
 pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     let value = usage_event(line, "end")?;
@@ -609,8 +609,8 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     let cached = token_count(usage, "cache_read_input_tokens");
     Some(PromptCacheUsage {
         prompt_tokens: token_count(usage, "input_tokens") + cached,
-        cached_tokens: cached,
-        created_tokens: 0,
+        cached_tokens: Some(cached),
+        created_tokens: None,
         output_tokens: token_count(usage, "output_tokens"),
         cost_usd: value.get("total_cost_usd").and_then(|cost| cost.as_f64()),
     })
@@ -859,14 +859,16 @@ pub async fn run_cli(
         if let Some(log) = &usage_log {
             if let Some(usage) = (log.parse)(&line) {
                 eprintln!(
-                    "[prompt-cache] transport={} model={} lane={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%",
+                    "[prompt-cache] transport={} model={} lane={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",
                     log.transport,
                     log.model,
                     log.lane.as_ref().map_or("-", |lane| lane.lane.as_str()),
                     usage.prompt_tokens,
-                    usage.cached_tokens,
-                    usage.created_tokens,
-                    usage.hit_rate(),
+                    crate::transport::describe(usage.cached_tokens),
+                    crate::transport::describe(usage.created_tokens),
+                    usage
+                        .hit_rate()
+                        .map_or_else(|| "—".to_owned(), |rate| format!("{rate:.0}%")),
                 );
                 crate::usage_log::append_call(
                     log.path,
@@ -1023,8 +1025,8 @@ mod tests {
             ),
             Some(PromptCacheUsage {
                 prompt_tokens: 4772,
-                cached_tokens: 0,
-                created_tokens: 4771,
+                cached_tokens: Some(0),
+                created_tokens: Some(4771),
                 output_tokens: 3,
                 cost_usd: Some(0.0179),
             })
@@ -1035,8 +1037,8 @@ mod tests {
         )
         .expect("result 事件有 usage");
         assert_eq!(hit.prompt_tokens, 4772);
-        assert_eq!(hit.cached_tokens, 4771);
-        assert!((hit.hit_rate() - 99.98).abs() < 0.01);
+        assert_eq!(hit.cached_tokens, Some(4771));
+        assert!((hit.hit_rate().expect("claude 有回報") - 99.98).abs() < 0.01);
         // 增量行與非收尾事件不出數字
         assert_eq!(
             parse_claude_usage(
@@ -1055,8 +1057,8 @@ mod tests {
         )
         .expect("turn.completed 有 usage");
         assert_eq!(usage.prompt_tokens, 23144);
-        assert_eq!(usage.cached_tokens, 11008);
-        assert!((usage.hit_rate() - 47.56).abs() < 0.01);
+        assert_eq!(usage.cached_tokens, Some(11008));
+        assert!((usage.hit_rate().expect("codex 有回報") - 47.56).abs() < 0.01);
         assert_eq!(parse_codex_usage(r#"{"type":"turn.started"}"#), None);
     }
 
@@ -1069,9 +1071,10 @@ mod tests {
         )
         .expect("end 事件有 usage");
         assert_eq!(usage.prompt_tokens, 177813);
-        assert_eq!(usage.cached_tokens, 146304);
+        assert_eq!(usage.cached_tokens, Some(146304));
+        assert_eq!(usage.created_tokens, None); // grok 不回報寫入數：None 不是 0
         assert_eq!(usage.cost_usd, Some(0.0421));
-        assert!((usage.hit_rate() - 82.28).abs() < 0.01);
+        assert!((usage.hit_rate().expect("grok 有回報") - 82.28).abs() < 0.01);
         assert_eq!(
             parse_grok_usage(r#"{"type":"end","usage":{"input_tokens":10}}"#)
                 .expect("缺金額欄仍解析")
@@ -1088,8 +1091,8 @@ mod tests {
             parse_claude_usage(r#"{"type":"result","usage":{"input_tokens":12}}"#),
             Some(PromptCacheUsage {
                 prompt_tokens: 12,
-                cached_tokens: 0,
-                created_tokens: 0,
+                cached_tokens: Some(0),
+                created_tokens: Some(0),
                 output_tokens: 0,
                 cost_usd: None, // 沒回報金額就不記，額度分頁靠有值的那些行加總
             })
@@ -1097,13 +1100,13 @@ mod tests {
         assert_eq!(
             PromptCacheUsage {
                 prompt_tokens: 0,
-                cached_tokens: 0,
-                created_tokens: 0,
+                cached_tokens: Some(0),
+                created_tokens: Some(0),
                 output_tokens: 0,
                 cost_usd: None,
             }
             .hit_rate(),
-            0.0
+            Some(0.0)
         );
     }
 
