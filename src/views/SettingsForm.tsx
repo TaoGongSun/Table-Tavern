@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
+import { checkApiKey } from "../api-key-check";
 import { tierLabel } from "../model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../model-catalog-store";
 import { AppConfig } from "../backend-contracts";
@@ -98,6 +99,7 @@ export function Settings({
     ...config.tier_models,
   });
   const [baseUrl, setBaseUrl] = useState(String(config.preferences["base_url"] ?? ""));
+  const keyWarning = checkApiKey(apiKey, baseUrl);
   const [imageModel, setImageModel] = useState(String(config.preferences["image_model"] ?? ""));
   const [claudeCompatBaseUrl, setClaudeCompatBaseUrl] = useState(
     String(config.preferences["claude_base_url"] ?? ""),
@@ -457,15 +459,23 @@ export function Settings({
         )}
         {/* OpenRouter 專屬欄位只在 API 直連時顯示，避免 CLI 使用者誤以為必填 */}
         {transport === "api" && (
-          <label>
-            {t("apiKeyLabel")}
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.currentTarget.value)}
-              placeholder="sk-or-..."
-            />
-          </label>
+          <>
+            <label>
+              {t("apiKeyLabel")}
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.currentTarget.value)}
+                placeholder={t("apiKeyPlaceholder")}
+              />
+            </label>
+            {/* 貼錯的當下就講，不必等到發言才撞 401（那時的訊息還會把人導去 CLI 的重新驗證） */}
+            {keyWarning && (
+              <p className="field-warn" role="alert">
+                {t(keyWarning)}
+              </p>
+            )}
+          </>
         )}
         {transport === "api" ? (
           <>

@@ -7,9 +7,10 @@ import { renderStoryMarkdown } from "../story-markdown";
 import { explainAiError } from "../ai-error";
 import { TranscriptEvent } from "../backend-contracts";
 
-// 錯誤列：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）
-export function ErrorNote({ text }: { text: string }) {
-  const key = explainAiError(text);
+// 錯誤列：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
+// transport 給得出來就傳：認證失敗要指對地方（API 換金鑰／CLI 重新登入）。
+export function ErrorNote({ text, transport }: { text: string; transport?: string }) {
+  const key = explainAiError(text, transport);
   if (!key) return <p role="alert">{text}</p>;
   return (
     <p role="alert">
