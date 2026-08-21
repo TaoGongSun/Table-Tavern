@@ -10,6 +10,7 @@
 - [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：本任務主體完成——包 1–7 全數實作並通過實機驗收（架構 85–88% 命中、額度分頁九項過、保溫 ping 94.6%）；2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑並實機看過；剩 grok／agy 顯示驗收延後與 OpenRouter 計量未接，見交接檔 Remaining
 - [interface-card-panel](tasks/interface-card-panel.md) — 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板） — 下一步：2026-08-04 v1 完成且**實機驗收全數通過**（匯入→開介面→點行動→送出→GM 照卡片格式回覆→介面就地換新畫面）；聊天收合 XML 已拍板不做；v2 首要＝省額度（歷史裡每輪整包 XML 重送，要留正文砍掉重複區塊）
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：**改為全 app 功能定案後一次驗，現在不動手**（2026-08-17 拍板）。原驗收單已過期——基準 2026-07-30 是 247 鍵／55 顆按鈕（commit 9a17562），2026-08-17 已成 474 鍵／102 顆按鈕、期間 50 次 commit 動過 src/i18n/，最終要驗多少項無法預估，功能全數完工前不重排。機械關卡持續有效（缺鍵 TypeScript 編譯不過、`npm run check:i18n` 十語系佔位符與按鈕寬度全綠），缺的是人眼：07-30 之後新增的鍵未經逐語系審校，新功能畫面沒人切語系看過
+- [stream-failure-visible](tasks/stream-failure-visible.md) — 串流失敗看得見：零內容／異常收尾轉成玩家看得懂的錯誤，不落故事 — 下一步：包 1：transport.rs stream_chat 收工判定（SSE error 原樣拋、finish_reason 分流、trim 後空判定）
 
 ## Todo
 - [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。

@@ -133,6 +133,10 @@ export function useChatController({
 
   const appendEvent = useCallback(
     async (event: TranscriptEvent) => {
+      // 空白事件一律不落地（stream-failure-visible）：AI 失敗時故事不該多出一則看不見的
+      // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
+      // 與任何未來新路徑的保險，錯誤碼與後端同一個
+      if (!event.text.trim()) throw new Error("AI_EMPTY_RESPONSE: 空白回合不寫進故事");
       await invoke("append_transcript", { worldId, scene, event });
       setEvents((previous) => [...previous, event]);
       // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉

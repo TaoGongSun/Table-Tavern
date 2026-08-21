@@ -1981,6 +1981,85 @@ pub fn extract_delta(payload: &str) -> Option<String> {
     }
 }
 
+/// 串流全程累積的收工訊號。判「這次呼叫算不算成功」靠的是 content 以外的欄位：
+/// 供應商中途塞的 error 塊、finish_reason、有沒有見到 [DONE]。
+/// 這些現在全被丟掉，於是「思考完但零內容」會冒充成功（見 .ai/plans/stream-failure-visible.md）。
+#[derive(Default)]
+pub struct StreamOutcome {
+    /// 供應商中途送的錯誤原話（頂層 error，與 finish_reason="error" 同時出現）
+    pub error: Option<String>,
+    /// choices[0].finish_reason，取最後一則有值的
+    pub finish_reason: Option<String>,
+    /// usage.completion_tokens_details.reasoning_tokens，只進錯誤診斷小字
+    pub reasoning_tokens: Option<u64>,
+    /// 有沒有收到 [DONE]：沒有就 EOF＝串流被截斷
+    pub saw_done: bool,
+}
+
+impl StreamOutcome {
+    /// 吸收一則 payload 的訊號。error 與 finish_reason 都取最後一則有值的
+    /// （增量塊的 finish_reason 是 null，真正的收尾原因在最後一塊）。
+    pub fn absorb(&mut self, payload: &str) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+            return;
+        };
+        if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+            // message 缺了或不是字串就序列化整包——供應商的錯誤不能靜默吞掉
+            self.error = Some(
+                error
+                    .get("message")
+                    .and_then(|message| message.as_str())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| error.to_string()),
+            );
+        }
+        if let Some(reason) = value
+            .get("choices")
+            .and_then(|choices| choices.get(0))
+            .and_then(|choice| choice.get("finish_reason"))
+            .and_then(|reason| reason.as_str())
+        {
+            self.finish_reason = Some(reason.to_owned());
+        }
+        if let Some(tokens) = value
+            .get("usage")
+            .and_then(|usage| usage.get("completion_tokens_details"))
+            .and_then(|details| details.get("reasoning_tokens"))
+            .and_then(|tokens| tokens.as_u64())
+        {
+            self.reasoning_tokens = Some(tokens);
+        }
+    }
+
+    /// 收工判定。優先序固定：供應商原話 → 內容過濾 → 不完整 → 正文空 → 成功。
+    /// 順序決定歸類：length 又零正文歸 INCOMPLETE（原因是被截斷），不歸 EMPTY。
+    /// 供應商原話不加碼原樣拋——免費層 429 的原話能被 ai-error.ts 既有的額度正則接住，
+    /// 玩家看到「額度用完」比看到一句籠統的串流錯誤有用。
+    /// 回傳 Some(錯誤字串)＝失敗，None＝成功。
+    pub fn failure(&self, text: &str, model: &str) -> Option<String> {
+        if let Some(error) = &self.error {
+            return Some(error.clone());
+        }
+        let reason = self.finish_reason.as_deref();
+        let diagnosis = format!(
+            "model={model} finish_reason={}{}",
+            reason.unwrap_or("(無)"),
+            self.reasoning_tokens
+                .map(|tokens| format!(" reasoning_tokens={tokens}"))
+                .unwrap_or_default(),
+        );
+        match reason {
+            Some("content_filter") => Some(format!("AI_CONTENT_FILTERED: {diagnosis}")),
+            // stop 以外的收尾原因（length／tool_calls／沒見過的）這個 app 都接不下去
+            Some(reason) if reason != "stop" => Some(format!("AI_INCOMPLETE_RESPONSE: {diagnosis}")),
+            // 沒收尾原因又沒見到 [DONE]＝串流被中途截斷
+            None if !self.saw_done => Some(format!("AI_INCOMPLETE_RESPONSE: {diagnosis}")),
+            _ if text.trim().is_empty() => Some(format!("AI_EMPTY_RESPONSE: {diagnosis}")),
+            _ => None,
+        }
+    }
+}
+
 /// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
 /// 每個增量經 on_delta 回傳，結束後回傳完整文字。
 /// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage_log）。
@@ -2021,11 +2100,14 @@ pub async fn stream_chat(
     let mut parser = SseParser::default();
     let mut full_text = String::new();
     let mut usage = None;
+    let mut outcome = StreamOutcome::default();
     'outer: while let Some(chunk) = stream.next().await {
         for payload in parser.push(&chunk?) {
             if payload == "[DONE]" {
+                outcome.saw_done = true;
                 break 'outer;
             }
+            outcome.absorb(&payload);
             if let Some(parsed) = extract_usage(&payload) {
                 usage = Some(parsed);
             }
@@ -2047,6 +2129,10 @@ pub async fn stream_chat(
         if let Some(path) = usage_log {
             crate::usage_log::append_call(path, world, "api", model, None, usage);
         }
+    }
+    // 用量照記再判成敗：失敗的呼叫一樣燒了 token，額度分頁不能少算這一筆
+    if let Some(failure) = outcome.failure(&full_text, model) {
+        return Err(failure.into());
     }
     Ok(full_text)
 }
@@ -3044,6 +3130,124 @@ mod tests {
         .unwrap();
         assert_eq!(full, "你好");
         assert_eq!(deltas, ["你", "好"]);
+    }
+
+    /// 收工判定的優先序（stream-failure-visible）：實測 2026-08-21 免費 DeepSeek
+    /// 「思考完但零內容」時串流是正常走完 [DONE] 的，靠 content 判不出失敗。
+    #[test]
+    fn stream_outcome_ranks_failures_by_priority() {
+        // 供應商中途 error：原話原樣拋，不加碼——交給 ai-error.ts 既有的額度正則分流
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(
+            r#"{"error":{"code":429,"message":"Rate limit exceeded"},"choices":[{"delta":{"content":""},"finish_reason":"error"}]}"#,
+        );
+        assert_eq!(
+            outcome.failure("", "test/model").unwrap(),
+            "Rate limit exceeded"
+        );
+
+        // error.message 不是字串：整包序列化，不靜默吞掉
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"error":{"code":500}}"#);
+        assert!(outcome.failure("", "test/model").unwrap().contains("500"));
+
+        // content_filter 有自己的碼（玩家的下一步是換說法，不是重試）
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"finish_reason":"content_filter"}]}"#);
+        outcome.saw_done = true;
+        assert!(outcome
+            .failure("", "test/model")
+            .unwrap()
+            .starts_with("AI_CONTENT_FILTERED:"));
+
+        // length 又零正文：歸 INCOMPLETE 不歸 EMPTY——原因是被截斷，不是模型沒話說
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"finish_reason":"length"}]}"#);
+        outcome.absorb(r#"{"usage":{"completion_tokens_details":{"reasoning_tokens":4437}}}"#);
+        outcome.saw_done = true;
+        let failure = outcome.failure("", "test/model").unwrap();
+        assert!(failure.starts_with("AI_INCOMPLETE_RESPONSE:"), "{failure}");
+        assert!(failure.contains("reasoning_tokens=4437"), "{failure}");
+
+        // length 但正文非空：第一版一樣當失敗（共用層不知道半截內容安不安全）
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"finish_reason":"length"}]}"#);
+        outcome.saw_done = true;
+        assert!(outcome
+            .failure("半截旁白", "test/model")
+            .unwrap()
+            .starts_with("AI_INCOMPLETE_RESPONSE:"));
+
+        // 沒收尾原因又沒見到 [DONE]＝串流被截斷
+        let outcome = StreamOutcome::default();
+        assert!(outcome
+            .failure("有字", "test/model")
+            .unwrap()
+            .starts_with("AI_INCOMPLETE_RESPONSE:"));
+
+        // 正常收尾但正文只有空白：這就是實測那兩次的形狀
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"finish_reason":"stop"}]}"#);
+        outcome.saw_done = true;
+        assert!(outcome
+            .failure(" \n ", "test/model")
+            .unwrap()
+            .starts_with("AI_EMPTY_RESPONSE:"));
+
+        // 正常收尾且有正文＝成功
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"finish_reason":"stop"}]}"#);
+        outcome.saw_done = true;
+        assert_eq!(outcome.failure("旁白", "test/model"), None);
+    }
+
+    /// 增量塊的 finish_reason 是 null，真正的收尾原因在最後一塊：取最後一則有值的
+    #[test]
+    fn stream_outcome_absorbs_last_finish_reason_and_ignores_nulls() {
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"delta":{"content":"嗨"},"finish_reason":null}]}"#);
+        assert_eq!(outcome.finish_reason, None);
+        outcome.absorb(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#);
+        assert_eq!(outcome.finish_reason.as_deref(), Some("stop"));
+        // 壞掉的 JSON 不該讓整條串流爆掉
+        outcome.absorb("{不是 JSON");
+        assert_eq!(outcome.finish_reason.as_deref(), Some("stop"));
+    }
+
+    /// 端到端：串流正常走完 [DONE] 但一個字都沒有，現在回 Err 而不是 Ok("")
+    #[tokio::test]
+    async fn stream_chat_fails_when_stream_completes_with_no_content() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request);
+            let body = concat!(
+                ": OPENROUTER PROCESSING\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}]}\n\n",
+                "data: [DONE]\n\n",
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).unwrap();
+        });
+
+        let mut config = AppConfig::default();
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String(format!("http://{address}")),
+        );
+        let messages = [message("user", "嗨".to_owned())];
+        let error = stream_chat(&config, "test/model", &messages, None, None, |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.starts_with("AI_EMPTY_RESPONSE:"), "{error}");
     }
 
     #[tokio::test]
