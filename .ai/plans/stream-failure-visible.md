@@ -25,7 +25,44 @@ SSE `error` 塊**不加碼**，原樣 `Err(error.message)`——免費層 429 �
 
 **不改回傳型別**：實測失敗全為零正文，「半截正文」尚未發生；真出現再擴成 `{ text, finish_reason, complete }`。reasoning token 只供錯誤診斷，走 API 路徑獨立 `Option<u64>`，不擴充 `PromptCacheUsage`（避免連帶改 CLI parser 與測試資料）。
 
-## 驗收
-- `cargo test`／`vitest`／`npm run build`／`npm run check:i18n` 全綠
-- 新增 SSE 案例：中途 error 塊、`finish_reason=length`、`content_filter`、正常收尾但零內容、無 `[DONE]` 就 EOF
-- 十語系各補 3 條文案
+## 自驗（2026-08-21 完成，全綠）
+cargo 504／vitest 141／`tsc --noEmit`／`npm run build`／`npm run check:i18n` 十語系。
+新增測試涵蓋：優先序全案例、空 `error.message` 回退整包、`finish_reason` 取最後非 null、壞 JSON 不爆、`[DONE]`＋正文＋無 finish_reason＝成功、端到端 mock server 零內容回 `Err`，以及 `explainAiError` 的碼優先分流四案。
+
+## 待實測清單（狀態：**全部未測試**）
+
+失敗態靠碰運氣重現——實測 2026-08-21 是免費 `deepseek/deepseek-v4-pro-0813-free` 五次中兩次，2026-08-21 打完包後連送數次反而都順。**遇到再逐項核對，不必特地製造。**
+
+事後判定 T2 最省力的方式（不必記得當下畫面），掃全機 transcript 有沒有新的空白事件。
+`assert` 那行是防呆——讀不到檔案時要當場喊停，不能靜默回報 0 則假裝通過：
+
+```bash
+cd ~/Documents/TableTavern/worlds && python3 -c "
+import json,glob
+files = glob.glob('*/transcript/*.jsonl')
+assert files, '讀不到任何 transcript，這次檢查無效（不等於通過）'
+n = 0
+for p in files:
+    for line in open(p, encoding='utf-8'):
+        line = line.strip()
+        if not line: continue
+        e = json.loads(line)
+        if not (e.get('text') or '').strip():
+            n += 1; print('空白事件', p, e.get('ts'), e.get('speaker_name'))
+print(f'掃了 {len(files)} 個檔案，空白事件 {n} 則')
+"
+```
+
+基準線：2026-08-21 修復前共 3 則空白事件（`01KZ54TYVTKS3930H476ETWF2M/transcript/0.jsonl` 兩則 03:39:18／03:45:14、`01M0A1VXYXY3ZZ8BWFN30QDJ4D/transcript/3.jsonl` 一則 03:49:39）。**修復後這個數字不該再增加。**
+
+| # | 什麼時候會踩到 | 看哪裡 | 通過條件 | 狀態 |
+|---|---|---|---|---|
+| T1 | AI 思考完卻零內容、或回覆被截斷 | 聊天室錯誤列 | 出現人話錯誤（「AI 這次沒有回出內容…」或「…沒寫完就中斷了」），底下小字帶 `finish_reason` 與 token 數。**不是一片安靜** | 未測試 |
+| T2 | 同 T1 | 故事本體＋上面的掃描指令 | 畫面上沒有多出 GM 空白泡泡；掃描結果仍是 3 則（沒有新增） | 未測試 |
+| T3 | 同 T1，且該桌機制是每回合重擲骰（`incremental`） | 狀態欄骰值 | 失敗前後數值一樣，沒有被白轉一輪 | 未測試 |
+| T4 | 免費層當日額度用完（429） | 聊天室錯誤列 | 顯示「這個 AI 來源的額度用完了。換一個 AI 來源，或等額度重置再試。」——不是 T1 那句 | 未測試 |
+| T5 | 供應商以 `finish_reason=content_filter` 擋下 | 聊天室錯誤列 | 顯示「這個 AI 來源擋下了這次回覆。換個說法，或改用其他模型。」<br>註：模型改以「一句拒絕文」回應時本案不處理（2026-08-21 使用者裁決），那種情況 T5 不會觸發 | 未測試 |
+| T6 | 任何時候（可拿那桌現存的兩則舊空白事件測） | 收回／復原按鈕 | 連按收回把空白收掉後，復原放回的是**有內容**那則（跳過空白）；疊裡只剩空白時復原鈕不亮 | 未測試 |
+| T7 | 同 T1 | `~/Documents/TableTavern/prompt-cache.jsonl` 尾端 | 失敗那次仍記了一行——失敗一樣燒 token，額度分頁不能少算 | 未測試 |
+
+測到哪項就把該列狀態改成「通過（日期）」或「紅：現象」。
