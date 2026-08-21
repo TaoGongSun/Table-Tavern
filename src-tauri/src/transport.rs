@@ -2009,6 +2009,7 @@ impl StreamOutcome {
                 error
                     .get("message")
                     .and_then(|message| message.as_str())
+                    .filter(|message| !message.trim().is_empty())
                     .map(str::to_owned)
                     .unwrap_or_else(|| error.to_string()),
             );
@@ -3150,6 +3151,19 @@ mod tests {
         let mut outcome = StreamOutcome::default();
         outcome.absorb(r#"{"error":{"code":500}}"#);
         assert!(outcome.failure("", "test/model").unwrap().contains("500"));
+
+        // error.message 是空字串：等同缺失，一樣回退整包——Err("") 在前端等於什麼都沒顯示
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"error":{"code":500,"message":""}}"#);
+        let failure = outcome.failure("", "test/model").unwrap();
+        assert!(!failure.trim().is_empty() && failure.contains("500"), "{failure}");
+
+        // 有正文＋[DONE]＋供應商沒給 finish_reason＝成功：共用 OpenAI-compatible 路徑
+        // 不強迫所有供應商都回收尾原因，[DONE] 本身就是完成訊號
+        let mut outcome = StreamOutcome::default();
+        outcome.absorb(r#"{"choices":[{"delta":{"content":"旁白"}}]}"#);
+        outcome.saw_done = true;
+        assert_eq!(outcome.failure("旁白", "test/model"), None);
 
         // content_filter 有自己的碼（玩家的下一步是換說法，不是重試）
         let mut outcome = StreamOutcome::default();
