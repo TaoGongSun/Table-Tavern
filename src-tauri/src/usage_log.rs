@@ -193,19 +193,6 @@ pub fn append_call(
     append(path, fields);
 }
 
-/// 完全不回報用量的來源（agy）：只記一輪，額度分頁顯示「輪數＋不回報用量」。
-pub fn append_unreported(path: &Path, world: Option<&str>, transport: &str, model: &str) {
-    let mut fields = Map::new();
-    fields.insert("transport".to_owned(), json!(transport));
-    if let Some(world) = world {
-        fields.insert("world".to_owned(), json!(world));
-    }
-    fields.insert("model".to_owned(), json!(model));
-    fields.insert("diag".to_owned(), json!(Diag::Single.as_str()));
-    fields.insert("unreported".to_owned(), json!(true));
-    append(path, fields);
-}
-
 /// 開桌生成的呼叫發生在桌建出來之前，落檔當下還不知道桌 id。桌一建好就把還沒認領的行
 /// （沒有 `world` 欄的）補上——那些額度就是為這桌花的。前一次半途放棄的開桌嘗試若還留著
 /// 未認領的行，會一起算進這桌：同樣是開桌花的錢，比留一個看不懂的分類好。
@@ -417,12 +404,11 @@ mod tests {
             Diag::DropLane,
             "rewrite-failed",
         );
-        append_unreported(&path, None, "agy", "(CLI 預設)");
 
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 3);
+        assert_eq!(lines.len(), 2);
 
         let call: Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(call["ts"].as_str().unwrap().len(), 19); // 秒級：分不出五分鐘過期線就沒用
@@ -445,12 +431,6 @@ mod tests {
         assert_eq!(event["diag"], json!("drop-lane"));
         assert_eq!(event["reason"], json!("rewrite-failed"));
         assert!(event.get("prompt_tokens").is_none());
-
-        // 不回報用量的來源只留下「這輪發生過」，沒有桌就不佔欄位
-        let unreported: Value = serde_json::from_str(lines[2]).unwrap();
-        assert_eq!(unreported["transport"], json!("agy"));
-        assert_eq!(unreported["unreported"], json!(true));
-        assert!(unreported.get("world").is_none());
     }
 
     /// 開桌生成落檔時桌還沒建出來；桌一建好，那幾行要認到這桌名下，已經有桌的不受影響。

@@ -1785,11 +1785,12 @@ async fn stream_via_transport(
             .await
         }
         "agy" => {
-            // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
+            // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型。
+            // 走 stream-json（agy_args 帶旗標）才拿得到含 cache_read_tokens 的用量。
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             let combined = format!("{system}\n\n{prompt}");
             let args = cli::agy_args(model, &combined, allow_cli_tools);
-            let reply = cli::run_cli(
+            cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
@@ -1797,17 +1798,18 @@ async fn stream_via_transport(
                 &[],
                 cli::parse_agy_line,
                 false,
-                None, // agy 走純文字輸出，拿不到用量（換 JSON 格式才有，未拍板）
+                usage_log.as_deref().map(|path| cli::UsageLog {
+                    path,
+                    world,
+                    transport: "agy",
+                    model: model.unwrap_or("(CLI 預設)"),
+                    parse: cli::parse_agy_usage,
+                    lane: None,
+                    prompt_tokens_out: None,
+                }),
                 emit,
             )
-            .await;
-            // 額度分頁至少要看得到「這一輪發生過」，否則 agy 整條路在分頁上等於不存在
-            if reply.is_ok() {
-                if let Some(path) = usage_log.as_deref() {
-                    usage_log::append_unreported(path, world, "agy", model.unwrap_or("(CLI 預設)"));
-                }
-            }
-            reply
+            .await
         }
         "grok" => {
             // grok 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
