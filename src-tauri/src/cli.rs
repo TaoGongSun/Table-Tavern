@@ -82,9 +82,16 @@ pub(crate) fn find_binary(name: &str) -> Option<PathBuf> {
 /// 跑 `<program> <arg>` 取 stdout，Windows 下隱藏主控台視窗。
 /// 10 秒上限＋kill_on_drop：agy／grok 的 models 是即時網路查詢，卡住時不能無限期
 /// 掛著呼叫端（比 probe_cli 的 5 秒寬，因為這條路在背景跑、慢網路多等無妨）。
-async fn hidden_output(program: PathBuf, arg: &str) -> Option<std::process::Output> {
+async fn hidden_output(
+    program: PathBuf,
+    arg: &str,
+    envs: &[(String, String)],
+) -> Option<std::process::Output> {
     let mut command = Command::new(program);
-    command.arg(arg).kill_on_drop(true);
+    command.arg(arg).kill_on_drop(true).envs(
+        envs.iter()
+            .map(|(key, value)| (key.as_str(), value.as_str())),
+    );
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
     timeout(Duration::from_secs(10), command.output())
@@ -285,7 +292,9 @@ pub fn parse_grok_catalog(output: &str) -> Vec<ModelOption> {
 
 /// 組下拉目錄：claude 固定前置官方別名（CLI 穩定介面）再接快取；快取讀不到就只剩別名。
 /// codex 純靠快取；agy／grok 即時讀 CLI 輸出，讀不到回空（UI 都保留「自訂」手填逃生口）。
-pub async fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
+/// `envs`：grok 需要 `grok_envs()` 那組隔離環境，否則讀到的是使用者終端機的登入態，
+/// 與旁白實跑用的 app profile 不同步（設定頁會顯示已登入、真發言卻要求登入）。
+pub async fn cli_model_catalog(cli: &str, envs: &[(String, String)]) -> Vec<ModelOption> {
     let read = |rel: &[&str]| -> Option<String> {
         let mut path = PathBuf::from(std::env::var_os("HOME")?);
         for part in rel {
@@ -321,14 +330,14 @@ pub async fn cli_model_catalog(cli: &str) -> Vec<ModelOption> {
             .map(|json| parse_codex_catalog(&json))
             .unwrap_or_default(),
         "agy" => match find_binary("agy") {
-            Some(program) => hidden_output(program, "models")
+            Some(program) => hidden_output(program, "models", envs)
                 .await
                 .map(|output| parse_agy_catalog(&String::from_utf8_lossy(&output.stdout)))
                 .unwrap_or_default(),
             None => Vec::new(),
         },
         "grok" => match find_binary("grok") {
-            Some(program) => hidden_output(program, "models")
+            Some(program) => hidden_output(program, "models", envs)
                 .await
                 .map(|output| parse_grok_catalog(&String::from_utf8_lossy(&output.stdout)))
                 .unwrap_or_default(),
@@ -475,6 +484,25 @@ pub fn agy_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<Str
     args
 }
 
+/// grok 通道的環境隔離。grok 有「Claude Code 相容」設計：會自動載入 `$HOME/.claude` 下的
+/// hooks、skills、plugins、CLAUDE.md 與 permissions，官方沒有可關的旗標或設定
+/// （`[features] claude_hooks` 是伺服器端 flag、`CLAUDE_CONFIG_DIR` 無效，皆實測過）。
+/// 玩家的 coding hook 因此會擋停旁白、CLAUDE.md 會混進 GM 的系統提示。
+/// 唯一槓桿是環境變數：HOME 指向 app 的空目錄（grok 就找不到 ~/.claude），
+/// GROK_HOME 指向 app 專用設定目錄（登入態與 session 都留在 app 自己這套）。
+/// 四處呼叫 grok 的地方必須共用這組，否則會出現「UI 顯示已登入、實跑未登入」。
+pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
+    let home = home.to_string_lossy().into_owned();
+    [
+        ("HOME", home.clone()),
+        // Windows 認 USERPROFILE，HOME 在那邊不作數
+        ("USERPROFILE", home),
+        ("GROK_HOME", grok_home.to_string_lossy().into_owned()),
+    ]
+    .map(|(key, value)| (key.to_owned(), value))
+    .to_vec()
+}
+
 /// grok 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// 聊天單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
 /// allow_tools：生圖呼叫要用 grok 原生 image_gen 工具，--deny * 換成 --always-approve。
@@ -491,6 +519,12 @@ pub fn grok_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<St
     args.extend(
         ["--disable-web-search", "--no-plan", "--no-subagents"].map(str::to_owned),
     );
+    if !allow_tools {
+        // 旁白是無工具單發，封死模型自己多跑幾輪的出血口（hook 擋停那次就是這樣燒額度）。
+        // 生圖不能設：那條要「呼叫 image_gen → 工具回傳 → 再回一句路徑」，砍到一輪會斷在中間。
+        args.push("--max-turns".to_owned());
+        args.push("1".to_owned());
+    }
     if let Some(model) = model {
         args.push("-m".to_owned());
         args.push(model.to_owned());
@@ -1175,10 +1209,27 @@ mod tests {
         assert!(args.contains(&"--disable-web-search".to_owned()));
         assert!(args.contains(&"--no-plan".to_owned()));
         assert!(args.contains(&"--no-subagents".to_owned()));
+        assert!(args.windows(2).any(|pair| pair == ["--max-turns", "1"]));
+        // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步
+        let image_args = grok_args(Some("grok-4.5"), prompt, true);
+        assert!(!image_args.contains(&"--max-turns".to_owned()));
         assert!(args.windows(2).any(|pair| pair == ["-m", "grok-4.5"]));
         assert_eq!(args[args.len() - 2..], ["-p", prompt]);
         let default_args = grok_args(None, prompt, false);
         assert_eq!(default_args[default_args.len() - 2..], ["-p", prompt]);
+    }
+
+    #[test]
+    fn grok_envs_point_home_and_grok_home_at_the_app_profile() {
+        let envs = grok_envs(
+            &PathBuf::from("/app/cli-home"),
+            &PathBuf::from("/app/grok-home"),
+        );
+        // HOME 換掉才擋得住 ~/.claude 的 hooks／CLAUDE.md；Windows 認的是 USERPROFILE
+        assert!(envs.contains(&("HOME".to_owned(), "/app/cli-home".to_owned())));
+        assert!(envs.contains(&("USERPROFILE".to_owned(), "/app/cli-home".to_owned())));
+        // GROK_HOME 另指一處，登入態才不會跟使用者終端機的 ~/.grok 混在一起
+        assert!(envs.contains(&("GROK_HOME".to_owned(), "/app/grok-home".to_owned())));
     }
 
     #[test]

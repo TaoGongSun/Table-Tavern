@@ -16,6 +16,9 @@ pub struct InstallSpec {
     pub probe: Vec<String>,
     // 探針輸出必須含這段字才算過；給那些未登入也可能 exit 0 的指令用。
     pub probe_expect: Option<String>,
+    // 登入與探針要跑在哪組環境下（grok 走 app 專用 profile，其餘留空）。
+    // 安裝那步刻意不套：安裝腳本要把 binary 裝進使用者真正的家目錄。
+    pub envs: Vec<(String, String)>,
     pub pre_probe: bool,
     #[allow(dead_code)]
     pub window_title: String,
@@ -196,6 +199,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
             ),
             probe: argv(claude, &["-p", "ok"]),
             probe_expect: None,
+            envs: Vec::new(),
             pre_probe: true,
             window_title: "Table Tavern - Claude Login".to_owned(),
             poll_seconds: 600,
@@ -216,6 +220,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
             ),
             probe: argv(codex, &["login", "status"]),
             probe_expect: None,
+            envs: Vec::new(),
             pre_probe: true,
             window_title: "Table Tavern - Codex Login".to_owned(),
             poll_seconds: 600,
@@ -238,6 +243,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
             ),
             probe: argv(agy, &["-p", "ok"]),
             probe_expect: None,
+            envs: Vec::new(),
             pre_probe: false,
             window_title: "Table Tavern - Gemini Login".to_owned(),
             poll_seconds: 600,
@@ -260,6 +266,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
             // models 只讀本機憑證、無 OAuth 副作用，故可在登入前先探。
             probe: argv(grok, &["models"]),
             probe_expect: Some("You are logged in".to_owned()),
+            envs: Vec::new(),
             pre_probe: true,
             window_title: "Table Tavern - Grok Login".to_owned(),
             poll_seconds: 600,
@@ -330,7 +337,7 @@ fn output_detail(output: &CommandOutput) -> Option<String> {
     (!detail.is_empty()).then_some(detail)
 }
 
-async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
+async fn run_hidden(command: &[String], envs: &[(String, String)]) -> Result<CommandOutput, String> {
     let (program, args) = command
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
@@ -338,6 +345,10 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
     crate::proxy::apply_system_proxy(&mut child);
     child
         .args(args)
+        .envs(
+            envs.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
         .env_remove("PSModulePath")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -354,8 +365,11 @@ async fn run_hidden(command: &[String]) -> Result<CommandOutput, String> {
 }
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
-async fn run_probe(command: &[String]) -> Result<CommandOutput, String> {
-    match tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command)).await {
+async fn run_probe(
+    command: &[String],
+    envs: &[(String, String)],
+) -> Result<CommandOutput, String> {
+    match tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command, envs)).await {
         Ok(result) => result,
         Err(_) => Ok(CommandOutput {
             success: false,
@@ -365,13 +379,23 @@ async fn run_probe(command: &[String]) -> Result<CommandOutput, String> {
     }
 }
 
-async fn run_terminal(command: &[String], timeout: Duration) -> Result<CommandOutput, String> {
+async fn run_terminal(
+    command: &[String],
+    timeout: Duration,
+    envs: &[(String, String)],
+) -> Result<CommandOutput, String> {
     let (program, args) = command
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
     crate::proxy::apply_system_proxy(&mut child);
-    child.args(args).kill_on_drop(true);
+    child
+        .args(args)
+        .envs(
+            envs.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
+        .kill_on_drop(true);
     // 隱藏外層 cmd 自己的黑視窗；使用者看到的登入視窗由內層 start 另開，不受影響
     #[cfg(target_os = "windows")]
     child.creation_flags(0x08000000);
@@ -418,7 +442,7 @@ async fn checked_probe(
     emit: &mut impl FnMut(InstallProgress),
 ) -> Result<bool, String> {
     emit(InstallProgress::new(&spec.id, "verify", log_path));
-    let output = run_probe(&spec.probe).await?;
+    let output = run_probe(&spec.probe, &spec.envs).await?;
     append_output(log, &spec.probe, &output)?;
     let expected = spec.probe_expect.as_ref().is_none_or(|needle| {
         String::from_utf8_lossy(&output.stdout).contains(needle.as_str())
@@ -437,7 +461,7 @@ async fn run_install_with_interval(
     emit(InstallProgress::new(&spec.id, "detect", &log_path));
     if detect(&spec.id).is_none() {
         emit(InstallProgress::new(&spec.id, "install", &log_path));
-        let output = run_hidden(&spec.install)
+        let output = run_hidden(&spec.install, &[])
             .await
             .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
         append_output(&mut log, &spec.install, &output)?;
@@ -472,7 +496,7 @@ async fn run_install_with_interval(
             }
         });
     }
-    let login_output = run_terminal(&spec.login, Duration::from_secs(spec.poll_seconds))
+    let login_output = run_terminal(&spec.login, Duration::from_secs(spec.poll_seconds), &spec.envs)
         .await
         .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
     append_output(&mut log, &spec.login, &login_output)?;
@@ -604,6 +628,7 @@ mod tests {
             login: command(script, login_action, &state, &probes, &login),
             probe: command(script, "probe", &state, &probes, &login),
             probe_expect: None,
+            envs: Vec::new(),
             pre_probe,
             window_title: "stub".to_owned(),
             poll_seconds,
