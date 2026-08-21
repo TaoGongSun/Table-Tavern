@@ -43,6 +43,7 @@ export const ptBR: Record<MsgKey, string> = {
   usageHitRate: "Taxa de acerto",
   usageHitObserved: "({observed}/{rounds} rodadas mensuráveis)",
   usageCacheBlind: "Um traço significa que esta conexão não informa nenhum dado de cache — não que nada foi aproveitado. A taxa conta apenas as rodadas mensuráveis.",
+  usageLatestBlind: "esta conexão não informa dados de cache",
   usageOutput: "Saída",
   usageCost: "Custo",
   usageTotal: "Total",

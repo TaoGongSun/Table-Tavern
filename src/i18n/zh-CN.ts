@@ -43,6 +43,7 @@ export const zhCN: Record<MsgKey, string> = {
   usageHitRate: "命中率",
   usageHitObserved: "（可判读 {observed}/{rounds} 轮）",
   usageCacheBlind: "「—」代表这条连线没有回报缓存数据，不是没有命中；命中率只算得出来的那几轮。",
+  usageLatestBlind: "这条连线没回报缓存数据",
   usageOutput: "输出",
   usageCost: "费用",
   usageTotal: "合计",

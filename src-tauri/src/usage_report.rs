@@ -67,6 +67,9 @@ pub struct LatestCall {
     pub ts: String,
     pub diag: String,
     pub reason: Option<String>,
+    /// 這一輪的快取數字看不看得見；false＝前端要在診斷句旁講明「沒回報快取資料」，
+    /// 不能只說「單發」（那是呼叫用途，與快取可觀測性正交）
+    pub reported: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -104,14 +107,18 @@ fn hit_rate(row: &UsageRow) -> Option<f64> {
     Some((rate * 10.0).round() / 10.0)
 }
 
-/// 這一輪的快取數字看不看得見。舊行沒有 `cache_reporting` 欄位——api 那條路當年
-/// 讀錯欄位名（讀 OpenRouter 的 `prompt_tokens_details.cached_tokens`，供應商實際回
-/// DeepSeek 原生的 `prompt_cache_hit_tokens`），記下的 0 是假的，一律當量不到；
-/// CLI 三路的欄位一直是對的，照舊採信。
+/// 這一輪的快取數字看不看得見。舊行沒有 `cache_reporting` 欄位，靠兩條規則還原：
+/// - api：當年只讀 OpenRouter 的 `prompt_tokens_details.cached_tokens`，其他 schema
+///   一律被 `unwrap_or(0)` 捏成 0。**捏得出來的只有 0**——所以 >0 必是讀對欄位的真值
+///   （那時真的連著 OpenRouter），採信；記 0 的分不出真假，保守當量不到。
+/// - CLI 三路：欄位一直是對的，照舊採信。
 fn reported(line: &Value) -> bool {
+    if line.get("unreported").and_then(Value::as_bool) == Some(true) {
+        return false; // 連 token 都不回報的來源（agy），快取自然更無從得知
+    }
     match line.get("cache_reporting").and_then(Value::as_str) {
         Some(value) => value == "reported",
-        None => text(line, "transport") != "api",
+        None => text(line, "transport") != "api" || number(line, "cached_tokens") > 0,
     }
 }
 
@@ -233,6 +240,7 @@ pub fn summarize(
                     .get("reason")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
+                reported: line.get("model").is_none() || reported(&line),
             });
         }
         // 沒有 model＝丟線之類的線事件，只進診斷統計，不算一輪呼叫
@@ -320,6 +328,12 @@ mod tests {
         assert_eq!(row.observed_prompt_tokens, 1_000); // 命中率的分母只有那一輪
         assert_eq!(row.cached_tokens, 400);
         assert_eq!(row.hit_rate, Some(40.0)); // 不是 400/7690＝5.2%：量不到的輪次不稀釋
+
+        // 舊 api 行的正命中是真值：當年 unwrap_or(0) 捏得出來的只有 0，>0 必是讀對了欄位
+        const OLD_HIT: &str = r#"{"ts":"2026-08-20 10:00:00","transport":"api","world":"w1","model":"v/m","diag":"single","prompt_tokens":1000,"cached_tokens":600,"created_tokens":0,"output_tokens":20,"hit_rate":60.0}"#;
+        let old = summarize(OLD_HIT, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]);
+        assert_eq!(old.rows[0].observed_rounds, 1);
+        assert_eq!(old.rows[0].hit_rate, Some(60.0));
 
         // 整條路都量不到＝命中率不存在，不可顯示 0%
         const ALL_ABSENT: &str = r#"{"ts":"2026-08-21 14:02:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"absent","prompt_tokens":500,"output_tokens":10}"#;
@@ -412,6 +426,7 @@ mod tests {
                 ts: "2026-08-04 01:04:00".to_owned(),
                 diag: "single".to_owned(),
                 reason: None,
+                reported: false, // agy 連 token 都不回報
             })
         );
     }
@@ -440,6 +455,7 @@ mod tests {
                 ts: "2026-08-04 01:07:00".to_owned(),
                 diag: "drop-lane".to_owned(),
                 reason: Some("rewrite-failed".to_owned()),
+                reported: true, // 線事件沒有 model，不涉及快取量測
             })
         );
 
@@ -448,4 +464,3 @@ mod tests {
         assert!(empty.rows.is_empty() && empty.latest.is_none() && empty.total.rounds == 0);
     }
 }
-

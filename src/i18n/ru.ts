@@ -43,6 +43,7 @@ export const ru: Record<MsgKey, string> = {
   usageHitRate: "Попадания",
   usageHitObserved: "(измеримо раундов: {observed}/{rounds})",
   usageCacheBlind: "Прочерк означает, что это соединение вообще не сообщает данные кэша, а не то, что попаданий не было. Процент считается только по измеримым раундам.",
+  usageLatestBlind: "это соединение не сообщает данные кэша",
   usageOutput: "Вывод",
   usageCost: "Расход",
   usageTotal: "Всего",

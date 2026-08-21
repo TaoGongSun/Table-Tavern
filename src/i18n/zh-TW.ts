@@ -52,6 +52,7 @@ export const zh = {
   usageHitRate: "命中率",
   usageHitObserved: "（可判讀 {observed}/{rounds} 輪）",
   usageCacheBlind: "「—」代表這條連線沒有回報快取資料，不是沒有命中；命中率只算得出來的那幾輪。",
+  usageLatestBlind: "這條連線沒回報快取資料",
   usageOutput: "輸出",
   usageCost: "花費",
   usageTotal: "總計",

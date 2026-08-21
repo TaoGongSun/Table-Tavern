@@ -1913,21 +1913,16 @@ pub(crate) fn describe(tokens: Option<u64>) -> String {
 /// 只認實際會走到這條路的三組：中轉站照抄上游 schema，光認 OpenRouter 那組不夠。
 fn cache_tokens(usage: &serde_json::Value) -> (Option<u64>, Option<u64>) {
     let field = |value: &serde_json::Value, key: &str| value.get(key).and_then(|v| v.as_u64());
-    // OpenRouter：https://openrouter.ai/docs/use-cases/usage-accounting
-    if let Some(details) = usage.get("prompt_tokens_details") {
-        let read = field(details, "cached_tokens");
-        let write = field(details, "cache_write_tokens");
-        if read.is_some() || write.is_some() {
-            return (read, write);
-        }
-    }
-    // DeepSeek 原生；中轉站（tokenrouter 等）照抄這組，不回 prompt_tokens_details
-    if let Some(hit) = field(usage, "prompt_cache_hit_tokens") {
-        return (Some(hit), None); // DeepSeek 不回寫入數，另有 prompt_cache_miss_tokens
-    }
-    // Anthropic 原生（相容端點直通時）
-    let read = field(usage, "cache_read_input_tokens");
-    let write = field(usage, "cache_creation_input_tokens");
+    let details = usage.get("prompt_tokens_details");
+    let nested = |key: &str| details.and_then(|details| field(details, key));
+    // 讀與寫各自挑第一個有值的來源：整組提前返回會讓「details 只有寫入數」的回應
+    // 遮蔽掉同一包裡的 prompt_cache_hit_tokens（Sol 驗收 2026-08-21）。
+    // 順序＝OpenRouter（usage accounting）→ DeepSeek 原生（中轉站照抄這組）→ Anthropic 原生。
+    let read = nested("cached_tokens")
+        .or_else(|| field(usage, "prompt_cache_hit_tokens"))
+        .or_else(|| field(usage, "cache_read_input_tokens"));
+    let write = nested("cache_write_tokens")
+        .or_else(|| field(usage, "cache_creation_input_tokens")); // DeepSeek 不回寫入數
     (read, write)
 }
 

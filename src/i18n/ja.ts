@@ -43,6 +43,7 @@ export const ja: Record<MsgKey, string> = {
   usageHitRate: "ヒット率",
   usageHitObserved: "（判定できたのは {observed}/{rounds} ターン）",
   usageCacheBlind: "「—」はこの接続がキャッシュ情報をまったく返していないという意味で、ヒットしなかったという意味ではありません。ヒット率は測定できたターンだけで計算しています。",
+  usageLatestBlind: "この接続はキャッシュ情報を返しません",
   usageOutput: "出力",
   usageCost: "費用",
   usageTotal: "合計",
