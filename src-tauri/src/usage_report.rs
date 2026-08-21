@@ -32,7 +32,12 @@ pub struct UsageRow {
     pub prompt_tokens: u64,
     pub cached_tokens: u64,
     pub output_tokens: u64,
-    pub hit_rate: f64,
+    /// 命中率；這一列沒有任何可判讀輪次＝None（前端顯示「—」，不是 0%）
+    pub hit_rate: Option<f64>,
+    /// 供應商有回報快取欄位的輪數。少於 rounds 時前端加註「可判讀 N/M 輪」
+    pub observed_rounds: u64,
+    /// 上面那些輪次的輸入量＝命中率的分母。量不到的輪次不進來，才不會稀釋命中率
+    pub observed_prompt_tokens: u64,
     /// 各 CLI 官方回報值的加總；一筆都沒有＝None（前端顯示「—」）
     pub cost_usd: Option<f64>,
     /// 有輪次沒回報金額，加總只是部分
@@ -88,12 +93,26 @@ fn text(line: &Value, key: &str) -> String {
         .to_owned()
 }
 
-fn hit_rate(prompt_tokens: u64, cached_tokens: u64) -> f64 {
-    if prompt_tokens == 0 {
-        return 0.0;
+fn hit_rate(row: &UsageRow) -> Option<f64> {
+    if row.observed_rounds == 0 {
+        return None; // 一輪都量不到＝命中率不存在，不是 0
     }
-    let rate = cached_tokens as f64 * 100.0 / prompt_tokens as f64;
-    (rate * 10.0).round() / 10.0
+    if row.observed_prompt_tokens == 0 {
+        return Some(0.0);
+    }
+    let rate = row.cached_tokens as f64 * 100.0 / row.observed_prompt_tokens as f64;
+    Some((rate * 10.0).round() / 10.0)
+}
+
+/// 這一輪的快取數字看不看得見。舊行沒有 `cache_reporting` 欄位——api 那條路當年
+/// 讀錯欄位名（讀 OpenRouter 的 `prompt_tokens_details.cached_tokens`，供應商實際回
+/// DeepSeek 原生的 `prompt_cache_hit_tokens`），記下的 0 是假的，一律當量不到；
+/// CLI 三路的欄位一直是對的，照舊採信。
+fn reported(line: &Value) -> bool {
+    match line.get("cache_reporting").and_then(Value::as_str) {
+        Some(value) => value == "reported",
+        None => text(line, "transport") != "api",
+    }
 }
 
 /// 快取計價係數（相對一般輸入價）：`(讀快取, 寫快取)`。讀便宜、寫（Anthropic）反而貴，
@@ -125,8 +144,13 @@ fn accumulate(row: &mut UsageRow, line: &Value) {
     let created = number(line, "created_tokens");
     let output = number(line, "output_tokens");
     row.prompt_tokens += prompt;
-    row.cached_tokens += cached;
     row.output_tokens += output;
+    // 量不到的輪次照計輸入輸出與花費，但不進命中率的分子分母
+    if reported(line) {
+        row.observed_rounds += 1;
+        row.observed_prompt_tokens += prompt;
+        row.cached_tokens += cached;
+    }
     let cost = line.get("cost_usd").and_then(Value::as_f64);
     match cost {
         Some(value) => row.cost_usd = Some(row.cost_usd.unwrap_or(0.0) + value),
@@ -245,7 +269,7 @@ pub fn summarize(
     }
 
     for row in rows.iter_mut().chain([&mut total, &mut ping]) {
-        row.hit_rate = hit_rate(row.prompt_tokens, row.cached_tokens);
+        row.hit_rate = hit_rate(row);
     }
     // 花得最多的排前面（桌下拉不排序，照桌列表原順序）
     rows.sort_by_key(|row| std::cmp::Reverse(row.prompt_tokens));
@@ -275,6 +299,35 @@ mod tests {
         r#"{"ts":"2026-08-04 01:06:00","transport":"api","model":"x/y","diag":"single","prompt_tokens":500,"cached_tokens":0,"created_tokens":0,"output_tokens":50,"hit_rate":0.0}"#, "\n",
         "壞掉的一行\n",
     );
+
+    /// 命中率的分母只收「量得到」的輪次，並與舊行相容：
+    /// 舊 api 行沒有 cache_reporting 欄位，記下的 0 是讀錯欄位名的假數字，一律當量不到。
+    #[test]
+    fn hit_rate_counts_only_observed_rounds() {
+        const MIXED: &str = concat!(
+            // 舊行（無 cache_reporting）：api＝假 0 不可採信、claude＝欄位一直是對的
+            r#"{"ts":"2026-08-21 13:47:35","transport":"api","world":"w1","model":"v/m","diag":"single","prompt_tokens":4690,"cached_tokens":0,"created_tokens":0,"output_tokens":551,"hit_rate":0.0}"#, "\n",
+            // 新行：量到了、這輪沒中
+            r#"{"ts":"2026-08-21 14:00:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"reported","prompt_tokens":1000,"cached_tokens":400,"output_tokens":20}"#, "\n",
+            // 新行：這條路不回報
+            r#"{"ts":"2026-08-21 14:01:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"absent","prompt_tokens":2000,"output_tokens":30}"#, "\n",
+        );
+        let report = summarize(MIXED, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]);
+        let row = &report.rows[0];
+        assert_eq!(row.rounds, 3);
+        assert_eq!(row.observed_rounds, 1); // 三輪只有一輪的數字可信
+        assert_eq!(row.prompt_tokens, 7_690); // 花費照算全部
+        assert_eq!(row.observed_prompt_tokens, 1_000); // 命中率的分母只有那一輪
+        assert_eq!(row.cached_tokens, 400);
+        assert_eq!(row.hit_rate, Some(40.0)); // 不是 400/7690＝5.2%：量不到的輪次不稀釋
+
+        // 整條路都量不到＝命中率不存在，不可顯示 0%
+        const ALL_ABSENT: &str = r#"{"ts":"2026-08-21 14:02:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"absent","prompt_tokens":500,"output_tokens":10}"#;
+        let blind = summarize(ALL_ABSENT, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]);
+        assert_eq!(blind.rows[0].hit_rate, None);
+        assert_eq!(blind.rows[0].observed_rounds, 0);
+        assert_eq!(blind.total.hit_rate, None);
+    }
 
     fn names() -> Vec<(String, String)> {
         vec![
@@ -324,7 +377,7 @@ mod tests {
         let sonnet = &report.rows[1];
         assert_eq!(sonnet.prompt_tokens, 2_200); // ping 的 1200 不算進去
         assert_eq!(sonnet.cached_tokens, 1_000);
-        assert!((sonnet.hit_rate - 45.5).abs() < 0.05);
+        assert!((sonnet.hit_rate.expect("claude 有回報") - 45.5).abs() < 0.05);
         assert_eq!(sonnet.cost_usd, Some(0.03));
         // 省下多少一輪一算：建快取那輪反而多付 250（寫入加價兩成半），
         // 讀到快取那輪省下 850，兩輪淨省 600 個輸入 token 的錢
@@ -345,7 +398,7 @@ mod tests {
         assert_eq!(report.total.rounds, 4);
         assert_eq!(report.total.prompt_tokens, 6_200);
         assert_eq!(report.total.cached_tokens, 4_600);
-        assert!((report.total.hit_rate - 74.2).abs() < 0.05);
+        assert!((report.total.hit_rate.expect("有可判讀輪次") - 74.2).abs() < 0.05);
         assert_eq!(report.total.saved_tokens, 3_740.0); // sonnet 600 ＋ opus 3140
         assert!(report.total.cost_partial && report.total.saved_partial); // agy 那輪兩樣都缺
         assert_eq!(report.ping.rounds, 1);
@@ -395,3 +448,4 @@ mod tests {
         assert!(empty.rows.is_empty() && empty.latest.is_none() && empty.total.rounds == 0);
     }
 }
+

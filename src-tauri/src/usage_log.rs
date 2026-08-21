@@ -3,6 +3,12 @@
 //! 線的動作（重開／補丁／追平）與該次呼叫的用量寫在同一筆——分成兩種行時，
 //! 「命中率為什麼掉」得靠時間戳自己接，接錯就誤診（三輪 0% 的誤判即出於此）。
 //!
+//! `diag`（這輪呼叫怎麼跑的）與 `cache_reporting`（這條路看不看得見快取）是**正交**的兩軸，
+//! 分開記才不會拿「單發」去解釋「數字是 0」：
+//! - `cache_reporting: "reported"`＝供應商回了快取欄位，`cached_tokens` 是真數字（0 就是真的沒中）。
+//! - `cache_reporting: "absent"`＝這條路沒回報，`cached_tokens`／`hit_rate` 整個欄位不寫，
+//!   額度分頁顯示「—」而非 0%（曾用 `unwrap_or(0)` 壓平，見 .ai/plans/api-cache-visibility.md）。
+//!
 //! 診斷標籤是有限清單，純規則判定（不靠 AI）。每個標籤對應一句給玩家看的話，
 //! 包 6 照這張表配 i18n 字典：
 //! - `ok`：快取正常，這一句只付新內容的錢。
@@ -13,7 +19,8 @@
 //! - `cache-skipped`：CLI 這一句沒帶快取標記（claude CLI resume 已知毛病，2026-08 實證：
 //!   同一線隔輪出現，讀寫皆 0、整句付全額；上輪有送內容才判此標，與整條路不支援區分）。
 //! - `no-cache`：這條路完全沒有快取（模型或 CLI 不支援）。
-//! - `single`：單發模式（API／codex／grok），只記數字不做續聊診斷。
+//! - `single`：單發模式（API／codex／grok），只記數字不做續聊診斷。**不代表沒有快取**——
+//!   單發也可能命中供應商的自動前綴快取，能不能看見由 `cache_reporting` 獨立表達。
 //! - `drop-lane`：回合後改寫失敗，這條線丟棄重來（`reason` 說明原因）。
 //! - `ping`：保溫呼叫（包 7），不推進劇情、只為刷新快取壽命；花費與劇情輪分開統計。
 
@@ -88,7 +95,10 @@ fn diagnose(lane: Option<&LaneContext>, usage: &PromptCacheUsage) -> Diag {
     if lane.reopen.is_some() {
         return Diag::Warmup;
     }
-    if usage.cached_tokens == 0 && usage.created_tokens == 0 {
+    // lane 路徑只有 claude CLI，它必定回報快取欄位；None 退 0 只是型別收尾
+    let cached = usage.cached_tokens.unwrap_or(0);
+    let created = usage.created_tokens.unwrap_or(0);
+    if cached == 0 && created == 0 {
         // 上輪送過內容＝這條路支援快取，讀寫皆 0 是 CLI 這句沒帶標記
         if lane.expected_cached > 0 {
             return Diag::CacheSkipped;
@@ -98,7 +108,7 @@ fn diagnose(lane: Option<&LaneContext>, usage: &PromptCacheUsage) -> Diag {
     if lane.age_secs > CACHE_TTL_SECS {
         return Diag::Expired;
     }
-    if usage.cached_tokens * HIT_TOLERANCE_DEN >= lane.expected_cached * HIT_TOLERANCE_NUM {
+    if cached * HIT_TOLERANCE_DEN >= lane.expected_cached * HIT_TOLERANCE_NUM {
         return Diag::Ok;
     }
     Diag::PrefixBroken
@@ -143,13 +153,24 @@ pub fn append_call(
     fields.insert("model".to_owned(), json!(model));
     fields.insert("diag".to_owned(), json!(diagnose(lane, &usage).as_str()));
     fields.insert("prompt_tokens".to_owned(), json!(usage.prompt_tokens));
-    fields.insert("cached_tokens".to_owned(), json!(usage.cached_tokens));
-    fields.insert("created_tokens".to_owned(), json!(usage.created_tokens));
-    fields.insert("output_tokens".to_owned(), json!(usage.output_tokens));
+    // 沒回報的欄位一個都不寫：缺欄位就是「量不到」，寫 0 會被讀成「量到了、沒中」
     fields.insert(
-        "hit_rate".to_owned(),
-        json!((usage.hit_rate() * 10.0).round() / 10.0),
+        "cache_reporting".to_owned(),
+        json!(match usage.reported() {
+            true => "reported",
+            false => "absent",
+        }),
     );
+    if let Some(cached) = usage.cached_tokens {
+        fields.insert("cached_tokens".to_owned(), json!(cached));
+    }
+    if let Some(created) = usage.created_tokens {
+        fields.insert("created_tokens".to_owned(), json!(created));
+    }
+    fields.insert("output_tokens".to_owned(), json!(usage.output_tokens));
+    if let Some(rate) = usage.hit_rate() {
+        fields.insert("hit_rate".to_owned(), json!((rate * 10.0).round() / 10.0));
+    }
     if let Some(cost) = usage.cost_usd {
         fields.insert("cost_usd".to_owned(), json!(cost));
     }
@@ -252,8 +273,8 @@ mod tests {
     fn usage(prompt: u64, cached: u64, created: u64) -> PromptCacheUsage {
         PromptCacheUsage {
             prompt_tokens: prompt,
-            cached_tokens: cached,
-            created_tokens: created,
+            cached_tokens: Some(cached),
+            created_tokens: Some(created),
             output_tokens: 20,
             cost_usd: Some(0.0031),
         }
@@ -314,6 +335,62 @@ mod tests {
         assert_eq!(diagnose(Some(&ping), &usage(9_000, 9_000, 0)), Diag::Ping);
         // 單發路徑不做續聊診斷
         assert_eq!(diagnose(None, &usage(100, 0, 0)), Diag::Single);
+    }
+
+    /// 量不到的那一輪：cache_reporting 標 absent，快取數字與命中率**一個欄位都不寫**。
+    /// 寫成 0 會被報表讀成「量到了、沒中」——API 路的假 0.0% 就是這樣來的。
+    #[test]
+    fn unreported_cache_writes_no_number_fields() {
+        let dir = std::env::temp_dir().join(format!("tt-usage-absent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("prompt-cache.jsonl");
+
+        append_call(
+            &path,
+            None,
+            "api",
+            "vendor/model",
+            None,
+            PromptCacheUsage {
+                prompt_tokens: 4_690,
+                cached_tokens: None,
+                created_tokens: None,
+                output_tokens: 551,
+                cost_usd: None,
+            },
+        );
+        // 對照組：同一條路回報了、值是 0＝量到了沒中，欄位照寫
+        append_call(
+            &path,
+            None,
+            "api",
+            "vendor/model",
+            None,
+            PromptCacheUsage {
+                prompt_tokens: 2_495,
+                cached_tokens: Some(0),
+                created_tokens: None,
+                output_tokens: 16,
+                cost_usd: None,
+            },
+        );
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+
+        let absent: Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(absent["cache_reporting"], json!("absent"));
+        assert!(absent.get("cached_tokens").is_none());
+        assert!(absent.get("created_tokens").is_none());
+        assert!(absent.get("hit_rate").is_none());
+        assert_eq!(absent["prompt_tokens"], json!(4_690)); // 花費照記，只是快取看不見
+
+        let reported: Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(reported["cache_reporting"], json!("reported"));
+        assert_eq!(reported["cached_tokens"], json!(0));
+        assert_eq!(reported["hit_rate"], json!(0.0));
+        assert!(reported.get("created_tokens").is_none()); // 寫入數沒回報就不寫
     }
 
     #[test]

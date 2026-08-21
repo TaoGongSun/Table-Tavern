@@ -1868,46 +1868,79 @@ impl SseParser {
 /// 一次呼叫的用量（prompt-cache-optimization C）。API 走 OpenRouter usage accounting，
 /// CLI 走各家收尾事件（見 cli::parse_*_usage）。
 /// prompt_tokens 一律是「總輸入」（含快取部分），各家語意差異在抽取時就換算掉。
-/// created_tokens（寫入快取）是診斷關鍵：命中率 0 時，它 >0 代表「有建但沒讀到」
-/// （前綴變了或過了 5 分鐘），=0 代表「根本沒建快取」。
-/// OpenRouter 不回報寫入數（官方文件明言不支援），該路徑恆為 0。
+/// cached_tokens／created_tokens 是 Option，`None` 與 `Some(0)` 是**兩件事**：
+/// None＝這條路沒回報快取欄位（量不到，不能宣稱沒命中）；Some(0)＝量到了，這輪沒中。
+/// 兩者曾被 `unwrap_or(0)` 壓成同一個 0，額度分頁因此對 API 路顯示假的 0.0%
+/// （2026-08-21 取證，見 .ai/plans/api-cache-visibility.md）。
+/// created_tokens（寫入快取）是診斷關鍵：命中 0 時，它 >0 代表「有建但沒讀到」
+/// （前綴變了或過期），=0 代表「根本沒建快取」；回報寫入數的來源才有值。
 /// output_tokens 與 cost_usd 供額度分頁算花費；只有 claude 直接回報金額，其餘為 None。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PromptCacheUsage {
     pub prompt_tokens: u64,
-    pub cached_tokens: u64,
-    pub created_tokens: u64,
+    pub cached_tokens: Option<u64>,
+    pub created_tokens: Option<u64>,
     pub output_tokens: u64,
     pub cost_usd: Option<f64>,
 }
 
 impl PromptCacheUsage {
-    /// 讀自快取的輸入佔總輸入的百分比；沒有輸入時算 0。
-    pub fn hit_rate(&self) -> f64 {
-        if self.prompt_tokens == 0 {
-            0.0
-        } else {
-            self.cached_tokens as f64 * 100.0 / self.prompt_tokens as f64
+    /// 讀自快取的輸入佔總輸入的百分比。沒回報快取欄位＝None（前端顯示「—」），
+    /// 不是 0——「量不到」與「沒中」混講會讓玩家去修一個不存在的問題。
+    pub fn hit_rate(&self) -> Option<f64> {
+        match self.cached_tokens {
+            Some(cached) if self.prompt_tokens > 0 => {
+                Some(cached as f64 * 100.0 / self.prompt_tokens as f64)
+            }
+            Some(_) => Some(0.0),
+            None => None,
         }
+    }
+
+    /// 這條路回不回報快取欄位。log 與報表據此把「量不到」與「沒中」分開。
+    pub fn reported(&self) -> bool {
+        self.cached_tokens.is_some()
     }
 }
 
+/// 診斷輸出用：沒回報就印「—」，不印 0。
+pub(crate) fn describe(tokens: Option<u64>) -> String {
+    tokens.map_or_else(|| "—".to_owned(), |value| value.to_string())
+}
+
+/// 快取欄位在各家 OpenAI-compatible 端點叫不同名字，有哪組抓哪組（回傳 `(讀, 寫)`）。
+/// 一組都沒有＝這條路不回報，回 `(None, None)`——不可退成 0（那正是本案根因）。
+/// 只認實際會走到這條路的三組：中轉站照抄上游 schema，光認 OpenRouter 那組不夠。
+fn cache_tokens(usage: &serde_json::Value) -> (Option<u64>, Option<u64>) {
+    let field = |value: &serde_json::Value, key: &str| value.get(key).and_then(|v| v.as_u64());
+    // OpenRouter：https://openrouter.ai/docs/use-cases/usage-accounting
+    if let Some(details) = usage.get("prompt_tokens_details") {
+        let read = field(details, "cached_tokens");
+        let write = field(details, "cache_write_tokens");
+        if read.is_some() || write.is_some() {
+            return (read, write);
+        }
+    }
+    // DeepSeek 原生；中轉站（tokenrouter 等）照抄這組，不回 prompt_tokens_details
+    if let Some(hit) = field(usage, "prompt_cache_hit_tokens") {
+        return (Some(hit), None); // DeepSeek 不回寫入數，另有 prompt_cache_miss_tokens
+    }
+    // Anthropic 原生（相容端點直通時）
+    let read = field(usage, "cache_read_input_tokens");
+    let write = field(usage, "cache_creation_input_tokens");
+    (read, write)
+}
+
 /// 從一則 SSE payload 取出 usage 統計；增量塊的 `"usage": null` 與缺欄位一律回 None。
-/// 欄位名依 OpenRouter usage accounting：usage.prompt_tokens、
-/// usage.prompt_tokens_details.cached_tokens（https://openrouter.ai/docs/use-cases/usage-accounting）。
 pub fn extract_usage(payload: &str) -> Option<PromptCacheUsage> {
     let value: serde_json::Value = serde_json::from_str(payload).ok()?;
     let usage = value.get("usage")?;
     let prompt_tokens = usage.get("prompt_tokens")?.as_u64()?;
-    let cached_tokens = usage
-        .get("prompt_tokens_details")
-        .and_then(|details| details.get("cached_tokens"))
-        .and_then(|tokens| tokens.as_u64())
-        .unwrap_or(0);
+    let (cached_tokens, created_tokens) = cache_tokens(usage);
     Some(PromptCacheUsage {
         prompt_tokens,
         cached_tokens,
-        created_tokens: 0, // OpenRouter 不回報寫入數
+        created_tokens,
         output_tokens: usage
             .get("completion_tokens")
             .and_then(|tokens| tokens.as_u64())
@@ -1941,16 +1974,11 @@ fn anthropic_messages(messages: &[ChatMessage]) -> serde_json::Value {
     serde_json::Value::Array(entries)
 }
 
-/// chat/completions 請求本體。usage accounting 是 OpenRouter 專屬參數，
-/// 只對 OpenRouter 端點帶上：其他 OpenAI-compatible 端點不認得頂層 "usage"，
-/// 寬鬆的（ollama／LM Studio）會忽略，嚴格的（OpenAI 官方）會直接拒絕請求。
-/// anthropic/ 系模型另走顯式快取斷點（見 anthropic_messages）；
-/// 兩者皆不適用時，請求形狀必須與加這些功能前逐位元相同。
-fn chat_request_body(
-    model: &str,
-    messages: &[ChatMessage],
-    include_usage: bool,
-) -> serde_json::Value {
+/// chat/completions 請求本體。曾對 OpenRouter 端點附掛 `usage:{include:true}`，
+/// 官方已將該參數（與 `stream_options:{include_usage:true}`）標為 deprecated 且無作用——
+/// 完整 usage 一律自動回在尾塊，帶著只會讓嚴格的端點（OpenAI 官方）拒絕請求。
+/// anthropic/ 系模型另走顯式快取斷點（見 anthropic_messages）；不適用時請求形狀維持素樸。
+fn chat_request_body(model: &str, messages: &[ChatMessage]) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": model,
         "messages": messages,
@@ -1958,9 +1986,6 @@ fn chat_request_body(
     });
     if model.starts_with("anthropic/") {
         body["messages"] = anthropic_messages(messages);
-    }
-    if include_usage {
-        body["usage"] = serde_json::json!({ "include": true });
     }
     body
 }
@@ -2081,11 +2106,9 @@ pub async fn stream_chat(
         return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
     }
 
-    // 命中率量測（prompt-cache-optimization C）：只對 OpenRouter 端點開 usage accounting
-    let include_usage = base.contains("openrouter.ai");
     let mut request = reqwest::Client::new()
         .post(format!("{base}/chat/completions"))
-        .json(&chat_request_body(model, messages, include_usage));
+        .json(&chat_request_body(model, messages));
     if let Some(key) = api_key {
         request = request.bearer_auth(key);
     }
@@ -2121,11 +2144,13 @@ pub async fn stream_chat(
     if let Some(usage) = usage {
         // stderr 一行（終端機啟動時直接看）＋落檔一行（事後隨時查）
         eprintln!(
-            "[prompt-cache] transport=api model={model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={:.0}%",
+            "[prompt-cache] transport=api model={model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",
             usage.prompt_tokens,
-            usage.cached_tokens,
-            usage.created_tokens,
-            usage.hit_rate(),
+            describe(usage.cached_tokens),
+            describe(usage.created_tokens),
+            usage
+                .hit_rate()
+                .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log {
             crate::usage_log::append_call(path, world, "api", model, None, usage);
@@ -3318,13 +3343,12 @@ mod tests {
         );
     }
 
-    /// 命中率量測（prompt-cache-optimization C）：usage accounting 只對 OpenRouter 開；
-    /// 其他端點的請求本體必須與加此功能前逐位元相同（嚴格端點會拒絕未知參數）。
+    /// 請求本體維持素樸：usage accounting 參數已被 OpenRouter 官方廢止（帶了無效，
+    /// 嚴格端點還會拒絕），一個多餘的鍵都不能有。
     #[test]
-    fn chat_request_body_adds_usage_only_when_asked_and_stays_bytewise_identical_otherwise() {
+    fn chat_request_body_stays_bytewise_identical_for_plain_models() {
         let messages = [message("user", "嗨".to_owned())];
-        let plain = chat_request_body("test/model", &messages, false);
-        // 與舊版 stream_chat 內聯的 json! 完全同一種構造：內容相等即代表位元組相同
+        let plain = chat_request_body("test/model", &messages);
         assert_eq!(
             plain,
             serde_json::json!({
@@ -3334,11 +3358,6 @@ mod tests {
             })
         );
         assert!(plain.get("usage").is_none());
-
-        let with_usage = chat_request_body("test/model", &messages, true);
-        assert_eq!(with_usage["usage"], serde_json::json!({ "include": true }));
-        assert_eq!(with_usage["model"], "test/model");
-        assert_eq!(with_usage["stream"], serde_json::Value::Bool(true));
     }
 
     /// Claude 顯式斷點（prompt-cache-optimization B）：anthropic/ 系模型 content 轉 multipart，
@@ -3352,7 +3371,7 @@ mod tests {
             message("assistant", "旁白二".to_owned()),
             message("user", "動態塊".to_owned()),
         ];
-        let body = chat_request_body("anthropic/claude-sonnet-4.5", &messages, true);
+        let body = chat_request_body("anthropic/claude-sonnet-4.5", &messages);
         let out = body["messages"].as_array().unwrap();
         assert_eq!(out.len(), 5);
         // multipart：每則 content 是單一 text 分段，role 與文字照舊
@@ -3373,7 +3392,7 @@ mod tests {
         );
 
         // 非 anthropic 模型：content 維持純字串（形狀逐位元不變由上一條測試保證）
-        let plain = chat_request_body("test/model", &messages, false);
+        let plain = chat_request_body("test/model", &messages);
         assert!(plain["messages"][0]["content"].is_string());
 
         // 開桌第一輪沒有 assistant：只標 system，不出錯
@@ -3381,7 +3400,7 @@ mod tests {
             message("system", "設定".to_owned()),
             message("user", "嗨".to_owned()),
         ];
-        let fresh_body = chat_request_body("anthropic/claude-haiku", &fresh, false);
+        let fresh_body = chat_request_body("anthropic/claude-haiku", &fresh);
         let fresh_out = fresh_body["messages"].as_array().unwrap();
         assert!(fresh_out[0]["content"][0].get("cache_control").is_some());
         assert!(fresh_out[1]["content"][0].get("cache_control").is_none());
@@ -3398,17 +3417,49 @@ mod tests {
             usage,
             PromptCacheUsage {
                 prompt_tokens: 194,
-                cached_tokens: 150,
-                created_tokens: 0, // OpenRouter 不回報寫入數
+                cached_tokens: Some(150),
+                created_tokens: None, // 這則沒有 cache_write_tokens：沒回報，不是 0
                 output_tokens: 2,
                 cost_usd: None, // 金額只有 claude CLI 直接回報
             }
         );
 
-        // 缺 details（隱式快取沒命中時部分供應商省略）：cached 記 0，不當錯誤
+        // OpenRouter 也回寫入數時照收
+        let with_write = extract_usage(
+            r#"{"usage":{"prompt_tokens":300,"prompt_tokens_details":{"cached_tokens":100,"cache_write_tokens":200},"completion_tokens":5}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (with_write.cached_tokens, with_write.created_tokens),
+            (Some(100), Some(200))
+        );
+
+        // DeepSeek 原生欄位（中轉站照抄這組、不回 prompt_tokens_details）：
+        // 讀錯這裡正是額度分頁對 API 路顯示假 0.0% 的根因，2026-08-21 對 tokenrouter 實測取證
+        let deepseek = extract_usage(
+            r#"{"usage":{"prompt_tokens":2495,"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":2495}}"#,
+        )
+        .unwrap();
+        assert_eq!(deepseek.cached_tokens, Some(0)); // 量到了、這輪沒中
+        assert!(deepseek.reported());
+        assert_eq!(deepseek.hit_rate(), Some(0.0));
+
+        // Anthropic 原生欄位直通
+        let anthropic = extract_usage(
+            r#"{"usage":{"prompt_tokens":900,"cache_read_input_tokens":800,"cache_creation_input_tokens":100,"completion_tokens":3}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (anthropic.cached_tokens, anthropic.created_tokens),
+            (Some(800), Some(100))
+        );
+
+        // 一組欄位都沒有＝這條路不回報：cached 為 None、命中率不存在，**不可退成 0**
         let without_details =
             extract_usage(r#"{"usage":{"prompt_tokens":10,"completion_tokens":1}}"#).unwrap();
-        assert_eq!(without_details.cached_tokens, 0);
+        assert_eq!(without_details.cached_tokens, None);
+        assert!(!without_details.reported());
+        assert_eq!(without_details.hit_rate(), None);
 
         // 增量塊：usage 為 null 或不存在，一律回 None
         assert_eq!(
