@@ -1,7 +1,7 @@
 //! CLI 傳輸層（訂閱模式，NewPlan §3.2／§4.2）。
 //! 原則：只偵測不代辦；CLI 是無狀態傳輸——上下文一律由 transport::assemble_messages
 //! 組裝、headless 單發、system prompt 覆寫，不依賴 CLI 自身 session（§8.1）。
-//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.3、grok 0.2.111。
+//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.17、grok 0.2.111。
 
 use crate::data::{DataResult, Tier};
 use crate::transport::{ChatMessage, PromptCacheUsage};
@@ -479,6 +479,10 @@ pub fn agy_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<Str
     if allow_tools {
         args.push("--dangerously-skip-permissions".to_owned());
     }
+    // stream-json 才拿得到 usage（agy 1.1.8 起含 cache_read_tokens）；純 json 會把整包
+    // 壓到最後一次吐出，串流就沒了。
+    args.push("--output-format".to_owned());
+    args.push("stream-json".to_owned());
     args.push("-p".to_owned());
     args.push(prompt.to_owned());
     args
@@ -650,6 +654,28 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     })
 }
 
+/// agy result 事件的用量（agy 1.1.8 起回報，1.1.17 實測）。欄位在 `result.usage`，
+/// 事件的判別鍵是 `event` 而非 `type`，所以不走 `usage_event`。
+/// `input_tokens` **已含** `cache_read_tokens`（實測 total = input + output，快取為其子集）。
+/// agy 不回報寫入快取的 token 數，created 為 None（沒回報，不是 0）；也不回報金額。
+pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
+    if !line.contains("\"usage\"") {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("event").and_then(|event| event.as_str()) != Some("result") {
+        return None;
+    }
+    let usage = value.pointer("/result/usage")?;
+    Some(PromptCacheUsage {
+        prompt_tokens: token_count(usage, "input_tokens"),
+        cached_tokens: Some(token_count(usage, "cache_read_tokens")),
+        created_tokens: None,
+        output_tokens: token_count(usage, "output_tokens"),
+        cost_usd: None,
+    })
+}
+
 /// codex exec --json 逐行解析：agent_message 為增量（通常一則），turn.completed 收尾。
 /// item.type=="error" 可能只是非致命警告（例如 hooks 提示），不當失敗。
 pub fn parse_codex_line(line: &str) -> CliLine {
@@ -686,9 +712,49 @@ pub fn parse_codex_line(line: &str) -> CliLine {
     }
 }
 
-/// agy 輸出純文字；逐行補回換行，包含空行，以 EOF 作為回合結束。
+/// agy --output-format stream-json 逐行解析（1.1.17 實測）：正文增量在
+/// `step_update.text_delta`（`step_type=="agent_response"`，ACTIVE 與 DONE 兩種狀態都可能帶），
+/// `result` 事件收尾。`result.response` 是全文重述，**不可**當增量送出，否則正文會出現兩次。
 pub fn parse_agy_line(line: &str) -> CliLine {
-    CliLine::Delta(format!("{line}\n"))
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return CliLine::Other;
+    };
+    match value.get("event").and_then(|event| event.as_str()) {
+        Some("step_update") => {
+            let step = value.get("step_update");
+            let is_response = step
+                .and_then(|step| step.get("step_type"))
+                .and_then(|kind| kind.as_str())
+                == Some("agent_response");
+            match (is_response, step.and_then(|step| step.get("text_delta"))) {
+                (true, Some(text)) => text
+                    .as_str()
+                    .map(|text| CliLine::Delta(text.to_owned()))
+                    .unwrap_or(CliLine::Other),
+                _ => CliLine::Other,
+            }
+        }
+        Some("result") => {
+            let status = value
+                .pointer("/result/status")
+                .and_then(|status| status.as_str())
+                .unwrap_or("");
+            match status {
+                "SUCCESS" => CliLine::Done {
+                    text: String::new(),
+                    is_error: false,
+                },
+                other => CliLine::Done {
+                    text: match other.is_empty() {
+                        true => "Gemini CLI 回合失敗".to_owned(),
+                        false => format!("Gemini CLI 回合失敗（{other}）"),
+                    },
+                    is_error: true,
+                },
+            }
+        }
+        _ => CliLine::Other,
+    }
 }
 
 /// grok --output-format streaming-json 逐行解析：thought 不進對話，text 為增量，end 正常收尾。
@@ -1176,16 +1242,86 @@ mod tests {
     }
 
     #[test]
-    fn parses_agy_plain_text_lines_and_preserves_paragraphs() {
+    /// 樣本取自 agy 1.1.17 實跑（`-p ... --output-format stream-json`）。
+    fn parses_agy_stream_json_events() {
+        // 正文增量：ACTIVE 與 DONE 兩種狀態都可能帶 text_delta，都要進正文
         assert_eq!(
-            parse_agy_line("一般文字"),
-            CliLine::Delta("一般文字\n".to_owned())
+            parse_agy_line(
+                r#"{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"好的"}}"#
+            ),
+            CliLine::Delta("好的".to_owned())
         );
-        assert_eq!(parse_agy_line(""), CliLine::Delta("\n".to_owned()));
+        assert_eq!(
+            parse_agy_line(
+                r#"{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"\n"}}"#
+            ),
+            CliLine::Delta("\n".to_owned())
+        );
+        // 非 agent_response 的步驟不進正文
+        assert_eq!(
+            parse_agy_line(
+                r#"{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"checkpoint"}}"#
+            ),
+            CliLine::Other
+        );
+        assert_eq!(parse_agy_line(r#"{"event":"init","init":{"cwd":"/x"}}"#), CliLine::Other);
+        // result 收尾：response 是全文重述，不可當增量，否則正文出現兩次
+        assert_eq!(
+            parse_agy_line(r#"{"event":"result","result":{"status":"SUCCESS","response":"好的\n"}}"#),
+            CliLine::Done {
+                text: String::new(),
+                is_error: false,
+            }
+        );
+        // 非 SUCCESS 仍要失敗，不能靜默當成功
         assert!(matches!(
-            parse_agy_line(r#"{"type":"result"}"#),
-            CliLine::Delta(_)
+            parse_agy_line(r#"{"event":"result","result":{"status":"ERROR"}}"#),
+            CliLine::Done { is_error: true, .. }
         ));
+        assert!(matches!(
+            parse_agy_line(r#"{"event":"result","result":{}}"#),
+            CliLine::Done { is_error: true, .. }
+        ));
+        assert_eq!(parse_agy_line("不是 JSON"), CliLine::Other);
+
+        // 整段實跑逐行餵進去：增量串起來要跟 result.response 一字不差
+        // （少一段＝正文被吞，多一段＝result.response 被當增量重播）
+        let captured = [
+            r#"{"event":"init","conversation_id":"c1","init":{"cwd":"/x"}}"#,
+            r#"{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}"#,
+            r#"{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"checkpoint"}}"#,
+            r#"{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"好的"}}"#,
+            r#"{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"\n","usage":{"input_tokens":14827}}}"#,
+            r#"{"event":"result","result":{"status":"SUCCESS","response":"好的\n","usage":{"input_tokens":14827,"output_tokens":282,"cache_read_tokens":0}}}"#,
+        ];
+        let body: String = captured
+            .iter()
+            .filter_map(|line| match parse_agy_line(line) {
+                CliLine::Delta(text) => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(body, "好的\n");
+    }
+
+    #[test]
+    /// agy 1.1.8 起才有 usage；欄位在 result.usage，判別鍵是 event 不是 type。
+    fn parses_agy_usage_from_result_event() {
+        let usage = parse_agy_usage(
+            r#"{"event":"result","result":{"status":"SUCCESS","usage":{"input_tokens":14827,"output_tokens":282,"thinking_tokens":281,"cache_read_tokens":1024,"total_tokens":15109}}}"#,
+        )
+        .expect("result 事件要解得出用量");
+        assert_eq!(usage.prompt_tokens, 14_827); // input 已含 cache_read，不加總
+        assert_eq!(usage.cached_tokens, Some(1_024));
+        assert_eq!(usage.created_tokens, None); // agy 不回報寫入數，沒回報不是 0
+        assert_eq!(usage.output_tokens, 282);
+        assert_eq!(usage.cost_usd, None); // agy 不回報金額
+        // step_update 也帶 usage，但只有 result 是全回合總計
+        assert!(parse_agy_usage(
+            r#"{"event":"step_update","step_update":{"step_type":"agent_response","usage":{"input_tokens":1}}}"#
+        )
+        .is_none());
+        assert!(parse_agy_usage(r#"{"event":"result","result":{"status":"SUCCESS"}}"#).is_none());
     }
 
     #[test]
@@ -1193,9 +1329,19 @@ mod tests {
         let prompt = "system\n\n整包 prompt（含空格）";
         assert_eq!(
             agy_args(Some("Claude Sonnet 4.6 (Thinking)"), prompt, false),
-            ["--model", "Claude Sonnet 4.6 (Thinking)", "-p", prompt]
+            [
+                "--model",
+                "Claude Sonnet 4.6 (Thinking)",
+                "--output-format",
+                "stream-json",
+                "-p",
+                prompt
+            ]
         );
-        assert_eq!(agy_args(None, prompt, false), ["-p", prompt]);
+        assert_eq!(
+            agy_args(None, prompt, false),
+            ["--output-format", "stream-json", "-p", prompt]
+        );
     }
 
     #[test]
