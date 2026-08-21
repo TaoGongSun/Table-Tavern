@@ -20,7 +20,7 @@
 - [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
 - [usage-diag-non-claude](tasks/usage-diag-non-claude.md) — claude 以外的路徑全部只標「單發」，快取診斷等於沒做 — 下一步：開新對話做完整盤點：把 `Diag` 全部標籤逐一對照四條非 claude 路徑，設計新的標籤體系後再動工。
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：等包 B 完成後開新對話設計：N 的值、per-model 狀態存哪、重置條件、要不要讓玩家看見。
-- [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：做包 B：共線組裝器，一支統一組裝器同時修好四條路——全部台詞改 assistant＋名字前綴，順帶解掉 `flatten_messages` 雙重前綴。包 C（anthropic block）已降為條件觸發，延後。
+- [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：送 Sol 驗收 A＋B；接著在真 app 上跑成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉固定的 9,984。包 C 已降為條件觸發。
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍

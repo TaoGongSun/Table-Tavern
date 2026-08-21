@@ -143,12 +143,24 @@ pub fn active_worldbook_entries<'a>(
     active
 }
 
-/// 組裝單一角色的上下文。只餵入該角色自己的卡、可見世界書條目與公開 transcript：
-/// 他人私有設定與 world.md 不在介面中；GM 專有條目組裝時一律排除，永不傳入模型。
-/// keyword 觸發的條目放 transcript 尾端獨立 user 訊息（快取友善），constant 條目留在 system。
+/// 共線組裝（api-shared-lane 包 B）：claude 以外的四條路共用一份**與「這輪是誰」無關**的前綴。
+/// system 走 `chars_lane_system`（扮演引擎前言＋全部公開角色卡），歷史裡所有角色台詞一律
+/// `assistant` 並帶「名字：」前綴，本輪指定與私設放尾端一則 `user`。前綴因此逐字穩定，
+/// 換角色不再整包重算——實測前三條路（api 底線 64、codex 底線 9,984、grok）都是「換角色全滅、
+/// 同角色連續全中」，共線把「全滅」那一半救回來。
+///
+/// role 序列只跟事件種類有關、與角色無關，`push_merged` 的分組因此也與角色無關；
+/// CLI 三條攤平後的 `(system, prompt)` 連帶逐字相同（見 `cli::flatten_messages`）。
+///
+/// 單角色桌（`cards` 只有一張）把私設提回 system：只有一個角色不會洩漏，而 system 的
+/// 指令權重高於尾端 user。這是唯一的分支，不另立第二條組裝路徑。
+///
+/// API 無狀態，上一輪注入的私設不會出現在下一輪的 messages 裡，
+/// 不需要 claude lane 那套「回合後從 session 檔抹掉」。
 #[allow(clippy::too_many_arguments)]
-pub fn assemble_messages(
+pub fn assemble_shared_messages(
     card: &CharacterCard,
+    cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
     worldbook: &[WorldbookEntry],
@@ -157,103 +169,37 @@ pub fn assemble_messages(
     branch: Option<&[String]>,
     lang: &str,
 ) -> Vec<ChatMessage> {
-    let user_name = player
-        .map(|player| player.name.as_str())
-        .unwrap_or_else(|| player_fallback_name(lang));
-    let mut system = format!(
-        "你正在一場多人桌上角色扮演中扮演「{name}」。\
-         請一律用第三人稱敘事：動作與心理描寫都以「{name}」或「他／她」當主詞，\
-         說出口的話寫在引號裡、維持這個角色自己的口吻；\
-         視角只跟著「{name}」，可以寫他眼中所見的環境與心裡的感受，不要寫他不知道的事；\
-         敘述不要用「我」當主詞、不要跳出角色、不要以 AI 助理的身分說話、\
-         不要替其他角色或玩家代言。\
-         {language_rule}\n\n\
-         ## 你的公開設定（其他人也認識的你）\n{public}\n",
-        name = card.name,
-        language_rule = language_rule(lang),
-        public = replace_st_macros(card.public_md.trim(), user_name, Some(&card.name)),
+    let mut system = chars_lane_system(cards, player, worldbook, lang);
+    let turn = chars_lane_turn(
+        card, player, events, worldbook, state, mechanism, branch, lang,
     );
-    if !card.private_md.trim().is_empty() {
-        system.push_str(&format!(
-            "\n## 你的私有設定（只有你自己知道；除非劇情走到，不要主動說破）\n{}\n",
-            replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
-        ));
-    }
-    if let Some(player) = player {
-        system.push_str(&format!(
-            "\n## 同桌的玩家（真人扮演的角色，逐字稿裡的「{}」就是他）",
-            player.name
-        ));
-        if !player.public_md.trim().is_empty() {
-            system.push_str(&format!(
-                "\n{}\n",
-                replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
-            ));
-        }
-    }
-    let visible: Vec<_> = worldbook
-        .iter()
-        .filter(|entry| match &entry.visibility {
-            Visibility::Gm => false,
-            Visibility::Public => true,
-            Visibility::Characters(ids) => ids.iter().any(|id| id == &card.id),
-        })
-        .cloned()
-        .collect();
-    // 快取友善（prompt-cache-optimization A）：constant 條目穩定，留在 system；
-    // keyword 條目隨最近事件進出，若拼在 system 會從 context 第一段打破前綴，
-    // 改放 transcript 尾端的一則獨立 user 訊息（最新事件附近，條目翻動只影響尾端）。
-    let (constant_entries, keyword_entries): (Vec<_>, Vec<_>) =
-        active_worldbook_entries(&visible, events)
-            .into_iter()
-            .partition(|entry| entry.constant);
-    if !constant_entries.is_empty() {
-        system.push_str("\n## 你知道的世界情報\n");
-        for entry in constant_entries {
-            system.push_str(&format!(
-                "### {}\n{}\n",
-                replace_st_macros(&entry.title, user_name, Some(&card.name)),
-                replace_st_macros(&entry.content, user_name, Some(&card.name))
-            ));
+    let mut tail = turn.tail;
+    if cards.len() <= 1 {
+        if let Some(confidential) = &turn.confidential {
+            tail = tail.replace(confidential.as_str(), "");
+            system.push('\n');
+            system.push_str(confidential);
         }
     }
 
     let mut messages = vec![message("system", system)];
     for event in events {
+        // 台詞一律 assistant＋名字前綴：對白對誰都是同一則，前綴才穩得住
         let (role, line) = match event.kind {
-            TranscriptKind::Dialogue if event.speaker_id == card.id => {
-                ("assistant", event.text.clone())
-            }
-            TranscriptKind::Dialogue => ("user", format!("{}：{}", event.speaker_name, event.text)),
+            TranscriptKind::Dialogue => (
+                "assistant",
+                format!("{}：{}", event.speaker_name, event.text),
+            ),
             TranscriptKind::Player => ("user", format!("{}：{}", event.speaker_name, event.text)),
             TranscriptKind::Narration => ("user", format!("（旁白）{}", event.text)),
-            TranscriptKind::System => ("user", format!("（系統）{}", system_event_text(event, true))),
+            TranscriptKind::System => {
+                ("user", format!("（系統）{}", system_event_text(event, true)))
+            }
         };
         push_merged(&mut messages, role, line);
     }
-    let state_block = branch
-        .and_then(|branch| character_state_block(state, mechanism, branch, &card.name, user_name));
-    if !keyword_entries.is_empty() || state_block.is_some() {
-        let mut block = String::new();
-        if !keyword_entries.is_empty() {
-            block.push_str("## 你知道的世界情報\n");
-            for entry in keyword_entries {
-                block.push_str(&format!(
-                    "### {}\n{}\n",
-                    replace_st_macros(&entry.title, user_name, Some(&card.name)),
-                    replace_st_macros(&entry.content, user_name, Some(&card.name))
-                ));
-            }
-        }
-        if let Some(state_block) = &state_block {
-            if !block.is_empty() {
-                block.push('\n');
-            }
-            block.push_str(state_block);
-        }
-        // 刻意不走 push_merged：動態情報維持獨立一則的語意邊界，不黏進玩家發言
-        messages.push(message("user", block.trim_end().to_owned()));
-    }
+    // 刻意不走 push_merged：本輪指定維持獨立一則，不黏進歷史
+    messages.push(message("user", tail.trim_end().to_owned()));
     messages
 }
 
@@ -2267,6 +2213,245 @@ mod tests {
         }
     }
 
+    /// `{{user}}` 沒有玩家卡時退回語系預設名（共線的 system 一樣要做這個代換）。
+    #[test]
+    fn shared_lane_st_macros_fall_back_to_localized_player_name() {
+        let fox = card("fox-id", "狐狸", "{{user}}", "");
+        let cards = vec![fox.clone()];
+        let build = |lang: &str| {
+            assemble_shared_messages(
+                &fox,
+                &cards,
+                None,
+                &[],
+                &[],
+                &TableState::default(),
+                &Mechanism::default(),
+                None,
+                lang,
+            )[0]
+                .content
+                .clone()
+        };
+        assert!(build("zh-TW").contains("### 狐狸\n玩家\n"));
+        assert!(build("en").contains("### 狐狸\nPlayer\n"));
+    }
+
+    /// 共線後 system 含全部角色的**公開**設定（那正是共用前綴），
+    /// 但私設只有本輪那位的、且在尾端；world.md 一如既往碰不到。
+    /// 逐字稿的三種前綴（旁白／玩家／系統）格式不隨共線改變。
+    #[test]
+    fn shared_lane_shares_public_cards_but_not_others_private() {
+        let fox = card("fox-id", "狐狸", "旅店老闆，笑口常開", "其實是通緝犯");
+        let knight = card("knight-id", "騎士", "王國騎士", "奉密令而來");
+        let cards = vec![fox.clone(), knight.clone()];
+        let events = [
+            event(TranscriptKind::Narration, "", "GM", "夜幕低垂"),
+            event(TranscriptKind::Player, "", "玩家", "老闆，來杯麥酒"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
+            event(
+                TranscriptKind::Dialogue,
+                "knight-id",
+                "騎士",
+                "我在找一名通緝犯。",
+            ),
+            event(TranscriptKind::System, "", "系統", "騎士 加入本桌"),
+        ];
+        let messages = assemble_shared_messages(
+            &fox,
+            &cards,
+            None,
+            &events,
+            &[],
+            &TableState::default(),
+            &Mechanism::default(),
+            None,
+            "zh-TW",
+        );
+
+        let system = &messages[0];
+        assert_eq!(system.role, "system");
+        assert!(system.content.contains("旅店老闆")); // 自己的公開
+        assert!(system.content.contains("王國騎士")); // 別人的公開也在共用前綴裡
+        assert!(!system.content.contains("其實是通緝犯")); // 私設不進共用前綴
+        assert!(!system.content.contains("奉密令而來"));
+
+        let joined: String = messages.iter().map(|m| m.content.as_str()).collect();
+        assert!(!joined.contains("world"));
+        assert!(joined.contains("（旁白）夜幕低垂"));
+        assert!(joined.contains("玩家：老闆，來杯麥酒"));
+        assert!(joined.contains("騎士：我在找一名通緝犯。"));
+        assert!(joined.contains("（系統）騎士 加入本桌"));
+        // 本輪那位的私設在尾端，別人的哪裡都沒有
+        assert!(messages.last().unwrap().content.contains("其實是通緝犯"));
+        assert!(!joined.contains("奉密令而來"));
+    }
+
+    /// 共線的 role 規則：**所有**角色台詞都是 assistant（不再分是不是自己說的），
+    /// 相鄰同 role 仍合併。role 序列因此只跟事件種類有關，與「這輪是誰」無關。
+    #[test]
+    fn shared_lane_makes_every_dialogue_assistant_and_merges_adjacent() {
+        let fox = card("fox-id", "狐狸", "公開", "");
+        let cards = vec![fox.clone(), card("owl-id", "貓頭鷹", "公開", "")];
+        let events = [
+            event(TranscriptKind::Player, "", "玩家", "第一句"),
+            event(TranscriptKind::Narration, "", "GM", "旁白一句"),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "我的回答"),
+            event(TranscriptKind::Dialogue, "owl-id", "貓頭鷹", "牠的回答"),
+            event(TranscriptKind::Player, "", "玩家", "第二句"),
+        ];
+        let messages = assemble_shared_messages(
+            &fox,
+            &cards,
+            None,
+            &events,
+            &[],
+            &TableState::default(),
+            &Mechanism::default(),
+            None,
+            "zh-TW",
+        );
+        let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["system", "user", "assistant", "user", "user"]);
+        assert_eq!(messages[1].content, "玩家：第一句\n（旁白）旁白一句");
+        // 兩位不同角色的台詞併成同一則 assistant，各自帶名字
+        assert_eq!(messages[2].content, "狐狸：我的回答\n貓頭鷹：牠的回答");
+        assert_eq!(messages[3].content, "玩家：第二句");
+        // 空的私有節不產生私有段落
+        assert!(!messages.last().unwrap().content.contains("私有設定"));
+    }
+
+    /// api-shared-lane 包 B 的核心保證：換角色只動最後一則，前面每一則逐字不變。
+    /// 這條一破，前綴快取就從分岔點整段失效——那正是共線要修的病。
+    #[test]
+    fn shared_lane_prefix_is_identical_across_characters() {
+        let gal = card("gal", "加爾", "加爾公開", "加爾私設");
+        let ray = card("ray", "雷恩", "雷恩公開", "雷恩私設");
+        let bran = card("bran", "布蘭德", "布蘭德公開", "");
+        let cards = vec![gal.clone(), ray.clone(), bran.clone()];
+        let player = card("p", "玩家", "玩家公開", "");
+        let events = vec![
+            event(TranscriptKind::Player, "p", "玩家", "我推開門。"),
+            event(TranscriptKind::Dialogue, "gal", "加爾", "加爾抬起頭。"),
+            event(TranscriptKind::Dialogue, "ray", "雷恩", "雷恩笑了。"),
+            event(TranscriptKind::Narration, "gm", "GM", "燈光暗下。"),
+            event(TranscriptKind::Dialogue, "bran", "布蘭德", "布蘭德聳肩。"),
+            event(TranscriptKind::Dialogue, "gal", "加爾", "加爾又說了一句。"),
+        ];
+        let build = |card: &CharacterCard| {
+            assemble_shared_messages(
+                card,
+                &cards,
+                Some(&player),
+                &events,
+                &[],
+                &TableState::default(),
+                &Mechanism::default(),
+                None,
+                "zh-TW",
+            )
+        };
+        let for_gal = build(&gal);
+        let for_ray = build(&ray);
+        assert_eq!(for_gal.len(), for_ray.len());
+        for (index, (left, right)) in for_gal.iter().zip(for_ray.iter()).enumerate() {
+            match index + 1 == for_gal.len() {
+                // 最後一則是本輪指定＋私設，本來就該不同
+                true => assert_ne!(left.content, right.content),
+                false => {
+                    assert_eq!(left.role, right.role);
+                    assert_eq!(left.content, right.content, "第 {index} 則不該隨角色改變");
+                }
+            }
+        }
+        // 台詞一律 assistant 且帶名字前綴；私設不在共用前綴裡
+        let prefix: String = for_gal[..for_gal.len() - 1]
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect();
+        assert!(prefix.contains("加爾：加爾抬起頭。"));
+        assert!(prefix.contains("雷恩：雷恩笑了。"));
+        assert!(!prefix.contains("加爾私設"));
+        assert!(!prefix.contains("雷恩私設"));
+        assert!(for_gal.last().unwrap().content.contains("加爾私設"));
+        assert!(!for_gal.last().unwrap().content.contains("雷恩私設"));
+    }
+
+    /// CLI 三條（codex／agy／grok）攤平後也要逐字相同。共線前這裡只差「空行位置」——
+    /// `push_merged` 的分組隨「這輪是誰」變動，`join("\n\n")` 的斷句就跟著移，
+    /// 實測共同前綴只有 25 字元／全長 97，等於一開頭就分岔。
+    #[test]
+    fn shared_lane_flattens_identically_for_cli_paths() {
+        let gal = card("gal", "加爾", "加爾公開", "加爾私設");
+        let ray = card("ray", "雷恩", "雷恩公開", "雷恩私設");
+        let cards = vec![gal.clone(), ray.clone()];
+        let events = vec![
+            event(TranscriptKind::Player, "p", "玩家", "我推開門。"),
+            event(TranscriptKind::Dialogue, "gal", "加爾", "加爾抬起頭。"),
+            event(TranscriptKind::Dialogue, "ray", "雷恩", "雷恩笑了。"),
+            event(TranscriptKind::Narration, "gm", "GM", "燈光暗下。"),
+            event(TranscriptKind::Dialogue, "gal", "加爾", "加爾又說了一句。"),
+        ];
+        let flatten = |card: &CharacterCard| {
+            let messages = assemble_shared_messages(
+                card,
+                &cards,
+                None,
+                &events,
+                &[],
+                &TableState::default(),
+                &Mechanism::default(),
+                None,
+                "zh-TW",
+            );
+            crate::cli::flatten_messages("", "", &messages)
+        };
+        let (gal_system, gal_prompt) = flatten(&gal);
+        let (ray_system, ray_prompt) = flatten(&ray);
+        assert_eq!(gal_system, ray_system);
+        // 尾端那則本輪指定不同，之前的部分必須一字不差
+        let shared = gal_prompt
+            .chars()
+            .zip(ray_prompt.chars())
+            .take_while(|(left, right)| left == right)
+            .count();
+        assert!(
+            gal_prompt[..gal_prompt
+                .char_indices()
+                .nth(shared)
+                .map(|(index, _)| index)
+                .unwrap_or(gal_prompt.len())]
+                .contains("加爾又說了一句。"),
+            "分岔點必須落在最後一則本輪指定，不能提前到歷史裡"
+        );
+        // 名字前綴只補一次，沒有「加爾：雷恩：」
+        assert!(gal_prompt.contains("雷恩：雷恩笑了。"));
+        assert!(!gal_prompt.contains("加爾：雷恩："));
+    }
+
+    /// 單角色桌：私設提回 system（只有一個角色不會洩漏，system 指令權重較高），尾端不重複。
+    #[test]
+    fn shared_lane_single_character_keeps_private_in_system() {
+        let solo = card("solo", "獨角", "獨角公開", "獨角私設");
+        let cards = vec![solo.clone()];
+        let events = vec![event(TranscriptKind::Player, "p", "玩家", "嗨。")];
+        let messages = assemble_shared_messages(
+            &solo,
+            &cards,
+            None,
+            &events,
+            &[],
+            &TableState::default(),
+            &Mechanism::default(),
+            None,
+            "zh-TW",
+        );
+        assert!(messages[0].content.contains("獨角私設"));
+        assert!(!messages.last().unwrap().content.contains("獨角私設"));
+        // 本輪指定仍在尾端
+        assert!(messages.last().unwrap().content.contains("現在你是「獨角」"));
+    }
+
     fn worldbook_entry(
         uid: u64,
         title: &str,
@@ -2296,8 +2481,9 @@ mod tests {
         let fox = card("fox-id", "狐狸", "旅店老闆", "通緝犯");
         let player = card("player-id", "阿濤", "遠道而來的商隊護衛", "");
 
-        let character_system = &assemble_messages(
+        let character_system = &assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             Some(&player),
             &[],
             &[],
@@ -2396,8 +2582,9 @@ mod tests {
         );
         entry.content = "{{user}} 來過這裡。".to_owned();
 
-        let character = assemble_messages(
+        let character = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             Some(&player),
             &[],
             &[entry.clone()],
@@ -2426,39 +2613,6 @@ mod tests {
     }
 
     #[test]
-    fn st_macros_fall_back_to_localized_player_name_without_player_card() {
-        let fox = card("fox-id", "狐狸", "{{user}}", "");
-
-        let zh = assemble_messages(
-            &fox,
-            None,
-            &[],
-            &[],
-            &TableState::default(),
-            &Mechanism::default(),
-            None,
-            "zh-TW",
-        );
-        assert!(zh[0]
-            .content
-            .contains("你的公開設定（其他人也認識的你）\n玩家\n"));
-
-        let en = assemble_messages(
-            &fox,
-            None,
-            &[],
-            &[],
-            &TableState::default(),
-            &Mechanism::default(),
-            None,
-            "en",
-        );
-        assert!(en[0]
-            .content
-            .contains("你的公開設定（其他人也認識的你）\nPlayer\n"));
-    }
-
-    #[test]
     fn gm_card_macros_use_each_cards_own_name() {
         let fox = card("fox-id", "狐狸", "A {{char}}", "");
         let knight = card("knight-id", "騎士", "B {{char}}", "");
@@ -2484,8 +2638,9 @@ mod tests {
     fn empty_worldbook_keeps_character_and_gm_context_unchanged() {
         let fox = card("fox-id", "狐狸", "旅店老闆", "通緝犯");
         let events = [event(TranscriptKind::Player, "", "玩家", "你好")];
-        let character = assemble_messages(
+        let character = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &events,
             &[],
@@ -2494,12 +2649,15 @@ mod tests {
             None,
             "zh-TW",
         );
-        assert_eq!(character.len(), 2);
-        assert!(character[0].content.contains("## 你的公開設定"));
-        assert!(character[0].content.contains("## 你的私有設定"));
-        assert!(!character[0].content.contains("同桌的玩家"));
-        assert!(!character[0].content.contains("## 你知道的世界情報"));
+        // 共線後多一則尾端本輪指定：system／逐字稿／本輪指定
+        assert_eq!(character.len(), 3);
+        assert!(character[0].content.contains("## 登場角色（公開設定）"));
+        assert!(!character[0].content.contains("## 玩家角色")); // 沒有玩家卡就不佔段落
+        assert!(!character[0].content.contains("## 你知道的世界情報")); // 世界書是空的
         assert_eq!(character[1], message("user", "玩家：你好".to_owned()));
+        // 單角色桌：私設提回 system；本輪指定仍在尾端
+        assert!(character[0].content.contains("的私有設定"));
+        assert!(character[2].content.contains("現在你是「狐狸」"));
 
         let gm = assemble_gm_messages(
             "世界總覽",
@@ -2570,8 +2728,9 @@ mod tests {
             ),
         ];
         let fox = card("fox-id", "狐狸", "公開", "私有");
-        let fox_messages = assemble_messages(
+        let fox_messages = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &[],
             &entries,
@@ -2588,8 +2747,9 @@ mod tests {
         assert!(!fox_system.contains("騎士情報"));
 
         let knight = card("knight-id", "騎士", "公開", "私有");
-        let knight_system = &assemble_messages(
+        let knight_system = &assemble_shared_messages(
             &knight,
+            std::slice::from_ref(&knight),
             None,
             &[],
             &entries,
@@ -2623,119 +2783,6 @@ mod tests {
             gm_system.find("世界總覽").unwrap() < gm_system.find("## 世界書").unwrap(),
             "世界書段落必須接在 world.md 段落之後"
         );
-    }
-
-    /// 驗收：上下文只含本角色可見內容——含自己的公開＋私有，
-    /// 且介面上根本收不到他人的卡或 world.md。
-    #[test]
-    fn context_contains_own_card_only_and_public_transcript() {
-        let fox = card("fox-id", "狐狸", "旅店老闆，笑口常開", "其實是通緝犯");
-        let events = [
-            event(TranscriptKind::Narration, "", "GM", "夜幕低垂"),
-            event(TranscriptKind::Player, "", "玩家", "老闆，來杯麥酒"),
-            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
-            event(
-                TranscriptKind::Dialogue,
-                "knight-id",
-                "騎士",
-                "我在找一名通緝犯。",
-            ),
-            event(TranscriptKind::System, "", "系統", "騎士 加入本桌"),
-        ];
-        let messages = assemble_messages(
-            &fox,
-            None,
-            &events,
-            &[],
-            &TableState::default(),
-            &Mechanism::default(),
-            None,
-            "zh-TW",
-        );
-
-        let system = &messages[0];
-        assert_eq!(system.role, "system");
-        assert!(system.content.contains("旅店老闆"));
-        assert!(system.content.contains("其實是通緝犯"));
-
-        // 他人（騎士）的私有設定不存在於任何訊息——組裝介面收不到它
-        let joined: String = messages.iter().map(|m| m.content.as_str()).collect();
-        assert!(!joined.contains("world"));
-        assert!(joined.contains("（旁白）夜幕低垂"));
-        assert!(joined.contains("玩家：老闆，來杯麥酒"));
-        assert!(joined.contains("騎士：我在找一名通緝犯。"));
-        assert!(joined.contains("（系統）騎士 加入本桌"));
-    }
-
-    #[test]
-    fn own_dialogue_becomes_assistant_and_adjacent_roles_merge() {
-        let fox = card("fox-id", "狐狸", "公開", "");
-        let events = [
-            event(TranscriptKind::Player, "", "玩家", "第一句"),
-            event(TranscriptKind::Narration, "", "GM", "旁白一句"),
-            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "我的回答"),
-            event(TranscriptKind::Player, "", "玩家", "第二句"),
-        ];
-        let messages = assemble_messages(
-            &fox,
-            None,
-            &events,
-            &[],
-            &TableState::default(),
-            &Mechanism::default(),
-            None,
-            "zh-TW",
-        );
-        let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
-        assert_eq!(roles, ["system", "user", "assistant", "user"]);
-        assert_eq!(messages[1].content, "玩家：第一句\n（旁白）旁白一句");
-        assert_eq!(messages[2].content, "我的回答");
-        // 空的私有節不產生私有段落
-        assert!(!messages[0].content.contains("私有設定"));
-    }
-
-    /// 測試清單 #14：同名兩角色各自只把自己的台詞當 assistant——用 speaker_id 判斷，
-    /// 不會因為顯示名相同就把對方的台詞誤認成自己說的
-    #[test]
-    fn assemble_messages_uses_speaker_id_not_name_for_same_named_characters() {
-        let first = card("id-a", "重名", "第一位", "");
-        let second_id = "id-b";
-        let events = [
-            event(TranscriptKind::Dialogue, "id-a", "重名", "我是第一位"),
-            event(TranscriptKind::Dialogue, second_id, "重名", "我是第二位"),
-        ];
-
-        let first_messages = assemble_messages(
-            &first,
-            None,
-            &events,
-            &[],
-            &TableState::default(),
-            &Mechanism::default(),
-            None,
-            "zh-TW",
-        );
-        let roles: Vec<&str> = first_messages.iter().map(|m| m.role.as_str()).collect();
-        // 自己的那句是 assistant，對方同名的那句仍是 user（不會相鄰合併成一則）
-        assert_eq!(roles, ["system", "assistant", "user"]);
-        assert_eq!(first_messages[1].content, "我是第一位");
-        assert_eq!(first_messages[2].content, "重名：我是第二位");
-
-        let second = card(second_id, "重名", "第二位", "");
-        let second_messages = assemble_messages(
-            &second,
-            None,
-            &events,
-            &[],
-            &TableState::default(),
-            &Mechanism::default(),
-            None,
-            "zh-TW",
-        );
-        let roles: Vec<&str> = second_messages.iter().map(|m| m.role.as_str()).collect();
-        assert_eq!(roles, ["system", "user", "assistant"]);
-        assert_eq!(second_messages[1].content, "重名：我是第一位");
-        assert_eq!(second_messages[2].content, "我是第二位");
     }
 
     /// 驗收：GM 上下文含 world.md＋全部角色卡（含私有）＋公開歷史；
@@ -2782,8 +2829,9 @@ mod tests {
     #[test]
     fn language_rule_follows_ui_language() {
         let fox = card("fox-id", "狐狸", "旅店老闆", "");
-        let zh = assemble_messages(
+        let zh = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &[],
             &[],
@@ -2793,8 +2841,9 @@ mod tests {
             "zh-TW",
         );
         assert!(zh[0].content.contains("繁體中文"));
-        let en = assemble_messages(
+        let en = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &[],
             &[],
@@ -2830,8 +2879,9 @@ mod tests {
             ("fr", "français"),
             ("ru", "русском"),
         ] {
-            let messages = assemble_messages(
-                &fox,
+            let messages = assemble_shared_messages(
+            &fox,
+            std::slice::from_ref(&fox),
                 None,
                 &[],
                 &[],
@@ -3639,8 +3689,9 @@ mod tests {
         assert!(tail.content.contains("時間：午夜"));
         assert!(tail.content.contains("沦陷天数：第 3 天"));
 
-        let character = assemble_messages(
+        let character = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &[],
             &[],
@@ -3673,8 +3724,9 @@ mod tests {
         let events = [event(TranscriptKind::Player, "", "玩家", "we saw a DRAGON")];
         let fox = card("fox-id", "狐狸", "公開", "");
 
-        let character = assemble_messages(
+        let character = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &events,
             &entries,
@@ -3784,8 +3836,9 @@ mod tests {
             "狐狸",
             "撤到 dock 去",
         ));
-        let character1 = assemble_messages(
+        let character1 = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &round1_events,
             &entries,
@@ -3794,8 +3847,9 @@ mod tests {
             None,
             "zh-TW",
         );
-        let character2 = assemble_messages(
+        let character2 = assemble_shared_messages(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &round2_character_events,
             &entries,

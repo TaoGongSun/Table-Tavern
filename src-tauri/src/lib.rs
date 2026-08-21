@@ -2311,8 +2311,13 @@ async fn chat_with_character(
         .await
         .map_err(ai_call_failure);
     }
-    let messages = transport::assemble_messages(
+    // api／codex／agy／grok 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
+    // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
+    // messages 已經自足——台詞自帶名字前綴、指示已在尾端，補了會重複（見 cli::flatten_messages）。
+    let cards = load_active_cards(&root, &world_id)?;
+    let messages = transport::assemble_shared_messages(
         &card,
+        &cards,
         player.as_ref(),
         &events,
         &worldbook,
@@ -2321,12 +2326,6 @@ async fn chat_with_character(
         branch.as_deref(),
         &transport::ui_language(&config),
     );
-    let closing = format!(
-        "現在輪到「{name}」回應。請直接用第三人稱輸出「{name}」的動作、台詞與心理描寫，\
-         敘述主詞是「{name}」或「他／她」、不要用「我」，說出口的話寫在引號裡；\
-         不要加名字前綴、不要任何角色之外的說明。",
-        name = card.name
-    );
     stream_via_transport(
         &app,
         &config,
@@ -2334,8 +2333,8 @@ async fn chat_with_character(
         false,
         card.tier,
         Some(&world_id),
-        &card.name,
-        &closing,
+        "",
+        "",
         &messages,
         false,
         emit,

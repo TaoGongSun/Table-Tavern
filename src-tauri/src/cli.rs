@@ -144,6 +144,9 @@ pub async fn detect_clis() -> Vec<CliInfo> {
 /// 把共用組裝結果攤平成 CLI 單發需要的 (system, prompt)。
 /// assistant 訊息即本發言者（角色或 GM）過往內容，攤平時補回名字前綴；
 /// closing 為收尾指示，由呼叫端依發言者身分決定。
+/// 兩個參數傳空字串＝「這份 messages 已經自足」：共線組裝（`assemble_shared_messages`）
+/// 的台詞自帶「名字：」前綴、本輪指定已在尾端那則 user，再補 label 會變成
+/// 「加爾：雷恩：……」、再補 closing 會讓指示出現兩次。
 pub fn flatten_messages(
     assistant_label: &str,
     closing: &str,
@@ -157,17 +160,18 @@ pub fn flatten_messages(
         .iter()
         .skip(1)
         .map(|message| {
-            if message.role == "assistant" {
+            if message.role == "assistant" && !assistant_label.is_empty() {
                 format!("{assistant_label}：{}", message.content)
             } else {
                 message.content.clone()
             }
         })
         .collect();
-    let prompt = format!(
-        "以下是到目前為止的對話紀錄：\n\n{}\n\n——\n{closing}",
-        history.join("\n\n")
-    );
+    let history = history.join("\n\n");
+    let prompt = match closing.is_empty() {
+        true => format!("以下是到目前為止的對話紀錄：\n\n{history}"),
+        false => format!("以下是到目前為止的對話紀錄：\n\n{history}\n\n——\n{closing}"),
+    };
     (system, prompt)
 }
 
@@ -1322,6 +1326,37 @@ mod tests {
         )
         .is_none());
         assert!(parse_agy_usage(r#"{"event":"result","result":{"status":"SUCCESS"}}"#).is_none());
+    }
+
+    /// 共線後 messages 已自足：label 傳空就不再補名字前綴（否則「加爾：雷恩：……」），
+    /// closing 傳空就不再接收尾指示（否則本輪指定會出現兩次）。
+    #[test]
+    fn flatten_skips_label_and_closing_when_self_contained() {
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_owned(),
+                content: "共用 system".to_owned(),
+            },
+            ChatMessage {
+                role: "assistant".to_owned(),
+                content: "加爾：抬起頭。".to_owned(),
+            },
+            ChatMessage {
+                role: "user".to_owned(),
+                content: "現在你是「雷恩」。".to_owned(),
+            },
+        ];
+        let (system, prompt) = flatten_messages("", "", &messages);
+        assert_eq!(system, "共用 system");
+        assert_eq!(
+            prompt,
+            "以下是到目前為止的對話紀錄：\n\n加爾：抬起頭。\n\n現在你是「雷恩」。"
+        );
+        assert!(!prompt.contains("——")); // closing 為空就不留分隔線
+        // 舊行為不變：有 label 就補前綴、有 closing 就接在後面
+        let (_, legacy) = flatten_messages("雷恩", "收尾指示", &messages);
+        assert!(legacy.contains("雷恩：加爾：抬起頭。"));
+        assert!(legacy.ends_with("——\n收尾指示"));
     }
 
     #[test]
