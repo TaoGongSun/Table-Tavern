@@ -2,9 +2,9 @@
 
 ## In progress
 - [api-cache-visibility](tasks/api-cache-visibility.md) — API 路快取看得見：多來源 usage 欄位＋「抓不到」與「沒中」分開顯示 — 下一步：真跑一輪 api 對話驗收：新行應帶 `cache_reporting: "reported"`＋`cached_tokens: 0`，額度分頁顯示 **0.0%** 而非「—」（tokenrouter 有回欄位、值真的是 0）。之後把 base_url 切回 OpenRouter、選一個有 `input_cache_read` 定價的模型（如 `deepseek/deepseek-v4-pro-0813` 或 `anthropic/` 系）跑幾輪，取得真實命中率與 `cache_write_tokens`——那批數據是保溫（C 案）每個設計參數的前提。
+- [api-key-paste-guard](tasks/api-key-paste-guard.md) — 金鑰貼錯防呆：貼成文件裡的指令時當場提示，401 依傳輸分流指路 — 下一步：本案功能面已完成。剩「換上真金鑰後紅字消失、發言成功」這一項，會在使用者實際建立 OpenRouter 金鑰時自然驗到。
 - [refactor-survey-spans](tasks/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫 — 下一步：**T4 通用 2026-08-14 收工**：①取消在途＋Cmd-Q 無孤兒過（並行取消殺得乾淨、零孤兒、未完成不計費）、③舊產物相容過、④十語系面板骨架過、②API 退 GM 檔＝單元測試綠但 CLI 模式測不到，實機延後到哪天真用 API 模式時看 jsonl lane。refactor-dispatch 的 P4–P6 隨 ① 綠、P8 同 ② 延後。
 - [refactor-mode-split](tasks/refactor-mode-split.md) — 重構雙軌定向：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析） — 下一步：包 1–3 全部實作完成（2026-08-14 主線直寫，三 commit 25ca9cd／8c2ce17／a711287，cargo 490／vitest 134／build／i18n 十語系全綠）；剩包 4 實機驗收矩陣歸使用者實跑：WestFantsy／bcd368／Transfur／NorthHall／TrainEmperor（該被擋）＋同卡連跑三次，清單見交接檔 Remaining。
-- [api-key-paste-guard](tasks/api-key-paste-guard.md) — 金鑰貼錯防呆：貼成文件裡的指令時當場提示，401 依傳輸分流指路 — 下一步：本案功能面已完成。剩「換上真金鑰後紅字消失、發言成功」這一項，會在使用者實際建立 OpenRouter 金鑰時自然驗到。
 - [ai-card-refactor](tasks/ai-card-refactor.md) — AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡 — 下一步：七包實作完成，2026-08-10 起實機驗收，開跑抓到三 bug（假檔停在舊契約→展開細看白畫面、匯入無驗證、AI 產的 HTML 殼被前端丟掉）已全修（vitest 82／build／i18n 綠，未 commit）；實測順序改成先做 `refactor-outcome-export`，再從 B 段真跑 orc-cave 卡、產物存檔後回頭跑 A 段，全過與 `person-promote` 兩案一起結案
 - [person-promote](tasks/person-promote.md) — AI 認人並合併升格：把散在多條的同一角色併成一張角色卡 — 下一步：實作完成、四項自驗全綠（cargo 422／vitest 71／build／i18n，2026-08-08），等與 `ai-card-refactor` 的 A–E 一起實機驗收、兩案一起結案
 - [state-values-mvu](tasks/state-values-mvu.md) — 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表 — 下一步：八包全部完成（2026-08-04，cargo test 317 綠）；真桌實跑延後至 `ai-card-refactor` 完成後合併驗收（2026-08-05 拍板），三處面板實機驗收照舊可先做
@@ -17,6 +17,7 @@
 - [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。
 - [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
 - [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
+- [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：開工前先跟 Sol 討論 plan 文末四題，尤其第 1 題（role 分配改成「全部 assistant ＋名字前綴」對第三方模型的副作用）與第 2 題（只換 system 不動 role 規則的中間方案，20% vs 95%）。
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
