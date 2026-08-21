@@ -43,6 +43,7 @@ export const es: Record<MsgKey, string> = {
   usageHitRate: "Tasa de aciertos",
   usageHitObserved: "({observed}/{rounds} rondas medibles)",
   usageCacheBlind: "Un guion significa que esta conexión no informa ningún dato de caché, no que no haya habido aciertos. La tasa solo cuenta las rondas medibles.",
+  usageLatestBlind: "esta conexión no informa datos de caché",
   usageOutput: "Salida",
   usageCost: "Coste",
   usageTotal: "Total",

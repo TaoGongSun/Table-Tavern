@@ -48,6 +48,7 @@ export const en: Record<MsgKey, string> = {
   usageHitRate: "Hit rate",
   usageHitObserved: "({observed}/{rounds} rounds measurable)",
   usageCacheBlind: "A dash means this connection reports no cache data at all — not that nothing was cached. The hit rate covers only the rounds that could be measured.",
+  usageLatestBlind: "this connection reports no cache data",
   usageOutput: "Output",
   usageCost: "Cost",
   usageTotal: "Total",

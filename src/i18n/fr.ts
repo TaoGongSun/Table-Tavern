@@ -43,6 +43,7 @@ export const fr: Record<MsgKey, string> = {
   usageHitRate: "Taux de réussite",
   usageHitObserved: "({observed}/{rounds} tours mesurables)",
   usageCacheBlind: "Un tiret signifie que cette connexion ne renvoie aucune donnée de cache — pas qu'il n'y a eu aucun succès. Le taux ne compte que les tours mesurables.",
+  usageLatestBlind: "cette connexion ne renvoie aucune donnée de cache",
   usageOutput: "Sortie",
   usageCost: "Coût",
   usageTotal: "Total",

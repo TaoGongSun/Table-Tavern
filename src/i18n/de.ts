@@ -43,6 +43,7 @@ export const de: Record<MsgKey, string> = {
   usageHitRate: "Trefferquote",
   usageHitObserved: "({observed}/{rounds} Runden messbar)",
   usageCacheBlind: "Ein Strich bedeutet, dass diese Verbindung überhaupt keine Cache-Daten meldet — nicht, dass nichts getroffen wurde. Die Trefferquote zählt nur die messbaren Runden.",
+  usageLatestBlind: "Diese Verbindung meldet keine Cache-Daten",
   usageOutput: "Ausgabe",
   usageCost: "Kosten",
   usageTotal: "Gesamt",

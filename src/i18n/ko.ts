@@ -43,6 +43,7 @@ export const ko: Record<MsgKey, string> = {
   usageHitRate: "적중률",
   usageHitObserved: "({observed}/{rounds}턴 측정 가능)",
   usageCacheBlind: "「—」는 이 연결이 캐시 정보를 전혀 보고하지 않는다는 뜻이며, 적중하지 않았다는 뜻이 아닙니다. 적중률은 측정된 턴만으로 계산합니다.",
+  usageLatestBlind: "이 연결은 캐시 정보를 보고하지 않습니다",
   usageOutput: "출력",
   usageCost: "비용",
   usageTotal: "합계",

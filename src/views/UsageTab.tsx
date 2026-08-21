@@ -28,7 +28,7 @@ type UsageReport = {
   total: UsageRow;
   ping: UsageRow;
   diags: { diag: string; rounds: number }[];
-  latest: { ts: string; diag: string; reason: string | null } | null;
+  latest: { ts: string; diag: string; reason: string | null; reported: boolean } | null;
 };
 
 // 診斷標籤字典（後端 usage_log.rs 模組頂註解那張表）：短名給統計、長句給最近一輪。
@@ -119,6 +119,9 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
   const reasonKey = latest?.reason ? REASON_KEYS[latest.reason as keyof typeof REASON_KEYS] : undefined;
   // 非綠燈＝值得在收合狀態就看到；正常與單發留在細項裡就好
   const alert = entry && latest && entry[2] !== "good" && entry[2] !== "idle";
+  // 「單發」講的是呼叫用途，跟快取看不看得見是兩件事——量不到就得另外說一句，
+  // 否則玩家只會看到「單發」，以為那就是命中率空白的理由
+  const blindNote = latest && !latest.reported ? ` — ${t("usageLatestBlind")}` : "";
   const bodyRows = [...report.rows];
   if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
   // 第一眼只講省下多少（總用量與花費留在細項）。保溫也是真的花掉的錢，一併算進來
@@ -135,9 +138,11 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
         : (report.total.saved_usd ?? 0) + (report.ping.saved_usd ?? 0),
     saved_partial: report.total.saved_partial || report.ping.saved_partial,
   };
+  // null＝一輪都量不到。此時不可畫進度條：0% 的條會被讀成「全額付費、一點都沒省」，
+  // 而真相是「不知道」（Sol 驗收 2026-08-21）
   const hit =
     totals.observed_prompt_tokens === 0
-      ? 0
+      ? null
       : (totals.cached_tokens * 100) / totals.observed_prompt_tokens;
   const savedPct =
     totals.priced_tokens === 0 ? 0 : Math.max(0, (totals.saved_tokens * 100) / totals.priced_tokens);
@@ -177,18 +182,22 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
               )}
             </p>
           )}
-          <div
-            className="usage-bar"
-            role="img"
-            aria-label={`${t("usageBarHit")} ${hit.toFixed(0)}%`}
-          >
-            <span className="usage-bar-hit" style={{ width: `${hit}%` }} title={t("usageBarHit")}>
-              {hit >= 18 && `${t("usageBarHit")} ${hit.toFixed(0)}%`}
-            </span>
-            <span className="usage-bar-full" style={{ width: `${100 - hit}%` }} title={t("usageBarFull")}>
-              {hit <= 82 && `${t("usageBarFull")} ${(100 - hit).toFixed(0)}%`}
-            </span>
-          </div>
+          {hit === null ? (
+            <p className="usage-note">{t("usageCacheBlind")}</p>
+          ) : (
+            <div
+              className="usage-bar"
+              role="img"
+              aria-label={`${t("usageBarHit")} ${hit.toFixed(0)}%`}
+            >
+              <span className="usage-bar-hit" style={{ width: `${hit}%` }} title={t("usageBarHit")}>
+                {hit >= 18 && `${t("usageBarHit")} ${hit.toFixed(0)}%`}
+              </span>
+              <span className="usage-bar-full" style={{ width: `${100 - hit}%` }} title={t("usageBarFull")}>
+                {hit <= 82 && `${t("usageBarFull")} ${(100 - hit).toFixed(0)}%`}
+              </span>
+            </div>
+          )}
         </>
       )}
 
@@ -200,6 +209,7 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
           {" — "}
           {t(entry[1])}
           {reasonKey && `（${t(reasonKey)}）`}
+          {blindNote}
         </p>
       )}
 
@@ -214,6 +224,7 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
             {" — "}
             {t(entry[1])}
             {reasonKey && `（${t(reasonKey)}）`}
+            {blindNote}
             <span className="usage-latest-ts">{latest.ts}</span>
           </p>
         )}
