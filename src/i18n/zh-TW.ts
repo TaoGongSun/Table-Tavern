@@ -153,6 +153,9 @@ export const zh = {
   cliPermissionAck: "知道了",
   riskRequired: "啟用 CLI 訂閱模式前，請先勾選風險告知確認",
   apiKeyLabel: "OpenRouter API key",
+  apiKeyPlaceholder: "貼上在 OpenRouter 建立的完整金鑰",
+  apiKeyLooksPasted: "這串看起來是從文件複製到的指令或範例，不是金鑰本身。到 OpenRouter 的 Keys 頁按「Create API Key」產生，只複製產生出來的那一長串。",
+  apiKeyNotOpenRouter: "OpenRouter 的金鑰以 sk-or- 開頭，這串看起來不像。如果你接的是別家端點，請一併填下面的「自訂 base URL」。",
   imageModelLabel: "生圖模型（OpenRouter，留空用預設）",
   claudeCompatSummary: "進階：Anthropic 相容端點（第三方）",
   claudeCompatBaseUrlLabel: "自訂 API 端點（留空用官方）",
@@ -514,7 +517,9 @@ export const zh = {
 
   // AI 失敗訊息分流（對話與生圖共用；認不出來就不顯示這兩句，原文照舊附在小字）
   errQuota: "這個 AI 來源的額度用完了。換一個 AI 來源，或等額度重置再試。",
-  errAuth: "這個 AI 來源還沒登入，或憑證已過期。到設定重新連線後再試。",
+  errAuth: "登入或憑證有問題。到設定檢查這個 AI 來源的連線。",
+  errAuthApi: "API 金鑰可能貼錯、已失效，或這個 base URL 不接受它。到設定檢查金鑰與 base URL 兩欄。",
+  errAuthCli: "這個 CLI 還沒登入，或登入已失效。到設定按「重新驗證」。",
   errEmptyReply: "AI 這次沒有回出內容，故事沒有被寫進任何東西。再試一次；一直這樣就換個模型或 AI 來源。",
   errIncompleteReply: "AI 這次的回覆沒寫完就中斷了，故事沒有被寫進任何東西。再試一次；一直這樣就換個模型或 AI 來源。",
   errFiltered: "這個 AI 來源擋下了這次回覆。換個說法，或改用其他模型。",

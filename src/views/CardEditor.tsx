@@ -709,7 +709,7 @@ export function CardEditor({
               </p>
             )}
             {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
-            {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
+            {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
             {galleryFiles.length > 0 && (
               <section aria-label={t("aiGalleryTitle")}>
                 <h3>{t("aiGalleryTitle")}</h3>

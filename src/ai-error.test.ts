@@ -25,4 +25,16 @@ describe("explainAiError", () => {
     expect(explainAiError("REFUSED")).toBe("errRefused");
     expect(explainAiError("401 unauthorized")).toBe("errAuth");
   });
+
+  it("認證失敗依傳輸指路：API 換金鑰、CLI 重新登入、認不出來就別亂指", () => {
+    const raw = "API 回應 401 Unauthorized";
+    expect(explainAiError(raw, "api")).toBe("errAuthApi");
+    for (const cli of ["claude", "codex", "agy", "grok"]) {
+      expect(explainAiError(raw, cli), cli).toBe("errAuthCli");
+    }
+    // 設定還沒載入、或來源是沒見過的值：走中性文案，不可硬猜成 CLI
+    expect(explainAiError(raw, undefined)).toBe("errAuth");
+    expect(explainAiError(raw, "")).toBe("errAuth");
+    expect(explainAiError(raw, "something-else")).toBe("errAuth");
+  });
 });

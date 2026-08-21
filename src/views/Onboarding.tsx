@@ -4,12 +4,14 @@ import { FormEvent, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
+import { checkApiKey } from "../api-key-check";
 import { AppConfig } from "../backend-contracts";
 
 export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
   const transport = config.preferences["transport"] ?? "api";
+  const keyWarning = checkApiKey(apiKey, String(config.preferences["base_url"] ?? ""));
 
   if (transport !== "api" || (config.api_keys["openrouter"] ?? "").trim()) return null;
 
@@ -58,10 +60,15 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
             aria-label={t("apiKeyLabel")}
             value={apiKey}
             onChange={(event) => setApiKey(event.currentTarget.value)}
-            placeholder="sk-or-..."
+            placeholder={t("apiKeyPlaceholder")}
           />
           <button type="submit">{t("onboardSaveBtn")}</button>
         </div>
+        {keyWarning && (
+          <span className="field-warn" role="alert">
+            {t(keyWarning)}
+          </span>
+        )}
         {message && <span role="alert">{message}</span>}
         <small>{t("onboardCliHint")}</small>
       </form>

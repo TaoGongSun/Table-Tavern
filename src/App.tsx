@@ -54,6 +54,11 @@ const GM_COLOR = "#8a6a3c";
 const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
 const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;
 
+// 認證失敗的下一步依傳輸而異：API 是換金鑰、CLI 是重新登入。
+// 設定還沒載入就回 undefined——猜錯會把人指去錯的地方，中性文案還比較誠實。
+const transportOf = (config: AppConfig | null) =>
+  config ? String(config.preferences["transport"] ?? "api") : undefined;
+
 function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
   // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
@@ -847,7 +852,11 @@ function App() {
   }
 
   if (!config || !table) {
-    return <main className="container">{error && <ErrorNote text={error} />}</main>;
+    return (
+      <main className="container">
+        {error && <ErrorNote text={error} transport={transportOf(config)} />}
+      </main>
+    );
   }
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
@@ -1027,7 +1036,7 @@ function App() {
             />
           }
         />
-        {error && <ErrorNote text={error} />}
+        {error && <ErrorNote text={error} transport={transportOf(config)} />}
       </main>
 
       {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄；且只在遊玩畫面出現——
