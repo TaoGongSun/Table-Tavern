@@ -2390,6 +2390,30 @@ mod tests {
         assert_eq!(build(&triggered, &TableState::default()), baseline);
         assert_eq!(build(&quiet, &later), baseline);
         assert_eq!(build(&triggered, &later), baseline);
+
+        // 但資料不能因此消失：keyword 與狀態要確實送到尾端，
+        // 否則「system 穩定」只是因為整包被丟掉，這條測試會白白放行
+        let tail = |events: &[TranscriptEvent], state: &TableState| {
+            assemble_shared_messages(
+                &solo,
+                &cards,
+                None,
+                events,
+                &worldbook,
+                state,
+                &Mechanism::default(),
+                Some(&["獨角".to_owned()]),
+                "zh-TW",
+            )
+            .last()
+            .unwrap()
+            .content
+            .clone()
+        };
+        assert!(tail(&triggered, &TableState::default()).contains("密室內容"));
+        assert!(!tail(&quiet, &TableState::default()).contains("密室內容"));
+        assert!(tail(&quiet, &later).contains("體力：3"));
+        assert!(!tail(&quiet, &TableState::default()).contains("體力"));
     }
 
     /// 兩位角色各自帶不同的 branch 與角色限定條目時，共用前綴仍要逐字相同，
@@ -2423,6 +2447,30 @@ mod tests {
             event(TranscriptKind::Player, "p", "玩家", "有人提到密令。"),
             event(TranscriptKind::Dialogue, "gal", "加爾", "加爾皺眉。"),
         ];
+        // 兩人各有一條真的狀態分支，branch 才會真的產出內容（只傳不同名字而 state 是空的，
+        // character_state_block 會回 None，等於這條測試沒驗到 branch）
+        let state = TableState {
+            tree: std::collections::BTreeMap::from([(
+                "Heroes".to_owned(),
+                StateNode::Branch(std::collections::BTreeMap::from([
+                    (
+                        "加爾".to_owned(),
+                        StateNode::Branch(std::collections::BTreeMap::from([(
+                            "體力".to_owned(),
+                            StateNode::Leaf("加爾八成".to_owned()),
+                        )])),
+                    ),
+                    (
+                        "雷恩".to_owned(),
+                        StateNode::Branch(std::collections::BTreeMap::from([(
+                            "體力".to_owned(),
+                            StateNode::Leaf("雷恩五成".to_owned()),
+                        )])),
+                    ),
+                ])),
+            )]),
+            ..TableState::default()
+        };
         let build = |card: &CharacterCard, branch: &[String]| {
             assemble_shared_messages(
                 card,
@@ -2430,14 +2478,14 @@ mod tests {
                 None,
                 &events,
                 &worldbook,
-                &TableState::default(),
+                &state,
                 &Mechanism::default(),
                 Some(branch),
                 "zh-TW",
             )
         };
-        let for_gal = build(&gal, &["加爾體力".to_owned()]);
-        let for_ray = build(&ray, &["雷恩體力".to_owned()]);
+        let for_gal = build(&gal, &["Heroes".to_owned(), "加爾".to_owned()]);
+        let for_ray = build(&ray, &["Heroes".to_owned(), "雷恩".to_owned()]);
         assert_eq!(for_gal.len(), for_ray.len());
         for (index, (left, right)) in for_gal
             .iter()
@@ -2458,6 +2506,12 @@ mod tests {
         assert!(!for_gal.last().unwrap().content.contains("雷恩的密令內容"));
         assert!(for_ray.last().unwrap().content.contains("雷恩的密令內容"));
         assert!(!for_ray.last().unwrap().content.contains("加爾的舊傷內容"));
+        // 狀態同理：各自只看得到自己那條分支，共用前綴一律碰不到
+        assert!(for_gal.last().unwrap().content.contains("加爾八成"));
+        assert!(!for_gal.last().unwrap().content.contains("雷恩五成"));
+        assert!(for_ray.last().unwrap().content.contains("雷恩五成"));
+        assert!(!for_ray.last().unwrap().content.contains("加爾八成"));
+        assert!(!gal_prefix.contains("加爾八成"));
     }
 
     /// api-shared-lane 包 B 的核心保證：換角色只動最後一則，前面每一則逐字不變。
