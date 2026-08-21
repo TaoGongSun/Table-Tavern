@@ -120,8 +120,13 @@ export function useChatController({
   const keepaliveOff = useRef(false);
   const [awayTooLong, setAwayTooLong] = useState(false);
 
-  // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）
-  const canRestore = undone !== null && undone.worldId === worldId && undone.scene === scene;
+  // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）。
+  // 疊裡全是空白事件（AI 失敗年代留下的那幾則）就不給亮——按了也沒東西回得來
+  const canRestore =
+    undone !== null &&
+    undone.worldId === worldId &&
+    undone.scene === scene &&
+    undone.events.some((event) => event.text.trim());
 
   const hydrate = useCallback((transcript: TranscriptEvent[]) => {
     setEvents(transcript);
@@ -185,18 +190,22 @@ export function useChatController({
   }, [generating, events, worldId, scene, refreshState, onError]);
 
   // 復原一次放回一則，可連按把整輪收回逐則倒回去。
-  // 這裡不走 appendEvent——放回舊句不該把剩下那幾句一起作廢，只消耗疊頂那一則
+  // 這裡不走 appendEvent——放回舊句不該把剩下那幾句一起作廢，只消耗疊頂那一則。
+  // 疊頂若是空白事件就連同丟棄、往下找第一則有內容的放回：空白回合本來就不該存在，
+  // 放回去只會讓玩家覺得按鈕壞了（stream-failure-visible）
   const restoreUndone = useCallback(async () => {
     if (!undone || !canRestore || generating !== null || undoBusy.current) return;
     undoBusy.current = true;
-    const event = undone.events[undone.events.length - 1];
+    let index = undone.events.length - 1;
+    while (index >= 0 && !undone.events[index].text.trim()) index -= 1;
+    const event = undone.events[index];
     onError("");
     try {
       await invoke("append_transcript", { worldId, scene, event });
       setEvents((previous) => [...previous, event]);
       setUndone((previous) =>
-        previous && previous.events.length > 1
-          ? { ...previous, events: previous.events.slice(0, -1) }
+        previous && index > 0
+          ? { ...previous, events: previous.events.slice(0, index) }
           : null,
       );
       await refreshState();
