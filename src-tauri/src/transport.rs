@@ -152,8 +152,9 @@ pub fn active_worldbook_entries<'a>(
 /// role 序列只跟事件種類有關、與角色無關，`push_merged` 的分組因此也與角色無關；
 /// CLI 三條攤平後的 `(system, prompt)` 連帶逐字相同（見 `cli::flatten_messages`）。
 ///
-/// 單角色桌（`cards` 只有一張）把私設提回 system：只有一個角色不會洩漏，而 system 的
-/// 指令權重高於尾端 user。這是唯一的分支，不另立第二條組裝路徑。
+/// 單角色桌（`cards` 只有一張）把**私設**提回 system：只有一個角色不會洩漏，而 system 的
+/// 指令權重高於尾端 user。這是唯一的分支，不另立第二條組裝路徑。提上去的只有 `private_md`
+/// 這段穩定內容——限定世界書的 keyword 條目與狀態每輪翻動，進 system 會把前綴打散。
 ///
 /// API 無狀態，上一輪注入的私設不會出現在下一輪的 messages 裡，
 /// 不需要 claude lane 那套「回合後從 session 檔抹掉」。
@@ -171,16 +172,21 @@ pub fn assemble_shared_messages(
 ) -> Vec<ChatMessage> {
     let mut system = chars_lane_system(cards, player, worldbook, lang);
     let turn = chars_lane_turn(
-        card, player, events, worldbook, state, mechanism, branch, lang,
+        card,
+        player,
+        events,
+        worldbook,
+        state,
+        mechanism,
+        branch,
+        lang,
+        cards.len() <= 1,
     );
-    let mut tail = turn.tail;
-    if cards.len() <= 1 {
-        if let Some(confidential) = &turn.confidential {
-            tail = tail.replace(confidential.as_str(), "");
-            system.push('\n');
-            system.push_str(confidential);
-        }
+    if let Some(private) = &turn.hoisted_private {
+        system.push('\n');
+        system.push_str(private);
     }
+    let tail = turn.tail;
 
     let mut messages = vec![message("system", system)];
     for event in events {
@@ -969,6 +975,10 @@ fn collect_snapshot_updates(
 pub struct LaneTurn {
     pub tail: String,
     pub confidential: Option<String>,
+    /// `hoist_private` 為真時，本輪角色的私設改由這裡回傳、不進 tail——單角色桌把它放進
+    /// system 用。**只有 `private_md`**：限定世界書的 keyword 條目隨最近事件翻動、
+    /// 狀態每輪變，那兩樣進了 system 會把前綴打散，正好毀掉共線要修的東西。
+    pub hoisted_private: Option<String>,
 }
 
 /// System 事件的顯示文字：`redact_gm_only` 為真且該事件 `gm_only` 時只留第一行（前綴＋標題），
@@ -1079,6 +1089,7 @@ pub fn chars_lane_turn(
     mechanism: &Mechanism,
     branch: Option<&[String]>,
     lang: &str,
+    hoist_private: bool,
 ) -> LaneTurn {
     let user_name = player
         .map(|player| player.name.as_str())
@@ -1115,12 +1126,17 @@ pub fn chars_lane_turn(
         tail.push('\n');
     }
     let mut confidential = String::new();
+    let mut hoisted_private = None;
     if !card.private_md.trim().is_empty() {
-        confidential.push_str(&format!(
+        let block = format!(
             "## 「{}」的私有設定（只有他自己知道；除非劇情走到，不要主動說破）\n{}\n",
             card.name,
             replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
-        ));
+        );
+        match hoist_private {
+            true => hoisted_private = Some(block),
+            false => confidential.push_str(&block),
+        }
     }
     if !limited.is_empty() {
         confidential.push_str(&format!("## 只有「{}」知道的世界情報\n", card.name));
@@ -1151,6 +1167,7 @@ pub fn chars_lane_turn(
     LaneTurn {
         tail,
         confidential: (!confidential.is_empty()).then_some(confidential),
+        hoisted_private,
     }
 }
 
@@ -1206,6 +1223,7 @@ pub fn gm_lane_turn(
     LaneTurn {
         tail,
         confidential: None,
+        hoisted_private: None, // GM 線沒有「本輪角色的私設」這個概念
     }
 }
 
@@ -2321,6 +2339,127 @@ mod tests {
         assert!(!messages.last().unwrap().content.contains("私有設定"));
     }
 
+    /// (a) 的回歸測試：單角色桌提進 system 的只能是**穩定**的私設。限定世界書的 keyword
+    /// 條目隨最近事件翻動、狀態每輪變，那兩樣若跟著上去，system 每輪都不同，
+    /// 前綴照樣被打散——等於在主流玩法（一桌一張）上親手製造共線要修的那個病。
+    #[test]
+    fn shared_lane_single_character_system_survives_state_and_keyword_churn() {
+        let solo = card("solo", "獨角", "獨角公開", "獨角私設");
+        let cards = vec![solo.clone()];
+        let worldbook = vec![worldbook_entry(
+            1,
+            "密室",
+            &["密室"],
+            false, // keyword：靠最近事件觸發，回合之間會進出
+            0,
+            false,
+            Visibility::Characters(vec!["solo".to_owned()]),
+        )];
+        let build = |events: &[TranscriptEvent], state: &TableState| {
+            assemble_shared_messages(
+                &solo,
+                &cards,
+                None,
+                events,
+                &worldbook,
+                state,
+                &Mechanism::default(),
+                Some(&["獨角".to_owned()]),
+                "zh-TW",
+            )[0]
+                .content
+                .clone()
+        };
+        let quiet = [event(TranscriptKind::Player, "p", "玩家", "我走在路上。")];
+        let triggered = [event(TranscriptKind::Player, "p", "玩家", "我走進密室。")];
+        let later = TableState {
+            tree: std::collections::BTreeMap::from([(
+                "獨角".to_owned(),
+                StateNode::Branch(std::collections::BTreeMap::from([(
+                    "體力".to_owned(),
+                    StateNode::Leaf("3".to_owned()),
+                )])),
+            )]),
+            ..TableState::default()
+        };
+
+        let baseline = build(&quiet, &TableState::default());
+        assert!(baseline.contains("獨角私設")); // 穩定私設要在 system
+        assert!(!baseline.contains("密室內容")); // keyword 條目不准上去
+        // keyword 被觸發、狀態變動，system 都必須一字不差
+        assert_eq!(build(&triggered, &TableState::default()), baseline);
+        assert_eq!(build(&quiet, &later), baseline);
+        assert_eq!(build(&triggered, &later), baseline);
+    }
+
+    /// 兩位角色各自帶不同的 branch 與角色限定條目時，共用前綴仍要逐字相同，
+    /// 且誰也看不到對方的限定情報。
+    #[test]
+    fn shared_lane_prefix_holds_with_per_character_branches_and_limited_entries() {
+        let gal = card("gal", "加爾", "加爾公開", "加爾私設");
+        let ray = card("ray", "雷恩", "雷恩公開", "雷恩私設");
+        let cards = vec![gal.clone(), ray.clone()];
+        let worldbook = vec![
+            worldbook_entry(
+                1,
+                "加爾的舊傷",
+                &[],
+                true, // constant，但限定可見：仍走回合注入，不進共用前綴
+                0,
+                false,
+                Visibility::Characters(vec!["gal".to_owned()]),
+            ),
+            worldbook_entry(
+                2,
+                "雷恩的密令",
+                &["密令"],
+                false,
+                1,
+                false,
+                Visibility::Characters(vec!["ray".to_owned()]),
+            ),
+        ];
+        let events = [
+            event(TranscriptKind::Player, "p", "玩家", "有人提到密令。"),
+            event(TranscriptKind::Dialogue, "gal", "加爾", "加爾皺眉。"),
+        ];
+        let build = |card: &CharacterCard, branch: &[String]| {
+            assemble_shared_messages(
+                card,
+                &cards,
+                None,
+                &events,
+                &worldbook,
+                &TableState::default(),
+                &Mechanism::default(),
+                Some(branch),
+                "zh-TW",
+            )
+        };
+        let for_gal = build(&gal, &["加爾體力".to_owned()]);
+        let for_ray = build(&ray, &["雷恩體力".to_owned()]);
+        assert_eq!(for_gal.len(), for_ray.len());
+        for (index, (left, right)) in for_gal
+            .iter()
+            .zip(for_ray.iter())
+            .take(for_gal.len() - 1)
+            .enumerate()
+        {
+            assert_eq!(left.role, right.role);
+            assert_eq!(left.content, right.content, "第 {index} 則不該隨角色改變");
+        }
+        // 限定條目只出現在本人的尾端，共用前綴與對方都碰不到
+        let gal_prefix: String = for_gal[..for_gal.len() - 1]
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect();
+        assert!(!gal_prefix.contains("加爾的舊傷內容"));
+        assert!(for_gal.last().unwrap().content.contains("加爾的舊傷內容"));
+        assert!(!for_gal.last().unwrap().content.contains("雷恩的密令內容"));
+        assert!(for_ray.last().unwrap().content.contains("雷恩的密令內容"));
+        assert!(!for_ray.last().unwrap().content.contains("加爾的舊傷內容"));
+    }
+
     /// api-shared-lane 包 B 的核心保證：換角色只動最後一則，前面每一則逐字不變。
     /// 這條一破，前綴快取就從分岔點整段失效——那正是共線要修的病。
     #[test]
@@ -2740,14 +2879,19 @@ mod tests {
             "zh-TW",
         );
         let fox_system = &fox_messages[0].content;
+        let fox_tail = &fox_messages.last().unwrap().content;
+        // 公開 constant 進共用前綴；角色限定的走回合注入，留在尾端
         assert!(fox_system.contains("\n## 你知道的世界情報\n"));
         assert!(fox_system.contains("### 公開情報\n公開情報內容\n"));
-        assert!(fox_system.contains("### 狐狸情報\n狐狸情報內容\n"));
+        assert!(!fox_system.contains("狐狸情報"));
+        assert!(fox_tail.contains("### 狐狸情報\n狐狸情報內容\n"));
         assert!(!fox_system.contains("GM 祕密"));
+        assert!(!fox_tail.contains("GM 祕密"));
         assert!(!fox_system.contains("騎士情報"));
+        assert!(!fox_tail.contains("騎士情報"));
 
         let knight = card("knight-id", "騎士", "公開", "私有");
-        let knight_system = &assemble_shared_messages(
+        let knight_messages = assemble_shared_messages(
             &knight,
             std::slice::from_ref(&knight),
             None,
@@ -2757,11 +2901,14 @@ mod tests {
             &Mechanism::default(),
             None,
             "zh-TW",
-        )[0]
-        .content;
+        );
+        let knight_system = &knight_messages[0].content;
+        let knight_tail = &knight_messages.last().unwrap().content;
         assert!(knight_system.contains("公開情報"));
-        assert!(knight_system.contains("騎士情報"));
+        assert!(!knight_system.contains("騎士情報"));
+        assert!(knight_tail.contains("騎士情報"));
         assert!(!knight_system.contains("狐狸情報"));
+        assert!(!knight_tail.contains("狐狸情報"));
 
         let gm_system = &assemble_gm_messages(
             "世界總覽",
@@ -4466,6 +4613,7 @@ mod tests {
             &Mechanism::default(),
             None,
             "zh-TW",
+                    false,
         );
         let confidential = turn.confidential.expect("私設＋限定條目必須進機密段");
         assert!(confidential.contains("通緝犯"));
@@ -4489,6 +4637,7 @@ mod tests {
             &Mechanism::default(),
             None,
             "zh-TW",
+                    false,
         );
         assert!(plain.confidential.is_none());
         assert!(plain.tail.contains("現在你是「騎士」"));

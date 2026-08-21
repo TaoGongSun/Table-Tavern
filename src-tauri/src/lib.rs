@@ -1727,6 +1727,12 @@ async fn stream_via_transport(
         .into_iter()
         .find(|info| info.id == transport_kind)
         .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
+    if transport_kind == "agy" && !cli::agy_supports_stream_json(&info.version) {
+        return Err(format!(
+            "Gemini CLI {} 太舊：本 app 需要 1.1.8 以上（要用 --output-format stream-json 才拿得到用量）。請執行 `agy update` 後重新驗證。",
+            info.version
+        ));
+    }
     let cli_working_dir = cli_workspace(app)?;
 
     let (system, prompt) = cli::flatten_messages(assistant_label, cli_closing, messages);
@@ -2288,6 +2294,7 @@ async fn chat_with_character(
             &state.mechanism,
             branch.as_deref(),
             &lang,
+            false, // claude lane 的私設走回合注入＋回合後抹除，不提進凍結 system
         );
         let call = prepare_claude_call(&app, &config, card.tier).await?;
         return lanes::run_turn(
