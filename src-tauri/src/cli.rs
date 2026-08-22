@@ -534,6 +534,23 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
 /// 1.1／1.0 是為了鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
 pub const GROK_SAMPLING_OVERLAY: &str = r#"{"models":{"temperature":1.1,"top_p":1.0}}"#;
 
+/// 聊天單發要移除的內建工具全集（grok 1.0.5）。`--deny *` 只擋執行，工具 schema 照樣佔
+/// context——實測同一段開場 12604 → 3602 input tokens，CLI 內部 log 的 `tool_count` 由 24 歸 0。
+///
+/// 名稱有兩套：串流事件 `available_commands` 報的是顯示名（`run_terminal_command`），
+/// 但過濾旗標認的是 README 的工具 ID（`run_terminal_cmd`）——只寫顯示名會靜默無效（實測
+/// 那次 shell 沒被移除、tool_count 停在 1），所以 shell 兩個名字都列。
+/// `--tools` 那條 allowlist 走不通：空字串等同沒設，只列一個工具也只會把清單換成
+/// `search_tool`／`use_tool`（tool_count 2），並沒有如文件所說停用預設注入。
+///
+/// CLI 升版新增工具時這裡要補：漏網的工具會重新出現在 toolset，模型可能挑它去用，
+/// 被 `--deny *` 擋下後那一輪就沒了（`--max-turns 1`），玩家看到的是一次空回應。
+const GROK_CHAT_DISALLOWED_TOOLS: &str = "run_terminal_cmd,run_terminal_command,read_file,\
+search_replace,list_dir,grep,kill_command_or_subagent,todo_write,\
+get_command_or_subagent_output,spawn_subagent,scheduler_create,scheduler_delete,scheduler_list,\
+monitor,search_tool,use_tool,workflow,enter_plan_mode,exit_plan_mode,ask_user_question,image_gen,\
+image_edit,image_to_video,reference_to_video,write,Agent";
+
 /// 聊天單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
 /// allow_tools：生圖呼叫要用 grok 原生 image_gen 工具，--deny * 換成 --always-approve。
 pub fn grok_args(
@@ -555,6 +572,10 @@ pub fn grok_args(
         ["--disable-web-search", "--no-plan", "--no-subagents"].map(str::to_owned),
     );
     if !allow_tools {
+        // 工具定義整包拆掉（--deny 只擋執行不擋注入）。生圖那條當然不能設：它要用 image_gen。
+        // 實測這條讓 CLI 的 tool_count 歸 0、input 從 12604 掉到 3602。
+        args.push("--disallowed-tools".to_owned());
+        args.push(GROK_CHAT_DISALLOWED_TOOLS.to_owned());
         // 旁白是無工具單發，封死模型自己多跑幾輪的出血口（hook 擋停那次就是這樣燒額度）。
         // 生圖不能設：那條要「呼叫 image_gen → 工具回傳 → 再回一句路徑」，砍到一輪會斷在中間。
         args.push("--max-turns".to_owned());
@@ -1507,9 +1528,14 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--reasoning-effort", "low"]));
+        // 工具定義只在聊天那條拆：清單裡含 image_gen，生圖若跟著設就沒圖可生
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--disallowed-tools" && pair[1].contains("image_gen")));
         // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步；
         // 推理等級也維持原樣，免得把叫工具那步壓掉
         let image_args = grok_args(Some("grok-4.5"), system, prompt, true);
+        assert!(!image_args.contains(&"--disallowed-tools".to_owned()));
         assert!(!image_args.contains(&"--max-turns".to_owned()));
         assert!(!image_args.contains(&"--reasoning-effort".to_owned()));
         // 生圖保留 grok 原生 agent system prompt（工具調度靠它），system 照舊併進 prompt
@@ -1526,6 +1552,18 @@ mod tests {
         assert_eq!(args[args.len() - 2..], ["-p", prompt]);
         let default_args = grok_args(None, system, prompt, false);
         assert_eq!(default_args[default_args.len() - 2..], ["-p", prompt]);
+        // 清單是逗號串，不能混進換行或空白（續行寫壞的話 CLI 會把整包當一個工具名）
+        let list = args
+            .windows(2)
+            .find(|pair| pair[0] == "--disallowed-tools")
+            .map(|pair| pair[1].clone())
+            .expect("聊天單發要帶 --disallowed-tools");
+        assert!(!list.contains(char::is_whitespace));
+        assert_eq!(list.split(',').count(), 26);
+        // shell 的顯示名與過濾 ID 不同名，只寫顯示名會靜默無效——兩個都要在
+        assert!(list.contains("run_terminal_cmd,"));
+        assert!(list.contains("run_terminal_command,"));
+        assert!(list.ends_with(",Agent"));
         // system 是空的（訊息串空）就不帶旗標，也不要在 prompt 前面留兩個空行
         let empty = grok_args(None, "", prompt, false);
         assert!(!empty.contains(&"--system-prompt-override".to_owned()));
