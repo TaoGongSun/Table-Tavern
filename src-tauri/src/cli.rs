@@ -1,7 +1,7 @@
 //! CLI 傳輸層（訂閱模式，NewPlan §3.2／§4.2）。
 //! 原則：只偵測不代辦；CLI 是無狀態傳輸——上下文一律由 transport::assemble_messages
 //! 組裝、headless 單發、system prompt 覆寫，不依賴 CLI 自身 session（§8.1）。
-//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.17、grok 0.2.111。
+//! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.17、grok 1.0.5。
 
 use crate::data::{DataResult, Tier};
 use crate::transport::{ChatMessage, PromptCacheUsage};
@@ -531,13 +531,17 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
 /// 取樣參數：grok 1.0.5 沒有 temperature／top_p 旗標，只吃設定檔的 `[models]` 全域預設。
 /// `GROK_CONFIG` 是官方的 JSON 疊加層（deep merge 在 config.toml 之上，白名單含 `models`），
 /// 走環境變數就不必動 GROK_HOME 裡的 config.toml，也碰不到登入態。
-/// 1.2／1.0 是為了鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
-pub const GROK_SAMPLING_OVERLAY: &str = r#"{"models":{"temperature":1.2,"top_p":1.0}}"#;
+/// 1.1／1.0 是為了鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
+pub const GROK_SAMPLING_OVERLAY: &str = r#"{"models":{"temperature":1.1,"top_p":1.0}}"#;
 
-/// grok 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// 聊天單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
 /// allow_tools：生圖呼叫要用 grok 原生 image_gen 工具，--deny * 換成 --always-approve。
-pub fn grok_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<String> {
+pub fn grok_args(
+    model: Option<&str>,
+    system: &str,
+    prompt: &str,
+    allow_tools: bool,
+) -> Vec<String> {
     let mut args: Vec<String> = ["--output-format", "streaming-json"]
         .map(str::to_owned)
         .to_vec();
@@ -566,8 +570,20 @@ pub fn grok_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<St
         args.push("-m".to_owned());
         args.push(model.to_owned());
     }
+    // --system-prompt-override（grok 1.0.5）整包換掉 CLI 自己那份 coding agent system
+    // prompt，本桌的設定才真的坐在 system 層；grok 內建那份偏簡潔精煉，留著會壓縮小說場景。
+    // 生圖不換：那條要靠原生 agent prompt 把 image_gen 叫起來、收工具結果再回路徑，
+    // 拔掉整份 system 有機會斷掉工具調度，維持原本「system 併進 prompt」的走法。
+    let override_system = !allow_tools && !system.is_empty();
+    if override_system {
+        args.push("--system-prompt-override".to_owned());
+        args.push(system.to_owned());
+    }
     args.push("-p".to_owned());
-    args.push(prompt.to_owned());
+    args.push(match override_system || system.is_empty() {
+        true => prompt.to_owned(),
+        false => format!("{system}\n\n{prompt}"),
+    });
     args
 }
 
@@ -1476,8 +1492,9 @@ mod tests {
 
     #[test]
     fn grok_args_disable_every_tool_and_put_prompt_last() {
-        let prompt = "system\n\n整包 prompt（含空格）";
-        let args = grok_args(Some("grok-4.5"), prompt, false);
+        let system = "本桌 system（含空格）";
+        let prompt = "整包 prompt（含空格）";
+        let args = grok_args(Some("grok-4.5"), system, prompt, false);
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--output-format", "streaming-json"]));
@@ -1492,13 +1509,27 @@ mod tests {
             .any(|pair| pair == ["--reasoning-effort", "low"]));
         // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步；
         // 推理等級也維持原樣，免得把叫工具那步壓掉
-        let image_args = grok_args(Some("grok-4.5"), prompt, true);
+        let image_args = grok_args(Some("grok-4.5"), system, prompt, true);
         assert!(!image_args.contains(&"--max-turns".to_owned()));
         assert!(!image_args.contains(&"--reasoning-effort".to_owned()));
+        // 生圖保留 grok 原生 agent system prompt（工具調度靠它），system 照舊併進 prompt
+        assert!(!image_args.contains(&"--system-prompt-override".to_owned()));
+        assert_eq!(
+            image_args[image_args.len() - 2..],
+            ["-p".to_owned(), format!("{system}\n\n{prompt}")]
+        );
         assert!(args.windows(2).any(|pair| pair == ["-m", "grok-4.5"]));
+        // 文字通道：system 自己坐 system 層，-p 只剩真正的 user prompt
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--system-prompt-override", system]));
         assert_eq!(args[args.len() - 2..], ["-p", prompt]);
-        let default_args = grok_args(None, prompt, false);
+        let default_args = grok_args(None, system, prompt, false);
         assert_eq!(default_args[default_args.len() - 2..], ["-p", prompt]);
+        // system 是空的（訊息串空）就不帶旗標，也不要在 prompt 前面留兩個空行
+        let empty = grok_args(None, "", prompt, false);
+        assert!(!empty.contains(&"--system-prompt-override".to_owned()));
+        assert_eq!(empty[empty.len() - 2..], ["-p", prompt]);
     }
 
     #[test]
@@ -1515,7 +1546,7 @@ mod tests {
         // 取樣參數走 GROK_CONFIG 疊加層：只在 app 這幾次呼叫生效，不寫進任何 config.toml
         assert!(envs.contains(&(
             "GROK_CONFIG".to_owned(),
-            r#"{"models":{"temperature":1.2,"top_p":1.0}}"#.to_owned()
+            r#"{"models":{"temperature":1.1,"top_p":1.0}}"#.to_owned()
         )));
     }
 
