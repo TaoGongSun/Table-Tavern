@@ -1865,10 +1865,10 @@ async fn stream_turn_via_transport(
             .await
         }
         "grok" => {
-            // grok 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型
+            // system 走 --system-prompt-override 頂掉 grok 內建那份（生圖那條例外，見
+            // grok_args）；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "grok", tier);
-            let combined = format!("{system}\n\n{prompt}");
-            let args = cli::grok_args(model, &combined, allow_cli_tools);
+            let args = cli::grok_args(model, &system, &prompt, allow_cli_tools);
             let envs = cli_envs(app, "grok")?;
             cli::run_cli(
                 &program,
@@ -3466,10 +3466,10 @@ mod tests {
         let script = cli_install_script("grok", &messages(), &envs).unwrap();
         // 登入與探針都要掛上 env 前綴，否則會登在使用者的 ~/.grok、或探到終端機的登入態
         assert!(script.contains(
-            "env HOME='/app/cli-home' USERPROFILE='/app/cli-home' GROK_HOME='/app/grok-home' GROK_CONFIG='{\"models\":{\"temperature\":1.2,\"top_p\":1.0}}' grok login"
+            "env HOME='/app/cli-home' USERPROFILE='/app/cli-home' GROK_HOME='/app/grok-home' GROK_CONFIG='{\"models\":{\"temperature\":1.1,\"top_p\":1.0}}' grok login"
         ));
         assert!(script.contains(
-            "GROK_CONFIG='{\"models\":{\"temperature\":1.2,\"top_p\":1.0}}' grok models 2>/dev/null"
+            "GROK_CONFIG='{\"models\":{\"temperature\":1.1,\"top_p\":1.0}}' grok models 2>/dev/null"
         ));
         // 安裝那行不帶：安裝腳本要把 binary 裝進使用者真正的家目錄
         assert!(script.contains("  curl -fsSL https://x.ai/cli/install.sh | bash ||"));
