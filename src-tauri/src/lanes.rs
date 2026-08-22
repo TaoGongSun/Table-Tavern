@@ -1,7 +1,9 @@
-//! claude lane resume 續聊（prompt-cache-optimization 包 2）。
+//! CLI lane resume 續聊（claude 走 prompt-cache-optimization 包 2，grok 走 grok-cache-miss）。
 //! 每桌按「線種:實際模型」分線（2026-08-03 拍板）：chars:<model>（解析到同一個模型的角色
 //! 共用一條，快取按模型分池、跨模型本來就不共用）＋gm:<model>（GM 獨立——GM 的凍結 system
 //! 多了 world.md／私設／GM 條目，依可見性憲法不能和角色同線）。
+//! grok 的 chars 線再按角色細分（chars:<model>:<角色 id>）：grok 的 session 檔沒有可靠的
+//! 回合後抹寫路徑，私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色。
 //! 凍結 system 每輪逐字重帶、只送新事件與回合尾段，
 //! 快取命中率的天花板因此變成「只有最後一句沒中」（實驗 E6：99.7%）。
 //! 正典 transcript 與 session 歷史靠水位＋指紋＋回覆對點對齊；任何對不上、任何改寫或呼叫失敗，
@@ -24,15 +26,40 @@ pub(crate) enum Lane {
     Gm,
 }
 
-/// claude CLI 呼叫素材（風險告知、偵測、模型、env 都在 lib.rs 準備好）。
-pub(crate) struct ClaudeCall {
+/// 走 lane 續聊的 CLI（風險告知、偵測、模型、env 都在 lib.rs 準備好）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LaneProvider {
+    Claude,
+    Grok,
+}
+
+impl LaneProvider {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Grok => "grok",
+        }
+    }
+}
+
+/// CLI 呼叫素材（風險告知、偵測、模型、env 都在 lib.rs 準備好）。
+pub(crate) struct LaneCall {
+    pub provider: LaneProvider,
     pub program: PathBuf,
     pub working_dir: PathBuf,
     pub envs: Vec<(String, String)>,
-    pub model: String,
+    /// None＝不覆寫、用 CLI 自己的預設模型（只有 grok 會這樣）
+    pub model: Option<String>,
     pub usage_log: Option<PathBuf>,
-    /// session 檔所在的 claude 設定目錄（~/.claude 或 $CLAUDE_CONFIG_DIR）
+    /// session 檔所在的 claude 設定目錄（~/.claude 或 $CLAUDE_CONFIG_DIR）；grok 不用
     pub claude_home: PathBuf,
+}
+
+impl LaneCall {
+    /// 線名與用量 log 用的模型字樣；未覆寫時與單發路徑同字（"(CLI 預設)"）
+    fn model_label(&self) -> &str {
+        self.model.as_deref().unwrap_or("(CLI 預設)")
+    }
 }
 
 /// 回覆會以什麼形狀落回正典 transcript（下一輪靠它跳過 session 裡已有的自家回覆）。
@@ -56,18 +83,24 @@ pub(crate) struct TurnInput<'a> {
     /// 回合後補在最後一則 assistant 前的名字前綴（chars 線「X：」）
     pub prefix: Option<String>,
     pub echo: ReplyEcho,
+    /// 線名後綴：grok 的 chars 線帶角色 id（一角一線），其餘 None
+    pub scope: Option<String>,
 }
 
 /// 線名（key）→ 線狀態。key＝「線種:實際模型」，模型看解析後真正傳給 CLI 的字串，
 /// 不看檔位：高中檔都覆寫成 sonnet 就同一條 chars:sonnet。
 type LaneStore = std::collections::BTreeMap<String, LaneState>;
 
-fn lane_key(lane: Lane, model: &str) -> String {
+/// `scope`：同一線種要再細分時的後綴（grok 的 chars 線帶角色 id）。None＝不細分。
+fn lane_key(lane: Lane, model: &str, scope: Option<&str>) -> String {
     let kind = match lane {
         Lane::Chars => "chars",
         Lane::Gm => "gm",
     };
-    format!("{kind}:{model}")
+    match scope {
+        Some(scope) => format!("{kind}:{model}:{scope}"),
+        None => format!("{kind}:{model}"),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +125,13 @@ struct LaneState {
     /// 上次成功呼叫的總輸入＝下輪的理論可中量（診斷用；舊檔沒這欄位當 0，不觸發重開）
     #[serde(default)]
     last_prompt_tokens: u64,
+    /// 開這條線的 CLI（"claude"／"grok"）。換 CLI 就整線重開——session id 認的是自己那套。
+    /// grok lane 之前只有 claude 會開線，舊檔缺這欄位一律當 claude，不必白白重建一次快取。
+    #[serde(default = "legacy_provider")]
+    provider: String,
+    /// 開這條線用的模型。線名會被 scope 撐開，模型不能再從線名回推
+    #[serde(default)]
+    model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,6 +229,8 @@ enum ReopenReason {
     HistoryEdited,
     ReplyDiverged,
     ResumeFailed,
+    ProviderChanged,
+    SystemChanged,
 }
 
 impl ReopenReason {
@@ -201,19 +243,38 @@ impl ReopenReason {
             Self::HistoryEdited => "history-edited",
             Self::ReplyDiverged => "reply-diverged",
             Self::ResumeFailed => "resume-failed",
+            Self::ProviderChanged => "provider-changed",
+            Self::SystemChanged => "system-changed",
         }
     }
+}
+
+fn legacy_provider() -> String {
+    LaneProvider::Claude.as_str().to_owned()
 }
 
 pub(crate) const CACHE_TTL_SECS: u64 = 300;
 
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
-fn plan_turn(state: Option<&LaneState>, input: &TurnInput<'_>, now_epoch: u64) -> TurnPlan {
+/// 素材漂移的處置分兩家：claude 的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
+/// grok 的 system 凍在 session 建立那刻，補丁只是一則 user 訊息、壓不過權重更高的舊 system，
+/// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。
+fn plan_turn(
+    state: Option<&LaneState>,
+    input: &TurnInput<'_>,
+    now_epoch: u64,
+    provider: LaneProvider,
+) -> TurnPlan {
     let Some(state) = state else {
         return TurnPlan::Reopen {
             reason: ReopenReason::FirstTurn,
         };
     };
+    if state.provider != provider.as_str() {
+        return TurnPlan::Reopen {
+            reason: ReopenReason::ProviderChanged,
+        }; // 線名撞到別家 CLI 開的線：session id 是對方的，resume 一定失敗
+    }
     if state.pending_rewrite.is_some() {
         return TurnPlan::Reopen {
             reason: ReopenReason::PendingRewrite,
@@ -250,6 +311,20 @@ fn plan_turn(state: Option<&LaneState>, input: &TurnInput<'_>, now_epoch: u64) -
                 }
             } // 回覆沒落檔或被改＝session 與正典分岔
         }
+    }
+    if provider == LaneProvider::Grok {
+        if state.applied != input.frozen_system {
+            return TurnPlan::Reopen {
+                reason: ReopenReason::SystemChanged,
+            };
+        }
+        return TurnPlan::Resume {
+            session_id: state.session_id.clone(),
+            base,
+            system: state.snapshot.clone(),
+            patch: None,
+            rebased: false,
+        };
     }
     let age = now_epoch.saturating_sub(state.last_call_epoch);
     if age > CACHE_TTL_SECS {
@@ -300,7 +375,7 @@ fn build_prompt(events: &[TranscriptEvent], base: usize, tail: &str, opening: bo
 /// 回合後抹寫：機密段從注入的 user 行抹掉、最後一則 assistant 補名字前綴，
 /// 原子寫＋回讀驗證（session_file::write_atomic）。
 fn apply_rewrite(
-    call: &ClaudeCall,
+    call: &LaneCall,
     session_id: &str,
     confidential: Option<&str>,
     prefix: Option<&str>,
@@ -339,21 +414,29 @@ fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
 /// 跑一輪 lane 呼叫：計畫（續聊或重開）→ 呼叫前落狀態 → CLI → 回合後抹寫 → 落最終狀態。
 /// 續聊呼叫失敗自動降級為重開全量再試一次；重開也失敗才把錯誤丟回（與現行單發同表現）。
 pub(crate) async fn run_turn(
-    call: &ClaudeCall,
+    call: &LaneCall,
     root: &Path,
     world_id: &str,
     input: TurnInput<'_>,
     mut emit: impl FnMut(&str),
 ) -> Result<String, String> {
+    // grok 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
+    // 提進該角色自己的凍結 system（hoist_private）＋一角一線；這裡出聲擋下，寧可整輪失敗
+    // 也不讓別的角色讀到不該讀的東西。
+    if call.provider == LaneProvider::Grok
+        && (input.confidential.is_some() || input.prefix.is_some())
+    {
+        return Err("grok 續聊線不支援回合後抹寫，私設必須提進凍結 system".to_owned());
+    }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
-    let key = lane_key(input.lane, &call.model);
+    let key = lane_key(input.lane, call.model_label(), input.scope.as_deref());
     let mut store = read_store(&store_path);
     let call_epoch = now_epoch();
     let prior = store.get(&key);
     // 診斷用（包 4）：距上輪幾秒、上輪送了多少（＝這輪的理論可中量）
     let age_secs = prior.map_or(0, |state| call_epoch.saturating_sub(state.last_call_epoch));
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
-    let mut plan = plan_turn(prior, &input, call_epoch);
+    let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
     let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
 
     loop {
@@ -407,11 +490,21 @@ pub(crate) async fn run_turn(
             .unwrap_or_else(|| input.tail.clone());
         let prompt = build_prompt(input.events, base, &tail, opening, input.lane);
         let session = if opening {
-            cli::ClaudeSession::Open(&session_id)
+            cli::CliSession::Open(&session_id)
         } else {
-            cli::ClaudeSession::Resume(&session_id)
+            cli::CliSession::Resume(&session_id)
         };
-        let args = cli::claude_session_args(&call.model, &system, &session);
+        // claude 的正文走 stdin；grok 沒有 stdin 入口，正文一律進 -p
+        let (args, stdin) = match call.provider {
+            LaneProvider::Claude => (
+                cli::claude_session_args(call.model_label(), &system, &session),
+                prompt.as_str(),
+            ),
+            LaneProvider::Grok => (
+                cli::grok_session_args(call.model.as_deref(), &system, &prompt, &session),
+                "",
+            ),
+        };
 
         store.insert(
             key.clone(),
@@ -422,6 +515,8 @@ pub(crate) async fn run_turn(
                 sent_hash: events_fingerprint(input.events),
                 snapshot: system,
                 applied: input.frozen_system.clone(),
+                provider: call.provider.as_str().to_owned(),
+                model: call.model_label().to_owned(),
                 pending_rewrite: Some(PendingRewrite {
                     confidential: input.confidential.clone(),
                     prefix: input.prefix.clone(),
@@ -437,16 +532,22 @@ pub(crate) async fn run_turn(
             &call.program,
             &call.working_dir,
             &args,
-            &prompt,
+            stdin,
             &call.envs,
-            cli::parse_claude_line,
+            match call.provider {
+                LaneProvider::Claude => cli::parse_claude_line,
+                LaneProvider::Grok => cli::parse_grok_line,
+            },
             false, // 聊天正文串流，思考不進畫面
             call.usage_log.as_deref().map(|path| cli::UsageLog {
                 path,
                 world: Some(world_id),
-                transport: "claude",
-                model: &call.model,
-                parse: cli::parse_claude_usage,
+                transport: call.provider.as_str(),
+                model: call.model_label(),
+                parse: match call.provider {
+                    LaneProvider::Claude => cli::parse_claude_usage,
+                    LaneProvider::Grok => cli::parse_grok_usage,
+                },
                 lane: Some(lane_log),
                 shape: usage_log::PromptShape::Oneshot, // 續聊線的形狀由 LaneContext 說明，這欄不參與判定
                 prompt_tokens_out: Some(&prompt_tokens),
@@ -516,7 +617,7 @@ const PING_MIN_AGE_SECS: u64 = 180;
 /// 回傳實際保溫成功的線數。ping 失敗不當錯誤（保溫是省錢手段，不該中斷聊天）；
 /// 截尾失敗則丟線，避免垃圾問答在 session 裡越積越多。
 pub(crate) async fn keepalive(
-    call: &ClaudeCall,
+    call: &LaneCall,
     root: &Path,
     world_id: &str,
 ) -> Result<usize, String> {
@@ -526,6 +627,8 @@ pub(crate) async fn keepalive(
     // 先挑出該保溫的線再逐條呼叫：迴圈中要改 store，不能同時借著它疊代
     let targets: Vec<(String, LaneState)> = store
         .iter()
+        // 保溫要截 session 檔尾，只有 claude 的格式做得到；grok 線一律不 ping
+        .filter(|(_, state)| state.provider == LaneProvider::Claude.as_str())
         .filter(|(_, state)| state.pending_rewrite.is_none())
         .filter(|(_, state)| {
             let age = now.saturating_sub(state.last_call_epoch);
@@ -539,14 +642,14 @@ pub(crate) async fn keepalive(
 
     let mut pinged = 0;
     for (key, state) in targets {
-        // 線名＝「線種:實際模型」，保溫要用該線自己的模型才會匹配到它的快取
-        let Some((_, model)) = key.split_once(':') else {
+        // 保溫要用該線自己的模型才會匹配到它的快取（線名可能帶 scope，模型讀狀態不回推）
+        if state.model.is_empty() {
             continue;
-        };
+        }
         let args = cli::claude_session_args(
-            model,
+            &state.model,
             &state.snapshot,
-            &cli::ClaudeSession::Resume(&state.session_id),
+            &cli::CliSession::Resume(&state.session_id),
         );
         let lane_log = usage_log::LaneContext {
             lane: key.clone(),
@@ -571,7 +674,7 @@ pub(crate) async fn keepalive(
                 path,
                 world: Some(world_id),
                 transport: "claude",
-                model,
+                model: &state.model,
                 parse: cli::parse_claude_usage,
                 lane: Some(lane_log),
                 shape: usage_log::PromptShape::Oneshot, // 同上：ping 的 mode 來自 LaneContext.ping
@@ -610,7 +713,7 @@ pub(crate) async fn keepalive(
 
 /// 把保溫問答從 session 檔截掉：定位那則 ping user 行，截掉它與其後所有行
 /// （模型的 ok 回覆一併消失），檔案回到 ping 前的形狀。
-fn truncate_ping(call: &ClaudeCall, session_id: &str) -> Result<(), String> {
+fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), String> {
     let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
     let mut file = session_file::load(&path)?;
     let uuid = session_file::find_user_line_with_segment(&file, PING_PROMPT)?;
@@ -624,7 +727,7 @@ mod tests {
 
     struct FakeCli {
         dir: PathBuf,
-        call: ClaudeCall,
+        call: LaneCall,
         root: PathBuf,
         world_id: String,
         session_dir: PathBuf,
@@ -689,14 +792,15 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let call = ClaudeCall {
+        let call = LaneCall {
+            provider: LaneProvider::Claude,
             program: script,
             working_dir: working_dir.clone(),
             envs: vec![(
                 "FAKE_SESSION_DIR".to_owned(),
                 session_dir.to_string_lossy().into_owned(),
             )],
-            model: "sonnet".to_owned(),
+            model: Some("sonnet".to_owned()),
             usage_log: None,
             claude_home: claude_home.clone(),
         };
@@ -736,6 +840,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             echo: ReplyEcho::Dialogue {
                 speaker_id: "fox-id".to_owned(),
             },
+            scope: None,
         }
     }
 
@@ -749,6 +854,8 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             applied: "凍結A".to_owned(),
             pending_rewrite: None,
             expected_reply: None,
+            provider: "claude".to_owned(),
+            model: "sonnet".to_owned(),
             last_call_epoch: 1_000,
             last_prompt_tokens: 0,
         }
@@ -795,14 +902,14 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let input = turn_input(&events, 0);
 
         assert!(matches!(
-            plan_turn(None, &input, 1_010),
+            plan_turn(None, &input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::FirstTurn
             }
         ));
 
         let good = lane_state(&events, 0);
-        match plan_turn(Some(&good), &input, 1_010) {
+        match plan_turn(Some(&good), &input, 1_010, LaneProvider::Claude) {
             TurnPlan::Resume {
                 session_id, base, ..
             } => {
@@ -818,7 +925,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             prefix: None,
         });
         assert!(matches!(
-            plan_turn(Some(&pending), &input, 1_010),
+            plan_turn(Some(&pending), &input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::PendingRewrite
             }
@@ -827,7 +934,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let mut scene_changed = good.clone();
         scene_changed.scene = 1;
         assert!(matches!(
-            plan_turn(Some(&scene_changed), &input, 1_010),
+            plan_turn(Some(&scene_changed), &input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::SceneChanged
             }
@@ -835,7 +942,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
 
         let mut changed_input = turn_input(&events, 0);
         changed_input.frozen_system = "凍結B".to_owned();
-        match plan_turn(Some(&good), &changed_input, 1_010) {
+        match plan_turn(Some(&good), &changed_input, 1_010, LaneProvider::Claude) {
             TurnPlan::Resume { system, patch, .. } => {
                 assert_eq!(system, "凍結A");
                 assert!(patch.is_some());
@@ -846,7 +953,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let mut ahead = good.clone();
         ahead.sent_events = 3; // 正典被收回到水位前
         assert!(matches!(
-            plan_turn(Some(&ahead), &input, 1_010),
+            plan_turn(Some(&ahead), &input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::HistoryRewound
             }
@@ -859,7 +966,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         ];
         let edited_input = turn_input(&edited, 0);
         assert!(matches!(
-            plan_turn(Some(&good), &edited_input, 1_010),
+            plan_turn(Some(&good), &edited_input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::HistoryEdited
             }
@@ -867,6 +974,96 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
     }
 
     /// 上輪回覆（expected_reply）落檔後從水位跳過；沒落檔或被改動＝重開。
+    /// 線名細分：claude 不帶 scope（全角色共用一條），grok 的 chars 線一角一條。
+    #[test]
+    fn lane_key_splits_by_scope_only_when_given() {
+        assert_eq!(lane_key(Lane::Chars, "sonnet", None), "chars:sonnet");
+        assert_eq!(
+            lane_key(Lane::Chars, "grok-4.6", Some("fox-id")),
+            "chars:grok-4.6:fox-id"
+        );
+        assert_eq!(lane_key(Lane::Gm, "grok-4.6", None), "gm:grok-4.6");
+    }
+
+    /// 線名撞到別家 CLI 開的線（同桌換傳輸、模型字樣剛好一樣）：session id 是對方的，
+    /// 直接重開比讓 resume 撞牆再降級便宜。舊檔沒有 provider 欄位一律當 claude。
+    #[test]
+    fn switching_cli_reopens_instead_of_resuming_someone_elses_session() {
+        let events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+        let mut input = turn_input(&events, 0);
+        input.scope = Some("fox-id".to_owned());
+        let mut state = lane_state(&events, 0);
+        state.expected_reply = None;
+        assert!(matches!(
+            plan_turn(Some(&state), &input, 1_010, LaneProvider::Grok),
+            TurnPlan::Reopen {
+                reason: ReopenReason::ProviderChanged
+            }
+        ));
+        let legacy: LaneState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(legacy.provider, "claude");
+        let without_provider = serde_json::to_string(&state)
+            .unwrap()
+            .replace("\"provider\":\"claude\",", "");
+        let old: LaneState = serde_json::from_str(&without_provider).unwrap();
+        assert_eq!(old.provider, "claude"); // 舊檔照樣續聊，不白重建一次快取
+    }
+
+    /// 素材漂移的兩種處置：claude 快取過期時整份追平、還活著時走 prompt 補丁；
+    /// grok 的 system 凍在 session 建立那刻換不掉，補丁壓不過舊 system，所以一漂移就整線重開。
+    #[test]
+    fn drifted_system_rebases_on_claude_and_reopens_on_grok() {
+        let events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+        let mut input = turn_input(&events, 0);
+        input.frozen_system = "凍結B".to_owned(); // 素材漂移
+        let mut state = lane_state(&events, 0);
+        state.expected_reply = None;
+        let expired = state.last_call_epoch + CACHE_TTL_SECS + 1;
+
+        match plan_turn(Some(&state), &input, expired, LaneProvider::Claude) {
+            TurnPlan::Resume {
+                system,
+                patch,
+                rebased,
+                ..
+            } => {
+                assert_eq!(system, "凍結B"); // 整份換新
+                assert!(patch.is_none());
+                assert!(rebased);
+            }
+            TurnPlan::Reopen { .. } => panic!("claude 過期只追平不重開"),
+        }
+        match plan_turn(
+            Some(&state),
+            &input,
+            state.last_call_epoch + 1,
+            LaneProvider::Claude,
+        ) {
+            TurnPlan::Resume { system, patch, .. } => {
+                assert_eq!(system, "凍結A"); // 快取還活著就別動它
+                assert!(patch.is_some()); // 漂移走 prompt 內的補丁
+            }
+            TurnPlan::Reopen { .. } => panic!("claude 漂移走補丁不重開"),
+        }
+
+        state.provider = LaneProvider::Grok.as_str().to_owned();
+        assert!(matches!(
+            plan_turn(Some(&state), &input, expired, LaneProvider::Grok),
+            TurnPlan::Reopen {
+                reason: ReopenReason::SystemChanged
+            }
+        ));
+        let same = turn_input(&events, 0); // frozen_system 維持「凍結A」
+        match plan_turn(Some(&state), &same, expired, LaneProvider::Grok) {
+            TurnPlan::Resume { system, patch, .. } => {
+                assert_eq!(system, "凍結A");
+                assert!(patch.is_none()); // grok 從頭到尾只靠開線那份 system
+            }
+            TurnPlan::Reopen { .. } => panic!("素材沒動就該續聊"),
+        }
+    }
+
     #[test]
     fn plan_skips_own_reply_at_watermark_or_reopens() {
         let before = [event(TranscriptKind::Player, "", "阿濤", "你好")];
@@ -880,7 +1077,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
 
         let with_reply = [before[0].clone(), reply.clone()];
         let input = turn_input(&with_reply, 0);
-        match plan_turn(Some(&state), &input, 1_010) {
+        match plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude) {
             TurnPlan::Resume { base, .. } => assert_eq!(base, 2),
             TurnPlan::Reopen { .. } => panic!("回覆已落檔必須續聊"),
         }
@@ -892,7 +1089,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         ];
         let tampered_input = turn_input(&tampered, 0);
         assert!(matches!(
-            plan_turn(Some(&state), &tampered_input, 1_010),
+            plan_turn(Some(&state), &tampered_input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::ReplyDiverged
             }
@@ -901,7 +1098,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         // 回覆還沒落檔（前端沒寫進 transcript）
         let missing_input = turn_input(&before, 0);
         assert!(matches!(
-            plan_turn(Some(&state), &missing_input, 1_010),
+            plan_turn(Some(&state), &missing_input, 1_010, LaneProvider::Claude),
             TurnPlan::Reopen {
                 reason: ReopenReason::ReplyDiverged
             }
@@ -915,7 +1112,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         input.frozen_system = "凍結B".to_owned();
         let state = lane_state(&events, 0);
 
-        match plan_turn(Some(&state), &input, 1_301) {
+        match plan_turn(Some(&state), &input, 1_301, LaneProvider::Claude) {
             TurnPlan::Resume {
                 system,
                 patch,
@@ -928,6 +1125,27 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             }
             TurnPlan::Reopen { .. } => panic!("快取過期時素材變動必須追平"),
         }
+    }
+
+    /// grok 沒有回合後抹寫，機密段一旦送進去就永遠留在該線歷史裡：run_turn 出聲擋下，
+    /// 不讓呼叫端誤用共線＋回合注入那套（會把 A 的私設漏給 B）。
+    #[tokio::test]
+    async fn grok_lane_refuses_confidential_injection() {
+        let FakeCli {
+            dir: _dir,
+            mut call,
+            root,
+            world_id,
+            ..
+        } = fake_claude("grok-guard");
+        call.provider = LaneProvider::Grok;
+        let events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+        let mut input = turn_input(&events, 0);
+        input.confidential = Some("狐狸的私設".to_owned());
+        let error = run_turn(&call, &root, &world_id, input, |_: &str| {})
+            .await
+            .expect_err("帶機密段的 grok 線必須被擋下");
+        assert!(error.contains("私設必須提進凍結 system"));
     }
 
     #[test]
@@ -1055,8 +1273,9 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
 
         // 第五輪換模型（同桌 haiku 角色）：另開自己的線，sonnet 線不受影響（按模型分池）
         events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply4));
-        let haiku_call = ClaudeCall {
-            model: "haiku".to_owned(),
+        let haiku_call = LaneCall {
+            provider: LaneProvider::Claude,
+            model: Some("haiku".to_owned()),
             program: call.program.clone(),
             working_dir: call.working_dir.clone(),
             envs: call.envs.clone(),
@@ -1241,14 +1460,15 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let call = ClaudeCall {
+        let call = LaneCall {
+            provider: LaneProvider::Claude,
             program: script,
             working_dir: working_dir.clone(),
             envs: vec![(
                 "FAKE_SESSION_DIR".to_owned(),
                 session_dir.to_string_lossy().into_owned(),
             )],
-            model: "sonnet".to_owned(),
+            model: Some("sonnet".to_owned()),
             usage_log: Some(usage_log.clone()),
             claude_home,
         };

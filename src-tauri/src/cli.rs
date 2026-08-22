@@ -406,7 +406,7 @@ pub fn claude_args(model: &str, system: &str) -> Vec<String> {
 }
 
 /// claude lane 續聊（prompt-cache-optimization 包 2）的 session 指定方式。
-pub enum ClaudeSession<'a> {
+pub enum CliSession<'a> {
     /// 開新線：session id 由本程式產生（UUID），之後靠它 resume 與定位 session 檔。
     Open(&'a str),
     /// 續聊既有線：實測 resume 沿用同一 id、續寫同一檔（不分叉）。
@@ -415,7 +415,7 @@ pub enum ClaudeSession<'a> {
 
 /// claude lane 續聊參數：與 claude_args 同組旗標，但保留 session 落檔
 /// （resume 架構的快取命中靠 CLI 自身 session，非 §8.1 無狀態單發）。
-pub fn claude_session_args(model: &str, system: &str, session: &ClaudeSession<'_>) -> Vec<String> {
+pub fn claude_session_args(model: &str, system: &str, session: &CliSession<'_>) -> Vec<String> {
     let mut args: Vec<String> = [
         "-p",
         "--verbose", // --print 的 stream-json 硬性要求
@@ -433,11 +433,11 @@ pub fn claude_session_args(model: &str, system: &str, session: &ClaudeSession<'_
     .map(str::to_owned)
     .to_vec();
     match session {
-        ClaudeSession::Open(id) => {
+        CliSession::Open(id) => {
             args.push("--session-id".to_owned());
             args.push((*id).to_owned());
         }
-        ClaudeSession::Resume(id) => {
+        CliSession::Resume(id) => {
             args.push("--resume".to_owned());
             args.push((*id).to_owned());
         }
@@ -559,6 +559,57 @@ pub fn grok_args(
     prompt: &str,
     allow_tools: bool,
 ) -> Vec<String> {
+    let mut args = grok_common_args(model, allow_tools);
+    // --system-prompt-override（grok 1.0.5）整包換掉 CLI 自己那份 coding agent system
+    // prompt，本桌的設定才真的坐在 system 層；grok 內建那份偏簡潔精煉，留著會壓縮小說場景。
+    // 生圖不換：那條要靠原生 agent prompt 把 image_gen 叫起來、收工具結果再回路徑，
+    // 拔掉整份 system 有機會斷掉工具調度，維持原本「system 併進 prompt」的走法。
+    let override_system = !allow_tools && !system.is_empty();
+    if override_system {
+        args.push("--system-prompt-override".to_owned());
+        args.push(system.to_owned());
+    }
+    args.push("-p".to_owned());
+    args.push(match override_system || system.is_empty() {
+        true => prompt.to_owned(),
+        false => format!("{system}\n\n{prompt}"),
+    });
+    args
+}
+
+/// grok lane 續聊參數（grok-cache-miss）：與聊天單發同一組旗標，差別只在讓 session 落檔。
+/// 開線 `-s <id>` 自帶 system override；續聊 `-r <id>` **不重帶 system**——grok 把 system
+/// 凍在 session 建立那一刻（session 目錄下的 system_prompt.txt），重帶無效且會打散前綴，
+/// 素材漂移一律改走 prompt 內的補丁（見 lanes::plan_turn）。
+/// `-s` 對已存在的 id 會直接報「Session ID is already in use」，所以開／續兩條旗標不能互換。
+pub fn grok_session_args(
+    model: Option<&str>,
+    system: &str,
+    prompt: &str,
+    session: &CliSession<'_>,
+) -> Vec<String> {
+    let mut args = grok_common_args(model, false);
+    match session {
+        CliSession::Open(id) => {
+            args.push("-s".to_owned());
+            args.push((*id).to_owned());
+            if !system.is_empty() {
+                args.push("--system-prompt-override".to_owned());
+                args.push(system.to_owned());
+            }
+        }
+        CliSession::Resume(id) => {
+            args.push("-r".to_owned());
+            args.push((*id).to_owned());
+        }
+    }
+    args.push("-p".to_owned());
+    args.push(prompt.to_owned());
+    args
+}
+
+/// grok 聊天／續聊共用的旗標段（不含 system、session 與 -p）。
+fn grok_common_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
     let mut args: Vec<String> = ["--output-format", "streaming-json"]
         .map(str::to_owned)
         .to_vec();
@@ -591,20 +642,6 @@ pub fn grok_args(
         args.push("-m".to_owned());
         args.push(model.to_owned());
     }
-    // --system-prompt-override（grok 1.0.5）整包換掉 CLI 自己那份 coding agent system
-    // prompt，本桌的設定才真的坐在 system 層；grok 內建那份偏簡潔精煉，留著會壓縮小說場景。
-    // 生圖不換：那條要靠原生 agent prompt 把 image_gen 叫起來、收工具結果再回路徑，
-    // 拔掉整份 system 有機會斷掉工具調度，維持原本「system 併進 prompt」的走法。
-    let override_system = !allow_tools && !system.is_empty();
-    if override_system {
-        args.push("--system-prompt-override".to_owned());
-        args.push(system.to_owned());
-    }
-    args.push("-p".to_owned());
-    args.push(match override_system || system.is_empty() {
-        true => prompt.to_owned(),
-        false => format!("{system}\n\n{prompt}"),
-    });
     args
 }
 
@@ -1571,6 +1608,49 @@ mod tests {
     }
 
     #[test]
+    fn grok_session_args_open_carries_system_and_resume_does_not() {
+        let system = "你是狐狸";
+        let open = grok_session_args(
+            Some("grok-4.6"),
+            system,
+            "第一輪",
+            &CliSession::Open("sid-1"),
+        );
+        // 開線：-s 建 session，system 這時才坐進去（grok 把它凍在 session 建立那刻）
+        assert!(open.windows(2).any(|pair| pair == ["-s", "sid-1"]));
+        assert!(open
+            .windows(2)
+            .any(|pair| pair == ["--system-prompt-override", system]));
+        assert_eq!(open[open.len() - 2..], ["-p", "第一輪"]);
+        // 聊天單發那組硬化旗標一個都不能少（工具全拆、單輪、低推理）
+        assert!(open.windows(2).any(|pair| pair == ["--max-turns", "1"]));
+        assert!(open
+            .windows(2)
+            .any(|pair| pair == ["--reasoning-effort", "low"]));
+        assert!(open
+            .windows(2)
+            .any(|pair| pair[0] == "--disallowed-tools" && pair[1].contains("image_gen")));
+        assert!(open.windows(2).any(|pair| pair == ["--deny", "*"]));
+        assert!(open.windows(2).any(|pair| pair == ["-m", "grok-4.6"]));
+
+        // 續聊：-r 接同一條線，system 不重帶（重帶無效又會打散前綴），增量進 -p
+        let resume = grok_session_args(
+            Some("grok-4.6"),
+            system,
+            "增量",
+            &CliSession::Resume("sid-1"),
+        );
+        assert!(resume.windows(2).any(|pair| pair == ["-r", "sid-1"]));
+        assert!(!resume.contains(&"--system-prompt-override".to_owned()));
+        assert!(!resume.contains(&"-s".to_owned()));
+        assert_eq!(resume[resume.len() - 2..], ["-p", "增量"]);
+
+        // 未覆寫模型＝不帶 -m，由 CLI 自己選預設
+        let default_model = grok_session_args(None, system, "x", &CliSession::Open("sid-2"));
+        assert!(!default_model.contains(&"-m".to_owned()));
+    }
+
+    #[test]
     fn grok_envs_point_home_and_grok_home_at_the_app_profile() {
         let envs = grok_envs(
             &PathBuf::from("/app/cli-home"),
@@ -1643,12 +1723,12 @@ mod tests {
     /// 開線帶 --session-id、續聊帶 --resume，其餘旗標與單發相同。
     #[test]
     fn claude_session_args_keep_persistence_and_pick_session_flag() {
-        let opened = claude_session_args("sonnet", "系統", &ClaudeSession::Open("uuid-1"));
+        let opened = claude_session_args("sonnet", "系統", &CliSession::Open("uuid-1"));
         assert!(!opened.contains(&"--no-session-persistence".to_owned()));
         assert!(opened.windows(2).any(|w| w == ["--session-id", "uuid-1"]));
         assert!(opened.windows(2).any(|w| w == ["--system-prompt", "系統"]));
         assert!(opened.windows(2).any(|w| w == ["--model", "sonnet"]));
-        let resumed = claude_session_args("sonnet", "系統", &ClaudeSession::Resume("uuid-1"));
+        let resumed = claude_session_args("sonnet", "系統", &CliSession::Resume("uuid-1"));
         assert!(resumed.windows(2).any(|w| w == ["--resume", "uuid-1"]));
         assert!(!resumed.contains(&"--session-id".to_owned()));
     }
