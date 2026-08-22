@@ -5,43 +5,45 @@
 //! 取消、重跑或卡片異動後舊 session 作廢（指紋由呼叫端核對），resume 失敗由呼叫端降級單發。
 
 use crate::cli;
-use crate::lanes::ClaudeCall;
+use crate::lanes::LaneCall;
 
 /// 開線（第一段）：帶 --session-id 全量送 system＋prompt，回（回覆原文, session id）。
 pub(crate) async fn open_stage(
-    call: &ClaudeCall,
+    call: &LaneCall,
     world_id: &str,
     system: &str,
     prompt: &str,
     emit: impl FnMut(&str),
 ) -> Result<(String, String), String> {
     let session_id = crate::lanes::new_session_id();
-    let raw = run_stage(call, world_id, system, prompt, &cli::ClaudeSession::Open(&session_id), emit).await?;
+    let raw = run_stage(call, world_id, system, prompt, &cli::CliSession::Open(&session_id), emit).await?;
     Ok((raw, session_id))
 }
 
 /// 續聊（第二段）：--resume 同一線，只送第二段指示（卡片已在 session 歷史）。
 /// Err＝session 認不得、CLI 拒絕 resume 等，由呼叫端降級成單發重送全卡。
 pub(crate) async fn resume_stage(
-    call: &ClaudeCall,
+    call: &LaneCall,
     world_id: &str,
     session_id: &str,
     system: &str,
     prompt: &str,
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
-    run_stage(call, world_id, system, prompt, &cli::ClaudeSession::Resume(session_id), emit).await
+    run_stage(call, world_id, system, prompt, &cli::CliSession::Resume(session_id), emit).await
 }
 
 async fn run_stage(
-    call: &ClaudeCall,
+    call: &LaneCall,
     world_id: &str,
     system: &str,
     prompt: &str,
-    session: &cli::ClaudeSession<'_>,
+    session: &cli::CliSession<'_>,
     mut emit: impl FnMut(&str),
 ) -> Result<String, String> {
-    let args = cli::claude_session_args(&call.model, system, session);
+    // 重構判官固定走 claude，model 必定有值
+    let model = call.model.clone().unwrap_or_default();
+    let args = cli::claude_session_args(&model, system, session);
     cli::run_cli(
         &call.program,
         &call.working_dir,
@@ -54,7 +56,7 @@ async fn run_stage(
             path,
             world: Some(world_id),
             transport: "claude",
-            model: &call.model,
+            model: &model,
             parse: cli::parse_claude_usage,
             lane: None,
             shape: crate::usage_log::PromptShape::Oneshot,
@@ -73,7 +75,7 @@ mod tests {
 
     /// 假 claude CLI：記錄旗標與 prompt；--resume 找不到 session 檔＝非零碼結束（降級鏈用）。
     #[cfg(unix)]
-    fn fake_cli(tag: &str) -> (PathBuf, ClaudeCall) {
+    fn fake_cli(tag: &str) -> (PathBuf, LaneCall) {
         let dir = std::env::temp_dir().join(format!("tt-refsess-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -100,11 +102,12 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
         .unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let call = ClaudeCall {
+        let call = LaneCall {
+            provider: crate::lanes::LaneProvider::Claude,
             program: script,
             working_dir: dir.clone(),
             envs: vec![("FAKE_DIR".to_owned(), dir.to_string_lossy().into_owned())],
-            model: "opus".to_owned(),
+            model: Some("opus".to_owned()),
             usage_log: None,
             claude_home: dir.clone(),
         };

@@ -662,7 +662,13 @@ async fn refactor_recommend(
     let messages = refactor_ai::recommend_messages(&context, &lang);
     let (_guard, mut cancel) = inflight::register(&world_id);
     if chat_transport(&config) == "claude" {
-        let call = prepare_claude_call(&app, &config, transport::gm_tier(&config)).await?;
+        let call = prepare_lane_call(
+            &app,
+            &config,
+            transport::gm_tier(&config),
+            lanes::LaneProvider::Claude,
+        )
+        .await?;
         let (raw, session_id) = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -733,7 +739,14 @@ async fn refactor_survey(
                 && chat_transport(&config) == "claude"
                 && fp == usage_log::text_hash(&context) =>
         {
-            match prepare_claude_call(&app, &config, transport::gm_tier(&config)).await {
+            match prepare_lane_call(
+                &app,
+                &config,
+                transport::gm_tier(&config),
+                lanes::LaneProvider::Claude,
+            )
+            .await
+            {
                 Ok(call) => {
                     let result = tokio::select! {
                         biased;
@@ -1672,28 +1685,53 @@ fn claude_home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".claude"))
 }
 
-/// 準備 claude lane 呼叫素材：風險告知檢查＋CLI 偵測＋模型解析＋env。
-/// lane 續聊（chat／narrate／suggest）專用；其餘呼叫照走 stream_via_transport 單發。
-async fn prepare_claude_call(
+/// 這個傳輸走不走 lane 續聊。api／codex／agy 沒有可續聊的 CLI session，回 None 照走單發。
+fn lane_provider(config: &data::AppConfig) -> Option<lanes::LaneProvider> {
+    match chat_transport(config).as_str() {
+        "claude" => Some(lanes::LaneProvider::Claude),
+        "grok" => Some(lanes::LaneProvider::Grok),
+        _ => None,
+    }
+}
+
+/// 準備 lane 呼叫素材：風險告知檢查＋CLI 偵測＋模型解析＋env。
+/// lane 續聊（角色聊天／GM 旁白）專用；其餘呼叫照走 stream_via_transport 單發。
+/// claude 的模型解析有檔位預設值，grok 沒有——未覆寫就回 None、由 CLI 用自己的預設。
+async fn prepare_lane_call(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
     tier: data::Tier,
-) -> Result<lanes::ClaudeCall, String> {
+    provider: lanes::LaneProvider,
+) -> Result<lanes::LaneCall, String> {
     if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
         return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
     }
+    let id = match provider {
+        lanes::LaneProvider::Claude => "claude",
+        lanes::LaneProvider::Grok => "grok",
+    };
     let info = cli::detect_clis()
         .await
         .into_iter()
-        .find(|info| info.id == "claude")
-        .ok_or_else(|| "找不到 claude CLI，請確認已安裝並登入".to_owned())?;
-    let model = cli::tier_override(&config.tier_models, "claude", tier)
-        .unwrap_or_else(|| cli::claude_model_for(tier))
-        .to_owned();
-    Ok(lanes::ClaudeCall {
+        .find(|info| info.id == id)
+        .ok_or_else(|| format!("找不到 {id} CLI，請確認已安裝並登入"))?;
+    let override_model = cli::tier_override(&config.tier_models, id, tier);
+    let model = match provider {
+        lanes::LaneProvider::Claude => Some(
+            override_model
+                .unwrap_or_else(|| cli::claude_model_for(tier))
+                .to_owned(),
+        ),
+        lanes::LaneProvider::Grok => override_model.map(str::to_owned),
+    };
+    Ok(lanes::LaneCall {
+        provider,
         program: PathBuf::from(info.path),
         working_dir: cli_workspace(app)?,
-        envs: claude_cli_envs(config),
+        envs: match provider {
+            lanes::LaneProvider::Claude => claude_cli_envs(config),
+            lanes::LaneProvider::Grok => cli_envs(app, "grok")?,
+        },
         model,
         usage_log: data_root(app)
             .ok()
@@ -2365,12 +2403,14 @@ async fn chat_with_character(
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    // claude 訂閱走 resume 續聊線（prompt-cache-optimization 包 2）：全角色共用一條 session，
-    // 凍結 system 逐輪重帶、只送新事件；私設回合注入、回合後從 session 檔抹掉（案 C）。
-    if chat_transport(&config) == "claude" {
+    // claude／grok 訂閱走 resume 續聊線。claude 全角色共用一條 session，私設回合注入、
+    // 回合後從 session 檔抹掉（案 C）；grok 沒有抹寫路徑，改成一角一線＋私設提進該角色
+    // 自己的凍結 system（grok-cache-miss），兩邊都不讓別的角色讀到不該讀的東西。
+    if let Some(provider) = lane_provider(&config) {
+        let hoist = provider == lanes::LaneProvider::Grok;
         let lang = transport::ui_language(&config);
         let cards = load_active_cards(&root, &world_id)?;
-        let frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);
+        let mut frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);
         let turn = transport::chars_lane_turn(
             &card,
             player.as_ref(),
@@ -2380,9 +2420,13 @@ async fn chat_with_character(
             &state.mechanism,
             branch.as_deref(),
             &lang,
-            false, // claude lane 的私設走回合注入＋回合後抹除，不提進凍結 system
+            hoist,
         );
-        let call = prepare_claude_call(&app, &config, card.tier).await?;
+        if let Some(private) = &turn.hoisted_private {
+            frozen.push('\n');
+            frozen.push_str(private);
+        }
+        let call = prepare_lane_call(&app, &config, card.tier, provider).await?;
         return lanes::run_turn(
             &call,
             &root,
@@ -2393,11 +2437,12 @@ async fn chat_with_character(
                 events: &events,
                 frozen_system: frozen,
                 tail: turn.tail,
-                confidential: turn.confidential,
-                prefix: Some(format!("{}：", card.name)),
+                confidential: (!hoist).then_some(turn.confidential).flatten(),
+                prefix: (!hoist).then(|| format!("{}：", card.name)),
                 echo: lanes::ReplyEcho::Dialogue {
                     speaker_id: card.id.clone(),
                 },
+                scope: hoist.then(|| card.id.clone()),
             },
             emit,
         )
@@ -2511,6 +2556,7 @@ async fn gm_lane_reply(
     instruction: &str,
     echo: lanes::ReplyEcho,
     lang: &str,
+    provider: lanes::LaneProvider,
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
     let frozen = transport::gm_lane_system(
@@ -2531,7 +2577,7 @@ async fn gm_lane_reply(
         instruction,
         lang,
     );
-    let call = prepare_claude_call(app, config, transport::gm_tier(config)).await?;
+    let call = prepare_lane_call(app, config, transport::gm_tier(config), provider).await?;
     lanes::run_turn(
         &call,
         root,
@@ -2545,6 +2591,7 @@ async fn gm_lane_reply(
             confidential: None,
             prefix: None,
             echo,
+            scope: None, // GM 只有一條線，不細分
         },
         emit,
     )
@@ -2630,7 +2677,7 @@ async fn gm_narrate(
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    let reply = if chat_transport(&config) == "claude" {
+    let reply = if let Some(provider) = lane_provider(&config) {
         let instruction = format!("{}\n{closing}", instruction_message.content);
         gm_lane_reply(
             &app,
@@ -2642,6 +2689,7 @@ async fn gm_narrate(
             &instruction,
             lanes::ReplyEcho::Narration,
             &lang,
+            provider,
             emit,
         )
         .await?
@@ -2904,7 +2952,13 @@ async fn keepalive_lanes(app: tauri::AppHandle, world_id: String) -> Result<usiz
         return Ok(0);
     }
     let root = data_root(&app)?;
-    let call = prepare_claude_call(&app, &config, transport::gm_tier(&config)).await?;
+    let call = prepare_lane_call(
+        &app,
+        &config,
+        transport::gm_tier(&config),
+        lanes::LaneProvider::Claude,
+    )
+    .await?;
     lanes::keepalive(&call, &root, &world_id).await
 }
 
