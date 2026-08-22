@@ -2394,9 +2394,12 @@ textarea {
   opacity: 0.75;
 }
 
-/* 表格自己橫向捲，任何語系或超長模型 id 都不會把整個設定視窗撐寬 */
+/* 表格自己橫向捲，任何語系或超長模型 id 都不會把整個設定視窗撐寬。
+   橫向捲軸貼著容器底緣畫，會壓在下面那排統計 chip 上。只加 padding 沒用——
+   容器底緣與捲軸一起下移，chip 跟著下移，相對距離不變；要用 margin 把 chip 推開。 */
 .usage-table-wrap {
   overflow-x: auto;
+  margin-bottom: 1rem;
 }
 
 .usage-table {

@@ -9,20 +9,38 @@
 //! - `cache_reporting: "absent"`＝這條路沒回報，`cached_tokens`／`hit_rate` 整個欄位不寫，
 //!   額度分頁顯示「—」而非 0%（曾用 `unwrap_or(0)` 壓平，見 .ai/plans/api-cache-visibility.md）。
 //!
-//! 診斷標籤是有限清單，純規則判定（不靠 AI）。每個標籤對應一句給玩家看的話，
-//! 包 6 照這張表配 i18n 字典：
-//! - `ok`：快取正常，這一句只付新內容的錢。
-//! - `warmup`：這條線重新開始，整份設定要重新建快取（`reason` 說明為什麼重開）。
-//! - `expired`：距上一句超過五分鐘，快取自然過期，這句重建。
-//! - `prefix-broken`：照理該命中卻沒中；`expected_cached` 對 `cached_tokens` 看差多少，
-//!   `cached_tokens` 接近 `system_tokens` 代表只有設定段中、對話段斷了。
-//! - `cache-skipped`：CLI 這一句沒帶快取標記（claude CLI resume 已知毛病，2026-08 實證：
-//!   同一線隔輪出現，讀寫皆 0、整句付全額；上輪有送內容才判此標，與整條路不支援區分）。
-//! - `no-cache`：這條路完全沒有快取（模型或 CLI 不支援）。
-//! - `single`：單發模式（API／codex／grok），只記數字不做續聊診斷。**不代表沒有快取**——
-//!   單發也可能命中供應商的自動前綴快取，能不能看見由 `cache_reporting` 獨立表達。
-//! - `drop-lane`：回合後改寫失敗，這條線丟棄重來（`reason` 說明原因）。
+//! 兩個標籤各管一軸，純規則判定（不靠 AI）。每個值對應一句給玩家看的話，額度分頁照這張表配 i18n：
+//!
+//! `mode`＝這通呼叫送出去的形狀：
+//! - `resume`：claude 續聊線的劇情輪，只送新事件。
+//! - `shared`：無狀態路徑的共線劇情輪，全角色名單當共同前綴。
+//! - `solo`：只帶本輪角色的劇情輪。天然單角色桌與（日後）零命中退回都是這個形狀，
+//!   靠 `roster_size` 分辨：等於 1＝這桌本來就一個人，大於 1＝策略退回。
+//! - `oneshot`：不建立續輪期待的一次性呼叫（換幕摘要、開桌生成、卡重構）。
 //! - `ping`：保溫呼叫（包 7），不推進劇情、只為刷新快取壽命；花費與劇情輪分開統計。
+//!
+//! `cache`＝這通呼叫的快取結果。算得出「理論可中量」的路徑（只有 claude 續聊線）判得比較細：
+//! - `hit`：中了，且達到理論可中量的九成以上；無理論值的路徑則是「中了」。
+//! - `partial`：中了但遠低於理論可中量——只有 claude 續聊線產得出來。
+//! - `zero`：供應商有回報，回報的值就是 0。
+//! - `unknown`：這條路沒回報快取欄位，`cached_tokens`／`hit_rate` 整個欄位不寫，
+//!   額度分頁顯示「—」而非 0%（曾用 `unwrap_or(0)` 壓平，見 .ai/plans/api-cache-visibility.md）。
+//! - `not-expected`：這輪本來就沒有可中的東西（首輪、剛重開線）。
+//!
+//! `cache_reason` 只在 `partial`／`zero` 時補一句為什麼，同樣只有續聊線給得出。
+//! `not-expected` 不帶原因——標籤本身就是原因，再補一句只會在畫面上講兩次同一件事：
+//! - `expired`：距上一句超過 app 的保守快取窗口。實測超時仍可能中，所以這只是「沒中滿的解釋」，
+//!   不宣稱快取確定被清掉，畫面上也不當故障標紅。
+//! - `below-expected`：低於理論值——程式只知道數字不對，不宣稱前綴一定被誰改過。
+//! - `skipped`：讀寫皆 0（claude CLI resume 已知毛病，2026-08 實證同一線隔輪出現、整句付全額）。
+//!
+//! 「這輪是不是單發」與「快取有沒有中」是**正交**的兩軸，分開記才不會拿呼叫模式去解釋數字是 0
+//! ——舊版 `diag` 一欄兩用，非續聊的呼叫在碰到快取數字之前就被判成 `single`，
+//! 於是 155 筆命中率過半的紀錄對玩家說「整包重新送出」。
+//!
+//! `reason`（線為什麼重開）與 `cache_reason`（快取為什麼沒中）是不同的欄位，勿共用。
+//! 沒有用量數字的線事件（丟線重來）走 `append_event`，只寫 `event`＋`reason`，
+//! 不偽造 mode／cache，才不會在快取統計的分母裡憑空多一筆。
 
 use crate::lanes::CACHE_TTL_SECS;
 use crate::transport::PromptCacheUsage;
@@ -31,32 +49,87 @@ use std::io::Write;
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Diag {
-    Ok,
-    Warmup,
-    Expired,
-    PrefixBroken,
-    CacheSkipped,
-    NoCache,
-    Single,
-    DropLane,
+pub enum Mode {
+    Resume,
+    Shared,
+    Solo,
+    Oneshot,
     Ping,
 }
 
-impl Diag {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cache {
+    Hit,
+    Partial,
+    Zero,
+    Unknown,
+    NotExpected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheReason {
+    Expired,
+    BelowExpected,
+    Skipped,
+}
+
+/// 沒有用量數字的線事件種類。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Event {
+    DropLane,
+}
+
+impl Mode {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Ok => "ok",
-            Self::Warmup => "warmup",
-            Self::Expired => "expired",
-            Self::PrefixBroken => "prefix-broken",
-            Self::CacheSkipped => "cache-skipped",
-            Self::NoCache => "no-cache",
-            Self::Single => "single",
-            Self::DropLane => "drop-lane",
+            Self::Resume => "resume",
+            Self::Shared => "shared",
+            Self::Solo => "solo",
+            Self::Oneshot => "oneshot",
             Self::Ping => "ping",
         }
     }
+}
+
+impl Cache {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hit => "hit",
+            Self::Partial => "partial",
+            Self::Zero => "zero",
+            Self::Unknown => "unknown",
+            Self::NotExpected => "not-expected",
+        }
+    }
+}
+
+impl CacheReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Expired => "expired",
+            Self::BelowExpected => "below-expected",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+impl Event {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DropLane => "drop-lane",
+        }
+    }
+}
+
+/// 呼叫端交給落帳的唯讀情報：這通呼叫送出去的是什麼形狀。只用來標 `mode`，
+/// 不建立跨輪記憶、不影響組裝。續聊線不必傳（形狀由 `LaneContext` 自己說明）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptShape {
+    /// 劇情輪。`roster` ＝**套用策略之前**這桌的有效角色數，不是實際傳給組裝器的張數
+    /// ——否則退回單角色之後就看不出原本有幾個人。
+    Turn { roster: usize, solo: bool },
+    /// 換幕摘要、開桌生成、卡重構這類不建立續輪期待的呼叫。
+    Oneshot,
 }
 
 /// 這一輪 lane 呼叫的脈絡。診斷靠 app 自己的決策（有沒有重開、隔多久、上輪送了多少），
@@ -85,33 +158,68 @@ pub struct LaneContext {
 const HIT_TOLERANCE_NUM: u64 = 9;
 const HIT_TOLERANCE_DEN: u64 = 10;
 
-fn diagnose(lane: Option<&LaneContext>, usage: &PromptCacheUsage) -> Diag {
-    let Some(lane) = lane else {
-        return Diag::Single;
-    };
-    if lane.ping {
-        return Diag::Ping;
+/// 這通呼叫送出去的是什麼形狀。續聊線自己說明；其餘由呼叫端隨行交代。
+fn classify_mode(lane: Option<&LaneContext>, shape: PromptShape) -> Mode {
+    match lane {
+        Some(lane) if lane.ping => Mode::Ping,
+        Some(_) => Mode::Resume,
+        None => match shape {
+            PromptShape::Oneshot => Mode::Oneshot,
+            PromptShape::Turn { solo: true, .. } => Mode::Solo,
+            PromptShape::Turn { solo: false, .. } => Mode::Shared,
+        },
     }
-    if lane.reopen.is_some() {
-        return Diag::Warmup;
+}
+
+/// 快取結果。**數字優先**：中了就是中了，結構上的假設（剛重開線、隔太久）只拿來解釋
+/// 「為什麼比該中的少」，不能反過來蓋掉觀測值——本案修的就是這種蓋法。
+/// 有 `LaneContext` 才算得出「理論可中量」，才判得出 `partial`；無狀態路徑只描述觀測到的數字。
+fn classify_cache(
+    lane: Option<&LaneContext>,
+    usage: &PromptCacheUsage,
+) -> (Cache, Option<CacheReason>) {
+    if !usage.reported() {
+        return (Cache::Unknown, None);
     }
-    // lane 路徑只有 claude CLI，它必定回報快取欄位；None 退 0 只是型別收尾
     let cached = usage.cached_tokens.unwrap_or(0);
     let created = usage.created_tokens.unwrap_or(0);
-    if cached == 0 && created == 0 {
-        // 上輪送過內容＝這條路支援快取，讀寫皆 0 是 CLI 這句沒帶標記
-        if lane.expected_cached > 0 {
-            return Diag::CacheSkipped;
+    let Some(lane) = lane else {
+        // 沒有理論值：中了就是中了，0 就是 0，不猜為什麼
+        return match cached > 0 {
+            true => (Cache::Hit, None),
+            false => (Cache::Zero, None),
+        };
+    };
+    // 剛重開線＝我方內容一個字都不該中；供應商自己的固定前綴還是可能中
+    let expected = match lane.reopen.is_some() {
+        true => 0,
+        false => lane.expected_cached,
+    };
+    if cached > 0 {
+        // 沒有理論值就不評斷「夠不夠多」，只說中了
+        if expected == 0 || cached * HIT_TOLERANCE_DEN >= expected * HIT_TOLERANCE_NUM {
+            return (Cache::Hit, None);
         }
-        return Diag::NoCache;
+        return (Cache::Partial, Some(short_reason(lane)));
     }
-    if lane.age_secs > CACHE_TTL_SECS {
-        return Diag::Expired;
+    if expected == 0 {
+        return (Cache::NotExpected, None);
     }
-    if cached * HIT_TOLERANCE_DEN >= lane.expected_cached * HIT_TOLERANCE_NUM {
-        return Diag::Ok;
+    // 讀寫皆 0＝這句根本沒帶快取標記，與「隔太久過期」不同
+    let reason = match created == 0 {
+        true => CacheReason::Skipped,
+        false => short_reason(lane),
+    };
+    (Cache::Zero, Some(reason))
+}
+
+/// 該中而沒中滿的解釋：超過保守窗口就歸給時間，否則只能說「低於理論值」
+/// （程式看得到數字不對，看不到是誰動了前綴）。
+fn short_reason(lane: &LaneContext) -> CacheReason {
+    match lane.age_secs > CACHE_TTL_SECS {
+        true => CacheReason::Expired,
+        false => CacheReason::BelowExpected,
     }
-    Diag::PrefixBroken
 }
 
 /// 粗估 token 數，只給診斷比對用（不用於計費）：ASCII 約四字元一個 token，中日韓約一字一個。
@@ -135,14 +243,17 @@ pub fn text_hash(text: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// 一次呼叫一行。lane 為 None＝單發路徑（API／codex／grok），只記數字。
+/// 一次呼叫一行。`lane` 為 None＝無狀態路徑（API／codex／agy／grok）與 claude 的一次性呼叫；
+/// 形狀由 `shape` 交代，快取結果照樣判（舊版在這裡短路成「單發」，見模組頂註解）。
 /// world 為 None＝不屬於任何一桌（開桌生成）；加欄前的舊行同樣沒有，額度分頁歸「未標桌」。
+#[allow(clippy::too_many_arguments)]
 pub fn append_call(
     path: &Path,
     world: Option<&str>,
     transport: &str,
     model: &str,
     lane: Option<&LaneContext>,
+    shape: PromptShape,
     usage: PromptCacheUsage,
 ) {
     let mut fields = Map::new();
@@ -151,7 +262,19 @@ pub fn append_call(
         fields.insert("world".to_owned(), json!(world));
     }
     fields.insert("model".to_owned(), json!(model));
-    fields.insert("diag".to_owned(), json!(diagnose(lane, &usage).as_str()));
+    fields.insert(
+        "mode".to_owned(),
+        json!(classify_mode(lane, shape).as_str()),
+    );
+    let (cache, cache_reason) = classify_cache(lane, &usage);
+    fields.insert("cache".to_owned(), json!(cache.as_str()));
+    if let Some(reason) = cache_reason {
+        fields.insert("cache_reason".to_owned(), json!(reason.as_str()));
+    }
+    // 只有呼叫端真的交代過形狀才寫（續聊線的 shape 是佔位值，mode 由 LaneContext 決定）
+    if let (None, PromptShape::Turn { roster, .. }) = (lane, shape) {
+        fields.insert("roster_size".to_owned(), json!(roster));
+    }
     fields.insert("prompt_tokens".to_owned(), json!(usage.prompt_tokens));
     // 沒回報的欄位一個都不寫：缺欄位就是「量不到」，寫 0 會被讀成「量到了、沒中」
     fields.insert(
@@ -222,15 +345,16 @@ pub fn assign_pending_world(path: &Path, world: &str) {
     }
 }
 
-/// 沒有用量數字的線事件（目前只有抹寫失敗丟線）。
-pub fn append_event(path: &Path, world: Option<&str>, lane: &str, diag: Diag, reason: &str) {
+/// 沒有用量數字的線事件（目前只有抹寫失敗丟線）。不寫 mode／cache——
+/// 它不是一通呼叫，混進快取統計會憑空多一筆「量不到」。
+pub fn append_event(path: &Path, world: Option<&str>, lane: &str, event: Event, reason: &str) {
     let mut fields = Map::new();
     fields.insert("transport".to_owned(), json!("claude"));
     if let Some(world) = world {
         fields.insert("world".to_owned(), json!(world));
     }
     fields.insert("lane".to_owned(), json!(lane));
-    fields.insert("diag".to_owned(), json!(diag.as_str()));
+    fields.insert("event".to_owned(), json!(event.as_str()));
     fields.insert("reason".to_owned(), json!(reason));
     append(path, fields);
 }
@@ -281,47 +405,94 @@ mod tests {
         }
     }
 
-    /// 標籤是有限清單，判定只看 app 自己的決策＋數字，不猜。
+    fn turn(roster: usize) -> PromptShape {
+        PromptShape::Turn {
+            roster,
+            solo: roster <= 1,
+        }
+    }
+
+    /// 快取軸是有限清單，判定只看 app 自己的決策＋數字，不猜。
     #[test]
-    fn diagnosis_covers_each_label_by_rule() {
+    fn cache_axis_covers_each_label_by_rule() {
         // 續聊、幾乎全中
         assert_eq!(
-            diagnose(Some(&lane(30, 9_000)), &usage(9_300, 9_000, 300)),
-            Diag::Ok
+            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 9_000, 300)),
+            (Cache::Hit, None)
         );
-        // 上輪送 9000，這輪只中 200＝前綴斷了
+        // 上輪送 9000，這輪只中 200＝中了但遠低於理論值
         assert_eq!(
-            diagnose(Some(&lane(30, 9_000)), &usage(9_300, 200, 9_100)),
-            Diag::PrefixBroken
+            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 200, 9_100)),
+            (Cache::Partial, Some(CacheReason::BelowExpected))
         );
-        // 隔太久＝自然過期，不算故障
+        // 超過保守窗口且一個字都沒中＝歸給時間，不算故障
         assert_eq!(
-            diagnose(Some(&lane(600, 9_000)), &usage(9_300, 0, 9_300)),
-            Diag::Expired
+            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 9_300)),
+            (Cache::Zero, Some(CacheReason::Expired))
         );
         // 讀寫皆 0 但上輪送過內容＝CLI 這句沒帶標記，優先於過期判定
         assert_eq!(
-            diagnose(Some(&lane(600, 9_000)), &usage(9_300, 0, 0)),
-            Diag::CacheSkipped
+            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 0)),
+            (Cache::Zero, Some(CacheReason::Skipped))
         );
-        // 讀寫皆 0 且上輪也沒有可中量＝這條路整個不支援快取
+        // 上輪沒有可中量＝這輪本來就不該中
         assert_eq!(
-            diagnose(Some(&lane(30, 0)), &usage(9_300, 0, 0)),
-            Diag::NoCache
+            classify_cache(Some(&lane(30, 0)), &usage(9_300, 0, 0)),
+            (Cache::NotExpected, None)
         );
-        // 重開線＝暖機，不論數字
+        // 重開線＝我方內容不該中；一個字都沒中就是「本來就沒得中」
         let mut reopened = lane(30, 0);
         reopened.reopen = Some("scene-changed");
         assert_eq!(
-            diagnose(Some(&reopened), &usage(9_300, 0, 9_300)),
-            Diag::Warmup
+            classify_cache(Some(&reopened), &usage(9_300, 0, 9_300)),
+            (Cache::NotExpected, None)
         );
-        // 保溫呼叫自成一類：花費要和劇情輪分開統計，命中與否不代表劇情線有問題
+        // 但重開線照樣可能中到供應商自己的固定前綴——實測帳本有 11 筆 warmup 中了六到九成。
+        // 數字說中了就說中了，不能因為「這輪不該中」把 95.7% 講成「本來就沒得中」
+        assert_eq!(
+            classify_cache(Some(&reopened), &usage(19_300, 18_499, 800)),
+            (Cache::Hit, None)
+        );
+        // 隔了一小時但幾乎全中＝快取其實還活著，過期只是解釋沒中的理由，不是蓋章
+        assert_eq!(
+            classify_cache(Some(&lane(3_600, 30_184)), &usage(37_000, 30_178, 6_800)),
+            (Cache::Hit, None)
+        );
+        // 沒回報＝量不到，與「量到了、是 0」不同
+        let mut blind = usage(9_300, 0, 0);
+        blind.cached_tokens = None;
+        blind.created_tokens = None;
+        assert_eq!(classify_cache(None, &blind), (Cache::Unknown, None));
+    }
+
+    /// 本案的病灶：無狀態路徑以前在碰到快取數字之前就被判成「單發」，
+    /// 於是命中率過半的輪次照樣對玩家說「整包重新送出」。
+    #[test]
+    fn stateless_paths_report_real_cache_result_not_call_mode() {
+        // 共線劇情輪中了八成——舊版標 single，現在快取軸誠實說 hit
+        assert_eq!(
+            classify_cache(None, &usage(9_300, 7_500, 1_800)),
+            (Cache::Hit, None)
+        );
+        // 有回報、值就是 0：說 zero，但不宣稱原因（無狀態算不出理論值）
+        assert_eq!(classify_cache(None, &usage(4_411, 0, 4_411)), (Cache::Zero, None));
+    }
+
+    /// mode 只描述形狀，與快取結果互不干涉。
+    #[test]
+    fn mode_separates_call_shape_from_cache_result() {
+        assert_eq!(classify_mode(Some(&lane(30, 9_000)), turn(4)), Mode::Resume);
         let mut ping = lane(200, 9_000);
         ping.ping = true;
-        assert_eq!(diagnose(Some(&ping), &usage(9_000, 9_000, 0)), Diag::Ping);
-        // 單發路徑不做續聊診斷
-        assert_eq!(diagnose(None, &usage(100, 0, 0)), Diag::Single);
+        assert_eq!(classify_mode(Some(&ping), turn(4)), Mode::Ping);
+        assert_eq!(classify_mode(None, turn(4)), Mode::Shared);
+        // 天然單角色桌與（日後）策略退回同樣是 solo，靠 roster_size 分辨
+        assert_eq!(classify_mode(None, turn(1)), Mode::Solo);
+        assert_eq!(
+            classify_mode(None, PromptShape::Turn { roster: 4, solo: true }),
+            Mode::Solo
+        );
+        assert_eq!(classify_mode(None, PromptShape::Oneshot), Mode::Oneshot);
     }
 
     /// 量不到的那一輪：cache_reporting 標 absent，快取數字與命中率**一個欄位都不寫**。
@@ -339,6 +510,7 @@ mod tests {
             "api",
             "vendor/model",
             None,
+            turn(3),
             PromptCacheUsage {
                 prompt_tokens: 4_690,
                 cached_tokens: None,
@@ -354,6 +526,7 @@ mod tests {
             "api",
             "vendor/model",
             None,
+            turn(3),
             PromptCacheUsage {
                 prompt_tokens: 2_495,
                 cached_tokens: Some(0),
@@ -395,13 +568,14 @@ mod tests {
             "claude",
             "sonnet",
             Some(&patched),
+            turn(3),
             usage(9_300, 9_000, 300),
         );
         append_event(
             &path,
             Some("w1"),
             "chars:sonnet",
-            Diag::DropLane,
+            Event::DropLane,
             "rewrite-failed",
         );
 
@@ -415,7 +589,10 @@ mod tests {
         assert_eq!(call["transport"], json!("claude"));
         assert_eq!(call["world"], json!("w1"));
         assert_eq!(call["lane"], json!("chars:sonnet"));
-        assert_eq!(call["diag"], json!("ok"));
+        assert_eq!(call["mode"], json!("resume"));
+        assert_eq!(call["cache"], json!("hit"));
+        assert!(call.get("cache_reason").is_none()); // 中了就不必解釋為什麼沒中
+        assert!(call.get("roster_size").is_none()); // 續聊線沒交代過角色數，就不寫
         assert_eq!(call["prompt_tokens"], json!(9_300));
         assert_eq!(call["cached_tokens"], json!(9_000));
         assert_eq!(call["output_tokens"], json!(20));
@@ -428,7 +605,9 @@ mod tests {
         assert!(call.get("reason").is_none());
 
         let event: Value = serde_json::from_str(lines[1]).unwrap();
-        assert_eq!(event["diag"], json!("drop-lane"));
+        assert_eq!(event["event"], json!("drop-lane"));
+        // 事件行不偽造 mode／cache，否則快取統計會憑空多一筆
+        assert!(event.get("mode").is_none() && event.get("cache").is_none());
         assert_eq!(event["reason"], json!("rewrite-failed"));
         assert!(event.get("prompt_tokens").is_none());
     }
@@ -441,9 +620,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("prompt-cache.jsonl");
 
-        append_call(&path, None, "claude", "opus", None, usage(500, 0, 0)); // 開桌大綱
-        append_call(&path, None, "claude", "opus", None, usage(900, 0, 0)); // 開桌展開
-        append_call(&path, Some("w9"), "claude", "sonnet", None, usage(100, 0, 0)); // 別桌，不該被動到
+        append_call(&path, None, "claude", "opus", None, PromptShape::Oneshot, usage(500, 0, 0)); // 開桌大綱
+        append_call(&path, None, "claude", "opus", None, PromptShape::Oneshot, usage(900, 0, 0)); // 開桌展開
+        append_call(&path, Some("w9"), "claude", "sonnet", None, turn(2), usage(100, 0, 0)); // 別桌，不該被動到
         assign_pending_world(&path, "w1");
 
         let text = std::fs::read_to_string(&path).unwrap();
@@ -456,7 +635,7 @@ mod tests {
         // 其餘欄位原樣保留
         let first: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
         assert_eq!(first["prompt_tokens"], json!(500));
-        assert_eq!(first["diag"], json!("single"));
+        assert_eq!(first["mode"], json!("oneshot"));
     }
 
     /// 中日韓一字約一 token、英數約四字元一 token；只求同一個數量級。

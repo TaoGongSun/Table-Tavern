@@ -1687,6 +1687,9 @@ fn ai_call_failure(error: String) -> String {
 /// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
 #[allow(clippy::too_many_arguments)]
+/// 不建立續輪期待的一次性呼叫（開桌生成、卡重構、換幕摘要、翻譯）走這條；
+/// 劇情輪要讓帳本看得出 prompt 形狀，改走 `stream_turn_via_transport`。
+#[allow(clippy::too_many_arguments)]
 async fn stream_via_transport(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
@@ -1697,6 +1700,39 @@ async fn stream_via_transport(
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
+    thinking_to_delta: bool,
+    emit: impl FnMut(&str),
+) -> Result<String, String> {
+    stream_turn_via_transport(
+        app,
+        config,
+        transport_override,
+        allow_cli_tools,
+        tier,
+        world,
+        assistant_label,
+        cli_closing,
+        messages,
+        usage_log::PromptShape::Oneshot,
+        thinking_to_delta,
+        emit,
+    )
+    .await
+}
+
+/// `shape` 是交給帳本的唯讀情報（這通送出去的是什麼形狀），不影響組裝與傳輸。
+#[allow(clippy::too_many_arguments)]
+async fn stream_turn_via_transport(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    transport_override: Option<&str>,
+    allow_cli_tools: bool,
+    tier: data::Tier,
+    world: Option<&str>,
+    assistant_label: &str,
+    cli_closing: &str,
+    messages: &[transport::ChatMessage],
+    shape: usage_log::PromptShape,
     // 思考增量進不進 emit：只有卡重構的進度字尾開 true（emit＝正文串流的呼叫端一律 false）。
     thinking_to_delta: bool,
     emit: impl FnMut(&str),
@@ -1713,9 +1749,17 @@ async fn stream_via_transport(
         .map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
-        return transport::stream_chat(config, &model, messages, usage_log.as_deref(), world, emit)
-            .await
-            .map_err(|error| ai_call_failure(error.to_string()));
+        return transport::stream_chat(
+            config,
+            &model,
+            messages,
+            usage_log.as_deref(),
+            world,
+            shape,
+            emit,
+        )
+        .await
+        .map_err(|error| ai_call_failure(error.to_string()));
     }
 
     // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
@@ -1758,6 +1802,7 @@ async fn stream_via_transport(
                     model,
                     parse: cli::parse_claude_usage,
                     lane: None,
+                    shape,
                     prompt_tokens_out: None,
                 }),
                 emit,
@@ -1784,6 +1829,7 @@ async fn stream_via_transport(
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_codex_usage,
                     lane: None,
+                    shape,
                     prompt_tokens_out: None,
                 }),
                 emit,
@@ -1811,6 +1857,7 @@ async fn stream_via_transport(
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_agy_usage,
                     lane: None,
+                    shape,
                     prompt_tokens_out: None,
                 }),
                 emit,
@@ -1838,6 +1885,7 @@ async fn stream_via_transport(
                     model: model.unwrap_or("(CLI 預設)"),
                     parse: cli::parse_grok_usage,
                     lane: None,
+                    shape,
                     prompt_tokens_out: None,
                 }),
                 emit,
@@ -2333,7 +2381,9 @@ async fn chat_with_character(
         branch.as_deref(),
         &transport::ui_language(&config),
     );
-    stream_via_transport(
+    // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
+    // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
+    stream_turn_via_transport(
         &app,
         &config,
         None,
@@ -2343,6 +2393,10 @@ async fn chat_with_character(
         "",
         "",
         &messages,
+        usage_log::PromptShape::Turn {
+            roster: cards.len(),
+            solo: cards.len() <= 1,
+        },
         false,
         emit,
     )
@@ -2566,7 +2620,8 @@ async fn gm_narrate(
             &lang,
         );
         messages.push(instruction_message);
-        stream_via_transport(
+        // GM 上下文一律全卡，與「這輪誰說話」無關，形狀恆為共線
+        stream_turn_via_transport(
             &app,
             &config,
             None,
@@ -2576,6 +2631,10 @@ async fn gm_narrate(
             "GM",
             closing,
             &messages,
+            usage_log::PromptShape::Turn {
+                roster: materials.cards.len(),
+                solo: false,
+            },
             false,
             emit,
         )

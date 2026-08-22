@@ -61,25 +61,35 @@ export const zh = {
   usageNoUsage: "這個來源不回報用量",
   usageCostNote: "花費是各家 CLI 自己回報的參考牌價，上面的已省金額由它推估；訂閱制實際不會這樣扣，只當相對比較用。",
 
-  // 診斷標籤（後端 usage_log.rs 那張表）：短名給統計、長句給最近一輪
-  usageDiagOk: "正常",
-  usageWhyOk: "快取有中，這一輪只付新內容的錢。",
-  usageDiagPing: "保溫",
-  usageWhyPing: "替還活著的線續命，免得快取到期要整份重建。",
-  usageDiagWarmup: "重新開線",
-  usageWhyWarmup: "這條線從頭開始，整份設定要重新建一次快取。",
-  usageDiagExpired: "快取過期",
-  usageWhyExpired: "距上一句超過五分鐘，快取自然清掉，這輪重建。",
-  usageDiagSingle: "單發",
-  usageWhySingle: "這次是單發呼叫（換幕摘要、開桌生成，或這條連線不走續聊），整包重新送出。",
-  usageDiagPrefixBroken: "該中沒中",
-  usageWhyPrefixBroken: "照理該命中卻沒中——設定或紀錄的前段被動過。",
-  usageDiagCacheSkipped: "CLI 沒帶快取",
-  usageWhyCacheSkipped: "這一句 CLI 沒有標記快取，整句照全額計費（claude CLI 已知毛病）。",
-  usageDiagNoCache: "沒有快取",
-  usageWhyNoCache: "這條路完全不支援快取，每輪都是全額。",
-  usageDiagDropLane: "丟線重來",
-  usageWhyDropLane: "回合後整理失敗，這條線丟掉重開，聊天不受影響。",
+  // 快取結果（後端 usage_log.rs 那張表）：短名給統計、長句給最近一輪
+  usageCacheHit: "有中",
+  usageCacheHitWhy: "有一部分輸入命中快取，那一段照快取價計費。",
+  usageCacheMissed: "該中沒中",
+  usageCacheMissedWhy: "這輪照理該命中，實際卻沒中或只中一點點。",
+  usageCachePartial: "只中一點",
+  usageCachePartialWhy: "中了，但遠低於這輪照理能中的量。",
+  usageCacheZero: "沒省到",
+  usageCacheZeroWhy: "供應商回報這輪一個 token 都沒重用，照全額計費。",
+  usageCacheUnknown: "量不到",
+  usageCacheUnknownWhy: "這條連線不回報快取資料，中沒中都看不出來。",
+  usageCacheNotExpected: "本來就沒得中",
+  usageCacheNotExpectedWhy: "這輪沒有可以命中的前文，不是故障。",
+
+  // 這通送出去的形狀，與快取結果是兩回事
+  usageModeResume: "續聊",
+  usageModeShared: "共線",
+  usageModeSolo: "單角色",
+  usageModeOneshot: "一次性",
+  usageModePing: "保溫",
+
+  // 沒中的原因（只有續聊線算得出理論可中量）
+  usageCacheReasonExpired: "距上一句超過 app 的保守快取窗口",
+  usageCacheReasonBelowExpected: "低於照理能中的量",
+  usageCacheReasonSkipped: "這一句 CLI 沒帶快取標記（claude CLI 已知毛病）",
+
+  // 線事件：不是一通呼叫，沒有快取結果
+  usageEventDropLane: "丟線重來",
+  usageEventDropLaneWhy: "回合後整理失敗，這條線丟掉重開，聊天不受影響。",
 
   // 重開／丟線的原因
   usageReasonFirstTurn: "這桌第一輪",

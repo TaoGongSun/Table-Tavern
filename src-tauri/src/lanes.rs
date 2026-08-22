@@ -448,6 +448,7 @@ pub(crate) async fn run_turn(
                 model: &call.model,
                 parse: cli::parse_claude_usage,
                 lane: Some(lane_log),
+                shape: usage_log::PromptShape::Oneshot, // 續聊線的形狀由 LaneContext 說明，這欄不參與判定
                 prompt_tokens_out: Some(&prompt_tokens),
             }),
             &mut emit,
@@ -478,7 +479,7 @@ pub(crate) async fn run_turn(
                                 path,
                                 Some(world_id),
                                 &key,
-                                usage_log::Diag::DropLane,
+                                usage_log::Event::DropLane,
                                 "rewrite-failed",
                             );
                         }
@@ -573,6 +574,7 @@ pub(crate) async fn keepalive(
                 model,
                 parse: cli::parse_claude_usage,
                 lane: Some(lane_log),
+                shape: usage_log::PromptShape::Oneshot, // 同上：ping 的 mode 來自 LaneContext.ping
                 prompt_tokens_out: None,
             }),
             &mut |_: &str| {},
@@ -594,7 +596,7 @@ pub(crate) async fn keepalive(
                         path,
                         Some(world_id),
                         &key,
-                        usage_log::Diag::DropLane,
+                        usage_log::Event::DropLane,
                         "ping-truncate-failed",
                     );
                 }
@@ -1324,16 +1326,19 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
             assert_eq!(record["cost_usd"], 0.002);
             assert!(record["system_tokens"].as_u64().unwrap() > 0);
         }
-        // 第一輪開線＝暖機，理論可中量 0
-        assert_eq!(records[0]["diag"], "warmup");
+        // 第一輪開線：理論可中量 0，但假 CLI 回報中了 90——數字優先，快取軸說 hit，
+        // 「這條線剛開」由 reason 那欄負責講，不去蓋掉觀測值
+        assert_eq!(records[0]["mode"], "resume");
+        assert_eq!(records[0]["cache"], "hit");
         assert_eq!(records[0]["reason"], "first-turn");
         assert_eq!(records[0]["expected_cached"], 0);
         // 第二輪走補丁：上輪送了 100，這輪中 90＝正常
-        assert_eq!(records[1]["diag"], "ok");
+        assert_eq!(records[1]["cache"], "hit");
         assert_eq!(records[1]["patched"], true);
         assert_eq!(records[1]["expected_cached"], 100);
-        // 第三輪快取已過期（手改 epoch 減 3600）＝追平，換上新素材
-        assert_eq!(records[2]["diag"], "expired");
+        // 第三輪隔了一小時（手改 epoch 減 3600）＝追平，換上新素材。假 CLI 照樣回報中了 90，
+        // 快取軸就照數字說 hit——「過期」是數字掉下來時用來解釋為什麼，不是時間到就蓋章
+        assert_eq!(records[2]["cache"], "hit");
         assert_eq!(records[2]["rebased"], true);
         assert!(records[2]["age_secs"].as_u64().unwrap() >= 3_600);
         assert_ne!(records[2]["system_hash"], records[1]["system_hash"]);

@@ -2068,13 +2068,16 @@ fn http_error(status: reqwest::StatusCode, body: &str) -> String {
 
 /// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
 /// 每個增量經 on_delta 回傳，結束後回傳完整文字。
-/// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage_log）。
+/// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage_log）；
+/// `shape` 是隨行的唯讀情報，只用來標帳本的 mode。
+#[allow(clippy::too_many_arguments)]
 pub async fn stream_chat(
     config: &AppConfig,
     model: &str,
     messages: &[ChatMessage],
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
+    shape: crate::usage_log::PromptShape,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
     let base = base_url(config);
@@ -2133,7 +2136,7 @@ pub async fn stream_chat(
                 .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log {
-            crate::usage_log::append_call(path, world, "api", model, None, usage);
+            crate::usage_log::append_call(path, world, "api", model, None, shape, usage);
         }
     }
     // 用量照記再判成敗：失敗的呼叫一樣燒了 token，額度分頁不能少算這一筆
@@ -3401,7 +3404,7 @@ mod tests {
         // 預設 OpenRouter endpoint 且沒 key：呼叫前就擋下
         let mut config = AppConfig::default();
         let messages = [message("user", "嗨".to_owned())];
-        let error = stream_chat(&config, "test/model", &messages, None, None, |_| {})
+        let error = stream_chat(&config, "test/model", &messages, None, None, crate::usage_log::PromptShape::Oneshot, |_| {})
             .await
             .unwrap_err()
             .to_string();
@@ -3413,9 +3416,17 @@ mod tests {
             serde_json::Value::String(format!("http://{address}")),
         );
         let mut deltas = Vec::new();
-        let full = stream_chat(&config, "test/model", &messages, None, None, |delta| {
-            deltas.push(delta.to_owned());
-        })
+        let full = stream_chat(
+            &config,
+            "test/model",
+            &messages,
+            None,
+            None,
+            crate::usage_log::PromptShape::Oneshot,
+            |delta| {
+                deltas.push(delta.to_owned());
+            },
+        )
         .await
         .unwrap();
         assert_eq!(full, "你好");
@@ -3574,7 +3585,7 @@ mod tests {
             serde_json::Value::String(format!("http://{address}")),
         );
         let messages = [message("user", "嗨".to_owned())];
-        let error = stream_chat(&config, "test/model", &messages, None, None, |_| {})
+        let error = stream_chat(&config, "test/model", &messages, None, None, crate::usage_log::PromptShape::Oneshot, |_| {})
             .await
             .unwrap_err()
             .to_string();
@@ -3820,6 +3831,7 @@ mod tests {
             &messages,
             Some(&log_path),
             Some("w1"),
+            crate::usage_log::PromptShape::Turn { roster: 3, solo: false },
             |delta| {
                 deltas.push(delta.to_owned());
             },
@@ -3838,7 +3850,10 @@ mod tests {
         assert_eq!(record["prompt_tokens"], 20);
         assert_eq!(record["cached_tokens"], 12);
         assert_eq!(record["hit_rate"], 60.0);
-        assert_eq!(record["diag"], "single");
+        // 本案的核心：無狀態的 api 路徑也要說出真正的快取結果，不再一律「單發」
+        assert_eq!(record["mode"], "shared");
+        assert_eq!(record["cache"], "hit");
+        assert_eq!(record["roster_size"], 3);
         let _ = std::fs::remove_file(&log_path);
     }
 

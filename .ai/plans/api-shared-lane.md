@@ -119,13 +119,13 @@ agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開�
    - **包 B｜共線組裝器（約 125 行）**：一支統一組裝器同時修好四條路。全部台詞改 assistant＋名字前綴後，role 序列只跟事件種類有關 → `push_merged` 分組變成角色無關 → CLI 攤平文字自動逐字相同，雙重前綴那個洞順帶解掉。
    - **包 C｜anthropic block（約 70 行）**：**降為條件觸發，不再是上線門檻**。帳本 638 筆裡 `api` 走過的模型只有 `stealth/ox-alpha` 與 `deepseek`，零筆 `anthropic/`；三條量過的路徑全是供應商自動前綴快取，不看顯式斷點。
 6. **包 C 的兩條附帶條款**：未完成 C 前，`anthropic/*` 共線後**只保證 system 快取**，不能宣稱完整支援；若日後預設模型、使用者設定或發行對象開始包含 `anthropic/*`，**C 自動升回上線門檻**。C 的內容不變——歷史拆成「一正典事件一個 content block」（不可變、只追加），動態世界書、狀態、私設、「現在你是 X」留在斷點後方，**不動全域 `push_merged`**（它同時服務 GM 路徑），斷點改由組裝器明確交付「最後一個穩定 block」的位置，`anthropic_messages` 不再用 `role == "assistant"` 猜。
-7. **包 B 的已知取捨：對沒有快取的模型是純增。** `deepseek-v4-pro-0813-free` 27 筆命中率恆 0（有回報、值就是 0），共線每輪多送約 1,500 tokens 零回收——該模型平均輸入 4,411，等於 **+34%**。自動退回機制另案處理：[no-cache-model-optout](no-cache-model-optout.md)。
+7. **包 B 的已知取捨：對沒有快取的模型是純增。** 共線每輪多送約 1,500 tokens，對真的沒有快取的模型零回收；輸入越小佔比越大（`deepseek-v4-pro-0813-free` 平均輸入 4,411，最壞情況 **+34%**）。**哪個模型真的沒快取目前無實測**——那 27 筆 deepseek 全部缺 `cache_reporting` 欄，0 分不出是真沒中還是量不到（2026-08-22 查證）。自動退回機制另案處理：[no-cache-model-optout](no-cache-model-optout.md)。
 
 各路徑的成本佔比（帳本實測平均輸入，動工前粗估即可，正式答案靠包 B 後的多輪實測）：
 
 | 路徑 | 平均輸入 | 加 1,500 佔比 |
 |---|---|---|
-| `deepseek`（無快取） | 4,411 | +34.0% |
+| `deepseek`（快取未知） | 4,411 | 最壞 +34.0% |
 | api `stealth/ox-alpha` | 7,927 | +18.9% |
 | codex | 21,308 | +7.0% |
 | grok | 68,692 | +2.2% |
@@ -161,7 +161,7 @@ agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開�
 
 包 B 完成後做**成對測試**（同角色／換角色 × 冷／暖），記**絕對 cached tokens** 而不只看百分比；**codex 要先扣掉固定的 9,984**，否則 90% 可能只是它自己的前綴在中。
 
-快取實測基線：codex 15 筆（底線 9,984）、api `stealth/ox-alpha` 4 筆（底線 64）、grok 4 筆（89.1／48.6／49.0／91.8%，同樣的雙峰）。三條路各自獨立證實「換角色全滅、同角色連續全中」。agy 要先改 `stream-json` 才量得到。`deepseek-v4-pro-0813-free` 27 筆命中率恆 0（有回報、值就是 0），拿它測共線量不到任何東西。
+快取實測基線：codex 15 筆（底線 9,984）、api `stealth/ox-alpha` 4 筆（底線 64）、grok 4 筆（89.1／48.6／49.0／91.8%，同樣的雙峰）。三條路各自獨立證實「換角色全滅、同角色連續全中」。agy 要先改 `stream-json` 才量得到。`deepseek-v4-pro-0813-free` 27 筆全部缺 `cache_reporting` 欄（加欄前的 api 行把「沒回報」壓平成 0，2026-08-22 查證），拿它測共線量不到任何東西。
 
 ## 保溫的既有結論（api-cache-visibility 查證所得，供結論 4 參考）
 
