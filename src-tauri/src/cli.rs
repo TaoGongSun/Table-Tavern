@@ -522,10 +522,17 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
         // Windows 認 USERPROFILE，HOME 在那邊不作數
         ("USERPROFILE", home),
         ("GROK_HOME", grok_home.to_string_lossy().into_owned()),
+        ("GROK_CONFIG", GROK_SAMPLING_OVERLAY.to_owned()),
     ]
     .map(|(key, value)| (key.to_owned(), value))
     .to_vec()
 }
+
+/// 取樣參數：grok 1.0.5 沒有 temperature／top_p 旗標，只吃設定檔的 `[models]` 全域預設。
+/// `GROK_CONFIG` 是官方的 JSON 疊加層（deep merge 在 config.toml 之上，白名單含 `models`），
+/// 走環境變數就不必動 GROK_HOME 裡的 config.toml，也碰不到登入態。
+/// 1.2／1.0 是為了鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
+pub const GROK_SAMPLING_OVERLAY: &str = r#"{"models":{"temperature":1.2,"top_p":1.0}}"#;
 
 /// grok 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
 /// 聊天單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
@@ -548,6 +555,12 @@ pub fn grok_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<St
         // 生圖不能設：那條要「呼叫 image_gen → 工具回傳 → 再回一句路徑」，砍到一輪會斷在中間。
         args.push("--max-turns".to_owned());
         args.push("1".to_owned());
+        // 少推理、多寫正文。grok-4.6 的 effort 選單只有 xhigh/high/medium/low，
+        // 傳 none 會被 CLI 當未知等級直接中止（實測 1.0.5），所以最低就到 low；
+        // 模型若整個不支援 effort，CLI 只會忽略不會失敗。
+        // 生圖那條不設：它要靠推理把 image_gen 叫起來再回報路徑，不動既有行為。
+        args.push("--reasoning-effort".to_owned());
+        args.push("low".to_owned());
     }
     if let Some(model) = model {
         args.push("-m".to_owned());
@@ -1473,9 +1486,15 @@ mod tests {
         assert!(args.contains(&"--no-plan".to_owned()));
         assert!(args.contains(&"--no-subagents".to_owned()));
         assert!(args.windows(2).any(|pair| pair == ["--max-turns", "1"]));
-        // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步
+        // low 是 grok-4.6／4.5 選單的最低檔；none 會被 CLI 判成未知等級、整次生成中止
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--reasoning-effort", "low"]));
+        // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步；
+        // 推理等級也維持原樣，免得把叫工具那步壓掉
         let image_args = grok_args(Some("grok-4.5"), prompt, true);
         assert!(!image_args.contains(&"--max-turns".to_owned()));
+        assert!(!image_args.contains(&"--reasoning-effort".to_owned()));
         assert!(args.windows(2).any(|pair| pair == ["-m", "grok-4.5"]));
         assert_eq!(args[args.len() - 2..], ["-p", prompt]);
         let default_args = grok_args(None, prompt, false);
@@ -1493,6 +1512,11 @@ mod tests {
         assert!(envs.contains(&("USERPROFILE".to_owned(), "/app/cli-home".to_owned())));
         // GROK_HOME 另指一處，登入態才不會跟使用者終端機的 ~/.grok 混在一起
         assert!(envs.contains(&("GROK_HOME".to_owned(), "/app/grok-home".to_owned())));
+        // 取樣參數走 GROK_CONFIG 疊加層：只在 app 這幾次呼叫生效，不寫進任何 config.toml
+        assert!(envs.contains(&(
+            "GROK_CONFIG".to_owned(),
+            r#"{"models":{"temperature":1.2,"top_p":1.0}}"#.to_owned()
+        )));
     }
 
     #[test]
