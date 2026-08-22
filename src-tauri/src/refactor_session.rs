@@ -57,6 +57,7 @@ async fn run_stage(
             model: &call.model,
             parse: cli::parse_claude_usage,
             lane: None,
+            shape: crate::usage_log::PromptShape::Oneshot,
             prompt_tokens_out: None,
         }),
         &mut emit,

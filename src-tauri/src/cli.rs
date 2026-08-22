@@ -836,8 +836,10 @@ pub struct UsageLog<'a> {
     pub transport: &'a str,
     pub model: &'a str,
     pub parse: fn(&str) -> Option<PromptCacheUsage>,
-    /// 續聊線的脈絡；None＝單發路徑，只記數字不做診斷。
+    /// 續聊線的脈絡；None＝無狀態路徑（快取結果照樣判，形狀由 `shape` 交代）。
     pub lane: Option<crate::usage_log::LaneContext>,
+    /// 這通送出去的是什麼形狀（唯讀情報，只用來標帳本的 mode）。
+    pub shape: crate::usage_log::PromptShape,
     /// 回填本輪總輸入，供 lane 記成下輪的理論可中量（跨 await 需 Sync，故用 atomic）。
     pub prompt_tokens_out: Option<&'a std::sync::atomic::AtomicU64>,
 }
@@ -1017,6 +1019,7 @@ pub async fn run_cli(
                     log.transport,
                     log.model,
                     log.lane.as_ref(),
+                    log.shape,
                     usage,
                 );
                 if let Some(slot) = log.prompt_tokens_out {
@@ -1714,6 +1717,7 @@ mod tests {
                 model: "sonnet",
                 parse: parse_claude_usage,
                 lane: None,
+                shape: crate::usage_log::PromptShape::Oneshot,
                 prompt_tokens_out: Some(&seen),
             }),
             |delta: &str| {
@@ -1758,8 +1762,10 @@ mod tests {
         assert_eq!(record["output_tokens"], 2);
         assert_eq!(record["hit_rate"], 99.0);
         assert_eq!(record["cost_usd"], 0.0015);
-        // 非續聊路徑不做診斷；時間戳到秒（分鐘精度分不出是否踩到 5 分鐘過期線）
-        assert_eq!(record["diag"], "single");
+        // 無狀態路徑照樣判快取結果（本案修的就是這裡以前短路成「單發」）；
+        // 時間戳到秒（分鐘精度分不出是否踩到 5 分鐘過期線）
+        assert_eq!(record["mode"], "oneshot");
+        assert_eq!(record["cache"], "hit");
         assert_eq!(record["ts"].as_str().unwrap().len(), 19);
         // 總輸入回填給呼叫端，續聊線用它當下輪的理論可中量
         assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 100);

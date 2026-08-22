@@ -27,22 +27,57 @@ type UsageReport = {
   rows: UsageRow[];
   total: UsageRow;
   ping: UsageRow;
-  diags: { diag: string; rounds: number }[];
-  latest: { ts: string; diag: string; reason: string | null; reported: boolean } | null;
+  caches: { cache: string; rounds: number }[];
+  events: number;
+  latest: {
+    ts: string;
+    mode: string | null;
+    cache: string | null;
+    cache_reason: string | null;
+    event: string | null;
+    reason: string | null;
+    reported: boolean;
+  } | null;
 };
 
-// 診斷標籤字典（後端 usage_log.rs 模組頂註解那張表）：短名給統計、長句給最近一輪。
-// 燈號純規則：正常綠、暖機／過期黃、該中沒中紅、單發模式不打分。
-const DIAG_KEYS = {
-  ok: ["usageDiagOk", "usageWhyOk", "good"],
-  ping: ["usageDiagPing", "usageWhyPing", "good"],
-  warmup: ["usageDiagWarmup", "usageWhyWarmup", "warn"],
-  expired: ["usageDiagExpired", "usageWhyExpired", "warn"],
-  single: ["usageDiagSingle", "usageWhySingle", "idle"],
-  "prefix-broken": ["usageDiagPrefixBroken", "usageWhyPrefixBroken", "bad"],
-  "cache-skipped": ["usageDiagCacheSkipped", "usageWhyCacheSkipped", "bad"],
-  "no-cache": ["usageDiagNoCache", "usageWhyNoCache", "bad"],
-  "drop-lane": ["usageDiagDropLane", "usageWhyDropLane", "bad"],
+// 快取結果字典（後端 usage_log.rs 模組頂註解那張表）：短名給統計、長句給最近一輪、燈號。
+// 只有 missed 是紅的——它代表**證明得了照理該中**（算得出理論可中量、卻沒中滿）。
+// 其餘都不是故障：zero 只是這輪沒省到；expired 只代表超過 app 的保守窗口（實測超時仍可能中）；
+// 量不到與本來就沒得中根本不該打分，拿紅燈叫玩家去修不存在的問題最糟。
+const CACHE_KEYS = {
+  hit: ["usageCacheHit", "usageCacheHitWhy", "good"],
+  missed: ["usageCacheMissed", "usageCacheMissedWhy", "bad"],
+  partial: ["usageCachePartial", "usageCachePartialWhy", "warn"],
+  zero: ["usageCacheZero", "usageCacheZeroWhy", "warn"],
+  unknown: ["usageCacheUnknown", "usageCacheUnknownWhy", "idle"],
+  "not-expected": ["usageCacheNotExpected", "usageCacheNotExpectedWhy", "idle"],
+} as const;
+
+// 後端 usage_report::chip_state 的前端版：統計與「最近一輪」要落在同一個格子，
+// 否則同一輪在兩個地方會是不同顏色。
+const FAULTY_REASONS = ["below-expected", "skipped"];
+function chipState(cache: string, cacheReason: string | null) {
+  const faulty = cacheReason !== null && FAULTY_REASONS.includes(cacheReason);
+  if (faulty && (cache === "partial" || cache === "zero")) return "missed";
+  return cache;
+}
+// 線事件不是一通呼叫，沒有快取結果，自己一組（一律紅：線被丟掉重來就是出過事）
+const EVENT_KEYS = {
+  "drop-lane": ["usageEventDropLane", "usageEventDropLaneWhy", "bad"],
+} as const;
+// 這通送出去的形狀。只在「最近一輪」那句話裡當一個詞出現，不進統計
+const MODE_KEYS = {
+  resume: "usageModeResume",
+  shared: "usageModeShared",
+  solo: "usageModeSolo",
+  oneshot: "usageModeOneshot",
+  ping: "usageModePing",
+} as const;
+// 沒中的原因；只有算得出理論可中量的續聊線給得出來
+const CACHE_REASON_KEYS = {
+  expired: "usageCacheReasonExpired",
+  "below-expected": "usageCacheReasonBelowExpected",
+  skipped: "usageCacheReasonSkipped",
 } as const;
 const REASON_KEYS = {
   "first-turn": "usageReasonFirstTurn",
@@ -56,8 +91,13 @@ const REASON_KEYS = {
   "ping-truncate-failed": "usageReasonPingTruncateFailed",
 } as const;
 
-function diagEntry(diag: string) {
-  return DIAG_KEYS[diag as keyof typeof DIAG_KEYS];
+// 一行 →（短標 key, 長句 key, 燈號）。事件行走事件那組，其餘看快取結果
+function latestEntry(latest: UsageReport["latest"]) {
+  if (!latest) return undefined;
+  if (latest.event) return EVENT_KEYS[latest.event as keyof typeof EVENT_KEYS];
+  if (!latest.cache) return undefined;
+  const state = chipState(latest.cache, latest.cache_reason);
+  return CACHE_KEYS[state as keyof typeof CACHE_KEYS];
 }
 
 function tokens(value: number) {
@@ -115,12 +155,18 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
 
   // 「最近一輪怎麼樣」是某一桌的事；看總計時沒有「最近一輪」這回事，不出這句話
   const latest = scope === null ? null : report.latest;
-  const entry = latest ? diagEntry(latest.diag) : undefined;
+  const entry = latestEntry(latest);
   const reasonKey = latest?.reason ? REASON_KEYS[latest.reason as keyof typeof REASON_KEYS] : undefined;
-  // 非綠燈＝值得在收合狀態就看到；正常與單發留在細項裡就好
-  const alert = entry && latest && entry[2] !== "good" && entry[2] !== "idle";
-  // 「單發」講的是呼叫用途，跟快取看不看得見是兩件事——量不到就得另外說一句，
-  // 否則玩家只會看到「單發」，以為那就是命中率空白的理由
+  // 沒中的原因（續聊線才給得出）與線重開的原因是兩件事，兩句都要出得來
+  const cacheReasonKey = latest?.cache_reason
+    ? CACHE_REASON_KEYS[latest.cache_reason as keyof typeof CACHE_REASON_KEYS]
+    : undefined;
+  // 這通送出去的形狀：舊紀錄推不出來就不寫，不拿「單發」冒充
+  const modeKey = latest?.mode ? MODE_KEYS[latest.mode as keyof typeof MODE_KEYS] : undefined;
+  // 非綠燈＝值得在收合狀態就看到；中了與不打分的留在細項裡就好
+  const light = entry ? entry[2] : "idle";
+  const alert = entry && latest && light === "bad";
+  // 量不到要另外說一句，否則玩家看到空白的命中率會去修一個不存在的問題
   const blindNote = latest && !latest.reported ? ` — ${t("usageLatestBlind")}` : "";
   const bodyRows = [...report.rows];
   if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
@@ -203,11 +249,13 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
 
       {/* 狀況不正常時在收合狀態出聲，正常就只留在細項裡——同一句話不重複出現兩次 */}
       {alert && (
-        <p className={`usage-latest usage-${entry[2]}`}>
+        <p className={`usage-latest usage-${light}`}>
           <span className="usage-dot" aria-hidden="true" />
           <strong>{t(entry[0])}</strong>
+          {modeKey && <span className="usage-muted"> {t(modeKey)}</span>}
           {" — "}
           {t(entry[1])}
+          {cacheReasonKey && `（${t(cacheReasonKey)}）`}
           {reasonKey && `（${t(reasonKey)}）`}
           {blindNote}
         </p>
@@ -218,11 +266,13 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
         <summary>{t("usageDetailsToggle")}</summary>
 
         {entry && latest && !alert && (
-          <p className={`usage-latest usage-${entry[2]}`}>
+          <p className={`usage-latest usage-${light}`}>
             <span className="usage-dot" aria-hidden="true" />
             <strong>{t(entry[0])}</strong>
+            {modeKey && <span className="usage-muted"> {t(modeKey)}</span>}
             {" — "}
             {t(entry[1])}
+            {cacheReasonKey && `（${t(cacheReasonKey)}）`}
             {reasonKey && `（${t(reasonKey)}）`}
             {blindNote}
             <span className="usage-latest-ts">{latest.ts}</span>
@@ -301,15 +351,23 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
         </div>
 
         <p className="usage-diags">
-          {report.diags.map((count) => {
-            const label = diagEntry(count.diag);
+          {report.caches.map((count) => {
+            const label = CACHE_KEYS[count.cache as keyof typeof CACHE_KEYS];
             return label ? (
-              <span key={count.diag} className={`usage-chip usage-${label[2]}`}>
+              <span key={count.cache} className={`usage-chip usage-${label[2]}`}>
                 {t(label[0])} ×{count.rounds}
               </span>
             ) : null;
           })}
         </p>
+        {/* 線事件不是一通呼叫，不進上面那排的分母，所以另起一行 */}
+        {report.events > 0 && (
+          <p className="usage-diags">
+            <span className="usage-chip usage-bad">
+              {t("usageEventDropLane")} ×{report.events}
+            </span>
+          </p>
+        )}
         {/* 全盲時首頁那句已經講過，這裡只補「部分輪次量不到」的情況 */}
         {hit !== null && report.total.observed_rounds < report.total.rounds && (
           <p className="usage-note">{t("usageCacheBlind")}</p>
