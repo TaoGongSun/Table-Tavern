@@ -121,6 +121,7 @@ export const es: Record<MsgKey, string> = {
   cliLoginVerifyBtn: "Acceder / Verificar",
   cliConnectedBadge: "Conectado ✓",
   cliReverifyBtn: "Reverificar",
+  cliSwitchAccountBtn: "Cambiar cuenta",
   cliInstalling: "Instalando {provider}. Sigue las instrucciones en la ventana de la terminal para iniciar sesión…",
   cliInstallStart: "Instalando {provider} automáticamente. No cierres esta ventana.",
   cliInstallLoginHint: "Sigue las instrucciones en la ventana de la terminal para iniciar sesión; esta ventana esperará la verificación automáticamente…",

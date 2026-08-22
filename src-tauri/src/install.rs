@@ -13,6 +13,9 @@ pub struct InstallSpec {
     pub id: String,
     pub install: Vec<String>,
     pub login: Vec<String>,
+    // 切換帳號才會帶：登入前先清掉舊憑證，否則 CLI 看到 token 還沒過期就直接說「已登入」。
+    // 非切換的情境由呼叫端清空這欄。
+    pub logout: Vec<String>,
     pub probe: Vec<String>,
     // 探針輸出必須含這段字才算過；給那些未登入也可能 exit 0 的指令用。
     pub probe_expect: Option<String>,
@@ -197,6 +200,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                     claude.as_str(),
                 ],
             ),
+            logout: argv(claude.clone(), &["auth", "logout"]),
             probe: argv(claude, &["-p", "ok"]),
             probe_expect: None,
             envs: Vec::new(),
@@ -218,6 +222,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                     "login",
                 ],
             ),
+            logout: argv(codex.clone(), &["logout"]),
             probe: argv(codex, &["login", "status"]),
             probe_expect: None,
             envs: Vec::new(),
@@ -241,6 +246,8 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
                     "ok",
                 ],
             ),
+            // agy 沒有登入指令，也就沒有登出可清
+            logout: Vec::new(),
             probe: argv(agy, &["-p", "ok"]),
             probe_expect: None,
             envs: Vec::new(),
@@ -264,6 +271,7 @@ pub fn windows_specs() -> Result<Vec<InstallSpec>, String> {
             ),
             // grok -p 會實跑一次 grok-4.5 推理（實測 26 秒，逼近 30 秒探針上限）；
             // models 只讀本機憑證、無 OAuth 副作用，故可在登入前先探。
+            logout: argv(grok.clone(), &["logout"]),
             probe: argv(grok, &["models"]),
             probe_expect: Some("You are logged in".to_owned()),
             envs: Vec::new(),
@@ -483,6 +491,24 @@ async fn run_install_with_interval(
         emit(InstallProgress::new(&spec.id, "done", &log_path));
         return Ok(log_path);
     }
+    // 切換帳號那條會帶 logout：舊憑證還沒過期時，login 會直接說「已登入」什麼都不做，
+    // 先清掉才換得了人。登出失敗就停在這裡——硬往下走只會拿舊帳號假報一次「切換成功」。
+    if !spec.logout.is_empty() {
+        let logout_output = run_terminal(&spec.logout, Duration::from_secs(60), &spec.envs)
+            .await
+            .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
+        append_output(&mut log, &spec.logout, &logout_output)?;
+        if !logout_output.success {
+            let suffix = output_detail(&logout_output)
+                .unwrap_or_else(|| "logout command exited with a non-zero status".to_owned());
+            return Err(emit_error(
+                &spec.id,
+                &log_path,
+                format!("account switch aborted, old credentials are still in place: {suffix}"),
+                &mut emit,
+            ));
+        }
+    }
     emit(InstallProgress::new(&spec.id, "login", &log_path));
     #[cfg(target_os = "windows")]
     {
@@ -626,6 +652,7 @@ mod tests {
             id: "stub".to_owned(),
             install: command(script, "install", &state, &probes, &login),
             login: command(script, login_action, &state, &probes, &login),
+            logout: Vec::new(),
             probe: command(script, "probe", &state, &probes, &login),
             probe_expect: None,
             envs: Vec::new(),
@@ -656,6 +683,8 @@ mod tests {
     const SCRIPT: &str = r#"case "$1" in
  install) exit 0 ;;
  probe) echo x >> "$3"; echo signed-in; [ -f "$2" ] ;;
+ logout) rm -f "$2"; touch "$2.logout" ;;
+ logout-fail) touch "$2.logout"; exit 1 ;;
  login-ok) touch "$2"; touch "$4" ;;
  login-no-state) touch "$4" ;;
  login-fail) touch "$4"; exit 1 ;;
@@ -664,6 +693,8 @@ esac"#;
     #[cfg(windows)]
     const SCRIPT: &str = r#"if "%1"=="install" exit /b 0
 if "%1"=="probe" (echo x>> "%3" & echo signed-in & if exist "%2" (exit /b 0) else (exit /b 1))
+if "%1"=="logout" (del /q "%2" 2>nul & type nul > "%2.logout" & exit /b 0)
+if "%1"=="logout-fail" (type nul > "%2.logout" & exit /b 1)
 if "%1"=="login-ok" (type nul > "%2" & type nul > "%4" & exit /b 0)
 if "%1"=="login-no-state" (type nul > "%4" & exit /b 0)
 if "%1"=="login-fail" (type nul > "%4" & exit /b 1)
@@ -711,6 +742,44 @@ if "%1"=="login-sleep" (type nul > "%4" & timeout /t 3 /nobreak >nul & exit /b 0
             stages(&events),
             ["detect", "install", "login", "verify", "done"]
         );
+    }
+    // 換帳號：舊憑證還在（state 存在）也要先登出再重登，否則 CLI 會直接說「已登入」
+    #[tokio::test]
+    async fn switch_account_logs_out_before_login() {
+        let root = TestDir::new("switch");
+        let script = write_stub(&root.0, SCRIPT);
+        std::fs::write(root.0.join("state"), "ready").unwrap();
+        let mut spec = spec(&script, &root.0, false, "login-ok", 1);
+        spec.logout = command(
+            &script,
+            "logout",
+            &root.0.join("state"),
+            &root.0.join("probes"),
+            &root.0.join("login"),
+        );
+        let (result, events) = run_case(&root.0, spec).await;
+        assert!(result.is_ok());
+        assert!(root.0.join("state.logout").exists());
+        assert!(stages(&events).contains(&"login"));
+    }
+    // 登出失敗＝舊憑證還在，這時候登入只會回「已登入」，硬跑下去會假報切換成功
+    #[tokio::test]
+    async fn failed_logout_aborts_before_login() {
+        let root = TestDir::new("switch-logout-fail");
+        let script = write_stub(&root.0, SCRIPT);
+        std::fs::write(root.0.join("state"), "ready").unwrap();
+        let mut spec = spec(&script, &root.0, false, "login-ok", 1);
+        spec.logout = command(
+            &script,
+            "logout-fail",
+            &root.0.join("state"),
+            &root.0.join("probes"),
+            &root.0.join("login"),
+        );
+        let (result, events) = run_case(&root.0, spec).await;
+        assert!(result.is_err());
+        assert!(!root.0.join("login").exists());
+        assert!(!stages(&events).contains(&"done"));
     }
     #[tokio::test]
     async fn login_failure_never_probes() {

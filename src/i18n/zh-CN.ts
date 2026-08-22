@@ -121,6 +121,7 @@ export const zhCN: Record<MsgKey, string> = {
   cliLoginVerifyBtn: "登录/验证",
   cliConnectedBadge: "已连接 ✓",
   cliReverifyBtn: "重新验证",
+  cliSwitchAccountBtn: "切换账号",
   cliInstalling: "正在安装 {provider}，请按终端窗口提示完成登录…",
   cliInstallStart: "正在自动安装 {provider}，请勿关闭此窗口。",
   cliInstallLoginHint: "请按终端窗口提示完成登录；本窗口将自动等待验证结果…",
