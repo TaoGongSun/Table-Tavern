@@ -133,6 +133,7 @@ export const zh = {
   cliLoginVerifyBtn: "登入／驗證",
   cliConnectedBadge: "已連結 ✓",
   cliReverifyBtn: "重新驗證",
+  cliSwitchAccountBtn: "切換帳號",
   cliInstalling: "正在安裝 {provider}，請依終端機視窗指示完成登入…",
   cliInstallStart: "正在自動安裝 {provider}，請勿關閉此視窗。",
   cliInstallLoginHint: "請依終端機視窗指示完成登入；本視窗會自動等待驗證結果…",

@@ -77,6 +77,9 @@ const CLI_INSTALL_URLS: Record<string, string> = {
   grok: "x.ai/cli",
 };
 
+// 有非互動登出指令的才換得了帳號；agy 只有 TUI 裡的 /logout，那列維持「重新驗證」
+const CLI_SWITCHABLE = new Set(["claude", "codex", "grok"]);
+
 // 系統權限預告只在每家 CLI 第一次啟用時彈一次；說明本身在設定頁常駐，事後查得到
 function cliNoticeKey(id: string) {
   return `cli_permission_notice:${id}`;
@@ -176,7 +179,7 @@ export function Settings({
     };
   }, []);
 
-  async function installCli(provider: string) {
+  async function installCli(provider: string, switchAccount = false) {
     const repeat = installingCli === provider;
     if (!repeat) {
       setInstallingCli(provider);
@@ -193,6 +196,7 @@ export function Settings({
     try {
       await invoke("install_cli", {
         provider,
+        switchAccount,
         messages: {
           start: t("cliInstallStart", params),
           loginHint: t("cliInstallLoginHint", params),
@@ -206,6 +210,20 @@ export function Settings({
       setMessage(cooldown ? t("cliLoginCooldown", { secs: cooldown[1] }) : error);
       if (!repeat) setInstallingCli(null);
       return;
+    }
+
+    // 換帳號流程一旦真的啟動就會登出，舊帳號當場失效：徽章轉灰，登入驗證過了輪詢再點亮。
+    // 不轉灰的話，登入視窗被關掉時會停在「已連結 ✓」，實際上人已經被登出了。
+    // 擺在 invoke 之後：冷卻中或啟動失敗會走上面的 catch，那些情況帳號沒被動到。
+    if (switchAccount) {
+      const base = configRef.current;
+      const next = {
+        ...base,
+        preferences: { ...base.preferences, [cliConnectedKey(provider)]: false },
+      };
+      await invoke("write_config", { config: next })
+        .then(() => onSavedRef.current(next))
+        .catch(() => {});
     }
 
     let elapsed = 0;
@@ -366,6 +384,16 @@ export function Settings({
                         >
                           {t("cliReverifyBtn")}
                         </button>
+                        {/* 換帳號要先登出，取消登入就回不去舊帳號，所以跟重新驗證分成兩顆 */}
+                        {CLI_SWITCHABLE.has(id) && (
+                          <button
+                            type="button"
+                            disabled={installingCli !== null && installingCli !== id}
+                            onClick={() => void installCli(id, true)}
+                          >
+                            {t("cliSwitchAccountBtn")}
+                          </button>
+                        )}
                       </>
                     ) : (
                       <button

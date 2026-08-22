@@ -121,6 +121,7 @@ export const ja: Record<MsgKey, string> = {
   cliLoginVerifyBtn: "ログイン／認証",
   cliConnectedBadge: "接続済み ✓",
   cliReverifyBtn: "再認証",
+  cliSwitchAccountBtn: "アカウント切替",
   cliInstalling: "{provider}をインストール中。ターミナルウィンドウの指示に従ってログインを完了してください…",
   cliInstallStart: "{provider}を自動インストールしています。このウィンドウを閉じないでください。",
   cliInstallLoginHint: "ターミナルウィンドウの指示に従ってログインを完了してください。このウィンドウは自動的に認証結果を待機します…",

@@ -121,6 +121,7 @@ export const ko: Record<MsgKey, string> = {
   cliLoginVerifyBtn: "로그인 / 인증",
   cliConnectedBadge: "연결됨 ✓",
   cliReverifyBtn: "재인증",
+  cliSwitchAccountBtn: "계정 전환",
   cliInstalling: "{provider} 설치 중입니다. 터미널 창의 안내에 따라 로그인을 완료해 주세요…",
   cliInstallStart: "{provider}를 자동 설치하는 중입니다. 이 창을 닫지 마세요.",
   cliInstallLoginHint: "터미널 창의 안내에 따라 로그인을 완료해 주세요. 로그인 완료 시 자동으로 인증 결과를 확인합니다…",

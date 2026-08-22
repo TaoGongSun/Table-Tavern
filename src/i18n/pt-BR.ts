@@ -121,6 +121,7 @@ export const ptBR: Record<MsgKey, string> = {
   cliLoginVerifyBtn: "Entrar / Verificar",
   cliConnectedBadge: "Conectado ✓",
   cliReverifyBtn: "Reverificar",
+  cliSwitchAccountBtn: "Trocar conta",
   cliInstalling: "Instalando {provider} — siga as instruções na janela do Terminal para fazer login…",
   cliInstallStart: "Instalando {provider} automaticamente. Não feche esta janela.",
   cliInstallLoginHint: "Siga as instruções na janela do Terminal para fazer login; esta janela aguardará a verificação automaticamente…",

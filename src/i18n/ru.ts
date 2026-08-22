@@ -121,6 +121,7 @@ export const ru: Record<MsgKey, string> = {
   cliLoginVerifyBtn: "Войти / Проверить",
   cliConnectedBadge: "Подключено ✓",
   cliReverifyBtn: "Перепроверить",
+  cliSwitchAccountBtn: "Сменить аккаунт",
   cliInstalling: "Установка {provider} — следуй инструкциям в окне терминала для входа…",
   cliInstallStart: "Автоматическая установка {provider}. Не закрывай это окно.",
   cliInstallLoginHint: "Следуй инструкциям в окне терминала для входа. Это окно автоматически подождёт подтверждения…",
