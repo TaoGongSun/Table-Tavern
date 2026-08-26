@@ -1129,6 +1129,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
 
     /// grok 沒有回合後抹寫，機密段一旦送進去就永遠留在該線歷史裡：run_turn 出聲擋下，
     /// 不讓呼叫端誤用共線＋回合注入那套（會把 A 的私設漏給 B）。
+    #[cfg(unix)]
     #[tokio::test]
     async fn grok_lane_refuses_confidential_injection() {
         let FakeCli {

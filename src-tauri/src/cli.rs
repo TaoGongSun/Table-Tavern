@@ -1944,6 +1944,7 @@ mod tests {
         assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 100);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn run_cli_aborts_instantly_on_fatal_stderr_api_error_and_shows_it_in_tail() {
         let _serial = crate::inflight::lock_real_process_tests();
@@ -1987,6 +1988,7 @@ mod tests {
         assert!(deltas.iter().any(|d| d.contains("API Error")));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial_text() {
         let _serial = crate::inflight::lock_real_process_tests();
@@ -2030,6 +2032,7 @@ mod tests {
         assert!(deltas.iter().any(|d| d.contains('⚠')));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {
         let _serial = crate::inflight::lock_real_process_tests();
