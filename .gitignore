@@ -18,3 +18,6 @@ src-tauri/output
 
 # 本機測試用第三方卡片
 TestCards/
+
+# Python 暫存（scripts/split-verify 的 import 會產生）
+__pycache__/
