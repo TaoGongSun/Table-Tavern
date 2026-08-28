@@ -29,6 +29,8 @@ const TEXT_SIZE_LABEL_KEYS = {
   xl: "textSizeXL",
 } as const;
 
+const API_MODES = new Set(["auto", "chat_completions", "responses"]);
+
 // 單一設定入口內分頁（NewPlan §9.4）：外觀為預設頁，不碰 AI 的人打開只見外觀
 export function SettingsWindow({
   config,
@@ -83,6 +85,9 @@ export function SettingsWindow({
 
   const textSize = String(config.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
   const selectedTheme = previewTheme ?? resolveTheme(config, sponsorUnlocked);
+  const transport = String(config.preferences["transport"] ?? "api");
+  const rawApiMode = String(config.preferences["api_mode"] ?? "auto");
+  const apiMode = API_MODES.has(rawApiMode) ? rawApiMode : "auto";
 
   useEffect(() => {
     document.documentElement.dataset.theme = previewTheme ?? resolveTheme(config, sponsorUnlocked);
@@ -257,7 +262,28 @@ export function SettingsWindow({
             )}
           </div>
         ) : (
-          <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
+          <>
+            {transport === "api" && (
+              <div className="settings-form">
+                <label>
+                  API format
+                  <select
+                    value={apiMode}
+                    onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
+                  >
+                    <option value="auto">Auto (backward-compatible)</option>
+                    <option value="chat_completions">Chat Completions (/chat/completions)</option>
+                    <option value="responses">Responses (/responses)</option>
+                  </select>
+                  <small role="note">
+                    Auto uses /responses only when the custom base URL already ends in /responses;
+                    otherwise it keeps the existing /chat/completions behavior.
+                  </small>
+                </label>
+              </div>
+            )}
+            <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
+          </>
         )}
       </div>
     </div>
