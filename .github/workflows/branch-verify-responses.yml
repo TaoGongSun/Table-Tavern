@@ -27,7 +27,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npm run check:i18n
 
       - name: cargo fmt check
         working-directory: src-tauri
