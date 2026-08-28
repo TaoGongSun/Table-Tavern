@@ -1,4 +1,6 @@
-use crate::{cli, config_root, data, data_root, lanes, transport, usage_log};
+use crate::{
+    cli, config_root, data, data_root, lanes, responses_transport, transport, usage_log,
+};
 use std::path::PathBuf;
 
 /// CLI 的工作目錄。Finder 啟動的 macOS app 工作目錄可能是根目錄；CLI 若繼承後做專案探索，
@@ -232,17 +234,33 @@ pub(crate) async fn stream_turn_via_transport(
         .map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
         let model = transport::resolve_model(tier, config)?;
-        return transport::stream_chat(
-            config,
-            &model,
-            messages,
-            usage_log.as_deref(),
-            world,
-            shape,
-            emit,
-        )
-        .await
-        .map_err(|error| ai_call_failure(error.to_string()));
+        let result = match responses_transport::api_mode(config) {
+            responses_transport::ApiMode::ChatCompletions => {
+                transport::stream_chat(
+                    config,
+                    &model,
+                    messages,
+                    usage_log.as_deref(),
+                    world,
+                    shape,
+                    emit,
+                )
+                .await
+            }
+            responses_transport::ApiMode::Responses => {
+                responses_transport::stream_responses(
+                    config,
+                    &model,
+                    messages,
+                    usage_log.as_deref(),
+                    world,
+                    shape,
+                    emit,
+                )
+                .await
+            }
+        };
+        return result.map_err(|error| ai_call_failure(error.to_string()));
     }
 
     // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
