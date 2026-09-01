@@ -13,6 +13,7 @@
 - [prompt-cache-optimization](tasks/prompt-cache-optimization.md) — 提示詞快取優化：resume 續聊架構（claude lane） — 下一步：本任務主體完成——包 1–7 全數實作並通過實機驗收（架構 85–88% 命中、額度分頁九項過、保溫 ping 94.6%）；2026-08-06 額度分頁改成「已省 X% 費用／約省下 $Y」口徑並實機看過；剩 grok／agy 顯示驗收延後與 OpenRouter 計量未接，見交接檔 Remaining
 - [interface-card-panel](tasks/interface-card-panel.md) — 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板） — 下一步：2026-08-04 v1 完成且**實機驗收全數通過**（匯入→開介面→點行動→送出→GM 照卡片格式回覆→介面就地換新畫面）；聊天收合 XML 已拍板不做；v2 首要＝省額度（歷史裡每輪整包 XML 重送，要留正文砍掉重複區塊）
 - [i18n-more-languages](tasks/i18n-more-languages.md) — 介面擴充多語系（十國語言，AI 產字典） — 下一步：**改為全 app 功能定案後一次驗，現在不動手**（2026-08-17 拍板）。原驗收單已過期——基準 2026-07-30 是 247 鍵／55 顆按鈕（commit 9a17562），2026-08-17 已成 474 鍵／102 顆按鈕、期間 50 次 commit 動過 src/i18n/，最終要驗多少項無法預估，功能全數完工前不重排。機械關卡持續有效（缺鍵 TypeScript 編譯不過、`npm run check:i18n` 十語系佔位符與按鈕寬度全綠），缺的是人眼：07-30 之後新增的鍵未經逐語系審校，新功能畫面沒人切語系看過
+- [transport-split](tasks/transport-split.md) — transport.rs 拆進 transport/ — **實作完成，待實測**：機械驗收全綠；下一步：用平常實際使用的傳輸路徑至少跑一輪既有桌（送出玩家訊息→GM／角色正常串流回覆，確認狀態欄／角色切換無回歸）；若 API 與 CLI 都是常用路徑則各跑一輪，通過後正式結案。
 
 ## Todo
 - [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉固定的 9,984。
