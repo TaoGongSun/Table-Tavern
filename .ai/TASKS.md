@@ -16,12 +16,17 @@
 
 ## Todo
 - [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉固定的 9,984。
+- [card-arrival-private-leak](tasks/card-arrival-private-leak.md) — 角色卡回歸事件把私設漏給同桌其他角色 — 下一步：先拍板「回歸事件該讓誰看到什麼」：是拆成公開回歸事件＋GM-only 私設事件，還是回歸事件只留公開設定。定了再看四條路各要怎麼改，並一併決定 grok 現在的「一角一線＋私設提進凍結 system」要保留還是改回共線——grok-cache-miss 的角色線驗收擋在這裡。
 - [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。
 - [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
 - [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
+- [long-prompt-scene-hint](tasks/long-prompt-scene-hint.md) — 桌子太長撞到指令長度上限時，請玩家換幕 — 下一步：先確認撞上限時各條路實際回什麼（作業系統層的 E2BIG？CLI 自己的錯誤？還是直接沒反應），才知道要抓什麼特徵。三個作業系統的上限與表現可能不同。
 - [settings-overflow-i18n](tasks/settings-overflow-i18n.md) — 設定頁長字串爆版 — 下一步：挑一種排版方案（modal 加寬／列內換行／狀態按鈕移到次行），先在俄文與德文下驗連線分頁，再掃額度分頁與其餘八語系。
+- [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：照規格檔實作三包：包 1 `CacheStrategy` 判定與帳本欄位；包 2 尾巴重播（`TranscriptEvent` 新欄位、GM 線與角色線組裝改寫、`<turn-context>` 包裝與 system 規則、十語系文案）；包 3 chain epoch 的重開條件。驗收看離線重算的 byte-LCP 要等於 100%，再實跑三輪看 `cached_tokens` 是否跟著上一輪的 `prompt_tokens` 走。
+- [grok-cache-miss](tasks/grok-cache-miss.md) — Grok 快取命中率從九成掉到 2% — 下一步：等 card-arrival-private-leak 拍板角色線怎麼組裝，再驗收角色線：讓角色接三輪以上話，看 `chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，並確認換角色、改卡、換幕之後不會每輪重開。GM 線已驗完，不必重驗。
 - [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：排在 api-shared-lane 的四路成對測試之後開工——那批數據才估得準底線該怎麼定、以及這個功能還需不需要。開工首步是拍板底線的統計量（最小值／眾數／出現 ≥N 次的最小值）與「樣本不足就不判定」的 N。
+- [transport-split](tasks/transport-split.md) — transport.rs 拆進 transport/ — 下一步：等 data-split 完成並 commit 後才動工；屆時沿用 data-split 的基準抓取與五項驗收流程。
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
