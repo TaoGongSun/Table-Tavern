@@ -1,6 +1,6 @@
 # transport.rs 拆進 transport/
 
-`src-tauri/src/transport.rs` 原為 5472 行（本體 2198／同檔測試 3274）。2026-08-26 立案，規格經 Sol 兩輪討論；2026-09-01 開工前再核對現況後補強切線、完整依賴圖與可見度規則，並於同日完成實作。正式程式 commit：`8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`（`refactor: split transport module`）。做法與驗收沿用 [data-split](data-split.md)，本檔記錄本案切線與最後結果。
+`src-tauri/src/transport.rs` 原為 5472 行（本體 2198／同檔測試 3274）。2026-08-26 立案，規格經 Sol 兩輪討論；2026-09-01 開工前再核對現況後補強切線、完整依賴圖與可見度規則，並於同日完成實作與機械驗收。正式程式 commit：`8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`（`refactor: split transport module`）。做法與驗收沿用 [data-split](data-split.md)，本檔記錄本案切線、機械驗收與實測待辦。
 
 ## 切線（本體 2198 行 → 8 檔）
 
@@ -61,7 +61,7 @@ messages ─┬→ state_view ─┐
 
 最後實際需要的 production 可見度放寬共 **7 項**，全部只到 `pub(super)`：`gm_dynamic_block`、`gm_system_prompt`、`language_rule`、`message`、`push_merged`、`split_person_roster`、`system_event_text`。沒有其他 production item 內容變更。
 
-## 驗收結果
+## 機械驗收結果
 
 2026-09-01 完整沿用 [data-split](data-split.md) 的基準抓取與驗收強度，結果全綠：
 
@@ -75,6 +75,8 @@ messages ─┬→ state_view ─┐
 8. 前端 `npm run build` 全綠；既有 warning 不屬於本案失敗；
 9. 正式 main commit 只包含原 `transport.rs` 移除與 `transport/` 正式模組檔，驗收用暫時 workflow／script 沒有帶入 main。
 
-## 結果
+## 狀態
 
-**完成。** `src-tauri/src/transport.rs` 已拆成 `src-tauri/src/transport/`，正式程式 commit 為 `8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`。本案未與其他 refactor 混在同一個程式 commit；後續若要再重構 transport 內部邏輯，應另立新案，不回頭把本次純搬家擴 scope。
+**實作完成，待實測。** `src-tauri/src/transport.rs` 已拆成 `src-tauri/src/transport/`，正式程式 commit 為 `8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`。上述九項是機械驗收，不等於使用者實機驗收；在實際日常桌完成 smoke test 前，本案不標記正式結案。
+
+實測最低範圍：用平常實際使用的傳輸路徑開啟既有桌，送出一輪玩家訊息，確認 GM／角色串流回覆正常，並確認狀態欄與角色切換沒有明顯回歸；若 API 與 CLI 都是常用路徑，兩條路各跑一輪。通過後再把任務改為正式完成並寫入 history。
