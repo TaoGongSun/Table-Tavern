@@ -1,12 +1,12 @@
 # transport.rs 拆進 transport/
 
-`src-tauri/src/transport.rs` 5472 行（本體 2198／同檔測試 3274）。2026-08-26 立案，規格經 Sol 兩輪討論；2026-09-01 開工前再核對現況後補強切線、完整依賴圖與可見度規則。做法與驗收沿用 [data-split](data-split.md)，本檔只記與它不同的部分。
+`src-tauri/src/transport.rs` 原為 5472 行（本體 2198／同檔測試 3274）。2026-08-26 立案，規格經 Sol 兩輪討論；2026-09-01 開工前再核對現況後補強切線、完整依賴圖與可見度規則，並於同日完成實作。正式程式 commit：`8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`（`refactor: split transport module`）。做法與驗收沿用 [data-split](data-split.md)，本檔記錄本案切線與最後結果。
 
 ## 切線（本體 2198 行 → 8 檔）
 
 原本以為的「組裝（1–1230）／解析（1269–1700）／傳輸（1709–2198）」三段是假的：實測 `gm_system_prompt` 被行 1192 呼叫、`gm_dynamic_block` 被 1216 呼叫、`active_worldbook_entries` 被 1108／1212，前 528 行反而是下游的被呼叫端。
 
-開工前複核再調一處：`gm_dynamic_block` 改跟 `TreeRender`／`render_state_tree` 放在 `state_view.rs`。它直接組 `TreeRender` 並呼叫 `render_state_tree`；若留在 `context.rs`，拆檔後會被迫把這兩個純 state-render implementation detail（連同 `TreeRender` 欄位）開給 sibling。搬到 `state_view.rs` 可讓兩者維持 private，production body 不需改字。
+開工前複核再調一處：`gm_dynamic_block` 跟 `TreeRender`／`render_state_tree` 放在 `state_view.rs`。它直接組 `TreeRender` 並呼叫 `render_state_tree`；若留在 `context.rs`，拆檔後會被迫把這兩個純 state-render implementation detail（連同 `TreeRender` 欄位）開給 sibling。搬到 `state_view.rs` 可讓兩者維持 private，production body 不需改字。
 
 `transport/mod.rs` 只當 facade：`mod` 宣告＋`pub use`／`pub(crate) use` re-export，外部既有 `transport::ChatMessage`、`transport::stream_chat`、`transport::extract_state_block` 等路徑一律不變。必要的 sibling 可見度只做最小放寬，不把內部 helper 無故升成 crate API。
 
@@ -33,7 +33,7 @@ messages ─┬→ state_view ─┐
 
 上述為 DAG，無 sibling module 環。
 
-| 檔 | 內容（transport.rs 行號） |
+| 檔 | 內容（原 transport.rs 行號） |
 |---|---|
 | `messages.rs` | `ChatMessage`、`message`、`push_merged`、`language_rule`、`player_fallback_name`、`resolve_display_macros`、`replace_st_macros`（20–119） |
 | `state_view.rs` | `gm_dynamic_block`、`TreeRender`／`render_state_tree`、`trigger_scope_hidden`、`StateScope`／`state_scope`、`resolve_branch`／`auto_match_branch`、`character_state_block`、`snapshot_updates`／`collect_snapshot_updates`（529–704、839–974；另含原 449–528 的 `gm_dynamic_block`） |
@@ -48,7 +48,7 @@ messages ─┬→ state_view ─┐
 
 ## 測試
 
-86 支測試按領域同步搬進各檔 nested `mod tests`；共用夾具 `card()`、`event()`、`worldbook_entry()` 抽成 `transport/test_support.rs`。
+實作時重新盤點確認 transport 共有 **91 支測試函式**：86 支同步 `#[test]` 加 5 支 `#[tokio::test] async fn`。全部按領域同步搬進各檔 nested `mod tests`；共用夾具 `card()`、`event()`、`worldbook_entry()` 抽成 `transport/test_support.rs`。舊規格寫的「86 支」只數到同步測試，已作廢。
 
 ## 白名單（本案唯一允許的非純搬家動作）
 
@@ -59,21 +59,22 @@ messages ─┬→ state_view ─┐
 
 其餘 production body 逐 byte 不動；不趁本案收斂重複、拆函式、改命名或改邏輯。
 
-production 可見度不要預先猜一大批打開：先保持原可見度完成搬檔並編譯，再依 E0603 逐項放寬到能成立的最窄範圍。開工前靜態複核已知至少會碰到 `message`、`push_merged`、`language_rule`、`gm_system_prompt`、`gm_dynamic_block`、`system_event_text`；最後以實際編譯結果與驗收表為準。
+最後實際需要的 production 可見度放寬共 **7 項**，全部只到 `pub(super)`：`gm_dynamic_block`、`gm_system_prompt`、`language_rule`、`message`、`push_merged`、`split_person_roster`、`system_event_text`。沒有其他 production item 內容變更。
 
-## 驗收
+## 驗收結果
 
-完整沿用 [data-split](data-split.md) 的基準抓取與驗收強度，不縮水。至少包含：
+2026-09-01 完整沿用 [data-split](data-split.md) 的基準抓取與驗收強度，結果全綠：
 
-1. production 頂層 item 搬前／搬後逐 byte 對帳，白名單差異逐項列明；
-2. 對外 `pub`／`pub(crate)` 簽名 multiset 不變；
-3. `transport/mod.rs` facade 完整性獨立驗證：拆前所有對外 transport 路徑零漏零多、可見度一致；
-4. `cargo test` 全綠，且 transport 86 支測試 leaf-name multiset 完全相同；
-5. 86 支測試 raw body hash 零遺失、零新增、零改動；
+1. production 頂層 item：拆前 76／拆後 76，遺失 0、多出 0；69/76 含可見度逐 byte 相同，另外 7 項只有上述 `pub(super)` 可見度差異，**內容變更 0**；
+2. 對外 `pub`／`pub(crate)` 簽名 baseline 全保留，只多 7 個預期的 sibling `pub(super)`；
+3. `transport/mod.rs` facade：拆前 top-level 對外項目 52、拆後提供 52，遺失 0、多出 0、對外可見度變更 0；
+4. `cargo test` 全綠：全庫 527 個 test leaf 名稱 multiset 拆前拆後完全相同；實際執行 523 passed、0 failed、4 ignored；
+5. transport **91 支**測試函式 raw body hash 全部 byte-identical，遺失 0、新增 0、內容變更 0；
 6. `RUSTFLAGS="-Dprivate_interfaces" cargo check --all-targets` 全綠；
-7. cfg 分佈、被迫升可見度符號與任何相對路徑改動逐項列帳；
-8. 不跑全 repo `cargo fmt`，除非屆時 HEAD 已經是 fmt-clean 或另有明確要求。
+7. cfg ledger 為 8 個 `#[cfg(test)]`，無非預期 cfg 漂移；
+8. 前端 `npm run build` 全綠；既有 warning 不屬於本案失敗；
+9. 正式 main commit 只包含原 `transport.rs` 移除與 `transport/` 正式模組檔，驗收用暫時 workflow／script 沒有帶入 main。
 
-## 順序
+## 結果
 
-data-split 已完成並 commit，本案前置條件已滿足；但本文件修訂本身不代表開始實作。正式動工時仍獨立成一波，不與其他 refactor 綁在同一 commit。
+**完成。** `src-tauri/src/transport.rs` 已拆成 `src-tauri/src/transport/`，正式程式 commit 為 `8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`。本案未與其他 refactor 混在同一個程式 commit；後續若要再重構 transport 內部邏輯，應另立新案，不回頭把本次純搬家擴 scope。
