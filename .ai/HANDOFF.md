@@ -15,6 +15,7 @@
 - [prompt-cache-optimization](handoffs/prompt-cache-optimization.md) — 提示詞快取優化：包 1–7 實機驗收過，剩 grok／agy 顯示驗收與 OpenRouter 計量
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過，v2 首要＝省額度（歷史裡整包 XML 重送）
 - [i18n-more-languages](handoffs/i18n-more-languages.md) — 十國語言：機械關卡持續綠，人眼審校改到全 app 功能定案後一次驗
+- [refactor-ai-split](handoffs/refactor-ai-split.md) — refactor_ai.rs 拆進 refactor_ai/：階段一依賴複核完成並驗收，下一步＝階段二搬底層三檔
 
 ## 未開工
 - [mechanism-split](handoffs/mechanism-split.md) — mechanism.rs 拆進 mechanism/（2870 行）；下一步＝複核依賴方向再定案切線

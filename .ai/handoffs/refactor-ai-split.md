@@ -1,32 +1,24 @@
 # refactor_ai.rs 拆進 refactor_ai/
 
-狀態：2026-09-03 20:20 階段一（依賴複核）已發給 ChatGPT，**落地未驗證，主線額度觸頂中斷**。
+狀態：2026-09-03 階段一（依賴複核）完成並驗收，等階段二施工。
 
 ## 現況
-`src-tauri/src/refactor_ai.rs` 2764 行（本體 1–1810／同檔測試 1811–2764），mechanism-split 結案後的最大檔（按本體行數）。做法整套沿用 [mechanism-split](../plans/mechanism-split.md)：純搬家、production body 逐 byte 不動、`mod.rs` 只當 facade、零呼叫端的 re-export 不掛。
+`src-tauri/src/refactor_ai.rs` 2764 行（production 1–1810／同檔測試 1811–2764），mechanism-split 結案後本體最大的檔。做法整套沿用 [mechanism-split](../plans/mechanism-split.md)：純搬家、production body 逐 byte 不動、`mod.rs` 只當 facade、零呼叫端的 re-export 不掛。
 
-本體約 90 個頂層 item，粗數 34 個對外 `pub`（含 `assemble_card_context`、`segment_spans`、`prescan_worldbook`、`survey_messages`、`recommend_messages`、`parse_survey`、`parse_expand`、`parse_absorb`、`parse_group`、`expand_span_placeholders` 等）。精確盤點是階段一的產出，不在本檔重抄。
+走 `claude-with-chatgpt` 技能分四階段（依賴複核／搬底層／搬上層加 facade／搬測試），一階段一輪，避開網頁版 25 分鐘砍斷線。
 
-## 走到哪
-走 `claude-with-chatgpt` 技能，分四階段（階段一依賴複核／階段二搬底層／階段三搬上層加 facade／階段四搬測試）。
+階段一產出＝[規格檔](../plans/refactor-ai-split.md)（380 行），由 ChatGPT 網頁版在 `chatgpt-collab` 完成（`5e09044`），已 cherry-pick 進 main。內容：94 個頂層 item 盤點（34 pub／58 private／2 impl）、內部依賴 DAG 與環檢查、9 檔切線定案、34 個 pub item 的呼叫端清查。
 
-階段一訊息 2026-09-03 19:57 送出到 ChatGPT「Table Tavern」專案新對話
-`https://chatgpt.com/g/g-p-6a5b72c4393c8191964917fa15e41b82-table-tavern/c/6a995fe2-58fc-83e8-8ed6-457a25293292`
+拍板結論：**共用型別集中 `types.rs`**（被 6 個實作模組直接 import，塞 `mod.rs` 會讓 facade 變實作層）。**唯一零呼叫端＝`RefactorAbsorbOutcome`**，拆後留在 `types.rs` 當回傳型別但 `mod.rs` 不掛 re-export。模組 DAG 無環：`types` 為底，`survey`／`expand`／`rewrite` → `prompt_common`，`survey_parse`／`result_parse` → `parse_common`。
 
-交辦內容：只做依賴複核不改 .rs，四件事（頂層 item 盤點／依賴 DAG 與有無環／切線定案含共用型別放哪／pub item 對外呼叫端清查分「有呼叫端」「零呼叫端」），全部寫進新檔 `.ai/plans/refactor-ai-split.md` commit 到 `chatgpt-collab`；不准動 `src-tauri/`、不准開 PR、不准開 Codex 任務。
-
-20:20 查證：`chatgpt-collab` HEAD 仍是 `cc8c65e`（上一案），**新檔未落地**。送出至今 22 分鐘，接近網頁版 25 分鐘砍斷線。主線 5 小時額度 98% 觸頂，瀏覽器工具回 429，無法再看畫面。額度重設 2026-09-03 22:50（台灣時間）。
+驗收抽驗三條全對：本體 `pub` 頂層 34 個；`RefactorAbsorbOutcome` 全庫僅宣告／回傳型別／建構三處，零外部呼叫端；`PrescanSignal` 其他 `.rs` 零命中但同檔測試直接建構（故非零呼叫端），`prescan_worldbook` 有 `commands/refactor.rs` 與 `refactor_assemble.rs` 兩個呼叫檔。
 
 ## 下一步
-1. 額度回來後先 `gh api repos/TaoGongSun/Table-Tavern/branches/chatgpt-collab --jq '.commit.sha'` 查有沒有新 commit（GitHub 讀取有快取延遲，查不到先等 60–90 秒重查一次）。
-2. 有 commit → `git fetch origin chatgpt-collab`，`git show FETCH_HEAD:.ai/plans/refactor-ai-split.md` 唯讀比對；確認只多這一個檔、`src-tauri/` 零變動，再進階段二。
-3. 沒有 commit → 回原對話看是不是被 25 分鐘砍斷；被砍就把階段一再切小（例如先只做「頂層 item 盤點＋pub 呼叫端清查」，DAG 與切線定案另一輪）。
+階段二＝搬底層無依賴的檔（`types.rs`、`parse_common.rs`、`prompt_common.rs`），再一輪。交辦時把[規格檔](../plans/refactor-ai-split.md)的切線表與施工紅線指給 ChatGPT，並先抓拆前 baseline 存 scratchpad（頂層 item 清單含可見度、對外簽名、測試函式名 multiset 與總測試數）。
 
 ## 界線
-- 純搬家：不趁本案收斂重複、拆函式、改命名或改邏輯。
+- 純搬家：不趁本案收斂重複、拆函式、改命名或改邏輯，不順手整理 prompt 常數或 parser 容錯。
 - facade 保住拆前所有**有呼叫端**的 `refactor_ai::X` 路徑與可見度；零呼叫端者不留。
 - 可見度只做編譯器逼出來的最小放寬（`pub(super)` 優先）。
+- 不改 `commands/refactor.rs`／`refactor_assemble.rs`／`refactor.rs`，呼叫端路徑靠 facade 保持。
 - 只推協作分支，合併回 main 要使用者拍板。
-
-## 待處理的文件不一致（非本案）
-`.ai/handoffs/mechanism-split.md` 與 `.ai/HANDOFF.md` 都還寫 mechanism-split「未開工」，但 `src-tauri/src/mechanism/` 已 10 檔、commit `cc8c65e` 就是完成那筆。等使用者拍板要不要改。
