@@ -17,9 +17,6 @@
 - [i18n-more-languages](handoffs/i18n-more-languages.md) — 十國語言：機械關卡持續綠，人眼審校改到全 app 功能定案後一次驗
 - [refactor-ai-split](handoffs/refactor-ai-split.md) — refactor_ai.rs 拆進 refactor_ai/：階段一依賴複核完成並驗收，下一步＝階段二搬底層三檔
 
-## 未開工
-- [mechanism-split](handoffs/mechanism-split.md) — mechanism.rs 拆進 mechanism/（2870 行）；下一步＝複核依賴方向再定案切線
-
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [worldbook-card-import](handoffs/worldbook-card-import.md) — 世界書卡匯入：本地那批排梯 1 第 3，篇幅／配角解禁需重新打包排梯 2 第 10
 - [sponsor-features](handoffs/sponsor-features.md) — 贊助三項：贊助狀態與作者頁排梯 1 第 4，AI 生圖排梯 2 第 8
