@@ -8,7 +8,7 @@
 
 開工前複核再調一處：`gm_dynamic_block` 跟 `TreeRender`／`render_state_tree` 放在 `state_view.rs`。它直接組 `TreeRender` 並呼叫 `render_state_tree`；若留在 `context.rs`，拆檔後會被迫把這兩個純 state-render implementation detail（連同 `TreeRender` 欄位）開給 sibling。搬到 `state_view.rs` 可讓兩者維持 private，production body 不需改字。
 
-`transport/mod.rs` 只當 facade：`mod` 宣告＋`pub use`／`pub(crate) use` re-export，外部既有 `transport::ChatMessage`、`transport::stream_chat`、`transport::extract_state_block` 等路徑一律不變。必要的 sibling 可見度只做最小放寬，不把內部 helper 無故升成 crate API。
+`transport/mod.rs` 只當 facade：`mod` 宣告＋`pub use`／`pub(crate) use` re-export，外部既有 `transport::ChatMessage`、`transport::stream_chat`、`transport::extract_state_block` 等**有呼叫端**的路徑一律不變。必要的 sibling 可見度只做最小放寬，不把內部 helper 無故升成 crate API。
 
 完整 production 依賴如下；箭頭 `A → B` 表示 **B 依賴 A**：
 
@@ -54,7 +54,7 @@ messages ─┬→ state_view ─┐
 
 1. 新增 `transport/test_support.rs`；
 2. 測試專用可見度，以及因 sibling module 分拆被編譯器迫使產生的 production **最小** `pub(super)`／`pub(crate)` 調整；
-3. `transport/mod.rs` facade、module 宣告、re-export 與 import plumbing；
+3. `transport/mod.rs` facade、module 宣告、re-export 與 import plumbing；零呼叫端的 re-export 不掛（見驗收第 3 項）；
 4. 搬檔造成的相對路徑調整（若實際存在）。
 
 其餘 production body 逐 byte 不動；不趁本案收斂重複、拆函式、改命名或改邏輯。
@@ -67,8 +67,8 @@ messages ─┬→ state_view ─┐
 
 1. production 頂層 item：拆前 76／拆後 76，遺失 0、多出 0；69/76 含可見度逐 byte 相同，另外 7 項只有上述 `pub(super)` 可見度差異，**內容變更 0**；
 2. 對外 `pub`／`pub(crate)` 簽名 baseline 全保留，只多 7 個預期的 sibling `pub(super)`；
-3. `transport/mod.rs` facade：拆前 top-level 對外項目 52、拆後提供 52，遺失 0、多出 0、對外可見度變更 0；
-4. `cargo test` 全綠：全庫 527 個 test leaf 名稱 multiset 拆前拆後完全相同；實際執行 523 passed、0 failed、4 ignored；
+3. `transport/mod.rs` facade：拆前 top-level 對外項目 52，其中 44 個在 `transport/` 之外有呼叫端，全數原樣提供，遺失 0、多出 0、對外可見度變更 0；另 8 個（`PERSON_ARRIVAL_PREFIX`、`DEFAULT_IMAGE_MODEL`、`StreamOutcome`、`extract_delta`、`extract_usage`、`active_worldbook_entries`、`character_state_block`、`LaneTurn`）零呼叫端，掛上去只換來 5 條 `unused import` 警告，故不 re-export；本體維持 `pub` 且在 `transport/` 內都有正式呼叫端，無死程式可刪；
+4. `cargo test` 全綠：全庫測試函式 539 支（`#[test]`＋`#[tokio::test]`），拆前拆後同數且 transport 的 91 支名稱一一對應；macOS 實際執行 535 passed、0 failed、0 ignored（`install.rs` 那 4 支 `#[cfg(windows)]` 測試在 macOS 不編入，Windows 上才會多 4 ignored）；
 5. transport **91 支**測試函式 raw body hash 全部 byte-identical，遺失 0、新增 0、內容變更 0；
 6. `RUSTFLAGS="-Dprivate_interfaces" cargo check --all-targets` 全綠；
 7. cfg ledger 為 8 個 `#[cfg(test)]`，無非預期 cfg 漂移；
@@ -77,6 +77,15 @@ messages ─┬→ state_view ─┐
 
 ## 狀態
 
-**實作完成，待實測。** `src-tauri/src/transport.rs` 已拆成 `src-tauri/src/transport/`，正式程式 commit 為 `8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`。上述九項是機械驗收，不等於使用者實機驗收；在實際日常桌完成 smoke test 前，本案不標記正式結案。
+**結案（2026-09-03）。** `src-tauri/src/transport.rs` 已拆成 `src-tauri/src/transport/`，正式程式 commit 為 `8f26fb71f1eeb99ed6d9ffc83de9fe3a4cd20aec`。
 
-實測最低範圍：用平常實際使用的傳輸路徑開啟既有桌，送出一輪玩家訊息，確認 GM／角色串流回覆正常，並確認狀態欄與角色切換沒有明顯回歸；若 API 與 CLI 都是常用路徑，兩條路各跑一輪。通過後再把任務改為正式完成並寫入 history。
+實機 smoke test 走 CLI（claude）路徑、在既有桌「獸人學園的健身兔子戀愛選擇」完成，四項全過：
+
+1. 玩家送出訊息 → GM 串流回覆 → 落 transcript（帳本 `transport: claude`、prompt 7466、cached 5877，續聊快取有中）；
+2. 角色切換：chip、輸入框提示、發言按鈕三處同步；
+3. 角色發言走 chars 線 → dialogue 落檔（`lane: chars:claude-sonnet-4-6`）；
+4. 狀態資料更新：`state.json` 的 `time` 隨回合前進。
+
+視覺狀態欄未驗——顯示條件是後端 `world_has_state_bar` 為真或狀態樹非空，該桌與本機其餘桌皆不成立，現有資料驗不到；狀態資料層已由第 4 項覆蓋。API 路徑未跑（使用者拍板只走 CLI）。
+
+smoke test 期間另發現角色線 `drop-lane / rewrite-failed`（角色線續聊 session 被作廢、每輪冷開），成因在未被本案動到的 `lanes.rs`，已另立 `chars-lane-rewrite-drop`。
