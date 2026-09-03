@@ -29,7 +29,7 @@ Status: done
 順序：1 與 3b 並行 → 2 → 3a、4 → 5 → 6 → 7。
 
 ## Next action
-2026-08-11 結案：全案實作＋orc-cave 真跑逐項驗收通過（使用者終判）。明細見 [歸檔交接](../handoffs/archive/refactor-output-redesign-completed.md)。後續：[refactor-dispatch](refactor-dispatch.md)（下一輪）、[character-presence](character-presence.md)（待辦）。
+2026-08-11 結案：全案實作＋orc-cave 真跑逐項驗收通過（使用者終判）。明細見 [歸檔交接](../handoffs/archive/refactor-output-redesign-completed.md)。後續：[refactor-dispatch](../handoffs/refactor-dispatch.md)（下一輪）、[character-presence](character-presence.md)（待辦）。
 
 
 ## Constraints

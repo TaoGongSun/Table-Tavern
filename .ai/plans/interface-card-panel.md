@@ -1,6 +1,6 @@
 # 介面卡渲染面板：ST 介面卡原樣顯示（殼匯入＋沙盒面板）
 
-本檔存放 [interface-card-panel](../tasks/interface-card-panel.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [interface-card-panel](../handoffs/interface-card-panel.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 拆卡實據（樣本在 TestCards/，gitignored）
 - 西幻卡（WestFantsy.png）：殼在 `extensions.regex_scripts`：『西幻』44KB（HTML 模板＋分頁腳本，顯示時套在模型輸出上）、『开场白』24KB（開場畫面）。模型每回合只吐帶標籤純文字，殼零 token；真實成本＝38 條世界書（含 6.5KB『回复规则』輸出格式規定）＋每回合重吐整份狀態文字。

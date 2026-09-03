@@ -1,6 +1,6 @@
 # 重構雙軌定向：介面優先 vs 角色優先（兩段式選擇）
 
-本檔存放 [refactor-mode-split](../tasks/refactor-mode-split.md) 的規格細節，由任務檔 Summary 連回。2026-08-13 立案；2026-08-14 使用者五項拍板＋Sol 第 1 輪覆核結論併入（逐字稿在 Codex app 的 companion 串；三條關鍵技術主張經主線抽驗屬實）；同日使用者拍板文案稿與初判失敗預設，全案無待拍板。
+本檔存放 [refactor-mode-split](../handoffs/refactor-mode-split.md) 的規格細節，由任務檔 Summary 連回。2026-08-13 立案；2026-08-14 使用者五項拍板＋Sol 第 1 輪覆核結論併入（逐字稿在 Codex app 的 companion 串；三條關鍵技術主張經主線抽驗屬實）；同日使用者拍板文案稿與初判失敗預設，全案無待拍板。
 
 ## 問題定調（2026-08-13 使用者）
 
@@ -88,6 +88,6 @@
 ## 關聯任務
 
 - [interface-takeover-spike](../tasks/interface-takeover-spike.md)：其待辦 1（玩家選擇）併入本案；待辦 2（逐型驗卡）、4（清舊路線）留原案。
-- [refactor-survey-spans](../tasks/refactor-survey-spans.md)：判官流程拆兩段、提示詞帶模式，動工前先過該案 T1–T4 驗收。
-- [person-promote](../tasks/person-promote.md)：角色優先軌的認人拆卡，不做第二套。
+- [refactor-survey-spans](../handoffs/refactor-survey-spans.md)：判官流程拆兩段、提示詞帶模式，動工前先過該案 T1–T4 驗收。
+- [person-promote](../handoffs/person-promote.md)：角色優先軌的認人拆卡，不做第二套。
 - [interface-scene-change](interface-scene-change.md)：介面優先軌的換幕配套，另案。

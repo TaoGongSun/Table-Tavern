@@ -115,7 +115,7 @@ T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合�
 RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。淘汰清單 UI：預設不套用、收合列表、逐條展開看全文、一鍵放回（轉 carry 進 entries 並勾選）。未接管機制＝資訊列表（內容已在 GM 規則條目裡）。
 
 ## 實測清單（新對話實機驗收用）
-**2026-08-14 拍板：T1–T3（卡片盤點品質）全部擱置到重構按鈕做完再測**——做完＝[refactor-mode-split](../tasks/refactor-mode-split.md) 兩段式定向落地＋[interface-takeover-spike](../tasks/interface-takeover-spike.md) 介面接管收尾。管線還要改，現在測產物品質等於拿舊管線當判準。**今天只跑 T4。**
+**2026-08-14 拍板：T1–T3（卡片盤點品質）全部擱置到重構按鈕做完再測**——做完＝[refactor-mode-split](refactor-mode-split.md) 兩段式定向落地＋[interface-takeover-spike](../tasks/interface-takeover-spike.md) 介面接管收尾。管線還要改，現在測產物品質等於拿舊管線當判準。**今天只跑 T4。**
 
 環境：先重編譯再驗（裸 `npm run tauri dev`，app 已自清 ANTHROPIC_*）。時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`（ts＝完成時刻，diag single＝重構呼叫）。世界目錄 `~/Documents/TableTavern/worlds/<id>/`（refactor-outcome.json／worldbook.json／mechanism-log.jsonl 可機械核對）。**供應商只認 claude／codex**——grok／agy 無隔離旗標（見環境陷阱），切過去測出來的盤點不算數。
 - ~~T1 兽人的洞穴~~：**全過收檔**（2026-08-12，見 Current state）。

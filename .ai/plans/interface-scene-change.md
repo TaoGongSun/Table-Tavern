@@ -46,4 +46,4 @@
 
 - [refactor-mode-split](refactor-mode-split.md)：本案只服務介面優先軌；角色優先軌用現行換幕即可。
 - [interface-takeover-spike](../tasks/interface-takeover-spike.md)：待辦 2 逐型驗卡決定 Transfur 驗收時點。
-- [scene-fork](../tasks/scene-fork.md)：分岔互動屬本案設計第 3 點。
+- [scene-fork](../handoffs/archive/scene-fork.md)：分岔互動屬本案設計第 3 點。

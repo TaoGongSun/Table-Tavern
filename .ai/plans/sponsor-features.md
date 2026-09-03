@@ -1,6 +1,6 @@
 # 贊助三件組：作者頁（贊助連結）＋5 主題配色＋AI 生成角色圖
 
-本檔存放 [sponsor-features](../tasks/sponsor-features.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [sponsor-features](../handoffs/sponsor-features.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 待討論議程
 - ~~**色情詞句導致生圖失敗的處理**~~（2026-08-01 已由實作結案）：討論方向「掃回覆中的拒絕字樣分流顯示」已落地為生圖失敗訊息分流——CLI prompt 問兩個暗號 `NO_IMAGE`／`REFUSED`，前端 `explainAiError` 各對一句人話（十語系 `errRefused`），模型不照暗號回時以拒絕字樣（content policy／can't generate／無法生成／拒絕）保底歸類，都沒對上就附 CLI 最後一句原話。codex 實測分流可靠，08-01 使用者實機驗收通過。詳見 handoffs/sponsor-features.md。
