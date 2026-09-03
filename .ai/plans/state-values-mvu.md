@@ -1,6 +1,6 @@
 # 狀態欄二期：機制格式（IR）＋本地權威數值＋觸發表
 
-本檔存放 [state-values-mvu](../tasks/state-values-mvu.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [state-values-mvu](../handoffs/state-values-mvu.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 拍板結論
 ### 機制格式（IR）

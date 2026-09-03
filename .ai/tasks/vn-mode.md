@@ -27,6 +27,6 @@ Updated: 2026-08-13T00:30:02.512381+08:00
 - 2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 
 ## Constraints
-- 生圖一律玩家自備額度（BYOK），app 不代購不代付（同 [sponsor-features](sponsor-features.md)）。
+- 生圖一律玩家自備額度（BYOK），app 不代購不代付（同 [sponsor-features](../handoffs/sponsor-features.md)）。
 - 劇本格式與指令集從小起步，每加一個標記都是格式負擔與翻車面。
 - 立繪、表情、CG 全部走重骰＋玩家挑選把關，品質靠把關流程保底。

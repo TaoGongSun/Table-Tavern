@@ -1,6 +1,6 @@
 # 盤點四分類＋照搬零輸出：判官只出小抄（章＋分組＋命名權威），乾淨拆零呼叫
 
-本檔存放 [refactor-survey-spans](../tasks/refactor-survey-spans.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [refactor-survey-spans](../handoffs/refactor-survey-spans.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 設計（使用者定形＋2026-08-11 結構強化）
 **判官（GM）讀完全卡只出一張小抄：每條的章＋分組映射＋命名權威，自身近零輸出。**

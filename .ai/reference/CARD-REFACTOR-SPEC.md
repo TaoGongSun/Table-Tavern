@@ -1,6 +1,6 @@
 # 卡片重構規格（ai-card-refactor）
 
-任務背景與拍板見 [ai-card-refactor](../tasks/ai-card-refactor.md)，機制格式見 [MECHANISM-FORMAT.md](MECHANISM-FORMAT.md)。
+任務背景與拍板見 [ai-card-refactor](../handoffs/ai-card-refactor.md)，機制格式見 [MECHANISM-FORMAT.md](MECHANISM-FORMAT.md)。
 本檔是分包實作規格，逐包討論定案後寫入。
 
 ## 總則
@@ -195,7 +195,7 @@ system 是快取前綴，幕中改動＝快取全失效（prompt-cache 的 85–
 
 ### 渲染三層
 
-1. **卡片自帶 HTML 殼** → 走 [interface-card-panel](../tasks/interface-card-panel.md) 既有沙盒路徑，直接用。
+1. **卡片自帶 HTML 殼** → 走 [interface-card-panel](../handoffs/interface-card-panel.md) 既有沙盒路徑，直接用。
 2. **盤點判定「玩家可完全在裡面遊玩（含對話歷史）」的介面** → 走 `interface_shell` 產殼，塞進同一個沙盒；只有狀態數據的介面不產殼，直接走第 3 層保底。
 3. **保底** → app 通用元件（格子地圖、標籤清單、按鈕列、資料表）把狀態樹的值列出來。
 

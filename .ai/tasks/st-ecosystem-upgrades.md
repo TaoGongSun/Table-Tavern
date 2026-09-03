@@ -56,7 +56,7 @@ Updated: 2026-08-04T12:05:00+08:00
 8. 字串 ×10 語系。
 風險：ST 卡靠條目壓底（after_char＋高 insertion_order）維持服從，本產品世界書全進 system 段——第一期用樣本卡實測服從度，不夠再議注入位置。
 第一期範圍：固定欄位——時間、地點、在場人物。換幕摘要（`summary_messages`）本來就要 GM 整理這三樣，等於把「每幕結算一次」升級成「每回合都在檯面上」；換幕時新場景以狀態為種子。
-第二期已於 2026-08-04 拆成獨立任務 [state-values-mvu](state-values-mvu.md)（本地權威數值＋分支切割＋注入策略），掛點在第一期備妥：`TableState.characters`、`extract_state_block` 的 UpdateVariable 分支。跑團規則系統已拍板成獨立任務（[ttrpg-rules-system](ttrpg-rules-system.md)，較晚做）；邊界：本任務管容器（欄位 schema、輸出協定、面板角色分頁、快照回滾），規則任務管內容（卡上初始紙、開桌種入、骰子、注入帳）。二期做欄位可見性時預留「角色本人可見自己角色區的公開欄位」。
+第二期已於 2026-08-04 拆成獨立任務 [state-values-mvu](../handoffs/state-values-mvu.md)（本地權威數值＋分支切割＋注入策略），掛點在第一期備妥：`TableState.characters`、`extract_state_block` 的 UpdateVariable 分支。跑團規則系統已拍板成獨立任務（[ttrpg-rules-system](ttrpg-rules-system.md)，較晚做）；邊界：本任務管容器（欄位 schema、輸出協定、面板角色分頁、快照回滾），規則任務管內容（卡上初始紙、開桌種入、骰子、注入帳）。二期做欄位可見性時預留「角色本人可見自己角色區的公開欄位」。
 驗收（第一期）：GM 回合後狀態欄跟著劇情變；手動改欄位、下一回合 GM 接受；收回上一句時狀態同步倒回；模型故意輸出壞格式時遊戲照常；「兽人的洞穴」實測——`<details>` 狀態區塊從對話剝除、面板顯示天數／環境／在場角色。cargo test 蓋解析與回滾。
 
 ## 第五項：世界書條目↔角色卡互轉（小，半天～一天）
@@ -82,7 +82,7 @@ Updated: 2026-08-04T12:05:00+08:00
 驗收：兽人的洞穴走世界書改道後可從 4 條開場白展開挑「第 1 天」那條；貼出後對話看不到 `<details>` 區塊、狀態欄顯示「沦陷天数：第 1 天」；沒有備用開場白的卡只列一條；不挑就什麼都不貼；照樣匯成角色卡則完全不跳面板。cargo test 蓋開場白清單與狀態剝除。
 
 ## Next action
-- 結案（2026-08-04）：六項全部實作完成（cargo test 174 綠）並全數實機驗收通過。後續數值機制見 [state-values-mvu](state-values-mvu.md)。
+- 結案（2026-08-04）：六項全部實作完成（cargo test 174 綠）並全數實機驗收通過。後續數值機制見 [state-values-mvu](../handoffs/state-values-mvu.md)。
 
 ## Constraints
 - 安全紅線：Tauri webview 內 XSS 摸得到本機檔案與 invoke 指令。卡片與訊息內容永遠當資料處理、永不執行；第三項白名單必須明列且附測試。樣本卡的酒館助手腳本自 CDN 動態載入遠端程式碼——紅線實證。

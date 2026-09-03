@@ -1,6 +1,6 @@
 # AI 認人並合併升格：把散在多條的同一角色併成一張角色卡
 
-本檔存放 [person-promote](../tasks/person-promote.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [person-promote](../handoffs/person-promote.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 設計要點
 1. **AI 認人並合併**：判斷這張卡有哪些角色、每個角色的資料散在哪幾條，併成一張卡。

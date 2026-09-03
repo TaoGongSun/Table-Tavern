@@ -1,6 +1,6 @@
 # 開場白翻譯：選擇視窗雙鈕（全部翻譯＋翻譯後貼出），走 fast 檔
 
-本檔存放 [opening-translation](../tasks/opening-translation.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [opening-translation](../handoffs/archive/opening-translation-completed.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 設計要點
 1. **兩顆鈕，同一條翻譯呼叫**：視窗上方「全部翻譯」（逐則背景填入、不擋操作，每則有翻譯中狀態）；挑中一則後「翻譯後貼出」與原「貼出」並列（只翻挑中那則）。

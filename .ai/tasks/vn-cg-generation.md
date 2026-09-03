@@ -8,7 +8,7 @@ Updated: 2026-08-13T01:41:37.007146+08:00
 ## Summary
 2026-08-06 起意（源於 ST 玩家用 NovelAI 在酒館內生圖的做法）：長期可考慮，主要動機是 **VN 模式的 CG**，不是角色圖。
 
-**價值主張**：現有 VN 型卡（訓帝卡）靠作者預先畫好 101 張圖掛免費圖床，圖床倒站即全滅（見 [interface-card-panel](interface-card-panel.md)）。若 CG 能在劇情節點即時生成，作者不必準備圖庫、也沒有圖床死穴——這是原生 VN 皮相對雲端流派的差異化。
+**價值主張**：現有 VN 型卡（訓帝卡）靠作者預先畫好 101 張圖掛免費圖床，圖床倒站即全滅（見 [interface-card-panel](../handoffs/interface-card-panel.md)）。若 CG 能在劇情節點即時生成，作者不必準備圖庫、也沒有圖床死穴——這是原生 VN 皮相對雲端流派的差異化。
 
 **為何需要另一條生圖路**：現有 `transport::generate_image` 走 OpenRouter `/images`（`google/gemini-3.1-flash-image`）按張計費，撐不起「每個劇情節點一張 CG」的用量。吃到飽訂閱才撐得起——NAI Opus 約 $25/月，一般尺寸不扣 Anlas＝實質無限張。訂閱是**玩家自己的**（自填 token），app 不代購不代付。
 
@@ -22,6 +22,6 @@ Updated: 2026-08-13T01:41:37.007146+08:00
 - 前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 
 ## Constraints
-- 訂閱與 token 都是玩家自己的，app 不代購不代付、不碰計費（同 [sponsor-features](sponsor-features.md) 的 BYOK 原則）。
+- 訂閱與 token 都是玩家自己的，app 不代購不代付、不碰計費（同 [sponsor-features](../handoffs/sponsor-features.md) 的 BYOK 原則）。
 - 實作前必須照 NAI 官方文件核對 v4.5 當時的端點、參數結構與回傳格式，勿照舊記憶寫。
 - 現有「模型拒畫」分流（`NO_IMAGE`／`REFUSED` 暗號）在此路徑用不到，錯誤處理要另想。
