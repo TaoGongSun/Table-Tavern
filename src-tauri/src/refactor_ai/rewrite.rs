@@ -146,3 +146,66 @@ pub fn group_messages(
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absorb_messages_carries_entry_text_and_span_placeholder_instruction() {
+        let fields = vec!["淪陷天數".to_owned()];
+        let messages = absorb_messages("ctx", "9", "⟦s1⟧條目全文", &fields, "zh-TW");
+        assert!(messages[1].content.contains("⟦s1⟧條目全文"));
+        assert!(messages[1].content.contains("## RULES"));
+        assert!(messages[1].content.contains("## TRIGGERS"));
+        assert!(!messages[1].content.contains("## CONTENT"));
+        assert!(messages[1].content.contains("{{span:uid#sN}}"));
+        assert!(messages[1].content.contains("淪陷天數"));
+    }
+
+    #[test]
+    fn group_messages_setting_only_requests_content() {
+        let materials = vec![("16#s2".to_owned(), "段落甲".to_owned())];
+        let messages = group_messages(
+            "ctx",
+            "格式與行為",
+            GroupKind::Setting,
+            &materials,
+            &[],
+            "zh-TW",
+        );
+        assert!(messages[1].content.contains("16#s2"));
+        assert!(messages[1].content.contains("段落甲"));
+        assert!(messages[1].content.contains("## CONTENT"));
+        assert!(!messages[1].content.contains("## RULES"));
+    }
+
+    #[test]
+    fn group_messages_mechanism_requests_rules_and_triggers() {
+        let materials = vec![("16#s2".to_owned(), "段落甲".to_owned())];
+        let messages = group_messages(
+            "ctx",
+            "好感度機制",
+            GroupKind::Mechanism,
+            &materials,
+            &[],
+            "zh-TW",
+        );
+        assert!(messages[1].content.contains("## RULES"));
+        assert!(messages[1].content.contains("## TRIGGERS"));
+    }
+
+    // 大組保險：材料原文加總 >4000 字才出現指位照搬但書
+    #[test]
+    fn group_messages_large_group_note_only_appears_above_threshold() {
+        let small = vec![("1#s1".to_owned(), "短材料".to_owned())];
+        let small_messages =
+            group_messages("ctx", "小組", GroupKind::Setting, &small, &[], "zh-TW");
+        assert!(!small_messages[1].content.contains("{{span:uid#sN}}"));
+
+        let large = vec![("1#s1".to_owned(), "字".repeat(4001))];
+        let large_messages =
+            group_messages("ctx", "大組", GroupKind::Setting, &large, &[], "zh-TW");
+        assert!(large_messages[1].content.contains("{{span:uid#sN}}"));
+    }
+}
