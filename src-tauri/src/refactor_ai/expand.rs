@@ -89,3 +89,38 @@ pub fn person_expand_messages(
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 無殼變體的提示詞不含 SHELL 指示；有殼變體才含，且是「照搬骨架」契約——AI 不設計介面
+    #[test]
+    fn expand_messages_shell_instructions_only_for_playable_kind() {
+        let plain = expand_messages("ctx", "1", "全文", EntryKind::Interface, &[], "zh-TW");
+        let playable = expand_messages("ctx", "1", "全文", EntryKind::InterfaceShell, &[], "zh-TW");
+        assert!(!plain[1].content.contains("## SHELL"));
+        assert!(playable[1].content.contains("## SHELL"));
+        assert!(playable[1].content.contains("{{本回合.正文}}"));
+        assert!(playable[1].content.contains("照搬"));
+        assert!(!playable[1].content.contains("triggerSlash"));
+        // 接管卡才要產回報規矩，且只帶欄位規則、不帶觸發表
+        assert!(playable[1].content.contains("## RULES"));
+        assert!(playable[1].content.contains("## GUIDE"));
+        assert!(playable[1].content.contains("欄位規則："));
+        assert!(!playable[1].content.contains("觸發表："));
+        assert!(!plain[1].content.contains("## GUIDE"));
+        // 卡原文的傳輸規定不准抄進 GUIDE，固定資產不准做成欄位——兩個實測踩過的坑
+        assert!(playable[1].content.contains("傳輸規定一律"));
+        assert!(playable[1].content.contains("不挖佔位符、不做成 STATE 欄位"));
+    }
+
+    // 防劇透與欄位命名基準寫進介面展開指示
+    #[test]
+    fn expand_messages_interface_carries_no_spoiler_and_known_fields() {
+        let fields = vec!["淪陷天數".to_owned(), "劇情階段".to_owned()];
+        let messages = expand_messages("ctx", "1", "全文", EntryKind::Interface, &fields, "zh-TW");
+        assert!(messages[1].content.contains("尚未觸發的事件清單"));
+        assert!(messages[1].content.contains("淪陷天數、劇情階段"));
+    }
+}

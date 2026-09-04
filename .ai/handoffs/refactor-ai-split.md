@@ -1,24 +1,59 @@
 # refactor_ai.rs 拆進 refactor_ai/
 
-狀態：2026-09-03 階段一（依賴複核）完成並驗收，等階段二施工。
+狀態：2026-09-04 production 拆分已接線完成；舊檔只在 `#[cfg(test)]` 下暫存。測試 baseline 已盤點，context/expand/rewrite 共 17 個測試已搬，下一階段繼續搬其餘測試與做可執行驗收。
 
-## 現況
-`src-tauri/src/refactor_ai.rs` 2764 行（production 1–1810／同檔測試 1811–2764），mechanism-split 結案後本體最大的檔。做法整套沿用 [mechanism-split](../plans/mechanism-split.md)：純搬家、production body 逐 byte 不動、`mod.rs` 只當 facade、零呼叫端的 re-export 不掛。
+## 基準與紅線
 
-走 `claude-with-chatgpt` 技能分四階段（依賴複核／搬底層／搬上層加 facade／搬測試），一階段一輪，避開網頁版 25 分鐘砍斷線。
+原始基準：`src-tauri/src/refactor_ai.rs` blob `9c5cf7a35b33e31cca906728f7b181a193cfaa81`，2764 行（production 1–1810、同檔測試 1811–2764）。切線與依賴以 [refactor-ai-split plan](../plans/refactor-ai-split.md) 為準。
 
-階段一產出＝[規格檔](../plans/refactor-ai-split.md)（380 行），由 ChatGPT 網頁版在 `chatgpt-collab` 完成（`5e09044`），已 cherry-pick 進 main。內容：94 個頂層 item 盤點（34 pub／58 private／2 impl）、內部依賴 DAG 與環檢查、9 檔切線定案、34 個 pub item 的呼叫端清查。
+本案沿用 mechanism split：production body 純搬家；只做 module plumbing 必要的 import／`pub(super)`；`mod.rs` 純 facade；不改 `commands/refactor.rs`、`refactor_assemble.rs`、`refactor.rs`；零呼叫端 `RefactorAbsorbOutcome` 留在 `types.rs` 當回傳型別但不從 facade re-export。
 
-拍板結論：**共用型別集中 `types.rs`**（被 6 個實作模組直接 import，塞 `mod.rs` 會讓 facade 變實作層）。**唯一零呼叫端＝`RefactorAbsorbOutcome`**，拆後留在 `types.rs` 當回傳型別但 `mod.rs` 不掛 re-export。模組 DAG 無環：`types` 為底，`survey`／`expand`／`rewrite` → `prompt_common`，`survey_parse`／`result_parse` → `parse_common`。
+## Production 已完成
 
-驗收抽驗三條全對：本體 `pub` 頂層 34 個；`RefactorAbsorbOutcome` 全庫僅宣告／回傳型別／建構三處，零外部呼叫端；`PrescanSignal` 其他 `.rs` 零命中但同檔測試直接建構（故非零呼叫端），`prescan_worldbook` 有 `commands/refactor.rs` 與 `refactor_assemble.rs` 兩個呼叫檔。
+- 底層：`types.rs`、`parse_common.rs`、`prompt_common.rs`。
+- 上層：`context.rs`、`survey.rs`、`expand.rs`、`rewrite.rs`、`survey_parse.rs`、`result_parse.rs`。
+- `mod.rs` 已改成明列 facade，不再使用 `pub use legacy::*`。
+- 33 個有呼叫端的原 `pub` item 已由新模組提供；`RefactorAbsorbOutcome` 沒有 facade re-export。
+- 型別與使用者一起切 ownership，避免過渡期出現兩套 Rust 型別：
+  - `EntryKind` + expand
+  - `GroupKind` + rewrite
+  - `RefactorRecommendOutcome` + `parse_recommend`
+  - prescan `PrescanSignal` + `prescan_worldbook` + `survey_messages`
+  - survey outcome 五型別 + `parse_survey`/`normalize_survey_for_mode`
+  - result outcome/new-entry 型別 + result parsers
+- 原 `refactor_ai.rs` 曾以同一 Git blob直接 rename 成 `refactor_ai/legacy.rs`；該搬名 diff 為 0 additions / 0 deletions。
+- 現在 `mod.rs` 對 `legacy` 使用 `#[cfg(test)] mod legacy;`：production build 不再編譯舊 implementation；測試模式暫時保留原同檔 tests。
 
-## 下一步
-階段二＝搬底層無依賴的檔（`types.rs`、`parse_common.rs`、`prompt_common.rs`），再一輪。交辦時把[規格檔](../plans/refactor-ai-split.md)的切線表與施工紅線指給 ChatGPT，並先抓拆前 baseline 存 scratchpad（頂層 item 清單含可見度、對外簽名、測試函式名 multiset 與總測試數）。
+## 測試 baseline
+
+原 `legacy.rs` 測試區 1811–2764 共 **56 個 `#[test]`**，名稱與 owner 分配如下：
+
+- `context.rs`：11 個。assemble 1、span 3、format marker 1、prescan 6。**已搬**，測試名稱不改。
+- `survey.rs`：3 個。`recommend_messages_share_survey_system_byte_identical`、`survey_messages_carry_mode_specific_user_instructions`、`survey_messages_injects_prescan_signals_into_user_message`。
+- `survey_parse.rs`：12 個。`recommend_parses_two_lines_and_rejects_garbage`、MODE echo、六區塊完整解析、normalize、舊格式、playable default、single-source person、chitchat、三種 malformed line、malformed groups。
+- `result_parse.rs`：21 個。person parser 4、interface parser 8、absorb parser 3、group parser 3、span placeholder 3。
+- `expand.rs`：2 個。shell prompt、no-spoiler/known-fields prompt。**已搬**，測試名稱不改。
+- `rewrite.rs`：4 個。absorb prompt 1、group prompt 3。**已搬**，測試名稱不改。
+- `types.rs`：2 個。`EntryKind` / `GroupKind` parse。
+- root 小型 integration：1 個。`all_stage_system_messages_are_byte_identical_for_same_context`。
+
+合計 `11 + 3 + 12 + 21 + 2 + 4 + 2 + 1 = 56`；目前 **17 / 56 已搬，剩 39**。
+
+legacy 尚未刪，所以 test build 暫時會同時看到舊測試與新測試，總數暫時膨脹。這是施工中狀態，不能拿目前總數當驗收值。最終刪 legacy 後，refactor_ai 這批 test-name multiset 應回到上述 56 個，名稱逐一相同。
+
+## 尚未完成
+
+1. 依上面的 owner 清單搬剩餘 **39 個**測試；只搬，不改 test body / test name。
+2. 搬完後刪除 `legacy.rs` 與 `#[cfg(test)] mod legacy;`。
+3. 驗收：refactor_ai 測試名稱 multiset = baseline 56；production body / public API 與計畫一致；facade 無零呼叫端 re-export。
+4. 在可執行 repo 的環境跑 `npm run build` + `cargo test`；GitHub connector 本身不能直接執行本地 cargo，因此目前不能宣稱編譯已綠。
+
+## 下一工作段
+
+先搬 `survey.rs` 3 個 + `survey_parse.rs` 12 個；再搬 `result_parse.rs` 21 個。最後補 types 2 個與 root integration 1 個，刪 legacy 後做 56-test 名稱 multiset 驗收。不要再動 production 邏輯。
 
 ## 界線
-- 純搬家：不趁本案收斂重複、拆函式、改命名或改邏輯，不順手整理 prompt 常數或 parser 容錯。
-- facade 保住拆前所有**有呼叫端**的 `refactor_ai::X` 路徑與可見度；零呼叫端者不留。
-- 可見度只做編譯器逼出來的最小放寬（`pub(super)` 優先）。
-- 不改 `commands/refactor.rs`／`refactor_assemble.rs`／`refactor.rs`，呼叫端路徑靠 facade 保持。
-- 只推協作分支，合併回 main 要使用者拍板。
+
+- 不趁拆分收斂重複、改 prompt、改 parser 容錯、改命名或修功能。
+- facade 路徑維持 `refactor_ai::X`；不改呼叫端。
+- 只推 `chatgpt-collab`；合併 main 由使用者拍板。
