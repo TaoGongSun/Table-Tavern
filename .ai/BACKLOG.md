@@ -28,3 +28,4 @@
 - [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：2026-08-10 立案；重構面板只在 AI 認人時問一次，之後改主意需要這條路，兩項待拍板（已有玩家卡時換不換、能不能反向取消）
 - [character-presence](tasks/character-presence.md) — 角色在場/退場狀態管理：自動上下場＋在場過濾 — 下一步：2026-08-11 立案；地基見 CARD-REFACTOR-SPEC 包 4，開工前逐點重拍板，排序在 refactor-dispatch 之後
+- [quota-insufficient-alert](tasks/quota-insufficient-alert.md) — 額度不足／AI 請求失敗提示：結構化分類＋攔截式彈窗（聊天＋生圖） — 下一步：2026-07-27 討論定案未實作，文件自舊分支撿回；開工前先確認與已結案的 ai-error-messages（錯誤翻譯層、關鍵字分三類）差在哪，本案未做的部分看來是結構化 kind、攔截式 modal 與送出失敗保留輸入框內容〔模型判斷·未裁決〕
