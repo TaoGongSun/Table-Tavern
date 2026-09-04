@@ -688,7 +688,7 @@ fn audit_mechanism_conservation(
 mod tests {
     use super::*;
     use crate::data::Visibility;
-    use crate::refactor_ai::{RefactorSplitGroup, RefactorSurveyPerson};
+    use crate::refactor_ai::types::{RefactorSplitGroup, RefactorSurveyPerson};
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
