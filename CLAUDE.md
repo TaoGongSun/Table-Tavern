@@ -10,3 +10,4 @@
 - 待辦清單 [.ai/BACKLOG.md](.ai/BACKLOG.md) 手寫維護，立案說明放 `.ai/tasks/<id>.md`；開工＝把該檔搬進 `.ai/handoffs/`、在 HANDOFF.md 登記一條、BACKLOG 那行刪掉。等實機驗收的排 [.ai/reference/verification-queue.md](.ai/reference/verification-queue.md)。
 - [.ai/DONE.md](.ai/DONE.md) 與 `.ai/history/` 是舊 CLI 時代的存檔，凍結只讀。
 - **測試卡固定放 `TestCards/`**（repo 根目錄下，已 gitignore、本機限定）：角色卡 `.png`／`.json`、世界書 `main_*_world_info.json`、重構卡 `*-重構卡*.json` 都在裡面。要卡直接去這裡拿，不要全機搜尋。
+- **檔案盡量不超過 1000 行**：不是死規則，必須超過時就超過，但預設往「拆成適當小檔」的方向做——依功能拆，不是為了行數硬切。同理，一個資料夾檔案多到掃不完（例如超過 20 個）就考慮開子資料夾分類。都是方向，看狀況判斷。
