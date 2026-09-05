@@ -1,0 +1,107 @@
+/* ============ Composer：整寬書寫面（打字所見＝故事字樣）＋選項列＋按鈕列 ============ */
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.composer-opts {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* 目標晶片：顯示目前發言對象（點側欄卡片切換），非新功能只是可見化 */
+.opt-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65em;
+  height: var(--control-h);
+  box-sizing: border-box;
+  font: 600 var(--fs-btn) / 1 var(--font-ui);
+  padding: 0 0.9em;
+  border-radius: var(--radius-m);
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fac, #888888) 22%, var(--surface-1));
+  border: 1px solid var(--fac, #888888);
+  color: var(--ink-1);
+}
+
+/* 晶片右緣的取消鈕：拿掉發言對象，回到「描述動作／對全場說」 */
+.opt-target-clear {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0 0.1em;
+  margin-right: -0.3em;
+  line-height: 1;
+  color: var(--ink-3);
+}
+
+.opt-target-clear:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.composer .writebox {
+  width: 100%;
+  height: auto;
+  min-height: 3em;
+  padding: 0.7em 1em;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  color: var(--ink-1);
+  font-family: var(--font-story);
+  font-size: var(--fs-story);
+  line-height: 1.6;
+}
+
+.composer-send {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.composer-primary-action {
+  flex: none;
+}
+
+.composer-ai-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.request-reply {
+  max-width: min(22rem, 55vw);
+  min-width: 0;
+}
+
+.request-reply-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 收回上一句：虛線邊框＋淡字＝反向動作，跟右邊那幾顆「請 AI 生」分得開，減少誤按 */
+.undo-last {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+
+/* 手滑救援：剛收回的那一句還放得回去，提示就長在它被收掉的位置 */
+.undo-restore {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+

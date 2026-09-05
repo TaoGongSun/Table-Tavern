@@ -1,0 +1,395 @@
+/* ============ 主欄 ============ */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.9rem 2rem 1rem;
+  box-sizing: border-box;
+  height: 100vh;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* 桌名靠左、按鈕群靠右（前幕浮層以此為錨點）*/
+.chat-header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-left: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* 訊息區獨立捲動時，這塊仍留在劇情標題下方，方便隨時核對眼前局勢。 */
+.state-bar {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  font: var(--fs-meta) / 1.4 var(--font-ui);
+  /* 樹展開後可以很長：自己捲，別把後面的訊息擠掉 */
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+.state-bar summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  padding: 0.4rem 0.6rem;
+}
+
+.state-bar-title {
+  font-weight: 600;
+}
+
+.state-bar:not([open]) .state-bar-title,
+.state-bar[open] .state-bar-summary {
+  display: none;
+}
+
+.state-bar-fields {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0 0.6rem 0.55rem;
+}
+
+.state-bar-field {
+  display: grid;
+  grid-template-columns: minmax(6rem, 30%) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6rem;
+}
+
+.state-bar-label {
+  color: var(--ink-3);
+}
+
+/* 樹的分支：一層縮一格，深層資料照樣看得出從屬關係 */
+.state-tree-branch > summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.state-tree-children {
+  display: grid;
+  gap: 0.25rem;
+  margin-left: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+/* 分支指認下拉：跟在分支名後面的小字，別把 summary 那行撐高 */
+.state-tree-bind {
+  margin-left: 0.5rem;
+  padding: 0 0.15rem;
+  height: 1.4em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+/* 狀態值常是整句劇情描述，覆寫全域按鈕的 nowrap／置中，長值照欄寬折行 */
+.state-bar-value {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  line-height: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  cursor: text;
+}
+
+.state-bar-value:hover:not(:disabled),
+.state-bar-value:focus-visible {
+  color: var(--accent);
+}
+
+/* 跳動記號跟值併排：值照舊占滿可用寬度，記號縮到內容寬度貼在後面 */
+.state-bar-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.state-bar-value-row .state-bar-value {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.state-bar-jump {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.85em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.state-bar-jump:hover:not(:disabled),
+.state-bar-jump:focus-visible {
+  text-decoration: underline;
+}
+
+.state-bar-field-form {
+  min-width: 0;
+}
+
+.state-bar-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+/* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名 */
+.table-title {
+  height: auto;
+  border: none;
+  border-radius: 0;
+  color: var(--neutral-plate-ink);
+  background: var(--neutral-plate);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  font: 700 var(--fs-title) / 1 var(--font-ui);
+  letter-spacing: 0.02em;
+  padding: 0.5em 1.4em 0.5em 0.8em;
+  cursor: text;
+}
+
+.table-title:hover:not(:disabled) {
+  color: var(--neutral-plate-ink);
+  filter: brightness(1.15);
+}
+
+/* 表單只是為了讓 Enter 走瀏覽器的表單送出（中文選字不誤送），版面維持原本的直接子層 */
+.table-title-form {
+  display: contents;
+}
+
+.table-title-input {
+  font-weight: 700;
+  font-size: var(--fs-title);
+}
+
+/* ============ 對話區：playbill（左對齊名牌＋純散文） ============ */
+/* 行寬填滿主欄（左右舒適距離由 .chat-main 的 2rem padding 提供），
+   字級縮小＝每行容納更多字——2026-07-26 使用者拍板，取代原 42rem 上限 */
+.messages,
+.composer,
+.onboarding {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+/* 幕標記：現在這一幕的書籤（幕是既有系統結構：換幕／前幕／單幕匯出） */
+.act-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+}
+
+.act-tag {
+  font: 600 var(--fs-meta) / 1 var(--font-ui);
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.act-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-story);
+}
+
+.message .text {
+  font-size: var(--fs-story);
+  line-height: 1.65;
+}
+
+/* 渲染過的故事文字（StoryText 的產物）：不綁祖先，聊天訊息、單幕閱讀、
+   開場白選擇框都吃同一套排版 */
+.text.rendered {
+  display: block;
+  white-space: normal;
+}
+
+.text.rendered :is(p, ul, ol, blockquote, pre) {
+  margin: 0.5em 0;
+}
+
+.text.rendered > :first-child {
+  margin-top: 0;
+}
+
+.text.rendered > :last-child {
+  margin-bottom: 0;
+}
+
+.text.rendered :is(ul, ol) {
+  padding-left: 1.4em;
+}
+
+.text.rendered blockquote {
+  border-left: 3px solid var(--line);
+  color: var(--ink-2);
+  padding-left: 0.8em;
+}
+
+.text.rendered :is(code, pre) {
+  background: color-mix(in srgb, var(--ink-3) 12%, transparent);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.text.rendered pre {
+  overflow-x: auto;
+  padding: 0.6em;
+}
+
+.text.rendered :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.05em;
+  font-weight: 700;
+}
+
+/* 卡片作者內嵌的配圖（開場白常見）：外連圖尺寸不受控，限寬限高免得一張洗掉整個畫面。
+   載入失敗時瀏覽器顯示 alt 文字，不另外處理——外連圖失效是常態，不值得為它加狀態 */
+.text.rendered img {
+  display: block;
+  max-width: 100%;
+  max-height: 22rem;
+  height: auto;
+  /* 直長圖限高後會等比縮成一條，置中才不會像沒對齊 */
+  margin: 0.5em auto;
+  border-radius: var(--radius-m);
+}
+
+/* 載不到的外連圖（StoryText 的 onErrorCapture 掛上）：整張收掉，不留破圖示 */
+.text.rendered img.img-failed {
+  display: none;
+}
+
+/* 發言名牌＝角色卡名牌同一塊 wedge，後接同色細線收尾 */
+.pb-name {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin-bottom: 0.4em;
+}
+
+.pb-plate {
+  font: 700 var(--fs-btn) / 1 var(--font-ui);
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: color-mix(in srgb, var(--fac, #888888) 64%, var(--plate-mix));
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  padding: 0.45em 1.3em 0.45em 0.8em;
+}
+
+.pb-name::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--fac, #888888) 35%, transparent);
+}
+
+.message-player {
+  --fac: var(--player);
+}
+
+.message-narration {
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.message-system {
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
+.typing i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: typing-blink 1.2s infinite;
+}
+
+.typing i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing i {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+

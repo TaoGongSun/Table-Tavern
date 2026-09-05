@@ -36,7 +36,13 @@ const placeholders = (text) => (String(text).match(/\{[a-zA-Z]+\}/g) ?? []).sort
 const tsxFiles = readdirSync(join(ROOT, "src"), { recursive: true, withFileTypes: true })
   .filter((entry) => entry.isFile() && entry.name.endsWith(".tsx"))
   .map((entry) => join(entry.parentPath, entry.name));
-const css = readFileSync(join(ROOT, "src/App.css"), "utf8");
+const appCss = readFileSync(join(ROOT, "src/App.css"), "utf8");
+const css = [
+  appCss,
+  ...[...appCss.matchAll(/@import\s+["'](.+?\.css)["'];/g)].map(([, path]) =>
+    readFileSync(join(ROOT, "src", path), "utf8"),
+  ),
+].join("\n");
 const buttonKeys = new Set();
 for (const file of tsxFiles) {
   const source = readFileSync(file, "utf8");
