@@ -1,0 +1,528 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  width: min(34rem, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.tab {
+  border: none;
+}
+
+.tab-active {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+
+.modal-close {
+  border: none;
+  padding: 0 0.7em;
+}
+
+/* 翻譯工具列：檔位挑選器就站在「全部翻譯」旁邊——玩家不必翻說明也知道這次要用哪個模型，
+   翻不出來時往上調一檔再重翻。選項字帶實際模型 id，會比一般下拉長，給個上限別撐爆面板 */
+.opening-translate-all-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.opening-tier-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--ink-2);
+}
+
+.opening-tier-pick select {
+  max-width: 20rem;
+}
+
+/* 批次翻譯途中鎖住換檔（同一批不能翻到一半偷偷換模型）。全域只有 button:disabled 有變淡，
+   select 沒有，不補這條會看起來能點卻點不動 */
+.opening-tier-pick select:disabled {
+  opacity: 0.45;
+}
+
+.opening-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+.opening-choice-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.opening-choice-head {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  height: auto;
+  min-height: var(--control-h);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.opening-choice-head strong {
+  flex: none;
+  margin-right: 0.5rem;
+}
+
+.opening-choice-head span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-2);
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 逐則翻譯狀態（翻譯中…／⚠）：上面那條是給預覽文字的兩行截斷，套到標記上會把
+   「翻譯中…」折成兩行、把 ⚠ 壓成看不出是警告的一撇，這裡整條擋掉 */
+.opening-choice-head .opening-trans-status {
+  display: inline;
+  flex: none;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+
+.opening-choice-head .opening-trans-error {
+  color: var(--danger);
+}
+
+/* 展開的全文自己吃卷軸，長開場白不會把整張面板撐爆。
+   內容走 StoryText 渲染（卡片常在開場白內嵌配圖），換行交給 <br>，不再 pre-wrap */
+.opening-choice-full {
+  max-height: 18rem;
+  padding: 0 0.75rem;
+  overflow-y: auto;
+  color: var(--ink-2);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gen-table-modal textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.gen-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.gen-genre {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.gen-genre-selected,
+.gen-submit {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface-0);
+}
+
+.gen-submit-row,
+.gen-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.gen-submit-row small {
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.gen-outline-preview,
+.gen-result-error {
+  max-height: 18rem;
+  overflow-y: auto;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+}
+
+.gen-outline-preview p,
+.gen-result-error p {
+  margin: 0.5rem 0;
+}
+
+.gen-outline-preview > input,
+.gen-outline-preview > textarea {
+  width: 100%;
+}
+
+.gen-outline-preview > textarea {
+  margin-top: 0.5rem;
+}
+
+.gen-outline-preview h3 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: var(--fs-meta);
+}
+
+.gen-character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gen-character-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.gen-character-row input,
+.gen-character-row textarea {
+  min-width: 0;
+  flex: 1;
+}
+
+.gen-character-row textarea {
+  resize: none;
+  overflow: hidden;
+}
+
+.gen-character-row .gen-character-name {
+  flex: 0 1 9rem;
+}
+
+.gen-remove-character {
+  flex: 0 0 var(--control-h);
+  padding: 0;
+}
+
+.gen-add-character {
+  margin-top: 0.5rem;
+}
+
+.gen-add-character-ai {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.gen-add-character-ai input {
+  min-width: 0;
+  flex: 1;
+}
+
+.gen-result-error pre {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: var(--fs-meta) / 1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.gen-result-actions {
+  justify-content: flex-end;
+}
+
+/* AI 生成鈕：強調色描邊，與一般檔案操作鈕區隔 */
+.ai-gen-btn {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 生成對話框主要動作：右下角、放大（使用者拍板的置頂例外） */
+.ai-gen-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* 靠左的那顆：其餘按鈕照舊靠右 */
+.ai-gen-footer .footer-lead {
+  margin-right: auto;
+}
+
+.ai-gen-submit {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  font-weight: 600;
+}
+
+.ai-gen-error small {
+  display: block;
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
+.ai-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 4.5rem);
+  gap: 0.5rem;
+}
+
+.ai-gallery-thumb {
+  position: relative;
+}
+
+/* 縮圖包在真按鈕裡（鍵盤可及），洗掉全域 button 的高度與框線 */
+.ai-gallery-pick {
+  display: block;
+  padding: 0;
+  border: 0;
+  height: auto;
+  background: none;
+}
+
+.ai-gallery-thumb img {
+  display: block;
+  width: 4.5rem;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line);
+}
+
+.ai-gallery-delete {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* 換場提醒：小字、不擋操作 */
+.scene-length-hint {
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
+/* header 下方到 composer 上方的內容區：前幕面板以此為錨 */
+.chat-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+/* 前幕暫時面板：錨在主欄右側 */
+.acts-flyout {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 5;
+  width: 16rem;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  gap: 0.4rem;
+  background: var(--surface-1);
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
+}
+
+.acts-flyout-hide {
+  flex: none;
+  width: 100%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+}
+
+.acts-flyout-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-y: auto;
+}
+
+.acts-flyout-list button {
+  justify-content: flex-start;
+  border: none;
+}
+
+.acts-flyout-list button:hover {
+  background: var(--surface-2);
+}
+
+/* 單幕閱讀／角色卡編輯／世界設定編輯共用的整面標題列 */
+.act-reader-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.act-fork {
+  margin-left: auto;
+}
+
+.edit-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 角色卡編輯頂部的卡面圖／大顆頭像 */
+/* 編輯畫面頂部切兩塊：左邊這張卡的動作、右邊圖片與它的操作鈕，
+   打字欄位維持全寬留在下方；視窗夠窄時兩塊自動疊回上下（2026-07-28 使用者拍板） */
+.card-editor-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+/* 左窄右寬（40:60）：分界比正中間再左一點，圖片與它的按鈕從那裡靠左排，
+   圖才落在畫面中央；容器窄到放不下兩塊（min-width）就疊回上下 */
+.card-editor-actions {
+  flex: 1 1 16rem;
+  min-width: 15rem;
+}
+
+.card-editor-media {
+  flex: 1 1 24rem;
+  min-width: 18rem;
+}
+
+.card-editor-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* 未儲存提示在這裡是獨立一行，靠左跟著按鈕走（世界設定畫面仍靠按鈕列右緣） */
+.card-editor-actions .unsaved-hint {
+  margin-left: 0;
+}
+
+.card-editor-media {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* 圖片操作鈕最多五顆，欄位窄就折行 */
+.card-editor-media .row {
+  flex-wrap: wrap;
+}
+
+.card-editor-avatar {
+  display: flex;
+  justify-content: center;
+}
+
+.card-editor-image {
+  max-height: 12rem;
+  border-radius: var(--radius-l);
+  object-fit: cover;
+  display: block;
+}
+
+/* 點圖開大圖：按鈕殼不帶預設外觀，只負責 zoom 手勢提示 */
+.card-editor-image-zoom {
+  padding: 0;
+  border: none;
+  height: auto;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.card-editor-image-zoom:hover .card-editor-image {
+  filter: brightness(1.06);
+}
+
+.lightbox-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: var(--radius-l);
+  cursor: zoom-out;
+}
+
+.card-editor-avatar-emoji {
+  width: 6rem;
+  height: 6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--ring, #888888);
+  font-size: 3rem;
+}
+
+/* 單幕閱讀事件列表：與現況對話同一套 playbill 字樣 */
+.scene-event {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-story);
+  font-size: var(--fs-story);
+  line-height: 1.65;
+}
+
+.scene-event .speaker {
+  font: 700 var(--fs-meta) / 1.4 var(--font-ui);
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  margin-right: 0.5em;
+}
+
+.scene-event-narration {
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.scene-event-system {
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+

@@ -1,0 +1,490 @@
+/* ============ 側欄：手牌（單欄橫式桌遊卡） ============ */
+.sidebar {
+  width: 14rem;
+  min-width: 11rem;
+  max-width: 50%;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.8rem 0.75rem;
+  background: var(--surface-1);
+  border-right: 1px solid var(--line);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 側欄與主區之間的拖曳分隔線：視覺 1px、命中區 9px */
+.sidebar-resizer {
+  flex: none;
+  width: 9px;
+  height: auto;
+  margin-left: -5px;
+  margin-right: -4px;
+  z-index: 1;
+  cursor: col-resize;
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible {
+  background: var(--line);
+}
+
+.table-section {
+  flex: none;
+}
+
+.table-section summary {
+  cursor: pointer;
+  font: 600 var(--fs-meta) / 1.4 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0.35rem 0;
+}
+
+.table-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
+}
+
+.new-table,
+.gen-table {
+  justify-content: flex-start;
+}
+
+.table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+/* 桌名佔滿寬度、刪除鈕貼右；刪除鈕平常淡出，滑到該列或聚焦才明顯 */
+.table-row {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.table-delete {
+  flex: none;
+  border: none;
+  padding: 0 0.4em;
+  line-height: var(--control-h);
+  color: var(--ink-3);
+  opacity: 0;
+}
+
+.table-row:hover .table-delete,
+.table-delete:focus-visible {
+  opacity: 1;
+}
+
+.table-delete:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.table-item {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  border: none;
+  font-weight: 500;
+  font-size: var(--fs-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  line-height: var(--control-h);
+  text-align: left;
+}
+
+.table-item:hover {
+  background: var(--surface-2);
+}
+
+.table-item-active {
+  background: var(--surface-2);
+  color: var(--ink-1);
+  font-weight: 700;
+  cursor: text;
+}
+
+/* 側欄就地改名的輸入框：撐滿該列，字重字級對齊 .table-item-active 免得跳動 */
+.table-item-input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: var(--fs-ui);
+}
+
+/* 上緣橫線把桌列表與角色區切開（2026-07-27 使用者回饋：兩區黏在一起分不出來） */
+.character-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border-top: 1px solid var(--line);
+  margin-top: 0.6rem;
+  padding-top: 0.7rem;
+}
+
+.character-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+  /* 選中描邊畫在卡片外緣 2px：捲動容器要留邊，不然描邊被裁掉 */
+  padding: 3px;
+  margin: -3px;
+}
+
+.gm-book {
+  width: 2.5rem;
+  height: 2.5rem;
+  object-fit: contain;
+}
+
+/* 角色卡＝桌遊組件卡：左圖窗（角色色染底）＋名字 wedge＋檔位寶石。
+   卡內另有編輯鈕故外層是 div role=button（HTML 不能巢狀 button） */
+.tcard {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  min-height: 2.75rem;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  /* WKWebView 只認前綴版，標準寫法要一起留給其他平台 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 拖曳排序中的那一張／那一列：靠陰影浮起來。
+   不放大——列寬吃滿容器，放大就溢出被外層 overflow 裁掉左右邊框（2026-07-27 使用者回報） */
+.row-dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* GM 卡與玩家卡＝桌上兩個真人席位，共用「書皮」樣式：角色卡是跟主題走的白牌，
+   這兩張用皮革底＋燙金內框，與有陣營色的角色卡自然區隔。
+   GM 卡與角色卡同操作（點擊選發言對象、右下編輯鈕開世界設定），玩家卡整張點擊開編輯。
+   （放在 .tcard 之後：同權重靠順序蓋掉基底底色） */
+.tcard-gm,
+.tcard-player {
+  --fac: #8a6a3c; /* 銅金：名字 wedge 跟著書皮走 */
+  /* 皮革色＝各主題的 --gm-leather 混主題底色（明度自動跟主題走，
+     2026-07-27 使用者回饋：固定深色在淺主題下太暗太顯眼）；上層半透明漸層是打光 */
+  --leather-base: color-mix(in srgb, var(--gm-leather) 74%, var(--surface-2));
+  --leather: var(--leather-base);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.16)), var(--leather);
+  color: var(--ink-1); /* 皮革變淺主題時 ⚙ 也要跟著轉深 */
+  /* 跟有圖角色卡等高（2.875rem 圖窗 × 3/2 = 4.3125rem ≈ 69px，使用者拍板） */
+  min-height: 4.3125rem;
+}
+
+/* 燙金內框：書皮的壓紋，畫在卡緣內縮 4px 處。
+   金色混 --ink-2：深主題偏淡金、淺主題偏深銅，跟皮革同步調亮暗 */
+.tcard-gm::after,
+.tcard-player::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid color-mix(in srgb, #c9a24f 55%, var(--ink-2));
+  border-radius: 5px;
+  pointer-events: none;
+}
+
+/* 底色歸零讓整張卡是同一塊皮，書本圖直接印在皮上（高度由上面的 min-height 撐） */
+.tcard-gm .tcard-art,
+.tcard-player .tcard-art {
+  background: none;
+}
+
+/* 玩家卡：同一張皮混白調亮一階，與正上方的 GM 卡分得出來（各主題都跟著自己的皮革色走） */
+.tcard-player {
+  --leather: color-mix(in srgb, #ffffff 18%, var(--leather-base));
+}
+
+/* 還沒建玩家卡：同一張皮但壓暗、內框改虛線，一眼看得出是空位 */
+.tcard-player-empty {
+  opacity: 0.68;
+}
+
+.tcard-player-empty::after {
+  border-style: dashed;
+}
+
+.tcard-player-empty .tcard-body {
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.7rem;
+}
+
+.tcard-art {
+  width: 2.875rem;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.375rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--fac, #888888) 38%, var(--surface-2)),
+    var(--surface-2)
+  );
+  overflow: hidden;
+}
+
+/* 匯入卡的角色圖：填滿圖窗，臉部通常在上半故對齊頂部。
+   ★ 卡片高度差是刻意的，不要「修掉」：height:100% 在父層高度 auto 時解析不出來，
+   圖片以 46px 寬 × 2:3 把卡片撐成 69px；沒有全身圖的卡停在 min-height 44px。
+   有圖的卡比較高＝比較顯眼，是產品決策（2026-07-27 使用者拍板：讓玩家想要角色圖，
+   進而想用 AI 生圖）。要全部等高的話會抹掉這個差別，動之前先問使用者。 */
+.tcard-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* 圓頭像的黑框是 box-shadow，畫在邊框外、不佔版位，緊鄰文字時會吃掉視覺間距，
+   故用 margin 把那 2px 讓回來（2026-07-27 使用者回報「頭像和文字太近」） */
+.avatar-round {
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px var(--avatar-ring);
+  margin: 2px;
+}
+
+.tcard-avatar { width: 2rem; height: 2rem; }
+.opt-avatar { width: 1.25rem; height: 1.25rem; }
+/* GM 的目標晶片頭像用的是整張卡圖（GM 沒有另外的頭像檔），對齊上緣才看得到臉 */
+.gm-opt-avatar { object-position: top; }
+.card-editor-avatar-round { width: 6rem; height: 6rem; }
+
+/* 欄位下方的說明小字（例：改名不會動到劇情正文裡的舊名） */
+.field-note {
+  margin: -0.35rem 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+}
+
+/* 自繪懸浮提示：原生 title 要停留約一秒才浮出來，常常等不到，故改成滑到就出現。
+   掛在外層 span 上是因為 disabled 的按鈕收不到滑鼠事件 */
+.hint-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.hint-wrap[data-hint]:hover::after,
+.hint-wrap[data-hint]:focus-within::after {
+  content: attr(data-hint);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.35em 0.6em;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--ink-1);
+  font: 600 var(--fs-meta) / 1.4 var(--font-ui);
+  box-shadow: var(--shadow-card);
+  pointer-events: none;
+}
+
+/* 圖示欄：輸入框只放一顆 emoji，後面接快捷選項 */
+.emoji-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.emoji-input {
+  width: 4.5em;
+  text-align: center;
+}
+
+.emoji-preset {
+  padding: 0 0.4em;
+  line-height: var(--control-h);
+}
+
+.emoji-preset[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.crop-area { position: relative; height: 320px; }
+.crop-zoom { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0; }
+.crop-zoom input { flex: 1; }
+
+.tcard-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* 右側留位給編輯鈕（絕對定位），名牌絕不壓到它下面；
+     編輯鈕字級固定 px，小字級（根字級縮小）時佔的 rem 變多，預留取最壞情況 */
+  padding: 0.35rem 3.4rem 0.35rem 0;
+}
+
+/* 名字 wedge：角色被叫到名字的地方全用同一塊牌（此處＋發言名牌＋目標晶片） */
+.tcard-plate {
+  display: block;
+  color: #ffffff;
+  font: 700 var(--fs-btn) / 1 var(--font-ui);
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--fac, #888888) 64%, var(--plate-mix));
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  padding: 0.45em 1.3em 0.45em 0.7em;
+  margin-left: 0; /* 名牌切齊圖窗右緣：不壓圖也不留空隙（2026-07-27 使用者實測拍板） */
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0; /* flex 列裡允許縮短出 ellipsis（tcard-name-row） */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+/* 名牌＋檔位寶石同一列；名字過長時名牌縮、寶石不縮 */
+.tcard-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+/* 檔位寶石：名牌後面，只有偏離預設檔位（中）的角色才掛 */
+.tcard-gem {
+  flex: none;
+  font: 800 var(--fs-gem) / 1 var(--font-ui);
+  letter-spacing: 0.04em;
+  padding: 0.3em 0.5em;
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: color-mix(in srgb, var(--fac, #888888) 90%, var(--ink-1));
+  box-shadow: 0 0 0 1px var(--fac, #888888);
+}
+
+/* 被選為發言對象：角色色描邊（= 設計稿 turn 態） */
+.tcard-selected {
+  box-shadow: 0 0 0 2px var(--fac, #888888), var(--shadow-card);
+}
+
+/* 字級用 px：不跟隨文字大小偏好（rem 會隨根字級縮放），最小字級下也保持可讀 */
+.character-card-edit {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.25rem;
+  height: auto;
+  padding: 0.2em 0.5em;
+  border: none;
+  border-radius: 3px;
+  font: 600 12px/1.2 var(--font-ui);
+  color: var(--ink-2);
+  background: none;
+}
+
+.character-card-edit:hover:not(:disabled) {
+  color: var(--ink-1);
+}
+
+.archive-section {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+.archive-section summary {
+  cursor: pointer;
+  font: 600 var(--fs-meta) / 1.4 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.archive-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* 名字＋自動隱藏標籤同一列；ellipsis 要落在文字本身，flex 容器上不會生效（比照 tcard-name-row） */
+.archive-row-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.archive-row-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+}
+
+/* 自動隱藏卡在隱藏區的次要標籤，跟手動封存卡區分開來 */
+.archive-row-badge {
+  flex: none;
+  font: 600 var(--fs-meta) / 1 var(--font-ui);
+  color: var(--ink-3);
+}
+
+.archive-row button,
+.archive-button {
+  padding: 0 0.65em;
+}
+
+.delete-character {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.character-create {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sidebar-footer {
+  font-size: var(--fs-body);
+}
+
+.settings-open {
+  width: 100%;
+}
+
+/* ============ 設定視窗 ============ */
