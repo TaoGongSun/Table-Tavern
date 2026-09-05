@@ -1,6 +1,6 @@
 # cli.rs 拆進 cli/
 
-狀態：2026-09-05 拆檔完成，機械／CI／實機三關全過，等合併 main 結案。
+狀態：2026-09-05 結案（squash `a916498` 進 main）。
 
 ## 結果
 `src-tauri/src/cli.rs` 2087 行拆成 6 檔＋facade（types／detect／catalog／request／stream／runner），原檔刪除。切線按責任層走，不按 provider 垂直切——四家的串流／usage parser 與共用 runner 契約比參數組裝更緊，垂直切會讓 `CliLine`、`UsageLog`、runner 跨四檔交錯。
@@ -15,4 +15,4 @@ facade 只掛 `cli/` 之外真有 caller 的名字。四支 `parse_*_catalog`、
 - 實機（macOS release 包）：四家 CLI 各在既有桌跑完一輪對話（串流、落檔、額度數字都在）→ request／stream／runner 四套 parser 全走過；設定頁四家偵測狀態與版本號都在 → detect；Gemini 模型清單為最新 → catalog；期間換過角色發言 → session args；AI 卡重構跑到一半按取消，事後 app 的子程序表為空 → run_cli 的 PID 登記與收尾。
 - 聊天對話沒有取消入口（中止機制只服務重構取消與 app 退出清理），不是拆檔造成的缺口。
 
-規格與白名單見 [plans/cli-split.md](../plans/cli-split.md)，施工前基準見 [baselines/cli-split.md](../baselines/cli-split.md)。同型任務＝[transport-split](archive/transport-split-completed.md)、[mechanism-split](archive/mechanism-split-completed.md)。
+規格與白名單見 [plans/cli-split.md](../../plans/cli-split.md)，施工前基準見 [baselines/cli-split.md](../../baselines/cli-split.md)。同型任務＝[transport-split](transport-split-completed.md)、[mechanism-split](mechanism-split-completed.md)。
