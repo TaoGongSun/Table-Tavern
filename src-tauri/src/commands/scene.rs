@@ -2,6 +2,17 @@ use crate::ai_transport::{chat_transport, stream_via_transport};
 use crate::data::TranscriptEvent;
 use crate::{config_root, data, data_root, mechanism, receipts, translate, transport};
 use serde::Serialize;
+use std::path::Path;
+
+/// 事件沒帶快照就補上目前檯面，補法與 data::append_transcript 內部那份一致；差別在這裡
+/// 補完的要回傳給前端。前端記憶體裡的事件從一開始就帶著快照，收回後復原才送得回當時的值
+/// ——否則後端只能拿回捲後的檯面當它的快照，狀態欄會停在收回後的舊值。
+fn stamp_state(root: &Path, world_id: &str, mut event: TranscriptEvent) -> TranscriptEvent {
+    if event.state.is_none() {
+        event.state = data::read_state(root, world_id).ok().map(|state| state.state);
+    }
+    event
+}
 
 #[tauri::command]
 pub(crate) fn append_transcript(
@@ -9,9 +20,11 @@ pub(crate) fn append_transcript(
     world_id: String,
     scene: u64,
     event: TranscriptEvent,
-) -> Result<(), String> {
-    data::append_transcript(&data_root(&app)?, &world_id, scene, &event)
-        .map_err(|error| error.to_string())
+) -> Result<TranscriptEvent, String> {
+    let root = data_root(&app)?;
+    let event = stamp_state(&root, &world_id, event);
+    data::append_transcript(&root, &world_id, scene, &event).map_err(|error| error.to_string())?;
+    Ok(event)
 }
 
 /// 貼開場白＝GM 旁白，但狀態區塊要走與 GM 回覆同一條解析。剝除、併進檯面、事件帶快照
@@ -353,6 +366,53 @@ mod tests {
         let result = scene_appearances_at(&root, &world_id).unwrap();
         assert_eq!(result.character_ids, vec![fox.id.clone()]);
         assert_eq!(result.person_titles, vec!["愛麗絲".to_owned()]);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// 收回後復原要能把狀態欄帶回那一刻：前端畫面上的事件必須從落地那一刻就帶著快照，
+    /// 所以 append 這一路要把補完的那份交回去；已經自帶快照的事件不准被目前檯面蓋掉。
+    #[test]
+    fn stamp_state_fills_in_current_table_but_keeps_a_carried_snapshot() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-stamp-state-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "快照桌").unwrap();
+
+        let mut world = data::read_state(&root, &world_id).unwrap();
+        world
+            .state
+            .table
+            .insert("時辰".to_owned(), "清晨".to_owned());
+        data::write_state(&root, &world_id, &world).unwrap();
+
+        let bare = data::TranscriptEvent {
+            ts: "now".to_owned(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: data::TranscriptKind::Narration,
+            text: "天亮了。".to_owned(),
+            raw: None,
+            state: None,
+            gm_only: false,
+        };
+        let stamped = super::stamp_state(&root, &world_id, bare.clone());
+        assert_eq!(stamped.state.as_ref().unwrap().table["時辰"], "清晨");
+
+        let mut carried = world.state.clone();
+        carried.table.insert("時辰".to_owned(), "午夜".to_owned());
+        let kept = super::stamp_state(
+            &root,
+            &world_id,
+            data::TranscriptEvent {
+                state: Some(carried.clone()),
+                ..bare
+            },
+        );
+        assert_eq!(kept.state, Some(carried));
 
         std::fs::remove_dir_all(&root).unwrap();
     }

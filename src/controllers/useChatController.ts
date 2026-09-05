@@ -142,8 +142,10 @@ export function useChatController({
       // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
       // 與任何未來新路徑的保險，錯誤碼與後端同一個
       if (!event.text.trim()) throw new Error("AI_EMPTY_RESPONSE: 空白回合不寫進故事");
-      await invoke("append_transcript", { worldId, scene, event });
-      setEvents((previous) => [...previous, event]);
+      // 用後端回傳的那份（快照已補好）進畫面：收回後要復原時，送回去的事件才帶著當時的
+      // 檯面值，狀態欄跟著回到那一刻
+      const stamped = await invoke<TranscriptEvent>("append_transcript", { worldId, scene, event });
+      setEvents((previous) => [...previous, stamped]);
       // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
       setUndone(null);
     },
