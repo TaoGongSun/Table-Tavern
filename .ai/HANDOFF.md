@@ -3,6 +3,7 @@
 一線一檔於 [handoffs/](handoffs/)，交接＝就地改寫該檔。開工先整份讀該檔。
 
 ## 進行中
+- [cli-split](handoffs/cli-split.md) — cli.rs 拆進 cli/ 六模組：機械驗收全綠、macOS 535 綠、Windows CI 523＋smoke 4 綠、實機四家對話過，等合併 main 結案
 - [api-cache-visibility](handoffs/api-cache-visibility.md) — API 路快取看得見：實作＋Sol 驗收完成，等真跑一輪 api 對話看命中率顯示
 - [api-key-paste-guard](handoffs/api-key-paste-guard.md) — 金鑰貼錯防呆：功能面完成、實機兩項過，剩換上真金鑰後自然驗到
 - [grok-profile-isolation](handoffs/grok-profile-isolation.md) — grok 環境隔離：四處注入完成、Sol 過，剩設定頁跑一次 grok 登入
