@@ -18,8 +18,8 @@ pub(crate) fn refactor_apply(
 ) -> Result<refactor::RefactorApplySummary, String> {
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
-    let result =
-        refactor::apply(&root, &world_id, &outcome, &selection).map_err(|error| error.to_string())?;
+    let result = refactor::apply(&root, &world_id, &outcome, &selection)
+        .map_err(|error| error.to_string())?;
     if record_receipt.unwrap_or(true) {
         receipts::record_refactor_apply(
             &root,
@@ -280,8 +280,8 @@ pub(crate) async fn refactor_expand_person(
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let mut sources = Vec::with_capacity(uids.len());
     for uid in &uids {
-        let text =
-            refactor_ai::entry_full_text(&root, &world_id, uid).map_err(|error| error.to_string())?;
+        let text = refactor_ai::entry_full_text(&root, &world_id, uid)
+            .map_err(|error| error.to_string())?;
         sources.push((uid.clone(), text));
     }
     let messages = refactor_ai::person_expand_messages(&context, &name, &sources, &lang);
@@ -305,7 +305,9 @@ pub(crate) async fn refactor_expand_person(
             },
         ) => result?,
     };
-    Ok(refactor_ai::parse_person_expand(&raw, &name, &uids, is_player))
+    Ok(refactor_ai::parse_person_expand(
+        &raw, &name, &uids, is_player,
+    ))
 }
 
 /// `expand_span_placeholders` 的查表：接 `refactor_assemble::resolve_span` 找段落原文（trim
@@ -399,6 +401,7 @@ pub(crate) async fn refactor_absorb_entry(
 /// 屬於這個主題的資訊、合併改寫（小抄合約 v1 GROUPS 區塊）。CONTENT 裡的 `{{span:uid#sN}}`
 /// 指位（大組保險）在這裡換回原文全文。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn refactor_split_group(
     app: tauri::AppHandle,
     world_id: String,

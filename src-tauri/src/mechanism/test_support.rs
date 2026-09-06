@@ -1,6 +1,4 @@
-use crate::data::{
-    self, Condition, FieldKind, FieldRule, Mechanism, StateNode, TriggerMode,
-};
+use crate::data::{self, Condition, FieldKind, FieldRule, Mechanism, StateNode, TriggerMode};
 use std::collections::BTreeMap;
 
 pub(super) fn tree_from(pairs: &[(&str, &str)]) -> BTreeMap<String, StateNode> {

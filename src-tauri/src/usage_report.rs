@@ -365,11 +365,9 @@ pub fn summarize(
             Some(index) => &mut rows[index],
             None => {
                 rows.push(UsageRow {
-                    in_use: in_use
-                        .iter()
-                        .any(|(used_source, used_model)| {
-                            *used_source == source && *used_model == model
-                        }),
+                    in_use: in_use.iter().any(|(used_source, used_model)| {
+                        *used_source == source && *used_model == model
+                    }),
                     source,
                     model,
                     ..UsageRow::default()
@@ -403,13 +401,20 @@ mod tests {
     use super::*;
 
     const LOG: &str = concat!(
-        r#"{"ts":"2026-08-04 01:00:00","transport":"claude","world":"w1","model":"sonnet","diag":"warmup","reason":"first-turn","prompt_tokens":1000,"cached_tokens":0,"created_tokens":1000,"output_tokens":100,"hit_rate":0.0,"cost_usd":0.02}"#, "\n",
-        r#"{"ts":"2026-08-04 01:01:00","transport":"claude","world":"w1","model":"sonnet","diag":"ok","prompt_tokens":1200,"cached_tokens":1000,"created_tokens":200,"output_tokens":120,"hit_rate":83.3,"cost_usd":0.01}"#, "\n",
-        r#"{"ts":"2026-08-04 01:02:00","transport":"claude","world":"w1","model":"opus","diag":"ok","prompt_tokens":4000,"cached_tokens":3600,"created_tokens":400,"output_tokens":200,"hit_rate":90.0,"cost_usd":0.05}"#, "\n",
-        r#"{"ts":"2026-08-04 01:03:00","transport":"claude","world":"w1","model":"sonnet","diag":"ping","prompt_tokens":1200,"cached_tokens":1200,"created_tokens":0,"output_tokens":5,"hit_rate":100.0,"cost_usd":0.001}"#, "\n",
-        r#"{"ts":"2026-08-04 01:04:00","transport":"agy","world":"w1","model":"(CLI 預設)","diag":"single","unreported":true}"#, "\n",
-        r#"{"ts":"2026-08-04 01:05:00","transport":"claude","world":"w2","model":"sonnet","diag":"ok","prompt_tokens":800,"cached_tokens":400,"created_tokens":0,"output_tokens":60,"hit_rate":50.0,"cost_usd":0.008}"#, "\n",
-        r#"{"ts":"2026-08-04 01:06:00","transport":"api","model":"x/y","diag":"single","prompt_tokens":500,"cached_tokens":0,"created_tokens":0,"output_tokens":50,"hit_rate":0.0}"#, "\n",
+        r#"{"ts":"2026-08-04 01:00:00","transport":"claude","world":"w1","model":"sonnet","diag":"warmup","reason":"first-turn","prompt_tokens":1000,"cached_tokens":0,"created_tokens":1000,"output_tokens":100,"hit_rate":0.0,"cost_usd":0.02}"#,
+        "\n",
+        r#"{"ts":"2026-08-04 01:01:00","transport":"claude","world":"w1","model":"sonnet","diag":"ok","prompt_tokens":1200,"cached_tokens":1000,"created_tokens":200,"output_tokens":120,"hit_rate":83.3,"cost_usd":0.01}"#,
+        "\n",
+        r#"{"ts":"2026-08-04 01:02:00","transport":"claude","world":"w1","model":"opus","diag":"ok","prompt_tokens":4000,"cached_tokens":3600,"created_tokens":400,"output_tokens":200,"hit_rate":90.0,"cost_usd":0.05}"#,
+        "\n",
+        r#"{"ts":"2026-08-04 01:03:00","transport":"claude","world":"w1","model":"sonnet","diag":"ping","prompt_tokens":1200,"cached_tokens":1200,"created_tokens":0,"output_tokens":5,"hit_rate":100.0,"cost_usd":0.001}"#,
+        "\n",
+        r#"{"ts":"2026-08-04 01:04:00","transport":"agy","world":"w1","model":"(CLI 預設)","diag":"single","unreported":true}"#,
+        "\n",
+        r#"{"ts":"2026-08-04 01:05:00","transport":"claude","world":"w2","model":"sonnet","diag":"ok","prompt_tokens":800,"cached_tokens":400,"created_tokens":0,"output_tokens":60,"hit_rate":50.0,"cost_usd":0.008}"#,
+        "\n",
+        r#"{"ts":"2026-08-04 01:06:00","transport":"api","model":"x/y","diag":"single","prompt_tokens":500,"cached_tokens":0,"created_tokens":0,"output_tokens":50,"hit_rate":0.0}"#,
+        "\n",
         "壞掉的一行\n",
     );
 
@@ -419,13 +424,21 @@ mod tests {
     fn hit_rate_counts_only_observed_rounds() {
         const MIXED: &str = concat!(
             // 舊行（無 cache_reporting）：api＝假 0 不可採信、claude＝欄位一直是對的
-            r#"{"ts":"2026-08-21 13:47:35","transport":"api","world":"w1","model":"v/m","diag":"single","prompt_tokens":4690,"cached_tokens":0,"created_tokens":0,"output_tokens":551,"hit_rate":0.0}"#, "\n",
+            r#"{"ts":"2026-08-21 13:47:35","transport":"api","world":"w1","model":"v/m","diag":"single","prompt_tokens":4690,"cached_tokens":0,"created_tokens":0,"output_tokens":551,"hit_rate":0.0}"#,
+            "\n",
             // 新行：量到了、這輪沒中
-            r#"{"ts":"2026-08-21 14:00:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"reported","prompt_tokens":1000,"cached_tokens":400,"output_tokens":20}"#, "\n",
+            r#"{"ts":"2026-08-21 14:00:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"reported","prompt_tokens":1000,"cached_tokens":400,"output_tokens":20}"#,
+            "\n",
             // 新行：這條路不回報
-            r#"{"ts":"2026-08-21 14:01:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"absent","prompt_tokens":2000,"output_tokens":30}"#, "\n",
+            r#"{"ts":"2026-08-21 14:01:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"absent","prompt_tokens":2000,"output_tokens":30}"#,
+            "\n",
         );
-        let report = summarize(MIXED, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]);
+        let report = summarize(
+            MIXED,
+            Some("w1"),
+            &[("w1".to_owned(), "桌".to_owned())],
+            &[],
+        );
         let row = &report.rows[0];
         assert_eq!(row.rounds, 3);
         assert_eq!(row.observed_rounds, 1); // 三輪只有一輪的數字可信
@@ -436,13 +449,23 @@ mod tests {
 
         // 舊 api 行的正命中是真值：當年 unwrap_or(0) 捏得出來的只有 0，>0 必是讀對了欄位
         const OLD_HIT: &str = r#"{"ts":"2026-08-20 10:00:00","transport":"api","world":"w1","model":"v/m","diag":"single","prompt_tokens":1000,"cached_tokens":600,"created_tokens":0,"output_tokens":20,"hit_rate":60.0}"#;
-        let old = summarize(OLD_HIT, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]);
+        let old = summarize(
+            OLD_HIT,
+            Some("w1"),
+            &[("w1".to_owned(), "桌".to_owned())],
+            &[],
+        );
         assert_eq!(old.rows[0].observed_rounds, 1);
         assert_eq!(old.rows[0].hit_rate, Some(60.0));
 
         // 整條路都量不到＝命中率不存在，不可顯示 0%
         const ALL_ABSENT: &str = r#"{"ts":"2026-08-21 14:02:00","transport":"api","world":"w1","model":"v/m","diag":"single","cache_reporting":"absent","prompt_tokens":500,"output_tokens":10}"#;
-        let blind = summarize(ALL_ABSENT, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]);
+        let blind = summarize(
+            ALL_ABSENT,
+            Some("w1"),
+            &[("w1".to_owned(), "桌".to_owned())],
+            &[],
+        );
         assert_eq!(blind.rows[0].hit_rate, None);
         assert_eq!(blind.rows[0].observed_rounds, 0);
         assert_eq!(blind.total.hit_rate, None);
@@ -471,10 +494,26 @@ mod tests {
         assert_eq!(
             report.worlds,
             vec![
-                WorldOption { id: "w1".to_owned(), name: "第一桌".to_owned(), rounds: 5 },
-                WorldOption { id: "w2".to_owned(), name: "第二桌".to_owned(), rounds: 1 },
-                WorldOption { id: "w3".to_owned(), name: "還沒玩過的桌".to_owned(), rounds: 0 },
-                WorldOption { id: String::new(), name: String::new(), rounds: 1 },
+                WorldOption {
+                    id: "w1".to_owned(),
+                    name: "第一桌".to_owned(),
+                    rounds: 5
+                },
+                WorldOption {
+                    id: "w2".to_owned(),
+                    name: "第二桌".to_owned(),
+                    rounds: 1
+                },
+                WorldOption {
+                    id: "w3".to_owned(),
+                    name: "還沒玩過的桌".to_owned(),
+                    rounds: 0
+                },
+                WorldOption {
+                    id: String::new(),
+                    name: String::new(),
+                    rounds: 1
+                },
             ]
         );
 
@@ -482,7 +521,14 @@ mod tests {
         let models: Vec<(&str, &str, u64, bool)> = report
             .rows
             .iter()
-            .map(|row| (row.source.as_str(), row.model.as_str(), row.rounds, row.in_use))
+            .map(|row| {
+                (
+                    row.source.as_str(),
+                    row.model.as_str(),
+                    row.rounds,
+                    row.in_use,
+                )
+            })
             .collect();
         assert_eq!(
             models,
@@ -611,7 +657,7 @@ mod tests {
         };
         assert_eq!(count("hit"), 2); // 舊那筆 81% ＋ 新那筆共線
         assert_eq!(count("zero"), 1); // 只有標明有回報的那筆算真的沒中
-        // 不回報的 agy ＋ 加欄之前那筆分不出真假的 api 0
+                                      // 不回報的 agy ＋ 加欄之前那筆分不出真假的 api 0
         assert_eq!(count("unknown"), 2);
 
         // 最近一輪：新行兩軸照讀，形狀與快取結果各說各的

@@ -9,7 +9,9 @@ use std::path::Path;
 /// ——否則後端只能拿回捲後的檯面當它的快照，狀態欄會停在收回後的舊值。
 fn stamp_state(root: &Path, world_id: &str, mut event: TranscriptEvent) -> TranscriptEvent {
     if event.state.is_none() {
-        event.state = data::read_state(root, world_id).ok().map(|state| state.state);
+        event.state = data::read_state(root, world_id)
+            .ok()
+            .map(|state| state.state);
     }
     event
 }
@@ -140,12 +142,18 @@ fn scene_appearances_at(
     let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
-    let person_titles = transport::appeared_person_titles(&events).into_iter().collect();
+    let person_titles = transport::appeared_person_titles(&events)
+        .into_iter()
+        .collect();
     let card_names = data::appeared_titles(&events, data::CARD_ARRIVAL_PREFIX);
     let character_ids = data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
-        .filter(|meta| card_names.iter().any(|name| data::name_matches(name, &meta.name)))
+        .filter(|meta| {
+            card_names
+                .iter()
+                .any(|name| data::name_matches(name, &meta.name))
+        })
         .map(|meta| meta.id)
         .collect();
     Ok(SceneAppearances {

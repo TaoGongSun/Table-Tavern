@@ -2,8 +2,6 @@ use crate::data::{CharacterCard, Mechanism, TranscriptEvent, WorldbookEntry};
 
 use super::messages::{language_rule, replace_st_macros};
 
-
-
 pub fn active_worldbook_entries<'a>(
     entries: &'a [WorldbookEntry],
     events: &[TranscriptEvent],
@@ -221,29 +219,32 @@ pub(super) fn split_person_roster<'a>(
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::super::arrivals::*;
+    #[allow(unused_imports)]
+    use super::super::assemble::*;
+    #[allow(unused_imports)]
+    use super::super::client::*;
+    #[allow(unused_imports)]
+    use super::super::messages::*;
+    #[allow(unused_imports)]
+    use super::super::response::*;
+    #[allow(unused_imports)]
+    use super::super::state_view::*;
+    #[allow(unused_imports)]
+    use super::super::test_support::{card, event, worldbook_entry};
+    #[allow(unused_imports)]
+    use super::super::turns::*;
     use super::*;
     #[allow(unused_imports)]
-    use crate::data::{self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+    use crate::data::{
+        self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism,
+        StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
+    };
     #[allow(unused_imports)]
     use crate::mechanism;
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
-    #[allow(unused_imports)]
-    use super::super::test_support::{card, event, worldbook_entry};
-    #[allow(unused_imports)]
-    use super::super::messages::*;
-    #[allow(unused_imports)]
-    use super::super::assemble::*;
-    #[allow(unused_imports)]
-    use super::super::state_view::*;
-    #[allow(unused_imports)]
-    use super::super::arrivals::*;
-    #[allow(unused_imports)]
-    use super::super::turns::*;
-    #[allow(unused_imports)]
-    use super::super::response::*;
-    #[allow(unused_imports)]
-    use super::super::client::*;
 
     #[test]
     fn active_worldbook_entries_use_constant_recent_four_keys_and_sorting() {
@@ -294,8 +295,14 @@ mod tests {
         .content;
         assert!(!gm_system.contains("這桌還有這些人"));
 
-        let lane_system =
-            gm_lane_system("世界總覽", &[], None, &entries, &Mechanism::default(), "zh-TW");
+        let lane_system = gm_lane_system(
+            "世界總覽",
+            &[],
+            None,
+            &entries,
+            &Mechanism::default(),
+            "zh-TW",
+        );
         assert!(!lane_system.contains("這桌還有這些人"));
 
         let chars_system = chars_lane_system(&[], None, &entries, "zh-TW");
@@ -385,5 +392,4 @@ mod tests {
         .content;
         assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n這桌還有這些人：愛麗絲\n"));
     }
-
 }

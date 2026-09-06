@@ -14,7 +14,9 @@ pub fn parse_claude_line(line: &str) -> CliLine {
             match (
                 kind,
                 delta.and_then(|d| d.get("text")).and_then(|t| t.as_str()),
-                delta.and_then(|d| d.get("thinking")).and_then(|t| t.as_str()),
+                delta
+                    .and_then(|d| d.get("thinking"))
+                    .and_then(|t| t.as_str()),
             ) {
                 (Some("text_delta"), Some(text), _) => CliLine::Delta(text.to_owned()),
                 // opus 4.7 世代 CLI 隱去思考本文（thinking 恆空、只剩 estimated_tokens），
@@ -456,11 +458,16 @@ mod tests {
             ),
             CliLine::Other
         );
-        assert_eq!(parse_agy_line(r#"{"event":"init","init":{"cwd":"/x"}}"#), CliLine::Other);
+        assert_eq!(
+            parse_agy_line(r#"{"event":"init","init":{"cwd":"/x"}}"#),
+            CliLine::Other
+        );
         // result 收尾：response 是全文重述，不可當增量，否則正文出現兩次
         // response 進 Done.text 當零增量 fallback：run_cli 只在完全沒收到增量時才用它
         assert_eq!(
-            parse_agy_line(r#"{"event":"result","result":{"status":"SUCCESS","response":"好的\n"}}"#),
+            parse_agy_line(
+                r#"{"event":"result","result":{"status":"SUCCESS","response":"好的\n"}}"#
+            ),
             CliLine::Done {
                 text: "好的\n".to_owned(),
                 is_error: false,
@@ -509,7 +516,7 @@ mod tests {
         assert_eq!(usage.created_tokens, None); // agy 不回報寫入數，沒回報不是 0
         assert_eq!(usage.output_tokens, 282);
         assert_eq!(usage.cost_usd, None); // agy 不回報金額
-        // step_update 也帶 usage，但只有 result 是全回合總計
+                                          // step_update 也帶 usage，但只有 result 是全回合總計
         assert!(parse_agy_usage(
             r#"{"event":"step_update","step_update":{"step_type":"agent_response","usage":{"input_tokens":1}}}"#
         )
@@ -577,5 +584,4 @@ mod tests {
             }
         );
     }
-
 }

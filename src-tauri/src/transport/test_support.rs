@@ -1,4 +1,6 @@
-use crate::data::{CharacterCard, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+use crate::data::{
+    CharacterCard, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
+};
 
 pub(super) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCard {
     CharacterCard {

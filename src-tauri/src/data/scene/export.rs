@@ -1,12 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use super::super::{DataResult, invalid_data, local_timestamp};
 use super::super::paths::world_dir;
 use super::super::state::read_state;
-use super::transcript::{TranscriptEvent, TranscriptKind, read_transcript, transcript_path};
-
-
+use super::super::{invalid_data, local_timestamp, DataResult};
+use super::transcript::{read_transcript, transcript_path, TranscriptEvent, TranscriptKind};
 
 /// 把單一事件渲染成一行（或多行）Markdown，整桌／單場匯出共用同一份格式。
 fn render_transcript_entry(event: &TranscriptEvent, english: bool) -> String {
@@ -133,8 +131,8 @@ pub fn export_scene_markdown(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
 
     #[test]
     fn exports_all_transcript_scenes_as_localized_markdown() {
@@ -272,5 +270,4 @@ mod tests {
         let world_id = create_world(root.path(), "空桌").unwrap();
         assert!(export_scene_markdown(root.path(), &world_id, 0, "zh-TW").is_err());
     }
-
 }

@@ -2,9 +2,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use super::super::character::{list_characters, set_character_auto_hidden};
-use super::transcript::{TranscriptEvent, TranscriptKind, read_transcript};
-
-
+use super::transcript::{read_transcript, TranscriptEvent, TranscriptKind};
 
 // ---------------------------------------------------------------------
 // AI 卡重構包 4b：角色卡自動上下場共用的登場掃描原語。人物（transport::PERSON_ARRIVAL_PREFIX）
@@ -59,7 +57,12 @@ pub(crate) fn name_matches(name: &str, title: &str) -> bool {
 /// （要跑完整幕全部旁白文字），先不做，之後真的常誤判再考慮補。
 ///
 /// 結算失敗一律吞掉：換幕本身已經成功，auto_hidden 記帳不該反過來讓換幕報錯。
-pub(super) fn settle_card_visibility(root: &Path, world_id: &str, ended_scene: u64, present: Option<&str>) {
+pub(super) fn settle_card_visibility(
+    root: &Path,
+    world_id: &str,
+    ended_scene: u64,
+    present: Option<&str>,
+) {
     let Ok(characters) = list_characters(root, world_id) else {
         return;
     };
@@ -81,8 +84,8 @@ pub(super) fn settle_card_visibility(root: &Path, world_id: &str, ended_scene: u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
 
     /// AI 卡重構包 4b：換幕結算角色卡自動隱藏。出現過＝本幕有回歸事件 (a) 或換幕當下
     /// present 名單命中 (b)；兩者都沒有（就算幕開始時本來在主區）結算成隱藏；
@@ -132,7 +135,8 @@ mod tests {
         begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
 
         let metas = list_characters(root.path(), &world_id).unwrap();
-        let auto_hidden_of = |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
+        let auto_hidden_of =
+            |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
         assert!(!auto_hidden_of(&fox.id), "本幕有回歸事件的卡應該結算成主區");
         assert!(!auto_hidden_of(&bear.id), "present 命中的卡應該結算成主區");
         assert!(
@@ -141,5 +145,4 @@ mod tests {
         );
         assert!(!auto_hidden_of(&ghost.id), "archived 的卡完全不受結算影響");
     }
-
 }

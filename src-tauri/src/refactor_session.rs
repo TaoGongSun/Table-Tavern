@@ -16,7 +16,15 @@ pub(crate) async fn open_stage(
     emit: impl FnMut(&str),
 ) -> Result<(String, String), String> {
     let session_id = crate::lanes::new_session_id();
-    let raw = run_stage(call, world_id, system, prompt, &cli::CliSession::Open(&session_id), emit).await?;
+    let raw = run_stage(
+        call,
+        world_id,
+        system,
+        prompt,
+        &cli::CliSession::Open(&session_id),
+        emit,
+    )
+    .await?;
     Ok((raw, session_id))
 }
 
@@ -30,7 +38,15 @@ pub(crate) async fn resume_stage(
     prompt: &str,
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
-    run_stage(call, world_id, system, prompt, &cli::CliSession::Resume(session_id), emit).await
+    run_stage(
+        call,
+        world_id,
+        system,
+        prompt,
+        &cli::CliSession::Resume(session_id),
+        emit,
+    )
+    .await
 }
 
 async fn run_stage(
@@ -69,6 +85,7 @@ async fn run_stage(
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
@@ -115,11 +132,17 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
     }
 
     #[cfg(unix)]
-    fn calls(dir: &PathBuf, index: usize) -> (Vec<String>, String) {
+    fn calls(dir: &std::path::Path, index: usize) -> (Vec<String>, String) {
         let text = std::fs::read_to_string(dir.join("calls.jsonl")).unwrap();
-        let line: serde_json::Value = serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
+        let line: serde_json::Value =
+            serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
         (
-            line["args"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_owned()).collect(),
+            line["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect(),
             line["prompt"].as_str().unwrap().to_owned(),
         )
     }
@@ -132,21 +155,31 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
         let _serial = crate::inflight::lock_real_process_tests();
         let (dir, call) = fake_cli("e2e");
 
-        let (raw, sid) = open_stage(&call, "w1", "系統文", "第一段指示", |_| {}).await.unwrap();
+        let (raw, sid) = open_stage(&call, "w1", "系統文", "第一段指示", |_| {})
+            .await
+            .unwrap();
         assert!(raw.contains("RECOMMEND"));
         let (args0, prompt0) = calls(&dir, 0);
-        assert!(args0.windows(2).any(|w| w == ["--session-id", sid.as_str()]));
+        assert!(args0
+            .windows(2)
+            .any(|w| w == ["--session-id", sid.as_str()]));
         assert!(args0.windows(2).any(|w| w == ["--system-prompt", "系統文"]));
         assert_eq!(prompt0, "第一段指示");
 
-        let raw2 = resume_stage(&call, "w1", &sid, "系統文", "第二段指示", |_| {}).await.unwrap();
+        let raw2 = resume_stage(&call, "w1", &sid, "系統文", "第二段指示", |_| {})
+            .await
+            .unwrap();
         assert!(raw2.contains("RECOMMEND"));
         let (args1, prompt1) = calls(&dir, 1);
         assert!(args1.windows(2).any(|w| w == ["--resume", sid.as_str()]));
         assert_eq!(prompt1, "第二段指示"); // 卡片 context 不重送
 
         std::fs::remove_file(dir.join(format!("{sid}.marker"))).unwrap();
-        assert!(resume_stage(&call, "w1", &sid, "系統文", "第二段指示", |_| {}).await.is_err());
+        assert!(
+            resume_stage(&call, "w1", &sid, "系統文", "第二段指示", |_| {})
+                .await
+                .is_err()
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

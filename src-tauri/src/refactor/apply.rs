@@ -1,8 +1,6 @@
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::types::{RefactorApplyResult, RefactorApplySummary, RefactorOutcome, RefactorSelection};
-use crate::data::{
-    self, CharacterCard, DataResult, Tier, Visibility, WorldbookEntry,
-};
+use crate::data::{self, CharacterCard, DataResult, Tier, Visibility, WorldbookEntry};
 use crate::mechanism;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -94,10 +92,18 @@ pub fn apply(
             let Ok(parsed_uid) = uid.parse::<u64>() else {
                 continue;
             };
-            let owners = uid_owners.get(&parsed_uid).map(Vec::as_slice).unwrap_or_default();
+            let owners = uid_owners
+                .get(&parsed_uid)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
             let character_deletable = owners.len() <= 1
-                || (outcome.deletable_shared_uids.iter().any(|shared| shared == uid)
-                    && owners.iter().all(|owner| selection.character_indices.contains(owner)));
+                || (outcome
+                    .deletable_shared_uids
+                    .iter()
+                    .any(|shared| shared == uid)
+                    && owners
+                        .iter()
+                        .all(|owner| selection.character_indices.contains(owner)));
             add_consumer(uid, applied, applied && character_deletable);
         }
     }
@@ -126,14 +132,21 @@ pub fn apply(
         .iter()
         .map(|entry| entry.uid)
         .max()
-        .map(|uid| uid.checked_add(1).ok_or_else(|| data::invalid_data("worldbook uid overflow")))
+        .map(|uid| {
+            uid.checked_add(1)
+                .ok_or_else(|| data::invalid_data("worldbook uid overflow"))
+        })
         .transpose()?
         .unwrap_or(0);
     let mut next_entry_order = existing_entries
         .iter()
         .map(|entry| entry.order)
         .max()
-        .map(|order| order.checked_add(1).ok_or_else(|| data::invalid_data("worldbook order overflow")))
+        .map(|order| {
+            order
+                .checked_add(1)
+                .ok_or_else(|| data::invalid_data("worldbook order overflow"))
+        })
         .transpose()?
         .unwrap_or(0);
 
@@ -186,7 +199,6 @@ pub fn apply(
             player_assigned = true;
         }
         character_ids.push(card.id);
-
     }
 
     let mut state_dirty = player_assigned;
@@ -196,7 +208,8 @@ pub fn apply(
         let Some(entry) = outcome.entries.get(index) else {
             continue;
         };
-        let locked = entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
+        let locked =
+            entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
         // carry 型條目帶 meta：keys/constant/order/disabled/visibility/is_person 原樣照抄，
         // order 直接用 meta 的值、不吃 next_entry_order 遞增（那個號碼留給沒有 meta 的真新條目）；
         // 沒帶 meta（AI 重寫／本地合組的新條目）→ 現行預設不變。
@@ -247,7 +260,10 @@ pub fn apply(
             for (path, rule) in &entry.rules {
                 state.mechanism.rules.insert(path.clone(), rule.clone());
             }
-            state.mechanism.triggers.extend(entry.triggers.iter().cloned());
+            state
+                .mechanism
+                .triggers
+                .extend(entry.triggers.iter().cloned());
             state_dirty = true;
             ledger_records.push(absorbed_ledger_record_for_title(&entry.title));
         }
@@ -295,7 +311,10 @@ pub fn apply(
         for (path, rule) in &mechanism.rules {
             state.mechanism.rules.insert(path.clone(), rule.clone());
         }
-        state.mechanism.triggers.extend(mechanism.triggers.iter().cloned());
+        state
+            .mechanism
+            .triggers
+            .extend(mechanism.triggers.iter().cloned());
         state_dirty = true;
         if let Some(record) = absorbed_ledger_record(root, world_id, &mechanism.source_uid) {
             ledger_records.push(record);
@@ -341,7 +360,10 @@ pub fn apply(
                 data::upsert_worldbook_entry(
                     root,
                     world_id,
-                    WorldbookEntry { disabled: true, ..entry },
+                    WorldbookEntry {
+                        disabled: true,
+                        ..entry
+                    },
                 )?;
             }
         }

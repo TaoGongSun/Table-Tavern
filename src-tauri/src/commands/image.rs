@@ -149,8 +149,7 @@ fn last_sentence(reply: &str) -> Option<String> {
     let line = reply
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .next_back()?;
+        .rfind(|line| !line.is_empty())?;
     Some(line.chars().take(200).collect())
 }
 
@@ -214,7 +213,7 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
     }
 
     let bytes = value.as_bytes();
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return Err("非法 base64 資料".to_owned());
     }
     let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
@@ -335,6 +334,7 @@ fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
 /// 且吃到的是編輯器裡的當下內容；追加描寫由前端存進草稿，跟其他欄位一起按儲存才落地。
 /// character_id 前端已先跟 new_id 要好，決定圖庫路徑；name 只進提示詞。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_character_image(
     app: tauri::AppHandle,
     world_id: String,

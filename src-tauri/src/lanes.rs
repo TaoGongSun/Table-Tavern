@@ -355,7 +355,13 @@ fn now_epoch() -> u64 {
 /// 組本輪 prompt：水位之後的新事件＋回合尾段。開線（全量重建）帶對話紀錄標頭，
 /// 形狀比照單發 flatten；續聊只送增量，與 session 內既有歷史逐字銜接。
 /// `lane`：chars 線的 gm_only System 事件降一行，GM 線一律全文（AI 卡重構包 4b）。
-fn build_prompt(events: &[TranscriptEvent], base: usize, tail: &str, opening: bool, lane: Lane) -> String {
+fn build_prompt(
+    events: &[TranscriptEvent],
+    base: usize,
+    tail: &str,
+    opening: bool,
+    lane: Lane,
+) -> String {
     let redact_gm_only = lane == Lane::Chars;
     let lines: Vec<String> = events[base..]
         .iter()
@@ -722,6 +728,7 @@ fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
 
@@ -1372,7 +1379,9 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         // 問答已截掉：檔案逐字回到 ping 前，正典 transcript 也沒被碰過
         assert_eq!(std::fs::read_to_string(&session_path).unwrap(), before);
         // 保溫成功＝壽命重新計時
-        assert!(now_epoch() - read_store(&store_path)[&"chars:sonnet".to_owned()].last_call_epoch < 5);
+        assert!(
+            now_epoch() - read_store(&store_path)[&"chars:sonnet".to_owned()].last_call_epoch < 5
+        );
 
         // 快取已過期：保了也只是全額重建，不如留給下一輪自己重開
         set_lane_epoch(&store_path, now_epoch() - 3600);

@@ -112,7 +112,9 @@ mod tests {
         assert!(!plain[1].content.contains("## GUIDE"));
         // 卡原文的傳輸規定不准抄進 GUIDE，固定資產不准做成欄位——兩個實測踩過的坑
         assert!(playable[1].content.contains("傳輸規定一律"));
-        assert!(playable[1].content.contains("不挖佔位符、不做成 STATE 欄位"));
+        assert!(playable[1]
+            .content
+            .contains("不挖佔位符、不做成 STATE 欄位"));
     }
 
     // 防劇透與欄位命名基準寫進介面展開指示

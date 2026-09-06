@@ -36,7 +36,7 @@ pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
 }
 
 fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
-    if input.len() % 4 != 0 {
+    if !input.len().is_multiple_of(4) {
         return Err(data::invalid_data("chara base64 長度無效"));
     }
     let mut output = Vec::with_capacity(input.len() / 4 * 3);
@@ -44,7 +44,7 @@ fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
         let padding = group.iter().filter(|byte| **byte == b'=').count();
         if padding > 2
             || (padding > 0
-                && (group[..4 - padding].iter().any(|byte| *byte == b'=')
+                && (group[..4 - padding].contains(&b'=')
                     || group[4 - padding..4].iter().any(|byte| *byte != b'=')))
         {
             return Err(data::invalid_data("chara base64 padding 無效"));
@@ -135,8 +135,8 @@ mod tests {
     use crate::import::images::{
         character_avatar, character_image, save_character_avatar, save_character_image,
     };
-    use crate::import::test_support::{minimal_png, TestRoot};
     use crate::import::import_character;
+    use crate::import::test_support::{minimal_png, TestRoot};
 
     #[test]
     fn decodes_base64_and_rejects_invalid_input() {

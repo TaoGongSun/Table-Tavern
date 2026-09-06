@@ -191,7 +191,9 @@ mod tests {
 
     /// 一筆註冊表記錄（與 CLI 執行檔內的形態一致，後面還接著其他欄位）
     fn registry_entry(id: &str, label: &str) -> String {
-        format!(r#"{{id:"{id}",family:"opus",display_name:"{label}",knowledge_cutoff:"May 2026"}},"#)
+        format!(
+            r#"{{id:"{id}",family:"opus",display_name:"{label}",knowledge_cutoff:"May 2026"}},"#
+        )
     }
 
     #[test]
@@ -266,5 +268,4 @@ mod tests {
             ]
         );
     }
-
 }

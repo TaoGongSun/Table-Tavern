@@ -1,12 +1,15 @@
-use crate::data::{CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+use crate::data::{
+    CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind, Visibility,
+    WorldbookEntry,
+};
 
-use super::messages::{ChatMessage, language_rule, message, player_fallback_name, push_merged, replace_st_macros};
+use super::messages::{
+    language_rule, message, player_fallback_name, push_merged, replace_st_macros, ChatMessage,
+};
 
 use super::context::{active_worldbook_entries, gm_system_prompt, split_person_roster};
 
-use super::state_view::{StateScope, character_state_block, gm_dynamic_block};
-
-
+use super::state_view::{character_state_block, gm_dynamic_block, StateScope};
 
 /// resume 續聊線（prompt-cache-optimization 包 2）的回合尾段。
 /// tail 是跟在新事件後送出的動態文字；confidential 是 tail 內回合結束後
@@ -305,29 +308,32 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::super::arrivals::*;
+    #[allow(unused_imports)]
+    use super::super::assemble::*;
+    #[allow(unused_imports)]
+    use super::super::client::*;
+    #[allow(unused_imports)]
+    use super::super::context::*;
+    #[allow(unused_imports)]
+    use super::super::messages::*;
+    #[allow(unused_imports)]
+    use super::super::response::*;
+    #[allow(unused_imports)]
+    use super::super::state_view::*;
+    #[allow(unused_imports)]
+    use super::super::test_support::{card, event, worldbook_entry};
     use super::*;
     #[allow(unused_imports)]
-    use crate::data::{self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+    use crate::data::{
+        self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism,
+        StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
+    };
     #[allow(unused_imports)]
     use crate::mechanism;
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
-    #[allow(unused_imports)]
-    use super::super::test_support::{card, event, worldbook_entry};
-    #[allow(unused_imports)]
-    use super::super::messages::*;
-    #[allow(unused_imports)]
-    use super::super::context::*;
-    #[allow(unused_imports)]
-    use super::super::assemble::*;
-    #[allow(unused_imports)]
-    use super::super::state_view::*;
-    #[allow(unused_imports)]
-    use super::super::arrivals::*;
-    #[allow(unused_imports)]
-    use super::super::response::*;
-    #[allow(unused_imports)]
-    use super::super::client::*;
 
     /// 驗收：換場摘要指示依語系切換，且 transcript 事件正確攤平成 user 訊息
     #[test]
@@ -450,7 +456,7 @@ mod tests {
             &Mechanism::default(),
             None,
             "zh-TW",
-                    false,
+            false,
         );
         let confidential = turn.confidential.expect("私設＋限定條目必須進機密段");
         assert!(confidential.contains("通緝犯"));
@@ -474,7 +480,7 @@ mod tests {
             &Mechanism::default(),
             None,
             "zh-TW",
-                    false,
+            false,
         );
         assert!(plain.confidential.is_none());
         assert!(plain.tail.contains("現在你是「騎士」"));
@@ -532,7 +538,10 @@ mod tests {
     #[test]
     fn lane_event_line_labels_every_kind_by_name() {
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"), false),
+            lane_event_line(
+                &event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"),
+                false
+            ),
             "狐狸：晚安"
         );
         assert_eq!(
@@ -572,5 +581,4 @@ mod tests {
         let public = event(TranscriptKind::System, "", "GM", "擲骰 3");
         assert_eq!(lane_event_line(&public, true), "（系統）擲骰 3");
     }
-
 }

@@ -154,10 +154,7 @@ pub(super) enum PathValue<'a> {
     Branch,
 }
 
-pub(super) fn resolve_path<'a>(
-    tree: &'a BTreeMap<String, StateNode>,
-    path: &str,
-) -> PathValue<'a> {
+pub(super) fn resolve_path<'a>(tree: &'a BTreeMap<String, StateNode>, path: &str) -> PathValue<'a> {
     let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
     match data::node_at(tree, &segments) {
         Some(StateNode::Leaf(value)) => PathValue::Leaf(value.as_str()),

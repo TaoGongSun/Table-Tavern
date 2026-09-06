@@ -1,5 +1,5 @@
+use super::{invalid_data, DataResult};
 use std::path::{Path, PathBuf};
-use super::{DataResult, invalid_data};
 
 /// 定址代碼格式：26 字 Crockford base32（ulid crate 輸出的格式），擋掉一切路徑逃逸。
 /// 所有用 id 組路徑的地方都先過這關。
@@ -89,8 +89,8 @@ pub(crate) fn gallery_dir(root: &Path, world_id: &str, character_id: &str) -> Da
 
 #[cfg(test)]
 mod tests {
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
 
     /// 測試清單 #8：顯示名放行含 /、..、開頭 .、保留字 GM；含換行仍擋
     #[test]
@@ -141,5 +141,4 @@ mod tests {
             );
         }
     }
-
 }

@@ -6,24 +6,36 @@ fn recommend_parses_two_lines_and_rejects_garbage() {
     assert_eq!(ok.recommend, "interface");
     assert_eq!(ok.evidence, "這張卡有完整遊戲介面。");
     // 大小寫與前置雜訊容忍；characters 值
-    let loose = parse_recommend("recommend: Characters 多角色\nevidence: 卡內有 8 位帶完整設定的人物").unwrap();
+    let loose =
+        parse_recommend("recommend: Characters 多角色\nevidence: 卡內有 8 位帶完整設定的人物")
+            .unwrap();
     assert_eq!(loose.recommend, "characters");
     // 缺 RECOMMEND 或值不合法＝None（前端走預設介面優先，不偽造證據）
     assert!(parse_recommend("EVIDENCE: 只有證據沒有建議").is_none());
     assert!(parse_recommend("RECOMMEND: both\nEVIDENCE: 亂答").is_none());
     // EVIDENCE 缺席仍成立（證據空字串，前端不顯判官句）
-    assert_eq!(parse_recommend("RECOMMEND: interface").unwrap().evidence, "");
+    assert_eq!(
+        parse_recommend("RECOMMEND: interface").unwrap().evidence,
+        ""
+    );
 }
 
 /// MODE 回聲解析：合法值收、亂值留空（呼叫端核對不過整份拒收）。
 #[test]
 fn parse_survey_reads_mode_echo() {
-    let echoed = parse_survey("## MODE: interface\n\n## PERSONS\n\n## ENTRIES\n- uid=3 action: carry\n");
+    let echoed =
+        parse_survey("## MODE: interface\n\n## PERSONS\n\n## ENTRIES\n- uid=3 action: carry\n");
     assert_eq!(echoed.mode, "interface");
-    assert_eq!(parse_survey("## MODE: Characters\n\n## PERSONS\n").mode, "characters");
+    assert_eq!(
+        parse_survey("## MODE: Characters\n\n## PERSONS\n").mode,
+        "characters"
+    );
     // 值誤寫成獨立一行：characters 不撞標記、容錯收下；interface 會被吃成 INTERFACE 標記行，
     // 收不到＝呼叫端拒收重跑（提示詞已要求單行逐字照寫）
-    assert_eq!(parse_survey("## MODE\ncharacters\n\n## PERSONS\n").mode, "characters");
+    assert_eq!(
+        parse_survey("## MODE\ncharacters\n\n## PERSONS\n").mode,
+        "characters"
+    );
     assert_eq!(parse_survey("## MODE: both\n\n## PERSONS\n").mode, "");
     assert_eq!(parse_survey("## PERSONS\n").mode, "");
 }

@@ -3,6 +3,7 @@
 //! - 呼叫註冊表：依 world 分組的取消訊號，`refactor_abort` 對某桌 abort 時整組一次喚醒。
 //! - 子程序 PID 表：`run_cli` 每次 spawn 都登記，app 退出（RunEvent::Exit）時整批 kill，
 //!   避免 CLI 子程序變孤兒繼續跑、繼續燒錢。
+//!
 //! 用 `OnceLock<Mutex<…>>` 而非掛在 tauri State：RunEvent::Exit callback 拿不到 command
 //! 的 State 注入，兩處都要能存取就只能是自由 static。
 
@@ -136,6 +137,7 @@ pub(crate) fn lock_real_process_tests() -> std::sync::MutexGuard<'static, ()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
     use std::time::Duration;

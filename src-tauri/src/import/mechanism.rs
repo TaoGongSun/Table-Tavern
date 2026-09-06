@@ -67,7 +67,12 @@ pub fn import_card_extension(root: &Path, world_id: &str, name: &str, bytes: &[u
     import_table_tavern_extension(root, world_id, name, card_data);
 }
 
-pub(super) fn import_table_tavern_extension(root: &Path, world_id: &str, name: &str, card_data: &Value) {
+pub(super) fn import_table_tavern_extension(
+    root: &Path,
+    world_id: &str,
+    name: &str,
+    card_data: &Value,
+) {
     let Some(extension) = card_data
         .get("extensions")
         .and_then(|extensions| extensions.get("table_tavern"))

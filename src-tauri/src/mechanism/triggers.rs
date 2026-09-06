@@ -139,9 +139,7 @@ fn resolve_state_placeholders(text: &str, tree: &BTreeMap<String, StateNode>) ->
 mod tests {
     use super::*;
     use crate::data;
-    use crate::mechanism::test_support::{
-        else_case, once_mechanism, range_case, tree_from,
-    };
+    use crate::mechanism::test_support::{else_case, once_mechanism, range_case, tree_from};
 
     // ---- evaluate_triggers：四種條件各自成立／不成立 ----
 

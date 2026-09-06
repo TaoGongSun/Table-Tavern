@@ -44,41 +44,41 @@ fn cli_install_script(
     let fail = shell_quote(&messages.fail);
     // logout：換帳號時登入前先清憑證。agy 只有 TUI 內的 /logout，沒有非互動指令，故為 None——
     // 它的換帳號要玩家自己在 agy 裡 /logout 後再回來按登入。
-    let (install_command, login_command, logout_command, probe_command, poll_seconds) = match provider
-    {
-        "claude" => (
-            "curl -fsSL https://claude.ai/install.sh | bash",
-            Some("claude auth login"),
-            Some("claude auth logout"),
-            "claude -p \"ok\"",
-            120,
-        ),
-        "codex" => (
-            "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-            Some("codex login"),
-            Some("codex logout"),
-            // codex exec 在非 git 目錄會拒跑，probe 改用即時且不耗額度的 login status
-            "codex login status",
-            120,
-        ),
-        "agy" => (
-            "curl -fsSL https://antigravity.google/cli/install.sh | bash",
-            None,
-            None,
-            "agy -p \"ok\"",
-            600,
-        ),
-        "grok" => (
-            "curl -fsSL https://x.ai/cli/install.sh | bash",
-            Some("grok login"),
-            Some("grok logout"),
-            // grok -p 會真的跑一次 grok-4.5 推理（實測 26 秒又燒額度）；models 只讀本機憑證，0.8 秒。
-            // 未登入時它是否照樣 exit 0 無法驗證，故以登入字串判定，判錯也只是多要求登入一次。
-            "grok models 2>/dev/null | grep -q '^You are logged in'",
-            120,
-        ),
-        _ => return Err(format!("unsupported CLI provider: {provider}")),
-    };
+    let (install_command, login_command, logout_command, probe_command, poll_seconds) =
+        match provider {
+            "claude" => (
+                "curl -fsSL https://claude.ai/install.sh | bash",
+                Some("claude auth login"),
+                Some("claude auth logout"),
+                "claude -p \"ok\"",
+                120,
+            ),
+            "codex" => (
+                "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+                Some("codex login"),
+                Some("codex logout"),
+                // codex exec 在非 git 目錄會拒跑，probe 改用即時且不耗額度的 login status
+                "codex login status",
+                120,
+            ),
+            "agy" => (
+                "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+                None,
+                None,
+                "agy -p \"ok\"",
+                600,
+            ),
+            "grok" => (
+                "curl -fsSL https://x.ai/cli/install.sh | bash",
+                Some("grok login"),
+                Some("grok logout"),
+                // grok -p 會真的跑一次 grok-4.5 推理（實測 26 秒又燒額度）；models 只讀本機憑證，0.8 秒。
+                // 未登入時它是否照樣 exit 0 無法驗證，故以登入字串判定，判錯也只是多要求登入一次。
+                "grok models 2>/dev/null | grep -q '^You are logged in'",
+                120,
+            ),
+            _ => return Err(format!("unsupported CLI provider: {provider}")),
+        };
     let login_flow = login_command
         .map(|command| format!("  {env_prefix}{command} || {{ echo {fail}; exit 1; }}\n"))
         .unwrap_or_default();
@@ -211,8 +211,12 @@ pub(crate) fn install_cli(
             return Err(format!("login-cooldown:{seconds}"));
         }
         let _ = std::fs::remove_file(&sentinel_path);
-        let script =
-            cli_install_script(&provider, &messages, &cli_envs(&app, &provider)?, switch_account)?;
+        let script = cli_install_script(
+            &provider,
+            &messages,
+            &cli_envs(&app, &provider)?,
+            switch_account,
+        )?;
         let script_path = directory.join(format!("install-{provider}.command"));
         std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
         #[cfg(unix)]
@@ -324,8 +328,10 @@ mod tests {
         // 平常那條完全不碰登出，前置探針照舊
         let plain = cli_install_script("grok", &messages(), &[], false).unwrap();
         assert!(!plain.contains("grok logout"));
-        assert!(plain.contains("if env grok models 2>/dev/null | grep -q '^You are logged in'")
-            || plain.contains("if grok models 2>/dev/null | grep -q '^You are logged in'"));
+        assert!(
+            plain.contains("if env grok models 2>/dev/null | grep -q '^You are logged in'")
+                || plain.contains("if grok models 2>/dev/null | grep -q '^You are logged in'")
+        );
         // agy 沒有非互動登出指令，換帳號旗標對它無效——維持前置探針，不空等一輪輪詢
         let agy = cli_install_script("agy", &messages(), &[], true).unwrap();
         assert!(!agy.contains("if false; then"));

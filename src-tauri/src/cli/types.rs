@@ -32,7 +32,10 @@ pub enum CliLine {
     /// 思考增量：只餵進度顯示（on_delta），不進正文——長思考段（如卡重構盤點）若無它，
     /// 進度小框會整段空白，玩家分不出「在想」與「掛了」。
     Thinking(String),
-    Done { text: String, is_error: bool },
+    Done {
+        text: String,
+        is_error: bool,
+    },
     Other,
 }
 
@@ -53,4 +56,3 @@ pub struct UsageLog<'a> {
     /// 回填本輪總輸入，供 lane 記成下輪的理論可中量（跨 await 需 Sync，故用 atomic）。
     pub prompt_tokens_out: Option<&'a std::sync::atomic::AtomicU64>,
 }
-

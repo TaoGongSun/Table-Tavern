@@ -124,4 +124,3 @@ pub async fn detect_clis() -> Vec<CliInfo> {
     );
     [claude, codex, agy, grok].into_iter().flatten().collect()
 }
-

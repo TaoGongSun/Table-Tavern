@@ -1,14 +1,12 @@
 use std::fs;
 use std::path::Path;
 
-use super::super::{DataResult, invalid_data, local_timestamp};
-use super::super::state::{SceneLabel, WorldState, read_state, write_state};
+use super::super::state::{read_state, write_state, SceneLabel, WorldState};
+use super::super::{invalid_data, local_timestamp, DataResult};
 use super::presence::settle_card_visibility;
 use super::transcript::{
-    TranscriptEvent, TranscriptKind, append_transcript, read_transcript, transcript_path,
+    append_transcript, read_transcript, transcript_path, TranscriptEvent, TranscriptKind,
 };
-
-
 
 /// 沒進 scene_labels 的幕＝原線（舊存檔也走這條）：顯示編號就是內部幕號，第 1 版，上一幕是前一號。
 pub fn scene_label(state: &WorldState, scene: u64) -> SceneLabel {
@@ -222,8 +220,8 @@ pub fn replace_scene_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
     use std::collections::BTreeMap;
 
     #[test]
@@ -384,7 +382,9 @@ mod tests {
         let before_state = read_state(root.path(), &world_id).unwrap();
         let before_events = read_transcript(root.path(), &world_id, 1).unwrap();
 
-        let error = revert_scene(root.path(), &world_id).unwrap_err().to_string();
+        let error = revert_scene(root.path(), &world_id)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("不能退回前幕"));
 
         // 擋下時檔案與 state 都沒被動過
@@ -399,7 +399,9 @@ mod tests {
     fn revert_scene_rejects_at_first_scene() {
         let root = TestRoot::new("revert-scene-first");
         let world_id = create_world(root.path(), "第一幕桌").unwrap();
-        let error = revert_scene(root.path(), &world_id).unwrap_err().to_string();
+        let error = revert_scene(root.path(), &world_id)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("沒有前幕可以退回"));
     }
 
@@ -475,13 +477,13 @@ mod tests {
         // 幕 0 只有一則，分岔出來的這一幕同樣只有那一則——正是守門會誤放的形狀
         let forked = fork_scene(root.path(), &world_id, 0).unwrap();
         assert_eq!(
-            read_transcript(root.path(), &world_id, forked).unwrap().len(),
+            read_transcript(root.path(), &world_id, forked)
+                .unwrap()
+                .len(),
             1
         );
 
-        assert!(
-            replace_scene_summary(root.path(), &world_id, "不該蓋掉", "zh-TW", None).is_err()
-        );
+        assert!(replace_scene_summary(root.path(), &world_id, "不該蓋掉", "zh-TW", None).is_err());
         let events = read_transcript(root.path(), &world_id, forked).unwrap();
         assert_eq!(events[0].text, "玩家的第一句");
     }
@@ -610,9 +612,14 @@ mod tests {
             },
         )
         .unwrap();
-        let advanced =
-            begin_next_scene(root.path(), &world_id, "分岔後摘要", "zh-TW", Some("南航夜話"))
-                .unwrap();
+        let advanced = begin_next_scene(
+            root.path(),
+            &world_id,
+            "分岔後摘要",
+            "zh-TW",
+            Some("南航夜話"),
+        )
+        .unwrap();
         assert_eq!(advanced, 4);
 
         let state = read_state(root.path(), &world_id).unwrap();
@@ -679,11 +686,15 @@ mod tests {
         .unwrap();
 
         // from_scene == current_scene：還沒換幕，不能從自己這幕分岔
-        let error = fork_scene(root.path(), &world_id, 0).unwrap_err().to_string();
+        let error = fork_scene(root.path(), &world_id, 0)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("只能從前面的幕分岔"));
 
         // from_scene > current_scene：幕號還沒出現過
-        let error = fork_scene(root.path(), &world_id, 5).unwrap_err().to_string();
+        let error = fork_scene(root.path(), &world_id, 5)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("只能從前面的幕分岔"));
     }
 
@@ -695,7 +706,9 @@ mod tests {
         state.current_scene = 1; // 幕 0 從沒寫過任何事件，模擬空幕
         write_state(root.path(), &world_id, &state).unwrap();
 
-        let error = fork_scene(root.path(), &world_id, 0).unwrap_err().to_string();
+        let error = fork_scene(root.path(), &world_id, 0)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("這一幕沒有紀錄可以接續"));
     }
 
@@ -725,5 +738,4 @@ mod tests {
             }
         );
     }
-
 }

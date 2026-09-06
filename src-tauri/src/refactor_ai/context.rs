@@ -234,7 +234,12 @@ pub fn prescan_worldbook(entries: &[WorldbookEntry]) -> Vec<PrescanSignal> {
             }) {
                 push("模板變數");
             }
-            if text.lines().filter(|line| line.trim_start().starts_with('|')).count() >= 3 {
+            if text
+                .lines()
+                .filter(|line| line.trim_start().starts_with('|'))
+                .count()
+                >= 3
+            {
                 push("表格");
             }
             if text.contains("```") || html.is_match(text) {
@@ -512,12 +517,16 @@ mod tests {
             sample_entry(5, "{{user}}與{{char}}在王府相遇，純敘事。"),
         ];
         let signals = prescan_worldbook(&entries);
-        let hit = |uid: &str, pattern: &str| signals.iter().any(|s| s.uid == uid && s.pattern == pattern);
+        let hit =
+            |uid: &str, pattern: &str| signals.iter().any(|s| s.uid == uid && s.pattern == pattern);
         assert!(hit("1", "模板變數"));
         assert!(hit("2", "表格"));
         assert!(hit("3", "代碼或標籤"));
         assert!(hit("4", "百分比數值"));
-        assert!(!signals.iter().any(|s| s.uid == "5"), "純人稱變數不得成訊號：{signals:?}");
+        assert!(
+            !signals.iter().any(|s| s.uid == "5"),
+            "純人稱變數不得成訊號：{signals:?}"
+        );
     }
 
     // 多段條目：訊號要標對 span 序號
