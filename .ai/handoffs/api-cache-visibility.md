@@ -1,6 +1,6 @@
 # API 路快取看得見：多來源 usage 欄位＋「抓不到」與「沒中」分開顯示
 
-Status: in-progress
+Status: awaiting-verification
 
 ## Summary
 額度分頁對所有 API 呼叫顯示假的「命中率 0.0%」，2026-08-21 實測取證根因＝**讀錯欄位名**：app 讀 OpenRouter 的 `prompt_tokens_details.cached_tokens`，供應商實際回 DeepSeek 原生的 `prompt_cache_hit_tokens`，`unwrap_or(0)` 每次吞掉。包 A（多來源欄位 adapter＋Option 化）與包 B（兩軸資料模型＋報表顯示口徑＋十語系）實作完成並通過 Sol 兩輪驗收。規格與實測證據見 [.ai/plans/api-cache-visibility.md](../plans/api-cache-visibility.md)。
