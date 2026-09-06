@@ -54,7 +54,7 @@
 
 ## 給開發者
 
-Tauri 2（Rust）＋ Vite + React + TypeScript。產品規格見 `NewPlan.md`，工程起手見 `KICKOFF.md`，版本異動見 [CHANGELOG.md](CHANGELOG.md)。
+Tauri 2（Rust）＋ Vite + React + TypeScript。請先看[目前架構導覽](docs/ARCHITECTURE.md)；`NewPlan.md` 是最初產品方向文件，其中部分內容已被後續 `.ai/plans/` 決策取代。版本異動見 [CHANGELOG.md](CHANGELOG.md)。
 
 ```bash
 npm install
