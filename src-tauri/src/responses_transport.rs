@@ -376,6 +376,9 @@ mod tests {
         failed.absorb(
             r#"{"type":"response.failed","response":{"error":{"message":"provider failed"}}}"#,
         );
-        assert_eq!(failed.failure("", "model").as_deref(), Some("provider failed"));
+        assert_eq!(
+            failed.failure("", "model").as_deref(),
+            Some("provider failed")
+        );
     }
 }

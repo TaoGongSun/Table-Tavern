@@ -1,8 +1,6 @@
-use super::messages::{ChatMessage, message};
+use super::messages::{message, ChatMessage};
 
-use super::assemble::{PLAYER_SENTINEL};
-
-
+use super::assemble::PLAYER_SENTINEL;
 
 /// 從換場摘要回覆的第一行取幕名：以「標題：」或「Title:」開頭（大小寫寬鬆）才算，
 /// 取到就把該行（含後面的空行）從摘要文字中拿掉；解析不到就回傳 None、原文整段當摘要。
@@ -447,29 +445,32 @@ pub fn pick_speaker(reply: &str, roster: &[String], player_name: Option<&str>) -
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::super::arrivals::*;
+    #[allow(unused_imports)]
+    use super::super::assemble::*;
+    #[allow(unused_imports)]
+    use super::super::client::*;
+    #[allow(unused_imports)]
+    use super::super::context::*;
+    #[allow(unused_imports)]
+    use super::super::messages::*;
+    #[allow(unused_imports)]
+    use super::super::state_view::*;
+    #[allow(unused_imports)]
+    use super::super::test_support::{card, event, worldbook_entry};
+    #[allow(unused_imports)]
+    use super::super::turns::*;
     use super::*;
     #[allow(unused_imports)]
-    use crate::data::{self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+    use crate::data::{
+        self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism,
+        StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
+    };
     #[allow(unused_imports)]
     use crate::mechanism;
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
-    #[allow(unused_imports)]
-    use super::super::test_support::{card, event, worldbook_entry};
-    #[allow(unused_imports)]
-    use super::super::messages::*;
-    #[allow(unused_imports)]
-    use super::super::context::*;
-    #[allow(unused_imports)]
-    use super::super::assemble::*;
-    #[allow(unused_imports)]
-    use super::super::state_view::*;
-    #[allow(unused_imports)]
-    use super::super::arrivals::*;
-    #[allow(unused_imports)]
-    use super::super::turns::*;
-    #[allow(unused_imports)]
-    use super::super::client::*;
 
     /// 卡片自帶介面時的導演指示：點名世界書那條格式規定的標題，且不再要求舊版的
     /// state 圍欄／下一位點名——那是兩邊指令打架的根因。
@@ -764,5 +765,4 @@ mod tests {
         assert_eq!(fields, vec![(vec!["time".to_owned()], "午夜".to_owned())]);
         assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
     }
-
 }

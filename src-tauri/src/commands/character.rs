@@ -87,7 +87,9 @@ pub(crate) fn import_character(
     // 卡片隨身的世界書條目也要跟世界書路徑一樣回報進來幾條、重複跳過幾條
     let imported =
         data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len() - entries_before);
-    let skipped = import::probe_import(&data).book_entries.saturating_sub(imported);
+    let skipped = import::probe_import(&data)
+        .book_entries
+        .saturating_sub(imported);
     Ok(CharacterImport {
         meta,
         book: data::WorldbookImport { imported, skipped },

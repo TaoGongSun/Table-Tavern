@@ -1,12 +1,12 @@
-use crate::data::{self, CharacterCard, InjectLevel, Mechanism, StateNode, TableState, WorldbookEntry};
+use crate::data::{
+    self, CharacterCard, InjectLevel, Mechanism, StateNode, TableState, WorldbookEntry,
+};
 
 use crate::mechanism;
 
 use std::collections::BTreeMap;
 
-use super::messages::{replace_st_macros};
-
-
+use super::messages::replace_st_macros;
 
 /// GM 的回合動態塊：keyword 條目＋「目前狀態」。
 /// assemble_gm_messages（尾端獨立訊息）與 gm_lane_turn（resume 續聊回合尾段）共用。
@@ -407,29 +407,32 @@ fn collect_snapshot_updates(
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::super::arrivals::*;
+    #[allow(unused_imports)]
+    use super::super::assemble::*;
+    #[allow(unused_imports)]
+    use super::super::client::*;
+    #[allow(unused_imports)]
+    use super::super::context::*;
+    #[allow(unused_imports)]
+    use super::super::messages::*;
+    #[allow(unused_imports)]
+    use super::super::response::*;
+    #[allow(unused_imports)]
+    use super::super::test_support::{card, event, worldbook_entry};
+    #[allow(unused_imports)]
+    use super::super::turns::*;
     use super::*;
     #[allow(unused_imports)]
-    use crate::data::{self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+    use crate::data::{
+        self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism,
+        StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
+    };
     #[allow(unused_imports)]
     use crate::mechanism;
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
-    #[allow(unused_imports)]
-    use super::super::test_support::{card, event, worldbook_entry};
-    #[allow(unused_imports)]
-    use super::super::messages::*;
-    #[allow(unused_imports)]
-    use super::super::context::*;
-    #[allow(unused_imports)]
-    use super::super::assemble::*;
-    #[allow(unused_imports)]
-    use super::super::arrivals::*;
-    #[allow(unused_imports)]
-    use super::super::turns::*;
-    #[allow(unused_imports)]
-    use super::super::response::*;
-    #[allow(unused_imports)]
-    use super::super::client::*;
 
     #[test]
     fn gm_dynamic_block_renders_nested_tree() {
@@ -1114,5 +1117,4 @@ mod tests {
         // 全量桌一律回空
         assert!(snapshot_updates(&state, &Mechanism::default(), "阿濤").is_empty());
     }
-
 }

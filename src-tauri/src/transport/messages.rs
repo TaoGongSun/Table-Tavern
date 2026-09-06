@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
-
 /// 角色與 GM system prompt 共用的語言規範，依使用者語系（config.preferences.language）注入。
 /// 規範一律用該語言本身書寫，模型才不會被中文提示詞模板帶成中文輸出；
 /// 兩岸中文互相加反向禁令，防止字體與用語飄移。

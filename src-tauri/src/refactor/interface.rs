@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// - 有殼：佔位符引用哪側，哪側是正典；兩側都被引用＝產物自相矛盾，Err 拒套不猜。
 /// - 無殼（或殼沒引用任何別名對）：分支下每葉在根層都有精確對應（完整鏡像）才折疊，
 ///   正典取根層短路徑；不是完整鏡像就整份不動。
+///
 /// 至少兩對別名才算鏡像分支（單葉同名視為巧合）。值合併：別名側空＝取正典；正典空＝搬
 /// 別名值；兩側非空且不同＝Err。別名分支多出的葉改掛正典側路徑；rules 跟著 remap（同
 /// key 規則不同＝Err），最後剔除不在正規化後葉集合的懸空規則。呼叫端必須在 apply 寫入
@@ -32,8 +33,10 @@ pub(super) fn normalize_interface_paths(
             continue;
         }
         let prefix = format!("{branch}.");
-        let branch_leaves: Vec<&String> =
-            leaves.keys().filter(|path| path.starts_with(&prefix)).collect();
+        let branch_leaves: Vec<&String> = leaves
+            .keys()
+            .filter(|path| path.starts_with(&prefix))
+            .collect();
         // 別名對：剝掉分支前綴後，樹上其他位置有一模一樣的葉路徑。
         let pairs: Vec<(String, String)> = branch_leaves
             .iter()
@@ -46,7 +49,9 @@ pub(super) fn normalize_interface_paths(
         if pairs.len() < 2 {
             continue;
         }
-        let nested_referenced = pairs.iter().any(|(nested, _)| placeholders.contains(nested));
+        let nested_referenced = pairs
+            .iter()
+            .any(|(nested, _)| placeholders.contains(nested));
         let root_referenced = pairs.iter().any(|(_, root)| placeholders.contains(root));
         let canon_is_root = match (nested_referenced, root_referenced) {
             (true, true) => {
@@ -65,9 +70,19 @@ pub(super) fn normalize_interface_paths(
             }
         };
         for (nested, root_path) in &pairs {
-            let (canon, alias) = if canon_is_root { (root_path, nested) } else { (nested, root_path) };
-            let canon_value = merged.get(canon).cloned().unwrap_or(serde_json::Value::Null);
-            let alias_value = merged.get(alias).cloned().unwrap_or(serde_json::Value::Null);
+            let (canon, alias) = if canon_is_root {
+                (root_path, nested)
+            } else {
+                (nested, root_path)
+            };
+            let canon_value = merged
+                .get(canon)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let alias_value = merged
+                .get(alias)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             if !is_empty_value(&alias_value) {
                 if is_empty_value(&canon_value) {
                     merged.insert(canon.clone(), alias_value);
@@ -86,7 +101,10 @@ pub(super) fn normalize_interface_paths(
                 let stripped = nested[prefix.len()..].to_owned();
                 if let Some(value) = merged.remove(*nested) {
                     if let Some(existing) = merged.get(&stripped) {
-                        if !is_empty_value(existing) && !is_empty_value(&value) && *existing != value {
+                        if !is_empty_value(existing)
+                            && !is_empty_value(&value)
+                            && *existing != value
+                        {
                             return Err(format!(
                                 "介面產物同一欄位兩套初始值不一致：「{nested}」＝{value}、「{stripped}」＝{existing}，請重新執行重構"
                             ));
@@ -131,8 +149,11 @@ fn flatten_leaves(
     match value.as_object() {
         Some(object) => {
             for (key, child) in object {
-                let path =
-                    if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
                 flatten_leaves(&path, child, out);
             }
         }
@@ -152,7 +173,9 @@ fn unflatten(leaves: &BTreeMap<String, serde_json::Value>) -> Result<serde_json:
         while let Some(segment) = segments.next() {
             if segments.peek().is_none() {
                 if node.get(segment).is_some_and(serde_json::Value::is_object) {
-                    return Err(format!("介面產物欄位路徑互相衝突：「{path}」，請重新執行重構"));
+                    return Err(format!(
+                        "介面產物欄位路徑互相衝突：「{path}」，請重新執行重構"
+                    ));
                 }
                 node.insert(segment.to_owned(), value.clone());
             } else {
@@ -194,14 +217,25 @@ fn shell_placeholders(shell: &str) -> BTreeSet<String> {
 
 /// state_fields 是物件時整份重建狀態樹：同名頂層鍵保留目前值，其餘舊鍵一律捨棄；非物件產物
 /// 則不動任何狀態，避免壞產物清空整桌。新欄位的 JSON 轉換集中在 json_to_state_node。
-pub(super) fn rebuild_state_fields(tree: &mut BTreeMap<String, StateNode>, jumps: &mut BTreeMap<String, String>, state_fields: &serde_json::Value) {
+pub(super) fn rebuild_state_fields(
+    tree: &mut BTreeMap<String, StateNode>,
+    jumps: &mut BTreeMap<String, String>,
+    state_fields: &serde_json::Value,
+) {
     let Some(object) = state_fields.as_object() else {
         return;
     };
-    let rebuilt = object.iter().map(|(key, value)| (
-        key.clone(),
-        tree.get(key).cloned().unwrap_or_else(|| json_to_state_node(value)),
-    )).collect();
+    let rebuilt = object
+        .iter()
+        .map(|(key, value)| {
+            (
+                key.clone(),
+                tree.get(key)
+                    .cloned()
+                    .unwrap_or_else(|| json_to_state_node(value)),
+            )
+        })
+        .collect();
     *tree = rebuilt;
     jumps.retain(|path, _| tree.contains_key(path.split('.').next().unwrap_or_default()));
 }

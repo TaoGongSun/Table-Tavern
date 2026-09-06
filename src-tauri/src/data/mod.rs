@@ -6,31 +6,58 @@ mod config;
 mod paths;
 mod scene;
 mod state;
-mod world;
-mod worldbook;
 #[cfg(test)]
 mod test_support;
+mod world;
+mod worldbook;
 
-pub use character::{CharacterCard, CharacterMeta, delete_character, list_characters, read_character, read_player_card, reorder_characters, set_character_archived, set_character_auto_hidden, write_character};
-pub use config::{AppConfig, install_sponsor_pack, read_config, read_model_catalog, sponsor_pack_active, write_config, write_model_catalog};
-pub use scene::{CARD_ARRIVAL_PREFIX, TranscriptEvent, TranscriptKind, append_opening, append_transcript, begin_next_scene, export_scene_markdown, export_transcript_markdown, fork_scene, pop_transcript, read_transcript, remove_transcript_event, replace_scene_summary, revert_scene, scene_label, set_last_transcript_state, sync_scene_state_tree};
-pub use state::{Condition, FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState, node_at, read_state, set_tree_value, write_state};
-pub use world::{WorldMeta, create_sample_world, create_world, delete_world, list_worlds, read_interface_shell, read_refactor_outcome, read_world_md, reclaim_world_if_empty, rename_world, world_has_state_bar, write_interface_shell, write_refactor_outcome, write_world_md};
-pub use worldbook::{Visibility, WorldbookEntry, WorldbookImport, character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook, import_worldbook, read_worldbook, reorder_worldbook_entries, upsert_worldbook_entry, worldbook_entry_to_character};
-pub(crate) use paths::{character_path, gallery_dir, gm_image_path, import_receipts_path, interface_shell_path, lanes_path, mechanism_log_path, validate_single_line, world_card_path};
+pub use character::{
+    delete_character, list_characters, read_character, read_player_card, reorder_characters,
+    set_character_archived, set_character_auto_hidden, write_character, CharacterCard,
+    CharacterMeta,
+};
+pub use config::{
+    install_sponsor_pack, read_config, read_model_catalog, sponsor_pack_active, write_config,
+    write_model_catalog, AppConfig,
+};
+pub(crate) use paths::{
+    character_path, gallery_dir, gm_image_path, import_receipts_path, interface_shell_path,
+    lanes_path, mechanism_log_path, validate_single_line, world_card_path,
+};
 pub(crate) use scene::{appeared_titles, name_matches, split_present_names};
+pub use scene::{
+    append_opening, append_transcript, begin_next_scene, export_scene_markdown,
+    export_transcript_markdown, fork_scene, pop_transcript, read_transcript,
+    remove_transcript_event, replace_scene_summary, revert_scene, scene_label,
+    set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
+    CARD_ARRIVAL_PREFIX,
+};
 pub(crate) use state::is_false;
+pub use state::{
+    node_at, read_state, set_tree_value, write_state, Condition, FieldKind, FieldRule, InjectLevel,
+    Mechanism, StateNode, TableState, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState,
+};
+pub use world::{
+    create_sample_world, create_world, delete_world, list_worlds, read_interface_shell,
+    read_refactor_outcome, read_world_md, reclaim_world_if_empty, rename_world,
+    world_has_state_bar, write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
+};
+pub use worldbook::{
+    character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
+    import_worldbook, read_worldbook, reorder_worldbook_entries, upsert_worldbook_entry,
+    worldbook_entry_to_character, Visibility, WorldbookEntry, WorldbookImport,
+};
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，
 // 拿掉又會讓 facade 對外少掉路徑，所以單獨成行標 allow。
 #[allow(unused_imports)]
 pub use config::validate_sponsor_pack;
 #[allow(unused_imports)]
-pub use state::SceneLabel;
-#[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]
 pub(crate) use scene::bracket_title;
+#[allow(unused_imports)]
+pub use state::SceneLabel;
 
 #[cfg(unix)]
 #[repr(C)]
@@ -70,14 +97,14 @@ fn local_time_parts() -> DataResult<(i32, i32, i32, i32, i32, i32)> {
             return Err(invalid_data("could not convert local time"));
         }
         let local = unsafe { local.assume_init() };
-        return Ok((
+        Ok((
             local.tm_year + 1900,
             local.tm_mon + 1,
             local.tm_mday,
             local.tm_hour,
             local.tm_min,
             local.tm_sec,
-        ));
+        ))
     }
 
     #[cfg(not(unix))]

@@ -60,7 +60,10 @@ fn random_int_in_range(min: f64, max: f64) -> i64 {
 
 /// 先只讀一輪收集「路徑＋公式」，算完再一次寫回去——同一棵樹不能又借給
 /// 取值用的 closure、又借去改，兩階段分開才過得了借用檢查。
-pub fn recompute_derived(tree: &mut BTreeMap<String, StateNode>, mechanism: &Mechanism) -> Vec<Record> {
+pub fn recompute_derived(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+) -> Vec<Record> {
     let mut targets = Vec::new();
     collect_derived_targets(tree, mechanism, &mut Vec::new(), &mut targets);
     if targets.is_empty() {
@@ -179,7 +182,7 @@ mod tests {
         let mechanism = mechanism_with(&[("Half", derived_rule("HP*2"))]);
         let records = recompute_derived(&mut tree, &mechanism);
         assert!(records.is_empty());
-        assert!(tree.get("Half").is_none());
+        assert!(!tree.contains_key("Half"));
     }
 
     #[test]

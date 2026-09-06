@@ -14,6 +14,6 @@ mod types;
 #[cfg(test)]
 mod test_support;
 
-pub use ledger::{apply_block, append_log, read_ledger, Ledger};
+pub use ledger::{append_log, apply_block, read_ledger, Ledger};
 pub use rules::rule_for_path;
 pub use types::{Outcome, Record, RecordKind};

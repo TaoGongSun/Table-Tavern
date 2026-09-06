@@ -1,4 +1,6 @@
-use super::parse_common::{join_trim, parse_blocks, parse_json_block, strip_html_fence, strip_json_fence};
+use super::parse_common::{
+    join_trim, parse_blocks, parse_json_block, strip_html_fence, strip_json_fence,
+};
 use super::types::{
     EntryKind, GroupKind, RefactorAbsorbOutcome, RefactorExpandOutcome, RefactorNewEntry,
     RefactorPersonExpandOutcome, RefactorRewriteOutcome,
@@ -85,8 +87,8 @@ fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterfac
         .find(|block| block.marker == "SHELL")
         .map(|block| strip_html_fence(&join_trim(&block.lines)).to_owned())
         .filter(|shell| !shell.is_empty());
-    let rules = parse_json_block(blocks.iter().find(|block| block.marker == "RULES"))
-        .unwrap_or_default();
+    let rules =
+        parse_json_block(blocks.iter().find(|block| block.marker == "RULES")).unwrap_or_default();
     let guide = blocks
         .iter()
         .find(|block| block.marker == "GUIDE")

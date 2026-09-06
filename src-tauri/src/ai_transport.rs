@@ -1,6 +1,4 @@
-use crate::{
-    cli, config_root, data, data_root, lanes, responses_transport, transport, usage_log,
-};
+use crate::{cli, config_root, data, data_root, lanes, responses_transport, transport, usage_log};
 use std::path::PathBuf;
 
 /// CLI 的工作目錄。Finder 啟動的 macOS app 工作目錄可能是根目錄；CLI 若繼承後做專案探索，
@@ -171,7 +169,6 @@ pub(crate) fn ai_call_failure(error: String) -> String {
 
 /// 依 preferences.transport 把組裝好的訊息分流到 API 或 CLI，增量經 emit 回呼。
 /// assistant_label／cli_closing 供 CLI 攤平使用：角色對話與 GM 導演共用同一條路。
-#[allow(clippy::too_many_arguments)]
 /// 不建立續輪期待的一次性呼叫（開桌生成、卡重構、換幕摘要、翻譯）走這條；
 /// 劇情輪要讓帳本看得出 prompt 形狀，改走 `stream_turn_via_transport`。
 #[allow(clippy::too_many_arguments)]

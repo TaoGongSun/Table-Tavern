@@ -9,11 +9,7 @@ pub fn rule_for_path(mechanism: &Mechanism, path: &[String], current: Option<&st
 
 /// 找欄位規則：先精確比對 path 的點分路徑，沒有就找同段數、每段相同或為 `*`
 /// 的萬用規則（多筆命中取萬用段最少的那筆），都沒有就依現值形狀推定 kind。
-pub(super) fn rule_for(
-    mechanism: &Mechanism,
-    path: &[String],
-    current: Option<&str>,
-) -> FieldRule {
+pub(super) fn rule_for(mechanism: &Mechanism, path: &[String], current: Option<&str>) -> FieldRule {
     let key = path.join(".");
     if let Some(rule) = mechanism.rules.get(&key) {
         return rule.clone();

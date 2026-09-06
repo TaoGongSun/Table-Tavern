@@ -36,7 +36,7 @@ fn parse_uid_line(line: &str) -> Option<u64> {
     if !head.eq_ignore_ascii_case("uid=") {
         return None;
     }
-    trimmed[4..].trim().split_whitespace().next()?.parse().ok()
+    trimmed[4..].split_whitespace().next()?.parse().ok()
 }
 
 /// 判斷欄位值是不是「肯定」（yes／true／是開頭，大小寫不拘）；INTERFACE 的 playable 與 PERSONS
@@ -343,7 +343,13 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
             // 其餘留空（呼叫端核對不過＝整份拒收）。
             "MODE" => {
                 let candidate = if block.value.trim().is_empty() {
-                    block.lines.iter().map(|line| line.trim()).find(|line| !line.is_empty()).unwrap_or("").to_owned()
+                    block
+                        .lines
+                        .iter()
+                        .map(|line| line.trim())
+                        .find(|line| !line.is_empty())
+                        .unwrap_or("")
+                        .to_owned()
                 } else {
                     block.value.trim().to_owned()
                 };

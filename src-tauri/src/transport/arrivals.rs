@@ -2,9 +2,7 @@ use crate::data::{self, CharacterCard, TranscriptEvent, TranscriptKind, Worldboo
 
 use std::collections::BTreeSet;
 
-use super::messages::{replace_st_macros};
-
-
+use super::messages::replace_st_macros;
 
 /// 人物登場事件的固定前綴，接著是〈title〉那一行；`append_transcript` 寫進去的格式，
 /// 也是掃「本幕已登場集合」與下一包前端顯示唯一依據的字面。
@@ -12,7 +10,9 @@ pub const PERSON_ARRIVAL_PREFIX: &str = "（人物登場）";
 
 /// 從一則事件文字剝出登場標題（前綴＋〈title〉開頭那一行）；不是登場事件就回 `None`。
 fn arrival_title(text: &str) -> Option<String> {
-    let rest = text.strip_prefix(PERSON_ARRIVAL_PREFIX)?.strip_prefix('〈')?;
+    let rest = text
+        .strip_prefix(PERSON_ARRIVAL_PREFIX)?
+        .strip_prefix('〈')?;
     let end = rest.find('〉')?;
     Some(rest[..end].to_owned())
 }
@@ -124,29 +124,32 @@ pub fn card_arrival_text(card: &CharacterCard, user_name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::super::assemble::*;
+    #[allow(unused_imports)]
+    use super::super::client::*;
+    #[allow(unused_imports)]
+    use super::super::context::*;
+    #[allow(unused_imports)]
+    use super::super::messages::*;
+    #[allow(unused_imports)]
+    use super::super::response::*;
+    #[allow(unused_imports)]
+    use super::super::state_view::*;
+    #[allow(unused_imports)]
+    use super::super::test_support::{card, event, worldbook_entry};
+    #[allow(unused_imports)]
+    use super::super::turns::*;
     use super::*;
     #[allow(unused_imports)]
-    use crate::data::{self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry};
+    use crate::data::{
+        self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism,
+        StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
+    };
     #[allow(unused_imports)]
     use crate::mechanism;
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
-    #[allow(unused_imports)]
-    use super::super::test_support::{card, event, worldbook_entry};
-    #[allow(unused_imports)]
-    use super::super::messages::*;
-    #[allow(unused_imports)]
-    use super::super::context::*;
-    #[allow(unused_imports)]
-    use super::super::assemble::*;
-    #[allow(unused_imports)]
-    use super::super::state_view::*;
-    #[allow(unused_imports)]
-    use super::super::turns::*;
-    #[allow(unused_imports)]
-    use super::super::response::*;
-    #[allow(unused_imports)]
-    use super::super::client::*;
 
     /// 規格 (c)(g)：present 名單有新面孔就命中，名字用雙向包含比對
     /// （「亞歷山大」對得上「亞歷山大・馮・史特勞斯」）。
@@ -303,5 +306,4 @@ mod tests {
             "（角色回歸）〈狐狸〉\n公開設定：\n公開內容"
         );
     }
-
 }

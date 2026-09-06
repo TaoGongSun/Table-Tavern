@@ -569,7 +569,16 @@ mod tests {
         let worldbook = [alice];
 
         // 第一輪：present 有愛麗絲 → append 一則登場事件
-        record_person_arrivals(&root, &world_id, 0, &worldbook, &[], Some("愛麗絲"), "", "阿濤");
+        record_person_arrivals(
+            &root,
+            &world_id,
+            0,
+            &worldbook,
+            &[],
+            Some("愛麗絲"),
+            "",
+            "阿濤",
+        );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 1);
         assert_eq!(scene0[0].kind, data::TranscriptKind::System);
@@ -580,12 +589,28 @@ mod tests {
 
         // 第二輪：present 還是愛麗絲，本幕 events 已含前一則登場事件 → 不重複
         record_person_arrivals(
-            &root, &world_id, 0, &worldbook, &scene0, Some("愛麗絲"), "", "阿濤",
+            &root,
+            &world_id,
+            0,
+            &worldbook,
+            &scene0,
+            Some("愛麗絲"),
+            "",
+            "阿濤",
         );
         assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
 
         // 換幕：scene 1 是新 jsonl、events 是空的 → 同名重新 append
-        record_person_arrivals(&root, &world_id, 1, &worldbook, &[], Some("愛麗絲"), "", "阿濤");
+        record_person_arrivals(
+            &root,
+            &world_id,
+            1,
+            &worldbook,
+            &[],
+            Some("愛麗絲"),
+            "",
+            "阿濤",
+        );
         let scene1 = data::read_transcript(&root, &world_id, 1).unwrap();
         assert_eq!(scene1.len(), 1);
         assert!(scene1[0].text.starts_with("（人物登場）〈愛麗絲〉\n"));
@@ -612,7 +637,16 @@ mod tests {
         let hidden_cards = vec![fox.clone()];
 
         // 第一輪：present 有狐狸 → append 一則回歸事件
-        record_card_arrivals(&root, &world_id, 0, &hidden_cards, &[], Some("狐狸"), "", "阿濤");
+        record_card_arrivals(
+            &root,
+            &world_id,
+            0,
+            &hidden_cards,
+            &[],
+            Some("狐狸"),
+            "",
+            "阿濤",
+        );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 1);
         assert_eq!(scene0[0].kind, data::TranscriptKind::System);
@@ -622,7 +656,14 @@ mod tests {
 
         // 第二輪：present 還是狐狸，本幕 events 已含前一則回歸事件 → 不重複
         record_card_arrivals(
-            &root, &world_id, 0, &hidden_cards, &scene0, Some("狐狸"), "", "阿濤",
+            &root,
+            &world_id,
+            0,
+            &hidden_cards,
+            &scene0,
+            Some("狐狸"),
+            "",
+            "阿濤",
         );
         assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
 
@@ -663,7 +704,16 @@ mod tests {
         };
         let worldbook = [spy];
 
-        record_person_arrivals(&root, &world_id, 0, &worldbook, &[], Some("密探"), "", "阿濤");
+        record_person_arrivals(
+            &root,
+            &world_id,
+            0,
+            &worldbook,
+            &[],
+            Some("密探"),
+            "",
+            "阿濤",
+        );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 1);
         assert!(scene0[0].gm_only);

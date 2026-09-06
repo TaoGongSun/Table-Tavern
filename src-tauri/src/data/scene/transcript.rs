@@ -4,11 +4,9 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use super::super::{DataResult, invalid_data};
 use super::super::paths::world_dir;
-use super::super::state::{TableState, WorldState, read_state, write_state};
-
-
+use super::super::state::{read_state, write_state, TableState, WorldState};
+use super::super::{invalid_data, DataResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -238,8 +236,8 @@ pub fn read_transcript(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
     use std::collections::BTreeMap;
 
     #[test]
@@ -675,5 +673,4 @@ mod tests {
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, first);
     }
-
 }

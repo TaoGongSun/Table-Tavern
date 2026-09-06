@@ -475,7 +475,10 @@ mod tests {
             (Cache::Hit, None)
         );
         // 有回報、值就是 0：說 zero，但不宣稱原因（無狀態算不出理論值）
-        assert_eq!(classify_cache(None, &usage(4_411, 0, 4_411)), (Cache::Zero, None));
+        assert_eq!(
+            classify_cache(None, &usage(4_411, 0, 4_411)),
+            (Cache::Zero, None)
+        );
     }
 
     /// mode 只描述形狀，與快取結果互不干涉。
@@ -489,7 +492,13 @@ mod tests {
         // 天然單角色桌與（日後）策略退回同樣是 solo，靠 roster_size 分辨
         assert_eq!(classify_mode(None, turn(1)), Mode::Solo);
         assert_eq!(
-            classify_mode(None, PromptShape::Turn { roster: 4, solo: true }),
+            classify_mode(
+                None,
+                PromptShape::Turn {
+                    roster: 4,
+                    solo: true
+                }
+            ),
             Mode::Solo
         );
         assert_eq!(classify_mode(None, PromptShape::Oneshot), Mode::Oneshot);
@@ -620,9 +629,33 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("prompt-cache.jsonl");
 
-        append_call(&path, None, "claude", "opus", None, PromptShape::Oneshot, usage(500, 0, 0)); // 開桌大綱
-        append_call(&path, None, "claude", "opus", None, PromptShape::Oneshot, usage(900, 0, 0)); // 開桌展開
-        append_call(&path, Some("w9"), "claude", "sonnet", None, turn(2), usage(100, 0, 0)); // 別桌，不該被動到
+        append_call(
+            &path,
+            None,
+            "claude",
+            "opus",
+            None,
+            PromptShape::Oneshot,
+            usage(500, 0, 0),
+        ); // 開桌大綱
+        append_call(
+            &path,
+            None,
+            "claude",
+            "opus",
+            None,
+            PromptShape::Oneshot,
+            usage(900, 0, 0),
+        ); // 開桌展開
+        append_call(
+            &path,
+            Some("w9"),
+            "claude",
+            "sonnet",
+            None,
+            turn(2),
+            usage(100, 0, 0),
+        ); // 別桌，不該被動到
         assign_pending_world(&path, "w1");
 
         let text = std::fs::read_to_string(&path).unwrap();

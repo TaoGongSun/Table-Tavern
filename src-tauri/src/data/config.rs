@@ -1,3 +1,4 @@
+use super::{invalid_data, DataResult};
 use crate::cli::ModelOption;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -6,7 +7,6 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
-use super::{DataResult, invalid_data};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -198,5 +198,4 @@ mod tests {
             assert_eq!(mode, 0o600);
         }
     }
-
 }

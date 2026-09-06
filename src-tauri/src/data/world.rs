@@ -1,13 +1,15 @@
+use super::character::{list_characters, read_character, write_character, CharacterCard};
+use super::paths::{
+    interface_shell_path, refactor_outcome_path, validate_single_line, world_dir, worlds_dir,
+};
+use super::scene::{append_transcript, TranscriptEvent, TranscriptKind};
+use super::state::{read_state, write_state, Mechanism, TableState, WorldState};
+use super::worldbook::{read_worldbook, read_worldbook_value};
+use super::{invalid_data, new_id, DataResult, Tier};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use super::{DataResult, Tier, invalid_data, new_id};
-use super::character::{CharacterCard, list_characters, read_character, write_character};
-use super::paths::{interface_shell_path, refactor_outcome_path, validate_single_line, world_dir, worlds_dir};
-use super::scene::{TranscriptEvent, TranscriptKind, append_transcript};
-use super::state::{Mechanism, TableState, WorldState, read_state, write_state};
-use super::worldbook::{read_worldbook, read_worldbook_value};
 
 /// 側欄桌列表用的精簡視圖
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -330,8 +332,8 @@ pub fn world_has_state_bar(root: &Path, world_id: &str) -> DataResult<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
 
     /// 測試清單 #1：create_world 回 id；state.json 含 id/name；list_worlds 回 WorldMeta
     #[test]

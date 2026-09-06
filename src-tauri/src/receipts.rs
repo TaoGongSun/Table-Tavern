@@ -266,7 +266,11 @@ fn apply_trigger_undo(
 }
 
 /// 匯入呼叫之後比對 mechanism／狀態樹前後差異；`before` 是這桌在匯入前的完整快照。
-fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> Option<MechanismUndo> {
+fn diff_mechanism(
+    before: Option<&WorldState>,
+    root: &Path,
+    world_id: &str,
+) -> Option<MechanismUndo> {
     let before = before?;
     let after = data::read_state(root, world_id).ok()?;
 
@@ -274,7 +278,11 @@ fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> O
         diff_added_and_overwritten(&before.mechanism.rules, &after.mechanism.rules);
 
     let as_map = |triggers: &[Trigger]| -> BTreeMap<String, Trigger> {
-        triggers.iter().cloned().map(|t| (t.id.clone(), t)).collect()
+        triggers
+            .iter()
+            .cloned()
+            .map(|t| (t.id.clone(), t))
+            .collect()
     };
     let (added_trigger_ids, restored_triggers) = diff_added_and_overwritten(
         &as_map(&before.mechanism.triggers),
@@ -287,9 +295,14 @@ fn diff_mechanism(before: Option<&WorldState>, root: &Path, world_id: &str) -> O
     let (added_state_keys, mut restored_state) =
         diff_added_and_overwritten(&before.state.tree, &after.state.tree);
     // 介面套用會整份重建狀態樹；被新 schema 淘汰的舊頂層鍵也要記回原值，讓 undo 能插回。
-    restored_state.extend(before.state.tree.iter()
-        .filter(|(key, _)| !after.state.tree.contains_key(*key))
-        .map(|(key, value)| (key.clone(), value.clone())));
+    restored_state.extend(
+        before
+            .state
+            .tree
+            .iter()
+            .filter(|(key, _)| !after.state.tree.contains_key(*key))
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
 
     let player_card_assigned = before.player_card_id.is_none() && after.player_card_id.is_some();
 
@@ -357,8 +370,10 @@ fn new_worldbook_entries(
 
 /// 這次匯入是否新建了一份這桌等級的卡片介面殼（source-card.*）；匯入前就有的不算。
 fn detect_world_card_created(root: &Path, world_id: &str, before: &Snapshot) -> Option<String> {
-    for (extension, existed_before) in [("png", before.world_card.0), ("import.json", before.world_card.1)]
-    {
+    for (extension, existed_before) in [
+        ("png", before.world_card.0),
+        ("import.json", before.world_card.1),
+    ] {
         if existed_before {
             continue;
         }
@@ -371,8 +386,7 @@ fn detect_world_card_created(root: &Path, world_id: &str, before: &Snapshot) -> 
 
 /// 這次匯入是否新建了 GM 卡的圖（gm.png）；匯入前就有的不算（含被覆寫掉的舊圖）。
 fn detect_gm_image_created(root: &Path, world_id: &str, before: &Snapshot) -> bool {
-    !before.gm_image_existed
-        && data::gm_image_path(root, world_id).is_ok_and(|path| path.exists())
+    !before.gm_image_existed && data::gm_image_path(root, world_id).is_ok_and(|path| path.exists())
 }
 
 /// 這次操作是否新建了介面渲染殼檔（interface-shell.html）；套用前就有的殼不算。
@@ -844,12 +858,17 @@ mod tests {
             }
         });
         import_worldbook_recorded(root.path(), &world_id, "worldbook.json", &book.to_string());
-        assert_eq!(data::read_worldbook(root.path(), &world_id).unwrap().len(), 1);
+        assert_eq!(
+            data::read_worldbook(root.path(), &world_id).unwrap().len(),
+            1
+        );
 
         let report = undo_last_import(root.path(), &world_id).unwrap();
         assert_eq!(report.removed_entries, 1);
         assert!(report.removed_character.is_none());
-        assert!(data::read_worldbook(root.path(), &world_id).unwrap().is_empty());
+        assert!(data::read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .is_empty());
     }
 
     /// PNG 世界書匯入→undo：這次新建的 GM 卡圖跟著收掉（回到內建書本圖）；
@@ -880,7 +899,11 @@ mod tests {
         assert!(!image_path.exists());
 
         import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
-        import_png("第二張.png", &book("城門又開了。"), b"\x89PNG\r\n\x1a\nsecond");
+        import_png(
+            "第二張.png",
+            &book("城門又開了。"),
+            b"\x89PNG\r\n\x1a\nsecond",
+        );
         undo_last_import(root.path(), &world_id).unwrap();
         assert_eq!(fs::read(&image_path).unwrap(), b"\x89PNG\r\n\x1a\nsecond");
     }
@@ -977,7 +1000,10 @@ mod tests {
             &world_id,
             &character_book_card("乙", serde_json::json!([])),
         );
-        assert_eq!(data::list_characters(root.path(), &world_id).unwrap().len(), 2);
+        assert_eq!(
+            data::list_characters(root.path(), &world_id).unwrap().len(),
+            2
+        );
 
         let report1 = undo_last_import(root.path(), &world_id).unwrap();
         assert_eq!(report1.removed_character, Some("乙".to_owned()));
@@ -1023,7 +1049,10 @@ mod tests {
 
         let report = undo_last_import(root.path(), &world_id).unwrap();
         assert!(report.renamed_back);
-        assert_eq!(data::read_state(root.path(), &world_id).unwrap().name, "新的一桌");
+        assert_eq!(
+            data::read_state(root.path(), &world_id).unwrap().name,
+            "新的一桌"
+        );
     }
 
     /// 機制／狀態樹的倒退：undo 只退這一筆匯入自己加的規則與初始值，
@@ -1087,7 +1116,7 @@ mod tests {
         undo_last_import(root.path(), &world_id).unwrap();
         let after_second_undo = data::read_state(root.path(), &world_id).unwrap();
         assert!(!after_second_undo.mechanism.incremental);
-        assert!(after_second_undo.state.tree.get("World").is_none());
+        assert!(!after_second_undo.state.tree.contains_key("World"));
     }
 
     /// list_import_receipts 的摘要即時反映 append／undo。

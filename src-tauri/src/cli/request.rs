@@ -134,7 +134,11 @@ pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<S
         "--skip-git-repo-check",
         "--ignore-user-config",
         "-s",
-        if allow_tools { "workspace-write" } else { "read-only" },
+        if allow_tools {
+            "workspace-write"
+        } else {
+            "read-only"
+        },
     ]
     .map(str::to_owned)
     .to_vec();
@@ -297,9 +301,7 @@ fn grok_common_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
         args.push("--deny".to_owned());
         args.push("*".to_owned());
     }
-    args.extend(
-        ["--disable-web-search", "--no-plan", "--no-subagents"].map(str::to_owned),
-    );
+    args.extend(["--disable-web-search", "--no-plan", "--no-subagents"].map(str::to_owned));
     if !allow_tools {
         // 工具定義整包拆掉（--deny 只擋執行不擋注入）。生圖那條當然不能設：它要用 image_gen。
         // 實測這條讓 CLI 的 tool_count 歸 0、input 從 12604 掉到 3602。
@@ -390,7 +392,7 @@ mod tests {
             "以下是到目前為止的對話紀錄：\n\n加爾：抬起頭。\n\n現在你是「雷恩」。"
         );
         assert!(!prompt.contains("——")); // closing 為空就不留分隔線
-        // 舊行為不變：有 label 就補前綴、有 closing 就接在後面
+                                         // 舊行為不變：有 label 就補前綴、有 closing 就接在後面
         let (_, legacy) = flatten_messages("雷恩", "收尾指示", &messages);
         assert!(legacy.contains("雷恩：加爾：抬起頭。"));
         assert!(legacy.ends_with("——\n收尾指示"));
@@ -579,5 +581,4 @@ mod tests {
         assert_eq!(tier_override(&map, "claude", Tier::Fast), None); // 空白＝未設
         assert_eq!(tier_override(&map, "codex", Tier::Best), None);
     }
-
 }

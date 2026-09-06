@@ -1,9 +1,9 @@
+use super::paths::world_dir;
+use super::DataResult;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use super::DataResult;
-use super::paths::world_dir;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableState {
@@ -348,8 +348,8 @@ pub fn write_state(root: &Path, world_id: &str, state: &WorldState) -> DataResul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::*;
     use crate::data::test_support::*;
+    use crate::data::*;
 
     #[test]
     fn state_round_trips_and_errors_when_file_is_missing() {
@@ -439,5 +439,4 @@ mod tests {
         assert!(state.state.changes.is_empty());
         assert_eq!(state.state.table.get("time"), Some(&"清晨".to_owned()));
     }
-
 }

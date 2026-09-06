@@ -10,8 +10,8 @@ pub(super) struct TestRoot(PathBuf);
 impl TestRoot {
     pub(super) fn new(label: &str) -> Self {
         let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir()
-            .join(format!("table-tavern-{label}-{}-{id}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("table-tavern-{label}-{}-{id}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }

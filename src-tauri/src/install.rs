@@ -345,7 +345,10 @@ fn output_detail(output: &CommandOutput) -> Option<String> {
     (!detail.is_empty()).then_some(detail)
 }
 
-async fn run_hidden(command: &[String], envs: &[(String, String)]) -> Result<CommandOutput, String> {
+async fn run_hidden(
+    command: &[String],
+    envs: &[(String, String)],
+) -> Result<CommandOutput, String> {
     let (program, args) = command
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
@@ -373,10 +376,7 @@ async fn run_hidden(command: &[String], envs: &[(String, String)]) -> Result<Com
 }
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
-async fn run_probe(
-    command: &[String],
-    envs: &[(String, String)],
-) -> Result<CommandOutput, String> {
+async fn run_probe(command: &[String], envs: &[(String, String)]) -> Result<CommandOutput, String> {
     match tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command, envs)).await {
         Ok(result) => result,
         Err(_) => Ok(CommandOutput {
@@ -452,9 +452,10 @@ async fn checked_probe(
     emit(InstallProgress::new(&spec.id, "verify", log_path));
     let output = run_probe(&spec.probe, &spec.envs).await?;
     append_output(log, &spec.probe, &output)?;
-    let expected = spec.probe_expect.as_ref().is_none_or(|needle| {
-        String::from_utf8_lossy(&output.stdout).contains(needle.as_str())
-    });
+    let expected = spec
+        .probe_expect
+        .as_ref()
+        .is_none_or(|needle| String::from_utf8_lossy(&output.stdout).contains(needle.as_str()));
     Ok(output.success && expected)
 }
 
@@ -522,9 +523,13 @@ async fn run_install_with_interval(
             }
         });
     }
-    let login_output = run_terminal(&spec.login, Duration::from_secs(spec.poll_seconds), &spec.envs)
-        .await
-        .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
+    let login_output = run_terminal(
+        &spec.login,
+        Duration::from_secs(spec.poll_seconds),
+        &spec.envs,
+    )
+    .await
+    .map_err(|error| emit_error(&spec.id, &log_path, error, &mut emit))?;
     append_output(&mut log, &spec.login, &login_output)?;
     if !login_output.success {
         let suffix = output_detail(&login_output)
