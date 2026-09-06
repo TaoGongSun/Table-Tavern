@@ -54,7 +54,7 @@ See the install section above — it's the standard warning for unsigned test bu
 
 ## For Developers
 
-Tauri 2 (Rust) + Vite + React + TypeScript. Product spec in `NewPlan.md`, engineering kickoff in `KICKOFF.md`, changes in [CHANGELOG.md](CHANGELOG.md).
+Tauri 2 (Rust) + Vite + React + TypeScript. Start with the [current architecture guide](docs/ARCHITECTURE.md); `NewPlan.md` is the original product-direction document and may be superseded by later `.ai/plans/` decisions. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ```bash
 npm install
