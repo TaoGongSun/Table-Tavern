@@ -1,7 +1,7 @@
 # Task handoff
 Task-ID: refactor-mode-split
 Updated: 2026-08-14T09:24:48.977395+00:00
-Status: in-progress
+Status: awaiting-verification
 
 ## Goal
 重構雙軌定向落地：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析），四包完成（路由＋三態偵測＋二選一 UI／兩段 session／模式行為／穩定性驗收矩陣）。

@@ -1,6 +1,6 @@
 # 金鑰貼錯防呆：貼成文件裡的指令時當場提示，401 依傳輸分流指路
 
-Status: in-progress
+Status: awaiting-verification
 
 ## Summary
 使用者按了 OpenRouter 文件 Quick Start 的 Copy，存進 app 的是 `export OPENROUTER_API_KEY=sk-or-v1-...` 這串示範指令（不是金鑰），發言時只換得一句 401「Missing Authentication header」，看不出錯在哪。新增 `src/api-key-check.ts` 純函式在輸入當下比對形狀並提示，另把 401 文案依傳輸分流。commit `a782027`。

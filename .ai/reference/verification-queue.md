@@ -1,7 +1,13 @@
 # 實測佇列（建議順序）
 
-2026-08-18 重編。只收「實作已完成、等使用者實機驗收」的項目；待實作與待拍板不在此。
+2026-09-06 狀態校正。只收「施工已完成，只剩可執行環境／使用者實機／外部條件驗收」的項目；待實作與待拍板不在此。
 各項的驗收細目在各自任務檔與 `handoffs/<id>.md`，此處只排順序與理由。
+
+## 前置：開發環境機械驗證，不需開 app
+
+| 項目 | 驗什麼 |
+|---|---|
+| [refactor-ai-split](../handoffs/refactor-ai-split.md) | 在可執行 repo 的環境跑 `npm ci` → `npm run build` → `cd src-tauri && cargo test`；確認拆模組後編譯全綠、56 個既有 refactor_ai 測試全過 |
 
 ## 梯 1：本地操作，不花 API 額度
 
@@ -38,7 +44,7 @@
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
 | 5 | [refactor-mode-split](../handoffs/refactor-mode-split.md) 五卡矩陣＋同卡連跑三次 | **擋下游最多**：[refactor-card-png-export](../tasks/refactor-card-png-export.md) 待開工首包（套用映射持久化）與 [interface-takeover-spike](../tasks/interface-takeover-spike.md) 逐型驗卡都疊在這條路上。程式碼 2026-08-14 才寫完，出問題時記憶最新、最好修 |
-| 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md) B 段→A 段 ＋ [person-promote](../handoffs/person-promote.md) ＋ [state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 三案一鏈，跑一輪同時收。**前置已解除**：`refactor-outcome-export` 已於 2026-08-11 結案，B 段可直接真跑 orc-cave 卡；產物存檔後 A 段走零額度重放，額度只花一次 |
+| 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md) B 段→A 段 ＋ [person-promote](../handoffs/person-promote.md) ＋ [state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 三案一鏈，跑一輪同時收。**前置已解除**：`refactor-output-redesign` 已於 2026-08-11 結案，B 段可直接真跑 orc-cave 卡；產物存檔後 A 段走零額度重放，額度只花一次 |
 | 7 | [ai-table-generator](../handoffs/ai-table-generator.md) 一句話開桌 | 六項一輪跑完：開視窗→生成大綱→重骰→改大綱→AI 生成角色→照大綱開桌；順手驗單人設定不錨定角色數、換語言後生成跟著換 |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇）；失敗不扣次數 |
 | 9 | [ui-overhaul](../handoffs/ui-overhaul.md) 實聊 playbill | dialogue 事件要有金鑰實聊才出現，串流打字指示改版後沒實測過；可搭任一梯 2 項目順手看 |
@@ -51,5 +57,9 @@
 | 項目 | 卡在哪 |
 |---|---|
 | [refactor-survey-spans](../handoffs/refactor-survey-spans.md) T4 ② ＋ [refactor-dispatch](../handoffs/refactor-dispatch.md) P8 | 要真的用 API 模式跑一次才看得到 jsonl lane；CLI 模式測不到 |
-| [prompt-cache-optimization](../handoffs/prompt-cache-optimization.md) grok／agy 顯示驗收 | 等哪天用到那兩條 lane；OpenRouter 計量未接 |
+| [prompt-cache-optimization](../handoffs/prompt-cache-optimization.md) grok／agy 顯示驗收 | 等哪天用到那兩條 lane；OpenRouter／API 已於 2026-08-03 收束出本案，不算施工未完成 |
 | [i18n-more-languages](../handoffs/i18n-more-languages.md) | 2026-08-17 拍板延到全 app 功能定案後一次驗，原驗收單已過期 |
+| [api-cache-visibility](../handoffs/api-cache-visibility.md) | 等真跑 API／OpenRouter 對話取得供應商實際 usage 欄位，確認「量不到」與真 0% 分流正確 |
+| [api-key-paste-guard](../handoffs/api-key-paste-guard.md) | 已驗錯金鑰提示與 401 分流；等換上真 OpenRouter 金鑰時自然驗「紅字消失＋發言成功」 |
+| [grok-profile-isolation](../handoffs/grok-profile-isolation.md) | app profile 是全新環境；等使用者在設定頁跑一次 grok 登入，再驗模型下拉與旁白正常 |
+| [claude-compat-endpoint](../handoffs/claude-compat-endpoint.md) | 實作與 cargo/build 已綠；等有真 Claude-compatible base URL＋key 時做使用者實測 |
