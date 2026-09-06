@@ -487,4 +487,4 @@ commit：`30f1437`（立案）→ `90523d9`（composition root 收尾），分�
 
 未驗：第 9 項機制帳本（測試桌沒有機制條目）、玩家卡指定（這張卡沒有 `suspected_player` 角色，checkbox 不出現）、已淘汰／未收編／稽核三區（這張卡都是 0 筆）、第 15–17 項（需要 live AI）。
 
-附帶發現（與本案無關，後端計數）：套用完的訊息說「新增 34 條世界書條目」，實際落地 33 條。前端只是顯示 `refactor_apply` 回傳的 `summary.new_entries`，這段拆檔前後逐字一致，後端本案零改動。
+附帶發現（與本案無關，後端計數）：套用完的訊息說「新增 34 條世界書條目」，實際落地 33 條。前端只是顯示 `refactor_apply` 回傳的 `summary.new_entries`，這段拆檔前後逐字一致，後端本案零改動。已另立案 [refactor-apply-count-mismatch](../tasks/refactor-apply-count-mismatch.md)。
