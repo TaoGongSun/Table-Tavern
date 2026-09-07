@@ -17,13 +17,27 @@ Table Tavern 是 **Tauri 2 + Rust** 後端、**Vite + React + TypeScript** 前�
 ```text
 src/
 ├── App.tsx                 # composition root / 跨域協調
-├── controllers/            # 狀態與操作流程
-├── views/                  # React 畫面元件
-│   └── world-editor/       # 世界編輯器／AI 重構子模組
+├── features/               # 一個功能一個資料夾，view + hook + logic + test 同住
+│   ├── ai-connection/      # CLI 偵測、金鑰檢查、模型清單
+│   ├── card-interface/     # 卡片自帶介面的解析與渲染
+│   ├── characters/         # 角色卡資料模型與可見性
+│   ├── import/             # 匯入路由判定
+│   ├── refactor/           # AI 重構：模式、執行、審閱、產殼與其對話框
+│   ├── settings/           # 外觀與偏好
+│   └── worldbook/          # 世界書編輯
+├── shared/                 # 至少兩個獨立 feature 真的在用的東西
+│   ├── contracts/          # 與 Rust 後端的型別契約
+│   └── ui/                 # 跨 feature 的呈現與互動（拖曳、markdown、錯誤文案）
+├── controllers/            # 跨 feature 的狀態與操作流程
+├── views/                  # App 級 layout、dialog、workspace 殼
 ├── styles/                 # 依 UI 區域拆分的全域 CSS
 ├── i18n/                   # 十語系字典
-└── *.ts / *.test.ts        # 共用 model、routing、formatting 與單元測試
+└── assets/                 # 內建圖片資源
 ```
+
+目錄怎麼長、新檔案該放哪，見 [STRUCTURE.md](STRUCTURE.md)；`npm run verify` 的第一步 `check:structure` 會擋掉明顯違規。
+
+`controllers/` 與 `views/` 裡仍有若干只服務單一功能的檔案（`CardEditor`、`SettingsForm`、`useChatController` 等），屬已知待收，見 `.ai/tasks/view-layer-homing.md`。
 
 主要 controller 已按責任拆開，例如：
 

@@ -68,7 +68,7 @@
 ### 1.3 現有安全網
 
 - `npm run build`：TypeScript + Vite build
-- `npm test`：Vitest；AI 重構的純資料操作已有 `src/refactor-review.test.ts` 等測試
+- `npm test`：Vitest；AI 重構的純資料操作已有 `src/features/refactor/refactor-review.test.ts` 等測試
 - `npm run check:i18n`
 
 目前沒有針對 `WorldEditor` 的完整 component interaction test，因此本案不能只靠編譯綠燈；需要固定實機回歸清單。

@@ -8,7 +8,7 @@ Updated: 2026-09-06T16:00:00+08:00
 ## Summary
 2026-09-06 跑 world-editor-split 實機回歸時看到的：在結果視窗「展開細看」裡取消勾一個角色與一條世界書條目後套用，完成訊息說「新增 17 個角色・新增 34 條世界書條目」，磁碟上 `worldbook.json` 只有 33 條。角色數 17 有跟著勾選走，條目數沒有。
 
-前端只是把 `refactor_apply` 回傳的 `summary.new_entries` 顯示出來（`src/views/world-editor/useRefactorWorkflow.ts` 的 `refactorApplyMessage`），這段在拆分案前後逐字一致，後端該案零改動，所以問題在後端或在我對後端行為的理解。
+前端只是把 `refactor_apply` 回傳的 `summary.new_entries` 顯示出來（`src/features/refactor/useRefactorWorkflow.ts` 的 `refactorApplyMessage`），這段在拆分案前後逐字一致，後端該案零改動，所以問題在後端或在我對後端行為的理解。
 
 已知線索兩條，還沒查完：
 

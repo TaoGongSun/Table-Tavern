@@ -42,9 +42,9 @@
 
 | 符號 | 落點 |
 |---|---|
-| `PALETTE`、`Tier`、`CharacterMeta`、`CharacterCard`、`DraftImage` | `src/card-model.ts` |
+| `PALETTE`、`Tier`、`CharacterMeta`、`CharacterCard`、`DraftImage` | `src/features/characters/card-model.ts` |
 | `CLI_LABELS`、`tierLabel`、`detectClis`、catalog store、`useModelCatalogs`、prefetch、`CliInfo` | 併入既有 model/CLI 模組 |
-| `resolveTheme`、`TEXT_SIZE_PX`、`ThemeId`、主題常數、`KOFI_URL`＋`openSponsorPage()` | `src/appearance.ts` |
+| `resolveTheme`、`TEXT_SIZE_PX`、`ThemeId`、主題常數、`KOFI_URL`＋`openSponsorPage()` | `src/features/settings/appearance.ts` |
 | `AppConfig`、`WorldState`、`WorldbookEntry` 等後端資料契約 | `src/` 根層小型 contract 檔 |
 
 元件私有的 props／draft type 跟元件走。不讓 App 反向從 view 檔取 domain type。

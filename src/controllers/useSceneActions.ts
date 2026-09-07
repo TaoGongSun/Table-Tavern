@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import type { AppConfig, SceneLabel, TranscriptEvent } from "../backend-contracts";
+import type { AppConfig, SceneLabel, TranscriptEvent } from "../shared/contracts/backend-contracts";
 import { t } from "../i18n";
 
 interface SceneChatActions {

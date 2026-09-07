@@ -1,5 +1,5 @@
 import type { FormEventHandler, RefObject } from "react";
-import type { CharacterMeta } from "../../card-model";
+import type { CharacterMeta } from "../characters/card-model";
 import { t } from "../../i18n";
 import type { WorldbookDraft } from "./worldbook-model";
 

@@ -2,7 +2,7 @@
 // 所有權從 App() 搬過來，行為與依賴陣列照舊；畫面（stateLeafRow／stateTreeNodes）仍在 App。
 import { useCallback, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { type BranchBinding, type StateNode, type WorldState } from "../backend-contracts";
+import { type BranchBinding, type StateNode, type WorldState } from "../shared/contracts/backend-contracts";
 
 // 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
 export function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {

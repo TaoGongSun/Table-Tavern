@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "../appearance";
-import { AppConfig } from "../backend-contracts";
-import { cliConnectedKey } from "../cli";
+import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "../features/settings/appearance";
+import { AppConfig } from "../shared/contracts/backend-contracts";
+import { cliConnectedKey } from "../features/ai-connection/cli";
 import { normalizeLang, setLang } from "../i18n";
 
 const CLI_IDS = ["claude", "codex", "agy", "grok"] as const;

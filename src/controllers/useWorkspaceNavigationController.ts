@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { type WorldState } from "../backend-contracts";
+import { type WorldState } from "../shared/contracts/backend-contracts";
 
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 export const GM_TARGET = "__GM__";

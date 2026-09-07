@@ -1,9 +1,9 @@
 import { ReactNode, useRef, useState } from "react";
 import { t } from "../i18n";
-import { tierLabel } from "../model-catalog";
-import { WorldMeta } from "../backend-contracts";
-import { CharacterCard, CharacterMeta } from "../card-model";
-import { useDragReorder } from "../drag-reorder";
+import { tierLabel } from "../features/ai-connection/model-catalog";
+import { WorldMeta } from "../shared/contracts/backend-contracts";
+import { CharacterCard, CharacterMeta } from "../features/characters/card-model";
+import { useDragReorder } from "../shared/ui/drag-reorder";
 import gmBook from "../assets/gm-book.png";
 
 // 側欄寬度是純 UI 狀態，存瀏覽器端即可，不進 config.json。

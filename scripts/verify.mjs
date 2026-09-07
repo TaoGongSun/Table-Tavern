@@ -11,6 +11,7 @@ const TAURI = fileURLToPath(new URL("../src-tauri/", import.meta.url));
 const WIN = process.platform === "win32";
 
 const steps = [
+  { name: "structure", cmd: "node", args: ["scripts/check-structure.mjs"], cwd: ROOT },
   { name: "cargo fmt", cmd: "cargo", args: ["fmt", "--check"], cwd: TAURI },
   { name: "vitest", cmd: "npm", args: ["test"], cwd: ROOT, shell: WIN },
   { name: "i18n", cmd: "npm", args: ["run", "check:i18n"], cwd: ROOT, shell: WIN },

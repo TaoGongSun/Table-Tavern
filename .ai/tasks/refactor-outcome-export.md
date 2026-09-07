@@ -8,7 +8,7 @@ Status: done
 ## Summary
 玩家花額度重構一張卡後，產物只活在當下結果卡的 state 裡（[App.tsx:1794](../../src/App.tsx#L1794)），套用或關掉就丟了；重玩同一張卡得再燒一次 AI。本功能把產物（RefactorOutcome JSON）存檔可匯出，重玩時匯入直接進人審面板。
 
-匯入端已是正式功能：世界書分頁「匯入重構卡」（[App.tsx:2419](../../src/App.tsx#L2419)）＋逐欄驗證（[refactor-review.ts:198](../../src/refactor-review.ts#L198)），測完不刪。玩家面用詞統一叫「重構卡」（2026-08-10 拍板）。
+匯入端已是正式功能：世界書分頁「匯入重構卡」（[App.tsx:2419](../../src/App.tsx#L2419)）＋逐欄驗證（[refactor-review.ts:198](../../src/features/refactor/refactor-review.ts#L198)），測完不刪。玩家面用詞統一叫「重構卡」（2026-08-10 拍板）。
 
 ## 拍板結論（2026-08-10）
 1. **本任務先做、實測順序反轉**：手工捏假產物等於用人力重造 app 按一顆鈕就會產的東西，成本高又測不出真實情況。[ai-card-refactor](../handoffs/ai-card-refactor.md) 實測改成先跑 B1 真 AI、匯出真產物，再用它跑 A 段；重測不必再燒額度。

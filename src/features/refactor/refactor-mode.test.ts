@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectRefactorTristate } from "./refactor-mode";
-import { type CardInterface, type InterfaceScript } from "./interface-card";
+import { type CardInterface, type InterfaceScript } from "../card-interface/interface-card";
 
 function script(): InterfaceScript {
   return { name: "s", find_regex: "/x/", replace_string: "<div>x</div>", trim_strings: [], min_depth: null, max_depth: null };

@@ -24,16 +24,16 @@ import {
   type RefactorSelection,
   type RefactorSplitGroup,
   type RefactorSurveyOutcome,
-} from "../../refactor-review";
-import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "../../refactor-run";
+} from "./refactor-review";
+import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
   detectRefactorTristate,
   type RefactorMode,
   type RefactorRecommendOutcome,
   type RefactorRunTicket,
-} from "../../refactor-mode";
-import type { CardInterface } from "../../interface-card";
-import type { WorldbookEntry } from "../../backend-contracts";
+} from "./refactor-mode";
+import type { CardInterface } from "../card-interface/interface-card";
+import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 
 export interface RefactorModeAsk {
   recommend: RefactorMode | null;

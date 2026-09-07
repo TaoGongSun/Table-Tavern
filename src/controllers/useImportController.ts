@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { message as showMessage } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../i18n";
-import { decideImportRoute } from "../import-routing";
-import { type WorldbookEntry } from "../backend-contracts";
-import { PALETTE, type CharacterMeta } from "../card-model";
-import { type CardInterface } from "../interface-card";
+import { decideImportRoute } from "../features/import/import-routing";
+import { type WorldbookEntry } from "../shared/contracts/backend-contracts";
+import { PALETTE, type CharacterMeta } from "../features/characters/card-model";
+import { type CardInterface } from "../features/card-interface/interface-card";
 
 interface CharacterImport {
   meta: CharacterMeta;
