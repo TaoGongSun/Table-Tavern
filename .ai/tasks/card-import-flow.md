@@ -28,7 +28,7 @@ Updated: 2026-08-06T18:55:00+08:00
 拍板 1＋2。probe 訊號：parsed／name／book_entries／book_shaped（主線驗收時補：V2 獨立世界書 JSON 頂層自帶書名＋entries，靠它不被誤判成角色卡，書名並用作桌名）。
 
 ### 包 4：第二張卡路由框（中）— 完成
-拍板 4＋「開新桌並匯入」（create_world(label)→顯式 worldId 匯入→enterTable，原桌不動）。路由決策抽純函式 src/import-routing.ts＋vitest 5 例。雙世界書封鎖 2026-08-05 實機通過（限新桌；收據功能之前的舊桌沒收據擋不住，使用者拍板不補）。
+拍板 4＋「開新桌並匯入」（create_world(label)→顯式 worldId 匯入→enterTable，原桌不動）。路由決策抽純函式 src/features/import/import-routing.ts＋vitest 5 例。雙世界書封鎖 2026-08-05 實機通過（限新桌；收據功能之前的舊桌沒收據擋不住，使用者拍板不補）。
 
 ### 追加拍板（2026-08-06，樣本卡實測驅動）
 8. **雙世界書由硬擋改成可融合**（推翻拍板 4 後半）：路由框給「取消／仍要匯入／開新桌並匯入（主）」。資料層本來就會合併去重，封鎖只在前端。**已驗收**。

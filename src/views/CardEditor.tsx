@@ -4,12 +4,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
-import { explainAiError } from "../ai-error";
-import { KOFI_URL } from "../appearance";
-import { AppConfig } from "../backend-contracts";
-import { CharacterCard, DraftImage, Tier } from "../card-model";
-import { CLI_LABELS, CliInfo, detectClis } from "../cli";
-import { tierLabel } from "../model-catalog";
+import { explainAiError } from "../shared/ui/ai-error";
+import { KOFI_URL } from "../features/settings/appearance";
+import { AppConfig } from "../shared/contracts/backend-contracts";
+import { CharacterCard, DraftImage, Tier } from "../features/characters/card-model";
+import { CLI_LABELS, CliInfo, detectClis } from "../features/ai-connection/cli";
+import { tierLabel } from "../features/ai-connection/model-catalog";
 
 const GALLERY_PAGE_SIZE = 12;
 

@@ -25,7 +25,7 @@
 
 ## 已完成變更（cargo 480／tsc／vitest 108／build 綠）
 1. **狀態樹不再被收回沖掉**：[data.rs](../../src-tauri/src/data.rs) `sync_scene_state_tree`＋[refactor.rs](../../src-tauri/src/refactor.rs) apply 後呼叫——新樹補進這一幕每則事件快照的 `tree`／`jumps`。舊行為是「檯面恆等於最後一則事件快照」，重構改的樹不在任何快照裡，一次收回就換回舊欄位（實測踩過：面板全空白）。
-2. **逐卡 update block**：`RefactorInterface` 加 `rules`／`guide`；apply 有殼時開 `incremental`、併 rules、落 guide。`Mechanism` 加 `guide`。[refactor-review.ts](../../src/refactor-review.ts) `parseInterface`／`merge` 要帶上兩欄——前端會重建 outcome 再傳回 Rust，不補就整個掉。
+2. **逐卡 update block**：`RefactorInterface` 加 `rules`／`guide`；apply 有殼時開 `incremental`、併 rules、落 guide。`Mechanism` 加 `guide`。[refactor-review.ts](../../src/features/refactor/refactor-review.ts) `parseInterface`／`merge` 要帶上兩欄——前端會重建 outcome 再傳回 Rust，不補就整個掉。
 3. **展開契約四區塊**：[refactor_ai.rs](../../src-tauri/src/refactor_ai.rs) STATE／SHELL／RULES／GUIDE；`MECHANISM_SCHEMA` 拆成 `MECHANISM_FIELD_SCHEMA`／`MECHANISM_TRIGGER_SCHEMA`（接管只要欄位規則）；`INTERFACE_SHELL_RULES` 補固定資產處置；`INTERFACE_UPDATE_RULES` 限定照搬值格式＋分兩組；`strip_html_fence` 連語言標記一起剝。
 4. **介面歸屬聲明**：[transport.rs](../../src-tauri/src/transport.rs) `interface_owned_notice`，接管桌才附，**壓在欄位說明之後**——模型會模仿最後讀到的排版，放前面它就照 guide 的 markdown 把狀態逐條寫進正文（實測踩過，那輪 patch 完全消失）。措辭要避開「資料區塊」這種會誤傷 `<UpdateVariable>` 的字。
 5. 移除卡片介面的 ⓘ 說明鈕＋十語系 2 個 key（使用者要求）。
@@ -55,6 +55,6 @@ HTML 殼分支、`INTERFACE_SHELL` 舊語意殘註解與多語系殘留。使用
 
 ## 陷阱備忘
 - 這台機器 tauri dev 冷啟不重編 Rust；驗證法＝比 `target/debug/table-tavern` 與 `.rs` 的 mtime，或 `grep -a` 新字串在不在 binary 裡。
-- 重現面板不必開 app：`npx tsx` import `src/refactor-shell.ts`／`interface-card.ts`，餵真骨架＋真樹＋原卡 `regex_scripts`，`buildShellDocument` 落檔後起 http server 用 Browser 讀 console。**要記得填 `本回合.正文`**——不填就重現不出「正文內容劫持卡 regex」那類 bug（第二輪地圖全毀就是這個：GM 在正文重印的 XML 讓 `findRegex` 抓到內嵌的 `</CurrentView>`）。
+- 重現面板不必開 app：`npx tsx` import `src/features/refactor/refactor-shell.ts`／`interface-card.ts`，餵真骨架＋真樹＋原卡 `regex_scripts`，`buildShellDocument` 落檔後起 http server 用 Browser 讀 console。**要記得填 `本回合.正文`**——不填就重現不出「正文內容劫持卡 regex」那類 bug（第二輪地圖全毀就是這個：GM 在正文重印的 XML 讓 `findRegex` 抓到內嵌的 `</CurrentView>`）。
 - 監聽桌目錄變化很有效（`refactor-outcome.json`／`state.json`／`interface-shell.html`／`transcript/*.jsonl` 各報一行摘要），實測時免問使用者要證物。
 - zsh glob 無命中會炸腳本（`setopt null_glob`）；`grep` 的 `\|` 交替在這台的 ugrep 會炸，用 `-F -e`。

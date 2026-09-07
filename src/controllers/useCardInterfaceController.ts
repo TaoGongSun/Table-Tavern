@@ -8,9 +8,9 @@ import {
   sanitizeCardStorage,
   type CardInterface,
   type CardStorage,
-} from "../interface-card";
-import { fillShellPlaceholders, fillSkeletonPlaceholders, type StateNode } from "../refactor-shell";
-import { type TranscriptEvent } from "../backend-contracts";
+} from "../features/card-interface/interface-card";
+import { fillShellPlaceholders, fillSkeletonPlaceholders, type StateNode } from "../features/refactor/refactor-shell";
+import { type TranscriptEvent } from "../shared/contracts/backend-contracts";
 
 // 殼字串的短指紋（djb2）：card-interface iframe 的 key 用，殼一換 key 就換。
 function shellFingerprint(shell: string | null): string {

@@ -3,8 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
-import { AppConfig, TranscriptEvent } from "../backend-contracts";
-import { CharacterMeta } from "../card-model";
+import { AppConfig, TranscriptEvent } from "../shared/contracts/backend-contracts";
+import { CharacterMeta } from "../features/characters/card-model";
 
 // GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
 const PLAYER_SENTINEL = "__PLAYER__";

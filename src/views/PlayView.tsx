@@ -2,8 +2,8 @@
 // 逐字稿、生成狀態、輸入框與所有動作都由 chat controller 擁有，這裡只負責畫與回報。
 import { FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { t } from "../i18n";
-import { TranscriptEvent } from "../backend-contracts";
-import { CharacterMeta } from "../card-model";
+import { TranscriptEvent } from "../shared/contracts/backend-contracts";
+import { CharacterMeta } from "../features/characters/card-model";
 import { StoryText } from "./atoms";
 import gmBook from "../assets/gm-book.png";
 

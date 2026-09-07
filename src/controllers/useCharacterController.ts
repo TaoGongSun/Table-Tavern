@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../i18n";
-import { isCharacterHidden } from "../character-visibility";
-import { type WorldState } from "../backend-contracts";
-import { type CharacterCard, type CharacterMeta } from "../card-model";
+import { isCharacterHidden } from "../features/characters/character-visibility";
+import { type WorldState } from "../shared/contracts/backend-contracts";
+import { type CharacterCard, type CharacterMeta } from "../features/characters/card-model";
 
 export interface CharacterController {
   /** 這桌的完整名單（含隱藏區），順序＝側欄順序 */

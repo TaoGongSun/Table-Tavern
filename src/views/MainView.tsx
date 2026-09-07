@@ -4,7 +4,7 @@
 // 原本的三元式逐條照抄過來，不合併。
 import { ReactNode } from "react";
 import { t } from "../i18n";
-import { AppConfig } from "../backend-contracts";
+import { AppConfig } from "../shared/contracts/backend-contracts";
 import { ActReader, EditPane } from "./atoms";
 import { CardEditor } from "./CardEditor";
 import { WorldEditor } from "./WorldEditor";

@@ -2,11 +2,11 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
-import { checkApiKey } from "../api-key-check";
-import { tierLabel } from "../model-catalog";
-import { refreshCatalog, useModelCatalogs } from "../model-catalog-store";
-import { AppConfig } from "../backend-contracts";
-import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../cli";
+import { checkApiKey } from "../features/ai-connection/api-key-check";
+import { tierLabel } from "../features/ai-connection/model-catalog";
+import { refreshCatalog, useModelCatalogs } from "../features/ai-connection/model-catalog-store";
+import { AppConfig } from "../shared/contracts/backend-contracts";
+import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../features/ai-connection/cli";
 
 // 檔位預設模型只是設定欄的預填建議（存進 config.json 後由使用者作主），程式邏輯不讀它
 const SUGGESTED_TIER_MODELS: Record<string, string> = {

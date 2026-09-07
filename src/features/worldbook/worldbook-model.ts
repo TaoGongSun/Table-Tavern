@@ -1,4 +1,4 @@
-import type { Visibility } from "../../backend-contracts";
+import type { Visibility } from "../../shared/contracts/backend-contracts";
 
 export interface WorldbookDraft {
   uid: number | null;

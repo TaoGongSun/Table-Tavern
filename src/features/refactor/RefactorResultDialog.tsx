@@ -7,8 +7,8 @@ import {
   sourceEntryTitles,
   toggleIndex,
   unselectCharacter,
-} from "../../refactor-review";
-import type { WorldbookEntry } from "../../backend-contracts";
+} from "./refactor-review";
+import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import type { RefactorWorkflowController } from "./useRefactorWorkflow";
 
 // 淘汰理由 rule／稽核 kind 都是後端固定枚舉，本地寫死對照 i18n 鍵；查不到就退第一種，不讓畫面空白。

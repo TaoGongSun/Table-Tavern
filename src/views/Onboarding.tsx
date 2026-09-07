@@ -4,8 +4,8 @@ import { FormEvent, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
-import { checkApiKey } from "../api-key-check";
-import { AppConfig } from "../backend-contracts";
+import { checkApiKey } from "../features/ai-connection/api-key-check";
+import { AppConfig } from "../shared/contracts/backend-contracts";
 
 export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
   const [apiKey, setApiKey] = useState("");

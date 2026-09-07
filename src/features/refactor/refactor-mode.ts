@@ -1,6 +1,6 @@
 // 重構雙軌定向（refactor-mode-split）：本機三態偵測。
 // 素材是後端 card_interfaces 回傳的清單——介面腳本存在與否本機判得準，人物一律不用本機猜。
-import { type CardInterface } from "./interface-card";
+import { type CardInterface } from "../card-interface/interface-card";
 
 export type RefactorTristate = "supported" | "unsupported" | "none";
 

@@ -1,8 +1,8 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import type { Visibility, WorldbookEntry } from "../../backend-contracts";
-import type { CharacterMeta } from "../../card-model";
+import type { Visibility, WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import type { CharacterMeta } from "../characters/card-model";
 import { t } from "../../i18n";
 import { EMPTY_LEDGER, type Ledger, type LedgerEntry, type WorldbookDraft } from "./worldbook-model";
 

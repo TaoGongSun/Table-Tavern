@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { AppConfig, WorldMeta } from "../backend-contracts";
-import { PALETTE } from "../card-model";
+import type { AppConfig, WorldMeta } from "../shared/contracts/backend-contracts";
+import { PALETTE } from "../features/characters/card-model";
 import type { CardInterfaceController } from "../controllers/useCardInterfaceController";
 import type { CharacterController } from "../controllers/useCharacterController";
 import type { ChatController } from "../controllers/useChatController";

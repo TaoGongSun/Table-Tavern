@@ -1,6 +1,6 @@
 import { Fragment, type RefObject, useEffect, useRef } from "react";
 import { t } from "../../i18n";
-import { useDragReorder } from "../../drag-reorder";
+import { useDragReorder } from "../../shared/ui/drag-reorder";
 import { WorldbookEntryForm } from "./WorldbookEntryForm";
 import type { WorldbookEditorController } from "./useWorldbookEditor";
 

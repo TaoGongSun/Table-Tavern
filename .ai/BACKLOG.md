@@ -4,6 +4,9 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [rust-module-homing](tasks/rust-module-homing.md) — Rust 根層 13 支孤兒模組歸位，順手清 repo 根目錄雜項 — 下一步：未排程；開工首步＝逐支掃 consumer 列 owner 判斷表，判不出來的停下來問。
+- [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
+- [view-layer-homing](tasks/view-layer-homing.md) — views/ 與 controllers/ 約 25 支單一功能檔案歸位到 features/ — 下一步：排在 interface-card-panel 與 interface-takeover-spike 收工之後；開工首步＝逐檔掃 consumer 判 owner，一個 feature 一段搬。
 - [refactor-apply-count-mismatch](tasks/refactor-apply-count-mismatch.md) — 重構套用訊息說「新增 34 條世界書條目」，磁碟只有 33 條 — 下一步：重現一次並把 33 條的標題全列出來，先確認沒勾的角色轉成的 is_person 條目在不在裡面，再判斷是計數多算還是條目該寫沒寫。
 - [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉固定的 9,984。
 - [card-arrival-private-leak](tasks/card-arrival-private-leak.md) — 角色卡回歸事件把私設漏給同桌其他角色 — 下一步：先拍板「回歸事件該讓誰看到什麼」：是拆成公開回歸事件＋GM-only 私設事件，還是回歸事件只留公開設定。定了再看四條路各要怎麼改，並一併決定 grok 現在的「一角一線＋私設提進凍結 system」要保留還是改回共線——grok-cache-miss 的角色線驗收擋在這裡。

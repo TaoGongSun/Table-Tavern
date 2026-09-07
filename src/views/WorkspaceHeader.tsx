@@ -1,7 +1,7 @@
 import { ReactNode, useMemo, useState } from "react";
 import { t } from "../i18n";
-import { BranchBinding, StateNode } from "../backend-contracts";
-import { CharacterCard, CharacterMeta } from "../card-model";
+import { BranchBinding, StateNode } from "../shared/contracts/backend-contracts";
+import { CharacterCard, CharacterMeta } from "../features/characters/card-model";
 import { EditingStateField, treeValueAt } from "../controllers/useTableStateController";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";

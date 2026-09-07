@@ -1,4 +1,4 @@
-import type { AppConfig } from "../backend-contracts";
+import type { AppConfig } from "../shared/contracts/backend-contracts";
 import type { ImportController } from "../controllers/useImportController";
 import { t } from "../i18n";
 import { GenerateTableDialog } from "./GenerateTableDialog";

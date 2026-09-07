@@ -2,16 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
 import { detectLang, Lang, normalizeLang, t } from "./i18n";
-import { isCharacterHidden } from "./character-visibility";
-import { prefetchModelCatalogs } from "./model-catalog-store";
+import { isCharacterHidden } from "./features/characters/character-visibility";
+import { prefetchModelCatalogs } from "./features/ai-connection/model-catalog-store";
 import {
   AppConfig,
   SceneLabel,
   TranscriptEvent,
   WorldMeta,
   WorldState,
-} from "./backend-contracts";
-import { CharacterMeta } from "./card-model";
+} from "./shared/contracts/backend-contracts";
+import { CharacterMeta } from "./features/characters/card-model";
 import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";

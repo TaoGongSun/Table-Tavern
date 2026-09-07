@@ -2,11 +2,11 @@ import { type FormEvent, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../i18n";
-import { RefactorResultDialog } from "./world-editor/RefactorResultDialog";
-import { RefactorRunDialogs } from "./world-editor/RefactorRunDialogs";
-import { WorldbookSection } from "./world-editor/WorldbookSection";
-import { useRefactorWorkflow } from "./world-editor/useRefactorWorkflow";
-import { useWorldbookEditor } from "./world-editor/useWorldbookEditor";
+import { RefactorResultDialog } from "../features/refactor/RefactorResultDialog";
+import { RefactorRunDialogs } from "../features/refactor/RefactorRunDialogs";
+import { WorldbookSection } from "../features/worldbook/WorldbookSection";
+import { useRefactorWorkflow } from "../features/refactor/useRefactorWorkflow";
+import { useWorldbookEditor } from "../features/worldbook/useWorldbookEditor";
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 export function WorldEditor({
