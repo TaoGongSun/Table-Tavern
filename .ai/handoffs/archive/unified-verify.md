@@ -1,6 +1,6 @@
 # unified-verify — 統一驗證入口與 CI
 
-分支：`repo-hygiene/verify`（立案基準 main / 016133c）
+已結案 2026-09-07，squash 成 main / e40071e，分支已刪。
 規格與分段：[.ai/plans/unified-verify.md](../plans/unified-verify.md)
 
 ## 現在成立的狀態
@@ -38,10 +38,11 @@ Windows 手動觸發第四跑全綠（run 34080940899，13 分鐘：verify 330s�
 `workflow_dispatch` 只認得預設分支上的 workflow，所以這兩支在分支上按不動（HTTP 404）。
 verify.yml 是靠暫時把本分支加進 push 清單來實測的，驗完已移除。
 
-## 下一步
+## 結案驗收
 
-進 main 後手動按一次 `Windows real-install smoke` 確認改名與前置調整無誤，本案即可結案。
-結案照專案規約整理分支歷史（含把 `tmp:` 那兩筆壓掉）再合併。
+進 main 後兩支都在真環境跑綠：Verify 由 push main 自動觸發（run 34082624439，7.5 分），
+Windows real-install smoke 手動觸發（run 34082628127，12.5 分，四套 CLI 實裝與 log
+artifact 都正常）。
 
 ## 範圍外
 
