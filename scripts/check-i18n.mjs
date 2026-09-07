@@ -4,8 +4,10 @@ import { build } from "esbuild";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+// 不能用 URL.pathname：Windows 上會是 /D:/... 開頭，join 之後變成 D:\D:\...
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const I18N = join(ROOT, "src/i18n");
 const OUT = join(tmpdir(), `tt-i18n-${process.pid}`);
 
@@ -21,7 +23,8 @@ await build({
 const dicts = {};
 for (const file of files) {
   const code = file.replace(/\.ts$/, "");
-  const module = await import(join(OUT, `${code}.js`));
+  // 動態 import 要餵 file:// URL：Windows 的 C:\... 不是合法的 ESM specifier。
+  const module = await import(pathToFileURL(join(OUT, `${code}.js`)).href);
   dicts[code] = Object.values(module)[0];
 }
 rmSync(OUT, { recursive: true, force: true });

@@ -1,10 +1,10 @@
-name: CI Windows verify
+name: Windows real-install smoke
 
 on:
   workflow_dispatch:
 
 jobs:
-  verify-windows:
+  smoke:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,13 +20,10 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # generate_context! 編譯期嵌前端資產，cargo test 前必須先有 dist
+      # generate_context! 編譯期嵌前端資產，cargo 測試前必須先有 dist。
+      # 一般驗證由 verify.yml 自動跑，這支只做 Windows 專屬的實機安裝 smoke。
       - run: npm ci
       - run: npm run build
-
-      - name: cargo test (native Windows)
-        working-directory: src-tauri
-        run: cargo test
 
       - name: Real-install smoke (four CLIs, stops at login window)
         working-directory: src-tauri

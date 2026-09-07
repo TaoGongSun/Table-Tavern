@@ -5,6 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
+- [unified-verify](handoffs/unified-verify.md) — 統一驗證入口：三段全完成、CI 拆成自動 verify 與手動 smoke 兩支，剩進 main 後按一次 smoke 即結案
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過，v2 首要＝省額度（歷史裡整包 XML 重送）
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，仍有角色／介面選擇、其他卡型驗證與舊產殼路線清理待施工
 
