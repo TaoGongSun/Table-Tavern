@@ -44,6 +44,9 @@ verify.yml 是靠暫時把本分支加進 push 清單來實測的，驗完已移
 Windows real-install smoke 手動觸發（run 34082628127，12.5 分，四套 CLI 實裝與 log
 artifact 都正常）。
 
+結案後追加：`verify.yml` 加了 `paths-ignore`（`.ai/**`、`**.md`），純文件 commit 不再
+觸發 CI；同一筆 commit 只要碰到程式檔就照跑〔作者裁決 2026-09-07〕。
+
 ## 範圍外
 
 `src/` 目錄美化／搬檔不在本案，另立案處理〔作者裁決 2026-09-07〕。
