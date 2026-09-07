@@ -2,7 +2,7 @@
 
 規格與逐檔歸位表見 [plans/source-structure.md](../plans/source-structure.md)。
 
-## 現在的狀態：六段全部完成，等結案
+## 結案（2026-09-07）
 
 分支 `repo-hygiene/source-structure`，每段各自 commit、各自跑過 `npm run verify` 全綠。
 
@@ -20,8 +20,8 @@
 
 `.ai/` 現行文件有 27 條指向 `src-tauri/src/transport.rs`、`cli.rs`、`data.rs`、`refactor.rs`、`refactor_ai.rs` 的壞連結——那些檔案在更早的 Rust 拆分案裡已變成同名資料夾，連結沒跟著改。非本案造成，已連同掃描指令記進 `.ai/tasks/rust-module-homing.md`。
 
-## 下一步
+已 squash 成一筆合併進 main（`58b8cd9`），分支本地與遠端都已刪除，main 上 `npm run verify` 七步全綠。
 
-結案：確認 ChatGPT 端沒有握著這個分支，把六筆 commit squash 成一筆，合併進 main、push、刪本地與遠端分支。
+## 未竟
 
 `views/` 與 `controllers/` 還有約 25 支單一 owner 的檔案沒收，是**已知待收**不是規則例外——checker 判不出 view 的 owner，所以這一區在收完之前不能宣稱被 CI 防住。見 `.ai/tasks/view-layer-homing.md`。
