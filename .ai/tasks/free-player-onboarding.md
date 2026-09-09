@@ -3,7 +3,7 @@ Task-ID: free-player-onboarding
 Title: 免費玩家零門檻開始：OpenRouter 一鍵連接 → 推薦／限時免費模型
 Status: in-progress
 Created: 2026-09-09T16:21:41+08:00
-Updated: 2026-09-09T17:32:27+08:00
+Updated: 2026-09-09T17:35:00+08:00
 
 ## Summary
 核心產品目標只有一句：**讓沒有 API 經驗、也不打算先付費的玩家，打開 Table Tavern 後可以用最少步驟開始第一段對話。**
@@ -33,10 +33,10 @@ Updated: 2026-09-09T17:32:27+08:00
 - 2026-09-09 本地驗證修正：第一次 `npm run verify` 先在 rustfmt 發現樣式差異並修正；第二次跑到第 6 關 `cargo check` 發現 repo 實際使用 `ulid 3.0.0`，沒有 `Ulid::new()` API，已把 production nonce 與 cfg(test) 暫存目錄兩處都改成 `Ulid::generate()`。
 - **2026-09-09 使用者本地 `npm run verify` 七步全綠**：structure、cargo fmt、vitest、i18n、build、cargo check、cargo test 全部通過。第 1 階段核心程式面與機械驗證完成。
 - 2026-09-09 第一階段 UI 收尾小包：將原本壓在 AI 分頁最上方的 `API format` 移到一般設定後方、預設收合的「進階：API 相容設定」；`連線方式` 恢復為 AI 分頁第一個主內容。`preferences.api_mode`、Auto／Chat Completions／Responses 判定與舊 config 全部不變，不做 migration。原本硬編碼英文同步改成十語系 feature-local i18n。此小包只改 `SettingsWindow.tsx`、i18n 入口與 API 相容文案，未碰 CLI、高中低、provider-specific panel 或底層 transport。
+- **2026-09-09 UI 收尾後再次 `npm run verify` 七步全綠**：structure、cargo fmt、vitest、i18n、build、cargo check、cargo test 全部通過。第一階段目前沒有待修的機械驗證項目。
 
 ## Next action
-- 因 UI 收尾小包發生在前次七步全綠之後，先重新跑一次 `npm run verify`，確認 structure／i18n／build 等仍全綠。
-- 驗證後用全新 config 實機跑真 OpenRouter OAuth：不建立／複製／貼 key、不選模型、不付款，確認授權回 TT 後能直接送第一句並收到回覆。
+- 用全新 config 實機跑真 OpenRouter OAuth：不建立／複製／貼 key、不選模型、不付款，確認授權回 TT 後能直接送第一句並收到回覆。
 - 同一輪檢查落盤：`api_keys["openrouter"]` 有 OAuth key；原本三個 API tier 全空時都為 `openrouter/free`；若事先自訂任一 API tier，三檔完全不被 bootstrap 改寫。
 - 再做相容性實機：既有 BYOK key 不強迫 OAuth、手動 key fallback 可完成連線、CLI 路線與 UI 無差異；舊 `api_mode` 自訂值展開進階區後仍正確顯示與生效。
 - 第 1 階段實機通過後，才開第 2 階段推薦／限時免費模型清單。
