@@ -6,7 +6,7 @@
 // 同一語系另需後端 language_rule(transport.rs) 與範例桌內容(src-tauri/samples/<code>.json)，
 // 三處缺一律不上該語系。
 
-import { zh, type MsgKey } from "./zh-TW";
+import { zh, type MsgKey as CoreMsgKey } from "./zh-TW";
 import { en } from "./en";
 import { zhCN } from "./zh-CN";
 import { ja } from "./ja";
@@ -16,8 +16,13 @@ import { ptBR } from "./pt-BR";
 import { de } from "./de";
 import { fr } from "./fr";
 import { ru } from "./ru";
+import {
+  isOpenRouterOnboardingMsgKey,
+  openRouterOnboardingMessage,
+  type OpenRouterOnboardingMsgKey,
+} from "./openrouter-onboarding";
 
-export type { MsgKey };
+export type MsgKey = CoreMsgKey | OpenRouterOnboardingMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -30,7 +35,7 @@ const MESSAGES = {
   de,
   fr,
   ru,
-} satisfies Record<string, Record<MsgKey, string>>;
+} satisfies Record<string, Record<CoreMsgKey, string>>;
 
 export type Lang = keyof typeof MESSAGES;
 
@@ -83,7 +88,9 @@ export function setLang(next: Lang) {
 }
 
 export function t(key: MsgKey, params?: Record<string, string | number>): string {
-  let text: string = MESSAGES[lang][key];
+  let text: string = isOpenRouterOnboardingMsgKey(key)
+    ? openRouterOnboardingMessage(lang, key)
+    : MESSAGES[lang][key as CoreMsgKey];
   if (params) {
     for (const [name, value] of Object.entries(params)) {
       text = text.split(`{${name}}`).join(String(value));
