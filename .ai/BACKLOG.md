@@ -19,8 +19,8 @@
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：照規格檔實作三包：包 1 `CacheStrategy` 判定與帳本欄位；包 2 尾巴重播（`TranscriptEvent` 新欄位、GM 線與角色線組裝改寫、`<turn-context>` 包裝與 system 規則、十語系文案）；包 3 chain epoch 的重開條件。驗收看離線重算的 byte-LCP 要等於 100%，再實跑三輪看 `cached_tokens` 是否跟著上一輪的 `prompt_tokens` 走。
 - [grok-cache-miss](tasks/grok-cache-miss.md) — Grok 快取命中率從九成掉到 2% — 下一步：等 card-arrival-private-leak 拍板角色線怎麼組裝，再驗收角色線：讓角色接三輪以上話，看 `chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，並確認換角色、改卡、換幕之後不會每輪重開。GM 線已驗完，不必重驗。
 - [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：排在 api-shared-lane 的四路成對測試之後開工——那批數據才估得準底線該怎麼定、以及這個功能還需不需要。開工首步是拍板底線的統計量（最小值／眾數／出現 ≥N 次的最小值）與「樣本不足就不判定」的 N。
-- [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：OpenRouter 免費推薦＋供應商專屬面板 — 下一步：開工時先做 UI／資料契約切分：把目前 SettingsForm 內共用的 tier UI 改成 provider-specific 區塊；同時定義 OpenRouter 推薦 manifest 與本機 fallback 格式，再接現有 `/api/v1/models` 清單。
-- [easy-pay-onboarding](tasks/easy-pay-onboarding.md) — 簡易付費入口：OAuth 一鍵連接 →（條件觸發）App 內儲值 — 下一步：遠期構想；若開工，先與 `ai-connection-provider-panels` 對齊 OpenRouter panel，再做第一階段 OAuth。完整路線圖與合規前提見規格檔。
+- [free-player-onboarding](tasks/free-player-onboarding.md) — 免費玩家零門檻開始：OpenRouter 一鍵連接與免 key → 推薦／限時免費模型 — 下一步：先做第 1 階段 OAuth PKCE＋`openrouter/free` bootstrap，讓新玩家不貼 key、不選模型、不付款即可送出第一句；第 2 階段才做推薦與限時免費模型列表。
+- [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：供應商專屬面板（延後） — 下一步：等 free-player-onboarding 兩階段完成後再重新評估；目前不動 CLI、高中低與 provider-specific UI。
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
