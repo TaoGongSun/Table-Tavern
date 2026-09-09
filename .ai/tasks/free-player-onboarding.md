@@ -3,7 +3,7 @@ Task-ID: free-player-onboarding
 Title: 免費玩家零門檻開始：OpenRouter 一鍵連接 → 推薦／限時免費模型
 Status: in-progress
 Created: 2026-09-09T16:21:41+08:00
-Updated: 2026-09-09T17:10:00+08:00
+Updated: 2026-09-09T17:18:00+08:00
 
 ## Summary
 核心產品目標只有一句：**讓沒有 API 經驗、也不打算先付費的玩家，打開 Table Tavern 後可以用最少步驟開始第一段對話。**
@@ -30,9 +30,10 @@ Updated: 2026-09-09T17:10:00+08:00
 - 第二段新增前端測試：RFC 7636 S256 官方向量、隨機 verifier/challenge 形狀、十語系所有補充 key 非空、所有 OAuth machine code 都能映射到文案、補充字典確實能經全域 `t()` 取值。
 - 已複核既有聊天錯誤分類：HTTP 402／429 原本就會落到 `errQuotaApi`，文案提供「稍後再試／看供應商額度／換 AI 來源」，沒有把付款當唯一解法；一般首次 API request/upstream/call failure 也已有分流，因此本階段沒有另改聊天錯誤框架。
 - 兩個工作段均嚴守邊界：沒有改 CLI、高中低 UI、provider-specific panel，也沒有加入第 2 階段推薦／限時免費模型資料。
+- 2026-09-09 本地驗證修正：使用者 `npm run verify` 已通過 structure、rustfmt、vitest、i18n、build，於第 6 關 `cargo check` 發現 repo 實際使用 `ulid 3.0.0`，沒有 `Ulid::new()` API。已把 production nonce 與 cfg(test) 暫存目錄兩處都改成 `Ulid::generate()`；避免只修 production 後第 7 關 `cargo test` 再撞同一錯誤。
 
 ## Next action
-- 使用者本地跑 `npm run verify`；若要拆開看，至少跑 `npm test`、`npm run check:i18n`、`npm run build`、`cargo test`。
+- 使用者重新跑 `npm run verify`，確認第 6 關 `cargo check` 與第 7 關 `cargo test` 全綠；前五關先前已實際通過。
 - 自動驗證全綠後，用全新 config 實機跑真 OpenRouter OAuth：不建立／複製／貼 key、不選模型、不付款，確認授權回 TT 後能直接送第一句並收到回覆。
 - 同一輪檢查落盤：`api_keys["openrouter"]` 有 OAuth key；原本三個 API tier 全空時都為 `openrouter/free`；若事先自訂任一 API tier，三檔完全不被 bootstrap 改寫。
 - 再做相容性實機：既有 BYOK key 不強迫 OAuth、手動 key fallback 可完成連線、CLI 路線與 UI 無差異。
