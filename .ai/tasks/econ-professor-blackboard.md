@@ -1,9 +1,9 @@
 # Task
 Task-ID: econ-professor-blackboard
 Title: 經濟學教授 HTML 黑板角色卡（SillyTavern／Table Tavern 共用）
-Status: planned
+Status: in_progress
 Created: 2026-09-09T14:28:37+08:00
-Updated: 2026-09-09T14:28:37+08:00
+Updated: 2026-09-09T14:47:49+08:00
 Branch: `feature/econ-professor-blackboard`
 Base: `main@891d47f734ecca0bd7a75752f51adb0cfcc1254f`
 Plan: [../plans/econ-professor-blackboard.md](../plans/econ-professor-blackboard.md)
@@ -58,7 +58,7 @@ D₀ → D₁
 ## 明確不做
 - 自由手繪黑板／canvas。
 - SVG 經濟圖、供需曲線繪圖引擎。
-- LaTeX／MathJax／KaTeX。
+- LaTeX／MathJax／KaTeX 黑板 renderer（教授日後可在支援公式的宿主環境使用公式語法，但 v1 黑板本身只吃純文字／Unicode）。
 - 互動按鈕、小遊戲、可編輯板書。
 - 通用「任意角色都能叫教具」框架。
 - Table Tavern 的 inline ST HTML renderer。
@@ -89,3 +89,7 @@ D₀ → D₁
 ## Progress
 - 2026-09-09：從最新 `main` 建立 `feature/econ-professor-blackboard`，base `891d47f734ecca0bd7a75752f51adb0cfcc1254f`。
 - 2026-09-09：立案完成；v1 鎖定為「一張跨 ST／Table Tavern 的 HTML 黑板教授卡」，不擴建核心 renderer。
+- 2026-09-09：確認 v1 不做 LaTeX renderer；黑板維持純文字／Unicode，避免把單一卡片擴成 KaTeX／MathJax 工程。
+- 2026-09-09：完成第一版角色卡 source：`docs/examples/cards/econ-professor-blackboard.character.json`（commit `009f477`）。採標準 `chara_card_v2`，黑板規約放一條常駐 `character_book` entry，讓 ST 與 TT 都能收到；`extensions.regex_scripts` 只有一支 display script。
+- 2026-09-09：為配合 TT 現有 `extractShell`（只抽完整 HTML 殼），有黑板的回覆會由 regex 把「黑板前文字＋板書＋黑板後文字」一起包成完整自足 HTML；沒有 `<blackboard>` 時 regex 不匹配，普通聊天完全不變。固定殼無 JS、CDN、外部字型或圖片。
+- 2026-09-09：完成靜態檢查：JSON 可解析；黑板 regex 可捕捉前文／板書／後文三段；replacement 以 `<!DOCTYPE html>` 起始，符合 TT `extractShell` 現有辨識條件。尚未做 SillyTavern／Table Tavern 實機渲染驗收。
