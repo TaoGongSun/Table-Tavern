@@ -35,11 +35,11 @@ pub(crate) async fn chat_with_character(
     let emit = |delta: &str| {
         let _ = on_delta.send(delta.to_owned());
     };
-    // claude／grok 訂閱走 resume 續聊線。claude 全角色共用一條 session，私設回合注入、
-    // 回合後從 session 檔抹掉（案 C）；grok 沒有抹寫路徑，改成一角一線＋私設提進該角色
-    // 自己的凍結 system（grok-cache-miss），兩邊都不讓別的角色讀到不該讀的東西。
+    // CLI 訂閱走 resume 續聊線。claude 全角色共用一條 session，私設回合注入、
+    // 回合後從 session 檔抹掉（案 C）；Agy/Grok 無可靠的抹寫路徑，改成一角一線＋
+    // 私設提進該角色自己的凍結 system，不讓別的角色讀到不該讀的東西。
     if let Some(provider) = lane_provider(&config) {
-        let hoist = provider == lanes::LaneProvider::Grok;
+        let hoist = provider != lanes::LaneProvider::Claude;
         let lang = transport::ui_language(&config);
         let cards = load_active_cards(&root, &world_id)?;
         let mut frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);
@@ -81,7 +81,7 @@ pub(crate) async fn chat_with_character(
         .await
         .map_err(ai_call_failure);
     }
-    // api／codex／agy／grok 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
+    // api／codex 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
     // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
     // messages 已經自足——台詞自帶名字前綴、指示已在尾端，補了會重複（見 cli::flatten_messages）。
     let cards = load_active_cards(&root, &world_id)?;

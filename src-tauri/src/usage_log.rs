@@ -130,6 +130,9 @@ pub enum PromptShape {
     Turn { roster: usize, solo: bool },
     /// 換幕摘要、開桌生成、卡重構這類不建立續輪期待的呼叫。
     Oneshot,
+    /// 圖片生成。provider 可能回報固定工具／系統前綴命中，但它不是劇情對話快取，
+    /// 額度頁仍記 token 與費用，對話命中率則排除。
+    Image,
 }
 
 /// 這一輪 lane 呼叫的脈絡。診斷靠 app 自己的決策（有沒有重開、隔多久、上輪送了多少），
@@ -164,7 +167,7 @@ fn classify_mode(lane: Option<&LaneContext>, shape: PromptShape) -> Mode {
         Some(lane) if lane.ping => Mode::Ping,
         Some(_) => Mode::Resume,
         None => match shape {
-            PromptShape::Oneshot => Mode::Oneshot,
+            PromptShape::Oneshot | PromptShape::Image => Mode::Oneshot,
             PromptShape::Turn { solo: true, .. } => Mode::Solo,
             PromptShape::Turn { solo: false, .. } => Mode::Shared,
         },
@@ -256,6 +259,20 @@ pub fn append_call(
     shape: PromptShape,
     usage: PromptCacheUsage,
 ) {
+    append(
+        path,
+        call_fields(world, transport, model, lane, shape, usage),
+    );
+}
+
+fn call_fields(
+    world: Option<&str>,
+    transport: &str,
+    model: &str,
+    lane: Option<&LaneContext>,
+    shape: PromptShape,
+    usage: PromptCacheUsage,
+) -> Map<String, Value> {
     let mut fields = Map::new();
     fields.insert("transport".to_owned(), json!(transport));
     if let Some(world) = world {
@@ -266,6 +283,9 @@ pub fn append_call(
         "mode".to_owned(),
         json!(classify_mode(lane, shape).as_str()),
     );
+    if shape == PromptShape::Image {
+        fields.insert("purpose".to_owned(), json!("image"));
+    }
     let (cache, cache_reason) = classify_cache(lane, &usage);
     fields.insert("cache".to_owned(), json!(cache.as_str()));
     if let Some(reason) = cache_reason {
@@ -312,6 +332,26 @@ pub fn append_call(
         fields.insert("expected_cached".to_owned(), json!(lane.expected_cached));
         fields.insert("system_tokens".to_owned(), json!(lane.system_tokens));
         fields.insert("system_hash".to_owned(), json!(lane.system_hash));
+    }
+    fields
+}
+
+/// Agy 額外附上的原始計數證據。欄位皆為白名單，不寫 prompt 或 response。
+/// 其他來源繼續走 `append_call`，不影響現有帳本格式。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn append_call_with_evidence(
+    path: &Path,
+    world: Option<&str>,
+    transport: &str,
+    model: &str,
+    lane: Option<&LaneContext>,
+    shape: PromptShape,
+    usage: PromptCacheUsage,
+    evidence: &Map<String, Value>,
+) {
+    let mut fields = call_fields(world, transport, model, lane, shape, usage);
+    for (key, value) in evidence {
+        fields.insert(key.clone(), value.clone());
     }
     append(path, fields);
 }
@@ -619,6 +659,30 @@ mod tests {
         assert!(event.get("mode").is_none() && event.get("cache").is_none());
         assert_eq!(event["reason"], json!("rewrite-failed"));
         assert!(event.get("prompt_tokens").is_none());
+    }
+
+    #[test]
+    fn image_calls_are_marked_without_losing_usage() {
+        let dir = std::env::temp_dir().join(format!("tt-usage-image-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("prompt-cache.jsonl");
+        append_call(
+            &path,
+            Some("w1"),
+            "agy",
+            "gemini",
+            None,
+            PromptShape::Image,
+            usage(8_000, 7_000, 0),
+        );
+        let line: Value =
+            serde_json::from_str(std::fs::read_to_string(&path).unwrap().trim()).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(line["purpose"], json!("image"));
+        assert_eq!(line["prompt_tokens"], json!(8_000));
+        assert_eq!(line["cached_tokens"], json!(7_000));
+        assert_eq!(line["cost_usd"], json!(0.0031));
     }
 
     /// 開桌生成落檔時桌還沒建出來；桌一建好，那幾行要認到這桌名下，已經有桌的不受影響。

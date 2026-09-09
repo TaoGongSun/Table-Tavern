@@ -111,6 +111,7 @@ pub async fn run_cli(
     let mut done: Option<(String, bool)> = None;
     let mut stdout_open = true;
     let mut stderr_open = true;
+    let mut agy_conversation_id: Option<String> = None;
     // 子程序死法收網（2026-08-12，跨平台 tokio API）：
     // ①程序退出但管線不 EOF（孫程序繼承 fd）：退出後 800ms 沒新行＝強制收尾；
     // ②程序活著但斷流（網路死、CLI 內部卡死）：120 秒無任何 stdout/stderr 行＝殺程序回錯；
@@ -163,8 +164,41 @@ pub async fn run_cli(
                 break;
             },
         };
+        if let Some(log) = usage_log.as_ref().filter(|log| log.transport == "agy") {
+            if let Some(id) = super::stream::agy_conversation_id(&line) {
+                if log
+                    .expected_conversation_id
+                    .is_some_and(|expected| expected != id)
+                {
+                    return Err(format!(
+                        "Agy resume 回到不同對話：預期 {} 、實際 {id}",
+                        log.expected_conversation_id.unwrap_or_default()
+                    )
+                    .into());
+                }
+                if let Some(slot) = log.conversation_id_out {
+                    *slot
+                        .lock()
+                        .map_err(|_| "Agy conversation ID 回填鎖已損壞")? = Some(id.clone());
+                }
+                agy_conversation_id = Some(id);
+            }
+        }
         if let Some(log) = &usage_log {
-            if let Some(usage) = (log.parse)(&line) {
+            if let Some(mut usage) = (log.parse)(&line) {
+                if log.transport == "agy" {
+                    if let Some(current) = super::stream::agy_usage_counters(&line) {
+                        if let Some(base) = log.agy_usage_base {
+                            if let Some(delta) = super::stream::parse_agy_usage_delta(current, base)
+                            {
+                                usage = delta;
+                            }
+                        }
+                        if let Some(slot) = log.agy_usage_out {
+                            *slot.lock().map_err(|_| "Agy usage 回填鎖已損壞")? = Some(current);
+                        }
+                    }
+                }
                 eprintln!(
                     "[prompt-cache] transport={} model={} lane={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",
                     log.transport,
@@ -177,15 +211,27 @@ pub async fn run_cli(
                         .hit_rate()
                         .map_or_else(|| "—".to_owned(), |rate| format!("{rate:.0}%")),
                 );
-                crate::usage_log::append_call(
-                    log.path,
-                    log.world,
-                    log.transport,
-                    log.model,
-                    log.lane.as_ref(),
-                    log.shape,
-                    usage,
-                );
+                match super::stream::agy_usage_evidence(&line, agy_conversation_id.as_deref()) {
+                    Some(evidence) => crate::usage_log::append_call_with_evidence(
+                        log.path,
+                        log.world,
+                        log.transport,
+                        log.model,
+                        log.lane.as_ref(),
+                        log.shape,
+                        usage,
+                        &evidence,
+                    ),
+                    None => crate::usage_log::append_call(
+                        log.path,
+                        log.world,
+                        log.transport,
+                        log.model,
+                        log.lane.as_ref(),
+                        log.shape,
+                        usage,
+                    ),
+                }
                 if let Some(slot) = log.prompt_tokens_out {
                     slot.store(usage.prompt_tokens, std::sync::atomic::Ordering::Relaxed);
                 }

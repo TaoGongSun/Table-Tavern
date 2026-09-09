@@ -18,6 +18,15 @@ pub struct ModelOption {
     pub label: String,
 }
 
+/// Agy 在 `--conversation` 續聊時回傳的是整段 conversation 的累積計數。
+/// lane 保存上一輪快照，runner 才能把本輪增量換算成共用的 PromptCacheUsage 語意。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgyUsageCounters {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+}
+
 /// claude lane 續聊（prompt-cache-optimization 包 2）的 session 指定方式。
 pub enum CliSession<'a> {
     /// 開新線：session id 由本程式產生（UUID），之後靠它 resume 與定位 session 檔。
@@ -55,4 +64,12 @@ pub struct UsageLog<'a> {
     pub shape: crate::usage_log::PromptShape,
     /// 回填本輪總輸入，供 lane 記成下輪的理論可中量（跨 await 需 Sync，故用 atomic）。
     pub prompt_tokens_out: Option<&'a std::sync::atomic::AtomicU64>,
+    /// Agy 開線由 CLI 產生 conversation ID；runner 在 init/result 看到後回填。
+    pub conversation_id_out: Option<&'a std::sync::Mutex<Option<String>>>,
+    /// Agy resume 必須留在指定對話；CLI 若靜默改開新線，在正文前就中止。
+    pub expected_conversation_id: Option<&'a str>,
+    /// 同一 Agy conversation 上輪的累積 usage；None＝開線或單發。
+    pub agy_usage_base: Option<AgyUsageCounters>,
+    /// 回填這輪 result 的累積 usage，供 lane 保存給下輪做差。
+    pub agy_usage_out: Option<&'a std::sync::Mutex<Option<AgyUsageCounters>>>,
 }

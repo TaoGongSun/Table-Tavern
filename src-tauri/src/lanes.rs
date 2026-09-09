@@ -1,8 +1,8 @@
-//! CLI lane resume 續聊（claude 走 prompt-cache-optimization 包 2，grok 走 grok-cache-miss）。
+//! CLI lane resume 續聊（Claude/Grok 走各自 session，Agy 走精確 `--conversation`）。
 //! 每桌按「線種:實際模型」分線（2026-08-03 拍板）：chars:<model>（解析到同一個模型的角色
 //! 共用一條，快取按模型分池、跨模型本來就不共用）＋gm:<model>（GM 獨立——GM 的凍結 system
 //! 多了 world.md／私設／GM 條目，依可見性憲法不能和角色同線）。
-//! grok 的 chars 線再按角色細分（chars:<model>:<角色 id>）：grok 的 session 檔沒有可靠的
+//! Agy/Grok 的 chars 線再按角色細分（chars:<model>:<角色 id>）：它們的 session 沒有可靠的
 //! 回合後抹寫路徑，私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色。
 //! 凍結 system 每輪逐字重帶、只送新事件與回合尾段，
 //! 快取命中率的天花板因此變成「只有最後一句沒中」（實驗 E6：99.7%）。
@@ -30,6 +30,7 @@ pub(crate) enum Lane {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LaneProvider {
     Claude,
+    Agy,
     Grok,
 }
 
@@ -37,6 +38,7 @@ impl LaneProvider {
     fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
+            Self::Agy => "agy",
             Self::Grok => "grok",
         }
     }
@@ -48,7 +50,7 @@ pub(crate) struct LaneCall {
     pub program: PathBuf,
     pub working_dir: PathBuf,
     pub envs: Vec<(String, String)>,
-    /// None＝不覆寫、用 CLI 自己的預設模型（只有 grok 會這樣）
+    /// None＝不覆寫、用 CLI 自己的預設模型（Agy/Grok 可能這樣）
     pub model: Option<String>,
     pub usage_log: Option<PathBuf>,
     /// session 檔所在的 claude 設定目錄（~/.claude 或 $CLAUDE_CONFIG_DIR）；grok 不用
@@ -83,7 +85,7 @@ pub(crate) struct TurnInput<'a> {
     /// 回合後補在最後一則 assistant 前的名字前綴（chars 線「X：」）
     pub prefix: Option<String>,
     pub echo: ReplyEcho,
-    /// 線名後綴：grok 的 chars 線帶角色 id（一角一線），其餘 None
+    /// 線名後綴：Agy/Grok 的 chars 線帶角色 id（一角一線），其餘 None
     pub scope: Option<String>,
 }
 
@@ -125,6 +127,9 @@ struct LaneState {
     /// 上次成功呼叫的總輸入＝下輪的理論可中量（診斷用；舊檔沒這欄位當 0，不觸發重開）
     #[serde(default)]
     last_prompt_tokens: u64,
+    /// Agy result 的 conversation 累積計數；續聊時相減才是這一輪實際用量。
+    #[serde(default)]
+    agy_usage: Option<cli::AgyUsageCounters>,
     /// 開這條線的 CLI（"claude"／"grok"）。換 CLI 就整線重開——session id 認的是自己那套。
     /// grok lane 之前只有 claude 會開線，舊檔缺這欄位一律當 claude，不必白白重建一次快取。
     #[serde(default = "legacy_provider")]
@@ -312,7 +317,7 @@ fn plan_turn(
             } // 回覆沒落檔或被改＝session 與正典分岔
         }
     }
-    if provider == LaneProvider::Grok {
+    if provider != LaneProvider::Claude {
         if state.applied != input.frozen_system {
             return TurnPlan::Reopen {
                 reason: ReopenReason::SystemChanged,
@@ -426,19 +431,23 @@ pub(crate) async fn run_turn(
     input: TurnInput<'_>,
     mut emit: impl FnMut(&str),
 ) -> Result<String, String> {
-    // grok 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
+    // Agy/Grok 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
     // 提進該角色自己的凍結 system（hoist_private）＋一角一線；這裡出聲擋下，寧可整輪失敗
     // 也不讓別的角色讀到不該讀的東西。
-    if call.provider == LaneProvider::Grok
+    if call.provider != LaneProvider::Claude
         && (input.confidential.is_some() || input.prefix.is_some())
     {
-        return Err("grok 續聊線不支援回合後抹寫，私設必須提進凍結 system".to_owned());
+        return Err(format!(
+            "{} 續聊線不支援回合後抹寫，私設必須提進凍結 system",
+            call.provider.as_str()
+        ));
     }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
     let key = lane_key(input.lane, call.model_label(), input.scope.as_deref());
     let mut store = read_store(&store_path);
     let call_epoch = now_epoch();
     let prior = store.get(&key);
+    let prior_agy_usage = prior.and_then(|state| state.agy_usage);
     // 診斷用（包 4）：距上輪幾秒、上輪送了多少（＝這輪的理論可中量）
     let age_secs = prior.map_or(0, |state| call_epoch.saturating_sub(state.last_call_epoch));
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
@@ -500,7 +509,7 @@ pub(crate) async fn run_turn(
         } else {
             cli::CliSession::Resume(&session_id)
         };
-        // claude 的正文走 stdin；grok 沒有 stdin 入口，正文一律進 -p
+        // Claude 的正文走 stdin；Agy/Grok 的正文進 -p。
         let (args, stdin) = match call.provider {
             LaneProvider::Claude => (
                 cli::claude_session_args(call.model_label(), &system, &session),
@@ -508,6 +517,15 @@ pub(crate) async fn run_turn(
             ),
             LaneProvider::Grok => (
                 cli::grok_session_args(call.model.as_deref(), &system, &prompt, &session),
+                "",
+            ),
+            LaneProvider::Agy => (
+                cli::agy_session_args(
+                    call.model.as_deref(),
+                    &system,
+                    &prompt,
+                    (!opening).then_some(session_id.as_str()),
+                ),
                 "",
             ),
         };
@@ -530,10 +548,13 @@ pub(crate) async fn run_turn(
                 expected_reply: None,
                 last_call_epoch: call_epoch,
                 last_prompt_tokens: 0,
+                agy_usage: None,
             },
         );
         write_store(&store_path, &store)?;
 
+        let conversation_id = std::sync::Mutex::new(None);
+        let agy_usage = std::sync::Mutex::new(None);
         let result = cli::run_cli(
             &call.program,
             &call.working_dir,
@@ -542,6 +563,7 @@ pub(crate) async fn run_turn(
             &call.envs,
             match call.provider {
                 LaneProvider::Claude => cli::parse_claude_line,
+                LaneProvider::Agy => cli::parse_agy_line,
                 LaneProvider::Grok => cli::parse_grok_line,
             },
             false, // 聊天正文串流，思考不進畫面
@@ -552,11 +574,20 @@ pub(crate) async fn run_turn(
                 model: call.model_label(),
                 parse: match call.provider {
                     LaneProvider::Claude => cli::parse_claude_usage,
+                    LaneProvider::Agy => cli::parse_agy_usage,
                     LaneProvider::Grok => cli::parse_grok_usage,
                 },
                 lane: Some(lane_log),
                 shape: usage_log::PromptShape::Oneshot, // 續聊線的形狀由 LaneContext 說明，這欄不參與判定
                 prompt_tokens_out: Some(&prompt_tokens),
+                conversation_id_out: (call.provider == LaneProvider::Agy)
+                    .then_some(&conversation_id),
+                expected_conversation_id: (call.provider == LaneProvider::Agy && !opening)
+                    .then_some(session_id.as_str()),
+                agy_usage_base: (call.provider == LaneProvider::Agy && !opening)
+                    .then_some(prior_agy_usage)
+                    .flatten(),
+                agy_usage_out: (call.provider == LaneProvider::Agy).then_some(&agy_usage),
             }),
             &mut emit,
         )
@@ -564,19 +595,42 @@ pub(crate) async fn run_turn(
 
         match result {
             Ok(reply) => {
-                let rewrite = apply_rewrite(
-                    call,
-                    &session_id,
-                    input.confidential.as_deref(),
-                    input.prefix.as_deref(),
-                );
+                let actual_session_id = match call.provider {
+                    LaneProvider::Agy => conversation_id
+                        .into_inner()
+                        .ok()
+                        .flatten()
+                        .filter(|id| !id.is_empty()),
+                    _ => Some(session_id.clone()),
+                };
+                // Agy 若沒有回 conversation ID，本輪回覆仍可用，但不能把假 ID 留給下輪。
+                if actual_session_id.is_none() {
+                    store.remove(&key);
+                    write_store(&store_path, &store)?;
+                    return Ok(reply);
+                }
+                let actual_session_id = actual_session_id.expect("checked above");
+                let actual_agy_usage = agy_usage.into_inner().ok().flatten();
+                let rewrite = match call.provider {
+                    LaneProvider::Claude => apply_rewrite(
+                        call,
+                        &actual_session_id,
+                        input.confidential.as_deref(),
+                        input.prefix.as_deref(),
+                    ),
+                    LaneProvider::Agy | LaneProvider::Grok => Ok(()),
+                };
                 match rewrite {
                     Ok(()) => {
                         if let Some(state) = store.get_mut(&key) {
+                            state.session_id = actual_session_id;
                             state.pending_rewrite = None;
                             state.expected_reply = Some(expected_reply_for(&input.echo, &reply));
                             state.last_prompt_tokens =
                                 prompt_tokens.load(std::sync::atomic::Ordering::Relaxed);
+                            if call.provider == LaneProvider::Agy {
+                                state.agy_usage = actual_agy_usage;
+                            }
                         }
                     }
                     // 抹寫失敗＝session 內容不可信，丟線；下一輪自動重開全量，本輪回覆照常送回
@@ -685,6 +739,10 @@ pub(crate) async fn keepalive(
                 lane: Some(lane_log),
                 shape: usage_log::PromptShape::Oneshot, // 同上：ping 的 mode 來自 LaneContext.ping
                 prompt_tokens_out: None,
+                conversation_id_out: None,
+                expected_conversation_id: None,
+                agy_usage_base: None,
+                agy_usage_out: None,
             }),
             &mut |_: &str| {},
         )
@@ -822,6 +880,70 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         }
     }
 
+    /// 假 Agy：開線由 CLI 回傳固定 conversation ID；續聊只接受同一 ID，並回報 usage。
+    #[cfg(unix)]
+    fn fake_agy(tag: &str) -> FakeCli {
+        let dir = std::env::temp_dir().join(format!("tt-lanes-agy-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let working_dir = dir.join("ws");
+        let root = dir.join("root");
+        let world_id = ulid::Ulid::generate().to_string();
+        let usage_log = dir.join("usage.jsonl");
+        std::fs::create_dir_all(&working_dir).unwrap();
+        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        let script = dir.join("fake-agy.py");
+        std::fs::write(
+            &script,
+            r#"#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+def flag(name):
+    return args[args.index(name) + 1] if name in args else None
+cid = flag('--conversation')
+prompt = flag('-p') or ''
+d = os.environ['FAKE_AGY_DIR']
+with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
+    f.write(json.dumps({'args': args, 'prompt': prompt}, ensure_ascii=False) + '\n')
+if cid and cid != 'agy-conversation-1':
+    sys.exit(3)
+turn = 2 if cid else 1
+input_tokens = 1200 if cid else 1000
+output_tokens = 250 if cid else 100
+cached = 900 if cid else 0
+print(json.dumps({'event': 'init', 'conversation_id': 'agy-conversation-1'}))
+print(json.dumps({'event': 'result', 'result': {
+    'status': 'SUCCESS', 'response': '回覆' + str(turn), 'num_turns': turn,
+    'usage': {'input_tokens': input_tokens, 'output_tokens': output_tokens,
+              'thinking_tokens': 20, 'cache_read_tokens': cached,
+              'total_tokens': input_tokens + output_tokens}}}, ensure_ascii=False))
+"#,
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let call = LaneCall {
+            provider: LaneProvider::Agy,
+            program: script,
+            working_dir: working_dir.clone(),
+            envs: vec![(
+                "FAKE_AGY_DIR".to_owned(),
+                dir.to_string_lossy().into_owned(),
+            )],
+            model: Some("gemini-test".to_owned()),
+            usage_log: Some(usage_log),
+            claude_home: dir.join("unused-claude-home"),
+        };
+        FakeCli {
+            dir,
+            call,
+            root,
+            world_id,
+            session_dir: PathBuf::new(),
+            claude_home: PathBuf::new(),
+            working_dir,
+        }
+    }
+
     fn event(kind: TranscriptKind, speaker_id: &str, name: &str, text: &str) -> TranscriptEvent {
         TranscriptEvent {
             raw: None,
@@ -865,6 +987,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             model: "sonnet".to_owned(),
             last_call_epoch: 1_000,
             last_prompt_tokens: 0,
+            agy_usage: None,
         }
     }
 
@@ -1176,6 +1299,86 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let increment = build_prompt(&events, 1, "尾段", false, Lane::Chars);
         assert_eq!(increment, "（旁白）夜深了\n\n——\n尾段");
         assert_eq!(build_prompt(&events, 2, "尾段", false, Lane::Chars), "尾段");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let FakeCli {
+            dir,
+            call,
+            root,
+            world_id,
+            ..
+        } = fake_agy("resume");
+        let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第一句")];
+        let mut first = turn_input(&events, 0);
+        first.prefix = None;
+        first.scope = Some("fox-id".to_owned());
+        assert_eq!(
+            run_turn(&call, &root, &world_id, first, |_| {})
+                .await
+                .unwrap(),
+            "回覆1"
+        );
+        let store_path = data::lanes_path(&root, &world_id).unwrap();
+        let state = read_store(&store_path).values().next().unwrap().clone();
+        assert_eq!(state.session_id, "agy-conversation-1");
+
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆1"));
+        events.push(event(TranscriptKind::Player, "", "阿濤", "只有這句是新的"));
+        let mut second = turn_input(&events, 0);
+        second.prefix = None;
+        second.scope = Some("fox-id".to_owned());
+        assert_eq!(
+            run_turn(&call, &root, &world_id, second, |_| {})
+                .await
+                .unwrap(),
+            "回覆2"
+        );
+
+        let calls = std::fs::read_to_string(dir.join("calls.jsonl")).unwrap();
+        let calls: Vec<serde_json::Value> = calls
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(calls.len(), 2);
+        assert!(!calls[0]["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg == "--conversation"));
+        assert!(calls[0]["prompt"].as_str().unwrap().contains("凍結A"));
+        let second_args = calls[1]["args"].as_array().unwrap();
+        let resume = second_args
+            .iter()
+            .position(|arg| arg == "--conversation")
+            .unwrap();
+        assert_eq!(second_args[resume + 1], "agy-conversation-1");
+        let delta = calls[1]["prompt"].as_str().unwrap();
+        assert!(delta.contains("只有這句是新的"));
+        assert!(!delta.contains("第一句"));
+        assert!(!delta.contains("回覆1"));
+        assert!(!delta.contains("凍結A"));
+
+        let usage = std::fs::read_to_string(dir.join("usage.jsonl")).unwrap();
+        let usage: Vec<serde_json::Value> = usage
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(usage.len(), 2);
+        assert_eq!(usage[0]["agy_conversation_id"], "agy-conversation-1");
+        assert_eq!(usage[1]["agy_conversation_id"], "agy-conversation-1");
+        assert_eq!(usage[0]["agy_cache_read_tokens"], 0);
+        assert_eq!(usage[1]["agy_cache_read_tokens"], 900);
+        assert_eq!(usage[1]["agy_num_turns"], 2);
+        assert_eq!(usage[1]["prompt_tokens"], 1100);
+        assert_eq!(usage[1]["cached_tokens"], 900);
+        assert_eq!(usage[1]["output_tokens"], 150);
+        assert_eq!(usage[1]["hit_rate"], 81.8);
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// 端到端（假 CLI）：開線→抹寫→續聊只送增量→正典被改→自動重開；
