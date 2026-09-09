@@ -1,77 +1,105 @@
 // 首次設定卡：transport 走 api、且還沒存過 OpenRouter key 時，才長在遊玩畫面頂端。
-// 判定、輸入與寫檔都在元件自己身上；寫入失敗只顯示在卡片裡的 message，不送進 App 的全域錯誤。
-import { FormEvent, useState } from "react";
+// 主路徑是一鍵 OAuth；手動 key 只留在次要 fallback，兩條路都交給後端共用保存／bootstrap 邏輯。
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { t } from "../i18n";
+import { normalizeLang, t } from "../i18n";
 import { checkApiKey } from "../features/ai-connection/api-key-check";
+import {
+  createOpenRouterPkce,
+  openRouterOnboardingCopy,
+  openRouterOnboardingError,
+} from "../features/ai-connection/openrouter-onboarding";
 import { AppConfig } from "../shared/contracts/backend-contracts";
+
+type Busy = "oauth" | "manual" | null;
 
 export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState<Busy>(null);
   const transport = config.preferences["transport"] ?? "api";
+  const lang = normalizeLang(config.preferences["language"]);
+  const copy = openRouterOnboardingCopy(lang);
   const keyWarning = checkApiKey(apiKey, String(config.preferences["base_url"] ?? ""));
 
   if (transport !== "api" || (config.api_keys["openrouter"] ?? "").trim()) return null;
 
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function connect() {
     setMessage("");
-    const next: AppConfig = {
-      ...config,
-      api_keys: { ...config.api_keys, openrouter: apiKey.trim() },
-    };
+    setBusy("oauth");
     try {
-      await invoke("write_config", { config: next });
+      const { verifier, challenge } = await createOpenRouterPkce();
+      const next = await invoke<AppConfig>("connect_openrouter", {
+        codeVerifier: verifier,
+        codeChallenge: challenge,
+      });
       onSaved(next);
     } catch (reason) {
-      setMessage(String(reason));
+      setMessage(openRouterOnboardingError(lang, reason));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveManual(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!apiKey.trim()) return;
+    setMessage("");
+    setBusy("manual");
+    try {
+      const next = await invoke<AppConfig>("save_openrouter_key", { apiKey: apiKey.trim() });
+      onSaved(next);
+    } catch (reason) {
+      setMessage(openRouterOnboardingError(lang, reason));
+    } finally {
+      setBusy(null);
     }
   }
 
   return (
     <section className="settings onboarding" role="note">
-      <form className="settings-form" onSubmit={save}>
-        <strong>{t("onboardTitle")}</strong>
-        <p>{t("onboardIntro")}</p>
-        <ol>
-          <li>
-            {t("onboardStep1")}
-            <button type="button" onClick={() => void openUrl("https://openrouter.ai/")}>
-              {t("onboardStep1Btn")}
-            </button>
-          </li>
-          <li>{t("onboardStep2")}</li>
-          <li>
-            {t("onboardStep3")}
-            <button
-              type="button"
-              onClick={() => void openUrl("https://openrouter.ai/settings/keys")}
-            >
-              {t("onboardStep3Btn")}
-            </button>
-          </li>
-        </ol>
-        <p>{t("onboardCost")}</p>
-        <div className="row">
-          <input
-            type="password"
-            aria-label={t("apiKeyLabel")}
-            value={apiKey}
-            onChange={(event) => setApiKey(event.currentTarget.value)}
-            placeholder={t("apiKeyPlaceholder")}
-          />
-          <button type="submit">{t("onboardSaveBtn")}</button>
-        </div>
-        {keyWarning && (
-          <span className="field-warn" role="alert">
-            {t(keyWarning)}
+      <div className="settings-form">
+        <strong>{copy.title}</strong>
+        <p>{copy.intro}</p>
+        <p>{copy.freeNote}</p>
+        <button type="button" onClick={() => void connect()} disabled={busy !== null}>
+          {busy === "oauth" ? copy.connecting : copy.connect}
+        </button>
+        <small>{copy.browserHint}</small>
+        {message && (
+          <span role="alert" aria-live="polite">
+            {message}
           </span>
         )}
-        {message && <span role="alert">{message}</span>}
-        <small>{t("onboardCliHint")}</small>
-      </form>
+
+        <details>
+          <summary>{copy.manualSummary}</summary>
+          <form className="settings-form" onSubmit={saveManual}>
+            <p>{copy.manualIntro}</p>
+            <div className="row">
+              <input
+                type="password"
+                aria-label={t("apiKeyLabel")}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.currentTarget.value)}
+                placeholder={t("apiKeyPlaceholder")}
+                disabled={busy !== null}
+              />
+              <button type="submit" disabled={busy !== null || !apiKey.trim()}>
+                {busy === "manual" ? copy.savingKey : copy.saveKey}
+              </button>
+            </div>
+            {keyWarning && (
+              <span className="field-warn" role="alert">
+                {t(keyWarning)}
+              </span>
+            )}
+          </form>
+        </details>
+
+        <small>{copy.cliHint}</small>
+      </div>
     </section>
   );
 }
