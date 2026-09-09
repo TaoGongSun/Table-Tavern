@@ -54,6 +54,10 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
             lane: None,
             shape: crate::usage_log::PromptShape::Oneshot,
             prompt_tokens_out: Some(&seen),
+            conversation_id_out: None,
+            expected_conversation_id: None,
+            agy_usage_base: None,
+            agy_usage_out: None,
         }),
         |delta: &str| {
             deltas.push(delta.to_owned());

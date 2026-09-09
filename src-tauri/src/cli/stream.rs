@@ -113,10 +113,10 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
 /// 事件的判別鍵是 `event` 而非 `type`，所以不走 `usage_event`。
 /// agy 不回報寫入快取的 token 數，created 為 None（沒回報，不是 0）；也不回報金額。
 ///
-/// `input_tokens` 含不含 `cache_read_tokens` 沒有文件可查，實測那筆快取剛好是 0、驗不出來。
-/// 這裡不猜，改用 `total_tokens` 當契約判別：對得上哪一式就照哪一式算，兩式都對不上
-/// （或讀取數大於輸入數）就回 `cached_tokens: None`——額度分頁顯示「—」代表量不到，
-/// 好過用猜測算出一個 >100% 的命中率、讓玩家去修一個不存在的問題。
+/// 官方 headless 契約的 `input_tokens` 是總輸入（含 `cache_read_tokens`），
+/// `total_tokens = input_tokens + output_tokens`。舊版實測曾出現「input 不含 cache」的組合，
+/// 所以對得上舊式時仍相容；但 `total_tokens` 若只是後端聚合誤差，不得把明確回報的
+/// `cache_read_tokens` 整個丟掉。原始五個 usage 計數另寫入帳本，方便追查契約漂移。
 pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
     if !line.contains("\"usage\"") {
         return None;
@@ -131,9 +131,11 @@ pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
     let cached = token_count(usage, "cache_read_tokens");
     let total = token_count(usage, "total_tokens");
     let (prompt_tokens, cached_tokens) = if total == input + output && cached <= input {
-        (input, Some(cached)) // input 已含 cache_read
+        (input, Some(cached)) // 官方契約：input 已含 cache_read
     } else if total == input + cached + output {
         (input + cached, Some(cached)) // input 未含，要加回
+    } else if cached <= input {
+        (input, Some(cached)) // total 漂移，但 input/cache 本身仍是明確計數
     } else {
         (input, None) // 兩式都對不上：記數字、不產生命中率
     };
@@ -144,6 +146,96 @@ pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
         output_tokens: output,
         cost_usd: None,
     })
+}
+
+/// 擷取 Agy conversation 的累積計數。內容欄位不會離開 parser。
+pub fn agy_usage_counters(line: &str) -> Option<super::types::AgyUsageCounters> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("event").and_then(|event| event.as_str()) != Some("result") {
+        return None;
+    }
+    let usage = value.pointer("/result/usage")?;
+    Some(super::types::AgyUsageCounters {
+        input_tokens: token_count(usage, "input_tokens"),
+        output_tokens: token_count(usage, "output_tokens"),
+        cache_read_tokens: token_count(usage, "cache_read_tokens"),
+    })
+}
+
+/// Agy resume 的 result 會把 conversation 至今的 input/output/cache 都累加。
+/// 目前 CLI 的 input 不含 cache read，因此本輪總輸入是兩個增量的和。
+/// 任一計數倒退代表契約或 conversation 已變，交回 None 讓呼叫端保留原始解析而不亂猜。
+pub fn parse_agy_usage_delta(
+    current: super::types::AgyUsageCounters,
+    base: super::types::AgyUsageCounters,
+) -> Option<PromptCacheUsage> {
+    let input = current.input_tokens.checked_sub(base.input_tokens)?;
+    let output = current.output_tokens.checked_sub(base.output_tokens)?;
+    let cached = current
+        .cache_read_tokens
+        .checked_sub(base.cache_read_tokens)?;
+    Some(PromptCacheUsage {
+        prompt_tokens: input.saturating_add(cached),
+        cached_tokens: Some(cached),
+        created_tokens: None,
+        output_tokens: output,
+        cost_usd: None,
+    })
+}
+
+/// 從 Agy result 只擷取非內容型的原始用量證據；不保存 prompt/response。
+pub(super) fn agy_usage_evidence(
+    line: &str,
+    init_conversation_id: Option<&str>,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("event").and_then(|event| event.as_str()) != Some("result") {
+        return None;
+    }
+    let result = value.get("result")?;
+    let usage = result.get("usage")?;
+    let mut fields = serde_json::Map::new();
+    let conversation_id = result
+        .get("conversation_id")
+        .and_then(|value| value.as_str())
+        .or(init_conversation_id);
+    if let Some(id) = conversation_id.filter(|id| !id.is_empty()) {
+        fields.insert("agy_conversation_id".to_owned(), serde_json::json!(id));
+    }
+    for key in [
+        "input_tokens",
+        "output_tokens",
+        "thinking_tokens",
+        "cache_read_tokens",
+        "total_tokens",
+    ] {
+        if let Some(count) = usage.get(key).and_then(|value| value.as_u64()) {
+            fields.insert(format!("agy_{key}"), serde_json::json!(count));
+        }
+    }
+    if let Some(turns) = result.get("num_turns").and_then(|value| value.as_u64()) {
+        fields.insert("agy_num_turns".to_owned(), serde_json::json!(turns));
+    }
+    if let Some(seconds) = result
+        .get("duration_seconds")
+        .and_then(|value| value.as_f64())
+    {
+        fields.insert(
+            "agy_duration_seconds".to_owned(),
+            serde_json::json!(seconds),
+        );
+    }
+    Some(fields)
+}
+
+pub(super) fn agy_conversation_id(line: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    value
+        .get("conversation_id")
+        .or_else(|| value.pointer("/result/conversation_id"))
+        .and_then(|value| value.as_str())
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
 }
 
 /// codex exec --json 逐行解析：agent_message 為增量（通常一則），turn.completed 收尾。
@@ -524,8 +616,8 @@ mod tests {
         assert!(parse_agy_usage(r#"{"event":"result","result":{"status":"SUCCESS"}}"#).is_none());
     }
 
-    /// `input_tokens` 含不含 `cache_read_tokens` 沒有文件可查，靠 `total_tokens` 判別。
-    /// 對不上就不產生命中率——寧可顯示「—」，也不要猜出一個 >100% 的數字。
+    /// 官方契約的 input 已含 cache read；舊版另一種加總形狀仍相容。
+    /// total 單獨漂移時不得抹掉明確回報的 cache_read_tokens。
     #[test]
     fn agy_usage_picks_contract_by_total_and_bails_out_when_neither_fits() {
         let build = |input: u64, cached: u64, output: u64, total: u64| {
@@ -542,12 +634,46 @@ mod tests {
         let excluded = build(1_000, 400, 100, 1_500);
         assert_eq!(excluded.prompt_tokens, 1_400);
         assert_eq!(excluded.cached_tokens, Some(400));
-        // 兩式都對不上：記數字、不產生命中率
-        let unknown = build(1_000, 400, 100, 9_999);
-        assert_eq!(unknown.prompt_tokens, 1_000);
-        assert_eq!(unknown.cached_tokens, None);
+        // total 後端聚合值若漂移，input/cache 本身仍是明確計數
+        let drifted_total = build(1_000, 400, 100, 9_999);
+        assert_eq!(drifted_total.prompt_tokens, 1_000);
+        assert_eq!(drifted_total.cached_tokens, Some(400));
         // 讀取數大於輸入數又不符第二式：一樣不猜
         assert_eq!(build(100, 900, 50, 150).cached_tokens, None);
+    }
+
+    #[test]
+    fn agy_usage_evidence_keeps_counts_and_conversation_without_content() {
+        let line = r#"{"event":"result","result":{"conversation_id":"c-result","status":"SUCCESS","response":"private","duration_seconds":6.5,"num_turns":2,"usage":{"input_tokens":1000,"output_tokens":100,"thinking_tokens":80,"cache_read_tokens":400,"total_tokens":1100}}}"#;
+        let evidence = agy_usage_evidence(line, Some("c-init")).expect("result usage");
+        assert_eq!(
+            evidence["agy_conversation_id"],
+            serde_json::json!("c-result")
+        );
+        assert_eq!(evidence["agy_cache_read_tokens"], serde_json::json!(400));
+        assert_eq!(evidence["agy_thinking_tokens"], serde_json::json!(80));
+        assert_eq!(evidence["agy_num_turns"], serde_json::json!(2));
+        assert!(!evidence.values().any(|value| value == "private"));
+
+        let init = r#"{"event":"init","conversation_id":"c-init","init":{"cwd":"/x"}}"#;
+        assert_eq!(agy_conversation_id(init).as_deref(), Some("c-init"));
+    }
+
+    #[test]
+    fn agy_resume_usage_subtracts_conversation_counters() {
+        let base = super::agy_usage_counters(
+            r#"{"event":"result","result":{"usage":{"input_tokens":20103,"output_tokens":1493,"cache_read_tokens":0}}}"#,
+        )
+        .unwrap();
+        let current = super::agy_usage_counters(
+            r#"{"event":"result","result":{"usage":{"input_tokens":25726,"output_tokens":3102,"cache_read_tokens":16343}}}"#,
+        )
+        .unwrap();
+        let usage = super::parse_agy_usage_delta(current, base).unwrap();
+        assert_eq!(usage.prompt_tokens, 21_966); // 5623 新輸入 + 16343 cache read
+        assert_eq!(usage.cached_tokens, Some(16_343));
+        assert_eq!(usage.output_tokens, 1_609);
+        assert!((usage.hit_rate().unwrap() - 74.4).abs() < 0.1);
     }
 
     #[test]

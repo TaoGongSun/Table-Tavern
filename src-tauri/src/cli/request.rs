@@ -190,6 +190,29 @@ pub fn agy_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<Str
     args
 }
 
+/// Agy 對話 lane：首輪帶穩定素材，後續用精確 conversation ID 只送新回合。
+/// 不用 `--continue`：它是「這個 workspace 最近一條」，可能誤接生圖／重構對話。
+pub fn agy_session_args(
+    model: Option<&str>,
+    system: &str,
+    prompt: &str,
+    conversation_id: Option<&str>,
+) -> Vec<String> {
+    let body = match conversation_id {
+        Some(_) => prompt.to_owned(),
+        None => format!("{system}\n\n{prompt}"),
+    };
+    let mut args = agy_args(model, &body, false);
+    if let Some(id) = conversation_id {
+        let print = args
+            .iter()
+            .position(|arg| arg == "-p")
+            .expect("agy_args always contains -p");
+        args.splice(print..print, ["--conversation".to_owned(), id.to_owned()]);
+    }
+    args
+}
+
 /// grok 通道的環境隔離。grok 有「Claude Code 相容」設計：會自動載入 `$HOME/.claude` 下的
 /// hooks、skills、plugins、CLAUDE.md 與 permissions，官方沒有可關的旗標或設定
 /// （`[features] claude_hooks` 是伺服器端 flag、`CLAUDE_CONFIG_DIR` 無效，皆實測過）。
@@ -416,6 +439,26 @@ mod tests {
             agy_args(None, prompt, false),
             ["--output-format", "stream-json", "-p", prompt]
         );
+    }
+
+    #[test]
+    fn agy_session_args_resume_exact_id_and_send_only_delta() {
+        let open = agy_session_args(Some("gemini-x"), "穩定 system", "第一輪", None);
+        assert!(!open.contains(&"--conversation".to_owned()));
+        assert_eq!(open[open.len() - 2..], ["-p", "穩定 system\n\n第一輪"]);
+
+        let resumed = agy_session_args(
+            Some("gemini-x"),
+            "穩定 system",
+            "只有新回合",
+            Some("conversation-1"),
+        );
+        assert!(resumed
+            .windows(2)
+            .any(|pair| pair == ["--conversation", "conversation-1"]));
+        assert_eq!(resumed[resumed.len() - 2..], ["-p", "只有新回合"]);
+        assert!(!resumed.iter().any(|arg| arg.contains("穩定 system")));
+        assert!(!resumed.contains(&"--continue".to_owned()));
     }
 
     #[test]
