@@ -5,7 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [free-player-onboarding](handoffs/free-player-onboarding.md) — 第 1 階段程式面完成：OAuth PKCE／localhost callback／key 落盤／`openrouter/free` bootstrap／一鍵 onboarding／十語系錯誤文案已接好；等使用者本地驗證，通過後才開第 2 階段
+- [free-player-onboarding](handoffs/free-player-onboarding.md) — 第 1 階段程式面完成且 `npm run verify` 七步全綠；現在等真 OpenRouter OAuth／免費第一句與相容性實機，通過後才開第 2 階段推薦／限時免費模型
 - [rust-module-homing](handoffs/rust-module-homing.md) — Rust 根層 14 支孤兒模組歸位：consumer 掃描完成，等三項拍板才開搬
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過，v2 首要＝省額度（歷史裡整包 XML 重送）
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，仍有角色／介面選擇、其他卡型驗證與舊產殼路線清理待施工
