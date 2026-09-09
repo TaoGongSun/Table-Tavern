@@ -263,26 +263,26 @@ export function SettingsWindow({
           </div>
         ) : (
           <>
+            <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
             {transport === "api" && (
               <div className="settings-form">
-                <label>
-                  API format
-                  <select
-                    value={apiMode}
-                    onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
-                  >
-                    <option value="auto">Auto (backward-compatible)</option>
-                    <option value="chat_completions">Chat Completions (/chat/completions)</option>
-                    <option value="responses">Responses (/responses)</option>
-                  </select>
-                  <small role="note">
-                    Auto uses /responses only when the custom base URL already ends in /responses;
-                    otherwise it keeps the existing /chat/completions behavior.
-                  </small>
-                </label>
+                <details>
+                  <summary>{t("apiCompatAdvancedSummary")}</summary>
+                  <label>
+                    {t("apiFormatLabel")}
+                    <select
+                      value={apiMode}
+                      onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
+                    >
+                      <option value="auto">{t("apiFormatAuto")}</option>
+                      <option value="chat_completions">{t("apiFormatChatCompletions")}</option>
+                      <option value="responses">{t("apiFormatResponses")}</option>
+                    </select>
+                    <small role="note">{t("apiFormatHint")}</small>
+                  </label>
+                </details>
               </div>
             )}
-            <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
           </>
         )}
       </div>
