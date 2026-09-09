@@ -17,12 +17,17 @@ import { de } from "./de";
 import { fr } from "./fr";
 import { ru } from "./ru";
 import {
+  apiCompatMessage,
+  isApiCompatMsgKey,
+  type ApiCompatMsgKey,
+} from "./features/api-compat";
+import {
   isOpenRouterOnboardingMsgKey,
   openRouterOnboardingMessage,
   type OpenRouterOnboardingMsgKey,
 } from "./features/openrouter-onboarding";
 
-export type MsgKey = CoreMsgKey | OpenRouterOnboardingMsgKey;
+export type MsgKey = CoreMsgKey | OpenRouterOnboardingMsgKey | ApiCompatMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -90,7 +95,9 @@ export function setLang(next: Lang) {
 export function t(key: MsgKey, params?: Record<string, string | number>): string {
   let text: string = isOpenRouterOnboardingMsgKey(key)
     ? openRouterOnboardingMessage(lang, key)
-    : MESSAGES[lang][key as CoreMsgKey];
+    : isApiCompatMsgKey(key)
+      ? apiCompatMessage(lang, key)
+      : MESSAGES[lang][key as CoreMsgKey];
   if (params) {
     for (const [name, value] of Object.entries(params)) {
       text = text.split(`{${name}}`).join(String(value));
