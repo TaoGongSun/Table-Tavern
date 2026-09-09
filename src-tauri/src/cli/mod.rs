@@ -16,13 +16,13 @@ pub use detect::detect_clis;
 #[cfg(target_os = "windows")]
 pub(crate) use detect::find_binary;
 pub use request::{
-    agy_args, agy_supports_stream_json, claude_args, claude_model_for, claude_session_args,
-    codex_args, codex_effort_for, flatten_messages, grok_args, grok_envs, grok_session_args,
-    tier_override,
+    agy_args, agy_session_args, agy_supports_stream_json, claude_args, claude_model_for,
+    claude_session_args, codex_args, codex_effort_for, flatten_messages, grok_args, grok_envs,
+    grok_session_args, tier_override,
 };
 pub use runner::run_cli;
 pub use stream::{
     parse_agy_line, parse_agy_usage, parse_claude_line, parse_claude_usage, parse_codex_line,
     parse_codex_usage, parse_grok_line, parse_grok_usage,
 };
-pub use types::{CliInfo, CliSession, ModelOption, UsageLog};
+pub use types::{AgyUsageCounters, CliInfo, CliSession, ModelOption, UsageLog};

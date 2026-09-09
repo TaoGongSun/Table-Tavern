@@ -92,10 +92,12 @@ fn claude_home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".claude"))
 }
 
-/// 這個傳輸走不走 lane 續聊。api／codex／agy 沒有可續聊的 CLI session，回 None 照走單發。
+/// 這個傳輸走不走 lane 續聊。Agy 用精確 `--conversation <id>`，
+/// Claude/Grok 用各自的 session 旗標；api/codex 照走無狀態路徑。
 pub(crate) fn lane_provider(config: &data::AppConfig) -> Option<lanes::LaneProvider> {
     match chat_transport(config).as_str() {
         "claude" => Some(lanes::LaneProvider::Claude),
+        "agy" => Some(lanes::LaneProvider::Agy),
         "grok" => Some(lanes::LaneProvider::Grok),
         _ => None,
     }
@@ -115,6 +117,7 @@ pub(crate) async fn prepare_lane_call(
     }
     let id = match provider {
         lanes::LaneProvider::Claude => "claude",
+        lanes::LaneProvider::Agy => "agy",
         lanes::LaneProvider::Grok => "grok",
     };
     let info = cli::detect_clis()
@@ -122,6 +125,12 @@ pub(crate) async fn prepare_lane_call(
         .into_iter()
         .find(|info| info.id == id)
         .ok_or_else(|| format!("找不到 {id} CLI，請確認已安裝並登入"))?;
+    if provider == lanes::LaneProvider::Agy && !cli::agy_supports_stream_json(&info.version) {
+        return Err(format!(
+            "Gemini CLI {} 太舊：本 app 需要 1.1.8 以上（要用 --output-format stream-json 拿用量與 conversation ID）。請執行 `agy update` 後重新驗證。",
+            info.version
+        ));
+    }
     let override_model = cli::tier_override(&config.tier_models, id, tier);
     let model = match provider {
         lanes::LaneProvider::Claude => Some(
@@ -129,7 +138,7 @@ pub(crate) async fn prepare_lane_call(
                 .unwrap_or_else(|| cli::claude_model_for(tier))
                 .to_owned(),
         ),
-        lanes::LaneProvider::Grok => override_model.map(str::to_owned),
+        lanes::LaneProvider::Agy | lanes::LaneProvider::Grok => override_model.map(str::to_owned),
     };
     Ok(lanes::LaneCall {
         provider,
@@ -137,6 +146,7 @@ pub(crate) async fn prepare_lane_call(
         working_dir: cli_workspace(app)?,
         envs: match provider {
             lanes::LaneProvider::Claude => claude_cli_envs(config),
+            lanes::LaneProvider::Agy => Vec::new(),
             lanes::LaneProvider::Grok => cli_envs(app, "grok")?,
         },
         model,
@@ -302,6 +312,10 @@ pub(crate) async fn stream_turn_via_transport(
                     lane: None,
                     shape,
                     prompt_tokens_out: None,
+                    conversation_id_out: None,
+                    expected_conversation_id: None,
+                    agy_usage_base: None,
+                    agy_usage_out: None,
                 }),
                 emit,
             )
@@ -329,6 +343,10 @@ pub(crate) async fn stream_turn_via_transport(
                     lane: None,
                     shape,
                     prompt_tokens_out: None,
+                    conversation_id_out: None,
+                    expected_conversation_id: None,
+                    agy_usage_base: None,
+                    agy_usage_out: None,
                 }),
                 emit,
             )
@@ -357,6 +375,10 @@ pub(crate) async fn stream_turn_via_transport(
                     lane: None,
                     shape,
                     prompt_tokens_out: None,
+                    conversation_id_out: None,
+                    expected_conversation_id: None,
+                    agy_usage_base: None,
+                    agy_usage_out: None,
                 }),
                 emit,
             )
@@ -385,6 +407,10 @@ pub(crate) async fn stream_turn_via_transport(
                     lane: None,
                     shape,
                     prompt_tokens_out: None,
+                    conversation_id_out: None,
+                    expected_conversation_id: None,
+                    agy_usage_base: None,
+                    agy_usage_out: None,
                 }),
                 emit,
             )

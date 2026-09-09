@@ -29,6 +29,8 @@ pub struct UsageRow {
     pub source: String,
     pub model: String,
     pub rounds: u64,
+    /// 可列入對話快取判讀的呼叫數；生圖仍算 rounds，但不進這個分母。
+    pub cache_rounds: u64,
     pub prompt_tokens: u64,
     pub cached_tokens: u64,
     pub output_tokens: u64,
@@ -218,12 +220,17 @@ fn cache_price(transport: &str) -> Option<(f64, f64)> {
 /// 用途：把 CLI 回報的整輪金額拆回「一個輸入 token 值多少錢」，才不必自建價目表。
 const OUTPUT_MULTIPLE: f64 = 5.0;
 
-fn accumulate(row: &mut UsageRow, line: &Value) {
+fn accumulate(row: &mut UsageRow, line: &Value, include_cache: bool) {
     row.rounds += 1;
+    if include_cache {
+        row.cache_rounds += 1;
+    }
     if line.get("unreported").and_then(Value::as_bool) == Some(true) {
         row.unreported += 1;
         row.cost_partial = true;
-        row.saved_partial = true;
+        if include_cache {
+            row.saved_partial = true;
+        }
         return;
     }
     let prompt = number(line, "prompt_tokens");
@@ -233,7 +240,7 @@ fn accumulate(row: &mut UsageRow, line: &Value) {
     row.prompt_tokens += prompt;
     row.output_tokens += output;
     // 量不到的輪次照計輸入輸出與花費，但不進命中率的分子分母
-    if reported(line) {
+    if include_cache && reported(line) {
         row.observed_rounds += 1;
         row.observed_prompt_tokens += prompt;
         row.cached_tokens += cached;
@@ -244,6 +251,10 @@ fn accumulate(row: &mut UsageRow, line: &Value) {
         None => row.cost_partial = true,
     }
 
+    // 生圖不是劇情對話快取，只保留 token／實際費用，不估進對話省下量。
+    if !include_cache {
+        return;
+    }
     // 省下多少一輪一算再累加：每輪的單價與命中結構都不同，先加總會算錯
     let Some((read_mult, write_mult)) = cache_price(&text(line, "transport")) else {
         row.saved_partial = true;
@@ -329,15 +340,20 @@ pub fn summarize(
         }
         let (mode, cache, cache_reason) = classify(&line);
         let is_ping = mode.as_deref() == Some("ping");
-        let state = chip_state(&cache, cache_reason.as_deref());
-        match caches.iter_mut().find(|count| count.cache == state) {
-            Some(count) => count.rounds += 1,
-            None => caches.push(CacheCount {
-                cache: state,
-                rounds: 1,
-            }),
+        let is_image = line.get("purpose").and_then(Value::as_str) == Some("image");
+        // 生圖可能命中供應商固定工具前綴，但那不是劇情對話快取。token／費用仍照算，
+        // 只從對話命中統計與「最近一輪」燈號排除。
+        if !is_image {
+            let state = chip_state(&cache, cache_reason.as_deref());
+            match caches.iter_mut().find(|count| count.cache == state) {
+                Some(count) => count.rounds += 1,
+                None => caches.push(CacheCount {
+                    cache: state,
+                    rounds: 1,
+                }),
+            }
         }
-        if !is_ping {
+        if !is_ping && !is_image {
             latest = Some(LatestCall {
                 ts: text(&line, "ts"),
                 mode,
@@ -352,10 +368,10 @@ pub fn summarize(
             });
         }
         if is_ping {
-            accumulate(&mut ping, &line);
+            accumulate(&mut ping, &line, true);
             continue;
         }
-        accumulate(&mut total, &line);
+        accumulate(&mut total, &line, !is_image);
         let source = text(&line, "transport");
         let model = text(&line, "model");
         let row = match rows
@@ -375,7 +391,7 @@ pub fn summarize(
                 rows.last_mut().expect("just pushed")
             }
         };
-        accumulate(row, &line);
+        accumulate(row, &line, !is_image);
     }
 
     for row in rows.iter_mut().chain([&mut total, &mut ping]) {
@@ -469,6 +485,46 @@ mod tests {
         assert_eq!(blind.rows[0].hit_rate, None);
         assert_eq!(blind.rows[0].observed_rounds, 0);
         assert_eq!(blind.total.hit_rate, None);
+    }
+
+    #[test]
+    fn image_usage_keeps_tokens_and_cost_but_not_dialogue_cache_metrics() {
+        const WITH_IMAGE: &str = concat!(
+            r#"{"ts":"2026-09-09 13:51:00","transport":"agy","world":"w1","model":"gemini","purpose":"image","mode":"oneshot","cache":"hit","cache_reporting":"reported","prompt_tokens":9000,"cached_tokens":8000,"output_tokens":100}"#,
+            "\n",
+            r#"{"ts":"2026-09-09 14:12:00","transport":"agy","world":"w1","model":"gemini","mode":"resume","cache":"zero","cache_reporting":"reported","prompt_tokens":1000,"cached_tokens":0,"output_tokens":50}"#,
+            "\n",
+        );
+        let report = summarize(
+            WITH_IMAGE,
+            Some("w1"),
+            &[("w1".to_owned(), "桌".to_owned())],
+            &[],
+        );
+        let row = &report.rows[0];
+        assert_eq!(row.rounds, 2); // token／花費明細仍保留生圖呼叫
+        assert_eq!(row.prompt_tokens, 10_000);
+        assert_eq!(row.cache_rounds, 1);
+        assert_eq!(row.observed_rounds, 1);
+        assert_eq!(row.cached_tokens, 0); // 生圖的 8000 不混進對話命中率
+        assert_eq!(row.hit_rate, Some(0.0));
+        assert_eq!(report.caches.len(), 1);
+        assert_eq!(report.caches[0].cache, "zero");
+        assert_eq!(report.caches[0].rounds, 1);
+        assert_eq!(report.latest.as_ref().unwrap().ts, "2026-09-09 14:12:00");
+
+        let image_only = summarize(
+            WITH_IMAGE.lines().next().unwrap(),
+            Some("w1"),
+            &[("w1".to_owned(), "桌".to_owned())],
+            &[],
+        );
+        assert_eq!(image_only.total.rounds, 1);
+        assert_eq!(image_only.total.prompt_tokens, 9_000);
+        assert_eq!(image_only.total.cache_rounds, 0);
+        assert_eq!(image_only.total.hit_rate, None);
+        assert!(image_only.caches.is_empty());
+        assert!(image_only.latest.is_none());
     }
 
     fn names() -> Vec<(String, String)> {

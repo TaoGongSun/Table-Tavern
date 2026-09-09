@@ -77,6 +77,10 @@ async fn run_stage(
             lane: None,
             shape: crate::usage_log::PromptShape::Oneshot,
             prompt_tokens_out: None,
+            conversation_id_out: None,
+            expected_conversation_id: None,
+            agy_usage_base: None,
+            agy_usage_out: None,
         }),
         &mut emit,
     )

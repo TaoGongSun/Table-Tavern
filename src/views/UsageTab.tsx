@@ -7,6 +7,7 @@ type UsageRow = {
   source: string;
   model: string;
   rounds: number;
+  cache_rounds: number;
   prompt_tokens: number;
   cached_tokens: number;
   output_tokens: number;
@@ -111,13 +112,13 @@ function tokens(value: number) {
 function hitRate(row: UsageRow) {
   if (row.hit_rate === null) return <span className="usage-muted">—</span>;
   const rate = `${row.hit_rate.toFixed(1)}%`;
-  if (row.observed_rounds >= row.rounds) return rate;
+  if (row.observed_rounds >= row.cache_rounds) return rate;
   return (
     <>
       {rate}
       <span className="usage-muted">
         {" "}
-        {t("usageHitObserved", { observed: row.observed_rounds, rounds: row.rounds })}
+        {t("usageHitObserved", { observed: row.observed_rounds, rounds: row.cache_rounds })}
       </span>
     </>
   );

@@ -1,4 +1,4 @@
-use crate::ai_transport::{cli_workspace, stream_via_transport};
+use crate::ai_transport::{cli_workspace, stream_turn_via_transport};
 use crate::{config_root, data, data_root, import, transport};
 use std::path::PathBuf;
 
@@ -391,7 +391,7 @@ pub(crate) async fn generate_character_image(
         role: "user".to_owned(),
         content: prompt,
     }];
-    let reply = stream_via_transport(
+    let reply = stream_turn_via_transport(
         &app,
         &config,
         Some(&transport_kind),
@@ -401,6 +401,7 @@ pub(crate) async fn generate_character_image(
         "",
         "",
         &messages,
+        crate::usage_log::PromptShape::Image,
         false,
         |_| {},
     )
