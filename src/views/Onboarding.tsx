@@ -3,12 +3,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { normalizeLang, t } from "../i18n";
+import { t } from "../i18n";
 import { checkApiKey } from "../features/ai-connection/api-key-check";
 import {
   createOpenRouterPkce,
-  openRouterOnboardingCopy,
-  openRouterOnboardingError,
+  openRouterOnboardingErrorKey,
 } from "../features/ai-connection/openrouter-onboarding";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 
@@ -19,8 +18,6 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
   const transport = config.preferences["transport"] ?? "api";
-  const lang = normalizeLang(config.preferences["language"]);
-  const copy = openRouterOnboardingCopy(lang);
   const keyWarning = checkApiKey(apiKey, String(config.preferences["base_url"] ?? ""));
 
   if (transport !== "api" || (config.api_keys["openrouter"] ?? "").trim()) return null;
@@ -36,7 +33,7 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
       });
       onSaved(next);
     } catch (reason) {
-      setMessage(openRouterOnboardingError(lang, reason));
+      setMessage(t(openRouterOnboardingErrorKey(reason)));
     } finally {
       setBusy(null);
     }
@@ -51,7 +48,7 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
       const next = await invoke<AppConfig>("save_openrouter_key", { apiKey: apiKey.trim() });
       onSaved(next);
     } catch (reason) {
-      setMessage(openRouterOnboardingError(lang, reason));
+      setMessage(t(openRouterOnboardingErrorKey(reason)));
     } finally {
       setBusy(null);
     }
@@ -60,13 +57,13 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
   return (
     <section className="settings onboarding" role="note">
       <div className="settings-form">
-        <strong>{copy.title}</strong>
-        <p>{copy.intro}</p>
-        <p>{copy.freeNote}</p>
+        <strong>{t("onboardConnectTitle")}</strong>
+        <p>{t("onboardConnectIntro")}</p>
+        <p>{t("onboardConnectFree")}</p>
         <button type="button" onClick={() => void connect()} disabled={busy !== null}>
-          {busy === "oauth" ? copy.connecting : copy.connect}
+          {busy === "oauth" ? t("onboardConnecting") : t("onboardConnectBtn")}
         </button>
-        <small>{copy.browserHint}</small>
+        <small>{t("onboardBrowserHint")}</small>
         {message && (
           <span role="alert" aria-live="polite">
             {message}
@@ -74,9 +71,9 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
         )}
 
         <details>
-          <summary>{copy.manualSummary}</summary>
+          <summary>{t("onboardManualSummary")}</summary>
           <form className="settings-form" onSubmit={saveManual}>
-            <p>{copy.manualIntro}</p>
+            <p>{t("onboardManualIntro")}</p>
             <div className="row">
               <input
                 type="password"
@@ -87,7 +84,7 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
                 disabled={busy !== null}
               />
               <button type="submit" disabled={busy !== null || !apiKey.trim()}>
-                {busy === "manual" ? copy.savingKey : copy.saveKey}
+                {busy === "manual" ? t("onboardManualSaving") : t("onboardManualSave")}
               </button>
             </div>
             {keyWarning && (
@@ -98,7 +95,7 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
           </form>
         </details>
 
-        <small>{copy.cliHint}</small>
+        <small>{t("onboardConnectCliHint")}</small>
       </div>
     </section>
   );
