@@ -3,7 +3,7 @@
 Status: in-progress
 
 ## Scope
-目前只施工第 1 階段「OpenRouter 一鍵連接與免 key」。CLI、高中低 UI、provider-specific panel、推薦模型與限時免費模型全部排除。
+目前只驗收第 1 階段「OpenRouter 一鍵連接與免 key」。CLI、高中低 UI、provider-specific panel、推薦模型與限時免費模型全部排除。
 
 ## Progress
 - 2026-09-09 第一自然工作段完成 Rust OAuth coordinator：`src-tauri/src/openrouter_oauth.rs`。
@@ -14,18 +14,18 @@ Status: in-progress
 - 新增 `save_openrouter_key` 給手動 fallback 共用同一個保存／bootstrap 邏輯；已有非空 OpenRouter key 時 OAuth command 直接回既有 config，不強迫重跑 OAuth。
 - 2026-09-09 第二自然工作段完成 onboarding UI：主路徑只剩「連接 OpenRouter」一顆主按鈕；不再要求註冊→儲值→建 key→貼 key，也不要求先選模型。OAuth 成功後直接採用後端回傳的 `AppConfig`，畫面自然消失並回到可對話狀態。
 - 手動 key 收進 `<details>` 次要入口；前端不再自行組 `api_keys`／`tier_models`，避免跟 OAuth bootstrap 分岔。
-- 新增 `src/i18n/features/openrouter-onboarding.ts` 十語系補充字典；`src/i18n/index.ts` 把補充 key 納入既有 `t()`，所以 Onboarding 仍遵守全 app 的「使用者可見文字一律經 `t()`」契約。放在 `i18n/features/` 是為了避免 `check-i18n.mjs` 將它誤認成第 11 個語系檔。
+- 新增 `src/i18n/features/openrouter-onboarding.ts` 十語系補充字典；`src/i18n/index.ts` 把補充 key 納入既有 `t()`，所以 Onboarding 仍遵守全 app 的「使用者可見文字一律經 `t()`」契約。
 - 前端新增 Web Crypto PKCE 與錯誤碼映射測試：RFC 7636 S256 向量、產生值形狀、十語系補充文案完整性、所有 OAuth 錯誤碼映射、全域 `t()` 路由。
 - 已複核既有聊天失敗降級：API HTTP 402／429 會落 `errQuotaApi`，現有文案已提供稍後再試／看供應商額度／換來源；一般 API request/upstream/call failure 也已有可行動分流，本案沒有另改聊天錯誤框架。
 - 全程未改 CLI、高中低 UI、provider-specific panel，也未加入推薦／限時免費模型資料。
 
 ## Validation
-- 目前 connector 環境無本機 Rust／Node 專案工作區，未宣稱已跑 `cargo test`／`npm test`／build。
-- 第二工作段以靜態複核收尾：Tauri invoke 參數沿用專案既有 camelCase → Rust snake_case 慣例；補充 i18n 已移出 `src/i18n/` 根層，避免既有檢查腳本誤掃；新增按鈕所在 `.row` 既有可折行契約不需額外 CSS。
-- 使用者將在本地執行完整驗證。
+- 2026-09-09 使用者本地完整跑 `npm run verify`，七步全綠：structure、cargo fmt、vitest、i18n、build、cargo check、cargo test。
+- 首輪驗證曾抓到 rustfmt 差異與 `ulid 3.0.0` 沒有 `Ulid::new()`；已依本機結果修成 rustfmt 格式並將兩處 ULID 產生改為 `Ulid::generate()`，最終全綠。
+- 第 1 階段程式施工與機械驗證完成；尚未宣稱實際 OpenRouter OAuth／免費第一句已通過。
 
 ## Next action
-1. 本地先跑 `npm run verify`；若拆開，至少 `npm test`、`npm run check:i18n`、`npm run build`、`cargo test`。
-2. 用全新 config 真實 OAuth 驗收：完全不碰 key／model id／高中低／付款，授權後直接送第一句並收到回覆。
-3. 檢查落盤與相容性：全空 API tier → 三檔 `openrouter/free`；既有任一 API tier 自訂 → 三檔不被改；既有 BYOK key 不被強迫 OAuth；手動 fallback 可用。
+1. 用全新 config 真實 OAuth 驗收：完全不碰 key／model id／高中低／付款，授權後直接送第一句並收到回覆。
+2. 檢查落盤：全空 API tier → 三檔 `openrouter/free`；既有任一 API tier 自訂 → 三檔不被改。
+3. 相容性：既有 BYOK key 不被強迫 OAuth；手動 fallback 可用；CLI 路線與 UI 無差異。
 4. 第 1 階段實機通過後才進第 2 階段。
