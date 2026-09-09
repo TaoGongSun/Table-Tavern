@@ -3,7 +3,7 @@ Task-ID: free-player-onboarding
 Title: 免費玩家零門檻開始：OpenRouter 一鍵連接 → 推薦／限時免費模型
 Status: in-progress
 Created: 2026-09-09T16:21:41+08:00
-Updated: 2026-09-09T16:43:00+08:00
+Updated: 2026-09-09T17:10:00+08:00
 
 ## Summary
 核心產品目標只有一句：**讓沒有 API 經驗、也不打算先付費的玩家，打開 Table Tavern 後可以用最少步驟開始第一段對話。**
@@ -21,14 +21,21 @@ Updated: 2026-09-09T16:43:00+08:00
 
 ## Progress
 - 2026-09-09：重新定調為「免費玩家可以無門檻開始」。把原本混在一起的 OAuth、模型推薦、CLI 設定重構、App 內儲值拆開；本案只保留前兩者，且 OAuth 必須先獨立完成。
-- 2026-09-09 第一自然工作段：完成第一階段的 Rust OAuth coordinator。新增隨機 localhost callback、callback 內嵌並驗證 state、5 分鐘逾時、授權碼換 key、把 key 寫回既有 `api_keys["openrouter"]`；前端下一段以 Web Crypto 產生 PKCE S256 verifier/challenge，後端檢查 RFC 形狀後才開授權頁。OAuth 成功時只有在 API 三 tier 完全沒有明確自訂時才把 `best`／`balanced`／`fast` 填成 `openrouter/free`，既有任一 API tier 自訂就完全不碰；另提供同一保存命令給手動 key fallback，避免兩條路徑 bootstrap 行為分岔。
-- 收尾複核發現 repo 提交 `Cargo.lock`；為避免只因 PKCE 新增 direct crypto/url crates 卻漏同步 lockfile，改成前端使用平台 Web Crypto、後端沿用 `reqwest::Url`。因此本段唯一 dependency 變更是為 localhost listener 啟用既有 tokio 的 `net` feature，`Cargo.lock` 不需變更。
-- 新增單元測試：PKCE verifier/challenge 形狀、authorization URL 的 S256 參數、state／取消／缺 code、bootstrap 相容性、config 保留與 key 落盤。
-- 本段只動 OAuth 核心、既有 config 與 command 註冊；沒有改 CLI、高中低 UI、provider-specific panel，也沒有加入推薦／限時免費模型資料。
+- 2026-09-09 第一自然工作段：完成第一階段的 Rust OAuth coordinator。新增隨機 localhost callback、callback 內嵌並驗證 state、5 分鐘逾時、授權碼換 key、把 key 寫回既有 `api_keys["openrouter"]`；前端以 Web Crypto 產生 PKCE S256 verifier/challenge，後端檢查 RFC 形狀後才開授權頁。OAuth 成功時只有在 API 三 tier 全都沒有明確自訂時才把 `best`／`balanced`／`fast` 填成 `openrouter/free`，既有任一 API tier 自訂就完全不碰；另提供同一保存命令給手動 key fallback，避免兩條路徑 bootstrap 行為分岔。
+- 第一段收尾複核發現 repo 提交 `Cargo.lock`；為避免只因 PKCE 新增 direct crypto/url crates 卻漏同步 lockfile，改成前端使用平台 Web Crypto、後端沿用 `reqwest::Url`。因此 dependency 只為 localhost listener 啟用既有 tokio 的 `net` feature，`Cargo.lock` 不需變更。
+- 第一段新增單元測試：PKCE verifier/challenge 形狀、authorization URL 的 S256 參數、state／取消／缺 code、bootstrap 相容性、config 保留與 key 落盤。
+- 2026-09-09 第二自然工作段：`Onboarding.tsx` 已從「註冊 → 儲值 → 建 key → 貼 key」改成單一「連接 OpenRouter」主動作。前端以 Web Crypto 產 PKCE S256，授權成功直接採用後端回傳的實際 `AppConfig`，不再插入模型選擇步驟。
+- 手動 key 仍保留，但收進次要 `<details>` fallback；保存改走 `save_openrouter_key`，與 OAuth 共用 key 落盤及 `openrouter/free` bootstrap，不再由前端自行拼 config。
+- OAuth browser／timeout／callback/state／取消／network／exchange／save／PKCE／Web Crypto／空 key 全部映射成可行動文案；新增十語系 onboarding 補充字典，並仍統一經既有 `t()` 入口取字串。補充字典放在 `src/i18n/features/`，避免 `check-i18n.mjs` 把它誤認成第 11 個語系檔。
+- 第二段新增前端測試：RFC 7636 S256 官方向量、隨機 verifier/challenge 形狀、十語系所有補充 key 非空、所有 OAuth machine code 都能映射到文案、補充字典確實能經全域 `t()` 取值。
+- 已複核既有聊天錯誤分類：HTTP 402／429 原本就會落到 `errQuotaApi`，文案提供「稍後再試／看供應商額度／換 AI 來源」，沒有把付款當唯一解法；一般首次 API request/upstream/call failure 也已有分流，因此本階段沒有另改聊天錯誤框架。
+- 兩個工作段均嚴守邊界：沒有改 CLI、高中低 UI、provider-specific panel，也沒有加入第 2 階段推薦／限時免費模型資料。
 
 ## Next action
-- 第 1 階段下一自然工作段：把現有 `Onboarding.tsx` 的「註冊 → 建 key → 貼 key」主路徑換成單一「連接 OpenRouter」按鈕；以 Web Crypto 產 PKCE S256，將 Rust command 的錯誤碼映射成十語系可行動文案；手動貼 key 收成次要 fallback。
-- 完成前端後跑 `cargo test`、`npm test`、`npm run check:i18n`、`npm run build`；再進行全新 config 的真實 OAuth 實機驗收。
+- 使用者本地跑 `npm run verify`；若要拆開看，至少跑 `npm test`、`npm run check:i18n`、`npm run build`、`cargo test`。
+- 自動驗證全綠後，用全新 config 實機跑真 OpenRouter OAuth：不建立／複製／貼 key、不選模型、不付款，確認授權回 TT 後能直接送第一句並收到回覆。
+- 同一輪檢查落盤：`api_keys["openrouter"]` 有 OAuth key；原本三個 API tier 全空時都為 `openrouter/free`；若事先自訂任一 API tier，三檔完全不被 bootstrap 改寫。
+- 再做相容性實機：既有 BYOK key 不強迫 OAuth、手動 key fallback 可完成連線、CLI 路線與 UI 無差異。
 - 第 1 階段實機通過後，才開第 2 階段推薦／限時免費模型清單。
 
 ## Constraints
