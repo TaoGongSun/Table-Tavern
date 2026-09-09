@@ -4,7 +4,7 @@ import {
   OPENROUTER_ONBOARDING_LANGS,
   OPENROUTER_ONBOARDING_MESSAGE_KEYS,
   openRouterOnboardingMessage,
-} from "../../i18n/openrouter-onboarding";
+} from "../../i18n/features/openrouter-onboarding";
 import {
   OPENROUTER_ONBOARDING_ERROR_CODES,
   createOpenRouterPkce,

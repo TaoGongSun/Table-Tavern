@@ -20,7 +20,7 @@ import {
   isOpenRouterOnboardingMsgKey,
   openRouterOnboardingMessage,
   type OpenRouterOnboardingMsgKey,
-} from "./openrouter-onboarding";
+} from "./features/openrouter-onboarding";
 
 export type MsgKey = CoreMsgKey | OpenRouterOnboardingMsgKey;
 

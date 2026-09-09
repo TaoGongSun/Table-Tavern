@@ -1,4 +1,4 @@
-import type { OpenRouterOnboardingMsgKey } from "../../i18n/openrouter-onboarding";
+import type { OpenRouterOnboardingMsgKey } from "../../i18n/features/openrouter-onboarding";
 
 export const OPENROUTER_ONBOARDING_ERROR_CODES = [
   "openrouter_oauth_browser",
