@@ -11,6 +11,7 @@ mod inflight;
 mod install;
 mod lanes;
 mod mechanism;
+mod openrouter_oauth;
 mod proxy;
 mod receipts;
 mod refactor;
@@ -123,6 +124,7 @@ pub fn run() {
             commands::state::mark_state_counter,
             commands::settings::read_config,
             commands::settings::write_config,
+            openrouter_oauth::connect_openrouter,
             commands::settings::detect_clis,
             commands::cli_setup::install_cli,
             commands::cli_setup::cli_verified,

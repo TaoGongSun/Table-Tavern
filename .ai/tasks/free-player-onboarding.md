@@ -1,9 +1,9 @@
 # Task
 Task-ID: free-player-onboarding
 Title: 免費玩家零門檻開始：OpenRouter 一鍵連接 → 推薦／限時免費模型
-Status: todo
+Status: in-progress
 Created: 2026-09-09T16:21:41+08:00
-Updated: 2026-09-09T16:21:41+08:00
+Updated: 2026-09-09T16:36:44+08:00
 
 ## Summary
 核心產品目標只有一句：**讓沒有 API 經驗、也不打算先付費的玩家，打開 Table Tavern 後可以用最少步驟開始第一段對話。**
@@ -21,9 +21,12 @@ Updated: 2026-09-09T16:21:41+08:00
 
 ## Progress
 - 2026-09-09：重新定調為「免費玩家可以無門檻開始」。把原本混在一起的 OAuth、模型推薦、CLI 設定重構、App 內儲值拆開；本案只保留前兩者，且 OAuth 必須先獨立完成。
+- 2026-09-09 第一自然工作段：完成第一階段的 Rust 後端核心。新增 OpenRouter OAuth PKCE（S256）、隨機 localhost callback、callback 內嵌並驗證 state、5 分鐘逾時、授權碼換 key、把 key 寫回既有 `api_keys["openrouter"]`；OAuth 成功時只有在 API 三 tier 完全沒有明確自訂時才把 `best`／`balanced`／`fast` 填成 `openrouter/free`，既有任一 API tier 自訂就完全不碰。另補 PKCE RFC 向量、state／取消／缺 code、bootstrap 相容性、config 保留與 key 落盤測試。
+- 本段只動 OAuth 核心、既有 config 與 command 註冊；沒有改 CLI、高中低 UI、provider-specific panel，也沒有加入推薦／限時免費模型資料。
 
 ## Next action
-- 先做第 1 階段：依 OpenRouter 當下官方 OAuth PKCE 規格完成授權 → 換 key → 寫入既有本機設定 → 用 `openrouter/free` 作為新安裝／未自訂設定時的免費 bootstrap → 回到桌面即可送出第一句。
+- 第 1 階段下一自然工作段：把現有 `Onboarding.tsx` 的「註冊 → 建 key → 貼 key」主路徑換成單一「連接 OpenRouter」按鈕，將 Rust command 的錯誤碼映射成十語系可行動文案；手動貼 key 收成次要 fallback，並讓手動 fallback 在完全未自訂 API tier 時同樣套用 `openrouter/free` bootstrap。
+- 完成前端後跑 `cargo test`、`npm test`、`npm run check:i18n`、`npm run build`；再進行全新 config 的真實 OAuth 實機驗收。
 - 第 1 階段實機通過後，才開第 2 階段推薦／限時免費模型清單。
 
 ## Constraints
