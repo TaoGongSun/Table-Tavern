@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { Lang } from "../../i18n";
+import { setLang, t } from "../../i18n";
+import {
+  OPENROUTER_ONBOARDING_LANGS,
+  OPENROUTER_ONBOARDING_MESSAGE_KEYS,
+  openRouterOnboardingMessage,
+} from "../../i18n/openrouter-onboarding";
 import {
   OPENROUTER_ONBOARDING_ERROR_CODES,
   createOpenRouterPkce,
-  openRouterOnboardingCopy,
-  openRouterOnboardingError,
+  openRouterOnboardingErrorKey,
   pkceChallengeForVerifier,
 } from "./openrouter-onboarding";
-
-const LANGS: Lang[] = ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru"];
 
 describe("OpenRouter onboarding", () => {
   it("matches the RFC 7636 S256 example", async () => {
@@ -24,34 +26,31 @@ describe("OpenRouter onboarding", () => {
     expect(challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
-  it("has complete onboarding copy and actionable errors for all ten UI languages", () => {
-    for (const lang of LANGS) {
-      const copy = openRouterOnboardingCopy(lang);
-      for (const field of [
-        copy.title,
-        copy.intro,
-        copy.freeNote,
-        copy.connect,
-        copy.connecting,
-        copy.browserHint,
-        copy.manualSummary,
-        copy.manualIntro,
-        copy.saveKey,
-        copy.savingKey,
-        copy.cliHint,
-      ]) {
-        expect(field.trim().length).toBeGreaterThan(0);
+  it("has every supplemental message in all ten UI languages", () => {
+    expect(OPENROUTER_ONBOARDING_LANGS).toHaveLength(10);
+    for (const lang of OPENROUTER_ONBOARDING_LANGS) {
+      for (const key of OPENROUTER_ONBOARDING_MESSAGE_KEYS) {
+        expect(openRouterOnboardingMessage(lang, key).trim().length).toBeGreaterThan(0);
       }
-      for (const code of OPENROUTER_ONBOARDING_ERROR_CODES) {
-        expect(openRouterOnboardingError(lang, code).trim().length).toBeGreaterThan(0);
-      }
-      expect(openRouterOnboardingError(lang, "unexpected failure").trim().length).toBeGreaterThan(0);
     }
   });
 
-  it("unwraps frontend Error messages before mapping them", () => {
-    expect(openRouterOnboardingError("en", new Error("openrouter_oauth_crypto"))).toBe(
-      openRouterOnboardingCopy("en").errors.openrouter_oauth_crypto,
+  it("maps every backend/frontend error code to an actionable localized key", () => {
+    for (const code of OPENROUTER_ONBOARDING_ERROR_CODES) {
+      const key = openRouterOnboardingErrorKey(code);
+      for (const lang of OPENROUTER_ONBOARDING_LANGS) {
+        expect(openRouterOnboardingMessage(lang, key).trim().length).toBeGreaterThan(0);
+      }
+    }
+    expect(openRouterOnboardingErrorKey("unexpected failure")).toBe("onboardErrUnknown");
+    expect(openRouterOnboardingErrorKey(new Error("openrouter_oauth_crypto"))).toBe(
+      "onboardErrCrypto",
     );
+  });
+
+  it("routes supplemental messages through the global t() entry point", () => {
+    setLang("en");
+    expect(t("onboardConnectBtn")).toBe(openRouterOnboardingMessage("en", "onboardConnectBtn"));
+    setLang("zh-TW");
   });
 });
