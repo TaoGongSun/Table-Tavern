@@ -42,9 +42,9 @@ fn new_nonce() -> String {
 }
 
 fn valid_unreserved(value: &str) -> bool {
-    value.bytes().all(|byte| {
-        byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
-    })
+    value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~'))
 }
 
 fn validate_pkce_input(verifier: &str, challenge: &str) -> Result<(), String> {
@@ -75,8 +75,8 @@ fn authorization_url(callback_url: &str, challenge: &str) -> Result<Url, String>
 }
 
 fn parse_callback_target(target: &str, expected_state: &str) -> Result<String, String> {
-    let url = Url::parse(&format!("http://localhost{target}"))
-        .map_err(|_| ERR_CALLBACK.to_owned())?;
+    let url =
+        Url::parse(&format!("http://localhost{target}")).map_err(|_| ERR_CALLBACK.to_owned())?;
     if url.path() != "/callback" {
         return Err(ERR_CALLBACK.to_owned());
     }
@@ -124,7 +124,10 @@ async fn read_request_target(stream: &mut TcpStream) -> Result<String, String> {
     }
 
     let request = std::str::from_utf8(&request).map_err(|_| ERR_CALLBACK.to_owned())?;
-    let first_line = request.lines().next().ok_or_else(|| ERR_CALLBACK.to_owned())?;
+    let first_line = request
+        .lines()
+        .next()
+        .ok_or_else(|| ERR_CALLBACK.to_owned())?;
     let mut parts = first_line.split_whitespace();
     if parts.next() != Some("GET") {
         return Err(ERR_CALLBACK.to_owned());
@@ -180,10 +183,8 @@ async fn exchange_code(code: &str, verifier: &str) -> Result<String, String> {
     if !response.status().is_success() {
         return Err(ERR_EXCHANGE.to_owned());
     }
-    let payload: KeyExchangeResponse = response
-        .json()
-        .await
-        .map_err(|_| ERR_EXCHANGE.to_owned())?;
+    let payload: KeyExchangeResponse =
+        response.json().await.map_err(|_| ERR_EXCHANGE.to_owned())?;
     let key = payload.key.trim();
     if key.is_empty() {
         return Err(ERR_EXCHANGE.to_owned());
@@ -279,9 +280,13 @@ mod tests {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         assert!(validate_pkce_input(verifier, challenge).is_ok());
-        assert_eq!(validate_pkce_input("short", challenge).unwrap_err(), ERR_PKCE);
         assert_eq!(
-            validate_pkce_input(verifier, "not+/base64url____________________________").unwrap_err(),
+            validate_pkce_input("short", challenge).unwrap_err(),
+            ERR_PKCE
+        );
+        assert_eq!(
+            validate_pkce_input(verifier, "not+/base64url____________________________")
+                .unwrap_err(),
             ERR_PKCE
         );
     }
@@ -292,8 +297,14 @@ mod tests {
         let url = authorization_url(&callback, "challenge-token").unwrap();
         let params: std::collections::BTreeMap<_, _> = url.query_pairs().into_owned().collect();
         assert_eq!(params.get("callback_url"), Some(&callback));
-        assert_eq!(params.get("code_challenge"), Some(&"challenge-token".to_owned()));
-        assert_eq!(params.get("code_challenge_method"), Some(&"S256".to_owned()));
+        assert_eq!(
+            params.get("code_challenge"),
+            Some(&"challenge-token".to_owned())
+        );
+        assert_eq!(
+            params.get("code_challenge_method"),
+            Some(&"S256".to_owned())
+        );
     }
 
     #[test]
