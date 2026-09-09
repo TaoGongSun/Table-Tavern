@@ -38,7 +38,7 @@ struct KeyExchangeResponse {
 }
 
 fn new_nonce() -> String {
-    format!("{}{}", ulid::Ulid::new(), ulid::Ulid::new())
+    format!("{}{}", ulid::Ulid::generate(), ulid::Ulid::generate())
 }
 
 fn valid_unreserved(value: &str) -> bool {
@@ -365,7 +365,7 @@ mod tests {
     fn persisting_oauth_key_preserves_existing_config_and_adds_bootstrap() {
         let root = std::env::temp_dir().join(format!(
             "table-tavern-openrouter-oauth-{}",
-            ulid::Ulid::new()
+            ulid::Ulid::generate()
         ));
         fs::create_dir_all(&root).unwrap();
 
