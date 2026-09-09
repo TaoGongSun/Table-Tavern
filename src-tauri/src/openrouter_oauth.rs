@@ -1,14 +1,12 @@
-use crate::data::{self, AppConfig, DataResult};
 use crate::config_root;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use crate::data::{self, AppConfig, DataResult};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::Duration;
 use tauri_plugin_opener::OpenerExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use url::Url;
 
 const OPENROUTER_AUTH_URL: &str = "https://openrouter.ai/auth";
 const OPENROUTER_KEY_URL: &str = "https://openrouter.ai/api/v1/auth/keys";
@@ -24,6 +22,8 @@ const ERR_CANCELLED: &str = "openrouter_oauth_cancelled";
 const ERR_NETWORK: &str = "openrouter_oauth_network";
 const ERR_EXCHANGE: &str = "openrouter_oauth_exchange";
 const ERR_SAVE: &str = "openrouter_oauth_save";
+const ERR_PKCE: &str = "openrouter_oauth_pkce";
+const ERR_KEY_EMPTY: &str = "openrouter_key_empty";
 
 #[derive(Serialize)]
 struct KeyExchangeRequest<'a> {
@@ -41,8 +41,24 @@ fn new_nonce() -> String {
     format!("{}{}", ulid::Ulid::new(), ulid::Ulid::new())
 }
 
-fn pkce_challenge(verifier: &str) -> String {
-    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+fn valid_unreserved(value: &str) -> bool {
+    value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
+    })
+}
+
+fn validate_pkce_input(verifier: &str, challenge: &str) -> Result<(), String> {
+    if !(43..=128).contains(&verifier.len()) || !valid_unreserved(verifier) {
+        return Err(ERR_PKCE.to_owned());
+    }
+    if challenge.len() != 43
+        || !challenge
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(ERR_PKCE.to_owned());
+    }
+    Ok(())
 }
 
 fn callback_url(port: u16, state: &str) -> String {
@@ -206,7 +222,22 @@ fn persist_openrouter_key(root: &Path, key: &str) -> DataResult<AppConfig> {
 }
 
 #[tauri::command]
-pub(crate) async fn connect_openrouter(app: tauri::AppHandle) -> Result<AppConfig, String> {
+pub(crate) fn save_openrouter_key(
+    app: tauri::AppHandle,
+    api_key: String,
+) -> Result<AppConfig, String> {
+    if api_key.trim().is_empty() {
+        return Err(ERR_KEY_EMPTY.to_owned());
+    }
+    persist_openrouter_key(&config_root(&app)?, &api_key).map_err(|_| ERR_SAVE.to_owned())
+}
+
+#[tauri::command]
+pub(crate) async fn connect_openrouter(
+    app: tauri::AppHandle,
+    code_verifier: String,
+    code_challenge: String,
+) -> Result<AppConfig, String> {
     let root = config_root(&app)?;
     let existing = data::read_config(&root).map_err(|_| ERR_SAVE.to_owned())?;
     if existing
@@ -216,6 +247,7 @@ pub(crate) async fn connect_openrouter(app: tauri::AppHandle) -> Result<AppConfi
     {
         return Ok(existing);
     }
+    validate_pkce_input(&code_verifier, &code_challenge)?;
 
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -225,17 +257,15 @@ pub(crate) async fn connect_openrouter(app: tauri::AppHandle) -> Result<AppConfi
         .map_err(|_| ERR_CALLBACK.to_owned())?
         .port();
     let state = new_nonce();
-    let verifier = new_nonce();
-    let challenge = pkce_challenge(&verifier);
     let callback = callback_url(port, &state);
-    let auth_url = authorization_url(&callback, &challenge)?;
+    let auth_url = authorization_url(&callback, &code_challenge)?;
 
     app.opener()
         .open_url(auth_url.as_str(), None::<&str>)
         .map_err(|_| ERR_BROWSER.to_owned())?;
 
     let code = wait_for_callback(listener, &state).await?;
-    let key = exchange_code(&code, &verifier).await?;
+    let key = exchange_code(&code, &code_verifier).await?;
     persist_openrouter_key(&root, &key).map_err(|_| ERR_SAVE.to_owned())
 }
 
@@ -245,11 +275,14 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn pkce_s256_matches_rfc_example() {
+    fn pkce_inputs_require_rfc_shapes() {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        assert!(validate_pkce_input(verifier, challenge).is_ok());
+        assert_eq!(validate_pkce_input("short", challenge).unwrap_err(), ERR_PKCE);
         assert_eq!(
-            pkce_challenge(verifier),
-            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+            validate_pkce_input(verifier, "not+/base64url____________________________").unwrap_err(),
+            ERR_PKCE
         );
     }
 
@@ -288,7 +321,10 @@ mod tests {
         let mut fresh = AppConfig::default();
         apply_free_bootstrap(&mut fresh);
         for tier in ["best", "balanced", "fast"] {
-            assert_eq!(fresh.tier_models.get(tier).map(String::as_str), Some(FREE_BOOTSTRAP_MODEL));
+            assert_eq!(
+                fresh.tier_models.get(tier).map(String::as_str),
+                Some(FREE_BOOTSTRAP_MODEL)
+            );
         }
 
         let mut customized = AppConfig::default();
@@ -296,7 +332,10 @@ mod tests {
             .tier_models
             .insert("best".to_owned(), "vendor/custom".to_owned());
         apply_free_bootstrap(&mut customized);
-        assert_eq!(customized.tier_models.get("best").map(String::as_str), Some("vendor/custom"));
+        assert_eq!(
+            customized.tier_models.get("best").map(String::as_str),
+            Some("vendor/custom")
+        );
         assert!(!customized.tier_models.contains_key("balanced"));
         assert!(!customized.tier_models.contains_key("fast"));
 
@@ -305,7 +344,10 @@ mod tests {
             .tier_models
             .insert("claude:best".to_owned(), "opus".to_owned());
         apply_free_bootstrap(&mut cli_only);
-        assert_eq!(cli_only.tier_models.get("best").map(String::as_str), Some(FREE_BOOTSTRAP_MODEL));
+        assert_eq!(
+            cli_only.tier_models.get("best").map(String::as_str),
+            Some(FREE_BOOTSTRAP_MODEL)
+        );
     }
 
     #[test]
@@ -331,10 +373,19 @@ mod tests {
             saved.api_keys.get("openrouter").map(String::as_str),
             Some("sk-or-test")
         );
-        assert_eq!(saved.preferences.get("language"), existing.preferences.get("language"));
-        assert_eq!(saved.tier_models.get("claude:fast"), existing.tier_models.get("claude:fast"));
+        assert_eq!(
+            saved.preferences.get("language"),
+            existing.preferences.get("language")
+        );
+        assert_eq!(
+            saved.tier_models.get("claude:fast"),
+            existing.tier_models.get("claude:fast")
+        );
         for tier in ["best", "balanced", "fast"] {
-            assert_eq!(saved.tier_models.get(tier).map(String::as_str), Some(FREE_BOOTSTRAP_MODEL));
+            assert_eq!(
+                saved.tier_models.get(tier).map(String::as_str),
+                Some(FREE_BOOTSTRAP_MODEL)
+            );
         }
         assert_eq!(data::read_config(&root).unwrap(), saved);
 

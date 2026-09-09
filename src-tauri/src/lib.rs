@@ -124,6 +124,7 @@ pub fn run() {
             commands::state::mark_state_counter,
             commands::settings::read_config,
             commands::settings::write_config,
+            openrouter_oauth::save_openrouter_key,
             openrouter_oauth::connect_openrouter,
             commands::settings::detect_clis,
             commands::cli_setup::install_cli,
