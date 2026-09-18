@@ -14,14 +14,14 @@
 
 **Windows**：從發佈頁下載安裝檔。Windows 可能顯示「未知的發行者」——點「其他資訊 → 仍要執行」。
 
-**macOS**（Apple Silicon）：下載 `.dmg`，把 `Table Tavern.app` 拖進「應用程式」，雙擊開啟。
+**macOS**（Intel 或 Apple Silicon）：下載通用版 `.dmg`，把 `Table Tavern.app` 拖進「應用程式」，雙擊開啟。
 
 如果系統說「無法驗證是否為惡意軟體」：按「完成」，開「系統設定 → 隱私權與安全性」，捲到最底下按「仍要打開」，再確認一次就好。會跳這個警告只是因為測試版還沒送 Apple 公證，不是中毒。
 
 ## 開始玩
 
 1. 第一次開啟會直接進到範例桌，隨便逛沒關係。
-2. 要讓角色開口，App 需要接一個 AI 服務。標準做法：註冊 [OpenRouter](https://openrouter.ai/)，儲值小額，把 key 貼進畫面上的引導欄位。一把 key 通吃多家模型，GM 和每個角色還能各用不同檔位。用多少付多少，沒有月費。
+2. 要讓角色開口，App 需要接一個 AI 服務。按「連接 [OpenRouter](https://openrouter.ai/)」，在瀏覽器登入（或註冊）並授權，回到桌上就能對話。不用複製 key、也不用先儲值：App 會自動挑一支堪用的免費模型。想用更強的付費模型時，再幫 OpenRouter 帳號儲值，GM 和每個角色可以各用不同模型，用多少付多少。手動貼 key 仍保留為進階入口。
 3. 這樣就好。寫一張卡，上桌，開玩。
 
 已經有訂閱 Claude、ChatGPT、Gemini 或 Grok？可以改走官方命令列工具、直接花訂閱額度——見下面 Q&A。
@@ -29,7 +29,7 @@
 ## 常見問題 Q&A
 
 **這個 App 要錢嗎？**
-免費且開源。唯一的花費是 AI 供應商按用量收的錢，由你直接付給他們。
+免費且開源，而且可以免費玩：連接 OpenRouter 後，App 預設就跑免費模型。要用付費模型才會產生費用，由你按用量直接付給 AI 供應商，沒有月費。
 
 **我可以贊助嗎？**
 **現在還在測試期間，請不必贊助。**贊助回禮（五套佈景配色、AI 角色圖生成）已經做好，現在贊助就能解鎖；只是整體體驗還在打磨，這個階段先不好意思開口收錢。
@@ -54,14 +54,13 @@
 
 ## 給開發者
 
-Tauri 2（Rust）＋ Vite + React + TypeScript。請先看[目前架構導覽](docs/ARCHITECTURE.md)；`NewPlan.md` 是最初產品方向文件，其中部分內容已被後續 `.ai/plans/` 決策取代。版本異動見 [CHANGELOG.md](CHANGELOG.md)。
+Tauri 2（Rust）＋ Vite + React + TypeScript。請先看[目前架構導覽](docs/ARCHITECTURE.md)與[原始碼結構導覽](docs/STRUCTURE.md)；`NewPlan.md` 是最初產品方向文件，其中部分內容已被後續 `.ai/plans/` 決策取代。版本異動見 [CHANGELOG.md](CHANGELOG.md)。
 
 ```bash
 npm install
 npm run tauri dev    # 開發模式
 npm run tauri build  # 產出 .app／DMG／安裝檔
-cd src-tauri && cargo test
-npm run build        # 前端型別檢查＋建置
+npm run verify       # 一次驗完：前端建置＋Rust 測試＋i18n＋結構檢查
 ```
 
 ## 授權
