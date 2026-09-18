@@ -143,12 +143,14 @@ export function PlayView({
                   <span className="pb-plate">{event.speaker_name}</span>
                 </div>
                 <StoryText text={event.text} />
+                {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
               </div>
             );
           }
           return (
             <div key={index} className={`message message-${event.kind}`}>
               <StoryText text={event.text} />
+              {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
             </div>
           );
         })}

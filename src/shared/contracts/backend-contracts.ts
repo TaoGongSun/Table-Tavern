@@ -84,4 +84,6 @@ export interface TranscriptEvent {
     tree?: Record<string, unknown>;
     notes?: string[];
   };
+  /** 有正文但被供應商內容過濾或長度上限中途中斷 */
+  truncated?: boolean;
 }

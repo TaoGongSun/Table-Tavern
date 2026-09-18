@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
 import { detectLang, Lang, normalizeLang, t } from "./i18n";
 import { isCharacterHidden } from "./features/characters/character-visibility";
@@ -25,6 +26,7 @@ import {
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
+import { SmartFreeNewModelBanner } from "./views/SmartFreeNewModelBanner";
 import { ErrorNote } from "./views/atoms";
 import "./App.css";
 
@@ -97,6 +99,35 @@ function App() {
     gmTargeted,
     canLeaveEditor,
   } = navigation;
+
+  useEffect(() => {
+    let disposed = false;
+    const stopListening: (() => void)[] = [];
+    const register = (promise: Promise<() => void>) => {
+      void promise.then((unlisten) => {
+        if (disposed) unlisten();
+        else stopListening.push(unlisten);
+      });
+    };
+    register(
+      listen<{ model: string }>("smart-free-model-switched", (event) => {
+        void showMessage(t("smartFreeSwitched", { model: event.payload.model }), {
+          title: t("smartFreeStableTitle"),
+        });
+      }),
+    );
+    register(
+      listen<{ model: string; expires_at: number }>("smart-free-model-expiring", (event) => {
+        void showMessage(t("smartFreeExpiring", { model: event.payload.model }), {
+          title: t("smartFreeStableTitle"),
+        });
+      }),
+    );
+    return () => {
+      disposed = true;
+      stopListening.forEach((unlisten) => unlisten());
+    };
+  }, []);
 
   // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
   useEffect(() => {
@@ -604,6 +635,12 @@ function App() {
         imports={imports}
         onPostOpening={postOpening}
         onTranslateAndPost={postTranslatedOpening}
+      />
+
+      <SmartFreeNewModelBanner
+        config={config}
+        onConfigSaved={setConfig}
+        onOpenSettings={setSettingsOpen}
       />
     </div>
   );
