@@ -349,6 +349,98 @@
   color: var(--ink-3);
 }
 
+.smart-free-recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0.35rem 1.5rem;
+}
+
+.smart-free-recommendation-title {
+  margin: 0.25rem 0 0;
+  font-size: var(--fs-meta);
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.settings-form label.smart-free-recommendation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.5rem;
+  padding: 0.3rem 0;
+  cursor: pointer;
+}
+
+.smart-free-recommendation > input {
+  margin-top: 0.2rem;
+}
+
+.smart-free-recommendation-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.smart-free-recommendation-copy span,
+.smart-free-recommendation-copy small {
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.smart-free-notify-toggle {
+  margin-top: 0.15rem;
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
+/* §15 新限免提示：右下角非阻塞浮層，不擋操作、玩家自己收 */
+.smart-free-new-banner {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  max-width: min(360px, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+}
+
+.smart-free-new-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.smart-free-new-copy strong {
+  font-size: var(--fs-ui);
+  color: var(--ink-1);
+}
+
+.smart-free-new-copy span {
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+}
+
+.smart-free-new-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.smart-free-new-actions button.ghost {
+  background: transparent;
+  color: var(--ink-3);
+  border-color: transparent;
+}
+
 .cli-connected {
   font-size: var(--fs-meta);
   color: var(--ok);
@@ -613,4 +705,3 @@
   opacity: 0.7;
   font-size: 0.9em;
 }
-

@@ -462,6 +462,7 @@ fn record_person_arrivals(
             text: transport::person_arrival_text(entry, user_name),
             raw: None,
             state: None,
+            truncated: false,
             gm_only: !matches!(entry.visibility, data::Visibility::Public),
         };
         if data::append_transcript(root, world_id, scene, &event).is_ok() {
@@ -504,6 +505,7 @@ fn record_card_arrivals(
             text: transport::card_arrival_text(card, user_name),
             raw: None,
             state: None,
+            truncated: false,
             gm_only: false,
         };
         if data::append_transcript(root, world_id, scene, &event).is_ok() {

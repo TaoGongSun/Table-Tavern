@@ -88,6 +88,14 @@ export function SettingsWindow({
   const transport = String(config.preferences["transport"] ?? "api");
   const rawApiMode = String(config.preferences["api_mode"] ?? "auto");
   const apiMode = API_MODES.has(rawApiMode) ? rawApiMode : "auto";
+  // 穩定免費固定走 OpenRouter 預設站台的 /chat/completions，這塊相容切換對它沒意義。
+  const apiBaseUrl = String(config.preferences["base_url"] ?? "").trim().replace(/\/+$/, "");
+  const stableFree =
+    transport === "api" &&
+    ["", "https://openrouter.ai/api/v1"].includes(apiBaseUrl) &&
+    ["stable_free", "smart_free"].includes(
+      String(config.preferences["api_model_mode"] ?? "manual"),
+    );
 
   useEffect(() => {
     document.documentElement.dataset.theme = previewTheme ?? resolveTheme(config, sponsorUnlocked);
@@ -263,26 +271,26 @@ export function SettingsWindow({
           </div>
         ) : (
           <>
-            {transport === "api" && (
+            <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
+            {transport === "api" && !stableFree && (
               <div className="settings-form">
-                <label>
-                  API format
-                  <select
-                    value={apiMode}
-                    onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
-                  >
-                    <option value="auto">Auto (backward-compatible)</option>
-                    <option value="chat_completions">Chat Completions (/chat/completions)</option>
-                    <option value="responses">Responses (/responses)</option>
-                  </select>
-                  <small role="note">
-                    Auto uses /responses only when the custom base URL already ends in /responses;
-                    otherwise it keeps the existing /chat/completions behavior.
-                  </small>
-                </label>
+                <details>
+                  <summary>{t("apiCompatAdvancedSummary")}</summary>
+                  <label>
+                    {t("apiFormatLabel")}
+                    <select
+                      value={apiMode}
+                      onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
+                    >
+                      <option value="auto">{t("apiFormatAuto")}</option>
+                      <option value="chat_completions">{t("apiFormatChatCompletions")}</option>
+                      <option value="responses">{t("apiFormatResponses")}</option>
+                    </select>
+                    <small role="note">{t("apiFormatHint")}</small>
+                  </label>
+                </details>
               </div>
             )}
-            <Settings config={config} onSaved={onSaved} onDirty={setDirtyCount} />
           </>
         )}
       </div>

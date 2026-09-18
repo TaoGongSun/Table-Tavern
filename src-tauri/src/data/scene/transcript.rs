@@ -32,10 +32,17 @@ pub struct TranscriptEvent {
     pub raw: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<TableState>,
+    /// AI 有正文但被供應商內容過濾或長度上限中途中斷；舊紀錄預設 false。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub truncated: bool,
     /// 這則系統事件的全文只給 GM 看；chars 續聊線遇到只留第一行（AI 卡重構包 4b，
     /// 補 4a 遺留的 visibility 洩漏——非 Public 世界書人物的登場全文不該流進扮演引擎）。
     #[serde(default)]
     pub gm_only: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub(super) fn transcript_path(root: &Path, world_id: &str, scene: u64) -> DataResult<PathBuf> {
@@ -95,6 +102,7 @@ pub fn append_opening(
         text: block.display.clone(),
         raw: (raw != block.display).then(|| raw.to_owned()),
         state: Some(world.state),
+        truncated: false,
         gm_only: false,
     };
     append_transcript(root, world_id, scene, &event)?;
@@ -253,6 +261,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "序幕".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
             TranscriptEvent {
@@ -263,6 +272,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "第一行\n仍是同一事件".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
             TranscriptEvent {
@@ -273,6 +283,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "你好".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         ];
@@ -332,6 +343,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: (*text).to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             })
             .collect();
@@ -392,6 +404,7 @@ mod tests {
             kind: TranscriptKind::Narration,
             text: "第一句".to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
@@ -425,6 +438,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "第二句".to_owned(),
                 state: Some(supplied.clone()),
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -481,6 +495,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "前一則".to_owned(),
                 state: Some(previous.clone()),
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -556,6 +571,7 @@ mod tests {
                     kind: TranscriptKind::Narration,
                     text: text.to_owned(),
                     state: Some(snapshot),
+                    truncated: false,
                     gm_only: false,
                 },
             )
@@ -591,6 +607,7 @@ mod tests {
             kind: TranscriptKind::Narration,
             text: text.to_owned(),
             state: Some(snapshot.clone()),
+            truncated: false,
             gm_only: false,
         };
         for (text, snapshot) in [("第一句", &snapshots[0]), ("第二句", &snapshots[1])] {
@@ -665,6 +682,7 @@ mod tests {
                     kind: TranscriptKind::Narration,
                     text: "旁白".to_owned(),
                     state: Some(snapshot),
+                    truncated: false,
                     gm_only: false,
                 },
             )

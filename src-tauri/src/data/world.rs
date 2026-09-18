@@ -188,6 +188,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
             kind: TranscriptKind::Narration,
             text: sample.opening,
             state: None,
+            truncated: false,
             gm_only: false,
         },
     )?;
@@ -544,6 +545,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "你好".to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         };
         append_transcript(root.path(), &first, 0, &event).unwrap();
@@ -575,6 +577,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "留著".to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         };
         append_transcript(root.path(), &has_message, 0, &event).unwrap();

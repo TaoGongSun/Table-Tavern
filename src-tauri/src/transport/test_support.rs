@@ -31,6 +31,7 @@ pub(super) fn event(
         kind,
         text: text.to_owned(),
         state: None,
+        truncated: false,
         gm_only: false,
     }
 }

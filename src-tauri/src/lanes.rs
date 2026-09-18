@@ -953,6 +953,7 @@ print(json.dumps({'event': 'result', 'result': {
             kind,
             text: text.to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         }
     }

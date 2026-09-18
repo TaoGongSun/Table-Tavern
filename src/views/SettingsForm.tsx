@@ -7,6 +7,7 @@ import { tierLabel } from "../features/ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../features/ai-connection/model-catalog-store";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../features/ai-connection/cli";
+import { CACHE_UPDATED_EVENT } from "./SmartFreeNewModelBanner";
 
 // 檔位預設模型只是設定欄的預填建議（存進 config.json 後由使用者作主），程式邏輯不讀它
 const SUGGESTED_TIER_MODELS: Record<string, string> = {
@@ -22,6 +23,89 @@ interface CliInstallProgress {
   stage: CliInstallStage;
   detail?: string;
   logPath?: string;
+}
+
+interface SmartFreeRecommendation {
+  model: string;
+  label: string;
+  expiresAt: number | null;
+  showExpiryDate: boolean;
+  expiringSoon: boolean;
+  reason: string;
+  provider: string;
+  recent: boolean;
+  contextLength: number;
+  longContext: boolean;
+}
+
+interface SmartFreeRecommendationList {
+  limited: SmartFreeRecommendation[];
+  // 前兩名：[0] 是自動模式送出的那支，[1] 供玩家在第一名失效時手動改用。
+  stable: SmartFreeRecommendation[];
+}
+
+const EMPTY_RECOMMENDATIONS: SmartFreeRecommendationList = { limited: [], stable: [] };
+
+function normalizeApiModelMode(value: unknown) {
+  const mode = String(value ?? "manual");
+  return mode === "smart_free" ? "stable_free" : mode;
+}
+
+function formatRecommendationDate(timestamp: number) {
+  return new Date(timestamp * 1000).toISOString().slice(0, 10);
+}
+
+function formatContext(tokens: number) {
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
+  return `${Math.round(tokens / 1000)}K`;
+}
+
+function recommendationReason(model: SmartFreeRecommendation) {
+  let primary: string;
+  switch (model.reason) {
+    case "anonymous_test":
+      primary = t("smartFreeReasonAnonymousTest");
+      break;
+    case "provider_test":
+      primary = t("smartFreeReasonProviderTest", { provider: model.provider });
+      break;
+    case "limited_test":
+      primary = t("smartFreeReasonLimitedTest");
+      break;
+    case "provider_limited":
+      primary = t("smartFreeReasonProviderLimited", { provider: model.provider });
+      break;
+    case "stable_roleplay":
+      return t("smartFreeReasonStableRoleplay");
+    case "stable_weekly":
+      return t("smartFreeReasonStableWeekly");
+    case "stable_available":
+      return t("smartFreeReasonStableAvailable");
+    default:
+      primary = t("smartFreeReasonLimited");
+      break;
+  }
+  const details = [primary];
+  if (model.recent) details.push(t("smartFreeReasonNew"));
+  if (model.longContext) {
+    details.push(t("smartFreeReasonLongContext", { context: formatContext(model.contextLength) }));
+  }
+  return details.join(" · ");
+}
+
+function recommendationAvailability(model: SmartFreeRecommendation) {
+  const details: string[] = [];
+  if (model.expiringSoon) details.push(t("smartFreeExpiringSoon"));
+  if (model.expiresAt && model.showExpiryDate) {
+    details.push(t("smartFreeUntil", { date: formatRecommendationDate(model.expiresAt) }));
+  } else if (
+    model.reason !== "stable_roleplay" &&
+    model.reason !== "stable_weekly" &&
+    model.reason !== "stable_available"
+  ) {
+    details.push(t("smartFreeExperimentalAvailability"));
+  }
+  return details.join(" · ");
 }
 
 function cliInstallStageText(stage: CliInstallStage) {
@@ -102,6 +186,19 @@ export function Settings({
     ...config.tier_models,
   });
   const [baseUrl, setBaseUrl] = useState(String(config.preferences["base_url"] ?? ""));
+  const [modelMode, setModelMode] = useState(normalizeApiModelMode(config.preferences["api_model_mode"]));
+  const [smartStatus, setSmartStatus] = useState<{
+    model: string;
+    freeDaily: { limit: number; remaining: number } | null;
+  } | null>(null);
+  const [smartRecommendations, setSmartRecommendations] =
+    useState<SmartFreeRecommendationList>(EMPTY_RECOMMENDATIONS);
+  // §15 新限免提示的整體開關；只有明確存 false 才關閉。
+  const [notifyNewModels, setNotifyNewModels] = useState(
+    config.preferences["smart_free_notify"] !== false,
+  );
+  // 穩定免費只挑 OpenRouter 的免費模型；自訂 base URL 時後端也一律照手動設定走
+  const onOpenRouter = ["", "https://openrouter.ai/api/v1"].includes(baseUrl.trim().replace(/\/+$/, ""));
   const keyWarning = checkApiKey(apiKey, baseUrl);
   const [imageModel, setImageModel] = useState(String(config.preferences["image_model"] ?? ""));
   const [claudeCompatBaseUrl, setClaudeCompatBaseUrl] = useState(
@@ -111,6 +208,9 @@ export function Settings({
   const [gmTier, setGmTier] = useState(String(config.preferences["gm_tier"] ?? "best"));
   const [maxRound, setMaxRound] = useState(String(config.preferences["max_round_speakers"] ?? 3));
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
+  const stableFree = transport === "api" && onOpenRouter && modelMode === "stable_free";
+  const recommendedApiModel = transport === "api" && onOpenRouter && modelMode === "recommended";
+  const fixedApiModel = stableFree || recommendedApiModel;
   const [permissionNotice, setPermissionNotice] = useState("");
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[] | null>(cachedClis());
@@ -262,6 +362,58 @@ export function Settings({
     }, 3_000);
   }
 
+  // 背景刷新換到新快取後前端才拿得到最新推薦／狀態；靠這把 tick 讓下面兩個查詢重跑。
+  const [cacheTick, setCacheTick] = useState(0);
+  useEffect(() => {
+    const unlisten = listen(CACHE_UPDATED_EVENT, () => setCacheTick((tick) => tick + 1));
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  // 穩定免費與推薦模式都顯示「今日免費配額」（全帳號共用）。
+  useEffect(() => {
+    if (!fixedApiModel) {
+      setSmartStatus(null);
+      return;
+    }
+    invoke<{
+      model: string;
+      freeDaily: { limit: number; remaining: number } | null;
+    }>("smart_free_status")
+      .then((status) =>
+        setSmartStatus(status.model ? { model: status.model, freeDaily: status.freeDaily } : null),
+      )
+      .catch(() => setSmartStatus(null));
+  }, [fixedApiModel, cacheTick]);
+
+  useEffect(() => {
+    if (transport !== "api" || !onOpenRouter) {
+      setSmartRecommendations(EMPTY_RECOMMENDATIONS);
+      return;
+    }
+    invoke<SmartFreeRecommendationList>("smart_free_recommendations")
+      .then(setSmartRecommendations)
+      .catch(() => setSmartRecommendations(EMPTY_RECOMMENDATIONS));
+  }, [transport, onOpenRouter, config, cacheTick]);
+
+  function selectRecommendedModel(model: string) {
+    setModelMode("recommended");
+    setTierModels((previous) => ({
+      ...previous,
+      best: model,
+      balanced: model,
+      fast: model,
+    }));
+  }
+
+  function recommendedModelSelected(model: string) {
+    return (
+      recommendedApiModel &&
+      (["best", "balanced", "fast"] as const).every((tier) => tierModels[tier] === model)
+    );
+  }
+
   // 未儲存偵測：與 config 現值逐欄比對（比對值採 save() 相同的正規化），改幾欄算幾項
   const dirtyCount = [
     apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
@@ -270,10 +422,12 @@ export function Settings({
     claudeCompatBaseUrl.trim() !== String(config.preferences["claude_base_url"] ?? ""),
     claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? ""),
     gmTier !== String(config.preferences["gm_tier"] ?? "best"),
+    modelMode !== normalizeApiModelMode(config.preferences["api_model_mode"]),
     String(Math.max(1, Number(maxRound) || 3)) !==
       String(config.preferences["max_round_speakers"] ?? 3),
     transport !== String(config.preferences["transport"] ?? "api"),
     riskAccepted !== (config.preferences["cli_risk_accepted"] === true),
+    notifyNewModels !== (config.preferences["smart_free_notify"] !== false),
     JSON.stringify(tierModels) !==
       JSON.stringify({ ...SUGGESTED_TIER_MODELS, ...config.tier_models }),
   ].filter(Boolean).length;
@@ -306,6 +460,8 @@ export function Settings({
         transport,
         cli_risk_accepted: riskAccepted,
         gm_tier: gmTier,
+        api_model_mode: modelMode,
+        smart_free_notify: notifyNewModels,
         max_round_speakers: Math.max(1, Number(maxRound) || 3),
       },
     };
@@ -511,18 +667,108 @@ export function Settings({
               {t("imageModelLabel")}
               <input value={imageModel} onChange={(e) => setImageModel(e.currentTarget.value)} />
             </label>
-            {(["best", "balanced", "fast"] as const).map((tier) => (
-              <label key={tier}>
-                {t("tierModelApiLabel", { tier: tierLabel(tier) })}
-                <input
-                  list="openrouter-models"
-                  value={tierModels[tier] ?? ""}
-                  onChange={(e) =>
-                    setTierModels({ ...tierModels, [tier]: e.currentTarget.value })
-                  }
-                />
-              </label>
-            ))}
+            {onOpenRouter && (
+              <fieldset className="transport-choice">
+                <legend>{t("modelModeLegend")}</legend>
+                {/* 今日免費配額是全帳號共用池，穩定免費與推薦模式都顯示 */}
+                {fixedApiModel && smartStatus && (
+                  <p className="cli-version" role="status">
+                    {smartStatus.freeDaily
+                      ? t("smartFreeDailyLeft", {
+                          remaining: smartStatus.freeDaily.remaining,
+                          limit: smartStatus.freeDaily.limit,
+                        })
+                      : t("smartFreeUnlimited")}
+                  </p>
+                )}
+                <div className="smart-free-recommendations">
+                  <p className="smart-free-recommendation-title">{t("smartFreeStableTitle")}</p>
+                  <label className="smart-free-recommendation">
+                    <input
+                      type="radio"
+                      name="api-model-mode"
+                      checked={stableFree}
+                      onChange={() => setModelMode("stable_free")}
+                    />
+                    <span className="smart-free-recommendation-copy">
+                      <strong>
+                        {smartRecommendations.stable[0]?.label ?? t("smartFreeStableAuto")}
+                      </strong>
+                      {smartRecommendations.stable[0] ? (
+                        <small>{recommendationReason(smartRecommendations.stable[0])}</small>
+                      ) : (
+                        <small>{t("smartFreeNoStable")}</small>
+                      )}
+                    </span>
+                  </label>
+                  {/* 第二名不自動送出，只供第一名當天失效時手動改用（點了＝固定該支） */}
+                  {smartRecommendations.stable.slice(1).map((model) => (
+                    <label key={model.model} className="smart-free-recommendation">
+                      <input
+                        type="radio"
+                        name="api-model-mode"
+                        checked={recommendedModelSelected(model.model)}
+                        onChange={() => selectRecommendedModel(model.model)}
+                      />
+                      <span className="smart-free-recommendation-copy">
+                        <strong>{model.label}</strong>
+                        <small>{recommendationReason(model)}</small>
+                      </span>
+                    </label>
+                  ))}
+                  <p className="smart-free-recommendation-title">{t("smartFreeLimitedTitle")}</p>
+                  {smartRecommendations.limited.length === 0 ? (
+                    <p className="cli-version">{t("smartFreeNoLimited")}</p>
+                  ) : (
+                    smartRecommendations.limited.map((model) => (
+                      <label key={model.model} className="smart-free-recommendation">
+                        <input
+                          type="radio"
+                          name="api-model-mode"
+                          checked={recommendedModelSelected(model.model)}
+                          onChange={() => selectRecommendedModel(model.model)}
+                        />
+                        <span className="smart-free-recommendation-copy">
+                          <strong>{model.label}</strong>
+                          <span>{recommendationAvailability(model)}</span>
+                          <small>{recommendationReason(model)}</small>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                  <label className="inline smart-free-notify-toggle">
+                    <input
+                      type="checkbox"
+                      checked={notifyNewModels}
+                      onChange={(e) => setNotifyNewModels(e.currentTarget.checked)}
+                    />
+                    {t("smartFreeNotifyLabel")}
+                  </label>
+                </div>
+                <label className="inline">
+                  <input
+                    type="radio"
+                    name="api-model-mode"
+                    checked={modelMode !== "stable_free" && modelMode !== "recommended"}
+                    onChange={() => setModelMode("manual")}
+                  />
+                  {t("manualModelOption")}
+                </label>
+              </fieldset>
+            )}
+            {!fixedApiModel &&
+              (["best", "balanced", "fast"] as const).map((tier) => (
+                <label key={tier}>
+                  {t("tierModelApiLabel", { tier: tierLabel(tier) })}
+                  <input
+                    list="openrouter-models"
+                    value={tierModels[tier] ?? ""}
+                    onChange={(e) =>
+                      setTierModels({ ...tierModels, [tier]: e.currentTarget.value })
+                    }
+                  />
+                </label>
+              ))}
             <datalist id="openrouter-models">
               {(catalogs["api"] ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
@@ -607,16 +853,19 @@ export function Settings({
             <p role="note">{t("claudeCompatHint")}</p>
           </details>
         )}
-        <label>
-          {t("gmTierLabel")}
-          <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
-            {(["best", "balanced", "fast"] as const).map((tier) => (
-              <option key={tier} value={tier}>
-                {tierLabel(tier)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* 智慧免費自動挑模型，不走檔位→模型解析，這欄對它沒作用，藏起來 */}
+        {!fixedApiModel && (
+          <label>
+            {t("gmTierLabel")}
+            <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
+              {(["best", "balanced", "fast"] as const).map((tier) => (
+                <option key={tier} value={tier}>
+                  {tierLabel(tier)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           {t("maxRoundLabel")}
           <input
@@ -627,7 +876,8 @@ export function Settings({
             onChange={(e) => setMaxRound(e.currentTarget.value)}
           />
         </label>
-        {transport === "api" && (
+        {/* 智慧免費必然在 OpenRouter 預設站台（設了自訂 URL 就不算智慧免費），這欄對它沒意義 */}
+        {transport === "api" && !fixedApiModel && (
           <label>
             {t("baseUrlLabel")}
             <input

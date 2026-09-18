@@ -2,6 +2,7 @@
 // 角色接話、GM 旁白與推進接力的整條流程。所有權從 App() 搬過來，行為與依賴陣列照舊。
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
 import { AppConfig, TranscriptEvent } from "../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../features/characters/card-model";
@@ -112,6 +113,7 @@ export function useChatController({
     kind: "dialogue" | "narration";
   } | null>(null);
   const [streamText, setStreamText] = useState("");
+  const responseTruncated = useRef(false);
   // 保溫 ping 的節奏狀態：上次真正推進的時刻、已連發幾次、這桌是否根本沒得保溫（非 claude 模式）
   const generatingRef = useRef<{ id: string; kind: "dialogue" | "narration" } | null>(null);
   generatingRef.current = generating;
@@ -119,6 +121,29 @@ export function useChatController({
   const pingCount = useRef(0);
   const keepaliveOff = useRef(false);
   const [awayTooLong, setAwayTooLong] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ world: string | null; reason: string }>("ai-response-truncated", (event) => {
+      if (event.payload.world === worldId) responseTruncated.current = true;
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [worldId]);
+
+  const takeResponseTruncated = useCallback(async () => {
+    // Rust 端先 emit 再讓 invoke resolve；讓事件佇列多一個 tick 完成投遞。
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const truncated = responseTruncated.current;
+    responseTruncated.current = false;
+    return truncated;
+  }, []);
 
   // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）。
   // 疊裡全是空白事件（AI 失敗年代留下的那幾則）就不給亮——按了也沒東西回得來
@@ -261,6 +286,7 @@ export function useChatController({
       noteChatStarted();
       setGenerating({ id: characterId, kind: "dialogue" });
       setStreamText("");
+      responseTruncated.current = false;
       const onDelta = new Channel<string>();
       onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
       const full = await invoke<string>("chat_with_character", {
@@ -268,12 +294,20 @@ export function useChatController({
         characterId,
         onDelta,
       });
+      const truncated = await takeResponseTruncated();
       const name = metaOf(characterId)?.name ?? "";
-      await appendEvent({ ts: nowTs(), speaker_id: characterId, speaker_name: name, kind: "dialogue", text: full });
+      await appendEvent({
+        ts: nowTs(),
+        speaker_id: characterId,
+        speaker_name: name,
+        kind: "dialogue",
+        text: full,
+        ...(truncated ? { truncated: true } : {}),
+      });
       await markCliConnected();
       noteTurnDone();
     },
-    [noteChatStarted, worldId, metaOf, appendEvent, markCliConnected, noteTurnDone],
+    [noteChatStarted, worldId, metaOf, appendEvent, markCliConnected, noteTurnDone, takeResponseTruncated],
   );
 
   // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
@@ -300,6 +334,7 @@ export function useChatController({
     noteChatStarted();
     setGenerating({ id: "", kind: "narration" });
     setStreamText("");
+    responseTruncated.current = false;
     const onDelta = new Channel<string>();
     onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
     const { text, raw, next, state_updates, arrived_characters } = await invoke<{
@@ -314,10 +349,19 @@ export function useChatController({
       worldId,
       onDelta,
     });
+    const truncated = await takeResponseTruncated();
     if (arrived_characters && arrived_characters.length > 0) {
       onArrived(arrived_characters);
     }
-    await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) });
+    await appendEvent({
+      ts: nowTs(),
+      speaker_id: "",
+      speaker_name: "GM",
+      kind: "narration",
+      text,
+      ...(raw ? { raw } : {}),
+      ...(truncated ? { truncated: true } : {}),
+    });
     // 長文字欄（外貌、貼文…）改用一則系統事件記變動，不再每輪塞回提示詞——
     // 歷史會被兩條傳輸路每輪重播且吃快取，回合尾動態塊每輪重組、不落歷史
     const updates = state_updates ?? [];
@@ -334,7 +378,7 @@ export function useChatController({
     await markCliConnected();
     noteTurnDone();
     return next;
-  }, [noteChatStarted, worldId, onArrived, appendEvent, refreshState, markCliConnected, noteTurnDone]);
+  }, [noteChatStarted, worldId, onArrived, appendEvent, refreshState, markCliConnected, noteTurnDone, takeResponseTruncated]);
 
   // 簡易導演：GM 插入旁白（NewPlan §6.1、MVP 第 9 項）；一併回來的點名這裡不用，讓玩家自己決定下一步
   const gmNarrate = useCallback(async () => {

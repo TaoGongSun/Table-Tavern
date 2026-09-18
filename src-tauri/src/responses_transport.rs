@@ -174,6 +174,14 @@ impl ResponsesOutcome {
             .map(|tokens| format!(" reasoning_tokens={tokens}"))
             .unwrap_or_default();
         if let Some(reason) = &self.incomplete_reason {
+            if !text.trim().is_empty()
+                && matches!(
+                    reason.as_str(),
+                    "content_filter" | "max_output_tokens" | "length"
+                )
+            {
+                return None;
+            }
             return Some(format!(
                 "AI_INCOMPLETE_RESPONSE: model={model} status=incomplete reason={reason}{reasoning}"
             ));
@@ -189,6 +197,17 @@ impl ResponsesOutcome {
             ));
         }
         None
+    }
+
+    fn truncation(&self, text: &str) -> Option<String> {
+        if text.trim().is_empty() {
+            return None;
+        }
+        match self.incomplete_reason.as_deref() {
+            Some("content_filter") => Some("content_filter".to_owned()),
+            Some("max_output_tokens" | "length") => Some("length".to_owned()),
+            _ => None,
+        }
     }
 }
 
@@ -215,7 +234,7 @@ pub(crate) async fn stream_responses(
     world: Option<&str>,
     shape: usage_log::PromptShape,
     mut on_delta: impl FnMut(&str),
-) -> DataResult<String> {
+) -> DataResult<transport::StreamChatResult> {
     let base = transport::base_url(config);
     let api_key = config
         .api_keys
@@ -285,7 +304,10 @@ pub(crate) async fn stream_responses(
     if let Some(failure) = outcome.failure(&full_text, model) {
         return Err(failure.into());
     }
-    Ok(full_text)
+    Ok(transport::StreamChatResult {
+        truncated: outcome.truncation(&full_text),
+        text: full_text,
+    })
 }
 
 #[cfg(test)]
@@ -367,8 +389,10 @@ mod tests {
         incomplete.absorb(
             r#"{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}"#,
         );
+        assert_eq!(incomplete.failure("半截", "model"), None);
+        assert_eq!(incomplete.truncation("半截"), Some("length".to_owned()));
         assert!(incomplete
-            .failure("半截", "model")
+            .failure("", "model")
             .unwrap()
             .starts_with("AI_INCOMPLETE_RESPONSE:"));
 

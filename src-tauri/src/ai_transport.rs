@@ -1,5 +1,8 @@
-use crate::{cli, config_root, data, data_root, lanes, responses_transport, transport, usage_log};
+use crate::{
+    cli, config_root, data, data_root, lanes, responses_transport, smart_free, transport, usage_log,
+};
 use std::path::PathBuf;
+use tauri::Emitter;
 
 /// CLI 的工作目錄。Finder 啟動的 macOS app 工作目錄可能是根目錄；CLI 若繼承後做專案探索，
 /// 會掃到桌面、下載項目等受 TCC 保護的位置。固定在專用空目錄，避免無關權限彈窗。
@@ -240,34 +243,74 @@ pub(crate) async fn stream_turn_via_transport(
         .ok()
         .map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
+        let smart = smart_free::is_active(config);
+        let mut emit = emit;
+        if smart {
+            let root = config_root(app)?;
+            let prepared = smart_free::prepare_call(&root, config, world, messages).await?;
+            if let Some(warning) = prepared.expiry_warning.as_ref() {
+                let _ = app.emit("smart-free-model-expiring", warning);
+            }
+            let result = transport::stream_chat_models(
+                config,
+                &prepared.models,
+                messages,
+                usage_log.as_deref(),
+                world,
+                shape,
+                &mut emit,
+            )
+            .await
+            .map_err(|error| ai_call_failure(error.to_string()))?;
+            if let Some(model) = result.model.as_deref() {
+                if smart_free::record_responder(&root, world, model) {
+                    let _ = app.emit(
+                        "smart-free-model-switched",
+                        serde_json::json!({ "model": model }),
+                    );
+                }
+            }
+            if let Some(reason) = result.truncated.as_deref() {
+                let _ = app.emit(
+                    "ai-response-truncated",
+                    serde_json::json!({ "world": world, "reason": reason }),
+                );
+            }
+            return Ok(result.text);
+        }
+
         let model = transport::resolve_model(tier, config)?;
         let result = match responses_transport::api_mode(config) {
-            responses_transport::ApiMode::ChatCompletions => {
-                transport::stream_chat(
-                    config,
-                    &model,
-                    messages,
-                    usage_log.as_deref(),
-                    world,
-                    shape,
-                    emit,
-                )
-                .await
-            }
-            responses_transport::ApiMode::Responses => {
-                responses_transport::stream_responses(
-                    config,
-                    &model,
-                    messages,
-                    usage_log.as_deref(),
-                    world,
-                    shape,
-                    emit,
-                )
-                .await
-            }
-        };
-        return result.map_err(|error| ai_call_failure(error.to_string()));
+            responses_transport::ApiMode::ChatCompletions => transport::stream_chat(
+                config,
+                &model,
+                messages,
+                usage_log.as_deref(),
+                world,
+                shape,
+                &mut emit,
+            )
+            .await
+            .map_err(|error| ai_call_failure(error.to_string())),
+            responses_transport::ApiMode::Responses => responses_transport::stream_responses(
+                config,
+                &model,
+                messages,
+                usage_log.as_deref(),
+                world,
+                shape,
+                &mut emit,
+            )
+            .await
+            .map_err(|error| ai_call_failure(error.to_string())),
+        }?;
+        if let Some(reason) = result.truncated.as_deref() {
+            let _ = app.emit(
+                "ai-response-truncated",
+                serde_json::json!({ "world": world, "reason": reason }),
+            );
+        }
+        return Ok(result.text);
     }
 
     // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）

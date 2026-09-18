@@ -110,11 +110,23 @@ pub(crate) async fn translate_opening(
 pub(crate) fn translate_tier_models(
     app: tauri::AppHandle,
 ) -> Result<Vec<transport::TierModel>, String> {
-    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let root = config_root(&app)?;
+    let config = data::read_config(&root).map_err(|error| error.to_string())?;
     let kind = chat_transport(&config);
+    // 智慧免費三檔送的是同一支，照實顯示，不顯示檔位裡留著的保底值
+    let smart = (kind == "api" && crate::smart_free::is_active(&config))
+        .then(|| crate::smart_free::status(&root, &config).model)
+        .filter(|model| !model.is_empty());
     Ok([data::Tier::Fast, data::Tier::Balanced, data::Tier::Best]
         .into_iter()
-        .map(|tier| transport::tier_model(&config, &kind, tier))
+        .map(|tier| {
+            let mut entry = transport::tier_model(&config, &kind, tier);
+            if let Some(model) = &smart {
+                entry.effective_tier = entry.tier.clone();
+                entry.model = Some(model.clone());
+            }
+            entry
+        })
         .collect())
 }
 
@@ -350,6 +362,7 @@ mod tests {
                 text: "（角色回歸）〈狐狸〉\n尾巴很大。".to_owned(),
                 raw: None,
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -366,6 +379,7 @@ mod tests {
                 text: "（人物登場）〈愛麗絲〉\n旅店老闆娘。".to_owned(),
                 raw: None,
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -405,6 +419,7 @@ mod tests {
             text: "天亮了。".to_owned(),
             raw: None,
             state: None,
+            truncated: false,
             gm_only: false,
         };
         let stamped = super::stamp_state(&root, &world_id, bare.clone());

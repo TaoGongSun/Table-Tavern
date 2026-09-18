@@ -201,8 +201,38 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
     )
     .await
     .unwrap();
-    assert_eq!(full, "你好");
+    assert_eq!(full.text, "你好");
+    assert_eq!(full.truncated, None);
     assert_eq!(deltas, ["你", "好"]);
+}
+
+#[test]
+fn smart_free_body_uses_models_array_without_provider_specific_cache_fields() {
+    let messages = [
+        message("system", "stable prefix".to_owned()),
+        message("user", "hello".to_owned()),
+    ];
+    let models = vec![
+        "anthropic/first:free".to_owned(),
+        "google/second:free".to_owned(),
+    ];
+    let body = chat_models_request_body(&models, &messages);
+    assert_eq!(body["models"], serde_json::json!(models));
+    assert!(body.get("model").is_none());
+    assert_eq!(body["messages"][0]["content"], "stable prefix");
+    assert!(!body.to_string().contains("cache_control"));
+}
+
+#[test]
+fn smart_free_extracts_the_model_that_actually_answered() {
+    assert_eq!(
+        extract_response_model(
+            r#"{"model":"beta/fallback:free","choices":[{"delta":{"content":"好"}}]}"#,
+        )
+        .as_deref(),
+        Some("beta/fallback:free")
+    );
+    assert_eq!(extract_response_model(r#"{"choices":[]}"#), None);
 }
 
 /// 收工判定的優先序（stream-failure-visible）：實測 2026-08-21 免費 DeepSeek
@@ -248,6 +278,11 @@ fn stream_outcome_ranks_failures_by_priority() {
         .failure("", "test/model")
         .unwrap()
         .starts_with("AI_CONTENT_FILTERED:"));
+    assert_eq!(outcome.failure("半截旁白", "test/model"), None);
+    assert_eq!(
+        outcome.truncation("半截旁白"),
+        Some("content_filter".to_owned())
+    );
 
     // length 又零正文：歸 INCOMPLETE 不歸 EMPTY——原因是被截斷，不是模型沒話說
     let mut outcome = StreamOutcome::default();
@@ -258,14 +293,12 @@ fn stream_outcome_ranks_failures_by_priority() {
     assert!(failure.starts_with("AI_INCOMPLETE_RESPONSE:"), "{failure}");
     assert!(failure.contains("reasoning_tokens=4437"), "{failure}");
 
-    // length 但正文非空：第一版一樣當失敗（共用層不知道半截內容安不安全）
+    // length 但正文非空：保留正文，另帶截斷原因給上層標記
     let mut outcome = StreamOutcome::default();
     outcome.absorb(r#"{"choices":[{"finish_reason":"length"}]}"#);
     outcome.saw_done = true;
-    assert!(outcome
-        .failure("半截旁白", "test/model")
-        .unwrap()
-        .starts_with("AI_INCOMPLETE_RESPONSE:"));
+    assert_eq!(outcome.failure("半截旁白", "test/model"), None);
+    assert_eq!(outcome.truncation("半截旁白"), Some("length".to_owned()));
 
     // 沒收尾原因又沒見到 [DONE]＝串流被截斷
     let outcome = StreamOutcome::default();
@@ -628,7 +661,8 @@ async fn stream_chat_passes_usage_chunk_through_without_breaking_deltas() {
     )
     .await
     .unwrap();
-    assert_eq!(full, "你好");
+    assert_eq!(full.text, "你好");
+    assert_eq!(full.truncated, None);
     assert_eq!(deltas, ["你", "好"]);
 
     // usage 落檔：一行 JSONL 含時間戳、模型、token 數與命中率（12/20 = 60%）

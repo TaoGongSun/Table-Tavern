@@ -11,6 +11,7 @@ mod inflight;
 mod install;
 mod lanes;
 mod mechanism;
+mod openrouter_oauth;
 mod proxy;
 mod receipts;
 mod refactor;
@@ -19,6 +20,7 @@ mod refactor_assemble;
 mod refactor_session;
 mod responses_transport;
 mod session_file;
+mod smart_free;
 mod snapshot_patch;
 mod translate;
 mod transport;
@@ -123,6 +125,8 @@ pub fn run() {
             commands::state::mark_state_counter,
             commands::settings::read_config,
             commands::settings::write_config,
+            openrouter_oauth::save_openrouter_key,
+            openrouter_oauth::connect_openrouter,
             commands::settings::detect_clis,
             commands::cli_setup::install_cli,
             commands::cli_setup::cli_verified,
@@ -131,6 +135,10 @@ pub fn run() {
             commands::settings::list_cli_models,
             commands::settings::read_model_catalog,
             commands::settings::write_model_catalog,
+            commands::settings::smart_free_status,
+            commands::settings::smart_free_recommendations,
+            commands::settings::smart_free_new_models,
+            commands::settings::smart_free_dismiss_recommendations,
             commands::chat::chat_with_character,
             commands::image::generate_character_image,
             commands::image::list_gallery_images,
@@ -147,6 +155,12 @@ pub fn run() {
             commands::genesis::generate_table_character,
             commands::genesis::generate_table_expand
         ])
+        .setup(|app| {
+            if let Ok(root) = config_root(app.handle()) {
+                smart_free::spawn_background_refresh(app.handle().clone(), root);
+            }
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_handle, event| {

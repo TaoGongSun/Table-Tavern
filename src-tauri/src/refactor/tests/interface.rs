@@ -471,6 +471,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
                 text: text.to_owned(),
                 raw: None,
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )

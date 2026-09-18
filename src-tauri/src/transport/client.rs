@@ -42,6 +42,7 @@ pub fn refactor_expand_tier(config: &AppConfig, transport_kind: &str) -> Tier {
 }
 
 /// 檔位→模型解析。模型 id 一律來自設定檔（config.tier_models），程式不內建。
+/// 智慧免費不經這個 resolver，會在送出前從帳號可用清單組 `models` 陣列。
 pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
     let key = tier.as_str();
     config
@@ -256,6 +257,41 @@ fn chat_request_body(model: &str, messages: &[ChatMessage]) -> serde_json::Value
     body
 }
 
+/// 智慧免費的 fallback 一定維持跨廠都能吃的素樸 body。尤其不能把 Anthropic 專用的
+/// `cache_control` 混進 `messages`，否則 OpenRouter 換到別家時會收到前一家專用參數。
+fn chat_models_request_body(models: &[String], messages: &[ChatMessage]) -> serde_json::Value {
+    serde_json::json!({
+        "models": models,
+        "messages": messages,
+        "stream": true,
+    })
+}
+
+fn extract_response_model(payload: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()?
+        .get("model")?
+        .as_str()
+        .filter(|model| !model.trim().is_empty())
+        .map(str::to_owned)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamChatResult {
+    pub text: String,
+    /// 有正文但被供應商中途截斷；值是正規化後的原因。
+    pub truncated: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmartChatResult {
+    pub text: String,
+    /// OpenRouter SSE top-level `model`；缺欄時不猜，呼叫端也不更新桌綁定。
+    pub model: Option<String>,
+    /// 有正文但被供應商中途截斷；值是正規化後的原因。
+    pub truncated: Option<String>,
+}
+
 /// 從一則 SSE payload 取出增量文字；非增量塊（usage、空 choices）回 None。
 pub fn extract_delta(payload: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(payload).ok()?;
@@ -341,6 +377,7 @@ impl StreamOutcome {
                 .unwrap_or_default(),
         );
         match reason {
+            Some("content_filter" | "length") if !text.trim().is_empty() => None,
             Some("content_filter") => Some(format!("AI_CONTENT_FILTERED: {diagnosis}")),
             // stop 以外的收尾原因（length／tool_calls／沒見過的）這個 app 都接不下去
             Some(reason) if reason != "stop" => {
@@ -349,6 +386,18 @@ impl StreamOutcome {
             // 沒收尾原因又沒見到 [DONE]＝串流被中途截斷
             None if !self.saw_done => Some(format!("AI_INCOMPLETE_RESPONSE: {diagnosis}")),
             _ if text.trim().is_empty() => Some(format!("AI_EMPTY_RESPONSE: {diagnosis}")),
+            _ => None,
+        }
+    }
+
+    /// 有正文時，內容過濾與長度上限都保留正文，但讓上層標記為中途截斷。
+    pub fn truncation(&self, text: &str) -> Option<String> {
+        if text.trim().is_empty() {
+            return None;
+        }
+        match self.finish_reason.as_deref() {
+            Some("content_filter") => Some("content_filter".to_owned()),
+            Some("length") => Some("length".to_owned()),
             _ => None,
         }
     }
@@ -388,7 +437,7 @@ pub async fn stream_chat(
     world: Option<&str>,
     shape: crate::usage_log::PromptShape,
     mut on_delta: impl FnMut(&str),
-) -> DataResult<String> {
+) -> DataResult<StreamChatResult> {
     let base = base_url(config);
     let api_key = config
         .api_keys
@@ -452,7 +501,98 @@ pub async fn stream_chat(
     if let Some(failure) = outcome.failure(&full_text, model) {
         return Err(failure.into());
     }
-    Ok(full_text)
+    Ok(StreamChatResult {
+        truncated: outcome.truncation(&full_text),
+        text: full_text,
+    })
+}
+
+/// 智慧免費專用：單一 `/chat/completions` 請求帶最多三支 `models`，由 OpenRouter 在
+/// 伺服器端 fallback。回傳 top-level `model` 供呼叫端更新桌綁定；App 本身不逐支重試。
+#[allow(clippy::too_many_arguments)]
+pub async fn stream_chat_models(
+    config: &AppConfig,
+    models: &[String],
+    messages: &[ChatMessage],
+    usage_log: Option<&std::path::Path>,
+    world: Option<&str>,
+    shape: crate::usage_log::PromptShape,
+    mut on_delta: impl FnMut(&str),
+) -> DataResult<SmartChatResult> {
+    let Some(first_model) = models.first() else {
+        return Err("目前沒有可用免費模型".into());
+    };
+    let base = base_url(config);
+    let api_key = config
+        .api_keys
+        .get("openrouter")
+        .filter(|key| !key.is_empty());
+    if api_key.is_none() && base == DEFAULT_BASE_URL {
+        return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
+    }
+
+    let mut request = reqwest::Client::new()
+        .post(format!("{base}/chat/completions"))
+        .json(&chat_models_request_body(models, messages));
+    if let Some(key) = api_key {
+        request = request.bearer_auth(key);
+    }
+
+    let response = request.send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(http_error(status, &body).into());
+    }
+
+    let mut stream = response.bytes_stream();
+    let mut parser = SseParser::default();
+    let mut full_text = String::new();
+    let mut usage = None;
+    let mut outcome = StreamOutcome::default();
+    let mut responder_model = None;
+    'outer: while let Some(chunk) = stream.next().await {
+        for payload in parser.push(&chunk?) {
+            if payload == "[DONE]" {
+                outcome.saw_done = true;
+                break 'outer;
+            }
+            outcome.absorb(&payload);
+            if let Some(model) = extract_response_model(&payload) {
+                responder_model = Some(model);
+            }
+            if let Some(parsed) = extract_usage(&payload) {
+                usage = Some(parsed);
+            }
+            if let Some(delta) = extract_delta(&payload) {
+                on_delta(&delta);
+                full_text.push_str(&delta);
+            }
+        }
+    }
+    let log_model = responder_model.as_deref().unwrap_or(first_model);
+    if let Some(usage) = usage {
+        eprintln!(
+            "[prompt-cache] transport=api model={log_model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",
+            usage.prompt_tokens,
+            describe(usage.cached_tokens),
+            describe(usage.created_tokens),
+            usage
+                .hit_rate()
+                .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
+        );
+        if let Some(path) = usage_log {
+            crate::usage_log::append_call(path, world, "api", log_model, None, shape, usage);
+        }
+    }
+    if let Some(failure) = outcome.failure(&full_text, log_model) {
+        return Err(failure.into());
+    }
+    Ok(SmartChatResult {
+        truncated: outcome.truncation(&full_text),
+        text: full_text,
+        model: responder_model,
+    })
 }
 
 /// OpenRouter 專用 Images API（POST {base}/images）；回傳 data URL 或遠端圖片網址。

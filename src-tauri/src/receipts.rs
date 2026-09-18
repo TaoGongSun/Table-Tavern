@@ -757,6 +757,7 @@ mod tests {
             text: text.to_owned(),
             raw: None,
             state: None,
+            truncated: false,
             gm_only: false,
         }
     }

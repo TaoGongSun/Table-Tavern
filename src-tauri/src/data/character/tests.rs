@@ -253,6 +253,7 @@ fn rename_keeps_paths_and_preserves_transcript_snapshot() {
             kind: TranscriptKind::Dialogue,
             text: "舊名說了一句話".to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         },
     )

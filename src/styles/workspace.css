@@ -356,6 +356,14 @@
   color: var(--ink-3);
 }
 
+.response-truncated {
+  display: block;
+  margin-top: 0.35em;
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
 .typing i {
   display: inline-block;
   width: 6px;
@@ -392,4 +400,3 @@
     opacity: 0.7;
   }
 }
-

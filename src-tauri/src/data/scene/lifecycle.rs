@@ -108,6 +108,7 @@ pub fn begin_next_scene(
             kind: TranscriptKind::Narration,
             text: format_scene_summary(summary_text, lang),
             state: None,
+            truncated: false,
             gm_only: false,
         },
     )?;
@@ -236,6 +237,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "第一場的對話".to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
@@ -272,6 +274,7 @@ mod tests {
             kind: TranscriptKind::Player,
             text: "第一幕的對話".to_owned(),
             state: None,
+            truncated: false,
             gm_only: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
@@ -317,6 +320,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "第一幕的對話".to_owned(),
                 state: Some(snapshot.clone()),
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -356,6 +360,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "序幕".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -374,6 +379,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "新的一句".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -421,6 +427,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "序幕".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -468,6 +475,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "玩家的第一句".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -514,6 +522,7 @@ mod tests {
                 kind: TranscriptKind::Narration,
                 text: "序幕".to_owned(),
                 state: Some(snapshot.clone()),
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -550,6 +559,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "啟航前的最後一夜。".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -608,6 +618,7 @@ mod tests {
                 kind: TranscriptKind::Dialogue,
                 text: "這次我們往南走。".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
@@ -680,6 +691,7 @@ mod tests {
                 kind: TranscriptKind::Player,
                 text: "序幕".to_owned(),
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )

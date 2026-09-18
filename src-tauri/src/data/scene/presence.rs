@@ -120,6 +120,7 @@ mod tests {
                 text: "（角色回歸）〈狐狸〉\n尾巴很大。".to_owned(),
                 raw: None,
                 state: None,
+                truncated: false,
                 gm_only: false,
             },
         )
