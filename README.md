@@ -14,14 +14,14 @@ Interface in ten languages — English, 繁體中文, 简体中文, 日本語, �
 
 **Windows**: download the installer from the release page. Windows may show an "unknown publisher" warning — click **More info → Run anyway**.
 
-**macOS** (Apple Silicon): download the `.dmg`, drag `Table Tavern.app` into Applications, double-click.
+**macOS** (Intel or Apple Silicon): download the universal `.dmg`, drag `Table Tavern.app` into Applications, double-click.
 
 If macOS says the app can't be verified: press **Done**, open **System Settings → Privacy & Security**, scroll to the bottom, click **Open Anyway**, confirm once. That's it — the warning appears because this test build isn't notarized with Apple yet.
 
 ## Getting Started
 
 1. First launch drops you straight into a sample table. Poke around freely.
-2. To make characters talk, the app needs an AI service. The standard way: register at [OpenRouter](https://openrouter.ai/), top up a small amount, paste your key into the in-app guide. One key gives you many models, and the GM and each character can use different ones. Pay only for what you use — there is no subscription.
+2. To make characters talk, the app needs an AI service. Click **Connect OpenRouter**, sign in (or sign up) in your browser, authorize — and you're back at the table, ready to chat. No key to copy and no top-up needed: the app picks a capable free model for you. Want stronger, paid models later? Top up your [OpenRouter](https://openrouter.ai/) account; the GM and each character can use different ones, and you pay only for what you use. Pasting a key by hand stays as an advanced option.
 3. That's all. Write a card, join the table, play.
 
 Already paying for Claude, ChatGPT, Gemini, or Grok? You can route conversations through their official command-line tools instead and spend your existing subscription — see the Q&A below.
@@ -29,7 +29,7 @@ Already paying for Claude, ChatGPT, Gemini, or Grok? You can route conversations
 ## Q&A
 
 **Is the app free?**
-Yes — free and open source. The only cost is what your AI provider charges for usage, paid by you directly to them.
+Yes — free and open source, and you can play for free: after connecting OpenRouter, the app runs on a free model by default. Paid models cost only what your AI provider charges for usage, paid by you directly to them — no subscription.
 
 **Can I sponsor the project?**
 We're still in the testing period — **please don't feel any need to sponsor yet.** The sponsor perks (five extra color themes and AI character-art generation) are finished, and sponsoring unlocks them right now; we just don't feel right asking for money while the experience is still being polished.
@@ -54,14 +54,13 @@ See the install section above — it's the standard warning for unsigned test bu
 
 ## For Developers
 
-Tauri 2 (Rust) + Vite + React + TypeScript. Start with the [current architecture guide](docs/ARCHITECTURE.md); `NewPlan.md` is the original product-direction document and may be superseded by later `.ai/plans/` decisions. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+Tauri 2 (Rust) + Vite + React + TypeScript. Start with the [current architecture guide](docs/ARCHITECTURE.md) and the [source layout guide](docs/STRUCTURE.md); `NewPlan.md` is the original product-direction document and may be superseded by later `.ai/plans/` decisions. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ```bash
 npm install
 npm run tauri dev    # dev mode
 npm run tauri build  # .app / DMG / installer
-cd src-tauri && cargo test
-npm run build        # front-end type check + build
+npm run verify       # one-shot check: front-end build + Rust tests + i18n + structure
 ```
 
 ## License
