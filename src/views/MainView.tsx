@@ -43,7 +43,6 @@ interface MainViewProps {
   onClose: () => void;
   leaveGuard: { current: (() => Promise<boolean>) | null };
   config: AppConfig;
-  sponsorUnlocked: boolean;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
   worldOpen: boolean;
@@ -81,7 +80,6 @@ export function MainView({
   onClose,
   leaveGuard,
   config,
-  sponsorUnlocked,
   onPreference,
   onOpenAiSettings,
   worldOpen,
@@ -152,7 +150,6 @@ export function MainView({
             onBack={onClose}
             leaveGuard={leaveGuard}
             config={config}
-            sponsorUnlocked={sponsorUnlocked}
             onPreference={onPreference}
             onOpenAiSettings={onOpenAiSettings}
             onConverted={() => onFinishRemoval(cardId)}
