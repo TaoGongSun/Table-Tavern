@@ -2,10 +2,9 @@ import { FormEvent, useEffect, useState } from "react";
 import Cropper, { Area } from "react-easy-crop";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
 import { explainAiError } from "../shared/ui/ai-error";
-import { KOFI_URL } from "../features/settings/appearance";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { CharacterCard, DraftImage, Tier } from "../features/characters/card-model";
 import { CLI_LABELS, CliInfo, detectClis } from "../features/ai-connection/cli";
@@ -144,7 +143,6 @@ export function CardEditor({
   onBack,
   leaveGuard,
   config,
-  sponsorUnlocked,
   onPreference,
   onOpenAiSettings,
   isPlayer = false,
@@ -166,7 +164,6 @@ export function CardEditor({
   onArchived: () => Promise<void>;
   onDeleted: () => Promise<void>;
   config: AppConfig;
-  sponsorUnlocked: boolean;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
   isPlayer?: boolean;
@@ -183,7 +180,6 @@ export function CardEditor({
   const [croppingAvatar, setCroppingAvatar] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [aiGenOpen, setAiGenOpen] = useState(false);
-  const [aiGenLockedOpen, setAiGenLockedOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiSource, setAiSource] = useState("api");
   const [aiFraming, setAiFraming] = useState("full");
@@ -228,7 +224,6 @@ export function CardEditor({
       .catch((reason) => setMessage(String(reason)));
   }, [world, characterId, isNew, newCardColor]);
 
-  const trialsUsed = Number(config.preferences["ai_image_trials_used"] ?? 0);
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
   const sourceCannotGenerate = NO_IMAGE_CLIS.includes(aiSource);
 
@@ -248,10 +243,6 @@ export function CardEditor({
   }
 
   function openAiGenerator() {
-    if (!sponsorUnlocked && trialsUsed >= 3) {
-      setAiGenLockedOpen(true);
-      return;
-    }
     const savedSource = String(config.preferences["image_source"] ?? "");
     // 聊天用的來源不一定會生圖（例如 claude），跟隨不到就退回 API，玩家一打開就是能按的狀態
     const transport = String(config.preferences["transport"] ?? "api");
@@ -295,7 +286,6 @@ export function CardEditor({
       await refreshGallery();
       await onPreference("image_source", aiSource);
       await onPreference("image_framing", aiFraming);
-      if (!sponsorUnlocked) await onPreference("ai_image_trials_used", trialsUsed + 1);
     } catch (reason) {
       setAiGenError(String(reason));
     } finally {
@@ -708,7 +698,6 @@ export function CardEditor({
                 {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
               </p>
             )}
-            {!sponsorUnlocked && <p role="note">{t("aiGenTrialNote", { n: Math.max(0, 3 - trialsUsed) })}</p>}
             {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
             {galleryFiles.length > 0 && (
               <section aria-label={t("aiGalleryTitle")}>
@@ -743,14 +732,6 @@ export function CardEditor({
                 {aiGenerating ? t("aiGenerating") : `✨ ${t("aiGenBtn")}`}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-      {aiGenLockedOpen && (
-        <div className="modal-overlay" onClick={() => setAiGenLockedOpen(false)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenLockedTitle")} onClick={(event) => event.stopPropagation()}>
-            <div className="row"><button type="button" onClick={() => void openUrl(KOFI_URL)}>{t("sponsorBtn")}</button><button type="button" onClick={() => setAiGenLockedOpen(false)}>{t("closeBtn")}</button></div>
-            <h2>{t("aiGenLockedTitle")}</h2><p>{t("aiGenLockedBody")}</p>
           </div>
         </div>
       )}

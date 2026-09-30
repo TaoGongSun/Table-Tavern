@@ -594,7 +594,6 @@ function App() {
         chattedSinceImport={chattedSinceImport}
         worldEditorRefreshKey={worldEditorRefreshKey}
         config={config}
-        sponsorUnlocked={sponsorUnlocked}
         error={error}
         transport={transport}
         characters={characters}

@@ -39,7 +39,6 @@ interface AppWorkspaceProps {
   chattedSinceImport: boolean;
   worldEditorRefreshKey: number;
   config: AppConfig;
-  sponsorUnlocked: boolean;
   error: string;
   transport: string | undefined;
   characters: CharacterController;
@@ -73,7 +72,6 @@ export function AppWorkspace({
   chattedSinceImport,
   worldEditorRefreshKey,
   config,
-  sponsorUnlocked,
   error,
   transport,
   characters,
@@ -279,7 +277,6 @@ export function AppWorkspace({
           onClose={() => setMainView(null)}
           leaveGuard={leaveGuard}
           config={config}
-          sponsorUnlocked={sponsorUnlocked}
           onPreference={onPreference}
           onOpenAiSettings={() => onOpenSettings("ai")}
           worldOpen={mainView?.kind === "world"}
