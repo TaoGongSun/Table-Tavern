@@ -511,6 +511,7 @@ export const zh = {
   composerNoCharacter: "建立角色，或匯入世界書後找 GM 開局",
   clearTarget: "取消發言對象",
   send: "送出",
+  stopResponse: "停止",
   characterFallback: "角色",
   playerLabel: "玩家",
   requestReplyBtn: "請{name}發言",

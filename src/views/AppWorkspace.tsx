@@ -310,6 +310,8 @@ export function AppWorkspace({
               onInputChange={chat.setInput}
               castEmpty={characters.active.length === 0}
               onSubmit={chat.send}
+              canStop={chat.canStop}
+              onStop={chat.stopResponse}
               requestReplyLabel={requestReplyLabel}
               onUndoLast={() => void chat.undoLast()}
               onRequestReply={() => void chat.replyFromTarget()}

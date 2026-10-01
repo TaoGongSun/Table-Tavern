@@ -487,6 +487,7 @@ export const ptBR: Record<MsgKey, string> = {
   composerNoCharacter: "Crie um personagem, ou importe um livro do mundo e fale com o GM",
   clearTarget: "Limpar alvo",
   send: "Enviar",
+  stopResponse: "Parar",
   characterFallback: "o personagem",
   playerLabel: "Você",
   requestReplyBtn: "Pedir para {name} falar",

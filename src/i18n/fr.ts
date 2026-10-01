@@ -487,6 +487,7 @@ export const fr: Record<MsgKey, string> = {
   composerNoCharacter: "Crée un personnage, ou importe une encyclopédie et parle au MJ",
   clearTarget: "Effacer le destinataire",
   send: "Envoyer",
+  stopResponse: "Arrêter",
   characterFallback: "le personnage",
   playerLabel: "Toi",
   requestReplyBtn: "Faire parler {name}",

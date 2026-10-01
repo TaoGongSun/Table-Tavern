@@ -145,6 +145,7 @@ pub fn run() {
             commands::image::read_gallery_image,
             commands::image::delete_gallery_image,
             commands::chat::gm_narrate,
+            commands::chat::chat_abort,
             commands::chat::keepalive_lanes,
             commands::settings::usage_report,
             commands::scene::advance_scene,

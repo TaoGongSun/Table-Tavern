@@ -3,7 +3,29 @@ use crate::data::DataResult;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
+use tokio::sync::watch;
+
+/// `run_cli_cancellable` 的收場。中止不是錯誤：呼叫端要拿半截文字去做抹寫，不能走失敗重試。
+pub enum CliFinish {
+    Completed(String),
+    Aborted(String),
+}
+
+async fn wait_cancel(cancel: &mut Option<watch::Receiver<bool>>) {
+    match cancel.as_mut() {
+        Some(receiver) => {
+            let _ = receiver.wait_for(|flag| *flag).await;
+        }
+        None => std::future::pending::<()>().await,
+    }
+}
+
+/// 先送殺，再等它真的退出。已經死掉時 `start_kill` 會失敗，`wait` 仍負責收屍。
+async fn kill_child_and_wait(child: &mut Child) {
+    let _ = child.start_kill();
+    let _ = child.wait().await;
+}
 
 /// `run_cli` spawn 後掛的反登記保險：不論提早 return、`?` 冒出的錯誤，還是外層 future
 /// 被 select 取消（中止在途呼叫）整個被 drop，這個 guard 的 Drop 都會觸發，
@@ -52,12 +74,46 @@ pub async fn run_cli(
     stdin_data: &str,
     envs: &[(String, String)],
     parse: fn(&str) -> CliLine,
+    thinking_to_delta: bool,
+    usage_log: Option<UsageLog<'_>>,
+    on_delta: impl FnMut(&str),
+) -> DataResult<String> {
+    match run_cli_cancellable(
+        program,
+        working_dir,
+        args,
+        stdin_data,
+        envs,
+        parse,
+        thinking_to_delta,
+        usage_log,
+        on_delta,
+        None,
+    )
+    .await?
+    {
+        CliFinish::Completed(text) => Ok(text),
+        CliFinish::Aborted(_) => Err("內部錯誤：沒有取消訊號卻回報中止".into()),
+    }
+}
+
+/// 與 `run_cli` 同一條讀迴圈。`cancel` 有值時，中止在迴圈內收掉：殺掉程序並等它退出後，
+/// 帶著已經吐出的半截文字返回，不把 future 丟給外層 select。
+#[allow(clippy::too_many_arguments)]
+pub async fn run_cli_cancellable(
+    program: &Path,
+    working_dir: &Path,
+    args: &[String],
+    stdin_data: &str,
+    envs: &[(String, String)],
+    parse: fn(&str) -> CliLine,
     // 思考增量要不要餵給 on_delta：只有「進度字尾」型顯示（卡重構）開 true；
     // 聊天／旁白的 on_delta 是劇情正文串流，思考混進去會出戲。
     thinking_to_delta: bool,
     usage_log: Option<UsageLog<'_>>,
     mut on_delta: impl FnMut(&str),
-) -> DataResult<String> {
+    mut cancel: Option<watch::Receiver<bool>>,
+) -> DataResult<CliFinish> {
     let mut command = Command::new(program);
     // 先掛系統代理再掛使用者 envs，同名時使用者設定蓋過代理
     crate::proxy::apply_system_proxy(&mut command);
@@ -90,13 +146,25 @@ pub async fn run_cli(
     let _pid_guard = ChildPidGuard(child.id());
 
     let mut stdin = child.stdin.take().expect("stdin piped");
-    // 死法③：CLI 起來但不收 stdin（掛在啟動）＝write_all 永卡，60 秒收不完就中止
-    tokio::time::timeout(
+    // 死法③：CLI 起來但不收 stdin（掛在啟動）＝write_all 永卡，60 秒收不完就中止。
+    // 這段也聽取消：停止鍵若卡在餵提示詞，一樣要殺程序並等它退出。
+    let write_stdin = tokio::time::timeout(
         std::time::Duration::from_secs(60),
         stdin.write_all(stdin_data.as_bytes()),
-    )
-    .await
-    .map_err(|_| "CLI 60 秒收不進提示詞，已中止")??;
+    );
+    tokio::pin!(write_stdin);
+    let stdin_cancel = cancel.is_some();
+    tokio::select! {
+        biased;
+        result = write_stdin.as_mut() => {
+            result.map_err(|_| "CLI 60 秒收不進提示詞，已中止")??;
+        }
+        _ = wait_cancel(&mut cancel), if stdin_cancel => {
+            drop(stdin);
+            kill_child_and_wait(&mut child).await;
+            return Ok(CliFinish::Aborted(String::new()));
+        }
+    }
     drop(stdin); // 關閉讓 CLI 知道輸入結束
 
     // stderr 逐行即時讀（同時兼排空防死鎖）：CLI 的「API Error…重試中」通知走 stderr，
@@ -118,9 +186,17 @@ pub async fn run_cli(
     // ③stdin 餵不進（上方 60 秒逾時）；④crash 無收尾事件（迴圈後 exit status 檢查）。
     let mut exited = false;
     let mut stall: Option<String> = None;
+    let mut aborted = false;
     while stdout_open || stderr_open {
+        // 收尾還沒到時，取消排在讀管線之前：輸出一直有字時，biased 不會把停止排到後面。
+        // 已經收到收尾行就關掉這支：完成與停止同時就緒時，完成贏，交回全文。
+        let arm_cancel = cancel.is_some() && done.is_none();
         let line = tokio::select! {
             biased;
+            _ = wait_cancel(&mut cancel), if arm_cancel => {
+                aborted = true;
+                break;
+            }
             line = lines.next_line(), if stdout_open => match line? {
                 Some(line) => line,
                 None => {
@@ -252,6 +328,10 @@ pub async fn run_cli(
         }
     }
 
+    if aborted {
+        kill_child_and_wait(&mut child).await;
+        return Ok(CliFinish::Aborted(full_text));
+    }
     if let Some(msg) = stall {
         let _ = child.start_kill();
         if thinking_to_delta {
@@ -295,7 +375,7 @@ pub async fn run_cli(
             .join("\n");
         return Err(format!("CLI 沒有產出回覆（exit {status}）：{tail}").into());
     }
-    Ok(full_text)
+    Ok(CliFinish::Completed(full_text))
 }
 
 #[cfg(test)]

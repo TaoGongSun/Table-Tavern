@@ -49,6 +49,7 @@
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇）；失敗不扣次數 |
 | 9 | [ui-overhaul](../handoffs/ui-overhaul.md) 實聊 playbill | dialogue 事件要有金鑰實聊才出現，串流打字指示改版後沒實測過；可搭任一梯 2 項目順手看 |
 | 10 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 篇幅與配角解禁 | **需重新打包**（已裝的 0.2.0 仍是舊行為）：同一張世界書卡確認 GM 旁白篇幅放開、配角會開口、角色回覆有內心戲 |
+| 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
 
 ## 梯 3：等外部條件，不排時程
 
