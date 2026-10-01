@@ -487,6 +487,7 @@ export const ko: Record<MsgKey, string> = {
   composerNoCharacter: "캐릭터를 만들거나, 월드북을 불러온 뒤 GM에게 말을 걸어 보세요",
   clearTarget: "대화 대상 지정 취소",
   send: "전송",
+  stopResponse: "중지",
   characterFallback: "캐릭터",
   playerLabel: "플레이어",
   requestReplyBtn: "{name} 발언 요청",

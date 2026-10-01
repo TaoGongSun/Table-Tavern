@@ -59,6 +59,9 @@ interface PlayViewProps {
   /** 這桌一個在場角色都沒有：輸入框與 GM 推進都停用 */
   castEmpty: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  /** 對話或旁白生成中：原位的送出鍵改成停止 */
+  canStop: boolean;
+  onStop: () => void;
   requestReplyLabel: string;
   onUndoLast: () => void;
   onRequestReply: () => void;
@@ -92,6 +95,8 @@ export function PlayView({
   onInputChange,
   castEmpty,
   onSubmit,
+  canStop,
+  onStop,
   requestReplyLabel,
   onUndoLast,
   onRequestReply,
@@ -262,9 +267,15 @@ export function PlayView({
             （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
         <div className="composer-send">
           <div className="composer-primary-action">
-            <button type="submit" disabled={(!speaker && castEmpty) || busy}>
-              {t("send")} ➤
-            </button>
+            {canStop ? (
+              <button type="button" onClick={onStop} aria-label={t("stopResponse")}>
+                {t("stopResponse")}
+              </button>
+            ) : (
+              <button type="submit" disabled={(!speaker && castEmpty) || busy}>
+                {t("send")} ➤
+              </button>
+            )}
           </div>
           {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
           {showAwayHint ? (

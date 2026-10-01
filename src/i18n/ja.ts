@@ -487,6 +487,7 @@ export const ja: Record<MsgKey, string> = {
   composerNoCharacter: "キャラクターを作成するか、ロアブックをインポートしてGMに話しかけよう",
   clearTarget: "話しかける相手をクリア",
   send: "送信",
+  stopResponse: "停止",
   characterFallback: "キャラクター",
   playerLabel: "プレイヤー",
   requestReplyBtn: "{name} に発言を促す",

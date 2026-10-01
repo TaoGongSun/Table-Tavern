@@ -1,6 +1,7 @@
-//! 在途 AI 呼叫中止基礎設施（AI 卡重構取消可中止在途呼叫＋app 退出孤兒子程序清理，包 2）。
+//! 在途 AI 呼叫中止基礎設施（AI 卡重構取消可中止在途呼叫＋app 退出孤兒子程序清理，包 2；
+//! 對話停止鍵把鑰匙拆成「種類＋桌」）。
 //! 兩張全域表：
-//! - 呼叫註冊表：依 world 分組的取消訊號，`refactor_abort` 對某桌 abort 時整組一次喚醒。
+//! - 呼叫註冊表：鑰匙是 `(Kind, world_id)`。重構仍整組喚醒；對話再以 `turn_id` 只打那一輪。
 //! - 子程序 PID 表：`run_cli` 每次 spawn 都登記，app 退出（RunEvent::Exit）時整批 kill，
 //!   避免 CLI 子程序變孤兒繼續跑、繼續燒錢。
 //!
@@ -12,8 +13,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tokio::sync::watch;
 
-type WorldSenders = HashMap<u64, watch::Sender<bool>>;
-type Registry = HashMap<String, WorldSenders>;
+/// 對話與重構各用自己的鑰匙，同桌互不波及。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Kind {
+    Chat,
+    Refactor,
+}
+
+struct Registration {
+    sender: watch::Sender<bool>,
+    /// 對話輪才有；重構整組中止，不看這個。
+    turn_id: Option<String>,
+}
+
+type SlotSenders = HashMap<u64, Registration>;
+type RegistryKey = (Kind, String);
+type Registry = HashMap<RegistryKey, SlotSenders>;
 
 fn registry() -> &'static Mutex<Registry> {
     static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
@@ -34,6 +49,7 @@ fn next_id() -> u64 {
 /// 一次在途呼叫的註冊憑證。留在呼叫端 scope 內；drop 時（正常回傳、錯誤、或 select 輸掉
 /// 分支被取消）一律從註冊表移除自己這筆，不會殘留。
 pub struct CallGuard {
+    kind: Kind,
     world_id: String,
     id: u64,
 }
@@ -41,17 +57,18 @@ pub struct CallGuard {
 impl Drop for CallGuard {
     fn drop(&mut self) {
         if let Ok(mut map) = registry().lock() {
-            if let Some(senders) = map.get_mut(&self.world_id) {
+            let key = (self.kind, self.world_id.clone());
+            if let Some(senders) = map.get_mut(&key) {
                 senders.remove(&self.id);
                 if senders.is_empty() {
-                    map.remove(&self.world_id);
+                    map.remove(&key);
                 }
             }
         }
     }
 }
 
-/// select! 裡等的中止訊號；`abort_world` 送出後 `cancelled()` 立即返回。
+/// select! 裡等的中止訊號；`abort_kind`／`abort_turn` 送出後 `cancelled()` 立即返回。
 pub struct CancelSignal {
     rx: watch::Receiver<bool>,
 }
@@ -60,21 +77,31 @@ impl CancelSignal {
     pub async fn cancelled(&mut self) {
         let _ = self.rx.wait_for(|v| *v).await;
     }
+
+    /// 複製目前的接收端。watch 保留最新值，複製之後才送出的中止一樣看得到。
+    pub fn receiver(&self) -> watch::Receiver<bool> {
+        self.rx.clone()
+    }
 }
 
-/// 登記一次在途呼叫：回傳的 guard 留在呼叫端 scope（負責反登記），cancel 交給
-/// `tokio::select!` 與實際呼叫賽跑。
-pub fn register(world_id: &str) -> (CallGuard, CancelSignal) {
+fn insert(kind: Kind, world_id: &str, turn_id: Option<String>) -> (CallGuard, CancelSignal) {
     let (tx, rx) = watch::channel(false);
     let id = next_id();
     registry()
         .lock()
         .unwrap()
-        .entry(world_id.to_owned())
+        .entry((kind, world_id.to_owned()))
         .or_default()
-        .insert(id, tx);
+        .insert(
+            id,
+            Registration {
+                sender: tx,
+                turn_id,
+            },
+        );
     (
         CallGuard {
+            kind,
             world_id: world_id.to_owned(),
             id,
         },
@@ -82,16 +109,45 @@ pub fn register(world_id: &str) -> (CallGuard, CancelSignal) {
     )
 }
 
-/// 中止某桌全部在途呼叫：該 world 名下每個 sender 都 send_replace(true)。
-/// sender 本身留著不清——CallGuard drop 時才移除，這裡只負責喚醒。
-pub fn abort_world(world_id: &str) {
+/// 登記一次在途呼叫：回傳的 guard 留在呼叫端 scope（負責反登記）。
+/// 重構走這支，不帶 turn；`abort_kind` 會把該種類該桌整組喚醒。
+pub fn register(kind: Kind, world_id: &str) -> (CallGuard, CancelSignal) {
+    insert(kind, world_id, None)
+}
+
+/// 登記一輪對話。`abort_turn` 只喚醒 turn_id 相同的那一筆，晚到的舊 id 打不中下一輪。
+pub fn register_turn(world_id: &str, turn_id: &str) -> (CallGuard, CancelSignal) {
+    insert(Kind::Chat, world_id, Some(turn_id.to_owned()))
+}
+
+/// 中止某種類、某桌的全部在途呼叫。sender 留著不清——CallGuard drop 時才移除。
+pub fn abort_kind(kind: Kind, world_id: &str) {
     if let Ok(map) = registry().lock() {
-        if let Some(senders) = map.get(world_id) {
-            for sender in senders.values() {
-                sender.send_replace(true);
+        if let Some(senders) = map.get(&(kind, world_id.to_owned())) {
+            for registration in senders.values() {
+                registration.sender.send_replace(true);
             }
         }
     }
+}
+
+/// 只中止該輪對話。對不上的 turn_id（含已經結束、註冊已摘掉的）什麼都不做。
+pub fn abort_turn(world_id: &str, turn_id: &str) {
+    if let Ok(map) = registry().lock() {
+        if let Some(senders) = map.get(&(Kind::Chat, world_id.to_owned())) {
+            for registration in senders.values() {
+                if registration.turn_id.as_deref() == Some(turn_id) {
+                    registration.sender.send_replace(true);
+                }
+            }
+        }
+    }
+}
+
+/// 測試看子程序表。正式路徑不要靠這張快照做決策。
+#[cfg(test)]
+pub(crate) fn child_pids() -> HashSet<u32> {
+    children().lock().unwrap().clone()
 }
 
 /// 子程序 PID 登記：`run_cli` spawn 成功後呼叫，app 退出時 `kill_all_children` 靠這張表收屍。
@@ -167,10 +223,10 @@ mod tests {
     /// T2 world 隔離：abort 一個 world 不該喚醒另一個 world 的 CancelSignal。
     #[tokio::test]
     async fn abort_world_only_signals_the_targeted_world() {
-        let (_guard_a, mut cancel_a) = register("inflight-test-world-a");
-        let (_guard_b, mut cancel_b) = register("inflight-test-world-b");
+        let (_guard_a, mut cancel_a) = register(Kind::Refactor, "inflight-test-world-a");
+        let (_guard_b, mut cancel_b) = register(Kind::Refactor, "inflight-test-world-b");
 
-        abort_world("inflight-test-world-a");
+        abort_kind(Kind::Refactor, "inflight-test-world-a");
 
         tokio::time::timeout(Duration::from_millis(500), cancel_a.cancelled())
             .await
@@ -187,12 +243,13 @@ mod tests {
     #[tokio::test]
     async fn dropping_call_guard_clears_its_world_from_registry() {
         let world_id = "inflight-test-world-guard";
-        let (guard, _cancel) = register(world_id);
-        assert!(registry().lock().unwrap().contains_key(world_id));
+        let (guard, _cancel) = register(Kind::Refactor, world_id);
+        let key = (Kind::Refactor, world_id.to_owned());
+        assert!(registry().lock().unwrap().contains_key(&key));
 
         drop(guard);
 
-        assert!(!registry().lock().unwrap().contains_key(world_id));
+        assert!(!registry().lock().unwrap().contains_key(&key));
     }
 
     /// T3 kill_all_children：手動登記一個真實子程序 pid，殺完程序真的死透、表清空。
@@ -230,7 +287,7 @@ mod tests {
         let before: HashSet<u32> = children().lock().unwrap().clone();
 
         let handle = tokio::spawn(async move {
-            let (_guard, mut cancel) = register(world_id);
+            let (_guard, mut cancel) = register(Kind::Refactor, world_id);
             let program = std::path::PathBuf::from("/bin/sleep");
             let working_dir = std::env::temp_dir();
             let args = ["30".to_owned()];
@@ -269,7 +326,7 @@ mod tests {
             waited += step;
         };
 
-        abort_world(world_id);
+        abort_kind(Kind::Refactor, world_id);
 
         let outcome = handle.await.expect("背景 task 不該 panic");
         assert_eq!(outcome, Err("aborted".to_owned()));
@@ -278,5 +335,57 @@ mod tests {
             "abort 後子程序應在 2 秒內死透"
         );
         assert!(!children().lock().unwrap().contains(&pid));
+    }
+
+    /// 同桌的對話與重構鑰匙分開：中止一邊不會喚醒另一邊。
+    #[tokio::test]
+    async fn chat_and_refactor_on_the_same_world_do_not_cross() {
+        let world_id = "inflight-test-kind-split";
+        let (_chat_guard, mut chat) = register_turn(world_id, "turn-a");
+        let (_refactor_guard, mut refactor) = register(Kind::Refactor, world_id);
+
+        abort_kind(Kind::Refactor, world_id);
+        tokio::time::timeout(Duration::from_millis(500), refactor.cancelled())
+            .await
+            .expect("重構中止要喚醒重構呼叫");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), chat.cancelled())
+                .await
+                .is_err(),
+            "重構中止不該打到同桌的對話"
+        );
+
+        abort_turn(world_id, "turn-a");
+        tokio::time::timeout(Duration::from_millis(500), chat.cancelled())
+            .await
+            .expect("對話中止要喚醒對上的那一輪");
+    }
+
+    /// 舊 turn_id 的中止打不中已經換上的新呼叫；兩輪同時在冊時也只打指定的那筆。
+    #[tokio::test]
+    async fn aborting_an_old_turn_id_leaves_the_new_call_alone() {
+        let world_id = "inflight-test-old-turn";
+        let (old_guard, mut old_cancel) = register_turn(world_id, "old");
+        let (_new_guard, mut new_cancel) = register_turn(world_id, "new");
+
+        abort_turn(world_id, "old");
+        tokio::time::timeout(Duration::from_millis(500), old_cancel.cancelled())
+            .await
+            .expect("舊 turn 應該被自己的 id 喚醒");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), new_cancel.cancelled())
+                .await
+                .is_err(),
+            "舊 turn_id 不該中止新呼叫"
+        );
+
+        drop(old_guard);
+        abort_turn(world_id, "old");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), new_cancel.cancelled())
+                .await
+                .is_err(),
+            "舊呼叫已經摘掉之後，晚到的中止仍不該打中新呼叫"
+        );
     }
 }

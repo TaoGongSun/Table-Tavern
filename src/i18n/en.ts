@@ -509,6 +509,7 @@ export const en: Record<MsgKey, string> = {
   composerNoCharacter: "Create a character, or import a world book and talk to the GM",
   clearTarget: "Clear the target",
   send: "Send",
+  stopResponse: "Stop",
   characterFallback: "the character",
   playerLabel: "You",
   requestReplyBtn: "Ask {name} to Speak",

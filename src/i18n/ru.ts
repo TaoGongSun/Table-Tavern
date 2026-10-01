@@ -487,6 +487,7 @@ export const ru: Record<MsgKey, string> = {
   composerNoCharacter: "Создай персонажа или импортируй книгу мира и поговори с ГМ",
   clearTarget: "Сбросить цель",
   send: "Отправить",
+  stopResponse: "Стоп",
   characterFallback: "персонаж",
   playerLabel: "Игрок",
   requestReplyBtn: "Попросить «{name}» ответить",

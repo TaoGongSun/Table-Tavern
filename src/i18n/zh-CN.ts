@@ -485,6 +485,7 @@ export const zhCN: Record<MsgKey, string> = {
   composerNoCharacter: "创建角色，或导入世界书后找 GM 开局",
   clearTarget: "取消发言对象",
   send: "发送",
+  stopResponse: "停止",
   characterFallback: "该角色",
   playerLabel: "玩家",
   requestReplyBtn: "请{name}发言",
