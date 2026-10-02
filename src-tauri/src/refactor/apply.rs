@@ -11,6 +11,11 @@ const PALETTE: [&str; 6] = [
     "#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399",
 ];
 
+/// 新條目的 uid 哨兵：upsert 找不到這個 uid 就新建、由它分配實際 uid。一律交給 upsert 分配，
+/// 不自己預算——同一次套用先建的人物條目會佔掉預算的號碼，後面的新條目撞上就把它覆寫掉
+/// （refactor-apply-count-mismatch）。
+const NEW_ENTRY_UID: u64 = u64::MAX;
+
 /// 套用一份重構產物。落檔規則：
 /// - 勾中的人合併成一張卡（emoji 進頭像欄，其餘欄位比照舊有預設）；同時指定為玩家的人設玩家卡
 ///   （沿用一桌一張限制：桌上已有玩家卡就整批失敗、不寫入，讓玩家看得懂為什麼沒套用）。
@@ -129,16 +134,11 @@ pub fn apply(
     // （例如重構卡匯到新桌），剛落地的新條目會拿到同一批小號 uid，不設這道閘會被誤刪，
     // 且誤刪快照進收據後，undo 會把它們當「被消耗的來源」原樣插回，鎖定條目變成孤兒。
     let preexisting_uids: BTreeSet<u64> = existing_entries.iter().map(|entry| entry.uid).collect();
-    let mut next_entry_uid = existing_entries
-        .iter()
-        .map(|entry| entry.uid)
-        .max()
-        .map(|uid| {
-            uid.checked_add(1)
-                .ok_or_else(|| data::invalid_data("worldbook uid overflow"))
-        })
-        .transpose()?
-        .unwrap_or(0);
+    // 新條目的 uid 由 upsert 分配 max+1；上限已用掉就在任何寫入前整批拒絕，
+    // 也避免 NEW_ENTRY_UID 哨兵撞上既有那條、把它覆寫掉。
+    if preexisting_uids.last() == Some(&NEW_ENTRY_UID) {
+        return Err(data::invalid_data("worldbook uid overflow"));
+    }
     let mut next_entry_order = existing_entries
         .iter()
         .map(|entry| entry.order)
@@ -159,13 +159,12 @@ pub fn apply(
     for (index, character) in outcome.characters.iter().enumerate() {
         if !selection.character_indices.contains(&index) {
             // 沒勾：維持現行機制，獨立成一條 is_person 條目；來源條目不動，資料不會憑空消失。
-            // uid: u64::MAX 是「一定不會撞到既有條目」的哨兵——upsert 找不到既有 uid 才會
-            // 真的新建，實際落檔的 uid 由 upsert_worldbook_entry 內部重新分配（見 data.rs）。
+            // uid 用 NEW_ENTRY_UID 哨兵，實際落檔的 uid 由 upsert_worldbook_entry 分配。
             data::upsert_worldbook_entry(
                 root,
                 world_id,
                 WorldbookEntry {
-                    uid: u64::MAX,
+                    uid: NEW_ENTRY_UID,
                     title: character.name.clone(),
                     keys: Vec::new(),
                     content: character.solo_entry_md.clone(),
@@ -236,7 +235,7 @@ pub fn apply(
             root,
             world_id,
             WorldbookEntry {
-                uid: next_entry_uid,
+                uid: NEW_ENTRY_UID,
                 title: entry.title.clone(),
                 keys,
                 content: entry.content.clone(),
@@ -248,9 +247,6 @@ pub fn apply(
                 locked,
             },
         )?;
-        next_entry_uid = next_entry_uid
-            .checked_add(1)
-            .ok_or_else(|| data::invalid_data("worldbook uid overflow"))?;
         if entry.meta.is_none() {
             next_entry_order = next_entry_order
                 .checked_add(1)
