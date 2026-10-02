@@ -4,7 +4,7 @@
 
 ## 前置與範圍
 
-- **本案實作排在 [ai-response-stop](../tasks/ai-response-stop.md) 完成之後**：更新閘門要用它的中止功能，先做本案會缺這塊〔作者裁決 2026-09-30〕。
+- **本案實作排在 [ai-response-stop](../handoffs/archive/ai-response-stop.md) 完成之後**：更新閘門要用它的中止功能，先做本案會缺這塊〔作者裁決 2026-09-30〕。
 - **熱更新（只換前端、不換 App 本體）本輪不做**：約三分之二的程式 commit 會動到 Rust 本體，熱更新很少派得上用場；等 Mac「App 管理」實測結果再議〔作者裁決 2026-09-30〕。
 
 ## 更新
@@ -18,7 +18,7 @@
   - 含資料格式轉換的版本 → 啟動時對話框，說明「會轉換桌紀錄、已自動備份」
   - 不做強制更新。
 - **檢查時機**：啟動一次，長開每 24 小時一次；離線／rate limit／任何失敗都靜默、不擋啟動。
-- **安裝**：一律等玩家按，不在遊戲進行中彈出；有 AI 回應在途時等它結束；要提前結束就用中止功能——那是本來就該有的獨立功能，另案 [ai-response-stop](../tasks/ai-response-stop.md)，更新流程共用同一套中止。玩家面雙軌：一鍵更新＋展開看更新說明／略過此版。
+- **安裝**：一律等玩家按，不在遊戲進行中彈出；有 AI 回應在途時等它結束；要提前結束就用中止功能——那是本來就該有的獨立功能，另案 [ai-response-stop](../handoffs/archive/ai-response-stop.md)，更新流程共用同一套中止。玩家面雙軌：一鍵更新＋展開看更新說明／略過此版。
 - **自動檢查預設開**，設定可關；關了只在手動按「檢查更新」時連線。發布帖的資料流向聲明要寫：檢查更新會讓 GitHub 看到 IP 與目前版本。
 - **不做測試版頻道**。要先給人試就放 GitHub 預發布版手動下載。
 - **版本號紀律**：`tauri.conf.json` 的 version 每次發版要升，CI 擋 git tag 與它不一致。
@@ -69,6 +69,19 @@
 5. **介面**：首頁標記、設定頁版本區與儲存空間區。
 
 包 2–5 可分開開發，但**首次公開啟用更新的那一版必須全部一起發**：少了包 2 回退會寫壞資料，少了包 4 第一批玩家沒有回退點，少了包 5 提示沒地方放。
+
+## 包 1 做法（Claude、Grok、Sol 三方共識 2026-10-01）
+
+- **金鑰（作者手動）**：`npx tauri signer generate -w ~/.tauri/table-tavern.key`（設密碼）→ 私鑰與密碼離線備份 → `gh secret set TAURI_SIGNING_PRIVATE_KEY`／`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。公鑰進 `tauri.conf.json` 的 `plugins.updater.pubkey`，`endpoints` 指 `https://github.com/TaoGongSun/Table-Tavern/releases/latest/download/latest.json`（GitHub 的 latest 不含預發布與草稿）。plugin 本身包 3 才註冊；包 3 不開 `requireSignedVersion`（CLI 2.11.4 的簽章不含版本）。
+- **`createUpdaterArtifacts: true` 只在 workflow 用 `--config` 打開**，不寫進 `tauri.conf.json`：本機 `npm run tauri build`（GUI 實測用）不需要私鑰。不用 `v1Compatible`。
+- **版本一致**：新 `scripts/check-version.mjs [tag]`——`package.json`、`Cargo.toml` 的 `[package].version`、`tauri.conf.json` 三處相同；給了 tag 就還要等於 `v<版本>`。無 tag 模式加進 `npm run verify`。
+- **`release.yml` 取代 `test-build.yml`**：
+  - 推 `v*` tag → 正式發版；推 `test-v*` tag 或手動觸發 → 演練（打包＋組 `latest.json`＋驗簽，只傳 artifact，不建 release）。`test-v*` 讓分支上就能演練——手動觸發要 workflow 先在 main 才出現。
+  - `check` job：版本一致（正式發版含 tag）；正式發版另檢查 tag 的 commit 在 `origin/main` 上（checkout 抓完整歷史）。
+  - `build-windows`：`tauri build --bundles nsis`；`build-macos`：`--target aarch64-apple-darwin --bundles app,dmg`。都帶簽章 secret，上傳安裝檔＋`.sig`（＋DMG）為 artifact。任一邊失敗就不公開。
+  - `finalize` job（ubuntu，唯一有 `contents: write`）：收兩包 → 改無空格檔名 `TableTavern_<版本>_x64-setup.exe`、`TableTavern_<版本>_aarch64.app.tar.gz`、`TableTavern_<版本>_aarch64.dmg`（`.sig` 同步改名）→ `.sig` 與 conf 公鑰各自 base64 解碼後以 minisign 驗每個安裝檔（CLI 金鑰不符只警告，這裡才是真的閘）→ 組 `latest.json`：`version`、`notes`、`pub_date`（當下 RFC3339）、`platforms.windows-x86_64`／`darwin-aarch64` 的 `url`（`/releases/download/<tag>/<檔名>`）＋`signature`（`.sig` 原文）→ 正式模式：同名 release 已公開就失敗、是草稿就先刪 → 建草稿 release、傳齊全部檔案（含 `latest.json`）、最後轉公開；依 SemVer 解析，有 prerelease 段就明設預發布且不當 latest，否則明設為 latest。演練模式只傳 artifact。
+  - `notes`＝`CHANGELOG.md` 的 `## [版本]` 到下一個二級標題；正式發版找不到就失敗，演練容許缺。
+- 提醒強度要用的「含格式轉換」欄位留給包 2／3 加進 `latest.json`，包 1 不預留。
 
 ## 實機驗證（技術上未定，失敗有退路）
 
