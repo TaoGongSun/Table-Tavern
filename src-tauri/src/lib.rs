@@ -3,6 +3,8 @@ mod commands;
 mod data;
 mod evaluator;
 mod genesis;
+#[cfg(feature = "test-harness")]
+mod harness;
 mod import;
 mod inflight;
 mod lanes;
@@ -21,6 +23,13 @@ mod usage;
 use std::path::PathBuf;
 use tauri::Manager;
 
+/// 測試包改指向 `TT_HARNESS_ROOT` 底下，絕不碰正式資料。
+#[cfg(feature = "test-harness")]
+fn data_root(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(harness::data_root())
+}
+
+#[cfg(not(feature = "test-harness"))]
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .document_dir()
@@ -28,6 +37,13 @@ fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
+/// 測試包改指向 `TT_HARNESS_ROOT` 底下，絕不碰正式資料。
+#[cfg(feature = "test-harness")]
+fn config_root(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(harness::config_root())
+}
+
+#[cfg(not(feature = "test-harness"))]
 fn config_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .config_dir()
@@ -37,9 +53,17 @@ fn config_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
+    let context = tauri::generate_context!();
+    // 測試包：建 Tauri 前先驗 identifier／root、取鎖，不合就結束 process。
+    #[cfg(feature = "test-harness")]
+    harness::boot(&context.config().identifier);
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    #[cfg(not(feature = "test-harness"))]
+    let builder = builder.plugin(tauri_plugin_dialog::init());
+    // 測試包以同名假 plugin 接手原生對話窗，交給控制埠回答。
+    #[cfg(feature = "test-harness")]
+    let builder = builder.plugin(harness::dialog::init());
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updater::PendingUpdate::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -182,14 +206,18 @@ pub fn run() {
             if let Ok(root) = config_root(app.handle()) {
                 smart_free::spawn_background_refresh(app.handle().clone(), root);
             }
+            #[cfg(feature = "test-harness")]
+            harness::start(app.handle());
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|_handle, event| {
             // app 退出：殺全部在途 CLI 子程序，避免孤兒繼續跑、繼續燒錢。
             if let tauri::RunEvent::Exit = event {
                 inflight::kill_all_children();
+                #[cfg(feature = "test-harness")]
+                harness::shutdown();
             }
         });
 }

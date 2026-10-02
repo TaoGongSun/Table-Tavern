@@ -256,6 +256,12 @@ pub(crate) async fn update_install(
     state: State<'_, updater::PendingUpdate>,
     version: String,
 ) -> Result<(), String> {
+    #[cfg(feature = "test-harness")]
+    {
+        let _ = (app, state, version);
+        return Err("測試包停用更新安裝".to_owned());
+    }
+    #[allow(unreachable_code)]
     let update = {
         let mut slot = state.inner.lock().await;
         slot.begin_install(&version)?
@@ -360,6 +366,13 @@ fn install_prepared(
 
 #[tauri::command]
 pub(crate) async fn update_post_launch(app: AppHandle) -> Result<(), String> {
+    // 測試包不做啟動後整理：它可能把所在 .app 換掉。
+    #[cfg(feature = "test-harness")]
+    {
+        let _ = app;
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
     let versions = versions_dir(&app)?;
     let pubkey = updater::bundled_pubkey().to_owned();
     let platform = updater::Platform::current();

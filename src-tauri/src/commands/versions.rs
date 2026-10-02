@@ -45,6 +45,12 @@ pub(crate) async fn rollback_preview(
 
 #[tauri::command]
 pub(crate) async fn rollback_install(app: AppHandle, version: String) -> Result<(), String> {
+    #[cfg(feature = "test-harness")]
+    {
+        let _ = (app, version);
+        return Err("測試包停用版本回退".to_owned());
+    }
+    #[allow(unreachable_code)]
     let platform =
         updater::Platform::current().ok_or_else(|| UiMsg::PlatformUnsupported.to_string())?;
     let versions = versions_dir(&app)?;

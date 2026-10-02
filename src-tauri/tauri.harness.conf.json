@@ -1,0 +1,7 @@
+{
+  "productName": "Table Tavern Harness",
+  "identifier": "com.tabletavern.app.harness",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
+}
