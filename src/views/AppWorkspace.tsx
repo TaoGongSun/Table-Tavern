@@ -20,7 +20,8 @@ import { MainView } from "./MainView";
 import { Onboarding } from "./Onboarding";
 import { PlayView } from "./PlayView";
 import { TableSidebar } from "./TableSidebar";
-import { StateBar, WorkspaceHeader } from "./WorkspaceHeader";
+import { StateBar } from "./StateBar";
+import { TableToolbar } from "./TableToolbar";
 import type { SettingsTab } from "./SettingsWindow";
 
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
@@ -148,6 +149,7 @@ export function AppWorkspace({
     regenerateSummary,
     exportTranscript,
     sceneDisplayLabel,
+    sceneChipLabel,
   } = sceneActions;
 
   // 改桌名的輸入框（主欄標題與側欄共用）：包成表單讓 Enter 走瀏覽器的表單送出，
@@ -184,6 +186,9 @@ export function AppWorkspace({
   const requestReplyLabel = t("requestReplyBtn", {
     name: speaker ? targetName : t("characterFallback"),
   });
+  // AI 錯誤：遊玩畫面放在輸入框上方（內捲、不推動送出鈕）；編輯頁、前幕閱讀、需修復時留在主欄底
+  const errorNote = error ? <ErrorNote text={error} transport={transport} /> : null;
+  const errorInComposer = gate !== "repair" && mainView === null;
   const generatingMeta = chat.generating !== null ? characters.metaOf(chat.generating.id) : undefined;
 
   return (
@@ -232,7 +237,7 @@ export function AppWorkspace({
       />
 
       <main className="chat-main">
-        <WorkspaceHeader
+        <TableToolbar
           tableName={tableName}
           renaming={editingName?.at === "header"}
           renameForm={renameForm}
@@ -245,7 +250,13 @@ export function AppWorkspace({
           onAdvanceScene={advanceScene}
           onExportTranscript={exportTranscript}
           scene={scene}
+          sceneLabel={sceneChipLabel(scene)}
+          actsOpen={actsOpen && scene > 0}
           onToggleActs={() => setActsOpen((open) => !open)}
+          onCloseActs={() => setActsOpen(false)}
+          updateDot={updateDot}
+          onOpenSettings={() => onOpenSettings("appearance")}
+          onOpenVersions={() => onOpenSettings("versions")}
         />
 
         {gate === "repair" && repairNotice ? (
@@ -364,12 +375,13 @@ export function AppWorkspace({
                   onRequestReply={() => void chat.replyFromTarget()}
                   onGmNarrate={chat.gmNarrate}
                   onGmAdvance={chat.gmAdvance}
+                  errorNote={errorInComposer ? errorNote : null}
                 />
               }
             />
           </>
         )}
-        {error && <ErrorNote text={error} transport={transport} />}
+        {!errorInComposer && errorNote && <div className="main-error">{errorNote}</div>}
       </main>
 
       {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄；且只在遊玩畫面出現——

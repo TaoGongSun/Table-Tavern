@@ -6,6 +6,7 @@ import { TranscriptEvent } from "../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../features/characters/card-model";
 import { StoryText } from "./atoms";
 import gmBook from "../assets/gm-book.png";
+import { IconSend, IconStop } from "../shared/ui/icons";
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
 // 快取上線後換幕不再省額度（摘要與換幕後首輪都全額計價，約等於連跑四輪），
@@ -64,11 +65,14 @@ interface PlayViewProps {
   /** 對話或旁白生成中：原位的送出鍵改成停止 */
   canStop: boolean;
   onStop: () => void;
+  /** 「請某某發言」帶名字的完整說法：按鈕只顯示固定短標，這句給 aria-label 與 title */
   requestReplyLabel: string;
   onUndoLast: () => void;
   onRequestReply: () => void;
   onGmNarrate: () => void;
   onGmAdvance: () => void;
+  /** AI 錯誤訊息：跟換幕提醒同一處，限高內捲 */
+  errorNote?: ReactNode;
 }
 
 export function PlayView({
@@ -105,6 +109,7 @@ export function PlayView({
   onRequestReply,
   onGmNarrate,
   onGmAdvance,
+  errorNote,
 }: PlayViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -122,7 +127,7 @@ export function PlayView({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [generating, streamText]);
 
-  // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
+  // 換場提醒：粗估目前場景累計字元數，超過門檻就在輸入框上方小字提醒（不擋操作）
   const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
   const sceneTooLong = !locked && sceneChars > SCENE_LENGTH_HINT_CHARS;
   // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
@@ -195,32 +200,57 @@ export function PlayView({
             )}
           </div>
         )}
-        {canRestore && !frozen && (
-          <div className="undo-restore">
-            <button type="button" onClick={() => onRestoreUndone()}>
-              ↩ {t("undoRestore")}
-            </button>
-          </div>
-        )}
-        {/* 換幕的兩條補救路：只在這一幕還沒開始玩時出現，玩家一發言就自動收掉 */}
-        {!locked && canUndoScene && (
-          <div className="undo-restore">
+        {/* 故事的補救動作集中在清單底部：收回、復原、換幕兩條補救路各依既有條件出現。
+            容器本身清單空時也留著，補救鈕一出現不會把版面頂動 */}
+        <div className="story-actions">
+          {/* 收回上一句：清單空就沒東西可收；生成中或唯讀時停用但留位，不跳版 */}
+          {events.length > 0 && (
             <button
               type="button"
-              title={t("sceneSummaryRetryHint")}
-              onClick={() => onRegenerateSummary()}
+              className="btn btn-ghost btn-sm"
+              onClick={() => onUndoLast()}
+              disabled={frozen}
+              title={t("undoLastHint")}
             >
-              ↻ {t("sceneSummaryRetry")}
+              {t("undoLast")}
             </button>
-            <button type="button" title={t("sceneRevertHint")} onClick={() => onRevertScene()}>
-              ↩ {t("sceneRevert")}
+          )}
+          {canRestore && !frozen && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onRestoreUndone()}
+            >
+              {t("undoRestore")}
             </button>
-          </div>
-        )}
+          )}
+          {/* 換幕的兩條補救路：只在這一幕還沒開始玩時出現，玩家一發言就自動收掉 */}
+          {!locked && canUndoScene && (
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title={t("sceneSummaryRetryHint")}
+                onClick={() => onRegenerateSummary()}
+              >
+                {t("sceneSummaryRetry")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title={t("sceneRevertHint")}
+                onClick={() => onRevertScene()}
+              >
+                {t("sceneRevert")}
+              </button>
+            </>
+          )}
+        </div>
         <div ref={bottomRef} />
       </section>
 
-      {/* Composer 改整寬書寫面（ui-overhaul 拍板）：目標晶片只是把「點側欄選發言對象」既有狀態可見化 */}
+      {/* 輸入區：發言對象晶片（有對象才有這排）→ 換幕提醒 → 整寬書寫面 → 動作列。
+          目標晶片只是把「點側欄選發言對象」既有狀態可見化，角色名只出現在這裡 */}
       <form
         className="composer"
         onSubmit={(event) => {
@@ -232,7 +262,7 @@ export function PlayView({
         }}
       >
         {speaker && (
-          <div className="composer-opts">
+          <div className="composer-target">
             <span
               className="opt-target"
               title={gmTargeted ? t("gmTargetHint") : t("castHint", { name: targetName })}
@@ -249,20 +279,25 @@ export function PlayView({
               ) : (
                 <span aria-hidden="true">{targetEmoji}</span>
               )}
-              {targetName}
-              <button
-                type="button"
-                className="opt-target-clear"
-                aria-label={t("clearTarget")}
-                title={t("clearTarget")}
-                disabled={locked}
-                onClick={() => onClearTarget()}
-              >
-                ✕
-              </button>
+              <span className="btn-label">{targetName}</span>
             </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={locked}
+              onClick={() => onClearTarget()}
+            >
+              {t("clearTarget")}
+            </button>
           </div>
         )}
+        {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
+        {showAwayHint ? (
+          <p className="scene-length-hint">{t("sceneAwayHint")}</p>
+        ) : sceneTooLong ? (
+          <p className="scene-length-hint">{t("sceneTooLongHint")}</p>
+        ) : null}
+        {errorNote && <div className="composer-error">{errorNote}</div>}
         <input
           className="writebox"
           aria-label={t("composerAria")}
@@ -277,58 +312,71 @@ export function PlayView({
           }
           disabled={locked || (!speaker && castEmpty) || busy}
         />
-        {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
-            （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
-        <div className="composer-send">
-          <div className="composer-primary-action">
-            {canStop ? (
-              <button type="button" onClick={onStop} aria-label={t("stopResponse")}>
-                {t("stopResponse")}
-              </button>
-            ) : (
-              <button type="submit" disabled={locked || (!speaker && castEmpty) || busy}>
-                {t("send")} ➤
-              </button>
-            )}
-          </div>
-          {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
-          {showAwayHint ? (
-            <span className="scene-length-hint">{t("sceneAwayHint")}</span>
-          ) : sceneTooLong ? (
-            <span className="scene-length-hint">{t("sceneTooLongHint")}</span>
-          ) : null}
-          <div className="composer-ai-actions">
+        {/* 左邊相連的三顆是「交給 AI 的動作」，各自直接執行、不是選模式；右下是唯一的主按鈕。
+            主次分級＋分處兩端，送出不會跟「請某某發言」相鄰誤按（2026-07-28 使用者回報的問題） */}
+        <div className="composer-actions">
+          <div className="btn-seg" role="group">
             <button
-              className="undo-last"
               type="button"
-              onClick={() => onUndoLast()}
-              disabled={frozen || events.length === 0}
-              title={t("undoLastHint")}
-            >
-              ↩ {t("undoLast")}
-            </button>
-            <button
-              className="request-reply"
-              type="button"
+              className="btn"
               onClick={() => onRequestReply()}
               disabled={locked || !speaker || busy}
               title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
-              aria-label={requestReplyLabel}
+              aria-label={`${t("requestReplyShort")} — ${requestReplyLabel}`}
             >
-              <span className="request-reply-label">{requestReplyLabel}</span>
-            </button>
-            <button type="button" onClick={onGmNarrate} disabled={frozen} title={t("gmNarrateHint")}>
-              {t("gmNarrate")}
+              <span className="btn-label">{t("requestReplyShort")}</span>
             </button>
             <button
               type="button"
+              className="btn"
+              onClick={onGmNarrate}
+              disabled={frozen}
+              title={t("gmNarrateHint")}
+            >
+              <span className="btn-label">{t("gmNarrate")}</span>
+            </button>
+            <button
+              type="button"
+              className="btn"
               onClick={onGmAdvance}
               disabled={frozen || castEmpty}
               title={t("gmAdvanceHint")}
             >
-              {t("gmAdvance")}
+              <span className="btn-label">{t("gmAdvance")}</span>
             </button>
           </div>
+          {/* 送出與停止同一個位置互換；兩種字都排進去、只顯示其一，按鈕寬度取兩者較大不跳動 */}
+          {canStop ? (
+            <button type="button" className="btn btn-primary composer-primary" onClick={onStop}>
+              <span className="swap-label">
+                <span>
+                  <IconStop />
+                  {t("stopResponse")}
+                </span>
+                <span className="swap-ghost" aria-hidden="true">
+                  {t("send")}
+                  <IconSend />
+                </span>
+              </span>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="btn btn-primary composer-primary"
+              disabled={locked || (!speaker && castEmpty) || busy}
+            >
+              <span className="swap-label">
+                <span>
+                  {t("send")}
+                  <IconSend />
+                </span>
+                <span className="swap-ghost" aria-hidden="true">
+                  <IconStop />
+                  {t("stopResponse")}
+                </span>
+              </span>
+            </button>
+          )}
         </div>
       </form>
     </>

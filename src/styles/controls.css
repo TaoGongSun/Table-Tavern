@@ -1,0 +1,160 @@
+/* ============ 共用控制項：三級按鈕、相連按鈕組、⋯ 選單 ============
+   主要＝實色 accent（整畫面同時只該有一顆）、次要＝描邊（.btn 預設）、幽靈＝無框。
+   高度沿用 --control-h、字級只用六階、顏色只用既有 token，七套主題自動跟著換。
+   選擇器刻意帶 .btn 類別：全域 button:hover:not(:disabled) 與 button[type="submit"]
+   的特異度要壓得過，否則主題色會被全域規則蓋掉。 */
+
+.ico {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+button.btn {
+  min-width: 0;
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  color: var(--ink-1);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink-1);
+}
+
+button.btn-primary,
+button.btn-primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+button.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ink-1) 8%, transparent);
+}
+
+/* 純圖示鈕：正方形，名字一律由 aria-label＋title 提供 */
+button.btn-icon {
+  width: var(--control-h);
+  padding: 0;
+}
+
+/* 小號幽靈鈕：故事底部的補救動作、清除發言對象這類附屬動作 */
+button.btn-sm {
+  height: calc(var(--control-h) * 0.82);
+  padding: 0 0.7em;
+  font-size: var(--fs-meta);
+}
+
+/* 按鈕文字另包一層才截得了字：按鈕本身是 inline-flex，text-overflow 要落在內層 */
+.btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 空間不夠時允許縮的有字鈕（先縮到圖示，字用 ellipsis 截） */
+.btn-shrink {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+/* 相連按鈕組：同一類動作排在一起，彼此只隔一條線 */
+.btn-seg {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+/* 窄時先縮左右留白再截字：留白跟著視窗寬變，最窄仍保留一點呼吸 */
+.btn-seg > .btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 clamp(0.45em, 1.2vw, 1.05em);
+  border: 0;
+  border-radius: 0;
+}
+
+.btn-seg > .btn + .btn {
+  border-left: 1px solid var(--line-strong);
+}
+
+.btn-seg > .btn:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ⋯ 選單彈層：portal 到 body，位置由 MoreMenu 以 fixed 座標算好；
+   疊在狀態列與前幕面板之上、對話窗（.modal-overlay 10）之下 */
+.menu {
+  position: fixed;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  padding: 0.3rem;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--surface-2);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+button.menu-item {
+  flex: none;
+  justify-content: flex-start;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-s);
+  padding: 0 0.7rem;
+  font-size: var(--fs-ui);
+  font-weight: 400;
+  color: var(--ink-1);
+  text-align: left;
+}
+
+.menu-item:hover:not([aria-disabled="true"]),
+.menu-item:focus-visible {
+  background: color-mix(in srgb, var(--ink-1) 8%, transparent);
+  color: var(--ink-1);
+}
+
+.menu-item:focus-visible {
+  outline-offset: -2px;
+}
+
+button.menu-item-danger,
+.menu-item-danger:hover:not([aria-disabled="true"]),
+.menu-item-danger:focus-visible {
+  color: var(--danger);
+}
+
+/* 停用項仍可聚焦（aria-disabled），外觀比照原生 disabled */
+.menu-item[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.menu-sep {
+  width: auto;
+  height: 1px;
+  margin: 0.25rem 0.15rem;
+  border: 0;
+  background: var(--line);
+}

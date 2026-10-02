@@ -333,20 +333,18 @@
   border-radius: 50%;
 }
 
-/* 換場提醒：小字、不擋操作 */
-.scene-length-hint {
-  font-size: var(--fs-meta);
-  color: var(--ink-3);
-}
-
-/* header 下方到 composer 上方的內容區：前幕面板以此為錨 */
+/* 工具列與狀態列以下的內容區：前幕面板以此為錨。
+   下限＝故事清單保底（.messages）＋輸入區全部同時出現時的最小高度（對象列、換幕提醒與錯誤
+   各留一行、輸入框、動作列、間距），用 rem 跟著字級縮放；
+   主欄高度不夠時先壓縮的是展開的狀態列，這塊不讓出空間，送出鈕永遠留在視窗內 */
 .chat-body {
   position: relative;
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 0;
+  min-height: 20rem;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+  padding: 0.8rem 0 1rem;
 }
 
 /* 前幕暫時面板：錨在主欄右側 */

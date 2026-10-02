@@ -133,19 +133,29 @@ export function useSceneActions({
     }
   }
 
-  // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」；n 從 1 起算，內部場號 0 起算。
-  // 分岔出來的幕顯示編號跟著源頭走、後面掛版本號（第 1 幕 (2)），沒進 scene_labels 的就是原線
+  // 幕的顯示編號：n 從 1 起算，內部場號 0 起算；分岔出來的幕編號跟著源頭走、後面掛版本號
+  // （第 1 幕 (2)），沒進 scene_labels 的就是原線
+  const sceneNumber = (n: number) => {
+    const label = sceneLabels[String(n)];
+    return { shown: (label?.base ?? n) + 1, v: label?.version ?? 1 };
+  };
+
+  // 幕的顯示標籤：有取到幕名就「第 n 幕：幕名」，沒有就沿用「第 n 幕」
   const sceneDisplayLabel = (n: number) => {
     const title = sceneTitles[String(n)];
-    const label = sceneLabels[String(n)];
-    const shown = (label?.base ?? n) + 1;
-    const v = label?.version ?? 1;
+    const { shown, v } = sceneNumber(n);
     if (v > 1) {
       return title
         ? t("sceneWithTitleVersioned", { n: shown, v, title })
         : t("sceneLabelVersioned", { n: shown, v });
     }
     return title ? t("sceneWithTitle", { n: shown, title }) : t("sceneLabel", { n: shown });
+  };
+
+  // 工具列幕晶片：同一套編號與版本，但不帶幕名——幕名留給故事欄的書籤，工具列要省寬度
+  const sceneChipLabel = (n: number) => {
+    const { shown, v } = sceneNumber(n);
+    return v > 1 ? t("sceneLabelVersioned", { n: shown, v }) : t("sceneLabel", { n: shown });
   };
 
   return {
@@ -156,6 +166,7 @@ export function useSceneActions({
     regenerateSummary,
     exportTranscript,
     sceneDisplayLabel,
+    sceneChipLabel,
   };
 }
 

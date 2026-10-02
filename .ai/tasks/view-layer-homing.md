@@ -9,7 +9,7 @@ Updated: 2026-09-07T00:00:00+08:00
 
 [source-structure](../plans/source-structure.md) 把 `src/` 根層的模組歸位進 `features/`，但 `views/`（16 檔）與 `controllers/`（8 檔）裡還有約 25 支其實只服務單一功能的檔案沒收：`CardEditor.tsx`、`SettingsForm.tsx`／`SettingsWindow.tsx`／`UsageTab.tsx`、`PlayView.tsx`、`ImportDialogs.tsx`、`CardInterfaceOverlay.tsx`，以及 `useCharacterController`、`useImportController`、`useChatController`、`useAppPreferencesController` 等。
 
-真正跨功能、該留在原地的只有 `MainView`、`AppWorkspace`、`AppDialogs`、`WorkspaceHeader`、`TableSidebar`、`Onboarding`、`useWorkspaceNavigationController`、`useTableStateController`。
+真正跨功能、該留在原地的只有 `MainView`、`AppWorkspace`、`AppDialogs`、`TableToolbar`、`StateBar`、`TableSidebar`、`Onboarding`、`useWorkspaceNavigationController`、`useTableStateController`。
 
 source-structure 沒有一起做的理由：一次搬 60 檔，review 只看得到 diff --stat 等於沒 review，而且當時會撞上 interface 那批工作線。這批屬**已知待收**，不是規則例外——`check-structure.mjs` 判不出 view 的 owner，所以這一區在收完之前不能宣稱被 CI 防住。
 

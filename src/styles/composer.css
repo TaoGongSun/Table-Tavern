@@ -1,49 +1,69 @@
-/* ============ Composer：整寬書寫面（打字所見＝故事字樣）＋選項列＋按鈕列 ============ */
+/* ============ Composer：發言對象＋整寬書寫面（打字所見＝故事字樣）＋動作列 ============ */
+/* 鋪滿主欄整寬的底條；行寬跟故事一樣填滿主欄（2026-07-26 使用者拍板，不設 42rem 上限） */
 .composer {
-  flex: none;
+  /* 可被壓縮：空間不夠時換幕提醒與錯誤訊息先縮成一行內捲，晶片、輸入框、動作列不縮 */
+  flex: 0 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding-top: 0.6rem;
+  gap: 0.45rem;
+  margin: 0 -2rem -1rem;
+  padding: 0.55rem 2rem 0.75rem;
+  background: var(--surface-1);
   border-top: 1px solid var(--line);
 }
 
-.composer-opts {
+.composer > * {
+  flex: none;
+}
+
+/* 發言對象那排：有對象才出現（沒對象時整排收掉，600 高要把空間留給故事） */
+.composer-target {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 /* 目標晶片：顯示目前發言對象（點側欄卡片切換），非新功能只是可見化 */
 .opt-target {
   display: inline-flex;
   align-items: center;
-  gap: 0.65em;
-  height: var(--control-h);
+  gap: 0.5em;
+  min-width: 0;
+  height: 1.6rem;
   box-sizing: border-box;
   font: 600 var(--fs-btn) / 1 var(--font-ui);
-  padding: 0 0.9em;
-  border-radius: var(--radius-m);
+  padding: 0 0.8em 0 0.2em;
+  border-radius: 999px;
   white-space: nowrap;
-  background: color-mix(in srgb, var(--fac, #888888) 22%, var(--surface-1));
+  background: color-mix(in srgb, var(--fac, #888888) 22%, var(--surface-2));
   border: 1px solid var(--fac, #888888);
   color: var(--ink-1);
 }
 
-/* 晶片右緣的取消鈕：拿掉發言對象，回到「描述動作／對全場說」 */
-.opt-target-clear {
-  flex: none;
-  border: none;
-  background: none;
-  padding: 0 0.1em;
-  margin-right: -0.3em;
-  line-height: 1;
+/* 換場提醒：獨立一行、小字、可換行，不擋操作 */
+.composer > .scene-length-hint {
+  flex: 0 1 auto;
+  min-height: 1.5em;
+  overflow-y: auto;
+  margin: 0;
+  font-size: var(--fs-meta);
   color: var(--ink-3);
 }
 
-.opt-target-clear:hover:not(:disabled) {
-  color: var(--danger);
+/* AI 錯誤：輸入框正上方，限高內捲（OpenRouter 429 的原始 JSON 可以很長），不推動送出鈕 */
+.composer > .composer-error {
+  flex: 0 1 auto;
+  min-height: 1.5em;
+  max-height: 6.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-meta);
+}
+
+.composer-error p {
+  margin: 0;
 }
 
 .composer .writebox {
@@ -60,48 +80,34 @@
   line-height: 1.6;
 }
 
-.composer-send {
+/* 動作列不換行：左邊相連組先縮留白再截字，右下主按鈕永遠完整 */
+.composer-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
   align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
-.composer-primary-action {
+button.composer-primary {
   flex: none;
+  margin-left: auto;
+  padding: 0 1.2em;
 }
 
-.composer-ai-actions {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  min-width: 0;
+/* 送出／停止兩種字疊在同一格、只顯示其一：按鈕寬度取兩者較大，換字時不跳動 */
+.swap-label {
+  display: grid;
 }
 
-.request-reply {
-  max-width: min(22rem, 55vw);
-  min-width: 0;
-}
-
-.request-reply-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 收回上一句：虛線邊框＋淡字＝反向動作，跟右邊那幾顆「請 AI 生」分得開，減少誤按 */
-.undo-last {
-  border-style: dashed;
-  color: var(--ink-3);
-}
-
-/* 手滑救援：剛收回的那一句還放得回去，提示就長在它被收掉的位置 */
-.undo-restore {
-  display: flex;
+.swap-label > span {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.4em;
 }
 
+.swap-label > .swap-ghost {
+  visibility: hidden;
+}

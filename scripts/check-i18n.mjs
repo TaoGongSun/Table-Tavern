@@ -73,12 +73,13 @@ const WRAP_SAFE_LONG = new Set([
 ]);
 
 // 寬度估算只守單顆文案；真正防溢出的版面契約也一併鎖住
+// 牌桌工具列與輸入動作列刻意不換行（800×600 最小設計尺寸），靠縮寬＋省略號防溢出
 const layoutContracts = [
   ["一般按鈕列可折行", /\.row\s*\{[^}]*flex-wrap:\s*wrap/s],
-  ["桌面標題列操作可折行", /\.chat-header-actions\s*\{[^}]*flex-wrap:\s*wrap/s],
-  ["輸入區操作可折行", /\.composer-send\s*\{[^}]*flex-wrap:\s*wrap/s],
-  ["角色名按鈕有寬度上限", /\.request-reply\s*\{[^}]*max-width:/s],
-  ["角色名過長時省略", /\.request-reply-label\s*\{[^}]*text-overflow:\s*ellipsis/s],
+  ["按鈕標籤過長時省略", /\.btn-label\s*\{[^}]*text-overflow:\s*ellipsis/s],
+  ["桌名過長時省略", /\.table-title-text\s*\{[^}]*text-overflow:\s*ellipsis/s],
+  ["工具列有字鈕可縮", /\.table-toolbar\s*>\s*\.btn-shrink\s*\{[^}]*flex:\s*0 1 auto/s],
+  ["相連按鈕組可縮", /\.btn-seg\s*>\s*\.btn\s*\{[^}]*min-width:\s*0/s],
 ];
 const missingLayoutContracts = layoutContracts
   .filter(([, pattern]) => !pattern.test(css))
