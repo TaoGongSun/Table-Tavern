@@ -1,8 +1,11 @@
-import { ReactNode, useMemo, useState } from "react";
+// 牌桌狀態列：平欄摘要（時間｜地點｜在場）是收合時唯一的一行，本身就是開關；
+// 展開後是可點擊編輯的欄位與可折疊的狀態樹。開關記在 localStorage，跨桌沿用。
+import { Fragment, useMemo, useState } from "react";
 import { t } from "../i18n";
 import { BranchBinding, StateNode } from "../shared/contracts/backend-contracts";
 import { CharacterCard, CharacterMeta } from "../features/characters/card-model";
 import { EditingStateField, treeValueAt } from "../controllers/useTableStateController";
+import { IconExpand } from "../shared/ui/icons";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
 
@@ -11,93 +14,6 @@ const STATE_BAR_OPEN_KEY = "state_bar_open";
 const USER_MACRO = /\{\{\s*user\s*\}\}/gi;
 function displayUserMacro(value: string, playerName: string): string {
   return value.replace(USER_MACRO, playerName);
-}
-
-interface WorkspaceHeaderProps {
-  tableName: string;
-  /** 改名輸入框正落在主欄標題（側欄那個入口由 TableSidebar 自己判斷） */
-  renaming: boolean;
-  renameForm: (className: string) => ReactNode;
-  onStartRename: (name: string) => void;
-  /** 唯讀或需要修復：桌名不能改，寫入與嚴格讀取的鈕都收掉 */
-  locked?: boolean;
-  /** 這桌有可用的卡片介面殼，且人在遊玩畫面 */
-  showCardInterface: boolean;
-  onOpenCardInterface: () => void;
-  busy: boolean;
-  hasEvents: boolean;
-  onAdvanceScene: () => void;
-  onExportTranscript: () => void;
-  /** 目前第幾幕：0 代表還沒換過幕，前幕鈕不出現 */
-  scene: number;
-  onToggleActs: () => void;
-}
-
-/** 主欄頂端：桌名（點一下改名）＋卡片介面／換幕／匯出紀錄／前幕四顆鈕 */
-export function WorkspaceHeader({
-  tableName,
-  renaming,
-  renameForm,
-  onStartRename,
-  locked = false,
-  showCardInterface,
-  onOpenCardInterface,
-  busy,
-  hasEvents,
-  onAdvanceScene,
-  onExportTranscript,
-  scene,
-  onToggleActs,
-}: WorkspaceHeaderProps) {
-  return (
-    <header className="chat-header">
-      {locked ? (
-        <span className="table-title table-title-locked">{tableName}</span>
-      ) : renaming ? (
-        renameForm("table-title-input")
-      ) : (
-        <button
-          className="table-title"
-          title={t("renameHint")}
-          onClick={() => onStartRename(tableName)}
-        >
-          {tableName}
-        </button>
-      )}
-      {!locked && (
-        <div className="chat-header-actions">
-          {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面；且只在遊玩畫面（mainView === null）出現 */}
-          {showCardInterface && (
-            <button type="button" onClick={onOpenCardInterface}>
-              {t("cardInterfaceOpen")}
-            </button>
-          )}
-          <button
-            type="button"
-            title={t("sceneAdvanceHint")}
-            aria-label={t("sceneAdvance")}
-            disabled={busy || !hasEvents}
-            onClick={onAdvanceScene}
-          >
-            {t("sceneAdvance")}
-          </button>
-          <button
-            type="button"
-            title={t("exportTranscriptHint")}
-            aria-label={t("exportTranscript")}
-            onClick={onExportTranscript}
-          >
-            {t("exportTranscript")}
-          </button>
-          {scene > 0 && (
-            <button type="button" onClick={onToggleActs}>
-              {t("pastScenes", { count: scene })}
-            </button>
-          )}
-        </div>
-      )}
-    </header>
-  );
 }
 
 interface StateBarProps {
@@ -148,6 +64,12 @@ export function StateBar({
     ...Object.keys(fields)
       .filter((key) => !["time", "place", "present"].includes(key))
       .map((key) => ({ key, label: key })),
+  ];
+  // 收合摘要用短標籤：時間、地點照欄位名；在場用自帶冒號的短標（「在場：」），展開區才用全名
+  const summaryFields = [
+    { key: "time", label: `${t("stateFieldTime")} ` },
+    { key: "place", label: `${t("stateFieldPlace")} ` },
+    { key: "present", label: t("stateSummaryPresent") },
   ];
   const stateValue = (key: string) => fields[key] || t("stateEmptyValue");
 
@@ -293,12 +215,18 @@ export function StateBar({
         localStorage.setItem(STATE_BAR_OPEN_KEY, String(next));
       }}
     >
+      {/* 單行摘要：三段各自截短、整行不換行，展開與否都留著當開關 */}
       <summary>
-        <span className="state-bar-title">{t("stateBarTitle")}</span>
-        <span className="state-bar-summary">
-          {stateValue("time")} ｜ {stateValue("place")} ｜ {t("stateSummaryPresent")}
-          {stateValue("present")}
-        </span>
+        <IconExpand className="state-bar-chevron" />
+        {summaryFields.map(({ key, label }, index) => (
+          <Fragment key={key}>
+            {index > 0 && <span className="state-bar-pipe">｜</span>}
+            <span className="state-bar-seg" title={`${label}${stateValue(key)}`}>
+              <b>{label}</b>
+              {stateValue(key)}
+            </span>
+          </Fragment>
+        ))}
       </summary>
       <div className="state-bar-fields">
         {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}

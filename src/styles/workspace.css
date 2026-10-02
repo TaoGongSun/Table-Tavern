@@ -1,42 +1,110 @@
 /* ============ 主欄 ============ */
+/* 左右 2rem 是故事與表單的舒適距離；工具列、狀態列、輸入區用負邊距鋪滿整欄寬，
+   靠 surface 分層與細線跟中間的故事區分開 */
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
-  padding: 0.9rem 2rem 1rem;
+  padding: 0 2rem;
   box-sizing: border-box;
   height: 100vh;
   overflow: hidden;
   width: 100%;
-}
-
-/* 桌名靠左、按鈕群靠右（前幕浮層以此為錨點）*/
-.chat-header {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.chat-header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.4rem;
-  margin-left: auto;
-  max-width: 100%;
   min-width: 0;
+}
+
+/* ============ 工具列：單行不換行，擠不下時桌名先縮、再縮有字鈕的標籤 ============ */
+.table-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  height: calc(var(--control-h) + 1rem);
+  margin: 0 -2rem;
+  padding: 0 0.75rem 0 2rem;
+  white-space: nowrap;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  /* 疊在狀態列與故事之上，陰影才不會被下面的底色蓋掉 */
+  position: relative;
+  z-index: 1;
+}
+
+.table-toolbar > * {
+  flex: none;
+}
+
+/* 更新紅點（.update-dot）以齒輪為錨 */
+.toolbar-settings {
+  position: relative;
+}
+
+.table-toolbar > .btn-shrink {
+  flex: 0 1 auto;
+  min-width: var(--control-h);
+}
+
+.toolbar-spacer {
+  flex: 1 1 0;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.2rem;
+  background: var(--line);
+}
+
+/* 幕晶片：前幕清單的開關；第 0 幕沒有前幕，只是文字 */
+button.scene-chip,
+.scene-chip {
+  gap: 0.25em;
+  height: 1.5rem;
+  padding: 0 0.6em;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: 600 var(--fs-meta) / 1 var(--font-ui);
+}
+
+.scene-chip .ico {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: transform 0.15s;
+}
+
+.scene-chip[aria-expanded="true"] .ico {
+  transform: rotate(180deg);
+}
+
+.scene-chip-static {
+  display: inline-flex;
+  align-items: center;
+  border-color: transparent;
+  color: var(--ink-3);
+}
+
+/* 非遊玩畫面（編輯頁、前幕閱讀、需修復）的 AI 錯誤：主欄底，限高內捲 */
+.main-error {
+  flex: none;
+  max-height: 6.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-meta);
+}
+
+.main-error p {
+  margin: 0.4rem 0 0.6rem;
 }
 
 /* 唯讀橫幅與需要修復：說明在上，按鈕列沿用 .row 的折行 */
 .format-banner,
 .format-repair {
   flex: none;
+  margin-top: 0.8rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -56,40 +124,77 @@
   font: 700 var(--fs-title) / 1.3 var(--font-ui);
 }
 
-/* 訊息區獨立捲動時，這塊仍留在劇情標題下方，方便隨時核對眼前局勢。 */
+/* 狀態列：工具列下方鋪滿整欄的一條，故事捲動時仍留在原位，方便隨時核對眼前局勢。
+   展開後自己捲（上限約 40vh），故事區的最低高度（.chat-body）會再把它往下壓，
+   摘要那一行黏在頂端，捲到哪都收得起來 */
 .state-bar {
-  flex: none;
+  flex: 0 1 auto;
+  min-height: calc(var(--control-h) + 1px);
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0 -2rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-0);
+  font: var(--fs-meta) / 1.4 var(--font-ui);
+}
+
+/* 單行摘要：直接子選擇器，分支的 summary 不吃這套 */
+.state-bar > summary {
   position: sticky;
   top: 0;
-  z-index: 4;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-  background: var(--surface-2);
-  font: var(--fs-meta) / 1.4 var(--font-ui);
-  /* 樹展開後可以很長：自己捲，別把後面的訊息擠掉 */
-  max-height: 45vh;
-  overflow-y: auto;
-}
-
-.state-bar summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: var(--control-h);
+  padding: 0 2rem;
+  overflow: hidden;
+  white-space: nowrap;
+  list-style: none;
   cursor: pointer;
   color: var(--ink-3);
-  padding: 0.4rem 0.6rem;
+  background: var(--surface-0);
 }
 
-.state-bar-title {
-  font-weight: 600;
-}
-
-.state-bar:not([open]) .state-bar-title,
-.state-bar[open] .state-bar-summary {
+.state-bar > summary::-webkit-details-marker {
   display: none;
+}
+
+.state-bar-chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+.state-bar[open] .state-bar-chevron {
+  transform: none;
+}
+
+.state-bar-seg {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.state-bar-seg:last-child {
+  max-width: 18rem;
+}
+
+.state-bar-seg b {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.state-bar-pipe {
+  flex: none;
 }
 
 .state-bar-fields {
   display: grid;
   gap: 0.25rem;
-  padding: 0 0.6rem 0.55rem;
+  padding: 0.1rem 2rem 0.55rem;
 }
 
 .state-bar-field {
@@ -198,9 +303,23 @@
   font: inherit;
 }
 
-/* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名 */
+/* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名。
+   外層負責縮寬與焦點框：clip-path 會把按鈕自己的 outline 一起裁掉 */
+.table-toolbar > .table-title-wrap {
+  flex: 0 1000 auto;
+  display: inline-flex;
+  min-width: 3rem;
+}
+
+.table-title-wrap:has(> .table-title:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .table-title {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
   height: auto;
   border: none;
   border-radius: 0;
@@ -211,6 +330,17 @@
   letter-spacing: 0.02em;
   padding: 0.5em 1.4em 0.5em 0.8em;
   cursor: text;
+}
+
+.table-title:focus-visible {
+  outline: none;
+}
+
+.table-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-title-locked {
@@ -228,22 +358,26 @@
 }
 
 .table-title-input {
+  width: 16rem;
+  min-width: 0;
+  max-width: 100%;
   font-weight: 700;
   font-size: var(--fs-title);
 }
 
 /* ============ 對話區：playbill（左對齊名牌＋純散文） ============ */
-/* 行寬填滿主欄（左右舒適距離由 .chat-main 的 2rem padding 提供），
-   字級縮小＝每行容納更多字——2026-07-26 使用者拍板，取代原 42rem 上限 */
 .messages,
-.composer,
 .onboarding {
   width: 100%;
   box-sizing: border-box;
 }
 
+/* 行寬填滿主欄（左右舒適距離由 .chat-main 的 2rem padding 提供），
+   字級縮小＝每行容納更多字——2026-07-26 使用者拍板，不設 42rem 上限 */
 .messages {
-  flex: 1;
+  flex: 1 1 0;
+  /* 故事保底：800×600 最大字級下仍看得到四五行 */
+  min-height: 7.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.95rem;
@@ -251,15 +385,26 @@
   padding-right: 0.25rem;
 }
 
-/* 幕標記：現在這一幕的書籤（幕是既有系統結構：換幕／前幕／單幕匯出） */
+/* 幕標記：現在這一幕的書籤（幕是既有系統結構：換幕／前幕／單幕匯出），兩側細線 */
 .act-divider {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 0.8em;
 }
 
+.act-divider::before {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 .act-tag {
-  font: 600 var(--fs-meta) / 1 var(--font-ui);
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: center;
+  font: 600 var(--fs-meta) / 1.3 var(--font-ui);
   letter-spacing: 0.06em;
   color: var(--ink-3);
 }
@@ -382,6 +527,14 @@
   font-family: var(--font-ui);
   font-size: var(--fs-meta);
   color: var(--ink-3);
+}
+
+/* 清單底部的補救動作列：清單空也留著容器，補救鈕出現時不頂動版面 */
+.story-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
 .response-truncated {
