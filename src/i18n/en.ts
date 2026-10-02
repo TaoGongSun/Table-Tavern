@@ -559,4 +559,19 @@ export const en: Record<MsgKey, string> = {
   importRouteNewTable: "New Table + Import",
   importRouteThisTable: "Import Here",
   importRouteMergeAnyway: "Import Anyway",
+
+  // Format version: read-only and needs repair
+  readOnlyBadge: "Read-only",
+  needsRepairBadge: "Needs repair",
+  readOnlyBanner:
+    "This table was created or converted by version {version}. To continue, update to version {version} or a newer one.",
+  readOnlyBannerUnknown:
+    "This table was created or converted by a newer version. To continue, please update.",
+  readOnlySkipped: "{count} lines could not be shown",
+  useBackupBtn: "Use the backup from before conversion",
+  useBackupConfirm:
+    "Play after the conversion is kept aside, and this table goes back to the backup from before conversion. Continue?",
+  needsRepairTitle: "This table needs repair",
+  openFolderBtn: "Open folder",
+  worldBusy: "This table is busy. Try again in a moment.",
 };

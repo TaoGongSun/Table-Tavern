@@ -1,7 +1,5 @@
 use super::character::{list_characters, read_character, write_character, CharacterCard};
-use super::paths::{
-    interface_shell_path, refactor_outcome_path, validate_single_line, world_dir, worlds_dir,
-};
+use super::paths::{interface_shell_path, refactor_outcome_path, validate_single_line, world_dir};
 use super::scene::{append_transcript, TranscriptEvent, TranscriptKind};
 use super::state::{read_state, write_state, Mechanism, TableState, WorldState};
 use super::worldbook::{read_worldbook, read_worldbook_value};
@@ -11,11 +9,13 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-/// 側欄桌列表用的精簡視圖
+/// 側欄桌列表用的精簡視圖。id 是目錄名。解不開的桌仍列出，並標唯讀或需要修復。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldMeta {
     pub id: String,
     pub name: String,
+    pub read_only: bool,
+    pub needs_repair: bool,
 }
 
 /// 最後活動時間＝transcript 內最新檔案 mtime，退而求其次用世界目錄 mtime
@@ -33,34 +33,30 @@ fn last_active(world_directory: &Path) -> std::time::SystemTime {
     latest
 }
 
-/// 依最後活動排序（新的在前），供側欄桌列表用（NewPlan §9.3）。
-/// state.json 解析失敗（含舊格式缺 id/name）的桌一律略過，不寫遷移、不做偵測提示。
+/// 依最後活動排序（新的在前）。先依目錄組合恢復，再列；名稱解不開就顯示 id。
 pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
-    let directory = worlds_dir(root);
-    if !directory.exists() {
-        return Ok(Vec::new());
-    }
-
     let mut worlds = Vec::new();
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-        let state_path = entry.path().join("state.json");
-        let state = fs::read_to_string(&state_path)
-            .ok()
-            .and_then(|text| serde_json::from_str::<WorldState>(&text).ok());
-        match state {
-            Some(state) => worlds.push((
-                last_active(&entry.path()),
-                WorldMeta {
-                    id: state.id,
-                    name: state.name,
-                },
-            )),
-            None => eprintln!("略過無法解析的桌：{}", entry.path().display()),
-        }
+    for id in super::format::discover_ids(root)? {
+        let listed = super::format::recover_for_list(root, &id)?;
+        let name = listed
+            .name_dir
+            .as_ref()
+            .map(|dir| super::format::loose_name(dir, &id))
+            .unwrap_or_else(|| id.clone());
+        let activity = listed
+            .sort_dir
+            .as_ref()
+            .map(|dir| last_active(dir))
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        worlds.push((
+            activity,
+            WorldMeta {
+                id: listed.id,
+                name,
+                read_only: listed.read_only,
+                needs_repair: listed.needs_repair,
+            },
+        ));
     }
     worlds.sort_by(|a, b| {
         b.0.cmp(&a.0)
@@ -70,17 +66,9 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
     Ok(worlds.into_iter().map(|(_, meta)| meta).collect())
 }
 
-pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
-    validate_single_line("world name", name)?;
-    let id = new_id();
-    let directory = worlds_dir(root).join(&id);
-    fs::create_dir_all(worlds_dir(root))?;
-    fs::create_dir(&directory)?;
-    fs::create_dir(directory.join("characters"))?;
-    fs::create_dir(directory.join("transcript"))?;
-    fs::write(directory.join("world.md"), "")?;
-    let state = WorldState {
-        id: id.clone(),
+fn blank_state(id: &str, name: &str) -> WorldState {
+    WorldState {
+        id: id.to_owned(),
         name: name.to_owned(),
         model_bindings: BTreeMap::new(),
         player_card_id: None,
@@ -93,11 +81,25 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
         aligned_scene: None,
         branch_bindings: BTreeMap::new(),
         refactor_mode: None,
-    };
-    fs::write(
-        directory.join("state.json"),
-        serde_json::to_string_pretty(&state)?,
+    }
+}
+
+/// 目錄與格式標記先落，state 與 world.md 才過得了寫入閘門。呼叫端已持有這桌的寫入許可。
+fn write_new_world(root: &Path, id: &str, name: &str) -> DataResult<()> {
+    let directory = super::world_file::prepare_new_world(root, id)?;
+    super::world_file::commit_world_write(&directory.join("world.md"), b"")?;
+    super::world_file::commit_world_write(
+        &directory.join("state.json"),
+        serde_json::to_string_pretty(&blank_state(id, name))?.as_bytes(),
     )?;
+    Ok(())
+}
+
+pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
+    validate_single_line("world name", name)?;
+    let id = new_id();
+    let _permit = super::world_lock::world_write_permit(&id);
+    write_new_world(root, &id, name)?;
     Ok(id)
 }
 
@@ -144,7 +146,9 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
     {
         return Ok(existing.id);
     }
-    let world_id = create_world(root, &sample.world_name)?;
+    let world_id = new_id();
+    let _permit = super::world_lock::world_write_permit(&world_id);
+    write_new_world(root, &world_id, &sample.world_name)?;
     write_world_md(root, &world_id, &sample.world_md)?;
 
     let style = [
@@ -226,17 +230,18 @@ pub fn reclaim_world_if_empty(root: &Path, world_id: &str) -> DataResult<bool> {
     if has_messages || has_characters || has_worldbook || !world_md.trim().is_empty() {
         return Ok(false);
     }
-    fs::remove_dir_all(directory)?;
+    super::world_file::commit_world_remove(&directory)?;
     Ok(true)
 }
 
-/// 刪桌：世界資料夾整包清掉（生成圖庫已收在世界目錄內，一併刪除）。不可復原。
+/// 玩家確認刪桌：主目錄與 sidecar 一起清掉。不查格式標記（確認過的刪除不受唯讀擋）。
 pub fn delete_world(root: &Path, world_id: &str) -> DataResult<()> {
-    let directory = world_dir(root, world_id)?;
-    if directory.exists() {
-        fs::remove_dir_all(&directory)?;
-    }
-    Ok(())
+    let _dir = super::paths::world_dir(root, world_id)?;
+    // 跟在途的聊天／匯入寫入互斥。拿不到不排隊，讓前端顯示 worldBusy。
+    let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
+        return Err(invalid_data("這張桌正在處理中，請稍候再試"));
+    };
+    super::world_file::delete_world_tree(root, world_id)
 }
 
 /// 桌名隨時可改（NewPlan §9.3）：只改 state.json 的 name，目錄路徑（world_id）不動。
@@ -254,7 +259,10 @@ pub fn read_world_md(root: &Path, world_id: &str) -> DataResult<String> {
 }
 
 pub fn write_world_md(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
-    fs::write(world_dir(root, world_id)?.join("world.md"), content)?;
+    super::world_file::commit_world_write(
+        &world_dir(root, world_id)?.join("world.md"),
+        content.as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -268,7 +276,10 @@ pub fn read_interface_shell(root: &Path, world_id: &str) -> DataResult<Option<St
 }
 
 pub fn write_interface_shell(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
-    fs::write(interface_shell_path(root, world_id)?, content)?;
+    super::world_file::commit_world_write(
+        &interface_shell_path(root, world_id)?,
+        content.as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -283,7 +294,10 @@ pub fn read_refactor_outcome(root: &Path, world_id: &str) -> DataResult<Option<S
 }
 
 pub fn write_refactor_outcome(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
-    fs::write(refactor_outcome_path(root, world_id)?, content)?;
+    super::world_file::commit_world_write(
+        &refactor_outcome_path(root, world_id)?,
+        content.as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -380,7 +394,9 @@ mod tests {
             worlds,
             vec![WorldMeta {
                 id: world_id,
-                name: "群島".to_owned()
+                name: "群島".to_owned(),
+                read_only: false,
+                needs_repair: false,
             }]
         );
     }
@@ -622,8 +638,18 @@ mod tests {
         fs::create_dir_all(&gallery).unwrap();
         fs::write(gallery.join("1.png"), b"gen").unwrap();
 
+        let worlds = root.path().join("worlds");
+        fs::write(
+            worlds.join(format!(".tt-op-{to_delete}.json.tmp")),
+            b"partial",
+        )
+        .unwrap();
+        fs::write(worlds.join(format!(".tt-op-{to_delete}.json")), b"{}").unwrap();
+
         delete_world(root.path(), &to_delete).unwrap();
 
+        assert!(!worlds.join(format!(".tt-op-{to_delete}.json.tmp")).exists());
+        assert!(!worlds.join(format!(".tt-op-{to_delete}.json")).exists());
         assert_eq!(
             list_worlds(root.path())
                 .unwrap()
@@ -636,6 +662,26 @@ mod tests {
         // 已刪的桌再刪一次應為 no-op；非法 id 擋下
         delete_world(root.path(), &to_delete).unwrap();
         assert!(delete_world(root.path(), "not-a-valid-ulid").is_err());
+    }
+
+    #[test]
+    fn delete_world_is_rejected_while_a_write_permit_is_held() {
+        let root = TestRoot::new("delete-busy");
+        let id = create_world(root.path(), "忙碌中").unwrap();
+        let worlds = root.path().join("worlds");
+        let live = worlds.join(&id);
+        let pre = worlds.join(format!(".tt-pre-{id}"));
+        fs::create_dir_all(&pre).unwrap();
+        fs::write(pre.join("kept.txt"), b"pre").unwrap();
+
+        let _permit = super::super::world_lock::world_write_permit(&id);
+        let error = delete_world(root.path(), &id).unwrap_err();
+        assert!(
+            error.to_string().contains("這張桌正在處理中，請稍候再試"),
+            "{error}"
+        );
+        assert!(live.join("state.json").is_file());
+        assert_eq!(fs::read(pre.join("kept.txt")).unwrap(), b"pre");
     }
 
     /// 狀態列只跟著匯入內容走：光提到「狀態」不算，要有狀態列輸出格式才算。

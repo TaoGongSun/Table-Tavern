@@ -534,4 +534,19 @@ export const es: Record<MsgKey, string> = {
   importRouteNewTable: "Nueva mesa + importar",
   importRouteThisTable: "Importar aquí",
   importRouteMergeAnyway: "Importar igual",
+
+  // Versión de formato: solo lectura y reparación
+  readOnlyBadge: "Solo lectura",
+  needsRepairBadge: "Hay que reparar",
+  readOnlyBanner:
+    "Esta mesa se creó o se convirtió con la versión {version}. Para seguir, actualiza a la versión {version} o a una más nueva.",
+  readOnlyBannerUnknown:
+    "Esta mesa se creó o se convirtió con una versión más nueva. Para seguir, actualiza.",
+  readOnlySkipped: "{count} líneas no se pueden mostrar",
+  useBackupBtn: "Usar la copia de antes",
+  useBackupConfirm:
+    "Lo jugado después de la conversión se guarda aparte, y esta mesa vuelve a la copia de antes. ¿Seguir?",
+  needsRepairTitle: "Esta mesa hay que repararla",
+  openFolderBtn: "Abrir carpeta",
+  worldBusy: "Esta mesa está ocupada. Prueba de nuevo en un momento.",
 };

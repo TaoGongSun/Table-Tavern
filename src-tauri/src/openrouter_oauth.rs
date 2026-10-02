@@ -191,46 +191,65 @@ async fn exchange_code(code: &str, verifier: &str) -> Result<String, String> {
     Ok(key.to_owned())
 }
 
-fn has_explicit_api_tier(config: &AppConfig) -> bool {
+fn disk_has_explicit_api_tier(disk: &serde_json::Value) -> bool {
+    let Some(models) = disk.get("tier_models").and_then(|value| value.as_object()) else {
+        return false;
+    };
     ["best", "balanced", "fast"].iter().any(|tier| {
-        config
-            .tier_models
+        models
             .get(*tier)
-            .map(String::as_str)
+            .and_then(|value| value.as_str())
             .map(str::trim)
             .is_some_and(|model| !model.is_empty() && model != "openrouter/free")
     })
 }
 
-fn apply_free_bootstrap(config: &mut AppConfig) {
-    if has_explicit_api_tier(config) {
-        return;
+/// 沒有明確 API 檔位時，清掉 openrouter/free，並把模式設成穩定免費。在設定鎖裡看磁碟原文。
+fn bootstrap_patch(disk: &serde_json::Value) -> serde_json::Value {
+    if disk_has_explicit_api_tier(disk) {
+        return serde_json::json!({});
     }
-    // 第 1 階段曾把這個 router slug 寫進三檔。升級時清掉它，避免玩家之後切手動又
-    // 把已淘汰的隨機 router 當成具體模型使用。
-    for tier in ["best", "balanced", "fast"] {
-        if config
-            .tier_models
-            .get(tier)
-            .is_some_and(|model| model.trim() == "openrouter/free")
-        {
-            config.tier_models.remove(tier);
+    let mut patch = serde_json::Map::new();
+    let mut tiers = serde_json::Map::new();
+    if let Some(models) = disk.get("tier_models").and_then(|value| value.as_object()) {
+        for tier in ["best", "balanced", "fast"] {
+            if models
+                .get(tier)
+                .and_then(|value| value.as_str())
+                .is_some_and(|model| model.trim() == "openrouter/free")
+            {
+                tiers.insert(tier.to_owned(), serde_json::Value::Null);
+            }
         }
     }
-    config.preferences.insert(
-        smart_free::MODE_KEY.to_owned(),
-        smart_free::MODE_STABLE.into(),
+    if !tiers.is_empty() {
+        patch.insert("tier_models".to_owned(), serde_json::Value::Object(tiers));
+    }
+    let mode_key = smart_free::MODE_KEY;
+    patch.insert(
+        "preferences".to_owned(),
+        serde_json::json!({ mode_key: smart_free::MODE_STABLE }),
     );
+    serde_json::Value::Object(patch)
 }
 
 fn persist_openrouter_key(root: &Path, key: &str) -> DataResult<AppConfig> {
-    let mut config = data::read_config(root)?;
-    config
-        .api_keys
-        .insert("openrouter".to_owned(), key.trim().to_owned());
-    apply_free_bootstrap(&mut config);
-    data::write_config(root, &config)?;
-    Ok(config)
+    let trimmed = key.trim().to_owned();
+    data::update_config_with(root, |disk| {
+        let mut patch = bootstrap_patch(disk);
+        let keys = patch
+            .as_object_mut()
+            .ok_or_else(|| data::invalid_data("補丁不是物件"))?
+            .entry("api_keys".to_owned())
+            .or_insert_with(|| serde_json::json!({}));
+        keys.as_object_mut()
+            .ok_or_else(|| data::invalid_data("api_keys 不是物件"))?
+            .insert(
+                "openrouter".to_owned(),
+                serde_json::Value::String(trimmed.clone()),
+            );
+        Ok(Some(patch))
+    })
 }
 
 #[tauri::command]
@@ -343,10 +362,23 @@ mod tests {
         );
     }
 
+    fn persist_case(label: &str, disk: serde_json::Value, key: &str) -> AppConfig {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-openrouter-bootstrap-{label}-{}",
+            ulid::Ulid::generate()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        if disk.as_object().is_some_and(|object| !object.is_empty()) {
+            data::update_config(&root, &disk).unwrap();
+        }
+        let saved = persist_openrouter_key(&root, key).unwrap();
+        let _ = fs::remove_dir_all(root);
+        saved
+    }
+
     #[test]
-    fn bootstrap_uses_stable_free_mode_without_fake_api_tiers() {
-        let mut fresh = AppConfig::default();
-        apply_free_bootstrap(&mut fresh);
+    fn bootstrap_persists_stable_free_unless_the_player_already_picked_api_tiers() {
+        let fresh = persist_case("fresh", serde_json::json!({}), "sk-fresh");
         for tier in ["best", "balanced", "fast"] {
             assert!(!fresh.tier_models.contains_key(tier));
         }
@@ -358,12 +390,16 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some(smart_free::MODE_STABLE)
         );
+        assert_eq!(
+            fresh.api_keys.get("openrouter").map(String::as_str),
+            Some("sk-fresh")
+        );
 
-        let mut customized = AppConfig::default();
-        customized
-            .tier_models
-            .insert("best".to_owned(), "vendor/custom".to_owned());
-        apply_free_bootstrap(&mut customized);
+        let customized = persist_case(
+            "custom",
+            serde_json::json!({ "tier_models": { "best": "vendor/custom" } }),
+            "sk-custom",
+        );
         assert_eq!(
             customized.tier_models.get("best").map(String::as_str),
             Some("vendor/custom")
@@ -371,22 +407,31 @@ mod tests {
         assert!(!customized.tier_models.contains_key("balanced"));
         assert!(!customized.tier_models.contains_key("fast"));
         assert!(!smart_free::is_active(&customized));
+        assert!(customized.preferences.get(smart_free::MODE_KEY).is_none());
 
-        let mut cli_only = AppConfig::default();
-        cli_only
-            .tier_models
-            .insert("claude:best".to_owned(), "opus".to_owned());
-        apply_free_bootstrap(&mut cli_only);
+        let cli_only = persist_case(
+            "cli",
+            serde_json::json!({ "tier_models": { "claude:best": "opus" } }),
+            "sk-cli",
+        );
         assert!(smart_free::is_active(&cli_only));
+        assert_eq!(
+            cli_only.tier_models.get("claude:best").map(String::as_str),
+            Some("opus")
+        );
         assert!(!cli_only.tier_models.contains_key("best"));
 
-        let mut legacy = AppConfig::default();
-        for tier in ["best", "balanced", "fast"] {
-            legacy
-                .tier_models
-                .insert(tier.to_owned(), "openrouter/free".to_owned());
-        }
-        apply_free_bootstrap(&mut legacy);
+        let legacy = persist_case(
+            "legacy",
+            serde_json::json!({
+                "tier_models": {
+                    "best": "openrouter/free",
+                    "balanced": "openrouter/free",
+                    "fast": "openrouter/free"
+                }
+            }),
+            "sk-legacy",
+        );
         assert!(smart_free::is_active(&legacy));
         for tier in ["best", "balanced", "fast"] {
             assert!(!legacy.tier_models.contains_key(tier));
@@ -409,7 +454,14 @@ mod tests {
         existing
             .tier_models
             .insert("claude:fast".to_owned(), "haiku".to_owned());
-        data::write_config(&root, &existing).unwrap();
+        data::update_config(
+            &root,
+            &serde_json::json!({
+                "preferences": { "language": "en" },
+                "tier_models": { "claude:fast": "haiku" }
+            }),
+        )
+        .unwrap();
 
         let saved = persist_openrouter_key(&root, "  sk-or-test  ").unwrap();
         assert_eq!(

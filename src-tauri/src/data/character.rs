@@ -48,6 +48,11 @@ pub struct CharacterCard {
     pub private_md: String,
 }
 
+/// 完整讀取用：角色卡解得開才算這棵目錄能當現行程式的桌。
+pub(crate) fn character_file_parses(contents: &str) -> DataResult<()> {
+    parse_frontmatter(contents).map(|_| ())
+}
+
 fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)> {
     let rest = contents
         .strip_prefix("---\n")
@@ -262,7 +267,10 @@ pub fn reorder_characters(root: &Path, world_id: &str, ids: &[String]) -> DataRe
         let path = character_path(root, world_id, id)?;
         // 拖曳排序只改 display_index，跟 write_character 一樣延續磁碟上原有的 auto_hidden。
         let auto_hidden = existing_auto_hidden(&path);
-        fs::write(path, serialize_character(&card, index, auto_hidden))?;
+        super::world_file::commit_world_write(
+            &path,
+            serialize_character(&card, index, auto_hidden).as_bytes(),
+        )?;
     }
     Ok(())
 }
@@ -327,7 +335,10 @@ pub fn write_character(root: &Path, world_id: &str, card: &CharacterCard) -> Dat
     let auto_hidden = existing_auto_hidden(&path);
     ensure_display_indices(root, world_id)?;
     let display_index = display_index_for(root, world_id, &path)?;
-    fs::write(path, serialize_character(card, display_index, auto_hidden))?;
+    super::world_file::commit_world_write(
+        &path,
+        serialize_character(card, display_index, auto_hidden).as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -353,24 +364,27 @@ pub fn set_character_auto_hidden(
     let card = read_character(root, world_id, character_id)?;
     let path = character_path(root, world_id, character_id)?;
     let display_index = display_index_for(root, world_id, &path)?;
-    fs::write(path, serialize_character(&card, display_index, auto_hidden))?;
+    super::world_file::commit_world_write(
+        &path,
+        serialize_character(&card, display_index, auto_hidden).as_bytes(),
+    )?;
     Ok(())
 }
 
 pub fn delete_character(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
     let path = character_path(root, world_id, character_id)?;
-    fs::remove_file(&path)?;
+    super::world_file::commit_world_remove(&path)?;
     let gallery = gallery_dir(root, world_id, character_id)?;
     if gallery.exists() {
-        fs::remove_dir_all(gallery)?;
+        super::world_file::commit_world_remove(&gallery)?;
     }
     let image_path = path.with_extension("png");
     if image_path.exists() {
-        fs::remove_file(image_path)?;
+        super::world_file::commit_world_remove(&image_path)?;
     }
     let avatar_path = path.with_extension("avatar.png");
     if avatar_path.exists() {
-        fs::remove_file(avatar_path)?;
+        super::world_file::commit_world_remove(&avatar_path)?;
     }
     Ok(())
 }

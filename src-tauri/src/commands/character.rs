@@ -15,6 +15,7 @@ pub(crate) fn reorder_characters(
     world_id: String,
     ids: Vec<String>,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     data::reorder_characters(&data_root(&app)?, &world_id, &ids).map_err(|error| error.to_string())
 }
 
@@ -34,6 +35,7 @@ pub(crate) fn write_character(
     world_id: String,
     card: CharacterCard,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     data::write_character(&data_root(&app)?, &world_id, &card).map_err(|error| error.to_string())
 }
 
@@ -44,6 +46,7 @@ pub(crate) fn set_character_archived(
     character_id: String,
     archived: bool,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     data::set_character_archived(&data_root(&app)?, &world_id, &character_id, archived)
         .map_err(|error| error.to_string())
 }
@@ -57,6 +60,7 @@ pub(crate) fn set_character_auto_hidden(
     character_id: String,
     auto_hidden: bool,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     data::set_character_auto_hidden(&data_root(&app)?, &world_id, &character_id, auto_hidden)
         .map_err(|error| error.to_string())
 }
@@ -67,6 +71,7 @@ pub(crate) fn delete_character(
     world_id: String,
     character_id: String,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     data::delete_character(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
@@ -78,6 +83,7 @@ pub(crate) fn import_character(
     data: Vec<u8>,
     color: String,
 ) -> Result<CharacterImport, String> {
+    let _permit = data::world_write_permit(&world_id);
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
     let entries_before = data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len());
@@ -123,6 +129,7 @@ pub(crate) fn undo_last_import(
     app: tauri::AppHandle,
     world_id: String,
 ) -> Result<receipts::UndoReport, String> {
+    let _permit = data::world_write_permit(&world_id);
     receipts::undo_last_import(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
@@ -133,6 +140,7 @@ pub(crate) fn record_import_rename(
     world_id: String,
     old_name: String,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     receipts::record_last_import_rename(&data_root(&app)?, &world_id, &old_name);
     Ok(())
 }

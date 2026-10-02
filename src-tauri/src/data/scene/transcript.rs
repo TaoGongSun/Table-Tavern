@@ -1,7 +1,7 @@
 use crate::mechanism::{self, Outcome};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use super::super::paths::world_dir;
@@ -59,15 +59,12 @@ pub fn append_transcript(
 ) -> DataResult<()> {
     let mut event = event.clone();
     if event.state.is_none() {
-        // 復原舊句子會帶回當時快照，只有新事件才借用目前檯面。
-        event.state = read_state(root, world_id).ok().map(|state| state.state);
+        // 復原舊句子會帶回當時快照，只有新事件才借用目前檯面。讀不到就停，不再照寫。
+        event.state = Some(read_state(root, world_id)?.state);
     }
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(transcript_path(root, world_id, scene)?)?;
-    serde_json::to_writer(&mut file, &event)?;
-    file.write_all(b"\n")?;
+    let mut line = serde_json::to_vec(&event)?;
+    line.push(b'\n');
+    super::super::world_file::commit_world_append(&transcript_path(root, world_id, scene)?, &line)?;
     // 目前值恆等於最後一則事件的快照，復原舊句時狀態才會跟著回到那一刻。
     // 快取寫失敗不該把「事件已經寫進去了」這件事變成錯誤，權威在 transcript。
     if let Some(snapshot) = event.state {
@@ -122,7 +119,10 @@ fn rewrite_scene(
         buffer.push_str(&serde_json::to_string(event)?);
         buffer.push('\n');
     }
-    fs::write(transcript_path(root, world_id, scene)?, buffer)?;
+    super::super::world_file::commit_world_write(
+        &transcript_path(root, world_id, scene)?,
+        buffer.as_bytes(),
+    )?;
     let mut state = read_state(root, world_id)?;
     state.state = events
         .iter()
@@ -214,7 +214,10 @@ pub fn set_last_transcript_state(
         buffer.push_str(&serde_json::to_string(entry)?);
         buffer.push('\n');
     }
-    fs::write(transcript_path(root, world_id, scene)?, buffer)?;
+    super::super::world_file::commit_world_write(
+        &transcript_path(root, world_id, scene)?,
+        buffer.as_bytes(),
+    )?;
     Ok(true)
 }
 
@@ -247,6 +250,8 @@ mod tests {
     use crate::data::test_support::*;
     use crate::data::*;
     use std::collections::BTreeMap;
+    use std::fs::OpenOptions;
+    use std::io::Write;
 
     #[test]
     fn transcript_round_trip_is_ordered_jsonl_and_rejects_invalid_kind() {

@@ -71,6 +71,7 @@ pub(crate) async fn chat_with_character(
     turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<ChatReply, String> {
+    let _permit = data::world_write_permit_async(&world_id).await;
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
     let buffer = std::sync::Mutex::new(String::new());
     let root = data_root(&app)?;
@@ -337,6 +338,7 @@ pub(crate) async fn gm_narrate(
     turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<GmNarration, String> {
+    let _permit = data::world_write_permit_async(&world_id).await;
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
     let buffer = std::sync::Mutex::new(String::new());
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
@@ -637,6 +639,7 @@ pub(crate) async fn keepalive_lanes(
     if chat_transport(&config) != "claude" {
         return Ok(0);
     }
+    let _permit = data::world_write_permit_async(&world_id).await;
     let root = data_root(&app)?;
     let call = prepare_lane_call(
         &app,

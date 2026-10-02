@@ -3,12 +3,15 @@ use std::error::Error;
 
 mod character;
 mod config;
+mod format;
 mod paths;
 mod scene;
 mod state;
 #[cfg(test)]
 mod test_support;
 mod world;
+mod world_file;
+mod world_lock;
 mod worldbook;
 
 pub use character::{
@@ -17,9 +20,10 @@ pub use character::{
     CharacterMeta,
 };
 pub use config::{
-    install_sponsor_pack, read_config, read_model_catalog, sponsor_pack_active, write_config,
-    write_model_catalog, AppConfig,
+    install_sponsor_pack, migrate_legacy_config, read_config, read_model_catalog,
+    sponsor_pack_active, update_config, update_config_with, write_model_catalog, AppConfig,
 };
+pub use format::{open_world, read_world_readonly, restore_world_backup, OpenWorld, ReadonlyWorld};
 pub(crate) use paths::{
     character_path, gallery_dir, gm_image_path, import_receipts_path, interface_shell_path,
     lanes_path, mechanism_log_path, validate_single_line, world_card_path,
@@ -42,6 +46,8 @@ pub use world::{
     read_refactor_outcome, read_world_md, reclaim_world_if_empty, rename_world,
     world_has_state_bar, write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
 };
+pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
+pub use world_lock::{world_write_permit, world_write_permit_async};
 pub use worldbook::{
     character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
     import_worldbook, read_worldbook, reorder_worldbook_entries, upsert_worldbook_entry,

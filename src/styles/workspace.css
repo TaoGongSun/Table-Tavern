@@ -33,6 +33,29 @@
   min-width: 0;
 }
 
+/* 唯讀橫幅與需要修復：說明在上，按鈕列沿用 .row 的折行 */
+.format-banner,
+.format-repair {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+}
+
+.format-banner p,
+.format-repair p,
+.format-repair h2 {
+  margin: 0;
+}
+
+.format-repair h2 {
+  font: 700 var(--fs-title) / 1.3 var(--font-ui);
+}
+
 /* 訊息區獨立捲動時，這塊仍留在劇情標題下方，方便隨時核對眼前局勢。 */
 .state-bar {
   flex: none;
@@ -177,6 +200,7 @@
 
 /* 桌名戴中性 wedge（wedge＝名字，全 app 只有名字戴它）；仍可點擊改名 */
 .table-title {
+  display: inline-flex;
   height: auto;
   border: none;
   border-radius: 0;
@@ -187,6 +211,10 @@
   letter-spacing: 0.02em;
   padding: 0.5em 1.4em 0.5em 0.8em;
   cursor: text;
+}
+
+.table-title-locked {
+  cursor: default;
 }
 
 .table-title:hover:not(:disabled) {

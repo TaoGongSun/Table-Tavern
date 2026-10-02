@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::Path;
 
 use super::super::state::{read_state, write_state, SceneLabel, WorldState};
@@ -60,7 +59,10 @@ pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u6
         buffer.push_str(&serde_json::to_string(event)?);
         buffer.push('\n');
     }
-    fs::write(transcript_path(root, world_id, new_scene)?, buffer)?;
+    super::super::world_file::commit_world_write(
+        &transcript_path(root, world_id, new_scene)?,
+        buffer.as_bytes(),
+    )?;
 
     let base = scene_label(&state, from_scene).base;
     let version = next_scene_version(&state, current_scene, base);
@@ -155,7 +157,7 @@ pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
         return Err(invalid_data("這一幕已經有新內容，不能退回前幕"));
     }
 
-    fs::remove_file(transcript_path(root, world_id, scene)?)?;
+    super::super::world_file::commit_world_remove(&transcript_path(root, world_id, scene)?)?;
     state.current_scene = previous_scene;
     state.scene_titles.remove(&previous_scene.to_string());
     // 自己這筆標籤跟著檔案一起消失，不留退回後查不到來源、卻還佔著 key 的殭屍紀錄。
@@ -199,9 +201,9 @@ pub fn replace_scene_summary(
     let event = &mut events[0];
     event.text = format_scene_summary(summary_text, lang);
     event.ts = local_timestamp()?;
-    fs::write(
-        transcript_path(root, world_id, scene)?,
-        format!("{}\n", serde_json::to_string(event)?),
+    super::super::world_file::commit_world_write(
+        &transcript_path(root, world_id, scene)?,
+        format!("{}\n", serde_json::to_string(event)?).as_bytes(),
     )?;
 
     match title.map(str::trim).filter(|name| !name.is_empty()) {

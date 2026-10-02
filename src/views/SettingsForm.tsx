@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { checkApiKey } from "../features/ai-connection/api-key-check";
 import { tierLabel } from "../features/ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../features/ai-connection/model-catalog-store";
+import { updateConfig } from "../features/settings/update-config";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../features/ai-connection/cli";
 import { CACHE_UPDATED_EVENT } from "./SmartFreeNewModelBanner";
@@ -235,9 +236,7 @@ export function Settings({
     return stopCliPolling;
   }, []);
 
-  // 監聽器只掛一次；config／onSaved 走 ref 取最新值，避免安裝中重掛掉事件
-  const configRef = useRef(config);
-  configRef.current = config;
+  // 監聽器只掛一次；onSaved 走 ref 取最新值，避免安裝中重掛掉事件
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
   useEffect(() => {
@@ -250,15 +249,13 @@ export function Settings({
       }));
       if (event.payload.stage === "done" || event.payload.stage === "error") {
         setInstallingCli((current) => (current === event.payload.provider ? null : current));
-        const base = configRef.current;
-        const next = {
-          ...base,
+        void updateConfig({
           preferences: {
-            ...base.preferences,
             [cliConnectedKey(event.payload.provider)]: event.payload.stage === "done",
           },
-        };
-        void invoke("write_config", { config: next }).then(() => onSavedRef.current(next)).catch(() => {});
+        })
+          .then((saved) => onSavedRef.current(saved))
+          .catch(() => {});
         if (event.payload.stage === "done") {
           void detectClis(true).then(setClis).catch(() => {});
           // 剛登入完才拿得到完整清單（未登入時 grok 只回得出一個預設模型），
@@ -316,13 +313,10 @@ export function Settings({
     // 不轉灰的話，登入視窗被關掉時會停在「已連結 ✓」，實際上人已經被登出了。
     // 擺在 invoke 之後：冷卻中或啟動失敗會走上面的 catch，那些情況帳號沒被動到。
     if (switchAccount) {
-      const base = configRef.current;
-      const next = {
-        ...base,
-        preferences: { ...base.preferences, [cliConnectedKey(provider)]: false },
-      };
-      await invoke("write_config", { config: next })
-        .then(() => onSavedRef.current(next))
+      await updateConfig({
+        preferences: { [cliConnectedKey(provider)]: false },
+      })
+        .then((saved) => onSavedRef.current(saved))
         .catch(() => {});
     }
 
@@ -344,13 +338,10 @@ export function Settings({
           }
           stopCliPolling();
           setInstallingCli(null);
-          const base = configRef.current;
-          const next = {
-            ...base,
-            preferences: { ...base.preferences, [cliConnectedKey(provider)]: true },
-          };
-          void invoke("write_config", { config: next })
-            .then(() => onSavedRef.current(next))
+          void updateConfig({
+            preferences: { [cliConnectedKey(provider)]: true },
+          })
+            .then((saved) => onSavedRef.current(saved))
             .catch(() => {});
         })
         .catch(() => {
@@ -444,32 +435,70 @@ export function Settings({
       setMessage(t("riskRequired"));
       return;
     }
-    const next: AppConfig = {
-      ...config,
-      api_keys: {
-        ...config.api_keys,
-        openrouter: apiKey.trim(),
-        claude_compat: claudeCompatKey.trim(),
-      },
-      tier_models: tierModels,
-      preferences: {
-        ...config.preferences,
-        base_url: baseUrl.trim(),
-        image_model: imageModel.trim(),
-        claude_base_url: claudeCompatBaseUrl.trim(),
-        transport,
-        cli_risk_accepted: riskAccepted,
-        gm_tier: gmTier,
-        api_model_mode: modelMode,
-        smart_free_notify: notifyNewModels,
-        max_round_speakers: Math.max(1, Number(maxRound) || 3),
-      },
+    const preferences: Record<string, unknown> = {};
+    const setPref = (key: string, value: unknown, unchanged: boolean) => {
+      if (!unchanged) preferences[key] = value;
     };
+    setPref(
+      "base_url",
+      baseUrl.trim(),
+      baseUrl.trim() === String(config.preferences["base_url"] ?? ""),
+    );
+    setPref(
+      "image_model",
+      imageModel.trim(),
+      imageModel.trim() === String(config.preferences["image_model"] ?? ""),
+    );
+    setPref(
+      "claude_base_url",
+      claudeCompatBaseUrl.trim(),
+      claudeCompatBaseUrl.trim() === String(config.preferences["claude_base_url"] ?? ""),
+    );
+    setPref("transport", transport, transport === String(config.preferences["transport"] ?? "api"));
+    setPref(
+      "cli_risk_accepted",
+      riskAccepted,
+      riskAccepted === (config.preferences["cli_risk_accepted"] === true),
+    );
+    setPref("gm_tier", gmTier, gmTier === String(config.preferences["gm_tier"] ?? "best"));
+    setPref(
+      "api_model_mode",
+      modelMode,
+      modelMode === normalizeApiModelMode(config.preferences["api_model_mode"]),
+    );
+    setPref(
+      "smart_free_notify",
+      notifyNewModels,
+      notifyNewModels === (config.preferences["smart_free_notify"] !== false),
+    );
+    const round = Math.max(1, Number(maxRound) || 3);
+    setPref(
+      "max_round_speakers",
+      round,
+      String(round) === String(config.preferences["max_round_speakers"] ?? 3),
+    );
+    const apiKeys: Record<string, string> = {};
+    if (apiKey.trim() !== (config.api_keys["openrouter"] ?? "")) apiKeys.openrouter = apiKey.trim();
+    if (claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? "")) {
+      apiKeys.claude_compat = claudeCompatKey.trim();
+    }
+    const tierPatch: Record<string, string> = {};
+    for (const [key, value] of Object.entries(tierModels)) {
+      if (value !== (config.tier_models[key] ?? "")) tierPatch[key] = value;
+    }
+    const patch: Record<string, unknown> = {};
+    if (Object.keys(preferences).length > 0) patch.preferences = preferences;
+    if (Object.keys(apiKeys).length > 0) patch.api_keys = apiKeys;
+    if (Object.keys(tierPatch).length > 0) patch.tier_models = tierPatch;
     try {
-      await invoke("write_config", { config: next });
-      onSaved(next);
+      if (Object.keys(patch).length === 0) {
+        setMessage(t("saved"));
+        return;
+      }
+      const saved = await updateConfig(patch);
+      onSaved(saved);
       setMessage(t("saved"));
-      if (transport !== "api" && next.preferences[cliNoticeKey(transport)] !== true) {
+      if (transport !== "api" && saved.preferences[cliNoticeKey(transport)] !== true) {
         setPermissionNotice(transport);
       }
     } catch (reason) {
@@ -481,13 +510,8 @@ export function Settings({
   async function ackPermissionNotice() {
     const provider = permissionNotice;
     setPermissionNotice("");
-    const next: AppConfig = {
-      ...config,
-      preferences: { ...config.preferences, [cliNoticeKey(provider)]: true },
-    };
     try {
-      await invoke("write_config", { config: next });
-      onSaved(next);
+      onSaved(await updateConfig({ preferences: { [cliNoticeKey(provider)]: true } }));
     } catch {
       /* 記不起來只是下次再問一次，不打斷玩家 */
     }

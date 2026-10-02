@@ -531,4 +531,17 @@ export const ja: Record<MsgKey, string> = {
   importRouteNewTable: "新しい卓でインポート",
   importRouteThisTable: "ここにインポート",
   importRouteMergeAnyway: "それでもインポート",
+
+  // 形式バージョン：読み取り専用と修復
+  readOnlyBadge: "読取専用",
+  needsRepairBadge: "修復が必要",
+  readOnlyBanner:
+    "この卓はバージョン {version} で作成または変換されました。続けるにはバージョン {version} 以降へ更新してください。",
+  readOnlyBannerUnknown: "この卓はより新しいバージョンで作成または変換されました。続けるには更新してください。",
+  readOnlySkipped: "{count} 件は表示できません",
+  useBackupBtn: "変換前のバックアップで続ける",
+  useBackupConfirm: "変換後に遊んだ内容は別に残し、この卓を変換前のバックアップに戻します。続けますか？",
+  needsRepairTitle: "この卓は修復が必要です",
+  openFolderBtn: "フォルダを開く",
+  worldBusy: "この卓は処理中です。少し待ってからもう一度試してください。",
 };

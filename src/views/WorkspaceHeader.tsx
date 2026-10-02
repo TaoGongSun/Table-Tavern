@@ -19,6 +19,8 @@ interface WorkspaceHeaderProps {
   renaming: boolean;
   renameForm: (className: string) => ReactNode;
   onStartRename: (name: string) => void;
+  /** 唯讀或需要修復：桌名不能改，寫入與嚴格讀取的鈕都收掉 */
+  locked?: boolean;
   /** 這桌有可用的卡片介面殼，且人在遊玩畫面 */
   showCardInterface: boolean;
   onOpenCardInterface: () => void;
@@ -37,6 +39,7 @@ export function WorkspaceHeader({
   renaming,
   renameForm,
   onStartRename,
+  locked = false,
   showCardInterface,
   onOpenCardInterface,
   busy,
@@ -48,7 +51,9 @@ export function WorkspaceHeader({
 }: WorkspaceHeaderProps) {
   return (
     <header className="chat-header">
-      {renaming ? (
+      {locked ? (
+        <span className="table-title table-title-locked">{tableName}</span>
+      ) : renaming ? (
         renameForm("table-title-input")
       ) : (
         <button
@@ -59,36 +64,38 @@ export function WorkspaceHeader({
           {tableName}
         </button>
       )}
-      <div className="chat-header-actions">
-        {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面；且只在遊玩畫面（mainView === null）出現 */}
-        {showCardInterface && (
-          <button type="button" onClick={onOpenCardInterface}>
-            {t("cardInterfaceOpen")}
+      {!locked && (
+        <div className="chat-header-actions">
+          {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面；且只在遊玩畫面（mainView === null）出現 */}
+          {showCardInterface && (
+            <button type="button" onClick={onOpenCardInterface}>
+              {t("cardInterfaceOpen")}
+            </button>
+          )}
+          <button
+            type="button"
+            title={t("sceneAdvanceHint")}
+            aria-label={t("sceneAdvance")}
+            disabled={busy || !hasEvents}
+            onClick={onAdvanceScene}
+          >
+            {t("sceneAdvance")}
           </button>
-        )}
-        <button
-          type="button"
-          title={t("sceneAdvanceHint")}
-          aria-label={t("sceneAdvance")}
-          disabled={busy || !hasEvents}
-          onClick={onAdvanceScene}
-        >
-          {t("sceneAdvance")}
-        </button>
-        <button
-          type="button"
-          title={t("exportTranscriptHint")}
-          aria-label={t("exportTranscript")}
-          onClick={onExportTranscript}
-        >
-          {t("exportTranscript")}
-        </button>
-        {scene > 0 && (
-          <button type="button" onClick={onToggleActs}>
-            {t("pastScenes", { count: scene })}
+          <button
+            type="button"
+            title={t("exportTranscriptHint")}
+            aria-label={t("exportTranscript")}
+            onClick={onExportTranscript}
+          >
+            {t("exportTranscript")}
           </button>
-        )}
-      </div>
+          {scene > 0 && (
+            <button type="button" onClick={onToggleActs}>
+              {t("pastScenes", { count: scene })}
+            </button>
+          )}
+        </div>
+      )}
     </header>
   );
 }

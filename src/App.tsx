@@ -2,7 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, t } from "./i18n";
+import { updateConfig } from "./features/settings/update-config";
+import {
+  gateOf,
+  looseTranscript,
+  readOnlyBannerVersion,
+  type LooseWorld,
+  type OpenWorld,
+  type TableGate,
+} from "./features/world-format/open-world";
 import { isCharacterHidden } from "./features/characters/character-visibility";
 import { prefetchModelCatalogs } from "./features/ai-connection/model-catalog-store";
 import {
@@ -50,6 +60,17 @@ function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
   // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
   const [table, setTable] = useState("");
+  // play 才把桌 id 交給會自動讀寫的 controller；唯讀與修復維持空字串，避免嚴格讀取
+  const [gate, setGate] = useState<TableGate>("play");
+  const [readOnlyNotice, setReadOnlyNotice] = useState<{
+    appVersion: string | null;
+    backupAvailable: boolean;
+  } | null>(null);
+  const [repairNotice, setRepairNotice] = useState<{ message: string; directory: string } | null>(
+    null,
+  );
+  const [skippedLines, setSkippedLines] = useState(0);
+  const liveWorldId = gate === "play" ? table : "";
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [sceneLabels, setSceneLabels] = useState<Record<string, SceneLabel>>({});
@@ -83,12 +104,16 @@ function App() {
 
   // 狀態列／狀態樹：平欄、樹、跳動記號、分支指認與編輯中的那一格都在 controller 裡。
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
-  const tableState = useTableStateController({ worldId: table, onError: setError });
+  const tableState = useTableStateController({ worldId: liveWorldId, onError: setError });
 
   // 角色名單、本幕出場集合、玩家卡與角色圖／GM 圖三份快取都在 controller 裡。
-  const characters = useCharacterController({ worldId: table, onError: setError });
+  const characters = useCharacterController({ worldId: liveWorldId, onError: setError });
 
-  const navigation = useWorkspaceNavigationController({ worldId: table, characters, onError: setError });
+  const navigation = useWorkspaceNavigationController({
+    worldId: liveWorldId,
+    characters,
+    onError: setError,
+  });
   const {
     canLeaveRef,
     speaker,
@@ -144,8 +169,7 @@ function App() {
           // 首開：語言跟系統語系走並存起來，範例桌直接用該語系生，不擋選語言畫面（設定頁可改）
           let start = loaded;
           if (start.preferences["language"] === undefined) {
-            start = { ...start, preferences: { ...start.preferences, language: detectLang() } };
-            await invoke("write_config", { config: start });
+            start = await updateConfig({ preferences: { language: detectLang() } });
             setConfig(start);
           }
           const id = await invoke<string>("create_sample_world", {
@@ -180,7 +204,7 @@ function App() {
   // 逐字稿、收回堆疊、生成中狀態、輸入框與整條對話流程都在 controller 裡。
   // 掛在 cardInterface 之前：那支要吃這裡的 submitText。
   const chat = useChatController({
-    worldId: table,
+    worldId: liveWorldId,
     scene,
     config,
     speaker,
@@ -200,9 +224,9 @@ function App() {
   // 狀態樹與分支指認一起重讀：匯入卡才建好的樹、建卡才比對上的同名分支，
   // 都只在這幾個時機變動，不重讀的話畫面要切走再切回來才看得到
   useEffect(() => {
-    if (!table) return;
+    if (!liveWorldId) return;
     let stale = false;
-    invoke<boolean>("world_has_state_bar", { worldId: table })
+    invoke<boolean>("world_has_state_bar", { worldId: liveWorldId })
       .then((has) => {
         if (!stale) setHasStateBar(has);
       })
@@ -211,12 +235,12 @@ function App() {
     return () => {
       stale = true;
     };
-  }, [table, mainView, characters.list, tableState.refresh]);
+  }, [liveWorldId, mainView, characters.list, tableState.refresh]);
 
   // 卡片介面：介面腳本／重構殼／覆蓋層開關與沙盒訊息都在 controller 裡，
   // 這裡只餵它需要的四樣（送出函式會隨對話狀態換新，controller 內用 latest-ref 收）
   const cardInterface = useCardInterfaceController({
-    worldId: table,
+    worldId: liveWorldId,
     events: chat.events,
     tableTree: tableState.tree,
     submitText: chat.submitText,
@@ -270,7 +294,7 @@ function App() {
   // 掛在最後：它要吃 characters 與 cardInterface 的具名 action。chat 要的 noteChatStarted
   // 與開場白面板的關閉留在 App，否則 chat→imports→cardInterface→chat 會繞成環。
   const imports = useImportController({
-    worldId: table,
+    worldId: liveWorldId,
     lang: language,
     castSize: characters.list.length,
     refreshCharacters: characters.refresh,
@@ -287,7 +311,7 @@ function App() {
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
   const sceneActions = useSceneActions({
-    worldId: table,
+    worldId: liveWorldId,
     scene,
     sceneTitles,
     sceneLabels,
@@ -300,7 +324,65 @@ function App() {
     onError: setError,
   });
 
+  // 唯讀與修復不留上一桌的狀態列、角色、編輯畫面。呼叫端接著補自己要顯示的內容。
+  function blankSurface(id: string) {
+    setScene(0);
+    setSceneTitles({});
+    setSceneLabels({});
+    tableState.hydrate({ table: {}, tree: {} }, []);
+    chat.hydrate([]);
+    characters.hydrate([], new Set(), null);
+    imports.hydrate([]);
+    setHasStateBar(false);
+    setSpeaker(GM_TARGET);
+    setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
+    setEditingName(null);
+    tableState.clearEdit();
+    setMainView(null);
+    setActsOpen(false);
+    cardInterface.close();
+    setSkippedLines(0);
+  }
+
+  async function rememberWorld(loaded: AppConfig, id: string) {
+    if (loaded.preferences["last_world"] === id) return;
+    setConfig(await updateConfig({ preferences: { last_world: id } }));
+  }
+
   async function enterTable(id: string, loaded: AppConfig) {
+    const opened = await invoke<OpenWorld>("open_world", { worldId: id });
+    const route = gateOf(opened);
+    if (route === "busy") {
+      setError(t("worldBusy"));
+      return;
+    }
+    if (route === "repair") {
+      if (opened.status !== "needs_repair") return;
+      blankSurface(id);
+      setTable(id);
+      setGate("repair");
+      setRepairNotice({ message: opened.message, directory: opened.directory });
+      setReadOnlyNotice(null);
+      await rememberWorld(loaded, id);
+      return;
+    }
+    if (route === "readonly") {
+      if (opened.status !== "read_only") return;
+      const loose = await invoke<LooseWorld>("read_world_readonly", { worldId: id });
+      blankSurface(id);
+      setTable(id);
+      setGate("readonly");
+      setReadOnlyNotice({
+        appVersion: readOnlyBannerVersion(opened),
+        backupAvailable: opened.backup_available,
+      });
+      setRepairNotice(null);
+      setScene(loose.scene);
+      chat.hydrate(looseTranscript(loose.events));
+      setSkippedLines(loose.skipped);
+      await rememberWorld(loaded, id);
+      return;
+    }
     const state = await invoke<WorldState>("read_state", { worldId: id });
     const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
       worldId: id,
@@ -324,6 +406,10 @@ function App() {
     ]);
     const gmHasContent = worldMd.trim().length > 0 || worldbook.length > 0;
     setTable(id);
+    setGate("play");
+    setReadOnlyNotice(null);
+    setRepairNotice(null);
+    setSkippedLines(0);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
     setSceneLabels(state.scene_labels ?? {});
@@ -347,10 +433,33 @@ function App() {
     setMainView(null);
     setActsOpen(false);
     cardInterface.close();
-    if (loaded.preferences["last_world"] !== id) {
-      const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
-      await invoke("write_config", { config: next });
-      setConfig(next);
+    await rememberWorld(loaded, id);
+  }
+
+  async function useBackup() {
+    const loaded = currentConfigRef.current;
+    if (!loaded || gate !== "readonly") return;
+    const accepted = await confirm(t("useBackupConfirm"), {
+      title: t("useBackupBtn"),
+      kind: "warning",
+    });
+    if (!accepted) return;
+    setError("");
+    try {
+      await invoke("restore_world_backup", { worldId: table });
+      await enterTable(table, loaded);
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function openRepairFolder() {
+    if (!repairNotice) return;
+    try {
+      await revealItemInDir(repairNotice.directory);
+    } catch (reason) {
+      setError(String(reason));
     }
   }
 
@@ -442,13 +551,16 @@ function App() {
       setWorlds(list);
       if (id === table) await enterTable(list[0].id, config);
     } catch (reason) {
-      setError(String(reason));
+      const message = String(reason);
+      // 後端忙碌文案固定是這句繁中；畫面改顯示目前語系的 worldBusy。
+      setError(message === "這張桌正在處理中，請稍候再試" ? t("worldBusy") : message);
     }
   }
 
   async function renameTable(raw: string) {
     const name = raw.trim();
     setEditingName(null);
+    if (gate !== "play") return;
     const current = worlds.find((w) => w.id === table);
     if (!current || !name || name === current.name) return;
     setError("");
@@ -614,6 +726,12 @@ function App() {
         onConfigSaved={setConfig}
         onEntryConverted={refreshAfterEntryConverted}
         onRefactorApplied={refreshAfterRefactorApplied}
+        gate={gate}
+        readOnlyNotice={readOnlyNotice}
+        repairNotice={repairNotice}
+        skippedLines={skippedLines}
+        onUseBackup={() => void useBackup()}
+        onOpenRepairFolder={() => void openRepairFolder()}
       />
 
       <AppDialogs

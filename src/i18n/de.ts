@@ -537,4 +537,19 @@ export const de: Record<MsgKey, string> = {
   importRouteNewTable: "Neuer Tisch + Import",
   importRouteThisTable: "Hier importieren",
   importRouteMergeAnyway: "Dennoch importieren",
+
+  // Formatversion: nur lesen und Reparatur
+  readOnlyBadge: "Nur lesen",
+  needsRepairBadge: "Reparatur nötig",
+  readOnlyBanner:
+    "Dieser Tisch wurde mit Version {version} erstellt oder umgewandelt. Zum Weiterspielen auf Version {version} oder neuer aktualisieren.",
+  readOnlyBannerUnknown:
+    "Dieser Tisch wurde mit einer neueren Version erstellt oder umgewandelt. Zum Weiterspielen bitte aktualisieren.",
+  readOnlySkipped: "{count} Einträge lassen sich nicht anzeigen",
+  useBackupBtn: "Sicherung vor der Umwandlung nutzen",
+  useBackupConfirm:
+    "Was nach der Umwandlung gespielt wurde, bleibt extra liegen, und dieser Tisch kehrt zur Sicherung von davor zurück. Weiter?",
+  needsRepairTitle: "Dieser Tisch muss repariert werden",
+  openFolderBtn: "Ordner öffnen",
+  worldBusy: "Dieser Tisch ist beschäftigt. Gleich noch einmal versuchen.",
 };

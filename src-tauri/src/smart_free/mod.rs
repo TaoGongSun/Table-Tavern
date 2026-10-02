@@ -44,22 +44,6 @@ pub fn is_active(config: &AppConfig) -> bool {
     ) && base_url(config) == DEFAULT_BASE_URL
 }
 
-/// 舊 smart_free 玩家升級後直接進入新的動態穩定免費預設；手動與明確推薦選擇完全不動。
-pub fn migrate_legacy_mode(config: &mut AppConfig) -> bool {
-    if config
-        .preferences
-        .get(MODE_KEY)
-        .and_then(|value| value.as_str())
-        != Some(MODE_SMART_LEGACY)
-    {
-        return false;
-    }
-    config
-        .preferences
-        .insert(MODE_KEY.to_owned(), MODE_STABLE.into());
-    true
-}
-
 fn api_key(config: &AppConfig) -> Option<&str> {
     config
         .api_keys
@@ -566,18 +550,57 @@ mod tests {
             .preferences
             .insert(MODE_KEY.to_owned(), MODE_SMART_LEGACY.into());
         assert!(is_active(&config));
-        assert!(migrate_legacy_mode(&mut config));
+        config
+            .preferences
+            .insert("base_url".to_owned(), "https://example.com/v1".into());
+        assert!(!is_active(&config));
+    }
+
+    #[test]
+    fn migrate_legacy_config_rewrites_only_smart_free() {
+        let root = test_root("migrate");
+        crate::data::update_config(
+            &root,
+            &serde_json::json!({
+                "preferences": { MODE_KEY: MODE_SMART_LEGACY, "language": "zh-TW" },
+                "tier_models": { "claude:fast": "haiku" }
+            }),
+        )
+        .unwrap();
+        let saved = crate::data::migrate_legacy_config(&root).unwrap();
         assert_eq!(
-            config
+            saved
                 .preferences
                 .get(MODE_KEY)
                 .and_then(|value| value.as_str()),
             Some(MODE_STABLE)
         );
-        config
-            .preferences
-            .insert("base_url".to_owned(), "https://example.com/v1".into());
-        assert!(!is_active(&config));
+        assert_eq!(
+            saved
+                .preferences
+                .get("language")
+                .and_then(|value| value.as_str()),
+            Some("zh-TW")
+        );
+        assert_eq!(
+            saved.tier_models.get("claude:fast").map(String::as_str),
+            Some("haiku")
+        );
+        assert!(is_active(&saved));
+
+        crate::data::update_config(
+            &root,
+            &serde_json::json!({ "preferences": { MODE_KEY: MODE_RECOMMENDED } }),
+        )
+        .unwrap();
+        let kept = crate::data::migrate_legacy_config(&root).unwrap();
+        assert_eq!(
+            kept.preferences
+                .get(MODE_KEY)
+                .and_then(|value| value.as_str()),
+            Some(MODE_RECOMMENDED)
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

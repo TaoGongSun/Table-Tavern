@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { updateConfig } from "../features/settings/update-config";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
 import { AppConfig } from "../shared/contracts/backend-contracts";
@@ -78,14 +79,12 @@ export function SmartFreeNewModelBanner({ config, onConfigSaved, onOpenSettings 
     const model = models[0].model;
     // 先記為看過再改 config：改 config 會重跑查詢，去重若還沒落地會讓提示短暫重跳。
     await markSeen();
-    const next: AppConfig = {
-      ...config,
-      tier_models: { ...config.tier_models, best: model, balanced: model, fast: model },
-      preferences: { ...config.preferences, api_model_mode: "recommended" },
-    };
     try {
-      await invoke("write_config", { config: next });
-      onConfigSaved(next);
+      const saved = await updateConfig({
+        tier_models: { best: model, balanced: model, fast: model },
+        preferences: { api_model_mode: "recommended" },
+      });
+      onConfigSaved(saved);
     } catch {
       // 寫失敗就維持原設定，只收掉提示。
     }

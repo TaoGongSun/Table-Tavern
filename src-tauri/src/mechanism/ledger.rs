@@ -144,14 +144,7 @@ pub fn append_log(root: &Path, world_id: &str, scene: u64, records: &[Record]) {
         return;
     };
     let ts = data::local_timestamp_seconds().unwrap_or_else(|_| "unknown-time".to_owned());
-    let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    else {
-        return;
-    };
-    use std::io::Write;
+    let mut bytes = Vec::new();
     for record in records {
         let line = serde_json::json!({
             "ts": ts,
@@ -161,9 +154,11 @@ pub fn append_log(root: &Path, world_id: &str, scene: u64, records: &[Record]) {
             "detail": record.detail,
         });
         if let Ok(text) = serde_json::to_string(&line) {
-            let _ = writeln!(file, "{text}");
+            bytes.extend(text.as_bytes());
+            bytes.push(b'\n');
         }
     }
+    let _ = data::commit_world_append(&path, &bytes);
 }
 
 // ---------------------------------------------------------------------

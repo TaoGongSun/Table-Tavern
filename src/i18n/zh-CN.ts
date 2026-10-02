@@ -528,4 +528,16 @@ export const zhCN: Record<MsgKey, string> = {
   importRouteNewTable: "新开一桌并导入",
   importRouteThisTable: "导入这桌",
   importRouteMergeAnyway: "仍要导入",
+
+  // 格式版本：只读与需要修复
+  readOnlyBadge: "只读",
+  needsRepairBadge: "需要修复",
+  readOnlyBanner: "这张桌由 {version} 版建立或转换，要继续请更新到 {version} 版或更新版本",
+  readOnlyBannerUnknown: "这张桌由较新的版本建立或转换，要继续请更新版本",
+  readOnlySkipped: "有 {count} 则无法显示",
+  useBackupBtn: "改用转换前的备份继续玩",
+  useBackupConfirm: "转换之后玩的内容会另外留着，这张桌改回转换前的备份。要继续吗？",
+  needsRepairTitle: "这张桌需要修复",
+  openFolderBtn: "打开文件夹",
+  worldBusy: "这张桌正在处理中，请稍后再试",
 };

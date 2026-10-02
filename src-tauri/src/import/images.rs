@@ -12,7 +12,7 @@ pub fn save_gm_image(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
     let Ok(path) = data::gm_image_path(root, world_id) else {
         return false;
     };
-    fs::write(path, bytes).is_ok()
+    data::commit_world_write(&path, bytes).is_ok()
 }
 
 /// GM 卡的圖；沒有回 None，前端拿 base64 組 data URL 顯示，比照 character_image
@@ -89,7 +89,7 @@ fn save_character_png(
     if !path.exists() {
         return Err(data::invalid_data(format!("角色 {character_id} 不存在")));
     }
-    fs::write(path.with_extension(extension), bytes)?;
+    data::commit_world_write(&path.with_extension(extension), bytes)?;
     Ok(())
 }
 
@@ -101,7 +101,7 @@ fn delete_character_png(
 ) -> DataResult<()> {
     let path = data::character_path(root, world_id, character_id)?.with_extension(extension);
     if path.exists() {
-        fs::remove_file(path)?;
+        data::commit_world_remove(&path)?;
     }
     Ok(())
 }

@@ -161,7 +161,7 @@ fn read_store(path: &Path) -> LaneStore {
 
 fn write_store(path: &Path, store: &LaneStore) -> Result<(), String> {
     let text = serde_json::to_string_pretty(store).map_err(|error| error.to_string())?;
-    std::fs::write(path, text)
+    crate::data::commit_world_write(path, text.as_bytes())
         .map_err(|error| format!("無法寫入 lane 狀態檔 {}：{error}", path.display()))
 }
 
@@ -888,6 +888,16 @@ fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// 空目錄沒有 format.json，寫入閘門會當成唯讀。測試桌補上本版標記才寫得了 lanes.json。
+    fn mark_playable(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(
+            dir.join("format.json"),
+            r#"{"format_version":1,"app_version":"test"}"#,
+        )
+        .unwrap();
+    }
+
     struct FakeCli {
         dir: PathBuf,
         call: LaneCall,
@@ -909,7 +919,7 @@ mod tests {
         let root = dir.join("root");
         let world_id = ulid::Ulid::generate().to_string();
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         // 假 CLI 寫 session 檔的位置＝真實 munged 路徑，lanes 的抹寫才找得到
         let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
             .parent()
@@ -988,7 +998,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let world_id = ulid::Ulid::generate().to_string();
         let usage_log = dir.join("usage.jsonl");
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         let script = dir.join("fake-agy.py");
         std::fs::write(
             &script,
@@ -1777,7 +1787,7 @@ print(json.dumps({'event': 'result', 'result': {
         let usage_log = dir.join("usage.log");
         let world_id = ulid::Ulid::generate().to_string();
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
             .parent()
             .unwrap()
@@ -1939,7 +1949,12 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         let session_path = session_file::session_file_path(&claude_home, &working_dir, session_id);
         std::fs::create_dir_all(&session_path).unwrap();
         let usage_log = dir.join("usage.jsonl");
-        let store_path = dir.join("lanes.json");
+        let world_dir = dir
+            .join("root")
+            .join("worlds")
+            .join(ulid::Ulid::generate().to_string());
+        mark_playable(&world_dir);
+        let store_path = world_dir.join("lanes.json");
         let key = "chars:sonnet";
         let mut store = LaneStore::new();
         store.insert(key.to_owned(), lane_state(&[], 0));
@@ -2026,7 +2041,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         let root = dir.join("root");
         let world_id = ulid::Ulid::generate().to_string();
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
             .parent()
             .unwrap()

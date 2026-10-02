@@ -2,7 +2,6 @@ use super::card_io::{decode_png_character, string_field, PNG_MAGIC};
 use super::mechanism::{import_mechanism, import_table_tavern_extension};
 use crate::data::{self, CharacterCard, CharacterMeta, DataResult, Tier};
 use serde_json::{json, Value};
-use std::fs;
 use std::path::Path;
 
 /// 人設欄：既是 lorebook_heavy 秤重時的「人設份量」，也是沒有條目的卡轉成世界書時要收的內容。
@@ -136,7 +135,7 @@ pub fn import_character(
         private_md: private_markdown(card_data),
     };
     data::write_character(root, world_id, &card)?;
-    fs::write(md_path.with_extension(raw_extension), bytes)?;
+    data::commit_world_write(&md_path.with_extension(raw_extension), bytes)?;
     import_table_tavern_extension(root, world_id, &name, card_data);
     if let Some(book) = card_data.get("character_book") {
         import_mechanism(root, world_id, book);
@@ -328,6 +327,7 @@ fn persona_as_worldbook(card_data: &Value) -> Option<Value> {
 mod tests {
     use super::*;
     use crate::import::test_support::{minimal_png, TestRoot};
+    use std::fs;
 
     #[test]
     fn imports_v2_json_and_preserves_original() {
