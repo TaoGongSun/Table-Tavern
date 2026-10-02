@@ -1,14 +1,12 @@
-// AI 卡重構套用介面規則時，除了狀態樹初始值，可能順便產一份靜態渲染殼（interface-shell.html，
-// 後端 refactor_interface_shell 讀回來，讀不到是 null）。殼裡用 `{{狀態樹路徑}}` 佔位符代表資料
-// （例如 `{{World.Time}}`、`{{亞瑟.HP}}`，見 src-tauri/src/refactor_ai.rs 的產殼提示詞），這裡把
-// 佔位符換成狀態樹目前的值；殼本身照舊走 interface-card.ts 既有的 buildShellDocument 沙盒包裝。
-// 純函式、零 UI／invoke 依賴，App.tsx 只管接線。
+// AI 卡重構接管介面時產的骨架（interface-shell.html，後端 refactor_interface_shell 讀回來，讀不到是
+// null）：照搬卡規定的每回合輸出格式，變動處是 `{{狀態樹路徑}}` 佔位符（例如 `{{World.Time}}`），
+// 正文槽固定 `{{本回合.正文}}`。這裡把佔位符換成狀態樹目前的值；填完的骨架交給卡自己的顯示
+// 腳本渲染（選路見 card-interface/card-shell-route.ts）。純函式、零 UI／invoke 依賴。
 
 /** 狀態樹節點：葉子是值，分支是子節點（對應後端 StateNode 的 untagged 序列化）。 */
 export type StateNode = string | { [key: string]: StateNode };
 
-// 佔位符只認 `{{...}}`：內容不含花括號或換行的簡單形式。CSS／JS 常見的單花括號區塊
-// （如 `.foo { color: red }`、`{a: 1}`）天生就不會命中，不必另外排除。
+// 佔位符只認 `{{...}}`：內容不含花括號或換行的簡單形式。
 const PLACEHOLDER_REGEX = /\{\{([^{}\n]+)\}\}/g;
 
 // 逐層查狀態樹；查不到節點、或路徑中途／終點落在分支（非葉子）都回空字串——殼只讀不寫，缺值就是沒東西可顯示。
@@ -21,30 +19,9 @@ function lookupPath(tree: Record<string, StateNode>, path: string[]): string {
   return typeof node === "string" ? node : "";
 }
 
-// 安全紅線：狀態值來自模型／卡片資料，一律 HTML escape，殼不能靠佔位符注入標籤或執行邏輯。
-// & 一定先換，否則後面幾個實體裡的 & 會被二次轉義。
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 /**
- * 把殼裡的 `{{狀態樹路徑}}` 佔位符換成狀態樹的葉子值（HTML escape 過的純文字）。
- * 路徑點分、逐層查樹；查不到或落在分支節點都換成空字串。
- */
-export function fillShellPlaceholders(shell: string, tree: Record<string, StateNode>): string {
-  return shell.replace(PLACEHOLDER_REGEX, (_match, rawPath: string) => {
-    const path = rawPath.trim().split(".");
-    return escapeHtml(lookupPath(tree, path));
-  });
-}
-
-/**
- * XML 骨架版填值：不 escape，值原文放回。骨架填完是餵給卡自己顯示腳本（regex＋模板）的
+ * 把骨架裡的 `{{狀態樹路徑}}` 換成狀態樹的葉子值；路徑點分、逐層查樹，查不到或落在分支節點都換成
+ * 空字串。不 escape，值原文放回。骨架填完是餵給卡自己顯示腳本（regex＋模板）的
  * 「每回合輸出」，清單欄位的值照卡原文含內層標籤（如 `<Item>…</Item>`），escape 會讓卡的殼
  * 解析不到；信任模型與直玩餵 event.raw 相同——模型原文進沙盒 iframe，不多做一層。
  */

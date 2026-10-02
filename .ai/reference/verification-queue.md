@@ -52,6 +52,7 @@
 | 13 | [free-player-onboarding](../plans/free-player-onboarding.md) | 2026-09-18 已進 main、未實機驗：計畫檔第 1／2／3 階段驗收各節（空白設定走 OpenRouter 一鍵連接、穩定免費選模、推薦與限免提示） |
 | 14 | [api-shared-lane](../handoffs/api-shared-lane.md) | 錯認前言者（只有 API 測得到）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens；[vendor-prefix-floor](../tasks/vendor-prefix-floor.md) 排在這批數據之後 |
 | 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) ＋ [grok-cache-miss](../handoffs/grok-cache-miss.md) 角色線 | 多角色桌：回歸事件私設只到 GM；grok 通道讓角色連接三輪以上，`chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，換角色／改卡／換幕後不每輪重開 |
+| 16 | [interface-shell-cleanup](../plans/interface-shell-cleanup.md) | 用 `TestCards/WestFantsy.png` 重構接管跑一輪：面板（地圖 11×7、五分頁）照常渲染、時間跟著回合動；可併第 6 項 ai-card-refactor 五卡矩陣回歸 |
 
 ## 梯 3：等外部條件，不排時程
 

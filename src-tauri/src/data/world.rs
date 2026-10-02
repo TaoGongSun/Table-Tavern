@@ -267,7 +267,7 @@ pub fn write_world_md(root: &Path, world_id: &str, content: &str) -> DataResult<
     Ok(())
 }
 
-/// 讀介面渲染殼檔；沒產過或還沒套用就是 None（前端退回既有沙盒殼／保底狀態欄，不是錯誤）。
+/// 讀介面骨架檔；沒產過或還沒套用就是 None（前端退回卡片自帶殼的掃 raw 路徑，不是錯誤）。
 pub fn read_interface_shell(root: &Path, world_id: &str) -> DataResult<Option<String>> {
     let path = interface_shell_path(root, world_id)?;
     if !path.is_file() {

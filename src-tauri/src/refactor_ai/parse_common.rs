@@ -82,14 +82,14 @@ pub(super) fn strip_json_fence(text: &str) -> &str {
     trimmed.strip_suffix("```").unwrap_or(trimmed).trim()
 }
 
-/// 剝掉 AI 常見的 ```html ... ``` 圍欄；沒有圍欄的內容原樣放行。截斷輸出（沒有結尾 ``` ）
-/// 一樣安全：strip_suffix 找不到就原樣放行，不 panic。
-pub(super) fn strip_html_fence(text: &str) -> &str {
+/// 剝掉骨架外層的程式碼圍欄（開頭 ``` 連同英數語言標記，例 ```xml）；沒有圍欄的內容原樣放行。
+/// 截斷輸出（沒有結尾 ``` ）一樣安全：strip_suffix 找不到就原樣放行，不 panic。
+pub(super) fn strip_code_fence(text: &str) -> &str {
     let trimmed = text.trim();
     let Some(rest) = trimmed.strip_prefix("```") else {
         return trimmed.strip_suffix("```").unwrap_or(trimmed).trim();
     };
-    // 開頭那行剩下的語言標記（```xml 的 xml、```html 的 html）連著換行一起剝掉——
+    // 開頭那行剩下的語言標記（```xml 的 xml）連著換行一起剝掉——
     // 只剝反引號會把標記留在骨架第一行，跟著寫進 interface-shell.html。
     let body = match rest.split_once('\n') {
         Some((tag, body)) if tag.trim().chars().all(|char| char.is_ascii_alphanumeric()) => body,

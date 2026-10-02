@@ -13,7 +13,7 @@ use super::super::interface::normalize_interface_paths;
 fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
     let root = TestRoot::new("mode-persist");
     let world_id = data::create_world(root.path(), "酒館").unwrap();
-    data::write_interface_shell(root.path(), &world_id, "<html>舊殼</html>").unwrap();
+    data::write_interface_shell(root.path(), &world_id, "<UI>{{舊.欄位}}</UI>").unwrap();
     let outcome = RefactorOutcome {
         mode: Some("characters".to_owned()),
         characters: Vec::new(),
@@ -246,7 +246,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
             state_fields: serde_json::json!({ "世界": { "時間": "清晨" } }),
             source_uids: vec![source_uid.to_string()],
             raw: "描述如何顯示狀態欄的散文".to_owned(),
-            shell: Some("<div>{{世界.時間}}</div>".to_owned()),
+            shell: Some("<UI>{{世界.時間}}</UI>".to_owned()),
             rules: BTreeMap::from([(
                 "世界.時間".to_owned(),
                 FieldRule {
@@ -352,7 +352,7 @@ fn normalize_rejects_conflicting_values_and_double_referenced_shell() {
         "状态栏": { "地點": "霍府", "日期時間": "清晨" }
     });
     let error =
-        normalize_interface_paths(&state_fields, Some("<div>{{地點}}</div>"), &BTreeMap::new())
+        normalize_interface_paths(&state_fields, Some("<UI>{{地點}}</UI>"), &BTreeMap::new())
             .unwrap_err();
     assert!(
         error.starts_with(r#"TTMSG:{"code":"refactor_value_mismatch""#),
@@ -421,7 +421,7 @@ fn apply_rejects_conflicting_interface_before_any_write() {
             }),
             source_uids: vec![source_uid.to_string()],
             raw: "狀態欄散文".to_owned(),
-            shell: Some("<div>{{地點}}</div>".to_owned()),
+            shell: Some("<UI>{{地點}}</UI>".to_owned()),
             rules: BTreeMap::new(),
             guide: String::new(),
         }),
@@ -602,7 +602,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
         "介面腳本",
         "描述如何顯示狀態欄的散文",
     );
-    let shell_html = "<!DOCTYPE html><html><body>{{World.Time}}</body></html>";
+    let skeleton = "<UI><Time>{{World.Time}}</Time>{{本回合.正文}}</UI>";
 
     let outcome = RefactorOutcome {
         mode: None,
@@ -611,7 +611,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
             state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
             source_uids: vec![source_uid.to_string()],
             raw: "描述如何顯示狀態欄的散文".to_owned(),
-            shell: Some(shell_html.to_owned()),
+            shell: Some(skeleton.to_owned()),
             rules: BTreeMap::from([(
                 "World.Time".to_owned(),
                 FieldRule::for_kind(data::FieldKind::Text),
@@ -636,7 +636,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
 
     let read_back = data::read_interface_shell(root.path(), &world_id).unwrap();
-    assert_eq!(read_back.as_deref(), Some(shell_html));
+    assert_eq!(read_back.as_deref(), Some(skeleton));
     // 接管卡的每一格都靠 GM 回報才會動：增量協定要開，卡自訂的欄位規則與回報指引要落檔
     let mechanism = data::read_state(root.path(), &world_id).unwrap().mechanism;
     assert!(mechanism.incremental);
@@ -710,7 +710,7 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
             state_fields: serde_json::json!({ "World": { "Time": "清晨" } }),
             source_uids: vec![source_uid.to_string()],
             raw: "描述如何顯示狀態欄的散文".to_owned(),
-            shell: Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>".to_owned()),
+            shell: Some("<UI><Time>{{World.Time}}</Time>{{本回合.正文}}</UI>".to_owned()),
             rules: BTreeMap::new(),
             guide: String::new(),
         }),

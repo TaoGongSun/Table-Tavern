@@ -7,7 +7,7 @@
 - 大查詢派新對話或代理，別堆本對話 context。
 
 ## ⚠ 介面軌重大裁決（2026-08-12 17:30，蓋過下方 T3 介面相關驗收項）
-T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合格**——模型發明新介面＋GM 輸出格式變質＝卡變成另一張卡。新規格：介面渲染永遠照搬原卡模板（regex_scripts 的 replaceString），AI 永不發明介面；省額度靠 app 組 XML 餵殼。生死由 [interface-takeover-spike](../tasks/interface-takeover-spike.md)（西幻卡三步實測）決定：全過＝介面接管重寫、任一不過＝介面軌刪除只留人物＋世界書。本案 T3/T4 驗收照舊，但介面相關項（毛絨殼、美化状态栏拆分）不再是結案判準。
+T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合格**——模型發明新介面＋GM 輸出格式變質＝卡變成另一張卡。新規格：介面渲染永遠照搬原卡模板（regex_scripts 的 replaceString），AI 永不發明介面；省額度靠 app 組 XML 餵殼。生死由 [interface-takeover-spike](interface-takeover-spike.md)（西幻卡三步實測）決定：全過＝介面接管重寫、任一不過＝介面軌刪除只留人物＋世界書。本案 T3/T4 驗收照舊，但介面相關項（毛絨殼、美化状态栏拆分）不再是結案判準。
 
 ## Current state（2026-08-12 16:00，T2 第三輪驗畢：B 過／A 擱置觀察／C 待 T3）
 三案（A 人物判準防重寫、B absorb 直給樣式、C 判官理由落檔 excused）已實作 commit eed37f2。15:39 重跑镇北王府（survey opus out=5,444 hit=0% 快取重建＋pool 12 筆 sonnet，共 ≈$2.14、6分45秒）結果：
@@ -115,7 +115,7 @@ T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合�
 RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。淘汰清單 UI：預設不套用、收合列表、逐條展開看全文、一鍵放回（轉 carry 進 entries 並勾選）。未接管機制＝資訊列表（內容已在 GM 規則條目裡）。
 
 ## 實測清單（新對話實機驗收用）
-**2026-08-14 拍板：T1–T3（卡片盤點品質）全部擱置到重構按鈕做完再測**——做完＝[refactor-mode-split](refactor-mode-split.md) 兩段式定向落地＋[interface-takeover-spike](../tasks/interface-takeover-spike.md) 介面接管收尾。管線還要改，現在測產物品質等於拿舊管線當判準。**今天只跑 T4。**
+**2026-08-14 拍板：T1–T3（卡片盤點品質）全部擱置到重構按鈕做完再測**——做完＝[refactor-mode-split](refactor-mode-split.md) 兩段式定向落地＋[interface-takeover-spike](interface-takeover-spike.md) 介面接管收尾。管線還要改，現在測產物品質等於拿舊管線當判準。**今天只跑 T4。**
 
 環境：先重編譯再驗（裸 `npm run tauri dev`，app 已自清 ANTHROPIC_*）。時間帳看 `~/Documents/TableTavern/prompt-cache.jsonl`（ts＝完成時刻，diag single＝重構呼叫）。世界目錄 `~/Documents/TableTavern/worlds/<id>/`（refactor-outcome.json／worldbook.json／mechanism-log.jsonl 可機械核對）。**供應商只認 claude／codex**——grok／agy 無隔離旗標（見環境陷阱），切過去測出來的盤點不算數。
 - ~~T1 兽人的洞穴~~：**全過收檔**（2026-08-12，見 Current state）。

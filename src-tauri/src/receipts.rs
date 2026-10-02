@@ -21,7 +21,7 @@ pub struct Snapshot {
     /// GM 卡的圖（gm.png）快照時是否已存在——比照 world_card：undo 只刪這次匯入新建的那張，
     /// 匯入前就有的圖不動（被這次 PNG 覆寫掉的舊圖不還原，原始卡檔還在使用者手上）。
     gm_image_existed: bool,
-    /// AI 卡重構的介面渲染殼檔（interface-shell.html）快照時是否已存在——比照 world_card 的
+    /// AI 卡重構的介面骨架檔（interface-shell.html）快照時是否已存在——比照 world_card 的
     /// 存在性 diff 手法：undo 只該刪這次操作新建的殼，不動套用前就有的。
     interface_shell_existed: bool,
     /// 機制帳本（mechanism-log.jsonl）快照時的原始內容；這檔是純 append，記著這份就能在
@@ -132,9 +132,9 @@ struct ImportReceipt {
     /// 不然重匯同一張卡想換一則時，舊的那則還壓在開局上。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     opening: Option<PostedOpening>,
-    /// 這次操作新建了 AI 卡重構的介面渲染殼檔（interface-shell.html）；套用前就有的殼不記，
+    /// 這次操作新建了 AI 卡重構的介面骨架檔（interface-shell.html）；套用前就有的不記，
     /// undo 不動它。跟 world_card_created 是兩回事：那個是「卡片自帶殼」的原始檔，這個是
-    /// AI 依狀態樹規則另外產的靜態渲染殼。
+    /// AI 照搬卡每回合輸出格式產的骨架。
     #[serde(default, skip_serializing_if = "data::is_false")]
     interface_shell_created: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -390,7 +390,7 @@ fn detect_gm_image_created(root: &Path, world_id: &str, before: &Snapshot) -> bo
     !before.gm_image_existed && data::gm_image_path(root, world_id).is_ok_and(|path| path.exists())
 }
 
-/// 這次操作是否新建了介面渲染殼檔（interface-shell.html）；套用前就有的殼不算。
+/// 這次操作是否新建了介面骨架檔（interface-shell.html）；套用前就有的不算。
 fn detect_interface_shell_created(root: &Path, world_id: &str, before: &Snapshot) -> bool {
     !before.interface_shell_existed
         && data::interface_shell_path(root, world_id).is_ok_and(|path| path.exists())
@@ -689,7 +689,7 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         }
     }
 
-    // 7. 這次操作新建的介面渲染殼檔（AI 卡重構產物）：套用前就有的不動。
+    // 7. 這次操作新建的介面骨架檔（AI 卡重構產物）：套用前就有的不動。
     if receipt.interface_shell_created {
         if let Ok(shell_path) = data::interface_shell_path(root, world_id) {
             let _ = data::commit_world_remove(&shell_path);

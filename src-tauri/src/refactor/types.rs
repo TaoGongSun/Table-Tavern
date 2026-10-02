@@ -25,8 +25,8 @@ pub struct RefactorInterface {
     pub source_uids: Vec<String>,
     /// 解析失敗退原文的雙軌保底。
     pub raw: String,
-    /// AI 順便產的完整 HTML 渲染殼（自包含單檔，佔位符待前端替換）；None＝沒產出或抽不出來，
-    /// 不影響 state_fields——渲染殼是錦上添花，不是介面套用成不成立的條件。
+    /// 介面接管的骨架：照搬卡的每回合輸出格式，變動處是 `{{狀態樹路徑}}` 佔位符，前端填值後過卡
+    /// 自己的顯示腳本；None＝沒產出或抽不出來，不影響 state_fields 的套用。
     #[serde(default)]
     pub shell: Option<String>,
     /// 這張卡自己的欄位規則（點分路徑→規則）：數值欄要 delta、清單欄整份 replace 都靠它。

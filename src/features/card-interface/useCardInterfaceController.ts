@@ -1,4 +1,4 @@
-// 卡片介面 controller：這桌各卡的介面腳本、AI 重構產的殼、覆蓋層開關，
+// 卡片介面 controller：這桌各卡的介面腳本、AI 重構產的骨架、覆蓋層開關，
 // 以及殼的組裝與沙盒 postMessage 往返。所有權從 App() 搬過來，行為與依賴陣列照舊。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -9,7 +9,8 @@ import {
   type CardInterface,
   type CardStorage,
 } from "./interface-card";
-import { fillShellPlaceholders, fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
+import { type StateNode } from "../refactor/refactor-shell";
+import { pickCardShell } from "./card-shell-route";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
 // 殼字串的短指紋（djb2）：card-interface iframe 的 key 用，殼一換 key 就換。
@@ -72,7 +73,7 @@ export function useCardInterfaceController(input: {
   const { worldId, events, tableTree, submitText } = input;
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
-  // AI 重構套用介面規則時可能順便產的靜態渲染殼；沒重構過或那次沒產殼就是 null，退回卡片自帶殼／event.raw 找殼
+  // AI 重構接管介面時產的骨架（卡每回合輸出格式）；沒重構過或那次沒產就是 null，退回卡片自帶殼／event.raw 找殼
   const [refactorShell, setRefactorShell] = useState<string | null>(null);
   // 桌面玩法標記（refactor-mode-split）："characters"＝玩家選了多角色對話，這桌的卡片介面
   // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；null＝沒重構過或介面優先，照舊。
@@ -117,40 +118,11 @@ export function useCardInterfaceController(input: {
     };
   }, [worldId]);
 
-  // 目前要顯示的卡片介面殼：AI 重構產過介面產物就優先用它，沒有才退回既有「近 10 則掃 event.raw」路徑。
-  // 重構產物兩種：整頁 HTML（舊制殼，狀態樹填值直接顯示）；XML 骨架（照搬卡的每回合輸出格式，
-  // 填值後要過卡自己的顯示腳本 regex＋模板才是畫面，`{{本回合.正文}}` 吃最新一則 GM 訊息正文）。
-  const cardInterfaceShell = useMemo(() => {
-    // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構殼、卡片自帶殼、
-    // 掃 raw 的 fallback 整組短路，永遠沒有殼。標記還沒讀回（undefined）也先不顯示，
-    // 未知就放行會在角色桌切桌瞬間閃出介面。
-    if (tableMode === undefined || tableMode === "characters") return null;
-    if (refactorShell !== null) {
-      if (/<!DOCTYPE|<html/i.test(refactorShell)) return fillShellPlaceholders(refactorShell, tableTree);
-      const latestGm = [...events].reverse().find((event) => event.kind !== "player");
-      if (latestGm !== undefined) {
-        // 先照直玩語意讓卡腳本試原文：開場（選角）這類訊息卡自己就畫得出來，
-        // 硬塞進骨架反而讓兩支腳本互咬（選角殼插進主介面模板中間，抽殼變碎片）
-        const direct = findShell(cardInterfaces, [latestGm.raw ?? latestGm.text]);
-        if (direct !== null) return direct;
-        const filled = fillSkeletonPlaceholders(refactorShell, {
-          ...tableTree,
-          本回合: { 正文: latestGm.text },
-        });
-        const fromSkeleton = findShell(cardInterfaces, [filled]);
-        if (fromSkeleton !== null) return fromSkeleton;
-      }
-      // 剛開桌還沒有 GM 回合，或骨架沒過卡的顯示腳本：退回既有路徑（開場白選角殼等）
-    }
-    const recent = events
-      .slice(-10)
-      .filter((event) => event.kind !== "player")
-      .reverse()
-      .map((event) => event.raw ?? event.text);
-    // 空桌退回卡片自己的開場白：這類卡的開場就是一整頁選角畫面，玩家得先在那裡選了才有第一句話
-    const openings = events.length === 0 ? cardInterfaces.map((card) => card.opening) : [];
-    return findShell(cardInterfaces, [...recent, ...openings]);
-  }, [tableMode, refactorShell, tableTree, events, cardInterfaces]);
+  // 目前要顯示的卡片介面殼：選路規則見 card-shell-route.ts
+  const cardInterfaceShell = useMemo(
+    () => pickCardShell({ tableMode, refactorShell, events, tableTree, cardInterfaces }),
+    [tableMode, refactorShell, tableTree, events, cardInterfaces],
+  );
 
   const cardShellReady = cardInterfaceShell !== null;
 
