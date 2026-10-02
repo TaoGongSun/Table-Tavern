@@ -7,7 +7,15 @@ Status: awaiting-verification
 重構雙軌定向落地：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析），四包完成（路由＋三態偵測＋二選一 UI／兩段 session／模式行為／穩定性驗收矩陣）。
 
 ## Current state
-2026-08-14 GUI 回歸（TestCards/GUI-回歸交接.md）驗收 A1–E1 大多過、驗出四洞，已全修（d8f8f1c，經 Sol 確認修法）：①整條淘汰條目套用即停用（快照走 rewritten_entries，undo 覆寫可回；現場 AI 重構維持不記收據＝使用者拍板）；②mode 閘門提前到來源消耗判定前，characters 匯入不再套介面樹；③介面產物雙套路徑正規化（精確別名折疊、殼佔位符裁決正典、衝突拒套 preflight 零落檔）＋提示詞單一路徑鐵則；④世界書操作訊息移到按鈕列下。四件套綠，待使用者重打 release 包實測。舊測試桌（NorthHall、C2）使用者自行刪除不修復。
+程式面四包＋2026-08-14 GUI 回歸四洞修復（d8f8f1c）都在 main。2026-10-02 用 test-harness 測試包（Claude CLI claude-sonnet-5-5，正式資料零差異）跑完五卡矩陣：
+- WestFantsy 連跑 3 次：皆完成、可套用、可載入，產物一致（11×7、23 佔位符、五棵狀態子樹、mode=interface）；第 3 次殼多包一層外框，屬變異。
+- Transfur：完成，接管（有殼）。
+- bcd368：完成，判 playable: no，沒建殼。
+- TrainEmperor：送 AI 前擋下，零派送。
+- NorthHall：Sonnet 5.5 以內容理由在初判拒答，已撤出測試流程、不再使用；改用 `TestCards/NorthHall-structure.png`（同結構、成年非情色內容），判 playable: no，沒建殼。
+- 取消路：初判後在二選一框取消，無產物落地；重構進行中取消未測。
+- 第二段 resume：同一 CLI session，盤點快取命中 83～89%（小卡 59%），展開 69～97%。
+- 沒建殼的桌（bcd368、NorthHall-structure）面板退回原卡 HTML 畫不出值，另立 refactor-noshell-panel 處理。
 
 ## Completed
 - 包 1：三態偵測＋二選一對話框＋unsupported 擋下＋refactor_recommend／survey 帶 mode＋i18n。
@@ -30,12 +38,13 @@ Status: awaiting-verification
 - Dirty fingerprint: 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
 
 ## Remaining
-- 使用者重打 release 包重測四洞：A 桌（characters）套用後「格式」「COT」掛停用徽章、GM 出對話正文；C2 匯入後 state.json 無介面狀態樹、無 incremental；NorthHall 重跑重構後面板佔位符會更新；E1 擋下訊息出現在按鈕列正下方。
-- 包 4 矩陣剩餘：同卡連跑三次皆可運行、取消反悔路、prompt-cache.jsonl 第二段 resume 命中。
+- 四洞①②④ GUI 重測：A 桌（characters）套用後「格式」「COT」掛停用徽章、GM 出對話正文；C2 匯入後 state.json 無介面狀態樹、無 incremental；E1 擋下訊息出現在按鈕列正下方。
+- 四洞③「重跑重構後面板佔位符更新」：bcd368 與 NorthHall-structure 都判 playable: no 驗不到，需要一張狀態欄型、判 playable: yes 的卡。
+- 重構進行中取消。
 - 驗完刪 lib.rs `[survey-persons]` eprintln（診斷水印，順路）。
 
 ## Next action
-使用者重打 release 包（npm run tauri build）實測四洞修復；發現問題回主線修。
+用測試包重測四洞①②④與重構中取消；找一張狀態欄型、playable: yes 的卡驗③。
 
 ## Constraints
 - 快取紅線：survey／expand 共用 system 逐位元組相同（既有測試把關）。
