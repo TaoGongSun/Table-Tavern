@@ -1,6 +1,6 @@
 // 後端回傳的訊息代碼（src-tauri/src/ui_msg.rs 的 UiMsg）與需修復原因（commit.rs 的 RepairReason）。
 // 各面向的譯文分檔（桌資料面在 backend-msg-table.ts、更新器在 backend-msg-updater.ts、
-// AI 連線面在 backend-msg-ai.ts），參數表統一放這裡。
+// AI 連線面在 backend-msg-ai.ts、畫面說明在 backend-msg-notes.ts），參數表統一放這裡。
 // i18n/index.ts 的 t() 會把這份補充字典與主字典視為同一個 MsgKey 空間；翻譯入口是
 // shared/ui/backend-text.ts。`npm run check:i18n` 會從 Rust 抽 code／欄位核對這裡的鍵、佔位符與參數表。
 const COPY = {
@@ -263,6 +263,19 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   lane_state_write_failed: { path: "string", error: "string" },
   session_abandon_failed: { path: "string", error: "string" },
   lane_rewrite_unsupported: { provider: "string" },
+  refactor_drop_rule_carried: {},
+  refactor_drop_rule_leftover: {},
+  refactor_span_leftover: {},
+  refactor_person_span_invalid: { name: "string" },
+  refactor_coverage_carried: {},
+  refactor_signal_no_reason: { pattern: "string" },
+  refactor_signal_on_carry: {},
+  refactor_carry_reason: { reason: "string" },
+  ledger_refactor_mechanism: {},
+  ledger_script_unrecognized: {},
+  ledger_scaffold_absorbed: {},
+  receipt_refactor_apply: {},
+  cli_model_alias: { alias: "string" },
 };
 
 /** commit.rs 的 RepairReason；鍵是 `needsRepair_<reason>`。 */

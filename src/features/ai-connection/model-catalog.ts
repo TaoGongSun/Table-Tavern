@@ -14,6 +14,16 @@ const TIER_LABEL_KEYS = {
 
 export const tierLabel = (tier: keyof typeof TIER_LABEL_KEYS) => t(TIER_LABEL_KEYS[tier]);
 
+/**
+ * 後端在 CLI 沒覆寫模型時，用量紀錄與「使用中」比對存的字面值。續聊線 key 也拿它組，
+ * 舊紀錄也都是這串，所以後端不改；只在顯示時換成目前語系。
+ */
+export const CLI_DEFAULT_MODEL = "(CLI 預設)";
+
+/** 額度分頁的模型欄：CLI 預設那串換成譯文，其餘模型 id 原樣。 */
+export const usageModelLabel = (model: string) =>
+  model === CLI_DEFAULT_MODEL ? t("openingTierCliDefault") : model;
+
 export interface ModelOption {
   id: string;
   label: string;

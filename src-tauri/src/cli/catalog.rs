@@ -1,5 +1,6 @@
 use super::detect::{find_binary, hidden_output};
 use super::types::ModelOption;
+use crate::ui_msg::UiMsg;
 use std::path::PathBuf;
 
 /// codex 快取解析：跳過內部項與 hidden，依 priority 排序，label 用 display_name
@@ -130,7 +131,10 @@ pub async fn cli_model_catalog(cli: &str, envs: &[(String, String)]) -> Vec<Mode
                 .iter()
                 .map(|alias| ModelOption {
                     id: (*alias).to_owned(),
-                    label: format!("{alias}（官方別名）"),
+                    label: UiMsg::CliModelAlias {
+                        alias: (*alias).to_owned(),
+                    }
+                    .to_string(),
                 })
                 .collect();
             // 掃數百 MB 執行檔是 CPU 密集的同步工作，丟去 blocking 池免得佔住 async worker

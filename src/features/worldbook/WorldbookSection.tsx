@@ -153,7 +153,7 @@ export function WorldbookSection({
                     <span className="worldbook-badge">
                       {entry.kind === "absorbed" ? t("ledgerAbsorbed") : t("ledgerSkipped")}
                     </span>
-                    <span className="mechanism-ledger-detail">{entry.detail}</span>
+                    <span className="mechanism-ledger-detail">{backendText(entry.detail)}</span>
                   </div>
                   {!entries.find((worldbookEntry) => worldbookEntry.uid === entry.uid)?.locked && (
                     <label className="mechanism-ledger-toggle">

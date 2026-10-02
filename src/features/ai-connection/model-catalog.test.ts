@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLang } from "../../i18n";
 import {
   applyCachedCatalogs,
+  CLI_DEFAULT_MODEL,
   mergeCatalog,
   parseOpenRouterModels,
+  usageModelLabel,
   type ModelCatalogs,
 } from "./model-catalog";
 
@@ -62,5 +65,19 @@ describe("applyCachedCatalogs", () => {
     const fresh: ModelCatalogs = { grok: [{ id: "grok-5", label: "grok-5" }] };
     const cached: ModelCatalogs = { grok: [{ id: "grok-4.6", label: "grok-4.6" }] };
     expect(applyCachedCatalogs(fresh, cached).grok).toEqual(fresh.grok);
+  });
+});
+
+describe("usageModelLabel", () => {
+  afterEach(() => setLang("zh-TW"));
+
+  it("後端存的 CLI 預設字樣換成目前語系，其餘模型 id 原樣", () => {
+    setLang("ru");
+    expect(usageModelLabel(CLI_DEFAULT_MODEL)).toBe("CLI по умолч.");
+    expect(usageModelLabel("opus")).toBe("opus");
+    setLang("zh-TW");
+    expect(usageModelLabel("(CLI 預設)")).toBe("CLI 預設");
+    // 只認整串相等，含這幾個字的其他 id 不動
+    expect(usageModelLabel("x (CLI 預設)")).toBe("x (CLI 預設)");
   });
 });

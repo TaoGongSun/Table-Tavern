@@ -26,7 +26,7 @@ pub(crate) fn refactor_apply(
         receipts::record_refactor_apply(
             &root,
             &world_id,
-            "AI 卡重構",
+            &UiMsg::ReceiptRefactorApply.to_string(),
             result.character_ids,
             result.rewritten_entries,
             result.deleted_entries,

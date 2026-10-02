@@ -467,7 +467,13 @@ fn assemble_local_mechanism_signal_needs_reason_to_pass_carry() {
         .collect();
     assert_eq!(excused_audits.len(), 1);
     assert_eq!(excused_audits[0].uid, excused_uid.to_string());
-    assert_eq!(excused_audits[0].detail, "照搬理由：歷史紀錄，非即時機制");
+    assert_eq!(
+        excused_audits[0].detail,
+        UiMsg::RefactorCarryReason {
+            reason: "歷史紀錄，非即時機制".to_owned()
+        }
+        .to_string()
+    );
     assert!(assembly
         .unabsorbed
         .iter()

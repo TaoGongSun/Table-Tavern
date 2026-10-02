@@ -1,6 +1,8 @@
 // AI 失敗訊息分流：各家 CLI／API 的錯誤格式不一，只認指得出下一步的幾類，
 // 認不出來回 null 讓呼叫端決定（誤判比不判更糟，見 .ai/tasks/ai-error-messages.md）。
 // 不診斷根因——聚合 router 會把上游任何失敗都轉包成自己的 5xx，真正的原因在轉包時就沒了。
+import { backendCode } from "./backend-text";
+
 const QUOTA_ERROR = /usage limit|quota|out of credit|insufficient[ _]credit|insufficient_quota|rate.?limit|resource_exhausted|too many requests|\b402\b|\b429\b/i;
 const AUTH_ERROR = /not logged in|not authenticated|unauthorized|authentication|api[ _]key|credential|expired token|\b401\b/i;
 // 只有這四個是 CLI；其他值（含拿不到設定時的空手）一律走中性文案，不亂指路
@@ -24,6 +26,11 @@ const FAILURE_CODES = [
 // 這是最後的保底：CLI 吐的原話（限流、未登入）還是要先走下面的正則分流，
 // 被包了一層就退化成籠統一句是拿掉玩家本來看得到的線索。只認開頭，body 抄不進來。
 const CALL_FAILED = /^(?:Error:\s*)?AI_CALL_FAILED:/;
+
+/** 缺 OpenRouter key 的後端代碼；可能被 stream_via_transport 包一層 AI_CALL_FAILED。 */
+function isOpenRouterKeyMissing(raw: string): boolean {
+  return backendCode(raw.replace(CALL_FAILED, "").trimStart()) === "openrouter_api_key_missing";
+}
 
 // API 路非 2xx 時由 transport.rs 掛在開頭的真實 HTTP 狀態。只匹配開頭（允許外層包一個
 // `Error:`），不用 includes——聚合 router 會把上游錯誤整包塞進 body，body 裡的數字
@@ -74,7 +81,9 @@ export function explainAiError(
   if (raw.includes("REFUSED")) return "errRefused";
   if (raw.includes("NO_IMAGE")) return "errNoImage";
   if (QUOTA_ERROR.test(raw)) return transport === "api" ? "errQuotaApi" : "errQuota";
-  if (AUTH_ERROR.test(raw)) {
+  // 缺 OpenRouter key 是設定問題，跟供應商回的認證失敗走同一條路（改碼前的中文句靠
+  // 「API key」字樣落在這裡）；明確認代碼，不靠代碼名碰巧含 api_key
+  if (AUTH_ERROR.test(raw) || isOpenRouterKeyMissing(raw)) {
     if (transport === "api") return "errAuthApi";
     return transport && CLI_TRANSPORTS.includes(transport) ? "errAuthCli" : "errAuth";
   }

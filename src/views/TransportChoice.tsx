@@ -1,6 +1,7 @@
 // AI 分頁的連線方式清單：每列一個有框的選項（radio＋名稱是 label），
 // 偵測狀態、驗證／換帳號／安裝鈕與安裝進度是同列的兄弟節點，不包進 label 裡誤觸切換。
 import { t } from "../i18n";
+import { backendText } from "../shared/ui/backend-text";
 import { CLI_LABELS, CliInfo, cliConnectedKey } from "../features/ai-connection/cli";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 
@@ -187,7 +188,7 @@ export function TransportChoice({
                   <span className="cli-install-hint">{cliInstallErrorHint(progress.detail)}</span>
                 )}
                 {progress.detail && (
-                  <span className="cli-install-detail">{progress.detail}</span>
+                  <span className="cli-install-detail">{backendText(progress.detail)}</span>
                 )}
                 {progress.logPath && (
                   <small>{t("cliInstallLogPath", { path: progress.logPath })}</small>

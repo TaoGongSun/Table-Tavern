@@ -203,7 +203,7 @@ describe("lobby and table navigation", () => {
   it("enters a table that needs repair from the lobby and shows the repair page", async () => {
     install({
       worlds: [world("w2", "Broken", { needs_repair: true })],
-      open: { w2: { status: "needs_repair", message: "disk is sad", directory: "/tmp/w2" } },
+      open: { w2: { status: "needs_repair", reason: "io", error: "disk is sad", directory: "/tmp/w2" } },
       characters: [],
     });
     await boot();

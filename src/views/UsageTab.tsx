@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
 import { ErrorNote } from "./atoms";
+import { usageModelLabel } from "../features/ai-connection/model-catalog";
 
 type UsageRow = {
   source: string;
@@ -301,7 +302,8 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
                       t("usagePing")
                     ) : (
                       <>
-                        <span className="usage-source">{row.source}</span> {row.model}
+                        <span className="usage-source">{row.source}</span>{" "}
+                        {usageModelLabel(row.model)}
                         {row.in_use && <span className="usage-badge">{t("usageInUse")}</span>}
                       </>
                     )}

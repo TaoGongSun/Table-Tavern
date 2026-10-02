@@ -425,6 +425,6 @@ fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
     mechanism::Record {
         kind: mechanism::RecordKind::Absorbed,
         path: title.to_owned(),
-        detail: "AI 卡重構產生的機制條目：欄位規則／觸發表由 App 本地執行，說明文留在世界書（唯讀）照常可讀。".to_owned(),
+        detail: UiMsg::LedgerRefactorMechanism.to_string(),
     }
 }
