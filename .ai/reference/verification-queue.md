@@ -5,7 +5,7 @@
 
 ## 梯 1：本地操作，不花 API 額度
 
-1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成；AI 回應中按轉換顯示忙碌、不轉。
+1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
@@ -17,7 +17,7 @@
 | 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md) B 段→A 段 ＋ [person-promote](../handoffs/person-promote.md) ＋ [state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 三案一鏈，跑一輪同時收。**前置已解除**：`refactor-output-redesign` 已於 2026-08-11 結案，B 段可直接真跑 orc-cave 卡；產物存檔後 A 段走零額度重放，額度只花一次 |
 | 7 | [ai-table-generator](../handoffs/ai-table-generator.md) 一句話開桌 | 六項一輪跑完：開視窗→生成大綱→重骰→改大綱→AI 生成角色→照大綱開桌；順手驗單人設定不錨定角色數、換語言後生成跟著換 |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
-| 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；可搭任一梯 2 項目順手看 |
+| 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
 | 10 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 篇幅與配角解禁 | 用新打的 release 包，同一張世界書卡確認 GM 旁白篇幅放開、配角會開口、角色回覆有內心戲 |
 | 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
 | 12 | [ui-redesign](../handoffs/ui-redesign.md) 要 AI 的對話窗 | 重構三窗（進行中、二選一、結果含已取消／部分失敗）、一句話開桌有綱要後底列；可併梯 2 第 5、7 順手看 |
