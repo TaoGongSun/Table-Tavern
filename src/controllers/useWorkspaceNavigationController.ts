@@ -43,8 +43,6 @@ export function useWorkspaceNavigationController({
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<MainViewState>(null);
-  // 前幕清單浮層：只是開關狀態，不佔版面高度（NewPlan §9.4 主欄閱讀優先改造）
-  const [actsOpen, setActsOpen] = useState(false);
 
   // 四種卡片編輯畫面都帶 id，先收斂成一個值，下面就只需要問「是不是玩家卡」
   const cardView =
@@ -55,13 +53,6 @@ export function useWorkspaceNavigationController({
       ? mainView
       : null;
   const editingPlayerCard = cardView?.kind === "player" || cardView?.kind === "new-player";
-  // 側欄描邊＝側欄當下選中的那張：編輯畫面時是正在編輯的卡，其餘畫面是發言對象（編輯不動發言對象）
-  const selectedCard =
-    mainView?.kind === "character"
-      ? mainView.id
-      : mainView?.kind === "new-character"
-        ? ""
-        : speaker;
   // 發言對象可能是 GM（沒有角色卡）：送出走旁白那條，晶片的名字與顏色也另一套
   const gmTargeted = speaker === GM_TARGET;
 
@@ -92,7 +83,7 @@ export function useWorkspaceNavigationController({
     setMainView(null);
   }
 
-  // 編輯角色卡時，側欄點擊＝換編輯對象（發言對象只在聊天畫面有意義），離開前先問未儲存
+  // 離開目前的編輯畫面前先問未儲存：換編輯對象、選發言對象、回大廳、換桌都走這一關
   async function canLeaveEditor() {
     // 只有掛著未儲存追蹤的三種畫面要問；聊天／幕紀錄沒有暫存狀態，也避免問到已卸載編輯器留下的舊守門
     const guarded = cardView !== null || mainView?.kind === "world";
@@ -125,24 +116,21 @@ export function useWorkspaceNavigationController({
     }
   }
 
-  // 主欄開著任何畫面時側欄＝導覽（點卡＝開它的編輯頁）；只有聊天畫面點卡才是選發言對象
-  // 再點一次已選中的卡＝取消對象，讓玩家能描述動作或對全場說話
-  async function selectCard(id: string) {
+  // 點卡＝選發言對象，編輯是另一顆鈕。遊玩畫面再點一次已選中的卡＝取消對象，
+  // 讓玩家能描述動作或對全場說話；人在編輯頁或前幕閱讀時，點卡＝先過未儲存守門、
+  // 回到遊玩畫面再選為對象（不是取消，也不是轉去編輯）
+  async function selectSpeaker(target: string) {
     if (mainView) {
-      await editCard(id);
+      if (!(await canLeaveEditor())) return;
+      setMainView(null);
+      setSpeaker(target);
       return;
     }
-    setSpeaker((current) => (current === id ? "" : id));
+    setSpeaker((current) => (current === target ? "" : target));
   }
 
-  // GM 卡與角色卡同一套：聊天畫面點擊＝選／取消發言對象，其他畫面＝導覽到世界設定
-  async function selectGm() {
-    if (mainView) {
-      await openWorldEditor();
-      return;
-    }
-    setSpeaker((current) => (current === GM_TARGET ? "" : GM_TARGET));
-  }
+  const selectCard = (id: string) => selectSpeaker(id);
+  const selectGm = () => selectSpeaker(GM_TARGET);
 
   async function openWorldEditor() {
     if (mainView?.kind === "world") return;
@@ -161,11 +149,10 @@ export function useWorkspaceNavigationController({
     }
   }
 
-  // 前幕浮層點一幕＝整面換成單幕閱讀，一樣會蓋掉編輯畫面
+  // 幕晶片選單點一幕＝整面換成單幕閱讀，一樣會蓋掉編輯畫面
   async function openSceneReader(n: number) {
     if (!(await canLeaveEditor())) return;
     setMainView({ kind: "scene", n });
-    setActsOpen(false);
   }
 
   // 隱藏區與角色卡編輯畫面共用同一條刪除路徑：確認框與刪檔在 controller，這裡接善後
@@ -188,11 +175,8 @@ export function useWorkspaceNavigationController({
     setSpeaker,
     mainView,
     setMainView,
-    actsOpen,
-    setActsOpen,
     cardView,
     editingPlayerCard,
-    selectedCard,
     gmTargeted,
     canLeaveEditor,
     editCard,

@@ -1,5 +1,5 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { AppConfig, WorldMeta } from "../shared/contracts/backend-contracts";
+import { type Dispatch, type SetStateAction, useRef } from "react";
+import type { AppConfig } from "../shared/contracts/backend-contracts";
 import { PALETTE } from "../features/characters/card-model";
 import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotice";
 import type { TableGate } from "../features/world-format/open-world";
@@ -19,7 +19,7 @@ import { CardInterfaceOverlay } from "./CardInterfaceOverlay";
 import { MainView } from "./MainView";
 import { Onboarding } from "./Onboarding";
 import { PlayView } from "./PlayView";
-import { TableSidebar } from "./TableSidebar";
+import { CastRail } from "./CastRail";
 import { StateBar } from "./StateBar";
 import { TableToolbar } from "./TableToolbar";
 import type { SettingsTab } from "./SettingsWindow";
@@ -27,13 +27,9 @@ import type { SettingsTab } from "./SettingsWindow";
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
 const GM_COLOR = "#8a6a3c";
 
-export type EditingTableName = {
-  at: "header" | "list";
-  value: string;
-} | null;
+export type EditingTableName = { value: string } | null;
 
 interface AppWorkspaceProps {
-  worlds: WorldMeta[];
   table: string;
   tableName: string;
   scene: number;
@@ -52,11 +48,10 @@ interface AppWorkspaceProps {
   imports: ImportController;
   navigation: WorkspaceNavigationController;
   sceneActions: SceneActions;
+  /** 進出桌進行中：回大廳與換幕停用 */
+  tableOpBusy: boolean;
   onRenameTable: (raw: string) => void;
-  onNewTable: () => void;
-  onGenerateTable: () => void;
-  onSwitchTable: (id: string) => void;
-  onDeleteTable: (id: string) => void;
+  onGoLobby: () => void;
   onUndoImport: () => void;
   onOpenSettings: (tab: SettingsTab) => void;
   onPreference: (key: string, value: unknown) => Promise<void>;
@@ -69,14 +64,11 @@ interface AppWorkspaceProps {
   skippedLines: number;
   onUseBackup: () => void;
   onOpenRepairFolder: () => void;
-  /** 側欄桌列表上方的提示。 */
-  sidebarNotice: ReactNode;
-  appVersion: string | null;
+  /** 有沒被略過的新版：工具列齒輪掛紅點，點了直接開版本分頁 */
   updateDot: boolean;
 }
 
 export function AppWorkspace({
-  worlds,
   table,
   tableName,
   scene,
@@ -95,11 +87,9 @@ export function AppWorkspace({
   imports,
   navigation,
   sceneActions,
+  tableOpBusy,
   onRenameTable,
-  onNewTable,
-  onGenerateTable,
-  onSwitchTable,
-  onDeleteTable,
+  onGoLobby,
   onUndoImport,
   onOpenSettings,
   onPreference,
@@ -112,8 +102,6 @@ export function AppWorkspace({
   skippedLines,
   onUseBackup,
   onOpenRepairFolder,
-  sidebarNotice,
-  appVersion,
   updateDot,
 }: AppWorkspaceProps) {
   const {
@@ -122,11 +110,8 @@ export function AppWorkspace({
     setSpeaker,
     mainView,
     setMainView,
-    actsOpen,
-    setActsOpen,
     cardView,
     editingPlayerCard,
-    selectedCard,
     gmTargeted,
     editCard,
     openPlayerCard,
@@ -152,8 +137,22 @@ export function AppWorkspace({
     sceneChipLabel,
   } = sceneActions;
 
-  // 改桌名的輸入框（主欄標題與側欄共用）：包成表單讓 Enter 走瀏覽器的表單送出，
+  // 改桌名的輸入框：包成表單讓 Enter 走瀏覽器的表單送出，
   // 中文輸入法組字中的 Enter 會被輸入法吃掉（對話輸入框同款做法），不會誤判成確認改名
+  // 一次改名只結算一次：Enter 送出後輸入框卸載會再引發 blur、Esc 取消後也一樣，
+  // 不擋的話前者多送一次 rename_world、後者取消了還是存下去
+  const renameSettled = useRef(true);
+  function startRename(name: string) {
+    renameSettled.current = false;
+    setEditingName({ value: name });
+  }
+  function settleRename(value: string | null) {
+    if (renameSettled.current) return;
+    renameSettled.current = true;
+    if (value === null) setEditingName(null);
+    else onRenameTable(value);
+  }
+
   function renameForm(className: string) {
     const value = editingName?.value ?? "";
     return (
@@ -161,7 +160,7 @@ export function AppWorkspace({
         className="table-title-form"
         onSubmit={(event) => {
           event.preventDefault();
-          onRenameTable(value);
+          settleRename(value);
         }}
       >
         <input
@@ -171,11 +170,11 @@ export function AppWorkspace({
           aria-label={t("tableNameAria")}
           onChange={(event) => {
             const next = event.currentTarget.value;
-            setEditingName((previous) => (previous ? { ...previous, value: next } : previous));
+            setEditingName((previous) => (previous ? { value: next } : previous));
           }}
-          onBlur={() => onRenameTable(value)}
+          onBlur={() => settleRename(value)}
           onKeyDown={(event) => {
-            if (event.key === "Escape") setEditingName(null);
+            if (event.key === "Escape") settleRename(null);
           }}
         />
       </form>
@@ -193,21 +192,10 @@ export function AppWorkspace({
 
   return (
     <>
-      <TableSidebar
-        worlds={worlds}
-        table={table}
-        busy={chat.busy}
-        locked={gate !== "play"}
-        renamingTable={editingName?.at === "list"}
-        renameForm={renameForm}
-        onStartRename={(name) => setEditingName({ at: "list", value: name })}
-        onNewTable={() => void onNewTable()}
-        onGenerateTable={() => void onGenerateTable()}
-        onSwitchTable={(id) => void onSwitchTable(id)}
-        onDeleteTable={(id) => void onDeleteTable(id)}
+      <CastRail
         gmId={GM_TARGET}
-        selectedCard={selectedCard}
-        speakingCard={mainView ? "" : speaker}
+        speaker={speaker}
+        locked={gate !== "play"}
         gmImage={characters.gmImage}
         player={characters.player}
         playerImage={characters.playerImage}
@@ -229,31 +217,26 @@ export function AppWorkspace({
         onImportFile={(file) => void imports.importFile(file)}
         canUndoImport={imports.receipts.length > 0 && !chattedSinceImport}
         onUndoImport={() => void onUndoImport()}
-        onOpenSettings={() => onOpenSettings("appearance")}
-        notice={sidebarNotice}
-        appVersion={appVersion}
-        updateDot={updateDot}
-        onOpenVersions={() => onOpenSettings("versions")}
       />
 
       <main className="chat-main">
         <TableToolbar
           tableName={tableName}
-          renaming={editingName?.at === "header"}
+          renaming={editingName !== null}
           renameForm={renameForm}
-          onStartRename={(name) => setEditingName({ at: "header", value: name })}
+          onStartRename={startRename}
           locked={gate !== "play"}
           showCardInterface={mainView === null && cardInterface.shellReady}
           onOpenCardInterface={() => cardInterface.open()}
-          busy={chat.busy}
+          busy={chat.busy || tableOpBusy}
+          onGoLobby={onGoLobby}
           hasEvents={chat.events.length > 0}
           onAdvanceScene={advanceScene}
           onExportTranscript={exportTranscript}
           scene={scene}
           sceneLabel={sceneChipLabel(scene)}
-          actsOpen={actsOpen && scene > 0}
-          onToggleActs={() => setActsOpen((open) => !open)}
-          onCloseActs={() => setActsOpen(false)}
+          sceneLabelOf={sceneDisplayLabel}
+          onOpenScene={(n) => void openSceneReader(n)}
           updateDot={updateDot}
           onOpenSettings={() => onOpenSettings("appearance")}
           onOpenVersions={() => onOpenSettings("versions")}
@@ -293,10 +276,6 @@ export function AppWorkspace({
             )}
 
             <MainView
-              actsOpen={actsOpen && scene > 0}
-              scene={scene}
-              onHideActs={() => setActsOpen(false)}
-              onOpenScene={(n) => void openSceneReader(n)}
               sceneLabelOf={sceneDisplayLabel}
               world={table}
               worldName={tableName}
@@ -345,7 +324,7 @@ export function AppWorkspace({
                   generating={chat.generating}
                   generatingMeta={generatingMeta}
                   streamText={chat.streamText}
-                  busy={chat.busy}
+                  busy={chat.busy || tableOpBusy}
                   canRestore={chat.canRestore}
                   onRestoreUndone={() => void chat.restoreUndone()}
                   locked={gate === "readonly"}

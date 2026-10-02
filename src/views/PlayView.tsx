@@ -7,6 +7,7 @@ import { CharacterMeta } from "../features/characters/card-model";
 import { StoryText } from "./atoms";
 import gmBook from "../assets/gm-book.png";
 import { IconSend, IconStop } from "../shared/ui/icons";
+import { useStickToBottom } from "../features/story-scroll/useStickToBottom";
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
 // 快取上線後換幕不再省額度（摘要與換幕後首輪都全額計價，約等於連跑四輪），
@@ -113,6 +114,7 @@ export function PlayView({
 }: PlayViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
+  const markStuck = useStickToBottom(listRef);
 
   // 逐字稿整份換掉（切桌／換幕／分岔）或多一則：直接跳到底，不跑動畫。
   // 動畫在這裡會停在錯的位置——分岔是先掛載舊幕再換成新幕的紀錄，容器高度中途劇變，
@@ -120,7 +122,8 @@ export function PlayView({
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [events]);
+    markStuck();
+  }, [events, markStuck]);
 
   // 串流跟隨：這條高度是一個字一個字長的，用動畫才不會一跳一跳
   useEffect(() => {
@@ -231,6 +234,7 @@ export function PlayView({
                 type="button"
                 className="btn btn-ghost btn-sm"
                 title={t("sceneSummaryRetryHint")}
+                disabled={busy}
                 onClick={() => onRegenerateSummary()}
               >
                 {t("sceneSummaryRetry")}
@@ -239,6 +243,7 @@ export function PlayView({
                 type="button"
                 className="btn btn-ghost btn-sm"
                 title={t("sceneRevertHint")}
+                disabled={busy}
                 onClick={() => onRevertScene()}
               >
                 {t("sceneRevert")}

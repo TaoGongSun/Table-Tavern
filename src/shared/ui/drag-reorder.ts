@@ -1,6 +1,8 @@
 import { PointerEvent as ReactPointerEvent, useRef, useState } from "react";
 
-// 拖曳排序：按住移動超過門檻才算拖曳，門檻內放開仍是單純點擊（角色卡的點擊＝選發言者）
+// 拖曳排序：按住移動超過門檻才算拖曳，門檻內放開仍是單純點擊（角色卡的點擊＝選發言者）。
+// 卡片裡的按鈕預設不能起拖（鉛筆這類附屬鈕按下去只該是點擊）；整張卡的主按鈕貼
+// data-drag-handle 才算「卡片本體」，從它起拖也行。
 const DRAG_THRESHOLD_PX = 5;
 
 export function useDragReorder<T>(
@@ -31,7 +33,8 @@ export function useDragReorder<T>(
 
   function startDrag(event: ReactPointerEvent, item: T) {
     if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("button, a, input, textarea, select")) return;
+    const control = (event.target as HTMLElement).closest("button, a, input, textarea, select");
+    if (control && !control.hasAttribute("data-drag-handle")) return;
     const key = keyOf(item);
     const startY = event.clientY;
     let order = items;

@@ -41,7 +41,7 @@ interface WorldbookImport {
   skipped: number;
 }
 
-/** 匯入收據摘要：側欄「復原上次匯入」按鈕靠這份判斷要不要顯示 */
+/** 匯入收據摘要：陣容欄「撤銷上次匯入」項靠這份判斷要不要出現 */
 export interface ImportReceiptSummary {
   kind: "character" | "worldbook";
   label: string;
@@ -58,6 +58,8 @@ function worldbookImportedMessage(book: WorldbookImport) {
 
 /** 待作答的第二張卡路由：身分已定、資料原樣留著，等玩家在框裡選匯哪張桌 */
 export interface PendingImportRoute {
+  /** 提問時所在的桌：作答時人已不在這桌就取消，不能把卡匯進別張桌 */
+  worldId: string;
   data: number[];
   identity: "character" | "worldbook";
   label: string;
@@ -66,6 +68,8 @@ export interface PendingImportRoute {
 
 /** 待作答的匯入身分：data 原樣留著給兩條路徑共用，booksFirst＝主按鈕指世界書 */
 export interface PendingImportChoice {
+  /** 提問時所在的桌，用途同 PendingImportRoute.worldId */
+  worldId: string;
   data: number[];
   name: string;
   booksFirst: boolean;
@@ -88,7 +92,7 @@ export interface TierModel {
 }
 
 export interface ImportController {
-  /** 這桌的匯入收據摘要：側欄「復原上次匯入」按鈕靠它決定出不出現 */
+  /** 這桌的匯入收據摘要：陣容欄「撤銷上次匯入」項靠它決定出不出現 */
   receipts: ImportReceiptSummary[];
   /** 匯入身分框：等玩家在三鍵框挑一種，null＝沒開 */
   choice: PendingImportChoice | null;
@@ -96,6 +100,8 @@ export interface ImportController {
   route: PendingImportRoute | null;
   /** 匯完跳出的開場白清單；null＝面板沒開 */
   openings: string[] | null;
+  /** 開場白面板是在哪張桌跳出來的；null＝面板沒開 */
+  openingsWorldId: string | null;
   /** 面板裡展開的那一則（一次只展開一條） */
   expanded: number | null;
   setExpanded: (index: number | null) => void;
@@ -116,7 +122,7 @@ export interface ImportController {
   loadReceipts: (worldId: string) => Promise<ImportReceiptSummary[]>;
   /** 匯完（或復原掉一筆）後重讀收據 */
   refreshReceipts: (worldId: string) => Promise<void>;
-  /** 側欄「匯入卡」選了檔：探測身分後分流 */
+  /** 陣容欄「匯入卡」選了檔：探測身分後分流 */
   importFile: (file: File) => Promise<void>;
   answerChoice: (choice: "character" | "worldbook" | "cancel") => Promise<void>;
   answerRoute: (choice: "this_table" | "new_table" | "cancel") => Promise<void>;
@@ -139,8 +145,10 @@ export function useImportController(input: {
   adoptTableName: (name: string | null | undefined) => Promise<void>;
   /** 匯完把對話目標指過去；null＝指到 GM */
   focusSpeaker: (characterId: string | null) => void;
-  /** 開一張新桌並進去，回傳新桌 id；null＝現在開不了（沒 config 或正在生成） */
+  /** 開一張新桌並進去，回傳新桌 id；null＝現在開不了（沒 config、正在生成、或新桌進不去／不可寫） */
   openTableForImport: (label: string) => Promise<string | null>;
+  /** 進出桌互斥：匯入現桌與開新桌並匯入整段要拿到鎖；等玩家在身分框／路由框作答時不持鎖 */
+  runTableOp: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   /** 剛匯入＝又回到「還沒開演」的狀態，把這桌的開演記號清掉 */
   resetChatted: (worldId: string) => void;
   /** 匯完重讀狀態樹與分支指認：卡片的 [initvar] 是匯入當下才建好樹的 */
@@ -158,10 +166,15 @@ export function useImportController(input: {
     adoptTableName,
     focusSpeaker,
     openTableForImport,
+    runTableOp,
     resetChatted,
     refreshState,
     onError,
   } = input;
+
+  // 讀檔、探測都是 await：回來時人可能已經離桌或進了別張桌，那一輪匯入就整個作廢
+  const worldRef = useRef(worldId);
+  worldRef.current = worldId;
 
   // 這桌的匯入收據摘要：非空、且還沒開始跟 AI 對話，才顯示「復原上次匯入」按鈕
   const [receipts, setReceipts] = useState<ImportReceiptSummary[]>([]);
@@ -171,6 +184,8 @@ export function useImportController(input: {
   // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝一般第二張卡、merge_worldbook＝第二本世界書會合成一本
   const [route, setRoute] = useState<PendingImportRoute | null>(null);
   const [openings, setOpenings] = useState<string[] | null>(null);
+  // 開場白面板屬於哪張桌：貼出前要確認人還在那張桌
+  const [openingsWorldId, setOpeningsWorldId] = useState<string | null>(null);
   // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
   const [expanded, setExpanded] = useState<number | null>(null);
   // 開場白翻譯：逐則狀態＋「全部翻譯」是否在跑；abort ref 給 modal 一關就停止後續翻譯呼叫用
@@ -183,11 +198,10 @@ export function useImportController(input: {
   // 檔位只影響這次視窗，不寫回設定：玩家為了翻一張卡調高檔，不該連帶把整桌遊玩的 AI 換掉
   const [transTier, setTransTier] = useState<Tier>("fast");
   const [tierModels, setTierModels] = useState<TierModel[]>([]);
-  const transAbort = useRef(false);
-  // openings 一變成 null（不管哪個按鈕關的）就中止：不必在每個關閉入口各補一次旗標
-  useEffect(() => {
-    if (openings === null) transAbort.current = true;
-  }, [openings]);
+  // 面板世代號：開面板、關面板、換桌都遞增。翻譯是 await，回來時比對開始時記下的世代，
+  // 不符＝那一輪面板已經不在了（關掉、換桌、或又開了別桌的新面板），回應與後續迴圈一律丟棄。
+  // 不能只用一個「已關閉」旗標：新面板一開就會把它重設，舊桌晚到的譯文就溜進新面板
+  const panelGen = useRef(0);
 
   const loadReceipts = useCallback(
     (worldId: string) =>
@@ -208,7 +222,24 @@ export function useImportController(input: {
     [loadReceipts, resetChatted],
   );
 
-  const closeOpenings = useCallback(() => setOpenings(null), []);
+  // 換桌或離桌：待答的身分框、路由框與舊桌的開場白面板（連同翻譯狀態）一律收掉
+  useEffect(() => {
+    setChoice(null);
+    setRoute(null);
+    panelGen.current += 1;
+    setTransAllBusy(false);
+    setOpenings(null);
+    setOpeningsWorldId(null);
+    setExpanded(null);
+    setTransState({});
+    setTranslations({});
+  }, [worldId]);
+
+  const closeOpenings = useCallback(() => {
+    panelGen.current += 1;
+    setTransAllBusy(false);
+    setOpenings(null);
+  }, []);
 
   // 兩條匯入路徑共用：畫得出來就告訴玩家在哪開並直接開一次，解不開的講清楚是哪一種
   // （加密卡、介面存在別人網站上的雲端載入器卡）。沒有介面的卡什麼都不說。
@@ -241,8 +272,10 @@ export function useImportController(input: {
       setTransState({});
       setTranslations({});
       setTransTier("fast");
-      transAbort.current = false;
+      panelGen.current += 1;
+      setTransAllBusy(false);
       setOpenings(list);
+      setOpeningsWorldId(worldId);
       // 檔位選項讀失敗不擋匯入：選單少了模型名照樣能翻（預設低檔）
       setTierModels(await invoke<TierModel[]>("translate_tier_models").catch(() => []));
     },
@@ -337,30 +370,43 @@ export function useImportController(input: {
         receipts.map((receipt) => receipt.kind),
         needsFallback && (await tableHasWorldbookEntries()),
       );
+      if (worldRef.current !== worldId) return;
       if (route === "direct") {
-        if (identity === "worldbook") await importAsWorldbook(worldId, data, label);
-        else await importAsCharacter(worldId, data);
+        await runTableOp(() =>
+          identity === "worldbook"
+            ? importAsWorldbook(worldId, data, label)
+            : importAsCharacter(worldId, data),
+        );
         return;
       }
-      setRoute({ data, identity, label, route });
+      setRoute({ worldId, data, identity, label, route });
     },
-    [receipts, worldId, tableHasWorldbookEntries, importAsWorldbook, importAsCharacter],
+    [
+      receipts,
+      worldId,
+      tableHasWorldbookEntries,
+      importAsWorldbook,
+      importAsCharacter,
+      runTableOp,
+    ],
   );
 
   // 開新桌並匯入：桌名直接用卡名／書名／檔名（pending.label），create_world 回傳的新 id
   // 全程顯式帶入（不靠這桌的 worldId，切桌當下它還是舊值），原桌完全不動（不回收、不改名）。
   // adoptTableName 不需要跑：新桌從一開始就用 label 命名。
+  // 開桌到匯完是一整段換桌級操作，鎖在這裡一次取到底（內層不得再取鎖）。
   const openNewTableAndImport = useCallback(
-    async (pending: { data: number[]; identity: "character" | "worldbook"; label: string }) => {
-      const id = await openTableForImport(pending.label);
-      if (id === null) return;
-      if (pending.identity === "worldbook") {
-        await importAsWorldbook(id, pending.data, pending.label, false);
-      } else {
-        await importAsCharacter(id, pending.data, false);
-      }
-    },
-    [openTableForImport, importAsWorldbook, importAsCharacter],
+    (pending: { data: number[]; identity: "character" | "worldbook"; label: string }) =>
+      runTableOp(async () => {
+        const id = await openTableForImport(pending.label);
+        if (id === null) return;
+        if (pending.identity === "worldbook") {
+          await importAsWorldbook(id, pending.data, pending.label, false);
+        } else {
+          await importAsCharacter(id, pending.data, false);
+        }
+      }),
+    [runTableOp, openTableForImport, importAsWorldbook, importAsCharacter],
   );
 
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端探測，依探測結果分流——
@@ -371,6 +417,7 @@ export function useImportController(input: {
       onError("");
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
+        if (worldRef.current !== worldId) return;
         const data = Array.from(bytes);
         let probe: ImportProbe = {
           lorebook_heavy: false,
@@ -384,6 +431,7 @@ export function useImportController(input: {
         } catch {
           // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
         }
+        if (worldRef.current !== worldId) return;
         if (probe.parsed && (!probe.name || probe.book_shaped)) {
           // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，「匯入成角色卡」是假選項，不問
           await routeImport("worldbook", data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
@@ -391,16 +439,16 @@ export function useImportController(input: {
         }
         if (probe.parsed && probe.name) {
           // 其餘一律問身分：判準只決定主按鈕，判錯玩家仍有另一條路（見 booksFirst）
-          setChoice({ data, name: probe.name, booksFirst: looksLikeWorldbook(probe) });
+          setChoice({ worldId, data, name: probe.name, booksFirst: looksLikeWorldbook(probe) });
           return;
         }
         // 解析失敗：照舊走角色路徑，讓後端報原本的格式錯誤，不算第二張卡場景，不過路由
-        await importAsCharacter(worldId, data);
+        await runTableOp(() => importAsCharacter(worldId, data));
       } catch (reason) {
         onError(String(reason));
       }
     },
-    [routeImport, importAsCharacter, worldId, onError],
+    [routeImport, importAsCharacter, runTableOp, worldId, onError],
   );
 
   // 三鍵對話框的作答：取消什麼都不做，另外兩個選項答出身分後都要過第二張卡路由
@@ -408,7 +456,7 @@ export function useImportController(input: {
     async (answer: "character" | "worldbook" | "cancel") => {
       const pending = choice;
       setChoice(null);
-      if (!pending || answer === "cancel") return;
+      if (!pending || answer === "cancel" || pending.worldId !== worldRef.current) return;
       onError("");
       try {
         await routeImport(answer, pending.data, pending.name);
@@ -425,15 +473,15 @@ export function useImportController(input: {
     async (answer: "this_table" | "new_table" | "cancel") => {
       const pending = route;
       setRoute(null);
-      if (!pending || answer === "cancel") return;
+      if (!pending || answer === "cancel" || pending.worldId !== worldRef.current) return;
       onError("");
       try {
         if (answer === "this_table") {
-          if (pending.identity === "worldbook") {
-            await importAsWorldbook(worldId, pending.data, pending.label);
-          } else {
-            await importAsCharacter(worldId, pending.data);
-          }
+          await runTableOp(() =>
+            pending.identity === "worldbook"
+              ? importAsWorldbook(worldId, pending.data, pending.label)
+              : importAsCharacter(worldId, pending.data),
+          );
         } else {
           await openNewTableAndImport(pending);
         }
@@ -441,7 +489,15 @@ export function useImportController(input: {
         onError(String(reason));
       }
     },
-    [route, worldId, importAsWorldbook, importAsCharacter, openNewTableAndImport, onError],
+    [
+      route,
+      worldId,
+      runTableOp,
+      importAsWorldbook,
+      importAsCharacter,
+      openNewTableAndImport,
+      onError,
+    ],
   );
 
   // 開場白翻譯：單則呼叫 translate_opening（走 fast 檔，失敗退 GM 檔，見 lib.rs），
@@ -453,6 +509,7 @@ export function useImportController(input: {
       // 已有回覆就直接拿（「翻譯後貼出」不重打）；force＝玩家按了重新翻譯，明知會再花一次
       if (!force && transState[index] === "done") return translations[index] ?? null;
       const text = openings[index];
+      const generation = panelGen.current;
       setTransState((previous) => ({ ...previous, [index]: "translating" }));
       try {
         const translated = await invoke<string>("translate_opening", {
@@ -461,13 +518,13 @@ export function useImportController(input: {
           lang,
           tier: transTier,
         });
-        if (transAbort.current) return null;
+        if (generation !== panelGen.current) return null;
         // 新回覆到齊才換掉畫面上的舊譯文（重翻期間玩家看的仍是上一版）
         setTranslations((previous) => ({ ...previous, [index]: translated }));
         setTransState((previous) => ({ ...previous, [index]: "done" }));
         return translated;
       } catch (reason) {
-        if (transAbort.current) return null;
+        if (generation !== panelGen.current) return null;
         // 失敗不清掉已有的譯文：重翻失敗至少還留著上一次的結果
         setTransState((previous) => ({ ...previous, [index]: "error" }));
         onError(String(reason));
@@ -477,17 +534,17 @@ export function useImportController(input: {
     [openings, transState, translations, worldId, lang, transTier, onError],
   );
 
-  // 「✨ 全部翻譯」：逐則序列翻譯，不擋操作（沒鎖住 modal 其他按鈕）；modal 一關（abort
-  // 旗標翻真）就停止發下一則呼叫，省下不會有人看到的 AI 額度。
+  // 「✨ 全部翻譯」：逐則序列翻譯，不擋操作（沒鎖住 modal 其他按鈕）；面板世代一變
+  // 就停止發下一則呼叫，省下不會有人看到的 AI 額度。
   const translateAllOpenings = useCallback(async () => {
     if (openings === null || transAllBusy) return;
+    const generation = panelGen.current;
     setTransAllBusy(true);
-    transAbort.current = false;
     for (let index = 0; index < openings.length; index += 1) {
-      if (transAbort.current) break;
+      if (generation !== panelGen.current) return;
       await translateOpening(index);
     }
-    setTransAllBusy(false);
+    if (generation === panelGen.current) setTransAllBusy(false);
   }, [openings, transAllBusy, translateOpening]);
 
   return useMemo(
@@ -496,6 +553,7 @@ export function useImportController(input: {
       choice,
       route,
       openings,
+      openingsWorldId,
       expanded,
       setExpanded,
       transState,
@@ -519,6 +577,7 @@ export function useImportController(input: {
       choice,
       route,
       openings,
+      openingsWorldId,
       expanded,
       transState,
       translations,

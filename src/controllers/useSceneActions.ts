@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import type { AppConfig, SceneLabel, TranscriptEvent } from "../shared/contracts/backend-contracts";
+import type { SceneLabel, TranscriptEvent } from "../shared/contracts/backend-contracts";
 import { t } from "../i18n";
 
 interface SceneChatActions {
   events: TranscriptEvent[];
   busy: boolean;
+  /** 同步版忙碌判斷：append_transcript 還沒完成時 busy（state）仍是 false，這個已是 true */
+  isBusy: () => boolean;
   beginNarration: () => void;
   endNarration: () => void;
   noteTurnDone: () => void;
@@ -19,9 +21,10 @@ interface SceneActionsOptions {
   sceneLabels: Record<string, SceneLabel>;
   tableName: string;
   chat: SceneChatActions;
-  config: AppConfig | null;
   canLeaveEditor: () => Promise<boolean>;
-  enterTable: (id: string, loaded: AppConfig) => Promise<void>;
+  enterTable: (id: string) => Promise<unknown>;
+  /** 進出桌互斥：會重進本桌的入口（分岔、退回）要拿到鎖才動；拿不到就什麼都不做 */
+  runTableOp: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   closeMainView: () => void;
   onError: (message: string) => void;
 }
@@ -33,9 +36,9 @@ export function useSceneActions({
   sceneLabels,
   tableName,
   chat,
-  config,
   canLeaveEditor,
   enterTable,
+  runTableOp,
   closeMainView,
   onError,
 }: SceneActionsOptions) {
@@ -50,68 +53,78 @@ export function useSceneActions({
 
   // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
   async function advanceScene() {
-    // 標題列不隨主欄畫面收起，編輯角色卡時這顆鈕照樣按得到
-    if (!(await canLeaveEditor())) return;
-    onError("");
-    chat.beginNarration();
-    try {
-      await invoke<number>("advance_scene", { worldId });
-      await enterTable(worldId, config!);
-      chat.noteTurnDone();
-    } catch (reason) {
-      onError(String(reason));
-    } finally {
-      chat.endNarration();
-    }
+    await runTableOp(async () => {
+      // 標題列不隨主欄畫面收起，編輯角色卡時這顆鈕照樣按得到
+      if (!(await canLeaveEditor())) return;
+      // 確認框等人作答期間對話可能已經開跑，看當下不看舊閉包
+      if (chat.isBusy()) return;
+      onError("");
+      chat.beginNarration();
+      try {
+        await invoke<number>("advance_scene", { worldId });
+        await enterTable(worldId);
+        chat.noteTurnDone();
+      } catch (reason) {
+        onError(String(reason));
+      } finally {
+        chat.endNarration();
+      }
+    });
   }
 
   // 從前幕分岔續玩：把那一幕的紀錄複製成新的一幕，原本的歷史原封不動。
   // 整幕複製會讓下一次生成要送的內容變多，所以先跳確認框讓玩家自己決定
   async function forkScene(from: number) {
-    const accepted = await confirm(t("sceneForkConfirm"), {
-      title: t("sceneForkTitle"),
-      kind: "warning",
-      okLabel: t("sceneForkTitle"),
-      cancelLabel: t("dialogCancel"),
+    await runTableOp(async () => {
+      const accepted = await confirm(t("sceneForkConfirm"), {
+        title: t("sceneForkTitle"),
+        kind: "warning",
+        okLabel: t("sceneForkTitle"),
+        cancelLabel: t("dialogCancel"),
+      });
+      if (!accepted || chat.isBusy()) return;
+      onError("");
+      try {
+        await invoke<number>("fork_scene", { worldId, scene: from });
+        closeMainView();
+        await enterTable(worldId);
+      } catch (reason) {
+        onError(String(reason));
+      }
     });
-    if (!accepted) return;
-    onError("");
-    try {
-      await invoke<number>("fork_scene", { worldId, scene: from });
-      closeMainView();
-      await enterTable(worldId, config!);
-    } catch (reason) {
-      onError(String(reason));
-    }
   }
 
   // 太早按到換幕的補救：這一幕還只有那則前情提要時，刪掉它退回上一幕接著玩。
   // 前幕紀錄從來沒被動過（換幕只是開新檔），所以退回不會掉任何內容
   async function revertScene() {
-    if (!canUndoScene) return;
-    onError("");
-    try {
-      await invoke<number>("revert_scene", { worldId });
-      await enterTable(worldId, config!);
-    } catch (reason) {
-      onError(String(reason));
-    }
+    await runTableOp(async () => {
+      if (!canUndoScene || chat.isBusy()) return;
+      onError("");
+      try {
+        await invoke<number>("revert_scene", { worldId });
+        await enterTable(worldId);
+      } catch (reason) {
+        onError(String(reason));
+      }
+    });
   }
 
   // 前情提要不滿意就重寫一份。拿前幕原始紀錄重跑一次摘要，蓋掉這幕唯一那則
   async function regenerateSummary() {
-    if (!canUndoScene) return;
-    onError("");
-    chat.beginNarration();
-    try {
-      await invoke("regenerate_scene_summary", { worldId });
-      await enterTable(worldId, config!);
-      chat.noteTurnDone();
-    } catch (reason) {
-      onError(String(reason));
-    } finally {
-      chat.endNarration();
-    }
+    await runTableOp(async () => {
+      if (!canUndoScene || chat.isBusy()) return;
+      onError("");
+      chat.beginNarration();
+      try {
+        await invoke("regenerate_scene_summary", { worldId });
+        await enterTable(worldId);
+        chat.noteTurnDone();
+      } catch (reason) {
+        onError(String(reason));
+      } finally {
+        chat.endNarration();
+      }
+    });
   }
 
   // 存哪裡由使用者決定：跳原生「另存新檔」對話框，取消就什麼都不做

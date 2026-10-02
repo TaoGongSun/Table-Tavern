@@ -8,6 +8,7 @@ import { updateConfig } from "./features/settings/update-config";
 import {
   deleteTableMessage,
   gateOf,
+  listBadge,
   looseTranscript,
   readOnlyBannerVersion,
   type LooseWorld,
@@ -28,10 +29,13 @@ import { useAppPreferencesController } from "./controllers/useAppPreferencesCont
 import { useVersionCenter } from "./features/updater/useVersionCenter";
 import { VersionTab } from "./features/updater/VersionTab";
 import { FormatUpdateDialog, UpdateBanner } from "./features/updater/UpdateReminders";
+import { Lobby } from "./features/lobby/Lobby";
+import { openImportTable } from "./features/lobby/open-import-table";
+import { useTableOp } from "./features/lobby/useTableOp";
 import { showUpdateDot } from "./features/updater/version-center";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
-import { useChatController } from "./controllers/useChatController";
+import { type ChatController, useChatController } from "./controllers/useChatController";
 import { useImportController } from "./controllers/useImportController";
 import { useSceneActions } from "./controllers/useSceneActions";
 import { loadBranchBindings, useTableStateController } from "./controllers/useTableStateController";
@@ -42,6 +46,7 @@ import {
 import { AppDialogs } from "./views/AppDialogs";
 import type { SettingsTab } from "./views/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
+import { Onboarding } from "./views/Onboarding";
 import { SmartFreeNewModelBanner } from "./views/SmartFreeNewModelBanner";
 import { ErrorNote } from "./views/atoms";
 import "./App.css";
@@ -66,7 +71,8 @@ function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
   // 設定與桌清單都讀成功。更新的啟動後整理與版本庫清單等這個，不等進桌。
   const [bootReady, setBootReady] = useState(false);
-  // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
+  // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查。
+  // 空字串＝沒載入任何桌＝大廳畫面（不另開 screen 狀態）
   const [table, setTable] = useState("");
   // play 才把桌 id 交給會自動讀寫的 controller；唯讀與修復維持空字串，避免嚴格讀取
   const [gate, setGate] = useState<TableGate>("play");
@@ -82,7 +88,7 @@ function App() {
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [sceneLabels, setSceneLabels] = useState<Record<string, SceneLabel>>({});
-  // 改桌名可從兩處進入：主欄標題（header）與側欄目前桌那一列（list）；at 決定輸入框長在哪
+  // 工具列的就地改桌名（大廳卡片的改名是桌卡自己的狀態）
   const [editingName, setEditingName] = useState<EditingTableName>(null);
   // false＝關閉；字串＝開啟並落在該分頁（生圖對話框的「AI 連線設定」鈕直開 ai 分頁）
   const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
@@ -97,7 +103,7 @@ function App() {
   const [error, setError] = useState("");
   // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
   const [hasStateBar, setHasStateBar] = useState(false);
-  // 這桌向 AI 開演了沒：聊天域寫、匯入域清、側欄的「復原上次匯入」讀，留在 App 當共用旗標
+  // 這桌向 AI 開演了沒：聊天域寫、匯入域清、陣容欄的「撤銷上次匯入」讀，留在 App 當共用旗標
   const [chattedSinceImport, setChattedSinceImport] = useState(false);
   // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
@@ -120,6 +126,15 @@ function App() {
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
   const tableState = useTableStateController({ worldId: liveWorldId, onError: setError });
 
+  // 進出桌互斥：所有換桌級入口（進桌、回大廳、開／刪／匯入…）共用一把鎖，見 useTableOp
+  const tableOp = useTableOp();
+  const { run: runTableOp } = tableOp;
+
+  // 換桌級操作持鎖期間，會動對話或本桌檔案的入口在函式層直接放棄（畫面同時停用按鈕）
+  function whenTableFree<A extends unknown[]>(fn: (...args: A) => Promise<void>) {
+    return (...args: A) => (tableOp.isHeld() ? Promise.resolve() : fn(...args));
+  }
+
   // 角色名單、本幕出場集合、玩家卡與角色圖／GM 圖三份快取都在 controller 裡。
   const characters = useCharacterController({ worldId: liveWorldId, onError: setError });
 
@@ -134,7 +149,6 @@ function App() {
     setSpeaker,
     mainView,
     setMainView,
-    setActsOpen,
     gmTargeted,
     canLeaveEditor,
   } = navigation;
@@ -170,9 +184,9 @@ function App() {
     };
   }, []);
 
-  // 開 App 直接回上次那桌；一桌都沒有就默默開一桌，零精靈（NewPlan §9.3）
+  // 開 App 一律進大廳；一桌都沒有就默默生一桌範例桌（零精靈，NewPlan §9.3），首開也停在大廳
   useEffect(() => {
-    // 模型清單背景預熱，不擋開桌：玩家走到設定頁時清單早就備好了
+    // 模型清單背景預熱，不擋開機：玩家走到設定頁時清單早就備好了
     void prefetchModelCatalogs();
     (async () => {
       try {
@@ -188,19 +202,14 @@ function App() {
             start = await updateConfig({ preferences: { language: detectLang() } });
             setConfig(start);
           }
-          const id = await invoke<string>("create_sample_world", {
+          await invoke<string>("create_sample_world", {
             lang: normalizeLang(start.preferences["language"]),
           });
           setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-          setBootReady(true);
-          await enterTable(id, start);
-          return;
+        } else {
+          setWorlds(worldList);
         }
-        setWorlds(worldList);
         setBootReady(true);
-        const last = String(loaded.preferences["last_world"] ?? "");
-        const startId = worldList.some((w) => w.id === last) ? last : worldList[0].id;
-        await enterTable(startId, loaded);
       } catch (reason) {
         setError(String(reason));
       }
@@ -271,7 +280,7 @@ function App() {
     worldId: liveWorldId,
     events: chat.events,
     tableTree: tableState.tree,
-    submitText: chat.submitText,
+    submitText: whenTableFree(chat.submitText),
   });
 
   // 一桌一卡：匯入成功後，還掛自動名的桌直接改成卡名；自訂過名字的桌不動
@@ -299,18 +308,23 @@ function App() {
   // 匯完把對話目標指過去；null＝指到 GM
   const focusSpeaker = useCallback((characterId: string | null) => setSpeaker(characterId ?? GM_TARGET), []);
 
-  // 「開新桌並匯入」的開桌那一半：建好就進去，回傳新桌 id 給匯入流程顯式帶入。
-  // 原桌完全不動（不回收、不改名），沿用 newTable／switchTable 的生成中防呆。
+  // 「開新桌並匯入」的開桌那一半：建好就進去，回傳新桌 id 給匯入流程顯式帶入；
+  // 新桌進不去、或進了唯讀／修復桌（不能寫入）就回 null，匯入不往下走。
+  // 原桌完全不動（不回收、不改名）。外層 openNewTableAndImport 已持鎖。
   const openTableForImport = useCallback(
     async (label: string) => {
       if (!config || chat.busy) return null;
       if (!(await canLeaveRef.current())) return null;
-      const id = await invoke<string>("create_world", { name: label });
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-      await enterTable(id, config);
-      return id;
+      return openImportTable(
+        {
+          createWorld: (name) => invoke<string>("create_world", { name }),
+          refreshWorlds,
+          enterTable,
+        },
+        label,
+      );
     },
-    [config, chat.busy],
+    [config, chat.busy, refreshWorlds],
   );
 
   const resetChatted = useCallback((worldId: string) => {
@@ -332,6 +346,7 @@ function App() {
     adoptTableName: adoptImportName,
     focusSpeaker,
     openTableForImport,
+    runTableOp,
     resetChatted,
     refreshState: tableState.refresh,
     onError: setError,
@@ -345,9 +360,9 @@ function App() {
     sceneLabels,
     tableName,
     chat,
-    config,
     canLeaveEditor,
     enterTable,
+    runTableOp,
     closeMainView: () => setMainView(null),
     onError: setError,
   });
@@ -367,35 +382,32 @@ function App() {
     setEditingName(null);
     tableState.clearEdit();
     setMainView(null);
-    setActsOpen(false);
     cardInterface.close();
     setSkippedLines(0);
   }
 
-  async function rememberWorld(loaded: AppConfig, id: string) {
-    if (loaded.preferences["last_world"] === id) return;
-    setConfig(await updateConfig({ preferences: { last_world: id } }));
-  }
-
-  async function enterTable(id: string, loaded: AppConfig) {
+  // 進桌。entered＝這桌已提交成目前的桌；writable＝可玩（唯讀與修復桌是 entered 但不可寫）。
+  // busy、status 對不上的早退都回 {false,false} 且不碰 table；中途拋錯也一樣沒提交
+  // （所有提交都在最後一個 await 之後），錯誤交給呼叫端的 catch。
+  // 同 id 早退不放在這裡：換幕、分岔、用備份都要重進同一張桌。
+  async function enterTable(id: string): Promise<{ entered: boolean; writable: boolean }> {
     const opened = await invoke<OpenWorld>("open_world", { worldId: id });
     const route = gateOf(opened);
     if (route === "busy") {
       setError(t("worldBusy"));
-      return;
+      return { entered: false, writable: false };
     }
     if (route === "repair") {
-      if (opened.status !== "needs_repair") return;
+      if (opened.status !== "needs_repair") return { entered: false, writable: false };
       blankSurface(id);
       setTable(id);
       setGate("repair");
       setRepairNotice({ message: opened.message, directory: opened.directory });
       setReadOnlyNotice(null);
-      await rememberWorld(loaded, id);
-      return;
+      return { entered: true, writable: false };
     }
     if (route === "readonly") {
-      if (opened.status !== "read_only") return;
+      if (opened.status !== "read_only") return { entered: false, writable: false };
       const loose = await invoke<LooseWorld>("read_world_readonly", { worldId: id });
       blankSurface(id);
       setTable(id);
@@ -408,8 +420,7 @@ function App() {
       setScene(loose.scene);
       chat.hydrate(looseTranscript(loose.events));
       setSkippedLines(loose.skipped);
-      await rememberWorld(loaded, id);
-      return;
+      return { entered: true, writable: false };
     }
     const state = await invoke<WorldState>("read_state", { worldId: id });
     const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
@@ -457,54 +468,37 @@ function App() {
     );
     setEditingName(null);
     tableState.clearEdit();
-    // 切桌就離開單幕閱讀／編輯畫面與前幕浮層，避免殘留上一桌的狀態
+    // 進桌就離開單幕閱讀／編輯畫面，避免殘留上一桌的狀態
     setMainView(null);
-    setActsOpen(false);
     cardInterface.close();
-    await rememberWorld(loaded, id);
+    return { entered: true, writable: true };
   }
 
   async function useBackup() {
-    const loaded = currentConfigRef.current;
-    if (!loaded || gate !== "readonly") return;
-    const accepted = await confirm(t("useBackupConfirm"), {
-      title: t("useBackupBtn"),
-      kind: "warning",
-      okLabel: t("useBackupOk"),
-      cancelLabel: t("dialogCancel"),
+    await runTableOp(async () => {
+      if (gate !== "readonly") return;
+      const accepted = await confirm(t("useBackupConfirm"), {
+        title: t("useBackupBtn"),
+        kind: "warning",
+        okLabel: t("useBackupOk"),
+        cancelLabel: t("dialogCancel"),
+      });
+      if (!accepted) return;
+      setError("");
+      try {
+        await invoke("restore_world_backup", { worldId: table });
+        await enterTable(table);
+        setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      } catch (reason) {
+        setError(String(reason));
+      }
     });
-    if (!accepted) return;
-    setError("");
-    try {
-      await invoke("restore_world_backup", { worldId: table });
-      await enterTable(table, loaded);
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-    } catch (reason) {
-      setError(String(reason));
-    }
   }
 
   async function openRepairFolder() {
     if (!repairNotice) return;
     try {
       await revealItemInDir(repairNotice.directory);
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }
-
-  // 換桌／換幕／跳單幕閱讀都會清掉主欄的編輯畫面（enterTable 尾端 setMainView(null)），
-  // 所以每個入口都要在動任何檔案之前先問未儲存——守門不能收進 enterTable，
-  // 那時 create_world 之類的副作用已經發生，取消就會留下半張桌
-  async function switchTable(id: string) {
-    if (!config || id === table || chat.busy) return;
-    if (!(await canLeaveEditor())) return;
-    setError("");
-    try {
-      const previous = table;
-      await enterTable(id, config);
-      if (previous) await reclaimIfUntouched(previous);
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
     } catch (reason) {
       setError(String(reason));
     }
@@ -523,87 +517,139 @@ function App() {
     await invoke("reclaim_world_if_empty", { worldId: id });
   }
 
-  async function newTable() {
-    if (!config || chat.busy) return;
-    if (!(await canLeaveEditor())) return;
-    setError("");
-    try {
-      const existingNames = worlds.map((w) => w.name);
-      const base = t("newTableName");
-      let name = base;
-      for (let n = 2; existingNames.includes(name); n += 1) name = `${base} ${n}`;
-      const id = await invoke<string>("create_world", { name });
-      const previous = table;
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-      await enterTable(id, config);
-      if (previous) {
-        await reclaimIfUntouched(previous);
+  // 下面這些入口都是「換桌級」操作，一律過 runTableOp 互斥（鎖只在入口取，enterTable 本身不看鎖）。
+  // 換桌／換幕／跳單幕閱讀會清掉主欄的編輯畫面（enterTable 尾端 setMainView(null)），
+  // 所以牌桌內的入口要在動任何檔案之前先問未儲存——守門不能收進 enterTable，
+  // 那時 create_world 之類的副作用已經發生，取消就會留下半張桌。
+  // 大廳沒有編輯畫面，大廳專屬的入口不必問。
+
+  // 從大廳進桌
+  function switchTable(id: string) {
+    return runTableOp(async () => {
+      if (!config || chat.busy) return;
+      setError("");
+      try {
+        await enterTable(id);
         setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      } catch (reason) {
+        setError(String(reason));
       }
-    } catch (reason) {
-      setError(String(reason));
-    }
+    });
   }
 
-  // 一句話開桌的守門在「開對話框」這一刻，不在生成完成之後：等 AI 生完才問未儲存，
-  // 玩家答取消就白花一次生成、磁碟上還多一張進不去的桌
-  async function openGenerateTable() {
-    if (!(await canLeaveEditor())) return;
-    setGenTableOpen(true);
+  // 回大廳：先問未儲存；只有可玩的桌才試著回收空桌（唯讀與修復桌的回收會因寫入許可報錯）。
+  // 回收或重讀清單失敗都照樣離桌，錯誤放在大廳的通知區。
+  // 離桌那一刻 setTable("") 與 setGate("play") 必須在同一個同步區，拆開的話
+  // liveWorldId 會短暫指到唯讀桌。
+  function goLobby() {
+    return runTableOp(async () => {
+      if (!table || chat.isBusy()) return;
+      if (!(await canLeaveEditor())) return;
+      // 守門的確認框等人作答期間對話可能已經開跑：離桌要看當下，不吃舊閉包
+      if (chat.isBusy()) return;
+      setError("");
+      const leaving = table;
+      let failure = "";
+      if (gate === "play") {
+        try {
+          await reclaimIfUntouched(leaving);
+        } catch (reason) {
+          failure = String(reason);
+        }
+      }
+      blankSurface(leaving);
+      setTable("");
+      setGate("play");
+      setReadOnlyNotice(null);
+      setRepairNotice(null);
+      try {
+        await refreshWorlds();
+      } catch (reason) {
+        failure ||= String(reason);
+      }
+      if (failure) setError(failure);
+    });
   }
 
-  // AI 把綱要展開成一張真的桌之後：桌次清單重讀，直接進去新桌
-  async function enterGeneratedTable(worldId: string) {
-    await refreshWorlds();
-    await enterTable(worldId, config!);
+  function newTable() {
+    return runTableOp(async () => {
+      if (!config || chat.busy) return;
+      setError("");
+      try {
+        const existingNames = worlds.map((w) => w.name);
+        const base = t("newTableName");
+        let name = base;
+        for (let n = 2; existingNames.includes(name); n += 1) name = `${base} ${n}`;
+        const id = await invoke<string>("create_world", { name });
+        setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+        await enterTable(id);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    });
+  }
+
+  // AI 把綱要展開成一張真的桌之後：桌次清單重讀，直接進去新桌。
+  // 進不去就留在大廳（清單已重讀，新桌在裡面），錯誤顯示在通知區
+  function enterGeneratedTable(worldId: string) {
+    return runTableOp(async () => {
+      try {
+        await refreshWorlds();
+        await enterTable(worldId);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    });
   }
 
   // 刪桌：整桌的角色、紀錄、世界設定一起沒，故確認框把後果講白。
   // 刪掉最後一桌就補一張範例桌——App 不留「沒有桌」的空狀態（NewPlan §9.3 零精靈）
-  async function deleteTable(id: string) {
-    if (!config || chat.busy) return;
-    const accepted = await confirm(deleteTableMessage(worlds.find((w) => w.id === id), id), {
-      title: t("deleteTableTitle"),
-      kind: "warning",
-      okLabel: t("dialogDelete"),
-      cancelLabel: t("dialogCancel"),
-    });
-    if (!accepted) return;
-    setError("");
-    try {
-      await invoke("delete_world", { worldId: id });
-      let list = await invoke<WorldMeta[]>("list_worlds");
-      if (list.length === 0) {
-        await invoke<string>("create_sample_world", {
-          lang: normalizeLang(config.preferences["language"]),
-        });
-        list = await invoke<WorldMeta[]>("list_worlds");
+  function deleteTable(id: string) {
+    return runTableOp(async () => {
+      if (!config || chat.busy) return;
+      const accepted = await confirm(deleteTableMessage(worlds.find((w) => w.id === id), id), {
+        title: t("deleteTableTitle"),
+        kind: "warning",
+        okLabel: t("dialogDelete"),
+        cancelLabel: t("dialogCancel"),
+      });
+      if (!accepted) return;
+      setError("");
+      try {
+        await invoke("delete_world", { worldId: id });
+        let list = await invoke<WorldMeta[]>("list_worlds");
+        if (list.length === 0) {
+          await invoke<string>("create_sample_world", {
+            lang: normalizeLang(config.preferences["language"]),
+          });
+          list = await invoke<WorldMeta[]>("list_worlds");
+        }
+        setWorlds(list);
+      } catch (reason) {
+        const message = String(reason);
+        // 後端忙碌文案固定是這句繁中；畫面改顯示目前語系的 worldBusy。
+        setError(message === "這張桌正在處理中，請稍候再試" ? t("worldBusy") : message);
       }
-      setWorlds(list);
-      if (id === table) await enterTable(list[0].id, config);
-    } catch (reason) {
-      const message = String(reason);
-      // 後端忙碌文案固定是這句繁中；畫面改顯示目前語系的 worldBusy。
-      setError(message === "這張桌正在處理中，請稍候再試" ? t("worldBusy") : message);
-    }
+    });
   }
 
-  async function renameTable(raw: string) {
+  // 工具列傳目前桌、大廳卡片傳該桌：全程用傳入的 id。唯讀與需修復的桌不能寫入，
+  // 改名擋在這裡看清單徽章（不看 gate：大廳的桌沒有 gate）
+  async function renameTable(id: string, raw: string) {
     const name = raw.trim();
     setEditingName(null);
-    if (gate !== "play") return;
-    const current = worlds.find((w) => w.id === table);
-    if (!current || !name || name === current.name) return;
+    const current = worlds.find((w) => w.id === id);
+    if (!current || listBadge(current) !== null || !name || name === current.name) return;
     setError("");
     try {
-      await invoke("rename_world", { worldId: table, newName: name });
-      setWorlds((previous) => previous.map((w) => (w.id === table ? { ...w, name } : w)));
+      await invoke("rename_world", { worldId: id, newName: name });
+      setWorlds((previous) => previous.map((w) => (w.id === id ? { ...w, name } : w)));
     } catch (reason) {
       setError(String(reason));
     }
   }
 
-  // 側欄「復原上次匯入」：逆向收據清單最後一筆，逐筆倒退。
+  // 陣容欄「撤銷上次匯入」：逆向收據清單最後一筆，逐筆倒退。
   // 一次動到角色、卡片介面、檯面、狀態樹與世界設定五個域，留在 App 當跨域協調
   async function undoLastImport() {
     if (imports.receipts.length === 0) return;
@@ -652,6 +698,11 @@ function App() {
 
   // 貼出開場白：真的落到檯面上了才收掉選擇面板（貼失敗時面板留著，玩家可改挑一則或重按）
   async function postOpening(text: string) {
+    // 面板是舊桌跳出來的（人已換桌）就只收掉，不貼到現在這張桌
+    if (imports.openingsWorldId !== liveWorldId) {
+      imports.closeOpenings();
+      return;
+    }
     if (await chat.postOpening(text)) imports.closeOpenings();
   }
 
@@ -704,21 +755,23 @@ function App() {
     if (answer === "keep") return;
     const current = currentConfigRef.current;
     if (!current) return;
-    // 重生完會直接進新的範例桌，等於換桌
-    if (!(await canLeaveEditor())) return;
-    setError("");
-    try {
-      const id = await invoke<string>("create_sample_world", {
-        lang: normalizeLang(current.preferences["language"]),
-      });
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
-      await enterTable(id, current);
-    } catch (reason) {
-      setError(String(reason));
-    }
+    // 在牌桌時重生完會直接進新的範例桌，等於換桌（原桌不回收）；在大廳只建桌、重讀清單
+    await runTableOp(async () => {
+      if (!(await canLeaveEditor())) return;
+      setError("");
+      try {
+        const id = await invoke<string>("create_sample_world", {
+          lang: normalizeLang(current.preferences["language"]),
+        });
+        setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+        if (table) await enterTable(id);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    });
   }
 
-  if (!config || !table) {
+  if (!config || !bootReady) {
     return (
       <main className="container">
         {error && <ErrorNote text={error} transport={transport} />}
@@ -726,55 +779,87 @@ function App() {
     );
   }
 
+  const updateDot = showUpdateDot(versionCenter.update.offer, config.preferences);
+  const lockedChat: ChatController = {
+    ...chat,
+    send: async (event) => {
+      // 表單送出一律攔下預設行為，放不放行才交給鎖
+      event.preventDefault();
+      await whenTableFree(chat.send)(event);
+    },
+    undoLast: whenTableFree(chat.undoLast),
+    restoreUndone: whenTableFree(chat.restoreUndone),
+    gmNarrate: whenTableFree(chat.gmNarrate),
+    gmAdvance: whenTableFree(chat.gmAdvance),
+    replyFromTarget: whenTableFree(chat.replyFromTarget),
+    submitText: whenTableFree(chat.submitText),
+  };
+
   return (
     <div className="app-shell">
-      <AppWorkspace
-        worlds={worlds}
-        table={table}
-        tableName={tableName}
-        scene={scene}
-        editingName={editingName}
-        setEditingName={setEditingName}
-        hasStateBar={hasStateBar}
-        chattedSinceImport={chattedSinceImport}
-        worldEditorRefreshKey={worldEditorRefreshKey}
-        config={config}
-        error={error}
-        transport={transport}
-        characters={characters}
-        chat={chat}
-        tableState={tableState}
-        cardInterface={cardInterface}
-        imports={imports}
-        navigation={navigation}
-        sceneActions={sceneActions}
-        onRenameTable={renameTable}
-        onNewTable={newTable}
-        onGenerateTable={openGenerateTable}
-        onSwitchTable={switchTable}
-        onDeleteTable={deleteTable}
-        onUndoImport={undoLastImport}
-        onOpenSettings={openSettings}
-        onPreference={changePreference}
-        onConfigSaved={setConfig}
-        onEntryConverted={refreshAfterEntryConverted}
-        onRefactorApplied={refreshAfterRefactorApplied}
-        gate={gate}
-        readOnlyNotice={readOnlyNotice}
-        repairNotice={repairNotice}
-        skippedLines={skippedLines}
-        onUseBackup={() => void useBackup()}
-        onOpenRepairFolder={() => void openRepairFolder()}
-        sidebarNotice={
-          <UpdateBanner
-            update={versionCenter.update}
-            preferences={config.preferences}
-            onView={() => openSettings("versions")}
-          />
-        }
-        appVersion={versionCenter.appVersion}
-        updateDot={showUpdateDot(versionCenter.update.offer, config.preferences)}
-      />
+      {table === "" ? (
+        <Lobby
+          worlds={worlds}
+          busy={tableOp.busy || chat.busy}
+          notices={
+            <>
+              {error && <ErrorNote text={error} transport={transport} />}
+              <UpdateBanner
+                update={versionCenter.update}
+                preferences={config.preferences}
+                onView={() => openSettings("versions")}
+              />
+              <Onboarding config={config} onSaved={setConfig} />
+            </>
+          }
+          appVersion={versionCenter.appVersion}
+          updateDot={updateDot}
+          onOpenSettings={() => openSettings("appearance")}
+          onOpenVersions={() => openSettings("versions")}
+          onNewTable={() => void newTable()}
+          onGenerateTable={() => setGenTableOpen(true)}
+          onEnterTable={(id) => void switchTable(id)}
+          onRenameTable={(id, raw) => void renameTable(id, raw)}
+          onDeleteTable={(id) => void deleteTable(id)}
+        />
+      ) : (
+        <AppWorkspace
+          table={table}
+          tableName={tableName}
+          scene={scene}
+          editingName={editingName}
+          setEditingName={setEditingName}
+          hasStateBar={hasStateBar}
+          chattedSinceImport={chattedSinceImport}
+          worldEditorRefreshKey={worldEditorRefreshKey}
+          config={config}
+          error={error}
+          transport={transport}
+          characters={characters}
+          chat={lockedChat}
+          tableState={tableState}
+          cardInterface={cardInterface}
+          imports={imports}
+          navigation={navigation}
+          sceneActions={sceneActions}
+          tableOpBusy={tableOp.busy}
+          onRenameTable={(raw) => void renameTable(table, raw)}
+          onGoLobby={() => void goLobby()}
+          onUndoImport={undoLastImport}
+          onOpenSettings={openSettings}
+          onPreference={changePreference}
+          onConfigSaved={setConfig}
+          onEntryConverted={refreshAfterEntryConverted}
+          onRefactorApplied={refreshAfterRefactorApplied}
+          gate={gate}
+          readOnlyNotice={readOnlyNotice}
+          repairNotice={repairNotice}
+          skippedLines={skippedLines}
+          onUseBackup={() => void useBackup()}
+          onOpenRepairFolder={() => void openRepairFolder()}
+          updateDot={updateDot}
+        />
+      )}
 
       <AppDialogs
         genTableOpen={genTableOpen}

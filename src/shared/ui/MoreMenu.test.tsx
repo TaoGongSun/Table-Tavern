@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MoreMenu, type MoreMenuItem } from "./MoreMenu";
 
 // happy-dom 不排版，這裡只驗行為與焦點；彈層的幾何（夾限、內捲）由實機驗收
@@ -20,7 +20,11 @@ describe("MoreMenu", () => {
     document.body.innerHTML = "";
   });
 
-  function mount(items: MoreMenuItem[], onOpen?: () => void) {
+  function mount(
+    items: MoreMenuItem[],
+    onOpen?: () => void,
+    extra: Partial<React.ComponentProps<typeof MoreMenu>> = {},
+  ) {
     host = document.createElement("div");
     document.body.appendChild(host);
     host.innerHTML = "";
@@ -31,7 +35,7 @@ describe("MoreMenu", () => {
           <button type="button" id="before">
             before
           </button>
-          <MoreMenu label="More" items={items} onOpen={onOpen} />
+          <MoreMenu label="More" items={items} onOpen={onOpen} {...extra} />
           <button type="button" id="after">
             after
           </button>
@@ -203,4 +207,85 @@ describe("MoreMenu", () => {
       expect(trigger().getAttribute("aria-expanded")).toBe("false");
     },
   );
+
+  it("renders a custom trigger with its own class and drops the aria-label when the text names it", () => {
+    mount(threeItems().items, undefined, {
+      trigger: <span>Add</span>,
+      className: "btn rail-add",
+      ariaLabelTrigger: false,
+    });
+    expect(trigger().className).toBe("btn rail-add");
+    expect(trigger().textContent).toBe("Add");
+    expect(trigger().hasAttribute("aria-label")).toBe(false);
+    expect(trigger().title).toBe("More");
+    openMenu();
+    expect(menu()?.getAttribute("aria-label")).toBe("More");
+  });
+
+  it("closes an open menu when the trigger becomes disabled", () => {
+    const { items } = threeItems();
+    mount(items);
+    openMenu();
+    expect(menu()).not.toBeNull();
+    act(() => {
+      root?.render(<MoreMenu label="More" items={items} disabled />);
+    });
+    expect(menu()).toBeNull();
+    expect(trigger().disabled).toBe(true);
+  });
+
+  describe("placement", () => {
+    const originalHeight = window.innerHeight;
+    let rectOf: ReturnType<typeof vi.spyOn>;
+    let scrollHeightOf: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      rectOf = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+      scrollHeightOf = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get");
+    });
+
+    afterEach(() => {
+      rectOf.mockRestore();
+      scrollHeightOf.mockRestore();
+      Object.defineProperty(window, "innerHeight", { value: originalHeight, configurable: true });
+    });
+
+    function layout(triggerTop: number, menuHeight: number) {
+      Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+      rectOf.mockImplementation(function (this: HTMLElement) {
+        const isTrigger = this.getAttribute("aria-haspopup") === "menu";
+        return (isTrigger
+          ? { top: triggerTop, bottom: triggerTop + 30, left: 100, right: 130, width: 30, height: 30 }
+          : { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }) as DOMRect;
+      });
+      scrollHeightOf.mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("role") === "menu" ? menuHeight : 0;
+      });
+    }
+
+    it("opens downward when there is room", () => {
+      layout(100, 120);
+      mount(threeItems().items);
+      openMenu();
+      expect(menu()?.style.top).toBe("134px");
+      expect(menu()?.style.maxHeight).toBe("658px");
+    });
+
+    it("opens upward and scrolls within the space above when below is too small", () => {
+      layout(740, 300);
+      mount(threeItems().items);
+      openMenu();
+      // 觸發鈕上方剩 740-4-8＝728，放得下整份選單：貼著觸發鈕上緣往上長
+      expect(menu()?.style.top).toBe("436px");
+      expect(menu()?.style.maxHeight).toBe("728px");
+    });
+
+    it("keeps opening downward when the space above is no better", () => {
+      layout(30, 900);
+      mount(threeItems().items);
+      openMenu();
+      expect(menu()?.style.top).toBe("64px");
+      expect(menu()?.style.maxHeight).toBe("728px");
+    });
+  });
 });

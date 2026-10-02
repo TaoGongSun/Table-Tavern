@@ -1,4 +1,4 @@
-// 版本分頁、側欄小點、啟動提醒共用的判斷。只放純函式，畫面與 controller 都從這裡取。
+// 版本分頁、大廳與工具列的更新小點、啟動提醒共用的判斷。只放純函式，畫面與 controller 都從這裡取。
 import { t } from "../../i18n";
 import type { UpdateLevel, UpdateOffer, UpdatePhase } from "./useUpdateController";
 import type { RollbackPhase, RollbackPreview, VersionRow } from "./useVersionStoreController";

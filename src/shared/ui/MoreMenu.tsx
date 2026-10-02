@@ -1,6 +1,7 @@
 // ⋯ 選單：工具列與日後編輯頁共用的溢位選單。自寫而不引套件，行為照 WAI-ARIA menu button：
 // 開啟移焦第一項、↑↓／Home／End 循環、Enter/Space 執行後關閉、Esc 與點外面關閉、Tab 直接離開。
 // 彈層 portal 到 body：主欄 .chat-main 是 overflow:hidden，掛在原地會被裁掉。
+// 預設觸發鈕是 ⋯ 幽靈圖示鈕；新增鈕、幕晶片這類要自己的外觀就傳 trigger／className。
 import {
   Fragment,
   type KeyboardEvent,
@@ -28,17 +29,33 @@ export interface MoreMenuItem {
 }
 
 interface MoreMenuProps {
-  /** ⋯ 鈕的 aria-label／title */
+  /** 選單的名字，也是預設觸發鈕的 aria-label／title */
   label: string;
   items: MoreMenuItem[];
   /** 打開那一刻通知外層（例如收掉同區的其他浮層） */
   onOpen?: () => void;
+  /** 自訂觸發鈕內容；省略＝⋯ 圖示 */
+  trigger?: ReactNode;
+  /** 自訂觸發鈕 class；省略＝幽靈圖示鈕 */
+  className?: string;
+  /** 觸發鈕本身有可見文字時傳 false：名字交給文字，只留 title */
+  ariaLabelTrigger?: boolean;
+  /** 停用：觸發鈕停用，已開的選單一併收掉 */
+  disabled?: boolean;
 }
 
 // 彈層與視窗邊緣保留的距離
 const EDGE = 8;
 
-export function MoreMenu({ label, items, onOpen }: MoreMenuProps) {
+export function MoreMenu({
+  label,
+  items,
+  onOpen,
+  trigger,
+  className = "btn btn-ghost btn-icon",
+  ariaLabelTrigger = true,
+  disabled = false,
+}: MoreMenuProps) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number; maxHeight: number } | null>(
     null,
@@ -49,16 +66,24 @@ export function MoreMenu({ label, items, onOpen }: MoreMenuProps) {
   const focusPending = useRef(false);
   const menuId = useId();
 
-  // 只向下開：右緣對齊 ⋯ 鈕，水平夾在視窗內；高度給到視窗底為止，放不下就內捲
+  // 右緣對齊觸發鈕、水平夾在視窗內（右緣對齊會出界就改成左緣對齊，不蓋住觸發鈕）。
+  // 下方放得下就向下開；放不下而上方比較大就向上開。高度給到該側剩餘空間為止，放不下就內捲
   const reposition = useCallback(() => {
     const trigger = triggerRef.current;
     const menu = menuRef.current;
     if (!trigger || !menu) return;
     const rect = trigger.getBoundingClientRect();
     const width = menu.offsetWidth;
-    const top = rect.bottom + 4;
-    const left = Math.max(EDGE, Math.min(rect.right - width, window.innerWidth - width - EDGE));
-    setPlace({ top, left, maxHeight: Math.max(0, window.innerHeight - top - EDGE) });
+    // scrollHeight 是內容全高（含已被 maxHeight 截掉的部分），再補上上下框線
+    const natural = menu.scrollHeight + menu.offsetHeight - menu.clientHeight;
+    const below = Math.max(0, window.innerHeight - rect.bottom - 4 - EDGE);
+    const above = Math.max(0, rect.top - 4 - EDGE);
+    const openUp = natural > below && above > below;
+    const maxHeight = openUp ? above : below;
+    const top = openUp ? rect.top - 4 - Math.min(natural, maxHeight) : rect.bottom + 4;
+    const preferred = rect.right - width < EDGE ? rect.left : rect.right - width;
+    const left = Math.max(EDGE, Math.min(preferred, window.innerWidth - width - EDGE));
+    setPlace({ top, left, maxHeight });
   }, []);
 
   useLayoutEffect(() => {
@@ -76,6 +101,11 @@ export function MoreMenu({ label, items, onOpen }: MoreMenuProps) {
     focusPending.current = false;
     itemRefs.current[0]?.focus();
   }, [place]);
+
+  // 觸發鈕轉成停用：選單不能留在畫面上讓人執行
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -156,15 +186,16 @@ export function MoreMenu({ label, items, onOpen }: MoreMenuProps) {
       <button
         ref={triggerRef}
         type="button"
-        className="btn btn-ghost btn-icon"
-        aria-label={label}
+        className={className}
+        aria-label={ariaLabelTrigger ? label : undefined}
         title={label}
+        disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={toggle}
       >
-        <IconMore />
+        {trigger ?? <IconMore />}
       </button>
       {open &&
         createPortal(
