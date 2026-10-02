@@ -88,4 +88,4 @@ messages ─┬→ state_view ─┐
 
 視覺狀態欄未驗——顯示條件是後端 `world_has_state_bar` 為真或狀態樹非空，該桌與本機其餘桌皆不成立，現有資料驗不到；狀態資料層已由第 4 項覆蓋。API 路徑未跑（使用者拍板只走 CLI）。
 
-smoke test 期間另發現角色線 `drop-lane / rewrite-failed`（角色線續聊 session 被作廢、每輪冷開），成因在未被本案動到的 `lanes.rs`，已另立 `chars-lane-rewrite-drop`。
+smoke test 期間另發現角色線 `drop-lane / rewrite-failed`（角色線續聊 session 被作廢、每輪冷開），成因在未被本案動到的 `lanes.rs`，已另立 `chars-lane-rewrite-drop`（後併入 `usage-cache-audit`）。
