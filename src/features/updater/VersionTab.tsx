@@ -36,17 +36,23 @@ function UpdateSection({ center, preferences, onPreference }: VersionTabProps) {
       <p>{t("currentVersionLabel", { version: appVersion ?? "—" })}</p>
       <div className="row">
         {offer && !replaceFailed && (
-          <button type="button" disabled={!canStart} onClick={update.requestInstall}>
+          <button
+            type="button"
+            className="btn"
+            disabled={!canStart}
+            onClick={update.requestInstall}
+          >
             {phase.kind === "error" ? t("updateRetryBtn") : t("updateBtn")}
           </button>
         )}
         {replaceFailed && (
-          <button type="button" onClick={() => void openUrl(RELEASES_URL)}>
+          <button type="button" className="btn" onClick={() => void openUrl(RELEASES_URL)}>
             {t("openDownloadPageBtn")}
           </button>
         )}
         <button
           type="button"
+          className="btn"
           disabled={busy || update.checking}
           onClick={() => void update.checkNow()}
         >
@@ -87,6 +93,7 @@ function UpdateSection({ center, preferences, onPreference }: VersionTabProps) {
             <div className="row">
               <button
                 type="button"
+                className="btn btn-sm"
                 disabled={busy}
                 onClick={() => {
                   setSkipError("");

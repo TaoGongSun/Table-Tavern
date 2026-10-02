@@ -12,10 +12,10 @@ export function WaitingNotice({ onStop, onCancel }: { onStop: () => void; onCanc
     <div className="version-waiting" role="status">
       <p>{t("waitForResponse")}</p>
       <div className="row">
-        <button type="button" onClick={onStop}>
+        <button type="button" className="btn" onClick={onStop}>
           {t("stopResponseBtn")}
         </button>
-        <button type="button" onClick={onCancel}>
+        <button type="button" className="btn" onClick={onCancel}>
           {t("cancelWaitBtn")}
         </button>
       </div>
@@ -55,6 +55,7 @@ export function RollbackSection({ center }: { center: VersionCenter }) {
         <div className="row">
           <button
             type="button"
+            className="btn"
             disabled={busy}
             onClick={() => void store.startRollbackPrevious()}
           >
@@ -73,7 +74,7 @@ export function RollbackSection({ center }: { center: VersionCenter }) {
       {store.loadError && (
         <div className="row">
           <p role="alert">{t("versionsLoadFailed", { reason: store.loadError })}</p>
-          <button type="button" onClick={() => void store.refresh()}>
+          <button type="button" className="btn" onClick={() => void store.refresh()}>
             {t("refreshListBtn")}
           </button>
         </div>
@@ -123,12 +124,12 @@ function VersionRowButtons({
   return (
     <>
       {actions.rollback && (
-        <button type="button" disabled={disabled} onClick={onRollback}>
+        <button type="button" className="btn btn-sm" disabled={disabled} onClick={onRollback}>
           {t("rollbackToBtn")}
         </button>
       )}
       {actions.delete && (
-        <button type="button" disabled={disabled} onClick={onDelete}>
+        <button type="button" className="btn btn-sm" disabled={disabled} onClick={onDelete}>
           {t("versionDeleteBtn")}
         </button>
       )}
@@ -189,6 +190,7 @@ export function StorageSection({ center }: { center: VersionCenter }) {
                   {row.deletable ? (
                     <button
                       type="button"
+                      className="btn btn-sm"
                       disabled={busy}
                       onClick={() => void deleteBackup(row)}
                     >
@@ -197,7 +199,11 @@ export function StorageSection({ center }: { center: VersionCenter }) {
                   ) : (
                     <>
                       <span className="table-badge">{t("needsRepairBadge")}</span>
-                      <button type="button" onClick={() => void openFolder(row.directory)}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => void openFolder(row.directory)}
+                      >
                         {t("openFolderBtn")}
                       </button>
                     </>

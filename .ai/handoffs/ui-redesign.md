@@ -3,7 +3,7 @@ Task-ID: ui-redesign
 Title: 介面整體重新設計
 Status: in-progress
 Created: 2026-09-30T21:30:00+08:00
-Updated: 2026-10-02T15:20:00+08:00
+Updated: 2026-10-02T16:30:00+08:00
 
 ## Summary
 現行介面是 Opus 5.5 推出前做的，整體陽春。本案用新模型的設計能力重新設計整個 App 介面，並一併重新規劃各功能的顯示位置。
@@ -16,19 +16,17 @@ Updated: 2026-10-02T15:20:00+08:00
 - 保留 Emblem 的 token 層（顏色／字級 token 名、七套主題）與三條骨架規則；元件與版面全部重做。Emblem 剩下的實聊驗收併進本案〔作者裁決 2026-10-02〕。
 
 ## 進度
-- 分包 1（共用元件＋牌桌主畫面）、分包 2（大廳＋陣容欄）、分包 3（編輯頁三種＋世界書工具列）已完成並 commit 在本分支，施工規格與實作驗收都經 Opus／Sol／Grok 三方共識；定案重點在 [plans](../plans/ui-redesign.md)「分包 2／3 施工定案」。
-- 分包 3 程式落點：共用頁框 `src/views/EditPage.tsx`（角色卡／玩家卡 `CardEditor`、世界設定 `WorldEditor` 共用；單幕閱讀只借頂列樣式）、世界書工具列與條目 ⋯ 在 `src/features/worldbook/WorldbookSection.tsx`。
-- 分包 3 已實機驗（macOS release 800×600）：三種頁頂列與 ⋯ 內容、未儲存提示與返回守門、條目欄 Enter 只存條目、載入框、德文＋最大字級＋陣容欄最寬時頂列單行（主鈕不縮）、單幕閱讀頁匯出／返回／從這一幕繼續。
-- 分包 2 程式落點：大廳 `src/features/lobby/`（Lobby、TableCard、封面懶載、進出桌互斥鎖 useTableOp）、陣容欄 `src/views/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；舊 TableSidebar 與前幕浮層已刪。
-- 分包 2 已實機驗（macOS release 800×600／1280×800）：開機進大廳（含零桌首開、英文＋最大字級）、直式封面 2:3 與多圖上限、懶載、桌卡改名／刪桌、空桌回收、進桌／回大廳、窄欄↔寬欄即時切換（窄欄封存面板還原）、幕晶片選單、新增選單往上開、編輯頁點卡過未儲存守門、視窗變寬故事貼底。
-- 未實機驗：唯讀／需修復桌從大廳進入與徽章、十語系長字逐一看、分包 1 遺留項（唯讀桌、齒輪紅點、換幕提醒＋錯誤＋狀態同時、⋯ 鍵盤、Windows）。（大廳未設定 AI 引導、窄欄封存面板＋最大字級、寬欄上限＋最大字級已於分包 3 實機看過。）
-- 前幕面板已改成幕晶片的下拉選單（分包 2 完成）。
+- 分包 1（共用元件＋牌桌主畫面）、分包 2（大廳＋陣容欄）、分包 3（編輯頁三種＋世界書工具列）、分包 4（設定）已完成並 commit 在本分支；施工定案在 [plans](../plans/ui-redesign.md)「分包 2／3／4 施工定案」。分包 1–3 經 Opus／Sol／Grok 三方共識；分包 4 送審三方共識，實作驗收因 Grok 額度用完改 Opus＋Sol 兩方〔作者裁決 2026-10-02〕。
+- 程式落點：大廳 `src/features/lobby/`、陣容欄 `src/views/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；編輯頁共用頁框 `src/views/EditPage.tsx`、世界書工具列 `src/features/worldbook/WorldbookSection.tsx`；設定外框 `src/views/SettingsWindow.tsx`（守門、分頁、關閉鈕）、AI 表單與儲存列 `src/views/SettingsForm.tsx`、連線方式 `src/views/TransportChoice.tsx`、外部指定分頁 `src/features/settings/useRequestedTab.ts`、外框樣式 `src/styles/settings-window.css`。
+- 已實機驗（macOS release 800×600）：分包 1–3 見各自 commit 訊息；分包 4 俄文＋最大字級五分頁、儲存列四態按鈕不位移、未儲存遇 ×／切頁確認與取消；唯讀桌與需修復桌從大廳進入（徽章、寫入停用、修復整頁）；桌卡徽章長譯文截字。
+- 未實機驗：設定的 CLI 首次權限提示與外部指定分頁（齒輪紅點需有新版）、分包 1 遺留項（齒輪紅點、換幕提醒＋錯誤＋狀態同時、⋯ 鍵盤、Windows）。十語系長字：設定頁以俄文（各字串最長）代表，其他畫面未逐一看。
 
 ## 下一步
-施工分包 4（設定，見 plans「設定」與「施工分包」第 4 條）。流程同前：主線擬施工做法→送 /sol 與 /grok 審到三方共識→派子代理實作→主線 verify＋release 包實機→兩邊驗收。上列未實機驗項目在分包 4 實機時順帶看。
+施工分包 5（對話窗共用外框，遷移其餘對話窗；見 plans「對話窗」與「施工分包」第 5 條；設定視窗目前自有外框 `.settings-modal`，可評估併入）。流程：主線擬施工做法→送 /sol 與 /grok 審到共識（Grok 額度仍用完就先問使用者怎麼處理）→派子代理實作→主線 verify＋release 包實機→驗收。上列未實機驗項目順帶看。
 
 ## 實機測試備忘
 - 背景自動化點不到 aria-haspopup 的按鈕（⋯、幕晶片、封存圖示鈕），要請使用者代點；全螢幕操控的點擊送不進這個 app、背景鍵盤移焦也看不到焦點，都不可行。使用者點過 app 後背景點擊會失效，先 `open -a` 該 .app；重開 app 後先截圖確認畫面再點，免得點擊落到輸入區的發言鈕。
+- 造唯讀桌：複製一桌到新 ULID 目錄、加 `format.json` `{"format_version": 999}`；造需修復桌：只建 `.tt-staging-<ULID>/state.json`。測完刪掉。
 - 改語言／字級：關 app→備份 `~/Library/Application Support/TableTavern/config.json`→改 `preferences.language`／`text_size`（xs–xl）→開 app；測完原樣還原。觸發 AI 錯誤可暫改 `tier_models.best/balanced/fast` 為不存在的模型 id。
 - 側欄寬度存在 WebView 本地儲存，不隨 config 還原，拖過要拖回 224。
 - 實測前把 `~/Documents/TableTavern/worlds` 與 config.json 整份備份，測完 `diff -rq` 比對還原；要多圖／窄欄情境就複製一桌到合法 ULID 新目錄（26 字、Crockford 字元，改 state.json 的 id／name）再改角色 md 的 archived。

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
@@ -9,6 +9,7 @@ import { updateConfig } from "../features/settings/update-config";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../features/ai-connection/cli";
 import { CACHE_UPDATED_EVENT } from "./SmartFreeNewModelBanner";
+import { type CliInstallProgress, TransportChoice } from "./TransportChoice";
 
 // 檔位預設模型只是設定欄的預填建議（存進 config.json 後由使用者作主），程式邏輯不讀它
 const SUGGESTED_TIER_MODELS: Record<string, string> = {
@@ -16,15 +17,6 @@ const SUGGESTED_TIER_MODELS: Record<string, string> = {
   balanced: "anthropic/claude-sonnet-5",
   fast: "google/gemini-3.5-flash",
 };
-
-type CliInstallStage = "detect" | "install" | "login" | "verify" | "done" | "error";
-
-interface CliInstallProgress {
-  provider: string;
-  stage: CliInstallStage;
-  detail?: string;
-  logPath?: string;
-}
 
 interface SmartFreeRecommendation {
   model: string;
@@ -109,61 +101,12 @@ function recommendationAvailability(model: SmartFreeRecommendation) {
   return details.join(" · ");
 }
 
-function cliInstallStageText(stage: CliInstallStage) {
-  switch (stage) {
-    case "detect":
-      return t("cliInstallStageDetect");
-    case "install":
-      return t("cliInstallStageInstall");
-    case "login":
-      return t("cliInstallStageLogin");
-    case "verify":
-      return t("cliInstallStageVerify");
-    case "done":
-      return t("cliInstallStageDone");
-    case "error":
-      return t("cliInstallStageError");
-  }
-}
-
-// PowerShell 的錯誤代號與安裝腳本自身的訊息固定為英文，不受系統語言影響，
-// 可靠地認出「安裝檔被其他程序鎖住」（防毒掃描中、工具還在跑）這類失敗
-const FILE_LOCKED_MARKERS = [
-  "RemoveFileSystemItemIOError",
-  "being used by another process",
-  "Failed to install",
-];
-
-// 連不上服務商（下載失敗的 PowerShell 錯誤代號）或登入視窗沒走完（我們自己的錯誤字串）
-const NETWORK_MARKERS = [
-  "InvokeRestMethodCommand",
-  "InvokeWebRequestCommand",
-  "login window closed or timed out",
-  "verification failed",
-];
-
-function cliInstallErrorHint(detail: string | undefined) {
-  if (!detail) {
-    return null;
-  }
-  if (FILE_LOCKED_MARKERS.some((marker) => detail.includes(marker))) {
-    return t("cliInstallHintFileLocked");
-  }
-  if (NETWORK_MARKERS.some((marker) => detail.includes(marker))) {
-    return t("cliInstallHintNetwork");
-  }
-  return null;
-}
-
 const CLI_INSTALL_URLS: Record<string, string> = {
   claude: "claude.ai",
   codex: "chatgpt.com/codex",
   agy: "antigravity.google",
   grok: "x.ai/cli",
 };
-
-// 有非互動登出指令的才換得了帳號；agy 只有 TUI 裡的 /logout，那列維持「重新驗證」
-const CLI_SWITCHABLE = new Set(["claude", "codex", "grok"]);
 
 // 系統權限預告只在每家 CLI 第一次啟用時彈一次；說明本身在設定頁常駐，事後查得到
 function cliNoticeKey(id: string) {
@@ -172,14 +115,26 @@ function cliNoticeKey(id: string) {
 
 const CLI_RISK_KEYS = ["risk1", "risk2", "risk3", "risk4"] as const;
 
+type SaveMessage = { kind: "ok" | "error"; text: string };
+
+// AI 分頁：表單填滿分頁＝欄位捲動區＋固定在底部的儲存列（未儲存提示、返回／不儲存返回、儲存設定）。
+// 儲存中或 CLI 權限提示開著時要擋住設定視窗的所有離開路徑，所以兩者一變就同步回報 onBlockingChange。
 export function Settings({
   config,
   onSaved,
   onDirty,
+  onBack,
+  onBlockingChange,
+  children,
 }: {
   config: AppConfig;
   onSaved: (c: AppConfig) => void;
   onDirty: (count: number) => void;
+  /** 儲存列左鈕：乾淨時「返回」、有修改時「不儲存返回」，同一個動作 */
+  onBack: () => void;
+  onBlockingChange: (blocked: boolean) => void;
+  /** 接在捲動區尾端、不屬於這張表單草稿的即存設定 */
+  children?: ReactNode;
 }) {
   const [apiKey, setApiKey] = useState(config.api_keys["openrouter"] ?? "");
   const [tierModels, setTierModels] = useState<Record<string, string>>({
@@ -212,12 +167,33 @@ export function Settings({
   const stableFree = transport === "api" && onOpenRouter && modelMode === "stable_free";
   const recommendedApiModel = transport === "api" && onOpenRouter && modelMode === "recommended";
   const fixedApiModel = stableFree || recommendedApiModel;
-  const [permissionNotice, setPermissionNotice] = useState("");
+  const [permissionNotice, setPermissionNoticeState] = useState("");
+  const noticeRef = useRef("");
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
   const [clis, setClis] = useState<CliInfo[] | null>(cachedClis());
   const catalogs = useModelCatalogs();
   const [customTiers, setCustomTiers] = useState<Record<string, boolean>>({});
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<SaveMessage | null>(null);
+  const [saving, setSaving] = useState(false);
+  // 同步守門：連按兩下送出時第二次 render 還沒發生，state 擋不住
+  const savingRef = useRef(false);
+
+  // 阻擋＝儲存中∥權限提示開著：兩者任一變動都依兩個 ref 重算後回報，不各自寫死 true／false
+  function reportBlocking() {
+    onBlockingChange(savingRef.current || noticeRef.current !== "");
+  }
+
+  function setSavingNow(next: boolean) {
+    savingRef.current = next;
+    setSaving(next);
+    reportBlocking();
+  }
+
+  function setPermissionNotice(provider: string) {
+    noticeRef.current = provider;
+    setPermissionNoticeState(provider);
+    reportBlocking();
+  }
   const [installingCli, setInstallingCli] = useState<string | null>(null);
   const [installProgress, setInstallProgress] = useState<Record<string, CliInstallProgress>>({});
   const cliPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -304,7 +280,10 @@ export function Settings({
     } catch (reason) {
       const error = String(reason);
       const cooldown = error.match(/^login-cooldown:(\d+)$/);
-      setMessage(cooldown ? t("cliLoginCooldown", { secs: cooldown[1] }) : error);
+      setMessage({
+        kind: "error",
+        text: cooldown ? t("cliLoginCooldown", { secs: cooldown[1] }) : error,
+      });
       if (!repeat) setInstallingCli(null);
       return;
     }
@@ -428,11 +407,27 @@ export function Settings({
     return () => onDirty(0);
   }, [dirtyCount, onDirty]);
 
+  // 「已儲存」留到玩家再動手改才消失；存檔成功後 N→0 不清，錯誤訊息留到下次存檔
+  const previousDirty = useRef(dirtyCount);
+  useEffect(() => {
+    if (previousDirty.current === 0 && dirtyCount > 0) {
+      setMessage((current) => (current?.kind === "ok" ? null : current));
+    }
+    previousDirty.current = dirtyCount;
+  }, [dirtyCount]);
+
+  // 視窗被外面直接收掉時別把阻擋狀態留在外框
+  const blockingRef = useRef(onBlockingChange);
+  blockingRef.current = onBlockingChange;
+  useEffect(() => () => blockingRef.current(false), []);
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("");
+    // 權限提示開著時底下欄位已停用，這裡再擋一次（Enter 送出等繞過按鈕的路徑）
+    if (savingRef.current || noticeRef.current !== "") return;
+    setMessage(null);
     if (transport !== "api" && !riskAccepted) {
-      setMessage(t("riskRequired"));
+      setMessage({ kind: "error", text: t("riskRequired") });
       return;
     }
     const preferences: Record<string, unknown> = {};
@@ -490,19 +485,24 @@ export function Settings({
     if (Object.keys(preferences).length > 0) patch.preferences = preferences;
     if (Object.keys(apiKeys).length > 0) patch.api_keys = apiKeys;
     if (Object.keys(tierPatch).length > 0) patch.tier_models = tierPatch;
+    if (Object.keys(patch).length === 0) {
+      setMessage({ kind: "ok", text: t("saved") });
+      return;
+    }
+    setSavingNow(true);
     try {
-      if (Object.keys(patch).length === 0) {
-        setMessage(t("saved"));
-        return;
-      }
       const saved = await updateConfig(patch);
       onSaved(saved);
-      setMessage(t("saved"));
-      if (transport !== "api" && saved.preferences[cliNoticeKey(transport)] !== true) {
-        setPermissionNotice(transport);
-      }
+      setMessage({ kind: "ok", text: t("saved") });
+      const notice =
+        transport !== "api" && saved.preferences[cliNoticeKey(transport)] !== true ? transport : "";
+      // 先立提示再解除儲存中：阻擋狀態一路維持，不留讓人離開的空檔
+      if (notice) setPermissionNotice(notice);
+      setSavingNow(false);
     } catch (reason) {
-      setMessage(String(reason));
+      // 失敗保留草稿，恢復可編輯
+      setMessage({ kind: "error", text: String(reason) });
+      setSavingNow(false);
     }
   }
 
@@ -517,234 +517,112 @@ export function Settings({
     }
   }
 
+  const statusShown = message !== null || dirtyCount > 0;
+  // 權限提示開著時背景整片不可聚焦（含捲動區尾端的即存設定與儲存列），焦點只留在提示裡
+  const noticeOpen = permissionNotice !== "";
+
   return (
-    <form id="ai-settings-form" onSubmit={save} className="settings-form">
-        <fieldset className="transport-choice">
-          <legend>{t("transportLegend")}</legend>
-          <label className="inline">
-            <input
-              type="radio"
-              name="transport"
-              checked={transport === "api"}
-              onChange={() => setTransport("api")}
-            />
-            {t("transportApi")}
-          </label>
-          {(["claude", "codex", "agy", "grok"] as const).map((id) => {
-            // clis === null＝偵測還沒回來，與「偵測不到」是兩回事：此時不給按鈕，避免誤按一鍵安裝
-            const detecting = clis === null;
-            const found = clis?.find((c) => c.id === id);
-            const progress = installProgress[id];
-            const connected = config.preferences[cliConnectedKey(id)] === true;
-            return (
-              <label key={id} className="inline">
+    <form id="ai-settings-form" onSubmit={save} className="settings-ai-form">
+      <div className="settings-scroll" inert={noticeOpen}>
+        {/* 儲存中或權限提示開著時整片欄位停用；提示畫在這個 fieldset 外，才按得到確認 */}
+        <fieldset
+          className="settings-form settings-fieldset"
+          disabled={saving || noticeOpen}
+        >
+          <TransportChoice
+            transport={transport}
+            onTransport={setTransport}
+            clis={clis}
+            config={config}
+            installingCli={installingCli}
+            installProgress={installProgress}
+            onInstall={(id, switchAccount) => void installCli(id, switchAccount)}
+          />
+          {transport !== "api" && (
+            <div className="risk-box" role="note">
+              <strong>{t("riskTitle")}</strong>
+              <ul>
+                {CLI_RISK_KEYS.map((key) => (
+                  <li key={key}>{t(key)}</li>
+                ))}
+              </ul>
+              <label className="inline">
                 <input
-                  type="radio"
-                  name="transport"
-                  disabled={!found}
-                  checked={transport === id}
-                  onChange={() => setTransport(id)}
+                  type="checkbox"
+                  checked={riskAccepted}
+                  onChange={(e) => setRiskAccepted(e.currentTarget.checked)}
                 />
-                {CLI_LABELS[id]}
-                {t("cliSubscriptionSuffix")}
-                {detecting ? (
-                  <span className="cli-version" role="status">
-                    {t("cliDetecting")}
-                  </span>
-                ) : found ? (
-                  <>
-                    <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
-                    {connected && installingCli !== id ? (
-                      <>
-                        <span className="cli-connected">{t("cliConnectedBadge")}</span>
-                        <button
-                          type="button"
-                          disabled={installingCli !== null && installingCli !== id}
-                          onClick={() => void installCli(id)}
-                        >
-                          {t("cliReverifyBtn")}
-                        </button>
-                        {/* 換帳號要先登出，取消登入就回不去舊帳號，所以跟重新驗證分成兩顆 */}
-                        {CLI_SWITCHABLE.has(id) && (
-                          <button
-                            type="button"
-                            disabled={installingCli !== null && installingCli !== id}
-                            onClick={() => void installCli(id, true)}
-                          >
-                            {t("cliSwitchAccountBtn")}
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={installingCli !== null && installingCli !== id}
-                        onClick={() => void installCli(id)}
-                      >
-                        {installingCli === id
-                          ? t("cliInstalling", { provider: CLI_LABELS[id] })
-                          : t("cliLoginVerifyBtn")}
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <span className="cli-version">{t("cliNotDetected")}</span>
-                    <button
-                      type="button"
-                      disabled={installingCli !== null && installingCli !== id}
-                      onClick={() => void installCli(id)}
-                    >
-                      {installingCli === id
-                        ? t("cliInstalling", { provider: CLI_LABELS[id] })
-                        : t("cliInstallBtn")}
-                    </button>
-                  </>
-                )}
-                {progress && (
-                  <span
-                    className={`cli-install-progress${progress.stage === "error" ? " cli-install-error" : ""}`}
-                    role={progress.stage === "error" ? "alert" : "status"}
-                  >
-                    <strong>{cliInstallStageText(progress.stage)}</strong>
-                    {progress.stage === "error" && cliInstallErrorHint(progress.detail) && (
-                      <span className="cli-install-hint">{cliInstallErrorHint(progress.detail)}</span>
-                    )}
-                    {progress.detail && (
-                      <span className="cli-install-detail">{progress.detail}</span>
-                    )}
-                    {progress.logPath && (
-                      <small>{t("cliInstallLogPath", { path: progress.logPath })}</small>
-                    )}
-                  </span>
-                )}
+                {t("riskAccept")}
               </label>
-            );
-          })}
-        </fieldset>
-        {transport !== "api" && (
-          <div className="risk-box" role="note">
-            <strong>{t("riskTitle")}</strong>
-            <ul>
-              {CLI_RISK_KEYS.map((key) => (
-                <li key={key}>{t(key)}</li>
-              ))}
-            </ul>
-            <label className="inline">
-              <input
-                type="checkbox"
-                checked={riskAccepted}
-                onChange={(e) => setRiskAccepted(e.currentTarget.checked)}
-              />
-              {t("riskAccept")}
-            </label>
-          </div>
-        )}
-        {transport !== "api" && (
-          <p className="cli-permission-note" role="note">
-            {t("cliPermissionNote", { provider: CLI_LABELS[transport] ?? transport })}
-          </p>
-        )}
-        {/* 每家 CLI 第一次啟用時擋一次：此時 CLI 還沒被叫起來，玩家先知道等一下的彈窗是誰在問 */}
-        {permissionNotice && (
-          <div className="modal-overlay" onClick={() => void ackPermissionNotice()}>
-            <div
-              className="modal"
-              role="dialog"
-              aria-modal="true"
-              aria-label={t("cliPermissionTitle")}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <h2>{t("cliPermissionTitle")}</h2>
-              <p>{t("cliPermissionNote", { provider: CLI_LABELS[permissionNotice] ?? permissionNotice })}</p>
-              <div className="ai-gen-footer">
-                <button type="button" onClick={() => void ackPermissionNotice()}>
-                  {t("cliPermissionAck")}
-                </button>
-              </div>
             </div>
-          </div>
-        )}
-        {/* OpenRouter 專屬欄位只在 API 直連時顯示，避免 CLI 使用者誤以為必填 */}
-        {transport === "api" && (
-          <>
-            <label>
-              {t("apiKeyLabel")}
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.currentTarget.value)}
-                placeholder={t("apiKeyPlaceholder")}
-              />
-            </label>
-            {/* 貼錯的當下就講，不必等到發言才撞 401（那時的訊息還會把人導去 CLI 的重新驗證） */}
-            {keyWarning && (
-              <p className="field-warn" role="alert">
-                {t(keyWarning)}
-              </p>
-            )}
-          </>
-        )}
-        {transport === "api" ? (
-          <>
-            <label>
-              {t("imageModelLabel")}
-              <input value={imageModel} onChange={(e) => setImageModel(e.currentTarget.value)} />
-            </label>
-            {onOpenRouter && (
-              <fieldset className="transport-choice">
-                <legend>{t("modelModeLegend")}</legend>
-                {/* 今日免費配額是全帳號共用池，穩定免費與推薦模式都顯示 */}
-                {fixedApiModel && smartStatus && (
-                  <p className="cli-version" role="status">
-                    {smartStatus.freeDaily
-                      ? t("smartFreeDailyLeft", {
-                          remaining: smartStatus.freeDaily.remaining,
-                          limit: smartStatus.freeDaily.limit,
-                        })
-                      : t("smartFreeUnlimited")}
-                  </p>
-                )}
-                <div className="smart-free-recommendations">
-                  <p className="smart-free-recommendation-title">{t("smartFreeStableTitle")}</p>
-                  <label className="smart-free-recommendation">
-                    <input
-                      type="radio"
-                      name="api-model-mode"
-                      checked={stableFree}
-                      onChange={() => setModelMode("stable_free")}
-                    />
-                    <span className="smart-free-recommendation-copy">
-                      <strong>
-                        {smartRecommendations.stable[0]?.label ?? t("smartFreeStableAuto")}
-                      </strong>
-                      {smartRecommendations.stable[0] ? (
-                        <small>{recommendationReason(smartRecommendations.stable[0])}</small>
-                      ) : (
-                        <small>{t("smartFreeNoStable")}</small>
-                      )}
-                    </span>
-                  </label>
-                  {/* 第二名不自動送出，只供第一名當天失效時手動改用（點了＝固定該支） */}
-                  {smartRecommendations.stable.slice(1).map((model) => (
-                    <label key={model.model} className="smart-free-recommendation">
+          )}
+          {transport !== "api" && (
+            <p className="cli-permission-note" role="note">
+              {t("cliPermissionNote", { provider: CLI_LABELS[transport] ?? transport })}
+            </p>
+          )}
+          {/* OpenRouter 專屬欄位只在 API 直連時顯示，避免 CLI 使用者誤以為必填 */}
+          {transport === "api" && (
+            <>
+              <label>
+                {t("apiKeyLabel")}
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.currentTarget.value)}
+                  placeholder={t("apiKeyPlaceholder")}
+                />
+              </label>
+              {/* 貼錯的當下就講，不必等到發言才撞 401（那時的訊息還會把人導去 CLI 的重新驗證） */}
+              {keyWarning && (
+                <p className="field-warn" role="alert">
+                  {t(keyWarning)}
+                </p>
+              )}
+            </>
+          )}
+          {transport === "api" ? (
+            <>
+              <label>
+                {t("imageModelLabel")}
+                <input value={imageModel} onChange={(e) => setImageModel(e.currentTarget.value)} />
+              </label>
+              {onOpenRouter && (
+                <fieldset className="transport-choice">
+                  <legend>{t("modelModeLegend")}</legend>
+                  {/* 今日免費配額是全帳號共用池，穩定免費與推薦模式都顯示 */}
+                  {fixedApiModel && smartStatus && (
+                    <p className="cli-version" role="status">
+                      {smartStatus.freeDaily
+                        ? t("smartFreeDailyLeft", {
+                            remaining: smartStatus.freeDaily.remaining,
+                            limit: smartStatus.freeDaily.limit,
+                          })
+                        : t("smartFreeUnlimited")}
+                    </p>
+                  )}
+                  <div className="smart-free-recommendations">
+                    <p className="smart-free-recommendation-title">{t("smartFreeStableTitle")}</p>
+                    <label className="smart-free-recommendation">
                       <input
                         type="radio"
                         name="api-model-mode"
-                        checked={recommendedModelSelected(model.model)}
-                        onChange={() => selectRecommendedModel(model.model)}
+                        checked={stableFree}
+                        onChange={() => setModelMode("stable_free")}
                       />
                       <span className="smart-free-recommendation-copy">
-                        <strong>{model.label}</strong>
-                        <small>{recommendationReason(model)}</small>
+                        <strong>
+                          {smartRecommendations.stable[0]?.label ?? t("smartFreeStableAuto")}
+                        </strong>
+                        {smartRecommendations.stable[0] ? (
+                          <small>{recommendationReason(smartRecommendations.stable[0])}</small>
+                        ) : (
+                          <small>{t("smartFreeNoStable")}</small>
+                        )}
                       </span>
                     </label>
-                  ))}
-                  <p className="smart-free-recommendation-title">{t("smartFreeLimitedTitle")}</p>
-                  {smartRecommendations.limited.length === 0 ? (
-                    <p className="cli-version">{t("smartFreeNoLimited")}</p>
-                  ) : (
-                    smartRecommendations.limited.map((model) => (
+                    {/* 第二名不自動送出，只供第一名當天失效時手動改用（點了＝固定該支） */}
+                    {smartRecommendations.stable.slice(1).map((model) => (
                       <label key={model.model} className="smart-free-recommendation">
                         <input
                           type="radio"
@@ -754,168 +632,236 @@ export function Settings({
                         />
                         <span className="smart-free-recommendation-copy">
                           <strong>{model.label}</strong>
-                          <span>{recommendationAvailability(model)}</span>
                           <small>{recommendationReason(model)}</small>
                         </span>
                       </label>
-                    ))
-                  )}
-                  <label className="inline smart-free-notify-toggle">
-                    <input
-                      type="checkbox"
-                      checked={notifyNewModels}
-                      onChange={(e) => setNotifyNewModels(e.currentTarget.checked)}
-                    />
-                    {t("smartFreeNotifyLabel")}
-                  </label>
-                </div>
-                <label className="inline">
-                  <input
-                    type="radio"
-                    name="api-model-mode"
-                    checked={modelMode !== "stable_free" && modelMode !== "recommended"}
-                    onChange={() => setModelMode("manual")}
-                  />
-                  {t("manualModelOption")}
-                </label>
-              </fieldset>
-            )}
-            {!fixedApiModel &&
-              (["best", "balanced", "fast"] as const).map((tier) => (
-                <label key={tier}>
-                  {t("tierModelApiLabel", { tier: tierLabel(tier) })}
-                  <input
-                    list="openrouter-models"
-                    value={tierModels[tier] ?? ""}
-                    onChange={(e) =>
-                      setTierModels({ ...tierModels, [tier]: e.currentTarget.value })
-                    }
-                  />
-                </label>
-              ))}
-            <datalist id="openrouter-models">
-              {(catalogs["api"] ?? []).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </datalist>
-          </>
-        ) : (
-          <>
-            {(["best", "balanced", "fast"] as const).map((tier) => {
-              const key = `${transport}:${tier}`;
-              const value = tierModels[key] ?? "";
-              const catalog = catalogs[transport] ?? [];
-              const custom =
-                customTiers[key] ?? (value !== "" && !catalog.some((m) => m.id === value));
-              return (
-                <label key={key}>
-                  {t("tierModelCliLabel", { tier: tierLabel(tier) })}
-                  <select
-                    value={custom ? "__custom__" : value}
-                    onChange={(e) => {
-                      const next = e.currentTarget.value;
-                      if (next === "__custom__") {
-                        setCustomTiers({ ...customTiers, [key]: true });
-                      } else {
-                        setCustomTiers({ ...customTiers, [key]: false });
-                        setTierModels({ ...tierModels, [key]: next });
-                      }
-                    }}
-                  >
-                    <option value="">{t("cliDefaultOption")}</option>
-                    {catalog.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
                     ))}
-                    <option value="__custom__">{t("customModelOption")}</option>
-                  </select>
-                  {custom && (
+                    <p className="smart-free-recommendation-title">{t("smartFreeLimitedTitle")}</p>
+                    {smartRecommendations.limited.length === 0 ? (
+                      <p className="cli-version">{t("smartFreeNoLimited")}</p>
+                    ) : (
+                      smartRecommendations.limited.map((model) => (
+                        <label key={model.model} className="smart-free-recommendation">
+                          <input
+                            type="radio"
+                            name="api-model-mode"
+                            checked={recommendedModelSelected(model.model)}
+                            onChange={() => selectRecommendedModel(model.model)}
+                          />
+                          <span className="smart-free-recommendation-copy">
+                            <strong>{model.label}</strong>
+                            <span>{recommendationAvailability(model)}</span>
+                            <small>{recommendationReason(model)}</small>
+                          </span>
+                        </label>
+                      ))
+                    )}
+                    <label className="inline smart-free-notify-toggle">
+                      <input
+                        type="checkbox"
+                        checked={notifyNewModels}
+                        onChange={(e) => setNotifyNewModels(e.currentTarget.checked)}
+                      />
+                      {t("smartFreeNotifyLabel")}
+                    </label>
+                  </div>
+                  <label className="inline">
                     <input
-                      value={value}
-                      placeholder={t("customModelPlaceholder")}
+                      type="radio"
+                      name="api-model-mode"
+                      checked={modelMode !== "stable_free" && modelMode !== "recommended"}
+                      onChange={() => setModelMode("manual")}
+                    />
+                    {t("manualModelOption")}
+                  </label>
+                </fieldset>
+              )}
+              {!fixedApiModel &&
+                (["best", "balanced", "fast"] as const).map((tier) => (
+                  <label key={tier}>
+                    {t("tierModelApiLabel", { tier: tierLabel(tier) })}
+                    <input
+                      list="openrouter-models"
+                      value={tierModels[tier] ?? ""}
                       onChange={(e) =>
-                        setTierModels({ ...tierModels, [key]: e.currentTarget.value })
+                        setTierModels({ ...tierModels, [tier]: e.currentTarget.value })
                       }
                     />
-                  )}
-                </label>
-              );
-            })}
-            <p className="cli-version" role="note">
-              {transport === "claude"
-                ? t("cliCatalogClaude")
-                : transport === "agy"
-                  ? t("cliCatalogAgy")
-                  : transport === "grok"
-                    ? t("cliCatalogGrok")
-                  : t("cliCatalogCodex")}
-            </p>
-          </>
-        )}
-        {transport === "claude" && (
-          <details>
-            <summary>{t("claudeCompatSummary")}</summary>
+                  </label>
+                ))}
+              <datalist id="openrouter-models">
+                {(catalogs["api"] ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </datalist>
+            </>
+          ) : (
+            <>
+              {(["best", "balanced", "fast"] as const).map((tier) => {
+                const key = `${transport}:${tier}`;
+                const value = tierModels[key] ?? "";
+                const catalog = catalogs[transport] ?? [];
+                const custom =
+                  customTiers[key] ?? (value !== "" && !catalog.some((m) => m.id === value));
+                return (
+                  <label key={key}>
+                    {t("tierModelCliLabel", { tier: tierLabel(tier) })}
+                    <select
+                      value={custom ? "__custom__" : value}
+                      onChange={(e) => {
+                        const next = e.currentTarget.value;
+                        if (next === "__custom__") {
+                          setCustomTiers({ ...customTiers, [key]: true });
+                        } else {
+                          setCustomTiers({ ...customTiers, [key]: false });
+                          setTierModels({ ...tierModels, [key]: next });
+                        }
+                      }}
+                    >
+                      <option value="">{t("cliDefaultOption")}</option>
+                      {catalog.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                      <option value="__custom__">{t("customModelOption")}</option>
+                    </select>
+                    {custom && (
+                      <input
+                        value={value}
+                        placeholder={t("customModelPlaceholder")}
+                        onChange={(e) =>
+                          setTierModels({ ...tierModels, [key]: e.currentTarget.value })
+                        }
+                      />
+                    )}
+                  </label>
+                );
+              })}
+              <p className="cli-version" role="note">
+                {transport === "claude"
+                  ? t("cliCatalogClaude")
+                  : transport === "agy"
+                    ? t("cliCatalogAgy")
+                    : transport === "grok"
+                      ? t("cliCatalogGrok")
+                    : t("cliCatalogCodex")}
+              </p>
+            </>
+          )}
+          {transport === "claude" && (
+            <details>
+              <summary>{t("claudeCompatSummary")}</summary>
+              <label>
+                {t("claudeCompatBaseUrlLabel")}
+                <input
+                  value={claudeCompatBaseUrl}
+                  onChange={(e) => setClaudeCompatBaseUrl(e.currentTarget.value)}
+                  placeholder="https://api.example.com"
+                />
+              </label>
+              <label>
+                {t("claudeCompatKeyLabel")}
+                <input
+                  type="password"
+                  value={claudeCompatKey}
+                  onChange={(e) => setClaudeCompatKey(e.currentTarget.value)}
+                />
+              </label>
+              <p role="note">{t("claudeCompatHint")}</p>
+            </details>
+          )}
+          {/* 智慧免費自動挑模型，不走檔位→模型解析，這欄對它沒作用，藏起來 */}
+          {!fixedApiModel && (
             <label>
-              {t("claudeCompatBaseUrlLabel")}
-              <input
-                value={claudeCompatBaseUrl}
-                onChange={(e) => setClaudeCompatBaseUrl(e.currentTarget.value)}
-                placeholder="https://api.example.com"
-              />
+              {t("gmTierLabel")}
+              <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
+                {(["best", "balanced", "fast"] as const).map((tier) => (
+                  <option key={tier} value={tier}>
+                    {tierLabel(tier)}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label>
-              {t("claudeCompatKeyLabel")}
-              <input
-                type="password"
-                value={claudeCompatKey}
-                onChange={(e) => setClaudeCompatKey(e.currentTarget.value)}
-              />
-            </label>
-            <p role="note">{t("claudeCompatHint")}</p>
-          </details>
-        )}
-        {/* 智慧免費自動挑模型，不走檔位→模型解析，這欄對它沒作用，藏起來 */}
-        {!fixedApiModel && (
+          )}
           <label>
-            {t("gmTierLabel")}
-            <select value={gmTier} onChange={(e) => setGmTier(e.currentTarget.value)}>
-              {(["best", "balanced", "fast"] as const).map((tier) => (
-                <option key={tier} value={tier}>
-                  {tierLabel(tier)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label>
-          {t("maxRoundLabel")}
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={maxRound}
-            onChange={(e) => setMaxRound(e.currentTarget.value)}
-          />
-        </label>
-        {/* 智慧免費必然在 OpenRouter 預設站台（設了自訂 URL 就不算智慧免費），這欄對它沒意義 */}
-        {transport === "api" && !fixedApiModel && (
-          <label>
-            {t("baseUrlLabel")}
+            {t("maxRoundLabel")}
             <input
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.currentTarget.value)}
-              placeholder="https://openrouter.ai/api/v1"
+              type="number"
+              min={1}
+              max={10}
+              value={maxRound}
+              onChange={(e) => setMaxRound(e.currentTarget.value)}
             />
           </label>
-        )}
-      {message && (
-        <div className="row">
-          <span role="status">{message}</span>
+          {/* 智慧免費必然在 OpenRouter 預設站台（設了自訂 URL 就不算智慧免費），這欄對它沒意義 */}
+          {transport === "api" && !fixedApiModel && (
+            <label>
+              {t("baseUrlLabel")}
+              <input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.currentTarget.value)}
+                placeholder="https://openrouter.ai/api/v1"
+              />
+            </label>
+          )}
+        </fieldset>
+        {children}
+      </div>
+      {/* 每家 CLI 第一次啟用時擋一次：此時 CLI 還沒被叫起來，玩家先知道等一下的彈窗是誰在問 */}
+      {permissionNotice && (
+        <div
+          className="modal-overlay"
+          onClick={(event) => {
+            // 只收這個提示，不能一路冒泡把設定視窗也關掉
+            event.stopPropagation();
+            void ackPermissionNotice();
+          }}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("cliPermissionTitle")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2>{t("cliPermissionTitle")}</h2>
+            <p>{t("cliPermissionNote", { provider: CLI_LABELS[permissionNotice] ?? permissionNotice })}</p>
+            <div className="ai-gen-footer">
+              <button type="button" onClick={() => void ackPermissionNotice()}>
+                {t("cliPermissionAck")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
+      <footer className="settings-foot" inert={noticeOpen}>
+        {/* 固定約兩行高、超長內捲：可聚焦才能只用鍵盤捲完長錯誤 */}
+        <div className="settings-foot-status" tabIndex={statusShown ? 0 : undefined}>
+          {message && <span role={message.kind === "ok" ? "status" : "alert"}>{message.text}</span>}
+          {dirtyCount > 0 && (
+            <span className="settings-unsaved" role="status">
+              {t("unsavedChanges", { n: dirtyCount })}
+            </span>
+          )}
+        </div>
+        {/* 兩種文案疊在同一格、寬度取最寬者：換字時按鈕不縮放、右邊的儲存鈕不位移 */}
+        <button type="button" className="btn settings-back" disabled={saving} onClick={onBack}>
+          <span className="settings-back-labels">
+            <span aria-hidden={dirtyCount > 0}>{t("settingsBack")}</span>
+            <span aria-hidden={dirtyCount === 0}>{t("settingsDiscard")}</span>
+          </span>
+        </button>
+        <button
+          type="submit"
+          className="btn btn-primary settings-save"
+          disabled={dirtyCount === 0 || saving}
+        >
+          {t("saveSettings")}
+        </button>
+      </footer>
     </form>
   );
 }

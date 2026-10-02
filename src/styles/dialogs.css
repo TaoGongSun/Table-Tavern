@@ -27,20 +27,6 @@
   margin-bottom: 0.75rem;
 }
 
-.tabs {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.tab {
-  border: none;
-}
-
-.tab-active {
-  background: var(--surface-2);
-  color: var(--ink-1);
-}
-
 .modal-close {
   border: none;
   padding: 0 0.7em;

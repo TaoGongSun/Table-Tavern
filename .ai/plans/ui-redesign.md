@@ -80,3 +80,10 @@
 - 世界設定頁：標題「世界設定」，原長說明改成 textarea 可見 label；world form 只包 textarea，世界書區在 form 外，頂列儲存只寫 world.md。世界書標題列「世界書 N 條」＋⋯（清理重複、匯出世界書、匯入重構卡、匯出重構卡）＋次「重構」＋主「新增條目」；重構執行中停用重構與匯入／匯出重構卡。條目列「編輯」＋⋯（刪除）；條目表單「儲存條目」「取消」「轉成角色卡」皆次鈕。一頁兩顆主鈕（儲存、新增條目）是規格例外，controls.css 註解寫明。
 - 單幕閱讀只換頂列外觀（返回、標題、匯出本幕＝次、從這一幕繼續＝主），不套 EditPage、事件列表與錯誤位置不動。
 - 裁切、AI 生圖、大圖檢視、重構對話窗不動（分包 5）。
+
+## 分包 4 施工定案（Opus／Sol／Grok 三方共識 2026-10-02）
+- 外框 `.settings-modal` 覆蓋舊 `.modal`（無 padding／max-height、overflow hidden、border-box、min-width/height 0），寬 min(37.5rem, 100vw−2rem)、高 min(31.25rem, 100vh−3rem)，固定尺寸切頁不跳；不加 transform／filter。兩段：分頁列＋內容區（flex 直向、overflow hidden，tabpanel flex 1）。捲動只一層：非 AI 頁 tabpanel 自捲；AI 頁 form 填滿＝捲動區＋底部儲存列，「儲存設定」是 form 內 submit。
+- 分頁列：視覺隱藏 h2「設定」；tablist 只包五顆 tab（role=tab、aria-selected、aria-controls、roving tabIndex），橫向捲動；←→Home End 移焦（preventDefault、scrollIntoView nearest），Enter/Space＝click。五顆共用 selectTab：同頁直接返回，否則過離開守門。分頁列最右、tablist 外一顆幽靈「關閉」（IconClose），五頁同位置；AI 頁底部「返回／不儲存返回」同動作照留。
+- 儲存列：狀態區固定約兩行高內捲（訊息 ok＝status／error＝alert＋未儲存 N 項）；左鈕兩種文案 grid 疊放佔最寬、換字不位移；「儲存設定」dirty 0 或儲存中停用。訊息 {kind,text}：save 開頭清，ok 只在 dirty 0→>0 時清。
+- 守門：阻擋＝儲存中∥CLI 權限提示開著，SettingsForm 在同一段處理器同步回報（成功時先立提示再清 saving）；提示畫在 disabled fieldset 外。玩家直接離開（分頁、×、返回、Esc、遮罩）阻擋時無效；confirmDiscard 重入鎖共用、finally 解除，確認回來後再檢查阻擋。外部 requestKey 保留最新一筆，阻擋與確認中都不處理也不標記，解除後處理最新；只有切頁完成或玩家取消才標記；外部切頁卸載焦點時移到新 tab。
+- transport 每列有框 div：radio＋名稱 label，狀態字與驗證／換帳號／安裝鈕、進度做兄弟節點，分支全保留。其他分頁內容與行為不動只換樣式；api_mode 進階區塊（即存、不算 dirty、看已存 config）放 AI 捲動區尾端。其他對話窗 `.modal` 不動（分包 5）。
