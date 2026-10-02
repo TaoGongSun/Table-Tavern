@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { AppConfig, WorldMeta } from "../shared/contracts/backend-contracts";
 import { PALETTE } from "../features/characters/card-model";
 import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotice";
@@ -21,6 +21,7 @@ import { Onboarding } from "./Onboarding";
 import { PlayView } from "./PlayView";
 import { TableSidebar } from "./TableSidebar";
 import { StateBar, WorkspaceHeader } from "./WorkspaceHeader";
+import type { SettingsTab } from "./SettingsWindow";
 
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
 const GM_COLOR = "#8a6a3c";
@@ -56,7 +57,7 @@ interface AppWorkspaceProps {
   onSwitchTable: (id: string) => void;
   onDeleteTable: (id: string) => void;
   onUndoImport: () => void;
-  onOpenSettings: (tab: "appearance" | "ai") => void;
+  onOpenSettings: (tab: SettingsTab) => void;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onConfigSaved: (config: AppConfig) => void;
   onEntryConverted: () => Promise<void>;
@@ -67,6 +68,10 @@ interface AppWorkspaceProps {
   skippedLines: number;
   onUseBackup: () => void;
   onOpenRepairFolder: () => void;
+  /** 側欄桌列表上方的提示。 */
+  sidebarNotice: ReactNode;
+  appVersion: string | null;
+  updateDot: boolean;
 }
 
 export function AppWorkspace({
@@ -106,6 +111,9 @@ export function AppWorkspace({
   skippedLines,
   onUseBackup,
   onOpenRepairFolder,
+  sidebarNotice,
+  appVersion,
+  updateDot,
 }: AppWorkspaceProps) {
   const {
     leaveGuard,
@@ -217,6 +225,10 @@ export function AppWorkspace({
         canUndoImport={imports.receipts.length > 0 && !chattedSinceImport}
         onUndoImport={() => void onUndoImport()}
         onOpenSettings={() => onOpenSettings("appearance")}
+        notice={sidebarNotice}
+        appVersion={appVersion}
+        updateDot={updateDot}
+        onOpenVersions={() => onOpenSettings("versions")}
       />
 
       <main className="chat-main">

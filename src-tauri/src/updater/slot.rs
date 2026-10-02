@@ -1,6 +1,9 @@
 //! 檢查、下載、安裝共用的一份更新。正在下載或安裝時，後來的檢查不得覆寫。
 //! 已下載還沒安裝不算忙碌：檢查照常進來。同一個版本維持已下載；別的版本改成已檢查。
 
+/// 前端靠這句辨認「要更新的版本已被換掉」，改文案要連前端一起改。
+pub(crate) const UPDATE_CHANGED: &str = "要更新的版本已經換了";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Phase {
     Idle,
@@ -68,7 +71,13 @@ impl<T: Clone> UpdateSlot<T> {
         }
     }
 
-    pub(crate) fn begin_download(&mut self) -> Result<T, String> {
+    /// `expected` 是玩家在畫面上看到並按下更新的那一版。槽裡已被後來的檢查換成別版時不下載，
+    /// 回 `UPDATE_CHANGED`，讓前端重新顯示最新的更新資訊。
+    pub(crate) fn begin_download(
+        &mut self,
+        expected: &str,
+        version_of: impl Fn(&T) -> &str,
+    ) -> Result<T, String> {
         match self.phase {
             Phase::Idle => Err("尚未檢查更新".to_owned()),
             Phase::Downloading => Err("已在下載".to_owned()),
@@ -78,6 +87,9 @@ impl<T: Clone> UpdateSlot<T> {
                     .update
                     .clone()
                     .ok_or_else(|| "尚未檢查更新".to_owned())?;
+                if version_of(&update) != expected {
+                    return Err(UPDATE_CHANGED.to_owned());
+                }
                 self.phase = Phase::Downloading;
                 Ok(update)
             }
@@ -131,21 +143,28 @@ impl<T: Clone> UpdateSlot<T> {
 mod tests {
     use super::*;
 
+    fn same<'a>(value: &'a &str) -> &'a str {
+        value
+    }
+
     fn downloaded<'a>(slot: &mut UpdateSlot<&'a str>, version: &'a str) {
         slot.store_check(Some(version), version);
-        assert_eq!(slot.begin_download().unwrap(), version);
+        assert_eq!(slot.begin_download(version, same).unwrap(), version);
         slot.finish_download(version.to_owned());
     }
 
     #[test]
     fn a_busy_check_does_not_replace_the_downloaded_version() {
         let mut slot = UpdateSlot::default();
-        assert_eq!(slot.begin_download().unwrap_err(), "尚未檢查更新");
+        assert_eq!(
+            slot.begin_download("0.3.0", same).unwrap_err(),
+            "尚未檢查更新"
+        );
         slot.store_check(Some("0.3.0"), "0.3.0");
         assert_eq!(slot.begin_install("0.3.0").unwrap_err(), "尚未下載");
 
-        assert_eq!(slot.begin_download().unwrap(), "0.3.0");
-        assert_eq!(slot.begin_download().unwrap_err(), "已在下載");
+        assert_eq!(slot.begin_download("0.3.0", same).unwrap(), "0.3.0");
+        assert_eq!(slot.begin_download("0.3.0", same).unwrap_err(), "已在下載");
         slot.store_check(Some("0.4.0"), "0.4.0");
         slot.store_check(None, "");
         assert_eq!(slot.current(), Some(&"0.3.0"));
@@ -165,7 +184,7 @@ mod tests {
         slot.store_check(Some("0.4.0"), "0.4.0");
         assert_eq!(slot.current(), Some(&"0.4.0"));
         assert_eq!(slot.begin_install("0.3.0").unwrap_err(), "尚未下載");
-        assert_eq!(slot.begin_download().unwrap(), "0.4.0");
+        assert_eq!(slot.begin_download("0.4.0", same).unwrap(), "0.4.0");
         slot.finish_download("0.4.0".to_owned());
         assert_eq!(slot.begin_install("0.4.0").unwrap(), "0.4.0");
     }
@@ -183,10 +202,10 @@ mod tests {
     fn a_failed_download_lets_a_later_check_replace_it() {
         let mut slot = UpdateSlot::default();
         slot.store_check(Some("0.3.0"), "0.3.0");
-        slot.begin_download().unwrap();
+        slot.begin_download("0.3.0", same).unwrap();
         slot.abort_download();
         slot.store_check(Some("0.4.0"), "0.4.0");
-        assert_eq!(slot.begin_download().unwrap(), "0.4.0");
+        assert_eq!(slot.begin_download("0.4.0", same).unwrap(), "0.4.0");
         slot.abort_download();
         assert_eq!(slot.begin_install("0.4.0").unwrap_err(), "尚未下載");
     }
@@ -202,5 +221,27 @@ mod tests {
         slot.store_check(None, "");
         assert_eq!(slot.current(), Some(&"0.3.0"));
         assert_eq!(slot.begin_install("0.3.0").unwrap(), "0.3.0");
+    }
+
+    #[test]
+    fn a_replaced_check_refuses_to_download_the_version_the_player_did_not_see() {
+        let mut slot = UpdateSlot::default();
+        slot.store_check(Some("0.3.0"), "0.3.0");
+        slot.store_check(Some("0.4.0"), "0.4.0");
+        assert_eq!(
+            slot.begin_download("0.3.0", same).unwrap_err(),
+            UPDATE_CHANGED
+        );
+        assert!(!slot.is_busy(), "拒絕時不進下載");
+        assert_eq!(slot.current(), Some(&"0.4.0"));
+        assert_eq!(slot.begin_download("0.4.0", same).unwrap(), "0.4.0");
+
+        let mut downloaded_a = UpdateSlot::default();
+        downloaded(&mut downloaded_a, "0.3.0");
+        downloaded_a.store_check(Some("0.5.0"), "0.5.0");
+        assert_eq!(
+            downloaded_a.begin_download("0.3.0", same).unwrap_err(),
+            UPDATE_CHANGED
+        );
     }
 }
