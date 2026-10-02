@@ -209,6 +209,7 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         last_call_epoch: 1_000,
         last_prompt_tokens: 0,
         agy_usage: None,
+        redaction: REDACTION_VERSION,
     }
 }
 
@@ -546,6 +547,7 @@ async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
     let store_path = data::lanes_path(&root, &world_id).unwrap();
     let state = read_store(&store_path).values().next().unwrap().clone();
     assert_eq!(state.session_id, "agy-conversation-1");
+    assert_eq!(state.redaction, REDACTION_VERSION); // 新寫入的線一律標上目前的角色側渲染版本
 
     events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆1"));
     events.push(event(TranscriptKind::Player, "", "阿濤", "只有這句是新的"));
@@ -1265,4 +1267,110 @@ time.sleep(60)
         }
     }
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+fn legacy_arrival() -> TranscriptEvent {
+    event(
+        TranscriptKind::System,
+        "",
+        "GM",
+        "（角色回歸）〈騎士〉\n公開設定：\n王國騎士\n私有設定：\n奉密令而來",
+    )
+}
+
+fn card_private_event() -> TranscriptEvent {
+    let mut private = event(
+        TranscriptKind::System,
+        "",
+        "GM",
+        "（角色私設）〈騎士〉\n私有設定：\n奉密令而來",
+    );
+    private.gm_only = true;
+    private
+}
+
+/// card-arrival-private-leak 遷移：舊版合併回歸事件已送進角色線 session 才重開一次，三家都一樣；
+/// 新版本寫入後不再重開；只在未送段的舊事件增量遮掉即可；GM 線不因此重開。
+#[test]
+fn chars_lane_reopens_once_when_legacy_arrival_was_already_sent() {
+    let events = [
+        event(TranscriptKind::Player, "", "阿濤", "你好"),
+        legacy_arrival(),
+        event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"),
+    ];
+    let input = turn_input(&events, 0);
+    let mut old = lane_state(&events, 0);
+    old.redaction = 0;
+    for provider in [LaneProvider::Claude, LaneProvider::Grok, LaneProvider::Agy] {
+        let mut state = old.clone();
+        state.provider = provider.as_str().to_owned();
+        assert!(matches!(
+            plan_turn(Some(&state), &input, 1_010, provider),
+            TurnPlan::Reopen {
+                reason: ReopenReason::HistoryRedacted
+            }
+        ));
+        state.redaction = REDACTION_VERSION;
+        assert!(matches!(
+            plan_turn(Some(&state), &input, 1_010, provider),
+            TurnPlan::Resume { base: 3, .. }
+        ));
+    }
+
+    let mut gm_input = turn_input(&events, 0);
+    gm_input.lane = Lane::Gm;
+    assert!(matches!(
+        plan_turn(Some(&old), &gm_input, 1_010, LaneProvider::Claude),
+        TurnPlan::Resume { base: 3, .. }
+    ));
+
+    let mut unsent = lane_state(&events[..1], 0);
+    unsent.redaction = 0;
+    assert!(matches!(
+        plan_turn(Some(&unsent), &input, 1_010, LaneProvider::Claude),
+        TurnPlan::Resume { base: 1, .. }
+    ));
+}
+
+/// 角色線渲染略過私設事件但不動索引：增量夾著、位在尾端、整段都被略過都不留空行；
+/// 回覆對點照原事件序列走。GM 線照送全文。
+#[test]
+fn chars_lane_skips_card_private_event_without_shifting_watermark() {
+    let events = [
+        event(TranscriptKind::Player, "", "阿濤", "你好"),
+        card_private_event(),
+        event(TranscriptKind::Narration, "", "GM", "騎士推門進來"),
+        card_private_event(),
+    ];
+    let full = build_prompt(&events, 0, "尾段", true, Lane::Chars);
+    assert_eq!(
+        full,
+        "以下是到目前為止的對話紀錄：\n\n阿濤：你好\n\n（旁白）騎士推門進來\n\n——\n尾段"
+    );
+    assert_eq!(build_prompt(&events, 3, "尾段", false, Lane::Chars), "尾段");
+    assert!(build_prompt(&events, 0, "尾段", true, Lane::Gm).contains("奉密令而來"));
+
+    let reply = event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安");
+    let events = [
+        event(TranscriptKind::Player, "", "阿濤", "你好"),
+        reply.clone(),
+        card_private_event(),
+    ];
+    let mut state = lane_state(&events[..1], 0);
+    state.expected_reply = Some(ExpectedReply {
+        speaker_id: reply.speaker_id.clone(),
+        kind: reply.kind.clone(),
+        text: reply.text.clone(),
+    });
+    let input = turn_input(&events, 0);
+    match plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude) {
+        TurnPlan::Resume { base, .. } => {
+            assert_eq!(base, 2);
+            assert_eq!(
+                build_prompt(&events, base, "尾段", false, Lane::Chars),
+                "尾段"
+            );
+        }
+        TurnPlan::Reopen { .. } => panic!("回覆對得上就續聊"),
+    }
 }

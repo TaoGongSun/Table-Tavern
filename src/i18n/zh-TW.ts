@@ -98,6 +98,7 @@ export const zh = {
   usageReasonSceneChanged: "換幕了",
   usageReasonHistoryRewound: "紀錄被收回",
   usageReasonHistoryEdited: "紀錄被改過",
+  usageReasonHistoryRedacted: "舊回歸事件遮掉私設",
   usageReasonReplyDiverged: "上一句回覆對不上",
   usageReasonResumeFailed: "續聊呼叫失敗",
   usageReasonRewriteFailed: "回合後整理失敗",

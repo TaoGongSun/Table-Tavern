@@ -86,6 +86,7 @@ export const ptBR: Record<MsgKey, string> = {
   usageReasonSceneChanged: "Novo ato",
   usageReasonHistoryRewound: "Histórico revertido",
   usageReasonHistoryEdited: "Histórico editado",
+  usageReasonHistoryRedacted: "Segredos antigos ocultados",
   usageReasonReplyDiverged: "Resposta anterior divergente",
   usageReasonResumeFailed: "Falha na chamada de continuação",
   usageReasonRewriteFailed: "Falha na limpeza após a rodada",

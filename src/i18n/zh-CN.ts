@@ -86,6 +86,7 @@ export const zhCN: Record<MsgKey, string> = {
   usageReasonSceneChanged: "换幕了",
   usageReasonHistoryRewound: "记录被回退",
   usageReasonHistoryEdited: "记录被改过",
+  usageReasonHistoryRedacted: "旧回归事件遮掉私设",
   usageReasonReplyDiverged: "上一句回复对不上",
   usageReasonResumeFailed: "续聊调用失败",
   usageReasonRewriteFailed: "回合后整理失败",

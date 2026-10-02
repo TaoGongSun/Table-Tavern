@@ -86,6 +86,7 @@ export const de: Record<MsgKey, string> = {
   usageReasonSceneChanged: "Neuer Akt",
   usageReasonHistoryRewound: "Protokoll zurückgesetzt",
   usageReasonHistoryEdited: "Protokoll geändert",
+  usageReasonHistoryRedacted: "Alte Geheimnisse ausgeblendet",
   usageReasonReplyDiverged: "Vorherige Antwort passt nicht",
   usageReasonResumeFailed: "Fortsetzungsaufruf fehlgeschlagen",
   usageReasonRewriteFailed: "Nachbereitung nach der Runde fehlgeschlagen",

@@ -1,5 +1,6 @@
 use crate::data::{self, CharacterCard, TranscriptEvent, TranscriptKind, WorldbookEntry};
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use super::messages::replace_st_macros;
@@ -101,10 +102,15 @@ pub fn detect_new_card_arrivals<'a>(
         .collect()
 }
 
-/// 角色卡回歸事件的內文：固定前綴＋〈name〉一行，接公開設定＋私有設定全文
-/// （`{{user}}`／`{{char}}` 已代換）。格式對照 gm_system_prompt 的全卡呈現；
-/// chars 快照本來就含全卡（lib.rs load_active_cards 註解），回歸事件不算新洩漏，
-/// 呼叫端一律標 gm_only=false。
+/// 角色私設事件的固定前綴：角色卡回歸時私設另成一則 `gm_only` 事件，只有 GM 看得到，
+/// 角色側（見 `character_visible_text`）整則略過。
+pub const CARD_PRIVATE_PREFIX: &str = "（角色私設）";
+
+/// 私設段標頭。舊版回歸事件把它接在公開設定後面，角色側渲染靠它截掉私設段。
+const PRIVATE_SECTION: &str = "\n私有設定：";
+
+/// 角色卡回歸事件的內文：固定前綴＋〈name〉一行，接公開設定（`{{user}}`／`{{char}}` 已代換）。
+/// 所有線都看得到，呼叫端標 gm_only=false；私設另由 `card_private_text` 成一則 GM 專屬事件。
 pub fn card_arrival_text(card: &CharacterCard, user_name: &str) -> String {
     let mut text = format!("{}〈{}〉", data::CARD_ARRIVAL_PREFIX, card.name);
     if !card.public_md.trim().is_empty() {
@@ -113,13 +119,62 @@ pub fn card_arrival_text(card: &CharacterCard, user_name: &str) -> String {
             replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
         ));
     }
-    if !card.private_md.trim().is_empty() {
-        text.push_str(&format!(
-            "\n私有設定：\n{}",
-            replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
-        ));
-    }
     text
+}
+
+/// 角色卡回歸時的私設事件內文；私設空白回 `None`（不產事件）。呼叫端標 gm_only=true。
+pub fn card_private_text(card: &CharacterCard, user_name: &str) -> Option<String> {
+    let private = card.private_md.trim();
+    (!private.is_empty()).then(|| {
+        format!(
+            "{CARD_PRIVATE_PREFIX}〈{}〉{PRIVATE_SECTION}\n{}",
+            card.name,
+            replace_st_macros(private, user_name, Some(&card.name))
+        )
+    })
+}
+
+/// 舊版合併回歸事件：公開設定後面接著私設全文。檔案不改，角色側讀取時截掉私設段。
+pub fn is_legacy_card_arrival(event: &TranscriptEvent) -> bool {
+    event.kind == TranscriptKind::System
+        && event.text.starts_with(data::CARD_ARRIVAL_PREFIX)
+        && event.text.contains(PRIVATE_SECTION)
+}
+
+/// 非 GM 模型看得到的事件正文；`None`＝整則不給角色看。角色線、共線組裝、換幕摘要
+/// （摘要會變成下一幕的公開旁白）與角色側 keyword 觸發共用這一個入口，GM 一律讀原文。
+/// - 角色私設事件：整則略過；
+/// - 其他 `gm_only` System 事件：只留第一行（前綴＋標題）；
+/// - 舊版合併回歸事件：截掉私設段。
+pub fn character_visible_text(event: &TranscriptEvent) -> Option<Cow<'_, str>> {
+    if event.kind != TranscriptKind::System {
+        return Some(Cow::Borrowed(&event.text));
+    }
+    if event.gm_only {
+        if event.text.starts_with(CARD_PRIVATE_PREFIX) {
+            return None;
+        }
+        return Some(Cow::Borrowed(event.text.lines().next().unwrap_or_default()));
+    }
+    if is_legacy_card_arrival(event) {
+        let end = event.text.find(PRIVATE_SECTION).unwrap_or(event.text.len());
+        return Some(Cow::Borrowed(&event.text[..end]));
+    }
+    Some(Cow::Borrowed(&event.text))
+}
+
+/// 角色側看到的事件序列（略過與遮罩見 `character_visible_text`）。只給 keyword 觸發這類
+/// 「看內容」的用途；lane 水位、指紋與回覆對點一律用原事件序列，不可拿這份頂替。
+pub fn character_events(events: &[TranscriptEvent]) -> Vec<TranscriptEvent> {
+    events
+        .iter()
+        .filter_map(|event| {
+            character_visible_text(event).map(|text| TranscriptEvent {
+                text: text.into_owned(),
+                ..event.clone()
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -289,21 +344,117 @@ mod tests {
         assert!(empty_present.is_empty());
     }
 
-    /// 回歸事件文字格式：固定前綴＋〈name〉一行，接公開設定與私有設定全文（`{{user}}` 已代換）；
-    /// 空的欄位不印該段標題。
+    /// 回歸事件只帶公開設定；私設另成一則（`{{user}}` 已代換），私設空白不產事件。
     #[test]
-    fn card_arrival_text_has_prefix_title_line_and_sections() {
-        let fox = card("fox-id", "狐狸", "{{user}} 認識牠。", "其實是隻妖狐。");
-        let text = card_arrival_text(&fox, "阿濤");
+    fn card_arrival_splits_public_event_and_private_event() {
+        let fox = card(
+            "fox-id",
+            "狐狸",
+            "{{user}} 認識牠。",
+            "{{user}} 不知道牠其實是妖狐。",
+        );
         assert_eq!(
-            text,
-            "（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。\n私有設定：\n其實是隻妖狐。"
+            card_arrival_text(&fox, "阿濤"),
+            "（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。"
+        );
+        assert_eq!(
+            card_private_text(&fox, "阿濤").as_deref(),
+            Some("（角色私設）〈狐狸〉\n私有設定：\n阿濤 不知道牠其實是妖狐。")
         );
 
-        let no_private = card("fox-id", "狐狸", "公開內容", "");
+        let no_private = card("fox-id", "狐狸", "公開內容", "  \n");
+        assert_eq!(card_private_text(&no_private, "阿濤"), None);
         assert_eq!(
             card_arrival_text(&no_private, "阿濤"),
             "（角色回歸）〈狐狸〉\n公開設定：\n公開內容"
+        );
+    }
+
+    /// 角色側渲染：私設事件整則略過、其他 gm_only 只留第一行、舊合併回歸事件截掉私設段，
+    /// 一般事件原文；`character_events` 照同規則產出，只少掉被略過的那則。
+    #[test]
+    fn character_view_hides_card_private_and_legacy_private_section() {
+        let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
+        let mut private = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            &card_private_text(&fox, "阿濤").unwrap(),
+        );
+        private.gm_only = true;
+        let public = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            &card_arrival_text(&fox, "阿濤"),
+        );
+        let legacy = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            "（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。\n私有設定：\n其實是妖狐。",
+        );
+        let mut person = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            "（人物登場）〈密探〉\n全文",
+        );
+        person.gm_only = true;
+        let line = event(
+            TranscriptKind::Dialogue,
+            "fox-id",
+            "狐狸",
+            "私有設定：只是台詞",
+        );
+
+        assert_eq!(character_visible_text(&private), None);
+        assert_eq!(
+            character_visible_text(&public).as_deref(),
+            Some("（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。")
+        );
+        assert!(is_legacy_card_arrival(&legacy));
+        assert!(!is_legacy_card_arrival(&public));
+        assert_eq!(
+            character_visible_text(&legacy).as_deref(),
+            Some("（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。")
+        );
+        assert_eq!(
+            character_visible_text(&person).as_deref(),
+            Some("（人物登場）〈密探〉")
+        );
+        assert_eq!(
+            character_visible_text(&line).as_deref(),
+            Some("私有設定：只是台詞")
+        );
+
+        let view = character_events(&[private, public, legacy, person, line]);
+        assert_eq!(view.len(), 4);
+        assert!(view.iter().all(|event| !event.text.contains("妖狐")));
+        assert!(view.iter().all(|event| !event.text.contains("全文")));
+    }
+
+    /// 私設事件不是回歸事件：不進「本幕已回歸」集合，回歸判定與換幕結算照舊只認公開那則。
+    #[test]
+    fn card_private_event_is_not_counted_as_arrival() {
+        let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
+        let mut private = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            &card_private_text(&fox, "阿濤").unwrap(),
+        );
+        private.gm_only = true;
+        assert!(appeared_card_names(&[private.clone()]).is_empty());
+        let public = event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            &card_arrival_text(&fox, "阿濤"),
+        );
+        assert_eq!(
+            appeared_card_names(&[private, public]),
+            BTreeSet::from(["狐狸".to_owned()])
         );
     }
 }

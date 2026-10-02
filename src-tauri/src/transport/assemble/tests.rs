@@ -1114,3 +1114,56 @@ fn consecutive_rounds_share_verbatim_prefix_except_tail() {
     );
     assert_ne!(character1.last(), character2.last());
 }
+
+/// 共線組裝（api／codex）：角色私設事件整則不出現、也不留空的「（系統）」行；
+/// 舊合併回歸事件只剩公開段。
+#[test]
+fn shared_lane_skips_card_private_event_and_legacy_private_section() {
+    let fox = card("fox-id", "狐狸", "旅店老闆", "");
+    let knight = card("knight-id", "騎士", "王國騎士", "奉密令而來");
+    let cards = vec![fox.clone()];
+    let mut private = event(
+        TranscriptKind::System,
+        "",
+        "GM",
+        &card_private_text(&knight, "阿濤").unwrap(),
+    );
+    private.gm_only = true;
+    let events = [
+        event(TranscriptKind::Narration, "", "GM", "門開了"),
+        private,
+        event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            &card_arrival_text(&knight, "阿濤"),
+        ),
+        event(
+            TranscriptKind::System,
+            "",
+            "GM",
+            "（角色回歸）〈騎士〉\n公開設定：\n王國騎士\n私有設定：\n奉密令而來",
+        ),
+    ];
+    let messages = assemble_shared_messages(
+        &fox,
+        &cards,
+        None,
+        &events,
+        &[],
+        &TableState::default(),
+        &Mechanism::default(),
+        None,
+        "zh-TW",
+    );
+    let joined: String = messages.iter().map(|m| m.content.as_str()).collect();
+    assert!(!joined.contains("奉密令而來"));
+    assert!(!joined.contains("角色私設"));
+    assert!(!joined.contains("（系統）\n"));
+    assert_eq!(
+        joined
+            .matches("（角色回歸）〈騎士〉\n公開設定：\n王國騎士")
+            .count(),
+        2
+    );
+}

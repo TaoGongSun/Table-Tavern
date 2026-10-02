@@ -91,6 +91,7 @@ export const en: Record<MsgKey, string> = {
   usageReasonSceneChanged: "Act changed",
   usageReasonHistoryRewound: "History rolled back",
   usageReasonHistoryEdited: "History edited",
+  usageReasonHistoryRedacted: "Old arrival secrets hidden",
   usageReasonReplyDiverged: "Previous reply diverged",
   usageReasonResumeFailed: "Resume call failed",
   usageReasonRewriteFailed: "Post-round cleanup failed",
