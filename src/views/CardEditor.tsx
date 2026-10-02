@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useState } from "react";
 import Cropper, { Area } from "react-easy-crop";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -9,6 +9,9 @@ import { AppConfig } from "../shared/contracts/backend-contracts";
 import { CharacterCard, DraftImage, Tier } from "../features/characters/card-model";
 import { CLI_LABELS, CliInfo, detectClis } from "../features/ai-connection/cli";
 import { tierLabel } from "../features/ai-connection/model-catalog";
+import { IconArchive, IconBook, IconDelete, IconExport, IconSparkle } from "../shared/ui/icons";
+import type { MoreMenuItem } from "../shared/ui/MoreMenu";
+import { EditPage } from "./EditPage";
 
 const GALLERY_PAGE_SIZE = 12;
 
@@ -130,6 +133,7 @@ function CropDialog({
 }
 
 export function CardEditor({
+  title,
   world,
   characterId,
   isNew,
@@ -148,6 +152,8 @@ export function CardEditor({
   isPlayer = false,
   onConverted,
 }: {
+  /** 頂列標題：卡種與角色名由 MainView 決定 */
+  title: string;
   world: string;
   /** 開編輯器前已由 new_id 拿好，草稿期生圖與存檔用同一個 id */
   characterId: string;
@@ -191,6 +197,8 @@ export function CardEditor({
   const [galleryLoaded, setGalleryLoaded] = useState(0);
   // 存檔前判斷「有沒有改名」用；新卡是空字串（第一次存檔不算改名）
   const [originalName, setOriginalName] = useState("");
+  // 頂列儲存鈕在表單外，用 form 屬性指過來
+  const formId = useId();
 
   useEffect(() => {
     setMessage("");
@@ -215,13 +223,21 @@ export function CardEditor({
       setOriginalName("");
       return;
     }
+    // 切卡後才回來的舊請求一律丟掉：晚到的上一張卡會蓋掉已載入、可能已在編輯的這張
+    let stale = false;
     invoke<CharacterCard>("read_character", { worldId: world, characterId })
       .then((loaded) => {
+        if (stale) return;
         setCard(loaded);
         setSavedCardJson(JSON.stringify(loaded));
         setOriginalName(loaded.name);
       })
-      .catch((reason) => setMessage(String(reason)));
+      .catch((reason) => {
+        if (!stale) setMessage(String(reason));
+      });
+    return () => {
+      stale = true;
+    };
   }, [world, characterId, isNew, newCardColor]);
 
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
@@ -310,7 +326,17 @@ export function CardEditor({
     setGalleryLoaded((current) => Math.max(0, current - (galleryImages[file] ? 1 : 0)));
   }
 
-  if (!card) return message ? <p role="alert">{message}</p> : null;
+  // 已儲存之外的訊息都是擋下或失敗
+  const messageIsError = message !== "" && message !== t("saved");
+
+  // 切換編輯對象時 state 裡還是上一張卡（讀檔在 effect 裡非同步）：ID 對上才算載好，
+  // 否則會短暫顯示舊卡、頂列儲存還會把舊卡寫進新 id。載好之前沒有可遺失的修改，離開不必問
+  if (!card || card.id !== characterId) {
+    leaveGuard.current = async () => true;
+    return (
+      <EditPage title={title} onBack={onBack} message={message} messageIsError={messageIsError} />
+    );
+  }
 
   const shownImage = draftImage === undefined ? imageDataUrl : draftImage?.url;
   const shownAvatar = draftAvatar === undefined ? avatarImgUrl : draftAvatar?.url;
@@ -485,52 +511,58 @@ export function CardEditor({
     if (accepted) setDraftAvatar(null);
   }
 
+  // ⋯ 依卡種：既有角色卡四項、玩家卡兩項；新卡存檔前沒有可匯出／刪除的東西，整顆不出現
+  const moreItems: MoreMenuItem[] = isNew
+    ? []
+    : [
+        {
+          key: "export",
+          label: t("exportCard"),
+          hint: t("exportCardHint"),
+          icon: <IconExport />,
+          onSelect: () => void exportCard(),
+        },
+        ...(isPlayer
+          ? []
+          : [
+              {
+                key: "convert",
+                label: t("convertCardToEntry"),
+                icon: <IconBook />,
+                onSelect: () => void convertCardToWorldbookEntry(),
+              },
+              // 同一項雙向換字：隱藏區進來的卡按它就是還原
+              {
+                key: "archive",
+                label: card.archived === true ? t("restoreCharacter") : t("archiveCharacter"),
+                icon: <IconArchive />,
+                onSelect: () => void toggleArchived(),
+              },
+            ]),
+        // 確認框在 controller 裡，這裡不再包一層
+        {
+          key: "delete",
+          label: t("deleteCharacter"),
+          icon: <IconDelete />,
+          danger: true,
+          onSelect: () => void onDeleted(),
+        },
+      ];
+
   return (
-    <form onSubmit={save} className="settings-form">
-      {/* 頂部切兩塊：左邊是這張卡的動作（返回獨立成第二列貼齊儲存下方，按鈕變多後夾在刪除
-          旁邊很難找），右邊是圖片與它的操作鈕；打字欄位維持全寬在下方（2026-07-28 使用者拍板） */}
-      <div className="card-editor-top">
-        <div className="card-editor-actions">
-          <div className="row">
-            <button type="submit">{t("saveCard")}</button>
-            {!isNew && (
-              <>
-                <button type="button" title={t("exportCardHint")} onClick={() => void exportCard()}>
-                  {t("exportCard")}
-                </button>
-                {!isPlayer && (
-                  <button type="button" onClick={() => void convertCardToWorldbookEntry()}>
-                    {t("convertCardToEntry")}
-                  </button>
-                )}
-                {!isPlayer && (
-                  <button
-                    type="button"
-                    className="archive-button"
-                    onClick={() => void toggleArchived()}
-                  >
-                    {card?.archived === true ? t("restoreCharacter") : t("archiveCharacter")}
-                  </button>
-                )}
-                <button type="button" className="delete-character" onClick={() => void onDeleted()}>
-                  {t("deleteCharacter")}
-                </button>
-              </>
-            )}
-          </div>
-          <div className="row">
-            <button type="button" onClick={() => void handleBack()}>
-              {t("backToNow")}
-            </button>
-          </div>
-          {message && <span>{message}</span>}
-          {unsavedCount > 0 && (
-            <span className="unsaved-hint" role="status">
-              {t("unsavedChanges", { n: unsavedCount })}
-            </span>
-          )}
-        </div>
-        <div className="card-editor-media">
+    <EditPage
+      title={title}
+      onBack={() => void handleBack()}
+      formId={formId}
+      moreItems={moreItems}
+      unsavedCount={unsavedCount}
+      message={message}
+      messageIsError={messageIsError}
+    >
+      <form id={formId} onSubmit={save} className="settings-form">
+        {/* 頂部「圖＋名字」一塊：左圖、右欄名字與圖片操作；欄寬不夠時右欄自動折到圖下方。
+            其餘打字欄位維持全寬在下方 */}
+        <div className="card-editor-top">
           <div className="card-editor-avatar">
             {shownImage ? (
               <button
@@ -545,238 +577,265 @@ export function CardEditor({
             ) : shownAvatar ? (
               <img className="avatar-round card-editor-avatar-round" src={shownAvatar} alt="" />
             ) : (
-              <span className="card-editor-avatar-emoji" style={{ ["--ring" as string]: card.color }}>
+              <span
+                className="card-editor-avatar-emoji"
+                style={{ ["--ring" as string]: card.color }}
+              >
                 {card.avatar}
               </span>
             )}
           </div>
-          <div className="row">
-            <button type="button" onClick={() => document.getElementById(`character-image-${characterId}`)?.click()}>
-              {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
-            </button>
-            {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
-                提示掛在外層 span：disabled 的按鈕不收滑鼠事件，title 掛上去不會浮出來 */}
-            <span className="hint-wrap" data-hint={aiGenBlocked ? t("aiGenNeedsContent") : undefined}>
-              <button
-                type="button"
-                className="ai-gen-btn"
-                disabled={aiGenBlocked}
-                onClick={openAiGenerator}
-              >
-                ✨ {t("aiGenBtn")}
-              </button>
-            </span>
-            {shownImage && (
-              <>
-                <button type="button" onClick={() => void removeImage()}>{t("removeImageBtn")}</button>
-                <button type="button" onClick={() => setCroppingAvatar(true)}>{t("makeAvatarBtn")}</button>
-              </>
-            )}
-            {shownAvatar && <button type="button" onClick={() => void removeAvatar()}>{t("removeAvatarBtn")}</button>}
-            <input
-              id={`character-image-${characterId}`}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              hidden
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                event.currentTarget.value = "";
-                if (file) chooseImage(file);
-              }}
-            />
-          </div>
-        </div>
-      </div>
-      <label>
-        {t(isPlayer ? "playerNameLabel" : "nameLabel")}
-        <input
-          value={card.name}
-          placeholder={t(isPlayer ? "playerNamePlaceholder" : "newCharacterPlaceholder")}
-          onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
-        />
-      </label>
-      {/* 改名只換之後的顯示名稱，已送出的對話仍顯示舊名（2026-07-27 拍板） */}
-      {!isNew && card.name.trim() !== originalName && (
-        <p className="field-note" role="note">
-          {t("renameNote")}
-        </p>
-      )}
-      {/* emoji 只在沒有圖可顯示時才會用到：有頭像、或有大圖且開關開著，這一欄就沒意義（2026-07-28 使用者拍板） */}
-      {!shownAvatar && !(shownImage && card.show_image) && (
-        <label>
-          {t("avatarEmojiLabel")}
-          <div className="emoji-row">
-            <input
-              className="emoji-input"
-              value={card.avatar}
-              onChange={(e) =>
-                setCard({
-                  ...card,
-                  avatar: clampChars(e.currentTarget.value.replace(/\s/g, ""), AVATAR_MAX_CHARS),
-                })
-              }
-            />
-            {AVATAR_EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                className="emoji-preset"
-                aria-pressed={card.avatar === emoji}
-                onClick={() => setCard({ ...card, avatar: emoji })}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        </label>
-      )}
-      <label>
-        {t(isPlayer ? "playerPublicLabel" : "publicLabel")}
-        <textarea
-          rows={4}
-          value={card.public_md}
-          onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
-        />
-      </label>
-      {!isPlayer && (
-        <label>
-          {t("privateLabel")}
-          <textarea
-            rows={4}
-            value={card.private_md}
-            onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
-          />
-        </label>
-      )}
-      {shownImage && (
-        <label className="inline">
-          <input
-            type="checkbox"
-            checked={card.show_image}
-            onChange={(e) => setCard({ ...card, show_image: e.currentTarget.checked })}
-          />
-          {t("showImageLabel")}
-        </label>
-      )}
-      {!isPlayer && (
-        <label>
-          {t("tierLabel")}
-          <select
-            value={card.tier}
-            onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
-          >
-            {(["best", "balanced", "fast"] as const).map((tier) => (
-              <option key={tier} value={tier}>
-                {tierLabel(tier)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {pendingImage && (
-        <CropDialog
-          title={t("cropImageTitle")}
-          src={pendingImage}
-          aspect={2 / 3}
-          cropShape="rect"
-          onConfirm={async (image) => setDraftImage(image)}
-          onCancel={() => setPendingImage(null)}
-        />
-      )}
-      {aiGenOpen && (
-        <div className="modal-overlay" onClick={() => !aiGenerating && setAiGenOpen(false)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenTitle")} onClick={(event) => event.stopPropagation()}>
-            <h2>{t("aiGenTitle")}</h2>
-            <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
-            <fieldset className="ai-gen-framing">
-              <legend>{t("aiGenFramingLabel")}</legend>
-              {(["full", "half"] as const).map((framing) => (
-                <label key={framing}>
-                  <input
-                    type="radio"
-                    name="ai-gen-framing"
-                    checked={aiFraming === framing}
-                    disabled={aiGenerating}
-                    onChange={() => setAiFraming(framing)}
-                  />
-                  {framing === "full" ? t("aiGenFramingFull") : t("aiGenFramingHalf")}
-                </label>
-              ))}
-            </fieldset>
-            <label>{t("aiGenSourceLabel")}
-              <div className="row">
-                <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
-                  {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : CLI_LABELS[source] ?? source}</option>)}
-                  {!sourceOptions.includes(aiSource) && <option value={aiSource}>{CLI_LABELS[aiSource] ?? aiSource}</option>}
-                </select>
-                <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
-              </div>
+          <div className="card-editor-identity">
+            <label>
+              {t(isPlayer ? "playerNameLabel" : "nameLabel")}
+              <input
+                value={card.name}
+                placeholder={t(
+                  isPlayer ? "playerNamePlaceholder" : "newCharacterPlaceholder",
+                )}
+                onChange={(e) => setCard({ ...card, name: e.currentTarget.value })}
+              />
             </label>
-            {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
-            {/* 生圖來源可以不經設定頁直接換，這裡也要講一次等一下的系統詢問是誰在問 */}
-            {aiSource !== "api" && !sourceCannotGenerate && (
-              <p className="cli-permission-note" role="note">
-                {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
+            {/* 改名只換之後的顯示名稱，已送出的對話仍顯示舊名（2026-07-27 拍板） */}
+            {!isNew && card.name.trim() !== originalName && (
+              <p className="field-note" role="note">
+                {t("renameNote")}
               </p>
             )}
-            {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
-            {galleryFiles.length > 0 && (
-              <section aria-label={t("aiGalleryTitle")}>
-                <h3>{t("aiGalleryTitle")}</h3>
-                <div className="ai-gallery">
-                  {galleryFiles.slice(0, galleryLoaded).map((file) => galleryImages[file] && (
-                    <div className="ai-gallery-thumb" key={file}>
-                      <button
-                        type="button"
-                        className="ai-gallery-pick"
-                        title={t("aiGalleryPick")}
-                        onClick={() => { setAiGenOpen(false); setPendingImage(galleryImages[file]); }}
-                      >
-                        <img src={galleryImages[file]} alt="" />
-                      </button>
-                      <button
-                        type="button"
-                        className="ai-gallery-delete"
-                        aria-label={t("aiGalleryDeleteTitle")}
-                        onClick={() => void deleteGalleryImage(file).catch((reason) => setAiGenError(String(reason)))}
-                      >×</button>
-                    </div>
-                  ))}
-                </div>
-                {galleryFiles.length > galleryLoaded && <button type="button" onClick={() => void loadGalleryPage(galleryFiles, galleryLoaded)}>{t("aiGalleryLoadMore", { n: galleryFiles.length - galleryLoaded })}</button>}
-              </section>
-            )}
-            {/* 主要動作放右下（2026-07-27 使用者拍板：此對話框例外，不置頂） */}
-            <div className="ai-gen-footer">
-              <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
-              <button type="button" className="ai-gen-submit" disabled={aiGenerating || sourceCannotGenerate} onClick={() => void generateImage()}>
-                {aiGenerating ? t("aiGenerating") : `✨ ${t("aiGenBtn")}`}
+            <div className="card-editor-media-actions">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => document.getElementById(`character-image-${characterId}`)?.click()}
+              >
+                {t(shownImage ? "replaceImageBtn" : "addImageBtn")}
               </button>
+              {/* 名字給圖庫資料夾用、公開設定進提示詞；欄位沒填就生不出像樣的圖，故先鎖住。
+                  提示掛在外層 span：disabled 的按鈕不收滑鼠事件，title 掛上去不會浮出來 */}
+              <span
+                className="hint-wrap"
+                data-hint={aiGenBlocked ? t("aiGenNeedsContent") : undefined}
+              >
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={aiGenBlocked}
+                  onClick={openAiGenerator}
+                >
+                  <IconSparkle />
+                  {t("aiGenBtn")}
+                </button>
+              </span>
+              {shownImage && (
+                <>
+                  <button type="button" className="btn btn-sm" onClick={() => void removeImage()}>
+                    {t("removeImageBtn")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => setCroppingAvatar(true)}
+                  >
+                    {t("makeAvatarBtn")}
+                  </button>
+                </>
+              )}
+              {shownAvatar && (
+                <button type="button" className="btn btn-sm" onClick={() => void removeAvatar()}>
+                  {t("removeAvatarBtn")}
+                </button>
+              )}
+              <input
+                id={`character-image-${characterId}`}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) chooseImage(file);
+                }}
+              />
             </div>
           </div>
         </div>
-      )}
-      {lightboxOpen && shownImage && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("viewImageLabel")}
-          onClick={() => setLightboxOpen(false)}
-        >
-          <img className="lightbox-image" src={shownImage} alt="" />
-        </div>
-      )}
-      {croppingAvatar && shownImage && (
-        <CropDialog
-          title={t("cropAvatarTitle")}
-          src={shownImage}
-          aspect={1}
-          cropShape="round"
-          onConfirm={async (image) => setDraftAvatar(image)}
-          onCancel={() => setCroppingAvatar(false)}
-        />
-      )}
-    </form>
+        {/* emoji 只在沒有圖可顯示時才會用到：有頭像、或有大圖且開關開著，這一欄就沒意義（2026-07-28 使用者拍板） */}
+        {!shownAvatar && !(shownImage && card.show_image) && (
+          <label>
+            {t("avatarEmojiLabel")}
+            <div className="emoji-row">
+              <input
+                className="emoji-input"
+                value={card.avatar}
+                onChange={(e) =>
+                  setCard({
+                    ...card,
+                    avatar: clampChars(e.currentTarget.value.replace(/\s/g, ""), AVATAR_MAX_CHARS),
+                  })
+                }
+              />
+              {AVATAR_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="emoji-preset"
+                  aria-pressed={card.avatar === emoji}
+                  onClick={() => setCard({ ...card, avatar: emoji })}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </label>
+        )}
+        <label>
+          {t(isPlayer ? "playerPublicLabel" : "publicLabel")}
+          <textarea
+            rows={4}
+            value={card.public_md}
+            onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
+          />
+        </label>
+        {!isPlayer && (
+          <label>
+            {t("privateLabel")}
+            <textarea
+              rows={4}
+              value={card.private_md}
+              onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
+            />
+          </label>
+        )}
+        {shownImage && (
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={card.show_image}
+              onChange={(e) => setCard({ ...card, show_image: e.currentTarget.checked })}
+            />
+            {t("showImageLabel")}
+          </label>
+        )}
+        {!isPlayer && (
+          <label>
+            {t("tierLabel")}
+            <select
+              value={card.tier}
+              onChange={(e) => setCard({ ...card, tier: e.currentTarget.value as Tier })}
+            >
+              {(["best", "balanced", "fast"] as const).map((tier) => (
+                <option key={tier} value={tier}>
+                  {tierLabel(tier)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {pendingImage && (
+          <CropDialog
+            title={t("cropImageTitle")}
+            src={pendingImage}
+            aspect={2 / 3}
+            cropShape="rect"
+            onConfirm={async (image) => setDraftImage(image)}
+            onCancel={() => setPendingImage(null)}
+          />
+        )}
+        {aiGenOpen && (
+          <div className="modal-overlay" onClick={() => !aiGenerating && setAiGenOpen(false)}>
+            <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenTitle")} onClick={(event) => event.stopPropagation()}>
+              <h2>{t("aiGenTitle")}</h2>
+              <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
+              <fieldset className="ai-gen-framing">
+                <legend>{t("aiGenFramingLabel")}</legend>
+                {(["full", "half"] as const).map((framing) => (
+                  <label key={framing}>
+                    <input
+                      type="radio"
+                      name="ai-gen-framing"
+                      checked={aiFraming === framing}
+                      disabled={aiGenerating}
+                      onChange={() => setAiFraming(framing)}
+                    />
+                    {framing === "full" ? t("aiGenFramingFull") : t("aiGenFramingHalf")}
+                  </label>
+                ))}
+              </fieldset>
+              <label>{t("aiGenSourceLabel")}
+                <div className="row">
+                  <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
+                    {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : CLI_LABELS[source] ?? source}</option>)}
+                    {!sourceOptions.includes(aiSource) && <option value={aiSource}>{CLI_LABELS[aiSource] ?? aiSource}</option>}
+                  </select>
+                  <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
+                </div>
+              </label>
+              {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
+              {/* 生圖來源可以不經設定頁直接換，這裡也要講一次等一下的系統詢問是誰在問 */}
+              {aiSource !== "api" && !sourceCannotGenerate && (
+                <p className="cli-permission-note" role="note">
+                  {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
+                </p>
+              )}
+              {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
+              {galleryFiles.length > 0 && (
+                <section aria-label={t("aiGalleryTitle")}>
+                  <h3>{t("aiGalleryTitle")}</h3>
+                  <div className="ai-gallery">
+                    {galleryFiles.slice(0, galleryLoaded).map((file) => galleryImages[file] && (
+                      <div className="ai-gallery-thumb" key={file}>
+                        <button
+                          type="button"
+                          className="ai-gallery-pick"
+                          title={t("aiGalleryPick")}
+                          onClick={() => { setAiGenOpen(false); setPendingImage(galleryImages[file]); }}
+                        >
+                          <img src={galleryImages[file]} alt="" />
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-gallery-delete"
+                          aria-label={t("aiGalleryDeleteTitle")}
+                          onClick={() => void deleteGalleryImage(file).catch((reason) => setAiGenError(String(reason)))}
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                  {galleryFiles.length > galleryLoaded && <button type="button" onClick={() => void loadGalleryPage(galleryFiles, galleryLoaded)}>{t("aiGalleryLoadMore", { n: galleryFiles.length - galleryLoaded })}</button>}
+                </section>
+              )}
+              {/* 主要動作放右下（2026-07-27 使用者拍板：此對話框例外，不置頂） */}
+              <div className="ai-gen-footer">
+                <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
+                <button type="button" className="ai-gen-submit" disabled={aiGenerating || sourceCannotGenerate} onClick={() => void generateImage()}>
+                  {aiGenerating ? t("aiGenerating") : `✨ ${t("aiGenBtn")}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {lightboxOpen && shownImage && (
+          <div
+            className="modal-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("viewImageLabel")}
+            onClick={() => setLightboxOpen(false)}
+          >
+            <img className="lightbox-image" src={shownImage} alt="" />
+          </div>
+        )}
+        {croppingAvatar && shownImage && (
+          <CropDialog
+            title={t("cropAvatarTitle")}
+            src={shownImage}
+            aspect={1}
+            cropShape="round"
+            onConfirm={async (image) => setDraftAvatar(image)}
+            onCancel={() => setCroppingAvatar(false)}
+          />
+        )}
+      </form>
+    </EditPage>
   );
 }

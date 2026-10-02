@@ -241,7 +241,10 @@ describe("lobby and table navigation", () => {
     await click(cover("Alpha"));
     // 開世界設定、改一個字：未儲存守門會跳確認框
     await click(byLabel(t("worldSummary"))!);
-    const box = document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("worldAria")}"]`)!;
+    // 世界設定的文字框改由可見 label（worldSummary）命名
+    const box = [...document.querySelectorAll("label")]
+      .find((label) => label.textContent?.startsWith(t("worldSummary")))!
+      .querySelector("textarea")!;
     await typeInto(box, "edited");
     dialogs.confirm.mockResolvedValueOnce(false);
     await click(homeButton()!);

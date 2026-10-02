@@ -5,6 +5,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
 import { renderStoryMarkdown } from "../shared/ui/story-markdown";
 import { explainAiError } from "../shared/ui/ai-error";
+import { IconBack, IconExport } from "../shared/ui/icons";
 import { TranscriptEvent } from "../shared/contracts/backend-contracts";
 
 // 錯誤列：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
@@ -38,21 +39,8 @@ export function StoryText({ text }: { text: string }) {
   );
 }
 
-// 卡片／世界設定編輯共用整面外框：與單幕閱讀同款（頂部標題，下方內容填滿），不是 modal——
-// 使用者拍板：主欄下半部（messages＋composer）整面取代，composer 不渲染＝編輯中無法發言。
-// 「返回」不在這裡：使用者拍板放在表單的儲存鈕旁邊，由 CardEditor／WorldEditor 自己渲染
-export function EditPane({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <>
-      <div className="act-reader-header">
-        <strong>{title}</strong>
-      </div>
-      <div className="edit-pane-body">{children}</div>
-    </>
-  );
-}
-
-// 單幕閱讀：整面取代對話畫面（不是 modal），頂部一行標題＋匯出＋返回，下方唯讀事件列表填滿到底
+// 單幕閱讀：整面取代對話畫面（不是 modal），頂列外觀同編輯頁（返回、標題、匯出、續玩），
+// 下方唯讀事件列表填滿到底
 export function ActReader({
   world,
   worldName,
@@ -99,19 +87,34 @@ export function ActReader({
 
   return (
     <>
-      <div className="act-reader-header">
-        <strong>{label}</strong>
-        <button type="button" onClick={exportScene}>
-          {t("exportScene")}
-        </button>
-        <button type="button" onClick={onBack}>
+      <header className="edit-page-bar">
+        <button type="button" className="btn btn-ghost edit-page-back" onClick={onBack}>
+          <IconBack />
           {t("backToNow")}
         </button>
-        {/* 分岔續玩：整面畫面唯一往前推進的動作，靠右與唯讀那幾顆分開 */}
-        <button type="button" className="act-fork" onClick={onFork}>
-          {t("sceneFork")}
+        <h2 className="edit-page-title" title={label}>
+          {label}
+        </h2>
+        <span className="toolbar-spacer" />
+        <button
+          type="button"
+          className="btn btn-shrink"
+          title={t("exportScene")}
+          onClick={exportScene}
+        >
+          <IconExport />
+          <span className="btn-label">{t("exportScene")}</span>
         </button>
-      </div>
+        {/* 分岔續玩：整面畫面唯一往前推進的動作，是這頁的主鈕 */}
+        <button
+          type="button"
+          className="btn btn-primary btn-shrink"
+          title={t("sceneFork")}
+          onClick={onFork}
+        >
+          <span className="btn-label">{t("sceneFork")}</span>
+        </button>
+      </header>
       <section className="messages" aria-label={label}>
         {events === null ? (
           error && <ErrorNote text={error} />

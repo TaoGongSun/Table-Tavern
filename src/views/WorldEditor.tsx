@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../i18n";
@@ -7,9 +7,11 @@ import { RefactorRunDialogs } from "../features/refactor/RefactorRunDialogs";
 import { WorldbookSection } from "../features/worldbook/WorldbookSection";
 import { useRefactorWorkflow } from "../features/refactor/useRefactorWorkflow";
 import { useWorldbookEditor } from "../features/worldbook/useWorldbookEditor";
+import { EditPage } from "./EditPage";
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 export function WorldEditor({
+  title,
   world,
   worldName,
   onBack,
@@ -18,6 +20,7 @@ export function WorldEditor({
   onEntryConverted,
   onRefactorApplied,
 }: {
+  title: string;
   world: string;
   worldName: string;
   onBack: () => void;
@@ -31,6 +34,8 @@ export function WorldEditor({
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
   const [message, setMessage] = useState("");
+  // 頂列儲存鈕在表單外，用 form 屬性只送 world.md 這張表單
+  const formId = useId();
 
   const worldbook = useWorldbookEditor({ world, convertColor, onEntryConverted });
 
@@ -52,15 +57,32 @@ export function WorldEditor({
   useEffect(() => {
     setMessage("");
     setText(null);
+    // 換桌後才回來的舊請求丟掉，不拿上一桌的 world.md 蓋這一桌
+    let stale = false;
     invoke<string>("read_world_md", { worldId: world })
       .then((value) => {
+        if (stale) return;
         setText(value);
         setSavedText(value);
       })
-      .catch((reason) => setMessage(String(reason)));
+      .catch((reason) => {
+        if (!stale) setMessage(String(reason));
+      });
+    return () => {
+      stale = true;
+    };
   }, [world]);
 
-  if (text === null) return message ? <p role="alert">{message}</p> : null;
+  // 已儲存之外的訊息都是失敗
+  const messageIsError = message !== "" && message !== t("saved");
+
+  // 載入中／載入失敗也畫頁框：儲存停用占位、返回可用；還沒東西可改，離開不必問
+  if (text === null) {
+    leaveGuard.current = async () => true;
+    return (
+      <EditPage title={title} onBack={onBack} message={message} messageIsError={messageIsError} />
+    );
+  }
 
   const unsavedCount = (text !== savedText ? 1 : 0) + (worldbook.newEntryDirty ? 1 : 0);
 
@@ -95,27 +117,24 @@ export function WorldEditor({
   }
 
   return (
-    <>
-      <form onSubmit={saveWorldSettings} className="settings-form">
-        {/* 按鈕列放文字框上方：長文編輯時儲存／返回固定在最顯眼處（2026-07-24 使用者回饋） */}
-        <div className="row">
-          <button type="submit">{t("saveWorld")}</button>
-          <button type="button" onClick={() => void handleBack()}>
-            {t("backToNow")}
-          </button>
-          {message && <span>{message}</span>}
-          {unsavedCount > 0 && (
-            <span className="unsaved-hint" role="status">
-              {t("unsavedChanges", { n: unsavedCount })}
-            </span>
-          )}
-        </div>
-        <textarea
-          rows={6}
-          aria-label={t("worldAria")}
-          value={text}
-          onChange={(event) => setText(event.currentTarget.value)}
-        />
+    <EditPage
+      title={title}
+      onBack={() => void handleBack()}
+      formId={formId}
+      unsavedCount={unsavedCount}
+      message={message}
+      messageIsError={messageIsError}
+    >
+      {/* world form 只包這一格：世界書區有自己的條目表單，不能巢狀；頂列儲存只寫 world.md */}
+      <form id={formId} onSubmit={saveWorldSettings} className="settings-form">
+        <label>
+          {t("worldSummary")}
+          <textarea
+            rows={6}
+            value={text}
+            onChange={(event) => setText(event.currentTarget.value)}
+          />
+        </label>
       </form>
 
       <WorldbookSection
@@ -129,6 +148,6 @@ export function WorldEditor({
 
       <RefactorRunDialogs refactor={refactor} />
       <RefactorResultDialog refactor={refactor} entries={worldbook.entries} />
-    </>
+    </EditPage>
   );
 }

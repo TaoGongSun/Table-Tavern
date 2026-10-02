@@ -111,13 +111,36 @@
   padding-top: 1rem;
 }
 
-.worldbook-section h3 {
-  margin: 0 0 0.75rem;
+/* 世界書標題列：單行不換行；擠不下時條數先截、「重構」縮成圖示，新增條目不縮（收縮規則見 dialogs.css） */
+.worldbook-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.worldbook-head h3 {
+  margin: 0;
   font-size: 1rem;
 }
 
-.worldbook-actions,
-.worldbook-row-actions,
+.worldbook-head > .worldbook-count {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.worldbook-row-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .worldbook-badges {
   display: flex;
   flex-wrap: wrap;
@@ -174,10 +197,6 @@
 .worldbook-badge-visibility {
   border: 1.5px dashed color-mix(in srgb, var(--amber) 65%, transparent);
   color: var(--amber);
-}
-
-.worldbook-row-actions button {
-  padding: 0 0.65em;
 }
 
 .worldbook-empty {
@@ -294,6 +313,18 @@
   border-radius: 8px;
   background: var(--surface-2);
   padding: 0.75rem;
+}
+
+/* 條目表單頂部三顆次鈕：單行不換行，擠不下就各自截字 */
+.worldbook-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.worldbook-form-actions > .btn-shrink {
+  min-width: 2.5rem;
 }
 
 /* 生圖構圖二選一：橫排即可，兩個選項不需要縱向清單 */

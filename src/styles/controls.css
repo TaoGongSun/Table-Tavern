@@ -1,5 +1,7 @@
 /* ============ 共用控制項：三級按鈕、相連按鈕組、⋯ 選單 ============
    主要＝實色 accent（整畫面同時只該有一顆）、次要＝描邊（.btn 預設）、幽靈＝無框。
+   例外：世界設定頁有兩顆主鈕——頂列「儲存」管 world.md、世界書標題列「新增條目」管條目，
+   兩者各管一塊、不在同一列，規格定案如此。
    高度沿用 --control-h、字級只用六階、顏色只用既有 token，七套主題自動跟著換。
    選擇器刻意帶 .btn 類別：全域 button:hover:not(:disabled) 與 button[type="submit"]
    的特異度要壓得過，否則主題色會被全域規則蓋掉。 */
@@ -31,6 +33,12 @@ button.btn-primary:hover:not(:disabled) {
 
 .btn-primary:hover:not(:disabled) {
   filter: brightness(1.06);
+}
+
+/* 次要鈕兼任表單送出鈕（條目表單的儲存）：壓掉全域 submit 的實色 hover */
+button.btn[type="submit"]:not(.btn-primary):hover:not(:disabled) {
+  color: var(--ink-1);
+  filter: none;
 }
 
 button.btn-ghost {

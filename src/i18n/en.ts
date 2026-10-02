@@ -202,7 +202,8 @@ export const en: Record<MsgKey, string> = {
   worldSummary:
     "World settings world.md (GM-only context; characters only know what the GM says out loud)",
   worldAria: "World settings",
-  saveWorld: "Save World Settings",
+  worldbookMore: "More World Book actions",
+  worldbookCount: "Entries: {n}",
   worldbookTitle: "World Book",
   worldbookAddEntry: "Add Entry",
   worldbookExport: "Export World Book",
@@ -358,7 +359,7 @@ export const en: Record<MsgKey, string> = {
   playerPublicLabel: "How others see you (social role, looks, reputation)",
   privateLabel: "Private profile (only this character and the GM see it)",
   tierLabel: "Tier",
-  saveCard: "Save Character Card",
+  saveBtn: "Save",
   showImageLabel: "Show character image (off = emoji avatar)",
   addImageBtn: "Add image",
   replaceImageBtn: "Replace image",

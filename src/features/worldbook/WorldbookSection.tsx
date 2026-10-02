@@ -1,6 +1,8 @@
 import { Fragment, type RefObject, useEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { useDragReorder } from "../../shared/ui/drag-reorder";
+import { IconDelete, IconPlus, IconSparkle } from "../../shared/ui/icons";
+import { MoreMenu } from "../../shared/ui/MoreMenu";
 import { WorldbookEntryForm } from "./WorldbookEntryForm";
 import type { WorldbookEditorController } from "./useWorldbookEditor";
 
@@ -70,53 +72,65 @@ export function WorldbookSection({
 
   return (
     <section className="worldbook-section" aria-labelledby="worldbook-title">
-      <h3 id="worldbook-title">{t("worldbookTitle")}</h3>
-      <div className="worldbook-actions">
-        <button type="button" onClick={addEntry}>
-          {t("worldbookAddEntry")}
-        </button>
-        <button type="button" onClick={() => void dedupeWorldbook()}>
-          {t("worldbookDedupe")}
-        </button>
-        <button type="button" onClick={() => void exportWorldbook()}>
-          {t("worldbookExport")}
-        </button>
+      {/* 標題列單行不換行：擠不下時條數先截、再把「重構」縮成圖示；新增條目不縮 */}
+      <div className="worldbook-head">
+        <h3 id="worldbook-title">{t("worldbookTitle")}</h3>
+        <span className="worldbook-count">{t("worldbookCount", { n: entries.length })}</span>
+        <span className="toolbar-spacer" />
+        {/* 重構執行中只停用跟重構卡有關的三項，清理重複與匯出世界書照常 */}
+        <MoreMenu
+          label={t("worldbookMore")}
+          items={[
+            { key: "dedupe", label: t("worldbookDedupe"), onSelect: () => void dedupeWorldbook() },
+            { key: "export", label: t("worldbookExport"), onSelect: () => void exportWorldbook() },
+            {
+              key: "import-refactor",
+              label: t("refactorImportBtn"),
+              hint: t("refactorImportBtnHint"),
+              disabled: refactorRunning,
+              onSelect: () => refactorInputRef.current?.click(),
+            },
+            {
+              key: "export-refactor",
+              label: t("refactorExportSavedBtn"),
+              disabled: refactorRunning,
+              onSelect: () => void onExportSavedRefactorOutcome(),
+            },
+          ]}
+        />
         <button
           type="button"
-          className="ai-gen-btn"
+          className="btn btn-shrink worldbook-refactor"
           title={t("refactorBtnHint")}
           disabled={refactorRunning}
           onClick={() => void onRunRefactor()}
         >
-          ✨ {t("refactorBtn")}
+          <IconSparkle />
+          <span className="btn-label">{t("refactorBtn")}</span>
         </button>
+        {/* 一頁兩顆主鈕（頂列儲存＋這顆）是規格例外：見 controls.css 開頭 */}
         <button
           type="button"
-          title={t("refactorImportBtnHint")}
-          disabled={refactorRunning}
-          onClick={() => refactorInputRef.current?.click()}
+          className="btn btn-primary btn-shrink worldbook-add"
+          title={t("worldbookAddEntry")}
+          onClick={addEntry}
         >
-          {t("refactorImportBtn")}
+          <IconPlus />
+          <span className="btn-label">{t("worldbookAddEntry")}</span>
         </button>
-        <button
-          type="button"
-          disabled={refactorRunning}
-          onClick={() => void onExportSavedRefactorOutcome()}
-        >
-          {t("refactorExportSavedBtn")}
-        </button>
-        <input
-          ref={refactorInputRef}
-          type="file"
-          accept=".json,application/json"
-          hidden
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) void onPickRefactorOutcome(file);
-          }}
-        />
       </div>
+      {/* 匯入重構卡的選檔框：⋯ 選單收起後還要在，所以留在區塊裡而不是選單裡 */}
+      <input
+        ref={refactorInputRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) void onPickRefactorOutcome(file);
+        }}
+      />
       {/* 操作回饋緊貼按鈕列：重構擋下訊息之類的結果放列表底部的話，條目多的桌要捲到底
           才看得到，點了像沒反應。 */}
       {message && <p role="status">{message}</p>}
@@ -217,14 +231,28 @@ export function WorldbookSection({
                     );
                   })()}
                 </div>
+                {/* 刪除收進列內 ⋯（確認框在 controller）；按鈕不起拖，點 ⋯ 不會誤觸排序 */}
                 {!entry.locked && (
                   <div className="worldbook-row-actions">
-                    <button type="button" onClick={() => editEntry(entry)}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => editEntry(entry)}
+                    >
                       {t("editBtn")}
                     </button>
-                    <button type="button" onClick={() => void deleteEntry(entry)}>
-                      {t("worldbookDelete")}
-                    </button>
+                    <MoreMenu
+                      label={t("itemOptionsAria", { name: entry.title || String(entry.uid) })}
+                      items={[
+                        {
+                          key: "delete",
+                          label: t("worldbookDelete"),
+                          icon: <IconDelete />,
+                          danger: true,
+                          onSelect: () => void deleteEntry(entry),
+                        },
+                      ]}
+                    />
                   </div>
                 )}
               </div>

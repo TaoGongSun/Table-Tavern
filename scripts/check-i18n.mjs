@@ -70,6 +70,10 @@ const WRAP_SAFE_LONG = new Set([
   "ru:removeImageBtn",
   "ru:send",
   "ru:worldbookSaveEntry",
+  // 編輯頁頂列的主鈕：沒有更短的地道說法；主鈕不縮，空間由頂列標題先讓出
+  "de:saveBtn",
+  "fr:saveBtn",
+  "ru:saveBtn",
 ]);
 
 // 寬度估算只守單顆文案；真正防溢出的版面契約也一併鎖住
@@ -80,6 +84,8 @@ const layoutContracts = [
   ["桌名過長時省略", /\.table-title-text\s*\{[^}]*text-overflow:\s*ellipsis/s],
   ["工具列有字鈕可縮", /\.table-toolbar\s*>\s*\.btn-shrink\s*\{[^}]*flex:\s*0 1 auto/s],
   ["相連按鈕組可縮", /\.btn-seg\s*>\s*\.btn\s*\{[^}]*min-width:\s*0/s],
+  ["編輯頁頂列有字鈕可縮", /\.edit-page-bar\s*>\s*\.btn-shrink[^{]*\{[^}]*flex:\s*0 100 auto/s],
+  ["編輯頁主鈕不縮", /\.edit-page-bar\s*>\s*\.btn-primary\.btn-shrink[^{]*\{[^}]*flex-shrink:\s*0/s],
 ];
 const missingLayoutContracts = layoutContracts
   .filter(([, pattern]) => !pattern.test(css))

@@ -5,7 +5,7 @@
 import { ReactNode } from "react";
 import { t } from "../i18n";
 import { AppConfig } from "../shared/contracts/backend-contracts";
-import { ActReader, EditPane } from "./atoms";
+import { ActReader } from "./atoms";
 import { CardEditor } from "./CardEditor";
 import { WorldEditor } from "./WorldEditor";
 
@@ -90,7 +90,7 @@ export function MainView({
           onFork={() => void onFork(sceneReading)}
         />
       ) : cardKind !== null ? (
-        <EditPane
+        <CardEditor
           title={
             cardKind === "new-character"
               ? t("newCardTitle")
@@ -100,50 +100,46 @@ export function MainView({
                   ? t("editPlayerCardTitle")
                   : t("editCardSummary", { name: cardName })
           }
-        >
-          <CardEditor
-            world={world}
-            characterId={cardId}
-            isNew={cardKind === "new-character" || cardKind === "new-player"}
-            isPlayer={editingPlayerCard}
-            newCardColor={nextColor}
-            imageDataUrl={cardImage}
-            avatarImgUrl={cardAvatar}
-            onImagesChanged={onImagesChanged}
-            onSaved={(saved) =>
-              void (editingPlayerCard ? onPlayerCardSaved(saved) : onCardSaved(saved))
-            }
-            onArchived={
-              cardKind === "character" ? () => onFinishRemoval(cardId) : async () => onClose()
-            }
-            onDeleted={
-              cardKind === "character"
-                ? () => onDeleteCharacter(cardId)
-                : cardKind === "player"
-                  ? () => onDeletePlayerCard(cardId)
-                  : async () => onClose()
-            }
-            onBack={onClose}
-            leaveGuard={leaveGuard}
-            config={config}
-            onPreference={onPreference}
-            onOpenAiSettings={onOpenAiSettings}
-            onConverted={() => onFinishRemoval(cardId)}
-          />
-        </EditPane>
+          world={world}
+          characterId={cardId}
+          isNew={cardKind === "new-character" || cardKind === "new-player"}
+          isPlayer={editingPlayerCard}
+          newCardColor={nextColor}
+          imageDataUrl={cardImage}
+          avatarImgUrl={cardAvatar}
+          onImagesChanged={onImagesChanged}
+          onSaved={(saved) =>
+            void (editingPlayerCard ? onPlayerCardSaved(saved) : onCardSaved(saved))
+          }
+          onArchived={
+            cardKind === "character" ? () => onFinishRemoval(cardId) : async () => onClose()
+          }
+          onDeleted={
+            cardKind === "character"
+              ? () => onDeleteCharacter(cardId)
+              : cardKind === "player"
+                ? () => onDeletePlayerCard(cardId)
+                : async () => onClose()
+          }
+          onBack={onClose}
+          leaveGuard={leaveGuard}
+          config={config}
+          onPreference={onPreference}
+          onOpenAiSettings={onOpenAiSettings}
+          onConverted={() => onFinishRemoval(cardId)}
+        />
       ) : worldOpen ? (
-        <EditPane title={t("worldSummary")}>
-          <WorldEditor
-            key={worldEditorRefreshKey}
-            world={world}
-            worldName={worldName}
-            onBack={onClose}
-            leaveGuard={leaveGuard}
-            convertColor={nextColor}
-            onEntryConverted={onEntryConverted}
-            onRefactorApplied={onRefactorApplied}
-          />
-        </EditPane>
+        <WorldEditor
+          key={worldEditorRefreshKey}
+          title={t("worldAria")}
+          world={world}
+          worldName={worldName}
+          onBack={onClose}
+          leaveGuard={leaveGuard}
+          convertColor={nextColor}
+          onEntryConverted={onEntryConverted}
+          onRefactorApplied={onRefactorApplied}
+        />
       ) : (
         playView
       )}

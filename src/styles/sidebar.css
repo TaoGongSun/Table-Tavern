@@ -599,15 +599,6 @@ button.rail-archive-btn {
   height: 26px;
 }
 
-.archive-button {
-  padding: 0 0.65em;
-}
-
-.delete-character {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
 /* 更新紅點：以所在的按鈕（工具列齒輪、大廳版本鈕）為錨 */
 .update-dot {
   position: absolute;
