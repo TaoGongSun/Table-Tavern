@@ -4,6 +4,7 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [sanitize-test-jsdom](tasks/sanitize-test-jsdom.md) — verify 驗不到 DOMPurify（happy-dom 下不消毒）＋vitest 掃進 .claude/worktrees — 下一步：消毒測試改 jsdom、vitest exclude `.claude/**`，確認結構檢查也不掃。
 - [refactor-statusbar-skeleton](tasks/refactor-statusbar-skeleton.md) — 狀態欄型（playable: no）的卡也產骨架，app 用狀態樹填原卡狀態區塊再交原卡畫面顯示 — 下一步：排在 card-chat-messages-shim 之後〔作者裁決 2026-10-02〕。
 - [card-mvu-shim](tasks/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀變數函式（getAllVariables／Mvu／waitGlobalInitialized／eventOn），狀態樹轉接成 stat_data，受惠 bcd368、DongeonMaster — 下一步：日後要做〔作者裁決 2026-10-02〕，未排程。
 - [settings-tabs-focus-visible](tasks/settings-tabs-focus-visible.md) — 設定視窗分頁列 ←→ 移焦在 macOS WebKit 看不到外框 — 下一步：照 menu-keyboard-webkit 的 MoreMenu 作法改，補 WebKit 測試。
