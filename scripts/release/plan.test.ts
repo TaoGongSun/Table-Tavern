@@ -7,6 +7,7 @@ import {
   githubReleasePlan,
   hasPrerelease,
   planReleaseFiles,
+  readCurrentFormat,
   releaseFilenames,
   resolveNotes,
 } from "./plan.mjs";
@@ -192,11 +193,13 @@ describe("檔名與 latest.json", () => {
       repoBase: "https://github.com/TaoGongSun/Table-Tavern",
       exeSignature: "EXE-SIG\n",
       appSignature: "APP-SIG\n",
+      formatVersion: 1,
     });
     expect(latest).toEqual({
       version: "0.2.0",
       notes: "說明",
       pub_date: "2026-10-01T00:00:00.000Z",
+      format_version: 1,
       platforms: {
         "windows-x86_64": {
           url:
@@ -212,6 +215,19 @@ describe("檔名與 latest.json", () => {
         },
       },
     });
+  });
+});
+
+describe("CURRENT_FORMAT", () => {
+  it("只認 const，不認 current_format()，而且必須是正整數", () => {
+    const source = [
+      "pub fn current_format() -> u64 { 99 }",
+      "pub const CURRENT_FORMAT: u64 = 1;",
+    ].join("\n");
+    expect(readCurrentFormat(source)).toBe(1);
+    expect(readCurrentFormat(readFileSync("src-tauri/src/data/format/marker.rs", "utf8"))).toBe(1);
+    expect(() => readCurrentFormat("pub const CURRENT_FORMAT: u64 = 0;")).toThrow(/正整數/);
+    expect(() => readCurrentFormat("沒有常數")).toThrow(/找不到/);
   });
 });
 

@@ -204,6 +204,17 @@ export function planReleaseFiles(files, version) {
   return { copies, names, requireSig };
 }
 
+/** 從 marker.rs 原文抓 `CURRENT_FORMAT`。不呼叫 current_format()。 */
+export function readCurrentFormat(source) {
+  const match = String(source).match(/pub const CURRENT_FORMAT:\s*u64\s*=\s*(\d+)\s*;/);
+  if (!match) throw new Error("marker.rs 找不到 CURRENT_FORMAT");
+  const value = Number(match[1]);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`CURRENT_FORMAT 不是正整數：${match[1]}`);
+  }
+  return value;
+}
+
 export function buildLatestJson({
   version,
   notes,
@@ -212,8 +223,12 @@ export function buildLatestJson({
   repoBase,
   exeSignature,
   appSignature,
+  formatVersion,
 }) {
   if (!tag) throw new Error("latest.json 需要 tag");
+  if (!Number.isInteger(formatVersion) || formatVersion <= 0) {
+    throw new Error(`format_version 不是正整數：${formatVersion}`);
+  }
   const names = releaseFilenames(version);
   const fileUrl = (name) =>
     `${repoBase}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(name)}`;
@@ -221,6 +236,7 @@ export function buildLatestJson({
     version,
     notes,
     pub_date: pubDate,
+    format_version: formatVersion,
     platforms: {
       "windows-x86_64": {
         url: fileUrl(names.exe),

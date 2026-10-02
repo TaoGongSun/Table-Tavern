@@ -181,6 +181,9 @@ pub fn materialize(root: &Path, expanded: &Expanded) -> DataResult<String> {
     }
 
     let world_id = data::create_world(root, &name)?;
+    // 建桌的許可在 create_world 裡就放下了。這裡再拿一次，蓋住後面的世界書與開場白，
+    // 更新閘門才等得了這次開桌寫完。
+    let _permit = data::world_write_permit(&world_id)?;
     data::write_world_md(root, &world_id, &expanded.world)?;
     let colors = [
         "#e07a5f", "#3d84a8", "#f2a541", "#7b9e89", "#8e7cc3", "#c76b8e",

@@ -23,7 +23,7 @@ pub(crate) fn write_state(
     world_id: String,
     state: WorldState,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::write_state(&data_root(&app)?, &world_id, &state).map_err(|error| error.to_string())
 }
 
@@ -33,7 +33,7 @@ pub(crate) async fn set_table_state(
     world_id: String,
     fields: std::collections::BTreeMap<String, String>,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit_async(&world_id).await;
+    let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
     let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     for (key, value) in fields {
@@ -56,7 +56,7 @@ pub(crate) async fn set_state_path(
     path: Vec<String>,
     value: String,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit_async(&world_id).await;
+    let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
     let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     if !data::set_tree_value(&mut state.state.tree, &path, &value) {
@@ -78,7 +78,7 @@ pub(crate) fn set_branch_binding(
     character_id: String,
     path: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
     let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     match path.filter(|path| !path.is_empty()) {
@@ -105,7 +105,7 @@ pub(crate) fn mark_state_counter(
     world_id: String,
     path: Vec<String>,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
     let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     let Some(first) = path.first() else {

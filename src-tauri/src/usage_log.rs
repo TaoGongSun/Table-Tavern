@@ -361,6 +361,10 @@ pub(crate) fn append_call_with_evidence(
 /// 未認領的行，會一起算進這桌：同樣是開桌花的錢，比留一個看不懂的分類好。
 /// 暫存檔＋rename，中途失敗不會把 log 寫壞；任何一步失敗就放著不動。
 pub fn assign_pending_world(path: &Path, world: &str) {
+    // 這一步發生在建桌許可已經放下之後。開閘就留著未認領的行，不改用量紀錄。
+    if crate::data::update_gate_raised() {
+        return;
+    }
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };

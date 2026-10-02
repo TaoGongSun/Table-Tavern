@@ -315,6 +315,7 @@ pub fn raise_login_window(title: &str) -> bool {
 }
 
 fn create_log(data_root: &Path, provider: &str) -> Result<(PathBuf, File), String> {
+    crate::data::refuse_if_updating()?;
     let directory = data_root.join("install-logs");
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let timestamp = SystemTime::now()

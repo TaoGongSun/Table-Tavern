@@ -149,6 +149,7 @@ pub(crate) fn install_cli(
     messages: InstallMessages,
     switch_account: bool,
 ) -> Result<(), String> {
+    crate::data::refuse_if_updating()?;
     let directory = data_root(&app)?;
     // world-write-exempt: 建立資料根目錄放安裝腳本，不是桌目錄
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
@@ -191,7 +192,9 @@ pub(crate) fn install_cli(
             let _token = token;
             let emit_app = task_app.clone();
             let _ = install::run_install(spec, &directory, cli::find_binary, move |progress| {
-                if progress.stage == "done" {
+                if progress.stage == "done" && crate::data::update_gate_raised() {
+                    // 閘門起來後不再寫印記。註解必須留在寫入的上一行，掃描才認豁免。
+                } else if progress.stage == "done" {
                     // world-write-exempt: 寫安裝驗證印記，在資料根目錄，不是桌目錄
                     let _ = std::fs::write(&sentinel_path, b"");
                 }

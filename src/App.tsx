@@ -24,6 +24,7 @@ import {
 } from "./shared/contracts/backend-contracts";
 import { CharacterMeta } from "./features/characters/card-model";
 import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
+import { useUpdateController } from "./features/updater/useUpdateController";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
@@ -218,6 +219,15 @@ function App() {
     noteChatStarted: noteChatRequest,
     markCliConnected: markCliConnectedFromChat,
     onError: setError,
+  });
+
+  // 更新檢查掛著，但不畫提示。畫面歸包 5。
+  useUpdateController({
+    configLoaded: config !== null,
+    preferences: config?.preferences,
+    responding: chat.generating !== null,
+    stopResponse: chat.stopResponse,
+    onConfig: setConfig,
   });
 
   // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列。

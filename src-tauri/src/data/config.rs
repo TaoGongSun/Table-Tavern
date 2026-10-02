@@ -33,6 +33,10 @@ fn config_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+pub(crate) fn config_mutex() -> &'static Mutex<()> {
+    config_lock()
+}
+
 fn read_raw_config(path: &Path) -> DataResult<Value> {
     if !path.exists() {
         return Ok(Value::Object(Map::new()));
@@ -57,6 +61,8 @@ pub fn update_config_with(
     root: &Path,
     build: impl FnOnce(&Value) -> DataResult<Option<Value>>,
 ) -> DataResult<AppConfig> {
+    // 拿鎖前先看閘門。開閘後安裝會把這把鎖持有到程序結束，這裡不能排進去等。
+    super::world_lock::refuse_if_updating()?;
     let _guard = config_lock()
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
@@ -80,6 +86,10 @@ pub fn update_config(root: &Path, patch: &Value) -> DataResult<AppConfig> {
 
 /// 舊 `smart_free` 模式改成 `stable_free`。在設定鎖裡看磁碟原文，不重寫沒碰到的欄位。
 pub fn migrate_legacy_config(root: &Path) -> DataResult<AppConfig> {
+    // 舊設定遷移是 read_config 的副作用。閘門開著就只把磁碟上的原文讀回來，不改檔。
+    if super::world_lock::update_gate_raised() {
+        return read_config(root);
+    }
     update_config_with(root, |disk| {
         let legacy = disk
             .get("preferences")
@@ -185,6 +195,7 @@ pub fn write_model_catalog(
     root: &Path,
     catalog: &BTreeMap<String, Vec<ModelOption>>,
 ) -> DataResult<()> {
+    super::world_lock::refuse_if_updating()?;
     // world-write-exempt: 建立設定目錄，不是桌目錄
     fs::create_dir_all(root)?;
     // world-write-exempt: model_catalog.json 是可重建的模型快取，不是桌目錄
@@ -233,6 +244,7 @@ pub fn sponsor_pack_active(root: &Path) -> bool {
 
 pub fn install_sponsor_pack(root: &Path, bytes: &[u8]) -> DataResult<()> {
     validate_sponsor_pack(bytes)?;
+    super::world_lock::refuse_if_updating()?;
     // world-write-exempt: 建立設定目錄，不是桌目錄
     fs::create_dir_all(root)?;
     // world-write-exempt: sponsor-pack.ttpack 是贊助包，不是桌目錄
@@ -399,5 +411,41 @@ mod tests {
             "{error}"
         );
         assert_eq!(fs::read_to_string(path).unwrap(), original);
+    }
+
+    #[test]
+    fn update_gate_blocks_config_write_without_touching_disk() {
+        let root = TestRoot::new("config-gate");
+        fs::create_dir_all(root.path()).unwrap();
+        let path = root.path().join("config.json");
+        let original = r#"{"preferences":{"language":"zh-TW"}}"#;
+        fs::write(&path, original).unwrap();
+        let _gate = super::super::world_lock::GateOverride::raised();
+        let error = update_config(
+            root.path(),
+            &serde_json::json!({"preferences":{"language":"en"}}),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), "更新進行中，暫停寫入");
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn legacy_migration_reads_without_writing_while_the_gate_is_up() {
+        let root = TestRoot::new("config-gate-migrate");
+        fs::create_dir_all(root.path()).unwrap();
+        let path = root.path().join("config.json");
+        let original = r#"{"preferences":{"api_model_mode":"smart_free"}}"#;
+        fs::write(&path, original).unwrap();
+        let _gate = super::super::world_lock::GateOverride::raised();
+        let config = migrate_legacy_config(root.path()).unwrap();
+        assert_eq!(
+            config
+                .preferences
+                .get("api_model_mode")
+                .and_then(|value| value.as_str()),
+            Some("smart_free")
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
     }
 }

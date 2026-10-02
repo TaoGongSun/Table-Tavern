@@ -24,6 +24,7 @@ mod smart_free;
 mod snapshot_patch;
 mod translate;
 mod transport;
+mod updater;
 mod usage_log;
 mod usage_report;
 
@@ -49,6 +50,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::PendingUpdate::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 第二次啟動只把既有視窗帶到前面。不做每桌鎖檔。
             if let Some(window) = app.get_webview_window("main") {
@@ -165,9 +168,21 @@ pub fn run() {
             commands::scene::regenerate_scene_summary,
             commands::genesis::generate_table_outline,
             commands::genesis::generate_table_character,
-            commands::genesis::generate_table_expand
+            commands::genesis::generate_table_expand,
+            commands::update::update_check,
+            commands::update::update_download,
+            commands::update::update_install,
+            commands::update::update_post_launch
         ])
         .setup(|app| {
+            match app.path().app_local_data_dir() {
+                Ok(dir) => {
+                    if let Err(error) = updater::clear_all_residue(&dir.join("versions")) {
+                        log::warn!("清版本庫殘留失敗：{error}");
+                    }
+                }
+                Err(error) => log::warn!("找不到本機資料目錄，略過版本庫殘留清理：{error}"),
+            }
             if let Ok(root) = config_root(app.handle()) {
                 smart_free::spawn_background_refresh(app.handle().clone(), root);
             }
@@ -298,7 +313,11 @@ mod command_classification {
         "sponsor_status",
         "translate_opening",
         "translate_tier_models",
+        "update_check",
         "update_config",
+        "update_download",
+        "update_install",
+        "update_post_launch",
         "usage_report",
         "write_model_catalog",
     ];

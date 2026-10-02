@@ -7,6 +7,7 @@ pub(crate) mod refactor;
 pub(crate) mod scene;
 pub(crate) mod settings;
 pub(crate) mod state;
+pub(crate) mod update;
 pub(crate) mod world;
 
 // 三個以上子模組的測試共用這兩樣，放在模組根才不必各檔複製一份。

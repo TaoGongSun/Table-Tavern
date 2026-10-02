@@ -14,6 +14,7 @@ pub fn export_character(
     character_id: &str,
     path: &Path,
 ) -> DataResult<()> {
+    crate::data::refuse_if_updating()?;
     let card = data::read_character(root, world_id, character_id)?;
     let json = serde_json::to_vec_pretty(&character_card_v2(root, world_id, &card))?;
     if path
