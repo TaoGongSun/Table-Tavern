@@ -146,15 +146,25 @@ fn offer_from(update: &tauri_plugin_updater::Update, skipped: bool) -> updater::
 pub(crate) async fn update_download(
     app: AppHandle,
     state: State<'_, updater::PendingUpdate>,
-) -> Result<String, String> {
+) -> Result<updater::DownloadResult, String> {
     let update = {
         let mut slot = state.inner.lock().await;
         slot.begin_download()?
     };
-    match download_prepared(&app, &update).await {
-        Ok(version) => {
-            state.inner.lock().await.finish_download(version.clone());
-            Ok(version)
+    if let Err(error) = updater::mark_downloading(&update.version).await {
+        state.inner.lock().await.abort_download();
+        return Err(error);
+    }
+    let outcome = download_prepared(&app, &update).await;
+    updater::clear_downloading().await;
+    match outcome {
+        Ok(result) => {
+            state
+                .inner
+                .lock()
+                .await
+                .finish_download(result.version.clone());
+            Ok(result)
         }
         Err(error) => {
             state.inner.lock().await.abort_download();
@@ -166,7 +176,7 @@ pub(crate) async fn update_download(
 async fn download_prepared(
     app: &AppHandle,
     update: &tauri_plugin_updater::Update,
-) -> Result<String, String> {
+) -> Result<updater::DownloadResult, String> {
     let platform = updater::Platform::current().ok_or_else(|| "這個平台沒有安裝檔".to_owned())?;
     let file = updater::artifact_name(update.download_url.as_str())?;
     if !platform.suffix_ok(&file) {
@@ -174,38 +184,74 @@ async fn download_prepared(
     }
     let version = updater::version_dir_name(&update.version)?.to_owned();
     let versions = versions_dir(app)?;
-    if updater::reuse_if_valid(
+    let pubkey = updater::bundled_pubkey();
+    let reused =
+        updater::prepare_download_reuse(&versions, &version, &file, platform.as_str(), pubkey)
+            .await?;
+    let staged = if reused {
+        None
+    } else {
+        let mut downloaded = 0u64;
+        let emit_app = app.clone();
+        let bytes = update
+            .download(
+                |chunk, total| {
+                    downloaded = downloaded.saturating_add(chunk as u64);
+                    let _ = emit_app.emit("update-progress", ProgressPayload { downloaded, total });
+                },
+                || {},
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Some((bytes, update.signature.clone()))
+    };
+    let endpoint = updater::rollback_point_endpoint();
+    let new_release = staged
+        .as_ref()
+        .map(|(bytes, signature)| updater::NewRelease {
+            file: &file,
+            bytes,
+            signature,
+            format_version: updater::remote_format(&update.raw_json),
+        });
+    let rollback_ready = updater::store_downloaded_release(
         &versions,
         &version,
-        &file,
-        platform.as_str(),
-        updater::bundled_pubkey(),
-    )? {
-        return Ok(version);
+        platform,
+        new_release,
+        env!("CARGO_PKG_VERSION"),
+        pubkey,
+        data::CURRENT_FORMAT,
+        &endpoint,
+        fetch_release_asset,
+    )
+    .await?;
+    Ok(updater::DownloadResult {
+        version,
+        rollback_ready,
+    })
+}
+
+async fn fetch_release_asset(url: String) -> Result<Vec<u8>, String> {
+    if !url.starts_with("https://") {
+        return Err("回退點下載失敗".to_owned());
     }
-    updater::clear_version_residue(&versions, &version)?;
-    let mut downloaded = 0u64;
-    let emit_app = app.clone();
-    let bytes = update
-        .download(
-            |chunk, total| {
-                downloaded = downloaded.saturating_add(chunk as u64);
-                let _ = emit_app.emit("update-progress", ProgressPayload { downloaded, total });
-            },
-            || {},
-        )
+    let response = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| error.to_string())?
+        .get(&url)
+        .send()
         .await
         .map_err(|error| error.to_string())?;
-    updater::commit_download(
-        &versions,
-        &version,
-        &file,
-        &bytes,
-        &update.signature,
-        platform.as_str(),
-        updater::remote_format(&update.raw_json),
-    )?;
-    Ok(version)
+    if !response.status().is_success() {
+        return Err(format!("回退點下載失敗：{}", response.status()));
+    }
+    response
+        .bytes()
+        .await
+        .map(|bytes| bytes.to_vec())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -219,7 +265,7 @@ pub(crate) async fn update_install(
         slot.begin_install(&version)?
     };
     // 只裝剛剛下載、而且版本字串對得上的那一份。對不上就不改階段以外的狀態。
-    let outcome = install_pinned(&app, &update, &version).await;
+    let outcome = updater::with_installing(&version, install_pinned(&app, &update, &version)).await;
     if outcome.is_err() {
         state.inner.lock().await.abort_install(&version);
     }
@@ -244,9 +290,13 @@ async fn install_pinned(
         return Err("下載的版本與要安裝的版本不同".to_owned());
     }
     let versions = versions_dir(app)?;
+    let pending_versions = versions.clone();
     let platform_name = platform.as_str().to_owned();
     let update = update.clone();
-    let app = app.clone();
+    let installing = app.clone();
+    let config = config_root(app)?;
+    let target = version.to_owned();
+    // 略過鍵在重驗通過、開閘前清掉。安裝失敗時前端重讀設定，才看得到清掉的鍵。
     data::install_guarded(
         move || {
             updater::reverify_for_install(
@@ -257,35 +307,20 @@ async fn install_pinned(
                 updater::bundled_pubkey(),
             )
         },
-        {
-            let app = app.clone();
-            move || clear_skipped_if_present(&app)
+        move || {
+            updater::forward_before_raise(
+                &pending_versions,
+                &config,
+                env!("CARGO_PKG_VERSION"),
+                &target,
+            )
         },
-        {
-            let app = app.clone();
-            move |bytes: Vec<u8>| install_prepared(&app, &update, &bytes)
-        },
+        move |bytes: Vec<u8>| install_prepared(&installing, &update, &bytes),
     )
     .await
 }
 
-/// 重驗通過、開閘之前才清。鍵不存在就不重寫。清掉之後安裝若失敗，略過不會自動寫回來。
-/// 設定鎖這時還沒被安裝持有。前端在安裝失敗時再讀一次設定，才看得到清掉的鍵。
-fn clear_skipped_if_present(app: &AppHandle) -> Result<(), String> {
-    let root = config_root(app)?;
-    let config = data::read_config(&root).map_err(|error| error.to_string())?;
-    if !config.preferences.contains_key("update_skipped_version") {
-        return Ok(());
-    }
-    data::update_config(
-        &root,
-        &serde_json::json!({ "preferences": { "update_skipped_version": Value::Null } }),
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn versions_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn versions_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let root = app
         .path()
         .app_local_data_dir()
@@ -327,13 +362,58 @@ fn install_prepared(
 }
 
 #[tauri::command]
-pub(crate) fn update_post_launch() -> Result<(), String> {
+pub(crate) async fn update_post_launch(app: AppHandle) -> Result<(), String> {
+    let versions = versions_dir(&app)?;
+    let pubkey = updater::bundled_pubkey().to_owned();
+    let platform = updater::Platform::current();
+    let bundle = mac_bundle();
+    updater::settle_launch_locked(
+        &versions,
+        env!("CARGO_PKG_VERSION"),
+        bundle.as_deref(),
+        |version| {
+            let Some(platform) = platform else {
+                return false;
+            };
+            updater::has_verified_rollback_point(&versions, version, platform, &pubkey)
+        },
+        swap_for_launch,
+    )
+    .await
+}
+
+fn mac_bundle() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let bundle = tauri_plugin_updater::extract_path_from_executable(&executable)
-            .map_err(|error| error.to_string())?;
-        updater::cleanup_after_launch(&bundle)?;
+        let executable = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(error) => {
+                log::warn!("找不到執行檔，略過啟動後整理：{error}");
+                return None;
+            }
+        };
+        match tauri_plugin_updater::extract_path_from_executable(&executable) {
+            Ok(path) => Some(path),
+            Err(error) => {
+                log::warn!("找不到 App，略過啟動後整理：{error}");
+                None
+            }
+        }
     }
-    Ok(())
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn swap_for_launch(new_app: &std::path::Path, old_app: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        updater::swap_directories(new_app, old_app)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (new_app, old_app);
+        Err(updater::CANNOT_REPLACE.to_owned())
+    }
 }

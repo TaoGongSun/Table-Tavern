@@ -72,6 +72,7 @@ describe("useUpdateController", () => {
     });
     await render({
       configLoaded: true,
+      initialLoadReady: true,
       preferences: {},
       responding: false,
       stopResponse: () => {},
@@ -96,6 +97,7 @@ describe("useUpdateController", () => {
     const calls: string[] = [];
     await render({
       configLoaded: true,
+      initialLoadReady: true,
       preferences: { update_auto_check: false },
       responding: false,
       stopResponse: () => {},
@@ -109,6 +111,38 @@ describe("useUpdateController", () => {
     expect(calls).toEqual(["update_post_launch"]);
   });
 
+  it("waits to post launch until settings and the world list have both loaded", async () => {
+    const calls: string[] = [];
+    const invokeImpl = async (command: string) => {
+      calls.push(command);
+      return null;
+    };
+    await render({
+      configLoaded: true,
+      initialLoadReady: false,
+      preferences: {},
+      responding: false,
+      stopResponse: () => {},
+      onConfig: () => {},
+      invokeImpl,
+      onApi: () => {},
+    });
+    expect(calls).not.toContain("update_post_launch");
+    await render({
+      configLoaded: true,
+      initialLoadReady: true,
+      preferences: {},
+      responding: false,
+      stopResponse: () => {},
+      onConfig: () => {},
+      invokeImpl,
+      onApi: () => {},
+    });
+    expect(calls.filter((command) => command === "update_post_launch")).toEqual([
+      "update_post_launch",
+    ]);
+  });
+
   it("waits out an AI response and continues after it stops, without calling stop itself", async () => {
     const calls: string[] = [];
     const installArgs: unknown[] = [];
@@ -116,6 +150,7 @@ describe("useUpdateController", () => {
     const box: { api: Api | null } = { api: null };
     const props = {
       configLoaded: true,
+      initialLoadReady: true,
       preferences: {},
       responding: true,
       stopResponse: stop,
@@ -123,7 +158,7 @@ describe("useUpdateController", () => {
       invokeImpl: async (command: string, args?: Record<string, unknown>) => {
         calls.push(command);
         if (command === "update_check") return offer;
-        if (command === "update_download") return offer.version;
+        if (command === "update_download") return { version: offer.version, rollback_ready: true };
         if (command === "update_install") installArgs.push(args);
         return undefined;
       },
@@ -167,6 +202,7 @@ describe("useUpdateController", () => {
     });
     const props = {
       configLoaded: true,
+      initialLoadReady: true,
       preferences: {},
       responding: false,
       stopResponse: () => {},
@@ -199,6 +235,7 @@ describe("useUpdateController", () => {
     const box: { api: Api | null } = { api: null };
     await render({
       configLoaded: true,
+      initialLoadReady: true,
       preferences: {},
       responding: false,
       stopResponse: () => {},
@@ -232,6 +269,7 @@ describe("useUpdateController", () => {
     const box: { api: Api | null } = { api: null };
     await render({
       configLoaded: true,
+      initialLoadReady: true,
       preferences: {},
       responding: false,
       stopResponse: () => {},
@@ -240,7 +278,7 @@ describe("useUpdateController", () => {
       },
       invokeImpl: async (command: string) => {
         if (command === "update_check") return offer;
-        if (command === "update_download") return offer.version;
+        if (command === "update_download") return { version: offer.version, rollback_ready: true };
         if (command === "update_install") throw "無法自動替換";
         if (command === "read_config") return fresh;
         return undefined;
@@ -268,6 +306,7 @@ describe("useUpdateController", () => {
     const config = { preferences: { update_skipped_version: "0.3.0" } } as never;
     await render({
       configLoaded: true,
+      initialLoadReady: true,
       preferences: {},
       responding: false,
       stopResponse: () => {},

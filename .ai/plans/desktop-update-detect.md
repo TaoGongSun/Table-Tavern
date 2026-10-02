@@ -170,15 +170,11 @@
 - **Windows 安裝**：用 plugin 的 `Update::install(bytes)`（NSIS `/UPDATE`＋passive，`ShellExecuteW` 成功後本體 `process::exit`）。安裝程式啟動之後的失敗，舊程序已退出、無法當次挽回，由下次啟動與包 4 回退處理。NSIS 偵測到舊程序還沒退完時會先關它再繼續，這段時序列入實機矩陣。
 - **Mac 安裝**（不用 plugin 的 `install`：2.13.1 仍是舊 App 先搬進暫存目錄、換新失敗時舊 App 隨暫存目錄一起被刪）：
   1. 找目前 `.app`（`extract_path_from_executable`）。路徑在 App Translocation（含 `/AppTranslocation/`）或上層目錄不可寫 → 不動任何東西，回「無法自動替換」，前端開 GitHub 下載頁。
-  2. 同目錄先跑一次「殘留整理」（同 `update_post_launch`，見步驟 6）。整理完 `.TableTavern-update.app` 還在就停，回「無法自動替換」。
+  2. 同目錄先跑一次殘留整理（見步驟 6）。整理完 `.TableTavern-update.app` 還在就停，回「無法自動替換」。
   3. 解壓到 `.TableTavern-update.app`：tar 第一層是 `Table Tavern.app/`，剝掉這層，讓 `Contents/` 直接落在目錄下；解完核對 `Contents/Info.plist` 的版本等於要裝的版本。
   4. `renamex_np(新, 舊, RENAME_SWAP)` 原子對調：成功後原路徑是新版，`.TableTavern-update.app` 變成舊版。磁碟不支援對調 → 刪掉解壓物，回「無法自動替換」。
-  5. 換下的舊版**不刪**：改名成同目錄可見的 `Table Tavern (previous).app`（已存在就先刪掉那份），新版啟動失敗時玩家還有一個能開的 App。改名失敗就讓它留在 `.TableTavern-update.app`，交給下次的殘留整理。`touch` 新 `.app` 後 `app.restart()`。
-  6. **殘留整理**（新版前端掛載完成後呼叫 `update_post_launch()`；安裝步驟 2 也跑）：
-     - 只在目前執行的 bundle 是正式位置（檔名 `Table Tavern.app`、不在 App Translocation）時才動手；從 `previous` 或其他位置啟動就什麼都不做。
-     - 同目錄的 `.TableTavern-update.app` 與 `Table Tavern (previous).app` 都讀 `Info.plist`，版本一律用 SemVer 比：bundle id 不是本 App，或就是目前執行的 bundle → 不動。`.TableTavern-update.app` 讀不到 `Info.plist` → 解壓中斷的殘留（對調下來的舊版一定讀得到）：刪掉。`previous` 讀不到 → 不動。
-     - `.TableTavern-update.app` 版本小於目前 → 這是對調後、改名前中斷留下的舊版：改名成 `previous`（取代較舊的那份）。版本大於等於目前 → 沒換上的解壓物：刪掉。
-     - 新版成功掛載後，`previous` 版本小於目前才刪。
+  5. 換下的舊版**不刪**：放進同目錄可見的 `Table Tavern (previous).app`（做法見包 4），新版啟動失敗時玩家還有一個能開的 App。`touch` 新 `.app` 後 `app.restart()`。
+  6. 殘留整理（步驟 2 與啟動後）：由包 4「Mac 殘留整理改版」取代。
 - **偏好鍵**：`update_auto_check`（bool，預設 true）、`update_skipped_version`（版本字串，略過此版寫入、選了更新的版本就清掉）。
 - **測試**：等級判斷、`skipped`、檔名驗證、版本庫沿用／取代／殘留清除、base64 解碼後驗簽（含竄改失敗）、閘門（開閘後新許可與新桌被拒、同步自旋與多個非同步等待者都會因開閘退出、等在途許可放開才完成、失敗放閘、重複安裝被拒）、設定寫入被閘、Mac 流程用假目錄測（剝第一層、版本核對、對調不支援與上層不可寫兩種退路、對調後改名前中斷的舊版被改名成 previous 而非刪除、從 previous 啟動時整理什麼都不做、`post_launch` 只刪較舊版、解壓中斷沒有 plist 的殘留被刪、`0.9.0` 與 `0.10.0` 照 SemVer 比）、`finalize.mjs` 寫 `format_version`。實機另排驗證佇列。
 
@@ -188,6 +184,53 @@
   - 略過鍵在重驗通過、開閘前才清；安裝失敗前端重讀設定。
   - Mac 解壓保留 `mode & 0o777`；只允許解析後仍在 bundle 內的相對連結。
   - 沒握桌鎖的在途 AI（開桌大綱、翻譯開場白、重構建議等）不在安裝等待集合，新呼叫在入口被拒；「一句話開桌」在建桌與補內容之間有空隙，最壞留下一張空桌。
+
+## 包 4 做法（Claude、Grok、Sol 三方共識 2026-10-02）
+
+範圍：更新前那一版、版本清單、回退安裝、自動保留 3 版、逐版刪除、桌備份清單與刪除。**畫面歸包 5**：包 4 只交後端 command 與前端 controller。沿用包 3 的版本庫版面、驗簽函式、更新閘門、安裝序列鎖、Mac 替換與殘留整理；包 3 的 Windows 正向更新（plugin `Update::install`）不動。
+
+- **版本庫操作鎖**：版本庫的寫入、修剪、刪版、回退的「重驗到啟動安裝」共用一把鎖，與包 3 的下載提交同一把。
+- **回退點（更新前那一版）**：`ensure_rollback_point()` 確保「目前這一版」在版本庫。
+  - `update_download` 不論新版是剛下載還是沿用，最後都呼叫它；它的失敗不往外傳，`update_download` 照常成功並另回 `rollback_ready`（畫面據此寫「沒有回退點」）。下次再按會再補。
+  - 來源：GitHub release `v<目前版本>` 的安裝檔與 `.sig`，網址用包 1 的固定檔名與 conf `endpoints` 推出的 repo 網址；照包 3 寫法進版本庫並驗簽，`release.json` 的 `format_version` 填本版 `CURRENT_FORMAT`。已在且重驗通過就沿用。
+- **「上一版」記錄**（`versions/previous.json`）：
+  - 正向更新重驗通過、開閘之前，寫入待確認 `{pending: {from: 目前版本, to: 目標版本}}`，原本已確認的 `previous` 保留不動。
+  - 啟動後的 `update_post_launch()`（兩平台都跑）：執行中版本＝`pending.to` → `previous` 改成 `pending.from`；執行中版本＝`pending.from`（安裝沒成功）或兩者都不是（中途改走回退、手動裝了別版）→ 只清掉 `pending`。已確認的 `previous` 等於執行中版本時清掉。
+  - 回退不寫 `previous`（一鍵「回到上一版」只服務正向更新之後；回退後想回較新版走一般更新）。
+  - `list_versions` 的 `previous` 與一鍵「回到上一版」只認已確認的 `previous`（且該版在版本庫、可用），不用 SemVer 猜。
+- **可回退的條件**：版本庫裡的版本要回退，`release.json` 必須讀得懂、平台相符、帶 `format_version`、版本低於目前。版本庫只由本程式寫入：新版來自 `latest.json`（必定比執行中的新），回退點是執行中這一版（本身帶格式檢查），0.2.0 這類沒有格式檢查的版本沒有寫入路徑。
+- **`list_versions()`**：每版 `{version, size, format_version, usable, current, previous}`＋總占用。讀不懂的目錄照列大小、`usable: false`，讓玩家能刪。
+- **`rollback_preview(version)`**：逐桌用包 2 的格式判讀（缺標記時解 `state.json`），回兩組：格式大於目標版 `format_version` 的「會變唯讀」，判讀為版本不明的「可能唯讀」；都附 id 與寬鬆名稱。
+- **`rollback_install(version)`**：
+  1. 拿版本庫操作鎖；核對可回退條件並重驗（包 3 驗簽函式＋`release.json` 版本平台核對）。
+  2. 重驗通過、開閘之前：目前版本寫進 `update_skipped_version`（被退掉的那版自動略過）。
+  3. 走包 3 同一個閘門與安裝序列鎖。
+  4. Mac：包 3 的替換流程（解壓核對的版本＝目標版）。Windows：自寫啟動——安裝檔複製到 `versions/.launch/`（不自動刪，下次啟動才清），以 `/P /UPDATE /R` 啟動（plugin passive 的參數，不帶 `/ARGS`），啟動成功就 `process::exit(0)`。`allowDowngrades` 用 Tauri 預設（true），降版覆蓋列入實機矩陣。
+  5. 啟動安裝前的失敗一律放閘，App 照常可用。
+- **Mac 殘留整理改版**（取代包 3 的版本比較規則）。解壓殘留與救援副本分開處理，都只在「從正式位置啟動」時動手；從 `previous` 或其他位置啟動什麼都不做；bundle id 不是本 App 的一律不動。
+  - **替換紀錄** `.TableTavern-update.json`：`{from, target, stage}`，每次改寫都 fsync 檔案與上層目錄。安裝步驟 2 的整理之後、解壓之前寫 `stage: "extracting"`；主對調成功後改 `"swapped"`；舊 App 放進 previous 的對調成功後改 `"previous_swapped"`；刪完被換出的舊副本才刪紀錄。
+  - **`.TableTavern-update.app` 依紀錄處理**（啟動整理與安裝步驟 2 都跑；讀不到 `Info.plist` 的一律當解壓殘留刪掉）。`.TableTavern-update.app` 不在 → 紀錄已沒有要辨認的對象（每次改名都是原子的，沒有半套狀態），直接刪紀錄。依推斷改走別的階段處理之前，先把紀錄的 stage 改成那個階段並 fsync，再動目錄。
+    - `extracting`：版本＝`target` 且執行中不是 `target` → 沒換上的解壓物，刪。版本＝`from` 且執行中是 `target` → 主對調已成功、只是階段沒寫上，照 `swapped` 處理。其他 → 無法判定。
+    - `swapped`：版本＝`from` → 放進 previous（見下一條）。版本不是 `from`、但 previous 的版本＝`from` → previous 對調已成功、只是階段沒寫上，照 `previous_swapped` 處理。其他 → 無法判定。
+    - `previous_swapped`：previous 的版本＝`from` → 點開頭那份是被換出的舊救援副本，只重試刪除，不再對調。其他 → 無法判定。
+    - 沒有有效紀錄：版本等於執行中 → 刪；不等於 → 無法判定。
+    - 無法判定：`.TableTavern-update.app` 與 previous 都不動，紀錄保留，下一次安裝在步驟 2 停下回「無法自動替換」，提示玩家打開該資料夾手動處理。
+  - **放進 previous**（安裝步驟 5 與整理共用）：previous 不在 → 直接改名，成功就刪紀錄；已在 → `RENAME_SWAP` 對調，紀錄改 `previous_swapped`，再刪點開頭那份、刪紀錄。任何一步失敗，看得到的 previous 都還在，下次依紀錄階段接續。
+  - **`Table Tavern (previous).app`（救援副本）**：安裝步驟 2 不刪（步驟 5 才由新換下的那份取代）。啟動後只有同時滿足才刪：前端初始載入完成（設定與桌清單都讀成功，`update_post_launch` 改在這之後才呼叫）、且版本庫裡有它那一版可用的回退點。少一個就留著。
+  - 已知殘餘：新版初始載入正常、之後才壞到連設定頁的回退都用不了，玩家要到 GitHub 下載頁手動裝舊版（版本庫的 `.app.tar.gz` 不能雙擊）。
+- **自動保留 3 版**：每次版本庫新增一版後修剪：目前版本、已確認的 `previous`、`pending` 的兩版、待安裝的新版、正在回退的目標永遠不刪；其餘依 SemVer 由新到舊補到總數 3 版為止，多的刪掉。修剪失敗只記 log。
+- **`delete_version(version)`**：拿版本庫操作鎖後永久刪除；目前版本、正在下載或安裝的版本拒絕。刪 previous 不禁止（警告由畫面負責）。
+- **桌備份**：
+  - `list_world_backups()`：每桌的 `.tt-pre-<id>`（轉換前備份）與 `.tt-newer-<id>`（改用備份時另存的內容）各一列：`{world_id, name, kind, size, format_version, deletable}`＋總占用。主資料夾不在、或目錄組合不乾淨（包 2 的 `combo_clean`）的桌，列出但 `deletable: false`，並標「需要修復」。
+  - `delete_world_backup(world_id, kind)`：取該桌獨占（拿不到回忙碌）、`combo_clean` 成立才永久刪；否則拒絕。刪 pre 後該桌不再有「改用備份」；刪 newer＝永久失去改用備份後另存的內容（確認文案由畫面負責）。
+- **前端**：`useVersionStoreController`（清單、預覽、回退、刪版、桌備份清單與刪除），回退在 AI 回應中同樣進等待。不畫畫面。
+- **測試**：回退點（剛下載與沿用兩條都會補、拿不到不擋、下次再補）、`previous.json` 的待確認與確認（新版啟動成功才轉正、安裝失敗保留原紀錄、回退不寫、等於執行中版本時清掉）與一鍵上一版只認紀錄、可回退條件（缺 `format_version`、平台不符、同版或較新都拒）、預覽兩組（含缺標記解 state、版本不明）、回退寫略過鍵的時機、Windows 啟動參數組成與 `.launch/` 清理、Mac 殘留整理（替換紀錄每個階段中斷後的接續——含主對調後未寫階段、previous 對調後刪除前；解壓殘留刪除、升降版都對、沒有紀錄時的退路與無法判定時停住；previous 只在初始載入完成且有回退點時刪；安裝步驟 2 不刪 previous；從 previous 啟動不動；bundle id 不符不動）、`pending` 與執行中版本對不上時清掉、修剪保留規則（永不刪的各類＋補到 3 版）、刪版與修剪和回退共用鎖、桌備份清單與刪除（忙碌、主資料夾不在、組合不乾淨都拒）。
+
+- **實作時補定的細節**（Opus、Sol 驗收通過，〔模型判斷·未裁決〕）：
+  - `update_download` 回 `{version, rollback_ready}`；回退點網址取 conf 第一個含 `/releases/` 的 endpoint 前段，不跟隨重導向。
+  - 清單的「可用」走與回退相同的重驗（`.sig`、版本、平台、大小、簽章）。救援副本刪除前也重驗回退點。
+  - Mac 替換紀錄進 `swapped` 時另記要放進 previous 那份 App 的目錄識別（dev＋inode），用來分辨同版副本是否已對調；取不到識別就停下重試。替換紀錄與 `previous.json` 都用暫存檔＋改名改寫。
+  - `update_post_launch` 在設定與桌清單都讀成功後才呼叫；每步失敗記 log 繼續。
 
 ## 實機驗證（技術上未定，失敗有退路）
 

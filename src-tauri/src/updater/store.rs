@@ -266,15 +266,74 @@ pub(crate) fn commit_download(
     Ok(())
 }
 
-fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut file = File::create(path).map_err(|error| error.to_string())?;
     file.write_all(bytes).map_err(|error| error.to_string())?;
     file.sync_all().map_err(|error| error.to_string())?;
     Ok(())
 }
 
+/// 改寫已存在的紀錄：先寫同目錄暫存、fsync，再原子改名蓋過正式檔，最後 fsync 上層目錄。
+/// 改名之前斷電，正式檔維持舊的完整內容。暫存檔名是正式檔名加 `.tmp`，讀取端不看它。
+pub(crate) fn replace_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let tmp = temp_sibling(path)?;
+    write_synced(&tmp, bytes)?;
+    #[cfg(test)]
+    if FAIL_BEFORE_RENAME.with(|flag| flag.get()) {
+        return Err("改寫中斷".to_owned());
+    }
+    rename_over(&tmp, path)?;
+    if let Some(parent) = path.parent() {
+        if parent.as_os_str().is_empty() {
+            return Ok(());
+        }
+        sync_dir(parent)?;
+    }
+    Ok(())
+}
+
+fn temp_sibling(path: &Path) -> Result<PathBuf, String> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| "沒有檔名".to_owned())?
+        .to_os_string();
+    let mut tmp_name = name;
+    tmp_name.push(".tmp");
+    let parent = path.parent().ok_or_else(|| "沒有上層目錄".to_owned())?;
+    Ok(parent.join(tmp_name))
+}
+
+/// Windows 的 fs::rename 是 MoveFileExW＋MOVEFILE_REPLACE_EXISTING，兩平台都能直接蓋過。
+fn rename_over(from: &Path, to: &Path) -> Result<(), String> {
+    fs::rename(from, to).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+thread_local! {
+    static FAIL_BEFORE_RENAME: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// 測試用：暫存已 fsync、正式檔還沒被蓋過時失敗。離開作用域就恢復。
+#[cfg(test)]
+pub(crate) struct FailBeforeRename;
+
+#[cfg(test)]
+impl FailBeforeRename {
+    pub(crate) fn arm() -> Self {
+        FAIL_BEFORE_RENAME.with(|flag| flag.set(true));
+        Self
+    }
+}
+
+#[cfg(test)]
+impl Drop for FailBeforeRename {
+    fn drop(&mut self) {
+        FAIL_BEFORE_RENAME.with(|flag| flag.set(false));
+    }
+}
+
 /// 目錄 fsync。Windows 開目錄常常失敗；檔案已經各自 sync_all，那裡只記 log、不讓下載因此失敗。
-fn sync_dir(path: &Path) -> Result<(), String> {
+pub(crate) fn sync_dir(path: &Path) -> Result<(), String> {
     match File::open(path).and_then(|file| file.sync_all()) {
         Ok(()) => Ok(()),
         #[cfg(windows)]

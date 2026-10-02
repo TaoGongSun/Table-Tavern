@@ -25,6 +25,7 @@ import {
 import { CharacterMeta } from "./features/characters/card-model";
 import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
 import { useUpdateController } from "./features/updater/useUpdateController";
+import { useVersionStoreController } from "./features/updater/useVersionStoreController";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
@@ -59,6 +60,8 @@ const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
 
 function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
+  // 設定與桌清單都讀成功。更新的啟動後整理與版本庫清單等這個，不等進桌。
+  const [bootReady, setBootReady] = useState(false);
   // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
   const [table, setTable] = useState("");
   // play 才把桌 id 交給會自動讀寫的 controller；唯讀與修復維持空字串，避免嚴格讀取
@@ -177,10 +180,12 @@ function App() {
             lang: normalizeLang(start.preferences["language"]),
           });
           setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+          setBootReady(true);
           await enterTable(id, start);
           return;
         }
         setWorlds(worldList);
+        setBootReady(true);
         const last = String(loaded.preferences["last_world"] ?? "");
         const startId = worldList.some((w) => w.id === last) ? last : worldList[0].id;
         await enterTable(startId, loaded);
@@ -224,10 +229,16 @@ function App() {
   // 更新檢查掛著，但不畫提示。畫面歸包 5。
   useUpdateController({
     configLoaded: config !== null,
+    initialLoadReady: bootReady,
     preferences: config?.preferences,
     responding: chat.generating !== null,
     stopResponse: chat.stopResponse,
     onConfig: setConfig,
+  });
+  // 接上版本庫，不渲染。畫面歸包 5。
+  useVersionStoreController({
+    initialLoadReady: bootReady,
+    responding: chat.generating !== null,
   });
 
   // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列。

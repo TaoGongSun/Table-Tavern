@@ -78,19 +78,19 @@ struct Presence {
     n: bool,
 }
 
-fn live_dir(root: &Path, id: &str) -> PathBuf {
+pub(crate) fn live_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(id)
 }
 fn staging_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-staging-{id}"))
 }
-fn pre_dir(root: &Path, id: &str) -> PathBuf {
+pub(crate) fn pre_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-pre-{id}"))
 }
 fn trash_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-trash-{id}"))
 }
-fn newer_dir(root: &Path, id: &str) -> PathBuf {
+pub(crate) fn newer_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-newer-{id}"))
 }
 fn log_path(root: &Path, id: &str) -> PathBuf {
@@ -426,7 +426,7 @@ fn recover_without_log(root: &Path, id: &str) -> Recovered {
     Recovered::Clean
 }
 
-fn combo_clean(root: &Path, id: &str) -> bool {
+pub(crate) fn combo_clean(root: &Path, id: &str) -> bool {
     let here = presence(root, id);
     here.i && !here.s && !here.t && !log_path(root, id).exists()
 }

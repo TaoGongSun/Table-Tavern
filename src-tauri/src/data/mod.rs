@@ -62,12 +62,18 @@ pub use worldbook::{
 #[allow(unused_imports)]
 pub use config::validate_sponsor_pack;
 pub(crate) use format::marker::current_format;
+pub(crate) use format::{
+    delete_world_backup, discover_ids, list_world_backups, live_dir, loose_name, read_format,
+    BackupList, FormatVersion, CURRENT_FORMAT,
+};
 #[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]
 pub(crate) use scene::bracket_title;
 #[allow(unused_imports)]
 pub use state::SceneLabel;
+#[cfg(test)]
+pub(crate) use world_lock::run_gated_local;
 
 #[cfg(unix)]
 #[repr(C)]

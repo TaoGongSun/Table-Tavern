@@ -357,6 +357,36 @@ async fn run_gated<T>(
     }
 }
 
+/// 測試用的本地閘門。成功路徑會把 mutex 留到程序結束（guard 被忘掉，不能拆）。
+/// 失敗路徑在返回前確認閘是放下的。
+#[cfg(test)]
+pub(crate) async fn run_gated_local<T>(
+    prepare: impl FnOnce() -> Result<T, String>,
+    before_raise: impl FnOnce() -> Result<(), String>,
+    install: impl FnOnce(T) -> Result<(), String>,
+) -> Result<(), String> {
+    let world = Mutex::new(LockState::new());
+    let config = Mutex::new(());
+    let install_lock = InstallLock::new();
+    let result = run_gated(
+        &world,
+        &config,
+        &install_lock,
+        prepare,
+        before_raise,
+        install,
+    )
+    .await;
+    if result.is_ok() {
+        std::mem::forget(world);
+        std::mem::forget(config);
+        std::mem::forget(install_lock);
+    } else {
+        assert!(!gate_is_raised(&world), "開閘前失敗必須放閘");
+    }
+    result
+}
+
 pub(crate) async fn install_guarded<T>(
     prepare: impl FnOnce() -> Result<T, String>,
     before_raise: impl FnOnce() -> Result<(), String>,
