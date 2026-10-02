@@ -10,6 +10,11 @@ import {
 } from "./useVersionStoreController";
 import type { RollbackCheck } from "./version-center";
 
+// 後端錯誤代碼（ui_msg.rs 的 UiMsg）。
+const CANNOT_REPLACE = 'TTMSG:{"code":"update_cannot_replace"}';
+const SIGNATURE_INVALID = 'TTMSG:{"code":"signature_invalid"}';
+const VERSION_NOT_FOUND = 'TTMSG:{"code":"version_not_found"}';
+
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 type Api = ReturnType<typeof useVersionStoreController>;
@@ -151,7 +156,7 @@ describe("useVersionStoreController", () => {
       invokeImpl: async (command: string) => {
         calls.push(command);
         if (command === "list_versions") return versions;
-        if (command === "rollback_preview") throw "驗簽失敗";
+        if (command === "rollback_preview") throw SIGNATURE_INVALID;
         return { backups: [], total_bytes: 0 };
       },
     });
@@ -160,7 +165,7 @@ describe("useVersionStoreController", () => {
     await act(async () => {
       await box.api?.startRollback("0.1.0");
     });
-    expect(asked).toEqual([{ kind: "invalid", message: "驗簽失敗" }]);
+    expect(asked).toEqual([{ kind: "invalid", message: SIGNATURE_INVALID }]);
     expect(calls).not.toContain("rollback_install");
     expect(box.api?.phase.kind).toBe("idle");
   });
@@ -213,7 +218,7 @@ describe("useVersionStoreController", () => {
       invokeImpl: async (command: string) => {
         if (command === "list_versions") return versions;
         if (command === "rollback_preview") return emptyPreview;
-        if (command === "rollback_install") throw "無法自動替換";
+        if (command === "rollback_install") throw CANNOT_REPLACE;
         if (command === "read_config") return fresh;
         return { backups: [], total_bytes: 0 };
       },
@@ -223,7 +228,7 @@ describe("useVersionStoreController", () => {
     await act(async () => {
       await box.api?.startRollback("0.1.0");
     });
-    expect(box.api?.phase).toEqual({ kind: "error", version: "0.1.0", message: "無法自動替換" });
+    expect(box.api?.phase).toEqual({ kind: "error", version: "0.1.0", message: CANNOT_REPLACE });
     expect(configs).toEqual([fresh]);
   });
 
@@ -257,7 +262,7 @@ describe("useVersionStoreController", () => {
         calls.push(command);
         if (command === "delete_version") {
           calls.push(String(args?.version));
-          if (args?.version === "0.0.9") throw "沒有這個版本";
+          if (args?.version === "0.0.9") throw VERSION_NOT_FOUND;
         }
         if (command === "delete_world_backup") calls.push(`${args?.worldId}:${args?.kind}`);
         if (command === "list_versions") return versions;
@@ -287,6 +292,6 @@ describe("useVersionStoreController", () => {
         failure = reason;
       });
     });
-    expect(failure).toBe("沒有這個版本");
+    expect(failure).toBe(VERSION_NOT_FOUND);
   });
 });

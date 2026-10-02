@@ -450,7 +450,7 @@ mod tests {
             &serde_json::json!({"preferences":{"language":"en"}}),
         )
         .unwrap_err();
-        assert_eq!(error.to_string(), "更新進行中，暫停寫入");
+        assert_eq!(error.to_string(), UiMsg::UpdateGateClosed.to_string());
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
     }
 

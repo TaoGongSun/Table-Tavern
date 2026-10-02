@@ -2,13 +2,15 @@
 
 use tauri::AppHandle;
 
+use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, updater};
 
 use super::update::versions_dir;
 
 #[tauri::command]
 pub(crate) async fn list_versions(app: AppHandle) -> Result<updater::VersionList, String> {
-    let platform = updater::Platform::current().ok_or_else(|| "這個平台沒有安裝檔".to_owned())?;
+    let platform =
+        updater::Platform::current().ok_or_else(|| UiMsg::PlatformUnsupported.to_string())?;
     updater::list_versions_locked(
         &versions_dir(&app)?,
         platform,
@@ -28,7 +30,8 @@ pub(crate) async fn rollback_preview(
     app: AppHandle,
     version: String,
 ) -> Result<updater::RollbackPreview, String> {
-    let platform = updater::Platform::current().ok_or_else(|| "這個平台沒有安裝檔".to_owned())?;
+    let platform =
+        updater::Platform::current().ok_or_else(|| UiMsg::PlatformUnsupported.to_string())?;
     updater::rollback_preview_locked(
         &data_root(&app)?,
         &versions_dir(&app)?,
@@ -42,7 +45,8 @@ pub(crate) async fn rollback_preview(
 
 #[tauri::command]
 pub(crate) async fn rollback_install(app: AppHandle, version: String) -> Result<(), String> {
-    let platform = updater::Platform::current().ok_or_else(|| "這個平台沒有安裝檔".to_owned())?;
+    let platform =
+        updater::Platform::current().ok_or_else(|| UiMsg::PlatformUnsupported.to_string())?;
     let versions = versions_dir(&app)?;
     let config = config_root(&app)?;
     let running = env!("CARGO_PKG_VERSION").to_owned();
@@ -109,7 +113,7 @@ fn install_rollback(
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (app, version, file, bytes);
-        Err(updater::CANNOT_REPLACE.to_owned())
+        Err(UiMsg::UpdateCannotReplace.into())
     }
 }
 

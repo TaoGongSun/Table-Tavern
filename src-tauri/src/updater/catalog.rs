@@ -11,6 +11,7 @@ use super::semver_util::{is_older, version_ord, versions_equal};
 use super::store::{self, sync_dir, version_dir_name, Platform};
 use super::store_lock::StoreActivity;
 use super::verify::ReleaseFile;
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(crate) struct VersionList {
@@ -93,22 +94,22 @@ pub(crate) fn require_eligible(
     let name = version_dir_name(version)?;
     let eligible = load_usable(versions, name, platform)?;
     if !is_older(name, running) {
-        return Err("不能回退到同版或較新的版本".to_owned());
+        return Err(UiMsg::RollbackNotOlder.into());
     }
     Ok(eligible)
 }
 
 fn load_usable(versions: &Path, name: &str, platform: Platform) -> Result<EligibleRelease, String> {
     let dir = versions.join(name);
-    let release = read_release(&dir).ok_or_else(|| "這個版本不能回退".to_owned())?;
+    let release = read_release(&dir).ok_or_else(|| UiMsg::RollbackNotEligible.to_string())?;
     if release.platform != platform.as_str() {
-        return Err("平台不符".to_owned());
+        return Err(UiMsg::RollbackPlatformMismatch.into());
     }
     let Some(format_version) = release.format_version else {
-        return Err("沒有格式版本".to_owned());
+        return Err(UiMsg::RollbackNoFormat.into());
     };
     if !versions_equal(&release.version, name) || !dir.join(&release.file).is_file() {
-        return Err("這個版本不能回退".to_owned());
+        return Err(UiMsg::RollbackNotEligible.into());
     }
     Ok(EligibleRelease {
         file: release.file,
@@ -180,14 +181,14 @@ pub(crate) fn delete_version_dir(
 ) -> Result<(), String> {
     let name = version_dir_name(version)?.to_owned();
     if versions_equal(&name, running) {
-        return Err("不能刪除目前版本".to_owned());
+        return Err(UiMsg::VersionDeleteCurrent.into());
     }
     if activity.blocks(&name) {
-        return Err("這個版本正在下載或安裝".to_owned());
+        return Err(UiMsg::VersionInUse.into());
     }
     let dir = versions.join(&name);
     if !dir.is_dir() {
-        return Err("沒有這個版本".to_owned());
+        return Err(UiMsg::VersionNotFound.into());
     }
     remove_version_dir(versions, &dir, &name)?;
     previous::clear_previous_if(versions, &name)?;
@@ -197,7 +198,7 @@ pub(crate) fn delete_version_dir(
 fn remove_version_dir(versions: &Path, dir: &Path, name: &str) -> Result<(), String> {
     let expected = versions.join(name);
     if dir != expected.as_path() {
-        return Err("沒有這個版本".to_owned());
+        return Err(UiMsg::VersionNotFound.into());
     }
     fs::remove_dir_all(dir).map_err(|error| error.to_string())?;
     sync_dir(versions)?;
@@ -365,19 +366,19 @@ mod tests {
         put(&root.0, "0.4.0", "darwin-aarch64", Some(1), &mut key);
         assert_eq!(
             require_eligible(&root.0, "0.1.0", Platform::Mac, "0.4.0").unwrap_err(),
-            "沒有格式版本"
+            UiMsg::RollbackNoFormat.to_string()
         );
         assert_eq!(
             require_eligible(&root.0, "0.2.0", Platform::Mac, "0.4.0").unwrap_err(),
-            "平台不符"
+            UiMsg::RollbackPlatformMismatch.to_string()
         );
         assert_eq!(
             require_eligible(&root.0, "0.4.0", Platform::Mac, "0.4.0").unwrap_err(),
-            "不能回退到同版或較新的版本"
+            UiMsg::RollbackNotOlder.to_string()
         );
         assert_eq!(
             require_eligible(&root.0, "0.4.0", Platform::Mac, "0.3.0").unwrap_err(),
-            "不能回退到同版或較新的版本"
+            UiMsg::RollbackNotOlder.to_string()
         );
         let ok = require_eligible(&root.0, "0.3.0", Platform::Mac, "0.4.0").unwrap();
         assert_eq!(ok.format_version, 1);
@@ -592,7 +593,7 @@ mod tests {
         let idle = StoreActivity::default();
         assert_eq!(
             delete_version_dir(&root.0, "1.0.0", "1.0.0", &idle).unwrap_err(),
-            "不能刪除目前版本"
+            UiMsg::VersionDeleteCurrent.to_string()
         );
         let busy = StoreActivity {
             downloading: Some("0.2.0".to_owned()),
@@ -600,7 +601,7 @@ mod tests {
         };
         assert_eq!(
             delete_version_dir(&root.0, "0.2.0", "1.0.0", &busy).unwrap_err(),
-            "這個版本正在下載或安裝"
+            UiMsg::VersionInUse.to_string()
         );
         delete_version_dir(&root.0, "0.2.0", "1.0.0", &idle).unwrap();
         assert!(!root.0.join("0.2.0").exists());

@@ -29,6 +29,7 @@ pub(crate) async fn delete_version_locked(
 mod tests {
     use super::super::rollback_point::{store_downloaded_release, NewRelease};
     use super::*;
+    use crate::ui_msg::UiMsg;
     use crate::updater::store_lock::{self, test_serial, with_installing};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
@@ -139,7 +140,7 @@ mod tests {
             .await
             .unwrap_err();
         store_lock::clear_downloading().await;
-        assert_eq!(error, "這個版本正在下載或安裝");
+        assert_eq!(error, UiMsg::VersionInUse.to_string());
         assert!(root.0.join("0.1.0").is_dir());
     }
 }

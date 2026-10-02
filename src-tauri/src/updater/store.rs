@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::verify::{verify_artifact, ReleaseFile};
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Platform {
@@ -48,7 +49,7 @@ pub(crate) fn version_dir_name(version: &str) -> Result<&str, String> {
         || version.contains('\\')
         || version.contains('\0')
     {
-        return Err("版本號不能當作目錄名稱".to_owned());
+        return Err(UiMsg::VersionNameInvalid.into());
     }
     Ok(version)
 }
@@ -73,7 +74,7 @@ fn validate_artifact_name(name: &str) -> Result<(), String> {
     {
         return Ok(());
     }
-    Err("安裝檔名稱不符合規則".to_owned())
+    Err(UiMsg::InstallerNameInvalid.into())
 }
 
 fn percent_decode(input: &str) -> Result<String, String> {
@@ -83,12 +84,12 @@ fn percent_decode(input: &str) -> Result<String, String> {
     while index < bytes.len() {
         if bytes[index] == b'%' {
             if index + 2 >= bytes.len() {
-                return Err("安裝檔名稱不符合規則".to_owned());
+                return Err(UiMsg::InstallerNameInvalid.into());
             }
             let hex = std::str::from_utf8(&bytes[index + 1..index + 3])
-                .map_err(|_| "安裝檔名稱不符合規則".to_owned())?;
+                .map_err(|_| UiMsg::InstallerNameInvalid.to_string())?;
             let value =
-                u8::from_str_radix(hex, 16).map_err(|_| "安裝檔名稱不符合規則".to_owned())?;
+                u8::from_str_radix(hex, 16).map_err(|_| UiMsg::InstallerNameInvalid.to_string())?;
             out.push(value);
             index += 3;
         } else {
@@ -96,7 +97,7 @@ fn percent_decode(input: &str) -> Result<String, String> {
             index += 1;
         }
     }
-    String::from_utf8(out).map_err(|_| "安裝檔名稱不符合規則".to_owned())
+    String::from_utf8(out).map_err(|_| UiMsg::InstallerNameInvalid.to_string())
 }
 
 pub(crate) fn unix_secs_to_rfc3339(seconds: u64) -> String {
@@ -191,7 +192,7 @@ pub(crate) fn reverify_for_install(
 ) -> Result<Vec<u8>, String> {
     let dir = versions.join(version);
     if !dir.is_dir() {
-        return Err("尚未下載".to_owned());
+        return Err(UiMsg::UpdateNotDownloaded.into());
     }
     load_verified(&dir, version, file, platform, pubkey_b64)
 }
@@ -204,12 +205,13 @@ fn load_verified(
     pubkey_b64: &str,
 ) -> Result<Vec<u8>, String> {
     let release_path = dir.join("release.json");
-    let release_text = fs::read_to_string(&release_path).map_err(|_| "驗簽失敗".to_owned())?;
+    let release_text =
+        fs::read_to_string(&release_path).map_err(|_| UiMsg::SignatureInvalid.to_string())?;
     let release: ReleaseFile =
-        serde_json::from_str(&release_text).map_err(|_| "驗簽失敗".to_owned())?;
-    let bytes = fs::read(dir.join(file)).map_err(|_| "驗簽失敗".to_owned())?;
-    let signature =
-        fs::read_to_string(dir.join(format!("{file}.sig"))).map_err(|_| "驗簽失敗".to_owned())?;
+        serde_json::from_str(&release_text).map_err(|_| UiMsg::SignatureInvalid.to_string())?;
+    let bytes = fs::read(dir.join(file)).map_err(|_| UiMsg::SignatureInvalid.to_string())?;
+    let signature = fs::read_to_string(dir.join(format!("{file}.sig")))
+        .map_err(|_| UiMsg::SignatureInvalid.to_string())?;
     verify_artifact(
         &bytes, &signature, pubkey_b64, &release, version, platform, file,
     )?;
@@ -342,7 +344,10 @@ pub(crate) fn sync_dir(path: &Path) -> Result<(), String> {
             Ok(())
         }
         #[cfg(not(windows))]
-        Err(error) => Err(format!("versions 目錄 fsync 失敗：{error}")),
+        Err(error) => Err(UiMsg::VersionsSyncFailed {
+            error: error.to_string(),
+        }
+        .into()),
     }
 }
 

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tokio::sync::{Notify, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
-pub const UPDATE_GATE_MESSAGE: &str = "更新進行中，暫停寫入";
+use crate::ui_msg::UiMsg;
 
 /// 閘門已開。`?` 進 command 的 `Result<_, String>`，也進資料層的 `DataResult`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub struct UpdateGateClosed;
 
 impl fmt::Display for UpdateGateClosed {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(UPDATE_GATE_MESSAGE)
+        write!(formatter, "{}", UiMsg::UpdateGateClosed)
     }
 }
 
@@ -287,7 +287,7 @@ impl InstallLock {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_err()
         {
-            return Err("已在安裝".to_owned());
+            return Err(UiMsg::UpdateAlreadyInstalling.into());
         }
         Ok(InstallTicket {
             lock: self,
@@ -418,7 +418,7 @@ mod tests {
         let state = local();
         let _snapshot = raise(&state);
         let error = write_permit_sync(&state, "new").unwrap_err();
-        assert_eq!(error.to_string(), UPDATE_GATE_MESSAGE);
+        assert_eq!(error.to_string(), UiMsg::UpdateGateClosed.to_string());
         assert!(!lock_state(&state).worlds.contains_key("new"));
     }
 
@@ -451,7 +451,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(40));
         let _snapshot = raise(&state);
         let error = spinner.join().unwrap().unwrap_err();
-        assert_eq!(error.to_string(), UPDATE_GATE_MESSAGE);
+        assert_eq!(error.to_string(), UiMsg::UpdateGateClosed.to_string());
         drop(exclusive);
     }
 
@@ -477,7 +477,7 @@ mod tests {
         let _snapshot = raise(&state);
         for handle in handles {
             let error = handle.await.unwrap().unwrap_err();
-            assert_eq!(error.to_string(), UPDATE_GATE_MESSAGE);
+            assert_eq!(error.to_string(), UiMsg::UpdateGateClosed.to_string());
         }
         drop(exclusive);
         assert!(write_permit_sync(&state, "desk").is_err());
@@ -519,7 +519,7 @@ mod tests {
         assert!(gate_is_raised(&world));
         assert_eq!(
             install_lock.try_begin().unwrap_err(),
-            "已在安裝",
+            UiMsg::UpdateAlreadyInstalling.to_string(),
             "成功路徑把安裝旗標留到程序結束"
         );
     }
@@ -613,7 +613,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert_eq!(error, "已在安裝");
+        assert_eq!(error, UiMsg::UpdateAlreadyInstalling.to_string());
         drop(permit);
         handle.await.unwrap().unwrap();
     }
@@ -669,7 +669,10 @@ mod tests {
     fn dropping_the_ticket_allows_another_install() {
         let install_lock = InstallLock::new();
         let ticket = install_lock.try_begin().unwrap();
-        assert_eq!(install_lock.try_begin().unwrap_err(), "已在安裝");
+        assert_eq!(
+            install_lock.try_begin().unwrap_err(),
+            UiMsg::UpdateAlreadyInstalling.to_string()
+        );
         drop(ticket);
         assert!(install_lock.try_begin().is_ok());
     }

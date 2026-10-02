@@ -6,6 +6,7 @@ use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::ui_msg::UiMsg;
 use crate::{config_root, data, updater};
 
 #[derive(Clone, serde::Serialize)]
@@ -38,7 +39,7 @@ pub(crate) async fn update_check(
     };
     if !manual && !updater::allow_auto_check(auto_preferences.as_ref()) {
         return Ok(updater::CheckResult::Failed {
-            message: "自動檢查已關閉".to_owned(),
+            message: UiMsg::UpdateAutoCheckOff.to_string(),
         });
     }
 
@@ -168,10 +169,11 @@ async fn download_prepared(
     app: &AppHandle,
     update: &tauri_plugin_updater::Update,
 ) -> Result<updater::DownloadResult, String> {
-    let platform = updater::Platform::current().ok_or_else(|| "這個平台沒有安裝檔".to_owned())?;
+    let platform =
+        updater::Platform::current().ok_or_else(|| UiMsg::PlatformUnsupported.to_string())?;
     let file = updater::artifact_name(update.download_url.as_str())?;
     if !platform.suffix_ok(&file) {
-        return Err("安裝檔副檔名不符合這個平台".to_owned());
+        return Err(UiMsg::InstallerWrongPlatform.into());
     }
     let version = updater::version_dir_name(&update.version)?.to_owned();
     let versions = versions_dir(app)?;
@@ -225,7 +227,7 @@ async fn download_prepared(
 
 async fn fetch_release_asset(url: String) -> Result<Vec<u8>, String> {
     if !url.starts_with("https://") {
-        return Err("回退點下載失敗".to_owned());
+        return Err(UiMsg::RollbackPointUrlInvalid.into());
     }
     let response = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -236,7 +238,10 @@ async fn fetch_release_asset(url: String) -> Result<Vec<u8>, String> {
         .await
         .map_err(|error| error.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("回退點下載失敗：{}", response.status()));
+        return Err(UiMsg::RollbackPointDownloadFailed {
+            status: response.status().to_string(),
+        }
+        .into());
     }
     response
         .bytes()
@@ -269,16 +274,17 @@ async fn install_pinned(
     version: &str,
 ) -> Result<(), String> {
     if update.version != version {
-        return Err("下載的版本與要安裝的版本不同".to_owned());
+        return Err(UiMsg::UpdateVersionMismatch.into());
     }
-    let platform = updater::Platform::current().ok_or_else(|| "這個平台沒有安裝檔".to_owned())?;
+    let platform =
+        updater::Platform::current().ok_or_else(|| UiMsg::PlatformUnsupported.to_string())?;
     let file = updater::artifact_name(update.download_url.as_str())?;
     if !platform.suffix_ok(&file) {
-        return Err("安裝檔副檔名不符合這個平台".to_owned());
+        return Err(UiMsg::InstallerWrongPlatform.into());
     }
     let dir_name = updater::version_dir_name(&update.version)?.to_owned();
     if dir_name != version {
-        return Err("下載的版本與要安裝的版本不同".to_owned());
+        return Err(UiMsg::UpdateVersionMismatch.into());
     }
     let versions = versions_dir(app)?;
     let pending_versions = versions.clone();
@@ -348,7 +354,7 @@ fn install_prepared(
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (app, update, bytes);
-        Err(updater::CANNOT_REPLACE.to_owned())
+        Err(UiMsg::UpdateCannotReplace.into())
     }
 }
 
@@ -405,6 +411,6 @@ fn swap_for_launch(new_app: &std::path::Path, old_app: &std::path::Path) -> Resu
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (new_app, old_app);
-        Err(updater::CANNOT_REPLACE.to_owned())
+        Err(UiMsg::UpdateCannotReplace.into())
     }
 }

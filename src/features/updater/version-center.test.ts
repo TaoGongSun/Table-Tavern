@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLang } from "../../i18n";
 import type { UpdateOffer } from "./useUpdateController";
 import type { VersionRow } from "./useVersionStoreController";
 import {
@@ -9,8 +10,15 @@ import {
   rollbackNotice,
   showUpdateDot,
   startupReminder,
+  updateChanged,
   versionRowActions,
 } from "./version-center";
+
+// 後端錯誤代碼（ui_msg.rs 的 UiMsg）。
+const SIGNATURE_INVALID = 'TTMSG:{"code":"signature_invalid"}';
+const PLATFORM_MISMATCH = 'TTMSG:{"code":"rollback_platform_mismatch"}';
+const CANNOT_REPLACE = 'TTMSG:{"code":"update_cannot_replace"}';
+const UPDATE_CHANGED = 'TTMSG:{"code":"update_changed"}';
 
 const offer = (level: UpdateOffer["level"]): UpdateOffer => ({
   version: "0.3.0",
@@ -94,9 +102,9 @@ describe("rollbackNotice", () => {
   const world = (name: string) => ({ id: name, name });
 
   it("目標不合格只給原因", () => {
-    expect(rollbackNotice({ kind: "invalid", message: "驗簽失敗" })).toEqual({
+    expect(rollbackNotice({ kind: "invalid", message: SIGNATURE_INVALID })).toEqual({
       kind: "invalid",
-      message: "驗簽失敗",
+      message: SIGNATURE_INVALID,
     });
   });
 
@@ -127,8 +135,9 @@ describe("rollbackNotice", () => {
 
   it("可繼續的確認窗都寫目前版本會被略過，不合格那扇不寫", () => {
     const note = "退回後，目前的 0.2.0 版會被標為略過";
-    expect(rollbackDialogText({ kind: "invalid", message: "平台不符" }, "0.2.0")).not.toContain(note);
-    expect(rollbackDialogText({ kind: "invalid", message: "平台不符" }, "0.2.0")).toContain("平台不符");
+    const invalid = rollbackDialogText({ kind: "invalid", message: PLATFORM_MISMATCH }, "0.2.0");
+    expect(invalid).not.toContain(note);
+    expect(invalid).toBe("無法回到這一版：平台不符");
     expect(rollbackDialogText({ kind: "scanFailed" }, "0.2.0")).toContain("無法預先判讀");
     expect(rollbackDialogText({ kind: "scanFailed" }, "0.2.0")).toContain(note);
     expect(rollbackDialogText({ kind: "none" }, "0.2.0")).toContain("沒有發現會變唯讀的桌");
@@ -139,10 +148,25 @@ describe("rollbackNotice", () => {
   });
 });
 
-describe("cannotReplace", () => {
-  it("認得後端「無法自動替換」", () => {
-    expect(cannotReplace("無法自動替換")).toBe(true);
-    expect(cannotReplace("驗簽失敗")).toBe(false);
+describe("cannotReplace／updateChanged", () => {
+  afterEach(() => setLang("zh-TW"));
+
+  it("只認起首的後端代碼，不看文字", () => {
+    expect(cannotReplace(CANNOT_REPLACE)).toBe(true);
+    expect(cannotReplace(`Error: ${CANNOT_REPLACE}`)).toBe(true);
+    expect(cannotReplace(SIGNATURE_INVALID)).toBe(false);
+    expect(cannotReplace("無法自動替換")).toBe(false);
+    expect(cannotReplace(`下載失敗：${CANNOT_REPLACE}`)).toBe(false);
+    expect(updateChanged(UPDATE_CHANGED)).toBe(true);
+    expect(updateChanged(CANNOT_REPLACE)).toBe(false);
+  });
+
+  it("切到俄文仍判得出來，顯示換成俄文", () => {
+    setLang("ru");
+    expect(cannotReplace(CANNOT_REPLACE)).toBe(true);
+    expect(updateChanged(UPDATE_CHANGED)).toBe(true);
+    const text = rollbackDialogText({ kind: "invalid", message: PLATFORM_MISMATCH }, "0.2.0");
+    expect(text).toBe("Нельзя вернуться к этой версии: Не та платформа");
   });
 
   it("空的寫 0 KB，不到 1 KB 進位成 1 KB", () => {

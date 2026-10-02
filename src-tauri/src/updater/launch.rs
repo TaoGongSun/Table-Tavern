@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use super::store::{sync_dir, write_synced};
+use crate::ui_msg::UiMsg;
 
 pub(crate) const LAUNCH_DIR: &str = ".launch";
 
@@ -27,13 +28,13 @@ pub(crate) fn stage_launch_installer(
     bytes: &[u8],
 ) -> Result<PathBuf, String> {
     if file_name.contains('/') || file_name.contains('\\') || file_name.contains('\0') {
-        return Err("安裝檔名稱不符合規則".to_owned());
+        return Err(UiMsg::InstallerNameInvalid.into());
     }
     let launch = versions.join(LAUNCH_DIR);
     fs_create(&launch)?;
     let dest = launch.join(file_name);
     if dest.parent() != Some(launch.as_path()) {
-        return Err("安裝檔名稱不符合規則".to_owned());
+        return Err(UiMsg::InstallerNameInvalid.into());
     }
     write_synced(&dest, bytes)?;
     sync_dir(&launch)?;

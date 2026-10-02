@@ -48,7 +48,7 @@ pub use world::{
 };
 pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
 pub(crate) use world_lock::{
-    install_guarded, refuse_if_updating, update_gate_raised, UPDATE_GATE_MESSAGE,
+    install_guarded, refuse_if_updating, update_gate_raised, UpdateGateClosed,
 };
 pub use world_lock::{world_write_permit, world_write_permit_async};
 pub use worldbook::{

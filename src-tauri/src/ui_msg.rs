@@ -175,6 +175,56 @@ pub enum UiMsg {
     RefactorSpanMissing {
         span: String,
     },
+
+    // ── 更新器與版本庫
+    UpdateNotChecked,
+    UpdateAlreadyDownloading,
+    /// 已有一次安裝在跑（更新槽或安裝鎖）。
+    UpdateAlreadyInstalling,
+    UpdateNotDownloaded,
+    /// 下載的版本跟要求安裝的版本對不上。
+    UpdateVersionMismatch,
+    /// 槽裡的版本已被後來的檢查換掉；前端靠這個碼重新顯示最新的更新資訊。
+    UpdateChanged,
+    /// 下載或安裝進行中，槽裡卻沒有那份更新。
+    UpdateBusy,
+    UpdateAutoCheckOff,
+    /// 安裝閘門已開，暫停一切寫入。
+    UpdateGateClosed,
+    /// Mac 無法自動替換 App；前端靠這個碼改給下載頁。
+    UpdateCannotReplace,
+    /// 版本庫已有下載或安裝在跑。
+    VersionStoreBusy,
+    PlatformUnsupported,
+    InstallerWrongPlatform,
+    InstallerNameInvalid,
+    /// 解出來的 App 版本跟要裝的不同。
+    InstallerVersionMismatch,
+    VersionNameInvalid,
+    SignatureInvalid,
+    ArchivePathUnsafe,
+    ArchiveHasLink,
+    ArchiveWrongRoot,
+    RollbackNotOlder,
+    RollbackNotEligible,
+    RollbackPlatformMismatch,
+    RollbackNoFormat,
+    VersionDeleteCurrent,
+    VersionInUse,
+    VersionNotFound,
+    UpdateEndpointInvalid,
+    /// 回退點網址不是 https。
+    RollbackPointUrlInvalid,
+    /// 回退點下載回非成功狀態；status 是 HTTP 狀態原文。
+    RollbackPointDownloadFailed {
+        status: String,
+    },
+    SwapRecordMissing,
+    AppIdUnavailable,
+    ResidueCleanupStuck,
+    VersionsSyncFailed {
+        error: String,
+    },
 }
 
 impl fmt::Display for UiMsg {

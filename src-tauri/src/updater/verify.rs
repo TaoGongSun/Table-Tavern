@@ -5,6 +5,8 @@ use base64::Engine;
 use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 
+use crate::ui_msg::UiMsg;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ReleaseFile {
     pub version: String,
@@ -31,22 +33,23 @@ pub(crate) fn verify_artifact(
         || release.file != expected_file
         || release.size != bytes.len() as u64
     {
-        return Err("驗簽失敗".to_owned());
+        return Err(UiMsg::SignatureInvalid.into());
     }
     let signature_text = decode_armor(sig_b64)?;
     let key_text = decode_armor(pubkey_b64)?;
-    let key = PublicKey::decode(&key_text).map_err(|_| "驗簽失敗".to_owned())?;
-    let signature = Signature::decode(&signature_text).map_err(|_| "驗簽失敗".to_owned())?;
+    let key = PublicKey::decode(&key_text).map_err(|_| UiMsg::SignatureInvalid.to_string())?;
+    let signature =
+        Signature::decode(&signature_text).map_err(|_| UiMsg::SignatureInvalid.to_string())?;
     // minisign 0.7 簽的是 prehash。allow_legacy 開了會把 prehash 簽章當成舊格式拒掉。
     key.verify(bytes, &signature, false)
-        .map_err(|_| "驗簽失敗".to_owned())
+        .map_err(|_| UiMsg::SignatureInvalid.to_string())
 }
 
 fn decode_armor(input: &str) -> Result<String, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(input.trim())
-        .map_err(|_| "驗簽失敗".to_owned())?;
-    String::from_utf8(bytes).map_err(|_| "驗簽失敗".to_owned())
+        .map_err(|_| UiMsg::SignatureInvalid.to_string())?;
+    String::from_utf8(bytes).map_err(|_| UiMsg::SignatureInvalid.to_string())
 }
 
 #[cfg(test)]
@@ -110,7 +113,7 @@ mod tests {
             "TableTavern_1.2.3_aarch64.app.tar.gz",
         )
         .unwrap_err();
-        assert_eq!(error, "驗簽失敗");
+        assert_eq!(error, UiMsg::SignatureInvalid.to_string());
     }
 
     #[test]
