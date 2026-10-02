@@ -18,7 +18,8 @@
 - [x] P2 並行提速 **✗**：總時長 ~24 分（14:21–14:45）。人物段並行有動（六筆小輸出間隔 15–40 秒收束），但條目重寫→介面序列鏈每筆輸出 7–18k、共 ~82k tokens，獨佔 ~19 分（~60 tok/s 序列生成）。
 - [x] P3 快取命中 **✓**：展開幾乎每筆 `cached_tokens=11,494`（hit_rate ~88%）。
 - [x] P7 品質 **✗**（基線拍板 b＝絕對標準）：純設定條目（豺狼人／深藍狼／巨魔等）被整篇重寫；逐日機制「巴古克與古茲卡入侵劇情線」未接管。分類與產出策略缺陷，修法見 [refactor-survey-spans](refactor-survey-spans.md)。
-- [ ] P4／P5／P6（取消／孤兒）、P8（API 退檔）：未測，refactor-survey-spans 完成後合併驗。
+- [x] P4／P5／P6（取消／孤兒）**✓**：隨 refactor-survey-spans T4①（取消／Cmd-Q）一起過（2026-08-14）。
+- [ ] P8（API 退檔）：未測，要用 API 模式真跑一次重構。
 
 ## 驗收中發現的待修（2026-08-11 事故揭露，另行拍板排程）
 驗收開跑即撞 claude CLI 401：根因＝`~/.claude/settings.json` env 被寫入 cliproxy 代理（已備份後移除兩鍵、4.6 秒探針復通）。來源 2026-08-11 查明並全清：7/13 CLIProxyAPI Connect 安裝流程寫入 settings.json＋`~/.zshrc`；7/29 的檔案時間係 handoff 技能安裝整檔重寫所致（proxy 鍵原樣搬運）；當日斷線＝proxy 內 Claude OAuth 11:21 過期後刷新失敗。`.zshrc` 區塊與 proxy 的 claude 憑證已一併清除，恢復訂閱直連。過程揭露三個 app 缺陷：
@@ -27,7 +28,7 @@
 3. 驗證腳本探針用 `claude -p "ok"`（慢＋燒額度＋認證壞時掛 3 分鐘）——換 `claude auth status` 類即時指令（須先驗它能否分辨憑證失效）。
 
 ## Next action
-先做 [refactor-survey-spans](refactor-survey-spans.md)（新對話）；完成後回本案補驗 P4–P6／P8，過即結案（HANDOFF.md 那行刪掉、本檔搬 handoffs/archive/）。
+只剩 P8：用 API 模式跑一次重構（可與 refactor-survey-spans T4② 同一輪），過即結案（HANDOFF.md 那行刪掉、本檔搬 handoffs/archive/）。
 
 ## Constraints
 - survey／expand 共用 system 逐位元組相同的快取紅線照舊，system 組裝零觸碰（本次已驗：knownFields 等階段差異只在 user 訊息）。

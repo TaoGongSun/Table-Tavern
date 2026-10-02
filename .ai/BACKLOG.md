@@ -6,11 +6,9 @@
 
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 - [refactor-apply-count-mismatch](tasks/refactor-apply-count-mismatch.md) — 重構套用訊息說「新增 34 條世界書條目」，磁碟只有 33 條 — 下一步：重現一次並把 33 條的標題全列出來，先確認沒勾的角色轉成的 is_person 條目在不在裡面，再判斷是計數多算還是條目該寫沒寫。
-- [api-shared-lane](tasks/api-shared-lane.md) — API 路徑改走 chars 共線：讓換角色不再打散前綴快取 — 下一步：API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉固定的 9,984。
 - [card-arrival-private-leak](tasks/card-arrival-private-leak.md) — 角色卡回歸事件把私設漏給同桌其他角色 — 下一步：先拍板「回歸事件該讓誰看到什麼」：是拆成公開回歸事件＋GM-only 私設事件，還是回歸事件只留公開設定。定了再看四條路各要怎麼改，並一併決定 grok 現在的「一角一線＋私設提進凍結 system」要保留還是改回共線——grok-cache-miss 的角色線驗收擋在這裡。
 - [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。
 - [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
-- [interface-takeover-spike](tasks/interface-takeover-spike.md) — 介面接管：重構把卡的每回合輸出格式照搬成骨架，app 用狀態樹組裝介面 — 下一步：逐型驗其他卡（MVU 前端型 bcd368 優先，見交接檔待辦 2），最後清舊產殼路線（待辦 4）；玩家選擇那條已移交 refactor-mode-split
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 - [chars-lane-rewrite-drop](tasks/chars-lane-rewrite-drop.md) — 角色線續聊被作廢：每輪冷開、快取一次都中不到 — 下一步：開工首步＝重現並定位：連續讓角色發言兩三輪，看每輪是不是都落 drop-lane，再確認 `apply_rewrite` 裡失敗的是 `find_user_line_with_segment`／`erase_user_segment`／`prefix_last_assistant` 哪一段。目前錯誤被 `Err(_)` 吞掉不落原因，可能要先讓它把失敗原因寫進帳本才查得動。
 - [long-prompt-scene-hint](tasks/long-prompt-scene-hint.md) — 桌子太長撞到指令長度上限時，請玩家換幕 — 下一步：先確認撞上限時各條路實際回什麼（作業系統層的 E2BIG？CLI 自己的錯誤？還是直接沒反應），才知道要抓什麼特徵。三個作業系統的上限與表現可能不同。
@@ -23,10 +21,9 @@
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02），排程晚於 st-ecosystem；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
 - [shell-update-flash](tasks/shell-update-flash.md) — 卡片介面殼更新無閃白：postMessage ready 取代 load 事件重建雙緩衝 — 下一步：2026-08-12 立案；現行單 iframe 直繪是正確基線，開工前先實測閃白痛感（每回合一次、毫秒級）再定優先序
-- [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：CI 產線＋Windows 安裝檔（tauri-action） — 下一步：出未簽章版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
+- [release-2-ci-windows](tasks/release-2-ci-windows.md) — 發佈 2：Windows 首個正式版（CI 產線與 NSIS 安裝檔已由 desktop-update-detect 包 1 的 release.yml 做完） — 下一步：發未簽章正式版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：等使用者加入 Apple Developer Program（99 美元/年）後開工：設 Developer ID 憑證＋notarytool 公證流程，憑證再併入 release-2 的 CI secrets
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
-- [claude-compat-endpoint](tasks/claude-compat-endpoint.md) — Claude CLI 接 Anthropic 相容端點（DeepSeek／GLM／Kimi） — 下一步：實作完成且自驗綠，但本機無 DeepSeek／GLM／Kimi 訂閱可測，暫掛；等有相容端點的訂閱或協力者時再實測結案
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：2026-08-10 立案；重構面板只在 AI 認人時問一次，之後改主意需要這條路，兩項待拍板（已有玩家卡時換不換、能不能反向取消）
 - [character-presence](tasks/character-presence.md) — 角色在場/退場狀態管理：自動上下場＋在場過濾 — 下一步：2026-08-11 立案；地基見 CARD-REFACTOR-SPEC 包 4，開工前逐點重拍板，排序在 refactor-dispatch 之後
 - [quota-insufficient-alert](tasks/quota-insufficient-alert.md) — 額度不足／AI 請求失敗提示：結構化分類＋攔截式彈窗（聊天＋生圖） — 下一步：2026-07-27 討論定案未實作，文件自舊分支撿回；開工前先確認與已結案的 ai-error-messages（錯誤翻譯層、關鍵字分三類）差在哪，本案未做的部分看來是結構化 kind、攔截式 modal 與送出失敗保留輸入框內容〔模型判斷·未裁決〕

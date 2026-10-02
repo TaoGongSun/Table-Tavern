@@ -1,3 +1,5 @@
+> 結案 2026-10-02：已用 OpenRouter 真金鑰跑過 137 輪 API 對話（帳本 `cache_reporting: reported`），發言成功那項自然驗到。
+
 # 金鑰貼錯防呆：貼成文件裡的指令時當場提示，401 依傳輸分流指路
 
 Status: awaiting-verification

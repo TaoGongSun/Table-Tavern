@@ -5,7 +5,7 @@
 
 ## Completed
 - AI 生圖後端：`generate_character_image(world, name, extraPrompt, source)` 回圖片 data URL。api 來源走 OpenRouter 專用 Images API（POST {base}/images，aspect_ratio 2:3、resolution 1K，模型讀 preferences.image_model、預設 google/gemini-3.1-flash-image，回應取 data[0].b64_json）；CLI 來源照送請求（prompt 加「能生圖就存 PNG 回絕對路徑」指示，codex 加 `$imagegen` 前綴），回覆掃 data URL 或存在的圖片路徑（extract_image_from_text），掃不到回錯。追加描寫存卡（gen_prompt frontmatter 欄位，換行轉空白）。stream_via_transport 加 transport_override 參數供生圖指定與聊天不同的連線。
-- AI 生圖前端：卡片編輯器「✨ AI 生成」鈕 → 生成對話框（追加描寫預填上次值＋生圖來源下拉：OpenRouter API＋偵測到的 CLI，記住上次選擇 image_source）→ 成功餵 setPendingImage 接既有 2:3 裁切→存檔流；失敗顯示道歉訊息＋後端錯誤小字、不扣次數。免費 3 次（preferences.ai_image_trials_used，成功才 +1），用完未贊助 → 介紹 modal（文案＋Ko-fi 鈕）。設定 AI 分頁加「生圖模型」欄位。
+- AI 生圖前端：卡片編輯器「✨ AI 生成」鈕 → 生成對話框（追加描寫預填上次值＋生圖來源下拉：OpenRouter API＋偵測到的 CLI，記住上次選擇 image_source）→ 成功餵 setPendingImage 接既有 2:3 裁切→存檔流；失敗顯示道歉訊息＋後端錯誤小字、不扣次數。2026-09-30 起未贊助生圖不再限次（原免費 3 次上限已拿掉）。設定 AI 分頁加「生圖模型」欄位。
 - 四家 CLI 生圖實測（2026-07-27）：codex ✓（`$imagegen`，需信任目錄，實測出 1254×1254 PNG）；agy ✓（原生，存自家 scratch 回絕對路徑）；grok ✓ 能力在（原生 image_gen，實測時 403 額度）；claude ✗。參考文件：.ai/reference/CODEX_IMAGE_GENERATION_GUIDE.md。
 - 配色 +5：App.css 五套 token 區塊（parchment 羊皮紙＝Solarized Light 色相加深墨色／herbal 藥草坊／candlelight 燭光／port 波特酒／seamist 海霧）；App.tsx resolveTheme（未知值或未解鎖 sponsor 主題一律回 dark）＋色票選擇器（☕ 角標、aria-pressed）＋試看機制（previewTheme state，effect cleanup 關窗即復原）＋試看提示行附 Ko-fi 鈕；i18n zh/en 六鍵。解鎖狀態 2026-07-28 起改由贊助包檔案（`.ttpack`）推導，見 [release-4-theme-pack](archive/release-4-theme-pack.md)。
 - 設定視窗新增第三分頁「作者」：頭像（Tao-icon.png，圓形 6rem）＋ 作者名 ＋ 一句文案 ＋「☕ 請作者喝咖啡」鈕（openUrl 開系統瀏覽器）
@@ -37,6 +37,6 @@
 
 ## Next action
 1. 使用者實機驗收構圖二選一：生圖對話框選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
-3. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原；重置免費次數改 `ai_image_trials_used`（手改 config.json 的舊旗標已失效）。
+3. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原。
 
 （2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）
