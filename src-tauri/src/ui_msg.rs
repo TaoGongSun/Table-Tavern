@@ -96,7 +96,6 @@ pub enum UiMsg {
     },
     EntryUntitled,
     PlayerCardExists,
-    CardStillOnTable,
     PlayerCardNotConvertible,
     CharacterNotFound {
         id: String,

@@ -388,7 +388,6 @@ export const es: Record<MsgKey, string> = {
   exportCard: "Exportar",
   exportCardHint: "Guarda como una ficha de SillyTavern (PNG o JSON), reconstruida a partir del texto actual de esta ficha",
   convertCardToEntry: "Crear entrada del Mundo",
-  convertCardInUse: "Esta ficha sigue en la mesa. Usa primero «Ocultar personaje» arriba y vuelve después a convertirla.",
   convertCardUnsaved: "Hay cambios sin guardar. Guárdalos antes de convertir.",
   convertCardConfirm: "Unirá toda la ficha, incluidas las notas privadas, en una entrada permanente visible para el GM y después eliminará esta ficha y sus imágenes. ¿Continuar?",
   convertCardDone: "Se convirtió en una entrada del Libro del Mundo.",

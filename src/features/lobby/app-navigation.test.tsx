@@ -494,6 +494,47 @@ describe("lobby and table navigation", () => {
     });
   });
 
+  it("converting the current speaker into a worldbook entry clears it everywhere", async () => {
+    const fixture: Fixture = {
+      worlds: [world("w1", "Alpha")],
+      open: {},
+      characters: [character("c1", "Alice"), character("c2", "Bob"), character("c3", "Cora")],
+    };
+    install(fixture);
+    backend.handlers.read_character = ({ characterId }) => ({
+      ...fixture.characters.find((c) => c.id === characterId)!,
+      public_md: "",
+      private_md: "",
+      gen_prompt: "",
+    });
+    backend.handlers.character_to_worldbook_entry = ({ characterId }) => {
+      fixture.characters = fixture.characters.filter((c) => c.id !== characterId);
+    };
+    await boot();
+    await click(cover("Alpha"));
+    const rail = () => document.querySelector<HTMLElement>(".sidebar")!;
+    const cardMain = (name: string) =>
+      [...rail().querySelectorAll<HTMLButtonElement>(".tcard-main")].find((button) =>
+        button.textContent?.includes(name),
+      );
+    if (cardMain("Alice")!.getAttribute("aria-pressed") !== "true") await click(cardMain("Alice")!);
+    expect(cardMain("Alice")!.getAttribute("aria-pressed")).toBe("true");
+
+    await click(byLabel(t("editCardSummary", { name: "Alice" }))!);
+    expect(document.querySelector(".edit-page")).not.toBeNull();
+    await click(document.querySelector(`.edit-page [aria-label="${t("moreActions")}"]`)!);
+    const convert = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === t("convertCardToEntry"),
+    )!;
+    await click(convert);
+
+    expect(calls("character_to_worldbook_entry")).toHaveLength(1);
+    expect(rail().textContent).not.toContain("Alice");
+    expect(document.querySelector("[data-archive-row]")).toBeNull();
+    expect(cardMain("Bob")!.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector(".edit-page")).toBeNull();
+  });
+
   describe("focus after an archived row disappears", () => {
     const archivedCard = (id: string, name: string) => ({ ...character(id, name), archived: true });
     const rowOf = (name: string) =>

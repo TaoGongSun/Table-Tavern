@@ -169,7 +169,6 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   worldbook_entry_not_found: { uid: "string" },
   entry_untitled: {},
   player_card_exists: {},
-  card_still_on_table: {},
   player_card_not_convertible: {},
   character_not_found: { id: "string" },
   scene_fork_not_earlier: {},

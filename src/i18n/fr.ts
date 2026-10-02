@@ -388,7 +388,6 @@ export const fr: Record<MsgKey, string> = {
   exportCard: "Exporter",
   exportCardHint: "Enregistrer sous forme de fiche de personnage SillyTavern (PNG ou JSON), recréée à partir du texte actuel de cette fiche",
   convertCardToEntry: "Convertir en entrée d'encyclopédie",
-  convertCardInUse: "Cette fiche est encore à la table. Utilise d'abord « Masquer le personnage » ci-dessus, puis reviens la convertir.",
   convertCardUnsaved: "Des modifications ne sont pas enregistrées. Enregistre-les avant de convertir.",
   convertCardConfirm: "Toute la fiche, y compris les notes privées, sera fusionnée en une entrée permanente visible au MJ ; cette fiche et ses images seront ensuite supprimées. Continuer ?",
   convertCardDone: "Convertie en entrée d'encyclopédie.",

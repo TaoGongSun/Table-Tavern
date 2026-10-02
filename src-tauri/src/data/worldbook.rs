@@ -566,16 +566,17 @@ pub fn worldbook_entry_to_character(
     })
 }
 
-/// 把封存角色卡搬回世界書。
+/// 把角色卡搬回世界書，桌上與隱藏區的卡都可以。
+/// 取獨占：回合或換幕持共用許可期間會讀卡、寫卡，交錯會點名已刪的卡或把卡檔寫回來。
 pub fn character_to_worldbook_entry(
     root: &Path,
     world_id: &str,
     character_id: &str,
 ) -> DataResult<()> {
+    let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
+        return Err(UiMsg::WorldBusy.into_error());
+    };
     let card = read_character(root, world_id, character_id)?;
-    if !card.archived {
-        return Err(UiMsg::CardStillOnTable.into_error());
-    }
     let state = read_state(root, world_id)?;
     if state.player_card_id.as_deref() == Some(character_id) {
         return Err(UiMsg::PlayerCardNotConvertible.into_error());

@@ -408,7 +408,6 @@ export const zh = {
   exportCard: "匯出卡",
   exportCardHint: "存成 SillyTavern 角色卡（PNG 或 JSON），內容依這張卡目前的文字重新產生",
   convertCardToEntry: "轉成世界書條目",
-  convertCardInUse: "這張卡還在桌上。先按上面的「隱藏角色」，再回來轉。",
   convertCardUnsaved: "有未儲存的修改，先儲存再轉。",
   convertCardConfirm: "會把整張卡（含私有筆記）併成一條 GM 可見的常駐條目，然後刪除這張卡與圖片。要繼續嗎？",
   convertCardDone: "已轉成世界書條目。",

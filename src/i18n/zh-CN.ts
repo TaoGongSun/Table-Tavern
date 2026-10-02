@@ -386,7 +386,6 @@ export const zhCN: Record<MsgKey, string> = {
   exportCard: "导出卡",
   exportCardHint: "存为 SillyTavern 角色卡（PNG 或 JSON），内容依据当前卡片文本重新生成",
   convertCardToEntry: "转成世界书条目",
-  convertCardInUse: "这张卡还在桌上。先按上面的「隐藏角色」，再回来转。",
   convertCardUnsaved: "有未保存的修改，先保存再转。",
   convertCardConfirm: "会把整张卡（含私有笔记）合并成一条 GM 可见的常驻条目，然后删除这张卡和图片。要继续吗？",
   convertCardDone: "已转成世界书条目。",

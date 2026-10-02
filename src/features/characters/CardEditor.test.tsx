@@ -27,6 +27,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
+import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
 import { CardEditor } from "./CardEditor";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -59,6 +60,8 @@ describe("CardEditor", () => {
   let host: HTMLDivElement | null = null;
   const onBack = vi.fn();
   const onDeleted = vi.fn(async () => {});
+  const onConverted = vi.fn(async () => {});
+  let busy = false;
   const leaveGuard: { current: (() => Promise<boolean>) | null } = { current: null };
 
   beforeEach(() => {
@@ -66,6 +69,11 @@ describe("CardEditor", () => {
     backend.calls = [];
     onBack.mockReset();
     onDeleted.mockClear();
+    onConverted.mockClear();
+    vi.mocked(confirm).mockReset();
+    vi.mocked(confirm).mockResolvedValue(true);
+    vi.mocked(showMessage).mockClear();
+    busy = false;
     leaveGuard.current = null;
   });
 
@@ -97,7 +105,8 @@ describe("CardEditor", () => {
         config={{ api_keys: {}, tier_models: {}, preferences: {} }}
         onPreference={async () => {}}
         onOpenAiSettings={() => {}}
-        onConverted={async () => {}}
+        onConverted={onConverted}
+        isBusy={() => busy}
       />
     );
   }
@@ -209,5 +218,82 @@ describe("CardEditor", () => {
     await act(async () => releaseOld(card("c1", "Alice")));
     expect(nameInput()!.value).toBe("Bob");
     expect(saveButton().disabled).toBe(false);
+  });
+
+  describe("convert to worldbook entry", () => {
+    const convertCalls = () =>
+      backend.calls.filter((call) => call.command === "character_to_worldbook_entry");
+    const errorText = () => host!.querySelector('[role="alert"]')?.textContent ?? "";
+    async function chooseConvert() {
+      const item = openMore().find((entry) => entry.textContent === t("convertCardToEntry"))!;
+      await act(async () => item.click());
+    }
+
+    it("converts a card still on the table after the one warning confirm", async () => {
+      backend.handlers.read_character = () => card("c1", "Alice");
+      await mount();
+      await chooseConvert();
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(confirm).mock.calls[0][0]).toBe(t("convertCardConfirm"));
+      expect(convertCalls()).toHaveLength(1);
+      expect(convertCalls()[0].args).toEqual({ worldId: "w1", characterId: "c1" });
+      expect(onConverted).toHaveBeenCalledTimes(1);
+    });
+
+    it("does nothing when the confirm is cancelled", async () => {
+      backend.handlers.read_character = () => card("c1", "Alice");
+      vi.mocked(confirm).mockResolvedValue(false);
+      await mount();
+      await chooseConvert();
+      expect(convertCalls()).toHaveLength(0);
+      expect(onConverted).not.toHaveBeenCalled();
+    });
+
+    it("blocks unsaved edits before asking", async () => {
+      backend.handlers.read_character = () => card("c1", "Alice");
+      await mount();
+      const input = nameInput()!;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      await act(async () => {
+        setter.call(input, "Alicia");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await chooseConvert();
+      expect(vi.mocked(showMessage).mock.calls[0][0]).toBe(t("convertCardUnsaved"));
+      expect(confirm).not.toHaveBeenCalled();
+      expect(convertCalls()).toHaveLength(0);
+    });
+
+    it("refuses while a turn is running, before and after the confirm", async () => {
+      backend.handlers.read_character = () => card("c1", "Alice");
+      await mount();
+      busy = true;
+      await chooseConvert();
+      expect(confirm).not.toHaveBeenCalled();
+      expect(errorText()).toContain(t("worldBusy"));
+
+      busy = false;
+      vi.mocked(confirm).mockImplementation(async () => {
+        busy = true;
+        return true;
+      });
+      await chooseConvert();
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(convertCalls()).toHaveLength(0);
+      expect(errorText()).toContain(t("worldBusy"));
+      expect(onConverted).not.toHaveBeenCalled();
+    });
+
+    it("keeps the editor open with the error when the conversion fails", async () => {
+      backend.handlers.read_character = () => card("c1", "Alice");
+      backend.handlers.character_to_worldbook_entry = () => {
+        throw new Error("write failed");
+      };
+      await mount();
+      await chooseConvert();
+      expect(errorText()).toContain("write failed");
+      expect(onConverted).not.toHaveBeenCalled();
+      expect(nameInput()!.value).toBe("Alice");
+    });
   });
 });

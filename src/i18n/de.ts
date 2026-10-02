@@ -390,7 +390,6 @@ export const de: Record<MsgKey, string> = {
   exportCard: "Export",
   exportCardHint: "Als SillyTavern-Charakterkarte (PNG oder JSON) speichern, neu generiert aus dem aktuellen Text dieser Karte",
   convertCardToEntry: "In Weltbucheintrag umwandeln",
-  convertCardInUse: "Diese Karte ist noch am Tisch. Nutze zuerst oben „Verstecken“ und wandle sie dann um.",
   convertCardUnsaved: "Es gibt ungespeicherte Änderungen. Speichere sie vor dem Umwandeln.",
   convertCardConfirm: "Die ganze Karte einschließlich privater Notizen wird zu einem dauerhaft aktiven, für den GM sichtbaren Eintrag zusammengeführt. Danach werden diese Karte und ihre Bilder gelöscht. Fortfahren?",
   convertCardDone: "In Weltbucheintrag umgewandelt.",
