@@ -2,8 +2,63 @@ use crate::ai_transport::{
     ai_call_failure, chat_transport, lane_provider, prepare_lane_call, stream_turn_via_transport,
 };
 use crate::commands::character::load_active_cards;
-use crate::{config_root, data, data_root, import, lanes, mechanism, transport, usage_log};
+use crate::{
+    config_root, data, data_root, import, inflight, lanes, mechanism, transport, usage_log,
+};
 use serde::Serialize;
+
+/// 角色對話的回傳。`aborted` 為真時 `text` 是停止當下已經吐出的半截，可能是空的。
+#[derive(Serialize)]
+pub(crate) struct ChatReply {
+    text: String,
+    aborted: bool,
+}
+
+struct Spoken {
+    text: String,
+    aborted: bool,
+}
+
+/// 增量先寫進這支緩衝再送前端。中止贏的那個當下，緩衝裡就是玩家已經看到的字。
+fn push_delta(
+    buffer: &std::sync::Mutex<String>,
+    on_delta: &tauri::ipc::Channel<String>,
+    delta: &str,
+) {
+    buffer.lock().expect("delta buffer").push_str(delta);
+    let _ = on_delta.send(delta.to_owned());
+}
+
+fn take_delta(buffer: &std::sync::Mutex<String>) -> String {
+    std::mem::take(&mut *buffer.lock().expect("delta buffer"))
+}
+
+/// API 路徑在呼叫處跟取消賽跑。完成的分支排前面：兩邊同時就緒時交回完整結果。
+async fn take_abort_or_finish(
+    cancel: &mut inflight::CancelSignal,
+    buffer: &std::sync::Mutex<String>,
+    call: impl std::future::Future<Output = Result<String, String>>,
+) -> Result<Spoken, String> {
+    tokio::pin!(call);
+    let finished = tokio::select! {
+        biased;
+        result = call.as_mut() => Some(result),
+        _ = cancel.cancelled() => None,
+    };
+    match finished {
+        Some(result) => Ok(Spoken {
+            text: result?,
+            aborted: false,
+        }),
+        None => {
+            drop(call);
+            Ok(Spoken {
+                text: take_delta(buffer),
+                aborted: true,
+            })
+        }
+    }
+}
 
 /// 上下文組裝→單發呼叫→串流回傳（KICKOFF §4）。
 /// 上下文完全由本機正典（角色卡＋可見世界書＋公開 transcript）經 assemble_messages 組裝，
@@ -13,8 +68,12 @@ pub(crate) async fn chat_with_character(
     app: tauri::AppHandle,
     world_id: String,
     character_id: String,
+    turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
-) -> Result<String, String> {
+) -> Result<ChatReply, String> {
+    let _permit = data::world_write_permit_async(&world_id).await?;
+    let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
+    let buffer = std::sync::Mutex::new(String::new());
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let card =
@@ -32,9 +91,7 @@ pub(crate) async fn chat_with_character(
         &character_id,
         &card.name,
     );
-    let emit = |delta: &str| {
-        let _ = on_delta.send(delta.to_owned());
-    };
+    let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     // CLI 訂閱走 resume 續聊線。claude 全角色共用一條 session，私設回合注入、
     // 回合後從 session 檔抹掉（案 C）；Agy/Grok 無可靠的抹寫路徑，改成一角一線＋
     // 私設提進該角色自己的凍結 system，不讓別的角色讀到不該讀的東西。
@@ -59,7 +116,7 @@ pub(crate) async fn chat_with_character(
             frozen.push_str(private);
         }
         let call = prepare_lane_call(&app, &config, card.tier, provider).await?;
-        return lanes::run_turn(
+        let outcome = lanes::run_turn(
             &call,
             &root,
             &world_id,
@@ -76,10 +133,16 @@ pub(crate) async fn chat_with_character(
                 },
                 scope: hoist.then(|| card.id.clone()),
             },
+            Some(&mut cancel),
             emit,
         )
         .await
-        .map_err(ai_call_failure);
+        .map_err(ai_call_failure)?;
+        // 半截用這一輪 CLI 自己累的字。外層緩衝會跨降級重開留著前一次嘗試的增量。
+        return Ok(ChatReply {
+            text: outcome.text,
+            aborted: outcome.aborted,
+        });
     }
     // api／codex 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
     // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
@@ -98,24 +161,32 @@ pub(crate) async fn chat_with_character(
     );
     // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
     // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
-    stream_turn_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        card.tier,
-        Some(&world_id),
-        "",
-        "",
-        &messages,
-        usage_log::PromptShape::Turn {
-            roster: cards.len(),
-            solo: cards.len() <= 1,
-        },
-        false,
-        emit,
+    let spoken = take_abort_or_finish(
+        &mut cancel,
+        &buffer,
+        stream_turn_via_transport(
+            &app,
+            &config,
+            None,
+            false,
+            card.tier,
+            Some(&world_id),
+            "",
+            "",
+            &messages,
+            usage_log::PromptShape::Turn {
+                roster: cards.len(),
+                solo: cards.len() <= 1,
+            },
+            false,
+            emit,
+        ),
     )
-    .await
+    .await?;
+    Ok(ChatReply {
+        text: spoken.text,
+        aborted: spoken.aborted,
+    })
 }
 
 /// 這一桌自動隱藏、且未手動封存的角色卡（回合登場檢測用，AI 卡重構包 4b）；
@@ -173,8 +244,9 @@ async fn gm_lane_reply(
     echo: lanes::ReplyEcho,
     lang: &str,
     provider: lanes::LaneProvider,
+    cancel: Option<&mut inflight::CancelSignal>,
     emit: impl FnMut(&str),
-) -> Result<String, String> {
+) -> Result<lanes::TurnOutcome, String> {
     let frozen = transport::gm_lane_system(
         &materials.world_md,
         &materials.cards,
@@ -209,10 +281,26 @@ async fn gm_lane_reply(
             echo,
             scope: None, // GM 只有一條線，不細分
         },
+        cancel,
         emit,
     )
     .await
     .map_err(ai_call_failure)
+}
+
+/// 中止的旁白：半截原文照正常剝法留成 text，其餘寫入一律空著。
+fn aborted_narration(reply: &str) -> GmNarration {
+    let block = transport::extract_state_block(reply);
+    let (_next, display) = transport::extract_next_speaker(&block.display);
+    GmNarration {
+        text: display,
+        raw: None,
+        next: None,
+        state_updates: Vec::new(),
+        arrived_characters: Vec::new(),
+        arrived_persons: Vec::new(),
+        aborted: true,
+    }
 }
 
 /// gm_narrate 回傳：剝乾淨的旁白顯示文字＋下一位發言者（角色 id 或玩家哨兵）。
@@ -231,6 +319,8 @@ pub(crate) struct GmNarration {
     /// 這輪剛登場的世界書人物 title（4a 就有登場事件，4b 才在回傳裡帶出來）。
     #[serde(default)]
     arrived_persons: Vec<String>,
+    /// 玩家按下停止、而且取消贏過完成。true 時上面的寫入欄位都是空的。
+    aborted: bool,
 }
 
 #[derive(Serialize)]
@@ -245,8 +335,12 @@ struct StateUpdate {
 pub(crate) async fn gm_narrate(
     app: tauri::AppHandle,
     world_id: String,
+    turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<GmNarration, String> {
+    let _permit = data::world_write_permit_async(&world_id).await?;
+    let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
+    let buffer = std::sync::Mutex::new(String::new());
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -290,12 +384,10 @@ pub(crate) async fn gm_narrate(
             "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。";
         (instruction_message, closing)
     };
-    let emit = |delta: &str| {
-        let _ = on_delta.send(delta.to_owned());
-    };
+    let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     let reply = if let Some(provider) = lane_provider(&config) {
         let instruction = format!("{}\n{closing}", instruction_message.content);
-        gm_lane_reply(
+        let outcome = gm_lane_reply(
             &app,
             &config,
             &root,
@@ -306,9 +398,15 @@ pub(crate) async fn gm_narrate(
             lanes::ReplyEcho::Narration,
             &lang,
             provider,
+            Some(&mut cancel),
             emit,
         )
-        .await?
+        .await?;
+        if outcome.aborted {
+            // 同角色線：用這一輪的半截，再照正常剝法去掉狀態欄與點名行。
+            return Ok(aborted_narration(&outcome.text));
+        }
+        outcome.text
     } else {
         let mut messages = transport::assemble_gm_messages(
             &materials.world_md,
@@ -323,24 +421,32 @@ pub(crate) async fn gm_narrate(
         );
         messages.push(instruction_message);
         // GM 上下文一律全卡，與「這輪誰說話」無關，形狀恆為共線
-        stream_turn_via_transport(
-            &app,
-            &config,
-            None,
-            false,
-            transport::gm_tier(&config),
-            Some(&world_id),
-            "GM",
-            closing,
-            &messages,
-            usage_log::PromptShape::Turn {
-                roster: materials.cards.len(),
-                solo: false,
-            },
-            false,
-            emit,
+        let spoken = take_abort_or_finish(
+            &mut cancel,
+            &buffer,
+            stream_turn_via_transport(
+                &app,
+                &config,
+                None,
+                false,
+                transport::gm_tier(&config),
+                Some(&world_id),
+                "GM",
+                closing,
+                &messages,
+                usage_log::PromptShape::Turn {
+                    roster: materials.cards.len(),
+                    solo: false,
+                },
+                false,
+                emit,
+            ),
         )
-        .await?
+        .await?;
+        if spoken.aborted {
+            return Ok(aborted_narration(&spoken.text));
+        }
+        spoken.text
     };
     let block = transport::extract_state_block(&reply);
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
@@ -426,7 +532,14 @@ pub(crate) async fn gm_narrate(
         state_updates,
         arrived_characters,
         arrived_persons,
+        aborted: false,
     })
+}
+
+/// 中止這一輪對話。只打 `turn_id` 對得上的那一筆；晚到的舊 id 不會波及下一輪，也不會打到重構。
+#[tauri::command]
+pub(crate) fn chat_abort(world_id: String, turn_id: String) {
+    inflight::abort_turn(&world_id, &turn_id);
 }
 
 /// 世界書人物條目首次在場（AI 卡重構包 4a）：present 名單（缺席就退回本文比對）比對得上、
@@ -526,6 +639,7 @@ pub(crate) async fn keepalive_lanes(
     if chat_transport(&config) != "claude" {
         return Ok(0);
     }
+    let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
     let call = prepare_lane_call(
         &app,

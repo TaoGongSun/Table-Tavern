@@ -2,7 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, t } from "./i18n";
+import { updateConfig } from "./features/settings/update-config";
+import {
+  deleteTableMessage,
+  gateOf,
+  looseTranscript,
+  readOnlyBannerVersion,
+  type LooseWorld,
+  type OpenWorld,
+  type TableGate,
+} from "./features/world-format/open-world";
 import { isCharacterHidden } from "./features/characters/character-visibility";
 import { prefetchModelCatalogs } from "./features/ai-connection/model-catalog-store";
 import {
@@ -14,6 +25,10 @@ import {
 } from "./shared/contracts/backend-contracts";
 import { CharacterMeta } from "./features/characters/card-model";
 import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
+import { useVersionCenter } from "./features/updater/useVersionCenter";
+import { VersionTab } from "./features/updater/VersionTab";
+import { FormatUpdateDialog, UpdateBanner } from "./features/updater/UpdateReminders";
+import { showUpdateDot } from "./features/updater/version-center";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
@@ -25,6 +40,7 @@ import {
   useWorkspaceNavigationController,
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
+import type { SettingsTab } from "./views/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { SmartFreeNewModelBanner } from "./views/SmartFreeNewModelBanner";
 import { ErrorNote } from "./views/atoms";
@@ -48,15 +64,34 @@ const chattedKey = (worldId: string) => `chatted_since_import:${worldId}`;
 
 function App() {
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
+  // 設定與桌清單都讀成功。更新的啟動後整理與版本庫清單等這個，不等進桌。
+  const [bootReady, setBootReady] = useState(false);
   // table 存桌 id；顯示名一律經 tableName（見下）從 worlds 查
   const [table, setTable] = useState("");
+  // play 才把桌 id 交給會自動讀寫的 controller；唯讀與修復維持空字串，避免嚴格讀取
+  const [gate, setGate] = useState<TableGate>("play");
+  const [readOnlyNotice, setReadOnlyNotice] = useState<{
+    appVersion: string | null;
+    backupAvailable: boolean;
+  } | null>(null);
+  const [repairNotice, setRepairNotice] = useState<{ message: string; directory: string } | null>(
+    null,
+  );
+  const [skippedLines, setSkippedLines] = useState(0);
+  const liveWorldId = gate === "play" ? table : "";
   const [scene, setScene] = useState(0);
   const [sceneTitles, setSceneTitles] = useState<Record<string, string>>({});
   const [sceneLabels, setSceneLabels] = useState<Record<string, SceneLabel>>({});
   // 改桌名可從兩處進入：主欄標題（header）與側欄目前桌那一列（list）；at 決定輸入框長在哪
   const [editingName, setEditingName] = useState<EditingTableName>(null);
   // false＝關閉；字串＝開啟並落在該分頁（生圖對話框的「AI 連線設定」鈕直開 ai 分頁）
-  const [settingsOpen, setSettingsOpen] = useState<false | "appearance" | "ai">(false);
+  const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
+  // 每次從外面要求開設定就加一：視窗已開著時（例如按橫幅的「查看」）也要切到要求的分頁
+  const [settingsRequestKey, setSettingsRequestKey] = useState(0);
+  const openSettings = useCallback((tab: SettingsTab) => {
+    setSettingsOpen(tab);
+    setSettingsRequestKey((key) => key + 1);
+  }, []);
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");
@@ -83,12 +118,16 @@ function App() {
 
   // 狀態列／狀態樹：平欄、樹、跳動記號、分支指認與編輯中的那一格都在 controller 裡。
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
-  const tableState = useTableStateController({ worldId: table, onError: setError });
+  const tableState = useTableStateController({ worldId: liveWorldId, onError: setError });
 
   // 角色名單、本幕出場集合、玩家卡與角色圖／GM 圖三份快取都在 controller 裡。
-  const characters = useCharacterController({ worldId: table, onError: setError });
+  const characters = useCharacterController({ worldId: liveWorldId, onError: setError });
 
-  const navigation = useWorkspaceNavigationController({ worldId: table, characters, onError: setError });
+  const navigation = useWorkspaceNavigationController({
+    worldId: liveWorldId,
+    characters,
+    onError: setError,
+  });
   const {
     canLeaveRef,
     speaker,
@@ -113,6 +152,7 @@ function App() {
       listen<{ model: string }>("smart-free-model-switched", (event) => {
         void showMessage(t("smartFreeSwitched", { model: event.payload.model }), {
           title: t("smartFreeStableTitle"),
+          okLabel: t("dialogAck"),
         });
       }),
     );
@@ -120,6 +160,7 @@ function App() {
       listen<{ model: string; expires_at: number }>("smart-free-model-expiring", (event) => {
         void showMessage(t("smartFreeExpiring", { model: event.payload.model }), {
           title: t("smartFreeStableTitle"),
+          okLabel: t("dialogAck"),
         });
       }),
     );
@@ -144,18 +185,19 @@ function App() {
           // 首開：語言跟系統語系走並存起來，範例桌直接用該語系生，不擋選語言畫面（設定頁可改）
           let start = loaded;
           if (start.preferences["language"] === undefined) {
-            start = { ...start, preferences: { ...start.preferences, language: detectLang() } };
-            await invoke("write_config", { config: start });
+            start = await updateConfig({ preferences: { language: detectLang() } });
             setConfig(start);
           }
           const id = await invoke<string>("create_sample_world", {
             lang: normalizeLang(start.preferences["language"]),
           });
           setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+          setBootReady(true);
           await enterTable(id, start);
           return;
         }
         setWorlds(worldList);
+        setBootReady(true);
         const last = String(loaded.preferences["last_world"] ?? "");
         const startId = worldList.some((w) => w.id === last) ? last : worldList[0].id;
         await enterTable(startId, loaded);
@@ -180,7 +222,7 @@ function App() {
   // 逐字稿、收回堆疊、生成中狀態、輸入框與整條對話流程都在 controller 裡。
   // 掛在 cardInterface 之前：那支要吃這裡的 submitText。
   const chat = useChatController({
-    worldId: table,
+    worldId: liveWorldId,
     scene,
     config,
     speaker,
@@ -196,13 +238,23 @@ function App() {
     onError: setError,
   });
 
+  // 更新與回退：啟動後整理、檢查、版本庫與桌備份。等待狀態在這裡，關掉設定頁不會取消。
+  const versionCenter = useVersionCenter({
+    configLoaded: config !== null,
+    initialLoadReady: bootReady,
+    preferences: config?.preferences,
+    responding: chat.generating !== null,
+    stopResponse: chat.stopResponse,
+    onConfig: setConfig,
+  });
+
   // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列。
   // 狀態樹與分支指認一起重讀：匯入卡才建好的樹、建卡才比對上的同名分支，
   // 都只在這幾個時機變動，不重讀的話畫面要切走再切回來才看得到
   useEffect(() => {
-    if (!table) return;
+    if (!liveWorldId) return;
     let stale = false;
-    invoke<boolean>("world_has_state_bar", { worldId: table })
+    invoke<boolean>("world_has_state_bar", { worldId: liveWorldId })
       .then((has) => {
         if (!stale) setHasStateBar(has);
       })
@@ -211,12 +263,12 @@ function App() {
     return () => {
       stale = true;
     };
-  }, [table, mainView, characters.list, tableState.refresh]);
+  }, [liveWorldId, mainView, characters.list, tableState.refresh]);
 
   // 卡片介面：介面腳本／重構殼／覆蓋層開關與沙盒訊息都在 controller 裡，
   // 這裡只餵它需要的四樣（送出函式會隨對話狀態換新，controller 內用 latest-ref 收）
   const cardInterface = useCardInterfaceController({
-    worldId: table,
+    worldId: liveWorldId,
     events: chat.events,
     tableTree: tableState.tree,
     submitText: chat.submitText,
@@ -270,7 +322,7 @@ function App() {
   // 掛在最後：它要吃 characters 與 cardInterface 的具名 action。chat 要的 noteChatStarted
   // 與開場白面板的關閉留在 App，否則 chat→imports→cardInterface→chat 會繞成環。
   const imports = useImportController({
-    worldId: table,
+    worldId: liveWorldId,
     lang: language,
     castSize: characters.list.length,
     refreshCharacters: characters.refresh,
@@ -287,7 +339,7 @@ function App() {
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
   const sceneActions = useSceneActions({
-    worldId: table,
+    worldId: liveWorldId,
     scene,
     sceneTitles,
     sceneLabels,
@@ -300,7 +352,65 @@ function App() {
     onError: setError,
   });
 
+  // 唯讀與修復不留上一桌的狀態列、角色、編輯畫面。呼叫端接著補自己要顯示的內容。
+  function blankSurface(id: string) {
+    setScene(0);
+    setSceneTitles({});
+    setSceneLabels({});
+    tableState.hydrate({ table: {}, tree: {} }, []);
+    chat.hydrate([]);
+    characters.hydrate([], new Set(), null);
+    imports.hydrate([]);
+    setHasStateBar(false);
+    setSpeaker(GM_TARGET);
+    setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
+    setEditingName(null);
+    tableState.clearEdit();
+    setMainView(null);
+    setActsOpen(false);
+    cardInterface.close();
+    setSkippedLines(0);
+  }
+
+  async function rememberWorld(loaded: AppConfig, id: string) {
+    if (loaded.preferences["last_world"] === id) return;
+    setConfig(await updateConfig({ preferences: { last_world: id } }));
+  }
+
   async function enterTable(id: string, loaded: AppConfig) {
+    const opened = await invoke<OpenWorld>("open_world", { worldId: id });
+    const route = gateOf(opened);
+    if (route === "busy") {
+      setError(t("worldBusy"));
+      return;
+    }
+    if (route === "repair") {
+      if (opened.status !== "needs_repair") return;
+      blankSurface(id);
+      setTable(id);
+      setGate("repair");
+      setRepairNotice({ message: opened.message, directory: opened.directory });
+      setReadOnlyNotice(null);
+      await rememberWorld(loaded, id);
+      return;
+    }
+    if (route === "readonly") {
+      if (opened.status !== "read_only") return;
+      const loose = await invoke<LooseWorld>("read_world_readonly", { worldId: id });
+      blankSurface(id);
+      setTable(id);
+      setGate("readonly");
+      setReadOnlyNotice({
+        appVersion: readOnlyBannerVersion(opened),
+        backupAvailable: opened.backup_available,
+      });
+      setRepairNotice(null);
+      setScene(loose.scene);
+      chat.hydrate(looseTranscript(loose.events));
+      setSkippedLines(loose.skipped);
+      await rememberWorld(loaded, id);
+      return;
+    }
     const state = await invoke<WorldState>("read_state", { worldId: id });
     const transcript = await invoke<TranscriptEvent[]>("read_transcript", {
       worldId: id,
@@ -324,6 +434,10 @@ function App() {
     ]);
     const gmHasContent = worldMd.trim().length > 0 || worldbook.length > 0;
     setTable(id);
+    setGate("play");
+    setReadOnlyNotice(null);
+    setRepairNotice(null);
+    setSkippedLines(0);
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
     setSceneLabels(state.scene_labels ?? {});
@@ -347,10 +461,35 @@ function App() {
     setMainView(null);
     setActsOpen(false);
     cardInterface.close();
-    if (loaded.preferences["last_world"] !== id) {
-      const next = { ...loaded, preferences: { ...loaded.preferences, last_world: id } };
-      await invoke("write_config", { config: next });
-      setConfig(next);
+    await rememberWorld(loaded, id);
+  }
+
+  async function useBackup() {
+    const loaded = currentConfigRef.current;
+    if (!loaded || gate !== "readonly") return;
+    const accepted = await confirm(t("useBackupConfirm"), {
+      title: t("useBackupBtn"),
+      kind: "warning",
+      okLabel: t("useBackupOk"),
+      cancelLabel: t("dialogCancel"),
+    });
+    if (!accepted) return;
+    setError("");
+    try {
+      await invoke("restore_world_backup", { worldId: table });
+      await enterTable(table, loaded);
+      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function openRepairFolder() {
+    if (!repairNotice) return;
+    try {
+      await revealItemInDir(repairNotice.directory);
+    } catch (reason) {
+      setError(String(reason));
     }
   }
 
@@ -423,10 +562,11 @@ function App() {
   // 刪掉最後一桌就補一張範例桌——App 不留「沒有桌」的空狀態（NewPlan §9.3 零精靈）
   async function deleteTable(id: string) {
     if (!config || chat.busy) return;
-    const displayName = worlds.find((w) => w.id === id)?.name ?? id;
-    const accepted = await confirm(t("deleteTableConfirm", { name: displayName }), {
+    const accepted = await confirm(deleteTableMessage(worlds.find((w) => w.id === id), id), {
       title: t("deleteTableTitle"),
       kind: "warning",
+      okLabel: t("dialogDelete"),
+      cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
     setError("");
@@ -442,13 +582,16 @@ function App() {
       setWorlds(list);
       if (id === table) await enterTable(list[0].id, config);
     } catch (reason) {
-      setError(String(reason));
+      const message = String(reason);
+      // 後端忙碌文案固定是這句繁中；畫面改顯示目前語系的 worldBusy。
+      setError(message === "這張桌正在處理中，請稍候再試" ? t("worldBusy") : message);
     }
   }
 
   async function renameTable(raw: string) {
     const name = raw.trim();
     setEditingName(null);
+    if (gate !== "play") return;
     const current = worlds.find((w) => w.id === table);
     if (!current || !name || name === current.name) return;
     setError("");
@@ -470,6 +613,8 @@ function App() {
       const accepted = await confirm(t("undoLastImportConfirm", { label: last.label }), {
         title: t("undoLastImport"),
         kind: "warning",
+        okLabel: t("undoLastImportOk"),
+        cancelLabel: t("dialogCancel"),
       });
       if (!accepted) return;
       const report = await invoke<UndoReport>("undo_last_import", { worldId: table });
@@ -498,7 +643,7 @@ function App() {
             ? t("undoLastImportRemovedCharacters", { names: report.removed_characters.join("、") })
             : "") +
           (report.kept_entries > 0 ? t("undoLastImportKept", { n: report.kept_entries }) : ""),
-        { title: t("undoLastImport") },
+        { title: t("undoLastImport"), okLabel: t("dialogAck") },
       );
     } catch (reason) {
       setError(String(reason));
@@ -609,11 +754,26 @@ function App() {
         onSwitchTable={switchTable}
         onDeleteTable={deleteTable}
         onUndoImport={undoLastImport}
-        onOpenSettings={setSettingsOpen}
+        onOpenSettings={openSettings}
         onPreference={changePreference}
         onConfigSaved={setConfig}
         onEntryConverted={refreshAfterEntryConverted}
         onRefactorApplied={refreshAfterRefactorApplied}
+        gate={gate}
+        readOnlyNotice={readOnlyNotice}
+        repairNotice={repairNotice}
+        skippedLines={skippedLines}
+        onUseBackup={() => void useBackup()}
+        onOpenRepairFolder={() => void openRepairFolder()}
+        sidebarNotice={
+          <UpdateBanner
+            update={versionCenter.update}
+            preferences={config.preferences}
+            onView={() => openSettings("versions")}
+          />
+        }
+        appVersion={versionCenter.appVersion}
+        updateDot={showUpdateDot(versionCenter.update.offer, config.preferences)}
       />
 
       <AppDialogs
@@ -621,6 +781,21 @@ function App() {
         onCloseGenerateTable={() => setGenTableOpen(false)}
         onGeneratedTable={enterGeneratedTable}
         settingsOpen={settingsOpen}
+        settingsRequestKey={settingsRequestKey}
+        versionTab={
+          <VersionTab
+            center={versionCenter}
+            preferences={config.preferences}
+            onPreference={(key, value) => void changeSettingPreference(key, value)}
+          />
+        }
+        updateDialog={
+          <FormatUpdateDialog
+            update={versionCenter.update}
+            preferences={config.preferences}
+            onView={() => openSettings("versions")}
+          />
+        }
         config={config}
         onConfigSaved={setConfig}
         onSettingPreference={changeSettingPreference}
@@ -639,7 +814,7 @@ function App() {
       <SmartFreeNewModelBanner
         config={config}
         onConfigSaved={setConfig}
-        onOpenSettings={setSettingsOpen}
+        onOpenSettings={openSettings}
       />
     </div>
   );

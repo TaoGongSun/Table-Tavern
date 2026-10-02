@@ -15,20 +15,18 @@ pub(crate) fn import_sponsor_pack(app: tauri::AppHandle, data: Vec<u8>) -> Resul
 #[tauri::command]
 pub(crate) fn read_config(app: tauri::AppHandle) -> Result<AppConfig, String> {
     let root = config_root(&app)?;
-    let mut config = data::read_config(&root).map_err(|error| error.to_string())?;
-    if smart_free::migrate_legacy_mode(&mut config) {
-        data::write_config(&root, &config).map_err(|error| error.to_string())?;
-    }
-    Ok(config)
+    data::migrate_legacy_config(&root).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub(crate) fn write_config(app: tauri::AppHandle, mut config: AppConfig) -> Result<(), String> {
+pub(crate) fn update_config(
+    app: tauri::AppHandle,
+    patch: serde_json::Value,
+) -> Result<AppConfig, String> {
     let root = config_root(&app)?;
-    smart_free::migrate_legacy_mode(&mut config);
-    data::write_config(&root, &config).map_err(|error| error.to_string())?;
+    let config = data::update_config(&root, &patch).map_err(|error| error.to_string())?;
     smart_free::warm(&app, &root, &config);
-    Ok(())
+    Ok(config)
 }
 
 /// 設定頁「穩定免費」：下一次送出會優先使用的動態 RP 首選模型。

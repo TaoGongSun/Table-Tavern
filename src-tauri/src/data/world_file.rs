@@ -1,0 +1,737 @@
+//! 桌目錄的唯一寫入口。資料層與 command 層要改桌裡的檔，都走這裡；
+//! 寫入當下再查一次格式標記。掃描測試會擋掉這支以外的直接寫檔。
+#[cfg(test)]
+use std::cell::Cell;
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use super::format::marker::{self, FormatVersion};
+use super::paths::{validate_id, world_dir, worlds_dir};
+use super::{invalid_data, DataResult};
+
+#[derive(Debug)]
+pub(crate) struct RenameError {
+    message: String,
+}
+
+impl std::fmt::Display for RenameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RenameError {}
+
+fn rename_error(message: String) -> DataResult<()> {
+    Err(Box::new(RenameError { message }))
+}
+
+#[cfg(test)]
+thread_local! {
+    static RENAME_FAILS: Cell<u32> = const { Cell::new(0) };
+    static REMOVE_FAILS: Cell<u32> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) struct RenameFailGuard;
+
+#[cfg(test)]
+impl RenameFailGuard {
+    pub(crate) fn fail(times: u32) -> Self {
+        RENAME_FAILS.with(|cell| cell.set(times));
+        Self
+    }
+}
+
+#[cfg(test)]
+impl Drop for RenameFailGuard {
+    fn drop(&mut self) {
+        RENAME_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+/// 下幾次「目標存在」的刪除直接失敗，用來測恢復途中的 IO 錯。
+#[cfg(test)]
+pub(crate) struct RemoveFailGuard;
+
+#[cfg(test)]
+impl RemoveFailGuard {
+    pub(crate) fn fail(times: u32) -> Self {
+        REMOVE_FAILS.with(|cell| cell.set(times));
+        Self
+    }
+}
+
+#[cfg(test)]
+impl Drop for RemoveFailGuard {
+    fn drop(&mut self) {
+        REMOVE_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+fn injected_remove_failure() -> bool {
+    #[cfg(test)]
+    {
+        REMOVE_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        })
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
+fn injected_rename_failure() -> bool {
+    #[cfg(test)]
+    {
+        RENAME_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        })
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
+/// Windows 上改名常被防毒或索引暫時佔用，失敗就短暫重試。其他平台只試一次。
+pub(crate) fn rename_path(from: &Path, to: &Path) -> DataResult<()> {
+    let attempts: u32 = if cfg!(windows) { 8 } else { 1 };
+    let mut wait = Duration::from_millis(20);
+    for attempt in 1..=attempts {
+        if injected_rename_failure() {
+            if attempt == attempts {
+                return rename_error(format!("改名失敗：{} → {}", from.display(), to.display()));
+            }
+            continue;
+        }
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < attempts => {
+                std::thread::sleep(wait);
+                wait = (wait * 2).min(Duration::from_millis(200));
+                let _ = error;
+            }
+            Err(error) => {
+                return rename_error(format!(
+                    "改名失敗：{} → {}（{error}）",
+                    from.display(),
+                    to.display()
+                ));
+            }
+        }
+    }
+    rename_error(format!("改名失敗：{} → {}", from.display(), to.display()))
+}
+
+pub(crate) fn write_bytes_raw(path: &Path, bytes: &[u8]) -> DataResult<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+pub(crate) fn fsync_file(path: &Path) -> DataResult<()> {
+    let file = OpenOptions::new().write(true).open(path)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+/// 目錄 fsync：Unix 開目錄 handle 後 sync。Windows 開目錄會失敗，這裡略過。
+pub(crate) fn fsync_dir(path: &Path) -> DataResult<()> {
+    #[cfg(unix)]
+    {
+        let file = File::open(path)?;
+        file.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
+pub(crate) fn fsync_tree(dir: &Path) -> DataResult<()> {
+    let entries = fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            fsync_tree(&path)?;
+        } else if path.is_file() {
+            fsync_file(&path)?;
+        }
+    }
+    fsync_dir(dir)
+}
+
+pub(crate) fn remove_path_raw(path: &Path) -> DataResult<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    if injected_remove_failure() {
+        return Err(invalid_data(format!("刪除失敗：{}", path.display())));
+    }
+    if path.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn copy_dir(from: &Path, to: &Path) -> DataResult<()> {
+    if to.exists() {
+        return Err(invalid_data(format!("目標已存在：{}", to.display())));
+    }
+    fs::create_dir_all(to)?;
+    copy_children(from, to)?;
+    fsync_tree(to)?;
+    Ok(())
+}
+
+fn copy_children(from: &Path, to: &Path) -> DataResult<()> {
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let source = entry.path();
+        let dest = to.join(entry.file_name());
+        if source.is_dir() {
+            fs::create_dir(&dest)?;
+            copy_children(&source, &dest)?;
+        } else {
+            fs::copy(&source, &dest)?;
+        }
+    }
+    Ok(())
+}
+
+/// 從路徑往上找到 `worlds/<合法 id>`。sidecar（`.tt-*`）不是合法 id，不會被認成桌。
+pub(crate) fn locate_world(path: &Path) -> DataResult<(PathBuf, String)> {
+    let mut current = Some(path);
+    while let Some(node) = current {
+        if let Some(parent) = node.parent() {
+            if parent.file_name().is_some_and(|name| name == "worlds") {
+                if let Some(id) = node.file_name().and_then(|name| name.to_str()) {
+                    if validate_id(id).is_ok() {
+                        let root = parent.parent().ok_or_else(|| {
+                            invalid_data(format!("找不到資料根：{}", path.display()))
+                        })?;
+                        return Ok((root.to_path_buf(), id.to_owned()));
+                    }
+                }
+            }
+        }
+        current = node.parent();
+    }
+    Err(invalid_data(format!(
+        "路徑不在桌目錄裡：{}",
+        path.display()
+    )))
+}
+
+fn combo_blocks_write(root: &Path, world_id: &str) -> bool {
+    let worlds = worlds_dir(root);
+    let log = worlds.join(format!(".tt-op-{world_id}.json"));
+    let staging = worlds.join(format!(".tt-staging-{world_id}"));
+    let trash = worlds.join(format!(".tt-trash-{world_id}"));
+    log.exists() || staging.exists() || trash.exists()
+}
+
+pub(crate) fn ensure_writable(root: &Path, world_id: &str) -> DataResult<()> {
+    let dir = world_dir(root, world_id)?;
+    if !dir.is_dir() {
+        return Err(invalid_data("找不到這張桌"));
+    }
+    if combo_blocks_write(root, world_id) {
+        return Err(invalid_data("這張桌正在轉換或需要修復，不能寫入"));
+    }
+    match marker::read_format(&dir).version {
+        FormatVersion::Known(version) if version == marker::current_format() => Ok(()),
+        _ => Err(invalid_data("這張桌是唯讀，不能寫入")),
+    }
+}
+
+pub(crate) fn commit_world_write(path: &Path, bytes: &[u8]) -> DataResult<()> {
+    let (root, id) = locate_world(path)?;
+    ensure_writable(&root, &id)?;
+    write_bytes_raw(path, bytes)
+}
+
+pub(crate) fn commit_world_append(path: &Path, bytes: &[u8]) -> DataResult<()> {
+    let (root, id) = locate_world(path)?;
+    ensure_writable(&root, &id)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    file.write_all(bytes)?;
+    Ok(())
+}
+
+pub(crate) fn commit_world_remove(path: &Path) -> DataResult<()> {
+    let (root, id) = locate_world(path)?;
+    ensure_writable(&root, &id)?;
+    remove_path_raw(path)
+}
+
+/// 建桌：先落格式標記，後面的 state／world.md 才過得了閘門。
+pub(crate) fn prepare_new_world(root: &Path, id: &str) -> DataResult<PathBuf> {
+    validate_id(id)?;
+    let worlds = worlds_dir(root);
+    fs::create_dir_all(&worlds)?;
+    let dir = worlds.join(id);
+    fs::create_dir(&dir)?;
+    fs::create_dir(dir.join("characters"))?;
+    fs::create_dir(dir.join("transcript"))?;
+    marker::write_marker(&dir, marker::current_format())?;
+    Ok(dir)
+}
+
+/// 玩家確認刪桌：主目錄與這桌的 sidecar 一起清掉，避免留下「只有備份」的修復列。
+pub(crate) fn delete_world_tree(root: &Path, world_id: &str) -> DataResult<()> {
+    let dir = world_dir(root, world_id)?;
+    if dir.exists() {
+        fs::remove_dir_all(&dir)?;
+    }
+    let worlds = worlds_dir(root);
+    for name in [
+        format!(".tt-staging-{world_id}"),
+        format!(".tt-pre-{world_id}"),
+        format!(".tt-trash-{world_id}"),
+        format!(".tt-newer-{world_id}"),
+        format!(".tt-op-{world_id}.json"),
+        format!(".tt-op-{world_id}.json.tmp"),
+    ] {
+        remove_path_raw(&worlds.join(name))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod scan_tests {
+    /// 資料層與 command 層不得在共用寫入函式之外直接寫檔。
+    /// 豁免註解必須緊貼上一行，而且理由要寫明不是桌目錄。
+    const NEEDLES: &[&str] = &[
+        "fs::write",
+        "write_all",
+        "OpenOptions",
+        "File::create",
+        "fs::rename",
+        "remove_file",
+        "remove_dir",
+        "fs::copy",
+        "fs::create_dir",
+    ];
+
+    #[test]
+    fn direct_world_writes_go_through_the_shared_helpers() {
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let mut violations = Vec::new();
+        let mut exemptions = 0usize;
+        for folder in ["src/data", "src/commands"] {
+            walk(&manifest.join(folder), &mut |path| {
+                if skip_file(path) {
+                    return;
+                }
+                let text = std::fs::read_to_string(path).unwrap();
+                let stripped = strip_cfg_test(&text);
+                let lines: Vec<&str> = stripped.lines().collect();
+                for (index, line) in lines.iter().enumerate() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("//") || is_use_line(trimmed) {
+                        continue;
+                    }
+                    if !NEEDLES.iter().any(|needle| line.contains(needle)) {
+                        continue;
+                    }
+                    let previous = index
+                        .checked_sub(1)
+                        .and_then(|i| lines.get(i))
+                        .copied()
+                        .unwrap_or("");
+                    if exemption_ok(previous) {
+                        exemptions += 1;
+                    } else {
+                        violations.push(format!("{}:{}: {}", path.display(), index + 1, trimmed));
+                    }
+                }
+            });
+        }
+        assert!(
+            violations.is_empty(),
+            "直接寫檔沒有豁免：\n{}",
+            violations.join("\n")
+        );
+        assert!(
+            exemptions >= 15,
+            "掃描沒有看到已知的非桌目錄豁免：{exemptions}"
+        );
+    }
+
+    fn skip_file(path: &std::path::Path) -> bool {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if name == "tests.rs" || name == "test_support.rs" || name == "world_file.rs" {
+            return true;
+        }
+        path.components()
+            .any(|component| component.as_os_str() == "tests")
+    }
+
+    fn is_use_line(trimmed: &str) -> bool {
+        trimmed.starts_with("use ")
+            || trimmed.starts_with("pub use ")
+            || trimmed.starts_with("pub(crate) use ")
+            || trimmed.starts_with("pub(super) use ")
+    }
+
+    fn exemption_ok(previous: &str) -> bool {
+        let trimmed = previous.trim();
+        trimmed.starts_with("// world-write-exempt:") && trimmed.contains("不是桌目錄")
+    }
+
+    fn walk(dir: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, visit);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                visit(&path);
+            }
+        }
+    }
+
+    fn strip_cfg_test(source: &str) -> String {
+        let bytes = source.as_bytes();
+        let mut out = source.to_owned().into_bytes();
+        let mut i = 0;
+        let mut state = Lex::Code;
+        while i < bytes.len() {
+            if at_line_start(&bytes, i) {
+                if let Some(after_attr) = match_cfg_test(&bytes, i) {
+                    let end = skip_item(&bytes, after_attr);
+                    blank(&mut out, i, end);
+                    i = end;
+                    state = Lex::Code;
+                    continue;
+                }
+            }
+            i = advance(&bytes, i, &mut state);
+        }
+        String::from_utf8(out).unwrap()
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Lex {
+        Code,
+        Line,
+        Block(u32),
+        String,
+        Raw(u8),
+    }
+
+    fn at_line_start(bytes: &[u8], index: usize) -> bool {
+        bytes[..index]
+            .iter()
+            .rev()
+            .take_while(|byte| **byte != b'\n')
+            .all(|byte| byte.is_ascii_whitespace())
+    }
+
+    fn match_cfg_test(bytes: &[u8], index: usize) -> Option<usize> {
+        let rest = &bytes[index..];
+        if !rest.starts_with(b"#[") {
+            return None;
+        }
+        let mut j = index + 2;
+        j = skip_ws(bytes, j);
+        if !bytes[j..].starts_with(b"cfg") {
+            return None;
+        }
+        j += 3;
+        j = skip_ws(bytes, j);
+        if bytes.get(j) != Some(&b'(') {
+            return None;
+        }
+        j += 1;
+        j = skip_ws(bytes, j);
+        if !bytes[j..].starts_with(b"test") {
+            return None;
+        }
+        j += 4;
+        j = skip_ws(bytes, j);
+        if bytes.get(j) != Some(&b')') {
+            return None;
+        }
+        j += 1;
+        j = skip_ws(bytes, j);
+        if bytes.get(j) != Some(&b']') {
+            return None;
+        }
+        Some(j + 1)
+    }
+
+    fn skip_ws(bytes: &[u8], mut index: usize) -> usize {
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        index
+    }
+
+    fn skip_item(bytes: &[u8], mut index: usize) -> usize {
+        let mut paren = 0i32;
+        let mut bracket = 0i32;
+        let mut state = Lex::Code;
+        while index < bytes.len() {
+            if state == Lex::Code && paren == 0 && bracket == 0 && bytes[index] == b'{' {
+                return skip_brace(bytes, index);
+            }
+            if state == Lex::Code && paren == 0 && bracket == 0 && bytes[index] == b';' {
+                return index + 1;
+            }
+            if state == Lex::Code {
+                match bytes[index] {
+                    b'(' => paren += 1,
+                    b')' => paren -= 1,
+                    b'[' => bracket += 1,
+                    b']' => bracket -= 1,
+                    _ => {}
+                }
+            }
+            index = advance(bytes, index, &mut state);
+        }
+        index
+    }
+
+    fn skip_brace(bytes: &[u8], open: usize) -> usize {
+        let mut depth = 0i32;
+        let mut index = open;
+        let mut state = Lex::Code;
+        while index < bytes.len() {
+            if state == Lex::Code {
+                match bytes[index] {
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return index + 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            index = advance(bytes, index, &mut state);
+        }
+        index
+    }
+
+    fn advance(bytes: &[u8], index: usize, state: &mut Lex) -> usize {
+        let byte = bytes[index];
+        match *state {
+            Lex::Line => {
+                if byte == b'\n' {
+                    *state = Lex::Code;
+                }
+                index + 1
+            }
+            Lex::Block(depth) => {
+                if byte == b'/' && bytes.get(index + 1) == Some(&b'*') {
+                    *state = Lex::Block(depth + 1);
+                    return index + 2;
+                }
+                if byte == b'*' && bytes.get(index + 1) == Some(&b'/') {
+                    *state = if depth == 1 {
+                        Lex::Code
+                    } else {
+                        Lex::Block(depth - 1)
+                    };
+                    return index + 2;
+                }
+                index + 1
+            }
+            Lex::String => {
+                if byte == b'\\' {
+                    return index + 2;
+                }
+                if byte == b'"' {
+                    *state = Lex::Code;
+                }
+                index + 1
+            }
+            Lex::Raw(hashes) => {
+                if byte == b'"' && bytes[index + 1..].starts_with(&vec![b'#'; hashes as usize]) {
+                    *state = Lex::Code;
+                    return index + 1 + hashes as usize;
+                }
+                index + 1
+            }
+            Lex::Code => {
+                if byte == b'/' && bytes.get(index + 1) == Some(&b'/') {
+                    *state = Lex::Line;
+                    return index + 2;
+                }
+                if byte == b'/' && bytes.get(index + 1) == Some(&b'*') {
+                    *state = Lex::Block(1);
+                    return index + 2;
+                }
+                if byte == b'"' {
+                    *state = Lex::String;
+                    return index + 1;
+                }
+                // 只有 'x'、'\n'、'\u{..}' 這種字元常值才整段跳過。'static 這類生命週期沒有配對引號，
+                // 若進字元狀態會吞到下一個 '，cfg(test) 空白化就可能越界把後面的寫檔藏起來。
+                if byte == b'\'' {
+                    if let Some(end) = char_literal_end(bytes, index) {
+                        return end;
+                    }
+                    return index + 1;
+                }
+                if let Some((hashes, start)) = raw_string_at(bytes, index) {
+                    *state = Lex::Raw(hashes);
+                    return start;
+                }
+                index + 1
+            }
+        }
+    }
+
+    /// 開引號在 `open`。認得出字元常值就回結束引號的下一個位置。
+    fn char_literal_end(bytes: &[u8], open: usize) -> Option<usize> {
+        let body = open + 1;
+        if bytes.get(body) == Some(&b'\\') {
+            let after = skip_char_escape(bytes, body)?;
+            if bytes.get(after) == Some(&b'\'') {
+                return Some(after + 1);
+            }
+            return None;
+        }
+        let width = utf8_width(*bytes.get(body)?);
+        let close = body + width;
+        if width > 0 && bytes.get(close) == Some(&b'\'') {
+            return Some(close + 1);
+        }
+        None
+    }
+
+    fn skip_char_escape(bytes: &[u8], slash: usize) -> Option<usize> {
+        match *bytes.get(slash + 1)? {
+            b'n' | b'r' | b't' | b'\\' | b'0' | b'\'' | b'"' => Some(slash + 2),
+            b'x' => {
+                let ok = bytes.get(slash + 2).is_some_and(u8::is_ascii_hexdigit)
+                    && bytes.get(slash + 3).is_some_and(u8::is_ascii_hexdigit);
+                if ok {
+                    Some(slash + 4)
+                } else {
+                    None
+                }
+            }
+            b'u' => {
+                if bytes.get(slash + 2) != Some(&b'{') {
+                    return None;
+                }
+                let mut index = slash + 3;
+                let start = index;
+                while index < bytes.len() && bytes[index].is_ascii_hexdigit() && index - start < 6 {
+                    index += 1;
+                }
+                if index == start || bytes.get(index) != Some(&b'}') {
+                    return None;
+                }
+                Some(index + 1)
+            }
+            _ => None,
+        }
+    }
+
+    fn utf8_width(first: u8) -> usize {
+        if first < 0x80 {
+            1
+        } else if first & 0xE0 == 0xC0 {
+            2
+        } else if first & 0xF0 == 0xE0 {
+            3
+        } else if first & 0xF8 == 0xF0 {
+            4
+        } else {
+            0
+        }
+    }
+
+    fn raw_string_at(bytes: &[u8], index: usize) -> Option<(u8, usize)> {
+        let mut i = index;
+        if bytes.get(i) == Some(&b'b') || bytes.get(i) == Some(&b'c') {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'r') {
+            return None;
+        }
+        i += 1;
+        let mut hashes = 0u8;
+        while bytes.get(i) == Some(&b'#') {
+            hashes += 1;
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'"') {
+            return None;
+        }
+        Some((hashes, i + 1))
+    }
+
+    #[test]
+    fn lifetime_inside_cfg_test_does_not_hide_a_later_write() {
+        let source = "\
+#[cfg(test)]
+fn helper<'static>() {
+    let _ = 1;
+}
+
+fn ship() {
+    fs::write(path, data);
+}
+";
+        let stripped = strip_cfg_test(source);
+        let lines: Vec<&str> = stripped.lines().collect();
+        let caught = lines.iter().enumerate().any(|(index, line)| {
+            let trimmed = line.trim();
+            if trimmed.starts_with("//") || is_use_line(trimmed) || !line.contains("fs::write") {
+                return false;
+            }
+            let previous = index
+                .checked_sub(1)
+                .and_then(|i| lines.get(i))
+                .copied()
+                .unwrap_or("");
+            !exemption_ok(previous)
+        });
+        assert!(caught, "fs::write 沒被抓到：\n{stripped}");
+    }
+
+    fn blank(buf: &mut [u8], start: usize, end: usize) {
+        for byte in &mut buf[start..end] {
+            if *byte != b'\n' {
+                *byte = b' ';
+            }
+        }
+    }
+}

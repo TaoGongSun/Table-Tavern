@@ -129,6 +129,8 @@ export function useRefactorWorkflow({
       const rerun = await confirm(t("refactorRerunWarnBody"), {
         title: t("refactorBtn"),
         kind: "warning",
+        okLabel: t("refactorRerunOk"),
+        cancelLabel: t("dialogCancel"),
       });
       if (!rerun) return;
     }
@@ -474,7 +476,10 @@ export function useRefactorWorkflow({
       });
       closeRefactor();
       await refreshAfterApply();
-      await showMessage(refactorApplyMessage(summary), { title: t("refactorBtn") });
+      await showMessage(refactorApplyMessage(summary), {
+        title: t("refactorBtn"),
+        okLabel: t("dialogAck"),
+      });
     } catch (reason) {
       setStatusMessage(String(reason));
     } finally {

@@ -19,6 +19,7 @@
 | 2 | [state-values-mvu](../handoffs/state-values-mvu.md) 跳動記號（包 6） | 捏資料強制驗一次（2026-08-17 拍板），步驟見下節。真跑撞門檻的機率太低，不等真桌 |
 | 3 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 匯入與條目編輯 | 匯 PNG 世界書看 17 條入列、條目就地展開、換編輯對象自動存、空桌回收不再誤刪整桌——全是本地操作 |
 | 4 | [sponsor-features](../handoffs/sponsor-features.md) 贊助狀態與作者頁 | `.ttpack` 丟進「文件/TableTavern」解鎖、刪檔還原；作者頁與 +5 配色一起看過 |
+| 5 | [dialog-button-labels](../handoffs/dialog-button-labels.md) 對話窗按鈕 | 併 ui-redesign 驗收時一起看：切 zh-TW／en／de／ru 點開刪角色、未儲存離開、轉成世界書條目、匯入完成通知，按鈕是介面語言、長譯文不截 |
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
@@ -49,6 +50,7 @@
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇）；失敗不扣次數 |
 | 9 | [ui-overhaul](../handoffs/ui-overhaul.md) 實聊 playbill | dialogue 事件要有金鑰實聊才出現，串流打字指示改版後沒實測過；可搭任一梯 2 項目順手看 |
 | 10 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 篇幅與配角解禁 | **需重新打包**（已裝的 0.2.0 仍是舊行為）：同一張世界書卡確認 GM 旁白篇幅放開、配角會開口、角色回覆有內心戲 |
+| 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
 
 ## 梯 3：等外部條件，不排時程
 
@@ -63,3 +65,4 @@
 | [api-key-paste-guard](../handoffs/api-key-paste-guard.md) | 已驗錯金鑰提示與 401 分流；等換上真 OpenRouter 金鑰時自然驗「紅字消失＋發言成功」 |
 | [grok-profile-isolation](../handoffs/grok-profile-isolation.md) | app profile 是全新環境；等使用者在設定頁跑一次 grok 登入，再驗模型下拉與旁白正常 |
 | [claude-compat-endpoint](../handoffs/claude-compat-endpoint.md) | 實作與 cargo/build 已綠；等有真 Claude-compatible base URL＋key 時做使用者實測 |
+| [desktop-update-detect](../handoffs/desktop-update-detect.md) 端對端 | 要兩個真 release 才測得到偵測→更新→回退→刪版與跨格式回退；第一個帶更新功能的正式版發出前必須驗過 |

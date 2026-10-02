@@ -10,6 +10,8 @@
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，仍有角色／介面選擇、其他卡型驗證與舊產殼路線清理待施工
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [dialog-button-labels](handoffs/dialog-button-labels.md) — 系統對話窗按鈕跟上介面語言：已進 main，剩 macOS 實機看幾個語系的按鈕（併 ui-redesign 驗收）
+- [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1–5 完成、GUI 煙霧測試過；剩兩個真 release 的端對端驗收
 - [refactor-ai-split](handoffs/refactor-ai-split.md) — 拆分施工完成：production 9 模組、56 測試全搬、legacy 已刪；只剩外部可執行環境跑 npm build + cargo test
 - [state-values-mvu](handoffs/state-values-mvu.md) — 狀態欄二期：八包完成 cargo 317 綠，等真桌實跑（併在 ai-card-refactor 之後）
 - [worldbook-card-import](handoffs/worldbook-card-import.md) — 世界書卡匯入：本地那批排梯 1 第 3，篇幅／配角解禁需重新打包排梯 2 第 10

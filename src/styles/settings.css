@@ -705,3 +705,78 @@
   opacity: 0.7;
   font-size: 0.9em;
 }
+
+/* ============ 版本分頁 ============ */
+.version-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-ui);
+  color: var(--ink-2);
+}
+
+.version-section:last-child {
+  border-bottom: none;
+}
+
+.version-section h3 {
+  margin: 0;
+  font: 700 var(--fs-title) / 1.3 var(--font-ui);
+  color: var(--ink-1);
+}
+
+.version-section p {
+  margin: 0;
+}
+
+.version-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.version-offer strong {
+  margin-right: 0.5rem;
+}
+
+.version-note {
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.version-notes {
+  white-space: pre-wrap;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.version-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.version-row-name {
+  flex: 1;
+  min-width: 6rem;
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}

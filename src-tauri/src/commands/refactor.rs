@@ -16,6 +16,7 @@ pub(crate) fn refactor_apply(
     selection: refactor::RefactorSelection,
     record_receipt: Option<bool>,
 ) -> Result<refactor::RefactorApplySummary, String> {
+    let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
     let result = refactor::apply(&root, &world_id, &outcome, &selection)
@@ -44,13 +45,14 @@ pub(crate) async fn refactor_recommend(
     world_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRecommendOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let messages = refactor_ai::recommend_messages(&context, &lang);
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     if chat_transport(&config) == "claude" {
         let call = prepare_lane_call(
             &app,
@@ -114,6 +116,7 @@ pub(crate) async fn refactor_survey(
     fingerprint: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorSurveyOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -122,7 +125,7 @@ pub(crate) async fn refactor_survey(
     let entries = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
     let signals = refactor_ai::prescan_worldbook(&entries);
     let messages = refactor_ai::survey_messages(&context, &signals, &lang, &mode);
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let resumed = match (run_id.as_deref(), fingerprint.as_deref()) {
         (Some(rid), Some(fp))
             if !rid.is_empty()
@@ -222,6 +225,7 @@ pub(crate) async fn refactor_expand(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let entry_kind = refactor_ai::EntryKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -239,7 +243,7 @@ pub(crate) async fn refactor_expand(
         &known_fields,
         &lang,
     );
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -273,6 +277,7 @@ pub(crate) async fn refactor_expand_person(
     is_player: bool,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorPersonExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -285,7 +290,7 @@ pub(crate) async fn refactor_expand_person(
         sources.push((uid.clone(), text));
     }
     let messages = refactor_ai::person_expand_messages(&context, &name, &sources, &lang);
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -333,6 +338,7 @@ pub(crate) async fn refactor_absorb_entry(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -348,7 +354,7 @@ pub(crate) async fn refactor_absorb_entry(
     let known_fields = known_fields.unwrap_or_default();
     let messages =
         refactor_ai::absorb_messages(&context, &entry_uid, &entry_text, &known_fields, &lang);
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -412,6 +418,7 @@ pub(crate) async fn refactor_split_group(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let group_kind = refactor_ai::GroupKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -444,7 +451,7 @@ pub(crate) async fn refactor_split_group(
         &known_fields,
         &lang,
     );
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -485,6 +492,7 @@ pub(crate) async fn refactor_expand_spans(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -509,7 +517,7 @@ pub(crate) async fn refactor_expand_spans(
         &known_fields,
         &lang,
     );
-    let (_guard, mut cancel) = inflight::register(&world_id);
+    let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(REFACTOR_ABORTED.to_owned()),
@@ -536,10 +544,10 @@ pub(crate) async fn refactor_expand_spans(
     ))
 }
 
-/// AI 卡重構中止：立即殺該桌全部在途呼叫（CLI 殺子程序、API 斷線即停止計費）。
+/// AI 卡重構中止：喚醒該桌全部在途重構呼叫。對話用另一把鑰匙，這裡打不中。
 #[tauri::command]
 pub(crate) fn refactor_abort(world_id: String) {
-    inflight::abort_world(&world_id);
+    inflight::abort_kind(inflight::Kind::Refactor, &world_id);
 }
 
 /// 讀 AI 卡重構套用介面時可能順便產的靜態渲染殼（interface-shell.html）；沒套用過或那次沒
@@ -573,7 +581,9 @@ pub(crate) fn refactor_export_outcome(
     outcome: refactor::RefactorOutcome,
     path: String,
 ) -> Result<(), String> {
+    crate::data::refuse_if_updating()?;
     let json = serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?;
+    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, json).map_err(|error| error.to_string())
 }
 
@@ -585,10 +595,12 @@ pub(crate) fn refactor_export_saved(
     world_id: String,
     path: String,
 ) -> Result<(), String> {
+    crate::data::refuse_if_updating()?;
     let root = data_root(&app)?;
     let content = data::read_refactor_outcome(&root, &world_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "refactor-export-none".to_owned())?;
+    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, content).map_err(|error| error.to_string())
 }
 

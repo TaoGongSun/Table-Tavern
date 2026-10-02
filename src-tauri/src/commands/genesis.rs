@@ -22,6 +22,7 @@ pub(crate) async fn generate_table_outline(
     input: String,
     genres: Vec<String>,
 ) -> Result<OutlineOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let input = input.trim();
     if input.is_empty() && genres.is_empty() {
         return Err("EMPTY_INPUT".to_owned());
@@ -57,6 +58,7 @@ pub(crate) async fn generate_table_character(
     outline_raw: String,
     hint: String,
 ) -> Result<CharacterOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let input = input.trim();
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -95,6 +97,7 @@ pub(crate) async fn generate_table_expand(
     genres: Vec<String>,
     outline_raw: String,
 ) -> Result<ExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let input = input.trim();
     if input.is_empty() && genres.is_empty() {
         return Err("EMPTY_INPUT".to_owned());

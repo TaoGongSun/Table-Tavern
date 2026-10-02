@@ -1,0 +1,217 @@
+# 桌面版發版。推 v* tag 才公開 release；test-v* 或手動觸發是演練
+# （打包、組 latest.json、驗簽，只上傳 artifact）。
+# 只有 finalize 有 contents: write。同一個 run 的 artifact 走 runtime token，
+# 不必給 actions 權限。打包用 npx tauri build，不用 tauri-action——
+# 那個 action 在 tag 上會自己發版，而發版只能由 finalize 做。
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+      - "test-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # test-v* 與手動觸發只對三處版本。v* 還要等於 tag。
+      - name: Check version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            node scripts/check-version.mjs "$GITHUB_REF_NAME"
+          else
+            node scripts/check-version.mjs
+          fi
+
+      - name: Tag commit is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+
+  build-windows:
+    needs: check
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # --config 只打開 updater 產物。本機 tauri.conf.json 不開，GUI 實測不必備私鑰。
+      - name: Build NSIS
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' \
+            > "$RUNNER_TEMP/updater.json"
+          npx tauri build --ci --bundles nsis --config "$RUNNER_TEMP/updater.json"
+
+      - name: Stage installer
+        shell: bash
+        run: |
+          stage="$RUNNER_TEMP/win-artifacts"
+          mkdir -p "$stage"
+          shopt -s nullglob
+          exe=(src-tauri/target/release/bundle/nsis/*-setup.exe)
+          sig=(src-tauri/target/release/bundle/nsis/*-setup.exe.sig)
+          if [[ ${#exe[@]} -ne 1 || ${#sig[@]} -ne 1 ]]; then
+            echo "NSIS 產物應恰好一組 exe 與 .sig" >&2
+            ls -la src-tauri/target/release/bundle/nsis >&2 || true
+            exit 1
+          fi
+          cp "${exe[0]}" "${sig[0]}" "$stage/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: table-tavern-windows
+          path: ${{ runner.temp }}/win-artifacts/
+          if-no-files-found: error
+
+  build-macos:
+    needs: check
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build app and DMG
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' \
+            > "$RUNNER_TEMP/updater.json"
+          npx tauri build --ci --target aarch64-apple-darwin \
+            --bundles app,dmg --config "$RUNNER_TEMP/updater.json"
+
+      - name: Stage installer
+        shell: bash
+        run: |
+          stage="$RUNNER_TEMP/mac-artifacts"
+          root="src-tauri/target/aarch64-apple-darwin/release/bundle"
+          mkdir -p "$stage"
+          shopt -s nullglob
+          app=("$root"/macos/*.app.tar.gz)
+          app_sig=("$root"/macos/*.app.tar.gz.sig)
+          dmg=("$root"/dmg/*.dmg)
+          if [[ ${#app[@]} -ne 1 || ${#app_sig[@]} -ne 1 || ${#dmg[@]} -ne 1 ]]; then
+            echo "macOS 產物應有 .app.tar.gz、其 .sig，以及一個 .dmg" >&2
+            find "$root" -maxdepth 2 -print >&2 || true
+            exit 1
+          fi
+          cp "${app[0]}" "${app_sig[0]}" "${dmg[0]}" "$stage/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: table-tavern-macos
+          path: ${{ runner.temp }}/mac-artifacts/
+          if-no-files-found: error
+
+  finalize:
+    needs: [check, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: table-tavern-windows
+          path: artifacts/windows
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: table-tavern-macos
+          path: artifacts/macos
+
+      - name: Decide mode
+        id: mode
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=rehearsal" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Finalize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ steps.mode.outputs.mode }}
+          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
+        run: |
+          args=(
+            --mode "$RELEASE_MODE"
+            --windows artifacts/windows
+            --macos artifacts/macos
+            --out release-out
+          )
+          if [[ -n "$RELEASE_TAG" ]]; then
+            args+=(--tag "$RELEASE_TAG")
+          fi
+          node scripts/release/finalize.mjs "${args[@]}"
+
+      - name: Upload rehearsal bundle
+        if: steps.mode.outputs.mode == 'rehearsal'
+        uses: actions/upload-artifact@v4
+        with:
+          name: table-tavern-rehearsal
+          path: release-out/
+          if-no-files-found: error

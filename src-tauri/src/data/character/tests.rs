@@ -157,8 +157,9 @@ fn legacy_cards_and_worlds_without_id_are_skipped() {
     assert_eq!(characters.len(), 1);
     assert_eq!(characters[0].name, "正常卡");
 
-    // 舊桌沒有 id/name：list_worlds 略過該桌
-    let legacy_world_dir = root.path().join("worlds").join(new_id());
+    // 目錄名合法、state 解不開、又沒有格式標記：仍列出並標唯讀。非法 id 才略過。
+    let legacy_id = new_id();
+    let legacy_world_dir = root.path().join("worlds").join(&legacy_id);
     fs::create_dir_all(legacy_world_dir.join("characters")).unwrap();
     fs::create_dir_all(legacy_world_dir.join("transcript")).unwrap();
     fs::write(
@@ -168,8 +169,15 @@ fn legacy_cards_and_worlds_without_id_are_skipped() {
     .unwrap();
 
     let worlds = list_worlds(root.path()).unwrap();
-    assert_eq!(worlds.len(), 1);
-    assert_eq!(worlds[0].id, world_id);
+    assert_eq!(worlds.len(), 2);
+    let legacy = worlds.iter().find(|world| world.id == legacy_id).unwrap();
+    assert_eq!(legacy.name, legacy_id);
+    assert!(legacy.read_only);
+    assert!(!legacy.needs_repair);
+    let current = worlds.iter().find(|world| world.id == world_id).unwrap();
+    assert_eq!(current.name, "世界");
+    assert!(!current.read_only);
+    assert!(!current.needs_repair);
 }
 
 #[test]

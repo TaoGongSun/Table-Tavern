@@ -1,12 +1,16 @@
 use super::{invalid_data, DataResult};
 use crate::cli::ModelOption;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+#[cfg(unix)]
+use std::fs::File;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -26,19 +30,155 @@ pub fn read_config(root: &Path) -> DataResult<AppConfig> {
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
 }
 
-pub fn write_config(root: &Path, config: &AppConfig) -> DataResult<()> {
-    fs::create_dir_all(root)?;
+fn config_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+pub(crate) fn config_mutex() -> &'static Mutex<()> {
+    config_lock()
+}
+
+fn read_raw_config(path: &Path) -> DataResult<Value> {
+    if !path.exists() {
+        return Ok(Value::Object(Map::new()));
+    }
+    let text = fs::read_to_string(path)?;
+    if text.trim().is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+    let value: Value = serde_json::from_str(&text)?;
+    if !value.is_object() {
+        return Err(invalid_data("設定檔不是 JSON 物件"));
+    }
+    Ok(value)
+}
+
+fn parse_app_config(value: &Value) -> DataResult<AppConfig> {
+    Ok(serde_json::from_value(value.clone())?)
+}
+
+/// 以磁碟上的原始 JSON 為底套補丁。`None` 表示這次不用寫。
+pub fn update_config_with(
+    root: &Path,
+    build: impl FnOnce(&Value) -> DataResult<Option<Value>>,
+) -> DataResult<AppConfig> {
+    // 拿鎖前先看閘門。開閘後安裝會把這把鎖持有到程序結束，這裡不能排進去等。
+    super::world_lock::refuse_if_updating()?;
+    let _guard = config_lock()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let path = root.join("config.json");
-    let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    // 0600 僅限 unix；Windows 的 %APPDATA% 本身即使用者私有目錄，不需 chmod
+    let mut base = read_raw_config(&path)?;
+    let Some(patch) = build(&base)? else {
+        return parse_app_config(&base);
+    };
+    let object = base
+        .as_object_mut()
+        .ok_or_else(|| invalid_data("設定檔不是 JSON 物件"))?;
+    apply_config_patch(object, &patch)?;
+    let parsed = parse_app_config(&base)?;
+    write_raw_config(root, &path, &base)?;
+    Ok(parsed)
+}
+
+pub fn update_config(root: &Path, patch: &Value) -> DataResult<AppConfig> {
+    update_config_with(root, |_| Ok(Some(patch.clone())))
+}
+
+/// 舊 `smart_free` 模式改成 `stable_free`。在設定鎖裡看磁碟原文，不重寫沒碰到的欄位。
+pub fn migrate_legacy_config(root: &Path) -> DataResult<AppConfig> {
+    // 舊設定遷移是 read_config 的副作用。閘門開著就只把磁碟上的原文讀回來，不改檔。
+    if super::world_lock::update_gate_raised() {
+        return read_config(root);
+    }
+    update_config_with(root, |disk| {
+        let legacy = disk
+            .get("preferences")
+            .and_then(|value| value.get(crate::smart_free::MODE_KEY))
+            .and_then(|value| value.as_str())
+            == Some(crate::smart_free::MODE_SMART_LEGACY);
+        if !legacy {
+            return Ok(None);
+        }
+        let key = crate::smart_free::MODE_KEY;
+        Ok(Some(serde_json::json!({
+            "preferences": { key: crate::smart_free::MODE_STABLE }
+        })))
+    })
+}
+
+fn apply_config_patch(base: &mut Map<String, Value>, patch: &Value) -> DataResult<()> {
+    let patch = patch
+        .as_object()
+        .ok_or_else(|| invalid_data("設定補丁必須是 JSON 物件"))?;
+    for (key, value) in patch {
+        if matches!(key.as_str(), "api_keys" | "tier_models" | "preferences") {
+            apply_map_patch(base, key, value)?;
+        } else if value.is_null() {
+            base.remove(key);
+        } else {
+            base.insert(key.clone(), value.clone());
+        }
+    }
+    Ok(())
+}
+
+fn apply_map_patch(base: &mut Map<String, Value>, key: &str, value: &Value) -> DataResult<()> {
+    if value.is_null() {
+        base.remove(key);
+        return Ok(());
+    }
+    let patch_map = value
+        .as_object()
+        .ok_or_else(|| invalid_data(format!("{key} 補丁必須是物件或 null")))?;
+    let entry = base
+        .entry(key.to_owned())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !entry.is_object() {
+        *entry = Value::Object(Map::new());
+    }
+    let map = entry
+        .as_object_mut()
+        .ok_or_else(|| invalid_data(format!("{key} 不是物件")))?;
+    for (child, child_value) in patch_map {
+        if child_value.is_null() {
+            map.remove(child);
+        } else {
+            map.insert(child.clone(), child_value.clone());
+        }
+    }
+    Ok(())
+}
+
+fn write_raw_config(root: &Path, path: &Path, value: &Value) -> DataResult<()> {
+    // world-write-exempt: 建立設定目錄，不是桌目錄
+    fs::create_dir_all(root)?;
+    let tmp = root.join("config.json.tmp");
+    let bytes = serde_json::to_vec_pretty(value)?;
+    {
+        // world-write-exempt: 設定檔暫存 config.json.tmp，不是桌目錄
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        // 0600 僅限 unix；Windows 的 %APPDATA% 本身即使用者私有目錄，不需 chmod
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options.open(&tmp)?;
+        // world-write-exempt: 寫入設定檔暫存，不是桌目錄
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+    }
     #[cfg(unix)]
-    options.mode(0o600);
-    let mut file = options.open(&path)?;
-    file.write_all(serde_json::to_string_pretty(config)?.as_bytes())?;
-    // mode() 只在建檔時生效；補 set_permissions 修復既存檔的過寬權限
+    fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
+    // Windows 的 fs::rename 是 MoveFileExW＋MOVEFILE_REPLACE_EXISTING，可以直接覆蓋。
+    // world-write-exempt: 設定檔暫存改名成 config.json，不是桌目錄
+    fs::rename(&tmp, path)?;
     #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    {
+        if let Ok(dir) = File::open(root) {
+            let _ = dir.sync_all();
+        }
+    }
     Ok(())
 }
 
@@ -57,7 +197,10 @@ pub fn write_model_catalog(
     root: &Path,
     catalog: &BTreeMap<String, Vec<ModelOption>>,
 ) -> DataResult<()> {
+    super::world_lock::refuse_if_updating()?;
+    // world-write-exempt: 建立設定目錄，不是桌目錄
     fs::create_dir_all(root)?;
+    // world-write-exempt: model_catalog.json 是可重建的模型快取，不是桌目錄
     fs::write(
         root.join("model_catalog.json"),
         serde_json::to_string(catalog)?,
@@ -103,7 +246,10 @@ pub fn sponsor_pack_active(root: &Path) -> bool {
 
 pub fn install_sponsor_pack(root: &Path, bytes: &[u8]) -> DataResult<()> {
     validate_sponsor_pack(bytes)?;
+    super::world_lock::refuse_if_updating()?;
+    // world-write-exempt: 建立設定目錄，不是桌目錄
     fs::create_dir_all(root)?;
+    // world-write-exempt: sponsor-pack.ttpack 是贊助包，不是桌目錄
     fs::write(root.join("sponsor-pack.ttpack"), bytes)?;
     Ok(())
 }
@@ -186,7 +332,15 @@ mod tests {
             serde_json::Value::String("zh-TW".to_owned()),
         );
 
-        write_config(root.path(), &config).unwrap();
+        update_config(
+            root.path(),
+            &serde_json::json!({
+                "api_keys": { "provider": "secret" },
+                "tier_models": { "best": "model-name" },
+                "preferences": { "language": "zh-TW" }
+            }),
+        )
+        .unwrap();
         assert_eq!(read_config(root.path()).unwrap(), config);
         #[cfg(unix)]
         {
@@ -197,5 +351,103 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o600);
         }
+    }
+
+    #[test]
+    fn patch_deletes_null_keeps_unknown_and_keeps_empty_string() {
+        let root = TestRoot::new("config-patch");
+        fs::write(
+            {
+                fs::create_dir_all(root.path()).unwrap();
+                root.path().join("config.json")
+            },
+            r#"{"api_keys":{"keep":"yes","drop":"gone"},"preferences":{"language":"zh-TW","theme":"dark"},"extra":{"nested":1},"note":"stay"}"#,
+        )
+        .unwrap();
+
+        let saved = update_config(
+            root.path(),
+            &serde_json::json!({
+                "api_keys": { "drop": null, "empty": "" },
+                "preferences": { "theme": null },
+                "note": null
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(saved.api_keys.get("keep").map(String::as_str), Some("yes"));
+        assert!(!saved.api_keys.contains_key("drop"));
+        assert_eq!(saved.api_keys.get("empty").map(String::as_str), Some(""));
+        assert_eq!(
+            saved
+                .preferences
+                .get("language")
+                .and_then(|value| value.as_str()),
+            Some("zh-TW")
+        );
+        assert!(!saved.preferences.contains_key("theme"));
+
+        let raw: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(root.path().join("config.json")).unwrap())
+                .unwrap();
+        assert_eq!(raw["extra"]["nested"], 1);
+        assert!(raw.get("note").is_none());
+        assert_eq!(raw["api_keys"]["empty"], "");
+    }
+
+    #[test]
+    fn invalid_merged_config_is_rejected_without_touching_disk() {
+        let root = TestRoot::new("config-validate");
+        let original = r#"{"api_keys":{"openrouter":"sk-ok"},"note":"stay"}"#;
+        fs::create_dir_all(root.path()).unwrap();
+        let path = root.path().join("config.json");
+        fs::write(&path, original).unwrap();
+
+        let error = update_config(
+            root.path(),
+            &serde_json::json!({"api_keys":{"openrouter":123}}),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("123") || error.to_string().contains("string"),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), original);
+    }
+
+    #[test]
+    fn update_gate_blocks_config_write_without_touching_disk() {
+        let root = TestRoot::new("config-gate");
+        fs::create_dir_all(root.path()).unwrap();
+        let path = root.path().join("config.json");
+        let original = r#"{"preferences":{"language":"zh-TW"}}"#;
+        fs::write(&path, original).unwrap();
+        let _gate = super::super::world_lock::GateOverride::raised();
+        let error = update_config(
+            root.path(),
+            &serde_json::json!({"preferences":{"language":"en"}}),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), "更新進行中，暫停寫入");
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn legacy_migration_reads_without_writing_while_the_gate_is_up() {
+        let root = TestRoot::new("config-gate-migrate");
+        fs::create_dir_all(root.path()).unwrap();
+        let path = root.path().join("config.json");
+        let original = r#"{"preferences":{"api_model_mode":"smart_free"}}"#;
+        fs::write(&path, original).unwrap();
+        let _gate = super::super::world_lock::GateOverride::raised();
+        let config = migrate_legacy_config(root.path()).unwrap();
+        assert_eq!(
+            config
+                .preferences
+                .get("api_model_mode")
+                .and_then(|value| value.as_str()),
+            Some("smart_free")
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
     }
 }

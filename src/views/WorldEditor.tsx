@@ -83,6 +83,8 @@ export function WorldEditor({
     return await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
       title: t("unsavedLeaveTitle"),
       kind: "warning",
+      okLabel: t("unsavedLeaveOk"),
+      cancelLabel: t("unsavedLeaveCancel"),
     });
   }
   // 側欄切走時走的是同一條確認；每次 render 掛上，閉包才拿得到最新的 unsavedCount。

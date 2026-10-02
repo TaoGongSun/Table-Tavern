@@ -294,7 +294,12 @@ export function CardEditor({
   }
 
   async function deleteGalleryImage(file: string) {
-    const accepted = await confirm(t("aiGalleryDeleteConfirm"), { title: t("aiGalleryDeleteTitle"), kind: "warning" });
+    const accepted = await confirm(t("aiGalleryDeleteConfirm"), {
+      title: t("aiGalleryDeleteTitle"),
+      kind: "warning",
+      okLabel: t("dialogDelete"),
+      cancelLabel: t("dialogCancel"),
+    });
     if (!accepted) return;
     await invoke("delete_gallery_image", { worldId: world, characterId, file });
     setGalleryFiles((current) => current.filter((item) => item !== file));
@@ -339,6 +344,8 @@ export function CardEditor({
       !(await confirm(t("renameConfirm", { from: originalName, to: target }), {
         title: t("renameConfirmTitle"),
         kind: "warning",
+        okLabel: t("renameOk"),
+        cancelLabel: t("dialogCancel"),
       }))
     ) {
       return;
@@ -367,6 +374,8 @@ export function CardEditor({
     return await confirm(t("unsavedLeaveConfirm", { n: unsavedCount }), {
       title: t("unsavedLeaveTitle"),
       kind: "warning",
+      okLabel: t("unsavedLeaveOk"),
+      cancelLabel: t("unsavedLeaveCancel"),
     });
   }
   // 側欄切換編輯對象時走的是同一條確認；每次 render 掛上，閉包才拿得到最新的 unsavedCount
@@ -419,21 +428,29 @@ export function CardEditor({
     setMessage("");
     if (!card) return;
     if (unsavedCount > 0) {
-      await showMessage(t("convertCardUnsaved"), { title: t("convertCardToEntry") });
+      await showMessage(t("convertCardUnsaved"), {
+        title: t("convertCardToEntry"),
+        okLabel: t("dialogAck"),
+      });
       return;
     }
     if (card.archived === false) {
-      await showMessage(t("convertCardInUse"), { title: t("convertCardToEntry") });
+      await showMessage(t("convertCardInUse"), {
+        title: t("convertCardToEntry"),
+        okLabel: t("dialogAck"),
+      });
       return;
     }
     const accepted = await confirm(t("convertCardConfirm"), {
       title: t("convertCardToEntry"),
       kind: "warning",
+      okLabel: t("convertCardToEntry"),
+      cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
     try {
       await invoke("character_to_worldbook_entry", { worldId: world, characterId });
-      await showMessage(t("convertCardDone"));
+      await showMessage(t("convertCardDone"), { okLabel: t("dialogAck") });
       await onConverted();
     } catch (reason) {
       setMessage(String(reason));
@@ -452,6 +469,8 @@ export function CardEditor({
     const accepted = await confirm(t("removeImageConfirm"), {
       title: t("removeImageTitle"),
       kind: "warning",
+      okLabel: t("dialogRemove"),
+      cancelLabel: t("dialogCancel"),
     });
     if (accepted) setDraftImage(null);
   }
@@ -460,6 +479,8 @@ export function CardEditor({
     const accepted = await confirm(t("removeAvatarConfirm"), {
       title: t("removeAvatarTitle"),
       kind: "warning",
+      okLabel: t("dialogRemove"),
+      cancelLabel: t("dialogCancel"),
     });
     if (accepted) setDraftAvatar(null);
   }

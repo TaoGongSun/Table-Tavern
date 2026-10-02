@@ -97,6 +97,8 @@ export function useWorldbookEditor({
     return await confirm(t("unsavedLeaveConfirm", { n: 1 }), {
       title: t("unsavedLeaveTitle"),
       kind: "warning",
+      okLabel: t("unsavedLeaveOk"),
+      cancelLabel: t("unsavedLeaveCancel"),
     });
   }
 
@@ -198,7 +200,12 @@ export function useWorldbookEditor({
     try {
       const accepted = await confirm(
         t("worldbookDeleteConfirm", { title: entry.title || String(entry.uid) }),
-        { title: t("worldbookDeleteTitle"), kind: "warning" },
+        {
+          title: t("worldbookDeleteTitle"),
+          kind: "warning",
+          okLabel: t("dialogDelete"),
+          cancelLabel: t("dialogCancel"),
+        },
       );
       if (!accepted) return;
       await invoke("delete_worldbook_entry", { worldId: world, uid: entry.uid });
@@ -231,6 +238,8 @@ export function useWorldbookEditor({
       const accepted = await confirm(t("worldbookDedupeConfirm"), {
         title: t("worldbookDedupe"),
         kind: "warning",
+        okLabel: t("worldbookDedupe"),
+        cancelLabel: t("dialogCancel"),
       });
       if (!accepted) return;
       // 去重只刪東西，別觸發匯入後的選 GM／改桌名

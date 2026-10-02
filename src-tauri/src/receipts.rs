@@ -188,7 +188,7 @@ fn read_receipts(root: &Path, world_id: &str) -> Vec<ImportReceipt> {
 
 fn write_receipts(root: &Path, world_id: &str, receipts: &[ImportReceipt]) -> DataResult<()> {
     let path = data::import_receipts_path(root, world_id)?;
-    fs::write(path, serde_json::to_string_pretty(receipts)?)?;
+    data::commit_world_write(&path, serde_json::to_string_pretty(receipts)?.as_bytes())?;
     Ok(())
 }
 
@@ -565,7 +565,7 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         // delete_character 不清 .import.json（非 PNG 匯入時的原始檔，PNG 匯入時原始檔與
         // 角色圖是同一個 .png，已經被 delete_character 清掉）。
         if let Ok(character_path) = data::character_path(root, world_id, character_id) {
-            let _ = fs::remove_file(character_path.with_extension("import.json"));
+            let _ = data::commit_world_remove(&character_path.with_extension("import.json"));
         }
     }
     // AI 卡重構等一次套用多張角色卡的路徑：character_id／character_ids 兩欄位互斥，
@@ -579,7 +579,7 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
                 report.removed_characters.push(name);
             }
             if let Ok(character_path) = data::character_path(root, world_id, character_id) {
-                let _ = fs::remove_file(character_path.with_extension("import.json"));
+                let _ = data::commit_world_remove(&character_path.with_extension("import.json"));
             }
         }
     }
@@ -656,7 +656,7 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
                 if let Some(index) = current.rfind(receipt.added_ledger_lines.as_str()) {
                     let mut restored = current[..index].to_owned();
                     restored.push_str(&current[index + receipt.added_ledger_lines.len()..]);
-                    let _ = fs::write(&path, restored);
+                    let _ = data::commit_world_write(&path, restored.as_bytes());
                 }
             }
         }
@@ -665,7 +665,7 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
     // 6. 這次匯入新建的卡片介面殼：匯入前就有的不動。
     if let Some(extension) = &receipt.world_card_created {
         if let Ok(card_path) = data::world_card_path(root, world_id, extension) {
-            let _ = fs::remove_file(card_path);
+            let _ = data::commit_world_remove(&card_path);
         }
     }
 
@@ -680,14 +680,14 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
     // 6b. 這次匯入新建的 GM 卡圖：匯入前就有的不動。
     if receipt.gm_image_created {
         if let Ok(image_path) = data::gm_image_path(root, world_id) {
-            let _ = fs::remove_file(image_path);
+            let _ = data::commit_world_remove(&image_path);
         }
     }
 
     // 7. 這次操作新建的介面渲染殼檔（AI 卡重構產物）：套用前就有的不動。
     if receipt.interface_shell_created {
         if let Ok(shell_path) = data::interface_shell_path(root, world_id) {
-            let _ = fs::remove_file(shell_path);
+            let _ = data::commit_world_remove(&shell_path);
         }
     }
 

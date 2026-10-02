@@ -338,9 +338,9 @@ pub fn read_state(root: &Path, world_id: &str) -> DataResult<WorldState> {
 }
 
 pub fn write_state(root: &Path, world_id: &str, state: &WorldState) -> DataResult<()> {
-    fs::write(
-        world_dir(root, world_id)?.join("state.json"),
-        serde_json::to_string_pretty(state)?,
+    super::world_file::commit_world_write(
+        &world_dir(root, world_id)?.join("state.json"),
+        serde_json::to_string_pretty(state)?.as_bytes(),
     )?;
     Ok(())
 }

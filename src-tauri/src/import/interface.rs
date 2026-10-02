@@ -120,7 +120,7 @@ pub fn save_world_card(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
     let Ok(path) = data::world_card_path(root, world_id, extension) else {
         return false;
     };
-    fs::write(path, bytes).is_ok()
+    data::commit_world_write(&path, bytes).is_ok()
 }
 
 fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -> CardInterface {

@@ -161,7 +161,7 @@ fn read_store(path: &Path) -> LaneStore {
 
 fn write_store(path: &Path, store: &LaneStore) -> Result<(), String> {
     let text = serde_json::to_string_pretty(store).map_err(|error| error.to_string())?;
-    std::fs::write(path, text)
+    crate::data::commit_world_write(path, text.as_bytes())
         .map_err(|error| format!("無法寫入 lane 狀態檔 {}：{error}", path.display()))
 }
 
@@ -406,6 +406,75 @@ fn apply_rewrite(
     session_file::write_atomic(&path, &file)
 }
 
+/// 抹寫失敗：session 內容不可信，刪掉檔。檔案本來就不在（NotFound）當已刪。
+/// 其他刪除錯誤交回呼叫端，不能當成這條線已經棄用成功。
+fn abandon_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
+    if call.provider != LaneProvider::Claude {
+        return Ok(());
+    }
+    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "中止後刪不掉 session 檔 {}：{error}。這條線已清掉，請再送一次。",
+            path.display()
+        )),
+    }
+}
+
+/// 中止回合的收尾。抹寫成功就什麼都不改——呼叫前已經寫下 pending_rewrite、expected_reply 仍是 None。
+fn settle_abort(
+    call: &LaneCall,
+    world_id: &str,
+    key: &str,
+    session_id: &str,
+    confidential: Option<&str>,
+    prefix: Option<&str>,
+    store: &mut LaneStore,
+    store_path: &Path,
+) -> Result<(), String> {
+    let rewrite = match call.provider {
+        LaneProvider::Claude => apply_rewrite(call, session_id, confidential, prefix),
+        LaneProvider::Agy | LaneProvider::Grok => Ok(()),
+    };
+    if rewrite.is_err() {
+        if let Some(path) = call.usage_log.as_deref() {
+            usage_log::append_event(
+                path,
+                Some(world_id),
+                key,
+                usage_log::Event::DropLane,
+                "rewrite-failed",
+            );
+        }
+        // 刪檔失敗也要先清線再回錯：呼叫端看到 Err 就不會把這一輪報成中止成功。
+        let abandon = abandon_session(call, session_id);
+        store.remove(key);
+        write_store(store_path, store)?;
+        if let Err(error) = abandon {
+            if let Some(path) = call.usage_log.as_deref() {
+                usage_log::append_event(
+                    path,
+                    Some(world_id),
+                    key,
+                    usage_log::Event::DropLane,
+                    &error,
+                );
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+/// 一輪 lane 的收場。`aborted` 時 `text` 是已經吐出的半截，呼叫端不再把它當完整回覆寫狀態。
+#[derive(Debug)]
+pub(crate) struct TurnOutcome {
+    pub text: String,
+    pub aborted: bool,
+}
+
 fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
     match echo {
         ReplyEcho::Dialogue { speaker_id } => ExpectedReply {
@@ -424,13 +493,15 @@ fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
 
 /// 跑一輪 lane 呼叫：計畫（續聊或重開）→ 呼叫前落狀態 → CLI → 回合後抹寫 → 落最終狀態。
 /// 續聊呼叫失敗自動降級為重開全量再試一次；重開也失敗才把錯誤丟回（與現行單發同表現）。
+/// `cancel` 在這層收，不把整個 future 丟給外層 select：中止時先等子程序退出，再照案 C 抹私設。
 pub(crate) async fn run_turn(
     call: &LaneCall,
     root: &Path,
     world_id: &str,
     input: TurnInput<'_>,
+    mut cancel: Option<&mut crate::inflight::CancelSignal>,
     mut emit: impl FnMut(&str),
-) -> Result<String, String> {
+) -> Result<TurnOutcome, String> {
     // Agy/Grok 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
     // 提進該角色自己的凍結 system（hoist_private）＋一角一線；這裡出聲擋下，寧可整輪失敗
     // 也不讓別的角色讀到不該讀的東西。
@@ -453,6 +524,8 @@ pub(crate) async fn run_turn(
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
     let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
+    // 每一輪重試共用同一個接收端。watch 留著最新值，停止若在降級重開前就到了，下一輪 CLI 一進迴圈就看得到。
+    let cancel_rx = cancel.as_mut().map(|signal| signal.receiver());
 
     loop {
         let (session_id, base, opening, system, patch, lane_log) = match &plan {
@@ -555,7 +628,7 @@ pub(crate) async fn run_turn(
 
         let conversation_id = std::sync::Mutex::new(None);
         let agy_usage = std::sync::Mutex::new(None);
-        let result = cli::run_cli(
+        let result = cli::run_cli_cancellable(
             &call.program,
             &call.working_dir,
             &args,
@@ -590,11 +663,30 @@ pub(crate) async fn run_turn(
                 agy_usage_out: (call.provider == LaneProvider::Agy).then_some(&agy_usage),
             }),
             &mut emit,
+            cancel_rx.clone(),
         )
         .await;
 
         match result {
-            Ok(reply) => {
+            // 中止不是續聊失敗：不降級重試。私設照抹；抹不掉就棄用這條 session。
+            // expected_reply 維持呼叫前寫下的 None，pending_rewrite 也留著，下一輪改由正典重建。
+            Ok(cli::CliFinish::Aborted(partial)) => {
+                settle_abort(
+                    call,
+                    world_id,
+                    &key,
+                    &session_id,
+                    input.confidential.as_deref(),
+                    input.prefix.as_deref(),
+                    &mut store,
+                    &store_path,
+                )?;
+                return Ok(TurnOutcome {
+                    text: partial,
+                    aborted: true,
+                });
+            }
+            Ok(cli::CliFinish::Completed(reply)) => {
                 let actual_session_id = match call.provider {
                     LaneProvider::Agy => conversation_id
                         .into_inner()
@@ -607,7 +699,10 @@ pub(crate) async fn run_turn(
                 if actual_session_id.is_none() {
                     store.remove(&key);
                     write_store(&store_path, &store)?;
-                    return Ok(reply);
+                    return Ok(TurnOutcome {
+                        text: reply,
+                        aborted: false,
+                    });
                 }
                 let actual_session_id = actual_session_id.expect("checked above");
                 let actual_agy_usage = agy_usage.into_inner().ok().flatten();
@@ -648,7 +743,10 @@ pub(crate) async fn run_turn(
                     }
                 }
                 write_store(&store_path, &store)?;
-                return Ok(reply);
+                return Ok(TurnOutcome {
+                    text: reply,
+                    aborted: false,
+                });
             }
             // 續聊失敗（session 檔認不得、CLI 拒絕 resume 等）＝丟線重開全量再試一次
             Err(_) if !opening => {
@@ -790,6 +888,16 @@ fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// 空目錄沒有 format.json，寫入閘門會當成唯讀。測試桌補上本版標記才寫得了 lanes.json。
+    fn mark_playable(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(
+            dir.join("format.json"),
+            r#"{"format_version":1,"app_version":"test"}"#,
+        )
+        .unwrap();
+    }
+
     struct FakeCli {
         dir: PathBuf,
         call: LaneCall,
@@ -811,7 +919,7 @@ mod tests {
         let root = dir.join("root");
         let world_id = ulid::Ulid::generate().to_string();
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         // 假 CLI 寫 session 檔的位置＝真實 munged 路徑，lanes 的抹寫才找得到
         let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
             .parent()
@@ -890,7 +998,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         let world_id = ulid::Ulid::generate().to_string();
         let usage_log = dir.join("usage.jsonl");
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         let script = dir.join("fake-agy.py");
         std::fs::write(
             &script,
@@ -1274,7 +1382,7 @@ print(json.dumps({'event': 'result', 'result': {
         let events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
         let mut input = turn_input(&events, 0);
         input.confidential = Some("狐狸的私設".to_owned());
-        let error = run_turn(&call, &root, &world_id, input, |_: &str| {})
+        let error = run_turn(&call, &root, &world_id, input, None, |_: &str| {})
             .await
             .expect_err("帶機密段的 grok 線必須被擋下");
         assert!(error.contains("私設必須提進凍結 system"));
@@ -1318,9 +1426,10 @@ print(json.dumps({'event': 'result', 'result': {
         first.prefix = None;
         first.scope = Some("fox-id".to_owned());
         assert_eq!(
-            run_turn(&call, &root, &world_id, first, |_| {})
+            run_turn(&call, &root, &world_id, first, None, |_| {})
                 .await
-                .unwrap(),
+                .unwrap()
+                .text,
             "回覆1"
         );
         let store_path = data::lanes_path(&root, &world_id).unwrap();
@@ -1333,9 +1442,10 @@ print(json.dumps({'event': 'result', 'result': {
         second.prefix = None;
         second.scope = Some("fox-id".to_owned());
         assert_eq!(
-            run_turn(&call, &root, &world_id, second, |_| {})
+            run_turn(&call, &root, &world_id, second, None, |_| {})
                 .await
-                .unwrap(),
+                .unwrap()
+                .text,
             "回覆2"
         );
 
@@ -1420,9 +1530,10 @@ print(json.dumps({'event': 'result', 'result': {
         let mut input = turn_input(&events, 0);
         input.tail = format!("{confidential}\n現在你是「狐狸」。");
         input.confidential = Some(confidential.clone());
-        let reply1 = run_turn(&call, &root, &world_id, input, |_| {})
+        let reply1 = run_turn(&call, &root, &world_id, input, None, |_| {})
             .await
-            .unwrap();
+            .unwrap()
+            .text;
         assert_eq!(reply1, "回覆1");
         let (args1, prompt1) = calls(0);
         let open_flag = args1.iter().position(|a| a == "--session-id").unwrap();
@@ -1440,9 +1551,17 @@ print(json.dumps({'event': 'result', 'result': {
         // 第二輪：回覆已落正典＋玩家新句 → 續聊，只送新句
         events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply1));
         events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
-        let reply2 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
-            .await
-            .unwrap();
+        let reply2 = run_turn(
+            &call,
+            &root,
+            &world_id,
+            turn_input(&events, 0),
+            None,
+            |_| {},
+        )
+        .await
+        .unwrap()
+        .text;
         assert_eq!(reply2, "回覆2");
         let (args2, prompt2) = calls(1);
         assert!(args2
@@ -1455,9 +1574,17 @@ print(json.dumps({'event': 'result', 'result': {
         // 第三輪：舊事件被改字 → 指紋不合，自動重開新線全量
         events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply2));
         events[0].text = "被改過的第一句".to_owned();
-        let reply3 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
-            .await
-            .unwrap();
+        let reply3 = run_turn(
+            &call,
+            &root,
+            &world_id,
+            turn_input(&events, 0),
+            None,
+            |_| {},
+        )
+        .await
+        .unwrap()
+        .text;
         assert_eq!(reply3, "回覆1"); // 新 session 檔重新計數＝證明真的重開
         let (args3, prompt3) = calls(2);
         let reopen_flag = args3.iter().position(|a| a == "--session-id").unwrap();
@@ -1473,9 +1600,17 @@ print(json.dumps({'event': 'result', 'result': {
             &second_session,
         ))
         .unwrap();
-        let reply4 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
-            .await
-            .unwrap();
+        let reply4 = run_turn(
+            &call,
+            &root,
+            &world_id,
+            turn_input(&events, 0),
+            None,
+            |_| {},
+        )
+        .await
+        .unwrap()
+        .text;
         assert_eq!(reply4, "回覆1");
         let (args4, _) = calls(3);
         assert!(args4.contains(&"--resume".to_owned())); // 先試續聊
@@ -1499,6 +1634,7 @@ print(json.dumps({'event': 'result', 'result': {
             &root,
             &world_id,
             turn_input(&events, 0),
+            None,
             |_| {},
         )
         .await
@@ -1555,9 +1691,17 @@ print(json.dumps({'event': 'result', 'result': {
         };
 
         let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
-        let reply1 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
-            .await
-            .unwrap();
+        let reply1 = run_turn(
+            &call,
+            &root,
+            &world_id,
+            turn_input(&events, 0),
+            None,
+            |_| {},
+        )
+        .await
+        .unwrap()
+        .text;
         assert_eq!(reply1, "回覆1");
         let store_path = data::lanes_path(&root, &world_id).unwrap();
         let session_id = read_store(&store_path)
@@ -1606,9 +1750,17 @@ print(json.dumps({'event': 'result', 'result': {
         // ping 過的線照樣續聊：回覆編號是 2 而不是 3＝session 裡真的沒留下保溫問答
         events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply1));
         events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
-        let reply2 = run_turn(&call, &root, &world_id, turn_input(&events, 0), |_| {})
-            .await
-            .unwrap();
+        let reply2 = run_turn(
+            &call,
+            &root,
+            &world_id,
+            turn_input(&events, 0),
+            None,
+            |_| {},
+        )
+        .await
+        .unwrap()
+        .text;
         assert_eq!(reply2, "回覆2");
         let (args, prompt) = calls(2);
         assert!(args
@@ -1635,7 +1787,7 @@ print(json.dumps({'event': 'result', 'result': {
         let usage_log = dir.join("usage.log");
         let world_id = ulid::Ulid::generate().to_string();
         std::fs::create_dir_all(&working_dir).unwrap();
-        std::fs::create_dir_all(root.join("worlds").join(&world_id)).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
         let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
             .parent()
             .unwrap()
@@ -1706,7 +1858,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         let mut first = turn_input(&events, 0);
         first.frozen_system = old_system.to_owned();
         first.prefix = None;
-        run_turn(&call, &root, &world_id, first, |_| {})
+        run_turn(&call, &root, &world_id, first, None, |_| {})
             .await
             .unwrap();
 
@@ -1715,7 +1867,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         let mut patched = turn_input(&events, 0);
         patched.frozen_system = new_system.to_owned();
         patched.prefix = None;
-        run_turn(&call, &root, &world_id, patched, |_| {})
+        run_turn(&call, &root, &world_id, patched, None, |_| {})
             .await
             .unwrap();
         let (patch_args, patch_prompt) = calls(1);
@@ -1737,7 +1889,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         let mut rebased = turn_input(&events, 0);
         rebased.frozen_system = new_system.to_owned();
         rebased.prefix = None;
-        run_turn(&call, &root, &world_id, rebased, |_| {})
+        run_turn(&call, &root, &world_id, rebased, None, |_| {})
             .await
             .unwrap();
         let (rebase_args, rebase_prompt) = calls(2);
@@ -1776,6 +1928,233 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         assert_eq!(records[2]["rebased"], true);
         assert!(records[2]["age_secs"].as_u64().unwrap() >= 3_600);
         assert_ne!(records[2]["system_hash"], records[1]["system_hash"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 中止後 session 檔刪不掉：線照清、usage 記下原因，settle_abort 回 Err。
+    /// run_turn 用 `?` 接這個結果，所以不會再回報中止成功。NotFound 仍當已刪。
+    #[test]
+    fn abort_delete_failure_clears_lane_and_returns_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "tt-lanes-abandon-{}-{}",
+            std::process::id(),
+            ulid::Ulid::generate()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let working_dir = dir.join("ws");
+        let claude_home = dir.join("claude-home");
+        std::fs::create_dir_all(&working_dir).unwrap();
+        let session_id = "sid-blocked";
+        // 路徑是目錄，remove_file 會失敗，而且不是 NotFound。
+        let session_path = session_file::session_file_path(&claude_home, &working_dir, session_id);
+        std::fs::create_dir_all(&session_path).unwrap();
+        let usage_log = dir.join("usage.jsonl");
+        let world_dir = dir
+            .join("root")
+            .join("worlds")
+            .join(ulid::Ulid::generate().to_string());
+        mark_playable(&world_dir);
+        let store_path = world_dir.join("lanes.json");
+        let key = "chars:sonnet";
+        let mut store = LaneStore::new();
+        store.insert(key.to_owned(), lane_state(&[], 0));
+        let call = LaneCall {
+            provider: LaneProvider::Claude,
+            program: dir.join("unused"),
+            working_dir: working_dir.clone(),
+            envs: Vec::new(),
+            model: Some("sonnet".to_owned()),
+            usage_log: Some(usage_log.clone()),
+            claude_home: claude_home.clone(),
+        };
+        let error = settle_abort(
+            &call,
+            "world-1",
+            key,
+            session_id,
+            Some("機密"),
+            None,
+            &mut store,
+            &store_path,
+        )
+        .expect_err("刪不掉 session 不能當成中止成功");
+        assert!(error.contains("刪不掉 session 檔"), "{error}");
+        assert!(error.contains("已清掉"), "{error}");
+        assert!(store.get(key).is_none());
+        assert!(read_store(&store_path).get(key).is_none());
+        assert!(session_path.exists(), "刪失敗時檔還在");
+        let log = std::fs::read_to_string(&usage_log).unwrap();
+        assert!(log.contains("rewrite-failed"), "{log}");
+        assert!(log.contains("刪不掉 session 檔"), "{log}");
+
+        store.insert(key.to_owned(), lane_state(&[], 0));
+        settle_abort(
+            &call,
+            "world-1",
+            key,
+            "sid-missing",
+            Some("機密"),
+            None,
+            &mut store,
+            &store_path,
+        )
+        .expect("檔案本來就不在，棄用算成功");
+        assert!(store.get(key).is_none());
+        assert!(read_store(&store_path).get(key).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    async fn process_dead_within(pid: u32, budget: std::time::Duration) -> bool {
+        let step = std::time::Duration::from_millis(20);
+        let mut waited = std::time::Duration::ZERO;
+        loop {
+            let alive = std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .output()
+                .map(|output| output.status.success())
+                .unwrap_or(false);
+            if !alive {
+                return true;
+            }
+            if waited >= budget {
+                return false;
+            }
+            tokio::time::sleep(step).await;
+            waited += step;
+        }
+    }
+
+    /// 假 CLI 把 session 寫完就睡。取消要等它真的退出，再抹掉私設；expected_reply 維持 None。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn lane_cancel_waits_for_exit_and_does_not_record_expected_reply() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let dir = std::env::temp_dir().join(format!(
+            "tt-lanes-abort-{}-{}",
+            std::process::id(),
+            ulid::Ulid::generate()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let working_dir = dir.join("ws");
+        let claude_home = dir.join("claude-home");
+        let root = dir.join("root");
+        let world_id = ulid::Ulid::generate().to_string();
+        std::fs::create_dir_all(&working_dir).unwrap();
+        mark_playable(&root.join("worlds").join(&world_id));
+        let session_dir = session_file::session_file_path(&claude_home, &working_dir, "probe")
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let script = dir.join("fake-claude.py");
+        std::fs::write(
+            &script,
+            r#"#!/usr/bin/env python3
+import json, sys, os, uuid, time
+args = sys.argv[1:]
+def flag(name):
+    return args[args.index(name) + 1] if name in args else None
+sid = flag('--session-id')
+prompt = sys.stdin.read()
+d = os.environ['FAKE_SESSION_DIR']
+path = os.path.join(d, sid + '.jsonl')
+u, a = str(uuid.uuid4()), str(uuid.uuid4())
+lines = [
+    {'type': 'user', 'uuid': u, 'parentUuid': None,
+     'message': {'role': 'user', 'content': prompt}},
+    {'type': 'assistant', 'uuid': a, 'parentUuid': u,
+     'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': '半截'}]}},
+]
+with open(path, 'w') as f:
+    for o in lines:
+        f.write(json.dumps(o, ensure_ascii=False) + '\n')
+    f.flush()
+    os.fsync(f.fileno())
+open(os.path.join(d, 'ready'), 'w').close()
+time.sleep(60)
+"#,
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let call = LaneCall {
+            provider: LaneProvider::Claude,
+            program: script,
+            working_dir: working_dir.clone(),
+            envs: vec![(
+                "FAKE_SESSION_DIR".to_owned(),
+                session_dir.to_string_lossy().into_owned(),
+            )],
+            model: Some("sonnet".to_owned()),
+            usage_log: None,
+            claude_home: claude_home.clone(),
+        };
+        let world_for_abort = world_id.clone();
+        let (guard, mut cancel) = crate::inflight::register_turn(&world_for_abort, "turn-1");
+        let before = crate::inflight::child_pids();
+        let handle = tokio::spawn(async move {
+            let _guard = guard;
+            let confidential = "## 「狐狸」的私有設定\n其實是通緝犯\n".to_owned();
+            let events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+            let mut input = turn_input(&events, 0);
+            input.tail = format!("{confidential}\n現在你是「狐狸」。");
+            input.confidential = Some(confidential);
+            run_turn(&call, &root, &world_id, input, Some(&mut cancel), |_| {}).await
+        });
+
+        let step = std::time::Duration::from_millis(20);
+        let mut waited = std::time::Duration::ZERO;
+        let (pid, session_path) = loop {
+            let ready = session_dir.join("ready").exists();
+            let pid = crate::inflight::child_pids()
+                .into_iter()
+                .find(|pid| !before.contains(pid));
+            let session_path = std::fs::read_dir(&session_dir).ok().and_then(|entries| {
+                entries.filter_map(|entry| entry.ok()).find_map(|entry| {
+                    let path = entry.path();
+                    (path.extension().and_then(|ext| ext.to_str()) == Some("jsonl")).then_some(path)
+                })
+            });
+            if ready {
+                if let (Some(pid), Some(session_path)) = (pid, session_path) {
+                    break (pid, session_path);
+                }
+            }
+            assert!(
+                waited < std::time::Duration::from_secs(5),
+                "等假 CLI 寫完 session 逾時"
+            );
+            tokio::time::sleep(step).await;
+            waited += step;
+        };
+
+        crate::inflight::abort_turn(&world_for_abort, "turn-1");
+        let outcome = handle
+            .await
+            .expect("背景 task 不該 panic")
+            .expect("中止不是錯誤");
+        assert!(outcome.aborted);
+        assert!(
+            process_dead_within(pid, std::time::Duration::from_secs(2)).await,
+            "取消後子程序應在 2 秒內退出"
+        );
+
+        let store_path = data::lanes_path(&dir.join("root"), &world_for_abort).unwrap();
+        match read_store(&store_path).get("chars:sonnet") {
+            Some(state) => {
+                assert!(state.expected_reply.is_none(), "中止不更新 expected_reply");
+                assert!(state.pending_rewrite.is_some(), "中止留下 pending_rewrite");
+                let rewritten = std::fs::read_to_string(&session_path).unwrap();
+                assert!(!rewritten.contains("通緝犯"), "私設應已從 session 抹掉");
+            }
+            None => {
+                assert!(
+                    !session_path.exists(),
+                    "抹寫失敗時應刪掉 session 檔並清掉 lane 記錄"
+                );
+            }
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

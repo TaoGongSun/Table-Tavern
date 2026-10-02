@@ -1,9 +1,11 @@
 // 後端資料契約：src-tauri 回傳的結構，畫面與 controller 共用。
 
-/** list_worlds 的一列：桌 id 與顯示名 */
+/** list_worlds 的一列。id 是目錄名；解不開的桌仍列出，並標唯讀或需要修復。 */
 export interface WorldMeta {
   id: string;
   name: string;
+  read_only: boolean;
+  needs_repair: boolean;
 }
 
 export interface AppConfig {

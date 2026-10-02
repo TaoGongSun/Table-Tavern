@@ -1,6 +1,7 @@
 import { ReactNode, useRef, useState } from "react";
 import { t } from "../i18n";
 import { tierLabel } from "../features/ai-connection/model-catalog";
+import { listBadge } from "../features/world-format/open-world";
 import { WorldMeta } from "../shared/contracts/backend-contracts";
 import { CharacterCard, CharacterMeta } from "../features/characters/card-model";
 import { useDragReorder } from "../shared/ui/drag-reorder";
@@ -20,6 +21,8 @@ interface TableSidebarProps {
   table: string;
   /** 生成中：開桌／刪桌一律鎖住 */
   busy: boolean;
+  /** 唯讀或需要修復：這桌不能改名、不能編輯；開新桌與刪桌仍可用 */
+  locked: boolean;
   /** 改名輸入框正落在側欄這一列（主欄標題那個入口由 header 自己判斷） */
   renamingTable: boolean;
   renameForm: (className: string) => ReactNode;
@@ -58,6 +61,13 @@ interface TableSidebarProps {
   canUndoImport: boolean;
   onUndoImport: () => void;
   onOpenSettings: () => void;
+  /** 桌列表上方的提示（目前只有新版本橫幅）。 */
+  notice: ReactNode;
+  /** 目前版本號；讀到之前是 null，不畫版本鈕。 */
+  appVersion: string | null;
+  /** 有比目前新、且沒被略過的版本。 */
+  updateDot: boolean;
+  onOpenVersions: () => void;
 }
 
 /** 桌次清單＋角色側欄。寬度與展開狀態是側欄自己的 UI 記憶，其餘一律由 App 注入 */
@@ -65,6 +75,7 @@ export function TableSidebar({
   worlds,
   table,
   busy,
+  locked,
   renamingTable,
   renameForm,
   onStartRename,
@@ -97,6 +108,10 @@ export function TableSidebar({
   canUndoImport,
   onUndoImport,
   onOpenSettings,
+  notice,
+  appVersion,
+  updateDot,
+  onOpenVersions,
 }: TableSidebarProps) {
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -128,6 +143,7 @@ export function TableSidebar({
   return (
     <>
       <aside className="sidebar" style={{ width: sidebarWidth }}>
+        {notice}
         <details
           className="table-section"
           open={tableListOpen}
@@ -149,16 +165,25 @@ export function TableSidebar({
               {worlds.map((w) => (
                 <div className="table-row" key={w.id}>
                   {/* 目前這桌再點一次＝改名（切桌沒意義），與主欄標題同一個入口 */}
-                  {renamingTable && w.id === table ? (
+                  {renamingTable && w.id === table && !locked ? (
                     renameForm("table-item-input")
                   ) : (
                     <button
                       className={`table-item ${w.id === table ? "table-item-active" : ""}`}
-                      title={w.id === table ? t("renameHint") : undefined}
-                      onClick={() => (w.id === table ? onStartRename(w.name) : onSwitchTable(w.id))}
+                      title={w.id === table && !locked ? t("renameHint") : undefined}
+                      onClick={() => {
+                        if (w.id !== table) onSwitchTable(w.id);
+                        else if (!locked) onStartRename(w.name);
+                      }}
                     >
                       {w.name}
                     </button>
+                  )}
+                  {listBadge(w) === "repair" && (
+                    <span className="table-badge">{t("needsRepairBadge")}</span>
+                  )}
+                  {listBadge(w) === "readonly" && (
+                    <span className="table-badge">{t("readOnlyBadge")}</span>
                   )}
                   <button
                     type="button"
@@ -203,26 +228,31 @@ export function TableSidebar({
                   <span className="tcard-plate">GM</span>
                 </span>
               </span>
-              <button
-                type="button"
-                className="character-card-edit"
-                aria-label={t("worldSummary")}
-                title={t("worldSummary")}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenWorldEditor();
-                }}
-              >
-                {t("editBtn")}
-              </button>
+              {!locked && (
+                <button
+                  type="button"
+                  className="character-card-edit"
+                  aria-label={t("worldSummary")}
+                  title={t("worldSummary")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenWorldEditor();
+                  }}
+                >
+                  {t("editBtn")}
+                </button>
+              )}
             </div>
             <div
               role="button"
-              tabIndex={0}
+              tabIndex={locked ? -1 : 0}
               className={`tcard tcard-player${player ? "" : " tcard-player-empty"}`}
               title={t(player ? "playerCardHint" : "playerCardEmptyHint")}
-              onClick={() => onOpenPlayerCard()}
+              onClick={() => {
+                if (!locked) onOpenPlayerCard();
+              }}
               onKeyDown={(e) => {
+                if (locked) return;
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   onOpenPlayerCard();
@@ -261,7 +291,7 @@ export function TableSidebar({
                 }`}
                 style={{ ["--fac" as string]: c.color }}
                 onClick={() => {
-                  if (castDrag.justDragged()) return;
+                  if (locked || castDrag.justDragged()) return;
                   onSelectCard(c.id);
                 }}
                 onKeyDown={(e) => {
@@ -294,6 +324,7 @@ export function TableSidebar({
                     )}
                   </span>
                 </span>
+                {!locked && (
                 <button
                   type="button"
                   className="character-card-edit"
@@ -306,6 +337,7 @@ export function TableSidebar({
                 >
                   {t("editBtn")}
                 </button>
+                )}
               </div>
             ))}
           </div>
@@ -325,11 +357,12 @@ export function TableSidebar({
                         )}
                       </span>
                       {/* 隱藏卡也要進得了編輯器：轉成世界書條目只能在隱藏狀態下按 */}
-                      <button type="button" onClick={() => onEditCard(character.id)}>
+                      <button type="button" disabled={locked} onClick={() => onEditCard(character.id)}>
                         {t("editBtn")}
                       </button>
                       <button
                         type="button"
+                        disabled={locked}
                         onClick={() =>
                           isAutoHidden ? onRestoreAutoHidden(character.id) : onRestore(character.id)
                         }
@@ -339,6 +372,7 @@ export function TableSidebar({
                       <button
                         type="button"
                         className="delete-character"
+                        disabled={locked}
                         onClick={() => onDeleteCharacter(character.id)}
                       >
                         {t("deleteCharacter")}
@@ -351,12 +385,13 @@ export function TableSidebar({
           )}
           {/* 建卡＝直接開空白角色卡編輯器，名字與內容都在那邊填（2026-07-27 使用者拍板） */}
           <div className="character-create">
-            <button type="button" onClick={() => onCreateCard()}>
+            <button type="button" onClick={() => onCreateCard()} disabled={locked}>
               {t("createCard")}
             </button>
             <button
               type="button"
               title={t("importCardHint")}
+              disabled={locked}
               onClick={() => importInputRef.current?.click()}
             >
               {t("importCard")}
@@ -372,7 +407,7 @@ export function TableSidebar({
                 if (file) onImportFile(file);
               }}
             />
-            {canUndoImport && (
+            {canUndoImport && !locked && (
               <button type="button" title={t("undoLastImportHint")} onClick={() => onUndoImport()}>
                 {t("undoLastImport")}
               </button>
@@ -383,6 +418,20 @@ export function TableSidebar({
           <button className="settings-open" onClick={onOpenSettings}>
             ⚙️ {t("settingsBtn")}
           </button>
+          {appVersion !== null && (
+            <button
+              type="button"
+              className="version-open"
+              aria-label={t(updateDot ? "versionButtonUpdateAria" : "versionButtonAria", {
+                version: appVersion,
+              })}
+              title={updateDot ? t("versionButtonUpdateAria", { version: appVersion }) : undefined}
+              onClick={onOpenVersions}
+            >
+              v{appVersion}
+              {updateDot && <span className="update-dot" aria-hidden="true" />}
+            </button>
+          )}
         </div>
       </aside>
 
