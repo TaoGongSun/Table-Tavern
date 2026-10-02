@@ -305,3 +305,111 @@ fn apply_shared_uid_kept_without_finish_verdict_even_if_all_owners_selected() {
     let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
     assert_eq!(result.summary.deleted_entries, 0);
 }
+
+/// 部分勾選＋同時套用新條目（refactor-apply-count-mismatch）：沒勾的人先成 is_person 條目、
+/// 新條目接著落檔，彼此不得撞 uid 互相覆寫；完成訊息的條數＝磁碟上真的多出來的條數，
+/// undo 一次全部退乾淨。
+#[test]
+fn apply_unselected_person_entry_survives_new_entries_in_same_apply() {
+    let root = TestRoot::new("person-and-entries");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let source_uid = seed_entry(root.path(), &world_id, "兩人合集", "阿明與小華");
+
+    let entry = |title: &str| crate::refactor_ai::RefactorNewEntry {
+        title: title.to_owned(),
+        kind: "setting".to_owned(),
+        content: format!("{title}全文"),
+        source_uids: Vec::new(),
+        rules: Default::default(),
+        triggers: Vec::new(),
+        meta: None,
+    };
+    let outcome = RefactorOutcome {
+        mode: None,
+        characters: vec![
+            character("阿明", &[source_uid]),
+            character("小華", &[source_uid]),
+        ],
+        interface: None,
+        mechanisms: Vec::new(),
+        entries: vec![entry("地理"), entry("歷史"), entry("不要的條目")],
+        deletable_shared_uids: Vec::new(),
+        dropped: Vec::new(),
+        unabsorbed: Vec::new(),
+        audit: Vec::new(),
+    };
+    let mut selection = no_player_selection(vec![0]); // 小華沒勾
+    selection.entry_indices = vec![0, 1]; // 「不要的條目」沒勾
+
+    let before = data::read_worldbook(root.path(), &world_id).unwrap();
+    let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
+    let after = data::read_worldbook(root.path(), &world_id).unwrap();
+
+    assert_eq!(result.summary.new_entries, 3); // 小華＋地理＋歷史
+    assert_eq!(after.len(), before.len() + 3);
+    let titles: Vec<&str> = after.iter().map(|entry| entry.title.as_str()).collect();
+    for title in ["兩人合集", "小華", "地理", "歷史"] {
+        assert!(titles.contains(&title), "少了 {title}：{titles:?}");
+    }
+    let person = after.iter().find(|entry| entry.title == "小華").unwrap();
+    assert!(person.is_person);
+    assert_eq!(person.content, "小華的獨立條目");
+    let mut uids: Vec<u64> = after.iter().map(|entry| entry.uid).collect();
+    uids.sort_unstable();
+    uids.dedup();
+    assert_eq!(uids.len(), after.len());
+
+    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    let undone = data::read_worldbook(root.path(), &world_id).unwrap();
+    assert_eq!(undone.len(), before.len());
+    assert_eq!(undone[0].content, "阿明與小華");
+}
+
+/// 既有條目 uid 已到上限：新條目無號可配，套用必須在任何寫入前整批拒絕，
+/// 不能讓 NEW_ENTRY_UID 哨兵撞上那條既有條目覆寫掉它。
+#[test]
+fn apply_rejects_before_writing_when_worldbook_uid_is_exhausted() {
+    let root = TestRoot::new("uid-exhausted");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let source_uid = seed_entry(root.path(), &world_id, "合集", "原文");
+    let path = root
+        .path()
+        .join("worlds")
+        .join(&world_id)
+        .join("worldbook.json");
+    let raw = std::fs::read_to_string(&path).unwrap();
+    let mut book: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    for entry in book["entries"].as_object_mut().unwrap().values_mut() {
+        entry["uid"] = serde_json::json!(u64::MAX);
+    }
+    std::fs::write(&path, serde_json::to_string(&book).unwrap()).unwrap();
+    let before = std::fs::read_to_string(&path).unwrap();
+    let characters_before = data::list_characters(root.path(), &world_id).unwrap().len();
+
+    let outcome = RefactorOutcome {
+        mode: None,
+        characters: vec![
+            character("阿明", &[source_uid]),
+            character("小華", &[source_uid]),
+        ],
+        interface: None,
+        mechanisms: Vec::new(),
+        entries: Vec::new(),
+        deletable_shared_uids: Vec::new(),
+        dropped: Vec::new(),
+        unabsorbed: Vec::new(),
+        audit: Vec::new(),
+    };
+    assert!(apply(
+        root.path(),
+        &world_id,
+        &outcome,
+        &no_player_selection(vec![0])
+    )
+    .is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+    assert_eq!(
+        data::list_characters(root.path(), &world_id).unwrap().len(),
+        characters_before
+    );
+}

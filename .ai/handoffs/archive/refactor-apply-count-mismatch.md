@@ -1,0 +1,1 @@
+> 結案 2026-10-02：根因是資料遺失，不是計數多算。沒勾的人用哨兵 uid 新建 is_person 條目（upsert 分配 max+1），新條目迴圈卻用套用前預算的 max+1，第一條新條目撞號覆寫掉人物條目。修法：新條目一律用 `NEW_ENTRY_UID` 哨兵交 upsert 分配，並在任何寫入前拒絕 uid 已到上限的世界書。回歸測試在 `src-tauri/src/refactor/tests/characters.rs` 末兩支。Sol 驗收共識。實機順看併入 [ai-card-refactor](../ai-card-refactor.md) A5（部分勾選套用後訊息條數＝磁碟條數）。
