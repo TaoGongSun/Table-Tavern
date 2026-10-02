@@ -232,6 +232,12 @@ pub(crate) async fn stream_responses(
         return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
 
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_dispatch(
+        "api-responses",
+        model,
+        serde_json::json!({ "world": world, "shape": format!("{shape:?}") }),
+    );
     let mut request = reqwest::Client::new()
         .post(endpoint(config))
         .json(&request_body(model, messages));

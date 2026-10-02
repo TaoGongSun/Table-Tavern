@@ -259,6 +259,17 @@ async fn route(app: &tauri::AppHandle, request: Request) -> (u16, Value, bool) {
             Ok(png) => ok(json!({ "pngBase64": png })),
             Err(message) => err(200, message),
         },
+        ("POST", "/route") => {
+            let world = body.get("worldId").and_then(Value::as_str);
+            match super::route::route(world) {
+                Ok(value) => ok(value),
+                Err(message) => err(200, message),
+            }
+        }
+        ("GET", "/ai-log") => match super::ai_log::read() {
+            Ok(value) => ok(value),
+            Err(message) => err(200, message),
+        },
         ("POST", "/quit") => {
             super::dialog::cancel_all();
             (200, json!({ "ok": true, "value": "quitting" }), true)

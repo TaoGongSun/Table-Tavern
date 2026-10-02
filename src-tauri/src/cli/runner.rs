@@ -115,6 +115,19 @@ pub async fn run_cli_cancellable(
     mut on_delta: impl FnMut(&str),
     mut cancel: Option<watch::Receiver<bool>>,
 ) -> DataResult<CliFinish> {
+    #[cfg(feature = "test-harness")]
+    let harness_dispatch = crate::harness::ai_dispatch(
+        &format!(
+            "cli:{}",
+            program.file_name().unwrap_or_default().to_string_lossy()
+        ),
+        &crate::harness::cli_model(args),
+        serde_json::json!({
+            "world": usage_log.as_ref().and_then(|log| log.world),
+            "shape": usage_log.as_ref().map(|log| format!("{:?}", log.shape)),
+            "lane": usage_log.as_ref().and_then(|log| log.lane.as_ref().map(|lane| lane.lane.clone())),
+        }),
+    );
     let mut command = Command::new(program);
     // 先掛系統代理再掛使用者 envs，同名時使用者設定蓋過代理
     crate::cli::proxy::apply_system_proxy(&mut command);
@@ -140,7 +153,17 @@ pub async fn run_cli_cancellable(
     command.creation_flags(0x08000000);
     // 呼叫端 future 被 drop（中止在途呼叫時 select 輸掉的分支）時，tokio 順手殺子程序。
     command.kill_on_drop(true);
-    let mut child = command.spawn()?;
+    let spawned = command.spawn();
+    #[cfg(feature = "test-harness")]
+    match &spawned {
+        Ok(_) => crate::harness::ai_event(&harness_dispatch, "spawned", serde_json::Value::Null),
+        Err(error) => crate::harness::ai_event(
+            &harness_dispatch,
+            "spawn-failed",
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+    let mut child = spawned?;
     if let Some(pid) = child.id() {
         crate::inflight::register_child(pid);
     }

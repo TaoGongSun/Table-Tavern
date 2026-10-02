@@ -61,7 +61,7 @@ plugin:dialog|message/save/open ──▶ harness::dialog（假 dialog plugin）
 | 檔案 | 內容 |
 |---|---|
 | `src-tauri/Cargo.toml` | `[features] test-harness = ["dep:getrandom", "dep:objc2", "dep:block2"]`（不加預設）；getrandom 產 token／nonce，objc2／block2（macOS）呼叫 WKWebView 截圖 |
-| `src-tauri/src/harness/`（多個責任，直接開資料夾） | `mod.rs`（啟動檢查、harness.json、正常退出清理）、`root.rs`（root 驗證、鎖、fresh 清理）、`server.rs`（HTTP＋token 驗證）、`eval.rs`（id/nonce/oneshot）、`dialog.rs`（假 dialog plugin＋待答佇列）、`route.rs`（route 與 AI log）、`helpers.js` |
+| `src-tauri/src/harness/`（多個責任，直接開資料夾） | `mod.rs`（啟動檢查、harness.json、正常退出清理）、`root.rs`（root 驗證、鎖、fresh 清理）、`server.rs`（HTTP＋token 驗證）、`eval.rs`（id/nonce/oneshot）、`dialog.rs`（假 dialog plugin＋待答佇列）、`route.rs`（route 與 AI log）、`helpers.js`（頁面端 DOM 輔助 `H`，每次 eval 以參數傳入） |
 | `src-tauri/src/lib.rs` | `#[cfg(feature = "test-harness")] mod harness;`；`data_root`／`config_root` 加 cfg 分支；dialog plugin 註冊二選一 |
 | `src-tauri/src/commands/update.rs`、`versions.rs` | feature 下安裝／回退入口回錯誤（見更新器） |
 | `src-tauri/tauri.harness.conf.json` | 設定覆蓋（見建置組合） |
@@ -103,7 +103,7 @@ HTTP 伺服器手寫最小 HTTP/1.1 於 `tokio::net::TcpListener`（tokio 已有
 - `tauri.harness.conf.json`（Tauri 設定合併是 JSON Merge Patch，陣列整組替換）：`identifier: com.tabletavern.app.harness`、`productName: Table Tavern Harness`、`bundle.createUpdaterArtifacts: false`。若需要 harness 專用 capability，在 harness 設定的 `app.security.capabilities` **完整列出** `default` 加 harness 那份（陣列會整組替換，漏列 default 會砍掉現有權限）；harness capability 不放進 `src-tauri/capabilities/`，因為未指定清單時該目錄的檔案會被正式包預設全部納入。
 - **組合一致性（雙向）**：feature 開但 identifier 不是 harness 的 → 啟動即中止。反向（用了 harness 設定或 shim mode，卻沒開 feature，會產出名稱像測試包、卻讀寫正式 data/config 路徑的 app）在**建置時**擋：`src-tauri/build.rs` 讀 Tauri CLI 傳入的合併後設定（identifier、`frontendDist`），若是 harness identifier 或指向 `dist-harness/` 而 `CARGO_FEATURE_TEST_HARNESS` 未設定就讓建置失敗；`vite.config.ts` 的 harness mode 也要求同一組合的環境旗標，否則失敗。檢查只在建置期，正式 runtime 不加任何 harness 程式。施工時先確認 build.rs 讀得到合併後設定的實際管道，讀不到就改由 `harness:build` 包裝腳本與 build.rs 共同擋並回報主線。正式包即使設了 `TT_HARNESS_ROOT` 也照常啟動、不開 listener、不改路徑（程式碼根本不在）。
 - 前端 shim 備案未啟用，沒有 `dist-harness/`／vite harness mode；build.rs 仍擋 `dist-harness` 字樣，日後若啟用備案要補 vite 端檢查。
-- **正式包驗收**：先建 harness 包、再建正式包，正式執行檔不含 harness 標記字串（靜態佐證，包 1 已做）。「正式包帶 `TT_HARNESS_ROOT` 不開 listener、不產 harness.json」**待驗**：正式包（identifier `com.tabletavern.app`）不啟動，因為 macOS 的 Application Support／WebKit 路徑不一定跟 HOME 走，可能碰到使用者真資料或撞上使用者開著的 app。可行驗法：另做一個只改 identifier（例如 `com.tabletavern.app.listenercheck`）、不開 feature 的正式組態包，以測試用路徑啟動後看 `lsof -p <pid> -iTCP` 與 harness.json；要不要做留給之後決定〔模型判斷·未裁決〕。
+- **正式包驗收**：先建 harness 包、再建正式包，正式執行檔不含 harness 標記字串（靜態佐證，包 1 已做）。「正式包帶 `TT_HARNESS_ROOT` 不開 listener、不產 harness.json」**維持待驗**：不開 feature 的包裡 `TT_HARNESS_ROOT` 根本不生效，仍讀寫 `document_dir()/TableTavern`、`config_dir()/TableTavern`，換 identifier 或換 HOME 都一樣會碰正式資料。日後要實跑，必須另有確實隔離資料的環境（例如獨立 macOS 使用者帳號或 VM）〔模型判斷·未裁決〕。
 - release 工作流程（`scripts/release/` 與 CI）不得出現 `test-harness`，verify 加一條文字檢查。
 
 ## 安全
@@ -139,8 +139,8 @@ HTTP 伺服器手寫最小 HTTP/1.1 於 `tokio::net::TcpListener`（tokio 已有
 
 不攔 AI 呼叫〔作者裁決 2026-10-02〕；花額度的測項由主線先問使用者。
 
-- **`route`**：重用實際 resolver，不另寫一套：檔位挑選（`transport/client.rs` 的 `gm_tier` 等）＋`resolve_model`；智慧免費啟用時（`smart_free::is_active`）列出 `smart_free::prepare_call` 會組的候選清單與 fallback 順序，標明「實際由回應者決定」；檔位沒設模型、走 CLI 預設時明示「由 provider 決定」，不猜。涵蓋 GM、角色 lane、重構、翻譯、一句話開桌（`commands/genesis.rs`）、角色生圖（`commands/image.rs`）。
-- **AI log**（`<root>/harness-ai.log`）：在實際派送點記錄，不記預估值。每次送出（含重試、smart-free 換模型）一行：時間、入口、provider、實際模型、第幾次嘗試。入口同上全涵蓋。
+- **`route`**：與派送端同一套解析，不送出請求。API 一般檔位、GM、角色一律 `resolve_model`（不退檔，缺模型標「送出會被擋下」）；只有開場翻譯（scene.rs）與重構展開（`refactor_expand_tier`）照它們自己的退 GM 檔規則；CLI 走 `tier_model` 的 CLI 分支，沒覆寫標「由 provider／CLI 預設決定」。智慧免費改用 `smart_free::preview_primary`（與 `prepare_call` 共用 `pick_primary`，不查額度、不刷新、不發請求），沒有本次訊息所以明示「只能預覽」，不列歷史 pins。帶 worldId 時逐角色列出。
+- **AI log**（`<root>/harness-ai.log`，CLI `ai-log`）：派送點記 `dispatch` 一行（id、provider、模型、脈絡），同 id 的後續事件另起一行：CLI `spawned`／`spawn-failed`、探測 `exited`／`timed-out`、智慧免費 `responder`（回應的實際 model；候選字串不當實際模型）。掛點：API chat／智慧免費／Responses／Images、`run_cli_cancellable`、安裝與登入的 `run_probe`（claude／agy `-p ok` 標 `aiProbe`）、Windows 登入視窗帶 `-p` 時、macOS 終端安裝腳本由 app 開啟時（腳本在 app 外跑，標是否含 AI 探測）。OAuth 換 key、版本偵測不記。脈絡欄位帶得到的有 world、shape（PromptShape）、lane；「入口」與 attempt 派送點拿不到，未接〔模型判斷·未裁決〕。每行先序列化成含換行的完整字串，在全域鎖內一次寫完，讀取拿同一把鎖。寫入失敗計數（`status.aiLogWriteFailures`），`ai-log` 讀取或任一行解析失敗回錯；非零計數或讀取失敗時空 log 不算零派送證據。
 
 ## 分包
 
@@ -148,11 +148,11 @@ HTTP 伺服器手寫最小 HTTP/1.1 於 `tokio::net::TcpListener`（tokio 已有
 |---|---|---|
 | 1 骨架（完成 2026-10-02） | feature、harness 設定、root 驗證、鎖與 fresh、discovery、HTTP＋token、eval 往返、`launch/status/eval/quit/shot`；三個 spike 定案；更新器入口停用；假 dialog plugin 與 `dialogs/dialog-wait/answer` 為 spike 需要提前做進來 | 結果見交接檔 |
 | 2 選檔＋對話窗實跑（完成 2026-10-02） | `file` 指令（只放行唯一匹配、非 disabled 的 `input[type=file]`） | 結果見交接檔 |
-| 3 DOM 指令＋route＋端對端 | `text/query/click/fill/select/press/wait/invoke/route`、防呆、AI log | 多重匹配／disabled／遮擋各回錯；`route` 對空白設定與 `--config-from` 設定各印一次；下方端對端驗收 |
+| 3 DOM 指令＋route＋端對端（完成 2026-10-02） | `text/query/click/fill/select/press/wait/invoke/route/ai-log`、防呆、AI log；`file` 的 target 也吃 `text=`／`role=`；端對端腳本 `scripts/harness-e2e.mjs` | 結果見交接檔 |
 
 ## 驗收（主線獨力，零 AI 額度）
 
-fixture：CLI 驗收腳本收 `--fixture <path>`（`TestCards/` 在主 checkout，worktree 沒有），預設 `<主 checkout>/TestCards/WestFantsy.png`，sha256 `89fcec4c1588d487b590adf097390699b3135fbf551e6346d6d7b03071734421`，不符即中止。基準：匯入後世界書 38 條（主線交辦的實機基準）。
+fixture：`scripts/harness-e2e.mjs <root> <fixture> <截圖目錄>`（`TestCards/` 在主 checkout，worktree 沒有），sha256 `89fcec4c1588d487b590adf097390699b3135fbf551e6346d6d7b03071734421`，不符即中止。基準：匯入後世界書 38 條（主線交辦的實機基準）。
 
 1. 開始前對正式資料兩個目錄做遞迴「路徑＋大小＋sha256」快照。正式 app 若開著，它自己的背景寫入也會造成差異：驗收期間讓正式 app 停在大廳不動，結束後差異逐檔列出由主線判讀，不以「沒差異」為唯一判準。
 2. `harness:build` → `launch --fresh`。

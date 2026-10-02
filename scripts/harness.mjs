@@ -213,35 +213,37 @@ const MIME = {
   ".json": "application/json",
 };
 
-/** 頁面端：唯一匹配、必須是 input[type=file]、不得 disabled；可見性不檢查（這類 input 都是 hidden）。 */
-function fileInputScript(selector, name, type, base64) {
-  return `
-const selector = ${JSON.stringify(selector)};
-const matches = document.querySelectorAll(selector);
-if (matches.length !== 1) throw new Error("target 匹配 " + matches.length + " 個（需剛好 1 個）：" + selector);
-const input = matches[0];
-if (!(input instanceof HTMLInputElement) || input.type !== "file") throw new Error("target 不是 input[type=file]：" + selector);
-if (input.disabled) throw new Error("target 是 disabled：" + selector);
-const binary = atob(${JSON.stringify(base64)});
-const bytes = new Uint8Array(binary.length);
-for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-const file = new File([bytes], ${JSON.stringify(name)}, { type: ${JSON.stringify(type)} });
-const transfer = new DataTransfer();
-transfer.items.add(file);
-input.files = transfer.files;
-input.dispatchEvent(new Event("change", { bubbles: true }));
-return { name: file.name, type: file.type, size: file.size };
-`;
+// 與 src-tauri/src/harness/server.rs 的 MAX_BODY 同值：超過就在本地擋下，不送出。
+const MAX_BODY = 32 * 1024 * 1024;
+const MAX_FILE = 24 * 1024 * 1024;
+
+async function fileInput(root, target, filePath) {
+  if (!target || !filePath) die("用法：file <target> <path>");
+  const source = path.resolve(filePath);
+  const stat = fs.statSync(source, { throwIfNoEntry: false });
+  if (!stat?.isFile()) die(`找不到檔案：${source}`);
+  if (stat.size > MAX_FILE) die(`檔案 ${stat.size} bytes 超過上限 ${MAX_FILE}（base64 後會超過控制埠 body 上限）`);
+  const type = MIME[path.extname(source).toLowerCase()] ?? "application/octet-stream";
+  const base64 = fs.readFileSync(source).toString("base64");
+  const js = `return await H.file(${JSON.stringify(target)}, ${JSON.stringify(path.basename(source))}, ${JSON.stringify(type)}, ${JSON.stringify(base64)})`;
+  const length = Buffer.byteLength(JSON.stringify({ js }));
+  if (length > MAX_BODY) die(`請求 body ${length} bytes 超過控制埠上限 ${MAX_BODY}，未送出`);
+  finish(await call(root, "POST", "/eval", { js }));
 }
 
-async function fileInput(root, selector, filePath) {
-  if (!selector || !filePath) die("用法：file <css selector> <path>");
-  const source = path.resolve(filePath);
-  if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) die(`找不到檔案：${source}`);
-  const bytes = fs.readFileSync(source);
-  const type = MIME[path.extname(source).toLowerCase()] ?? "application/octet-stream";
-  const js = fileInputScript(selector, path.basename(source), type, bytes.toString("base64"));
-  finish(await call(root, "POST", "/eval", { js }));
+/** 呼叫頁面端 H 的一個方法；參數一律 JSON 字串化，target 不會被當成程式碼。 */
+async function helper(root, method, params, timeoutMs) {
+  const js = `return await H.${method}(${params.map((p) => JSON.stringify(p)).join(", ")})`;
+  finish(await call(root, "POST", "/eval", { js, timeoutMs }));
+}
+
+function parseJsonArg(text, label) {
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    die(`${label} 不是 JSON：${error.message}`);
+  }
 }
 
 const USAGE = `用法：node scripts/harness.mjs <指令> [--root DIR]
@@ -249,8 +251,12 @@ const USAGE = `用法：node scripts/harness.mjs <指令> [--root DIR]
   status | quit
   eval|js '<js>' | eval|js -f file.js  [--timeout ms]
   dialogs | dialog-wait [--timeout ms] | answer <id|next> <按鈕標籤|ok|cancel|路徑>
-  file <css selector> <path>
-  shot <out.png>`;
+  file <target> <path>
+  text [target] | query <target> | click <target> | submit <target> | fill <target> <value>
+  select <target> <value> | press <target> <key> | wait <target> [--gone] [--timeout ms]
+  invoke <command> [json] | route [worldId] | ai-log
+  shot <out.png>
+target：CSS selector、text=完整文字、text*=部分文字、role=button[name="名稱"]、role=button[name*="部分"]`;
 
 const { positional, flags } = parseArgs(process.argv.slice(2));
 const [command, ...args] = positional;
@@ -288,6 +294,37 @@ switch (command) {
     break;
   case "file":
     await fileInput(rootFrom(flags), args[0], args[1]);
+    break;
+  case "text":
+    await helper(rootFrom(flags), "text", args.slice(0, 1));
+    break;
+  case "query":
+  case "click":
+  case "submit":
+    if (!args[0]) die(`用法：${command} <target>`);
+    await helper(rootFrom(flags), command, [args[0]]);
+    break;
+  case "fill":
+  case "select":
+  case "press":
+    if (args.length < 2) die(`用法：${command} <target> <value>`);
+    await helper(rootFrom(flags), command, [args[0], args.slice(1).join(" ")]);
+    break;
+  case "wait": {
+    if (!args[0]) die("用法：wait <target> [--gone] [--timeout ms]");
+    const timeout = Number(flags.timeout ?? 10000);
+    await helper(rootFrom(flags), "wait", [args[0], { gone: Boolean(flags.gone), timeout }], timeout + 5000);
+    break;
+  }
+  case "invoke":
+    if (!args[0]) die("用法：invoke <command> [json]");
+    await helper(rootFrom(flags), "invoke", [args[0], parseJsonArg(args[1], "invoke 參數") ?? {}]);
+    break;
+  case "route":
+    finish(await call(rootFrom(flags), "POST", "/route", args[0] ? { worldId: args[0] } : {}));
+    break;
+  case "ai-log":
+    finish(await call(rootFrom(flags), "GET", "/ai-log"));
     break;
   default:
     console.log(USAGE);

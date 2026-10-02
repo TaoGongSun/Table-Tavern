@@ -378,7 +378,26 @@ async fn run_hidden(
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 async fn run_probe(command: &[String], envs: &[(String, String)]) -> Result<CommandOutput, String> {
-    match tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command, envs)).await {
+    // 安裝／登入後的探測：claude／agy 的 `-p ok` 會真的跑一次推理，一律記進測試通道的 AI log
+    #[cfg(feature = "test-harness")]
+    let harness_dispatch = command.split_first().map(|(program, args)| {
+        crate::harness::ai_dispatch(
+            &format!("cli-probe:{program}"),
+            &crate::harness::cli_model(args),
+            serde_json::json!({ "aiProbe": crate::harness::is_ai_probe(args), "argv": args }),
+        )
+    });
+    let result = tokio::time::timeout(PROBE_TIMEOUT, run_hidden(command, envs)).await;
+    #[cfg(feature = "test-harness")]
+    if let Some(id) = &harness_dispatch {
+        let event = match &result {
+            Ok(Err(_)) => "spawn-failed",
+            Ok(Ok(_)) => "exited",
+            Err(_) => "timed-out",
+        };
+        crate::harness::ai_event(id, event, serde_json::Value::Null);
+    }
+    match result {
         Ok(result) => result,
         Err(_) => Ok(CommandOutput {
             success: false,
@@ -408,6 +427,15 @@ async fn run_terminal(
     // 隱藏外層 cmd 自己的黑視窗；使用者看到的登入視窗由內層 start 另開，不受影響
     #[cfg(target_os = "windows")]
     child.creation_flags(0x08000000);
+    // 登入視窗：agy 的登入就是 `agy -p ok`，會真的跑一次推理
+    #[cfg(feature = "test-harness")]
+    if crate::harness::is_ai_probe(args) {
+        crate::harness::ai_dispatch(
+            &format!("cli-login-window:{program}"),
+            &crate::harness::cli_model(args),
+            serde_json::json!({ "aiProbe": true, "argv": args }),
+        );
+    }
     match tokio::time::timeout(timeout, child.status()).await {
         Ok(status) => Ok(CommandOutput {
             success: status.map_err(|error| error.to_string())?.success(),

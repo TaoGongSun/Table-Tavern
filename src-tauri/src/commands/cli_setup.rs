@@ -234,11 +234,31 @@ pub(crate) fn install_cli(
             std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
                 .map_err(|error| error.to_string())?;
         }
-        Command::new("open")
+        // 終端腳本在 app 外跑，派送點看不到：在 app 啟動腳本時記一行，標明腳本是否含 AI 探測
+        #[cfg(feature = "test-harness")]
+        let harness_dispatch = crate::harness::ai_dispatch(
+            &format!("cli-setup-terminal:{provider}"),
+            "（終端腳本，app 外執行）",
+            serde_json::json!({
+                "aiProbe": matches!(provider.as_str(), "claude" | "agy"),
+                "script": script_path,
+            }),
+        );
+        let opened = Command::new("open")
             .args(["-a", "Terminal"])
             .arg(&script_path)
-            .spawn()
-            .map_err(|error| error.to_string())?;
+            .spawn();
+        #[cfg(feature = "test-harness")]
+        crate::harness::ai_event(
+            &harness_dispatch,
+            if opened.is_ok() {
+                "spawned"
+            } else {
+                "spawn-failed"
+            },
+            serde_json::Value::Null,
+        );
+        opened.map_err(|error| error.to_string())?;
     }
     Ok(())
 }
