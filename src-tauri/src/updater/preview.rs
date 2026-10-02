@@ -88,6 +88,7 @@ fn worlds_at(root: &Path, target_format: u64) -> Result<RollbackPreview, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui_msg::UiMsg;
     use crate::updater::store::{self, Platform};
     use crate::updater::verify::sign_fixture;
 
@@ -239,23 +240,23 @@ mod tests {
         };
         assert_eq!(
             preview("0.1.0", Platform::Mac, "0.4.0", key.clone()).await,
-            "沒有格式版本"
+            UiMsg::RollbackNoFormat.to_string()
         );
         assert_eq!(
             preview("0.3.0", Platform::Windows, "0.4.0", other.clone()).await,
-            "平台不符"
+            UiMsg::RollbackPlatformMismatch.to_string()
         );
         assert_eq!(
             preview("0.3.0", Platform::Mac, "0.3.0", other.clone()).await,
-            "不能回退到同版或較新的版本"
+            UiMsg::RollbackNotOlder.to_string()
         );
         assert_eq!(
             preview("9.9.9", Platform::Mac, "0.4.0", other.clone()).await,
-            "這個版本不能回退"
+            UiMsg::RollbackNotEligible.to_string()
         );
         assert_eq!(
             preview("0.3.0", Platform::Mac, "0.4.0", key).await,
-            "驗簽失敗",
+            UiMsg::SignatureInvalid.to_string(),
             "別把公鑰對不上的版本當成可回退"
         );
     }

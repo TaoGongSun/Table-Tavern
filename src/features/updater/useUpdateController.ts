@@ -271,7 +271,8 @@ export function useUpdateController({
           version: offer.version,
         })) as DownloadResult | null;
         if (!result || typeof result.version !== "string" || result.version.length === 0) {
-          throw "尚未下載";
+          // 借後端同一碼（UpdateNotDownloaded），顯示時跟其他錯誤一樣走 backendText。
+          throw 'TTMSG:{"code":"update_not_downloaded"}';
         }
         downloaded = result;
       } catch (reason) {

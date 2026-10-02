@@ -90,7 +90,7 @@ fn read_json<T: DeserializeOwned + Default>(path: &Path) -> T {
 
 fn write_json_atomic<T: Serialize>(root: &Path, name: &str, value: &T) -> std::io::Result<()> {
     if crate::data::update_gate_raised() {
-        return Err(std::io::Error::other(crate::data::UPDATE_GATE_MESSAGE));
+        return Err(std::io::Error::other(crate::data::UpdateGateClosed));
     }
     fs::create_dir_all(root)?;
     let tmp = root.join(format!("{name}.{}.tmp", ulid::Ulid::generate()));

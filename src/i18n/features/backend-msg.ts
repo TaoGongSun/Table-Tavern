@@ -1,5 +1,5 @@
 // 後端回傳的訊息代碼（src-tauri/src/ui_msg.rs 的 UiMsg）與需修復原因（commit.rs 的 RepairReason）。
-// 各面向的譯文分檔（桌資料面在 backend-msg-table.ts），參數表統一放這裡。
+// 各面向的譯文分檔（桌資料面在 backend-msg-table.ts、更新器在 backend-msg-updater.ts），參數表統一放這裡。
 // i18n/index.ts 的 t() 會把這份補充字典與主字典視為同一個 MsgKey 空間；翻譯入口是
 // shared/ui/backend-text.ts。`npm run check:i18n` 會從 Rust 抽 code／欄位核對這裡的鍵、佔位符與參數表。
 const COPY = {
@@ -203,6 +203,40 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   refactor_path_conflict: { path: "string" },
   refactor_group_span_missing: { group: "string", title: "string", span: "string" },
   refactor_span_missing: { span: "string" },
+  update_not_checked: {},
+  update_already_downloading: {},
+  update_already_installing: {},
+  update_not_downloaded: {},
+  update_version_mismatch: {},
+  update_changed: {},
+  update_busy: {},
+  update_auto_check_off: {},
+  update_gate_closed: {},
+  update_cannot_replace: {},
+  version_store_busy: {},
+  platform_unsupported: {},
+  installer_wrong_platform: {},
+  installer_name_invalid: {},
+  installer_version_mismatch: {},
+  version_name_invalid: {},
+  signature_invalid: {},
+  archive_path_unsafe: {},
+  archive_has_link: {},
+  archive_wrong_root: {},
+  rollback_not_older: {},
+  rollback_not_eligible: {},
+  rollback_platform_mismatch: {},
+  rollback_no_format: {},
+  version_delete_current: {},
+  version_in_use: {},
+  version_not_found: {},
+  update_endpoint_invalid: {},
+  rollback_point_url_invalid: {},
+  rollback_point_download_failed: { status: "string" },
+  swap_record_missing: {},
+  app_id_unavailable: {},
+  residue_cleanup_stuck: {},
+  versions_sync_failed: { error: "string" },
 };
 
 /** commit.rs 的 RepairReason；鍵是 `needsRepair_<reason>`。 */

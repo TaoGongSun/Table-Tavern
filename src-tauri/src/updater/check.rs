@@ -3,9 +3,7 @@
 use serde::Serialize;
 
 use super::UpdateOffer;
-
-/// 下載或安裝進行中、槽裡卻沒有那份更新時的說明。前端在流程中本來就不採用檢查結果。
-pub(crate) const CHECK_BUSY: &str = "更新進行中";
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
@@ -28,8 +26,9 @@ impl CheckResult {
     pub(crate) fn from_held(offer: Option<UpdateOffer>) -> Self {
         match offer {
             Some(offer) => Self::Available { offer },
+            // 前端在流程中本來就不採用檢查結果，這則說明只是不讓槽空著時誤報沒有新版。
             None => Self::Failed {
-                message: CHECK_BUSY.to_owned(),
+                message: UiMsg::UpdateBusy.to_string(),
             },
         }
     }
@@ -79,7 +78,7 @@ mod tests {
     fn a_busy_slot_without_an_update_is_failed_not_none() {
         assert_eq!(
             serde_json::to_value(CheckResult::from_held(None)).unwrap(),
-            json!({"status": "failed", "message": CHECK_BUSY})
+            json!({"status": "failed", "message": UiMsg::UpdateBusy.to_string()})
         );
         let held = serde_json::to_value(CheckResult::from_held(Some(offer()))).unwrap();
         assert_eq!(held["status"], "available");

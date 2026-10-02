@@ -11,6 +11,7 @@ use super::macos::{
 };
 use super::semver_util::versions_equal;
 use super::store::{replace_synced, sync_dir};
+use crate::ui_msg::UiMsg;
 
 pub(crate) const RECORD_NAME: &str = ".TableTavern-update.json";
 
@@ -164,12 +165,14 @@ pub(crate) fn cleanup_residue(
                 remove_dir(&parent.join(UPDATE_NAME))?;
             }
             Decision::AdvanceTo(stage) => {
-                let record = snap.record.ok_or_else(|| "沒有替換紀錄".to_owned())?;
+                let record = snap
+                    .record
+                    .ok_or_else(|| UiMsg::SwapRecordMissing.to_string())?;
                 // 進 swapped 時先記下要放進 previous 的那份，fsync 之後下一輪才對調。
                 // 新流程取不到識別就停，不寫 swapped、不對調，讓下次再試。
                 let previous_app = if stage == Stage::Swapped {
                     let Some(id) = app_id(&parent.join(UPDATE_NAME)) else {
-                        return Err("無法取得要留下的 App 識別".to_owned());
+                        return Err(UiMsg::AppIdUnavailable.into());
                     };
                     Some(id)
                 } else {
@@ -200,7 +203,7 @@ pub(crate) fn cleanup_residue(
         }
     }
     if !finished {
-        return Err("殘留整理無法收斂".to_owned());
+        return Err(UiMsg::ResidueCleanupStuck.into());
     }
     if !block_previous {
         maybe_delete_previous(parent, running_app, mode, rollback_ready)?;
@@ -438,7 +441,7 @@ fn remove_dir(path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::macos::{replace_installed_app, APP_NAME, BUNDLE_ID, CANNOT_REPLACE};
+    use super::super::macos::{replace_installed_app, APP_NAME, BUNDLE_ID};
     use super::*;
     use std::io::Write;
     use std::path::PathBuf;
@@ -755,7 +758,7 @@ mod tests {
             |_update, _previous| Err("不該對調".to_owned()),
         )
         .unwrap_err();
-        assert_eq!(error, "無法取得要留下的 App 識別");
+        assert_eq!(error, UiMsg::AppIdUnavailable.to_string());
         assert_eq!(fs::read(root.0.join(RECORD_NAME)).unwrap(), before);
         assert_eq!(stage_of(&root.0).as_deref(), Some("extracting"));
         assert_eq!(fs::read(update.join("Contents/which")).unwrap(), b"dotted");
@@ -889,7 +892,7 @@ mod tests {
         assert_eq!(
             replace_installed_app(&running, &app_tar("0.3.0"), "0.3.0", |_| true, fake_swap)
                 .unwrap_err(),
-            CANNOT_REPLACE
+            UiMsg::UpdateCannotReplace.to_string()
         );
         assert_eq!(version_of(&running).as_deref(), Some("0.2.0"));
         assert!(root.0.join(UPDATE_NAME).exists());
@@ -905,7 +908,7 @@ mod tests {
         let error =
             replace_installed_app(&running, &app_tar("0.3.0"), "0.3.0", |_| true, fake_swap)
                 .unwrap_err();
-        assert_eq!(error, CANNOT_REPLACE);
+        assert_eq!(error, UiMsg::UpdateCannotReplace.to_string());
         assert_eq!(version_of(&running).as_deref(), Some("0.2.0"));
         assert_eq!(
             version_of(&root.0.join(UPDATE_NAME)).as_deref(),

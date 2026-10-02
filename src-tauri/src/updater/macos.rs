@@ -8,12 +8,12 @@ use std::time::SystemTime;
 
 use super::residue::{self, CleanupMode};
 use super::semver_util::versions_equal;
+use crate::ui_msg::UiMsg;
 
 pub(crate) const BUNDLE_ID: &str = "com.tabletavern.app";
 pub(crate) const APP_NAME: &str = "Table Tavern.app";
 pub(crate) const UPDATE_NAME: &str = ".TableTavern-update.app";
 pub(crate) const PREVIOUS_NAME: &str = "Table Tavern (previous).app";
-pub(crate) const CANNOT_REPLACE: &str = "無法自動替換";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BundleInfo {
@@ -97,24 +97,24 @@ pub(crate) fn replace_installed_app(
     swap: impl Fn(&Path, &Path) -> Result<(), String>,
 ) -> Result<(), String> {
     if is_translocated(running_app) || !is_official_bundle(running_app) {
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     }
     let Some(parent) = running_app.parent() else {
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     };
     if !parent_writable(parent) {
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     }
     if read_bundle_info(running_app).bundle_id.as_deref() != Some(BUNDLE_ID) {
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     }
     let report =
         residue::cleanup_residue(running_app, CleanupMode::BeforeExtract, |_| false, &swap)?;
     if report.update_remains {
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     }
     let Some(from) = read_bundle_info(running_app).version else {
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     };
     let update_app = parent.join(UPDATE_NAME);
     if let Err(error) = residue::write_record(parent, &from, version, residue::Stage::Extracting) {
@@ -128,7 +128,7 @@ pub(crate) fn replace_installed_app(
     if swap(&update_app, running_app).is_err() {
         let _ = fs::remove_dir_all(&update_app);
         let _ = residue::delete_record(parent);
-        return Err(CANNOT_REPLACE.to_owned());
+        return Err(UiMsg::UpdateCannotReplace.into());
     }
     // 不歸點。下面失敗不再放閘：新版已經在原路徑上。
     // 紀錄仍是 extracting。這裡再跑一次整理：主對調已完成，會先改成 swapped 再放進 previous。
@@ -147,10 +147,10 @@ fn extract_new_app(dest: &Path, bytes: &[u8], version: &str) -> Result<(), Strin
     extract_stripped(bytes, dest)?;
     let info = read_bundle_info(dest);
     let Some(found) = info.version else {
-        return Err("安裝檔版本不符".to_owned());
+        return Err(UiMsg::InstallerVersionMismatch.into());
     };
     if !versions_equal(&found, version) {
-        return Err("安裝檔版本不符".to_owned());
+        return Err(UiMsg::InstallerVersionMismatch.into());
     }
     Ok(())
 }
@@ -173,17 +173,17 @@ fn extract_stripped(bytes: &[u8], dest: &Path) -> Result<(), String> {
         }
         let out = dest.join(&relative);
         if !out.starts_with(dest) {
-            return Err("壓縮檔路徑不安全".to_owned());
+            return Err(UiMsg::ArchivePathUnsafe.into());
         }
         let mode = entry.header().mode().map_err(|error| error.to_string())?;
         if kind.is_hard_link() {
-            return Err("壓縮檔含連結".to_owned());
+            return Err(UiMsg::ArchiveHasLink.into());
         }
         if kind.is_symlink() {
             let target = entry
                 .link_name()
                 .map_err(|error| error.to_string())?
-                .ok_or_else(|| "壓縮檔含連結".to_owned())?;
+                .ok_or_else(|| UiMsg::ArchiveHasLink.to_string())?;
             if let Some(parent) = out.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
@@ -230,7 +230,7 @@ fn set_install_mode(path: &Path, mode: u32) -> Result<(), String> {
 
 fn place_symlink(dest: &Path, link_path: &Path, target: &Path) -> Result<(), String> {
     if !symlink_stays_inside(dest, link_path, target) {
-        return Err("壓縮檔含連結".to_owned());
+        return Err(UiMsg::ArchiveHasLink.into());
     }
     #[cfg(unix)]
     {
@@ -239,7 +239,7 @@ fn place_symlink(dest: &Path, link_path: &Path, target: &Path) -> Result<(), Str
     #[cfg(not(unix))]
     {
         let _ = target;
-        Err("壓縮檔含連結".to_owned())
+        Err(UiMsg::ArchiveHasLink.into())
     }
 }
 
@@ -274,21 +274,21 @@ fn symlink_stays_inside(dest: &Path, link_path: &Path, target: &Path) -> bool {
 
 fn strip_first(path: &Path) -> Result<PathBuf, String> {
     if path.is_absolute() {
-        return Err("壓縮檔路徑不安全".to_owned());
+        return Err(UiMsg::ArchivePathUnsafe.into());
     }
     let mut components = path.components();
     let Some(first) = components.next() else {
-        return Err("壓縮檔路徑不安全".to_owned());
+        return Err(UiMsg::ArchivePathUnsafe.into());
     };
     if first.as_os_str() != APP_NAME {
-        return Err("壓縮檔第一層不是 Table Tavern.app".to_owned());
+        return Err(UiMsg::ArchiveWrongRoot.into());
     }
     let mut relative = PathBuf::new();
     for component in components {
         match component {
             Component::Normal(part) => relative.push(part),
             Component::CurDir => {}
-            _ => return Err("壓縮檔路徑不安全".to_owned()),
+            _ => return Err(UiMsg::ArchivePathUnsafe.into()),
         }
     }
     Ok(relative)
@@ -304,9 +304,10 @@ pub(crate) fn swap_directories(new_app: &Path, old_app: &Path) -> Result<(), Str
         fn renamex_np(from: *const c_char, to: *const c_char, flags: c_uint) -> c_int;
     }
     const RENAME_SWAP: c_uint = 0x2;
-    let from =
-        CString::new(new_app.as_os_str().as_bytes()).map_err(|_| CANNOT_REPLACE.to_owned())?;
-    let to = CString::new(old_app.as_os_str().as_bytes()).map_err(|_| CANNOT_REPLACE.to_owned())?;
+    let from = CString::new(new_app.as_os_str().as_bytes())
+        .map_err(|_| UiMsg::UpdateCannotReplace.to_string())?;
+    let to = CString::new(old_app.as_os_str().as_bytes())
+        .map_err(|_| UiMsg::UpdateCannotReplace.to_string())?;
     let rc = unsafe { renamex_np(from.as_ptr(), to.as_ptr(), RENAME_SWAP) };
     if rc == 0 {
         Ok(())
@@ -397,7 +398,7 @@ mod tests {
         assert!(!dest.join(APP_NAME).exists());
         let mismatch = root.0.join("mismatch.app");
         let error = extract_new_app(&mismatch, &app_tar("1.4.0"), "2.0.0").unwrap_err();
-        assert_eq!(error, "安裝檔版本不符");
+        assert_eq!(error, UiMsg::InstallerVersionMismatch.to_string());
     }
 
     #[test]
@@ -408,7 +409,7 @@ mod tests {
         let error =
             replace_installed_app(&running, &app_tar("0.3.0"), "0.3.0", |_| false, fake_swap)
                 .unwrap_err();
-        assert_eq!(error, CANNOT_REPLACE);
+        assert_eq!(error, UiMsg::UpdateCannotReplace.to_string());
         assert!(!root.0.join(UPDATE_NAME).exists());
         assert_eq!(version_of(&running).as_deref(), Some("0.2.0"));
 
@@ -420,7 +421,7 @@ mod tests {
             |_new, _old| Err("swap unsupported".to_owned()),
         )
         .unwrap_err();
-        assert_eq!(error, CANNOT_REPLACE);
+        assert_eq!(error, UiMsg::UpdateCannotReplace.to_string());
         assert!(!root.0.join(UPDATE_NAME).exists());
         assert_eq!(version_of(&running).as_deref(), Some("0.2.0"));
     }
@@ -432,7 +433,7 @@ mod tests {
         write_app(&nested, "0.2.0", BUNDLE_ID);
         let error = replace_installed_app(&nested, &app_tar("0.3.0"), "0.3.0", |_| true, fake_swap)
             .unwrap_err();
-        assert_eq!(error, CANNOT_REPLACE);
+        assert_eq!(error, UiMsg::UpdateCannotReplace.to_string());
         assert_eq!(version_of(&nested).as_deref(), Some("0.2.0"));
         residue::cleanup_residue(&nested, CleanupMode::AfterLaunch, |_| true, fake_swap).unwrap();
         assert!(nested.join("Contents/Info.plist").is_file());
@@ -442,7 +443,7 @@ mod tests {
         assert_eq!(
             replace_installed_app(&dev, &app_tar("0.3.0"), "0.3.0", |_| true, fake_swap)
                 .unwrap_err(),
-            CANNOT_REPLACE
+            UiMsg::UpdateCannotReplace.to_string()
         );
     }
 
@@ -558,7 +559,7 @@ mod tests {
             );
             let dest = root.0.join(format!("bad-{}", target.len()));
             let error = extract_stripped(&finish_gz(builder), &dest).unwrap_err();
-            assert_eq!(error, "壓縮檔含連結");
+            assert_eq!(error, UiMsg::ArchiveHasLink.to_string());
             assert!(!dest.join("Contents/MacOS/escape").exists());
         }
     }

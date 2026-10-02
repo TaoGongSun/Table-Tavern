@@ -39,8 +39,6 @@ pub(crate) use install_prep::{forward_before_raise, rollback_before_raise};
 pub(crate) use launch::stage_launch_installer;
 #[cfg(target_os = "windows")]
 pub(crate) use launch::start_nsis_installer;
-#[allow(unused_imports)]
-pub(crate) use macos::CANNOT_REPLACE;
 pub(crate) use ops::{delete_version_locked, list_versions_locked};
 pub(crate) use post_launch::settle_launch_locked;
 pub(crate) use preview::{rollback_preview_locked, RollbackPreview};

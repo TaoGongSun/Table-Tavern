@@ -1,8 +1,7 @@
 //! 檢查、下載、安裝共用的一份更新。正在下載或安裝時，後來的檢查不得覆寫。
 //! 已下載還沒安裝不算忙碌：檢查照常進來。同一個版本維持已下載；別的版本改成已檢查。
 
-/// 前端靠這句辨認「要更新的版本已被換掉」，改文案要連前端一起改。
-pub(crate) const UPDATE_CHANGED: &str = "要更新的版本已經換了";
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Phase {
@@ -72,23 +71,23 @@ impl<T: Clone> UpdateSlot<T> {
     }
 
     /// `expected` 是玩家在畫面上看到並按下更新的那一版。槽裡已被後來的檢查換成別版時不下載，
-    /// 回 `UPDATE_CHANGED`，讓前端重新顯示最新的更新資訊。
+    /// 回 `UiMsg::UpdateChanged`，讓前端重新顯示最新的更新資訊。
     pub(crate) fn begin_download(
         &mut self,
         expected: &str,
         version_of: impl Fn(&T) -> &str,
     ) -> Result<T, String> {
         match self.phase {
-            Phase::Idle => Err("尚未檢查更新".to_owned()),
-            Phase::Downloading => Err("已在下載".to_owned()),
-            Phase::Installing { .. } => Err("已在安裝".to_owned()),
+            Phase::Idle => Err(UiMsg::UpdateNotChecked.into()),
+            Phase::Downloading => Err(UiMsg::UpdateAlreadyDownloading.into()),
+            Phase::Installing { .. } => Err(UiMsg::UpdateAlreadyInstalling.into()),
             Phase::Checked | Phase::Downloaded { .. } => {
                 let update = self
                     .update
                     .clone()
-                    .ok_or_else(|| "尚未檢查更新".to_owned())?;
+                    .ok_or_else(|| UiMsg::UpdateNotChecked.to_string())?;
                 if version_of(&update) != expected {
-                    return Err(UPDATE_CHANGED.to_owned());
+                    return Err(UiMsg::UpdateChanged.into());
                 }
                 self.phase = Phase::Downloading;
                 Ok(update)
@@ -115,15 +114,18 @@ impl<T: Clone> UpdateSlot<T> {
     pub(crate) fn begin_install(&mut self, version: &str) -> Result<T, String> {
         match &self.phase {
             Phase::Downloaded { version: got } if got == version => {
-                let update = self.update.clone().ok_or_else(|| "尚未下載".to_owned())?;
+                let update = self
+                    .update
+                    .clone()
+                    .ok_or_else(|| UiMsg::UpdateNotDownloaded.to_string())?;
                 self.phase = Phase::Installing {
                     version: version.to_owned(),
                 };
                 Ok(update)
             }
-            Phase::Downloaded { .. } => Err("下載的版本與要安裝的版本不同".to_owned()),
-            Phase::Installing { .. } => Err("已在安裝".to_owned()),
-            _ => Err("尚未下載".to_owned()),
+            Phase::Downloaded { .. } => Err(UiMsg::UpdateVersionMismatch.into()),
+            Phase::Installing { .. } => Err(UiMsg::UpdateAlreadyInstalling.into()),
+            _ => Err(UiMsg::UpdateNotDownloaded.into()),
         }
     }
 
@@ -158,13 +160,19 @@ mod tests {
         let mut slot = UpdateSlot::default();
         assert_eq!(
             slot.begin_download("0.3.0", same).unwrap_err(),
-            "尚未檢查更新"
+            UiMsg::UpdateNotChecked.to_string()
         );
         slot.store_check(Some("0.3.0"), "0.3.0");
-        assert_eq!(slot.begin_install("0.3.0").unwrap_err(), "尚未下載");
+        assert_eq!(
+            slot.begin_install("0.3.0").unwrap_err(),
+            UiMsg::UpdateNotDownloaded.to_string()
+        );
 
         assert_eq!(slot.begin_download("0.3.0", same).unwrap(), "0.3.0");
-        assert_eq!(slot.begin_download("0.3.0", same).unwrap_err(), "已在下載");
+        assert_eq!(
+            slot.begin_download("0.3.0", same).unwrap_err(),
+            UiMsg::UpdateAlreadyDownloading.to_string()
+        );
         slot.store_check(Some("0.4.0"), "0.4.0");
         slot.store_check(None, "");
         assert_eq!(slot.current(), Some(&"0.3.0"));
@@ -172,7 +180,10 @@ mod tests {
         slot.finish_download("0.3.0".to_owned());
         assert!(!slot.is_busy());
         slot.begin_install("0.3.0").unwrap();
-        assert_eq!(slot.begin_install("0.3.0").unwrap_err(), "已在安裝");
+        assert_eq!(
+            slot.begin_install("0.3.0").unwrap_err(),
+            UiMsg::UpdateAlreadyInstalling.to_string()
+        );
         slot.store_check(Some("0.9.0"), "0.9.0");
         assert_eq!(slot.current(), Some(&"0.3.0"));
     }
@@ -183,7 +194,10 @@ mod tests {
         downloaded(&mut slot, "0.3.0");
         slot.store_check(Some("0.4.0"), "0.4.0");
         assert_eq!(slot.current(), Some(&"0.4.0"));
-        assert_eq!(slot.begin_install("0.3.0").unwrap_err(), "尚未下載");
+        assert_eq!(
+            slot.begin_install("0.3.0").unwrap_err(),
+            UiMsg::UpdateNotDownloaded.to_string()
+        );
         assert_eq!(slot.begin_download("0.4.0", same).unwrap(), "0.4.0");
         slot.finish_download("0.4.0".to_owned());
         assert_eq!(slot.begin_install("0.4.0").unwrap(), "0.4.0");
@@ -207,7 +221,10 @@ mod tests {
         slot.store_check(Some("0.4.0"), "0.4.0");
         assert_eq!(slot.begin_download("0.4.0", same).unwrap(), "0.4.0");
         slot.abort_download();
-        assert_eq!(slot.begin_install("0.4.0").unwrap_err(), "尚未下載");
+        assert_eq!(
+            slot.begin_install("0.4.0").unwrap_err(),
+            UiMsg::UpdateNotDownloaded.to_string()
+        );
     }
 
     #[test]
@@ -216,7 +233,10 @@ mod tests {
         downloaded(&mut slot, "0.3.0");
         slot.begin_install("0.3.0").unwrap();
         slot.abort_install("0.9.0");
-        assert_eq!(slot.begin_install("0.3.0").unwrap_err(), "已在安裝");
+        assert_eq!(
+            slot.begin_install("0.3.0").unwrap_err(),
+            UiMsg::UpdateAlreadyInstalling.to_string()
+        );
         slot.abort_install("0.3.0");
         slot.store_check(None, "");
         assert_eq!(slot.current(), Some(&"0.3.0"));
@@ -230,7 +250,7 @@ mod tests {
         slot.store_check(Some("0.4.0"), "0.4.0");
         assert_eq!(
             slot.begin_download("0.3.0", same).unwrap_err(),
-            UPDATE_CHANGED
+            UiMsg::UpdateChanged.to_string()
         );
         assert!(!slot.is_busy(), "拒絕時不進下載");
         assert_eq!(slot.current(), Some(&"0.4.0"));
@@ -241,7 +261,7 @@ mod tests {
         downloaded_a.store_check(Some("0.5.0"), "0.5.0");
         assert_eq!(
             downloaded_a.begin_download("0.3.0", same).unwrap_err(),
-            UPDATE_CHANGED
+            UiMsg::UpdateChanged.to_string()
         );
     }
 }

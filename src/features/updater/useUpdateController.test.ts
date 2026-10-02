@@ -12,6 +12,10 @@ import {
 } from "./useUpdateController";
 import type { AppConfig } from "../../shared/contracts/backend-contracts";
 
+// 後端錯誤代碼（ui_msg.rs 的 UiMsg）。
+const CANNOT_REPLACE = 'TTMSG:{"code":"update_cannot_replace"}';
+const UPDATE_CHANGED = 'TTMSG:{"code":"update_changed"}';
+
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(async () => true) }));
@@ -392,7 +396,7 @@ describe("useUpdateController", () => {
       invokeImpl: async (command) => {
         if (command === "update_check") return available();
         if (command === "update_download") return { version: offer.version, rollback_ready: true };
-        if (command === "update_install") throw "無法自動替換";
+        if (command === "update_install") throw CANNOT_REPLACE;
         if (command === "read_config") return fresh;
         return undefined;
       },
@@ -404,7 +408,7 @@ describe("useUpdateController", () => {
     });
     await flush();
     expect(configs).toEqual([fresh]);
-    expect(box.api?.phase).toEqual({ kind: "error", offer, message: "無法自動替換" });
+    expect(box.api?.phase).toEqual({ kind: "error", offer, message: CANNOT_REPLACE });
   });
 
   it("skip writes the version and unskip clears it, keeping the offer either way", async () => {
@@ -514,7 +518,7 @@ describe("useUpdateController", () => {
             : available(formatB);
         }
         if (command === "update_download") {
-          if (args?.version !== "0.4.0") throw "要更新的版本已經換了";
+          if (args?.version !== "0.4.0") throw UPDATE_CHANGED;
           return { version: "0.4.0", rollback_ready: true };
         }
         return undefined;
@@ -615,7 +619,7 @@ describe("useUpdateController", () => {
           });
         }
         if (command === "update_download") {
-          if (args?.version !== "0.4.0") throw "要更新的版本已經換了";
+          if (args?.version !== "0.4.0") throw UPDATE_CHANGED;
           return new Promise(() => {});
         }
         return undefined;

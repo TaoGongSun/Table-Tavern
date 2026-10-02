@@ -2,7 +2,7 @@
 import { t } from "../../i18n";
 import type { UpdateLevel, UpdateOffer, UpdatePhase } from "./useUpdateController";
 import type { RollbackPhase, RollbackPreview, VersionRow } from "./useVersionStoreController";
-import { backendText } from "../../shared/ui/backend-text";
+import { backendCode, backendText } from "../../shared/ui/backend-text";
 
 export type Preferences = Record<string, unknown> | undefined;
 
@@ -107,14 +107,14 @@ export function rollbackDialogText(notice: RollbackNotice, currentVersion: strin
   }
 }
 
-/** 後端槽裡的版本已被後來的檢查換掉（slot.rs 的 UPDATE_CHANGED）。 */
+/** 後端槽裡的版本已被後來的檢查換掉（ui_msg.rs 的 UpdateChanged）。 */
 export function updateChanged(message: string): boolean {
-  return message.includes("要更新的版本已經換了");
+  return backendCode(message) === "update_changed";
 }
 
-/** Mac 回「無法自動替換」時改給下載頁。後端訊息固定是這句繁中。 */
+/** Mac 無法自動替換（ui_msg.rs 的 UpdateCannotReplace）時改給下載頁。 */
 export function cannotReplace(message: string): boolean {
-  return message.includes("無法自動替換");
+  return backendCode(message) === "update_cannot_replace";
 }
 
 export const RELEASES_URL = "https://github.com/TaoGongSun/Table-Tavern/releases";

@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useVersionCenter, type VersionCenterOptions } from "./useVersionCenter";
 import type { CheckResult } from "./useUpdateController";
 
+// 後端錯誤代碼（ui_msg.rs 的 UiMsg）。
+const UPDATE_CHANGED = 'TTMSG:{"code":"update_changed"}';
+
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn(async () => "0.2.0") }));
@@ -196,7 +199,7 @@ describe("useVersionCenter", () => {
         checks += 1;
         return checks === 1 ? undefined : new Promise(() => {});
       }
-      if (command === "update_download") return Promise.reject("要更新的版本已經換了");
+      if (command === "update_download") return Promise.reject(UPDATE_CHANGED);
       return undefined;
     });
     await render(props);

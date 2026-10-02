@@ -7,6 +7,7 @@ use std::path::Path;
 use super::catalog;
 use super::store::{self, artifact_name, Platform};
 use super::verify::verify_artifact;
+use crate::ui_msg::UiMsg;
 
 pub(crate) fn rollback_file_name(version: &str, platform: Platform) -> Result<String, String> {
     let name = match platform {
@@ -15,7 +16,7 @@ pub(crate) fn rollback_file_name(version: &str, platform: Platform) -> Result<St
     };
     artifact_name(&format!("https://example.test/{name}"))?;
     if !platform.suffix_ok(&name) {
-        return Err("安裝檔副檔名不符合這個平台".to_owned());
+        return Err(UiMsg::InstallerWrongPlatform.into());
     }
     Ok(name)
 }
@@ -29,10 +30,10 @@ pub(crate) fn rollback_asset_urls(
     let marker = "/releases/";
     let index = endpoint
         .find(marker)
-        .ok_or_else(|| "更新位址無法推出 repo".to_owned())?;
+        .ok_or_else(|| UiMsg::UpdateEndpointInvalid.to_string())?;
     let base = &endpoint[..index];
     if !base.starts_with("https://") || base.ends_with('/') {
-        return Err("更新位址無法推出 repo".to_owned());
+        return Err(UiMsg::UpdateEndpointInvalid.into());
     }
     let asset = format!("{base}/releases/download/v{version}/{file_name}");
     Ok((asset.clone(), format!("{asset}.sig")))
@@ -70,7 +71,7 @@ pub(crate) fn endpoint_for_rollback(endpoints: &[String]) -> Result<&str, String
         .iter()
         .find(|endpoint| endpoint.contains("/releases/"))
         .map(String::as_str)
-        .ok_or_else(|| "更新位址無法推出 repo".to_owned())
+        .ok_or_else(|| UiMsg::UpdateEndpointInvalid.to_string())
 }
 
 /// 下載前在鎖內看能不能沿用。不能沿用就把該版的半成品清掉，網路階段再放開鎖。
@@ -169,7 +170,8 @@ where
     let (asset, sig_url) = rollback_asset_urls(endpoint, running, &file)?;
     let bytes = fetch(asset).await?;
     let signature = fetch(sig_url).await?;
-    let signature = String::from_utf8(signature).map_err(|_| "驗簽失敗".to_owned())?;
+    let signature =
+        String::from_utf8(signature).map_err(|_| UiMsg::SignatureInvalid.to_string())?;
     let signature = signature.trim().to_owned();
     let release = super::verify::ReleaseFile {
         version: running.to_owned(),

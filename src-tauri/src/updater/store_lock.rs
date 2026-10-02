@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
 use super::semver_util::versions_equal;
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug, Default)]
 pub(crate) struct StoreActivity {
@@ -38,7 +39,7 @@ pub(crate) fn store_activity() -> &'static Mutex<StoreActivity> {
 pub(crate) async fn mark_downloading(version: &str) -> Result<(), String> {
     let mut activity = store_activity().lock().await;
     if activity.is_busy() {
-        return Err("已在安裝或下載".to_owned());
+        return Err(UiMsg::VersionStoreBusy.into());
     }
     activity.downloading = Some(version.to_owned());
     Ok(())
@@ -63,7 +64,7 @@ pub(crate) async fn with_installing<T>(
 ) -> Result<T, String> {
     let mut activity = store_activity().lock().await;
     if activity.is_busy() {
-        return Err("已在安裝或下載".to_owned());
+        return Err(UiMsg::VersionStoreBusy.into());
     }
     activity.installing = Some(version.to_owned());
     let result = body.await;
