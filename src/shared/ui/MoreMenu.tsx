@@ -2,6 +2,8 @@
 // 開啟移焦第一項、↑↓／Home／End 循環、Enter/Space 執行後關閉、Esc 與點外面關閉、Tab 直接離開。
 // 彈層 portal 到 body：主欄 .chat-main 是 overflow:hidden，掛在原地會被裁掉。
 // 預設觸發鈕是 ⋯ 幽靈圖示鈕；新增鈕、幕晶片這類要自己的外觀就傳 trigger／className。
+// 焦點可見性照輸入來源明講：WebKit 在「上次焦點來自滑鼠」後，程式移焦不算 :focus-visible，
+// 方向鍵移動就看不到（menu-keyboard-webkit）。所以鍵盤造成的移焦一律要求可見，滑鼠造成的不要外框。
 import {
   Fragment,
   type KeyboardEvent,
@@ -47,6 +49,33 @@ interface MoreMenuProps {
 // 彈層與視窗邊緣保留的距離
 const EDGE = 8;
 
+/** pointer＝滑鼠／觸控點出來的；keyboard＝其餘（鍵盤、輔助技術、程式觸發的 click），一律顯示焦點框 */
+type FocusSource = "keyboard" | "pointer";
+
+// TS 5.8 的 FocusOptions 還沒有 focusVisible（WebKit 自 Safari 18.4 起支援）
+type FocusOptionsWithVisible = FocusOptions & { focusVisible?: boolean };
+
+function clearFocusRing(this: HTMLElement) {
+  delete this.dataset.focusRing;
+}
+
+// 不認 focusVisible 的舊引擎靠 data-focus-ring 兜底（base.css 與 :focus-visible 同一條外框規則），失焦即清
+function focusFrom(node: HTMLElement | null | undefined, source: FocusSource) {
+  if (!node) return;
+  const visible = source === "keyboard";
+  if (visible) {
+    node.dataset.focusRing = "";
+    node.addEventListener("blur", clearFocusRing, { once: true });
+  } else {
+    delete node.dataset.focusRing;
+  }
+  const options: FocusOptionsWithVisible = { preventScroll: !visible, focusVisible: visible };
+  node.focus(options);
+}
+
+// click 的 detail 是點擊次數：0＝不是指標點的（鍵盤 Enter/Space、輔助技術、程式），保守當成要顯示焦點
+const sourceOfClick = (detail: number): FocusSource => (detail > 0 ? "pointer" : "keyboard");
+
 export function MoreMenu({
   label,
   items,
@@ -64,6 +93,8 @@ export function MoreMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const focusPending = useRef(false);
+  // 這次開啟的來源：決定第一項要不要焦點框
+  const openSource = useRef<FocusSource>("keyboard");
   const menuId = useId();
 
   // 右緣對齊觸發鈕、水平夾在視窗內（右緣對齊會出界就改成左緣對齊，不蓋住觸發鈕）。
@@ -99,7 +130,7 @@ export function MoreMenu({
   useLayoutEffect(() => {
     if (!place || !focusPending.current) return;
     focusPending.current = false;
-    itemRefs.current[0]?.focus();
+    focusFrom(itemRefs.current[0], openSource.current);
   }, [place]);
 
   // 觸發鈕轉成停用：選單不能留在畫面上讓人執行
@@ -125,27 +156,31 @@ export function MoreMenu({
     };
   }, [open, reposition]);
 
-  function toggle() {
-    if (!open) onOpen?.();
+  function toggle(source: FocusSource) {
+    if (!open) {
+      openSource.current = source;
+      onOpen?.();
+    }
     setOpen(!open);
   }
 
-  function closeToTrigger() {
+  function closeToTrigger(source: FocusSource) {
     setOpen(false);
-    triggerRef.current?.focus();
+    focusFrom(triggerRef.current, source);
   }
 
   // 先把焦點還給 ⋯ 鈕再執行：項目若開了對話窗，對話窗掛載時自己的移焦會蓋過這一步，不被搶回來
-  function run(item: MoreMenuItem) {
+  function run(item: MoreMenuItem, source: FocusSource) {
     if (item.disabled) return;
-    closeToTrigger();
+    closeToTrigger(source);
     item.onSelect();
   }
 
   function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const nodes = itemRefs.current.filter((node): node is HTMLButtonElement => node !== null);
     const current = nodes.indexOf(document.activeElement as HTMLButtonElement);
-    const focusAt = (index: number) => nodes[(index + nodes.length) % nodes.length]?.focus();
+    const focusAt = (index: number) =>
+      focusFrom(nodes[(index + nodes.length) % nodes.length], "keyboard");
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -166,12 +201,12 @@ export function MoreMenu({
       case "Escape":
         event.preventDefault();
         event.stopPropagation();
-        closeToTrigger();
+        closeToTrigger("keyboard");
         break;
       case "Tab":
         // 不攔預設：焦點先同步交回 ⋯ 鈕，瀏覽器的 Tab／Shift+Tab 就從 ⋯ 鈕往前後走；
         // 選單等下一個 tick 才卸載，免得焦點所在的節點在預設移焦前就消失
-        triggerRef.current?.focus();
+        focusFrom(triggerRef.current, "keyboard");
         setTimeout(() => setOpen(false), 0);
         break;
     }
@@ -193,7 +228,7 @@ export function MoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        onClick={toggle}
+        onClick={(event) => toggle(sourceOfClick(event.detail))}
       >
         {trigger ?? <IconMore />}
       </button>
@@ -225,12 +260,20 @@ export function MoreMenu({
                   className={item.danger ? "menu-item menu-item-danger" : "menu-item"}
                   title={item.hint}
                   aria-disabled={item.disabled || undefined}
-                  onClick={() => run(item)}
+                  onClick={(event) => run(item, sourceOfClick(event.detail))}
+                  // 滑鼠移到哪項焦點就到哪項：反白只跟著焦點走，游標停著時方向鍵移走不會留第二個亮項，
+                  // 方向鍵也從游標所在處接續。只認滑鼠，觸控不搶焦點
+                  onPointerMove={(event) => {
+                    if (event.pointerType !== "mouse") return;
+                    if (document.activeElement !== event.currentTarget) {
+                      focusFrom(event.currentTarget, "pointer");
+                    }
+                  }}
                   onKeyDown={(event) => {
                     // 自己接 Enter/Space，不等瀏覽器合成 click：Space 的 click 要到 keyup 才來
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      run(item);
+                      run(item, "keyboard");
                     }
                   }}
                 >

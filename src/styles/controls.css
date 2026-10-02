@@ -137,19 +137,20 @@ button.menu-item {
   text-align: left;
 }
 
-.menu-item:hover:not([aria-disabled="true"]),
-.menu-item:focus-visible {
+/* 反白跟著實際焦點走（滑鼠移入由 MoreMenu 移焦），不用 :hover：同一時間只亮一項。
+   外框仍只給鍵盤焦點（:focus-visible 或 data-focus-ring） */
+.menu-item:focus {
   background: color-mix(in srgb, var(--ink-1) 8%, transparent);
   color: var(--ink-1);
 }
 
-.menu-item:focus-visible {
+.menu-item:focus-visible,
+.menu-item[data-focus-ring]:focus {
   outline-offset: -2px;
 }
 
 button.menu-item-danger,
-.menu-item-danger:hover:not([aria-disabled="true"]),
-.menu-item-danger:focus-visible {
+.menu-item-danger:focus {
   color: var(--danger);
 }
 

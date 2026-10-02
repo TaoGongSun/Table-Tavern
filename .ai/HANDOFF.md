@@ -9,6 +9,7 @@
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [menu-keyboard-webkit](handoffs/menu-keyboard-webkit.md) — ⋯ 選單 macOS WebKit 鍵盤看不到焦點：已進 main，等實機（外觀＋VoiceOver 混用）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM
 - [grok-cache-miss](handoffs/grok-cache-miss.md) — grok 走續聊：GM 線已驗，角色線（一角一線）等實機連玩三輪
 - [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：五包已進 main、範例桌詢問已過；剩重構三窗、實聊名牌與打字指示（自 ui-overhaul 併入）、格式轉換更新等觸發條件型對話窗、Windows 等未實機驗項目

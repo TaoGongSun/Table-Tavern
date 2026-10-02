@@ -214,7 +214,9 @@ body {
 }
 
 /* 舊版把 outline 全關掉是無障礙缺陷（ui-overhaul 檢討第一條）：鍵盤焦點一律可見 */
-:focus-visible {
+/* data-focus-ring：元件明講是鍵盤移焦、但引擎不認 focus({ focusVisible }) 時的兜底（見 MoreMenu） */
+:focus-visible,
+[data-focus-ring]:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
