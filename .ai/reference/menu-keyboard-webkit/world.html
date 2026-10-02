@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script>
+  // Tauri invoke 假後端：只回世界設定頁要的幾個指令
+  const data = {
+    read_world_md: "world summary",
+    read_worldbook: [],
+    list_characters: [],
+    refactor_outcome_exists: false,
+    card_interfaces: [],
+  };
+  window.__TAURI_INTERNALS__ = {
+    invoke: async (cmd) => {
+      if (cmd in data) return data[cmd];
+      throw new Error("unmocked " + cmd);
+    },
+    transformCallback: () => 0,
+    metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+  };
+</script>
+</head><body><div id="root"></div><script type="module" src="./world.tsx"></script></body></html>

@@ -234,6 +234,88 @@ describe("MoreMenu", () => {
     expect(trigger().disabled).toBe(true);
   });
 
+  // 只鎖程式意圖（帶不帶 focusVisible／data-focus-ring）；看不看得到由 MoreMenu.webkit.test.tsx 在真 WebKit 驗
+  describe("focus source", () => {
+    const ring = (node: Element) => node.hasAttribute("data-focus-ring");
+
+    function clickWithDetail(target: Element, detail: number) {
+      act(() => {
+        target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail }));
+      });
+    }
+
+    function pointerMove(target: Element, pointerType: string) {
+      act(() => {
+        target.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType }));
+      });
+    }
+
+    it("a pointer open focuses the first item without a ring; a non-pointer open adds one", () => {
+      mount(threeItems().items);
+      const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
+      clickWithDetail(trigger(), 1);
+      expect(active()).toBe(menuItems()[0]);
+      expect(ring(menuItems()[0])).toBe(false);
+      expect(focusSpy).toHaveBeenLastCalledWith({ preventScroll: true, focusVisible: false });
+      clickWithDetail(trigger(), 1);
+      clickWithDetail(trigger(), 0);
+      expect(active()).toBe(menuItems()[0]);
+      expect(ring(menuItems()[0])).toBe(true);
+      expect(focusSpy).toHaveBeenLastCalledWith({ preventScroll: false, focusVisible: true });
+      focusSpy.mockRestore();
+    });
+
+    it("arrow moves ask for a visible focus and the ring follows the focused item", () => {
+      mount(threeItems().items);
+      clickWithDetail(trigger(), 1);
+      const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
+      const [first, second] = menuItems();
+      press(first, "ArrowDown");
+      expect(focusSpy).toHaveBeenLastCalledWith({ preventScroll: false, focusVisible: true });
+      expect(active()).toBe(second);
+      expect(ring(second)).toBe(true);
+      press(second, "ArrowUp");
+      expect(ring(first)).toBe(true);
+      expect(ring(second)).toBe(false);
+      focusSpy.mockRestore();
+    });
+
+    it("Escape and keyboard runs return a ringed focus; a mouse run returns a plain one", () => {
+      const { items, exportFn } = threeItems();
+      mount(items);
+      clickWithDetail(trigger(), 1);
+      press(menuItems()[0], "Escape");
+      expect(active()).toBe(trigger());
+      expect(ring(trigger())).toBe(true);
+
+      clickWithDetail(trigger(), 1);
+      expect(ring(trigger())).toBe(false);
+      clickWithDetail(menuItems()[0], 1);
+      expect(exportFn).toHaveBeenCalledTimes(1);
+      expect(active()).toBe(trigger());
+      expect(ring(trigger())).toBe(false);
+
+      clickWithDetail(trigger(), 1);
+      press(menuItems()[0], "Enter");
+      expect(ring(trigger())).toBe(true);
+    });
+
+    it("a mouse moving over an item focuses it without a ring; touch and pen do not", () => {
+      mount(threeItems().items);
+      clickWithDetail(trigger(), 0);
+      const [first, , third] = menuItems();
+      pointerMove(third, "touch");
+      pointerMove(third, "pen");
+      expect(active()).toBe(first);
+      pointerMove(third, "mouse");
+      expect(active()).toBe(third);
+      expect(ring(third)).toBe(false);
+      expect(ring(first)).toBe(false);
+      press(third, "ArrowDown");
+      expect(active()).toBe(first);
+    });
+  });
+
   describe("placement", () => {
     const originalHeight = window.innerHeight;
     let rectOf: ReturnType<typeof vi.spyOn>;

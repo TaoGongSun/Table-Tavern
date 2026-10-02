@@ -21,3 +21,7 @@ TestCards/
 
 # Python 暫存（scripts/split-verify 的 import 會產生）
 __pycache__/
+
+# vitest 瀏覽器模式（npm run test:webkit）失敗時的截圖與附件
+__screenshots__/
+.vitest-attachments/
