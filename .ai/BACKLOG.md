@@ -8,7 +8,7 @@
 - [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。
 - [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
-- [chars-lane-rewrite-drop](tasks/chars-lane-rewrite-drop.md) — 角色線續聊被作廢：每輪冷開、快取一次都中不到 — 下一步：開工首步＝重現並定位：連續讓角色發言兩三輪，看每輪是不是都落 drop-lane，再確認 `apply_rewrite` 裡失敗的是 `find_user_line_with_segment`／`erase_user_segment`／`prefix_last_assistant` 哪一段。目前錯誤被 `Err(_)` 吞掉不落原因，可能要先讓它把失敗原因寫進帳本才查得動。
+- [usage-cache-audit](tasks/usage-cache-audit.md) — 額度快取紀錄整理（哪些線真有快取、各狀態該掛什麼標籤）＋角色線抹寫丟線 — 下一步：2026-10-06 Grok 額度恢復後開工，先讓抹寫失敗原因落帳本，再四家通道實跑對帳。
 - [long-prompt-scene-hint](tasks/long-prompt-scene-hint.md) — 桌子太長撞到指令長度上限時，請玩家換幕 — 下一步：先確認撞上限時各條路實際回什麼（作業系統層的 E2BIG？CLI 自己的錯誤？還是直接沒反應），才知道要抓什麼特徵。三個作業系統的上限與表現可能不同。
 - [settings-overflow-i18n](tasks/settings-overflow-i18n.md) — 設定頁長字串爆版 — 下一步：挑一種排版方案（modal 加寬／列內換行／狀態按鈕移到次行），先在俄文與德文下驗連線分頁，再掃額度分頁與其餘八語系。
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：照規格檔實作三包：包 1 `CacheStrategy` 判定與帳本欄位；包 2 尾巴重播（`TranscriptEvent` 新欄位、GM 線與角色線組裝改寫、`<turn-context>` 包裝與 system 規則、十語系文案）；包 3 chain epoch 的重開條件。驗收看離線重算的 byte-LCP 要等於 100%，再實跑三輪看 `cached_tokens` 是否跟著上一輪的 `prompt_tokens` 走。
