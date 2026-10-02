@@ -66,9 +66,9 @@ pub(crate) fn gm_image_path(root: &Path, world_id: &str) -> DataResult<PathBuf> 
     Ok(world_dir(root, world_id)?.join("gm.png"))
 }
 
-/// 介面渲染殼檔：worlds/<world_id>/interface-shell.html。AI 卡重構展開介面規則時，除了狀態樹
-/// 初始值（state_fields）還可能多產一份自包含 HTML 殼；前端拿狀態樹的值替換殼內 `{{路徑}}`
-/// 佔位符後塞進既有卡片沙盒 iframe（interface-card.ts buildShellDocument，下一包串接）。
+/// 介面骨架檔：worlds/<world_id>/interface-shell.html（檔名沿用，已有桌存了它）。AI 卡重構接管
+/// 介面時，照搬卡每回合輸出格式的骨架；前端拿狀態樹的值替換 `{{路徑}}` 佔位符，再過卡自己的
+/// 顯示腳本渲染（card-interface/card-shell-route.ts）。
 pub(crate) fn interface_shell_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
     Ok(world_dir(root, world_id)?.join("interface-shell.html"))
 }

@@ -18,7 +18,7 @@ export interface RefactorInterface {
   state_fields: unknown;
   source_uids: string[];
   raw: string;
-  /** AI 順便產的 HTML 渲染殼；沒產出就沒有這個欄位（後端 Option<String>）。 */
+  /** 介面接管的骨架（卡每回合輸出格式＋佔位符）；沒產出就沒有這個欄位（後端 Option<String>）。 */
   shell?: string;
   /** 這張卡自己的欄位規則（點分路徑→規則），介面接管才有。 */
   rules?: Record<string, unknown>;
@@ -159,7 +159,7 @@ export interface RefactorSurveyOutcome {
   persons: RefactorSurveyPerson[];
   /** 全部介面條目 uid（含 playable 與否）。 */
   interface_uids: string[];
-  /** 其中盤點判 playable 的介面條目 uid：展開時走 interface_shell、產殼；其餘走 interface。 */
+  /** 其中盤點判 playable 的介面條目 uid：展開時走 interface_shell、產骨架；其餘走 interface。 */
   playable_interface_uids: string[];
   /** 非純人物、非純介面條目的分類判定：一條原始條目一筆。 */
   verdicts: RefactorEntryVerdict[];
@@ -214,7 +214,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** 多條介面候選合併成一條：state_fields 兩邊都是物件就淺合併（後蓋前），否則後者整個蓋掉；
  * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。欄位規則同樣淺合併（後蓋前）。
- * 渲染殼是整份 HTML、回報指引是一段完整文字，合併沒有意義——各取最後一個非空的（與 state_fields
+ * 骨架與回報指引都是一整份完整文字，合併沒有意義——各取最後一個非空的（與 state_fields
  * 後蓋前同向）。零條回傳 null。 */
 export function mergeRefactorInterfaces(interfaces: RefactorInterface[]): RefactorInterface | null {
   if (interfaces.length === 0) return null;

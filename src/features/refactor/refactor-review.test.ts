@@ -90,13 +90,13 @@ describe("mergeRefactorInterfaces", () => {
     expect(merged).toEqual({ state_fields: { hp: 20, mp: 5 }, source_uids: ["1", "2"], raw: "第一段\n\n第二段" });
   });
 
-  it("渲染殼取最後一個非空的（整份 HTML 沒得合併）", () => {
+  it("骨架取最後一個非空的（整份骨架沒得合併）", () => {
     const merged = mergeRefactorInterfaces([
-      { state_fields: {}, source_uids: [], raw: "", shell: "<p>舊</p>" },
+      { state_fields: {}, source_uids: [], raw: "", shell: "<UI>舊</UI>" },
       { state_fields: {}, source_uids: [], raw: "" },
-      { state_fields: {}, source_uids: [], raw: "", shell: "<p>新</p>" },
+      { state_fields: {}, source_uids: [], raw: "", shell: "<UI>新</UI>" },
     ]);
-    expect(merged?.shell).toBe("<p>新</p>");
+    expect(merged?.shell).toBe("<UI>新</UI>");
   });
 
   it("state_fields 不是物件（解析失敗退原文之類）＝後者整個蓋掉前者", () => {
@@ -244,9 +244,9 @@ describe("parseRefactorOutcome", () => {
     expect(outcome.characters[0]).toEqual(makeCharacter(["1"], { emoji: "", public_md: "", private_md: "" }));
   });
 
-  it("介面的渲染殼一路保留到產物（套用時才寫得出 HTML 殼）", () => {
-    const json = JSON.stringify({ interface: { state_fields: { hp: 1 }, source_uids: ["3"], raw: "", shell: "<p>殼</p>" } });
-    expect(parseRefactorOutcome(json).interface?.shell).toBe("<p>殼</p>");
+  it("介面骨架一路保留到產物（套用時才寫得出骨架檔）", () => {
+    const json = JSON.stringify({ interface: { state_fields: { hp: 1 }, source_uids: ["3"], raw: "", shell: "<UI>{{hp}}</UI>" } });
+    expect(parseRefactorOutcome(json).interface?.shell).toBe("<UI>{{hp}}</UI>");
   });
 
   it("玩法標記大小寫與前後空白正規化後照收", () => {

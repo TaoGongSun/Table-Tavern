@@ -62,14 +62,14 @@ fn parse_expand_interface_broken_json_falls_back_to_none_and_raw() {
 }
 
 #[test]
-fn parse_expand_interface_shell_kind_extracts_html_shell() {
+fn parse_expand_interface_shell_kind_extracts_skeleton() {
     let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n\
-               ## SHELL\n```html\n<!DOCTYPE html><html><body>{{World.Time}}</body></html>\n```\n";
+               ## SHELL\n```xml\n<UI><Time>{{World.Time}}</Time>{{本回合.正文}}</UI>\n```\n";
     let outcome = parse_expand(EntryKind::InterfaceShell, "7", raw);
     let interface = outcome.interface.unwrap();
     assert_eq!(
         interface.shell.as_deref(),
-        Some("<!DOCTYPE html><html><body>{{World.Time}}</body></html>")
+        Some("<UI><Time>{{World.Time}}</Time>{{本回合.正文}}</UI>")
     );
 }
 
@@ -84,7 +84,7 @@ fn parse_expand_interface_without_shell_marker_yields_none() {
 #[test]
 fn parse_expand_interface_empty_shell_fence_yields_none() {
     let raw =
-        "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n## SHELL\n```html\n```\n";
+        "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n## SHELL\n```xml\n```\n";
     let outcome = parse_expand(EntryKind::InterfaceShell, "7", raw);
     let interface = outcome.interface.unwrap();
     assert!(interface.shell.is_none());
@@ -93,7 +93,7 @@ fn parse_expand_interface_empty_shell_fence_yields_none() {
 #[test]
 fn parse_expand_interface_truncated_shell_keeps_partial_content_without_panic() {
     let raw = "## STATE\n```json\n{\"World\": {\"Time\": \"清晨\"}}\n```\n\n\
-               ## SHELL\n```html\n<!DOCTYPE html><html><body>{{World.Time}} 寫到一半突然斷";
+               ## SHELL\n```xml\n<UI><Time>{{World.Time}}</Time> 寫到一半突然斷";
     let outcome = parse_expand(EntryKind::InterfaceShell, "7", raw);
     let interface = outcome.interface.unwrap();
     assert!(interface.shell.unwrap().contains("寫到一半突然斷"));

@@ -87,7 +87,7 @@
 
 ## 關聯任務
 
-- [interface-takeover-spike](../tasks/interface-takeover-spike.md)：其待辦 1（玩家選擇）併入本案；待辦 2（逐型驗卡）、4（清舊路線）留原案。
+- [interface-takeover-spike](../handoffs/interface-takeover-spike.md)：其待辦 1（玩家選擇）併入本案；待辦 2（逐型驗卡）、4（清舊路線）留原案。
 - [refactor-survey-spans](../handoffs/refactor-survey-spans.md)：判官流程拆兩段、提示詞帶模式，動工前先過該案 T1–T4 驗收。
 - [person-promote](../handoffs/person-promote.md)：角色優先軌的認人拆卡，不做第二套。
 - [interface-scene-change](interface-scene-change.md)：介面優先軌的換幕配套，另案。

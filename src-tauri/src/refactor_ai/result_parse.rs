@@ -1,5 +1,5 @@
 use super::parse_common::{
-    join_trim, parse_blocks, parse_json_block, strip_html_fence, strip_json_fence,
+    join_trim, parse_blocks, parse_json_block, strip_code_fence, strip_json_fence,
 };
 use super::types::{
     EntryKind, GroupKind, RefactorAbsorbOutcome, RefactorExpandOutcome, RefactorNewEntry,
@@ -74,7 +74,7 @@ pub fn parse_person_expand(
 }
 
 /// interface 展開：STATE 區塊剝 ```json 圍欄後整段當 JSON 解；標記缺席或 JSON 壞掉一律 None，
-/// 呼叫端退回 ExpandOutcome.raw（雙軌保底）。SHELL 區塊（```html 圍欄，只有 interface_shell
+/// 呼叫端退回 ExpandOutcome.raw（雙軌保底）。SHELL 區塊（骨架，```xml 圍欄，只有 interface_shell
 /// 變體會產，選配）另外抽：缺席或抽出來是空字串就 shell=None，不影響 state_fields 解不解析得
 /// 出來；輸出被截斷（沒有結尾圍欄）也不會壞事，能抽多少算多少。
 fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterface> {
@@ -85,7 +85,7 @@ fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterfac
     let shell = blocks
         .iter()
         .find(|block| block.marker == "SHELL")
-        .map(|block| strip_html_fence(&join_trim(&block.lines)).to_owned())
+        .map(|block| strip_code_fence(&join_trim(&block.lines)).to_owned())
         .filter(|shell| !shell.is_empty());
     let rules =
         parse_json_block(blocks.iter().find(|block| block.marker == "RULES")).unwrap_or_default();

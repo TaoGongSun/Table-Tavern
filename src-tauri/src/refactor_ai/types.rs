@@ -45,9 +45,9 @@ pub struct RefactorRecommendOutcome {
 /// absorb_messages、合組走 group_messages，都不經這裡。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
-    /// 狀態欄格式條目：只抽 STATE，不產殼。
+    /// 狀態欄格式條目：只抽 STATE，不產骨架。
     Interface,
-    /// 盤點判 playable 的介面條目：STATE＋SHELL。
+    /// 盤點判 playable 的介面條目：STATE＋SHELL（骨架）＋RULES＋GUIDE。
     InterfaceShell,
 }
 
@@ -159,7 +159,7 @@ pub struct RefactorSurveyOutcome {
     /// 全部介面條目 uid（含 playable 與否）。
     #[serde(default)]
     pub interface_uids: Vec<String>,
-    /// 其中盤點判 playable（可完全在裡面遊玩）的介面條目 uid：展開時走 interface_shell、產殼；
+    /// 其中盤點判 playable（可完全在裡面遊玩）的介面條目 uid：展開時走 interface_shell、產骨架；
     /// 其餘介面條目走 interface、只抽 STATE。
     #[serde(default)]
     pub playable_interface_uids: Vec<String>,

@@ -6,7 +6,7 @@
 
 ## 進行中
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過，v2 首要＝省額度（歷史裡整包 XML 重送）
-- [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，仍有角色／介面選擇、其他卡型驗證與舊產殼路線清理待施工
+- [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM

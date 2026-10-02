@@ -567,8 +567,8 @@ pub(crate) fn refactor_abort(world_id: String) {
     inflight::abort_kind(inflight::Kind::Refactor, &world_id);
 }
 
-/// 讀 AI 卡重構套用介面時可能順便產的靜態渲染殼（interface-shell.html）；沒套用過或那次沒
-/// 產出殼就回 None，前端退回保底狀態欄／卡片自帶殼（既有兩層，零改動）。
+/// 讀 AI 卡重構接管介面時產的骨架（interface-shell.html）；沒套用過或那次沒產出就回 None，
+/// 前端退回卡片自帶殼的掃 raw 路徑。
 #[tauri::command]
 pub(crate) fn refactor_interface_shell(
     app: tauri::AppHandle,

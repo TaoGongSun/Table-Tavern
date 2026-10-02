@@ -30,9 +30,11 @@
 4. **介面歸屬聲明**：[transport.rs](../../src-tauri/src/transport/mod.rs) `interface_owned_notice`，接管桌才附，**壓在欄位說明之後**——模型會模仿最後讀到的排版，放前面它就照 guide 的 markdown 把狀態逐條寫進正文（實測踩過，那輪 patch 完全消失）。措辭要避開「資料區塊」這種會誤傷 `<UpdateVariable>` 的字。
 5. 移除卡片介面的 ⓘ 說明鈕＋十語系 2 個 key（使用者要求）。
 
+驗收 commit d3f8a7e。與 [shell-update-flash](../tasks/shell-update-flash.md) 的關聯：殼的餵入源已換成 app 組裝，閃白議題在新架構下重新評估。
+
 ## 待辦（依序）
-### 1. 拆角色 vs 保留介面交給玩家選擇
-重構結果對話框已分組顯示「角色 N 位／介面 1 份」。介面被判 playable 時**預設只勾介面、角色那組不勾**，組標題掛一句「這張卡是完整遊戲介面，NPC 由 GM 代言」。資訊給足、玩家自己決定——不做自動判斷，因為「有幾位真人物」本機猜不準（分型腳本把西幻的地名、HeroTraining 的 `[Event]`／`[Script]` 條目都算成人物了）。
+### 1. 拆角色 vs 保留介面交給玩家選擇——已移交
+2026-08-13 升級成獨立任務 [refactor-mode-split](refactor-mode-split.md)（兩段式定向＋模式專屬解析），本案不再追蹤。
 
 ### 2. 其他型別的卡驗證（目前只有西幻型過關）
 `TestCards/` 分型結果（腳本名稱是卡作者自己命名的，比啟發式分類可靠）：
@@ -50,8 +52,8 @@
 ### 3. 角色發言無視介面渲染（本質問題，使用者評估「很可能無法解決」）
 拆出來的 NPC 一開口，`cardInterfaceShell` 的 direct-first 拿它的訊息試卡腳本、不中就用骨架填 `{{本回合.正文}}`，而 NPC 發言不帶 patch。整頁型卡靠待辦 1 迴避；狀態欄型卡（NorthHall）反而沒問題——那種介面跟著每則訊息走，角色發言各自帶狀態欄，走現有「近 10 則掃 `event.raw`」那條路就渲染得出來。
 
-### 4. 舊產殼路線清理
-HTML 殼分支、`INTERFACE_SHELL` 舊語意殘註解與多語系殘留。使用者原本明令實測通過才清——現在通過了，可以清。
+### 4. 舊產殼路線清理——已進 main、等西幻卡實測
+清單見 [plans/interface-shell-cleanup.md](../plans/interface-shell-cleanup.md)。殼的選路在 `src/features/card-interface/card-shell-route.ts` 的 `pickCardShell`；舊整頁 HTML 產物（開頭 `<!DOCTYPE html`／`<html`）視同沒有重構殼、退回近 10 則掃 raw〔作者裁決 2026-10-02〕。實測排[實測佇列](../reference/verification-queue.md)梯 2 第 16。
 
 ## 陷阱備忘
 - 這台機器 tauri dev 冷啟不重編 Rust；驗證法＝比 `target/debug/table-tavern` 與 `.rs` 的 mtime，或 `grep -a` 新字串在不在 binary 裡。
