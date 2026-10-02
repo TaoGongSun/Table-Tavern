@@ -1,4 +1,5 @@
 use crate::ai_transport::{chat_transport, prepare_lane_call, stream_via_transport};
+use crate::ui_msg::UiMsg;
 use crate::{
     config_root, data, data_root, import, inflight, lanes, receipts, refactor, refactor_ai,
     refactor_assemble, refactor_session, transport, usage_log,
@@ -348,7 +349,11 @@ pub(crate) async fn refactor_absorb_entry(
     let source = worldbook
         .iter()
         .find(|entry| entry.uid.to_string() == entry_uid)
-        .ok_or_else(|| format!("找不到 uid={entry_uid} 的世界書條目"))?;
+        .ok_or_else(|| {
+            String::from(UiMsg::WorldbookEntryNotFound {
+                uid: entry_uid.clone(),
+            })
+        })?;
     let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
         .map_err(|error| error.to_string())?;
     let known_fields = known_fields.unwrap_or_default();
@@ -431,8 +436,14 @@ pub(crate) async fn refactor_split_group(
     let mut materials = Vec::with_capacity(spans.len());
     let mut source_uids: Vec<String> = Vec::new();
     for span_ref in &spans {
-        let (entry, span) = refactor_assemble::resolve_span(&by_uid, span_ref)
-            .ok_or_else(|| format!("合組 {group_id}（{title}）找不到段落引用：{span_ref}"))?;
+        let (entry, span) =
+            refactor_assemble::resolve_span(&by_uid, span_ref).ok_or_else(|| {
+                String::from(UiMsg::RefactorGroupSpanMissing {
+                    group: group_id.to_string(),
+                    title: title.to_string(),
+                    span: span_ref.clone(),
+                })
+            })?;
         materials.push((
             span_ref.clone(),
             entry.content[span.start..span.end].trim().to_owned(),
@@ -503,8 +514,12 @@ pub(crate) async fn refactor_expand_spans(
         worldbook.iter().map(|entry| (entry.uid, entry)).collect();
     let mut parts = Vec::with_capacity(spans.len());
     for span_ref in &spans {
-        let (entry, span) = refactor_assemble::resolve_span(&by_uid, span_ref)
-            .ok_or_else(|| format!("找不到段落引用：{span_ref}"))?;
+        let (entry, span) =
+            refactor_assemble::resolve_span(&by_uid, span_ref).ok_or_else(|| {
+                String::from(UiMsg::RefactorSpanMissing {
+                    span: span_ref.clone(),
+                })
+            })?;
         parts.push(entry.content[span.start..span.end].trim().to_owned());
     }
     let material = parts.join("\n\n");

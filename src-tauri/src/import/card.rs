@@ -1,6 +1,7 @@
 use super::card_io::{decode_png_character, string_field, PNG_MAGIC};
 use super::mechanism::{import_mechanism, import_table_tavern_extension};
 use crate::data::{self, CharacterCard, CharacterMeta, DataResult, Tier};
+use crate::ui_msg::UiMsg;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -107,14 +108,18 @@ pub fn import_character(
     } else {
         (bytes.to_vec(), "import.json")
     };
-    let value: Value = serde_json::from_slice(&json_bytes)
-        .map_err(|error| data::invalid_data(format!("角色卡 JSON 無法解析：{error}")))?;
+    let value: Value = serde_json::from_slice(&json_bytes).map_err(|error| {
+        UiMsg::CardJsonInvalid {
+            error: error.to_string(),
+        }
+        .into_error()
+    })?;
     let card_data = value
         .get("data")
         .filter(|data| data.is_object())
         .unwrap_or(&value);
     let name = string_field(card_data, "name")
-        .ok_or_else(|| data::invalid_data("角色卡缺少 name"))?
+        .ok_or_else(|| UiMsg::CardMissingName.into_error())?
         .trim()
         .to_owned();
     data::validate_single_line("name", &name)?;
@@ -264,8 +269,12 @@ pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
     } else {
         bytes.to_vec()
     };
-    let value: Value = serde_json::from_slice(&json_bytes)
-        .map_err(|error| data::invalid_data(format!("世界書 JSON 無法解析：{error}")))?;
+    let value: Value = serde_json::from_slice(&json_bytes).map_err(|error| {
+        UiMsg::WorldbookJsonInvalid {
+            error: error.to_string(),
+        }
+        .into_error()
+    })?;
     let card_data = value
         .get("data")
         .filter(|data| data.is_object())
@@ -284,7 +293,7 @@ pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
     }
     persona_as_worldbook(card_data)
         .map(|book| book.to_string())
-        .ok_or_else(|| data::invalid_data("這張卡沒有世界書條目，人設欄也是空的"))
+        .ok_or_else(|| UiMsg::CardNothingToImport.into_error())
 }
 
 /// 世界書內容被作者寫在人設欄、`character_book` 卻是空的那種卡（實例：furry-male-scenarios，

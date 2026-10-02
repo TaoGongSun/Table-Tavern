@@ -2,6 +2,7 @@ use super::super::test_support::*;
 use super::super::*;
 use crate::data::{self, CharacterCard, Tier};
 use crate::receipts;
+use crate::ui_msg::UiMsg;
 
 /// (a) 合併升格＋玩家指定：兩條專屬來源併成一張卡、指定為玩家 → 兩條來源條目整條刪除、
 /// 玩家卡指定寫進 state → undo → 角色卡、來源條目（原樣回來，不是新造的 is_person 條目）、
@@ -102,7 +103,7 @@ fn apply_rejects_second_player_card_and_writes_nothing() {
     };
 
     let error = apply(root.path(), &world_id, &outcome, &selection).unwrap_err();
-    assert_eq!(error.to_string(), "這桌已經有玩家卡");
+    assert_eq!(error.to_string(), UiMsg::PlayerCardExists.to_string());
     assert_eq!(
         data::list_characters(root.path(), &world_id).unwrap().len(),
         0

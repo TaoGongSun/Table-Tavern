@@ -3,8 +3,9 @@ use std::path::Path;
 
 use super::super::paths::world_dir;
 use super::super::state::read_state;
-use super::super::{invalid_data, local_timestamp, DataResult};
+use super::super::{local_timestamp, DataResult};
 use super::transcript::{read_transcript, transcript_path, TranscriptEvent, TranscriptKind};
+use crate::ui_msg::UiMsg;
 
 /// 把單一事件渲染成一行（或多行）Markdown，整桌／單場匯出共用同一份格式。
 fn render_transcript_entry(event: &TranscriptEvent, english: bool) -> String {
@@ -55,7 +56,7 @@ pub fn export_transcript_markdown(root: &Path, world_id: &str, lang: &str) -> Da
     let world_name = read_state(root, world_id)?.name;
     let transcript_dir = world_dir(root, world_id)?.join("transcript");
     if !transcript_dir.is_dir() {
-        return Err(invalid_data("這桌還沒有任何紀錄"));
+        return Err(UiMsg::TranscriptEmpty.into_error());
     }
 
     let mut scenes = Vec::new();
@@ -75,7 +76,7 @@ pub fn export_transcript_markdown(root: &Path, world_id: &str, lang: &str) -> Da
     scenes.sort_unstable();
     scenes.dedup();
     if scenes.is_empty() {
-        return Err(invalid_data("這桌還沒有任何紀錄"));
+        return Err(UiMsg::TranscriptEmpty.into_error());
     }
 
     let english = lang == "en";
@@ -109,7 +110,7 @@ pub fn export_scene_markdown(
 ) -> DataResult<String> {
     let path = transcript_path(root, world_id, scene)?;
     if !path.exists() {
-        return Err(invalid_data(format!("場景 {scene} 不存在")));
+        return Err(UiMsg::SceneNotFound { scene }.into_error());
     }
 
     let world_name = read_state(root, world_id)?.name;

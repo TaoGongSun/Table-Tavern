@@ -1,4 +1,5 @@
-use crate::data::{self, DataResult};
+use crate::data::DataResult;
+use crate::ui_msg::UiMsg;
 use serde_json::Value;
 
 pub(super) const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
@@ -7,19 +8,34 @@ pub(super) fn string_field<'a>(data: &'a Value, field: &str) -> Option<&'a str> 
     data.get(field).and_then(Value::as_str)
 }
 
+/// PNG 結構壞掉：細節是技術原文，玩家看到的是「圖片檔損壞」加上這段。
+pub(super) fn png_invalid(detail: &str) -> Box<dyn std::error::Error + Send + Sync> {
+    UiMsg::PngInvalid {
+        detail: detail.to_owned(),
+    }
+    .into_error()
+}
+
+fn card_data_invalid(detail: &str) -> Box<dyn std::error::Error + Send + Sync> {
+    UiMsg::CardDataInvalid {
+        detail: detail.to_owned(),
+    }
+    .into_error()
+}
+
 pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
     let mut offset = PNG_MAGIC.len();
     while offset < bytes.len() {
         if bytes.len() - offset < 12 {
-            return Err(data::invalid_data("PNG chunk 格式不完整"));
+            return Err(png_invalid("chunk header truncated"));
         }
         let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
         let chunk_end = offset
             .checked_add(12)
             .and_then(|end| end.checked_add(length))
-            .ok_or_else(|| data::invalid_data("PNG chunk 長度無效"))?;
+            .ok_or_else(|| png_invalid("chunk length overflow"))?;
         if chunk_end > bytes.len() {
-            return Err(data::invalid_data("PNG chunk 長度超出檔案範圍"));
+            return Err(png_invalid("chunk runs past end of file"));
         }
         let kind = &bytes[offset + 4..offset + 8];
         let chunk_data = &bytes[offset + 8..offset + 8 + length];
@@ -32,12 +48,12 @@ pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
         }
         offset = chunk_end;
     }
-    Err(data::invalid_data("PNG 找不到 chara tEXt chunk"))
+    Err(UiMsg::CardPngNoData.into_error())
 }
 
 fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
     if !input.len().is_multiple_of(4) {
-        return Err(data::invalid_data("chara base64 長度無效"));
+        return Err(card_data_invalid("base64 length is not a multiple of 4"));
     }
     let mut output = Vec::with_capacity(input.len() / 4 * 3);
     for group in input.chunks_exact(4) {
@@ -47,17 +63,17 @@ fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
                 && (group[..4 - padding].contains(&b'=')
                     || group[4 - padding..4].iter().any(|byte| *byte != b'=')))
         {
-            return Err(data::invalid_data("chara base64 padding 無效"));
+            return Err(card_data_invalid("invalid base64 padding"));
         }
         if padding > 0 && group != &input[input.len() - 4..] {
-            return Err(data::invalid_data("chara base64 padding 位置無效"));
+            return Err(card_data_invalid("base64 padding before the end"));
         }
         let mut values = [0u8; 4];
         for (index, byte) in group.iter().enumerate() {
             values[index] = if *byte == b'=' {
                 0
             } else {
-                base64_value(*byte).ok_or_else(|| data::invalid_data("chara base64 含非法字元"))?
+                base64_value(*byte).ok_or_else(|| card_data_invalid("invalid base64 character"))?
             };
         }
         output.push((values[0] << 2) | (values[1] >> 4));
@@ -141,8 +157,28 @@ mod tests {
     #[test]
     fn decodes_base64_and_rejects_invalid_input() {
         assert_eq!(decode_base64(b"SGVsbG8=").unwrap(), b"Hello");
-        assert!(decode_base64(b"SGVsbG8!").is_err());
-        assert!(decode_base64(b"AA=A").is_err());
+        assert_eq!(
+            decode_base64(b"SGVsbG8!").unwrap_err().to_string(),
+            card_data_invalid("invalid base64 character").to_string()
+        );
+        assert_eq!(
+            decode_base64(b"AA=A").unwrap_err().to_string(),
+            card_data_invalid("invalid base64 padding").to_string()
+        );
+    }
+
+    #[test]
+    fn broken_png_and_png_without_card_data_report_codes() {
+        let mut truncated = PNG_MAGIC.to_vec();
+        truncated.extend_from_slice(&[0, 0, 0, 9]);
+        assert_eq!(
+            decode_png_character(&truncated).unwrap_err().to_string(),
+            png_invalid("chunk header truncated").to_string()
+        );
+        assert_eq!(
+            decode_png_character(PNG_MAGIC).unwrap_err().to_string(),
+            UiMsg::CardPngNoData.to_string()
+        );
     }
 
     #[test]

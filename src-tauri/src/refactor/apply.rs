@@ -2,6 +2,7 @@ use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::types::{RefactorApplyResult, RefactorApplySummary, RefactorOutcome, RefactorSelection};
 use crate::data::{self, CharacterCard, DataResult, Tier, Visibility, WorldbookEntry};
 use crate::mechanism;
+use crate::ui_msg::UiMsg;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -33,7 +34,7 @@ pub fn apply(
         .player_index
         .filter(|index| selection.character_indices.contains(index));
     if player_index.is_some() && state.player_card_id.is_some() {
-        return Err(data::invalid_data("這桌已經有玩家卡"));
+        return Err(UiMsg::PlayerCardExists.into_error());
     }
     let existing_character_count = data::list_characters(root, world_id)?.len();
 

@@ -1,4 +1,5 @@
 use crate::data::{self, AppConfig, DataResult};
+use crate::ui_msg::UiMsg;
 use crate::{config_root, smart_free};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -239,11 +240,16 @@ fn persist_openrouter_key(root: &Path, key: &str) -> DataResult<AppConfig> {
         let mut patch = bootstrap_patch(disk);
         let keys = patch
             .as_object_mut()
-            .ok_or_else(|| data::invalid_data("補丁不是物件"))?
+            .ok_or_else(|| UiMsg::ConfigPatchNotObject.into_error())?
             .entry("api_keys".to_owned())
             .or_insert_with(|| serde_json::json!({}));
         keys.as_object_mut()
-            .ok_or_else(|| data::invalid_data("api_keys 不是物件"))?
+            .ok_or_else(|| {
+                UiMsg::ConfigFieldNotObject {
+                    key: "api_keys".to_owned(),
+                }
+                .into_error()
+            })?
             .insert(
                 "openrouter".to_owned(),
                 serde_json::Value::String(trimmed.clone()),

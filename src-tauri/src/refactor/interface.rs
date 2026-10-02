@@ -1,4 +1,5 @@
 use crate::data::{FieldRule, StateNode};
+use crate::ui_msg::UiMsg;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// 介面產物的路徑正規化：模型會把同一份狀態欄輸出成兩套重複結構（頂層一套＋「状态栏」
@@ -55,9 +56,10 @@ pub(super) fn normalize_interface_paths(
         let root_referenced = pairs.iter().any(|(_, root)| placeholders.contains(root));
         let canon_is_root = match (nested_referenced, root_referenced) {
             (true, true) => {
-                return Err(format!(
-                    "介面產物自相矛盾：渲染殼同時綁定「{branch}.…」與頂層兩套路徑，請重新執行重構"
-                ));
+                return Err(UiMsg::RefactorShellConflict {
+                    branch: branch.to_string(),
+                }
+                .into());
             }
             (true, false) => false,
             (false, true) => true,
@@ -87,9 +89,13 @@ pub(super) fn normalize_interface_paths(
                 if is_empty_value(&canon_value) {
                     merged.insert(canon.clone(), alias_value);
                 } else if canon_value != alias_value {
-                    return Err(format!(
-                        "介面產物同一欄位兩套初始值不一致：「{alias}」＝{alias_value}、「{canon}」＝{canon_value}，請重新執行重構"
-                    ));
+                    return Err(UiMsg::RefactorValueMismatch {
+                        first: alias.clone(),
+                        first_value: alias_value.to_string(),
+                        second: canon.clone(),
+                        second_value: canon_value.to_string(),
+                    }
+                    .into());
                 }
             }
             merged.remove(alias);
@@ -105,9 +111,13 @@ pub(super) fn normalize_interface_paths(
                             && !is_empty_value(&value)
                             && *existing != value
                         {
-                            return Err(format!(
-                                "介面產物同一欄位兩套初始值不一致：「{nested}」＝{value}、「{stripped}」＝{existing}，請重新執行重構"
-                            ));
+                            return Err(UiMsg::RefactorValueMismatch {
+                                first: (*nested).clone(),
+                                first_value: value.to_string(),
+                                second: stripped,
+                                second_value: existing.to_string(),
+                            }
+                            .into());
                         }
                         if is_empty_value(existing) && !is_empty_value(&value) {
                             merged.insert(stripped.clone(), value);
@@ -126,9 +136,11 @@ pub(super) fn normalize_interface_paths(
         let target = alias_of.get(path).cloned().unwrap_or_else(|| path.clone());
         if let Some(existing) = normalized_rules.get(&target) {
             if existing != rule {
-                return Err(format!(
-                    "介面產物同一欄位兩套規則不一致：「{path}」與「{target}」，請重新執行重構"
-                ));
+                return Err(UiMsg::RefactorRuleMismatch {
+                    path: path.clone(),
+                    target,
+                }
+                .into());
             }
             continue;
         }
@@ -173,9 +185,7 @@ fn unflatten(leaves: &BTreeMap<String, serde_json::Value>) -> Result<serde_json:
         while let Some(segment) = segments.next() {
             if segments.peek().is_none() {
                 if node.get(segment).is_some_and(serde_json::Value::is_object) {
-                    return Err(format!(
-                        "介面產物欄位路徑互相衝突：「{path}」，請重新執行重構"
-                    ));
+                    return Err(UiMsg::RefactorPathConflict { path: path.clone() }.into());
                 }
                 node.insert(segment.to_owned(), value.clone());
             } else {
@@ -187,9 +197,7 @@ fn unflatten(leaves: &BTreeMap<String, serde_json::Value>) -> Result<serde_json:
                         node = child.as_object_mut().unwrap();
                     }
                     None => {
-                        return Err(format!(
-                            "介面產物欄位路徑互相衝突：「{path}」，請重新執行重構"
-                        ));
+                        return Err(UiMsg::RefactorPathConflict { path: path.clone() }.into());
                     }
                 }
             }

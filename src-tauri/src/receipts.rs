@@ -5,6 +5,7 @@
 //! 其實什麼都沒發生。
 
 use crate::data::{self, DataResult, FieldRule, StateNode, Trigger, WorldState, WorldbookEntry};
+use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -546,14 +547,18 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
     let path = data::import_receipts_path(root, world_id)?;
     let mut receipts: Vec<ImportReceipt> = if path.exists() {
         let text = fs::read_to_string(&path)?;
-        serde_json::from_str(&text)
-            .map_err(|error| data::invalid_data(format!("匯入收據已損毀，無可復原：{error}")))?
+        serde_json::from_str(&text).map_err(|error| {
+            UiMsg::ImportReceiptCorrupt {
+                error: error.to_string(),
+            }
+            .into_error()
+        })?
     } else {
         Vec::new()
     };
     let receipt = receipts
         .pop()
-        .ok_or_else(|| data::invalid_data("沒有可復原的匯入紀錄"))?;
+        .ok_or_else(|| UiMsg::NoImportToUndo.into_error())?;
 
     let mut report = UndoReport::default();
 

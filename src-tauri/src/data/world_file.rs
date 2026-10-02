@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use super::format::marker::{self, FormatVersion};
 use super::paths::{validate_id, world_dir, worlds_dir};
-use super::{invalid_data, DataResult};
+use super::DataResult;
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug)]
 pub(crate) struct RenameError {
@@ -116,7 +117,7 @@ pub(crate) fn rename_path(from: &Path, to: &Path) -> DataResult<()> {
     for attempt in 1..=attempts {
         if injected_rename_failure() {
             if attempt == attempts {
-                return rename_error(format!("改名失敗：{} → {}", from.display(), to.display()));
+                return rename_error(rename_failed(from, to));
             }
             continue;
         }
@@ -128,15 +129,26 @@ pub(crate) fn rename_path(from: &Path, to: &Path) -> DataResult<()> {
                 let _ = error;
             }
             Err(error) => {
-                return rename_error(format!(
-                    "改名失敗：{} → {}（{error}）",
-                    from.display(),
-                    to.display()
-                ));
+                return rename_error(
+                    UiMsg::RenameFailedIo {
+                        from: from.display().to_string(),
+                        to: to.display().to_string(),
+                        error: error.to_string(),
+                    }
+                    .to_string(),
+                );
             }
         }
     }
-    rename_error(format!("改名失敗：{} → {}", from.display(), to.display()))
+    rename_error(rename_failed(from, to))
+}
+
+fn rename_failed(from: &Path, to: &Path) -> String {
+    UiMsg::RenameFailed {
+        from: from.display().to_string(),
+        to: to.display().to_string(),
+    }
+    .to_string()
 }
 
 pub(crate) fn write_bytes_raw(path: &Path, bytes: &[u8]) -> DataResult<()> {
@@ -186,7 +198,10 @@ pub(crate) fn remove_path_raw(path: &Path) -> DataResult<()> {
         return Ok(());
     }
     if injected_remove_failure() {
-        return Err(invalid_data(format!("刪除失敗：{}", path.display())));
+        return Err(UiMsg::RemoveFailed {
+            path: path.display().to_string(),
+        }
+        .into_error());
     }
     if path.is_dir() {
         fs::remove_dir_all(path)?;
@@ -198,7 +213,10 @@ pub(crate) fn remove_path_raw(path: &Path) -> DataResult<()> {
 
 pub(crate) fn copy_dir(from: &Path, to: &Path) -> DataResult<()> {
     if to.exists() {
-        return Err(invalid_data(format!("目標已存在：{}", to.display())));
+        return Err(UiMsg::TargetExists {
+            path: to.display().to_string(),
+        }
+        .into_error());
     }
     fs::create_dir_all(to)?;
     copy_children(from, to)?;
@@ -230,7 +248,10 @@ pub(crate) fn locate_world(path: &Path) -> DataResult<(PathBuf, String)> {
                 if let Some(id) = node.file_name().and_then(|name| name.to_str()) {
                     if validate_id(id).is_ok() {
                         let root = parent.parent().ok_or_else(|| {
-                            invalid_data(format!("找不到資料根：{}", path.display()))
+                            UiMsg::DataRootNotFound {
+                                path: path.display().to_string(),
+                            }
+                            .into_error()
                         })?;
                         return Ok((root.to_path_buf(), id.to_owned()));
                     }
@@ -239,10 +260,10 @@ pub(crate) fn locate_world(path: &Path) -> DataResult<(PathBuf, String)> {
         }
         current = node.parent();
     }
-    Err(invalid_data(format!(
-        "路徑不在桌目錄裡：{}",
-        path.display()
-    )))
+    Err(UiMsg::PathOutsideWorld {
+        path: path.display().to_string(),
+    }
+    .into_error())
 }
 
 fn combo_blocks_write(root: &Path, world_id: &str) -> bool {
@@ -256,14 +277,14 @@ fn combo_blocks_write(root: &Path, world_id: &str) -> bool {
 pub(crate) fn ensure_writable(root: &Path, world_id: &str) -> DataResult<()> {
     let dir = world_dir(root, world_id)?;
     if !dir.is_dir() {
-        return Err(invalid_data("找不到這張桌"));
+        return Err(UiMsg::WorldNotFound.into_error());
     }
     if combo_blocks_write(root, world_id) {
-        return Err(invalid_data("這張桌正在轉換或需要修復，不能寫入"));
+        return Err(UiMsg::WorldConverting.into_error());
     }
     match marker::read_format(&dir).version {
         FormatVersion::Known(version) if version == marker::current_format() => Ok(()),
-        _ => Err(invalid_data("這張桌是唯讀，不能寫入")),
+        _ => Err(UiMsg::WorldReadOnly.into_error()),
     }
 }
 

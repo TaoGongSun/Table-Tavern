@@ -33,6 +33,11 @@ import {
   type ResponseTruncatedMsgKey,
 } from "./features/response-truncated";
 import { backendMsgMessage, isBackendMsgKey, type BackendMsgKey } from "./features/backend-msg";
+import {
+  isTableDataMsgKey,
+  tableDataMsgMessage,
+  type TableDataMsgKey,
+} from "./features/backend-msg-table";
 
 export type MsgKey =
   | CoreMsgKey
@@ -40,7 +45,8 @@ export type MsgKey =
   | ApiCompatMsgKey
   | SmartFreeMsgKey
   | ResponseTruncatedMsgKey
-  | BackendMsgKey;
+  | BackendMsgKey
+  | TableDataMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -116,7 +122,9 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
           ? responseTruncatedMessage(lang)
           : isBackendMsgKey(key)
             ? backendMsgMessage(lang, key)
-            : MESSAGES[lang][key as CoreMsgKey];
+            : isTableDataMsgKey(key)
+              ? tableDataMsgMessage(lang, key)
+              : MESSAGES[lang][key as CoreMsgKey];
   if (!params) return text;
   // 對模板只掃一次：代入的值裡就算有 {名} 也不會再被換；沒給的佔位符原樣留著。
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>

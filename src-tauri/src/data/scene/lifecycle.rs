@@ -1,11 +1,12 @@
 use std::path::Path;
 
 use super::super::state::{read_state, write_state, SceneLabel, WorldState};
-use super::super::{invalid_data, local_timestamp, DataResult};
+use super::super::{local_timestamp, DataResult};
 use super::presence::settle_card_visibility;
 use super::transcript::{
     append_transcript, read_transcript, transcript_path, TranscriptEvent, TranscriptKind,
 };
+use crate::ui_msg::UiMsg;
 
 /// 沒進 scene_labels 的幕＝原線（舊存檔也走這條）：顯示編號就是內部幕號，第 1 版，上一幕是前一號。
 pub fn scene_label(state: &WorldState, scene: u64) -> SceneLabel {
@@ -45,11 +46,11 @@ fn next_scene_version(state: &WorldState, upto: u64, base: u64) -> u32 {
 pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u64> {
     let mut state = read_state(root, world_id)?;
     if from_scene >= state.current_scene {
-        return Err(invalid_data("只能從前面的幕分岔"));
+        return Err(UiMsg::SceneForkNotEarlier.into_error());
     }
     let events = read_transcript(root, world_id, from_scene)?;
     if events.is_empty() {
-        return Err(invalid_data("這一幕沒有紀錄可以接續"));
+        return Err(UiMsg::SceneNothingToContinue.into_error());
     }
 
     let current_scene = state.current_scene;
@@ -150,11 +151,11 @@ pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
     let mut state = read_state(root, world_id)?;
     let scene = state.current_scene;
     let Some(previous_scene) = scene_label(&state, scene).parent else {
-        return Err(invalid_data("已經是第一幕，沒有前幕可以退回"));
+        return Err(UiMsg::SceneFirstNoPrevious.into_error());
     };
     let events = read_transcript(root, world_id, scene)?;
     if events.len() != 1 {
-        return Err(invalid_data("這一幕已經有新內容，不能退回前幕"));
+        return Err(UiMsg::SceneRewindHasNewContent.into_error());
     }
 
     super::super::world_file::commit_world_remove(&transcript_path(root, world_id, scene)?)?;
@@ -184,16 +185,16 @@ pub fn replace_scene_summary(
     let scene = state.current_scene;
     let label = scene_label(&state, scene);
     let Some(previous_scene) = label.parent else {
-        return Err(invalid_data("第一幕沒有前情提要可以重寫"));
+        return Err(UiMsg::SummaryFirstScene.into_error());
     };
     // 分岔幕開頭那則是複製來的真實對話，不是摘要。源頭幕剛好只有一則時
     // 「只有一則」這道守門會放行，覆寫下去就把玩家的對話換成摘要了。
     if label.forked {
-        return Err(invalid_data("這一幕是從前幕接續來的，開頭不是前情提要"));
+        return Err(UiMsg::SummaryContinuedScene.into_error());
     }
     let mut events = read_transcript(root, world_id, scene)?;
     if events.len() != 1 {
-        return Err(invalid_data("這一幕已經有新內容，不能重寫前情提要"));
+        return Err(UiMsg::SummaryHasNewContent.into_error());
     }
 
     // 重寫的只有文字，其餘欄位原樣留著——尤其 state 那份快照：
@@ -393,7 +394,7 @@ mod tests {
         let error = revert_scene(root.path(), &world_id)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("不能退回前幕"));
+        assert!(error == UiMsg::SceneRewindHasNewContent.to_string());
 
         // 擋下時檔案與 state 都沒被動過
         assert_eq!(read_state(root.path(), &world_id).unwrap(), before_state);
@@ -410,7 +411,7 @@ mod tests {
         let error = revert_scene(root.path(), &world_id)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("沒有前幕可以退回"));
+        assert!(error == UiMsg::SceneFirstNoPrevious.to_string());
     }
 
     #[test]
@@ -703,13 +704,13 @@ mod tests {
         let error = fork_scene(root.path(), &world_id, 0)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("只能從前面的幕分岔"));
+        assert!(error == UiMsg::SceneForkNotEarlier.to_string());
 
         // from_scene > current_scene：幕號還沒出現過
         let error = fork_scene(root.path(), &world_id, 5)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("只能從前面的幕分岔"));
+        assert!(error == UiMsg::SceneForkNotEarlier.to_string());
     }
 
     #[test]
@@ -723,7 +724,7 @@ mod tests {
         let error = fork_scene(root.path(), &world_id, 0)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("這一幕沒有紀錄可以接續"));
+        assert!(error == UiMsg::SceneNothingToContinue.to_string());
     }
 
     #[test]

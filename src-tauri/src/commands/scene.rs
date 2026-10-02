@@ -1,5 +1,6 @@
 use crate::ai_transport::{chat_transport, stream_via_transport};
 use crate::data::TranscriptEvent;
+use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, mechanism, receipts, translate, transport};
 use serde::Serialize;
 use std::path::Path;
@@ -241,7 +242,7 @@ pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Re
     let events = data::read_transcript(&root, &world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     if events.is_empty() {
-        return Err("這個場景還沒有任何紀錄，沒東西可以換場".to_owned());
+        return Err(UiMsg::SceneEmptyCannotAdvance.into());
     }
 
     let messages = transport::summary_messages(&events, &lang);
@@ -301,22 +302,22 @@ pub(crate) async fn regenerate_scene_summary(
     let scene = state.current_scene;
     let label = data::scene_label(&state, scene);
     let Some(previous_scene) = label.parent else {
-        return Err("第一幕沒有前情提要可以重寫".to_owned());
+        return Err(UiMsg::SummaryFirstScene.into());
     };
     if label.forked {
-        return Err("這一幕是從前幕接續來的，開頭不是前情提要".to_owned());
+        return Err(UiMsg::SummaryContinuedScene.into());
     }
     let current_events =
         data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
     if current_events.len() != 1 {
         // 早退：這一幕已經有新內容，不值得先花一次模型呼叫才發現不能用
-        return Err("這一幕已經有新內容，不能重寫前情提要".to_owned());
+        return Err(UiMsg::SummaryHasNewContent.into());
     }
 
     let previous_events = data::read_transcript(&root, &world_id, previous_scene)
         .map_err(|error| error.to_string())?;
     if previous_events.is_empty() {
-        return Err("前一幕還沒有任何紀錄，沒東西可以重新摘要".to_owned());
+        return Err(UiMsg::PreviousSceneEmpty.into());
     }
 
     let messages = transport::summary_messages(&previous_events, &lang);

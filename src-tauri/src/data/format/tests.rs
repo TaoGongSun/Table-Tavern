@@ -14,6 +14,7 @@ use super::marker::{read_format, CurrentOverride, FormatVersion};
 use super::{open_world, read_world_readonly, restore_world_backup, OpenWorld, StepOverride};
 use crate::import::save_character_image;
 use crate::mechanism::{append_log, Record, RecordKind};
+use crate::ui_msg::UiMsg;
 
 fn live(root: &Path, id: &str) -> PathBuf {
     root.join("worlds").join(id)
@@ -743,14 +744,14 @@ fn restore_backup_then_open_and_rejects_bad_preconditions() {
     let err = restore_world_backup(root.path(), &id)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("不是唯讀"), "{err}");
+    assert!(err == UiMsg::WorldNotReadOnly.to_string(), "{err}");
 
     let (root, id) = fresh("restore-none");
     set_ver(&live(root.path(), &id), "99");
     let err = restore_world_backup(root.path(), &id)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("沒有可用的轉換前備份"), "{err}");
+    assert!(err == UiMsg::NoPreMigrationBackup.to_string(), "{err}");
 }
 
 #[test]
@@ -768,7 +769,7 @@ fn unknown_id_is_not_found_and_list_skips_illegal_directories() {
     let err = open_world(root.path(), "01ARZ3NDEKTSV4RRFFQ69G5FAV")
         .unwrap_err()
         .to_string();
-    assert!(err.contains("找不到這張桌"), "{err}");
+    assert!(err == UiMsg::WorldNotFound.to_string(), "{err}");
 
     let (root, id) = fresh("list");
     fs::create_dir_all(root.path().join("worlds/not-an-id")).unwrap();
@@ -830,35 +831,35 @@ fn read_only_world_blocks_every_write_category_but_delete_still_works() {
     let err = write_state(root.path(), &id, &state)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
     assert_eq!(read_state(root.path(), &id).unwrap().name, "霧港");
 
     let err = append_transcript(root.path(), &id, 0, &event("不該出現"))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
     assert!(!live(root.path(), &id).join("transcript/0.jsonl").exists());
 
     card.name = "改名".to_owned();
     let err = write_character(root.path(), &id, &card)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
 
     let err = upsert_worldbook_entry(root.path(), &id, worldbook_entry(1, "霧"))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
 
     let err = save_character_image(root.path(), &id, &card.id, png)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
 
     let err = write_world_md(root.path(), &id, "改設定")
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
 
     append_log(
         root.path(),
@@ -875,21 +876,21 @@ fn read_only_world_blocks_every_write_category_but_delete_still_works() {
     let err = world_file::commit_world_write(&live(root.path(), &id).join("lanes.json"), b"{}")
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
 
     let (root, id) = fresh("gate-dirty");
     put_log(root.path(), &id, migrate_log("build", false));
     let err = write_world_md(root.path(), &id, "x")
         .unwrap_err()
         .to_string();
-    assert!(err.contains("轉換或需要修復"), "{err}");
+    assert!(err == UiMsg::WorldConverting.to_string(), "{err}");
 
     let (root, id) = fresh("gate-reclaim");
     set_ver(&live(root.path(), &id), "99");
     let err = reclaim_world_if_empty(root.path(), &id)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("唯讀"), "{err}");
+    assert!(err == UiMsg::WorldReadOnly.to_string(), "{err}");
     assert!(live(root.path(), &id).is_dir());
 
     let (root, id) = fresh("gate-delete");
@@ -992,7 +993,7 @@ fn recovery_io_error_repairs_one_world_and_lists_the_other() {
             OpenWorld::NeedsRepair { reason, error, .. } => {
                 assert_eq!(reason, RepairReason::Io);
                 let error = error.expect("io 原因要帶系統錯誤原文");
-                assert!(error.contains("刪除失敗"), "{error}");
+                assert!(error.contains(r#""code":"remove_failed""#), "{error}");
             }
             other => panic!("{other:?}"),
         }
