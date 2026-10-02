@@ -86,7 +86,7 @@ pub(super) fn apply_recorded(
     receipts::record_refactor_apply(
         root,
         world_id,
-        "AI 卡重構",
+        &crate::ui_msg::UiMsg::ReceiptRefactorApply.to_string(),
         result.character_ids.clone(),
         result.rewritten_entries.clone(),
         result.deleted_entries.clone(),

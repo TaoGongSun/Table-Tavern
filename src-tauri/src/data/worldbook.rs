@@ -776,7 +776,7 @@ pub fn import_worldbook(
             absorbed.push(Record {
                 kind: RecordKind::Absorbed,
                 path: title,
-                detail: "機制鷹架條目，已由本地機制接管，不再送入提示詞。".to_owned(),
+                detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
             });
         }
         entries.insert(uid.to_string(), entry);

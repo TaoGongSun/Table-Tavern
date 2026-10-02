@@ -1,6 +1,7 @@
 use super::card_io::{decode_png_character, PNG_MAGIC};
 use crate::data::{self, FieldKind, FieldRule, StateNode};
 use crate::mechanism::{self, Record, RecordKind};
+use crate::ui_msg::UiMsg;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -220,7 +221,7 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
             skipped.push(Record {
                 kind: RecordKind::Skipped,
                 path: title.to_owned(),
-                detail: "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+                detail: UiMsg::LedgerScriptUnrecognized.to_string(),
             });
         }
     }

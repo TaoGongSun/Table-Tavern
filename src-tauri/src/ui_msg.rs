@@ -3,8 +3,6 @@
 //! code 一旦落檔就是持久契約，不得改名；新增變體要在 src/i18n/features/backend-msg.ts
 //! 補十語系 `be_<code>` 與參數表，`npm run check:i18n` 會從這支檔抽 code 與欄位核對。
 //! 包裹別人的錯誤一律用名為 `error` 的欄位：前端只對這個欄位做巢狀翻譯，其餘參數原文代入。
-// 呼叫端由後續分包逐批接上，先放行未使用警告。
-#![allow(dead_code)]
 
 use std::error::Error;
 use std::fmt;
@@ -228,7 +226,7 @@ pub enum UiMsg {
 
     // ── AI 連線（API／CLI／續聊線）
     // code 不得含 ai-error.ts 分流正則會認的字樣（rate limit、credential…），否則改變分流；
-    // openrouter_api_key_missing 刻意保留 `api_key`，維持改碼前「API key」字樣的認證分流。
+    // openrouter_api_key_missing 由 explainAiError 明確認碼判成認證錯誤。
     CliWorkspaceFailed {
         error: String,
     },
@@ -299,6 +297,43 @@ pub enum UiMsg {
     LaneRewriteUnsupported {
         provider: String,
     },
+
+    // ── 畫面說明（非錯誤）：落檔在重構結果、機制帳本、匯入收據、模型清單快取
+    // 帳本 detail 會進重構 AI 的脈絡，ai_text 要給英文短句。
+    /// 重構審閱：淘汰缺編號或越界，整條退回照搬。
+    RefactorDropRuleCarried,
+    /// 重構審閱：淘汰缺編號或越界，這一段併進餘段照搬。
+    RefactorDropRuleLeftover,
+    /// 重構審閱：這一段沒有有效路由，併進「（餘段）」條目照搬。
+    RefactorSpanLeftover,
+    /// 重構審閱：人物 mode=clean 但段落引用無效；name 是人物名原文。
+    RefactorPersonSpanInvalid {
+        name: String,
+    },
+    /// 重構審閱：條目沒出現在任何分類，自動補列照搬。
+    RefactorCoverageCarried,
+    /// 重構審閱：預掃訊號落在照搬條目卻沒附理由；pattern 是訊號樣式原文。
+    RefactorSignalNoReason {
+        pattern: String,
+    },
+    /// 重構審閱「未接管機制」的固定說明：預掃訊號落在照搬條目。
+    RefactorSignalOnCarry,
+    /// 重構審閱：AI 給的照搬理由；reason 是 AI 原文。
+    RefactorCarryReason {
+        reason: String,
+    },
+    /// 機制帳本：AI 卡重構產生的機制條目已接管。
+    LedgerRefactorMechanism,
+    /// 機制帳本：卡片腳本認不出來，跳過。
+    LedgerScriptUnrecognized,
+    /// 機制帳本：機制鷹架條目已由本地接管。
+    LedgerScaffoldAbsorbed,
+    /// 匯入收據的名稱：AI 卡重構套用。
+    ReceiptRefactorApply,
+    /// 模型下拉的 Claude 官方別名；alias 是別名原文（fable／opus…）。
+    CliModelAlias {
+        alias: String,
+    },
 }
 
 impl fmt::Display for UiMsg {
@@ -326,8 +361,41 @@ impl UiMsg {
             UiMsg::IoFailed { error } => {
                 format!("File read/write failed: {}", nested(error, depth))
             }
-            // 其餘是只上畫面的操作錯誤，不會進提示詞；萬一進了就原樣保留，跟未知碼一致。
-            other => other.to_string(),
+            UiMsg::RefactorDropRuleCarried => {
+                "Drop rule missing or not 1-4; the entry was carried over as-is.".to_owned()
+            }
+            UiMsg::RefactorDropRuleLeftover => {
+                "Drop rule missing or not 1-4; this span was merged into the leftover entry."
+                    .to_owned()
+            }
+            UiMsg::RefactorSpanLeftover => {
+                "This span had no valid route and was merged into the leftover entry.".to_owned()
+            }
+            UiMsg::RefactorPersonSpanInvalid { name } => {
+                format!("Person \"{name}\" used mode=clean with invalid span references; sent back to the expand queue.")
+            }
+            UiMsg::RefactorCoverageCarried => {
+                "This entry was not classified anywhere and was carried over as-is.".to_owned()
+            }
+            UiMsg::RefactorSignalNoReason { pattern } => {
+                format!("Prescan signal ({pattern}) fell in a carried entry with no reason given.")
+            }
+            UiMsg::RefactorSignalOnCarry => "Prescan signal fell in a carried entry.".to_owned(),
+            UiMsg::RefactorCarryReason { reason } => format!("Carry reason: {reason}"),
+            UiMsg::LedgerRefactorMechanism => "Mechanism entry produced by AI card refactor: \
+                field rules and trigger tables run locally in the app; the description stays \
+                in the worldbook (read-only)."
+                .to_owned(),
+            UiMsg::LedgerScriptUnrecognized => "Card script not recognized; not converted to a \
+                trigger table and not sent to the model by default."
+                .to_owned(),
+            UiMsg::LedgerScaffoldAbsorbed => "Mechanism scaffold entry; taken over by the local \
+                mechanism and no longer sent in the prompt."
+                .to_owned(),
+            UiMsg::ReceiptRefactorApply => "AI card refactor".to_owned(),
+            UiMsg::CliModelAlias { alias } => format!("{alias} (official alias)"),
+            // 其餘是只上畫面的操作錯誤，不該進提示詞；萬一進了也給可讀的英文，不讓 AI 看到 JSON。
+            other => generic_ai_text(other, depth),
         }
     }
 
@@ -335,6 +403,38 @@ impl UiMsg {
     pub fn ai_text_from_str(text: &str) -> String {
         render_ai(text, 0)
     }
+}
+
+/// 沒寫專屬英文的代碼：code 拆成英文字、參數照列（`error` 巢狀轉換），例如
+/// `World busy`、`Cli not found (cli: agy)`。
+fn generic_ai_text(msg: &UiMsg, depth: usize) -> String {
+    let Ok(serde_json::Value::Object(fields)) = serde_json::to_value(msg) else {
+        return msg.to_string();
+    };
+    let code = fields
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let mut text = code.replace('_', " ");
+    if let Some(first) = text.get(..1) {
+        text.replace_range(..1, &first.to_ascii_uppercase());
+    }
+    let params: Vec<String> = fields
+        .iter()
+        .filter(|(name, _)| name.as_str() != "code")
+        .map(|(name, value)| {
+            let value = match value {
+                serde_json::Value::String(raw) if name == "error" => nested(raw, depth),
+                serde_json::Value::String(raw) => raw.clone(),
+                other => other.to_string(),
+            };
+            format!("{name}: {value}")
+        })
+        .collect();
+    if !params.is_empty() {
+        text.push_str(&format!(" ({})", params.join(", ")));
+    }
+    text
 }
 
 fn nested(error: &str, depth: usize) -> String {
@@ -465,6 +565,46 @@ mod tests {
             "File read/write failed: File read/write failed: File read/write failed: "
         ));
         assert!(rendered.ends_with(&io("root").to_string()), "{rendered}");
+    }
+
+    #[test]
+    fn ai_text_turns_ledger_and_review_codes_into_english() {
+        let ledger = UiMsg::LedgerScaffoldAbsorbed.to_string();
+        assert_eq!(
+            UiMsg::ai_text_from_str(&ledger),
+            "Mechanism scaffold entry; taken over by the local mechanism and no longer sent in the prompt."
+        );
+        let reason = UiMsg::RefactorCarryReason {
+            reason: "純設定".to_owned(),
+        }
+        .to_string();
+        assert_eq!(UiMsg::ai_text_from_str(&reason), "Carry reason: 純設定");
+        // 舊檔的中文原樣送
+        let old = "機制鷹架條目，已由本地機制接管，不再送入提示詞。";
+        assert_eq!(UiMsg::ai_text_from_str(old), old);
+        let broken = r#"TTMSG:{"code":"ledger_scaffold_absorbed""#;
+        assert_eq!(UiMsg::ai_text_from_str(broken), broken);
+        let unknown = r#"TTMSG:{"code":"ledger_from_the_future"}"#;
+        assert_eq!(UiMsg::ai_text_from_str(unknown), unknown);
+    }
+
+    #[test]
+    fn ai_text_without_a_dedicated_line_reads_code_and_params_not_json() {
+        assert_eq!(
+            UiMsg::ai_text_from_str(&UiMsg::WorldBusy.to_string()),
+            "World busy"
+        );
+        let nested = UiMsg::RenameFailedIo {
+            from: "a".to_owned(),
+            to: "b".to_owned(),
+            error: io("disk full").to_string(),
+        };
+        let text = UiMsg::ai_text_from_str(&nested.to_string());
+        assert_eq!(
+            text,
+            "Rename failed io (error: File read/write failed: disk full, from: a, to: b)"
+        );
+        assert!(!text.contains(MARK));
     }
 
     #[test]

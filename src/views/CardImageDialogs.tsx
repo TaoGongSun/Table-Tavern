@@ -5,6 +5,7 @@ import Cropper, { Area } from "react-easy-crop";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../i18n";
+import { backendText } from "../shared/ui/backend-text";
 import { explainAiError } from "../shared/ui/ai-error";
 import { Dialog, SwapLabel } from "../shared/ui/Dialog";
 import { AppConfig } from "../shared/contracts/backend-contracts";
@@ -115,7 +116,7 @@ export function CropDialog({
         {t("zoomLabel")}
         <input type="range" min={1} max={4} step={0.05} value={zoom} onChange={(event) => setZoom(Number(event.currentTarget.value))} />
       </label>
-      {message && <p role="alert">{message}</p>}
+      {message && <p role="alert">{backendText(message)}</p>}
     </Dialog>
   );
 }
@@ -300,7 +301,7 @@ export function AiImageDialog({
           {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
         </p>
       )}
-      {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
+      {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{backendText(aiGenError)}</small></div>}
       {galleryFiles.length > 0 && (
         <section aria-label={t("aiGalleryTitle")}>
           <h3>{t("aiGalleryTitle")}</h3>

@@ -253,10 +253,13 @@ describe("AI 連線面代碼", () => {
 
   it("缺 OpenRouter key 的分流跟改碼前的繁中原句一致", () => {
     const old = "尚未設定 OpenRouter API key，請先到設定貼上";
-    for (const transport of ["api", undefined]) {
+    for (const transport of ["api", "claude", undefined]) {
       expect(explainAiError(keyMissing, transport)).toBe(explainAiError(old, transport));
       expect(explainAiError(`AI_CALL_FAILED: ${keyMissing}`, transport)).toBe(
         explainAiError(`AI_CALL_FAILED: ${old}`, transport),
+      );
+      expect(explainAiError(`Error: AI_CALL_FAILED: ${keyMissing}`, transport)).toBe(
+        explainAiError(`Error: AI_CALL_FAILED: ${old}`, transport),
       );
     }
     expect(explainAiError(keyMissing, "api")).toBe("errAuthApi");
@@ -290,5 +293,32 @@ describe("AI 連線面代碼", () => {
     );
     expect(text).not.toMatch(/[一-鿿]/);
     expect(backendText(keyMissing)).toBe("API key OpenRouter ещё не задан. Вставь его в настройках.");
+  });
+});
+
+// 包 5：畫面說明（重構審閱 detail、帳本 detail、收據名稱、官方別名）落檔存代碼，舊檔是中文原句。
+describe("畫面說明代碼", () => {
+  afterEach(() => setLang("zh-TW"));
+  const msg = (code: string, params: Record<string, string> = {}) =>
+    `TTMSG:${JSON.stringify({ code, ...params })}`;
+
+  it("新代碼依語系翻，舊中文原樣，同一份帳本可混存", () => {
+    setLang("ru");
+    const ledger = [msg("ledger_scaffold_absorbed"), "機制鷹架條目，已由本地機制接管，不再送入提示詞。"];
+    expect(ledger.map(backendText)).toEqual([
+      "Служебная запись механики: теперь её обрабатывает локальная механика приложения, в промпт она больше не попадает.",
+      "機制鷹架條目，已由本地機制接管，不再送入提示詞。",
+    ]);
+    expect(backendText(msg("receipt_refactor_apply"))).toBe("ИИ-разбор карточки");
+    expect(backendText(msg("cli_model_alias", { alias: "opus" }))).toBe("opus (официальный алиас)");
+  });
+
+  it("AI 給的照搬理由當參數原文代入，裡面的大括號與標記字樣不再被換", () => {
+    const reason = msg("refactor_carry_reason", { reason: "保留 {name} 與 TTMSG: 字樣" });
+    expect(backendText(reason)).toBe("照搬理由：保留 {name} 與 TTMSG: 字樣");
+    setLang("en");
+    expect(backendText(msg("refactor_person_span_invalid", { name: "伊利亞" }))).toBe(
+      "“伊利亞” uses mode=clean but references invalid spans; sent back to the expand queue.",
+    );
   });
 });

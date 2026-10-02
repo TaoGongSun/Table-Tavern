@@ -4,6 +4,7 @@
 // 儲存鈕用 form 屬性送出外部表單：世界設定頁的條目表單是另一個 form，不能整頁包成一個巢狀。
 import type { ReactNode } from "react";
 import { t } from "../i18n";
+import { backendText } from "../shared/ui/backend-text";
 import { IconBack } from "../shared/ui/icons";
 import { MoreMenu, type MoreMenuItem } from "../shared/ui/MoreMenu";
 
@@ -58,7 +59,7 @@ export function EditPage({
       {hasStatus && (
         // 限高內捲：可聚焦，超長錯誤才能只用鍵盤捲完
         <div className="edit-page-status" tabIndex={0}>
-          {message && <span role={messageIsError ? "alert" : "status"}>{message}</span>}
+          {message && <span role={messageIsError ? "alert" : "status"}>{backendText(message)}</span>}
           {unsavedCount > 0 && (
             <span className="unsaved-hint" role="status">
               {t("unsavedChanges", { n: unsavedCount })}

@@ -1,6 +1,7 @@
 use super::types::{EntrySpan, PrescanSignal};
 use crate::data::{self, DataResult, WorldbookEntry};
 use crate::mechanism::{self, RecordKind};
+use crate::ui_msg::UiMsg;
 use std::path::Path;
 
 /// 組裝一次 AI 讀卡要看到的完整脈絡：world.md＋世界書全部條目（含 uid／constant／disabled
@@ -51,11 +52,15 @@ pub fn assemble_card_context(root: &Path, world_id: &str) -> DataResult<String> 
             match entry.kind {
                 RecordKind::Absorbed => out.push_str(&format!(
                     "- uid={} 《{}》已接管，不必再拆：{}\n",
-                    entry.uid, entry.title, entry.detail
+                    entry.uid,
+                    entry.title,
+                    UiMsg::ai_text_from_str(&entry.detail)
                 )),
                 RecordKind::Skipped => out.push_str(&format!(
                     "- uid={} 《{}》曾嘗試接管失敗（原因：{}），是重構目標\n",
-                    entry.uid, entry.title, entry.detail
+                    entry.uid,
+                    entry.title,
+                    UiMsg::ai_text_from_str(&entry.detail)
                 )),
                 _ => {}
             }
@@ -344,6 +349,64 @@ mod tests {
                 && context.contains("欠了債。")
         );
         assert!(context.contains("已接管") && context.contains("偵測到 [initvar] 標記"));
+    }
+
+    #[test]
+    fn assemble_card_context_turns_coded_ledger_details_into_english() {
+        let root = TestRoot::new();
+        let world_id = data::create_world(&root.0, "夜港").unwrap();
+        for title in ["鷹架", "腳本", "舊帳"] {
+            data::upsert_worldbook_entry(
+                &root.0,
+                &world_id,
+                WorldbookEntry {
+                    uid: u64::MAX,
+                    title: title.to_owned(),
+                    keys: Vec::new(),
+                    content: "內容".to_owned(),
+                    constant: false,
+                    order: 0,
+                    disabled: false,
+                    visibility: Visibility::Gm,
+                    is_person: false,
+                    locked: false,
+                },
+            )
+            .unwrap();
+        }
+        let record = |kind, path: &str, detail: String| mechanism::Record {
+            kind,
+            path: path.to_owned(),
+            detail,
+        };
+        mechanism::append_log(
+            &root.0,
+            &world_id,
+            0,
+            &[
+                record(
+                    RecordKind::Absorbed,
+                    "鷹架",
+                    UiMsg::LedgerScaffoldAbsorbed.to_string(),
+                ),
+                record(
+                    RecordKind::Skipped,
+                    "腳本",
+                    UiMsg::LedgerScriptUnrecognized.to_string(),
+                ),
+                record(
+                    RecordKind::Skipped,
+                    "舊帳",
+                    "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+                ),
+            ],
+        );
+
+        let context = assemble_card_context(&root.0, &world_id).unwrap();
+        assert!(!context.contains(crate::ui_msg::MARK), "{context}");
+        assert!(context.contains("Mechanism scaffold entry; taken over by the local mechanism"));
+        assert!(context.contains("（原因：Card script not recognized;"));
+        assert!(context.contains("（原因：卡片腳本認不出來，沒轉成觸發表，預設不送模型。）"));
     }
 
     // ---- span 切分 ----

@@ -15,6 +15,7 @@ use crate::refactor_ai::{
     self, EntrySpan, RefactorEntryMeta, RefactorEntryVerdict, RefactorNewEntry, RefactorSpanRoute,
     RefactorSurveyOutcome,
 };
+use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -219,7 +220,7 @@ fn assemble_verdicts(
                         kind: "drop_rule".to_owned(),
                         uid: verdict.uid.clone(),
                         span: String::new(),
-                        detail: "淘汰缺編號或編號不在 1–4，自動退回照搬。".to_owned(),
+                        detail: UiMsg::RefactorDropRuleCarried.to_string(),
                     });
                 }
             },
@@ -327,7 +328,7 @@ fn assemble_splits(
                     kind: "drop_rule".to_owned(),
                     uid: uid.to_string(),
                     span: route.span.clone(),
-                    detail: "淘汰缺編號或編號不在 1–4，此段改併入餘段照搬。".to_owned(),
+                    detail: UiMsg::RefactorDropRuleLeftover.to_string(),
                 }),
             },
             "person" => {
@@ -440,7 +441,7 @@ fn assemble_splits(
                 kind: "split".to_owned(),
                 uid: uid.to_string(),
                 span: format!("{uid}#s{}", span.id),
-                detail: "此段未獲有效路由，已併入「（餘段）」條目照搬。".to_owned(),
+                detail: UiMsg::RefactorSpanLeftover.to_string(),
             });
         }
         if !leftovers.is_empty() {
@@ -522,10 +523,10 @@ fn assemble_clean_persons(
             kind: "split".to_owned(),
             uid: person.uids.first().cloned().unwrap_or_default(),
             span: invalid_span.to_owned(),
-            detail: format!(
-                "人物「{}」mode=clean 但段落引用無效，退回展開佇列。",
-                person.name
-            ),
+            detail: UiMsg::RefactorPersonSpanInvalid {
+                name: person.name.clone(),
+            }
+            .to_string(),
         });
     }
 
@@ -582,7 +583,7 @@ fn assemble_coverage(
             kind: "coverage".to_owned(),
             uid: entry.uid.to_string(),
             span: String::new(),
-            detail: "此條目未出現在人物／介面／條目分類任何一處，自動補列照搬。".to_owned(),
+            detail: UiMsg::RefactorCoverageCarried.to_string(),
         });
     }
 }
@@ -658,10 +659,10 @@ fn audit_mechanism_conservation(
                 kind: "mechanism".to_owned(),
                 uid: uid_str.clone(),
                 span: signal.span.clone(),
-                detail: format!(
-                    "結構預掃訊號（{}）落在照搬條目，未附 reason 說明。",
-                    signal.pattern
-                ),
+                detail: UiMsg::RefactorSignalNoReason {
+                    pattern: signal.pattern.clone(),
+                }
+                .to_string(),
             });
             unabsorbed.push(RefactorUnabsorbedItem {
                 uid: uid_str,
@@ -670,14 +671,17 @@ fn audit_mechanism_conservation(
                     .get(&uid)
                     .map(|entry| entry.title.clone())
                     .unwrap_or_default(),
-                note: "預掃訊號落在照搬條目".to_owned(),
+                note: UiMsg::RefactorSignalOnCarry.to_string(),
             });
         } else {
             audit.push(RefactorAuditItem {
                 kind: "excused".to_owned(),
                 uid: uid_str,
                 span: signal.span,
-                detail: format!("照搬理由：{reason}"),
+                detail: UiMsg::RefactorCarryReason {
+                    reason: reason.to_owned(),
+                }
+                .to_string(),
             });
         }
     }
