@@ -10,6 +10,8 @@ OpenRouter 那條的根因 2026-08-22 實證定案：`stealth/ox-alpha` **只在
 
 ## Next action
 
+排在 [usage-cache-audit](usage-cache-audit.md) 之後：等四家實跑對帳出來，命中率已可接受就降級或結案，確實沒中再照下面的分包動工〔作者裁決 2026-10-02〕。
+
 照規格檔實作三包：包 1 `CacheStrategy` 判定與帳本欄位；包 2 尾巴重播（`TranscriptEvent` 新欄位、GM 線與角色線組裝改寫、`<turn-context>` 包裝與 system 規則、十語系文案）；包 3 chain epoch 的重開條件。驗收看離線重算的 byte-LCP 要等於 100%，再實跑三輪看 `cached_tokens` 是否跟著上一輪的 `prompt_tokens` 走。
 
 ## Constraints
