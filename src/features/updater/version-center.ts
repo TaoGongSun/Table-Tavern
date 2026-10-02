@@ -2,6 +2,7 @@
 import { t } from "../../i18n";
 import type { UpdateLevel, UpdateOffer, UpdatePhase } from "./useUpdateController";
 import type { RollbackPhase, RollbackPreview, VersionRow } from "./useVersionStoreController";
+import { backendText } from "../../shared/ui/backend-text";
 
 export type Preferences = Record<string, unknown> | undefined;
 
@@ -91,7 +92,7 @@ export function rollbackDialogText(notice: RollbackNotice, currentVersion: strin
   const skipNote = t("rollbackSkipNote", { version: currentVersion });
   switch (notice.kind) {
     case "invalid":
-      return t("rollbackInvalid", { reason: notice.message });
+      return t("rollbackInvalid", { reason: backendText(notice.message) });
     case "scanFailed":
       return `${t("rollbackScanFailed")}\n\n${skipNote}`;
     case "none":

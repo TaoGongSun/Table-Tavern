@@ -326,6 +326,7 @@ const COPY = {
 type SmartFreeLang = keyof typeof COPY;
 
 export type SmartFreeMsgKey = keyof (typeof COPY)["zh-TW"];
+export const SMART_FREE_MESSAGE_KEYS = Object.keys(COPY["zh-TW"]) as SmartFreeMsgKey[];
 
 export function isSmartFreeMsgKey(key: string): key is SmartFreeMsgKey {
   return key in COPY["zh-TW"];

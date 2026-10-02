@@ -9,6 +9,7 @@ use super::super::{
     upsert_worldbook_entry, write_character, write_state, write_world_md, TranscriptEvent,
     TranscriptKind,
 };
+use super::commit::RepairReason;
 use super::marker::{read_format, CurrentOverride, FormatVersion};
 use super::{open_world, read_world_readonly, restore_world_backup, OpenWorld, StepOverride};
 use crate::import::save_character_image;
@@ -82,12 +83,26 @@ fn restore_log(stage: &str, had_newer: bool) -> serde_json::Value {
 }
 
 /// `dirs`：五個標籤，None 表示該目錄不該在。
-fn expect_open(root: &Path, id: &str, dirs: [Option<&str>; 5], log: bool, repair: Option<&str>) {
+fn expect_open(
+    root: &Path,
+    id: &str,
+    dirs: [Option<&str>; 5],
+    log: bool,
+    repair: Option<RepairReason>,
+) {
     let opened = open_world(root, id).unwrap();
     match (repair, opened) {
         (None, OpenWorld::Ready) => {}
-        (Some(needle), OpenWorld::NeedsRepair { message, directory }) => {
-            assert!(message.contains(needle), "{message}");
+        (
+            Some(expected),
+            OpenWorld::NeedsRepair {
+                reason,
+                error,
+                directory,
+            },
+        ) => {
+            assert_eq!(reason, expected);
+            assert_eq!(error.is_some(), reason == RepairReason::Io, "{error:?}");
             assert!(!directory.is_empty());
         }
         (_, other) => panic!("unexpected open result {other:?}"),
@@ -430,7 +445,7 @@ fn restore_swap_after_r2_is_outside_when_pre_is_newer_than_us() {
         &id,
         [None, None, Some("P"), None, Some("N")],
         true,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 }
 
@@ -481,7 +496,7 @@ fn outside_table_does_not_touch_directories() {
         &id,
         [Some("I"), None, None, Some("T"), None],
         false,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 
     let (root, id) = fresh("out-s");
@@ -492,7 +507,7 @@ fn outside_table_does_not_touch_directories() {
         &id,
         [None, Some("S"), None, None, None],
         false,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 
     let (root, id) = fresh("out-log");
@@ -502,7 +517,7 @@ fn outside_table_does_not_touch_directories() {
         &id,
         [Some("I"), None, None, None, None],
         true,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 
     let (root, id) = fresh("out-op");
@@ -516,7 +531,7 @@ fn outside_table_does_not_touch_directories() {
         &id,
         [Some("I"), None, None, None, None],
         true,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 
     let (root, id) = fresh("out-h");
@@ -527,7 +542,7 @@ fn outside_table_does_not_touch_directories() {
         &id,
         [Some("I"), None, Some("P"), None, None],
         true,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 }
 
@@ -553,8 +568,9 @@ fn no_log_deletes_staging_only_when_live_or_pre_remains() {
     fs::write(side(root.path(), id, "S").join("who.txt"), "S").unwrap();
     let opened = open_world(root.path(), id).unwrap();
     match opened {
-        OpenWorld::NeedsRepair { message, .. } => {
-            assert!(message.contains("主資料夾"), "{message}")
+        OpenWorld::NeedsRepair { reason, error, .. } => {
+            assert_eq!(reason, RepairReason::Missing);
+            assert_eq!(error, None);
         }
         other => panic!("{other:?}"),
     }
@@ -572,7 +588,7 @@ fn missing_live_with_only_backup_is_needs_repair() {
         &id,
         [None, None, Some("P"), None, None],
         false,
-        Some("主資料夾"),
+        Some(RepairReason::Missing),
     );
 }
 
@@ -589,7 +605,7 @@ fn rename_failure_leaves_directories_and_retries_next_open() {
             &id,
             [Some("I"), Some("S"), None, Some("T"), None],
             true,
-            Some("改名失敗"),
+            Some(RepairReason::Rename),
         );
     }
     expect_open(
@@ -612,7 +628,7 @@ fn onedrive_recreating_live_during_swap_is_outside() {
         &id,
         [Some("I"), Some("S"), Some("P"), None, None],
         true,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 
     let (root, id) = fresh("cloud-h1");
@@ -625,7 +641,7 @@ fn onedrive_recreating_live_during_swap_is_outside() {
         &id,
         [Some("I"), Some("S"), Some("P"), Some("T"), None],
         true,
-        Some("對不上"),
+        Some(RepairReason::Outside),
     );
 }
 
@@ -670,8 +686,9 @@ fn migration_build_failure_leaves_the_original_and_retries() {
     let (root, id) = fresh("convert-fail");
     let _current = CurrentOverride::set(2);
     match open_world(root.path(), &id).unwrap() {
-        OpenWorld::NeedsRepair { message, .. } => {
-            assert!(message.contains("格式轉換沒有完成"), "{message}")
+        OpenWorld::NeedsRepair { reason, error, .. } => {
+            assert_eq!(reason, RepairReason::Convert);
+            assert_eq!(error, None);
         }
         other => panic!("{other:?}"),
     }
@@ -972,8 +989,10 @@ fn recovery_io_error_repairs_one_world_and_lists_the_other() {
     {
         let _guard = RemoveFailGuard::fail(1);
         match open_world(root.path(), &bad).unwrap() {
-            OpenWorld::NeedsRepair { message, .. } => {
-                assert!(message.contains("刪除失敗"), "{message}");
+            OpenWorld::NeedsRepair { reason, error, .. } => {
+                assert_eq!(reason, RepairReason::Io);
+                let error = error.expect("io 原因要帶系統錯誤原文");
+                assert!(error.contains("刪除失敗"), "{error}");
             }
             other => panic!("{other:?}"),
         }
@@ -981,4 +1000,26 @@ fn recovery_io_error_repairs_one_world_and_lists_the_other() {
     assert_eq!(who(&live(root.path(), &bad)), "I");
     assert_eq!(who(&side(root.path(), &bad, "S")), "S");
     assert_eq!(who(&side(root.path(), &bad, "P")), "P");
+}
+
+#[test]
+fn needs_repair_serializes_reason_code_and_optional_error() {
+    let io = OpenWorld::NeedsRepair {
+        reason: RepairReason::Io,
+        error: Some("磁碟已滿".to_owned()),
+        directory: "/w".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_value(&io).unwrap(),
+        serde_json::json!({"status": "needs_repair", "reason": "io", "error": "磁碟已滿", "directory": "/w"})
+    );
+    let outside = OpenWorld::NeedsRepair {
+        reason: RepairReason::Outside,
+        error: None,
+        directory: "/w".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_value(&outside).unwrap()["reason"],
+        serde_json::json!("outside")
+    );
 }

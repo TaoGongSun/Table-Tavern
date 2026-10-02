@@ -14,6 +14,7 @@ const COPY = {
 type ResponseTruncatedLang = keyof typeof COPY;
 
 export type ResponseTruncatedMsgKey = "responseTruncated";
+export const RESPONSE_TRUNCATED_MESSAGE_KEYS: ResponseTruncatedMsgKey[] = ["responseTruncated"];
 
 export function isResponseTruncatedMsgKey(key: string): key is ResponseTruncatedMsgKey {
   return key === "responseTruncated";

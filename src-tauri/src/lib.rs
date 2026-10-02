@@ -24,6 +24,7 @@ mod smart_free;
 mod snapshot_patch;
 mod translate;
 mod transport;
+mod ui_msg;
 mod updater;
 mod usage_log;
 mod usage_report;

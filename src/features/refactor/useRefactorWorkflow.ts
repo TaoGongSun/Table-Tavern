@@ -371,7 +371,7 @@ export function useRefactorWorkflow({
           }
         } catch (reason) {
           if (!String(reason).includes("refactor-aborted")) {
-            failedTitles.push({ name, reason: String(reason).slice(0, 200) });
+            failedTitles.push({ name, reason: String(reason) });
           }
         } finally {
           bumpDone();

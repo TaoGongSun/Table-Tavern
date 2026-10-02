@@ -13,12 +13,21 @@ use super::super::world_lock::try_world_exclusive;
 use super::super::{invalid_data, DataResult};
 use super::marker::{self, FormatVersion};
 
-const REPAIR_OUTSIDE: &str =
-    "這張桌的資料夾組合對不上，無法自動修復。原檔都還在，請打開資料夾查看。";
-const REPAIR_RENAME: &str =
-    "修復時改名失敗（檔案可能被佔用）。這次沒有刪除原桌、備份或另存。下次開啟會再試。";
-const REPAIR_CONVERT: &str = "格式轉換沒有完成，原桌未改動。下次開啟會再試。";
-const REPAIR_MISSING: &str = "找不到這張桌的主資料夾，只有備份或未完成的操作。無法自動修復。";
+/// 需修復的原因；畫面文字由前端 `needsRepair_<reason>` 翻譯。值會送到前端，不得改名。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepairReason {
+    /// 目錄組合對不上恢復表，無法自動修復；原檔都還在。
+    Outside,
+    /// 修復時改名失敗（檔案可能被佔用），沒有刪任何東西，下次開啟再試。
+    Rename,
+    /// 格式轉換沒完成，原桌未改動，下次開啟再試。
+    Convert,
+    /// 主資料夾不見，只剩備份或未完成的操作。
+    Missing,
+    /// 修復時讀寫失敗，原桌、備份與另存都還在；`error` 帶系統錯誤原文。
+    Io,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -34,7 +43,9 @@ pub enum OpenWorld {
         backup_available: bool,
     },
     NeedsRepair {
-        message: String,
+        reason: RepairReason,
+        /// 只有 `io` 帶，是系統錯誤原文（可能是另一則 TTMSG）。
+        error: Option<String>,
         /// 給「打開資料夾」。優先序：主目錄、轉換前備份、暫存、另存、操作日誌、worlds/。
         directory: String,
     },
@@ -305,8 +316,8 @@ fn step_to_data(error: StepError) -> Box<dyn std::error::Error + Send + Sync> {
     }
 }
 
-fn repair_io(error: impl std::fmt::Display) -> String {
-    format!("修復時讀寫失敗，原桌、備份與另存都還在：{error}")
+fn repair_io(error: impl std::fmt::Display) -> Recovered {
+    Recovered::Repair(RepairReason::Io, Some(error.to_string()))
 }
 
 fn apply_action(root: &Path, id: &str, log: &OpLog) -> Result<(), StepError> {
@@ -372,56 +383,56 @@ fn finish_cleanup(root: &Path, id: &str) -> Result<(), StepError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Recovered {
     Clean,
-    Repair(String),
+    Repair(RepairReason, Option<String>),
 }
 
 fn recover_locked(root: &Path, id: &str) -> Recovered {
     // 殘留暫存不當日誌。清不掉就停，不接著刪主目錄、備份或另存。
     if let Err(error) = world_file::remove_path_raw(&log_tmp_path(root, id)) {
-        return Recovered::Repair(repair_io(error));
+        return repair_io(error);
     }
     let log_file = log_path(root, id);
     if !log_file.exists() {
         return recover_without_log(root, id);
     }
     if !log_file.is_file() {
-        return Recovered::Repair(REPAIR_OUTSIDE.to_owned());
+        return Recovered::Repair(RepairReason::Outside, None);
     }
     let text = match fs::read_to_string(&log_file) {
         Ok(text) => text,
-        Err(error) => return Recovered::Repair(repair_io(error)),
+        Err(error) => return repair_io(error),
     };
     let log = match parse_log(&text) {
         Ok(log) => log,
-        Err(_) => return Recovered::Repair(REPAIR_OUTSIDE.to_owned()),
+        Err(_) => return Recovered::Repair(RepairReason::Outside, None),
     };
     if match_action(&log, presence(root, id)).is_none() {
-        return Recovered::Repair(REPAIR_OUTSIDE.to_owned());
+        return Recovered::Repair(RepairReason::Outside, None);
     }
     match apply_action(root, id, &log) {
         Ok(()) => Recovered::Clean,
-        Err(StepError::Rename) => Recovered::Repair(REPAIR_RENAME.to_owned()),
-        Err(StepError::BackupNewer) => Recovered::Repair(REPAIR_OUTSIDE.to_owned()),
-        Err(StepError::Other(error)) => Recovered::Repair(repair_io(error)),
+        Err(StepError::Rename) => Recovered::Repair(RepairReason::Rename, None),
+        Err(StepError::BackupNewer) => Recovered::Repair(RepairReason::Outside, None),
+        Err(StepError::Other(error)) => repair_io(error),
     }
 }
 
 fn recover_without_log(root: &Path, id: &str) -> Recovered {
     let here = presence(root, id);
     if here.t {
-        return Recovered::Repair(REPAIR_OUTSIDE.to_owned());
+        return Recovered::Repair(RepairReason::Outside, None);
     }
     if here.s {
         if here.i || here.p {
             return match world_file::remove_path_raw(&staging_dir(root, id)) {
                 Ok(()) => Recovered::Clean,
-                Err(error) => Recovered::Repair(repair_io(error)),
+                Err(error) => repair_io(error),
             };
         }
-        return Recovered::Repair(REPAIR_OUTSIDE.to_owned());
+        return Recovered::Repair(RepairReason::Outside, None);
     }
     if !here.i && (here.p || here.n) {
-        return Recovered::Repair(REPAIR_MISSING.to_owned());
+        return Recovered::Repair(RepairReason::Missing, None);
     }
     Recovered::Clean
 }
@@ -455,9 +466,10 @@ fn best_directory(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root)
 }
 
-fn repair(root: &Path, id: &str, message: impl Into<String>) -> OpenWorld {
+fn repair(root: &Path, id: &str, reason: RepairReason, error: Option<String>) -> OpenWorld {
     OpenWorld::NeedsRepair {
-        message: message.into(),
+        reason,
+        error,
         directory: best_directory(root, id).display().to_string(),
     }
 }
@@ -465,7 +477,7 @@ fn repair(root: &Path, id: &str, message: impl Into<String>) -> OpenWorld {
 fn classify_open(root: &Path, id: &str) -> OpenWorld {
     let dir = live_dir(root, id);
     if !dir.is_dir() {
-        return repair(root, id, REPAIR_MISSING);
+        return repair(root, id, RepairReason::Missing, None);
     }
     let info = marker::read_format(&dir);
     match info.version {
@@ -609,18 +621,18 @@ fn run_restore(root: &Path, id: &str) -> DataResult<()> {
 }
 
 fn finish_after_recover(root: &Path, id: &str, recovered: Recovered) -> DataResult<OpenWorld> {
-    if let Recovered::Repair(message) = recovered {
-        return Ok(repair(root, id, message));
+    if let Recovered::Repair(reason, error) = recovered {
+        return Ok(repair(root, id, reason, error));
     }
     if !live_dir(root, id).is_dir() {
         if pre_dir(root, id).exists() || log_path(root, id).exists() {
-            return Ok(repair(root, id, REPAIR_MISSING));
+            return Ok(repair(root, id, RepairReason::Missing, None));
         }
         return Err(invalid_data("找不到這張桌"));
     }
     if let Some(from) = needs_migration(root, id) {
         if !combo_clean(root, id) {
-            return Ok(repair(root, id, REPAIR_OUTSIDE));
+            return Ok(repair(root, id, RepairReason::Outside, None));
         }
         return migrate_then_classify(root, id, from);
     }
@@ -632,7 +644,7 @@ fn migrate_then_classify(root: &Path, id: &str, from: u64) -> DataResult<OpenWor
     match run_migrate(root, id, from) {
         Ok(()) => Ok(OpenWorld::Migrated { from, to }),
         Err(_) => match recover_locked(root, id) {
-            Recovered::Repair(message) => Ok(repair(root, id, message)),
+            Recovered::Repair(reason, error) => Ok(repair(root, id, reason, error)),
             Recovered::Clean => {
                 if live_dir(root, id).is_dir()
                     && matches!(
@@ -642,9 +654,9 @@ fn migrate_then_classify(root: &Path, id: &str, from: u64) -> DataResult<OpenWor
                 {
                     Ok(OpenWorld::Migrated { from, to })
                 } else if combo_clean(root, id) {
-                    Ok(repair(root, id, REPAIR_CONVERT))
+                    Ok(repair(root, id, RepairReason::Convert, None))
                 } else {
-                    Ok(repair(root, id, REPAIR_OUTSIDE))
+                    Ok(repair(root, id, RepairReason::Outside, None))
                 }
             }
         },
@@ -666,8 +678,8 @@ pub fn restore_world_backup(root: &Path, world_id: &str) -> DataResult<OpenWorld
         return Ok(OpenWorld::Busy);
     };
     let recovered = recover_locked(root, world_id);
-    if let Recovered::Repair(message) = recovered {
-        return Ok(repair(root, world_id, message));
+    if let Recovered::Repair(reason, error) = recovered {
+        return Ok(repair(root, world_id, reason, error));
     }
     let opened = classify_open(root, world_id);
     let read_only = matches!(opened, OpenWorld::ReadOnly { .. });
@@ -679,7 +691,7 @@ pub fn restore_world_backup(root: &Path, world_id: &str) -> DataResult<OpenWorld
     }
     if let Err(error) = run_restore(root, world_id) {
         return match recover_locked(root, world_id) {
-            Recovered::Repair(message) => Ok(repair(root, world_id, message)),
+            Recovered::Repair(reason, error) => Ok(repair(root, world_id, reason, error)),
             Recovered::Clean => Err(error),
         };
     }
@@ -816,7 +828,7 @@ fn sidecar_id(name: &str) -> Option<String> {
 pub fn recover_for_list(root: &Path, id: &str) -> DataResult<ListedWorld> {
     let mut forced_repair = false;
     if let Some(_guard) = try_world_exclusive(id) {
-        if let Recovered::Repair(_) = recover_locked(root, id) {
+        if let Recovered::Repair(..) = recover_locked(root, id) {
             forced_repair = true;
         }
     }

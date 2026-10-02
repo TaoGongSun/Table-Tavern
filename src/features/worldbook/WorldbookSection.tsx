@@ -5,6 +5,7 @@ import { IconDelete, IconPlus, IconSparkle } from "../../shared/ui/icons";
 import { MoreMenu } from "../../shared/ui/MoreMenu";
 import { WorldbookEntryForm } from "./WorldbookEntryForm";
 import type { WorldbookEditorController } from "./useWorldbookEditor";
+import { backendText } from "../../shared/ui/backend-text";
 
 interface WorldbookSectionProps {
   worldbook: WorldbookEditorController;
@@ -133,7 +134,7 @@ export function WorldbookSection({
       />
       {/* 操作回饋緊貼按鈕列：重構擋下訊息之類的結果放列表底部的話，條目多的桌要捲到底
           才看得到，點了像沒反應。 */}
-      {message && <p role="status">{message}</p>}
+      {message && <p role="status">{backendText(message)}</p>}
 
       {/* 標準流程零必看：只有真的有東西被接管／跳過，或有記帳次數時才出現這塊。 */}
       {(ledger.entries.length > 0 ||

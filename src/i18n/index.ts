@@ -32,13 +32,15 @@ import {
   responseTruncatedMessage,
   type ResponseTruncatedMsgKey,
 } from "./features/response-truncated";
+import { backendMsgMessage, isBackendMsgKey, type BackendMsgKey } from "./features/backend-msg";
 
 export type MsgKey =
   | CoreMsgKey
   | OpenRouterOnboardingMsgKey
   | ApiCompatMsgKey
   | SmartFreeMsgKey
-  | ResponseTruncatedMsgKey;
+  | ResponseTruncatedMsgKey
+  | BackendMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -104,7 +106,7 @@ export function setLang(next: Lang) {
 }
 
 export function t(key: MsgKey, params?: Record<string, string | number>): string {
-  let text: string = isOpenRouterOnboardingMsgKey(key)
+  const text: string = isOpenRouterOnboardingMsgKey(key)
     ? openRouterOnboardingMessage(lang, key)
     : isApiCompatMsgKey(key)
       ? apiCompatMessage(lang, key)
@@ -112,11 +114,12 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
         ? smartFreeMessage(lang, key)
         : isResponseTruncatedMsgKey(key)
           ? responseTruncatedMessage(lang)
-          : MESSAGES[lang][key as CoreMsgKey];
-  if (params) {
-    for (const [name, value] of Object.entries(params)) {
-      text = text.split(`{${name}}`).join(String(value));
-    }
-  }
-  return text;
+          : isBackendMsgKey(key)
+            ? backendMsgMessage(lang, key)
+            : MESSAGES[lang][key as CoreMsgKey];
+  if (!params) return text;
+  // 對模板只掃一次：代入的值裡就算有 {名} 也不會再被換；沒給的佔位符原樣留著。
+  return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : whole,
+  );
 }
