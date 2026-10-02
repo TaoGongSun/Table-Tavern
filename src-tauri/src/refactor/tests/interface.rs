@@ -38,7 +38,7 @@ fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
         .unwrap()
         .is_none());
 
-    // interface 模式：mode 照寫、殼不動（這輪沒產殼也不清別輪的——interface 殼由套用介面那段管）
+    // interface 模式：mode 照寫（沒產殼時的清殼見 shell_cleanup.rs）
     let mut interface_outcome = outcome.clone();
     interface_outcome.mode = Some("interface".to_owned());
     apply(

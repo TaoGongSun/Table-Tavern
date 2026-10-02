@@ -117,33 +117,44 @@ export function applyScripts(raw: string, scripts: InterfaceScript[]): string {
   return text;
 }
 
-const FENCE_REGEX = /```([a-zA-Z]*)\r?\n([\s\S]*?)```/g;
-const SHELL_START_MARKERS = /^\s*(<!DOCTYPE|<html|<body)/i;
-const BARE_SHELL_MARKER = /<!DOCTYPE html|<html/i;
+// 圍欄標記可以是任何字（html、text、html5、x-html…，後面可帶空白）：html 直接收，其餘看內容。
+const FENCE_REGEX = /```([^\r\n`]*)\r?\n([\s\S]*?)```/g;
+// 頁面起點，圍欄與裸頁面共用；`<htmlfoo>` 這類前綴不算
+const PAGE_START = String.raw`<!DOCTYPE\s+html\b|<html(?=[\s>])`;
+const SHELL_START_MARKERS = new RegExp(String.raw`^\s*(?:${PAGE_START}|<body(?=[\s>]))`, "i");
+const BARE_SHELL_MARKER = new RegExp(PAGE_START, "i");
 
 /**
  * 抽出卡片內嵌的整頁 HTML；抽不到回 null。
+ * 圍欄標記為 html，或任何標記但內容以頁面起點開頭，才算殼（```text 包整頁的卡也收，
+ * 收尾的 ``` 不會被切進頁面）。沒有圍欄被收時才找裸頁面，而且只看圍欄以外的文字：
+ * 被拒收的圍欄（例如 ```json 字串裡含 <!DOCTYPE html>）不會被切出半個頁面。
  */
 export function extractShell(rendered: string): string | null {
   const parts: string[] = [];
+  let outside = "";
+  let last = 0;
   FENCE_REGEX.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = FENCE_REGEX.exec(rendered)) !== null) {
-    const lang = match[1].toLowerCase();
+    const lang = match[1].trim().split(/\s+/)[0].toLowerCase();
     const content = match[2];
-    if (lang === "html" || (lang === "" && SHELL_START_MARKERS.test(content))) {
+    if (lang === "html" || SHELL_START_MARKERS.test(content)) {
       parts.push(content);
     }
+    outside += rendered.slice(last, match.index);
+    last = match.index + match[0].length;
   }
+  outside += rendered.slice(last);
 
   if (parts.length > 0) {
     const joined = parts.join("\n").trim();
     return joined.length > 0 ? joined : null;
   }
 
-  const bare = BARE_SHELL_MARKER.exec(rendered);
+  const bare = BARE_SHELL_MARKER.exec(outside);
   if (bare) {
-    const tail = rendered.slice(bare.index).trim();
+    const tail = outside.slice(bare.index).trim();
     return tail.length > 0 ? tail : null;
   }
 

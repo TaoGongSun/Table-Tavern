@@ -116,6 +116,58 @@ describe("extractShell", () => {
   it("純文字找不到殼時回 null", () => {
     expect(extractShell("這裡只有純文字，沒有任何 HTML 介面")).toBeNull();
   });
+
+  const page = "<!DOCTYPE html><html><body>介面</body></html>";
+
+  it.each([
+    ["text", "```text\n"],
+    ["html5", "```html5\n"],
+    ["x-html", "```x-html\n"],
+    ["標記後帶空白", "```text  \n"],
+    ["大寫標記", "```TEXT\n"],
+    ["CRLF", "```text\r\n"],
+    ["空白標記", "```\n"],
+  ])("任意標記（%s）包整頁：收內容、不帶收尾 ```", (_label, open) => {
+    const shell = extractShell(`前言\n${open}${page}\n\`\`\`\n後記`);
+    expect(shell).toBe(page);
+  });
+
+  it("html 標記大小寫不分，非頁面片段也收", () => {
+    expect(extractShell("```HTML\n<div>片段</div>\n```")).toBe("<div>片段</div>");
+  });
+
+  it("小寫 doctype 與 <html lang> 也算頁面起點", () => {
+    expect(extractShell("```text\n<!doctype html><p>a</p>\n```")).toBe("<!doctype html><p>a</p>");
+    expect(extractShell('```text\n<html lang="zh"><p>a</p></html>\n```')).toBe(
+      '<html lang="zh"><p>a</p></html>',
+    );
+  });
+
+  it("多個圍欄：html 與 text 包的頁面都收，json 不收", () => {
+    const rendered = [
+      "```json\n{\"a\": 1}\n```",
+      "```html\n<style>x</style>\n```",
+      "```text\n<body>主體</body>\n```",
+    ].join("\n");
+    // 各段照原樣接起來（圍欄內容自帶結尾換行）
+    expect(extractShell(rendered)).toBe("<style>x</style>\n\n<body>主體</body>");
+  });
+
+  it("```json 字串裡含 <!DOCTYPE html>：圍欄不收，也不走裸頁面切出半個頁面", () => {
+    const rendered = '```json\n{"html": "<!DOCTYPE html><html><body>x</body></html>"}\n```\n後記';
+    expect(extractShell(rendered)).toBeNull();
+  });
+
+  it("被拒收的圍欄以外仍有裸頁面：從圍欄外的起點切", () => {
+    const rendered = '```json\n{"a": "<html>"}\n```\n說明。<!DOCTYPE html><html><body>介面</body></html>';
+    expect(extractShell(rendered)).toBe("<!DOCTYPE html><html><body>介面</body></html>");
+  });
+
+  it("<htmlfoo> 這類前綴不算頁面起點", () => {
+    expect(extractShell("```text\n<htmlfoo>不是頁面</htmlfoo>\n```")).toBeNull();
+    expect(extractShell("<htmlfoo>不是頁面</htmlfoo>")).toBeNull();
+    expect(extractShell("```text\n<bodyguard>不是頁面</bodyguard>\n```")).toBeNull();
+  });
 });
 
 describe("buildShellDocument", () => {

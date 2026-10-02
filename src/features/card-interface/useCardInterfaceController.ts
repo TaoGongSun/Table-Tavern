@@ -73,10 +73,11 @@ export function useCardInterfaceController(input: {
   const { worldId, events, tableTree, submitText } = input;
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
-  // AI 重構接管介面時產的骨架（卡每回合輸出格式）；沒重構過或那次沒產就是 null，退回卡片自帶殼／event.raw 找殼
+  // AI 重構接管介面時產的骨架（卡每回合輸出格式）；null＝沒有。interface 桌沒骨架就不給面板，
+  // 只有沒重構過的桌（玩法標記 null）才退回卡片自帶殼／event.raw 找殼
   const [refactorShell, setRefactorShell] = useState<string | null>(null);
   // 桌面玩法標記（refactor-mode-split）："characters"＝玩家選了多角色對話，這桌的卡片介面
-  // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；null＝沒重構過或介面優先，照舊。
+  // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；"interface"＝只畫重構骨架；null＝沒重構過。
   // undefined＝還不知道（載入中或讀取失敗）、null＝確定沒標記；未知一律先不顯示殼
   // （fail-closed），角色桌才不會在切桌瞬間或讀取失敗時閃出介面 fallback。
   const [tableMode, setTableMode] = useState<string | null | undefined>(undefined);
@@ -125,6 +126,12 @@ export function useCardInterfaceController(input: {
   );
 
   const cardShellReady = cardInterfaceShell !== null;
+
+  // 殼沒了（例如面板開著時套用了沒產殼的重構）就把面板狀態一起收掉：只靠 shellReady 擋住
+  // 覆蓋層的話，之後殼再出現時面板會自己跳出來
+  useEffect(() => {
+    if (!cardShellReady) setCardUiOpen(false);
+  }, [cardShellReady]);
 
   // 殼的沙盒包裝與內容指紋：指紋當 iframe key，殼一換整支 iframe 重掛——初始掛載必然載入
   // srcdoc，不依賴 WebKit 對 srcDoc 屬性更新／load 事件的行為（雙緩衝翻面機制在 WKWebView

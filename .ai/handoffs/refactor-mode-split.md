@@ -15,7 +15,7 @@ Status: awaiting-verification
 - NorthHall：Sonnet 5.5 以內容理由在初判拒答，已撤出測試流程、不再使用；改用 `TestCards/NorthHall-structure.png`（同結構、成年非情色內容），判 playable: no，沒建殼。
 - 取消路：初判後在二選一框取消，無產物落地；重構進行中取消未測。
 - 第二段 resume：同一 CLI session，盤點快取命中 83～89%（小卡 59%），展開 69～97%。
-- 沒建殼的桌（bcd368、NorthHall-structure）面板退回原卡 HTML 畫不出值，另立 refactor-noshell-panel 處理。
+- 沒建殼的桌（bcd368、NorthHall-structure）改成不給面板，已由 [refactor-noshell-panel](archive/refactor-noshell-panel.md) 結案。
 
 ## Completed
 - 包 1：三態偵測＋二選一對話框＋unsupported 擋下＋refactor_recommend／survey 帶 mode＋i18n。

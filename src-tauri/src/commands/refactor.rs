@@ -21,7 +21,8 @@ pub(crate) fn refactor_apply(
 ) -> Result<refactor::RefactorApplySummary, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    let before = receipts::snapshot(&root, &world_id);
+    let before =
+        receipts::snapshot_refactor(&root, &world_id).map_err(|error| error.to_string())?;
     let result = refactor::apply(&root, &world_id, &outcome, &selection)
         .map_err(|error| error.to_string())?;
     if record_receipt.unwrap_or(true) {

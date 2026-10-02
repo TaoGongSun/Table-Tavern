@@ -675,11 +675,10 @@ function App() {
       await cardInterface.refreshShell(table);
       // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
       await characters.reloadGmImage();
-      // 貼出的開場白被一起收掉：檯面與狀態快照都變了，重讀這一幕
-      if (report.removed_opening) {
-        await chat.reload();
-        await tableState.refresh();
-      }
+      // 貼出的開場白被一起收掉：檯面變了，重讀這一幕
+      if (report.removed_opening) await chat.reload();
+      // 重構套用的復原會退回狀態樹與玩法標記：頂部狀態欄跟著重讀
+      await tableState.refresh();
       setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
       setWorldEditorRefreshKey((key) => key + 1);
