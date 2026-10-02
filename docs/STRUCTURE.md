@@ -17,7 +17,7 @@
 
 前端看訊號，不死看數量：同一功能已有約三支 production 檔、或同時存在 UI ＋ hook ＋ 純邏輯、或為了改一件事得反覆在同一群檔案間跳。兩支檔案但已經是清楚且會繼續長的獨立功能，也可以升格；三支很小又彼此無關的檔案，不必硬塞在一起。
 
-**升格要一次搬齊**：某功能的 view、controller、logic、test，只要 owner 是單一的，就同批進 `features/<name>/`。不接受「邏輯搬了、畫面留在 `views/`」的半套升格——那會讓一個功能散在三個地方，比原本平鋪更難找。
+**升格要一次搬齊**：某功能的 view、controller、logic、test，只要 owner 是單一的，就同批進 `features/<name>/`。不接受「邏輯搬了、畫面留在 `views/`」的半套升格——那會讓一個功能散在三個地方，比原本平鋪更難找。`views/` 與 `controllers/` 只放把多個 feature 組起來的外殼，清單寫在 `scripts/check-structure.mjs`，其餘檔案 checker 會擋。
 
 feature 內部不必再機械式拆 `components/`、`hooks/`、`models/`；等這個 feature 自己長到掃不完再說。
 
@@ -52,12 +52,12 @@ Rust 側相反：新 module 先用單檔 `foo.rs`，等它真的長出兩個以�
 - 測試同 stem ＋ `.test.ts` / `.test.tsx`。
 - Rust `snake_case.rs`，目錄名與 module 名一致。
 
-大小寫慣例由 review 把關，checker 不擋——既有的 `views/atoms.tsx` 這類「一檔多個小元件」的合理例外，機器分不出來。
+大小寫慣例由 review 把關，checker 不擋——既有的 `shared/ui/atoms.tsx` 這類「一檔多個小元件」的合理例外，機器分不出來。
 
 ## 檔案大小
 
 單檔盡量不超過約 1000 行、單一資料夾超過約 20 個檔就考慮分類。兩者都是**必須檢查**，不是必須拆：拆依責任，不依行號。200 行混三種責任，比 1100 行的單一資料表更值得拆。不為了湊數字製造 `part1` / `part2`。
 
-## checker 為什麼沒有例外清單
+## checker 的清單只列固定位置
 
-`scripts/check-structure.mjs` 刻意不提供 allowlist 或 legacy baseline。一旦有例外清單，CI 紅燈的預設解法就會變成「把新檔加進清單」，關卡會退化成橡皮圖章——永遠留在 `verify` 裡拖時間，卻擋不住任何東西。
+`scripts/check-structure.mjs` 的清單只列架構上的固定位置（根層入口、組合外殼），禁止逐檔豁免違規。一旦清單變成例外收容所，CI 紅燈的預設解法就會變成「把新檔加進清單」，關卡會退化成橡皮圖章。要改清單就得改這個檔，讓架構變更在 review 裡藏不住。

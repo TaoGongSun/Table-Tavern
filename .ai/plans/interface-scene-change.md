@@ -17,7 +17,7 @@
 ## 設計（含 Sol 補強）
 
 1. **摘要防 regex 劫持＝雙層**：主層＝前情提要事件帶明確 origin 標記，殼渲染遇到它**跳過 direct-first、必走正文槽**（防摘要文字被卡 regex 抓走整頁報廢，「第二輪地圖全毀」教訓同源）；第二層＝接管桌的 `summary_messages` 加「純敘事、禁任何標記」約束。
-2. **換幕入口**：覆蓋層工具列（[CardInterfaceOverlay.tsx](../../src/views/CardInterfaceOverlay.tsx)）是宿主 React 元件，關閉鈕旁直接加「換幕」鈕；不需替卡內 HTML 加 postMessage 橋。
+2. **換幕入口**：覆蓋層工具列（[CardInterfaceOverlay.tsx](../../src/features/card-interface/CardInterfaceOverlay.tsx)）是宿主 React 元件，關閉鈕旁直接加「換幕」鈕；不需替卡內 HTML 加 postMessage 橋。
 3. **補救路語意明訂**：退回前幕＝樹還原成前幕最後快照（現行已如此）；重寫提要＝只在幕首一則時可用（現行守門）；**分岔＝狀態樹回到來源幕最後快照**，不保留分岔前的現值——接管桌逐條驗。
 
 ## 驗收（Sol 修正：拆兩條獨立案例，原稿「續玩後退回／重寫」會被守門擋下）

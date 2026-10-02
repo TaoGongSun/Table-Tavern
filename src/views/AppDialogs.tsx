@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import type { AppConfig } from "../shared/contracts/backend-contracts";
-import type { ImportController } from "../controllers/useImportController";
+import type { ImportController } from "../features/import/useImportController";
 import { t } from "../i18n";
 import { Dialog } from "../shared/ui/Dialog";
-import { GenerateTableDialog } from "./GenerateTableDialog";
-import { ImportDialogs } from "./ImportDialogs";
-import { SettingsWindow, type SettingsTab } from "./SettingsWindow";
+import { GenerateTableDialog } from "../features/lobby/GenerateTableDialog";
+import { ImportDialogs } from "../features/import/ImportDialogs";
+import { SettingsWindow, type SettingsTab } from "../features/settings/SettingsWindow";
 
 interface AppDialogsProps {
   genTableOpen: boolean;

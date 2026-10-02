@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-// 世界設定頁（views/WorldEditor）：頂列儲存只送 world.md 那張表單，世界書的條目表單是另一張，彼此不串。
-// views/ 不放測試（check:structure），測試跟世界書住。
+// 世界設定頁（WorldEditor）：頂列儲存只送 world.md 那張表單，世界書的條目表單是另一張，彼此不串。
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -28,7 +27,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
-import { WorldEditor } from "../../views/WorldEditor";
+import { WorldEditor } from "./WorldEditor";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

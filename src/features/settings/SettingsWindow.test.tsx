@@ -37,7 +37,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { SettingsWindow, type SettingsTab } from "../../views/SettingsWindow";
+import { SettingsWindow, type SettingsTab } from "./SettingsWindow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

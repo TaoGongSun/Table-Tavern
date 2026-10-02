@@ -1,10 +1,10 @@
 // 目錄結構關卡：`npm run check:structure`，由 verify 呼叫。規範全文見 docs/STRUCTURE.md。
-// 只擋機器判得準的四件事；「這支檔案該屬哪個 feature」是語意問題，交給 review，
+// 只擋機器判得準的五件事；「這支檔案該屬哪個 feature」是語意問題，交給 review，
 // 不讓 checker 假裝判得出來。
 //
-// 這裡刻意沒有 allowlist／legacy baseline：source-structure 已經把 src 根層清空，
-// 不存在需要豁免的舊檔。一旦開放例外清單，紅燈的預設解法會變成「把新檔加進清單」，
-// 關卡就退化成橡皮圖章。要改頂層架構，就得連這個檔案一起改，讓架構變更在 review 裡藏不住。
+// 清單只列架構上的固定位置（根層入口、組合外殼），禁止逐檔豁免違規：一旦清單變成例外收容所，
+// 紅燈的預設解法就會是「把新檔加進清單」，關卡退化成橡皮圖章。要改就得改這個檔，
+// 讓架構變更在 review 裡藏不住。
 import { readdirSync, statSync } from "node:fs";
 import { join, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,14 @@ const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const SOURCE_EXT = new Set([".ts", ".tsx", ".css"]);
 // 根層只放應用程式入口
 const ROOT_ALLOWED = new Set(["App.tsx", "App.css", "main.tsx", "vite-env.d.ts"]);
+// views／controllers 只放把多個 feature 組起來的外殼（相對 src/ 的完整路徑，涵蓋任意深度）
+const SHELL_ALLOWED = new Set([
+  "views/AppDialogs.tsx",
+  "views/AppWorkspace.tsx",
+  "views/MainView.tsx",
+  "views/TableToolbar.tsx",
+  "controllers/useWorkspaceNavigationController.ts",
+]);
 // 不知道放哪就丟進去的垃圾桶目錄，任意深度都禁
 const DUMPING_GROUNDS = new Set(["utils", "helpers", "misc", "common"]);
 // 過渡名：真正該做的是拆責任或想清楚命名，不是留一個「之後再說」的檔名
@@ -40,6 +48,14 @@ function walk(dir, depth = 0) {
       problems.push(
         `${entry} ：src 根層只放應用程式入口（${[...ROOT_ALLOWED].join("、")}）。` +
           `新功能請放進 features/<name>/，跨 feature 共用的放 shared/<area>/。`,
+      );
+    }
+
+    const path = rel(full);
+    if (/^(views|controllers)\//.test(path) && !SHELL_ALLOWED.has(path)) {
+      problems.push(
+        `${path} ：views／controllers 只放跨 feature 的組合外殼，單一功能的檔案放 features/<name>/；` +
+          `新增外殼要改 scripts/check-structure.mjs 的 SHELL_ALLOWED 清單。`,
       );
     }
 
