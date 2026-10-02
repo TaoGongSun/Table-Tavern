@@ -103,7 +103,7 @@ HTTP 伺服器手寫最小 HTTP/1.1 於 `tokio::net::TcpListener`（tokio 已有
 - `tauri.harness.conf.json`（Tauri 設定合併是 JSON Merge Patch，陣列整組替換）：`identifier: com.tabletavern.app.harness`、`productName: Table Tavern Harness`、`bundle.createUpdaterArtifacts: false`。若需要 harness 專用 capability，在 harness 設定的 `app.security.capabilities` **完整列出** `default` 加 harness 那份（陣列會整組替換，漏列 default 會砍掉現有權限）；harness capability 不放進 `src-tauri/capabilities/`，因為未指定清單時該目錄的檔案會被正式包預設全部納入。
 - **組合一致性（雙向）**：feature 開但 identifier 不是 harness 的 → 啟動即中止。反向（用了 harness 設定或 shim mode，卻沒開 feature，會產出名稱像測試包、卻讀寫正式 data/config 路徑的 app）在**建置時**擋：`src-tauri/build.rs` 讀 Tauri CLI 傳入的合併後設定（identifier、`frontendDist`），若是 harness identifier 或指向 `dist-harness/` 而 `CARGO_FEATURE_TEST_HARNESS` 未設定就讓建置失敗；`vite.config.ts` 的 harness mode 也要求同一組合的環境旗標，否則失敗。檢查只在建置期，正式 runtime 不加任何 harness 程式。施工時先確認 build.rs 讀得到合併後設定的實際管道，讀不到就改由 `harness:build` 包裝腳本與 build.rs 共同擋並回報主線。正式包即使設了 `TT_HARNESS_ROOT` 也照常啟動、不開 listener、不改路徑（程式碼根本不在）。
 - 前端 shim 備案未啟用，沒有 `dist-harness/`／vite harness mode；build.rs 仍擋 `dist-harness` 字樣，日後若啟用備案要補 vite 端檢查。
-- **正式包驗收**（先建 harness 包、再建正式包，確認沒有殘留）：正式 app 的有效 ACL 不含 harness 權限、IPC 呼叫 harness 指令回「找不到指令」；帶 `TT_HARNESS_ROOT` 啟動不產 harness.json、無 listener（`lsof -p <pid> -iTCP`）；前端 assets 與 `dist/` 一致。掃標記字串只當補充。
+- **正式包驗收**：先建 harness 包、再建正式包，正式執行檔不含 harness 標記字串（靜態佐證，包 1 已做）。「正式包帶 `TT_HARNESS_ROOT` 不開 listener、不產 harness.json」**待驗**：正式包（identifier `com.tabletavern.app`）不啟動，因為 macOS 的 Application Support／WebKit 路徑不一定跟 HOME 走，可能碰到使用者真資料或撞上使用者開著的 app。可行驗法：另做一個只改 identifier（例如 `com.tabletavern.app.listenercheck`）、不開 feature 的正式組態包，以測試用路徑啟動後看 `lsof -p <pid> -iTCP` 與 harness.json；要不要做留給之後決定〔模型判斷·未裁決〕。
 - release 工作流程（`scripts/release/` 與 CI）不得出現 `test-harness`，verify 加一條文字檢查。
 
 ## 安全
@@ -147,7 +147,7 @@ HTTP 伺服器手寫最小 HTTP/1.1 於 `tokio::net::TcpListener`（tokio 已有
 | 包 | 內容 | 獨立驗收 |
 |---|---|---|
 | 1 骨架（完成 2026-10-02） | feature、harness 設定、root 驗證、鎖與 fresh、discovery、HTTP＋token、eval 往返、`launch/status/eval/quit/shot`；三個 spike 定案；更新器入口停用；假 dialog plugin 與 `dialogs/dialog-wait/answer` 為 spike 需要提前做進來 | 結果見交接檔 |
-| 2 選檔＋對話窗實跑 | `file` 指令；假 dialog plugin 已在包 1 完成（契約單元測試已有） | 實跑：刪桌 confirm 取消／確定各一次、匯入完成 message 被接住、save 取消回 null 與給路徑後檔案真的寫出、同一 dialog 重複回答回錯 |
+| 2 選檔＋對話窗實跑（完成 2026-10-02） | `file` 指令（只放行唯一匹配、非 disabled 的 `input[type=file]`） | 結果見交接檔 |
 | 3 DOM 指令＋route＋端對端 | `text/query/click/fill/select/press/wait/invoke/route`、防呆、AI log | 多重匹配／disabled／遮擋各回錯；`route` 對空白設定與 `--config-from` 設定各印一次；下方端對端驗收 |
 
 ## 驗收（主線獨力，零 AI 額度）

@@ -205,11 +205,51 @@ async function shot(root, file) {
   out({ ok: true, value: { path: target, bytes: png.length } });
 }
 
+const MIME = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".json": "application/json",
+};
+
+/** 頁面端：唯一匹配、必須是 input[type=file]、不得 disabled；可見性不檢查（這類 input 都是 hidden）。 */
+function fileInputScript(selector, name, type, base64) {
+  return `
+const selector = ${JSON.stringify(selector)};
+const matches = document.querySelectorAll(selector);
+if (matches.length !== 1) throw new Error("target 匹配 " + matches.length + " 個（需剛好 1 個）：" + selector);
+const input = matches[0];
+if (!(input instanceof HTMLInputElement) || input.type !== "file") throw new Error("target 不是 input[type=file]：" + selector);
+if (input.disabled) throw new Error("target 是 disabled：" + selector);
+const binary = atob(${JSON.stringify(base64)});
+const bytes = new Uint8Array(binary.length);
+for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+const file = new File([bytes], ${JSON.stringify(name)}, { type: ${JSON.stringify(type)} });
+const transfer = new DataTransfer();
+transfer.items.add(file);
+input.files = transfer.files;
+input.dispatchEvent(new Event("change", { bubbles: true }));
+return { name: file.name, type: file.type, size: file.size };
+`;
+}
+
+async function fileInput(root, selector, filePath) {
+  if (!selector || !filePath) die("用法：file <css selector> <path>");
+  const source = path.resolve(filePath);
+  if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) die(`找不到檔案：${source}`);
+  const bytes = fs.readFileSync(source);
+  const type = MIME[path.extname(source).toLowerCase()] ?? "application/octet-stream";
+  const js = fileInputScript(selector, path.basename(source), type, bytes.toString("base64"));
+  finish(await call(root, "POST", "/eval", { js }));
+}
+
 const USAGE = `用法：node scripts/harness.mjs <指令> [--root DIR]
   launch [--fresh] [--config-from FILE] [--app PATH]
   status | quit
   eval|js '<js>' | eval|js -f file.js  [--timeout ms]
   dialogs | dialog-wait [--timeout ms] | answer <id|next> <按鈕標籤|ok|cancel|路徑>
+  file <css selector> <path>
   shot <out.png>`;
 
 const { positional, flags } = parseArgs(process.argv.slice(2));
@@ -245,6 +285,9 @@ switch (command) {
     break;
   case "shot":
     await shot(rootFrom(flags), args[0]);
+    break;
+  case "file":
+    await fileInput(rootFrom(flags), args[0], args[1]);
     break;
   default:
     console.log(USAGE);
