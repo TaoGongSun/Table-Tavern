@@ -21,7 +21,7 @@
 - 外部資源（圖床等）只在 iframe 內放行。
 - best-effort：這張能動不代表每張能動；殼壞或 regex 不合＝正文照常顯示，絕不擋對話。
 
-不做：ST 外掛 API 相容（酒馆助手＝開放讀寫訊息／變數／世界書／事件／觸發生成的完整 runtime，仿它＝無底洞）、DRM 解密、卡內腳本觸及 app 內部。
+ST 外掛 API：目標與酒館行為一致；讀訊息類先由 [card-chat-messages-shim](card-chat-messages-shim.md) 做，MVU 類見 [card-mvu-shim](../tasks/card-mvu-shim.md)〔作者裁決 2026-10-02〕。不做：DRM 解密、卡內腳本觸及 app 內部。
 
 生態現況（2026-08-04 網查）：galgame 介面層無統一框架——酒馆助手只給 runtime，各作者自建前端自架雲端＋免費圖床。原生 VN 皮＋本地圖包＝補生態缺的標準件，且無圖床倒站死穴。
 

@@ -1,5 +1,6 @@
 // ST 角色卡的「顯示用 regex 腳本」轉換層：把模型輸出套上卡片自帶的 regex，
 // 抽出內嵌的整頁 HTML 介面，再組成可直接餵給沙盒 iframe srcdoc 的文件。
+import { buildChatShimSource, type CardChat } from "./card-chat-shim";
 
 export interface InterfaceScript {
   name: string;
@@ -22,14 +23,19 @@ export interface CardInterface {
 /**
  * 從幾段候選文字裡挑出第一個畫得出來的殼（依序試，先命中先用）。
  * 面板與匯入流程共用同一套判斷，才不會出現「按鈕說有、打開卻空的」。
+ * index＝命中的是第幾段候選（呼叫端自己對回它代表哪一樓，這不是樓號）。
  */
-export function findShell(cards: CardInterface[], texts: (string | null | undefined)[]): string | null {
+export function findShell(
+  cards: CardInterface[],
+  texts: (string | null | undefined)[],
+): { shell: string; index: number } | null {
   const scripts = cards.filter((card) => card.unsupported === null).flatMap((card) => card.scripts);
   if (scripts.length === 0) return null;
-  for (const text of texts) {
+  for (let index = 0; index < texts.length; index++) {
+    const text = texts[index];
     if (!text) continue;
     const shell = extractShell(applyScripts(text, scripts));
-    if (shell !== null) return shell;
+    if (shell !== null) return { shell, index };
   }
   return null;
 }
@@ -389,9 +395,16 @@ ${buildStorageShimSource(seed)}
 /**
  * 把殼包成可直接餵給沙盒 iframe srcdoc 的完整文件（含宿主橋接墊片）。
  * seed＝這桌上次存下的卡片設定，開場回填進沙盒 localStorage。
+ * chat＝本場讀訊息快照與這份文件的 token；讀訊息墊片排在最前面，趕在橋接墊片覆寫 window.parent
+ * 與卡片 script 執行之前收好真 parent。null＝不定義讀訊息函式，卡片照它自己的退路走。
  */
-export function buildShellDocument(shell: string, seed: CardStorage = {}): string {
-  const shim = buildHostBridgeShim(seed);
+export function buildShellDocument(
+  shell: string,
+  seed: CardStorage = {},
+  chat: { chat: CardChat; token: string } | null = null,
+): string {
+  const chatShim = chat === null ? "" : `<script>${buildChatShimSource(chat.chat, chat.token)}</script>`;
+  const shim = chatShim + buildHostBridgeShim(seed);
   // 墊片攔不到的備案：把殼原始碼裡完整字面的 window.parent／window.top 直接改指向誘餌，
   // \b 確保只換完整字面，不誤傷 window.parentNode 或 node.parent.foo 這類正常寫法。
   const processedShell = shell.replace(/window\.parent\b/g, "window.__ttHost").replace(/window\.top\b/g, "window.__ttHost");

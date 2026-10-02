@@ -202,8 +202,9 @@ describe("findShell", () => {
   });
 
   it("依序試候選文字，先命中的先用", () => {
-    const shell = findShell([card()], ["沒有標籤的旁白", "<UI>最新一則</UI>", "<UI>更舊的</UI>"]);
-    expect(shell).toContain("最新一則");
+    const match = findShell([card()], ["沒有標籤的旁白", "<UI>最新一則</UI>", "<UI>更舊的</UI>"]);
+    expect(match?.shell).toContain("最新一則");
+    expect(match?.index).toBe(1);
   });
 
   it("畫不出來的卡（DRM／雲端載入器）不參與，沒腳本就回 null", () => {

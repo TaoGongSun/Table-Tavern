@@ -377,6 +377,7 @@ export function AppWorkspace({
           }
           shellDoc={cardInterface.shellDoc}
           shellKey={cardInterface.shellKey}
+          chat={cardInterface.chat}
           onClose={() => cardInterface.close()}
         />
       )}
