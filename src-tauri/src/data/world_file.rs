@@ -2,7 +2,9 @@
 //! 寫入當下再查一次格式標記。掃描測試會擋掉這支以外的直接寫檔。
 #[cfg(test)]
 use std::cell::Cell;
-use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;

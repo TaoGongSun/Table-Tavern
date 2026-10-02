@@ -172,7 +172,13 @@ pub fn run() {
             commands::update::update_check,
             commands::update::update_download,
             commands::update::update_install,
-            commands::update::update_post_launch
+            commands::update::update_post_launch,
+            commands::versions::list_versions,
+            commands::versions::delete_version,
+            commands::versions::rollback_preview,
+            commands::versions::rollback_install,
+            commands::versions::list_world_backups,
+            commands::versions::delete_world_backup
         ])
         .setup(|app| {
             match app.path().app_local_data_dir() {
@@ -214,6 +220,7 @@ mod command_classification {
         "delete_character_image",
         "delete_gallery_image",
         "delete_world",
+        "delete_world_backup",
         "delete_worldbook_entry",
         "fork_scene",
         "generate_character_image",
@@ -261,6 +268,7 @@ mod command_classification {
         "export_worldbook",
         "list_characters",
         "list_gallery_images",
+        "list_world_backups",
         "list_import_receipts",
         "mechanism_ledger",
         "read_character",
@@ -271,6 +279,7 @@ mod command_classification {
         "read_state",
         "read_transcript",
         "read_world_md",
+        "rollback_preview",
         "read_world_readonly",
         "read_worldbook",
         "refactor_absorb_entry",
@@ -313,6 +322,9 @@ mod command_classification {
         "sponsor_status",
         "translate_opening",
         "translate_tier_models",
+        "delete_version",
+        "list_versions",
+        "rollback_install",
         "update_check",
         "update_config",
         "update_download",

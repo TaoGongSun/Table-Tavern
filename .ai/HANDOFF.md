@@ -7,7 +7,7 @@
 ## 進行中
 - [rust-module-homing](handoffs/rust-module-homing.md) — Rust 根層 14 支孤兒模組歸位：consumer 掃描完成，等三項拍板才開搬
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過，v2 首要＝省額度（歷史裡整包 XML 重送）
-- [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1 發版管線、包 2 格式版本與遷移、包 3 偵測與一鍵更新完成；包 4–5 未動
+- [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1–4 完成（發版、格式遷移、一鍵更新、版本庫回退）；包 5 介面未動
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，仍有角色／介面選擇、其他卡型驗證與舊產殼路線清理待施工
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）

@@ -1,10 +1,21 @@
 //! 桌面更新的領域邏輯。command 只負責把 Tauri 的參數交進來。
 //! 版本庫、驗簽、提醒等級、Mac 替換都在這裡，不在 `commands/`。
 
+mod catalog;
+mod install_prep;
+mod launch;
 mod level;
 pub(crate) mod macos;
+mod ops;
+mod post_launch;
+mod preview;
+mod previous;
+mod residue;
+mod rollback_point;
+mod semver_util;
 mod slot;
 mod store;
+mod store_lock;
 mod verify;
 
 use std::sync::OnceLock;
@@ -17,15 +28,29 @@ pub(crate) use level::{
 };
 #[cfg(target_os = "macos")]
 pub(crate) use macos::swap_directories;
-pub(crate) use macos::{cleanup_after_launch, parent_is_writable, replace_installed_app};
+#[cfg(target_os = "macos")]
+pub(crate) use macos::{parent_is_writable, replace_installed_app};
 // 這句只在非 Mac、非 Windows 的安裝路徑用到。本機是 Mac，不標 allow 會被當成沒人用。
+pub(crate) use catalog::{has_verified_rollback_point, require_eligible, VersionList};
+pub(crate) use install_prep::{forward_before_raise, rollback_before_raise};
+#[allow(unused_imports)]
+pub(crate) use launch::stage_launch_installer;
+#[cfg(target_os = "windows")]
+pub(crate) use launch::start_nsis_installer;
 #[allow(unused_imports)]
 pub(crate) use macos::CANNOT_REPLACE;
+pub(crate) use ops::{delete_version_locked, list_versions_locked};
+pub(crate) use post_launch::settle_launch_locked;
+pub(crate) use preview::{rollback_preview_locked, RollbackPreview};
+pub(crate) use rollback_point::{
+    prepare_download_reuse, rollback_point_endpoint, store_downloaded_release, NewRelease,
+};
 pub(crate) use slot::UpdateSlot;
 pub(crate) use store::{
-    artifact_name, clear_all_residue, clear_version_residue, commit_download, reuse_if_valid,
-    reverify_for_install, version_dir_name, versions_root, Platform,
+    artifact_name, clear_all_residue, reverify_for_install, version_dir_name, versions_root,
+    Platform,
 };
+pub(crate) use store_lock::{clear_downloading, mark_downloading, with_installing};
 
 /// 最近一次檢查留下的 plugin `Update`，以及下載／安裝進行到哪。
 /// 下載或安裝還沒結束時，後來的檢查不得覆寫。
@@ -52,6 +77,12 @@ pub(crate) fn bundled_pubkey() -> &'static str {
             .to_owned()
     })
     .as_str()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct DownloadResult {
+    pub version: String,
+    pub rollback_ready: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

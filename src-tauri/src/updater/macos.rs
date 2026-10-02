@@ -1,10 +1,13 @@
-//! Mac 替換自身。系統呼叫只在 macos 上；殘留怎麼分類、路徑算不算正式位置，都是純函式，
-//! 假目錄在任何平台都能測。對調與「上層可寫」由呼叫端注入，測試不 chmod、也不叫 renamex_np。
+//! Mac 替換自身。解壓、對調、`renamex_np` 在這裡。殘留怎麼接續在 `residue`。
+//! 對調與「上層可寫」由呼叫端注入，測試不 chmod、也不叫 renamex_np。
 
 use std::fs::{self, File};
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
+
+use super::residue::{self, CleanupMode};
+use super::semver_util::versions_equal;
 
 pub(crate) const BUNDLE_ID: &str = "com.tabletavern.app";
 pub(crate) const APP_NAME: &str = "Table Tavern.app";
@@ -13,13 +16,13 @@ pub(crate) const PREVIOUS_NAME: &str = "Table Tavern (previous).app";
 pub(crate) const CANNOT_REPLACE: &str = "無法自動替換";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BundleInfo {
-    version: Option<String>,
-    bundle_id: Option<String>,
-    plist_readable: bool,
+pub(crate) struct BundleInfo {
+    pub version: Option<String>,
+    pub bundle_id: Option<String>,
+    pub plist_readable: bool,
 }
 
-fn read_bundle_info(app: &Path) -> BundleInfo {
+pub(crate) fn read_bundle_info(app: &Path) -> BundleInfo {
     let Ok(text) = fs::read_to_string(app.join("Contents/Info.plist")) else {
         return BundleInfo {
             version: None,
@@ -58,119 +61,11 @@ pub(crate) fn is_official_bundle(path: &Path) -> bool {
     path.file_name().and_then(|name| name.to_str()) == Some(APP_NAME) && !is_translocated(path)
 }
 
-fn same_bundle(left: &Path, right: &Path) -> bool {
+pub(crate) fn same_bundle(left: &Path, right: &Path) -> bool {
     match (fs::canonicalize(left), fs::canonicalize(right)) {
         (Ok(left), Ok(right)) => left == right,
         _ => left == right,
     }
-}
-
-fn versions_equal(left: &str, right: &str) -> bool {
-    match (semver::Version::parse(left), semver::Version::parse(right)) {
-        (Ok(left), Ok(right)) => left == right,
-        _ => left == right,
-    }
-}
-
-fn semver_ord(left: &str, right: &str) -> Option<std::cmp::Ordering> {
-    let left = semver::Version::parse(left).ok()?;
-    let right = semver::Version::parse(right).ok()?;
-    Some(left.cmp(&right))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UpdateFate {
-    Leave,
-    Delete,
-    Promote,
-}
-
-/// `.TableTavern-update.app`：不是我們的、或就是正在跑的 bundle → 不動。
-/// 讀不到 plist 或版本 → 當解壓中斷刪掉。版本小於目前 → 改名成 previous。其餘刪掉。
-fn classify_update(info: &BundleInfo, path: &Path, running: &Path, current: &str) -> UpdateFate {
-    if same_bundle(path, running) {
-        return UpdateFate::Leave;
-    }
-    if !info.plist_readable {
-        return UpdateFate::Delete;
-    }
-    if info.bundle_id.as_deref() != Some(BUNDLE_ID) {
-        return UpdateFate::Leave;
-    }
-    let Some(version) = info.version.as_deref() else {
-        return UpdateFate::Delete;
-    };
-    match semver_ord(version, current) {
-        Some(std::cmp::Ordering::Less) => UpdateFate::Promote,
-        Some(_) => UpdateFate::Delete,
-        None => UpdateFate::Delete,
-    }
-}
-
-/// previous 讀不到、bundle 不對、或版本沒有比較小，都不動。只有確定較舊才刪。
-fn previous_is_older(info: &BundleInfo, path: &Path, running: &Path, current: &str) -> bool {
-    if same_bundle(path, running) || !info.plist_readable {
-        return false;
-    }
-    if info.bundle_id.as_deref() != Some(BUNDLE_ID) {
-        return false;
-    }
-    let Some(version) = info.version.as_deref() else {
-        return false;
-    };
-    semver_ord(version, current) == Some(std::cmp::Ordering::Less)
-}
-
-/// 新版掛載後的殘留整理。從 previous 或其他位置啟動時什麼都不做。
-pub(crate) fn cleanup_after_launch(running_app: &Path) -> Result<(), String> {
-    if !is_official_bundle(running_app) {
-        return Ok(());
-    }
-    let Some(parent) = running_app.parent() else {
-        return Ok(());
-    };
-    let Some(current) = read_bundle_info(running_app).version else {
-        return Ok(());
-    };
-    let update_app = parent.join(UPDATE_NAME);
-    // 這一輪若剛把對調後、改名前中斷的舊版救成 previous，不能接著因「較舊」刪掉。
-    // 否則玩家在新版第一次掛上時手上沒有能開的舊 App。下一輪沒有 update.app 才刪。
-    let mut promoted = false;
-    if update_app.exists() {
-        let info = read_bundle_info(&update_app);
-        match classify_update(&info, &update_app, running_app, &current) {
-            UpdateFate::Delete => {
-                fs::remove_dir_all(&update_app).map_err(|error| error.to_string())?
-            }
-            UpdateFate::Promote => {
-                promote_to_previous(&update_app, &parent.join(PREVIOUS_NAME))?;
-                promoted = true;
-            }
-            UpdateFate::Leave => {}
-        }
-    }
-    let previous = parent.join(PREVIOUS_NAME);
-    if promoted {
-        return Ok(());
-    }
-    if previous.exists()
-        && previous_is_older(
-            &read_bundle_info(&previous),
-            &previous,
-            running_app,
-            &current,
-        )
-    {
-        fs::remove_dir_all(&previous).map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
-fn promote_to_previous(update_app: &Path, previous: &Path) -> Result<(), String> {
-    if previous.exists() {
-        fs::remove_dir_all(previous).map_err(|error| error.to_string())?;
-    }
-    fs::rename(update_app, previous).map_err(|error| error.to_string())
 }
 
 /// 上層可寫：在父目錄建一個探針檔再刪掉。測試不走這條，改注入結果。
@@ -210,36 +105,42 @@ pub(crate) fn replace_installed_app(
     if !parent_writable(parent) {
         return Err(CANNOT_REPLACE.to_owned());
     }
-    cleanup_after_launch(running_app)?;
-    let update_app = parent.join(UPDATE_NAME);
-    if update_app.exists() {
+    if read_bundle_info(running_app).bundle_id.as_deref() != Some(BUNDLE_ID) {
         return Err(CANNOT_REPLACE.to_owned());
+    }
+    let report =
+        residue::cleanup_residue(running_app, CleanupMode::BeforeExtract, |_| false, &swap)?;
+    if report.update_remains {
+        return Err(CANNOT_REPLACE.to_owned());
+    }
+    let Some(from) = read_bundle_info(running_app).version else {
+        return Err(CANNOT_REPLACE.to_owned());
+    };
+    let update_app = parent.join(UPDATE_NAME);
+    if let Err(error) = residue::write_record(parent, &from, version, residue::Stage::Extracting) {
+        return Err(error);
     }
     if let Err(error) = extract_new_app(&update_app, bytes, version) {
         let _ = fs::remove_dir_all(&update_app);
+        let _ = residue::delete_record(parent);
         return Err(error);
     }
-    if let Err(_error) = swap(&update_app, running_app) {
+    if swap(&update_app, running_app).is_err() {
         let _ = fs::remove_dir_all(&update_app);
+        let _ = residue::delete_record(parent);
         return Err(CANNOT_REPLACE.to_owned());
     }
     // 不歸點。下面失敗不再放閘：新版已經在原路徑上。
-    if let Err(error) = publish_previous(parent) {
+    // 紀錄仍是 extracting。這裡再跑一次整理：主對調已完成，會先改成 swapped 再放進 previous。
+    if let Err(error) =
+        residue::cleanup_residue(running_app, CleanupMode::BeforeExtract, |_| false, &swap)
+    {
         log::warn!("舊版留在 {UPDATE_NAME}：{error}");
     }
     if let Err(error) = touch_app(running_app) {
         log::warn!("touch 新版失敗，仍會重啟：{error}");
     }
     Ok(())
-}
-
-/// 步驟 5：已存在的 previous 先刪（含較新或讀不到的），再把換下來的舊版改成可見名稱。
-fn publish_previous(parent: &Path) -> Result<(), String> {
-    let previous = parent.join(PREVIOUS_NAME);
-    if previous.exists() {
-        fs::remove_dir_all(&previous).map_err(|error| error.to_string())?;
-    }
-    fs::rename(parent.join(UPDATE_NAME), &previous).map_err(|error| error.to_string())
 }
 
 fn extract_new_app(dest: &Path, bytes: &[u8], version: &str) -> Result<(), String> {
@@ -488,15 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn semver_orders_0_9_before_0_10() {
-        assert_eq!(
-            semver_ord("0.9.0", "0.10.0"),
-            Some(std::cmp::Ordering::Less)
-        );
-        assert_ne!("0.9.0" < "0.10.0", true);
-    }
-
-    #[test]
     fn extract_strips_the_first_component_and_checks_the_version() {
         let root = TempDir::new("extract");
         let dest = root.0.join(UPDATE_NAME);
@@ -542,7 +434,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, CANNOT_REPLACE);
         assert_eq!(version_of(&nested).as_deref(), Some("0.2.0"));
-        cleanup_after_launch(&nested).unwrap();
+        residue::cleanup_residue(&nested, CleanupMode::AfterLaunch, |_| true, fake_swap).unwrap();
         assert!(nested.join("Contents/Info.plist").is_file());
 
         let dev = root.0.join("table-tavern");
@@ -566,97 +458,7 @@ mod tests {
             Some("0.2.0")
         );
         assert!(!root.0.join(UPDATE_NAME).exists());
-    }
-
-    #[test]
-    fn interrupted_old_version_is_renamed_to_previous_not_deleted() {
-        let root = TempDir::new("promote");
-        let running = root.0.join(APP_NAME);
-        write_app(&running, "0.10.0", BUNDLE_ID);
-        write_app(&root.0.join(UPDATE_NAME), "0.9.0", BUNDLE_ID);
-        write_app(&root.0.join(PREVIOUS_NAME), "0.8.0", BUNDLE_ID);
-        cleanup_after_launch(&running).unwrap();
-        assert!(!root.0.join(UPDATE_NAME).exists());
-        assert_eq!(
-            version_of(&root.0.join(PREVIOUS_NAME)).as_deref(),
-            Some("0.9.0")
-        );
-    }
-
-    #[test]
-    fn cleanup_from_previous_does_nothing() {
-        let root = TempDir::new("from-previous");
-        let previous = root.0.join(PREVIOUS_NAME);
-        write_app(&previous, "0.2.0", BUNDLE_ID);
-        let update = root.0.join(UPDATE_NAME);
-        write_app(&update, "0.1.0", BUNDLE_ID);
-        cleanup_after_launch(&previous).unwrap();
-        assert!(update.join("Contents/Info.plist").is_file());
-        assert!(previous.join("Contents/Info.plist").is_file());
-    }
-
-    #[test]
-    fn post_launch_deletes_only_an_older_previous() {
-        let root = TempDir::new("post");
-        let running = root.0.join(APP_NAME);
-        write_app(&running, "0.10.0", BUNDLE_ID);
-        write_app(&root.0.join(PREVIOUS_NAME), "0.9.0", BUNDLE_ID);
-        cleanup_after_launch(&running).unwrap();
-        assert!(!root.0.join(PREVIOUS_NAME).exists());
-
-        write_app(&root.0.join(PREVIOUS_NAME), "0.10.0", BUNDLE_ID);
-        cleanup_after_launch(&running).unwrap();
-        assert_eq!(
-            version_of(&root.0.join(PREVIOUS_NAME)).as_deref(),
-            Some("0.10.0")
-        );
-        fs::remove_dir_all(root.0.join(PREVIOUS_NAME)).unwrap();
-        write_app(&root.0.join(PREVIOUS_NAME), "0.11.0", BUNDLE_ID);
-        cleanup_after_launch(&running).unwrap();
-        assert_eq!(
-            version_of(&root.0.join(PREVIOUS_NAME)).as_deref(),
-            Some("0.11.0")
-        );
-    }
-
-    #[test]
-    fn extract_residue_without_plist_is_deleted_and_newer_extract_is_deleted() {
-        let root = TempDir::new("residue");
-        let running = root.0.join(APP_NAME);
-        write_app(&running, "0.10.0", BUNDLE_ID);
-        fs::create_dir_all(root.0.join(UPDATE_NAME).join("Contents")).unwrap();
-        cleanup_after_launch(&running).unwrap();
-        assert!(!root.0.join(UPDATE_NAME).exists());
-
-        write_app(&root.0.join(UPDATE_NAME), "0.10.0", BUNDLE_ID);
-        cleanup_after_launch(&running).unwrap();
-        assert!(!root.0.join(UPDATE_NAME).exists());
-
-        write_app(&root.0.join(UPDATE_NAME), "0.11.0", "com.other.app");
-        cleanup_after_launch(&running).unwrap();
-        assert!(root.0.join(UPDATE_NAME).exists());
-    }
-
-    #[test]
-    fn a_previous_without_plist_is_left_alone() {
-        let root = TempDir::new("previous-bare");
-        let running = root.0.join(APP_NAME);
-        write_app(&running, "0.10.0", BUNDLE_ID);
-        fs::create_dir_all(root.0.join(PREVIOUS_NAME)).unwrap();
-        cleanup_after_launch(&running).unwrap();
-        assert!(root.0.join(PREVIOUS_NAME).is_dir());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn cleanup_does_not_treat_a_symlink_of_the_running_app_as_residue() {
-        let root = TempDir::new("symlink");
-        let running = root.0.join(APP_NAME);
-        write_app(&running, "0.10.0", BUNDLE_ID);
-        std::os::unix::fs::symlink(&running, root.0.join(UPDATE_NAME)).unwrap();
-        cleanup_after_launch(&running).unwrap();
-        assert!(running.join("Contents/Info.plist").is_file());
-        assert!(root.0.join(UPDATE_NAME).exists());
+        assert!(!root.0.join(residue::RECORD_NAME).exists());
     }
 
     #[cfg(target_os = "macos")]

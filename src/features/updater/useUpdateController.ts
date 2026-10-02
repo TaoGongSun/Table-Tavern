@@ -49,8 +49,15 @@ function keepInflight(current: UpdatePhase, offer: UpdateOffer | null): UpdatePh
   return offer ? { kind: "available", offer } : { kind: "idle" };
 }
 
+export type DownloadResult = {
+  version: string;
+  rollback_ready: boolean;
+};
+
 export type UpdateControllerOptions = {
   configLoaded: boolean;
+  /** 設定與桌清單都讀成功之後才呼叫 update_post_launch。 */
+  initialLoadReady: boolean;
   preferences: Record<string, unknown> | undefined;
   responding: boolean;
   stopResponse: () => void;
@@ -71,11 +78,13 @@ function offerOf(phase: UpdatePhase): UpdateOffer | null {
 /**
  * 啟動檢查一次，之後每 24 小時一次。`update_auto_check` 不是 false 才自動檢查
  * （缺鍵、非 bool 都當開）。這個開關中途打開會立刻再查一次。
- * 不畫任何提示。回傳的 phase／skip／requestInstall／stopResponse 留給包 5。
+ * `update_post_launch` 等設定與桌清單都讀成功（`initialLoadReady`）才呼叫一次。
+ * 不畫任何提示。回傳的 phase／rollbackReady／skip／requestInstall／stopResponse 留給包 5。
  * AI 回應中按安裝只進 waiting，不自己呼叫 stopResponse。
  */
 export function useUpdateController({
   configLoaded,
+  initialLoadReady,
   preferences,
   responding,
   stopResponse,
@@ -86,6 +95,7 @@ export function useUpdateController({
   savePreference = defaultSave,
 }: UpdateControllerOptions) {
   const [phase, setPhase] = useState<UpdatePhase>({ kind: "idle" });
+  const [rollbackReady, setRollbackReady] = useState<boolean | null>(null);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   const respondingRef = useRef(responding);
@@ -94,10 +104,10 @@ export function useUpdateController({
   const posted = useRef(false);
 
   useEffect(() => {
-    if (posted.current) return;
+    if (!initialLoadReady || posted.current) return;
     posted.current = true;
     void invokeImpl("update_post_launch").catch(() => {});
-  }, [invokeImpl]);
+  }, [initialLoadReady, invokeImpl]);
 
   const auto = preferences?.update_auto_check !== false;
   useEffect(() => {
@@ -134,13 +144,14 @@ export function useUpdateController({
               : current,
           );
         });
-        const downloaded = await invokeImpl("update_download");
-        if (typeof downloaded !== "string" || downloaded.length === 0) {
+        const downloaded = (await invokeImpl("update_download")) as DownloadResult | null;
+        if (!downloaded || typeof downloaded.version !== "string" || downloaded.version.length === 0) {
           throw "尚未下載";
         }
+        setRollbackReady(downloaded.rollback_ready === true);
         setPhase({ kind: "installing", offer });
         try {
-          await invokeImpl("update_install", { version: downloaded });
+          await invokeImpl("update_install", { version: downloaded.version });
         } catch (reason) {
           // 略過鍵在開閘前就清了。安裝失敗時閘已放下，重讀設定，前端才不會停在舊值。
           try {
@@ -194,5 +205,5 @@ export function useUpdateController({
     [onConfig, savePreference],
   );
 
-  return { phase, skip, requestInstall, checkNow, stopResponse };
+  return { phase, rollbackReady, skip, requestInstall, checkNow, stopResponse };
 }
