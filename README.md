@@ -14,7 +14,7 @@ Interface in ten languages — English, 繁體中文, 简体中文, 日本語, �
 
 **Windows**: download the installer from the release page. Windows may show an "unknown publisher" warning — click **More info → Run anyway**.
 
-**macOS** (Intel or Apple Silicon): download the universal `.dmg`, drag `Table Tavern.app` into Applications, double-click.
+**macOS** (Apple Silicon only): download the `.dmg`, drag `Table Tavern.app` into Applications, double-click.
 
 If macOS says the app can't be verified: press **Done**, open **System Settings → Privacy & Security**, scroll to the bottom, click **Open Anyway**, confirm once. That's it — the warning appears because this test build isn't notarized with Apple yet.
 

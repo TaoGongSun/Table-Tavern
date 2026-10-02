@@ -48,7 +48,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -56,15 +56,14 @@ jobs:
 
       - run: npm ci
 
-      # Intel 與 Apple Silicon 合成同一個 .app，使用者不必挑機型。
       - uses: tauri-apps/tauri-action@v0
         with:
-          args: --target universal-apple-darwin
+          args: --target aarch64-apple-darwin
 
       - uses: actions/upload-artifact@v4
         with:
           name: table-tavern-macos-unsigned
           path: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
           if-no-files-found: error

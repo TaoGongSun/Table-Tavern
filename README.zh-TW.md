@@ -14,7 +14,7 @@
 
 **Windows**：從發佈頁下載安裝檔。Windows 可能顯示「未知的發行者」——點「其他資訊 → 仍要執行」。
 
-**macOS**（Intel 或 Apple Silicon）：下載通用版 `.dmg`，把 `Table Tavern.app` 拖進「應用程式」，雙擊開啟。
+**macOS**（僅 Apple Silicon）：下載 `.dmg`，把 `Table Tavern.app` 拖進「應用程式」，雙擊開啟。
 
 如果系統說「無法驗證是否為惡意軟體」：按「完成」，開「系統設定 → 隱私權與安全性」，捲到最底下按「仍要打開」，再確認一次就好。會跳這個警告只是因為測試版還沒送 Apple 公證，不是中毒。
 
