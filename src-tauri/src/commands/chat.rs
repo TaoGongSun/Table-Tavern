@@ -585,10 +585,11 @@ fn record_person_arrivals(
 }
 
 /// 角色卡自動回歸（AI 卡重構包 4b）：present 名單（缺席就退回本文比對）比對得上、
-/// 本幕還沒回歸過的 auto_hidden 卡，逐一把完整設定 append 成一則系統事件；同一張卡
-/// 本幕只記一次。鏡射 record_person_arrivals，鍵從世界書 title 換成卡片 name；
+/// 本幕還沒回歸過的 auto_hidden 卡，逐一 append 公開回歸事件；有私設時另 append
+/// 一則 gm_only 私設事件（只有 GM 看得到，card-arrival-private-leak）。同一張卡本幕只記一次。鏡射 record_person_arrivals，鍵從世界書 title 換成卡片 name；
 /// **不改 auto_hidden 欄位本身**（鐵律：持久欄位只在換幕結算，見 data::begin_next_scene）。
-/// chars 快照本來就含全卡，回歸事件不算新洩漏，一律 gm_only=false。
+/// 私設先寫：私設寫失敗就整張跳過、下一輪重試；公開事件寫失敗頂多多一則重複私設，
+/// 不會出現「已回歸卻沒有私設」被去重擋住補不回來。
 /// 回傳這輪實際記上的卡 id 清單（成功寫檔才算）。
 #[allow(clippy::too_many_arguments)]
 fn record_card_arrivals(
@@ -608,18 +609,25 @@ fn record_card_arrivals(
     }
     let ts = data::local_timestamp().unwrap_or_default();
     let mut ids = Vec::new();
+    let system_event = |text: String, gm_only: bool| data::TranscriptEvent {
+        ts: ts.clone(),
+        speaker_id: String::new(),
+        speaker_name: "GM".to_owned(),
+        kind: data::TranscriptKind::System,
+        text,
+        raw: None,
+        state: None,
+        truncated: false,
+        gm_only,
+    };
     for card in arrivals {
-        let event = data::TranscriptEvent {
-            ts: ts.clone(),
-            speaker_id: String::new(),
-            speaker_name: "GM".to_owned(),
-            kind: data::TranscriptKind::System,
-            text: transport::card_arrival_text(card, user_name),
-            raw: None,
-            state: None,
-            truncated: false,
-            gm_only: false,
-        };
+        if let Some(private) = transport::card_private_text(card, user_name) {
+            if data::append_transcript(root, world_id, scene, &system_event(private, true)).is_err()
+            {
+                continue;
+            }
+        }
+        let event = system_event(transport::card_arrival_text(card, user_name), false);
         if data::append_transcript(root, world_id, scene, &event).is_ok() {
             ids.push(card.id.clone());
         }
@@ -733,8 +741,9 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    /// AI 卡重構包 4b，鏡射 4a：present 有隱藏卡的名字就把完整設定 append 成一則回歸事件；
-    /// 同一幕重複比對不重複 append；不改 auto_hidden 欄位本身（鐵律，換幕才結算）。
+    /// AI 卡重構包 4b，鏡射 4a：present 有隱藏卡的名字就 append 回歸事件——私設先成一則
+    /// gm_only 事件、公開設定再成一則（card-arrival-private-leak）；同一幕重複比對不重複
+    /// append；不改 auto_hidden 欄位本身（鐵律，換幕才結算）。
     #[test]
     fn record_card_arrivals_appends_once_per_scene_and_does_not_touch_auto_hidden() {
         let root = std::env::temp_dir().join(format!(
@@ -747,27 +756,47 @@ mod tests {
 
         let mut fox = character_card(&data::new_id(), "狐狸");
         fox.public_md = "尾巴很大。".to_owned();
+        fox.private_md = "其實是{{user}}的仇人。".to_owned();
         data::write_character(&root, &world_id, &fox).unwrap();
         data::set_character_auto_hidden(&root, &world_id, &fox.id, true).unwrap();
-        let hidden_cards = vec![fox.clone()];
+        let mut owl = character_card(&data::new_id(), "貓頭鷹");
+        owl.public_md = "夜裡才醒。".to_owned();
+        data::write_character(&root, &world_id, &owl).unwrap();
+        data::set_character_auto_hidden(&root, &world_id, &owl.id, true).unwrap();
+        let hidden_cards = vec![fox.clone(), owl.clone()];
 
-        // 第一輪：present 有狐狸 → append 一則回歸事件
-        record_card_arrivals(
+        // 第一輪：present 有狐狸與貓頭鷹 → 狐狸私設＋公開兩則，貓頭鷹沒私設只有公開一則
+        let ids = record_card_arrivals(
             &root,
             &world_id,
             0,
             &hidden_cards,
             &[],
-            Some("狐狸"),
+            Some("狐狸、貓頭鷹"),
             "",
             "阿濤",
         );
+        assert_eq!(ids, vec![fox.id.clone(), owl.id.clone()]);
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
-        assert_eq!(scene0.len(), 1);
-        assert_eq!(scene0[0].kind, data::TranscriptKind::System);
-        assert!(!scene0[0].gm_only);
-        assert!(scene0[0].text.starts_with("（角色回歸）〈狐狸〉\n"));
-        assert!(scene0[0].text.contains("尾巴很大。"));
+        assert_eq!(scene0.len(), 3);
+        assert!(scene0
+            .iter()
+            .all(|event| event.kind == data::TranscriptKind::System));
+        assert!(scene0[0].gm_only);
+        assert_eq!(
+            scene0[0].text,
+            "（角色私設）〈狐狸〉\n私有設定：\n其實是阿濤的仇人。"
+        );
+        assert!(!scene0[1].gm_only);
+        assert_eq!(
+            scene0[1].text,
+            "（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。"
+        );
+        assert!(!scene0[2].gm_only);
+        assert_eq!(
+            scene0[2].text,
+            "（角色回歸）〈貓頭鷹〉\n公開設定：\n夜裡才醒。"
+        );
 
         // 第二輪：present 還是狐狸，本幕 events 已含前一則回歸事件 → 不重複
         record_card_arrivals(
@@ -776,11 +805,11 @@ mod tests {
             0,
             &hidden_cards,
             &scene0,
-            Some("狐狸"),
+            Some("狐狸、貓頭鷹"),
             "",
             "阿濤",
         );
-        assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
+        assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 3);
 
         // 不碰 auto_hidden 欄位本身：磁碟上仍是 true，要等換幕結算才會變 false
         let meta = data::list_characters(&root, &world_id)

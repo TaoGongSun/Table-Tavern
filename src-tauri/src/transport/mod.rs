@@ -15,8 +15,8 @@ pub(crate) mod translate;
 mod turns;
 
 pub use arrivals::{
-    appeared_card_names, appeared_person_titles, card_arrival_text, detect_new_arrivals,
-    detect_new_card_arrivals, person_arrival_text,
+    appeared_card_names, appeared_person_titles, card_arrival_text, card_private_text,
+    detect_new_arrivals, detect_new_card_arrivals, is_legacy_card_arrival, person_arrival_text,
 };
 pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
 pub use client::{

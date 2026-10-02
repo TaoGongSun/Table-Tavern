@@ -86,6 +86,7 @@ export const ru: Record<MsgKey, string> = {
   usageReasonSceneChanged: "Начат новый акт",
   usageReasonHistoryRewound: "История отмотана назад",
   usageReasonHistoryEdited: "История изменена",
+  usageReasonHistoryRedacted: "Старые тайны скрыты",
   usageReasonReplyDiverged: "Предыдущий ответ расходится",
   usageReasonResumeFailed: "Ошибка вызова продолжения",
   usageReasonRewriteFailed: "Ошибка очистки после раунда",

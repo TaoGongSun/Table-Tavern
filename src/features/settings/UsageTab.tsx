@@ -87,6 +87,7 @@ const REASON_KEYS = {
   "scene-changed": "usageReasonSceneChanged",
   "history-rewound": "usageReasonHistoryRewound",
   "history-edited": "usageReasonHistoryEdited",
+  "history-redacted": "usageReasonHistoryRedacted",
   "reply-diverged": "usageReasonReplyDiverged",
   "resume-failed": "usageReasonResumeFailed",
   "rewrite-failed": "usageReasonRewriteFailed",

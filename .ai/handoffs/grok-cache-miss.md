@@ -13,7 +13,7 @@ grok 通道每輪開新 session 的無狀態單發，跨呼叫拿不到 prompt c
 - cargo 530 綠、rustfmt 差異數與 HEAD 同基準、clippy 無新增警告
 
 ## Next action
-等 card-arrival-private-leak 拍板角色線怎麼組裝，再驗收角色線：讓角色接三輪以上話，看 `chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，並確認換角色、改卡、換幕之後不會每輪重開。GM 線已驗完，不必重驗。
+card-arrival-private-leak 已修且拍板 grok 維持一角一線〔作者裁決 2026-10-02〕，可驗收角色線：讓角色接三輪以上話，看 `chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，並確認換角色、改卡、換幕之後不會每輪重開。GM 線已驗完，不必重驗。
 
 ## Constraints
 - grok 沒有 session 檔抹寫路徑，私設一律提進該角色自己的凍結 system＋一角一線；`run_turn` 對 grok 帶機密段直接擋下。這個設計是否保留由 card-arrival-private-leak 決定。

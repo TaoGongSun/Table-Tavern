@@ -86,6 +86,7 @@ export const ko: Record<MsgKey, string> = {
   usageReasonSceneChanged: "막이 바뀜",
   usageReasonHistoryRewound: "기록이 되돌려짐",
   usageReasonHistoryEdited: "기록이 수정됨",
+  usageReasonHistoryRedacted: "이전 복귀 기록의 비밀을 가림",
   usageReasonReplyDiverged: "이전 응답이 일치하지 않음",
   usageReasonResumeFailed: "이어하기 호출 실패",
   usageReasonRewriteFailed: "라운드 후 정리 실패",

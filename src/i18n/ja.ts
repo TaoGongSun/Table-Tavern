@@ -86,6 +86,7 @@ export const ja: Record<MsgKey, string> = {
   usageReasonSceneChanged: "幕が変わった",
   usageReasonHistoryRewound: "ログが巻き戻された",
   usageReasonHistoryEdited: "ログが編集された",
+  usageReasonHistoryRedacted: "旧登場記録の秘密を伏せた",
   usageReasonReplyDiverged: "前の返答が一致しない",
   usageReasonResumeFailed: "継続呼び出しに失敗",
   usageReasonRewriteFailed: "ラウンド後の整理に失敗",
