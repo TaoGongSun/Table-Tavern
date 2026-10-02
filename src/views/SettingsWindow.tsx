@@ -18,6 +18,7 @@ import { IconClose } from "../shared/ui/icons";
 import { Settings } from "./SettingsForm";
 import { UsageTab } from "./UsageTab";
 import taoIcon from "../assets/tao-icon.png";
+import { backendText } from "../shared/ui/backend-text";
 
 const THEME_LABEL_KEYS = { dark: "themeDark", light: "themeLight", parchment: "themeParchment", herbal: "themeHerbal", candlelight: "themeCandlelight", port: "themePort", seamist: "themeSeamist" } as const;
 // 色票縮圖用色（與 App.css 各主題 surface-0／accent 同步）
@@ -386,7 +387,7 @@ export function SettingsWindow({
                   />
                   {sponsorPackError && (
                     <small role="alert">
-                      {t("sponsorPackImportError", { reason: sponsorPackError })}
+                      {t("sponsorPackImportError", { reason: backendText(sponsorPackError) })}
                     </small>
                   )}
                 </>

@@ -1,4 +1,5 @@
 import { t, type MsgKey } from "../../i18n";
+import { backendText } from "../../shared/ui/backend-text";
 import { Dialog } from "../../shared/ui/Dialog";
 import {
   defaultRefactorSelection,
@@ -147,7 +148,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
           })}
           {[...new Set(failures.map((failure) => failure.reason).filter(Boolean))].map((reason) => (
             <span key={reason} className="refactor-fail-reason">
-              {t("refactorFailReason", { reason })}
+              {t("refactorFailReason", { reason: backendText(reason).slice(0, 200) })}
             </span>
           ))}
         </p>
@@ -381,7 +382,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                   <div className="mechanism-ledger-row" key={index}>
                     <div className="mechanism-ledger-summary">
                       <strong>{item.title}</strong>
-                      <span className="mechanism-ledger-detail">{item.note}</span>
+                      <span className="mechanism-ledger-detail">{backendText(item.note)}</span>
                       <span className="refactor-source">{item.span || item.uid}</span>
                     </div>
                   </div>
@@ -389,7 +390,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
               </div>
             </section>
           )}
-          {/* 稽核：機械檢查抓到的紅字，純資訊不影響套用——detail 是後端已經寫好的繁中一句。 */}
+          {/* 稽核：機械檢查抓到的紅字，純資訊不影響套用——detail 是後端代碼（舊結果是繁中原句），顯示才翻。 */}
           {outcome.audit.length > 0 && (
             <section>
               <h3>{t("refactorAuditSection")}</h3>
@@ -406,7 +407,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                           item.kind === "excused" ? "mechanism-ledger-detail" : "usage-bad"
                         }
                       >
-                        {item.detail}
+                        {backendText(item.detail)}
                       </span>
                     </div>
                   </div>

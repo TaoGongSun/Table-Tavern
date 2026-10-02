@@ -95,6 +95,7 @@ const ACCESSORS = {
 } as const;
 
 export type ApiCompatMsgKey = keyof typeof ACCESSORS;
+export const API_COMPAT_MESSAGE_KEYS = Object.keys(ACCESSORS) as ApiCompatMsgKey[];
 
 export function isApiCompatMsgKey(key: string): key is ApiCompatMsgKey {
   return key in ACCESSORS;

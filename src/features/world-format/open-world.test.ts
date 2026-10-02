@@ -20,7 +20,7 @@ describe("gateOf", () => {
     expect(gateOf({ status: "ready" })).toBe("play");
     expect(gateOf({ status: "migrated", from: 1, to: 2 })).toBe("play");
     expect(gateOf(readOnly("0.2.0", 2))).toBe("readonly");
-    expect(gateOf({ status: "needs_repair", message: "壞了", directory: "/tmp/w" })).toBe("repair");
+    expect(gateOf({ status: "needs_repair", reason: "outside", error: null, directory: "/tmp/w" })).toBe("repair");
     expect(gateOf({ status: "busy" })).toBe("busy");
   });
 });

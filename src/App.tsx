@@ -13,6 +13,7 @@ import {
   readOnlyBannerVersion,
   type LooseWorld,
   type OpenWorld,
+  type RepairNotice,
   type TableGate,
 } from "./features/world-format/open-world";
 import { isCharacterHidden } from "./features/characters/character-visibility";
@@ -80,9 +81,7 @@ function App() {
     appVersion: string | null;
     backupAvailable: boolean;
   } | null>(null);
-  const [repairNotice, setRepairNotice] = useState<{ message: string; directory: string } | null>(
-    null,
-  );
+  const [repairNotice, setRepairNotice] = useState<RepairNotice | null>(null);
   const [skippedLines, setSkippedLines] = useState(0);
   const liveWorldId = gate === "play" ? table : "";
   const [scene, setScene] = useState(0);
@@ -402,7 +401,7 @@ function App() {
       blankSurface(id);
       setTable(id);
       setGate("repair");
-      setRepairNotice({ message: opened.message, directory: opened.directory });
+      setRepairNotice({ reason: opened.reason, error: opened.error, directory: opened.directory });
       setReadOnlyNotice(null);
       return { entered: true, writable: false };
     }

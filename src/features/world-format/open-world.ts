@@ -1,8 +1,16 @@
 // open_world 的分流與唯讀紀錄對應。畫面怎麼畫在 FormatNotice，這裡只留可單測的判斷。
 import { t } from "../../i18n";
+import type { RepairReason } from "../../i18n/features/backend-msg";
 import { TranscriptEvent, WorldMeta } from "../../shared/contracts/backend-contracts";
 
 export type TableGate = "play" | "readonly" | "repair";
+
+/** 需修復頁要的資料：原因代碼、io 時的系統錯誤原文、要打開的資料夾。 */
+export interface RepairNotice {
+  reason: RepairReason;
+  error: string | null;
+  directory: string;
+}
 
 /** 對應後端 OpenWorld（serde tag = status）。 */
 export type OpenWorld =
@@ -14,7 +22,7 @@ export type OpenWorld =
       app_version: string | null;
       backup_available: boolean;
     }
-  | { status: "needs_repair"; message: string; directory: string }
+  | ({ status: "needs_repair" } & RepairNotice)
   | { status: "busy" };
 
 export interface LooseLine {

@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import type { VersionCenter } from "./useVersionCenter";
 import type { BackupRow, VersionRow } from "./useVersionStoreController";
 import { formatBytes, previousRow, versionRowActions } from "./version-center";
+import { backendText } from "../../shared/ui/backend-text";
 
 /** AI 回應中按了更新或回退：等它結束，或現在停下、或取消等待。 */
 export function WaitingNotice({ onStop, onCancel }: { onStop: () => void; onCancel: () => void }) {
@@ -44,7 +45,7 @@ export function RollbackSection({ center }: { center: VersionCenter }) {
     try {
       await store.deleteVersion(row.version);
     } catch (reason) {
-      setDeleteError(t("deleteFailed", { reason: String(reason) }));
+      setDeleteError(String(reason));
     }
   }
 
@@ -69,17 +70,19 @@ export function RollbackSection({ center }: { center: VersionCenter }) {
       )}
       {phase.kind === "installing" && <p role="status">{t("rollbackInstalling")}</p>}
       {phase.kind === "error" && (
-        <p role="alert">{t("rollbackFailed", { reason: phase.message })}</p>
+        <p role="alert">{t("rollbackFailed", { reason: backendText(phase.message) })}</p>
       )}
       {store.loadError && (
         <div className="row">
-          <p role="alert">{t("versionsLoadFailed", { reason: store.loadError })}</p>
+          <p role="alert">{t("versionsLoadFailed", { reason: backendText(store.loadError) })}</p>
           <button type="button" className="btn" onClick={() => void store.refresh()}>
             {t("refreshListBtn")}
           </button>
         </div>
       )}
-      {deleteError && <p role="alert">{deleteError}</p>}
+      {deleteError && (
+        <p role="alert">{t("deleteFailed", { reason: backendText(deleteError) })}</p>
+      )}
       {store.versions && (
         <details>
           <summary>{t("versionListSummary")}</summary>
@@ -139,7 +142,8 @@ function VersionRowButtons({
 
 export function StorageSection({ center }: { center: VersionCenter }) {
   const { store, busy } = center;
-  const [error, setError] = useState("");
+  // 存後端原文，顯示時才翻；刪備份失敗另外套「刪除失敗」外框
+  const [error, setError] = useState<{ raw: string; deleting: boolean } | null>(null);
 
   async function deleteBackup(row: BackupRow) {
     const accepted = await confirm(
@@ -152,20 +156,20 @@ export function StorageSection({ center }: { center: VersionCenter }) {
       },
     );
     if (!accepted) return;
-    setError("");
+    setError(null);
     try {
       await store.deleteBackup(row.world_id, row.kind);
     } catch (reason) {
-      setError(t("deleteFailed", { reason: String(reason) }));
+      setError({ raw: String(reason), deleting: true });
     }
   }
 
   async function openFolder(directory: string) {
-    setError("");
+    setError(null);
     try {
       await revealItemInDir(directory);
     } catch (reason) {
-      setError(String(reason));
+      setError({ raw: String(reason), deleting: false });
     }
   }
 
@@ -214,7 +218,13 @@ export function StorageSection({ center }: { center: VersionCenter }) {
           )}
         </>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          {error.deleting
+            ? t("deleteFailed", { reason: backendText(error.raw) })
+            : backendText(error.raw)}
+        </p>
+      )}
     </section>
   );
 }

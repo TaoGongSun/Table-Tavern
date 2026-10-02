@@ -2,6 +2,7 @@ import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
+import { backendText } from "../shared/ui/backend-text";
 import { checkApiKey } from "../features/ai-connection/api-key-check";
 import { tierLabel } from "../features/ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../features/ai-connection/model-catalog-store";
@@ -693,7 +694,7 @@ export function Settings({
               <datalist id="openrouter-models">
                 {(catalogs["api"] ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.label}
+                    {backendText(m.label)}
                   </option>
                 ))}
               </datalist>
@@ -724,7 +725,7 @@ export function Settings({
                       <option value="">{t("cliDefaultOption")}</option>
                       {catalog.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.label}
+                          {backendText(m.label)}
                         </option>
                       ))}
                       <option value="__custom__">{t("customModelOption")}</option>
@@ -835,7 +836,7 @@ export function Settings({
       <footer className="settings-foot">
         {/* 固定約兩行高、超長內捲：可聚焦才能只用鍵盤捲完長錯誤 */}
         <div className="settings-foot-status" tabIndex={statusShown ? 0 : undefined}>
-          {message && <span role={message.kind === "ok" ? "status" : "alert"}>{message.text}</span>}
+          {message && <span role={message.kind === "ok" ? "status" : "alert"}>{backendText(message.text)}</span>}
           {dirtyCount > 0 && (
             <span className="settings-unsaved" role="status">
               {t("unsavedChanges", { n: dirtyCount })}

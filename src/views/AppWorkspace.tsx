@@ -2,7 +2,7 @@ import { type Dispatch, type SetStateAction, useRef } from "react";
 import type { AppConfig } from "../shared/contracts/backend-contracts";
 import { PALETTE } from "../features/characters/card-model";
 import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotice";
-import type { TableGate } from "../features/world-format/open-world";
+import type { RepairNotice, TableGate } from "../features/world-format/open-world";
 import type { CardInterfaceController } from "../controllers/useCardInterfaceController";
 import type { CharacterController } from "../controllers/useCharacterController";
 import type { ChatController } from "../controllers/useChatController";
@@ -60,7 +60,7 @@ interface AppWorkspaceProps {
   onRefactorApplied: () => Promise<void>;
   gate: TableGate;
   readOnlyNotice: { appVersion: string | null; backupAvailable: boolean } | null;
-  repairNotice: { message: string; directory: string } | null;
+  repairNotice: RepairNotice | null;
   skippedLines: number;
   onUseBackup: () => void;
   onOpenRepairFolder: () => void;
@@ -243,7 +243,7 @@ export function AppWorkspace({
         />
 
         {gate === "repair" && repairNotice ? (
-          <FormatRepair message={repairNotice.message} onOpenFolder={onOpenRepairFolder} />
+          <FormatRepair notice={repairNotice} onOpenFolder={onOpenRepairFolder} />
         ) : (
           <>
             {gate === "readonly" && readOnlyNotice && (

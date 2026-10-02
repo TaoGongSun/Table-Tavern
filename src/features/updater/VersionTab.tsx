@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import type { VersionCenter } from "./useVersionCenter";
 import { RollbackSection, StorageSection, WaitingNotice } from "./VersionStoreSections";
 import { cannotReplace, isOfferSkipped, RELEASES_URL } from "./version-center";
+import { backendText } from "../../shared/ui/backend-text";
 
 interface VersionTabProps {
   center: VersionCenter;
@@ -84,7 +85,7 @@ function UpdateSection({ center, preferences, onPreference }: VersionTabProps) {
           {phase.kind === "installing" && <p role="status">{t("updateInstalling")}</p>}
           {phase.kind === "error" && (
             <p role="alert">
-              {replaceFailed ? t("cannotReplaceBody") : t("updateFailed", { reason: phase.message })}
+              {replaceFailed ? t("cannotReplaceBody") : t("updateFailed", { reason: backendText(phase.message) })}
             </p>
           )}
           <details>
@@ -104,13 +105,13 @@ function UpdateSection({ center, preferences, onPreference }: VersionTabProps) {
                 {skipped ? t("unskipVersionBtn") : t("skipVersionBtn")}
               </button>
             </div>
-            {skipError && <p role="alert">{skipError}</p>}
+            {skipError && <p role="alert">{backendText(skipError)}</p>}
           </details>
         </div>
       )}
       {!offer && update.checked && !update.checkError && <p>{t("upToDate")}</p>}
       {update.checkError && (
-        <p role="alert">{t("checkUpdatesFailed", { reason: update.checkError })}</p>
+        <p role="alert">{t("checkUpdatesFailed", { reason: backendText(update.checkError) })}</p>
       )}
 
       <label className="inline">

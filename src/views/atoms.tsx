@@ -5,19 +5,21 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
 import { renderStoryMarkdown } from "../shared/ui/story-markdown";
 import { explainAiError } from "../shared/ui/ai-error";
+import { backendText } from "../shared/ui/backend-text";
 import { IconBack, IconExport } from "../shared/ui/icons";
 import { TranscriptEvent } from "../shared/contracts/backend-contracts";
 
 // 錯誤列：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
 // transport 給得出來就傳：認證失敗要指對地方（API 換金鑰／CLI 重新登入）。
+// text 存後端原文：分流吃原文，顯示時才經 backendText 翻譯代碼。
 export function ErrorNote({ text, transport }: { text: string; transport?: string }) {
   const key = explainAiError(text, transport);
-  if (!key) return <p role="alert">{text}</p>;
+  if (!key) return <p role="alert">{backendText(text)}</p>;
   return (
     <p role="alert">
       {t(key)}
       <br />
-      <small>{text}</small>
+      <small>{backendText(text)}</small>
     </p>
   );
 }

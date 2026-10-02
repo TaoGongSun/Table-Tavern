@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
+import { backendText } from "../shared/ui/backend-text";
 import { Dialog, SwapLabel } from "../shared/ui/Dialog";
 
 const GENRE_KEYS = [
@@ -323,8 +324,8 @@ export function GenerateTableDialog({
       )}
       {(genResultRaw !== null || genError) && (
         <section className="gen-result-error" role="alert">
-          <p>{genError || t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
-          <pre>{genError || genResultRaw}</pre>
+          <p>{backendText(genError) || t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
+          <pre>{backendText(genError) || genResultRaw}</pre>
         </section>
       )}
     </Dialog>
