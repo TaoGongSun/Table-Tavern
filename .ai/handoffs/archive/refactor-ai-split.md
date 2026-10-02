@@ -1,10 +1,12 @@
+> 結案 2026-10-02：之後各案 `npm run verify` 全綠（cargo test 705），外部可執行驗收已滿足。
+
 # refactor_ai.rs 拆進 refactor_ai/
 
 狀態：2026-09-04 **拆分施工完成**。原 2764 行 `src-tauri/src/refactor_ai.rs` 已拆成 `src-tauri/src/refactor_ai/`；`legacy.rs` 已刪除；原 56 個測試都有新歸屬。剩餘項目只有在可執行 repo 的環境跑 `npm run build` + `cargo test`，GitHub connector 本身無法執行本地 cargo，因此本文件不冒稱編譯已綠。
 
 ## 基準與紅線
 
-原始基準：`src-tauri/src/refactor_ai.rs` blob `9c5cf7a35b33e31cca906728f7b181a193cfaa81`，2764 行（production 1–1810、同檔測試 1811–2764）。切線與依賴以 [refactor-ai-split plan](../plans/refactor-ai-split.md) 為準。
+原始基準：`src-tauri/src/refactor_ai.rs` blob `9c5cf7a35b33e31cca906728f7b181a193cfaa81`，2764 行（production 1–1810、同檔測試 1811–2764）。切線與依賴以 [refactor-ai-split plan](../../plans/refactor-ai-split.md) 為準。
 
 本案沿用 mechanism split：production body 純搬家；只做 module plumbing 必要的 import／`pub(super)`；`mod.rs` 純 facade；不改 `commands/refactor.rs`、`refactor_assemble.rs`、`refactor.rs`；零呼叫端 `RefactorAbsorbOutcome` 留在 `types.rs` 當 `parse_absorb` 回傳型別但不從 facade re-export。
 

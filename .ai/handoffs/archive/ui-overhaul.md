@@ -1,3 +1,5 @@
+> 併入 ui-redesign 2026-10-02〔作者裁決 2026-10-02〕：元件已全數重做，剩下的實聊驗收（對話名牌版式、串流打字指示）改由 [ui-redesign](../ui-redesign.md) 驗。
+
 # Handoff: ui-overhaul
 
 ## Current state

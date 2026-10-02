@@ -1,9 +1,11 @@
+> 結案 2026-10-02：app 的 grok profile（`grok-home/`）已有登入憑證，隔離上線後帳本記到 37 輪 grok 旁白成功。
+
 # grok 通道環境隔離：app 自帶 grok profile，不再吃使用者的 ~/.claude 與 ~/.grok
 
 Status: awaiting-verification
 
 ## Summary
-grok CLI 會自動載入 `$HOME/.claude` 的 hooks／skills／CLAUDE.md（官方無 opt-out），玩家的 coding Stop hook 因此擋停旁白並讓 grok 無限重寫、燒額度。修法是注入 `HOME`／`USERPROFILE`／`GROK_HOME`，讓 grok 只看得到 app 自己的 profile。拍板結論與驗收清單見 [.ai/plans/grok-profile-isolation.md](../plans/grok-profile-isolation.md)。
+grok CLI 會自動載入 `$HOME/.claude` 的 hooks／skills／CLAUDE.md（官方無 opt-out），玩家的 coding Stop hook 因此擋停旁白並讓 grok 無限重寫、燒額度。修法是注入 `HOME`／`USERPROFILE`／`GROK_HOME`，讓 grok 只看得到 app 自己的 profile。拍板結論與驗收清單見 [.ai/plans/grok-profile-isolation.md](../../plans/grok-profile-isolation.md)。
 
 ## Progress
 - 四處環境注入完成：旁白 `run_cli`、`grok models`（`cli_model_catalog`）、mac 安裝腳本的 login／探針、Windows `InstallSpec`。

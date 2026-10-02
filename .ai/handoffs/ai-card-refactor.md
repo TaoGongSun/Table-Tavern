@@ -1,7 +1,7 @@
 # Handoff: ai-card-refactor
 
 ## Current state
-**2026-08-11 實測暫停：機制面跑通、產出面判定不能玩，待重設計**。orc-cave 真跑 B1–B4 一輪：重構→匯出→匯入→套用→狀態欄／帳本／殼／復原全都動作（機制面通過）；但產出品質使用者判定不合格——世界書停用墓地、規則顯示藏在世界書編輯頁（遊玩時看不到）、無介面卡硬產殼、殼把未觸發事件全列＝劇透、狀態欄位簡繁重複。七條「能玩」驗收標準已裁決，見 [refactor-output-redesign](../tasks/refactor-output-redesign.md)；重設計完成後再回來續測 C／D／E。測試水位：cargo test 428／vitest 82／npm build／check:i18n 全綠（已 commit 至 2cc2046）。
+**前置已解除，可從 B 段開跑**：產出重設計（[refactor-output-redesign](archive/refactor-output-redesign-completed.md)）與匯出重構卡（[refactor-outcome-export](archive/refactor-outcome-export-completed.md)）都已結案。以下為 2026-08-11 暫停時的紀錄：orc-cave 真跑 B1–B4 一輪：重構→匯出→匯入→套用→狀態欄／帳本／殼／復原全都動作（機制面通過）；但產出品質使用者判定不合格——世界書停用墓地、規則顯示藏在世界書編輯頁（遊玩時看不到）、無介面卡硬產殼、殼把未觸發事件全列＝劇透、狀態欄位簡繁重複。七條「能玩」驗收標準已裁決，見 [refactor-output-redesign](../tasks/refactor-output-redesign.md)；重設計完成後再回來續測 C／D／E。測試水位：cargo test 428／vitest 82／npm build／check:i18n 全綠（已 commit 至 2cc2046）。
 
 ## Completed
 - 玩家卡選取改為只問一位（2026-08-10 拍板）：展開細看原本每行都有「玩家卡」單選＋「不指定玩家」一列，等於任何角色都能被選成玩家——不符合多數卡預設好玩家是誰的設計。現在只有 AI 標記 `suspected_player` 的那位出現「這是我的角色」勾選（預設勾、可取消），沒人被標記就整個選項不出現（[App.tsx:2615](../../src/App.tsx#L2615)）；i18n 刪 `refactorPlayerNone`／`refactorPlayerRadioLabel`，改 `refactorPlayerCheckLabel`。結果卡標題「整理好了」→「重構完成」（十語系同步）。事後改主意的入口另立 [character-to-player-card](../tasks/character-to-player-card.md)。
@@ -35,7 +35,7 @@
 
 ## 待實測清單（新對話照此逐項勾，全過即結案）
 
-### A. 零額度：匯入既有產物（**待 [refactor-outcome-export](../tasks/refactor-outcome-export.md) 完成**）
+### A. 零額度：匯入既有產物（匯出功能已完成，拿 B 段存下的產物重放）
 2026-08-10 拍板：不再用手工假產物測——手捏一份逼真的產物等於用人力重造 app 按一顆鈕就會產的東西，成本高又測不出真實情況。改成先做匯出功能，B 段真跑一次把產物存起來，A 段拿那份檔案重放。
 - [ ] A1 匯入 B 段存下的產物檔→結果卡摘要與當初一致。
 - [ ] A2 展開細看：三區預設全勾；角色行 emoji＋名字＋灰字出處條目名；只有 AI 認定是 `{{user}}` 的那位有「這是我的角色」勾選（預設勾、可取消）。
@@ -84,9 +84,8 @@
 7. 單發 assemble_messages 路徑（非 lane 單角色）對 Public 的 is_person 條目仍送全文——重構產的條目都是 Gm 限定，實務不觸發。
 
 ## Next action
-1. 先做 [refactor-outcome-export](../tasks/refactor-outcome-export.md)——2026-08-10 六項拍板完成（兩入口都做、undo 不刪檔、含殼、uid v1 不處理），實作發包中，規格見該案交接檔。
-2. 回到本案從 **B 段**開跑（orc-cave 卡），套用前先把產物匯出存檔。
-3. 拿存下的產物跑 A 段（零額度重放），再依序 C、D、E。
+1. 從 **B 段**開跑（orc-cave 卡），套用前先把產物匯出存檔。
+2. 拿存下的產物跑 A 段（零額度重放），再依序 C、D、E。
 
 全過→兩個任務一起結案（HANDOFF.md 兩行刪掉、兩份交接檔搬 handoffs/archive/）；有紅→帶著現象回來修。
 

@@ -14,7 +14,7 @@
 
 ## 下一步
 - 功能端對端驗收併在計畫「驗收」的兩個真 release 那一輪，第一個帶更新功能的正式版發出前必須驗過〔作者裁決 2026-10-02〕。
-- 畫面位置與為過按鈕寬度選的譯詞（法文「更新」Installer、德文 Updaten／Nochmal、西葡「重試」Repetir）移交 ui-redesign 一併重定〔作者裁決 2026-10-02〕；那案立案檔在 `ui-redesign` 分支，開工時要記得帶上這條。
+- 畫面位置與為過按鈕寬度選的譯詞（法文「更新」Installer、德文 Updaten／Nochmal、西葡「重試」Repetir）移交 ui-redesign 一併重定〔作者裁決 2026-10-02〕；已記進 [ui-redesign](ui-redesign.md) 交接檔。
 
 ## 注意
 - 測試不碰使用者真實資料目錄與 `/Applications`，一律用臨時目錄；不要走 `install_guarded` 的成功路徑（會把閘門留著），閘門時機用 `run_gated_local`。
