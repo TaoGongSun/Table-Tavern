@@ -1,7 +1,8 @@
-use crate::ai_transport::cli_envs;
 #[cfg(target_os = "windows")]
 use crate::cli;
-use crate::{data_root, install};
+use crate::cli::install;
+use crate::data_root;
+use crate::transport::dispatch::cli_envs;
 use serde::Deserialize;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;

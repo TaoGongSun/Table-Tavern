@@ -181,7 +181,7 @@ pub fn kill_all_children() {
 
 /// 測試專用：children 表是全域共用的 static，任何測試只要透過 `run_cli` spawn 真實子程序
 /// 就會登記進同一張表，而 `kill_all_children` 不分青紅皂白殺表上全部 pid。凡是會這麼做的
-/// 測試（本檔的 T1／T3、cli.rs 與 lanes.rs 既有的假 CLI 測試）都要靠這把鎖互斥執行，
+/// 測試（本檔的 T1／T3、cli 與 lanes 既有的假 CLI 測試）都要靠這把鎖互斥執行，
 /// 不然平行跑時彼此的子程序可能被對方誤殺。只序列化這幾個測試，不影響其他測試的平行度。
 #[cfg(test)]
 pub(crate) fn lock_real_process_tests() -> std::sync::MutexGuard<'static, ()> {
@@ -281,7 +281,7 @@ mod tests {
     async fn abort_world_kills_inflight_cli_child_via_select() {
         let _serial = lock_real_process_tests();
         let world_id = "inflight-test-world-abort-child";
-        // children 表是全域共用的，其他測試（lanes.rs／cli.rs 的假 CLI 測試）也會有短暫在途
+        // children 表是全域共用的，其他測試（lanes／cli 的假 CLI 測試）也會有短暫在途
         // 子程序；先拍照，之後只認「快照裡沒有的新 pid」，不然可能撿到別人的 pid，
         // 提早對一個還沒 register() 的 world 呼叫 abort_world（訊號送不到，白等 30 秒）。
         let before: HashSet<u32> = children().lock().unwrap().clone();

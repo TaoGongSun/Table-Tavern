@@ -1,6 +1,7 @@
-use crate::ai_transport::{chat_transport, cli_envs};
 use crate::data::AppConfig;
-use crate::{cli, config_root, data, data_root, smart_free, transport, usage_report};
+use crate::transport::dispatch::{chat_transport, cli_envs};
+use crate::usage::report as usage_report;
+use crate::{cli, config_root, data, data_root, smart_free, transport};
 
 #[tauri::command]
 pub(crate) fn sponsor_status(app: tauri::AppHandle) -> Result<bool, String> {

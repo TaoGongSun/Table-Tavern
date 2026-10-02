@@ -433,7 +433,7 @@ pub(crate) fn http_error(status: reqwest::StatusCode, body: &str) -> String {
 
 /// 單發呼叫 OpenAI-compatible chat/completions（SSE 串流），
 /// 每個增量經 on_delta 回傳，結束後回傳完整文字。
-/// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage_log）；
+/// usage_log 給路徑就把這次呼叫的用量追加成一行 JSONL（見 crate::usage::log）；
 /// `shape` 是隨行的唯讀情報，只用來標帳本的 mode。
 #[allow(clippy::too_many_arguments)]
 pub async fn stream_chat(
@@ -442,7 +442,7 @@ pub async fn stream_chat(
     messages: &[ChatMessage],
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
-    shape: crate::usage_log::PromptShape,
+    shape: crate::usage::log::PromptShape,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<StreamChatResult> {
     let base = base_url(config);
@@ -501,7 +501,7 @@ pub async fn stream_chat(
                 .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log {
-            crate::usage_log::append_call(path, world, "api", model, None, shape, usage);
+            crate::usage::log::append_call(path, world, "api", model, None, shape, usage);
         }
     }
     // 用量照記再判成敗：失敗的呼叫一樣燒了 token，額度分頁不能少算這一筆
@@ -523,7 +523,7 @@ pub async fn stream_chat_models(
     messages: &[ChatMessage],
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
-    shape: crate::usage_log::PromptShape,
+    shape: crate::usage::log::PromptShape,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<SmartChatResult> {
     let Some(first_model) = models.first() else {
@@ -589,7 +589,7 @@ pub async fn stream_chat_models(
                 .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log {
-            crate::usage_log::append_call(path, world, "api", log_model, None, shape, usage);
+            crate::usage::log::append_call(path, world, "api", log_model, None, shape, usage);
         }
     }
     if let Some(failure) = outcome.failure(&full_text, log_model) {

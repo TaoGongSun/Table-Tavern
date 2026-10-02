@@ -6,8 +6,9 @@
 //! the behavior of the legacy path.
 
 use crate::data::{AppConfig, DataResult};
+use crate::transport;
 use crate::ui_msg::UiMsg;
-use crate::{transport, usage_log};
+use crate::usage::log as usage_log;
 use futures_util::StreamExt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

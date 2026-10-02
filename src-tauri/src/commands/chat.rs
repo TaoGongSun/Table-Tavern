@@ -1,10 +1,9 @@
-use crate::ai_transport::{
+use crate::commands::character::load_active_cards;
+use crate::transport::dispatch::{
     ai_call_failure, chat_transport, lane_provider, prepare_lane_call, stream_turn_via_transport,
 };
-use crate::commands::character::load_active_cards;
-use crate::{
-    config_root, data, data_root, import, inflight, lanes, mechanism, transport, usage_log,
-};
+use crate::usage::log as usage_log;
+use crate::{config_root, data, data_root, import, inflight, lanes, mechanism, transport};
 use serde::Serialize;
 
 /// 角色對話的回傳。`aborted` 為真時 `text` 是停止當下已經吐出的半截，可能是空的。

@@ -1,33 +1,22 @@
-mod ai_transport;
 mod cli;
 mod commands;
 mod data;
-mod ejs;
 mod evaluator;
 mod genesis;
 mod import;
 mod inflight;
-#[allow(dead_code)]
-mod install;
 mod lanes;
 mod mechanism;
 mod openrouter_oauth;
-mod proxy;
 mod receipts;
 mod refactor;
 mod refactor_ai;
 mod refactor_assemble;
-mod refactor_session;
-mod responses_transport;
-mod session_file;
 mod smart_free;
-mod snapshot_patch;
-mod translate;
 mod transport;
 mod ui_msg;
 mod updater;
-mod usage_log;
-mod usage_report;
+mod usage;
 
 use std::path::PathBuf;
 use tauri::Manager;

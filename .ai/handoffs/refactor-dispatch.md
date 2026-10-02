@@ -4,8 +4,8 @@
 2026-08-11 包 1–3 實作完成，代理自驗＋主線複驗全綠（cargo **442**／vitest **94**／npm build 0／check:i18n 0），三個 commit：包 1 `cce182d`、包 2 `60c58f2`、包 3 見 git log。同日實機開跑 orc-cave：檔位與快取生效（P1／P3 綠），但總時長仍 ~24 分（P2 紅）且盤點分類不合格（P7 紅）——提速與品質改由 [refactor-survey-spans](refactor-survey-spans.md) 接手（設計與證據在該任務檔），本案僅剩取消類驗收（P4–P6、P8）等新案完成後合併驗。
 
 ## Completed（本次）
-- **包 1 檔位下放**：[transport.rs](../../src-tauri/src/transport.rs) `refactor_expand_tier`（API 未設 balanced 退 GM，同 translate_opening 慣例）＋單元測試；三個展開 command 換檔位、survey 留 GM。
-- **包 2 取消中止＋孤兒清理**：[inflight.rs](../../src-tauri/src/inflight.rs) 新檔（world 分組取消訊號＋子程序 PID 表＋`kill_all_children`＋測試 T1–T4）；[cli.rs](../../src-tauri/src/cli.rs) `run_cli` 加 `kill_on_drop(true)`＋PID 登記 guard；[lib.rs](../../src-tauri/src/lib.rs) 四個 refactor command 包 `tokio::select!`（survey 也可中止）、新 command `refactor_abort`、builder 改 build+run 在 `RunEvent::Exit` 殺全部子程序；中止錯誤 sentinel＝`refactor-aborted`。
+- **包 1 檔位下放**：[transport.rs](../../src-tauri/src/transport/mod.rs) `refactor_expand_tier`（API 未設 balanced 退 GM，同 translate_opening 慣例）＋單元測試；三個展開 command 換檔位、survey 留 GM。
+- **包 2 取消中止＋孤兒清理**：[inflight.rs](../../src-tauri/src/inflight.rs) 新檔（world 分組取消訊號＋子程序 PID 表＋`kill_all_children`＋測試 T1–T4）；[cli.rs](../../src-tauri/src/cli/mod.rs) `run_cli` 加 `kill_on_drop(true)`＋PID 登記 guard；[lib.rs](../../src-tauri/src/lib.rs) 四個 refactor command 包 `tokio::select!`（survey 也可中止）、新 command `refactor_abort`、builder 改 build+run 在 `RunEvent::Exit` 殺全部子程序；中止錯誤 sentinel＝`refactor-aborted`。
 - **包 3 前端 A 拓撲並行**：[refactor-run.ts](../../src/features/refactor/refactor-run.ts)（`runRefactorCalls` 首發建快取＋鏈/池兩線、`withRateLimitRetry` 限流單次退避；11 測試）；[App.tsx:2114](../../src/App.tsx#L2114) `runAiRefactor` 整段重推（人物佇列並行上限 4 ‖ 重寫→介面序列鏈、knownFields 只在鏈上、共用思考字尾、進度「整理中 完成 x/n」、取消分流）；[App.tsx:2270](../../src/App.tsx#L2270) 取消接 `refactor_abort`；i18n 十語系各 +1 鍵 `refactorParallelStep`。
 
 ## Verification

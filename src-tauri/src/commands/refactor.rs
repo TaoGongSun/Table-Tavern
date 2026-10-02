@@ -1,8 +1,10 @@
-use crate::ai_transport::{chat_transport, prepare_lane_call, stream_via_transport};
+use crate::refactor_ai::session as refactor_session;
+use crate::transport::dispatch::{chat_transport, prepare_lane_call, stream_via_transport};
 use crate::ui_msg::UiMsg;
+use crate::usage::log as usage_log;
 use crate::{
     config_root, data, data_root, import, inflight, lanes, receipts, refactor, refactor_ai,
-    refactor_assemble, refactor_session, transport, usage_log,
+    refactor_assemble, transport,
 };
 
 /// AI 卡重構中止時的錯誤字串 sentinel：前端靠它分流「玩家主動取消」與其他失敗，一字不差。

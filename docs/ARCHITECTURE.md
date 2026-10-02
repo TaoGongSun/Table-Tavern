@@ -58,17 +58,19 @@ src/
 src-tauri/src/
 ├── commands/               # Tauri command 邊界
 ├── data/                   # 世界、角色、場景、狀態、路徑與持久化
-├── transport/              # prompt/context 組裝、API client、回覆處理
-├── cli/                    # CLI 偵測、執行、request/stream
-├── lanes.rs                # CLI 共線／session 延續與快取線管理
+├── transport/              # prompt/context 組裝、API client、回覆處理、CLI／API 派送（dispatch）
+├── cli/                    # CLI 偵測、執行、request/stream、安裝與代理
+├── lanes/                  # CLI 共線／session 延續與快取線管理
 ├── mechanism/              # 機制解析、規則、狀態樹、trigger、ledger
 ├── import/                 # 角色卡／世界書／介面／機制匯入
 ├── refactor/               # 重構套用與介面層
 ├── refactor_ai/            # AI 重構 survey / expand / rewrite / parse
 ├── refactor_assemble.rs    # AI 重構結果組裝與稽核
 ├── receipts.rs             # 匯入／重構復原收據
-├── usage_log.rs            # 用量事件紀錄
-└── usage_report.rs         # 用量彙整與呈現資料
+├── usage/                  # 用量事件紀錄（log）與彙整（report）
+├── inflight.rs             # 在途呼叫取消與子程序清理
+├── openrouter_oauth.rs     # OpenRouter 授權
+└── ui_msg.rs               # 後端訊息代碼
 ```
 
 幾個曾經很大的模組已拆成 facade + 子模組，包括 `cli/`、`data/scene/`、`mechanism/`、`import/`、`refactor/`、`refactor_ai/`、`transport/`。目前不要再以「檔案大」本身作為拆分理由；依 `CLAUDE.md`，應優先看責任是否真的混在一起。
@@ -80,7 +82,7 @@ src-tauri/src/
 - API 與 CLI 共用上層的 context / prompt 組裝概念。
 - API 路徑走 `transport/`。
 - CLI 執行細節在 `cli/`。
-- Claude／Grok 等需要 session 延續與快取線管理的路徑由 `lanes.rs` 處理；線狀態、正典 transcript 對齊、素材漂移、重開／續聊與失敗降級都在這一層。
+- Claude／Grok 等需要 session 延續與快取線管理的路徑由 `lanes/` 處理；線狀態、正典 transcript 對齊、素材漂移、重開／續聊與失敗降級都在這一層。
 - 角色私設與世界書可見性是架構級資料邊界，修改 transport / lane / import 時不能只看 prompt 字串是否能送出。
 
 相關細節常會隨供應商與快取策略演進；開工前應先讀對應 `.ai/handoffs/` 與 `.ai/plans/`，不要從舊產品文件反推現在行為。

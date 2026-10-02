@@ -59,9 +59,9 @@ pub struct UsageLog<'a> {
     pub model: &'a str,
     pub parse: fn(&str) -> Option<PromptCacheUsage>,
     /// 續聊線的脈絡；None＝無狀態路徑（快取結果照樣判，形狀由 `shape` 交代）。
-    pub lane: Option<crate::usage_log::LaneContext>,
+    pub lane: Option<crate::usage::log::LaneContext>,
     /// 這通送出去的是什麼形狀（唯讀情報，只用來標帳本的 mode）。
-    pub shape: crate::usage_log::PromptShape,
+    pub shape: crate::usage::log::PromptShape,
     /// 回填本輪總輸入，供 lane 記成下輪的理論可中量（跨 await 需 Sync，故用 atomic）。
     pub prompt_tokens_out: Option<&'a std::sync::atomic::AtomicU64>,
     /// Agy 開線由 CLI 產生 conversation ID；runner 在 init/result 看到後回填。
