@@ -12,4 +12,4 @@ Status: todo（2026-10-06 Grok 額度恢復後開工，四家通道都實跑）�
 先讓抹寫失敗原因落帳本，再四家實跑；claude 角色連講兩三輪看會不會再丟線。
 
 ## Constraints
-- 與 [non-claude-real-cache](non-claude-real-cache.md)、[no-cache-model-optout](no-cache-model-optout.md)、[vendor-prefix-floor](vendor-prefix-floor.md)、[prompt-cache-optimization](../handoffs/prompt-cache-optimization.md)、[api-cache-visibility](../handoffs/api-cache-visibility.md)、實測佇列第 7 項（額度分頁）範圍相鄰，開工時先劃邊界。
+- 與 [non-claude-real-cache](non-claude-real-cache.md)、[no-cache-model-optout](no-cache-model-optout.md)、[vendor-prefix-floor](vendor-prefix-floor.md)、[prompt-cache-optimization](../handoffs/prompt-cache-optimization.md)、[api-cache-visibility](../handoffs/archive/api-cache-visibility.md)（額度分頁 2026-10-02 實機已過）範圍相鄰，開工時先劃邊界。

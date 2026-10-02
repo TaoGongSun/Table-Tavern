@@ -1,7 +1,7 @@
 # Handoff: sponsor-features
 
 ## Current state
-三項全部實作完成（作者頁、配色 +5、AI 生成角色圖），cargo 85 綠＋npm build 綠，等使用者實測。**待討論議程已全數結案（2026-08-03）**，本任務唯一剩餘＝實機驗收。
+三項全部實作完成（作者頁、配色 +5、AI 生成角色圖）；贊助狀態與作者頁 2026-10-02 實機通過。剩 AI 生圖各來源實跑＋構圖二選一，排[實測佇列](../reference/verification-queue.md)梯 2 第 8 項。
 
 ## Completed
 - AI 生圖後端：`generate_character_image(world, name, extraPrompt, source)` 回圖片 data URL。api 來源走 OpenRouter 專用 Images API（POST {base}/images，aspect_ratio 2:3、resolution 1K，模型讀 preferences.image_model、預設 google/gemini-3.1-flash-image，回應取 data[0].b64_json）；CLI 來源照送請求（prompt 加「能生圖就存 PNG 回絕對路徑」指示，codex 加 `$imagegen` 前綴），回覆掃 data URL 或存在的圖片路徑（extract_image_from_text），掃不到回錯。追加描寫存卡（gen_prompt frontmatter 欄位，換行轉空白）。stream_via_transport 加 transport_override 參數供生圖指定與聊天不同的連線。
@@ -22,6 +22,7 @@
 - 生圖失敗訊息分流（2026-08-01）：CLI prompt 改問兩個暗號——`NO_IMAGE`（根本不會生圖）與 `REFUSED`（不肯生這一張），前端 `explainAiError` 各對一句人話（新增十語系 `errRefused`）；模型不照暗號回時，再用拒絕字樣（content policy／can't generate／無法生成／拒絕等）保底歸類。兩者都沒對上時，錯誤小字附上 CLI 最後一句原話（截 200 字，`last_sentence`），不再只顯示「回覆中沒有圖片」。
 
 ## Verification
+- 贊助狀態與作者頁（2026-10-02，release 包＋空白設定）：解鎖時作者頁與 +5 配色可套；移走 `.ttpack` 重開後配色上鎖（☕、可試看、關窗還原）、作者頁出現「匯入贊助包」、主題退回深色；放回重開恢復解鎖與原配色。贊助狀態只在啟動時讀，丟檔進資料夾要重開 app 才生效。
 - 生圖失敗訊息分流（2026-08-01）：codex 實測比對——同一段被拒的描述，只給 `NO_IMAGE` 選項時它回 `NO_IMAGE`（會被誤讀成「來源不會生圖」），加上 `REFUSED` 選項後改回 `REFUSED`，分流可靠。`cargo test` 126 綠、`npx tsc --noEmit` 0 錯、`npm run check:i18n` 十語系 OK、`npm run build` exit 0；08-01 15:0x 使用者實機驗收通過。
 - CLI 生圖路徑修正（2026-08-01）：`cargo test` 126 綠（+4：macOS 含空格路徑、Windows 反斜線含空格路徑、CLI 相對路徑、中轉檔清理遞迴且只刪圖片）；clippy／fmt 與改動前逐項相同（既有 6 項與本次無關）。08-01 14:54 使用者實機驗收通過：codex 出圖進圖庫（md5 與 `~/.codex/generated_images/` 該次一致），cli-workspace 清空無殘留。codex 回報路徑有三種形態，都要接：①`~/.codex/generated_images/` 原始絕對路徑（無空格，舊版剛好會過）②複製到 `cli-workspace/` 的絕對路徑（被 `Application Support` 的空格切碎）③複製到 `cli-workspace/output/imagegen/` 後回相對路徑（要補工作目錄基準）。它照 `~/.codex/skills/.system/imagegen/SKILL.md` 的規定不把成品留在自己家，所以②③會出現。
 - 構圖二選一（2026-07-30）：`npx tsc --noEmit` 0 錯、`npm run check:i18n` 十語系 OK、`cargo test --lib` 117 綠、`npm run build` exit 0。實際出圖待使用者實機。
@@ -31,12 +32,9 @@
 - 生成歷史圖庫：2026-07-28 使用者實機通過（Gemini CLI 來源生圖 → 縮圖列出現 → 套用到卡片，側欄顯示新圖）。在 stable-id-storage 改成代碼定址後複驗，圖庫路徑已改到世界目錄內。張數受免費 3 次限制，未大量驗證載入更多。
 
 ## Remaining
-- 使用者實測三項（尤其 AI 生圖各來源實跑）
+- 使用者實測 AI 生圖各來源實跑（贊助狀態與作者頁已過）
 - 未解鎖介紹 modal 目前純文字＋Ko-fi 鈕，範例圖等功能上線後生幾張好圖再補（不擋結案）
 - 議程已清空：提示詞標籤（07-30 構圖二選一）、色情詞句失敗處理（08-01 失敗訊息分流）、Ko-fi 導購歧義（08-03 連結已直指商品頁）三項皆結案
 
 ## Next action
-1. 使用者實機驗收構圖二選一：生圖對話框選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
-3. 測試贊助狀態：把 `.ttpack` 丟進「文件/TableTavern」（或作者頁匯入），刪檔即還原。
-
-（2026-07-27 晚：本對話已收工交接，新對話從此檔接手即可，無未存現場。）
+使用者實機驗收 AI 生圖：三個來源各實跑一次；構圖選「半身」→ 確認出圖是腰以上特寫、2:3 直式不變、重開對話框記住上次選擇。
