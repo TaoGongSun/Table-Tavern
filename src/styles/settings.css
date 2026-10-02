@@ -364,15 +364,63 @@
   padding: 0.6rem 0.8rem;
 }
 
+/* 連線方式：每個選項自成一框，選中描 accent；名稱 label 不縮，版本字串吃掉中間空白把狀態與按鈕推到右邊 */
+.transport-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.transport-list > legend {
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-size: var(--fs-ui);
+  color: var(--ink-2);
+}
+
+.transport-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: var(--fs-ui);
+  color: var(--ink-1);
+}
+
+.transport-option-on {
+  border-color: var(--accent);
+}
+
+.settings-form label.transport-option-name {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+
+.transport-option > .cli-version {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.transport-option > .cli-install-progress {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+}
+
 .inline {
   flex-direction: row !important;
   align-items: center;
   gap: 0.5rem !important;
-}
-
-/* 版本字串吃掉中間空白，讓「已連結 ✓」與按鈕成組貼右，不受字串長短影響 */
-.transport-choice .inline > .cli-version {
-  margin-right: auto;
 }
 
 .cli-version {

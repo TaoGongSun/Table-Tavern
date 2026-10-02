@@ -3,18 +3,23 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { useRequestedTab } from "./useRequestedTab";
+import { type LeaveDecision, useRequestedTab } from "./useRequestedTab";
 
 type Tab = "appearance" | "versions";
 type Props = {
   requested: Tab;
   requestKey: number;
-  confirmLeave: () => Promise<boolean>;
+  confirmLeave: () => Promise<LeaveDecision>;
   onTab: (tab: Tab, setTab: (tab: Tab) => void) => void;
+  blocked?: boolean;
+  confirmPending?: boolean;
 };
 
-function Harness({ requested, requestKey, confirmLeave, onTab }: Props) {
-  const [tab, setTab] = useRequestedTab<Tab>(requested, requestKey, confirmLeave);
+function Harness({ requested, requestKey, confirmLeave, onTab, blocked, confirmPending }: Props) {
+  const [tab, setTab] = useRequestedTab<Tab>(requested, requestKey, confirmLeave, {
+    blocked,
+    confirmPending,
+  });
   useEffect(() => {
     onTab(tab, setTab);
   });
@@ -90,6 +95,97 @@ describe("useRequestedTab", () => {
     });
     expect(box.tab).toBe("appearance");
     await render({ ...props, requestKey: 2 });
+    expect(box.tab).toBe("versions");
+  });
+
+  it("holds a request while blocked without marking it, then handles the latest one", async () => {
+    const box: { tab: Tab | null } = { tab: null };
+    let asked = 0;
+    const props: Props = {
+      requested: "appearance",
+      requestKey: 1,
+      confirmLeave: async () => {
+        asked += 1;
+        return true;
+      },
+      onTab: (tab) => {
+        box.tab = tab;
+      },
+    };
+    await render(props);
+    await render({ ...props, requested: "versions", requestKey: 2, blocked: true });
+    await render({ ...props, requested: "versions", requestKey: 3, confirmPending: true });
+    expect(asked).toBe(0);
+    expect(box.tab).toBe("appearance");
+    await render({ ...props, requested: "versions", requestKey: 3 });
+    expect(asked).toBe(1);
+    expect(box.tab).toBe("versions");
+  });
+
+  it("a busy guard does not mark the request; it is retried once the guard clears", async () => {
+    const box: { tab: Tab | null } = { tab: null };
+    let decision: LeaveDecision = "busy";
+    let asked = 0;
+    const props: Props = {
+      requested: "appearance",
+      requestKey: 1,
+      confirmLeave: async () => {
+        asked += 1;
+        const current = decision;
+        // 第一次撞上守門；重試時守門已解除
+        decision = true;
+        return current;
+      },
+      onTab: (tab) => {
+        box.tab = tab;
+      },
+    };
+    await render(props);
+    await render({ ...props, requested: "versions", requestKey: 2 });
+    expect(asked).toBe(2);
+    expect(box.tab).toBe("versions");
+  });
+
+  it("a request for the tab already shown is marked without asking", async () => {
+    let asked = 0;
+    const props: Props = {
+      requested: "appearance",
+      requestKey: 1,
+      confirmLeave: async () => {
+        asked += 1;
+        return false;
+      },
+      onTab: () => {},
+    };
+    await render(props);
+    await render({ ...props, requestKey: 2 });
+    expect(asked).toBe(0);
+  });
+
+  it("a rejected leave check counts as cancel and later requests still run", async () => {
+    const box: { tab: Tab | null } = { tab: null };
+    let fail = true;
+    let asked = 0;
+    const props: Props = {
+      requested: "appearance",
+      requestKey: 1,
+      confirmLeave: async () => {
+        asked += 1;
+        if (fail) throw new Error("dialog unavailable");
+        return true;
+      },
+      onTab: (tab) => {
+        box.tab = tab;
+      },
+    };
+    await render(props);
+    await render({ ...props, requested: "versions", requestKey: 2 });
+    expect(asked).toBe(1);
+    expect(box.tab).toBe("appearance");
+
+    fail = false;
+    await render({ ...props, requested: "versions", requestKey: 3 });
+    expect(asked).toBe(2);
     expect(box.tab).toBe("versions");
   });
 });

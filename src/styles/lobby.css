@@ -237,6 +237,18 @@ button.table-cover {
   font-weight: 700;
 }
 
+/* 長譯文＋大字級時徽章跟著截，桌名至少留幾個字（徽章全文在 title） */
+.table-card-foot .table-card-name {
+  min-width: 3.5em;
+}
+
+.table-card-foot .table-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .table-card-foot .btn-icon {
   flex: none;
   width: 26px;

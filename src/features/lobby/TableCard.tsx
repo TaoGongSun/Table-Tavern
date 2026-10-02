@@ -34,6 +34,8 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete }: TableCar
     footRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
   }, [draft]);
   const badge = listBadge(world);
+  const badgeLabel =
+    badge === null ? "" : t(badge === "repair" ? "needsRepairBadge" : "readOnlyBadge");
   const layout = images === null ? null : coverLayout(images.length);
 
   function startRename() {
@@ -97,8 +99,8 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete }: TableCar
           </span>
         )}
         {badge !== null && (
-          <span className="table-badge">
-            {t(badge === "repair" ? "needsRepairBadge" : "readOnlyBadge")}
+          <span className="table-badge" title={badgeLabel}>
+            {badgeLabel}
           </span>
         )}
         <MoreMenu

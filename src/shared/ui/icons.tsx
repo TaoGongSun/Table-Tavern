@@ -178,3 +178,12 @@ export function IconBook(props: IconProps) {
     </Icon>
   );
 }
+
+/** 叉：對話窗的關閉鈕 */
+export function IconClose(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m4 4 8 8M12 4l-8 8" />
+    </Icon>
+  );
+}
