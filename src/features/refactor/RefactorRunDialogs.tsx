@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { backendText } from "../../shared/ui/backend-text";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
 import type { RefactorWorkflowController } from "./useRefactorWorkflow";
 
@@ -33,7 +34,8 @@ export function RefactorRunDialogs({ refactor }: RefactorRunDialogsProps) {
           }
         >
           <p role="status">{progress.text}</p>
-          {progress.tail && <pre className="refactor-stream-tail">{progress.tail}</pre>}
+          {/* CLI 卡死／異常結束時後端會在串流尾巴插一行 ⚠ 代碼，顯示時才翻 */}
+          {progress.tail && <pre className="refactor-stream-tail">{backendText(progress.tail)}</pre>}
         </Dialog>
       )}
 

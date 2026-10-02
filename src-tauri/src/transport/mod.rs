@@ -16,12 +16,12 @@ pub use arrivals::{
     detect_new_card_arrivals, person_arrival_text,
 };
 pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
-pub(crate) use client::describe;
 pub use client::{
     base_url, generate_image, gm_tier, refactor_expand_tier, resolve_model, stream_chat,
     stream_chat_models, tier_model, ui_language, PromptCacheUsage, SseParser, StreamChatResult,
     TierModel, DEFAULT_BASE_URL,
 };
+pub(crate) use client::{describe, http_error};
 pub(crate) use messages::{player_fallback_name, replace_st_macros};
 pub use messages::{resolve_display_macros, ChatMessage};
 pub use response::{

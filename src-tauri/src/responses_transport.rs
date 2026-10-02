@@ -6,6 +6,7 @@
 //! the behavior of the legacy path.
 
 use crate::data::{AppConfig, DataResult};
+use crate::ui_msg::UiMsg;
 use crate::{transport, usage_log};
 use futures_util::StreamExt;
 
@@ -150,7 +151,7 @@ impl ResponsesOutcome {
                             .map(str::to_owned)
                             .unwrap_or_else(|| error.to_string())
                     })
-                    .or_else(|| Some("Responses API 回傳失敗".to_owned()));
+                    .or_else(|| Some(UiMsg::ResponsesApiFailed.to_string()));
             }
             Some("response.incomplete") => {
                 self.terminal = true;
@@ -188,7 +189,7 @@ impl ResponsesOutcome {
         }
         if !self.terminal {
             return Some(format!(
-                "AI_INCOMPLETE_RESPONSE: model={model} status=(無完成事件){reasoning}"
+                "AI_INCOMPLETE_RESPONSE: model={model} status=no_terminal_event{reasoning}"
             ));
         }
         if text.trim().is_empty() {
@@ -211,20 +212,6 @@ impl ResponsesOutcome {
     }
 }
 
-fn http_error(status: reqwest::StatusCode, body: &str) -> String {
-    const LIMIT: usize = 2000;
-    let kept: String = body.chars().take(LIMIT).collect();
-    let cut = if body.chars().nth(LIMIT).is_some() {
-        "…（原始回應已截斷）"
-    } else {
-        ""
-    };
-    format!(
-        "AI_HTTP_STATUS_{}: API 回應 {status}：{kept}{cut}",
-        status.as_u16(),
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn stream_responses(
     config: &AppConfig,
@@ -241,7 +228,7 @@ pub(crate) async fn stream_responses(
         .get("openrouter")
         .filter(|key| !key.is_empty());
     if api_key.is_none() && base == transport::DEFAULT_BASE_URL {
-        return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
+        return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
 
     let mut request = reqwest::Client::new()
@@ -255,7 +242,7 @@ pub(crate) async fn stream_responses(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(http_error(status, &body).into());
+        return Err(transport::http_error(status, &body).into());
     }
 
     let mut stream = response.bytes_stream();

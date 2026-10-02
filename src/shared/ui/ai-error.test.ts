@@ -27,7 +27,7 @@ describe("explainAiError", () => {
   });
 
   it("認證失敗依傳輸指路：API 換金鑰、CLI 重新登入、認不出來就別亂指", () => {
-    const raw = "API 回應 401 Unauthorized";
+    const raw = "status=401 Unauthorized body=";
     expect(explainAiError(raw, "api")).toBe("errAuthApi");
     for (const cli of ["claude", "codex", "agy", "grok"]) {
       expect(explainAiError(raw, cli), cli).toBe("errAuthCli");
@@ -43,27 +43,27 @@ describe("explainAiError", () => {
   it("HTTP 碼壓過 body 裡的數字：狀態 503、body 自稱 429，仍算上游失敗", () => {
     // 2026-08-21 實測的原句：TokenRouter 對 qwen 的長 prompt 一律回這個
     const real =
-      'AI_HTTP_STATUS_503: API 回應 503 Service Unavailable：{"error":{"message":"openai_error","type":"bad_response_status_code"},"id":157975}';
+      'AI_HTTP_STATUS_503: status=503 Service Unavailable body={"error":{"message":"openai_error","type":"bad_response_status_code"},"id":157975}';
     expect(explainAiError(real, "api")).toBe("errApiUpstream");
     // body 裡出現 429／unauthorized 都不該翻盤，否則等於讓供應商偽造狀態碼
     expect(
-      explainAiError('AI_HTTP_STATUS_503: API 回應 503：{"message":"upstream 429 rate limit"}', "api"),
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"upstream 429 rate limit"}', "api"),
     ).toBe("errApiUpstream");
     expect(
-      explainAiError('AI_HTTP_STATUS_500: API 回應 500：{"message":"unauthorized upstream"}', "api"),
+      explainAiError('AI_HTTP_STATUS_500: status=500 body={"message":"unauthorized upstream"}', "api"),
     ).toBe("errApiUpstream");
   });
 
   it("HTTP 碼也壓過 body 裡抄到的失敗碼與暗號", () => {
     // 錯誤字串後半是供應商原封不動的 body，裡面出現什麼都不該翻盤前面的真實狀態
     expect(
-      explainAiError('AI_HTTP_STATUS_503: API 回應 503：{"message":"AI_EMPTY_RESPONSE"}', "api"),
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"AI_EMPTY_RESPONSE"}', "api"),
     ).toBe("errApiUpstream");
     expect(
-      explainAiError('AI_HTTP_STATUS_503: API 回應 503：{"message":"REFUSED"}', "api"),
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"REFUSED"}', "api"),
     ).toBe("errApiUpstream");
     expect(
-      explainAiError('AI_HTTP_STATUS_403: API 回應 403：{"message":"AI_CONTENT_FILTERED: x"}', "api"),
+      explainAiError('AI_HTTP_STATUS_403: status=403 body={"message":"AI_CONTENT_FILTERED: x"}', "api"),
     ).toBe("errApiForbidden");
   });
 
@@ -74,23 +74,23 @@ describe("explainAiError", () => {
   });
 
   it("四類狀態各自指路：401 換金鑰、403 換模型、429 額度、其他 4xx 請求被擋", () => {
-    expect(explainAiError("AI_HTTP_STATUS_401: API 回應 401", "api")).toBe("errAuthApi");
+    expect(explainAiError("AI_HTTP_STATUS_401: status=401 body=", "api")).toBe("errAuthApi");
     expect(
-      explainAiError("AI_HTTP_STATUS_403: API 回應 403：This token has no access to model", "api"),
+      explainAiError("AI_HTTP_STATUS_403: status=403 body=This token has no access to model", "api"),
     ).toBe("errApiForbidden");
-    expect(explainAiError("AI_HTTP_STATUS_429: API 回應 429", "api")).toBe("errQuotaApi");
-    expect(explainAiError("AI_HTTP_STATUS_402: API 回應 402", "api")).toBe("errQuotaApi");
-    expect(explainAiError("AI_HTTP_STATUS_400: API 回應 400", "api")).toBe("errApiRequest");
-    expect(explainAiError("AI_HTTP_STATUS_404: API 回應 404", "api")).toBe("errApiRequest");
-    expect(explainAiError("AI_HTTP_STATUS_502: API 回應 502", "api")).toBe("errApiUpstream");
+    expect(explainAiError("AI_HTTP_STATUS_429: status=429 body=", "api")).toBe("errQuotaApi");
+    expect(explainAiError("AI_HTTP_STATUS_402: status=402 body=", "api")).toBe("errQuotaApi");
+    expect(explainAiError("AI_HTTP_STATUS_400: status=400 body=", "api")).toBe("errApiRequest");
+    expect(explainAiError("AI_HTTP_STATUS_404: status=404 body=", "api")).toBe("errApiRequest");
+    expect(explainAiError("AI_HTTP_STATUS_502: status=502 body=", "api")).toBe("errApiUpstream");
     // 碼本身就證明來源是 API，沒傳 transport 也照樣指得出路
-    expect(explainAiError("AI_HTTP_STATUS_403: API 回應 403")).toBe("errApiForbidden");
+    expect(explainAiError("AI_HTTP_STATUS_403: status=403 body=")).toBe("errApiForbidden");
     // Tauri 包過一層仍認得
-    expect(explainAiError("Error: AI_HTTP_STATUS_403: API 回應 403")).toBe("errApiForbidden");
+    expect(explainAiError("Error: AI_HTTP_STATUS_403: status=403 body=")).toBe("errApiForbidden");
   });
 
   it("碼只認開頭：供應商把它抄進 body 也不算數", () => {
-    const forged = 'API 回應 500：{"message":"AI_HTTP_STATUS_403: 假的"}';
+    const forged = 'status=500 body={"message":"AI_HTTP_STATUS_403: 假的"}';
     expect(explainAiError(forged, "api")).toBe(null);
   });
 
@@ -102,7 +102,7 @@ describe("explainAiError", () => {
     expect(explainAiError("failed to write transcript: No space left on device")).toBe(null);
     expect(explainAiError("world not found")).toBe(null);
     // 碼只認開頭：供應商把它抄進 body 不算數
-    expect(explainAiError('API 回應 500：{"message":"AI_CALL_FAILED: 假的"}')).toBe(null);
+    expect(explainAiError('status=500 body={"message":"AI_CALL_FAILED: 假的"}')).toBe(null);
   });
 
   it("保底是最後一道：CLI 原話被包了一層，仍要保住原本更準的分類", () => {

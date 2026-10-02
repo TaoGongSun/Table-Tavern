@@ -4,6 +4,8 @@ use futures_util::StreamExt;
 
 use serde::Serialize;
 
+use crate::ui_msg::UiMsg;
+
 use super::messages::ChatMessage;
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -50,7 +52,12 @@ pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
         .get(key)
         .cloned()
         .filter(|model| !model.is_empty())
-        .ok_or_else(|| format!("尚未設定「{key}」檔位對應的模型，請先到設定填寫"))
+        .ok_or_else(|| {
+            UiMsg::TierModelMissing {
+                tier: key.to_owned(),
+            }
+            .to_string()
+        })
 }
 
 /// 開場白翻譯的檔位挑選器要顯示的「這一檔實際會叫哪個模型」。解析與 `stream_via_transport`
@@ -371,7 +378,7 @@ impl StreamOutcome {
         let reason = self.finish_reason.as_deref();
         let diagnosis = format!(
             "model={model} finish_reason={}{}",
-            reason.unwrap_or("(無)"),
+            reason.unwrap_or("(none)"),
             self.reasoning_tokens
                 .map(|tokens| format!(" reasoning_tokens={tokens}"))
                 .unwrap_or_default(),
@@ -404,22 +411,22 @@ impl StreamOutcome {
 }
 
 /// 非 2xx 的錯誤字串：開頭掛穩定碼給前端分流（比照 AI_EMPTY_RESPONSE 慣例），
-/// 後面照舊附人看得懂的狀態與原文。前端只認開頭那個碼、不解析 body——
+/// 後面附不帶語言的 `status=… body=…`（Responses API 路共用）。前端只認開頭那個碼、不解析 body——
 /// 聚合 router 常把上游錯誤整包塞進 body，body 裡的數字（如轉包的 429）
 /// 不該蓋掉真正的 HTTP 狀態。
 ///
 /// 原文留到 2000 字：request id、欄位細節、說明網址常在後段，玩家要拿這串去問供應商。
 /// 真的超長才截，並且明講截了——看似完整其實殘缺的 JSON 比明說截斷更難查。
-fn http_error(status: reqwest::StatusCode, body: &str) -> String {
+pub(crate) fn http_error(status: reqwest::StatusCode, body: &str) -> String {
     const LIMIT: usize = 2000;
     let kept: String = body.chars().take(LIMIT).collect();
     let cut = if body.chars().nth(LIMIT).is_some() {
-        "…（原始回應已截斷）"
+        "…[truncated]"
     } else {
         ""
     };
     format!(
-        "AI_HTTP_STATUS_{}: API 回應 {status}：{kept}{cut}",
+        "AI_HTTP_STATUS_{}: status={status} body={kept}{cut}",
         status.as_u16(),
     )
 }
@@ -444,7 +451,7 @@ pub async fn stream_chat(
         .get("openrouter")
         .filter(|key| !key.is_empty());
     if api_key.is_none() && base == DEFAULT_BASE_URL {
-        return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
+        return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
 
     let mut request = reqwest::Client::new()
@@ -520,7 +527,7 @@ pub async fn stream_chat_models(
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<SmartChatResult> {
     let Some(first_model) = models.first() else {
-        return Err("目前沒有可用免費模型".into());
+        return Err(UiMsg::NoFreeModels.into_error());
     };
     let base = base_url(config);
     let api_key = config
@@ -528,7 +535,7 @@ pub async fn stream_chat_models(
         .get("openrouter")
         .filter(|key| !key.is_empty());
     if api_key.is_none() && base == DEFAULT_BASE_URL {
-        return Err("尚未設定 OpenRouter API key，請先到設定貼上".into());
+        return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
 
     let mut request = reqwest::Client::new()
@@ -602,7 +609,7 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
         .get("openrouter")
         .map(String::as_str)
         .filter(|key| !key.trim().is_empty())
-        .ok_or_else(|| "尚未設定 OpenRouter API key".to_owned())?;
+        .ok_or_else(|| UiMsg::OpenrouterApiKeyMissing.to_string())?;
     let model = config
         .preferences
         .get("image_model")
@@ -642,7 +649,7 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
             return Ok(url.to_owned());
         }
     }
-    Err("模型沒有回傳圖片".to_owned())
+    Err(UiMsg::ImageMissingInReply.into())
 }
 
 #[cfg(test)]

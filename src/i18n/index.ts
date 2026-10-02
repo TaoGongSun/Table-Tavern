@@ -43,6 +43,7 @@ import {
   updaterMsgMessage,
   type UpdaterMsgKey,
 } from "./features/backend-msg-updater";
+import { aiMsgMessage, isAiMsgKey, type AiMsgKey } from "./features/backend-msg-ai";
 
 export type MsgKey =
   | CoreMsgKey
@@ -52,7 +53,8 @@ export type MsgKey =
   | ResponseTruncatedMsgKey
   | BackendMsgKey
   | TableDataMsgKey
-  | UpdaterMsgKey;
+  | UpdaterMsgKey
+  | AiMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -132,7 +134,9 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
               ? tableDataMsgMessage(lang, key)
               : isUpdaterMsgKey(key)
                 ? updaterMsgMessage(lang, key)
-                : MESSAGES[lang][key as CoreMsgKey];
+                : isAiMsgKey(key)
+                  ? aiMsgMessage(lang, key)
+                  : MESSAGES[lang][key as CoreMsgKey];
   if (!params) return text;
   // 對模板只掃一次：代入的值裡就算有 {名} 也不會再被換；沒給的佔位符原樣留著。
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>

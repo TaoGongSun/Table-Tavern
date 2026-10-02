@@ -223,3 +223,72 @@ describe("ErrorNote", () => {
     expect(note.firstChild?.textContent).toBe(t("errQuotaApi"));
   });
 });
+
+// 包 4：AI 連線面的錯誤改代碼後，AI_* 前綴仍在起首、explainAiError 的分流跟改碼前一致。
+describe("AI 連線面代碼", () => {
+  afterEach(() => setLang("zh-TW"));
+  const msg = (code: string, params: Record<string, string> = {}) =>
+    `TTMSG:${JSON.stringify({ code, ...params })}`;
+  const keyMissing = msg("openrouter_api_key_missing");
+
+  it("AI_* 前綴留在起首：分流照認，代碼只翻後面那段", () => {
+    setLang("ru");
+    const daily = `AI_HTTP_STATUS_429: ${msg("smart_free_daily_exhausted")}`;
+    expect(explainAiError(daily, "api")).toBe("errQuotaApi");
+    expect(backendCode(daily)).toBeNull();
+    expect(backendText(daily)).toBe(
+      "AI_HTTP_STATUS_429: Сегодняшние запросы к бесплатным моделям OpenRouter закончились. Попробуй снова после сброса лимита.",
+    );
+    // 傳輸層自己的失敗態後面改成不帶語言的診斷欄
+    const http = 'AI_HTTP_STATUS_503: status=503 Service Unavailable body={"error":"x"}';
+    expect(explainAiError(http, "api")).toBe("errApiUpstream");
+    expect(backendText(http)).toBe(http);
+    expect(explainAiError("AI_INCOMPLETE_RESPONSE: model=m status=no_terminal_event")).toBe(
+      "errIncompleteReply",
+    );
+    expect(explainAiError("AI_EMPTY_RESPONSE: no_text_after_control_lines raw_len=12")).toBe(
+      "errEmptyReply",
+    );
+  });
+
+  it("缺 OpenRouter key 的分流跟改碼前的繁中原句一致", () => {
+    const old = "尚未設定 OpenRouter API key，請先到設定貼上";
+    for (const transport of ["api", undefined]) {
+      expect(explainAiError(keyMissing, transport)).toBe(explainAiError(old, transport));
+      expect(explainAiError(`AI_CALL_FAILED: ${keyMissing}`, transport)).toBe(
+        explainAiError(`AI_CALL_FAILED: ${old}`, transport),
+      );
+    }
+    expect(explainAiError(keyMissing, "api")).toBe("errAuthApi");
+  });
+
+  it("CLI 原話包進 cli_reply_error 後，額度／登入分流不變", () => {
+    const quota = `AI_CALL_FAILED: ${msg("cli_reply_error", { error: "Rate limit exceeded" })}`;
+    expect(explainAiError(quota, "claude")).toBe("errQuota");
+    const login = `AI_CALL_FAILED: ${msg("cli_reply_error", { error: "not logged in" })}`;
+    expect(explainAiError(login, "grok")).toBe("errAuthCli");
+    // 沒有可認的原話就落到保底，不被代碼本身的字樣誤判
+    const stalled = `AI_CALL_FAILED: ${msg("cli_reply_error", { error: msg("cli_stalled") })}`;
+    expect(explainAiError(stalled, "claude")).toBe("errAiUnknown");
+    expect(explainAiError(msg("cli_not_found", { cli: "agy" }), "agy")).toBeNull();
+    expect(explainAiError(msg("cli_risk_not_accepted"), "claude")).toBeNull();
+  });
+
+  it("生圖暗號只剩字樣本身，分流不變", () => {
+    expect(explainAiError("AI_CALL_FAILED: REFUSED", "codex")).toBe("errRefused");
+    expect(explainAiError("NO_IMAGE", "codex")).toBe("errNoImage");
+  });
+
+  it("ru 下顯示俄文，巢狀的 CLI 失敗也翻、原話照代入", () => {
+    setLang("ru");
+    const crashed = msg("cli_reply_error", {
+      error: msg("cli_crashed", { status: "exit status: 3", tail: "proxy connection reset" }),
+    });
+    const text = backendText(`AI_CALL_FAILED: ${crashed}`);
+    expect(text).toBe(
+      "AI_CALL_FAILED: Ошибка CLI: CLI неожиданно завершился (exit status: 3): proxy connection reset",
+    );
+    expect(text).not.toMatch(/[一-鿿]/);
+    expect(backendText(keyMissing)).toBe("API key OpenRouter ещё не задан. Вставь его в настройках.");
+  });
+});
