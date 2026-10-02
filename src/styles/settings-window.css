@@ -1,17 +1,13 @@
 /* ============ 設定視窗外框 ============ */
 /* 設定視窗：固定尺寸（切分頁不跳），分頁列＋內容區兩段，捲動交給裡面的分頁面板或 AI 表單。
-   不加 transform／filter——CLI 權限提示是 position: fixed，祖先一變成 containing block 就被裁掉 */
-.modal.settings-modal {
+   外框是共用的原生 <dialog>（ModalShell），底色、邊框、遮罩見 dialogs.css */
+.settings-modal {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
   width: min(37.5rem, calc(100vw - 2rem));
   height: min(31.25rem, calc(100vh - 3rem));
   min-width: 0;
   min-height: 0;
-  max-height: none;
-  padding: 0;
-  overflow: hidden;
 }
 
 .settings-tabbar {

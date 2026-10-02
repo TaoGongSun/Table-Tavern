@@ -5,13 +5,13 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計＋功能位置重排：分包 1–4（牌桌主畫面、大廳＋陣容欄、編輯頁、設定）已完成驗收；下一步施工分包 5（對話窗）
 - [rust-module-homing](handoffs/rust-module-homing.md) — Rust 根層 14 支孤兒模組歸位：consumer 掃描完成，等三項拍板才開搬
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過，v2 首要＝省額度（歷史裡整包 XML 重送）
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，仍有角色／介面選擇、其他卡型驗證與舊產殼路線清理待施工
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
-- [dialog-button-labels](handoffs/dialog-button-labels.md) — 系統對話窗按鈕跟上介面語言：已進 main，剩 macOS 實機看幾個語系的按鈕（併 ui-redesign 驗收）
+- [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：五包已進 main；剩範例桌詢問、格式轉換更新、重構三窗、Windows 等未實機驗項目
+- [dialog-button-labels](handoffs/dialog-button-labels.md) — 系統對話窗按鈕跟上介面語言：已進 main，ru 未儲存離開已過，剩 zh-TW／en／de 與刪角色、轉條目、匯入完成通知
 - [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1–5 完成、GUI 煙霧測試過；剩兩個真 release 的端對端驗收
 - [refactor-ai-split](handoffs/refactor-ai-split.md) — 拆分施工完成：production 9 模組、56 測試全搬、legacy 已刪；只剩外部可執行環境跑 npm build + cargo test
 - [state-values-mvu](handoffs/state-values-mvu.md) — 狀態欄二期：八包完成 cargo 317 綠，等真桌實跑（併在 ai-card-refactor 之後）

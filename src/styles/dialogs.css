@@ -1,35 +1,140 @@
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal {
-  background: var(--surface-1);
+/* ============ 對話窗共用外框（shared/ui/Dialog）============
+   原生 <dialog> showModal()：疊層與背景 inert 由 top layer 負責，不再靠 z-index。
+   UA 會給 dialog 自己的字色、底色、padding 與 max 尺寸，這裡全部改成主題 token。 */
+dialog {
+  box-sizing: border-box;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 3rem);
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
+  background: var(--surface-1);
+  color: var(--ink-1);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  width: min(34rem, 92vw);
-  max-height: 85vh;
-  overflow-y: auto;
-  padding: 1rem 1.25rem 1.25rem;
 }
 
-.modal-header {
+/* 各窗自己的 display 不能蓋掉關閉狀態的隱藏 */
+dialog:not([open]) {
+  display: none;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* 標題列、工具列、底部按鈕列不捲，只有內容區自捲 */
+.dialog {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dialog-s {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.dialog-m {
+  width: min(34rem, calc(100vw - 2rem));
+}
+
+.dialog-l {
+  width: min(44rem, calc(100vw - 2rem));
+}
+
+.dialog-head {
+  flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  min-width: 0;
+  padding: 0.75rem 1.25rem 0.5rem;
 }
 
-.modal-close {
-  border: none;
-  padding: 0 0.7em;
+.dialog-head:has(.dialog-close) {
+  padding-right: 0.6rem;
+}
+
+h2.dialog-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: 700 var(--fs-title) / 1.3 var(--font-ui);
+}
+
+.dialog-close {
+  flex: none;
+}
+
+.dialog-toolbar {
+  flex: none;
+  min-width: 0;
+  padding: 0 1.25rem 0.5rem;
+}
+
+.dialog-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.25rem 1.25rem 1rem;
+}
+
+/* 開窗時的初始焦點落點：tabIndex −1、Tab 走不到，只是讓焦點進窗，不畫焦點框 */
+[data-dialog-content]:focus {
+  outline: none;
+}
+
+.dialog-body > :first-child {
+  margin-top: 0;
+}
+
+.dialog-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* 次鈕靠左、主鈕靠右；折行只是保底，正常寬度下一列放得下 */
+.dialog-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.dialog-foot-start,
+.dialog-foot-end {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.dialog-foot-end {
+  margin-inline-start: auto;
+}
+
+/* 換字按鈕：文案疊在同一格取最寬，隱藏的那幾個只占位 */
+.dialog-swap {
+  display: grid;
+}
+
+.dialog-swap > span {
+  grid-area: 1 / 1;
+}
+
+.dialog-swap > [aria-hidden="true"] {
+  visibility: hidden;
+}
+
+/* 槽位常駐但這次用不到的鈕：占位不顯示，旁邊的鈕不位移 */
+.dialog-slot-idle {
+  visibility: hidden;
 }
 
 /* 翻譯工具列：檔位挑選器就站在「全部翻譯」旁邊——玩家不必翻說明也知道這次要用哪個模型，
@@ -62,8 +167,6 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 45vh;
-  overflow-y: auto;
 }
 
 .opening-choice-item {
@@ -75,6 +178,7 @@
 
 .opening-choice-head {
   display: flex;
+  justify-content: flex-start;
   align-items: flex-start;
   width: 100%;
   height: auto;
@@ -122,7 +226,7 @@
   overflow-wrap: anywhere;
 }
 
-.gen-table-modal textarea {
+.gen-table-dialog textarea {
   width: 100%;
   resize: vertical;
 }
@@ -139,22 +243,20 @@
   color: var(--ink-2);
 }
 
-.gen-genre-selected,
-.gen-submit {
+.gen-genre-selected {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--surface-0);
 }
 
-.gen-submit-row,
-.gen-result-actions {
+.gen-generate-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   margin-top: 0.75rem;
 }
 
-.gen-submit-row small {
+.gen-generate-row small {
   color: var(--ink-3);
   font-size: var(--fs-meta);
 }
@@ -241,37 +343,6 @@
   white-space: pre-wrap;
   word-break: break-word;
   font: var(--fs-meta) / 1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.gen-result-actions {
-  justify-content: flex-end;
-}
-
-/* AI 生成鈕：強調色描邊，與一般檔案操作鈕區隔 */
-.ai-gen-btn {
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-/* 生成對話框主要動作：右下角、放大（使用者拍板的置頂例外） */
-.ai-gen-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-/* 靠左的那顆：其餘按鈕照舊靠右 */
-.ai-gen-footer .footer-lead {
-  margin-right: auto;
-}
-
-.ai-gen-submit {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 0;
-  font-weight: 600;
 }
 
 .ai-gen-error small {
@@ -456,7 +527,17 @@ h2.edit-page-title {
   filter: brightness(1.06);
 }
 
+/* 大圖檢視：無框，對話窗只包住圖本身；點圖或遮罩都關 */
+dialog.lightbox {
+  max-width: 92vw;
+  max-height: 92vh;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .lightbox-image {
+  display: block;
   max-width: 92vw;
   max-height: 92vh;
   border-radius: var(--radius-l);

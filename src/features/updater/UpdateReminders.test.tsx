@@ -74,7 +74,7 @@ describe("update reminders", () => {
       </>,
     );
     expect(host?.querySelector(".update-banner")).toBeNull();
-    expect(host?.querySelector("[role=dialog]")).not.toBeNull();
+    expect(host?.querySelector("dialog")).not.toBeNull();
     expect(update.markReminderShown).toHaveBeenCalledTimes(1);
   });
 

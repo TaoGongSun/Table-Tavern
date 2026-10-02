@@ -7,6 +7,7 @@ import { tierLabel } from "../features/ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../features/ai-connection/model-catalog-store";
 import { updateConfig } from "../features/settings/update-config";
 import { AppConfig } from "../shared/contracts/backend-contracts";
+import { Dialog } from "../shared/ui/Dialog";
 import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../features/ai-connection/cli";
 import { CACHE_UPDATED_EVENT } from "./SmartFreeNewModelBanner";
 import { type CliInstallProgress, TransportChoice } from "./TransportChoice";
@@ -518,12 +519,12 @@ export function Settings({
   }
 
   const statusShown = message !== null || dirtyCount > 0;
-  // 權限提示開著時背景整片不可聚焦（含捲動區尾端的即存設定與儲存列），焦點只留在提示裡
+  // 權限提示是疊在設定視窗上的 modal，背景由 top layer 變 inert；欄位另外停用防送出
   const noticeOpen = permissionNotice !== "";
 
   return (
     <form id="ai-settings-form" onSubmit={save} className="settings-ai-form">
-      <div className="settings-scroll" inert={noticeOpen}>
+      <div className="settings-scroll">
         {/* 儲存中或權限提示開著時整片欄位停用；提示畫在這個 fieldset 外，才按得到確認 */}
         <fieldset
           className="settings-form settings-fieldset"
@@ -812,32 +813,26 @@ export function Settings({
       </div>
       {/* 每家 CLI 第一次啟用時擋一次：此時 CLI 還沒被叫起來，玩家先知道等一下的彈窗是誰在問 */}
       {permissionNotice && (
-        <div
-          className="modal-overlay"
-          onClick={(event) => {
-            // 只收這個提示，不能一路冒泡把設定視窗也關掉
-            event.stopPropagation();
-            void ackPermissionNotice();
-          }}
+        <Dialog
+          title={t("cliPermissionTitle")}
+          onDismiss={() => void ackPermissionNotice()}
+          backdrop
+          end={
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void ackPermissionNotice()}
+            >
+              {t("cliPermissionAck")}
+            </button>
+          }
         >
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("cliPermissionTitle")}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>{t("cliPermissionTitle")}</h2>
-            <p>{t("cliPermissionNote", { provider: CLI_LABELS[permissionNotice] ?? permissionNotice })}</p>
-            <div className="ai-gen-footer">
-              <button type="button" onClick={() => void ackPermissionNotice()}>
-                {t("cliPermissionAck")}
-              </button>
-            </div>
-          </div>
-        </div>
+          <p>
+            {t("cliPermissionNote", { provider: CLI_LABELS[permissionNotice] ?? permissionNotice })}
+          </p>
+        </Dialog>
       )}
-      <footer className="settings-foot" inert={noticeOpen}>
+      <footer className="settings-foot">
         {/* 固定約兩行高、超長內捲：可聚焦才能只用鍵盤捲完長錯誤 */}
         <div className="settings-foot-status" tabIndex={statusShown ? 0 : undefined}>
           {message && <span role={message.kind === "ok" ? "status" : "alert"}>{message.text}</span>}

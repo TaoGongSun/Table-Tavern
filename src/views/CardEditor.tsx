@@ -1,27 +1,21 @@
 import { FormEvent, useEffect, useId, useState } from "react";
-import Cropper, { Area } from "react-easy-crop";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
-import { explainAiError } from "../shared/ui/ai-error";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { CharacterCard, DraftImage, Tier } from "../features/characters/card-model";
-import { CLI_LABELS, CliInfo, detectClis } from "../features/ai-connection/cli";
 import { tierLabel } from "../features/ai-connection/model-catalog";
 import { IconArchive, IconBook, IconDelete, IconExport, IconSparkle } from "../shared/ui/icons";
 import type { MoreMenuItem } from "../shared/ui/MoreMenu";
+import { ModalShell } from "../shared/ui/Dialog";
+import { AiImageDialog, CropDialog } from "./CardImageDialogs";
 import { EditPage } from "./EditPage";
-
-const GALLERY_PAGE_SIZE = 12;
 
 // 角色圖示快捷選項；輸入框沒限制在這幾個，系統 emoji 鍵盤打什麼都行
 const AVATAR_EMOJIS = ["🎭", "🧙", "🗡️", "🏹", "🛡️", "🐺", "🦊", "🐉", "👑", "💀", "🌙", "🕯️"];
 const DEFAULT_AVATAR = "🎭";
 const AVATAR_MAX_CHARS = 4;
-
-// Claude Code CLI 只輸出文字，沒有生圖工具：選到它就直說，不要讓玩家等一輪才拿到失敗訊息
-const NO_IMAGE_CLIS = ["claude"];
 
 // 以「看得到的字元」為單位截斷：input 的 maxLength 算的是 UTF-16 單元，
 // 一顆 🗡️ 就佔 3 個，拿來限長會讓 emoji 只打得下一顆。
@@ -31,105 +25,6 @@ function clampChars(value: string, max: number) {
       ? Array.from(new Intl.Segmenter().segment(value), (unit) => unit.segment)
       : Array.from(value);
   return chars.slice(0, max).join("");
-}
-
-function CropDialog({
-  title,
-  src,
-  aspect,
-  cropShape,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  src: string;
-  aspect: number;
-  cropShape: "rect" | "round";
-  onConfirm: (image: DraftImage) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
-  const [message, setMessage] = useState("");
-
-  async function confirmCrop() {
-    if (!croppedAreaPixels) return;
-    setMessage("");
-    try {
-      const image = new Image();
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("Unable to load image"));
-        image.src = src;
-      });
-      const size = cropShape === "round" ? 256 : Math.min(Math.round(croppedAreaPixels.width), 1024);
-      const height =
-        cropShape === "round"
-          ? 256
-          : Math.max(1, Math.round((croppedAreaPixels.height / croppedAreaPixels.width) * size));
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Unable to create image canvas");
-      // 頭像存正方形原樣，圓形與黑框由 CSS 畫（拍板規格），canvas 不做圓形裁切
-      context.drawImage(
-        image,
-        croppedAreaPixels.x,
-        croppedAreaPixels.y,
-        croppedAreaPixels.width,
-        croppedAreaPixels.height,
-        0,
-        0,
-        size,
-        height,
-      );
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Unable to crop image"))), "image/png");
-      });
-      // bytes 給存檔用、url 給暫存預覽用（圖像按儲存才落地）
-      await onConfirm({
-        bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
-        url: canvas.toDataURL("image/png"),
-      });
-      onCancel();
-    } catch (reason) {
-      setMessage(String(reason));
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <strong>{title}</strong>
-          <button type="button" className="modal-close" aria-label={t("closeBtn")} onClick={onCancel}>×</button>
-        </div>
-        <div className="crop-area">
-          <Cropper
-            image={src}
-            crop={crop}
-            zoom={zoom}
-            aspect={aspect}
-            cropShape={cropShape}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={(_, area) => setCroppedAreaPixels(area)}
-          />
-        </div>
-        <label className="crop-zoom">
-          {t("zoomLabel")}
-          <input type="range" min={1} max={4} step={0.05} value={zoom} onChange={(event) => setZoom(Number(event.currentTarget.value))} />
-        </label>
-        <div className="row">
-          <button type="button" onClick={() => void confirmCrop()}>{t("cropConfirm")}</button>
-          <button type="button" onClick={onCancel}>{t("cropCancel")}</button>
-          {message && <span role="alert">{message}</span>}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function CardEditor({
@@ -186,15 +81,6 @@ export function CardEditor({
   const [croppingAvatar, setCroppingAvatar] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [aiGenOpen, setAiGenOpen] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiSource, setAiSource] = useState("api");
-  const [aiFraming, setAiFraming] = useState("full");
-  const [aiClis, setAiClis] = useState<CliInfo[]>([]);
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiGenError, setAiGenError] = useState("");
-  const [galleryFiles, setGalleryFiles] = useState<string[]>([]);
-  const [galleryImages, setGalleryImages] = useState<Record<string, string>>({});
-  const [galleryLoaded, setGalleryLoaded] = useState(0);
   // 存檔前判斷「有沒有改名」用；新卡是空字串（第一次存檔不算改名）
   const [originalName, setOriginalName] = useState("");
   // 頂列儲存鈕在表單外，用 form 屬性指過來
@@ -239,92 +125,6 @@ export function CardEditor({
       stale = true;
     };
   }, [world, characterId, isNew, newCardColor]);
-
-  const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
-  const sourceCannotGenerate = NO_IMAGE_CLIS.includes(aiSource);
-
-  async function loadGalleryPage(files: string[], start: number) {
-    const page = files.slice(start, start + GALLERY_PAGE_SIZE);
-    const images = await Promise.all(page.map(async (file) => [file, await invoke<string>("read_gallery_image", { worldId: world, characterId, file })] as const));
-    setGalleryImages((current) => ({ ...current, ...Object.fromEntries(images) }));
-    setGalleryLoaded(Math.min(start + page.length, files.length));
-  }
-
-  async function refreshGallery() {
-    const files = await invoke<string[]>("list_gallery_images", { worldId: world, characterId });
-    setGalleryFiles(files);
-    setGalleryImages({});
-    setGalleryLoaded(0);
-    await loadGalleryPage(files, 0);
-  }
-
-  function openAiGenerator() {
-    const savedSource = String(config.preferences["image_source"] ?? "");
-    // 聊天用的來源不一定會生圖（例如 claude），跟隨不到就退回 API，玩家一打開就是能按的狀態
-    const transport = String(config.preferences["transport"] ?? "api");
-    const fallback = NO_IMAGE_CLIS.includes(transport) ? "api" : transport;
-    void detectClis()
-      .then((detected) => {
-        setAiClis(detected);
-        const detectedSources = ["api", ...detected.map((cli) => cli.id)];
-        setAiSource(detectedSources.includes(savedSource) ? savedSource : fallback);
-      })
-      .catch(() => {
-        setAiClis([]);
-        setAiSource(savedSource === "api" ? savedSource : fallback);
-      });
-    setAiPrompt(card?.gen_prompt ?? "");
-    setAiFraming(config.preferences["image_framing"] === "half" ? "half" : "full");
-    setAiGenError("");
-    setAiGenOpen(true);
-    void refreshGallery().catch(() => {
-      setGalleryFiles([]);
-      setGalleryImages({});
-      setGalleryLoaded(0);
-    });
-  }
-
-  async function generateImage() {
-    setAiGenerating(true);
-    setAiGenError("");
-    try {
-      await invoke<string>("generate_character_image", {
-        worldId: world,
-        characterId,
-        name: card?.name.trim() ?? "",
-        description: card?.public_md ?? "",
-        extraPrompt: aiPrompt,
-        source: aiSource,
-        framing: aiFraming,
-      });
-      // 追加描寫記進草稿，跟其他欄位一起等按儲存才落地
-      setCard((current) => (current ? { ...current, gen_prompt: aiPrompt } : current));
-      await refreshGallery();
-      await onPreference("image_source", aiSource);
-      await onPreference("image_framing", aiFraming);
-    } catch (reason) {
-      setAiGenError(String(reason));
-    } finally {
-      setAiGenerating(false);
-    }
-  }
-
-  async function deleteGalleryImage(file: string) {
-    const accepted = await confirm(t("aiGalleryDeleteConfirm"), {
-      title: t("aiGalleryDeleteTitle"),
-      kind: "warning",
-      okLabel: t("dialogDelete"),
-      cancelLabel: t("dialogCancel"),
-    });
-    if (!accepted) return;
-    await invoke("delete_gallery_image", { worldId: world, characterId, file });
-    setGalleryFiles((current) => current.filter((item) => item !== file));
-    setGalleryImages((current) => {
-      const { [file]: _, ...remaining } = current;
-      return remaining;
-    });
-    setGalleryLoaded((current) => Math.max(0, current - (galleryImages[file] ? 1 : 0)));
-  }
 
   // 已儲存之外的訊息都是擋下或失敗
   const messageIsError = message !== "" && message !== t("saved");
@@ -620,7 +420,7 @@ export function CardEditor({
                   type="button"
                   className="btn btn-sm"
                   disabled={aiGenBlocked}
-                  onClick={openAiGenerator}
+                  onClick={() => setAiGenOpen(true)}
                 >
                   <IconSparkle />
                   {t("aiGenBtn")}
@@ -731,111 +531,65 @@ export function CardEditor({
             </select>
           </label>
         )}
-        {pendingImage && (
-          <CropDialog
-            title={t("cropImageTitle")}
-            src={pendingImage}
-            aspect={2 / 3}
-            cropShape="rect"
-            onConfirm={async (image) => setDraftImage(image)}
-            onCancel={() => setPendingImage(null)}
-          />
-        )}
-        {aiGenOpen && (
-          <div className="modal-overlay" onClick={() => !aiGenerating && setAiGenOpen(false)}>
-            <div className="modal" role="dialog" aria-modal="true" aria-label={t("aiGenTitle")} onClick={(event) => event.stopPropagation()}>
-              <h2>{t("aiGenTitle")}</h2>
-              <label>{t("aiGenPromptLabel")}<textarea rows={3} value={aiPrompt} placeholder={t("aiGenPromptPlaceholder")} onChange={(event) => setAiPrompt(event.currentTarget.value)} /></label>
-              <fieldset className="ai-gen-framing">
-                <legend>{t("aiGenFramingLabel")}</legend>
-                {(["full", "half"] as const).map((framing) => (
-                  <label key={framing}>
-                    <input
-                      type="radio"
-                      name="ai-gen-framing"
-                      checked={aiFraming === framing}
-                      disabled={aiGenerating}
-                      onChange={() => setAiFraming(framing)}
-                    />
-                    {framing === "full" ? t("aiGenFramingFull") : t("aiGenFramingHalf")}
-                  </label>
-                ))}
-              </fieldset>
-              <label>{t("aiGenSourceLabel")}
-                <div className="row">
-                  <select value={aiSource} onChange={(event) => setAiSource(event.currentTarget.value)} disabled={aiGenerating}>
-                    {sourceOptions.map((source) => <option key={source} value={source}>{source === "api" ? t("aiGenSourceApi") : CLI_LABELS[source] ?? source}</option>)}
-                    {!sourceOptions.includes(aiSource) && <option value={aiSource}>{CLI_LABELS[aiSource] ?? aiSource}</option>}
-                  </select>
-                  <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
-                </div>
-              </label>
-              {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
-              {/* 生圖來源可以不經設定頁直接換，這裡也要講一次等一下的系統詢問是誰在問 */}
-              {aiSource !== "api" && !sourceCannotGenerate && (
-                <p className="cli-permission-note" role="note">
-                  {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
-                </p>
-              )}
-              {aiGenError && <div className="ai-gen-error" role="alert"><div>{t(explainAiError(aiGenError, aiSource) ?? "aiGenFailed")}</div><small>{aiGenError}</small></div>}
-              {galleryFiles.length > 0 && (
-                <section aria-label={t("aiGalleryTitle")}>
-                  <h3>{t("aiGalleryTitle")}</h3>
-                  <div className="ai-gallery">
-                    {galleryFiles.slice(0, galleryLoaded).map((file) => galleryImages[file] && (
-                      <div className="ai-gallery-thumb" key={file}>
-                        <button
-                          type="button"
-                          className="ai-gallery-pick"
-                          title={t("aiGalleryPick")}
-                          onClick={() => { setAiGenOpen(false); setPendingImage(galleryImages[file]); }}
-                        >
-                          <img src={galleryImages[file]} alt="" />
-                        </button>
-                        <button
-                          type="button"
-                          className="ai-gallery-delete"
-                          aria-label={t("aiGalleryDeleteTitle")}
-                          onClick={() => void deleteGalleryImage(file).catch((reason) => setAiGenError(String(reason)))}
-                        >×</button>
-                      </div>
-                    ))}
-                  </div>
-                  {galleryFiles.length > galleryLoaded && <button type="button" onClick={() => void loadGalleryPage(galleryFiles, galleryLoaded)}>{t("aiGalleryLoadMore", { n: galleryFiles.length - galleryLoaded })}</button>}
-                </section>
-              )}
-              {/* 主要動作放右下（2026-07-27 使用者拍板：此對話框例外，不置頂） */}
-              <div className="ai-gen-footer">
-                <button type="button" disabled={aiGenerating} onClick={() => setAiGenOpen(false)}>{t("cropCancel")}</button>
-                <button type="button" className="ai-gen-submit" disabled={aiGenerating || sourceCannotGenerate} onClick={() => void generateImage()}>
-                  {aiGenerating ? t("aiGenerating") : `✨ ${t("aiGenBtn")}`}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {lightboxOpen && shownImage && (
-          <div
-            className="modal-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("viewImageLabel")}
-            onClick={() => setLightboxOpen(false)}
-          >
-            <img className="lightbox-image" src={shownImage} alt="" />
-          </div>
-        )}
-        {croppingAvatar && shownImage && (
-          <CropDialog
-            title={t("cropAvatarTitle")}
-            src={shownImage}
-            aspect={1}
-            cropShape="round"
-            onConfirm={async (image) => setDraftAvatar(image)}
-            onCancel={() => setCroppingAvatar(false)}
-          />
-        )}
       </form>
+      {pendingImage && (
+        <CropDialog
+          title={t("cropImageTitle")}
+          src={pendingImage}
+          aspect={2 / 3}
+          cropShape="rect"
+          onConfirm={async (image) => setDraftImage(image)}
+          onCancel={() => setPendingImage(null)}
+        />
+      )}
+      {aiGenOpen && (
+        <AiImageDialog
+          world={world}
+          characterId={characterId}
+          name={card.name.trim()}
+          description={card.public_md}
+          initialPrompt={card.gen_prompt ?? ""}
+          config={config}
+          onPreference={onPreference}
+          onOpenAiSettings={onOpenAiSettings}
+          onPromptUsed={(prompt) =>
+            setCard((current) => (current ? { ...current, gen_prompt: prompt } : current))
+          }
+          onPick={(dataUrl) => {
+            setAiGenOpen(false);
+            setPendingImage(dataUrl);
+          }}
+          onClose={() => setAiGenOpen(false)}
+        />
+      )}
+      {/* 大圖檢視：無框，點圖或遮罩都關 */}
+      {lightboxOpen && shownImage && (
+        <ModalShell
+          className="lightbox"
+          label={t("viewImageLabel")}
+          onDismiss={() => setLightboxOpen(false)}
+          backdrop
+        >
+          <div data-dialog-content="" tabIndex={-1}>
+            <img
+              className="lightbox-image"
+              src={shownImage}
+              alt=""
+              onClick={() => setLightboxOpen(false)}
+            />
+          </div>
+        </ModalShell>
+      )}
+      {croppingAvatar && shownImage && (
+        <CropDialog
+          title={t("cropAvatarTitle")}
+          src={shownImage}
+          aspect={1}
+          cropShape="round"
+          onConfirm={async (image) => setDraftAvatar(image)}
+          onCancel={() => setCroppingAvatar(false)}
+        />
+      )}
     </EditPage>
   );
 }

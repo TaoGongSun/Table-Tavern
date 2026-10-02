@@ -13,6 +13,7 @@ import { LANGUAGE_OPTIONS, normalizeLang, t } from "../i18n";
 import { ALL_THEMES, KOFI_URL, resolveTheme, SPONSOR_THEMES, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX, type ThemeId } from "../features/settings/appearance";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { type LeaveDecision, useRequestedTab } from "../features/settings/useRequestedTab";
+import { ModalShell } from "../shared/ui/Dialog";
 import { IconClose } from "../shared/ui/icons";
 import { Settings } from "./SettingsForm";
 import { UsageTab } from "./UsageTab";
@@ -95,7 +96,7 @@ export function SettingsWindow({
   const confirmLockRef = useRef(false);
   const [confirmPending, setConfirmPending] = useState(false);
   const focusTabAfterSwitch = useRef(false);
-  const modalRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDialogElement>(null);
   const tabButtons = useRef(new Map<AnyTab, HTMLButtonElement>());
   const [tab, setTab] = useRequestedTab<AnyTab>(initialTab, requestKey, confirmDiscard, {
     blocked,
@@ -178,14 +179,6 @@ export function SettingsWindow({
     }
   }, [tab]);
 
-  useEffect(() => {
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") void discardAndClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
   const textSize = String(config.preferences["text_size"] ?? TEXT_SIZE_DEFAULT);
   const selectedTheme = previewTheme ?? resolveTheme(config, sponsorUnlocked);
   const transport = String(config.preferences["transport"] ?? "api");
@@ -228,211 +221,209 @@ export function SettingsWindow({
   }
 
   return (
-    <div className="modal-overlay" onClick={() => void discardAndClose()}>
-      <div
-        ref={modalRef}
-        className="modal settings-modal"
-        role="dialog"
-        aria-labelledby="settings-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="settings-tabbar">
-          <h2 id="settings-title" className="settings-title">
-            {t("settingsBtn")}
-          </h2>
-          <div
-            className="settings-tabs"
-            role="tablist"
-            aria-labelledby="settings-title"
-            onKeyDown={onTabKeyDown}
-          >
-            {TABS.map(([id, labelKey]) => (
-              <button
-                key={id}
-                ref={(node) => {
-                  if (node) tabButtons.current.set(id, node);
-                  else tabButtons.current.delete(id);
-                }}
-                type="button"
-                role="tab"
-                id={TAB_ID(id)}
-                className="settings-tab"
-                aria-selected={tab === id}
-                aria-controls={PANEL_ID}
-                tabIndex={tab === id ? 0 : -1}
-                onClick={() => void selectTab(id)}
-              >
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-icon settings-close"
-            aria-label={t("closeBtn")}
-            title={t("closeBtn")}
-            onClick={() => void discardAndClose()}
-          >
-            <IconClose />
-          </button>
+    <ModalShell
+      ref={modalRef}
+      className="settings-modal"
+      labelledBy="settings-title"
+      onDismiss={() => void discardAndClose()}
+      backdrop
+    >
+      <div className="settings-tabbar">
+        <h2 id="settings-title" className="settings-title">
+          {t("settingsBtn")}
+        </h2>
+        <div
+          className="settings-tabs"
+          role="tablist"
+          aria-labelledby="settings-title"
+          onKeyDown={onTabKeyDown}
+        >
+          {TABS.map(([id, labelKey]) => (
+            <button
+              key={id}
+              ref={(node) => {
+                if (node) tabButtons.current.set(id, node);
+                else tabButtons.current.delete(id);
+              }}
+              type="button"
+              role="tab"
+              id={TAB_ID(id)}
+              className="settings-tab"
+              aria-selected={tab === id}
+              aria-controls={PANEL_ID}
+              tabIndex={tab === id ? 0 : -1}
+              onClick={() => void selectTab(id)}
+            >
+              {t(labelKey)}
+            </button>
+          ))}
         </div>
-        <div className="settings-body">
-          <div
-            id={PANEL_ID}
-            role="tabpanel"
-            aria-labelledby={TAB_ID(tab)}
-            className={tab === "ai" ? "settings-panel settings-panel-ai" : "settings-panel"}
-            // 非 AI 頁由面板自己捲，可聚焦才能只用鍵盤捲；AI 頁的捲動區在表單裡
-            tabIndex={tab === "ai" ? undefined : 0}
-          >
-            {tab === "appearance" ? (
-              <div className="settings-form">
-                <label>
-                  {t("languageLabel")}
-                  <select
-                    value={normalizeLang(config.preferences["language"])}
-                    onChange={(e) => onPreference("language", normalizeLang(e.currentTarget.value))}
-                  >
-                    {LANGUAGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="theme-setting">
-                  {t("themeLabel")}
-                  <div className="theme-swatches">
-                    {ALL_THEMES.map((theme) => {
-                      const locked =
-                        (SPONSOR_THEMES as readonly string[]).includes(theme) && !sponsorUnlocked;
-                      const name = t(THEME_LABEL_KEYS[theme]);
-                      return (
-                        <button
-                          key={theme}
-                          type="button"
-                          className="theme-swatch"
-                          aria-pressed={selectedTheme === theme}
-                          title={name}
-                          onClick={() => selectTheme(theme)}
+        <button
+          type="button"
+          className="btn btn-ghost btn-icon settings-close"
+          aria-label={t("closeBtn")}
+          title={t("closeBtn")}
+          onClick={() => void discardAndClose()}
+        >
+          <IconClose />
+        </button>
+      </div>
+      <div className="settings-body" tabIndex={-1} data-dialog-content="">
+        <div
+          id={PANEL_ID}
+          role="tabpanel"
+          aria-labelledby={TAB_ID(tab)}
+          className={tab === "ai" ? "settings-panel settings-panel-ai" : "settings-panel"}
+          // 非 AI 頁由面板自己捲，可聚焦才能只用鍵盤捲；AI 頁的捲動區在表單裡
+          tabIndex={tab === "ai" ? undefined : 0}
+        >
+          {tab === "appearance" ? (
+            <div className="settings-form">
+              <label>
+                {t("languageLabel")}
+                <select
+                  value={normalizeLang(config.preferences["language"])}
+                  onChange={(e) => onPreference("language", normalizeLang(e.currentTarget.value))}
+                >
+                  {LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="theme-setting">
+                {t("themeLabel")}
+                <div className="theme-swatches">
+                  {ALL_THEMES.map((theme) => {
+                    const locked =
+                      (SPONSOR_THEMES as readonly string[]).includes(theme) && !sponsorUnlocked;
+                    const name = t(THEME_LABEL_KEYS[theme]);
+                    return (
+                      <button
+                        key={theme}
+                        type="button"
+                        className="theme-swatch"
+                        aria-pressed={selectedTheme === theme}
+                        title={name}
+                        onClick={() => selectTheme(theme)}
+                      >
+                        <span
+                          className={
+                            selectedTheme === theme
+                              ? "swatch-chip swatch-chip-selected"
+                              : "swatch-chip"
+                          }
+                          style={{ backgroundColor: THEME_SWATCH[theme].bg }}
                         >
+                          {locked && <span className="swatch-kofi">☕</span>}
                           <span
-                            className={
-                              selectedTheme === theme
-                                ? "swatch-chip swatch-chip-selected"
-                                : "swatch-chip"
-                            }
-                            style={{ backgroundColor: THEME_SWATCH[theme].bg }}
-                          >
-                            {locked && <span className="swatch-kofi">☕</span>}
-                            <span
-                              className="swatch-dot"
-                              style={{ backgroundColor: THEME_SWATCH[theme].dot }}
-                            />
-                          </span>
-                          <span>{name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {previewTheme && (
-                    <p className="theme-preview-hint">
-                      {t("themePreviewHint", { name: t(THEME_LABEL_KEYS[previewTheme]) })}{" "}
-                      <button type="button" className="link" onClick={() => void openUrl(KOFI_URL)}>
-                        {t("sponsorBtn")}
+                            className="swatch-dot"
+                            style={{ backgroundColor: THEME_SWATCH[theme].dot }}
+                          />
+                        </span>
+                        <span>{name}</span>
                       </button>
-                    </p>
-                  )}
+                    );
+                  })}
                 </div>
-                <label>
-                  {t("textSizeLabel")}
-                  <select
-                    value={textSize in TEXT_SIZE_PX ? textSize : TEXT_SIZE_DEFAULT}
-                    onChange={(e) => onPreference("text_size", e.currentTarget.value)}
-                  >
-                    {(["xs", "s", "m", "l", "xl"] as const).map((size) => (
-                      <option key={size} value={size}>
-                        {t(TEXT_SIZE_LABEL_KEYS[size])}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            ) : tab === "usage" ? (
-              <UsageTab currentWorld={currentWorld} />
-            ) : tab === "versions" ? (
-              versionTab
-            ) : tab === "author" ? (
-              <div className="author-page">
-                <img src={taoIcon} alt="TaoGongSun" className="avatar-round author-avatar" />
-                <strong>TaoGongSun</strong>
-                <p className="author-blurb">{t("authorBlurb")}</p>
-                <button type="button" className="btn" onClick={() => void openUrl(KOFI_URL)}>
-                  {t("sponsorBtn")}
-                </button>
-                {sponsorUnlocked ? (
-                  <p role="status">{t("sponsorPackUnlocked")}</p>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => sponsorPackInputRef.current?.click()}
-                    >
-                      {t("importSponsorPack")}
+                {previewTheme && (
+                  <p className="theme-preview-hint">
+                    {t("themePreviewHint", { name: t(THEME_LABEL_KEYS[previewTheme]) })}{" "}
+                    <button type="button" className="link" onClick={() => void openUrl(KOFI_URL)}>
+                      {t("sponsorBtn")}
                     </button>
-                    <input
-                      ref={sponsorPackInputRef}
-                      type="file"
-                      accept=".ttpack"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0];
-                        event.currentTarget.value = "";
-                        if (file) void importSponsorPack(file);
-                      }}
-                    />
-                    {sponsorPackError && (
-                      <small role="alert">
-                        {t("sponsorPackImportError", { reason: sponsorPackError })}
-                      </small>
-                    )}
-                  </>
+                  </p>
                 )}
               </div>
-            ) : (
-              <Settings
-                config={config}
-                onSaved={onSaved}
-                onDirty={reportDirty}
-                onBack={() => void discardAndClose()}
-                onBlockingChange={reportBlocking}
-              >
-                {/* 相容格式即存、不算未儲存，看的是已存的 config（不是表單草稿） */}
-                {transport === "api" && !stableFree && (
-                  <div className="settings-form">
-                    <details>
-                      <summary>{t("apiCompatAdvancedSummary")}</summary>
-                      <label>
-                        {t("apiFormatLabel")}
-                        <select
-                          value={apiMode}
-                          onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
-                        >
-                          <option value="auto">{t("apiFormatAuto")}</option>
-                          <option value="chat_completions">{t("apiFormatChatCompletions")}</option>
-                          <option value="responses">{t("apiFormatResponses")}</option>
-                        </select>
-                        <small role="note">{t("apiFormatHint")}</small>
-                      </label>
-                    </details>
-                  </div>
-                )}
-              </Settings>
-            )}
-          </div>
+              <label>
+                {t("textSizeLabel")}
+                <select
+                  value={textSize in TEXT_SIZE_PX ? textSize : TEXT_SIZE_DEFAULT}
+                  onChange={(e) => onPreference("text_size", e.currentTarget.value)}
+                >
+                  {(["xs", "s", "m", "l", "xl"] as const).map((size) => (
+                    <option key={size} value={size}>
+                      {t(TEXT_SIZE_LABEL_KEYS[size])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : tab === "usage" ? (
+            <UsageTab currentWorld={currentWorld} />
+          ) : tab === "versions" ? (
+            versionTab
+          ) : tab === "author" ? (
+            <div className="author-page">
+              <img src={taoIcon} alt="TaoGongSun" className="avatar-round author-avatar" />
+              <strong>TaoGongSun</strong>
+              <p className="author-blurb">{t("authorBlurb")}</p>
+              <button type="button" className="btn" onClick={() => void openUrl(KOFI_URL)}>
+                {t("sponsorBtn")}
+              </button>
+              {sponsorUnlocked ? (
+                <p role="status">{t("sponsorPackUnlocked")}</p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => sponsorPackInputRef.current?.click()}
+                  >
+                    {t("importSponsorPack")}
+                  </button>
+                  <input
+                    ref={sponsorPackInputRef}
+                    type="file"
+                    accept=".ttpack"
+                    hidden
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = "";
+                      if (file) void importSponsorPack(file);
+                    }}
+                  />
+                  {sponsorPackError && (
+                    <small role="alert">
+                      {t("sponsorPackImportError", { reason: sponsorPackError })}
+                    </small>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <Settings
+              config={config}
+              onSaved={onSaved}
+              onDirty={reportDirty}
+              onBack={() => void discardAndClose()}
+              onBlockingChange={reportBlocking}
+            >
+              {/* 相容格式即存、不算未儲存，看的是已存的 config（不是表單草稿） */}
+              {transport === "api" && !stableFree && (
+                <div className="settings-form">
+                  <details>
+                    <summary>{t("apiCompatAdvancedSummary")}</summary>
+                    <label>
+                      {t("apiFormatLabel")}
+                      <select
+                        value={apiMode}
+                        onChange={(event) => onPreference("api_mode", event.currentTarget.value)}
+                      >
+                        <option value="auto">{t("apiFormatAuto")}</option>
+                        <option value="chat_completions">{t("apiFormatChatCompletions")}</option>
+                        <option value="responses">{t("apiFormatResponses")}</option>
+                      </select>
+                      <small role="note">{t("apiFormatHint")}</small>
+                    </label>
+                  </details>
+                </div>
+              )}
+            </Settings>
+          )}
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

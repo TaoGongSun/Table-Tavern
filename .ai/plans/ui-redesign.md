@@ -87,3 +87,12 @@
 - 儲存列：狀態區固定約兩行高內捲（訊息 ok＝status／error＝alert＋未儲存 N 項）；左鈕兩種文案 grid 疊放佔最寬、換字不位移；「儲存設定」dirty 0 或儲存中停用。訊息 {kind,text}：save 開頭清，ok 只在 dirty 0→>0 時清。
 - 守門：阻擋＝儲存中∥CLI 權限提示開著，SettingsForm 在同一段處理器同步回報（成功時先立提示再清 saving）；提示畫在 disabled fieldset 外。玩家直接離開（分頁、×、返回、Esc、遮罩）阻擋時無效；confirmDiscard 重入鎖共用、finally 解除，確認回來後再檢查阻擋。外部 requestKey 保留最新一筆，阻擋與確認中都不處理也不標記，解除後處理最新；只有切頁完成或玩家取消才標記；外部切頁卸載焦點時移到新 tab。
 - transport 每列有框 div：radio＋名稱 label，狀態字與驗證／換帳號／安裝鈕、進度做兄弟節點，分支全保留。其他分頁內容與行為不動只換樣式；api_mode 進階區塊（即存、不算 dirty、看已存 config）放 AI 捲動區尾端。其他對話窗 `.modal` 不動（分包 5）。
+
+## 分包 5 施工定案（Opus／Sol 兩方共識 2026-10-02；Grok 額度用完〔作者裁決 2026-10-02〕）
+- 共用元件 `src/shared/ui/Dialog.tsx`：`ModalShell`＝原生 `<dialog>`，mount 時 layout effect `showModal()`、cleanup 先設 closingRef 再 `close()`；模組層開啟堆疊（開／意外重開推頂、主動關移除）。close／cancel 只認自己的 target；cancel 一律 preventDefault；非主動的 close 且 `isConnected && !open` 才重開（StrictMode 安全）。目標 WKWebView 須支援 `<dialog>`（Safari 15.4 起），較舊環境未驗證，minimumSystemVersion 不在本案範圍。
+- Esc：dialog onKeyDown 攔 Escape→preventDefault＋stopPropagation（防 WebView2 連按兩次繞過 cancel、防漏到介面卡 window Esc），有 onDismiss 才呼叫；輸入法組字中只 stopPropagation。遮罩：pointerdown 與 click 都須 target＝dialog 且座標在內框外。busy 時呼叫端不給 onDismiss、× 停用。
+- 焦點：dialog 不設 tabIndex；初始焦點只認 `[data-autofocus]`，否則內容區容器（不聚焦按鈕）。歸還觸發元素須 isConnected、非 `:disabled`、不在 `[inert]` 內，且堆疊非空時須在頂層 dialog 內，否則不還。
+- `Dialog` 版面：標題 h2（aria-labelledby）＋可選 ×（IconClose 幽靈，同設定）、可選 toolbar（固定）、內容區自捲、footer `start`（次鈕靠左）／`end`（主鈕最後、靠右）；標題列／toolbar／footer flex:none。寬 s/m/l＝min(28/34/44rem, 100vw−2rem)、高上限 100vh−3rem。footer 可折行只當保底；換字主鈕兩文案 grid 疊放取最寬。按鈕用既有三級類別；沒有破壞性動作故不加 danger 類別。刪除 `.modal*`、`.ai-gen-footer`、`.footer-lead`、`.ai-gen-submit`、`.gen-submit`、`.ai-gen-btn`（AI 動作保留 ✨ 改次鈕）。
+- 各窗（左次／右主；遮罩照舊，Esc＝同遮罩或取消動作）：範例桌詢問（取消重選、不用｜新增範例桌）；格式轉換更新（稍後｜查看）；重構進行中（取消，無 Esc）；重構二選一（取消、自己選＝展開後停用占位｜照建議跑／照選的跑，Esc＝取消）；重構結果（不要、匯出、展開｜全部套用；已取消時主＝不要移到右下、全部套用降次鈕併入左群；展開：返回｜套用；不給 Esc／遮罩）；匯入身分、第二張卡路由（取消＋另一選項｜主選項，Esc＝取消）；開場白（size l，×；toolbar＝檔位＋全部翻譯；清單去掉自有 45vh 上限；取消｜重新翻譯（展開時常駐槽位，沒翻過 hidden）、翻譯後貼出、貼出這則＝主）；一句話開桌（size l，×（busy 停用），底列條件維持 `genOutlineRaw !== null`：重抽｜建立；內容區「生成」有綱要後降次鈕不換位）；裁切（×；取消｜確認）；AI 生圖（加 ×；取消｜生成，生成中不可關）；燈箱（無框 ModalShell，點圖也關）；CLI 權限提示（知道了，巢狀在設定，拿掉手動 inert）；設定視窗外框改 ModalShell，移除 window keydown。
+- CropDialog、AI 生圖對話窗搬出 CardEditor.tsx 到 `src/views/CardImageDialogs.tsx`。
+- 測試：happy-dom 只測狀態機（Esc／IME、遮罩判定、closingRef 重開、焦點選擇與歸還）；top layer、Tab 圈限、巢狀關閉後設定仍開、開場白翻譯前後主鈕座標列實機；WebView2 連按 Esc 記為未實機驗（無 Windows 機）。

@@ -107,7 +107,7 @@ button.btn-sm {
 }
 
 /* ⋯ 選單彈層：portal 到 body，位置由 MoreMenu 以 fixed 座標算好；
-   疊在狀態列與前幕面板之上、對話窗（.modal-overlay 10）之下 */
+   疊在狀態列與前幕面板之上；對話窗走 top layer，一律蓋在它上面 */
 .menu {
   position: fixed;
   z-index: 8;
