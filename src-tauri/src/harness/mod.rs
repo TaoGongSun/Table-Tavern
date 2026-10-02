@@ -2,15 +2,18 @@
 //! 讓主線（Claude 透過 `scripts/harness.mjs`）對真 app 送 JS、回答原生對話窗。
 //! 規格：.ai/plans/test-harness.md。
 
+mod ai_log;
 pub(crate) mod dialog;
 mod eval;
 mod root;
+mod route;
 mod server;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+pub(crate) use ai_log::{ai_dispatch, ai_event, cli_model, is_ai_probe};
 pub(crate) use root::HARNESS_IDENTIFIER;
 
 struct Boot {
@@ -88,6 +91,11 @@ pub(crate) fn config_root() -> PathBuf {
     boot_state().root.join("config")
 }
 
+/// 尚未 boot（例如單元測試）時為 None，ai_log 就不寫。
+fn ai_log_path() -> Option<PathBuf> {
+    BOOT.get().map(|boot| boot.root.join("harness-ai.log"))
+}
+
 fn discovery_path() -> PathBuf {
     boot_state().root.join("harness.json")
 }
@@ -150,5 +158,6 @@ fn status_json() -> serde_json::Value {
         "root": boot.root,
         "pendingDialogs": dialog::pending_count(),
         "pendingEvals": eval::pending_count(),
+        "aiLogWriteFailures": ai_log::write_failures(),
     })
 }

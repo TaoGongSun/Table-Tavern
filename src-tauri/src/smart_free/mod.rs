@@ -109,30 +109,51 @@ pub async fn prepare_call(
     let account = fingerprint(key);
     let catalog = cache.catalog_for(&account).unwrap_or(&[]);
     let now = now_secs();
-    let eligible = select::eligible_models(catalog, required_context(messages), now, &[]);
-    if eligible.is_empty() {
-        return Err(UiMsg::NoFreeModels.into());
-    }
-    // OpenRouter 免費 RP 模型品質不穩，靜默備援會讓句子中途換模、風格突變，玩家又不一定換得回來；
-    // 現狀下「不換模型」較好〔作者裁決 2026-09-18〕。因此只送當下穩定首選一支、不送備援陣列：
-    // 該支短暫失敗就回報這次請求失敗，由玩家再送一次（cache 未變、下次仍是同一支，不會彈跳）。
-    // stable_fallback_models 仍照算保留備援名次，供日後「連續失敗才問玩家換備用」的視窗接手。
+    let pick = pick_primary(&cache, catalog, required_context(messages), now)?;
     let pins = store::read_pins(root);
     let previous = world.and_then(|world| pins.get(world)).map(String::as_str);
     let expiry_warning = take_expiry_warning(root, world, previous, catalog, now);
-    let ranked = select::stable_fallback_models(
-        &eligible,
-        cache.roleplay_slugs.as_deref().unwrap_or(&[]),
-        cache.weekly_ids.as_deref().unwrap_or(&[]),
-        now,
-    );
-    match ranked.into_iter().next() {
+    match pick {
         Some(primary) => Ok(PreparedCall {
             models: vec![primary],
             expiry_warning,
         }),
         None => Err(UiMsg::NoStableFreeModel.into()),
     }
+}
+
+/// 不發任何請求，只依快取挑首選。沒有符合長度的免費模型回 Err；有但排不出穩定首選回 Ok(None)。
+/// OpenRouter 免費 RP 模型品質不穩，靜默備援會讓句子中途換模、風格突變，玩家又不一定換得回來；
+/// 現狀下「不換模型」較好〔作者裁決 2026-09-18〕。因此只送當下穩定首選一支、不送備援陣列：
+/// 該支短暫失敗就回報這次請求失敗，由玩家再送一次（cache 未變、下次仍是同一支，不會彈跳）。
+/// stable_fallback_models 仍照算保留備援名次，供日後「連續失敗才問玩家換備用」的視窗接手。
+fn pick_primary(
+    cache: &store::Cache,
+    catalog: &[select::FreeModel],
+    required_tokens: u64,
+    now: u64,
+) -> Result<Option<String>, String> {
+    let eligible = select::eligible_models(catalog, required_tokens, now, &[]);
+    if eligible.is_empty() {
+        return Err(UiMsg::NoFreeModels.into());
+    }
+    let ranked = select::stable_fallback_models(
+        &eligible,
+        cache.roleplay_slugs.as_deref().unwrap_or(&[]),
+        cache.weekly_ids.as_deref().unwrap_or(&[]),
+        now,
+    );
+    Ok(ranked.into_iter().next())
+}
+
+/// 測試通道的 route 預覽：與 prepare_call 同一套挑選，但不查額度、不刷新快取、不發請求，
+/// 也沒有本次訊息——以「空訊息＋保留輸出」的最小長度估，實際送出可能因訊息較長而換挑。
+#[cfg(feature = "test-harness")]
+pub fn preview_primary(root: &Path, config: &AppConfig) -> Result<Option<String>, String> {
+    let key = api_key(config).ok_or_else(|| UiMsg::OpenrouterApiKeyMissing.to_string())?;
+    let cache = store::read_cache(root);
+    let catalog = cache.catalog_for(&fingerprint(key)).unwrap_or(&[]);
+    pick_primary(&cache, catalog, required_context(&[]), now_secs())
 }
 
 /// 已知到期的綁定模型在到期前三天提醒一次；marker 含到期時間，若官方延長後再縮短仍可重新提醒。

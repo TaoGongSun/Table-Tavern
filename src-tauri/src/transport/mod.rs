@@ -19,6 +19,8 @@ pub use arrivals::{
     detect_new_arrivals, detect_new_card_arrivals, is_legacy_card_arrival, person_arrival_text,
 };
 pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
+#[cfg(feature = "test-harness")]
+pub(crate) use client::DEFAULT_IMAGE_MODEL;
 pub use client::{
     base_url, generate_image, gm_tier, refactor_expand_tier, resolve_model, stream_chat,
     stream_chat_models, tier_model, ui_language, PromptCacheUsage, SseParser, StreamChatResult,

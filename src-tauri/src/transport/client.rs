@@ -454,6 +454,12 @@ pub async fn stream_chat(
         return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
 
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_dispatch(
+        "api",
+        model,
+        serde_json::json!({ "world": world, "shape": format!("{shape:?}") }),
+    );
     let mut request = reqwest::Client::new()
         .post(format!("{base}/chat/completions"))
         .json(&chat_request_body(model, messages));
@@ -538,6 +544,12 @@ pub async fn stream_chat_models(
         return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
 
+    #[cfg(feature = "test-harness")]
+    let harness_dispatch = crate::harness::ai_dispatch(
+        "api-smart-free",
+        &format!("候選（送出）：{}", models.join(" > ")),
+        serde_json::json!({ "world": world, "shape": format!("{shape:?}") }),
+    );
     let mut request = reqwest::Client::new()
         .post(format!("{base}/chat/completions"))
         .json(&chat_models_request_body(models, messages));
@@ -577,6 +589,13 @@ pub async fn stream_chat_models(
             }
         }
     }
+    // 候選字串不是實際回應者：回應裡的 top-level model 另記一行，以 id 關聯
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_event(
+        &harness_dispatch,
+        "responder",
+        serde_json::json!({ "model": responder_model }),
+    );
     let log_model = responder_model.as_deref().unwrap_or(first_model);
     if let Some(usage) = usage {
         eprintln!(
@@ -616,6 +635,8 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
         .and_then(|value| value.as_str())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(DEFAULT_IMAGE_MODEL);
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_dispatch("api-image", model, serde_json::json!({ "shape": "Image" }));
     let response = reqwest::Client::new()
         .post(format!("{}/images", base_url(config)))
         .bearer_auth(api_key)

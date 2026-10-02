@@ -54,6 +54,9 @@ fn take_waiter(id: &str, nonce: &str) -> Option<Waiter> {
     })
 }
 
+/// 頁面端 DOM 輔助（H），每次 eval 以參數傳入使用者程式碼。
+const HELPERS: &str = include_str!("helpers.js");
+
 /// 包裝成頁面端腳本。使用者程式碼以 JSON 字串傳入，用 AsyncFunction 建構：
 /// 先試成「回傳該運算式」，語法不通再當成函式本體（需自己寫 return）。
 pub(super) fn wrap(id: &str, nonce: &str, source: &str) -> String {
@@ -69,8 +72,8 @@ pub(super) fn wrap(id: &str, nonce: &str, source: &str) -> String {
     const AsyncFunction = (async () => {{}}).constructor;
     const src = {src};
     let fn;
-    try {{ fn = new AsyncFunction("return (" + src + "\n);"); }} catch (_) {{ fn = new AsyncFunction(src); }}
-    const value = await fn();
+    try {{ fn = new AsyncFunction("H", "return (" + src + "\n);"); }} catch (_) {{ fn = new AsyncFunction("H", src); }}
+    const value = await fn({HELPERS});
     try {{
       const json = JSON.stringify(value === undefined ? null : value, (k, v) => {{
         if (typeof Node !== "undefined" && v instanceof Node) throw new TypeError("回傳值含 DOM 節點，請改回傳文字或屬性");
