@@ -491,11 +491,54 @@
 }
 
 .sidebar-footer {
+  display: flex;
+  gap: 0.4rem;
   font-size: var(--fs-body);
 }
 
 .settings-open {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 版本號小字：點了開設定的「版本」分頁；有沒被略過的新版時右上角亮小點 */
+.version-open {
+  position: relative;
+  flex: none;
+  padding: 0 0.6em;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.update-dot {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* 功能版新版本：桌列表上方一次性橫幅 */
+.update-banner {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  font-size: var(--fs-ui);
+  color: var(--ink-1);
+}
+
+.update-banner-close {
+  margin-left: auto;
+  padding: 0 0.5em;
+  border: none;
+  color: var(--ink-3);
 }
 
 /* ============ 設定視窗 ============ */

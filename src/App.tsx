@@ -6,6 +6,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { detectLang, Lang, normalizeLang, t } from "./i18n";
 import { updateConfig } from "./features/settings/update-config";
 import {
+  deleteTableMessage,
   gateOf,
   looseTranscript,
   readOnlyBannerVersion,
@@ -24,8 +25,10 @@ import {
 } from "./shared/contracts/backend-contracts";
 import { CharacterMeta } from "./features/characters/card-model";
 import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
-import { useUpdateController } from "./features/updater/useUpdateController";
-import { useVersionStoreController } from "./features/updater/useVersionStoreController";
+import { useVersionCenter } from "./features/updater/useVersionCenter";
+import { VersionTab } from "./features/updater/VersionTab";
+import { FormatUpdateDialog, UpdateBanner } from "./features/updater/UpdateReminders";
+import { showUpdateDot } from "./features/updater/version-center";
 import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
 import { useCharacterController } from "./controllers/useCharacterController";
 import { useChatController } from "./controllers/useChatController";
@@ -37,6 +40,7 @@ import {
   useWorkspaceNavigationController,
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
+import type { SettingsTab } from "./views/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { SmartFreeNewModelBanner } from "./views/SmartFreeNewModelBanner";
 import { ErrorNote } from "./views/atoms";
@@ -81,7 +85,13 @@ function App() {
   // 改桌名可從兩處進入：主欄標題（header）與側欄目前桌那一列（list）；at 決定輸入框長在哪
   const [editingName, setEditingName] = useState<EditingTableName>(null);
   // false＝關閉；字串＝開啟並落在該分頁（生圖對話框的「AI 連線設定」鈕直開 ai 分頁）
-  const [settingsOpen, setSettingsOpen] = useState<false | "appearance" | "ai">(false);
+  const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
+  // 每次從外面要求開設定就加一：視窗已開著時（例如按橫幅的「查看」）也要切到要求的分頁
+  const [settingsRequestKey, setSettingsRequestKey] = useState(0);
+  const openSettings = useCallback((tab: SettingsTab) => {
+    setSettingsOpen(tab);
+    setSettingsRequestKey((key) => key + 1);
+  }, []);
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");
@@ -226,19 +236,14 @@ function App() {
     onError: setError,
   });
 
-  // 更新檢查掛著，但不畫提示。畫面歸包 5。
-  useUpdateController({
+  // 更新與回退：啟動後整理、檢查、版本庫與桌備份。等待狀態在這裡，關掉設定頁不會取消。
+  const versionCenter = useVersionCenter({
     configLoaded: config !== null,
     initialLoadReady: bootReady,
     preferences: config?.preferences,
     responding: chat.generating !== null,
     stopResponse: chat.stopResponse,
     onConfig: setConfig,
-  });
-  // 接上版本庫，不渲染。畫面歸包 5。
-  useVersionStoreController({
-    initialLoadReady: bootReady,
-    responding: chat.generating !== null,
   });
 
   // 切桌、匯入卡、改完世界書都要重問一次這桌有沒有狀態列。
@@ -553,8 +558,7 @@ function App() {
   // 刪掉最後一桌就補一張範例桌——App 不留「沒有桌」的空狀態（NewPlan §9.3 零精靈）
   async function deleteTable(id: string) {
     if (!config || chat.busy) return;
-    const displayName = worlds.find((w) => w.id === id)?.name ?? id;
-    const accepted = await confirm(t("deleteTableConfirm", { name: displayName }), {
+    const accepted = await confirm(deleteTableMessage(worlds.find((w) => w.id === id), id), {
       title: t("deleteTableTitle"),
       kind: "warning",
     });
@@ -742,7 +746,7 @@ function App() {
         onSwitchTable={switchTable}
         onDeleteTable={deleteTable}
         onUndoImport={undoLastImport}
-        onOpenSettings={setSettingsOpen}
+        onOpenSettings={openSettings}
         onPreference={changePreference}
         onConfigSaved={setConfig}
         onEntryConverted={refreshAfterEntryConverted}
@@ -753,6 +757,15 @@ function App() {
         skippedLines={skippedLines}
         onUseBackup={() => void useBackup()}
         onOpenRepairFolder={() => void openRepairFolder()}
+        sidebarNotice={
+          <UpdateBanner
+            update={versionCenter.update}
+            preferences={config.preferences}
+            onView={() => openSettings("versions")}
+          />
+        }
+        appVersion={versionCenter.appVersion}
+        updateDot={showUpdateDot(versionCenter.update.offer, config.preferences)}
       />
 
       <AppDialogs
@@ -760,6 +773,21 @@ function App() {
         onCloseGenerateTable={() => setGenTableOpen(false)}
         onGeneratedTable={enterGeneratedTable}
         settingsOpen={settingsOpen}
+        settingsRequestKey={settingsRequestKey}
+        versionTab={
+          <VersionTab
+            center={versionCenter}
+            preferences={config.preferences}
+            onPreference={(key, value) => void changeSettingPreference(key, value)}
+          />
+        }
+        updateDialog={
+          <FormatUpdateDialog
+            update={versionCenter.update}
+            preferences={config.preferences}
+            onView={() => openSettings("versions")}
+          />
+        }
         config={config}
         onConfigSaved={setConfig}
         onSettingPreference={changeSettingPreference}
@@ -778,7 +806,7 @@ function App() {
       <SmartFreeNewModelBanner
         config={config}
         onConfigSaved={setConfig}
-        onOpenSettings={setSettingsOpen}
+        onOpenSettings={openSettings}
       />
     </div>
   );

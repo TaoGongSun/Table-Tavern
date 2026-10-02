@@ -2,6 +2,7 @@
 //! 版本庫、驗簽、提醒等級、Mac 替換都在這裡，不在 `commands/`。
 
 mod catalog;
+mod check;
 mod install_prep;
 mod launch;
 mod level;
@@ -32,6 +33,7 @@ pub(crate) use macos::swap_directories;
 pub(crate) use macos::{parent_is_writable, replace_installed_app};
 // 這句只在非 Mac、非 Windows 的安裝路徑用到。本機是 Mac，不標 allow 會被當成沒人用。
 pub(crate) use catalog::{has_verified_rollback_point, require_eligible, VersionList};
+pub(crate) use check::CheckResult;
 pub(crate) use install_prep::{forward_before_raise, rollback_before_raise};
 #[allow(unused_imports)]
 pub(crate) use launch::stage_launch_installer;

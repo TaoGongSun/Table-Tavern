@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { gateOf, listBadge, looseTranscript, readOnlyBannerVersion, type OpenWorld } from "./open-world";
+import {
+  deleteTableMessage,
+  gateOf,
+  listBadge,
+  looseTranscript,
+  readOnlyBannerVersion,
+  type OpenWorld,
+} from "./open-world";
 
 const readOnly = (app: string | null, format: number | null, backup = false): OpenWorld => ({
   status: "read_only",
@@ -45,5 +52,28 @@ describe("listBadge", () => {
     expect(listBadge({ read_only: true, needs_repair: true })).toBe("repair");
     expect(listBadge({ read_only: true, needs_repair: false })).toBe("readonly");
     expect(listBadge({ read_only: false, needs_repair: false })).toBeNull();
+  });
+});
+
+describe("deleteTableMessage", () => {
+  const warning = "這張桌有比目前版本新的紀錄";
+  const world = (read_only: boolean, needs_repair = false) => ({
+    id: "w",
+    name: "霧港",
+    read_only,
+    needs_repair,
+  });
+
+  it("唯讀桌多一句警告，一般桌不出現", () => {
+    expect(deleteTableMessage(world(true), "w")).toContain(warning);
+    expect(deleteTableMessage(world(true), "w")).toContain("霧港");
+    expect(deleteTableMessage(world(false), "w")).not.toContain(warning);
+    expect(deleteTableMessage(world(false, true), "w")).not.toContain(warning);
+  });
+
+  it("清單裡找不到這桌就用 id 當名字、不加警告", () => {
+    const text = deleteTableMessage(undefined, "01ARZ");
+    expect(text).toContain("01ARZ");
+    expect(text).not.toContain(warning);
   });
 });

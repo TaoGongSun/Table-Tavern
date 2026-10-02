@@ -1,11 +1,12 @@
-//! 回退預覽。用包 2 的格式判讀，不跑恢復、不驗簽。沒有主資料夾的桌略過。
+//! 回退預覽。目標不合格（不在、驗不過、不比目前舊、平台不符）回錯誤；
+//! 掃桌用包 2 的格式判讀，不跑恢復，掃不了就回成功並標 `scan_failed`。沒有主資料夾的桌略過。
 
 use std::path::Path;
 
 use serde::Serialize;
 
 use super::catalog::require_eligible;
-use super::store::Platform;
+use super::store::{reverify_for_install, version_dir_name, Platform};
 use crate::data::{self, FormatVersion};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -18,6 +19,7 @@ pub(crate) struct PreviewWorld {
 pub(crate) struct RollbackPreview {
     pub will_be_readonly: Vec<PreviewWorld>,
     pub maybe_readonly: Vec<PreviewWorld>,
+    pub scan_failed: bool,
 }
 
 /// 可回退條件在版本庫鎖內讀完就放開，接著才掃桌目錄。
@@ -27,12 +29,30 @@ pub(crate) async fn rollback_preview_locked(
     version: &str,
     platform: Platform,
     running: &str,
+    pubkey: &str,
 ) -> Result<RollbackPreview, String> {
     let format_version = {
         let _guard = super::store_lock::store_activity().lock().await;
-        require_eligible(versions, version, platform, running)?.format_version
+        let eligible = require_eligible(versions, version, platform, running)?;
+        reverify_for_install(
+            versions,
+            version_dir_name(version)?,
+            &eligible.file,
+            platform.as_str(),
+            pubkey,
+        )?;
+        eligible.format_version
     };
-    worlds_at(config_root, format_version)
+    Ok(
+        worlds_at(config_root, format_version).unwrap_or_else(|error| {
+            log::warn!("回退預覽掃桌失敗：{error}");
+            RollbackPreview {
+                will_be_readonly: Vec::new(),
+                maybe_readonly: Vec::new(),
+                scan_failed: true,
+            }
+        }),
+    )
 }
 
 fn worlds_at(root: &Path, target_format: u64) -> Result<RollbackPreview, String> {
@@ -61,6 +81,7 @@ fn worlds_at(root: &Path, target_format: u64) -> Result<RollbackPreview, String>
     Ok(RollbackPreview {
         will_be_readonly,
         maybe_readonly,
+        scan_failed: false,
     })
 }
 
@@ -85,10 +106,14 @@ mod tests {
         }
     }
 
-    fn put_release(versions: &std::path::Path, version: &str, format_version: Option<u64>) {
+    /// 回傳簽這一版的公鑰。
+    fn put_release(
+        versions: &std::path::Path,
+        version: &str,
+        format_version: Option<u64>,
+    ) -> String {
         let bytes = format!("bytes-{version}").into_bytes();
         let (public_key, signature) = sign_fixture(&bytes);
-        let _ = public_key;
         store::commit_download(
             versions,
             version,
@@ -99,6 +124,7 @@ mod tests {
             format_version,
         )
         .unwrap();
+        public_key
     }
 
     fn world(root: &std::path::Path, name: &str) -> String {
@@ -117,7 +143,7 @@ mod tests {
     async fn preview_splits_newer_formats_and_unknown_and_skips_worlds_without_a_live_dir() {
         let versions = TempDir::new("ver");
         let desks = TempDir::new("desks");
-        put_release(&versions.0, "0.1.0", Some(1));
+        let key = put_release(&versions.0, "0.1.0", Some(1));
         let newer = world(&desks.0, "新格式");
         std::fs::write(
             desks.0.join("worlds").join(&newer).join("format.json"),
@@ -159,9 +185,10 @@ mod tests {
         std::fs::create_dir_all(desks.0.join("worlds").join(format!(".tt-pre-{sidecar}"))).unwrap();
 
         let preview =
-            rollback_preview_locked(&desks.0, &versions.0, "0.1.0", Platform::Mac, "0.2.0")
+            rollback_preview_locked(&desks.0, &versions.0, "0.1.0", Platform::Mac, "0.2.0", &key)
                 .await
                 .unwrap();
+        assert!(!preview.scan_failed);
         assert_eq!(
             preview
                 .will_be_readonly
@@ -196,34 +223,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn preview_uses_the_same_eligibility_errors_without_a_signature_check() {
+    async fn ineligible_or_unverified_targets_are_errors() {
         let versions = TempDir::new("bad");
         let desks = TempDir::new("empty");
-        put_release(&versions.0, "0.1.0", None);
-        put_release(&versions.0, "0.3.0", Some(1));
+        let key = put_release(&versions.0, "0.1.0", None);
+        let other = put_release(&versions.0, "0.3.0", Some(1));
+        let preview = |version: &'static str, platform, running: &'static str, pubkey: String| {
+            let versions = versions.0.clone();
+            let desks = desks.0.clone();
+            async move {
+                rollback_preview_locked(&desks, &versions, version, platform, running, &pubkey)
+                    .await
+                    .unwrap_err()
+            }
+        };
         assert_eq!(
-            rollback_preview_locked(&desks.0, &versions.0, "0.1.0", Platform::Mac, "0.4.0")
-                .await
-                .unwrap_err(),
+            preview("0.1.0", Platform::Mac, "0.4.0", key.clone()).await,
             "沒有格式版本"
         );
         assert_eq!(
-            rollback_preview_locked(&desks.0, &versions.0, "0.3.0", Platform::Windows, "0.4.0")
-                .await
-                .unwrap_err(),
+            preview("0.3.0", Platform::Windows, "0.4.0", other.clone()).await,
             "平台不符"
         );
         assert_eq!(
-            rollback_preview_locked(&desks.0, &versions.0, "0.3.0", Platform::Mac, "0.3.0")
-                .await
-                .unwrap_err(),
+            preview("0.3.0", Platform::Mac, "0.3.0", other.clone()).await,
             "不能回退到同版或較新的版本"
         );
         assert_eq!(
-            rollback_preview_locked(&desks.0, &versions.0, "9.9.9", Platform::Mac, "0.4.0")
-                .await
-                .unwrap_err(),
+            preview("9.9.9", Platform::Mac, "0.4.0", other.clone()).await,
             "這個版本不能回退"
         );
+        assert_eq!(
+            preview("0.3.0", Platform::Mac, "0.4.0", key).await,
+            "驗簽失敗",
+            "別把公鑰對不上的版本當成可回退"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_world_scan_is_success_with_scan_failed() {
+        let versions = TempDir::new("scan");
+        let desks = TempDir::new("scan-desks");
+        let key = put_release(&versions.0, "0.1.0", Some(1));
+        // `worlds` 是檔案不是目錄：讀不了桌清單。
+        std::fs::write(desks.0.join("worlds"), b"x").unwrap();
+        let preview =
+            rollback_preview_locked(&desks.0, &versions.0, "0.1.0", Platform::Mac, "0.2.0", &key)
+                .await
+                .unwrap();
+        assert!(preview.scan_failed);
+        assert!(preview.will_be_readonly.is_empty());
+        assert!(preview.maybe_readonly.is_empty());
     }
 }

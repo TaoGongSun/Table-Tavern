@@ -27,6 +27,8 @@ pub(crate) struct BackupRow {
     pub format_version: Option<u64>,
     pub deletable: bool,
     pub needs_repair: bool,
+    /// 這份備份目錄的絕對路徑，給「打開資料夾」用。
+    pub directory: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -54,6 +56,7 @@ pub(crate) fn list_world_backups(root: &Path) -> Result<BackupList, String> {
                 },
                 deletable: !repair,
                 needs_repair: repair,
+                directory: dir.to_string_lossy().into_owned(),
                 world_id: id.clone(),
                 kind,
             });
@@ -194,6 +197,15 @@ mod tests {
         assert_eq!(list.backups[0].name, "轉換前");
         assert_eq!(list.backups[1].name, "另存");
         assert!(list.total_bytes >= 4 + 11);
+        assert_eq!(
+            Path::new(&list.backups[0].directory),
+            commit::pre_dir(&root.0, &desk)
+        );
+        assert_eq!(
+            Path::new(&list.backups[1].directory),
+            commit::newer_dir(&root.0, &desk)
+        );
+        assert!(Path::new(&list.backups[0].directory).is_absolute());
         delete_world_backup(&root.0, &desk, "pre").unwrap();
         let list = list_world_backups(&root.0).unwrap();
         assert_eq!(list.backups.len(), 1);
@@ -208,6 +220,10 @@ mod tests {
         write_backup(&root.0, &gone, BackupKind::Pre, "只剩備份", b"x");
         let listed = list_world_backups(&root.0).unwrap();
         assert!(!listed.backups[0].deletable);
+        assert!(
+            Path::new(&listed.backups[0].directory).is_dir(),
+            "需要修復的列也帶得出資料夾"
+        );
         assert!(listed.backups[0].needs_repair);
         assert_eq!(
             delete_world_backup(&root.0, &gone, "pre").unwrap_err(),

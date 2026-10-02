@@ -19,13 +19,13 @@ pub(crate) async fn update_check(
     app: AppHandle,
     state: State<'_, updater::PendingUpdate>,
     manual: bool,
-) -> Result<Option<updater::UpdateOffer>, String> {
+) -> Result<updater::CheckResult, String> {
     // 下載或安裝進行中不打網路，也不覆寫槽裡那一份。回目前的結果，前端才不會把進度洗掉。
     if let Some(held) = {
         let slot = state.inner.lock().await;
         snapshot_if_busy(&slot)
     } {
-        return Ok(offer_of_held(&app, Some(held)));
+        return Ok(held_result(&app, held));
     }
 
     let auto_preferences = if manual {
@@ -33,55 +33,50 @@ pub(crate) async fn update_check(
     } else {
         match read_preferences(&app) {
             Ok(preferences) => Some(preferences),
-            Err(error) => {
-                log::warn!("自動檢查讀設定失敗：{error}");
-                return Ok(None);
-            }
+            Err(error) => return Ok(updater::CheckResult::failed(false, error)),
         }
     };
     if !manual && !updater::allow_auto_check(auto_preferences.as_ref()) {
-        return Ok(None);
+        return Ok(updater::CheckResult::Failed {
+            message: "自動檢查已關閉".to_owned(),
+        });
     }
 
     let plugin = match app.updater() {
         Ok(plugin) => plugin,
-        Err(error) => return check_failed(manual, error.to_string()),
+        Err(error) => return Ok(updater::CheckResult::failed(manual, error.to_string())),
     };
-    match plugin.check().await {
-        Ok(Some(update)) => {
-            let preferences = if manual {
-                read_preferences(&app).ok()
-            } else {
-                auto_preferences
-            };
-            let busy = {
-                let mut slot = state.inner.lock().await;
-                if let Some(current) = snapshot_if_busy(&slot) {
-                    Some(current)
-                } else {
+    // 失敗不碰待裝槽：前端保留原本的更新資訊，槽裡那一份也留著。
+    let found = match plugin.check().await {
+        Ok(found) => found,
+        Err(error) => return Ok(updater::CheckResult::failed(manual, error.to_string())),
+    };
+    let preferences = if manual {
+        read_preferences(&app).ok()
+    } else {
+        auto_preferences
+    };
+    let busy = {
+        let mut slot = state.inner.lock().await;
+        if let Some(current) = snapshot_if_busy(&slot) {
+            current
+        } else {
+            return Ok(match found {
+                Some(update) => {
                     let version = update.version.clone();
                     let skipped = skipped_flag(preferences.as_ref(), &version);
                     let offer = offer_from(&update, skipped);
                     slot.store_check(Some(update), &version);
-                    return Ok(Some(offer));
+                    updater::CheckResult::Available { offer }
                 }
-            };
-            Ok(offer_of_held(&app, busy))
-        }
-        Ok(None) => {
-            let busy = {
-                let mut slot = state.inner.lock().await;
-                if let Some(current) = snapshot_if_busy(&slot) {
-                    Some(current)
-                } else {
+                None => {
                     slot.store_check(None, "");
-                    return Ok(None);
+                    updater::CheckResult::None
                 }
-            };
-            Ok(offer_of_held(&app, busy))
+            });
         }
-        Err(error) => check_failed(manual, error.to_string()),
-    }
+    };
+    Ok(held_result(&app, busy))
 }
 
 fn snapshot_if_busy(
@@ -90,23 +85,16 @@ fn snapshot_if_busy(
     slot.is_busy().then(|| slot.current().cloned())
 }
 
-fn offer_of_held(
+fn held_result(
     app: &AppHandle,
-    held: Option<Option<tauri_plugin_updater::Update>>,
-) -> Option<updater::UpdateOffer> {
-    let update = held.flatten()?;
-    let preferences = read_preferences(app).ok();
-    let skipped = skipped_flag(preferences.as_ref(), &update.version);
-    Some(offer_from(&update, skipped))
-}
-
-fn check_failed(manual: bool, error: String) -> Result<Option<updater::UpdateOffer>, String> {
-    if manual {
-        Err(error)
-    } else {
-        log::warn!("自動檢查更新失敗：{error}");
-        Ok(None)
-    }
+    held: Option<tauri_plugin_updater::Update>,
+) -> updater::CheckResult {
+    let offer = held.map(|update| {
+        let preferences = read_preferences(app).ok();
+        let skipped = skipped_flag(preferences.as_ref(), &update.version);
+        offer_from(&update, skipped)
+    });
+    updater::CheckResult::from_held(offer)
 }
 
 fn read_preferences(app: &AppHandle) -> Result<Map<String, Value>, String> {
@@ -146,10 +134,13 @@ fn offer_from(update: &tauri_plugin_updater::Update, skipped: bool) -> updater::
 pub(crate) async fn update_download(
     app: AppHandle,
     state: State<'_, updater::PendingUpdate>,
+    version: String,
 ) -> Result<updater::DownloadResult, String> {
     let update = {
         let mut slot = state.inner.lock().await;
-        slot.begin_download()?
+        slot.begin_download(&version, |update: &tauri_plugin_updater::Update| {
+            update.version.as_str()
+        })?
     };
     if let Err(error) = updater::mark_downloading(&update.version).await {
         state.inner.lock().await.abort_download();

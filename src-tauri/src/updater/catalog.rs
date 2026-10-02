@@ -24,6 +24,8 @@ pub(crate) struct VersionRow {
     pub size: u64,
     pub format_version: Option<u64>,
     pub usable: bool,
+    /// 可用、而且回退的資格判斷（`require_eligible`）也過。
+    pub eligible: bool,
     pub current: bool,
     pub previous: bool,
 }
@@ -55,7 +57,9 @@ pub(crate) fn list_versions(
                 )
                 .is_ok()
         });
+        let eligible = usable && require_eligible(versions, &name, platform, running).is_ok();
         rows.push(VersionRow {
+            eligible,
             current: versions_equal(&name, running),
             previous: usable && confirmed_previous(&state, &name),
             format_version: release.as_ref().and_then(|release| release.format_version),
@@ -461,6 +465,42 @@ mod tests {
         assert!(!tampered.usable);
         assert!(!tampered.previous);
         assert!(row("1.0.0").usable);
+    }
+
+    #[test]
+    fn eligible_means_usable_and_older_than_running() {
+        let root = TempDir::new("eligible");
+        let key = Signer::generate();
+        put_signed(&root.0, "0.8.0", "darwin-aarch64", Some(1), &key);
+        put_signed(&root.0, "0.9.0", "darwin-aarch64", Some(1), &key);
+        put_signed(&root.0, "0.7.0", "darwin-aarch64", None, &key);
+        put_signed(&root.0, "1.0.0", "darwin-aarch64", Some(1), &key);
+        put_signed(&root.0, "1.1.0", "darwin-aarch64", Some(1), &key);
+        fs::write(
+            root.0
+                .join("0.9.0")
+                .join("TableTavern_0.9.0_aarch64.app.tar.gz"),
+            b"tampered",
+        )
+        .unwrap();
+        fs::create_dir_all(root.0.join("junk")).unwrap();
+
+        let list = list_versions(&root.0, Platform::Mac, "1.0.0", &key.public).unwrap();
+        let eligible: Vec<_> = list
+            .versions
+            .iter()
+            .filter(|row| row.eligible)
+            .map(|row| row.version.as_str())
+            .collect();
+        assert_eq!(eligible, ["0.8.0"]);
+        let newer = list
+            .versions
+            .iter()
+            .find(|row| row.version == "1.1.0")
+            .unwrap();
+        assert!(newer.usable && !newer.eligible, "較新的版本可用但不能回退");
+        let current = list.versions.iter().find(|row| row.current).unwrap();
+        assert!(current.usable && !current.eligible);
     }
 
     #[test]

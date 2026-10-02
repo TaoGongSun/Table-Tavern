@@ -35,6 +35,7 @@ pub(crate) async fn rollback_preview(
         &version,
         platform,
         env!("CARGO_PKG_VERSION"),
+        updater::bundled_pubkey(),
     )
     .await
 }

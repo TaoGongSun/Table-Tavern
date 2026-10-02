@@ -64,3 +64,4 @@
 | [api-key-paste-guard](../handoffs/api-key-paste-guard.md) | 已驗錯金鑰提示與 401 分流；等換上真 OpenRouter 金鑰時自然驗「紅字消失＋發言成功」 |
 | [grok-profile-isolation](../handoffs/grok-profile-isolation.md) | app profile 是全新環境；等使用者在設定頁跑一次 grok 登入，再驗模型下拉與旁白正常 |
 | [claude-compat-endpoint](../handoffs/claude-compat-endpoint.md) | 實作與 cargo/build 已綠；等有真 Claude-compatible base URL＋key 時做使用者實測 |
+| [desktop-update-detect](../handoffs/desktop-update-detect.md) 端對端 | 要兩個真 release 才測得到偵測→更新→回退→刪版與跨格式回退；第一個帶更新功能的正式版發出前必須驗過 |

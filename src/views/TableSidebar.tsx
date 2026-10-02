@@ -61,6 +61,13 @@ interface TableSidebarProps {
   canUndoImport: boolean;
   onUndoImport: () => void;
   onOpenSettings: () => void;
+  /** 桌列表上方的提示（目前只有新版本橫幅）。 */
+  notice: ReactNode;
+  /** 目前版本號；讀到之前是 null，不畫版本鈕。 */
+  appVersion: string | null;
+  /** 有比目前新、且沒被略過的版本。 */
+  updateDot: boolean;
+  onOpenVersions: () => void;
 }
 
 /** 桌次清單＋角色側欄。寬度與展開狀態是側欄自己的 UI 記憶，其餘一律由 App 注入 */
@@ -101,6 +108,10 @@ export function TableSidebar({
   canUndoImport,
   onUndoImport,
   onOpenSettings,
+  notice,
+  appVersion,
+  updateDot,
+  onOpenVersions,
 }: TableSidebarProps) {
   const [sidebarWidth, setSidebarWidth] = useState(
     () => Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT_WIDTH,
@@ -132,6 +143,7 @@ export function TableSidebar({
   return (
     <>
       <aside className="sidebar" style={{ width: sidebarWidth }}>
+        {notice}
         <details
           className="table-section"
           open={tableListOpen}
@@ -406,6 +418,20 @@ export function TableSidebar({
           <button className="settings-open" onClick={onOpenSettings}>
             ⚙️ {t("settingsBtn")}
           </button>
+          {appVersion !== null && (
+            <button
+              type="button"
+              className="version-open"
+              aria-label={t(updateDot ? "versionButtonUpdateAria" : "versionButtonAria", {
+                version: appVersion,
+              })}
+              title={updateDot ? t("versionButtonUpdateAria", { version: appVersion }) : undefined}
+              onClick={onOpenVersions}
+            >
+              v{appVersion}
+              {updateDot && <span className="update-dot" aria-hidden="true" />}
+            </button>
+          )}
         </div>
       </aside>
 

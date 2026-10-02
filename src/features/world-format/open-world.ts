@@ -1,5 +1,6 @@
 // open_world 的分流與唯讀紀錄對應。畫面怎麼畫在 FormatNotice，這裡只留可單測的判斷。
-import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import { t } from "../../i18n";
+import { TranscriptEvent, WorldMeta } from "../../shared/contracts/backend-contracts";
 
 export type TableGate = "play" | "readonly" | "repair";
 
@@ -83,4 +84,10 @@ export function listBadge(world: {
   if (world.needs_repair) return "repair";
   if (world.read_only) return "readonly";
   return null;
+}
+
+/** 刪桌確認窗內文。唯讀桌（紀錄比目前版本新）多一句：刪掉後更新回新版也找不回來。 */
+export function deleteTableMessage(world: WorldMeta | undefined, fallbackName: string): string {
+  const base = t("deleteTableConfirm", { name: world?.name ?? fallbackName });
+  return world?.read_only ? `${base}\n\n${t("deleteTableReadOnlyWarn")}` : base;
 }

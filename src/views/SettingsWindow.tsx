@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { LANGUAGE_OPTIONS, normalizeLang, t } from "../i18n";
 import { ALL_THEMES, KOFI_URL, resolveTheme, SPONSOR_THEMES, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX, type ThemeId } from "../features/settings/appearance";
 import { AppConfig } from "../shared/contracts/backend-contracts";
+import { useRequestedTab } from "../features/settings/useRequestedTab";
 import { Settings } from "./SettingsForm";
 import { UsageTab } from "./UsageTab";
 import taoIcon from "../assets/tao-icon.png";
@@ -31,6 +32,9 @@ const TEXT_SIZE_LABEL_KEYS = {
 
 const API_MODES = new Set(["auto", "chat_completions", "responses"]);
 
+/** 從設定視窗外面能直接打開的分頁。 */
+export type SettingsTab = "appearance" | "ai" | "versions";
+
 // 單一設定入口內分頁（NewPlan §9.4）：外觀為預設頁，不碰 AI 的人打開只見外觀
 export function SettingsWindow({
   config,
@@ -40,7 +44,9 @@ export function SettingsWindow({
   onSponsorUnlocked,
   onClose,
   initialTab = "appearance",
+  requestKey,
   currentWorld,
+  versionTab,
 }: {
   config: AppConfig;
   onSaved: (c: AppConfig) => void;
@@ -48,10 +54,18 @@ export function SettingsWindow({
   sponsorUnlocked: boolean;
   onSponsorUnlocked: () => void;
   onClose: () => void;
-  initialTab?: "appearance" | "ai" | "author";
+  initialTab?: SettingsTab;
+  /** 每次從外面要求開某一頁就加一；視窗已開著時據此切到 initialTab。 */
+  requestKey: number;
   currentWorld: string;
+  /** 「版本」分頁的內容，由 App 帶著更新與回退的狀態組好。 */
+  versionTab: ReactNode;
 }) {
-  const [tab, setTab] = useState<"appearance" | "ai" | "usage" | "author">(initialTab);
+  const [tab, setTab] = useRequestedTab<SettingsTab | "usage" | "author">(
+    initialTab,
+    requestKey,
+    confirmDiscard,
+  );
   const [previewTheme, setPreviewTheme] = useState<ThemeId | null>(null);
   const [sponsorPackError, setSponsorPackError] = useState("");
   const sponsorPackInputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +85,7 @@ export function SettingsWindow({
     if (await confirmDiscard()) onClose();
   }
 
-  async function switchTab(target: "appearance" | "usage" | "author") {
+  async function switchTab(target: "appearance" | "usage" | "versions" | "author") {
     if (await confirmDiscard()) setTab(target);
   }
 
@@ -148,6 +162,12 @@ export function SettingsWindow({
               onClick={() => void switchTab("usage")}
             >
               {t("usageTab")}
+            </button>
+            <button
+              className={tab === "versions" ? "tab tab-active" : "tab"}
+              onClick={() => void switchTab("versions")}
+            >
+              {t("versionsTab")}
             </button>
             <button
               className={tab === "author" ? "tab tab-active" : "tab"}
@@ -239,6 +259,8 @@ export function SettingsWindow({
           </div>
         ) : tab === "usage" ? (
           <UsageTab currentWorld={currentWorld} />
+        ) : tab === "versions" ? (
+          versionTab
         ) : tab === "author" ? (
           <div className="author-page">
             <img src={taoIcon} alt="TaoGongSun" className="avatar-round author-avatar" />

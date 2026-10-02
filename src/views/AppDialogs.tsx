@@ -1,15 +1,20 @@
+import type { ReactNode } from "react";
 import type { AppConfig } from "../shared/contracts/backend-contracts";
 import type { ImportController } from "../controllers/useImportController";
 import { t } from "../i18n";
 import { GenerateTableDialog } from "./GenerateTableDialog";
 import { ImportDialogs } from "./ImportDialogs";
-import { SettingsWindow } from "./SettingsWindow";
+import { SettingsWindow, type SettingsTab } from "./SettingsWindow";
 
 interface AppDialogsProps {
   genTableOpen: boolean;
   onCloseGenerateTable: () => void;
   onGeneratedTable: (worldId: string) => Promise<void>;
-  settingsOpen: false | "appearance" | "ai";
+  settingsOpen: false | SettingsTab;
+  settingsRequestKey: number;
+  versionTab: ReactNode;
+  /** 啟動時的含格式轉換更新對話框。 */
+  updateDialog: ReactNode;
   config: AppConfig;
   onConfigSaved: (config: AppConfig) => void;
   onSettingPreference: (key: string, value: unknown) => Promise<void>;
@@ -30,6 +35,9 @@ export function AppDialogs({
   onCloseGenerateTable,
   onGeneratedTable,
   settingsOpen,
+  settingsRequestKey,
+  versionTab,
+  updateDialog,
   config,
   onConfigSaved,
   onSettingPreference,
@@ -62,9 +70,13 @@ export function AppDialogs({
           onSponsorUnlocked={onSponsorUnlocked}
           onClose={onCloseSettings}
           initialTab={settingsOpen}
+          requestKey={settingsRequestKey}
           currentWorld={currentWorld}
+          versionTab={versionTab}
         />
       )}
+
+      {updateDialog}
 
       {/* 換語言後的範例桌詢問疊在設定視窗之上。 */}
       {regenOpen && (
