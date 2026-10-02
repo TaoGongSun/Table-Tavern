@@ -1,6 +1,6 @@
 # AI 連線設定重整：供應商專屬面板（延後）
 
-本檔存放 [ai-connection-provider-panels](../tasks/ai-connection-provider-panels.md) 的剩餘規格。2026-09-09 已把 OpenRouter OAuth、推薦免費模型、限時免費模型、遠端推薦 manifest 全部移交 [free-player-onboarding](../tasks/free-player-onboarding.md)。
+本檔存放 [ai-connection-provider-panels](../tasks/ai-connection-provider-panels.md) 的剩餘規格。2026-09-09 已把 OpenRouter OAuth、推薦免費模型、限時免費模型、遠端推薦 manifest 全部移交 [free-player-onboarding](free-player-onboarding.md)。
 
 ## 為什麼延後
 
@@ -37,7 +37,7 @@
 
 ## 明確不屬本案
 
-以下已移到 [free-player-onboarding](../tasks/free-player-onboarding.md)：
+以下已移到 [free-player-onboarding](free-player-onboarding.md)：
 
 - OpenRouter OAuth PKCE。
 - 免 key onboarding。
