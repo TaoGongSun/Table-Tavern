@@ -5,9 +5,9 @@
 import { ReactNode } from "react";
 import { t } from "../i18n";
 import { AppConfig } from "../shared/contracts/backend-contracts";
-import { ActReader } from "./atoms";
-import { CardEditor } from "./CardEditor";
-import { WorldEditor } from "./WorldEditor";
+import { ActReader } from "../features/play/ActReader";
+import { CardEditor } from "../features/characters/CardEditor";
+import { WorldEditor } from "../features/worldbook/WorldEditor";
 
 interface MainViewProps {
   sceneLabelOf: (n: number) => string;

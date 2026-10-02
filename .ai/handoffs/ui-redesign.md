@@ -17,7 +17,7 @@ Updated: 2026-10-02T17:00:00+08:00
 
 ## 進度
 - 分包 1–5 全部完成並已合併進 main；施工定案在 [plans](../plans/ui-redesign.md)「分包 2／3／4／5 施工定案」。分包 1–3 經 Opus／Sol／Grok 三方共識；分包 4 送審三方、驗收 Opus＋Sol；分包 5 送審與驗收都是 Opus＋Sol（Grok 額度用完）〔作者裁決 2026-10-02〕。
-- 程式落點：大廳 `src/features/lobby/`、陣容欄 `src/views/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；編輯頁共用頁框 `src/views/EditPage.tsx`、世界書工具列 `src/features/worldbook/WorldbookSection.tsx`；設定外框 `src/views/SettingsWindow.tsx`、AI 表單與儲存列 `src/views/SettingsForm.tsx`、連線方式 `src/views/TransportChoice.tsx`、外部指定分頁 `src/features/settings/useRequestedTab.ts`、外框樣式 `src/styles/settings-window.css`；對話窗共用外框 `src/shared/ui/Dialog.tsx`（原生 `<dialog>`）、裁切與 AI 生圖 `src/views/CardImageDialogs.tsx`、對話窗樣式 `src/styles/dialogs.css`。
+- 程式落點：大廳 `src/features/lobby/`、陣容欄 `src/features/characters/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；編輯頁共用頁框 `src/shared/ui/EditPage.tsx`、世界書工具列 `src/features/worldbook/WorldbookSection.tsx`；設定外框 `src/features/settings/SettingsWindow.tsx`、AI 表單與儲存列 `src/features/settings/SettingsForm.tsx`、連線方式 `src/features/settings/TransportChoice.tsx`、外部指定分頁 `src/features/settings/useRequestedTab.ts`、外框樣式 `src/styles/settings-window.css`；對話窗共用外框 `src/shared/ui/Dialog.tsx`（原生 `<dialog>`）、裁切與 AI 生圖 `src/features/characters/CardImageDialogs.tsx`、對話窗樣式 `src/styles/dialogs.css`。
 - 已實機驗（macOS release 800×600）：分包 1–4 見各自 commit 訊息；分包 5 俄文＋最大字級：一句話開桌、設定＋巢狀 CLI 權限提示（Esc 只關上層）、AI 生圖、裁切（框內按下框外放開不關）、燈箱、匯入身分／路由、開場白面板、介面卡關閉鈕，Esc／遮罩／焦點歸還照表；系統確認窗俄文按鈕（未儲存離開）不截字。
 - 未實機驗：範例桌詢問、格式轉換更新、重構三窗（要 AI）、一句話開桌有綱要後的底列；WebView2 連按 Esc（無 Windows 機）；dialog-button-labels 的 zh-TW／en／de 與刪角色、轉條目、匯入完成通知；設定的外部指定分頁（齒輪紅點需有新版）、分包 1 遺留項（齒輪紅點、換幕提醒＋錯誤＋狀態同時、⋯ 鍵盤、Windows）。十語系長字只以俄文代表。
 - 觀察（範圍外、未處理）：牌桌工具列有「介面卡」鈕時，俄文 800px 下桌名 wedge 縮到只剩一字。

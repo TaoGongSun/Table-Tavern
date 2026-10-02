@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setLang, t } from "../../i18n";
-import { ErrorNote } from "../../views/atoms";
+import { ErrorNote } from "./atoms";
 import { explainAiError } from "./ai-error";
 import { backendCode, backendText } from "./backend-text";
 

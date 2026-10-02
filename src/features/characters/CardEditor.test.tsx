@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-// 角色卡／玩家卡編輯頁（views/CardEditor）與共用頁框 EditPage 的頂列與 ⋯：驗按鈕搬家後的接線，
-// 不驗存檔細節。views/ 不放測試（check:structure），卡片編輯的 owner 是 characters，測試住這裡。
+// 角色卡／玩家卡編輯頁（CardEditor）的頂列與 ⋯：驗按鈕搬家後的接線，不驗存檔細節。
+// 共用頁框 EditPage 的測試在 shared/ui/EditPage.test.tsx。
 
-import { act, type FormEvent, type ReactNode } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
@@ -27,8 +27,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
-import { CardEditor } from "../../views/CardEditor";
-import { EditPage } from "../../views/EditPage";
+import { CardEditor } from "./CardEditor";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -210,72 +209,5 @@ describe("CardEditor", () => {
     await act(async () => releaseOld(card("c1", "Alice")));
     expect(nameInput()!.value).toBe("Bob");
     expect(saveButton().disabled).toBe(false);
-  });
-});
-
-describe("EditPage", () => {
-  let root: Root | null = null;
-  let host: HTMLDivElement | null = null;
-
-  afterEach(() => {
-    act(() => {
-      root?.unmount();
-    });
-    host?.remove();
-    root = null;
-    host = null;
-  });
-
-  function mount(node: ReactNode) {
-    host = document.createElement("div");
-    document.body.appendChild(host);
-    root = createRoot(host);
-    act(() => root?.render(node));
-  }
-
-  const moreButton = () => host!.querySelector(`[aria-label="${t("moreActions")}"]`);
-  const saveButton = () => host!.querySelector<HTMLButtonElement>(".edit-page-save")!;
-
-  it("does not render the more menu without items, nor the status area when empty", () => {
-    mount(<EditPage title="T" onBack={() => {}} formId="f" />);
-    expect(moreButton()).toBeNull();
-    expect(host!.querySelector(".edit-page-status")).toBeNull();
-  });
-
-  it("renders the more menu when it has items", () => {
-    mount(
-      <EditPage
-        title="T"
-        onBack={() => {}}
-        formId="f"
-        moreItems={[{ key: "a", label: "A", onSelect: () => {} }]}
-      />,
-    );
-    expect(moreButton()).not.toBeNull();
-  });
-
-  it("submits the external form through the form attribute", () => {
-    const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
-    mount(
-      <EditPage title="T" onBack={() => {}} formId="outer-form">
-        <form id="outer-form" onSubmit={onSubmit}>
-          <input />
-        </form>
-      </EditPage>,
-    );
-    expect(saveButton().getAttribute("form")).toBe("outer-form");
-    // 頂列在 form 外：靠 form 屬性才送得到
-    expect(saveButton().closest("form")).toBeNull();
-    act(() => saveButton().click());
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps save disabled but present while loading, back stays usable, errors are alerts", () => {
-    const onBack = vi.fn();
-    mount(<EditPage title="T" onBack={onBack} message="boom" messageIsError />);
-    expect(saveButton().disabled).toBe(true);
-    expect(host!.querySelector('[role="alert"]')!.textContent).toBe("boom");
-    act(() => host!.querySelector<HTMLButtonElement>(".edit-page-back")!.click());
-    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

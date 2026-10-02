@@ -3,26 +3,26 @@ import type { AppConfig } from "../shared/contracts/backend-contracts";
 import { PALETTE } from "../features/characters/card-model";
 import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotice";
 import type { RepairNotice, TableGate } from "../features/world-format/open-world";
-import type { CardInterfaceController } from "../controllers/useCardInterfaceController";
-import type { CharacterController } from "../controllers/useCharacterController";
-import type { ChatController } from "../controllers/useChatController";
-import type { ImportController } from "../controllers/useImportController";
-import type { SceneActions } from "../controllers/useSceneActions";
-import type { TableStateController } from "../controllers/useTableStateController";
+import type { CardInterfaceController } from "../features/card-interface/useCardInterfaceController";
+import type { CharacterController } from "../features/characters/useCharacterController";
+import type { ChatController } from "../features/play/useChatController";
+import type { ImportController } from "../features/import/useImportController";
+import type { SceneActions } from "../features/play/useSceneActions";
+import type { TableStateController } from "../features/table-state/useTableStateController";
 import {
   GM_TARGET,
   type WorkspaceNavigationController,
 } from "../controllers/useWorkspaceNavigationController";
 import { t } from "../i18n";
-import { ErrorNote } from "./atoms";
-import { CardInterfaceOverlay } from "./CardInterfaceOverlay";
+import { ErrorNote } from "../shared/ui/atoms";
+import { CardInterfaceOverlay } from "../features/card-interface/CardInterfaceOverlay";
 import { MainView } from "./MainView";
-import { Onboarding } from "./Onboarding";
-import { PlayView } from "./PlayView";
-import { CastRail } from "./CastRail";
-import { StateBar } from "./StateBar";
+import { Onboarding } from "../features/ai-connection/Onboarding";
+import { PlayView } from "../features/play/PlayView";
+import { CastRail } from "../features/characters/CastRail";
+import { StateBar } from "../features/table-state/StateBar";
 import { TableToolbar } from "./TableToolbar";
-import type { SettingsTab } from "./SettingsWindow";
+import type { SettingsTab } from "../features/settings/SettingsWindow";
 
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
 const GM_COLOR = "#8a6a3c";

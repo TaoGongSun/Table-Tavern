@@ -18,18 +18,24 @@ Table Tavern 是 **Tauri 2 + Rust** 後端、**Vite + React + TypeScript** 前�
 src/
 ├── App.tsx                 # composition root / 跨域協調
 ├── features/               # 一個功能一個資料夾，view + hook + logic + test 同住
-│   ├── ai-connection/      # CLI 偵測、金鑰檢查、模型清單
+│   ├── ai-connection/      # CLI 偵測、金鑰檢查、模型清單、OpenRouter 首設
 │   ├── card-interface/     # 卡片自帶介面的解析與渲染
-│   ├── characters/         # 角色卡資料模型與可見性
-│   ├── import/             # 匯入路由判定
+│   ├── characters/         # 角色卡資料模型、可見性、陣容欄與編輯頁
+│   ├── import/             # 匯入路由判定與匯入流程
+│   ├── lobby/              # 大廳桌卡牆、開桌與一句話開桌
+│   ├── play/               # 遊玩畫面、對話流程、換幕／分岔、單幕閱讀
 │   ├── refactor/           # AI 重構：模式、執行、審閱、產殼與其對話框
-│   ├── settings/           # 外觀與偏好
+│   ├── settings/           # 設定視窗、外觀與偏好
+│   ├── story-scroll/       # 故事區貼底捲動
+│   ├── table-state/        # 狀態列與狀態樹
+│   ├── updater/            # App 內更新與版本中心
+│   ├── world-format/       # 桌資料格式提示與開桌檢查
 │   └── worldbook/          # 世界書編輯
 ├── shared/                 # 至少兩個獨立 feature 真的在用的東西
 │   ├── contracts/          # 與 Rust 後端的型別契約
 │   └── ui/                 # 跨 feature 的呈現與互動（拖曳、markdown、錯誤文案）
-├── controllers/            # 跨 feature 的狀態與操作流程
-├── views/                  # App 級 layout、dialog、workspace 殼
+├── controllers/            # 組合外殼：跨 feature 的工作區導覽
+├── views/                  # 組合外殼：App 級 layout、dialog、workspace
 ├── styles/                 # 依 UI 區域拆分的全域 CSS
 ├── i18n/                   # 十語系字典
 └── assets/                 # 內建圖片資源
@@ -37,7 +43,7 @@ src/
 
 目錄怎麼長、新檔案該放哪，見 [STRUCTURE.md](STRUCTURE.md)；`npm run verify` 的第一步 `check:structure` 會擋掉明顯違規。
 
-`controllers/` 與 `views/` 裡仍有若干只服務單一功能的檔案（`CardEditor`、`SettingsForm`、`useChatController` 等），屬已知待收，見 `.ai/tasks/view-layer-homing.md`。
+`controllers/` 與 `views/` 只剩把多個 feature 組起來的外殼，單一功能的檔案都在 `features/<name>/`；外殼清單由 `check:structure` 把關。
 
 主要 controller 已按責任拆開，例如：
 

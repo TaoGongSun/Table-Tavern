@@ -27,7 +27,7 @@ import {
 } from "./shared/contracts/backend-contracts";
 import { CharacterMeta } from "./features/characters/card-model";
 import { backendText } from "./shared/ui/backend-text";
-import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
+import { useAppPreferencesController } from "./features/settings/useAppPreferencesController";
 import { useVersionCenter } from "./features/updater/useVersionCenter";
 import { VersionTab } from "./features/updater/VersionTab";
 import { FormatUpdateDialog, UpdateBanner } from "./features/updater/UpdateReminders";
@@ -35,22 +35,22 @@ import { Lobby } from "./features/lobby/Lobby";
 import { openImportTable } from "./features/lobby/open-import-table";
 import { useTableOp } from "./features/lobby/useTableOp";
 import { showUpdateDot } from "./features/updater/version-center";
-import { useCardInterfaceController } from "./controllers/useCardInterfaceController";
-import { useCharacterController } from "./controllers/useCharacterController";
-import { type ChatController, useChatController } from "./controllers/useChatController";
-import { useImportController } from "./controllers/useImportController";
-import { useSceneActions } from "./controllers/useSceneActions";
-import { loadBranchBindings, useTableStateController } from "./controllers/useTableStateController";
+import { useCardInterfaceController } from "./features/card-interface/useCardInterfaceController";
+import { useCharacterController } from "./features/characters/useCharacterController";
+import { type ChatController, useChatController } from "./features/play/useChatController";
+import { useImportController } from "./features/import/useImportController";
+import { useSceneActions } from "./features/play/useSceneActions";
+import { loadBranchBindings, useTableStateController } from "./features/table-state/useTableStateController";
 import {
   GM_TARGET,
   useWorkspaceNavigationController,
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
-import type { SettingsTab } from "./views/SettingsWindow";
+import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
-import { Onboarding } from "./views/Onboarding";
-import { SmartFreeNewModelBanner } from "./views/SmartFreeNewModelBanner";
-import { ErrorNote } from "./views/atoms";
+import { Onboarding } from "./features/ai-connection/Onboarding";
+import { SmartFreeNewModelBanner } from "./features/ai-connection/SmartFreeNewModelBanner";
+import { ErrorNote } from "./shared/ui/atoms";
 import "./App.css";
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
