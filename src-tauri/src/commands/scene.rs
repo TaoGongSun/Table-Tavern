@@ -23,6 +23,7 @@ pub(crate) fn append_transcript(
     scene: u64,
     event: TranscriptEvent,
 ) -> Result<TranscriptEvent, String> {
+    let _permit = data::world_write_permit(&world_id);
     let root = data_root(&app)?;
     let event = stamp_state(&root, &world_id, event);
     data::append_transcript(&root, &world_id, scene, &event).map_err(|error| error.to_string())?;
@@ -39,6 +40,7 @@ pub(crate) fn post_opening(
     ts: String,
     text: String,
 ) -> Result<TranscriptEvent, String> {
+    let _permit = data::world_write_permit(&world_id);
     let block = transport::extract_state_block(&text);
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).unwrap_or_default();
@@ -189,6 +191,7 @@ pub(crate) fn pop_transcript(
     world_id: String,
     scene: u64,
 ) -> Result<bool, String> {
+    let _permit = data::world_write_permit(&world_id);
     data::pop_transcript(&data_root(&app)?, &world_id, scene).map_err(|error| error.to_string())
 }
 
@@ -203,6 +206,7 @@ pub(crate) fn export_transcript(
     let lang = transport::ui_language(&config);
     let markdown = data::export_transcript_markdown(&data_root(&app)?, &world_id, &lang)
         .map_err(|error| error.to_string())?;
+    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
 
@@ -218,6 +222,7 @@ pub(crate) fn export_scene(
     let lang = transport::ui_language(&config);
     let markdown = data::export_scene_markdown(&data_root(&app)?, &world_id, scene, &lang)
         .map_err(|error| error.to_string())?;
+    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
 
@@ -225,6 +230,7 @@ pub(crate) fn export_scene(
 /// 摘要走既有 stream_via_transport＋GM 檔位，不新開連線路徑、不新增設定項。
 #[tauri::command]
 pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> {
+    let _permit = data::world_write_permit_async(&world_id).await;
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -260,6 +266,7 @@ pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Re
 /// 退回前幕：換幕的精確反向操作，純本地檔案處理不必等模型回覆。
 #[tauri::command]
 pub(crate) fn revert_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> {
+    let _permit = data::world_write_permit(&world_id);
     let root = data_root(&app)?;
     data::revert_scene(&root, &world_id).map_err(|error| error.to_string())
 }
@@ -271,6 +278,7 @@ pub(crate) fn fork_scene(
     world_id: String,
     scene: u64,
 ) -> Result<u64, String> {
+    let _permit = data::world_write_permit(&world_id);
     let root = data_root(&app)?;
     data::fork_scene(&root, &world_id, scene).map_err(|error| error.to_string())
 }
@@ -282,6 +290,7 @@ pub(crate) async fn regenerate_scene_summary(
     app: tauri::AppHandle,
     world_id: String,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit_async(&world_id).await;
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);

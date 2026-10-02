@@ -92,6 +92,17 @@
   color: var(--danger);
 }
 
+.table-badge {
+  flex: none;
+  font-size: 0.75rem;
+  line-height: var(--control-h);
+  padding: 0 0.45em;
+  border-radius: 0.3rem;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
 .table-item {
   flex: 1;
   min-width: 0;

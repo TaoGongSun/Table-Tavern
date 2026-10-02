@@ -36,6 +36,8 @@ interface PlayViewProps {
   generatingMeta: CharacterMeta | undefined;
   streamText: string;
   busy: boolean;
+  /** 唯讀：輸入與補救路全關，紀錄仍顯示 */
+  locked?: boolean;
   canRestore: boolean;
   onRestoreUndone: () => void;
   /** 剛換完幕、還沒開始玩：重寫摘要與退回上一幕兩條補救路才出現 */
@@ -78,6 +80,7 @@ export function PlayView({
   generatingMeta,
   streamText,
   busy,
+  locked = false,
   canRestore,
   onRestoreUndone,
   canUndoScene,
@@ -121,9 +124,10 @@ export function PlayView({
 
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在送出鈕旁小字提醒（不擋操作）
   const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
-  const sceneTooLong = sceneChars > SCENE_LENGTH_HINT_CHARS;
+  const sceneTooLong = !locked && sceneChars > SCENE_LENGTH_HINT_CHARS;
   // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
-  const showAwayHint = awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
+  const showAwayHint = !locked && awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
+  const frozen = busy || locked;
 
   return (
     <>
@@ -191,7 +195,7 @@ export function PlayView({
             )}
           </div>
         )}
-        {canRestore && !busy && (
+        {canRestore && !frozen && (
           <div className="undo-restore">
             <button type="button" onClick={() => onRestoreUndone()}>
               ↩ {t("undoRestore")}
@@ -199,7 +203,7 @@ export function PlayView({
           </div>
         )}
         {/* 換幕的兩條補救路：只在這一幕還沒開始玩時出現，玩家一發言就自動收掉 */}
-        {canUndoScene && (
+        {!locked && canUndoScene && (
           <div className="undo-restore">
             <button
               type="button"
@@ -217,7 +221,16 @@ export function PlayView({
       </section>
 
       {/* Composer 改整寬書寫面（ui-overhaul 拍板）：目標晶片只是把「點側欄選發言對象」既有狀態可見化 */}
-      <form className="composer" onSubmit={onSubmit}>
+      <form
+        className="composer"
+        onSubmit={(event) => {
+          if (locked) {
+            event.preventDefault();
+            return;
+          }
+          onSubmit(event);
+        }}
+      >
         {speaker && (
           <div className="composer-opts">
             <span
@@ -242,6 +255,7 @@ export function PlayView({
                 className="opt-target-clear"
                 aria-label={t("clearTarget")}
                 title={t("clearTarget")}
+                disabled={locked}
                 onClick={() => onClearTarget()}
               >
                 ✕
@@ -261,7 +275,7 @@ export function PlayView({
                 ? t("composerNoCharacter")
                 : t("composerNoTarget")
           }
-          disabled={(!speaker && castEmpty) || busy}
+          disabled={locked || (!speaker && castEmpty) || busy}
         />
         {/* 送出擺最左：它跟輸入框是同一件事，右邊那三顆是交給 AI 的動作
             （2026-07-28 使用者回報：送出在右下容易誤按成「請某某發言」） */}
@@ -272,7 +286,7 @@ export function PlayView({
                 {t("stopResponse")}
               </button>
             ) : (
-              <button type="submit" disabled={(!speaker && castEmpty) || busy}>
+              <button type="submit" disabled={locked || (!speaker && castEmpty) || busy}>
                 {t("send")} ➤
               </button>
             )}
@@ -288,7 +302,7 @@ export function PlayView({
               className="undo-last"
               type="button"
               onClick={() => onUndoLast()}
-              disabled={busy || events.length === 0}
+              disabled={frozen || events.length === 0}
               title={t("undoLastHint")}
             >
               ↩ {t("undoLast")}
@@ -297,19 +311,19 @@ export function PlayView({
               className="request-reply"
               type="button"
               onClick={() => onRequestReply()}
-              disabled={!speaker || busy}
+              disabled={locked || !speaker || busy}
               title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
               aria-label={requestReplyLabel}
             >
               <span className="request-reply-label">{requestReplyLabel}</span>
             </button>
-            <button type="button" onClick={onGmNarrate} disabled={busy} title={t("gmNarrateHint")}>
+            <button type="button" onClick={onGmNarrate} disabled={frozen} title={t("gmNarrateHint")}>
               {t("gmNarrate")}
             </button>
             <button
               type="button"
               onClick={onGmAdvance}
-              disabled={busy || castEmpty}
+              disabled={frozen || castEmpty}
               title={t("gmAdvanceHint")}
             >
               {t("gmAdvance")}

@@ -556,6 +556,18 @@ export const zh = {
   importRouteNewTable: "開新桌並匯入",
   importRouteThisTable: "匯進這桌",
   importRouteMergeAnyway: "仍要匯入",
+
+  // 格式版本：唯讀與需要修復
+  readOnlyBadge: "唯讀",
+  needsRepairBadge: "需要修復",
+  readOnlyBanner: "這張桌由 {version} 版建立或轉換，要繼續請更新到 {version} 版或更新版本",
+  readOnlyBannerUnknown: "這張桌由較新的版本建立或轉換，要繼續請更新版本",
+  readOnlySkipped: "有 {count} 則無法顯示",
+  useBackupBtn: "改用轉換前的備份繼續玩",
+  useBackupConfirm: "轉換之後玩的內容會另外留著，這張桌改回轉換前的備份。要繼續嗎？",
+  needsRepairTitle: "這張桌需要修復",
+  openFolderBtn: "打開資料夾",
+  worldBusy: "這張桌正在處理中，請稍候再試",
 } as const;
 
 export type MsgKey = keyof typeof zh;

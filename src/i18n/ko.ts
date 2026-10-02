@@ -531,4 +531,17 @@ export const ko: Record<MsgKey, string> = {
   importRouteNewTable: "새 테이블로 가져오기",
   importRouteThisTable: "여기로 가져오기",
   importRouteMergeAnyway: "그래도 가져오기",
+
+  // 형식 버전: 읽기 전용과 복구
+  readOnlyBadge: "읽기 전용",
+  needsRepairBadge: "복구 필요",
+  readOnlyBanner:
+    "이 테이블은 {version} 버전에서 만들거나 변환했습니다. 계속하려면 {version} 버전 이상으로 업데이트하세요.",
+  readOnlyBannerUnknown: "이 테이블은 더 새 버전에서 만들거나 변환했습니다. 계속하려면 업데이트하세요.",
+  readOnlySkipped: "{count}건은 표시할 수 없습니다",
+  useBackupBtn: "변환 전 백업으로 계속",
+  useBackupConfirm: "변환 후에 플레이한 내용은 따로 남기고, 이 테이블을 변환 전 백업으로 되돌립니다. 계속할까요?",
+  needsRepairTitle: "이 테이블은 복구가 필요합니다",
+  openFolderBtn: "폴더 열기",
+  worldBusy: "이 테이블은 처리 중입니다. 잠시 후 다시 시도하세요.",
 };

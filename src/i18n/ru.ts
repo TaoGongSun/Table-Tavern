@@ -534,4 +534,19 @@ export const ru: Record<MsgKey, string> = {
   importRouteNewTable: "Новый стол + импорт",
   importRouteThisTable: "Импорт сюда",
   importRouteMergeAnyway: "Всё равно импорт",
+
+  // Версия формата: только чтение и починка
+  readOnlyBadge: "Только чтение",
+  needsRepairBadge: "Нужен ремонт",
+  readOnlyBanner:
+    "Этот стол создан или преобразован версией {version}. Чтобы продолжить, обновись до версии {version} или новее.",
+  readOnlyBannerUnknown:
+    "Этот стол создан или преобразован более новой версией. Чтобы продолжить, обнови приложение.",
+  readOnlySkipped: "{count} реплик не удалось показать",
+  useBackupBtn: "Играть с копией до конвертации",
+  useBackupConfirm:
+    "Игра после конвертации останется отдельно, а стол вернётся к копии до неё. Продолжить?",
+  needsRepairTitle: "Этот стол нужно починить",
+  openFolderBtn: "Открыть папку",
+  worldBusy: "Этот стол занят. Попробуй чуть позже.",
 };

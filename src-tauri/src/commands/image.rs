@@ -19,6 +19,7 @@ pub(crate) fn save_character_image(
     character_id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     import::save_character_image(&data_root(&app)?, &world_id, &character_id, &data)
         .map_err(|error| error.to_string())
 }
@@ -29,6 +30,7 @@ pub(crate) fn delete_character_image(
     world_id: String,
     character_id: String,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     import::delete_character_image(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
@@ -50,6 +52,7 @@ pub(crate) fn save_character_avatar(
     character_id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     import::save_character_avatar(&data_root(&app)?, &world_id, &character_id, &data)
         .map_err(|error| error.to_string())
 }
@@ -60,6 +63,7 @@ pub(crate) fn delete_character_avatar(
     world_id: String,
     character_id: String,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     import::delete_character_avatar(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
@@ -170,8 +174,10 @@ fn clear_cli_workspace_images(workspace: &std::path::Path) {
     for path in entries.flatten().map(|entry| entry.path()) {
         if path.is_dir() {
             clear_cli_workspace_images(&path);
+            // world-write-exempt: 清的是 CLI 工作目錄裡的空資料夾，不是桌目錄
             let _ = std::fs::remove_dir(&path); // 只有真的空了才成功，留有其他檔案的目錄不動
         } else if is_image_extension(&path) {
+            // world-write-exempt: 清的是 CLI 工作目錄裡的中轉圖，不是桌目錄
             let _ = std::fs::remove_file(path);
         }
     }
@@ -302,14 +308,13 @@ fn save_generated_gallery_image(
         return Ok(());
     }
     let directory = gallery_directory(root, world_id, character_id)?;
-    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_millis();
-    std::fs::write(
-        directory.join(format!("{timestamp}.png")),
-        decode_base64(encoded)?,
+    data::commit_world_write(
+        &directory.join(format!("{timestamp}.png")),
+        &decode_base64(encoded)?,
     )
     .map_err(|error| error.to_string())
 }
@@ -345,6 +350,7 @@ pub(crate) async fn generate_character_image(
     source: Option<String>,
     framing: Option<String>,
 ) -> Result<String, String> {
+    let _permit = data::world_write_permit_async(&world_id).await;
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     // 構圖二選一：half＝半身特寫，其餘一律全身（含舊前端沒傳的情況）
@@ -469,9 +475,10 @@ pub(crate) fn delete_gallery_image(
     character_id: String,
     file: String,
 ) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id);
     validate_gallery_component(&file, true)?;
     let directory = gallery_directory(&data_root(&app)?, &world_id, &character_id)?;
-    std::fs::remove_file(directory.join(file)).map_err(|error| error.to_string())
+    data::commit_world_remove(&directory.join(file)).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

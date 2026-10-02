@@ -16,6 +16,7 @@ pub(crate) fn refactor_apply(
     selection: refactor::RefactorSelection,
     record_receipt: Option<bool>,
 ) -> Result<refactor::RefactorApplySummary, String> {
+    let _permit = data::world_write_permit(&world_id);
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
     let result = refactor::apply(&root, &world_id, &outcome, &selection)
@@ -574,6 +575,7 @@ pub(crate) fn refactor_export_outcome(
     path: String,
 ) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?;
+    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, json).map_err(|error| error.to_string())
 }
 
@@ -589,6 +591,7 @@ pub(crate) fn refactor_export_saved(
     let content = data::read_refactor_outcome(&root, &world_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "refactor-export-none".to_owned())?;
+    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, content).map_err(|error| error.to_string())
 }
 

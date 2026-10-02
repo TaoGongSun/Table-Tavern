@@ -298,7 +298,7 @@ pub fn apply(
         state_dirty = true;
         if mode == "characters" {
             if let Ok(path) = data::interface_shell_path(root, world_id) {
-                let _ = std::fs::remove_file(path);
+                let _ = data::commit_world_remove(&path);
             }
         }
     }

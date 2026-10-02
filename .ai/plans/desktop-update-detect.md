@@ -83,6 +83,64 @@
   - `notes`＝`CHANGELOG.md` 的 `## [版本]` 到下一個二級標題；正式發版找不到就失敗，演練容許缺。
 - 提醒強度要用的「含格式轉換」欄位留給包 2／3 加進 `latest.json`，包 1 不預留。
 
+## 包 2 做法（Claude、Grok、Sol 三方共識 2026-10-02）
+
+本包的程式有兩種角色：新版用來轉換舊桌；**舊版（從第一個帶更新功能的版本起）遇到更新格式時要靠它不寫壞**。後者一旦發出就改不了，所以前向相容要先做對。
+
+- **備份改成「原桌改名」**：轉換前備份就是原桌目錄本身改名成 `worlds/.tt-pre-<id>/`，同磁碟改名、位元組不動，免跨磁碟複製與驗證，原檔字面上從不刪除。這推翻「技術做法」裡桌備份放 `app_local_data_dir()` 的審定（版本庫仍放那裡）；代價是文件夾被 OneDrive／iCloud 同步時備份也跟著同步。
+- **格式標記**：每桌 `worlds/<id>/format.json` = `{"format_version": N, "app_version": "x.y.z"}`。`CURRENT_FORMAT = 1`，轉換鏈先是空的（測試用假轉換驗機制）。`create_world` 與轉換寫標記，平常存檔不重寫。判讀：
+  - 標記是正整數 → 照值。
+  - 缺檔且 `state.json` 能用現行 `WorldState` 解開 → 1。
+  - 標記解不開、不是正整數，或缺檔且 `state.json` 也解不開 → 當作「比本版新、版本不明」，不轉換、不寫入。
+- **開桌**：新 command `open_world(world_id)`，前端 `enterTable` 第一步呼叫，回 `ready`／`migrated {from,to}`／`read_only {format_version?, app_version?, backup_available}`／`needs_repair {message}`。轉換失敗原桌不動；目錄組合乾淨時每次開都重試，不另存失敗旗標。
+- **轉換提交**（每桌一個操作日誌 `worlds/.tt-op-<id>.json`，記 `op`、`stage`、起始時有沒有舊備份；每次改日誌都 fsync，fsync 完才做下一步）：
+  1. 目錄組合乾淨（沒有日誌、staging、trash）才開始；取得該桌獨占鎖，有寫入在途就回 busy。日誌 `{op:"migrate", from, to, stage:"build", had_pre}`。
+  2. 複製 `<id>` 到 `.tt-staging-<id>` → 逐版轉換 → 用現行程式完整讀過 → 寫標記 → fsync 檔案與目錄。
+  3. 日誌 `stage:"swap"` → r1 `.tt-pre-<id>`→`.tt-trash-<id>`（有舊備份才做）→ r2 `<id>`→`.tt-pre-<id>` → r3 staging→`<id>`。
+  4. 日誌 `stage:"cleanup"` → 刪 trash（作者裁決備份只留最近一次）→ 刪日誌。
+- **恢復＝查目錄組合表**（I＝`<id>`、S＝staging、P＝pre、T＝trash、N＝`.tt-newer-<id>`）。只有表內組合自動處理；表外一律 `needs_repair`：不改名、不刪任何目錄、不重試。自動處理只會刪 S 與 T，絕不刪 I、P、N。往前接續的 S 必須標記等於目標版且完整讀得過；驗不過就照退回欄處理。
+  每列是完整條件：「有」＝必須存在，「無」＝必須不存在，「h」／「n」＝存在與否必須等於日誌的 `had_pre`／`had_newer`，「≤h」＝h 為真時可有可無、h 為假時必須無，「—」＝不看也不碰。任一欄不符就是表外。
+  | op／stage | I | S | P | T | N | 處理 |
+  |---|---|---|---|---|---|---|
+  | migrate／build | 有 | 可有可無 | h | 無 | — | 刪 S、刪日誌（原桌未動） |
+  | migrate／swap（r1 前） | 有 | 有 | h | 無 | — | 刪 S、刪日誌 |
+  | migrate／swap（退回刪 S 後中斷） | 有 | 無 | h | 無 | — | 刪日誌 |
+  | migrate／swap（r1 後，限 h 真） | 有 | 有 | 無 | 有 | — | 退回：T→P、刪 S、刪日誌 |
+  | migrate／swap（r2 後） | 無 | 有 | 有 | h | — | S 驗過→S→I、進 cleanup；驗不過→P→I、（h 真）T→P、刪 S、刪日誌 |
+  | migrate／swap（r3 後） | 有 | 無 | 有 | h | — | 進 cleanup |
+  | migrate／cleanup | 有 | 無 | 有 | ≤h | — | 刪 T（若在）、刪日誌 |
+  | restore／swap（r1 前） | 有 | 無 | 有 | 無 | n | 刪日誌（未動） |
+  | restore／swap（r1 後，限 n 真） | 有 | 無 | 有 | 有 | 無 | 退回：T→N、刪日誌 |
+  | restore／swap（r2 後） | 無 | 無 | 有 | n | 有 | P 的格式 ≤ 本版才 P→I、進 cleanup；否則表外 |
+  | restore／swap（r3 後） | 有 | 無 | 無 | n | 有 | 進 cleanup |
+  | restore／cleanup | 有 | 無 | 無 | ≤n | 有 | 刪 T（若在）、刪日誌 |
+  - 沒有日誌：有殘留 S、且 I 或 P 至少一個在，才刪 S；有 T 沒有日誌屬表外。
+  - 表內處理途中改名失敗（佔用、權限）就停：這次回 `needs_repair`、不刪 I／P／N；下次開桌重新比對表格。
+  - 退回照欄內寫的順序執行（先 P→I，再 T→P）。「進 cleanup」＝先把日誌 stage 改成 cleanup 並 fsync，才刪 T。日誌解不開或 op 不認得也屬表外。
+  - 恢復完成（含 restore）一律再走格式判讀，才開放寫入。
+  - 每次開桌都會重試轉換，但只在組合乾淨時；落入表外就停在 `needs_repair`，不再自動動作。
+  - `list_worlds` 先跑恢復，再列出：
+    - `worlds/` 下名稱不是合法 id 的目錄不當桌列出。
+    - I 不在、但有日誌或 P 的桌，以 `needs_repair` 列出，名稱從 P／S／N 寬鬆讀。
+    - `needs_repair` 的畫面說明狀況，並提供「打開資料夾」（既有 opener plugin）。
+- **寫入閘門（三層）**：
+  - 每桌一把讀寫鎖：會寫桌的 command 進入時取共用許可，持有到最後一次落檔（跨 await）；轉換與改用備份取獨占。
+  - 資料層所有寫進桌目錄的動作改走共用寫入函式，寫入當下再查格式標記。
+  - 加掃描測試：資料層與 command 層在共用寫入函式之外直接寫檔就失敗；豁免只限非桌目錄（設定、用量記錄等），逐條寫理由。實作者另列全部 command 的「寫／唯讀」分類供驗收。`append_transcript` 讀不到 `state.json` 時改成報錯，不再照寫。
+- **舊版看新格式的桌**：
+  - `list_worlds` 的 id 取目錄名，name 寬鬆讀（`state.json` 當 JSON 取 `name`，讀不到就顯示 id），帶 `read_only` 狀態，不因解不開而消失。
+  - `enterTable` 先依 `open_world` 結果分流：唯讀與需要修復的桌不呼叫任何嚴格讀取（state、transcript、角色、世界書、分支綁定）。唯讀桌只走 `read_world_readonly`：逐行當 JSON 只取 `speaker_name`／`text`／`kind`，回傳略過的行數讓前端註明「有 N 則無法顯示」；幕號讀不到就取編號最大的紀錄檔。
+  - 前端：輸入與編輯全關。橫幅寫「這張桌由 X 版建立或轉換，要繼續請更新到 X 版或更新版本」，版本不明時省略 X。有可用備份時加「改用轉換前的備份繼續玩」。
+- **改用備份**：`restore_world_backup(world_id)`，只在唯讀、且 `.tt-pre-<id>` 的格式 ≤ 本版、且目錄組合乾淨時可用。日誌 `{op:"restore", stage:"swap", had_newer}` → r1 既有 `.tt-newer-<id>`→trash → r2 `<id>`→`.tt-newer-<id>`（轉換後玩的內容另存）→ r3 `.tt-pre-<id>`→`<id>` → `stage:"cleanup"` 刪 trash、刪日誌。全程只改名，中斷照上表。
+- **日後升格式的規則**：新格式要讓 0.2.0 的 `WorldState` 解不開，例如改掉必填欄位，免得手動裝回 0.2.0 時無聲覆寫新欄位。
+- **單一實例**：`tauri-plugin-single-instance`，第二次啟動只把既有視窗帶到前面。不做每桌鎖檔。
+- **設定檔改成補丁語意**：新 command `update_config(patch)`，補丁以原始 JSON（`serde_json::Value`）接收，`null` 才留得住。`api_keys`／`tier_models`／`preferences` 三張表各自逐鍵處理：沒送的鍵不動、送 `null` 刪鍵、空字串是合法值。後端用一把鎖序列化所有設定寫入（含 `apply_free_bootstrap`——清 `openrouter/free` 要送 `null`——以及 OAuth、smart_free 遷移），以磁碟原始 JSON 為底套補丁，其他頂層與巢狀欄位原樣保留。寫法 `config.json.tmp`（unix 0600）→ 改名。前端各寫入點改成只送本次改動的鍵；`write_config` 移除。
+- **實作時補定的細節**（Opus、Sol 驗收通過，〔模型判斷·未裁決〕）：
+  - `open_world` 多第五態 `busy`：該桌有寫入在途時不排隊，前端顯示忙碌、不換桌。
+  - 刪桌取獨占鎖，拿不到回忙碌；刪除時連同轉換前備份、另存、操作日誌一起刪。唯讀桌目前**可以刪**（待作者裁決）。
+  - 恢復途中任何 IO 錯都只把那一桌標 `needs_repair`，不刪 I／P／N，清單其他桌照常。操作日誌用暫存檔＋改名替換。
+  - 前端所有 `updateConfig` 在模組層依呼叫順序串行送出；設定檔驗證過才落檔，所有平台 tmp→`config.json` 直接改名。
+
 ## 實機驗證（技術上未定，失敗有退路）
 
 - **Mac「App 管理」保護**（macOS 13+）：ad-hoc 版沒有 Team ID，替換自身可能被擋。矩陣：`/Applications`、使用者 `~/Applications`、從 Downloads 直接啟動（App Translocation）、替換後重開；記錄新舊 `.app` 的 quarantine 與簽章狀態。被擋→確認舊 App 還在，再開下載頁。第一次從 DMG 安裝的 quarantine 歸 release-1-mac-signing。

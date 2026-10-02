@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveTheme, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX } from "../features/settings/appearance";
+import { updateConfig } from "../features/settings/update-config";
 import { AppConfig } from "../shared/contracts/backend-contracts";
 import { cliConnectedKey } from "../features/ai-connection/cli";
 import { normalizeLang, setLang } from "../i18n";
@@ -27,16 +28,23 @@ export function useAppPreferencesController({ onError }: AppPreferencesControlle
   // 串流期間 config 可能已被設定頁改寫，走 ref 取最新值，避免舊閉包蓋掉剛存的設定
   const currentConfigRef = useRef(config);
   currentConfigRef.current = config;
+  // updateConfig 依呼叫順序回。較早那份快照還沒有後一次點的鍵，直接套用會把樂觀值蓋回去。
+  // 語言、文字大小、聊天裡記下的 CLI 連線共用這個序號，只套用最後一次偏好請求的回傳。
+  const preferenceWrite = useRef(0);
 
-  // 外觀類偏好（語言、文字大小）：改了立即生效並寫回 config，不設儲存鈕
+  // 外觀類偏好（語言、文字大小）：先改本地讓畫面立刻跟上，再寫回。不設儲存鈕
   async function changePreference(key: string, value: unknown) {
     const current = currentConfigRef.current;
     if (!current) return;
     const updated = { ...current, preferences: { ...current.preferences, [key]: value } };
     currentConfigRef.current = updated;
     setConfig(updated);
+    const ticket = ++preferenceWrite.current;
     try {
-      await invoke("write_config", { config: updated });
+      const saved = await updateConfig({ preferences: { [key]: value } });
+      if (ticket !== preferenceWrite.current) return;
+      currentConfigRef.current = saved;
+      setConfig(saved);
     } catch (reason) {
       onError(String(reason));
     }
@@ -52,13 +60,13 @@ export function useAppPreferencesController({ onError }: AppPreferencesControlle
     ) {
       return;
     }
-    const updated = {
-      ...current,
-      preferences: { ...current.preferences, [cliConnectedKey(String(transport))]: true },
-    };
+    const key = cliConnectedKey(String(transport));
+    const ticket = ++preferenceWrite.current;
     try {
-      await invoke("write_config", { config: updated });
-      setConfig(updated);
+      const saved = await updateConfig({ preferences: { [key]: true } });
+      if (ticket !== preferenceWrite.current) return;
+      currentConfigRef.current = saved;
+      setConfig(saved);
     } catch (reason) {
       onError(String(reason));
     }

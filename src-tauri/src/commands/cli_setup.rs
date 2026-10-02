@@ -150,6 +150,7 @@ pub(crate) fn install_cli(
     switch_account: bool,
 ) -> Result<(), String> {
     let directory = data_root(&app)?;
+    // world-write-exempt: 建立資料根目錄放安裝腳本，不是桌目錄
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let _ = &messages;
     // 上一輪的驗證印記要清掉，避免輪詢讀到舊結果就把「已連結」點亮；但要等冷卻／併發那關
@@ -173,6 +174,7 @@ pub(crate) fn install_cli(
         }
         let token = match install::try_begin(&provider, Duration::from_secs(60)) {
             install::BeginOutcome::Started(token) => {
+                // world-write-exempt: 清安裝驗證印記，在資料根目錄，不是桌目錄
                 let _ = std::fs::remove_file(&sentinel_path);
                 token
             }
@@ -190,6 +192,7 @@ pub(crate) fn install_cli(
             let emit_app = task_app.clone();
             let _ = install::run_install(spec, &directory, cli::find_binary, move |progress| {
                 if progress.stage == "done" {
+                    // world-write-exempt: 寫安裝驗證印記，在資料根目錄，不是桌目錄
                     let _ = std::fs::write(&sentinel_path, b"");
                 }
                 let _ = emit_app.emit("cli-install-progress", progress);
@@ -210,6 +213,7 @@ pub(crate) fn install_cli(
                 .map_err(|error| error.to_string())?;
             return Err(format!("login-cooldown:{seconds}"));
         }
+        // world-write-exempt: 清安裝驗證印記，在資料根目錄，不是桌目錄
         let _ = std::fs::remove_file(&sentinel_path);
         let script = cli_install_script(
             &provider,
@@ -218,6 +222,7 @@ pub(crate) fn install_cli(
             switch_account,
         )?;
         let script_path = directory.join(format!("install-{provider}.command"));
+        // world-write-exempt: 寫 CLI 安裝腳本，在資料根目錄，不是桌目錄
         std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
         #[cfg(unix)]
         {
