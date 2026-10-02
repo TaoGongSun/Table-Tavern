@@ -1,15 +1,10 @@
-# Task
-Task-ID: character-presence
-Title: 角色在場/退場狀態管理：自動上下場＋在場過濾
-Status: todo
-Created: 2026-08-13T00:30:00.028889+08:00
-Updated: 2026-08-13T00:30:00.028889+08:00
+# character-presence — 卡片自訂名冊欄位接到在場機制
 
 ## Summary
-2026-08-11 orc-cave 實測後立案（使用者裁決）：狀態欄的「駐留角色」等名冊欄位目前只是 AI 回報的清單，沒有接到任何機制。目標＝角色隨劇情自動上下場（在場才進 context、離場收進隱藏區），省 token 也讓側欄反映真實在場狀態。設計地基已寫在 [CARD-REFACTOR-SPEC.md 包 4](../reference/CARD-REFACTOR-SPEC.md)（system 凍結名冊＋首次在場 append 全文、換幕結算 archived、封存三態、present 欄位優先）。
+2026-08-11 orc-cave 實測後立案：卡片狀態欄裡「駐留角色」這類名冊欄位只是 AI 回報的清單，沒接到任何機制。在場機制本身已由 ai-card-refactor 包 4 做完（app 的 `present` 欄位驅動在場過濾、自動上下場、換幕結算，見 [CARD-REFACTOR-SPEC 包 4](../reference/CARD-REFACTOR-SPEC.md)），本案只做「卡片自訂名冊欄位接到既有在場機制」，不重做包 4〔作者裁決 2026-10-02〕。
 
 ## Next action
-- 2026-08-11 立案；地基見 CARD-REFACTOR-SPEC 包 4，開工前逐點重拍板，排序在 refactor-dispatch 之後
+開工前拍板：怎麼認出哪個欄位是名冊（重構時標記？欄位名比對？），以及名冊與 `present` 不一致時誰優先。
 
 ## Constraints
 - 手動封存是玩家的決定，永不被 AI 自動拉回（包 4 拍板）。
