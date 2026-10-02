@@ -278,6 +278,8 @@ export function useCharacterController(input: {
         const accepted = await confirm(t("deleteCharacterConfirm", { name }), {
           title: t("deleteCharacterTitle"),
           kind: "warning",
+          okLabel: t("dialogDelete"),
+          cancelLabel: t("dialogCancel"),
         });
         if (!accepted) return false;
         await invoke("delete_character", { worldId, characterId: id });
@@ -297,6 +299,8 @@ export function useCharacterController(input: {
         const accepted = await confirm(t("deleteCharacterConfirm", { name: playerCard?.name ?? id }), {
           title: t("deleteCharacterTitle"),
           kind: "warning",
+          okLabel: t("dialogDelete"),
+          cancelLabel: t("dialogCancel"),
         });
         if (!accepted) return false;
         await invoke("delete_character", { worldId, characterId: id });

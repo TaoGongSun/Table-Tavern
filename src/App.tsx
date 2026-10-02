@@ -152,6 +152,7 @@ function App() {
       listen<{ model: string }>("smart-free-model-switched", (event) => {
         void showMessage(t("smartFreeSwitched", { model: event.payload.model }), {
           title: t("smartFreeStableTitle"),
+          okLabel: t("dialogAck"),
         });
       }),
     );
@@ -159,6 +160,7 @@ function App() {
       listen<{ model: string; expires_at: number }>("smart-free-model-expiring", (event) => {
         void showMessage(t("smartFreeExpiring", { model: event.payload.model }), {
           title: t("smartFreeStableTitle"),
+          okLabel: t("dialogAck"),
         });
       }),
     );
@@ -468,6 +470,8 @@ function App() {
     const accepted = await confirm(t("useBackupConfirm"), {
       title: t("useBackupBtn"),
       kind: "warning",
+      okLabel: t("useBackupOk"),
+      cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
     setError("");
@@ -561,6 +565,8 @@ function App() {
     const accepted = await confirm(deleteTableMessage(worlds.find((w) => w.id === id), id), {
       title: t("deleteTableTitle"),
       kind: "warning",
+      okLabel: t("dialogDelete"),
+      cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
     setError("");
@@ -607,6 +613,8 @@ function App() {
       const accepted = await confirm(t("undoLastImportConfirm", { label: last.label }), {
         title: t("undoLastImport"),
         kind: "warning",
+        okLabel: t("undoLastImportOk"),
+        cancelLabel: t("dialogCancel"),
       });
       if (!accepted) return;
       const report = await invoke<UndoReport>("undo_last_import", { worldId: table });
@@ -635,7 +643,7 @@ function App() {
             ? t("undoLastImportRemovedCharacters", { names: report.removed_characters.join("、") })
             : "") +
           (report.kept_entries > 0 ? t("undoLastImportKept", { n: report.kept_entries }) : ""),
-        { title: t("undoLastImport") },
+        { title: t("undoLastImport"), okLabel: t("dialogAck") },
       );
     } catch (reason) {
       setError(String(reason));

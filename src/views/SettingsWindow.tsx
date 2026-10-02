@@ -78,6 +78,8 @@ export function SettingsWindow({
     return confirm(t("unsavedLeaveConfirm", { n: dirtyCount }), {
       title: t("unsavedLeaveTitle"),
       kind: "warning",
+      okLabel: t("unsavedLeaveOk"),
+      cancelLabel: t("unsavedLeaveCancel"),
     });
   }
 

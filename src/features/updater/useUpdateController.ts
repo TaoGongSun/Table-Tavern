@@ -59,7 +59,7 @@ const defaultAskNoRollback = () =>
     title: t("updateNoRollbackTitle"),
     kind: "warning",
     okLabel: t("updateContinue"),
-    cancelLabel: t("updateCancel"),
+    cancelLabel: t("dialogCancel"),
   });
 const notBlocked = () => false;
 const noop = () => {};
