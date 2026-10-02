@@ -69,7 +69,7 @@
 
 一次吐完會撞輸出上限也讓玩家空等；分次後每回輸出都只有一人或一條的量。欄位命名單一權威＝`known_fields`，逐呼叫累積已用欄位名再傳入下一次。
 
-整張卡放 **system** 並標 `cache_control`（[transport.rs:1652](../../src-tauri/src/transport.rs) 既有機制），第二次呼叫起吃快取價——分次不等於脈絡送多次錢。
+整張卡放 **system** 並標 `cache_control`（[transport.rs:1652](../../src-tauri/src/transport/mod.rs) 既有機制），第二次呼叫起吃快取價——分次不等於脈絡送多次錢。
 
 ### 玩家看到什麼
 
@@ -130,7 +130,7 @@ AI 直接套用無收據（見總則，無還原）。倒退只存在於「匯�
 
 ### 既有路徑留著
 
-[worldbook_entry_to_character](../../src-tauri/src/data.rs) 處理「一條＝一人」、不花錢；重構按鈕處理「一條＝多人」、要花錢。兩條並存。
+[worldbook_entry_to_character](../../src-tauri/src/data/mod.rs) 處理「一條＝一人」、不花錢；重構按鈕處理「一條＝多人」、要花錢。兩條並存。
 
 ### 沒有立繪
 
@@ -140,7 +140,7 @@ AI 直接套用無收據（見總則，無還原）。倒退只存在於「匯�
 
 ### 現況
 
-[state_scope](../../src-tauri/src/transport.rs) 的在場過濾只管**狀態樹分支**（含手足規則）。世界書條目沒有任何過濾，constant 一律全文進 system；角色卡也一律進 system，封存的才不進（`load_active_cards`）。
+[state_scope](../../src-tauri/src/transport/mod.rs) 的在場過濾只管**狀態樹分支**（含手足規則）。世界書條目沒有任何過濾，constant 一律全文進 system；角色卡也一律進 system，封存的才不進（`load_active_cards`）。
 
 ### 核心限制：不能在幕中動 system
 
@@ -219,7 +219,7 @@ system 是快取前綴，幕中改動＝快取全失效（prompt-cache 的 85–
 
 `derived`（衍生值）在規範裡是 schema 預留未實作，導致公式型散文機制抽不動（例：迷宮之主 `小队刷新机制` 的「每層 3 支＋名聲每高一階 2 支＋威脅高時低階減半」）。
 
-- **規模**：tokenize＋遞迴下降 parse＋eval，加 `min`／`max`／`floor`／條件約 250 行加測試（對照：[ejs.rs](../../src-tauri/src/ejs.rs) 820 行）。
+- **規模**：tokenize＋遞迴下降 parse＋eval，加 `min`／`max`／`floor`／條件約 250 行加測試（對照：[ejs.rs](../../src-tauri/src/import/ejs.rs) 820 行）。
 - **安全**：自寫求值器不是 `eval`，只認數字與自家欄位路徑，卡片永不執行的紅線不受影響。
 - **一做三用**：`derived`、既有的 `FieldKind::Roll`（骰值本地擲）、[ttrpg-rules-system](../tasks/ttrpg-rules-system.md) 的骰池與傷害公式共用同一個求值器。
 - **已知風險**：難點在散文歧義（「威脅度較高」是多高，AI 得自定閾值）。但公式是人審產物、可倒退，且錯得一致——改一次全部修正，比模型每輪心算出不同答案好抓。

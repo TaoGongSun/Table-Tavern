@@ -117,7 +117,7 @@ pub async fn run_cli_cancellable(
 ) -> DataResult<CliFinish> {
     let mut command = Command::new(program);
     // 先掛系統代理再掛使用者 envs，同名時使用者設定蓋過代理
-    crate::proxy::apply_system_proxy(&mut command);
+    crate::cli::proxy::apply_system_proxy(&mut command);
     // CLI 子程序一律不繼承 ANTHROPIC_*：啟動 app 的 shell 若殘留閘道變數（例如指向
     // 本機代理的 ANTHROPIC_BASE_URL＋AUTH_TOKEN），整批呼叫會被劫走。要接第三方閘道
     // 一律走 app 設定欄，claude_cli_envs 會在下面的 envs 顯式補回。
@@ -292,7 +292,7 @@ pub async fn run_cli_cancellable(
                         .map_or_else(|| "—".to_owned(), |rate| format!("{rate:.0}%")),
                 );
                 match super::stream::agy_usage_evidence(&line, agy_conversation_id.as_deref()) {
-                    Some(evidence) => crate::usage_log::append_call_with_evidence(
+                    Some(evidence) => crate::usage::log::append_call_with_evidence(
                         log.path,
                         log.world,
                         log.transport,
@@ -302,7 +302,7 @@ pub async fn run_cli_cancellable(
                         usage,
                         &evidence,
                     ),
-                    None => crate::usage_log::append_call(
+                    None => crate::usage::log::append_call(
                         log.path,
                         log.world,
                         log.transport,

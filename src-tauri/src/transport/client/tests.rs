@@ -174,7 +174,7 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
         &messages,
         None,
         None,
-        crate::usage_log::PromptShape::Oneshot,
+        crate::usage::log::PromptShape::Oneshot,
         |_| {},
     )
     .await
@@ -197,7 +197,7 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
         &messages,
         None,
         None,
-        crate::usage_log::PromptShape::Oneshot,
+        crate::usage::log::PromptShape::Oneshot,
         |delta| {
             deltas.push(delta.to_owned());
         },
@@ -407,7 +407,7 @@ async fn stream_chat_fails_when_stream_completes_with_no_content() {
         &messages,
         None,
         None,
-        crate::usage_log::PromptShape::Oneshot,
+        crate::usage::log::PromptShape::Oneshot,
         |_| {},
     )
     .await
@@ -658,7 +658,7 @@ async fn stream_chat_passes_usage_chunk_through_without_breaking_deltas() {
         &messages,
         Some(&log_path),
         Some("w1"),
-        crate::usage_log::PromptShape::Turn {
+        crate::usage::log::PromptShape::Turn {
             roster: 3,
             solo: false,
         },

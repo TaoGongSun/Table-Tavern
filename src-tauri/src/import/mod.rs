@@ -1,5 +1,6 @@
 mod card;
 mod card_io;
+mod ejs;
 mod export;
 mod images;
 mod interface;

@@ -8,8 +8,8 @@
 
 ## 現況事實（2026-08-13 盤點）
 
-- 換幕（[lib.rs:2587](../../src-tauri/src/lib.rs) `advance_scene`）＝把本幕 transcript 摘要成【前情提要】，`begin_next_scene`（[data.rs:2516](../../src-tauri/src/data.rs)）寫成新幕第一則 Narration 事件。
-- 狀態樹的本地權威在 `state.json`（`world.state`），換幕不動它；GM 每輪系統提示由 `render_state_tree`（[transport.rs:505](../../src-tauri/src/transport.rs)）注入現值。**狀態與提示注入天生跨幕存活**——這是缺口比預想小的原因。
+- 換幕（[lib.rs:2587](../../src-tauri/src/lib.rs) `advance_scene`）＝把本幕 transcript 摘要成【前情提要】，`begin_next_scene`（[data.rs:2516](../../src-tauri/src/data/mod.rs)）寫成新幕第一則 Narration 事件。
+- 狀態樹的本地權威在 `state.json`（`world.state`），換幕不動它；GM 每輪系統提示由 `render_state_tree`（[transport.rs:505](../../src-tauri/src/transport/mod.rs)）注入現值。**狀態與提示注入天生跨幕存活**——這是缺口比預想小的原因。
 - 前情提要事件寫入時 `state: None`，但 `append_transcript` 對未帶快照的事件會補上現行快照（data.rs 測試覆蓋）→ 檯面樹換幕後應不變。【待實測】
 - 殼的餵入是 direct-first：訊息先試卡 regex，不中就用骨架填 `{{本回合.正文}}` → 純文字前情提要理論上自然落入正文槽。【待實測】
 - 三條補救路皆存在且有守門：`revert_scene`／`regenerate_scene_summary` 都要求該幕只有前情提要那一則（有新內容即擋）；`revert_scene` 會把 `state.state` 還原成前幕最後一則事件快照（抽驗確認）。

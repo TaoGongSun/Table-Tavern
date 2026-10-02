@@ -29,7 +29,7 @@ let messages = transport::assemble_messages(&card, ...);      // 單一角色，
 
 ## 障礙：transcript 的 role 分配也是角色專屬的
 
-[transport.rs](../../src-tauri/src/transport.rs) 把歷史事件轉成 messages 時：
+[transport.rs](../../src-tauri/src/transport/mod.rs) 把歷史事件轉成 messages 時：
 
 ```rust
 TranscriptKind::Dialogue if event.speaker_id == card.id => ("assistant", …)   // 自己說的
@@ -57,7 +57,7 @@ claude lane 的解法（見 lanes.rs 模組頂註解）：session 裡所有角�
 
 ## Anthropic 顯式斷點會被共線打壞（2026-08-21 查證）
 
-[transport.rs:1947](../../src-tauri/src/transport.rs) 的 `anthropic_messages` 用 role 猜穩定性：
+[transport.rs:1947](../../src-tauri/src/transport/mod.rs) 的 `anthropic_messages` 用 role 猜穩定性：
 
 ```rust
 let last_assistant = messages.iter().rposition(|m| m.role == "assistant");
@@ -66,7 +66,7 @@ if message.role == "system" || Some(index) == last_assistant { /* 掛 cache_cont
 
 現行 assistant／user 交錯，「最後一則 assistant」是已定案不再變的台詞，逐輪增量命中成立。共線後兩個候選都會壞：
 
-- **全 assistant**：台詞相鄰同 role，`push_merged`（[transport.rs:110](../../src-tauri/src/transport.rs)，只合併相鄰同 role）併成一個每輪尾端追加的巨型 block，斷點掛在它上面每輪失效。
+- **全 assistant**：台詞相鄰同 role，`push_merged`（[transport.rs:110](../../src-tauri/src/transport/mod.rs)，只合併相鄰同 role）併成一個每輪尾端追加的巨型 block，斷點掛在它上面每輪失效。
 - **全 user**：`last_assistant` 是 `None`，只剩 system 一個斷點。
 
 對 Anthropic 系的淨效果分兩種情境：**換角色** 0% → 23%（system 本來也是角色專屬、跟著全滅，現在穩定了，是改善）；**同角色連續** 從高命中掉到 23%（現行那則穩定 assistant 被併進巨型 block），是退化。
@@ -75,7 +75,7 @@ if message.role == "system" || Some(index) == last_assistant { /* 掛 cache_cont
 
 ## CLI 三條是另一個形狀（2026-08-21 實測）
 
-codex／agy／grok 走 `cli::flatten_messages`（[cli.rs:140](../../src-tauri/src/cli.rs)）把 messages 攤平成 `(system, prompt)` 兩個字串。攤平時 assistant 被補上 `assistant_label`＝`card.name`（[lib.rs:2281](../../src-tauri/src/lib.rs)），而別人的台詞在 `assemble_messages` 裡本來就帶名字——**攤平後每一行的文字與角色無關**（「加爾：加爾抬起頭。」在加爾那輪與雷恩那輪一字不差）。
+codex／agy／grok 走 `cli::flatten_messages`（[cli.rs:140](../../src-tauri/src/cli/mod.rs)）把 messages 攤平成 `(system, prompt)` 兩個字串。攤平時 assistant 被補上 `assistant_label`＝`card.name`（[lib.rs:2281](../../src-tauri/src/lib.rs)），而別人的台詞在 `assemble_messages` 裡本來就帶名字——**攤平後每一行的文字與角色無關**（「加爾：加爾抬起頭。」在加爾那輪與雷恩那輪一字不差）。
 
 臨時探針跑真的 `assemble_messages`＋`flatten_messages`（4 角色 7 事件），唯一差異是**空行位置**：`push_merged` 合併相鄰同 role，換角色時分組跟著變，`history.join("\n\n")` 的斷句就移位。共同前綴 25 字元／全長 97。
 
@@ -96,7 +96,7 @@ codex 15 筆實測印證這個形狀：
 
 ## agy 的用量拿得到了（原結論過期）
 
-agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開始回報含 `cache_read_tokens` 的 token 帳。[cli.rs:4](../../src-tauri/src/cli.rs) 記的查證版本是 1.1.3，比這個功能還早；實機是 1.1.17。
+agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開始回報含 `cache_read_tokens` 的 token 帳。[cli.rs:4](../../src-tauri/src/cli/mod.rs) 記的查證版本是 1.1.3，比這個功能還早；實機是 1.1.17。
 
 不花額度實測（`-p "/usage"` 這類唯讀指令不起 turn、不耗額度）確認 envelope：
 
@@ -133,8 +133,8 @@ agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開�
 
 ### 三個實作前必修洞
 
-- **`flatten_messages` 雙重前綴**：[cli.rs:154](../../src-tauri/src/cli.rs) 無條件 `format!("{assistant_label}：{}", content)`。共線後台詞已自帶「X：」，codex／grok 路徑會變成「加爾：雷恩：……」。
-- **agy 輸出格式**：現在走預設 `text`（[cli.rs:464](../../src-tauri/src/cli.rs) 的 `agy_args` 只給 `-p prompt`），量不到快取。改 `--output-format stream-json` 並補一支 `parse_agy_usage`，順手把 [cli.rs:4](../../src-tauri/src/cli.rs) 的版本註記從 1.1.3 更新到實機版本。
+- **`flatten_messages` 雙重前綴**：[cli.rs:154](../../src-tauri/src/cli/mod.rs) 無條件 `format!("{assistant_label}：{}", content)`。共線後台詞已自帶「X：」，codex／grok 路徑會變成「加爾：雷恩：……」。
+- **agy 輸出格式**：現在走預設 `text`（[cli.rs:464](../../src-tauri/src/cli/mod.rs) 的 `agy_args` 只給 `-p prompt`），量不到快取。改 `--output-format stream-json` 並補一支 `parse_agy_usage`，順手把 [cli.rs:4](../../src-tauri/src/cli/mod.rs) 的版本註記從 1.1.3 更新到實機版本。
 - **尾端指定 block 不存在**：`cli_closing` 只用於 [lib.rs:1679](../../src-tauri/src/lib.rs) 的 CLI 攤平那條，API 路徑的「你是誰」寫死在 system。共線後「現在你是 X」必須成為 messages 尾端一則真正的 user block。
 
 ### 驗收

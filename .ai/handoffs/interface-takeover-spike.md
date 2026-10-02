@@ -24,10 +24,10 @@
 - **拆角色 vs 保留介面交給玩家選擇**（2026-08-12 使用者拍板）：整頁介面的卡拆出角色後，NPC 一開口就掉出介面（一格 Story 槽只能一個敘事者）。不由 app 自動判斷——玩家對一張卡有興趣才會抓下來玩，他知道自己要什麼。做法見下方待辦 1。
 
 ## 已完成變更（cargo 480／tsc／vitest 108／build 綠）
-1. **狀態樹不再被收回沖掉**：[data.rs](../../src-tauri/src/data.rs) `sync_scene_state_tree`＋[refactor.rs](../../src-tauri/src/refactor.rs) apply 後呼叫——新樹補進這一幕每則事件快照的 `tree`／`jumps`。舊行為是「檯面恆等於最後一則事件快照」，重構改的樹不在任何快照裡，一次收回就換回舊欄位（實測踩過：面板全空白）。
+1. **狀態樹不再被收回沖掉**：[data.rs](../../src-tauri/src/data/mod.rs) `sync_scene_state_tree`＋[refactor.rs](../../src-tauri/src/refactor/mod.rs) apply 後呼叫——新樹補進這一幕每則事件快照的 `tree`／`jumps`。舊行為是「檯面恆等於最後一則事件快照」，重構改的樹不在任何快照裡，一次收回就換回舊欄位（實測踩過：面板全空白）。
 2. **逐卡 update block**：`RefactorInterface` 加 `rules`／`guide`；apply 有殼時開 `incremental`、併 rules、落 guide。`Mechanism` 加 `guide`。[refactor-review.ts](../../src/features/refactor/refactor-review.ts) `parseInterface`／`merge` 要帶上兩欄——前端會重建 outcome 再傳回 Rust，不補就整個掉。
-3. **展開契約四區塊**：[refactor_ai.rs](../../src-tauri/src/refactor_ai.rs) STATE／SHELL／RULES／GUIDE；`MECHANISM_SCHEMA` 拆成 `MECHANISM_FIELD_SCHEMA`／`MECHANISM_TRIGGER_SCHEMA`（接管只要欄位規則）；`INTERFACE_SHELL_RULES` 補固定資產處置；`INTERFACE_UPDATE_RULES` 限定照搬值格式＋分兩組；`strip_html_fence` 連語言標記一起剝。
-4. **介面歸屬聲明**：[transport.rs](../../src-tauri/src/transport.rs) `interface_owned_notice`，接管桌才附，**壓在欄位說明之後**——模型會模仿最後讀到的排版，放前面它就照 guide 的 markdown 把狀態逐條寫進正文（實測踩過，那輪 patch 完全消失）。措辭要避開「資料區塊」這種會誤傷 `<UpdateVariable>` 的字。
+3. **展開契約四區塊**：[refactor_ai.rs](../../src-tauri/src/refactor_ai/mod.rs) STATE／SHELL／RULES／GUIDE；`MECHANISM_SCHEMA` 拆成 `MECHANISM_FIELD_SCHEMA`／`MECHANISM_TRIGGER_SCHEMA`（接管只要欄位規則）；`INTERFACE_SHELL_RULES` 補固定資產處置；`INTERFACE_UPDATE_RULES` 限定照搬值格式＋分兩組；`strip_html_fence` 連語言標記一起剝。
+4. **介面歸屬聲明**：[transport.rs](../../src-tauri/src/transport/mod.rs) `interface_owned_notice`，接管桌才附，**壓在欄位說明之後**——模型會模仿最後讀到的排版，放前面它就照 guide 的 markdown 把狀態逐條寫進正文（實測踩過，那輪 patch 完全消失）。措辭要避開「資料區塊」這種會誤傷 `<UpdateVariable>` 的字。
 5. 移除卡片介面的 ⓘ 說明鈕＋十語系 2 個 key（使用者要求）。
 
 ## 待辦（依序）

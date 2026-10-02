@@ -52,7 +52,7 @@ T3 毛絨實測後使用者判定：**interface_shell 產殼路線完全不合�
 
 ## 盤點結論（2026-08-11，主線親查）
 - **18k 對號**（~/Documents/TableTavern/prompt-cache.jsonl，14:21–14:46 run）：14 筆＝survey（opus-4-7，3705 tok）＋條目重寫 11（5 設定小筆 0.5–4k＋6 機制大筆 7–18k）＋介面 1（2542）＋人物展開 1。**兩筆 18k＝機制條目重寫，非介面**；重寫可見正文僅 ~0.5–1.2k 字/條→輸出 token 大宗＝思考＋JSON 開銷。結論：照搬消滅整筆呼叫（含思考）是提速主力；介面軌無大額，維持「無介面卡不生介面」。
-- **快取紅線**：[refactor_ai.rs](../../src-tauri/src/refactor_ai.rs) 測試 `all_stage_system_messages_are_byte_identical_for_same_context` 把關跨階段 system 相等；階段指示都在 user 訊息端。`assemble_card_context` 為重構專用（遊玩線走 transport.rs），context 內加 span 標記不影響遊玩、不破跨階段相等。
+- **快取紅線**：[refactor_ai.rs](../../src-tauri/src/refactor_ai/mod.rs) 測試 `all_stage_system_messages_are_byte_identical_for_same_context` 把關跨階段 system 相等；階段指示都在 user 訊息端。`assemble_card_context` 為重構專用（遊玩線走 transport.rs），context 內加 span 標記不影響遊玩、不破跨階段相等。
 - **認人沿用**：PERSONS 區塊＋buildRefactorPersonPlan（單一專屬來源本地轉換）＋person_expand＝person-promote 實作，本案只擴充欄位、不做第二套認人。
 - **IR 就緒**：MECHANISM_SCHEMA（FieldRule＋Trigger）→ RefactorNewEntry.rules/triggers → apply() 併 state.mechanism＋locked＋機制帳本（refactor.rs:272–303），接管線直接沿用、不重造。
 - **apply() 現況**：新條目一律 keys=[]、constant=false（refactor.rs:279）→ 照搬路徑必須補元資料保留。
@@ -128,7 +128,7 @@ RefactorOutcome 擴充：entries[].meta＋dropped[]＋unabsorbed[]＋audit[]。�
   - ①-c **Cmd-Q 無孤兒過**（2026-08-14 11:34）：survey 子程序 84579（父＝app 84134）在途時 Cmd-Q，子程序與 app／tauri dev／vite 全數消失、零 `父1` 殘留、jsonl 無新增。（11:31 前一次不算數：當時在途 0 支，沒走到 `kill_all_children`。）
   - ③ **舊產物相容過**（2026-08-14，使用者實測）：`worlds/01KZQ1G6Z6XCZEDCPX5ZGMFX71/refactor-outcome.json`（08-11 08:23，無 meta／無 dropped／無 audit）匯入 → 同桌與新桌都正常展開套用，角色與條目齊全、`陣營推進日程` 仍標「App 接管中」。新桌不改桌名＝預期行為。
   - ④ **已過**（2026-08-14 實看）：手工測試產物（淘汰 4／未接管 2／稽核 3）匯入後，面板骨架十語系正常切換——英、俄逐項看過（Dropped N items／Unadopted mechanisms／Audit／Missed content｜ОТБРОШЕНО／Непринятые механики／Аудит／Пропущенный контент），無爆版無漏翻；未翻的只有產物資料本文（title／note／detail），那是卡片內容不是 i18n 範圍。**惟新重構按鈕的淘汰機制若改寫，這幾塊字要重驗**（使用者拍板：屆時再看，不擋今天）。
-  - ② **單元測試綠、實機延後**（2026-08-14 拍板）。**CLI 模式測不到這條**：[transport.rs:1767](../../src-tauri/src/transport.rs) `refactor_expand_tier` 只在 `transport_kind == "api"` 且 balanced 模型解析失敗時退 GM，CLI 一律 balanced。要實機得切 API 模式＋清空 balanced 模型跑一次（API 模式不生子程序，證據看 jsonl 的 lane 欄），成本比 CLI 訂閱高一個量級。現況把關＝三分支單元測試（transport.rs:2855）＋五處呼叫（absorb／group／person／statusbar／interface）接線主線逐處核過。哪天真用 API 模式時順手看一眼 lane 即可。
+  - ② **單元測試綠、實機延後**（2026-08-14 拍板）。**CLI 模式測不到這條**：[transport.rs:1767](../../src-tauri/src/transport/mod.rs) `refactor_expand_tier` 只在 `transport_kind == "api"` 且 balanced 模型解析失敗時退 GM，CLI 一律 balanced。要實機得切 API 模式＋清空 balanced 模型跑一次（API 模式不生子程序，證據看 jsonl 的 lane 欄），成本比 CLI 訂閱高一個量級。現況把關＝三分支單元測試（transport.rs:2855）＋五處呼叫（absorb／group／person／statusbar／interface）接線主線逐處核過。哪天真用 API 模式時順手看一眼 lane 即可。
   - 存檔產物三份的 dropped／unabsorbed／audit **都是空陣列**（兽人的洞穴 ×2、西幻魔法世界模拟器 ×1），驗這兩個面板一律要自製產物走「匯入重構卡」。
 
 ## Next action

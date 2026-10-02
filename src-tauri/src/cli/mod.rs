@@ -5,6 +5,9 @@
 
 mod catalog;
 mod detect;
+#[allow(dead_code)]
+pub(crate) mod install;
+mod proxy;
 mod request;
 mod runner;
 mod stream;

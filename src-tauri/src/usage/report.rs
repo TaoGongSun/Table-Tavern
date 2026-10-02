@@ -8,7 +8,7 @@
 //! - **金額只轉述**：app 不自算牌價、不建價目表，`cost_usd` 照舊是各 CLI 自己回報值的加總；
 //!   省下的錢再拿它反推該輪的輸入單價乘回省下的 token，估不出的輪次標 `saved_partial`。
 //!
-//! 診斷標籤與原因代碼原樣送到前端配 i18n（字典見 usage_log.rs 模組頂註解）。
+//! 診斷標籤與原因代碼原樣送到前端配 i18n（字典見 usage/log.rs 模組頂註解）。
 
 use serde::Serialize;
 use serde_json::Value;

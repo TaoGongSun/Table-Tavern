@@ -1,7 +1,8 @@
-use crate::ai_transport::{chat_transport, stream_via_transport};
 use crate::data::TranscriptEvent;
+use crate::transport::dispatch::{chat_transport, stream_via_transport};
+use crate::transport::translate;
 use crate::ui_msg::UiMsg;
-use crate::{config_root, data, data_root, mechanism, receipts, translate, transport};
+use crate::{config_root, data, data_root, mechanism, receipts, transport};
 use serde::Serialize;
 use std::path::Path;
 

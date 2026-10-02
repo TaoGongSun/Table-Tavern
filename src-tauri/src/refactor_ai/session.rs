@@ -1,7 +1,7 @@
 //! 重構兩段判官的短命 session（refactor-mode-split 包 2）。
 //! 第一段（初判）開線、第二段（盤點）resume 同一線：卡片 context 在 system 與 session
 //! 歷史裡成為共用前綴，命中時第二段只付新指示的 token（拍板 3 的省費依據）。
-//! 與遊玩 lane（lanes.rs）完全分離：不進 lanes.json、不保溫、不抹寫、跑完即棄——
+//! 與遊玩 lane（lanes）完全分離：不進 lanes.json、不保溫、不抹寫、跑完即棄——
 //! 取消、重跑或卡片異動後舊 session 作廢（指紋由呼叫端核對），resume 失敗由呼叫端降級單發。
 
 use crate::cli;
@@ -77,7 +77,7 @@ async fn run_stage(
             model: &model,
             parse: cli::parse_claude_usage,
             lane: None,
-            shape: crate::usage_log::PromptShape::Oneshot,
+            shape: crate::usage::log::PromptShape::Oneshot,
             prompt_tokens_out: None,
             conversation_id_out: None,
             expected_conversation_id: None,

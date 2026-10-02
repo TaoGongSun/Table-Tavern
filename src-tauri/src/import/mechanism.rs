@@ -208,7 +208,7 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
             .and_then(Value::as_str)
             .or_else(|| entry.get("title").and_then(Value::as_str))
             .unwrap_or_default();
-        if let Some(trigger) = crate::ejs::parse_triggers(title, content) {
+        if let Some(trigger) = crate::import::ejs::parse_triggers(title, content) {
             if let Some(index) = triggers
                 .iter()
                 .position(|existing: &data::Trigger| existing.id == trigger.id)

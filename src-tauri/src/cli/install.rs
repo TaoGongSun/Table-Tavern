@@ -354,7 +354,7 @@ async fn run_hidden(
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
-    crate::proxy::apply_system_proxy(&mut child);
+    crate::cli::proxy::apply_system_proxy(&mut child);
     child
         .args(args)
         .envs(
@@ -397,7 +397,7 @@ async fn run_terminal(
         .split_first()
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
-    crate::proxy::apply_system_proxy(&mut child);
+    crate::cli::proxy::apply_system_proxy(&mut child);
     child
         .args(args)
         .envs(

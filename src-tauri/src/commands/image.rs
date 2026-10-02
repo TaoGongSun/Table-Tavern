@@ -1,4 +1,4 @@
-use crate::ai_transport::{cli_workspace, stream_turn_via_transport};
+use crate::transport::dispatch::{cli_workspace, stream_turn_via_transport};
 use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
 use std::path::PathBuf;
@@ -408,7 +408,7 @@ pub(crate) async fn generate_character_image(
         "",
         "",
         &messages,
-        crate::usage_log::PromptShape::Image,
+        crate::usage::log::PromptShape::Image,
         false,
         |_| {},
     )

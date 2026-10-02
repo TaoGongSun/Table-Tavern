@@ -1,7 +1,7 @@
+use crate::transport::responses as responses_transport;
 use crate::ui_msg::UiMsg;
-use crate::{
-    cli, config_root, data, data_root, lanes, responses_transport, smart_free, transport, usage_log,
-};
+use crate::usage::log as usage_log;
+use crate::{cli, config_root, data, data_root, lanes, smart_free, transport};
 use std::path::PathBuf;
 use tauri::Emitter;
 

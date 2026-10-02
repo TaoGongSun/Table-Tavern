@@ -5,7 +5,7 @@ Status: todo
 ## Summary
 2026-09-03 transport-split 的實機 smoke test 順手抓到：claude 通道的角色線發完一輪後，帳本落一筆 `event: drop-lane`／`reason: rewrite-failed`，續聊 session 被整條丟棄。
 
-現象是「回覆正常、只有錢不對」——[lanes.rs:583](../../src-tauri/src/lanes.rs:583) 判定 session 檔抹寫失敗就作廢該線，本輪回覆照常送回，畫面看不出異狀，但下一輪角色發言重新全量冷開。同一時間 GM 線 cached 5877／prompt 7466，角色線 `cached_tokens: 0`、`reason: first-turn`。
+現象是「回覆正常、只有錢不對」——[lanes.rs:583](../../src-tauri/src/lanes/mod.rs) 判定 session 檔抹寫失敗就作廢該線，本輪回覆照常送回，畫面看不出異狀，但下一輪角色發言重新全量冷開。同一時間 GM 線 cached 5877／prompt 7466，角色線 `cached_tokens: 0`、`reason: first-turn`。
 
 抹寫動作在 `apply_rewrite`：把私密段落從 session 檔的 user 行抹掉、或替最後一則 assistant 加前綴，任一步失敗就丟線。實際是哪一步失敗、為什麼失敗，尚未查。
 

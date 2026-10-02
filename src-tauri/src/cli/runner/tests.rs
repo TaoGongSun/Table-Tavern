@@ -52,7 +52,7 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
             model: "sonnet",
             parse: parse_claude_usage,
             lane: None,
-            shape: crate::usage_log::PromptShape::Oneshot,
+            shape: crate::usage::log::PromptShape::Oneshot,
             prompt_tokens_out: Some(&seen),
             conversation_id_out: None,
             expected_conversation_id: None,

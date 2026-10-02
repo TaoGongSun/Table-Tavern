@@ -66,7 +66,7 @@ fn fingerprint(key: &str) -> String {
 fn required_context(messages: &[ChatMessage]) -> u64 {
     let input = messages.iter().fold(2u64, |tokens, message| {
         tokens
-            .saturating_add(crate::usage_log::estimate_tokens(&message.content))
+            .saturating_add(crate::usage::log::estimate_tokens(&message.content))
             .saturating_add(4)
     });
     input.saturating_add(select::RESERVED_OUTPUT_TOKENS)

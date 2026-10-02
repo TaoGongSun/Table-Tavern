@@ -25,7 +25,7 @@ deepseek 輸入最小，佔比因此最大。它是免費模型，代價不是�
 
 ### 坑 1：退回的目標已經被刪掉了
 
-包 B 把舊的單角色組裝器 `transport::assemble_messages` **整支移除**——`fn assemble_messages` 現在零命中，只剩 [lib.rs:2253](../../src-tauri/src/lib.rs)、[transport.rs:2](../../src-tauri/src/transport.rs)、[cli.rs:2](../../src-tauri/src/cli.rs) 三處過時註解還在引用它。
+包 B 把舊的單角色組裝器 `transport::assemble_messages` **整支移除**——`fn assemble_messages` 現在零命中，只剩 [lib.rs:2253](../../src-tauri/src/lib.rs)、[transport.rs:2](../../src-tauri/src/transport/mod.rs)、[cli.rs:2](../../src-tauri/src/cli/mod.rs) 三處過時註解還在引用它。
 
 不必復活：改用 `cards=[本輪角色]` 呼叫同一支 `assemble_shared_messages`，函式內既有的 `cards.len() <= 1` 分支會自動把該角色私設提回 system。零新組裝路徑。
 
@@ -40,7 +40,7 @@ deepseek 輸入最小，佔比因此最大。它是免費模型，代價不是�
 1. **只在 `api` 路徑做自動退回，CLI 三條不做。** CLI 的 model 欄在沒有 tier 覆寫時會寫成 `(CLI 預設)`（帳本目前 0 筆，但 `model.unwrap_or("(CLI 預設)")` 確實產得出來），認不出模型就無法 per-model 判定；而 codex +7.0%、grok +2.2% 本來就實測有快取，不值得為它們解識別問題。key＝`(正規化 endpoint, 完整 model slug)`，endpoint 去掉 query 與憑證。
 2. **N＝連續 3 次 eligible zero。** eligible＝shared 模式、同 system hash、距上輪在 TTL 內、`cache_reporting` 有回報、前綴長度過得了最低可快取門檻。任何 `cached_tokens > 0` 立刻清零重數；`absent` 永不進判定。
 3. **恢復靠滾動 seed probe。** 冷卻到期時，下一個 eligible 輪送 shared 當 seed；下一輪同 endpoint／model／hash 且距 seed 完成 < 120 秒＝驗證輪。中了就恢復共線；`cached=0` 但 `created>0` 把該輪滾成新 seed 再驗一次；`cached=0` 且 `created=0` 退回 solo、重啟冷卻；hash 變了或超時不算失敗，直接成為新 seed。玩家每輪都隔超過 TTL 時維持 solo 是誠實結果，不偷發付費 synthetic probe。
-4. **狀態放 process 內的 map，不讀 JSONL 做決策。** [usage_log.rs:249](../../src-tauri/src/usage_log.rs) 的落檔是 `let _ =`，寫入失敗被吞掉——它是 telemetry，不能當策略的唯一狀態來源。重啟後保守回 shared。包 B 之前那 27 筆 deepseek 是不可判讀的舊觀察，不得拿來初始化 miss streak。
+4. **狀態放 process 內的 map，不讀 JSONL 做決策。** [usage_log.rs:249](../../src-tauri/src/usage/log.rs) 的落檔是 `let _ =`，寫入失敗被吞掉——它是 telemetry，不能當策略的唯一狀態來源。重啟後保守回 shared。包 B 之前那 27 筆 deepseek 是不可判讀的舊觀察，不得拿來初始化 miss streak。
 
 ## 待拍板三項
 
