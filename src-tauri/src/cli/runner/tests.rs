@@ -193,7 +193,8 @@ async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial
     .to_string();
     std::fs::remove_dir_all(&dir).unwrap();
     assert!(
-        error.contains("CLI 異常結束"),
+        error.starts_with(r#"TTMSG:{"code":"cli_reply_error""#)
+            && error.contains(r#"\"code\":\"cli_crashed\""#),
         "要報 crash 而非靜默：{error}"
     );
     assert!(

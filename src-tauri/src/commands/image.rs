@@ -431,9 +431,9 @@ pub(crate) async fn generate_character_image(
         // 兩個都沒對上時附最後一句原話，模型不照暗號時的拒絕理由通常就寫在那
         .unwrap_or_else(|| {
             Err(if reply.contains("REFUSED") {
-                "REFUSED：來源拒絕生成這段內容".to_owned()
+                "REFUSED".to_owned()
             } else if reply.contains("NO_IMAGE") {
-                "NO_IMAGE：來源回報無法生圖".to_owned()
+                "NO_IMAGE".to_owned()
             } else {
                 match last_sentence(&reply) {
                     Some(tail) => UiMsg::ImageMissingInReplyTail {

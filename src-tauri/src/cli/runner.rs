@@ -1,5 +1,6 @@
 use super::types::{CliLine, UsageLog};
 use crate::data::DataResult;
+use crate::ui_msg::UiMsg;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -93,7 +94,7 @@ pub async fn run_cli(
     .await?
     {
         CliFinish::Completed(text) => Ok(text),
-        CliFinish::Aborted(_) => Err("內部錯誤：沒有取消訊號卻回報中止".into()),
+        CliFinish::Aborted(_) => Err(UiMsg::CliUnexpectedAbort.into_error()),
     }
 }
 
@@ -157,7 +158,7 @@ pub async fn run_cli_cancellable(
     tokio::select! {
         biased;
         result = write_stdin.as_mut() => {
-            result.map_err(|_| "CLI 60 秒收不進提示詞，已中止")??;
+            result.map_err(|_| UiMsg::CliStdinTimeout.into_error())??;
         }
         _ = wait_cancel(&mut cancel), if stdin_cancel => {
             drop(stdin);
@@ -214,7 +215,7 @@ pub async fn run_cli_cancellable(
                             }
                             if fatal {
                                 // 設定類錯誤重試不會好，立即中止（kill_on_drop 收掉子程序）
-                                return Err(format!("CLI 回覆錯誤：{line}").into());
+                                return Err(UiMsg::CliReplyError { error: line }.into_error());
                             }
                         }
                         stderr_text.push_str(&line);
@@ -236,7 +237,8 @@ pub async fn run_cli_cancellable(
                 continue;
             },
             _ = tokio::time::sleep(std::time::Duration::from_secs(120)), if !exited => {
-                stall = Some("CLI 120 秒無任何輸出（網路或程序卡死），已中止".to_owned());
+                // 網路或程序卡死
+                stall = Some(UiMsg::CliStalled.to_string());
                 break;
             },
         };
@@ -246,16 +248,16 @@ pub async fn run_cli_cancellable(
                     .expected_conversation_id
                     .is_some_and(|expected| expected != id)
                 {
-                    return Err(format!(
-                        "Agy resume 回到不同對話：預期 {} 、實際 {id}",
-                        log.expected_conversation_id.unwrap_or_default()
-                    )
-                    .into());
+                    return Err(UiMsg::AgyConversationMismatch {
+                        expected: log.expected_conversation_id.unwrap_or_default().to_owned(),
+                        actual: id,
+                    }
+                    .into_error());
                 }
                 if let Some(slot) = log.conversation_id_out {
                     *slot
                         .lock()
-                        .map_err(|_| "Agy conversation ID 回填鎖已損壞")? = Some(id.clone());
+                        .map_err(|_| UiMsg::AgyLockPoisoned.into_error())? = Some(id.clone());
                 }
                 agy_conversation_id = Some(id);
             }
@@ -271,7 +273,9 @@ pub async fn run_cli_cancellable(
                             }
                         }
                         if let Some(slot) = log.agy_usage_out {
-                            *slot.lock().map_err(|_| "Agy usage 回填鎖已損壞")? = Some(current);
+                            *slot
+                                .lock()
+                                .map_err(|_| UiMsg::AgyLockPoisoned.into_error())? = Some(current);
                         }
                     }
                 }
@@ -337,11 +341,14 @@ pub async fn run_cli_cancellable(
         if thinking_to_delta {
             on_delta(&format!("\n⚠ {msg}\n"));
         }
-        return Err(format!("CLI 回覆錯誤：{msg}").into());
+        return Err(UiMsg::CliReplyError { error: msg }.into_error());
     }
     let status = child.wait().await?;
     if let Some((text, true)) = &done {
-        return Err(format!("CLI 回覆錯誤：{text}").into());
+        return Err(UiMsg::CliReplyError {
+            error: text.clone(),
+        }
+        .into_error());
     }
     if done.is_none() && !status.success() {
         // 死法④：CLI crash／被系統殺（無收尾事件＋exit 非零）——殘缺正文不能往下走
@@ -351,11 +358,15 @@ pub async fn run_cli_cancellable(
             .take(5)
             .collect::<Vec<_>>()
             .join("\n");
-        let msg = format!("CLI 異常結束（{status}）：{tail}");
+        let msg = UiMsg::CliCrashed {
+            status: status.to_string(),
+            tail,
+        }
+        .to_string();
         if thinking_to_delta {
             on_delta(&format!("\n⚠ {msg}\n"));
         }
-        return Err(format!("CLI 回覆錯誤：{msg}").into());
+        return Err(UiMsg::CliReplyError { error: msg }.into_error());
     }
     if full_text.is_empty() {
         // 串流沒抓到增量時退回收尾文字（例如未來旗標行為變動）
@@ -373,7 +384,11 @@ pub async fn run_cli_cancellable(
             .take(5)
             .collect::<Vec<_>>()
             .join("\n");
-        return Err(format!("CLI 沒有產出回覆（exit {status}）：{tail}").into());
+        return Err(UiMsg::CliNoReply {
+            status: status.to_string(),
+            tail,
+        }
+        .into_error());
     }
     Ok(CliFinish::Completed(full_text))
 }

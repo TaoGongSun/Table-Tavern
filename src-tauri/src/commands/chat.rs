@@ -455,7 +455,7 @@ pub(crate) async fn gm_narrate(
     // （stream-failure-visible）。CLI 那條路沒有 stream_chat 的收工判定，這裡是唯一防線。
     if display.trim().is_empty() {
         return Err(format!(
-            "AI_EMPTY_RESPONSE: 剝除控制欄後沒有正文 raw_len={}",
+            "AI_EMPTY_RESPONSE: no_text_after_control_lines raw_len={}",
             reply.chars().count()
         ));
     }

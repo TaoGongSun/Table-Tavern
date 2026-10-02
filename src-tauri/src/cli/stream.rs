@@ -1,5 +1,6 @@
 use super::types::CliLine;
 use crate::transport::PromptCacheUsage;
+use crate::ui_msg::UiMsg;
 
 /// claude --output-format stream-json 逐行解析：
 /// text_delta 進正文；thinking_delta 只餵進度顯示（signature 仍略過）；result 事件收尾。
@@ -266,12 +267,20 @@ pub fn parse_codex_line(line: &str) -> CliLine {
                 .pointer("/error/message")
                 .or_else(|| value.get("message"))
                 .and_then(|m| m.as_str())
-                .unwrap_or("CLI 回合失敗")
-                .to_owned(),
+                .map(str::to_owned)
+                .unwrap_or_else(|| turn_failed("Codex")),
             is_error: true,
         },
         _ => CliLine::Other,
     }
+}
+
+/// 收尾事件報失敗卻沒附原因時的說明；cli 是顯示名。
+fn turn_failed(cli: &str) -> String {
+    UiMsg::CliTurnFailed {
+        cli: cli.to_owned(),
+    }
+    .to_string()
 }
 
 /// agy --output-format stream-json 逐行解析（1.1.17 實測）：正文增量在
@@ -314,8 +323,12 @@ pub fn parse_agy_line(line: &str) -> CliLine {
                 },
                 other => CliLine::Done {
                     text: match other.is_empty() {
-                        true => "Gemini CLI 回合失敗".to_owned(),
-                        false => format!("Gemini CLI 回合失敗（{other}）"),
+                        true => turn_failed("Gemini"),
+                        false => UiMsg::CliTurnFailedStatus {
+                            cli: "Gemini".to_owned(),
+                            status: other.to_owned(),
+                        }
+                        .to_string(),
                     },
                     is_error: true,
                 },
@@ -345,8 +358,8 @@ pub fn parse_grok_line(line: &str) -> CliLine {
                 .get("data")
                 .or_else(|| value.get("message"))
                 .and_then(|message| message.as_str())
-                .unwrap_or("Grok CLI 回合失敗")
-                .to_owned(),
+                .map(str::to_owned)
+                .unwrap_or_else(|| turn_failed("Grok")),
             is_error: true,
         },
         _ => CliLine::Other,
@@ -705,7 +718,7 @@ mod tests {
         assert_eq!(
             parse_grok_line(r#"{"type":"error"}"#),
             CliLine::Done {
-                text: "Grok CLI 回合失敗".to_owned(),
+                text: turn_failed("Grok"),
                 is_error: true
             }
         );

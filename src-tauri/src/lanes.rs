@@ -15,6 +15,7 @@ use crate::data::{self, TranscriptEvent, TranscriptKind};
 use crate::session_file;
 use crate::snapshot_patch;
 use crate::transport;
+use crate::ui_msg::UiMsg;
 use crate::usage_log;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -161,8 +162,13 @@ fn read_store(path: &Path) -> LaneStore {
 
 fn write_store(path: &Path, store: &LaneStore) -> Result<(), String> {
     let text = serde_json::to_string_pretty(store).map_err(|error| error.to_string())?;
-    crate::data::commit_world_write(path, text.as_bytes())
-        .map_err(|error| format!("無法寫入 lane 狀態檔 {}：{error}", path.display()))
+    crate::data::commit_world_write(path, text.as_bytes()).map_err(|error| {
+        UiMsg::LaneStateWriteFailed {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        }
+        .to_string()
+    })
 }
 
 /// FNV-1a 64：跨執行、跨版本皆穩定的事件指紋（std 的雜湊器不保證跨版本一致）。
@@ -416,10 +422,11 @@ fn abandon_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!(
-            "中止後刪不掉 session 檔 {}：{error}。這條線已清掉，請再送一次。",
-            path.display()
-        )),
+        Err(error) => Err(UiMsg::SessionAbandonFailed {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        }
+        .into()),
     }
 }
 
@@ -508,10 +515,10 @@ pub(crate) async fn run_turn(
     if call.provider != LaneProvider::Claude
         && (input.confidential.is_some() || input.prefix.is_some())
     {
-        return Err(format!(
-            "{} 續聊線不支援回合後抹寫，私設必須提進凍結 system",
-            call.provider.as_str()
-        ));
+        return Err(UiMsg::LaneRewriteUnsupported {
+            provider: call.provider.as_str().to_owned(),
+        }
+        .into());
     }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
     let key = lane_key(input.lane, call.model_label(), input.scope.as_deref());
@@ -1385,7 +1392,7 @@ print(json.dumps({'event': 'result', 'result': {
         let error = run_turn(&call, &root, &world_id, input, None, |_: &str| {})
             .await
             .expect_err("帶機密段的 grok 線必須被擋下");
-        assert!(error.contains("私設必須提進凍結 system"));
+        assert!(error.starts_with(r#"TTMSG:{"code":"lane_rewrite_unsupported""#));
     }
 
     #[test]
@@ -1978,14 +1985,16 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
             &store_path,
         )
         .expect_err("刪不掉 session 不能當成中止成功");
-        assert!(error.contains("刪不掉 session 檔"), "{error}");
-        assert!(error.contains("已清掉"), "{error}");
+        assert!(
+            error.starts_with(r#"TTMSG:{"code":"session_abandon_failed""#),
+            "{error}"
+        );
         assert!(store.get(key).is_none());
         assert!(read_store(&store_path).get(key).is_none());
         assert!(session_path.exists(), "刪失敗時檔還在");
         let log = std::fs::read_to_string(&usage_log).unwrap();
         assert!(log.contains("rewrite-failed"), "{log}");
-        assert!(log.contains("刪不掉 session 檔"), "{log}");
+        assert!(log.contains("session_abandon_failed"), "{log}");
 
         store.insert(key.to_owned(), lane_state(&[], 0));
         settle_abort(

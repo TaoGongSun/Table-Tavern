@@ -180,7 +180,10 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
     .await
     .unwrap_err()
     .to_string();
-    assert!(error.contains("API key"), "{error}");
+    assert_eq!(
+        error,
+        crate::ui_msg::UiMsg::OpenrouterApiKeyMissing.to_string()
+    );
 
     // 自訂 base URL（無 key）：走 mock server，增量與全文一致
     config.preferences.insert(
@@ -330,7 +333,11 @@ fn http_error_prefixes_real_status_not_body_digits() {
     let real =
         r#"{"error":{"message":"openai_error","type":"bad_response_status_code"},"id":157975}"#;
     let text = http_error(reqwest::StatusCode::SERVICE_UNAVAILABLE, real);
-    assert!(text.starts_with("AI_HTTP_STATUS_503: "), "{text}");
+    // 前綴留在起首，後面是不帶語言的 status=… body=…，玩家換語系也不會冒中文
+    assert_eq!(
+        text,
+        format!("AI_HTTP_STATUS_503: status=503 Service Unavailable body={real}")
+    );
     assert!(text.contains("bad_response_status_code"), "{text}");
 
     // body 自稱 429，狀態是 503：碼必須跟著狀態走
@@ -342,14 +349,14 @@ fn http_error_prefixes_real_status_not_body_digits() {
     let short = "毒".repeat(2000);
     let text = http_error(reqwest::StatusCode::BAD_GATEWAY, &short);
     assert_eq!(text.matches('毒').count(), 2000);
-    assert!(!text.contains("已截斷"), "{text}");
+    assert!(!text.contains("[truncated]"), "{text}");
 
     // 超長才截，且一定標記出來：看似完整其實殘缺的 JSON 比明說截斷更難查
     let long = "毒".repeat(2500);
     let text = http_error(reqwest::StatusCode::BAD_GATEWAY, &long);
     assert!(text.starts_with("AI_HTTP_STATUS_502: "), "{text}");
     assert_eq!(text.matches('毒').count(), 2000);
-    assert!(text.ends_with("…（原始回應已截斷）"), "{text}");
+    assert!(text.ends_with("…[truncated]"), "{text}");
 }
 
 /// 增量塊的 finish_reason 是 null，真正的收尾原因在最後一塊：取最後一則有值的
@@ -459,7 +466,7 @@ async fn generate_image_rejects_empty_data() {
     );
     assert_eq!(
         generate_image(&config, "畫一位角色").await.unwrap_err(),
-        "模型沒有回傳圖片"
+        crate::ui_msg::UiMsg::ImageMissingInReply.to_string()
     );
 }
 

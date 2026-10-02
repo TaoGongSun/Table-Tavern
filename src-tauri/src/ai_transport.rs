@@ -1,3 +1,4 @@
+use crate::ui_msg::UiMsg;
 use crate::{
     cli, config_root, data, data_root, lanes, responses_transport, smart_free, transport, usage_log,
 };
@@ -8,8 +9,12 @@ use tauri::Emitter;
 /// 會掃到桌面、下載項目等受 TCC 保護的位置。固定在專用空目錄，避免無關權限彈窗。
 pub(crate) fn cli_workspace(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let workspace = config_root(app)?.join("cli-workspace");
-    std::fs::create_dir_all(&workspace)
-        .map_err(|error| format!("無法準備 CLI 工作目錄：{error}"))?;
+    std::fs::create_dir_all(&workspace).map_err(|error| {
+        UiMsg::CliWorkspaceFailed {
+            error: error.to_string(),
+        }
+        .to_string()
+    })?;
     Ok(workspace)
 }
 
@@ -22,8 +27,12 @@ fn grok_profile(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let home = root.join("cli-home");
     let grok_home = root.join("grok-home");
     for path in [&home, &grok_home] {
-        std::fs::create_dir_all(path)
-            .map_err(|error| format!("無法準備 grok 設定目錄：{error}"))?;
+        std::fs::create_dir_all(path).map_err(|error| {
+            UiMsg::GrokProfileFailed {
+                error: error.to_string(),
+            }
+            .to_string()
+        })?;
         // 憑證存在這裡，收成 0700 不讓同機其他使用者讀
         #[cfg(unix)]
         {
@@ -116,7 +125,7 @@ pub(crate) async fn prepare_lane_call(
     provider: lanes::LaneProvider,
 ) -> Result<lanes::LaneCall, String> {
     if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
-        return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
+        return Err(UiMsg::CliRiskNotAccepted.into());
     }
     let id = match provider {
         lanes::LaneProvider::Claude => "claude",
@@ -127,12 +136,13 @@ pub(crate) async fn prepare_lane_call(
         .await
         .into_iter()
         .find(|info| info.id == id)
-        .ok_or_else(|| format!("找不到 {id} CLI，請確認已安裝並登入"))?;
+        .ok_or_else(|| UiMsg::CliNotFound { cli: id.to_owned() }.to_string())?;
     if provider == lanes::LaneProvider::Agy && !cli::agy_supports_stream_json(&info.version) {
-        return Err(format!(
-            "Gemini CLI {} 太舊：本 app 需要 1.1.8 以上（要用 --output-format stream-json 拿用量與 conversation ID）。請執行 `agy update` 後重新驗證。",
-            info.version
-        ));
+        // 1.1.8 起才有 --output-format stream-json，拿得到用量與 conversation ID
+        return Err(UiMsg::AgyTooOld {
+            version: info.version,
+        }
+        .into());
     }
     let override_model = cli::tier_override(&config.tier_models, id, tier);
     let model = match provider {
@@ -315,18 +325,24 @@ pub(crate) async fn stream_turn_via_transport(
 
     // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
     if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
-        return Err("尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認".to_owned());
+        return Err(UiMsg::CliRiskNotAccepted.into());
     }
     let info = cli::detect_clis()
         .await
         .into_iter()
         .find(|info| info.id == transport_kind)
-        .ok_or_else(|| format!("找不到 {transport_kind} CLI，請確認已安裝並登入"))?;
+        .ok_or_else(|| {
+            UiMsg::CliNotFound {
+                cli: transport_kind.clone(),
+            }
+            .to_string()
+        })?;
     if transport_kind == "agy" && !cli::agy_supports_stream_json(&info.version) {
-        return Err(format!(
-            "Gemini CLI {} 太舊：本 app 需要 1.1.8 以上（要用 --output-format stream-json 才拿得到用量）。請執行 `agy update` 後重新驗證。",
-            info.version
-        ));
+        // 1.1.8 起才有 --output-format stream-json，拿得到用量
+        return Err(UiMsg::AgyTooOld {
+            version: info.version,
+        }
+        .into());
     }
     let cli_working_dir = cli_workspace(app)?;
 
@@ -459,7 +475,10 @@ pub(crate) async fn stream_turn_via_transport(
             )
             .await
         }
-        other => Err(format!("未知傳輸層：{other}").into()),
+        other => Err(UiMsg::UnknownTransport {
+            transport: other.to_owned(),
+        }
+        .into_error()),
     }
     .map_err(|error| ai_call_failure(error.to_string()))
 }
@@ -479,10 +498,11 @@ mod tests {
         );
         // 已經分得更細的碼原樣放行，不可被籠統的一句蓋掉
         for coded in [
-            "AI_HTTP_STATUS_503: API 回應 503",
-            "AI_EMPTY_RESPONSE: 空白回合",
-            "AI_INCOMPLETE_RESPONSE: 被截斷",
-            "AI_CONTENT_FILTERED: 被擋",
+            "AI_HTTP_STATUS_503: status=503 Service Unavailable body=",
+            "AI_EMPTY_RESPONSE: model=x status=completed",
+            "AI_INCOMPLETE_RESPONSE: model=x finish_reason=length",
+            "AI_CONTENT_FILTERED: model=x finish_reason=content_filter",
+            "AI_HTTP_STATUS_429: TTMSG:{\"code\":\"smart_free_daily_exhausted\"}",
         ] {
             assert_eq!(ai_call_failure(coded.to_owned()), coded);
         }

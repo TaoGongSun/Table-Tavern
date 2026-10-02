@@ -7,6 +7,7 @@ mod store;
 
 use crate::data::AppConfig;
 use crate::transport::{base_url, ChatMessage, DEFAULT_BASE_URL};
+use crate::ui_msg::UiMsg;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -89,17 +90,17 @@ pub async fn prepare_call(
     world: Option<&str>,
     messages: &[ChatMessage],
 ) -> Result<PreparedCall, String> {
-    let key =
-        api_key(config).ok_or_else(|| "尚未設定 OpenRouter API key，請先完成連線".to_owned())?;
+    let key = api_key(config).ok_or_else(|| UiMsg::OpenrouterApiKeyMissing.to_string())?;
     if let Some(client) = api::client() {
         if api::free_daily_remaining(&client, key)
             .await
             .is_some_and(|remaining| remaining <= 0)
         {
-            return Err(
-                "AI_HTTP_STATUS_429: OpenRouter 免費模型今日可用次數已用完，請等額度重置後再試"
-                    .to_owned(),
-            );
+            // 前綴留在起首給前端分流（errQuotaApi），說明改代碼接在後面
+            return Err(format!(
+                "AI_HTTP_STATUS_429: {}",
+                UiMsg::SmartFreeDailyExhausted
+            ));
         }
     }
 
@@ -110,7 +111,7 @@ pub async fn prepare_call(
     let now = now_secs();
     let eligible = select::eligible_models(catalog, required_context(messages), now, &[]);
     if eligible.is_empty() {
-        return Err("目前沒有可用免費模型".to_owned());
+        return Err(UiMsg::NoFreeModels.into());
     }
     // OpenRouter 免費 RP 模型品質不穩，靜默備援會讓句子中途換模、風格突變，玩家又不一定換得回來；
     // 現狀下「不換模型」較好〔作者裁決 2026-09-18〕。因此只送當下穩定首選一支、不送備援陣列：
@@ -130,7 +131,7 @@ pub async fn prepare_call(
             models: vec![primary],
             expiry_warning,
         }),
-        None => Err("目前沒有可用的穩定免費模型，請到設定改用其他免費模型或手動選模".to_owned()),
+        None => Err(UiMsg::NoStableFreeModel.into()),
     }
 }
 

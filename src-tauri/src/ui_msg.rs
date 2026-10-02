@@ -225,6 +225,80 @@ pub enum UiMsg {
     VersionsSyncFailed {
         error: String,
     },
+
+    // ── AI 連線（API／CLI／續聊線）
+    // code 不得含 ai-error.ts 分流正則會認的字樣（rate limit、credential…），否則改變分流；
+    // openrouter_api_key_missing 刻意保留 `api_key`，維持改碼前「API key」字樣的認證分流。
+    CliWorkspaceFailed {
+        error: String,
+    },
+    GrokProfileFailed {
+        error: String,
+    },
+    CliRiskNotAccepted,
+    /// cli 是 claude／codex／agy／grok 的 id 原文。
+    CliNotFound {
+        cli: String,
+    },
+    AgyTooOld {
+        version: String,
+    },
+    UnknownTransport {
+        transport: String,
+    },
+    /// tier 是檔位鍵原文（best／balanced／fast）。
+    TierModelMissing {
+        tier: String,
+    },
+    OpenrouterApiKeyMissing,
+    NoFreeModels,
+    NoStableFreeModel,
+    /// 接在 `AI_HTTP_STATUS_429: ` 後面：前綴留在起首給前端分流。
+    SmartFreeDailyExhausted,
+    /// Responses API 回報失敗卻沒附原因。
+    ResponsesApiFailed,
+    /// 包住 CLI 吐的原話或下面幾則 CLI 失敗代碼。
+    CliReplyError {
+        error: String,
+    },
+    CliStdinTimeout,
+    CliStalled,
+    /// status 是程序結束狀態原文，tail 是 stderr 最後幾行原文。
+    CliCrashed {
+        status: String,
+        tail: String,
+    },
+    CliNoReply {
+        status: String,
+        tail: String,
+    },
+    /// CLI 收尾事件報失敗卻沒附原因；cli 是顯示名（Codex／Gemini／Grok）。
+    CliTurnFailed {
+        cli: String,
+    },
+    CliTurnFailedStatus {
+        cli: String,
+        status: String,
+    },
+    /// 沒有取消訊號卻收到中止；理論上走不到。
+    CliUnexpectedAbort,
+    AgyConversationMismatch {
+        expected: String,
+        actual: String,
+    },
+    AgyLockPoisoned,
+    LaneStateWriteFailed {
+        path: String,
+        error: String,
+    },
+    SessionAbandonFailed {
+        path: String,
+        error: String,
+    },
+    /// provider 是續聊線 id 原文。
+    LaneRewriteUnsupported {
+        provider: String,
+    },
 }
 
 impl fmt::Display for UiMsg {

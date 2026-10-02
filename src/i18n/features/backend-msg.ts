@@ -1,5 +1,6 @@
 // 後端回傳的訊息代碼（src-tauri/src/ui_msg.rs 的 UiMsg）與需修復原因（commit.rs 的 RepairReason）。
-// 各面向的譯文分檔（桌資料面在 backend-msg-table.ts、更新器在 backend-msg-updater.ts），參數表統一放這裡。
+// 各面向的譯文分檔（桌資料面在 backend-msg-table.ts、更新器在 backend-msg-updater.ts、
+// AI 連線面在 backend-msg-ai.ts），參數表統一放這裡。
 // i18n/index.ts 的 t() 會把這份補充字典與主字典視為同一個 MsgKey 空間；翻譯入口是
 // shared/ui/backend-text.ts。`npm run check:i18n` 會從 Rust 抽 code／欄位核對這裡的鍵、佔位符與參數表。
 const COPY = {
@@ -237,6 +238,31 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   app_id_unavailable: {},
   residue_cleanup_stuck: {},
   versions_sync_failed: { error: "string" },
+  cli_workspace_failed: { error: "string" },
+  grok_profile_failed: { error: "string" },
+  cli_risk_not_accepted: {},
+  cli_not_found: { cli: "string" },
+  agy_too_old: { version: "string" },
+  unknown_transport: { transport: "string" },
+  tier_model_missing: { tier: "string" },
+  openrouter_api_key_missing: {},
+  no_free_models: {},
+  no_stable_free_model: {},
+  smart_free_daily_exhausted: {},
+  responses_api_failed: {},
+  cli_reply_error: { error: "string" },
+  cli_stdin_timeout: {},
+  cli_stalled: {},
+  cli_crashed: { status: "string", tail: "string" },
+  cli_no_reply: { status: "string", tail: "string" },
+  cli_turn_failed: { cli: "string" },
+  cli_turn_failed_status: { cli: "string", status: "string" },
+  cli_unexpected_abort: {},
+  agy_conversation_mismatch: { expected: "string", actual: "string" },
+  agy_lock_poisoned: {},
+  lane_state_write_failed: { path: "string", error: "string" },
+  session_abandon_failed: { path: "string", error: "string" },
+  lane_rewrite_unsupported: { provider: "string" },
 };
 
 /** commit.rs 的 RepairReason；鍵是 `needsRepair_<reason>`。 */
