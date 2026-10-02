@@ -1,6 +1,6 @@
 // 本地與 CI 共用的驗證入口：`npm run verify`。任一步非 0 立即停止。
 // 順序有相依：Tauri 的 generate_context! 編譯期要讀前端產物，所以 cargo check／test 必須排在
-// npm run build 之後。cargo fmt 只解析語法、不編譯，放最前面能用幾秒攔掉純格式錯誤。
+// npm run build 之後。結構檢查與版本一致不需要 build，放最前面。cargo fmt 只解析語法。
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +12,7 @@ const WIN = process.platform === "win32";
 
 const steps = [
   { name: "structure", cmd: "node", args: ["scripts/check-structure.mjs"], cwd: ROOT },
+  { name: "version", cmd: "node", args: ["scripts/check-version.mjs"], cwd: ROOT },
   { name: "cargo fmt", cmd: "cargo", args: ["fmt", "--check"], cwd: TAURI },
   { name: "vitest", cmd: "npm", args: ["test"], cwd: ROOT, shell: WIN },
   { name: "i18n", cmd: "npm", args: ["run", "check:i18n"], cwd: ROOT, shell: WIN },
