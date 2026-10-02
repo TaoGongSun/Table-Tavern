@@ -13,7 +13,9 @@
     "verify": "node scripts/verify.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test:webkit": "vitest run --config vitest.webkit.config.ts"
+    "test:webkit": "vitest run --config vitest.webkit.config.ts",
+    "harness:build": "tauri build --features test-harness --config src-tauri/tauri.harness.conf.json --bundles app",
+    "harness": "node scripts/harness.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "~2.12.1",

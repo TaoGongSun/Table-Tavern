@@ -13,12 +13,20 @@ const WIN = process.platform === "win32";
 const steps = [
   { name: "structure", cmd: "node", args: ["scripts/check-structure.mjs"], cwd: ROOT },
   { name: "version", cmd: "node", args: ["scripts/check-version.mjs"], cwd: ROOT },
+  { name: "harness isolation", cmd: "node", args: ["scripts/check-harness-isolation.mjs"], cwd: ROOT },
   { name: "cargo fmt", cmd: "cargo", args: ["fmt", "--check"], cwd: TAURI },
   { name: "vitest", cmd: "npm", args: ["test"], cwd: ROOT, shell: WIN },
   { name: "i18n", cmd: "npm", args: ["run", "check:i18n"], cwd: ROOT, shell: WIN },
   { name: "build", cmd: "npm", args: ["run", "build"], cwd: ROOT, shell: WIN },
   { name: "cargo check", cmd: "cargo", args: ["check"], cwd: TAURI },
   { name: "cargo test", cmd: "cargo", args: ["test"], cwd: TAURI },
+  // 測試通道只在 feature 下編譯，單獨跑一次確保它沒爛掉。
+  {
+    name: "cargo test harness",
+    cmd: "cargo",
+    args: ["test", "--features", "test-harness", "--lib", "harness::"],
+    cwd: TAURI,
+  },
 ];
 
 for (const [i, step] of steps.entries()) {

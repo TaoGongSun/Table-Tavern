@@ -7,6 +7,7 @@
 ## 進行中
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過；省額度已由介面接管解掉，v2 剩多卡介面切換、離線退路、代送開關
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測
+- [test-harness](handoffs/test-harness.md) — 測試通道：測試建置才有的本機控制埠＋對話窗接管＋CLI，讓主線自跑 GUI 實測；包 1（骨架、eval、對話窗接管、隔離）完成待審，剩包 2–3
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [menu-keyboard-webkit](handoffs/menu-keyboard-webkit.md) — ⋯ 選單 macOS WebKit 鍵盤看不到焦點：已進 main，等實機（外觀＋VoiceOver 混用）

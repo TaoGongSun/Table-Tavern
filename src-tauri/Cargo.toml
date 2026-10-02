@@ -37,10 +37,20 @@ flate2 = "1"
 base64 = "0.22"
 semver = "1"
 log = "0.4"
+# 測試通道（test-harness feature）專用，正式包不編譯。
+getrandom = { version = "0.3", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", optional = true }
+block2 = { version = "0.6", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.56"
+
+[features]
+# 只給主線自動化 GUI 實測的測試包用：`npm run harness:build`。正式包絕不開。
+test-harness = ["dep:getrandom", "dep:objc2", "dep:block2"]
 
 [dev-dependencies]
 minisign = "0.7"
