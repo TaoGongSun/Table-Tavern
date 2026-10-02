@@ -1,9 +1,9 @@
 # Task
 Task-ID: ui-redesign
 Title: 介面整體重新設計
-Status: in-progress
+Status: awaiting-verification
 Created: 2026-09-30T21:30:00+08:00
-Updated: 2026-10-02T16:30:00+08:00
+Updated: 2026-10-02T17:00:00+08:00
 
 ## Summary
 現行介面是 Opus 5.5 推出前做的，整體陽春。本案用新模型的設計能力重新設計整個 App 介面，並一併重新規劃各功能的顯示位置。
@@ -16,13 +16,14 @@ Updated: 2026-10-02T16:30:00+08:00
 - 保留 Emblem 的 token 層（顏色／字級 token 名、七套主題）與三條骨架規則；元件與版面全部重做。Emblem 剩下的實聊驗收併進本案〔作者裁決 2026-10-02〕。
 
 ## 進度
-- 分包 1（共用元件＋牌桌主畫面）、分包 2（大廳＋陣容欄）、分包 3（編輯頁三種＋世界書工具列）、分包 4（設定）已完成並 commit 在本分支；施工定案在 [plans](../plans/ui-redesign.md)「分包 2／3／4 施工定案」。分包 1–3 經 Opus／Sol／Grok 三方共識；分包 4 送審三方共識，實作驗收因 Grok 額度用完改 Opus＋Sol 兩方〔作者裁決 2026-10-02〕。
-- 程式落點：大廳 `src/features/lobby/`、陣容欄 `src/views/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；編輯頁共用頁框 `src/views/EditPage.tsx`、世界書工具列 `src/features/worldbook/WorldbookSection.tsx`；設定外框 `src/views/SettingsWindow.tsx`（守門、分頁、關閉鈕）、AI 表單與儲存列 `src/views/SettingsForm.tsx`、連線方式 `src/views/TransportChoice.tsx`、外部指定分頁 `src/features/settings/useRequestedTab.ts`、外框樣式 `src/styles/settings-window.css`。
-- 已實機驗（macOS release 800×600）：分包 1–3 見各自 commit 訊息；分包 4 俄文＋最大字級五分頁、儲存列四態按鈕不位移、未儲存遇 ×／切頁確認與取消；唯讀桌與需修復桌從大廳進入（徽章、寫入停用、修復整頁）；桌卡徽章長譯文截字。
-- 未實機驗：設定的 CLI 首次權限提示與外部指定分頁（齒輪紅點需有新版）、分包 1 遺留項（齒輪紅點、換幕提醒＋錯誤＋狀態同時、⋯ 鍵盤、Windows）。十語系長字：設定頁以俄文（各字串最長）代表，其他畫面未逐一看。
+- 分包 1–5 全部完成並已合併進 main；施工定案在 [plans](../plans/ui-redesign.md)「分包 2／3／4／5 施工定案」。分包 1–3 經 Opus／Sol／Grok 三方共識；分包 4 送審三方、驗收 Opus＋Sol；分包 5 送審與驗收都是 Opus＋Sol（Grok 額度用完）〔作者裁決 2026-10-02〕。
+- 程式落點：大廳 `src/features/lobby/`、陣容欄 `src/views/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；編輯頁共用頁框 `src/views/EditPage.tsx`、世界書工具列 `src/features/worldbook/WorldbookSection.tsx`；設定外框 `src/views/SettingsWindow.tsx`、AI 表單與儲存列 `src/views/SettingsForm.tsx`、連線方式 `src/views/TransportChoice.tsx`、外部指定分頁 `src/features/settings/useRequestedTab.ts`、外框樣式 `src/styles/settings-window.css`；對話窗共用外框 `src/shared/ui/Dialog.tsx`（原生 `<dialog>`）、裁切與 AI 生圖 `src/views/CardImageDialogs.tsx`、對話窗樣式 `src/styles/dialogs.css`。
+- 已實機驗（macOS release 800×600）：分包 1–4 見各自 commit 訊息；分包 5 俄文＋最大字級：一句話開桌、設定＋巢狀 CLI 權限提示（Esc 只關上層）、AI 生圖、裁切（框內按下框外放開不關）、燈箱、匯入身分／路由、開場白面板、介面卡關閉鈕，Esc／遮罩／焦點歸還照表；系統確認窗俄文按鈕（未儲存離開）不截字。
+- 未實機驗：範例桌詢問、格式轉換更新、重構三窗（要 AI）、一句話開桌有綱要後的底列；WebView2 連按 Esc（無 Windows 機）；dialog-button-labels 的 zh-TW／en／de 與刪角色、轉條目、匯入完成通知；設定的外部指定分頁（齒輪紅點需有新版）、分包 1 遺留項（齒輪紅點、換幕提醒＋錯誤＋狀態同時、⋯ 鍵盤、Windows）。十語系長字只以俄文代表。
+- 觀察（範圍外、未處理）：牌桌工具列有「介面卡」鈕時，俄文 800px 下桌名 wedge 縮到只剩一字。
 
 ## 下一步
-施工分包 5（對話窗共用外框，遷移其餘對話窗；見 plans「對話窗」與「施工分包」第 5 條；設定視窗目前自有外框 `.settings-modal`，可評估併入）。流程：主線擬施工做法→送 /sol 與 /grok 審到共識（Grok 額度仍用完就先問使用者怎麼處理）→派子代理實作→主線 verify＋release 包實機→驗收。上列未實機驗項目順帶看。
+已結案進 main（分支已刪）〔作者裁決 2026-10-02：先結案、未實機驗項目之後補測〕。補測上列「未實機驗」各項（排在[實測佇列](../reference/verification-queue.md)），過了就結案移出索引。
 
 ## 實機測試備忘
 - 背景自動化點不到 aria-haspopup 的按鈕（⋯、幕晶片、封存圖示鈕），要請使用者代點；全螢幕操控的點擊送不進這個 app、背景鍵盤移焦也看不到焦點，都不可行。使用者點過 app 後背景點擊會失效，先 `open -a` 該 .app；重開 app 後先截圖確認畫面再點，免得點擊落到輸入區的發言鈕。

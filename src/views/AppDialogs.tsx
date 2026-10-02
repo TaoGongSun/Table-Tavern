@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { AppConfig } from "../shared/contracts/backend-contracts";
 import type { ImportController } from "../controllers/useImportController";
 import { t } from "../i18n";
+import { Dialog } from "../shared/ui/Dialog";
 import { GenerateTableDialog } from "./GenerateTableDialog";
 import { ImportDialogs } from "./ImportDialogs";
 import { SettingsWindow, type SettingsTab } from "./SettingsWindow";
@@ -80,29 +81,32 @@ export function AppDialogs({
 
       {/* 換語言後的範例桌詢問疊在設定視窗之上。 */}
       {regenOpen && (
-        <div className="modal-overlay" onClick={() => void onAnswerRegen("cancel")}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("sampleRegenTitle")}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>{t("sampleRegenTitle")}</h2>
-            <p>{t("sampleRegenBody")}</p>
-            <div className="ai-gen-footer">
-              <button type="button" onClick={() => void onAnswerRegen("cancel")}>
+        <Dialog
+          title={t("sampleRegenTitle")}
+          onDismiss={() => void onAnswerRegen("cancel")}
+          backdrop
+          start={
+            <>
+              <button type="button" className="btn" onClick={() => void onAnswerRegen("cancel")}>
                 {t("sampleRegenCancel")}
               </button>
-              <button type="button" onClick={() => void onAnswerRegen("keep")}>
+              <button type="button" className="btn" onClick={() => void onAnswerRegen("keep")}>
                 {t("sampleRegenKeep")}
               </button>
-              <button type="button" onClick={() => void onAnswerRegen("regen")}>
-                {t("sampleRegenConfirm")}
-              </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+          end={
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void onAnswerRegen("regen")}
+            >
+              {t("sampleRegenConfirm")}
+            </button>
+          }
+        >
+          <p>{t("sampleRegenBody")}</p>
+        </Dialog>
       )}
 
       <ImportDialogs

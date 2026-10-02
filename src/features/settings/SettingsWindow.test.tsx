@@ -166,6 +166,16 @@ describe("SettingsWindow", () => {
     await flush();
   }
 
+  // 遮罩點擊：按下與放開都落在 dialog 本身、座標在框外（happy-dom 的框是 0×0，取負座標）
+  async function clickBackdrop(dialog: Element) {
+    await act(async () => {
+      const at = { bubbles: true, cancelable: true, clientX: -10, clientY: -10 };
+      dialog.dispatchEvent(new PointerEvent("pointerdown", at));
+      dialog.dispatchEvent(new MouseEvent("click", at));
+    });
+    await flush();
+  }
+
   async function typeInto(input: HTMLInputElement | HTMLSelectElement, value: string) {
     const proto =
       input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
@@ -189,6 +199,11 @@ describe("SettingsWindow", () => {
   const tabNamed = (key: Parameters<typeof t>[0]) => tabs().find((b) => b.textContent === t(key))!;
   const selected = () => document.querySelector('[role="tab"][aria-selected="true"]')!.textContent;
   const closeButton = () => document.querySelector<HTMLButtonElement>(".settings-close")!;
+  const settingsDialog = () => document.querySelector<HTMLDialogElement>(".settings-modal")!;
+  const noticeDialog = () =>
+    [...document.querySelectorAll("dialog")].find(
+      (dialog) => dialog.querySelector("h2")?.textContent === t("cliPermissionTitle"),
+    ) ?? null;
   const footer = () => document.querySelector(".settings-foot");
   const form = () => document.querySelector<HTMLFormElement>("#ai-settings-form")!;
   const roundInput = () => document.querySelector<HTMLInputElement>('input[type="number"]')!;
@@ -314,8 +329,8 @@ describe("SettingsWindow", () => {
 
     await click(tabNamed("usageTab"));
     await click(closeButton());
-    await press(window, "Escape");
-    await click(document.querySelector(".modal-overlay")!);
+    await press(settingsDialog(), "Escape");
+    await clickBackdrop(settingsDialog());
     expect(confirmMock).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     expect(selected()).toBe(t("aiTab"));
@@ -382,12 +397,12 @@ describe("SettingsWindow", () => {
     });
     await openDirtyAi(CLAUDE_CONFIG);
     await submit();
-    const notice = document.querySelector(`[aria-label="${t("cliPermissionTitle")}"]`);
+    const notice = noticeDialog();
     expect(notice).not.toBeNull();
     // 提示畫在停用的 fieldset 外，按得到
     expect(notice!.closest("fieldset")).toBeNull();
 
-    await press(window, "Escape");
+    await press(settingsDialog(), "Escape");
     await click(closeButton());
     await click(tabNamed("usageTab"));
     await render({ initialTab: "versions", requestKey: 1 });
@@ -396,7 +411,7 @@ describe("SettingsWindow", () => {
     expect(confirmMock).not.toHaveBeenCalled();
 
     await click(notice!.querySelector("button")!);
-    expect(document.querySelector(`[aria-label="${t("cliPermissionTitle")}"]`)).toBeNull();
+    expect(noticeDialog()).toBeNull();
     expect(selected()).toBe(t("versionsTab"));
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -408,15 +423,15 @@ describe("SettingsWindow", () => {
     });
     await openDirtyAi(CLAUDE_CONFIG);
     await submit();
-    expect(document.querySelector(`[aria-label="${t("cliPermissionTitle")}"]`)).not.toBeNull();
+    expect(noticeDialog()).not.toBeNull();
   }
 
   it("refuses to submit and disables the fields while the CLI notice is open", async () => {
     await openNotice();
     expect(backend.updateCalls).toBe(1);
     expect(document.querySelector<HTMLFieldSetElement>(".settings-fieldset")!.disabled).toBe(true);
-    expect(document.querySelector(".settings-scroll")!.hasAttribute("inert")).toBe(true);
-    expect(footer()!.hasAttribute("inert")).toBe(true);
+    // 背景 inert 交給 showModal 的 top layer（happy-dom 不實作），這裡只確認提示是開著的 modal
+    expect(noticeDialog()!.open).toBe(true);
     await submit();
     expect(backend.updateCalls).toBe(1);
   });
@@ -429,10 +444,10 @@ describe("SettingsWindow", () => {
     await submit();
     expect(backend.updateCalls).toBe(1);
     await click(closeButton());
-    await press(window, "Escape");
+    await press(settingsDialog(), "Escape");
     expect(confirmMock).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(document.querySelector(`[aria-label="${t("cliPermissionTitle")}"]`)).not.toBeNull();
+    expect(noticeDialog()).not.toBeNull();
   });
 
   it("a confirm dialog that fails to open counts as cancel and does not lock later exits", async () => {
@@ -452,7 +467,7 @@ describe("SettingsWindow", () => {
     await click(tabNamed("usageTab"));
     await click(tabNamed("authorTab"));
     await click(closeButton());
-    await press(window, "Escape");
+    await press(settingsDialog(), "Escape");
     await render({ initialTab: "versions", requestKey: 1 });
     expect(confirmMock).toHaveBeenCalledTimes(1);
     await answer(false);

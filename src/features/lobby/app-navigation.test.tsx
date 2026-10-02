@@ -318,7 +318,7 @@ describe("lobby and table navigation", () => {
       });
       await settle();
     }
-    const dialogOpen = () => document.querySelector('[role="dialog"]') !== null;
+    const dialogOpen = () => document.querySelector("dialog") !== null;
 
     it("drops a probe that finishes after leaving for another table", async () => {
       install({
@@ -417,8 +417,8 @@ describe("lobby and table navigation", () => {
 
     await click(cover("Alpha"));
     await importCard();
-    await click(document.querySelector(".opening-translate-all-row .ai-gen-btn")!);
-    await click(document.querySelector(".modal-close")!);
+    await click(document.querySelector(".opening-translate-all")!);
+    await click(document.querySelector(".dialog-close")!);
     await click(homeButton()!);
     await click(cover("Beta"));
     openingOf = "B opening";
@@ -432,7 +432,7 @@ describe("lobby and table navigation", () => {
     expect(document.body.textContent).toContain("B opening");
     // 也不能因為 A 的迴圈收尾而讓 B 的「全部翻譯」鈕卡在忙碌
     expect(
-      document.querySelector<HTMLButtonElement>(".opening-translate-all-row .ai-gen-btn")!.disabled,
+      document.querySelector<HTMLButtonElement>(".opening-translate-all")!.disabled,
     ).toBe(false);
   });
 

@@ -1,9 +1,11 @@
 // 一句話開桌：把玩家的一句話（＋類型標籤）交給 AI 產出世界觀綱要與角色名單，
 // 就地改完再展開成一張真的桌。整組 state 與三支生成流程都在這支元件裡；
 // 關閉只是不畫（open=false 時回 null，元件不卸載），草稿留著，跟拆分前逐字等價。
+// 生成中不能關（× 停用、Esc 無效）；點遮罩一律不關，免得誤觸丟掉整份草稿。
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
+import { Dialog, SwapLabel } from "../shared/ui/Dialog";
 
 const GENRE_KEYS = [
   "genGenreFantasy",
@@ -157,142 +159,174 @@ export function GenerateTableDialog({
 
   if (!open) return null;
 
+  const hasOutline = genOutlineRaw !== null;
   return (
-    <div className="modal-overlay">
-      <div className="modal gen-table-modal" role="dialog" aria-modal="true" aria-label={t("genTitle")} onClick={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <strong>{t("genTitle")}</strong>
-          <button type="button" className="modal-close" aria-label={t("closeBtn")} disabled={genBusy !== null} onClick={onClose}>×</button>
-        </div>
-        <textarea
-          rows={4}
-          value={genInput}
-          placeholder={t("genInputPlaceholder")}
-          aria-label={t("genInputPlaceholder")}
-          disabled={genBusy !== null}
-          onChange={(event) => setGenInput(event.currentTarget.value)}
-        />
-        <div className="gen-genres">
-          {GENRE_KEYS.map((key) => {
-            const selected = genGenres.includes(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                className={`gen-genre${selected ? " gen-genre-selected" : ""}`}
-                aria-pressed={selected}
-                disabled={genBusy !== null}
-                onClick={() => setGenGenres((current) => selected ? current.filter((genre) => genre !== key) : [...current, key])}
-              >
-                {t(key)}
-              </button>
-            );
-          })}
-        </div>
-        <div className="gen-submit-row">
-          <button type="button" className="gen-submit" disabled={genBusy !== null || (!genInput.trim() && genGenres.length === 0)} onClick={() => void generateTableOutline()}>
-            {genBusy === "outline" ? t("genGenerating") : t("genGenerateBtn")}
+    <Dialog
+      title={t("genTitle")}
+      size="l"
+      className="gen-table-dialog"
+      onDismiss={genBusy === null ? onClose : undefined}
+      closeButton
+      start={
+        hasOutline && (
+          <button
+            type="button"
+            className="btn"
+            disabled={genBusy !== null}
+            onClick={() => void generateTableOutline()}
+          >
+            {t("genRerollBtn")}
           </button>
-          <small>{t("genQuotaNote")}</small>
-        </div>
-        {genOutline && (
-          <section className="gen-outline-preview">
+        )
+      }
+      end={
+        hasOutline && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={
+              genBusy !== null || !genOutline || !genOutline.title.trim() || !genOutline.world.trim()
+            }
+            onClick={() => void createGeneratedTable()}
+          >
+            <SwapLabel
+              labels={[t("genCreateBtn"), t("genExpanding")]}
+              current={genBusy === "expand" ? 1 : 0}
+            />
+          </button>
+        )
+      }
+    >
+      <textarea
+        data-autofocus=""
+        rows={4}
+        value={genInput}
+        placeholder={t("genInputPlaceholder")}
+        aria-label={t("genInputPlaceholder")}
+        disabled={genBusy !== null}
+        onChange={(event) => setGenInput(event.currentTarget.value)}
+      />
+      <div className="gen-genres">
+        {GENRE_KEYS.map((key) => {
+          const selected = genGenres.includes(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`gen-genre${selected ? " gen-genre-selected" : ""}`}
+              aria-pressed={selected}
+              disabled={genBusy !== null}
+              onClick={() => setGenGenres((current) => selected ? current.filter((genre) => genre !== key) : [...current, key])}
+            >
+              {t(key)}
+            </button>
+          );
+        })}
+      </div>
+      {/* 有綱要後底部「建立」接手主鈕，這顆降成次鈕但留在原位 */}
+      <div className="gen-generate-row">
+        <button
+          type="button"
+          className={hasOutline ? "btn" : "btn btn-primary"}
+          disabled={genBusy !== null || (!genInput.trim() && genGenres.length === 0)}
+          onClick={() => void generateTableOutline()}
+        >
+          <SwapLabel
+            labels={[t("genGenerateBtn"), t("genGenerating")]}
+            current={genBusy === "outline" ? 1 : 0}
+          />
+        </button>
+        <small>{t("genQuotaNote")}</small>
+      </div>
+      {genOutline && (
+        <section className="gen-outline-preview">
+          <input
+            value={genOutline.title}
+            disabled={genBusy !== null}
+            onChange={(event) => setGenOutline((current) => current && { ...current, title: event.currentTarget.value })}
+          />
+          <textarea
+            rows={6}
+            value={genOutline.world}
+            disabled={genBusy !== null}
+            onChange={(event) => setGenOutline((current) => current && { ...current, world: event.currentTarget.value })}
+          />
+          <h3>{t("genCharListTitle")}</h3>
+          <div className="gen-character-list">
+            {genOutline.characters.map((character, index) => (
+              <div className="gen-character-row" key={index}>
+                <input
+                  className="gen-character-name"
+                  value={character.name}
+                  disabled={genBusy !== null}
+                  onChange={(event) => setGenOutline((current) => current && {
+                    ...current,
+                    characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.currentTarget.value } : item),
+                  })}
+                />
+                <textarea
+                  rows={2}
+                  value={character.tagline}
+                  disabled={genBusy !== null}
+                  ref={(element) => {
+                    if (element) resizeGeneratedCharacterTagline(element);
+                  }}
+                  onInput={(event) => resizeGeneratedCharacterTagline(event.currentTarget)}
+                  onChange={(event) => setGenOutline((current) => current && {
+                    ...current,
+                    characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, tagline: event.currentTarget.value } : item),
+                  })}
+                />
+                <button
+                  type="button"
+                  className="gen-remove-character"
+                  aria-label={t("genRemoveCharacter")}
+                  disabled={genBusy !== null}
+                  onClick={() => setGenOutline((current) => current && {
+                    ...current,
+                    characters: current.characters.filter((_, itemIndex) => itemIndex !== index),
+                  })}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="gen-add-character"
+            disabled={genBusy !== null}
+            onClick={() => setGenOutline((current) => current && {
+              ...current,
+              characters: [...current.characters, { name: "", tagline: "" }],
+            })}
+          >
+            ＋ {t("genAddCharacter")}
+          </button>
+          <div className="gen-add-character-ai">
             <input
-              value={genOutline.title}
+              value={genCharacterHint}
+              placeholder={t("genCharHintPlaceholder")}
+              aria-label={t("genCharHintPlaceholder")}
               disabled={genBusy !== null}
-              onChange={(event) => setGenOutline((current) => current && { ...current, title: event.currentTarget.value })}
+              onChange={(event) => setGenCharacterHint(event.currentTarget.value)}
             />
-            <textarea
-              rows={6}
-              value={genOutline.world}
-              disabled={genBusy !== null}
-              onChange={(event) => setGenOutline((current) => current && { ...current, world: event.currentTarget.value })}
-            />
-            <h3>{t("genCharListTitle")}</h3>
-            <div className="gen-character-list">
-              {genOutline.characters.map((character, index) => (
-                <div className="gen-character-row" key={index}>
-                  <input
-                    className="gen-character-name"
-                    value={character.name}
-                    disabled={genBusy !== null}
-                    onChange={(event) => setGenOutline((current) => current && {
-                      ...current,
-                      characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.currentTarget.value } : item),
-                    })}
-                  />
-                  <textarea
-                    rows={2}
-                    value={character.tagline}
-                    disabled={genBusy !== null}
-                    ref={(element) => {
-                      if (element) resizeGeneratedCharacterTagline(element);
-                    }}
-                    onInput={(event) => resizeGeneratedCharacterTagline(event.currentTarget)}
-                    onChange={(event) => setGenOutline((current) => current && {
-                      ...current,
-                      characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, tagline: event.currentTarget.value } : item),
-                    })}
-                  />
-                  <button
-                    type="button"
-                    className="gen-remove-character"
-                    aria-label={t("genRemoveCharacter")}
-                    disabled={genBusy !== null}
-                    onClick={() => setGenOutline((current) => current && {
-                      ...current,
-                      characters: current.characters.filter((_, itemIndex) => itemIndex !== index),
-                    })}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
             <button
               type="button"
-              className="gen-add-character"
               disabled={genBusy !== null}
-              onClick={() => setGenOutline((current) => current && {
-                ...current,
-                characters: [...current.characters, { name: "", tagline: "" }],
-              })}
+              onClick={() => void generateTableCharacter()}
             >
-              ＋ {t("genAddCharacter")}
-            </button>
-            <div className="gen-add-character-ai">
-              <input
-                value={genCharacterHint}
-                placeholder={t("genCharHintPlaceholder")}
-                aria-label={t("genCharHintPlaceholder")}
-                disabled={genBusy !== null}
-                onChange={(event) => setGenCharacterHint(event.currentTarget.value)}
-              />
-              <button
-                type="button"
-                disabled={genBusy !== null}
-                onClick={() => void generateTableCharacter()}
-              >
-                {genBusy === "character" ? t("genCharGenerating") : t("genAddCharacterAI")}
-              </button>
-            </div>
-          </section>
-        )}
-        {(genResultRaw !== null || genError) && (
-          <section className="gen-result-error" role="alert">
-            <p>{genError || t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
-            <pre>{genError || genResultRaw}</pre>
-          </section>
-        )}
-        {genOutlineRaw !== null && (
-          <div className="gen-result-actions">
-            <button type="button" disabled={genBusy !== null} onClick={() => void generateTableOutline()}>{t("genRerollBtn")}</button>
-            <button type="button" className="gen-submit" disabled={genBusy !== null || !genOutline || !genOutline.title.trim() || !genOutline.world.trim()} onClick={() => void createGeneratedTable()}>
-              {genBusy === "expand" ? t("genExpanding") : t("genCreateBtn")}
+              {genBusy === "character" ? t("genCharGenerating") : t("genAddCharacterAI")}
             </button>
           </div>
-        )}
-      </div>
-    </div>
+        </section>
+      )}
+      {(genResultRaw !== null || genError) && (
+        <section className="gen-result-error" role="alert">
+          <p>{genError || t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
+          <pre>{genError || genResultRaw}</pre>
+        </section>
+      )}
+    </Dialog>
   );
 }

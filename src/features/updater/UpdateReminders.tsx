@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { t } from "../../i18n";
+import { Dialog } from "../../shared/ui/Dialog";
 import type { UpdateController } from "./useUpdateController";
 import { isOfferSkipped, type StartupReminder } from "./version-center";
 
@@ -62,31 +63,29 @@ export function FormatUpdateDialog({ update, preferences, onView }: ReminderProp
   useMarkShown(update, offer?.version ?? null);
   if (!offer) return null;
   return (
-    <div className="modal-overlay" onClick={update.dismissReminder}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("formatDialogTitle", { version: offer.version })}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h2>{t("formatDialogTitle", { version: offer.version })}</h2>
-        <p>{t("formatDialogBody")}</p>
-        <div className="ai-gen-footer">
-          <button type="button" onClick={update.dismissReminder}>
-            {t("updateLaterBtn")}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              update.dismissReminder();
-              onView();
-            }}
-          >
-            {t("updateViewBtn")}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Dialog
+      title={t("formatDialogTitle", { version: offer.version })}
+      onDismiss={update.dismissReminder}
+      backdrop
+      start={
+        <button type="button" className="btn" onClick={update.dismissReminder}>
+          {t("updateLaterBtn")}
+        </button>
+      }
+      end={
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => {
+            update.dismissReminder();
+            onView();
+          }}
+        >
+          {t("updateViewBtn")}
+        </button>
+      }
+    >
+      <p>{t("formatDialogBody")}</p>
+    </Dialog>
   );
 }

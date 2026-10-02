@@ -1,5 +1,5 @@
 /* ============ 卡片介面覆蓋層 ============ */
-/* z-index 低於 .modal-overlay（10）：設定視窗開著時仍要蓋在介面之上 */
+/* 對話窗（含設定視窗）走原生 <dialog> top layer，開著時一律蓋在介面之上 */
 .card-interface-overlay {
   position: fixed;
   inset: 0;
