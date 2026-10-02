@@ -25,3 +25,4 @@
 - [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制 — 下一步：拍板怎麼認名冊欄位、名冊與 present 不一致時誰優先；包 4 已做的在場過濾與自動上下場不重做。
 - [quota-insufficient-alert](tasks/quota-insufficient-alert.md) — AI 請求失敗：攔截式彈窗＋送出失敗保留輸入 — 下一步：錯誤分類與人話文案已由 ai-error-messages 做完；剩彈窗（聊天＋生圖）與送出失敗還原輸入框、玩家那句不先寫進逐字稿。
 - [backend-zh-data-text](tasks/backend-zh-data-text.md) — 寫進桌資料／匯出檔的固定中文（段標、前綴、匯出標題）切語系不會變 — 下一步：拍板存代碼、讀時翻譯，不做舊檔相容〔作者裁決 2026-10-02〕；開工首步＝盤點 13 處各自的寫入點與比對點。
+- [ui-text-polish](tasks/ui-text-polish.md) — 介面文字三處小毛病：en／de 未儲存計數單數錯、新手連線說明各語系長短不一、de 刪除確認窗右引號被擠下行 — 下一步：未排程；(b) 開工先定以哪版說明為準。

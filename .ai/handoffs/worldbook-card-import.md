@@ -1,7 +1,7 @@
 # Handoff: worldbook-card-import
 
 ## Current state
-匯入實作完成、自驗全綠；追加條目「就地展開編輯」UX 改版、「純世界書開局」（匯入成功自動選 GM＋零角色提示改寫）與「條目換編輯對象自動儲存」皆完成；2026-08-02 修掉實測踩到的資料遺失（匯完世界書的新桌被空桌回收整包刪掉）。等使用者實機驗收後結案。
+匯入、條目就地展開、換編輯對象自動存、純世界書開局、空桌回收修復皆於 2026-10-02 實機通過。匯入入口已由 card-import-flow 包 3 改成左下「＋」單一入口自動分流（世界書「⋯」裡沒有匯入，下方 Completed 提到的 WorldEditor 匯入鈕與 `onImported` 已移除）。剩篇幅與配角解禁的實聊驗收，排[實測佇列](../reference/verification-queue.md)梯 2 第 10 項。
 
 ## Completed
 - 後端：`import::worldbook_json`（src-tauri/src/import.rs:407 起）——PNG 先解 chara chunk，角色卡剝到 `character_book` 層；`import_worldbook` 命令改收位元組（src-tauri/src/lib.rs:288）。
@@ -17,6 +17,7 @@
 - 空桌回收誤刪世界書（2026-08-02 使用者實測回報：新桌匯完世界書、桌名還沒改，點別桌整桌連世界書一起消失）：`reclaim_world_if_empty` 判空只看訊息／角色／world.md 三項，世界書就躺在同一個資料夾的 worldbook.json 裡，跟著 `remove_dir_all` 一起沒了。判空加上世界書條目數（src-tauri/src/data.rs:436），讀不出來（檔案損毀）一律當有內容保留，不因讀取失敗刪桌。前端桌名那道防線本來就對——改過名的桌直接跳過回收，不看空不空（src/App.tsx:2929），已驗。
 
 ## Verification
+- 實機（2026-10-02，release 包＋空白設定）：左下「＋」匯入 TestCards/WestFantsy.png（38 條；原驗收的 17 條卡已不在 TestCards）入列；條目就地展開；換編輯對象自動存（已核檔）；新增條目在清單底部展開並入視野；純世界書新桌回大廳後仍在（空桌回收不誤刪）；匯入後自動選 GM。
 - `cargo test`：117 passed, 0 failed。
 - 真卡煙霧（TestCards/b3d7fd3600ab58d3252e8b38340390c4.png，臨時測試已移除）：`real card imported 17 entries`，抽查條目標題「世界观」「app-求治者」等與 constant 旗標正確。
 - `npm run build` exit 0（UX 改版後重跑仍綠）。
@@ -27,11 +28,7 @@
 - 空桌回收：`cargo test` 151 passed, 0 failed；`reclaims_only_untouched_worlds` 補兩個回歸情境（匯了世界書的新桌不回收、worldbook.json 損毀的桌不回收）。`cargo clippy --all-targets` 新增行零警告（既有 7 個警告不在改動範圍）。
 
 ## Remaining / Next action
-- 使用者實機：世界設定 → 世界書「匯入」選該 PNG → 確認 17 條入列；點下方條目「編輯」確認就地展開；「新增條目」確認底部展開並捲到可見。
-- 使用者實機（條目自動存）：改條目 A 內容 → 直接點條目 B 的「編輯」，確認沒彈窗、清單下方顯示「條目已儲存」、A 的改動有留下；改到一半按「返回」也應自動存；「新增條目」填一半跳走仍會問。
-- 使用者實機（純世界書開局）：開一張零角色新桌 → 確認輸入框提示是新文案 → 匯入世界書卡 → 回聊天畫面確認發言對象已是 GM、直接打字 GM 會旁白接話。回報後結案。
-- 使用者實機（空桌回收修復）：開新桌 → 不改桌名直接匯世界書 → 點別桌 → 回頭確認那桌還在、世界書條目都在。已被舊版刪掉的桌救不回來（`remove_dir_all`，無回收桶）。
-- 使用者實機（長度限制刪除＋配角／心理描寫解禁）：用新打的 release 包跑同一張世界書卡確認 GM 旁白篇幅放開、配角會開口說話、角色回覆有內心戲。
+- 使用者實機（長度限制刪除＋配角／心理描寫解禁）：用新打的 release 包跑世界書卡（如 TestCards/WestFantsy.png）確認 GM 旁白篇幅放開、配角會開口說話、角色回覆有內心戲。過了就結案。
 
 ## Constraints
 - 匯入併進當前開啟的桌，不自動開新桌（2026-07-30 與使用者確認現狀即此，如要「一鍵成新桌」另開任務）。
