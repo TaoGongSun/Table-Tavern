@@ -28,14 +28,27 @@ export function WorldbookEntryForm({
 }: WorldbookEntryFormProps) {
   return (
     <form ref={formRef} className="settings-form worldbook-form" onSubmit={onSubmit}>
-      <div className="row">
-        <button type="submit">{t("worldbookSaveEntry")}</button>
-        <button type="button" onClick={() => void onCancel()}>
-          {t("worldbookCancel")}
+      {/* 三顆都是次鈕：頁面的主鈕已是頂列儲存與新增條目。單行不換行，擠不下就截字 */}
+      <div className="worldbook-form-actions">
+        <button type="submit" className="btn btn-shrink" title={t("worldbookSaveEntry")}>
+          <span className="btn-label">{t("worldbookSaveEntry")}</span>
+        </button>
+        <button
+          type="button"
+          className="btn btn-shrink"
+          title={t("worldbookCancel")}
+          onClick={() => void onCancel()}
+        >
+          <span className="btn-label">{t("worldbookCancel")}</span>
         </button>
         {draft.uid !== null && (
-          <button type="button" onClick={() => void onConvert()}>
-            {t("convertEntryToCard")}
+          <button
+            type="button"
+            className="btn btn-shrink"
+            title={t("convertEntryToCard")}
+            onClick={() => void onConvert()}
+          >
+            <span className="btn-label">{t("convertEntryToCard")}</span>
           </button>
         )}
       </div>

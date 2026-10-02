@@ -168,3 +168,13 @@ export function IconArchive(props: IconProps) {
     </Icon>
   );
 }
+
+/** 書本：角色卡轉成世界書條目 */
+export function IconBook(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 2.5h7.5a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2z" />
+      <path d="M3 11.5a2 2 0 0 1 2-2h7.5" />
+    </Icon>
+  );
+}

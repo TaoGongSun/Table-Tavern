@@ -207,7 +207,8 @@ export const zh = {
   // 世界設定
   worldSummary: "世界設定 world.md（只進 GM 上下文，角色只知道 GM 說出口的內容）",
   worldAria: "世界設定",
-  saveWorld: "儲存世界設定",
+  worldbookMore: "世界書更多操作",
+  worldbookCount: "{n} 條",
   worldbookTitle: "世界書",
   worldbookAddEntry: "新增條目",
   worldbookExport: "匯出世界書",
@@ -350,7 +351,7 @@ export const zh = {
   playerPublicLabel: "別人眼中的你（社會身份、外表、風評）",
   privateLabel: "私有設定（只進本角色與 GM 的上下文）",
   tierLabel: "檔位",
-  saveCard: "儲存角色卡",
+  saveBtn: "儲存",
   showImageLabel: "顯示角色圖片（關閉改回 emoji 頭像）",
   addImageBtn: "加入圖片",
   replaceImageBtn: "更換圖片",

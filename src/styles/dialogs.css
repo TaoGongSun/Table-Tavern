@@ -347,27 +347,81 @@
   padding: 0.8rem 0 1rem;
 }
 
-/* 單幕閱讀／角色卡編輯／世界設定編輯共用的整面標題列 */
-.act-reader-header {
+/* ============ 編輯頁頁框（EditPage）與單幕閱讀共用的頂列 ============
+   頂列鋪滿整欄寬（抵掉主欄左右 2rem 與 .chat-body 的上留白），單行不換行：
+   擠不下時標題先截，再縮次鈕（有圖示的縮到只剩圖示）；主鈕、返回與 ⋯ 不縮 */
+.edit-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.edit-page-bar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.4rem;
+  min-width: 0;
+  height: calc(var(--control-h) + 0.8rem);
+  margin: -0.8rem -2rem 0;
+  padding: 0 0.75rem 0 1.5rem;
+  white-space: nowrap;
+  background: var(--surface-0);
+  border-bottom: 1px solid var(--line);
 }
 
-.act-fork {
-  margin-left: auto;
+.edit-page-bar > *,
+.worldbook-head > * {
+  flex: none;
 }
 
-.edit-pane-body {
+h2.edit-page-title {
+  flex: 0 1000 auto;
+  min-width: 3rem;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 700 var(--fs-title) / 1.3 var(--font-ui);
+}
+
+/* 下限＝圖示＋左右 padding：只寫 --control-h 的話 padding 會吃掉圖示，縮到底什麼都看不到 */
+.edit-page-bar > .btn-shrink,
+.worldbook-head > .btn-shrink {
+  flex: 0 100 auto;
+  min-width: calc(1rem + 2.1em + 2px);
+}
+
+/* 主鈕不縮：只要少一像素按鈕字就出省略號，權重再小也擋不住；主欄最窄 520px 時
+   標題、條數、次鈕讓出的空間已足夠放下整顆主鈕 */
+.edit-page-bar > .btn-primary.btn-shrink,
+.worldbook-head > .btn-primary.btn-shrink {
+  flex-shrink: 0;
+}
+
+/* 未儲存數、已儲存、錯誤：頂列正下方，長訊息限高內捲，不把內容區往下推太多 */
+.edit-page-status {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  max-height: 4.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-ui);
+}
+
+.edit-page-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
 }
 
-/* 角色卡編輯頂部的卡面圖／大顆頭像 */
-/* 編輯畫面頂部切兩塊：左邊這張卡的動作、右邊圖片與它的操作鈕，
-   打字欄位維持全寬留在下方；視窗夠窄時兩塊自動疊回上下（2026-07-28 使用者拍板） */
+/* 角色卡編輯頂部「圖＋名字」：左圖、右欄名字與圖片操作；
+   容器窄到右欄放不下（約 28rem）就自動折到圖下方 */
 .card-editor-top {
   display: flex;
   flex-wrap: wrap;
@@ -375,45 +429,25 @@
   align-items: flex-start;
 }
 
-/* 左窄右寬（40:60）：分界比正中間再左一點，圖片與它的按鈕從那裡靠左排，
-   圖才落在畫面中央；容器窄到放不下兩塊（min-width）就疊回上下 */
-.card-editor-actions {
-  flex: 1 1 16rem;
-  min-width: 15rem;
+.card-editor-avatar {
+  flex: none;
+  display: flex;
+  justify-content: center;
 }
 
-.card-editor-media {
-  flex: 1 1 24rem;
-  min-width: 18rem;
-}
-
-.card-editor-actions {
+.card-editor-identity {
+  flex: 1 1 18rem;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
-/* 未儲存提示在這裡是獨立一行，靠左跟著按鈕走（世界設定畫面仍靠按鈕列右緣） */
-.card-editor-actions .unsaved-hint {
-  margin-left: 0;
-}
-
-.card-editor-media {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
   gap: 0.5rem;
 }
 
 /* 圖片操作鈕最多五顆，欄位窄就折行 */
-.card-editor-media .row {
-  flex-wrap: wrap;
-}
-
-.card-editor-avatar {
+.card-editor-media-actions {
   display: flex;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .card-editor-image {
