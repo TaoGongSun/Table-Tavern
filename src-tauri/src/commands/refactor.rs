@@ -16,7 +16,7 @@ pub(crate) fn refactor_apply(
     selection: refactor::RefactorSelection,
     record_receipt: Option<bool>,
 ) -> Result<refactor::RefactorApplySummary, String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
     let result = refactor::apply(&root, &world_id, &outcome, &selection)
@@ -45,6 +45,7 @@ pub(crate) async fn refactor_recommend(
     world_id: String,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRecommendOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -115,6 +116,7 @@ pub(crate) async fn refactor_survey(
     fingerprint: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorSurveyOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -223,6 +225,7 @@ pub(crate) async fn refactor_expand(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let entry_kind = refactor_ai::EntryKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -274,6 +277,7 @@ pub(crate) async fn refactor_expand_person(
     is_player: bool,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorPersonExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -334,6 +338,7 @@ pub(crate) async fn refactor_absorb_entry(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -413,6 +418,7 @@ pub(crate) async fn refactor_split_group(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let group_kind = refactor_ai::GroupKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
@@ -486,6 +492,7 @@ pub(crate) async fn refactor_expand_spans(
     known_fields: Option<Vec<String>>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
+    crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
@@ -574,6 +581,7 @@ pub(crate) fn refactor_export_outcome(
     outcome: refactor::RefactorOutcome,
     path: String,
 ) -> Result<(), String> {
+    crate::data::refuse_if_updating()?;
     let json = serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?;
     // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
     std::fs::write(&path, json).map_err(|error| error.to_string())
@@ -587,6 +595,7 @@ pub(crate) fn refactor_export_saved(
     world_id: String,
     path: String,
 ) -> Result<(), String> {
+    crate::data::refuse_if_updating()?;
     let root = data_root(&app)?;
     let content = data::read_refactor_outcome(&root, &world_id)
         .map_err(|error| error.to_string())?

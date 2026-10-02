@@ -739,7 +739,7 @@ fn restore_backup_then_open_and_rejects_bad_preconditions() {
 #[test]
 fn open_world_is_busy_while_a_write_permit_is_held() {
     let (root, id) = fresh("busy");
-    let permit = super::super::world_lock::world_write_permit(&id);
+    let permit = super::super::world_lock::world_write_permit(&id).unwrap();
     assert_eq!(open_world(root.path(), &id).unwrap(), OpenWorld::Busy);
     drop(permit);
     assert_eq!(open_world(root.path(), &id).unwrap(), OpenWorld::Ready);
@@ -790,7 +790,7 @@ fn list_names_a_repair_world_from_pre_and_skips_recover_when_busy() {
 
     let (root, id) = fresh("list-busy");
     clone_as(root.path(), &id, "S", "S");
-    let permit = super::super::world_lock::world_write_permit(&id);
+    let permit = super::super::world_lock::world_write_permit(&id).unwrap();
     list_worlds(root.path()).unwrap();
     assert!(side(root.path(), &id, "S").exists());
     drop(permit);

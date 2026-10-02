@@ -27,7 +27,7 @@ pub(crate) fn reclaim_world_if_empty(
     app: tauri::AppHandle,
     world_id: String,
 ) -> Result<bool, String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::reclaim_world_if_empty(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
@@ -43,7 +43,7 @@ pub(crate) fn rename_world(
     world_id: String,
     new_name: String,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::rename_world(&data_root(&app)?, &world_id, &new_name).map_err(|error| error.to_string())
 }
 
@@ -58,7 +58,7 @@ pub(crate) fn write_world_md(
     world_id: String,
     content: String,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::write_world_md(&data_root(&app)?, &world_id, &content).map_err(|error| error.to_string())
 }
 
@@ -76,7 +76,7 @@ pub(crate) fn upsert_worldbook_entry(
     world_id: String,
     entry: data::WorldbookEntry,
 ) -> Result<u64, String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::upsert_worldbook_entry(&data_root(&app)?, &world_id, entry)
         .map_err(|error| error.to_string())
 }
@@ -87,7 +87,7 @@ pub(crate) fn reorder_worldbook_entries(
     world_id: String,
     uids: Vec<u64>,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::reorder_worldbook_entries(&data_root(&app)?, &world_id, &uids)
         .map_err(|error| error.to_string())
 }
@@ -98,7 +98,7 @@ pub(crate) fn delete_worldbook_entry(
     world_id: String,
     uid: u64,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::delete_worldbook_entry(&data_root(&app)?, &world_id, uid)
         .map_err(|error| error.to_string())
 }
@@ -111,7 +111,7 @@ pub(crate) fn worldbook_entry_to_character(
     color: String,
     as_player: bool,
 ) -> Result<CharacterMeta, String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::worldbook_entry_to_character(&data_root(&app)?, &world_id, uid, color, as_player)
         .map_err(|error| error.to_string())
 }
@@ -122,7 +122,7 @@ pub(crate) fn character_to_worldbook_entry(
     world_id: String,
     character_id: String,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::character_to_worldbook_entry(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
@@ -141,7 +141,7 @@ pub(crate) fn import_worldbook(
     label: String,
 ) -> Result<data::WorldbookImport, String> {
     let json_text = import::worldbook_json(&data).map_err(|error| error.to_string())?;
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
     let before = receipts::snapshot(&root, &world_id);
     let result =
@@ -184,7 +184,7 @@ pub(crate) fn card_openings(
 
 #[tauri::command]
 pub(crate) fn dedupe_worldbook(app: tauri::AppHandle, world_id: String) -> Result<usize, String> {
-    let _permit = data::world_write_permit(&world_id);
+    let _permit = data::world_write_permit(&world_id)?;
     data::dedupe_worldbook(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
@@ -219,6 +219,7 @@ pub(crate) fn export_worldbook(
     world_id: String,
     path: String,
 ) -> Result<(), String> {
+    crate::data::refuse_if_updating()?;
     data::export_worldbook(&data_root(&app)?, &world_id, std::path::Path::new(&path))
         .map_err(|error| error.to_string())
 }

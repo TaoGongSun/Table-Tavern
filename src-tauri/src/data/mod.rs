@@ -47,6 +47,9 @@ pub use world::{
     world_has_state_bar, write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
 };
 pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
+pub(crate) use world_lock::{
+    install_guarded, refuse_if_updating, update_gate_raised, UPDATE_GATE_MESSAGE,
+};
 pub use world_lock::{world_write_permit, world_write_permit_async};
 pub use worldbook::{
     character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
@@ -58,6 +61,7 @@ pub use worldbook::{
 // 拿掉又會讓 facade 對外少掉路徑，所以單獨成行標 allow。
 #[allow(unused_imports)]
 pub use config::validate_sponsor_pack;
+pub(crate) use format::marker::current_format;
 #[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]

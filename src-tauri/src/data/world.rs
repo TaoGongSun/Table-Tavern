@@ -98,7 +98,7 @@ fn write_new_world(root: &Path, id: &str, name: &str) -> DataResult<()> {
 pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
     validate_single_line("world name", name)?;
     let id = new_id();
-    let _permit = super::world_lock::world_write_permit(&id);
+    let _permit = super::world_lock::world_write_permit(&id)?;
     write_new_world(root, &id, name)?;
     Ok(id)
 }
@@ -147,7 +147,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
         return Ok(existing.id);
     }
     let world_id = new_id();
-    let _permit = super::world_lock::world_write_permit(&world_id);
+    let _permit = super::world_lock::world_write_permit(&world_id)?;
     write_new_world(root, &world_id, &sample.world_name)?;
     write_world_md(root, &world_id, &sample.world_md)?;
 
@@ -674,7 +674,7 @@ mod tests {
         fs::create_dir_all(&pre).unwrap();
         fs::write(pre.join("kept.txt"), b"pre").unwrap();
 
-        let _permit = super::super::world_lock::world_write_permit(&id);
+        let _permit = super::super::world_lock::world_write_permit(&id).unwrap();
         let error = delete_world(root.path(), &id).unwrap_err();
         assert!(
             error.to_string().contains("這張桌正在處理中，請稍候再試"),

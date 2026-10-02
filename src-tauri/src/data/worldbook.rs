@@ -816,6 +816,7 @@ pub fn dedupe_worldbook(root: &Path, world_id: &str) -> DataResult<usize> {
 }
 
 pub fn export_worldbook(root: &Path, world_id: &str, path: &Path) -> DataResult<()> {
+    crate::data::refuse_if_updating()?;
     let source = worldbook_path(root, world_id)?;
     if source.exists() {
         // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄

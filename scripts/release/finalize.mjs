@@ -24,6 +24,7 @@ import { evaluateVersions, readVersions } from "../check-version.mjs";
 import {
   buildLatestJson,
   decodeMinisignArmor,
+  readCurrentFormat,
   extractChangelogNotes,
   githubReleasePlan,
   planReleaseFiles,
@@ -235,6 +236,9 @@ export function finalizeRelease(options) {
   const exeSignature = readFileSync(join(outDir, `${planned.names.exe}.sig`), "utf8");
   const appSignature = readFileSync(join(outDir, `${planned.names.appTarGz}.sig`), "utf8");
   const pubDate = options.pubDate ?? new Date().toISOString();
+  const markerPath =
+    options.markerPath ?? join(root, "src-tauri/src/data/format/marker.rs");
+  const formatVersion = readCurrentFormat(readFileSync(markerPath, "utf8"));
   const latest = buildLatestJson({
     version,
     notes: notes.notes,
@@ -243,6 +247,7 @@ export function finalizeRelease(options) {
     repoBase: updater.repoBase,
     exeSignature,
     appSignature,
+    formatVersion,
   });
   writeFileSync(join(outDir, "latest.json"), `${JSON.stringify(latest, null, 2)}\n`);
 

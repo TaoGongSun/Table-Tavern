@@ -15,6 +15,7 @@ pub(crate) async fn open_stage(
     prompt: &str,
     emit: impl FnMut(&str),
 ) -> Result<(String, String), String> {
+    crate::data::refuse_if_updating()?;
     let session_id = crate::lanes::new_session_id();
     let raw = run_stage(
         call,
@@ -38,6 +39,7 @@ pub(crate) async fn resume_stage(
     prompt: &str,
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
+    crate::data::refuse_if_updating()?;
     run_stage(
         call,
         world_id,

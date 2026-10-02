@@ -141,6 +141,54 @@
   - 恢復途中任何 IO 錯都只把那一桌標 `needs_repair`，不刪 I／P／N，清單其他桌照常。操作日誌用暫存檔＋改名替換。
   - 前端所有 `updateConfig` 在模組層依呼叫順序串行送出；設定檔驗證過才落檔，所有平台 tmp→`config.json` 直接改名。
 
+## 包 3 做法（Claude、Grok、Sol 三方共識 2026-10-02）
+
+範圍：偵測、下載進版本庫、更新閘門、兩平台安裝、提醒等級、略過此版與自動檢查開關。**畫面全歸包 5**：包 3 只交後端 command／事件與前端 `useUpdateController`，不畫任何提示。「更新前那一版」由包 4 插進安裝流程。
+
+- **plugin**：`tauri-plugin-updater` 2.13.x 註冊在 Rust 端；不裝 JS 套件、不開 capability（前端只呼叫我們自己的 command）。Windows 安裝模式用預設的 passive。`requireSignedVersion` 不開（包 1 已定）。
+- **格式等級資訊**：`finalize.mjs` 從 `src-tauri/src/data/format/marker.rs` 解析 `CURRENT_FORMAT`，寫進 `latest.json` 頂層 `format_version`。客戶端從 `Update.raw_json` 讀；欄位缺或讀不懂就當沒有格式轉換。
+- **`update_check(manual)`**：呼叫 `check()`。回 `null` 或 `{version, current_version, notes, pub_date, level, skipped}`：
+  - `level`：遠端 `format_version` 大於本版 `CURRENT_FORMAT` → `format`；否則版本號最左邊不同的那一位是第三位 → `patch`，其餘 → `feature`。
+  - `skipped`：等於偏好 `update_skipped_version`。被略過的版本照樣回傳，提醒與否由畫面決定。
+  - 拿到的 `Update` 物件存進 app state，下載與安裝用它。
+  - 自動檢查（`manual=false`）任何失敗都回 `null`、只記 log。手動檢查失敗回錯誤字串。
+- **檢查時機**：前端 controller 在啟動時呼叫一次，之後每 24 小時一次。偏好 `update_auto_check` 預設開；關了就只有手動檢查。
+- **版本庫**（`app_local_data_dir()/versions/`，包 4 的回退、保留 3 版、逐版刪除都讀這個版面）：
+  - 每版一個目錄 `<版本>/`：安裝檔、`<檔名>.sig`（`Update.signature` 原文，即 base64 包著的 minisign 簽章）、`release.json`（`version`、`platform`、`file`、`format_version`、`size`、`downloaded_at`）。
+  - 檔名取下載網址最後一段，必須符合 `^[A-Za-z0-9._-]+$` 且副檔名對平台（Windows `-setup.exe`、Mac `.app.tar.gz`），否則拒絕。
+  - `update_download()`：該版目錄已在且重驗通過 → 直接沿用、不下載。否則用 `Update::download`（plugin 在這步驗簽），進度用事件 `update-progress`；寫進 `.partial-<版本>/`，檔案 fsync → 舊的同版目錄（驗不過的）先改名成 `.trash-<版本>` → `.partial` 改名成正式 → fsync `versions/` → 刪 trash。每次下載開始前先清掉該版的 `.partial-<版本>`、`.trash-<版本>`；啟動時清全部殘留。
+  - **驗簽函式**（安裝前重驗與包 4 回退共用）：`.sig` 與 conf 公鑰各自先 base64 解碼，再用 `minisign-verify` 驗；同時核對 `release.json` 的版本與平台。
+- **更新閘門**（`world_lock` 與設定鎖共用一個閘門狀態）：
+  - 閘門旗標與每桌鎖表放在同一把 mutex 下。開閘＝在這把 mutex 內設旗標、取出當下所有鎖的快照，並呼叫 `notify_waiters()` 叫醒所有等待中的許可；之後新建的鎖與新許可一律拒絕。
+  - `world_write_permit`／`_async` 改回 `Result`：取鎖表時查旗標；同步版自旋的每一圈在 `try_read` 前先查旗標，開閘就回錯；非同步版在持有鎖表 mutex 時就建立開閘通知的 `Notified`，再 `select` 同時等讀鎖與通知，開閘就回錯。兩版拿到讀鎖後都再查一次旗標，已開閘就放掉鎖回錯。
+  - 設定寫入的閘在共用的 `update_config_with`：拿設定鎖前查旗標，開閘就回錯。`read_config` 觸發的舊設定遷移遇到閘門就只讀不寫。
+  - 開閘後依快照逐一非同步等每桌的獨占，最後拿設定鎖，全部持有到程序結束。在途的 AI 回應握著共用許可，閘門會等它結束；前端在 AI 回應時把安裝鈕標成「等回應結束」並附停止鍵（既有 `stopResponse`）。
+  - `update_install()` 本身序列化：同時第二次呼叫直接回「已在安裝」。
+  - 桌與設定以外的寫入（模型清單快取、用量紀錄、CLI session 檔等）由實作者逐一列出，分成「已在共用許可或設定鎖下」與「要另外擋」兩類，交驗收。
+  - 程序退出不會丟掉作業系統快取，寫入函式回傳即算落地，不另做全碟 sync。
+  - 失敗放閘：任何在「啟動安裝」之前的失敗（重驗、Mac 替換的任一步、Windows 安裝程式啟動不了）都放開閘門，App 照常可用。
+- **Windows 安裝**：用 plugin 的 `Update::install(bytes)`（NSIS `/UPDATE`＋passive，`ShellExecuteW` 成功後本體 `process::exit`）。安裝程式啟動之後的失敗，舊程序已退出、無法當次挽回，由下次啟動與包 4 回退處理。NSIS 偵測到舊程序還沒退完時會先關它再繼續，這段時序列入實機矩陣。
+- **Mac 安裝**（不用 plugin 的 `install`：2.13.1 仍是舊 App 先搬進暫存目錄、換新失敗時舊 App 隨暫存目錄一起被刪）：
+  1. 找目前 `.app`（`extract_path_from_executable`）。路徑在 App Translocation（含 `/AppTranslocation/`）或上層目錄不可寫 → 不動任何東西，回「無法自動替換」，前端開 GitHub 下載頁。
+  2. 同目錄先跑一次「殘留整理」（同 `update_post_launch`，見步驟 6）。整理完 `.TableTavern-update.app` 還在就停，回「無法自動替換」。
+  3. 解壓到 `.TableTavern-update.app`：tar 第一層是 `Table Tavern.app/`，剝掉這層，讓 `Contents/` 直接落在目錄下；解完核對 `Contents/Info.plist` 的版本等於要裝的版本。
+  4. `renamex_np(新, 舊, RENAME_SWAP)` 原子對調：成功後原路徑是新版，`.TableTavern-update.app` 變成舊版。磁碟不支援對調 → 刪掉解壓物，回「無法自動替換」。
+  5. 換下的舊版**不刪**：改名成同目錄可見的 `Table Tavern (previous).app`（已存在就先刪掉那份），新版啟動失敗時玩家還有一個能開的 App。改名失敗就讓它留在 `.TableTavern-update.app`，交給下次的殘留整理。`touch` 新 `.app` 後 `app.restart()`。
+  6. **殘留整理**（新版前端掛載完成後呼叫 `update_post_launch()`；安裝步驟 2 也跑）：
+     - 只在目前執行的 bundle 是正式位置（檔名 `Table Tavern.app`、不在 App Translocation）時才動手；從 `previous` 或其他位置啟動就什麼都不做。
+     - 同目錄的 `.TableTavern-update.app` 與 `Table Tavern (previous).app` 都讀 `Info.plist`，版本一律用 SemVer 比：bundle id 不是本 App，或就是目前執行的 bundle → 不動。`.TableTavern-update.app` 讀不到 `Info.plist` → 解壓中斷的殘留（對調下來的舊版一定讀得到）：刪掉。`previous` 讀不到 → 不動。
+     - `.TableTavern-update.app` 版本小於目前 → 這是對調後、改名前中斷留下的舊版：改名成 `previous`（取代較舊的那份）。版本大於等於目前 → 沒換上的解壓物：刪掉。
+     - 新版成功掛載後，`previous` 版本小於目前才刪。
+- **偏好鍵**：`update_auto_check`（bool，預設 true）、`update_skipped_version`（版本字串，略過此版寫入、選了更新的版本就清掉）。
+- **測試**：等級判斷、`skipped`、檔名驗證、版本庫沿用／取代／殘留清除、base64 解碼後驗簽（含竄改失敗）、閘門（開閘後新許可與新桌被拒、同步自旋與多個非同步等待者都會因開閘退出、等在途許可放開才完成、失敗放閘、重複安裝被拒）、設定寫入被閘、Mac 流程用假目錄測（剝第一層、版本核對、對調不支援與上層不可寫兩種退路、對調後改名前中斷的舊版被改名成 previous 而非刪除、從 previous 啟動時整理什麼都不做、`post_launch` 只刪較舊版、解壓中斷沒有 plist 的殘留被刪、`0.9.0` 與 `0.10.0` 照 SemVer 比）、`finalize.mjs` 寫 `format_version`。實機另排驗證佇列。
+
+- **實作時補定的細節**（Opus、Sol 驗收通過，〔模型判斷·未裁決〕）：
+  - tauri 鎖到 2.12.1（updater 2.13.1 需要），npm `@tauri-apps/api`／`cli` 同為 `~2.12.1`，兩邊要一起升。
+  - 待裝版本槽：只有下載中、安裝中算忙碌（檢查不覆寫、不連網）；已下載未安裝照常檢查，遠端換版就改指新版。`update_install` 帶 `update_download` 回的版本核對。
+  - 略過鍵在重驗通過、開閘前才清；安裝失敗前端重讀設定。
+  - Mac 解壓保留 `mode & 0o777`；只允許解析後仍在 bundle 內的相對連結。
+  - 沒握桌鎖的在途 AI（開桌大綱、翻譯開場白、重構建議等）不在安裝等待集合，新呼叫在入口被拒；「一句話開桌」在建桌與補內容之間有空隙，最壞留下一張空桌。
+
 ## 實機驗證（技術上未定，失敗有退路）
 
 - **Mac「App 管理」保護**（macOS 13+）：ad-hoc 版沒有 Team ID，替換自身可能被擋。矩陣：`/Applications`、使用者 `~/Applications`、從 Downloads 直接啟動（App Translocation）、替換後重開；記錄新舊 `.app` 的 quarantine 與簽章狀態。被擋→確認舊 App 還在，再開下載頁。第一次從 DMG 安裝的 quarantine 歸 release-1-mac-signing。

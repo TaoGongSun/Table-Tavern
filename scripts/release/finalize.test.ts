@@ -51,6 +51,7 @@ describe("finalizeRelease 演練", () => {
     });
 
     expect(result.latest.version).toBe(version);
+    expect(result.latest.format_version).toBe(1);
     expect(result.latest.notes).toBe("這版說明");
     expect(result.latest.pub_date).toBe("2026-10-01T03:04:05.000Z");
     expect(result.latest.platforms["windows-x86_64"].signature).toBe("EXE-SIG\n");
@@ -67,6 +68,7 @@ describe("finalizeRelease 演練", () => {
       "dmg-bytes",
     );
     const written = JSON.parse(readFileSync(join(staged.out, "latest.json"), "utf8"));
+    expect(written.format_version).toBe(1);
     expect(written).toEqual(result.latest);
   });
 
