@@ -347,48 +347,6 @@
   padding: 0.8rem 0 1rem;
 }
 
-/* 前幕暫時面板：錨在主欄右側 */
-.acts-flyout {
-  position: absolute;
-  inset: 0 0 0 auto;
-  z-index: 5;
-  width: 16rem;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 0.5rem;
-  gap: 0.4rem;
-  background: var(--surface-1);
-  border-left: 1px solid var(--line);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
-}
-
-.acts-flyout-hide {
-  flex: none;
-  width: 100%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-}
-
-.acts-flyout-list {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  overflow-y: auto;
-}
-
-.acts-flyout-list button {
-  justify-content: flex-start;
-  border: none;
-}
-
-.acts-flyout-list button:hover {
-  background: var(--surface-2);
-}
-
 /* 單幕閱讀／角色卡編輯／世界設定編輯共用的整面標題列 */
 .act-reader-header {
   flex: none;

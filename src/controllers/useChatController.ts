@@ -28,6 +28,8 @@ export interface ChatController {
   generating: { id: string; kind: "dialogue" | "narration" } | null;
   /** `generating !== null`：桌次操作與按鈕的忙碌判斷都讀這個 */
   busy: boolean;
+  /** 同步版的忙碌判斷（ref）：離桌這類 await 之後才檢查的守門用它，不吃舊閉包 */
+  isBusy: () => boolean;
   /** 串流到一半的文字 */
   streamText: string;
   input: string;
@@ -126,6 +128,9 @@ export function useChatController({
   const stopRequested = useRef(false);
   const turnIdRef = useRef<string | null>(null);
   const [canStop, setCanStop] = useState(false);
+
+  /** 同步問「有沒有一輪對話或旁白在跑」：state 的 busy 會晚一拍，守門要用這個 */
+  const isBusy = useCallback(() => busyRef.current, []);
 
   const beginTurn = () => {
     stopRequested.current = false;
@@ -564,6 +569,7 @@ export function useChatController({
       events,
       generating,
       busy: generating !== null,
+      isBusy,
       streamText,
       input,
       setInput,
@@ -588,6 +594,7 @@ export function useChatController({
     [
       events,
       generating,
+      isBusy,
       streamText,
       input,
       awayTooLong,

@@ -1,4 +1,4 @@
-// 主欄下半部的畫面切換：單幕閱讀／角色卡編輯／世界設定／遊玩畫面四選一，外加前幕清單浮層。
+// 主欄下半部的畫面切換：單幕閱讀／角色卡編輯／世界設定／遊玩畫面四選一。
 // mainView 的所有權留在 App，這裡只依 App 判定好的值分派——四種卡片畫面的儲存、封存、
 // 刪除接線各不相同（新卡存完要留在編輯器、玩家卡走另一支善後、只有既有角色卡能真刪），
 // 原本的三元式逐條照抄過來，不合併。
@@ -10,12 +10,6 @@ import { CardEditor } from "./CardEditor";
 import { WorldEditor } from "./WorldEditor";
 
 interface MainViewProps {
-  /** 前幕浮層開著（「至少換過一幕」的條件由 App 併進來） */
-  actsOpen: boolean;
-  /** 目前第幾幕：浮層列出 0 到 scene-1 */
-  scene: number;
-  onHideActs: () => void;
-  onOpenScene: (n: number) => void;
   sceneLabelOf: (n: number) => string;
   world: string;
   worldName: string;
@@ -55,10 +49,6 @@ interface MainViewProps {
 }
 
 export function MainView({
-  actsOpen,
-  scene,
-  onHideActs,
-  onOpenScene,
   sceneLabelOf,
   world,
   worldName,
@@ -90,20 +80,6 @@ export function MainView({
 }: MainViewProps) {
   return (
     <div className="chat-body">
-      {actsOpen && (
-        <div className="acts-flyout">
-          <button type="button" className="acts-flyout-hide" onClick={onHideActs}>
-            {t("hideActs")}
-          </button>
-          <div className="acts-flyout-list">
-            {Array.from({ length: scene }, (_, n) => n).map((n) => (
-              <button key={n} type="button" onClick={() => onOpenScene(n)}>
-                {sceneLabelOf(n)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       {sceneReading !== null ? (
         <ActReader
           world={world}

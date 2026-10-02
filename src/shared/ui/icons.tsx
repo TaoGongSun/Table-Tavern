@@ -140,3 +140,31 @@ export function IconExpand(props: IconProps) {
     </Icon>
   );
 }
+
+export function IconHome(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 7.5 8 2.8l5.5 4.7" />
+      <path d="M4 6.8V13h8V6.8M6.8 13V9.5h2.4V13" />
+    </Icon>
+  );
+}
+
+/** 四向星芒：一句話開桌（AI 幫你擺好桌） */
+export function IconSparkle(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l2 2M10 10l2 2M12 4l-2 2M6 10l-2 2" />
+    </Icon>
+  );
+}
+
+/** 收納盒：窄陣容欄底部的封存與暫離入口 */
+export function IconArchive(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2" y="3" width="12" height="3" rx="1" />
+      <path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3" />
+    </Icon>
+  );
+}

@@ -24,7 +24,7 @@ function useMarkShown(update: UpdateController, version: string | null) {
   }, [version, markReminderShown]);
 }
 
-/** 功能版：側欄桌列表上方。 */
+/** 功能版：大廳通知區。 */
 export function UpdateBanner({ update, preferences, onView }: ReminderProps) {
   const offer = shownReminder(update, preferences, "banner");
   useMarkShown(update, offer?.version ?? null);
