@@ -6,7 +6,7 @@ Created: 2026-08-13T00:30:00.418457+08:00
 Updated: 2026-09-09T16:21:41+08:00
 
 ## Summary
-2026-09-09 已由 [free-player-onboarding](free-player-onboarding.md) 取代。
+2026-09-09 已由 [free-player-onboarding](../plans/free-player-onboarding.md) 取代。
 
 原案把 OpenRouter OAuth、一鍵開始、推薦模型、App 內儲值、relay 與地區／金流合規放在同一條路線，範圍過大。現在產品方向改成「免費玩家可以無門檻開始」，只先做兩步：
 
@@ -16,4 +16,4 @@ Updated: 2026-09-09T16:21:41+08:00
 原本「App 內儲值／relay／轉售額度」不再是這條路線的第二階段，也不在目前 roadmap；未來若重新出現真實需求，另案重新做商業與合規評估，不直接沿用舊結論開工。
 
 ## Next action
-- 不再從本 task 開工；請走 [free-player-onboarding](free-player-onboarding.md)。
+- 不再從本 task 開工；請走 [free-player-onboarding](../plans/free-player-onboarding.md)。

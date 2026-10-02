@@ -1,6 +1,6 @@
 # 免費玩家零門檻開始：OpenRouter 一鍵連接 → 動態穩定免費 → 推薦／限時免費模型
 
-本檔存放 [free-player-onboarding](../tasks/free-player-onboarding.md) 的正式規格。2026-09-09 重新整理自舊 `easy-pay-onboarding` 與 `ai-connection-provider-panels`；目標不是只做到「免費第一句」，而是讓一般玩家在不懂 API key、model id、provider 與高中低 tier 的前提下，長期也能得到實用的免費對話體驗。
+本檔存放 free-player-onboarding 的正式規格。2026-09-09 重新整理自舊 `easy-pay-onboarding` 與 `ai-connection-provider-panels`；目標不是只做到「免費第一句」，而是讓一般玩家在不懂 API key、model id、provider 與高中低 tier 的前提下，長期也能得到實用的免費對話體驗。
 
 實作狀態（2026-09-18）：動態 `stable_free`、穩定前兩名 UI、限時／實驗性推薦、§15 新限免提示與舊 `smart_free` 遷移均已完成並 commit 到 `plan/free-player-onboarding`；目前待實機驗收。
 
