@@ -1,5 +1,6 @@
-use super::{invalid_data, DataResult};
+use super::DataResult;
 use crate::cli::ModelOption;
+use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -49,7 +50,7 @@ fn read_raw_config(path: &Path) -> DataResult<Value> {
     }
     let value: Value = serde_json::from_str(&text)?;
     if !value.is_object() {
-        return Err(invalid_data("設定檔不是 JSON 物件"));
+        return Err(UiMsg::ConfigNotObject.into_error());
     }
     Ok(value)
 }
@@ -75,7 +76,7 @@ pub fn update_config_with(
     };
     let object = base
         .as_object_mut()
-        .ok_or_else(|| invalid_data("設定檔不是 JSON 物件"))?;
+        .ok_or_else(|| UiMsg::ConfigNotObject.into_error())?;
     apply_config_patch(object, &patch)?;
     let parsed = parse_app_config(&base)?;
     write_raw_config(root, &path, &base)?;
@@ -111,7 +112,7 @@ pub fn migrate_legacy_config(root: &Path) -> DataResult<AppConfig> {
 fn apply_config_patch(base: &mut Map<String, Value>, patch: &Value) -> DataResult<()> {
     let patch = patch
         .as_object()
-        .ok_or_else(|| invalid_data("設定補丁必須是 JSON 物件"))?;
+        .ok_or_else(|| UiMsg::ConfigPatchNotObject.into_error())?;
     for (key, value) in patch {
         if matches!(key.as_str(), "api_keys" | "tier_models" | "preferences") {
             apply_map_patch(base, key, value)?;
@@ -129,18 +130,24 @@ fn apply_map_patch(base: &mut Map<String, Value>, key: &str, value: &Value) -> D
         base.remove(key);
         return Ok(());
     }
-    let patch_map = value
-        .as_object()
-        .ok_or_else(|| invalid_data(format!("{key} 補丁必須是物件或 null")))?;
+    let patch_map = value.as_object().ok_or_else(|| {
+        UiMsg::ConfigFieldPatchInvalid {
+            key: key.to_owned(),
+        }
+        .into_error()
+    })?;
     let entry = base
         .entry(key.to_owned())
         .or_insert_with(|| Value::Object(Map::new()));
     if !entry.is_object() {
         *entry = Value::Object(Map::new());
     }
-    let map = entry
-        .as_object_mut()
-        .ok_or_else(|| invalid_data(format!("{key} 不是物件")))?;
+    let map = entry.as_object_mut().ok_or_else(|| {
+        UiMsg::ConfigFieldNotObject {
+            key: key.to_owned(),
+        }
+        .into_error()
+    })?;
     for (child, child_value) in patch_map {
         if child_value.is_null() {
             map.remove(child);
@@ -209,14 +216,18 @@ pub fn write_model_catalog(
 }
 
 pub fn validate_sponsor_pack(bytes: &[u8]) -> DataResult<()> {
-    let value: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|error| invalid_data(format!("贊助包不是合法 JSON：{error}")))?;
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        UiMsg::SponsorPackInvalidJson {
+            error: error.to_string(),
+        }
+        .into_error()
+    })?;
     let object = value
         .as_object()
-        .ok_or_else(|| invalid_data("贊助包必須是 JSON 物件"))?;
+        .ok_or_else(|| UiMsg::SponsorPackNotObject.into_error())?;
 
     if object.get("type").and_then(serde_json::Value::as_str) != Some("table-tavern-sponsor-pack") {
-        return Err(invalid_data("贊助包的 type 不正確"));
+        return Err(UiMsg::SponsorPackWrongType.into_error());
     }
 
     if object
@@ -224,7 +235,7 @@ pub fn validate_sponsor_pack(bytes: &[u8]) -> DataResult<()> {
         .and_then(serde_json::Value::as_u64)
         .is_none_or(|format| format == 0)
     {
-        return Err(invalid_data("贊助包的 format 必須是正整數"));
+        return Err(UiMsg::SponsorPackBadFormat.into_error());
     }
 
     Ok(())
@@ -271,7 +282,7 @@ mod tests {
         let error = validate_sponsor_pack(br#"{"type":"other-pack","format":1}"#)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("type"));
+        assert_eq!(error, UiMsg::SponsorPackWrongType.to_string());
     }
 
     #[test]
@@ -279,7 +290,18 @@ mod tests {
         let error = validate_sponsor_pack(br#"{"type":"table-tavern-sponsor-pack"}"#)
             .unwrap_err()
             .to_string();
-        assert!(error.contains("format"));
+        assert_eq!(error, UiMsg::SponsorPackBadFormat.to_string());
+    }
+
+    #[test]
+    fn rejects_sponsor_pack_that_is_not_a_json_object() {
+        let error = validate_sponsor_pack(b"[1]").unwrap_err().to_string();
+        assert_eq!(error, UiMsg::SponsorPackNotObject.to_string());
+        let error = validate_sponsor_pack(b"{").unwrap_err().to_string();
+        assert!(
+            error.starts_with(r#"TTMSG:{"code":"sponsor_pack_invalid_json","error":""#),
+            "{error}"
+        );
     }
 
     #[test]

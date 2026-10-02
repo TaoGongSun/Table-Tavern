@@ -5,6 +5,7 @@ use super::paths::{validate_single_line, world_dir};
 use super::state::{read_state, write_state};
 use super::{invalid_data, new_id, DataResult, Tier};
 use crate::mechanism::{Record, RecordKind};
+use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
@@ -512,16 +513,21 @@ pub fn worldbook_entry_to_character(
         .iter()
         .find(|(key, value)| entry_uid(key, value) == Some(uid))
         .map(|(key, value)| entry_view(value, key.parse().ok()))
-        .ok_or_else(|| invalid_data("找不到世界書條目"))?;
+        .ok_or_else(|| {
+            UiMsg::WorldbookEntryNotFound {
+                uid: uid.to_string(),
+            }
+            .into_error()
+        })?;
     if entry.title.trim().is_empty() {
-        return Err(invalid_data("條目沒有標題，先給標題再轉"));
+        return Err(UiMsg::EntryUntitled.into_error());
     }
     validate_single_line("name", &entry.title)?;
 
     let mut state = if as_player {
         let state = read_state(root, world_id)?;
         if state.player_card_id.is_some() {
-            return Err(invalid_data("這桌已經有玩家卡"));
+            return Err(UiMsg::PlayerCardExists.into_error());
         }
         Some(state)
     } else {
@@ -568,11 +574,11 @@ pub fn character_to_worldbook_entry(
 ) -> DataResult<()> {
     let card = read_character(root, world_id, character_id)?;
     if !card.archived {
-        return Err(invalid_data("這張卡還在桌上"));
+        return Err(UiMsg::CardStillOnTable.into_error());
     }
     let state = read_state(root, world_id)?;
     if state.player_card_id.as_deref() == Some(character_id) {
-        return Err(invalid_data("玩家卡不能轉"));
+        return Err(UiMsg::PlayerCardNotConvertible.into_error());
     }
 
     let content = match (card.public_md.is_empty(), card.private_md.is_empty()) {
@@ -1315,7 +1321,7 @@ mod tests {
             )
             .unwrap_err()
             .to_string(),
-            "這桌已經有玩家卡"
+            UiMsg::PlayerCardExists.to_string()
         );
         assert!(read_worldbook(root.path(), &world_id)
             .unwrap()
@@ -1334,7 +1340,7 @@ mod tests {
             worldbook_entry_to_character(root.path(), &world_id, uid, "#abcdef".to_owned(), false,)
                 .unwrap_err()
                 .to_string(),
-            "條目沒有標題，先給標題再轉"
+            UiMsg::EntryUntitled.to_string()
         );
         assert!(read_worldbook(root.path(), &world_id)
             .unwrap()
@@ -1374,7 +1380,7 @@ mod tests {
             character_to_worldbook_entry(root.path(), &world_id, &active.id)
                 .unwrap_err()
                 .to_string(),
-            "這張卡還在桌上"
+            UiMsg::CardStillOnTable.to_string()
         );
 
         let mut player = character_card(&new_id(), "玩家");
@@ -1387,7 +1393,7 @@ mod tests {
             character_to_worldbook_entry(root.path(), &world_id, &player.id)
                 .unwrap_err()
                 .to_string(),
-            "玩家卡不能轉"
+            UiMsg::PlayerCardNotConvertible.to_string()
         );
         assert!(read_character(root.path(), &world_id, &player.id).is_ok());
     }

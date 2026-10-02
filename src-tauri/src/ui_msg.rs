@@ -21,7 +21,160 @@ const MAX_DEPTH: usize = 3;
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum UiMsg {
     /// 讀寫檔案失敗；error 是系統錯誤原文或另一則 TTMSG。
-    IoFailed { error: String },
+    IoFailed {
+        error: String,
+    },
+
+    // ── 桌與桌目錄
+    /// 別的操作正握著這張桌的獨佔鎖。
+    WorldBusy,
+    WorldNotFound,
+    /// 桌目錄旁有轉換日誌／暫存／垃圾桶，寫入先擋。
+    WorldConverting,
+    WorldReadOnly,
+    WorldNotReadOnly,
+    /// 主資料夾不見了。
+    WorldMainMissing,
+    /// 桌目錄旁還有轉換或還原留下的東西。
+    WorldComboDirty,
+    /// 轉換／還原途中目錄組合變成表格沒列的樣子。
+    WorldComboUnexpected,
+    /// 桌檔內容讀不懂；detail 是技術細節原文。
+    WorldDataInvalid {
+        detail: String,
+    },
+    /// 轉換／還原日誌讀不懂；detail 是技術細節原文。
+    OpLogInvalid {
+        detail: String,
+    },
+    NoMigrationPath {
+        from: u64,
+        to: u64,
+    },
+    BackupNewer,
+    BackupNotFound,
+    NoPreMigrationBackup,
+    RenameFailed {
+        from: String,
+        to: String,
+    },
+    RenameFailedIo {
+        from: String,
+        to: String,
+        error: String,
+    },
+    RemoveFailed {
+        path: String,
+    },
+    TargetExists {
+        path: String,
+    },
+    DataRootNotFound {
+        path: String,
+    },
+    PathOutsideWorld {
+        path: String,
+    },
+
+    // ── 設定檔與贊助包
+    ConfigNotObject,
+    ConfigPatchNotObject,
+    ConfigFieldPatchInvalid {
+        key: String,
+    },
+    ConfigFieldNotObject {
+        key: String,
+    },
+    SponsorPackInvalidJson {
+        error: String,
+    },
+    SponsorPackNotObject,
+    SponsorPackWrongType,
+    SponsorPackBadFormat,
+
+    // ── 角色卡與世界書
+    WorldbookEntryNotFound {
+        uid: String,
+    },
+    EntryUntitled,
+    PlayerCardExists,
+    CardStillOnTable,
+    PlayerCardNotConvertible,
+    CharacterNotFound {
+        id: String,
+    },
+
+    // ── 幕與紀錄
+    SceneForkNotEarlier,
+    SceneNothingToContinue,
+    SceneFirstNoPrevious,
+    SceneRewindHasNewContent,
+    SummaryFirstScene,
+    SummaryContinuedScene,
+    SummaryHasNewContent,
+    SceneEmptyCannotAdvance,
+    PreviousSceneEmpty,
+    TranscriptEmpty,
+    SceneNotFound {
+        scene: u64,
+    },
+
+    // ── 匯入／匯出與圖片
+    CardJsonInvalid {
+        error: String,
+    },
+    CardMissingName,
+    WorldbookJsonInvalid {
+        error: String,
+    },
+    CardNothingToImport,
+    /// PNG 結構壞掉；detail 是技術細節原文。
+    PngInvalid {
+        detail: String,
+    },
+    CardPngNoData,
+    /// 卡片 PNG 裡的角色資料解不開；detail 是技術細節原文。
+    CardDataInvalid {
+        detail: String,
+    },
+    ImageNotPng,
+    InvalidBase64,
+    InvalidFileName,
+    UnsupportedImageFormat,
+    ImageMissingInReply,
+    ImageMissingInReplyTail {
+        tail: String,
+    },
+    ImportReceiptCorrupt {
+        error: String,
+    },
+    NoImportToUndo,
+
+    // ── AI 卡重構
+    RefactorShellConflict {
+        branch: String,
+    },
+    RefactorValueMismatch {
+        first: String,
+        first_value: String,
+        second: String,
+        second_value: String,
+    },
+    RefactorRuleMismatch {
+        path: String,
+        target: String,
+    },
+    RefactorPathConflict {
+        path: String,
+    },
+    RefactorGroupSpanMissing {
+        group: String,
+        title: String,
+        span: String,
+    },
+    RefactorSpanMissing {
+        span: String,
+    },
 }
 
 impl fmt::Display for UiMsg {
@@ -49,6 +202,8 @@ impl UiMsg {
             UiMsg::IoFailed { error } => {
                 format!("File read/write failed: {}", nested(error, depth))
             }
+            // 其餘是只上畫面的操作錯誤，不會進提示詞；萬一進了就原樣保留，跟未知碼一致。
+            other => other.to_string(),
         }
     }
 

@@ -10,7 +10,7 @@ import { backendCode, backendText } from "./backend-text";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// 正式字典目前只有 io_failed；多掛一個帶非 error 參數與數字參數的測試碼，驗證代入規則。
+// 多掛一個同時帶非 error 字串、數字與 error 參數的測試碼，驗證代入規則。
 vi.mock("../../i18n/features/backend-msg", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../i18n/features/backend-msg")>();
   return {
@@ -123,6 +123,32 @@ describe("backendCode", () => {
 });
 
 // t() 是 backendText 的代入出口：參數值（供應商原文、路徑）裡的 {名} 不能被再換。
+describe("桌資料面代碼", () => {
+  afterEach(() => setLang("zh-TW"));
+  const busy = 'TTMSG:{"code":"world_busy"}';
+
+  it("world_busy 判碼不看語系，ru 下顯示俄文", () => {
+    setLang("ru");
+    expect(backendCode(busy)).toBe("world_busy");
+    expect(backendCode(`Error: ${busy}`)).toBe("world_busy");
+    expect(backendText(busy)).toBe(t("worldBusy"));
+    expect(backendText(busy)).not.toMatch(/[\u4e00-\u9fff]/);
+    // 舊版後端的繁中原句不再被當成忙碌碼
+    expect(backendCode("這張桌正在處理中，請稍候再試")).toBeNull();
+  });
+
+  it("數字與路徑參數照原文代入，error 包裹的代碼也翻", () => {
+    setLang("ru");
+    expect(backendText('TTMSG:{"code":"scene_not_found","scene":3}')).toBe("Акта 3 не существует.");
+    expect(
+      backendText(io('TTMSG:{"code":"rename_failed","from":"/a/世界","to":"/b"}')),
+    ).toBe("Не удалось прочитать или записать файл: Не удалось переименовать: /a/世界 → /b");
+    // 參數型別不對（scene 應為數字）就整段原文
+    const wrong = 'TTMSG:{"code":"scene_not_found","scene":"3"}';
+    expect(backendText(wrong)).toBe(wrong);
+  });
+});
+
 describe("t() 參數代入", () => {
   afterEach(() => setLang("zh-TW"));
 
@@ -178,6 +204,15 @@ describe("ErrorNote", () => {
     expect(show(io("disk full")).textContent).toBe(
       "Не удалось прочитать или записать файл: disk full",
     );
+  });
+
+  it("state 存原文：繁中觸發桌忙碌後切成俄文，重繪就換成俄文", () => {
+    const busy = show('TTMSG:{"code":"world_busy"}');
+    expect(busy.textContent).toBe("這張桌正在處理中，請稍候再試");
+    setLang("ru");
+    act(() => root!.render(<ErrorNote text='TTMSG:{"code":"world_busy"}' />));
+    expect(host!.querySelector("[role=alert]")?.textContent).toBe(t("worldBusy"));
+    expect(host!.textContent).not.toMatch(/[一-鿿]/);
   });
 
   it("分流吃原文：前綴照認，小字翻譯", () => {

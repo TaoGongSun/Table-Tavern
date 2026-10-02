@@ -4,6 +4,7 @@ use super::scene::{append_transcript, TranscriptEvent, TranscriptKind};
 use super::state::{read_state, write_state, Mechanism, TableState, WorldState};
 use super::worldbook::{read_worldbook, read_worldbook_value};
 use super::{invalid_data, new_id, DataResult, Tier};
+use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -239,7 +240,7 @@ pub fn delete_world(root: &Path, world_id: &str) -> DataResult<()> {
     let _dir = super::paths::world_dir(root, world_id)?;
     // 跟在途的聊天／匯入寫入互斥。拿不到不排隊，讓前端顯示 worldBusy。
     let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
-        return Err(invalid_data("這張桌正在處理中，請稍候再試"));
+        return Err(UiMsg::WorldBusy.into_error());
     };
     super::world_file::delete_world_tree(root, world_id)
 }
@@ -676,10 +677,7 @@ mod tests {
 
         let _permit = super::super::world_lock::world_write_permit(&id).unwrap();
         let error = delete_world(root.path(), &id).unwrap_err();
-        assert!(
-            error.to_string().contains("這張桌正在處理中，請稍候再試"),
-            "{error}"
-        );
+        assert!(error.to_string() == UiMsg::WorldBusy.to_string(), "{error}");
         assert!(live.join("state.json").is_file());
         assert_eq!(fs::read(pre.join("kept.txt")).unwrap(), b"pre");
     }

@@ -26,6 +26,7 @@ import {
   WorldState,
 } from "./shared/contracts/backend-contracts";
 import { CharacterMeta } from "./features/characters/card-model";
+import { backendText } from "./shared/ui/backend-text";
 import { useAppPreferencesController } from "./controllers/useAppPreferencesController";
 import { useVersionCenter } from "./features/updater/useVersionCenter";
 import { VersionTab } from "./features/updater/VersionTab";
@@ -625,9 +626,8 @@ function App() {
         }
         setWorlds(list);
       } catch (reason) {
-        const message = String(reason);
-        // 後端忙碌文案固定是這句繁中；畫面改顯示目前語系的 worldBusy。
-        setError(message === "這張桌正在處理中，請稍候再試" ? t("worldBusy") : message);
+        // 存原文，ErrorNote 顯示時才翻（桌忙碌是 world_busy 代碼），切語系後跟著換。
+        setError(String(reason));
       }
     });
   }
@@ -655,7 +655,9 @@ function App() {
     setError("");
     const last = imports.receipts[imports.receipts.length - 1];
     try {
-      const accepted = await confirm(t("undoLastImportConfirm", { label: last.label }), {
+      // 收據名稱可能是後端代碼（重構套用），舊收據是中文原文
+      const label = backendText(last.label);
+      const accepted = await confirm(t("undoLastImportConfirm", { label }), {
         title: t("undoLastImport"),
         kind: "warning",
         okLabel: t("undoLastImportOk"),

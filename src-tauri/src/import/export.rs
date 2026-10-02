@@ -1,7 +1,8 @@
 use super::card::PUBLIC_SECTIONS;
-use super::card_io::{base64_encode, png_chunk, PNG_MAGIC};
+use super::card_io::{base64_encode, png_chunk, png_invalid, PNG_MAGIC};
 use super::mechanism::table_tavern_extension;
 use crate::data::{self, CharacterCard, DataResult};
+use crate::ui_msg::UiMsg;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::Path;
@@ -169,21 +170,21 @@ fn blank_png() -> Vec<u8> {
 /// 先清掉，不然 ST 會讀到匯入當下那份舊資料
 fn embed_chara_chunk(base: &[u8], json: &[u8]) -> DataResult<Vec<u8>> {
     if !base.starts_with(PNG_MAGIC) {
-        return Err(data::invalid_data("匯出底圖必須是 PNG"));
+        return Err(UiMsg::ImageNotPng.into_error());
     }
     let mut output = PNG_MAGIC.to_vec();
     let mut offset = PNG_MAGIC.len();
     while offset < base.len() {
         if base.len() - offset < 12 {
-            return Err(data::invalid_data("PNG chunk 格式不完整"));
+            return Err(png_invalid("chunk header truncated"));
         }
         let length = u32::from_be_bytes(base[offset..offset + 4].try_into().unwrap()) as usize;
         let chunk_end = offset
             .checked_add(12)
             .and_then(|end| end.checked_add(length))
-            .ok_or_else(|| data::invalid_data("PNG chunk 長度無效"))?;
+            .ok_or_else(|| png_invalid("chunk length overflow"))?;
         if chunk_end > base.len() {
-            return Err(data::invalid_data("PNG chunk 長度超出檔案範圍"));
+            return Err(png_invalid("chunk runs past end of file"));
         }
         let kind = &base[offset + 4..offset + 8];
         let chunk_data = &base[offset + 8..offset + 8 + length];
@@ -204,7 +205,7 @@ fn embed_chara_chunk(base: &[u8], json: &[u8]) -> DataResult<Vec<u8>> {
         }
         offset = chunk_end;
     }
-    Err(data::invalid_data("PNG 缺少 IEND chunk"))
+    Err(png_invalid("missing IEND chunk"))
 }
 
 #[cfg(test)]

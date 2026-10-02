@@ -10,6 +10,7 @@ use super::super::world_file;
 use super::super::world_lock::try_world_exclusive;
 use super::commit::{self, combo_clean};
 use super::marker::{self, FormatVersion};
+use crate::ui_msg::UiMsg;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,18 +77,17 @@ pub(crate) fn list_world_backups(root: &Path) -> Result<BackupList, String> {
 
 pub(crate) fn delete_world_backup(root: &Path, world_id: &str, kind: &str) -> Result<(), String> {
     validate_id(world_id).map_err(|error| error.to_string())?;
-    let kind = parse_kind(kind).ok_or_else(|| "沒有這個備份".to_owned())?;
-    let _exclusive =
-        try_world_exclusive(world_id).ok_or_else(|| "這張桌正在處理中，請稍候再試".to_owned())?;
+    let kind = parse_kind(kind).ok_or_else(|| String::from(UiMsg::BackupNotFound))?;
+    let _exclusive = try_world_exclusive(world_id).ok_or_else(|| String::from(UiMsg::WorldBusy))?;
     if !commit::live_dir(root, world_id).is_dir() {
-        return Err("主資料夾不在，需要修復".to_owned());
+        return Err(UiMsg::WorldMainMissing.into());
     }
     if !combo_clean(root, world_id) {
-        return Err("目錄組合不乾淨，需要修復".to_owned());
+        return Err(UiMsg::WorldComboDirty.into());
     }
     let dir = backup_dir(root, world_id, kind);
     if !dir.is_dir() {
-        return Err("沒有這個備份".to_owned());
+        return Err(UiMsg::BackupNotFound.into());
     }
     world_file::remove_path_raw(&dir).map_err(|error| error.to_string())?;
     if let Some(parent) = dir.parent() {
@@ -227,7 +227,7 @@ mod tests {
         assert!(listed.backups[0].needs_repair);
         assert_eq!(
             delete_world_backup(&root.0, &gone, "pre").unwrap_err(),
-            "主資料夾不在，需要修復"
+            UiMsg::WorldMainMissing.to_string()
         );
 
         let dirty = id();
@@ -244,7 +244,7 @@ mod tests {
         assert!(row.needs_repair);
         assert_eq!(
             delete_world_backup(&root.0, &dirty, "newer").unwrap_err(),
-            "目錄組合不乾淨，需要修復"
+            UiMsg::WorldComboDirty.to_string()
         );
 
         let busy = id();
@@ -253,12 +253,12 @@ mod tests {
         let _held = try_world_exclusive(&busy).unwrap();
         assert_eq!(
             delete_world_backup(&root.0, &busy, "pre").unwrap_err(),
-            "這張桌正在處理中，請稍候再試"
+            UiMsg::WorldBusy.to_string()
         );
         assert!(backup_dir(&root.0, &busy, BackupKind::Pre).is_dir());
         assert_eq!(
             delete_world_backup(&root.0, &busy, "side").unwrap_err(),
-            "沒有這個備份"
+            UiMsg::BackupNotFound.to_string()
         );
     }
 }

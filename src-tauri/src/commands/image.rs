@@ -1,4 +1,5 @@
 use crate::ai_transport::{cli_workspace, stream_turn_via_transport};
+use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
 use std::path::PathBuf;
 
@@ -220,28 +221,28 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
 
     let bytes = value.as_bytes();
     if !bytes.len().is_multiple_of(4) {
-        return Err("非法 base64 資料".to_owned());
+        return Err(UiMsg::InvalidBase64.into());
     }
     let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
     for (index, chunk) in bytes.chunks_exact(4).enumerate() {
         let padding = chunk.iter().rev().take_while(|&&byte| byte == b'=').count();
         if padding > 2 || (padding > 0 && index + 1 != bytes.len() / 4) {
-            return Err("非法 base64 資料".to_owned());
+            return Err(UiMsg::InvalidBase64.into());
         }
-        let a = sextet(chunk[0]).ok_or_else(|| "非法 base64 資料".to_owned())?;
-        let b = sextet(chunk[1]).ok_or_else(|| "非法 base64 資料".to_owned())?;
+        let a = sextet(chunk[0]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?;
+        let b = sextet(chunk[1]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?;
         let c = if padding >= 2 {
             0
         } else {
-            sextet(chunk[2]).ok_or_else(|| "非法 base64 資料".to_owned())?
+            sextet(chunk[2]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?
         };
         let d = if padding >= 1 {
             0
         } else {
-            sextet(chunk[3]).ok_or_else(|| "非法 base64 資料".to_owned())?
+            sextet(chunk[3]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?
         };
         if (padding >= 1 && chunk[3] != b'=') || (padding >= 2 && chunk[2] != b'=') {
-            return Err("非法 base64 資料".to_owned());
+            return Err(UiMsg::InvalidBase64.into());
         }
         let decoded =
             (u32::from(a) << 18) | (u32::from(b) << 12) | (u32::from(c) << 6) | u32::from(d);
@@ -263,7 +264,7 @@ fn validate_gallery_component(value: &str, require_png: bool) -> Result<(), Stri
         || value.contains('\\')
         || (require_png && !value.ends_with(".png"))
     {
-        return Err("非法檔名".to_owned());
+        return Err(UiMsg::InvalidFileName.into());
     }
     Ok(())
 }
@@ -329,7 +330,7 @@ fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("webp") => "image/webp",
-        _ => return Err("不支援的圖片格式".to_owned()),
+        _ => return Err(UiMsg::UnsupportedImageFormat.into()),
     };
     let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     Ok(format!("data:{mime};base64,{}", encode_base64(&bytes)))
@@ -435,8 +436,11 @@ pub(crate) async fn generate_character_image(
                 "NO_IMAGE：來源回報無法生圖".to_owned()
             } else {
                 match last_sentence(&reply) {
-                    Some(tail) => format!("回覆中沒有圖片：{tail}"),
-                    None => "回覆中沒有圖片".to_owned(),
+                    Some(tail) => UiMsg::ImageMissingInReplyTail {
+                        tail: tail.to_owned(),
+                    }
+                    .into(),
+                    None => UiMsg::ImageMissingInReply.into(),
                 }
             })
         });
@@ -489,6 +493,7 @@ mod tests {
     };
     use crate::commands::NEXT_TEMP_ID;
     use crate::data;
+    use crate::ui_msg::UiMsg;
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
@@ -591,7 +596,10 @@ mod tests {
 
     #[test]
     fn decode_base64_rejects_invalid_input() {
-        assert!(decode_base64("not base64!").is_err());
+        assert_eq!(
+            decode_base64("not base64!").unwrap_err(),
+            UiMsg::InvalidBase64.to_string()
+        );
     }
 
     #[test]

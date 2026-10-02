@@ -2,6 +2,7 @@ use super::super::test_support::*;
 use super::super::*;
 use crate::data::{self, FieldKind, FieldRule, InjectLevel, StateNode, UpdateMode};
 use crate::receipts;
+use crate::ui_msg::UiMsg;
 use std::collections::BTreeMap;
 
 use super::super::interface::normalize_interface_paths;
@@ -353,7 +354,10 @@ fn normalize_rejects_conflicting_values_and_double_referenced_shell() {
     let error =
         normalize_interface_paths(&state_fields, Some("<div>{{地點}}</div>"), &BTreeMap::new())
             .unwrap_err();
-    assert!(error.contains("初始值不一致"), "{error}");
+    assert!(
+        error.starts_with(r#"TTMSG:{"code":"refactor_value_mismatch""#),
+        "{error}"
+    );
 
     let mirrored = serde_json::json!({
         "地點": "",
@@ -366,7 +370,14 @@ fn normalize_rejects_conflicting_values_and_double_referenced_shell() {
         &BTreeMap::new(),
     )
     .unwrap_err();
-    assert!(error.contains("自相矛盾"), "{error}");
+    assert!(
+        error
+            == UiMsg::RefactorShellConflict {
+                branch: "状态栏".to_owned()
+            }
+            .to_string(),
+        "{error}"
+    );
 }
 /// 無殼＝state_fields 是權威：完整鏡像（分支每葉根層都有對應）才折疊；分支多一個
 /// 根層沒有的葉就不是鏡像，整份不動——沒有殼表態時不做任何有損猜測。

@@ -10,8 +10,9 @@ use super::super::scene::TranscriptEvent;
 use super::super::state::WorldState;
 use super::super::world_file::{self, rename_path, RenameError};
 use super::super::world_lock::try_world_exclusive;
-use super::super::{invalid_data, DataResult};
+use super::super::DataResult;
 use super::marker::{self, FormatVersion};
+use crate::ui_msg::UiMsg;
 
 /// 需修復的原因；畫面文字由前端 `needsRepair_<reason>` 翻譯。值會送到前端，不得改名。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,20 +143,27 @@ fn parse_log(text: &str) -> DataResult<OpLog> {
     match log.op.as_str() {
         "migrate" => {
             if log.had_pre.is_none() || log.from.is_none() || log.to.is_none() {
-                return Err(invalid_data("轉換日誌缺欄位"));
+                return Err(op_log_invalid("migrate log is missing fields"));
             }
         }
         "restore" => {
             if log.had_newer.is_none() {
-                return Err(invalid_data("還原日誌缺欄位"));
+                return Err(op_log_invalid("restore log is missing fields"));
             }
         }
-        _ => return Err(invalid_data("不認得的操作")),
+        other => return Err(op_log_invalid(&format!("unknown op {other:?}"))),
     }
     if !matches!(log.stage.as_str(), "build" | "swap" | "cleanup") {
-        return Err(invalid_data("不認得的階段"));
+        return Err(op_log_invalid(&format!("unknown stage {:?}", log.stage)));
     }
     Ok(log)
+}
+
+fn op_log_invalid(detail: &str) -> Box<dyn std::error::Error + Send + Sync> {
+    UiMsg::OpLogInvalid {
+        detail: detail.to_owned(),
+    }
+    .into_error()
 }
 
 fn flag(value: Option<bool>) -> bool {
@@ -251,7 +259,10 @@ fn world_reads_fully(dir: &Path) -> DataResult<()> {
     if worldbook.is_file() {
         let value: Value = serde_json::from_str(&fs::read_to_string(&worldbook)?)?;
         if !value.get("entries").is_some_and(Value::is_object) {
-            return Err(invalid_data("worldbook entries 不是物件"));
+            return Err(UiMsg::WorldDataInvalid {
+                detail: "worldbook.json entries is not an object".to_owned(),
+            }
+            .into_error());
         }
     }
     let characters = dir.join("characters");
@@ -293,7 +304,8 @@ fn staging_verified(dir: &Path, target: u64) -> bool {
 }
 
 enum StepError {
-    Rename,
+    /// 帶 world_file 的改名錯誤原樣往上傳，畫面上看得到是哪個路徑。
+    Rename(Box<dyn std::error::Error + Send + Sync>),
     BackupNewer,
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -301,7 +313,7 @@ enum StepError {
 impl From<Box<dyn std::error::Error + Send + Sync>> for StepError {
     fn from(error: Box<dyn std::error::Error + Send + Sync>) -> Self {
         if error.downcast_ref::<RenameError>().is_some() {
-            StepError::Rename
+            StepError::Rename(error)
         } else {
             StepError::Other(error)
         }
@@ -310,9 +322,8 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for StepError {
 
 fn step_to_data(error: StepError) -> Box<dyn std::error::Error + Send + Sync> {
     match error {
-        StepError::Rename => invalid_data("改名失敗"),
-        StepError::BackupNewer => invalid_data("備份比本版新"),
-        StepError::Other(error) => error,
+        StepError::Rename(error) | StepError::Other(error) => error,
+        StepError::BackupNewer => UiMsg::BackupNewer.into_error(),
     }
 }
 
@@ -322,7 +333,7 @@ fn repair_io(error: impl std::fmt::Display) -> Recovered {
 
 fn apply_action(root: &Path, id: &str, log: &OpLog) -> Result<(), StepError> {
     let action = match_action(log, presence(root, id))
-        .ok_or_else(|| StepError::Other(invalid_data("目錄組合在處理途中離開表格")))?;
+        .ok_or_else(|| StepError::Other(UiMsg::WorldComboUnexpected.into_error()))?;
     match action {
         Action::DropStagingAndLog => {
             world_file::remove_path_raw(&staging_dir(root, id))?;
@@ -411,7 +422,7 @@ fn recover_locked(root: &Path, id: &str) -> Recovered {
     }
     match apply_action(root, id, &log) {
         Ok(()) => Recovered::Clean,
-        Err(StepError::Rename) => Recovered::Repair(RepairReason::Rename, None),
+        Err(StepError::Rename(_)) => Recovered::Repair(RepairReason::Rename, None),
         Err(StepError::BackupNewer) => Recovered::Repair(RepairReason::Outside, None),
         Err(StepError::Other(error)) => repair_io(error),
     }
@@ -544,7 +555,7 @@ fn apply_migration_step(dir: &Path, from: u64, to: u64) -> DataResult<()> {
         }
     }
     let _ = (dir, from, to);
-    Err(invalid_data(format!("沒有從格式 {from} 到 {to} 的轉換")))
+    Err(UiMsg::NoMigrationPath { from, to }.into_error())
 }
 
 fn migrate_tree(dir: &Path, from: u64, to: u64) -> DataResult<()> {
@@ -560,7 +571,7 @@ fn migrate_tree(dir: &Path, from: u64, to: u64) -> DataResult<()> {
 fn run_migrate(root: &Path, id: &str, from: u64) -> DataResult<()> {
     let to = marker::current_format();
     if !combo_clean(root, id) {
-        return Err(invalid_data("目錄組合不乾淨，不能開始轉換"));
+        return Err(UiMsg::WorldComboDirty.into_error());
     }
     let had_pre = pre_dir(root, id).exists();
     write_log(
@@ -628,7 +639,7 @@ fn finish_after_recover(root: &Path, id: &str, recovered: Recovered) -> DataResu
         if pre_dir(root, id).exists() || log_path(root, id).exists() {
             return Ok(repair(root, id, RepairReason::Missing, None));
         }
-        return Err(invalid_data("找不到這張桌"));
+        return Err(UiMsg::WorldNotFound.into_error());
     }
     if let Some(from) = needs_migration(root, id) {
         if !combo_clean(root, id) {
@@ -684,10 +695,10 @@ pub fn restore_world_backup(root: &Path, world_id: &str) -> DataResult<OpenWorld
     let opened = classify_open(root, world_id);
     let read_only = matches!(opened, OpenWorld::ReadOnly { .. });
     if !read_only {
-        return Err(invalid_data("這張桌不是唯讀，不能改用備份"));
+        return Err(UiMsg::WorldNotReadOnly.into_error());
     }
     if !backup_available(root, world_id) {
-        return Err(invalid_data("沒有可用的轉換前備份"));
+        return Err(UiMsg::NoPreMigrationBackup.into_error());
     }
     if let Err(error) = run_restore(root, world_id) {
         return match recover_locked(root, world_id) {

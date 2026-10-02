@@ -1,5 +1,6 @@
 use super::card_io::{base64_encode, PNG_MAGIC};
 use crate::data::{self, DataResult};
+use crate::ui_msg::UiMsg;
 use std::fs;
 use std::path::Path;
 
@@ -83,11 +84,14 @@ fn save_character_png(
     extension: &str,
 ) -> DataResult<()> {
     if !bytes.starts_with(PNG_MAGIC) {
-        return Err(data::invalid_data("圖片必須是 PNG"));
+        return Err(UiMsg::ImageNotPng.into_error());
     }
     let path = data::character_path(root, world_id, character_id)?;
     if !path.exists() {
-        return Err(data::invalid_data(format!("角色 {character_id} 不存在")));
+        return Err(UiMsg::CharacterNotFound {
+            id: character_id.to_owned(),
+        }
+        .into_error());
     }
     data::commit_world_write(&path.with_extension(extension), bytes)?;
     Ok(())
@@ -123,13 +127,13 @@ mod tests {
             save_character_image(root.path(), &world_id, &missing_id, b"not png")
                 .unwrap_err()
                 .to_string(),
-            "圖片必須是 PNG"
+            UiMsg::ImageNotPng.to_string()
         );
         assert_eq!(
             save_character_avatar(root.path(), &world_id, &missing_id, PNG_MAGIC)
                 .unwrap_err()
                 .to_string(),
-            format!("角色 {missing_id} 不存在")
+            UiMsg::CharacterNotFound { id: missing_id }.to_string()
         );
     }
 
