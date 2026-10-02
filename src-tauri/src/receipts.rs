@@ -24,6 +24,9 @@ pub struct Snapshot {
     /// AI 卡重構的介面骨架檔（interface-shell.html）快照時是否已存在——比照 world_card 的
     /// 存在性 diff 手法：undo 只該刪這次操作新建的殼，不動套用前就有的。
     interface_shell_existed: bool,
+    /// 介面骨架檔快照時的內容：只有 snapshot_refactor 會讀（讀不到就整個快照失敗），其餘匯入
+    /// 不碰殼檔、維持 None。收據靠它判斷這次套用有沒有刪掉或覆寫舊殼，undo 才寫得回去。
+    interface_shell_before: Option<String>,
     /// 機制帳本（mechanism-log.jsonl）快照時的原始內容；這檔是純 append，記著這份就能在
     /// undo 時精準挖掉「這次操作自己追加的那一段」，不牽連期間新產生的遊玩紀錄。
     mechanism_log_before: String,
@@ -44,11 +47,22 @@ pub fn snapshot(root: &Path, world_id: &str) -> Snapshot {
         gm_image_existed: data::gm_image_path(root, world_id).is_ok_and(|path| path.exists()),
         interface_shell_existed: data::interface_shell_path(root, world_id)
             .is_ok_and(|path| path.exists()),
+        interface_shell_before: None,
         mechanism_log_before: data::mechanism_log_path(root, world_id)
             .ok()
             .and_then(|path| fs::read_to_string(path).ok())
             .unwrap_or_default(),
     }
+}
+
+/// AI 卡重構套用前的快照：狀態與殼內容都必須讀得到——讀失敗回 Err、不套用。當成「沒有殼」
+/// 放行的話，套用照樣刪掉或覆寫舊殼，收據卻沒有可寫回的內容，undo 就救不回來。
+pub fn snapshot_refactor(root: &Path, world_id: &str) -> DataResult<Snapshot> {
+    let mut snapshot = snapshot(root, world_id);
+    snapshot.state = Some(data::read_state(root, world_id)?);
+    snapshot.interface_shell_before = data::read_interface_shell(root, world_id)?;
+    snapshot.interface_shell_existed = snapshot.interface_shell_before.is_some();
+    Ok(snapshot)
 }
 
 /// 貼到檯面上的開場白：靠場景號＋事件時間戳定位，undo 時只刪這一則。
@@ -106,6 +120,15 @@ impl MechanismUndo {
     }
 }
 
+/// 玩法標記（refactor_mode）的倒退資訊：外層 Option 有值＝這次有改到標記，`before` 是套用前
+/// 的值（None＝原本沒有標記）。不用 Option<Option<String>>：serde 往返會把「沒變」與「原本是
+/// None」都變成 null，分不出來。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModeUndo {
+    #[serde(default)]
+    before: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImportReceipt {
     kind: String, // "character" | "worldbook" | "refactor"
@@ -137,6 +160,12 @@ struct ImportReceipt {
     /// AI 照搬卡每回合輸出格式產的骨架。
     #[serde(default, skip_serializing_if = "data::is_false")]
     interface_shell_created: bool,
+    /// 這次操作刪掉或覆寫了套用前就有的介面骨架檔：原內容，undo 寫回。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    interface_shell_restore: Option<String>,
+    /// 這次操作改了玩法標記：undo 退回套用前的值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refactor_mode: Option<ModeUndo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     renamed_from: Option<String>,
     /// 這次操作改寫或停用了既有世界書條目（AI 卡重構的來源條目改寫、介面／機制的
@@ -426,6 +455,8 @@ pub fn record_character_import(
             deleted_entries: Vec::new(),
             added_ledger_lines: String::new(),
             interface_shell_created: false,
+            interface_shell_restore: None,
+            refactor_mode: None,
         },
     );
 }
@@ -464,6 +495,8 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             deleted_entries: Vec::new(),
             added_ledger_lines: String::new(),
             interface_shell_created: false,
+            interface_shell_restore: None,
+            refactor_mode: None,
         },
     );
 }
@@ -484,6 +517,15 @@ pub fn record_refactor_apply(
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
     let added_ledger_lines = diff_ledger_suffix(&before.mechanism_log_before, root, world_id);
     let interface_shell_created = detect_interface_shell_created(root, world_id, &before);
+    let interface_shell_restore = before.interface_shell_before.clone().filter(|original| {
+        !matches!(data::read_interface_shell(root, world_id), Ok(Some(now)) if now == *original)
+    });
+    let refactor_mode = before.state.as_ref().and_then(|state_before| {
+        let after = data::read_state(root, world_id).ok()?;
+        (after.refactor_mode != state_before.refactor_mode).then(|| ModeUndo {
+            before: state_before.refactor_mode.clone(),
+        })
+    });
     if character_ids.is_empty()
         && worldbook_entries.is_empty()
         && mechanism.is_none()
@@ -491,6 +533,8 @@ pub fn record_refactor_apply(
         && deleted_entries.is_empty()
         && added_ledger_lines.is_empty()
         && !interface_shell_created
+        && interface_shell_restore.is_none()
+        && refactor_mode.is_none()
     {
         return;
     }
@@ -513,6 +557,8 @@ pub fn record_refactor_apply(
             deleted_entries,
             added_ledger_lines,
             interface_shell_created,
+            interface_shell_restore,
+            refactor_mode,
         },
     );
 }
@@ -561,6 +607,19 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
         .ok_or_else(|| UiMsg::NoImportToUndo.into_error())?;
 
     let mut report = UndoReport::default();
+
+    // 0. 介面骨架檔與玩法標記先退：兩者決定前端給不給面板，退一半會讓面板與狀態樹對不上。
+    // 失敗就回 Err，磁碟上的收據不彈出、後面各域還沒動，玩家可以再按一次（兩步都可重做）。
+    if receipt.interface_shell_created {
+        data::commit_world_remove(&data::interface_shell_path(root, world_id)?)?;
+    } else if let Some(original) = &receipt.interface_shell_restore {
+        data::write_interface_shell(root, world_id, original)?;
+    }
+    if let Some(mode) = &receipt.refactor_mode {
+        let mut state = data::read_state(root, world_id)?;
+        state.refactor_mode = mode.before.clone();
+        data::write_state(root, world_id, &state)?;
+    }
 
     // 1. 角色卡：md／原始檔／圖片／圖庫一併刪除——按鈕語意是撤銷這次匯入，玩家後續編輯一併退場。
     if let Some(character_id) = &receipt.character_id {
@@ -686,13 +745,6 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
     if receipt.gm_image_created {
         if let Ok(image_path) = data::gm_image_path(root, world_id) {
             let _ = data::commit_world_remove(&image_path);
-        }
-    }
-
-    // 7. 這次操作新建的介面骨架檔（AI 卡重構產物）：套用前就有的不動。
-    if receipt.interface_shell_created {
-        if let Ok(shell_path) = data::interface_shell_path(root, world_id) {
-            let _ = data::commit_world_remove(&shell_path);
         }
     }
 

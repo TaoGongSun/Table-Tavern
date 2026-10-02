@@ -46,6 +46,8 @@ pub use world::{
     read_refactor_outcome, read_world_md, reclaim_world_if_empty, rename_world,
     world_has_state_bar, write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
 };
+#[cfg(test)]
+pub(crate) use world_file::RemoveFailGuard;
 pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
 pub(crate) use world_lock::{
     install_guarded, refuse_if_updating, update_gate_raised, UpdateGateClosed,

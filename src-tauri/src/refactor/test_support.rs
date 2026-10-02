@@ -81,7 +81,7 @@ pub(super) fn apply_recorded(
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
 ) -> RefactorApplyResult {
-    let before = receipts::snapshot(root, world_id);
+    let before = receipts::snapshot_refactor(root, world_id).unwrap();
     let result = apply(root, world_id, outcome, selection).unwrap();
     receipts::record_refactor_apply(
         root,

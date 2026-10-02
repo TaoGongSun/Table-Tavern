@@ -33,44 +33,63 @@ function pick(refactorShell: string | null, over: Partial<Parameters<typeof pick
 }
 
 describe("pickCardShell", () => {
-  it.each([
-    ["<!DOCTYPE html>", "<!DOCTYPE html><html><body>舊殼 {{World.Time}}</body></html>"],
-    ["<html", "<html><body>舊殼 {{World.Time}}</body></html>"],
-    ["大小寫不分", "<!doctype HTML><HTML><body>舊殼 {{World.Time}}</body></HTML>"],
-    ["前置空白", "  \n\t<html><body>舊殼 {{World.Time}}</body></html>"],
-  ])("舊整頁 HTML 產物（%s）當作沒有重構殼，退回近 10 則掃 raw", (_label, legacy) => {
-    const shell = pick(legacy);
-    expect(shell).toBe(pick(null));
-    expect(shell).toContain("上回合畫面");
-    expect(shell).not.toContain("舊殼");
+  const skeleton = "<UI>骨架 {{World.Time}} {{本回合.正文}}</UI>";
+  const emptyTable: TranscriptEvent[] = [];
+  const directFirst: TranscriptEvent[] = [gm("請選擇身份", "<UI>選角開場</UI>")];
+  const fallback = events;
+
+  // interface 桌：沒骨架（null／空字串／純空白）三條退路一律關掉
+  describe.each([
+    ["null", null],
+    ["空字串", ""],
+    ["純空白", " \n\t "],
+  ])("interface 桌骨架為 %s", (_label, shell) => {
+    it.each([
+      ["空桌", emptyTable],
+      ["最新一則 direct-first", directFirst],
+      ["近十則 fallback", fallback],
+    ])("%s：不給面板", (_case, list) => {
+      expect(pick(shell, { tableMode: "interface", events: list })).toBeNull();
+    });
   });
 
-  it("合法骨架內文含 HTML 片段（甚至 <html 字樣）仍照常填值過卡腳本", () => {
-    const shell = pick("<UI><i>{{World.Time}}</i> 註：<html> 標記 {{本回合.正文}}</UI>");
-    expect(shell).toContain("<i>黃昏</i>");
-    expect(shell).toContain("最新正文沒有標籤");
-    expect(shell).not.toContain("上回合畫面");
-  });
+  describe("interface 桌有效骨架", () => {
+    it("空桌退回卡片開場白", () => {
+      expect(pick(skeleton, { tableMode: "interface", events: emptyTable })).toContain("開場白");
+    });
 
-  it("骨架沒過卡的顯示腳本：退回近 10 則掃 raw", () => {
-    const shell = pick("<Other>{{World.Time}}</Other>");
-    expect(shell).toContain("上回合畫面");
-    expect(shell).not.toContain("黃昏");
-  });
+    it("最新 GM 原文卡腳本自己畫得出來就不塞骨架", () => {
+      const shell = pick(skeleton, { tableMode: "interface", events: directFirst });
+      expect(shell).toContain("選角開場");
+      expect(shell).not.toContain("骨架");
+    });
 
-  it("開場 direct-first：最新 GM 原文卡腳本自己畫得出來就不塞骨架", () => {
-    const shell = pick("<UI>骨架 {{World.Time}}</UI>", { events: [gm("請選擇身份", "<UI>選角開場</UI>")] });
-    expect(shell).toContain("選角開場");
-    expect(shell).not.toContain("骨架");
-  });
+    it("最新正文沒有標籤：填骨架，不拿近十則的上回合畫面", () => {
+      const shell = pick(skeleton, { tableMode: "interface", events: fallback });
+      expect(shell).toContain("骨架 黃昏 最新正文沒有標籤");
+      expect(shell).not.toContain("上回合畫面");
+    });
 
-  it("空桌退回卡片開場白", () => {
-    expect(pick("<UI>骨架</UI>", { events: [] })).toContain("開場白");
+    it("骨架沒過卡的顯示腳本：退回近 10 則掃 raw", () => {
+      const shell = pick("<Other>{{World.Time}}</Other>", { tableMode: "interface" });
+      expect(shell).toContain("上回合畫面");
+      expect(shell).not.toContain("黃昏");
+    });
+
+    it("骨架內文含 HTML 片段（甚至 <html 字樣）仍照常填值過卡腳本", () => {
+      const shell = pick("<UI><i>{{World.Time}}</i> 註：<html> 標記 {{本回合.正文}}</UI>", {
+        tableMode: "interface",
+      });
+      expect(shell).toContain("<i>黃昏</i>");
+      expect(shell).toContain("最新正文沒有標籤");
+      expect(shell).not.toContain("上回合畫面");
+    });
   });
 
   it("characters 模式與玩法標記未知一律不顯示殼", () => {
-    expect(pick("<UI>{{World.Time}}</UI>", { tableMode: "characters" })).toBeNull();
-    expect(pick("<UI>{{World.Time}}</UI>", { tableMode: undefined })).toBeNull();
+    expect(pick(skeleton, { tableMode: "characters" })).toBeNull();
+    expect(pick(skeleton, { tableMode: undefined })).toBeNull();
     expect(pick(null, { tableMode: "characters" })).toBeNull();
+    expect(pick(null, { tableMode: undefined })).toBeNull();
   });
 });

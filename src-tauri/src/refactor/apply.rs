@@ -151,6 +151,22 @@ pub fn apply(
         .transpose()?
         .unwrap_or(0);
 
+    // 這次會寫的重構殼：下方寫殼分支用同一個值，純空白殼不會先刪舊殼又寫進一份空白。
+    let new_shell = match (&outcome.interface, &normalized_interface) {
+        (Some(interface), Some(_)) => interface
+            .shell
+            .as_deref()
+            .filter(|shell| !shell.trim().is_empty()),
+        _ => None,
+    };
+    // 帶 mode 的產物套用後沒有新殼（characters、介面沒勾、判定不接管）→ 桌上的舊殼一律清掉：
+    // 前端 interface 桌沒殼就不給面板，留著上一輪的殼會拿對不上新狀態樹的骨架繼續畫
+    // 〔作者裁決 2026-10-02〕。放在全部 preflight 之後、第一筆寫入之前：刪不掉就整批失敗、
+    // 桌上零改動，不回報套用成功。沒有 mode 的產物照舊不碰殼檔。
+    if mode.is_some() && new_shell.is_none() {
+        data::commit_world_remove(&data::interface_shell_path(root, world_id)?)?;
+    }
+
     let mut character_ids = Vec::new();
     let mut new_entries = 0usize;
     let mut deleted_entries: Vec<WorldbookEntry> = Vec::new();
@@ -272,7 +288,7 @@ pub fn apply(
     {
         rebuild_state_fields(&mut state.state.tree, &mut state.state.jumps, state_fields);
         state_dirty = true;
-        if let Some(shell) = interface.shell.as_deref().filter(|shell| !shell.is_empty()) {
+        if let Some(shell) = new_shell {
             data::write_interface_shell(root, world_id, shell)?;
             // 接管後畫面上的每個欄位都靠模型回報才會動：開增量協定讓它拿得到更新語法，
             // 併入卡自訂的欄位規則與回報指引，卡的規矩才不會被通則蓋掉。
@@ -287,17 +303,11 @@ pub fn apply(
         interface_applied = true;
     }
 
-    // 玩法標記持久化（refactor-mode-split）：兩模式都寫進桌面狀態；characters 順手清掉舊
-    // interface 套用殘留的殼檔（fallback 抑制第一層；controller 讀 mode 是第二層）。
+    // 玩法標記持久化（refactor-mode-split）：兩模式都寫進桌面狀態；舊殼已在 preflight 後清掉。
     // 只收二值列舉（函式開頭解析）：手改匯入檔的 "Characters"／尾空白等非常值不落地。
     if let Some(mode) = mode {
         state.refactor_mode = Some(mode.to_owned());
         state_dirty = true;
-        if mode == "characters" {
-            if let Ok(path) = data::interface_shell_path(root, world_id) {
-                let _ = data::commit_world_remove(&path);
-            }
-        }
     }
 
     let mut mechanisms_applied = 0usize;

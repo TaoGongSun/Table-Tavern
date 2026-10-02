@@ -3,10 +3,6 @@ import { findShell, type CardInterface } from "./interface-card";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
-// 舊產殼路線（2026-08-12 前）留在桌上的整頁 HTML 產物：不當骨架用，這桌視同沒有重構殼
-// 〔作者裁決 2026-10-02〕。只認開頭——骨架照搬卡的輸出格式，內文含 HTML 片段是合法的。
-const LEGACY_PAGE_SHELL = /^\s*(<!DOCTYPE html|<html)/i;
-
 export function pickCardShell(input: {
   /** 桌面玩法標記；undefined＝還不知道 */
   tableMode: string | null | undefined;
@@ -22,7 +18,11 @@ export function pickCardShell(input: {
   // 切桌瞬間閃出介面。
   if (tableMode === undefined || tableMode === "characters") return null;
   const refactorShell =
-    input.refactorShell !== null && LEGACY_PAGE_SHELL.test(input.refactorShell) ? null : input.refactorShell;
+    input.refactorShell !== null && input.refactorShell.trim() !== "" ? input.refactorShell : null;
+  // 重構判定不接管介面（沒產殼）的 interface 桌不給面板，狀態看頂部狀態欄〔作者裁決 2026-10-02〕：
+  // 原卡 HTML 靠 TavernHelper 讀訊息，app 沒墊，退回去只會停在載入中。direct-first、掃 raw、
+  // 開場白三條退路都在這裡一起關；沒重構過的桌（null）照舊走卡片自帶殼。
+  if (tableMode === "interface" && refactorShell === null) return null;
   if (refactorShell !== null) {
     const latestGm = [...events].reverse().find((event) => event.kind !== "player");
     if (latestGm !== undefined) {
