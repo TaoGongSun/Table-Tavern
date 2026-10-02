@@ -406,7 +406,6 @@ export const en: Record<MsgKey, string> = {
   exportCardHint:
     "Save as a SillyTavern character card (PNG or JSON), rebuilt from this card's current text",
   convertCardToEntry: "Convert to World Book Entry",
-  convertCardInUse: "This card is still at the table. Use “Hide Character” above first, then come back to convert it.",
   convertCardUnsaved: "You have unsaved changes. Save them before converting.",
   convertCardConfirm: "This turns the whole card, including private notes, into one always-on GM-visible entry, then deletes this card and its images. Continue?",
   convertCardDone: "Converted to a world book entry.",

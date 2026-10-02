@@ -46,6 +46,7 @@ export function CardEditor({
   onOpenAiSettings,
   isPlayer = false,
   onConverted,
+  isBusy,
 }: {
   /** 頂列標題：卡種與角色名由 MainView 決定 */
   title: string;
@@ -69,6 +70,8 @@ export function CardEditor({
   onOpenAiSettings: () => void;
   isPlayer?: boolean;
   onConverted: () => Promise<void>;
+  /** 回合或換幕進行中：轉條目會刪卡，這段期間不轉 */
+  isBusy: () => boolean;
 }) {
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [savedCardJson, setSavedCardJson] = useState("");
@@ -260,11 +263,8 @@ export function CardEditor({
       });
       return;
     }
-    if (card.archived === false) {
-      await showMessage(t("convertCardInUse"), {
-        title: t("convertCardToEntry"),
-        okLabel: t("dialogAck"),
-      });
+    if (isBusy()) {
+      setMessage(t("worldBusy"));
       return;
     }
     const accepted = await confirm(t("convertCardConfirm"), {
@@ -274,6 +274,11 @@ export function CardEditor({
       cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
+    // 確認框等人作答期間回合可能已經開跑，看當下不看舊閉包
+    if (isBusy()) {
+      setMessage(t("worldBusy"));
+      return;
+    }
     try {
       await invoke("character_to_worldbook_entry", { worldId: world, characterId });
       await showMessage(t("convertCardDone"), { okLabel: t("dialogAck") });

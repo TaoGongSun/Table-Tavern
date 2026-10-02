@@ -122,7 +122,7 @@ pub(crate) fn character_to_worldbook_entry(
     world_id: String,
     character_id: String,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id)?;
+    // 獨占在 data::character_to_worldbook_entry（try_world_exclusive），這裡不拿共用許可，免得跟自己搶。
     data::character_to_worldbook_entry(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }

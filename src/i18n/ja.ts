@@ -388,7 +388,6 @@ export const ja: Record<MsgKey, string> = {
   exportCard: "書き出し",
   exportCardHint: "現在のテキストを基にSillyTavernのキャラクターシート（PNGまたはJSON）として保存します",
   convertCardToEntry: "世界書の項目に変換",
-  convertCardInUse: "このカードはまだ卓で使用中です。上の「キャラクターを非表示」を押してから変換してください。",
   convertCardUnsaved: "未保存の変更があります。先に保存してから変換してください。",
   convertCardConfirm: "カード全体（非公開メモを含む）をGMに見える常時有効の項目へ統合し、このカードと画像を削除します。続けますか？",
   convertCardDone: "世界書の項目に変換しました。",

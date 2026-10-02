@@ -39,6 +39,8 @@ interface MainViewProps {
   config: AppConfig;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
+  /** 回合或換幕進行中（同步查當下） */
+  isBusy: () => boolean;
   worldOpen: boolean;
   /** 復原匯入改動了世界書：換這把 key 讓整支編輯器重新掛載重載 */
   worldEditorRefreshKey: number;
@@ -72,6 +74,7 @@ export function MainView({
   config,
   onPreference,
   onOpenAiSettings,
+  isBusy,
   worldOpen,
   worldEditorRefreshKey,
   onEntryConverted,
@@ -127,6 +130,7 @@ export function MainView({
           onPreference={onPreference}
           onOpenAiSettings={onOpenAiSettings}
           onConverted={() => onFinishRemoval(cardId)}
+          isBusy={isBusy}
         />
       ) : worldOpen ? (
         <WorldEditor

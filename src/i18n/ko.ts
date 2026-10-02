@@ -388,7 +388,6 @@ export const ko: Record<MsgKey, string> = {
   exportCard: "내보내기",
   exportCardHint: "현재 이 카드의 텍스트를 바탕으로 SillyTavern 캐릭터 카드(PNG 또는 JSON)를 새로 만들어 저장합니다.",
   convertCardToEntry: "월드북 항목으로 변환",
-  convertCardInUse: "이 카드는 아직 테이블에 있습니다. 위의 ‘캐릭터 숨기기’를 먼저 누른 뒤 변환하세요.",
   convertCardUnsaved: "저장되지 않은 변경사항이 있습니다. 먼저 저장한 뒤 변환하세요.",
   convertCardConfirm: "비공개 메모를 포함한 카드 전체를 GM이 볼 수 있는 상시 항목 하나로 합친 뒤, 이 카드와 이미지를 삭제합니다. 계속할까요?",
   convertCardDone: "월드북 항목으로 변환했습니다.",

@@ -311,6 +311,7 @@ export function AppWorkspace({
               config={config}
               onPreference={onPreference}
               onOpenAiSettings={() => onOpenSettings("ai")}
+              isBusy={chat.isBusy}
               worldOpen={mainView?.kind === "world"}
               worldEditorRefreshKey={worldEditorRefreshKey}
               onEntryConverted={onEntryConverted}
