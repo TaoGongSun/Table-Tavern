@@ -36,6 +36,8 @@ export function RollbackSection({ center }: { center: VersionCenter }) {
     const accepted = await confirm(body, {
       title: t("deleteVersionTitle", { version: row.version }),
       kind: "warning",
+      okLabel: t("dialogDelete"),
+      cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
     setDeleteError("");
@@ -141,7 +143,12 @@ export function StorageSection({ center }: { center: VersionCenter }) {
   async function deleteBackup(row: BackupRow) {
     const accepted = await confirm(
       row.kind === "pre" ? t("deleteBackupPreBody") : t("deleteBackupNewerBody"),
-      { title: t("deleteBackupTitle"), kind: "warning" },
+      {
+        title: t("deleteBackupTitle"),
+        kind: "warning",
+        okLabel: t("dialogDelete"),
+        cancelLabel: t("dialogCancel"),
+      },
     );
     if (!accepted) return;
     setError("");

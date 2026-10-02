@@ -224,7 +224,7 @@ export function useImportController(input: {
             : mine?.unsupported === "remote_loader"
               ? t("importCardRemoteLoader")
               : "";
-      if (notice) await showMessage(notice, { title: t("importCard") });
+      if (notice) await showMessage(notice, { title: t("importCard"), okLabel: t("dialogAck") });
       openIfDrawable(interfaces);
     },
     [refreshInterfaces, openIfDrawable],
@@ -263,7 +263,12 @@ export function useImportController(input: {
       if (adoptName) await adoptTableName(meta.name);
       await refreshReceipts(worldId);
       // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話
-      if (book.imported > 0) await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
+      if (book.imported > 0) {
+        await showMessage(worldbookImportedMessage(book), {
+          title: t("importCard"),
+          okLabel: t("dialogAck"),
+        });
+      }
       await refreshState();
       await offerOpeningLine(worldId, data);
       await tellAboutInterface(worldId, meta.id);
@@ -287,7 +292,10 @@ export function useImportController(input: {
       const book = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
       // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
       await reloadGmImage(worldId);
-      await showMessage(worldbookImportedMessage(book), { title: t("importCard") });
+      await showMessage(worldbookImportedMessage(book), {
+        title: t("importCard"),
+        okLabel: t("dialogAck"),
+      });
       // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM
       focusSpeaker(null);
       if (adoptName) await adoptTableName(label);

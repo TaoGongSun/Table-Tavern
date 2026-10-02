@@ -71,6 +71,8 @@ export function useSceneActions({
     const accepted = await confirm(t("sceneForkConfirm"), {
       title: t("sceneForkTitle"),
       kind: "warning",
+      okLabel: t("sceneForkTitle"),
+      cancelLabel: t("dialogCancel"),
     });
     if (!accepted) return;
     onError("");

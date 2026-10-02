@@ -19,6 +19,7 @@
 | 2 | [state-values-mvu](../handoffs/state-values-mvu.md) 跳動記號（包 6） | 捏資料強制驗一次（2026-08-17 拍板），步驟見下節。真跑撞門檻的機率太低，不等真桌 |
 | 3 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 匯入與條目編輯 | 匯 PNG 世界書看 17 條入列、條目就地展開、換編輯對象自動存、空桌回收不再誤刪整桌——全是本地操作 |
 | 4 | [sponsor-features](../handoffs/sponsor-features.md) 贊助狀態與作者頁 | `.ttpack` 丟進「文件/TableTavern」解鎖、刪檔還原；作者頁與 +5 配色一起看過 |
+| 5 | [dialog-button-labels](../handoffs/dialog-button-labels.md) 對話窗按鈕 | 併 ui-redesign 驗收時一起看：切 zh-TW／en／de／ru 點開刪角色、未儲存離開、轉成世界書條目、匯入完成通知，按鈕是介面語言、長譯文不截 |
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
