@@ -4,6 +4,8 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [refactor-statusbar-skeleton](tasks/refactor-statusbar-skeleton.md) — 狀態欄型（playable: no）的卡也產骨架，app 用狀態樹填原卡狀態區塊再交原卡畫面顯示 — 下一步：排在 card-chat-messages-shim 之後〔作者裁決 2026-10-02〕。
+- [card-mvu-shim](tasks/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀變數函式（getAllVariables／Mvu／waitGlobalInitialized／eventOn），狀態樹轉接成 stat_data，受惠 bcd368、DongeonMaster — 下一步：日後要做〔作者裁決 2026-10-02〕，未排程。
 - [settings-tabs-focus-visible](tasks/settings-tabs-focus-visible.md) — 設定視窗分頁列 ←→ 移焦在 macOS WebKit 看不到外框 — 下一步：照 menu-keyboard-webkit 的 MoreMenu 作法改，補 WebKit 測試。
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 - [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。

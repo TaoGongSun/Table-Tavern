@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// 重構沒產殼的 interface 桌：沒有卡片介面鈕；「復原上次匯入」把殼與狀態樹退回後，
-// 介面鈕與頂部狀態欄都跟著回來（refactor-noshell-panel）。
+// 重構沒產殼的 interface 桌照原卡畫面（空桌是開場白那一樓）；「復原上次匯入」把殼與狀態樹退回後，
+// 介面鈕還在、頂部狀態欄換回套用前的樹（refactor-noshell-panel、card-chat-messages-shim）。
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -143,7 +143,7 @@ describe("refactor undo restores panel and state bar", () => {
 
   const panelButton = () => document.querySelector(`[title="${t("cardInterfaceOpen")}"]`);
 
-  it("brings back the card interface button and the restored tree after undo", async () => {
+  it("keeps the card interface button and restores the tree after undo", async () => {
     install({ worlds: [world("w1", "酒館")], open: {}, characters: [] });
     const table = {
       shell: null as string | null,
@@ -190,8 +190,8 @@ describe("refactor undo restores panel and state bar", () => {
     await click(document.querySelector(`[aria-label="${t("lobbyEnterTable", { name: "酒館" })}"]`)!);
     await settle();
 
-    // 沒產殼：空桌也不退回卡片開場白，沒有介面鈕
-    expect(panelButton()).toBeNull();
+    // 沒產殼：照原卡畫面，空桌退回卡片開場白
+    expect(panelButton()).not.toBeNull();
     expect(document.body.textContent).toContain("320");
 
     await click(document.querySelector(`[aria-label="${t("castAdd")}"]`)!);

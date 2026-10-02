@@ -27,6 +27,7 @@
 | 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) ＋ [grok-cache-miss](../handoffs/grok-cache-miss.md) 角色線 | 多角色桌：回歸事件私設只到 GM；grok 通道讓角色連接三輪以上，`chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，換角色／改卡／換幕後不每輪重開 |
 | 16 | [interface-shell-cleanup](../plans/interface-shell-cleanup.md) | 用 `TestCards/WestFantsy.png` 重構接管跑一輪：面板（地圖 11×7、五分頁）照常渲染、時間跟著回合動；可併第 6 項 ai-card-refactor 五卡矩陣回歸 |
 | 17 | [test-harness](../handoffs/archive/test-harness.md) 智慧免費真供應商 | 用 OpenRouter 免費模型桌送一輪：`route` 的智慧免費預覽有值、`ai-log` 的 `api-smart-free` 派送後有同 id 的 `responder` 事件且模型是實際回應者；可搭第 13 項 free-player-onboarding 順手看 |
+| 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
 
 ## 梯 3：等外部條件，不排時程
 

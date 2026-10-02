@@ -88,4 +88,6 @@ export interface TranscriptEvent {
   };
   /** 有正文但被供應商內容過濾或長度上限中途中斷 */
   truncated?: boolean;
+  /** 這則系統事件的全文只給 GM 看（角色私設、非公開人物全文）；玩家面的東西都不該拿到它 */
+  gm_only?: boolean;
 }

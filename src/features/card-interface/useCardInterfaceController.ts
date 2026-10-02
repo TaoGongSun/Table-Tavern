@@ -11,13 +11,13 @@ import {
 } from "./interface-card";
 import { type StateNode } from "../refactor/refactor-shell";
 import { pickCardShell } from "./card-shell-route";
+import { buildCardChat, type CardChat } from "./card-chat-shim";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
-// 殼字串的短指紋（djb2）：card-interface iframe 的 key 用，殼一換 key 就換。
-function shellFingerprint(shell: string | null): string {
-  if (shell === null) return "empty";
+// 短指紋（djb2）：card-interface iframe 的 key 用，內容一換 key 就換。
+function fingerprint(text: string): string {
   let hash = 5381;
-  for (let i = 0; i < shell.length; i++) hash = ((hash << 5) + hash + shell.charCodeAt(i)) | 0;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
   return String(hash >>> 0);
 }
 
@@ -52,8 +52,10 @@ export interface CardInterfaceController {
   shellReady: boolean;
   /** 殼的沙盒 HTML；null＝這桌沒殼 */
   shellDoc: string | null;
-  /** 殼內容指紋，當 iframe 的 key */
+  /** 桌別＋殼＋本樓的指紋，當 iframe 的 key，也是讀訊息推送的 token */
   shellKey: string;
+  /** 本場讀訊息快照；覆蓋層在它變動與 iframe load 時推給沙盒 */
+  chat: CardChat | null;
   open: () => void;
   close: () => void;
   /** 重問這桌各卡的介面腳本，並把清單回給呼叫端接著判斷 */
@@ -73,11 +75,10 @@ export function useCardInterfaceController(input: {
   const { worldId, events, tableTree, submitText } = input;
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
-  // AI 重構接管介面時產的骨架（卡每回合輸出格式）；null＝沒有。interface 桌沒骨架就不給面板，
-  // 只有沒重構過的桌（玩法標記 null）才退回卡片自帶殼／event.raw 找殼
+  // AI 重構接管介面時產的骨架（卡每回合輸出格式）；null＝沒有，這時照原卡畫面（卡片自帶殼／event.raw 找殼）
   const [refactorShell, setRefactorShell] = useState<string | null>(null);
   // 桌面玩法標記（refactor-mode-split）："characters"＝玩家選了多角色對話，這桌的卡片介面
-  // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；"interface"＝只畫重構骨架；null＝沒重構過。
+  // 全面停用（按鈕不出現、掃 raw 的 fallback 不啟動）；"interface"＝有骨架先畫骨架；null＝沒重構過。
   // undefined＝還不知道（載入中或讀取失敗）、null＝確定沒標記；未知一律先不顯示殼
   // （fail-closed），角色桌才不會在切桌瞬間或讀取失敗時閃出介面 fallback。
   const [tableMode, setTableMode] = useState<string | null | undefined>(undefined);
@@ -119,13 +120,29 @@ export function useCardInterfaceController(input: {
     };
   }, [worldId]);
 
-  // 目前要顯示的卡片介面殼：選路規則見 card-shell-route.ts
-  const cardInterfaceShell = useMemo(
+  // 目前要顯示的卡片介面殼與產生它的那一樓：選路規則見 card-shell-route.ts
+  const picked = useMemo(
     () => pickCardShell({ tableMode, refactorShell, events, tableTree, cardInterfaces }),
     [tableMode, refactorShell, tableTree, events, cardInterfaces],
   );
+  // doc 與 key 只依賴實際值：無關的 render（例如狀態樹變了但殼與本樓沒變）不重載 iframe
+  const shell = picked?.shell ?? null;
+  const currentId = picked?.current.id ?? -1;
+  const currentName = picked?.current.name ?? "";
+  const currentText = picked?.current.text ?? "";
 
-  const cardShellReady = cardInterfaceShell !== null;
+  const cardShellReady = shell !== null;
+
+  // 本場讀訊息快照：掛載時嵌進 doc，之後的變動由覆蓋層推送（本樓一律是產生殼的那段文字）
+  const chat = useMemo(
+    () =>
+      shell === null
+        ? null
+        : buildCardChat(events, { id: currentId, name: currentName, text: currentText }),
+    [shell, events, currentId, currentName, currentText],
+  );
+  const chatRef = useRef<CardChat | null>(null);
+  chatRef.current = chat;
 
   // 殼沒了（例如面板開著時套用了沒產殼的重構）就把面板狀態一起收掉：只靠 shellReady 擋住
   // 覆蓋層的話，之後殼再出現時面板會自己跳出來
@@ -136,13 +153,24 @@ export function useCardInterfaceController(input: {
   // 殼的沙盒包裝與內容指紋：指紋當 iframe key，殼一換整支 iframe 重掛——初始掛載必然載入
   // srcdoc，不依賴 WebKit 對 srcDoc 屬性更新／load 事件的行為（雙緩衝翻面機制在 WKWebView
   // 上塞殼與翻面都不可靠，三次卡片介面空白事故後整台拆除，換單 iframe 直繪）。
-  // 存下的卡片設定在這裡讀進殼。刻意不進依賴：卡片一存設定就重算 doc 的話，srcdoc 跟著換，
-  // 玩家拉個字級就整支 iframe 重繪閃白——殼本來就要重掛的時候（殼變了）才順手帶上最新的一份。
-  const cardShellDoc = useMemo(
-    () => (cardInterfaceShell === null ? null : buildShellDocument(cardInterfaceShell, readCardStorage(worldId))),
-    [cardInterfaceShell, worldId],
+  // 存下的卡片設定與讀訊息快照都經 ref／讀檔帶進殼、刻意不進依賴：卡片一存設定或逐字稿一動就重算
+  // doc 的話，srcdoc 跟著換，整支 iframe 重繪閃白——殼或本樓變了（key 也跟著變）才順手帶上最新的。
+  // 依賴 uiOpen：面板關著時別樓有變動，重新打開時在卡片第一次執行前就嵌入最新快照
+  // （覆蓋層關著時整支卸載，重開必然是新掛載）。key 涵蓋桌別：同殼同文切桌也會重掛。
+  const cardShellKey = useMemo(
+    () =>
+      shell === null
+        ? "empty"
+        : fingerprint(JSON.stringify([worldId, shell, currentId, currentName, currentText])),
+    [worldId, shell, currentId, currentName, currentText],
   );
-  const cardShellKey = useMemo(() => shellFingerprint(cardInterfaceShell), [cardInterfaceShell]);
+  const cardShellDoc = useMemo(
+    () =>
+      shell === null || !cardUiOpen || chatRef.current === null
+        ? null
+        : buildShellDocument(shell, readCardStorage(worldId), { chat: chatRef.current, token: cardShellKey }),
+    [shell, cardShellKey, worldId, cardUiOpen],
+  );
 
   // 每次 render 換上最新的送出函式：訊息監聽只掛一次，不能讓它抓著開面板當下的舊狀態
   const submitTextRef = useRef((_text: string) => Promise.resolve());
@@ -217,6 +245,7 @@ export function useCardInterfaceController(input: {
       shellReady: cardShellReady,
       shellDoc: cardShellDoc,
       shellKey: cardShellKey,
+      chat,
       open,
       close,
       refreshInterfaces,
@@ -228,6 +257,7 @@ export function useCardInterfaceController(input: {
       cardShellReady,
       cardShellDoc,
       cardShellKey,
+      chat,
       open,
       close,
       refreshInterfaces,
