@@ -157,6 +157,7 @@ fn rebuild(
                     world_id,
                     &replay.bytes,
                     &replay.source.color,
+                    lang,
                     held,
                 )?
                 .source

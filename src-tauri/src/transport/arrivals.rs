@@ -528,7 +528,7 @@ mod tests {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
         let (marker, text) = card_private(&fox, "阿濤").unwrap();
         let private = marked(marker, &text, true);
-        assert!(data::appeared_card_names(&[private.clone()]).is_empty());
+        assert!(data::appeared_card_names(std::slice::from_ref(&private)).is_empty());
         let (marker, text) = card_arrival(&fox, "阿濤");
         let public = marked(marker, &text, false);
         assert_eq!(

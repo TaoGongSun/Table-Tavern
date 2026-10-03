@@ -117,46 +117,64 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
     ))
 }
 
-fn parse_sections(body: &str) -> (String, String) {
-    #[derive(Clone, Copy)]
-    enum Section {
-        Public,
-        Private,
-    }
+/// 卡檔本文的公開／私有分隔線：獨占一行、語系無關。內文裡長得像分隔線的行寫入時跳脫（見 `escape_body`）。
+const PUBLIC_MARK: &str = "<!-- tt:public -->";
+const PRIVATE_MARK: &str = "<!-- tt:private -->";
+const MARK_PREFIX: &str = "<!-- tt:";
 
-    let mut markers = Vec::new();
+/// 逐行跳脫：前導反斜線數 k、其後以 `<!-- tt:` 開頭的行，寫成 k+1 個反斜線。
+/// 讀回時 k≥1 的這種行去掉一個；k=0 且整行等於分隔線才是分隔線，因此規則無歧義。
+fn escape_body(text: &str) -> String {
+    map_lines(text, |line| {
+        let rest = line.trim_start_matches('\\');
+        rest.starts_with(MARK_PREFIX).then(|| format!("\\{line}"))
+    })
+}
+
+fn unescape_body(text: &str) -> String {
+    map_lines(text, |line| {
+        let rest = line.trim_start_matches('\\');
+        (rest.len() < line.len() && rest.starts_with(MARK_PREFIX)).then(|| line[1..].to_owned())
+    })
+}
+
+/// 逐行改寫，保留原本的 `\n`／`\r\n` 行尾；`rewrite` 回 None＝這行原樣。
+fn map_lines(text: &str, rewrite: impl Fn(&str) -> Option<String>) -> String {
+    let mut out = String::with_capacity(text.len());
+    for segment in text.split_inclusive('\n') {
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        match rewrite(line) {
+            Some(new_line) => {
+                out.push_str(&new_line);
+                out.push_str(&segment[line.len()..]);
+            }
+            None => out.push_str(segment),
+        }
+    }
+    out
+}
+
+/// 嚴格切段：恰好一行公開分隔線、之後恰好一行私有分隔線，且公開分隔線在本文開頭；
+/// 重複、缺失、錯序都回 None（解析失敗，不默默填空）。
+fn parse_sections(body: &str) -> Option<(String, String)> {
+    let mut marks = Vec::new();
     let mut offset = 0;
     for segment in body.split_inclusive('\n') {
         let line = segment.strip_suffix('\n').unwrap_or(segment);
         let line = line.strip_suffix('\r').unwrap_or(line);
-        let section = match line {
-            "## 公開" => Some(Section::Public),
-            "## 私有" => Some(Section::Private),
-            _ => None,
-        };
-        if let Some(section) = section {
-            markers.push((offset, offset + segment.len(), section));
+        if line == PUBLIC_MARK || line == PRIVATE_MARK {
+            marks.push((line == PUBLIC_MARK, offset, offset + segment.len()));
         }
         offset += segment.len();
     }
-
-    let mut public_md = String::new();
-    let mut private_md = String::new();
-    for (index, (_, content_start, section)) in markers.iter().copied().enumerate() {
-        let content_end = markers
-            .get(index + 1)
-            .map(|(heading_start, _, _)| *heading_start)
-            .unwrap_or(body.len());
-        let mut content = &body[content_start..content_end];
-        if index + 1 < markers.len() {
-            content = content.strip_suffix('\n').unwrap_or(content);
-        }
-        match section {
-            Section::Public => public_md = content.to_owned(),
-            Section::Private => private_md = content.to_owned(),
-        }
-    }
-    (public_md, private_md)
+    let [(true, 0, public_start), (false, private_heading, private_start)] = marks[..] else {
+        return None;
+    };
+    let public = &body[public_start..private_heading];
+    let public = public.strip_suffix('\n').unwrap_or(public);
+    let public = public.strip_suffix('\r').unwrap_or(public);
+    Some((unescape_body(public), unescape_body(&body[private_start..])))
 }
 
 /// `auto_hidden` 不是 `CharacterCard` 的欄位（那樣每個手動建卡的呼叫端都要補這個跟編輯
@@ -166,7 +184,7 @@ fn serialize_character(card: &CharacterCard, display_index: u32, auto_hidden: bo
     // frontmatter 逐行解析，生成提示詞中的換行須在寫入前攤平。
     let gen_prompt = card.gen_prompt.replace(['\n', '\r'], " ");
     format!(
-        "---\nid: {}\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\nauto_hidden: {}\ndisplay_index: {}\ngen_prompt: {}\n---\n## 公開\n{}\n## 私有\n{}",
+        "---\nid: {}\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\nauto_hidden: {}\ndisplay_index: {}\ngen_prompt: {}\n---\n{PUBLIC_MARK}\n{}\n{PRIVATE_MARK}\n{}",
         card.id,
         card.name,
         card.color,
@@ -177,8 +195,8 @@ fn serialize_character(card: &CharacterCard, display_index: u32, auto_hidden: bo
         auto_hidden,
         display_index,
         gen_prompt,
-        card.public_md,
-        card.private_md
+        escape_body(&card.public_md),
+        escape_body(&card.private_md)
     )
 }
 
@@ -224,10 +242,13 @@ pub fn list_characters(root: &Path, world_id: &str) -> DataResult<Vec<CharacterM
             && entry.path().extension().and_then(|value| value.to_str()) == Some("md")
         {
             let contents = fs::read_to_string(entry.path())?;
-            match parse_frontmatter(&contents) {
-                Ok((meta, _, _)) if player_card_id.as_deref() != Some(&meta.id) => {
-                    characters.push(meta)
-                }
+            // 段落也要切得開才算這桌有這張卡（舊格式卡檔照略過，檔案留著不動）
+            match parse_frontmatter(&contents).and_then(|(meta, _, body)| {
+                parse_sections(body)
+                    .map(|_| meta)
+                    .ok_or_else(|| invalid_data(SECTIONS_MALFORMED))
+            }) {
+                Ok(meta) if player_card_id.as_deref() != Some(&meta.id) => characters.push(meta),
                 Ok(_) => {}
                 Err(error) => {
                     eprintln!("略過無法解析的角色卡 {}: {error}", entry.path().display())
@@ -281,9 +302,18 @@ pub fn read_character(
     character_id: &str,
 ) -> DataResult<CharacterCard> {
     let contents = fs::read_to_string(character_path(root, world_id, character_id)?)?;
-    let (meta, gen_prompt, body) = parse_frontmatter(&contents)?;
-    let (public_md, private_md) = parse_sections(body);
-    Ok(CharacterCard {
+    card_from_contents(&contents)?.ok_or_else(|| invalid_data(SECTIONS_MALFORMED))
+}
+
+const SECTIONS_MALFORMED: &str = "character card sections are malformed";
+
+/// frontmatter 壞掉回錯；段落切不開回 `Ok(None)`，讓玩家上下文能把它當成沒有這張卡。
+fn card_from_contents(contents: &str) -> DataResult<Option<CharacterCard>> {
+    let (meta, gen_prompt, body) = parse_frontmatter(contents)?;
+    let Some((public_md, private_md)) = parse_sections(body) else {
+        return Ok(None);
+    };
+    Ok(Some(CharacterCard {
         id: meta.id,
         name: meta.name,
         color: meta.color,
@@ -294,7 +324,7 @@ pub fn read_character(
         gen_prompt,
         public_md,
         private_md,
-    })
+    }))
 }
 
 pub fn read_player_card(root: &Path, world_id: &str) -> DataResult<Option<CharacterCard>> {
@@ -310,7 +340,8 @@ pub fn read_player_card(root: &Path, world_id: &str) -> DataResult<Option<Charac
     if !path.is_file() {
         return Ok(None);
     }
-    read_character(root, world_id, &character_id).map(Some)
+    // 玩家上下文：段落切不開（舊格式卡檔）視為沒有玩家卡；讀檔與 frontmatter 錯誤照傳
+    card_from_contents(&fs::read_to_string(path)?)
 }
 
 /// 這張卡目前落地的 auto_hidden 值；檔案不存在或解析失敗（新卡）一律當 false。

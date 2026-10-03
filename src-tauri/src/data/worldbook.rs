@@ -566,12 +566,29 @@ pub fn worldbook_entry_to_character(
     })
 }
 
-/// 把角色卡搬回世界書，桌上與隱藏區的卡都可以。
+/// 卡轉世界書時公開與私有內容之間的段標；寫入當下照介面語系，之後就是條目內文。
+fn private_heading(lang: &str) -> &'static str {
+    match super::lang_key(lang) {
+        "zh-TW" => "## 私有",
+        "zh-CN" => "## 私有",
+        "ja" => "## 非公開",
+        "ko" => "## 비공개",
+        "es" => "## Privado",
+        "pt-BR" => "## Privado",
+        "de" => "## Privat",
+        "fr" => "## Privé",
+        "ru" => "## Приватное",
+        _ => "## Private",
+    }
+}
+
+/// 把角色卡搬回世界書，桌上與隱藏區的卡都可以。`lang`：介面語系，決定私有段標的語言。
 /// 取獨占：回合或換幕持共用許可期間會讀卡、寫卡，交錯會點名已刪的卡或把卡檔寫回來。
 pub fn character_to_worldbook_entry(
     root: &Path,
     world_id: &str,
     character_id: &str,
+    lang: &str,
 ) -> DataResult<()> {
     let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
         return Err(UiMsg::WorldBusy.into_error());
@@ -583,7 +600,12 @@ pub fn character_to_worldbook_entry(
     }
 
     let content = match (card.public_md.is_empty(), card.private_md.is_empty()) {
-        (false, false) => format!("{}\n\n## 私有\n{}", card.public_md, card.private_md),
+        (false, false) => format!(
+            "{}\n\n{}\n{}",
+            card.public_md,
+            private_heading(lang),
+            card.private_md
+        ),
         (false, true) => card.public_md,
         (true, false) => card.private_md,
         (true, true) => String::new(),

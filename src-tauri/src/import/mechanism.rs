@@ -494,7 +494,7 @@ mod tests {
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let state = data::read_state(root.path(), &world_id).unwrap();
         let world = match state.state.tree.get("World") {
             Some(StateNode::Branch(children)) => children,
@@ -559,7 +559,7 @@ mod tests {
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let state = data::read_state(root.path(), &world_id).unwrap();
         let world = match state.state.tree.get("World") {
             Some(StateNode::Branch(children)) => children,
@@ -599,7 +599,8 @@ mod tests {
         })
         .to_string();
 
-        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let meta =
+            import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         assert!(data::read_character(root.path(), &world_id, &meta.id)
             .unwrap()
             .private_md
@@ -630,7 +631,7 @@ mod tests {
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         assert!(data::read_state(root.path(), &world_id)
             .unwrap()
             .state
@@ -682,7 +683,7 @@ mod tests {
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let state = data::read_state(root.path(), &world_id).unwrap();
         assert!(state.mechanism.incremental);
         let rules = &state.mechanism.rules;
@@ -737,7 +738,7 @@ if (invasion >= 50 && done === false) { _%>
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let state = data::read_state(root.path(), &world_id).unwrap();
         assert_eq!(state.mechanism.triggers.len(), 1);
         assert_eq!(
@@ -773,7 +774,7 @@ if (invasion >= 50 && done === false) { _%>
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let state = data::read_state(root.path(), &world_id).unwrap();
         assert_eq!(
             state.mechanism.rules["Player.Outfit.上装"].kind,

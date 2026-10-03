@@ -9,14 +9,110 @@ use std::path::Path;
 /// 不含 first_mes——開場白走 card_openings 讓玩家挑，收進條目會每回合重複注入。
 const PERSONA_FIELDS: [&str; 4] = ["description", "personality", "scenario", "mes_example"];
 
-/// 公開段落與 SillyTavern 欄位的對照表：匯入時拆成 `### 標題`，匯出時再併回欄位
-pub(super) const PUBLIC_SECTIONS: [(&str, &str); 5] = [
-    ("簡介", "description"),
-    ("人格與語氣", "personality"),
-    ("場景", "scenario"),
-    ("開場白", "first_mes"),
-    ("語氣範例", "mes_example"),
+/// 段標的語系順序（與 `SECTION_LABELS` 各列對齊）。
+const LANGS: [&str; 10] = [
+    "zh-TW", "zh-CN", "en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru",
 ];
+
+/// 公開段落與 SillyTavern 欄位的對照表：匯入時照介面語系拆成 `### 段標`（之後就是玩家內文），
+/// 匯出時認得十語系任一版本的段標再併回欄位。
+pub(super) const PUBLIC_SECTIONS: [(&str, [&str; 10]); 5] = [
+    (
+        "description",
+        [
+            "簡介",
+            "简介",
+            "Description",
+            "紹介",
+            "소개",
+            "Descripción",
+            "Descrição",
+            "Beschreibung",
+            "Description",
+            "Описание",
+        ],
+    ),
+    (
+        "personality",
+        [
+            "人格與語氣",
+            "人格与语气",
+            "Personality",
+            "性格と口調",
+            "성격과 말투",
+            "Personalidad y tono",
+            "Personalidade e tom",
+            "Persönlichkeit und Tonfall",
+            "Personnalité et ton",
+            "Характер и манера речи",
+        ],
+    ),
+    (
+        "scenario",
+        [
+            "場景",
+            "场景",
+            "Scenario",
+            "シナリオ",
+            "시나리오",
+            "Escenario",
+            "Cenário",
+            "Szenario",
+            "Scénario",
+            "Сценарий",
+        ],
+    ),
+    (
+        "first_mes",
+        [
+            "開場白",
+            "开场白",
+            "First message",
+            "最初のメッセージ",
+            "첫 메시지",
+            "Primer mensaje",
+            "Primeira mensagem",
+            "Erste Nachricht",
+            "Premier message",
+            "Первое сообщение",
+        ],
+    ),
+    (
+        "mes_example",
+        [
+            "語氣範例",
+            "语气范例",
+            "Example dialogue",
+            "会話例",
+            "대화 예시",
+            "Ejemplos de diálogo",
+            "Exemplos de diálogo",
+            "Dialogbeispiele",
+            "Exemples de dialogue",
+            "Примеры диалога",
+        ],
+    ),
+];
+
+/// 私有段的備用開場白段標（`{n}` 從 1 起）；只寫不讀，匯出時併進常駐條目。
+const ALTERNATE_GREETING: [&str; 10] = [
+    "備用開場白 {n}",
+    "备用开场白 {n}",
+    "Alternate greeting {n}",
+    "別の書き出し {n}",
+    "대체 첫 메시지 {n}",
+    "Saludo alternativo {n}",
+    "Saudação alternativa {n}",
+    "Alternative Begrüßung {n}",
+    "Message d’accueil alternatif {n}",
+    "Альтернативное приветствие {n}",
+];
+
+/// 這個介面語系在 `LANGS` 裡的位置（zh* 退繁中、未知退英文）。
+fn lang_index(lang: &str) -> usize {
+    let key = data::lang_key(lang);
+    LANGS.iter().position(|item| *item == key).unwrap_or(2)
+}
 
 #[derive(serde::Serialize, Default, Debug, PartialEq)]
 pub struct ImportProbe {
@@ -127,11 +223,13 @@ pub fn check_character_bytes(bytes: &[u8]) -> DataResult<()> {
 }
 
 /// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
+/// `lang`：介面語系，決定寫進內文的段標語言（寫入後就是玩家內文，不隨語系變）。
 pub fn import_character(
     root: &Path,
     world_id: &str,
     bytes: &[u8],
     color: &str,
+    lang: &str,
 ) -> DataResult<CharacterMeta> {
     let (value, raw_extension, name) = parse_character(bytes)?;
     let card_data = value
@@ -151,8 +249,8 @@ pub fn import_character(
         show_image: true,
         archived: false,
         gen_prompt: String::new(),
-        public_md: public_markdown(card_data),
-        private_md: private_markdown(card_data),
+        public_md: public_markdown(card_data, lang),
+        private_md: private_markdown(card_data, lang),
     };
     data::write_character(root, world_id, &card)?;
     data::commit_world_write(&md_path.with_extension(raw_extension), bytes)?;
@@ -222,19 +320,21 @@ pub fn card_openings(bytes: &[u8]) -> Option<(String, Vec<String>)> {
     Some((name, openings))
 }
 
-fn public_markdown(data: &Value) -> String {
+fn public_markdown(data: &Value, lang: &str) -> String {
+    let index = lang_index(lang);
     PUBLIC_SECTIONS
         .into_iter()
-        .filter_map(|(heading, field)| {
+        .filter_map(|(field, labels)| {
             let content = string_field(data, field)?;
-            (!content.trim().is_empty()).then(|| format!("### {heading}\n{content}"))
+            (!content.trim().is_empty()).then(|| format!("### {}\n{content}", labels[index]))
         })
         .collect::<Vec<_>>()
         .join("\n\n")
 }
 
-fn private_markdown(data: &Value) -> String {
-    // 條目維持單換行緊湊排列；備用開場白各成一段，段間空行
+fn private_markdown(data: &Value, lang: &str) -> String {
+    // 條目維持單換行緊湊排列；備用開場白各成一段，段間空行。
+    // `- **關鍵字、關鍵字**：內容` 的「、」「：」是語系無關的格式契約，匯出（export.rs character_book）照同字反向比對
     let entry_block = data
         .get("character_book")
         .and_then(|book| book.get("entries"))
@@ -271,7 +371,14 @@ fn private_markdown(data: &Value) -> String {
             .filter_map(Value::as_str)
             .filter(|greeting| !greeting.is_empty())
             .enumerate()
-            .map(|(index, greeting)| format!("### 備用開場白 {}\n{greeting}", index + 1)),
+            .map(|(index, greeting)| {
+                let heading = ALTERNATE_GREETING[lang_index(lang)].replacen(
+                    "{n}",
+                    &(index + 1).to_string(),
+                    1,
+                );
+                format!("### {heading}\n{greeting}")
+            }),
     );
     sections.join("\n\n")
 }
@@ -359,7 +466,7 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let raw = r#"{"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"莉亞","description":"精靈遊俠","personality":"冷靜","scenario":"雨夜","first_mes":"妳來了。","mes_example":"<START>","character_book":{"entries":[{"keys":["森林","月亮"],"content":"古老盟約","enabled":true},{"keys":["略過"],"content":""}]}}}"#.as_bytes();
 
-        let meta = import_character(root.path(), &world_id, raw, "#3366ff").unwrap();
+        let meta = import_character(root.path(), &world_id, raw, "#3366ff", "zh-TW").unwrap();
         assert_eq!(meta.name, "莉亞");
         let markdown = fs::read_to_string(
             root.path()
@@ -376,7 +483,7 @@ mod tests {
             "### 場景\n雨夜",
             "### 開場白\n妳來了。",
             "### 語氣範例\n<START>",
-            "## 私有\n- **森林、月亮**：古老盟約",
+            "<!-- tt:private -->\n- **森林、月亮**：古老盟約",
         ] {
             assert!(markdown.contains(section), "missing {section}");
         }
@@ -396,7 +503,7 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩","description":"騎士"}}"#);
 
-        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
         assert!(root
             .path()
             .join(format!("worlds/{world_id}/characters/{}.md", meta.id))
@@ -424,6 +531,7 @@ mod tests {
             &world_id,
             r#"{"name":"舊卡","personality":"直率"}"#.as_bytes(),
             "#222222",
+            "zh-TW",
         )
         .unwrap();
         let card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
@@ -558,14 +666,14 @@ mod tests {
         let root = TestRoot::new("character-lorebook");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
 
-        import_character(root.path(), &world_id, card.as_bytes(), "#ffffff").unwrap();
+        import_character(root.path(), &world_id, card.as_bytes(), "#ffffff", "zh-TW").unwrap();
 
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().any(|entry| entry.content == "北境的漁村"));
 
         // 同一張卡再匯一次：條目由去重擋下，不會長出第二份
-        import_character(root.path(), &world_id, card.as_bytes(), "#ffffff").unwrap();
+        import_character(root.path(), &world_id, card.as_bytes(), "#ffffff", "zh-TW").unwrap();
         assert_eq!(
             data::read_worldbook(root.path(), &world_id).unwrap().len(),
             2
@@ -578,7 +686,8 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let raw = r#"{"data":{"name":"莉亞","character_book":{"entries":[{"keys":["森林"],"content":"古老盟約"}]},"alternate_greetings":["第二次見面。","雨天再訪。"]}}"#;
 
-        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let meta =
+            import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let private_md = data::read_character(root.path(), &world_id, &meta.id)
             .unwrap()
             .private_md;
@@ -600,8 +709,14 @@ mod tests {
         let root = TestRoot::new("duplicate-name");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let odd_name = r#"{"name":"a/b/../重名","description":"第一張"}"#;
-        let first =
-            import_character(root.path(), &world_id, odd_name.as_bytes(), "#000000").unwrap();
+        let first = import_character(
+            root.path(),
+            &world_id,
+            odd_name.as_bytes(),
+            "#000000",
+            "zh-TW",
+        )
+        .unwrap();
         assert_eq!(first.name, "a/b/../重名");
 
         let second = import_character(
@@ -609,6 +724,7 @@ mod tests {
             &world_id,
             r#"{"name":"a/b/../重名","description":"第二張"}"#.as_bytes(),
             "#ffffff",
+            "zh-TW",
         )
         .unwrap();
 

@@ -8,11 +8,11 @@ pub use export::{export_scene_markdown, export_transcript_markdown};
 pub use lifecycle::{
     begin_next_scene, fork_scene, replace_scene_summary, revert_scene, scene_label,
 };
-pub(crate) use marker::player_fallback_name;
 pub use marker::{
     appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
     EventMarker,
 };
+pub(crate) use marker::{lang_key, player_fallback_name};
 pub(crate) use presence::{name_matches, split_present_names};
 pub use transcript::{
     append_opening, append_transcript, opening_checkpoint, pop_transcript, read_transcript,

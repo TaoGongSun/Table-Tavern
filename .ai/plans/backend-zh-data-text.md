@@ -2,6 +2,8 @@
 
 拍板〔作者裁決 2026-10-02〕：存語系無關的代碼，顯示與匯出時照當下語系翻譯；程式比對只認代碼；不做舊檔相容。
 
+結論（2026-10-03 結案，Sol 審查與驗收同意）：逐字稿固定標頭改存 `marker` 代碼、顯示／匯出／送 AI 時照語系組字；匯出十語系；卡檔分隔線改語系無關並嚴格讀取；匯入與卡轉世界書段標照介面語系寫入、匯出認十語系。已知限制：舊 `player_card_id` 殘留會擋重構建立玩家卡與世界書升格（不救）；舊桌事件與卡檔不相容（舊卡不列、舊事件當一般訊息、舊合併回歸事件私設不再對角色遮蔽）；既有 lane 升級後第一輪整線重開一次；`Unknown` 代碼被重寫時原欄位流失；卡片內文自然出現的同名段標會被切欄。
+
 範圍調整〔作者裁決 2026-10-03〕：⑤ 是嵌在玩家可編輯內文裡的段標，不照 10-02 的「存代碼」做，改成寫入當下照介面語系產生；前端寫進逐字稿的固定文字（⑥⑦）併進本案。
 
 ## 盤點（行號以 main 8057017 為準）
@@ -21,7 +23,7 @@
 ## 三種語系分開講
 
 - **顯示語系**：畫面、卡片介面樓層、匯出檔、⑤ 寫入段標，跟介面語系走（十語系）。
-- **marker 送 AI 語系**〔模型判斷·未裁決，交 Sol 審〕：照 `transport/context.rs` 既有慣例，`lang == "en"` 出英文，其餘出繁中。繁中字面：①②沿用現行字面，⑥ 用 zh-TW 字典現值（`狀態更新`、`GM 請「X」發言`）。
+- **marker 送 AI 語系**〔模型判斷·未裁決；Sol 審查同意〕：照 `transport/context.rs` 既有慣例，`lang == "en"` 出英文，其餘出繁中。繁中字面：①②沿用現行字面，⑥ 用 zh-TW 字典現值（`狀態更新`、`GM 請「X」發言`）。
 - **模型輸出語系**：維持 `messages.rs:7` `language_rule` 現行做法，本案不動。`messages.rs:29` 玩家退路名、language_rule 本來就隨介面語系變，本案不保證切語系時提示詞整包不變。
 
 ## 做法
@@ -34,7 +36,7 @@
 
 ### 組字與可見性（單一入口）
 - 後端新檔 `data/scene/marker.rs`：
-  - `marker_heading(marker, lang)`：十語系表（照 `leftover_title_suffix` 寫法，zh* 退繁中、未知退英文），只回第一行標頭，例如 `（角色回歸）〈X〉`。
+  - `marker_heading(marker, lang)`：十語系標頭字典放 `src/shared/contracts/transcript-marker.json`，Rust `include_str!` 與前端 i18n 共讀同一份（zh* 退繁中、未知退英文），只回第一行標頭，例如 `（角色回歸）〈X〉`。原本前端的 `gmCallOn`／`stateUpdateHeader` 改由這份字典提供，主字典刪除。
   - `event_full_text(event, lang)`：標頭＋還原的段標與換行。`card_arrival` 本文非空白時為 `標頭\n公開設定：\n本文`，本文空白時只有標頭；`card_private` 為 `標頭\n私有設定：\n本文`；`person_arrival`、`scene_summary`、`state_update` 為 `標頭\n本文`；`gm_call` 只有標頭；沒有 marker 就是本文原樣。以繁中逐字測試鎖住與現行寫入字面一致。
 - `prompt_text(event, lang, side) -> Option<String>`（`transport/arrivals.rs` 取代 `character_visible_text`），可見性只在這裡判斷：
   - GM 側：`event_full_text`。
@@ -47,7 +49,7 @@
 - `expected_reply` 對點（:335）：另外要求該事件 `marker.is_none() && !gm_only`（回覆事件不可能帶 marker）。不符就 `ReplyDiverged` 重開，避免只改了 marker／gm_only 卻落在雜湊水位外而被跳過。
 
 ### 前端（⑥⑦與顯示）
-- `src/i18n/features/transcript-marker.ts` 十語系鍵；play feature 加 `eventDisplayText(event)`、`speakerDisplayName(event)`（player kind 且名字空白就退回 `t("playerLabel")`）。`PlayView`、`ActReader`、卡片介面樓層與目前樓名稱（`card-chat-shim.ts:39`、`card-shell-route.ts:55,103,109`）改用它們。
+- `src/i18n/features/transcript-marker.ts` 讀共用 JSON 成 `marker_<code>` 鍵；`src/shared/ui/event-text.ts`（play 與 card-interface 共用）提供 `parseMarker`、`eventDisplayText(event)`、`speakerDisplayName(event)`（player kind 且名字空白就退回 `t("playerLabel")`）。`PlayView`、`ActReader`、卡片介面樓層與目前樓名稱（`card-chat-shim.ts:39`、`card-shell-route.ts:55,103,109`）改用它們。
 - `appendEvent`（`useChatController.ts:203`）：帶已知 marker 的事件允許空本文；沒有 marker 的空白事件照舊擋 `AI_EMPTY_RESPONSE`。`canRestore`（:188）把「有本文或有 marker」都算有內容。
 - 寬鬆讀取保留 marker：`data/format/commit.rs:834` `ReadonlyLine` 加 `marker: Option<Value>`，後端原樣帶出、不驗；`open-world.ts:75` `looseTranscript` 轉事件時先過前端執行期形狀檢查 `parseMarker(value: unknown)`：須是物件、`type` 為字串；已知 type 缺 `name`／`title` 或不是字串就當畸形，畸形與未知 type 都當沒有 marker，只顯示本文。一般讀取路徑的顯示也走同一個 `parseMarker`。name/text/kind 的寬鬆規則不變。
 - ⑦：沒有玩家名時 speaker_name 存空字串；提示詞退回 `player_fallback_name(lang)`，匯出退回匯出語系的玩家稱呼。
@@ -75,6 +77,8 @@
   - 段標＝整行（去掉行尾空白）完全等於 `### <任一語系的欄位名>`，逐段獨立辨識十語系，混語系（含玩家手動編輯）也拆得對。
   - 已知歧義：內文自然出現、與段標同字的行（例如英文描述裡的 `### Scene`）仍會被當成段標切欄。只承諾 App 自己寫的段標拆得回去，不承諾無損還原。
 - 語系無關的結構分隔符：私有條目 `- **關鍵字**：內容` 的 `、`（`import/card.rs:255`）與 `：`（:256）、反向比對 `import/export.rs:100,103`，寫入與讀取兩端都固定不翻，列為格式契約。
+
+實作補記：換幕摘要只寫代碼，`begin_next_scene`／`replace_scene_summary` 不再收語系參數；lanes 指紋加欄後，既有線升級後第一輪會重開一次；`check-i18n` 改用 esbuild 打包（補充字典 import JSON）。
 
 ## 分包
 1. ①②⑥⑦：marker 契約、組字與可見性、四條送 AI 路（含摘要）、lanes 對點、前端寫入／顯示／寬鬆讀取。
