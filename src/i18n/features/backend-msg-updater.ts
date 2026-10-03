@@ -307,7 +307,7 @@ const COPY = {
     be_update_changed: "La version cible de la mise à jour a changé",
     be_update_busy: "Une mise à jour est en cours",
     be_update_auto_check_off: "La recherche automatique est désactivée",
-    be_update_gate_closed: "Une mise à jour est en cours ; l'enregistrement est suspendu",
+    be_update_gate_closed: "Une mise à jour est en cours\u00a0; l'enregistrement est suspendu",
     be_update_cannot_replace: "Impossible de remplacer l'app automatiquement",
     be_version_store_busy: "Installation ou téléchargement déjà en cours",
     be_platform_unsupported: "Aucun installateur pour cette plateforme",
@@ -330,11 +330,11 @@ const COPY = {
     be_update_endpoint_invalid:
       "Impossible de déduire le dépôt à partir de l'adresse de mise à jour",
     be_rollback_point_url_invalid: "Impossible de télécharger le point de retour",
-    be_rollback_point_download_failed: "Impossible de télécharger le point de retour : {status}",
+    be_rollback_point_download_failed: "Impossible de télécharger le point de retour\u00a0: {status}",
     be_swap_record_missing: "Aucun journal de remplacement",
     be_app_id_unavailable: "Impossible d'identifier l'app à conserver",
     be_residue_cleanup_stuck: "Le nettoyage des restes n'a pas abouti",
-    be_versions_sync_failed: "Impossible d'écrire le dossier des versions sur le disque : {error}",
+    be_versions_sync_failed: "Impossible d'écrire le dossier des versions sur le disque\u00a0: {error}",
   },
   ru: {
     be_update_not_checked: "Обновления ещё не проверялись",

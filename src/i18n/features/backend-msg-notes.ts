@@ -181,25 +181,25 @@ const COPY = {
   },
   fr: {
     be_refactor_drop_rule_carried:
-      "L'exclusion n'a pas de numéro de règle, ou il n'est pas entre 1 et 4 : l'entrée a été reprise telle quelle.",
+      "L'exclusion n'a pas de numéro de règle, ou il n'est pas entre 1 et 4\u00a0: l'entrée a été reprise telle quelle.",
     be_refactor_drop_rule_leftover:
-      "L'exclusion n'a pas de numéro de règle, ou il n'est pas entre 1 et 4 : ce passage a été versé tel quel dans l'entrée des restes.",
+      "L'exclusion n'a pas de numéro de règle, ou il n'est pas entre 1 et 4\u00a0: ce passage a été versé tel quel dans l'entrée des restes.",
     be_refactor_span_leftover:
-      "Ce passage n'avait pas de destination valide : il a été versé tel quel dans l'entrée « …（餘段） ».",
+      "Ce passage n'avait pas de destination valide\u00a0: il a été versé tel quel dans l'entrée «\u00a0…（餘段）\u00a0».",
     be_refactor_person_span_invalid:
-      "« {name} » utilise mode=clean mais renvoie à des passages invalides ; renvoyé dans la file de développement.",
+      "«\u00a0{name}\u00a0» utilise mode=clean mais renvoie à des passages invalides\u00a0; renvoyé dans la file de développement.",
     be_refactor_coverage_carried:
-      "Cette entrée n'apparaissait dans aucun classement (personnages, interface, entrées) : elle a été ajoutée telle quelle.",
+      "Cette entrée n'apparaissait dans aucun classement (personnages, interface, entrées)\u00a0: elle a été ajoutée telle quelle.",
     be_refactor_signal_no_reason:
       "Un signal de la pré-analyse de structure ({pattern}) se trouve dans une entrée reprise telle quelle, sans motif indiqué.",
     be_refactor_signal_on_carry: "Signal de pré-analyse dans une entrée reprise telle quelle",
-    be_refactor_carry_reason: "Motif de la reprise : {reason}",
+    be_refactor_carry_reason: "Motif de la reprise\u00a0: {reason}",
     be_ledger_refactor_mechanism:
-      "Entrée de mécanique créée par la réorganisation de carte par IA : les règles de champs et les tables de déclencheurs tournent dans l'app ; la description reste lisible dans l'encyclopédie (lecture seule).",
+      "Entrée de mécanique créée par la réorganisation de carte par IA\u00a0: les règles de champs et les tables de déclencheurs tournent dans l'app\u00a0; la description reste lisible dans l'encyclopédie (lecture seule).",
     be_ledger_script_unrecognized:
-      "Le script de la carte n'a pas été reconnu : il n'a pas été converti en table de déclencheurs et n'est pas envoyé au modèle par défaut.",
+      "Le script de la carte n'a pas été reconnu\u00a0: il n'a pas été converti en table de déclencheurs et n'est pas envoyé au modèle par défaut.",
     be_ledger_scaffold_absorbed:
-      "Entrée d'échafaudage de mécanique : désormais gérée par la mécanique locale de l'app et plus envoyée dans le prompt.",
+      "Entrée d'échafaudage de mécanique\u00a0: désormais gérée par la mécanique locale de l'app et plus envoyée dans le prompt.",
     be_receipt_refactor_apply: "Réorganisation de carte par IA",
     be_cli_model_alias: "{alias} (alias officiel)",
   },

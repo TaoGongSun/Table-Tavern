@@ -260,7 +260,7 @@ const COPY = {
   fr: {
     modelModeLegend: "Modèle",
     smartFreeDailyLeft: "Quota gratuit du jour {remaining}/{limit} (partagé par tous les modèles)",
-    smartFreeUnlimited: "Quota gratuit du jour : illimité (partagé par tous les modèles)",
+    smartFreeUnlimited: "Quota gratuit du jour\u00a0: illimité (partagé par tous les modèles)",
     smartFreeSwitched: "Le modèle gratuit a été remplacé automatiquement par {model}.",
     smartFreeExpiring: "Le modèle gratuit actuel, {model}, expirera bientôt. Un autre modèle gratuit disponible sera ensuite sélectionné automatiquement.",
     smartFreeLimitedTitle: "Gratuit limité / expérimental",

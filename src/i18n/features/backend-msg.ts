@@ -101,22 +101,22 @@ const COPY = {
       "Beim Reparieren konnte eine Datei nicht gelesen oder geschrieben werden. Tisch, Sicherung und beiseitegelegter Inhalt sind alle noch da: {error}",
   },
   fr: {
-    be_io_failed: "Impossible de lire ou d'écrire un fichier : {error}",
+    be_io_failed: "Impossible de lire ou d'écrire un fichier\u00a0: {error}",
     needsRepair_outside:
-      "Les dossiers de cette table ne correspondent à aucun état réparable automatiquement. Tous les fichiers d'origine sont toujours là : ouvrez le dossier pour les consulter.",
+      "Les dossiers de cette table ne correspondent à aucun état réparable automatiquement. Tous les fichiers d'origine sont toujours là\u00a0: ouvre le dossier pour les consulter.",
     needsRepair_rename:
-      "Un renommage a échoué pendant la réparation (un fichier est peut-être utilisé). Rien n'a été supprimé : la table, la sauvegarde et le contenu mis de côté sont intacts. Nouvel essai à la prochaine ouverture.",
+      "Un renommage a échoué pendant la réparation (un fichier est peut-être utilisé). Rien n'a été supprimé\u00a0: la table, la sauvegarde et le contenu mis de côté sont intacts. Nouvel essai à la prochaine ouverture.",
     needsRepair_convert:
       "La conversion de format ne s'est pas terminée. La table d'origine n'a pas été modifiée. Nouvel essai à la prochaine ouverture.",
     needsRepair_missing:
-      "Le dossier principal de cette table est introuvable ; il ne reste qu'une sauvegarde ou une opération inachevée. Réparation automatique impossible.",
+      "Le dossier principal de cette table est introuvable\u00a0; il ne reste qu'une sauvegarde ou une opération inachevée. Réparation automatique impossible.",
     needsRepair_io:
-      "Impossible de lire ou d'écrire un fichier pendant la réparation. La table, la sauvegarde et le contenu mis de côté sont toujours là : {error}",
+      "Impossible de lire ou d'écrire un fichier pendant la réparation. La table, la sauvegarde et le contenu mis de côté sont toujours là\u00a0: {error}",
   },
   ru: {
     be_io_failed: "Не удалось прочитать или записать файл: {error}",
     needsRepair_outside:
-      "Папки этого стола не соответствуют ни одному состоянию, которое можно исправить автоматически. Все исходные файлы на месте — откройте папку, чтобы посмотреть.",
+      "Папки этого стола не соответствуют ни одному состоянию, которое можно исправить автоматически. Все исходные файлы на месте — открой папку, чтобы посмотреть.",
     needsRepair_rename:
       "При восстановлении не удалось переименовать файл (возможно, он занят). Ничего не удалено: стол, резервная копия и отложенное содержимое не тронуты. Попробуем снова при следующем открытии.",
     needsRepair_convert:
