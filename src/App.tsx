@@ -288,13 +288,14 @@ function App() {
   }, [liveWorldId, mainView, characters.list, tableState.refresh]);
 
   // 卡片介面：介面腳本／重構殼／覆蓋層開關與沙盒訊息都在 controller 裡，
-  // 這裡只餵它需要的四樣（送出函式會隨對話狀態換新，controller 內用 latest-ref 收）
+  // 這裡只餵它需要的幾樣（送出函式會隨對話狀態換新，controller 內用 latest-ref 收）
   const cardInterface = useCardInterfaceController({
     worldId: liveWorldId,
     events: chat.events,
     tree: tableState.tree,
     userName: characters.player?.name?.trim() || t("playerLabel"),
     submitText: whenTableFree(chat.submitText),
+    onEventUpdated: chat.replaceEvent,
   });
 
   // 一桌一卡：匯入成功後，還掛自動名的桌直接改成卡名；自訂過名字的桌不動

@@ -5,7 +5,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
 import { isCharacterHidden } from "./character-visibility";
-import { type WorldState } from "../../shared/contracts/backend-contracts";
 import { type CharacterCard, type CharacterMeta } from "./card-model";
 
 export interface CharacterController {
@@ -309,8 +308,7 @@ export function useCharacterController(input: {
         });
         if (!accepted) return false;
         await invoke("delete_character", { worldId, characterId: id });
-        const state = await invoke<WorldState>("read_state", { worldId });
-        await invoke("write_state", { worldId, state: { ...state, player_card_id: null } });
+        await invoke("set_player_card", { worldId, cardId: null });
         setPlayerCardId(null);
         setPlayerCard(null);
         setPlayerImage(null);

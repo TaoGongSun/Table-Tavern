@@ -15,7 +15,9 @@ pub use marker::{
 pub(crate) use marker::{lang_key, player_fallback_name};
 pub(crate) use presence::{name_matches, split_present_names};
 pub use transcript::{
-    append_opening, append_transcript, discard_unanswered_player, opening_checkpoint,
-    pop_transcript, read_transcript, remove_transcript_event, set_last_transcript_state,
-    sync_scene_state_tree, TranscriptEvent, TranscriptKind,
+    append_event, append_opening, append_transcript, append_within_turn, discard_unanswered_player,
+    opening_checkpoint, pop_transcript, read_transcript, remove_transcript_event,
+    set_last_transcript_state, settle_pending_turn, sync_scene_state_tree, TranscriptEvent,
+    TranscriptKind,
 };
+pub(crate) use transcript::{edit_line, find_event_rev, find_rev, transcript_path, LineHead};

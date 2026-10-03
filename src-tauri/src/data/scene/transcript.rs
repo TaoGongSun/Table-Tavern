@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::super::message_vars;
 use super::super::paths::world_dir;
-use super::super::state::{read_state, write_state, TableState, WorldState};
+use super::super::state::{read_state, read_state_cache, write_state, TableState, WorldState};
+use super::super::state_commit::{with_commit, CommitTx};
 use super::super::{invalid_data, DataResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,26 +48,93 @@ pub struct TranscriptEvent {
     /// 開場由 initvar 初始化、不補狀態欄占位。舊紀錄預設 false。
     #[serde(default, skip_serializing_if = "is_false")]
     pub opening: bool,
+    /// 穩定 ID（ULID），落檔時由後端配發；舊事件沒有，第一次被卡片寫入時補上（計畫 8.1）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// 這樓完整的 MVU 變數表（卡片變數模式）。None＝這樓尚無表；有值就是明確的表（可以沒有 stat_data）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_vars: Option<crate::data::message_vars::VarsTable>,
+    /// 這樓表的版本 token（ULID），表每次變更或復原帶回時重新產生。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vars_rev: Option<String>,
+    /// 寫入這張表當下那一幕的 epoch；與控制檔裡這一幕的 epoch 相同才算初始化來源。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vars_epoch: Option<String>,
+    /// GM 回合落檔的冪等鍵（turn_id＋turn_part），前端重試時靠它認出已提交的那則。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_key: Option<crate::data::message_vars::TurnKey>,
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub(super) fn transcript_path(root: &Path, world_id: &str, scene: u64) -> DataResult<PathBuf> {
+pub(crate) fn transcript_path(root: &Path, world_id: &str, scene: u64) -> DataResult<PathBuf> {
     Ok(world_dir(root, world_id)?
         .join("transcript")
         .join(format!("{scene}.jsonl")))
 }
 
-/// 回傳追加收據：這一行在逐字稿檔裡的起始位元組。
+/// 追加一則新事件，回傳追加收據（這一行在逐字稿檔裡的起始位元組）。不屬於進行中回合：上一回合沒落成的
+/// 部分先交接（代落），新事件才不會搶到舊回覆前面。
 pub fn append_transcript(
     root: &Path,
     world_id: &str,
     scene: u64,
     event: &TranscriptEvent,
 ) -> DataResult<u64> {
+    with_commit(root, world_id, |tx| {
+        append_transcript_tx(tx, scene, event).map(|(offset, _)| offset)
+    })
+}
+
+/// 同一回合內部的附屬追加（GM 回合提交後的登場紀錄等）：憑證對得上進行中的回合就不交接，照原本順序排在
+/// 正文前；對不上（回合已結束或被換掉）就當一般新事件，先交接。
+pub fn append_within_turn(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    event: &TranscriptEvent,
+    turn: &message_vars::TurnTicket,
+) -> DataResult<u64> {
+    with_commit(root, world_id, |tx| {
+        let appended = if message_vars::turn_owns(tx, turn) {
+            append_line_tx(tx, scene, event)
+        } else {
+            append_transcript_tx(tx, scene, event)
+        };
+        appended.map(|(offset, _)| offset)
+    })
+}
+
+/// 鎖內版的新事件追加（開場、換幕摘要等也走這裡）：先交接上一回合沒落成的部分。
+pub(crate) fn append_transcript_tx(
+    tx: &CommitTx<'_>,
+    scene: u64,
+    event: &TranscriptEvent,
+) -> DataResult<(u64, TranscriptEvent)> {
+    message_vars::settle_before_append(tx, None)?;
+    append_line_tx(tx, scene, event)
+}
+
+/// 實際追加一行（不交接，只給本模組的回合路徑與上面兩個入口）：沒有 ID 就配發、帶表的（復原帶回來的）
+/// 換新版本 token、沒快照就蓋上目前有效狀態。回傳收據與實際落檔的那則。
+fn append_line_tx(
+    tx: &CommitTx<'_>,
+    scene: u64,
+    event: &TranscriptEvent,
+) -> DataResult<(u64, TranscriptEvent)> {
+    let (root, world_id) = (tx.root, tx.world_id);
     let mut event = event.clone();
+    if event.id.is_none() {
+        event.id = Some(message_vars::new_token());
+    }
+    if event.message_vars.is_some() {
+        event.vars_rev = Some(message_vars::new_token());
+    } else {
+        event.vars_rev = None;
+        event.vars_epoch = None;
+    }
     if event.state.is_none() {
         // 復原舊句子會帶回當時快照，只有新事件才借用目前檯面。讀不到就停，不再照寫。
         event.state = Some(read_state(root, world_id)?.state);
@@ -78,24 +147,82 @@ pub fn append_transcript(
     )?;
     // 目前值恆等於最後一則事件的快照，復原舊句時狀態才會跟著回到那一刻。
     // 快取寫失敗不該把「事件已經寫進去了」這件事變成錯誤，權威在 transcript。
-    if let Some(snapshot) = event.state {
-        if let Ok(mut world) = read_state(root, world_id) {
-            if world.state != snapshot {
-                world.state = snapshot;
+    if let Some(snapshot) = &event.state {
+        if let Ok(mut world) = read_state_cache(root, world_id) {
+            if world.state != *snapshot {
+                world.state = snapshot.clone();
                 let _ = write_state(root, world_id, &world);
             }
         }
     }
-    Ok(offset)
+    message_vars::refresh_cache(tx);
+    Ok((offset, event))
 }
 
-/// 貼開場白之前這一幕逐字稿與 state.json 的原始位元組。逐字稿是直接 append，失敗時可能已留下半行，
-/// 呼叫端靠它寫回並確認回到原樣，才能當成「什麼都沒貼上」。
+/// 前端落一則（玩家句、GM 正文、系統事件、復原）：GM 回合的部分帶 `turn` 冪等鍵——同鍵已落過就回那則，
+/// `main` 在回合紀錄等落檔時掛上算好的表（不收前端傳來的變數）。回傳落檔的那則與收據（冪等命中時沒有收據）。
+/// 不是這一回合的新事件追加前，上一回合沒落成的部分先代落（回合交接），順序不會錯。
+pub fn append_event(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    event: &TranscriptEvent,
+    turn: Option<&message_vars::TurnKey>,
+) -> DataResult<(TranscriptEvent, Option<u64>)> {
+    with_commit(root, world_id, |tx| {
+        message_vars::settle_before_append(tx, turn)?;
+        let mut event = event.clone();
+        let mut table = None;
+        if let Some(key) = turn {
+            match message_vars::prepare_turn_append(tx, scene, key)? {
+                message_vars::TurnAppend::Existing(existing) => {
+                    message_vars::mark_turn_appended(tx, key);
+                    return Ok((existing, None));
+                }
+                message_vars::TurnAppend::New { table: attach } => table = attach,
+            }
+            event.turn_key = Some(key.clone());
+            event.message_vars = None;
+        }
+        if let Some(table) = &table {
+            if event.state.is_none() {
+                event.state = Some(read_state(root, world_id)?.state);
+            }
+            if let Some(snapshot) = event.state.as_mut() {
+                snapshot.tree = message_vars::Source::Seed {
+                    table: table.clone(),
+                }
+                .tree();
+            }
+            event.message_vars = Some(message_vars::VarsTable::from_json(table));
+            event.vars_epoch = message_vars::scene_epoch(tx, scene)?;
+        }
+        let (offset, event) = append_line_tx(tx, scene, &event)?;
+        if let Some(key) = turn {
+            message_vars::mark_turn_appended(tx, key);
+        }
+        Ok((event, Some(offset)))
+    })
+}
+
+/// 上一回合沒落成的部分先代落（貼開場這類要先存檢查點的操作，在存檢查點之前呼叫）。
+pub fn settle_pending_turn(root: &Path, world_id: &str) -> DataResult<()> {
+    with_commit(root, world_id, |tx| {
+        message_vars::settle_before_append(tx, None)
+    })
+}
+
+/// 貼開場白之前這一幕逐字稿、state.json 與卡片變數控制檔的原始位元組。逐字稿是直接 append，失敗時可能
+/// 已留下半行，呼叫端靠它寫回並確認回到原樣，才能當成「什麼都沒貼上」。
 pub struct OpeningCheckpoint {
+    root: PathBuf,
+    world_id: String,
     transcript_path: PathBuf,
     transcript: Option<Vec<u8>>,
     state_path: PathBuf,
     state: Vec<u8>,
+    control_path: PathBuf,
+    control: Option<Vec<u8>>,
 }
 
 fn read_optional(path: &Path) -> DataResult<Option<Vec<u8>>> {
@@ -113,42 +240,50 @@ pub fn opening_checkpoint(
 ) -> DataResult<OpeningCheckpoint> {
     let transcript_path = transcript_path(root, world_id, scene)?;
     let state_path = world_dir(root, world_id)?.join("state.json");
+    let control_path = message_vars::control_path(root, world_id)?;
     Ok(OpeningCheckpoint {
+        root: root.to_path_buf(),
+        world_id: world_id.to_owned(),
         transcript: read_optional(&transcript_path)?,
         state: fs::read(&state_path)?,
+        control: read_optional(&control_path)?,
         transcript_path,
         state_path,
+        control_path,
     })
 }
 
+/// 不一樣的寫回去（原本沒有就刪掉），再讀回比對；回到原樣才回 true。
+fn restore_optional(path: &Path, original: &Option<Vec<u8>>) -> bool {
+    use super::super::world_file::{commit_world_remove, commit_world_write_atomic};
+    match read_optional(path) {
+        Ok(now) if now == *original => true,
+        _ => {
+            let written = match original {
+                Some(bytes) => commit_world_write_atomic(path, bytes),
+                None => commit_world_remove(path),
+            };
+            written.is_ok() && read_optional(path).is_ok_and(|now| now == *original)
+        }
+    }
+}
+
 impl OpeningCheckpoint {
-    /// 不一樣的寫回去（原本沒有逐字稿就刪掉），再讀回比對；兩份都回到原樣才回 true。
+    /// 整桌還原（計畫 8.4）：鎖內寫回三份檔、清回合紀錄、桌世代加一；全部回到原樣才回 true。
     pub fn restore(&self) -> bool {
-        use super::super::world_file::{commit_world_remove, commit_world_write};
-        let transcript_back = match read_optional(&self.transcript_path) {
-            Ok(now) if now == self.transcript => true,
-            _ => {
-                let written = match &self.transcript {
-                    Some(bytes) => commit_world_write(&self.transcript_path, bytes),
-                    None => commit_world_remove(&self.transcript_path),
-                };
-                written.is_ok()
-                    && read_optional(&self.transcript_path).is_ok_and(|now| now == self.transcript)
-            }
-        };
-        let state_back = match fs::read(&self.state_path) {
-            Ok(now) if now == self.state => true,
-            _ => {
-                commit_world_write(&self.state_path, &self.state).is_ok()
-                    && fs::read(&self.state_path).is_ok_and(|now| now == self.state)
-            }
-        };
-        transcript_back && state_back
+        with_commit(&self.root, &self.world_id, |tx| {
+            message_vars::bump_generation(tx);
+            let transcript_back = restore_optional(&self.transcript_path, &self.transcript);
+            let state_back = restore_optional(&self.state_path, &Some(self.state.clone()));
+            let control_back = restore_optional(&self.control_path, &self.control);
+            transcript_back && state_back && control_back
+        })
     }
 }
 
 /// 開場白也要存成快照，收回時檯面才能回到貼上前的最後一句；狀態區塊走與 GM 回覆同一條
 /// 本地權威（mechanism::apply_block），增量桌的數值一開場就是本機在算。
+/// 卡片變數模式（第一次開場就啟用）：以初始化來源為底套開場狀態塊，事件帶新表。
 pub fn append_opening(
     root: &Path,
     world_id: &str,
@@ -158,23 +293,48 @@ pub fn append_opening(
     block: &crate::transport::StateBlock,
     user_name: &str,
 ) -> DataResult<(TranscriptEvent, Outcome)> {
-    let mut world = read_state(root, world_id)?;
-    let outcome = mechanism::apply_block(&mut world, block, user_name);
-    let event = TranscriptEvent {
-        ts: ts.to_owned(),
-        speaker_id: String::new(),
-        speaker_name: "GM".to_owned(),
-        kind: TranscriptKind::Narration,
-        text: block.display.clone(),
-        raw: (raw != block.display).then(|| raw.to_owned()),
-        state: Some(world.state),
-        truncated: false,
-        gm_only: false,
-        marker: None,
-        opening: true,
-    };
-    append_transcript(root, world_id, scene, &event)?;
-    Ok((event, outcome))
+    with_commit(root, world_id, |tx| {
+        // 先交接：上一回合沒落成的回覆（含新表）先落，開場表才以它為底，不會被舊來源算出的表蓋回
+        message_vars::settle_before_append(tx, None)?;
+        let macros = message_vars::Macros {
+            user: user_name.to_owned(),
+            char: None,
+        };
+        message_vars::ensure_active(tx, Some(&macros))?;
+        let mut world = read_state(root, world_id)?;
+        let before = world.state.tree.clone();
+        let outcome = mechanism::apply_block(&mut world, block, user_name);
+        let table = message_vars::opening_table(
+            tx,
+            scene,
+            &before,
+            &world.state.tree,
+            &world.mechanism.value_types,
+        )?;
+        let event = TranscriptEvent {
+            ts: ts.to_owned(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: TranscriptKind::Narration,
+            text: block.display.clone(),
+            raw: (raw != block.display).then(|| raw.to_owned()),
+            state: Some(world.state),
+            truncated: false,
+            gm_only: false,
+            marker: None,
+            opening: true,
+            id: None,
+            vars_epoch: match &table {
+                Some(_) => message_vars::scene_epoch(tx, scene)?,
+                None => None,
+            },
+            message_vars: table.as_ref().map(message_vars::VarsTable::from_json),
+            vars_rev: None,
+            turn_key: None,
+        };
+        let (_, event) = append_transcript_tx(tx, scene, &event)?;
+        Ok((event, outcome))
+    })
 }
 
 fn serialize_events(events: &[TranscriptEvent]) -> DataResult<Vec<u8>> {
@@ -202,7 +362,7 @@ fn edit_scene<T>(
         };
         let (result, rewrite) = edit(events)?;
         if let Some(events) = rewrite {
-            file.write(&serialize_events(&events)?)?;
+            file.write_atomic(&serialize_events(&events)?)?;
         }
         Ok(result)
     })
@@ -210,13 +370,10 @@ fn edit_scene<T>(
 
 /// 刪掉事件之後把檯面退回剩下事件的最後一份快照（這一幕沒了就往前一幕找）。
 /// 刪事件的幾條路（收回上一句、復原匯入收掉開場白、收回沒有回覆的玩家句）共用。
-fn rewind_state(
-    root: &Path,
-    world_id: &str,
-    scene: u64,
-    events: &[TranscriptEvent],
-) -> DataResult<()> {
-    let mut state = read_state(root, world_id)?;
+/// 變數模式時樹另外照投影重建（收光帶表事件就回到這一幕的種子）。
+fn rewind_state(tx: &CommitTx<'_>, scene: u64, events: &[TranscriptEvent]) -> DataResult<()> {
+    let (root, world_id) = (tx.root, tx.world_id);
+    let mut state = read_state_cache(root, world_id)?;
     state.state = events
         .iter()
         .rev()
@@ -235,6 +392,7 @@ fn rewind_state(
         })
         .unwrap_or_default();
     write_state(root, world_id, &state)?;
+    message_vars::refresh_cache(tx);
     Ok(())
 }
 
@@ -243,46 +401,50 @@ fn rewind_state(
 /// 補整幕而不是只補最後一則：連按收回會一路往前吃，任何一則留著舊欄位都會在那一下現形。
 /// 只換 tree／jumps——劇情面的欄位（table、changes、notes）照舊跟著各自那一刻走。
 pub fn sync_scene_state_tree(root: &Path, world_id: &str, state: &WorldState) -> DataResult<()> {
-    let scene = state.current_scene;
-    let rewritten = edit_scene(root, world_id, scene, |mut events| {
-        let mut touched = false;
-        for event in events.iter_mut() {
-            let Some(snapshot) = event.state.as_mut() else {
-                continue;
-            };
-            if snapshot.tree != state.state.tree || snapshot.jumps != state.state.jumps {
-                snapshot.tree = state.state.tree.clone();
-                snapshot.jumps = state.state.jumps.clone();
-                touched = true;
+    with_commit(root, world_id, |tx| {
+        let scene = state.current_scene;
+        let rewritten = edit_scene(root, world_id, scene, |mut events| {
+            let mut touched = false;
+            for event in events.iter_mut() {
+                let Some(snapshot) = event.state.as_mut() else {
+                    continue;
+                };
+                if snapshot.tree != state.state.tree || snapshot.jumps != state.state.jumps {
+                    snapshot.tree = state.state.tree.clone();
+                    snapshot.jumps = state.state.jumps.clone();
+                    touched = true;
+                }
             }
+            Ok(if touched {
+                (Some(events.clone()), Some(events))
+            } else {
+                (None, None)
+            })
+        })?;
+        if let Some(events) = rewritten {
+            rewind_state(tx, scene, &events)?;
         }
-        Ok(if touched {
-            (Some(events.clone()), Some(events))
-        } else {
-            (None, None)
-        })
-    })?;
-    if let Some(events) = rewritten {
-        rewind_state(root, world_id, scene, &events)?;
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
-/// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
+/// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫（帶的表跟著事件一起走）。
 /// 回傳是否真的刪了——這一幕已經空了就是 false，收不會倒退咬到上一幕。
 pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<bool> {
-    let remaining = edit_scene(root, world_id, scene, |mut events| {
-        Ok(if events.pop().is_none() {
-            (None, None)
-        } else {
-            (Some(events.clone()), Some(events))
-        })
-    })?;
-    let Some(events) = remaining else {
-        return Ok(false);
-    };
-    rewind_state(root, world_id, scene, &events)?;
-    Ok(true)
+    with_commit(root, world_id, |tx| {
+        let remaining = edit_scene(root, world_id, scene, |mut events| {
+            Ok(if events.pop().is_none() {
+                (None, None)
+            } else {
+                (Some(events.clone()), Some(events))
+            })
+        })?;
+        let Some(events) = remaining else {
+            return Ok(false);
+        };
+        rewind_state(tx, scene, &events)?;
+        Ok(true)
+    })
 }
 
 /// 復原匯入用：從這一幕刪掉時間戳相符的那一則（貼出的開場白），其餘事件原位不動。
@@ -293,20 +455,22 @@ pub fn remove_transcript_event(
     scene: u64,
     ts: &str,
 ) -> DataResult<bool> {
-    let remaining = edit_scene(root, world_id, scene, |mut events| {
-        let before = events.len();
-        events.retain(|event| event.ts != ts);
-        Ok(if events.len() == before {
-            (None, None)
-        } else {
-            (Some(events.clone()), Some(events))
-        })
-    })?;
-    let Some(events) = remaining else {
-        return Ok(false);
-    };
-    rewind_state(root, world_id, scene, &events)?;
-    Ok(true)
+    with_commit(root, world_id, |tx| {
+        let remaining = edit_scene(root, world_id, scene, |mut events| {
+            let before = events.len();
+            events.retain(|event| event.ts != ts);
+            Ok(if events.len() == before {
+                (None, None)
+            } else {
+                (Some(events.clone()), Some(events))
+            })
+        })?;
+        let Some(events) = remaining else {
+            return Ok(false);
+        };
+        rewind_state(tx, scene, &events)?;
+        Ok(true)
+    })
 }
 
 pub fn set_last_transcript_state(
@@ -315,12 +479,14 @@ pub fn set_last_transcript_state(
     scene: u64,
     state: &TableState,
 ) -> DataResult<bool> {
-    edit_scene(root, world_id, scene, |mut events| {
-        let Some(entry) = events.last_mut() else {
-            return Ok((false, None));
-        };
-        entry.state = Some(state.clone());
-        Ok((true, Some(events)))
+    with_commit(root, world_id, |_| {
+        edit_scene(root, world_id, scene, |mut events| {
+            let Some(entry) = events.last_mut() else {
+                return Ok((false, None));
+            };
+            entry.state = Some(state.clone());
+            Ok((true, Some(events)))
+        })
     })
 }
 
@@ -337,41 +503,48 @@ pub fn discard_unanswered_player(
     ts: &str,
     text: &str,
 ) -> DataResult<bool> {
-    let path = transcript_path(root, world_id, scene)?;
-    let removed = super::super::world_file::with_file_lock(&path, |file| -> DataResult<bool> {
-        let Some(bytes) = file.read()? else {
-            return Ok(false);
-        };
-        let Ok(start) = usize::try_from(offset) else {
-            return Ok(false);
-        };
-        if start >= bytes.len()
-            || (start > 0 && bytes[start - 1] != b'\n')
-            || !bytes.ends_with(b"\n")
-        {
+    with_commit(root, world_id, |tx| {
+        // 回覆已產生、只是還沒落檔（後端會代落）：這句不是沒回成，不收
+        if message_vars::has_unlanded_reply(tx) {
             return Ok(false);
         }
-        let line = &bytes[start..bytes.len() - 1];
-        if line.contains(&b'\n') {
-            return Ok(false);
+        let path = transcript_path(root, world_id, scene)?;
+        let removed =
+            super::super::world_file::with_file_lock(&path, |file| -> DataResult<bool> {
+                let Some(bytes) = file.read()? else {
+                    return Ok(false);
+                };
+                let Ok(start) = usize::try_from(offset) else {
+                    return Ok(false);
+                };
+                if start >= bytes.len()
+                    || (start > 0 && bytes[start - 1] != b'\n')
+                    || !bytes.ends_with(b"\n")
+                {
+                    return Ok(false);
+                }
+                let line = &bytes[start..bytes.len() - 1];
+                if line.contains(&b'\n') {
+                    return Ok(false);
+                }
+                let Ok(event) = serde_json::from_slice::<TranscriptEvent>(line) else {
+                    return Ok(false);
+                };
+                if event.kind != TranscriptKind::Player || event.ts != ts || event.text != text {
+                    return Ok(false);
+                }
+                if file.truncate(offset).is_ok() {
+                    return Ok(true);
+                }
+                Ok(matches!(file.len(), Ok(len) if len == offset))
+            })?;
+        if removed {
+            if let Ok(events) = read_transcript(root, world_id, scene) {
+                let _ = rewind_state(tx, scene, &events);
+            }
         }
-        let Ok(event) = serde_json::from_slice::<TranscriptEvent>(line) else {
-            return Ok(false);
-        };
-        if event.kind != TranscriptKind::Player || event.ts != ts || event.text != text {
-            return Ok(false);
-        }
-        if file.truncate(offset).is_ok() {
-            return Ok(true);
-        }
-        Ok(matches!(file.len(), Ok(len) if len == offset))
-    })?;
-    if removed {
-        if let Ok(events) = read_transcript(root, world_id, scene) {
-            let _ = rewind_state(root, world_id, scene, &events);
-        }
-    }
-    Ok(removed)
+        Ok(removed)
+    })
 }
 
 /// 解析一幕逐字稿。最後一行沒有換行而且解析失敗＝追加到一半的殘段，略過；
@@ -410,6 +583,9 @@ pub fn read_transcript(
     }
 }
 
+mod lines;
+pub(crate) use lines::{edit_line, find_event_rev, find_rev, LineHead};
+
 #[cfg(test)]
 mod write_safety_tests;
 
@@ -428,6 +604,11 @@ mod tests {
         let world_id = create_world(root.path(), "劇場").unwrap();
         let events = vec![
             TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-07-19T10:00:00+08:00".to_owned(),
                 speaker_id: String::new(),
@@ -441,6 +622,11 @@ mod tests {
                 opening: false,
             },
             TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-07-19T10:00:01+08:00".to_owned(),
                 speaker_id: String::new(),
@@ -454,6 +640,11 @@ mod tests {
                 opening: false,
             },
             TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-07-19T10:00:02+08:00".to_owned(),
                 speaker_id: "角色代碼".to_owned(),
@@ -470,18 +661,25 @@ mod tests {
         for event in &events {
             append_transcript(root.path(), &world_id, 7, event).unwrap();
         }
+        let read = read_transcript(root.path(), &world_id, 7).unwrap();
+        // 每則落檔時都配發了各自的穩定 ID
+        let ids: std::collections::BTreeSet<_> =
+            read.iter().map(|event| event.id.clone()).collect();
+        assert_eq!(ids.len(), 3);
+        assert!(read
+            .iter()
+            .all(|event| event.id.as_ref().is_some_and(|id| id.len() == 26)));
         let expected: Vec<_> = events
             .iter()
             .cloned()
-            .map(|mut event| {
+            .zip(&read)
+            .map(|(mut event, stored)| {
                 event.state = Some(TableState::default());
+                event.id = stored.id.clone();
                 event
             })
             .collect();
-        assert_eq!(
-            read_transcript(root.path(), &world_id, 7).unwrap(),
-            expected
-        );
+        assert_eq!(read, expected);
 
         let path = root
             .path()
@@ -516,6 +714,11 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(index, text)| TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: format!("2026-08-01T10:00:0{index}+08:00"),
                 speaker_id: String::new(),
@@ -534,18 +737,18 @@ mod tests {
         }
 
         assert!(pop_transcript(root.path(), &world_id, 0).unwrap());
+        let read = read_transcript(root.path(), &world_id, 0).unwrap();
         let expected: Vec<_> = events[..2]
             .iter()
             .cloned()
-            .map(|mut event| {
+            .zip(&read)
+            .map(|(mut event, stored)| {
                 event.state = Some(TableState::default());
+                event.id = stored.id.clone();
                 event
             })
             .collect();
-        assert_eq!(
-            read_transcript(root.path(), &world_id, 0).unwrap(),
-            expected
-        );
+        assert_eq!(read, expected);
         // 重寫後仍是合法 JSONL：行數對齊事件數，沒有殘留的半行
         let path = root
             .path()
@@ -579,6 +782,11 @@ mod tests {
             .insert("time".to_owned(), "清晨".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
         let event = TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
@@ -615,6 +823,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "later".to_owned(),
                 speaker_id: String::new(),
@@ -683,6 +896,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "before".to_owned(),
                 speaker_id: String::new(),
@@ -761,6 +979,11 @@ mod tests {
                 &world_id,
                 0,
                 &TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
@@ -799,6 +1022,11 @@ mod tests {
             jumps: BTreeMap::new(),
         });
         let event = |text: &str, snapshot: &TableState| TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
@@ -876,6 +1104,11 @@ mod tests {
                 &world_id,
                 0,
                 &TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),

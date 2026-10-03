@@ -3,6 +3,11 @@ use crate::data::TranscriptKind;
 
 fn event(marker: Option<EventMarker>, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
         ts: String::new(),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),

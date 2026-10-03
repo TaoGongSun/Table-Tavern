@@ -333,6 +333,9 @@ pub fn apply(
     }
 
     if state_dirty {
+        // 卡片變數模式交接（events → tree，計畫 8.1）：先把有效值投影寫進狀態樹、控制檔切回 tree，
+        // 再寫重建後的樹；`state` 一開頭就是經投影入口讀的，重建建立在有效值上。
+        data::state_commit::with_commit(root, world_id, data::message_vars::handover_to_tree)?;
         data::write_state(root, world_id, &state)?;
         // 重建狀態樹沒有經過逐字稿，事件快照還停在套用前的舊欄位——不補上去，
         // 玩家一按收回（或換幕）就把重構剛建好的樹換回去。

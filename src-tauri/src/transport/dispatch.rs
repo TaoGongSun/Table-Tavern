@@ -242,6 +242,41 @@ pub(crate) async fn stream_turn_via_transport(
     thinking_to_delta: bool,
     emit: impl FnMut(&str),
 ) -> Result<String, String> {
+    stream_turn_reporting_truncation(
+        app,
+        config,
+        transport_override,
+        allow_cli_tools,
+        tier,
+        world,
+        assistant_label,
+        cli_closing,
+        messages,
+        shape,
+        thinking_to_delta,
+        emit,
+    )
+    .await
+    .map(|(text, _)| text)
+}
+
+/// 同 `stream_turn_via_transport`，另回這一次呼叫的回覆有沒有被供應商截斷（內容過濾或長度上限）。
+/// 標記跟著這次呼叫的結果走，同桌並行的別的呼叫（翻譯、摘要）碰不到；CLI 路徑沒有截斷資訊，一律 false。
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn stream_turn_reporting_truncation(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    transport_override: Option<&str>,
+    allow_cli_tools: bool,
+    tier: data::Tier,
+    world: Option<&str>,
+    assistant_label: &str,
+    cli_closing: &str,
+    messages: &[transport::ChatMessage],
+    shape: usage_log::PromptShape,
+    thinking_to_delta: bool,
+    emit: impl FnMut(&str),
+) -> Result<(String, bool), String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
     // allow_cli_tools：只有生圖呼叫為 true——CLI 生圖工具要寫檔／跑指令，聊天一律鎖死工具。
     let transport_kind = transport_override
@@ -286,7 +321,7 @@ pub(crate) async fn stream_turn_via_transport(
                     serde_json::json!({ "world": world, "reason": reason }),
                 );
             }
-            return Ok(result.text);
+            return Ok((result.text, result.truncated.is_some()));
         }
 
         let model = transport::resolve_model(tier, config)?;
@@ -320,7 +355,7 @@ pub(crate) async fn stream_turn_via_transport(
                 serde_json::json!({ "world": world, "reason": reason }),
             );
         }
-        return Ok(result.text);
+        return Ok((result.text, result.truncated.is_some()));
     }
 
     // CLI 訂閱模式：風險告知未確認前後端直接擋（NewPlan §4.2）
@@ -485,6 +520,7 @@ pub(crate) async fn stream_turn_via_transport(
         }
         .into_error()),
     }
+    .map(|text| (text, false))
     .map_err(|error| ai_call_failure(error.to_string()))
 }
 

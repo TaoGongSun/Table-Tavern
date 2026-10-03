@@ -1,11 +1,13 @@
 use std::path::Path;
 
+use super::super::message_vars;
 use super::super::state::{read_state, write_state, SceneLabel, WorldState};
+use super::super::state_commit::{with_commit, CommitTx};
 use super::super::{local_timestamp, DataResult};
 use super::marker::EventMarker;
 use super::presence::settle_card_visibility;
 use super::transcript::{
-    append_transcript, parse_transcript, read_transcript, transcript_path, TranscriptEvent,
+    append_transcript_tx, parse_transcript, read_transcript, transcript_path, TranscriptEvent,
     TranscriptKind,
 };
 use crate::ui_msg::UiMsg;
@@ -37,17 +39,38 @@ fn next_scene_version(state: &WorldState, upto: u64, base: u64) -> u32 {
 /// 顯示編號跟隨來源幕（從分岔幕再分岔＝跟著源頭走，不是跟著內部號走），
 /// parent 記分岔當下所在的幕，退回時回到這裡而不是來源幕。
 pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u64> {
+    with_commit(root, world_id, |tx| fork_scene_tx(tx, from_scene))
+}
+
+/// 發布順序（計畫 8.4）：①新幕逐字稿（事件 id 與表版本重新配發、來源幕有效 epoch 的表改成新幕 epoch）
+/// ②控制檔寫新幕種子 ③寫 current_scene。任一步失敗就停；新幕號仍是「目前幕＋1」，重試覆寫上次的殘留。
+fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
+    let (root, world_id) = (tx.root, tx.world_id);
+    message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
     if from_scene >= state.current_scene {
         return Err(UiMsg::SceneForkNotEarlier.into_error());
     }
-    let events = read_transcript(root, world_id, from_scene)?;
+    let mut events = read_transcript(root, world_id, from_scene)?;
     if events.is_empty() {
         return Err(UiMsg::SceneNothingToContinue.into_error());
     }
 
     let current_scene = state.current_scene;
     let new_scene = current_scene + 1;
+    let plan = message_vars::scene_seed_for_fork(tx, from_scene)?;
+    for event in events.iter_mut() {
+        event.id = Some(message_vars::new_token());
+        event.turn_key = None;
+        if event.message_vars.is_some() {
+            event.vars_rev = Some(message_vars::new_token());
+            if let Some(plan) = &plan {
+                if event.vars_epoch.as_deref() == Some(plan.source_epoch.as_str()) {
+                    event.vars_epoch = Some(plan.vars.epoch.clone());
+                }
+            }
+        }
+    }
     let mut buffer = String::new();
     for event in &events {
         buffer.push_str(&serde_json::to_string(event)?);
@@ -57,6 +80,9 @@ pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u6
         &transcript_path(root, world_id, new_scene)?,
         buffer.as_bytes(),
     )?;
+    if let Some(plan) = plan {
+        message_vars::publish_scene_seed(tx, new_scene, plan.vars)?;
+    }
 
     let base = scene_label(&state, from_scene).base;
     let version = next_scene_version(&state, current_scene, base);
@@ -76,6 +102,7 @@ pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u6
         .find_map(|event| event.state.clone())
         .unwrap_or_default();
     write_state(root, world_id, &state)?;
+    message_vars::refresh_cache(tx);
     Ok(new_scene)
 }
 
@@ -88,14 +115,36 @@ pub fn begin_next_scene(
     summary_text: &str,
     title: Option<&str>,
 ) -> DataResult<u64> {
+    with_commit(root, world_id, |tx| {
+        begin_next_scene_tx(tx, summary_text, title)
+    })
+}
+
+/// 發布順序（計畫 8.4）：①控制檔寫新幕種子（舊幕結束時的初始化來源、新 epoch）②新幕開頭的摘要事件
+/// ③寫 current_scene。失敗就停、回錯；重試時新幕號仍是「目前幕＋1」，①② 覆寫上次沒發布的殘留。
+fn begin_next_scene_tx(
+    tx: &CommitTx<'_>,
+    summary_text: &str,
+    title: Option<&str>,
+) -> DataResult<u64> {
+    let (root, world_id) = (tx.root, tx.world_id);
+    message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
     let old_scene = state.current_scene;
     let next_scene = old_scene + 1;
-    append_transcript(
-        root,
-        world_id,
+    // 變數模式：新幕開頭的摘要帶一份種子表，第一個 GM 回覆前卡片照樣讀得到值、補得到狀態欄占位
+    let seed = message_vars::scene_seed_for_next(tx, old_scene, next_scene)?;
+    // 上次沒發布的殘留（摘要寫了、current_scene 沒寫成）：新幕逐字稿重來
+    super::super::world_file::commit_world_remove(&transcript_path(root, world_id, next_scene)?)?;
+    append_transcript_tx(
+        tx,
         next_scene,
         &TranscriptEvent {
+            id: None,
+            message_vars: seed.as_ref().map(|vars| vars.seed.clone()),
+            vars_rev: None,
+            vars_epoch: seed.as_ref().map(|vars| vars.epoch.clone()),
+            turn_key: None,
             raw: None,
             ts: local_timestamp()?,
             speaker_id: String::new(),
@@ -149,25 +198,23 @@ pub fn begin_next_scene(
 /// 多於一則代表玩家已經在這一幕行動過，退回會悄悄吃掉那些內容，所以直接擋，
 /// 且擋下時故意先不動任何檔案／狀態（讀完才判斷），錯誤路徑不留副作用。
 pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
+    with_commit(root, world_id, |tx| revert_scene_tx(tx))
+}
+
+/// 退幕（計畫 8.4）：①寫 current_scene 切回父幕（父幕事件、epoch、種子原封不動）②成功後才移除子幕種子；
+/// ② 失敗只留下用不到的殘留，下次換幕到同一號時會被覆寫。
+fn revert_scene_tx(tx: &CommitTx<'_>) -> DataResult<u64> {
+    let (root, world_id) = (tx.root, tx.world_id);
     let mut state = read_state(root, world_id)?;
     let scene = state.current_scene;
     let Some(previous_scene) = scene_label(&state, scene).parent else {
         return Err(UiMsg::SceneFirstNoPrevious.into_error());
     };
-    // 判斷與刪檔在同一把逐字稿鎖內：判完到刪掉之間不會插進新的一句
-    super::super::world_file::with_file_lock(
-        &transcript_path(root, world_id, scene)?,
-        |file| -> DataResult<()> {
-            let events = match file.read()? {
-                Some(bytes) => parse_transcript(&bytes)?,
-                None => Vec::new(),
-            };
-            if events.len() != 1 {
-                return Err(UiMsg::SceneRewindHasNewContent.into_error());
-            }
-            file.remove()
-        },
-    )?;
+    message_vars::refuse_during_turn(tx)?;
+    // 逐字稿的追加都走短提交鎖：這裡判完到刪檔之間不會插進新的一句
+    if read_transcript(root, world_id, scene)?.len() != 1 {
+        return Err(UiMsg::SceneRewindHasNewContent.into_error());
+    }
     state.current_scene = previous_scene;
     state.scene_titles.remove(&previous_scene.to_string());
     // 自己這筆標籤跟著檔案一起消失，不留退回後查不到來源、卻還佔著 key 的殭屍紀錄。
@@ -178,12 +225,27 @@ pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
         .rev()
         .find_map(|event| event.state.clone())
         .unwrap_or_default();
+    // 先發布切回父幕，成功後才清子幕：清不掉只留下用不到的殘留（下次換到同一號時覆寫）
     write_state(root, world_id, &state)?;
+    let _ = super::super::world_file::commit_world_remove(&transcript_path(root, world_id, scene)?);
+    let _ = message_vars::drop_scene_seed(tx, scene);
+    message_vars::refresh_cache(tx);
     Ok(previous_scene)
 }
 
 /// 重寫目前這幕唯一那則摘要：摘要不滿意可以直接原地覆寫，不必先退回再重新換幕一次。
 pub fn replace_scene_summary(
+    root: &Path,
+    world_id: &str,
+    summary_text: &str,
+    title: Option<&str>,
+) -> DataResult<()> {
+    with_commit(root, world_id, |_| {
+        replace_scene_summary_locked(root, world_id, summary_text, title)
+    })
+}
+
+fn replace_scene_summary_locked(
     root: &Path,
     world_id: &str,
     summary_text: &str,
@@ -218,7 +280,7 @@ pub fn replace_scene_summary(
             event.text = summary_text.to_owned();
             event.marker = Some(EventMarker::SceneSummary);
             event.ts = ts;
-            file.write(format!("{}\n", serde_json::to_string(event)?).as_bytes())
+            file.write_atomic(format!("{}\n", serde_json::to_string(event)?).as_bytes())
         },
     )?;
 
@@ -248,6 +310,11 @@ mod tests {
         let root = TestRoot::new("begin-next-scene");
         let world_id = create_world(root.path(), "換場桌").unwrap();
         let event = TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
@@ -283,6 +350,11 @@ mod tests {
         let root = TestRoot::new("begin-next-scene-title");
         let world_id = create_world(root.path(), "取名桌").unwrap();
         let event = TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "2026-07-24T00:00:00Z".to_owned(),
             speaker_id: String::new(),
@@ -331,6 +403,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -373,6 +450,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -394,6 +476,11 @@ mod tests {
             &world_id,
             1,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:01:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -444,6 +531,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -495,6 +587,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
@@ -544,6 +641,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
@@ -583,6 +685,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: "船長代碼".to_owned(),
@@ -608,10 +715,22 @@ mod tests {
         // 從幕 0 分岔
         let forked = fork_scene(root.path(), &world_id, 0).unwrap();
         assert_eq!(forked, 3);
-        assert_eq!(
-            read_transcript(root.path(), &world_id, 3).unwrap(),
-            scene0_before
-        );
+        // 分岔重新配發事件 id（計畫 8.4），其餘逐欄相同
+        let copied = read_transcript(root.path(), &world_id, 3).unwrap();
+        assert!(copied
+            .iter()
+            .zip(&scene0_before)
+            .all(|(copy, original)| copy.id.is_some() && copy.id != original.id));
+        let without_ids = |events: Vec<TranscriptEvent>| {
+            events
+                .into_iter()
+                .map(|mut event| {
+                    event.id = None;
+                    event
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(without_ids(copied), without_ids(scene0_before.clone()));
         // 舊幕一個字都沒被動過
         assert_eq!(
             read_transcript(root.path(), &world_id, 0).unwrap(),
@@ -644,6 +763,11 @@ mod tests {
             &world_id,
             3,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:01:00Z".to_owned(),
                 speaker_id: "船長代碼".to_owned(),
@@ -713,6 +837,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),

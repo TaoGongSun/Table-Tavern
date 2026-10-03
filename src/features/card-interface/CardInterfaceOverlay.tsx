@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { IconClose } from "../../shared/ui/icons";
 import { type CardChat } from "./card-chat-shim";
-import { type CardMvu } from "./card-mvu-shim";
+import { type CardMvu } from "./mvu/card-mvu-shim";
 
 interface CardInterfaceOverlayProps {
   /** 正在生成的那位要顯示的名字；null＝沒人在打字，狀態列不出現 */

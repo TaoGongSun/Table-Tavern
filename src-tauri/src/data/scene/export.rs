@@ -267,6 +267,11 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: "船長代碼".to_owned(),
@@ -283,6 +288,11 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
@@ -299,6 +309,11 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
@@ -315,6 +330,11 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
@@ -363,6 +383,11 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
@@ -379,6 +404,11 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    id: None,
+                    message_vars: None,
+                    vars_rev: None,
+                    vars_epoch: None,
+                    turn_key: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: "船長代碼".to_owned(),
@@ -414,6 +444,11 @@ mod tests {
         text: &str,
     ) -> TranscriptEvent {
         TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),

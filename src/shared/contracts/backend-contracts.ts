@@ -94,6 +94,16 @@ export interface TranscriptEvent {
   marker?: EventMarker;
   /** 開場白（post_opening 寫的那則）；舊紀錄沒有這欄 */
   opening?: boolean;
+  /** 穩定 ID（後端落檔時配發）；舊事件沒有，第一次被卡片寫入時補上 */
+  id?: string;
+  /** 這樓完整的 MVU 變數表（卡片變數模式）；沒有＝這樓尚無表 */
+  message_vars?: Record<string, unknown>;
+  /** 這樓表的版本 token；表每次變更或復原帶回時換新 */
+  vars_rev?: string;
+  /** 寫入這張表當下那一幕的 epoch */
+  vars_epoch?: string;
+  /** GM 回合落檔的冪等鍵 */
+  turn_key?: { turn_id: string; part: string };
 }
 
 /** `append_player_event` 的回傳：落檔的那則，與它在逐字稿檔裡的起始位元組（收回時的收據） */

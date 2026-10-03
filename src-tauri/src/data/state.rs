@@ -342,13 +342,58 @@ pub struct SceneLabel {
     pub forked: bool,
 }
 
+/// 桌面有效狀態的投影入口（計畫 8.2）：卡片變數模式時 `tree` 換成初始化來源 stat_data 的投影，
+/// 其餘欄位與樹模式一律照 state.json。鎖內外都用這一支（只讀，不取短提交鎖）。
 pub fn read_state(root: &Path, world_id: &str) -> DataResult<WorldState> {
+    // 控制檔、逐字稿與 state.json 在同一把短提交鎖內讀，不會讀到交接或提交的半途（鎖內呼叫不重取）
+    super::state_commit::with_commit(root, world_id, |_| {
+        let mut state = read_state_cache(root, world_id)?;
+        if let Some(tree) =
+            super::message_vars::projected_tree(root, world_id, state.current_scene)?
+        {
+            state.state.tree = tree;
+        }
+        Ok(state)
+    })
+}
+
+/// 短提交鎖內讀改寫 state.json（只動 `edit` 改的欄位；樹在變數模式下是快取，照原樣寫回）。
+pub fn update_state<T>(
+    root: &Path,
+    world_id: &str,
+    edit: impl FnOnce(&mut WorldState) -> DataResult<Option<T>>,
+) -> DataResult<Option<T>> {
+    super::state_commit::with_commit(root, world_id, |_| {
+        let mut state = read_state_cache(root, world_id)?;
+        let result = edit(&mut state)?;
+        if result.is_some() {
+            write_state(root, world_id, &state)?;
+        }
+        Ok(result)
+    })
+}
+
+/// 直接讀 state.json：變數模式下它的樹只是快取。只給投影入口、模式交接與快取重建用。
+pub(crate) fn read_state_cache(root: &Path, world_id: &str) -> DataResult<WorldState> {
     let path = world_dir(root, world_id)?.join("state.json");
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
 }
 
+/// 只改 `player_card_id` 一欄（短提交鎖內讀改寫 state.json），不碰其他欄位。
+pub fn set_player_card(root: &Path, world_id: &str, card_id: Option<String>) -> DataResult<()> {
+    super::state_commit::with_commit(root, world_id, |_| {
+        let mut state = read_state_cache(root, world_id)?;
+        if state.player_card_id == card_id {
+            return Ok(());
+        }
+        state.player_card_id = card_id;
+        write_state(root, world_id, &state)
+    })
+}
+
+/// 整檔原子替換（暫存檔＋改名）：寫到一半失敗原檔不動——GM 提交、退幕發布之後的追加與代落都要讀它。
 pub fn write_state(root: &Path, world_id: &str, state: &WorldState) -> DataResult<()> {
-    super::world_file::commit_world_write(
+    super::world_file::commit_world_write_atomic(
         &world_dir(root, world_id)?.join("state.json"),
         serde_json::to_string_pretty(state)?.as_bytes(),
     )?;

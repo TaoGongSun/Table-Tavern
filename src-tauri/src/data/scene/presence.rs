@@ -94,6 +94,11 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),

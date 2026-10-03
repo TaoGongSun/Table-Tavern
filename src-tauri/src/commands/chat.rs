@@ -1,6 +1,7 @@
 use crate::commands::character::load_active_cards;
 use crate::transport::dispatch::{
-    ai_call_failure, chat_transport, lane_provider, prepare_lane_call, stream_turn_via_transport,
+    ai_call_failure, chat_transport, lane_provider, prepare_lane_call,
+    stream_turn_reporting_truncation, stream_turn_via_transport,
 };
 use crate::usage::log as usage_log;
 use crate::{config_root, data, data_root, import, inflight, lanes, mechanism, transport};
@@ -74,6 +75,9 @@ pub(crate) async fn chat_with_character(
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
     let buffer = std::sync::Mutex::new(String::new());
     let root = data_root(&app)?;
+    // 回合交接（計畫 8.4）：上一個 GM 回合提交了正文卻沒落檔，先由後端代落；GM 還在生成就擋
+    data::state_commit::with_commit(&root, &world_id, data::message_vars::settle_previous_turn)
+        .map_err(|error| error.to_string())?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let card =
         data::read_character(&root, &world_id, &character_id).map_err(|error| error.to_string())?;
@@ -355,6 +359,7 @@ fn aborted_narration(reply: &str) -> GmNarration {
         arrived_characters: Vec::new(),
         arrived_persons: Vec::new(),
         aborted: true,
+        state_error: None,
     }
 }
 
@@ -376,6 +381,8 @@ pub(crate) struct GmNarration {
     arrived_persons: Vec<String>,
     /// 玩家按下停止、而且取消贏過完成。true 時上面的寫入欄位都是空的。
     aborted: bool,
+    /// 狀態更新沒寫成（磁碟錯誤等）：正文照常落檔，前端提示這一輪的狀態可能沒更新
+    state_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -399,6 +406,8 @@ pub(crate) async fn gm_narrate(
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
+    // 回合開始（鎖內）：記回合紀錄與固定輸入；中止、出錯時 TurnGuard 把它改成已中止（計畫 8.3）
+    let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
     let materials = gm_materials(&root, &world_id)?;
     let roster: Vec<String> = materials
         .cards
@@ -420,6 +429,8 @@ pub(crate) async fn gm_narrate(
     let (instruction_message, closing) =
         gm_turn_instruction(&root, &world_id, &materials, &roster, player_name, &lang);
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
+    // 這一次 GM 呼叫的回覆有沒有被供應商截斷（只認這次呼叫自己回報的，同桌別的呼叫碰不到）
+    let cut = std::sync::atomic::AtomicBool::new(false);
     let reply = if let Some(provider) = lane_provider(&config) {
         let instruction = format!("{}\n{closing}", instruction_message.content);
         let outcome = gm_lane_reply(
@@ -439,7 +450,7 @@ pub(crate) async fn gm_narrate(
         .await?;
         if outcome.aborted {
             // 同角色線：用這一輪的半截，再照正常剝法去掉狀態欄與點名行。
-            return Ok(aborted_narration(&outcome.text));
+            return Ok(turn.abort(aborted_narration(&outcome.text)));
         }
         outcome.text
     } else {
@@ -456,10 +467,8 @@ pub(crate) async fn gm_narrate(
         );
         messages.push(instruction_message);
         // GM 上下文一律全卡，與「這輪誰說話」無關，形狀恆為共線
-        let spoken = take_abort_or_finish(
-            &mut cancel,
-            &buffer,
-            stream_turn_via_transport(
+        let spoken = take_abort_or_finish(&mut cancel, &buffer, async {
+            let (text, truncated) = stream_turn_reporting_truncation(
                 &app,
                 &config,
                 None,
@@ -475,11 +484,14 @@ pub(crate) async fn gm_narrate(
                 },
                 false,
                 emit,
-            ),
-        )
+            )
+            .await?;
+            cut.store(truncated, std::sync::atomic::Ordering::Relaxed);
+            Ok(text)
+        })
         .await?;
         if spoken.aborted {
-            return Ok(aborted_narration(&spoken.text));
+            return Ok(turn.abort(aborted_narration(&spoken.text)));
         }
         spoken.text
     };
@@ -494,57 +506,89 @@ pub(crate) async fn gm_narrate(
             reply.chars().count()
         ));
     }
-    let mut state_updates = Vec::new();
+    let mut state_updates: Vec<StateUpdate> = Vec::new();
     let mut arrived_persons = Vec::new();
     let mut arrived_characters = Vec::new();
     // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
     // 骰值要每回合重擲，就算這一輪模型完全沒吐更新也要跑一次。
-    if !block.fields.is_empty()
+    let apply = !block.fields.is_empty()
         || !block.updates.is_empty()
-        || materials.state.mechanism.incremental
-    {
-        let user_name = player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
-        if let Ok(mut state) = data::read_state(&root, &world_id) {
-            let scene = state.current_scene;
-            let outcome = mechanism::apply_block(&mut state, &block, user_name);
-            if align {
-                state.aligned_scene = Some(scene);
-            }
-            if data::write_state(&root, &world_id, &state).is_ok() {
-                mechanism::append_log(&root, &world_id, scene, &outcome.records);
-                state_updates =
-                    transport::snapshot_updates(&state.state, &state.mechanism, user_name)
-                        .into_iter()
-                        .map(|(path, value)| StateUpdate { path, value })
-                        .collect();
-                let present = state.state.table.get("present").map(String::as_str);
-                // 人物在場登場（AI 卡重構包 4a）：present 套用後檢查新面孔，
-                // 命中就把世界書全文記進歷史，system 那邊只留一行名冊。
-                arrived_persons = record_person_arrivals(
-                    &root,
-                    &world_id,
-                    scene,
-                    &materials.worldbook,
-                    &materials.events,
-                    present,
-                    &display,
-                    user_name,
-                );
-                // 角色卡自動回歸（AI 卡重構包 4b）：鏡射人物登場，鍵換成卡名；
-                // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）。
-                if let Ok(hidden_cards) = load_hidden_cards(&root, &world_id) {
-                    arrived_characters = record_card_arrivals(
-                        &root,
-                        &world_id,
-                        scene,
-                        &hidden_cards,
-                        &materials.events,
-                        present,
-                        &display,
-                        user_name,
-                    );
+        || materials.state.mechanism.incremental;
+    let user_name = player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
+    // 提交（鎖內、核對 turn_id、幕與世代）：套在回合開始時固定的輸入上；變數模式時新表與正文留在回合紀錄
+    // 等前端落檔。狀態沒寫成要明確回報（state_error），不吞掉
+    let main = data::message_vars::PendingMain {
+        text: display.clone(),
+        raw: (reply != display).then(|| reply.clone()),
+        truncated: cut.load(std::sync::atomic::Ordering::Relaxed),
+    };
+    let committed = turn.commit(
+        main,
+        |state| {
+            apply.then(|| {
+                let scene = state.current_scene;
+                let outcome = mechanism::apply_block(state, &block, user_name);
+                if align {
+                    state.aligned_scene = Some(scene);
                 }
+                outcome
+            })
+        },
+        // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
+        |state, outcome| {
+            if outcome.is_none() {
+                return Vec::new();
             }
+            state_updates = transport::snapshot_updates(&state.state, &state.mechanism, user_name)
+                .into_iter()
+                .map(|(path, value)| StateUpdate { path, value })
+                .collect();
+            state_update_side(&state_updates).into_iter().collect()
+        },
+    );
+    let mut state_error = None;
+    let committed = match committed {
+        Ok(Some(commit)) => {
+            state_error = commit.error;
+            Some((commit.state, commit.result))
+        }
+        Ok(None) => None,
+        Err(error) => {
+            state_error = Some(error);
+            None
+        }
+    };
+    if let Some((state, Some(outcome))) = committed {
+        let scene = state.current_scene;
+        mechanism::append_log(&root, &world_id, scene, &outcome.records);
+        let present = state.state.table.get("present").map(String::as_str);
+        // 人物在場登場（AI 卡重構包 4a）：present 套用後檢查新面孔，
+        // 命中就把世界書全文記進歷史，system 那邊只留一行名冊。
+        arrived_persons = record_person_arrivals(
+            &root,
+            &world_id,
+            scene,
+            &materials.worldbook,
+            &materials.events,
+            present,
+            &display,
+            user_name,
+            Some(&turn.ticket),
+        );
+        // 角色卡自動回歸（AI 卡重構包 4b）：鏡射人物登場，鍵換成卡名；
+        // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）。
+        if let Ok(hidden_cards) = load_hidden_cards(&root, &world_id) {
+            arrived_characters = record_card_arrivals(
+                &root,
+                &world_id,
+                scene,
+                &hidden_cards,
+                &materials.events,
+                present,
+                &display,
+                user_name,
+                Some(&turn.ticket),
+            );
         }
     }
     // LLM 只認名字，點名後對回角色 id（同名取第一個）；玩家哨兵原樣回傳
@@ -568,13 +612,115 @@ pub(crate) async fn gm_narrate(
         arrived_characters,
         arrived_persons,
         aborted: false,
+        state_error,
     })
+}
+
+/// 一輪 GM 回合的回合紀錄（計畫 8.3）。開始時記下、提交時核對 turn_id；沒走到提交就離開（中止、出錯、
+/// 空回覆）時，drop 把還在生成中的紀錄改成已中止，卡寫與面板手改隨即放行。
+struct TurnGuard {
+    root: std::path::PathBuf,
+    world_id: String,
+    turn_id: String,
+    /// 同回合內部追加（登場紀錄）用的憑證
+    ticket: data::message_vars::TurnTicket,
+}
+
+/// 變動紀錄（與前端落的那則同一個寫法）；沒有變動就沒有這一部分。
+fn state_update_side(updates: &[StateUpdate]) -> Option<data::message_vars::TurnSide> {
+    if updates.is_empty() {
+        return None;
+    }
+    Some(data::message_vars::TurnSide {
+        part: "state_update".to_owned(),
+        kind: data::TranscriptKind::System,
+        text: updates
+            .iter()
+            .map(|update| format!("{}：{}", update.path, update.value))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        marker: Some(data::EventMarker::StateUpdate),
+    })
+}
+
+impl TurnGuard {
+    fn begin(
+        root: &std::path::Path,
+        world_id: &str,
+        turn_id: &str,
+        lang: &str,
+    ) -> Result<Self, String> {
+        let user = data::read_player_card(root, world_id)
+            .ok()
+            .flatten()
+            .map(|card| card.name)
+            .unwrap_or_else(|| transport::player_fallback_name(lang).to_owned());
+        let macros = data::message_vars::Macros { user, char: None };
+        let ticket = data::state_commit::with_commit(root, world_id, |tx| {
+            data::message_vars::begin_turn(tx, turn_id, Some(&macros))
+        })
+        .map_err(|error| error.to_string())?;
+        Ok(Self {
+            root: root.to_path_buf(),
+            world_id: world_id.to_owned(),
+            turn_id: turn_id.to_owned(),
+            ticket,
+        })
+    }
+
+    /// turn_id／幕／世代已不符回 Ok(None)；讀寫錯誤回 Err（呼叫端回報，不害玩家丟掉整段旁白）。
+    fn commit<R>(
+        &self,
+        main: data::message_vars::PendingMain,
+        apply: impl FnOnce(&mut data::WorldState) -> R,
+        sides: impl FnOnce(&data::WorldState, &R) -> Vec<data::message_vars::TurnSide>,
+    ) -> Result<Option<data::message_vars::GmCommit<R>>, String> {
+        data::state_commit::with_commit(&self.root, &self.world_id, |tx| {
+            data::message_vars::apply_gm_block(tx, &self.turn_id, main, apply, sides)
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    /// 中止：半截正文記進回合紀錄（前端沒落成時由下一筆新事件前的交接代落），回原樣的中止結果。
+    fn abort(&self, narration: GmNarration) -> GmNarration {
+        let half = data::message_vars::PendingMain {
+            text: narration.text.clone(),
+            raw: None,
+            truncated: true,
+        };
+        let _ = data::state_commit::with_commit(&self.root, &self.world_id, |tx| {
+            data::message_vars::finish_turn(tx, &self.turn_id, Some(half))
+        });
+        narration
+    }
+}
+
+impl Drop for TurnGuard {
+    fn drop(&mut self) {
+        let _ = data::state_commit::with_commit(&self.root, &self.world_id, |tx| {
+            data::message_vars::finish_turn(tx, &self.turn_id, None)
+        });
+    }
 }
 
 /// 中止這一輪對話。只打 `turn_id` 對得上的那一筆；晚到的舊 id 不會波及下一輪，也不會打到重構。
 #[tauri::command]
 pub(crate) fn chat_abort(world_id: String, turn_id: String) {
     inflight::abort_turn(&world_id, &turn_id);
+}
+
+/// 登場紀錄：GM 回合提交後的附屬追加帶回合憑證（不交接，排在正文前）；沒有憑證就是一般新事件。
+fn append_arrival(
+    root: &std::path::Path,
+    world_id: &str,
+    scene: u64,
+    event: &data::TranscriptEvent,
+    turn: Option<&data::message_vars::TurnTicket>,
+) -> data::DataResult<u64> {
+    match turn {
+        Some(ticket) => data::append_within_turn(root, world_id, scene, event, ticket),
+        None => data::append_transcript(root, world_id, scene, event),
+    }
 }
 
 /// 世界書人物條目首次在場（AI 卡重構包 4a）：present 名單（缺席就退回本文比對）比對得上、
@@ -593,6 +739,7 @@ fn record_person_arrivals(
     present: Option<&str>,
     reply_body: &str,
     user_name: &str,
+    turn: Option<&data::message_vars::TurnTicket>,
 ) -> Vec<String> {
     let already = data::appeared_person_titles(events);
     let arrivals = transport::detect_new_arrivals(worldbook, present, reply_body, &already);
@@ -604,6 +751,11 @@ fn record_person_arrivals(
     for entry in arrivals {
         let (marker, text) = transport::person_arrival(entry, user_name);
         let event = data::TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             ts: ts.clone(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -616,7 +768,7 @@ fn record_person_arrivals(
             marker: Some(marker),
             opening: false,
         };
-        if data::append_transcript(root, world_id, scene, &event).is_ok() {
+        if append_arrival(root, world_id, scene, &event, turn).is_ok() {
             titles.push(entry.title.clone());
         }
     }
@@ -640,6 +792,7 @@ fn record_card_arrivals(
     present: Option<&str>,
     reply_body: &str,
     user_name: &str,
+    turn: Option<&data::message_vars::TurnTicket>,
 ) -> Vec<String> {
     let already = data::appeared_card_names(events);
     let arrivals = transport::detect_new_card_arrivals(hidden_cards, present, reply_body, &already);
@@ -650,6 +803,11 @@ fn record_card_arrivals(
     let mut ids = Vec::new();
     let system_event =
         |(marker, text): (data::EventMarker, String), gm_only: bool| data::TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             ts: ts.clone(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -664,13 +822,12 @@ fn record_card_arrivals(
         };
     for card in arrivals {
         if let Some(private) = transport::card_private(card, user_name) {
-            if data::append_transcript(root, world_id, scene, &system_event(private, true)).is_err()
-            {
+            if append_arrival(root, world_id, scene, &system_event(private, true), turn).is_err() {
                 continue;
             }
         }
         let event = system_event(transport::card_arrival(card, user_name), false);
-        if data::append_transcript(root, world_id, scene, &event).is_ok() {
+        if append_arrival(root, world_id, scene, &event, turn).is_ok() {
             ids.push(card.id.clone());
         }
     }
@@ -804,6 +961,7 @@ mod tests {
             Some("愛麗絲"),
             "",
             "阿濤",
+            None,
         );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 1);
@@ -828,6 +986,7 @@ mod tests {
             Some("愛麗絲"),
             "",
             "阿濤",
+            None,
         );
         assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
 
@@ -841,6 +1000,7 @@ mod tests {
             Some("愛麗絲"),
             "",
             "阿濤",
+            None,
         );
         let scene1 = data::read_transcript(&root, &world_id, 1).unwrap();
         assert_eq!(scene1.len(), 1);
@@ -886,6 +1046,7 @@ mod tests {
             Some("狐狸、貓頭鷹"),
             "",
             "阿濤",
+            None,
         );
         assert_eq!(ids, vec![fox.id.clone(), owl.id.clone()]);
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
@@ -920,6 +1081,7 @@ mod tests {
             Some("狐狸、貓頭鷹"),
             "",
             "阿濤",
+            None,
         );
         assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 3);
 
@@ -969,6 +1131,7 @@ mod tests {
             Some("密探"),
             "",
             "阿濤",
+            None,
         );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 1);

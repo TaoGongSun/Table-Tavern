@@ -1,7 +1,7 @@
 use super::character::{list_characters, read_character, write_character, CharacterCard};
 use super::paths::{interface_shell_path, refactor_outcome_path, validate_single_line, world_dir};
 use super::scene::{append_transcript, TranscriptEvent, TranscriptKind};
-use super::state::{read_state, write_state, Mechanism, TableState, WorldState};
+use super::state::{Mechanism, TableState, WorldState};
 use super::worldbook::{read_worldbook, read_worldbook_value};
 use super::{invalid_data, new_id, DataResult, Tier};
 use crate::ui_msg::UiMsg;
@@ -205,6 +205,11 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
         &world_id,
         0,
         &TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "2026-07-20T00:00:00+08:00".to_owned(),
             speaker_id: String::new(),
@@ -269,9 +274,11 @@ pub fn delete_world(root: &Path, world_id: &str) -> DataResult<()> {
 /// 桌名隨時可改（NewPlan §9.3）：只改 state.json 的 name，目錄路徑（world_id）不動。
 pub fn rename_world(root: &Path, world_id: &str, new_name: &str) -> DataResult<()> {
     validate_single_line("world name", new_name)?;
-    let mut state = read_state(root, world_id)?;
-    state.name = new_name.to_owned();
-    write_state(root, world_id, &state)
+    super::state::update_state(root, world_id, |state| {
+        state.name = new_name.to_owned();
+        Ok(Some(()))
+    })?;
+    Ok(())
 }
 
 pub fn read_world_md(root: &Path, world_id: &str) -> DataResult<String> {
@@ -576,6 +583,11 @@ mod tests {
 
         // 對名稱排序居後的甲桌寫一筆訊息，活動排序應把它推到最前
         let event = TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
@@ -610,6 +622,11 @@ mod tests {
 
         let has_message = create_world(root.path(), "有訊息").unwrap();
         let event = TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
