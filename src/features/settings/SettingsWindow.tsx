@@ -1,5 +1,4 @@
 import {
-  type KeyboardEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -14,7 +13,6 @@ import { ALL_THEMES, KOFI_URL, resolveTheme, SPONSOR_THEMES, TEXT_SIZE_DEFAULT, 
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { type LeaveDecision, useRequestedTab } from "./useRequestedTab";
 import { ModalShell } from "../../shared/ui/Dialog";
-import { focusFrom } from "../../shared/ui/focus-ring";
 import { IconClose } from "../../shared/ui/icons";
 import { Settings } from "./SettingsForm";
 import { UsageTab } from "./UsageTab";
@@ -55,9 +53,6 @@ const TABS = [
 ] as const;
 
 type AnyTab = (typeof TABS)[number][0];
-
-const TAB_ID = (tab: AnyTab) => `settings-tab-${tab}`;
-const PANEL_ID = "settings-panel";
 
 // 單一設定入口內分頁（NewPlan §9.4）：外觀為預設頁，不碰 AI 的人打開只見外觀。
 // 離開（切分頁、×、底部返回、Esc、遮罩、外部切頁）都走同一道守門：
@@ -152,34 +147,13 @@ export function SettingsWindow({
     if ((await confirmDiscard()) === true) setTab(target);
   }
 
-  // 方向鍵只移焦點不切頁（切頁可能要確認），Enter／Space 交給按鈕自己的 click。
-  // 移焦明講要可見（focus-ring.ts）：WebKit 在前次滑鼠焦點後不把程式移焦當 :focus-visible
-  function onTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-    const order = TABS.map(([id]) => id);
-    const current = order.findIndex((id) => tabButtons.current.get(id) === event.target);
-    if (current < 0) return;
-    event.preventDefault();
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? order.length - 1
-          : (current + (event.key === "ArrowRight" ? 1 : -1) + order.length) % order.length;
-    const button = tabButtons.current.get(order[next]);
-    focusFrom(button, "keyboard");
-    button?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
-  }
-
-  // 外部切頁把原本聚焦的元素卸載了（焦點掉回 body 或跑出視窗）就接到新選中的分頁上。
-  // 外部請求帶不出輸入來源，救援一律當鍵盤、要求可見
+  // 外部切頁把原本聚焦的元素卸載了（焦點掉回 body 或跑出視窗）就接到新選中的分頁上
   useEffect(() => {
     if (!focusTabAfterSwitch.current) return;
     focusTabAfterSwitch.current = false;
     const active = document.activeElement;
     if (active === null || active === document.body || !modalRef.current?.contains(active)) {
-      focusFrom(tabButtons.current.get(tab), "keyboard");
+      tabButtons.current.get(tab)?.focus();
     }
   }, [tab]);
 
@@ -236,12 +210,8 @@ export function SettingsWindow({
         <h2 id="settings-title" className="settings-title">
           {t("settingsBtn")}
         </h2>
-        <div
-          className="settings-tabs"
-          role="tablist"
-          aria-labelledby="settings-title"
-          onKeyDown={onTabKeyDown}
-        >
+        {/* 普通按鈕列：鍵盤只走原生 Tab／Enter／Space〔作者裁決 2026-10-03〕 */}
+        <nav className="settings-tabs" aria-labelledby="settings-title">
           {TABS.map(([id, labelKey]) => (
             <button
               key={id}
@@ -250,28 +220,14 @@ export function SettingsWindow({
                 else tabButtons.current.delete(id);
               }}
               type="button"
-              role="tab"
-              id={TAB_ID(id)}
               className="settings-tab"
-              aria-selected={tab === id}
-              aria-controls={PANEL_ID}
-              tabIndex={tab === id ? 0 : -1}
-              onClick={(event) => {
-                // 滑鼠點已聚焦的這顆不會換焦點：方向鍵留下的 data-focus-ring 與 WebKit 記住的
-                // :focus-visible 都不會自己掉，這裡重聚焦成指標來源；detail 0（鍵盤、輔助技術）保留外框。
-                // 要先 blur：對已聚焦元素直接 focus({ focusVisible: false }) WebKit 不重判（實測外框仍在）
-                const node = event.currentTarget;
-                if (event.detail > 0 && (node.dataset.focusRing !== undefined || node.matches(":focus-visible"))) {
-                  node.blur();
-                  focusFrom(node, "pointer");
-                }
-                void selectTab(id);
-              }}
+              aria-current={tab === id ? "true" : undefined}
+              onClick={() => void selectTab(id)}
             >
               {t(labelKey)}
             </button>
           ))}
-        </div>
+        </nav>
         <button
           type="button"
           className="btn btn-ghost btn-icon settings-close"
@@ -284,9 +240,6 @@ export function SettingsWindow({
       </div>
       <div className="settings-body" tabIndex={-1} data-dialog-content="">
         <div
-          id={PANEL_ID}
-          role="tabpanel"
-          aria-labelledby={TAB_ID(tab)}
           className={tab === "ai" ? "settings-panel settings-panel-ai" : "settings-panel"}
           // 非 AI 頁由面板自己捲，可聚焦才能只用鍵盤捲；AI 頁的捲動區在表單裡
           tabIndex={tab === "ai" ? undefined : 0}

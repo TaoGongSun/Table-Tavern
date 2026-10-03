@@ -58,15 +58,14 @@ button.settings-tab:hover:not(:disabled) {
   color: var(--ink-1);
 }
 
-button.settings-tab[aria-selected="true"],
-button.settings-tab[aria-selected="true"]:hover:not(:disabled) {
+button.settings-tab[aria-current="true"],
+button.settings-tab[aria-current="true"]:hover:not(:disabled) {
   border-bottom-color: var(--accent);
   color: var(--ink-1);
 }
 
-/* 外框往內畫：分頁列 overflow-x: auto 會裁掉向外的外框（data-focus-ring 是舊引擎兜底） */
-.settings-tab:focus-visible,
-.settings-tab[data-focus-ring]:focus {
+/* 外框往內畫：分頁列 overflow-x: auto 會裁掉向外的外框 */
+.settings-tab:focus-visible {
   outline-offset: -2px;
 }
 
