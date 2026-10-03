@@ -142,7 +142,7 @@ mod tests {
         let root = TestRoot::new("delete-images");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
-        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
 
         delete_character_image(root.path(), &world_id, &meta.id).unwrap();
         delete_character_image(root.path(), &world_id, &meta.id).unwrap();

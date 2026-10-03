@@ -39,7 +39,7 @@ pub use scene::{
     remove_transcript_event, replace_scene_summary, revert_scene, scene_label,
     set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
 };
-pub(crate) use scene::{name_matches, player_fallback_name, split_present_names};
+pub(crate) use scene::{lang_key, name_matches, player_fallback_name, split_present_names};
 pub(crate) use state::is_false;
 pub use state::{
     node_at, read_state, set_tree_value, write_state, Condition, FieldKind, FieldRule, InjectLevel,
@@ -81,7 +81,6 @@ pub(crate) use format::{
 pub(crate) use format::{remove_reset_build_root, replace_world_from_build, reset_build_root};
 #[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub use state::SceneLabel;
 #[cfg(test)]

@@ -13,7 +13,8 @@ fn exported_png_reimports_with_identical_content() {
     let root = TestRoot::new("export-png");
     let world_id = data::create_world(root.path(), "酒館").unwrap();
     let raw = r#"{"data":{"name":"莉亞","description":"精靈遊俠","personality":"冷靜","scenario":"雨夜","first_mes":"妳來了。","mes_example":"<START>","character_book":{"entries":[{"keys":["森林","月亮"],"content":"古老盟約"}]}}}"#;
-    let source = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+    let source =
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
     let target = root.path().join("莉亞.png");
 
     export_character(root.path(), &world_id, &source.id, &target).unwrap();
@@ -32,7 +33,8 @@ fn exported_png_reimports_with_identical_content() {
         "古老盟約"
     );
 
-    let round_trip = import_character(root.path(), &world_id, &exported, "#000000").unwrap();
+    let round_trip =
+        import_character(root.path(), &world_id, &exported, "#000000", "zh-TW").unwrap();
     assert_eq!(
         data::read_character(root.path(), &world_id, &round_trip.id)
             .unwrap()
@@ -58,6 +60,7 @@ fn character_export_import_round_trips_rules_and_initial_tree() {
         &source_world,
         r#"{"data":{"name":"亞瑟","description":"騎士"}}"#.as_bytes(),
         "#3366ff",
+        "zh-TW",
     )
     .unwrap();
     let mut state = data::read_state(root.path(), &source_world).unwrap();
@@ -81,7 +84,7 @@ fn character_export_import_round_trips_rules_and_initial_tree() {
     export_character(root.path(), &source_world, &source.id, &export_path).unwrap();
     let exported = fs::read(&export_path).unwrap();
     let target_world = data::create_world(root.path(), "目標桌").unwrap();
-    import_character(root.path(), &target_world, &exported, "#000000").unwrap();
+    import_character(root.path(), &target_world, &exported, "#000000", "zh-TW").unwrap();
     let target = data::read_state(root.path(), &target_world).unwrap();
     assert_eq!(
         target.mechanism.rules["亞瑟.能力.HP"].branch.as_deref(),
@@ -169,7 +172,7 @@ fn export_replaces_stale_chara_chunk_in_the_image() {
     );
     base.extend_from_slice(&png_chunk(b"tEXt", stale.as_bytes()));
     base.extend_from_slice(&png_chunk(b"IEND", &[]));
-    let meta = import_character(root.path(), &world_id, &base, "#111111").unwrap();
+    let meta = import_character(root.path(), &world_id, &base, "#111111", "zh-TW").unwrap();
     let mut card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
     card.name = "新名".to_owned();
     data::write_character(root.path(), &world_id, &card).unwrap();
@@ -216,4 +219,118 @@ fn save_gm_image_stores_png_and_keeps_it_for_plain_json() {
         gm_image(root.path(), &world_id).unwrap(),
         Some(base64_encode(&png))
     );
+}
+
+const FIELDS: [&str; 5] = [
+    "description",
+    "personality",
+    "scenario",
+    "first_mes",
+    "mes_example",
+];
+
+/// 十語系各自匯入→匯出，五欄都拆回原欄位；備用開場白段標照介面語系。
+#[test]
+fn every_language_imports_and_exports_back_into_the_same_fields() {
+    let root = TestRoot::new("export-langs");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let raw = r#"{"data":{"name":"莉亞","description":"甲","personality":"乙","scenario":"丙","first_mes":"丁","mes_example":"戊","alternate_greetings":["己"]}}"#;
+    for lang in [
+        "zh-TW", "zh-CN", "en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru",
+    ] {
+        let meta =
+            import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", lang).unwrap();
+        let card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
+        let value = character_card_v2(root.path(), &world_id, &card);
+        for (field, expected) in FIELDS.into_iter().zip(["甲", "乙", "丙", "丁", "戊"]) {
+            assert_eq!(value["data"][field], expected, "{lang} {field}");
+        }
+        assert!(!card.private_md.contains("{n}"), "{lang}");
+        assert!(
+            card.private_md.contains(" 1\n己"),
+            "{lang}: {}",
+            card.private_md
+        );
+    }
+    let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "de").unwrap();
+    let card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
+    assert!(card.public_md.starts_with("### Beschreibung\n甲"));
+    assert!(card.private_md.contains("### Alternative Begrüßung 1\n己"));
+}
+
+/// 混語系段標（含玩家手動編輯）逐段辨識；圍欄內的段標不切；行尾空白容忍。
+#[test]
+fn mixed_language_headings_split_and_fences_are_respected() {
+    let markdown = "前言\n### Personality\n乙\n### 場景  \n丙\n```md\n### 開場白\n```\n丙尾\n### Erste Nachricht\n丁\n~~~~\n### Примеры диалога\n~~~\n仍在圍欄\n~~~~\n### Примеры диалога\n戊";
+    let sections = split_public_markdown(markdown);
+    assert_eq!(sections[0], "前言");
+    assert_eq!(sections[1], "乙");
+    assert_eq!(sections[2], "丙\n```md\n### 開場白\n```\n丙尾");
+    // 圍欄（~~~~ 開、~~~ 太短不算關、~~~~ 才關）整段屬於前一欄的內文
+    assert_eq!(
+        sections[3],
+        "丁\n~~~~\n### Примеры диалога\n~~~\n仍在圍欄\n~~~~"
+    );
+    assert_eq!(sections[4], "戊");
+}
+
+/// 圍欄規則：4 個空白縮排不算圍欄、反引號 info 含反引號不算開頭、關閉要同符號且不短於開啟、
+/// 未閉合延伸到結尾；圍欄外內文自然出現的同名段標照規則切欄（已知歧義）。
+#[test]
+fn fence_rules_and_known_ambiguity() {
+    let indented = split_public_markdown("    ```\n### Scenario\n丙");
+    assert_eq!(indented[0], "```");
+    assert_eq!(indented[2], "丙");
+
+    let bad_info = split_public_markdown("``` a`b\n### Scenario\n丙");
+    assert_eq!(bad_info[2], "丙");
+
+    let short_close = split_public_markdown("````\n```\n### Scenario\n````\n### Scenario\n丙");
+    assert_eq!(short_close[0], "````\n```\n### Scenario\n````");
+    assert_eq!(short_close[2], "丙");
+
+    let unclosed = split_public_markdown("```\n### Scenario\n丙");
+    assert_eq!(unclosed[0], "```\n### Scenario\n丙");
+    assert_eq!(unclosed[2], "");
+
+    let natural = split_public_markdown("He loves maps.\n### Scenario\nnot a heading by intent");
+    assert_eq!(natural[0], "He loves maps.");
+    assert_eq!(natural[2], "not a heading by intent");
+}
+
+/// 段標表裡同一個字不會對到兩個欄位（十語系擴大命中面時不互相搶）。
+#[test]
+fn section_labels_never_map_to_two_fields() {
+    for (index, (_, labels)) in PUBLIC_SECTIONS.iter().enumerate() {
+        for label in labels {
+            for (other, (_, other_labels)) in PUBLIC_SECTIONS.iter().enumerate() {
+                if other != index {
+                    assert!(!other_labels.contains(label), "{label}");
+                }
+            }
+        }
+    }
+}
+
+/// 舊格式卡檔（段落切不開）：直接 id 匯出與轉世界書都回錯，不寫出檔案、不動世界書與卡檔。
+#[test]
+fn legacy_card_file_export_and_conversion_fail_without_writing() {
+    let root = TestRoot::new("export-legacy");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let id = data::new_id();
+    let path = root
+        .path()
+        .join(format!("worlds/{world_id}/characters/{id}.md"));
+    let legacy = format!(
+        "---\nid: {id}\nname: 舊卡\ncolor: #000000\navatar: 🎭\ntier: default\n---\n## 公開\n公開\n## 私有\n私密"
+    );
+    fs::write(&path, &legacy).unwrap();
+    let target = root.path().join("舊卡.json");
+    assert!(export_character(root.path(), &world_id, &id, &target).is_err());
+    assert!(!target.exists());
+    assert!(data::character_to_worldbook_entry(root.path(), &world_id, &id, "zh-TW").is_err());
+    assert!(data::read_worldbook(root.path(), &world_id)
+        .unwrap()
+        .is_empty());
+    assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
 }

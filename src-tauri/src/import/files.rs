@@ -95,13 +95,14 @@ pub fn import_character_file(
     world_id: &str,
     bytes: &[u8],
     color: &str,
+    lang: &str,
     _held: &data::WorldExclusive,
 ) -> DataResult<Imported<CharacterMeta>> {
     super::check_character_bytes(bytes)?;
     let (pending, file) = begin(root, world_id, bytes)?;
     let before = receipts::snapshot(root, world_id);
     // 卡檔已驗過；這裡失敗是寫檔錯，可能已寫了一半，標記留著（來源判不完整）
-    let meta = super::import_character(root, world_id, bytes, color)?;
+    let meta = super::import_character(root, world_id, bytes, color, lang)?;
     let recorded = receipts::record_character_import(
         root,
         world_id,

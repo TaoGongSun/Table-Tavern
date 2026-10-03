@@ -340,7 +340,8 @@ mod tests {
         })
         .to_string();
 
-        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let meta =
+            import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert_eq!(interfaces.len(), 1);
         assert_eq!(interfaces[0].character_id, meta.id);
@@ -367,7 +368,7 @@ mod tests {
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert_eq!(interfaces.len(), 1);
         assert_eq!(interfaces[0].unsupported, Some("scrypt".to_owned()));
@@ -393,7 +394,7 @@ mod tests {
         })
         .to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert_eq!(interfaces.len(), 1);
         assert_eq!(interfaces[0].unsupported, Some("remote_loader".to_owned()));
@@ -406,7 +407,7 @@ mod tests {
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let raw = json!({"data": {"name": "莉亞"}}).to_string();
 
-        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert_eq!(interfaces.len(), 1);
         assert!(interfaces[0].scripts.is_empty());
@@ -419,7 +420,8 @@ mod tests {
         let root = TestRoot::new("interfaces-corrupt");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let raw = json!({"data": {"name": "莉亞"}}).to_string();
-        let meta = import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff").unwrap();
+        let meta =
+            import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
 
         let raw_path = root.path().join(format!(
             "worlds/{world_id}/characters/{}.import.json",

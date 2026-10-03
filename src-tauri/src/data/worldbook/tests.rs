@@ -517,7 +517,7 @@ fn character_to_worldbook_entry_moves_archived_card_and_private_content() {
     card.private_md = "GM 秘密".to_owned();
     write_character(root.path(), &world_id, &card).unwrap();
 
-    character_to_worldbook_entry(root.path(), &world_id, &card.id).unwrap();
+    character_to_worldbook_entry(root.path(), &world_id, &card.id, "zh-TW").unwrap();
 
     let entries = read_worldbook(root.path(), &world_id).unwrap();
     assert_eq!(entries.len(), 1);
@@ -529,13 +529,36 @@ fn character_to_worldbook_entry_moves_archived_card_and_private_content() {
     assert!(read_character(root.path(), &world_id, &card.id).is_err());
 }
 
+/// 卡轉世界書的私有段標照轉換當下的介面語系寫進條目內文。
+#[test]
+fn character_to_worldbook_entry_writes_private_heading_in_ui_language() {
+    for (lang, expected) in [
+        ("en", "Public\n\n## Private\nSecret"),
+        ("ja", "Public\n\n## 非公開\nSecret"),
+        ("fr", "Public\n\n## Privé\nSecret"),
+        ("zh-HK", "Public\n\n## 私有\nSecret"),
+    ] {
+        let root = TestRoot::new(&format!("character-to-worldbook-{lang}"));
+        let world_id = create_world(root.path(), "世界").unwrap();
+        let mut card = character_card(&new_id(), "船長");
+        card.public_md = "Public".to_owned();
+        card.private_md = "Secret".to_owned();
+        write_character(root.path(), &world_id, &card).unwrap();
+        character_to_worldbook_entry(root.path(), &world_id, &card.id, lang).unwrap();
+        assert_eq!(
+            read_worldbook(root.path(), &world_id).unwrap()[0].content,
+            expected
+        );
+    }
+}
+
 #[test]
 fn character_to_worldbook_entry_converts_active_card_but_rejects_player_card() {
     let root = TestRoot::new("character-to-worldbook-active");
     let world_id = create_world(root.path(), "世界").unwrap();
     let active = character_card(&new_id(), "還在桌上");
     write_character(root.path(), &world_id, &active).unwrap();
-    character_to_worldbook_entry(root.path(), &world_id, &active.id).unwrap();
+    character_to_worldbook_entry(root.path(), &world_id, &active.id, "zh-TW").unwrap();
     let entries = read_worldbook(root.path(), &world_id).unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].title, "還在桌上");
@@ -547,7 +570,7 @@ fn character_to_worldbook_entry_converts_active_card_but_rejects_player_card() {
     state.player_card_id = Some(player.id.clone());
     write_state(root.path(), &world_id, &state).unwrap();
     assert_eq!(
-        character_to_worldbook_entry(root.path(), &world_id, &player.id)
+        character_to_worldbook_entry(root.path(), &world_id, &player.id, "zh-TW")
             .unwrap_err()
             .to_string(),
         UiMsg::PlayerCardNotConvertible.to_string()
@@ -564,7 +587,7 @@ fn character_to_worldbook_entry_converts_auto_hidden_card() {
     crate::data::character::set_character_auto_hidden(root.path(), &world_id, &card.id, true)
         .unwrap();
 
-    character_to_worldbook_entry(root.path(), &world_id, &card.id).unwrap();
+    character_to_worldbook_entry(root.path(), &world_id, &card.id, "zh-TW").unwrap();
 
     assert_eq!(
         read_worldbook(root.path(), &world_id).unwrap()[0].title,
@@ -583,7 +606,7 @@ fn character_to_worldbook_entry_is_rejected_while_a_write_permit_is_held() {
 
     let permit = world_write_permit(&world_id).unwrap();
     assert_eq!(
-        character_to_worldbook_entry(root.path(), &world_id, &card.id)
+        character_to_worldbook_entry(root.path(), &world_id, &card.id, "zh-TW")
             .unwrap_err()
             .to_string(),
         UiMsg::WorldBusy.to_string()
@@ -592,7 +615,7 @@ fn character_to_worldbook_entry_is_rejected_while_a_write_permit_is_held() {
     assert!(read_character(root.path(), &world_id, &card.id).is_ok());
 
     drop(permit);
-    character_to_worldbook_entry(root.path(), &world_id, &card.id).unwrap();
+    character_to_worldbook_entry(root.path(), &world_id, &card.id, "zh-TW").unwrap();
 }
 
 /// 轉走之後換幕：present 名單還寫著它的名字，結算也不會把卡檔寫回來，名單不再列出它。
@@ -629,7 +652,7 @@ fn converted_card_is_not_recreated_by_the_next_scene() {
     )
     .unwrap();
 
-    character_to_worldbook_entry(root.path(), &world_id, &gone.id).unwrap();
+    character_to_worldbook_entry(root.path(), &world_id, &gone.id, "zh-TW").unwrap();
     begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
 
     assert!(read_character(root.path(), &world_id, &gone.id).is_err());
@@ -661,7 +684,7 @@ fn character_to_worldbook_entry_keeps_card_when_worldbook_write_fails() {
     let before = fs::read(&path).unwrap();
     fs::set_permissions(&path, fs::Permissions::from_mode(0o444)).unwrap();
 
-    let result = character_to_worldbook_entry(root.path(), &world_id, &card.id);
+    let result = character_to_worldbook_entry(root.path(), &world_id, &card.id, "zh-TW");
 
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
     assert!(result.is_err());

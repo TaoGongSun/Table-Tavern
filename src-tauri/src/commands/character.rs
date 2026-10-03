@@ -1,5 +1,5 @@
 use crate::data::{CharacterCard, CharacterMeta};
-use crate::{data, data_root, import, receipts};
+use crate::{config_root, data, data_root, import, receipts, transport};
 
 #[tauri::command]
 pub(crate) fn list_characters(
@@ -87,8 +87,12 @@ pub(crate) async fn import_character(
     let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
     let entries_before = data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len());
-    let imported_card = import::import_character_file(&root, &world_id, &data, &color, &held)
-        .map_err(|error| error.to_string())?;
+    // 段標照介面語系寫進卡片內文；設定讀不到就用預設語系，不擋匯入
+    let config = data::read_config(&config_root(&app)?).unwrap_or_default();
+    let lang = transport::ui_language(&config);
+    let imported_card =
+        import::import_character_file(&root, &world_id, &data, &color, &lang, &held)
+            .map_err(|error| error.to_string())?;
     // 卡片隨身的世界書條目也要跟世界書路徑一樣回報進來幾條、重複跳過幾條
     let imported =
         data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len() - entries_before);

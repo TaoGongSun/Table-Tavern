@@ -111,8 +111,8 @@ fn character_round_trip_preserves_fields_and_sections() {
             "gen_prompt"
         ]
     );
-    assert!(raw.contains("\n## 公開\n"));
-    assert!(raw.contains("\n## 私有\n"));
+    assert!(raw.contains("\n<!-- tt:public -->\n"));
+    assert!(raw.contains("\n<!-- tt:private -->\n"));
 
     set_character_archived(root.path(), &world_id, &character_id, false).unwrap();
     assert!(
@@ -146,7 +146,7 @@ fn legacy_cards_and_worlds_without_id_are_skipped() {
     fs::write(
         root.path()
             .join(format!("worlds/{world_id}/characters/舊卡.md")),
-        "---\nname: 舊卡\ncolor: #111111\navatar: 🎭\ntier: default\n---\n## 公開\n\n## 私有\n",
+        "---\nname: 舊卡\ncolor: #111111\navatar: 🎭\ntier: default\n---\n<!-- tt:public -->\n\n<!-- tt:private -->\n",
     )
     .unwrap();
     // 有 id 的正常卡應該仍被列出
@@ -426,7 +426,7 @@ fn saving_one_card_without_display_index_does_not_reshuffle_the_others() {
                 root.path()
                     .join(format!("worlds/{world_id}/characters/{id}.md")),
                 format!(
-                    "---\nid: {id}\nname: {name}\ncolor: #000000\navatar: 🎭\ntier: default\n---\n## 公開\n"
+                    "---\nid: {id}\nname: {name}\ncolor: #000000\navatar: 🎭\ntier: default\n---\n<!-- tt:public -->\n<!-- tt:private -->\n"
                 ),
             )
             .unwrap();
@@ -459,7 +459,7 @@ fn frontmatter_accepts_spacing_and_order_but_rejects_invalid_tier() {
     fs::write(
         &path,
         format!(
-            "---\ntier : fast\nunknown: ignored\navatar: 🐕\n color : #abcdef\nname : 角色\nid : {character_id}\n---\n## 私有\n私密"
+            "---\ntier : fast\nunknown: ignored\navatar: 🐕\n color : #abcdef\nname : 角色\nid : {character_id}\n---\n<!-- tt:public -->\n<!-- tt:private -->\n私密"
         ),
     )
     .unwrap();
@@ -516,4 +516,91 @@ fn write_character_preserves_auto_hidden_across_unrelated_edit() {
         .unwrap();
     assert!(meta.auto_hidden);
     assert_eq!(meta.color, "#ff0000");
+}
+
+/// 內文裡長得像分隔線的行（行前 0／1／多個反斜線、圍欄內、CRLF）逐字往返。
+#[test]
+fn section_marker_lookalikes_round_trip_verbatim() {
+    let root = TestRoot::new("section-escape");
+    let world_id = create_world(root.path(), "世界").unwrap();
+    let mut card = character_card(&new_id(), "跳脫");
+    card.public_md = "前言\n<!-- tt:private -->\n\\<!-- tt:public -->\n\\\\\\<!-- tt:x -->\n```\n<!-- tt:private -->\n```\r\nCRLF 行\r\n## 公開".to_owned();
+    card.private_md = "<!-- tt:public -->\n秘密\n\\\\<!-- tt:private -->".to_owned();
+    write_character(root.path(), &world_id, &card).unwrap();
+    let raw = fs::read_to_string(
+        root.path()
+            .join(format!("worlds/{world_id}/characters/{}.md", card.id)),
+    )
+    .unwrap();
+    assert_eq!(raw.matches("\n<!-- tt:public -->\n").count(), 1);
+    assert_eq!(raw.matches("\n<!-- tt:private -->\n").count(), 1);
+    assert!(raw.contains("\n\\\\\\\\<!-- tt:x -->\n"));
+    let read = read_character(root.path(), &world_id, &card.id).unwrap();
+    assert_eq!(read.public_md, card.public_md);
+    assert_eq!(read.private_md, card.private_md);
+}
+
+/// 分隔線重複、缺失、錯序、舊格式都解析失敗：直接 id 讀取回錯、清單略過、玩家上下文當作沒有卡；
+/// 新舊混合時新卡照常。
+#[test]
+fn malformed_or_legacy_sections_fail_by_scope() {
+    let root = TestRoot::new("section-malformed");
+    let world_id = create_world(root.path(), "世界").unwrap();
+    let good = character_card(&new_id(), "新卡");
+    write_character(root.path(), &world_id, &good).unwrap();
+    let head = |id: &str, name: &str| {
+        format!("---\nid: {id}\nname: {name}\ncolor: #000000\navatar: 🎭\ntier: default\n---\n")
+    };
+    let bodies = [
+        "## 公開\n公開\n## 私有\n私密",
+        "<!-- tt:public -->\n公開",
+        "<!-- tt:private -->\n私密\n<!-- tt:public -->\n公開",
+        "<!-- tt:public -->\n甲\n<!-- tt:public -->\n乙\n<!-- tt:private -->\n",
+        "<!-- tt:public -->\n甲\n<!-- tt:private -->\n乙\n<!-- tt:private -->\n丙",
+        "前言\n<!-- tt:public -->\n甲\n<!-- tt:private -->\n乙",
+    ];
+    let mut bad_ids = Vec::new();
+    for (index, body) in bodies.iter().enumerate() {
+        let id = new_id();
+        fs::write(
+            root.path()
+                .join(format!("worlds/{world_id}/characters/{id}.md")),
+            format!("{}{body}", head(&id, &format!("壞{index}"))),
+        )
+        .unwrap();
+        assert!(
+            read_character(root.path(), &world_id, &id).is_err(),
+            "{body}"
+        );
+        bad_ids.push(id);
+    }
+    let listed: Vec<String> = list_characters(root.path(), &world_id)
+        .unwrap()
+        .into_iter()
+        .map(|meta| meta.name)
+        .collect();
+    assert_eq!(listed, ["新卡"]);
+
+    // 舊玩家卡：玩家上下文當作沒有卡
+    let mut state = read_state(root.path(), &world_id).unwrap();
+    state.player_card_id = Some(bad_ids[0].clone());
+    write_state(root.path(), &world_id, &state).unwrap();
+    assert_eq!(read_player_card(root.path(), &world_id).unwrap(), None);
+    // frontmatter 壞掉不是段落問題，照舊回錯
+    fs::write(
+        root.path()
+            .join(format!("worlds/{world_id}/characters/{}.md", bad_ids[0])),
+        "沒有 frontmatter",
+    )
+    .unwrap();
+    assert!(read_player_card(root.path(), &world_id).is_err());
+    // 新玩家卡照常
+    state.player_card_id = Some(good.id.clone());
+    write_state(root.path(), &world_id, &state).unwrap();
+    assert_eq!(
+        read_player_card(root.path(), &world_id)
+            .unwrap()
+            .map(|card| card.name),
+        Some("新卡".to_owned())
+    );
 }

@@ -35,7 +35,7 @@ pub fn export_character(
 fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> Value {
     let sections = split_public_markdown(&card.public_md);
     let mut data = serde_json::Map::new();
-    for ((_, field), content) in PUBLIC_SECTIONS.into_iter().zip(sections) {
+    for ((field, _), content) in PUBLIC_SECTIONS.into_iter().zip(sections) {
         data.insert(field.to_owned(), Value::String(content));
     }
     let mut root = data.clone();
@@ -66,17 +66,29 @@ fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> V
     Value::Object(root)
 }
 
-/// public_markdown 的反向：認得的 `### 標題` 各自回原欄位，其餘（App 內手寫的卡）全歸簡介
+/// public_markdown 的反向：圍欄外、整行（去掉行尾空白）等於 `### <任一語系的欄位段標>` 的行切欄，
+/// 每個段標各自辨識十語系，混語系也拆得回去；其餘（App 內手寫的卡）全歸簡介。
+/// 已知歧義：內文自然出現、與段標同字的行（例如英文描述裡的 `### Scenario`）也會被當成段標切欄，
+/// 只承諾 App 自己寫的段標拆得回去，不承諾無損還原。
 fn split_public_markdown(markdown: &str) -> [String; PUBLIC_SECTIONS.len()] {
     let mut sections: [String; PUBLIC_SECTIONS.len()] = Default::default();
     let mut current = 0;
+    let mut fence: Option<Fence> = None;
     for line in markdown.lines() {
-        if let Some(index) = PUBLIC_SECTIONS
-            .iter()
-            .position(|(heading, _)| line.trim_end() == format!("### {heading}"))
-        {
-            current = index;
-            continue;
+        match &fence {
+            Some(open) => {
+                if open.closed_by(line) {
+                    fence = None;
+                }
+            }
+            None => {
+                if let Some(opened) = Fence::open(line) {
+                    fence = Some(opened);
+                } else if let Some(index) = section_index(line) {
+                    current = index;
+                    continue;
+                }
+            }
         }
         if !sections[current].is_empty() {
             sections[current].push('\n');
@@ -84,6 +96,43 @@ fn split_public_markdown(markdown: &str) -> [String; PUBLIC_SECTIONS.len()] {
         sections[current].push_str(line);
     }
     sections.map(|section| section.trim().to_owned())
+}
+
+fn section_index(line: &str) -> Option<usize> {
+    let label = line.trim_end().strip_prefix("### ")?;
+    PUBLIC_SECTIONS
+        .iter()
+        .position(|(_, labels)| labels.contains(&label))
+}
+
+/// CommonMark 圍欄：開頭行縮排 ≤3 空白、≥3 個同一種符號（反引號圍欄的 info 不得含反引號）；
+/// 關閉行縮排 ≤3 空白、同一種符號、長度 ≥ 開啟長度、後面只有空白；未閉合就延伸到結尾。
+struct Fence {
+    symbol: char,
+    length: usize,
+}
+
+impl Fence {
+    fn run(line: &str) -> Option<(char, usize, &str)> {
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        if indent > 3 {
+            return None;
+        }
+        let rest = &line[indent..];
+        let symbol = rest.chars().next().filter(|c| *c == '`' || *c == '~')?;
+        let length = rest.len() - rest.trim_start_matches(symbol).len();
+        (length >= 3).then(|| (symbol, length, &rest[length..]))
+    }
+
+    fn open(line: &str) -> Option<Fence> {
+        let (symbol, length, info) = Self::run(line)?;
+        (symbol == '~' || !info.contains('`')).then_some(Fence { symbol, length })
+    }
+
+    fn closed_by(&self, line: &str) -> bool {
+        matches!(Self::run(line), Some((symbol, length, rest))
+            if symbol == self.symbol && length >= self.length && rest.trim().is_empty())
+    }
 }
 
 /// private_markdown 的反向：`- **關鍵字**：內容` 回成有關鍵字的條目，

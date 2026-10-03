@@ -186,7 +186,7 @@ mod tests {
         let root = TestRoot::new("image");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
-        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
 
         let encoded = character_image(root.path(), &world_id, &meta.id)
             .unwrap()
@@ -203,7 +203,7 @@ mod tests {
         let root = TestRoot::new("save-images");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
-        let meta = import_character(root.path(), &world_id, &png, "#111111").unwrap();
+        let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
         let image = PNG_MAGIC.iter().copied().chain([1, 2]).collect::<Vec<_>>();
         let avatar = PNG_MAGIC.iter().copied().chain([3, 4]).collect::<Vec<_>>();
 

@@ -33,7 +33,7 @@ impl Drop for TestRoot {
 
 fn import_character_recorded(root: &Path, world_id: &str, raw: &[u8]) -> data::CharacterMeta {
     let before = snapshot(root, world_id);
-    let meta = import::import_character(root, world_id, raw, "#3366ff").unwrap();
+    let meta = import::import_character(root, world_id, raw, "#3366ff", "zh-TW").unwrap();
     record_character_import(root, world_id, &meta.id, &meta.name, before, None);
     meta
 }
@@ -559,6 +559,7 @@ fn undo_reads_old_format_receipt_without_new_fields() {
         &world_id,
         &character_book_card("莉亞", serde_json::json!([])),
         "#3366ff",
+        "zh-TW",
     )
     .unwrap();
 

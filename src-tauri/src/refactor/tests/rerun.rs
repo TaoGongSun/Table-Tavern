@@ -320,6 +320,7 @@ fn reset_replays_character_route_imports() {
         &world_id,
         NPC.as_bytes(),
         "#abc",
+        "zh-TW",
         &crate::data::test_exclusive(&world_id),
     )
     .unwrap();
@@ -346,6 +347,7 @@ fn broken_character_source_leaves_the_table_untouched() {
             &world_id,
             NPC.as_bytes(),
             "#abc",
+            "zh-TW",
             &crate::data::test_exclusive(&world_id),
         )
         .unwrap();
@@ -421,6 +423,7 @@ fn partial_source_records_block_the_reset() {
         &world_id,
         NPC.as_bytes(),
         "#abc",
+        "zh-TW",
         &crate::data::test_exclusive(&world_id),
     )
     .unwrap();
@@ -479,6 +482,7 @@ fn undone_import_does_not_come_back_on_reset() {
         &world_id,
         NPC.as_bytes(),
         "#abc",
+        "zh-TW",
         &crate::data::test_exclusive(&world_id),
     )
     .unwrap()
@@ -580,6 +584,7 @@ fn half_written_character_import_marks_sources_incomplete() {
         &world_id,
         NPC.as_bytes(),
         "#abc",
+        "zh-TW",
         &crate::data::test_exclusive(&world_id),
     );
     std::fs::set_permissions(&characters, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -598,6 +603,7 @@ fn half_written_character_import_marks_sources_incomplete() {
         &world_id,
         b"{ broken",
         "#abc",
+        "zh-TW",
         &crate::data::test_exclusive(&world_id)
     )
     .is_err());
