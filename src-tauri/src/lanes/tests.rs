@@ -175,6 +175,7 @@ fn event(kind: TranscriptKind, speaker_id: &str, name: &str, text: &str) -> Tran
         state: None,
         truncated: false,
         gm_only: false,
+        marker: None,
     }
 }
 
@@ -183,6 +184,7 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         lane: Lane::Chars,
         scene,
         events,
+        lang: "zh-TW",
         frozen_system: "凍結A".to_owned(),
         tail: "現在你是「狐狸」。".to_owned(),
         confidential: None,
@@ -209,7 +211,6 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         last_call_epoch: 1_000,
         last_prompt_tokens: 0,
         agy_usage: None,
-        redaction: REDACTION_VERSION,
     }
 }
 
@@ -223,6 +224,12 @@ fn fingerprint_changes_with_any_event_field() {
     assert_ne!(original, events_fingerprint(&renamed));
     assert_ne!(original, events_fingerprint(&retyped));
     assert_ne!(original, events_fingerprint(&edited));
+    let mut gm_only = base.clone();
+    gm_only[0].gm_only = true;
+    let mut marked = base.clone();
+    marked[0].marker = Some(data::EventMarker::StateUpdate);
+    assert_ne!(original, events_fingerprint(&gm_only));
+    assert_ne!(original, events_fingerprint(&marked));
     assert_eq!(original, events_fingerprint(&base));
 }
 
@@ -514,12 +521,15 @@ fn prompt_carries_header_only_on_reopen_and_tail_alone_without_events() {
         event(TranscriptKind::Player, "", "阿濤", "你好"),
         event(TranscriptKind::Narration, "", "GM", "夜深了"),
     ];
-    let full = build_prompt(&events, 0, "尾段", true, Lane::Chars);
+    let full = build_prompt(&events, 0, "尾段", true, Lane::Chars, "zh-TW");
     assert!(full.starts_with("以下是到目前為止的對話紀錄：\n\n阿濤：你好\n\n（旁白）夜深了"));
     assert!(full.ends_with("——\n尾段"));
-    let increment = build_prompt(&events, 1, "尾段", false, Lane::Chars);
+    let increment = build_prompt(&events, 1, "尾段", false, Lane::Chars, "zh-TW");
     assert_eq!(increment, "（旁白）夜深了\n\n——\n尾段");
-    assert_eq!(build_prompt(&events, 2, "尾段", false, Lane::Chars), "尾段");
+    assert_eq!(
+        build_prompt(&events, 2, "尾段", false, Lane::Chars, "zh-TW"),
+        "尾段"
+    );
 }
 
 #[cfg(unix)]
@@ -547,7 +557,6 @@ async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
     let store_path = data::lanes_path(&root, &world_id).unwrap();
     let state = read_store(&store_path).values().next().unwrap().clone();
     assert_eq!(state.session_id, "agy-conversation-1");
-    assert_eq!(state.redaction, REDACTION_VERSION); // 新寫入的線一律標上目前的角色側渲染版本
 
     events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆1"));
     events.push(event(TranscriptKind::Player, "", "阿濤", "只有這句是新的"));
@@ -1269,66 +1278,98 @@ time.sleep(60)
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-fn legacy_arrival() -> TranscriptEvent {
-    event(
-        TranscriptKind::System,
-        "",
-        "GM",
-        "（角色回歸）〈騎士〉\n公開設定：\n王國騎士\n私有設定：\n奉密令而來",
-    )
-}
-
 fn card_private_event() -> TranscriptEvent {
-    let mut private = event(
-        TranscriptKind::System,
-        "",
-        "GM",
-        "（角色私設）〈騎士〉\n私有設定：\n奉密令而來",
-    );
+    let mut private = event(TranscriptKind::System, "", "GM", "奉密令而來");
     private.gm_only = true;
+    private.marker = Some(data::EventMarker::CardPrivate {
+        name: "騎士".to_owned(),
+    });
     private
 }
 
-/// card-arrival-private-leak 遷移：舊版合併回歸事件已送進角色線 session 才重開一次，三家都一樣；
-/// 新版本寫入後不再重開；只在未送段的舊事件增量遮掉即可；GM 線不因此重開。
+/// 已送段只改 marker 或 gm_only 就重開（指紋涵蓋這兩欄）；未送段的改動照常增量送出、水位不變。
 #[test]
-fn chars_lane_reopens_once_when_legacy_arrival_was_already_sent() {
+fn sent_segment_marker_or_gm_only_change_reopens_but_unsent_does_not() {
     let events = [
         event(TranscriptKind::Player, "", "阿濤", "你好"),
-        legacy_arrival(),
-        event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"),
+        event(TranscriptKind::System, "", "GM", "公開設定"),
     ];
-    let input = turn_input(&events, 0);
-    let mut old = lane_state(&events, 0);
-    old.redaction = 0;
-    for provider in [LaneProvider::Claude, LaneProvider::Grok, LaneProvider::Agy] {
-        let mut state = old.clone();
-        state.provider = provider.as_str().to_owned();
+    let state = lane_state(&events, 0);
+    let mut marked = events.clone();
+    marked[1].marker = Some(data::EventMarker::CardArrival {
+        name: "騎士".to_owned(),
+    });
+    let mut hidden = events.clone();
+    hidden[1].gm_only = true;
+    for changed in [&marked, &hidden] {
         assert!(matches!(
-            plan_turn(Some(&state), &input, 1_010, provider),
+            plan_turn(
+                Some(&state),
+                &turn_input(changed, 0),
+                1_010,
+                LaneProvider::Claude
+            ),
             TurnPlan::Reopen {
-                reason: ReopenReason::HistoryRedacted
+                reason: ReopenReason::HistoryEdited
             }
         ));
-        state.redaction = REDACTION_VERSION;
+    }
+    let unsent_state = lane_state(&events[..1], 0);
+    match plan_turn(
+        Some(&unsent_state),
+        &turn_input(&marked, 0),
+        1_010,
+        LaneProvider::Claude,
+    ) {
+        TurnPlan::Resume { base, .. } => {
+            assert_eq!(base, 1);
+            assert_eq!(
+                build_prompt(&marked, base, "尾段", false, Lane::Chars, "zh-TW"),
+                "（系統）（角色回歸）〈騎士〉\n公開設定：\n公開設定\n\n——\n尾段"
+            );
+        }
+        TurnPlan::Reopen { .. } => panic!("未送段改動照常增量"),
+    }
+}
+
+/// 回覆對點落在雜湊水位外：那則帶了 marker 或 gm_only 就算分岔，不可跳過。
+#[test]
+fn expected_reply_with_marker_or_gm_only_diverges() {
+    let reply = event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安");
+    let base_events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+    let mut state = lane_state(&base_events, 0);
+    state.expected_reply = Some(ExpectedReply {
+        speaker_id: reply.speaker_id.clone(),
+        kind: reply.kind.clone(),
+        text: reply.text.clone(),
+    });
+    let mut marked = reply.clone();
+    marked.marker = Some(data::EventMarker::StateUpdate);
+    let mut hidden = reply.clone();
+    hidden.gm_only = true;
+    for tampered in [marked, hidden] {
+        let events = [base_events[0].clone(), tampered];
         assert!(matches!(
-            plan_turn(Some(&state), &input, 1_010, provider),
-            TurnPlan::Resume { base: 3, .. }
+            plan_turn(
+                Some(&state),
+                &turn_input(&events, 0),
+                1_010,
+                LaneProvider::Claude
+            ),
+            TurnPlan::Reopen {
+                reason: ReopenReason::ReplyDiverged
+            }
         ));
     }
-
-    let mut gm_input = turn_input(&events, 0);
-    gm_input.lane = Lane::Gm;
+    let events = [base_events[0].clone(), reply];
     assert!(matches!(
-        plan_turn(Some(&old), &gm_input, 1_010, LaneProvider::Claude),
-        TurnPlan::Resume { base: 3, .. }
-    ));
-
-    let mut unsent = lane_state(&events[..1], 0);
-    unsent.redaction = 0;
-    assert!(matches!(
-        plan_turn(Some(&unsent), &input, 1_010, LaneProvider::Claude),
-        TurnPlan::Resume { base: 1, .. }
+        plan_turn(
+            Some(&state),
+            &turn_input(&events, 0),
+            1_010,
+            LaneProvider::Claude
+        ),
+        TurnPlan::Resume { base: 2, .. }
     ));
 }
 
@@ -1342,13 +1383,16 @@ fn chars_lane_skips_card_private_event_without_shifting_watermark() {
         event(TranscriptKind::Narration, "", "GM", "騎士推門進來"),
         card_private_event(),
     ];
-    let full = build_prompt(&events, 0, "尾段", true, Lane::Chars);
+    let full = build_prompt(&events, 0, "尾段", true, Lane::Chars, "zh-TW");
     assert_eq!(
         full,
         "以下是到目前為止的對話紀錄：\n\n阿濤：你好\n\n（旁白）騎士推門進來\n\n——\n尾段"
     );
-    assert_eq!(build_prompt(&events, 3, "尾段", false, Lane::Chars), "尾段");
-    assert!(build_prompt(&events, 0, "尾段", true, Lane::Gm).contains("奉密令而來"));
+    assert_eq!(
+        build_prompt(&events, 3, "尾段", false, Lane::Chars, "zh-TW"),
+        "尾段"
+    );
+    assert!(build_prompt(&events, 0, "尾段", true, Lane::Gm, "zh-TW").contains("奉密令而來"));
 
     let reply = event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安");
     let events = [
@@ -1367,7 +1411,7 @@ fn chars_lane_skips_card_private_event_without_shifting_watermark() {
         TurnPlan::Resume { base, .. } => {
             assert_eq!(base, 2);
             assert_eq!(
-                build_prompt(&events, base, "尾段", false, Lane::Chars),
+                build_prompt(&events, base, "尾段", false, Lane::Chars, "zh-TW"),
                 "尾段"
             );
         }

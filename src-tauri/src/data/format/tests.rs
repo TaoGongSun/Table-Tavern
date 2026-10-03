@@ -132,6 +132,7 @@ fn event(text: &str) -> TranscriptEvent {
         state: None,
         truncated: false,
         gm_only: false,
+        marker: None,
     }
 }
 
@@ -924,15 +925,27 @@ fn read_world_readonly_skips_unreadable_lines_and_falls_back_to_max_scene() {
             "{\"speaker_name\":\"缺\"}\n",
             "\n",
             "{\"speaker_name\":\"乙\",\"text\":\"喔\",\"kind\":\"narration\"}\n",
+            "{\"speaker_name\":\"GM\",\"text\":\"\",\"kind\":\"system\",\"marker\":{\"type\":\"gm_call\",\"name\":\"甲\"}}\n",
+            "{\"speaker_name\":\"GM\",\"text\":\"本文\",\"kind\":\"system\",\"marker\":{\"type\":\"card_arrival\"}}\n",
         ),
     )
     .unwrap();
     let world = read_world_readonly(root.path(), &id).unwrap();
     assert_eq!(world.scene, 0);
     assert_eq!(world.skipped, 2);
-    assert_eq!(world.events.len(), 2);
+    assert_eq!(world.events.len(), 4);
     assert_eq!(world.events[0].text, "嗨");
+    assert_eq!(world.events[0].marker, None);
     assert_eq!(world.events[1].kind, "narration");
+    // 寬鬆讀取：代碼原樣帶出（含畸形的），交給前端檢查形狀
+    assert_eq!(
+        world.events[2].marker,
+        Some(serde_json::json!({"type": "gm_call", "name": "甲"}))
+    );
+    assert_eq!(
+        world.events[3].marker,
+        Some(serde_json::json!({"type": "card_arrival"}))
+    );
 
     let mut state = read_state(root.path(), &id).unwrap();
     state.current_scene = 9;

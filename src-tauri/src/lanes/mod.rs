@@ -78,6 +78,8 @@ pub(crate) struct TurnInput<'a> {
     pub lane: Lane,
     pub scene: u64,
     pub events: &'a [TranscriptEvent],
+    /// 介面語系：事件標頭照提示詞慣例組字（en 出英文、其餘繁中），玩家空名退回該語系稱呼
+    pub lang: &'a str,
     /// 本輪重組的最新素材全文；與已傳達版本（applied）不同時，快取存活走補丁、過期走追平
     pub frozen_system: String,
     /// 回合尾段（transport::chars_lane_turn／gm_lane_turn 的 tail）
@@ -136,10 +138,6 @@ struct LaneState {
     /// grok lane 之前只有 claude 會開線，舊檔缺這欄位一律當 claude，不必白白重建一次快取。
     #[serde(default = "legacy_provider")]
     provider: String,
-    /// 這條 session 建立／續接時用的角色側渲染版本。舊檔缺欄＝0：chars 線已送段若含舊版
-    /// 合併回歸事件（私設在 session 歷史裡），要重開一次才擺脫（card-arrival-private-leak）。
-    #[serde(default)]
-    redaction: u32,
     /// 開這條線用的模型。線名會被 scope 撐開，模型不能再從線名回推
     #[serde(default)]
     model: String,
@@ -192,7 +190,20 @@ fn events_fingerprint(events: &[TranscriptEvent]) -> String {
             TranscriptKind::Player => "player",
             TranscriptKind::System => "system",
         };
-        for field in [kind, &event.speaker_id, &event.speaker_name, &event.text] {
+        let marker = event
+            .marker
+            .as_ref()
+            .and_then(|marker| serde_json::to_string(marker).ok())
+            .unwrap_or_default();
+        let gm_only = if event.gm_only { "1" } else { "0" };
+        for field in [
+            kind,
+            &event.speaker_id,
+            &event.speaker_name,
+            &event.text,
+            &marker,
+            gm_only,
+        ] {
             eat(field.as_bytes());
             eat(&[0x1f]);
         }
@@ -247,7 +258,6 @@ enum ReopenReason {
     ResumeFailed,
     ProviderChanged,
     SystemChanged,
-    HistoryRedacted,
 }
 
 impl ReopenReason {
@@ -262,7 +272,6 @@ impl ReopenReason {
             Self::ResumeFailed => "resume-failed",
             Self::ProviderChanged => "provider-changed",
             Self::SystemChanged => "system-changed",
-            Self::HistoryRedacted => "history-redacted",
         }
     }
 }
@@ -272,9 +281,6 @@ fn legacy_provider() -> String {
 }
 
 pub(crate) const CACHE_TTL_SECS: u64 = 300;
-
-/// 角色側渲染版本（見 `LaneState::redaction`）。1＝回歸事件私設遮罩上線。
-const REDACTION_VERSION: u32 = 1;
 
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
 /// 素材漂移的處置分兩家：claude 的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
@@ -317,22 +323,14 @@ fn plan_turn(
             reason: ReopenReason::HistoryEdited,
         }; // 已送段被改動
     }
-    if input.lane == Lane::Chars
-        && state.redaction < REDACTION_VERSION
-        && input.events[..base]
-            .iter()
-            .any(transport::is_legacy_card_arrival)
-    {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::HistoryRedacted,
-        }; // 舊版回歸事件已把私設送進 session 歷史；未送段的舊事件增量時會遮掉，不必重開
-    }
     if let Some(expected) = &state.expected_reply {
         match input.events.get(base) {
             Some(event)
                 if event.speaker_id == expected.speaker_id
                     && event.kind == expected.kind
-                    && event.text == expected.text =>
+                    && event.text == expected.text
+                    && event.marker.is_none()
+                    && !event.gm_only =>
             {
                 base += 1; // 上輪回覆已在 session 裡（assistant），跳過不重送
             }
@@ -385,7 +383,7 @@ fn now_epoch() -> u64 {
 
 /// 組本輪 prompt：水位之後的新事件＋回合尾段。開線（全量重建）帶對話紀錄標頭，
 /// 形狀比照單發 flatten；續聊只送增量，與 session 內既有歷史逐字銜接。
-/// `lane`：chars 線走角色側渲染（略過角色私設事件、遮 gm_only 與舊合併回歸事件），
+/// `lane`：chars 線走角色側渲染（略過角色私設事件、遮 gm_only），
 /// GM 線一律全文。略過只發生在渲染，水位與指紋仍以原事件序列計。
 fn build_prompt(
     events: &[TranscriptEvent],
@@ -393,11 +391,15 @@ fn build_prompt(
     tail: &str,
     opening: bool,
     lane: Lane,
+    lang: &str,
 ) -> String {
-    let character_side = lane == Lane::Chars;
+    let side = match lane {
+        Lane::Chars => transport::Side::Character,
+        Lane::Gm => transport::Side::Gm,
+    };
     let lines: Vec<String> = events[base..]
         .iter()
-        .filter_map(|event| transport::lane_event_line(event, character_side))
+        .filter_map(|event| transport::lane_event_line(event, lang, side))
         .collect();
     if lines.is_empty() {
         return tail.to_owned();
@@ -604,7 +606,7 @@ pub(crate) async fn run_turn(
             .as_ref()
             .map(|patch| format!("{patch}\n\n{}", input.tail))
             .unwrap_or_else(|| input.tail.clone());
-        let prompt = build_prompt(input.events, base, &tail, opening, input.lane);
+        let prompt = build_prompt(input.events, base, &tail, opening, input.lane, input.lang);
         let session = if opening {
             cli::CliSession::Open(&session_id)
         } else {
@@ -650,7 +652,6 @@ pub(crate) async fn run_turn(
                 last_call_epoch: call_epoch,
                 last_prompt_tokens: 0,
                 agy_usage: None,
-                redaction: REDACTION_VERSION,
             },
         );
         write_store(&store_path, &store)?;

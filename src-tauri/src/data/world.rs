@@ -214,6 +214,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         },
     )?;
 
@@ -583,6 +584,7 @@ mod tests {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         append_transcript(root.path(), &first, 0, &event).unwrap();
         assert_eq!(
@@ -615,6 +617,7 @@ mod tests {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         append_transcript(root.path(), &has_message, 0, &event).unwrap();
         assert!(!reclaim_world_if_empty(root.path(), &has_message).unwrap());

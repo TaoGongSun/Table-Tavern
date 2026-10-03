@@ -2,6 +2,7 @@
 // 行為對照酒館助手（JS-Slash-Runner）的型別規格與實作行為，只當規格書讀、不抄碼
 // （見 .ai/plans/card-chat-messages-shim.md）。資料只進不出：沙盒讀得到本場逐字稿，寫不回 app。
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import { eventDisplayText } from "../../shared/ui/event-text";
 
 export type ChatRole = "user" | "assistant" | "system";
 
@@ -34,9 +35,9 @@ export function chatEvents(events: TranscriptEvent[]): TranscriptEvent[] {
   return events.filter((event) => !event.gm_only);
 }
 
-/** 酒館存的是顯示 regex 套用前的原文 */
+/** 酒館存的是顯示 regex 套用前的原文；帶標頭代碼的系統事件給照語系組好的全文 */
 export function floorText(event: TranscriptEvent): string {
-  return event.raw ?? event.text;
+  return event.raw ?? eventDisplayText(event);
 }
 
 /**

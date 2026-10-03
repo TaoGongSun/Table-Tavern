@@ -1,0 +1,102 @@
+{
+  "zh-TW": {
+    "scene_summary": "【前情提要】",
+    "card_arrival": "（角色回歸）〈{name}〉",
+    "person_arrival": "（人物登場）〈{title}〉",
+    "card_private": "（角色私設）〈{name}〉",
+    "public_profile": "公開設定：",
+    "private_profile": "私有設定：",
+    "state_update": "狀態更新",
+    "gm_call": "GM 請「{name}」發言"
+  },
+  "zh-CN": {
+    "scene_summary": "【前情提要】",
+    "card_arrival": "（角色回归）〈{name}〉",
+    "person_arrival": "（人物登场）〈{title}〉",
+    "card_private": "（角色私设）〈{name}〉",
+    "public_profile": "公开设定：",
+    "private_profile": "私有设定：",
+    "state_update": "状态更新",
+    "gm_call": "GM 请“{name}”发言"
+  },
+  "en": {
+    "scene_summary": "Previously:",
+    "card_arrival": "(Character returns) “{name}”",
+    "person_arrival": "(New arrival) “{title}”",
+    "card_private": "(Character secrets) “{name}”",
+    "public_profile": "Public profile:",
+    "private_profile": "Private profile:",
+    "state_update": "State update",
+    "gm_call": "GM asks “{name}” to speak"
+  },
+  "ja": {
+    "scene_summary": "【前回までのあらすじ】",
+    "card_arrival": "（キャラクター再登場）〈{name}〉",
+    "person_arrival": "（人物登場）〈{title}〉",
+    "card_private": "（キャラクター非公開設定）〈{name}〉",
+    "public_profile": "公開設定：",
+    "private_profile": "非公開設定：",
+    "state_update": "状態更新",
+    "gm_call": "GMが「{name}」に発言を促しています"
+  },
+  "ko": {
+    "scene_summary": "【지난 이야기】",
+    "card_arrival": "(캐릭터 복귀) 〈{name}〉",
+    "person_arrival": "(인물 등장) 〈{title}〉",
+    "card_private": "(캐릭터 비공개 설정) 〈{name}〉",
+    "public_profile": "공개 설정:",
+    "private_profile": "비공개 설정:",
+    "state_update": "상태 업데이트",
+    "gm_call": "GM이 “{name}”에게 발언을 요청함"
+  },
+  "es": {
+    "scene_summary": "Anteriormente:",
+    "card_arrival": "(Regresa un personaje) «{name}»",
+    "person_arrival": "(Entra en escena) «{title}»",
+    "card_private": "(Secretos del personaje) «{name}»",
+    "public_profile": "Perfil público:",
+    "private_profile": "Perfil privado:",
+    "state_update": "Actualización de estado",
+    "gm_call": "El GM le pide a «{name}» que hable"
+  },
+  "pt-BR": {
+    "scene_summary": "Anteriormente:",
+    "card_arrival": "(Personagem retorna) “{name}”",
+    "person_arrival": "(Entra em cena) “{title}”",
+    "card_private": "(Segredos do personagem) “{name}”",
+    "public_profile": "Perfil público:",
+    "private_profile": "Perfil privado:",
+    "state_update": "Atualização de estado",
+    "gm_call": "O GM pede para “{name}” falar"
+  },
+  "de": {
+    "scene_summary": "Bisher:",
+    "card_arrival": "(Figur kehrt zurück) „{name}“",
+    "person_arrival": "(Neuer Auftritt) „{title}“",
+    "card_private": "(Geheimnisse der Figur) „{name}“",
+    "public_profile": "Öffentliches Profil:",
+    "private_profile": "Privates Profil:",
+    "state_update": "Status-Update",
+    "gm_call": "GM bittet „{name}“ zu sprechen"
+  },
+  "fr": {
+    "scene_summary": "Précédemment\u00a0:",
+    "card_arrival": "(Retour d’un personnage) «\u00a0{name}\u00a0»",
+    "person_arrival": "(Entrée en scène) «\u00a0{title}\u00a0»",
+    "card_private": "(Secrets du personnage) «\u00a0{name}\u00a0»",
+    "public_profile": "Profil public\u00a0:",
+    "private_profile": "Profil privé\u00a0:",
+    "state_update": "Mise à jour d'état",
+    "gm_call": "Le MJ invite «\u00a0{name}\u00a0» à parler"
+  },
+  "ru": {
+    "scene_summary": "Ранее:",
+    "card_arrival": "(Персонаж возвращается) «{name}»",
+    "person_arrival": "(Появляется) «{title}»",
+    "card_private": "(Тайны персонажа) «{name}»",
+    "public_profile": "Открытый профиль:",
+    "private_profile": "Закрытый профиль:",
+    "state_update": "Обновление состояния",
+    "gm_call": "ГМ передает слово персонажу «{name}»"
+  }
+}

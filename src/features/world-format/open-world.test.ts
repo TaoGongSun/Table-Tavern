@@ -7,6 +7,7 @@ import {
   readOnlyBannerVersion,
   type OpenWorld,
 } from "./open-world";
+import { eventDisplayText } from "../../shared/ui/event-text";
 
 const readOnly = (app: string | null, format: number | null, backup = false): OpenWorld => ({
   status: "read_only",
@@ -44,6 +45,16 @@ describe("looseTranscript", () => {
       { ts: "", speaker_id: "", speaker_name: "艾", kind: "dialogue", text: "你好" },
       { ts: "", speaker_id: "", speaker_name: "", kind: "system", text: "壞行" },
     ]);
+  });
+
+  it("標頭代碼原樣帶上，顯示時已知的組標頭、畸形與未知的只顯示本文", () => {
+    const events = looseTranscript([
+      { speaker_name: "GM", text: "", kind: "system", marker: { type: "gm_call", name: "艾" } },
+      { speaker_name: "GM", text: "本文", kind: "system", marker: { type: "card_arrival" } },
+      { speaker_name: "GM", text: "未知", kind: "system", marker: { type: "future_thing" } },
+    ]);
+    expect(events[0].marker).toEqual({ type: "gm_call", name: "艾" });
+    expect(events.map(eventDisplayText)).toEqual(["GM 請「艾」發言", "本文", "未知"]);
   });
 });
 

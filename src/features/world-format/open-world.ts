@@ -29,6 +29,8 @@ export interface LooseLine {
   speaker_name: string;
   text: string;
   kind: string;
+  /** 標頭代碼原樣帶來、後端不驗；顯示時由 parseMarker 檢查形狀 */
+  marker?: unknown;
 }
 
 /** read_world_readonly 的回傳。幕號與略過行數由後端算好。 */
@@ -81,6 +83,7 @@ export function looseTranscript(lines: LooseLine[]): TranscriptEvent[] {
       ? (line.kind as TranscriptEvent["kind"])
       : "system",
     text: line.text,
+    ...(line.marker === undefined ? {} : { marker: line.marker as TranscriptEvent["marker"] }),
   }));
 }
 

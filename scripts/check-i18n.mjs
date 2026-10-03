@@ -21,6 +21,8 @@ await build({
   entryPoints: [join(I18N, "plural.ts"), ...files.map((f) => join(I18N, f)), ...featureFiles.map((f) => join(I18N, "features", f))],
   outdir: OUT,
   outbase: I18N,
+  // 打包：補充字典可能 import 共用 JSON（例如 shared/contracts/transcript-marker.json），暫存目錄裡找不到相對路徑
+  bundle: true,
   format: "esm",
   logLevel: "warning",
 });

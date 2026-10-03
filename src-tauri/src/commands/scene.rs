@@ -158,10 +158,8 @@ fn scene_appearances_at(
     let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
-    let person_titles = transport::appeared_person_titles(&events)
-        .into_iter()
-        .collect();
-    let card_names = data::appeared_titles(&events, data::CARD_ARRIVAL_PREFIX);
+    let person_titles = data::appeared_person_titles(&events).into_iter().collect();
+    let card_names = data::appeared_card_names(&events);
     let character_ids = data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
@@ -263,7 +261,7 @@ pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Re
 
     // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
     let (title, summary) = transport::extract_scene_title(&reply);
-    data::begin_next_scene(&root, &world_id, &summary, &lang, title.as_deref())
+    data::begin_next_scene(&root, &world_id, &summary, title.as_deref())
         .map_err(|error| error.to_string())
 }
 
@@ -337,7 +335,7 @@ pub(crate) async fn regenerate_scene_summary(
     .await?;
 
     let (title, summary) = transport::extract_scene_title(&reply);
-    data::replace_scene_summary(&root, &world_id, &summary, &lang, title.as_deref())
+    data::replace_scene_summary(&root, &world_id, &summary, title.as_deref())
         .map_err(|error| error.to_string())
 }
 
@@ -372,11 +370,14 @@ mod tests {
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
                 kind: data::TranscriptKind::System,
-                text: "（角色回歸）〈狐狸〉\n尾巴很大。".to_owned(),
+                text: "尾巴很大。".to_owned(),
                 raw: None,
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: Some(data::EventMarker::CardArrival {
+                    name: "狐狸".to_owned(),
+                }),
             },
         )
         .unwrap();
@@ -389,11 +390,14 @@ mod tests {
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
                 kind: data::TranscriptKind::System,
-                text: "（人物登場）〈愛麗絲〉\n旅店老闆娘。".to_owned(),
+                text: "旅店老闆娘。".to_owned(),
                 raw: None,
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: Some(data::EventMarker::PersonArrival {
+                    title: "愛麗絲".to_owned(),
+                }),
             },
         )
         .unwrap();
@@ -434,6 +438,7 @@ mod tests {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         let stamped = super::stamp_state(&root, &world_id, bare.clone());
         assert_eq!(stamped.state.as_ref().unwrap().table["時辰"], "清晨");

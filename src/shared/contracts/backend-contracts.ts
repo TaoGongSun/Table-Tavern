@@ -90,4 +90,18 @@ export interface TranscriptEvent {
   truncated?: boolean;
   /** 這則系統事件的全文只給 GM 看（角色私設、非公開人物全文）；玩家面的東西都不該拿到它 */
   gm_only?: boolean;
+  /** 固定標頭代碼（後端 data/scene/marker.rs 的 EventMarker）；text 只存本文，標頭顯示時才照語系組 */
+  marker?: EventMarker;
 }
+
+// 逐字稿事件標頭代碼：與 Rust `EventMarker` 同形（type 為判別欄）。認不得的 type 走 UnknownMarker，
+// 顯示前一律經 features/play/event-text.ts 的 parseMarker 做執行期形狀檢查。
+export type KnownMarker =
+  | { type: "scene_summary" }
+  | { type: "card_arrival"; name: string }
+  | { type: "person_arrival"; title: string }
+  | { type: "card_private"; name: string }
+  | { type: "state_update" }
+  | { type: "gm_call"; name: string };
+export type UnknownMarker = { type: string };
+export type EventMarker = KnownMarker | UnknownMarker;

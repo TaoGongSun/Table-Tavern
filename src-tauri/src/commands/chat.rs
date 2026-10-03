@@ -123,6 +123,7 @@ pub(crate) async fn chat_with_character(
                 lane: lanes::Lane::Chars,
                 scene: state.current_scene,
                 events: &events,
+                lang: &lang,
                 frozen_system: frozen,
                 tail: turn.tail,
                 confidential: (!hoist).then_some(turn.confidential).flatten(),
@@ -331,6 +332,7 @@ async fn gm_lane_reply(
             lane: lanes::Lane::Gm,
             scene: materials.state.current_scene,
             events: &materials.events,
+            lang,
             frozen_system: frozen,
             tail: turn.tail,
             confidential: None,
@@ -596,7 +598,7 @@ fn record_person_arrivals(
     reply_body: &str,
     user_name: &str,
 ) -> Vec<String> {
-    let already = transport::appeared_person_titles(events);
+    let already = data::appeared_person_titles(events);
     let arrivals = transport::detect_new_arrivals(worldbook, present, reply_body, &already);
     if arrivals.is_empty() {
         return Vec::new();
@@ -604,16 +606,18 @@ fn record_person_arrivals(
     let ts = data::local_timestamp().unwrap_or_default();
     let mut titles = Vec::new();
     for entry in arrivals {
+        let (marker, text) = transport::person_arrival(entry, user_name);
         let event = data::TranscriptEvent {
             ts: ts.clone(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
             kind: data::TranscriptKind::System,
-            text: transport::person_arrival_text(entry, user_name),
+            text,
             raw: None,
             state: None,
             truncated: false,
             gm_only: !matches!(entry.visibility, data::Visibility::Public),
+            marker: Some(marker),
         };
         if data::append_transcript(root, world_id, scene, &event).is_ok() {
             titles.push(entry.title.clone());
@@ -640,32 +644,34 @@ fn record_card_arrivals(
     reply_body: &str,
     user_name: &str,
 ) -> Vec<String> {
-    let already = transport::appeared_card_names(events);
+    let already = data::appeared_card_names(events);
     let arrivals = transport::detect_new_card_arrivals(hidden_cards, present, reply_body, &already);
     if arrivals.is_empty() {
         return Vec::new();
     }
     let ts = data::local_timestamp().unwrap_or_default();
     let mut ids = Vec::new();
-    let system_event = |text: String, gm_only: bool| data::TranscriptEvent {
-        ts: ts.clone(),
-        speaker_id: String::new(),
-        speaker_name: "GM".to_owned(),
-        kind: data::TranscriptKind::System,
-        text,
-        raw: None,
-        state: None,
-        truncated: false,
-        gm_only,
-    };
+    let system_event =
+        |(marker, text): (data::EventMarker, String), gm_only: bool| data::TranscriptEvent {
+            ts: ts.clone(),
+            speaker_id: String::new(),
+            speaker_name: "GM".to_owned(),
+            kind: data::TranscriptKind::System,
+            text,
+            raw: None,
+            state: None,
+            truncated: false,
+            gm_only,
+            marker: Some(marker),
+        };
     for card in arrivals {
-        if let Some(private) = transport::card_private_text(card, user_name) {
+        if let Some(private) = transport::card_private(card, user_name) {
             if data::append_transcript(root, world_id, scene, &system_event(private, true)).is_err()
             {
                 continue;
             }
         }
-        let event = system_event(transport::card_arrival_text(card, user_name), false);
+        let event = system_event(transport::card_arrival(card, user_name), false);
         if data::append_transcript(root, world_id, scene, &event).is_ok() {
             ids.push(card.id.clone());
         }
@@ -806,7 +812,12 @@ mod tests {
         assert_eq!(scene0[0].kind, data::TranscriptKind::System);
         assert_eq!(scene0[0].speaker_id, "");
         assert_eq!(scene0[0].speaker_name, "GM");
-        assert!(scene0[0].text.starts_with("（人物登場）〈愛麗絲〉\n"));
+        assert_eq!(
+            scene0[0].marker,
+            Some(data::EventMarker::PersonArrival {
+                title: "愛麗絲".to_owned()
+            })
+        );
         assert!(scene0[0].text.contains("愛麗絲是旅店老闆娘。"));
 
         // 第二輪：present 還是愛麗絲，本幕 events 已含前一則登場事件 → 不重複
@@ -835,7 +846,10 @@ mod tests {
         );
         let scene1 = data::read_transcript(&root, &world_id, 1).unwrap();
         assert_eq!(scene1.len(), 1);
-        assert!(scene1[0].text.starts_with("（人物登場）〈愛麗絲〉\n"));
+        assert!(matches!(
+            &scene1[0].marker,
+            Some(data::EventMarker::PersonArrival { title }) if title == "愛麗絲"
+        ));
 
         std::fs::remove_dir_all(&root).unwrap();
     }
@@ -882,18 +896,19 @@ mod tests {
             .iter()
             .all(|event| event.kind == data::TranscriptKind::System));
         assert!(scene0[0].gm_only);
+        let full = |event: &data::TranscriptEvent| data::event_full_text(event, "zh-TW");
         assert_eq!(
-            scene0[0].text,
+            full(&scene0[0]),
             "（角色私設）〈狐狸〉\n私有設定：\n其實是阿濤的仇人。"
         );
         assert!(!scene0[1].gm_only);
         assert_eq!(
-            scene0[1].text,
+            full(&scene0[1]),
             "（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。"
         );
         assert!(!scene0[2].gm_only);
         assert_eq!(
-            scene0[2].text,
+            full(&scene0[2]),
             "（角色回歸）〈貓頭鷹〉\n公開設定：\n夜裡才醒。"
         );
 

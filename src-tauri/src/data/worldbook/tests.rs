@@ -624,12 +624,13 @@ fn converted_card_is_not_recreated_by_the_next_scene() {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         },
     )
     .unwrap();
 
     character_to_worldbook_entry(root.path(), &world_id, &gone.id).unwrap();
-    begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+    begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
 
     assert!(read_character(root.path(), &world_id, &gone.id).is_err());
     let ids: Vec<_> = list_characters(root.path(), &world_id)

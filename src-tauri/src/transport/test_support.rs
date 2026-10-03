@@ -33,6 +33,7 @@ pub(super) fn event(
         state: None,
         truncated: false,
         gm_only: false,
+        marker: None,
     }
 }
 

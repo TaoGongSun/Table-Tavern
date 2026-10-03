@@ -152,6 +152,7 @@ mod tests {
                     state: None,
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             ),
             (
@@ -166,6 +167,7 @@ mod tests {
                     state: None,
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             ),
             (
@@ -180,6 +182,7 @@ mod tests {
                     state: None,
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             ),
             (
@@ -194,6 +197,7 @@ mod tests {
                     state: None,
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             ),
         ] {
@@ -240,6 +244,7 @@ mod tests {
                     state: None,
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             ),
             (
@@ -254,6 +259,7 @@ mod tests {
                     state: None,
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             ),
         ] {

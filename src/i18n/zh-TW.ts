@@ -462,7 +462,6 @@ export const zh = {
   stateBranchUnbound: "未指認",
   stateBranchBindAria: "指認這支狀態屬於誰",
   stateBranchBindHint: "指認後，這支狀態只會送進這個角色自己的上下文",
-  stateUpdateHeader: "狀態更新",
   renameHint: "點一下改名",
   deleteTableTitle: "永久刪除這桌",
   deleteTableConfirm:
@@ -514,7 +513,6 @@ export const zh = {
   removeAvatarConfirm: "移除頭像後，這個角色會變回原本的 emoji 圖示。確定要移除嗎？",
   messagesAria: "對話",
   typing: "{name} 正在打字",
-  gmCallOn: "GM 請「{name}」發言",
   composerAria: "玩家輸入",
   composerPlaceholder: "對「{name}」發言…",
   composerNoTarget: "描述你的動作，或對全場發言…",
