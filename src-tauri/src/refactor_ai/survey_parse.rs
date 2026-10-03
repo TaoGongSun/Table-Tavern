@@ -389,6 +389,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         persons,
         interface_uids,
         playable_interface_uids,
+        frame_candidates: Vec::new(),
         verdicts,
         splits,
         groups,

@@ -61,7 +61,12 @@ interface ImportDialogsProps {
   onCloseOpenings: () => void;
   onTranslateAll: () => void;
   /** 貼出這一則（有譯文就是譯文） */
-  onPostOpening: (text: string) => void;
+  /** index＝這則在開場白清單裡的序號（重新重構時從原卡取同一則當初始值依據） */
+  onPostOpening: (text: string, index: number) => void;
+  /** 貼出進行中：兩顆貼出鈕停用，不重複送出 */
+  postBusy: boolean;
+  /** 正排在進行中的回合後面：貼出鈕就地換成等待提示 */
+  postWaiting: boolean;
   /** 翻譯後貼出：沒翻過就先翻這一則 */
   onTranslateAndPost: (index: number) => void;
   /** 重新翻譯這一則：用原文重打，會再花一次額度 */
@@ -86,6 +91,8 @@ export function ImportDialogs({
   onCloseOpenings,
   onTranslateAll,
   onPostOpening,
+  postBusy,
+  postWaiting,
   onTranslateAndPost,
   onRetranslate,
 }: ImportDialogsProps) {
@@ -244,7 +251,7 @@ export function ImportDialogs({
                   type="button"
                   className="btn"
                   title={t("openingTranslateHint")}
-                  disabled={translationState[expanded] === "translating"}
+                  disabled={postBusy || translationState[expanded] === "translating"}
                   onClick={() => onTranslateAndPost(expanded)}
                 >
                   <SwapLabel
@@ -255,9 +262,13 @@ export function ImportDialogs({
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => onPostOpening(translations[expanded] ?? openings[expanded])}
+                  disabled={postBusy}
+                  onClick={() => onPostOpening(translations[expanded] ?? openings[expanded], expanded)}
                 >
-                  {t("openingLineOk")}
+                  <SwapLabel
+                    labels={[t("openingLineOk"), t("turnQueuedWait")]}
+                    current={postWaiting ? 1 : 0}
+                  />
                 </button>
               </>
             )

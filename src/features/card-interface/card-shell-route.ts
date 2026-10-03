@@ -1,6 +1,7 @@
-// 卡片介面殼的選路：這桌現在該顯示哪一份殼、它是從哪一樓產生的。純函式，controller 只負責接線。
+// 卡片介面殼的選路：這桌現在該顯示哪一份殼、它是從哪一樓產生的，以及交給卡片的每一樓文字。
+// 純函式，controller 只負責接線。
 import { findShell, type CardInterface } from "./interface-card";
-import { chatEvents, floorText, type CurrentFloor } from "./card-chat-shim";
+import { chatEvents, floorText, type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
@@ -8,6 +9,50 @@ export interface PickedShell {
   shell: string;
   /** 產生這份殼的那一樓；讀訊息墊片的 getCurrentMessageId 回它 */
   current: CurrentFloor;
+  /** 交給卡片的每一樓（樓號＝位置）；本樓的文字與 current.text 是同一份 */
+  floors: ChatFloor[];
+}
+
+// 卡的顯示腳本自己用 YAML 解析器讀狀態區塊時，那支腳本抓的容器（例如 <Status_block>）裡的值要照 YAML
+// 語法寫，卡讀到的才是原值；容器外（正文槽、其他格式）與別支腳本照原樣填
+const YAML_PARSER = /js-?yaml|jsyaml|yaml\.load|YAML\.parse/i;
+const REGEX_TAG = /<\\?\/?([A-Za-z_][\w.-]*)/g;
+
+export function skeletonYamlTags(cards: CardInterface[]): string[] {
+  const tags = new Set<string>();
+  for (const card of cards) {
+    for (const script of card.scripts) {
+      if (!YAML_PARSER.test(script.replace_string)) continue;
+      for (const match of script.find_regex.matchAll(REGEX_TAG)) tags.add(match[1]);
+    }
+  }
+  return [...tags];
+}
+
+function roleOf(event: TranscriptEvent): ChatRole {
+  if (event.kind === "player") return "user";
+  if (event.kind === "system") return "system";
+  return "assistant";
+}
+
+/**
+ * 一樓交給卡片的文字。對照酒館：狀態欄跟著每則訊息走，每樓帶自己那一刻的狀態區塊。
+ * 有重構骨架時，GM 旁白／角色對話這兩種樓依序：原文自己畫得出殼（重構前的開場白、舊回合）就用原文；
+ * 否則用這一樓存下的狀態快照（state.tree）加這一樓的正文填骨架；沒有快照就用原文。
+ * 玩家與 system 樓一律原文。合成只在記憶體裡，不寫回逐字稿。
+ */
+function floorMessage(
+  event: TranscriptEvent,
+  skeleton: string | null,
+  cards: CardInterface[],
+  yamlTags: string[],
+  valueTypes: Record<string, string>,
+): string {
+  const raw = floorText(event);
+  if (skeleton === null || (event.kind !== "narration" && event.kind !== "dialogue")) return raw;
+  const tree = event.state?.tree as Record<string, StateNode> | undefined;
+  if (tree === undefined || findShell(cards, [raw]) !== null) return raw;
+  return fillSkeletonPlaceholders(skeleton, { ...tree, 本回合: { 正文: event.text } }, yamlTags, valueTypes);
 }
 
 export function pickCardShell(input: {
@@ -16,58 +61,57 @@ export function pickCardShell(input: {
   /** AI 重構產的介面骨架（interface-shell.html）；null＝沒有 */
   refactorShell: string | null;
   events: TranscriptEvent[];
-  tableTree: Record<string, StateNode>;
   cardInterfaces: CardInterface[];
+  /** 原卡欄位型別（mechanism.value_types）：決定骨架裡數字／布林要不要加引號 */
+  valueTypes?: Record<string, string>;
 }): PickedShell | null {
-  const { tableMode, tableTree, cardInterfaces } = input;
+  const { tableMode, cardInterfaces } = input;
   // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構骨架、卡片自帶殼、
   // 掃 raw 的 fallback 整組短路。標記還沒讀回（undefined）也先不顯示，未知就放行會在角色桌
   // 切桌瞬間閃出介面。
   if (tableMode === undefined || tableMode === "characters") return null;
-  const refactorShell =
+  const skeleton =
     input.refactorShell !== null && input.refactorShell.trim() !== "" ? input.refactorShell : null;
-  // 樓號＝本場「樓」的位置（gm_only 事件不算一樓）；後面各條路都帶著原始樓號走，不拿候選序號當樓號。
-  const floors = chatEvents(input.events).map((event, id) => ({ event, id }));
-  const gmFloors = floors.filter(({ event }) => event.kind !== "player");
-  const latestGm = gmFloors[gmFloors.length - 1];
-
-  if (refactorShell !== null && latestGm !== undefined) {
-    const raw = floorText(latestGm.event);
-    const current = (text: string): CurrentFloor => ({
-      id: latestGm.id,
-      name: latestGm.event.speaker_name,
-      text,
-    });
-    // 先照直玩語意讓卡腳本試原文：開場（選角）這類訊息卡自己就畫得出來，
-    // 硬塞進骨架反而讓兩支腳本互咬（選角殼插進主介面模板中間，抽殼變碎片）
-    const direct = findShell(cardInterfaces, [raw]);
-    if (direct !== null) return { shell: direct.shell, current: current(raw) };
-    // 骨架照搬卡的每回合輸出格式，填值後過卡自己的顯示腳本；`{{本回合.正文}}` 吃最新一則 GM 正文。
-    // 這一樓交給卡片的是填值後的合成文字（唯一例外），讀本樓的殼才拿得到值。
-    const filled = fillSkeletonPlaceholders(refactorShell, {
-      ...tableTree,
-      本回合: { 正文: latestGm.event.text },
-    });
-    const fromSkeleton = findShell(cardInterfaces, [filled]);
-    if (fromSkeleton !== null) return { shell: fromSkeleton.shell, current: current(filled) };
-    // 骨架沒過卡的顯示腳本：退回既有路徑
-  }
-  // 沒有骨架（沒重構過、判定不接管、或剛開桌）照原卡畫面：近 10 則掃原文，空桌退回卡片開場白
-  // ——這類卡的開場就是一整頁選角畫面，玩家得先在那裡選了才有第一句話
-  const recent = floors
-    .slice(-10)
-    .filter(({ event }) => event.kind !== "player")
-    .reverse();
+  const yamlTags = skeletonYamlTags(cardInterfaces);
+  // 樓號＝本場「樓」的位置（gm_only 事件不算一樓）；每樓的文字只算這一次，選殼、本樓、歷史樓、
+  // 掛載與推送都用同一份。
+  const floors = chatEvents(input.events).map((event, id) => ({
+    event,
+    id,
+    message: floorMessage(event, skeleton, cardInterfaces, yamlTags, input.valueTypes ?? {}),
+  }));
+  // 先試最新一個 GM 樓（旁白／角色對話）：後面接再多玩家樓，本樓都不會被擠出視窗；再往前掃最近 10 樓的
+  // 非玩家樓；空桌退回卡片開場白——這類卡的開場就是一整頁選角畫面
+  const latestGm = [...floors]
+    .reverse()
+    .find(({ event }) => event.kind === "narration" || event.kind === "dialogue");
+  const recent = [
+    ...(latestGm ? [latestGm] : []),
+    ...floors
+      .slice(-10)
+      .filter(({ event }) => event.kind !== "player")
+      .reverse()
+      .filter((floor) => floor !== latestGm),
+  ];
   const openings = floors.length === 0 ? cardInterfaces : [];
   const match = findShell(cardInterfaces, [
-    ...recent.map(({ event }) => floorText(event)),
+    ...recent.map(({ message }) => message),
     ...openings.map((card) => card.opening),
   ]);
   if (match === null) return null;
+  const chatFloors: ChatFloor[] = floors.map(({ event, message }) => ({
+    name: event.speaker_name,
+    role: roleOf(event),
+    message,
+  }));
   if (match.index < recent.length) {
-    const { event, id } = recent[match.index];
-    return { shell: match.shell, current: { id, name: event.speaker_name, text: floorText(event) } };
+    const { event, id, message } = recent[match.index];
+    return { shell: match.shell, current: { id, name: event.speaker_name, text: message }, floors: chatFloors };
   }
   const card = openings[match.index - recent.length];
-  return { shell: match.shell, current: { id: 0, name: card.character_name, text: card.opening ?? "" } };
+  return {
+    shell: match.shell,
+    current: { id: 0, name: card.character_name, text: card.opening ?? "" },
+    floors: chatFloors,
+  };
 }

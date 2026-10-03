@@ -55,6 +55,8 @@ interface CastRailProps {
   /** 這桌有匯入紀錄且還沒向 AI 開演：復原項才掛得上 */
   canUndoImport: boolean;
   onUndoImport: () => void;
+  /** 匯入或撤銷匯入正排在進行中的回合後面：在「＋」上方就地提示 */
+  turnWaiting: boolean;
 }
 
 function storedWidth() {
@@ -87,6 +89,7 @@ export function CastRail(props: CastRailProps) {
     onImportFile,
     canUndoImport,
     onUndoImport,
+    turnWaiting,
   } = props;
   const narrow = cast.length < 2;
   const [sidebarWidth, setSidebarWidth] = useState(storedWidth);
@@ -233,6 +236,21 @@ export function CastRail(props: CastRailProps) {
               {...archiveActions}
             />
           )}
+          {turnWaiting &&
+            (narrow ? (
+              <span
+                className="rail-turn-wait"
+                role="status"
+                aria-label={t("turnQueuedWait")}
+                title={t("turnQueuedWait")}
+              >
+                ⏳
+              </span>
+            ) : (
+              <p className="rail-turn-wait" role="status">
+                {t("turnQueuedWait")}
+              </p>
+            ))}
           {/* 建卡＝直接開空白角色卡編輯器，名字與內容都在那邊填（2026-07-27 使用者拍板） */}
           {narrow ? (
             <MoreMenu

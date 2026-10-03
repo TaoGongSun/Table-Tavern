@@ -74,8 +74,80 @@ pub fn narrate_instruction(
     message("user", instruction)
 }
 
-/// 卡片自帶介面的桌：卡片自己規定了輸出格式，我們不再要求旁白＋state 圍欄，
-/// 否則兩套指令打架、模型會照我們的寫，卡片的介面就永遠對不上。
+/// GM 回合尾該用哪一種導演指示。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GmTurnFormat {
+    /// 卡片自帶介面、還沒被 App 接管：卡片自己規定了輸出格式，照卡片格式輸出，
+    /// 否則兩套指令打架、卡片的介面永遠對不上。
+    CardFormat,
+    /// 介面已由 App 接管（桌上有重構產的介面骨架）：固定格式由 App 用狀態樹組，模型只寫正文＋
+    /// `<UpdateVariable>` 變動，與 system 的增量協定一致；不要 ```state 圍欄、不顯示頂部狀態欄。
+    InterfaceTakeover,
+    /// 一般旁白＋```state 圍欄（沒重構的桌、角色優先桌）。
+    Narration,
+}
+
+/// 依據：實際的介面骨架＋玩法標記。只看 guide 不準——清殼後 guide 可能還留著，MVU 桌開了增量但
+/// guide 是空的。角色優先（characters）桌一律一般旁白。
+pub fn gm_turn_format(
+    has_card_scripts: bool,
+    has_interface_shell: bool,
+    refactor_mode: Option<&str>,
+) -> GmTurnFormat {
+    if refactor_mode == Some("characters") {
+        GmTurnFormat::Narration
+    } else if has_interface_shell {
+        GmTurnFormat::InterfaceTakeover
+    } else if has_card_scripts {
+        GmTurnFormat::CardFormat
+    } else {
+        GmTurnFormat::Narration
+    }
+}
+
+/// 介面接管桌的導演指示：正文之後只附 `<UpdateVariable>`（只寫有變動的欄位，沒變動就不寫），
+/// 不要 ```state 圍欄、不重印狀態區塊——與 system 的增量協定同一份契約，兩邊不互斥。
+pub fn takeover_instruction(
+    lang: &str,
+    roster: &[String],
+    player_name: Option<&str>,
+) -> ChatMessage {
+    let mut instruction = if lang == "en" {
+        "(Director instruction) Write this turn's story: describe scene changes, the world's response, or plot progress. \
+         Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
+         After the story, start a new line and output the `<UpdateVariable>` update block, writing only the fields that changed this turn; if nothing changed, omit the block. \
+         The app draws the status display itself: do not output a ```state fence, do not reprint any status block, and add no explanation outside the story and the update block."
+            .to_owned()
+    } else {
+        "（導演指示）請寫這一回合的劇情正文：描述場景變化、世界反應或劇情推進，\
+         篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
+         不要替「登場角色」名單上的角色或玩家說話。正文結束後另起一行，輸出 `<UpdateVariable>` 更新區塊，\
+         只寫這一回合有變動的欄位；沒有任何變動就不要輸出更新區塊。\
+         狀態畫面由 App 自己畫：不要輸出 ```state 圍欄，不要重印任何狀態區塊，正文與更新區塊以外不要有多餘說明。"
+            .to_owned()
+    };
+    if !roster.is_empty() {
+        let call = if lang == "en" {
+            format!(
+                " Finally, end with exactly one line `Next: <name>`, choosing the next speaker from: {}. \
+                 If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
+                roster.join("、"),
+                player = player_name.map_or(String::new(), |name| format!(" ({name})")),
+            )
+        } else {
+            format!(
+                "最後再另起一行，固定輸出「下一位：〈名字〉」，\
+                 從名單中選出下一位最適合發言的角色：{}。\
+                 若現在應該輪到玩家{player}行動，就寫「下一位：{PLAYER_SENTINEL}」。",
+                roster.join("、"),
+                player = player_name.map_or(String::new(), |name| format!("（{name}）")),
+            )
+        };
+        instruction.push_str(&call);
+    }
+    message("user", instruction)
+}
+
 pub fn card_format_instruction(lang: &str, entry_title: Option<&str>) -> ChatMessage {
     let instruction = if lang == "en" {
         let format_source = entry_title
@@ -471,6 +543,39 @@ mod tests {
     use crate::mechanism;
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
+
+    /// 卡片格式導演指示只給「卡有顯示腳本、介面沒被 App 接管」的桌；有骨架的桌走接管指示（正文＋
+    /// UpdateVariable），角色優先桌與沒有顯示腳本的桌走一般旁白。
+    #[test]
+    fn gm_turn_format_follows_shell_and_mode() {
+        use GmTurnFormat::*;
+        // 沒重構過的卡（含 MVU 桌：開了增量但沒有骨架）照卡片格式
+        assert_eq!(gm_turn_format(true, false, None), CardFormat);
+        assert_eq!(gm_turn_format(true, false, Some("interface")), CardFormat);
+        // 有骨架＝App 接管，不管卡有沒有顯示腳本
+        assert_eq!(
+            gm_turn_format(true, true, Some("interface")),
+            InterfaceTakeover
+        );
+        assert_eq!(gm_turn_format(false, true, None), InterfaceTakeover);
+        // 角色優先桌、卡片沒有顯示腳本都走一般旁白
+        assert_eq!(gm_turn_format(true, true, Some("characters")), Narration);
+        assert_eq!(gm_turn_format(true, false, Some("characters")), Narration);
+        assert_eq!(gm_turn_format(false, false, None), Narration);
+    }
+
+    /// 接管指示要 UpdateVariable、不要 state 圍欄；有名單時點名行接在最後
+    #[test]
+    fn takeover_instruction_asks_for_update_block_not_state_fence() {
+        for lang in ["zh-TW", "en"] {
+            let solo = takeover_instruction(lang, &[], None).content;
+            assert!(solo.contains("<UpdateVariable>"));
+            assert!(!solo.contains("present"));
+            assert!(!solo.contains("time"));
+            let named = takeover_instruction(lang, &["狐狸".to_owned()], Some("阿濤")).content;
+            assert!(named.contains("狐狸") && named.contains(PLAYER_SENTINEL));
+        }
+    }
 
     /// 卡片自帶介面時的導演指示：點名世界書那條格式規定的標題，且不再要求舊版的
     /// state 圍欄／下一位點名——那是兩邊指令打架的根因。

@@ -9,7 +9,6 @@ import {
   type CardInterface,
   type CardStorage,
 } from "./interface-card";
-import { type StateNode } from "../refactor/refactor-shell";
 import { pickCardShell } from "./card-shell-route";
 import { buildCardChat, type CardChat } from "./card-chat-shim";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
@@ -50,6 +49,9 @@ export interface CardInterfaceController {
   uiOpen: boolean;
   /** 這桌畫得出殼：頭上那顆「開啟卡片介面」鈕與覆蓋層都靠它決定出不出現 */
   shellReady: boolean;
+  /** 介面由 App 接管（有重構骨架、不是角色優先桌；與後端 gm_turn_format 同一依據）：模型只回報
+   *  UpdateVariable、不寫 state 圍欄，頂部狀態欄不顯示 */
+  interfaceTakeover: boolean;
   /** 殼的沙盒 HTML；null＝這桌沒殼 */
   shellDoc: string | null;
   /** 桌別＋殼＋本樓的指紋，當 iframe 的 key，也是讀訊息推送的 token */
@@ -69,10 +71,9 @@ export interface CardInterfaceController {
 export function useCardInterfaceController(input: {
   worldId: string;
   events: TranscriptEvent[];
-  tableTree: Record<string, StateNode>;
   submitText: (text: string) => Promise<void>;
 }): CardInterfaceController {
-  const { worldId, events, tableTree, submitText } = input;
+  const { worldId, events, submitText } = input;
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
   // AI 重構接管介面時產的骨架（卡每回合輸出格式）；null＝沒有，這時照原卡畫面（卡片自帶殼／event.raw 找殼）
@@ -82,48 +83,55 @@ export function useCardInterfaceController(input: {
   // undefined＝還不知道（載入中或讀取失敗）、null＝確定沒標記；未知一律先不顯示殼
   // （fail-closed），角色桌才不會在切桌瞬間或讀取失敗時閃出介面 fallback。
   const [tableMode, setTableMode] = useState<string | null | undefined>(undefined);
+  // 原卡欄位型別（重構套用時記下）：骨架填值時決定數字／布林的寫法
+  const [valueTypes, setValueTypes] = useState<Record<string, string>>({});
   const [cardUiOpen, setCardUiOpen] = useState(false);
+
+  // 介面腳本與殼的讀取世代號：切桌或又讀一次後，晚到的舊回應（含撤銷、套用刷新途中換桌）不寫進畫面
+  const interfacesLoad = useRef(0);
+  const shellLoad = useRef(0);
 
   // 切桌重問這桌各卡的介面腳本；先清空避免上一桌的介面殼閃現，讀失敗就當這桌沒有
   useEffect(() => {
+    const mine = ++interfacesLoad.current;
     setCardInterfaces([]);
     if (!worldId) return;
-    let stale = false;
     invoke<CardInterface[]>("card_interfaces", { worldId })
       .then((list) => {
-        if (!stale) setCardInterfaces(list);
+        if (mine === interfacesLoad.current) setCardInterfaces(list);
       })
       .catch(() => {});
-    return () => {
-      stale = true;
-    };
   }, [worldId]);
 
   // 切桌重問這桌的 AI 重構介面殼與玩法標記；殼讀失敗當這桌沒有，標記讀失敗維持未知不顯示殼
   useEffect(() => {
+    const mine = ++shellLoad.current;
+    const current = () => mine === shellLoad.current;
     setRefactorShell(null);
     setTableMode(undefined);
     if (!worldId) return;
-    let stale = false;
     invoke<string | null>("refactor_interface_shell", { worldId })
       .then((shell) => {
-        if (!stale) setRefactorShell(shell);
+        if (current()) setRefactorShell(shell);
       })
       .catch(() => {});
     invoke<string | null>("refactor_table_mode", { worldId })
       .then((mode) => {
-        if (!stale) setTableMode(mode);
+        if (current()) setTableMode(mode);
       })
       .catch(() => {});
-    return () => {
-      stale = true;
-    };
+    setValueTypes({});
+    invoke<{ mechanism?: { value_types?: Record<string, string> } }>("read_state", { worldId })
+      .then((state) => {
+        if (current()) setValueTypes(state?.mechanism?.value_types ?? {});
+      })
+      .catch(() => {});
   }, [worldId]);
 
   // 目前要顯示的卡片介面殼與產生它的那一樓：選路規則見 card-shell-route.ts
   const picked = useMemo(
-    () => pickCardShell({ tableMode, refactorShell, events, tableTree, cardInterfaces }),
-    [tableMode, refactorShell, tableTree, events, cardInterfaces],
+    () => pickCardShell({ tableMode, refactorShell, events, cardInterfaces, valueTypes }),
+    [tableMode, refactorShell, events, cardInterfaces, valueTypes],
   );
   // doc 與 key 只依賴實際值：無關的 render（例如狀態樹變了但殼與本樓沒變）不重載 iframe
   const shell = picked?.shell ?? null;
@@ -134,13 +142,7 @@ export function useCardInterfaceController(input: {
   const cardShellReady = shell !== null;
 
   // 本場讀訊息快照：掛載時嵌進 doc，之後的變動由覆蓋層推送（本樓一律是產生殼的那段文字）
-  const chat = useMemo(
-    () =>
-      shell === null
-        ? null
-        : buildCardChat(events, { id: currentId, name: currentName, text: currentText }),
-    [shell, events, currentId, currentName, currentText],
-  );
+  const chat = useMemo(() => (picked === null ? null : buildCardChat(picked.floors, picked.current)), [picked]);
   const chatRef = useRef<CardChat | null>(null);
   chatRef.current = chat;
 
@@ -215,21 +217,28 @@ export function useCardInterfaceController(input: {
   const close = useCallback(() => setCardUiOpen(false), []);
 
   const refreshInterfaces = useCallback(async (id: string) => {
+    const mine = ++interfacesLoad.current;
     const list = await invoke<CardInterface[]>("card_interfaces", { worldId: id }).catch(
       () => [] as CardInterface[],
     );
-    setCardInterfaces(list);
+    if (mine === interfacesLoad.current) setCardInterfaces(list);
     return list;
   }, []);
 
   const refreshShell = useCallback(async (id: string) => {
+    const mine = ++shellLoad.current;
     // 殼與玩法標記一起刷新：套用重構後呼叫端只叫這一支，characters 桌立刻停用介面
-    const [shell, mode] = await Promise.all([
+    const [shell, mode, state] = await Promise.all([
       invoke<string | null>("refactor_interface_shell", { worldId: id }).catch(() => null),
       invoke<string | null>("refactor_table_mode", { worldId: id }).catch(() => undefined),
+      invoke<{ mechanism?: { value_types?: Record<string, string> } }>("read_state", { worldId: id }).catch(
+        () => null,
+      ),
     ]);
+    if (mine !== shellLoad.current) return shell;
     setRefactorShell(shell);
     setTableMode(mode);
+    setValueTypes(state?.mechanism?.value_types ?? {});
     return shell;
   }, []);
 
@@ -239,9 +248,12 @@ export function useCardInterfaceController(input: {
     if (findShell(list, list.map((card) => card.opening)) !== null) setCardUiOpen(true);
   }, []);
 
+  const interfaceTakeover = (refactorShell?.trim() ?? "") !== "" && tableMode !== "characters";
+
   return useMemo(
     () => ({
       uiOpen: cardUiOpen,
+      interfaceTakeover,
       shellReady: cardShellReady,
       shellDoc: cardShellDoc,
       shellKey: cardShellKey,
@@ -254,6 +266,7 @@ export function useCardInterfaceController(input: {
     }),
     [
       cardUiOpen,
+      interfaceTakeover,
       cardShellReady,
       cardShellDoc,
       cardShellKey,

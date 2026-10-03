@@ -27,7 +27,10 @@ interface AppDialogsProps {
   onAnswerRegen: (answer: "regen" | "keep" | "cancel") => Promise<void>;
   chatBusy: boolean;
   imports: ImportController;
-  onPostOpening: (text: string) => Promise<void>;
+  onPostOpening: (text: string, index: number) => Promise<void>;
+  /** 貼出進行中（含排在回合後面等待）／正在等回合結束 */
+  openingPostBusy: boolean;
+  openingPostWaiting: boolean;
   onTranslateAndPost: (index: number) => Promise<void>;
 }
 
@@ -51,6 +54,8 @@ export function AppDialogs({
   chatBusy,
   imports,
   onPostOpening,
+  openingPostBusy,
+  openingPostWaiting,
   onTranslateAndPost,
 }: AppDialogsProps) {
   return (
@@ -126,7 +131,9 @@ export function AppDialogs({
         onSetExpanded={imports.setExpanded}
         onCloseOpenings={imports.closeOpenings}
         onTranslateAll={() => void imports.translateAllOpenings()}
-        onPostOpening={(text) => void onPostOpening(text)}
+        onPostOpening={(text, index) => void onPostOpening(text, index)}
+        postBusy={openingPostBusy}
+        postWaiting={openingPostWaiting}
         onTranslateAndPost={(index) => void onTranslateAndPost(index)}
         onRetranslate={(index) => void imports.translateOpening(index, true)}
       />

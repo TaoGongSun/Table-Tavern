@@ -31,7 +31,8 @@ pub(crate) use messages::{player_fallback_name, replace_st_macros};
 pub use messages::{resolve_display_macros, ChatMessage};
 pub use response::{
     card_format_instruction, extract_next_speaker, extract_scene_title, extract_state_block,
-    narrate_instruction, parse_indented_fields, pick_speaker, StateBlock,
+    gm_turn_format, narrate_instruction, parse_indented_fields, pick_speaker, takeover_instruction,
+    GmTurnFormat, StateBlock,
 };
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{

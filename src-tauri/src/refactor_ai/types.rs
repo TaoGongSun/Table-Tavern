@@ -42,22 +42,23 @@ pub struct RefactorRecommendOutcome {
 }
 
 /// 展開類型：對應前端傳來的 `kind` 字串。人物走專屬的 person_expand_messages、接管走
-/// absorb_messages、合組走 group_messages，都不經這裡。
+/// absorb_messages、合組走 group_messages，都不經這裡。兩種介面都產 STATE＋SHELL＋RULES＋GUIDE，
+/// 只差骨架規格的開頭段；這只是呼叫分類，玩法 mode 與產物的 interface 欄位不跟著分。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
-    /// 狀態欄格式條目：只抽 STATE，不產骨架。
-    Interface,
-    /// 盤點判 playable 的介面條目：STATE＋SHELL（骨架）＋RULES＋GUIDE。
+    /// 盤點判 playable: yes 的介面條目（玩家可以完全在裡面遊玩）。
     InterfaceShell,
+    /// 盤點判 playable: no 的介面條目（狀態欄型），以及 SPLITS route=statusbar 的段落。
+    InterfaceStatusbar,
 }
 
 impl EntryKind {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
-            "interface" => Ok(Self::Interface),
             "interface_shell" => Ok(Self::InterfaceShell),
+            "interface_statusbar" => Ok(Self::InterfaceStatusbar),
             _ => Err(format!(
-                "未知的展開類型：{value}（只接受 interface／interface_shell）"
+                "未知的展開類型：{value}（只接受 interface_shell／interface_statusbar）"
             )),
         }
     }
@@ -172,6 +173,10 @@ pub struct RefactorSurveyOutcome {
     /// SPLITS 用到的 group id 對應的合組宣告。
     #[serde(default)]
     pub groups: Vec<RefactorSplitGroup>,
+    /// 介面條目裡的外框候選（程式判定，見 frame.rs）：前端等定義條目展開完、比對骨架容器後才決定
+    /// 要不要當外框；對不上的照一般條目展開。
+    #[serde(default)]
+    pub frame_candidates: Vec<super::frame::RefactorFrameCandidate>,
     /// 狀態欄位命名唯一權威：後續每次展開呼叫的 known_fields 都從這裡起算。
     #[serde(default)]
     pub fields: Vec<String>,

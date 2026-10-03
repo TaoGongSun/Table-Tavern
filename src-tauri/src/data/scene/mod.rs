@@ -10,6 +10,7 @@ pub use lifecycle::{
 pub use presence::CARD_ARRIVAL_PREFIX;
 pub(crate) use presence::{appeared_titles, bracket_title, name_matches, split_present_names};
 pub use transcript::{
-    append_opening, append_transcript, pop_transcript, read_transcript, remove_transcript_event,
-    set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
+    append_opening, append_transcript, opening_checkpoint, pop_transcript, read_transcript,
+    remove_transcript_event, set_last_transcript_state, sync_scene_state_tree, TranscriptEvent,
+    TranscriptKind,
 };

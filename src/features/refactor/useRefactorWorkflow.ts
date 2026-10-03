@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../../i18n";
 import {
   assembleRefactorOutcome,
+  mergeRefactorInterfaces,
+  refactorTaskUids,
+  unfinishedSourceUids,
   buildRefactorPersonPlan,
   defaultRefactorSelection,
   parseRefactorOutcome,
@@ -25,6 +28,7 @@ import {
   type RefactorSplitGroup,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
+import { confirmFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
   detectRefactorTristate,
@@ -33,6 +37,7 @@ import {
   type RefactorRunTicket,
 } from "./refactor-mode";
 import type { CardInterface } from "../card-interface/interface-card";
+import { useTurnWait } from "../play/useTurnWait";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 
 export interface RefactorModeAsk {
@@ -47,9 +52,11 @@ export interface RefactorModeAsk {
 interface UseRefactorWorkflowOptions {
   world: string;
   worldName: string;
-  entries: WorldbookEntry[];
   setStatusMessage: (message: string) => void;
-  refreshAfterApply: () => Promise<void>;
+  /** live() 為 false（換桌或卸載）時刷新鏈要在下一個 await 邊界停下 */
+  refreshAfterApply: (live: () => boolean) => Promise<void>;
+  /** 同步問「這桌有沒有回合在跑」：有的話套用會排在它後面（後端持整桌獨占） */
+  isTurnRunning: () => boolean;
 }
 
 // 重構卡存檔對話框預設檔名：桌名可能含檔名非法字元，一律代換成 -；空桌名就不接前綴，只用在地化字尾
@@ -74,10 +81,11 @@ function refactorApplyMessage(summary: RefactorApplySummary) {
 export function useRefactorWorkflow({
   world,
   worldName,
-  entries,
   setStatusMessage,
   refreshAfterApply,
+  isTurnRunning,
 }: UseRefactorWorkflowOptions) {
+  const { run: runQueued, waiting: waitingForTurn } = useTurnWait(isTurnRunning, world);
   // AI 卡重構：結果卡（產物讀進來後的人審／套用）與下面的「盤點→展開」進度是兩段獨立狀態，
   // 交會點是 setRefactorOutcome——AI 兩階段跑完、或選檔路徑讀完 JSON，都寫進同一份結果卡。
   const [outcome, setOutcome] = useState<RefactorOutcome | null>(null);
@@ -98,6 +106,16 @@ export function useRefactorWorkflow({
   const [progress, setProgress] = useState<{ text: string; cancelling: boolean; tail: string } | null>(null);
   // 迴圈裡讀取的取消旗標——用 ref 而非 state：async 迴圈裡的閉包看不到後續 setState，只有 ref.current 每次都讀最新值。
   const cancelRef = useRef(false);
+  // 不排隊的路徑（清回原卡後刷新）自己判斷「還在原桌、元件還在」
+  const worldRef = useRef(world);
+  worldRef.current = world;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // 匯出這桌先前套用過的重構產物（apply() 落檔），重玩同一張卡不必再燒 AI 額度重新展開。
   async function exportSavedRefactorOutcome() {
@@ -125,14 +143,38 @@ export function useRefactorWorkflow({
   // none 是唯一免問的路（直跑角色線）；unsupported（DRM／雲端載入器）擋下不跑。
   async function runAiRefactor() {
     if (progress) return;
-    if (await invoke<boolean>("refactor_outcome_exists", { worldId: world })) {
-      const rerun = await confirm(t("refactorRerunWarnBody"), {
+    // 重新重構〔作者裁決 2026-10-03〕：已遊玩擋、沒有匯入原檔擋；未遊玩確認後清回剛匯入原卡的狀態再照一般
+    // 流程重構，永不拿重構後的資料再重構。未重構的桌照現狀。
+    const rerun = await invoke<"fresh" | "played" | "no_source" | "ready">("refactor_rerun_status", {
+      worldId: world,
+    });
+    if (rerun === "played" || rerun === "no_source") {
+      await showMessage(t(rerun === "played" ? "refactorRerunPlayed" : "refactorRerunNoSource"), {
+        title: t("refactorBtn"),
+        kind: "warning",
+        okLabel: t("dialogAck"),
+      });
+      return;
+    }
+    if (rerun === "ready") {
+      const confirmed = await confirm(t("refactorRerunWarnBody"), {
         title: t("refactorBtn"),
         kind: "warning",
         okLabel: t("refactorRerunOk"),
         cancelLabel: t("dialogCancel"),
       });
-      if (!rerun) return;
+      if (!confirmed) return;
+      const origin = world;
+      const live = () => mounted.current && worldRef.current === origin;
+      try {
+        await invoke("refactor_reset_to_source", { worldId: world });
+      } catch (reason) {
+        if (live()) setStatusMessage(String(reason));
+        return;
+      }
+      if (!live()) return;
+      await refreshAfterApply(live);
+      if (!live()) return;
     }
     setStatusMessage("");
     const cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world }).catch(
@@ -202,6 +244,8 @@ export function useRefactorWorkflow({
         return channel;
       };
 
+      // 世界書現讀：重新重構剛清回原卡時，外層傳進來的條目清單還是清回前的
+      const entries = await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world });
       const survey = await invoke<RefactorSurveyOutcome>("refactor_survey", {
         worldId: world,
         mode,
@@ -238,6 +282,8 @@ export function useRefactorWorkflow({
       // 角色優先＝介面產物一律不建：interface／statusbar 呼叫整個不發（refactor-mode-split；
       // 這些條目與段落的下落改由 mode-aware 稽核記入 dropped，包 3）。
       const buildInterfaces = mode !== "characters";
+      // 外框候選先不展開：等定義條目展開完、比對骨架容器後才決定當外框還是照常展開（refactor-frame.ts）
+      const frameCandidates = buildInterfaces ? (survey.frame_candidates ?? []) : [];
       const pool: RefactorTask[] = [
         ...queue.map((item): RefactorTask => ({ kind: "person", item })),
         ...absorbUids.map((uid): RefactorTask => ({ kind: "absorb", uid })),
@@ -248,10 +294,12 @@ export function useRefactorWorkflow({
             )
           : []),
         ...(buildInterfaces
-          ? survey.interface_uids.map((uid): RefactorTask => ({ kind: "interface", uid }))
+          ? survey.interface_uids
+              .filter((uid) => !frameCandidates.some((candidate) => candidate.uid === uid))
+              .map((uid): RefactorTask => ({ kind: "interface", uid }))
           : []),
       ];
-      const totalSteps = pool.length;
+      const totalSteps = pool.length + frameCandidates.length;
 
       const characters: RefactorCharacter[] = [...local.characters, ...localPersons];
       const refactorEntries: RefactorNewEntry[] = [...local.entries];
@@ -272,6 +320,12 @@ export function useRefactorWorkflow({
       const interfaces: RefactorInterface[] = [];
       // reason 帶原始錯誤文字（去重顯示在結果視窗）：玩家看得到「模型呼叫失敗」這類可修正原因。
       const failedTitles: { name: string; reason: string }[] = [];
+      // 介面展開成功的條目名稱：合併衝突時整組記成失敗，來源不被消耗
+      const interfaceNames: string[] = [];
+      // 介面合併衝突時要保留的來源 uid；其餘失敗、取消、沒跑到的任務由 succeeded 推回來
+      const conflictUids: string[] = [];
+      // 成功完成的任務：沒在這裡的任務（失敗、取消時中斷、取消後沒發出）所用的來源一律保留
+      const succeeded = new Set<RefactorTask>();
       const knownFields = survey.fields; // 命名唯一權威，全呼叫共用同一份、不累積。
       let done = 0;
       const bumpDone = () => {
@@ -294,6 +348,9 @@ export function useRefactorWorkflow({
             : task.kind === "group"
               ? task.group.title
               : sourceEntryTitle(entries, task.uid);
+        const fail = (reason: string) => {
+          failedTitles.push({ name, reason });
+        };
         try {
           if (task.kind === "person") {
             const result = await withRateLimitRetry(
@@ -307,8 +364,11 @@ export function useRefactorWorkflow({
                 }),
               () => cancelRef.current,
             );
-            if (result.character) characters.push(result.character);
-            else failedTitles.push({ name, reason: "" });
+            if (result.character) {
+              characters.push(result.character);
+              succeeded.add(task);
+            }
+            else fail("");
           } else if (task.kind === "absorb") {
             const result = await withRateLimitRetry(
               () =>
@@ -320,8 +380,11 @@ export function useRefactorWorkflow({
                 }),
               () => cancelRef.current,
             );
-            if (result.entry) refactorEntries.push(result.entry);
-            else failedTitles.push({ name, reason: "" });
+            if (result.entry) {
+              refactorEntries.push(result.entry);
+              succeeded.add(task);
+            }
+            else fail("");
           } else if (task.kind === "group") {
             const result = await withRateLimitRetry(
               () =>
@@ -336,8 +399,11 @@ export function useRefactorWorkflow({
                 }),
               () => cancelRef.current,
             );
-            if (result.entry) refactorEntries.push(result.entry);
-            else failedTitles.push({ name, reason: "" });
+            if (result.entry) {
+              refactorEntries.push(result.entry);
+              succeeded.add(task);
+            }
+            else fail("");
           } else if (task.kind === "statusbar") {
             const result = await withRateLimitRetry(
               () =>
@@ -350,28 +416,35 @@ export function useRefactorWorkflow({
                 }),
               () => cancelRef.current,
             );
-            if (result.interface) interfaces.push(result.interface);
-            else failedTitles.push({ name, reason: "" });
+            if (result.interface) {
+              interfaces.push(result.interface);
+              interfaceNames.push(name);
+              succeeded.add(task);
+            } else fail("");
           } else {
             const result = await withRateLimitRetry(
               () =>
                 invoke<RefactorExpandOutcome>("refactor_expand", {
                   worldId: world,
                   entryUid: task.uid,
+                  // 兩種介面都產骨架與回報規矩；playable 只決定骨架規格的開頭段
                   kind: survey.playable_interface_uids.includes(task.uid)
                     ? "interface_shell"
-                    : "interface",
+                    : "interface_statusbar",
                   knownFields,
                   onDelta: makeOnDelta(),
                 }),
               () => cancelRef.current,
             );
-            if (result.interface) interfaces.push(result.interface);
-            else failedTitles.push({ name, reason: "" });
+            if (result.interface) {
+              interfaces.push(result.interface);
+              interfaceNames.push(name);
+              succeeded.add(task);
+            } else fail("");
           }
         } catch (reason) {
           if (!String(reason).includes("refactor-aborted")) {
-            failedTitles.push({ name, reason: String(reason) });
+            fail(String(reason));
           }
         } finally {
           bumpDone();
@@ -381,12 +454,44 @@ export function useRefactorWorkflow({
       // chain 恆空：survey 同一 run 已建快取，warmed=true 跳過首發獨跑，pool 直接全並行開跑。
       await runRefactorCalls({
         chain: [],
-        pool,
+        pool: [...pool],
         limit: REFACTOR_PARALLEL_LIMIT,
         isCancelled: () => cancelRef.current,
         run,
         warmed: true,
       });
+
+      // 第二階段：外框候選對上定義骨架的容器才當外框（零呼叫），其餘照一般介面條目展開。取消時沒走到
+      // 這裡的候選全部保留來源。
+      let frames: RefactorFrameCandidate[] = [];
+      const resolvedFrameUids = new Set<string>();
+      if (frameCandidates.length > 0 && !cancelRef.current) {
+        const confirmed = confirmFrames(
+          frameCandidates,
+          interfaces.map((candidate) => candidate.shell ?? ""),
+        );
+        frames = confirmed.frames;
+        for (const frame of frames) {
+          resolvedFrameUids.add(frame.uid);
+          bumpDone();
+        }
+        const second = confirmed.expand.map(
+          (candidate): RefactorTask => ({ kind: "interface", uid: candidate.uid }),
+        );
+        for (const task of second) resolvedFrameUids.add(refactorTaskUids(task)[0]);
+        pool.push(...second);
+        await runRefactorCalls({
+          chain: [],
+          pool: second,
+          limit: REFACTOR_PARALLEL_LIMIT,
+          isCancelled: () => cancelRef.current,
+          run,
+          warmed: true,
+        });
+      }
+      const unresolvedFrameUids = frameCandidates
+        .map((candidate) => candidate.uid)
+        .filter((uid) => !resolvedFrameUids.has(uid));
 
       setProgress(null);
       if (
@@ -395,14 +500,35 @@ export function useRefactorWorkflow({
         refactorEntries.length > 0 ||
         localNotes > 0
       ) {
+        // 多條介面產物互相衝突（同一欄位兩份值不同、骨架對不上欄位）：整組不套，參與的條目都記成失敗
+        const merged = mergeRefactorInterfaces(interfaces, frames);
+        if (merged.conflict !== null) {
+          for (const name of interfaceNames) {
+            failedTitles.push({ name, reason: t("refactorInterfaceConflict", { path: merged.conflict }) });
+          }
+          for (const candidate of interfaces) conflictUids.push(...candidate.source_uids);
+        }
+        // 外框組不進骨架（或整組衝突沒有骨架可組）：來源保留、記成失敗
+        for (const uid of merged.failedFrames) {
+          conflictUids.push(uid);
+          if (merged.conflict === null) {
+            failedTitles.push({ name: sourceEntryTitle(entries, uid), reason: t("refactorFrameUnmatched") });
+          }
+        }
+        conflictUids.push(...unresolvedFrameUids);
         const nextOutcome = assembleRefactorOutcome({
           characters,
-          interfaces,
+          interfaces: merged.conflict === null ? interfaces : [],
+          frames: merged.conflict === null ? frames : [],
           entries: refactorEntries,
           dropped: local.dropped,
           unabsorbed: local.unabsorbed,
           audit: local.audit,
           mode,
+          preserveSourceUids: unfinishedSourceUids(
+            pool.map((task) => ({ uids: refactorTaskUids(task), succeeded: succeeded.has(task) })),
+            conflictUids,
+          ),
         });
         setOutcome(nextOutcome);
         setSelection(defaultRefactorSelection(nextOutcome));
@@ -463,28 +589,37 @@ export function useRefactorWorkflow({
     setSelection(result.selection);
   }
 
+  // 回合進行中會排在它後面（後端持整桌獨占）；排隊期間換桌或關掉世界設定，套用照樣在原桌完成，
+  // 但 live() 為 false 就不關結果卡、不刷新、不跳訊息
   async function applyRefactor(nextSelection: RefactorSelection) {
     if (!outcome || busy) return;
     setStatusMessage("");
     setBusy(true);
-    try {
-      const summary = await invoke<RefactorApplySummary>("refactor_apply", {
-        worldId: world,
-        outcome,
-        selection: nextSelection,
-        recordReceipt: origin !== "ai",
-      });
-      closeRefactor();
-      await refreshAfterApply();
-      await showMessage(refactorApplyMessage(summary), {
-        title: t("refactorBtn"),
-        okLabel: t("dialogAck"),
-      });
-    } catch (reason) {
-      setStatusMessage(String(reason));
-    } finally {
-      setBusy(false);
-    }
+    await runQueued(async ({ live, backend }) => {
+      try {
+        const summary = await backend(() =>
+          invoke<RefactorApplySummary>("refactor_apply", {
+            worldId: world,
+            outcome,
+            selection: nextSelection,
+            recordReceipt: origin !== "ai",
+          }),
+        );
+        if (!live()) return;
+        closeRefactor();
+        await refreshAfterApply(live);
+        if (!live()) return;
+        await showMessage(refactorApplyMessage(summary), {
+          title: t("refactorBtn"),
+          okLabel: t("dialogAck"),
+        });
+      } catch (reason) {
+        if (live()) setStatusMessage(String(reason));
+      } finally {
+        // 按鈕鎖一律放開（卸載後 React 不會套用），換桌後留著的面板不能永遠鎖死
+        setBusy(false);
+      }
+    });
   }
 
   // 匯出結果卡上這份還沒套用（或剛套用完）的產物，供之後用「匯入重構卡」讀回重玩。
@@ -513,6 +648,7 @@ export function useRefactorWorkflow({
     modeAsk,
     failures,
     busy,
+    waitingForTurn,
     progress,
     inputRef,
     setSelection,

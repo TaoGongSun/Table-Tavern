@@ -133,11 +133,18 @@ pub fn begin_next_scene(
     );
     state.current_scene = next_scene;
     write_state(root, world_id, &state)?;
+    // 介面接管桌＝有重構骨架、不是 characters 桌（與 transport::gm_turn_format 同一依據）
+    let interface_takeover = state.refactor_mode.as_deref() != Some("characters")
+        && crate::data::read_interface_shell(root, world_id)
+            .ok()
+            .flatten()
+            .is_some_and(|shell| !shell.trim().is_empty());
     settle_card_visibility(
         root,
         world_id,
         old_scene,
         state.state.table.get("present").map(String::as_str),
+        interface_takeover,
     );
     Ok(next_scene)
 }

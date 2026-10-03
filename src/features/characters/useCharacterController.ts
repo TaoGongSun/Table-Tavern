@@ -69,6 +69,8 @@ export function useCharacterController(input: {
   const imagesLoad = useRef(0);
   const gmLoad = useRef(0);
   const playerLoad = useRef(0);
+  // 角色清單重讀的世代號：換桌（hydrate）或又重讀一次後，晚到的舊清單不寫進畫面
+  const castLoad = useRef(0);
   // hydrate 會把圖與玩家卡同步清空，補回來的是下面三支 effect。同一張桌裡換幕／分岔時
   // worldId、角色清單、玩家卡 id 都沒變，effect 不會重跑，畫面就停在清空後的空狀態
   // （分岔完角色圖與玩家卡整排消失，切走再切回來才回得來——scene-fork 實機驗收抓到）
@@ -166,6 +168,7 @@ export function useCharacterController(input: {
     imagesLoad.current += 1;
     gmLoad.current += 1;
     playerLoad.current += 1;
+    castLoad.current += 1;
     setCharacters(cast);
     setSceneAppearances(appearances);
     setPlayerCardId(playerCardId);
@@ -182,7 +185,9 @@ export function useCharacterController(input: {
   const refresh = useCallback(
     async (overrideWorldId?: string) => {
       const id = overrideWorldId ?? worldId;
+      const mine = ++castLoad.current;
       const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: id });
+      if (mine !== castLoad.current) return cast;
       setCharacters(cast);
       await loadCharacterImages(id, cast.map((c) => c.id));
       return cast;

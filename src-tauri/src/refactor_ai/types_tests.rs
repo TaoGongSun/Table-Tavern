@@ -4,7 +4,8 @@ use super::{EntryKind, GroupKind};
 fn entry_kind_parse_rejects_unknown_value() {
     assert!(EntryKind::parse("ghost").is_err());
     assert!(EntryKind::parse("person").is_err());
-    assert!(EntryKind::parse("interface").is_ok());
+    assert!(EntryKind::parse("interface").is_err());
+    assert!(EntryKind::parse("interface_statusbar").is_ok());
     assert!(EntryKind::parse("interface_shell").is_ok());
 }
 

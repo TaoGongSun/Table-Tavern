@@ -3,6 +3,8 @@ use crate::import;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod race;
+
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 struct TestRoot(PathBuf);
@@ -32,14 +34,14 @@ impl Drop for TestRoot {
 fn import_character_recorded(root: &Path, world_id: &str, raw: &[u8]) -> data::CharacterMeta {
     let before = snapshot(root, world_id);
     let meta = import::import_character(root, world_id, raw, "#3366ff").unwrap();
-    record_character_import(root, world_id, &meta.id, &meta.name, before);
+    record_character_import(root, world_id, &meta.id, &meta.name, before, None);
     meta
 }
 
 fn import_worldbook_recorded(root: &Path, world_id: &str, label: &str, json_text: &str) {
     let before = snapshot(root, world_id);
     data::import_worldbook(root, world_id, json_text).unwrap();
-    record_worldbook_import(root, world_id, label, before);
+    record_worldbook_import(root, world_id, label, before, None);
 }
 
 fn transcript_event(ts: &str, text: &str) -> data::TranscriptEvent {
@@ -98,7 +100,12 @@ fn undo_character_import_removes_card_and_its_entries_but_keeps_preexisting() {
     let entries_after_import = data::read_worldbook(root.path(), &world_id).unwrap();
     assert_eq!(entries_after_import.len(), 2);
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(report.removed_character, Some("莉亞".to_owned()));
     assert_eq!(report.removed_entries, 1);
     assert_eq!(report.kept_entries, 0);
@@ -134,7 +141,12 @@ fn undo_keeps_entries_the_player_edited_since_import() {
     edited.content = "玩家改過的內容".to_owned();
     data::upsert_worldbook_entry(root.path(), &world_id, edited).unwrap();
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(report.removed_entries, 1);
     assert_eq!(report.kept_entries, 1);
     let remaining = data::read_worldbook(root.path(), &world_id).unwrap();
@@ -158,7 +170,12 @@ fn undo_worldbook_import_removes_its_entries() {
         1
     );
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(report.removed_entries, 1);
     assert!(report.removed_character.is_none());
     assert!(data::read_worldbook(root.path(), &world_id)
@@ -185,12 +202,17 @@ fn undo_worldbook_import_removes_only_gm_image_created_this_time() {
         let before = snapshot(root.path(), &world_id);
         data::import_worldbook(root.path(), &world_id, json_text).unwrap();
         assert!(import::save_gm_image(root.path(), &world_id, png));
-        record_worldbook_import(root.path(), &world_id, label, before);
+        record_worldbook_import(root.path(), &world_id, label, before, None);
     };
 
     import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
     assert!(image_path.exists());
-    undo_last_import(root.path(), &world_id).unwrap();
+    undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(!image_path.exists());
 
     import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
@@ -199,7 +221,12 @@ fn undo_worldbook_import_removes_only_gm_image_created_this_time() {
         &book("城門又開了。"),
         b"\x89PNG\r\n\x1a\nsecond",
     );
-    undo_last_import(root.path(), &world_id).unwrap();
+    undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(fs::read(&image_path).unwrap(), b"\x89PNG\r\n\x1a\nsecond");
 }
 
@@ -220,9 +247,22 @@ fn undo_import_removes_the_posted_opening_but_keeps_later_events() {
     let mine = transcript_event("2026-08-07T10:05:00.000Z", "玩家後來自己加的一句");
     data::append_transcript(root.path(), &world_id, 0, &opening).unwrap();
     data::append_transcript(root.path(), &world_id, 0, &mine).unwrap();
-    record_posted_opening(root.path(), &world_id, 0, &opening.ts);
+    record_posted_opening(
+        root.path(),
+        &world_id,
+        0,
+        &opening.ts,
+        None,
+        None,
+        &crate::data::test_exclusive(&world_id),
+    );
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(report.removed_opening);
     let left = data::read_transcript(root.path(), &world_id, 0).unwrap();
     assert_eq!(left.len(), 1);
@@ -243,10 +283,23 @@ fn undo_import_reports_no_opening_when_player_already_took_it_back() {
 
     let opening = transcript_event("2026-08-07T10:00:00.000Z", "開場白");
     data::append_transcript(root.path(), &world_id, 0, &opening).unwrap();
-    record_posted_opening(root.path(), &world_id, 0, &opening.ts);
+    record_posted_opening(
+        root.path(),
+        &world_id,
+        0,
+        &opening.ts,
+        None,
+        None,
+        &crate::data::test_exclusive(&world_id),
+    );
     assert!(data::pop_transcript(root.path(), &world_id, 0).unwrap());
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(!report.removed_opening);
 }
 
@@ -257,7 +310,15 @@ fn record_posted_opening_without_any_receipt_is_a_no_op() {
     let root = TestRoot::new("posted-opening-no-receipt");
     let world_id = data::create_world(root.path(), "世界").unwrap();
 
-    record_posted_opening(root.path(), &world_id, 0, "2026-08-07T10:00:00.000Z");
+    record_posted_opening(
+        root.path(),
+        &world_id,
+        0,
+        "2026-08-07T10:00:00.000Z",
+        None,
+        None,
+        &crate::data::test_exclusive(&world_id),
+    );
 
     assert!(list_import_receipts(root.path(), &world_id).is_empty());
 }
@@ -300,18 +361,33 @@ fn two_receipts_undo_in_reverse_order() {
         2
     );
 
-    let report1 = undo_last_import(root.path(), &world_id).unwrap();
+    let report1 = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(report1.removed_character, Some("乙".to_owned()));
     assert!(data::read_character(root.path(), &world_id, &first.id).is_ok());
     assert!(data::read_character(root.path(), &world_id, &second.id).is_err());
 
-    let report2 = undo_last_import(root.path(), &world_id).unwrap();
+    let report2 = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(report2.removed_character, Some("甲".to_owned()));
     assert!(data::read_character(root.path(), &world_id, &first.id).is_err());
     assert!(list_import_receipts(root.path(), &world_id).is_empty());
 
     // 收據已經清空，再按一次要回錯而不是 panic
-    assert!(undo_last_import(root.path(), &world_id).is_err());
+    assert!(undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id)
+    )
+    .is_err());
 }
 
 /// 收據檔內容損毀：undo 回傳「無可復原」錯誤，不 panic；缺檔（從沒匯入過）同樣回錯。
@@ -319,14 +395,24 @@ fn two_receipts_undo_in_reverse_order() {
 fn undo_reports_error_without_panicking_on_missing_or_corrupt_receipts() {
     let root = TestRoot::new("corrupt");
     let world_id = data::create_world(root.path(), "世界").unwrap();
-    assert!(undo_last_import(root.path(), &world_id).is_err());
+    assert!(undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id)
+    )
+    .is_err());
 
     fs::write(
         data::import_receipts_path(root.path(), &world_id).unwrap(),
         "{ 不是合法 JSON 陣列",
     )
     .unwrap();
-    assert!(undo_last_import(root.path(), &world_id).is_err());
+    assert!(undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id)
+    )
+    .is_err());
 }
 
 /// renamed_from 存在時，undo 後桌名要退回去。
@@ -339,10 +425,20 @@ fn undo_restores_table_name_when_renamed_from_is_recorded() {
         &world_id,
         &character_book_card("莉亞", serde_json::json!([])),
     );
-    record_last_import_rename(root.path(), &world_id, "新的一桌");
+    record_last_import_rename(
+        root.path(),
+        &world_id,
+        "新的一桌",
+        &crate::data::test_exclusive(&world_id),
+    );
     data::rename_world(root.path(), &world_id, "莉亞").unwrap();
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(report.renamed_back);
     assert_eq!(
         data::read_state(root.path(), &world_id).unwrap().name,
@@ -394,7 +490,12 @@ fn undo_reverts_only_this_imports_mechanism_writes() {
     // 復原第二筆（乙）：HP 規則消失，但 incremental 仍是 true——甲的 [initvar] 自己就會
     // 把這桌標成增量桌（import_mechanism：`initial_tree.is_some() || mvu_seen`），甲還沒
     // 復原，這面旗子不該被乙的 undo 連帶關掉；甲帶進來的初始樹同樣要保留。
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(report.removed_character.is_some());
     let after_first_undo = data::read_state(root.path(), &world_id).unwrap();
     assert!(!after_first_undo.mechanism.rules.contains_key("Player.HP"));
@@ -408,7 +509,12 @@ fn undo_reverts_only_this_imports_mechanism_writes() {
     );
 
     // 再復原第一筆（甲）：這下 incremental 才真的退回 false，初始樹也一併消失。
-    undo_last_import(root.path(), &world_id).unwrap();
+    undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     let after_second_undo = data::read_state(root.path(), &world_id).unwrap();
     assert!(!after_second_undo.mechanism.incremental);
     assert!(!after_second_undo.state.tree.contains_key("World"));
@@ -432,7 +538,12 @@ fn list_import_receipts_reflects_append_and_undo() {
     assert_eq!(list[0].label, "莉亞");
     assert_eq!(list[0].character_id.as_deref(), Some(meta.id.as_str()));
 
-    undo_last_import(root.path(), &world_id).unwrap();
+    undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(list_import_receipts(root.path(), &world_id).is_empty());
 }
 
@@ -463,7 +574,12 @@ fn undo_reads_old_format_receipt_without_new_fields() {
     )
     .unwrap();
 
-    let report = undo_last_import(root.path(), &world_id).unwrap();
+    let report = undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(report.removed_character, Some("莉亞".to_owned()));
     assert!(report.removed_characters.is_empty());
     assert!(data::read_character(root.path(), &world_id, &meta.id).is_err());

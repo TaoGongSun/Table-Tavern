@@ -96,6 +96,25 @@ fn write_new_world(root: &Path, id: &str, name: &str) -> DataResult<()> {
     Ok(())
 }
 
+/// 重新重構時在臨時資料根（data::reset_build_root）建一張同 id 的空白新桌：桌名與模型指定沿用原桌，
+/// 其餘照建桌當下。之後照匯入原檔依序重匯進這張桌，完整成功才換掉原桌。
+pub fn create_reset_world(
+    build_root: &Path,
+    world_id: &str,
+    name: &str,
+    model_bindings: BTreeMap<String, String>,
+) -> DataResult<()> {
+    let directory = super::world_file::prepare_new_world(build_root, world_id)?;
+    super::world_file::commit_world_write(&directory.join("world.md"), b"")?;
+    let mut state = blank_state(world_id, name);
+    state.model_bindings = model_bindings;
+    super::world_file::commit_world_write(
+        &directory.join("state.json"),
+        serde_json::to_string_pretty(&state)?.as_bytes(),
+    )?;
+    Ok(())
+}
+
 pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
     validate_single_line("world name", name)?;
     let id = new_id();

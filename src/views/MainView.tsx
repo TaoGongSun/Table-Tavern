@@ -45,7 +45,7 @@ interface MainViewProps {
   /** 復原匯入改動了世界書：換這把 key 讓整支編輯器重新掛載重載 */
   worldEditorRefreshKey: number;
   onEntryConverted: () => Promise<void>;
-  onRefactorApplied: () => Promise<void>;
+  onRefactorApplied: (live: () => boolean) => Promise<void>;
   /** 遊玩畫面（messages＋composer）；元素在 App 建好傳進來 */
   playView: ReactNode;
 }
@@ -143,6 +143,7 @@ export function MainView({
           convertColor={nextColor}
           onEntryConverted={onEntryConverted}
           onRefactorApplied={onRefactorApplied}
+          isTurnRunning={isBusy}
         />
       ) : (
         playView

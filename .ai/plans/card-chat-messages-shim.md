@@ -7,7 +7,7 @@
 - 卡片介面沙盒墊上酒館的讀訊息函式，不藏面板；MVU 類另立 [card-mvu-shim](../tasks/card-mvu-shim.md)〔作者裁決 2026-10-02〕。
 - 沒重構的卡，酒館怎麼做就怎麼做，不為省工放棄或縮水；只有大改前重構過的桌可以不管〔作者裁決 2026-10-02〕。
 - 重構判 playable: no 的 interface 桌改用原卡畫面：拿掉 refactor-noshell-panel 加的「interface＋無骨架就回 null」短路，開回卡片殼的 fallback。refactor-noshell-panel 的清殼、收據、undo 不動〔作者裁決 2026-10-02〕。
-  - 這類桌只驗開場白那一樓；後續回合有值要等 [refactor-statusbar-skeleton](../tasks/refactor-statusbar-skeleton.md)，本案不宣稱後續回合可用。
+  - 這類桌只驗開場白那一樓；後續回合有值要等 [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md)，本案不宣稱後續回合可用。
   - 「不接管時保留介面來源條目」已作廢〔作者裁決 2026-10-02〕。
 - `interface-card-panel.md` 的「不做：ST 外掛 API 相容」改寫為「目標與酒館行為一致」〔作者裁決 2026-10-02〕。
 - 讀訊息類照官方型別規格與酒館實作行為支援，不縮成只回本樓〔模型判斷·未裁決，Sol 第 2 輪同意方向〕：

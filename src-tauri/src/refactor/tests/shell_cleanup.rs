@@ -29,6 +29,7 @@ fn outcome(mode: Option<&str>, interface: Option<RefactorInterface>) -> Refactor
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     }
 }
 
@@ -89,7 +90,12 @@ fn rerun_without_shell_removes_previous_shell_and_undo_restores_it() {
     assert_eq!(shell(root.path(), &world_id), None);
     assert_eq!(mode(root.path(), &world_id).as_deref(), Some("interface"));
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(
         shell(root.path(), &world_id).as_deref(),
         Some("<UI>{{世界.時間}}</UI>")
@@ -164,7 +170,12 @@ fn overwritten_shell_is_restored_by_undo() {
         shell(root.path(), &world_id).as_deref(),
         Some("<UI>新 {{世界.時間}}</UI>")
     );
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(
         shell(root.path(), &world_id).as_deref(),
         Some("<UI>舊 {{世界.時間}}</UI>")
@@ -188,7 +199,12 @@ fn cleanup_only_apply_still_leaves_a_receipt() {
     assert_eq!(shell(root.path(), &world_id), None);
     assert_eq!(receipt_count(root.path(), &world_id), receipts_before + 1);
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(
         shell(root.path(), &world_id).as_deref(),
         Some("<UI>{{世界.時間}}</UI>")
@@ -224,7 +240,12 @@ fn mode_only_change_is_receipted_and_undone_after_round_trip() {
             "{before:?}→{after}"
         );
 
-        receipts::undo_last_import(root.path(), &world_id).unwrap();
+        receipts::undo_last_import(
+            root.path(),
+            &world_id,
+            &crate::data::test_exclusive(&world_id),
+        )
+        .unwrap();
         assert_eq!(
             mode(root.path(), &world_id).as_deref(),
             before,
@@ -239,7 +260,12 @@ fn first_takeover_undo_returns_table_to_unrefactored() {
     let world_id = data::create_world(root.path(), "酒館").unwrap();
     takeover(root.path(), &world_id, "<UI>{{世界.時間}}</UI>");
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(shell(root.path(), &world_id), None);
     assert_eq!(mode(root.path(), &world_id), None);
     assert!(data::read_state(root.path(), &world_id)
@@ -468,11 +494,21 @@ fn undo_shell_failures_keep_receipt_and_other_domains() {
     // 殼路徑被目錄佔住：寫回必失敗
     let shell_path = data::interface_shell_path(root.path(), &world_id).unwrap();
     std::fs::create_dir(&shell_path).unwrap();
-    assert!(receipts::undo_last_import(root.path(), &world_id).is_err());
+    assert!(receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id)
+    )
+    .is_err());
     assert_eq!(receipt_count(root.path(), &world_id), 2);
     assert_eq!(mode(root.path(), &world_id), state_mid.refactor_mode);
     std::fs::remove_dir(&shell_path).unwrap();
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(
         shell(root.path(), &world_id).as_deref(),
         Some("<UI>{{世界.時間}}</UI>")
@@ -483,7 +519,12 @@ fn undo_shell_failures_keep_receipt_and_other_domains() {
     let tree_before = data::read_state(root.path(), &world_id).unwrap().state.tree;
     {
         let _guard = data::RemoveFailGuard::fail(1);
-        assert!(receipts::undo_last_import(root.path(), &world_id).is_err());
+        assert!(receipts::undo_last_import(
+            root.path(),
+            &world_id,
+            &crate::data::test_exclusive(&world_id)
+        )
+        .is_err());
     }
     assert_eq!(receipt_count(root.path(), &world_id), 1);
     assert!(shell(root.path(), &world_id).is_some());
@@ -491,7 +532,12 @@ fn undo_shell_failures_keep_receipt_and_other_domains() {
         data::read_state(root.path(), &world_id).unwrap().state.tree,
         tree_before
     );
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(shell(root.path(), &world_id), None);
     assert_eq!(mode(root.path(), &world_id), None);
 }
@@ -514,7 +560,12 @@ fn saved_outcome_reimports_to_the_same_result() {
         .unwrap()
         .unwrap();
     assert_eq!(saved, serde_json::to_string_pretty(&noshell).unwrap());
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert_eq!(
         data::read_refactor_outcome(root.path(), &world_id)
             .unwrap()

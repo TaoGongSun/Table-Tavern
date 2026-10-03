@@ -193,6 +193,10 @@ pub struct Mechanism {
     /// 必報哪些欄位、哪些只在變動時報。空＝這桌沒有卡專屬規矩，只走通用協定。
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub guide: String,
+    /// 介面骨架欄位的型別（點分路徑→"number"｜"bool"｜"list"）：狀態樹的葉子一律存字串，填骨架時靠它
+    /// 決定 YAML 裡要不要加引號、行內集合要不要拆元素，卡讀回的型別才會跟原卡一致。沒列的欄位＝字串。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub value_types: BTreeMap<String, String>,
 }
 
 pub(crate) fn is_false(value: &bool) -> bool {
@@ -202,6 +206,7 @@ pub(crate) fn is_false(value: &bool) -> bool {
 impl Default for Mechanism {
     fn default() -> Self {
         Self {
+            value_types: Default::default(),
             version: mechanism_version(),
             rules: BTreeMap::new(),
             triggers: Vec::new(),
@@ -213,7 +218,12 @@ impl Default for Mechanism {
 
 impl Mechanism {
     pub fn is_empty(&self) -> bool {
-        self.rules.is_empty() && self.triggers.is_empty() && !self.incremental
+        // guide 也算內容：只剩指引時整塊略過不寫，指引會悄悄消失（undo 寫回指引時踩過）
+        self.rules.is_empty()
+            && self.triggers.is_empty()
+            && !self.incremental
+            && self.guide.is_empty()
+            && self.value_types.is_empty()
     }
 }
 

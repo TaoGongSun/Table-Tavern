@@ -1,6 +1,8 @@
 // AI 卡重構結果的人審面板邏輯：產物解析、預設全勾、摘要計數、出處標題查找、checkbox 切換。
 // 純函式、零 UI／invoke 依賴——App.tsx 只管接線與畫面，判斷邏輯在這裡單獨測。
 // 型別對照後端 src-tauri/src/refactor.rs 前段的 RefactorOutcome／RefactorSelection 契約。
+import { composeFrames, type RefactorFrameCandidate } from "./refactor-frame";
+import { classifyPlaceholder } from "./refactor-shell";
 
 export interface RefactorCharacter {
   name: string;
@@ -102,6 +104,8 @@ export interface RefactorOutcome {
   audit: RefactorAuditItem[];
   /** 產出時玩家選定的玩法："interface"｜"characters"；缺席（舊產物）＝照 interface 行為。 */
   mode?: string;
+  /** 有產物失敗（展開失敗、介面合併衝突）的來源 uid：套用時保留原條目，不刪也不停用。 */
+  preserve_source_uids?: string[];
 }
 
 export interface RefactorSelection {
@@ -167,6 +171,8 @@ export interface RefactorSurveyOutcome {
   splits: RefactorSpanRoute[];
   /** SPLITS 用到的 group id 對應的合組宣告。 */
   groups: RefactorSplitGroup[];
+  /** 介面條目裡的外框候選（後端程式判定）：定義條目展開完後才決定要不要當外框（refactor-frame.ts） */
+  frame_candidates?: RefactorFrameCandidate[];
   /** 狀態欄位命名唯一權威：後續每次展開呼叫的 knownFields 都從這裡固定取用（不再沿鏈累積）。 */
   fields: string[];
   /** 這份小抄依哪種玩法產出："interface"｜"characters"；舊產物空字串＝照 interface 行為。 */
@@ -212,33 +218,137 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** 多條介面候選合併成一條：state_fields 兩邊都是物件就淺合併（後蓋前），否則後者整個蓋掉；
- * source_uids 依序串聯，raw 以空行接起來方便人審逐條核對來源。欄位規則同樣淺合併（後蓋前）。
- * 骨架與回報指引都是一整份完整文字，合併沒有意義——各取最後一個非空的（與 state_fields
- * 後蓋前同向）。零條回傳 null。 */
-export function mergeRefactorInterfaces(interfaces: RefactorInterface[]): RefactorInterface | null {
-  if (interfaces.length === 0) return null;
-  let stateFields: unknown;
-  let shell = "";
-  let guide = "";
-  const rules: Record<string, unknown> = {};
-  for (const candidate of interfaces) {
-    stateFields =
-      isPlainObject(stateFields) && isPlainObject(candidate.state_fields)
-        ? { ...stateFields, ...candidate.state_fields }
-        : candidate.state_fields;
-    if (candidate.shell) shell = candidate.shell;
-    if (candidate.guide) guide = candidate.guide;
-    Object.assign(rules, candidate.rules ?? {});
+// 候選的排序鍵：最小的來源 uid（數字比大小，非數字排後面），同 uid 再比原文——平行展開完成的
+// 先後不影響合併結果。
+function interfaceOrderKey(candidate: RefactorInterface): [number, string] {
+  const uids = candidate.source_uids.map(Number).filter((uid) => Number.isFinite(uid));
+  return [uids.length > 0 ? Math.min(...uids) : Number.POSITIVE_INFINITY, candidate.raw];
+}
+
+// 遞迴合併兩棵狀態樹：不同葉子都留下；同一路徑兩邊都有值時必須相同，否則回報衝突路徑
+function mergeStateTree(
+  into: Record<string, unknown>,
+  from: Record<string, unknown>,
+  prefix: string,
+): string | null {
+  for (const [key, value] of Object.entries(from)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (!(key in into)) {
+      into[key] = isPlainObject(value) ? structuredClone(value) : value;
+      continue;
+    }
+    const existing = into[key];
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      const conflict = mergeStateTree(existing, value, path);
+      if (conflict) return conflict;
+    } else if (JSON.stringify(existing) !== JSON.stringify(value)) {
+      return path;
+    }
   }
+  return null;
+}
+
+function leafAt(tree: Record<string, unknown>, path: string): boolean {
+  let node: unknown = tree;
+  for (const key of path.split(".")) {
+    if (!isPlainObject(node) || !(key in node)) return false;
+    node = node[key];
+  }
+  return !isPlainObject(node) && !Array.isArray(node);
+}
+
+/** 多條介面候選合併成一條（每條都消耗自己的來源，所以每條的格式、欄位與指引都要留著）：
+ * - 先依最小來源 uid 穩定排序，平行完成的順序不影響結果；
+ * - 狀態樹遞迴合併、保留不同葉子；欄位規則依路徑合併；同一路徑兩份的值或規則不同＝衝突；
+ * - 骨架與回報指引各自去重（trim 後全文相同算同一份）後依序串接；
+ * - 合併後每份骨架的狀態路徑佔位符都要對到合併後的葉子與規則，對不上也算衝突。
+ * - 外框條目（frames）最後照各自的容器順序組殼（composeFrames）：套上的外框來源併進 source_uids，
+ *   組不起來的列在 failedFrames，呼叫端保留來源、記成失敗；外框本身不產欄位、規則與指引。
+ * 衝突時 interface 為 null、conflict 帶出衝突路徑：呼叫端把參與合併的條目記成失敗，來源不被消耗。
+ * 零條回傳 interface=null、conflict=null。 */
+export function mergeRefactorInterfaces(
+  interfaces: RefactorInterface[],
+  frames: RefactorFrameCandidate[] = [],
+): {
+  interface: RefactorInterface | null;
+  conflict: string | null;
+  failedFrames: string[];
+} {
+  const allFramesFailed = frames.map((frame) => frame.uid);
+  if (interfaces.length === 0) return { interface: null, conflict: null, failedFrames: allFramesFailed };
+  const ordered = [...interfaces].sort((a, b) => {
+    const [uidA, rawA] = interfaceOrderKey(a);
+    const [uidB, rawB] = interfaceOrderKey(b);
+    if (uidA !== uidB) return uidA < uidB ? -1 : 1;
+    return rawA < rawB ? -1 : rawA > rawB ? 1 : 0;
+  });
+  const stateFields: Record<string, unknown> = {};
+  const shells: string[] = [];
+  const guides: string[] = [];
+  const rules: Record<string, unknown> = {};
+  for (const candidate of ordered) {
+    if (!isPlainObject(candidate.state_fields)) {
+      return { interface: null, conflict: "STATE", failedFrames: allFramesFailed };
+    }
+    const conflict = mergeStateTree(stateFields, candidate.state_fields, "");
+    if (conflict) return { interface: null, conflict, failedFrames: allFramesFailed };
+    for (const [path, rule] of Object.entries(candidate.rules ?? {})) {
+      if (path in rules && JSON.stringify(rules[path]) !== JSON.stringify(rule)) {
+        return { interface: null, conflict: path, failedFrames: allFramesFailed };
+      }
+      rules[path] = rule;
+    }
+    const shell = candidate.shell?.trim();
+    if (shell && !shells.includes(shell)) shells.push(shell);
+    const guide = candidate.guide?.trim();
+    if (guide && !guides.includes(guide)) guides.push(guide);
+  }
+  for (const shell of shells) {
+    for (const match of shell.matchAll(/\{\{([^{}\n]+)\}\}/g)) {
+      if (classifyPlaceholder(match[1], (path) => leafAt(stateFields, path)) !== "path") continue;
+      const path = match[1].trim();
+      if (!leafAt(stateFields, path) || !(path in rules)) {
+        return { interface: null, conflict: path, failedFrames: allFramesFailed };
+      }
+    }
+  }
+  const framed = composeFrames(shells.join("\n"), shells.length > 0 ? frames : []);
+  const failedFrames = shells.length > 0 ? framed.failed : allFramesFailed;
   return {
-    state_fields: stateFields,
-    source_uids: interfaces.flatMap((candidate) => candidate.source_uids),
-    raw: interfaces.map((candidate) => candidate.raw).join("\n\n"),
-    ...(shell ? { shell } : {}),
-    ...(Object.keys(rules).length > 0 ? { rules } : {}),
-    ...(guide ? { guide } : {}),
+    interface: {
+      state_fields: stateFields,
+      source_uids: [...ordered.flatMap((candidate) => candidate.source_uids), ...framed.applied],
+      raw: ordered.map((candidate) => candidate.raw).join("\n\n"),
+      ...(shells.length > 0 ? { shell: framed.shell } : {}),
+      ...(Object.keys(rules).length > 0 ? { rules } : {}),
+      ...(guides.length > 0 ? { guide: guides.join("\n\n") } : {}),
+    } as RefactorInterface,
+    conflict: null,
+    failedFrames,
   };
+}
+
+/** 展開任務的來源 uid：人物是他名下的條目，拆組是各段落所在條目，其餘是任務本身那條。 */
+export function refactorTaskUids(
+  task:
+    | { kind: "person"; item: { uids: string[] } }
+    | { kind: "group"; group: { spans: string[] } }
+    | { kind: "absorb" | "statusbar" | "interface"; uid: string },
+): string[] {
+  if (task.kind === "person") return task.item.uids;
+  if (task.kind === "group") return task.group.spans.map((span) => /^\d+/.exec(span)?.[0] ?? "").filter(Boolean);
+  return [task.uid];
+}
+
+/** 要保留的來源 uid：沒有成功完成的任務（失敗、取消時正在跑、取消後沒發出）所用的來源，同一條來源
+ * 就算有別的任務成功也照樣保留；再加上呼叫端另外判定要保留的（例如介面合併衝突）。去重排序。 */
+export function unfinishedSourceUids(
+  tasks: { uids: string[]; succeeded: boolean }[],
+  extra: string[] = [],
+): string[] {
+  const uids = new Set(extra);
+  for (const task of tasks) if (!task.succeeded) for (const uid of task.uids) uids.add(uid);
+  return [...uids].sort();
 }
 
 /** uid → 列出這個 uid 當來源的人名清單；判斷一條來源條目是「專屬」還是「共用」的依據
@@ -311,21 +421,27 @@ export function buildRefactorPersonPlan(
 export function assembleRefactorOutcome(parts: {
   characters: RefactorCharacter[];
   interfaces: RefactorInterface[];
+  /** 確認為外框的條目（見 refactor-frame.ts） */
+  frames?: RefactorFrameCandidate[];
   entries: RefactorNewEntry[];
   dropped?: RefactorDroppedEntry[];
   unabsorbed?: RefactorUnabsorbedItem[];
   audit?: RefactorAuditItem[];
   mode?: string;
+  preserveSourceUids?: string[];
 }): RefactorOutcome {
   return {
     characters: parts.characters,
-    interface: mergeRefactorInterfaces(parts.interfaces),
+    interface: mergeRefactorInterfaces(parts.interfaces, parts.frames ?? []).interface,
     entries: parts.entries,
     mechanisms: [],
     deletable_shared_uids: [],
     dropped: parts.dropped ?? [],
     unabsorbed: parts.unabsorbed ?? [],
     audit: parts.audit ?? [],
+    ...(parts.preserveSourceUids && parts.preserveSourceUids.length > 0
+      ? { preserve_source_uids: [...new Set(parts.preserveSourceUids)].sort() }
+      : {}),
     ...(parts.mode ? { mode: parts.mode } : {}),
   };
 }
@@ -498,6 +614,9 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
   const mode = readString(raw, "mode").trim().toLowerCase();
   if (mode === "interface" || mode === "characters") outcome.mode = mode;
   else if (mode !== "") throw invalid();
+  // 保留來源清單：產出時有部分失敗或沒跑完的來源，匯出再匯入也要留著，套用才不會刪掉它們
+  const preserve = readStringArray(raw, "preserve_source_uids");
+  if (preserve.length > 0) outcome.preserve_source_uids = preserve;
   // 全區皆空＝這檔案沒有任何內容，多半根本不是重構產物；dropped／unabsorbed／audit 有其一
   // 仍算合法產物——純介面卡選 characters 的 dropped-only 匯出要能讀回重玩（套用落 mode）。
   const empty =

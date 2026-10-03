@@ -83,6 +83,7 @@ describe("WorldEditor", () => {
           convertColor="#e07a5f"
           onEntryConverted={async () => {}}
           onRefactorApplied={async () => {}}
+          isTurnRunning={() => false}
         />,
       );
     });

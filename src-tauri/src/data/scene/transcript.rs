@@ -78,6 +78,64 @@ pub fn append_transcript(
     Ok(())
 }
 
+/// 貼開場白之前這一幕逐字稿與 state.json 的原始位元組。逐字稿是直接 append，失敗時可能已留下半行，
+/// 呼叫端靠它寫回並確認回到原樣，才能當成「什麼都沒貼上」。
+pub struct OpeningCheckpoint {
+    transcript_path: PathBuf,
+    transcript: Option<Vec<u8>>,
+    state_path: PathBuf,
+    state: Vec<u8>,
+}
+
+fn read_optional(path: &Path) -> DataResult<Option<Vec<u8>>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub fn opening_checkpoint(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+) -> DataResult<OpeningCheckpoint> {
+    let transcript_path = transcript_path(root, world_id, scene)?;
+    let state_path = world_dir(root, world_id)?.join("state.json");
+    Ok(OpeningCheckpoint {
+        transcript: read_optional(&transcript_path)?,
+        state: fs::read(&state_path)?,
+        transcript_path,
+        state_path,
+    })
+}
+
+impl OpeningCheckpoint {
+    /// 不一樣的寫回去（原本沒有逐字稿就刪掉），再讀回比對；兩份都回到原樣才回 true。
+    pub fn restore(&self) -> bool {
+        use super::super::world_file::{commit_world_remove, commit_world_write};
+        let transcript_back = match read_optional(&self.transcript_path) {
+            Ok(now) if now == self.transcript => true,
+            _ => {
+                let written = match &self.transcript {
+                    Some(bytes) => commit_world_write(&self.transcript_path, bytes),
+                    None => commit_world_remove(&self.transcript_path),
+                };
+                written.is_ok()
+                    && read_optional(&self.transcript_path).is_ok_and(|now| now == self.transcript)
+            }
+        };
+        let state_back = match fs::read(&self.state_path) {
+            Ok(now) if now == self.state => true,
+            _ => {
+                commit_world_write(&self.state_path, &self.state).is_ok()
+                    && fs::read(&self.state_path).is_ok_and(|now| now == self.state)
+            }
+        };
+        transcript_back && state_back
+    }
+}
+
 /// 開場白也要存成快照，收回時檯面才能回到貼上前的最後一句；狀態區塊走與 GM 回覆同一條
 /// 本地權威（mechanism::apply_block），增量桌的數值一開場就是本機在算。
 pub fn append_opening(

@@ -1,5 +1,6 @@
 mod context;
 mod expand;
+mod frame;
 mod parse_common;
 mod prompt_common;
 mod result_parse;
@@ -21,7 +22,8 @@ mod survey_tests;
 mod types_tests;
 
 pub use context::{assemble_card_context, entry_full_text, prescan_worldbook, segment_spans};
-pub use expand::{expand_messages, person_expand_messages};
+pub use expand::{expand_messages, person_expand_messages, SPANS_EXPAND_KIND};
+pub use frame::{frame_candidate_tags, RefactorFrameCandidate};
 pub use result_parse::{
     expand_span_placeholders, parse_absorb, parse_expand, parse_group, parse_person_expand,
 };

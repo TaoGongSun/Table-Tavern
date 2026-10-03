@@ -1,5 +1,5 @@
 use crate::data::CharacterMeta;
-use crate::{data, data_root, import, receipts, transport};
+use crate::{data, data_root, import, transport};
 
 #[tauri::command]
 pub(crate) fn list_worlds(app: tauri::AppHandle) -> Result<Vec<data::WorldMeta>, String> {
@@ -133,27 +133,30 @@ pub(crate) fn world_has_state_bar(app: tauri::AppHandle, world_id: String) -> Re
     data::world_has_state_bar(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
+/// 整段持整桌獨占（排隊等在途寫入放開）：快照、匯入、記帳之間不讓別的寫入插進來。
 #[tauri::command]
-pub(crate) fn import_worldbook(
+pub(crate) async fn import_worldbook(
     app: tauri::AppHandle,
     world_id: String,
     data: Vec<u8>,
     label: String,
-) -> Result<data::WorldbookImport, String> {
-    let json_text = import::worldbook_json(&data).map_err(|error| error.to_string())?;
-    let _permit = data::world_write_permit(&world_id)?;
+) -> Result<WorldbookImportResult, String> {
+    let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
-    let before = receipts::snapshot(&root, &world_id);
-    let result =
-        data::import_worldbook(&root, &world_id, &json_text).map_err(|error| error.to_string())?;
-    import::save_world_card(&root, &world_id, &data);
-    import::save_gm_image(&root, &world_id, &data);
-    if let Ok(book) = serde_json::from_str(&json_text) {
-        import::import_mechanism(&root, &world_id, &book);
-    }
-    import::import_card_extension(&root, &world_id, &label, &data);
-    receipts::record_worldbook_import(&root, &world_id, &label, before);
-    Ok(result)
+    let imported = import::import_worldbook_file(&root, &world_id, &data, &label, &held)
+        .map_err(|error| error.to_string())?;
+    Ok(WorldbookImportResult {
+        book: imported.value,
+        source: imported.source,
+    })
+}
+
+/// 世界書匯入的結果：收編數字＋這次匯入的原檔識別（貼開場白時帶回，開場白才掛得到這筆匯入）。
+#[derive(serde::Serialize)]
+pub(crate) struct WorldbookImportResult {
+    #[serde(flatten)]
+    book: data::WorldbookImport,
+    source: Option<String>,
 }
 
 /// 選項要先換成當桌實名，前端貼入逐字稿時才不會留下卡片巨集。

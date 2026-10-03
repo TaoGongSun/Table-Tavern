@@ -24,6 +24,7 @@ fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     apply(
         root.path(),
@@ -89,6 +90,7 @@ fn apply_ignores_invalid_mode_values() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     apply(
         root.path(),
@@ -178,6 +180,7 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -215,7 +218,12 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         .iter()
         .any(|entry| entry.uid == source_uid));
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     let state_after = data::read_state(root.path(), &world_id).unwrap();
     assert_eq!(state_after.state.tree, before_tree);
     let source_entry_after = data::read_worldbook(root.path(), &world_id)
@@ -267,6 +275,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -431,6 +440,7 @@ fn apply_rejects_conflicting_interface_before_any_write() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: vec![0],
@@ -506,6 +516,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -557,6 +568,7 @@ fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -624,6 +636,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -675,6 +688,7 @@ fn apply_interface_without_shell_creates_no_shell_file() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -720,6 +734,7 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -734,7 +749,12 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
         .unwrap()
         .is_some());
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(data::read_interface_shell(root.path(), &world_id)
         .unwrap()
         .is_none());

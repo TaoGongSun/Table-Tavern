@@ -51,6 +51,7 @@ fn empty_survey() -> RefactorSurveyOutcome {
         persons: Vec::new(),
         interface_uids: Vec::new(),
         playable_interface_uids: Vec::new(),
+        frame_candidates: Vec::new(),
         verdicts: Vec::new(),
         splits: Vec::new(),
         groups: Vec::new(),
@@ -161,6 +162,7 @@ fn assemble_local_group_route_without_span_in_declaration_falls_to_leftover() {
         persons: Vec::new(),
         interface_uids: Vec::new(),
         playable_interface_uids: Vec::new(),
+        frame_candidates: Vec::new(),
         verdicts: vec![verdict(uid, "split")],
         splits: vec![
             RefactorSpanRoute {

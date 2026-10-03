@@ -25,13 +25,14 @@ pub use config::{
 };
 pub use format::{open_world, read_world_readonly, restore_world_backup, OpenWorld, ReadonlyWorld};
 pub(crate) use paths::{
-    character_path, gallery_dir, gm_image_path, import_receipts_path, interface_shell_path,
-    lanes_path, mechanism_log_path, validate_single_line, world_card_path,
+    character_path, gallery_dir, gm_image_path, import_pending_path, import_receipts_path,
+    import_source_file_path, interface_shell_path, lanes_path, mechanism_log_path,
+    validate_single_line, world_card_path,
 };
 pub(crate) use scene::{appeared_titles, name_matches, split_present_names};
 pub use scene::{
     append_opening, append_transcript, begin_next_scene, export_scene_markdown,
-    export_transcript_markdown, fork_scene, pop_transcript, read_transcript,
+    export_transcript_markdown, fork_scene, opening_checkpoint, pop_transcript, read_transcript,
     remove_transcript_event, replace_scene_summary, revert_scene, scene_label,
     set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
     CARD_ARRIVAL_PREFIX,
@@ -42,17 +43,23 @@ pub use state::{
     Mechanism, StateNode, TableState, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState,
 };
 pub use world::{
-    create_sample_world, create_world, delete_world, list_worlds, read_interface_shell,
-    read_refactor_outcome, read_world_md, reclaim_world_if_empty, rename_world,
-    world_has_state_bar, write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
+    create_reset_world, create_sample_world, create_world, delete_world, list_worlds,
+    read_interface_shell, read_refactor_outcome, read_world_md, reclaim_world_if_empty,
+    rename_world, world_has_state_bar, write_interface_shell, write_refactor_outcome,
+    write_world_md, WorldMeta,
 };
-#[cfg(test)]
-pub(crate) use world_file::RemoveFailGuard;
 pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
+#[cfg(test)]
+pub(crate) use world_file::{write_hook, AppendFailGuard, RemoveFailGuard, RenameFailGuard};
+#[cfg(test)]
+pub(crate) use world_lock::test_exclusive;
 pub(crate) use world_lock::{
     install_guarded, refuse_if_updating, update_gate_raised, UpdateGateClosed,
 };
-pub use world_lock::{world_write_permit, world_write_permit_async};
+pub use world_lock::{
+    try_world_exclusive, world_exclusive_async, world_write_permit, world_write_permit_async,
+    WorldExclusive,
+};
 pub use worldbook::{
     character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
     import_worldbook, read_worldbook, reorder_worldbook_entries, upsert_worldbook_entry,
@@ -68,6 +75,7 @@ pub(crate) use format::{
     delete_world_backup, discover_ids, list_world_backups, live_dir, loose_name, read_format,
     BackupList, FormatVersion, CURRENT_FORMAT,
 };
+pub(crate) use format::{remove_reset_build_root, replace_world_from_build, reset_build_root};
 #[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]
