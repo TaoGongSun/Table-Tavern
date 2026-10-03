@@ -77,19 +77,18 @@ pub(crate) fn delete_character(
 }
 
 #[tauri::command]
-pub(crate) fn import_character(
+pub(crate) async fn import_character(
     app: tauri::AppHandle,
     world_id: String,
     data: Vec<u8>,
     color: String,
 ) -> Result<CharacterImport, String> {
-    let _permit = data::world_write_permit(&world_id)?;
+    // 整段持整桌獨占：快照、匯入、記帳之間不讓別的寫入插進來
+    let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
-    let before = receipts::snapshot(&root, &world_id);
     let entries_before = data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len());
-    let meta = import::import_character(&root, &world_id, &data, &color)
+    let imported_card = import::import_character_file(&root, &world_id, &data, &color, &held)
         .map_err(|error| error.to_string())?;
-    receipts::record_character_import(&root, &world_id, &meta.id, &meta.name, before);
     // 卡片隨身的世界書條目也要跟世界書路徑一樣回報進來幾條、重複跳過幾條
     let imported =
         data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len() - entries_before);
@@ -97,16 +96,18 @@ pub(crate) fn import_character(
         .book_entries
         .saturating_sub(imported);
     Ok(CharacterImport {
-        meta,
+        meta: imported_card.value,
         book: data::WorldbookImport { imported, skipped },
+        source: imported_card.source,
     })
 }
 
-/// 角色卡匯入的完整結果：新角色本體＋卡片隨身世界書的收編數字。
+/// 角色卡匯入的完整結果：新角色本體＋卡片隨身世界書的收編數字＋這次匯入的原檔識別（貼開場白時帶回）。
 #[derive(serde::Serialize)]
 pub(crate) struct CharacterImport {
     meta: CharacterMeta,
     book: data::WorldbookImport,
+    source: Option<String>,
 }
 
 #[tauri::command]
@@ -125,23 +126,24 @@ pub(crate) fn list_import_receipts(
 
 /// 逆向最後一筆匯入收據：刪角色、刪未經玩家修改的世界書條目、退回機制寫入與桌名。
 #[tauri::command]
-pub(crate) fn undo_last_import(
+pub(crate) async fn undo_last_import(
     app: tauri::AppHandle,
     world_id: String,
 ) -> Result<receipts::UndoReport, String> {
-    let _permit = data::world_write_permit(&world_id)?;
-    receipts::undo_last_import(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+    let held = data::world_exclusive_async(&world_id).await?;
+    receipts::undo_last_import(&data_root(&app)?, &world_id, &held)
+        .map_err(|error| error.to_string())
 }
 
 /// adoptImportName 改名成功後呼叫：把舊桌名補進最後一筆收據，undo 才能把桌名退回去。
 #[tauri::command]
-pub(crate) fn record_import_rename(
+pub(crate) async fn record_import_rename(
     app: tauri::AppHandle,
     world_id: String,
     old_name: String,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit(&world_id)?;
-    receipts::record_last_import_rename(&data_root(&app)?, &world_id, &old_name);
+    let held = data::world_exclusive_async(&world_id).await?;
+    receipts::record_last_import_rename(&data_root(&app)?, &world_id, &old_name, &held);
     Ok(())
 }
 

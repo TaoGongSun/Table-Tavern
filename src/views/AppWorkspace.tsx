@@ -53,11 +53,13 @@ interface AppWorkspaceProps {
   onRenameTable: (raw: string) => void;
   onGoLobby: () => void;
   onUndoImport: () => void;
+  /** 匯入或撤銷匯入正排在進行中的回合後面 */
+  turnWaiting: boolean;
   onOpenSettings: (tab: SettingsTab) => void;
   onPreference: (key: string, value: unknown) => Promise<void>;
   onConfigSaved: (config: AppConfig) => void;
   onEntryConverted: () => Promise<void>;
-  onRefactorApplied: () => Promise<void>;
+  onRefactorApplied: (live: () => boolean) => Promise<void>;
   gate: TableGate;
   readOnlyNotice: { appVersion: string | null; backupAvailable: boolean } | null;
   repairNotice: RepairNotice | null;
@@ -91,6 +93,7 @@ export function AppWorkspace({
   onRenameTable,
   onGoLobby,
   onUndoImport,
+  turnWaiting,
   onOpenSettings,
   onPreference,
   onConfigSaved,
@@ -217,6 +220,7 @@ export function AppWorkspace({
         onImportFile={(file) => void imports.importFile(file)}
         canUndoImport={imports.receipts.length > 0 && !chattedSinceImport}
         onUndoImport={() => void onUndoImport()}
+        turnWaiting={turnWaiting}
       />
 
       <main className="chat-main">
@@ -254,8 +258,10 @@ export function AppWorkspace({
                 onUseBackup={onUseBackup}
               />
             )}
+            {/* 介面由 App 接管的桌不顯示頂部狀態欄：狀態在卡片畫面裡，模型也不再寫 state 圍欄 */}
             {gate === "play" &&
               mainView === null &&
+              !cardInterface.interfaceTakeover &&
               (hasStateBar || Object.keys(tableState.tree).length > 0) && (
               <StateBar
                 fields={tableState.fields}

@@ -1,7 +1,7 @@
 //! 桌目錄的唯一寫入口。資料層與 command 層要改桌裡的檔，都走這裡；
 //! 寫入當下再查一次格式標記。掃描測試會擋掉這支以外的直接寫檔。
 #[cfg(test)]
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 #[cfg(unix)]
 use std::fs::File;
 use std::fs::{self, OpenOptions};
@@ -33,8 +33,11 @@ fn rename_error(message: String) -> DataResult<()> {
 
 #[cfg(test)]
 thread_local! {
+    static RENAME_SKIPS: Cell<u32> = const { Cell::new(0) };
     static RENAME_FAILS: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAILS: Cell<u32> = const { Cell::new(0) };
+    static APPEND_PARTIAL_FAILS: Cell<u32> = const { Cell::new(0) };
+    static REMOVE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -43,6 +46,12 @@ pub(crate) struct RenameFailGuard;
 #[cfg(test)]
 impl RenameFailGuard {
     pub(crate) fn fail(times: u32) -> Self {
+        Self::fail_after(0, times)
+    }
+
+    /// 先放行 `skip` 次改名，再讓接下來 `times` 次失敗：用來打在交換流程的指定階段。
+    pub(crate) fn fail_after(skip: u32, times: u32) -> Self {
+        RENAME_SKIPS.with(|cell| cell.set(skip));
         RENAME_FAILS.with(|cell| cell.set(times));
         Self
     }
@@ -51,6 +60,7 @@ impl RenameFailGuard {
 #[cfg(test)]
 impl Drop for RenameFailGuard {
     fn drop(&mut self) {
+        RENAME_SKIPS.with(|cell| cell.set(0));
         RENAME_FAILS.with(|cell| cell.set(0));
     }
 }
@@ -65,19 +75,45 @@ impl RemoveFailGuard {
         REMOVE_FAILS.with(|cell| cell.set(times));
         Self
     }
+
+    /// 只讓路徑以 `suffix` 結尾的刪除失敗：打在流程裡某個特定檔或目錄，不受途中其他刪除的次數影響。
+    pub(crate) fn fail_ending(suffix: &str, times: u32) -> Self {
+        REMOVE_FAIL_MATCH.with(|cell| *cell.borrow_mut() = Some(suffix.to_owned()));
+        Self::fail(times)
+    }
 }
 
 #[cfg(test)]
 impl Drop for RemoveFailGuard {
     fn drop(&mut self) {
         REMOVE_FAILS.with(|cell| cell.set(0));
+        REMOVE_FAIL_MATCH.with(|cell| *cell.borrow_mut() = None);
     }
 }
 
-fn injected_remove_failure() -> bool {
+/// 下幾次追加只寫進前半段就失敗，用來測「部分追加後失敗」的回復。
+#[cfg(test)]
+pub(crate) struct AppendFailGuard;
+
+#[cfg(test)]
+impl AppendFailGuard {
+    pub(crate) fn partial(times: u32) -> Self {
+        APPEND_PARTIAL_FAILS.with(|cell| cell.set(times));
+        Self
+    }
+}
+
+#[cfg(test)]
+impl Drop for AppendFailGuard {
+    fn drop(&mut self) {
+        APPEND_PARTIAL_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+fn injected_partial_append() -> bool {
     #[cfg(test)]
     {
-        REMOVE_FAILS.with(|cell| {
+        APPEND_PARTIAL_FAILS.with(|cell| {
             let left = cell.get();
             if left == 0 {
                 return false;
@@ -92,9 +128,85 @@ fn injected_remove_failure() -> bool {
     }
 }
 
+/// 測試用寫入控制點：指定路徑的每次寫入／追加在動檔前呼叫，測試可以在資料寫入點停住一方，
+/// 驗另一方的寫入進不來。全域的，用到它的測試要彼此排隊。
+#[cfg(test)]
+pub(crate) mod write_hook {
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+
+    type Hook = Arc<dyn Fn() + Send + Sync>;
+
+    static HOOK: Mutex<Option<(PathBuf, Hook)>> = Mutex::new(None);
+
+    pub(crate) struct HookGuard;
+
+    impl Drop for HookGuard {
+        fn drop(&mut self) {
+            *HOOK.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        }
+    }
+
+    pub(crate) fn install(path: PathBuf, hook: impl Fn() + Send + Sync + 'static) -> HookGuard {
+        *HOOK.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            Some((path, Arc::new(hook)));
+        HookGuard
+    }
+
+    pub(super) fn fire(path: &Path) {
+        let hook = HOOK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .filter(|(target, _)| target == path)
+            .map(|(_, hook)| hook.clone());
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
+}
+
+fn injected_remove_failure(path: &Path) -> bool {
+    #[cfg(test)]
+    {
+        let targeted = REMOVE_FAIL_MATCH.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .is_none_or(|suffix| path.to_string_lossy().ends_with(suffix.as_str()))
+        });
+        if !targeted {
+            return false;
+        }
+        REMOVE_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        })
+    }
+    #[cfg(not(test))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 fn injected_rename_failure() -> bool {
     #[cfg(test)]
     {
+        let skipped = RENAME_SKIPS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        });
+        if skipped {
+            return false;
+        }
         RENAME_FAILS.with(|cell| {
             let left = cell.get();
             if left == 0 {
@@ -197,7 +309,7 @@ pub(crate) fn remove_path_raw(path: &Path) -> DataResult<()> {
     if !path.exists() {
         return Ok(());
     }
-    if injected_remove_failure() {
+    if injected_remove_failure(path) {
         return Err(UiMsg::RemoveFailed {
             path: path.display().to_string(),
         }
@@ -291,16 +403,24 @@ pub(crate) fn ensure_writable(root: &Path, world_id: &str) -> DataResult<()> {
 pub(crate) fn commit_world_write(path: &Path, bytes: &[u8]) -> DataResult<()> {
     let (root, id) = locate_world(path)?;
     ensure_writable(&root, &id)?;
+    #[cfg(test)]
+    write_hook::fire(path);
     write_bytes_raw(path, bytes)
 }
 
 pub(crate) fn commit_world_append(path: &Path, bytes: &[u8]) -> DataResult<()> {
     let (root, id) = locate_world(path)?;
     ensure_writable(&root, &id)?;
+    #[cfg(test)]
+    write_hook::fire(path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    if injected_partial_append() {
+        file.write_all(&bytes[..bytes.len() / 2])?;
+        return Err(std::io::Error::other("injected partial append").into());
+    }
     file.write_all(bytes)?;
     Ok(())
 }
@@ -338,6 +458,7 @@ pub(crate) fn delete_world_tree(root: &Path, world_id: &str) -> DataResult<()> {
         format!(".tt-newer-{world_id}"),
         format!(".tt-op-{world_id}.json"),
         format!(".tt-op-{world_id}.json.tmp"),
+        format!(".tt-reset-{world_id}"),
     ] {
         remove_path_raw(&worlds.join(name))?;
     }

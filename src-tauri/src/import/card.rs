@@ -96,13 +96,8 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     probe
 }
 
-/// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
-pub fn import_character(
-    root: &Path,
-    world_id: &str,
-    bytes: &[u8],
-    color: &str,
-) -> DataResult<CharacterMeta> {
+/// 角色卡檔解得開、有合法名字：回（卡 JSON、原檔副檔名、名字）。匯入在動任何資料前先過這關。
+fn parse_character(bytes: &[u8]) -> DataResult<(Value, &'static str, String)> {
     let (json_bytes, raw_extension) = if bytes.starts_with(PNG_MAGIC) {
         (decode_png_character(bytes)?, "png")
     } else {
@@ -123,6 +118,26 @@ pub fn import_character(
         .trim()
         .to_owned();
     data::validate_single_line("name", &name)?;
+    Ok((value, raw_extension, name))
+}
+
+/// 只驗卡檔（不寫任何東西）：匯入本體在寫「未完成」標記前先驗，壞檔不會留下標記。
+pub fn check_character_bytes(bytes: &[u8]) -> DataResult<()> {
+    parse_character(bytes).map(|_| ())
+}
+
+/// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
+pub fn import_character(
+    root: &Path,
+    world_id: &str,
+    bytes: &[u8],
+    color: &str,
+) -> DataResult<CharacterMeta> {
+    let (value, raw_extension, name) = parse_character(bytes)?;
+    let card_data = value
+        .get("data")
+        .filter(|data| data.is_object())
+        .unwrap_or(&value);
 
     let id = data::new_id();
     let md_path = data::character_path(root, world_id, &id)?;

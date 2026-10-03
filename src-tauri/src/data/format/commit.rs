@@ -105,6 +105,16 @@ fn trash_dir(root: &Path, id: &str) -> PathBuf {
 pub(crate) fn newer_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-newer-{id}"))
 }
+/// 重新重構時重建整桌用的臨時資料根：worlds/.tt-reset-<id>/worlds/<id>。不是側車名稱，桌清單看不到；
+/// 重建完才搬成 staging 交換（replace_world_from_build），失敗或殘留都整個刪掉，原桌不受影響。
+pub(crate) fn reset_build_root(root: &Path, id: &str) -> PathBuf {
+    worlds_dir(root).join(format!(".tt-reset-{id}"))
+}
+
+/// 刪掉重設用的臨時根（不存在就當成功）。
+pub(crate) fn remove_reset_build_root(root: &Path, id: &str) -> DataResult<()> {
+    world_file::remove_path_raw(&reset_build_root(root, id))
+}
 fn log_path(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-op-{id}.json"))
 }
@@ -149,6 +159,12 @@ fn parse_log(text: &str) -> DataResult<OpLog> {
         "restore" => {
             if log.had_newer.is_none() {
                 return Err(op_log_invalid("restore log is missing fields"));
+            }
+        }
+        // 重新重構的整桌交換：只有 swap／cleanup 兩階段，不帶額外欄位
+        "reset" => {
+            if log.stage == "build" {
+                return Err(op_log_invalid("reset log has no build stage"));
             }
         }
         other => return Err(op_log_invalid(&format!("unknown op {other:?}"))),
@@ -197,6 +213,8 @@ enum Action {
     RollbackRestore,
     /// P 的格式 ≤ 本版才 P→I 並進 cleanup；否則表外。
     ContinueRestore,
+    /// reset：S 驗過則 S→I 並進 cleanup；否則 T→I、刪 S、刪日誌（退回原桌）。
+    ContinueReset,
 }
 
 fn match_action(log: &OpLog, here: Presence) -> Option<Action> {
@@ -204,7 +222,25 @@ fn match_action(log: &OpLog, here: Presence) -> Option<Action> {
     let n = flag(log.had_newer);
     let migrate = log.op == "migrate";
     let restore = log.op == "restore";
+    let reset = log.op == "reset";
     let stage = log.stage.as_str();
+
+    // reset（重新重構清回原卡）：S 是已驗過的重建桌，交換＝I→T、S→I，備份 P 不動。
+    if reset && stage == "swap" && here.i && here.s && !here.t {
+        return Some(Action::DropStagingAndLog);
+    }
+    if reset && stage == "swap" && !here.i && here.s && here.t {
+        return Some(Action::ContinueReset);
+    }
+    if reset && stage == "swap" && here.i && !here.s && here.t {
+        return Some(Action::EnterCleanup);
+    }
+    if reset && stage == "swap" && here.i && !here.s && !here.t {
+        return Some(Action::DropLog);
+    }
+    if reset && stage == "cleanup" && here.i && !here.s {
+        return Some(Action::FinishCleanup);
+    }
 
     if migrate && stage == "build" && here.i && eq_flag(here.p, h) && !here.t {
         return Some(Action::DropStagingAndLog);
@@ -366,6 +402,17 @@ fn apply_action(root: &Path, id: &str, log: &OpLog) -> Result<(), StepError> {
         Action::RollbackRestore => {
             rename_path(&trash_dir(root, id), &newer_dir(root, id))?;
             world_file::remove_path_raw(&log_path(root, id))?;
+        }
+        Action::ContinueReset => {
+            let target = marker::current_format();
+            if staging_verified(&staging_dir(root, id), target) {
+                rename_path(&staging_dir(root, id), &live_dir(root, id))?;
+                enter_cleanup(root, id, log)?;
+            } else {
+                rename_path(&trash_dir(root, id), &live_dir(root, id))?;
+                world_file::remove_path_raw(&staging_dir(root, id))?;
+                world_file::remove_path_raw(&log_path(root, id))?;
+            }
         }
         Action::ContinueRestore => {
             if !marker::version_playable(&pre_dir(root, id)) {
@@ -611,6 +658,48 @@ fn run_migrate(root: &Path, id: &str, from: u64) -> DataResult<()> {
     Ok(())
 }
 
+/// 重新重構：用 reset_build_root 裡已完整重建的桌換掉原桌。先驗重建桌讀得完整、搬成 staging，
+/// 寫日誌後 I→T、S→I，最後刪 T 與日誌。交換前任何一步失敗都退回原桌、回錯；交換中斷（當機）由
+/// 下次開桌照恢復表接續或退回。呼叫端持有這桌的寫入許可。
+pub(crate) fn replace_world_from_build(root: &Path, id: &str) -> DataResult<()> {
+    if !combo_clean(root, id) {
+        return Err(UiMsg::WorldComboDirty.into_error());
+    }
+    let built = reset_build_root(root, id).join("worlds").join(id);
+    world_reads_fully(&built)?;
+    world_file::fsync_tree(&built)?;
+    let staging = staging_dir(root, id);
+    rename_path(&built, &staging)?;
+    let log = OpLog {
+        op: "reset".to_owned(),
+        stage: "swap".to_owned(),
+        from: None,
+        to: None,
+        had_pre: None,
+        had_newer: None,
+    };
+    if let Err(error) = write_log(root, id, &log) {
+        let _ = world_file::remove_path_raw(&staging);
+        return Err(error);
+    }
+    if let Err(error) = rename_path(&live_dir(root, id), &trash_dir(root, id)) {
+        let _ = world_file::remove_path_raw(&staging);
+        let _ = world_file::remove_path_raw(&log_path(root, id));
+        return Err(error);
+    }
+    if let Err(error) = rename_path(&staging, &live_dir(root, id)) {
+        // 退回原桌；連退回都失敗就留給下次開桌照日誌接續（S 已驗過，會換成重建桌）
+        if rename_path(&trash_dir(root, id), &live_dir(root, id)).is_ok() {
+            let _ = world_file::remove_path_raw(&staging);
+            let _ = world_file::remove_path_raw(&log_path(root, id));
+        }
+        return Err(error);
+    }
+    // 已換成重建桌；清不掉的 T 與日誌留給下次開桌的 cleanup
+    let _ = enter_cleanup(root, id, &log);
+    Ok(())
+}
+
 fn run_restore(root: &Path, id: &str) -> DataResult<()> {
     let had_newer = newer_dir(root, id).exists();
     let log = OpLog {
@@ -679,6 +768,8 @@ pub fn open_world(root: &Path, world_id: &str) -> DataResult<OpenWorld> {
     let Some(_lock) = try_world_exclusive(world_id) else {
         return Ok(OpenWorld::Busy);
     };
+    // 重設交換已提交、但當時臨時根沒清掉：持獨占時順手清，清不掉下次再試
+    let _ = remove_reset_build_root(root, world_id);
     let recovered = recover_locked(root, world_id);
     finish_after_recover(root, world_id, recovered)
 }

@@ -39,7 +39,9 @@ import { useCardInterfaceController } from "./features/card-interface/useCardInt
 import { useCharacterController } from "./features/characters/useCharacterController";
 import { type ChatController, useChatController } from "./features/play/useChatController";
 import { useImportController } from "./features/import/useImportController";
+import { useOpeningPost } from "./features/import/useOpeningPost";
 import { useSceneActions } from "./features/play/useSceneActions";
+import { type TurnWaitOp, useTurnWait } from "./features/play/useTurnWait";
 import { loadBranchBindings, useTableStateController } from "./features/table-state/useTableStateController";
 import {
   GM_TARGET,
@@ -279,7 +281,6 @@ function App() {
   const cardInterface = useCardInterfaceController({
     worldId: liveWorldId,
     events: chat.events,
-    tableTree: tableState.tree,
     submitText: whenTableFree(chat.submitText),
   });
 
@@ -349,8 +350,12 @@ function App() {
     runTableOp,
     resetChatted,
     refreshState: tableState.refresh,
+    isTurnRunning: chat.isBusy,
     onError: setError,
   });
+  // 撤銷匯入與貼開場白在後端持整桌獨占，回合進行中會排隊：等待中不重複送出，並在操作的位置提示
+  const undoWait = useTurnWait(chat.isBusy, liveWorldId);
+  const openingPost = useOpeningPost({ worldId: liveWorldId, chat, imports });
 
   const tableName = worlds.find((w) => w.id === table)?.name ?? "";
   const sceneActions = useSceneActions({
@@ -650,7 +655,12 @@ function App() {
 
   // 陣容欄「撤銷上次匯入」：逆向收據清單最後一筆，逐筆倒退。
   // 一次動到角色、卡片介面、檯面、狀態樹與世界設定五個域，留在 App 當跨域協調
-  async function undoLastImport() {
+  function undoLastImport() {
+    return undoWait.run(runUndoLastImport);
+  }
+
+  // 排在回合後面的期間可能已經換桌：撤銷照樣在原桌完成，但之後每個 await 邊界 live() 為 false 就不再動現在這桌的畫面
+  async function runUndoLastImport({ live, backend }: TurnWaitOp) {
     if (imports.receipts.length === 0) return;
     setError("");
     const last = imports.receipts[imports.receipts.length - 1];
@@ -664,25 +674,37 @@ function App() {
         cancelLabel: t("dialogCancel"),
       });
       if (!accepted) return;
-      const report = await invoke<UndoReport>("undo_last_import", { worldId: table });
+      const report = await backend(() =>
+        invoke<UndoReport>("undo_last_import", { worldId: table }),
+      );
+      if (!live()) return;
       const cast = await characters.refresh();
+      if (!live()) return;
       // 發言對象指向的角色被這次復原刪掉了（不管是不是巧合）就改回 GM，不然輸入框對著空氣
       if (speaker && speaker !== GM_TARGET && !cast.some((character) => character.id === speaker)) {
         setSpeaker(GM_TARGET);
       }
       await cardInterface.refreshInterfaces(table);
+      if (!live()) return;
       // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次
       await cardInterface.refreshShell(table);
+      if (!live()) return;
       // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
       await characters.reloadGmImage();
+      if (!live()) return;
       // 貼出的開場白被一起收掉：檯面變了，重讀這一幕
       if (report.removed_opening) await chat.reload();
+      if (!live()) return;
       // 重構套用的復原會退回狀態樹與玩法標記：頂部狀態欄跟著重讀
       await tableState.refresh();
-      setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+      if (!live()) return;
+      const worldList = await invoke<WorldMeta[]>("list_worlds");
+      if (!live()) return;
+      setWorlds(worldList);
       // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
       setWorldEditorRefreshKey((key) => key + 1);
       await imports.refreshReceipts(table);
+      if (!live()) return;
       await showMessage(
         t("undoLastImportDone") +
           (report.removed_characters.length > 0
@@ -692,26 +714,18 @@ function App() {
         { title: t("undoLastImport"), okLabel: t("dialogAck") },
       );
     } catch (reason) {
-      setError(String(reason));
+      if (live()) setError(String(reason));
     }
   }
 
-  // 貼出開場白：真的落到檯面上了才收掉選擇面板（貼失敗時面板留著，玩家可改挑一則或重按）
-  async function postOpening(text: string) {
-    // 面板是舊桌跳出來的（人已換桌）就只收掉，不貼到現在這張桌
-    if (imports.openingsWorldId !== liveWorldId) {
-      imports.closeOpenings();
-      return;
-    }
-    if (await chat.postOpening(text)) imports.closeOpenings();
-  }
+  const postOpening = openingPost.post;
 
   // 「✨ 翻譯後貼出」：挑中那則已翻好就直接貼出；沒翻就先翻這一則，成功才貼出，
   // 失敗留在原地（原文仍在，原「貼出」鈕照常可按）。
   async function postTranslatedOpening(index: number) {
     if (imports.openings === null) return;
     const translated = await imports.translateOpening(index);
-    if (translated !== null) await postOpening(translated);
+    if (translated !== null) await postOpening(translated, index);
   }
 
   async function refreshAfterEntryConverted() {
@@ -719,18 +733,25 @@ function App() {
   }
 
   // AI 卡重構套用一次動到角色、玩家卡、介面殼、狀態樹與收據；這條跨域刷新刻意留在 root。
-  async function refreshAfterRefactorApplied() {
+  // live() 為 false（刷新途中換桌或世界設定已卸載）就停下，不改發言對象、不刷新原桌。
+  async function refreshAfterRefactorApplied(live: () => boolean) {
     await characters.refresh();
+    if (!live()) return;
     // 重構把原卡拆成一群 NPC：發言對象一律撥回 GM，
     // 不然玩家一開口變成在跟其中一名拆出來的角色對話，回覆完全對不上
     setSpeaker(GM_TARGET);
     // 合併升格可能把某位角色指定為玩家卡（要點 4），跟單條「轉成角色卡」的
     // asPlayer 分支一樣重讀一次，讓側欄玩家卡即時反映。
     const state = await invoke<WorldState>("read_state", { worldId: table });
+    if (!live()) return;
     await characters.reloadPlayer(state.player_card_id);
+    if (!live()) return;
     await cardInterface.refreshInterfaces(table);
+    if (!live()) return;
     await cardInterface.refreshShell(table);
+    if (!live()) return;
     await tableState.refresh();
+    if (!live()) return;
     await imports.refreshReceipts(table);
   }
 
@@ -845,7 +866,8 @@ function App() {
           tableOpBusy={tableOp.busy}
           onRenameTable={(raw) => void renameTable(table, raw)}
           onGoLobby={() => void goLobby()}
-          onUndoImport={undoLastImport}
+          onUndoImport={() => void undoLastImport()}
+          turnWaiting={imports.waitingForTurn || undoWait.waiting}
           onOpenSettings={openSettings}
           onPreference={changePreference}
           onConfigSaved={setConfig}
@@ -893,6 +915,8 @@ function App() {
         chatBusy={chat.busy}
         imports={imports}
         onPostOpening={postOpening}
+        openingPostBusy={openingPost.busy}
+        openingPostWaiting={openingPost.waiting}
         onTranslateAndPost={postTranslatedOpening}
       />
 

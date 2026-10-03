@@ -57,26 +57,34 @@ pub(crate) fn name_matches(name: &str, title: &str) -> bool {
 /// （要跑完整幕全部旁白文字），先不做，之後真的常誤判再考慮補。
 ///
 /// 結算失敗一律吞掉：換幕本身已經成功，auto_hidden 記帳不該反過來讓換幕報錯。
+///
+/// 介面由 App 接管的桌（有重構骨架、不是 characters 桌，與 transport::gm_turn_format 同一依據）
+/// 不寫 state 圍欄、沒有在場名單：present 缺席時不結算，否則原卡主角色會被當成「沒出現」收進隱藏區，
+/// GM 上下文就少了那張卡。其他桌（含 characters 與沒重構的桌）照原行為結算。
 pub(super) fn settle_card_visibility(
     root: &Path,
     world_id: &str,
     ended_scene: u64,
     present: Option<&str>,
+    interface_takeover: bool,
 ) {
+    if present.is_none() && interface_takeover {
+        return;
+    }
     let Ok(characters) = list_characters(root, world_id) else {
         return;
     };
     let events = read_transcript(root, world_id, ended_scene).unwrap_or_default();
     let arrived = appeared_titles(&events, CARD_ARRIVAL_PREFIX);
-    let present_names = present.map(split_present_names);
+    let present_names = present.map(split_present_names).unwrap_or_default();
     for meta in characters {
         if meta.archived {
             continue;
         }
         let appeared = arrived.iter().any(|name| name_matches(name, &meta.name))
             || present_names
-                .as_ref()
-                .is_some_and(|names| names.iter().any(|name| name_matches(name, &meta.name)));
+                .iter()
+                .any(|name| name_matches(name, &meta.name));
         let _ = set_character_auto_hidden(root, world_id, &meta.id, !appeared);
     }
 }
@@ -145,5 +153,48 @@ mod tests {
             "沒出現過的卡（就算原本在主區）應該結算成隱藏"
         );
         assert!(!auto_hidden_of(&ghost.id), "archived 的卡完全不受結算影響");
+    }
+
+    /// present 缺席時：介面接管桌（有骨架、不是 characters 桌）不結算；一般桌與 characters 桌照原行為，
+    /// 沒有回歸事件的卡結算成隱藏。
+    #[test]
+    fn missing_present_skips_settlement_only_on_takeover_tables() {
+        for (label, shell, mode, host_hidden_after) in [
+            ("takeover", true, Some("interface"), false),
+            ("takeover-no-mode", true, None, false),
+            ("characters", true, Some("characters"), true),
+            ("plain", false, None, true),
+            ("interface-no-shell", false, Some("interface"), true),
+        ] {
+            let root = TestRoot::new(&format!("card-settlement-no-present-{label}"));
+            let world_id = create_world(root.path(), "桌").unwrap();
+            let host = character_card(&new_id(), "北境驛站");
+            let hidden = character_card(&new_id(), "周掌櫃");
+            for card in [&host, &hidden] {
+                write_character(root.path(), &world_id, card).unwrap();
+            }
+            set_character_auto_hidden(root.path(), &world_id, &host.id, false).unwrap();
+            set_character_auto_hidden(root.path(), &world_id, &hidden.id, true).unwrap();
+            if shell {
+                crate::data::write_interface_shell(
+                    root.path(),
+                    &world_id,
+                    "<Status_block>\n{{地點}}\n</Status_block>",
+                )
+                .unwrap();
+            }
+            let mut state = read_state(root.path(), &world_id).unwrap();
+            state.refactor_mode = mode.map(str::to_owned);
+            write_state(root.path(), &world_id, &state).unwrap();
+            assert!(state.state.table.get("present").is_none());
+
+            begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+
+            let metas = list_characters(root.path(), &world_id).unwrap();
+            let auto_hidden_of =
+                |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
+            assert_eq!(auto_hidden_of(&host.id), host_hidden_after, "{label}");
+            assert!(auto_hidden_of(&hidden.id), "{label}");
+        }
     }
 }

@@ -1,6 +1,6 @@
 import { t, type MsgKey } from "../../i18n";
 import { backendText } from "../../shared/ui/backend-text";
-import { Dialog } from "../../shared/ui/Dialog";
+import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
 import {
   defaultRefactorSelection,
   refactorSummaryCounts,
@@ -42,6 +42,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
     cancelled,
     failures,
     busy,
+    waitingForTurn,
     setSelection,
     setDetail,
     closeRefactor,
@@ -79,7 +80,10 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
       disabled={busy}
       onClick={() => void applyRefactor(defaultRefactorSelection(outcome))}
     >
-      {t("refactorApplyAll")}
+      <SwapLabel
+        labels={[t("refactorApplyAll"), t("turnQueuedWait")]}
+        current={waitingForTurn ? 1 : 0}
+      />
     </button>
   );
 
@@ -130,7 +134,10 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
             disabled={busy}
             onClick={() => void applyRefactor(selection)}
           >
-            {t("refactorApplyBtn")}
+            <SwapLabel
+              labels={[t("refactorApplyBtn"), t("turnQueuedWait")]}
+              current={waitingForTurn ? 1 : 0}
+            />
           </button>
         )
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickCardShell } from "./card-shell-route";
+import { pickCardShell, skeletonYamlTags } from "./card-shell-route";
 import { type CardInterface } from "./interface-card";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
@@ -26,6 +26,10 @@ const card = makeCard("卡", "<UI>開場白</UI>");
 function gm(text: string, raw?: string): TranscriptEvent {
   return { ts: "t", speaker_id: "gm", speaker_name: "GM", kind: "narration", text, ...(raw ? { raw } : {}) };
 }
+// 帶狀態快照的 GM 樓：每則 GM 事件都存下那一刻的狀態樹
+function gmAt(text: string, tree: Record<string, unknown>, raw?: string): TranscriptEvent {
+  return { ...gm(text, raw), state: { table: {}, tree } };
+}
 function player(text: string): TranscriptEvent {
   return { ts: "t", speaker_id: "", speaker_name: "玩家", kind: "player", text };
 }
@@ -33,12 +37,14 @@ function system(text: string, gmOnly = false): TranscriptEvent {
   return { ts: "t", speaker_id: "", speaker_name: "系統", kind: "system", text, ...(gmOnly ? { gm_only: true } : {}) };
 }
 
-// 較舊那則 GM 原文畫得出來、最新那則畫不出來：近 10 則掃 raw 會拿到「上回合畫面」
-const events: TranscriptEvent[] = [gm("上回合", "<UI>上回合畫面</UI>"), gm("最新正文沒有標籤")];
-const tableTree = { World: { Time: "黃昏" } };
+// 較舊那則 GM 原文畫得出來、最新那則畫不出來（但存了狀態快照）：沒骨架時近 10 則掃 raw 會拿到「上回合畫面」
+const events: TranscriptEvent[] = [
+  gm("上回合", "<UI>上回合畫面</UI>"),
+  gmAt("最新正文沒有標籤", { World: { Time: "黃昏" } }),
+];
 
 function pick(refactorShell: string | null, over: Partial<Parameters<typeof pickCardShell>[0]> = {}) {
-  return pickCardShell({ tableMode: null, refactorShell, events, tableTree, cardInterfaces: [card], ...over });
+  return pickCardShell({ tableMode: null, refactorShell, events, cardInterfaces: [card], ...over });
 }
 const shellOf = (...args: Parameters<typeof pick>) => pick(...args)?.shell ?? null;
 
@@ -85,11 +91,48 @@ describe("pickCardShell", () => {
       expect(picked?.current.text).toBe("<UI>選角開場</UI>");
     });
 
-    it("填骨架：本樓是最新那則，交給卡片的是填值後的合成文字", () => {
+    it("本樓用自己那一刻的狀態快照填骨架，與交給卡片的那一樓是同一份文字", () => {
       const picked = pick(skeleton, { tableMode: "interface", events });
       expect(picked?.shell).toContain("骨架 黃昏 最新正文沒有標籤");
       expect(picked?.shell).not.toContain("上回合畫面");
       expect(picked?.current).toEqual({ id: 1, name: "GM", text: "<UI>骨架 黃昏 最新正文沒有標籤</UI>" });
+      expect(picked?.floors[1].message).toBe(picked?.current.text);
+      // 重構前就畫得出殼的舊樓維持原文
+      expect(picked?.floors[0].message).toBe("<UI>上回合畫面</UI>");
+    });
+
+    it("歷史樓各自用自己的快照：兩個 GM 樓的值不同", () => {
+      const history = [
+        gmAt("第一則", { World: { Time: "清晨" } }),
+        player("嗯"),
+        gmAt("第二則", { World: { Time: "黃昏" } }),
+      ];
+      const picked = pick(skeleton, { tableMode: "interface", events: history });
+      expect(picked?.floors.map((floor) => floor.message)).toEqual([
+        "<UI>骨架 清晨 第一則</UI>",
+        "嗯",
+        "<UI>骨架 黃昏 第二則</UI>",
+      ]);
+      expect(picked?.current.id).toBe(2);
+    });
+
+    it("system 與玩家樓不合成；最新一則是 system 時本樓仍是前一個 GM 樓", () => {
+      const withSystem = [
+        gmAt("正文", { World: { Time: "清晨" } }),
+        player("我說"),
+        { ...system("換幕提示"), state: { table: {}, tree: { World: { Time: "午夜" } } } },
+      ];
+      const picked = pick(skeleton, { tableMode: "interface", events: withSystem });
+      expect(picked?.floors[1].message).toBe("我說");
+      expect(picked?.floors[2].message).toBe("換幕提示");
+      expect(picked?.current).toEqual({ id: 0, name: "GM", text: "<UI>骨架 清晨 正文</UI>" });
+    });
+
+    it("沒有快照的 GM 樓退回原文", () => {
+      const noSnapshot = [gm("上回合", "<UI>上回合畫面</UI>"), gm("沒有快照")];
+      const picked = pick(skeleton, { tableMode: "interface", events: noSnapshot });
+      expect(picked?.floors[1].message).toBe("沒有快照");
+      expect(picked?.current.id).toBe(0);
     });
 
     it("骨架沒過卡的顯示腳本：退回近 10 則掃 raw", () => {
@@ -105,6 +148,72 @@ describe("pickCardShell", () => {
       expect(shell).toContain("<i>黃昏</i>");
       expect(shell).toContain("最新正文沒有標籤");
       expect(shell).not.toContain("上回合畫面");
+    });
+
+    it("沒重構過的桌：帶快照的樓也照原文，行為不變", () => {
+      const picked = pick(null, { events });
+      expect(picked?.floors.map((floor) => floor.message)).toEqual([
+        "<UI>上回合畫面</UI>",
+        "最新正文沒有標籤",
+      ]);
+    });
+
+    it("YAML 容器只取自實際解析 YAML 的那支腳本：容器內照 YAML 寫、正文與別張卡的容器照原樣", () => {
+      const yamlCard: CardInterface = {
+        ...card,
+        scripts: [
+          {
+            ...card.scripts[0],
+            find_regex: "/<UI>([\\s\\S]*?)<\\/UI>/s",
+            replace_string: card.scripts[0].replace_string + '<script src="js-yaml.min.js"></script>',
+          },
+        ],
+      };
+      const otherCard: CardInterface = {
+        ...card,
+        character_id: "c2",
+        scripts: [{ ...card.scripts[0], find_regex: "/<Note>([\\s\\S]*?)<\\/Note>/s" }],
+      };
+      expect(skeletonYamlTags([yamlCard, otherCard])).toEqual(["UI"]);
+      expect(skeletonYamlTags([card])).toEqual([]);
+      const picked = pick('<UI>地点: "{{World.Time}}"</UI><Note>{{World.Time}}</Note>\n{{本回合.正文}}', {
+        tableMode: "interface",
+        cardInterfaces: [yamlCard, otherCard],
+        events: [gmAt("甲\n乙", { World: { Time: '他說"走"' } })],
+      });
+      expect(picked?.current.text).toBe('<UI>地点: "他說\\"走\\""</UI><Note>他說"走"</Note>\n甲\n乙');
+    });
+
+    it("一支 regex 同時抓正文與狀態區塊時，正文照原樣、只有 YAML 結構的容器照 YAML 寫", () => {
+      const composite: CardInterface = {
+        ...card,
+        scripts: [
+          {
+            ...card.scripts[0],
+            find_regex: "/<maintext>([\\s\\S]*?)<\\/maintext>[\\s\\S]*?<Status_block>([\\s\\S]*?)<\\/Status_block>/s",
+            replace_string: "```html\n<!DOCTYPE html><body>$1|$2</body>\n```<script src=\"js-yaml.min.js\"></script>",
+          },
+        ],
+      };
+      const shell = "<maintext>\n正文：{{本回合.正文}}\n</maintext>\n<Status_block>\n状态栏:\n  地点: {{World.Place}}\n</Status_block>";
+      const picked = pick(shell, {
+        tableMode: "interface",
+        cardInterfaces: [composite],
+        events: [gmAt("他說：「走」", { World: { Place: "a # b" } })],
+      });
+      expect(picked?.current.text).toBe(
+        '<maintext>\n正文：他說：「走」\n</maintext>\n<Status_block>\n状态栏:\n  地点: "a # b"\n</Status_block>',
+      );
+    });
+
+    it("最新 GM 樓後面接了十個以上玩家樓，仍以它為本樓（玩家樓不擠掉殼）", () => {
+      const many = [gmAt("正文", { World: { Time: "清晨" } }), ...Array.from({ length: 12 }, (_, i) => player(`第${i}句`))];
+      const picked = pick(skeleton, { tableMode: "interface", events: many });
+      expect(picked?.current).toEqual({ id: 0, name: "GM", text: "<UI>骨架 清晨 正文</UI>" });
+      expect(picked?.floors).toHaveLength(13);
+      // 沒重構過的桌同理：GM 原文畫得出殼就不會因為後面一串玩家樓而消失
+      const plain = [gm("舊", "<UI>畫面</UI>"), ...Array.from({ length: 12 }, (_, i) => player(`第${i}句`))];
+      expect(pick(null, { events: plain })?.current.id).toBe(0);
     });
   });
 

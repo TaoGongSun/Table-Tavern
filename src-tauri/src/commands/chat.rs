@@ -229,6 +229,64 @@ fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, S
     })
 }
 
+/// 這一輪 GM 回合尾的導演指示與收尾句（三態見 transport::GmTurnFormat）：
+/// - 卡片自帶介面、還沒被 App 接管：讓路給卡片自己規定的輸出格式；
+/// - 介面已由 App 接管（桌上有重構產的介面骨架）：正文＋只寫變動的 `<UpdateVariable>`，不要 ```state
+///   圍欄——再叫它照卡片格式就是要它每回合重印整份狀態區塊，要圍欄又和 system 的增量協定互斥
+///   （refactor-statusbar-skeleton 實測都踩過）；
+/// - 其餘：一般旁白＋```state 圍欄。
+fn gm_turn_instruction(
+    root: &std::path::Path,
+    world_id: &str,
+    materials: &GmMaterials,
+    roster: &[String],
+    player_name: Option<&str>,
+    lang: &str,
+) -> (transport::ChatMessage, &'static str) {
+    let card_scripts: Vec<import::InterfaceScript> = import::read_card_interfaces(root, world_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|interface| interface.unsupported.is_none())
+        .flat_map(|interface| interface.scripts)
+        .collect();
+    let has_interface_shell = data::read_interface_shell(root, world_id)
+        .ok()
+        .flatten()
+        .is_some_and(|shell| !shell.trim().is_empty());
+    match transport::gm_turn_format(
+        !card_scripts.is_empty(),
+        has_interface_shell,
+        materials.state.refactor_mode.as_deref(),
+    ) {
+        transport::GmTurnFormat::CardFormat => {
+            let entry_title = import::card_format_entry(&card_scripts, &materials.worldbook);
+            let instruction_message =
+                transport::card_format_instruction(lang, entry_title.as_deref());
+            let closing =
+                "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。";
+            (instruction_message, closing)
+        }
+        transport::GmTurnFormat::InterfaceTakeover => {
+            let instruction_message = transport::takeover_instruction(lang, roster, player_name);
+            let closing = if roster.is_empty() {
+                "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"
+            } else {
+                "現在請以 GM 身分執行上述導演指示，只輸出劇情正文、有變動時的更新區塊與「下一位」行，不要加名字前綴。"
+            };
+            (instruction_message, closing)
+        }
+        transport::GmTurnFormat::Narration => {
+            let instruction_message = transport::narrate_instruction(lang, roster, player_name);
+            let closing = if roster.is_empty() {
+                "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
+            } else {
+                "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
+            };
+            (instruction_message, closing)
+        }
+    }
+}
+
 /// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
 /// （keyword 條目＋狀態＋導演指示）。narrate 與 suggest 共用，差別只在指示與 echo。
 #[allow(clippy::too_many_arguments)]
@@ -361,28 +419,8 @@ pub(crate) async fn gm_narrate(
         &materials.state.branch_bindings,
         align,
     );
-    // 卡片自帶介面時，卡片自己規定了輸出格式，導演指示要讓路，否則模型會照我們的旁白規矩寫，介面永遠對不上。
-    let card_scripts: Vec<import::InterfaceScript> = import::read_card_interfaces(&root, &world_id)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|interface| interface.unsupported.is_none())
-        .flat_map(|interface| interface.scripts)
-        .collect();
-    let (instruction_message, closing) = if card_scripts.is_empty() {
-        let instruction_message = transport::narrate_instruction(&lang, &roster, player_name);
-        let closing = if roster.is_empty() {
-            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
-        } else {
-            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
-        };
-        (instruction_message, closing)
-    } else {
-        let entry_title = import::card_format_entry(&card_scripts, &materials.worldbook);
-        let instruction_message = transport::card_format_instruction(&lang, entry_title.as_deref());
-        let closing =
-            "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。";
-        (instruction_message, closing)
-    };
+    let (instruction_message, closing) =
+        gm_turn_instruction(&root, &world_id, &materials, &roster, player_name, &lang);
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     let reply = if let Some(provider) = lane_provider(&config) {
         let instruction = format!("{}\n{closing}", instruction_message.content);
@@ -664,6 +702,67 @@ mod tests {
     use crate::commands::{character_card, NEXT_TEMP_ID};
     use crate::data;
     use std::sync::atomic::Ordering;
+
+    /// 零額度讀出 GM lane 實際送出的提示詞（凍結 system＋回合尾段），不打 AI。手動執行：
+    /// `TT_PROMPT_ROOT=<資料根目錄> TT_PROMPT_WORLD=<桌 id> cargo test --lib dump_gm_lane_prompt -- --ignored --nocapture`
+    /// 會把 system 與回合尾段印到 stdout，並把兩段寫進 TT_PROMPT_OUT（有設才寫）。
+    #[test]
+    #[ignore]
+    fn dump_gm_lane_prompt() {
+        let (Ok(root), Ok(world_id)) = (
+            std::env::var("TT_PROMPT_ROOT"),
+            std::env::var("TT_PROMPT_WORLD"),
+        ) else {
+            eprintln!("未設 TT_PROMPT_ROOT／TT_PROMPT_WORLD，略過");
+            return;
+        };
+        let root = std::path::PathBuf::from(root);
+        let materials = super::gm_materials(&root, &world_id).unwrap();
+        let roster: Vec<String> = materials
+            .cards
+            .iter()
+            .map(|card| card.name.clone())
+            .collect();
+        let player_name = materials.player.as_ref().map(|card| card.name.as_str());
+        let lang = "zh-TW";
+        let (instruction_message, closing) =
+            super::gm_turn_instruction(&root, &world_id, &materials, &roster, player_name, lang);
+        let scope = crate::transport::state_scope(
+            &materials.state.state,
+            &materials.state.mechanism,
+            &materials.cards,
+            materials.player.as_ref(),
+            &materials.state.branch_bindings,
+            false,
+        );
+        let system = crate::transport::gm_lane_system(
+            &materials.world_md,
+            &materials.cards,
+            materials.player.as_ref(),
+            &materials.worldbook,
+            &materials.state.mechanism,
+            lang,
+        );
+        let instruction = format!("{}\n{closing}", instruction_message.content);
+        let turn = crate::transport::gm_lane_turn(
+            &materials.events,
+            &materials.worldbook,
+            materials.player.as_ref(),
+            &materials.state.state,
+            &materials.state.mechanism,
+            &scope,
+            &instruction,
+            lang,
+        );
+        let dump = format!(
+            "===== SYSTEM =====\n{system}\n\n===== TURN TAIL =====\n{}\n",
+            turn.tail
+        );
+        println!("{dump}");
+        if let Ok(out) = std::env::var("TT_PROMPT_OUT") {
+            std::fs::write(out, &dump).unwrap();
+        }
+    }
 
     /// AI 卡重構包 4a 規格 (c)(d)(e)：present 有新面孔就把世界書全文 append 成一則系統事件；
     /// 同一幕重複比對不重複 append；換幕（新場景號、空 events）同名要重新 append 一次。

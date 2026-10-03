@@ -46,6 +46,7 @@ fn apply_mechanism_deletes_source_after_recording_absorption() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -86,6 +87,7 @@ fn apply_mechanism_deletes_source_with_no_prior_ledger_record() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -146,6 +148,7 @@ fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -161,7 +164,12 @@ fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
         .iter()
         .any(|entry| entry.uid == source_uid));
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
 
     let after_undo = mechanism::read_ledger(root.path(), &world_id);
     let entry = after_undo

@@ -73,35 +73,130 @@ pub fn parse_person_expand(
     }
 }
 
-/// interface 展開：STATE 區塊剝 ```json 圍欄後整段當 JSON 解；標記缺席或 JSON 壞掉一律 None，
-/// 呼叫端退回 ExpandOutcome.raw（雙軌保底）。SHELL 區塊（骨架，```xml 圍欄，只有 interface_shell
-/// 變體會產，選配）另外抽：缺席或抽出來是空字串就 shell=None，不影響 state_fields 解不解析得
-/// 出來；輸出被截斷（沒有結尾圍欄）也不會壞事，能抽多少算多少。
+/// interface 展開（兩種 kind 同一份契約）：STATE／SHELL／RULES／GUIDE 四塊都要完整才算產物。
+/// 任何一塊缺席、壞掉或彼此對不上（佔位符引用的路徑不是 STATE 的葉子、或沒有欄位規則）一律回 None，
+/// 呼叫端把這條記成失敗、來源條目不被消耗——絕不落成「只有 STATE」的半套桌。
 fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterface> {
     let blocks = parse_blocks(raw, &["STATE", "SHELL", "RULES", "GUIDE"]);
-    let state_block = blocks.iter().find(|block| block.marker == "STATE")?;
-    let text = join_trim(&state_block.lines);
+    let block = |marker: &str| blocks.iter().find(|block| block.marker == marker);
+    let text = join_trim(&block("STATE")?.lines);
     let state_fields: serde_json::Value = serde_json::from_str(strip_json_fence(&text)).ok()?;
-    let shell = blocks
-        .iter()
-        .find(|block| block.marker == "SHELL")
-        .map(|block| strip_code_fence(&join_trim(&block.lines)).to_owned())
-        .filter(|shell| !shell.is_empty());
-    let rules =
-        parse_json_block(blocks.iter().find(|block| block.marker == "RULES")).unwrap_or_default();
-    let guide = blocks
-        .iter()
-        .find(|block| block.marker == "GUIDE")
-        .map(|block| join_trim(&block.lines))
-        .unwrap_or_default();
+    if !state_fields.is_object() {
+        return None;
+    }
+    let shell = strip_code_fence(&join_trim(&block("SHELL")?.lines)).to_owned();
+    let rules_block = block("RULES")?;
+    if join_trim(&rules_block.lines).is_empty() {
+        return None;
+    }
+    let rules: BTreeMap<String, FieldRule> = parse_json_block(Some(rules_block))?;
+    let guide = join_trim(&block("GUIDE")?.lines);
+    if shell.is_empty() || guide.is_empty() || !placeholders_complete(&shell, &state_fields, &rules)
+    {
+        return None;
+    }
     Some(RefactorInterface {
         state_fields,
         source_uids: vec![entry_uid.to_owned()],
         raw: text,
-        shell,
+        shell: Some(shell),
         rules,
         guide,
     })
+}
+
+/// 正文槽：App 每回合拿模型的訊息正文填進去。
+const BODY_PLACEHOLDER: &str = "本回合.正文";
+
+/// 原卡的酒館巨集清單：前後端共用 src/shared/contracts/st-macros.json 這一份，不各寫各的。
+#[derive(serde::Deserialize)]
+struct StMacros {
+    names: Vec<String>,
+    argument_names: Vec<String>,
+}
+
+static ST_MACROS: std::sync::LazyLock<StMacros> = std::sync::LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../../src/shared/contracts/st-macros.json"))
+        .expect("st-macros.json 格式錯誤")
+});
+
+/// 是不是已知的酒館巨集：無參名稱，或 `名稱::參數`／`名稱:參數` 的已知帶參名稱（不分大小寫）。
+pub(super) fn is_st_macro(token: &str) -> bool {
+    let lower = token.trim().to_lowercase();
+    if ST_MACROS.names.iter().any(|name| *name == lower) {
+        return true;
+    }
+    lower
+        .find(':')
+        .filter(|colon| *colon > 0)
+        .is_some_and(|colon| {
+            ST_MACROS
+                .argument_names
+                .iter()
+                .any(|name| *name == lower[..colon])
+        })
+}
+
+/// 骨架佔位符契約（與前端 classifyPlaceholder 相同）：正文槽；STATE 有這個葉子就是狀態引用（優先於巨集名）；
+/// 已知酒館巨集原樣保留；其餘一律當狀態路徑（含未知的冒號寫法）。佔位符以外是固定文字。
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum PlaceholderKind {
+    Body,
+    Macro,
+    Path,
+}
+
+pub(super) fn classify_placeholder(token: &str, state: &serde_json::Value) -> PlaceholderKind {
+    let trimmed = token.trim();
+    if trimmed == BODY_PLACEHOLDER {
+        PlaceholderKind::Body
+    } else if leaf_at(state, trimmed) {
+        PlaceholderKind::Path
+    } else if is_st_macro(trimmed) {
+        PlaceholderKind::Macro
+    } else {
+        PlaceholderKind::Path
+    }
+}
+
+fn leaf_at(state: &serde_json::Value, path: &str) -> bool {
+    let mut node = state;
+    for key in path.split('.') {
+        match node.get(key) {
+            Some(next) => node = next,
+            None => return false,
+        }
+    }
+    !node.is_object() && !node.is_array()
+}
+
+/// 骨架裡每個狀態路徑佔位符都要是 STATE 的葉子、且有一條欄位規則；正文槽與已知巨集不算路徑。
+/// 佔位符只認 `{{...}}` 內不含花括號與換行的形式（與前端填值相同），其餘照固定文字看。
+pub(super) fn placeholders_complete(
+    shell: &str,
+    state: &serde_json::Value,
+    rules: &BTreeMap<String, FieldRule>,
+) -> bool {
+    let mut rest = shell;
+    while let Some(open) = rest.find("{{") {
+        let after = &rest[open + 2..];
+        let Some(close) = after.find("}}") else {
+            break;
+        };
+        let token = &after[..close];
+        rest = &after[close + 2..];
+        if token.contains(['{', '}', '\n']) {
+            continue;
+        }
+        if classify_placeholder(token, state) != PlaceholderKind::Path {
+            continue;
+        }
+        let path = token.trim();
+        if path.is_empty() || !rules.contains_key(path) || !leaf_at(state, path) {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn parse_expand(kind: EntryKind, entry_uid: &str, raw: &str) -> RefactorExpandOutcome {
@@ -110,7 +205,7 @@ pub fn parse_expand(kind: EntryKind, entry_uid: &str, raw: &str) -> RefactorExpa
         raw: raw.to_owned(),
     };
     match kind {
-        EntryKind::Interface | EntryKind::InterfaceShell => {
+        EntryKind::InterfaceShell | EntryKind::InterfaceStatusbar => {
             outcome.interface = parse_interface_expand(raw, entry_uid)
         }
     }

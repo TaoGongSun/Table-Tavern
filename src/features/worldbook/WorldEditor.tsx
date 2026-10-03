@@ -19,6 +19,7 @@ export function WorldEditor({
   convertColor,
   onEntryConverted,
   onRefactorApplied,
+  isTurnRunning,
 }: {
   title: string;
   world: string;
@@ -29,7 +30,9 @@ export function WorldEditor({
   convertColor: string;
   onEntryConverted: () => Promise<void>;
   /** AI 卡重構套用成功後：角色清單／卡片介面／桌面狀態都可能變了，交回 App 層重載 */
-  onRefactorApplied: () => Promise<void>;
+  onRefactorApplied: (live: () => boolean) => Promise<void>;
+  /** 同步問「這桌有沒有回合在跑」：重構套用會排在它後面 */
+  isTurnRunning: () => boolean;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -39,19 +42,23 @@ export function WorldEditor({
 
   const worldbook = useWorldbookEditor({ world, convertColor, onEntryConverted });
 
-  async function refreshAfterApply() {
+  // live() 為 false（換桌或卸載）就停下，後面的刷新不再動畫面
+  async function refreshAfterApply(live: () => boolean) {
     await worldbook.refreshWorldbook();
+    if (!live()) return;
     await worldbook.refreshLedger();
+    if (!live()) return;
     await worldbook.refreshCast();
-    await onRefactorApplied();
+    if (!live()) return;
+    await onRefactorApplied(live);
   }
 
   const refactor = useRefactorWorkflow({
     world,
     worldName,
-    entries: worldbook.entries,
     setStatusMessage: worldbook.setMessage,
     refreshAfterApply,
+    isTurnRunning,
   });
 
   useEffect(() => {

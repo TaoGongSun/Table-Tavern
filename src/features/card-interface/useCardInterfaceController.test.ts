@@ -57,13 +57,12 @@ describe("useCardInterfaceController", () => {
   let root: Root | null = null;
   let host: HTMLDivElement | null = null;
   let controller: CardInterfaceController | null = null;
-  let props = { worldId: "w1", events: [] as TranscriptEvent[], tableTree: {} as Record<string, unknown> };
+  let props = { worldId: "w1", events: [] as TranscriptEvent[] };
 
   function Probe() {
     controller = useCardInterfaceController({
       worldId: props.worldId,
       events: props.events,
-      tableTree: props.tableTree as never,
       submitText,
     });
     return null;
@@ -89,7 +88,7 @@ describe("useCardInterfaceController", () => {
   beforeEach(() => {
     backend.mode = null;
     backend.shell = null;
-    props = { worldId: "w1", events: [gm("<UI>第一樓</UI>")], tableTree: {} };
+    props = { worldId: "w1", events: [gm("<UI>第一樓</UI>")] };
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => store.get(key) ?? null,
@@ -111,7 +110,7 @@ describe("useCardInterfaceController", () => {
   it("closes the panel when the shell goes away and stays closed when it comes back", async () => {
     backend.mode = "interface";
     backend.shell = "<UI>{{世界.時間}}</UI>";
-    await render({ events: [{ ...gm("沒有標籤"), raw: undefined }], tableTree: { 世界: { 時間: "黃昏" } } });
+    await render({ events: [{ ...gm("沒有標籤"), raw: undefined, state: { table: {}, tree: { 世界: { 時間: "黃昏" } } } }] });
     expect(controller!.shellReady).toBe(true);
 
     await act(async () => controller!.open());
@@ -163,7 +162,8 @@ describe("useCardInterfaceController", () => {
     await act(async () => controller!.open());
     const key = controller!.shellKey;
     const doc = controller!.shellDoc;
-    await render({ tableTree: { 無關: { 欄位: "1" } } });
+    // 同一份逐字稿換了新陣列參照（例如其他狀態重讀）：殼與本樓都沒變
+    await render({ events: [...props.events] });
     expect(controller!.shellKey).toBe(key);
     expect(controller!.shellDoc).toBe(doc);
   });
@@ -191,8 +191,8 @@ describe("useCardInterfaceController", () => {
   it("skeleton tables keep the synthesized text on the current floor after a push", async () => {
     backend.mode = "interface";
     backend.shell = "<UI>骨架 {{世界.時間}}</UI>";
-    const noTag = { ...gm("沒有標籤"), raw: undefined };
-    await render({ events: [noTag], tableTree: { 世界: { 時間: "黃昏" } } });
+    const noTag = { ...gm("沒有標籤"), raw: undefined, state: { table: {}, tree: { 世界: { 時間: "黃昏" } } } };
+    await render({ events: [noTag] });
     expect(controller!.chat?.floors[0].message).toBe("<UI>骨架 黃昏</UI>");
     await render({ events: [noTag, player("新的一句")] });
     expect(controller!.chat?.currentId).toBe(0);

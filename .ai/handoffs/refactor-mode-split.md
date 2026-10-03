@@ -39,12 +39,12 @@ Status: awaiting-verification
 
 ## Remaining
 - 四洞①②④ GUI 重測：A 桌（characters）套用後「格式」「COT」掛停用徽章、GM 出對話正文；C2 匯入後 state.json 無介面狀態樹、無 incremental；E1 擋下訊息出現在按鈕列正下方。
-- 四洞③「重跑重構後面板佔位符更新」：bcd368 與 NorthHall-structure 都判 playable: no 驗不到，需要一張狀態欄型、判 playable: yes 的卡。
+- 四洞③「重跑重構後面板佔位符更新」：2026-10-03 在 refactor-statusbar-skeleton 測試包驗——NorthHall-structure 第一次重構已產殼（狀態欄型），同桌第二次重構因介面來源條目在第一次套用時已被消耗，產物沒有介面，套用後殼被清掉、面板消失（現場重構沒有收據、無法 undo）。③ 的原始情境（同桌重跑時還找得到介面來源）在現行「消耗即刪除」規則下已不會發生；重跑清殼的處理待作者裁決，見 [refactor-statusbar-skeleton](refactor-statusbar-skeleton.md) 待問 1。
 - 重構進行中取消。
 - 驗完刪 lib.rs `[survey-persons]` eprintln（診斷水印，順路）。
 
 ## Next action
-用測試包重測四洞①②④與重構中取消；找一張狀態欄型、playable: yes 的卡驗③。
+用測試包重測四洞①②④與重構中取消；③ 等 refactor-statusbar-skeleton 待問 1 裁決後再定還要不要驗。
 
 ## Constraints
 - 快取紅線：survey／expand 共用 system 逐位元組相同（既有測試把關）。

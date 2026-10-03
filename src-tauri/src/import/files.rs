@@ -1,0 +1,166 @@
+//! 兩條匯入路徑的本體：command 與重新重構的重匯（refactor/reset.rs）共用同一條路，重匯出來的桌才會
+//! 跟當初匯入的一模一樣。
+//!
+//! 匯入與貼開場白都要出示整桌獨占（`_held`）：快照、資料變更、記帳與失敗復原之間不能插進別的寫入，
+//! 否則 diff 會把別人的變更記進收據、復原會蓋掉別人剛寫的內容。
+//!
+//! 來源紀錄的順序（receipts/sources.rs）：先驗卡檔（壞檔不留任何東西）→ 寫自己的「未完成」標記（寫不進去
+//! 整次不做）→ 另存原檔 → 匯入 → 記收據（原檔識別掛在收據上）→ 都成功才刪標記。中途任何一步失敗，標記
+//! 留著，這桌的來源就判不完整、重新重構擋下；只有「原檔沒存成」這種什麼都還沒動的失敗會收掉標記。
+use crate::data::{self, CharacterMeta, DataResult, TranscriptEvent, WorldbookImport};
+use crate::receipts::{self, ImportRoute, ImportSource, Recorded};
+use crate::{mechanism, transport};
+use std::path::Path;
+
+/// 匯入結果與這次匯入的原檔識別：前端貼開場白時帶回來，開場白才掛得到正確那筆匯入。
+/// 沒留收據（什麼都沒新增）或記帳失敗時是 None。
+pub struct Imported<T> {
+    pub value: T,
+    pub source: Option<String>,
+}
+
+/// 寫標記並存原檔；原檔存不進去時什麼都還沒動，標記收掉再回錯。
+fn begin(root: &Path, world_id: &str, bytes: &[u8]) -> DataResult<(String, String)> {
+    let pending = receipts::begin_pending(root, world_id)?;
+    match receipts::store_import_source(root, world_id, bytes) {
+        Ok(file) => Ok((pending, file)),
+        Err(error) => {
+            receipts::finish_pending(root, world_id, &pending);
+            Err(error)
+        }
+    }
+}
+
+/// 記帳完成：記到了（或什麼都沒新增）才收掉標記；記帳失敗標記留著。
+fn finish(
+    root: &Path,
+    world_id: &str,
+    pending: &str,
+    file: String,
+    recorded: Recorded,
+) -> Option<String> {
+    match recorded {
+        Recorded::Yes => {
+            receipts::finish_pending(root, world_id, pending);
+            Some(file)
+        }
+        Recorded::NothingNew => {
+            receipts::finish_pending(root, world_id, pending);
+            None
+        }
+        Recorded::Failed => None,
+    }
+}
+
+/// 世界書路徑：剝 character_book／人設欄轉條目、原卡介面檔、GM 圖、機制、卡擴充欄位，記收據。
+pub fn import_worldbook_file(
+    root: &Path,
+    world_id: &str,
+    bytes: &[u8],
+    label: &str,
+    _held: &data::WorldExclusive,
+) -> DataResult<Imported<WorldbookImport>> {
+    let json_text = super::worldbook_json(bytes)?;
+    let (pending, file) = begin(root, world_id, bytes)?;
+    let before = receipts::snapshot(root, world_id);
+    // 匯入本身失敗：可能已寫了一半，標記留著（來源判不完整）
+    let result = data::import_worldbook(root, world_id, &json_text)?;
+    super::save_world_card(root, world_id, bytes);
+    super::save_gm_image(root, world_id, bytes);
+    if let Ok(book) = serde_json::from_str(&json_text) {
+        super::import_mechanism(root, world_id, &book);
+    }
+    super::import_card_extension(root, world_id, label, bytes);
+    let recorded = receipts::record_worldbook_import(
+        root,
+        world_id,
+        label,
+        before,
+        Some(ImportSource {
+            route: ImportRoute::Worldbook,
+            label: label.to_owned(),
+            color: String::new(),
+            file: file.clone(),
+        }),
+    );
+    Ok(Imported {
+        value: result,
+        source: finish(root, world_id, &pending, file, recorded),
+    })
+}
+
+/// 角色卡路徑：建角色卡（含卡片隨身世界書與機制），記收據。
+pub fn import_character_file(
+    root: &Path,
+    world_id: &str,
+    bytes: &[u8],
+    color: &str,
+    _held: &data::WorldExclusive,
+) -> DataResult<Imported<CharacterMeta>> {
+    super::check_character_bytes(bytes)?;
+    let (pending, file) = begin(root, world_id, bytes)?;
+    let before = receipts::snapshot(root, world_id);
+    // 卡檔已驗過；這裡失敗是寫檔錯，可能已寫了一半，標記留著（來源判不完整）
+    let meta = super::import_character(root, world_id, bytes, color)?;
+    let recorded = receipts::record_character_import(
+        root,
+        world_id,
+        &meta.id,
+        &meta.name,
+        before,
+        Some(ImportSource {
+            route: ImportRoute::Character,
+            label: String::new(),
+            color: color.to_owned(),
+            file: file.clone(),
+        }),
+    );
+    Ok(Imported {
+        value: meta,
+        source: finish(root, world_id, &pending, file, recorded),
+    })
+}
+
+/// 貼開場白＝GM 旁白，但狀態區塊要走與 GM 回覆同一條解析：剝除、併進檯面、事件帶快照一次做完，
+/// 並掛到它所屬那筆匯入的收據上（`import`＝那次匯入的原檔識別；含玩家挑的序號，復原匯入時這則開場白
+/// 跟著收掉）。序號記不下來或歸屬不了時「未完成」標記留著。post_opening 與重新重構的重貼共用。
+#[allow(clippy::too_many_arguments)]
+pub fn post_opening_text(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    ts: &str,
+    text: &str,
+    lang: &str,
+    index: Option<usize>,
+    import: Option<&str>,
+    held: &data::WorldExclusive,
+) -> DataResult<TranscriptEvent> {
+    let pending = receipts::begin_pending(root, world_id)?;
+    let block = transport::extract_state_block(text);
+    let player_name = data::read_player_card(root, world_id)
+        .ok()
+        .flatten()
+        .map(|card| card.name);
+    let user_name = player_name
+        .as_deref()
+        .unwrap_or_else(|| transport::player_fallback_name(lang));
+    let checkpoint = data::opening_checkpoint(root, world_id, scene);
+    let (event, outcome) =
+        match data::append_opening(root, world_id, scene, ts, text, &block, user_name) {
+            Ok(posted) => posted,
+            Err(error) => {
+                // 逐字稿是直接 append，失敗時可能已留下半行：寫回並確認逐字稿與狀態都回到貼之前，
+                // 才算什麼都沒貼上、解除標記；回不去（或貼前就讀不到）標記留著，來源判不完整
+                if checkpoint.is_ok_and(|checkpoint| checkpoint.restore()) {
+                    receipts::finish_pending(root, world_id, &pending);
+                }
+                return Err(error);
+            }
+        };
+    mechanism::append_log(root, world_id, scene, &outcome.records);
+    if receipts::record_posted_opening(root, world_id, scene, ts, index, import, held) {
+        receipts::finish_pending(root, world_id, &pending);
+    }
+    Ok(event)
+}

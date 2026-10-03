@@ -2,7 +2,7 @@ use crate::data::TranscriptEvent;
 use crate::transport::dispatch::{chat_transport, stream_via_transport};
 use crate::transport::translate;
 use crate::ui_msg::UiMsg;
-use crate::{config_root, data, data_root, mechanism, receipts, transport};
+use crate::{config_root, data, data_root, import, transport};
 use serde::Serialize;
 use std::path::Path;
 
@@ -32,36 +32,35 @@ pub(crate) fn append_transcript(
     Ok(event)
 }
 
-/// 貼開場白＝GM 旁白，但狀態區塊要走與 GM 回覆同一條解析。剝除、併進檯面、事件帶快照
-/// 三件事由這一個指令一次做完——前端各寫一半會破壞「目前值＝最後一則事件快照」的不變式。
+/// 貼開場白（見 import::post_opening_text）。opening_index 是玩家在開場白面板挑的那則（card_openings 的
+/// 順序），import_source 是跳出這個面板的那次匯入的原檔識別（匯入結果回傳）；序號記在那筆匯入的收據上：重新重構時 expand 從原卡取同一則開場白當初始值依據。
+/// 整段持整桌獨占：追加失敗時要把逐字稿與狀態寫回貼之前，中間不能有別的寫入，否則會被一起蓋掉。
 #[tauri::command]
-pub(crate) fn post_opening(
+pub(crate) async fn post_opening(
     app: tauri::AppHandle,
     world_id: String,
     scene: u64,
     ts: String,
     text: String,
+    opening_index: Option<usize>,
+    import_source: Option<String>,
 ) -> Result<TranscriptEvent, String> {
-    let _permit = data::world_write_permit(&world_id)?;
-    let block = transport::extract_state_block(&text);
+    let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).unwrap_or_default();
     let lang = transport::ui_language(&config);
-    let player_name = data::read_player_card(&root, &world_id)
-        .ok()
-        .flatten()
-        .map(|card| card.name);
-    let user_name = player_name
-        .as_deref()
-        .unwrap_or_else(|| transport::player_fallback_name(&lang));
-    let (event, outcome) =
-        data::append_opening(&root, &world_id, scene, &ts, &text, &block, user_name)
-            .map_err(|error| error.to_string())?;
-    mechanism::append_log(&root, &world_id, scene, &outcome.records);
-    // 掛到剛才那筆匯入收據上：復原匯入時這則開場白要跟著收掉，
-    // 不然重匯同一張卡想改挑一則時，舊的那則還壓在開局上
-    receipts::record_posted_opening(&root, &world_id, scene, &ts);
-    Ok(event)
+    import::post_opening_text(
+        &root,
+        &world_id,
+        scene,
+        &ts,
+        &text,
+        &lang,
+        opening_index,
+        import_source.as_deref(),
+        &held,
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// 開場白翻譯：選擇視窗按下「翻譯」時呼叫，把單則開場白譯成玩家語言方便挑選、貼出。

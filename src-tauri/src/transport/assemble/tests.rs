@@ -892,6 +892,61 @@ fn mechanism_protocol_only_appears_when_table_is_incremental() {
     // 介面歸屬只在接管桌出現：沒有卡專屬指引的增量桌不該看到這段
     assert!(!with_protocol[0].content.contains("## 介面由誰畫"));
 
+    // 有欄位規則的接管桌：guide 後面附本桌真實路徑的更新範例（delta／replace 各一筆），排在介面歸屬前；
+    // 通用協定原文不變
+    let rule = |kind, update| crate::data::FieldRule {
+        kind,
+        min: None,
+        max: None,
+        update,
+        inject: crate::data::InjectLevel::Turn,
+        branch: None,
+        formula: None,
+    };
+    let with_rules = Mechanism {
+        rules: std::collections::BTreeMap::from([
+            (
+                "糧草".to_owned(),
+                rule(
+                    crate::data::FieldKind::Number,
+                    crate::data::UpdateMode::Delta,
+                ),
+            ),
+            (
+                "驛站.地點/房".to_owned(),
+                rule(
+                    crate::data::FieldKind::Text,
+                    crate::data::UpdateMode::Replace,
+                ),
+            ),
+        ]),
+        ..with_guide.clone()
+    };
+    let ruled = assemble_gm_messages(
+        "",
+        &[],
+        None,
+        &[],
+        &[],
+        &TableState::default(),
+        &with_rules,
+        &StateScope::default(),
+        "zh-TW",
+    );
+    let content = &ruled[0].content;
+    let example_at = content.find("本桌的更新區塊長這樣").unwrap();
+    assert!(content.find("CurrentView.SuggestedActions").unwrap() < example_at);
+    assert!(example_at < content.find("## 介面由誰畫").unwrap());
+    assert!(content.contains(r#"{"op":"replace","path":"/驛站/地點~1房","value":"（新的值）"}"#));
+    assert!(content.contains(r#"{"op":"delta","path":"/糧草","value":-1}"#));
+    assert_eq!(
+        content.matches("/Heroes/亞瑟/Affection").count(),
+        1,
+        "通用協定範例原文只出現一次、未被改寫"
+    );
+    // 沒有 guide 的增量桌不附範例
+    assert!(!with_protocol[0].content.contains("本桌的更新區塊長這樣"));
+
     let en = assemble_gm_messages(
         "",
         &[],

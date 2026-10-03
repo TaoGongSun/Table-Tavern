@@ -6,6 +6,8 @@ import {
   localConvertPerson,
   mergeRefactorInterfaces,
   parseRefactorOutcome,
+  refactorTaskUids,
+  unfinishedSourceUids,
   refactorSummaryCounts,
   REFACTOR_IMPORT_INVALID,
   restoreDropped,
@@ -78,33 +80,86 @@ function makePerson(uids: string[], overrides: Partial<RefactorSurveyPerson> = {
 }
 
 describe("mergeRefactorInterfaces", () => {
-  it("零條回傳 null", () => {
-    expect(mergeRefactorInterfaces([])).toBeNull();
+  const rule = (kind: string) => ({ kind, update: "replace", inject: "turn" }) as never;
+  const part = (uid: string, state: Record<string, unknown>, shell: string, rules: Record<string, never>, guide: string) => ({
+    state_fields: state,
+    source_uids: [uid],
+    raw: `來源 ${uid}`,
+    shell,
+    rules,
+    guide,
   });
 
-  it("state_fields 兩邊都是物件＝淺合併、後蓋前；source_uids 串聯；raw 空行接起來", () => {
-    const merged = mergeRefactorInterfaces([
-      { state_fields: { hp: 10, mp: 5 }, source_uids: ["1"], raw: "第一段" },
-      { state_fields: { hp: 20 }, source_uids: ["2"], raw: "第二段" },
-    ]);
-    expect(merged).toEqual({ state_fields: { hp: 20, mp: 5 }, source_uids: ["1", "2"], raw: "第一段\n\n第二段" });
+  it("零條：沒有介面也沒有衝突", () => {
+    expect(mergeRefactorInterfaces([])).toEqual({ interface: null, conflict: null, failedFrames: [] });
   });
 
-  it("骨架取最後一個非空的（整份骨架沒得合併）", () => {
-    const merged = mergeRefactorInterfaces([
-      { state_fields: {}, source_uids: [], raw: "", shell: "<UI>舊</UI>" },
-      { state_fields: {}, source_uids: [], raw: "" },
-      { state_fields: {}, source_uids: [], raw: "", shell: "<UI>新</UI>" },
-    ]);
-    expect(merged?.shell).toBe("<UI>新</UI>");
+  it("共同分支遞迴合併：World.Time 與 World.Location 都留下，骨架與指引去重串接、依 uid 排序", () => {
+    const time = part("12", { World: { Time: "清晨" } }, "<A>{{World.Time}}</A>", { "World.Time": rule("text") }, "Time 每回合報");
+    const place = part("3", { World: { Location: "港口" } }, "<B>{{World.Location}}</B>", { "World.Location": rule("text") }, "Location 每回合報");
+    const duplicate = { ...time, source_uids: ["40"], raw: "重複" };
+    const a = mergeRefactorInterfaces([time, duplicate, place]);
+    const b = mergeRefactorInterfaces([place, time, duplicate]);
+    expect(a).toEqual(b);
+    expect(a.conflict).toBeNull();
+    expect(a.interface?.state_fields).toEqual({ World: { Location: "港口", Time: "清晨" } });
+    expect(a.interface?.shell).toBe("<B>{{World.Location}}</B>\n<A>{{World.Time}}</A>");
+    expect(a.interface?.guide).toBe("Location 每回合報\n\nTime 每回合報");
+    expect(a.interface?.rules).toEqual({ "World.Location": rule("text"), "World.Time": rule("text") });
+    expect(a.interface?.source_uids).toEqual(["3", "12", "40"]);
   });
 
-  it("state_fields 不是物件（解析失敗退原文之類）＝後者整個蓋掉前者", () => {
-    const merged = mergeRefactorInterfaces([
-      { state_fields: { hp: 10 }, source_uids: [], raw: "" },
-      { state_fields: "解析失敗的原文", source_uids: [], raw: "" },
-    ]);
-    expect(merged?.state_fields).toBe("解析失敗的原文");
+  it("同一欄位兩份值不同＝衝突，不產介面", () => {
+    const first = part("1", { World: { Time: "清晨" } }, "<A>{{World.Time}}</A>", { "World.Time": rule("text") }, "g");
+    const second = part("2", { World: { Time: "黃昏" } }, "<A>{{World.Time}}</A>", { "World.Time": rule("text") }, "g");
+    expect(mergeRefactorInterfaces([first, second])).toEqual({ interface: null, conflict: "World.Time", failedFrames: [] });
+  });
+
+  it("葉子與分支撞在同一路徑＝衝突", () => {
+    const leaf = part("1", { World: "地圖" }, "<A>{{World}}</A>", { World: rule("text") }, "g");
+    const branch = part("2", { World: { Time: "清晨" } }, "<B>{{World.Time}}</B>", { "World.Time": rule("text") }, "g");
+    expect(mergeRefactorInterfaces([leaf, branch]).conflict).toBe("World");
+  });
+
+  it("同一路徑兩份規則不同＝衝突", () => {
+    const text = part("1", { HP: "10" }, "<A>{{HP}}</A>", { HP: rule("text") }, "g");
+    const number = part("2", { HP: "10" }, "<B>{{HP}}</B>", { HP: rule("number") }, "g");
+    expect(mergeRefactorInterfaces([text, number]).conflict).toBe("HP");
+  });
+
+  it("合併後骨架的狀態路徑對不上葉子或規則＝衝突；正文槽與原卡巨集不算路徑", () => {
+    const ok = part("1", { HP: "10" }, "<A>{{user}} {{HP}} {{本回合.正文}} {{random::a::b}}</A>", { HP: rule("text") }, "g");
+    expect(mergeRefactorInterfaces([ok]).conflict).toBeNull();
+    const missing = part("1", { HP: "10" }, "<A>{{HP}} {{MP}}</A>", { HP: rule("text") }, "g");
+    expect(mergeRefactorInterfaces([missing]).conflict).toBe("MP");
+  });
+});
+
+describe("保留來源", () => {
+  it("同 uid 部分成功後取消：沒完成的任務用到的來源照樣保留，成功任務獨用的來源照常消耗", () => {
+    const tasks = [
+      { uids: ["5"], succeeded: true },
+      { uids: ["5", "6"], succeeded: false },
+      { uids: ["7"], succeeded: true },
+      { uids: ["8"], succeeded: false },
+    ];
+    expect(unfinishedSourceUids(tasks, ["9"])).toEqual(["5", "6", "8", "9"]);
+    expect(refactorTaskUids({ kind: "group", group: { spans: ["12#0", "30:1-3"] } })).toEqual(["12", "30"]);
+    expect(refactorTaskUids({ kind: "person", item: { uids: ["1", "2"] } })).toEqual(["1", "2"]);
+    expect(refactorTaskUids({ kind: "statusbar", uid: "4" })).toEqual(["4"]);
+  });
+
+  it("匯出再匯入：保留清單留著；組裝時去重排序", () => {
+    const outcome = assembleRefactorOutcome({
+      characters: [],
+      interfaces: [],
+      entries: [{ title: "設定", kind: "setting", content: "x", source_uids: ["5"], rules: {}, triggers: [] } as never],
+      preserveSourceUids: ["9", "5", "9"],
+    });
+    expect(outcome.preserve_source_uids).toEqual(["5", "9"]);
+    expect(parseRefactorOutcome(JSON.stringify(outcome)).preserve_source_uids).toEqual(["5", "9"]);
+    const without = assembleRefactorOutcome({ characters: [], interfaces: [], entries: outcome.entries });
+    expect(parseRefactorOutcome(JSON.stringify(without)).preserve_source_uids).toBeUndefined();
   });
 });
 

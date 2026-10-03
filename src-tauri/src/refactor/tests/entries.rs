@@ -45,6 +45,7 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
         ],
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = no_player_selection(Vec::new());
 
@@ -67,7 +68,12 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
         .unwrap();
     assert!(!partial.disabled);
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     let restored = data::read_worldbook(root.path(), &world_id)
         .unwrap()
         .into_iter()
@@ -113,6 +119,7 @@ fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_a
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -172,6 +179,7 @@ fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -227,6 +235,7 @@ fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -256,6 +265,7 @@ fn apply_then_undo_keeps_refactor_outcome_file() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -264,7 +274,12 @@ fn apply_then_undo_keeps_refactor_outcome_file() {
         .unwrap()
         .is_some());
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     assert!(data::read_refactor_outcome(root.path(), &world_id)
         .unwrap()
         .is_some());
@@ -309,6 +324,7 @@ fn undo_removes_new_entries_including_locked() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -323,7 +339,12 @@ fn undo_removes_new_entries_including_locked() {
     assert_eq!(applied.len(), 2);
     assert!(applied.iter().any(|entry| entry.locked));
 
-    receipts::undo_last_import(root.path(), &world_id).unwrap();
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
     let after = data::read_worldbook(root.path(), &world_id).unwrap();
     assert_eq!(
         after
@@ -378,6 +399,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         dropped: Vec::new(),
         unabsorbed: Vec::new(),
         audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),

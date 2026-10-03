@@ -77,6 +77,10 @@ pub struct RefactorOutcome {
     /// 套用時寫進 WorldState.refactor_mode；characters 並停用卡片介面 fallback。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+    /// 這次重構有產物失敗（展開失敗、介面合併衝突）的來源 uid：套用時一律保留原條目，不刪也不停用——
+    /// 同一條來源只要有一部分沒產出成功，消耗它就會讓那部分內容憑空消失。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub preserve_source_uids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

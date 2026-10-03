@@ -4,9 +4,11 @@
 
 mod apply;
 mod interface;
+mod reset;
 mod types;
 
 pub use apply::apply;
+pub use reset::{rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
 pub use types::{
     normalize_stored_mode, RefactorApplySummary, RefactorCharacter, RefactorInterface,
     RefactorOutcome, RefactorSelection,

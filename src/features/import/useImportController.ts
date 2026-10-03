@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { message as showMessage } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../../i18n";
 import { decideImportRoute } from "./import-routing";
+import { useTurnWait } from "../play/useTurnWait";
 import { type WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
 import { type CardInterface } from "../card-interface/interface-card";
@@ -13,6 +14,8 @@ import { type CardInterface } from "../card-interface/interface-card";
 interface CharacterImport {
   meta: CharacterMeta;
   book: WorldbookImport;
+  /** 這次匯入的原檔識別：貼開場白時帶回後端，開場白才掛得到這筆匯入；沒留收據時是 null */
+  source: string | null;
 }
 
 interface ImportProbe {
@@ -39,6 +42,11 @@ function looksLikeWorldbook(probe: ImportProbe): boolean {
 interface WorldbookImport {
   imported: number;
   skipped: number;
+}
+
+/** 世界書路徑的匯入結果：收編數字＋這次匯入的原檔識別（同 CharacterImport.source） */
+interface WorldbookImportResult extends WorldbookImport {
+  source: string | null;
 }
 
 /** 匯入收據摘要：陣容欄「撤銷上次匯入」項靠這份判斷要不要出現 */
@@ -102,6 +110,10 @@ export interface ImportController {
   openings: string[] | null;
   /** 開場白面板是在哪張桌跳出來的；null＝面板沒開 */
   openingsWorldId: string | null;
+  /** 跳出開場白面板的那次匯入的原檔識別：貼開場白時一起送，序號才記在正確那筆匯入上 */
+  openingsSource: string | null;
+  /** 匯入正排在進行中的回合後面（後端持整桌獨占），陣容欄就地提示 */
+  waitingForTurn: boolean;
   /** 面板裡展開的那一則（一次只展開一條） */
   expanded: number | null;
   setExpanded: (index: number | null) => void;
@@ -116,6 +128,8 @@ export interface ImportController {
   setTransTier: (tier: Tier) => void;
   tierModels: TierModel[];
   closeOpenings: () => void;
+  /** 目前開場白面板的世代：貼出排隊期間面板換過（關掉重開、換桌）就不同 */
+  openingsPanelId: () => number;
   /** 換桌：這桌的收據整份換掉（只做 state commit，不得有 await） */
   hydrate: (receipts: ImportReceiptSummary[]) => void;
   /** 換桌前先把收據讀好，讀完才進 hydrate 的同步提交區 */
@@ -153,6 +167,8 @@ export function useImportController(input: {
   resetChatted: (worldId: string) => void;
   /** 匯完重讀狀態樹與分支指認：卡片的 [initvar] 是匯入當下才建好樹的 */
   refreshState: () => Promise<void>;
+  /** 同步問「這桌有沒有回合在跑」：有的話匯入會排在它後面 */
+  isTurnRunning: () => boolean;
   onError: (message: string) => void;
 }): ImportController {
   const {
@@ -169,8 +185,10 @@ export function useImportController(input: {
     runTableOp,
     resetChatted,
     refreshState,
+    isTurnRunning,
     onError,
   } = input;
+  const { backend: turnBackend, waiting: waitingForTurn } = useTurnWait(isTurnRunning, worldId);
 
   // 讀檔、探測都是 await：回來時人可能已經離桌或進了別張桌，那一輪匯入就整個作廢
   const worldRef = useRef(worldId);
@@ -186,6 +204,7 @@ export function useImportController(input: {
   const [openings, setOpenings] = useState<string[] | null>(null);
   // 開場白面板屬於哪張桌：貼出前要確認人還在那張桌
   const [openingsWorldId, setOpeningsWorldId] = useState<string | null>(null);
+  const [openingsSource, setOpeningsSource] = useState<string | null>(null);
   // 一次只展開一條：面板不長，攤開多條反而找不到自己在看哪一段
   const [expanded, setExpanded] = useState<number | null>(null);
   // 開場白翻譯：逐則狀態＋「全部翻譯」是否在跑；abort ref 給 modal 一關就停止後續翻譯呼叫用
@@ -215,7 +234,10 @@ export function useImportController(input: {
 
   const refreshReceipts = useCallback(
     async (worldId: string) => {
-      setReceipts(await loadReceipts(worldId));
+      const list = await loadReceipts(worldId);
+      // 讀的途中換了桌：舊桌的收據不寫進現在這桌
+      if (worldRef.current !== worldId) return;
+      setReceipts(list);
       // 剛匯入（或剛復原一筆）＝又回到「還沒開演」的狀態，按鈕重新給
       resetChatted(worldId);
     },
@@ -230,6 +252,7 @@ export function useImportController(input: {
     setTransAllBusy(false);
     setOpenings(null);
     setOpeningsWorldId(null);
+    setOpeningsSource(null);
     setExpanded(null);
     setTransState({});
     setTranslations({});
@@ -240,6 +263,7 @@ export function useImportController(input: {
     setTransAllBusy(false);
     setOpenings(null);
   }, []);
+  const openingsPanelId = useCallback(() => panelGen.current, []);
 
   // 兩條匯入路徑共用：畫得出來就告訴玩家在哪開並直接開一次，解不開的講清楚是哪一種
   // （加密卡、介面存在別人網站上的雲端載入器卡）。沒有介面的卡什麼都不說。
@@ -265,7 +289,7 @@ export function useImportController(input: {
   // 也常是場景或角色本身的描寫。主開場白常是使用說明（真正的劇情藏在備用開場白），
   // 所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
   const offerOpeningLine = useCallback(
-    async (worldId: string, data: number[]) => {
+    async (worldId: string, data: number[], source: string | null) => {
       const list = await invoke<string[]>("card_openings", { worldId, data, lang });
       if (list.length === 0) return;
       setExpanded(null);
@@ -276,6 +300,7 @@ export function useImportController(input: {
       setTransAllBusy(false);
       setOpenings(list);
       setOpeningsWorldId(worldId);
+      setOpeningsSource(source);
       // 檔位選項讀失敗不擋匯入：選單少了模型名照樣能翻（預設低檔）
       setTierModels(await invoke<TierModel[]>("translate_tier_models").catch(() => []));
     },
@@ -286,11 +311,13 @@ export function useImportController(input: {
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
   const importAsCharacter = useCallback(
     async (worldId: string, data: number[], adoptName = true) => {
-      const { meta, book } = await invoke<CharacterImport>("import_character", {
-        worldId,
-        data,
-        color: PALETTE[castSize % PALETTE.length],
-      });
+      const { meta, book, source } = await turnBackend(() =>
+        invoke<CharacterImport>("import_character", {
+          worldId,
+          data,
+          color: PALETTE[castSize % PALETTE.length],
+        }),
+      );
       await refreshCharacters(worldId);
       focusSpeaker(meta.id);
       if (adoptName) await adoptTableName(meta.name);
@@ -303,11 +330,12 @@ export function useImportController(input: {
         });
       }
       await refreshState();
-      await offerOpeningLine(worldId, data);
+      await offerOpeningLine(worldId, data, source);
       await tellAboutInterface(worldId, meta.id);
     },
     [
       castSize,
+      turnBackend,
       refreshCharacters,
       focusSpeaker,
       adoptTableName,
@@ -322,7 +350,9 @@ export function useImportController(input: {
   // worldId 顯式帶入、adoptName 預設 true，理由同 importAsCharacter。
   const importAsWorldbook = useCallback(
     async (worldId: string, data: number[], label: string, adoptName = true) => {
-      const book = await invoke<WorldbookImport>("import_worldbook", { worldId, data, label });
+      const book = await turnBackend(() =>
+        invoke<WorldbookImportResult>("import_worldbook", { worldId, data, label }),
+      );
       // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
       await reloadGmImage(worldId);
       await showMessage(worldbookImportedMessage(book), {
@@ -334,11 +364,12 @@ export function useImportController(input: {
       if (adoptName) await adoptTableName(label);
       await refreshReceipts(worldId);
       await refreshState();
-      await offerOpeningLine(worldId, data);
+      await offerOpeningLine(worldId, data, book.source);
       // 這桌等級的介面殼 character_id 是空字串（角色卡的是那張卡的 id）
       await tellAboutInterface(worldId, "");
     },
     [
+      turnBackend,
       reloadGmImage,
       focusSpeaker,
       adoptTableName,
@@ -554,6 +585,8 @@ export function useImportController(input: {
       route,
       openings,
       openingsWorldId,
+      openingsSource,
+      waitingForTurn,
       expanded,
       setExpanded,
       transState,
@@ -563,6 +596,7 @@ export function useImportController(input: {
       setTransTier,
       tierModels,
       closeOpenings,
+      openingsPanelId,
       hydrate,
       loadReceipts,
       refreshReceipts,
@@ -578,6 +612,8 @@ export function useImportController(input: {
       route,
       openings,
       openingsWorldId,
+      openingsSource,
+      waitingForTurn,
       expanded,
       transState,
       translations,
@@ -585,6 +621,7 @@ export function useImportController(input: {
       transTier,
       tierModels,
       closeOpenings,
+      openingsPanelId,
       hydrate,
       loadReceipts,
       refreshReceipts,

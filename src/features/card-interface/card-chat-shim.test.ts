@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCardChat, buildChatShimSource, scriptLiteral, type CardChat } from "./card-chat-shim";
 import { buildShellDocument } from "./interface-card";
-import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
-
-function ev(kind: TranscriptEvent["kind"], name: string, text: string, extra: Partial<TranscriptEvent> = {}): TranscriptEvent {
-  return { ts: "t", speaker_id: "", speaker_name: name, kind, text, ...extra };
-}
 
 type Listener = (event: { source: unknown; data: unknown }) => void;
 interface Sandbox {
@@ -41,24 +36,8 @@ const chat: CardChat = { currentId: 3, floors };
 const ids = (list: Record<string, unknown>[]) => list.map((item) => item.message_id);
 
 describe("buildCardChat", () => {
-  it("角色對應、gm_only 不算一樓、本樓換成產生殼的那段文字", () => {
-    const events = [
-      ev("narration", "GM", "正文", { raw: "<UI>原文</UI>" }),
-      ev("system", "系統", "私設全文", { gm_only: true }),
-      ev("player", "阿明", "我來了"),
-      ev("system", "系統", "換幕"),
-      ev("dialogue", "莉莉", "嗨"),
-    ];
-    const built = buildCardChat(events, { id: 3, name: "莉莉", text: "合成文字" });
-    expect(built).toEqual({
-      currentId: 3,
-      floors: [
-        { name: "GM", role: "assistant", message: "<UI>原文</UI>" },
-        { name: "阿明", role: "user", message: "我來了" },
-        { name: "系統", role: "system", message: "換幕" },
-        { name: "莉莉", role: "assistant", message: "合成文字" },
-      ],
-    });
+  it("樓層照選路算好的那份原樣交出，本樓指向產生殼的那一樓", () => {
+    expect(buildCardChat(floors, { id: 3, name: "GM", text: floors[3].message })).toEqual({ currentId: 3, floors });
   });
 
   it("空桌：開場白就是第 0 樓", () => {
@@ -66,15 +45,6 @@ describe("buildCardChat", () => {
       currentId: 0,
       floors: [{ name: "卡", role: "assistant", message: "<UI>開場</UI>" }],
     });
-  });
-
-  it("骨架合成文字在玩家新增一樓後仍是本樓的內容", () => {
-    const events = [ev("narration", "GM", "正文")];
-    const current = { id: 0, name: "GM", text: "骨架合成" };
-    const after = buildCardChat([...events, ev("player", "阿明", "新的一句")], current);
-    expect(after.floors[0].message).toBe("骨架合成");
-    expect(after.floors[1].message).toBe("新的一句");
-    expect(after.currentId).toBe(0);
   });
 });
 

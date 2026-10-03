@@ -11,6 +11,21 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+mod sources;
+pub use sources::{
+    begin_pending, discard_import_source, finish_pending, import_replays, store_import_source,
+    ImportReplay, ImportRoute, ImportSource,
+};
+
+/// 匯入記帳的結果：Failed＝收據讀壞被重寫或寫不進去，呼叫端的「未完成」標記就不能解除。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recorded {
+    Yes,
+    /// 什麼都沒新增，沒留收據（原檔已丟掉）
+    NothingNew,
+    Failed,
+}
+
 /// 匯入呼叫前先拍的快照：worldbook 既有 uid、世界狀態（mechanism／狀態樹）、
 /// 這桌等級卡片介面殼（source-card.*）是否已存在。呼叫端在匯入完成後連同這份快照
 /// 交回 record_* 函式，兩相比對才知道「這次匯入實際新增了什麼」。
@@ -70,6 +85,9 @@ pub fn snapshot_refactor(root: &Path, world_id: &str) -> DataResult<Snapshot> {
 struct PostedOpening {
     scene: u64,
     ts: String,
+    /// 玩家挑的是開場白清單（card_openings 順序）裡第幾則；重新重構時從匯入原檔取同一則
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +123,13 @@ struct MechanismUndo {
     /// 反序列化時分不出「沒變」還是「變成 None」的坑，乾脆用布林更直接。
     #[serde(default, skip_serializing_if = "data::is_false")]
     player_card_assigned: bool,
+    /// 這次操作改了卡專屬回報指引（介面接管）：原值，undo 寫回；None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    guide_before: Option<String>,
+    /// 這次操作改了骨架填值用的欄位型別表（mechanism.value_types）：整份原表（含原本的空表），undo 寫回；
+    /// None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    value_types_before: Option<BTreeMap<String, String>>,
 }
 
 impl MechanismUndo {
@@ -117,6 +142,8 @@ impl MechanismUndo {
             && self.added_state_keys.is_empty()
             && self.restored_state.is_empty()
             && !self.player_card_assigned
+            && self.guide_before.is_none()
+            && self.value_types_before.is_none()
     }
 }
 
@@ -181,6 +208,9 @@ struct ImportReceipt {
     /// （含期間新產生的遊玩紀錄）不動。目前只有 AI 卡重構套用機制那條路會寫非空值。
     #[serde(default, skip_serializing_if = "String::is_empty")]
     added_ledger_lines: String,
+    /// 這次匯入的原檔（角色卡／世界書路徑）：重新重構時照它清空重匯；undo 時連原檔一起刪。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    import_source: Option<ImportSource>,
 }
 
 /// 前端側欄按鈕與未來路由框用的摘要：不帶復原用的內部細節（指紋、機制差異）。
@@ -222,27 +252,63 @@ fn write_receipts(root: &Path, world_id: &str, receipts: &[ImportReceipt]) -> Da
     Ok(())
 }
 
-/// 記帳失敗不得影響匯入是否成功，這裡全程不回傳 Result；讀壞就當成沒有歷史直接重寫
-/// （等於放棄復原更早的匯入，但不會讓這次匯入跟著失敗）。
-fn append_receipt(root: &Path, world_id: &str, receipt: ImportReceipt) {
-    let mut receipts = read_receipts(root, world_id);
+/// 記帳失敗不得影響匯入是否成功；讀壞就當成沒有歷史直接重寫（等於放棄復原更早的匯入，但不會讓這次
+/// 匯入跟著失敗）。讀壞或寫不進去都回 false：呼叫端據此不解除「未完成」標記，來源就判不完整。
+fn append_receipt(root: &Path, world_id: &str, receipt: ImportReceipt) -> bool {
+    let (mut receipts, intact) = match read_receipts_checked(root, world_id) {
+        Some(receipts) => (receipts, true),
+        None => (Vec::new(), false),
+    };
     receipts.push(receipt);
-    let _ = write_receipts(root, world_id, &receipts);
+    write_receipts(root, world_id, &receipts).is_ok() && intact
 }
 
-/// post_opening 成功後呼叫：把剛貼上檯面的開場白掛到最後一筆收據，undo 時一併收掉。
-/// 沒有收據（整份重複、什麼都沒新增的匯入）就不掛——那種匯入本來就沒東西可復原。
-/// 同 append_receipt 的容錯原則：記帳失敗不影響開場白已經貼成功這件事。
-pub fn record_posted_opening(root: &Path, world_id: &str, scene: u64, ts: &str) {
-    let mut receipts = read_receipts(root, world_id);
-    let Some(last) = receipts.last_mut() else {
-        return;
+/// 讀收據：缺檔＝沒有歷史（空清單）；檔案在但讀不了或壞掉回 None。
+fn read_receipts_checked(root: &Path, world_id: &str) -> Option<Vec<ImportReceipt>> {
+    let path = data::import_receipts_path(root, world_id).ok()?;
+    match fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text).ok(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
+        Err(_) => None,
+    }
+}
+
+/// post_opening 成功後呼叫：把剛貼上檯面的開場白（含玩家挑的序號）掛到它所屬那筆匯入的收據，undo 時
+/// 一併收掉。`import` 是那次匯入的原檔識別（匯入回傳、前端帶回）；沒帶識別時退回最後一筆收據，但帶了
+/// 序號就必須有識別——不能用「最後一筆」代替，重複匯入時會掛到別張卡。
+/// 回 false＝序號歸屬不了或記不下來：呼叫端不解除「未完成」標記，來源判不完整。
+pub fn record_posted_opening(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    ts: &str,
+    index: Option<usize>,
+    import: Option<&str>,
+    _held: &data::WorldExclusive,
+) -> bool {
+    let Some(mut receipts) = read_receipts_checked(root, world_id) else {
+        return false;
     };
-    last.opening = Some(PostedOpening {
+    let target = match import {
+        Some(file) => receipts.iter_mut().rev().find(|receipt| {
+            receipt
+                .import_source
+                .as_ref()
+                .is_some_and(|source| source.file == file)
+        }),
+        None if index.is_some() => None,
+        None => receipts.last_mut(),
+    };
+    let Some(target) = target else {
+        // 沒有收據可掛（什麼都沒新增的匯入）：沒挑序號就沒東西要記；挑了序號卻歸屬不了＝不完整
+        return index.is_none();
+    };
+    target.opening = Some(PostedOpening {
         scene,
         ts: ts.to_owned(),
+        index,
     });
-    let _ = write_receipts(root, world_id, &receipts);
+    write_receipts(root, world_id, &receipts).is_ok()
 }
 
 /// 一般化前後 diff：新增的鍵（undo 時整條移除）、被覆寫的鍵（undo 時整條恢復成舊值）。
@@ -335,6 +401,10 @@ fn diff_mechanism(
     );
 
     let player_card_assigned = before.player_card_id.is_none() && after.player_card_id.is_some();
+    let guide_before =
+        (before.mechanism.guide != after.mechanism.guide).then(|| before.mechanism.guide.clone());
+    let value_types_before = (before.mechanism.value_types != after.mechanism.value_types)
+        .then(|| before.mechanism.value_types.clone());
 
     let undo = MechanismUndo {
         added_rule_keys,
@@ -345,6 +415,8 @@ fn diff_mechanism(
         added_state_keys,
         restored_state,
         player_card_assigned,
+        guide_before,
+        value_types_before,
     };
     (!undo.is_empty()).then_some(undo)
 }
@@ -433,10 +505,11 @@ pub fn record_character_import(
     character_id: &str,
     label: &str,
     before: Snapshot,
-) {
+    import_source: Option<ImportSource>,
+) -> Recorded {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
-    append_receipt(
+    let recorded = append_receipt(
         root,
         world_id,
         ImportReceipt {
@@ -457,14 +530,26 @@ pub fn record_character_import(
             interface_shell_created: false,
             interface_shell_restore: None,
             refactor_mode: None,
+            import_source,
         },
     );
+    if recorded {
+        Recorded::Yes
+    } else {
+        Recorded::Failed
+    }
 }
 
 /// import_worldbook 指令成功後呼叫：這條路徑沒有角色卡本體，實際新增為零（entries／機制／
 /// 介面殼皆無變化，例如整份都跟既有內容重複）就不留空收據——按鈕不該對「什麼都沒發生」的
 /// 匯入也亮出來，連按復原時也不該吃到一筆空操作。
-pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before: Snapshot) {
+pub fn record_worldbook_import(
+    root: &Path,
+    world_id: &str,
+    label: &str,
+    before: Snapshot,
+    import_source: Option<ImportSource>,
+) -> Recorded {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
     let world_card_created = detect_world_card_created(root, world_id, &before);
@@ -474,9 +559,13 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
         && world_card_created.is_none()
         && !gm_image_created
     {
-        return;
+        // 什麼都沒新增：不留收據，這次存下的原檔也沒有用（重匯它不會多出任何東西）
+        if let Some(source) = &import_source {
+            discard_import_source(root, world_id, &source.file);
+        }
+        return Recorded::NothingNew;
     }
-    append_receipt(
+    let recorded = append_receipt(
         root,
         world_id,
         ImportReceipt {
@@ -497,8 +586,14 @@ pub fn record_worldbook_import(root: &Path, world_id: &str, label: &str, before:
             interface_shell_created: false,
             interface_shell_restore: None,
             refactor_mode: None,
+            import_source,
         },
     );
+    if recorded {
+        Recorded::Yes
+    } else {
+        Recorded::Failed
+    }
 }
 
 /// refactor_apply 指令成功後呼叫：AI 卡重構可能一次新增多張角色卡、多條世界書條目，
@@ -512,6 +607,7 @@ pub fn record_refactor_apply(
     rewritten_entries: Vec<WorldbookEntry>,
     deleted_entries: Vec<WorldbookEntry>,
     before: Snapshot,
+    _held: &data::WorldExclusive,
 ) {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
@@ -559,6 +655,7 @@ pub fn record_refactor_apply(
             interface_shell_created,
             interface_shell_restore,
             refactor_mode,
+            import_source: None,
         },
     );
 }
@@ -566,7 +663,12 @@ pub fn record_refactor_apply(
 /// adoptImportName 改名成功後呼叫：把舊桌名補進最後一筆收據，undo 時桌名才退得回去。
 /// 這桌還沒有任何收據（例如那次匯入本身沒留收據）就悄悄放棄——改名已經成功了，
 /// 不該因為記帳補不上而報錯。
-pub fn record_last_import_rename(root: &Path, world_id: &str, old_name: &str) {
+pub fn record_last_import_rename(
+    root: &Path,
+    world_id: &str,
+    old_name: &str,
+    _held: &data::WorldExclusive,
+) {
     let mut receipts = read_receipts(root, world_id);
     let Some(last) = receipts.last_mut() else {
         return;
@@ -589,7 +691,12 @@ pub fn list_import_receipts(root: &Path, world_id: &str) -> Vec<ImportReceiptSum
 
 /// 逆向最後一筆收據。收據檔存在但解析失敗要回錯（不能悄悄當空，不然玩家以為復原了
 /// 其實什麼都沒發生）；缺檔／空陣列＝沒有可復原的紀錄，同樣回錯。
-pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
+/// 要出示整桌獨占：讀出收據、各域逆向到寫回彈出後的清單之間，別的匯入、開場紀錄或聊天寫入不能插進來。
+pub fn undo_last_import(
+    root: &Path,
+    world_id: &str,
+    _held: &data::WorldExclusive,
+) -> DataResult<UndoReport> {
     let path = data::import_receipts_path(root, world_id)?;
     let mut receipts: Vec<ImportReceipt> = if path.exists() {
         let text = fs::read_to_string(&path)?;
@@ -709,6 +816,12 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
             if mechanism.player_card_assigned {
                 state.player_card_id = None;
             }
+            if let Some(guide) = &mechanism.guide_before {
+                state.mechanism.guide = guide.clone();
+            }
+            if let Some(value_types) = &mechanism.value_types_before {
+                state.mechanism.value_types = value_types.clone();
+            }
             let _ = data::write_state(root, world_id, &state);
         }
     }
@@ -756,6 +869,10 @@ pub fn undo_last_import(root: &Path, world_id: &str) -> DataResult<UndoReport> {
     }
 
     write_receipts(root, world_id, &receipts)?;
+    // 9. 這次匯入的原檔：收據已經彈出、不再被引用，刪掉後重新重構不會把撤銷掉的卡重匯回來
+    if let Some(source) = &receipt.import_source {
+        discard_import_source(root, world_id, &source.file);
+    }
     Ok(report)
 }
 

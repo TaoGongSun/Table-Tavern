@@ -10,16 +10,17 @@ use crate::{
 /// AI 卡重構中止時的錯誤字串 sentinel：前端靠它分流「玩家主動取消」與其他失敗，一字不差。
 pub(crate) const REFACTOR_ABORTED: &str = "refactor-aborted";
 
-/// AI 卡重構套用：玩家勾選的角色／介面／機制落檔，收據記「實際套用的那份」供一鍵倒退。
+/// AI 卡重構套用：玩家勾選的角色／介面／機制落檔，收據記「實際套用的那份」供一鍵倒退。整段持整桌獨占：
+/// 收據靠套用前後 diff，中間插進來的寫入會被記成這次套用、undo 時一起退掉。
 #[tauri::command]
-pub(crate) fn refactor_apply(
+pub(crate) async fn refactor_apply(
     app: tauri::AppHandle,
     world_id: String,
     outcome: refactor::RefactorOutcome,
     selection: refactor::RefactorSelection,
     record_receipt: Option<bool>,
 ) -> Result<refactor::RefactorApplySummary, String> {
-    let _permit = data::world_write_permit(&world_id)?;
+    let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
     let before =
         receipts::snapshot_refactor(&root, &world_id).map_err(|error| error.to_string())?;
@@ -34,6 +35,7 @@ pub(crate) fn refactor_apply(
             result.rewritten_entries,
             result.deleted_entries,
             before,
+            &held,
         );
     }
     Ok(result.summary)
@@ -195,6 +197,7 @@ pub(crate) async fn refactor_survey(
         return Err("refactor-mode-mismatch".to_owned());
     }
     refactor_ai::normalize_survey_for_mode(&mut outcome);
+    outcome.frame_candidates = frame_candidates(&entries, &outcome.interface_uids);
     // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
     for person in &outcome.persons {
         eprintln!(
@@ -203,6 +206,24 @@ pub(crate) async fn refactor_survey(
         );
     }
     Ok(outcome)
+}
+
+/// 盤點判成介面的整條條目裡，哪些是外框候選（零 AI，程式判定）。
+fn frame_candidates(
+    entries: &[data::WorldbookEntry],
+    interface_uids: &[String],
+) -> Vec<refactor_ai::RefactorFrameCandidate> {
+    interface_uids
+        .iter()
+        .filter_map(|uid| {
+            let entry = entries.iter().find(|entry| entry.uid.to_string() == *uid)?;
+            let tags = refactor_ai::frame_candidate_tags(&entry.content)?;
+            Some(refactor_ai::RefactorFrameCandidate {
+                uid: uid.clone(),
+                tags,
+            })
+        })
+        .collect()
 }
 
 /// AI 卡重構本地組裝（小抄合約 v1）：判官定案後，carry／drop 整條／split 逐段路由／clean
@@ -232,20 +253,22 @@ pub(crate) async fn refactor_expand(
     crate::data::refuse_if_updating()?;
     let entry_kind = refactor_ai::EntryKind::parse(&kind)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
         .map_err(|error| error.to_string())?;
     let known_fields = known_fields.unwrap_or_default();
+    // 初始值依據：玩家貼出的那則開場白（取自匯入原檔）裡、這條條目的容器區塊
+    let opening = import::chosen_opening(&root, &world_id)
+        .and_then(|opening| import::opening_blocks_for(&opening, &entry_text));
     let messages = refactor_ai::expand_messages(
         &context,
         &entry_uid,
         &entry_text,
         entry_kind,
         &known_fields,
-        &lang,
+        opening.as_deref(),
     );
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
@@ -494,9 +517,9 @@ pub(crate) async fn refactor_split_group(
 }
 
 /// AI 卡重構讀卡（展開階段，statusbar 段）：SPLITS route=statusbar 的段落材料＝該條全部
-/// statusbar 段原文串接，走既有 interface 型呼叫（只抽 STATE、永不產殼——這些段落本來就只是
-/// 介面格式，不是完整可玩介面）。spans 內每個引用共享同一個來源 uid（route=statusbar 不跨
-/// 條目），entry_uid 只用來標記結果的 source_uids。
+/// statusbar 段原文串接，走狀態欄型介面展開（refactor_ai::SPANS_EXPAND_KIND：STATE＋骨架＋回報
+/// 規矩）——混合條目裡的狀態欄段落一樣交給 App 接管，模型不必每回合重印狀態區塊。spans 內每個
+/// 引用共享同一個來源 uid（route=statusbar 不跨條目），entry_uid 只用來標記結果的 source_uids。
 #[tauri::command]
 pub(crate) async fn refactor_expand_spans(
     app: tauri::AppHandle,
@@ -508,7 +531,6 @@ pub(crate) async fn refactor_expand_spans(
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
@@ -527,13 +549,15 @@ pub(crate) async fn refactor_expand_spans(
     }
     let material = parts.join("\n\n");
     let known_fields = known_fields.unwrap_or_default();
+    let opening = import::chosen_opening(&root, &world_id)
+        .and_then(|opening| import::opening_blocks_for(&opening, &material));
     let messages = refactor_ai::expand_messages(
         &context,
         &entry_uid,
         &material,
-        refactor_ai::EntryKind::Interface,
+        refactor_ai::SPANS_EXPAND_KIND,
         &known_fields,
-        &lang,
+        opening.as_deref(),
     );
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
@@ -556,7 +580,7 @@ pub(crate) async fn refactor_expand_spans(
         ) => result?,
     };
     Ok(refactor_ai::parse_expand(
-        refactor_ai::EntryKind::Interface,
+        refactor_ai::SPANS_EXPAND_KIND,
         &entry_uid,
         &raw,
     ))
@@ -622,14 +646,27 @@ pub(crate) fn refactor_export_saved(
     std::fs::write(&path, content).map_err(|error| error.to_string())
 }
 
+/// 按重構前的判定：未重構／已遊玩（擋）／沒有匯入原檔（擋）／可清回重跑（見 refactor/reset.rs）。
 #[tauri::command]
-pub(crate) fn refactor_outcome_exists(
+pub(crate) fn refactor_rerun_status(
     app: tauri::AppHandle,
     world_id: String,
-) -> Result<bool, String> {
-    Ok(data::read_refactor_outcome(&data_root(&app)?, &world_id)
-        .map_err(|e| e.to_string())?
-        .is_some())
+) -> Result<refactor::RerunStatus, String> {
+    refactor::rerun_status(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
+/// 已重構、未遊玩的桌清回剛匯入原卡的狀態（玩家確認後才呼叫），之後前端照一般流程重構。
+/// 整桌獨占鎖在 refactor::reset_to_import_source 裡拿；這裡不拿共用許可，免得跟自己搶。
+#[tauri::command]
+pub(crate) fn refactor_reset_to_source(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<refactor::ResetOutcome, String> {
+    crate::data::refuse_if_updating()?;
+    let config = data::read_config(&config_root(&app)?).unwrap_or_default();
+    let lang = transport::ui_language(&config);
+    refactor::reset_to_import_source(&data_root(&app)?, &world_id, &lang)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

@@ -60,6 +60,41 @@ pub(crate) fn world_card_path(root: &Path, world_id: &str, extension: &str) -> D
     Ok(world_dir(root, world_id)?.join(format!("source-card.{extension}")))
 }
 
+/// 匯入／貼開場白的「未完成」標記：worlds/<world_id>/import-pending-<id>。動資料前寫、原檔與收據記好才刪；
+/// 桌上還有任何一個就判來源不完整，重新重構擋下（receipts/sources.rs）。
+pub(crate) fn import_pending_path(root: &Path, world_id: &str, name: &str) -> DataResult<PathBuf> {
+    let valid = name
+        .strip_prefix("import-pending-")
+        .is_some_and(|id| validate_id(id).is_ok());
+    if !valid {
+        return Err(invalid_data(format!(
+            "invalid import pending marker: {name:?}"
+        )));
+    }
+    Ok(world_dir(root, world_id)?.join(name))
+}
+
+/// 匯入原檔本體：worlds/<world_id>/import-source-<id>.<png|json>，原始 bytes 照存；id 每次新發，
+/// 撤銷後再匯入也不會撞名。
+pub(crate) fn import_source_file_path(
+    root: &Path,
+    world_id: &str,
+    file_name: &str,
+) -> DataResult<PathBuf> {
+    let valid = file_name
+        .strip_prefix("import-source-")
+        .and_then(|rest| rest.split_once('.'))
+        .is_some_and(|(id, extension)| {
+            validate_id(id).is_ok() && matches!(extension, "png" | "json")
+        });
+    if !valid {
+        return Err(invalid_data(format!(
+            "invalid import source file: {file_name:?}"
+        )));
+    }
+    Ok(world_dir(root, world_id)?.join(file_name))
+}
+
 /// GM 卡的圖：worlds/<world_id>/gm.png。世界書匯入的若是 PNG 卡就存這張，側欄 GM 卡改用它
 /// 取代內建書本圖；沒有這檔就回退書本圖。
 pub(crate) fn gm_image_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {

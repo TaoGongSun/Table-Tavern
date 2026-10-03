@@ -91,6 +91,7 @@ pub(super) fn apply_recorded(
         result.rewritten_entries.clone(),
         result.deleted_entries.clone(),
         before,
+        &crate::data::test_exclusive(world_id),
     );
     result
 }

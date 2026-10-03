@@ -247,6 +247,50 @@ fn try_exclusive(state: &Mutex<LockState>, world_id: &str) -> Option<WorldExclus
     Some(WorldExclusive { _guard: guard })
 }
 
+/// 玩家操作（匯入、撤銷匯入、貼開場白、套用重構、改名補記）用：排隊等在途寫入放開再拿獨占，讓快照、
+/// 資料變更、記帳與失敗復原之間不會插進別的寫入。tokio 的 RwLock 依序排隊，排著的獨占會擋住後到的共用
+/// 許可，不會被聊天寫入餓死。閘門開了就回錯。
+pub async fn world_exclusive_async(world_id: &str) -> Result<WorldExclusive, UpdateGateClosed> {
+    exclusive_async(global_state(), world_id).await
+}
+
+async fn exclusive_async(
+    state: &Mutex<LockState>,
+    world_id: &str,
+) -> Result<WorldExclusive, UpdateGateClosed> {
+    loop {
+        let notify = lock_state(state).notify.clone();
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        let lock = {
+            let mut table = lock_state(state);
+            let _registered = notified.as_mut().enable();
+            lock_for(&mut table, world_id)?
+        };
+        tokio::select! {
+            biased;
+            _ = &mut notified => {
+                if gate_is_raised(state) {
+                    return Err(UpdateGateClosed);
+                }
+            }
+            guard = lock.write_owned() => {
+                if gate_is_raised(state) {
+                    drop(guard);
+                    return Err(UpdateGateClosed);
+                }
+                return Ok(WorldExclusive { _guard: guard });
+            }
+        }
+    }
+}
+
+/// 測試直接呼叫需要獨占憑證的資料函式時用：當下沒人持鎖，拿不到就是測試寫錯。
+#[cfg(test)]
+pub(crate) fn test_exclusive(world_id: &str) -> WorldExclusive {
+    try_world_exclusive(world_id).expect("測試裡這桌不該有人持鎖")
+}
+
 /// 開閘：設旗標、取出當下所有鎖、叫醒等待中的許可。之後新許可與新桌一律拒絕。
 fn raise(state: &Mutex<LockState>) -> Vec<Arc<RwLock<()>>> {
     let mut table = lock_state(state);
@@ -411,6 +455,40 @@ mod tests {
 
     fn local() -> Mutex<LockState> {
         Mutex::new(LockState::new())
+    }
+
+    /// 排隊中的獨占擋住後到的共用許可（不會被源源不絕的聊天寫入餓死），在途許可放開就拿到
+    #[tokio::test(flavor = "current_thread")]
+    async fn queued_exclusive_waits_for_the_permit_and_blocks_later_ones() {
+        let state = Arc::new(local());
+        let permit = write_permit_sync(&state, "desk").unwrap();
+        let waiter = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move { exclusive_async(&state, "desk").await.is_ok() })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let lock = lock_state(&state).worlds["desk"].clone();
+        assert!(
+            lock.clone().try_read_owned().is_err(),
+            "排著的獨占擋住後到的共用許可"
+        );
+        drop(permit);
+        assert!(waiter.await.unwrap());
+        assert!(lock.try_read_owned().is_ok(), "獨占放開後共用許可恢復");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn waiting_exclusive_returns_because_the_gate_opened() {
+        let state = Arc::new(local());
+        let permit = write_permit_sync(&state, "desk").unwrap();
+        let waiter = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move { exclusive_async(&state, "desk").await.is_err() })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let _snapshot = raise(&state);
+        assert!(waiter.await.unwrap());
+        drop(permit);
     }
 
     #[test]

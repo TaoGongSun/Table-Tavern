@@ -43,7 +43,14 @@ export interface ChatController {
   /** 檯面被外部改動（復原匯入收掉開場白）後重讀這一幕 */
   reload: () => Promise<void>;
   /** 貼出開場白；true＝真的貼上檯面了，呼叫端據此收掉開場白面板（失敗時面板留著） */
-  postOpening: (text: string) => Promise<boolean>;
+  /** index＝開場白清單序號、importSource＝跳出面板的那次匯入的原檔識別，序號記在那筆匯入的收據上；
+   *  isCurrent＝呼叫端的「這次操作還算數嗎」，回來時已換桌就不把事件加進畫面、不刷新 */
+  postOpening: (
+    text: string,
+    index?: number,
+    importSource?: string | null,
+    isCurrent?: () => boolean,
+  ) => Promise<boolean>;
   undoLast: () => Promise<void>;
   restoreUndone: () => Promise<void>;
   send: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -205,16 +212,30 @@ export function useChatController({
   );
 
   const postOpening = useCallback(
-    async (text: string) => {
+    async (
+      text: string,
+      index?: number,
+      importSource?: string | null,
+      isCurrent: () => boolean = () => true,
+    ) => {
       onError("");
       try {
-        const event = await invoke<TranscriptEvent>("post_opening", { worldId, scene, ts: nowTs(), text });
+        const event = await invoke<TranscriptEvent>("post_opening", {
+          worldId,
+          scene,
+          ts: nowTs(),
+          text,
+          openingIndex: index ?? null,
+          importSource: importSource ?? null,
+        });
+        // 排在回合後面的期間可能已經換桌：開場白照樣落在原桌，但不能加進現在這桌的畫面
+        if (!isCurrent()) return true;
         setEvents((previous) => [...previous, event]);
         setUndone(null);
         await refreshState();
         return true;
       } catch (reason) {
-        onError(String(reason));
+        if (isCurrent()) onError(String(reason));
         return false;
       }
     },

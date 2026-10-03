@@ -1,6 +1,8 @@
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::types::{RefactorApplyResult, RefactorApplySummary, RefactorOutcome, RefactorSelection};
-use crate::data::{self, CharacterCard, DataResult, Tier, Visibility, WorldbookEntry};
+use crate::data::{
+    self, CharacterCard, DataResult, FieldKind, FieldRule, Tier, Visibility, WorldbookEntry,
+};
 use crate::mechanism;
 use crate::ui_msg::UiMsg;
 use std::collections::{BTreeMap, BTreeSet};
@@ -299,6 +301,7 @@ pub fn apply(
             if !interface.guide.trim().is_empty() {
                 state.mechanism.guide = interface.guide.trim().to_owned();
             }
+            state.mechanism.value_types = value_types_of(state_fields, rules);
         }
         interface_applied = true;
     }
@@ -338,8 +341,14 @@ pub fn apply(
     if !ledger_records.is_empty() {
         mechanism::append_log(root, world_id, state.current_scene, &ledger_records);
     }
+    let preserved: BTreeSet<u64> = outcome
+        .preserve_source_uids
+        .iter()
+        .filter_map(|uid| uid.parse().ok())
+        .collect();
     for (uid, consumers) in source_consumers {
         if preexisting_uids.contains(&uid)
+            && !preserved.contains(&uid)
             && deletion_candidates.contains(&uid)
             && consumers.iter().all(|applied| *applied)
         {
@@ -358,7 +367,11 @@ pub fn apply(
         .iter()
         .filter(|item| item.span.is_empty())
         .filter_map(|item| item.uid.parse().ok())
-        .filter(|uid| preexisting_uids.contains(uid) && !deleted_uids.contains(uid))
+        .filter(|uid| {
+            preexisting_uids.contains(uid)
+                && !deleted_uids.contains(uid)
+                && !preserved.contains(uid)
+        })
         .collect();
     if !whole_entry_drops.is_empty() {
         for entry in data::read_worldbook(root, world_id)? {
@@ -394,6 +407,44 @@ pub fn apply(
         rewritten_entries,
         deleted_entries,
     })
+}
+
+/// 骨架填值用的欄位型別表（點分路徑→"number"｜"bool"｜"list"）。狀態樹會把值轉成字串，型別只能在套用時
+/// 從產物記下來：number／bool 取自模型產出的 STATE 初始 JSON 葉子型別；list 取自同一份產物的欄位規則
+/// `kind: list`——只有這種欄位在行內集合 `[{{x}}]` 裡當「集合片段」拆成多個元素（見 refactor-shell.ts）。
+fn value_types_of(
+    state_fields: &serde_json::Value,
+    rules: &BTreeMap<String, FieldRule>,
+) -> BTreeMap<String, String> {
+    fn walk(prefix: &str, value: &serde_json::Value, out: &mut BTreeMap<String, String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    let path = if prefix.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{prefix}.{key}")
+                    };
+                    walk(&path, child, out);
+                }
+            }
+            serde_json::Value::Number(_) => {
+                out.insert(prefix.to_owned(), "number".to_owned());
+            }
+            serde_json::Value::Bool(_) => {
+                out.insert(prefix.to_owned(), "bool".to_owned());
+            }
+            _ => {}
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk("", state_fields, &mut out);
+    for (path, rule) in rules {
+        if rule.kind == FieldKind::List {
+            out.insert(path.clone(), "list".to_owned());
+        }
+    }
+    out
 }
 
 /// 被套用產物消耗掉的來源條目：整條刪除，原文記進 `deleted_entries`——匯入路徑的 undo 要

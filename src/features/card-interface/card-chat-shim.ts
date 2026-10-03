@@ -34,33 +34,19 @@ export function chatEvents(events: TranscriptEvent[]): TranscriptEvent[] {
   return events.filter((event) => !event.gm_only);
 }
 
-function roleOf(event: TranscriptEvent): ChatRole {
-  if (event.kind === "player") return "user";
-  if (event.kind === "system") return "system";
-  return "assistant";
-}
-
 /** 酒館存的是顯示 regex 套用前的原文 */
 export function floorText(event: TranscriptEvent): string {
   return event.raw ?? event.text;
 }
 
 /**
- * 掛載與推送共用的快照：本樓一律換成產生殼的那段文字（骨架路徑是合成文字），
- * 玩家新增一樓後推送也不會把本樓換回逐字稿原文。空桌時開場白就是第 0 樓。
+ * 掛載與推送共用的快照：floors 是選路算好的每一樓（本樓與歷史樓同一份文字），空桌時開場白就是第 0 樓。
  */
-export function buildCardChat(events: TranscriptEvent[], current: CurrentFloor): CardChat {
-  const floors: ChatFloor[] = chatEvents(events).map((event) => ({
-    name: event.speaker_name,
-    role: roleOf(event),
-    message: floorText(event),
-  }));
-  if (floors.length === 0) {
-    floors.push({ name: current.name, role: "assistant", message: current.text });
-  } else if (current.id >= 0 && current.id < floors.length) {
-    floors[current.id] = { ...floors[current.id], message: current.text };
-  }
-  return { currentId: current.id, floors };
+export function buildCardChat(floors: ChatFloor[], current: CurrentFloor): CardChat {
+  return {
+    currentId: current.id,
+    floors: floors.length > 0 ? floors : [{ name: current.name, role: "assistant", message: current.text }],
+  };
 }
 
 /** 嵌進 script 的 JS 字面值：跳脫 `<`、`>`、`&`、U+2028、U+2029，卡片文字關不掉 `</script>` */

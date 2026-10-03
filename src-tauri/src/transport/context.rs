@@ -1,4 +1,4 @@
-use crate::data::{CharacterCard, Mechanism, TranscriptEvent, WorldbookEntry};
+use crate::data::{CharacterCard, Mechanism, TranscriptEvent, UpdateMode, WorldbookEntry};
 
 use super::messages::{language_rule, replace_st_macros};
 
@@ -112,6 +112,10 @@ pub(super) fn gm_system_prompt(
         if !mechanism.guide.trim().is_empty() {
             system.push_str("\n\n");
             system.push_str(mechanism.guide.trim());
+            if let Some(example) = table_update_example(mechanism, lang) {
+                system.push_str("\n\n");
+                system.push_str(&example);
+            }
             system.push_str("\n\n");
             system.push_str(interface_owned_notice(lang));
         }
@@ -163,6 +167,54 @@ fn mechanism_protocol(lang: &str) -> &'static str {
          - 骰值欄由系統每回合擲，你只讀不寫。\n\
          - 上下限與拒收由系統把關，被擋下的欄位會在下一輪告訴你目前值。"
     }
+}
+
+/// 本桌專屬的更新區塊範例：通用協定的範例路徑（/Heroes、/World）是示意，模型會照抄（實測 Haiku 踩過），
+/// 這裡用本桌欄位規則的真實路徑各示範一筆 delta 與 replace（取規則表排序最前的一筆），格式照協定。
+/// 只跟著 guide 出現（介面接管桌）；規則只在套用時變，凍結快照照樣穩定。
+fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
+    let pointer = |path: &str| -> String {
+        path.split('.')
+            .map(|segment| format!("/{}", segment.replace('~', "~0").replace('/', "~1")))
+            .collect()
+    };
+    let delta = mechanism
+        .rules
+        .iter()
+        .find(|(_, rule)| rule.update == UpdateMode::Delta)
+        .map(|(path, _)| {
+            serde_json::json!({ "op": "delta", "path": pointer(path), "value": -1 }).to_string()
+        });
+    let placeholder = if lang == "en" {
+        "(new value)"
+    } else {
+        "（新的值）"
+    };
+    let replace = mechanism
+        .rules
+        .iter()
+        .find(|(_, rule)| rule.update == UpdateMode::Replace)
+        .map(|(path, _)| {
+            serde_json::json!({ "op": "replace", "path": pointer(path), "value": placeholder })
+                .to_string()
+        });
+    let lines: Vec<String> = [replace, delta]
+        .into_iter()
+        .flatten()
+        .map(|line| format!("  {line}"))
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let heading = if lang == "en" {
+        "This table's update block looks like this (paths follow this table's state tree; do not copy the /Heroes or /World paths from the generic protocol example above):"
+    } else {
+        "本桌的更新區塊長這樣（路徑照本桌狀態樹；不要照抄上面通用協定範例裡的 /Heroes、/World 路徑）："
+    };
+    Some(format!(
+        "{heading}\n<UpdateVariable>\n<JSONPatch>\n[\n{}\n]\n</JSONPatch>\n</UpdateVariable>",
+        lines.join(",\n")
+    ))
 }
 
 /// 介面歸屬聲明：只有介面被 App 接管的桌（mechanism.guide 非空）才附，而且排在欄位說明之後——

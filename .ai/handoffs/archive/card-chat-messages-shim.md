@@ -11,4 +11,4 @@ NorthHall、NorthHall-structure、RPGImmortal 的「美化状态栏」殼靠 `ge
 - `npm run verify` 全綠：vitest 504、cargo 731、harness 28。
 - GUI 零額度驗收過：NorthHall-structure、RPGImmortal 兩組值都顯示；面板開著時收回／復原會換值；playable: no 的 interface 桌在空桌顯示開場白。
 - 排入[實測佇列](../../reference/verification-queue.md)梯 2：面板開著時，GM 新回覆進來會自動換值（低階模型跑一回合）。
-- playable: no 桌的後續回合有值，要等 [refactor-statusbar-skeleton](../../tasks/refactor-statusbar-skeleton.md)。
+- playable: no 桌的後續回合有值，要等 [refactor-statusbar-skeleton](../refactor-statusbar-skeleton.md)。

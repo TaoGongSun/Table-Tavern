@@ -1024,3 +1024,49 @@ fn needs_repair_serializes_reason_code_and_optional_error() {
         serde_json::json!("outside")
     );
 }
+
+/// 重新重構的整桌交換（op=reset）當機恢復：交換前中斷退回原桌；I 已搬成 T、S 還沒上位時，S 驗過就接續
+/// 換上重建桌、驗不過就把 T 放回原位；已換好只差清理時刪 T。
+#[test]
+fn reset_swap_recovers_from_every_interruption() {
+    let reset_log = |stage: &str| serde_json::json!({"op": "reset", "stage": stage});
+
+    // 交換前（I、S 都在）：丟掉 S，原桌不動
+    let (root, id) = fresh("reset-before-swap");
+    clone_as(root.path(), &id, "S", "S");
+    put_log(root.path(), &id, reset_log("swap"));
+    assert_eq!(open_world(root.path(), &id).unwrap(), OpenWorld::Ready);
+    assert_eq!(who(&live(root.path(), &id)), "I");
+    assert!(!side(root.path(), &id, "S").exists() && !side(root.path(), &id, "L").exists());
+
+    // I→T 之後、S→I 之前：S 驗過就換上重建桌
+    let (root, id) = fresh("reset-mid-swap");
+    clone_as(root.path(), &id, "S", "S");
+    fs::rename(live(root.path(), &id), side(root.path(), &id, "T")).unwrap();
+    put_log(root.path(), &id, reset_log("swap"));
+    assert_eq!(open_world(root.path(), &id).unwrap(), OpenWorld::Ready);
+    assert_eq!(who(&live(root.path(), &id)), "S");
+    for kind in ["S", "T", "L"] {
+        assert!(!side(root.path(), &id, kind).exists(), "{kind}");
+    }
+
+    // 同一時點但 S 驗不過：退回原桌
+    let (root, id) = fresh("reset-mid-swap-bad");
+    clone_as(root.path(), &id, "S", "S");
+    fs::write(side(root.path(), &id, "S").join("state.json"), "壞掉").unwrap();
+    fs::rename(live(root.path(), &id), side(root.path(), &id, "T")).unwrap();
+    put_log(root.path(), &id, reset_log("swap"));
+    assert_eq!(open_world(root.path(), &id).unwrap(), OpenWorld::Ready);
+    assert_eq!(who(&live(root.path(), &id)), "I", "退回的是原桌");
+    for kind in ["S", "T", "L"] {
+        assert!(!side(root.path(), &id, kind).exists(), "{kind}");
+    }
+
+    // 已換好、只差清理：刪 T 與日誌
+    let (root, id) = fresh("reset-cleanup");
+    clone_as(root.path(), &id, "T", "T");
+    put_log(root.path(), &id, reset_log("cleanup"));
+    assert_eq!(open_world(root.path(), &id).unwrap(), OpenWorld::Ready);
+    assert_eq!(who(&live(root.path(), &id)), "I");
+    assert!(!side(root.path(), &id, "T").exists() && !side(root.path(), &id, "L").exists());
+}

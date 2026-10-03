@@ -485,6 +485,13 @@ button.rail-tile-main {
   align-items: center;
 }
 
+.rail-turn-wait {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+  text-align: center;
+}
+
 .rail-foot > .rail-add:not(.btn-icon) {
   width: 100%;
 }
