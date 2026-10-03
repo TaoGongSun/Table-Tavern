@@ -45,12 +45,13 @@ pub(crate) fn player_fallback_name(lang: &str) -> &'static str {
     }
 }
 
-/// 送 AI 的標頭語系：照提示詞既有慣例，en 出英文、其餘出繁中。
+/// 送 AI 的骨架語系〔作者裁決 2026-10-03〕：zh* 出繁中、其餘（含未知）出英文。
+/// 只用來挑骨架字；輸出語言與玩家稱呼一律吃原始語系。
 pub fn prompt_lang(lang: &str) -> &'static str {
-    if lang == "en" {
-        "en"
-    } else {
+    if lang.starts_with("zh") {
         "zh-TW"
+    } else {
+        "en"
     }
 }
 

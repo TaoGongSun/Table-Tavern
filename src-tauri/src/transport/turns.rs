@@ -4,12 +4,15 @@ use crate::data::{
 };
 
 use super::messages::{
-    language_rule, message, player_fallback_name, push_merged, replace_st_macros, ChatMessage,
+    language_rule, message, narration_line, player_fallback_name, push_merged, replace_st_macros,
+    scaffold_en, speaker_prefix, system_line, ChatMessage,
 };
 
 use super::arrivals::{prompt_speaker, prompt_text, render_for_prompt, Side};
 
-use super::context::{active_worldbook_entries, gm_system_prompt, split_person_roster};
+use super::context::{
+    active_worldbook_entries, gm_system_prompt, player_heading, split_person_roster,
+};
 
 use super::state_view::{character_state_block, gm_dynamic_block, StateScope};
 
@@ -32,11 +35,22 @@ pub fn lane_event_line(event: &TranscriptEvent, lang: &str, side: Side) -> Optio
     let text = prompt_text(event, lang, side)?;
     Some(match event.kind {
         TranscriptKind::Dialogue | TranscriptKind::Player => {
-            format!("{}：{}", prompt_speaker(event, lang), text)
+            format!(
+                "{}{text}",
+                speaker_prefix(&prompt_speaker(event, lang), lang)
+            )
         }
-        TranscriptKind::Narration => format!("（旁白）{text}"),
-        TranscriptKind::System => format!("（系統）{text}"),
+        TranscriptKind::Narration => narration_line(&text, lang),
+        TranscriptKind::System => system_line(&text, lang),
     })
+}
+
+/// chars 線「你知道的世界情報」段標（凍結 system 與回合尾共用），結尾帶換行。
+fn known_world_heading(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "## World knowledge you have\n",
+        false => "## 你知道的世界情報\n",
+    }
 }
 
 /// chars 線凍結 system（快照）：中性扮演引擎指示＋全部公開角色卡＋玩家卡＋Public constant 條目。
@@ -52,18 +66,33 @@ pub fn chars_lane_system(
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let mut system = format!(
-        "你是這場多人桌上角色扮演的扮演引擎，「登場角色」名單上的角色都可能由你扮演，\
-         每一輪的結尾會指定你這一輪演誰。請一律用第三人稱敘事：動作與心理描寫都以\
-         被指定角色的名字或「他／她」當主詞，說出口的話寫在引號裡、維持這個角色自己的口吻；\
-         視角只跟著被指定的角色，可以寫他眼中所見的環境與心裡的感受，不要寫他不知道的事；\
-         敘述不要用「我」當主詞、不要跳出角色、不要以 AI 助理的身分說話、\
-         不要替其他角色或玩家代言。\
-         {language_rule}\n",
-        language_rule = language_rule(lang),
-    );
+    let en = scaffold_en(lang);
+    let intro = match en {
+        true => {
+            "You are the roleplay engine for this multiplayer tabletop RPG session. Any character on the \
+             \"Characters\" list may be played by you, and the end of each turn tells you whom to play this turn. \
+             Always narrate in the third person: actions and inner thoughts take the assigned character's name or \
+             \"he/she\" as the subject, and spoken words go in quotation marks in that character's own voice. \
+             Keep the viewpoint with the assigned character: you may describe what they see around them and what \
+             they feel, but not what they do not know. Do not use \"I\" as the narrative subject, do not break \
+             character, do not speak as an AI assistant, and do not speak for other characters or the player."
+        }
+        false => {
+            "你是這場多人桌上角色扮演的扮演引擎，「登場角色」名單上的角色都可能由你扮演，\
+             每一輪的結尾會指定你這一輪演誰。請一律用第三人稱敘事：動作與心理描寫都以\
+             被指定角色的名字或「他／她」當主詞，說出口的話寫在引號裡、維持這個角色自己的口吻；\
+             視角只跟著被指定的角色，可以寫他眼中所見的環境與心裡的感受，不要寫他不知道的事；\
+             敘述不要用「我」當主詞、不要跳出角色、不要以 AI 助理的身分說話、\
+             不要替其他角色或玩家代言。"
+        }
+    };
+    let separator = if en { " " } else { "" };
+    let mut system = format!("{intro}{separator}{}\n", language_rule(lang));
     if !cards.is_empty() {
-        system.push_str("\n## 登場角色（公開設定）\n");
+        system.push_str(match en {
+            true => "\n## Characters (public profiles)\n",
+            false => "\n## 登場角色（公開設定）\n",
+        });
         for card in cards {
             system.push_str(&format!("### {}\n", card.name));
             if !card.public_md.trim().is_empty() {
@@ -75,10 +104,7 @@ pub fn chars_lane_system(
         }
     }
     if let Some(player) = player {
-        system.push_str(&format!(
-            "\n## 玩家角色（真人扮演，逐字稿裡的「{}」就是他）",
-            player.name
-        ));
+        system.push_str(&player_heading(&player.name, lang));
         if !player.public_md.trim().is_empty() {
             system.push_str(&format!(
                 "\n{}\n",
@@ -93,9 +119,10 @@ pub fn chars_lane_system(
         })
         .collect();
     constants.sort_by_key(|entry| (entry.order, entry.uid));
-    let (constants, roster) = split_person_roster(&constants);
+    let (constants, roster) = split_person_roster(&constants, lang);
     if !constants.is_empty() || roster.is_some() {
-        system.push_str("\n## 你知道的世界情報\n");
+        system.push('\n');
+        system.push_str(known_world_heading(lang));
         for entry in constants {
             system.push_str(&format!(
                 "### {}\n{}\n",
@@ -151,7 +178,7 @@ pub fn chars_lane_turn(
 
     let mut tail = String::new();
     if !public_keyword.is_empty() {
-        tail.push_str("## 你知道的世界情報\n");
+        tail.push_str(known_world_heading(lang));
         for entry in public_keyword {
             tail.push_str(&format!(
                 "### {}\n{}\n",
@@ -164,9 +191,18 @@ pub fn chars_lane_turn(
     let mut confidential = String::new();
     let mut hoisted_private = None;
     if !card.private_md.trim().is_empty() {
+        let heading = match scaffold_en(lang) {
+            true => format!(
+                "## {}'s private profile (only they know this; do not reveal it unless the story gets there)",
+                card.name
+            ),
+            false => format!(
+                "## 「{}」的私有設定（只有他自己知道；除非劇情走到，不要主動說破）",
+                card.name
+            ),
+        };
         let block = format!(
-            "## 「{}」的私有設定（只有他自己知道；除非劇情走到，不要主動說破）\n{}\n",
-            card.name,
+            "{heading}\n{}\n",
             replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
         );
         match hoist_private {
@@ -175,7 +211,10 @@ pub fn chars_lane_turn(
         }
     }
     if !limited.is_empty() {
-        confidential.push_str(&format!("## 只有「{}」知道的世界情報\n", card.name));
+        confidential.push_str(&match scaffold_en(lang) {
+            true => format!("## World knowledge only {} has\n", card.name),
+            false => format!("## 只有「{}」知道的世界情報\n", card.name),
+        });
         for entry in limited {
             confidential.push_str(&format!(
                 "### {}\n{}\n",
@@ -184,9 +223,9 @@ pub fn chars_lane_turn(
             ));
         }
     }
-    if let Some(block) = branch
-        .and_then(|branch| character_state_block(state, mechanism, branch, &card.name, user_name))
-    {
+    if let Some(block) = branch.and_then(|branch| {
+        character_state_block(state, mechanism, branch, &card.name, user_name, lang)
+    }) {
         confidential.push_str(&block);
         confidential.push('\n');
     }
@@ -194,12 +233,20 @@ pub fn chars_lane_turn(
         tail.push_str(&confidential);
         tail.push('\n');
     }
-    tail.push_str(&format!(
-        "現在你是「{name}」。請直接用第三人稱輸出「{name}」的動作、台詞與心理描寫，\
-         敘述主詞是「{name}」或「他／她」、不要用「我」，說出口的話寫在引號裡；\
-         不要加名字前綴、不要任何角色之外的說明。",
-        name = card.name
-    ));
+    tail.push_str(&match scaffold_en(lang) {
+        true => format!(
+            "You are now \"{name}\". Write {name}'s actions, lines, and inner thoughts directly in the third person, \
+             with \"{name}\" or \"he/she\" as the subject and never \"I\"; put spoken words in quotation marks. \
+             Do not add a name prefix or any explanation outside the character.",
+            name = card.name
+        ),
+        false => format!(
+            "現在你是「{name}」。請直接用第三人稱輸出「{name}」的動作、台詞與心理描寫，\
+             敘述主詞是「{name}」或「他／她」、不要用「我」，說出口的話寫在引號裡；\
+             不要加名字前綴、不要任何角色之外的說明。",
+            name = card.name
+        ),
+    });
     LaneTurn {
         tail,
         confidential: (!confidential.is_empty()).then_some(confidential),
@@ -267,15 +314,17 @@ pub fn gm_lane_turn(
 /// 組裝「換場摘要」上下文：GM 檔位讀角色側看得到的 transcript，把本場景壓成一則前情提要。
 /// 不含 world.md／角色卡——摘要只需壓縮已發生的公開事件，不需要世界觀全貌。
 pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessage> {
-    let instruction = if lang == "en" {
-        "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
-         The first line of your reply must be exactly \"Title: <act name, 10 words or fewer>\", \
-         followed by a blank line before the recap. \
-         Summarize everything that happened in this scene as a recap, covering: \
-         location and time, who is present and their state, key events, relationship changes, \
-         and unresolved threads — as a compact bulleted list. \
-         Output only the summary body, in English."
-            .to_owned()
+    let instruction = if scaffold_en(lang) {
+        format!(
+            "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
+             The first line of your reply must be exactly \"Title: <act name, 10 words or fewer>\", \
+             followed by a blank line before the recap. \
+             Summarize everything that happened in this scene as a recap, covering: \
+             location and time, who is present and their state, key events, relationship changes, \
+             and unresolved threads — as a compact bulleted list. \
+             Output only the summary body. {language_rule}",
+            language_rule = language_rule(lang),
+        )
     } else {
         format!(
             "你是這場多人桌上角色扮演的 GM，現在要換場。\
@@ -603,7 +652,7 @@ mod tests {
         let nameless = event(TranscriptKind::Player, "", "", "你好");
         assert_eq!(
             lane_event_line(&nameless, "ko", Side::Character).as_deref(),
-            Some("플레이어：你好")
+            Some("플레이어: 你好")
         );
     }
 

@@ -1,6 +1,6 @@
 use crate::data::{CharacterCard, Mechanism, TranscriptEvent, UpdateMode, WorldbookEntry};
 
-use super::messages::{language_rule, replace_st_macros};
+use super::messages::{language_rule, replace_st_macros, scaffold_en};
 
 pub fn active_worldbook_entries<'a>(
     entries: &'a [WorldbookEntry],
@@ -40,25 +40,43 @@ pub(super) fn gm_system_prompt(
     mechanism: &Mechanism,
     lang: &str,
 ) -> String {
-    let mut system = format!(
-        "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
-         推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
-         旁白是所有人都聽得到的公開敘事。沒有角色卡的配角（路人、店主、反派等）\
-         由你全權扮演，可自由出場、說話、行動；「登場角色」名單上的角色與玩家\
-         各有扮演者，不要替他們代言。\
-         世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。\
-         {language_rule}\n",
-        language_rule = language_rule(lang),
-    );
+    let en = scaffold_en(lang);
+    let intro = match en {
+        true => {
+            "You are the GM (director and narrator) of this multiplayer tabletop RPG session. You describe scenes and \
+             how the world responds, drive the pacing of the story, decide who speaks next, and keep the conversation \
+             from stalling or repeating. Narration is public: everyone hears it. You fully play supporting characters \
+             who have no character card (passers-by, shopkeepers, villains, and so on) and may bring them in, have them \
+             speak, and act freely; the characters on the \"Characters\" list and the player each have their own \
+             players, so do not speak for them. Only you know the full world setting and the characters' private \
+             profiles; do not reveal anything the story has not uncovered yet."
+        }
+        false => {
+            "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
+             推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
+             旁白是所有人都聽得到的公開敘事。沒有角色卡的配角（路人、店主、反派等）\
+             由你全權扮演，可自由出場、說話、行動；「登場角色」名單上的角色與玩家\
+             各有扮演者，不要替他們代言。\
+             世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。"
+        }
+    };
+    let separator = if en { " " } else { "" };
+    let mut system = format!("{intro}{separator}{}\n", language_rule(lang));
     if !world_md.trim().is_empty() {
+        let heading = match en {
+            true => {
+                "## World setting (only in your context; characters know only what you say aloud)"
+            }
+            false => "## 世界設定（只進你的上下文，角色只知道你說出口的內容）",
+        };
         system.push_str(&format!(
-            "\n## 世界設定（只進你的上下文，角色只知道你說出口的內容）\n{}\n",
+            "\n{heading}\n{}\n",
             replace_st_macros(world_md.trim(), user_name, None)
         ));
     }
-    let (constant_entries, roster) = split_person_roster(constant_entries);
+    let (constant_entries, roster) = split_person_roster(constant_entries, lang);
     if !constant_entries.is_empty() || roster.is_some() {
-        system.push_str("\n## 世界書（只進你的上下文）\n");
+        system.push_str(worldbook_heading(lang));
         for entry in constant_entries {
             system.push_str(&format!(
                 "### {}\n{}\n",
@@ -72,28 +90,37 @@ pub(super) fn gm_system_prompt(
         }
     }
     if !cards.is_empty() {
-        system.push_str("\n## 登場角色\n");
+        let (heading, public_label, private_label) = match en {
+            true => (
+                "\n## Characters\n",
+                "Public profile:",
+                "Private profile (known only to you and that character):",
+            ),
+            false => (
+                "\n## 登場角色\n",
+                "公開設定：",
+                "私有設定（僅你與該角色知道）：",
+            ),
+        };
+        system.push_str(heading);
         for card in cards {
             system.push_str(&format!("### {}\n", card.name));
             if !card.public_md.trim().is_empty() {
                 system.push_str(&format!(
-                    "公開設定：\n{}\n",
+                    "{public_label}\n{}\n",
                     replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
                 ));
             }
             if !card.private_md.trim().is_empty() {
                 system.push_str(&format!(
-                    "私有設定（僅你與該角色知道）：\n{}\n",
+                    "{private_label}\n{}\n",
                     replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
                 ));
             }
         }
     }
     if let Some(player) = player {
-        system.push_str(&format!(
-            "\n## 玩家角色（真人扮演，逐字稿裡的「{}」就是他）",
-            player.name
-        ));
+        system.push_str(&player_heading(&player.name, lang));
         if !player.public_md.trim().is_empty() {
             system.push_str(&format!(
                 "\n{}\n",
@@ -123,10 +150,28 @@ pub(super) fn gm_system_prompt(
     system
 }
 
+/// GM 側「世界書」段標（system 的 constant 條目與回合尾的 keyword 條目共用），前後各帶換行。
+pub(super) fn worldbook_heading(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "\n## Worldbook (only in your context)\n",
+        false => "\n## 世界書（只進你的上下文）\n",
+    }
+}
+
+/// 玩家卡段標（GM 與 chars 兩條 system 共用），開頭帶換行、結尾不帶。
+pub(super) fn player_heading(name: &str, lang: &str) -> String {
+    match scaffold_en(lang) {
+        true => format!(
+            "\n## Player character (played by a real person; \"{name}\" in the transcript is them)"
+        ),
+        false => format!("\n## 玩家角色（真人扮演，逐字稿裡的「{name}」就是他）"),
+    }
+}
+
 /// 增量桌統一協定聲明：數值由系統本地記帳，模型只回報這一幕的變動量。
 /// 原文照貼進凍結快照，不要改寫措辭——改一字整條快取全滅。
 fn mechanism_protocol(lang: &str) -> &'static str {
-    if lang == "en" {
+    if scaffold_en(lang) {
         "## State Update Protocol v1 (this table's numbers are system-managed)\n\n\
          Numbers are computed and tracked locally by the system — you only need to say \
          \"how much changed this scene.\" End every reply with an update block:\n\n\
@@ -185,7 +230,7 @@ fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
         .map(|(path, _)| {
             serde_json::json!({ "op": "delta", "path": pointer(path), "value": -1 }).to_string()
         });
-    let placeholder = if lang == "en" {
+    let placeholder = if scaffold_en(lang) {
         "(new value)"
     } else {
         "（新的值）"
@@ -206,7 +251,7 @@ fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
     if lines.is_empty() {
         return None;
     }
-    let heading = if lang == "en" {
+    let heading = if scaffold_en(lang) {
         "This table's update block looks like this (paths follow this table's state tree; do not copy the /Heroes or /World paths from the generic protocol example above):"
     } else {
         "本桌的更新區塊長這樣（路徑照本桌狀態樹；不要照抄上面通用協定範例裡的 /Heroes、/World 路徑）："
@@ -221,7 +266,7 @@ fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
 /// 模型會模仿最後讀到的排版，欄位說明擺最後它就照那份說明的 markdown 逐條寫在正文裡（實測踩過）。
 /// 與 mechanism_protocol 一樣是凍結快照的一部分，措辭不要隨手改。
 fn interface_owned_notice(lang: &str) -> &'static str {
-    if lang == "en" {
+    if scaffold_en(lang) {
         "## Who draws the interface\n\n\
          The field spec above is a specification of what each value looks like — its layout is not \
          your output format.\n\
@@ -255,6 +300,7 @@ fn interface_owned_notice(lang: &str) -> &'static str {
 /// 完全不印這一行，既有輸出逐字不變。
 pub(super) fn split_person_roster<'a>(
     entries: &[&'a WorldbookEntry],
+    lang: &str,
 ) -> (Vec<&'a WorldbookEntry>, Option<String>) {
     let mut rest = Vec::new();
     let mut names = Vec::new();
@@ -265,7 +311,10 @@ pub(super) fn split_person_roster<'a>(
             names.push(entry.title.as_str());
         }
     }
-    let roster = (!names.is_empty()).then(|| format!("這桌還有這些人：{}", names.join("、")));
+    let roster = (!names.is_empty()).then(|| match scaffold_en(lang) {
+        true => format!("Also at this table: {}", names.join(", ")),
+        false => format!("這桌還有這些人：{}", names.join("、")),
+    });
     (rest, roster)
 }
 
@@ -416,7 +465,7 @@ mod tests {
             ..worldbook_entry(2, "隱藏人物", &[], true, 1, true, Visibility::Public)
         };
         let refs: Vec<&WorldbookEntry> = vec![&alice, &disabled];
-        let (rest, roster) = split_person_roster(&refs);
+        let (rest, roster) = split_person_roster(&refs, "zh-TW");
         assert!(rest.is_empty());
         assert_eq!(roster, Some("這桌還有這些人：愛麗絲".to_owned()));
     }

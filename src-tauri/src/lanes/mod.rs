@@ -369,7 +369,7 @@ fn plan_turn(
         session_id: state.session_id.clone(),
         base,
         system: state.snapshot.clone(),
-        patch: snapshot_patch::render_patch(&state.applied, &input.frozen_system),
+        patch: snapshot_patch::render_patch(&state.applied, &input.frozen_system, input.lang),
         rebased: false,
     }
 }
@@ -385,7 +385,7 @@ fn now_epoch() -> u64 {
 /// 形狀比照單發 flatten；續聊只送增量，與 session 內既有歷史逐字銜接。
 /// `lane`：chars 線走角色側渲染（略過角色私設事件、遮 gm_only），
 /// GM 線一律全文。略過只發生在渲染，水位與指紋仍以原事件序列計。
-fn build_prompt(
+pub(crate) fn build_prompt(
     events: &[TranscriptEvent],
     base: usize,
     tail: &str,
@@ -405,7 +405,7 @@ fn build_prompt(
         return tail.to_owned();
     }
     let header = if opening {
-        "以下是到目前為止的對話紀錄：\n\n"
+        transport::history_header(lang)
     } else {
         ""
     };
@@ -916,3 +916,6 @@ fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), String> {
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
 mod tests;
+
+#[cfg(test)]
+mod scaffold_tests;

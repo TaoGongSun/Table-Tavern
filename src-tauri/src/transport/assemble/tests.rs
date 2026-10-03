@@ -391,7 +391,7 @@ fn shared_lane_flattens_identically_for_cli_paths() {
             None,
             "zh-TW",
         );
-        crate::cli::flatten_messages("", "", &messages)
+        crate::cli::flatten_messages("", "", &messages, "zh-TW")
     };
     let (gal_system, gal_prompt) = flatten(&gal);
     let (ray_system, ray_prompt) = flatten(&ray);

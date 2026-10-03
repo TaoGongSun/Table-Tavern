@@ -6,7 +6,8 @@ use crate::mechanism;
 
 use std::collections::BTreeMap;
 
-use super::messages::replace_st_macros;
+use super::context::worldbook_heading;
+use super::messages::{replace_st_macros, scaffold_en};
 
 /// GM 的回合動態塊：keyword 條目＋「目前狀態」。
 /// assemble_gm_messages（尾端獨立訊息）與 gm_lane_turn（resume 續聊回合尾段）共用。
@@ -20,9 +21,10 @@ pub(super) fn gm_dynamic_block(
     scope: &StateScope,
     lang: &str,
 ) -> String {
+    let en = scaffold_en(lang);
     let mut dynamic = String::new();
     if !keyword_entries.is_empty() {
-        dynamic.push_str("## 世界書（只進你的上下文）\n");
+        dynamic.push_str(worldbook_heading(lang).trim_start_matches('\n'));
         for entry in keyword_entries {
             dynamic.push_str(&format!(
                 "### {}\n{}\n",
@@ -42,6 +44,7 @@ pub(super) fn gm_dynamic_block(
             align: scope.align,
             user_name,
             base: 0,
+            en,
         },
         &mut Vec::new(),
     );
@@ -49,23 +52,24 @@ pub(super) fn gm_dynamic_block(
         if !dynamic.is_empty() {
             dynamic.push('\n');
         }
-        let header = if mechanism.incremental && scope.align {
-            "## 目前狀態（完整對齊，以下是系統帳上的真值，請以此為準）\n"
-        } else {
-            "## 目前狀態（這桌的檯面，接續它往下演）\n"
+        let header = match (en, mechanism.incremental && scope.align) {
+            (true, true) => "## Current state (full alignment: these are the true values in the system ledger; treat them as authoritative)\n",
+            (true, false) => "## Current state (the table as it stands; continue from here)\n",
+            (false, true) => "## 目前狀態（完整對齊，以下是系統帳上的真值，請以此為準）\n",
+            (false, false) => "## 目前狀態（這桌的檯面，接續它往下演）\n",
         };
         dynamic.push_str(header);
         for (key, value) in &state.table {
-            let display_name = match (lang, key.as_str()) {
-                ("en", "time") => "Time",
-                ("en", "place") => "Place",
-                ("en", "present") => "Present",
-                (_, "time") => "時間",
-                (_, "place") => "地點",
-                (_, "present") => "在場人物",
+            let display_name = match (en, key.as_str()) {
+                (true, "time") => "Time",
+                (true, "place") => "Place",
+                (true, "present") => "Present",
+                (false, "time") => "時間",
+                (false, "place") => "地點",
+                (false, "present") => "在場人物",
                 _ => key,
             };
-            dynamic.push_str(&format!("{display_name}：{value}\n"));
+            dynamic.push_str(&field_line("", display_name, value, en));
         }
         dynamic.push_str(&tree_text);
     }
@@ -81,7 +85,10 @@ pub(super) fn gm_dynamic_block(
             if !dynamic.is_empty() {
                 dynamic.push('\n');
             }
-            dynamic.push_str("## 當前情境（系統依狀態表判定的隱藏背景，不要在回覆裡複述本段）\n");
+            dynamic.push_str(match en {
+                true => "## Current situation (hidden background the system derived from the state table; do not restate this section in your reply)\n",
+                false => "## 當前情境（系統依狀態表判定的隱藏背景，不要在回覆裡複述本段）\n",
+            });
             for (index, text) in lines.iter().enumerate() {
                 if index > 0 {
                     dynamic.push('\n');
@@ -95,7 +102,10 @@ pub(super) fn gm_dynamic_block(
         if !dynamic.is_empty() {
             dynamic.push('\n');
         }
-        dynamic.push_str("## 上一輪被系統擋下的更新（請照這些現值修正）\n");
+        dynamic.push_str(match en {
+            true => "## Updates the system rejected last turn (correct them using these current values)\n",
+            false => "## 上一輪被系統擋下的更新（請照這些現值修正）\n",
+        });
         for note in &state.notes {
             dynamic.push_str(&format!("{note}\n"));
         }
@@ -112,6 +122,16 @@ struct TreeRender<'a> {
     user_name: &'a str,
     /// 縮排基準：從第幾層開始算第一級（角色線只印自己那支，要從行首印起）
     base: usize,
+    /// 英文骨架：冒號與變動標記括號用半形
+    en: bool,
+}
+
+/// 狀態欄一行「鍵：值」；英文骨架用半形冒號。
+fn field_line(indent: &str, key: &str, value: &str, en: bool) -> String {
+    match en {
+        true => format!("{indent}{key}: {value}\n"),
+        false => format!("{indent}{key}：{value}\n"),
+    }
 }
 
 /// 樹沿用模型最容易產生的 YAML 形狀，讓本期全量注入不因資料升級漏掉任何狀態。
@@ -148,19 +168,28 @@ fn render_state_tree(
                             render
                                 .changes
                                 .get(&path.join("."))
-                                .map(|mark| format!("（{mark}）"))
+                                .map(|mark| match render.en {
+                                    true => format!(" ({mark})"),
+                                    false => format!("（{mark}）"),
+                                })
                                 .unwrap_or_default()
                         } else {
                             String::new()
                         };
-                        output.push_str(&format!(
-                            "{indent}{key}：{}{mark}\n",
-                            replace_st_macros(value, render.user_name, None),
+                        let value = replace_st_macros(value, render.user_name, None);
+                        output.push_str(&field_line(
+                            &indent,
+                            key,
+                            &format!("{value}{mark}"),
+                            render.en,
                         ));
                     }
                 }
                 StateNode::Branch(children) => {
-                    let header = format!("{indent}{key}：\n");
+                    let header = match render.en {
+                        true => format!("{indent}{key}:\n"),
+                        false => format!("{indent}{key}：\n"),
+                    };
                     let before = output.len();
                     output.push_str(&header);
                     render_state_tree(output, children, render, path);
@@ -317,6 +346,7 @@ pub fn character_state_block(
     branch: &[String],
     card_name: &str,
     user_name: &str,
+    lang: &str,
 ) -> Option<String> {
     if branch.is_empty() {
         return None;
@@ -340,16 +370,22 @@ pub fn character_state_block(
             align: true,
             user_name,
             base: branch.len(),
+            en: scaffold_en(lang),
         },
         &mut path,
     );
     if body.is_empty() {
         return None;
     }
-    Some(format!(
-        "## 「{card_name}」目前的狀態（系統帳，唯讀；可以拿來演，但不要輸出任何狀態欄或更新區塊）\n{}",
-        body.trim_end()
-    ))
+    let heading = match scaffold_en(lang) {
+        true => format!(
+            "## {card_name}'s current state (system ledger, read-only; use it in your portrayal, but do not output any state fence or update block)"
+        ),
+        false => format!(
+            "## 「{card_name}」目前的狀態（系統帳，唯讀；可以拿來演，但不要輸出任何狀態欄或更新區塊）"
+        ),
+    };
+    Some(format!("{heading}\n{}", body.trim_end()))
 }
 
 /// 長文字欄（inject == Snapshot）這一輪的新值：(點分路徑, 值)。
