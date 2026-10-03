@@ -195,9 +195,9 @@ describe("SettingsWindow", () => {
     await flush();
   }
 
-  const tabs = () => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  const tabs = () => [...document.querySelectorAll<HTMLButtonElement>(".settings-tabs button")];
   const tabNamed = (key: Parameters<typeof t>[0]) => tabs().find((b) => b.textContent === t(key))!;
-  const selected = () => document.querySelector('[role="tab"][aria-selected="true"]')!.textContent;
+  const selected = () => document.querySelector('.settings-tabs [aria-current="true"]')!.textContent;
   const closeButton = () => document.querySelector<HTMLButtonElement>(".settings-close")!;
   const settingsDialog = () => document.querySelector<HTMLDialogElement>(".settings-modal")!;
   const noticeDialog = () =>
@@ -222,60 +222,36 @@ describe("SettingsWindow", () => {
     );
   }
 
-  it("exposes a labelled tablist with roving focus driven by arrows, Home and End", async () => {
+  it("is a plain labelled button row with exactly one current tab and no keyboard handling of its own", async () => {
     await mount();
-    const list = document.querySelector('[role="tablist"]')!;
-    const title = document.getElementById(list.getAttribute("aria-labelledby")!)!;
+    const nav = document.querySelector("nav.settings-tabs")!;
+    const title = document.getElementById(nav.getAttribute("aria-labelledby")!)!;
     expect(title.tagName).toBe("H2");
     expect(title.textContent).toBe(t("settingsBtn"));
-    expect(list.contains(closeButton())).toBe(false);
+    expect(nav.contains(closeButton())).toBe(false);
     expect(tabs()).toHaveLength(5);
-    const panel = document.querySelector('[role="tabpanel"]')!;
-    for (const tab of tabs()) expect(tab.getAttribute("aria-controls")).toBe(panel.id);
-    expect(tabs().map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1, -1]);
-    expect(panel.getAttribute("aria-labelledby")).toBe(tabs()[0].id);
+    for (const tab of tabs()) {
+      expect(tab.type).toBe("button");
+      expect(tab.hasAttribute("role")).toBe(false);
+      expect(tab.hasAttribute("tabindex")).toBe(false);
+      expect(tab.hasAttribute("aria-selected")).toBe(false);
+    }
+    expect(document.querySelector('[role="tablist"], [role="tab"], [role="tabpanel"]')).toBeNull();
+    const current = () => tabs().map((tab) => tab.getAttribute("aria-current"));
+    expect(current()).toEqual(["true", null, null, null, null]);
+    await click(tabNamed("usageTab"));
+    expect(current()).toEqual([null, null, "true", null, null]);
 
-    tabs()[0].focus();
-    await press(tabs()[0], "ArrowRight");
-    expect(document.activeElement).toBe(tabs()[1]);
-    // 方向鍵只移焦點，不切頁
-    expect(selected()).toBe(t("appearanceTab"));
-    await press(tabs()[1], "End");
-    expect(document.activeElement).toBe(tabs()[4]);
-    await press(tabs()[4], "ArrowRight");
-    expect(document.activeElement).toBe(tabs()[0]);
-    await press(tabs()[0], "ArrowLeft");
-    expect(document.activeElement).toBe(tabs()[4]);
-    await press(tabs()[4], "Home");
-    expect(document.activeElement).toBe(tabs()[0]);
-    expect(confirmMock).not.toHaveBeenCalled();
-  });
-
-  it("arrow focus asks to be visible and marks the tab until it loses focus", async () => {
-    await mount();
-    const focus = vi.spyOn(HTMLElement.prototype, "focus");
-    tabs()[0].focus();
-    await press(tabs()[0], "ArrowRight");
-    expect(document.activeElement).toBe(tabs()[1]);
-    expect(focus).toHaveBeenLastCalledWith({ preventScroll: false, focusVisible: true });
-    expect(tabs()[1].dataset.focusRing).toBe("");
-    await press(tabs()[1], "ArrowRight");
-    expect(tabs()[1].dataset.focusRing).toBeUndefined();
-    expect(tabs()[2].dataset.focusRing).toBe("");
-    focus.mockRestore();
-  });
-
-  it("a mouse click drops the arrow ring; a keyboard-made click keeps it", async () => {
-    await mount();
-    tabs()[0].focus();
-    await press(tabs()[0], "ArrowRight");
-    await click(tabs()[1]);
-    expect(tabs()[1].dataset.focusRing).toBe("");
+    // 方向鍵不攔：不 preventDefault、焦點不動、不切頁
+    tabs()[2].focus();
+    const arrow = new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true });
     await act(async () => {
-      tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      tabs()[2].dispatchEvent(arrow);
     });
-    expect(tabs()[1].dataset.focusRing).toBeUndefined();
-    expect(document.activeElement).toBe(tabs()[1]);
+    expect(arrow.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(tabs()[2]);
+    expect(selected()).toBe(t("usageTab"));
+    expect(confirmMock).not.toHaveBeenCalled();
   });
 
   it("clicking the current tab never asks, even with unsaved changes", async () => {
@@ -534,8 +510,6 @@ describe("SettingsWindow", () => {
     await render({ initialTab: "versions", requestKey: 1 });
     expect(selected()).toBe(t("versionsTab"));
     expect(document.activeElement).toBe(tabNamed("versionsTab"));
-    // 外部請求不知道輸入來源，救援一律要求可見
-    expect(tabNamed("versionsTab").dataset.focusRing).toBe("");
   });
 
   it("api format saves instantly and survives discarding the other drafts", async () => {

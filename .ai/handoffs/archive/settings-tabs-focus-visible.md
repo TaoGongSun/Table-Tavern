@@ -6,4 +6,4 @@ Playwright WebKit 26.0（與系統 WKWebView 同行為）：滑鼠點一個分�
 ## 狀態
 - 已結案進 main（2026-10-03）：做法、驗證與結論見 [plans/settings-tabs-focus-visible.md](../../plans/settings-tabs-focus-visible.md)。
 - 實機項目在[實測佇列](../../reference/verification-queue.md)梯 1 第 3。
-- Tab 順序另立 [settings-tabs-tab-order](../../tasks/settings-tabs-tab-order.md)〔作者裁決 2026-10-03〕。
+- Tab 順序另立 [settings-tabs-tab-order](../../plans/settings-tabs-tab-order.md)〔作者裁決 2026-10-03〕。

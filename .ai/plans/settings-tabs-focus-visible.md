@@ -30,5 +30,5 @@
 
 - 照上述做法進 main；Sol 驗收同意（含 blur 後重聚焦）。verify 全綠（vitest 616、cargo 769、harness 28），test:webkit 21/21，設定分頁 WebKit 11 案（初版 9 案修前 4 敗）。
 - 不 blur 直接 `focusFrom(node, "pointer")` 實測無效，保留 blur；VoiceOver 是否重念排實機。
-- Tab 順序（Shift+Tab 在選中分頁多停、Option+Shift+Tab 卡在原處、關閉鈕位置）不併本案，另立 [settings-tabs-tab-order](../tasks/settings-tabs-tab-order.md)〔作者裁決 2026-10-03〕。
+- Tab 順序（Shift+Tab 在選中分頁多停、Option+Shift+Tab 卡在原處、關閉鈕位置）不併本案，另立 [settings-tabs-tab-order](settings-tabs-tab-order.md)〔作者裁決 2026-10-03〕。
 - 實機（外觀＋VoiceOver）排[實測佇列](../reference/verification-queue.md)梯 1 第 3。
