@@ -37,7 +37,12 @@ import { useTableOp } from "./features/lobby/useTableOp";
 import { showUpdateDot } from "./features/updater/version-center";
 import { useCardInterfaceController } from "./features/card-interface/useCardInterfaceController";
 import { useCharacterController } from "./features/characters/useCharacterController";
-import { type ChatController, useChatController } from "./features/play/useChatController";
+import {
+  type ChatController,
+  type TurnFailure,
+  useChatController,
+} from "./features/play/useChatController";
+import { nextTurnFailure, TurnFailedDialog } from "./features/play/TurnFailedDialog";
 import { useImportController } from "./features/import/useImportController";
 import { useOpeningPost } from "./features/import/useOpeningPost";
 import { useSceneActions } from "./features/play/useSceneActions";
@@ -103,6 +108,11 @@ function App() {
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");
+  // 回合失敗彈窗；帶玩家原文的那則不會被後續失敗蓋掉（nextTurnFailure）
+  const [turnFailure, setTurnFailure] = useState<TurnFailure | null>(null);
+  const reportTurnFailure = useCallback((failure: TurnFailure) => {
+    setTurnFailure((previous) => nextTurnFailure(previous, failure));
+  }, []);
   // 狀態列只給有匯入狀態列規則的桌：其他桌整條不掛上去，也就打不開
   const [hasStateBar, setHasStateBar] = useState(false);
   // 這桌向 AI 開演了沒：聊天域寫、匯入域清、陣容欄的「撤銷上次匯入」讀，留在 App 當共用旗標
@@ -247,6 +257,7 @@ function App() {
     noteChatStarted: noteChatRequest,
     markCliConnected: markCliConnectedFromChat,
     onError: setError,
+    onTurnFailed: reportTurnFailure,
   });
 
   // 更新與回退：啟動後整理、檢查、版本庫與桌備份。等待狀態在這裡，關掉設定頁不會取消。
@@ -902,6 +913,15 @@ function App() {
             preferences={config.preferences}
             onView={() => openSettings("versions")}
           />
+        }
+        turnFailureDialog={
+          turnFailure && (
+            <TurnFailedDialog
+              failure={turnFailure}
+              transport={transport}
+              onClose={() => setTurnFailure(null)}
+            />
+          )
         }
         config={config}
         onConfigSaved={setConfig}

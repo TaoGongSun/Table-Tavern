@@ -77,6 +77,7 @@ function Harness({ world }: { world: string }) {
     noteChatStarted: () => {},
     markCliConnected: noop,
     onError: (message) => message && errors.push(message),
+    onTurnFailed: ({ raw }) => errors.push(raw),
   });
   openingPost = useOpeningPost({ worldId: world, chat, imports });
   return null;

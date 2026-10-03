@@ -8,6 +8,8 @@
 1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
 2. [menu-keyboard-webkit](../handoffs/menu-keyboard-webkit.md)：世界設定頁先點文字框、再滑鼠開世界書 ⋯：第一項有底色；↑↓ 循環每步都看得到外框；滑鼠移入換亮項、再按方向鍵從該項接續；Esc 回 ⋯ 鈕有外框；開 VoiceOver 混用滑鼠與方向鍵，播報不亂跳、停用項讀得到但按了不執行。
 
+3. [quota-insufficient-alert](../handoffs/quota-insufficient-alert.md)：設定填一把無效 API 金鑰觸發失敗（不花額度）。①打字送出 → 攔截式彈窗只有「關閉」、開窗焦點在「關閉」、Esc 可關、點遮罩不關，輸入框回到原文、逐字稿不留那句　②卡片介面覆蓋層開著時從卡片送出 → 彈窗疊在覆蓋層上面　③讓收回不成立（例如 GM 已寫入登場事件，或直接看彈窗帶原文的情況）→ 彈窗裡的唯讀原文可選取、能複製出來。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度

@@ -32,6 +32,44 @@ pub(crate) fn append_transcript(
     Ok(event)
 }
 
+/// 玩家打字送出的那句：同 append_transcript，另回追加收據（這一行在檔裡的起始位元組），
+/// AI 沒回成時憑它收回（discard_unanswered_player）。
+#[derive(serde::Serialize)]
+pub(crate) struct PlayerAppend {
+    event: TranscriptEvent,
+    offset: u64,
+}
+
+#[tauri::command]
+pub(crate) fn append_player_event(
+    app: tauri::AppHandle,
+    world_id: String,
+    scene: u64,
+    event: TranscriptEvent,
+) -> Result<PlayerAppend, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let root = data_root(&app)?;
+    let event = stamp_state(&root, &world_id, event);
+    let offset = data::append_transcript(&root, &world_id, scene, &event)
+        .map_err(|error| error.to_string())?;
+    Ok(PlayerAppend { event, offset })
+}
+
+/// 收回沒有回覆的玩家句：true＝確定已刪；false＝尾筆不是這句或結果不明，什麼都別假設。
+#[tauri::command]
+pub(crate) fn discard_unanswered_player(
+    app: tauri::AppHandle,
+    world_id: String,
+    scene: u64,
+    offset: u64,
+    ts: String,
+    text: String,
+) -> Result<bool, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    data::discard_unanswered_player(&data_root(&app)?, &world_id, scene, offset, &ts, &text)
+        .map_err(|error| error.to_string())
+}
+
 /// 貼開場白（見 import::post_opening_text）。opening_index 是玩家在開場白面板挑的那則（card_openings 的
 /// 順序），import_source 是跳出這個面板的那次匯入的原檔識別（匯入結果回傳）；序號記在那筆匯入的收據上：重新重構時 expand 從原卡取同一則開場白當初始值依據。
 /// 整段持整桌獨占：追加失敗時要把逐字稿與狀態寫回貼之前，中間不能有別的寫入，否則會被一起蓋掉。

@@ -1418,3 +1418,71 @@ fn chars_lane_skips_card_private_event_without_shifting_watermark() {
         TurnPlan::Reopen { .. } => panic!("回覆對得上就續聊"),
     }
 }
+
+/// 打字送出、AI 沒回成、玩家句被收回之後再送：線要嘛重開，要嘛水位與 session 對得上，
+/// 不會把收回的那句當成已送過。
+#[test]
+fn plan_after_an_unanswered_player_line_is_discarded() {
+    let history = [event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安")];
+    let player = |text: &str| event(TranscriptKind::Player, "", "阿濤", text);
+
+    // 失敗那輪已寫線狀態（pending_rewrite 留著）：收回後重送同一句也要重開
+    let failed_events = [history[0].clone(), player("你好")];
+    let mut failed = lane_state(&failed_events, 0);
+    failed.pending_rewrite = Some(PendingRewrite {
+        confidential: None,
+        prefix: None,
+    });
+    let resent = [history[0].clone(), player("你好")];
+    assert!(matches!(
+        plan_turn(
+            Some(&failed),
+            &turn_input(&resent, 0),
+            1_010,
+            LaneProvider::Claude
+        ),
+        TurnPlan::Reopen {
+            reason: ReopenReason::PendingRewrite
+        }
+    ));
+
+    // 水位已含玩家句、收回後（還沒重送）：正典短於水位
+    let mut sent = failed.clone();
+    sent.pending_rewrite = None;
+    assert!(matches!(
+        plan_turn(
+            Some(&sent),
+            &turn_input(&history, 0),
+            1_010,
+            LaneProvider::Claude
+        ),
+        TurnPlan::Reopen {
+            reason: ReopenReason::HistoryRewound
+        }
+    ));
+    // 收回後改送別句：已送段對不上
+    let changed = [history[0].clone(), player("算了，晚安")];
+    assert!(matches!(
+        plan_turn(
+            Some(&sent),
+            &turn_input(&changed, 0),
+            1_010,
+            LaneProvider::Claude
+        ),
+        TurnPlan::Reopen {
+            reason: ReopenReason::HistoryEdited
+        }
+    ));
+
+    // 失敗發生在寫線狀態之前：線停在收回前的水位，重送同一句照常續聊、從那句開始送
+    let before = lane_state(&history, 0);
+    match plan_turn(
+        Some(&before),
+        &turn_input(&resent, 0),
+        1_010,
+        LaneProvider::Claude,
+    ) {
+        TurnPlan::Resume { base, .. } => assert_eq!(base, 1),
+        TurnPlan::Reopen { .. } => panic!("線沒碰過收回的那句，應照常續聊"),
+    }
+}

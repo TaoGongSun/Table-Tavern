@@ -16,6 +16,8 @@ interface AppDialogsProps {
   versionTab: ReactNode;
   /** 啟動時的含格式轉換更新對話框。 */
   updateDialog: ReactNode;
+  /** 回合沒完成的攔截式彈窗（App 層，卡片覆蓋層開著時一樣蓋在上面） */
+  turnFailureDialog: ReactNode;
   config: AppConfig;
   onConfigSaved: (config: AppConfig) => void;
   onSettingPreference: (key: string, value: unknown) => Promise<void>;
@@ -42,6 +44,7 @@ export function AppDialogs({
   settingsRequestKey,
   versionTab,
   updateDialog,
+  turnFailureDialog,
   config,
   onConfigSaved,
   onSettingPreference,
@@ -83,6 +86,8 @@ export function AppDialogs({
       )}
 
       {updateDialog}
+
+      {turnFailureDialog}
 
       {/* 換語言後的範例桌詢問疊在設定視窗之上。 */}
       {regenOpen && (

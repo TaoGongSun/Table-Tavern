@@ -137,6 +137,8 @@ pub fn run() {
             commands::image::delete_character_avatar,
             commands::image::read_gm_image,
             commands::scene::append_transcript,
+            commands::scene::append_player_event,
+            commands::scene::discard_unanswered_player,
             commands::scene::post_opening,
             commands::scene::translate_opening,
             commands::scene::translate_tier_models,
@@ -228,7 +230,9 @@ mod command_classification {
     /// generate_handler 裡每一個 command 都要落在這三類之一。改清單時兩邊一起改。
     const WRITE_WORLD: &[&str] = &[
         "advance_scene",
+        "append_player_event",
         "append_transcript",
+        "discard_unanswered_player",
         "character_to_worldbook_entry",
         "chat_with_character",
         "create_sample_world",

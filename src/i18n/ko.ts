@@ -86,6 +86,8 @@ export const ko: Record<MsgKey, string> = {
   sponsorPackUnlocked: "후원 콘텐츠가 해금되었습니다. 후원해 주셔서 감사합니다!",
   sponsorPackImportError: "불러오기 실패: {reason}",
   closeBtn: "닫기",
+  turnFailedTitle: "이번 턴을 완료하지 못했습니다",
+  turnFailedDraftLabel: "방금 보낸 내용 (선택해서 복사할 수 있습니다)",
   dialogCancel: "취소",
   dialogDelete: "삭제",
   dialogRemove: "제거",

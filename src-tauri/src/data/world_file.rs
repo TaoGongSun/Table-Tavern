@@ -2,11 +2,12 @@
 //! 寫入當下再查一次格式標記。掃描測試會擋掉這支以外的直接寫檔。
 #[cfg(test)]
 use std::cell::{Cell, RefCell};
-#[cfg(unix)]
+use std::collections::HashMap;
 use std::fs::File;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use super::format::marker::{self, FormatVersion};
@@ -40,6 +41,9 @@ thread_local! {
     static RENAME_WAIT_COUNT: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAILS: Cell<u32> = const { Cell::new(0) };
     static APPEND_PARTIAL_FAILS: Cell<u32> = const { Cell::new(0) };
+    static TRUNCATE_FAILS: Cell<u32> = const { Cell::new(0) };
+    static TRUNCATE_CUT_THEN_FAIL: Cell<bool> = const { Cell::new(false) };
+    static LEN_FAILS: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
@@ -139,6 +143,85 @@ impl AppendFailGuard {
 impl Drop for AppendFailGuard {
     fn drop(&mut self) {
         APPEND_PARTIAL_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+/// 下幾次截檔回錯：預設檔案不動；`cut_then_fail` 是真的截了才回錯（平台不保證失敗不變的那種）。
+/// `len_fails` 讓之後量長度也失敗。測追加失敗截不回、收回時截檔結果的判定。
+#[cfg(test)]
+pub(crate) struct TruncateFailGuard;
+
+#[cfg(test)]
+impl TruncateFailGuard {
+    pub(crate) fn fail(times: u32) -> Self {
+        TRUNCATE_FAILS.with(|cell| cell.set(times));
+        Self
+    }
+
+    pub(crate) fn cut_then_fail(times: u32) -> Self {
+        TRUNCATE_CUT_THEN_FAIL.with(|cell| cell.set(true));
+        Self::fail(times)
+    }
+
+    pub(crate) fn len_fails(self, times: u32) -> Self {
+        LEN_FAILS.with(|cell| cell.set(times));
+        self
+    }
+}
+
+#[cfg(test)]
+impl Drop for TruncateFailGuard {
+    fn drop(&mut self) {
+        TRUNCATE_FAILS.with(|cell| cell.set(0));
+        TRUNCATE_CUT_THEN_FAIL.with(|cell| cell.set(false));
+        LEN_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+fn injected_len_failure() -> bool {
+    #[cfg(test)]
+    {
+        LEN_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        })
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
+fn injected_cut_then_fail() -> bool {
+    #[cfg(test)]
+    {
+        TRUNCATE_CUT_THEN_FAIL.with(Cell::get)
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
+fn injected_truncate_failure() -> bool {
+    #[cfg(test)]
+    {
+        TRUNCATE_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        })
+    }
+    #[cfg(not(test))]
+    {
+        false
     }
 }
 
@@ -456,35 +539,140 @@ pub(crate) fn ensure_writable(root: &Path, world_id: &str) -> DataResult<()> {
     }
 }
 
-pub(crate) fn commit_world_write(path: &Path, bytes: &[u8]) -> DataResult<()> {
-    let (root, id) = locate_world(path)?;
-    ensure_writable(&root, &id)?;
-    #[cfg(test)]
-    write_hook::fire(path);
-    write_bytes_raw(path, bytes)
+// 同檔鎖：同一行程內，同一支桌檔的寫入（含讀改寫、追加失敗截回）整段排隊，讀者也在鎖內一次讀完。
+// 鍵是呼叫端組出來的路徑（固定 root＋受控名稱），不做 canonicalize；跨行程與 symlink 別名不保證共鎖。
+// 鎖順序：先桌的 world_write_permit，再這把；只在同步程式內短暫持有，不跨 await、不巢狀拿第二把。
+fn file_lock(path: &Path) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    let mut table = LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    table.entry(path.to_path_buf()).or_default().clone()
 }
 
-pub(crate) fn commit_world_append(path: &Path, bytes: &[u8]) -> DataResult<()> {
-    let (root, id) = locate_world(path)?;
-    ensure_writable(&root, &id)?;
-    #[cfg(test)]
-    write_hook::fire(path);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+/// 拿著某支檔的同檔鎖做事。鎖內只能用 `LockedFile` 的方法，不可再呼叫會取鎖的
+/// `commit_world_*`／`read_transcript`，否則自鎖。
+pub(crate) fn with_file_lock<T>(path: &Path, work: impl FnOnce(&LockedFile<'_>) -> T) -> T {
+    let lock = file_lock(path);
+    let _held = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    work(&LockedFile { path })
+}
+
+/// 持有同檔鎖期間對該檔的操作。
+pub(crate) struct LockedFile<'a> {
+    path: &'a Path,
+}
+
+impl LockedFile<'_> {
+    fn writable(&self) -> DataResult<()> {
+        let (root, id) = locate_world(self.path)?;
+        ensure_writable(&root, &id)?;
+        #[cfg(test)]
+        write_hook::fire(self.path);
+        Ok(())
     }
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    if injected_partial_append() {
-        file.write_all(&bytes[..bytes.len() / 2])?;
-        return Err(std::io::Error::other("injected partial append").into());
+
+    /// 整檔讀；檔案不存在回 None。
+    pub(crate) fn read(&self) -> DataResult<Option<Vec<u8>>> {
+        match fs::read(self.path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
     }
-    file.write_all(bytes)?;
+
+    pub(crate) fn len(&self) -> DataResult<u64> {
+        if injected_len_failure() {
+            return Err(std::io::Error::other("injected len failure").into());
+        }
+        Ok(fs::metadata(self.path)?.len())
+    }
+
+    pub(crate) fn write(&self, bytes: &[u8]) -> DataResult<()> {
+        self.writable()?;
+        write_bytes_raw(self.path, bytes)
+    }
+
+    pub(crate) fn remove(&self) -> DataResult<()> {
+        self.writable()?;
+        remove_path_raw(self.path)
+    }
+
+    pub(crate) fn truncate(&self, len: u64) -> DataResult<()> {
+        self.writable()?;
+        truncate_raw(self.path, len)
+    }
+
+    /// 追加一段（呼叫端給完整的行，含結尾換行），回傳這段的起始位元組（追加收據）。
+    /// 前一行缺換行（上次追加失敗又截不回）先補一個，免得兩筆黏成一行；
+    /// 寫入失敗就盡力截回原長度，截不回就放著，回原本的錯。
+    pub(crate) fn append(&self, bytes: &[u8]) -> DataResult<u64> {
+        self.writable()?;
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let original = match fs::metadata(self.path) {
+            Ok(meta) => meta.len(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => return Err(error.into()),
+        };
+        let needs_newline = original > 0 && {
+            let mut file = File::open(self.path)?;
+            file.seek(SeekFrom::Start(original - 1))?;
+            let mut last = [0u8; 1];
+            file.read_exact(&mut last)?;
+            last[0] != b'\n'
+        };
+        let mut payload = Vec::with_capacity(bytes.len() + 1);
+        if needs_newline {
+            payload.push(b'\n');
+        }
+        payload.extend_from_slice(bytes);
+        let written = (|| -> DataResult<()> {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(self.path)?;
+            if injected_partial_append() {
+                file.write_all(&payload[..payload.len() / 2])?;
+                return Err(std::io::Error::other("injected partial append").into());
+            }
+            file.write_all(&payload)?;
+            Ok(())
+        })();
+        match written {
+            Ok(()) => Ok(original + u64::from(needs_newline)),
+            Err(error) => {
+                let _ = truncate_raw(self.path, original);
+                Err(error)
+            }
+        }
+    }
+}
+
+fn truncate_raw(path: &Path, len: u64) -> DataResult<()> {
+    if injected_truncate_failure() {
+        if injected_cut_then_fail() {
+            OpenOptions::new().write(true).open(path)?.set_len(len)?;
+        }
+        return Err(std::io::Error::other("injected truncate failure").into());
+    }
+    OpenOptions::new().write(true).open(path)?.set_len(len)?;
     Ok(())
 }
 
+pub(crate) fn commit_world_write(path: &Path, bytes: &[u8]) -> DataResult<()> {
+    with_file_lock(path, |file| file.write(bytes))
+}
+
+/// 追加並回傳收據（這段的起始位元組）。
+pub(crate) fn commit_world_append(path: &Path, bytes: &[u8]) -> DataResult<u64> {
+    with_file_lock(path, |file| file.append(bytes))
+}
+
 pub(crate) fn commit_world_remove(path: &Path) -> DataResult<()> {
-    let (root, id) = locate_world(path)?;
-    ensure_writable(&root, &id)?;
-    remove_path_raw(path)
+    with_file_lock(path, |file| file.remove())
 }
 
 /// 建桌：先落格式標記，後面的 state／world.md 才過得了閘門。

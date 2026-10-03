@@ -86,6 +86,8 @@ export const fr: Record<MsgKey, string> = {
   sponsorPackUnlocked: "Contenu de soutien déverrouillé, merci pour ton soutien\u00a0!",
   sponsorPackImportError: "Échec de l'importation\u00a0: {reason}",
   closeBtn: "Fermer",
+  turnFailedTitle: "Ce tour n'a pas pu se terminer",
+  turnFailedDraftLabel: "Ce que tu viens d'envoyer (sélectionne pour copier)",
   dialogCancel: "Annuler",
   dialogDelete: "Supprimer",
   dialogRemove: "Retirer",

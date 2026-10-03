@@ -94,6 +94,8 @@ export const zh = {
   sponsorPackUnlocked: "贊助內容已解鎖，感謝支持！",
   sponsorPackImportError: "匯入失敗：{reason}",
   closeBtn: "關閉",
+  turnFailedTitle: "這一輪沒能完成",
+  turnFailedDraftLabel: "你剛送出的內容（可選取複製）",
   dialogCancel: "取消",
   dialogDelete: "刪除",
   dialogRemove: "移除",

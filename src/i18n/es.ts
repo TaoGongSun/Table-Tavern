@@ -86,6 +86,8 @@ export const es: Record<MsgKey, string> = {
   sponsorPackUnlocked: "¡Contenido de patrocinador desbloqueado, gracias por tu apoyo!",
   sponsorPackImportError: "Error al importar: {reason}",
   closeBtn: "Cerrar",
+  turnFailedTitle: "Este turno no se completó",
+  turnFailedDraftLabel: "Lo que acabas de enviar (selecciónalo para copiarlo)",
   dialogCancel: "Cancelar",
   dialogDelete: "Eliminar",
   dialogRemove: "Quitar",

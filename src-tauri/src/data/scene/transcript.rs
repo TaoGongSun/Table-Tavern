@@ -1,7 +1,6 @@
 use crate::mechanism::{self, Outcome};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use super::super::paths::world_dir;
@@ -55,12 +54,13 @@ pub(super) fn transcript_path(root: &Path, world_id: &str, scene: u64) -> DataRe
         .join(format!("{scene}.jsonl")))
 }
 
+/// 回傳追加收據：這一行在逐字稿檔裡的起始位元組。
 pub fn append_transcript(
     root: &Path,
     world_id: &str,
     scene: u64,
     event: &TranscriptEvent,
-) -> DataResult<()> {
+) -> DataResult<u64> {
     let mut event = event.clone();
     if event.state.is_none() {
         // 復原舊句子會帶回當時快照，只有新事件才借用目前檯面。讀不到就停，不再照寫。
@@ -68,7 +68,10 @@ pub fn append_transcript(
     }
     let mut line = serde_json::to_vec(&event)?;
     line.push(b'\n');
-    super::super::world_file::commit_world_append(&transcript_path(root, world_id, scene)?, &line)?;
+    let offset = super::super::world_file::commit_world_append(
+        &transcript_path(root, world_id, scene)?,
+        &line,
+    )?;
     // 目前值恆等於最後一則事件的快照，復原舊句時狀態才會跟著回到那一刻。
     // 快取寫失敗不該把「事件已經寫進去了」這件事變成錯誤，權威在 transcript。
     if let Some(snapshot) = event.state {
@@ -79,7 +82,7 @@ pub fn append_transcript(
             }
         }
     }
-    Ok(())
+    Ok(offset)
 }
 
 /// 貼開場白之前這一幕逐字稿與 state.json 的原始位元組。逐字稿是直接 append，失敗時可能已留下半行，
@@ -169,23 +172,45 @@ pub fn append_opening(
     Ok((event, outcome))
 }
 
-/// 整檔重寫這一幕，並把檯面退回剩下事件的最後一份快照（這一幕沒了就往前一幕找）。
-/// 刪事件的兩條路（收回上一句、復原匯入收掉開場白）共用。
-fn rewrite_scene(
+fn serialize_events(events: &[TranscriptEvent]) -> DataResult<Vec<u8>> {
+    let mut buffer = Vec::new();
+    for event in events {
+        buffer.extend_from_slice(&serde_json::to_vec(event)?);
+        buffer.push(b'\n');
+    }
+    Ok(buffer)
+}
+
+/// 讀改寫這一幕：在逐字稿的同檔鎖內讀出事件交給 `edit`，`edit` 回 `Some` 就整檔寫回，
+/// 讀與寫之間不會插進別的追加。檯面回捲等其他檔的事，呼叫端在放鎖之後再做。
+fn edit_scene<T>(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    edit: impl FnOnce(Vec<TranscriptEvent>) -> DataResult<(T, Option<Vec<TranscriptEvent>>)>,
+) -> DataResult<T> {
+    let path = transcript_path(root, world_id, scene)?;
+    super::super::world_file::with_file_lock(&path, |file| {
+        let events = match file.read()? {
+            Some(bytes) => parse_transcript(&bytes)?,
+            None => Vec::new(),
+        };
+        let (result, rewrite) = edit(events)?;
+        if let Some(events) = rewrite {
+            file.write(&serialize_events(&events)?)?;
+        }
+        Ok(result)
+    })
+}
+
+/// 刪掉事件之後把檯面退回剩下事件的最後一份快照（這一幕沒了就往前一幕找）。
+/// 刪事件的幾條路（收回上一句、復原匯入收掉開場白、收回沒有回覆的玩家句）共用。
+fn rewind_state(
     root: &Path,
     world_id: &str,
     scene: u64,
     events: &[TranscriptEvent],
 ) -> DataResult<()> {
-    let mut buffer = String::new();
-    for event in events {
-        buffer.push_str(&serde_json::to_string(event)?);
-        buffer.push('\n');
-    }
-    super::super::world_file::commit_world_write(
-        &transcript_path(root, world_id, scene)?,
-        buffer.as_bytes(),
-    )?;
     let mut state = read_state(root, world_id)?;
     state.state = events
         .iter()
@@ -214,20 +239,26 @@ fn rewrite_scene(
 /// 只換 tree／jumps——劇情面的欄位（table、changes、notes）照舊跟著各自那一刻走。
 pub fn sync_scene_state_tree(root: &Path, world_id: &str, state: &WorldState) -> DataResult<()> {
     let scene = state.current_scene;
-    let mut events = read_transcript(root, world_id, scene)?;
-    let mut touched = false;
-    for event in events.iter_mut() {
-        let Some(snapshot) = event.state.as_mut() else {
-            continue;
-        };
-        if snapshot.tree != state.state.tree || snapshot.jumps != state.state.jumps {
-            snapshot.tree = state.state.tree.clone();
-            snapshot.jumps = state.state.jumps.clone();
-            touched = true;
+    let rewritten = edit_scene(root, world_id, scene, |mut events| {
+        let mut touched = false;
+        for event in events.iter_mut() {
+            let Some(snapshot) = event.state.as_mut() else {
+                continue;
+            };
+            if snapshot.tree != state.state.tree || snapshot.jumps != state.state.jumps {
+                snapshot.tree = state.state.tree.clone();
+                snapshot.jumps = state.state.jumps.clone();
+                touched = true;
+            }
         }
-    }
-    if touched {
-        rewrite_scene(root, world_id, scene, &events)?;
+        Ok(if touched {
+            (Some(events.clone()), Some(events))
+        } else {
+            (None, None)
+        })
+    })?;
+    if let Some(events) = rewritten {
+        rewind_state(root, world_id, scene, &events)?;
     }
     Ok(())
 }
@@ -235,11 +266,17 @@ pub fn sync_scene_state_tree(root: &Path, world_id: &str, state: &WorldState) ->
 /// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫。
 /// 回傳是否真的刪了——這一幕已經空了就是 false，收不會倒退咬到上一幕。
 pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<bool> {
-    let mut events = read_transcript(root, world_id, scene)?;
-    if events.pop().is_none() {
+    let remaining = edit_scene(root, world_id, scene, |mut events| {
+        Ok(if events.pop().is_none() {
+            (None, None)
+        } else {
+            (Some(events.clone()), Some(events))
+        })
+    })?;
+    let Some(events) = remaining else {
         return Ok(false);
-    }
-    rewrite_scene(root, world_id, scene, &events)?;
+    };
+    rewind_state(root, world_id, scene, &events)?;
     Ok(true)
 }
 
@@ -251,13 +288,19 @@ pub fn remove_transcript_event(
     scene: u64,
     ts: &str,
 ) -> DataResult<bool> {
-    let mut events = read_transcript(root, world_id, scene)?;
-    let before = events.len();
-    events.retain(|event| event.ts != ts);
-    if events.len() == before {
+    let remaining = edit_scene(root, world_id, scene, |mut events| {
+        let before = events.len();
+        events.retain(|event| event.ts != ts);
+        Ok(if events.len() == before {
+            (None, None)
+        } else {
+            (Some(events.clone()), Some(events))
+        })
+    })?;
+    let Some(events) = remaining else {
         return Ok(false);
-    }
-    rewrite_scene(root, world_id, scene, &events)?;
+    };
+    rewind_state(root, world_id, scene, &events)?;
     Ok(true)
 }
 
@@ -267,45 +310,103 @@ pub fn set_last_transcript_state(
     scene: u64,
     state: &TableState,
 ) -> DataResult<bool> {
-    let mut events = read_transcript(root, world_id, scene)?;
-    let Some(entry) = events.last_mut() else {
-        return Ok(false);
-    };
-    entry.state = Some(state.clone());
-    let mut buffer = String::new();
-    for entry in &events {
-        buffer.push_str(&serde_json::to_string(entry)?);
-        buffer.push('\n');
-    }
-    super::super::world_file::commit_world_write(
-        &transcript_path(root, world_id, scene)?,
-        buffer.as_bytes(),
-    )?;
-    Ok(true)
+    edit_scene(root, world_id, scene, |mut events| {
+        let Some(entry) = events.last_mut() else {
+            return Ok((false, None));
+        };
+        entry.state = Some(state.clone());
+        Ok((true, Some(events)))
+    })
 }
 
+/// 打字送出後 AI 沒回成：收掉剛追加、還沒有任何回覆的那句玩家發言。
+/// 整段在逐字稿同檔鎖內：`offset`（追加收據）必須是行首、從那裡到檔尾恰為最後一行，
+/// 且解析後是玩家句、`ts` 與 `text` 都相符，才截檔；任何一項不符回 false 不動。
+/// 截檔回錯就在鎖內量實際長度，剛好等於 `offset` 才算已刪，量不到也回 false。
+/// 刪成功後檯面回捲盡力而為（權威在逐字稿），失敗不翻成刪除失敗。
+pub fn discard_unanswered_player(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    offset: u64,
+    ts: &str,
+    text: &str,
+) -> DataResult<bool> {
+    let path = transcript_path(root, world_id, scene)?;
+    let removed = super::super::world_file::with_file_lock(&path, |file| -> DataResult<bool> {
+        let Some(bytes) = file.read()? else {
+            return Ok(false);
+        };
+        let Ok(start) = usize::try_from(offset) else {
+            return Ok(false);
+        };
+        if start >= bytes.len()
+            || (start > 0 && bytes[start - 1] != b'\n')
+            || !bytes.ends_with(b"\n")
+        {
+            return Ok(false);
+        }
+        let line = &bytes[start..bytes.len() - 1];
+        if line.contains(&b'\n') {
+            return Ok(false);
+        }
+        let Ok(event) = serde_json::from_slice::<TranscriptEvent>(line) else {
+            return Ok(false);
+        };
+        if event.kind != TranscriptKind::Player || event.ts != ts || event.text != text {
+            return Ok(false);
+        }
+        if file.truncate(offset).is_ok() {
+            return Ok(true);
+        }
+        Ok(matches!(file.len(), Ok(len) if len == offset))
+    })?;
+    if removed {
+        if let Ok(events) = read_transcript(root, world_id, scene) {
+            let _ = rewind_state(root, world_id, scene, &events);
+        }
+    }
+    Ok(removed)
+}
+
+/// 解析一幕逐字稿。最後一行沒有換行而且解析失敗＝追加到一半的殘段，略過；
+/// 其他位置的壞行照舊報錯。
+pub(super) fn parse_transcript(bytes: &[u8]) -> DataResult<Vec<TranscriptEvent>> {
+    let text = String::from_utf8_lossy(bytes);
+    let unterminated = !text.is_empty() && !text.ends_with('\n');
+    let lines: Vec<&str> = text.lines().collect();
+    let mut events = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        match serde_json::from_str(line) {
+            Ok(event) => events.push(event),
+            Err(_) if unterminated && index + 1 == lines.len() => {}
+            Err(error) => {
+                return Err(invalid_data(format!(
+                    "invalid transcript line {}: {error}",
+                    index + 1
+                )))
+            }
+        }
+    }
+    Ok(events)
+}
+
+/// 在同檔鎖內一次讀整檔、鎖外解析，不會讀到追加與截回之間的半行。
 pub fn read_transcript(
     root: &Path,
     world_id: &str,
     scene: u64,
 ) -> DataResult<Vec<TranscriptEvent>> {
     let path = transcript_path(root, world_id, scene)?;
-    if !path.exists() {
-        return Ok(Vec::new());
+    let bytes = super::super::world_file::with_file_lock(&path, |file| file.read())?;
+    match bytes {
+        Some(bytes) => parse_transcript(&bytes),
+        None => Ok(Vec::new()),
     }
-
-    let file = fs::File::open(path)?;
-    let mut events = Vec::new();
-    for (index, line) in BufReader::new(file).lines().enumerate() {
-        let line_number = index + 1;
-        let line = line?;
-        let event = serde_json::from_str(&line).map_err(|error| {
-            invalid_data(format!("invalid transcript line {line_number}: {error}"))
-        })?;
-        events.push(event);
-    }
-    Ok(events)
 }
+
+#[cfg(test)]
+mod write_safety_tests;
 
 #[cfg(test)]
 mod tests {

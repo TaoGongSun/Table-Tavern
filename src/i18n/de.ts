@@ -86,6 +86,8 @@ export const de: Record<MsgKey, string> = {
   sponsorPackUnlocked: "Sponsoren-Inhalt freigeschaltet – vielen Dank!",
   sponsorPackImportError: "Import fehlgeschlagen: {reason}",
   closeBtn: "Schließen",
+  turnFailedTitle: "Dieser Zug wurde nicht abgeschlossen",
+  turnFailedDraftLabel: "Was du gerade gesendet hast (zum Kopieren markieren)",
   dialogCancel: "Abbrechen",
   dialogDelete: "Löschen",
   dialogRemove: "Entfernen",

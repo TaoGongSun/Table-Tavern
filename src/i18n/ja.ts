@@ -86,6 +86,8 @@ export const ja: Record<MsgKey, string> = {
   sponsorPackUnlocked: "スポンサー特典がアンロックされました。ご支援ありがとうございます！",
   sponsorPackImportError: "インポート失敗：{reason}",
   closeBtn: "閉じる",
+  turnFailedTitle: "このターンは完了しませんでした",
+  turnFailedDraftLabel: "送信した内容（選択してコピーできます）",
   dialogCancel: "キャンセル",
   dialogDelete: "削除",
   dialogRemove: "外す",
