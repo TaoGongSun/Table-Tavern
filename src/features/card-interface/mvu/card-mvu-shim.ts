@@ -37,6 +37,8 @@ export interface CardMvu {
   layers: Record<string, MvuLayer>;
   /** `character` 層的身分：目前殼所屬卡的 character_id，世界書卡（沒有 id）固定 `world` */
   characterId: string;
+  /** `{{user}}`／`{{char}}` 的代換值：parseMessage 先把訊息裡的巨集換掉再抽指令（酒館 substitudeMacros） */
+  macros: Macros;
 }
 
 /** 非 message 層（計畫 8.7）一層的現況：`rev` null＝檔案還不存在（沙盒當空表） */
@@ -285,6 +287,7 @@ export function buildCardMvu(input: {
     scene: input.scene ?? 0,
     layers: input.layers ?? {},
     characterId: input.characterId ?? "",
+    macros,
   };
 }
 

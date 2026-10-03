@@ -2,6 +2,7 @@
 // card-mvu-shim.test.ts。
 import { describe, expect, it, vi } from "vitest";
 import { buildMvuShimSource } from "./card-mvu-shim-source";
+import { runEval } from "./card-mvu-parse-engine";
 import { type CardMvu } from "./card-mvu-shim";
 
 const lodashName = "lodash";
@@ -53,6 +54,7 @@ const snapshot: CardMvu = {
   scene: 0,
   layers: {},
   characterId: "c1",
+  macros: { user: "玩家", char: null },
 };
 
 function sandbox(mvu: CardMvu = snapshot) {
@@ -163,7 +165,7 @@ describe("沙盒寫入（8.6）", () => {
     await expect(win.Mvu.replaceMvuData(cyclic, { ...M, message_id: 0 })).rejects.toThrow(/invalid-value/);
     expect(posted).toHaveLength(0);
     expect(win.getVariables({ ...M, message_id: 0 })).toEqual(snapshot.states[0]);
-    const empty = sandbox({ currentId: 0, latestId: 0, states: [{ stat_data: {} }], floorState: [0], targets: [null], active: false, generation: 3, scene: 0, layers: {}, characterId: "c1" });
+    const empty = sandbox({ currentId: 0, latestId: 0, states: [{ stat_data: {} }], floorState: [0], targets: [null], active: false, generation: 3, scene: 0, layers: {}, characterId: "c1", macros: { user: "玩家", char: null } });
     await expect(empty.win.Mvu.replaceMvuData({}, M)).rejects.toThrow(/no-target/);
     const report = vi.spyOn(console, "error").mockImplementation(() => {});
     empty.win.replaceVariables({}, M);
@@ -456,7 +458,7 @@ describe("沙盒非 message 層（8.7）", () => {
 });
 
 describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", () => {
-  it("殼在整份文件裡跑得起來：讀到值與型別，按鈕送出卡片寫入，六層各讀各寫，parseMessage 明確回報未支援", async () => {
+  it("殼在整份文件裡跑得起來：讀到值與型別，按鈕送出卡片寫入，六層各讀各寫，parseMessage 預覽走值解析", async () => {
     const { readFileSync } = await import("node:fs");
     const { applyScripts, buildShellDocument, extractShell } = await import("../interface-card");
     const card = JSON.parse(
@@ -486,6 +488,7 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
       scene: 0,
       layers: { chat: { rev: "c0", vars: { probe: 1 } }, global: { rev: null, vars: {} } },
       characterId: "c1",
+      macros: { user: "玩家", char: null },
     };
     const chat = { currentId: 0, floors: [{ name: "GM", role: "assistant" as const, message: "探針回合正文" }] };
     const name = "jsdom";
@@ -498,7 +501,18 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
     }).window;
     const sent: { kind?: string; payload?: string }[] = [];
     win.addEventListener("message", (event) => {
-      if ((event.data as { source?: string }).source === "table-tavern-card") sent.push(event.data as never);
+      const data = event.data as { source?: string; kind?: string; requestId?: string; op?: "value" | "patch"; text?: string };
+      if (data.source !== "table-tavern-card") return;
+      sent.push(data as never);
+      // 宿主的值解析 Worker 換成同進程的引擎
+      if (data.kind === "mvu-eval") {
+        // 在頁面自己的 realm 裡造事件，source 才會是頁面認得的 parent
+        const reply = { source: "table-tavern-host", token: "tok", kind: "mvu-eval-result", requestId: data.requestId, ...runEval(data.op!, data.text!) };
+        // jsdom 的 MessageEvent 不收 source 初始值，事件造好後再補上；頂層頁面的真 parent 就是 window（window.parent 已被誘餌換掉）
+        win.eval(
+          `var e = new MessageEvent("message", { data: JSON.parse(${JSON.stringify(JSON.stringify(reply))}) }); Object.defineProperty(e, "source", { value: window }); window.dispatchEvent(e);`,
+        );
+      }
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     const text = (id: string) => win.document.getElementById(id)?.textContent ?? "";
@@ -510,11 +524,15 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
     expect(text("script")).toBe("（無）");
     (win.document.getElementById("b-mvu") as HTMLButtonElement).click();
     (win.document.getElementById("b-parse") as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     const write = sent.find((message) => message.kind === "mvu-write")!;
     expect(JSON.parse(write.payload!).stat_data.欄位.血量).toEqual([4, "生命值"]);
     expect(text("hp")).toBe('[4,"生命值"]　typeof array');
-    expect(text("log")).toMatch(/parseMessage：拋錯 parseMessage 尚未支援/);
+    // parseMessage 預覽：數學式、{{user}}、JSONPatch 都走 Worker 值解析；只算不寫（沒有多出 mvu-write）
+    const log = text("log");
+    expect(log).toContain('預覽 stat：{"錢":42,"血量":[2,"生命值"],"名字":"玩家的探針"');
+    expect(log).toContain("parseMessage：已落檔");
+    expect(sent.filter((message) => message.kind === "mvu-write")).toHaveLength(1);
     (win.document.getElementById("b-layers") as HTMLButtonElement).click();
     await new Promise((resolve) => setTimeout(resolve, 30));
     const layerWrites = sent.filter((message) => message.kind === "mvu-write").slice(1) as unknown as {

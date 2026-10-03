@@ -327,6 +327,7 @@ const snapshot: CardMvu = {
   scene: 0,
   layers: {},
   characterId: "c1",
+  macros: { user: "玩家", char: null },
 };
 
 function sandbox(mvu: CardMvu = snapshot, token = "tok"): MvuSandbox {
@@ -366,7 +367,7 @@ describe("MVU 墊片：讀取", () => {
 
   it("快照裡的 __proto__ 鍵照樣是自有資料", () => {
     const tricky = JSON.parse('{"__proto__": {"x": 1}, "金": 2}') as Record<string, unknown>;
-    const win = sandbox({ currentId: 0, latestId: 0, states: [data(tricky)], floorState: [0], targets: [null], active: false, generation: 3, scene: 0, layers: {}, characterId: "c1" });
+    const win = sandbox({ currentId: 0, latestId: 0, states: [data(tricky)], floorState: [0], targets: [null], active: false, generation: 3, scene: 0, layers: {}, characterId: "c1", macros: { user: "玩家", char: null } });
     const stat = win.getAllVariables().stat_data;
     expect(Object.keys(stat)).toEqual(["__proto__", "金"]);
     expect(Object.getPrototypeOf(stat)).toBe(Object.prototype);

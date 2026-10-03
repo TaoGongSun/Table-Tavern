@@ -4,6 +4,7 @@
 // （計畫 .ai/plans/card-mvu-shim.md 第 3、8.5、8.6 節）。
 import { scriptLiteral } from "../card-chat-shim";
 import { type CardMvu } from "./card-mvu-shim";
+import { buildMvuParseSource } from "./card-mvu-parse-source";
 
 /**
  * 排在讀訊息墊片之後、橋接墊片之前：真 parent 先收進閉包，之後只認它推來、token 相符、形狀正確的快照與
@@ -11,6 +12,8 @@ import { type CardMvu } from "./card-mvu-shim";
  *
  * 寫入（message 層，包 2a）：先改本地值（保持上游同步語意），再把整張表送宿主；宿主確認落檔才結算。
  * 本地值依寫入目標（事件 key）暫存，結算前推來的快照不蓋掉它；被拒時換成宿主推回的權威值並發外部變動事件。
+ *
+ * parseMessage（包 2c）：流程整段在沙盒跑，值解析與數學式逐條送宿主的專用 Worker（`mvu-eval`／`mvu-eval-result`）。
  *
  * 非 message 層（包 2b）：chat／character／global／preset／script／extension 各是一份「整張表」，沿用同一套
  * 本地值、版本與結算機制，寫入目標 key 是層名（script／extension／character 帶 `:原 ID`），宿主依 key 決定
@@ -396,6 +399,7 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
     return text.replace(/^[\\\\"'\` ]+/, "").replace(/[\\\\"'\` ]+$/, "");
   }
 
+${buildMvuParseSource()}
   var Mvu = {
     events: EVENTS,
     getMvuData: function (option) {
@@ -429,6 +433,8 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
       if (options.is_recursive) await emit(EVENTS.SINGLE_VARIABLE_UPDATED, [stat, path, old, value], false);
       return true;
     },
+    // 照 MVU updateVariables 重寫（card-mvu-parse-source.ts）：值解析送宿主的專用 Worker
+    parseMessage: parseMessage,
     getMvuVariable: function (data, path, option) {
       var options = option || {};
       var category = options.category === undefined ? "stat" : options.category;
@@ -453,6 +459,9 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
       if (layer.error !== undefined && typeof layer.error !== "string") return false;
     }
     if (!Number.isInteger(value.generation) || !Number.isInteger(value.scene)) return false;
+    var macros = value.macros;
+    if (!isPlainObject(macros) || typeof macros.user !== "string") return false;
+    if (macros.char !== null && typeof macros.char !== "string") return false;
     for (var i = 0; i < value.states.length; i++) {
       if (!isPlainObject(value.states[i])) return false;
     }
@@ -591,6 +600,11 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
     var data = event.data;
     if (!data || data.source !== "table-tavern-host" || data.token !== TOKEN) return;
     var work;
+    // 值解析結果直接結算，不排進序列佇列：監聽器（在佇列裡跑）呼叫 parseMessage 時要等的就是它
+    if (data.kind === "mvu-eval-result") {
+      if (typeof data.requestId === "string") resolveEval(data);
+      return;
+    }
     if (data.kind === "chat") {
       if (!validMvu(data.mvu)) return;
       var next = copy(data.mvu);

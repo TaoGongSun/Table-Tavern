@@ -112,10 +112,10 @@
   - `src/App.tsx`：傳 `tableState.tree`。
 - 改後端：`src-tauri/src/import/interface.rs`，`CardInterface` 加 `mvu`（卡的 tavern_helper 腳本是否載入 MVU）。前端型別同步。
 - 包 2（第 8 節）：
-  - 前端新增 `card-mvu-write.ts`（宿主端驗證、依完整目標的佇列與 Promise 結算）、`card-mvu-parse.ts`（parseMessage），各附測試；沙盒寫入函式加在 `card-mvu-shim.ts`，超過 1000 行就把沙盒原始碼拆到 `card-mvu-shim-source.ts`。資料夾約 21 檔，屆時考慮開 `card-interface/mvu/` 子資料夾。
+  - 前端新增 `card-mvu-write.ts`（宿主端驗證、依完整目標的佇列與 Promise 結算）、parseMessage 五檔（沙盒端 `card-mvu-parse-source.ts`、Worker 內的 `card-mvu-parse-engine.ts`＋`card-mvu-eval.worker.ts`、宿主端 `card-mvu-eval-host.ts`），各附測試；沙盒寫入函式加在 `card-mvu-shim.ts`，超過 1000 行就把沙盒原始碼拆到 `card-mvu-shim-source.ts`。資料夾約 21 檔，屆時考慮開 `card-interface/mvu/` 子資料夾。
   - 後端：短提交鎖與投影入口放 `data/` 層（`world_lock.rs` 旁、`data/state.rs`）；`commands/card_vars.rs` 只做邊界；非 message 層檔案讀寫放 `data/card_vars.rs`；`TranscriptEvent` 加 `id`、`message_vars`、`vars_rev`。
 
-### 8. 包 2：寫入、非 message 層、parseMessage（2a、2b 已施工，2c 未施工）
+### 8. 包 2：寫入、非 message 層、parseMessage（2a、2b、2c 已施工）
 
 規格來源：作者裁決「卡片變數只存一處」（定案範圍）、Sol 第 10、11 輪；上游釘版本——MagVarUpdate `438f9ffc`（2026-10-01）、JS-Slash-Runner `46ec10df`（2026-10-01）、SillyTavern release `06bde939`（2026-09-14）。標〔Sol〕的是 Sol 對上游的讀法；施工第一步照釘住的版本逐行核對，有出入停下回報。
 
@@ -217,7 +217,7 @@ MVU：
 | `Mvu.getMvuData(option)` | 等於 `getVariables` | 同 |
 | `Mvu.replaceMvuData(data, option)` | 直接回 `replaceVariables(...)` | 回 Promise，宿主確認落檔才 resolve、被拒 reject——**app 加強語意**，上游不等落檔 |
 | `Mvu.setMvuVariable(data, path, value, { reason, is_recursive })` | 只改傳入的 `data`；舊值是任何長度二的陣列就當 `[值, 說明]` 改第 0 項；**不做 `Number()` 轉型**（在 parseMessage 的 set 分支）；display／delta 只更新 `stat_data.$internal` 那份引用；只有 `is_recursive` 為真才發 `SINGLE_VARIABLE_UPDATED`；回 Promise<boolean> | 照做，純沙盒內運算，不送宿主 |
-| `Mvu.parseMessage(message, old)` | 見 8.9 | 2c |
+| `Mvu.parseMessage(message, old)` | 見 8.9 | 見 8.9（2c） |
 
 - replace／insert／delete／updateVariablesWith 上游不發 MVU 事件，app 照做。
 - `getAllVariables()`：全域 → 角色 → 聊天 → 0 樓到本樓各 message 層，頂層 `_.assign`（preset 不在內，照酒館）。
@@ -246,10 +246,18 @@ MVU：
 - 逐字稿每則事件都帶完整表會讓檔案變大：bcd368 一回合約多 25 KB，百回合約 2.5 MB，列已知限制。
 
 #### 8.9 parseMessage（2c）
-- 照 MVU `updateVariables` 重寫，不用 app 機制層解析器：指令 `_.set`、`_.insert`／`_.assign`、`_.remove`／`_.delete`／`_.unset`、`_.add` 與 JSONPatch（replace／add／insert／remove／move／delta）；括號配對抽取、`//` 理由；值解析依序 literal → JSON → JSON5 → 單引號 YAML → 受限數學式 → YAML → 字串；set 分支的 `Number()` 轉型；`[值, 說明]`；schema 規則；display／delta 字串。
-- 事件分階段、可修改：流程在沙盒端跑、依序 await 監聽器——`VARIABLE_UPDATE_STARTED(variables)` → 抽指令 → `COMMAND_PARSED(variables, commands, message)`（監聽器可改 commands）→ 逐條套用（每條 `SINGLE_VARIABLE_UPDATED`）→ `VARIABLE_UPDATE_ENDED(variables, before)`；`_for_zod` 變體與 `BEFORE_MESSAGE_UPDATE` 照原始碼。這些事件的參數不做隔離拷貝。
-- 值解析與數學式在宿主專用 Web Worker 跑（mathjs 受限實例、json5、js-yaml，D1）；沙盒逐條送字串、await 結果。單次計算 200 ms 上限，逾時 `terminate()` 該 Worker、回錯並重建。
-- 不落檔、不記帳。上限：訊息 ≤ 256 KB、指令 ≤ 1000 條、單一數學式 ≤ 1000 字、結果同 8.8、整次 ≤ 5 秒。
+上游核對版本：MagVarUpdate `438f9ffc`（`update_variables.ts`、`schema.ts`、`util.ts`、`variable_def.ts`、`function/global/index.ts`、`util/common.ts`）。
+
+- 照 MVU `updateVariables` 重寫（沙盒端 `card-mvu-parse-source.ts`），不用 app 機制層解析器：
+  - 指令抽取：`_.set`／`insert`／`assign`／`remove`／`unset`／`delete`／`add`（括號配對忽略引號內括號、`;` 結尾、`//` 理由、參數個數檢查）加 `<JSONPatch>`／`<json_patch>` 區塊（replace／add／insert／remove／delta／move，`-` 追加陣列尾）；兩者合併後依出現位置排序；訊息先代換 `{{user}}`／`{{char}}`。
+  - 套用：set 分支的 `Number()` 轉型（舊值是數字且新值是字串才轉，`[值, 說明]` 改第 0 項、舊值數字且新值非 null 才轉）；insert 的 schema 規則（不可擴充物件／陣列、未知鍵、父路徑）與模板；delete 的必填鍵與不可擴充陣列；add 的數字與日期（毫秒）；`display_data`／`delta_data` 字串 `舊->新 (理由)`；有資料變動才用目前資料重生 schema（保留 strictTemplate／strictSet／concatTemplateArray）。`move` 照上游沒有對應套用。
+  - 值解析六段：字面量 → JSON → JSON5（只收物件、陣列）→ 單引號 YAML → 受限數學式 → YAML → 去頭尾引號的字串（Worker 內，`card-mvu-parse-engine.ts`）。
+- 事件在沙盒依序 await 監聽器、參數是活物件（不隔離拷貝）：抽指令 → `STARTED(variables)` → `COMMAND_PARSED(variables, commands, message)`（監聽器可改 commands）→ `COMMAND_PARSED_for_zod`、`COMMAND_PARSED_ended_for_zod` → 逐條套用（每條 `SINGLE_VARIABLE_UPDATED(stat_data, path, 舊, 新)`）→ `ENDED(variables, before)` → 移除 `$internal`、schema 調和 → `ENDED_for_zod`。`BEFORE_MESSAGE_UPDATE` 照原始碼只在上游 `handleVariablesInMessage`（寫回樓層那條路，app 沒有），`parseMessage` 本身不發。
+- 值解析與 JSONPatch 區塊文字解析在宿主專用 Web Worker 跑（mathjs 實例隔離、json5、yaml、jsonrepair，D1）：沙盒逐條送 `mvu-eval`（`{ op: value | patch, text }`）、宿主轉 Worker、結果以 `mvu-eval-result` 回送（不排進沙盒的序列佇列，監聽器裡再呼叫 parseMessage 才不卡死）。一次一筆；單筆 200 ms 逾時就 `terminate()`、回 `timeout`，下一筆再建新 Worker；Worker 開機（載入 mathjs）完成才開始計時，開機 10 秒沒好算失敗。
+- 數學式是「實例隔離」，不是封死危險函式（同上游）：共用實例只算「無賦值、無間接呼叫、只用唯讀 `Math`／`math` 門面」的純數學式，其餘（賦值、`import`、求導後 evaluate、單位修改）走一次性新實例，`parse("2+3").evaluate()`、`evaluate("2+3")` 仍可執行；`Math`／`math` 是凍結的白名單門面，算式改不到宿主物件；外層還有 Worker 隔離與 200 ms 終止。
+- 純沙盒運算：不送宿主寫入、不落檔、不記帳；要存的話卡片自己再呼叫 `Mvu.replaceMvuData`。
+- 上限：訊息 ≤ 256 KB、指令 ≤ 1000 條（抽取後、COMMAND_PARSED 監聽器後、套用每條前都查）、單一數學式 ≤ 1000 字（超過不求值、往下走 YAML／字串）、整次 ≤ 5 秒（每次 await 返回與回傳前都重查）、結果表同 8.8（含非有限數；陣列看 length，稀疏陣列撐大也拒絕）。訊息、指令數、整次時間、結果超限整次 reject（`error.code`）；單條值解析失敗（逾時、值超限）只略過該條並 `console.warn`，其他照常。
+- 回傳：深拷貝 old 後更新的新資料，沒有變動也回（上游原始碼如此，註解寫的「沒變動回 undefined」與實作不符）。
 
 #### 8.10 Sol 第 10 輪 8 項對照
 - 活樓共用屬降級：不再適用——每樓各存一份（8.1）。
@@ -330,6 +338,22 @@ Sol 第 14 輪 4 項：恢復誤刪的 8.3 後半與 8.4 開頭（對照 24f0eac
   - 每檔 ≤ 4 MB 由單表 ≤ 2 MB 的上限保證，不另設檢查；面板開著時另一處改 global 不即時推送（只有一個面板，重開才重讀）。
   - 未知 `type` 拋錯（上游 TypeScript 型別擋掉）；非 message 層不發 MVU 事件。
 
+## 包 2c 施工結果（2026-10-03；Sol 驗收通過，第 2 輪）
+
+- **上游核對**：MagVarUpdate `438f9ffc` 逐檔讀過（8.9 所列檔案），行為照它重寫；JS-Slash-Runner 只涉及 `eventEmit` 序列語意（監聽器依序 await、單支出錯不影響其他），沙盒原本的 `emit` 已是這個行為。
+- **落點**：`mvu/card-mvu-parse-source.ts`（沙盒端，嵌進 `card-mvu-shim-source.ts` 的 IIFE；String.raw 片段，不能含反引號，要比對反引號寫 `\x60`）、`mvu/card-mvu-parse-engine.ts`（Worker 內的值解析，純函式）、`mvu/card-mvu-eval.worker.ts`、`mvu/card-mvu-eval-host.ts`（宿主端 Worker 管理）；`useCardInterfaceController.ts` 一份殼一支宿主、處理 `mvu-eval`。依賴新增 `mathjs`、`json5`、`jsonrepair`、`yaml`（上游同一個 YAML 套件）；mathjs 只在 Worker chunk（約 740 KB），主 bundle 不變。快照 `CardMvu` 新增 `macros`（`{{user}}`／`{{char}}` 代換值）。
+- **測試**：引擎（值解析六段、受限數學式、JSONPatch 區塊文字、值上限）、沙盒端（各指令與 JSONPatch、set 轉型、`[值, 說明]`、schema、模板、事件順序與參數、監聽器改資料、不落檔、各上限、5 秒、宿主沒回應）、宿主 Worker 管理（假 Worker：序列、200 ms 逾時終止與重建、開機等待、關閉）、controller（`mvu-eval` 驗 token、關面板終止）、jsdom 整份殼（探針卡 parseMessage 預覽走值解析）。另有真 WebKit 的 `card-mvu-eval.webkit.test.tsx`（真 Worker 算式、重算式逾時終止並重建；`npm run test:webkit`，不進 verify）。
+- 取捨〔模型判斷·未裁決〕：
+  - 新增 `jsonrepair`（上游 `parseString` 修殘缺 JSON 的依賴）：JSONPatch 區塊文字解析照上游 YAML → JSON5 → jsonrepair → YAML 的順序。
+  - YAML 用上游同一個 `yaml` 套件、同設定：命令值 `YAML.parse` 預設、JSONPatch 區塊 `parseDocument(…, { merge: true }).toJS()`（Sol 第 1 輪必改，不用 js-yaml 模擬）；無已知差異。
+  - 數學式排在 YAML 之前（上游順序）：純日期 `2024-01-01` 會算成 2022；帶時間的（`2024-01-01T10:00`）落到字串。
+  - 值解析一律送 Worker（含 `true`、純 JSON），不在沙盒預先快速處理；非字串參數（監聽器塞進去的）原樣放行。
+  - 逾時後 Worker 在下一筆請求時才重建；建置或派工丟例外（SecurityError、DataCloneError）回收 Worker、該請求回 `worker-create-failed`／`worker-post-failed`，controller 另接 rejection 回錯給沙盒；Worker 內結果超出值上限（深度、節點、字串）算那條失敗。
+  - 巨集只代換 `{{user}}`／`{{char}}`（酒館還有別的巨集，app 沒有對應資料）；上游的錯誤 toast 只留 `console.warn`，訊息不做 i18n。
+  - 超限一律整次 reject；結果含 NaN（例如 `Number('abc')`）也算超限，上游則照存。
+  - 上游 `for…in` 寫鍵的地方改 `defineProperty`（`__proto__` 鍵存成自有屬性）。
+  - 沙盒端另設保險逾時（剩餘時間＋0.5 秒，至少 1 秒），宿主沒回值解析請求時整次 reject。
+
 ## 已知限制
 
 - script／extension 檔案很多或很大時，快照與殼文件隨之變大（上限只管單檔）。
@@ -346,6 +370,7 @@ Sol 第 14 輪 4 項：恢復誤刪的 8.3 後半與 8.4 開頭（對照 24f0eac
 - `display_data` 不含「舊值->新值」、`delta_data` 為空：app 只存變動標記不存舊值。
 - 被引號包住的數字字串（`"123"`）匯入時引號已剝，會還原成 number；前導零數字保留字串（與 YAML 不同）。
 - YAML 行內陣列沒寫成合法 JSON 的保留字串。
+- parseMessage：值解析一次一筆（單一 Worker 序列），指令很多又都很重時整次 5 秒上限先到；不支援酒館的其他巨集；`move` 指令與上游一樣不套用；寫回樓層與 `BEFORE_MESSAGE_UPDATE` 那條路 app 沒有（要存請卡片自己呼叫 `Mvu.replaceMvuData`）。
 - 推送值沒變時不發事件（上游會發）；`VARIABLE_INITIALIZED` 不發；`tavern_events` 等其他事件不觸發。
 
 ## 測試清單

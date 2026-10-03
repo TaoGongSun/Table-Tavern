@@ -22,6 +22,7 @@ import {
   parseLayerKey,
   type SettleResult,
 } from "./mvu/card-mvu-write";
+import { createEvalHost, parseEvalRequest, type EvalHost } from "./mvu/card-mvu-eval-host";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
 // 短指紋（djb2）：card-interface iframe 的 key 用，內容一換 key 就換。
@@ -95,6 +96,14 @@ export interface CardInterfaceController {
   refreshShell: (worldId: string) => Promise<string | null>;
   /** 匯入完畫得出來就直接打開一次 */
   openIfDrawable: (list: CardInterface[]) => void;
+}
+
+/** 一份殼的宿主端資源：寫入佇列、值解析 Worker 與最近一次來訊的沙盒窗口 */
+interface ShellHolder {
+  token: string;
+  queue: MvuWriteQueue;
+  evals: EvalHost;
+  reply: MessageEventSource | null;
 }
 
 export function useCardInterfaceController(input: {
@@ -343,7 +352,7 @@ export function useCardInterfaceController(input: {
   varsStateRef.current = varsState;
   const onEventUpdatedRef = useRef(input.onEventUpdated);
   onEventUpdatedRef.current = input.onEventUpdated;
-  const writeQueue = useRef<{ token: string; queue: MvuWriteQueue; reply: MessageEventSource | null } | null>(null);
+  const writeQueue = useRef<ShellHolder | null>(null);
   // 寫入目標（事件 id 或舊事件的 "@位置"）那一則換成新版：先改 ref（下一筆寫入立刻拿得到），再交給逐字稿
   const replaceHostEvent = useCallback((key: string, update: (previous: TranscriptEvent) => TranscriptEvent) => {
     const list = eventsRef.current;
@@ -360,9 +369,11 @@ export function useCardInterfaceController(input: {
       worldIdRef.current === worldId &&
       varsStateRef.current?.generation === identity.generation &&
       varsStateRef.current?.scene === identity.scene;
-    const holder: { token: string; queue: MvuWriteQueue; reply: MessageEventSource | null } = {
+    const holder: ShellHolder = {
       token: cardShellKey,
       reply: null,
+      // parseMessage 的值解析 Worker（8.9）：一份殼一支，第一次有請求才真的建
+      evals: createEvalHost(),
       queue: createMvuWriteQueue({
         revOf: (key) => {
           if (parseLayerKey(key) !== null) return layersRef.current?.[key]?.rev ?? null;
@@ -455,6 +466,7 @@ export function useCardInterfaceController(input: {
     writeQueue.current = holder;
     return () => {
       holder.queue.close();
+      holder.evals.dispose();
       if (writeQueue.current === holder) writeQueue.current = null;
     };
   }, [cardUiOpen, shell, worldId, cardShellKey, refreshVarsState, replaceHostEvent, setLayer]);
@@ -500,6 +512,26 @@ export function useCardInterfaceController(input: {
           generation: data.generation,
           scene: data.scene,
         });
+        return;
+      }
+      // parseMessage 的值解析與數學式：交給宿主專用 Worker（單筆 200 ms 逾時），結果回給送來的那份沙盒
+      if (data.kind === "mvu-eval") {
+        const holder = writeQueue.current;
+        const request = holder !== null && data.token === holder.token ? parseEvalRequest(data) : null;
+        if (holder === null || request === null) return;
+        const source = event.source;
+        const reply = (outcome: unknown) => {
+          if (writeQueue.current !== holder) return;
+          source?.postMessage(
+            { source: "table-tavern-host", kind: "mvu-eval-result", token: holder.token, requestId: request.requestId, ...(outcome as object) },
+            { targetOrigin: "*" },
+          );
+        };
+        // 任何例外（Worker 建不出來、結果送不回）都回錯給沙盒，不讓請求懸著
+        void holder.evals
+          .run(request.op, request.text)
+          .catch((reason: unknown) => ({ ok: false, error: `host-error: ${String(reason)}` }))
+          .then(reply);
         return;
       }
       if (data.kind !== "input") return;
