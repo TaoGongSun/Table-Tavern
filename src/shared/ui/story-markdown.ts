@@ -69,10 +69,14 @@ const marked = new Marked({
   },
 });
 
-export function renderStoryMarkdown(text: string): string {
-  const html = marked.parse(text) as string;
+// 故事 HTML 的最後一道出口：renderer 漏放什麼，這裡都要剝掉
+export function sanitizeStoryHtml(html: string): string {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: STORY_MARKDOWN_ALLOWED_TAGS,
     ALLOWED_ATTR: STORY_MARKDOWN_ALLOWED_ATTR,
   });
+}
+
+export function renderStoryMarkdown(text: string): string {
+  return sanitizeStoryHtml(marked.parse(text) as string);
 }
