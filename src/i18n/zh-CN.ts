@@ -37,7 +37,6 @@ export const zhCN: Record<MsgKey, string> = {
   usageBarHit: "读到缓存",
   usageBarFull: "全额",
   usageDetailsToggle: "看细项",
-  usageModel: "模型",
   usageRounds: "轮数",
   usageInputTokens: "输入",
   usageCached: "读到缓存",

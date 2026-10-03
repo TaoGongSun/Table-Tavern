@@ -37,7 +37,6 @@ export const ko: Record<MsgKey, string> = {
   usageBarHit: "캐시 읽음",
   usageBarFull: "전액",
   usageDetailsToggle: "자세히 보기",
-  usageModel: "모델",
   usageRounds: "라운드 수",
   usageInputTokens: "입력",
   usageCached: "캐시 읽기",

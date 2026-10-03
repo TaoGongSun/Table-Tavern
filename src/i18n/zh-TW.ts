@@ -46,7 +46,6 @@ export const zh = {
   usageBarHit: "讀到快取",
   usageBarFull: "全額",
   usageDetailsToggle: "看細項",
-  usageModel: "模型",
   usageRounds: "輪數",
   usageInputTokens: "輸入",
   usageCached: "讀到快取",

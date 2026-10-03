@@ -707,9 +707,9 @@
   opacity: 0.75;
 }
 
-/* 表格自己橫向捲，任何語系或超長模型 id 都不會把整個設定視窗撐寬。
-   橫向捲軸貼著容器底緣畫，會壓在下面那排統計 chip 上。只加 padding 沒用——
-   容器底緣與捲軸一起下移，chip 跟著下移，相對距離不變；要用 margin 把 chip 推開。 */
+/* 模型名獨占一列、數字排下一列，最大字級下各語系都塞得進設定視窗。
+   橫向捲只留給極端數字的保底；捲軸貼著容器底緣畫會壓到下面那排統計 chip，
+   只加 padding 沒用（chip 跟著下移），要用 margin 把 chip 推開。 */
 .usage-table-wrap {
   overflow-x: auto;
   margin-bottom: 1rem;
@@ -728,20 +728,31 @@
   border-bottom: 1px solid color-mix(in srgb, var(--ink-1) 12%, transparent);
 }
 
-.usage-table thead th,
-.usage-table tbody th {
-  text-align: left;
+.usage-table thead th {
   font-weight: 600;
 }
 
-.usage-table tfoot th,
-.usage-table tfoot td {
+/* 名稱列與它下面的數字列是一組：中間不畫線，線只畫在組與組之間 */
+.usage-name-row th {
+  padding-bottom: 0;
   border-bottom: none;
+  text-align: left;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.usage-table tfoot .usage-name-row th {
   border-top: 2px solid color-mix(in srgb, var(--ink-1) 30%, transparent);
   font-weight: 700;
 }
 
-.usage-ping-row {
+.usage-table tfoot td {
+  border-bottom: none;
+  font-weight: 700;
+}
+
+.usage-ping-row th,
+.usage-ping-row td {
   opacity: 0.75;
 }
 

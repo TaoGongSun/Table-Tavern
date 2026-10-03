@@ -103,6 +103,10 @@ function latestEntry(latest: UsageReport["latest"]) {
   return CACHE_KEYS[state as keyof typeof CACHE_KEYS];
 }
 
+// 明細表的數字欄數。模型名獨占一列（rowgroup 標題）、數字排在下一列：
+// 七欄並排在 800 寬＋最大字級下任何語系都塞不下（2026-10-03 量測）。
+const USAGE_COLUMNS = 6;
+
 function tokens(value: number) {
   return value.toLocaleString();
 }
@@ -286,19 +290,21 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
           <table className="usage-table">
             <thead>
               <tr>
-                <th>{t("usageModel")}</th>
-                <th>{t("usageRounds")}</th>
-                <th>{t("usageInputTokens")}</th>
-                <th>{t("usageCached")}</th>
-                <th>{t("usageHitRate")}</th>
-                <th>{t("usageOutput")}</th>
-                <th>{t("usageCost")}</th>
+                <th scope="col">{t("usageRounds")}</th>
+                <th scope="col">{t("usageInputTokens")}</th>
+                <th scope="col">{t("usageCached")}</th>
+                <th scope="col">{t("usageHitRate")}</th>
+                <th scope="col">{t("usageOutput")}</th>
+                <th scope="col">{t("usageCost")}</th>
               </tr>
             </thead>
-            <tbody>
-              {bodyRows.map((row) => (
-                <tr key={`${row.source}/${row.model}`} className={row.model === "ping" ? "usage-ping-row" : undefined}>
-                  <th scope="row">
+            {bodyRows.map((row) => (
+              <tbody
+                key={`${row.source}/${row.model}`}
+                className={row.model === "ping" ? "usage-ping-row" : undefined}
+              >
+                <tr className="usage-name-row">
+                  <th scope="rowgroup" colSpan={USAGE_COLUMNS}>
                     {row.model === "ping" ? (
                       t("usagePing")
                     ) : (
@@ -309,6 +315,8 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
                       </>
                     )}
                   </th>
+                </tr>
+                <tr>
                   <td>{row.rounds}</td>
                   <td colSpan={row.unreported === row.rounds ? 4 : 1}>
                     {row.unreported === row.rounds ? (
@@ -332,11 +340,15 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
                   )}
                   <td>{money(row.cost_usd, row.cost_partial)}</td>
                 </tr>
-              ))}
-            </tbody>
+              </tbody>
+            ))}
             <tfoot>
+              <tr className="usage-name-row">
+                <th scope="rowgroup" colSpan={USAGE_COLUMNS}>
+                  {t("usageTotal")}
+                </th>
+              </tr>
               <tr>
-                <th scope="row">{t("usageTotal")}</th>
                 <td>{report.total.rounds}</td>
                 <td>{tokens(report.total.prompt_tokens)}</td>
                 <td>

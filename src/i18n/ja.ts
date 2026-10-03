@@ -37,7 +37,6 @@ export const ja: Record<MsgKey, string> = {
   usageBarHit: "キャッシュ読み込み",
   usageBarFull: "全額",
   usageDetailsToggle: "詳細を見る",
-  usageModel: "モデル",
   usageRounds: "ラウンド数",
   usageInputTokens: "入力",
   usageCached: "キャッシュ読み込み",

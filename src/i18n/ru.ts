@@ -37,7 +37,6 @@ export const ru: Record<MsgKey, string> = {
   usageBarHit: "Прочитано из кэша",
   usageBarFull: "Полная цена",
   usageDetailsToggle: "Показать детали",
-  usageModel: "Модель",
   usageRounds: "Раунды",
   usageInputTokens: "Ввод",
   usageCached: "Из кэша",
