@@ -6,7 +6,7 @@
 ## 狀態
 - 已進 main、等實機。根因、修法、驗證與最小重現見 [plans/menu-keyboard-webkit.md](../plans/menu-keyboard-webkit.md)。
 - 自動驗證：`npm run verify` 全綠；`npm run test:webkit` 9/9 綠（修前 7 敗）；系統 WKWebView 小程式修後每步焦點可見。Sol 審查與驗收共識。
-- 設定視窗分頁列同類問題另立 [settings-tabs-focus-visible](../tasks/settings-tabs-focus-visible.md)。
+- 設定視窗分頁列同類問題另立 [settings-tabs-focus-visible](archive/settings-tabs-focus-visible.md)。
 
 ## 下一步
 - 使用者實機驗收：實測佇列梯 1 第 2（實機外觀＋VoiceOver 混用），通過即結案。

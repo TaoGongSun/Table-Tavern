@@ -28,7 +28,7 @@
 4. **反白只跟著實際焦點**：`.menu-item:focus` 給底色，拿掉 `:hover` 底色；外框仍只給 `:focus-visible`／`data-focus-ring`。滑鼠 `pointermove`（只認 `pointerType === "mouse"`、目標不同才移）把焦點移到該項，所以游標停著、方向鍵移走時不會留第二個亮項，方向鍵也從滑鼠所在項接續。觸控與筆不搶焦點。
 5. 停用項維持可聚焦（`aria-disabled`），滑鼠移入也會聚焦，執行防線仍在 `run()`。
 
-不做：←→ 在選單內照舊不處理；其他元件不改。設定視窗分頁列已重現同類問題，另立 [settings-tabs-focus-visible](../tasks/settings-tabs-focus-visible.md)，本案不擴大，不代表全站已解決。
+不做：←→ 在選單內照舊不處理；其他元件不改。設定視窗分頁列已重現同類問題，另立 [settings-tabs-focus-visible](../handoffs/archive/settings-tabs-focus-visible.md)，本案不擴大，不代表全站已解決。
 
 ## 驗證
 

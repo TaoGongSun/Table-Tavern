@@ -2,8 +2,7 @@
 // 開啟移焦第一項、↑↓／Home／End 循環、Enter/Space 執行後關閉、Esc 與點外面關閉、Tab 直接離開。
 // 彈層 portal 到 body：主欄 .chat-main 是 overflow:hidden，掛在原地會被裁掉。
 // 預設觸發鈕是 ⋯ 幽靈圖示鈕；新增鈕、幕晶片這類要自己的外觀就傳 trigger／className。
-// 焦點可見性照輸入來源明講：WebKit 在「上次焦點來自滑鼠」後，程式移焦不算 :focus-visible，
-// 方向鍵移動就看不到（menu-keyboard-webkit）。所以鍵盤造成的移焦一律要求可見，滑鼠造成的不要外框。
+// 焦點可見性照輸入來源明講（focus-ring.ts）：鍵盤造成的移焦一律要求可見，滑鼠造成的不要外框。
 import {
   Fragment,
   type KeyboardEvent,
@@ -16,6 +15,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { type FocusSource, focusFrom } from "./focus-ring";
 import { IconMore } from "./icons";
 
 export interface MoreMenuItem {
@@ -48,30 +48,6 @@ interface MoreMenuProps {
 
 // 彈層與視窗邊緣保留的距離
 const EDGE = 8;
-
-/** pointer＝滑鼠／觸控點出來的；keyboard＝其餘（鍵盤、輔助技術、程式觸發的 click），一律顯示焦點框 */
-type FocusSource = "keyboard" | "pointer";
-
-// TS 5.8 的 FocusOptions 還沒有 focusVisible（WebKit 自 Safari 18.4 起支援）
-type FocusOptionsWithVisible = FocusOptions & { focusVisible?: boolean };
-
-function clearFocusRing(this: HTMLElement) {
-  delete this.dataset.focusRing;
-}
-
-// 不認 focusVisible 的舊引擎靠 data-focus-ring 兜底（base.css 與 :focus-visible 同一條外框規則），失焦即清
-function focusFrom(node: HTMLElement | null | undefined, source: FocusSource) {
-  if (!node) return;
-  const visible = source === "keyboard";
-  if (visible) {
-    node.dataset.focusRing = "";
-    node.addEventListener("blur", clearFocusRing, { once: true });
-  } else {
-    delete node.dataset.focusRing;
-  }
-  const options: FocusOptionsWithVisible = { preventScroll: !visible, focusVisible: visible };
-  node.focus(options);
-}
 
 // click 的 detail 是點擊次數：0＝不是指標點的（鍵盤 Enter/Space、輔助技術、程式），保守當成要顯示焦點
 const sourceOfClick = (detail: number): FocusSource => (detail > 0 ? "pointer" : "keyboard");

@@ -64,7 +64,9 @@ button.settings-tab[aria-selected="true"]:hover:not(:disabled) {
   color: var(--ink-1);
 }
 
-.settings-tab:focus-visible {
+/* 外框往內畫：分頁列 overflow-x: auto 會裁掉向外的外框（data-focus-ring 是舊引擎兜底） */
+.settings-tab:focus-visible,
+.settings-tab[data-focus-ring]:focus {
   outline-offset: -2px;
 }
 

@@ -251,6 +251,33 @@ describe("SettingsWindow", () => {
     expect(confirmMock).not.toHaveBeenCalled();
   });
 
+  it("arrow focus asks to be visible and marks the tab until it loses focus", async () => {
+    await mount();
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    tabs()[0].focus();
+    await press(tabs()[0], "ArrowRight");
+    expect(document.activeElement).toBe(tabs()[1]);
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: false, focusVisible: true });
+    expect(tabs()[1].dataset.focusRing).toBe("");
+    await press(tabs()[1], "ArrowRight");
+    expect(tabs()[1].dataset.focusRing).toBeUndefined();
+    expect(tabs()[2].dataset.focusRing).toBe("");
+    focus.mockRestore();
+  });
+
+  it("a mouse click drops the arrow ring; a keyboard-made click keeps it", async () => {
+    await mount();
+    tabs()[0].focus();
+    await press(tabs()[0], "ArrowRight");
+    await click(tabs()[1]);
+    expect(tabs()[1].dataset.focusRing).toBe("");
+    await act(async () => {
+      tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    });
+    expect(tabs()[1].dataset.focusRing).toBeUndefined();
+    expect(document.activeElement).toBe(tabs()[1]);
+  });
+
   it("clicking the current tab never asks, even with unsaved changes", async () => {
     await openDirtyAi();
     await click(tabNamed("aiTab"));
@@ -507,6 +534,8 @@ describe("SettingsWindow", () => {
     await render({ initialTab: "versions", requestKey: 1 });
     expect(selected()).toBe(t("versionsTab"));
     expect(document.activeElement).toBe(tabNamed("versionsTab"));
+    // 外部請求不知道輸入來源，救援一律要求可見
+    expect(tabNamed("versionsTab").dataset.focusRing).toBe("");
   });
 
   it("api format saves instantly and survives discarding the other drafts", async () => {
