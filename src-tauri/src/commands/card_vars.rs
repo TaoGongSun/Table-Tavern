@@ -89,3 +89,40 @@ pub(crate) fn set_player_card(
     let _permit = data::world_write_permit(&world_id)?;
     data::set_player_card(&data_root(&app)?, &world_id, card_id).map_err(|error| error.to_string())
 }
+
+/// 面板掛載時讀回非 message 層的現況（chat、這張卡的 character、global、preset、全部 script 與 extension）。
+#[tauri::command]
+pub(crate) fn card_layers(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: Option<String>,
+) -> Result<Vec<data::card_vars::LayerEntry>, String> {
+    let root = data_root(&app)?;
+    data::card_vars::load_layers(&root, &world_id, character_id.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+/// 寫非 message 層的整張表：`expected_rev` 與檔案現況不符回 stale 附權威值；桌內的層另核對桌世代。
+#[tauri::command]
+pub(crate) fn card_layer_write(
+    app: tauri::AppHandle,
+    world_id: String,
+    layer: data::card_vars::Layer,
+    id: Option<String>,
+    generation: u64,
+    expected_rev: Option<String>,
+    vars_json: String,
+) -> Result<data::card_vars::LayerWrite, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let root = data_root(&app)?;
+    data::card_vars::write_layer(
+        &root,
+        &world_id,
+        layer,
+        id.as_deref(),
+        generation,
+        expected_rev.as_deref(),
+        &vars_json,
+    )
+    .map_err(|error| error.to_string())
+}

@@ -51,6 +51,8 @@ const snapshot: CardMvu = {
   active: true,
   generation: 3,
   scene: 0,
+  layers: {},
+  characterId: "c1",
 };
 
 function sandbox(mvu: CardMvu = snapshot) {
@@ -80,16 +82,13 @@ function sandbox(mvu: CardMvu = snapshot) {
 }
 
 describe("沙盒讀取（8.2）", () => {
-  it("逐樓讀自己的表：沒有表回 {}、明確表原樣（缺 display 就是缺）；預設 chat 層與非 message 層明確拋錯", () => {
+  it("逐樓讀自己的表：沒有表回 {}、明確表原樣（缺 display 就是缺）", () => {
     const { win } = sandbox();
     expect(win.getVariables({ ...M, message_id: 0 })).toEqual({ stat_data: { 金: 1, 物品: ["劍"] }, schema: { k: 1 } });
     expect(win.getVariables({ ...M, message_id: 1 })).toEqual({});
     expect(win.Mvu.getMvuData({ ...M, message_id: -1 })).toEqual({ stat_data: { 系統: true } });
     // 讀取 'latest' 排除 system
     expect(win.getVariables(M)).toEqual({});
-    expect(() => win.getVariables()).toThrow(/尚未支援 chat 層/);
-    expect(() => win.getVariables({ type: "global" })).toThrow(/尚未支援 global 層/);
-    expect(() => win.Mvu.getMvuData()).toThrow(/尚未支援/);
   });
 
   it("getAllVariables：0 樓到本樓依序頂層 assign，沒有表的樓帶出前樓的值", () => {
@@ -113,7 +112,6 @@ describe("沙盒寫入（8.6）", () => {
     expect(posted[1]).toMatchObject({ floor: 1, target: "@1" });
     expect(win.getAllVariables()).toEqual({ stat_data: { 金: 1, 物品: ["劍"] }, schema: { k: 1 }, b: 1 });
     expect(() => win.replaceVariables({}, { ...M, message_id: 3 })).toThrow(/超出範圍/);
-    expect(() => win.replaceVariables({})).toThrow(/尚未支援 chat 層/);
   });
 
   it("insertOrAssign 新值蓋舊值且陣列整個取代；insert 既有值優先；兩者回新表", () => {
@@ -165,7 +163,7 @@ describe("沙盒寫入（8.6）", () => {
     await expect(win.Mvu.replaceMvuData(cyclic, { ...M, message_id: 0 })).rejects.toThrow(/invalid-value/);
     expect(posted).toHaveLength(0);
     expect(win.getVariables({ ...M, message_id: 0 })).toEqual(snapshot.states[0]);
-    const empty = sandbox({ currentId: 0, latestId: 0, states: [{ stat_data: {} }], floorState: [0], targets: [null], active: false, generation: 3, scene: 0 });
+    const empty = sandbox({ currentId: 0, latestId: 0, states: [{ stat_data: {} }], floorState: [0], targets: [null], active: false, generation: 3, scene: 0, layers: {}, characterId: "c1" });
     await expect(empty.win.Mvu.replaceMvuData({}, M)).rejects.toThrow(/no-target/);
     const report = vi.spyOn(console, "error").mockImplementation(() => {});
     empty.win.replaceVariables({}, M);
@@ -314,8 +312,151 @@ describe("Mvu.setMvuVariable：純沙盒內運算", () => {
   });
 });
 
+describe("沙盒非 message 層（8.7）", () => {
+  const layered: CardMvu = {
+    ...snapshot,
+    layers: {
+      chat: { rev: "c1", vars: { c: 1 } },
+      "character:c1": { rev: "h1", vars: { h: 1, c: 0 } },
+      global: { rev: "g1", vars: { g: 1, c: -1 } },
+      preset: { rev: null, vars: {} },
+      "script:s1": { rev: "s1", vars: { s: [1, 2] } },
+      "extension:e/1": { rev: "x1", vars: { x: { y: 1 } } },
+    },
+  };
+  const options = {
+    chat: {},
+    character: { type: "character" },
+    global: { type: "global" },
+    script: { type: "script", script_id: "s1" },
+    extension: { type: "extension", extension_id: "e/1" },
+  };
+
+  it("預設層是 chat；各層讀自己的表、沒列的層是空表；拿到的是拷貝", () => {
+    const { win } = sandbox(layered);
+    expect(win.getVariables()).toEqual({ c: 1 });
+    expect(win.getVariables({ type: "chat" })).toEqual({ c: 1 });
+    expect(win.getVariables(options.character)).toEqual({ h: 1, c: 0 });
+    expect(win.getVariables(options.global)).toEqual({ g: 1, c: -1 });
+    expect(win.getVariables({ type: "preset" })).toEqual({});
+    expect(win.getVariables({ type: "preset", preset_name: "in_use" })).toEqual({});
+    expect(win.getVariables(options.script)).toEqual({ s: [1, 2] });
+    expect(win.getVariables(options.extension)).toEqual({ x: { y: 1 } });
+    expect(win.getVariables({ type: "script", script_id: "沒有" })).toEqual({});
+    expect(win.Mvu.getMvuData({ type: "global" })).toEqual({ g: 1, c: -1 });
+    (win.getVariables() as Table).c = 99;
+    expect(win.getVariables()).toEqual({ c: 1 });
+  });
+
+  it("沒給 ID 的 script／extension、別張卡的 character、不認得的層與預設集拋錯", () => {
+    const { win } = sandbox(layered);
+    expect(() => win.getVariables({ type: "script" })).toThrow(/script_id/);
+    expect(() => win.getVariables({ type: "extension", extension_id: "" })).toThrow(/extension_id/);
+    expect(() => win.getVariables({ type: "script", script_id: "字".repeat(257) })).toThrow(/script_id/);
+    expect(() => win.getVariables({ type: "character", character_name: "別人" })).toThrow(/目前這張卡/);
+    expect(() => win.getVariables({ type: "preset", preset_name: "別的" })).toThrow(/預設集不存在/);
+    expect(() => win.getVariables({ type: "nope" })).toThrow(/不支援的變數層/);
+    expect(() => win.getVariables(5 as never)).toThrow(/物件/);
+  });
+
+  it("getAllVariables：全域 → 角色 → 聊天 → 各樓，後者蓋前者（頂層 assign）", () => {
+    const { win } = sandbox(layered);
+    expect(win.getAllVariables()).toEqual({
+      g: 1,
+      h: 1,
+      c: 1,
+      stat_data: { 金: 1, 物品: ["劍"] },
+      schema: { k: 1 },
+    });
+  });
+
+  it("寫入：本地立即換、整張表送宿主（key 是層名＋ID、base 是該層版本）；各層互不影響", () => {
+    const { win, posted } = sandbox(layered);
+    win.replaceVariables({ c: 2 });
+    expect(win.getVariables()).toEqual({ c: 2 });
+    expect(posted[0]).toMatchObject({ kind: "mvu-write", target: "chat", base: "c1", payload: '{"c":2}', generation: 3 });
+    win.replaceVariables({ n: 1 }, { type: "preset" });
+    expect(posted[1]).toMatchObject({ target: "preset", base: null });
+    win.replaceVariables({ v: 1 }, options.extension);
+    expect(posted[2]).toMatchObject({ target: "extension:e/1", base: "x1" });
+    win.replaceVariables({ v: 1 }, { type: "script", script_id: "新的" });
+    expect(posted[3]).toMatchObject({ target: "script:新的", base: null });
+    win.replaceVariables({ v: 1 }, options.character);
+    expect(posted[4]).toMatchObject({ target: "character:c1", base: "h1" });
+    expect(win.getVariables(options.global)).toEqual({ g: 1, c: -1 });
+    expect(win.getVariables({ ...M, message_id: 0 })).toEqual(snapshot.states[0]);
+  });
+
+  it("insertOrAssign／insert／delete／updateVariablesWith 對非 message 層同語意", () => {
+    const { win, posted } = sandbox(layered);
+    expect(win.insertOrAssignVariables({ s: [9], t: 1 }, options.script)).toEqual({ s: [9], t: 1 });
+    expect(win.insertVariables({ s: [0], u: 2 }, options.script)).toEqual({ s: [9], t: 1, u: 2 });
+    expect(win.deleteVariable("t", options.script)).toEqual({ variables: { s: [9], u: 2 }, delete_occurred: true });
+    expect(JSON.parse(posted[posted.length - 1].payload)).toEqual({ s: [9], u: 2 });
+    expect(win.getVariables(options.script)).toEqual({ s: [9], u: 2 });
+  });
+
+  it("確認落檔才 resolve；之後推來新版快照改讀快照；被拒換成權威值", async () => {
+    const box = sandbox(layered);
+    const { win, posted } = box;
+    const first = win.Mvu.replaceMvuData({ c: 2 }, {});
+    await box.settle([{ requestId: posted[0].requestId, ok: true, rev: "c2" }]);
+    await first;
+    await box.push({ ...layered, layers: { ...layered.layers, chat: { rev: "c2", vars: { c: 2 } } } });
+    expect(win.getVariables()).toEqual({ c: 2 });
+    // 下一筆寫入以確認的版本為底
+    void win.Mvu.replaceMvuData({ c: 3 }, {}).catch(() => {});
+    expect(posted[1]).toMatchObject({ target: "chat", base: "c2" });
+    await box.settle([{ requestId: posted[1].requestId, ok: false, error: "stale" }], {
+      key: "chat",
+      table: { c: 7 },
+      rev: "c9",
+    });
+    expect(win.getVariables()).toEqual({ c: 7 });
+    expect(posted).toHaveLength(2);
+  });
+
+  it("讀取失敗的層與類別：讀寫與 getAllVariables 都拋錯（不當空表）；其他層照常；找不到所屬卡時 character 層拋錯", () => {
+    const { win, posted } = sandbox({
+      ...layered,
+      layers: {
+        ...layered.layers,
+        global: { rev: null, vars: {}, error: "corrupt-file" },
+        "extension:": { rev: null, vars: {}, error: "load-failed" },
+      },
+    });
+    expect(() => win.getVariables({ type: "global" })).toThrow(/讀取失敗（corrupt-file）/);
+    expect(() => win.replaceVariables({}, { type: "global" })).toThrow(/讀取失敗/);
+    expect(() => win.getAllVariables()).toThrow(/讀取失敗/);
+    expect(() => win.getVariables({ type: "extension", extension_id: "任何" })).toThrow(/load-failed/);
+    expect(win.getVariables()).toEqual({ c: 1 });
+    expect(win.getVariables(options.script)).toEqual({ s: [1, 2] });
+    expect(posted).toHaveLength(0);
+    const unknown = sandbox({ ...layered, characterId: "" });
+    expect(() => unknown.win.getVariables({ type: "character" })).toThrow(/唯一所屬的卡/);
+    expect(unknown.win.getVariables()).toEqual({ c: 1 });
+  });
+
+  it("寫入在飛時推來的舊版本快照不蓋掉本地值", async () => {
+    const box = sandbox(layered);
+    void box.win.Mvu.replaceMvuData({ c: 5 }, {}).catch(() => {});
+    await box.push(layered);
+    expect(box.win.getVariables()).toEqual({ c: 5 });
+  });
+
+  it("非有限數整批拒絕、不送；快照形狀不對整份不收", async () => {
+    const box = sandbox(layered);
+    await expect(box.win.Mvu.replaceMvuData({ a: Infinity }, {})).rejects.toThrow(/invalid-value/);
+    expect(box.posted).toHaveLength(0);
+    await box.push({ ...layered, layers: { chat: { rev: 5, vars: {} } } } as unknown as CardMvu);
+    expect(box.win.getVariables()).toEqual({ c: 1 });
+    await box.push({ ...layered, characterId: 3 } as unknown as CardMvu);
+    expect(box.win.getVariables()).toEqual({ c: 1 });
+  });
+});
+
 describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", () => {
-  it("殼在整份文件裡跑得起來：讀到值與型別，按鈕送出卡片寫入，chat 層與 parseMessage 明確回報未支援", async () => {
+  it("殼在整份文件裡跑得起來：讀到值與型別，按鈕送出卡片寫入，六層各讀各寫，parseMessage 明確回報未支援", async () => {
     const { readFileSync } = await import("node:fs");
     const { applyScripts, buildShellDocument, extractShell } = await import("../interface-card");
     const card = JSON.parse(
@@ -343,6 +484,8 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
       active: true,
       generation: 3,
       scene: 0,
+      layers: { chat: { rev: "c0", vars: { probe: 1 } }, global: { rev: null, vars: {} } },
+      characterId: "c1",
     };
     const chat = { currentId: 0, floors: [{ name: "GM", role: "assistant" as const, message: "探針回合正文" }] };
     const name = "jsdom";
@@ -362,7 +505,9 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
     expect(text("money")).toBe("100　typeof number");
     expect(text("hp")).toBe('[5,"生命值"]　typeof array');
     expect(text("code")).toBe('"123"　typeof string');
-    expect(text("chat")).toMatch(/尚未支援 chat 層/);
+    expect(text("chat")).toBe("1　typeof number");
+    expect(text("global")).toBe("（無）");
+    expect(text("script")).toBe("（無）");
     (win.document.getElementById("b-mvu") as HTMLButtonElement).click();
     (win.document.getElementById("b-parse") as HTMLButtonElement).click();
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -370,6 +515,23 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
     expect(JSON.parse(write.payload!).stat_data.欄位.血量).toEqual([4, "生命值"]);
     expect(text("hp")).toBe('[4,"生命值"]　typeof array');
     expect(text("log")).toMatch(/parseMessage：拋錯 parseMessage 尚未支援/);
+    (win.document.getElementById("b-layers") as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const layerWrites = sent.filter((message) => message.kind === "mvu-write").slice(1) as unknown as {
+      target: string;
+      base: string | null;
+      payload: string;
+    }[];
+    expect(layerWrites.map((message) => [message.target, message.base, JSON.parse(message.payload)])).toEqual([
+      ["chat", "c0", { probe: 2 }],
+      ["character:c1", null, { probe: 1 }],
+      ["global", null, { probe: 1 }],
+      ["preset", null, { probe: 1 }],
+      ["script:probe-script", null, { probe: 1 }],
+      ["extension:probe-ext", null, { probe: 1 }],
+    ]);
+    expect(text("chat")).toBe("2　typeof number");
+    expect(text("extension")).toBe("1　typeof number");
     win.close();
   });
 });

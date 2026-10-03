@@ -32,6 +32,19 @@ export interface CardMvu {
   /** 產生這份快照時的桌世代與幕（-1＝還不知道，寫入一律被拒）：寫入帶著它，不冒用之後的新值 */
   generation: number;
   scene: number;
+  /** 非 message 層：key＝`chat`、`character:<卡 id>`、`global`、`preset`、`script:<原 ID>`、`extension:<原 ID>`；
+   *  script／extension 列出已存在的全部（卡片讀值是同步的）。沒列的層沙盒當空表、版本 null */
+  layers: Record<string, MvuLayer>;
+  /** `character` 層的身分：目前殼所屬卡的 character_id，世界書卡（沒有 id）固定 `world` */
+  characterId: string;
+}
+
+/** 非 message 層（計畫 8.7）一層的現況：`rev` null＝檔案還不存在（沙盒當空表） */
+export interface MvuLayer {
+  rev: string | null;
+  vars: Record<string, unknown>;
+  /** 讀取失敗：未知不等於不存在，沙盒讀取拋錯、寫入拒絕；script／extension 以 `script:`／`extension:` 標整個類別 */
+  error?: string;
 }
 
 export type StateTree = Record<string, StateNode>;
@@ -215,6 +228,8 @@ export function buildCardMvu(input: {
   active?: boolean;
   generation?: number;
   scene?: number;
+  layers?: Record<string, MvuLayer>;
+  characterId?: string;
 }): CardMvu {
   const { events, liveTree, valueTypes, macros } = input;
   const active = input.active === true;
@@ -268,6 +283,8 @@ export function buildCardMvu(input: {
     active,
     generation: input.generation ?? -1,
     scene: input.scene ?? 0,
+    layers: input.layers ?? {},
+    characterId: input.characterId ?? "",
   };
 }
 

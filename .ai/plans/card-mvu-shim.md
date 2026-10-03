@@ -115,11 +115,11 @@
   - 前端新增 `card-mvu-write.ts`（宿主端驗證、依完整目標的佇列與 Promise 結算）、`card-mvu-parse.ts`（parseMessage），各附測試；沙盒寫入函式加在 `card-mvu-shim.ts`，超過 1000 行就把沙盒原始碼拆到 `card-mvu-shim-source.ts`。資料夾約 21 檔，屆時考慮開 `card-interface/mvu/` 子資料夾。
   - 後端：短提交鎖與投影入口放 `data/` 層（`world_lock.rs` 旁、`data/state.rs`）；`commands/card_vars.rs` 只做邊界；非 message 層檔案讀寫放 `data/card_vars.rs`；`TranscriptEvent` 加 `id`、`message_vars`、`vars_rev`。
 
-### 8. 包 2：寫入、非 message 層、parseMessage（2a 已施工，2b、2c 未施工）
+### 8. 包 2：寫入、非 message 層、parseMessage（2a、2b 已施工，2c 未施工）
 
 規格來源：作者裁決「卡片變數只存一處」（定案範圍）、Sol 第 10、11 輪；上游釘版本——MagVarUpdate `438f9ffc`（2026-10-01）、JS-Slash-Runner `46ec10df`（2026-10-01）、SillyTavern release `06bde939`（2026-09-14）。標〔Sol〕的是 Sol 對上游的讀法；施工第一步照釘住的版本逐行核對，有出入停下回報。
 
-分包（C2）：2a 寫入核心（8.1–8.6、8.8）→ 2b 非 message 層（8.7）→ 2c parseMessage（8.9）。2a 期間非 message 層維持包 1 的「明確拋未支援」；2a 全部驗收完才進 2b。
+分包（C2）：2a 寫入核心（8.1–8.6、8.8）→ 2b 非 message 層（8.7）→ 2c parseMessage（8.9）。2a 驗收完才進 2b；2b 已取代包 1 的「非 message 層拋未支援」。
 
 #### 8.1 資料模型
 - `TranscriptEvent` 新增：
@@ -220,7 +220,7 @@ MVU：
 | `Mvu.parseMessage(message, old)` | 見 8.9 | 2c |
 
 - replace／insert／delete／updateVariablesWith 上游不發 MVU 事件，app 照做。
-- `getAllVariables()`：全域 → 角色 → 聊天 → 0 樓到本樓各 message 層，頂層 `_.assign`（2b 前只有 message 層）。
+- `getAllVariables()`：全域 → 角色 → 聊天 → 0 樓到本樓各 message 層，頂層 `_.assign`（preset 不在內，照酒館）。
 
 #### 8.7 非 message 層（2b）
 
@@ -233,9 +233,9 @@ MVU：
 | script | `script.data`（依 `script_id`） | `worlds/<id>/card-vars/script/<身分檔名>.json` | 不倒回 |
 | extension | `extension_settings[extension_id]` | 資料根目錄 `card-vars/extension/<身分檔名>.json` | 不倒回 |
 
-- 身分檔名＝原 ID 的 SHA-256 前 32 個十六進位字元；檔內存 `{ id: 原 ID, rev, vars }`，讀到時核對原 ID，不符當不存在。原 ID 任意字串照收（長度 ≤ 256）。
+- 身分檔名＝原 ID 的 SHA-256 前 32 個十六進位字元；檔內存 `{ id: 原 ID, rev, vars }`，讀到時核對原 ID，不符是身分衝突（讀回報錯、寫入拒絕、原檔不動），不是不存在；只有確認沒有檔案才當空表。原 ID 任意字串照收（長度 ≤ 256）。
 - 每檔自帶 `rev`；寫入帶目標 rev，不符回 `stale` 附新值（跨桌改 global 會這樣），宿主照被拒處理。app 同時只有一個卡片面板，提交後推給本面板即可；面板掛載時一律重讀。
-- 根目錄的檔不在 `worlds/` 下，不能用 `commit_world_write`：新增根目錄版原子寫（暫存檔＋改名），同樣檢查更新閘門、用同檔鎖。
+- 根目錄的檔不在 `worlds/` 下，不能用 `commit_world_write`：新增根目錄版原子寫（暫存檔＋改名），同樣檢查更新閘門、用同檔鎖；寫入另在發出請求那桌的短提交鎖內核對桌世代。
 
 #### 8.8 上限（依真卡量測）
 量測（2026-10-03，initvar 轉 JSON）：bcd368 22.5 KB、深度 6、357 葉、最長字串 150 字；DongeonMaster 3.7 KB、深度 8、133 葉。遊玩中會長，預留約百倍：
@@ -316,7 +316,23 @@ Sol 第 14 輪 4 項：恢復誤刪的 8.3 後半與 8.4 開頭（對照 24f0eac
   - GM 提交時狀態快取（樹模式下是權威）沒寫成：回 `state_error` 給前端提示，變數表留在回合紀錄照樣隨正文落檔；前端正文落檔失敗以同鍵重試三次。
   - 換幕、分岔、退幕在 GM 回合生成中擋下（新增 UiMsg `scene_change_during_turn`），正文未落檔時先代落再動幕；退幕先寫 current_scene 切回父幕，成功後才刪子幕逐字稿與種子。
 
+## 包 2b 施工結果（2026-10-03；Sol 驗收通過，第 23 輪）
+
+- **上游核對**：JS-Slash-Runner `46ec10df` `variables.ts`：預設層 chat；script 沒給 `script_id` 拋錯、extension 需 `extension_id`；character 讀寫的是目前開啟的角色卡；preset 是使用中預設集；寫入都是整張表替換。與 8.6、8.7 一致。
+- **落點**：後端 `data/card_vars.rs`（六層路徑、`{id,rev,vars}` 檔、讀／列出／寫）、`data/world_file.rs` 新增 `with_root_file_lock`（根目錄檔同檔鎖，寫入前查更新閘門，不查桌格式標記）、`commands/card_vars.rs` 新增 `card_layers`（讀）與 `card_layer_write`（寫）；`sha2` 依賴（本來就在 Cargo.lock）。前端：沙盒墊片 `resolveLayer` 把 option 解成寫入目標 key（`chat`、`global`、`preset`、`character:<卡 id>`、`script:<ID>`、`extension:<ID>`），沿用 message 層的本地值／版本／結算機制；`card-mvu-write.ts` 佇列加 `layer_ok` 與 `parseLayerKey`；controller 開面板時讀各層（讀回前殼文件先不出）、寫入分流、被拒推回權威值。
+- 落檔：chat 在 `worlds/<id>/card-vars/chat.json`、character／script 在同目錄 `character/`、`script/` 下以雜湊檔名；global、preset 在資料根目錄 `card-vars/`，extension 在 `card-vars/extension/`。六層一律在這桌的短提交鎖內核對桌世代（根目錄的層也是：整桌還原後送達的舊請求不落檔，回 stale），再取同檔鎖核對 rev 並原子替換；根目錄的層另查更新閘門（Sol 2b 驗收第 21 輪必改 2）。
+- 檔案狀態（第 21 輪必改 1）：只有「確認不存在」才當空表；內容損壞（`corrupt-file`）、檔內 ID 與要讀寫的不符（`id-mismatch`）、讀不了，讀回都報錯、寫入一律拒絕且原檔位元組不變。
+- 讀取失敗（必改 4）：`card_layers` 對讀不了的層回 `error`（script／extension 資料夾讀不了或裡面有壞檔／撞名檔，整個類別以 `script:`／`extension:` 標錯，因為壞檔的 ID 不可知）；整支呼叫失敗則前端把各層都標錯。標錯的層沙盒讀取、寫入與 `getAllVariables` 都拋錯，宿主也不送後端（`layer-unavailable`）；重開面板重讀即恢復（最小做法，不另設重試鈕）。讀回的各層綁定（桌、桌世代、殼所屬身分），任一項變了舊資料立刻失去就緒資格；被拒時沒有權威表不清除 error，只有成功重讀或取得有效權威表才解除。
+- 取捨〔模型判斷·未裁決〕（Sol 第 21 輪對六項的判定：①③④⑥同意、②修法見下、⑤改為上一點）：
+  - 快照一次帶回 script／extension 已存在的全部檔（讀值是同步的，沙盒得先拿到）；只有確認不存在的 ID 才當空表、版本「無」，第一次寫入建檔。
+  - `character` 層身分由宿主決定、不信沙盒：`pickCardShell` 的 `shellOwner` 只看選殼實際命中的那一段候選文字（不重掃其他候選），取「只用單張卡自己的腳本就能從它產出同一份殼」的第一張卡（`character_id`，世界書卡 `world`）；多卡腳本接力才產得出來、或找不到就空字串，沙盒讀寫 character 層拋錯、`getAllVariables` 略過。宿主送出前再核對 key 裡的身分等於這個值。`character_name` 只收 `current`、`preset_name` 只收 `in_use`／`app`（兩者都是上游已有的 option 欄位，沒另加上游沒定義的拒絕規則）；preset 只有 app 一份。
+  - 非 message 層的卡寫不受 GM 回合 `busy` 擋（GM 回合只動 message 層的表）。
+  - 每檔 ≤ 4 MB 由單表 ≤ 2 MB 的上限保證，不另設檢查；面板開著時另一處改 global 不即時推送（只有一個面板，重開才重讀）。
+  - 未知 `type` 拋錯（上游 TypeScript 型別擋掉）；非 message 層不發 MVU 事件。
+
 ## 已知限制
+
+- script／extension 檔案很多或很大時，快照與殼文件隨之變大（上限只管單檔）。
 
 - 變數模式桌的逐字稿每則 GM／開場事件帶完整變數表，檔案較大（8.8）；每則事件另帶的狀態快照（含樹）讓整幕完整解析接近 100 ms（效能閘數字），慢機器可能翻倍。
 - MVU 卡在換幕結算被自動隱藏時不算符合資格（卡片介面同樣不出現），這時重構復原不會自動啟用變數模式。
@@ -328,7 +344,6 @@ Sol 第 14 輪 4 項：恢復誤刪的 8.3 後半與 8.4 開頭（對照 24f0eac
 - 改過的葉子若含玩家名，存成字面名字，不換回 `{{user}}`。
 
 - `display_data` 不含「舊值->新值」、`delta_data` 為空：app 只存變動標記不存舊值。
-- `getAllVariables` 只有 MVU 這層，沒有酒館的全域／角色／聊天變數（包 2 照 B2 補）。
 - 被引號包住的數字字串（`"123"`）匯入時引號已剝，會還原成 number；前導零數字保留字串（與 YAML 不同）。
 - YAML 行內陣列沒寫成合法 JSON 的保留字串。
 - 推送值沒變時不發事件（上游會發）；`VARIABLE_INITIALIZED` 不發；`tavern_events` 等其他事件不觸發。

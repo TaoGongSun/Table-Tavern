@@ -11,13 +11,15 @@ import {
 } from "./interface-card";
 import { pickCardShell } from "./card-shell-route";
 import { buildCardChat, type CardChat } from "./card-chat-shim";
-import { type CardMvu, type StateTree } from "./mvu/card-mvu-shim";
+import { type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import {
   createMvuWriteQueue,
   type Authority,
   type CardWriteResult,
   type Migration,
   type MvuWriteQueue,
+  layerBlocked,
+  parseLayerKey,
   type SettleResult,
 } from "./mvu/card-mvu-write";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
@@ -180,6 +182,14 @@ export function useCardInterfaceController(input: {
     void refreshVarsState();
   }, [refreshVarsState, events]);
 
+  // 非 message 層現況（key 與沙盒寫入目標同一套，計畫 8.7）：面板開著才讀（每次開都重讀），關掉清空；
+  // 讀回前殼文件先不出（卡片第一次執行時就要讀得到值）。讀回的資料綁定（桌、桌世代、殼所屬身分）：
+  // 任一項變了，舊資料立刻失去就緒資格，等符合新身分的讀回才掛載
+  const [layersState, setLayersState] = useState<{ key: string; data: Record<string, MvuLayer> } | null>(null);
+  const layersRef = useRef<Record<string, MvuLayer> | null>(null);
+  const layersKeyRef = useRef<string | null>(null);
+  const layersLoad = useRef(0);
+
   // 目前要顯示的卡片介面殼與產生它的那一樓：選路規則見 card-shell-route.ts
   const varsActive = varsState?.active === true;
   const varsGeneration = varsState?.generation ?? -1;
@@ -192,10 +202,77 @@ export function useCardInterfaceController(input: {
         events,
         cardInterfaces,
         valueTypes,
-        mvu: { liveTree: tree, userName, active: varsActive, generation: varsGeneration, scene: varsScene },
+        mvu: {
+          liveTree: tree,
+          userName,
+          active: varsActive,
+          generation: varsGeneration,
+          scene: varsScene,
+        },
       }),
-    [tableMode, refactorShell, events, cardInterfaces, valueTypes, tree, userName, varsActive, varsGeneration, varsScene],
+    [
+      tableMode,
+      refactorShell,
+      events,
+      cardInterfaces,
+      valueTypes,
+      tree,
+      userName,
+      varsActive,
+      varsGeneration,
+      varsScene,
+    ],
   );
+  // 讀非 message 層：character 層的身分是殼實際所屬的卡（pickCardShell 決定，空字串＝不唯一、不讀）。
+  // 讀取失敗不是空表：各層標成 error（沙盒讀取拋錯、寫入拒絕），重開面板重讀
+  const characterId = picked?.mvu?.characterId ?? null;
+  const layersKey = characterId === null ? null : JSON.stringify([worldId, varsState?.generation ?? -1, characterId]);
+  const layers = layersKey !== null && layersState?.key === layersKey ? layersState.data : null;
+  layersRef.current = layers;
+  layersKeyRef.current = layersKey;
+  useEffect(() => {
+    const mine = ++layersLoad.current;
+    if (!cardUiOpen || !worldId || !hasMvuCard || characterId === null || layersKey === null) {
+      setLayersState(null);
+      return;
+    }
+    const apply = (next: Record<string, MvuLayer>) => {
+      if (mine !== layersLoad.current) return;
+      layersRef.current = next;
+      setLayersState({ key: layersKey, data: next });
+    };
+    invoke<{ key: string; rev: string | null; vars: string; error?: string }[]>("card_layers", {
+      worldId,
+      characterId: characterId === "" ? null : characterId,
+    })
+      .then((entries) => {
+        const next: Record<string, MvuLayer> = {};
+        for (const entry of entries) {
+          next[entry.key] =
+            entry.error === undefined
+              ? { rev: entry.rev, vars: JSON.parse(entry.vars) }
+              : { rev: null, vars: {}, error: entry.error };
+        }
+        apply(next);
+      })
+      .catch((reason) => {
+        const error = `load-failed: ${String(reason)}`;
+        const failed: Record<string, MvuLayer> = {};
+        for (const key of ["chat", "global", "preset", "script:", "extension:", ...(characterId === "" ? [] : [`character:${characterId}`])]) {
+          failed[key] = { rev: null, vars: {}, error };
+        }
+        apply(failed);
+      });
+  }, [cardUiOpen, worldId, hasMvuCard, characterId, layersKey]);
+  // 非 message 層現況換成新版（寫入確認或被拒推回權威值）：先改 ref（下一筆寫入立刻拿得到），再換 state 推給沙盒
+  const setLayer = useCallback((key: string, layer: MvuLayer) => {
+    if (layersRef.current === null) return;
+    const next = { ...layersRef.current, [key]: layer };
+    const bound = layersKeyRef.current;
+    layersRef.current = next;
+    setLayersState((previous) => (previous !== null && previous.key === bound ? { key: bound, data: next } : previous));
+  }, []);
+
   // doc 與 key 只依賴實際值：無關的 render（例如狀態樹變了但殼與本樓沒變）不重載 iframe
   const shell = picked?.shell ?? null;
   const currentId = picked?.current.id ?? -1;
@@ -208,7 +285,8 @@ export function useCardInterfaceController(input: {
   const chat = useMemo(() => (picked === null ? null : buildCardChat(picked.floors, picked.current)), [picked]);
   const chatRef = useRef<CardChat | null>(null);
   chatRef.current = chat;
-  const mvu = picked?.mvu ?? null;
+  const pickedMvu = picked?.mvu ?? null;
+  const mvu = useMemo(() => (pickedMvu === null ? null : { ...pickedMvu, layers: layers ?? {} }), [pickedMvu, layers]);
   const mvuRef = useRef<CardMvu | null>(null);
   mvuRef.current = mvu;
 
@@ -235,16 +313,18 @@ export function useCardInterfaceController(input: {
           ),
     [worldId, varsGeneration, varsScene, shell, currentId, currentName, currentText],
   );
+  // MVU 卡的殼要等非 message 層讀回才出文件（hasMvuCard 與 mvu 非 null 才有非 message 層可讀）
+  const layersReady = mvu === null || layers !== null;
   const cardShellDoc = useMemo(
     () =>
-      shell === null || !cardUiOpen || chatRef.current === null
+      shell === null || !cardUiOpen || chatRef.current === null || !layersReady
         ? null
         : buildShellDocument(shell, readCardStorage(worldId), {
             chat: chatRef.current,
             token: cardShellKey,
             mvu: mvuRef.current,
           }),
-    [shell, cardShellKey, worldId, cardUiOpen],
+    [shell, cardShellKey, worldId, cardUiOpen, layersReady],
   );
 
   // 每次 render 換上最新的送出函式：訊息監聽只掛一次，不能讓它抓著開面板當下的舊狀態
@@ -255,6 +335,8 @@ export function useCardInterfaceController(input: {
   // 逐字稿與這桌現況用 ref 讀最新值；確認落檔的那則先換進 ref，下一筆寫入才拿得到新版本
   const eventsRef = useRef(events);
   eventsRef.current = events;
+  const characterIdRef = useRef(characterId);
+  characterIdRef.current = characterId;
   const worldIdRef = useRef(worldId);
   worldIdRef.current = worldId;
   const varsStateRef = useRef(varsState);
@@ -283,22 +365,44 @@ export function useCardInterfaceController(input: {
       reply: null,
       queue: createMvuWriteQueue({
         revOf: (key) => {
+          if (parseLayerKey(key) !== null) return layersRef.current?.[key]?.rev ?? null;
           const event = eventOfKey(eventsRef.current, key);
           return event === undefined ? undefined : (event.vars_rev ?? null);
         },
-        tableOf: (key) => eventOfKey(eventsRef.current, key)?.message_vars ?? null,
+        tableOf: (key) =>
+          parseLayerKey(key) !== null
+            ? (layersRef.current?.[key]?.vars ?? null)
+            : (eventOfKey(eventsRef.current, key)?.message_vars ?? null),
         // 世代與幕用產生那張表的快照帶來的，不冒用宿主之後的新值
         send: async (key, expectedRev, payload, identity) => {
+          const layerKey = parseLayerKey(key);
+          // character 層只認目前殼所屬的卡（沙盒帶的身分以宿主這份為準）
+          if (layerKey?.layer === "character" && layerKey.id !== characterIdRef.current) {
+            return { status: "rejected", code: "bad-target", found: false, rev: null, table: null };
+          }
+          // 讀取失敗（或還沒讀回）的層不能寫：未知不等於不存在
+          if (layerKey !== null && layerBlocked(layersRef.current, key)) {
+            return { status: "rejected", code: "layer-unavailable", found: false, rev: null, table: null };
+          }
           const event = eventOfKey(eventsRef.current, key);
           const target = key.startsWith("@") ? { index: Number(key.slice(1)), legacy: event ?? null } : { id: key };
-          const result = await invoke<CardWriteResult>("card_vars_write", {
-            worldId,
-            generation: identity.generation,
-            scene: identity.scene,
-            target,
-            expectedRev,
-            varsJson: payload,
-          });
+          const result = await (layerKey === null
+            ? invoke<CardWriteResult>("card_vars_write", {
+                worldId,
+                generation: identity.generation,
+                scene: identity.scene,
+                target,
+                expectedRev,
+                varsJson: payload,
+              })
+            : invoke<CardWriteResult>("card_layer_write", {
+                worldId,
+                layer: layerKey.layer,
+                id: layerKey.id,
+                generation: identity.generation,
+                expectedRev,
+                varsJson: payload,
+              }));
           // await 回來先核對結果所屬身分：桌換了、或後端的桌世代／幕已不是送出時那組（整桌還原會帶回同 id
           // 的事件），結果就不屬於現在這桌，不換進逐字稿、不推權威值
           const now =
@@ -315,17 +419,23 @@ export function useCardInterfaceController(input: {
             if (worldIdRef.current === worldId) void refreshVarsState();
             return { status: "gone" };
           }
-          // 第一次卡寫會啟用變數模式；世代或場不符（stale）也重問一次
-          if (result.status !== "ok" || varsStateRef.current?.active !== true) void refreshVarsState();
+          // 第一次卡寫會啟用變數模式；世代或場不符（stale）也重問一次（非 message 層不影響模式）
+          if (layerKey === null && (result.status !== "ok" || varsStateRef.current?.active !== true)) void refreshVarsState();
           return result;
         },
         // 換進逐字稿前最後再核一次身分（同步，中間不會再換桌）：佇列關掉後晚到的結果只有身分沒變才換
         committed: (key, next, identity) => {
           if (sameIdentity(identity)) replaceHostEvent(key, () => next);
         },
+        layerCommitted: (key, rev, vars, identity) => {
+          if (sameIdentity(identity)) setLayer(key, { rev, vars: JSON.parse(vars) as Record<string, unknown> });
+        },
         settle: (results: SettleResult[], authority?: Authority, migrate?: Migration) => {
-          // 被拒時後端一併給的權威表與版本也換進宿主逐字稿，下一筆寫入才不會一直拿舊版本被拒
-          if (authority && authority.rev !== (eventOfKey(eventsRef.current, authority.key)?.vars_rev ?? null)) {
+          // 被拒時後端一併給的權威表與版本也換進宿主現況（逐字稿或非 message 層），下一筆寫入才不會一直拿舊版本被拒
+          // 沒有權威表（讀不到、未知）時不動現況：unavailable 狀態只有成功重讀或取得有效權威表才解除
+          if (authority && parseLayerKey(authority.key) !== null) {
+            if (authority.table !== null) setLayer(authority.key, { rev: authority.rev, vars: authority.table });
+          } else if (authority && authority.rev !== (eventOfKey(eventsRef.current, authority.key)?.vars_rev ?? null)) {
             replaceHostEvent(authority.key, (previous) => {
               const next: TranscriptEvent = { ...previous };
               if (authority.table === null) delete next.message_vars;
@@ -347,7 +457,7 @@ export function useCardInterfaceController(input: {
       holder.queue.close();
       if (writeQueue.current === holder) writeQueue.current = null;
     };
-  }, [cardUiOpen, shell, worldId, cardShellKey, refreshVarsState, replaceHostEvent]);
+  }, [cardUiOpen, shell, worldId, cardShellKey, refreshVarsState, replaceHostEvent, setLayer]);
 
   // 卡片介面殼裡的按鈕經 postMessage 把文字丟回來，直接送出、畫面留在介面裡等回覆——
   // 跟 ST 一樣不必進出對話，也不擋卡片自己觸發回合（那在 ST 上是正常用法，會壞的卡在 ST 也會壞）

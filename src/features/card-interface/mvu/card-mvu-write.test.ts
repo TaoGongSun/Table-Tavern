@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { createMvuWriteQueue, validateTable, type Authority, type CardWriteResult, type Migration, type SettleResult } from "./card-mvu-write";
+import { describe, expect, it, vi } from "vitest";
+import { createMvuWriteQueue, layerBlocked, parseLayerKey, validateTable, type Authority, type CardWriteResult, type Migration, type SettleResult } from "./card-mvu-write";
 import { type TranscriptEvent } from "../../../shared/contracts/backend-contracts";
 
 describe("validateTable：寫入上限（與後端同一組）", () => {
@@ -45,6 +45,7 @@ function harness() {
         expect(identity).toEqual({ generation: 3, scene: 0 });
         sends.push({ key, rev, payload, resolve, reject });
       }),
+    layerCommitted: () => {},
     committed: (_key, event) => {
       committed.push(event);
       if (event.id) revs.set(event.id, event.vars_rev ?? null);
@@ -61,6 +62,59 @@ function harness() {
     settled.flatMap((entry) => entry.results).filter((result) => result.requestId === requestId);
   return { queue, sends, settled, committed, write, ok, outcome };
 }
+
+describe("非 message 層寫入目標（8.7）", () => {
+  it("parseLayerKey：層名、帶 ID 的層（ID 可含冒號與任意字元）；事件 key 不是層", () => {
+    expect(parseLayerKey("chat")).toEqual({ layer: "chat", id: null });
+    expect(parseLayerKey("global")).toEqual({ layer: "global", id: null });
+    expect(parseLayerKey("preset")).toEqual({ layer: "preset", id: null });
+    expect(parseLayerKey("character:c1")).toEqual({ layer: "character", id: "c1" });
+    expect(parseLayerKey("script:a:b\n字")).toEqual({ layer: "script", id: "a:b\n字" });
+    expect(parseLayerKey("extension:x")).toEqual({ layer: "extension", id: "x" });
+    for (const key of ["script:", "@3", "01JABCDEFGHJKMNPQRSTVWXYZ0", "chat2", "global:x"]) {
+      expect(parseLayerKey(key)).toBeNull();
+    }
+  });
+
+  it("layerBlocked：沒讀回、該層或所屬類別標了 error 都擋；正常層不擋", () => {
+    const layers: Record<string, { error?: string }> = { chat: {}, "script:": { error: "x" }, global: { error: "y" } };
+    expect(layerBlocked(null, "chat")).toBe(true);
+    expect(layerBlocked(layers, "chat")).toBe(false);
+    expect(layerBlocked(layers, "global")).toBe(true);
+    expect(layerBlocked(layers, "script:任何")).toBe(true);
+    expect(layerBlocked(layers, "extension:任何")).toBe(false);
+  });
+
+  it("layer_ok：通知宿主新版本與落檔的表、結算 resolve、鏈用新版本續送；不是事件所以不搬家", async () => {
+    const layerCommitted = vi.fn();
+    const sends: { key: string; rev: string | null; payload: string; resolve: (r: CardWriteResult) => void }[] = [];
+    const settled: { results: SettleResult[]; migrate?: Migration }[] = [];
+    const queue = createMvuWriteQueue({
+      revOf: () => null,
+      tableOf: () => null,
+      send: (key, rev, payload) =>
+        new Promise<CardWriteResult>((resolve) => sends.push({ key, rev, payload, resolve })),
+      committed: () => {},
+      layerCommitted,
+      settle: (results, _authority, migrate) => settled.push({ results, migrate }),
+    });
+    const write = (requestId: string, value: unknown) =>
+      queue.enqueue({ requestId, target: "chat", payload: JSON.stringify(value), base: "c0", generation: 3, scene: 0 });
+    write("l1", { n: 1 });
+    write("l2", { n: 2 });
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toMatchObject({ key: "chat", rev: "c0", payload: '{"n":1}' });
+    sends[0].resolve({ status: "layer_ok", rev: "c1" });
+    await flush();
+    expect(layerCommitted).toHaveBeenCalledWith("chat", "c1", '{"n":1}', { generation: 3, scene: 0 });
+    expect(settled[0]).toEqual({ results: [{ requestId: "l1", ok: true, rev: "c1" }], migrate: undefined });
+    expect(sends[1]).toMatchObject({ rev: "c1", payload: '{"n":2}' });
+    sends[1].resolve({ status: "stale", found: true, rev: "c9", table: '{"n":9}' });
+    await flush();
+    expect(settled[1].results).toEqual([{ requestId: "l2", ok: false, error: "stale" }]);
+    expect(settled[1]).toMatchObject({ results: [{ requestId: "l2", ok: false, error: "stale" }] });
+  });
+});
 
 describe("宿主寫入佇列", () => {
   it("同目標 W1 在飛時 W2、W3 合併成一筆（送最新整張表）；W1 先結算，W2、W3 一起結算", async () => {

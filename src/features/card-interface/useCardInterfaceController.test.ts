@@ -17,6 +17,13 @@ const backend = vi.hoisted(() => ({
   varsHold: null as Promise<void> | null,
   writes: [] as Record<string, unknown>[],
   write: null as null | ((args: Record<string, unknown>) => Promise<unknown>),
+  layers: [] as { key: string; rev: string | null; vars: string }[],
+  layerReads: [] as Record<string, unknown>[],
+  cards: null as CardInterface[] | null,
+  layersFail: false,
+  layersHold: null as Promise<void> | null,
+  layerWrites: [] as Record<string, unknown>[],
+  layerWrite: null as null | ((args: Record<string, unknown>) => Promise<unknown>),
 }));
 
 // 不用 $1 的殼：每一樓產出的殼字串都一樣，跟讀本樓的狀態欄殼同型
@@ -58,7 +65,7 @@ const mvuCard: CardInterface = {
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: Record<string, unknown>) => {
-    if (command === "card_interfaces") return [backend.mvu ? mvuCard : fixedCard];
+    if (command === "card_interfaces") return backend.cards ?? [backend.mvu ? mvuCard : fixedCard];
     if (command === "card_vars_state") {
       if (backend.varsHold) await backend.varsHold;
       return { generation: backend.generation, active: backend.active, scene: 0 };
@@ -66,6 +73,16 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "card_vars_write") {
       backend.writes.push(args);
       return backend.write ? backend.write(args) : null;
+    }
+    if (command === "card_layers") {
+      backend.layerReads.push(args);
+      if (backend.layersHold) await backend.layersHold;
+      if (backend.layersFail) throw new Error("讀不了");
+      return backend.layers;
+    }
+    if (command === "card_layer_write") {
+      backend.layerWrites.push(args);
+      return backend.layerWrite ? backend.layerWrite(args) : null;
     }
     if (command === "refactor_interface_shell") return backend.shell;
     if (command === "refactor_table_mode") return backend.mode;
@@ -132,6 +149,13 @@ describe("useCardInterfaceController", () => {
     backend.varsHold = null;
     backend.writes = [];
     backend.write = null;
+    backend.layers = [];
+    backend.layersFail = false;
+    backend.cards = null;
+    backend.layersHold = null;
+    backend.layerReads = [];
+    backend.layerWrites = [];
+    backend.layerWrite = null;
     updated.length = 0;
     props = { worldId: "w1", events: [gm("<UI>第一樓</UI>")], tree: {} };
     const store = new Map<string, string>();
@@ -504,6 +528,232 @@ describe("useCardInterfaceController", () => {
         });
         await settle();
         expect(updated).toEqual([]);
+      });
+
+      describe("非 message 層（包 2b）", () => {
+        const events = () => [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)];
+
+        it("開面板才讀各層（帶目前殼所屬卡的身分）；讀回前殼文件先不出，讀回後 mvu 帶著各層、關面板清空", async () => {
+          backend.layers = [
+            { key: "chat", rev: "c1", vars: '{"b":1,"a":2}' },
+            { key: "character:c2", rev: null, vars: "{}" },
+            { key: "script:s1", rev: "s1", vars: '{"s":1}' },
+          ];
+          await render({ events: events() });
+          expect(backend.layerReads).toEqual([]);
+          await act(async () => controller!.open());
+          await settle();
+          expect(backend.layerReads).toEqual([{ worldId: "w1", characterId: "c2" }]);
+          expect(controller!.shellDoc).not.toBeNull();
+          expect(controller!.mvu!.characterId).toBe("c2");
+          expect(controller!.mvu!.layers).toEqual({
+            chat: { rev: "c1", vars: { b: 1, a: 2 } },
+            "character:c2": { rev: null, vars: {} },
+            "script:s1": { rev: "s1", vars: { s: 1 } },
+          });
+          // 殼文件把各層嵌進沙盒快照
+          expect(controller!.shellDoc).toContain("script:s1");
+          await act(async () => controller!.close());
+          expect(controller!.mvu!.layers).toEqual({});
+        });
+
+        it("寫入：送 card_layer_write（層、ID、世代、預期版本、整張表）；確認後現況換新版並回覆沙盒", async () => {
+          backend.layers = [{ key: "global", rev: "g1", vars: '{"n":1}' }];
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          backend.layerWrite = async () => ({ status: "layer_ok", rev: "g2" });
+          let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+          await act(async () => {
+            frame = fromCard({ kind: "mvu-write", requestId: "l1", target: "global", base: "g1", payload: '{"n":2}' });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          });
+          await settle();
+          expect(backend.layerWrites).toEqual([
+            { worldId: "w1", layer: "global", id: null, generation: 3, expectedRev: "g1", varsJson: '{"n":2}' },
+          ]);
+          expect(backend.writes).toEqual([]);
+          expect(controller!.mvu!.layers.global).toEqual({ rev: "g2", vars: { n: 2 } });
+          expect(frame!.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ kind: "mvu-settle", results: [{ requestId: "l1", ok: true, rev: "g2" }] }),
+            { targetOrigin: "*" },
+          );
+        });
+
+        it("script／extension 帶原 ID（含冒號）；被拒（stale）時權威表與版本換進現況並推回沙盒", async () => {
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          backend.layerWrite = async () => ({ status: "stale", found: true, rev: "x9", table: '{"v":9}' });
+          let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+          await act(async () => {
+            frame = fromCard({ kind: "mvu-write", requestId: "l1", target: "extension:a:b", base: null, payload: '{"v":1}' });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          });
+          await settle();
+          expect(backend.layerWrites[0]).toMatchObject({ layer: "extension", id: "a:b", expectedRev: null });
+          expect(controller!.mvu!.layers["extension:a:b"]).toEqual({ rev: "x9", vars: { v: 9 } });
+          expect(frame!.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              results: [{ requestId: "l1", ok: false, error: "stale" }],
+              authority: { key: "extension:a:b", table: { v: 9 }, rev: "x9" },
+            }),
+            { targetOrigin: "*" },
+          );
+        });
+
+        it("讀取失敗不當空表：各層標 error、寫入在此狀態被擋不送後端；重開面板重讀恢復", async () => {
+          backend.layersFail = true;
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          expect(controller!.mvu!.layers.chat).toMatchObject({ rev: null, error: expect.stringContaining("load-failed") });
+          expect(controller!.mvu!.layers["script:"].error).toBeDefined();
+          expect(controller!.mvu!.layers["extension:"].error).toBeDefined();
+          let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+          await act(async () => {
+            frame = fromCard({ kind: "mvu-write", requestId: "l1", target: "chat", base: null, payload: "{}" });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          });
+          await settle();
+          expect(backend.layerWrites).toEqual([]);
+          expect(frame!.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ results: [{ requestId: "l1", ok: false, error: "layer-unavailable" }] }),
+            { targetOrigin: "*" },
+          );
+          // 重開面板重讀：後端好了就恢復
+          backend.layersFail = false;
+          backend.layers = [{ key: "chat", rev: "c1", vars: '{"a":1}' }];
+          await act(async () => controller!.close());
+          await act(async () => controller!.open());
+          await settle();
+          expect(controller!.mvu!.layers).toEqual({ chat: { rev: "c1", vars: { a: 1 } } });
+        });
+
+        it("連續寫入被擋：第一筆被拒後 error 仍在，第二筆照樣擋、都不送後端", async () => {
+          backend.layersFail = true;
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          for (const requestId of ["l1", "l2"]) {
+            await act(async () => {
+              fromCard({ kind: "mvu-write", requestId, target: "chat", base: null, payload: "{}" });
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            });
+            await settle();
+            expect(controller!.mvu!.layers.chat.error).toBeDefined();
+          }
+          expect(backend.layerWrites).toEqual([]);
+        });
+
+        it("換桌：舊桌讀回的各層失去就緒資格，新桌的讀回到了才出殼文件；讀回前 mvu 不帶舊桌的層", async () => {
+          backend.layers = [{ key: "chat", rev: "a1", vars: '{"from":"A桌"}' }];
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          expect(controller!.shellDoc).not.toBeNull();
+          let release: () => void = () => {};
+          backend.layersHold = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          backend.layers = [{ key: "chat", rev: "b1", vars: '{"from":"B桌"}' }];
+          await render({ worldId: "w2" });
+          // 換桌時殼先沒了、面板跟著收起；新桌的卡讀回後重開，讀各層卡在延遲的回應上
+          await act(async () => controller!.open());
+          expect(controller!.shellDoc).toBeNull();
+          expect(controller!.mvu?.layers ?? {}).toEqual({});
+          await act(async () => release());
+          await settle();
+          expect(controller!.shellDoc).not.toBeNull();
+          expect(controller!.mvu!.layers.chat).toEqual({ rev: "b1", vars: { from: "B桌" } });
+        });
+
+        it("換角色（同桌同世代）：殼所屬身分由 A 換成 B，B 的各層讀回前殼文件為 null、mvu 不帶 A 的層；讀回後掛載 B", async () => {
+          const shellCard = (id: string, tag: string): CardInterface => ({
+            ...mvuCard,
+            character_id: id,
+            scripts: [
+              {
+                ...mvuCard.scripts[0],
+                find_regex: `<${tag}/>`,
+                replace_string: `\`\`\`html\n<!DOCTYPE html><head></head><body>${id}殼</body>\n\`\`\``,
+              },
+            ],
+          });
+          backend.cards = [shellCard("cA", "TagA"), shellCard("cB", "TagB")];
+          const turn = (raw: string, gold: string): TranscriptEvent => ({ ...gmTurn("正文足夠長", gold), raw, id: raw, vars_rev: "r", message_vars: { stat_data: { 玩家: { 金幣: 1 } } } });
+          backend.layers = [{ key: "chat", rev: "a1", vars: '{"from":"A"}' }];
+          await render({ events: [turn("開場 <TagA/>", "1")] });
+          await act(async () => controller!.open());
+          await settle();
+          expect(controller!.mvu!.characterId).toBe("cA");
+          expect(controller!.shellDoc).not.toBeNull();
+          let release: () => void = () => {};
+          backend.layersHold = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          backend.layers = [{ key: "chat", rev: "b1", vars: '{"from":"B"}' }];
+          // 最新樓改由 B 卡的腳本產生殼：同桌、同世代，只有殼所屬身分變了
+          await render({ events: [turn("開場 <TagA/>", "1"), turn("下一回合 <TagB/>", "2")] });
+          expect(controller!.mvu!.characterId).toBe("cB");
+          expect(controller!.shellDoc).toBeNull();
+          expect(controller!.mvu!.layers).toEqual({});
+          await act(async () => release());
+          await settle();
+          expect(backend.layerReads[backend.layerReads.length - 1]).toEqual({ worldId: "w1", characterId: "cB" });
+          expect(controller!.shellDoc).not.toBeNull();
+          expect(controller!.mvu!.layers.chat).toEqual({ rev: "b1", vars: { from: "B" } });
+        });
+
+        it("桌世代變了（整桌還原）：舊世代讀回的各層不再算就緒，新世代讀回前殼文件先不出", async () => {
+          backend.layers = [{ key: "chat", rev: "a1", vars: '{"from":"舊"}' }];
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          expect(controller!.shellDoc).not.toBeNull();
+          let release: () => void = () => {};
+          backend.layersHold = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          backend.layers = [{ key: "chat", rev: "a2", vars: '{"from":"新"}' }];
+          backend.generation = 4;
+          await render({ events: [...events(), player("再一句")] });
+          expect(controller!.shellDoc).toBeNull();
+          expect(controller!.mvu?.layers ?? {}).toEqual({});
+          await act(async () => release());
+          await settle();
+          expect(controller!.mvu!.layers.chat).toEqual({ rev: "a2", vars: { from: "新" } });
+          expect(controller!.shellDoc).not.toBeNull();
+        });
+
+        it("後端回報某層壞掉（error）：該層標錯、其他層照常", async () => {
+          backend.layers = [
+            { key: "chat", rev: null, vars: "{}", error: "corrupt-file: x" } as never,
+            { key: "global", rev: "g1", vars: '{"n":1}' },
+          ];
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          expect(controller!.mvu!.layers.chat.error).toBe("corrupt-file: x");
+          expect(controller!.mvu!.layers.global).toEqual({ rev: "g1", vars: { n: 1 } });
+        });
+
+        it("character 層只認目前殼所屬的卡：身分不符不送後端", async () => {
+          await render({ events: events() });
+          await act(async () => controller!.open());
+          await settle();
+          let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+          await act(async () => {
+            frame = fromCard({ kind: "mvu-write", requestId: "l1", target: "character:別人", base: null, payload: "{}" });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          });
+          await settle();
+          expect(backend.layerWrites).toEqual([]);
+          expect(frame!.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ results: [{ requestId: "l1", ok: false, error: "bad-target" }] }),
+            { targetOrigin: "*" },
+          );
+        });
       });
 
       it("token 不對的寫入不理；關面板時未結算的寫入一律 closed", async () => {

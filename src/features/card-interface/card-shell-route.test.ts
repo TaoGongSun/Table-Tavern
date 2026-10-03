@@ -347,6 +347,65 @@ describe("pickCardShell：MVU 卡", () => {
       mvu: { liveTree: liveTree as never, userName: "阿濤" },
     });
 
+  it("character 層身分是實際產生殼的卡：A 卡先列、B 卡產生殼時取 B；產不出同一份殼（腳本接力）就空字串；世界書卡固定 world", () => {
+    const other = (id: string, find: string): CardInterface => ({
+      ...mvuCard,
+      character_id: id,
+      mvu: id === "B",
+      scripts: [{ ...mvuCard.scripts[1], find_regex: find, replace_string: `\`\`\`html\n<!DOCTYPE html><body>${id}殼</body>\n\`\`\`` }],
+      opening: null,
+    });
+    const a = other("A", "<NoMatch/>");
+    const b = other("B", "<StatusPlaceHolderImpl/>");
+    const list = [gmAt("正文夠長了", { 基础信息: { 时间: "x" } })];
+    const owner = (cards: CardInterface[]) =>
+      pickCardShell({
+        tableMode: null,
+        refactorShell: null,
+        events: list.map((event) => ({ ...event, speaker_id: "" })),
+        cardInterfaces: cards,
+        mvu: { liveTree: { 基础信息: { 时间: "x" } } as never, userName: "阿濤" },
+      })?.mvu?.characterId;
+    expect(owner([a, b])).toBe("B");
+    expect(owner([b, a])).toBe("B");
+    expect(owner([a, { ...b, character_id: "" }])).toBe("world");
+    // 兩張卡各自都產不出同一份殼（A 的輸出給 B 接著轉）：不猜
+    const relay = (id: string, find: string, replace: string): CardInterface => ({
+      ...b,
+      character_id: id,
+      scripts: [{ ...b.scripts[0], find_regex: find, replace_string: replace }],
+    });
+    const first = relay("R1", "<StatusPlaceHolderImpl/>", "<Mid/>");
+    const second = relay("R2", "<Mid/>", "```html\n<!DOCTYPE html><body>接力殼</body>\n```");
+    expect(owner([first, second])).toBe("");
+  });
+
+  it("身分跟著選殼命中的那段文字走：A 的舊樓與 B 的最新樓產出同一份殼時取 B，不因重掃舊樓取 A", () => {
+    const sameShell = "```html\n<!DOCTYPE html><body>同一份殼</body>\n```";
+    const make = (id: string, find: string, mvu: boolean): CardInterface => ({
+      ...mvuCard,
+      character_id: id,
+      mvu,
+      scripts: [{ ...mvuCard.scripts[1], find_regex: find, replace_string: sameShell }],
+      opening: null,
+    });
+    const a = make("A", "<OldTag/>", false);
+    const b = make("B", "<StatusPlaceHolderImpl/>", true);
+    const oldFloor: TranscriptEvent = { ...gmAt("舊樓", { 基础信息: { 时间: "a" } }), speaker_id: "", raw: "舊樓正文 <OldTag/>" };
+    const latest: TranscriptEvent = { ...gmAt("最新樓正文", { 基础信息: { 时间: "b" } }), speaker_id: "" };
+    for (const cards of [[a, b], [b, a]]) {
+      const picked = pickCardShell({
+        tableMode: null,
+        refactorShell: null,
+        events: [oldFloor, latest],
+        cardInterfaces: cards,
+        mvu: { liveTree: { 基础信息: { 时间: "b" } } as never, userName: "阿濤" },
+      });
+      expect(picked?.current.id).toBe(1);
+      expect(picked?.mvu?.characterId).toBe("B");
+    }
+  });
+
   it("空桌與開場樓：开局畫面不被占位搶走（開場樓不補占位）", () => {
     expect(mvuPick([], { 基础信息: { 时间: "未知" } })?.shell).toContain("开局畫面");
     const picked = mvuPick([opening], { 基础信息: { 时间: "未知" } });
