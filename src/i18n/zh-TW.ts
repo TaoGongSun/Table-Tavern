@@ -5,20 +5,6 @@ export const zh = {
   tierBalanced: "中",
   tierFast: "低",
 
-  // Onboarding（BYOK 引導）
-  onboardTitle: "還差最後一步：貼上 API key 就能開玩",
-  onboardIntro:
-    "本 App 不代管模型——你自備一把 OpenRouter key，一把通吃多家模型（角色與 GM 可以用不同檔位）。",
-  onboardStep1: "註冊 OpenRouter",
-  onboardStep1Btn: "開啟註冊頁",
-  onboardStep2: "儲值小額（最低 5 美元，用多少扣多少，不會自動扣款）",
-  onboardStep3: "建立一把 API key 並貼到下方",
-  onboardStep3Btn: "開啟 API key 頁",
-  onboardCost: "費用有多高？以平衡檔粗估，5 美元約可玩 3 小時；改用「快速省額度」檔更便宜。",
-  onboardSaveBtn: "儲存並開玩",
-  onboardCliHint:
-    "已自行安裝並登入官方 CLI 的進階使用者，也可以改到左下角「設定 → AI 連線」啟用 CLI 訂閱模式。",
-
   // 設定頁換語言後問一次：要不要用新語言新增範例桌
   sampleRegenTitle: "要用新語言新增範例桌嗎？",
   sampleRegenBody:

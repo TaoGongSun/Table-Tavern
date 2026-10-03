@@ -45,6 +45,7 @@ import {
 } from "./features/backend-msg-updater";
 import { aiMsgMessage, isAiMsgKey, type AiMsgKey } from "./features/backend-msg-ai";
 import { isNoteMsgKey, noteMsgMessage, type NoteMsgKey } from "./features/backend-msg-notes";
+import { expandPlural } from "./plural";
 
 export type MsgKey =
   | CoreMsgKey
@@ -122,7 +123,7 @@ export function setLang(next: Lang) {
 }
 
 export function t(key: MsgKey, params?: Record<string, string | number>): string {
-  const text: string = isOpenRouterOnboardingMsgKey(key)
+  const raw: string = isOpenRouterOnboardingMsgKey(key)
     ? openRouterOnboardingMessage(lang, key)
     : isApiCompatMsgKey(key)
       ? apiCompatMessage(lang, key)
@@ -141,6 +142,18 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
                   : isNoteMsgKey(key)
                     ? noteMsgMessage(lang, key)
                     : MESSAGES[lang][key as CoreMsgKey];
+  return formatMessage(raw, lang, params);
+}
+
+/** 模板代入：單複數先在模板上選好分支（# 變回 {參數}），再單次代入參數；plural 壞掉就原樣回傳。 */
+export function formatMessage(
+  template: string,
+  forLang: Lang,
+  params?: Record<string, string | number>,
+): string {
+  const text = expandPlural(template, forLang, params);
+  // plural 語法壞掉：整串原樣回傳，不半代入（字典語法由 check:i18n 擋）
+  if (text === null) return template;
   if (!params) return text;
   // 對模板只掃一次：代入的值裡就算有 {名} 也不會再被換；沒給的佔位符原樣留著。
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>

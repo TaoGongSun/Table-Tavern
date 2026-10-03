@@ -12,12 +12,13 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const I18N = join(ROOT, "src/i18n");
 const OUT = join(tmpdir(), `tt-i18n-${process.pid}`);
 
-const files = readdirSync(I18N).filter((f) => f.endsWith(".ts") && f !== "index.ts" && !f.endsWith(".test.ts"));
+// 語系字典的檔名就是語系代碼（en.ts、pt-BR.ts…）；plural.ts 等工具檔不算
+const files = readdirSync(I18N).filter((f) => /^[a-z]{2}(-[A-Z]{2})?\.ts$/.test(f));
 const featureFiles = readdirSync(join(I18N, "features")).filter(
   (f) => f.endsWith(".ts") && !f.endsWith(".test.ts"),
 );
 await build({
-  entryPoints: [...files.map((f) => join(I18N, f)), ...featureFiles.map((f) => join(I18N, "features", f))],
+  entryPoints: [join(I18N, "plural.ts"), ...files.map((f) => join(I18N, f)), ...featureFiles.map((f) => join(I18N, "features", f))],
   outdir: OUT,
   outbase: I18N,
   format: "esm",
@@ -32,6 +33,7 @@ const dicts = {};
 for (const file of files) {
   dicts[file.replace(/\.ts$/, "")] = Object.values(await load(file))[0];
 }
+const { messagePlaceholders, widestRendering } = await load("plural.ts");
 const featureModules = {};
 for (const file of featureFiles) featureModules[file] = await load(`features/${file}`);
 rmSync(OUT, { recursive: true, force: true });
@@ -145,7 +147,7 @@ function checkBackendCodes() {
       problems.push(`BACKEND_MSG_PARAMS.${code} 應為 ${JSON.stringify(fields)}`);
     }
     for (const lang of langs) {
-      const used = [...new Set(placeholderNames(dicts[lang][`be_${code}`]))];
+      const used = [...new Set(placeholderNames(dicts[lang][`be_${code}`]) ?? [])];
       if (!sameSet(used, Object.keys(fields))) {
         problems.push(`${lang} be_${code} 佔位符 {${used.join("},{")}} 應為 Rust 欄位 {${Object.keys(fields).join("},{")}}`);
       }
@@ -159,7 +161,7 @@ function checkBackendCodes() {
   if (!sameSet([...(backend.NEEDS_REPAIR_REASONS ?? [])], rustReasons)) problems.push("NEEDS_REPAIR_REASONS 與 RepairReason 不符");
   for (const reason of repairKeys) {
     const expected = reason === "io" ? ["error"] : [];
-    if (!sameSet([...new Set(placeholderNames(canon[`needsRepair_${reason}`]))], expected)) {
+    if (!sameSet([...new Set(placeholderNames(canon[`needsRepair_${reason}`]) ?? [])], expected)) {
       problems.push(`needsRepair_${reason} 佔位符應為 ${expected.map((n) => `{${n}}`).join("") || "無"}`);
     }
   }
@@ -175,8 +177,12 @@ function checkBackendCodes() {
 const canon = dicts["zh-TW"];
 const en = dicts["en"];
 const keys = Object.keys(canon);
-const placeholderNames = (text) => (String(text).match(/\{\w+\}/g) ?? []).map((p) => p.slice(1, -1));
-const placeholders = (text) => placeholderNames(text).map((n) => `{${n}}`).sort().join(",");
+// 佔位符照 plural.ts 的文法算（plural 區塊算參數一次＋分支佔位符一次）；語法錯另外報
+const placeholderNames = (text) => messagePlaceholders(String(text)).names;
+const placeholders = (text) => {
+  const shape = messagePlaceholders(String(text));
+  return "error" in shape ? `語法錯：${shape.error}` : shape.names.map((n) => `{${n}}`).join(",");
+};
 
 // 按鈕與頁籤：只有真的放在窄容器裡的字才受寬度限制。
 // 掃 src 下所有 .tsx——元件搬出 App.tsx 後按鈕仍在掃描範圍內，數字下降即代表漏掃。
@@ -202,7 +208,9 @@ for (const file of tsxFiles) {
 
 // 中日韓字佔兩格；上限取中英兩版較寬者的 1.3 倍＋2，因為介面本來就容得下那兩版
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/;
-const width = (text) => [...String(text)].reduce((n, c) => n + (WIDE.test(c) ? 2 : 1), 0);
+const charWidth = (text) => [...String(text)].reduce((n, c) => n + (WIDE.test(c) ? 2 : 1), 0);
+// plural 字串照最寬的分支量，ICU 語法本身不算寬度
+const width = (text) => charWidth(widestRendering(String(text), charWidth));
 
 // 語言本身沒有更短的地道說法，且所在列已有折行或充足寬度保護
 const WRAP_SAFE_LONG = new Set([
@@ -210,7 +218,6 @@ const WRAP_SAFE_LONG = new Set([
   "ja:playerLabel",
   "de:editBtn",
   "de:hideActs",
-  "fr:onboardSaveBtn",
   "ru:removeImageBtn",
   "ru:send",
   "ru:worldbookSaveEntry",
@@ -243,6 +250,13 @@ const missingLayoutContracts = layoutContracts
   .map(([name]) => name);
 
 if (missingLayoutContracts.length) fail(`layout: 缺少 ${missingLayoutContracts.join("、")}`);
+for (const code of Object.keys(dicts).sort()) {
+  const broken = keys.filter((k) => "error" in messagePlaceholders(String(dicts[code][k])));
+  if (broken.length) {
+    fail(`${code}: ${broken.length} 個字串語法錯`);
+    for (const k of broken) console.log(`  ${k}: ${messagePlaceholders(String(dicts[code][k])).error}`);
+  }
+}
 for (const code of Object.keys(dicts).sort()) {
   if (code === "zh-TW") continue;
   const dict = dicts[code];
