@@ -7,6 +7,7 @@
 
 1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
 2. [menu-keyboard-webkit](../handoffs/menu-keyboard-webkit.md)：世界設定頁先點文字框、再滑鼠開世界書 ⋯：第一項有底色；↑↓ 循環每步都看得到外框；滑鼠移入換亮項、再按方向鍵從該項接續；Esc 回 ⋯ 鈕有外框；開 VoiceOver 混用滑鼠與方向鍵，播報不亂跳、停用項讀得到但按了不執行。
+3. [settings-tabs-focus-visible](../handoffs/archive/settings-tabs-focus-visible.md)：設定視窗先滑鼠點一顆分頁、再按 ←→／Home／End：每步外框看得到、不被分頁列裁掉（窄視窗含頭尾分頁）；開 VoiceOver，方向鍵移到某分頁後滑鼠點同一顆，聽會不會把分頁名重念一次。
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 

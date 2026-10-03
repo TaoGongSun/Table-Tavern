@@ -14,6 +14,7 @@ import { ALL_THEMES, KOFI_URL, resolveTheme, SPONSOR_THEMES, TEXT_SIZE_DEFAULT, 
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { type LeaveDecision, useRequestedTab } from "./useRequestedTab";
 import { ModalShell } from "../../shared/ui/Dialog";
+import { focusFrom } from "../../shared/ui/focus-ring";
 import { IconClose } from "../../shared/ui/icons";
 import { Settings } from "./SettingsForm";
 import { UsageTab } from "./UsageTab";
@@ -151,7 +152,8 @@ export function SettingsWindow({
     if ((await confirmDiscard()) === true) setTab(target);
   }
 
-  // 方向鍵只移焦點不切頁（切頁可能要確認），Enter／Space 交給按鈕自己的 click
+  // 方向鍵只移焦點不切頁（切頁可能要確認），Enter／Space 交給按鈕自己的 click。
+  // 移焦明講要可見（focus-ring.ts）：WebKit 在前次滑鼠焦點後不把程式移焦當 :focus-visible
   function onTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
     if (!keys.includes(event.key)) return;
@@ -166,17 +168,18 @@ export function SettingsWindow({
           ? order.length - 1
           : (current + (event.key === "ArrowRight" ? 1 : -1) + order.length) % order.length;
     const button = tabButtons.current.get(order[next]);
-    button?.focus();
+    focusFrom(button, "keyboard");
     button?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
   }
 
-  // 外部切頁把原本聚焦的元素卸載了（焦點掉回 body 或跑出視窗）就接到新選中的分頁上
+  // 外部切頁把原本聚焦的元素卸載了（焦點掉回 body 或跑出視窗）就接到新選中的分頁上。
+  // 外部請求帶不出輸入來源，救援一律當鍵盤、要求可見
   useEffect(() => {
     if (!focusTabAfterSwitch.current) return;
     focusTabAfterSwitch.current = false;
     const active = document.activeElement;
     if (active === null || active === document.body || !modalRef.current?.contains(active)) {
-      tabButtons.current.get(tab)?.focus();
+      focusFrom(tabButtons.current.get(tab), "keyboard");
     }
   }, [tab]);
 
@@ -253,7 +256,17 @@ export function SettingsWindow({
               aria-selected={tab === id}
               aria-controls={PANEL_ID}
               tabIndex={tab === id ? 0 : -1}
-              onClick={() => void selectTab(id)}
+              onClick={(event) => {
+                // 滑鼠點已聚焦的這顆不會換焦點：方向鍵留下的 data-focus-ring 與 WebKit 記住的
+                // :focus-visible 都不會自己掉，這裡重聚焦成指標來源；detail 0（鍵盤、輔助技術）保留外框。
+                // 要先 blur：對已聚焦元素直接 focus({ focusVisible: false }) WebKit 不重判（實測外框仍在）
+                const node = event.currentTarget;
+                if (event.detail > 0 && (node.dataset.focusRing !== undefined || node.matches(":focus-visible"))) {
+                  node.blur();
+                  focusFrom(node, "pointer");
+                }
+                void selectTab(id);
+              }}
             >
               {t(labelKey)}
             </button>
