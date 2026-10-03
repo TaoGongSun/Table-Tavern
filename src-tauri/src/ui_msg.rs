@@ -303,8 +303,10 @@ pub enum UiMsg {
     RefactorDropRuleCarried,
     /// 重構審閱：淘汰缺編號或越界，這一段併進餘段照搬。
     RefactorDropRuleLeftover,
-    /// 重構審閱：這一段沒有有效路由，併進「（餘段）」條目照搬。
-    RefactorSpanLeftover,
+    /// 重構審閱：這一段沒有有效路由，併進餘段條目照搬；title 是產生當時的完整餘段標題。
+    RefactorSpanLeftover {
+        title: String,
+    },
     /// 重構審閱：人物 mode=clean 但段落引用無效；name 是人物名原文。
     RefactorPersonSpanInvalid {
         name: String,
@@ -367,8 +369,8 @@ impl UiMsg {
                 "Drop rule missing or not 1-4; this span was merged into the leftover entry."
                     .to_owned()
             }
-            UiMsg::RefactorSpanLeftover => {
-                "This span had no valid route and was merged into the leftover entry.".to_owned()
+            UiMsg::RefactorSpanLeftover { title } => {
+                format!("This span had no valid route and was merged into the leftover entry \"{title}\".")
             }
             UiMsg::RefactorPersonSpanInvalid { name } => {
                 format!("Person \"{name}\" used mode=clean with invalid span references; sent back to the expand queue.")

@@ -6,7 +6,8 @@
 //! 四項稽核（RefactorAuditItem.kind）：
 //! - "coverage"：世界書條目沒出現在 PERSONS／INTERFACE／ENTRIES 任何一處，自動補照搬。
 //! - "mechanism"：結構預掃訊號落在沒附 reason 的照搬條目，可能漏接了機制。
-//! - "split"：split 條目有段落沒被任何有效路由接住，自動併入「（餘段）」照搬條目。
+//! - "split"：split 條目有段落沒被任何有效路由接住，自動併入「<原標題>＋餘段後綴」照搬條目
+//!   （後綴照介面語言，見 leftover_title_suffix）。
 //! - "drop_rule"：淘汰缺編號或編號不在 1–4，自動退回照搬。
 
 use crate::data::{self, DataResult, WorldbookEntry};
@@ -68,6 +69,7 @@ pub fn assemble_local(
     root: &Path,
     world_id: &str,
     survey: &RefactorSurveyOutcome,
+    lang: &str,
 ) -> DataResult<RefactorLocalAssembly> {
     let worldbook = data::read_worldbook(root, world_id)?;
     let by_uid: BTreeMap<u64, &WorldbookEntry> =
@@ -112,6 +114,7 @@ pub fn assemble_local(
         &mut dropped,
         &mut unabsorbed,
         &mut audit,
+        lang,
     );
     let (characters, clean_person_names) = assemble_clean_persons(survey, &by_uid, &mut audit);
     assemble_coverage(
@@ -231,7 +234,8 @@ fn assemble_verdicts(
 
 /// SPLITS 逐段路由：entry／gm／unabsorbed／drop／person／group／statusbar 七選一（小抄合約）。
 /// 只處理 ENTRIES 判 split 的條目；每個 span 都必須落地，沒被任何有效路由接住的段落合成
-/// 「<原標題>（餘段）」carry 型條目兜底（拆組守恆）。
+/// 「<原標題>＋餘段後綴」carry 型條目兜底（拆組守恆）。
+#[allow(clippy::too_many_arguments)]
 fn assemble_splits(
     survey: &RefactorSurveyOutcome,
     by_uid: &BTreeMap<u64, &WorldbookEntry>,
@@ -240,6 +244,7 @@ fn assemble_splits(
     dropped: &mut Vec<RefactorDroppedEntry>,
     unabsorbed: &mut Vec<RefactorUnabsorbedItem>,
     audit: &mut Vec<RefactorAuditItem>,
+    lang: &str,
 ) {
     let split_uids: HashSet<u64> = survey
         .verdicts
@@ -427,10 +432,11 @@ fn assemble_splits(
         });
     }
 
-    // 拆組守恆：每個 split 條目的每一段都要有下落，沒被路由到的段合成「（餘段）」carry 型
-    // 條目兜底（byte 相等由「slice 原文組裝」保證）。
+    // 拆組守恆：每個 split 條目的每一段都要有下落，沒被路由到的段合成餘段 carry 型條目兜底
+    // （byte 相等由「slice 原文組裝」保證）。標題只算一次，產物與每筆 audit 共用同一個值。
     for (&uid, spans) in &spans_by_uid {
         let entry = by_uid[&uid];
+        let title = format!("{}{}", entry.title, leftover_title_suffix(lang));
         let mut leftovers = Vec::new();
         for span in spans {
             if routed.contains(&(uid, span.id)) {
@@ -441,11 +447,13 @@ fn assemble_splits(
                 kind: "split".to_owned(),
                 uid: uid.to_string(),
                 span: format!("{uid}#s{}", span.id),
-                detail: UiMsg::RefactorSpanLeftover.to_string(),
+                detail: UiMsg::RefactorSpanLeftover {
+                    title: title.clone(),
+                }
+                .to_string(),
             });
         }
         if !leftovers.is_empty() {
-            let title = format!("{}（餘段）", entry.title);
             used_titles.insert(title.clone());
             entries.push(RefactorNewEntry {
                 title,
@@ -457,6 +465,24 @@ fn assemble_splits(
                 meta: None,
             });
         }
+    }
+}
+
+/// 餘段兜底條目的標題後綴：照玩家介面語言（preferences.language）產生，寫進世界書後就是
+/// 普通條目名，玩家可自行改名。用詞對齊各語系 be_refactor_drop_rule_leftover 的「餘段」譯法；
+/// zh* 退繁中、其餘退英文（同 transport::player_fallback_name）。
+fn leftover_title_suffix(lang: &str) -> &'static str {
+    match lang {
+        "zh-CN" => "（余段）",
+        "ja" => "（残り段落）",
+        "ko" => " (남은 단락)",
+        "es" => " (sobrantes)",
+        "pt-BR" => " (sobras)",
+        "de" => " (Rest)",
+        "fr" => " (restes)",
+        "ru" => " (остатки)",
+        _ if lang.starts_with("zh") => "（餘段）",
+        _ => " (leftover)",
     }
 }
 

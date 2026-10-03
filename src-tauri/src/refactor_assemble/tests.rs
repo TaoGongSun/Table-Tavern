@@ -89,7 +89,7 @@ fn assemble_local_carry_preserves_content_and_meta() {
         ..empty_survey()
     };
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert_eq!(assembly.entries.len(), 1);
     let produced = &assembly.entries[0];
     assert_eq!(produced.content, "第一段。\n\n第二段。");
@@ -119,7 +119,7 @@ fn assemble_local_drop_with_valid_rule_goes_to_dropped_list() {
         }],
         ..empty_survey()
     };
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert!(assembly.entries.is_empty());
     assert_eq!(assembly.dropped.len(), 1);
     assert_eq!(assembly.dropped[0].content, "v1.2 更新內容");
@@ -142,7 +142,7 @@ fn assemble_local_drop_without_valid_rule_falls_back_to_carry_with_audit() {
         }],
         ..empty_survey()
     };
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert!(assembly.dropped.is_empty());
     assert_eq!(assembly.entries.len(), 1);
     assert_eq!(assembly.entries[0].content, "v1.2 更新內容");
@@ -195,7 +195,7 @@ fn assemble_local_group_route_without_span_in_declaration_falls_to_leftover() {
         raw: String::new(),
     };
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     let leftover = assembly
         .entries
         .iter()
@@ -294,7 +294,7 @@ fn assemble_local_split_routes_entry_gm_person_and_leftover_together() {
         ..empty_survey()
     };
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
 
     let merged = assembly
         .entries
@@ -361,7 +361,7 @@ fn assemble_local_clean_person_with_invalid_span_is_skipped_with_audit() {
         ..empty_survey()
     };
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert!(assembly.characters.is_empty());
     assert!(assembly.clean_person_names.is_empty());
     assert_eq!(assembly.audit.len(), 1);
@@ -378,7 +378,7 @@ fn assemble_local_uncovered_uid_falls_back_to_carry_with_coverage_audit() {
     // survey 完全沒提到這個 uid（不在 persons/interface/verdicts 任何一處）。
     let survey = empty_survey();
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert_eq!(assembly.entries.len(), 1);
     assert_eq!(assembly.entries[0].content, "沒被判官提到的內容。");
     assert!(assembly.entries[0].meta.is_some());
@@ -410,7 +410,7 @@ fn assemble_local_clean_person_extra_uid_without_span_reference_still_counts_unc
         private_spans: Vec::new(),
     }];
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     // stray uid 被漏網稽核接住：補 carry＋coverage 紅字；used uid 是人物來源不補
     assert!(assembly.entries.iter().any(|e| e.title == "美化状态栏"));
     assert!(assembly
@@ -452,7 +452,7 @@ fn assemble_local_mechanism_signal_needs_reason_to_pass_carry() {
         ..empty_survey()
     };
 
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert_eq!(assembly.entries.len(), 2); // 兩條都照搬
     let mechanism_audits: Vec<_> = assembly
         .audit
@@ -525,7 +525,7 @@ fn characters_mode_drops_interface_entries_and_statusbar_spans_as_rule5() {
         mode: "characters".to_owned(),
         ..empty_survey()
     };
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert!(assembly
         .dropped
         .iter()
@@ -575,10 +575,173 @@ fn interface_mode_falls_person_route_back_to_entry_by_name() {
         mode: "interface".to_owned(),
         ..empty_survey()
     };
-    let assembly = assemble_local(&root.0, &world_id, &survey).unwrap();
+    let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
     assert!(assembly.characters.is_empty());
     assert!(assembly
         .entries
         .iter()
         .any(|entry| entry.title == "霍玄" && entry.content == "霍玄的人物設定"));
+}
+
+// ---- 餘段標題照介面語言 ----
+
+#[test]
+fn leftover_title_suffix_follows_ui_language() {
+    for (lang, suffix) in [
+        ("zh-TW", "（餘段）"),
+        ("zh-CN", "（余段）"),
+        ("en", " (leftover)"),
+        ("ja", "（残り段落）"),
+        ("ko", " (남은 단락)"),
+        ("es", " (sobrantes)"),
+        ("pt-BR", " (sobras)"),
+        ("de", " (Rest)"),
+        ("fr", " (restes)"),
+        ("ru", " (остатки)"),
+        ("zh-HK", "（餘段）"),
+        ("it", " (leftover)"),
+        ("", " (leftover)"),
+    ] {
+        assert_eq!(leftover_title_suffix(lang), suffix, "lang={lang:?}");
+    }
+}
+
+fn route(span: String, route: &str) -> RefactorSpanRoute {
+    RefactorSpanRoute {
+        span,
+        route: route.to_owned(),
+        rule: None,
+        name: String::new(),
+        title: String::new(),
+        group: String::new(),
+        note: String::new(),
+    }
+}
+
+/// 四段只路由 s2：s1、s3、s4 依序併成一條餘段，三筆 audit 都引用同一個產物標題；
+/// 換語系只換標題後綴，內容、順序、source_uids 不變。
+#[test]
+fn leftover_title_is_shared_by_entry_and_every_audit_in_ui_language() {
+    let root = TestRoot::new();
+    let world_id = data::create_world(&root.0, "測試").unwrap();
+    let uid = seed(
+        &root.0,
+        &world_id,
+        "條目A",
+        "第一段。\n\n第二段。\n\n第三段。\n\n第四段。",
+    );
+    let survey = RefactorSurveyOutcome {
+        verdicts: vec![verdict(uid, "split")],
+        splits: vec![route(format!("{uid}#s2"), "gm")],
+        ..empty_survey()
+    };
+
+    let zh = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
+    let en = assemble_local(&root.0, &world_id, &survey, "en").unwrap();
+    let leftover = |assembly: &RefactorLocalAssembly, title: &str| {
+        assembly
+            .entries
+            .iter()
+            .find(|entry| entry.title == title)
+            .cloned()
+            .unwrap()
+    };
+    let zh_entry = leftover(&zh, "條目A（餘段）");
+    let en_entry = leftover(&en, "條目A (leftover)");
+    assert_eq!(en_entry.content, "第一段。\n\n第三段。\n\n第四段。");
+    assert_eq!(en_entry.content, zh_entry.content);
+    assert_eq!(en_entry.source_uids, vec![uid.to_string()]);
+    assert_eq!(en_entry.source_uids, zh_entry.source_uids);
+
+    let expected_detail = UiMsg::RefactorSpanLeftover {
+        title: "條目A (leftover)".to_owned(),
+    }
+    .to_string();
+    let spans: Vec<&str> = en.audit.iter().map(|item| item.span.as_str()).collect();
+    assert_eq!(
+        spans,
+        vec![
+            format!("{uid}#s1").as_str(),
+            format!("{uid}#s3").as_str(),
+            format!("{uid}#s4").as_str()
+        ]
+    );
+    assert!(en
+        .audit
+        .iter()
+        .all(|item| item.kind == "split" && item.detail == expected_detail));
+}
+
+#[test]
+fn all_spans_routed_makes_no_leftover_entry_or_audit() {
+    let root = TestRoot::new();
+    let world_id = data::create_world(&root.0, "測試").unwrap();
+    let uid = seed(&root.0, &world_id, "條目A", "第一段。\n\n第二段。");
+    let survey = RefactorSurveyOutcome {
+        verdicts: vec![verdict(uid, "split")],
+        splits: vec![
+            route(format!("{uid}#s1"), "gm"),
+            route(format!("{uid}#s2"), "gm"),
+        ],
+        ..empty_survey()
+    };
+
+    let assembly = assemble_local(&root.0, &world_id, &survey, "en").unwrap();
+    assert_eq!(assembly.entries.len(), 1);
+    assert_eq!(assembly.entries[0].title, "條目A");
+    assert!(assembly.audit.is_empty());
+}
+
+#[test]
+fn span_leftover_message_round_trips_and_carries_full_title_to_ai_text() {
+    let title = r#"「引號」"q" \ {name} TTMSG: (leftover)"#;
+    let msg = UiMsg::RefactorSpanLeftover {
+        title: title.to_owned(),
+    };
+    let text = msg.to_string();
+    let body = text.strip_prefix(crate::ui_msg::MARK).unwrap();
+    assert_eq!(serde_json::from_str::<UiMsg>(body).unwrap(), msg);
+    assert_eq!(
+        UiMsg::ai_text_from_str(&text),
+        format!("This span had no valid route and was merged into the leftover entry \"{title}\".")
+    );
+}
+
+/// 套用後讀回世界書、再組盤點脈絡：英文餘段標題原樣保留、內容不變。
+#[test]
+fn applied_leftover_keeps_english_title_in_worldbook_and_survey_context() {
+    let root = TestRoot::new();
+    let world_id = data::create_world(&root.0, "測試").unwrap();
+    let uid = seed(&root.0, &world_id, "條目A", "第一段。\n\n第二段。");
+    let survey = RefactorSurveyOutcome {
+        verdicts: vec![verdict(uid, "split")],
+        splits: vec![route(format!("{uid}#s1"), "gm")],
+        ..empty_survey()
+    };
+    let assembly = assemble_local(&root.0, &world_id, &survey, "en").unwrap();
+    let index = assembly
+        .entries
+        .iter()
+        .position(|entry| entry.title == "條目A (leftover)")
+        .unwrap();
+    let outcome: crate::refactor::RefactorOutcome =
+        serde_json::from_value(serde_json::json!({ "entries": assembly.entries })).unwrap();
+    let selection = crate::refactor::RefactorSelection {
+        character_indices: Vec::new(),
+        apply_interface: false,
+        mechanism_indices: Vec::new(),
+        entry_indices: vec![index],
+        player_index: None,
+    };
+    crate::refactor::apply(&root.0, &world_id, &outcome, &selection).unwrap();
+
+    let worldbook = data::read_worldbook(&root.0, &world_id).unwrap();
+    let applied = worldbook
+        .iter()
+        .find(|entry| entry.title == "條目A (leftover)")
+        .unwrap();
+    assert_eq!(applied.content, "第二段。");
+    let context = refactor_ai::assemble_card_context(&root.0, &world_id).unwrap();
+    assert!(context.contains(&format!("#### uid={} 條目A (leftover)\n", applied.uid)));
+    assert!(context.contains("第二段。"));
 }
