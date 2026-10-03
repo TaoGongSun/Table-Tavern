@@ -4,6 +4,7 @@ import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../../i18n";
 import { ErrorNote, StoryText } from "../../shared/ui/atoms";
+import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
 import { IconBack, IconExport } from "../../shared/ui/icons";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
@@ -90,9 +91,9 @@ export function ActReader({
           events.map((event, index) => (
             <div key={index} className={`scene-event scene-event-${event.kind}`}>
               {(event.kind === "dialogue" || event.kind === "player") && (
-                <span className="speaker">{event.speaker_name}</span>
+                <span className="speaker">{speakerDisplayName(event)}</span>
               )}
-              <StoryText text={event.text} />
+              <StoryText text={eventDisplayText(event)} />
             </div>
           ))
         )}

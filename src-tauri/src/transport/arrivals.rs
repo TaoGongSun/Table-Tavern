@@ -1,32 +1,12 @@
-use crate::data::{self, CharacterCard, TranscriptEvent, TranscriptKind, WorldbookEntry};
+use crate::data::{
+    self, event_full_text, marker_heading, prompt_lang, CharacterCard, EventMarker,
+    TranscriptEvent, TranscriptKind, WorldbookEntry,
+};
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use super::messages::replace_st_macros;
-
-/// 人物登場事件的固定前綴，接著是〈title〉那一行；`append_transcript` 寫進去的格式，
-/// 也是掃「本幕已登場集合」與下一包前端顯示唯一依據的字面。
-pub const PERSON_ARRIVAL_PREFIX: &str = "（人物登場）";
-
-/// 從一則事件文字剝出登場標題（前綴＋〈title〉開頭那一行）；不是登場事件就回 `None`。
-fn arrival_title(text: &str) -> Option<String> {
-    let rest = text
-        .strip_prefix(PERSON_ARRIVAL_PREFIX)?
-        .strip_prefix('〈')?;
-    let end = rest.find('〉')?;
-    Some(rest[..end].to_owned())
-}
-
-/// 本幕已登場集合：掃 transcript 裡帶登場前綴的 System 事件取出標題。換幕是新 jsonl，
-/// 這個集合自然歸零，不必另外存狀態檔。
-pub fn appeared_person_titles(events: &[TranscriptEvent]) -> BTreeSet<String> {
-    events
-        .iter()
-        .filter(|event| event.kind == TranscriptKind::System)
-        .filter_map(|event| arrival_title(&event.text))
-        .collect()
-}
+use super::messages::{player_fallback_name, replace_st_macros};
 
 /// present 欄斷詞／在場名字比對現在是 `data::split_present_names`／`data::name_matches`
 /// （包 4b 拉出去給角色卡換幕結算共用，data 層不能反過來依賴 transport）；
@@ -57,14 +37,14 @@ pub fn detect_new_arrivals<'a>(
         .collect()
 }
 
-/// 人物登場事件的內文：固定前綴＋〈title〉一行（原文，供比對回抽），接條目全文
-/// （`{{user}}` 已代換——事件一旦落進 transcript 就不會再過巨集代換一次）。
-pub fn person_arrival_text(entry: &WorldbookEntry, user_name: &str) -> String {
-    format!(
-        "{}〈{}〉\n{}",
-        PERSON_ARRIVAL_PREFIX,
-        entry.title,
-        replace_st_macros(&entry.content, user_name, None)
+/// 人物登場事件：代碼帶 title（比對回抽用），本文是條目全文（`{{user}}` 已代換——事件一旦
+/// 落進 transcript 就不會再過巨集代換一次）。
+pub fn person_arrival(entry: &WorldbookEntry, user_name: &str) -> (EventMarker, String) {
+    (
+        EventMarker::PersonArrival {
+            title: entry.title.clone(),
+        },
+        replace_st_macros(&entry.content, user_name, None),
     )
 }
 
@@ -73,12 +53,6 @@ pub fn person_arrival_text(entry: &WorldbookEntry, user_name: &str) -> String {
 // 隱藏欄位（data::CharacterMeta.auto_hidden）只在換幕結算（data::begin_next_scene）改動，
 // 這裡（回合中）只偵測與 append 事件，不碰欄位本身。
 // ---------------------------------------------------------------------
-
-/// 本幕已回歸的角色卡集合：掃 transcript 裡帶 `data::CARD_ARRIVAL_PREFIX` 的 System 事件
-/// 取出卡名。命名對齊 4a 的 `appeared_person_titles`。
-pub fn appeared_card_names(events: &[TranscriptEvent]) -> BTreeSet<String> {
-    data::appeared_titles(events, data::CARD_ARRIVAL_PREFIX)
-}
 
 /// 這一輪新回歸的角色卡：`auto_hidden && !archived` 的卡裡，present 名單比對得上（缺席退回
 /// 正文比對）、且本幕還沒回歸過的，依卡片清單順序回傳；呼叫端逐一 append 成回歸事件。
@@ -102,75 +76,93 @@ pub fn detect_new_card_arrivals<'a>(
         .collect()
 }
 
-/// 角色私設事件的固定前綴：角色卡回歸時私設另成一則 `gm_only` 事件，只有 GM 看得到，
-/// 角色側（見 `character_visible_text`）整則略過。
-pub const CARD_PRIVATE_PREFIX: &str = "（角色私設）";
-
-/// 私設段標頭。舊版回歸事件把它接在公開設定後面，角色側渲染靠它截掉私設段。
-const PRIVATE_SECTION: &str = "\n私有設定：";
-
-/// 角色卡回歸事件的內文：固定前綴＋〈name〉一行，接公開設定（`{{user}}`／`{{char}}` 已代換）。
-/// 所有線都看得到，呼叫端標 gm_only=false；私設另由 `card_private_text` 成一則 GM 專屬事件。
-pub fn card_arrival_text(card: &CharacterCard, user_name: &str) -> String {
-    let mut text = format!("{}〈{}〉", data::CARD_ARRIVAL_PREFIX, card.name);
-    if !card.public_md.trim().is_empty() {
-        text.push_str(&format!(
-            "\n公開設定：\n{}",
-            replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
-        ));
-    }
-    text
+/// 角色卡回歸事件：本文是公開設定（`{{user}}`／`{{char}}` 已代換，空白就留空）。所有線都看得到，
+/// 呼叫端標 gm_only=false；私設另由 `card_private` 成一則 GM 專屬事件。
+pub fn card_arrival(card: &CharacterCard, user_name: &str) -> (EventMarker, String) {
+    let public = card.public_md.trim();
+    let text = if public.is_empty() {
+        String::new()
+    } else {
+        replace_st_macros(public, user_name, Some(&card.name))
+    };
+    (
+        EventMarker::CardArrival {
+            name: card.name.clone(),
+        },
+        text,
+    )
 }
 
-/// 角色卡回歸時的私設事件內文；私設空白回 `None`（不產事件）。呼叫端標 gm_only=true。
-pub fn card_private_text(card: &CharacterCard, user_name: &str) -> Option<String> {
+/// 角色卡回歸時的私設事件；私設空白回 `None`（不產事件）。呼叫端標 gm_only=true。
+pub fn card_private(card: &CharacterCard, user_name: &str) -> Option<(EventMarker, String)> {
     let private = card.private_md.trim();
     (!private.is_empty()).then(|| {
-        format!(
-            "{CARD_PRIVATE_PREFIX}〈{}〉{PRIVATE_SECTION}\n{}",
-            card.name,
-            replace_st_macros(private, user_name, Some(&card.name))
+        (
+            EventMarker::CardPrivate {
+                name: card.name.clone(),
+            },
+            replace_st_macros(private, user_name, Some(&card.name)),
         )
     })
 }
 
-/// 舊版合併回歸事件：公開設定後面接著私設全文。檔案不改，角色側讀取時截掉私設段。
-pub fn is_legacy_card_arrival(event: &TranscriptEvent) -> bool {
-    event.kind == TranscriptKind::System
-        && event.text.starts_with(data::CARD_ARRIVAL_PREFIX)
-        && event.text.contains(PRIVATE_SECTION)
+/// 送 AI 時看的是誰的視角：GM 看得到一切；角色側（chars 線、共線、換幕摘要、角色 keyword）
+/// 要遮掉 GM 專屬內容。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Gm,
+    Character,
 }
 
-/// 非 GM 模型看得到的事件正文；`None`＝整則不給角色看。角色線、共線組裝、換幕摘要
-/// （摘要會變成下一幕的公開旁白）與角色側 keyword 觸發共用這一個入口，GM 一律讀原文。
-/// - 角色私設事件：整則略過；
-/// - 其他 `gm_only` System 事件：只留第一行（前綴＋標題）；
-/// - 舊版合併回歸事件：截掉私設段。
-pub fn character_visible_text(event: &TranscriptEvent) -> Option<Cow<'_, str>> {
-    if event.kind != TranscriptKind::System {
-        return Some(Cow::Borrowed(&event.text));
+/// 事件送 AI 的正文（標頭照 `prompt_lang` 組）；`None`＝這則不送。可見性只在這裡判斷：
+/// - GM 側：標頭＋段標＋本文。
+/// - 角色側：角色私設整則略過；其他帶已知代碼的 gm_only 只出標頭（不含公開／私有段標）；
+///   沒有代碼或代碼認不得的 gm_only 只留本文首行；其餘全文。
+pub fn prompt_text(event: &TranscriptEvent, lang: &str, side: Side) -> Option<String> {
+    let lang = prompt_lang(lang);
+    if side == Side::Gm {
+        return Some(event_full_text(event, lang));
+    }
+    if matches!(event.marker, Some(EventMarker::CardPrivate { .. })) {
+        return None;
     }
     if event.gm_only {
-        if event.text.starts_with(CARD_PRIVATE_PREFIX) {
-            return None;
+        if let Some(heading) = event
+            .marker
+            .as_ref()
+            .and_then(|marker| marker_heading(marker, lang))
+        {
+            return Some(heading);
         }
-        return Some(Cow::Borrowed(event.text.lines().next().unwrap_or_default()));
+        return Some(event.text.lines().next().unwrap_or_default().to_owned());
     }
-    if is_legacy_card_arrival(event) {
-        let end = event.text.find(PRIVATE_SECTION).unwrap_or(event.text.len());
-        return Some(Cow::Borrowed(&event.text[..end]));
-    }
-    Some(Cow::Borrowed(&event.text))
+    Some(event_full_text(event, lang))
 }
 
-/// 角色側看到的事件序列（略過與遮罩見 `character_visible_text`）。只給 keyword 觸發這類
-/// 「看內容」的用途；lane 水位、指紋與回覆對點一律用原事件序列，不可拿這份頂替。
-pub fn character_events(events: &[TranscriptEvent]) -> Vec<TranscriptEvent> {
+/// 事件送 AI 時的發言者名：沒有名字的玩家發言退回該語系的玩家稱呼。
+pub fn prompt_speaker<'a>(event: &'a TranscriptEvent, lang: &str) -> Cow<'a, str> {
+    if event.kind == TranscriptKind::Player && event.speaker_name.trim().is_empty() {
+        Cow::Borrowed(player_fallback_name(lang))
+    } else {
+        Cow::Borrowed(event.speaker_name.as_str())
+    }
+}
+
+/// 送 AI 用的渲染副本：`text` 換成 `prompt_text` 的結果、`speaker_name` 補上玩家退路、
+/// `marker` 清空、略過的那則拿掉。下游只吃這份文字——不得再遮罩、不得再組標頭，
+/// 也不得拿它做 lane 水位、指紋或回覆對點（那些一律用原事件序列）。
+pub fn render_for_prompt(
+    events: &[TranscriptEvent],
+    lang: &str,
+    side: Side,
+) -> Vec<TranscriptEvent> {
     events
         .iter()
         .filter_map(|event| {
-            character_visible_text(event).map(|text| TranscriptEvent {
-                text: text.into_owned(),
+            prompt_text(event, lang, side).map(|text| TranscriptEvent {
+                speaker_name: prompt_speaker(event, lang).into_owned(),
+                text,
+                marker: None,
                 ..event.clone()
             })
         })
@@ -242,36 +234,49 @@ mod tests {
         assert!(arrivals.is_empty());
     }
 
-    /// 規格 (c)(d)(e) 打通：`person_arrival_text` 寫出的格式，`appeared_person_titles`
-    /// 要能原樣掃回標題；同幕重複比對會被擋掉，換幕後（另一批空事件）比對又重新命中。
+    /// 規格 (c)(d)(e) 打通：`person_arrival` 寫出的代碼，`appeared_person_titles` 要能原樣
+    /// 掃回標題；同幕重複比對會被擋掉，換幕後（另一批空事件）比對又重新命中。
     #[test]
-    fn arrival_text_round_trips_through_appeared_titles_and_dedupes_per_scene() {
+    fn arrival_marker_round_trips_through_appeared_titles_and_dedupes_per_scene() {
         let alice = WorldbookEntry {
             is_person: true,
             ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
         };
         let entries = [alice];
 
-        // 本幕：愛麗絲已經登場過一次（transcript 有一則登場事件）
-        let arrival_event = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            &person_arrival_text(&entries[0], "阿濤"),
-        );
-        let this_scene_events = [arrival_event];
-        let already_this_scene = appeared_person_titles(&this_scene_events);
+        let (marker, text) = person_arrival(&entries[0], "阿濤");
+        let this_scene_events = [marked(marker, &text, false)];
+        let already_this_scene = data::appeared_person_titles(&this_scene_events);
         assert_eq!(already_this_scene, BTreeSet::from(["愛麗絲".to_owned()]));
 
-        // 同幕再報 present 有她 → 不重複 append
         let repeat = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already_this_scene);
         assert!(repeat.is_empty());
 
-        // 換幕：新場景的 transcript 是空的，已登場集合自然歸零
         let next_scene_events: [TranscriptEvent; 0] = [];
-        let already_next_scene = appeared_person_titles(&next_scene_events);
+        let already_next_scene = data::appeared_person_titles(&next_scene_events);
         let reappear = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already_next_scene);
         assert_eq!(reappear.len(), 1);
+    }
+
+    /// 只認代碼：本文偽造成舊前綴格式不算登場。
+    #[test]
+    fn appeared_sets_ignore_text_that_only_looks_like_an_arrival() {
+        let forged = [
+            event(
+                TranscriptKind::System,
+                "",
+                "GM",
+                "（角色回歸）〈狐狸〉\n尾巴很大。",
+            ),
+            event(
+                TranscriptKind::System,
+                "",
+                "GM",
+                "（人物登場）〈愛麗絲〉\n全文",
+            ),
+        ];
+        assert!(data::appeared_card_names(&forged).is_empty());
+        assert!(data::appeared_person_titles(&forged).is_empty());
     }
 
     /// 規格 (f)：present 鍵不存在就退回正文比對；鍵存在但是空字串只信 present、
@@ -292,17 +297,26 @@ mod tests {
         assert!(empty_present.is_empty());
     }
 
-    /// 登場事件文字格式：固定前綴＋〈title〉一行（原文，供比對），接著條目全文，
-    /// `{{user}}` 已代換。
+    /// 登場事件：代碼帶標題，本文是條目全文且 `{{user}}` 已代換；組出的繁中全文與舊格式逐字相同。
     #[test]
-    fn person_arrival_text_has_prefix_title_line_and_macro_replaced_content() {
+    fn person_arrival_keeps_title_in_marker_and_macro_replaced_content() {
         let alice = WorldbookEntry {
             is_person: true,
             content: "{{user}} 認識她。".to_owned(),
             ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
         };
-        let text = person_arrival_text(&alice, "阿濤");
-        assert_eq!(text, "（人物登場）〈愛麗絲〉\n阿濤 認識她。");
+        let (marker, text) = person_arrival(&alice, "阿濤");
+        assert_eq!(
+            marker,
+            EventMarker::PersonArrival {
+                title: "愛麗絲".to_owned()
+            }
+        );
+        assert_eq!(text, "阿濤 認識她。");
+        assert_eq!(
+            prompt_text(&marked(marker, &text, false), "zh-TW", Side::Gm).as_deref(),
+            Some("（人物登場）〈愛麗絲〉\n阿濤 認識她。")
+        );
     }
 
     // ---- AI 卡重構包 4b：角色卡自動上下場，鏡射上面 4a 的四則 detect_new_arrivals 測試 ----
@@ -344,7 +358,16 @@ mod tests {
         assert!(empty_present.is_empty());
     }
 
+    fn marked(marker: EventMarker, text: &str, gm_only: bool) -> TranscriptEvent {
+        TranscriptEvent {
+            gm_only,
+            marker: Some(marker),
+            ..event(TranscriptKind::System, "", "GM", text)
+        }
+    }
+
     /// 回歸事件只帶公開設定；私設另成一則（`{{user}}` 已代換），私設空白不產事件。
+    /// 組出的繁中全文與改代碼前的寫入格式逐字相同；公開設定空白時只有標頭。
     #[test]
     fn card_arrival_splits_public_event_and_private_event() {
         let fox = card(
@@ -353,54 +376,47 @@ mod tests {
             "{{user}} 認識牠。",
             "{{user}} 不知道牠其實是妖狐。",
         );
+        let (marker, text) = card_arrival(&fox, "阿濤");
+        assert_eq!(text, "阿濤 認識牠。");
         assert_eq!(
-            card_arrival_text(&fox, "阿濤"),
-            "（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。"
+            prompt_text(&marked(marker, &text, false), "zh-TW", Side::Gm).as_deref(),
+            Some("（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。")
         );
+        let (marker, text) = card_private(&fox, "阿濤").unwrap();
         assert_eq!(
-            card_private_text(&fox, "阿濤").as_deref(),
+            prompt_text(&marked(marker, &text, true), "ja", Side::Gm).as_deref(),
             Some("（角色私設）〈狐狸〉\n私有設定：\n阿濤 不知道牠其實是妖狐。")
         );
 
-        let no_private = card("fox-id", "狐狸", "公開內容", "  \n");
-        assert_eq!(card_private_text(&no_private, "阿濤"), None);
+        let no_private = card("fox-id", "狐狸", "  \n", "  \n");
+        assert_eq!(card_private(&no_private, "阿濤"), None);
+        let (marker, text) = card_arrival(&no_private, "阿濤");
+        assert_eq!(text, "");
         assert_eq!(
-            card_arrival_text(&no_private, "阿濤"),
-            "（角色回歸）〈狐狸〉\n公開設定：\n公開內容"
+            prompt_text(&marked(marker, &text, false), "ru", Side::Character).as_deref(),
+            Some("（角色回歸）〈狐狸〉")
         );
     }
 
-    /// 角色側渲染：私設事件整則略過、其他 gm_only 只留第一行、舊合併回歸事件截掉私設段，
-    /// 一般事件原文；`character_events` 照同規則產出，只少掉被略過的那則。
+    /// 角色側渲染：私設事件整則略過、帶代碼的 gm_only 只留標頭、無代碼與未知代碼的 gm_only
+    /// 留本文首行；GM 側全文；英文介面出英文標頭。
     #[test]
-    fn character_view_hides_card_private_and_legacy_private_section() {
+    fn character_side_hides_card_private_and_gm_only_bodies() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
-        let mut private = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            &card_private_text(&fox, "阿濤").unwrap(),
+        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let private = marked(marker, &text, true);
+        let (marker, text) = card_arrival(&fox, "阿濤");
+        let public = marked(marker, &text, false);
+        let person = marked(
+            EventMarker::PersonArrival {
+                title: "密探".to_owned(),
+            },
+            "全文",
+            true,
         );
-        private.gm_only = true;
-        let public = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            &card_arrival_text(&fox, "阿濤"),
-        );
-        let legacy = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            "（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。\n私有設定：\n其實是妖狐。",
-        );
-        let mut person = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            "（人物登場）〈密探〉\n全文",
-        );
-        person.gm_only = true;
+        let mut plain = event(TranscriptKind::System, "", "GM", "擲骰 3\n只有 GM 知道");
+        plain.gm_only = true;
+        let unknown = marked(EventMarker::Unknown, "未知本文\n第二行", true);
         let line = event(
             TranscriptKind::Dialogue,
             "fox-id",
@@ -408,52 +424,115 @@ mod tests {
             "私有設定：只是台詞",
         );
 
-        assert_eq!(character_visible_text(&private), None);
+        let side = Side::Character;
+        assert_eq!(prompt_text(&private, "zh-TW", side), None);
         assert_eq!(
-            character_visible_text(&public).as_deref(),
-            Some("（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。")
-        );
-        assert!(is_legacy_card_arrival(&legacy));
-        assert!(!is_legacy_card_arrival(&public));
-        assert_eq!(
-            character_visible_text(&legacy).as_deref(),
+            prompt_text(&public, "zh-TW", side).as_deref(),
             Some("（角色回歸）〈狐狸〉\n公開設定：\n尾巴很大。")
         );
         assert_eq!(
-            character_visible_text(&person).as_deref(),
+            prompt_text(&person, "zh-TW", side).as_deref(),
             Some("（人物登場）〈密探〉")
         );
         assert_eq!(
-            character_visible_text(&line).as_deref(),
+            prompt_text(&plain, "zh-TW", side).as_deref(),
+            Some("擲骰 3")
+        );
+        assert_eq!(
+            prompt_text(&unknown, "zh-TW", side).as_deref(),
+            Some("未知本文")
+        );
+        assert_eq!(
+            prompt_text(&unknown, "zh-TW", Side::Gm).as_deref(),
+            Some("未知本文\n第二行")
+        );
+        assert_eq!(
+            prompt_text(&line, "zh-TW", side).as_deref(),
             Some("私有設定：只是台詞")
         );
+        assert_eq!(
+            prompt_text(&person, "en", Side::Gm).as_deref(),
+            Some("(New arrival) “密探”\n全文")
+        );
 
-        let view = character_events(&[private, public, legacy, person, line]);
-        assert_eq!(view.len(), 4);
+        let view = render_for_prompt(
+            &[private, public, person, plain, unknown, line],
+            "zh-TW",
+            side,
+        );
+        assert_eq!(view.len(), 5);
+        assert!(view.iter().all(|event| event.marker.is_none()));
         assert!(view.iter().all(|event| !event.text.contains("妖狐")));
         assert!(view.iter().all(|event| !event.text.contains("全文")));
+    }
+
+    /// 提示詞模板：zh-TW／ja／ru 出繁中標頭、en 出英文標頭；沒名字的玩家發言與點名退回該語系稱呼。
+    #[test]
+    fn prompt_headings_follow_prompt_language_with_player_fallbacks() {
+        let summary = TranscriptEvent {
+            kind: TranscriptKind::Narration,
+            ..marked(EventMarker::SceneSummary, "摘要", false)
+        };
+        let state = marked(EventMarker::StateUpdate, "hp：3", false);
+        let call = marked(
+            EventMarker::GmCall {
+                name: String::new(),
+            },
+            "",
+            false,
+        );
+        let named_call = marked(
+            EventMarker::GmCall {
+                name: "狐狸".to_owned(),
+            },
+            "",
+            false,
+        );
+        let player = event(TranscriptKind::Player, "", "", "你好");
+        for lang in ["zh-TW", "ja", "ru"] {
+            let side = Side::Character;
+            assert_eq!(
+                prompt_text(&summary, lang, side).as_deref(),
+                Some("【前情提要】\n摘要")
+            );
+            assert_eq!(
+                prompt_text(&state, lang, side).as_deref(),
+                Some("狀態更新\nhp：3")
+            );
+            assert_eq!(
+                prompt_text(&named_call, lang, side).as_deref(),
+                Some("GM 請「狐狸」發言")
+            );
+        }
+        assert_eq!(
+            prompt_text(&call, "zh-TW", Side::Gm).as_deref(),
+            Some("GM 請「玩家」發言")
+        );
+        assert_eq!(
+            prompt_text(&summary, "en", Side::Gm).as_deref(),
+            Some("Previously:\n摘要")
+        );
+        assert_eq!(
+            prompt_text(&call, "en", Side::Gm).as_deref(),
+            Some("GM asks “Player” to speak")
+        );
+        assert_eq!(prompt_speaker(&player, "ja"), "プレイヤー");
+        assert_eq!(prompt_speaker(&player, "en"), "Player");
+        let rendered = render_for_prompt(&[player], "de", Side::Gm);
+        assert_eq!(rendered[0].speaker_name, "Spieler");
     }
 
     /// 私設事件不是回歸事件：不進「本幕已回歸」集合，回歸判定與換幕結算照舊只認公開那則。
     #[test]
     fn card_private_event_is_not_counted_as_arrival() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
-        let mut private = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            &card_private_text(&fox, "阿濤").unwrap(),
-        );
-        private.gm_only = true;
-        assert!(appeared_card_names(&[private.clone()]).is_empty());
-        let public = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            &card_arrival_text(&fox, "阿濤"),
-        );
+        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let private = marked(marker, &text, true);
+        assert!(data::appeared_card_names(&[private.clone()]).is_empty());
+        let (marker, text) = card_arrival(&fox, "阿濤");
+        let public = marked(marker, &text, false);
         assert_eq!(
-            appeared_card_names(&[private, public]),
+            data::appeared_card_names(&[private, public]),
             BTreeSet::from(["狐狸".to_owned()])
         );
     }

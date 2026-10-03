@@ -1,34 +1,7 @@
-use std::collections::BTreeSet;
 use std::path::Path;
 
 use super::super::character::{list_characters, set_character_auto_hidden};
-use super::transcript::{read_transcript, TranscriptEvent, TranscriptKind};
-
-// ---------------------------------------------------------------------
-// AI 卡重構包 4b：角色卡自動上下場共用的登場掃描原語。人物（transport::PERSON_ARRIVAL_PREFIX）
-// 與角色卡（CARD_ARRIVAL_PREFIX）登場比對邏輯相同、鍵不同，這裡放兩邊都用得到、且
-// 換幕結算（本檔 begin_next_scene）必須直接呼叫、不能反過來依賴 transport 的最小共用集合。
-// ---------------------------------------------------------------------
-
-/// 角色卡回歸事件的固定前綴，接著是〈name〉那一行——跟世界書人物的登場前綴
-/// （transport::PERSON_ARRIVAL_PREFIX）分開，掃 transcript 或前端呈現時才分得出兩種來源。
-pub const CARD_ARRIVAL_PREFIX: &str = "（角色回歸）";
-
-/// 從一則事件文字剝出前綴後的〈title〉；prefix 不符或沒有〈〉包住就回 None。
-pub(crate) fn bracket_title(text: &str, prefix: &str) -> Option<String> {
-    let rest = text.strip_prefix(prefix)?.strip_prefix('〈')?;
-    let end = rest.find('〉')?;
-    Some(rest[..end].to_owned())
-}
-
-/// 本幕已登場（依指定前綴）集合：掃 System 事件取出〈title〉。
-pub(crate) fn appeared_titles(events: &[TranscriptEvent], prefix: &str) -> BTreeSet<String> {
-    events
-        .iter()
-        .filter(|event| event.kind == TranscriptKind::System)
-        .filter_map(|event| bracket_title(&event.text, prefix))
-        .collect()
-}
+use super::transcript::read_transcript;
 
 /// present 欄的斷詞規則：頓號／逗號／斜線／分號，trim 後濾空。
 pub(crate) fn split_present_names(raw: &str) -> Vec<String> {
@@ -75,7 +48,7 @@ pub(super) fn settle_card_visibility(
         return;
     };
     let events = read_transcript(root, world_id, ended_scene).unwrap_or_default();
-    let arrived = appeared_titles(&events, CARD_ARRIVAL_PREFIX);
+    let arrived = super::marker::appeared_card_names(&events);
     let present_names = present.map(split_present_names).unwrap_or_default();
     for meta in characters {
         if meta.archived {
@@ -125,11 +98,14 @@ mod tests {
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
                 kind: TranscriptKind::System,
-                text: "（角色回歸）〈狐狸〉\n尾巴很大。".to_owned(),
+                text: "尾巴很大。".to_owned(),
                 raw: None,
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: Some(super::super::marker::EventMarker::CardArrival {
+                    name: "狐狸".to_owned(),
+                }),
             },
         )
         .unwrap();
@@ -138,10 +114,10 @@ mod tests {
         state
             .state
             .table
-            .insert("present".to_owned(), "狐狸、熊".to_owned());
+            .insert("present".to_owned(), "熊".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
 
-        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
 
         let metas = list_characters(root.path(), &world_id).unwrap();
         let auto_hidden_of =
@@ -188,7 +164,7 @@ mod tests {
             write_state(root.path(), &world_id, &state).unwrap();
             assert!(state.state.table.get("present").is_none());
 
-            begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+            begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
 
             let metas = list_characters(root.path(), &world_id).unwrap();
             let auto_hidden_of =

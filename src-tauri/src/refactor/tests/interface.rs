@@ -494,6 +494,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();

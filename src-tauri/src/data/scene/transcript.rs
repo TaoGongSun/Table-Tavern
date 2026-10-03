@@ -39,6 +39,10 @@ pub struct TranscriptEvent {
     /// 補 4a 遺留的 visibility 洩漏——非 Public 世界書人物的登場全文不該流進扮演引擎）。
     #[serde(default)]
     pub gm_only: bool,
+    /// 固定標頭代碼（換幕摘要、登場、私設、狀態更新、點名）；`text` 只存本文，標頭在顯示、
+    /// 匯出、送 AI 時才照語系組（見 `marker.rs`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<super::marker::EventMarker>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -159,6 +163,7 @@ pub fn append_opening(
         state: Some(world.state),
         truncated: false,
         gm_only: false,
+        marker: None,
     };
     append_transcript(root, world_id, scene, &event)?;
     Ok((event, outcome))
@@ -326,6 +331,7 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
             TranscriptEvent {
                 raw: None,
@@ -337,6 +343,7 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
             TranscriptEvent {
                 raw: None,
@@ -348,6 +355,7 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         ];
         for event in &events {
@@ -408,6 +416,7 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             })
             .collect();
         for event in &events {
@@ -469,6 +478,7 @@ mod tests {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
         assert_eq!(
@@ -503,6 +513,7 @@ mod tests {
                 state: Some(supplied.clone()),
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
@@ -560,6 +571,7 @@ mod tests {
                 state: Some(previous.clone()),
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
@@ -636,6 +648,7 @@ mod tests {
                     state: Some(snapshot),
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             )
             .unwrap();
@@ -672,6 +685,7 @@ mod tests {
             state: Some(snapshot.clone()),
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         for (text, snapshot) in [("第一句", &snapshots[0]), ("第二句", &snapshots[1])] {
             append_transcript(root.path(), &world_id, 0, &event(text, snapshot)).unwrap();
@@ -747,6 +761,7 @@ mod tests {
                     state: Some(snapshot),
                     truncated: false,
                     gm_only: false,
+                    marker: None,
                 },
             )
             .unwrap();

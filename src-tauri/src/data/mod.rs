@@ -29,14 +29,17 @@ pub(crate) use paths::{
     import_source_file_path, interface_shell_path, lanes_path, mechanism_log_path,
     validate_single_line, world_card_path,
 };
-pub(crate) use scene::{appeared_titles, name_matches, split_present_names};
+pub use scene::{
+    appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
+    EventMarker,
+};
 pub use scene::{
     append_opening, append_transcript, begin_next_scene, export_scene_markdown,
     export_transcript_markdown, fork_scene, opening_checkpoint, pop_transcript, read_transcript,
     remove_transcript_event, replace_scene_summary, revert_scene, scene_label,
     set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
-    CARD_ARRIVAL_PREFIX,
 };
+pub(crate) use scene::{name_matches, player_fallback_name, split_present_names};
 pub(crate) use state::is_false;
 pub use state::{
     node_at, read_state, set_tree_value, write_state, Condition, FieldKind, FieldRule, InjectLevel,
@@ -79,7 +82,6 @@ pub(crate) use format::{remove_reset_build_root, replace_world_from_build, reset
 #[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]
-pub(crate) use scene::bracket_title;
 #[allow(unused_imports)]
 pub use state::SceneLabel;
 #[cfg(test)]

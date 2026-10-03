@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pickCardShell, skeletonYamlTags } from "./card-shell-route";
 import { type CardInterface } from "./interface-card";
+import { setLang } from "../../i18n";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
 function makeCard(name: string, opening: string | null): CardInterface {
@@ -126,6 +127,40 @@ describe("pickCardShell", () => {
       expect(picked?.floors[1].message).toBe("我說");
       expect(picked?.floors[2].message).toBe("換幕提示");
       expect(picked?.current).toEqual({ id: 0, name: "GM", text: "<UI>骨架 清晨 正文</UI>" });
+    });
+
+    it("帶標頭代碼的系統樓給照語系組好的全文；沒名字的玩家樓退回玩家稱呼", () => {
+      const history: TranscriptEvent[] = [
+        { ...player("我說"), speaker_name: "" },
+        { ...system(""), marker: { type: "gm_call", name: "" } },
+        { ...system("夜裡才醒。"), marker: { type: "card_arrival", name: "貓頭鷹" } },
+        gm("畫面", "<UI>上回合畫面</UI>"),
+      ];
+      const picked = pick(null, { events: history });
+      expect(picked?.floors.map((floor) => [floor.name, floor.message])).toEqual([
+        ["玩家", "我說"],
+        ["系統", "GM 請「玩家」發言"],
+        ["系統", "（角色回歸）〈貓頭鷹〉\n公開設定：\n夜裡才醒。"],
+        ["GM", "<UI>上回合畫面</UI>"],
+      ]);
+    });
+
+    it("帶標頭代碼的 GM 樓填骨架時正文是照語系組好的全文；切語系標頭跟著變", () => {
+      const summary: TranscriptEvent = {
+        ...gmAt("摘要本文", { World: { Time: "清晨" } }),
+        marker: { type: "scene_summary" },
+      };
+      const picked = pick(skeleton, { tableMode: "interface", events: [summary] });
+      expect(picked?.floors[0].message).toBe("<UI>骨架 清晨 【前情提要】\n摘要本文</UI>");
+      expect(picked?.current).toEqual({ id: 0, name: "GM", text: "<UI>骨架 清晨 【前情提要】\n摘要本文</UI>" });
+      setLang("en");
+      try {
+        const english = pick(skeleton, { tableMode: "interface", events: [summary] });
+        expect(english?.current.text).toBe("<UI>骨架 清晨 Previously:\n摘要本文</UI>");
+        expect(english?.floors[0].message).toBe(english?.current.text);
+      } finally {
+        setLang("zh-TW");
+      }
     });
 
     it("沒有快照的 GM 樓退回原文", () => {

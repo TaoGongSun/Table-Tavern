@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../characters/card-model";
 import { StoryText } from "../../shared/ui/atoms";
+import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
 import gmBook from "../../assets/gm-book.png";
 import { IconSend, IconStop } from "../../shared/ui/icons";
 import { useStickToBottom } from "../story-scroll/useStickToBottom";
@@ -157,16 +158,16 @@ export function PlayView({
                 style={isPlayer ? undefined : { ["--fac" as string]: meta?.color ?? "#888888" }}
               >
                 <div className="pb-name">
-                  <span className="pb-plate">{event.speaker_name}</span>
+                  <span className="pb-plate">{speakerDisplayName(event)}</span>
                 </div>
-                <StoryText text={event.text} />
+                <StoryText text={eventDisplayText(event)} />
                 {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
               </div>
             );
           }
           return (
             <div key={index} className={`message message-${event.kind}`}>
-              <StoryText text={event.text} />
+              <StoryText text={eventDisplayText(event)} />
               {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
             </div>
           );

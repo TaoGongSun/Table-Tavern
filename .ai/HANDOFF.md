@@ -5,6 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
+- [backend-zh-data-text](handoffs/backend-zh-data-text.md) — 桌資料／匯出檔固定中文改存代碼、讀時翻譯：盤點寫規格中，等送審
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過；省額度已由介面接管解掉，v2 剩多卡介面切換、離線退路、代送開關
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測
 

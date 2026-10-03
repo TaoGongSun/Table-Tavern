@@ -3,9 +3,14 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { t } from "../../i18n";
 import { AppConfig, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../characters/card-model";
+import { parseMarker } from "../../shared/ui/event-text";
+
+/** 有本文，或帶已知標頭代碼（點名事件本文本來就空）才算有內容；空白回合不落地、不放回 */
+function hasContent(event: TranscriptEvent): boolean {
+  return event.text.trim() !== "" || parseMarker(event.marker) !== null;
+}
 
 // GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
 const PLAYER_SENTINEL = "__PLAYER__";
@@ -180,12 +185,13 @@ export function useChatController({
   }, []);
 
   // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）。
-  // 疊裡全是空白事件（AI 失敗年代留下的那幾則）就不給亮——按了也沒東西回得來
+  // 疊裡全是空白事件（AI 失敗年代留下的那幾則）就不給亮——按了也沒東西回得來。
+  // 帶標頭代碼的事件（點名）本文本來就空，也算有內容
   const canRestore =
     undone !== null &&
     undone.worldId === worldId &&
     undone.scene === scene &&
-    undone.events.some((event) => event.text.trim());
+    undone.events.some(hasContent);
 
   const hydrate = useCallback((transcript: TranscriptEvent[]) => {
     setEvents(transcript);
@@ -200,7 +206,10 @@ export function useChatController({
       // 空白事件一律不落地（stream-failure-visible）：AI 失敗時故事不該多出一則看不見的
       // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
       // 與任何未來新路徑的保險，錯誤碼與後端同一個
-      if (!event.text.trim()) throw new Error("AI_EMPTY_RESPONSE: 空白回合不寫進故事");
+      // 帶已知標頭代碼的事件（點名）本文可以是空的
+      if (!hasContent(event)) {
+        throw new Error("AI_EMPTY_RESPONSE: 空白回合不寫進故事");
+      }
       // 用後端回傳的那份（快照已補好）進畫面：收回後要復原時，送回去的事件才帶著當時的
       // 檯面值，狀態欄跟著回到那一刻
       const stamped = await invoke<TranscriptEvent>("append_transcript", { worldId, scene, event });
@@ -272,7 +281,7 @@ export function useChatController({
     if (!undone || !canRestore || busyRef.current || generating !== null || undoBusy.current) return;
     undoBusy.current = true;
     let index = undone.events.length - 1;
-    while (index >= 0 && !undone.events[index].text.trim()) index -= 1;
+    while (index >= 0 && !hasContent(undone.events[index])) index -= 1;
     const event = undone.events[index];
     onError("");
     try {
@@ -462,7 +471,8 @@ export function useChatController({
         speaker_id: "",
         speaker_name: "GM",
         kind: "system",
-        text: [t("stateUpdateHeader"), ...updates.map((u) => `${u.path}：${u.value}`)].join("\n"),
+        text: updates.map((u) => `${u.path}：${u.value}`).join("\n"),
+        marker: { type: "state_update" },
       });
     }
     await refreshState();
@@ -503,12 +513,12 @@ export function useChatController({
         if (stopRequested.current || next === null) break;
         // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
         if (next === PLAYER_SENTINEL) {
-          const you = playerName || t("playerLabel");
-          await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name: you }) });
+          // 玩家沒名字就存空字串，顯示與送 AI 時再照當下語系補稱呼
+          await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: "", marker: { type: "gm_call", name: playerName ?? "" } });
           break;
         }
         const name = metaOf(next)?.name ?? next;
-        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: t("gmCallOn", { name }) });
+        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: "", marker: { type: "gm_call", name } });
         // 點名寫檔期間按的停止要在這裡停。進 replyOnce 會 beginTurn 清掉旗標，角色就照樣接話。
         if (stopRequested.current) break;
         await replyOnce(next);
@@ -547,7 +557,7 @@ export function useChatController({
       onError("");
       setInput("");
       try {
-        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: playerName || t("playerLabel"), kind: "player", text });
+        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: playerName ?? "", kind: "player", text });
         if (gmTargeted) await narrateOnce();
         else if (speaker) await replyOnce(speaker);
         await refreshWorlds();

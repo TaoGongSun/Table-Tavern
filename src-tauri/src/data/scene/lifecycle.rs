@@ -2,6 +2,7 @@ use std::path::Path;
 
 use super::super::state::{read_state, write_state, SceneLabel, WorldState};
 use super::super::{local_timestamp, DataResult};
+use super::marker::EventMarker;
 use super::presence::settle_card_visibility;
 use super::transcript::{
     append_transcript, read_transcript, transcript_path, TranscriptEvent, TranscriptKind,
@@ -20,15 +21,6 @@ pub fn scene_label(state: &WorldState, scene: u64) -> SceneLabel {
             parent: scene.checked_sub(1),
             forked: false,
         })
-}
-
-/// 換幕摘要固定前綴：新幕開頭與重寫前情提要共用同一套語系文案，避免兩處各自維護。
-fn format_scene_summary(summary_text: &str, lang: &str) -> String {
-    if lang == "en" {
-        format!("Previously:\n{summary_text}")
-    } else {
-        format!("【前情提要】\n{summary_text}")
-    }
 }
 
 /// 算「某個 base 目前該排第幾個版本」：掃 0..=upto 每一幕的顯示 base，數出撞號的幕數再 +1。
@@ -93,7 +85,6 @@ pub fn begin_next_scene(
     root: &Path,
     world_id: &str,
     summary_text: &str,
-    lang: &str,
     title: Option<&str>,
 ) -> DataResult<u64> {
     let mut state = read_state(root, world_id)?;
@@ -109,10 +100,11 @@ pub fn begin_next_scene(
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
             kind: TranscriptKind::Narration,
-            text: format_scene_summary(summary_text, lang),
+            text: summary_text.to_owned(),
             state: None,
             truncated: false,
             gm_only: false,
+            marker: Some(EventMarker::SceneSummary),
         },
     )?;
     if let Some(name) = title.map(str::trim).filter(|name| !name.is_empty()) {
@@ -185,7 +177,6 @@ pub fn replace_scene_summary(
     root: &Path,
     world_id: &str,
     summary_text: &str,
-    lang: &str,
     title: Option<&str>,
 ) -> DataResult<()> {
     let mut state = read_state(root, world_id)?;
@@ -207,7 +198,8 @@ pub fn replace_scene_summary(
     // 重寫的只有文字，其餘欄位原樣留著——尤其 state 那份快照：
     // 摘要是這一幕唯一一則，快照掉了之後退回這一幕會把狀態欄清成空的。
     let event = &mut events[0];
-    event.text = format_scene_summary(summary_text, lang);
+    event.text = summary_text.to_owned();
+    event.marker = Some(EventMarker::SceneSummary);
     event.ts = local_timestamp()?;
     super::super::world_file::commit_world_write(
         &transcript_path(root, world_id, scene)?,
@@ -249,10 +241,11 @@ mod tests {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
-        let next = begin_next_scene(root.path(), &world_id, "壓縮後的摘要", "zh-TW", None).unwrap();
+        let next = begin_next_scene(root.path(), &world_id, "壓縮後的摘要", None).unwrap();
         assert_eq!(next, 1);
         assert_eq!(read_state(root.path(), &world_id).unwrap().current_scene, 1);
 
@@ -263,13 +256,9 @@ mod tests {
         assert_eq!(new_scene[0].speaker_name, "GM");
         assert_eq!(new_scene[0].speaker_id, "");
         assert_eq!(new_scene[0].kind, TranscriptKind::Narration);
-        assert_eq!(new_scene[0].text, "【前情提要】\n壓縮後的摘要");
-
-        // en 語系用英文前綴
-        let next_en = begin_next_scene(root.path(), &world_id, "recap text", "en", None).unwrap();
-        assert_eq!(next_en, 2);
-        let scene_two = read_transcript(root.path(), &world_id, 2).unwrap();
-        assert_eq!(scene_two[0].text, "Previously:\nrecap text");
+        // 只存本文＋代碼，標頭在顯示／匯出／送 AI 時照語系組
+        assert_eq!(new_scene[0].text, "壓縮後的摘要");
+        assert_eq!(new_scene[0].marker, Some(EventMarker::SceneSummary));
     }
 
     #[test]
@@ -286,10 +275,11 @@ mod tests {
             state: None,
             truncated: false,
             gm_only: false,
+            marker: None,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
-        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", Some("酒館夜話")).unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要", Some("酒館夜話")).unwrap();
         let state = read_state(root.path(), &world_id).unwrap();
         assert_eq!(state.current_scene, 1);
         assert_eq!(
@@ -299,8 +289,8 @@ mod tests {
         assert!(!state.scene_titles.contains_key("1"));
 
         // 空字串／None 都不進表
-        begin_next_scene(root.path(), &world_id, "摘要二", "zh-TW", Some("   ")).unwrap();
-        begin_next_scene(root.path(), &world_id, "摘要三", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要二", Some("   ")).unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要三", None).unwrap();
         let state = read_state(root.path(), &world_id).unwrap();
         assert!(!state.scene_titles.contains_key("1"));
         assert!(!state.scene_titles.contains_key("2"));
@@ -332,10 +322,11 @@ mod tests {
                 state: Some(snapshot.clone()),
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
-        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", Some("酒館夜話")).unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要", Some("酒館夜話")).unwrap();
         assert_eq!(read_state(root.path(), &world_id).unwrap().current_scene, 1);
 
         let previous = revert_scene(root.path(), &world_id).unwrap();
@@ -372,10 +363,11 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
-        begin_next_scene(root.path(), &world_id, "摘要", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
         // 這一幕除了摘要之外，玩家已經多說了一句——不是「剛好一則」了
         append_transcript(
             root.path(),
@@ -391,6 +383,7 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
@@ -439,10 +432,11 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
-        begin_next_scene(root.path(), &world_id, "舊摘要", "zh-TW", Some("舊標題")).unwrap();
+        begin_next_scene(root.path(), &world_id, "舊摘要", Some("舊標題")).unwrap();
         assert_eq!(
             read_state(root.path(), &world_id)
                 .unwrap()
@@ -452,11 +446,12 @@ mod tests {
             Some("舊標題")
         );
 
-        replace_scene_summary(root.path(), &world_id, "新摘要", "zh-TW", None).unwrap();
+        replace_scene_summary(root.path(), &world_id, "新摘要", None).unwrap();
 
         let events = read_transcript(root.path(), &world_id, 1).unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].text, "【前情提要】\n新摘要");
+        assert_eq!(events[0].text, "新摘要");
+        assert_eq!(events[0].marker, Some(EventMarker::SceneSummary));
         assert_eq!(events[0].speaker_name, "GM");
         assert_eq!(events[0].kind, TranscriptKind::Narration);
 
@@ -487,10 +482,11 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
-        begin_next_scene(root.path(), &world_id, "第一幕摘要", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "第一幕摘要", None).unwrap();
 
         // 幕 0 只有一則，分岔出來的這一幕同樣只有那一則——正是守門會誤放的形狀
         let forked = fork_scene(root.path(), &world_id, 0).unwrap();
@@ -501,7 +497,7 @@ mod tests {
             1
         );
 
-        assert!(replace_scene_summary(root.path(), &world_id, "不該蓋掉", "zh-TW", None).is_err());
+        assert!(replace_scene_summary(root.path(), &world_id, "不該蓋掉", None).is_err());
         let events = read_transcript(root.path(), &world_id, forked).unwrap();
         assert_eq!(events[0].text, "玩家的第一句");
     }
@@ -534,6 +530,7 @@ mod tests {
                 state: Some(snapshot.clone()),
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
@@ -541,10 +538,10 @@ mod tests {
         state.state = snapshot.clone();
         write_state(root.path(), &world_id, &state).unwrap();
 
-        begin_next_scene(root.path(), &world_id, "舊摘要", "zh-TW", None).unwrap();
-        replace_scene_summary(root.path(), &world_id, "新摘要", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "舊摘要", None).unwrap();
+        replace_scene_summary(root.path(), &world_id, "新摘要", None).unwrap();
         // 再換一幕：這時第 1 幕那則摘要成了回推狀態的唯一來源
-        begin_next_scene(root.path(), &world_id, "第二幕摘要", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "第二幕摘要", None).unwrap();
 
         assert_eq!(revert_scene(root.path(), &world_id).unwrap(), 1);
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, snapshot);
@@ -571,11 +568,12 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
-        begin_next_scene(root.path(), &world_id, "第一幕摘要", "zh-TW", None).unwrap();
-        begin_next_scene(root.path(), &world_id, "第二幕摘要", "zh-TW", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "第一幕摘要", None).unwrap();
+        begin_next_scene(root.path(), &world_id, "第二幕摘要", None).unwrap();
         assert_eq!(read_state(root.path(), &world_id).unwrap().current_scene, 2);
 
         let scene0_before = read_transcript(root.path(), &world_id, 0).unwrap();
@@ -630,17 +628,12 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();
-        let advanced = begin_next_scene(
-            root.path(),
-            &world_id,
-            "分岔後摘要",
-            "zh-TW",
-            Some("南航夜話"),
-        )
-        .unwrap();
+        let advanced =
+            begin_next_scene(root.path(), &world_id, "分岔後摘要", Some("南航夜話")).unwrap();
         assert_eq!(advanced, 4);
 
         let state = read_state(root.path(), &world_id).unwrap();
@@ -703,6 +696,7 @@ mod tests {
                 state: None,
                 truncated: false,
                 gm_only: false,
+                marker: None,
             },
         )
         .unwrap();

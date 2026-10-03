@@ -45,6 +45,11 @@ import {
 } from "./features/backend-msg-updater";
 import { aiMsgMessage, isAiMsgKey, type AiMsgKey } from "./features/backend-msg-ai";
 import { isNoteMsgKey, noteMsgMessage, type NoteMsgKey } from "./features/backend-msg-notes";
+import {
+  isTranscriptMarkerMsgKey,
+  transcriptMarkerMessage,
+  type TranscriptMarkerMsgKey,
+} from "./features/transcript-marker";
 import { expandPlural } from "./plural";
 
 export type MsgKey =
@@ -57,7 +62,8 @@ export type MsgKey =
   | TableDataMsgKey
   | UpdaterMsgKey
   | AiMsgKey
-  | NoteMsgKey;
+  | NoteMsgKey
+  | TranscriptMarkerMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -141,7 +147,9 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
                   ? aiMsgMessage(lang, key)
                   : isNoteMsgKey(key)
                     ? noteMsgMessage(lang, key)
-                    : MESSAGES[lang][key as CoreMsgKey];
+                    : isTranscriptMarkerMsgKey(key)
+                      ? transcriptMarkerMessage(lang, key)
+                      : MESSAGES[lang][key as CoreMsgKey];
   return formatMessage(raw, lang, params);
 }
 

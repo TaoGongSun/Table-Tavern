@@ -8,7 +8,7 @@ use super::context::{active_worldbook_entries, gm_system_prompt};
 
 use super::state_view::{gm_dynamic_block, StateScope};
 
-use super::arrivals::character_visible_text;
+use super::arrivals::{render_for_prompt, Side};
 use super::turns::{chars_lane_system, chars_lane_turn};
 
 /// 共線組裝（api-shared-lane 包 B）：claude 以外的四條路共用一份**與「這輪是誰」無關**的前綴。
@@ -57,10 +57,9 @@ pub fn assemble_shared_messages(
     let tail = turn.tail;
 
     let mut messages = vec![message("system", system)];
-    for event in events {
-        let Some(text) = character_visible_text(event) else {
-            continue; // 角色私設事件：只有 GM 看得到
-        };
+    // 角色側渲染：角色私設略過、gm_only 遮罩、標頭照提示詞語系組好
+    for event in render_for_prompt(events, lang, Side::Character) {
+        let text = &event.text;
         // 台詞一律 assistant＋名字前綴：對白對誰都是同一則，前綴才穩得住
         let (role, line) = match event.kind {
             TranscriptKind::Dialogue => ("assistant", format!("{}：{text}", event.speaker_name)),
@@ -100,8 +99,9 @@ pub fn assemble_gm_messages(
         .unwrap_or_else(|| player_fallback_name(lang));
     // 快取友善（prompt-cache-optimization A）：keyword 條目與「目前狀態」每輪翻動，
     // 移到 transcript 尾端的一則獨立 user 訊息；constant 條目穩定，留在 system。
+    let rendered = render_for_prompt(events, lang, Side::Gm);
     let (constant_entries, keyword_entries): (Vec<_>, Vec<_>) =
-        active_worldbook_entries(worldbook, events)
+        active_worldbook_entries(worldbook, &rendered)
             .into_iter()
             .partition(|entry| entry.constant);
     let system = gm_system_prompt(
@@ -115,7 +115,7 @@ pub fn assemble_gm_messages(
     );
 
     let mut messages = vec![message("system", system)];
-    for event in events {
+    for event in &rendered {
         let (role, line) = match event.kind {
             TranscriptKind::Narration => ("assistant", event.text.clone()),
             TranscriptKind::Dialogue | TranscriptKind::Player => {

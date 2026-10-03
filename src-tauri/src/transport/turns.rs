@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::data::{
     CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind, Visibility,
     WorldbookEntry,
@@ -9,7 +7,7 @@ use super::messages::{
     language_rule, message, player_fallback_name, push_merged, replace_st_macros, ChatMessage,
 };
 
-use super::arrivals::{character_events, character_visible_text};
+use super::arrivals::{prompt_speaker, prompt_text, render_for_prompt, Side};
 
 use super::context::{active_worldbook_entries, gm_system_prompt, split_person_roster};
 
@@ -29,17 +27,12 @@ pub struct LaneTurn {
 
 /// 事件在 lane prompt 裡的一行；`None`＝這則不送。續聊線的歷史全部以名字標注成純文字
 /// （誰說的靠「X：」前綴分辨，不靠 role），與 session 內既有歷史逐字銜接。
-/// `character_side`：chars lane 傳真，走 `character_visible_text`（略過私設事件、遮 gm_only
-/// 與舊合併回歸事件）；GM lane 傳假，一律全文——GM 看得到一切，這是既有可見性憲法。
-pub fn lane_event_line(event: &TranscriptEvent, character_side: bool) -> Option<String> {
-    let text = if character_side {
-        character_visible_text(event)?
-    } else {
-        Cow::Borrowed(event.text.as_str())
-    };
+/// 可見性與標頭照 `prompt_text`：chars 線傳 `Side::Character`，GM 線傳 `Side::Gm`。
+pub fn lane_event_line(event: &TranscriptEvent, lang: &str, side: Side) -> Option<String> {
+    let text = prompt_text(event, lang, side)?;
     Some(match event.kind {
         TranscriptKind::Dialogue | TranscriptKind::Player => {
-            format!("{}：{}", event.speaker_name, text)
+            format!("{}：{}", prompt_speaker(event, lang), text)
         }
         TranscriptKind::Narration => format!("（旁白）{text}"),
         TranscriptKind::System => format!("（系統）{text}"),
@@ -147,7 +140,7 @@ pub fn chars_lane_turn(
     let mut public_keyword = Vec::new();
     let mut limited = Vec::new();
     // 觸發看角色側看得到的事件：私設裡的關鍵字不能替角色啟用條目，被略過的事件也不佔最近四則
-    let visible_events = character_events(events);
+    let visible_events = render_for_prompt(events, lang, Side::Character);
     for entry in active_worldbook_entries(&visible, &visible_events) {
         match &entry.visibility {
             Visibility::Public if entry.constant => {} // 已在凍結快照
@@ -252,7 +245,8 @@ pub fn gm_lane_turn(
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let keyword_entries: Vec<&WorldbookEntry> = active_worldbook_entries(worldbook, events)
+    let rendered = render_for_prompt(events, lang, Side::Gm);
+    let keyword_entries: Vec<&WorldbookEntry> = active_worldbook_entries(worldbook, &rendered)
         .into_iter()
         .filter(|entry| !entry.constant)
         .collect();
@@ -297,7 +291,7 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
     // 摘要會變成下一幕的公開旁白、回到每個角色的上下文，只能讀角色側看得到的內容
     for line in events
         .iter()
-        .filter_map(|event| lane_event_line(event, true))
+        .filter_map(|event| lane_event_line(event, lang, Side::Character))
     {
         push_merged(&mut messages, "user", line);
     }
@@ -538,71 +532,91 @@ mod tests {
         assert_eq!(
             lane_event_line(
                 &event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"),
-                false
+                "zh-TW",
+                Side::Gm
             )
             .as_deref(),
             Some("狐狸：晚安")
         );
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::Player, "", "阿濤", "好啊"), false).as_deref(),
+            lane_event_line(
+                &event(TranscriptKind::Player, "", "阿濤", "好啊"),
+                "zh-TW",
+                Side::Gm
+            )
+            .as_deref(),
             Some("阿濤：好啊")
         );
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::Narration, "", "GM", "夜深了"), false)
-                .as_deref(),
+            lane_event_line(
+                &event(TranscriptKind::Narration, "", "GM", "夜深了"),
+                "zh-TW",
+                Side::Gm
+            )
+            .as_deref(),
             Some("（旁白）夜深了")
         );
         assert_eq!(
-            lane_event_line(&event(TranscriptKind::System, "", "", "擲骰 3"), false).as_deref(),
+            lane_event_line(
+                &event(TranscriptKind::System, "", "", "擲骰 3"),
+                "zh-TW",
+                Side::Gm
+            )
+            .as_deref(),
             Some("（系統）擲骰 3")
         );
     }
 
-    /// visibility 洩漏修正（包 4b）：gm_only 事件在 chars 線（`character_side=true`）只留
-    /// 前綴＋標題那一行；GM 線（`character_side=false`）與非 gm_only 事件一律全文。
+    fn marked(marker: data::EventMarker, text: &str, gm_only: bool) -> TranscriptEvent {
+        TranscriptEvent {
+            gm_only,
+            marker: Some(marker),
+            ..event(TranscriptKind::System, "", "GM", text)
+        }
+    }
+
+    /// visibility 洩漏修正（包 4b）：gm_only 事件在 chars 線只留標頭；GM 線與非 gm_only 事件
+    /// 一律全文；沒有玩家名的發言退回該語系稱呼。
     #[test]
     fn lane_event_line_redacts_gm_only_text_for_chars_lane_only() {
-        let mut secret = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            "（人物登場）〈密探〉\n只有 GM 知道的全文。",
+        let secret = marked(
+            data::EventMarker::PersonArrival {
+                title: "密探".to_owned(),
+            },
+            "只有 GM 知道的全文。",
+            true,
         );
-        secret.gm_only = true;
         assert_eq!(
-            lane_event_line(&secret, true).as_deref(),
+            lane_event_line(&secret, "zh-TW", Side::Character).as_deref(),
             Some("（系統）（人物登場）〈密探〉")
         );
         assert_eq!(
-            lane_event_line(&secret, false).as_deref(),
+            lane_event_line(&secret, "zh-TW", Side::Gm).as_deref(),
             Some("（系統）（人物登場）〈密探〉\n只有 GM 知道的全文。")
         );
 
         let public = event(TranscriptKind::System, "", "GM", "擲骰 3");
         assert_eq!(
-            lane_event_line(&public, true).as_deref(),
+            lane_event_line(&public, "zh-TW", Side::Character).as_deref(),
             Some("（系統）擲骰 3")
+        );
+        let nameless = event(TranscriptKind::Player, "", "", "你好");
+        assert_eq!(
+            lane_event_line(&nameless, "ko", Side::Character).as_deref(),
+            Some("플레이어：你好")
         );
     }
 
-    /// 角色私設事件與舊合併回歸事件的私設段：角色側 keyword 觸發看不到、也不佔最近四則；
-    /// GM 那條（原事件）照樣觸發。換幕摘要同樣只讀角色側內容。
+    /// 角色私設：角色側 keyword 觸發看不到、也不佔最近四則；GM 側照樣觸發。換幕摘要只讀角色側
+    /// 內容，回歸標頭只出現一次。
     #[test]
     fn character_side_keyword_and_summary_ignore_card_private() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "身上藏著龍鱗。");
-        let mut private = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            &card_private_text(&fox, "阿濤").unwrap(),
-        );
-        private.gm_only = true;
-        let legacy = event(
-            TranscriptKind::System,
-            "",
-            "GM",
-            "（角色回歸）〈騎士〉\n公開設定：\n王國騎士\n私有設定：\n奉密令找龍鱗。",
-        );
+        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let private = marked(marker, &text, true);
+        let knight = card("knight-id", "騎士", "王國騎士", "");
+        let (marker, text) = card_arrival(&knight, "阿濤");
+        let arrival = marked(marker, &text, false);
         let entries = [worldbook_entry(
             1,
             "龍鱗傳說",
@@ -612,11 +626,10 @@ mod tests {
             false,
             Visibility::Public,
         )];
-        // 最近四則（角色側）只剩前面的玩家台詞＋三則一般事件：私設事件不佔位
         let events = [
             event(TranscriptKind::Player, "", "阿濤", "聽說有寶箱"),
             event(TranscriptKind::Narration, "", "GM", "夜深了"),
-            legacy,
+            arrival,
             private,
             event(TranscriptKind::Narration, "", "GM", "風起"),
         ];
@@ -632,13 +645,28 @@ mod tests {
             false,
         );
         assert!(!turn.tail.contains("龍鱗傳說"));
-        assert_eq!(active_worldbook_entries(&entries, &events).len(), 1);
+        let gm_turn = gm_lane_turn(
+            &events,
+            &entries,
+            None,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            "導演指示",
+            "zh-TW",
+        );
+        assert!(gm_turn.tail.contains("龍鱗傳說"));
 
         let joined: String = summary_messages(&events, "zh-TW")
             .iter()
             .map(|message| message.content.as_str())
             .collect();
-        assert!(joined.contains("（系統）（角色回歸）〈騎士〉\n公開設定：\n王國騎士"));
+        assert_eq!(
+            joined
+                .matches("（系統）（角色回歸）〈騎士〉\n公開設定：\n王國騎士")
+                .count(),
+            1
+        );
         assert!(!joined.contains("龍鱗"));
         assert!(!joined.contains("角色私設"));
     }

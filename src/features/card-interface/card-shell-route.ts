@@ -4,6 +4,7 @@ import { findShell, type CardInterface } from "./interface-card";
 import { chatEvents, floorText, type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
 
 export interface PickedShell {
   shell: string;
@@ -52,7 +53,7 @@ function floorMessage(
   if (skeleton === null || (event.kind !== "narration" && event.kind !== "dialogue")) return raw;
   const tree = event.state?.tree as Record<string, StateNode> | undefined;
   if (tree === undefined || findShell(cards, [raw]) !== null) return raw;
-  return fillSkeletonPlaceholders(skeleton, { ...tree, 本回合: { 正文: event.text } }, yamlTags, valueTypes);
+  return fillSkeletonPlaceholders(skeleton, { ...tree, 本回合: { 正文: eventDisplayText(event) } }, yamlTags, valueTypes);
 }
 
 export function pickCardShell(input: {
@@ -100,13 +101,13 @@ export function pickCardShell(input: {
   ]);
   if (match === null) return null;
   const chatFloors: ChatFloor[] = floors.map(({ event, message }) => ({
-    name: event.speaker_name,
+    name: speakerDisplayName(event),
     role: roleOf(event),
     message,
   }));
   if (match.index < recent.length) {
     const { event, id, message } = recent[match.index];
-    return { shell: match.shell, current: { id, name: event.speaker_name, text: message }, floors: chatFloors };
+    return { shell: match.shell, current: { id, name: speakerDisplayName(event), text: message }, floors: chatFloors };
   }
   const card = openings[match.index - recent.length];
   return {

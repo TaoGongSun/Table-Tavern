@@ -25,21 +25,8 @@ pub(super) fn language_rule(lang: &str) -> &'static str {
     }
 }
 
-/// 沒有玩家卡時，依語系補上玩家稱呼。
-pub(crate) fn player_fallback_name(lang: &str) -> &'static str {
-    match lang {
-        "zh-CN" => "玩家",
-        "ja" => "プレイヤー",
-        "ko" => "플레이어",
-        "es" => "Jugador",
-        "pt-BR" => "Jogador",
-        "de" => "Spieler",
-        "fr" => "Joueur",
-        "ru" => "Игрок",
-        _ if lang.starts_with("zh") => "玩家",
-        _ => "Player",
-    }
-}
+/// 沒有玩家卡時，依語系補上玩家稱呼（定義在 data 層，匯出與點名標頭也用）。
+pub(crate) use crate::data::player_fallback_name;
 
 /// 要直接貼上畫面的文字（開場白）先把巨集換成當桌實名——存進 transcript 的就是玩家看到的樣子。
 pub fn resolve_display_macros(

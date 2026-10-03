@@ -58,6 +58,9 @@ pub struct ReadonlyLine {
     pub speaker_name: String,
     pub text: String,
     pub kind: String,
+    /// 事件標頭代碼原樣帶出、不驗；形狀由前端顯示時檢查，畸形或未知就只顯示本文。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -847,6 +850,10 @@ fn read_scene_file(dir: &Path, scene: u64) -> DataResult<ReadonlyWorld> {
                         speaker_name: speaker_name.to_owned(),
                         text: text.to_owned(),
                         kind: kind.to_owned(),
+                        marker: value
+                            .get("marker")
+                            .filter(|marker| !marker.is_null())
+                            .cloned(),
                     });
                 } else {
                     skipped += 1;
