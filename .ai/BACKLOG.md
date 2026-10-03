@@ -22,3 +22,5 @@
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：2026-08-10 立案；重構面板只在 AI 認人時問一次，之後改主意需要這條路，兩項待拍板（已有玩家卡時換不換、能不能反向取消）
 - [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制 — 下一步：拍板怎麼認名冊欄位、名冊與 present 不一致時誰優先；包 4 已做的在場過濾與自動上下場不重做。
+- [mvu-replace-numeric](tasks/mvu-replace-numeric.md) — MVU 卡的數字欄位 replace 被機制層拒收（訊息要求改用 delta），數值不動 — 下一步：查機制層為何對數字欄強制 delta、未重構 MVU 卡是否該照上游接受 replace。
+- [gm-format-directive-missing-target](tasks/gm-format-directive-missing-target.md) — GM 導演指示要求「照卡片規定格式、不輸出格式外內容」，但提示裡沒有該格式條目，模型講空話、更新品質差 — 下一步：查導演指示加入條件，是否只在格式條目實際存在時才加或改寫成不指向缺席格式。
