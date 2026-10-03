@@ -143,6 +143,7 @@ describe("useCardInterfaceController", () => {
   let props = { worldId: "w1", events: [] as TranscriptEvent[], tree: {} as Record<string, StateNode> };
 
   const updated: [TranscriptEvent, TranscriptEvent][] = [];
+  const cardWrites = vi.fn();
 
   function Probe() {
     controller = useCardInterfaceController({
@@ -152,6 +153,7 @@ describe("useCardInterfaceController", () => {
       userName: "阿濤",
       submitText,
       onEventUpdated: (previous, next) => void updated.push([previous, next]),
+      onCardWrite: cardWrites,
     });
     return null;
   }
@@ -174,6 +176,7 @@ describe("useCardInterfaceController", () => {
   }
 
   beforeEach(() => {
+    cardWrites.mockClear();
     backend.mode = null;
     backend.shell = null;
     backend.mvu = false;
@@ -448,6 +451,8 @@ describe("useCardInterfaceController", () => {
           },
         ]);
         expect(updated).toEqual([[events[1], committed]]);
+        // 卡片寫入確認後通知主頁重讀狀態欄；被拒（stale）不通知
+        expect(cardWrites).toHaveBeenCalledTimes(1);
         expect(frame!.postMessage).toHaveBeenCalledWith(
           {
             source: "table-tavern-host",

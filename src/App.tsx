@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
@@ -136,7 +136,13 @@ function App() {
 
   // 狀態列／狀態樹：平欄、樹、跳動記號、分支指認與編輯中的那一格都在 controller 裡。
   // 掛在 error 之後：注入的 onError 就是 setError（useState 的 setter，identity 穩定）
-  const tableState = useTableStateController({ worldId: liveWorldId, onError: setError });
+  // 手改狀態欄後要重讀逐字稿事件（變數模式的表在事件上）：chat 在後面才宣告，經 ref 轉接
+  const reloadEventsRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const tableState = useTableStateController({
+    worldId: liveWorldId,
+    onError: setError,
+    onEdited: () => void reloadEventsRef.current().catch((reason) => setError(String(reason))),
+  });
 
   // 進出桌互斥：所有換桌級入口（進桌、回大廳、開／刪／匯入…）共用一把鎖，見 useTableOp
   const tableOp = useTableOp();
@@ -281,7 +287,7 @@ function App() {
         if (!stale) setHasStateBar(has);
       })
       .catch(() => {});
-    void tableState.refresh();
+    tableState.refresh().catch(() => {});
     return () => {
       stale = true;
     };
@@ -296,7 +302,11 @@ function App() {
     userName: characters.player?.name?.trim() || t("playerLabel"),
     submitText: whenTableFree(chat.submitText),
     onEventUpdated: chat.replaceEvent,
+    onCardWrite: () => void tableState.refresh().catch((reason) => setError(String(reason))),
   });
+  useLayoutEffect(() => {
+    reloadEventsRef.current = chat.reload;
+  }, [chat.reload]);
 
   // 一桌一卡：匯入成功後，還掛自動名的桌直接改成卡名；自訂過名字的桌不動
   // （匯入 controller 要注入這支，所以擺在 hook 之前；hasAutoName 是宣告式函式，往下找得到）

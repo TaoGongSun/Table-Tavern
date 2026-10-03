@@ -113,6 +113,8 @@ export function useCardInterfaceController(input: {
   tree: StateTree;
   /** 這桌玩家名（沒有就用語系稱呼）：MVU 變數代換 {{user}} */
   userName: string;
+  /** 卡片寫入確認落檔後（主頁狀態欄要重讀） */
+  onCardWrite?: () => void;
   submitText: (text: string) => Promise<void>;
   /** 卡片寫入落檔後把那一則換進逐字稿（同一物件或同 id） */
   onEventUpdated?: (previous: TranscriptEvent, next: TranscriptEvent) => void;
@@ -352,6 +354,8 @@ export function useCardInterfaceController(input: {
   varsStateRef.current = varsState;
   const onEventUpdatedRef = useRef(input.onEventUpdated);
   onEventUpdatedRef.current = input.onEventUpdated;
+  const onCardWriteRef = useRef(input.onCardWrite);
+  onCardWriteRef.current = input.onCardWrite;
   const writeQueue = useRef<ShellHolder | null>(null);
   // 寫入目標（事件 id 或舊事件的 "@位置"）那一則換成新版：先改 ref（下一筆寫入立刻拿得到），再交給逐字稿
   const replaceHostEvent = useCallback((key: string, update: (previous: TranscriptEvent) => TranscriptEvent) => {
@@ -436,7 +440,10 @@ export function useCardInterfaceController(input: {
         },
         // 換進逐字稿前最後再核一次身分（同步，中間不會再換桌）：佇列關掉後晚到的結果只有身分沒變才換
         committed: (key, next, identity) => {
-          if (sameIdentity(identity)) replaceHostEvent(key, () => next);
+          if (!sameIdentity(identity)) return;
+          replaceHostEvent(key, () => next);
+          // 卡片寫入改了有效狀態（後端同步重建快取樹）：主頁狀態欄跟著換新值
+          onCardWriteRef.current?.();
         },
         layerCommitted: (key, rev, vars, identity) => {
           if (sameIdentity(identity)) setLayer(key, { rev, vars: JSON.parse(vars) as Record<string, unknown> });

@@ -26,11 +26,33 @@ function narrationStreamText(text: string) {
   return marker === -1 ? text : text.slice(0, marker);
 }
 
+/** 兩份逐字稿畫出來的故事一樣（則數、每則的時間、身分與正文都同）：差別只在變數表與版本這類不上畫面的欄位 */
+function sameStory(previous: TranscriptEvent[], next: TranscriptEvent[]): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((event, index) => {
+      const other = next[index];
+      return (
+        event === other ||
+        (event.ts === other.ts &&
+          event.kind === other.kind &&
+          event.speaker_id === other.speaker_id &&
+          event.speaker_name === other.speaker_name &&
+          event.text === other.text &&
+          event.truncated === other.truncated &&
+          JSON.stringify(event.marker) === JSON.stringify(other.marker))
+      );
+    })
+  );
+}
+
 interface PlayViewProps {
   /** 還沒填 API key 時的引導面板；元件本身留在 App */
   onboarding: ReactNode;
   /** 幕書籤上的文字（第 n 幕：幕名） */
   sceneLabel: string;
+  /** 這份逐字稿屬於哪桌哪幕：換了一定捲到底（分岔複製出的新桌事件可以跟舊桌一模一樣） */
+  storyKey: string;
   events: TranscriptEvent[];
   /** 訊息作者的陣營色從這裡查 */
   metaOf: (id: string) => CharacterMeta | undefined;
@@ -80,6 +102,7 @@ interface PlayViewProps {
 export function PlayView({
   onboarding,
   sceneLabel,
+  storyKey,
   events,
   metaOf,
   generating,
@@ -119,12 +142,17 @@ export function PlayView({
 
   // 逐字稿整份換掉（切桌／換幕／分岔）或多一則：直接跳到底，不跑動畫。
   // 動畫在這裡會停在錯的位置——分岔是先掛載舊幕再換成新幕的紀錄，容器高度中途劇變，
-  // smooth 捲到的是換掉前算出來的座標，玩家看到的是一片空白（scene-fork 實機驗收抓到）
+  // smooth 捲到的是換掉前算出來的座標，玩家看到的是一片空白（scene-fork 實機驗收抓到）。
+  // 只換了變數表（手改狀態欄、卡片寫入後重讀或換進那一則）畫面上的故事沒變，不動閱讀位置
+  const shown = useRef<{ key: string; events: TranscriptEvent[] } | null>(null);
   useLayoutEffect(() => {
+    const previous = shown.current;
+    shown.current = { key: storyKey, events };
+    if (previous !== null && previous.key === storyKey && sameStory(previous.events, events)) return;
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
     markStuck();
-  }, [events, markStuck]);
+  }, [storyKey, events, markStuck]);
 
   // 串流跟隨：這條高度是一個字一個字長的，用動畫才不會一跳一跳
   useEffect(() => {
