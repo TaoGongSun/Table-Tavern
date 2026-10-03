@@ -26,6 +26,39 @@ const backend = vi.hoisted(() => ({
   layerWrite: null as null | ((args: Record<string, unknown>) => Promise<unknown>),
 }));
 
+// 值解析 Worker 換成同進程的假替身（跑真的引擎）；records＝每支建出的 Worker 是否被終止
+const evalWorkers = vi.hoisted(() => ({ created: [] as { terminated: boolean }[], held: null as (() => void)[] | null }));
+vi.mock("./mvu/card-mvu-eval-host", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./mvu/card-mvu-eval-host")>();
+  const { runEval } = await import("./mvu/card-mvu-parse-engine");
+  return {
+    ...actual,
+    createEvalHost: () =>
+      actual.createEvalHost({
+        createWorker: () => {
+          const record = { terminated: false };
+          evalWorkers.created.push(record);
+          const handlers: ((event: { data?: unknown }) => void)[] = [];
+          queueMicrotask(() => handlers.forEach((handler) => handler({ data: { type: "ready" } })));
+          return {
+            postMessage: (message: unknown) => {
+              const { id, op, text } = message as { id: number; op: "value" | "patch"; text: string };
+              const answer = () => handlers.forEach((handler) => handler({ data: { id, ...runEval(op, text) } }));
+              if (evalWorkers.held !== null) evalWorkers.held.push(answer);
+              else queueMicrotask(answer);
+            },
+            terminate: () => {
+              record.terminated = true;
+            },
+            addEventListener: (type: string, listener: (event: { data?: unknown }) => void) => {
+              if (type === "message") handlers.push(listener);
+            },
+          };
+        },
+      }),
+  };
+});
+
 // 不用 $1 的殼：每一樓產出的殼字串都一樣，跟讀本樓的狀態欄殼同型
 const fixedCard: CardInterface = {
   character_id: "c1",
@@ -425,6 +458,62 @@ describe("useCardInterfaceController", () => {
           },
           { targetOrigin: "*" },
         );
+      });
+
+      it("parseMessage 的值解析：token 相符才交給 Worker、結果回給送來的沙盒；形狀不對或 token 不符不理；關面板終止 Worker", async () => {
+        evalWorkers.created.length = 0;
+        await render({ events: [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)] });
+        await act(async () => controller!.open());
+        let frame!: { postMessage: ReturnType<typeof vi.fn> };
+        await act(async () => {
+          frame = fromCard({ kind: "mvu-eval", requestId: "t:e1", op: "value", text: "7 * 6" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(frame.postMessage).toHaveBeenCalledWith(
+          { source: "table-tavern-host", kind: "mvu-eval-result", token: controller!.shellKey, requestId: "t:e1", ok: true, value: 42 },
+          { targetOrigin: "*" },
+        );
+        // 值解析不碰後端
+        expect(backend.writes).toEqual([]);
+        const quiet = [
+          fromCard({ kind: "mvu-eval", requestId: "t:e2", op: "run", text: "1" }),
+          fromCard({ kind: "mvu-eval", requestId: 3, op: "value", text: "1" }),
+          fromCard({ kind: "mvu-eval", token: "別份殼", requestId: "t:e4", op: "value", text: "1" }),
+        ];
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        quiet.forEach((other) => expect(other.postMessage).not.toHaveBeenCalled());
+        expect(evalWorkers.created).toHaveLength(1);
+        await act(async () => controller!.close());
+        expect(evalWorkers.created[0].terminated).toBe(true);
+      });
+
+      it("切殼時未完成的值解析：結果晚到不回給舊殼", async () => {
+        await render({ events: [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)] });
+        await act(async () => controller!.open());
+        let frame!: { postMessage: ReturnType<typeof vi.fn> };
+        evalWorkers.held = [];
+        await act(async () => {
+          frame = fromCard({ kind: "mvu-eval", requestId: "t:e1", op: "value", text: "1+1" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await act(async () => controller!.close());
+        const held = evalWorkers.held;
+        evalWorkers.held = null;
+        // 重開新殼後送新請求：舊結果晚到不影響新請求
+        await act(async () => controller!.open());
+        let fresh!: { postMessage: ReturnType<typeof vi.fn> };
+        await act(async () => {
+          fresh = fromCard({ kind: "mvu-eval", requestId: "n:e1", op: "value", text: "5+5" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        held.forEach((answer) => answer());
+        await settle();
+        expect(frame.postMessage).not.toHaveBeenCalled();
+        expect(fresh.postMessage).toHaveBeenCalledTimes(1);
+        expect(fresh.postMessage.mock.calls[0][0]).toMatchObject({ requestId: "n:e1", ok: true, value: 10 });
       });
 
       it("舊事件（沒有 id）首次寫入後換成帶 id 的那則；被拒時權威表與版本也換進逐字稿", async () => {
