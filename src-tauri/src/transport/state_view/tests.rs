@@ -596,7 +596,8 @@ fn character_state_block_shows_only_own_branch_with_marks_and_excludes_rare() {
         .insert("Heroes.亞瑟.HP".to_owned(), "-10".to_owned());
 
     let branch = vec!["Heroes".to_owned(), "亞瑟".to_owned()];
-    let block = character_state_block(&state, &mechanism, &branch, "亞瑟", "阿濤").unwrap();
+    let block =
+        character_state_block(&state, &mechanism, &branch, "亞瑟", "阿濤", "zh-TW").unwrap();
     assert!(block.starts_with(
         "## 「亞瑟」目前的狀態（系統帳，唯讀；可以拿來演，但不要輸出任何狀態欄或更新區塊）"
     ));
@@ -605,18 +606,25 @@ fn character_state_block_shows_only_own_branch_with_marks_and_excludes_rare() {
     assert!(!block.contains("鴉"));
 
     // 沒綁到分支、分支其實是葉子、分支不存在——都是 None
-    assert!(character_state_block(&state, &mechanism, &[], "亞瑟", "阿濤").is_none());
+    assert!(character_state_block(&state, &mechanism, &[], "亞瑟", "阿濤", "zh-TW").is_none());
     assert!(character_state_block(
         &state,
         &mechanism,
         &["Heroes".to_owned(), "亞瑟".to_owned(), "HP".to_owned()],
         "亞瑟",
-        "阿濤"
+        "阿濤",
+        "zh-TW"
     )
     .is_none());
-    assert!(
-        character_state_block(&state, &mechanism, &["不存在".to_owned()], "亞瑟", "阿濤").is_none()
-    );
+    assert!(character_state_block(
+        &state,
+        &mechanism,
+        &["不存在".to_owned()],
+        "亞瑟",
+        "阿濤",
+        "zh-TW"
+    )
+    .is_none());
 }
 
 #[test]

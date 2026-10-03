@@ -2,7 +2,10 @@ use crate::data::{
     CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind, WorldbookEntry,
 };
 
-use super::messages::{message, player_fallback_name, push_merged, ChatMessage};
+use super::messages::{
+    message, narration_line, player_fallback_name, push_merged, speaker_prefix, system_line,
+    ChatMessage,
+};
 
 use super::context::{active_worldbook_entries, gm_system_prompt};
 
@@ -62,10 +65,16 @@ pub fn assemble_shared_messages(
         let text = &event.text;
         // 台詞一律 assistant＋名字前綴：對白對誰都是同一則，前綴才穩得住
         let (role, line) = match event.kind {
-            TranscriptKind::Dialogue => ("assistant", format!("{}：{text}", event.speaker_name)),
-            TranscriptKind::Player => ("user", format!("{}：{text}", event.speaker_name)),
-            TranscriptKind::Narration => ("user", format!("（旁白）{text}")),
-            TranscriptKind::System => ("user", format!("（系統）{text}")),
+            TranscriptKind::Dialogue => (
+                "assistant",
+                format!("{}{text}", speaker_prefix(&event.speaker_name, lang)),
+            ),
+            TranscriptKind::Player => (
+                "user",
+                format!("{}{text}", speaker_prefix(&event.speaker_name, lang)),
+            ),
+            TranscriptKind::Narration => ("user", narration_line(text, lang)),
+            TranscriptKind::System => ("user", system_line(text, lang)),
         };
         push_merged(&mut messages, role, line);
     }
@@ -118,10 +127,15 @@ pub fn assemble_gm_messages(
     for event in &rendered {
         let (role, line) = match event.kind {
             TranscriptKind::Narration => ("assistant", event.text.clone()),
-            TranscriptKind::Dialogue | TranscriptKind::Player => {
-                ("user", format!("{}：{}", event.speaker_name, event.text))
-            }
-            TranscriptKind::System => ("user", format!("（系統）{}", event.text)),
+            TranscriptKind::Dialogue | TranscriptKind::Player => (
+                "user",
+                format!(
+                    "{}{}",
+                    speaker_prefix(&event.speaker_name, lang),
+                    event.text
+                ),
+            ),
+            TranscriptKind::System => ("user", system_line(&event.text, lang)),
         };
         push_merged(&mut messages, role, line);
     }

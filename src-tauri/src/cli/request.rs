@@ -1,6 +1,6 @@
 use super::types::CliSession;
 use crate::data::Tier;
-use crate::transport::ChatMessage;
+use crate::transport::{history_header, speaker_prefix, ChatMessage};
 use std::path::Path;
 
 /// 把共用組裝結果攤平成 CLI 單發需要的 (system, prompt)。
@@ -13,6 +13,7 @@ pub fn flatten_messages(
     assistant_label: &str,
     closing: &str,
     messages: &[ChatMessage],
+    lang: &str,
 ) -> (String, String) {
     let system = messages
         .first()
@@ -23,16 +24,21 @@ pub fn flatten_messages(
         .skip(1)
         .map(|message| {
             if message.role == "assistant" && !assistant_label.is_empty() {
-                format!("{assistant_label}：{}", message.content)
+                format!(
+                    "{}{}",
+                    speaker_prefix(assistant_label, lang),
+                    message.content
+                )
             } else {
                 message.content.clone()
             }
         })
         .collect();
     let history = history.join("\n\n");
+    let header = history_header(lang);
     let prompt = match closing.is_empty() {
-        true => format!("以下是到目前為止的對話紀錄：\n\n{history}"),
-        false => format!("以下是到目前為止的對話紀錄：\n\n{history}\n\n——\n{closing}"),
+        true => format!("{header}{history}"),
+        false => format!("{header}{history}\n\n——\n{closing}"),
     };
     (system, prompt)
 }
@@ -368,7 +374,8 @@ mod tests {
             msg("assistant", "晚安，要來一杯嗎？"),
             msg("user", "玩家：好啊"),
         ];
-        let (system, prompt) = flatten_messages("狐狸", "現在輪到「狐狸」回應。", &messages);
+        let (system, prompt) =
+            flatten_messages("狐狸", "現在輪到「狐狸」回應。", &messages, "zh-TW");
         assert_eq!(system, "你在扮演狐狸");
         assert!(prompt.contains("玩家：晚安\n（旁白）打烊前"));
         assert!(prompt.contains("狐狸：晚安，要來一杯嗎？"));
@@ -408,7 +415,7 @@ mod tests {
                 content: "現在你是「雷恩」。".to_owned(),
             },
         ];
-        let (system, prompt) = flatten_messages("", "", &messages);
+        let (system, prompt) = flatten_messages("", "", &messages, "zh-TW");
         assert_eq!(system, "共用 system");
         assert_eq!(
             prompt,
@@ -416,7 +423,7 @@ mod tests {
         );
         assert!(!prompt.contains("——")); // closing 為空就不留分隔線
                                          // 舊行為不變：有 label 就補前綴、有 closing 就接在後面
-        let (_, legacy) = flatten_messages("雷恩", "收尾指示", &messages);
+        let (_, legacy) = flatten_messages("雷恩", "收尾指示", &messages, "zh-TW");
         assert!(legacy.contains("雷恩：加爾：抬起頭。"));
         assert!(legacy.ends_with("——\n收尾指示"));
     }

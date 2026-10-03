@@ -127,7 +127,7 @@ pub(crate) async fn chat_with_character(
                 frozen_system: frozen,
                 tail: turn.tail,
                 confidential: (!hoist).then_some(turn.confidential).flatten(),
-                prefix: (!hoist).then(|| format!("{}：", card.name)),
+                prefix: (!hoist).then(|| transport::speaker_prefix(&card.name, &lang)),
                 echo: lanes::ReplyEcho::Dialogue {
                     speaker_id: card.id.clone(),
                 },
@@ -263,26 +263,22 @@ fn gm_turn_instruction(
             let entry_title = import::card_format_entry(&card_scripts, &materials.worldbook);
             let instruction_message =
                 transport::card_format_instruction(lang, entry_title.as_deref());
-            let closing =
-                "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。";
+            let closing = transport::gm_closing(transport::GmTurnFormat::CardFormat, false, lang);
             (instruction_message, closing)
         }
         transport::GmTurnFormat::InterfaceTakeover => {
             let instruction_message = transport::takeover_instruction(lang, roster, player_name);
-            let closing = if roster.is_empty() {
-                "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"
-            } else {
-                "現在請以 GM 身分執行上述導演指示，只輸出劇情正文、有變動時的更新區塊與「下一位」行，不要加名字前綴。"
-            };
+            let closing = transport::gm_closing(
+                transport::GmTurnFormat::InterfaceTakeover,
+                !roster.is_empty(),
+                lang,
+            );
             (instruction_message, closing)
         }
         transport::GmTurnFormat::Narration => {
             let instruction_message = transport::narrate_instruction(lang, roster, player_name);
-            let closing = if roster.is_empty() {
-                "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
-            } else {
-                "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
-            };
+            let closing =
+                transport::gm_closing(transport::GmTurnFormat::Narration, !roster.is_empty(), lang);
             (instruction_message, closing)
         }
     }

@@ -119,6 +119,20 @@ pub enum Side {
 /// - 角色側：角色私設整則略過；其他帶已知代碼的 gm_only 只出標頭（不含公開／私有段標）；
 ///   沒有代碼或代碼認不得的 gm_only 只留本文首行；其餘全文。
 pub fn prompt_text(event: &TranscriptEvent, lang: &str, side: Side) -> Option<String> {
+    // 點名玩家且玩家沒名字：稱呼照原始語系補上，標頭骨架才照 `prompt_lang`
+    let named;
+    let event = match &event.marker {
+        Some(EventMarker::GmCall { name }) if name.trim().is_empty() => {
+            named = TranscriptEvent {
+                marker: Some(EventMarker::GmCall {
+                    name: player_fallback_name(lang).to_owned(),
+                }),
+                ..event.clone()
+            };
+            &named
+        }
+        _ => event,
+    };
     let lang = prompt_lang(lang);
     if side == Side::Gm {
         return Some(event_full_text(event, lang));
@@ -383,9 +397,14 @@ mod tests {
             Some("（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。")
         );
         let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let private = marked(marker, &text, true);
         assert_eq!(
-            prompt_text(&marked(marker, &text, true), "ja", Side::Gm).as_deref(),
+            prompt_text(&private, "zh-CN", Side::Gm).as_deref(),
             Some("（角色私設）〈狐狸〉\n私有設定：\n阿濤 不知道牠其實是妖狐。")
+        );
+        assert_eq!(
+            prompt_text(&private, "ja", Side::Gm),
+            prompt_text(&private, "en", Side::Gm)
         );
 
         let no_private = card("fox-id", "狐狸", "  \n", "  \n");
@@ -394,7 +413,7 @@ mod tests {
         assert_eq!(text, "");
         assert_eq!(
             prompt_text(&marked(marker, &text, false), "ru", Side::Character).as_deref(),
-            Some("（角色回歸）〈狐狸〉")
+            Some("(Character returns) “狐狸”")
         );
     }
 
@@ -466,7 +485,7 @@ mod tests {
         assert!(view.iter().all(|event| !event.text.contains("全文")));
     }
 
-    /// 提示詞模板：zh-TW／ja／ru 出繁中標頭、en 出英文標頭；沒名字的玩家發言與點名退回該語系稱呼。
+    /// 提示詞模板：zh* 出繁中標頭、其餘出英文標頭；沒名字的玩家發言與點名退回原始語系稱呼。
     #[test]
     fn prompt_headings_follow_prompt_language_with_player_fallbacks() {
         let summary = TranscriptEvent {
@@ -489,7 +508,7 @@ mod tests {
             false,
         );
         let player = event(TranscriptKind::Player, "", "", "你好");
-        for lang in ["zh-TW", "ja", "ru"] {
+        for lang in ["zh-TW", "zh-CN"] {
             let side = Side::Character;
             assert_eq!(
                 prompt_text(&summary, lang, side).as_deref(),
@@ -515,6 +534,18 @@ mod tests {
         assert_eq!(
             prompt_text(&call, "en", Side::Gm).as_deref(),
             Some("GM asks “Player” to speak")
+        );
+        for lang in ["ja", "ru", "fr"] {
+            for event in [&summary, &state, &named_call] {
+                assert_eq!(
+                    prompt_text(event, lang, Side::Character),
+                    prompt_text(event, "en", Side::Character)
+                );
+            }
+        }
+        assert_eq!(
+            prompt_text(&call, "ja", Side::Gm).as_deref(),
+            Some("GM asks “プレイヤー” to speak")
         );
         assert_eq!(prompt_speaker(&player, "ja"), "プレイヤー");
         assert_eq!(prompt_speaker(&player, "en"), "Player");

@@ -1,6 +1,7 @@
 /// applied＝上次已傳達給模型的素材全文；current＝本輪最新素材全文。
 /// 相同回 None；不同回一則補丁文字（附在本輪 prompt 裡告知模型哪些段落變了）。
-pub(crate) fn render_patch(applied: &str, current: &str) -> Option<String> {
+pub(crate) fn render_patch(applied: &str, current: &str, lang: &str) -> Option<String> {
+    let en = crate::transport::scaffold_en(lang);
     if applied == current {
         return None;
     }
@@ -23,7 +24,11 @@ pub(crate) fn render_patch(applied: &str, current: &str) -> Option<String> {
             .is_none_or(|previous| previous.content != chunk.content)
         {
             if chunk.title.is_empty() {
-                replacements.push(format!("（開頭指示更新）\n{}", chunk.content));
+                let label = match en {
+                    true => "(Opening instructions updated)",
+                    false => "（開頭指示更新）",
+                };
+                replacements.push(format!("{label}\n{}", chunk.content));
             } else {
                 replacements.push(chunk.content.clone());
             }
@@ -33,12 +38,17 @@ pub(crate) fn render_patch(applied: &str, current: &str) -> Option<String> {
     let removed: Vec<_> = applied_chunks
         .iter()
         .filter(|chunk| !chunk.title.is_empty() && !current_by_key.contains_key(&chunk.key()))
-        .map(|chunk| format!("〈{}〉", chunk.title))
+        .map(|chunk| match en {
+            true => format!("\"{}\"", chunk.title),
+            false => format!("〈{}〉", chunk.title),
+        })
         .collect();
 
-    let mut patch =
-        "## 設定更新\n以下設定剛剛變更，請以此處版本為準（同標題段落整段取代先前內容）：\n"
-            .to_owned();
+    let mut patch = match en {
+        true => "## Settings update\nThe settings below just changed. Treat this version as authoritative (a section with the same heading fully replaces its previous content):\n",
+        false => "## 設定更新\n以下設定剛剛變更，請以此處版本為準（同標題段落整段取代先前內容）：\n",
+    }
+    .to_owned();
     if !replacements.is_empty() {
         patch.push('\n');
         patch.push_str(&replacements.join("\n\n"));
@@ -46,9 +56,10 @@ pub(crate) fn render_patch(applied: &str, current: &str) -> Option<String> {
     }
     if !removed.is_empty() {
         patch.push('\n');
-        patch.push_str("（已移除段落：");
-        patch.push_str(&removed.join("、"));
-        patch.push_str("）\n");
+        match en {
+            true => patch.push_str(&format!("(Removed sections: {})\n", removed.join(", "))),
+            false => patch.push_str(&format!("（已移除段落：{}）\n", removed.join("、"))),
+        }
     }
     Some(patch)
 }
@@ -109,12 +120,20 @@ mod tests {
 
     #[test]
     fn identical_material_has_no_patch() {
-        assert_eq!(render_patch("## 卡片\n內容\n", "## 卡片\n內容\n"), None);
+        assert_eq!(
+            render_patch("## 卡片\n內容\n", "## 卡片\n內容\n", "zh-TW"),
+            None
+        );
     }
 
     #[test]
     fn changed_section_only_renders_the_new_section() {
-        let patch = render_patch("## A\n舊\n### B\n不變\n", "## A\n新\n### B\n不變\n").unwrap();
+        let patch = render_patch(
+            "## A\n舊\n### B\n不變\n",
+            "## A\n新\n### B\n不變\n",
+            "zh-TW",
+        )
+        .unwrap();
         assert!(patch.contains("## 設定更新"));
         assert!(patch.contains("## A\n新\n"));
         assert!(!patch.contains("### B"));
@@ -122,13 +141,13 @@ mod tests {
 
     #[test]
     fn added_section_is_rendered() {
-        let patch = render_patch("## A\n內容\n", "## A\n內容\n### B\n新增\n").unwrap();
+        let patch = render_patch("## A\n內容\n", "## A\n內容\n### B\n新增\n", "zh-TW").unwrap();
         assert!(patch.contains("### B\n新增\n"));
     }
 
     #[test]
     fn removed_section_is_listed() {
-        let patch = render_patch("## A\n內容\n### B\n移除\n", "## A\n內容\n").unwrap();
+        let patch = render_patch("## A\n內容\n### B\n移除\n", "## A\n內容\n", "zh-TW").unwrap();
         assert!(patch.contains("（已移除段落：〈### B〉）"));
     }
 
@@ -137,6 +156,7 @@ mod tests {
         let patch = render_patch(
             "### 卡\n第一張\n### 卡\n第二張\n",
             "### 卡\n第一張\n### 卡\n已改\n",
+            "zh-TW",
         )
         .unwrap();
         assert!(patch.contains("### 卡\n已改\n"));
@@ -145,7 +165,7 @@ mod tests {
 
     #[test]
     fn plain_text_uses_the_leading_chunk() {
-        let patch = render_patch("舊指示", "新指示").unwrap();
+        let patch = render_patch("舊指示", "新指示", "zh-TW").unwrap();
         assert!(patch.contains("（開頭指示更新）\n新指示"));
     }
 }

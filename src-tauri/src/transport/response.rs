@@ -1,4 +1,4 @@
-use super::messages::{message, ChatMessage};
+use super::messages::{message, scaffold_en, ChatMessage};
 
 use super::assemble::PLAYER_SENTINEL;
 
@@ -35,7 +35,7 @@ pub fn narrate_instruction(
     roster: &[String],
     player_name: Option<&str>,
 ) -> ChatMessage {
-    let mut instruction = if lang == "en" {
+    let mut instruction = if scaffold_en(lang) {
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
          After the narration, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
@@ -52,7 +52,7 @@ pub fn narrate_instruction(
             .to_owned()
     };
     if !roster.is_empty() {
-        let call = if lang == "en" {
+        let call = if scaffold_en(lang) {
             format!(
                 " After the fence, end with exactly one final line `Next: <name>`, choosing the next speaker from: {}. \
                  If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
@@ -112,7 +112,7 @@ pub fn takeover_instruction(
     roster: &[String],
     player_name: Option<&str>,
 ) -> ChatMessage {
-    let mut instruction = if lang == "en" {
+    let mut instruction = if scaffold_en(lang) {
         "(Director instruction) Write this turn's story: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
          After the story, start a new line and output the `<UpdateVariable>` update block, writing only the fields that changed this turn; if nothing changed, omit the block. \
@@ -127,7 +127,7 @@ pub fn takeover_instruction(
             .to_owned()
     };
     if !roster.is_empty() {
-        let call = if lang == "en" {
+        let call = if scaffold_en(lang) {
             format!(
                 " Finally, end with exactly one line `Next: <name>`, choosing the next speaker from: {}. \
                  If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
@@ -149,7 +149,7 @@ pub fn takeover_instruction(
 }
 
 pub fn card_format_instruction(lang: &str, entry_title: Option<&str>) -> ChatMessage {
-    let instruction = if lang == "en" {
+    let instruction = if scaffold_en(lang) {
         let format_source = entry_title
             .map(|title| format!(" (see the worldbook entry \"{title}\")"))
             .unwrap_or_default();
@@ -169,6 +169,50 @@ pub fn card_format_instruction(lang: &str, entry_title: Option<&str>) -> ChatMes
         )
     };
     message("user", instruction)
+}
+
+/// GM 回合 CLI 收尾句（lane 路徑接在導演指示後面）；`has_roster`＝有點名行。
+pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'static str {
+    match (scaffold_en(lang), format, has_roster) {
+        (true, GmTurnFormat::CardFormat, _) => {
+            "Now, as the GM, produce this turn's reply exactly in the output format above. Do not add a name prefix, and do not output anything outside that format."
+        }
+        (true, GmTurnFormat::InterfaceTakeover, false) => {
+            "Now, as the GM, carry out the director instruction above. Output only the story and, if anything changed, the update block. Do not add a name prefix."
+        }
+        (true, GmTurnFormat::InterfaceTakeover, true) => {
+            "Now, as the GM, carry out the director instruction above. Output only the story, the update block if anything changed, and the `Next:` line. Do not add a name prefix."
+        }
+        (true, GmTurnFormat::Narration, false) => {
+            "Now, as the GM, carry out the director instruction above. Output only the narration and the required state fence. Do not add a name prefix."
+        }
+        (true, GmTurnFormat::Narration, true) => {
+            "Now, as the GM, carry out the director instruction above. Output only the narration, the required state fence, and the `Next:` line. Do not add a name prefix."
+        }
+        (false, GmTurnFormat::CardFormat, _) => {
+            "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。"
+        }
+        (false, GmTurnFormat::InterfaceTakeover, false) => {
+            "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"
+        }
+        (false, GmTurnFormat::InterfaceTakeover, true) => {
+            "現在請以 GM 身分執行上述導演指示，只輸出劇情正文、有變動時的更新區塊與「下一位」行，不要加名字前綴。"
+        }
+        (false, GmTurnFormat::Narration, false) => {
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
+        }
+        (false, GmTurnFormat::Narration, true) => {
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
+        }
+    }
+}
+
+/// 換場摘要 CLI 收尾句。
+pub fn summary_closing(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "Now carry out the director instruction above. Output only the summary body. Do not add a name prefix.",
+        false => "現在請執行上述導演指示，只輸出摘要本文，不要加名字前綴。",
+    }
 }
 
 /// 從旁白剝出尾端的「下一位：」點名行：回傳（點名原文, 剝除後的顯示文字）。
@@ -636,6 +680,39 @@ mod tests {
         let (none_title, whole) = extract_scene_title("地點與時間：酒館\n關鍵事件：無");
         assert_eq!(none_title, None);
         assert_eq!(whole, "地點與時間：酒館\n關鍵事件：無");
+    }
+
+    /// 英文骨架下的非中文回覆：state 圍欄鍵、`Next:` 點名、`Title:` 幕名都照固定標記解析，
+    /// 內容是該語系母語也一樣；骨架也不把固定標記翻成該語系。
+    #[test]
+    fn english_scaffold_markers_parse_native_language_replies() {
+        let roster = vec!["Renard".to_owned()];
+        for (lang, body, place, title) in [
+            ("ja", "雨が止んだ。", "旧港", "酒場の夜"),
+            ("fr", "La pluie cesse.", "Vieux port", "Nuit à la taverne"),
+            ("ru", "Дождь стих.", "Старый порт", "Ночь в таверне"),
+        ] {
+            let instruction = narrate_instruction(lang, &roster, None).content;
+            assert!(instruction.contains("`Next: <name>`") && instruction.contains("```state"));
+            let reply = format!(
+                "{body}\n```state\ntime: 0:00\nplace: {place}\npresent: Renard\n```\nNext: {PLAYER_SENTINEL}"
+            );
+            let StateBlock {
+                fields, display, ..
+            } = extract_state_block(&reply);
+            assert_eq!(fields[1], (vec!["place".to_owned()], place.to_owned()));
+            let (name, display) = extract_next_speaker(&display);
+            assert_eq!(name.as_deref(), Some(PLAYER_SENTINEL));
+            assert_eq!(display, body);
+            assert_eq!(
+                pick_speaker(&name.unwrap(), &roster, None).unwrap(),
+                PLAYER_SENTINEL
+            );
+
+            let (parsed, rest) = extract_scene_title(&format!("Title: {title}\n\n- {body}"));
+            assert_eq!(parsed.as_deref(), Some(title));
+            assert_eq!(rest, format!("- {body}"));
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// 規範一律用該語言本身書寫，模型才不會被中文提示詞模板帶成中文輸出；
 /// 兩岸中文互相加反向禁令，防止字體與用語飄移。
 /// 新增語系：在此加一條 match arm，並補前端字典（src/i18n/）與範例桌（src-tauri/samples/）。
-pub(super) fn language_rule(lang: &str) -> &'static str {
+pub(crate) fn language_rule(lang: &str) -> &'static str {
     match lang {
         "zh-CN" => {
             "所有输出一律使用简体中文与中国大陆通行用语，禁止繁体字与台湾用语\
@@ -22,6 +22,45 @@ pub(super) fn language_rule(lang: &str) -> &'static str {
              （例如：說「影片」不說「視頻」、說「品質」不說「質量」、說「訊息」不說「信息」）。"
         }
         _ => "All of your output must be in natural, fluent English.",
+    }
+}
+
+/// 送 AI 的固定骨架走英文嗎（zh* 走繁中、其餘英文，見 `data::prompt_lang`）。
+/// 只管骨架字；輸出語言（`language_rule`）與玩家稱呼（`player_fallback_name`）一律吃原始語系。
+pub(crate) fn scaffold_en(lang: &str) -> bool {
+    crate::data::prompt_lang(lang) == "en"
+}
+
+/// 送 AI 的「名字：」前綴；英文骨架用半形。事件行、共線歷史、CLI 攤平與 lane 回覆補前綴共用，
+/// 同一條 session 裡的歷史才逐字銜接。
+pub fn speaker_prefix(name: &str, lang: &str) -> String {
+    match scaffold_en(lang) {
+        true => format!("{name}: "),
+        false => format!("{name}："),
+    }
+}
+
+/// 開線／CLI 單發時對話紀錄前的標頭（`cli::flatten_messages` 與 lane 開線共用）。
+pub fn history_header(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "Here is the conversation so far:\n\n",
+        false => "以下是到目前為止的對話紀錄：\n\n",
+    }
+}
+
+/// 送 AI 的旁白行。
+pub(super) fn narration_line(text: &str, lang: &str) -> String {
+    match scaffold_en(lang) {
+        true => format!("(Narration) {text}"),
+        false => format!("（旁白）{text}"),
+    }
+}
+
+/// 送 AI 的系統事件行。
+pub(super) fn system_line(text: &str, lang: &str) -> String {
+    match scaffold_en(lang) {
+        true => format!("(System) {text}"),
+        false => format!("（系統）{text}"),
     }
 }
 

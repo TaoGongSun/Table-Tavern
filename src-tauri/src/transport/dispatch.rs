@@ -346,7 +346,12 @@ pub(crate) async fn stream_turn_via_transport(
     }
     let cli_working_dir = cli_workspace(app)?;
 
-    let (system, prompt) = cli::flatten_messages(assistant_label, cli_closing, messages);
+    let (system, prompt) = cli::flatten_messages(
+        assistant_label,
+        cli_closing,
+        messages,
+        &transport::ui_language(config),
+    );
     let program = std::path::PathBuf::from(&info.path);
     match transport_kind.as_str() {
         "claude" => {

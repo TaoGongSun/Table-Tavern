@@ -171,8 +171,12 @@ fn headings_cover_ten_languages() {
         marker_heading(&arrival, "zh-TW")
     );
     assert_eq!(marker_heading(&EventMarker::Unknown, "en"), None);
-    assert_eq!(prompt_lang("ja"), "zh-TW");
-    assert_eq!(prompt_lang("en"), "en");
+    for lang in ["zh-TW", "zh-CN", "zh-HK"] {
+        assert_eq!(prompt_lang(lang), "zh-TW");
+    }
+    for lang in ["en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru", "it", ""] {
+        assert_eq!(prompt_lang(lang), "en");
+    }
 }
 
 /// 共用字典十語系齊全、鍵一致、佔位符正確（前端讀同一份 JSON）。
