@@ -325,6 +325,8 @@ const snapshot: CardMvu = {
   active: false,
   generation: 3,
   scene: 0,
+  layers: {},
+  characterId: "c1",
 };
 
 function sandbox(mvu: CardMvu = snapshot, token = "tok"): MvuSandbox {
@@ -364,7 +366,7 @@ describe("MVU 墊片：讀取", () => {
 
   it("快照裡的 __proto__ 鍵照樣是自有資料", () => {
     const tricky = JSON.parse('{"__proto__": {"x": 1}, "金": 2}') as Record<string, unknown>;
-    const win = sandbox({ currentId: 0, latestId: 0, states: [data(tricky)], floorState: [0], targets: [null], active: false, generation: 3, scene: 0 });
+    const win = sandbox({ currentId: 0, latestId: 0, states: [data(tricky)], floorState: [0], targets: [null], active: false, generation: 3, scene: 0, layers: {}, characterId: "c1" });
     const stat = win.getAllVariables().stat_data;
     expect(Object.keys(stat)).toEqual(["__proto__", "金"]);
     expect(Object.getPrototypeOf(stat)).toBe(Object.prototype);
@@ -442,10 +444,10 @@ describe("MVU 墊片：讀取", () => {
     expect(win.Mvu.getMvuData({ type: "message", message_id: 0 }).stat_data.金).toBe(1);
   });
 
-  it("非 message 層與沒給 type 明確拋錯，不暗改成 message 層", () => {
+  it("沒給 type 讀 chat 層（酒館助手預設），不暗改成 message 層", () => {
     const win = sandbox();
-    for (const option of [undefined, {}, { type: "chat" }, { type: "global" }, { type: "character" }]) {
-      expect(() => win.Mvu.getMvuData(option)).toThrow(/尚未支援/);
+    for (const option of [undefined, {}, { type: "chat" }]) {
+      expect(win.Mvu.getMvuData(option)).toEqual({});
     }
   });
 

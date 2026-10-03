@@ -2,7 +2,7 @@
 // 純函式，controller 只負責接線。
 import { findShell, type CardInterface } from "./interface-card";
 import { chatEvents, floorText, type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
-import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type StateTree } from "./mvu/card-mvu-shim";
+import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
@@ -59,6 +59,19 @@ function floorMessage(
   return fillSkeletonPlaceholders(skeleton, { ...tree, 本回合: { 正文: eventDisplayText(event) } }, yamlTags, valueTypes);
 }
 
+/**
+ * 實際產生這份殼的卡（`character` 層變數的身分，由宿主決定、不信沙盒）：只看選殼實際命中的那一段候選文字
+ * （身分跟著選殼結果走，不重掃其他候選），只用單張卡自己的腳本就能從它產出同一份殼的第一張卡；世界書卡（沒有 id）固定 `world`。多張卡的腳本接力才產得出來、或找不到，回空字串
+ * （沙盒讀寫 character 層一律拋錯、宿主也拒絕），不猜。
+ */
+export function shellOwner(cards: CardInterface[], text: string | null | undefined, shell: string): string {
+  for (const card of cards) {
+    if (card.unsupported !== null) continue;
+    if (findShell([card], [text])?.shell === shell) return card.character_id || "world";
+  }
+  return "";
+}
+
 export function pickCardShell(input: {
   /** 桌面玩法標記；undefined＝還不知道 */
   tableMode: string | null | undefined;
@@ -70,7 +83,15 @@ export function pickCardShell(input: {
   valueTypes?: Record<string, string>;
   /** 目前狀態樹（含面板手動改值）與玩家名：MVU 卡的活樓讀它；active＝卡片變數模式（每樓讀事件上自己的表）；
    *  null＝不給 MVU 快照 */
-  mvu?: { liveTree: StateTree; userName: string; active?: boolean; generation?: number; scene?: number } | null;
+  mvu?: {
+    liveTree: StateTree;
+    userName: string;
+    active?: boolean;
+    generation?: number;
+    scene?: number;
+    /** 非 message 層現況（面板掛載時從後端讀回） */
+    layers?: Record<string, MvuLayer>;
+  } | null;
 }): PickedShell | null {
   const { tableMode, cardInterfaces } = input;
   // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構骨架、卡片自帶殼、
@@ -94,6 +115,7 @@ export function pickCardShell(input: {
           active: input.mvu.active === true,
           generation: input.mvu.generation,
           scene: input.mvu.scene,
+          layers: input.mvu.layers,
           roles: events.length > 0 ? events.map(roleOf) : ["assistant"],
           currentId: 0,
           liveTree: input.mvu.liveTree,
@@ -126,11 +148,11 @@ export function pickCardShell(input: {
       .filter((floor) => floor !== latestGm),
   ];
   const openings = floors.length === 0 ? cardInterfaces : [];
-  const match = findShell(cardInterfaces, [
-    ...recent.map(({ message }) => message),
-    ...openings.map((card) => card.opening),
-  ]);
+  const candidates = [...recent.map(({ message }) => message), ...openings.map((card) => card.opening)];
+  const match = findShell(cardInterfaces, candidates);
   if (match === null) return null;
+  const characterId = shellOwner(cardInterfaces, candidates[match.index], match.shell);
+  const withOwner = (value: CardMvu | null): CardMvu | null => (value === null ? null : { ...value, characterId });
   const chatFloors: ChatFloor[] = floors.map(({ event, message }) => ({
     name: speakerDisplayName(event),
     role: roleOf(event),
@@ -142,7 +164,7 @@ export function pickCardShell(input: {
       shell: match.shell,
       current: { id, name: speakerDisplayName(event), text: message },
       floors: chatFloors,
-      mvu: mvu === null ? null : { ...mvu, currentId: id },
+      mvu: withOwner(mvu === null ? null : { ...mvu, currentId: id }),
     };
   }
   const card = openings[match.index - recent.length];
@@ -150,6 +172,6 @@ export function pickCardShell(input: {
     shell: match.shell,
     current: { id: 0, name: card.character_name, text: card.opening ?? "" },
     floors: chatFloors,
-    mvu,
+    mvu: withOwner(mvu),
   };
 }

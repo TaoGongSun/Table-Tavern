@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
+pub mod card_vars;
 mod character;
 mod config;
 mod format;

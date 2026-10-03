@@ -6,6 +6,7 @@ import { type TranscriptEvent } from "../../../shared/contracts/backend-contract
  *  結果不屬於現在這桌，不換進逐字稿、不推權威值 */
 export type CardWriteResult =
   | { status: "ok"; event: TranscriptEvent }
+  | { status: "layer_ok"; rev: string }
   | { status: "stale" | "busy"; found: boolean; rev: string | null; table: string | null }
   | { status: "rejected"; code: string; found: boolean; rev: string | null; table: string | null }
   | { status: "gone" };
@@ -22,6 +23,24 @@ export interface MvuWriteRequest {
   /** 產生這張表時快照的桌世代與幕 */
   generation: number;
   scene: number;
+}
+
+export type LayerName = "chat" | "character" | "global" | "preset" | "script" | "extension";
+
+/** 非 message 層的寫入目標 key（`chat`、`global`、`preset`、`character:<id>`、`script:<原 ID>`、`extension:<原 ID>`）；
+ *  事件 key（事件 id 或 "@位置"）回 null */
+export function parseLayerKey(key: string): { layer: LayerName; id: string | null } | null {
+  if (key === "chat" || key === "global" || key === "preset") return { layer: key, id: null };
+  const match = /^(character|script|extension):([\s\S]+)$/.exec(key);
+  return match === null ? null : { layer: match[1] as LayerName, id: match[2] };
+}
+
+/** 這個非 message 層現在不能寫：還沒讀回，或讀取失敗（該層或它所在的 script／extension 類別標了 error） */
+export function layerBlocked(layers: Record<string, { error?: string }> | null, key: string): boolean {
+  if (layers === null) return true;
+  if (layers[key]?.error !== undefined) return true;
+  const category = /^(script|extension):/.exec(key);
+  return category !== null && layers[`${category[1]}:`]?.error !== undefined;
 }
 
 export interface SettleResult {
@@ -132,6 +151,8 @@ export function createMvuWriteQueue(deps: {
   /** 後端確認落檔的那則（key＝寫入目標，舊事件的 "@位置" 也認得出原事件）與這條寫入鏈的身分：由宿主核對身分
    *  沒變才換進逐字稿（關掉之後也照這個規則） */
   committed: (key: string, event: TranscriptEvent, identity: { generation: number; scene: number }) => void;
+  /** 非 message 層（key 不是事件）確認落檔：新版本與落檔的整張表（JSON 文字），宿主更新自己手上的現況 */
+  layerCommitted: (key: string, rev: string, vars: string, identity: { generation: number; scene: number }) => void;
   /** 回覆沙盒 */
   settle: (results: SettleResult[], authority?: Authority, migrate?: Migration) => void;
 }): MvuWriteQueue {
@@ -191,14 +212,16 @@ export function createMvuWriteQueue(deps: {
       settle(rejectedIds.map((requestId) => ({ requestId, ok: false, error: "stale" })));
       return;
     }
-    if (result.status === "ok") {
-      deps.committed(key, result.event, { generation: chain.generation, scene: chain.scene });
-      const rev = result.event.vars_rev;
+    if (result.status === "ok" || result.status === "layer_ok") {
+      const identity = { generation: chain.generation, scene: chain.scene };
+      const rev = result.status === "ok" ? result.event.vars_rev : result.rev;
+      if (result.status === "ok") deps.committed(key, result.event, identity);
+      else deps.layerCommitted(key, result.rev, payload, identity);
       chain.rev = rev ?? null;
       // 舊事件第一次寫入配到 id：整條寫入鏈（含排在後面的）搬到新 id，沙盒同步搬家
       let current = key;
       let migrate: Migration | undefined;
-      const id = result.event.id;
+      const id = result.status === "ok" ? result.event.id : undefined;
       if (key.startsWith("@") && typeof id === "string" && id !== key) {
         targets.delete(key);
         targets.set(id, state);

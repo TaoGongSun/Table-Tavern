@@ -615,18 +615,32 @@ fn file_lock(path: &Path) -> Arc<Mutex<()>> {
 pub(crate) fn with_file_lock<T>(path: &Path, work: impl FnOnce(&LockedFile<'_>) -> T) -> T {
     let lock = file_lock(path);
     let _held = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    work(&LockedFile { path })
+    work(&LockedFile { path, root: false })
+}
+
+/// 資料根目錄下的檔（不在 `worlds/` 裡，例如跨桌的卡片變數檔）：同樣同檔鎖，寫入前查更新閘門
+/// （沒有桌的格式標記可查）。路徑由呼叫端用受控名稱組成，不收外部字串。
+pub(crate) fn with_root_file_lock<T>(path: &Path, work: impl FnOnce(&LockedFile<'_>) -> T) -> T {
+    let lock = file_lock(path);
+    let _held = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    work(&LockedFile { path, root: true })
 }
 
 /// 持有同檔鎖期間對該檔的操作。
 pub(crate) struct LockedFile<'a> {
     path: &'a Path,
+    /// 資料根目錄下的檔：不查桌的格式標記，改查更新閘門
+    root: bool,
 }
 
 impl LockedFile<'_> {
     fn writable(&self) -> DataResult<()> {
-        let (root, id) = locate_world(self.path)?;
-        ensure_writable(&root, &id)?;
+        if self.root {
+            super::world_lock::refuse_if_updating()?;
+        } else {
+            let (root, id) = locate_world(self.path)?;
+            ensure_writable(&root, &id)?;
+        }
         #[cfg(test)]
         write_hook::fire(self.path);
         Ok(())

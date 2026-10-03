@@ -11,7 +11,10 @@ import { type CardMvu } from "./card-mvu-shim";
  *
  * 寫入（message 層，包 2a）：先改本地值（保持上游同步語意），再把整張表送宿主；宿主確認落檔才結算。
  * 本地值依寫入目標（事件 key）暫存，結算前推來的快照不蓋掉它；被拒時換成宿主推回的權威值並發外部變動事件。
- * 非 message 層（chat／character／global…）照酒館的做法在包 2b 補，在那之前明確拋錯。
+ *
+ * 非 message 層（包 2b）：chat／character／global／preset／script／extension 各是一份「整張表」，沿用同一套
+ * 本地值、版本與結算機制，寫入目標 key 是層名（script／extension／character 帶 `:原 ID`），宿主依 key 決定
+ * 落檔位置。讀值是同步的，所以面板掛載時宿主把這些層（script／extension 已存在的全部）一併放進快照。
  */
 export function buildMvuShimSource(mvu: CardMvu, token: string): string {
   return `
@@ -53,6 +56,30 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
     var target = targetAt(id);
     if (target && local.has(target.key)) return local.get(target.key);
     return store.states[store.floorState[id]];
+  }
+  // 非 message 層：key 與宿主的寫入目標同一套；快照沒列的層是空表、版本 null（檔案還不存在）
+  function layerDoc(key) {
+    return hasOwn.call(store.layers, key) ? store.layers[key] : null;
+  }
+  // 讀取失敗的層（或所在類別）：不能當空表初始化，讀寫一律拋錯
+  function layerCheck(name, key) {
+    var doc = layerDoc(key);
+    var category = /^(script|extension):/.exec(key);
+    var block = category ? layerDoc(category[1] + ":") : null;
+    var problem = (doc && doc.error) || (block && block.error);
+    if (problem) throw new Error(name + ": 變數層讀取失敗（" + problem + "），重開面板重試");
+  }
+  function layerData(key) {
+    if (local.has(key)) return local.get(key);
+    var doc = layerDoc(key);
+    return doc ? doc.vars : {};
+  }
+  function layerRev(key) {
+    var doc = layerDoc(key);
+    return doc ? doc.rev : null;
+  }
+  function isLayerKey(key) {
+    return key === "chat" || key === "global" || key === "preset" || /^(character|script|extension):/.test(key);
   }
   function report(error) {
     console.error("[table-tavern] 事件監聽器出錯", error);
@@ -180,22 +207,54 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
   };
 
   // 酒館助手 getAllVariables：全域 → 角色 → 聊天 → 0 樓到本樓各 message 層依序頂層 assign（沒有表的樓
-  // 帶出前面樓的值）。非 message 層包 2b 才補。
+  // 帶出前面樓的值）。
   window.getAllVariables = function () {
     var result = {};
+    ["global", "character:" + store.characterId, "chat"].forEach(function (key) {
+      layerCheck("getAllVariables", key);
+    });
+    lodash.assign(result, layerData("global"), layerData("character:" + store.characterId), layerData("chat"));
     for (var i = 0; i <= store.currentId; i++) lodash.assign(result, dataAt(i));
     return copy(result);
   };
 
-  function unsupported(name, option) {
-    var type = option && option.type;
-    // 非 message 層（chat／character／global…）照酒館的做法在包 2b 補；在那之前明確拋錯，不假裝成功
-    return new Error(name + ": 尚未支援 " + String(type) + " 層變數");
+  // 解析 option：回 null＝message 層，否則回非 message 層的寫入目標 key。預設層是 chat；
+  // script／extension 必須給 ID（酒館助手沒給 script_id 會拋錯）；character 只認目前殼所屬的卡；
+  // preset 只有 app 這一份（預設集名稱只認 in_use／app）。
+  function resolveLayer(name, option) {
+    var normalized = option === undefined ? {} : option;
+    if (!isPlainObject(normalized)) throw new Error(name + ": option 必須是物件");
+    var type = normalized.type === undefined ? "chat" : normalized.type;
+    switch (type) {
+      case "message":
+        return null;
+      case "chat":
+      case "global":
+        return type;
+      case "preset":
+        if (normalized.preset_name !== undefined && normalized.preset_name !== "in_use" && normalized.preset_name !== "app") {
+          throw new Error(name + ": 預設集不存在 " + String(normalized.preset_name));
+        }
+        return "preset";
+      case "character":
+        if (normalized.character_name !== undefined && normalized.character_name !== "current") {
+          throw new Error(name + ": 只支援目前這張卡的角色變數");
+        }
+        if (store.characterId === "") throw new Error(name + ": 這份殼找不到唯一所屬的卡，不能讀寫角色變數");
+        return "character:" + store.characterId;
+      case "script":
+      case "extension":
+        var id = normalized[type + "_id"];
+        if (typeof id !== "string" || id === "" || Array.from(id).length > 256) {
+          throw new Error(name + ": 未指定 " + type + "_id（1～256 字元）");
+        }
+        return type + ":" + id;
+      default:
+        throw new Error(name + ": 不支援的變數層 " + String(type));
+    }
   }
-  function messageOption(name, option) {
-    var normalized = option === undefined ? { type: "chat" } : option;
-    if (!normalized || normalized.type !== "message") throw unsupported(name, normalized);
-    return normalized;
+  function messageOption(option) {
+    return option === undefined ? { type: "message" } : option;
   }
 
   // 讀取的樓號：'latest'（也是不給 message_id 時的預設）＝最後一則非 system 樓；明確給 -1 才是最後一樓
@@ -239,10 +298,8 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
   }
 
   // 一筆寫入：先換本地值，再送宿主（整張表）。回傳結算的 Promise：宿主確認落檔才 resolve，被拒 reject。
-  // 數值非有限、循環參照（存不成 JSON）整批拒絕，本地值不動。
-  function write(floor, table) {
-    var target = targetAt(floor);
-    if (!target) return Promise.reject(rejected("no-target"));
+  // 數值非有限、循環參照（存不成 JSON）整批拒絕，本地值不動。key＝寫入目標（事件 key 或非 message 層的 key）。
+  function submit(key, rev, table, floor) {
     if (!isPlainObject(table) || !finiteDeep(table, [])) return Promise.reject(rejected("invalid-value"));
     var payload;
     try {
@@ -250,32 +307,45 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
     } catch (error) {
       return Promise.reject(rejected("invalid-value"));
     }
-    var base = bases.has(target.key) ? bases.get(target.key) : target.rev;
-    if (!oldRevs.has(target.key)) oldRevs.set(target.key, []);
-    oldRevs.get(target.key).push(base);
-    local.set(target.key, JSON.parse(payload));
-    pending.set(target.key, (pending.get(target.key) || 0) + 1);
+    var base = bases.has(key) ? bases.get(key) : rev;
+    if (!oldRevs.has(key)) oldRevs.set(key, []);
+    oldRevs.get(key).push(base);
+    local.set(key, JSON.parse(payload));
+    pending.set(key, (pending.get(key) || 0) + 1);
     sequence += 1;
     var requestId = TOKEN + ":" + String(sequence);
     var settled = new Promise(function (resolve, reject) {
-      waiting.set(requestId, { key: target.key, resolve: resolve, reject: reject });
+      waiting.set(requestId, { key: key, resolve: resolve, reject: reject });
     });
     parentRef.postMessage(
       { source: "table-tavern-card", kind: "mvu-write", token: TOKEN, requestId: requestId, floor: floor,
-        target: target.key, base: base, generation: store.generation, scene: store.scene, payload: payload },
+        target: key, base: base, generation: store.generation, scene: store.scene, payload: payload },
       "*"
     );
     return settled;
   }
+  function write(floor, table) {
+    var target = targetAt(floor);
+    if (!target) return Promise.reject(rejected("no-target"));
+    return submit(target.key, target.rev, table, floor);
+  }
 
-  // 酒館助手變數函式（message 層）。內部互叫用閉包裡的函式，卡片換掉 window 上的同名函式也不受影響。
+  // 酒館助手變數函式（各層）。內部互叫用閉包裡的函式，卡片換掉 window 上的同名函式也不受影響。
   function getVariables(option) {
-    var normalized = messageOption("getVariables", option);
-    return copy(dataAt(readFloor(normalized)));
+    var key = resolveLayer("getVariables", option);
+    if (key !== null) {
+      layerCheck("getVariables", key);
+      return copy(layerData(key));
+    }
+    return copy(dataAt(readFloor(messageOption(option))));
   }
   function replace(variables, option) {
-    var normalized = messageOption("replaceVariables", option);
-    return write(writeFloor(normalized), variables);
+    var key = resolveLayer("replaceVariables", option);
+    if (key !== null) {
+      layerCheck("replaceVariables", key);
+      return submit(key, layerRev(key), variables, -1);
+    }
+    return write(writeFloor(messageOption(option)), variables);
   }
   function replaceVariables(variables, option) {
     replace(variables, option).then(undefined, report);
@@ -373,7 +443,15 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
   function validMvu(value) {
     if (!isPlainObject(value) || !Array.isArray(value.states) || !Array.isArray(value.floorState)) return false;
     if (!Array.isArray(value.targets) || value.targets.length !== value.floorState.length) return false;
-    if (typeof value.active !== "boolean") return false;
+    if (typeof value.active !== "boolean" || typeof value.characterId !== "string") return false;
+    if (!isPlainObject(value.layers)) return false;
+    var layerKeys = Object.keys(value.layers);
+    for (var k = 0; k < layerKeys.length; k++) {
+      var layer = value.layers[layerKeys[k]];
+      if (!isPlainObject(layer) || !isPlainObject(layer.vars)) return false;
+      if (layer.rev !== null && typeof layer.rev !== "string") return false;
+      if (layer.error !== undefined && typeof layer.error !== "string") return false;
+    }
     if (!Number.isInteger(value.generation) || !Number.isInteger(value.scene)) return false;
     for (var i = 0; i < value.states.length; i++) {
       if (!isPlainObject(value.states[i])) return false;
@@ -445,9 +523,11 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
   function applyPush(next) {
     var nextLocal = new Map();
     local.forEach(function (value, key) {
-      var target = next.targets.find(function (item) {
-        return item && item.key === key;
-      });
+      var target = isLayerKey(key)
+        ? { rev: hasOwn.call(next.layers, key) ? next.layers[key].rev : null }
+        : next.targets.find(function (item) {
+            return item && item.key === key;
+          });
       var older = target && (oldRevs.get(key) || []).indexOf(target.rev) >= 0;
       if (target && (pending.get(key) || older)) {
         nextLocal.set(key, value);
