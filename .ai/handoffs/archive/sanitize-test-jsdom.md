@@ -6,3 +6,6 @@
 
 ## 重現案例（dompurify-xss-upgrade 時查到，3.4.12 與 3.4.16 皆然）
 happy-dom 下 `DOMPurify.sanitize('<p onclick="x">字</p><img src="javascript:alert(1)" onerror="x" alt="a">', { ALLOWED_TAGS: ["p","img"], ALLOWED_ATTR: ["alt","src"] })` 回 `字<img src="javascript:alert(1)" onerror="x" alt="a">`——拆掉第一個元素、放過事件屬性與 javascript: src。真 WebKit 下正確。
+
+## 狀態
+- 已結案進 main，定案與實證見 [plans/sanitize-test-jsdom.md](../../plans/sanitize-test-jsdom.md)。
