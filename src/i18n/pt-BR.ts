@@ -37,7 +37,6 @@ export const ptBR: Record<MsgKey, string> = {
   usageBarHit: "Lido do cache",
   usageBarFull: "Preço cheio",
   usageDetailsToggle: "Ver detalhes",
-  usageModel: "Modelo",
   usageRounds: "Rodadas",
   usageInputTokens: "Entrada",
   usageCached: "Lido do cache",

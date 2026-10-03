@@ -42,7 +42,6 @@ export const en: Record<MsgKey, string> = {
   usageBarHit: "Cache read",
   usageBarFull: "Full price",
   usageDetailsToggle: "Show details",
-  usageModel: "Model",
   usageRounds: "Rounds",
   usageInputTokens: "Input",
   usageCached: "Cache read",

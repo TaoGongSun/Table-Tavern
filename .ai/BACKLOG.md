@@ -13,7 +13,6 @@
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 - [usage-cache-audit](tasks/usage-cache-audit.md) — 額度快取紀錄整理（哪些線真有快取、各狀態該掛什麼標籤）＋角色線抹寫丟線 — 下一步：2026-10-06 Grok 額度恢復後開工，先讓抹寫失敗原因落帳本，再四家通道實跑對帳。
 - [long-prompt-scene-hint](tasks/long-prompt-scene-hint.md) — 桌子太長撞到指令長度上限時，請玩家換幕 — 下一步：先確認撞上限時各條路實際回什麼（作業系統層的 E2BIG？CLI 自己的錯誤？還是直接沒反應），才知道要抓什麼特徵。三個作業系統的上限與表現可能不同。
-- [settings-overflow-i18n](tasks/settings-overflow-i18n.md) — 設定頁長字串爆版 — 下一步：挑一種排版方案（modal 加寬／列內換行／狀態按鈕移到次行），先在俄文與德文下驗連線分頁，再掃額度分頁與其餘八語系。
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：排在 [usage-cache-audit](tasks/usage-cache-audit.md) 之後，看四家實跑對帳的命中率再決定做不做〔作者裁決 2026-10-02〕；ox-alpha 若已下架，根據的現象要重新立證。
 - [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：排在 api-shared-lane 的四路成對測試之後開工——那批數據才估得準底線該怎麼定、以及這個功能還需不需要。開工首步是拍板底線的統計量（最小值／眾數／出現 ≥N 次的最小值）與「樣本不足就不判定」的 N。
 - [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：供應商專屬面板（延後） — 下一步：等 free-player-onboarding 兩階段完成後再重新評估；目前不動 CLI、高中低與 provider-specific UI。
