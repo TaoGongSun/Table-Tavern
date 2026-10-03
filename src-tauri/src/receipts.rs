@@ -792,6 +792,14 @@ pub fn undo_last_import(
 
     // 4. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。
     if let Some(mechanism) = &receipt.mechanism {
+        // 卡片變數模式：匯入加進的分支從復原當下的初始化來源那一份移除（計畫 8.4）；較早事件與其他幕
+        // 種子裡的不追溯
+        let tree_in_events = data::message_vars::edit_tree_if_events(root, world_id, |tree| {
+            let before = tree.clone();
+            apply_map_undo(tree, &mechanism.added_state_keys, &mechanism.restored_state);
+            *tree != before
+        })
+        .unwrap_or(false);
         if let Ok(mut state) = data::read_state(root, world_id) {
             apply_map_undo(
                 &mut state.mechanism.rules,
@@ -806,11 +814,13 @@ pub fn undo_last_import(
             if let Some(before) = mechanism.incremental_before {
                 state.mechanism.incremental = before;
             }
-            apply_map_undo(
-                &mut state.state.tree,
-                &mechanism.added_state_keys,
-                &mechanism.restored_state,
-            );
+            if !tree_in_events {
+                apply_map_undo(
+                    &mut state.state.tree,
+                    &mechanism.added_state_keys,
+                    &mechanism.restored_state,
+                );
+            }
             // AI 卡重構可能把某張新卡指定為玩家卡；退回 None，不然桌上已經沒有那張卡了，
             // player_card_id 卻還指著它，之後永遠建不了新的玩家卡。
             if mechanism.player_card_assigned {
@@ -869,6 +879,14 @@ pub fn undo_last_import(
     }
 
     write_receipts(root, world_id, &receipts)?;
+    // 整桌還原（計畫 8.4）：清回合紀錄、桌世代加一。重構的復原讓這桌回到照原卡玩時，卡片變數模式
+    // 以當下狀態樹物化新種子、換新 epoch（重構期間的修改因此保留）。
+    data::message_vars::world_swapped(root, world_id);
+    if receipt.kind == "refactor" {
+        let _ = data::state_commit::with_commit(root, world_id, |tx| {
+            data::message_vars::ensure_active(tx, None)
+        });
+    }
     // 9. 這次匯入的原檔：收據已經彈出、不再被引用，刪掉後重新重構不會把撤銷掉的卡重匯回來
     if let Some(source) = &receipt.import_source {
         discard_import_source(root, world_id, &source.file);

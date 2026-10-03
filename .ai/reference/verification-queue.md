@@ -12,6 +12,8 @@
 
 4. [card-mvu-shim](../handoffs/card-mvu-shim.md) 包 1（只讀墊片，test-harness 獨立 root、零 AI 派送）：①匯入 `TestCards/bcd368…png` 開新桌，空桌打開卡片介面：MVU 前端畫出 initvar 的值（用户数据：名称「未知」、资金 100000）　②`post_opening` 寫兩則不帶占位、帶 `<UpdateVariable>`（JSONPatch 改资金）的假 GM 訊息：面板顯示第二則的值；收回 → 第一則；復原 → 第二則　③面板開著時寫一則玩家句，再在狀態欄手改资金：面板不重掛、數值自動換　④匯入 `TestCards/DongeonMaster.png`：開場是「开局」畫面、沒被狀態欄搶走；同②③改基础信息.时间　⑤抓兩卡 GM 回合實際送出的提示（只看提示、不送出），看 `<UpdateVariable>` 規定是否還在、有沒有被「不要輸出格式以外的狀態欄」壓掉　⑥ai-log 零派送，quit 後兩個正式目錄 hash 不變。
 
+4a. [card-mvu-shim](../handoffs/card-mvu-shim.md) 包 2a（卡片寫入，test-harness 獨立 root、零 AI 派送；自製測試卡 `scripts/harness-fixtures/mvu-write-probe.json`）：①匯入測試卡開新桌、貼開場白，打開卡片介面：錢 100（number）、血量 `[5,"生命值"]`（array）、名字＝玩家名、編號 7　②逐一按寫入按鈕（replace／insertOrAssign／insert 不改既有值／delete／updateVariablesWith／setMvuVariable＋replaceMvuData／寫字串 "123"）：值即時變、紀錄區寫「已落檔」；關掉重開面板，值與型別都還在（編號 "123" 仍是 string）、狀態欄（手改面板）同步　③`post_opening` 再寫一則不帶占位的假 GM 訊息，面板換到新樓後按「寫歷史樓」：只有第 0 樓的值變、最新樓不變　④「寫超大值」被拒、面板回到原值　⑤收回上一句：面板值倒回上一樓；復原後再按寫入照常落檔　⑥面板開著時在狀態欄手改「欄位.錢」：面板不重掛、數值自動換，再按卡片寫入不被拒　⑦chat／global 欄與 parseMessage 按鈕顯示「尚未支援」（2b／2c 才補）　⑧ai-log 零派送，quit 後兩個正式目錄 hash 不變。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度

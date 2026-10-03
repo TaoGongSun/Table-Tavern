@@ -24,7 +24,11 @@ pub(crate) fn write_state(
     state: WorldState,
 ) -> Result<(), String> {
     let _permit = data::world_write_permit(&world_id)?;
-    data::write_state(&data_root(&app)?, &world_id, &state).map_err(|error| error.to_string())
+    let root = data_root(&app)?;
+    data::state_commit::with_commit(&root, &world_id, |_| {
+        data::write_state(&root, &world_id, &state)
+    })
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -35,17 +39,23 @@ pub(crate) async fn set_table_state(
 ) -> Result<(), String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
-    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    for (key, value) in fields {
-        if value.is_empty() {
-            state.state.table.remove(&key);
-        } else {
-            state.state.table.insert(key, value);
-        }
-    }
-    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())?;
-    data::set_last_transcript_state(&root, &world_id, state.current_scene, &state.state)
-        .map_err(|error| error.to_string())?;
+    // 讀改寫 state.json 與改最後一則快照在同一把短提交鎖內，不會蓋掉鎖內的提交
+    data::state_commit::with_commit(&root, &world_id, |_| {
+        let state = data::update_state(&root, &world_id, |state| {
+            for (key, value) in &fields {
+                if value.is_empty() {
+                    state.state.table.remove(key);
+                } else {
+                    state.state.table.insert(key.clone(), value.clone());
+                }
+            }
+            Ok(Some(state.clone()))
+        })?
+        .expect("update_state 回 Some");
+        let projected = data::read_state(&root, &world_id)?;
+        data::set_last_transcript_state(&root, &world_id, state.current_scene, &projected.state)
+    })
+    .map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -58,14 +68,34 @@ pub(crate) async fn set_state_path(
 ) -> Result<(), String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
-    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    if !data::set_tree_value(&mut state.state.tree, &path, &value) {
-        return Ok(());
-    }
-    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())?;
-    data::set_last_transcript_state(&root, &world_id, state.current_scene, &state.state)
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    // 卡片變數模式：改初始化來源那一份（事件換新版本，沒有帶表事件就改這一幕的種子），不碰快取樹；
+    // 樹模式照舊改 state.json 的樹與最後一則快照。整段在同一把短提交鎖內
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        if data::message_vars::read_control(tx.root, tx.world_id)?
+            .active(data::read_state(tx.root, tx.world_id)?.current_scene)
+            .is_some()
+            && data::message_vars::busy(tx)
+        {
+            return Err(crate::ui_msg::UiMsg::StateEditDuringTurn.into_error());
+        }
+        let edited = data::message_vars::edit_effective_tree(tx, true, false, |tree| {
+            data::set_tree_value(tree, &path, &value)
+        })?;
+        if edited.is_some() {
+            return Ok(());
+        }
+        let changed = data::update_state(&root, &world_id, |state| {
+            Ok(data::set_tree_value(&mut state.state.tree, &path, &value).then(|| state.clone()))
+        })?;
+        match changed {
+            Some(state) => {
+                data::set_last_transcript_state(&root, &world_id, state.current_scene, &state.state)
+                    .map(|_| ())
+            }
+            None => Ok(()),
+        }
+    })
+    .map_err(|error| error.to_string())
 }
 
 /// 面板指認：把角色卡綁到狀態樹的某個分支；path 為 None／空陣列＝解除綁定。
@@ -80,20 +110,23 @@ pub(crate) fn set_branch_binding(
 ) -> Result<(), String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    match path.filter(|path| !path.is_empty()) {
-        Some(path) => {
-            // 一支分支只屬於一個角色：先清掉其他卡指到同一條路徑的舊綁定。
-            state
-                .branch_bindings
-                .retain(|other_id, bound| *other_id == character_id || *bound != path);
-            state.branch_bindings.insert(character_id, path);
+    data::update_state(&root, &world_id, |state| {
+        match path.filter(|path| !path.is_empty()) {
+            Some(path) => {
+                // 一支分支只屬於一個角色：先清掉其他卡指到同一條路徑的舊綁定。
+                state
+                    .branch_bindings
+                    .retain(|other_id, bound| *other_id == character_id || *bound != path);
+                state.branch_bindings.insert(character_id, path);
+            }
+            None => {
+                state.branch_bindings.remove(&character_id);
+            }
         }
-        None => {
-            state.branch_bindings.remove(&character_id);
-        }
-    }
-    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())
+        Ok(Some(()))
+    })
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 /// 面板記號：玩家把某欄標成計數器（例如卡片自訂的「第 N 天」，時間跳躍是那張卡的明文
@@ -107,16 +140,19 @@ pub(crate) fn mark_state_counter(
 ) -> Result<(), String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    let mut state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     let Some(first) = path.first() else {
         return Ok(());
     };
-    let mut rule = data::FieldRule::for_kind(data::FieldKind::Counter);
-    rule.branch = Some(first.clone());
-    let key = path.join(".");
-    state.mechanism.rules.insert(key.clone(), rule);
-    state.state.jumps.remove(&key);
-    data::write_state(&root, &world_id, &state).map_err(|error| error.to_string())
+    data::update_state(&root, &world_id, |state| {
+        let mut rule = data::FieldRule::for_kind(data::FieldKind::Counter);
+        rule.branch = Some(first.clone());
+        let key = path.join(".");
+        state.mechanism.rules.insert(key.clone(), rule);
+        state.state.jumps.remove(&key);
+        Ok(Some(()))
+    })
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 /// 面板要畫的有效綁定（含自動同名比對的結果）；解析不到分支的卡不進清單。

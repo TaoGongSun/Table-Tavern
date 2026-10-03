@@ -106,6 +106,65 @@ describe("chat controller with marker events", () => {
     expect(current().canRestore).toBe(false);
   });
 
+  it("GM 回合的正文與變動紀錄帶同一個 turn_id 與各自的 turn_part 落檔；點名與中止半截照規則帶或不帶", async () => {
+    const turns: { part: unknown; turnId: unknown; text: string }[] = [];
+    let narrateTurn: unknown = null;
+    let aborted = false;
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "gm_narrate") {
+        narrateTurn = args!.turnId;
+        return aborted
+          ? { text: "半截", raw: null, next: null, aborted: true }
+          : { text: "夜深了。", raw: null, next: "__PLAYER__", state_updates: [{ path: "hp", value: "3" }] };
+      }
+      if (command === "append_transcript") {
+        const event = args!.event as TranscriptEvent;
+        turns.push({ part: args!.turnPart, turnId: args!.turnId, text: event.text });
+        return event;
+      }
+      return null;
+    });
+    const { current } = mount("阿濤");
+    await act(async () => current().gmAdvance());
+    expect(turns).toEqual([
+      { part: "main", turnId: narrateTurn, text: "夜深了。" },
+      { part: "state_update", turnId: narrateTurn, text: "hp：3" },
+      { part: null, turnId: null, text: "" },
+    ]);
+    turns.length = 0;
+    aborted = true;
+    await act(async () => current().gmNarrate());
+    expect(turns).toEqual([{ part: "main", turnId: narrateTurn, text: "半截" }]);
+  });
+
+  it("正文落檔失敗用同一個冪等鍵重試；狀態沒寫成時照落正文並提示；復原時表以 JSON 文字送回保住鍵順序", async () => {
+    const calls: { part: unknown; turnId: unknown; vars: unknown }[] = [];
+    let failures = 2;
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "gm_narrate") return { text: "夜深了。", raw: null, next: null, state_error: "磁碟滿了" };
+      if (command === "append_transcript") {
+        const event = args!.event as TranscriptEvent;
+        calls.push({ part: args!.turnPart, turnId: args!.turnId, vars: event.message_vars });
+        if (args!.turnPart === "main" && failures > 0) {
+          failures -= 1;
+          throw new Error("io");
+        }
+        return { ...event, id: "e1", message_vars: { z: 1, a: 2 } };
+      }
+      if (command === "pop_transcript") return true;
+      return null;
+    });
+    const { current, errors } = mount("阿濤");
+    await act(async () => current().gmNarrate());
+    expect(calls.map((call) => call.part)).toEqual(["main", "main", "main"]);
+    expect(new Set(calls.map((call) => call.turnId)).size).toBe(1);
+    expect(errors).toContain("磁碟滿了");
+    expect(current().events).toHaveLength(1);
+    await act(async () => current().undoLast());
+    await act(async () => current().restoreUndone());
+    expect(calls[calls.length - 1].vars).toBe('{"z":1,"a":2}');
+  });
+
   it("stores an empty player name and still blocks blank unmarked events", async () => {
     const written: TranscriptEvent[] = [];
     invokeMock.mockImplementation(async (command, args) => {

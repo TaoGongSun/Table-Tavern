@@ -41,10 +41,12 @@ thread_local! {
     static RENAME_WAIT_COUNT: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAILS: Cell<u32> = const { Cell::new(0) };
     static APPEND_PARTIAL_FAILS: Cell<u32> = const { Cell::new(0) };
+    static WRITE_PARTIAL_FAILS: Cell<u32> = const { Cell::new(0) };
     static TRUNCATE_FAILS: Cell<u32> = const { Cell::new(0) };
     static TRUNCATE_CUT_THEN_FAIL: Cell<bool> = const { Cell::new(false) };
     static LEN_FAILS: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
+    static WRITE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -143,6 +145,59 @@ impl AppendFailGuard {
 impl Drop for AppendFailGuard {
     fn drop(&mut self) {
         APPEND_PARTIAL_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+/// 下幾次整檔寫入只寫進前半段就失敗（檔案停在半截），用來測覆寫途中失敗。
+#[cfg(test)]
+pub(crate) struct WriteFailGuard;
+
+#[cfg(test)]
+impl WriteFailGuard {
+    pub(crate) fn partial(times: u32) -> Self {
+        WRITE_PARTIAL_FAILS.with(|cell| cell.set(times));
+        Self
+    }
+
+    /// 只讓路徑以 `suffix` 結尾的整檔寫入停在半截（例如 `state.json.tmp`）：打在流程裡某支特定檔。
+    pub(crate) fn partial_ending(suffix: &str, times: u32) -> Self {
+        WRITE_FAIL_MATCH.with(|cell| *cell.borrow_mut() = Some(suffix.to_owned()));
+        Self::partial(times)
+    }
+}
+
+#[cfg(test)]
+impl Drop for WriteFailGuard {
+    fn drop(&mut self) {
+        WRITE_PARTIAL_FAILS.with(|cell| cell.set(0));
+        WRITE_FAIL_MATCH.with(|cell| *cell.borrow_mut() = None);
+    }
+}
+
+fn injected_partial_write(path: &Path) -> bool {
+    #[cfg(test)]
+    {
+        let targeted = WRITE_FAIL_MATCH.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .is_none_or(|suffix| path.to_string_lossy().ends_with(suffix.as_str()))
+        });
+        if !targeted {
+            return false;
+        }
+        WRITE_PARTIAL_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        })
+    }
+    #[cfg(not(test))]
+    {
+        let _ = path;
+        false
     }
 }
 
@@ -406,6 +461,10 @@ pub(crate) fn write_bytes_raw(path: &Path, bytes: &[u8]) -> DataResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
+    if injected_partial_write(path) {
+        fs::write(path, &bytes[..bytes.len() / 2])?;
+        return Err(std::io::Error::other("injected partial write").into());
+    }
     fs::write(path, bytes)?;
     Ok(())
 }
@@ -594,6 +653,21 @@ impl LockedFile<'_> {
         write_bytes_raw(self.path, bytes)
     }
 
+    /// 整檔原子寫：同目錄暫存檔寫好、fsync 後改名蓋上。中途失敗原檔不動。
+    pub(crate) fn write_atomic(&self, bytes: &[u8]) -> DataResult<()> {
+        self.writable()?;
+        let mut name = self.path.file_name().unwrap_or_default().to_os_string();
+        name.push(".tmp");
+        let temp = self.path.with_file_name(name);
+        let committed = write_bytes_raw(&temp, bytes)
+            .and_then(|()| fsync_file(&temp))
+            .and_then(|()| rename_path(&temp, self.path));
+        if committed.is_err() {
+            let _ = remove_path_raw(&temp);
+        }
+        committed
+    }
+
     pub(crate) fn remove(&self) -> DataResult<()> {
         self.writable()?;
         remove_path_raw(self.path)
@@ -664,6 +738,10 @@ fn truncate_raw(path: &Path, len: u64) -> DataResult<()> {
 
 pub(crate) fn commit_world_write(path: &Path, bytes: &[u8]) -> DataResult<()> {
     with_file_lock(path, |file| file.write(bytes))
+}
+
+pub(crate) fn commit_world_write_atomic(path: &Path, bytes: &[u8]) -> DataResult<()> {
+    with_file_lock(path, |file| file.write_atomic(bytes))
 }
 
 /// 追加並回傳收據（這段的起始位元組）。

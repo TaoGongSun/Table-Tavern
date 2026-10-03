@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { type WorldState } from "../shared/contracts/backend-contracts";
 
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 export const GM_TARGET = "__GM__";
@@ -69,8 +68,7 @@ export function useWorkspaceNavigationController({
   // 玩家卡是桌的屬性：第一次存檔才把 id 掛進 state，之後存檔只重載顯示（比照角色卡留在編輯器）
   async function finishPlayerCardSaved(id: string) {
     if (mainView?.kind === "new-player") {
-      const state = await invoke<WorldState>("read_state", { worldId });
-      await invoke("write_state", { worldId, state: { ...state, player_card_id: id } });
+      await invoke("set_player_card", { worldId, cardId: id });
       setMainView({ kind: "player", id });
     }
     await characters.reloadPlayer(id);

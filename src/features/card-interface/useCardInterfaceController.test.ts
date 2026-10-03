@@ -12,6 +12,11 @@ const backend = vi.hoisted(() => ({
   shell: null as string | null,
   mode: null as string | null,
   mvu: false,
+  active: false,
+  generation: 3,
+  varsHold: null as Promise<void> | null,
+  writes: [] as Record<string, unknown>[],
+  write: null as null | ((args: Record<string, unknown>) => Promise<unknown>),
 }));
 
 // 不用 $1 的殼：每一樓產出的殼字串都一樣，跟讀本樓的狀態欄殼同型
@@ -52,8 +57,16 @@ const mvuCard: CardInterface = {
 };
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async (command: string) => {
+  invoke: vi.fn(async (command: string, args: Record<string, unknown>) => {
     if (command === "card_interfaces") return [backend.mvu ? mvuCard : fixedCard];
+    if (command === "card_vars_state") {
+      if (backend.varsHold) await backend.varsHold;
+      return { generation: backend.generation, active: backend.active, scene: 0 };
+    }
+    if (command === "card_vars_write") {
+      backend.writes.push(args);
+      return backend.write ? backend.write(args) : null;
+    }
     if (command === "refactor_interface_shell") return backend.shell;
     if (command === "refactor_table_mode") return backend.mode;
     return null;
@@ -79,6 +92,8 @@ describe("useCardInterfaceController", () => {
   let controller: CardInterfaceController | null = null;
   let props = { worldId: "w1", events: [] as TranscriptEvent[], tree: {} as Record<string, StateNode> };
 
+  const updated: [TranscriptEvent, TranscriptEvent][] = [];
+
   function Probe() {
     controller = useCardInterfaceController({
       worldId: props.worldId,
@@ -86,6 +101,7 @@ describe("useCardInterfaceController", () => {
       tree: props.tree,
       userName: "阿濤",
       submitText,
+      onEventUpdated: (previous, next) => void updated.push([previous, next]),
     });
     return null;
   }
@@ -111,6 +127,12 @@ describe("useCardInterfaceController", () => {
     backend.mode = null;
     backend.shell = null;
     backend.mvu = false;
+    backend.active = false;
+    backend.generation = 3;
+    backend.varsHold = null;
+    backend.writes = [];
+    backend.write = null;
+    updated.length = 0;
     props = { worldId: "w1", events: [gm("<UI>第一樓</UI>")], tree: {} };
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -301,6 +323,210 @@ describe("useCardInterfaceController", () => {
       await render({ worldId: "w2", tree: { 玩家: { 金幣: "42" } } });
       expect(controller!.shellKey).not.toBe(key);
       expect(stat(1)).toEqual({ 玩家: { 金幣: 42 } });
+    });
+
+    describe("卡片變數模式（包 2a）", () => {
+      const tabled = (id: string, rev: string, gold: number, text = "第二回合正文"): TranscriptEvent => ({
+        ...gmTurn(text, String(gold)),
+        id,
+        vars_rev: rev,
+        message_vars: { stat_data: { 玩家: { 金幣: gold } } },
+      });
+      // 沙盒送來的訊息：source 是那支 iframe 的 window，宿主回覆就寄給它
+      function fromCard(data: Record<string, unknown>) {
+        const frame = { postMessage: vi.fn() };
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: { source: "table-tavern-card", token: controller!.shellKey, generation: 3, scene: 0, ...data },
+            source: frame as unknown as Window,
+          }),
+        );
+        return frame;
+      }
+
+      beforeEach(() => {
+        backend.active = true;
+      });
+
+      it("每樓讀事件上自己的表、沒有表回 {}；寫入目標是事件 id，舊事件是逐字稿位置", async () => {
+        const hidden = { ...player("只給 GM"), gm_only: true };
+        await render({ events: [tabled("e0", "r0", 1, "開場白"), hidden, playerAt("我進去", "1"), tabled("e3", "r3", 5)] });
+        const mvu = controller!.mvu!;
+        expect(mvu.active).toBe(true);
+        expect(mvu.states[mvu.floorState[0]]).toEqual({ stat_data: { 玩家: { 金幣: 1 } } });
+        expect(mvu.states[mvu.floorState[1]]).toEqual({});
+        expect(mvu.targets).toEqual([
+          { key: "e0", rev: "r0" },
+          { key: "@2", rev: null },
+          { key: "e3", rev: "r3" },
+        ]);
+      });
+
+      it("卡寫：送後端帶世代、場、目標與預期版本；確認後換進逐字稿並回覆沙盒", async () => {
+        const events = [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)];
+        await render({ events });
+        await act(async () => controller!.open());
+        const committed = { ...events[1], vars_rev: "r2", message_vars: { stat_data: { 玩家: { 金幣: 6 } } } };
+        backend.write = async () => ({ status: "ok", event: committed });
+        let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+        await act(async () => {
+          frame = fromCard({
+            kind: "mvu-write",
+            requestId: "q1",
+            target: "e1",
+            base: "r1",
+            payload: '{"stat_data":{"玩家":{"金幣":6}}}',
+          });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(backend.writes).toEqual([
+          {
+            worldId: "w1",
+            generation: 3,
+            scene: 0,
+            target: { id: "e1" },
+            expectedRev: "r1",
+            varsJson: '{"stat_data":{"玩家":{"金幣":6}}}',
+          },
+        ]);
+        expect(updated).toEqual([[events[1], committed]]);
+        expect(frame!.postMessage).toHaveBeenCalledWith(
+          {
+            source: "table-tavern-host",
+            kind: "mvu-settle",
+            token: controller!.shellKey,
+            results: [{ requestId: "q1", ok: true, rev: "r2" }],
+            authority: undefined,
+          },
+          { targetOrigin: "*" },
+        );
+      });
+
+      it("舊事件（沒有 id）首次寫入後換成帶 id 的那則；被拒時權威表與版本也換進逐字稿", async () => {
+        const legacy = gmTurn("沒有 id 的舊回合正文", "3");
+        const events = [tabled("e0", "r0", 1, "第一回合的正文"), legacy];
+        await render({ events });
+        await act(async () => controller!.open());
+        const committed = { ...legacy, id: "new", vars_rev: "r5", message_vars: { stat_data: { x: 1 } } };
+        backend.write = async () => ({ status: "ok", event: committed });
+        await act(async () => {
+          fromCard({ kind: "mvu-write", requestId: "q1", target: "@1", base: null, payload: '{"stat_data":{"x":1}}' });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(backend.writes[0]).toMatchObject({ target: { index: 1, legacy }, expectedRev: null });
+        expect(updated).toEqual([[legacy, committed]]);
+        // 被拒：權威表與版本換進宿主逐字稿
+        backend.write = async () => ({ status: "stale", found: true, rev: "r9", table: '{"stat_data":{"x":9}}' });
+        await act(async () => {
+          fromCard({ kind: "mvu-write", requestId: "q2", target: "e0", base: "r0", payload: "{}" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(updated[1][1]).toMatchObject({ id: "e0", vars_rev: "r9", message_vars: { stat_data: { x: 9 } } });
+      });
+
+      it("舊事件連寫第二筆：第一筆配到 id 後，在飛期間排著的那筆改送到新 id（不再送 legacy），沙盒收到搬家通知", async () => {
+        const legacy = gmTurn("沒有 id 的舊回合正文", "3");
+        const events = [tabled("e0", "r0", 1, "第一回合的正文"), legacy];
+        await render({ events });
+        await act(async () => controller!.open());
+        const committed = { ...legacy, id: "new", vars_rev: "r5", message_vars: { stat_data: { x: 1 } } };
+        let finishFirst!: (value: unknown) => void;
+        backend.write = () => new Promise((resolve) => (finishFirst = resolve));
+        let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+        await act(async () => {
+          fromCard({ kind: "mvu-write", requestId: "q1", target: "@1", base: null, payload: '{"stat_data":{"x":1}}' });
+          frame = fromCard({ kind: "mvu-write", requestId: "q2", target: "@1", base: null, payload: '{"stat_data":{"x":2}}' });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(backend.writes).toHaveLength(1);
+        backend.write = async () => ({ status: "ok", event: { ...committed, vars_rev: "r6", message_vars: { stat_data: { x: 2 } } } });
+        await act(async () => {
+          finishFirst({ status: "ok", event: committed });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(backend.writes).toHaveLength(2);
+        expect(backend.writes[1]).toMatchObject({ target: { id: "new" }, expectedRev: "r5", varsJson: '{"stat_data":{"x":2}}' });
+        expect(frame!.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: "mvu-settle", migrate: { from: "@1", to: "new" } }),
+          { targetOrigin: "*" },
+        );
+        expect(updated.map(([, next]) => next.vars_rev)).toEqual(["r5", "r6"]);
+      });
+
+      it("在飛時桌世代變了（同 id 備份還原）：晚到的成功結果不換進逐字稿、回 stale；殼換新 key、舊佇列關閉", async () => {
+        const events = [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)];
+        await render({ events });
+        await act(async () => controller!.open());
+        const oldKey = controller!.shellKey;
+        let finish!: (value: unknown) => void;
+        backend.write = () => new Promise((resolve) => (finish = resolve));
+        let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+        await act(async () => {
+          frame = fromCard({ kind: "mvu-write", requestId: "q1", target: "e1", base: "r1", payload: "{}" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        backend.generation = 4;
+        await act(async () => {
+          finish({ status: "ok", event: { ...events[1], vars_rev: "r2" } });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(updated).toEqual([]);
+        expect(frame!.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: "mvu-settle", results: [{ requestId: "q1", ok: false, error: "stale" }] }),
+          { targetOrigin: "*" },
+        );
+        expect(controller!.mvu!.generation).toBe(4);
+        expect(controller!.shellKey).not.toBe(oldKey);
+      });
+
+      it("身分核對還在等的時候切桌：核對回來世代沒變也不換進逐字稿（新桌同 id 的那則不受影響）", async () => {
+        const events = [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)];
+        await render({ events });
+        await act(async () => controller!.open());
+        let release!: () => void;
+        backend.varsHold = new Promise<void>((resolve) => (release = resolve));
+        backend.write = async () => ({ status: "ok", event: { ...events[1], vars_rev: "r2" } });
+        await act(async () => {
+          fromCard({ kind: "mvu-write", requestId: "q1", target: "e1", base: "r1", payload: "{}" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(backend.writes).toHaveLength(1);
+        // 核對卡在 card_vars_state：這時切到另一桌（同 id 的事件）
+        await render({ worldId: "w2", events: [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)] });
+        await act(async () => {
+          release();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(updated).toEqual([]);
+      });
+
+      it("token 不對的寫入不理；關面板時未結算的寫入一律 closed", async () => {
+        const events = [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)];
+        await render({ events });
+        await act(async () => controller!.open());
+        backend.write = () => new Promise(() => {});
+        await act(async () => {
+          fromCard({ kind: "mvu-write", token: "別的殼", requestId: "x", target: "e1", base: "r1", payload: "{}" });
+        });
+        expect(backend.writes).toHaveLength(0);
+        let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+        await act(async () => {
+          frame = fromCard({ kind: "mvu-write", requestId: "q1", target: "e1", base: "r1", payload: "{}" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(backend.writes).toHaveLength(1);
+        await act(async () => controller!.close());
+        expect(frame!.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: "mvu-settle", results: [{ requestId: "q1", ok: false, error: "closed" }] }),
+          { targetOrigin: "*" },
+        );
+      });
     });
 
     it("沒有 MVU 卡的桌不給 MVU 快照、不補占位", async () => {

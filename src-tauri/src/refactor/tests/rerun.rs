@@ -210,6 +210,11 @@ fn rerun_status_covers_fresh_ready_played_and_no_source() {
 
     // 開場白以外多一則訊息＝已遊玩，擋下時不動任何檔案
     let played = data::TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
         ts: "2026-10-03T10:01:00".to_owned(),
         speaker_id: String::new(),
         speaker_name: "玩家".to_owned(),

@@ -4,32 +4,29 @@ use crate::transport::translate;
 use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
 use serde::Serialize;
-use std::path::Path;
 
-/// 事件沒帶快照就補上目前檯面，補法與 data::append_transcript 內部那份一致；差別在這裡
-/// 補完的要回傳給前端。前端記憶體裡的事件從一開始就帶著快照，收回後復原才送得回當時的值
-/// ——否則後端只能拿回捲後的檯面當它的快照，狀態欄會停在收回後的舊值。
-fn stamp_state(root: &Path, world_id: &str, mut event: TranscriptEvent) -> TranscriptEvent {
-    if event.state.is_none() {
-        event.state = data::read_state(root, world_id)
-            .ok()
-            .map(|state| state.state);
-    }
-    event
-}
-
+/// 前端落一則：事件沒帶快照就由後端補上目前檯面，補完的那份（含配發的 ID）回給前端——前端記憶體裡的
+/// 事件從一開始就帶著快照，收回後復原才送得回當時的值。GM 回合的正文與變動紀錄帶 `turn_id`／`turn_part`
+/// 冪等鍵（計畫 8.3）：同鍵重試回原事件，`main` 掛上回合算好的變數表。
 #[tauri::command]
 pub(crate) fn append_transcript(
     app: tauri::AppHandle,
     world_id: String,
     scene: u64,
     event: TranscriptEvent,
+    turn_id: Option<String>,
+    turn_part: Option<String>,
 ) -> Result<TranscriptEvent, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    let event = stamp_state(&root, &world_id, event);
-    data::append_transcript(&root, &world_id, scene, &event).map_err(|error| error.to_string())?;
-    Ok(event)
+    let turn = match (turn_id, turn_part) {
+        (Some(turn_id), Some(part)) => Some(data::message_vars::TurnKey { turn_id, part }),
+        (None, None) => None,
+        _ => return Err("turn_id 與 turn_part 要一起給".to_owned()),
+    };
+    data::append_event(&root, &world_id, scene, &event, turn.as_ref())
+        .map(|(event, _)| event)
+        .map_err(|error| error.to_string())
 }
 
 /// 玩家打字送出的那句：同 append_transcript，另回追加收據（這一行在檔裡的起始位元組），
@@ -49,10 +46,12 @@ pub(crate) fn append_player_event(
 ) -> Result<PlayerAppend, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    let event = stamp_state(&root, &world_id, event);
-    let offset = data::append_transcript(&root, &world_id, scene, &event)
+    let (event, offset) = data::append_event(&root, &world_id, scene, &event, None)
         .map_err(|error| error.to_string())?;
-    Ok(PlayerAppend { event, offset })
+    Ok(PlayerAppend {
+        event,
+        offset: offset.unwrap_or_default(),
+    })
 }
 
 /// 收回沒有回覆的玩家句：true＝確定已刪；false＝尾筆不是這句或結果不明，什麼都別假設。
@@ -404,6 +403,11 @@ mod tests {
             &world_id,
             0,
             &data::TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -425,6 +429,11 @@ mod tests {
             &world_id,
             0,
             &data::TranscriptEvent {
+                id: None,
+                message_vars: None,
+                vars_rev: None,
+                vars_epoch: None,
+                turn_key: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -469,6 +478,11 @@ mod tests {
         data::write_state(&root, &world_id, &world).unwrap();
 
         let bare = data::TranscriptEvent {
+            id: None,
+            message_vars: None,
+            vars_rev: None,
+            vars_epoch: None,
+            turn_key: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -481,19 +495,23 @@ mod tests {
             marker: None,
             opening: false,
         };
-        let stamped = super::stamp_state(&root, &world_id, bare.clone());
+        let (stamped, _) = data::append_event(&root, &world_id, 0, &bare, None).unwrap();
         assert_eq!(stamped.state.as_ref().unwrap().table["時辰"], "清晨");
+        assert!(stamped.id.is_some());
 
         let mut carried = world.state.clone();
         carried.table.insert("時辰".to_owned(), "午夜".to_owned());
-        let kept = super::stamp_state(
+        let (kept, _) = data::append_event(
             &root,
             &world_id,
-            data::TranscriptEvent {
+            0,
+            &data::TranscriptEvent {
                 state: Some(carried.clone()),
                 ..bare
             },
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(kept.state, Some(carried));
 
         std::fs::remove_dir_all(&root).unwrap();

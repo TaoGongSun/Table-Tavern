@@ -4,6 +4,8 @@
 const COPY = {
   "zh-TW": {
     be_world_busy: "這張桌正在處理中，請稍候再試",
+    be_state_edit_during_turn: "GM 正在回覆，等這一輪落定再改狀態",
+    be_scene_change_during_turn: "GM 正在回覆，等這一輪落定再換幕",
     be_world_not_found: "找不到這張桌",
     be_world_converting: "這張桌正在轉換或需要修復，不能寫入",
     be_world_read_only: "這張桌是唯讀，不能寫入",
@@ -72,6 +74,8 @@ const COPY = {
   },
   "zh-CN": {
     be_world_busy: "这张桌正在处理中，请稍后再试",
+    be_state_edit_during_turn: "GM 正在回复，等这一轮落定再改状态",
+    be_scene_change_during_turn: "GM 正在回复，等这一轮落定再换幕",
     be_world_not_found: "找不到这张桌",
     be_world_converting: "这张桌正在转换或需要修复，不能写入",
     be_world_read_only: "这张桌是只读的，不能写入",
@@ -140,6 +144,8 @@ const COPY = {
   },
   en: {
     be_world_busy: "This table is busy. Try again in a moment.",
+    be_state_edit_during_turn: "The GM is still replying. Edit the state once this turn lands.",
+    be_scene_change_during_turn: "The GM is still replying. Change scenes once this turn lands.",
     be_world_not_found: "This table couldn't be found.",
     be_world_converting: "This table is being converted or needs repair, so it can't be saved to.",
     be_world_read_only: "This table is read-only and can't be saved to.",
@@ -219,6 +225,8 @@ const COPY = {
   },
   ja: {
     be_world_busy: "この卓は処理中です。少し待ってからもう一度試してください。",
+    be_state_edit_during_turn: "GM が返信中です。このターンが確定してから状態を変更してください。",
+    be_scene_change_during_turn: "GM が返信中です。このターンが確定してから場面を切り替えてください。",
     be_world_not_found: "この卓が見つかりません。",
     be_world_converting: "この卓は変換中か修復が必要なため、書き込めません。",
     be_world_read_only: "この卓は読み取り専用のため、書き込めません。",
@@ -289,6 +297,8 @@ const COPY = {
   },
   ko: {
     be_world_busy: "이 테이블은 처리 중입니다. 잠시 후 다시 시도하세요.",
+    be_state_edit_during_turn: "GM이 답하는 중입니다. 이번 턴이 끝난 뒤 상태를 수정하세요.",
+    be_scene_change_during_turn: "GM이 답하는 중입니다. 이번 턴이 끝난 뒤 장면을 바꾸세요.",
     be_world_not_found: "이 테이블을 찾을 수 없습니다.",
     be_world_converting: "이 테이블은 변환 중이거나 복구가 필요해서 저장할 수 없습니다.",
     be_world_read_only: "이 테이블은 읽기 전용이라 저장할 수 없습니다.",
@@ -359,6 +369,8 @@ const COPY = {
   },
   es: {
     be_world_busy: "Esta mesa está ocupada. Prueba de nuevo en un momento.",
+    be_state_edit_during_turn: "El GM aún está respondiendo. Edita el estado cuando termine este turno.",
+    be_scene_change_during_turn: "El GM aún está respondiendo. Cambia de escena cuando termine este turno.",
     be_world_not_found: "No se encontró esta mesa.",
     be_world_converting:
       "Esta mesa se está convirtiendo o necesita reparación; no se puede guardar en ella.",
@@ -441,6 +453,8 @@ const COPY = {
   },
   "pt-BR": {
     be_world_busy: "Esta mesa está ocupada. Tente de novo daqui a pouco.",
+    be_state_edit_during_turn: "O GM ainda está respondendo. Edite o estado quando este turno terminar.",
+    be_scene_change_during_turn: "O GM ainda está respondendo. Mude de cena quando este turno terminar.",
     be_world_not_found: "Esta mesa não foi encontrada.",
     be_world_converting:
       "Esta mesa está sendo convertida ou precisa de reparo; não dá para gravar nela.",
@@ -520,6 +534,8 @@ const COPY = {
   },
   de: {
     be_world_busy: "Dieser Tisch ist beschäftigt. Gleich noch einmal versuchen.",
+    be_state_edit_during_turn: "Der GM antwortet noch. Ändere den Status, wenn dieser Zug fertig ist.",
+    be_scene_change_during_turn: "Der GM antwortet noch. Wechsle die Szene, wenn dieser Zug fertig ist.",
     be_world_not_found: "Dieser Tisch wurde nicht gefunden.",
     be_world_converting:
       "Dieser Tisch wird gerade umgewandelt oder muss repariert werden und kann nicht beschrieben werden.",
@@ -606,6 +622,8 @@ const COPY = {
   },
   fr: {
     be_world_busy: "Cette table est occupée. Réessaie dans un instant.",
+    be_state_edit_during_turn: "Le MJ répond encore. Modifie l'état une fois ce tour terminé.",
+    be_scene_change_during_turn: "Le MJ répond encore. Change de scène une fois ce tour terminé.",
     be_world_not_found: "Table introuvable.",
     be_world_converting:
       "Cette table est en cours de conversion ou doit être réparée\u00a0: impossible d'y enregistrer.",
@@ -688,6 +706,8 @@ const COPY = {
   },
   ru: {
     be_world_busy: "Этот стол занят. Попробуй чуть позже.",
+    be_state_edit_during_turn: "Мастер ещё отвечает. Измени состояние, когда этот ход завершится.",
+    be_scene_change_during_turn: "Мастер ещё отвечает. Смени сцену, когда этот ход завершится.",
     be_world_not_found: "Этот стол не найден.",
     be_world_converting: "Этот стол конвертируется или требует восстановления — запись невозможна.",
     be_world_read_only: "Этот стол только для чтения — запись невозможна.",

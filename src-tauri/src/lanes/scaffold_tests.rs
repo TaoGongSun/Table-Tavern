@@ -36,6 +36,11 @@ pub(super) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> C
 
 fn event(kind: TranscriptKind, id: &str, name: &str, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
         raw: None,
         ts: "2026-10-03T12:00:00+08:00".to_owned(),
         speaker_id: id.to_owned(),

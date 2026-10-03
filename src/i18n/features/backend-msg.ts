@@ -139,6 +139,8 @@ export type BackendParamType = "string" | "number" | "boolean";
 export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>> = {
   io_failed: { error: "string" },
   world_busy: {},
+  state_edit_during_turn: {},
+  scene_change_during_turn: {},
   world_not_found: {},
   world_converting: {},
   world_read_only: {},

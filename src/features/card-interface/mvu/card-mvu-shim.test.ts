@@ -1,19 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { type CardChat } from "./card-chat-shim";
-import { applyScripts, buildShellDocument, extractShell, type InterfaceScript } from "./interface-card";
+import { type CardChat } from "../card-chat-shim";
+import { applyScripts, buildShellDocument, extractShell, type InterfaceScript } from "../interface-card";
 import {
   buildCardMvu,
   buildMvuData,
   buildMvuShimSource,
   floorSources,
+  hasStatData,
   restoreLeaf,
   withMvuPlaceholder,
   type CardMvu,
   type MvuData,
   type StateTree,
 } from "./card-mvu-shim";
-import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import { type TranscriptEvent } from "../../../shared/contracts/backend-contracts";
 
 const macros = { user: "阿濤", char: "迷宮" };
 // 沙盒最前面內嵌的就是這份 lodash；單元測試的假 window 也先放上去
@@ -237,6 +238,39 @@ describe("buildCardMvu", () => {
     expect(mvu.floorState).toEqual([0]);
     expect(mvu.states[0].stat_data).toEqual({ 金: 3 });
     expect(mvu.latestId).toBe(0);
+    expect(mvu.targets).toEqual([null]);
+    expect(mvu.active).toBe(false);
+  });
+
+  it("卡片變數模式：每樓讀事件上自己的表（不往前繼承、沒有表回 {}）；寫入目標是 id，舊事件用逐字稿位置", () => {
+    const table = { stat_data: { 金: 5 }, schema: { k: 1 } };
+    const events: TranscriptEvent[] = [
+      { ...gmEv("1"), id: "e0", vars_rev: "r0", message_vars: table },
+      playerEv("1"),
+      { ...gmEv("2"), id: "e2", vars_rev: "r2", message_vars: { display_data: {} } },
+      { ...sysEv("2"), id: "e3" },
+    ];
+    const mvu = buildCardMvu({
+      events,
+      positions: [0, 2, 3, 5],
+      roles: ["assistant", "user", "assistant", "system"],
+      currentId: 2,
+      liveTree: { 金: "9" },
+      valueTypes: {},
+      macros,
+      active: true,
+    });
+    expect(mvu.active).toBe(true);
+    expect(mvu.floorState.map((index) => mvu.states[index])).toEqual([table, {}, { display_data: {} }, {}]);
+    expect(mvu.states).toHaveLength(3);
+    expect(mvu.targets).toEqual([
+      { key: "e0", rev: "r0" },
+      { key: "@2", rev: null },
+      { key: "e2", rev: "r2" },
+      { key: "e3", rev: null },
+    ]);
+    expect(hasStatData(mvu, 0)).toBe(true);
+    expect(hasStatData(mvu, 2)).toBe(false);
   });
 });
 
@@ -287,6 +321,10 @@ const snapshot: CardMvu = {
   latestId: 2,
   states: [data({ 金: 1, 物品: { 劍: 1 } }), data({ 金: 5, 物品: { 劍: 1 }, 舊式: [7, "說明"] })],
   floorState: [0, 0, 1, 1],
+  targets: [0, 1, 2, 3].map((floor) => ({ key: `e${floor}`, rev: null })),
+  active: false,
+  generation: 3,
+  scene: 0,
 };
 
 function sandbox(mvu: CardMvu = snapshot, token = "tok"): MvuSandbox {
@@ -326,7 +364,7 @@ describe("MVU 墊片：讀取", () => {
 
   it("快照裡的 __proto__ 鍵照樣是自有資料", () => {
     const tricky = JSON.parse('{"__proto__": {"x": 1}, "金": 2}') as Record<string, unknown>;
-    const win = sandbox({ currentId: 0, latestId: 0, states: [data(tricky)], floorState: [0] });
+    const win = sandbox({ currentId: 0, latestId: 0, states: [data(tricky)], floorState: [0], targets: [null], active: false, generation: 3, scene: 0 });
     const stat = win.getAllVariables().stat_data;
     expect(Object.keys(stat)).toEqual(["__proto__", "金"]);
     expect(Object.getPrototypeOf(stat)).toBe(Object.prototype);
@@ -422,13 +460,6 @@ describe("MVU 墊片：讀取", () => {
     expect(win.Mvu.getMvuVariable({ stat_data: { v: [1, 2] } }, "v")).toEqual([1, 2]);
     // 上游用 _.get：原型鏈上的 constructor 也取得到，不回預設值
     expect(win.Mvu.getMvuVariable(vars, "constructor", { default_value: "無" })).toBe(Object);
-  });
-
-  it("寫入類函式本包不定義", () => {
-    const win = sandbox() as unknown as Record<string, unknown> & { Mvu: Record<string, unknown> };
-    expect(win.Mvu.setMvuVariable).toBeUndefined();
-    expect(win.Mvu.replaceMvuData).toBeUndefined();
-    expect(win.replaceVariables).toBeUndefined();
   });
 });
 
@@ -672,10 +703,49 @@ $(errorCatched(init));
     expect(sent).toContainEqual({ source: "table-tavern-card", kind: "input", text: "前進" });
     win.close();
   });
+
+  it("卡片寫入：整份文件裡 Mvu.replaceMvuData 送出整張表、宿主確認才 resolve，畫面即時換值", async () => {
+    const chat = oneFloorChat("x");
+    const active: CardMvu = { ...mvuOf({ 玩家: { 金幣: "5" } }), targets: [{ key: "e0", rev: "r0" }], active: true, generation: 3, scene: 0 };
+    const writer = shell.replace(
+      "$(errorCatched(init));",
+      `$(errorCatched(init));
+window.spend = async function () {
+  var data = Mvu.getMvuData({ type: 'message', message_id: 0 });
+  await Mvu.setMvuVariable(data, '玩家.金幣', 4);
+  var done = Mvu.replaceMvuData(data, { type: 'message', message_id: 0 });
+  render();
+  await done;
+  window.settled = true;
+};`,
+    );
+    const win = await runDocument(buildShellDocument(writer, {}, { chat, token: "tok", mvu: active }));
+    const sent: { kind?: string; requestId?: string; target?: string; payload?: string }[] = [];
+    win.addEventListener("message", (event) => {
+      if ((event.data as { source?: string }).source === "table-tavern-card") sent.push(event.data as never);
+    });
+    void (win as unknown as { spend: () => Promise<void> }).spend();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const text = (id: string) => win.document.getElementById(id)?.textContent;
+    expect(text("gold")).toBe("4");
+    const write = sent.find((message) => message.kind === "mvu-write")!;
+    expect(write.target).toBe("e0");
+    expect(JSON.parse(write.payload!).stat_data).toEqual({ 玩家: { 金幣: 4 } });
+    expect((win as unknown as { settled?: boolean }).settled).toBeUndefined();
+    win.dispatchEvent(
+      new win.MessageEvent("message", {
+        data: { source: "table-tavern-host", kind: "mvu-settle", token: "tok", results: [{ requestId: write.requestId, ok: true, rev: "r1" }] },
+        source: win as unknown as Window,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((win as unknown as { settled?: boolean }).settled).toBe(true);
+    win.close();
+  });
 });
 
 // TestCards/ 是 gitignore 的本機測試卡：有才跑，CI 上略過
-const cardsDir = new URL("../../../TestCards/", import.meta.url);
+const cardsDir = new URL("../../../../TestCards/", import.meta.url);
 const hasCards = existsSync(new URL("DongeonMaster.png", cardsDir)) && existsSync(new URL(BCD, cardsDir));
 
 function cardScript(file: string, scriptName: string): InterfaceScript {

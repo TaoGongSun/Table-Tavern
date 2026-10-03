@@ -101,11 +101,22 @@ pub(super) fn import_table_tavern_extension(
     }
     if let Some(initial) = extension.get("initial") {
         if let Ok(initial) = serde_json::from_value::<StateNode>(initial.clone()) {
-            match world.state.tree.get_mut(name) {
-                Some(existing) => merge_state_node(existing, initial, true),
-                None => {
-                    world.state.tree.insert(name.to_owned(), initial);
+            let merge = |tree: &mut BTreeMap<String, StateNode>| {
+                match tree.get_mut(name) {
+                    Some(existing) => merge_state_node(existing, initial.clone(), true),
+                    None => {
+                        tree.insert(name.to_owned(), initial.clone());
+                    }
                 }
+                true
+            };
+            // 卡片變數模式只改初始化來源那一份（計畫 8.4）；樹模式照舊改 state.json 的樹
+            if data::message_vars::edit_tree_if_events(root, world_id, merge).unwrap_or(false) {
+                if let Ok(projected) = data::read_state(root, world_id) {
+                    world.state.tree = projected.state.tree;
+                }
+            } else {
+                merge(&mut world.state.tree);
             }
             changed = true;
         }
@@ -156,13 +167,25 @@ pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
         return;
     };
     if let Some(tree) = initial_tree {
-        for (key, node) in tree {
-            match world.state.tree.get_mut(&key) {
-                Some(existing) => merge_state_node(existing, node, false),
-                None => {
-                    world.state.tree.insert(key, node);
+        let fill = |target: &mut BTreeMap<String, StateNode>| {
+            let before = target.clone();
+            for (key, node) in &tree {
+                match target.get_mut(key) {
+                    Some(existing) => merge_state_node(existing, node.clone(), false),
+                    None => {
+                        target.insert(key.clone(), node.clone());
+                    }
                 }
             }
+            *target != before
+        };
+        // 卡片變數模式：initvar 只補進初始化來源那一份（計畫 8.4），其他幕的種子不動
+        if data::message_vars::edit_tree_if_events(root, world_id, fill).unwrap_or(false) {
+            if let Ok(projected) = data::read_state(root, world_id) {
+                world.state.tree = projected.state.tree;
+            }
+        } else {
+            fill(&mut world.state.tree);
         }
     }
     for (path, rule) in rules {

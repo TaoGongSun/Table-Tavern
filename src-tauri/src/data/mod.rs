@@ -4,9 +4,11 @@ use std::error::Error;
 mod character;
 mod config;
 mod format;
+pub mod message_vars;
 mod paths;
 mod scene;
 mod state;
+pub mod state_commit;
 #[cfg(test)]
 mod test_support;
 mod world;
@@ -34,16 +36,18 @@ pub use scene::{
     EventMarker,
 };
 pub use scene::{
-    append_opening, append_transcript, begin_next_scene, discard_unanswered_player,
-    export_scene_markdown, export_transcript_markdown, fork_scene, opening_checkpoint,
-    pop_transcript, read_transcript, remove_transcript_event, replace_scene_summary, revert_scene,
-    scene_label, set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
+    append_event, append_opening, append_transcript, append_within_turn, begin_next_scene,
+    discard_unanswered_player, export_scene_markdown, export_transcript_markdown, fork_scene,
+    opening_checkpoint, pop_transcript, read_transcript, remove_transcript_event,
+    replace_scene_summary, revert_scene, scene_label, set_last_transcript_state,
+    settle_pending_turn, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
 };
 pub(crate) use scene::{lang_key, name_matches, player_fallback_name, split_present_names};
 pub(crate) use state::is_false;
 pub use state::{
-    node_at, read_state, set_tree_value, write_state, Condition, FieldKind, FieldRule, InjectLevel,
-    Mechanism, StateNode, TableState, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState,
+    node_at, read_state, set_player_card, set_tree_value, update_state, write_state, Condition,
+    FieldKind, FieldRule, InjectLevel, Mechanism, StateNode, TableState, Trigger, TriggerCase,
+    TriggerMode, UpdateMode, WorldState,
 };
 pub use world::{
     create_reset_world, create_sample_world, create_world, delete_world, list_worlds,
@@ -55,6 +59,7 @@ pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_wor
 #[cfg(test)]
 pub(crate) use world_file::{
     write_hook, AppendFailGuard, RemoveFailGuard, RenameFailGuard, TruncateFailGuard,
+    WriteFailGuard,
 };
 #[cfg(test)]
 pub(crate) use world_lock::test_exclusive;

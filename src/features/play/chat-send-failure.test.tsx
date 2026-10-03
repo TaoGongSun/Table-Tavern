@@ -228,6 +228,37 @@ describe("chat turn failures", () => {
     expect(h.failures).toEqual([{ raw: "list broke", draft: "你好" }]);
   });
 
+  it("a GM reply that never landed shows up before the next player line, as the backend lands it", async () => {
+    const disk: TranscriptEvent[] = [];
+    const handlers: Record<string, Handler> = {
+      append_player_event: (args) => {
+        disk.push(args.event as TranscriptEvent);
+        return { event: args.event, offset: 1 };
+      },
+      gm_narrate: () => ({ text: "門開了。", raw: null, next: null }),
+      append_transcript: () => Promise.reject("disk full"),
+      discard_unanswered_player: () => false,
+      read_transcript: () => [...disk],
+    };
+    const h = mount(handlers, { gm: true });
+    await typeAndSend(h, "你好");
+    expect(h.count("append_transcript")).toBe(3);
+    expect(h.failures).toEqual([{ raw: "disk full", draft: "你好" }]);
+    // 下一句送出：後端在玩家句之前代落了上一輪的 GM 回覆
+    handlers.append_player_event = (args) => {
+      disk.push({ ts: "gm", speaker_id: "", speaker_name: "GM", kind: "narration", text: "門開了。" });
+      disk.push(args.event as TranscriptEvent);
+      return { event: args.event, offset: 2 };
+    };
+    handlers.gm_narrate = () => ({ text: "又開了一扇。", raw: null, next: null });
+    handlers.append_transcript = (args) => args.event;
+    await typeAndSend(h, "再一句");
+    const order = h.calls.map((call) => call.command);
+    const sent = order.lastIndexOf("append_player_event");
+    expect(order.slice(sent, sent + 3)).toEqual(["append_player_event", "read_transcript", "gm_narrate"]);
+    expect(h.chat().events.map((event) => event.text)).toEqual(["你好", "門開了。", "再一句", "又開了一扇。"]);
+  });
+
   it("removes only this turn's object even when an identical line is already on screen", async () => {
     const h = mount({
       append_player_event: () => ({ event: playerEvent("再說一次", "same"), offset: 80 }),
@@ -611,7 +642,8 @@ describe("chat turn failures", () => {
       await typeAndSend(h, "你好");
       expect(h.count("append_player_event")).toBe(0);
       await act(async () => {
-        restore.resolve(null);
+        // 後端回傳落檔的那則（帶表的事件版本會換新），畫面放回的是這份
+        restore.resolve(playerEvent("上一句", "t0"));
         await restoring;
       });
       expect(h.chat().events.map((event) => event.text)).toEqual(["上一句"]);

@@ -24,8 +24,10 @@ pub(crate) async fn refactor_apply(
     let root = data_root(&app)?;
     let before =
         receipts::snapshot_refactor(&root, &world_id).map_err(|error| error.to_string())?;
-    let result = refactor::apply(&root, &world_id, &outcome, &selection)
-        .map_err(|error| error.to_string())?;
+    let result = refactor::apply(&root, &world_id, &outcome, &selection);
+    // 整桌交換（計畫 8.4）：清回合紀錄、桌世代加一，舊殼的在途卡寫被擋
+    data::message_vars::world_swapped(&root, &world_id);
+    let result = result.map_err(|error| error.to_string())?;
     if record_receipt.unwrap_or(true) {
         receipts::record_refactor_apply(
             &root,

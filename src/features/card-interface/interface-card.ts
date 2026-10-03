@@ -1,7 +1,7 @@
 // ST 角色卡的「顯示用 regex 腳本」轉換層：把模型輸出套上卡片自帶的 regex，
 // 抽出內嵌的整頁 HTML 介面，再組成可直接餵給沙盒 iframe srcdoc 的文件。
 import { buildChatShimSource, type CardChat } from "./card-chat-shim";
-import { buildMvuShimSource, type CardMvu } from "./card-mvu-shim";
+import { buildMvuShimSource, type CardMvu } from "./mvu/card-mvu-shim";
 import { buildSandboxLibs } from "./card-sandbox-libs";
 
 export interface InterfaceScript {

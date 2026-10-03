@@ -2,7 +2,7 @@ use super::character::{
     delete_character, read_character, write_character, CharacterCard, CharacterMeta,
 };
 use super::paths::{validate_single_line, world_dir};
-use super::state::{read_state, write_state};
+use super::state::read_state;
 use super::{invalid_data, new_id, DataResult, Tier};
 use crate::mechanism::{Record, RecordKind};
 use crate::ui_msg::UiMsg;
@@ -524,7 +524,7 @@ pub fn worldbook_entry_to_character(
     }
     validate_single_line("name", &entry.title)?;
 
-    let mut state = if as_player {
+    let state = if as_player {
         let state = read_state(root, world_id)?;
         if state.player_card_id.is_some() {
             return Err(UiMsg::PlayerCardExists.into_error());
@@ -547,9 +547,8 @@ pub fn worldbook_entry_to_character(
     };
 
     write_character(root, world_id, &card)?;
-    if let Some(state) = state.as_mut() {
-        state.player_card_id = Some(card.id.clone());
-        write_state(root, world_id, state)?;
+    if state.is_some() {
+        super::state::set_player_card(root, world_id, Some(card.id.clone()))?;
     }
     delete_worldbook_entry(root, world_id, uid)?;
 

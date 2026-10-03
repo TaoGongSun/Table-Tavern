@@ -2,7 +2,7 @@
 // 純函式，controller 只負責接線。
 import { findShell, type CardInterface } from "./interface-card";
 import { chatEvents, floorText, type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
-import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type StateTree } from "./card-mvu-shim";
+import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type StateTree } from "./mvu/card-mvu-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
@@ -68,8 +68,9 @@ export function pickCardShell(input: {
   cardInterfaces: CardInterface[];
   /** 原卡欄位型別（mechanism.value_types）：決定骨架裡數字／布林要不要加引號 */
   valueTypes?: Record<string, string>;
-  /** 目前狀態樹（含面板手動改值）與玩家名：MVU 卡的活樓讀它；null＝不給 MVU 快照 */
-  mvu?: { liveTree: StateTree; userName: string } | null;
+  /** 目前狀態樹（含面板手動改值）與玩家名：MVU 卡的活樓讀它；active＝卡片變數模式（每樓讀事件上自己的表）；
+   *  null＝不給 MVU 快照 */
+  mvu?: { liveTree: StateTree; userName: string; active?: boolean; generation?: number; scene?: number } | null;
 }): PickedShell | null {
   const { tableMode, cardInterfaces } = input;
   // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構骨架、卡片自帶殼、
@@ -89,6 +90,10 @@ export function pickCardShell(input: {
     skeleton === null && mvuCard !== undefined && input.mvu
       ? buildCardMvu({
           events,
+          positions: events.map((event) => input.events.indexOf(event)),
+          active: input.mvu.active === true,
+          generation: input.mvu.generation,
+          scene: input.mvu.scene,
           roles: events.length > 0 ? events.map(roleOf) : ["assistant"],
           currentId: 0,
           liveTree: input.mvu.liveTree,

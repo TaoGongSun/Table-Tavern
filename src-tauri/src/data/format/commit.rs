@@ -700,6 +700,7 @@ pub(crate) fn replace_world_from_build(root: &Path, id: &str) -> DataResult<()> 
     }
     // 已換成重建桌；清不掉的 T 與日誌留給下次開桌的 cleanup
     let _ = enter_cleanup(root, id, &log);
+    crate::data::message_vars::world_swapped(root, id);
     Ok(())
 }
 
@@ -774,7 +775,10 @@ pub fn open_world(root: &Path, world_id: &str) -> DataResult<OpenWorld> {
     // 重設交換已提交、但當時臨時根沒清掉：持獨占時順手清，清不掉下次再試
     let _ = remove_reset_build_root(root, world_id);
     let recovered = recover_locked(root, world_id);
-    finish_after_recover(root, world_id, recovered)
+    let opened = finish_after_recover(root, world_id, recovered);
+    // 開桌可能接續或退回交換、做格式轉換：一律當整桌換過，舊殼的在途卡寫因世代不符被擋
+    crate::data::message_vars::world_swapped(root, world_id);
+    opened
 }
 
 pub fn restore_world_backup(root: &Path, world_id: &str) -> DataResult<OpenWorld> {
@@ -794,7 +798,9 @@ pub fn restore_world_backup(root: &Path, world_id: &str) -> DataResult<OpenWorld
     if !backup_available(root, world_id) {
         return Err(UiMsg::NoPreMigrationBackup.into_error());
     }
-    if let Err(error) = run_restore(root, world_id) {
+    let restored = run_restore(root, world_id);
+    crate::data::message_vars::world_swapped(root, world_id);
+    if let Err(error) = restored {
         return match recover_locked(root, world_id) {
             Recovered::Repair(reason, error) => Ok(repair(root, world_id, reason, error)),
             Recovered::Clean => Err(error),

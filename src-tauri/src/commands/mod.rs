@@ -1,3 +1,4 @@
+pub(crate) mod card_vars;
 pub(crate) mod character;
 pub(crate) mod chat;
 pub(crate) mod cli_setup;

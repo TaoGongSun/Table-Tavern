@@ -10,6 +10,11 @@ use std::time::Duration;
 
 fn event(kind: TranscriptKind, ts: &str, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
         raw: None,
         ts: ts.to_owned(),
         speaker_id: String::new(),

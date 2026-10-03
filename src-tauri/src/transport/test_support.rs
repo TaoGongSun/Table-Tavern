@@ -24,6 +24,11 @@ pub(super) fn event(
     text: &str,
 ) -> TranscriptEvent {
     TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
         raw: None,
         ts: "2026-07-19T12:00:00+08:00".to_owned(),
         speaker_id: speaker_id.to_owned(),

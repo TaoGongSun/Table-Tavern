@@ -26,6 +26,10 @@ pub enum UiMsg {
     // ── 桌與桌目錄
     /// 別的操作正握著這張桌的獨佔鎖。
     WorldBusy,
+    /// GM 回合生成中或剛提交、正文還沒落檔：卡片變數模式的面板手改先擋（回合結果會蓋掉它）。
+    StateEditDuringTurn,
+    /// GM 回合生成中或正文還沒落檔：換幕、分岔、退幕先擋，回合不會套到別的幕。
+    SceneChangeDuringTurn,
     WorldNotFound,
     /// 桌目錄旁有轉換日誌／暫存／垃圾桶，寫入先擋。
     WorldConverting,

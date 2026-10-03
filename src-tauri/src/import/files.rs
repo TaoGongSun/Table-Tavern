@@ -146,6 +146,9 @@ pub fn post_opening_text(
     let user_name = player_name
         .as_deref()
         .unwrap_or_else(|| transport::player_fallback_name(lang));
+    // 上一回合沒落成的回覆先代落，再存檢查點：貼失敗回復時不會連代落的回覆一起倒掉，舊回覆也不會之後才
+    // 插到開場後面
+    data::settle_pending_turn(root, world_id)?;
     let checkpoint = data::opening_checkpoint(root, world_id, scene);
     let (event, outcome) =
         match data::append_opening(root, world_id, scene, ts, text, &block, user_name) {
