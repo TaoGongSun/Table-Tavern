@@ -36,8 +36,8 @@ pub(crate) enum Stage {
     PreviousSwapped,
 }
 
-/// 同磁碟改名不變的目錄識別。Unix 是 dev＋inode；Windows 用磁碟序號與 file index，
-/// 否則這條測試在 Windows CI 上無法分辨兩份同版 App。
+/// 同磁碟改名不變的目錄識別，只有 unix（dev＋inode）取得到。其他平台照規格停下，
+/// 依賴真識別的測試只在 unix 跑；這條流程正式只在 macOS 執行。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct AppId {
     dev: u64,
@@ -558,6 +558,7 @@ mod tests {
         assert_eq!(decide(&snap), Decision::UpdateAbsent);
     }
 
+    #[cfg(unix)]
     #[test]
     fn each_interrupted_stage_continues_and_unknown_states_stop() {
         let root = TempDir::new("stages");
@@ -653,6 +654,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn same_from_version_interrupted_after_swap_drops_the_older_copy() {
         let root = TempDir::new("same-from");
@@ -709,8 +711,9 @@ mod tests {
         assert!(!root.0.join(RECORD_NAME).exists());
     }
 
+    #[cfg(unix)]
     #[test]
-    fn leftover_temp_record_is_ignored_and_interrupted_rewrite_keeps_the_old_file() {
+    fn leftover_temp_record_is_ignored_by_cleanup() {
         let root = TempDir::new("atomic");
         let running = root.0.join(APP_NAME);
         write_app(&running, "0.10.0", BUNDLE_ID);
@@ -725,8 +728,12 @@ mod tests {
             "殘留暫存不是紀錄，整理仍照正式檔把舊版放進 previous"
         );
         assert!(!root.0.join(UPDATE_NAME).exists());
+    }
 
-        write_app(&root.0.join(UPDATE_NAME), "0.9.0", BUNDLE_ID);
+    #[test]
+    fn interrupted_record_rewrite_keeps_the_old_file() {
+        let root = TempDir::new("rewrite");
+        let tmp = root.0.join(format!("{RECORD_NAME}.tmp"));
         write_record(&root.0, "0.9.0", "0.10.0", Stage::Extracting).unwrap();
         let official = fs::read(root.0.join(RECORD_NAME)).unwrap();
         let _hold = super::super::store::FailBeforeRename::arm();

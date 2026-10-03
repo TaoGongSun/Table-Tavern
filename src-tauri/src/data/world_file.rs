@@ -35,6 +35,9 @@ fn rename_error(message: String) -> DataResult<()> {
 thread_local! {
     static RENAME_SKIPS: Cell<u32> = const { Cell::new(0) };
     static RENAME_FAILS: Cell<u32> = const { Cell::new(0) };
+    static RENAME_ATTEMPT_IO_FAILS: Cell<u32> = const { Cell::new(0) };
+    static RENAME_ATTEMPT_COUNT: Cell<u32> = const { Cell::new(0) };
+    static RENAME_WAIT_COUNT: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAILS: Cell<u32> = const { Cell::new(0) };
     static APPEND_PARTIAL_FAILS: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -62,6 +65,35 @@ impl Drop for RenameFailGuard {
     fn drop(&mut self) {
         RENAME_SKIPS.with(|cell| cell.set(0));
         RENAME_FAILS.with(|cell| cell.set(0));
+    }
+}
+
+/// 下 `times` 次改名「嘗試」回 IO 錯，並把嘗試數與等待數歸零計起：測 `rename_path` 的重試本身。
+#[cfg(test)]
+pub(crate) struct RenameAttemptGuard;
+
+#[cfg(test)]
+impl RenameAttemptGuard {
+    pub(crate) fn fail_io(times: u32) -> Self {
+        RENAME_ATTEMPT_IO_FAILS.with(|cell| cell.set(times));
+        RENAME_ATTEMPT_COUNT.with(|cell| cell.set(0));
+        RENAME_WAIT_COUNT.with(|cell| cell.set(0));
+        Self
+    }
+
+    /// （嘗試數, 等待數）
+    pub(crate) fn counts(&self) -> (u32, u32) {
+        (
+            RENAME_ATTEMPT_COUNT.with(Cell::get),
+            RENAME_WAIT_COUNT.with(Cell::get),
+        )
+    }
+}
+
+#[cfg(test)]
+impl Drop for RenameAttemptGuard {
+    fn drop(&mut self) {
+        RENAME_ATTEMPT_IO_FAILS.with(|cell| cell.set(0));
     }
 }
 
@@ -224,21 +256,18 @@ fn injected_rename_failure() -> bool {
 
 /// Windows 上改名常被防毒或索引暫時佔用，失敗就短暫重試。其他平台只試一次。
 pub(crate) fn rename_path(from: &Path, to: &Path) -> DataResult<()> {
-    let attempts: u32 = if cfg!(windows) { 8 } else { 1 };
+    if injected_rename_failure() {
+        return rename_error(rename_failed(from, to));
+    }
+    let attempts = RENAME_ATTEMPTS;
     let mut wait = Duration::from_millis(20);
     for attempt in 1..=attempts {
-        if injected_rename_failure() {
-            if attempt == attempts {
-                return rename_error(rename_failed(from, to));
-            }
-            continue;
-        }
-        match fs::rename(from, to) {
+        match attempt_rename(from, to) {
             Ok(()) => return Ok(()),
-            Err(error) if attempt < attempts => {
+            Err(_) if attempt < attempts => {
+                note_rename_wait();
                 std::thread::sleep(wait);
                 wait = (wait * 2).min(Duration::from_millis(200));
-                let _ = error;
             }
             Err(error) => {
                 return rename_error(
@@ -253,6 +282,33 @@ pub(crate) fn rename_path(from: &Path, to: &Path) -> DataResult<()> {
         }
     }
     rename_error(rename_failed(from, to))
+}
+
+const RENAME_ATTEMPTS: u32 = if cfg!(windows) { 8 } else { 1 };
+
+/// 每次真的嘗試改名都經過這裡；測試在這裡計數並模擬 IO 錯。
+fn attempt_rename(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        RENAME_ATTEMPT_COUNT.with(|cell| cell.set(cell.get() + 1));
+        let fail = RENAME_ATTEMPT_IO_FAILS.with(|cell| {
+            let left = cell.get();
+            if left == 0 {
+                return false;
+            }
+            cell.set(left - 1);
+            true
+        });
+        if fail {
+            return Err(std::io::Error::other("injected rename io error"));
+        }
+    }
+    fs::rename(from, to)
+}
+
+fn note_rename_wait() {
+    #[cfg(test)]
+    RENAME_WAIT_COUNT.with(|cell| cell.set(cell.get() + 1));
 }
 
 fn rename_failed(from: &Path, to: &Path) -> String {
@@ -875,5 +931,83 @@ fn ship() {
                 *byte = b' ';
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::*;
+
+    struct Dir(PathBuf);
+
+    impl Dir {
+        fn new(label: &str) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("tt-rename-{label}-{}", ulid::Ulid::generate()));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_transient_failure_is_retried_where_the_platform_retries() {
+        let dir = Dir::new("transient");
+        let from = dir.0.join("a");
+        let to = dir.0.join("b");
+        fs::write(&from, b"x").unwrap();
+        let guard = RenameAttemptGuard::fail_io(1);
+        let result = rename_path(&from, &to);
+        if RENAME_ATTEMPTS > 1 {
+            result.unwrap();
+            assert_eq!(guard.counts(), (2, 1));
+            assert!(to.is_file() && !from.exists());
+        } else {
+            assert!(result.is_err());
+            assert_eq!(guard.counts(), (1, 0));
+            assert!(from.is_file() && !to.exists());
+        }
+    }
+
+    #[test]
+    fn persistent_failure_tries_every_attempt_and_moves_nothing() {
+        let dir = Dir::new("persistent");
+        let from = dir.0.join("a");
+        let to = dir.0.join("b");
+        fs::write(&from, b"x").unwrap();
+        let guard = RenameAttemptGuard::fail_io(u32::MAX);
+        let error = rename_path(&from, &to).unwrap_err().to_string();
+        let expected = UiMsg::RenameFailedIo {
+            from: from.display().to_string(),
+            to: to.display().to_string(),
+            error: "injected rename io error".to_owned(),
+        }
+        .to_string();
+        assert_eq!(error, expected);
+        assert_eq!(guard.counts(), (RENAME_ATTEMPTS, RENAME_ATTEMPTS - 1));
+        assert_eq!(RENAME_ATTEMPTS, if cfg!(windows) { 8 } else { 1 });
+        assert_eq!(fs::read(&from).unwrap(), b"x");
+        assert!(!to.exists());
+    }
+
+    #[test]
+    fn an_injected_call_failure_skips_the_attempts_entirely() {
+        let dir = Dir::new("injected");
+        let from = dir.0.join("a");
+        let to = dir.0.join("b");
+        fs::write(&from, b"x").unwrap();
+        let attempts = RenameAttemptGuard::fail_io(0);
+        let fails = RenameFailGuard::fail_after(1, 1);
+        rename_path(&from, &to).unwrap();
+        assert!(rename_path(&to, &from).is_err());
+        rename_path(&to, &from).unwrap();
+        drop(fails);
+        assert_eq!(attempts.counts(), (2, 0), "被注入的那次呼叫不進重試迴圈");
+        assert!(from.is_file());
     }
 }

@@ -447,6 +447,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn successful_swap_renames_the_old_version_to_previous() {
         let root = TempDir::new("swap");
