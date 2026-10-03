@@ -59,8 +59,12 @@ export interface TableStateController {
 export function useTableStateController(input: {
   worldId: string;
   onError: (message: string) => void;
+  /** 手改存成功、狀態樹重讀完之後：變數模式下手改改的是逐字稿事件上的表，呼叫端要重讀事件（卡片介面才換得到新值） */
+  onEdited?: () => void;
 }): TableStateController {
   const { worldId, onError } = input;
+  const onEditedRef = useRef(input.onEdited);
+  onEditedRef.current = input.onEdited;
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
@@ -71,26 +75,51 @@ export function useTableStateController(input: {
   const stateFieldSaveBusy = useRef(false);
   const stateFieldEditCancelled = useRef(false);
 
+  // 換桌世代：hydrate 一次就換，在途的重讀回來時世代不同就不碰畫面
+  const readGeneration = useRef(0);
   const hydrate = useCallback((state: WorldState["state"] | undefined, bindings: BranchBinding[]) => {
+    readGeneration.current += 1;
     setTableState(state?.table ?? {});
     setTableTree(state?.tree ?? {});
     setTableJumps(state?.jumps ?? {});
     setBranchBindings(bindings);
   }, []);
 
-  // 重讀是兩趟非同步，中途換桌的話上一桌的結果會晚一步蓋掉新桌的畫面；
-  // 回來時比對現在還是不是同一桌，不是就整份丟掉
+  // 重讀是兩趟非同步：同時只跑一趟，在途期間再被要求（卡片頻繁寫入、手改）就在這趟套用後補讀一次，
+  // 回來的結果一律比在途前新，不會有晚回的舊結果蓋掉新值。換桌（worldId 變或 hydrate）換世代，
+  // 舊世代的在途結果整份丟掉，新世代另起一趟、不併進舊的
   const currentWorldId = useRef(worldId);
   currentWorldId.current = worldId;
+  const reading = useRef<{ worldId: string; generation: number; again: boolean; promise: Promise<void> } | null>(
+    null,
+  );
 
-  const refresh = useCallback(async () => {
-    const state = await invoke<WorldState>("read_state", { worldId });
-    const bindings = await loadBranchBindings(worldId);
-    if (currentWorldId.current !== worldId) return;
-    setTableState(state.state?.table ?? {});
-    setTableTree(state.state?.tree ?? {});
-    setTableJumps(state.state?.jumps ?? {});
-    setBranchBindings(bindings);
+  const refresh = useCallback(() => {
+    const running = reading.current;
+    if (running && running.worldId === worldId && running.generation === readGeneration.current) {
+      running.again = true;
+      return running.promise;
+    }
+    const job = { worldId, generation: readGeneration.current, again: false, promise: Promise.resolve() };
+    const current = () => currentWorldId.current === worldId && readGeneration.current === job.generation;
+    job.promise = (async () => {
+      try {
+        do {
+          job.again = false;
+          const state = await invoke<WorldState>("read_state", { worldId });
+          const bindings = await loadBranchBindings(worldId);
+          if (!current()) return;
+          setTableState(state.state?.table ?? {});
+          setTableTree(state.state?.tree ?? {});
+          setTableJumps(state.state?.jumps ?? {});
+          setBranchBindings(bindings);
+        } while (job.again);
+      } finally {
+        if (reading.current === job) reading.current = null;
+      }
+    })();
+    reading.current = job;
+    return job.promise;
   }, [worldId]);
 
   // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。
@@ -105,6 +134,7 @@ export function useTableStateController(input: {
         if (tree) await invoke("set_state_path", { worldId, path, value });
         else await invoke("set_table_state", { worldId, fields: { [path[0]]: value } });
         await refresh();
+        onEditedRef.current?.();
       } catch (reason) {
         onError(String(reason));
       } finally {

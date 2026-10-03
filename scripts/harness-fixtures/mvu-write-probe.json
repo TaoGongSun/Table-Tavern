@@ -4,7 +4,7 @@
   "data": {
     "name": "MVU寫入探針",
     "description": "包 2a 寫入驗收用的自製測試卡（card-mvu-shim）。",
-    "first_mes": "探針開場。{{user}} 走進測試間。",
+    "first_mes": "探針開場。{{user}} 走進測試間。\n<StatusPlaceHolderImpl/>",
     "mes_example": "",
     "personality": "",
     "scenario": "",

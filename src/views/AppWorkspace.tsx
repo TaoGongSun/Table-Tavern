@@ -326,6 +326,7 @@ export function AppWorkspace({
                 <PlayView
                   onboarding={<Onboarding config={config} onSaved={onConfigSaved} />}
                   sceneLabel={sceneDisplayLabel(scene)}
+                  storyKey={`${table}\u0000${scene}`}
                   events={chat.events}
                   metaOf={characters.metaOf}
                   generating={chat.generating}
