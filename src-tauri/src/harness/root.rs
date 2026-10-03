@@ -51,6 +51,15 @@ pub(super) fn canonical_lenient(path: &Path) -> io::Result<PathBuf> {
             Ok(canonical) => {
                 let mut out = canonical;
                 for part in rest.iter().rev() {
+                    // push 會重新解析尾段：Windows verbatim 路徑裡的 `a/x/../b` 在這裡才被拆開、
+                    // `..` 被吃掉，結果繞過別名解析。尾段必須原樣就是單一一段名稱。
+                    let reparsed: Vec<Component> = Path::new(part).components().collect();
+                    if !matches!(reparsed.as_slice(), [Component::Normal(name)] if name == part) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("路徑段不合法：{}", Path::new(part).display()),
+                        ));
+                    }
                     out.push(part);
                 }
                 return Ok(out);
@@ -311,6 +320,45 @@ mod tests {
         assert!(validate_root(alias.join("x").to_str().unwrap(), &layout(&home)).is_err());
     }
 
+    /// Windows：junction 指向假正式資料，verbatim 輸入用 `/x/../` 讓尾段在接回時才被拆開。
+    /// 驗 root 是啟動第一步，在這裡就拒絕，取鎖、`--fresh` 清理與任何寫入都不會發生。
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_tail_cannot_hide_a_junction_into_production() {
+        let home = scratch("home-junction");
+        let prod = home.join("Documents").join("TableTavern");
+        fs::create_dir_all(prod.join("sub")).unwrap();
+        fs::write(prod.join("sub").join("keep.txt"), "PROD").unwrap();
+        let alias = home.join("alias");
+        let plain = |p: &Path| {
+            p.display()
+                .to_string()
+                .trim_start_matches(r"\\?\")
+                .to_owned()
+        };
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J", &plain(&alias), &plain(&prod)])
+            .output()
+            .unwrap();
+        assert!(
+            made.status.success(),
+            "建不了 junction：{}",
+            String::from_utf8_lossy(&made.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(alias.join("sub").join("keep.txt")).unwrap(),
+            "PROD"
+        );
+        let raw = format!("{}\\alias/x/../sub", home.display());
+        assert!(raw.starts_with(r"\\?\"), "要測 verbatim 輸入：{raw}");
+        assert!(validate_root(&raw, &layout(&home)).is_err(), "應拒絕 {raw}");
+        assert_eq!(
+            fs::read_to_string(prod.join("sub").join("keep.txt")).unwrap(),
+            "PROD"
+        );
+        fs::remove_dir(&alias).unwrap();
+    }
+
     /// 假家目錄＋假正式資料，回 (layout, 正式 data, 正式 config.json, 可重用的 root)。
     #[cfg(unix)]
     fn reuse_fixture(tag: &str) -> (Layout, PathBuf, PathBuf, PathBuf) {
@@ -405,7 +453,10 @@ mod tests {
         let control = scratch("control");
         let first = acquire_lock(&control, "pid=1").unwrap();
         let err = acquire_lock(&control, "pid=2").unwrap_err();
-        assert!(err.contains("pid=1"), "{err}");
+        // 能讀取時附上持有者：Windows 是強制鎖，被鎖住時讀不到，只驗排他性。
+        if cfg!(unix) {
+            assert!(err.contains("pid=1"), "{err}");
+        }
         drop(first);
         assert!(control.join("harness.lock").exists());
         acquire_lock(&control, "pid=3").unwrap();
