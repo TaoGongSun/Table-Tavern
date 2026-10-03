@@ -222,6 +222,7 @@ pub fn materialize(root: &Path, expanded: &Expanded) -> DataResult<String> {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: true,
             },
         )?;
     }

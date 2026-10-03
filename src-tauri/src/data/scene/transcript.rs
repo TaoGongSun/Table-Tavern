@@ -42,6 +42,10 @@ pub struct TranscriptEvent {
     /// 匯出、送 AI 時才照語系組（見 `marker.rs`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub marker: Option<super::marker::EventMarker>,
+    /// 開場白（`append_opening` 寫的那則）：卡片介面的 MVU 墊片靠它分辨開場與 AI 回覆——
+    /// 開場由 initvar 初始化、不補狀態欄占位。舊紀錄預設 false。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub opening: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -167,6 +171,7 @@ pub fn append_opening(
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: true,
     };
     append_transcript(root, world_id, scene, &event)?;
     Ok((event, outcome))
@@ -433,6 +438,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
             TranscriptEvent {
                 raw: None,
@@ -445,6 +451,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
             TranscriptEvent {
                 raw: None,
@@ -457,6 +464,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         ];
         for event in &events {
@@ -518,6 +526,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             })
             .collect();
         for event in &events {
@@ -580,6 +589,7 @@ mod tests {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
         assert_eq!(
@@ -615,6 +625,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -644,6 +655,15 @@ mod tests {
         // 舊檔沒有 raw 欄位也讀得起來，序列化時同樣不憑空多一欄
         let line = serde_json::to_string(&event).unwrap();
         assert!(!line.contains("\"raw\""));
+        // 開場標記落檔（MVU 墊片靠它分辨開場）；一般事件與舊檔不帶這欄
+        assert!(event.opening);
+        assert!(line.contains("\"opening\":true"));
+        let old: TranscriptEvent = serde_json::from_str(
+            r#"{"ts":"t","speaker_id":"","speaker_name":"GM","kind":"narration","text":"x"}"#,
+        )
+        .unwrap();
+        assert!(!old.opening);
+        assert!(!serde_json::to_string(&old).unwrap().contains("opening"));
     }
 
     #[test]
@@ -673,6 +693,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -750,6 +771,7 @@ mod tests {
                     truncated: false,
                     gm_only: false,
                     marker: None,
+                    opening: false,
                 },
             )
             .unwrap();
@@ -787,6 +809,7 @@ mod tests {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         };
         for (text, snapshot) in [("第一句", &snapshots[0]), ("第二句", &snapshots[1])] {
             append_transcript(root.path(), &world_id, 0, &event(text, snapshot)).unwrap();
@@ -863,6 +886,7 @@ mod tests {
                     truncated: false,
                     gm_only: false,
                     marker: None,
+                    opening: false,
                 },
             )
             .unwrap();

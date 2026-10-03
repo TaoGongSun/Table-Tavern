@@ -264,6 +264,7 @@ fn rename_keeps_paths_and_preserves_transcript_snapshot() {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         },
     )
     .unwrap();

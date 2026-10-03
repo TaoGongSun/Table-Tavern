@@ -92,6 +92,8 @@ export interface TranscriptEvent {
   gm_only?: boolean;
   /** 固定標頭代碼（後端 data/scene/marker.rs 的 EventMarker）；text 只存本文，標頭顯示時才照語系組 */
   marker?: EventMarker;
+  /** 開場白（post_opening 寫的那則）；舊紀錄沒有這欄 */
+  opening?: boolean;
 }
 
 /** `append_player_event` 的回傳：落檔的那則，與它在逐字稿檔裡的起始位元組（收回時的收據） */

@@ -55,7 +55,7 @@ describe("CardInterfaceOverlay chat push", () => {
     // 還沒 load 就有新一樓
     await render(chatB, "k1");
     expect(postMessage).toHaveBeenLastCalledWith(
-      { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB },
+      { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB, mvu: null },
       "*",
     );
     postMessage.mockClear();
@@ -64,7 +64,7 @@ describe("CardInterfaceOverlay chat push", () => {
     });
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenLastCalledWith(
-      { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB },
+      { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB, mvu: null },
       "*",
     );
   });
@@ -80,7 +80,7 @@ describe("CardInterfaceOverlay chat push", () => {
     });
     expect(old.postMessage).not.toHaveBeenCalled();
     expect(fresh.postMessage).toHaveBeenLastCalledWith(
-      { source: "table-tavern-host", kind: "chat", token: "k2", chat: chatB },
+      { source: "table-tavern-host", kind: "chat", token: "k2", chat: chatB, mvu: null },
       "*",
     );
   });

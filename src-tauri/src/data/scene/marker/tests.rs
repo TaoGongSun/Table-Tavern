@@ -13,6 +13,7 @@ fn event(marker: Option<EventMarker>, text: &str) -> TranscriptEvent {
         truncated: false,
         gm_only: false,
         marker,
+        opening: false,
     }
 }
 

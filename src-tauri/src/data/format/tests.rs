@@ -133,6 +133,7 @@ fn event(text: &str) -> TranscriptEvent {
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: false,
     }
 }
 

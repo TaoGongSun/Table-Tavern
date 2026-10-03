@@ -211,9 +211,9 @@ describe("嵌入跳脫", () => {
       token: "tok",
     });
     expect(doc.indexOf("getChatMessages")).toBeLessThan(doc.indexOf("__ttHost"));
-    // 只有墊片自己的 script 結尾，卡片文字沒有多關一支
+    // 只有墊片自己的 script 結尾（內建庫三支＋讀訊息＋橋接），卡片文字沒有多關一支
     const closings = doc.match(/<\/script>/gi) ?? [];
-    expect(closings).toHaveLength(2);
+    expect(closings).toHaveLength(5);
   });
 
   it("沒有讀訊息快照時不定義這三支", () => {

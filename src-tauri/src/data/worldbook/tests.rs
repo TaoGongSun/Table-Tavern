@@ -648,6 +648,7 @@ fn converted_card_is_not_recreated_by_the_next_scene() {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         },
     )
     .unwrap();
