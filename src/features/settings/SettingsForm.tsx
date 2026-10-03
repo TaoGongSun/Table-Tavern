@@ -284,7 +284,7 @@ export function Settings({
       const cooldown = error.match(/^login-cooldown:(\d+)$/);
       setMessage({
         kind: "error",
-        text: cooldown ? t("cliLoginCooldown", { secs: cooldown[1] }) : error,
+        text: cooldown ? t("cliLoginCooldown", { secs: Number(cooldown[1]) }) : error,
       });
       if (!repeat) setInstallingCli(null);
       return;
