@@ -265,15 +265,15 @@ const COPY = {
       "Gesprächsstränge von {provider} können private Einstellungen nach der Runde nicht löschen; private Einstellungen gehören in den festen System-Prompt dieser Figur.",
   },
   fr: {
-    be_cli_workspace_failed: "Impossible de préparer le dossier de travail de la CLI : {error}",
-    be_grok_profile_failed: "Impossible de préparer le dossier de réglages de grok : {error}",
+    be_cli_workspace_failed: "Impossible de préparer le dossier de travail de la CLI\u00a0: {error}",
+    be_grok_profile_failed: "Impossible de préparer le dossier de réglages de grok\u00a0: {error}",
     be_cli_risk_not_accepted:
       "L'avertissement sur les risques du mode abonnement CLI n'est pas encore confirmé. Confirme-le dans les réglages.",
     be_cli_not_found: "CLI {cli} introuvable. Vérifie qu'elle est installée et connectée.",
     be_agy_too_old:
-      "Gemini CLI {version} est trop ancienne ; cette app nécessite la 1.1.8 ou plus récente. Lance `agy update`, puis revalide.",
-    be_unknown_transport: "Type de connexion inconnu : {transport}",
-    be_tier_model_missing: "Aucun modèle n'est défini pour la catégorie « {tier} ». Renseigne-le dans les réglages.",
+      "Gemini CLI {version} est trop ancienne\u00a0; cette app nécessite la 1.1.8 ou plus récente. Lance `agy update`, puis revalide.",
+    be_unknown_transport: "Type de connexion inconnu\u00a0: {transport}",
+    be_tier_model_missing: "Aucun modèle n'est défini pour la catégorie «\u00a0{tier}\u00a0». Renseigne-le dans les réglages.",
     be_openrouter_api_key_missing: "Pas encore de clé API OpenRouter. Colle-la dans les réglages.",
     be_no_free_models: "Aucun modèle gratuit n'est disponible pour le moment.",
     be_no_stable_free_model:
@@ -281,22 +281,22 @@ const COPY = {
     be_smart_free_daily_exhausted:
       "Les requêtes du jour vers les modèles gratuits d'OpenRouter sont épuisées. Réessaie après la remise à zéro du quota.",
     be_responses_api_failed: "La Responses API a renvoyé un échec",
-    be_cli_reply_error: "Erreur de la CLI : {error}",
-    be_cli_stdin_timeout: "La CLI n'a pas accepté le prompt en 60 secondes ; arrêtée",
-    be_cli_stalled: "La CLI n'a rien produit pendant 120 secondes (réseau ou processus bloqué) ; arrêtée",
-    be_cli_crashed: "La CLI s'est arrêtée de façon inattendue ({status}) : {tail}",
-    be_cli_no_reply: "La CLI n'a produit aucune réponse ({status}) : {tail}",
+    be_cli_reply_error: "Erreur de la CLI\u00a0: {error}",
+    be_cli_stdin_timeout: "La CLI n'a pas accepté le prompt en 60 secondes\u00a0; arrêtée",
+    be_cli_stalled: "La CLI n'a rien produit pendant 120 secondes (réseau ou processus bloqué)\u00a0; arrêtée",
+    be_cli_crashed: "La CLI s'est arrêtée de façon inattendue ({status})\u00a0: {tail}",
+    be_cli_no_reply: "La CLI n'a produit aucune réponse ({status})\u00a0: {tail}",
     be_cli_turn_failed: "Échec du tour de la CLI {cli}",
     be_cli_turn_failed_status: "Échec du tour de la CLI {cli} ({status})",
-    be_cli_unexpected_abort: "Erreur interne : arrêt signalé sans signal d'arrêt",
+    be_cli_unexpected_abort: "Erreur interne\u00a0: arrêt signalé sans signal d'arrêt",
     be_agy_conversation_mismatch:
-      "Agy a repris une autre conversation : attendu {expected}, reçu {actual}",
+      "Agy a repris une autre conversation\u00a0: attendu {expected}, reçu {actual}",
     be_agy_lock_poisoned: "Le verrou d'écriture d'Agy est corrompu",
-    be_lane_state_write_failed: "Impossible d'écrire le fichier d'état du fil {path} : {error}",
+    be_lane_state_write_failed: "Impossible d'écrire le fichier d'état du fil {path}\u00a0: {error}",
     be_session_abandon_failed:
-      "Après l'arrêt, impossible de supprimer le fichier de session {path} : {error}. Le fil a été vidé ; renvoie ton message.",
+      "Après l'arrêt, impossible de supprimer le fichier de session {path}\u00a0: {error}. Le fil a été vidé\u00a0; renvoie ton message.",
     be_lane_rewrite_unsupported:
-      "Les fils de {provider} ne peuvent pas effacer les réglages privés après le tour ; ils doivent aller dans le prompt système fixe de ce personnage.",
+      "Les fils de {provider} ne peuvent pas effacer les réglages privés après le tour\u00a0; ils doivent aller dans le prompt système fixe de ce personnage.",
   },
   ru: {
     be_cli_workspace_failed: "Не удалось подготовить рабочую папку CLI: {error}",

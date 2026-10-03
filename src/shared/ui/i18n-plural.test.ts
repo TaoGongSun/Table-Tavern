@@ -44,6 +44,16 @@ describe("單複數：字典經 t() 展開", () => {
     expect(t("unsavedChanges", { n: 2 })).toBe("2 modifs non enregistrées");
   });
 
+  it("fr 分支文字裡的 NBSP 照原樣輸出，數字照代入", () => {
+    setLang("fr");
+    const one = "modif non enregistrée. Veux-tu vraiment quitter ? Elle sera perdue.";
+    const other = "modifs non enregistrées. Veux-tu vraiment quitter ? Elles seront perdues.";
+    expect(t("unsavedLeaveConfirm", { n: 0 })).toBe(`Tu as 0 ${one}`);
+    expect(t("unsavedLeaveConfirm", { n: 1 })).toBe(`Tu as 1 ${one}`);
+    expect(t("unsavedLeaveConfirm", { n: 2 })).toBe(`Tu as 2 ${other}`);
+    expect(t("unsavedLeaveConfirm")).toBe(`Tu as {n} ${other}`);
+  });
+
   it("數字字串照數字判；缺參數、非法值走 other 且照舊代入", () => {
     setLang("en");
     expect(t("cliLoginCooldown", { secs: "1" })).toBe(

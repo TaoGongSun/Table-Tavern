@@ -66,12 +66,12 @@ const COPY = {
     hint: "Automatisch verwendet Responses nur, wenn die benutzerdefinierte Basis-URL auf /responses endet; sonst bleibt das bisherige /chat/completions-Verhalten erhalten.",
   },
   fr: {
-    summary: "Avancé : compatibilité API",
+    summary: "Avancé\u00a0: compatibilité API",
     label: "Format API",
     auto: "Auto (rétrocompatible)",
     chatCompletions: "Chat Completions (/chat/completions)",
     responses: "Responses (/responses)",
-    hint: "Le mode Auto utilise Responses uniquement si l’URL de base personnalisée se termine par /responses ; sinon il conserve le comportement /chat/completions existant.",
+    hint: "Le mode Auto utilise Responses uniquement si l’URL de base personnalisée se termine par /responses\u00a0; sinon il conserve le comportement /chat/completions existant.",
   },
   ru: {
     summary: "Дополнительно: совместимость API",
