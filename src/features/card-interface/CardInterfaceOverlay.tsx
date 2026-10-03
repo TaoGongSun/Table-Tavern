@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { IconClose } from "../../shared/ui/icons";
 import { type CardChat } from "./card-chat-shim";
+import { type CardMvu } from "./card-mvu-shim";
 
 interface CardInterfaceOverlayProps {
   /** 正在生成的那位要顯示的名字；null＝沒人在打字，狀態列不出現 */
@@ -14,6 +15,8 @@ interface CardInterfaceOverlayProps {
   shellKey: string;
   /** 本場讀訊息快照；變動時與 iframe load 時推給沙盒 */
   chat: CardChat | null;
+  /** MVU 變數快照；與讀訊息快照同一則推送 */
+  mvu?: CardMvu | null;
   onClose: () => void;
 }
 
@@ -22,6 +25,7 @@ export function CardInterfaceOverlay({
   shellDoc,
   shellKey,
   chat,
+  mvu = null,
   onClose,
 }: CardInterfaceOverlayProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -29,10 +33,10 @@ export function CardInterfaceOverlay({
   const push = useCallback(() => {
     if (chat === null) return;
     frameRef.current?.contentWindow?.postMessage(
-      { source: "table-tavern-host", kind: "chat", token: shellKey, chat },
+      { source: "table-tavern-host", kind: "chat", token: shellKey, chat, mvu },
       "*",
     );
-  }, [chat, shellKey]);
+  }, [chat, mvu, shellKey]);
   // 逐字稿變了就推（本樓沒變、不重掛的情形）；load 時再推一次，補 doc 建好到殼初始化之間漏掉的更新
   useEffect(() => {
     push();

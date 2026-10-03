@@ -46,6 +46,7 @@ fn event(kind: TranscriptKind, id: &str, name: &str, text: &str) -> TranscriptEv
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: false,
     }
 }
 

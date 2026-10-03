@@ -106,6 +106,7 @@ mod tests {
                 marker: Some(super::super::marker::EventMarker::CardArrival {
                     name: "狐狸".to_owned(),
                 }),
+                opening: false,
             },
         )
         .unwrap();

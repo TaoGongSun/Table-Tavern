@@ -25,6 +25,9 @@ pub struct CardInterface {
     /// 卡片自帶的開場白原文。空桌（一則訊息都還沒有）時，面板拿它當來源，
     /// 這樣「開場就是一整頁角色選擇畫面」的卡片一匯入就看得到入口。
     pub opening: Option<String>,
+    /// 卡的酒館助手腳本有載入 MVU（MagVarUpdate）：沙盒要墊 MVU 讀變數函式、GM 樓比照 MVU 補狀態欄占位。
+    #[serde(default)]
+    pub mvu: bool,
 }
 
 /// 掃描每張已匯入卡的原始卡檔（PNG／.import.json），抽出可渲染的顯示腳本。
@@ -142,6 +145,7 @@ fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -
             scripts: Vec::new(),
             unsupported: Some("scrypt".to_owned()),
             opening,
+            mvu: false,
         };
     }
 
@@ -166,7 +170,34 @@ fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -
         },
         unsupported: is_remote_loader.then(|| "remote_loader".to_owned()),
         opening,
+        mvu: loads_mvu(card_data),
     }
+}
+
+/// 酒館助手腳本（新版 `tavern_helper`、舊版 `TavernHelper_scripts`，形狀各版不同，一律遞迴找）裡
+/// 有沒有啟用中、內容載入 MagVarUpdate 的腳本。
+fn loads_mvu(card_data: &Value) -> bool {
+    fn walk(value: &Value) -> bool {
+        match value {
+            Value::Object(map) => {
+                let enabled = map.get("enabled").and_then(Value::as_bool).unwrap_or(true);
+                let hit = map
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .is_some_and(|content| content.contains("MagVarUpdate"));
+                (enabled && hit) || (enabled && map.values().any(walk))
+            }
+            Value::Array(items) => items.iter().any(walk),
+            _ => false,
+        }
+    }
+    let Some(extensions) = card_data.get("extensions") else {
+        return false;
+    };
+    ["tavern_helper", "TavernHelper_scripts"]
+        .iter()
+        .filter_map(|key| extensions.get(*key))
+        .any(walk)
 }
 
 /// 只留「輸出後套用」且啟用中的顯示腳本：關閉、僅套 prompt、或不作用在模型輸出（placement 沒有 2）都不算。
@@ -412,6 +443,29 @@ mod tests {
         assert_eq!(interfaces.len(), 1);
         assert!(interfaces[0].scripts.is_empty());
         assert_eq!(interfaces[0].unsupported, None);
+        assert!(!interfaces[0].mvu);
+    }
+
+    /// 載入 MVU 的判斷：新版 tavern_helper 與舊版 TavernHelper_scripts 都認，停用的腳本不算。
+    #[test]
+    fn card_interface_detects_mvu_script() {
+        let script = |enabled: bool| {
+            json!({"name": "MVU基础脚本", "enabled": enabled, "type": "script",
+                "content": "import'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';"})
+        };
+        let card = |extensions: Value| json!({"name": "卡", "extensions": extensions});
+        let mvu = |extensions: Value| card_interface("c", "卡", &card(extensions)).mvu;
+        assert!(mvu(
+            json!({"tavern_helper": {"scripts": [script(true)], "variables": {}}})
+        ));
+        assert!(mvu(
+            json!({"TavernHelper_scripts": [{"type": "script", "value": script(true)}]})
+        ));
+        assert!(!mvu(json!({"tavern_helper": {"scripts": [script(false)]}})));
+        assert!(!mvu(
+            json!({"tavern_helper": {"scripts": [{"name": "別的", "content": "console.log(1)"}]}})
+        ));
+        assert!(!mvu(json!({"regex_scripts": []})));
     }
 
     /// 原始卡檔壞掉（非法 JSON）只能略過該角色，不能讓整份清單報錯。

@@ -106,6 +106,7 @@ pub fn begin_next_scene(
             truncated: false,
             gm_only: false,
             marker: Some(EventMarker::SceneSummary),
+            opening: false,
         },
     )?;
     if let Some(name) = title.map(str::trim).filter(|name| !name.is_empty()) {
@@ -257,6 +258,7 @@ mod tests {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
@@ -291,6 +293,7 @@ mod tests {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         };
         append_transcript(root.path(), &world_id, 0, &event).unwrap();
 
@@ -338,6 +341,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -379,6 +383,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -399,6 +404,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -448,6 +454,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -498,6 +505,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -546,6 +554,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -584,6 +593,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -644,6 +654,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();
@@ -712,6 +723,7 @@ mod tests {
                 truncated: false,
                 gm_only: false,
                 marker: None,
+                opening: false,
             },
         )
         .unwrap();

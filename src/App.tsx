@@ -292,6 +292,8 @@ function App() {
   const cardInterface = useCardInterfaceController({
     worldId: liveWorldId,
     events: chat.events,
+    tree: tableState.tree,
+    userName: characters.player?.name?.trim() || t("playerLabel"),
     submitText: whenTableFree(chat.submitText),
   });
 

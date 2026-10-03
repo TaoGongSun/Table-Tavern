@@ -2,6 +2,7 @@
 // 純函式，controller 只負責接線。
 import { findShell, type CardInterface } from "./interface-card";
 import { chatEvents, floorText, type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
+import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type StateTree } from "./card-mvu-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
@@ -12,6 +13,8 @@ export interface PickedShell {
   current: CurrentFloor;
   /** 交給卡片的每一樓（樓號＝位置）；本樓的文字與 current.text 是同一份 */
   floors: ChatFloor[];
+  /** MVU 變數快照；null＝這桌沒有載入 MVU 的卡（或走重構骨架），沙盒不定義 MVU 函式 */
+  mvu: CardMvu | null;
 }
 
 // 卡的顯示腳本自己用 YAML 解析器讀狀態區塊時，那支腳本抓的容器（例如 <Status_block>）裡的值要照 YAML
@@ -65,6 +68,8 @@ export function pickCardShell(input: {
   cardInterfaces: CardInterface[];
   /** 原卡欄位型別（mechanism.value_types）：決定骨架裡數字／布林要不要加引號 */
   valueTypes?: Record<string, string>;
+  /** 目前狀態樹（含面板手動改值）與玩家名：MVU 卡的活樓讀它；null＝不給 MVU 快照 */
+  mvu?: { liveTree: StateTree; userName: string } | null;
 }): PickedShell | null {
   const { tableMode, cardInterfaces } = input;
   // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構骨架、卡片自帶殼、
@@ -76,11 +81,32 @@ export function pickCardShell(input: {
   const yamlTags = skeletonYamlTags(cardInterfaces);
   // 樓號＝本場「樓」的位置（gm_only 事件不算一樓）；每樓的文字只算這一次，選殼、本樓、歷史樓、
   // 掛載與推送都用同一份。
-  const floors = chatEvents(input.events).map((event, id) => ({
-    event,
-    id,
-    message: floorMessage(event, skeleton, cardInterfaces, yamlTags, input.valueTypes ?? {}),
-  }));
+  const events = chatEvents(input.events);
+  // MVU 卡（沒重構、照原卡畫面）：每樓的變數表，與公開樓號同一套索引；有 stat_data 的非玩家樓比照 MVU 補占位，
+  // 補好的文字選殼與讀訊息共用同一份
+  const mvuCard = cardInterfaces.find((card) => card.mvu === true && card.unsupported === null);
+  const mvu =
+    skeleton === null && mvuCard !== undefined && input.mvu
+      ? buildCardMvu({
+          events,
+          roles: events.length > 0 ? events.map(roleOf) : ["assistant"],
+          currentId: 0,
+          liveTree: input.mvu.liveTree,
+          valueTypes: input.valueTypes ?? {},
+          macros: { user: input.mvu.userName, char: mvuCard.character_name || null },
+        })
+      : null;
+  const floors = events.map((event, id) => {
+    const message = floorMessage(event, skeleton, cardInterfaces, yamlTags, input.valueTypes ?? {});
+    return {
+      event,
+      id,
+      message:
+        mvu === null
+          ? message
+          : withMvuPlaceholder(message, event.opening === true, roleOf(event), hasStatData(mvu, id)),
+    };
+  });
   // 先試最新一個 GM 樓（旁白／角色對話）：後面接再多玩家樓，本樓都不會被擠出視窗；再往前掃最近 10 樓的
   // 非玩家樓；空桌退回卡片開場白——這類卡的開場就是一整頁選角畫面
   const latestGm = [...floors]
@@ -107,12 +133,18 @@ export function pickCardShell(input: {
   }));
   if (match.index < recent.length) {
     const { event, id, message } = recent[match.index];
-    return { shell: match.shell, current: { id, name: speakerDisplayName(event), text: message }, floors: chatFloors };
+    return {
+      shell: match.shell,
+      current: { id, name: speakerDisplayName(event), text: message },
+      floors: chatFloors,
+      mvu: mvu === null ? null : { ...mvu, currentId: id },
+    };
   }
   const card = openings[match.index - recent.length];
   return {
     shell: match.shell,
     current: { id: 0, name: card.character_name, text: card.opening ?? "" },
     floors: chatFloors,
+    mvu,
   };
 }

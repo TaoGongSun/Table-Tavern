@@ -11,6 +11,7 @@ import {
 } from "./interface-card";
 import { pickCardShell } from "./card-shell-route";
 import { buildCardChat, type CardChat } from "./card-chat-shim";
+import { type CardMvu, type StateTree } from "./card-mvu-shim";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
 // 短指紋（djb2）：card-interface iframe 的 key 用，內容一換 key 就換。
@@ -58,6 +59,8 @@ export interface CardInterfaceController {
   shellKey: string;
   /** 本場讀訊息快照；覆蓋層在它變動與 iframe load 時推給沙盒 */
   chat: CardChat | null;
+  /** MVU 變數快照（null＝這桌沒有 MVU 卡）；與 chat 一起推 */
+  mvu: CardMvu | null;
   open: () => void;
   close: () => void;
   /** 重問這桌各卡的介面腳本，並把清單回給呼叫端接著判斷 */
@@ -71,9 +74,13 @@ export interface CardInterfaceController {
 export function useCardInterfaceController(input: {
   worldId: string;
   events: TranscriptEvent[];
+  /** 目前狀態樹（含面板手動改值）：MVU 卡的活樓讀它 */
+  tree: StateTree;
+  /** 這桌玩家名（沒有就用語系稱呼）：MVU 變數代換 {{user}} */
+  userName: string;
   submitText: (text: string) => Promise<void>;
 }): CardInterfaceController {
-  const { worldId, events, submitText } = input;
+  const { worldId, events, tree, userName, submitText } = input;
   // 這桌各卡的介面腳本（DRM／雲端載入器卡沒有腳本，不進這份清單）；面板是選配功能，讀失敗就當沒有
   const [cardInterfaces, setCardInterfaces] = useState<CardInterface[]>([]);
   // AI 重構接管介面時產的骨架（卡每回合輸出格式）；null＝沒有，這時照原卡畫面（卡片自帶殼／event.raw 找殼）
@@ -130,8 +137,16 @@ export function useCardInterfaceController(input: {
 
   // 目前要顯示的卡片介面殼與產生它的那一樓：選路規則見 card-shell-route.ts
   const picked = useMemo(
-    () => pickCardShell({ tableMode, refactorShell, events, cardInterfaces, valueTypes }),
-    [tableMode, refactorShell, events, cardInterfaces, valueTypes],
+    () =>
+      pickCardShell({
+        tableMode,
+        refactorShell,
+        events,
+        cardInterfaces,
+        valueTypes,
+        mvu: { liveTree: tree, userName },
+      }),
+    [tableMode, refactorShell, events, cardInterfaces, valueTypes, tree, userName],
   );
   // doc 與 key 只依賴實際值：無關的 render（例如狀態樹變了但殼與本樓沒變）不重載 iframe
   const shell = picked?.shell ?? null;
@@ -145,6 +160,9 @@ export function useCardInterfaceController(input: {
   const chat = useMemo(() => (picked === null ? null : buildCardChat(picked.floors, picked.current)), [picked]);
   const chatRef = useRef<CardChat | null>(null);
   chatRef.current = chat;
+  const mvu = picked?.mvu ?? null;
+  const mvuRef = useRef<CardMvu | null>(null);
+  mvuRef.current = mvu;
 
   // 殼沒了（例如面板開著時套用了沒產殼的重構）就把面板狀態一起收掉：只靠 shellReady 擋住
   // 覆蓋層的話，之後殼再出現時面板會自己跳出來
@@ -170,7 +188,11 @@ export function useCardInterfaceController(input: {
     () =>
       shell === null || !cardUiOpen || chatRef.current === null
         ? null
-        : buildShellDocument(shell, readCardStorage(worldId), { chat: chatRef.current, token: cardShellKey }),
+        : buildShellDocument(shell, readCardStorage(worldId), {
+            chat: chatRef.current,
+            token: cardShellKey,
+            mvu: mvuRef.current,
+          }),
     [shell, cardShellKey, worldId, cardUiOpen],
   );
 
@@ -258,6 +280,7 @@ export function useCardInterfaceController(input: {
       shellDoc: cardShellDoc,
       shellKey: cardShellKey,
       chat,
+      mvu,
       open,
       close,
       refreshInterfaces,
@@ -265,6 +288,7 @@ export function useCardInterfaceController(input: {
       openIfDrawable,
     }),
     [
+      mvu,
       cardUiOpen,
       interfaceTakeover,
       cardShellReady,

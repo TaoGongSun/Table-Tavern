@@ -416,6 +416,7 @@ mod tests {
                 marker: Some(data::EventMarker::CardArrival {
                     name: "狐狸".to_owned(),
                 }),
+                opening: false,
             },
         )
         .unwrap();
@@ -436,6 +437,7 @@ mod tests {
                 marker: Some(data::EventMarker::PersonArrival {
                     title: "愛麗絲".to_owned(),
                 }),
+                opening: false,
             },
         )
         .unwrap();
@@ -477,6 +479,7 @@ mod tests {
             truncated: false,
             gm_only: false,
             marker: None,
+            opening: false,
         };
         let stamped = super::stamp_state(&root, &world_id, bare.clone());
         assert_eq!(stamped.state.as_ref().unwrap().table["時辰"], "清晨");

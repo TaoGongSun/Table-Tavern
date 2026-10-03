@@ -1,6 +1,8 @@
 // ST 角色卡的「顯示用 regex 腳本」轉換層：把模型輸出套上卡片自帶的 regex，
 // 抽出內嵌的整頁 HTML 介面，再組成可直接餵給沙盒 iframe srcdoc 的文件。
 import { buildChatShimSource, type CardChat } from "./card-chat-shim";
+import { buildMvuShimSource, type CardMvu } from "./card-mvu-shim";
+import { buildSandboxLibs } from "./card-sandbox-libs";
 
 export interface InterfaceScript {
   name: string;
@@ -18,6 +20,8 @@ export interface CardInterface {
   scripts: InterfaceScript[];
   unsupported: string | null;
   opening: string | null;
+  /** 卡的酒館助手腳本載入 MVU；舊後端沒這欄當 false */
+  mvu?: boolean;
 }
 
 /**
@@ -395,16 +399,19 @@ ${buildStorageShimSource(seed)}
 /**
  * 把殼包成可直接餵給沙盒 iframe srcdoc 的完整文件（含宿主橋接墊片）。
  * seed＝這桌上次存下的卡片設定，開場回填進沙盒 localStorage。
- * chat＝本場讀訊息快照與這份文件的 token；讀訊息墊片排在最前面，趕在橋接墊片覆寫 window.parent
- * 與卡片 script 執行之前收好真 parent。null＝不定義讀訊息函式，卡片照它自己的退路走。
+ * chat＝本場讀訊息快照與這份文件的 token；mvu＝MVU 變數快照（null＝這桌沒有 MVU 卡，不定義 MVU 函式）。
+ * 順序：內建全域庫 → 讀訊息 → MVU → 橋接 → 卡片自己的 script。讀訊息與 MVU 墊片趕在橋接墊片覆寫
+ * window.parent 之前收好真 parent。chat 為 null＝讀訊息與 MVU 函式都不定義，卡片照它自己的退路走。
  */
 export function buildShellDocument(
   shell: string,
   seed: CardStorage = {},
-  chat: { chat: CardChat; token: string } | null = null,
+  chat: { chat: CardChat; token: string; mvu?: CardMvu | null } | null = null,
 ): string {
   const chatShim = chat === null ? "" : `<script>${buildChatShimSource(chat.chat, chat.token)}</script>`;
-  const shim = chatShim + buildHostBridgeShim(seed);
+  const mvuShim =
+    chat === null || !chat.mvu ? "" : `<script>${buildMvuShimSource(chat.mvu, chat.token)}</script>`;
+  const shim = buildSandboxLibs() + chatShim + mvuShim + buildHostBridgeShim(seed);
   // 墊片攔不到的備案：把殼原始碼裡完整字面的 window.parent／window.top 直接改指向誘餌，
   // \b 確保只換完整字面，不誤傷 window.parentNode 或 node.parent.foo 這類正常寫法。
   const processedShell = shell.replace(/window\.parent\b/g, "window.__ttHost").replace(/window\.top\b/g, "window.__ttHost");

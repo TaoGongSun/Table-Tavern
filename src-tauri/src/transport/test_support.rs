@@ -34,6 +34,7 @@ pub(super) fn event(
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: false,
     }
 }
 

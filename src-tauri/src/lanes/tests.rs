@@ -176,6 +176,7 @@ fn event(kind: TranscriptKind, speaker_id: &str, name: &str, text: &str) -> Tran
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: false,
     }
 }
 

@@ -220,6 +220,7 @@ fn rerun_status_covers_fresh_ready_played_and_no_source() {
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: false,
     };
     data::append_transcript(root.path(), &world_id, 0, &played).unwrap();
     assert_eq!(

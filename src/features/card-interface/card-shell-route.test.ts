@@ -300,3 +300,116 @@ describe("pickCardShell", () => {
     expect(pick(null, { tableMode: undefined })).toBeNull();
   });
 });
+
+describe("pickCardShell：MVU 卡", () => {
+  // DongeonMaster 型：開場畫面走 <开局> 那支、狀態欄走占位那支
+  const mvuCard: CardInterface = {
+    character_id: "c",
+    character_name: "迷宮",
+    scripts: [
+      {
+        name: "开局",
+        find_regex: "<开局>",
+        replace_string: "```html\n<!DOCTYPE html><body>开局畫面</body>\n```",
+        trim_strings: [],
+        min_depth: null,
+        max_depth: null,
+      },
+      {
+        name: "迷宫之书",
+        find_regex: "<StatusPlaceHolderImpl/>",
+        replace_string: "```html\n<!DOCTYPE html><body>迷宫之书</body>\n```",
+        trim_strings: [],
+        min_depth: null,
+        max_depth: null,
+      },
+    ],
+    unsupported: null,
+    opening: "那么，你付出了什么代价？\n<开局>",
+    mvu: true,
+  };
+  const opening: TranscriptEvent = {
+    ...gmAt("那么，你付出了什么代价？", { 基础信息: { 时间: "未知" } }),
+    speaker_id: "",
+    opening: true,
+  };
+  opening.raw = "那么，你付出了什么代价？\n<开局>";
+  const reply = (text: string, time: string): TranscriptEvent => ({
+    ...gmAt(text, { 基础信息: { 时间: time } }),
+    speaker_id: "",
+  });
+  const mvuPick = (list: TranscriptEvent[], liveTree: Record<string, string | Record<string, string>> = {}) =>
+    pickCardShell({
+      tableMode: null,
+      refactorShell: null,
+      events: list,
+      cardInterfaces: [mvuCard],
+      mvu: { liveTree: liveTree as never, userName: "阿濤" },
+    });
+
+  it("空桌與開場樓：开局畫面不被占位搶走（開場樓不補占位）", () => {
+    expect(mvuPick([], { 基础信息: { 时间: "未知" } })?.shell).toContain("开局畫面");
+    const picked = mvuPick([opening], { 基础信息: { 时间: "未知" } });
+    expect(picked?.shell).toContain("开局畫面");
+    expect(picked?.shell).not.toContain("迷宫之书");
+    expect(picked?.floors[0].message).not.toContain("StatusPlaceHolderImpl");
+  });
+
+  it("GM 回覆補占位，選殼與讀訊息用同一份文字；殼後面的玩家句不影響活狀態", () => {
+    const picked = mvuPick([opening, player("我選恐惧"), reply("迷宫开始运转了", "第1日"), player("下一步")], {
+      基础信息: { 时间: "第1日（手改）" },
+    });
+    expect(picked?.shell).toContain("迷宫之书");
+    expect(picked?.current.id).toBe(2);
+    expect(picked?.current.text).toBe("迷宫开始运转了\n\n<StatusPlaceHolderImpl/>");
+    expect(picked?.floors[2].message).toBe(picked?.current.text);
+    expect(picked?.floors[3].message).toBe("下一步");
+    const mvu = picked!.mvu!;
+    expect(mvu.currentId).toBe(2);
+    expect(mvu.states[mvu.floorState[2]].stat_data).toEqual({ 基础信息: { 时间: "第1日（手改）" } });
+    expect(mvu.states[mvu.floorState[0]].stat_data).toEqual({ 基础信息: { 时间: "未知" } });
+  });
+
+  it("沒有開場、第一樓就是 GM 回覆：照補占位（上游不排除第 0 樓）", () => {
+    const picked = mvuPick([reply("迷宫开始运转了", "第1日")], { 基础信息: { 时间: "第1日" } });
+    expect(picked?.shell).toContain("迷宫之书");
+    expect(picked?.current.id).toBe(0);
+    expect(picked?.floors[0].message).toBe("迷宫开始运转了\n\n<StatusPlaceHolderImpl/>");
+  });
+
+  it("中止的 GM 回覆（截斷）也補占位、成為活的本樓", () => {
+    const aborted = { ...reply("迷宫开始运转到一半", "第1日"), truncated: true };
+    const picked = mvuPick([opening, player("繼續"), aborted], { 基础信息: { 时间: "第1日（手改）" } });
+    expect(picked?.current.id).toBe(2);
+    expect(picked!.mvu!.states[picked!.mvu!.floorState[2]].stat_data).toEqual({ 基础信息: { 时间: "第1日（手改）" } });
+  });
+
+  it("gm_only 事件不佔樓號：狀態來源與公開樓號同一套索引", () => {
+    const picked = mvuPick([opening, system("私設", true), reply("迷宫开始运转了", "第1日"), reply("第二天到了", "第2日")], {
+      基础信息: { 时间: "第2日" },
+    });
+    expect(picked?.floors).toHaveLength(3);
+    const mvu = picked!.mvu!;
+    expect(mvu.floorState).toHaveLength(3);
+    expect(mvu.states[mvu.floorState[1]].stat_data).toEqual({ 基础信息: { 时间: "第1日" } });
+    expect(picked?.current.id).toBe(2);
+  });
+
+  it("沒有 stat_data 的樓不補占位；非 MVU 卡、重構骨架桌不給 MVU 快照", () => {
+    const empty = mvuPick([opening, { ...reply("迷宫开始运转了", "x"), state: undefined }], {});
+    expect(empty?.floors[1].message).toBe("迷宫开始运转了");
+    expect(empty?.shell).toContain("开局畫面");
+    expect(
+      pickCardShell({ tableMode: null, refactorShell: null, events, cardInterfaces: [card], mvu: { liveTree: {}, userName: "阿濤" } })
+        ?.mvu,
+    ).toBeNull();
+    const skeletonPick = pickCardShell({
+      tableMode: "interface",
+      refactorShell: "<StatusPlaceHolderImpl/>",
+      events: [reply("迷宫开始运转了", "第1日")],
+      cardInterfaces: [mvuCard],
+      mvu: { liveTree: {}, userName: "阿濤" },
+    });
+    expect(skeletonPick?.mvu ?? null).toBeNull();
+  });
+});

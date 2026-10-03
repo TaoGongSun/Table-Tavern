@@ -384,6 +384,7 @@ export function AppWorkspace({
           shellDoc={cardInterface.shellDoc}
           shellKey={cardInterface.shellKey}
           chat={cardInterface.chat}
+          mvu={cardInterface.mvu}
           onClose={() => cardInterface.close()}
         />
       )}

@@ -56,6 +56,7 @@ fn transcript_event(ts: &str, text: &str) -> data::TranscriptEvent {
         truncated: false,
         gm_only: false,
         marker: None,
+        opening: false,
     }
 }
 

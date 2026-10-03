@@ -614,6 +614,7 @@ fn record_person_arrivals(
             truncated: false,
             gm_only: !matches!(entry.visibility, data::Visibility::Public),
             marker: Some(marker),
+            opening: false,
         };
         if data::append_transcript(root, world_id, scene, &event).is_ok() {
             titles.push(entry.title.clone());
@@ -659,6 +660,7 @@ fn record_card_arrivals(
             truncated: false,
             gm_only,
             marker: Some(marker),
+            opening: false,
         };
     for card in arrivals {
         if let Some(private) = transport::card_private(card, user_name) {
