@@ -351,6 +351,17 @@ h2.dialog-title {
   color: var(--ink-3);
 }
 
+.turn-failed-dialog small {
+  display: block;
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
+.turn-failed-draft {
+  display: grid;
+  gap: 6px;
+}
+
 .ai-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, 4.5rem);

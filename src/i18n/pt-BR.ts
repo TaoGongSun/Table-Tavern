@@ -86,6 +86,8 @@ export const ptBR: Record<MsgKey, string> = {
   sponsorPackUnlocked: "Conteúdo de apoiador desbloqueado — obrigado pelo apoio!",
   sponsorPackImportError: "Falha na importação: {reason}",
   closeBtn: "Fechar",
+  turnFailedTitle: "Esta rodada não foi concluída",
+  turnFailedDraftLabel: "O que você acabou de enviar (selecione para copiar)",
   dialogCancel: "Cancelar",
   dialogDelete: "Excluir",
   dialogRemove: "Remover",

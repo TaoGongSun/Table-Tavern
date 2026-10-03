@@ -4,21 +4,28 @@ import { renderStoryMarkdown } from "./story-markdown";
 import { explainAiError } from "./ai-error";
 import { backendText } from "./backend-text";
 
-// 錯誤列：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
+// AI 失敗的呈現：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
 // transport 給得出來就傳：認證失敗要指對地方（API 換金鑰／CLI 重新登入）。
-// text 存後端原文：分流吃原文，顯示時才經 backendText 翻譯代碼。
-export function ErrorNote({ text, transport }: { text: string; transport?: string }) {
+// text 存後端原文：分流吃原文，顯示時才經 backendText 翻譯代碼。錯誤列與失敗彈窗共用。
+export function AiErrorText({ text, transport }: { text: string; transport?: string }) {
   const key = explainAiError(text, transport);
-  if (!key) return <p role="alert">{backendText(text)}</p>;
+  if (!key) return <>{backendText(text)}</>;
   return (
-    <p role="alert">
+    <>
       {t(key)}
       <br />
       <small>{backendText(text)}</small>
-    </p>
+    </>
   );
 }
 
+export function ErrorNote({ text, transport }: { text: string; transport?: string }) {
+  return (
+    <p role="alert">
+      <AiErrorText text={text} transport={transport} />
+    </p>
+  );
+}
 
 export function StoryText({ text }: { text: string }) {
   const html = useMemo(() => renderStoryMarkdown(text), [text]);

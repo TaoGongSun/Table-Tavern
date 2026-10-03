@@ -86,6 +86,8 @@ export const zhCN: Record<MsgKey, string> = {
   sponsorPackUnlocked: "赞助内容已解锁，感谢支持！",
   sponsorPackImportError: "导入失败：{reason}",
   closeBtn: "关闭",
+  turnFailedTitle: "这一轮没能完成",
+  turnFailedDraftLabel: "你刚发送的内容（可选取复制）",
   dialogCancel: "取消",
   dialogDelete: "删除",
   dialogRemove: "移除",

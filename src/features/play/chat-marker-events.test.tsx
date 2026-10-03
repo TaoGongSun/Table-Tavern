@@ -53,6 +53,7 @@ describe("chat controller with marker events", () => {
         onError: (message) => {
           if (message) errors.push(message);
         },
+        onTurnFailed: ({ raw }) => errors.push(raw),
       });
       return null;
     }
@@ -108,10 +109,10 @@ describe("chat controller with marker events", () => {
   it("stores an empty player name and still blocks blank unmarked events", async () => {
     const written: TranscriptEvent[] = [];
     invokeMock.mockImplementation(async (command, args) => {
-      if (command === "append_transcript") {
+      if (command === "append_transcript" || command === "append_player_event") {
         const event = args!.event as TranscriptEvent;
         written.push(event);
-        return event;
+        return command === "append_player_event" ? { event, offset: 0 } : event;
       }
       if (command === "gm_narrate") return { text: "  ", raw: null, next: null };
       return null;

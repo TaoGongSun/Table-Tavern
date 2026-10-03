@@ -34,10 +34,10 @@ pub use scene::{
     EventMarker,
 };
 pub use scene::{
-    append_opening, append_transcript, begin_next_scene, export_scene_markdown,
-    export_transcript_markdown, fork_scene, opening_checkpoint, pop_transcript, read_transcript,
-    remove_transcript_event, replace_scene_summary, revert_scene, scene_label,
-    set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
+    append_opening, append_transcript, begin_next_scene, discard_unanswered_player,
+    export_scene_markdown, export_transcript_markdown, fork_scene, opening_checkpoint,
+    pop_transcript, read_transcript, remove_transcript_event, replace_scene_summary, revert_scene,
+    scene_label, set_last_transcript_state, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
 };
 pub(crate) use scene::{lang_key, name_matches, player_fallback_name, split_present_names};
 pub(crate) use state::is_false;
@@ -53,7 +53,9 @@ pub use world::{
 };
 pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
 #[cfg(test)]
-pub(crate) use world_file::{write_hook, AppendFailGuard, RemoveFailGuard, RenameFailGuard};
+pub(crate) use world_file::{
+    write_hook, AppendFailGuard, RemoveFailGuard, RenameFailGuard, TruncateFailGuard,
+};
 #[cfg(test)]
 pub(crate) use world_lock::test_exclusive;
 pub(crate) use world_lock::{

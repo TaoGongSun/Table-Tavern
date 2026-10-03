@@ -94,6 +94,12 @@ export interface TranscriptEvent {
   marker?: EventMarker;
 }
 
+/** `append_player_event` 的回傳：落檔的那則，與它在逐字稿檔裡的起始位元組（收回時的收據） */
+export interface PlayerAppend {
+  event: TranscriptEvent;
+  offset: number;
+}
+
 // 逐字稿事件標頭代碼：與 Rust `EventMarker` 同形（type 為判別欄）。認不得的 type 走 UnknownMarker，
 // 顯示前一律經 features/play/event-text.ts 的 parseMarker 做執行期形狀檢查。
 export type KnownMarker =

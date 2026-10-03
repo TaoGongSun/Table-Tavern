@@ -86,6 +86,8 @@ export const ru: Record<MsgKey, string> = {
   sponsorPackUnlocked: "Спонсорский контент разблокирован — спасибо за поддержку!",
   sponsorPackImportError: "Ошибка импорта: {reason}",
   closeBtn: "Закрыть",
+  turnFailedTitle: "Этот ход не завершился",
+  turnFailedDraftLabel: "То, что ты только что отправил (выдели, чтобы скопировать)",
   dialogCancel: "Отмена",
   dialogDelete: "Удалить",
   dialogRemove: "Убрать",

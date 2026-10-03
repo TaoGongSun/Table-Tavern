@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { AppConfig, TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import { AppConfig, PlayerAppend, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../characters/card-model";
 import { parseMarker } from "../../shared/ui/event-text";
 
@@ -26,12 +26,18 @@ function nowTs() {
   return new Date().toISOString();
 }
 
+/** 一輪沒完成：raw 是錯誤原文；draft 是打字送出卻沒能自動收回時，玩家剛送出的原文 */
+export interface TurnFailure {
+  raw: string;
+  draft?: string;
+}
+
 export interface ChatController {
   /** 這一幕已落檔的逐字稿 */
   events: TranscriptEvent[];
   /** 是誰在生成、以哪種形式；id 空字串＝GM */
   generating: { id: string; kind: "dialogue" | "narration" } | null;
-  /** `generating !== null`：桌次操作與按鈕的忙碌判斷都讀這個 */
+  /** 生成中或打字送出整輪進行中：桌次操作、按鈕與輸入框的忙碌判斷都讀這個 */
   busy: boolean;
   /** 同步版的忙碌判斷（ref）：離桌這類 await 之後才檢查的守門用它，不吃舊閉包 */
   isBusy: () => boolean;
@@ -92,6 +98,7 @@ export function useChatController({
   noteChatStarted,
   markCliConnected,
   onError,
+  onTurnFailed,
 }: {
   worldId: string;
   scene: number;
@@ -111,6 +118,8 @@ export function useChatController({
   noteChatStarted: () => void;
   markCliConnected: () => Promise<void>;
   onError: (message: string) => void;
+  /** 回合（送出、請角色發言、GM 旁白、GM 推進）沒完成：交給攔截式彈窗 */
+  onTurnFailed: (failure: TurnFailure) => void;
 }): ChatController {
   const [events, setEvents] = useState<TranscriptEvent[]>([]);
   // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
@@ -120,10 +129,18 @@ export function useChatController({
     scene: number;
     events: TranscriptEvent[];
   } | null>(null);
-  // 連按時前一次的寫檔還沒回來就再按，兩次會讀到同一份舊狀態而重複收回／放回同一則；
-  // 用旗標讓同一時間只跑一次（寫檔是毫秒級，擋掉的那下感覺不出來）
-  const undoBusy = useRef(false);
   const [input, setInput] = useState("");
+  // 打字送出整輪（含玩家句落檔、失敗收回）期間鎖住輸入框：失敗時框內不可能有新字，原文才能直接放回
+  const [sending, setSending] = useState(false);
+  // 換桌／換幕世代：await 回來時世代不同（含換走又換回）就不再碰畫面與輸入框
+  const generation = useRef(0);
+  const generationKey = useRef(`${worldId}\u0000${scene}`);
+  if (generationKey.current !== `${worldId}\u0000${scene}`) {
+    generationKey.current = `${worldId}\u0000${scene}`;
+    generation.current += 1;
+  }
+  // 這一輪有追加回錯：收尾時重讀逐字稿，讓畫面跟磁碟對齊
+  const appendFailed = useRef(false);
   // 逐角色打字指示：狀態帶「是誰在生成、以哪種形式」，不做全域單一指示燈（NewPlan §9.2）
   // id 空字串＝GM（narration 一律如此，dialogue 一定帶角色 id）；顯示名經 metaOf(id) 即時查
   const [generating, setGenerating] = useState<{
@@ -136,6 +153,7 @@ export function useChatController({
   const generatingRef = useRef<{ id: string; kind: "dialogue" | "narration" } | null>(null);
   generatingRef.current = generating;
   // generating 是 state，setState 到重繪中間連點還看得到舊的 false。這支 ref 在進函式當下就佔住。
+  // 收回／復原也佔它：逐字稿操作（回合、收回、復原）同一時間只跑一個
   const busyRef = useRef(false);
   const stopRequested = useRef(false);
   const turnIdRef = useRef<string | null>(null);
@@ -198,11 +216,14 @@ export function useChatController({
   }, []);
 
   const reload = useCallback(async () => {
-    setEvents(await invoke<TranscriptEvent[]>("read_transcript", { worldId, scene }));
+    const started = generation.current;
+    const transcript = await invoke<TranscriptEvent[]>("read_transcript", { worldId, scene });
+    if (generation.current === started) setEvents(transcript);
   }, [worldId, scene]);
 
+  // started＝發起這一輪時的世代，由回合一路傳下來：換桌之後才呼叫也不會把新世代當成自己的
   const appendEvent = useCallback(
-    async (event: TranscriptEvent) => {
+    async (event: TranscriptEvent, started: number) => {
       // 空白事件一律不落地（stream-failure-visible）：AI 失敗時故事不該多出一則看不見的
       // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
       // 與任何未來新路徑的保險，錯誤碼與後端同一個
@@ -212,7 +233,14 @@ export function useChatController({
       }
       // 用後端回傳的那份（快照已補好）進畫面：收回後要復原時，送回去的事件才帶著當時的
       // 檯面值，狀態欄跟著回到那一刻
-      const stamped = await invoke<TranscriptEvent>("append_transcript", { worldId, scene, event });
+      let stamped: TranscriptEvent;
+      try {
+        stamped = await invoke<TranscriptEvent>("append_transcript", { worldId, scene, event });
+      } catch (reason) {
+        appendFailed.current = true;
+        throw reason;
+      }
+      if (generation.current !== started) return;
       setEvents((previous) => [...previous, stamped]);
       // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
       setUndone(null);
@@ -253,12 +281,14 @@ export function useChatController({
 
   // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
   const undoLast = useCallback(async () => {
-    if (busyRef.current || generating !== null || events.length === 0 || undoBusy.current) return;
-    undoBusy.current = true;
+    if (busyRef.current || generating !== null || events.length === 0) return;
+    busyRef.current = true;
     onError("");
     const last = events[events.length - 1];
+    const started = generation.current;
     try {
       if (!(await invoke<boolean>("pop_transcript", { worldId, scene }))) return;
+      if (generation.current !== started) return;
       setEvents((previous) => previous.slice(0, -1));
       setUndone((previous) =>
         previous && previous.worldId === worldId && previous.scene === scene
@@ -269,7 +299,7 @@ export function useChatController({
     } catch (reason) {
       onError(String(reason));
     } finally {
-      undoBusy.current = false;
+      busyRef.current = false;
     }
   }, [generating, events, worldId, scene, refreshState, onError]);
 
@@ -278,14 +308,16 @@ export function useChatController({
   // 疊頂若是空白事件就連同丟棄、往下找第一則有內容的放回：空白回合本來就不該存在，
   // 放回去只會讓玩家覺得按鈕壞了（stream-failure-visible）
   const restoreUndone = useCallback(async () => {
-    if (!undone || !canRestore || busyRef.current || generating !== null || undoBusy.current) return;
-    undoBusy.current = true;
+    if (!undone || !canRestore || busyRef.current || generating !== null) return;
+    busyRef.current = true;
     let index = undone.events.length - 1;
     while (index >= 0 && !hasContent(undone.events[index])) index -= 1;
     const event = undone.events[index];
     onError("");
+    const started = generation.current;
     try {
       await invoke("append_transcript", { worldId, scene, event });
+      if (generation.current !== started) return;
       setEvents((previous) => [...previous, event]);
       setUndone((previous) =>
         previous && index > 0
@@ -296,7 +328,7 @@ export function useChatController({
     } catch (reason) {
       onError(String(reason));
     } finally {
-      undoBusy.current = false;
+      busyRef.current = false;
     }
   }, [undone, canRestore, generating, worldId, scene, refreshState, onError]);
 
@@ -337,9 +369,45 @@ export function useChatController({
     return () => clearInterval(timer);
   }, [worldId]);
 
-  // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾
+  // 回合沒完成：先把失敗交給彈窗，再（有追加回錯時）重讀逐字稿對齊畫面——重讀可能失敗，
+  // 失敗資訊得先落地。世代已變就不重讀，免得蓋掉新桌的畫面（reload 自己也會再核一次）
+  const failTurn = useCallback(
+    async (reason: unknown, started: number, draft?: string) => {
+      onTurnFailed(draft === undefined ? { raw: String(reason) } : { raw: String(reason), draft });
+      if (!appendFailed.current || generation.current !== started) return;
+      try {
+        await reload();
+      } catch (error) {
+        onError(String(error));
+      }
+    },
+    [onTurnFailed, reload, onError],
+  );
+
+  // 收回沒有回覆的玩家句：只有後端回 true（確定已刪）、且世代沒變才算數；回錯一律當沒收
+  const discardPlayer = useCallback(
+    async (placed: PlayerAppend, text: string, started: number) => {
+      try {
+        const removed = await invoke<boolean>("discard_unanswered_player", {
+          worldId,
+          scene,
+          offset: placed.offset,
+          ts: placed.event.ts,
+          text,
+        });
+        return removed && generation.current === started;
+      } catch {
+        return false;
+      }
+    },
+    [worldId, scene],
+  );
+
+  // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾。
+  // 世代已變就不開新的 AI 呼叫；已在路上的回覆照樣落進原桌（closure 的 worldId），只是不碰現在的畫面
   const replyOnce = useCallback(
-    async (characterId: string) => {
+    async (characterId: string, started: number) => {
+      if (generation.current !== started) return;
       noteChatStarted();
       const turnId = beginTurn();
       setCanStop(true);
@@ -347,7 +415,9 @@ export function useChatController({
       setStreamText("");
       responseTruncated.current = false;
       const onDelta = new Channel<string>();
-      onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
+      onDelta.onmessage = (delta) => {
+        if (generation.current === started) setStreamText((previous) => previous + delta);
+      };
       const reply = await invoke<{ text: string; aborted: boolean }>("chat_with_character", {
         worldId,
         characterId,
@@ -365,7 +435,7 @@ export function useChatController({
             kind: "dialogue",
             text: reply.text,
             truncated: true,
-          });
+          }, started);
           await markCliConnected();
           noteTurnDone();
         }
@@ -379,7 +449,7 @@ export function useChatController({
         kind: "dialogue",
         text: reply.text,
         ...(truncated ? { truncated: true } : {}),
-      });
+      }, started);
       await markCliConnected();
       noteTurnDone();
     },
@@ -391,12 +461,14 @@ export function useChatController({
     async (characterId: string) => {
       if (!characterId || busyRef.current) return;
       busyRef.current = true;
+      appendFailed.current = false;
+      const started = generation.current;
       onError("");
       try {
-        await replyOnce(characterId);
+        await replyOnce(characterId, started);
         await refreshWorlds();
       } catch (reason) {
-        onError(String(reason));
+        await failTurn(reason, started);
       } finally {
         busyRef.current = false;
         turnIdRef.current = null;
@@ -405,12 +477,13 @@ export function useChatController({
         setStreamText("");
       }
     },
-    [replyOnce, refreshWorlds, onError],
+    [replyOnce, refreshWorlds, onError, failTurn],
   );
 
   // 單次 GM 旁白＋點名（不含 busy 防護）：後端一次呼叫完成，旁白落 transcript，
   // 回傳下一位發言者（角色 id／玩家哨兵／null＝GM 沒點名）；失敗往外拋由呼叫端收尾
-  const narrateOnce = useCallback(async (): Promise<string | null> => {
+  const narrateOnce = useCallback(async (started: number): Promise<string | null> => {
+    if (generation.current !== started) return null;
     noteChatStarted();
     setGenerating({ id: "", kind: "narration" });
     setStreamText("");
@@ -418,7 +491,9 @@ export function useChatController({
     const turnId = beginTurn();
     setCanStop(true);
     const onDelta = new Channel<string>();
-    onDelta.onmessage = (delta) => setStreamText((previous) => previous + delta);
+    onDelta.onmessage = (delta) => {
+      if (generation.current === started) setStreamText((previous) => previous + delta);
+    };
     const { text, raw, next, state_updates, arrived_characters, aborted } = await invoke<{
       text: string;
       raw: string | null;
@@ -443,14 +518,15 @@ export function useChatController({
           kind: "narration",
           text,
           truncated: true,
-        });
+        }, started);
         await markCliConnected();
         noteTurnDone();
       }
       return null;
     }
     const truncated = await takeResponseTruncated();
-    if (arrived_characters && arrived_characters.length > 0) {
+    const current = generation.current === started;
+    if (current && arrived_characters && arrived_characters.length > 0) {
       onArrived(arrived_characters);
     }
     await appendEvent({
@@ -461,7 +537,7 @@ export function useChatController({
       text,
       ...(raw ? { raw } : {}),
       ...(truncated ? { truncated: true } : {}),
-    });
+    }, started);
     // 長文字欄（外貌、貼文…）改用一則系統事件記變動，不再每輪塞回提示詞——
     // 歷史會被兩條傳輸路每輪重播且吃快取，回合尾動態塊每輪重組、不落歷史
     const updates = state_updates ?? [];
@@ -473,8 +549,10 @@ export function useChatController({
         kind: "system",
         text: updates.map((u) => `${u.path}：${u.value}`).join("\n"),
         marker: { type: "state_update" },
-      });
+      }, started);
     }
+    // 換桌了：旁白已落進原桌，現在這桌的檯面與接力都不關它的事
+    if (generation.current !== started) return null;
     await refreshState();
     await markCliConnected();
     noteTurnDone();
@@ -485,12 +563,14 @@ export function useChatController({
   const gmNarrate = useCallback(async () => {
     if (busyRef.current) return;
     busyRef.current = true;
+    appendFailed.current = false;
+    const started = generation.current;
     onError("");
     try {
-      await narrateOnce();
+      await narrateOnce(started);
       await refreshWorlds();
     } catch (reason) {
-      onError(String(reason));
+      await failTurn(reason, started);
     } finally {
       busyRef.current = false;
       turnIdRef.current = null;
@@ -498,35 +578,37 @@ export function useChatController({
       setGenerating(null);
       setStreamText("");
     }
-  }, [narrateOnce, refreshWorlds, onError]);
+  }, [narrateOnce, refreshWorlds, onError, failTurn]);
 
   // 簡易導演：GM 旁白＋點名→角色接話的接力，至「輪到玩家」、GM 沒點名或每回合上限停下（NewPlan §6.1）
   const gmAdvance = useCallback(async () => {
     if (!config || busyRef.current || castCount === 0) return;
     busyRef.current = true;
+    appendFailed.current = false;
+    const started = generation.current;
     onError("");
     const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
     try {
       for (let turn = 0; turn < max; turn += 1) {
-        const next = await narrateOnce();
-        // narrateOnce 之後、寫點名之前：停了就不再點名、也不再接力
-        if (stopRequested.current || next === null) break;
+        const next = await narrateOnce(started);
+        // narrateOnce 之後、寫點名之前：停了或換桌了就不再點名、也不再接力
+        if (stopRequested.current || next === null || generation.current !== started) break;
         // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
         if (next === PLAYER_SENTINEL) {
           // 玩家沒名字就存空字串，顯示與送 AI 時再照當下語系補稱呼
-          await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: "", marker: { type: "gm_call", name: playerName ?? "" } });
+          await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: "", marker: { type: "gm_call", name: playerName ?? "" } }, started);
           break;
         }
         const name = metaOf(next)?.name ?? next;
-        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: "", marker: { type: "gm_call", name } });
+        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: "GM", kind: "system", text: "", marker: { type: "gm_call", name } }, started);
         // 點名寫檔期間按的停止要在這裡停。進 replyOnce 會 beginTurn 清掉旗標，角色就照樣接話。
         if (stopRequested.current) break;
-        await replyOnce(next);
+        await replyOnce(next, started);
         if (stopRequested.current) break;
       }
       await refreshWorlds();
     } catch (reason) {
-      onError(String(reason));
+      await failTurn(reason, started);
     } finally {
       busyRef.current = false;
       turnIdRef.current = null;
@@ -534,7 +616,7 @@ export function useChatController({
       setGenerating(null);
       setStreamText("");
     }
-  }, [config, castCount, narrateOnce, playerName, appendEvent, metaOf, replyOnce, refreshWorlds, onError]);
+  }, [config, castCount, narrateOnce, playerName, appendEvent, metaOf, replyOnce, refreshWorlds, onError, failTurn]);
 
   // 請目前的發言對象接話：GM 以旁白回應（讀得到世界設定與全部角色卡），角色就點名接話
   const replyFromTarget = useCallback(async () => {
@@ -543,8 +625,12 @@ export function useChatController({
     else if (speaker) await requestReply(speaker);
   }, [gmTargeted, speaker, gmNarrate, requestReply]);
 
-  const submitText = useCallback(
-    async (raw: string) => {
+  // 打字送出（fromComposer）與卡片介面送出共用。只有打字送出會清輸入框、鎖輸入框，
+  // 失敗時也只有它走「乾淨路徑」自動收回：玩家句落檔並拿到收據、之後沒回成，後端核對那一行
+  // 確實還是檔尾才截掉，確定刪了才把原文放回輸入框；其他任何情況都不收、不放回，
+  // 原文改放在失敗彈窗裡（見 .ai/plans/quota-insufficient-alert.md）
+  const submitTurn = useCallback(
+    async (raw: string, fromComposer: boolean) => {
       const text = raw.trim();
       if (busyRef.current) return;
       // 卡片只按了 /trigger（沒帶文字）＝直接要對象接話，不留玩家發言
@@ -554,32 +640,72 @@ export function useChatController({
         return;
       }
       busyRef.current = true;
+      appendFailed.current = false;
+      const started = generation.current;
       onError("");
-      setInput("");
+      if (fromComposer) {
+        setSending(true);
+        setInput("");
+      }
+      let placed: PlayerAppend | null = null;
       try {
-        await appendEvent({ ts: nowTs(), speaker_id: "", speaker_name: playerName ?? "", kind: "player", text });
-        if (gmTargeted) await narrateOnce();
-        else if (speaker) await replyOnce(speaker);
+        try {
+          placed = await invoke<PlayerAppend>("append_player_event", {
+            worldId,
+            scene,
+            event: { ts: nowTs(), speaker_id: "", speaker_name: playerName ?? "", kind: "player", text },
+          });
+        } catch (reason) {
+          appendFailed.current = true;
+          throw reason;
+        }
+        if (generation.current === started) {
+          const shown = placed.event;
+          setEvents((previous) => [...previous, shown]);
+          // 桌上一有新內容，收回的那幾句就不能再放回去了
+          setUndone(null);
+        }
+        // 玩家句落檔時已經換桌：句子留在原桌，不再替原桌發 AI 呼叫
+        if (generation.current !== started) return;
+        if (gmTargeted) await narrateOnce(started);
+        else if (speaker) await replyOnce(speaker, started);
         await refreshWorlds();
       } catch (reason) {
-        onError(String(reason));
+        if (!fromComposer) {
+          await failTurn(reason, started);
+        } else if (placed && generation.current === started && (await discardPlayer(placed, text, started))) {
+          const shown = placed.event;
+          setEvents((previous) => previous.filter((event) => event !== shown));
+          setInput(raw);
+          await failTurn(reason, started);
+          try {
+            await refreshState();
+          } catch (error) {
+            onError(String(error));
+          }
+        } else {
+          await failTurn(reason, started, raw);
+        }
       } finally {
         busyRef.current = false;
         turnIdRef.current = null;
         setCanStop(false);
         setGenerating(null);
         setStreamText("");
+        if (fromComposer) setSending(false);
       }
     },
-    [gmTargeted, speaker, gmNarrate, requestReply, appendEvent, playerName, onError, narrateOnce, replyOnce, refreshWorlds],
+    [gmTargeted, speaker, gmNarrate, requestReply, worldId, scene, playerName, onError, narrateOnce, replyOnce, refreshWorlds, failTurn, discardPlayer, refreshState],
   );
+
+  const submitText = useCallback((raw: string) => submitTurn(raw, false), [submitTurn]);
 
   const send = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      await submitText(input);
+      await submitTurn(input, true);
     },
-    [submitText, input],
+    [submitTurn, input],
   );
 
   // 換幕／重生摘要跑在 App 那頭，但畫面上那段「GM 正在生成」屬於這裡
@@ -599,7 +725,7 @@ export function useChatController({
     () => ({
       events,
       generating,
-      busy: generating !== null,
+      busy: generating !== null || sending,
       isBusy,
       streamText,
       input,
@@ -625,6 +751,7 @@ export function useChatController({
     [
       events,
       generating,
+      sending,
       isBusy,
       streamText,
       input,

@@ -5,7 +5,8 @@ use super::super::{local_timestamp, DataResult};
 use super::marker::EventMarker;
 use super::presence::settle_card_visibility;
 use super::transcript::{
-    append_transcript, read_transcript, transcript_path, TranscriptEvent, TranscriptKind,
+    append_transcript, parse_transcript, read_transcript, transcript_path, TranscriptEvent,
+    TranscriptKind,
 };
 use crate::ui_msg::UiMsg;
 
@@ -152,12 +153,20 @@ pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
     let Some(previous_scene) = scene_label(&state, scene).parent else {
         return Err(UiMsg::SceneFirstNoPrevious.into_error());
     };
-    let events = read_transcript(root, world_id, scene)?;
-    if events.len() != 1 {
-        return Err(UiMsg::SceneRewindHasNewContent.into_error());
-    }
-
-    super::super::world_file::commit_world_remove(&transcript_path(root, world_id, scene)?)?;
+    // 判斷與刪檔在同一把逐字稿鎖內：判完到刪掉之間不會插進新的一句
+    super::super::world_file::with_file_lock(
+        &transcript_path(root, world_id, scene)?,
+        |file| -> DataResult<()> {
+            let events = match file.read()? {
+                Some(bytes) => parse_transcript(&bytes)?,
+                None => Vec::new(),
+            };
+            if events.len() != 1 {
+                return Err(UiMsg::SceneRewindHasNewContent.into_error());
+            }
+            file.remove()
+        },
+    )?;
     state.current_scene = previous_scene;
     state.scene_titles.remove(&previous_scene.to_string());
     // 自己這筆標籤跟著檔案一起消失，不留退回後查不到來源、卻還佔著 key 的殭屍紀錄。
@@ -190,20 +199,26 @@ pub fn replace_scene_summary(
     if label.forked {
         return Err(UiMsg::SummaryContinuedScene.into_error());
     }
-    let mut events = read_transcript(root, world_id, scene)?;
-    if events.len() != 1 {
-        return Err(UiMsg::SummaryHasNewContent.into_error());
-    }
-
-    // 重寫的只有文字，其餘欄位原樣留著——尤其 state 那份快照：
-    // 摘要是這一幕唯一一則，快照掉了之後退回這一幕會把狀態欄清成空的。
-    let event = &mut events[0];
-    event.text = summary_text.to_owned();
-    event.marker = Some(EventMarker::SceneSummary);
-    event.ts = local_timestamp()?;
-    super::super::world_file::commit_world_write(
+    let ts = local_timestamp()?;
+    // 判斷與覆寫在同一把逐字稿鎖內：判完到寫回之間不會插進新的一句
+    super::super::world_file::with_file_lock(
         &transcript_path(root, world_id, scene)?,
-        format!("{}\n", serde_json::to_string(event)?).as_bytes(),
+        |file| -> DataResult<()> {
+            let mut events = match file.read()? {
+                Some(bytes) => parse_transcript(&bytes)?,
+                None => Vec::new(),
+            };
+            if events.len() != 1 {
+                return Err(UiMsg::SummaryHasNewContent.into_error());
+            }
+            // 重寫的只有文字，其餘欄位原樣留著——尤其 state 那份快照：
+            // 摘要是這一幕唯一一則，快照掉了之後退回這一幕會把狀態欄清成空的。
+            let event = &mut events[0];
+            event.text = summary_text.to_owned();
+            event.marker = Some(EventMarker::SceneSummary);
+            event.ts = ts;
+            file.write(format!("{}\n", serde_json::to_string(event)?).as_bytes())
+        },
     )?;
 
     match title.map(str::trim).filter(|name| !name.is_empty()) {

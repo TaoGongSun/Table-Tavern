@@ -87,6 +87,8 @@ export const en: Record<MsgKey, string> = {
   sponsorPackUnlocked: "Sponsor content unlocked — thank you!",
   sponsorPackImportError: "Import failed: {reason}",
   closeBtn: "Close",
+  turnFailedTitle: "This turn didn't finish",
+  turnFailedDraftLabel: "What you just sent (select to copy)",
   dialogCancel: "Cancel",
   dialogDelete: "Delete",
   dialogRemove: "Remove",
