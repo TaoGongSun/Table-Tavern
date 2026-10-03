@@ -122,6 +122,36 @@ describe("backendCode", () => {
   });
 });
 
+// 重構餘段 audit：title 是後端產生當時的完整餘段標題，畫面照目前語系翻句子、標題原樣。
+describe("refactor_span_leftover", () => {
+  afterEach(() => setLang("zh-TW"));
+  const leftover = (title: string) =>
+    `TTMSG:${JSON.stringify({ code: "refactor_span_leftover", title })}`;
+
+  it("解得出新參數，切語系後仍引用產生當時的標題", () => {
+    const raw = leftover("條目A (leftover)");
+    expect(backendCode(raw)).toBe("refactor_span_leftover");
+    expect(backendText(raw)).toBe("此段未獲有效路由，已併入「條目A (leftover)」條目照搬。");
+    setLang("ru");
+    expect(backendText(raw)).toBe(
+      "У этого фрагмента нет подходящего назначения, поэтому он перенесён как есть в запись «條目A (leftover)».",
+    );
+  });
+
+  it("標題含引號、反斜線、{name}、TTMSG: 都原樣代入", () => {
+    const title = '「引號」"q" \\ {name} TTMSG:{"code":"world_busy"} (leftover)';
+    setLang("en");
+    expect(backendText(leftover(title))).toBe(
+      `This span had no valid route, so it was merged into the “${title}” entry as-is.`,
+    );
+  });
+
+  it("舊存檔沒有 title 參數：照既有規則整段原文", () => {
+    const old = 'TTMSG:{"code":"refactor_span_leftover"}';
+    expect(backendText(old)).toBe(old);
+  });
+});
+
 // t() 是 backendText 的代入出口：參數值（供應商原文、路徑）裡的 {名} 不能被再換。
 describe("桌資料面代碼", () => {
   afterEach(() => setLang("zh-TW"));

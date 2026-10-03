@@ -235,8 +235,11 @@ pub(crate) fn refactor_assemble_local(
     world_id: String,
     survey: refactor_ai::RefactorSurveyOutcome,
 ) -> Result<refactor_assemble::RefactorLocalAssembly, String> {
+    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
-    refactor_assemble::assemble_local(&root, &world_id, &survey).map_err(|error| error.to_string())
+    refactor_assemble::assemble_local(&root, &world_id, &survey, &lang)
+        .map_err(|error| error.to_string())
 }
 
 /// AI 卡重構讀卡（展開階段，介面）：system 與盤點同一字串（快取命中），逐條展開成

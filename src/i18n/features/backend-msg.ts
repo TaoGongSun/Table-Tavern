@@ -264,7 +264,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   lane_rewrite_unsupported: { provider: "string" },
   refactor_drop_rule_carried: {},
   refactor_drop_rule_leftover: {},
-  refactor_span_leftover: {},
+  refactor_span_leftover: { title: "string" },
   refactor_person_span_invalid: { name: "string" },
   refactor_coverage_carried: {},
   refactor_signal_no_reason: { pattern: "string" },

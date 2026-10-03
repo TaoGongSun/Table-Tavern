@@ -1,12 +1,12 @@
 // 畫面說明（非錯誤）的後端代碼譯文；鍵是 `be_<code>`。代碼落在重構結果（稽核 detail、未接管 note）、
 // 機制帳本 detail、匯入收據名稱、模型清單快取，舊檔裡的中文原樣顯示。
 // 參數表在 backend-msg.ts 的 BACKEND_MSG_PARAMS；index.ts 的 t() 把這份併進同一個 MsgKey 空間。
-// 「（餘段）」是寫進世界書的條目標題字尾（不翻），各語系照抄，玩家才找得到那條。
+// be_refactor_span_leftover 的 {title} 是產生當時的完整餘段標題（後綴由後端照介面語言產生）。
 const COPY = {
   "zh-TW": {
     be_refactor_drop_rule_carried: "淘汰缺編號或編號不在 1–4，自動退回照搬。",
     be_refactor_drop_rule_leftover: "淘汰缺編號或編號不在 1–4，此段改併入餘段照搬。",
-    be_refactor_span_leftover: "此段未獲有效路由，已併入「（餘段）」條目照搬。",
+    be_refactor_span_leftover: "此段未獲有效路由，已併入「{title}」條目照搬。",
     be_refactor_person_span_invalid: "人物「{name}」mode=clean 但段落引用無效，退回展開佇列。",
     be_refactor_coverage_carried: "此條目未出現在人物／介面／條目分類任何一處，自動補列照搬。",
     be_refactor_signal_no_reason: "結構預掃訊號（{pattern}）落在照搬條目，未附 reason 說明。",
@@ -22,7 +22,7 @@ const COPY = {
   "zh-CN": {
     be_refactor_drop_rule_carried: "淘汰缺编号或编号不在 1–4，自动退回照搬。",
     be_refactor_drop_rule_leftover: "淘汰缺编号或编号不在 1–4，此段改并入余段照搬。",
-    be_refactor_span_leftover: "此段未获有效路由，已并入“（餘段）”条目照搬。",
+    be_refactor_span_leftover: "此段未获有效路由，已并入“{title}”条目照搬。",
     be_refactor_person_span_invalid: "人物“{name}”mode=clean 但段落引用无效，退回展开队列。",
     be_refactor_coverage_carried: "此条目未出现在人物／界面／条目分类任何一处，自动补列照搬。",
     be_refactor_signal_no_reason: "结构预扫信号（{pattern}）落在照搬条目，未附 reason 说明。",
@@ -41,7 +41,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "The drop has no rule number, or it isn't 1–4, so this span was merged into the leftover entry as-is.",
     be_refactor_span_leftover:
-      "This span had no valid route, so it was merged into the “…（餘段）” entry as-is.",
+      "This span had no valid route, so it was merged into the “{title}” entry as-is.",
     be_refactor_person_span_invalid:
       "“{name}” uses mode=clean but references invalid spans; sent back to the expand queue.",
     be_refactor_coverage_carried:
@@ -65,7 +65,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "除外ルールの番号がないか 1〜4 以外のため、この段落は残り段落の項目にまとめてそのまま引き継ぎました。",
     be_refactor_span_leftover:
-      "この段落は有効な振り分け先がないため、「…（餘段）」項目にまとめてそのまま引き継ぎました。",
+      "この段落は有効な振り分け先がないため、「{title}」項目にまとめてそのまま引き継ぎました。",
     be_refactor_person_span_invalid:
       "人物「{name}」は mode=clean ですが段落の参照が無効なため、展開待ちに戻しました。",
     be_refactor_coverage_carried:
@@ -89,7 +89,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "제외 규칙 번호가 없거나 1–4가 아니어서 이 단락은 남은 단락 항목에 합쳐 그대로 옮겼습니다.",
     be_refactor_span_leftover:
-      "이 단락은 유효한 배정처가 없어 “…（餘段）” 항목에 합쳐 그대로 옮겼습니다.",
+      "이 단락은 유효한 배정처가 없어 “{title}” 항목에 합쳐 그대로 옮겼습니다.",
     be_refactor_person_span_invalid:
       "인물 “{name}”은(는) mode=clean이지만 단락 참조가 잘못되어 전개 대기열로 되돌렸습니다.",
     be_refactor_coverage_carried:
@@ -113,7 +113,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "El descarte no tiene número de regla o no está entre 1 y 4, así que este fragmento se unió tal cual a la entrada de sobrantes.",
     be_refactor_span_leftover:
-      "Este fragmento no tenía un destino válido, así que se unió tal cual a la entrada «…（餘段）».",
+      "Este fragmento no tenía un destino válido, así que se unió tal cual a la entrada «{title}».",
     be_refactor_person_span_invalid:
       "«{name}» usa mode=clean pero hace referencia a fragmentos no válidos; vuelve a la cola de desarrollo.",
     be_refactor_coverage_carried:
@@ -137,7 +137,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "O descarte não tem número de regra ou não está entre 1 e 4, então este trecho foi juntado como está à entrada de sobras.",
     be_refactor_span_leftover:
-      "Este trecho não tinha um destino válido, então foi juntado como está à entrada “…（餘段）”.",
+      "Este trecho não tinha um destino válido, então foi juntado como está à entrada “{title}”.",
     be_refactor_person_span_invalid:
       "“{name}” usa mode=clean, mas faz referência a trechos inválidos; voltou para a fila de expansão.",
     be_refactor_coverage_carried:
@@ -161,7 +161,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "Beim Verwerfen fehlt die Regelnummer oder sie liegt nicht zwischen 1 und 4, daher wurde dieser Abschnitt unverändert in den Rest-Eintrag übernommen.",
     be_refactor_span_leftover:
-      "Dieser Abschnitt hatte kein gültiges Ziel und wurde unverändert in den Eintrag „…（餘段）“ übernommen.",
+      "Dieser Abschnitt hatte kein gültiges Ziel und wurde unverändert in den Eintrag „{title}“ übernommen.",
     be_refactor_person_span_invalid:
       "„{name}“ nutzt mode=clean, verweist aber auf ungültige Abschnitte; zurück in die Ausarbeitungs-Warteschlange.",
     be_refactor_coverage_carried:
@@ -185,7 +185,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "L'exclusion n'a pas de numéro de règle, ou il n'est pas entre 1 et 4\u00a0: ce passage a été versé tel quel dans l'entrée des restes.",
     be_refactor_span_leftover:
-      "Ce passage n'avait pas de destination valide\u00a0: il a été versé tel quel dans l'entrée «\u00a0…（餘段）\u00a0».",
+      "Ce passage n'avait pas de destination valide\u00a0: il a été versé tel quel dans l'entrée «\u00a0{title}\u00a0».",
     be_refactor_person_span_invalid:
       "«\u00a0{name}\u00a0» utilise mode=clean mais renvoie à des passages invalides\u00a0; renvoyé dans la file de développement.",
     be_refactor_coverage_carried:
@@ -209,7 +209,7 @@ const COPY = {
     be_refactor_drop_rule_leftover:
       "У отбрасывания нет номера правила или он не от 1 до 4, поэтому этот фрагмент перенесён как есть в запись с остатками.",
     be_refactor_span_leftover:
-      "У этого фрагмента нет подходящего назначения, поэтому он перенесён как есть в запись «…（餘段）».",
+      "У этого фрагмента нет подходящего назначения, поэтому он перенесён как есть в запись «{title}».",
     be_refactor_person_span_invalid:
       "«{name}» использует mode=clean, но ссылается на неверные фрагменты; возвращено в очередь развёртывания.",
     be_refactor_coverage_carried:
