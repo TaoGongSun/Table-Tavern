@@ -19,6 +19,8 @@ const FAILURE_CODES = [
   [/^(?:Error:\s*)?AI_EMPTY_RESPONSE:/, "errEmptyReply"],
   [/^(?:Error:\s*)?AI_INCOMPLETE_RESPONSE:/, "errIncompleteReply"],
   [/^(?:Error:\s*)?AI_CONTENT_FILTERED:/, "errFiltered"],
+  // 穩定免費模型連續擁擠：後端只對 Model／Gone 掛這個碼，429 無證據不掛（不宣稱上游擁擠）
+  [/^(?:Error:\s*)?AI_FREE_MODEL_BUSY:/, "errFreeModelBusy"],
 ] as const;
 
 // 話送出去了、模型沒能回話，而且沒有更精確的碼（連不上、CLI 中途死掉…）。由 lib.rs 的
@@ -72,6 +74,7 @@ export function explainAiError(
   | "errEmptyReply"
   | "errIncompleteReply"
   | "errFiltered"
+  | "errFreeModelBusy"
   | null {
   // 真實 HTTP 狀態最先判、命中就結案：這個碼由我們自己掛在最前面，後面接的是供應商
   // 原封不動的 body。任何「往字串裡找字樣」的判斷都排在它後面，否則 body 抄到什麼

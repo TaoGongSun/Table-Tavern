@@ -328,6 +328,7 @@ export function AppWorkspace({
                   sceneLabel={sceneDisplayLabel(scene)}
                   storyKey={`${table}\u0000${scene}`}
                   events={chat.events}
+                  notices={chat.notices}
                   metaOf={characters.metaOf}
                   generating={chat.generating}
                   generatingMeta={generatingMeta}

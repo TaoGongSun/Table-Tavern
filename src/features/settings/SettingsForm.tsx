@@ -11,6 +11,7 @@ import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { Dialog } from "../../shared/ui/Dialog";
 import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../ai-connection/cli";
 import { CACHE_UPDATED_EVENT } from "../ai-connection/SmartFreeNewModelBanner";
+import { FAILOVER_EVENT, SWITCHED_EVENT } from "../ai-connection/smart-free-events";
 import { type CliInstallProgress, TransportChoice } from "./TransportChoice";
 
 // 檔位預設模型只是設定欄的預填建議（存進 config.json 後由使用者作主），程式邏輯不讀它
@@ -35,11 +36,13 @@ interface SmartFreeRecommendation {
 
 interface SmartFreeRecommendationList {
   limited: SmartFreeRecommendation[];
-  // 前兩名：[0] 是自動模式送出的那支，[1] 供玩家在第一名失效時手動改用。
+  // 最多 4 支、上游分散：[0] 是自動模式首選，其餘依序是擁擠時的換模順序，也可手動固定。
   stable: SmartFreeRecommendation[];
+  // false＝名單含上游未知或因同上游不相鄰而少列：要揭露降級
+  diversified: boolean;
 }
 
-const EMPTY_RECOMMENDATIONS: SmartFreeRecommendationList = { limited: [], stable: [] };
+const EMPTY_RECOMMENDATIONS: SmartFreeRecommendationList = { limited: [], stable: [], diversified: false };
 
 function normalizeApiModelMode(value: unknown) {
   const mode = String(value ?? "manual");
@@ -336,10 +339,19 @@ export function Settings({
 
   // 背景刷新換到新快取後前端才拿得到最新推薦／狀態；靠這把 tick 讓下面兩個查詢重跑。
   const [cacheTick, setCacheTick] = useState(0);
+  // 換模事件（failover／switched）也要重查：設定頁開著時目前模型變了，「目前使用」得跟上
   useEffect(() => {
-    const unlisten = listen(CACHE_UPDATED_EVENT, () => setCacheTick((tick) => tick + 1));
+    let disposed = false;
+    const stops: (() => void)[] = [];
+    for (const name of [CACHE_UPDATED_EVENT, FAILOVER_EVENT, SWITCHED_EVENT]) {
+      void listen(name, () => setCacheTick((tick) => tick + 1)).then((stop) => {
+        if (disposed) stop();
+        else stops.push(stop);
+      });
+    }
     return () => {
-      void unlisten.then((stop) => stop());
+      disposed = true;
+      stops.forEach((stop) => stop());
     };
   }, []);
 
@@ -349,14 +361,22 @@ export function Settings({
       setSmartStatus(null);
       return;
     }
+    // 舊查詢晚回來不得蓋掉新結果：每次重跑都讓上一輪的回覆作廢
+    let stale = false;
     invoke<{
       model: string;
       freeDaily: { limit: number; remaining: number } | null;
     }>("smart_free_status")
-      .then((status) =>
-        setSmartStatus(status.model ? { model: status.model, freeDaily: status.freeDaily } : null),
-      )
-      .catch(() => setSmartStatus(null));
+      .then((status) => {
+        if (!stale)
+          setSmartStatus(status.model ? { model: status.model, freeDaily: status.freeDaily } : null);
+      })
+      .catch(() => {
+        if (!stale) setSmartStatus(null);
+      });
+    return () => {
+      stale = true;
+    };
   }, [fixedApiModel, cacheTick]);
 
   useEffect(() => {
@@ -378,6 +398,19 @@ export function Settings({
       fast: model,
     }));
   }
+
+  // 實際在用的那支（依已儲存的設定，不看表單上未存的選擇）：穩定免費看後端的目前模型，推薦模式看固定的那支
+  const savedMode = normalizeApiModelMode(config.preferences["api_model_mode"]);
+  const activeModelId =
+    savedMode === "stable_free"
+      ? (smartStatus?.model ?? "")
+      : savedMode === "recommended"
+        ? (config.tier_models["best"] ?? "")
+        : "";
+  const currentBadge = (model: string) =>
+    activeModelId !== "" && model === activeModelId ? (
+      <em className="smart-free-current">{t("smartFreeCurrentLabel")}</em>
+    ) : null;
 
   function recommendedModelSelected(model: string) {
     return (
@@ -615,6 +648,7 @@ export function Settings({
                       <span className="smart-free-recommendation-copy">
                         <strong>
                           {smartRecommendations.stable[0]?.label ?? t("smartFreeStableAuto")}
+                          {smartRecommendations.stable[0] && currentBadge(smartRecommendations.stable[0].model)}
                         </strong>
                         {smartRecommendations.stable[0] ? (
                           <small>{recommendationReason(smartRecommendations.stable[0])}</small>
@@ -623,7 +657,7 @@ export function Settings({
                         )}
                       </span>
                     </label>
-                    {/* 第二名不自動送出，只供第一名當天失效時手動改用（點了＝固定該支） */}
+                    {/* 第 2–4 名是第一名擁擠時的自動換模順序；點了＝固定該支 */}
                     {smartRecommendations.stable.slice(1).map((model) => (
                       <label key={model.model} className="smart-free-recommendation">
                         <input
@@ -633,11 +667,20 @@ export function Settings({
                           onChange={() => selectRecommendedModel(model.model)}
                         />
                         <span className="smart-free-recommendation-copy">
-                          <strong>{model.label}</strong>
+                          <strong>
+                            {model.label}
+                            {currentBadge(model.model)}
+                          </strong>
                           <small>{recommendationReason(model)}</small>
+                          <small>{t("smartFreeBackupHint")}</small>
                         </span>
                       </label>
                     ))}
+                    {smartRecommendations.stable.length > 0 && !smartRecommendations.diversified && (
+                      <p className="cli-version" role="note">
+                        {t("smartFreeNotDiversified")}
+                      </p>
+                    )}
                     <p className="smart-free-recommendation-title">{t("smartFreeLimitedTitle")}</p>
                     {smartRecommendations.limited.length === 0 ? (
                       <p className="cli-version">{t("smartFreeNoLimited")}</p>
@@ -651,7 +694,10 @@ export function Settings({
                             onChange={() => selectRecommendedModel(model.model)}
                           />
                           <span className="smart-free-recommendation-copy">
-                            <strong>{model.label}</strong>
+                            <strong>
+                              {model.label}
+                              {currentBadge(model.model)}
+                            </strong>
                             <span>{recommendationAvailability(model)}</span>
                             <small>{recommendationReason(model)}</small>
                           </span>

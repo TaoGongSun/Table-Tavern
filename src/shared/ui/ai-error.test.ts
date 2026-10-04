@@ -94,6 +94,21 @@ describe("explainAiError", () => {
     expect(explainAiError(forged, "api")).toBe(null);
   });
 
+  it("穩定免費連續擁擠：認 AI_FREE_MODEL_BUSY 開頭，內層的 HTTP 碼與 body 字樣翻不了盤", () => {
+    expect(explainAiError("AI_FREE_MODEL_BUSY: AI_HTTP_STATUS_503: status=503 body=", "api")).toBe(
+      "errFreeModelBusy",
+    );
+    expect(explainAiError("Error: AI_FREE_MODEL_BUSY: AI_HTTP_STATUS_502: rate limit", "api")).toBe(
+      "errFreeModelBusy",
+    );
+    // 只認開頭：供應商把它抄進 body 不算數
+    expect(
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"AI_FREE_MODEL_BUSY: 假的"}', "api"),
+    ).toBe("errApiUpstream");
+    // 無證據 429 後端不掛這個碼：保留原本的額度分流，不宣稱擁擠
+    expect(explainAiError("AI_HTTP_STATUS_429: status=429 body=", "api")).toBe("errQuotaApi");
+  });
+
   it("呼叫模型失敗才給保底人話；沒經過那個邊界的失敗維持原文", () => {
     // lib.rs 的 stream_via_transport 對沒有更精確碼的失敗掛上這個
     expect(explainAiError("AI_CALL_FAILED: error sending request")).toBe("errAiUnknown");

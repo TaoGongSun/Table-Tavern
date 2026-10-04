@@ -3,6 +3,16 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  createEventDeduper,
+  FAILOVER_EVENT,
+  type FailoverPayload,
+  failoverNotice,
+  SWITCHED_EVENT,
+  type SmartFreeNotice,
+  type SwitchedPayload,
+  switchedNotice,
+} from "../ai-connection/smart-free-events";
 import { AppConfig, PlayerAppend, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../characters/card-model";
 import { parseMarker } from "../../shared/ui/event-text";
@@ -40,9 +50,18 @@ interface WriteTrack {
   waiters: (() => void)[];
 }
 
+/** 聊天室裡的一行非持久系統提示（不進逐字稿）；at＝出現時逐字稿有幾則，畫面據此插在那個位置 */
+export interface ChatNotice {
+  id: string;
+  at: number;
+  notice: SmartFreeNotice;
+}
+
 export interface ChatController {
   /** 這一幕已落檔的逐字稿 */
   events: TranscriptEvent[];
+  /** 免費模型換模提示：只含本次檢視期間自己送出的 turn 的事件，換幕、離桌即清空 */
+  notices: ChatNotice[];
   /** 是誰在生成、以哪種形式；id 空字串＝GM */
   generating: { id: string; kind: "dialogue" | "narration" } | null;
   /** 生成中或打字送出整輪進行中：桌次操作、按鈕與輸入框的忙碌判斷都讀這個 */
@@ -131,7 +150,16 @@ export function useChatController({
   /** 回合（送出、請角色發言、GM 旁白、GM 推進）沒完成：交給攔截式彈窗 */
   onTurnFailed: (failure: TurnFailure) => void;
 }): ChatController {
-  const [events, setEvents] = useState<TranscriptEvent[]>([]);
+  const [events, setEventsState] = useState<TranscriptEvent[]>([]);
+  // 逐字稿的同步副本：每次更新先算進這裡再交給 React，讓事件／回合開始時讀得到「已 setEvents 但還沒渲染」的長度
+  const eventsLive = useRef<TranscriptEvent[]>([]);
+  const setEvents = useCallback(
+    (next: TranscriptEvent[] | ((previous: TranscriptEvent[]) => TranscriptEvent[])) => {
+      eventsLive.current = typeof next === "function" ? next(eventsLive.current) : next;
+      setEventsState(eventsLive.current);
+    },
+    [],
+  );
   // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
   // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
   const [undone, setUndone] = useState<{
@@ -143,6 +171,9 @@ export function useChatController({
   // 打字送出整輪（含玩家句落檔、失敗收回）期間鎖住輸入框：失敗時框內不可能有新字，原文才能直接放回
   const [sending, setSending] = useState(false);
   // 換桌／換幕世代：await 回來時世代不同（含換走又換回）就不再碰畫面與輸入框
+  // 本次檢視期間（這一桌這一幕）由這個畫面送出的 turn id：免費模型換模事件只認這些，
+  // 換幕、離桌（世代變）清空，晚到或別處發的舊事件因 turn id 不在集合內被丟棄
+  const ownTurns = useRef<Map<string, number>>(new Map());
   const generation = useRef(0);
   // 本地改動追蹤（見 beginWrite／reload）按世代各一份：換世代換新的一份並叫醒舊世代的等待者，
   // 舊桌永不回應的落檔拖不住新桌的重讀，舊桌晚到的收尾也碰不到新桌的計數
@@ -151,6 +182,7 @@ export function useChatController({
   if (generationKey.current !== `${worldId}\u0000${scene}`) {
     generationKey.current = `${worldId}\u0000${scene}`;
     generation.current += 1;
+    ownTurns.current = new Map();
     const old = writes.current;
     writes.current = { generation: generation.current, rev: 0, inFlight: 0, waiters: [] };
     for (const wake of old.waiters.splice(0)) wake();
@@ -176,6 +208,7 @@ export function useChatController({
   const busyRef = useRef(false);
   const stopRequested = useRef(false);
   const turnIdRef = useRef<string | null>(null);
+  const [notices, setNotices] = useState<(ChatNotice & { gen: number })[]>([]);
   const [canStop, setCanStop] = useState(false);
 
   /** 同步問「有沒有一輪對話或旁白在跑」：state 的 busy 會晚一拍，守門要用這個 */
@@ -185,6 +218,8 @@ export function useChatController({
     stopRequested.current = false;
     const turnId = crypto.randomUUID();
     turnIdRef.current = turnId;
+    // 錨點＝回合開始當下的逐字稿長度（玩家句已在其中）：這輪的提示固定插在這裡，也就是回覆之前
+    ownTurns.current.set(turnId, eventsLive.current.length);
     return turnId;
   };
 
@@ -212,6 +247,39 @@ export function useChatController({
       unlisten?.();
     };
   }, [worldId]);
+
+  useEffect(() => {
+    let disposed = false;
+    const stops: (() => void)[] = [];
+    const accept = createEventDeduper();
+    const gen = generation.current;
+    const show = (
+      payload: { eventId: string; world: string | null; turnId: string | null },
+      notice: SmartFreeNotice,
+    ) => {
+      if (disposed || generation.current !== gen) return;
+      if (payload.turnId === null || payload.world !== worldId) return;
+      const anchor = ownTurns.current.get(payload.turnId);
+      if (anchor === undefined) return;
+      if (!accept(payload.eventId)) return;
+      setNotices((previous) => [
+        ...previous,
+        { id: payload.eventId, at: anchor, notice, gen },
+      ]);
+    };
+    const track = (promise: Promise<() => void>) =>
+      void promise.then((stop) => {
+        if (disposed) stop();
+        else stops.push(stop);
+      });
+    track(listen<FailoverPayload>(FAILOVER_EVENT, (event) => show(event.payload, failoverNotice(event.payload))));
+    track(listen<SwitchedPayload>(SWITCHED_EVENT, (event) => show(event.payload, switchedNotice(event.payload))));
+    return () => {
+      disposed = true;
+      stops.forEach((stop) => stop());
+      setNotices([]);
+    };
+  }, [worldId, scene]);
 
   const takeResponseTruncated = useCallback(async () => {
     // Rust 端先 emit 再讓 invoke resolve；讓事件佇列多一個 tick 完成投遞。
@@ -892,9 +960,15 @@ export function useChatController({
     setStreamText("");
   }, []);
 
+  const visibleNotices = useMemo(
+    () => notices.filter((entry) => entry.gen === generation.current),
+    [notices, worldId, scene],
+  );
+
   return useMemo(
     () => ({
       events,
+      notices: visibleNotices,
       generating,
       busy: generating !== null || sending,
       isBusy,
@@ -922,6 +996,7 @@ export function useChatController({
     }),
     [
       events,
+      visibleNotices,
       generating,
       sending,
       isBusy,
