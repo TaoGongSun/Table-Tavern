@@ -1,0 +1,183 @@
+{
+  "_doc": [
+    "穩定免費換模情境（測試通道＋scripts/harness-fake-openrouter.mjs）。/chat/completions 是試打與聊天共用的一條佇列，依序取用：",
+    "1) 啟動試打打名單第 1 名 Fake Alpha → 非串流 200（試打確認 Alpha 可用）",
+    "2) 聊天第 1 句：Alpha 503（計 1，回 AI_FREE_MODEL_BUSY）",
+    "3) 聊天第 2 句：Alpha 503（計 2 → 換到 Fake Beta，發 smart-free-failover，retried=true）",
+    "4) 同一句重送 Beta → 串流成功（之後的請求都重複這個成功回應）",
+    "預期請求（GET /__log 的 POST /chat/completions）：alpha, alpha, alpha, beta；帳本 prompt-cache.jsonl 只有第 4 發帶 usage 的一行（model=fake/beta:free）。",
+    "前置：fresh root、穩定免費模式、openrouter 金鑰任意測試值；launch 之後立刻 openrouter-origin 指向假端點，再觸發 warm（例如存一次設定）才會刷新快取與試打。"
+  ],
+  "routes": {
+    "GET /key": [
+      {
+        "json": {
+          "data": {
+            "free_model_daily_requests": {
+              "limit": 50,
+              "used": 10,
+              "remaining": 40
+            }
+          }
+        }
+      }
+    ],
+    "GET /models/user": [
+      {
+        "json": {
+          "data": [
+            {
+              "id": "fake/alpha:free",
+              "canonical_slug": "fake/alpha-20250101",
+              "name": "Fake Alpha",
+              "created": 1700000000,
+              "context_length": 131072,
+              "pricing": {
+                "prompt": "0",
+                "completion": "0"
+              },
+              "architecture": {
+                "input_modalities": [
+                  "text"
+                ],
+                "output_modalities": [
+                  "text"
+                ]
+              }
+            },
+            {
+              "id": "fake/beta:free",
+              "canonical_slug": "fake/beta-20250101",
+              "name": "Fake Beta",
+              "created": 1700000000,
+              "context_length": 131072,
+              "pricing": {
+                "prompt": "0",
+                "completion": "0"
+              },
+              "architecture": {
+                "input_modalities": [
+                  "text"
+                ],
+                "output_modalities": [
+                  "text"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "GET /models": [
+      {
+        "json": {
+          "data": [
+            {
+              "id": "fake/alpha:free",
+              "canonical_slug": "fake/alpha-20250101"
+            },
+            {
+              "id": "fake/beta:free",
+              "canonical_slug": "fake/beta-20250101"
+            }
+          ]
+        }
+      }
+    ],
+    "GET /models/fake/alpha:free/endpoints": [
+      {
+        "json": {
+          "data": {
+            "endpoints": [
+              {
+                "provider_name": "Provider A"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "GET /models/fake/beta:free/endpoints": [
+      {
+        "json": {
+          "data": {
+            "endpoints": [
+              {
+                "provider_name": "Provider B"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "POST /chat/completions": [
+      {
+        "json": {
+          "id": "probe",
+          "model": "$model",
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "length"
+            }
+          ]
+        }
+      },
+      {
+        "status": 503,
+        "json": {
+          "error": {
+            "code": 503,
+            "message": "Provider overloaded",
+            "metadata": {
+              "error_type": "provider_overloaded"
+            }
+          }
+        }
+      },
+      {
+        "status": 503,
+        "json": {
+          "error": {
+            "code": 503,
+            "message": "Provider overloaded",
+            "metadata": {
+              "error_type": "provider_overloaded"
+            }
+          }
+        }
+      },
+      {
+        "sse": [
+          {
+            "model": "$model",
+            "choices": [
+              {
+                "delta": {
+                  "content": "（測試回覆）"
+                }
+              }
+            ]
+          },
+          {
+            "model": "$model",
+            "choices": [
+              {
+                "delta": {},
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 12,
+              "completion_tokens": 3
+            }
+          },
+          "[DONE]"
+        ]
+      }
+    ]
+  }
+}

@@ -6,9 +6,36 @@ use serde::Serialize;
 
 use crate::ui_msg::UiMsg;
 
+use super::api_failure::ApiFailure;
 use super::messages::ChatMessage;
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
+
+#[cfg(feature = "test-harness")]
+static OPENROUTER_ORIGIN_OVERRIDE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// 測試通道專用：把「官方 OpenRouter」實際打的網址導到本機假端點。設定檔的 base_url 不動，
+/// 所以 `smart_free::is_active` 仍視為官方路徑；正式包沒有這個入口。
+#[cfg(feature = "test-harness")]
+pub(crate) fn set_openrouter_origin(origin: Option<String>) {
+    *OPENROUTER_ORIGIN_OVERRIDE
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+        origin.map(|origin| origin.trim_end_matches('/').to_owned());
+}
+
+/// 官方 OpenRouter API 實際要打的網址（正式包恆為 DEFAULT_BASE_URL）。
+pub fn openrouter_api_base() -> String {
+    #[cfg(feature = "test-harness")]
+    if let Some(origin) = OPENROUTER_ORIGIN_OVERRIDE
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+    {
+        return origin;
+    }
+    DEFAULT_BASE_URL.to_owned()
+}
 
 pub const DEFAULT_IMAGE_MODEL: &str = "google/gemini-3.1-flash-image";
 
@@ -264,11 +291,11 @@ fn chat_request_body(model: &str, messages: &[ChatMessage]) -> serde_json::Value
     body
 }
 
-/// 智慧免費的 fallback 一定維持跨廠都能吃的素樸 body。尤其不能把 Anthropic 專用的
-/// `cache_control` 混進 `messages`，否則 OpenRouter 換到別家時會收到前一家專用參數。
-fn chat_models_request_body(models: &[String], messages: &[ChatMessage]) -> serde_json::Value {
+/// 智慧免費一律用跨廠都能吃的素樸 body。尤其不能把 Anthropic 專用的
+/// `cache_control` 混進 `messages`，免費名單換到別家時會收到前一家專用參數。
+fn smart_request_body(model: &str, messages: &[ChatMessage]) -> serde_json::Value {
     serde_json::json!({
-        "models": models,
+        "model": model,
         "messages": messages,
         "stream": true,
     })
@@ -322,6 +349,8 @@ pub fn extract_delta(payload: &str) -> Option<String> {
 pub struct StreamOutcome {
     /// 供應商中途送的錯誤原話（頂層 error，與 finish_reason="error" 同時出現）
     pub error: Option<String>,
+    /// 同一個錯誤塊解析出的 code／error_type／metadata，供智慧免費分類
+    pub error_detail: Option<super::api_failure::ErrorDetail>,
     /// choices[0].finish_reason，取最後一則有值的
     pub finish_reason: Option<String>,
     /// usage.completion_tokens_details.reasoning_tokens，只進錯誤診斷小字
@@ -338,6 +367,7 @@ impl StreamOutcome {
             return;
         };
         if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+            self.error_detail = Some(super::api_failure::ErrorDetail::from_error_object(error));
             // message 缺了或不是字串就序列化整包——供應商的錯誤不能靜默吞掉
             self.error = Some(
                 error
@@ -520,48 +550,57 @@ pub async fn stream_chat(
     })
 }
 
-/// 智慧免費專用：單一 `/chat/completions` 請求帶最多三支 `models`，由 OpenRouter 在
-/// 伺服器端 fallback。回傳 top-level `model` 供呼叫端更新桌綁定；App 本身不逐支重試。
+/// 智慧免費專用：單一 `/chat/completions` 請求只帶一支模型（不送備援陣列）。
+/// 失敗回結構化的 `ApiFailure`，供 smart_free 分類是否換模；回傳 top-level `model` 供桌綁定。
 #[allow(clippy::too_many_arguments)]
 pub async fn stream_chat_models(
     config: &AppConfig,
-    models: &[String],
+    model: &str,
     messages: &[ChatMessage],
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
     mut on_delta: impl FnMut(&str),
-) -> DataResult<SmartChatResult> {
-    let Some(first_model) = models.first() else {
-        return Err(UiMsg::NoFreeModels.into_error());
+) -> Result<SmartChatResult, ApiFailure> {
+    let configured = base_url(config);
+    let official = configured == DEFAULT_BASE_URL;
+    let base = if official {
+        openrouter_api_base()
+    } else {
+        configured
     };
-    let base = base_url(config);
     let api_key = config
         .api_keys
         .get("openrouter")
         .filter(|key| !key.is_empty());
-    if api_key.is_none() && base == DEFAULT_BASE_URL {
-        return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
+    if api_key.is_none() && official {
+        return Err(ApiFailure::local(
+            UiMsg::OpenrouterApiKeyMissing.to_string(),
+        ));
     }
 
     #[cfg(feature = "test-harness")]
     let harness_dispatch = crate::harness::ai_dispatch(
         "api-smart-free",
-        &format!("候選（送出）：{}", models.join(" > ")),
+        &format!("送出：{model}"),
         serde_json::json!({ "world": world, "shape": format!("{shape:?}") }),
     );
     let mut request = reqwest::Client::new()
         .post(format!("{base}/chat/completions"))
-        .json(&chat_models_request_body(models, messages));
+        .json(&smart_request_body(model, messages));
     if let Some(key) = api_key {
         request = request.bearer_auth(key);
     }
 
-    let response = request.send().await?;
+    let response = request
+        .send()
+        .await
+        .map_err(|error| ApiFailure::network(&error, false))?;
     let status = response.status();
     if !status.is_success() {
+        let headers = response.headers().clone();
         let body = response.text().await.unwrap_or_default();
-        return Err(http_error(status, &body).into());
+        return Err(ApiFailure::from_http(status, &headers, &body));
     }
 
     let mut stream = response.bytes_stream();
@@ -571,7 +610,8 @@ pub async fn stream_chat_models(
     let mut outcome = StreamOutcome::default();
     let mut responder_model = None;
     'outer: while let Some(chunk) = stream.next().await {
-        for payload in parser.push(&chunk?) {
+        let chunk = chunk.map_err(|error| ApiFailure::network(&error, !full_text.is_empty()))?;
+        for payload in parser.push(&chunk) {
             if payload == "[DONE]" {
                 outcome.saw_done = true;
                 break 'outer;
@@ -589,14 +629,14 @@ pub async fn stream_chat_models(
             }
         }
     }
-    // 候選字串不是實際回應者：回應裡的 top-level model 另記一行，以 id 關聯
+    // 送出字串不是實際回應者：回應裡的 top-level model 另記一行，以 id 關聯
     #[cfg(feature = "test-harness")]
     crate::harness::ai_event(
         &harness_dispatch,
         "responder",
         serde_json::json!({ "model": responder_model }),
     );
-    let log_model = responder_model.as_deref().unwrap_or(first_model);
+    let log_model = responder_model.as_deref().unwrap_or(model);
     if let Some(usage) = usage {
         eprintln!(
             "[prompt-cache] transport=api model={log_model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",
@@ -612,7 +652,11 @@ pub async fn stream_chat_models(
         }
     }
     if let Some(failure) = outcome.failure(&full_text, log_model) {
-        return Err(failure.into());
+        return Err(ApiFailure::stream(
+            failure,
+            outcome.error_detail.clone(),
+            !full_text.is_empty(),
+        ));
     }
     Ok(SmartChatResult {
         truncated: outcome.truncation(&full_text),

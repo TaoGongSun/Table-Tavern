@@ -210,18 +210,14 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
 }
 
 #[test]
-fn smart_free_body_uses_models_array_without_provider_specific_cache_fields() {
+fn smart_free_body_sends_one_model_without_provider_specific_cache_fields() {
     let messages = [
         message("system", "stable prefix".to_owned()),
         message("user", "hello".to_owned()),
     ];
-    let models = vec![
-        "anthropic/first:free".to_owned(),
-        "google/second:free".to_owned(),
-    ];
-    let body = chat_models_request_body(&models, &messages);
-    assert_eq!(body["models"], serde_json::json!(models));
-    assert!(body.get("model").is_none());
+    let body = smart_request_body("anthropic/first:free", &messages);
+    assert_eq!(body["model"], "anthropic/first:free");
+    assert!(body.get("models").is_none());
     assert_eq!(body["messages"][0]["content"], "stable prefix");
     assert!(!body.to_string().contains("cache_control"));
 }

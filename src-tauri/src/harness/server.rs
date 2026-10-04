@@ -219,6 +219,21 @@ fn ok(value: Value) -> (u16, Value, bool) {
     (200, json!({ "ok": true, "value": value }), false)
 }
 
+/// 智慧免費假端點只准指向本機：`http://127.0.0.1:<port>[/path]` 或 `http://localhost:<port>[/path]`。
+fn local_origin(raw: &str) -> Result<String, String> {
+    let raw = raw.trim().trim_end_matches('/');
+    let rest = raw
+        .strip_prefix("http://")
+        .ok_or_else(|| "只接受 http:// 本機網址".to_owned())?;
+    let host = rest.split(['/', ':']).next().unwrap_or("");
+    if host != "127.0.0.1" && host != "localhost" {
+        return Err(format!(
+            "只接受本機假端點（127.0.0.1／localhost），收到 {host}"
+        ));
+    }
+    Ok(raw.to_owned())
+}
+
 fn err(status: u16, message: String) -> (u16, Value, bool) {
     (status, json!({ "ok": false, "error": message }), false)
 }
@@ -264,6 +279,17 @@ async fn route(app: &tauri::AppHandle, request: Request) -> (u16, Value, bool) {
             match super::route::route(world) {
                 Ok(value) => ok(value),
                 Err(message) => err(200, message),
+            }
+        }
+        ("POST", "/openrouter-origin") => {
+            // null／缺欄＝清除覆寫；只接受本機假端點
+            let origin = body.get("origin").and_then(Value::as_str);
+            match origin.map(local_origin).transpose() {
+                Ok(origin) => {
+                    crate::transport::set_openrouter_origin(origin.clone());
+                    ok(json!({ "origin": origin }))
+                }
+                Err(message) => err(400, message),
             }
         }
         ("GET", "/ai-log") => match super::ai_log::read() {
@@ -413,5 +439,17 @@ mod tests {
         assert!(constant_time_eq(b"abc", b"abc"));
         assert!(!constant_time_eq(b"abc", b"abd"));
         assert!(!constant_time_eq(b"abc", b"ab"));
+    }
+
+    #[test]
+    fn openrouter_origin_override_accepts_only_local_hosts() {
+        assert_eq!(
+            local_origin("http://127.0.0.1:8787/api/v1/").unwrap(),
+            "http://127.0.0.1:8787/api/v1"
+        );
+        assert!(local_origin("http://localhost:9000").is_ok());
+        assert!(local_origin("https://127.0.0.1:1").is_err());
+        assert!(local_origin("http://openrouter.ai/api/v1").is_err());
+        assert!(local_origin("http://127.0.0.1.evil.com/").is_err());
     }
 }
