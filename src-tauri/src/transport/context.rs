@@ -1,5 +1,6 @@
 use crate::data::{CharacterCard, Mechanism, TranscriptEvent, UpdateMode, WorldbookEntry};
 
+use super::arrivals::{render_for_prompt, Side};
 use super::messages::{language_rule, replace_st_macros, scaffold_en};
 
 pub fn active_worldbook_entries<'a>(
@@ -26,6 +27,49 @@ pub fn active_worldbook_entries<'a>(
         .collect();
     active.sort_by_key(|entry| (entry.order, entry.uid));
     active
+}
+
+/// 本輪 GM 提示裡真的看得到的一段世界書全文：標題＋實際送出的本文。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptEntry<'a> {
+    pub title: &'a str,
+    pub content: &'a str,
+}
+
+/// 本輪 GM 提示裡「全文」真的進得去的世界書內容（API 單發與 CLI lane 同一套）：
+/// - `render_for_prompt(Side::Gm)` 後的 `active_worldbook_entries`：constant 條目扣掉只進名冊的人物條目
+///   （`split_person_roster` 同一個判定）進 system，keyword 條目全文進回合尾段；
+/// - 人物登場事件：歷史裡帶的是登場當時的全文（`person_arrival`），取事件本文、不回頭讀目前的條目——
+///   登場後再改條目、或同名不同內容的條目，都不能冒充已在提示裡。
+///
+/// 給「導演指示能不能點名格式條目」用，不得另寫近似判定。
+pub fn gm_prompt_full_entries<'a>(
+    worldbook: &'a [WorldbookEntry],
+    events: &'a [TranscriptEvent],
+    lang: &str,
+) -> Vec<PromptEntry<'a>> {
+    let rendered = render_for_prompt(events, lang, Side::Gm);
+    let mut entries: Vec<PromptEntry<'a>> = active_worldbook_entries(worldbook, &rendered)
+        .into_iter()
+        .filter(|entry| !entry.constant || !roster_only(entry))
+        .map(|entry| PromptEntry {
+            title: &entry.title,
+            content: &entry.content,
+        })
+        .collect();
+    entries.extend(events.iter().filter_map(|event| match &event.marker {
+        Some(crate::data::EventMarker::PersonArrival { title }) => Some(PromptEntry {
+            title,
+            content: &event.text,
+        }),
+        _ => None,
+    }));
+    entries
+}
+
+/// constant 條目只進名冊、不進 system 全文的判定（包 4a）。
+fn roster_only(entry: &WorldbookEntry) -> bool {
+    entry.is_person
 }
 
 /// GM 的 system prompt 本體：GM 指示＋world.md＋constant 條目＋全卡（含私設）＋玩家卡。
@@ -305,7 +349,7 @@ pub(super) fn split_person_roster<'a>(
     let mut rest = Vec::new();
     let mut names = Vec::new();
     for entry in entries {
-        if !entry.is_person {
+        if !roster_only(entry) {
             rest.push(*entry);
         } else if !entry.disabled {
             names.push(entry.title.as_str());
@@ -492,5 +536,225 @@ mod tests {
         )[0]
         .content;
         assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n這桌還有這些人：愛麗絲\n"));
+    }
+
+    // ---- gm-format-directive-missing-target：導演指示只點名全文真的進了本輪提示的格式條目 ----
+
+    fn format_scripts() -> Vec<crate::import::InterfaceScript> {
+        vec![crate::import::InterfaceScript {
+            name: "顯示".to_owned(),
+            find_regex: r"/<StatusBlock>([\s\S]*?)<\/StatusBlock>/s".to_owned(),
+            replace_string: String::new(),
+            trim_strings: Vec::new(),
+            min_depth: None,
+            max_depth: None,
+        }]
+    }
+
+    fn format_entry(constant: bool, keys: &[&str], disabled: bool) -> WorldbookEntry {
+        WorldbookEntry {
+            content: "每回合結尾輸出 <StatusBlock>地點｜時間</StatusBlock>".to_owned(),
+            ..worldbook_entry(7, "輸出格式", keys, constant, 0, disabled, Visibility::Gm)
+        }
+    }
+
+    fn named_format(worldbook: &[WorldbookEntry], events: &[TranscriptEvent]) -> Option<String> {
+        crate::import::card_format_entry(
+            &format_scripts(),
+            &gm_prompt_full_entries(worldbook, events, "zh-TW"),
+        )
+    }
+
+    /// 兩條 GM 路徑各自的完整提示：API 單發 messages；CLI lane 凍結 system＋從頭組的完整歷史＋回合尾段。
+    fn both_gm_prompts(
+        worldbook: &[WorldbookEntry],
+        events: &[TranscriptEvent],
+    ) -> (String, String) {
+        let api = assemble_gm_messages(
+            "",
+            &[],
+            None,
+            events,
+            worldbook,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            "zh-TW",
+        )
+        .into_iter()
+        .map(|message| message.content)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let lane_system = gm_lane_system("", &[], None, worldbook, &Mechanism::default(), "zh-TW");
+        let lane_turn = gm_lane_turn(
+            events,
+            worldbook,
+            None,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            "",
+            "zh-TW",
+        );
+        let lane_prompt = crate::lanes::build_prompt(
+            events,
+            0,
+            &lane_turn.tail,
+            true,
+            crate::lanes::Lane::Gm,
+            "zh-TW",
+        );
+        (api, format!("{lane_system}\n{lane_prompt}"))
+    }
+
+    /// 有格式：constant 條目全文在 system，點名它，兩條路徑都真的帶著格式全文。
+    #[test]
+    fn format_entry_named_when_constant_entry_in_prompt() {
+        let worldbook = [format_entry(true, &[], false)];
+        assert_eq!(named_format(&worldbook, &[]), Some("輸出格式".to_owned()));
+        let (api, lane) = both_gm_prompts(&worldbook, &[]);
+        assert!(api.contains("<StatusBlock>地點｜時間</StatusBlock>"));
+        assert!(lane.contains("<StatusBlock>地點｜時間</StatusBlock>"));
+    }
+
+    /// 無格式：世界書沒有提到卡片標籤的條目。
+    #[test]
+    fn format_entry_absent_without_matching_entry() {
+        let worldbook = [worldbook_entry(
+            1,
+            "世界觀",
+            &[],
+            true,
+            0,
+            false,
+            Visibility::Gm,
+        )];
+        assert_eq!(named_format(&worldbook, &[]), None);
+    }
+
+    /// 停用：條目還在世界書，但不進提示，不能點名。
+    #[test]
+    fn format_entry_absent_when_disabled() {
+        let worldbook = [format_entry(true, &[], true)];
+        assert_eq!(named_format(&worldbook, &[]), None);
+        let (api, lane) = both_gm_prompts(&worldbook, &[]);
+        assert!(!api.contains("<StatusBlock>"));
+        assert!(!lane.contains("<StatusBlock>"));
+    }
+
+    /// 未停用但 keyword 沒命中就不點名；命中那輪才點名，且兩條路徑的回合尾都帶著全文。
+    #[test]
+    fn keyword_format_entry_named_only_when_hit() {
+        let worldbook = [format_entry(false, &["地牢"], false)];
+        let quiet = [event(TranscriptKind::Player, "", "玩家", "走進酒館")];
+        assert_eq!(named_format(&worldbook, &quiet), None);
+        let (api, lane) = both_gm_prompts(&worldbook, &quiet);
+        assert!(!api.contains("<StatusBlock>"));
+        assert!(!lane.contains("<StatusBlock>"));
+
+        let hit = [event(TranscriptKind::Player, "", "玩家", "走進地牢")];
+        assert_eq!(named_format(&worldbook, &hit), Some("輸出格式".to_owned()));
+        let (api, lane) = both_gm_prompts(&worldbook, &hit);
+        assert!(api.contains("<StatusBlock>地點｜時間</StatusBlock>"));
+        assert!(lane.contains("<StatusBlock>地點｜時間</StatusBlock>"));
+    }
+
+    fn person_format_entry() -> WorldbookEntry {
+        WorldbookEntry {
+            is_person: true,
+            ..format_entry(true, &[], false)
+        }
+    }
+
+    fn arrival_event(entry: &WorldbookEntry) -> TranscriptEvent {
+        let (marker, text) = person_arrival(entry, "玩家");
+        TranscriptEvent {
+            marker: Some(marker),
+            gm_only: true,
+            ..event(TranscriptKind::System, "", "", &text)
+        }
+    }
+
+    /// constant 人物條目只剩名冊、全文不在 system，不能點名；登場事件把全文帶進歷史後才算。
+    #[test]
+    fn constant_person_format_entry_named_only_after_arrival() {
+        let worldbook = [person_format_entry()];
+        assert_eq!(named_format(&worldbook, &[]), None);
+        let (api, lane) = both_gm_prompts(&worldbook, &[]);
+        assert!(!api.contains("<StatusBlock>"));
+        assert!(!lane.contains("<StatusBlock>"));
+        assert!(api.contains("這桌還有這些人：輸出格式"));
+        assert!(lane.contains("這桌還有這些人：輸出格式"));
+
+        let arrived = [arrival_event(&worldbook[0])];
+        assert_eq!(
+            named_format(&worldbook, &arrived),
+            Some("輸出格式".to_owned())
+        );
+        let (api, lane) = both_gm_prompts(&worldbook, &arrived);
+        assert!(api.contains("<StatusBlock>地點｜時間</StatusBlock>"));
+        assert!(lane.contains("<StatusBlock>地點｜時間</StatusBlock>"));
+    }
+
+    /// 反例：人物登場時本文沒有格式，之後同幕編輯條目加進格式標籤——歷史裡仍是舊本文、
+    /// system 只有名冊，不能點名。
+    #[test]
+    fn person_entry_edited_after_arrival_is_not_named() {
+        let before = WorldbookEntry {
+            content: "旅店老闆娘，愛說閒話。".to_owned(),
+            ..person_format_entry()
+        };
+        let arrived = [arrival_event(&before)];
+        let edited = [person_format_entry()];
+        assert_eq!(named_format(&edited, &arrived), None);
+        let (api, lane) = both_gm_prompts(&edited, &arrived);
+        assert!(!api.contains("<StatusBlock>"));
+        assert!(!lane.contains("<StatusBlock>"));
+    }
+
+    /// 反例：同名不同內容——登場的是沒有格式的那條，另一條同名人物條目帶格式但只進名冊，不能點名。
+    #[test]
+    fn same_title_person_entry_with_other_content_is_not_named() {
+        let plain = WorldbookEntry {
+            uid: 8,
+            content: "旅店老闆娘，愛說閒話。".to_owned(),
+            ..person_format_entry()
+        };
+        let worldbook = [person_format_entry(), plain.clone()];
+        let arrived = [arrival_event(&plain)];
+        assert_eq!(named_format(&worldbook, &arrived), None);
+        let (api, lane) = both_gm_prompts(&worldbook, &arrived);
+        assert!(!api.contains("<StatusBlock>"));
+        assert!(!lane.contains("<StatusBlock>"));
+    }
+
+    /// 指示與收尾句同一判定：找得到點名現行文案；找不到用中性版，不指向缺席的格式、
+    /// 不要求「只輸出正文」、不禁狀態欄或更新區塊。
+    #[test]
+    fn card_format_turn_pairs_instruction_with_closing() {
+        for lang in ["zh-TW", "en"] {
+            let (named, closing) = card_format_turn(lang, Some("輸出格式"));
+            assert!(named.content.contains("輸出格式"));
+            assert_eq!(closing, gm_closing(GmTurnFormat::CardFormat, false, lang));
+
+            let (neutral, closing) = card_format_turn(lang, None);
+            assert_eq!(
+                closing,
+                gm_closing(GmTurnFormat::CardFormatAbsent, false, lang)
+            );
+            for text in [neutral.content.as_str(), closing] {
+                for banned in [
+                    "已經規定了回覆的輸出格式",
+                    "上述輸出格式",
+                    "只輸出",
+                    "狀態欄",
+                    "already defines the reply format",
+                    "output format above",
+                    "Output only",
+                ] {
+                    assert!(!text.contains(banned), "{lang}: {text}");
+                }
+            }
+        }
     }
 }

@@ -16,3 +16,4 @@ card-mvu-shim 實機驗收 2026-10-03 發現。
 - 查機制層為何對數字欄強制 delta（來源與當初理由）。
 - 查未重構的 MVU 卡是否該照上游接受 replace，以及與重構卡／既有狀態更新協定的關係。
 - 不下結論；開工前先重現（測試通道、MVU 卡 TestCards/bcd368…png 與 TestCards/DongeonMaster.png）。
+- 與 gm-format-directive-missing-target（已進 main）合併相依：本案進 main 後，要核對 numeric replace 的前後端接收行為與 zh/en 協定是否一致；不得為了避開衝突而重新停用原卡的格式條目。

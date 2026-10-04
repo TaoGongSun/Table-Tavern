@@ -300,6 +300,14 @@ fn extract_field_rules(entries: &[&Value]) -> (BTreeMap<String, FieldRule>, bool
     (rules, seen)
 }
 
+/// `[mvu_update]` 條目是不是本 app 已接手的欄位規則表：抽得出至少一條欄位規則才算。
+/// 同前綴的「變量輸出格式／強調」說明抽不出規則，app 協定沒接下它，匯入時照原卡啟停。
+pub fn is_field_rule_table(content: &str) -> bool {
+    let mut rules = BTreeMap::new();
+    collect_field_rules(content, &mut rules);
+    !rules.is_empty()
+}
+
 /// 一條規則路徑抽到的三個屬性值（type, range, format），同一條路徑的多筆屬性合併於此。
 type RuleAttrValues = (Option<String>, Option<String>, Option<String>);
 

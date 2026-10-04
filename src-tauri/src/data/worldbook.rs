@@ -695,6 +695,8 @@ fn normalize_imported_entry(
 
 /// 機制鷹架條目：`[initvar]`／`[mvu_update]` 規則表、原生 EJS 腳本，或 ST 把整棵變數樹塞回提示詞的巨集。
 /// 本地已接管或原本就不會交給模型的內容，不該再送進模型上下文燒字數。
+/// `[mvu_update]` 只認抽得出欄位規則的規則表；同前綴的輸出格式說明 app 沒接手，照原卡啟停
+/// （沒重構的卡照酒館做）。
 fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
     let marker = entry
         .get("comment")
@@ -703,15 +705,17 @@ fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    if marker.starts_with("[initvar]") || marker.starts_with("[mvu_update]") {
-        return true;
-    }
-    entry
+    let content = entry
         .get("content")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|content| {
-            content.contains("{{format_message_variable::") || content.contains("<%")
-        })
+        .unwrap_or_default();
+    if marker.starts_with("[initvar]") {
+        return true;
+    }
+    if marker.starts_with("[mvu_update]") && crate::import::is_field_rule_table(content) {
+        return true;
+    }
+    content.contains("{{format_message_variable::") || content.contains("<%")
 }
 
 /// 條目的實質內容指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。

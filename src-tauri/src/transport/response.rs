@@ -80,6 +80,10 @@ pub enum GmTurnFormat {
     /// 卡片自帶介面、還沒被 App 接管：卡片自己規定了輸出格式，照卡片格式輸出，
     /// 否則兩套指令打架、卡片的介面永遠對不上。
     CardFormat,
+    /// 卡片自帶介面，但它的格式條目全文不在本輪提示裡（停用、keyword 沒命中、根本沒有）：
+    /// 不點名缺席的格式，只交代遵循上下文已有的格式與狀態更新協定。由 `card_format_turn`
+    /// 依格式條目判定，`gm_turn_format` 不會回這個值。
+    CardFormatAbsent,
     /// 介面已由 App 接管（桌上有重構產的介面骨架）：固定格式由 App 用狀態樹組，模型只寫正文＋
     /// `<UpdateVariable>` 變動，與 system 的增量協定一致；不要 ```state 圍欄、不顯示頂部狀態欄。
     InterfaceTakeover,
@@ -148,25 +152,39 @@ pub fn takeover_instruction(
     message("user", instruction)
 }
 
+/// 卡片自帶介面桌的導演指示＋收尾句：同一個判定（格式條目全文在不在本輪提示）同時決定兩者。
+/// `entry_title` 由 `import::card_format_entry` 從 `gm_prompt_full_entries` 裡找。
+pub fn card_format_turn(lang: &str, entry_title: Option<&str>) -> (ChatMessage, &'static str) {
+    let format = match entry_title {
+        Some(_) => GmTurnFormat::CardFormat,
+        None => GmTurnFormat::CardFormatAbsent,
+    };
+    (
+        card_format_instruction(lang, entry_title),
+        gm_closing(format, false, lang),
+    )
+}
+
+/// 有格式條目就點名它、要求完全照規定；沒有就用中性版——不指向缺席的格式，
+/// 也不禁狀態欄或更新區塊（卡片協定可能要它們）。
 pub fn card_format_instruction(lang: &str, entry_title: Option<&str>) -> ChatMessage {
-    let instruction = if scaffold_en(lang) {
-        let format_source = entry_title
-            .map(|title| format!(" (see the worldbook entry \"{title}\")"))
-            .unwrap_or_default();
-        format!(
-            "(Director instruction) This table uses the interface that ships with the card, and the card already defines the reply format{format_source}. \
+    let instruction = match (scaffold_en(lang), entry_title) {
+        (true, Some(title)) => format!(
+            "(Director instruction) This table uses the interface that ships with the card, and the card already defines the reply format (see the worldbook entry \"{title}\"). \
              Follow that specification exactly for this turn: same tags, same block order, same counts, same required fields, with the content advancing the story. \
              Do not rewrite it as ordinary narration, and do not output anything outside that format."
-        )
-    } else {
-        let format_source = entry_title
-            .map(|title| format!("（見世界書「{title}」）"))
-            .unwrap_or_default();
-        format!(
-            "（導演指示）這桌使用卡片自帶的介面，卡片已經規定了回覆的輸出格式{format_source}。\
+        ),
+        (true, None) => "(Director instruction) Advance this turn's story, following the card's format requirements and the state update protocol already given in the context. \
+             If the context gives no additional format, simply continue the story; do not add format explanations or ask for a specification."
+            .to_owned(),
+        (false, Some(title)) => format!(
+            "（導演指示）這桌使用卡片自帶的介面，卡片已經規定了回覆的輸出格式（見世界書「{title}」）。\
              請完全依照那份規定產生本回合的回覆：標籤、區塊順序、數量與必填欄位都照規定，內容依劇情推進。\
              不要改寫成一般旁白，也不要輸出規定格式以外的任何說明或狀態欄。"
-        )
+        ),
+        (false, None) => "（導演指示）請推進本回合的劇情，遵循上下文中已有的卡片格式要求與狀態更新協定；\
+             若上下文沒有提供額外的格式，就直接續寫劇情，不要加入格式說明，也不要要求補充規格。"
+            .to_owned(),
     };
     message("user", instruction)
 }
@@ -176,6 +194,9 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
     match (scaffold_en(lang), format, has_roster) {
         (true, GmTurnFormat::CardFormat, _) => {
             "Now, as the GM, produce this turn's reply exactly in the output format above. Do not add a name prefix, and do not output anything outside that format."
+        }
+        (true, GmTurnFormat::CardFormatAbsent, _) => {
+            "Now, as the GM, carry out the director instruction above and produce this turn's reply. Do not add a name prefix."
         }
         (true, GmTurnFormat::InterfaceTakeover, false) => {
             "Now, as the GM, carry out the director instruction above. Output only the story and, if anything changed, the update block. Do not add a name prefix."
@@ -191,6 +212,9 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
         }
         (false, GmTurnFormat::CardFormat, _) => {
             "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。"
+        }
+        (false, GmTurnFormat::CardFormatAbsent, _) => {
+            "現在請以 GM 身分執行上述導演指示，產生本回合的回覆，不要加名字前綴。"
         }
         (false, GmTurnFormat::InterfaceTakeover, false) => {
             "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"

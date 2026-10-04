@@ -26,14 +26,15 @@ pub use client::{
     TierModel, DEFAULT_BASE_URL,
 };
 pub(crate) use client::{describe, http_error};
+pub use context::{gm_prompt_full_entries, PromptEntry};
 #[cfg(test)]
 pub(crate) use messages::language_rule;
 pub use messages::{history_header, resolve_display_macros, speaker_prefix, ChatMessage};
 pub(crate) use messages::{player_fallback_name, replace_st_macros, scaffold_en};
 pub use response::{
-    card_format_instruction, extract_next_speaker, extract_scene_title, extract_state_block,
-    gm_closing, gm_turn_format, narrate_instruction, parse_indented_fields, pick_speaker,
-    summary_closing, takeover_instruction, GmTurnFormat, StateBlock,
+    card_format_instruction, card_format_turn, extract_next_speaker, extract_scene_title,
+    extract_state_block, gm_closing, gm_turn_format, narrate_instruction, parse_indented_fields,
+    pick_speaker, summary_closing, takeover_instruction, GmTurnFormat, StateBlock,
 };
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{

@@ -24,5 +24,5 @@ pub use images::{
 pub use interface::{
     card_format_entry, read_card_interfaces, save_world_card, CardInterface, InterfaceScript,
 };
-pub use mechanism::{import_card_extension, import_mechanism};
+pub use mechanism::{import_card_extension, import_mechanism, is_field_rule_table};
 pub use source::{chosen_opening, opening_blocks_for};

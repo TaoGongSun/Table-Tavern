@@ -255,17 +255,18 @@ fn is_catch_all_regex(find_regex: &str) -> bool {
 
 /// 卡片的顯示腳本期待模型吐出哪些標籤，教模型那個格式的就是世界書裡提到同樣標籤的條目。
 /// 回合尾要點名它，模型才不會照我們自己的旁白規矩寫。回傳那條的標題。
+/// `prompt_entries` 只能是全文實際進入本輪提示的條目（`transport::gm_prompt_full_entries`）：
+/// 點名一條模型看不到的條目，模型只會回「沒附規格」或亂抄範例。
 pub fn card_format_entry(
     scripts: &[InterfaceScript],
-    worldbook: &[data::WorldbookEntry],
+    prompt_entries: &[crate::transport::PromptEntry],
 ) -> Option<String> {
     let tags = format_tags(scripts);
     if tags.is_empty() {
         return None;
     }
-    worldbook
+    prompt_entries
         .iter()
-        .filter(|entry| !entry.disabled)
         .filter_map(|entry| {
             let hits = tags
                 .iter()
@@ -274,7 +275,7 @@ pub fn card_format_entry(
             (hits > 0).then_some((entry, hits))
         })
         .max_by_key(|(entry, hits)| (*hits, entry.content.len()))
-        .map(|(entry, _)| entry.title.clone())
+        .map(|(entry, _)| entry.title.to_owned())
 }
 
 /// 從顯示腳本的 find_regex 掃出字面的開頭標籤（`<Xxx>` 形式），跳過收尾 `</…>` 標籤；
@@ -572,6 +573,14 @@ mod tests {
         }
     }
 
+    /// 走正式的提示選取，測試不另寫一份近似判定。
+    fn prompt_entries<'a>(
+        worldbook: &'a [data::WorldbookEntry],
+        events: &'a [data::TranscriptEvent],
+    ) -> Vec<crate::transport::PromptEntry<'a>> {
+        crate::transport::gm_prompt_full_entries(worldbook, events, "zh-TW")
+    }
+
     fn worldbook_entry_for_test(
         uid: u64,
         title: &str,
@@ -615,7 +624,7 @@ mod tests {
         ];
 
         assert_eq!(
-            card_format_entry(&scripts, &worldbook),
+            card_format_entry(&scripts, &prompt_entries(&worldbook, &[])),
             Some("回复规则".to_owned())
         );
     }
@@ -632,6 +641,9 @@ mod tests {
             false,
         )];
 
-        assert_eq!(card_format_entry(&scripts, &worldbook), None);
+        assert_eq!(
+            card_format_entry(&scripts, &prompt_entries(&worldbook, &[])),
+            None
+        );
     }
 }
