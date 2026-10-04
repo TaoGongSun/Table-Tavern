@@ -1,7 +1,7 @@
 # Handoff: ai-table-generator
 
 ## Current state
-2026-08-02 三塊全數實作完成、主線逐塊驗收全綠，等使用者實機驗收後結案。
+2026-08-02 三塊全數實作完成。2026-10-04 測試通道代測（OpenRouter 免費模型，實際回應來自 dots-studio/dots-3-note-preview:free）驗出兩個缺陷待修，修完再驗後結案。
 
 ## Completed
 - 塊 1 後端（codex gpt-5.6-terra 實作、主線審過）：genesis.rs 新檔——outline／expand 提示組裝（角色數零數字錨定）、容錯解析（標記 0–6 個 #、大小寫不拘、半全形冒號、缺 EMOJI→🎭、缺 PRIVATE→空、缺 OPENING 照樣成桌）、materialize 落桌（先解析成功才動磁碟；重名補「 2」「 3」；六色輪配；開場白事件形狀同 create_sample_world data.rs:422）。lib.rs 兩指令 generate_table_outline／generate_table_expand（src-tauri/src/lib.rs:1275、1310）已註冊，回傳 camelCase：`{parsed, raw}`／`{worldId, raw}`，解析失敗＝null＋raw 原文，Err 只留 API 錯誤。
@@ -21,14 +21,12 @@
 - 三項回饋包：主線實跑 `cargo test` 139 passed; 0 failed（133＋parse_character 6 例）、`cargo check` 0 warning、build ✓ 479ms、check:i18n 十語系 OK（67 鈕）；overlay 無 onClick、自動長高、AI 生成四態與文案歸位逐段親讀核過。範圍兩包皆只動授權檔。
 
 ## Remaining / Next action
-使用者實機驗收（過了即結案搬 DONE）：
-1. 開 app→側欄桌子清單「開新桌」下方見「一句話開桌」→開視窗；點視窗外不會關，只有 × 會關
-2. 寫一兩句（可加減題材 chips）→生成大綱（會花自己額度，鈕旁有明示）→看大綱、重骰一次
-3. 直接改大綱：改標題、刪一個角色、手寫加一個角色；長定位文字自動換行不橫向捲
-4. 「AI 生成角色」：寫一句提示生一個、留白再生一個，都直接掛進列表可再改
-5. 照這份開桌→進新桌：世界設定、角色卡（名字／emoji／公開／私密）、GM 開場白都照改過的版本來
-6. 順手驗：攻略單人設定只生一個角色（角色數不錨定）；換介面語言後生成跟語言走
-（Tauri 原生視窗此環境開不了；真模型生成品質依拍板由使用者驗實效。）
+2026-10-04 代測結果（截圖在當時 scratchpad，未留存）：
+- 過：①開視窗、合成事件點視窗外不關（Dialog backdrop=false）、× 關　②生成大綱、重骰　④AI 生成角色（有提示／留白各一，皆掛進列表）　⑤照大綱開桌：世界設定照草稿展開、刪掉的角色沒出現、留下的角色有 emoji／公開／私密、GM 開場白落檔　⑥單人攻略只生一個角色；介面切 en 後大綱為英文。另：刪角色、＋加一個角色（空列）、定位欄自動長高不橫捲正常。
+- 不過 A（擋 ③ 與手寫角色）：改大綱任何文字欄整個 app 白屏（#root 卸載）。`src/features/lobby/GenerateTableDialog.tsx:247、253、265、278` 在 setGenOutline 的函式型 updater 裡讀 `event.currentTarget.value`，React 19 在 render 時才跑 updater、currentTarget 已是 null → `TypeError: null is not an object (evaluating 'q.currentTarget.value')`。重現：生成大綱後在標題欄輸入任一字（逐鍵單一 input 事件即重現，非通道雙事件假象）。修法方向：handler 先取 value 再進 updater。
+- 不過 B（⑤ 標題）：開桌後桌名不是草稿標題，模型會重新命名。展開提示 `src-tauri/src/genesis.rs:78` 要模型重寫 `## WORLD: <campaign title>`，`materialize`（genesis.rs:174）用展開回傳的標題。
+- 發現 C：生成失敗訊息直接顯示原始 JSON（含 OpenRouter user_id），同一段出現兩次（`GenerateTableDialog.tsx:327` 的 `<p>` 與 `:328` 的 `<pre>` 都放 `backendText(genError)`），沒走 `shared/ui/ai-error` 的 `explainAiError`。
+修完 A、B（C 視拍板）後重驗 ③⑤。
 
 ## Constraints
 - 規格全文見 tasks/ai-table-generator.md（標記文字大綱、角色數模型自判不錨定數字、解析失敗不留半套桌、額度明示、免費功能）。
