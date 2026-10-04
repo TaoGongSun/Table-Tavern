@@ -1,6 +1,6 @@
 # quota-insufficient-alert — 計畫
 
-範圍見 [handoffs/quota-insufficient-alert.md](../handoffs/quota-insufficient-alert.md)。
+範圍見 [handoffs/archive/quota-insufficient-alert.md](../handoffs/archive/quota-insufficient-alert.md)。
 
 ## 結論
 2026-10-03 結案進 main：Sol 四輪計畫審查、兩輪驗收同意；verify 全綠（vitest 699、cargo 820、harness 28）。下方「已知限制」照舊成立；實機項目排在[實測佇列](../reference/verification-queue.md)梯 1。

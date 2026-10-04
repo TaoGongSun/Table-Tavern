@@ -6,9 +6,6 @@
 ## 梯 1：本地操作，不花 API 額度
 
 1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
-2. [menu-keyboard-webkit](../handoffs/menu-keyboard-webkit.md)：世界設定頁先點文字框、再滑鼠開世界書 ⋯：第一項有底色；↑↓ 循環每步都看得到外框；滑鼠移入換亮項、再按方向鍵從該項接續；Esc 回 ⋯ 鈕有外框；開 VoiceOver 混用滑鼠與方向鍵，播報不亂跳、停用項讀得到但按了不執行。
-
-3. [quota-insufficient-alert](../handoffs/quota-insufficient-alert.md)：設定填一把無效 API 金鑰觸發失敗（不花額度）。①打字送出 → 攔截式彈窗只有「關閉」、開窗焦點在「關閉」、Esc 可關、點遮罩不關，輸入框回到原文、逐字稿不留那句　②卡片介面覆蓋層開著時從卡片送出 → 彈窗疊在覆蓋層上面　③讓收回不成立（例如 GM 已寫入登場事件，或直接看彈窗帶原文的情況）→ 彈窗裡的唯讀原文可選取、能複製出來。
 
 4. [card-mvu-shim](../handoffs/card-mvu-shim.md) 包 1（2026-10-03 已用測試通道代測通過，步驟留作回歸；只讀墊片，test-harness 獨立 root、零 AI 派送）：①匯入 `TestCards/bcd368…png` 開新桌，空桌打開卡片介面：MVU 前端畫出 initvar 的值（用户数据：名称「未知」、资金 100000）　②`post_opening` 寫兩則假 GM 訊息（文字自帶 `<StatusPlaceHolderImpl/>`，因為開場事件不補占位；`<UpdateVariable>` 的 JSONPatch 數字欄用 delta，replace 絕對值會被拒收）：面板顯示第二則的值；收回 → 第一則；復原 → 第二則　③面板開著時寫一則玩家句，再在狀態欄手改资金：面板不重掛、數值自動換　④匯入 `TestCards/DongeonMaster.png`：開場是「开局」畫面、沒被狀態欄搶走；同②③改基础信息.时间　⑤抓兩卡 GM 回合實際送出的提示（只看提示、不送出），看 `<UpdateVariable>` 規定是否還在、有沒有被「不要輸出格式以外的狀態欄」壓掉　⑥ai-log 零派送，quit 後兩個正式目錄 hash 不變。
 
