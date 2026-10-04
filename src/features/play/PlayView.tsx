@@ -1,9 +1,11 @@
 // 遊玩畫面：這一幕的訊息清單與底下的 composer。整支是受控元件——
 // 逐字稿、生成狀態、輸入框與所有動作都由 chat controller 擁有，這裡只負責畫與回報。
-import { FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { Fragment, FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import type { ChatNotice } from "./useChatController";
 import { CharacterMeta } from "../characters/card-model";
+import { noticeText } from "../ai-connection/smart-free-events";
 import { StoryText } from "../../shared/ui/atoms";
 import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
 import gmBook from "../../assets/gm-book.png";
@@ -54,6 +56,8 @@ interface PlayViewProps {
   /** 這份逐字稿屬於哪桌哪幕：換了一定捲到底（分岔複製出的新桌事件可以跟舊桌一模一樣） */
   storyKey: string;
   events: TranscriptEvent[];
+  /** 非持久系統提示行（免費模型換模）；at＝插在第幾則逐字稿之前，不進逐字稿 */
+  notices?: ChatNotice[];
   /** 訊息作者的陣營色從這裡查 */
   metaOf: (id: string) => CharacterMeta | undefined;
   generating: { id: string; kind: "dialogue" | "narration" } | null;
@@ -104,6 +108,7 @@ export function PlayView({
   sceneLabel,
   storyKey,
   events,
+  notices = [],
   metaOf,
   generating,
   generatingMeta,
@@ -166,6 +171,42 @@ export function PlayView({
   const showAwayHint = !locked && awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
   const frozen = busy || locked;
 
+  // 非持久系統提示行：at 之後逐字稿被收回變短時，超出的一併排在最後
+  const noticesAt = (index: number, tail = false) =>
+    notices
+      .filter((entry) => (tail ? entry.at >= index : entry.at === index))
+      .map((entry) => (
+        <div key={entry.id} className="message message-system" role="status">
+          {noticeText(entry.notice)}
+        </div>
+      ));
+
+  const renderEvent = (event: TranscriptEvent, index: number) => {
+    if (event.kind === "dialogue" || event.kind === "player") {
+      const meta = metaOf(event.speaker_id);
+      const isPlayer = event.kind === "player";
+      return (
+        <div
+          key={index}
+          className={`message message-${event.kind}`}
+          style={isPlayer ? undefined : { ["--fac" as string]: meta?.color ?? "#888888" }}
+        >
+          <div className="pb-name">
+            <span className="pb-plate">{speakerDisplayName(event)}</span>
+          </div>
+          <StoryText text={eventDisplayText(event)} />
+          {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
+        </div>
+      );
+    }
+    return (
+      <div key={index} className={`message message-${event.kind}`}>
+        <StoryText text={eventDisplayText(event)} />
+        {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
+      </div>
+    );
+  };
+
   return (
     <>
       {onboarding}
@@ -175,31 +216,13 @@ export function PlayView({
         <div className="act-divider">
           <span className="act-tag">{sceneLabel}</span>
         </div>
-        {events.map((event, index) => {
-          if (event.kind === "dialogue" || event.kind === "player") {
-            const meta = metaOf(event.speaker_id);
-            const isPlayer = event.kind === "player";
-            return (
-              <div
-                key={index}
-                className={`message message-${event.kind}`}
-                style={isPlayer ? undefined : { ["--fac" as string]: meta?.color ?? "#888888" }}
-              >
-                <div className="pb-name">
-                  <span className="pb-plate">{speakerDisplayName(event)}</span>
-                </div>
-                <StoryText text={eventDisplayText(event)} />
-                {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
-              </div>
-            );
-          }
-          return (
-            <div key={index} className={`message message-${event.kind}`}>
-              <StoryText text={eventDisplayText(event)} />
-              {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
-            </div>
-          );
-        })}
+        {events.map((event, index) => (
+          <Fragment key={index}>
+            {noticesAt(index)}
+            {renderEvent(event, index)}
+          </Fragment>
+        ))}
+        {noticesAt(events.length, true)}
         {generating !== null && generating.kind === "dialogue" && (
           <div
             className="message message-dialogue"

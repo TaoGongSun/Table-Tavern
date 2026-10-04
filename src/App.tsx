@@ -57,6 +57,7 @@ import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { Onboarding } from "./features/ai-connection/Onboarding";
 import { SmartFreeNewModelBanner } from "./features/ai-connection/SmartFreeNewModelBanner";
+import { SmartFreeNoticeToast } from "./features/ai-connection/SmartFreeNoticeToast";
 import { ErrorNote } from "./shared/ui/atoms";
 import "./App.css";
 
@@ -180,14 +181,6 @@ function App() {
         else stopListening.push(unlisten);
       });
     };
-    register(
-      listen<{ model: string }>("smart-free-model-switched", (event) => {
-        void showMessage(t("smartFreeSwitched", { model: event.payload.model }), {
-          title: t("smartFreeStableTitle"),
-          okLabel: t("dialogAck"),
-        });
-      }),
-    );
     register(
       listen<{ model: string; expires_at: number }>("smart-free-model-expiring", (event) => {
         void showMessage(t("smartFreeExpiring", { model: event.payload.model }), {
@@ -959,6 +952,7 @@ function App() {
         onConfigSaved={setConfig}
         onOpenSettings={openSettings}
       />
+      <SmartFreeNoticeToast />
     </div>
   );
 }

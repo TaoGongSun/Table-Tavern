@@ -46,5 +46,6 @@
 | [ui-redesign](../handoffs/ui-redesign.md) 觸發條件型對話窗 | 格式轉換更新窗要有含格式轉換的新版；設定外部指定分頁與齒輪紅點要有新版；換幕提醒＋錯誤＋狀態同時要真出錯 |
 | [ui-redesign](../handoffs/ui-redesign.md) Windows | 等有 Windows 機：WebView2 連按兩次 Esc 對話窗不被繞過關閉，及分包 1 遺留的 Windows 外觀 |
 | [desktop-update-detect](../handoffs/desktop-update-detect.md) 端對端 | 要兩個真 release 才測得到偵測→更新→回退→刪版與跨格式回退；第一個帶更新功能的正式版發出前必須驗過 |
+| [stable-free-failover](../handoffs/archive/stable-free-failover.md) 真上游換模 | 真上游連續兩次失敗→換模→同句重送，只在假端點驗過；真模型自然遇到時再看（聊天室提示行、重送成功、帳本與 ai-log 對應） |
 | [test-harness](../handoffs/archive/test-harness.md) 安裝探測記錄 | 下次實際跑 CLI 安裝／登入流程時，用測試包看 `ai-log` 有 `cli-probe:*`（claude／agy 標 `aiProbe`）與 `cli-setup-terminal:*` 各一筆 |
 | [test-harness](../handoffs/archive/test-harness.md) 正式包 listener | 要確實隔離資料的環境（獨立 macOS 帳號或 VM）：正式包帶 `TT_HARNESS_ROOT` 啟動不產 harness.json、`lsof` 看不到 listener |
