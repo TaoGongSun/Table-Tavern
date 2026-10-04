@@ -234,8 +234,9 @@ fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, S
     })
 }
 
-/// 這一輪 GM 回合尾的導演指示與收尾句（三態見 transport::GmTurnFormat）：
-/// - 卡片自帶介面、還沒被 App 接管：讓路給卡片自己規定的輸出格式；
+/// 這一輪 GM 回合尾的導演指示與收尾句（四態見 transport::GmTurnFormat）：
+/// - 卡片自帶介面、還沒被 App 接管：讓路給卡片自己規定的輸出格式——格式條目全文真的在本輪
+///   提示裡才點名它（CardFormat），否則用不指向缺席格式的中性版（CardFormatAbsent）；
 /// - 介面已由 App 接管（桌上有重構產的介面骨架）：正文＋只寫變動的 `<UpdateVariable>`，不要 ```state
 ///   圍欄——再叫它照卡片格式就是要它每回合重印整份狀態區塊，要圍欄又和 system 的增量協定互斥
 ///   （refactor-statusbar-skeleton 實測都踩過）；
@@ -263,12 +264,12 @@ fn gm_turn_instruction(
         has_interface_shell,
         materials.state.refactor_mode.as_deref(),
     ) {
-        transport::GmTurnFormat::CardFormat => {
-            let entry_title = import::card_format_entry(&card_scripts, &materials.worldbook);
-            let instruction_message =
-                transport::card_format_instruction(lang, entry_title.as_deref());
-            let closing = transport::gm_closing(transport::GmTurnFormat::CardFormat, false, lang);
-            (instruction_message, closing)
+        transport::GmTurnFormat::CardFormat | transport::GmTurnFormat::CardFormatAbsent => {
+            // 只點名全文真的進得了本輪提示的格式條目；找不到就用中性版（指示與收尾句同一判定）
+            let prompt_entries =
+                transport::gm_prompt_full_entries(&materials.worldbook, &materials.events, lang);
+            let entry_title = import::card_format_entry(&card_scripts, &prompt_entries);
+            transport::card_format_turn(lang, entry_title.as_deref())
         }
         transport::GmTurnFormat::InterfaceTakeover => {
             let instruction_message = transport::takeover_instruction(lang, roster, player_name);

@@ -227,6 +227,55 @@ fn import_worldbook_disables_mechanism_scaffold_entries_and_leaves_others_alone(
     }
 }
 
+/// 同前綴 `[mvu_update]` 但抽不出欄位規則的格式說明（变量输出格式／强调），app 協定沒接手，
+/// 照原卡啟停：原本啟用的保留啟用，原本停用的（例如「前端」）維持停用；規則表照樣停用。
+#[test]
+fn import_worldbook_keeps_mvu_format_entries_as_the_card_set_them() {
+    let root = TestRoot::new("worldbook-mvu-format");
+    let world_id = create_world(root.path(), "世界").unwrap();
+    let book = serde_json::json!({
+        "entries": [
+            {
+                "keys": [],
+                "comment": "[mvu_update]变量更新规则",
+                "content": "---\n变量更新规则:\n  主角:\n    好感度:\n      type: number\n      range: 0~100\n",
+                "enabled": true
+            },
+            {
+                "keys": [],
+                "comment": "[mvu_update]变量输出格式",
+                "content": "---\n变量输出格式:\n  rule:\n    - you must output the update analysis and the actual update commands at once in the end of the next reply\n    - the update commands works like the **JSON Patch (RFC 6902)** standard\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(IN ENGLISH, no more than 80 words)\n    - ${calculate time passed: ...}\n    </Analysis>\n    <JSONPatch>\n    [\n      { \"op\": \"replace\", \"path\": \"${/path/to/variable}\", \"value\": \"${new_value}\" }\n    ]\n    </JSONPatch>\n    </UpdateVariable>\n",
+                "enabled": true
+            },
+            {
+                "keys": [],
+                "comment": "[mvu_update]变量输出格式强调",
+                "content": "<must>\n回复末尾必须输出 <UpdateVariable> 区块。\n</must>",
+                "enabled": true
+            },
+            {
+                "keys": [],
+                "comment": "[mvu_update]前端",
+                "content": "<StatusBar>前端显示用</StatusBar>",
+                "enabled": false
+            }
+        ]
+    });
+    import_worldbook(root.path(), &world_id, &book.to_string()).unwrap();
+    let entries = read_worldbook(root.path(), &world_id).unwrap();
+    let disabled = |title: &str| {
+        entries
+            .iter()
+            .find(|entry| entry.title == title)
+            .unwrap_or_else(|| panic!("缺 {title}"))
+            .disabled
+    };
+    assert!(disabled("[mvu_update]变量更新规则"));
+    assert!(!disabled("[mvu_update]变量输出格式"));
+    assert!(!disabled("[mvu_update]变量输出格式强调"));
+    assert!(disabled("[mvu_update]前端"));
+}
+
 #[test]
 fn dedupe_keeps_first_of_each_duplicate_group() {
     let root = TestRoot::new("worldbook-dedupe-command");

@@ -411,6 +411,7 @@ pub(super) fn render_all(lang: &str) -> String {
     }
     for format in [
         GmTurnFormat::CardFormat,
+        GmTurnFormat::CardFormatAbsent,
         GmTurnFormat::InterfaceTakeover,
         GmTurnFormat::Narration,
     ] {
