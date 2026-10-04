@@ -1,7 +1,9 @@
 //! 變數模式的寫入路徑（計畫 8.3）：改初始化來源（面板手改、匯入補值與復原）、卡寫、GM 回合與開場的新表、
 //! 幕操作的種子。全部在短提交鎖內。
 use super::control::{read_control, write_control, SceneVars};
-use super::convert::{merge_tree_change, stat_to_tree, Macros, NewValues, Tree};
+use super::convert::{
+    merge_tree_change, merge_tree_change_typed, stat_to_tree, Macros, NewValues, Tree, TypedBatch,
+};
 use super::json::Json;
 use super::mode::{derive_display, ensure_active, new_token, refresh_cache};
 use super::source::{init_source, Source};
@@ -413,14 +415,15 @@ pub struct GmCommit<R> {
     pub error: Option<String>,
 }
 
-/// GM 回合提交（鎖內、核對 turn_id、幕與世代）：`apply` 套在固定輸入上；樹模式開始的回合在這裡符合條件就
+/// GM 回合提交（鎖內、核對 turn_id、幕與世代）：`apply` 套在固定輸入上（變數模式時拿到輸入的 stat_data，
+/// 回傳的帶型別寫值照原型別合回新表）；樹模式開始的回合在這裡符合條件就
 /// 啟用變數模式（以當下樹物化種子）。新表與正文先放進回合紀錄（轉「等落檔」），再寫狀態快取；
 /// 快取寫失敗明確回報、不吞掉。turn_id、幕或世代不符、不在生成中回 None、不改狀態。
 pub fn apply_gm_block<R>(
     tx: &CommitTx<'_>,
     turn_id: &str,
     main: PendingMain,
-    apply: impl FnOnce(&mut WorldState) -> R,
+    apply: impl FnOnce(&mut WorldState, Option<&Json>) -> (R, Option<TypedBatch>),
     sides: impl FnOnce(&WorldState, &R) -> Vec<TurnSide>,
 ) -> DataResult<Option<GmCommit<R>>> {
     let Some(mut record) = turn::turn(tx).filter(|record| record.turn_id == turn_id) else {
@@ -442,14 +445,21 @@ pub fn apply_gm_block<R>(
         state.state.tree = stat_to_tree(input.get("stat_data"));
     }
     let before = state.state.tree.clone();
-    let result = apply(&mut state);
+    let input_stat = record.input.as_ref().map(stat_of);
+    let (result, typed) = apply(&mut state, input_stat.as_ref());
     let pending = record.input.as_ref().map(|input| {
         let rules = NewValues {
             types: &state.mechanism.value_types,
             keep_strings: false,
             clean: None,
         };
-        let stat = merge_tree_change(&stat_of(input), &before, &state.state.tree, &rules);
+        let stat = merge_tree_change_typed(
+            &stat_of(input),
+            &before,
+            &state.state.tree,
+            &rules,
+            typed.as_ref(),
+        );
         let mut table = input.clone();
         derive_display(&mut table, stat);
         table
@@ -541,13 +551,25 @@ pub fn refuse_during_turn(tx: &CommitTx<'_>) -> DataResult<()> {
     land_pending_parts(tx)
 }
 
-/// 開場：以初始化來源為底，把開場狀態塊套出來的改動做成新表（變數模式才有）。
+/// 開場的底：這一幕初始化來源的 stat_data（變數模式才有），上游 set 取帶型別舊值用。
+pub fn opening_stat(tx: &CommitTx<'_>, scene: u64) -> DataResult<Option<Json>> {
+    let control = read_control(tx.root, tx.world_id)?;
+    let Some(vars) = control.active(scene) else {
+        return Ok(None);
+    };
+    Ok(Some(stat_of(
+        init_source(tx.root, tx.world_id, scene, vars)?.table(),
+    )))
+}
+
+/// 開場：以初始化來源為底，把開場狀態塊套出來的改動做成新表（變數模式才有）；有帶型別的批次結果就以它為底。
 pub fn opening_table(
     tx: &CommitTx<'_>,
     scene: u64,
     before: &Tree,
     after: &Tree,
     types: &BTreeMap<String, String>,
+    typed: Option<&TypedBatch>,
 ) -> DataResult<Option<Json>> {
     let control = read_control(tx.root, tx.world_id)?;
     let Some(vars) = control.active(scene) else {
@@ -559,7 +581,7 @@ pub fn opening_table(
         keep_strings: false,
         clean: None,
     };
-    let stat = merge_tree_change(&stat_of(source.table()), before, after, &rules);
+    let stat = merge_tree_change_typed(&stat_of(source.table()), before, after, &rules, typed);
     let mut table = source.table().clone();
     derive_display(&mut table, stat);
     Ok(Some(table))

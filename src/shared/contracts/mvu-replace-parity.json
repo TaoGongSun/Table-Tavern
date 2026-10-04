@@ -1,0 +1,507 @@
+{
+  "_comment": "mvu-replace-numeric：沒重構的 MVU 卡 JSONPatch replace 的後端（mechanism Upstream 策略＋卡片變數模式合回 stat_data）與前端墊片 Mvu.parseMessage 必須得到完全相同的 stat_data。語意照上游 MagVarUpdate 438f9ffc update_variables.ts L906-956；set 產生的非有限數在整批做完、序列化時轉 null〔作者裁決 2026-10-04〕。 backend_rejected：後端記帳預期拒收的路徑（墊片沒有記帳），結果兩邊仍須完全一致。",
+  "cases": [
+    {
+      "name": "數字換數字",
+      "stat_data": {
+        "金": 100000
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": 99000
+        }
+      ],
+      "expected": {
+        "金": 99000
+      }
+    },
+    {
+      "name": "數字字串轉數字",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "85"
+        }
+      ],
+      "expected": {
+        "金": 85
+      }
+    },
+    {
+      "name": "前後空白的數字字串",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": " 12.5 "
+        }
+      ],
+      "expected": {
+        "金": 12.5
+      }
+    },
+    {
+      "name": "轉不成數字變 null",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "很多"
+        }
+      ],
+      "expected": {
+        "金": null
+      }
+    },
+    {
+      "name": "設成 null",
+      "stat_data": {
+        "角色": {
+          "好感": 50
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/角色/好感",
+          "value": null
+        }
+      ],
+      "expected": {
+        "角色": {
+          "好感": null
+        }
+      }
+    },
+    {
+      "name": "巢狀數字不夾範圍",
+      "stat_data": {
+        "角色": {
+          "好感": 10,
+          "名": "阿明"
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/角色/好感",
+          "value": 250
+        }
+      ],
+      "expected": {
+        "角色": {
+          "好感": 250,
+          "名": "阿明"
+        }
+      }
+    },
+    {
+      "name": "現值/上限整值改寫",
+      "stat_data": {
+        "HP": "480/500"
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/HP",
+          "value": "450/600"
+        }
+      ],
+      "expected": {
+        "HP": "450/600"
+      }
+    },
+    {
+      "name": "值帶說明只改第 0 項",
+      "stat_data": {
+        "好感": [
+          50,
+          "對主角的好感"
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/好感",
+          "value": 85
+        }
+      ],
+      "expected": {
+        "好感": [
+          85,
+          "對主角的好感"
+        ]
+      }
+    },
+    {
+      "name": "同一欄先 replace 再 delta",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": 20
+        },
+        {
+          "op": "delta",
+          "path": "/金",
+          "value": 5
+        }
+      ],
+      "expected": {
+        "金": 25
+      }
+    },
+    {
+      "name": "bom-number",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "\uFEFF85"
+        }
+      ],
+      "expected": {
+        "金": 85
+      }
+    },
+    {
+      "name": "wide-hex",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "0x10000000000000000"
+        }
+      ],
+      "expected": {
+        "金": 18446744073709551616
+      }
+    },
+    {
+      "name": "vwd-bool",
+      "stat_data": {
+        "金": [
+          50,
+          "desc"
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": true
+        }
+      ],
+      "expected": {
+        "金": [
+          1,
+          "desc"
+        ]
+      }
+    },
+    {
+      "name": "numeric-string",
+      "stat_data": {
+        "金": "123"
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "很多"
+        }
+      ],
+      "expected": {
+        "金": "很多"
+      }
+    },
+    {
+      "name": "null-then-string",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": null
+        },
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "85"
+        }
+      ],
+      "expected": {
+        "金": "85"
+      }
+    },
+    {
+      "name": "字串欄 replace 數字照數字寫",
+      "stat_data": {
+        "金": "123"
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": 123
+        }
+      ],
+      "expected": {
+        "金": 123
+      }
+    },
+    {
+      "name": "NaN 後同一批再 set 數字字串照數字轉",
+      "stat_data": {
+        "金": 10
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "很多"
+        },
+        {
+          "op": "replace",
+          "path": "/金",
+          "value": "85"
+        }
+      ],
+      "expected": {
+        "金": 85
+      }
+    },
+    {
+      "name": "parent-set-child-string",
+      "stat_data": {
+        "P": {
+          "a": 1
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/P",
+          "value": {
+            "a": "123"
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/P/a",
+          "value": "很多"
+        }
+      ],
+      "expected": {
+        "P": {
+          "a": "很多"
+        }
+      }
+    },
+    {
+      "name": "parent-set-sibling-type",
+      "stat_data": {
+        "P": {
+          "a": 1,
+          "b": 0
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/P",
+          "value": {
+            "a": "85",
+            "b": 0
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/P/b",
+          "value": 1
+        }
+      ],
+      "expected": {
+        "P": {
+          "a": "85",
+          "b": 1
+        }
+      }
+    },
+    {
+      "name": "child-set-parent-replaces",
+      "stat_data": {
+        "P": {
+          "a": 1
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/P/a",
+          "value": 85
+        },
+        {
+          "op": "replace",
+          "path": "/P",
+          "value": {
+            "a": "85"
+          }
+        }
+      ],
+      "expected": {
+        "P": {
+          "a": "85"
+        }
+      }
+    },
+    {
+      "name": "字串子欄 set 數字字串後 delta 兄弟欄，子欄仍是字串",
+      "stat_data": {
+        "P": {
+          "a": "s",
+          "b": 2
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/P/a",
+          "value": "123"
+        },
+        {
+          "op": "delta",
+          "path": "/P/b",
+          "value": 3
+        }
+      ],
+      "expected": {
+        "P": {
+          "a": "123",
+          "b": 5
+        }
+      }
+    },
+    {
+      "name": "set 字串後刪掉再 set 數字欄",
+      "stat_data": {
+        "P": {
+          "a": "7",
+          "b": 1
+        }
+      },
+      "patch": [
+        {
+          "op": "remove",
+          "path": "/P/a"
+        },
+        {
+          "op": "replace",
+          "path": "/P/b",
+          "value": "9"
+        }
+      ],
+      "expected": {
+        "P": {
+          "b": 9
+        }
+      }
+    },
+    {
+      "name": "move-rejected-readonly-source",
+      "stat_data": {
+        "_src": "123",
+        "dst": 123
+      },
+      "patch": [
+        {
+          "op": "move",
+          "from": "/_src",
+          "to": "/dst"
+        }
+      ],
+      "expected": {
+        "_src": "123",
+        "dst": 123
+      },
+      "backend_rejected": [
+        "_src"
+      ]
+    },
+    {
+      "name": "move-rejected-readonly-dest",
+      "stat_data": {
+        "src": "123",
+        "_dst": 123
+      },
+      "patch": [
+        {
+          "op": "move",
+          "from": "/src",
+          "to": "/_dst"
+        }
+      ],
+      "expected": {
+        "src": "123",
+        "_dst": 123
+      },
+      "backend_rejected": [
+        "_dst"
+      ]
+    },
+    {
+      "name": "nested-nan-then-sibling-write",
+      "stat_data": {
+        "P": {
+          "child": {
+            "n": 10,
+            "x": 0
+          }
+        }
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/P/child/n",
+          "value": "很多"
+        },
+        {
+          "op": "replace",
+          "path": "/P/child/x",
+          "value": 1
+        }
+      ],
+      "expected": {
+        "P": {
+          "child": {
+            "n": null,
+            "x": 1
+          }
+        }
+      }
+    }
+  ]
+}

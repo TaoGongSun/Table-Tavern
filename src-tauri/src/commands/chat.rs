@@ -221,7 +221,9 @@ struct GmMaterials {
 }
 
 fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, String> {
-    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    let mut state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    // 數字欄更新策略算這一次：提示詞與這一輪的提交（turn.commit）都用這一份
+    state.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &state);
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     Ok(GmMaterials {
@@ -525,15 +527,18 @@ pub(crate) async fn gm_narrate(
     };
     let committed = turn.commit(
         main,
-        |state| {
-            apply.then(|| {
+        |state, stat| {
+            let outcome = apply.then(|| {
                 let scene = state.current_scene;
-                let outcome = mechanism::apply_block(state, &block, user_name);
+                state.mechanism.numeric_update = materials.state.mechanism.numeric_update;
+                let outcome = mechanism::apply_block_typed(state, &block, user_name, stat);
                 if align {
                     state.aligned_scene = Some(scene);
                 }
                 outcome
-            })
+            });
+            let typed = outcome.as_ref().and_then(|outcome| outcome.typed.clone());
+            (outcome, typed)
         },
         // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
         |state, outcome| {
@@ -673,7 +678,10 @@ impl TurnGuard {
     fn commit<R>(
         &self,
         main: data::message_vars::PendingMain,
-        apply: impl FnOnce(&mut data::WorldState) -> R,
+        apply: impl FnOnce(
+            &mut data::WorldState,
+            Option<&data::message_vars::Json>,
+        ) -> (R, Option<data::message_vars::TypedBatch>),
         sides: impl FnOnce(&data::WorldState, &R) -> Vec<data::message_vars::TurnSide>,
     ) -> Result<Option<data::message_vars::GmCommit<R>>, String> {
         data::state_commit::with_commit(&self.root, &self.world_id, |tx| {
@@ -1139,5 +1147,145 @@ mod tests {
         assert!(scene0[0].gm_only);
 
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// mvu-replace-numeric：GM 回合在 gm_materials 算一次策略，提示詞與提交（照 turn.commit 的做法把同一份
+    /// 帶進鎖內讀的狀態）都用它——沒重構的 MVU 桌兩邊都放行 replace，重構後兩邊都回原規則。
+    #[test]
+    fn gm_turn_uses_one_numeric_policy_for_prompt_and_commit() {
+        let root = std::env::temp_dir().join(format!(
+            "table-tavern-gm-numeric-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+        let raw = serde_json::json!({"data": {"name": "莉亞", "character_book": {"entries": [
+            {"comment": "[initvar]初始", "enabled": false, "content": "World:\n  Gold: 100000"}
+        ]}}})
+        .to_string();
+        crate::import::import_character(&root, &world_id, raw.as_bytes(), "#3366ff", "zh-TW")
+            .unwrap();
+        let reply = "旁白<UpdateVariable><JSONPatch>[{\"op\":\"replace\",\"path\":\"/World/Gold\",\"value\":99000}]</JSONPatch></UpdateVariable>";
+        let block = crate::transport::extract_state_block(reply);
+        let run = |expected: data::NumericUpdate, expected_gold: &str, prompt: &str| {
+            let materials = super::gm_materials(&root, &world_id).unwrap();
+            assert_eq!(materials.state.mechanism.numeric_update, expected);
+            let system = crate::transport::gm_lane_system(
+                &materials.world_md,
+                &materials.cards,
+                materials.player.as_ref(),
+                &materials.worldbook,
+                &materials.state.mechanism,
+                "zh-TW",
+            );
+            assert!(system.contains(prompt), "{system}");
+            let mut state = data::read_state(&root, &world_id).unwrap();
+            state.mechanism.numeric_update = materials.state.mechanism.numeric_update;
+            crate::mechanism::apply_block(&mut state, &block, "阿濤");
+            let gold =
+                data::node_at(&state.state.tree, &["World".to_owned(), "Gold".to_owned()]).cloned();
+            assert_eq!(gold, Some(data::StateNode::Leaf(expected_gold.to_owned())));
+        };
+        run(
+            data::NumericUpdate::Upstream,
+            "99000",
+            "也可以用 replace 直接寫新值",
+        );
+        let mut state = data::read_state(&root, &world_id).unwrap();
+        state.refactor_mode = Some("interface".to_owned());
+        data::write_state(&root, &world_id, &state).unwrap();
+        run(
+            data::NumericUpdate::DeltaOnly,
+            "100000",
+            "給絕對值會被系統擋下",
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// mvu-replace-numeric × gm-format-directive-missing-target：沒重構的 MVU 卡、原卡格式條目照原卡啟用時，
+    /// 完整 GM 提示（凍結 system＋回合尾段的導演指示與收尾句）裡，上游版協定、卡的格式條目、導演指示三者
+    /// 不能互相矛盾：不能再出現「數字欄只收 delta／絕對值會被擋／上下限由系統把關」，指示也不能禁掉更新區塊。
+    #[test]
+    fn full_gm_prompt_with_card_format_and_upstream_protocol_is_consistent() {
+        for (label, format_tag) in [("named", "<StatusBlock>"), ("neutral", "【狀態】")] {
+            let root = std::env::temp_dir().join(format!(
+                "table-tavern-gm-format-upstream-{label}-{}-{}",
+                std::process::id(),
+                NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&root).unwrap();
+            let world_id = data::create_world(&root, "測試桌").unwrap();
+            let format = format!(
+                "每回合正文後輸出 {format_tag} 狀態欄，最後用 <UpdateVariable><JSONPatch> 回報變數，\
+                 數值可直接 replace，例 {{\"op\":\"replace\",\"path\":\"/World/Gold\",\"value\":90}}。"
+            );
+            let raw = serde_json::json!({"data": {
+                "name": "莉亞",
+                "extensions": {"regex_scripts": [{
+                    "scriptName": "狀態欄", "findRegex": "/<StatusBlock>([\\s\\S]*?)<\\/StatusBlock>/s",
+                    "replaceString": "<div>$1</div>", "placement": [2], "disabled": false
+                }]},
+                "character_book": {"entries": [
+                    {"comment": "[initvar]初始", "enabled": false, "content": "World:\n  Gold: 100"},
+                    {"comment": "[mvu_update]变量更新规则", "enabled": true,
+                     "content": "规则:\n  World:\n    Gold:\n      type: number\n      range: 0-1000\n"},
+                    {"comment": "[mvu_update]变量输出格式", "enabled": true, "constant": true, "content": format}
+                ]}
+            }})
+            .to_string();
+            crate::import::import_character(&root, &world_id, raw.as_bytes(), "#3366ff", "zh-TW")
+                .unwrap();
+            let materials = super::gm_materials(&root, &world_id).unwrap();
+            assert_eq!(
+                materials.state.mechanism.numeric_update,
+                data::NumericUpdate::Upstream,
+                "{label}"
+            );
+            let lang = "zh-TW";
+            let (instruction, closing) =
+                super::gm_turn_instruction(&root, &world_id, &materials, &[], None, lang);
+            let system = crate::transport::gm_lane_system(
+                &materials.world_md,
+                &materials.cards,
+                materials.player.as_ref(),
+                &materials.worldbook,
+                &materials.state.mechanism,
+                lang,
+            );
+            let prompt = format!("{system}\n{}\n{closing}", instruction.content);
+            // 卡的格式條目照原卡啟用、全文進提示；上游版協定在
+            assert!(prompt.contains("數值可直接 replace"), "{label}: {prompt}");
+            assert!(prompt.contains("也可以用 replace 直接寫新值"), "{label}");
+            assert!(prompt.contains("系統不會幫你夾在上下限內"), "{label}");
+            for contradiction in [
+                "數字欄一律用 delta",
+                "給絕對值會被系統擋下",
+                "只有上限改變（升級）才用 replace",
+                "上下限與拒收由系統把關",
+                "你只要說「這一幕變動了多少」",
+            ] {
+                assert!(!prompt.contains(contradiction), "{label}: {contradiction}");
+            }
+            match label {
+                "named" => assert!(
+                    instruction.content.contains("[mvu_update]变量输出格式"),
+                    "{label}: {}",
+                    instruction.content
+                ),
+                _ => assert!(
+                    instruction.content.contains("狀態更新協定"),
+                    "{label}: {}",
+                    instruction.content
+                ),
+            }
+            // 導演指示與收尾句不禁更新區塊（中性版不寫「只輸出正文」）
+            for banned in ["只輸出正文", "不要輸出更新區塊", "不要輸出狀態更新"]
+            {
+                assert!(!instruction.content.contains(banned), "{label}: {banned}");
+                assert!(!closing.contains(banned), "{label}: {banned}");
+            }
+            let _ = std::fs::remove_dir_all(&root);
+        }
     }
 }

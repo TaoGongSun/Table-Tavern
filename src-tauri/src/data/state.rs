@@ -197,6 +197,20 @@ pub struct Mechanism {
     /// 決定 YAML 裡要不要加引號、行內集合要不要拆元素，卡讀回的型別才會跟原卡一致。沒列的欄位＝字串。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub value_types: BTreeMap<String, String>,
+    /// 數字欄更新策略：不落檔，由載入層（`mechanism::resolve_numeric_update`）每次算好再交給
+    /// 套用與提示詞同一份；沒算過＝DeltaOnly（原規則）。
+    #[serde(skip)]
+    pub numeric_update: NumericUpdate,
+}
+
+/// 數字欄（Number／Counter／Pair）怎麼接受模型的更新。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NumericUpdate {
+    /// 本 app 協定：數字欄只收 delta，replace 會被擋下（Pair 只准改上限）。
+    #[default]
+    DeltaOnly,
+    /// 沒重構的 MVU 卡照上游 MVU：replace 直接寫新值，不夾範圍。
+    Upstream,
 }
 
 pub(crate) fn is_false(value: &bool) -> bool {
@@ -212,6 +226,7 @@ impl Default for Mechanism {
             triggers: Vec::new(),
             incremental: false,
             guide: String::new(),
+            numeric_update: NumericUpdate::default(),
         }
     }
 }

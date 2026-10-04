@@ -325,6 +325,7 @@ mod tests {
     fn evaluate_triggers_stops_at_the_first_matching_case_and_falls_back_to_else() {
         let mechanism = Mechanism {
             value_types: Default::default(),
+            numeric_update: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
             triggers: vec![data::Trigger {
@@ -371,6 +372,7 @@ mod tests {
     fn evaluate_triggers_produces_no_text_when_no_case_matches_and_there_is_no_fallback() {
         let mechanism = Mechanism {
             value_types: Default::default(),
+            numeric_update: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
             triggers: vec![data::Trigger {
@@ -395,6 +397,7 @@ mod tests {
     fn evaluate_triggers_replaces_state_placeholder_and_user_macro() {
         let mechanism = Mechanism {
             value_types: Default::default(),
+            numeric_update: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
             triggers: vec![data::Trigger {

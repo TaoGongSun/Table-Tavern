@@ -302,6 +302,28 @@ pub fn merge_tree_change(stat: &Json, before: &Tree, after: &Tree, rules: &NewVa
     result
 }
 
+/// 一批更新（沒重構的 MVU 卡的上游 set）做完時的完整帶型別 stat_data，與當時的樹。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedBatch {
+    pub doc: Json,
+    pub mid: Tree,
+}
+
+/// 有帶型別的批次結果就以它為底，只把批次之後樹上的改動（骰值重擲、觸發旗標、衍生值）照一般規則合上去；
+/// 沒有就同 `merge_tree_change`。
+pub fn merge_tree_change_typed(
+    stat: &Json,
+    before: &Tree,
+    after: &Tree,
+    rules: &NewValues,
+    typed: Option<&TypedBatch>,
+) -> Json {
+    match typed {
+        Some(batch) => merge_tree_change(&batch.doc, &batch.mid, after, rules),
+        None => merge_tree_change(stat, before, after, rules),
+    }
+}
+
 fn merge_level(
     target: &mut Json,
     before: &Tree,

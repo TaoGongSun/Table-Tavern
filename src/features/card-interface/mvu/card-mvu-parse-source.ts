@@ -511,6 +511,37 @@ export function buildMvuParseSource(): string {
     checkDeadline(st.ctx);
   }
 
+  // 寫入 path（有 key 就是 path 底下那一鍵）：撤銷跟它重疊（同一處、祖先、子孫）的「set 產生的非有限數」標記——
+  // 那個位置最後一次寫入的來源已經不是那條 set（作者裁決 2026-10-04：只有 set 產生、到整批結束都沒被改寫的才轉 null）
+  function touch(st, path, key) {
+    var segments = lodash.toPath(path);
+    if (key !== undefined) segments = segments.concat([String(key)]);
+    touchSegments(st, segments);
+  }
+  function touchSegments(st, segments) {
+    st.ctx.nonFiniteSets = st.ctx.nonFiniteSets.filter(function (entry) {
+      var shared = Math.min(entry.segments.length, segments.length);
+      for (var i = 0; i < shared; i++) if (entry.segments[i] !== segments[i]) return true;
+      return false;
+    });
+  }
+
+  // lodash.merge(target, source) 實際會覆寫的位置才撤銷：兩邊都是可合併的容器就往下遞迴（照 lodash：來源陣列只合進
+  // 陣列、來源物件合進任何物件），否則整個鍵被換掉；來源是 undefined 的鍵不寫。沒被動到的兄弟欄保留標記
+  function touchMerge(st, segments, source, target) {
+    Object.keys(source).forEach(function (key) {
+      var from = source[key];
+      if (from === undefined) return;
+      var here = segments.concat([key]);
+      var into = target !== null && typeof target === "object" ? target[key] : undefined;
+      var deeper = Array.isArray(from)
+        ? Array.isArray(into)
+        : lodash.isPlainObject(from) && into !== null && typeof into === "object";
+      if (deeper) touchMerge(st, here, from, into);
+      else touchSegments(st, here);
+    });
+  }
+
   async function applySet(st, command, path, reasonStr) {
     var variables = st.variables;
     if (path !== "" && !lodash.has(variables.stat_data, path)) {
@@ -520,6 +551,7 @@ export function buildMvuParseSource(): string {
     var oldValue = path === "" ? lodash.cloneDeep(variables.stat_data) : lodash.get(variables.stat_data, path);
     var newValue = isoIfDate(await parseValue(st.ctx, command.args[command.args.length - 1]));
     var pathIsVwd = false;
+    touch(st, path);
     if (!st.strictSet && isVwd(oldValue) && !Array.isArray(oldValue[0])) {
       // [值, 說明]：改第 0 項；舊值是數字且新值不是 null 才強轉成數字（數字欄位可以設成 null）
       var oldCopy = lodash.cloneDeep(oldValue[0]);
@@ -535,6 +567,10 @@ export function buildMvuParseSource(): string {
     }
     var finalValue = path === "" ? variables.stat_data : lodash.get(variables.stat_data, path);
     if (pathIsVwd) finalValue = finalValue[0];
+    // set 轉出的非有限數（Number("很多") 等）照上游留在記憶體裡，整批做完、序列化前才轉 null（作者裁決 2026-10-04）
+    if (typeof finalValue === "number" && !isFinite(finalValue)) {
+      st.ctx.nonFiniteSets.push({ path: path, segments: lodash.toPath(path), vwd: pathIsVwd });
+    }
     var display;
     if (!st.strictSet && isVwd(oldValue) && Array.isArray(finalValue)) {
       display = displayOf(oldValue[0]) + "->" + displayOf(finalValue[0]) + " " + reasonStr;
@@ -587,16 +623,19 @@ export function buildMvuParseSource(): string {
       collection = path === "" ? variables.stat_data : lodash.get(variables.stat_data, path);
       if (!Array.isArray(collection) && !lodash.isObject(collection)) {
         collection = Array.isArray(valueToAssign) ? [] : {};
+        touch(st, path);
         lodash.set(variables.stat_data, path, collection);
       }
       if (Array.isArray(collection)) {
         template = targetSchema && isArraySchema(targetSchema) ? targetSchema.template : undefined;
         valueToAssign = applyTemplate(valueToAssign, template, st.strictTemplate, st.concatTemplateArray);
+        touch(st, path, collection.length);
         collection.push(valueToAssign);
         display = "ASSIGNED " + JSON.stringify(valueToAssign) + " into array '" + path + "' " + reasonStr;
         successful = true;
       } else if (lodash.isObject(collection)) {
         if (lodash.isObject(valueToAssign) && !Array.isArray(valueToAssign)) {
+          touchMerge(st, lodash.toPath(path), valueToAssign, collection);
           lodash.merge(collection, valueToAssign);
           display = "MERGED object " + JSON.stringify(valueToAssign) + " into object '" + path + "' " + reasonStr;
           successful = true;
@@ -613,6 +652,7 @@ export function buildMvuParseSource(): string {
       if (Array.isArray(collection) && (typeof keyOrIndex === "number" || keyOrIndex === "-")) {
         // JSON Patch 的 "-" 是追加到陣列尾
         var index = keyOrIndex === "-" ? collection.length : keyOrIndex;
+        touch(st, path);
         var label = keyOrIndex === "-" || keyOrIndex === -1 ? "tail" : keyOrIndex;
         valueToAssign = applyTemplate(valueToAssign, template, st.strictTemplate, st.concatTemplateArray);
         collection.splice(index, 0, valueToAssign);
@@ -620,11 +660,13 @@ export function buildMvuParseSource(): string {
         successful = true;
       } else if (lodash.isObject(collection)) {
         valueToAssign = applyTemplate(valueToAssign, template, st.strictTemplate, st.concatTemplateArray);
+        touch(st, path, keyOrIndex);
         setOwn(collection, String(keyOrIndex), valueToAssign);
         display = "ASSIGNED key '" + keyOrIndex + "' with value " + JSON.stringify(valueToAssign) + " into object '" + path + "' " + reasonStr;
         successful = true;
       } else {
         collection = {};
+        touch(st, path);
         lodash.set(variables.stat_data, path, collection);
         valueToAssign = applyTemplate(valueToAssign, template, st.strictTemplate, st.concatTemplateArray);
         setOwn(collection, String(keyOrIndex), valueToAssign);
@@ -661,6 +703,7 @@ export function buildMvuParseSource(): string {
       var at = parseInt(lastPart, 10);
       if (Array.isArray(container) && at < container.length) {
         var originalArray = lodash.cloneDeep(container);
+        touch(st, arrayPath);
         container.splice(at, 1);
         await singleUpdated(st, arrayPath, originalArray, container);
         return "";
@@ -711,6 +754,7 @@ export function buildMvuParseSource(): string {
     var display = "";
     if (target === undefined) {
       var oldValue = lodash.get(variables.stat_data, path);
+      touch(st, path);
       lodash.unset(variables.stat_data, path);
       display = "REMOVED path '" + path + "' " + reasonStr;
       removed = true;
@@ -732,6 +776,7 @@ export function buildMvuParseSource(): string {
           });
         }
         if (indexToRemove >= 0 && indexToRemove < collection.length) {
+          touch(st, path);
           collection.splice(indexToRemove, 1);
           removed = true;
           display = "REMOVED item from '" + path + "' " + reasonStr;
@@ -742,6 +787,7 @@ export function buildMvuParseSource(): string {
           var keys = Object.keys(collection);
           if (target >= 0 && target < keys.length) {
             var byIndex = keys[target];
+            touch(st, path, byIndex);
             lodash.unset(collection, byIndex);
             removed = true;
             display = "REMOVED " + (target + 1) + "th entry ('" + byIndex + "') from object '" + path + "' " + reasonStr;
@@ -749,6 +795,7 @@ export function buildMvuParseSource(): string {
         } else {
           var byName = String(target);
           if (lodash.has(collection, byName)) {
+            touch(st, path, byName);
             delete collection[byName];
             removed = true;
             display = "REMOVED key '" + byName + "' from object '" + path + "' " + reasonStr;
@@ -795,6 +842,7 @@ export function buildMvuParseSource(): string {
         return "";
       }
       var shifted = new Date(date.getTime() + delta).toISOString();
+      touch(st, path);
       if (vwd) {
         oldValue[0] = shifted;
         lodash.set(variables.stat_data, path, oldValue);
@@ -807,6 +855,7 @@ export function buildMvuParseSource(): string {
         return "";
       }
       var sum = parseFloat((valueToAdd + delta).toPrecision(12));
+      touch(st, path);
       if (vwd) {
         oldValue[0] = sum;
         lodash.set(variables.stat_data, path, oldValue);
@@ -934,16 +983,30 @@ export function buildMvuParseSource(): string {
     return walk(table, 1);
   }
 
+  // set 產生、到整批結束都還是非有限數的位置轉成 null（同上游存檔時的 JSON.stringify）；其餘來源的非有限數照舊由上限擋下
+  function nullNonFiniteSets(ctx, result) {
+    ctx.nonFiniteSets.forEach(function (entry) {
+      var holder = entry.path === "" ? result : lodash.get(result.stat_data, entry.path);
+      if (entry.vwd) {
+        if (Array.isArray(holder) && typeof holder[0] === "number" && !isFinite(holder[0])) holder[0] = null;
+      } else if (typeof holder === "number" && !isFinite(holder)) {
+        if (entry.path === "") result.stat_data = null;
+        else lodash.set(result.stat_data, entry.path, null);
+      }
+    });
+  }
+
   // Mvu.parseMessage(message, old)：深拷貝 old 後照訊息更新、回新資料（上游一律回新資料，沒有變動也是）。
   // 純沙盒運算，不送宿主寫入、不落檔、不記帳；超過上限（訊息 256 KB、指令 1000 條、整次 5 秒、結果同 8.8）丟錯
   async function parseMessage(message, oldData) {
     if (typeof message !== "string") throw new Error("parseMessage: message 必須是字串");
     if (!isPlainObject(oldData)) throw new Error("parseMessage: old_data 必須是物件");
     if (utf8Length(message) > PARSE_LIMITS.MESSAGE_BYTES) throw parseFailure("message-too-large", "訊息超過 256 KB");
-    var ctx = { deadline: Date.now() + PARSE_LIMITS.TOTAL_MS };
+    var ctx = { deadline: Date.now() + PARSE_LIMITS.TOTAL_MS, nonFiniteSets: [] };
     var result = lodash.cloneDeep(oldData);
     await updateVariables(ctx, message, result);
     checkDeadline(ctx);
+    nullNonFiniteSets(ctx, result);
     var problem = limitProblem(result);
     if (problem) throw parseFailure(problem, "結果超出上限（" + problem + "）");
     return result;

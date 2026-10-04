@@ -56,4 +56,7 @@ pub struct Outcome {
     /// 這一輪真的改到樹的變動：路徑（點分）→ 顯示標記。被拒收／硬錯誤不進來，
     /// 骰值本地重擲也不算（狀態欄二期包 5：回合尾注入策略要靠這個標「哪裡變了」）。
     pub changes: BTreeMap<String, String>,
+    /// 上游 set 這一批做完的完整帶型別 stat_data（只在沒重構的 MVU 卡、變數模式出現）：合回新表的底。不送前端。
+    #[serde(skip)]
+    pub typed: Option<crate::data::message_vars::TypedBatch>,
 }

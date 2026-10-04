@@ -6,14 +6,19 @@ mod apply;
 mod derive;
 mod ledger;
 mod parse;
+mod policy;
 mod rules;
 mod tree;
 mod triggers;
 mod types;
+pub(crate) mod upstream_set;
 
 #[cfg(test)]
 mod test_support;
 
-pub use ledger::{append_log, apply_block, read_ledger, Ledger};
+#[cfg(test)]
+pub use ledger::apply_block;
+pub use ledger::{append_log, apply_block_typed, read_ledger, Ledger};
+pub use policy::resolve_numeric_update;
 pub use rules::rule_for_path;
 pub use types::{Outcome, Record, RecordKind};

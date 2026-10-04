@@ -3,13 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use super::apply::{apply_updates, signed_delta_mark};
+use super::apply::{apply_updates_typed, signed_delta_mark};
 use super::derive::{recompute_derived, reroll};
 use super::parse::parse_updates;
 use super::rules::rule_for_path;
 use super::tree::{format_num, leaf_at, numeric_value};
 use super::triggers::evaluate_triggers;
 use super::types::{Outcome, Patch, Record, RecordKind};
+use super::upstream_set::TypedView;
 
 /// 全量桌跳動標記的門檻：兩個條件都要達到才算「跳」，寧可少標也不要一直誤報
 /// （模型每回合都會有些許措辭差異造成的小數字漂移，不該被當成幻覺）。
@@ -75,10 +76,22 @@ fn detect_jumps(
 /// 把一則回覆的狀態區塊套進這桌：平欄照舊、增量走本地權威、骰值每回合重擲、
 /// 觸發表求值（模型套用到樹之後才查表）、全量桌跳動比對（只給玩家看，不進提示詞）。
 /// `user_name` 供觸發文本的 `{{user}}` 代換。
+#[cfg(test)]
 pub fn apply_block(
     world: &mut data::WorldState,
     block: &crate::transport::StateBlock,
     user_name: &str,
+) -> Outcome {
+    apply_block_typed(world, block, user_name, None)
+}
+
+/// 同 `apply_block`，`base` 是變數模式這一輪的 stat_data（投影就是進來時的樹）：沒重構的 MVU 卡的
+/// 上游 set 以它建這一批的帶型別視圖，做完的整份帶型別 stat_data 與當時的樹收在 `Outcome::typed`。
+pub fn apply_block_typed(
+    world: &mut data::WorldState,
+    block: &crate::transport::StateBlock,
+    user_name: &str,
+    base: Option<&crate::data::message_vars::Json>,
 ) -> Outcome {
     let jump_check = !world.mechanism.incremental;
     let old_values: Vec<Option<String>> = if jump_check {
@@ -91,6 +104,7 @@ pub fn apply_block(
         Vec::new()
     };
 
+    let entry = base.is_some().then(|| world.state.tree.clone());
     for (path, value) in &block.fields {
         if path.len() == 1 {
             world.state.table.insert(path[0].clone(), value.clone());
@@ -103,7 +117,20 @@ pub fn apply_block(
         .iter()
         .flat_map(|update| parse_updates(update))
         .collect();
-    let mut outcome = apply_updates(&mut world.state.tree, &world.mechanism, &patches);
+    let mut view = TypedView::for_table(
+        &world.mechanism,
+        base,
+        entry.as_ref().unwrap_or(&world.state.tree),
+        &world.state.tree,
+    );
+    let mut outcome =
+        apply_updates_typed(&mut world.state.tree, &world.mechanism, &patches, &mut view);
+    if base.is_some() && view.is_active() {
+        outcome.typed = Some(crate::data::message_vars::TypedBatch {
+            doc: view.finish(),
+            mid: world.state.tree.clone(),
+        });
+    }
     if jump_check {
         detect_jumps(world, &block.fields, &old_values, &mut outcome.records);
     }

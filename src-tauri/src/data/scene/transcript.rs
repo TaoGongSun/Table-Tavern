@@ -302,14 +302,17 @@ pub fn append_opening(
         };
         message_vars::ensure_active(tx, Some(&macros))?;
         let mut world = read_state(root, world_id)?;
+        world.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &world);
         let before = world.state.tree.clone();
-        let outcome = mechanism::apply_block(&mut world, block, user_name);
+        let base = message_vars::opening_stat(tx, scene)?;
+        let outcome = mechanism::apply_block_typed(&mut world, block, user_name, base.as_ref());
         let table = message_vars::opening_table(
             tx,
             scene,
             &before,
             &world.state.tree,
             &world.mechanism.value_types,
+            outcome.typed.as_ref(),
         )?;
         let event = TranscriptEvent {
             ts: ts.to_owned(),
