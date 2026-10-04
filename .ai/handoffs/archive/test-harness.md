@@ -17,6 +17,7 @@ Status: done
 - 正式包帶 `TT_HARNESS_ROOT` 不開 listener：需確實隔離資料的環境（獨立 macOS 帳號或 VM）〔模型判斷·未裁決〕。
 
 ## 已知限制
+- 測試包注入樣式把 CSS 過渡／動畫時長歸零（`harness/motion.rs`）：視窗不可見時 WebKit 凍結動畫時間軸，不歸零會讀到停在起點的樣式與截圖；要看動態本身得另用 test:webkit。卡片介面 iframe 不注入。
 - `shot` 截圖底部多 64px（32pt）灰帶：WKWebView 快照含標題列高度，視窗內容完整、未裁切。
 - 本機 shell 包裝會擋含字面 `eval`、變數展開成路徑的指令：CLI 用 `js` 別名、路徑寫字面值。
 - 鍵盤／焦點回歸屬 menu-keyboard-webkit（`npm run test:webkit`），本通道的 `press` 只派給 app 自己的鍵盤處理器。

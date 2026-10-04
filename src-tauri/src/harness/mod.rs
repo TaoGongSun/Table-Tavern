@@ -5,6 +5,7 @@
 mod ai_log;
 pub(crate) mod dialog;
 mod eval;
+pub(crate) mod motion;
 mod root;
 mod route;
 mod server;
