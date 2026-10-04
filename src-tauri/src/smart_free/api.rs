@@ -1,5 +1,5 @@
 use super::select;
-use crate::transport::DEFAULT_BASE_URL;
+use crate::transport::{openrouter_api_base, ApiFailure};
 use std::time::Duration;
 
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
@@ -16,7 +16,7 @@ pub async fn fetch_user_catalog(
     api_key: &str,
 ) -> Option<Vec<select::FreeModel>> {
     let response = client
-        .get(format!("{DEFAULT_BASE_URL}/models/user"))
+        .get(format!("{}/models/user", openrouter_api_base()))
         .bearer_auth(api_key)
         .send()
         .await
@@ -29,7 +29,7 @@ pub async fn fetch_user_catalog(
 
 pub async fn fetch_weekly_ids(client: &reqwest::Client) -> Option<Vec<String>> {
     let response = client
-        .get(format!("{DEFAULT_BASE_URL}/models?sort=top-weekly"))
+        .get(format!("{}/models?sort=top-weekly", openrouter_api_base()))
         .send()
         .await
         .ok()?;
@@ -43,7 +43,10 @@ pub async fn fetch_weekly_ids(client: &reqwest::Client) -> Option<Vec<String>> {
 /// 公開排行、不佔免費模型每日次數，也不需要金鑰。
 pub async fn fetch_roleplay_slugs(client: &reqwest::Client) -> Option<Vec<String>> {
     let response = client
-        .get(format!("{DEFAULT_BASE_URL}/models?category=roleplay"))
+        .get(format!(
+            "{}/models?category=roleplay",
+            openrouter_api_base()
+        ))
         .send()
         .await
         .ok()?;
@@ -51,6 +54,90 @@ pub async fn fetch_roleplay_slugs(client: &reqwest::Client) -> Option<Vec<String
         return None;
     }
     select::parse_ranked_slugs(&response.json().await.ok()?)
+}
+
+/// 單支模型的免費端點上游（endpoints API 的 provider_name）。路徑帶 `:free` 只回免費端點。
+/// 抓不到或格式不對回 None，呼叫端保留舊值。不是模型呼叫，不佔每日次數。
+pub async fn fetch_upstreams(
+    client: &reqwest::Client,
+    api_key: &str,
+    model_id: &str,
+) -> Option<Vec<String>> {
+    let response = client
+        .get(format!(
+            "{}/models/{model_id}/endpoints",
+            openrouter_api_base()
+        ))
+        .bearer_auth(api_key)
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    parse_upstreams(&response.json().await.ok()?)
+}
+
+fn parse_upstreams(body: &serde_json::Value) -> Option<Vec<String>> {
+    let endpoints = body.pointer("/data/endpoints")?.as_array()?;
+    let mut providers: Vec<String> = endpoints
+        .iter()
+        .filter_map(|endpoint| endpoint.get("provider_name")?.as_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    providers.sort();
+    providers.dedup();
+    Some(providers)
+}
+
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// 試打：非串流最小請求（`max_tokens: 1`）。只看上游有沒有接單——2xx 且 body 無 `error` 即算可用，
+/// 不看內容（小 max_tokens 可能被推理吃光而回空）。文件沒寫會不會扣每日次數，一律當作會扣。
+pub async fn probe(api_key: &str, model: &str) -> Result<(), ApiFailure> {
+    let client = reqwest::Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .map_err(|error| ApiFailure::network(&error, false))?;
+    let response = client
+        .post(format!("{}/chat/completions", openrouter_api_base()))
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({
+            "model": model,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+            "stream": false,
+        }))
+        .send()
+        .await
+        .map_err(|error| ApiFailure::network(&error, false))?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| ApiFailure::network(&error, false))?;
+    let has_error = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .is_some_and(|value| value.get("error").is_some_and(|error| !error.is_null()));
+    if status.is_success() && !has_error {
+        return Ok(());
+    }
+    if status.is_success() {
+        // 200 卻帶 error：當成串流錯誤塊處理，分類只看錯誤物件
+        let value: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+        let detail = value
+            .get("error")
+            .map(crate::transport::ErrorDetail::from_error_object);
+        return Err(ApiFailure::stream(
+            crate::transport::http_error(status, &body),
+            detail,
+            false,
+        ));
+    }
+    Err(ApiFailure::from_http(status, &headers, &body))
 }
 
 /// 帳號免費模型的每日請求額度（所有 `:free` 模型共用一個池）。
@@ -62,7 +149,7 @@ pub struct FreeDaily {
 
 pub async fn fetch_free_daily(client: &reqwest::Client, api_key: &str) -> Option<FreeDaily> {
     let response = client
-        .get(format!("{DEFAULT_BASE_URL}/key"))
+        .get(format!("{}/key", openrouter_api_base()))
         .bearer_auth(api_key)
         .send()
         .await
@@ -89,7 +176,7 @@ fn free_daily_from_body(body: &serde_json::Value) -> Option<FreeDaily> {
 
 pub async fn free_daily_remaining(client: &reqwest::Client, api_key: &str) -> Option<i64> {
     let response = client
-        .get(format!("{DEFAULT_BASE_URL}/key"))
+        .get(format!("{}/key", openrouter_api_base()))
         .bearer_auth(api_key)
         .send()
         .await
@@ -130,6 +217,20 @@ fn quota_remaining_from_body(body: &serde_json::Value) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upstreams_read_provider_names_of_free_endpoints() {
+        assert_eq!(
+            parse_upstreams(&serde_json::json!({"data": {"endpoints": [
+                {"provider_name": "Google AI Studio", "tag": "google-ai-studio"},
+                {"provider_name": "Chutes"},
+                {"provider_name": "Google AI Studio"},
+                {"provider_name": ""}
+            ]}})),
+            Some(vec!["Chutes".to_owned(), "Google AI Studio".to_owned()])
+        );
+        assert_eq!(parse_upstreams(&serde_json::json!({"error": "down"})), None);
+    }
 
     #[test]
     fn free_daily_reads_remaining_or_derives_from_limit_and_usage() {

@@ -254,6 +254,8 @@ pub enum UiMsg {
     OpenrouterApiKeyMissing,
     NoFreeModels,
     NoStableFreeModel,
+    /// 穩定名單全都擁擠（都在 exhausted）：不換、不重送。
+    SmartFreeAllBusy,
     /// 接在 `AI_HTTP_STATUS_429: ` 後面：前綴留在起首給前端分流。
     SmartFreeDailyExhausted,
     /// Responses API 回報失敗卻沒附原因。

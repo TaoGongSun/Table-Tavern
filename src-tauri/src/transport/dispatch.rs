@@ -177,8 +177,9 @@ pub(crate) async fn prepare_lane_call(
 /// 已有更精確的碼就原樣放行；只認這份白名單，不用 `AI_` 開頭一概放行——
 /// 錯誤字串可能整包來自供應商，讓它自帶前綴就能繞過分流。
 pub(crate) fn ai_call_failure(error: String) -> String {
-    const CODED: [&str; 4] = [
+    const CODED: [&str; 5] = [
         "AI_HTTP_STATUS_",
+        "AI_FREE_MODEL_BUSY:",
         "AI_EMPTY_RESPONSE:",
         "AI_INCOMPLETE_RESPONSE:",
         "AI_CONTENT_FILTERED:",
@@ -215,6 +216,7 @@ pub(crate) async fn stream_via_transport(
         allow_cli_tools,
         tier,
         world,
+        None,
         assistant_label,
         cli_closing,
         messages,
@@ -234,6 +236,8 @@ pub(crate) async fn stream_turn_via_transport(
     allow_cli_tools: bool,
     tier: data::Tier,
     world: Option<&str>,
+    // 聊天輪的 turn id：換模提示帶著它，前端只在發出這一輪的聊天畫面顯示；非聊天輪給 None。
+    turn_id: Option<&str>,
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
@@ -249,6 +253,7 @@ pub(crate) async fn stream_turn_via_transport(
         allow_cli_tools,
         tier,
         world,
+        turn_id,
         assistant_label,
         cli_closing,
         messages,
@@ -258,6 +263,63 @@ pub(crate) async fn stream_turn_via_transport(
     )
     .await
     .map(|(text, _)| text)
+}
+
+/// 穩定免費的派送環境：每一發走 `stream_chat_models`（各自記用量帳本），換模提示帶 world／turnId。
+struct SmartFreeEnv<'a, F: FnMut(&str)> {
+    app: &'a tauri::AppHandle,
+    root: &'a std::path::Path,
+    config: &'a data::AppConfig,
+    messages: &'a [transport::ChatMessage],
+    usage_log: Option<&'a std::path::Path>,
+    world: Option<&'a str>,
+    turn_id: Option<&'a str>,
+    shape: usage_log::PromptShape,
+    emit: F,
+}
+
+impl<F: FnMut(&str)> smart_free::CallEnv for SmartFreeEnv<'_, F> {
+    fn plan(&mut self) -> Result<smart_free::CallPlan, String> {
+        smart_free::plan_from_disk(self.root, self.config, self.messages)
+    }
+
+    fn record_responder(&mut self, model: &str) -> bool {
+        smart_free::record_responder(self.root, self.world, model)
+    }
+
+    fn switched(&mut self, name: &str) {
+        let _ = self.app.emit(
+            "smart-free-model-switched",
+            smart_free::switched_payload(self.world, self.turn_id, name),
+        );
+    }
+
+    async fn send(
+        &mut self,
+        model: &str,
+    ) -> Result<transport::SmartChatResult, transport::ApiFailure> {
+        transport::stream_chat_models(
+            self.config,
+            model,
+            self.messages,
+            self.usage_log,
+            self.world,
+            self.shape,
+            &mut self.emit,
+        )
+        .await
+    }
+
+    async fn daily_remaining(&mut self) -> Option<i64> {
+        smart_free::daily_remaining(self.config).await
+    }
+
+    fn failover(&mut self, from: &str, to: &str, retried: bool) {
+        let _ = self.app.emit(
+            "smart-free-failover",
+            smart_free::failover_payload(self.world, self.turn_id, from, to, retried),
+        );
+    }
 }
 
 /// 同 `stream_turn_via_transport`，另回這一次呼叫的回覆有沒有被供應商截斷（內容過濾或長度上限）。
@@ -270,6 +332,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
     allow_cli_tools: bool,
     tier: data::Tier,
     world: Option<&str>,
+    // 聊天輪的 turn id：換模提示帶著它，前端只在發出這一輪的聊天畫面顯示；非聊天輪給 None。
+    turn_id: Option<&str>,
     assistant_label: &str,
     cli_closing: &str,
     messages: &[transport::ChatMessage],
@@ -288,33 +352,24 @@ pub(crate) async fn stream_turn_reporting_truncation(
         .ok()
         .map(|root| root.join("prompt-cache.jsonl"));
     if transport_kind == "api" {
-        let smart = smart_free::is_active(config);
-        let mut emit = emit;
-        if smart {
+        if smart_free::is_active(config) {
             let root = config_root(app)?;
             let prepared = smart_free::prepare_call(&root, config, world, messages).await?;
             if let Some(warning) = prepared.expiry_warning.as_ref() {
                 let _ = app.emit("smart-free-model-expiring", warning);
             }
-            let result = transport::stream_chat_models(
+            let mut env = SmartFreeEnv {
+                app,
+                root: &root,
                 config,
-                &prepared.models,
                 messages,
-                usage_log.as_deref(),
+                usage_log: usage_log.as_deref(),
                 world,
+                turn_id,
                 shape,
-                &mut emit,
-            )
-            .await
-            .map_err(|error| ai_call_failure(error.to_string()))?;
-            if let Some(model) = result.model.as_deref() {
-                if smart_free::record_responder(&root, world, model) {
-                    let _ = app.emit(
-                        "smart-free-model-switched",
-                        serde_json::json!({ "model": model }),
-                    );
-                }
-            }
+                emit,
+            };
+            let result = smart_free::run_call(&root, &mut env).await?.result;
             if let Some(reason) = result.truncated.as_deref() {
                 let _ = app.emit(
                     "ai-response-truncated",
@@ -324,6 +379,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
             return Ok((result.text, result.truncated.is_some()));
         }
 
+        let mut emit = emit;
         let model = transport::resolve_model(tier, config)?;
         let result = match responses_transport::api_mode(config) {
             responses_transport::ApiMode::ChatCompletions => transport::stream_chat(
@@ -544,6 +600,7 @@ mod tests {
             "AI_INCOMPLETE_RESPONSE: model=x finish_reason=length",
             "AI_CONTENT_FILTERED: model=x finish_reason=content_filter",
             "AI_HTTP_STATUS_429: TTMSG:{\"code\":\"smart_free_daily_exhausted\"}",
+            "AI_FREE_MODEL_BUSY: AI_HTTP_STATUS_503: status=503 body=",
         ] {
             assert_eq!(ai_call_failure(coded.to_owned()), coded);
         }

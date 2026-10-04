@@ -405,6 +405,7 @@ pub(crate) async fn generate_character_image(
         true,
         transport::gm_tier(&config),
         Some(&world_id),
+        None,
         "",
         "",
         &messages,

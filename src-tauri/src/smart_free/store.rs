@@ -8,6 +8,7 @@ const CACHE_FILE: &str = "smart_free_cache.json";
 const PINS_FILE: &str = "smart_free_pins.json";
 const EXPIRY_NOTICES_FILE: &str = "smart_free_expiry_notices.json";
 const SEEN_FILE: &str = "smart_free_seen.json";
+const CURRENT_FILE: &str = "smart_free_current.json";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cache {
@@ -17,6 +18,9 @@ pub struct Cache {
     pub user_catalog: Option<Vec<FreeModel>>,
     #[serde(default)]
     pub user_catalog_fetched_at: u64,
+    /// 帳號清單的篩選規則版本：規則變了（例如輸出只收文字），舊快取視為過期、下次刷新就重抓。
+    #[serde(default)]
+    pub catalog_schema: u32,
     #[serde(default)]
     pub weekly_ids: Option<Vec<String>>,
     #[serde(default)]
@@ -26,6 +30,11 @@ pub struct Cache {
     pub roleplay_slugs: Option<Vec<String>>,
     #[serde(default)]
     pub roleplay_fetched_at: u64,
+    /// 穩定候選的免費端點上游（endpoints API 的 provider_name）；缺鍵＝上游未知。
+    #[serde(default)]
+    pub upstreams: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub upstreams_fetched_at: u64,
 }
 
 impl Cache {
@@ -81,6 +90,63 @@ pub fn write_seen(root: &Path, seen: &SeenRecommendations) -> std::io::Result<()
     write_json_atomic(root, SEEN_FILE, seen)
 }
 
+/// 試打一輪的結果；每輪必記其一（§5）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProbeOutcome {
+    #[default]
+    None,
+    Confirmed {
+        model: String,
+    },
+    AllFailed,
+    Inconclusive,
+    Stopped {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProbeRecord {
+    #[serde(default)]
+    pub last_run_at: u64,
+    /// 上一輪試打時的名單世代：名單變了才觸發新一輪。
+    #[serde(default)]
+    pub lineup_gen: String,
+    #[serde(default)]
+    pub outcome: ProbeOutcome,
+}
+
+/// 穩定免費的目前模型（§4.1）。記憶體與磁碟同一份，提交時整份替換。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CurrentState {
+    #[serde(default)]
+    pub account: String,
+    #[serde(default)]
+    pub lineup_gen: String,
+    #[serde(default)]
+    pub revision: u64,
+    #[serde(default)]
+    pub model: String,
+    /// 試打 confirmed 的時間；聊天成功不寫（免每句落盤）。
+    #[serde(default)]
+    pub confirmed_at: Option<u64>,
+    #[serde(default)]
+    pub probe: ProbeRecord,
+    #[serde(default)]
+    pub exhausted: Vec<String>,
+    #[serde(default)]
+    pub exhausted_at: Option<u64>,
+}
+
+pub fn read_current(root: &Path) -> CurrentState {
+    read_json(&root.join(CURRENT_FILE))
+}
+
+pub fn write_current(root: &Path, state: &CurrentState) -> std::io::Result<()> {
+    write_json_atomic(root, CURRENT_FILE, state)
+}
+
 fn read_json<T: DeserializeOwned + Default>(path: &Path) -> T {
     fs::read_to_string(path)
         .ok()
@@ -113,16 +179,35 @@ mod tests {
             account_fingerprint: "account-a".to_owned(),
             user_catalog: Some(Vec::new()),
             user_catalog_fetched_at: 10,
+            catalog_schema: 1,
             weekly_ids: Some(vec!["x/model:free".to_owned()]),
             weekly_fetched_at: 20,
             roleplay_slugs: Some(vec!["x/model-20260101".to_owned()]),
             roleplay_fetched_at: 30,
+            upstreams: BTreeMap::from([("x/model:free".to_owned(), vec!["Provider A".to_owned()])]),
+            upstreams_fetched_at: 40,
         };
         write_cache(&root, &cache).unwrap();
         assert_eq!(read_cache(&root), cache);
         assert!(read_cache(&root).catalog_for("account-b").is_none());
         fs::write(root.join(CACHE_FILE), "{ 壞掉").unwrap();
         assert_eq!(read_cache(&root), Cache::default());
+        assert_eq!(read_current(&root), CurrentState::default());
+        let current = CurrentState {
+            account: "account-a".to_owned(),
+            revision: 3,
+            model: "x/model:free".to_owned(),
+            probe: ProbeRecord {
+                last_run_at: 5,
+                lineup_gen: "gen".to_owned(),
+                outcome: ProbeOutcome::Stopped {
+                    reason: "account".to_owned(),
+                },
+            },
+            ..CurrentState::default()
+        };
+        write_current(&root, &current).unwrap();
+        assert_eq!(read_current(&root), current);
         let _ = fs::remove_dir_all(root);
     }
 }

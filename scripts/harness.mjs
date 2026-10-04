@@ -255,6 +255,7 @@ const USAGE = `用法：node scripts/harness.mjs <指令> [--root DIR]
   text [target] | query <target> | click <target> | submit <target> | fill <target> <value>
   select <target> <value> | press <target> <key> | wait <target> [--gone] [--timeout ms]
   invoke <command> [json] | route [worldId] | ai-log
+  openrouter-origin <http://127.0.0.1:PORT/api/v1 | clear>（智慧免費改打本機假端點，見 scripts/harness-fake-openrouter.mjs）
   shot <out.png>
 target：CSS selector、text=完整文字、text*=部分文字、role=button[name="名稱"]、role=button[name*="部分"]`;
 
@@ -325,6 +326,14 @@ switch (command) {
     break;
   case "ai-log":
     finish(await call(rootFrom(flags), "GET", "/ai-log"));
+    break;
+  case "openrouter-origin":
+    if (!args[0]) die("用法：openrouter-origin <http://127.0.0.1:PORT/api/v1 | clear>");
+    finish(
+      await call(rootFrom(flags), "POST", "/openrouter-origin", {
+        origin: args[0] === "clear" ? null : args[0],
+      }),
+    );
     break;
   default:
     console.log(USAGE);

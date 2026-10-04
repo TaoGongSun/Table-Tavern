@@ -13,6 +13,7 @@ const COPY = {
     be_openrouter_api_key_missing: "尚未設定 OpenRouter API key，請先到設定貼上",
     be_no_free_models: "目前沒有可用的免費模型",
     be_no_stable_free_model: "目前沒有可用的穩定免費模型，請到設定改用其他免費模型或手動選模",
+    be_smart_free_all_busy: "穩定免費的模型目前都擁擠，請稍後再試。",
     be_smart_free_daily_exhausted: "OpenRouter 免費模型今日可用次數已用完，請等額度重置後再試",
     be_responses_api_failed: "Responses API 回傳失敗",
     be_cli_reply_error: "CLI 回覆錯誤：{error}",
@@ -40,6 +41,7 @@ const COPY = {
     be_openrouter_api_key_missing: "尚未设定 OpenRouter API key，请先到设定粘贴",
     be_no_free_models: "目前没有可用的免费模型",
     be_no_stable_free_model: "目前没有可用的稳定免费模型，请到设定改用其他免费模型或手动选模",
+    be_smart_free_all_busy: "稳定免费的模型目前都拥挤，请稍后再试。",
     be_smart_free_daily_exhausted: "OpenRouter 免费模型今日可用次数已用完，请等额度重置后再试",
     be_responses_api_failed: "Responses API 返回失败",
     be_cli_reply_error: "CLI 回复错误：{error}",
@@ -70,6 +72,7 @@ const COPY = {
     be_no_free_models: "No free models are available right now.",
     be_no_stable_free_model:
       "No stable free model is available right now. Pick another free model in Settings, or choose a model manually.",
+    be_smart_free_all_busy: "All stable free models are busy right now. Please try again later.",
     be_smart_free_daily_exhausted:
       "Today's OpenRouter free-model requests are used up. Try again after the allowance resets.",
     be_responses_api_failed: "The Responses API reported a failure.",
@@ -105,6 +108,7 @@ const COPY = {
     be_no_free_models: "現在利用できる無料モデルがありません。",
     be_no_stable_free_model:
       "現在利用できる安定無料モデルがありません。設定で別の無料モデルに切り替えるか、モデルを手動で選んでください。",
+    be_smart_free_all_busy: "安定無料モデルは現在すべて混み合っています。しばらくしてからもう一度お試しください。",
     be_smart_free_daily_exhausted:
       "今日の OpenRouter 無料モデルの利用回数を使い切りました。枠がリセットされてから再試行してください。",
     be_responses_api_failed: "Responses API が失敗を返しました",
@@ -140,6 +144,7 @@ const COPY = {
     be_no_free_models: "지금 사용할 수 있는 무료 모델이 없습니다.",
     be_no_stable_free_model:
       "지금 사용할 수 있는 안정 무료 모델이 없습니다. 설정에서 다른 무료 모델로 바꾸거나 모델을 직접 선택해 주세요.",
+    be_smart_free_all_busy: "안정 무료 모델이 지금 모두 혼잡합니다. 잠시 후 다시 시도해 주세요.",
     be_smart_free_daily_exhausted:
       "오늘의 OpenRouter 무료 모델 사용 횟수를 모두 썼습니다. 한도가 초기화된 뒤 다시 시도해 주세요.",
     be_responses_api_failed: "Responses API가 실패를 반환했습니다",
@@ -174,6 +179,8 @@ const COPY = {
     be_no_free_models: "Ahora mismo no hay modelos gratuitos disponibles.",
     be_no_stable_free_model:
       "Ahora mismo no hay un modelo gratuito estable disponible. Elige otro modelo gratuito en los ajustes o selecciona un modelo a mano.",
+    be_smart_free_all_busy:
+      "Todos los modelos gratuitos estables están saturados ahora mismo. Vuelve a intentarlo más tarde.",
     be_smart_free_daily_exhausted:
       "Se agotaron las solicitudes de hoy a los modelos gratuitos de OpenRouter. Vuelve a intentarlo cuando se renueve el cupo.",
     be_responses_api_failed: "La Responses API devolvió un fallo",
@@ -208,6 +215,8 @@ const COPY = {
     be_no_free_models: "Não há modelos grátis disponíveis agora.",
     be_no_stable_free_model:
       "Não há um modelo grátis estável disponível agora. Escolha outro modelo grátis nas configurações ou selecione um modelo manualmente.",
+    be_smart_free_all_busy:
+      "Todos os modelos grátis estáveis estão congestionados agora. Tente de novo mais tarde.",
     be_smart_free_daily_exhausted:
       "As requisições de hoje aos modelos grátis do OpenRouter acabaram. Tente de novo depois que a cota for renovada.",
     be_responses_api_failed: "A Responses API retornou uma falha",
@@ -242,6 +251,8 @@ const COPY = {
     be_no_free_models: "Derzeit ist kein kostenloses Modell verfügbar.",
     be_no_stable_free_model:
       "Derzeit ist kein stabiles Gratis-Modell verfügbar. Wähle in den Einstellungen ein anderes Gratis-Modell oder ein Modell von Hand.",
+    be_smart_free_all_busy:
+      "Alle stabilen Gratis-Modelle sind gerade überlastet. Versuch es später noch einmal.",
     be_smart_free_daily_exhausted:
       "Die heutigen Anfragen für kostenlose OpenRouter-Modelle sind aufgebraucht. Versuche es nach dem Zurücksetzen des Kontingents erneut.",
     be_responses_api_failed: "Die Responses API hat einen Fehler gemeldet",
@@ -278,6 +289,8 @@ const COPY = {
     be_no_free_models: "Aucun modèle gratuit n'est disponible pour le moment.",
     be_no_stable_free_model:
       "Aucun modèle gratuit stable n'est disponible pour le moment. Choisis un autre modèle gratuit dans les réglages ou sélectionne un modèle à la main.",
+    be_smart_free_all_busy:
+      "Tous les modèles gratuits stables sont saturés pour le moment. Réessaie plus tard.",
     be_smart_free_daily_exhausted:
       "Les requêtes du jour vers les modèles gratuits d'OpenRouter sont épuisées. Réessaie après la remise à zéro du quota.",
     be_responses_api_failed: "La Responses API a renvoyé un échec",
@@ -312,6 +325,7 @@ const COPY = {
     be_no_free_models: "Сейчас нет доступных бесплатных моделей.",
     be_no_stable_free_model:
       "Сейчас нет доступной стабильной бесплатной модели. Выбери в настройках другую бесплатную модель или укажи модель вручную.",
+    be_smart_free_all_busy: "Все стабильные бесплатные модели сейчас перегружены. Попробуй позже.",
     be_smart_free_daily_exhausted:
       "Сегодняшние запросы к бесплатным моделям OpenRouter закончились. Попробуй снова после сброса лимита.",
     be_responses_api_failed: "Responses API вернул ошибку",
