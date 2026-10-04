@@ -514,8 +514,10 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
         );
       }
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
     const text = (id: string) => win.document.getElementById(id)?.textContent ?? "";
+    // 全量跑時機器忙，固定睡幾毫秒不保證殼已跑完；一律等到條件成立
+    const settle = { timeout: 5000, interval: 10 };
+    await vi.waitFor(() => expect(text("money")).not.toBe(""), settle);
     expect(text("money")).toBe("100　typeof number");
     expect(text("hp")).toBe('[5,"生命值"]　typeof array');
     expect(text("code")).toBe('"123"　typeof string');
@@ -524,7 +526,10 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
     expect(text("script")).toBe("（無）");
     (win.document.getElementById("b-mvu") as HTMLButtonElement).click();
     (win.document.getElementById("b-parse") as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await vi.waitFor(() => {
+      expect(sent.some((message) => message.kind === "mvu-write")).toBe(true);
+      expect(text("log")).toContain("parseMessage：已落檔");
+    }, settle);
     const write = sent.find((message) => message.kind === "mvu-write")!;
     expect(JSON.parse(write.payload!).stat_data.欄位.血量).toEqual([4, "生命值"]);
     expect(text("hp")).toBe('[4,"生命值"]　typeof array');
@@ -534,7 +539,10 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
     expect(log).toContain("parseMessage：已落檔");
     expect(sent.filter((message) => message.kind === "mvu-write")).toHaveLength(1);
     (win.document.getElementById("b-layers") as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await vi.waitFor(() => {
+      expect(sent.filter((message) => message.kind === "mvu-write")).toHaveLength(7);
+      expect(text("extension")).toBe("1　typeof number");
+    }, settle);
     const layerWrites = sent.filter((message) => message.kind === "mvu-write").slice(1) as unknown as {
       target: string;
       base: string | null;
