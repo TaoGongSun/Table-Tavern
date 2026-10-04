@@ -17,7 +17,7 @@ fn macros() -> Macros {
 }
 
 /// 一張載入 MVU 的卡，帶 `[initvar]`：角色.好感 10、角色.名字 {{user}}、角色.標籤 [1,"說明"]、金錢 "123"。
-fn mvu_world(root: &TestRoot) -> String {
+pub(super) fn mvu_world(root: &TestRoot) -> String {
     let world_id = data::create_world(root.path(), "MVU桌").unwrap();
     import_card(root.path(), &world_id, "貓娘", true);
     world_id
@@ -85,7 +85,7 @@ fn player(root: &Path, world_id: &str, text: &str) -> TranscriptEvent {
     .0
 }
 
-fn opening(root: &Path, world_id: &str) -> TranscriptEvent {
+pub(super) fn opening(root: &Path, world_id: &str) -> TranscriptEvent {
     let raw = "開場白";
     data::append_opening(
         root,
@@ -107,7 +107,7 @@ fn key(turn_id: &str, part: &str) -> TurnKey {
     }
 }
 
-fn begin(root: &Path, world_id: &str, turn_id: &str) {
+pub(super) fn begin(root: &Path, world_id: &str, turn_id: &str) {
     with_commit(root, world_id, |tx| {
         begin_turn(tx, turn_id, Some(&macros()))
     })
@@ -136,11 +136,12 @@ fn commit_parts(
             tx,
             turn_id,
             main,
-            |state| {
+            |state, _| {
                 for (path, value) in edits {
                     let path: Vec<String> = path.split('.').map(str::to_owned).collect();
                     data::set_tree_value(&mut state.state.tree, &path, value);
                 }
+                ((), None)
             },
             |_, _| {
                 update
@@ -159,7 +160,7 @@ fn commit_parts(
     .is_some()
 }
 
-fn append_part(
+pub(super) fn append_part(
     root: &Path,
     world_id: &str,
     turn_id: &str,
@@ -193,7 +194,7 @@ fn table_of(event: &TranscriptEvent) -> Json {
     event.message_vars.as_ref().unwrap().parse().unwrap()
 }
 
-fn stat_text(event: &TranscriptEvent) -> String {
+pub(super) fn stat_text(event: &TranscriptEvent) -> String {
     table_of(event).get("stat_data").unwrap().to_text()
 }
 
@@ -1670,12 +1671,13 @@ fn gm_commit_cache_failure_is_reported_and_the_table_still_lands() {
                 tx,
                 "t1",
                 main,
-                |state| {
+                |state, _| {
                     data::set_tree_value(
                         &mut state.state.tree,
                         &["角色".into(), "好感".into()],
                         "44",
                     );
+                    ((), None)
                 },
                 |_, _| Vec::new(),
             )
@@ -1697,7 +1699,7 @@ fn gm_commit_cache_failure_is_reported_and_the_table_still_lands() {
                 raw: None,
                 truncated: false,
             };
-            apply_gm_block(tx, "t2", main, |_| (), |_, _| Vec::new())
+            apply_gm_block(tx, "t2", main, |_, _| ((), None), |_, _| Vec::new())
         })
     };
     assert!(committed.unwrap().unwrap().error.is_some());

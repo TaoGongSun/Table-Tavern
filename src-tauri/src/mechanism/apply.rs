@@ -1,4 +1,4 @@
-use crate::data::{self, FieldKind, Mechanism, StateNode, UpdateMode};
+use crate::data::{self, FieldKind, Mechanism, NumericUpdate, StateNode, UpdateMode};
 use std::collections::BTreeMap;
 
 use super::rules::rule_for;
@@ -7,52 +7,88 @@ use super::tree::{
     value_as_f64,
 };
 use super::types::{Outcome, Patch, PatchOp, Record, RecordKind};
+use super::upstream_set::{upstream_set, TypedView, Val};
 
 // ---------------------------------------------------------------------
 // 套用：依欄位規則把 Patch 套進狀態樹
 // ---------------------------------------------------------------------
 
 /// 依欄位規則把更新套進狀態樹，回傳記帳、下一輪要給模型的自癒回饋句、以及這一輪真的改到樹的變動。
+#[cfg(test)]
 pub fn apply_updates(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patches: &[Patch],
 ) -> Outcome {
+    let mut view = TypedView::for_table(mechanism, None, tree, tree);
+    apply_updates_typed(tree, mechanism, patches, &mut view)
+}
+
+/// 同 `apply_updates`，`view` 是這一批的帶型別視圖（沒重構的 MVU 卡才有作用，見 `upstream_set`）。
+pub(super) fn apply_updates_typed(
+    tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patches: &[Patch],
+    view: &mut TypedView,
+) -> Outcome {
     let mut records = Vec::new();
     let mut changes = BTreeMap::new();
     for patch in patches {
-        apply_one(tree, mechanism, patch, &mut records, &mut changes);
+        if !view.is_active() {
+            apply_one(tree, mechanism, patch, view, &mut records, &mut changes);
+            continue;
+        }
+        let before = tree.clone();
+        let moved = (patch.op == PatchOp::Move)
+            .then(|| view.get(&patch.from))
+            .flatten();
+        let move_done = apply_one(tree, mechanism, patch, view, &mut records, &mut changes);
+        let keys: Vec<&String> = patch
+            .path
+            .first()
+            .into_iter()
+            .chain(patch.from.first())
+            .collect();
+        view.after_command(&keys, &before, tree);
+        // move 搬的是原值：只有這一筆 move 明確搬成功才照原型別寫回目的欄；拒收、失敗都不動視圖
+        if let (true, Some(moved)) = (move_done, moved) {
+            view.overwrite(&patch.path, &moved);
+        }
     }
     let notes = build_notes(&records);
     Outcome {
         records,
         notes,
         changes,
+        typed: None,
     }
 }
 
+/// 回傳 true＝這一筆是 move 而且搬成功（其餘一律 false）。
 fn apply_one(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patch: &Patch,
+    view: &mut TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
-) {
+) -> bool {
     if let Some(offending) = readonly_violation(patch) {
         records.push(Record::new(
             RecordKind::Rejected,
             offending.clone(),
             format!("{offending} 是唯讀欄位（底線開頭），不接受更新。"),
         ));
-        return;
+        return false;
     }
     match patch.op {
         PatchOp::Delta => apply_delta(tree, mechanism, patch, records, changes),
-        PatchOp::Replace => apply_replace(tree, mechanism, patch, records, changes),
-        PatchOp::Insert => apply_insert(tree, mechanism, patch, records, changes),
+        PatchOp::Replace => apply_replace(tree, mechanism, patch, view, records, changes),
+        PatchOp::Insert => apply_insert(tree, mechanism, patch, view, records, changes),
         PatchOp::Remove => apply_remove(tree, patch, records, changes),
-        PatchOp::Move => apply_move(tree, patch, records, changes),
+        PatchOp::Move => return apply_move(tree, patch, records, changes),
     }
+    false
 }
 
 /// delta 的變動標記：帶號數字，正數補 `+`（負數 `format_num` 本身就帶 `-`）。
@@ -209,6 +245,7 @@ fn apply_replace(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patch: &Patch,
+    view: &mut TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
@@ -229,6 +266,7 @@ fn apply_replace(
         path_str,
         current_leaf,
         patch.value.as_ref(),
+        view,
         records,
         changes,
     );
@@ -243,10 +281,31 @@ fn replace_existing(
     path_str: String,
     current_leaf: Option<String>,
     value: Option<&serde_json::Value>,
+    view: &mut TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
     let rule = rule_for(mechanism, path, current_leaf.as_deref());
+    // 沒重構的 MVU 卡：replace 一律照上游 set（文字欄也是，型別才對得上），數字欄解除 delta 限制；
+    // 本地擲骰、唯讀照舊擋（落到下面的分支）。
+    let numeric = matches!(
+        rule.kind,
+        FieldKind::Number | FieldKind::Counter | FieldKind::Pair
+    );
+    let upstream = mechanism.numeric_update == NumericUpdate::Upstream
+        && (rule.update == UpdateMode::Replace
+            || (rule.update == UpdateMode::Delta && numeric && current_leaf.is_some()));
+    if upstream {
+        if let Some(old) = view.get(path) {
+            let new = Val::from_serde(value.unwrap_or(&serde_json::Value::Null));
+            let next = upstream_set(&old, new);
+            if insert_node(tree, path, next.node()).is_ok() {
+                view.set(path, &next);
+                changes.insert(path_str, "更新".to_owned());
+            }
+            return;
+        }
+    }
     match rule.update {
         UpdateMode::Replace => {
             let node = json_to_node(value.unwrap_or(&serde_json::Value::Null));
@@ -329,6 +388,7 @@ fn apply_insert(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patch: &Patch,
+    view: &mut TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
@@ -342,6 +402,7 @@ fn apply_insert(
             path_str,
             current_leaf,
             patch.value.as_ref(),
+            view,
             records,
             changes,
         );
@@ -379,12 +440,13 @@ fn apply_remove(
     changes.insert(path_str, "移除".to_owned());
 }
 
+/// 回傳 true＝搬成功。
 fn apply_move(
     tree: &mut BTreeMap<String, StateNode>,
     patch: &Patch,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
-) {
+) -> bool {
     let from_str = patch.from.join(".");
     let Some(node) = take_node(tree, &patch.from) else {
         records.push(Record::new(
@@ -392,11 +454,12 @@ fn apply_move(
             from_str.clone(),
             format!("路徑不存在：{from_str}"),
         ));
-        return;
+        return false;
     };
     let path_str = patch.path.join(".");
     if insert_node(tree, &patch.path, node.clone()).is_ok() {
         changes.insert(path_str, "搬移".to_owned());
+        true
     } else {
         let _ = insert_node(tree, &patch.from, node); // 寫不進去就放回原位，不憑空丟資料
         records.push(Record::new(
@@ -404,8 +467,11 @@ fn apply_move(
             path_str.clone(),
             format!("{path_str} 中間層已被其他欄位占用，搬移失敗。"),
         ));
+        false
     }
 }
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upstream_tests;

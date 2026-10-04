@@ -9,6 +9,8 @@ mod mechanism;
 mod source;
 
 #[cfg(test)]
+mod mvu_replace_tests;
+#[cfg(test)]
 mod test_support;
 
 pub use card::{

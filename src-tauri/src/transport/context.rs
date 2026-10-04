@@ -1,4 +1,6 @@
-use crate::data::{CharacterCard, Mechanism, TranscriptEvent, UpdateMode, WorldbookEntry};
+use crate::data::{
+    CharacterCard, Mechanism, NumericUpdate, TranscriptEvent, UpdateMode, WorldbookEntry,
+};
 
 use super::arrivals::{render_for_prompt, Side};
 use super::messages::{language_rule, replace_st_macros, scaffold_en};
@@ -174,7 +176,7 @@ pub(super) fn gm_system_prompt(
     }
     if mechanism.incremental {
         system.push('\n');
-        system.push_str(mechanism_protocol(lang));
+        system.push_str(&mechanism_protocol(lang, mechanism.numeric_update));
         // 卡專屬規矩接在通用協定後面：這張卡哪些欄位每回合必報、哪些只在變動時報，
         // 由重構照卡原文產出，通用協定的「只寫變動的欄位」到這裡以卡的規定為準。
         // 介面歸屬聲明壓在最後——卡原文往往要求模型每回合重印整包狀態才畫得出畫面，
@@ -212,9 +214,70 @@ pub(super) fn player_heading(name: &str, lang: &str) -> String {
     }
 }
 
+/// 增量桌統一協定聲明，依數字欄更新策略分版：DeltaOnly 就是原文；Upstream（沒重構的 MVU 卡）把講
+/// 「只報變動量」「數字欄只收 delta」「上下限由系統把關」的句子換成照上游 MVU 收 replace、replace 不夾值的說法，
+/// 其餘原文照舊。每桌策略固定，凍結快照照樣穩定。
+fn mechanism_protocol(lang: &str, numeric: NumericUpdate) -> String {
+    let base = delta_only_protocol(lang);
+    if numeric == NumericUpdate::DeltaOnly {
+        return base.to_owned();
+    }
+    let swaps: [(&str, &str); 3] = if scaffold_en(lang) {
+        [
+            (
+                "Numbers are computed and tracked locally by the system — you only need to say \
+                 \"how much changed this scene.\" End every reply with an update block:",
+                "Numbers are tracked by the system — you only report which fields changed this \
+                 scene: delta for the change amount, or replace to write the new value. End every \
+                 reply with an update block:",
+            ),
+            (
+                "- Number fields always use delta for the change amount (e.g. 5, -10), never an \
+                 absolute value — absolute values will be rejected.\n\
+                 - \"current/max\" fields (e.g. \"480/500\"): delta moves the current value; only use \
+                 replace (e.g. \"480/600\") when the max changes (a level-up).",
+                "- Number fields: use delta for the change amount (e.g. 5, -10), or replace with the new \
+                 value (e.g. 85).\n\
+                 - \"current/max\" fields (e.g. \"480/500\"): delta moves the current value; replace \
+                 rewrites the whole value as \"current/max\" (e.g. \"450/600\").",
+            ),
+            (
+                "- Bounds and rejections are enforced by the system; rejected fields will tell you the \
+                 current value next turn.",
+                "- replace stores exactly what you write — the system does not clamp it to any bounds, \
+                 so write a sensible value. Updates to dice and read-only fields are rejected; rejected \
+                 fields will tell you the current value next turn.",
+            ),
+        ]
+    } else {
+        [
+            (
+                "數值由系統本地計算與記帳，你只要說「這一幕變動了多少」。每次回覆的最後附上更新區塊：",
+                "數值由系統記帳，你只要回報這一幕哪些欄位變了：用 delta 給增減量，或用 replace 直接寫新值。每次回覆的最後附上更新區塊：",
+            ),
+            (
+                "- 數字欄一律用 delta 給增減量（例 5、-10），不要給絕對值——給絕對值會被系統擋下。\n\
+                 - 「現值/上限」欄（例 \"480/500\"）：delta 動現值；只有上限改變（升級）才用 replace 寫成 \"480/600\"。",
+                "- 數字欄可用 delta 給增減量（例 5、-10），也可以用 replace 直接寫新值（例 85）。\n\
+                 - 「現值/上限」欄（例 \"480/500\"）：delta 動現值；用 replace 就整個寫成「現值/上限」（例 \"450/600\"）。",
+            ),
+            (
+                "- 上下限與拒收由系統把關，被擋下的欄位會在下一輪告訴你目前值。",
+                "- replace 寫什麼就存什麼，系統不會幫你夾在上下限內，請自己寫合理的值；骰值欄與唯讀欄的更新會被擋下，被擋下的欄位會在下一輪告訴你目前值。",
+            ),
+        ]
+    };
+    let mut text = base.to_owned();
+    for (from, to) in swaps {
+        debug_assert!(text.contains(from), "{from}");
+        text = text.replace(from, to);
+    }
+    text
+}
+
 /// 增量桌統一協定聲明：數值由系統本地記帳，模型只回報這一幕的變動量。
 /// 原文照貼進凍結快照，不要改寫措辭——改一字整條快取全滅。
-fn mechanism_protocol(lang: &str) -> &'static str {
+fn delta_only_protocol(lang: &str) -> &'static str {
     if scaffold_en(lang) {
         "## State Update Protocol v1 (this table's numbers are system-managed)\n\n\
          Numbers are computed and tracked locally by the system — you only need to say \
@@ -536,6 +599,97 @@ mod tests {
         )[0]
         .content;
         assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n這桌還有這些人：愛麗絲\n"));
+    }
+
+    // ---- mvu-replace-numeric：協定的數字欄兩條依更新策略分版 ----
+
+    fn protocol_systems(numeric: NumericUpdate, lang: &str) -> (String, String) {
+        let mechanism = Mechanism {
+            incremental: true,
+            numeric_update: numeric,
+            ..Mechanism::default()
+        };
+        let assembled = assemble_gm_messages(
+            "",
+            &[],
+            None,
+            &[],
+            &[],
+            &TableState::default(),
+            &mechanism,
+            &StateScope::default(),
+            lang,
+        )[0]
+        .content
+        .clone();
+        let lane = gm_lane_system("", &[], None, &[], &mechanism, lang);
+        (assembled, lane)
+    }
+
+    /// 原規則（重構卡、非 MVU 桌）：協定原文不動，數字欄一律 delta、會被擋下。
+    #[test]
+    fn delta_only_protocol_keeps_the_original_wording() {
+        let (assembled, lane) = protocol_systems(NumericUpdate::DeltaOnly, "zh-TW");
+        assert_eq!(assembled, lane);
+        assert!(assembled.contains(delta_only_protocol("zh-TW")));
+        assert!(assembled.contains(
+            "數字欄一律用 delta 給增減量（例 5、-10），不要給絕對值——給絕對值會被系統擋下。"
+        ));
+        assert!(assembled.contains("只有上限改變（升級）才用 replace 寫成 \"480/600\"。"));
+        let (en, _) = protocol_systems(NumericUpdate::DeltaOnly, "en");
+        assert!(en.contains(delta_only_protocol("en")));
+        assert!(en.contains("absolute values will be rejected"));
+    }
+
+    /// 沒重構的 MVU 卡：數字欄與「現值/上限」欄兩條換成照上游收 replace，其餘原文照舊；兩條 system 一致。
+    #[test]
+    fn upstream_protocol_allows_replace_for_numbers_and_pairs() {
+        for (lang, gone, added) in [
+            (
+                "zh-TW",
+                [
+                    "會被系統擋下",
+                    "只有上限改變（升級）",
+                    "你只要說「這一幕變動了多少」",
+                    "上下限與拒收由系統把關",
+                ],
+                [
+                    "數字欄可用 delta 給增減量（例 5、-10），也可以用 replace 直接寫新值（例 85）。",
+                    "用 replace 就整個寫成「現值/上限」（例 \"450/600\"）。",
+                    "用 delta 給增減量，或用 replace 直接寫新值。",
+                    "系統不會幫你夾在上下限內",
+                ],
+            ),
+            (
+                "en",
+                [
+                    "absolute values will be rejected",
+                    "when the max changes (a level-up)",
+                    "how much changed this scene",
+                    "Bounds and rejections are enforced",
+                ],
+                [
+                    "or replace with the new value (e.g. 85).",
+                    "replace rewrites the whole value as \"current/max\" (e.g. \"450/600\").",
+                    "delta for the change amount, or replace to write the new value",
+                    "does not clamp it to any bounds",
+                ],
+            ),
+        ] {
+            let (assembled, lane) = protocol_systems(NumericUpdate::Upstream, lang);
+            assert_eq!(assembled, lane, "{lang}");
+            for text in gone {
+                assert!(!assembled.contains(text), "{lang}: {text}");
+            }
+            for text in added {
+                assert!(assembled.contains(text), "{lang}: {text}");
+            }
+            let (delta_only, _) = protocol_systems(NumericUpdate::DeltaOnly, lang);
+            assert_ne!(assembled, delta_only, "{lang}");
+            // 其餘條目照舊（文字欄、骰值欄）
+            let shared = if lang == "en" { "Dice fields are rolled locally" } else { "骰值欄由系統每回合擲" };
+            assert!(assembled.contains(shared), "{lang}");
+        }
     }
 
     // ---- gm-format-directive-missing-target：導演指示只點名全文真的進了本輪提示的格式條目 ----

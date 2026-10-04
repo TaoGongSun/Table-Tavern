@@ -33,7 +33,12 @@ pub enum RerunStatus {
     Ready,
 }
 
-fn refactored(root: &Path, world_id: &str, state: &data::WorldState) -> DataResult<bool> {
+/// 這桌重構過沒：有玩法標記，或留有重構產物（舊重構桌沒有標記、清殼後也還在）。
+pub(crate) fn refactored(
+    root: &Path,
+    world_id: &str,
+    state: &data::WorldState,
+) -> DataResult<bool> {
     Ok(state.refactor_mode.is_some() || data::read_refactor_outcome(root, world_id)?.is_some())
 }
 

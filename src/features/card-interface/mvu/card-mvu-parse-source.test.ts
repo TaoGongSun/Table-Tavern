@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMvuShimSource } from "./card-mvu-shim-source";
 import { runEval } from "./card-mvu-parse-engine";
 import { type CardMvu } from "./card-mvu-shim";
+import replaceParity from "../../../shared/contracts/mvu-replace-parity.json";
 
 const lodashName = "lodash";
 const lodash: unknown = ((await import(/* @vite-ignore */ lodashName)) as { default: unknown }).default;
@@ -150,9 +151,48 @@ describe("parseMessage：set", () => {
     expect(result.stat_data.金).toBe(16);
   });
 
-  it("set 到非數字字串變 NaN：結果超出上限整批拒絕", async () => {
+  it("set 到非數字字串變 NaN：照上游留到整批結束、序列化前轉 null；其他來源的非有限數照舊整批拒絕", async () => {
     const { win } = sandbox();
-    await expect(win.Mvu.parseMessage("_.set('金', 'abc');", base())).rejects.toMatchObject({ code: "non-finite" });
+    const result = await win.Mvu.parseMessage("_.set('金', 'abc');_.set('屬性', 'abc');", base());
+    expect(result.stat_data.金).toBeNull();
+    expect(result.stat_data.屬性).toEqual([null, "說明"]);
+    // 同一批後面再 set 數字字串：舊值仍是 NaN（number），照樣轉數字
+    expect((await win.Mvu.parseMessage("_.set('金', 'abc');_.set('金', '7');", base())).stat_data.金).toBe(7);
+    await expect(
+      win.Mvu.parseMessage("_.add('金', 1.7e308);_.add('金', 1.7e308);", base()),
+    ).rejects.toMatchObject({ code: "non-finite" });
+  });
+
+  it("非有限數標記依最後一次寫入的來源：被別的指令改寫、父欄覆蓋、刪除後就失效，兄弟欄的寫入不影響", async () => {
+    const { win } = sandbox();
+    const nonFinite = { code: "non-finite" };
+    // set 出 NaN → set 有限值 → add 出 Infinity：最後寫入的是 add，整批拒收
+    await expect(
+      win.Mvu.parseMessage("_.set('金', '很多');_.set('金', 1e308);_.add('金', 1e308);", base()),
+    ).rejects.toMatchObject(nonFinite);
+    // 父欄 set 覆蓋子欄 → 子欄再被 add 成 Infinity
+    const nested = () => withSchema({ P: { a: 1, b: 2 } });
+    await expect(
+      win.Mvu.parseMessage("_.set('P.a', '很多');_.set('P', {\"a\": 1, \"b\": 2});_.add('P.a', 1e308);_.add('P.a', 1e308);", nested()),
+    ).rejects.toMatchObject(nonFinite);
+    // 刪除後同一處再插入 Infinity
+    await expect(
+      win.Mvu.parseMessage("_.set('P.a', '很多');_.delete('P.a');_.insert('P', 'a', 1e999);", nested()),
+    ).rejects.toMatchObject(nonFinite);
+    // 只動兄弟欄：set 產生的 NaN 照樣在序列化時轉 null
+    const sibling = await win.Mvu.parseMessage("_.set('P.a', '很多');_.insert('P', 'c', 3);_.add('P.b', 1);", nested());
+    expect(sibling.stat_data.P).toEqual({ a: null, b: 3, c: 3 });
+    // 巢狀合併：只撤銷 deep merge 實際覆寫的位置，沒被動到的兄弟欄保留標記
+    const deep = () => withSchema({ P: { child: { n: 10, x: 0 } } });
+    const merged = await win.Mvu.parseMessage("_.set('P.child.n', '很多');_.insert('P', {\"child\": {\"x\": 1}});", deep());
+    expect(merged.stat_data.P).toEqual({ child: { n: null, x: 1 } });
+    // 合併真的覆寫到那一格，之後再 add 出 Infinity：整批拒收
+    await expect(
+      win.Mvu.parseMessage(
+        "_.set('P.child.n', '很多');_.insert('P', {\"child\": {\"n\": 1e308}});_.add('P.child.n', 1e308);",
+        deep(),
+      ),
+    ).rejects.toMatchObject(nonFinite);
   });
 
   it("路徑修正：帶引號與空白的點分欄位、括號裡的裸數字是索引", async () => {
@@ -561,4 +601,16 @@ describe("parseMessage：不落檔與上限", () => {
     await expect(win.Mvu.parseMessage(1 as unknown as string, base())).rejects.toThrow(/message/);
     await expect(win.Mvu.parseMessage("", null)).rejects.toThrow(/old_data/);
   });
+});
+
+// mvu-replace-numeric：同一份案例後端也跑（src-tauri data/message_vars/replace_parity_tests.rs），兩邊結果要一致
+describe("parseMessage：沒重構 MVU 卡的數字欄 replace（與後端同一份案例）", () => {
+  for (const sample of replaceParity.cases) {
+    it(sample.name, async () => {
+      const { win } = sandbox();
+      const message = `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(sample.patch)}\n</JSONPatch>\n</UpdateVariable>`;
+      const result = await win.Mvu.parseMessage(message, withSchema(structuredClone(sample.stat_data) as Table));
+      expect(JSON.parse(JSON.stringify(result.stat_data))).toEqual(sample.expected);
+    });
+  }
 });

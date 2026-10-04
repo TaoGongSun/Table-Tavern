@@ -20,6 +20,7 @@ pub(super) fn rule(kind: FieldKind, min: Option<f64>, max: Option<f64>) -> Field
 pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
     Mechanism {
         value_types: Default::default(),
+        numeric_update: Default::default(),
         version: 1,
         rules: rules
             .iter()
@@ -86,6 +87,7 @@ pub(super) fn else_case(text: &str) -> data::TriggerCase {
 pub(super) fn once_mechanism() -> Mechanism {
     Mechanism {
         value_types: Default::default(),
+        numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![data::Trigger {
