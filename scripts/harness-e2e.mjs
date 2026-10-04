@@ -130,6 +130,20 @@ must("改名欄位關閉", h("wait", 'role=textbox[name="桌名"]', "--gone"));
 const renamed = js(`return (await H.invoke("list_worlds")).find((w) => w.id === ${JSON.stringify(card.id)})?.name`);
 step("後端桌名＝填入值", renamed.value === "自動化改名測試桌", renamed.value);
 must("開設定", h("click", 'role=button[name="設定"]'));
+// 視窗不可見時 WebKit 凍結過渡；測試包注入動態歸零，切頁後底線要立刻在新分頁（harness/motion.rs）
+must("切到 AI 連線分頁", h("click", 'role=button[name="AI 連線"]'));
+const underline = js(`return [...document.querySelectorAll(".settings-tab")].map((b) => {
+  const s = getComputedStyle(b);
+  return { current: b.getAttribute("aria-current") === "true", color: s.borderBottomColor, duration: s.transitionDuration };
+})`);
+step(
+  "分頁底線只在 AI 連線、過渡時長歸零",
+  underline.ok &&
+    underline.value[1].current &&
+    underline.value.every((t, i) => t.duration === "0s" && (t.color === "rgba(0, 0, 0, 0)") === (i !== 1)),
+  underline.ok ? underline.value : underline.error,
+);
+must("回到外觀分頁", h("click", 'role=button[name="外觀"]'));
 mustFail("select 不存在的選項回錯", h("select", 'role=combobox[name="語言 Language"]', "xx"), /選項不存在/);
 must("切換語言到 English", h("select", 'role=combobox[name="語言 Language"]', "en"));
 must("範例桌詢問出現", h("wait", "text=Create a new sample table in the new language?"));

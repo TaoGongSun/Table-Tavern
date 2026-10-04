@@ -152,6 +152,21 @@ async function dirtyAi() {
 }
 
 describe("SettingsWindow tab buttons on WebKit", () => {
+  // 測試通道曾看到底線停在外觀：那是視窗不可見時過渡被凍結（harness/motion.rs），真點擊不重現
+  it("a real mouse click moves the underline to the clicked tab with transitions on", async () => {
+    noTransition?.remove();
+    // 過渡真的在：日後 CSS 拿掉過渡，這案就不再驗凍結相關的路徑，要先看到這裡失敗
+    expect(tabs().map((tab) => getComputedStyle(tab).transitionDuration)).not.toContain("0s");
+    await clickTab(1);
+    const underline = (index: number) => getComputedStyle(tabs()[index]).borderBottomColor;
+    // 過渡 0.15s 跑完：底線只畫在 AI 連線，外觀那條褪成透明
+    await vi.waitFor(() => {
+      expect(underline(0)).toBe("rgba(0, 0, 0, 0)");
+      expect(underline(1)).not.toBe("rgba(0, 0, 0, 0)");
+    });
+    expect(tabs().slice(2).map((_, i) => underline(i + 2))).toEqual(Array(3).fill("rgba(0, 0, 0, 0)"));
+  });
+
   it("Option+Tab walks every tab button in order, then the close button, and back", async () => {
     await tabTo(0);
     for (let i = 1; i < 5; i++) {

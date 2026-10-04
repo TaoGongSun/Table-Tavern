@@ -63,6 +63,8 @@ pub fn run() {
     // 測試包以同名假 plugin 接手原生對話窗，交給控制埠回答。
     #[cfg(feature = "test-harness")]
     let builder = builder.plugin(harness::dialog::init());
+    #[cfg(feature = "test-harness")]
+    let builder = builder.plugin(harness::motion::init());
     builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updater::PendingUpdate::default())
