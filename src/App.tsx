@@ -911,6 +911,7 @@ function App() {
         genTableOpen={genTableOpen}
         onCloseGenerateTable={() => setGenTableOpen(false)}
         onGeneratedTable={enterGeneratedTable}
+        transport={transport}
         settingsOpen={settingsOpen}
         settingsRequestKey={settingsRequestKey}
         versionTab={

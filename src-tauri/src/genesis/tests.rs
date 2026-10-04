@@ -1,6 +1,6 @@
 use super::{
-    character_messages, materialize, parse_character, parse_expand, parse_outline, Expanded,
-    ExpandedCharacter,
+    character_messages, expand_messages, materialize, parse_character, parse_expand, parse_outline,
+    Expanded, ExpandedCharacter,
 };
 use crate::data;
 use std::fs;
@@ -134,7 +134,6 @@ fn materialize_writes_world_characters_opening_and_unique_name() {
     let root = TestRoot::new();
     data::create_world(&root.0, "夜港").unwrap();
     let expanded = Expanded {
-        title: "夜港".to_owned(),
         world: "迷霧籠罩碼頭。".to_owned(),
         characters: vec![
             ExpandedCharacter {
@@ -152,7 +151,7 @@ fn materialize_writes_world_characters_opening_and_unique_name() {
         ],
         opening: "雨落在碼頭上。你要怎麼做？".to_owned(),
     };
-    let world_id = materialize(&root.0, &expanded).unwrap();
+    let world_id = materialize(&root.0, "夜港", &expanded).unwrap();
     assert_eq!(data::read_state(&root.0, &world_id).unwrap().name, "夜港 2");
     assert_eq!(
         data::read_world_md(&root.0, &world_id).unwrap(),
@@ -163,4 +162,54 @@ fn materialize_writes_world_characters_opening_and_unique_name() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].speaker_name, "GM");
     assert_eq!(events[0].text, expanded.opening);
+}
+
+#[test]
+fn materialize_names_table_after_draft_title_even_if_model_renamed_it() {
+    let root = TestRoot::new();
+    data::create_world(&root.0, "夜港").unwrap();
+    let expanded = parse_expand(
+        "## WORLD: 模型自己取的新名字\n迷霧籠罩碼頭。\n## CHARACTER: 伊利亞\nPUBLIC:\n走私者。",
+    )
+    .unwrap();
+
+    let first = materialize(&root.0, "  夜港  ", &expanded).unwrap();
+    let second = materialize(&root.0, "夜港", &expanded).unwrap();
+
+    assert_eq!(data::read_state(&root.0, &first).unwrap().name, "夜港 2");
+    assert_eq!(data::read_state(&root.0, &second).unwrap().name, "夜港 3");
+    let names: Vec<String> = data::list_worlds(&root.0)
+        .unwrap()
+        .into_iter()
+        .map(|world| world.name)
+        .collect();
+    assert!(!names.iter().any(|name| name.contains("模型自己取的新名字")));
+}
+
+#[test]
+fn materialize_refuses_blank_title_without_writing() {
+    let root = TestRoot::new();
+    let expanded = parse_expand("## WORLD: X\n迷霧籠罩碼頭。").unwrap();
+    assert!(materialize(&root.0, " \t ", &expanded).is_err());
+    assert!(data::list_worlds(&root.0).unwrap().is_empty());
+}
+
+#[test]
+fn expand_accepts_empty_world_title_but_not_blank_world() {
+    let expanded = parse_expand("## WORLD:\n迷霧籠罩碼頭。").unwrap();
+    assert_eq!(expanded.world, "迷霧籠罩碼頭。");
+    assert!(parse_expand("## WORLD: 夜港\n   \n## CHARACTER: 伊利亞\n走私者。").is_none());
+}
+
+#[test]
+fn outline_still_requires_a_title() {
+    assert!(parse_outline("## WORLD:\n迷霧籠罩碼頭。").is_none());
+}
+
+#[test]
+fn expand_messages_prefill_the_draft_title() {
+    let messages = expand_messages("idea", &[], "夜港", "## WORLD: 夜港\n霧。", "zh-TW");
+    assert!(messages[0]
+        .content
+        .contains("\n## WORLD: 夜港\n<full world setting"));
 }

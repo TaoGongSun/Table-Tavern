@@ -18,9 +18,9 @@ pub struct OutlineCharacter {
     pub tagline: String,
 }
 
+/// 展開結果不帶標題：桌名一律用玩家草稿的標題（見 materialize），模型寫了什麼都不採用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Expanded {
-    pub title: String,
     pub world: String,
     pub characters: Vec<ExpandedCharacter>,
     pub opening: String,
@@ -68,6 +68,7 @@ pub fn outline_messages(input: &str, genres: &[String], lang: &str) -> Vec<ChatM
 pub fn expand_messages(
     input: &str,
     genres: &[String],
+    title: &str,
     outline_raw: &str,
     lang: &str,
 ) -> Vec<ChatMessage> {
@@ -75,7 +76,7 @@ pub fn expand_messages(
     vec![ChatMessage {
         role: "user".to_owned(),
         content: format!(
-            "You are a tabletop RPG game master. The player approved this campaign outline. Expand it into full campaign materials.\n\nPlayer's idea: {input}\n{genres}Approved outline:\n{outline_raw}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using these exact English markers at line start:\n\n## WORLD: <campaign title, one line>\n<full world setting in markdown: the setting, key places or factions, tone, current situation. Enough substance for a GM to run scenes from.>\n\n## CHARACTER: <name>\nEMOJI: <one single emoji fitting this character>\nPUBLIC:\n<what everyone can see: appearance, role, public personality>\nPRIVATE:\n<secrets, hidden motives, inner voice — visible only to this character's actor>\n\n## OPENING\n<the opening narration the GM speaks to start the first scene, addressed to the player, ending at a moment that invites the player to act>\n\nRules:\n- Keep the same characters and names as the outline.\n- Markers exactly as shown. No text outside the sections."
+            "You are a tabletop RPG game master. The player approved this campaign outline. Expand it into full campaign materials.\n\nPlayer's idea: {input}\n{genres}Approved outline:\n{outline_raw}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using these exact English markers at line start:\n\n## WORLD: {title}\n<full world setting in markdown: the setting, key places or factions, tone, current situation. Enough substance for a GM to run scenes from.>\n\n## CHARACTER: <name>\nEMOJI: <one single emoji fitting this character>\nPUBLIC:\n<what everyone can see: appearance, role, public personality>\nPRIVATE:\n<secrets, hidden motives, inner voice — visible only to this character's actor>\n\n## OPENING\n<the opening narration the GM speaks to start the first scene, addressed to the player, ending at a moment that invites the player to act>\n\nRules:\n- Keep the WORLD line exactly as written above; do not rename the campaign.\n- Keep the same characters and names as the outline.\n- Markers exactly as shown. No text outside the sections."
         ),
     }]
 }
@@ -153,9 +154,8 @@ pub fn parse_character(raw: &str) -> Option<OutlineCharacter> {
 
 pub fn parse_expand(raw: &str) -> Option<Expanded> {
     let sections = parse_sections(raw);
-    let title = sections.title?.trim().to_owned();
     let world = join_lines(&sections.world);
-    if title.is_empty() || world.is_empty() {
+    if world.is_empty() {
         return None;
     }
     let characters = sections
@@ -164,19 +164,26 @@ pub fn parse_expand(raw: &str) -> Option<Expanded> {
         .filter_map(parse_expanded_character)
         .collect();
     Some(Expanded {
-        title,
         world,
         characters,
         opening: join_lines(&sections.opening),
     })
 }
 
-pub fn materialize(root: &Path, expanded: &Expanded) -> DataResult<String> {
+/// 玩家草稿的標題：trim 後非空才算數。開桌前（呼叫模型、寫檔之前）先過這關。
+pub fn draft_title(title: &str) -> Option<&str> {
+    let title = title.trim();
+    (!title.is_empty()).then_some(title)
+}
+
+/// `title` 是玩家草稿的標題，桌名與重名補號都以它為準。
+pub fn materialize(root: &Path, title: &str, expanded: &Expanded) -> DataResult<String> {
+    let title = draft_title(title).ok_or_else(|| data::invalid_data("table title is empty"))?;
     let worlds = data::list_worlds(root)?;
-    let mut name = expanded.title.clone();
+    let mut name = title.to_owned();
     let mut suffix = 2;
     while worlds.iter().any(|world| world.name == name) {
-        name = format!("{} {suffix}", expanded.title);
+        name = format!("{title} {suffix}");
         suffix += 1;
     }
 

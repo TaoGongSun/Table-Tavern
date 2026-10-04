@@ -20,7 +20,6 @@
 - [refactor-mode-split](handoffs/refactor-mode-split.md) — 重構雙軌定向：五卡矩陣 2026-10-02 測試包跑過，剩四洞①②④ GUI 重測、③缺合適卡、重構中取消
 - [ai-card-refactor](handoffs/ai-card-refactor.md) — AI 卡重構按鈕：產出重設計與匯出重構卡都已結案，前置已解除；等 B 段→A 段並與 person-promote／state-values-mvu 合併真桌驗收
 - [person-promote](handoffs/person-promote.md) — AI 認人並合併升格：實作完成四項自驗綠，與 ai-card-refactor 合併實機驗收
-- [ai-table-generator](handoffs/ai-table-generator.md) — 一句話開桌：六項一輪跑完，排梯 2 第 7
 - [refactor-survey-spans](handoffs/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：T4 三項過，API 退 GM 檔那項延到真用 API 模式時驗
 - [refactor-dispatch](handoffs/refactor-dispatch.md) — AI 重構提速省費：P4–P6 已隨 refactor-survey-spans T4① 過，只剩 P8（API 模式跑重構）
 - [prompt-cache-optimization](handoffs/prompt-cache-optimization.md) — 提示詞快取優化：程式面包 1–7 完成、額度分頁全驗過；剩離開提醒自然遇到再看、undo 截尾優化等非必要項，OpenRouter／API 已收束出本案範圍

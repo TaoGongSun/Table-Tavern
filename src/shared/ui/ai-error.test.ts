@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { explainAiError } from "./ai-error";
+import { explainAiError, redactAiErrorDetail } from "./ai-error";
 
 describe("explainAiError", () => {
   it("先認傳輸層的失敗碼，三態各自分流", () => {
@@ -120,5 +120,56 @@ describe("explainAiError", () => {
     expect(explainAiError(raw, "api")).toBe("errQuotaApi");
     expect(explainAiError(raw, "claude")).toBe("errQuota");
     expect(explainAiError(raw, undefined)).toBe("errQuota");
+  });
+});
+
+describe("redactAiErrorDetail", () => {
+  const head = "AI_HTTP_STATUS_429: status=429 Too Many Requests body=";
+
+  it("遮掉 user_id、其他診斷原樣保留", () => {
+    const raw = `${head}{"error":{"message":"rate-limited","code":429},"user_id":"user_abc123"}`;
+    expect(redactAiErrorDetail(raw)).toBe(
+      `${head}{"error":{"message":"rate-limited","code":429},"user_id":"[redacted]"}`,
+    );
+  });
+
+  it("鍵值之間夾空白或換行", () => {
+    const raw = `${head}{\n  "user_id" :\n    "user_abc",\n  "code": 429\n}`;
+    expect(redactAiErrorDetail(raw)).toBe(
+      `${head}{\n  "user_id" :\n    "[redacted]",\n  "code": 429\n}`,
+    );
+  });
+
+  it("同一段裡有多個 user_id", () => {
+    const raw = `${head}{"user_id":"u1","error":{"metadata":{"user_id":"u2"}},"x":"y"}`;
+    const shown = redactAiErrorDetail(raw);
+    expect(shown).not.toMatch(/u1|u2/);
+    expect(shown.match(/\[redacted\]/g)).toHaveLength(2);
+    expect(shown).toContain('"x":"y"');
+  });
+
+  it("值裡含跳脫引號不會提早收尾", () => {
+    const raw = `${head}{"user_id":"user_\\"quoted\\"_tail","code":429}`;
+    expect(redactAiErrorDetail(raw)).toBe(`${head}{"user_id":"[redacted]","code":429}`);
+  });
+
+  it("值在中途被截斷：遮到截斷標記或字串結尾，截斷標記保留", () => {
+    const cut = `${head}{"code":429,"user_id":"user_abcdef…[truncated]`;
+    expect(redactAiErrorDetail(cut)).toBe(`${head}{"code":429,"user_id":"[redacted]"…[truncated]`);
+    const end = `${head}{"code":429,"user_id":"user_abc`;
+    expect(redactAiErrorDetail(end)).toBe(`${head}{"code":429,"user_id":"[redacted]"`);
+    const slash = `${head}{"user_id":"user_ab\\`;
+    expect(redactAiErrorDetail(slash)).toBe(`${head}{"user_id":"[redacted]"`);
+  });
+
+  it("非字串值也遮", () => {
+    expect(redactAiErrorDetail('{"user_id": 98765, "code": 1}')).toBe(
+      '{"user_id": "[redacted]", "code": 1}',
+    );
+  });
+
+  it("沒有 user_id 時維持原文", () => {
+    const raw = `${head}{"error":{"message":"rate-limited","provider_name":"Venice"},"userid":"keep"}`;
+    expect(redactAiErrorDetail(raw)).toBe(raw);
   });
 });

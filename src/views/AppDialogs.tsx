@@ -11,6 +11,8 @@ interface AppDialogsProps {
   genTableOpen: boolean;
   onCloseGenerateTable: () => void;
   onGeneratedTable: (worldId: string) => Promise<void>;
+  /** 目前的 AI 來源，生桌失敗時分流錯誤文案用 */
+  transport?: string;
   settingsOpen: false | SettingsTab;
   settingsRequestKey: number;
   versionTab: ReactNode;
@@ -40,6 +42,7 @@ export function AppDialogs({
   genTableOpen,
   onCloseGenerateTable,
   onGeneratedTable,
+  transport,
   settingsOpen,
   settingsRequestKey,
   versionTab,
@@ -67,6 +70,7 @@ export function AppDialogs({
         open={genTableOpen}
         onClose={onCloseGenerateTable}
         onCreated={onGeneratedTable}
+        transport={transport}
       />
 
       {/* 設定視窗要蓋在主工作區與生桌對話框之上。 */}

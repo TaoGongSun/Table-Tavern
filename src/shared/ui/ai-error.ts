@@ -37,6 +37,18 @@ function isOpenRouterKeyMissing(raw: string): boolean {
 // 若能命中就等於讓供應商偽造狀態碼。有這個碼＝來源必定是 API 路，文案可以直接指路。
 const HTTP_STATUS = /^(?:Error:\s*)?AI_HTTP_STATUS_(\d{3}):/;
 
+// 供應商 body 裡帶的帳號識別碼（OpenRouter 的 user_id）：錯誤原文要留給玩家去問供應商，
+// 但帳號 ID 不該印在畫面上。body 可能被 transport/client.rs 截在 2000 字，所以不做 JSON 解析、
+// 也不假設引號閉合：字串值吃到收尾引號、截斷標記（client.rs 的「…[truncated]」）或字串結尾為止，
+// 跳脫引號不算收尾；非字串值吃到分隔符為止。
+const USER_ID =
+  /("user_id"\s*:\s*)(?:"(?:\\[\s\S]?|(?!…\[truncated\])[^"\\])*(?:"|(?=…\[truncated\])|$)|[^\s,}\]"]+)/g;
+
+/** 顯示前遮掉錯誤原文裡的帳號識別碼，其餘診斷資訊原樣保留。 */
+export function redactAiErrorDetail(text: string): string {
+  return text.replace(USER_ID, '$1"[redacted]"');
+}
+
 /**
  * `transport` 給得出來就給（api｜claude｜codex｜agy｜grok）：認證失敗的下一步兩邊不同——
  * API 是「去換一把金鑰」，CLI 是「去重新登入」。給不出來就沿用中性文案，
