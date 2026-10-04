@@ -13,6 +13,7 @@ tauri-action 單一 workflow 出 macOS 與 Windows 產物，發到 GitHub releas
 
 ## Next action
 - 發未簽章正式版＋發布說明附 SmartScreen 繞過步驟，先觀察玩家接受度再拍板買簽章（2026-07-24 拍板）
+- Mac 首發同樣不簽章〔作者裁決 2026-10-04〕，同一份發布說明一併附 Gatekeeper 繞過步驟
 
 ## Constraints
 單一 build，無免費／收費雙版本；App 內更新改由 [desktop-update-detect](../plans/desktop-update-detect.md) 負責（2026-09-30 拍板）；發布帖須透明聲明資料流向（NewPlan §16.4）。
