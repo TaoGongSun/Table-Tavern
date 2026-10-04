@@ -1,20 +1,21 @@
 import { useMemo } from "react";
 import { t } from "../../i18n";
 import { renderStoryMarkdown } from "./story-markdown";
-import { explainAiError } from "./ai-error";
+import { explainAiError, redactAiErrorDetail } from "./ai-error";
 import { backendText } from "./backend-text";
 
 // AI 失敗的呈現：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
 // transport 給得出來就傳：認證失敗要指對地方（API 換金鑰／CLI 重新登入）。
-// text 存後端原文：分流吃原文，顯示時才經 backendText 翻譯代碼。錯誤列與失敗彈窗共用。
+// text 存後端原文：分流吃原文，顯示時才經 backendText 翻譯代碼、再遮掉帳號識別碼。錯誤列與失敗彈窗共用。
 export function AiErrorText({ text, transport }: { text: string; transport?: string }) {
   const key = explainAiError(text, transport);
-  if (!key) return <>{backendText(text)}</>;
+  const shown = redactAiErrorDetail(backendText(text));
+  if (!key) return <>{shown}</>;
   return (
     <>
       {t(key)}
       <br />
-      <small>{backendText(text)}</small>
+      <small>{shown}</small>
     </>
   );
 }

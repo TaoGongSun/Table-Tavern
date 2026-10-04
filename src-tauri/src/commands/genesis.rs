@@ -96,6 +96,7 @@ pub(crate) async fn generate_table_expand(
     app: tauri::AppHandle,
     input: String,
     genres: Vec<String>,
+    title: String,
     outline_raw: String,
 ) -> Result<ExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
@@ -103,9 +104,11 @@ pub(crate) async fn generate_table_expand(
     if input.is_empty() && genres.is_empty() {
         return Err("EMPTY_INPUT".to_owned());
     }
+    // 桌名只認玩家草稿的標題：空白就在呼叫模型、寫檔之前擋下
+    let title = genesis::draft_title(&title).ok_or_else(|| "EMPTY_TITLE".to_owned())?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let messages = genesis::expand_messages(input, &genres, &outline_raw, &lang);
+    let messages = genesis::expand_messages(input, &genres, title, &outline_raw, &lang);
     let raw = stream_via_transport(
         &app,
         &config,
@@ -121,7 +124,7 @@ pub(crate) async fn generate_table_expand(
     )
     .await?;
     let world_id = genesis::parse_expand(&raw)
-        .map(|expanded| genesis::materialize(&data_root(&app)?, &expanded))
+        .map(|expanded| genesis::materialize(&data_root(&app)?, title, &expanded))
         .transpose()
         .map_err(|error| error.to_string())?;
     // 開桌這幾次呼叫的額度就是為這桌花的：桌一建好就把剛才那些行認領回來（見 usage_log）

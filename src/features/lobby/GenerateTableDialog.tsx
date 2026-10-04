@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../../i18n";
-import { backendText } from "../../shared/ui/backend-text";
+import { AiErrorText } from "../../shared/ui/atoms";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
 
 const GENRE_KEYS = [
@@ -56,11 +56,14 @@ export function GenerateTableDialog({
   open,
   onClose,
   onCreated,
+  transport,
 }: {
   open: boolean;
   onClose: () => void;
   /** 桌生出來了：桌次清單重讀並進去那張新桌 */
   onCreated: (worldId: string) => Promise<void>;
+  /** 目前的 AI 來源：失敗訊息要指對地方（API 換金鑰／CLI 重新登入） */
+  transport?: string;
 }) {
   const [genInput, setGenInput] = useState("");
   const [genGenres, setGenGenres] = useState<string[]>([]);
@@ -140,6 +143,7 @@ export function GenerateTableDialog({
       const result = await invoke<GenerateExpandResult>("generate_table_expand", {
         input,
         genres: genGenres.map((key) => t(key as typeof GENRE_KEYS[number])),
+        title: genOutline.title.trim(),
         outlineRaw: serializeGeneratedOutline(genOutline),
       });
       if (!result.worldId) {
@@ -244,13 +248,19 @@ export function GenerateTableDialog({
           <input
             value={genOutline.title}
             disabled={genBusy !== null}
-            onChange={(event) => setGenOutline((current) => current && { ...current, title: event.currentTarget.value })}
+            onChange={(event) => {
+              const title = event.currentTarget.value;
+              setGenOutline((current) => current && { ...current, title });
+            }}
           />
           <textarea
             rows={6}
             value={genOutline.world}
             disabled={genBusy !== null}
-            onChange={(event) => setGenOutline((current) => current && { ...current, world: event.currentTarget.value })}
+            onChange={(event) => {
+              const world = event.currentTarget.value;
+              setGenOutline((current) => current && { ...current, world });
+            }}
           />
           <h3>{t("genCharListTitle")}</h3>
           <div className="gen-character-list">
@@ -260,10 +270,13 @@ export function GenerateTableDialog({
                   className="gen-character-name"
                   value={character.name}
                   disabled={genBusy !== null}
-                  onChange={(event) => setGenOutline((current) => current && {
-                    ...current,
-                    characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.currentTarget.value } : item),
-                  })}
+                  onChange={(event) => {
+                    const name = event.currentTarget.value;
+                    setGenOutline((current) => current && {
+                      ...current,
+                      characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, name } : item),
+                    });
+                  }}
                 />
                 <textarea
                   rows={2}
@@ -273,10 +286,13 @@ export function GenerateTableDialog({
                     if (element) resizeGeneratedCharacterTagline(element);
                   }}
                   onInput={(event) => resizeGeneratedCharacterTagline(event.currentTarget)}
-                  onChange={(event) => setGenOutline((current) => current && {
-                    ...current,
-                    characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, tagline: event.currentTarget.value } : item),
-                  })}
+                  onChange={(event) => {
+                    const tagline = event.currentTarget.value;
+                    setGenOutline((current) => current && {
+                      ...current,
+                      characters: current.characters.map((item, itemIndex) => itemIndex === index ? { ...item, tagline } : item),
+                    });
+                  }}
                 />
                 <button
                   type="button"
@@ -324,8 +340,16 @@ export function GenerateTableDialog({
       )}
       {(genResultRaw !== null || genError) && (
         <section className="gen-result-error" role="alert">
-          <p>{backendText(genError) || t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
-          <pre>{backendText(genError) || genResultRaw}</pre>
+          {genError ? (
+            <p>
+              <AiErrorText text={genError} transport={transport} />
+            </p>
+          ) : (
+            <>
+              <p>{t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
+              <pre>{genResultRaw}</pre>
+            </>
+          )}
         </section>
       )}
     </Dialog>

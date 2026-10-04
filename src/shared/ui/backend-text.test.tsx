@@ -252,6 +252,23 @@ describe("ErrorNote", () => {
     );
     expect(note.firstChild?.textContent).toBe(t("errQuotaApi"));
   });
+
+  it("分流命中：顯示人話，小字原文遮掉 user_id、只出現一次", () => {
+    const raw =
+      'AI_HTTP_STATUS_429: status=429 body={"error":{"message":"upstream busy"},"user_id":"user_secret"}';
+    const note = show(raw, "api");
+    expect(note.firstChild?.textContent).toBe(t("errQuotaApi"));
+    expect(note.textContent).not.toContain("user_secret");
+    expect(note.textContent!.split("upstream busy")).toHaveLength(2);
+  });
+
+  it("分流沒命中：直接顯示的原文同樣遮掉 user_id", () => {
+    const raw = 'Provider disconnected {"user_id":"user_secret","detail":"socket closed"}';
+    expect(explainAiError(raw)).toBeNull();
+    expect(show(raw).textContent).toBe(
+      'Provider disconnected {"user_id":"[redacted]","detail":"socket closed"}',
+    );
+  });
 });
 
 // 包 4：AI 連線面的錯誤改代碼後，AI_* 前綴仍在起首、explainAiError 的分流跟改碼前一致。
