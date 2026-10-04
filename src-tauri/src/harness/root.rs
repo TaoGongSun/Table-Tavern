@@ -459,7 +459,19 @@ mod tests {
         }
         drop(first);
         assert!(control.join("harness.lock").exists());
-        acquire_lock(&control, "pid=3").unwrap();
+        // flock 掛在 open file description 上：同一測試行程裡別的測試平行 spawn 子程序時，
+        // 子程序在 exec 前握有 fd 複本（CLOEXEC 要到 exec 才關），鎖會晚一瞬才真的放掉。
+        // 等到放掉為止，而不是只試一次。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match acquire_lock(&control, "pid=3") {
+                Ok(_) => break,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(err) => panic!("釋放後一直取不回鎖：{err}"),
+            }
+        }
     }
 
     #[test]
