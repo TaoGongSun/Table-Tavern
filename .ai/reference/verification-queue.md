@@ -34,6 +34,7 @@
 | 17 | [test-harness](../handoffs/archive/test-harness.md) 智慧免費真供應商 | 用 OpenRouter 免費模型桌送一輪：`route` 的智慧免費預覽有值、`ai-log` 的 `api-smart-free` 派送後有同 id 的 `responder` 事件且模型是實際回應者。2026-10-04 代測：route 預覽有值（gemma-4-31b-it:free）過；穩定第一、二名整段被上游限流 429，`responder` 事件未能驗，等穩定第一名可用時重跑一輪 |
 | 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
 | 19 | [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md) 狀態欄骨架桌 | 已結案、單元測試覆蓋，剩實機觀察，可搭任一梯 2 實聊順手看：①結果框「匯出」（6b）上一輪 AI 重構後沒寫檔、畫面沒報錯，零額度重放正常；下次有授權的 AI 重構時，匯出前後讀 statusMessage 與 `refactor_export_outcome` 回傳定位原因　②Haiku 接管桌偶爾對文字欄下 delta（被規則擋）、`<UpdateVariable>` 的 JSON 字串尾巴多跳脫引號（被容錯跳過），看頻率決定要不要加強提示　③生成中按套用重構／貼開場等排隊時再按停止生成：等待提示照常、截斷回覆落檔後才執行　④真模型一回合佐證排隊套用在 GM 旁白落檔後才執行（這筆回覆留在套用前的桌況）　⑤待查證：酒館 regex 替換字串與訊息顯示會不會替換 `{{user}}`／`{{char}}`，會的話面板也應替換（只查規格） |
+| 20 | [interface-scene-change](../handoffs/interface-scene-change.md) 介面換幕 native 核對 | 西幻接管桌（測試通道代測已過資料面與 srcdoc 渲染）：真視窗裡打開卡片介面，按介面工具列「換幕」→ 介面留著、正文槽是前情提要、右側時間地點與地圖照舊；在介面內點區域／推薦行動送出一回合，面板跟動。測試通道拍不到也點不到 iframe 內容，只能真人看 |
 
 ## 梯 3：等外部條件，不排時程
 

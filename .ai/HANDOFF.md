@@ -27,3 +27,4 @@
 - [api-shared-lane](handoffs/api-shared-lane.md) — API 路徑改走 chars 共線：包 A／B 完成、Sol 過，剩錯認前言者＋四路快取成對測試
 - [claude-compat-endpoint](handoffs/claude-compat-endpoint.md) — Claude 相容端點：實作完成、cargo/build 雙驗證綠，等使用者用真相容端點實測後結案
 - [refactor-card-png-export](handoffs/refactor-card-png-export.md) — 重構卡 PNG 匯出：包 A–D 已進 main、macOS 測試通道實測過；剩 Windows Explorer 縮圖與 SillyTavern 拒收兩項（實測佇列梯 1 第 4e）
+- [interface-scene-change](handoffs/interface-scene-change.md) — 介面桌換幕：包 1–3 已進 main、測試通道西幻接管桌驗過；剩真視窗換幕後介面點擊（實測佇列梯 2 第 20 項）
