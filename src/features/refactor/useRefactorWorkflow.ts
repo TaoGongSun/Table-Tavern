@@ -10,7 +10,6 @@ import {
   unfinishedSourceUids,
   buildRefactorPersonPlan,
   defaultRefactorSelection,
-  parseRefactorOutcome,
   REFACTOR_IMPORT_INVALID,
   restoreDropped,
   sourceEntryTitle,
@@ -28,6 +27,7 @@ import {
   type RefactorSplitGroup,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
+import { parseRefactorCard, REFACTOR_IMPORT_NEWER, type RefactorApplied } from "./refactor-card";
 import { confirmFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
@@ -90,6 +90,8 @@ export function useRefactorWorkflow({
   // 交會點是 setRefactorOutcome——AI 兩階段跑完、或選檔路徑讀完 JSON，都寫進同一份結果卡。
   const [outcome, setOutcome] = useState<RefactorOutcome | null>(null);
   const [selection, setSelection] = useState<RefactorSelection | null>(null);
+  // 匯入的重構卡帶來源桌套用映射時才有值：預設勾選照它重現來源桌的建卡與玩家選擇
+  const [applied, setApplied] = useState<RefactorApplied | null>(null);
   const [origin, setOrigin] = useState<"ai" | "import" | null>(null);
   const [detail, setDetail] = useState(false);
   // 取消後仍組出的半成品：中止的呼叫不會留下任何痕跡（產物沒 push、也不列失敗），
@@ -532,6 +534,7 @@ export function useRefactorWorkflow({
         });
         setOutcome(nextOutcome);
         setSelection(defaultRefactorSelection(nextOutcome));
+        setApplied(null);
         setOrigin("ai");
         setDetail(false);
         setCancelled(cancelRef.current);
@@ -561,20 +564,28 @@ export function useRefactorWorkflow({
   async function pickRefactorOutcome(file: File) {
     setStatusMessage("");
     try {
-      const nextOutcome = parseRefactorOutcome(await file.text());
-      setOutcome(nextOutcome);
-      setSelection(defaultRefactorSelection(nextOutcome));
+      const card = parseRefactorCard(await file.text());
+      setOutcome(card.outcome);
+      setSelection(defaultRefactorSelection(card.outcome, card.applied));
+      setApplied(card.applied);
       setOrigin("import");
       setDetail(false);
     } catch (reason) {
-      const invalid = reason instanceof Error && reason.message === REFACTOR_IMPORT_INVALID;
-      setStatusMessage(invalid ? t("refactorImportInvalid") : String(reason));
+      const code = reason instanceof Error ? reason.message : "";
+      setStatusMessage(
+        code === REFACTOR_IMPORT_INVALID
+          ? t("refactorImportInvalid")
+          : code === REFACTOR_IMPORT_NEWER
+            ? t("refactorImportNewer")
+            : String(reason),
+      );
     }
   }
 
   function closeRefactor() {
     setOutcome(null);
     setSelection(null);
+    setApplied(null);
     setOrigin(null);
     setDetail(false);
     setFailures([]);
@@ -642,6 +653,7 @@ export function useRefactorWorkflow({
   return {
     outcome,
     selection,
+    applied,
     origin,
     detail,
     cancelled,

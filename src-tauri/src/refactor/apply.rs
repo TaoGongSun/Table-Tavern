@@ -1,3 +1,4 @@
+use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::types::{RefactorApplyResult, RefactorApplySummary, RefactorOutcome, RefactorSelection};
 use crate::data::{
@@ -170,6 +171,8 @@ pub fn apply(
     }
 
     let mut character_ids = Vec::new();
+    // outcome_index → 這次建的卡 id（沒勾成卡是 None）：落檔的套用映射，不靠 character_ids 順序
+    let mut character_map: Vec<Option<String>> = vec![None; outcome.characters.len()];
     let mut new_entries = 0usize;
     let mut deleted_entries: Vec<WorldbookEntry> = Vec::new();
     let mut player_assigned = false;
@@ -216,6 +219,7 @@ pub fn apply(
             state.player_card_id = Some(card.id.clone());
             player_assigned = true;
         }
+        character_map[index] = Some(card.id.clone());
         character_ids.push(card.id);
     }
 
@@ -392,9 +396,30 @@ pub fn apply(
         }
     }
 
-    // 套用成功後存一份完整產物，供玩家之後直接匯出重玩、不必重燒 AI 額度重新展開同一張卡；
-    // undo 與收據不動這個檔（零改動），二次套用直接覆寫。
-    data::write_refactor_outcome(root, world_id, &serde_json::to_string_pretty(outcome)?)?;
+    // 套用成功後存一份完整產物（封套＋套用映射），供玩家之後直接匯出重玩、不必重燒 AI 額度
+    // 重新展開同一張卡，含角色圖匯出也靠映射配回改過名的角色；undo 與收據不動這個檔，
+    // 二次套用整份覆寫。
+    let applied = RefactorApplied {
+        characters: character_map
+            .iter()
+            .enumerate()
+            .map(|(outcome_index, character_id)| RefactorAppliedCharacter {
+                outcome_index,
+                character_id: character_id.clone(),
+            })
+            .collect(),
+        player_index: player_index.filter(|_| player_assigned),
+        player_card_id: state.player_card_id.clone().filter(|_| player_assigned),
+    };
+    // 存檔失敗不回 Err：角色、條目、來源刪除到這裡都已成立，回 Err 會讓呼叫端跳過收據、
+    // 玩家撤銷不了。照常回 Ok（收據照記），summary 標 card_save_failed 讓前端明說存檔沒寫成；
+    // 原子寫入保證舊存檔原樣留著。
+    let saved = RefactorCardFile::new(outcome.clone(), Some(applied));
+    let card_save_failed = serde_json::to_string_pretty(&saved)
+        .map_err(Into::into)
+        .and_then(|json| data::write_refactor_outcome(root, world_id, &json))
+        .inspect_err(|error| log::warn!("refactor card save failed: {error}"))
+        .is_err();
 
     Ok(RefactorApplyResult {
         summary: RefactorApplySummary {
@@ -405,6 +430,7 @@ pub fn apply(
             interface_applied,
             mechanisms_applied,
             player_assigned,
+            card_save_failed,
         },
         character_ids,
         rewritten_entries,

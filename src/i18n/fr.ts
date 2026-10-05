@@ -248,6 +248,7 @@ export const fr: Record<MsgKey, string> = {
   refactorBtn: "Réorganiser",
   refactorBtnHint: "Appelle l'IA pour réorganiser\u00a0: valeurs calculées en local, réponses plus rapides, moins de quota, et les personnages deviennent de vraies fiches de personnage",
   refactorImportInvalid: "Ce fichier n'est pas une carte réorganisée",
+  refactorImportNewer: "Cette carte réorganisée a été exportée par une version plus récente de l'app. Mettez d'abord l'app à jour.",
   refactorImportBtn: "Importer carte réorganisée",
   refactorImportBtnHint: "Charge une carte réorganisée (JSON) exportée et choisis ce qui compte (sans consommer de quota)",
   refactorExportBtn: "Exporter",

@@ -38,6 +38,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
   const {
     outcome,
     selection,
+    applied,
     detail,
     cancelled,
     failures,
@@ -78,7 +79,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
       type="button"
       className={cancelled ? "btn" : "btn btn-primary"}
       disabled={busy}
-      onClick={() => void applyRefactor(defaultRefactorSelection(outcome))}
+      onClick={() => void applyRefactor(defaultRefactorSelection(outcome, applied))}
     >
       <SwapLabel
         labels={[t("refactorApplyAll"), t("turnQueuedWait")]}

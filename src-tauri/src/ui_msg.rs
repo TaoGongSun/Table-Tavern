@@ -176,6 +176,12 @@ pub enum UiMsg {
     RefactorSpanMissing {
         span: String,
     },
+    /// 重構卡封套／PNG 讀不懂或沒過驗證；detail 是技術細節原文。
+    RefactorCardInvalid {
+        detail: String,
+    },
+    /// 重構卡封套版本比這版 App 新。
+    RefactorCardNewer,
 
     // ── 更新器與版本庫
     UpdateNotChecked,

@@ -5,7 +5,6 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
-- [refactor-card-png-export](tasks/refactor-card-png-export.md) — 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基 — 下一步：排程待定；開工首包＝套用映射持久化（refactor-outcome.json 擴充 envelope＋舊格式相容讀取），再做 #2/#3 PNG 封裝。
 - [interface-scene-change](tasks/interface-scene-change.md) — 介面桌換幕：前情提要進介面正文槽、面板與狀態樹原樣續存 — 下一步：首發前必做（介面卡首發必含〔作者裁決 2026-10-04〕）；開工首步＝在西幻接管桌實測兩個【待實測】假設（換幕後檯面樹不變、前情提要落正文槽），結果回填底稿再分包
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 - [usage-cache-audit](tasks/usage-cache-audit.md) — 額度快取紀錄整理（哪些線真有快取、各狀態該掛什麼標籤）＋角色線抹寫丟線 — 下一步：2026-10-06 Grok 額度恢復後開工，先讓抹寫失敗原因落帳本，再四家通道實跑對帳。

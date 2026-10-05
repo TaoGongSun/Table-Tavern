@@ -233,6 +233,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorBtn: "重构",
   refactorBtnHint: "调用 AI 重构：数值本地计算、回复更快、额度更省，并将人物升格为真正的角色卡",
   refactorImportInvalid: "这个文件不是重构卡",
+  refactorImportNewer: "这张重构卡是较新版的 App 导出的，请先更新 App",
   refactorImportBtn: "导入重构卡",
   refactorImportBtnHint: "读一份导出过的重构卡 JSON，勾选要哪些再套用（不烧额度）",
   refactorExportBtn: "导出",

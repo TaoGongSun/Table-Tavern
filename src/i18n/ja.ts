@@ -248,6 +248,7 @@ export const ja: Record<MsgKey, string> = {
   refactorBtn: "再構成",
   refactorBtnHint: "AIを呼び出して再構成：数値はローカル計算、返信はより速く、額度も節約。人物は本物のキャラクターシートに昇格します",
   refactorImportInvalid: "このファイルは再構成カードではありません",
+  refactorImportNewer: "この再構成カードは新しいバージョンのアプリで書き出されました。先にアプリを更新してください。",
   refactorImportBtn: "再構成カードを読み込み",
   refactorImportBtnHint: "書き出した再構成カードのJSONを読み込み、採用する項目を選んで適用します（額度を使いません）",
   refactorExportBtn: "書き出し",

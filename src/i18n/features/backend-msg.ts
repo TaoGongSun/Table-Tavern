@@ -190,6 +190,8 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   card_nothing_to_import: {},
   png_invalid: { detail: "string" },
   card_png_no_data: {},
+  refactor_card_invalid: { detail: "string" },
+  refactor_card_newer: {},
   card_data_invalid: { detail: "string" },
   image_not_png: {},
   invalid_base64: {},

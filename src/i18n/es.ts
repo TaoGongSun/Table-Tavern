@@ -248,6 +248,7 @@ export const es: Record<MsgKey, string> = {
   refactorBtn: "Reorganizar",
   refactorBtnHint: "Llama a la IA para reorganizar: valores calculados en local, respuestas más rápidas, menos cuota, y los personajes ascienden a fichas de personaje reales",
   refactorImportInvalid: "Este archivo no es una carta reorganizada",
+  refactorImportNewer: "Esta carta reorganizada se exportó con una versión más reciente de la app. Actualiza la app primero.",
   refactorImportBtn: "Importar carta reorganizada",
   refactorImportBtnHint: "Carga una carta reorganizada (JSON) exportada y elige qué conservar (sin gastar cuota)",
   refactorExportBtn: "Exportar",

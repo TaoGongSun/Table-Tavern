@@ -85,10 +85,14 @@ fn statusbar_outcome_round_trips_through_export_apply_and_undo() {
         .iter()
         .any(|entry| entry.uid == source_uid));
     assert_eq!(
-        data::read_refactor_outcome(root.path(), &world_id)
-            .unwrap()
-            .unwrap(),
-        exported
+        parse_card(
+            &data::read_refactor_outcome(root.path(), &world_id)
+                .unwrap()
+                .unwrap()
+        )
+        .unwrap()
+        .outcome,
+        outcome
     );
 
     receipts::undo_last_import(

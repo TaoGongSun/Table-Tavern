@@ -249,6 +249,7 @@ export const de: Record<MsgKey, string> = {
   refactorBtnHint:
     "Ruft die KI zum Umbau: Werte werden lokal berechnet, Antworten schneller, weniger Kontingent – und Personen steigen zu echten Charakterkarten auf",
   refactorImportInvalid: "Diese Datei ist keine Reorganisationskarte",
+  refactorImportNewer: "Diese Reorganisationskarte wurde mit einer neueren App-Version exportiert. Bitte aktualisiere zuerst die App.",
   refactorImportBtn: "Reorganisationskarte laden",
   refactorImportBtnHint:
     "Lädt eine exportierte Reorganisationskarte (JSON) und wähle aus, was übernommen wird (verbraucht kein Kontingent)",

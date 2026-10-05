@@ -647,8 +647,12 @@ pub(crate) fn refactor_export_saved(
     let content = data::read_refactor_outcome(&root, &world_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "refactor-export-none".to_owned())?;
+    // 桌內落檔是封套（舊桌可能是裸產物）；對外一律輸出封套並去掉來源桌本地欄位
+    let card = refactor::parse_card(&content).map_err(|error| error.to_string())?;
+    let json =
+        serde_json::to_string_pretty(&card.for_export()).map_err(|error| error.to_string())?;
     // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
-    std::fs::write(&path, content).map_err(|error| error.to_string())
+    std::fs::write(&path, json).map_err(|error| error.to_string())
 }
 
 /// 按重構前的判定：未重構／已遊玩（擋）／沒有匯入原檔（擋）／可清回重跑（見 refactor/reset.rs）。
