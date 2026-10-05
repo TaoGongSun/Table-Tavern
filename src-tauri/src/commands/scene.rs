@@ -280,7 +280,8 @@ pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Re
         return Err(UiMsg::SceneEmptyCannotAdvance.into());
     }
 
-    let messages = transport::summary_messages(&events, &lang);
+    let takeover = data::is_interface_takeover(&root, &world_id, state.refactor_mode.as_deref());
+    let messages = transport::summary_messages(&events, &lang, takeover);
     let reply = stream_via_transport(
         &app,
         &config,
@@ -355,7 +356,8 @@ pub(crate) async fn regenerate_scene_summary(
         return Err(UiMsg::PreviousSceneEmpty.into());
     }
 
-    let messages = transport::summary_messages(&previous_events, &lang);
+    let takeover = data::is_interface_takeover(&root, &world_id, state.refactor_mode.as_deref());
+    let messages = transport::summary_messages(&previous_events, &lang, takeover);
     let reply = stream_via_transport(
         &app,
         &config,

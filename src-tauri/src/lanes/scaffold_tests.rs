@@ -374,7 +374,7 @@ pub(super) fn render_all(lang: &str) -> String {
     dump_messages(
         &mut out,
         "summary_messages",
-        &transport::summary_messages(&f.events, lang),
+        &transport::summary_messages(&f.events, lang, false),
     );
 
     for (title, message) in [
@@ -587,7 +587,7 @@ fn output_language_rule_stays_native_under_english_scaffold() {
         );
         assert!(system.starts_with("You are the GM") && system.contains(rule));
         assert!(chars_lane_system(&f.cards, None, &f.worldbook, lang).contains(rule));
-        let summary = &transport::summary_messages(&f.events, lang)[0].content;
+        let summary = &transport::summary_messages(&f.events, lang, false)[0].content;
         assert!(summary.contains("Title: <act name") && summary.ends_with(rule));
         assert!(!summary.contains("in English"));
     }

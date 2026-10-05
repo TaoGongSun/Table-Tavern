@@ -252,6 +252,171 @@ describe("pickCardShell", () => {
     });
   });
 
+  describe("前情提要樓（接管桌換幕摘要）", () => {
+    // 正文槽在前、面板在後：摘要若被當成結構，殼提前收尾，後方面板就消失
+    const panel = "<UI>{{本回合.正文}}<p>時間 {{World.Time}}</p></UI>";
+    const recap = (text: string, tree?: Record<string, unknown>): TranscriptEvent => ({
+      ...(tree ? gmAt(text, tree) : gm(text)),
+      marker: { type: "scene_summary" },
+    });
+    const noSlot = (text: string | undefined) => expect(text).not.toContain("TTRECAP");
+
+    it.each([
+      ["含卡片容器收尾標籤", "甲</UI>乙", "甲＜/UI＞乙"],
+      ["含三個反引號", "甲\n```\n乙", "甲\n```\n乙"],
+      ["本身就是卡片畫得出殼的原文（不走 direct-first）", "<UI>摘要自帶殼</UI>", "＜UI＞摘要自帶殼＜/UI＞"],
+    ])("%s：正文完整、面板值不變", (_label, text, shown) => {
+      const picked = pick(panel, { tableMode: "interface", events: [recap(text, { World: { Time: "9:30" } })] });
+      const body = `【前情提要】\n${shown}`;
+      expect(picked?.shell).toBe(`<!DOCTYPE html><body>${body}<p>時間 9:30</p></body>`);
+      expect(picked?.current).toEqual({ id: 0, name: "GM", text: `<UI>${body}<p>時間 9:30</p></UI>` });
+      expect(picked?.floors[0].message).toBe(picked?.current.text);
+      noSlot(picked?.shell);
+    });
+
+    it("換幕後續玩：前情提要是歷史樓，交給卡片的那一樓同樣換回本文", () => {
+      const history = [
+        recap("甲</UI>乙", { World: { Time: "9:30" } }),
+        player("走"),
+        gmAt("城門", { World: { Time: "10:00" } }),
+      ];
+      const picked = pick(panel, { tableMode: "interface", events: history });
+      expect(picked?.current.id).toBe(2);
+      expect(picked?.shell).toContain("時間 10:00");
+      expect(picked?.floors[0].message).toBe("<UI>【前情提要】\n甲＜/UI＞乙<p>時間 9:30</p></UI>");
+    });
+
+    it("缺快照：用目前檯面樹填骨架", () => {
+      const picked = pick(panel, {
+        tableMode: "interface",
+        events: [recap("甲</UI>乙")],
+        mvu: { liveTree: { World: { Time: "9:30" } }, userName: "" },
+      });
+      expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n甲＜/UI＞乙<p>時間 9:30</p></body>");
+    });
+
+    it("缺快照也沒有檯面樹：不拿摘要原文選殼", () => {
+      expect(pick(panel, { tableMode: "interface", events: [recap("<UI>摘要自帶殼</UI>")] })).toBeNull();
+      // 前面有畫得出殼的樓時照常用那一樓，摘要只當聊天樓文字
+      const picked = pick(panel, {
+        tableMode: "interface",
+        events: [gm("舊", "<UI>上回合畫面</UI>"), recap("<UI>摘要自帶殼</UI>")],
+      });
+      expect(picked?.current.id).toBe(0);
+      expect(picked?.floors[1].message).toBe("【前情提要】\n<UI>摘要自帶殼</UI>");
+    });
+
+    // 卡腳本若改掉佔位：用私用區佔位的舊做法會被這種腳本吃掉、正文消失
+    const stripping = (find: string): CardInterface => ({
+      ...card,
+      scripts: [{ ...card.scripts[0], name: "清字", find_regex: find, replace_string: "" }, ...card.scripts],
+    });
+
+    const lone = (find: string) =>
+      pick(panel, {
+        tableMode: "interface",
+        cardInterfaces: [stripping(find)],
+        events: [recap("摘要本文", { World: { Time: "9:30" } })],
+        nonce: () => "0123456789abcdef",
+      });
+
+    it("卡腳本清掉私用區字元：佔位是英數字不受影響，正文完整", () => {
+      expect(lone("/[\\uE000-\\uF8FF]/g")?.shell).toBe(
+        "<!DOCTYPE html><body>【前情提要】\n摘要本文<p>時間 9:30</p></body>",
+      );
+    });
+
+    it("卡腳本改掉佔位：這一樓不出殼，只有這一樓時不顯示介面（不交付漏正文的殼）", () => {
+      expect(lone("/[0-9a-f]{16}/g")).toBeNull();
+    });
+
+    it("佔位被改掉時改用較舊、畫得出殼的樓，前情提要仍完整交給卡片讀訊息", () => {
+      const picked = pick(panel, {
+        tableMode: "interface",
+        cardInterfaces: [stripping("/[0-9a-f]{16}/g")],
+        events: [gm("舊", "<UI>上回合畫面</UI>"), recap("摘要本文", { World: { Time: "9:30" } })],
+        nonce: () => "0123456789abcdef",
+      });
+      expect(picked?.current.id).toBe(0);
+      expect(picked?.shell).toContain("上回合畫面");
+      expect(picked?.floors[1].message).toBe("<UI>【前情提要】\n摘要本文<p>時間 9:30</p></UI>");
+    });
+
+    it("面板值剛好長得像佔位：換一組亂數，時間面板原樣、正文是摘要", () => {
+      const seq = ["aaa", "bbb"];
+      const picked = pick(panel, {
+        tableMode: "interface",
+        events: [recap("摘要本文", { World: { Time: "TTRECAPaaaN0E" } })],
+        nonce: () => seq.shift() ?? "ccc",
+      });
+      expect(seq).toEqual([]);
+      expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n摘要本文<p>時間 TTRECAPaaaN0E</p></body>");
+    });
+
+    it("別樓正文含另一樓的佔位字樣：不被灌入摘要；換進去的摘要本文也不再被替換", () => {
+      const seq = ["aaa", "bbb"];
+      const history = [
+        recap("第一份摘要 TTRECAPbbbN3E", { World: { Time: "清晨" } }),
+        player("走"),
+        gmAt("正文提到 TTRECAPaaaN3E", { World: { Time: "正午" } }),
+        recap("第二份摘要", { World: { Time: "黃昏" } }),
+      ];
+      const picked = pick(panel, { tableMode: "interface", events: history, nonce: () => seq.shift() ?? "ccc" });
+      expect(picked?.current.id).toBe(3);
+      expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n第二份摘要<p>時間 黃昏</p></body>");
+      expect(picked?.floors.map((floor) => floor.message)).toEqual([
+        "<UI>【前情提要】\n第一份摘要 TTRECAPbbbN3E<p>時間 清晨</p></UI>",
+        "走",
+        "<UI>正文提到 TTRECAPaaaN3E<p>時間 正午</p></UI>",
+        "<UI>【前情提要】\n第二份摘要<p>時間 黃昏</p></UI>",
+      ]);
+    });
+
+    it("多幕摘要樓（分岔幕）：各樓用自己的快照與正文，最新殼是最後一份摘要", () => {
+      const history = [
+        recap("甲幕摘要", { World: { Time: "清晨" } }),
+        player("走"),
+        gmAt("中段", { World: { Time: "正午" } }),
+        recap("乙幕摘要", { World: { Time: "黃昏" } }),
+      ];
+      const picked = pick(panel, { tableMode: "interface", events: history });
+      expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n乙幕摘要<p>時間 黃昏</p></body>");
+      expect(picked?.floors[0].message).toBe("<UI>【前情提要】\n甲幕摘要<p>時間 清晨</p></UI>");
+      expect(picked?.floors[2].message).toBe("<UI>中段<p>時間 正午</p></UI>");
+      picked?.floors.forEach((floor) => noSlot(floor.message));
+    });
+
+    it("正文槽副本拿掉成對強調與獨立分隔線，條列、單獨星號、算式、行內 --- 照留；聊天樓同一份、儲存原文不動", () => {
+      const text = [
+        "—",
+        "**地點與時間**",
+        "- 王城，__清晨__",
+        "---",
+        "* * *",
+        "- 傷害 3*4 = 12，評價 *普通",
+        "a --- b、**沒收尾",
+        "____",
+      ].join("\n");
+      const event = recap(text, { World: { Time: "9:30" } });
+      const picked = pick(panel, { tableMode: "interface", events: [event] });
+      const shown = ["地點與時間", "- 王城，清晨", "- 傷害 3*4 = 12，評價 *普通", "a --- b、**沒收尾"].join("\n");
+      expect(picked?.shell).toBe(`<!DOCTYPE html><body>【前情提要】\n${shown}<p>時間 9:30</p></body>`);
+      expect(picked?.floors[0].message).toBe(`<UI>【前情提要】\n${shown}<p>時間 9:30</p></UI>`);
+      expect(event.text).toBe(text);
+    });
+
+    it("CRLF 換行的摘要：獨立分隔線照樣拿掉，其餘行與 \\r 原樣", () => {
+      const event = recap("—\r\n**甲**\r\n---\r\n- 乙\r\n", { World: { Time: "9:30" } });
+      const picked = pick(panel, { tableMode: "interface", events: [event] });
+      expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n甲\r\n- 乙\r\n<p>時間 9:30</p></body>");
+    });
+
+    it("沒有骨架的桌：前情提要照舊走原文", () => {
+      const picked = pick(null, { events: [recap("<UI>摘要自帶殼</UI>")] });
+      expect(picked?.shell).toContain("摘要自帶殼");
+    });
+  });
+
   describe("樓號", () => {
     it("玩家／GM／system 混合：樓號是原始位置，gm_only 不算一樓", () => {
       const mixed = [
