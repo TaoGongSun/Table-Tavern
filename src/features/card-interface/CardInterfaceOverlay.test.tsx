@@ -37,7 +37,7 @@ describe("CardInterfaceOverlay chat push", () => {
     }
     await act(async () =>
       root?.render(
-        <CardInterfaceOverlay generatingName={null} shellDoc="<html></html>" shellKey={shellKey} chat={chat} onClose={() => {}} />,
+        <CardInterfaceOverlay generatingName={null} shellDoc="<html></html>" shellKey={shellKey} chat={chat} onAdvanceScene={() => {}} advanceDisabled={false} onClose={() => {}} />,
       ),
     );
   }
@@ -92,5 +92,32 @@ describe("CardInterfaceOverlay chat push", () => {
       frame.dispatchEvent(new Event("load"));
     });
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("換幕鈕照 advanceDisabled 停用，可用時點一下就呼叫 onAdvanceScene", async () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    const onAdvanceScene = vi.fn();
+    const mount = (advanceDisabled: boolean) =>
+      act(async () =>
+        root?.render(
+          <CardInterfaceOverlay
+            generatingName={null}
+            shellDoc="<html></html>"
+            shellKey="k1"
+            chat={chatA}
+            onAdvanceScene={onAdvanceScene}
+            advanceDisabled={advanceDisabled}
+            onClose={() => {}}
+          />,
+        ),
+      );
+    await mount(true);
+    const button = [...host.querySelectorAll("button")].find((b) => b.textContent === "換幕")!;
+    expect(button.disabled).toBe(true);
+    await mount(false);
+    await act(async () => button.click());
+    expect(onAdvanceScene).toHaveBeenCalledTimes(1);
   });
 });

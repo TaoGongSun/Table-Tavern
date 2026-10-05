@@ -1,8 +1,8 @@
-// 卡片自帶介面的覆蓋層：打字狀態列、關閉鈕與那支沙盒 iframe。純 markup——
+// 卡片自帶介面的覆蓋層：打字狀態列、換幕與關閉鈕、那支沙盒 iframe。純 markup——
 // 「要不要掛上去」的條件留在 App（只在遊玩畫面出現），殼內容與生成狀態各由自己的 controller 擁有。
 import { useCallback, useEffect, useRef } from "react";
 import { t } from "../../i18n";
-import { IconClose } from "../../shared/ui/icons";
+import { IconClose, IconSceneAdvance } from "../../shared/ui/icons";
 import { type CardChat } from "./card-chat-shim";
 import { type CardMvu } from "./mvu/card-mvu-shim";
 
@@ -17,6 +17,10 @@ interface CardInterfaceOverlayProps {
   chat: CardChat | null;
   /** MVU 變數快照；與讀訊息快照同一則推送 */
   mvu?: CardMvu | null;
+  /** 換幕：與標題列那顆同一個動作與守門；介面整面蓋住標題列，玩家不必先關介面 */
+  onAdvanceScene: () => void;
+  /** 與標題列換幕鈕同一條件（生成中、沒有紀錄、桌面鎖住） */
+  advanceDisabled: boolean;
   onClose: () => void;
 }
 
@@ -26,6 +30,8 @@ export function CardInterfaceOverlay({
   shellKey,
   chat,
   mvu = null,
+  onAdvanceScene,
+  advanceDisabled,
   onClose,
 }: CardInterfaceOverlayProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -55,6 +61,16 @@ export function CardInterfaceOverlay({
         </div>
       )}
       <div className="card-interface-toolbar">
+        <button
+          type="button"
+          className="btn btn-shrink"
+          title={t("sceneAdvanceHint")}
+          disabled={advanceDisabled}
+          onClick={() => onAdvanceScene()}
+        >
+          <IconSceneAdvance />
+          <span className="btn-label">{t("sceneAdvance")}</span>
+        </button>
         <button
           type="button"
           className="btn btn-ghost btn-icon card-interface-close"

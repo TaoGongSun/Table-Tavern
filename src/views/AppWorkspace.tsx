@@ -7,7 +7,7 @@ import type { CardInterfaceController } from "../features/card-interface/useCard
 import type { CharacterController } from "../features/characters/useCharacterController";
 import type { ChatController } from "../features/play/useChatController";
 import type { ImportController } from "../features/import/useImportController";
-import type { SceneActions } from "../features/play/useSceneActions";
+import { advanceThenReopen, type SceneActions } from "../features/play/useSceneActions";
 import type { TableStateController } from "../features/table-state/useTableStateController";
 import {
   GM_TARGET,
@@ -394,6 +394,8 @@ export function AppWorkspace({
           shellKey={cardInterface.shellKey}
           chat={cardInterface.chat}
           mvu={cardInterface.mvu}
+          onAdvanceScene={() => void advanceThenReopen(advanceScene, cardInterface.open)}
+          advanceDisabled={chat.busy || tableOpBusy || chat.events.length === 0}
           onClose={() => cardInterface.close()}
         />
       )}
