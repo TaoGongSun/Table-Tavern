@@ -322,8 +322,9 @@ pub fn read_refactor_outcome(root: &Path, world_id: &str) -> DataResult<Option<S
     Ok(Some(fs::read_to_string(path)?))
 }
 
+/// 原子寫：二次套用覆寫途中失敗，舊存檔逐位元不變。
 pub fn write_refactor_outcome(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
-    super::world_file::commit_world_write(
+    super::world_file::commit_world_write_atomic(
         &refactor_outcome_path(root, world_id)?,
         content.as_bytes(),
     )?;

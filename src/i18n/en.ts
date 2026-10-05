@@ -259,6 +259,7 @@ export const en: Record<MsgKey, string> = {
   refactorBtn: "Refactor",
   refactorBtnHint: "Calls the AI to refactor: stats computed locally, faster replies, less quota use, and people promoted into real character cards",
   refactorImportInvalid: "This file isn't a refactor card",
+  refactorImportNewer: "This refactor card was exported by a newer version of the app. Please update the app first.",
   refactorImportBtn: "Import refactor card",
   refactorImportBtnHint: "Load an exported refactor card JSON and pick what to keep (free, no quota used)",
   refactorExportBtn: "Export",

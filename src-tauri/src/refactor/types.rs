@@ -110,6 +110,8 @@ pub struct RefactorApplySummary {
     pub interface_applied: bool,
     pub mechanisms_applied: usize,
     pub player_assigned: bool,
+    /// 套用都成立了，但桌內重構卡存檔（refactor-outcome.json）沒寫成：之後從這桌匯出的會是舊存檔。
+    pub card_save_failed: bool,
 }
 
 /// apply() 的完整結果：summary 給前端，其餘給呼叫端組收據（receipts::record_refactor_apply）。

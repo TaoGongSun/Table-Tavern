@@ -3,6 +3,7 @@
 // 型別對照後端 src-tauri/src/refactor.rs 前段的 RefactorOutcome／RefactorSelection 契約。
 import { composeFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { classifyPlaceholder } from "./refactor-shell";
+import type { RefactorApplied } from "./refactor-card";
 
 export interface RefactorCharacter {
   name: string;
@@ -597,6 +598,11 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
   } catch {
     throw invalid();
   }
+  return parseRefactorOutcomeValue(raw);
+}
+
+/** 已 JSON.parse 過的值解析成產物（重構卡封套的 outcome 欄也走這裡），規則同上。 */
+export function parseRefactorOutcomeValue(raw: unknown): RefactorOutcome {
   if (!isRecord(raw)) throw invalid();
   const outcome: RefactorOutcome = {
     characters: readArray(raw, "characters").map(parseCharacter),
@@ -628,8 +634,23 @@ export function parseRefactorOutcome(text: string): RefactorOutcome {
 }
 
 /** 產物剛讀進來的預設勾選：全勾——玩家看到的第一印象是「照單全收」，要拿掉自己取消；
- * 盤點階段被標記疑似玩家的那位，預設就指定為玩家卡（玩家勾選時順手確認，見要點 4）。 */
-export function defaultRefactorSelection(outcome: RefactorOutcome): RefactorSelection {
+ * 盤點階段被標記疑似玩家的那位，預設就指定為玩家卡（玩家勾選時順手確認，見要點 4）。
+ * 重構卡帶來源桌的套用映射（applied）時，角色與玩家改照來源桌的選擇重現：當初建了卡的
+ * 那幾位勾成卡、玩家照邏輯 player_index；其餘區塊照舊全勾。 */
+export function defaultRefactorSelection(
+  outcome: RefactorOutcome,
+  applied: RefactorApplied | null = null,
+): RefactorSelection {
+  if (applied) {
+    return {
+      ...defaultRefactorSelection(outcome),
+      character_indices: applied.characters
+        .filter((item) => item.character_id !== null)
+        .map((item) => item.outcome_index)
+        .sort((a, b) => a - b),
+      player_index: applied.player_index,
+    };
+  }
   const playerIndex = outcome.characters.findIndex((character) => character.suspected_player);
   return {
     character_indices: outcome.characters.map((_, index) => index),

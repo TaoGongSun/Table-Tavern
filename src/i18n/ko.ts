@@ -248,6 +248,7 @@ export const ko: Record<MsgKey, string> = {
   refactorBtn: "재구성",
   refactorBtnHint: "AI를 호출해 재구성: 수치는 로컬 계산, 응답은 더 빠르게, 할당량은 절약하고 인물은 진짜 캐릭터 카드로 승격합니다",
   refactorImportInvalid: "이 파일은 재구성 카드가 아닙니다",
+  refactorImportNewer: "이 재구성 카드는 더 새로운 버전의 앱에서 내보낸 것입니다. 먼저 앱을 업데이트하세요.",
   refactorImportBtn: "재구성 카드 가져오기",
   refactorImportBtnHint: "내보낸 재구성 카드 JSON을 불러와 원하는 항목을 선택한 뒤 적용합니다 (할당량을 쓰지 않음)",
   refactorExportBtn: "내보내기",

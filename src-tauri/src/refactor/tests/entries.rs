@@ -244,8 +244,9 @@ fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
     let saved = data::read_refactor_outcome(root.path(), &world_id)
         .unwrap()
         .unwrap();
-    let round_tripped: RefactorOutcome = serde_json::from_str(&saved).unwrap();
-    assert_eq!(round_tripped, outcome);
+    let card = parse_card(&saved).unwrap();
+    assert_eq!(card.outcome, outcome);
+    assert!(card.applied.is_some());
 }
 /// 匯出重構產物包 (b)：apply 後跑既有 undo 流程，產物檔仍然存在——undo 與收據不動這個檔
 /// （零改動）。

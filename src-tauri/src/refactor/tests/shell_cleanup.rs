@@ -559,7 +559,7 @@ fn saved_outcome_reimports_to_the_same_result() {
     let saved = data::read_refactor_outcome(root.path(), &world_id)
         .unwrap()
         .unwrap();
-    assert_eq!(saved, serde_json::to_string_pretty(&noshell).unwrap());
+    assert_eq!(parse_card(&saved).unwrap().outcome, noshell);
     receipts::undo_last_import(
         root.path(),
         &world_id,
@@ -573,7 +573,7 @@ fn saved_outcome_reimports_to_the_same_result() {
         saved
     );
 
-    let reimported: RefactorOutcome = serde_json::from_str(&saved).unwrap();
+    let reimported = parse_card(&saved).unwrap().outcome;
     let fresh = data::create_world(root.path(), "新桌").unwrap();
     apply_recorded(root.path(), &fresh, &reimported, &selection(true));
     assert_eq!(shell(root.path(), &fresh), None);

@@ -249,6 +249,7 @@ export const zh = {
   refactorBtn: "重構",
   refactorBtnHint: "呼叫 AI 重構：數值本地計算、回覆更快、額度更省，並將人物升格成真正的角色卡",
   refactorImportInvalid: "這個檔案不是重構卡",
+  refactorImportNewer: "這張重構卡是較新版的 App 匯出的，請先更新 App",
   refactorImportBtn: "匯入重構卡",
   refactorImportBtnHint: "讀一份匯出過的重構卡 JSON，勾選要哪些再套用（不燒額度）",
   refactorExportBtn: "匯出",
