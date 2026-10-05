@@ -7,5 +7,7 @@
 2. **生圖模型改下拉**：設定頁「生圖模型」目前手打 OpenRouter 模型 id，容易打錯。改成從 OpenRouter 官方模型清單（`GET /api/v1/models?output_modalities=image`）篩出能出圖的模型供選，預設仍為 `DEFAULT_IMAGE_MODEL`。
 3. **免費 key 實測**：只測一件事——沒儲值的 OpenRouter 免費 key 打 `/images` 能不能出圖。不能的話，補一個「免費 key 不能生圖」的專屬錯誤題型（UiMsg＋各語系），不要落到通用 HTTP 錯誤〔作者裁決 2026-10-06〕。
 
+**不做原廠生圖 key**：本案不加進階設定接原廠 key；持 OpenAI／Google 等原廠 key 的玩家走 OpenRouter BYOK，NovelAI 類吃到飽訂閱歸 [vn-cg-generation](vn-cg-generation.md)〔作者裁決 2026-10-06〕。
+
 ## Next action
 先跑第 3 項實測（測試通道、免費 key），結果決定要不要加錯誤題型；再做 1、2。
