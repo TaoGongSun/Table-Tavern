@@ -1,4 +1,5 @@
 //! refactor-noshell-panel：套用後沒有新殼就清掉桌上的殼、收據記原殼與玩法標記、undo 寫回。
+use super::super::card_file::parse_card;
 use super::super::test_support::*;
 use super::super::*;
 use crate::data::{self, FieldKind, FieldRule, InjectLevel, UpdateMode};

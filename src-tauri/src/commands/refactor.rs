@@ -6,6 +6,7 @@ use crate::{
     config_root, data, data_root, import, inflight, lanes, receipts, refactor, refactor_ai,
     refactor_assemble, transport,
 };
+use std::path::Path;
 
 /// AI 卡重構中止時的錯誤字串 sentinel：前端靠它分流「玩家主動取消」與其他失敗，一字不差。
 pub(crate) const REFACTOR_ABORTED: &str = "refactor-aborted";
@@ -621,38 +622,37 @@ pub(crate) fn refactor_table_mode(
     refactor::normalize_stored_mode(stored)
 }
 
-/// AI 卡重構匯出（結果卡摘要頁用）：產物來自前端 state（就算還沒套用過也能匯出），
-/// 直接序列化寫到玩家選的路徑，供之後用「匯入重構產物」讀回重玩。
+/// AI 卡重構匯出（結果卡摘要頁用）：產物來自前端 state（就算還沒套用過也能匯出）。
+/// 副檔名 .json 寫封套，其餘寫重構卡 PNG（底圖取這桌的 GM 圖）；回傳寫出的位元組數。
 #[tauri::command]
 pub(crate) fn refactor_export_outcome(
+    app: tauri::AppHandle,
+    world_id: String,
     outcome: refactor::RefactorOutcome,
     path: String,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     crate::data::refuse_if_updating()?;
-    let json = serde_json::to_string_pretty(&outcome).map_err(|error| error.to_string())?;
-    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
-    std::fs::write(&path, json).map_err(|error| error.to_string())
+    refactor::export_outcome(&data_root(&app)?, &world_id, &outcome, Path::new(&path))
+        .map_err(|error| error.to_string())
 }
 
 /// AI 卡重構匯出（世界書工具列用）：讀 apply() 套用成功時桌內落下的存檔；沒有就回固定錯誤
-/// 字串（前端比對 "refactor-export-none" 顯示對應提示）。
+/// 字串（前端比對 "refactor-export-none" 顯示對應提示）。with_images＝含角色圖版（只收 PNG）。
 #[tauri::command]
 pub(crate) fn refactor_export_saved(
     app: tauri::AppHandle,
     world_id: String,
     path: String,
-) -> Result<(), String> {
+    with_images: Option<bool>,
+) -> Result<u64, String> {
     crate::data::refuse_if_updating()?;
-    let root = data_root(&app)?;
-    let content = data::read_refactor_outcome(&root, &world_id)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "refactor-export-none".to_owned())?;
-    // 桌內落檔是封套（舊桌可能是裸產物）；對外一律輸出封套並去掉來源桌本地欄位
-    let card = refactor::parse_card(&content).map_err(|error| error.to_string())?;
-    let json =
-        serde_json::to_string_pretty(&card.for_export()).map_err(|error| error.to_string())?;
-    // world-write-exempt: 寫到玩家選定的匯出路徑，不是桌目錄
-    std::fs::write(&path, json).map_err(|error| error.to_string())
+    refactor::export_saved(
+        &data_root(&app)?,
+        &world_id,
+        Path::new(&path),
+        with_images.unwrap_or(false),
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// 按重構前的判定：未重構／已遊玩（擋）／沒有匯入原檔（擋）／可清回重跑（見 refactor/reset.rs）。

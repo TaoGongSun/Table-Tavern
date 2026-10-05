@@ -1,5 +1,6 @@
 //! refactor-statusbar-skeleton：狀態欄型（playable: no）的新產物走「匯出→匯入→套用→undo」整條路，
 //! 來源條目、殼、增量協定、卡專屬規則與指引都要套上，undo 後全部回到套用前。
+use super::super::card_file::parse_card;
 use super::super::test_support::*;
 use super::super::*;
 use crate::data::{self, FieldKind, FieldRule, InjectLevel, UpdateMode};

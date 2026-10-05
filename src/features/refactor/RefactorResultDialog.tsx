@@ -82,7 +82,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
       onClick={() => void applyRefactor(defaultRefactorSelection(outcome, applied))}
     >
       <SwapLabel
-        labels={[t("refactorApplyAll"), t("turnQueuedWait")]}
+        labels={[t(applied ? "refactorApplyFromSource" : "refactorApplyAll"), t("turnQueuedWait")]}
         current={waitingForTurn ? 1 : 0}
       />
     </button>

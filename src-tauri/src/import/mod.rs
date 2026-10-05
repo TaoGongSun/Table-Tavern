@@ -1,11 +1,12 @@
 mod card;
-mod card_io;
+pub(crate) mod card_io;
 mod ejs;
 mod export;
 mod files;
 mod images;
 mod interface;
 mod mechanism;
+pub(crate) mod png_image;
 mod source;
 
 #[cfg(test)]

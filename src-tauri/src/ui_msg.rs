@@ -182,6 +182,31 @@ pub enum UiMsg {
     },
     /// 重構卡封套版本比這版 App 新。
     RefactorCardNewer,
+    /// 拿 ST 角色卡（或一般圖片）當重構卡開。
+    RefactorCardIsCharacter,
+    /// 重構卡附的角色圖已不在暫存（開了別張卡或已關閉）：要重新開檔。
+    RefactorAssetsGone,
+    /// 含角色圖的重構卡只能存成 PNG。
+    RefactorExportImagesNeedPng,
+    /// 桌內存檔是舊版、沒有套用映射，附不了角色圖。
+    RefactorExportNoMap,
+    /// 某位角色的圖過不了驗證或超過上限；detail 是技術細節原文。
+    RefactorExportImageInvalid {
+        name: String,
+        detail: String,
+    },
+    /// 角色圖總量超過單張卡的上限。
+    RefactorExportTooLarge,
+    /// 重構卡只能存成 .png 或 .json。
+    RefactorExportNeedPngOrJson,
+    /// 套用中途失敗且沒能整個退回：已寫入的部分留著、這次的收據也在（可手動撤銷）；error 是原本的錯誤。
+    RefactorApplyPartial {
+        error: String,
+    },
+    /// 套用中途失敗、連這次的收據都沒寫成：已寫入的部分留著，沒有可撤銷的紀錄。
+    RefactorApplyPartialNoReceipt {
+        error: String,
+    },
 
     // ── 更新器與版本庫
     UpdateNotChecked,

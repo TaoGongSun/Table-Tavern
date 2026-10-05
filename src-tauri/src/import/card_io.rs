@@ -2,7 +2,7 @@ use crate::data::DataResult;
 use crate::ui_msg::UiMsg;
 use serde_json::Value;
 
-pub(super) const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+pub(crate) const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 pub(super) fn string_field<'a>(data: &'a Value, field: &str) -> Option<&'a str> {
     data.get(field).and_then(Value::as_str)
@@ -87,7 +87,7 @@ fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
     Ok(output)
 }
 
-pub(super) fn base64_encode(bytes: &[u8]) -> String {
+pub(crate) fn base64_encode(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for group in bytes.chunks(3) {
@@ -121,7 +121,7 @@ fn base64_value(byte: u8) -> Option<u8> {
     }
 }
 
-pub(super) fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+pub(crate) fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
     let mut chunk = (data.len() as u32).to_be_bytes().to_vec();
     chunk.extend_from_slice(kind);
     chunk.extend_from_slice(data);
@@ -129,7 +129,7 @@ pub(super) fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
     chunk
 }
 
-pub(super) fn crc32(bytes: &[u8]) -> u32 {
+pub(crate) fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xffff_ffffu32;
     for byte in bytes {
         crc ^= *byte as u32;
@@ -142,6 +142,22 @@ pub(super) fn crc32(bytes: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+/// 1×1 透明 PNG：匯出找不到可用底圖時的封面（卡資料在 chunk 裡，圖只是外觀）。
+pub(crate) fn blank_png() -> Vec<u8> {
+    let mut png = PNG_MAGIC.to_vec();
+    let mut header = 1u32.to_be_bytes().to_vec();
+    header.extend_from_slice(&1u32.to_be_bytes());
+    header.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA
+    png.extend_from_slice(&png_chunk(b"IHDR", &header));
+    // zlib（stored deflate）：一列 filter 0 + 一個全透明像素
+    const PIXEL: &[u8] = &[
+        0x78, 0x01, 0x01, 0x05, 0x00, 0xfa, 0xff, 0, 0, 0, 0, 0, 0x00, 0x05, 0x00, 0x01,
+    ];
+    png.extend_from_slice(&png_chunk(b"IDAT", PIXEL));
+    png.extend_from_slice(&png_chunk(b"IEND", &[]));
+    png
 }
 
 #[cfg(test)]
