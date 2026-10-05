@@ -59,10 +59,25 @@ interface UseRefactorWorkflowOptions {
   isTurnRunning: () => boolean;
 }
 
-// 重構卡存檔對話框預設檔名：桌名可能含檔名非法字元，一律代換成 -；空桌名就不接前綴，只用在地化字尾
-function refactorCardFileName(tableName: string): string {
+// 重構卡存檔對話框預設檔名：桌名可能含檔名非法字元，一律代換成 -；空桌名就不接前綴，只用在地化字尾。
+// 尾碼只給玩家分辨三階（不含圖／含角色圖），格式判定只認檔內 chunk。
+function refactorCardFileName(tableName: string, withImages: boolean): string {
   const safe = tableName.replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, "-");
-  return `${safe ? `${safe}-` : ""}${t("refactorExportFileName")}.json`;
+  const suffix = t(withImages ? "refactorExportFileNameImages" : "refactorExportFileName");
+  return `${safe ? `${safe}-` : ""}${suffix}.png`;
+}
+
+// 存檔對話框：PNG 為預設；含角色圖只給 PNG（JSON 放不了圖，後端也會拒）
+function refactorCardFilters(withImages: boolean) {
+  const png = { name: t("refactorOutcomePng"), extensions: ["png"] };
+  return withImages ? [png] : [png, { name: t("refactorOutcomeJson"), extensions: ["json"] }];
+}
+
+// 匯出完成訊息帶檔案大小：玩家互傳時要知道塞不塞得進聊天軟體的附件上限
+function exportedMessage(bytes: number): string {
+  const size =
+    bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return t("refactorExportDone", { size });
 }
 
 function refactorApplyMessage(summary: RefactorApplySummary) {
@@ -73,6 +88,7 @@ function refactorApplyMessage(summary: RefactorApplySummary) {
     summary.deleted_entries > 0 && t("refactorApplyDoneDeleted", { n: summary.deleted_entries }),
     summary.interface_applied && t("refactorApplyDoneInterface"),
     summary.mechanisms_applied > 0 && t("refactorApplyDoneMechanisms", { n: summary.mechanisms_applied }),
+    summary.card_save_failed && t("refactorApplySaveFailed"),
   ]
     .filter(Boolean)
     .join("・");
@@ -120,15 +136,16 @@ export function useRefactorWorkflow({
   }, []);
 
   // 匯出這桌先前套用過的重構產物（apply() 落檔），重玩同一張卡不必再燒 AI 額度重新展開。
-  async function exportSavedRefactorOutcome() {
+  async function exportSavedRefactorOutcome(withImages = false) {
     setStatusMessage("");
     try {
       const path = await saveDialog({
-        defaultPath: refactorCardFileName(worldName),
-        filters: [{ name: t("refactorOutcomeJson"), extensions: ["json"] }],
+        defaultPath: refactorCardFileName(worldName, withImages),
+        filters: refactorCardFilters(withImages),
       });
       if (!path) return;
-      await invoke("refactor_export_saved", { worldId: world, path });
+      const bytes = await invoke<number>("refactor_export_saved", { worldId: world, path, withImages });
+      setStatusMessage(exportedMessage(bytes));
       await revealItemInDir(path);
     } catch (reason) {
       setStatusMessage(
@@ -639,11 +656,12 @@ export function useRefactorWorkflow({
     setStatusMessage("");
     try {
       const path = await saveDialog({
-        defaultPath: refactorCardFileName(worldName),
-        filters: [{ name: t("refactorOutcomeJson"), extensions: ["json"] }],
+        defaultPath: refactorCardFileName(worldName, false),
+        filters: refactorCardFilters(false),
       });
       if (!path) return;
-      await invoke("refactor_export_outcome", { outcome, path });
+      const bytes = await invoke<number>("refactor_export_outcome", { worldId: world, outcome, path });
+      setStatusMessage(exportedMessage(bytes));
       await revealItemInDir(path);
     } catch (reason) {
       setStatusMessage(String(reason));

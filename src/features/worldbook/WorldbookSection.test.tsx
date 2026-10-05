@@ -92,6 +92,7 @@ describe("WorldbookSection", () => {
       t("worldbookExport"),
       t("refactorImportBtn"),
       t("refactorExportSavedBtn"),
+      t("refactorExportSavedImagesBtn"),
     ]);
     expect(menuItems().some((item) => item.getAttribute("aria-disabled") === "true")).toBe(false);
     expect(refactorButton().disabled).toBe(false);
@@ -104,7 +105,11 @@ describe("WorldbookSection", () => {
     const disabled = menuItems()
       .filter((item) => item.getAttribute("aria-disabled") === "true")
       .map((item) => item.textContent);
-    expect(disabled).toEqual([t("refactorImportBtn"), t("refactorExportSavedBtn")]);
+    expect(disabled).toEqual([
+      t("refactorImportBtn"),
+      t("refactorExportSavedBtn"),
+      t("refactorExportSavedImagesBtn"),
+    ]);
   });
 
   it("deletes an entry from its row menu through deleteEntry", () => {

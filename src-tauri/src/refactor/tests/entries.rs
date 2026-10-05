@@ -1,3 +1,4 @@
+use super::super::card_file::parse_card;
 use super::super::test_support::*;
 use super::super::*;
 use crate::data::{self, FieldRule, Visibility};

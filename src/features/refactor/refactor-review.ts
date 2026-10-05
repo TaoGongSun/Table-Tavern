@@ -213,6 +213,8 @@ export interface RefactorApplySummary {
   interface_applied: boolean;
   mechanisms_applied: number;
   player_assigned: boolean;
+  /** 套用都成立了，但桌內重構卡存檔沒寫成 */
+  card_save_failed: boolean;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

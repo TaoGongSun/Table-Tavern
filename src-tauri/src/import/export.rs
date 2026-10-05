@@ -1,5 +1,5 @@
 use super::card::PUBLIC_SECTIONS;
-use super::card_io::{base64_encode, png_chunk, png_invalid, PNG_MAGIC};
+use super::card_io::{base64_encode, blank_png, png_chunk, png_invalid, PNG_MAGIC};
 use super::mechanism::table_tavern_extension;
 use crate::data::{self, CharacterCard, DataResult};
 use crate::ui_msg::UiMsg;
@@ -198,21 +198,6 @@ fn export_base_png(root: &Path, world_id: &str, character_id: &str) -> DataResul
         }
     }
     Ok(blank_png())
-}
-
-fn blank_png() -> Vec<u8> {
-    let mut png = PNG_MAGIC.to_vec();
-    let mut header = 1u32.to_be_bytes().to_vec();
-    header.extend_from_slice(&1u32.to_be_bytes());
-    header.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA
-    png.extend_from_slice(&png_chunk(b"IHDR", &header));
-    // zlib（stored deflate）：一列 filter 0 + 一個全透明像素
-    const PIXEL: &[u8] = &[
-        0x78, 0x01, 0x01, 0x05, 0x00, 0xfa, 0xff, 0, 0, 0, 0, 0, 0x00, 0x05, 0x00, 0x01,
-    ];
-    png.extend_from_slice(&png_chunk(b"IDAT", PIXEL));
-    png.extend_from_slice(&png_chunk(b"IEND", &[]));
-    png
 }
 
 /// 把角色卡 JSON 寫成 tEXt chara chunk 放進 IEND 前；底圖原有的卡片 chunk（含 V3 的 ccv3）

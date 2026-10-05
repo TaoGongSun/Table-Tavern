@@ -13,7 +13,7 @@ interface WorldbookSectionProps {
   refactorInputRef: RefObject<HTMLInputElement | null>;
   onRunRefactor: () => void | Promise<void>;
   onPickRefactorOutcome: (file: File) => void | Promise<void>;
-  onExportSavedRefactorOutcome: () => void | Promise<void>;
+  onExportSavedRefactorOutcome: (withImages?: boolean) => void | Promise<void>;
 }
 
 export function WorldbookSection({
@@ -95,7 +95,13 @@ export function WorldbookSection({
               key: "export-refactor",
               label: t("refactorExportSavedBtn"),
               disabled: refactorRunning,
-              onSelect: () => void onExportSavedRefactorOutcome(),
+              onSelect: () => void onExportSavedRefactorOutcome(false),
+            },
+            {
+              key: "export-refactor-images",
+              label: t("refactorExportSavedImagesBtn"),
+              disabled: refactorRunning,
+              onSelect: () => void onExportSavedRefactorOutcome(true),
             },
           ]}
         />
