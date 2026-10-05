@@ -47,6 +47,7 @@ thread_local! {
     static LEN_FAILS: Cell<u32> = const { Cell::new(0) };
     static REMOVE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
     static WRITE_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
+    static WRITE_PARTIAL_SKIP: Cell<u32> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -164,6 +165,12 @@ impl WriteFailGuard {
         WRITE_FAIL_MATCH.with(|cell| *cell.borrow_mut() = Some(suffix.to_owned()));
         Self::partial(times)
     }
+
+    /// 同 partial_ending，但先放行 skip 次符合的寫入（打在流程中第 N 支同類檔）。
+    pub(crate) fn partial_ending_after(suffix: &str, skip: u32, times: u32) -> Self {
+        WRITE_PARTIAL_SKIP.with(|cell| cell.set(skip));
+        Self::partial_ending(suffix, times)
+    }
 }
 
 #[cfg(test)]
@@ -171,6 +178,7 @@ impl Drop for WriteFailGuard {
     fn drop(&mut self) {
         WRITE_PARTIAL_FAILS.with(|cell| cell.set(0));
         WRITE_FAIL_MATCH.with(|cell| *cell.borrow_mut() = None);
+        WRITE_PARTIAL_SKIP.with(|cell| cell.set(0));
     }
 }
 
@@ -184,6 +192,13 @@ fn injected_partial_write(path: &Path) -> bool {
         });
         if !targeted {
             return false;
+        }
+        if WRITE_PARTIAL_FAILS.with(Cell::get) > 0 {
+            let skip = WRITE_PARTIAL_SKIP.with(Cell::get);
+            if skip > 0 {
+                WRITE_PARTIAL_SKIP.with(|cell| cell.set(skip - 1));
+                return false;
+            }
         }
         WRITE_PARTIAL_FAILS.with(|cell| {
             let left = cell.get();

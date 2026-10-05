@@ -60,6 +60,7 @@ import { SmartFreeNewModelBanner } from "./features/ai-connection/SmartFreeNewMo
 import { SmartFreeNoticeToast } from "./features/ai-connection/SmartFreeNoticeToast";
 import { ErrorNote } from "./shared/ui/atoms";
 import "./App.css";
+import type { PendingRefactorCard } from "./features/refactor/refactor-card";
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
 interface UndoReport {
@@ -120,6 +121,8 @@ function App() {
   const [chattedSinceImport, setChattedSinceImport] = useState(false);
   // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
   const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
+  // 陣容欄丟進來的重構卡 PNG：開世界設定後交給重構流程，換桌作廢
+  const [pendingRefactorCard, setPendingRefactorCard] = useState<PendingRefactorCard | null>(null);
   // 生成對話框只留開關在 App：草稿與三支生成流程都在 GenerateTableDialog 自己身上
   const [genTableOpen, setGenTableOpen] = useState(false);
 
@@ -369,7 +372,18 @@ function App() {
     refreshState: tableState.refresh,
     isTurnRunning: chat.isBusy,
     onError: setError,
+    onRefactorCard: (worldId, file) => {
+      setPendingRefactorCard((current) => ({
+        worldId,
+        file,
+        generation: (current?.generation ?? 0) + 1,
+      }));
+      void navigation.openWorldEditor().then((opened) => {
+        if (!opened) setPendingRefactorCard(null);
+      });
+    },
   });
+  useEffect(() => setPendingRefactorCard(null), [liveWorldId]);
   // 撤銷匯入與貼開場白在後端持整桌獨占，回合進行中會排隊：等待中不重複送出，並在操作的位置提示
   const undoWait = useTurnWait(chat.isBusy, liveWorldId);
   const openingPost = useOpeningPost({ worldId: liveWorldId, chat, imports });
@@ -890,6 +904,10 @@ function App() {
           onConfigSaved={setConfig}
           onEntryConverted={refreshAfterEntryConverted}
           onRefactorApplied={refreshAfterRefactorApplied}
+          pendingRefactorCard={pendingRefactorCard}
+          onPendingRefactorCardTaken={(generation) =>
+            setPendingRefactorCard((current) => (current?.generation === generation ? null : current))
+          }
           gate={gate}
           readOnlyNotice={readOnlyNotice}
           repairNotice={repairNotice}

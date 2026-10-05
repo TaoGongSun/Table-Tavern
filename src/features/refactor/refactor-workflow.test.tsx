@@ -70,6 +70,12 @@ beforeEach(() => {
   dialogs.message.mockReset().mockResolvedValue(undefined);
   refreshAfterApply.mockReset().mockResolvedValue(undefined);
   backend.handlers.card_interfaces = () => [];
+  // 開重構卡走後端同一入口：這裡模擬 JSON 原樣回傳（PNG 的測試自己覆寫）
+  backend.handlers.refactor_card_open = (bytes) => ({
+    card: JSON.parse(new TextDecoder().decode(bytes as unknown as Uint8Array)),
+    assets: [],
+    token: null,
+  });
   backend.handlers.read_worldbook = () => [
     { uid: 21, title: "美化状态栏", content: "" },
     { uid: 22, title: "格式增强Plus", content: "" },
@@ -324,5 +330,181 @@ describe("套用重構排隊期間換桌或卸載", () => {
       await queued.pending;
     });
     expect(dialogs.message).not.toHaveBeenCalled();
+  });
+});
+
+describe("重構卡 PNG：角色圖暫存的 token 生命週期", () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const CARD = {
+    format: "table-tavern-refactor-card",
+    version: 1,
+    outcome: { characters: [{ name: "阿福", source_uids: ["1"] }] },
+    applied: { characters: [{ outcome_index: 0, character_id: "c" }], player_index: null },
+  };
+  const opened = (token: string | null) => ({
+    card: CARD,
+    assets: token ? [{ outcome_index: 0, kind: "avatar" }] : [],
+    token,
+  });
+  const releases = () =>
+    backend.calls.filter((call) => call.command === "refactor_card_release").map((call) => call.args);
+
+  async function openPng(token: string | null = "T1") {
+    backend.handlers.refactor_card_open = () => opened(token);
+    await act(async () => controller!.pickRefactorOutcome(new File([PNG], "card.png")));
+  }
+
+  it("JSON 與 PNG 都以原始 bytes 走後端入口", async () => {
+    await mount();
+    await act(async () =>
+      controller!.pickRefactorOutcome(
+        new File([JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }] })], "c.json"),
+      ),
+    );
+    const open = backend.calls.find((call) => call.command === "refactor_card_open")!;
+    expect(open.args).toBeInstanceOf(Uint8Array);
+    expect(controller!.outcome?.characters[0].name).toBe("阿福");
+  });
+
+  it("PNG 結果卡帶角色圖張數；關卡才釋放、帶同一桌與 token", async () => {
+    await mount();
+    await openPng();
+    expect(controller!.assetCount).toBe(1);
+    expect(releases()).toHaveLength(0);
+    await act(async () => controller!.closeRefactor());
+    expect(releases()).toEqual([{ worldId: "W", token: "T1" }]);
+    expect(controller!.assetCount).toBe(0);
+  });
+
+  it("先開 A 再開 B、B 先回 A 後回：留 B，A 的回覆作廢並只釋放 A", async () => {
+    await mount();
+    const finishers: ((value: unknown) => void)[] = [];
+    backend.handlers.refactor_card_open = () => new Promise((done) => finishers.push(done));
+    let a!: Promise<void>;
+    let b!: Promise<void>;
+    await act(async () => {
+      a = controller!.pickRefactorOutcome(new File([PNG], "a.png"));
+    });
+    await act(async () => {
+      b = controller!.pickRefactorOutcome(new File([PNG], "b.png"));
+    });
+    await vi.waitFor(() => expect(finishers).toHaveLength(2));
+    await act(async () => {
+      finishers[1](opened("TB"));
+      await b;
+    });
+    await act(async () => {
+      finishers[0](opened("TA"));
+      await a;
+    });
+    expect(releases()).toEqual([{ worldId: "W", token: "TA" }]);
+    backend.handlers.refactor_apply = () => ({ new_characters: 1 });
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    const apply = backend.calls.find((call) => call.command === "refactor_apply")!;
+    expect(apply.args.assetToken).toBe("TB");
+  });
+
+  it("開檔途中關掉結果卡：舊回覆不重開結果卡、釋放它的 token", async () => {
+    await mount();
+    let finish!: (value: unknown) => void;
+    backend.handlers.refactor_card_open = () => new Promise((done) => (finish = done));
+    let picking!: Promise<void>;
+    await act(async () => {
+      picking = controller!.pickRefactorOutcome(new File([PNG], "card.png"));
+    });
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    await act(async () => controller!.closeRefactor());
+    await act(async () => {
+      finish(opened("T7"));
+      await picking;
+    });
+    expect(controller!.outcome).toBeNull();
+    expect(releases()).toEqual([{ worldId: "W", token: "T7" }]);
+  });
+
+  it("開完回來已換桌：釋放剛開的那份、不顯示結果卡", async () => {
+    await mount();
+    let finish!: (value: unknown) => void;
+    backend.handlers.refactor_card_open = () => new Promise((done) => (finish = done));
+    let picking!: Promise<void>;
+    await act(async () => {
+      picking = controller!.pickRefactorOutcome(new File([PNG], "card.png"));
+    });
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    await act(async () => root?.render(<Harness world="B" />));
+    await act(async () => {
+      finish(opened("T9"));
+      await picking;
+    });
+    expect(controller!.outcome).toBeNull();
+    expect(releases()).toEqual([{ worldId: "W", token: "T9" }]);
+  });
+
+  it("套用帶 token；成功後不再送釋放（後端已取走）", async () => {
+    await mount();
+    await openPng();
+    backend.handlers.refactor_apply = () => ({ new_characters: 1, images_applied: 1, images_failed: [] });
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    const apply = backend.calls.find((call) => call.command === "refactor_apply")!;
+    expect(apply.args.assetToken).toBe("T1");
+    expect(releases()).toHaveLength(0);
+    expect(controller!.outcome).toBeNull();
+  });
+
+  it("等回合期間卸載、套用沒送出：釋放 token", async () => {
+    await mount();
+    await openPng();
+    turn.running = true;
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = controller!.applyRefactor(controller!.selection!);
+    });
+    act(() => root?.unmount());
+    root = null;
+    turn.running = false;
+    await pending;
+    expect(commands()).not.toContain("refactor_apply");
+    expect(releases()).toEqual([{ worldId: "W", token: "T1" }]);
+  });
+
+  it("已送後端、回來前卸載且被拒套（素材放回槽）：釋放 token", async () => {
+    await mount();
+    await openPng();
+    let reject!: (reason: unknown) => void;
+    backend.handlers.refactor_apply = () => new Promise((_, fail) => (reject = fail));
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = controller!.applyRefactor(controller!.selection!);
+    });
+    await vi.waitFor(() => expect(commands()).toContain("refactor_apply"));
+    act(() => root?.unmount());
+    root = null;
+    expect(releases()).toHaveLength(0);
+    reject(new Error('TTMSG:{"code":"player_card_exists"}'));
+    await pending;
+    expect(releases()).toEqual([{ worldId: "W", token: "T1" }]);
+  });
+
+  it("後端回角色圖已不在：清掉結果卡、不送釋放", async () => {
+    await mount();
+    await openPng();
+    backend.handlers.refactor_apply = () => {
+      throw new Error('TTMSG:{"code":"refactor_assets_gone"}');
+    };
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    expect(controller!.outcome).toBeNull();
+    expect(releases()).toHaveLength(0);
+  });
+
+  it("其他拒套（玩家卡已存在）：結果卡留著、token 留著，關卡時才釋放", async () => {
+    await mount();
+    await openPng();
+    backend.handlers.refactor_apply = () => {
+      throw new Error('TTMSG:{"code":"player_card_exists"}');
+    };
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    expect(controller!.outcome).not.toBeNull();
+    await act(async () => controller!.closeRefactor());
+    expect(releases()).toHaveLength(1);
   });
 });

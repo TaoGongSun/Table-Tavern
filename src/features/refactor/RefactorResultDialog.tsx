@@ -39,6 +39,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
     outcome,
     selection,
     applied,
+    assetCount,
     detail,
     cancelled,
     failures,
@@ -61,6 +62,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
     counts.hasInterface && t("refactorSummaryInterface"),
     counts.entries > 0 && t("refactorSummaryEntries", { n: counts.entries }),
     counts.mechanisms > 0 && t("refactorSummaryMechanisms", { n: counts.mechanisms }),
+    assetCount > 0 && t("refactorSummaryImages", { n: assetCount }),
   ].filter((part): part is string => Boolean(part));
 
   // 取消造成的半成品：主按鈕換成「不要」、套用降級成次要鈕（2026-08-14 拍板）；主鈕一律在右下

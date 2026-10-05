@@ -93,7 +93,8 @@ fn save_character_png(
         }
         .into_error());
     }
-    data::commit_world_write(&path.with_extension(extension), bytes)?;
+    // 原子寫：寫一半失敗時舊圖原樣留著，不會留下半張圖
+    data::commit_world_write_atomic(&path.with_extension(extension), bytes)?;
     Ok(())
 }
 

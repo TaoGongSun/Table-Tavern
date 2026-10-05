@@ -112,6 +112,25 @@ pub struct RefactorApplySummary {
     pub player_assigned: bool,
     /// 套用都成立了，但桌內重構卡存檔（refactor-outcome.json）沒寫成：之後從這桌匯出的會是舊存檔。
     pub card_save_failed: bool,
+    /// 重構卡附的角色圖寫進新卡的張數。
+    pub images_applied: usize,
+    /// 角色圖寫入失敗的角色名（其餘圖照寫、套用照樣成立）。
+    pub images_failed: Vec<String>,
+}
+
+/// 套用中途失敗時已經落地的部分：呼叫端靠它記收據再撤銷，回到零寫入。
+#[derive(Debug, Default)]
+pub struct ApplyProgress {
+    pub character_ids: Vec<String>,
+    pub rewritten_entries: Vec<WorldbookEntry>,
+    /// 整條刪除的來源條目原文快照。
+    pub deleted_entries: Vec<WorldbookEntry>,
+}
+
+#[derive(Debug)]
+pub struct ApplyFailure {
+    pub error: Box<dyn std::error::Error + Send + Sync>,
+    pub progress: ApplyProgress,
 }
 
 /// apply() 的完整結果：summary 給前端，其餘給呼叫端組收據（receipts::record_refactor_apply）。

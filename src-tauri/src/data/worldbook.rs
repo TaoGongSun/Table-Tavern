@@ -424,6 +424,41 @@ pub fn upsert_worldbook_entry(
         entry.uid
     } else {
         let uid = next_uid(entries)?;
+        insert_new_entry(entries, &entry, uid)?;
+        uid
+    };
+    write_worldbook_value(root, world_id, &worldbook)?;
+    Ok(actual_uid)
+}
+
+/// 撤銷用：把整條刪掉的條目照原 uid 插回（顯示在最前面，同 upsert 新增）。這個 uid 已經有條目
+/// （先前的撤銷已插回過、或被別的條目佔走）就不動、回 false——重做撤銷不會插出第二份。
+pub fn restore_worldbook_entry(
+    root: &Path,
+    world_id: &str,
+    entry: WorldbookEntry,
+) -> DataResult<bool> {
+    let mut worldbook = read_worldbook_value(root, world_id)?;
+    let entries = entries_object_mut(&mut worldbook)?;
+    let taken = entries.contains_key(&entry.uid.to_string())
+        || entries
+            .iter()
+            .any(|(key, value)| entry_uid(key, value) == Some(entry.uid));
+    if taken {
+        return Ok(false);
+    }
+    insert_new_entry(entries, &entry, entry.uid)?;
+    write_worldbook_value(root, world_id, &worldbook)?;
+    Ok(true)
+}
+
+/// 新條目插在最前面：其餘條目顯示序號往後挪一格。
+fn insert_new_entry(
+    entries: &mut serde_json::Map<String, serde_json::Value>,
+    entry: &WorldbookEntry,
+    uid: u64,
+) -> DataResult<()> {
+    {
         let keys = sorted_entry_keys(entries);
         let has_missing_display_index = entries.values().any(|value| {
             value
@@ -446,11 +481,9 @@ pub fn upsert_worldbook_entry(
                 .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))?;
             set_display_index(value, display_index)?;
         }
-        entries.insert(uid.to_string(), new_entry_value(&entry, uid, 0));
-        uid
-    };
-    write_worldbook_value(root, world_id, &worldbook)?;
-    Ok(actual_uid)
+        entries.insert(uid.to_string(), new_entry_value(entry, uid, 0));
+    }
+    Ok(())
 }
 
 /// 拖曳排序：uids 就是新的顯示順序，沒送到的條目依原順序接在後面

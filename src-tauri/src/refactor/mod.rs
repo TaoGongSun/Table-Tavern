@@ -3,15 +3,22 @@
 //! 「已經有一份 RefactorOutcome，怎麼套用、怎麼復原」——手寫 JSON 餵進 apply() 就能驗證整條路。
 
 mod apply;
+mod apply_record;
 mod card_export;
 mod card_file;
+mod card_import;
 mod card_png;
 mod interface;
 mod reset;
 mod types;
 
+#[cfg(test)]
 pub use apply::apply;
+pub use apply_record::apply_and_record;
 pub use card_export::{export_outcome, export_saved};
+pub use card_import::{
+    claim_assets, open_and_stage, release_assets, return_assets, OpenCardResult,
+};
 pub(crate) use reset::refactored;
 pub use reset::{rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
 pub use types::{

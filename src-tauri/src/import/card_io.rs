@@ -23,7 +23,15 @@ fn card_data_invalid(detail: &str) -> Box<dyn std::error::Error + Send + Sync> {
     .into_error()
 }
 
+/// 讀 PNG 卡的角色資料：優先 tEXt `chara`（V2），沒有才讀 `ccv3`（只寫 V3 的卡）；兩種 data 欄位同形。
 pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
+    match find_card_text(bytes, b"chara")? {
+        Some(found) => Ok(found),
+        None => find_card_text(bytes, b"ccv3")?.ok_or_else(|| UiMsg::CardPngNoData.into_error()),
+    }
+}
+
+fn find_card_text(bytes: &[u8], keyword: &[u8]) -> DataResult<Option<Vec<u8>>> {
     let mut offset = PNG_MAGIC.len();
     while offset < bytes.len() {
         if bytes.len() - offset < 12 {
@@ -41,14 +49,14 @@ pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
         let chunk_data = &bytes[offset + 8..offset + 8 + length];
         if kind == b"tEXt" {
             if let Some(separator) = chunk_data.iter().position(|byte| *byte == 0) {
-                if &chunk_data[..separator] == b"chara" {
-                    return decode_base64(&chunk_data[separator + 1..]);
+                if &chunk_data[..separator] == keyword {
+                    return decode_base64(&chunk_data[separator + 1..]).map(Some);
                 }
             }
         }
         offset = chunk_end;
     }
-    Err(UiMsg::CardPngNoData.into_error())
+    Ok(None)
 }
 
 fn decode_base64(input: &[u8]) -> DataResult<Vec<u8>> {
@@ -195,6 +203,23 @@ mod tests {
             decode_png_character(PNG_MAGIC).unwrap_err().to_string(),
             UiMsg::CardPngNoData.to_string()
         );
+    }
+
+    #[test]
+    fn reads_ccv3_only_when_chara_is_absent() {
+        let text = |keyword: &str, json: &str| {
+            let mut data = format!("{keyword}\0").into_bytes();
+            data.extend_from_slice(base64_encode(json.as_bytes()).as_bytes());
+            png_chunk(b"tEXt", &data)
+        };
+        let mut v3_only = PNG_MAGIC.to_vec();
+        v3_only.extend_from_slice(&text("ccv3", "{\"v\":3}"));
+        assert_eq!(decode_png_character(&v3_only).unwrap(), b"{\"v\":3}");
+
+        let mut both = PNG_MAGIC.to_vec();
+        both.extend_from_slice(&text("ccv3", "{\"v\":3}"));
+        both.extend_from_slice(&text("chara", "{\"v\":2}"));
+        assert_eq!(decode_png_character(&both).unwrap(), b"{\"v\":2}");
     }
 
     #[test]

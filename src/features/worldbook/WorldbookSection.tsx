@@ -130,7 +130,7 @@ export function WorldbookSection({
       <input
         ref={refactorInputRef}
         type="file"
-        accept=".json,application/json"
+        accept=".json,.png,application/json,image/png"
         hidden
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];

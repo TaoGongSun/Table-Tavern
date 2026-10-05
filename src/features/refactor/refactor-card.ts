@@ -95,3 +95,41 @@ export function parseRefactorCardValue(raw: unknown): RefactorCard {
       : parseRefactorApplied(raw.applied, outcome.characters.length);
   return { outcome, applied };
 }
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+export function isPng(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 && PNG_MAGIC.every((value, index) => bytes[index] === value);
+}
+
+/** 單一匯入入口的分流：PNG 的 chunk 表裡有自家重構卡 manifest（ttRd）。只走結構、不驗 CRC，
+ * 真驗證在後端；在轉成數字陣列送 IPC 之前判斷，重構卡（可能數十 MB）不走那條慢路。 */
+export function hasRefactorCardChunk(bytes: Uint8Array): boolean {
+  if (!isPng(bytes)) return false;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  while (bytes.length - offset >= 12) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    if (type === "ttRd") return true;
+    const end = offset + 12 + length;
+    if (end > bytes.length) return false;
+    offset = end;
+  }
+  return false;
+}
+
+/** 陣容欄匯入認出重構卡 PNG 後交給世界設定的待處理檔：綁來源桌與請求世代，換桌即作廢，
+ * WorldEditor 只接手同一桌、且只接一次（世代比對）。 */
+export interface PendingRefactorCard {
+  worldId: string;
+  file: File;
+  generation: number;
+}
+
+/** refactor_card_open 的回傳：card 交 parseRefactorCardValue 再驗；assets 只有摘要，圖在後端暫存。 */
+export interface RefactorCardOpenResult {
+  card: unknown;
+  assets: { outcome_index: number; kind: "portrait" | "avatar" }[];
+  token: string | null;
+}

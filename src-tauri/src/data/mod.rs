@@ -56,7 +56,9 @@ pub use world::{
     rename_world, world_has_state_bar, write_interface_shell, write_refactor_outcome,
     write_world_md, WorldMeta,
 };
-pub(crate) use world_file::{commit_world_append, commit_world_remove, commit_world_write};
+pub(crate) use world_file::{
+    commit_world_append, commit_world_remove, commit_world_write, commit_world_write_atomic,
+};
 #[cfg(test)]
 pub(crate) use world_file::{
     write_hook, AppendFailGuard, RemoveFailGuard, RenameFailGuard, TruncateFailGuard,
@@ -73,8 +75,9 @@ pub use world_lock::{
 };
 pub use worldbook::{
     character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
-    import_worldbook, read_worldbook, reorder_worldbook_entries, upsert_worldbook_entry,
-    worldbook_entry_to_character, Visibility, WorldbookEntry, WorldbookImport,
+    import_worldbook, read_worldbook, reorder_worldbook_entries, restore_worldbook_entry,
+    upsert_worldbook_entry, worldbook_entry_to_character, Visibility, WorldbookEntry,
+    WorldbookImport,
 };
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，
