@@ -4,9 +4,8 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
-- [claude-1h-cache](tasks/claude-1h-cache.md) — claude CLI 改寫 1 小時快取：過期門檻、保溫、省額係數都要重估 — 下一步：確認 1h 是否固定行為，再提方案給使用者拍板
+- [claude-1h-cache](tasks/claude-1h-cache.md) — claude CLI 改寫 1 小時快取：過期門檻、保溫、省額係數都要重估 — 下一步：三件都改〔作者裁決 2026-10-06〕；先確認 1h 是 CLI 固定行為
 - [api-stream-stall-timeout](tasks/api-stream-stall-timeout.md) — API 串流卡住沒有逾時，只能手動停 — 下一步：比照 CLI 加停滯逾時
-- [agy-skipped-mislabel](tasks/agy-skipped-mislabel.md) — agy 續聊輪在帳本被誤標 skipped — 下一步：查帳本判定
 - [image-save-strict-validate](tasks/image-save-strict-validate.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：盤點受影響入口與拒收提示
 - [harness-iframe-shot](tasks/harness-iframe-shot.md) — 測試通道截不到卡片介面 iframe — 下一步：先補已知限制與繞法
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
