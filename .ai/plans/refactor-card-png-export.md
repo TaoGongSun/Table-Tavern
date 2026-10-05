@@ -51,13 +51,13 @@
 - applied 完整性（Rust 與前端同一套規則，信任邊界在 Rust）：characters 恰好覆蓋 0..角色數 每個 index 各一次；character_id 為 null 或非空字串，非 null id 互不重複；player_index 為 null 或指向 character_id 非 null 的 index。違反任一條整份拒收。
 - 對外（.json 匯出、PNG manifest）去掉 `player_card_id`（來源桌本地資訊）；`character_id` 保留、接收端不用。
 - PNG：manifest chunk `ttRd`＝`TTRC`＋版本 byte＋封套 JSON（多 `assets` 欄）；圖片 chunk `ttAs`＝`TTAS`＋版本 byte＋asset_id 長度 byte＋asset_id＋原始 bytes；皆插在 IEND 前。asset：`{ asset_id, outcome_index, kind: "portrait"|"avatar", mime: "image/png", length, hash: sha256 hex }`。
-- 上限（匯出、匯入同一組常數）：檔案總長 ≤ 300 MiB；manifest ≤ 32 MiB；張數 ≤ 2×角色數；單張 ≤ 32 MiB、總和 ≤ 256 MiB；單張寬高各 1–8192 且像素數 ≤ 24M；解碼記憶體預算 ≤ 192 MiB（png crate `Limits`），一次只解一張、緩衝區重用。
-- 圖片完整驗證（共用函式，匯入素材、匯出素材、匯出底圖、`import/images.rs` 的存圖都可用）：PNG magic；chunk 結構邊界與全部 CRC；首 chunk IHDR 且合法；至少一個 IDAT 且連續；恰一個零長 IEND、其後無任何資料；再用 png crate（已在 Cargo.lock，改為直接依賴）帶 `Limits` 完整解碼一次，截斷／壞壓縮流／尺寸超限皆拒。
+- 上限（匯出、匯入同一組常數）：檔案總長 ≤ 300 MiB；manifest ≤ 32 MiB；張數 ≤ 2×角色數；單張 ≤ 32 MiB、總和 ≤ 256 MiB；封面總長 ≤ 32 MiB；單張寬高各 1–8192 且像素數 ≤ 24M。常數集中在 `CardLimits`（測試可注入小上限）。
+- 圖片嚴格驗證（`import/png_image.rs`，自寫、不用 png crate；匯入素材、匯出素材、匯出底圖與整張卡的封面共用）：串流走訪不建 chunk 表；PNG magic、chunk 邊界與全部 CRC；首 chunk 是唯一的 IHDR 且色彩型別／位元深度組合合法；PLTE 規則（筆數 ≤ 2^bit depth）；IDAT 至少一個且連續；恰一個零長 IEND、其後無資料；未知關鍵 chunk 與 APNG chunk 拒收。IDAT 串成的 zlib 流以 flate2 逐段解壓、固定 64 KiB 輸出緩衝，必須正好結束、Adler-32 相符、解出長度等於 IHDR 推算值（含 Adam7），每列濾波器位元組 0–4；索引色圖逐列反濾波核對 palette 索引。
 - 匯出底圖：GM 圖 → 第一位已建卡角色全身圖 → 1×1 透明圖〔模型判斷·未裁決〕；候選圖過不了完整驗證或超過底圖上限（同單張上限）就換下一個；一律剝 `chara`／`ccv3`（tEXt/zTXt/iTXt）與 `ttRd`／`ttAs`。
 
 ### 包 A：套用映射持久化（首包）
 
-- `refactor/types.rs`：加 `RefactorAppliedMap`／`RefactorCardFile`；`RefactorApplyResult` 加 `character_map: Vec<Option<String>>`（index→id）。
+- `refactor/card_file.rs`：`RefactorApplied`／`RefactorCardFile` 型別；apply 內以 outcome_index → 新卡 id 的顯式映射（character_map）建 applied，不靠 character_ids 順序。
 - `refactor/apply.rs`：建卡迴圈填映射；尾端落檔改寫封套（含 player_index＋player_card_id），二次套用整份覆寫。
 - 新 `refactor/card_file.rs`：讀封套或舊裸 RefactorOutcome（裸檔 → applied=None）；applied 完整性驗證；對外序列化去本地欄位。
 - `refactor_export_saved` 的 .json 改輸出對外封套（舊裸存檔輸出成無 applied 的封套）。
@@ -73,14 +73,14 @@
   - asset_id 限 `[a-z0-9_-]{1,32}`、manifest 內不重複；`(outcome_index, kind)` 不重複且 outcome_index < 角色數；kind 只收 portrait／avatar；mime 只收 image/png。
   - manifest 與圖片 chunk 一對一：每筆 asset 恰一個同 id 的 chunk，無缺、無重複 chunk、無孤兒 chunk；chunk 實際 bytes 長度＝length、SHA-256＝hash。
   - 張數、單張、總和上限；每張圖過圖片完整驗證；applied 完整性。
-- 新 `refactor/card_png.rs`：encode、decode＋上述驗證、剝 chunk、上限常數；圖片完整驗證放在 import 側共用（`import/card_io.rs` 的 `png_chunk`／`crc32`／`PNG_MAGIC` 升 `pub(crate)`）。B 負責 codec 全部拒收測試：逐條驗證項各一拒收案（含沒 IDAT、IDAT 截斷、壞 zlib、IEND 非零長／重複／後有尾資料、CRC 錯、尺寸與像素超限、解碼預算超限）。
+- 新 `refactor/card_png.rs`：encode、decode＋上述驗證、剝 chunk、上限常數；圖片完整驗證放在 import 側共用（`import/card_io.rs` 的 `png_chunk`／`crc32`／`PNG_MAGIC` 升 `pub(crate)`）。B 負責 codec 全部拒收測試：逐條驗證項各一拒收案（含沒 IDAT、IDAT 截斷與尾端缺 1–4 bytes、錯 Adler-32、壞 zlib、IEND 非零長／重複／後有尾資料、CRC 錯、尺寸與像素超限、palette 越界、大量小 chunk）。
 - `refactor_export_outcome(outcome, path)`：.json 照舊、其餘 #2。`refactor_export_saved(world_id, path, with_images)`：.json／#2／#3；`with_images` 只接受 .png，路徑是 .json 直接回錯，不靜默丟圖。#3 素材＝applied 映射角色目前的 `<id>.png`＋`<id>.avatar.png`（排除 gen-gallery；角色已刪略過）；任一素材過不了驗證或超上限，整個匯出拒絕並點名角色。寫檔前把產出的 bytes 走一次匯入驗證器，保證不產出自己拒收的卡。回傳寫出位元組數。
 - 舊裸存檔沒有映射 → #3 回固定訊息「這張重構卡是舊版存檔，沒有角色對應，附不了角色圖；可改匯出不含角色圖的版本」（不建議在原桌重套）〔模型判斷·未裁決〕。
 - 前端：存檔對話框（不含圖：PNG＋JSON、預設 .png；含圖：只 PNG）；世界書 ⋯ 選單「匯出重構卡」下加「匯出重構卡（含角色圖）」；預設檔名尾碼 `-重構卡.png`／`-重構卡+角色圖.png`（在地化）；完成後 revealItemInDir＋狀態列顯示檔案大小。i18n 十語系。
 
 ### 包 C：匯入、暫存、套用競態、單一入口
 
-- `refactor_card_open`：前端以 raw IPC body 送原始 bytes；後端嗅探：有 `ttRd` → 自家；只有 `chara`／`ccv3` → 固定錯誤「這是角色卡，請用陣容欄匯入」；非 PNG → JSON 封套／裸 outcome。全部驗證通過才暫存，任一失敗整包拒收、零寫入。回傳 `{ card_json, assets: [{ outcome_index, kind }], token }`；outcome 交前端 `parseRefactorOutcome` 再驗一次。manifest 沒檔名欄位，落檔路徑一律由新建角色 id 決定。
+- `refactor_card_open`：前端以 raw IPC body 送原始 bytes；後端嗅探：有 `ttRd` → 自家；只有 `chara`／`ccv3` → 固定錯誤「這是角色卡，請用陣容欄匯入」；非 PNG → JSON 封套／裸 outcome。全部驗證通過才暫存，任一失敗整包拒收、零寫入。.json 也走同一入口（32 MiB 上限）。回傳 `{ card, assets: [{ outcome_index, kind }], token }`；封套交前端 `parseRefactorCardValue` 再驗一次。manifest 沒檔名欄位，落檔路徑一律由新建角色 id 決定。
 - 暫存單槽：內容＝world_id＋token＋角色名清單＋已驗圖片。
   - 開新卡覆蓋舊槽（舊 token 失效）。`refactor_card_release(world_id, token)` 只在 world＋token 都相符時清，舊結果卡關閉清不到新卡。
   - `refactor_apply` 選填 `asset_token`：command 一進來（取整桌鎖之前）就以 world＋token 把素材從槽中取出、由這次呼叫持有到結束；取不到（已被覆蓋／釋放）就整批拒套。之後關卡、開新卡、換桌都碰不到這份素材。前端：apply 排隊等回合期間不釋放（closeRefactor 在 busy 時不送 release）；結果卡關閉或卸載且無在途套用才 release。
@@ -95,3 +95,10 @@
 
 - 測試通道（整機一把鎖，啟動前 ps 確認無他人實例，用完 quit）：西幻卡匯入 → 零額度餵產物 JSON 套用 → 兩位角色上圖 → 匯出三階 → 新桌匯原卡 → 匯入 #3 PNG → 套用 → 截圖確認圖到位；陣容欄丟 #3 PNG 走單一入口。
 - 數十 MB 大卡：本機 `qlmanage -t`／`sips` 看 macOS 縮圖。Windows Explorer 與 ST 匯入拒收訊息排實測佇列；這兩項未驗，本案不標實測完成。
+
+### 驗收中定案的實作取捨〔模型判斷·未裁決，Sol 五輪驗收接受〕
+
+- 套用中途失敗：記收據後立刻嚴格撤銷（rollback_last_import，各域錯誤傳回、未完整還原就保留收據回 RefactorApplyPartial）；本次收據沒寫成回 RefactorApplyPartialNoReceipt、不提示撤銷。重構記收據與撤銷彈出收據都原子寫。
+- 撤銷插回被整條刪掉的來源條目可安全重做：原 uid 空著照原 uid 插回；原 uid 上已是除 uid 外全欄位相同的條目就跳過；原 uid 被別的條目佔走才換新 uid，且已有全欄位相同條目就跳過——這也作用於玩家手動撤銷，代價是「原 uid 被佔、桌上又剛好有一條全欄位相同的重複條目」時少插一份。
+- character_map 只在 apply() 內部使用，不放進 RefactorApplyResult。
+

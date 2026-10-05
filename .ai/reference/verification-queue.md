@@ -13,13 +13,15 @@
 
 4d. [card-mvu-shim](../handoffs/card-mvu-shim.md) 卡片介面 iframe 內按鈕實際互動（測試通道點不到沙盒 iframe 內的按鈕，留作後續 native 回歸；零 AI 派送）：用 `mvu-write-probe` 開桌、捲到逐字稿中段，面板開著按卡片按鈕寫入（由卡片按鈕送出）：第一筆即落檔、狀態欄同步、捲動位置不動；接著在狀態欄手改再按卡片寫入不被拒。
 
+4e. [refactor-card-png-export](../handoffs/refactor-card-png-export.md)（macOS 部分 2026-10-06 已用測試通道代測通過：三階匯出、陣容欄單一入口匯入 #3、59 MB 大卡往返、QuickLook 縮圖）：剩沒有環境的兩項——①Windows Explorer 看 #3 大卡（數十 MB）的縮圖與檔案大小顯示　②SillyTavern 匯入 #2／#3 PNG 會乾淨拒收（報找不到角色卡，不當成角色卡吃進去）。這兩項驗完本案才算實測完成。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度
 
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
-| 5 | [refactor-mode-split](../handoffs/refactor-mode-split.md) 剩四洞①②④ GUI 重測、重構中取消；③ 已驗出同桌重跑會清殼，refactor-statusbar-skeleton 已改成已遊玩擋下、未遊玩用原卡清回再跑 | 五卡矩陣、同卡連跑三次、二選一取消、第二段 resume 已於 2026-10-02 測試包跑過。**擋下游最多**：[refactor-card-png-export](../tasks/refactor-card-png-export.md) 待開工首包（套用映射持久化）與 [interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡都疊在這條路上 |
+| 5 | [refactor-mode-split](../handoffs/refactor-mode-split.md) 剩四洞①②④ GUI 重測、重構中取消；③ 已驗出同桌重跑會清殼，refactor-statusbar-skeleton 已改成已遊玩擋下、未遊玩用原卡清回再跑 | 五卡矩陣、同卡連跑三次、二選一取消、第二段 resume 已於 2026-10-02 測試包跑過。**擋下游最多**：[interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡疊在這條路上 |
 | 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md) B 段→A 段 ＋ [person-promote](../handoffs/person-promote.md) ＋ [state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 三案一鏈，跑一輪同時收。**前置已解除**：`refactor-output-redesign` 已於 2026-08-11 結案，B 段可直接真跑 orc-cave 卡；產物存檔後 A 段走零額度重放，額度只花一次 |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
 | 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
