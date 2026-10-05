@@ -176,12 +176,8 @@ fn begin_next_scene_tx(
     );
     state.current_scene = next_scene;
     write_state(root, world_id, &state)?;
-    // 介面接管桌＝有重構骨架、不是 characters 桌（與 transport::gm_turn_format 同一依據）
-    let interface_takeover = state.refactor_mode.as_deref() != Some("characters")
-        && crate::data::read_interface_shell(root, world_id)
-            .ok()
-            .flatten()
-            .is_some_and(|shell| !shell.trim().is_empty());
+    let interface_takeover =
+        crate::data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
     settle_card_visibility(
         root,
         world_id,
@@ -304,6 +300,28 @@ mod tests {
     use crate::data::test_support::*;
     use crate::data::*;
     use std::collections::BTreeMap;
+
+    /// 接管桌判定（換幕摘要兩入口與出場收尾共用）：非空骨架＋非 characters 才算
+    #[test]
+    fn interface_takeover_needs_nonblank_shell_and_non_character_mode() {
+        let root = TestRoot::new("interface-takeover");
+        let world_id = create_world(root.path(), "接管判定桌").unwrap();
+        assert!(!is_interface_takeover(root.path(), &world_id, None));
+        write_interface_shell(root.path(), &world_id, " \n").unwrap();
+        assert!(!is_interface_takeover(root.path(), &world_id, None));
+        write_interface_shell(root.path(), &world_id, "<UI>{{本回合.正文}}</UI>").unwrap();
+        assert!(is_interface_takeover(root.path(), &world_id, None));
+        assert!(is_interface_takeover(
+            root.path(),
+            &world_id,
+            Some("interface")
+        ));
+        assert!(!is_interface_takeover(
+            root.path(),
+            &world_id,
+            Some("characters")
+        ));
+    }
 
     #[test]
     fn begin_next_scene_appends_summary_and_advances_scene() {

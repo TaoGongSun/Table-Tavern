@@ -313,8 +313,22 @@ pub fn gm_lane_turn(
 
 /// 組裝「換場摘要」上下文：GM 檔位讀角色側看得到的 transcript，把本場景壓成一則前情提要。
 /// 不含 world.md／角色卡——摘要只需壓縮已發生的公開事件，不需要世界觀全貌。
-pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessage> {
-    let instruction = if scaffold_en(lang) {
+/// 介面接管桌（`data::is_interface_takeover`）多一句禁標記：摘要會填進卡片介面的正文槽，
+/// 標籤或圍欄會被卡的顯示腳本當成結構（渲染層另有佔位防線，這是第二層）。其他桌指示逐字不變。
+pub fn summary_messages(
+    events: &[TranscriptEvent],
+    lang: &str,
+    interface_takeover: bool,
+) -> Vec<ChatMessage> {
+    let en = scaffold_en(lang);
+    let plain_only = match (interface_takeover, en) {
+        (false, _) => "",
+        (true, true) => {
+            "Write plain narrative text only: no XML or HTML tags, no angle-bracket markup, no code fences. "
+        }
+        (true, false) => "只寫純文字：不得輸出 XML／HTML 標籤、角括號標記或程式碼圍欄。",
+    };
+    let instruction = if en {
         format!(
             "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
              The first line of your reply must be exactly \"Title: <act name, 10 words or fewer>\", \
@@ -322,7 +336,7 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
              Summarize everything that happened in this scene as a recap, covering: \
              location and time, who is present and their state, key events, relationship changes, \
              and unresolved threads — as a compact bulleted list. \
-             Output only the summary body. {language_rule}",
+             Output only the summary body. {plain_only}{language_rule}",
             language_rule = language_rule(lang),
         )
     } else {
@@ -331,7 +345,7 @@ pub fn summary_messages(events: &[TranscriptEvent], lang: &str) -> Vec<ChatMessa
              回覆第一行固定輸出「標題：〈10 字內的幕名〉」，空一行後才是摘要條列。\
              請把本場景發生的一切壓成一則前情提要，條列涵蓋：\
              地點與時間、在場人物與狀態、關鍵事件、關係變化、未解懸念。\
-             {language_rule}",
+             {plain_only}{language_rule}",
             language_rule = language_rule(lang),
         )
     };
@@ -384,7 +398,7 @@ mod tests {
             event(TranscriptKind::Player, "", "玩家", "老闆，來杯麥酒"),
             event(TranscriptKind::Dialogue, "fox-id", "狐狸", "馬上來！"),
         ];
-        let zh = summary_messages(&events, "zh-TW");
+        let zh = summary_messages(&events, "zh-TW", false);
         assert_eq!(zh[0].role, "system");
         assert!(zh[0].content.contains("前情提要"));
         let joined: String = zh.iter().map(|m| m.content.as_str()).collect();
@@ -392,8 +406,31 @@ mod tests {
         assert!(joined.contains("玩家：老闆，來杯麥酒"));
         assert!(joined.contains("狐狸：馬上來！"));
 
-        let en = summary_messages(&events, "en");
+        let en = summary_messages(&events, "en", false);
         assert!(en[0].content.contains("recap"));
+    }
+
+    /// 接管桌摘要只多一句禁標記（插在語系規則前），其餘逐字相同；transcript 部分不受影響
+    #[test]
+    fn summary_messages_takeover_adds_only_plain_text_rule() {
+        let events = [event(TranscriptKind::Narration, "", "GM", "夜幕低垂")];
+        for (lang, rule) in [
+            ("zh-TW", "只寫純文字：不得輸出 XML／HTML 標籤、角括號標記或程式碼圍欄。"),
+            (
+                "en",
+                "Write plain narrative text only: no XML or HTML tags, no angle-bracket markup, no code fences. ",
+            ),
+        ] {
+            let plain = summary_messages(&events, lang, false);
+            let takeover = summary_messages(&events, lang, true);
+            assert!(!plain[0].content.contains(rule));
+            let at = plain[0].content.rfind(language_rule(lang)).unwrap();
+            let mut expected = plain[0].content.clone();
+            expected.insert_str(at, rule);
+            assert_eq!(takeover[0].content, expected);
+            assert!(takeover[0].content.ends_with(language_rule(lang)));
+            assert_eq!(plain[1..], takeover[1..]);
+        }
     }
 
     /// chars 線凍結快照只能有全員共通且穩定的素材：公開卡＋玩家卡＋Public constant。
@@ -706,7 +743,7 @@ mod tests {
         );
         assert!(gm_turn.tail.contains("龍鱗傳說"));
 
-        let joined: String = summary_messages(&events, "zh-TW")
+        let joined: String = summary_messages(&events, "zh-TW", false)
             .iter()
             .map(|message| message.content.as_str())
             .collect();

@@ -304,6 +304,16 @@ pub fn read_interface_shell(root: &Path, world_id: &str) -> DataResult<Option<St
     Ok(Some(fs::read_to_string(path)?))
 }
 
+/// 介面接管桌＝有非空的重構骨架、而且不是角色優先（characters）桌。
+/// 與 `transport::gm_turn_format` 同一依據；換幕的出場收尾與摘要提示詞共用這個判定。
+pub fn is_interface_takeover(root: &Path, world_id: &str, refactor_mode: Option<&str>) -> bool {
+    refactor_mode != Some("characters")
+        && read_interface_shell(root, world_id)
+            .ok()
+            .flatten()
+            .is_some_and(|shell| !shell.trim().is_empty())
+}
+
 pub fn write_interface_shell(root: &Path, world_id: &str, content: &str) -> DataResult<()> {
     super::world_file::commit_world_write(
         &interface_shell_path(root, world_id)?,
