@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { message as showMessage } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../../i18n";
 import { decideImportRoute } from "./import-routing";
+import { hasRefactorCardChunk } from "../refactor/refactor-card";
 import { useTurnWait } from "../play/useTurnWait";
 import { type WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
@@ -170,6 +171,8 @@ export function useImportController(input: {
   /** 同步問「這桌有沒有回合在跑」：有的話匯入會排在它後面 */
   isTurnRunning: () => boolean;
   onError: (message: string) => void;
+  /** 單一入口：丟進來的是重構卡 PNG 就交給世界設定的重構流程（不轉數字陣列、不走角色匯入） */
+  onRefactorCard: (worldId: string, file: File) => void;
 }): ImportController {
   const {
     worldId,
@@ -187,6 +190,7 @@ export function useImportController(input: {
     refreshState,
     isTurnRunning,
     onError,
+    onRefactorCard,
   } = input;
   const { backend: turnBackend, waiting: waitingForTurn } = useTurnWait(isTurnRunning, worldId);
 
@@ -449,6 +453,10 @@ export function useImportController(input: {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (worldRef.current !== worldId) return;
+        if (hasRefactorCardChunk(bytes)) {
+          onRefactorCard(worldId, file);
+          return;
+        }
         const data = Array.from(bytes);
         let probe: ImportProbe = {
           lorebook_heavy: false,
@@ -479,7 +487,7 @@ export function useImportController(input: {
         onError(String(reason));
       }
     },
-    [routeImport, importAsCharacter, runTableOp, worldId, onError],
+    [routeImport, importAsCharacter, runTableOp, worldId, onError, onRefactorCard],
   );
 
   // 三鍵對話框的作答：取消什麼都不做，另外兩個選項答出身分後都要過第二張卡路由

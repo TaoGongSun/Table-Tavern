@@ -215,6 +215,10 @@ export interface RefactorApplySummary {
   player_assigned: boolean;
   /** 套用都成立了，但桌內重構卡存檔沒寫成 */
   card_save_failed: boolean;
+  /** 重構卡附的角色圖寫進新卡的張數 */
+  images_applied: number;
+  /** 角色圖寫入失敗的角色名 */
+  images_failed: string[];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

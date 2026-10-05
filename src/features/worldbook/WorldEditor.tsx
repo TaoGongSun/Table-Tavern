@@ -6,6 +6,7 @@ import { RefactorResultDialog } from "../refactor/RefactorResultDialog";
 import { RefactorRunDialogs } from "../refactor/RefactorRunDialogs";
 import { WorldbookSection } from "./WorldbookSection";
 import { useRefactorWorkflow } from "../refactor/useRefactorWorkflow";
+import type { PendingRefactorCard } from "../refactor/refactor-card";
 import { useWorldbookEditor } from "./useWorldbookEditor";
 import { EditPage } from "../../shared/ui/EditPage";
 
@@ -20,6 +21,8 @@ export function WorldEditor({
   onEntryConverted,
   onRefactorApplied,
   isTurnRunning,
+  pendingRefactorCard,
+  onPendingRefactorCardTaken,
 }: {
   title: string;
   world: string;
@@ -33,6 +36,9 @@ export function WorldEditor({
   onRefactorApplied: (live: () => boolean) => Promise<void>;
   /** 同步問「這桌有沒有回合在跑」：重構套用會排在它後面 */
   isTurnRunning: () => boolean;
+  /** 陣容欄交過來的重構卡 PNG：只接同一桌的、每個世代只接一次 */
+  pendingRefactorCard: PendingRefactorCard | null;
+  onPendingRefactorCardTaken: (generation: number) => void;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -60,6 +66,14 @@ export function WorldEditor({
     refreshAfterApply,
     isTurnRunning,
   });
+
+  // 陣容欄交過來的重構卡：同一桌才接，接了就回報世代讓 App 清掉（換桌後的不會交到這一桌）；
+  // 只隨待處理檔本身觸發，不隨 refactor／回呼的身分變動重跑
+  useEffect(() => {
+    if (!pendingRefactorCard || pendingRefactorCard.worldId !== world) return;
+    onPendingRefactorCardTaken(pendingRefactorCard.generation);
+    void refactor.pickRefactorOutcome(pendingRefactorCard.file);
+  }, [pendingRefactorCard, world]);
 
   useEffect(() => {
     setMessage("");

@@ -27,7 +27,13 @@ import {
   type RefactorSplitGroup,
   type RefactorSurveyOutcome,
 } from "./refactor-review";
-import { parseRefactorCard, REFACTOR_IMPORT_NEWER, type RefactorApplied } from "./refactor-card";
+import {
+  parseRefactorCardValue,
+  REFACTOR_IMPORT_NEWER,
+  type RefactorApplied,
+  type RefactorCard,
+  type RefactorCardOpenResult,
+} from "./refactor-card";
 import { confirmFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
@@ -88,6 +94,9 @@ function refactorApplyMessage(summary: RefactorApplySummary) {
     summary.deleted_entries > 0 && t("refactorApplyDoneDeleted", { n: summary.deleted_entries }),
     summary.interface_applied && t("refactorApplyDoneInterface"),
     summary.mechanisms_applied > 0 && t("refactorApplyDoneMechanisms", { n: summary.mechanisms_applied }),
+    summary.images_applied > 0 && t("refactorApplyDoneImages", { n: summary.images_applied }),
+    (summary.images_failed?.length ?? 0) > 0 &&
+      t("refactorApplyImagesFailed", { names: summary.images_failed.join("、") }),
     summary.card_save_failed && t("refactorApplySaveFailed"),
   ]
     .filter(Boolean)
@@ -119,6 +128,15 @@ export function useRefactorWorkflow({
   // pool 呼叫失敗的條目名單（2026-08-12 B 拍板）：顯示在結果視窗頂部紅字段。
   const [failures, setFailures] = useState<{ name: string; reason: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  // 重構卡 PNG 附的角色圖：圖在後端暫存單槽，這裡只記張數與 token。
+  // 套用分兩段：前端排隊等回合（waiting，素材還在槽裡、歸這裡管）→ 已送後端（submitted，
+  // 後端一進來就取走；成功＝用掉，拒套＝放回槽、又歸這裡管）。卸載時 idle 直接釋放；
+  // waiting／submitted 交給套用那條路收尾，沒送出或被拒套就釋放。
+  const [assetCount, setAssetCount] = useState(0);
+  const heldToken = useRef<{ world: string; token: string } | null>(null);
+  const applyPhase = useRef<"idle" | "waiting" | "submitted">("idle");
+  // 開檔請求世代：開新檔、關結果卡、換桌都讓還在路上的舊開檔請求失效
+  const openSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   // 非 null＝AI 盤點／展開跑中，modal 顯示 text；cancelling 只管取消鈕的 disabled，不影響迴圈判斷。
   const [progress, setProgress] = useState<{ text: string; cancelling: boolean; tail: string } | null>(null);
@@ -132,8 +150,23 @@ export function useRefactorWorkflow({
     mounted.current = true;
     return () => {
       mounted.current = false;
+      openSeq.current += 1;
+      if (applyPhase.current === "idle") releaseHeldAssets();
     };
   }, []);
+  useEffect(() => {
+    openSeq.current += 1;
+  }, [world]);
+
+  function releaseToken(held: { world: string; token: string } | null) {
+    if (held) void invoke("refactor_card_release", { worldId: held.world, token: held.token }).catch(() => {});
+  }
+
+  function releaseHeldAssets() {
+    const held = heldToken.current;
+    heldToken.current = null;
+    releaseToken(held);
+  }
 
   // 匯出這桌先前套用過的重構產物（apply() 落檔），重玩同一張卡不必再燒 AI 額度重新展開。
   async function exportSavedRefactorOutcome(withImages = false) {
@@ -577,17 +610,39 @@ export function useRefactorWorkflow({
     void invoke("refactor_abort", { worldId: world });
   }
 
-  // AI 卡重構：零額度測試用入口——直接餵一份產物 JSON，跳過真 AI 呼叫，驗證人審／套用路徑用。
+  // 匯入重構卡（也是零額度測試入口）：.json 與 PNG 都以原始 bytes 交後端同一個入口
+  // （大小上限、封套與整包驗證、角色圖暫存），封套回來前端再驗一次。每個 await 之後
+  // 核對請求世代：開了別的檔、關了結果卡或換了桌，舊回覆作廢並釋放它佔的槽。
   async function pickRefactorOutcome(file: File) {
     setStatusMessage("");
+    const openedFor = world;
+    const seq = ++openSeq.current;
+    const stale = () => seq !== openSeq.current || !mounted.current || worldRef.current !== openedFor;
+    let opened: RefactorCardOpenResult | null = null;
     try {
-      const card = parseRefactorCard(await file.text());
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (stale()) return;
+      opened = await invoke<RefactorCardOpenResult>("refactor_card_open", bytes, {
+        headers: { "tt-world-id": openedFor },
+      });
+      const token = opened.token ? { world: openedFor, token: opened.token } : null;
+      if (stale()) {
+        releaseToken(token);
+        return;
+      }
+      const card: RefactorCard = parseRefactorCardValue(opened.card);
+      if (heldToken.current?.token !== token?.token) releaseHeldAssets();
+      heldToken.current = token;
+      setAssetCount(opened?.assets.length ?? 0);
       setOutcome(card.outcome);
       setSelection(defaultRefactorSelection(card.outcome, card.applied));
       setApplied(card.applied);
       setOrigin("import");
       setDetail(false);
     } catch (reason) {
+      // 前端複驗沒過：後端已暫存的圖一併釋放
+      if (opened?.token) releaseToken({ world: openedFor, token: opened.token });
+      if (stale()) return;
       const code = reason instanceof Error ? reason.message : "";
       setStatusMessage(
         code === REFACTOR_IMPORT_INVALID
@@ -600,6 +655,9 @@ export function useRefactorWorkflow({
   }
 
   function closeRefactor() {
+    openSeq.current += 1;
+    if (applyPhase.current === "idle") releaseHeldAssets();
+    setAssetCount(0);
     setOutcome(null);
     setSelection(null);
     setApplied(null);
@@ -623,16 +681,24 @@ export function useRefactorWorkflow({
     if (!outcome || busy) return;
     setStatusMessage("");
     setBusy(true);
+    applyPhase.current = "waiting";
+    const held = heldToken.current;
+    const assetToken = held?.token ?? null;
     await runQueued(async ({ live, backend }) => {
       try {
-        const summary = await backend(() =>
-          invoke<RefactorApplySummary>("refactor_apply", {
+        const summary = await backend(() => {
+          applyPhase.current = "submitted";
+          return invoke<RefactorApplySummary>("refactor_apply", {
             worldId: world,
             outcome,
             selection: nextSelection,
             recordReceipt: origin !== "ai",
-          }),
-        );
+            assetToken,
+          });
+        });
+        // 後端已用掉素材
+        if (heldToken.current?.token === assetToken) heldToken.current = null;
+        applyPhase.current = "idle";
         if (!live()) return;
         closeRefactor();
         await refreshAfterApply(live);
@@ -642,12 +708,20 @@ export function useRefactorWorkflow({
           okLabel: t("dialogAck"),
         });
       } catch (reason) {
+        const gone = assetToken !== null && String(reason).includes("refactor_assets_gone");
+        // 角色圖已不在暫存（開了別張卡）：token 作廢；這張結果卡套不完整了，清掉讓玩家重新開檔
+        if (gone && heldToken.current?.token === assetToken) heldToken.current = null;
+        applyPhase.current = "idle";
+        if (live() && gone) closeRefactor();
         if (live()) setStatusMessage(String(reason));
       } finally {
         // 按鈕鎖一律放開（卸載後 React 不會套用），換桌後留著的面板不能永遠鎖死
         setBusy(false);
       }
     });
+    // 沒送到後端（等回合時換桌或卸載）或後端拒套放回：元件已卸載就沒人會再關這張卡，這裡釋放
+    applyPhase.current = "idle";
+    if (!mounted.current && heldToken.current === held) releaseHeldAssets();
   }
 
   // 匯出結果卡上這份還沒套用（或剛套用完）的產物，供之後用「匯入重構卡」讀回重玩。
@@ -672,6 +746,7 @@ export function useRefactorWorkflow({
     outcome,
     selection,
     applied,
+    assetCount,
     origin,
     detail,
     cancelled,

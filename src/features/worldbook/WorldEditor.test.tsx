@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import type { PendingRefactorCard } from "../refactor/refactor-card";
 
 const backend = vi.hoisted(() => ({
   handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
@@ -68,6 +69,26 @@ describe("WorldEditor", () => {
     document.body.innerHTML = "";
   });
 
+  const taken = vi.fn();
+
+  function editor(pending: PendingRefactorCard | null = null) {
+    return (
+      <WorldEditor
+        title={t("worldAria")}
+        world="w1"
+        worldName="Alpha"
+        onBack={() => {}}
+        leaveGuard={leaveGuard}
+        convertColor="#e07a5f"
+        onEntryConverted={async () => {}}
+        onRefactorApplied={async () => {}}
+        isTurnRunning={() => false}
+        pendingRefactorCard={pending}
+        onPendingRefactorCardTaken={taken}
+      />
+    );
+  }
+
   async function mount() {
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -84,6 +105,8 @@ describe("WorldEditor", () => {
           onEntryConverted={async () => {}}
           onRefactorApplied={async () => {}}
           isTurnRunning={() => false}
+          pendingRefactorCard={null}
+          onPendingRefactorCardTaken={() => {}}
         />,
       );
     });
@@ -114,5 +137,26 @@ describe("WorldEditor", () => {
     await act(async () => entryInput.form!.requestSubmit());
     expect(commands("upsert_worldbook_entry")).toHaveLength(1);
     expect(commands("write_world_md")).toHaveLength(0);
+  });
+
+  it("takes a pending refactor card only for its own table, once per generation", async () => {
+    taken.mockReset();
+    backend.handlers.refactor_card_open = () => ({
+      card: { characters: [{ name: "阿福", source_uids: ["1"] }] },
+      assets: [],
+      token: null,
+    });
+    await mount();
+    const file = new File(["{}"], "card.png");
+    await act(async () => root?.render(editor({ worldId: "other", file, generation: 1 })));
+    expect(commands("refactor_card_open")).toHaveLength(0);
+    expect(taken).not.toHaveBeenCalled();
+    const pending = { worldId: "w1", file, generation: 2 };
+    await act(async () => root?.render(editor(pending)));
+    await vi.waitFor(() => expect(commands("refactor_card_open")).toHaveLength(1));
+    expect(taken).toHaveBeenCalledWith(2);
+    // 同一份待處理檔重繪不會再開一次
+    await act(async () => root?.render(editor(pending)));
+    expect(commands("refactor_card_open")).toHaveLength(1);
   });
 });

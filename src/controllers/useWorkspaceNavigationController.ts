@@ -130,9 +130,12 @@ export function useWorkspaceNavigationController({
   const selectCard = (id: string) => selectSpeaker(id);
   const selectGm = () => selectSpeaker(GM_TARGET);
 
-  async function openWorldEditor() {
-    if (mainView?.kind === "world") return;
-    if (await canLeaveEditor()) setMainView({ kind: "world" });
+  /** 回傳世界設定是否開著（玩家在未存確認選了留下就是 false） */
+  async function openWorldEditor(): Promise<boolean> {
+    if (mainView?.kind === "world") return true;
+    if (!(await canLeaveEditor())) return false;
+    setMainView({ kind: "world" });
+    return true;
   }
 
   // 建卡先跟後端要一個 id：草稿期生圖就落在正確的圖庫目錄，存檔用同一個 id

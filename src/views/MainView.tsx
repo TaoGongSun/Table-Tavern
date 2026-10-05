@@ -8,6 +8,7 @@ import { AppConfig } from "../shared/contracts/backend-contracts";
 import { ActReader } from "../features/play/ActReader";
 import { CardEditor } from "../features/characters/CardEditor";
 import { WorldEditor } from "../features/worldbook/WorldEditor";
+import type { PendingRefactorCard } from "../features/refactor/refactor-card";
 
 interface MainViewProps {
   sceneLabelOf: (n: number) => string;
@@ -46,6 +47,8 @@ interface MainViewProps {
   worldEditorRefreshKey: number;
   onEntryConverted: () => Promise<void>;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
+  pendingRefactorCard: PendingRefactorCard | null;
+  onPendingRefactorCardTaken: (generation: number) => void;
   /** 遊玩畫面（messages＋composer）；元素在 App 建好傳進來 */
   playView: ReactNode;
 }
@@ -79,6 +82,8 @@ export function MainView({
   worldEditorRefreshKey,
   onEntryConverted,
   onRefactorApplied,
+  pendingRefactorCard,
+  onPendingRefactorCardTaken,
   playView,
 }: MainViewProps) {
   return (
@@ -143,6 +148,8 @@ export function MainView({
           convertColor={nextColor}
           onEntryConverted={onEntryConverted}
           onRefactorApplied={onRefactorApplied}
+          pendingRefactorCard={pendingRefactorCard}
+          onPendingRefactorCardTaken={onPendingRefactorCardTaken}
           isTurnRunning={isBusy}
         />
       ) : (

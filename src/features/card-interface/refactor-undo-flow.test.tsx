@@ -105,7 +105,14 @@ describe("refactor undo restores panel and state bar", () => {
   let host: HTMLDivElement | null = null;
 
   beforeEach(() => {
-    backend.handlers = {};
+    backend.handlers = {
+      // 開重構卡走後端同一入口：模擬 JSON 原樣回傳
+      refactor_card_open: (bytes) => ({
+        card: JSON.parse(new TextDecoder().decode(bytes as unknown as Uint8Array)),
+        assets: [],
+        token: null,
+      }),
+    };
     backend.calls = [];
     dialogs.confirm.mockReset();
     dialogs.confirm.mockResolvedValue(true);

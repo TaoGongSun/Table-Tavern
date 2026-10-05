@@ -3,7 +3,7 @@ use crate::transport::dispatch::{chat_transport, prepare_lane_call, stream_via_t
 use crate::ui_msg::UiMsg;
 use crate::usage::log as usage_log;
 use crate::{
-    config_root, data, data_root, import, inflight, lanes, receipts, refactor, refactor_ai,
+    config_root, data, data_root, import, inflight, lanes, refactor, refactor_ai,
     refactor_assemble, transport,
 };
 use std::path::Path;
@@ -20,28 +20,35 @@ pub(crate) async fn refactor_apply(
     outcome: refactor::RefactorOutcome,
     selection: refactor::RefactorSelection,
     record_receipt: Option<bool>,
+    asset_token: Option<String>,
 ) -> Result<refactor::RefactorApplySummary, String> {
-    let held = data::world_exclusive_async(&world_id).await?;
-    let root = data_root(&app)?;
-    let before =
-        receipts::snapshot_refactor(&root, &world_id).map_err(|error| error.to_string())?;
-    let result = refactor::apply(&root, &world_id, &outcome, &selection);
+    // 重構卡附的角色圖：取整桌鎖之前就從暫存槽取走，由這次呼叫持有到結束（見 refactor/card_import.rs）
+    let claimed = refactor::claim_assets(&world_id, asset_token.as_deref(), &outcome)
+        .map_err(|error| error.to_string())?;
+    let held = match data::world_exclusive_async(&world_id).await {
+        Ok(held) => held,
+        Err(error) => return Err(refactor::return_assets(claimed, error.to_string())),
+    };
+    let root = match data_root(&app) {
+        Ok(root) => root,
+        Err(error) => return Err(refactor::return_assets(claimed, error)),
+    };
+    let assets = claimed
+        .as_ref()
+        .map_or(&[][..], |staged| &staged.assets[..]);
+    // 中途失敗會在裡面記收據並立刻撤銷，回到零寫入（見 refactor/apply_record.rs）
+    let result = refactor::apply_and_record(
+        &root,
+        &world_id,
+        &outcome,
+        &selection,
+        assets,
+        record_receipt.unwrap_or(true),
+        &held,
+    );
     // 整桌交換（計畫 8.4）：清回合紀錄、桌世代加一，舊殼的在途卡寫被擋
     data::message_vars::world_swapped(&root, &world_id);
-    let result = result.map_err(|error| error.to_string())?;
-    if record_receipt.unwrap_or(true) {
-        receipts::record_refactor_apply(
-            &root,
-            &world_id,
-            &UiMsg::ReceiptRefactorApply.to_string(),
-            result.character_ids,
-            result.rewritten_entries,
-            result.deleted_entries,
-            before,
-            &held,
-        );
-    }
-    Ok(result.summary)
+    result.map_err(|error| refactor::return_assets(claimed, error.to_string()))
 }
 
 /// AI 卡重構定向（初判）：supported 卡在玩家二選一之前的快速判斷，帶全卡只出
@@ -620,6 +627,34 @@ pub(crate) fn refactor_table_mode(
         .map_err(|error| error.to_string())?
         .refactor_mode;
     refactor::normalize_stored_mode(stored)
+}
+
+/// 開重構卡（.json／PNG）：前端以 raw body 送原始 bytes（數十 MB 不走數字陣列），桌 id 放在
+/// `tt-world-id` header。整包驗證過才把角色圖暫存進單槽，回封套 JSON、圖片摘要與 token；
+/// outcome 前端再用 parseRefactorCardValue 驗一次。
+#[tauri::command]
+pub(crate) fn refactor_card_open(
+    request: tauri::ipc::Request<'_>,
+) -> Result<refactor::OpenCardResult, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(UiMsg::RefactorCardInvalid {
+            detail: "expected raw bytes".to_owned(),
+        }
+        .to_string());
+    };
+    let world_id = request
+        .headers()
+        .get("tt-world-id")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "missing tt-world-id header".to_owned())?;
+    data::validate_id(world_id).map_err(|error| error.to_string())?;
+    refactor::open_and_stage(world_id, bytes).map_err(|error| error.to_string())
+}
+
+/// 結果卡關閉：world＋token 都相符才清暫存槽（舊卡關閉清不到新卡）。
+#[tauri::command]
+pub(crate) fn refactor_card_release(world_id: String, token: String) {
+    refactor::release_assets(&world_id, &token);
 }
 
 /// AI 卡重構匯出（結果卡摘要頁用）：產物來自前端 state（就算還沒套用過也能匯出）。

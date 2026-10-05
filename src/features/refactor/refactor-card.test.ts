@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   REFACTOR_CARD_FORMAT,
   REFACTOR_IMPORT_NEWER,
+  hasRefactorCardChunk,
   parseRefactorCard,
 } from "./refactor-card";
 import { REFACTOR_IMPORT_INVALID, defaultRefactorSelection } from "./refactor-review";
@@ -113,5 +114,33 @@ describe("parseRefactorCard", () => {
       REFACTOR_IMPORT_INVALID,
     );
     expect(() => parseRefactorCard(envelope(null, { version: 2 }))).toThrow(REFACTOR_IMPORT_NEWER);
+  });
+});
+
+describe("hasRefactorCardChunk", () => {
+  const magic = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const chunk = (type: string, length: number) => [
+    ...[length >>> 24, (length >>> 16) & 255, (length >>> 8) & 255, length & 255],
+    ...[...type].map((c) => c.charCodeAt(0)),
+    ...new Array<number>(length).fill(0),
+    0,
+    0,
+    0,
+    0,
+  ];
+  const png = (...chunks: number[][]) => new Uint8Array([...magic, ...chunks.flat()]);
+
+  it("走 chunk 表找 ttRd，不論位置", () => {
+    expect(
+      hasRefactorCardChunk(png(chunk("IHDR", 13), chunk("IDAT", 4), chunk("ttRd", 3), chunk("IEND", 0))),
+    ).toBe(true);
+    expect(hasRefactorCardChunk(png(chunk("IHDR", 13), chunk("tEXt", 5), chunk("IEND", 0)))).toBe(false);
+  });
+
+  it("不是 PNG、長度越界：不認", () => {
+    expect(hasRefactorCardChunk(new TextEncoder().encode('{"format":"ttRd"}'))).toBe(false);
+    const broken = png(chunk("IHDR", 13));
+    broken[10] = 200;
+    expect(hasRefactorCardChunk(broken)).toBe(false);
   });
 });

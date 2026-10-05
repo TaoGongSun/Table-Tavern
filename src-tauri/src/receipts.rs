@@ -252,6 +252,13 @@ fn write_receipts(root: &Path, world_id: &str, receipts: &[ImportReceipt]) -> Da
     Ok(())
 }
 
+/// 原子寫整份收據（撤銷彈出、重構追加）：寫到一半失敗時整份舊收據原樣留著（不是半截 JSON）。
+fn pop_receipts(root: &Path, world_id: &str, receipts: &[ImportReceipt]) -> DataResult<()> {
+    let path = data::import_receipts_path(root, world_id)?;
+    data::commit_world_write_atomic(&path, serde_json::to_string_pretty(receipts)?.as_bytes())?;
+    Ok(())
+}
+
 /// 記帳失敗不得影響匯入是否成功；讀壞就當成沒有歷史直接重寫（等於放棄復原更早的匯入，但不會讓這次
 /// 匯入跟著失敗）。讀壞或寫不進去都回 false：呼叫端據此不解除「未完成」標記，來源就判不完整。
 fn append_receipt(root: &Path, world_id: &str, receipt: ImportReceipt) -> bool {
@@ -261,6 +268,16 @@ fn append_receipt(root: &Path, world_id: &str, receipt: ImportReceipt) -> bool {
     };
     receipts.push(receipt);
     write_receipts(root, world_id, &receipts).is_ok() && intact
+}
+
+/// 重構記收據用原子寫：整份收據是覆寫重寫的，寫到一半失敗時先前的收據逐位元組留著，
+/// 不會變成壞 JSON 而連上一次匯入的撤銷紀錄都丟掉。讀壞時不重寫（寫了會蓋掉先前的收據）。
+fn append_receipt_atomic(root: &Path, world_id: &str, receipt: ImportReceipt) -> bool {
+    let Some(mut receipts) = read_receipts_checked(root, world_id) else {
+        return false;
+    };
+    receipts.push(receipt);
+    pop_receipts(root, world_id, &receipts).is_ok()
 }
 
 /// 讀收據：缺檔＝沒有歷史（空清單）；檔案在但讀不了或壞掉回 None。
@@ -599,6 +616,14 @@ pub fn record_worldbook_import(
 /// refactor_apply 指令成功後呼叫：AI 卡重構可能一次新增多張角色卡、多條世界書條目，
 /// 並改寫或停用既有條目——收據記「實際套用的那份」，undo 才能逐項退回。
 /// 跟 record_worldbook_import 一樣：實際套用為零就不留空收據。
+/// record_refactor_apply 的結果：沒有任何變動可記／已記下（最後一筆就是這次）／寫不進去。
+#[derive(Debug, PartialEq, Eq)]
+pub enum RefactorRecord {
+    Nothing,
+    Recorded,
+    Failed,
+}
+
 pub fn record_refactor_apply(
     root: &Path,
     world_id: &str,
@@ -608,7 +633,7 @@ pub fn record_refactor_apply(
     deleted_entries: Vec<WorldbookEntry>,
     before: Snapshot,
     _held: &data::WorldExclusive,
-) {
+) -> RefactorRecord {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
     let added_ledger_lines = diff_ledger_suffix(&before.mechanism_log_before, root, world_id);
@@ -632,9 +657,9 @@ pub fn record_refactor_apply(
         && interface_shell_restore.is_none()
         && refactor_mode.is_none()
     {
-        return;
+        return RefactorRecord::Nothing;
     }
-    append_receipt(
+    let written = append_receipt_atomic(
         root,
         world_id,
         ImportReceipt {
@@ -658,6 +683,11 @@ pub fn record_refactor_apply(
             import_source: None,
         },
     );
+    if written {
+        RefactorRecord::Recorded
+    } else {
+        RefactorRecord::Failed
+    }
 }
 
 /// adoptImportName 改名成功後呼叫：把舊桌名補進最後一筆收據，undo 時桌名才退得回去。
@@ -695,7 +725,35 @@ pub fn list_import_receipts(root: &Path, world_id: &str) -> Vec<ImportReceiptSum
 pub fn undo_last_import(
     root: &Path,
     world_id: &str,
+    held: &data::WorldExclusive,
+) -> DataResult<UndoReport> {
+    undo_last(root, world_id, held, false)
+}
+
+/// 重構套用中途失敗的自動回滾：同 undo_last_import，但任一域還原失敗就回 Err、收據不彈出
+/// （留著給玩家手動撤銷），不像玩家手動撤銷那樣盡力而為、吞掉個別失敗。
+pub fn rollback_last_import(
+    root: &Path,
+    world_id: &str,
+    held: &data::WorldExclusive,
+) -> DataResult<UndoReport> {
+    undo_last(root, world_id, held, true)
+}
+
+/// strict＝false 時個別域的失敗吞掉照常彈出收據（玩家手動撤銷的既有行為）；true 時一律傳回。
+fn kept<T>(strict: bool, result: DataResult<T>) -> DataResult<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if strict => Err(error),
+        Err(_) => Ok(None),
+    }
+}
+
+fn undo_last(
+    root: &Path,
+    world_id: &str,
     _held: &data::WorldExclusive,
+    strict: bool,
 ) -> DataResult<UndoReport> {
     let path = data::import_receipts_path(root, world_id)?;
     let mut receipts: Vec<ImportReceipt> = if path.exists() {
@@ -730,13 +788,16 @@ pub fn undo_last_import(
 
     // 1. 角色卡：md／原始檔／圖片／圖庫一併刪除——按鈕語意是撤銷這次匯入，玩家後續編輯一併退場。
     if let Some(character_id) = &receipt.character_id {
-        if data::delete_character(root, world_id, character_id).is_ok() {
+        if kept(strict, data::delete_character(root, world_id, character_id))?.is_some() {
             report.removed_character = Some(receipt.label.clone());
         }
         // delete_character 不清 .import.json（非 PNG 匯入時的原始檔，PNG 匯入時原始檔與
         // 角色圖是同一個 .png，已經被 delete_character 清掉）。
         if let Ok(character_path) = data::character_path(root, world_id, character_id) {
-            let _ = data::commit_world_remove(&character_path.with_extension("import.json"));
+            kept(
+                strict,
+                data::commit_world_remove(&character_path.with_extension("import.json")),
+            )?;
         }
     }
     // AI 卡重構等一次套用多張角色卡的路徑：character_id／character_ids 兩欄位互斥，
@@ -745,24 +806,30 @@ pub fn undo_last_import(
         let name = data::read_character(root, world_id, character_id)
             .ok()
             .map(|card| card.name);
-        if data::delete_character(root, world_id, character_id).is_ok() {
+        if kept(strict, data::delete_character(root, world_id, character_id))?.is_some() {
             if let Some(name) = name {
                 report.removed_characters.push(name);
             }
             if let Ok(character_path) = data::character_path(root, world_id, character_id) {
-                let _ = data::commit_world_remove(&character_path.with_extension("import.json"));
+                kept(
+                    strict,
+                    data::commit_world_remove(&character_path.with_extension("import.json")),
+                )?;
             }
         }
     }
 
     // 2. 世界書條目：uid 還在且指紋沒變才刪；指紋變了＝玩家改過，保留並計數。
-    let current = data::read_worldbook(root, world_id).unwrap_or_default();
+    let current = kept(strict, data::read_worldbook(root, world_id))?.unwrap_or_default();
     for recorded in &receipt.worldbook_entries {
         let Some(entry) = current.iter().find(|entry| entry.uid == recorded.uid) else {
             continue; // 已經不在了（例如玩家自己刪過），不重複計數
         };
         if worldbook_entry_fingerprint(entry) == recorded.fingerprint {
-            let _ = data::delete_worldbook_entry(root, world_id, recorded.uid);
+            kept(
+                strict,
+                data::delete_worldbook_entry(root, world_id, recorded.uid),
+            )?;
             report.removed_entries += 1;
         } else {
             report.kept_entries += 1;
@@ -771,36 +838,70 @@ pub fn undo_last_import(
 
     // 3. 被改寫或停用的既有條目（AI 卡重構的來源條目改寫、介面／機制的 source_uid 停用）：
     // 整條覆寫回原文快照。uid 已經不在了（玩家自己刪過）就略過，不當新條目生回來。
-    let current_uids: HashSet<u64> = data::read_worldbook(root, world_id)
+    let current_uids: HashSet<u64> = kept(strict, data::read_worldbook(root, world_id))?
         .unwrap_or_default()
         .into_iter()
         .map(|entry| entry.uid)
         .collect();
     for original in &receipt.rewritten_entries {
         if current_uids.contains(&original.uid) {
-            let _ = data::upsert_worldbook_entry(root, world_id, original.clone());
+            kept(
+                strict,
+                data::upsert_worldbook_entry(root, world_id, original.clone()),
+            )?;
         }
     }
 
     // 3a. 這次操作整條刪除的條目（人物合併升格的專屬條目或收尾判定可刪的共用合集條目）：
-    // 不論 uid 現在還在不在，一律無條件插回——這些是這次操作自己刪的，不是玩家刪的，
-    // 跟上一步「uid 還在才復原」的語意不同。uid 一定會變（upsert 對不存在的 uid 重新分配），
-    // 原樣回來看的是內容，不是 uid。
+    // 這些是這次操作自己刪的，不是玩家刪的，一律插回，而且可安全重做（撤銷做到一半失敗、
+    // 收據保留後再撤一次，不得插出第二份）：原 uid 空著就照原 uid 插回；原 uid 上已是除 uid
+    // 外全部欄位都相同的條目＝先前已插回，跳過；原 uid 被別的條目佔走才換新 uid 插，且全欄位
+    // 相同的條目已在就跳過。
+    let same = |a: &WorldbookEntry, b: &WorldbookEntry| {
+        WorldbookEntry {
+            uid: 0,
+            ..a.clone()
+        } == WorldbookEntry {
+            uid: 0,
+            ..b.clone()
+        }
+    };
     for original in &receipt.deleted_entries {
-        let _ = data::upsert_worldbook_entry(root, world_id, original.clone());
+        let current = kept(strict, data::read_worldbook(root, world_id))?.unwrap_or_default();
+        match current.iter().find(|entry| entry.uid == original.uid) {
+            Some(entry) if same(entry, original) => {}
+            Some(_) => {
+                if !current.iter().any(|entry| same(entry, original)) {
+                    let fresh = WorldbookEntry {
+                        uid: u64::MAX,
+                        ..original.clone()
+                    };
+                    kept(strict, data::upsert_worldbook_entry(root, world_id, fresh))?;
+                }
+            }
+            None => {
+                kept(
+                    strict,
+                    data::restore_worldbook_entry(root, world_id, original.clone()),
+                )?;
+            }
+        }
     }
 
     // 4. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。
     if let Some(mechanism) = &receipt.mechanism {
         // 卡片變數模式：匯入加進的分支從復原當下的初始化來源那一份移除（計畫 8.4）；較早事件與其他幕
         // 種子裡的不追溯
-        let tree_in_events = data::message_vars::edit_tree_if_events(root, world_id, |tree| {
-            let before = tree.clone();
-            apply_map_undo(tree, &mechanism.added_state_keys, &mechanism.restored_state);
-            *tree != before
-        })
+        let tree_in_events = kept(
+            strict,
+            data::message_vars::edit_tree_if_events(root, world_id, |tree| {
+                let before = tree.clone();
+                apply_map_undo(tree, &mechanism.added_state_keys, &mechanism.restored_state);
+                *tree != before
+            }),
+        )?
         .unwrap_or(false);
-        if let Ok(mut state) = data::read_state(root, world_id) {
+        if let Some(mut state) = kept(strict, data::read_state(root, world_id))? {
             apply_map_undo(
                 &mut state.mechanism.rules,
                 &mechanism.added_rule_keys,
@@ -832,18 +933,18 @@ pub fn undo_last_import(
             if let Some(value_types) = &mechanism.value_types_before {
                 state.mechanism.value_types = value_types.clone();
             }
-            let _ = data::write_state(root, world_id, &state);
+            kept(strict, data::write_state(root, world_id, &state))?;
         }
     }
 
     // 5. 機制帳本：這次操作自己追加的那段原文整段挖掉，其餘（含期間新產生的遊玩紀錄）不動。
     if !receipt.added_ledger_lines.is_empty() {
         if let Ok(path) = data::mechanism_log_path(root, world_id) {
-            if let Ok(current) = fs::read_to_string(&path) {
+            if let Some(current) = kept(strict, fs::read_to_string(&path).map_err(Into::into))? {
                 if let Some(index) = current.rfind(receipt.added_ledger_lines.as_str()) {
                     let mut restored = current[..index].to_owned();
                     restored.push_str(&current[index + receipt.added_ledger_lines.len()..]);
-                    let _ = data::commit_world_write(&path, restored.as_bytes());
+                    kept(strict, data::commit_world_write(&path, restored.as_bytes()))?;
                 }
             }
         }
@@ -852,7 +953,7 @@ pub fn undo_last_import(
     // 6. 這次匯入新建的卡片介面殼：匯入前就有的不動。
     if let Some(extension) = &receipt.world_card_created {
         if let Ok(card_path) = data::world_card_path(root, world_id, extension) {
-            let _ = data::commit_world_remove(&card_path);
+            kept(strict, data::commit_world_remove(&card_path))?;
         }
     }
 
@@ -867,18 +968,18 @@ pub fn undo_last_import(
     // 6b. 這次匯入新建的 GM 卡圖：匯入前就有的不動。
     if receipt.gm_image_created {
         if let Ok(image_path) = data::gm_image_path(root, world_id) {
-            let _ = data::commit_world_remove(&image_path);
+            kept(strict, data::commit_world_remove(&image_path))?;
         }
     }
 
     // 8. 桌名：這次匯入有改過名字才退回去。
     if let Some(old_name) = &receipt.renamed_from {
-        if data::rename_world(root, world_id, old_name).is_ok() {
+        if kept(strict, data::rename_world(root, world_id, old_name))?.is_some() {
             report.renamed_back = true;
         }
     }
 
-    write_receipts(root, world_id, &receipts)?;
+    pop_receipts(root, world_id, &receipts)?;
     // 整桌還原（計畫 8.4）：清回合紀錄、桌世代加一。重構的復原讓這桌回到照原卡玩時，卡片變數模式
     // 以當下狀態樹物化新種子、換新 epoch（重構期間的修改因此保留）。
     data::message_vars::world_swapped(root, world_id);

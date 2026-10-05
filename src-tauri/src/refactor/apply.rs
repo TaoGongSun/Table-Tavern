@@ -1,9 +1,14 @@
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
+use super::card_png::{AssetKind, CardAsset};
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
-use super::types::{RefactorApplyResult, RefactorApplySummary, RefactorOutcome, RefactorSelection};
+use super::types::{
+    ApplyFailure, ApplyProgress, RefactorApplyResult, RefactorApplySummary, RefactorOutcome,
+    RefactorSelection,
+};
 use crate::data::{
     self, CharacterCard, DataResult, FieldKind, FieldRule, Tier, Visibility, WorldbookEntry,
 };
+use crate::import;
 use crate::mechanism;
 use crate::ui_msg::UiMsg;
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,12 +35,36 @@ const NEW_ENTRY_UID: u64 = u64::MAX;
 /// - 勾中的重寫條目直接新增；帶規則／觸發表的機制條目同時併入本地機制。
 /// - 來源條目只在所有引用它的產物都已套用時整條刪除，絕不再停用留墓地。
 /// - 勾中介面時，狀態樹整份重建為新欄位集；同名頂層鍵保留目前遊玩中的整支節點。
-pub fn apply(
+/// - 重構卡附的角色圖：其餘套用全部成立、存檔之後，依 outcome_index → 新卡 id 映射逐張寫圖。
+///   寫圖逐張進行、一張失敗不停下其餘，也不回 Err（收據照記，撤銷刪角色時連圖一起刪）；
+///   失敗的角色名進 summary.images_failed。映射到沒建卡的 index 的圖略過。
+pub fn apply_with_assets(
     root: &Path,
     world_id: &str,
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
-) -> DataResult<RefactorApplyResult> {
+    assets: &[CardAsset],
+) -> Result<RefactorApplyResult, ApplyFailure> {
+    let mut progress = ApplyProgress::default();
+    match apply_into(root, world_id, outcome, selection, assets, &mut progress) {
+        Ok(summary) => Ok(RefactorApplyResult {
+            summary,
+            character_ids: progress.character_ids,
+            rewritten_entries: progress.rewritten_entries,
+            deleted_entries: progress.deleted_entries,
+        }),
+        Err(error) => Err(ApplyFailure { error, progress }),
+    }
+}
+
+fn apply_into(
+    root: &Path,
+    world_id: &str,
+    outcome: &RefactorOutcome,
+    selection: &RefactorSelection,
+    assets: &[CardAsset],
+    progress: &mut ApplyProgress,
+) -> DataResult<RefactorApplySummary> {
     let mut state = data::read_state(root, world_id)?;
     // 無效索引（沒同時勾選成卡）靜默當作沒指定；桌上已有玩家卡就整批失敗、不寫入任何東西。
     let player_index = selection
@@ -170,11 +199,9 @@ pub fn apply(
         data::commit_world_remove(&data::interface_shell_path(root, world_id)?)?;
     }
 
-    let mut character_ids = Vec::new();
     // outcome_index → 這次建的卡 id（沒勾成卡是 None）：落檔的套用映射，不靠 character_ids 順序
     let mut character_map: Vec<Option<String>> = vec![None; outcome.characters.len()];
     let mut new_entries = 0usize;
-    let mut deleted_entries: Vec<WorldbookEntry> = Vec::new();
     let mut player_assigned = false;
 
     for (index, character) in outcome.characters.iter().enumerate() {
@@ -204,8 +231,9 @@ pub fn apply(
         let card = CharacterCard {
             id: data::new_id(),
             name: character.name.clone(),
-            color: PALETTE[(existing_character_count + character_ids.len()) % PALETTE.len()]
-                .to_owned(),
+            color: PALETTE
+                [(existing_character_count + progress.character_ids.len()) % PALETTE.len()]
+            .to_owned(),
             avatar: character.emoji.clone(),
             tier: Tier::Balanced,
             show_image: true,
@@ -214,13 +242,14 @@ pub fn apply(
             public_md: character.public_md.clone(),
             private_md: character.private_md.clone(),
         };
+        // 先登記再寫：寫到一半失敗時收據也涵蓋這張，撤銷能把半截檔清掉
+        progress.character_ids.push(card.id.clone());
         data::write_character(root, world_id, &card)?;
         if player_index == Some(index) {
             state.player_card_id = Some(card.id.clone());
             player_assigned = true;
         }
         character_map[index] = Some(card.id.clone());
-        character_ids.push(card.id);
     }
 
     let mut state_dirty = player_assigned;
@@ -359,7 +388,7 @@ pub fn apply(
             && deletion_candidates.contains(&uid)
             && consumers.iter().all(|applied| *applied)
         {
-            delete_source_entry(root, world_id, uid, &mut deleted_entries)?;
+            delete_source_entry(root, world_id, uid, &mut progress.deleted_entries)?;
         }
     }
 
@@ -367,8 +396,11 @@ pub fn apply(
     // 勾選）。不停用的話 constant 條目照常每輪注入，characters 桌的 GM 仍照卡片介面協定
     // 輸出。只停整條（span 空）：半條的條目其餘段落還在服役。停用前原樣快照走
     // rewritten_entries 進收據（undo 覆寫復原）；條目留在世界書掛停用徽章，玩家看得到全文。
-    let deleted_uids: BTreeSet<u64> = deleted_entries.iter().map(|entry| entry.uid).collect();
-    let mut rewritten_entries: Vec<WorldbookEntry> = Vec::new();
+    let deleted_uids: BTreeSet<u64> = progress
+        .deleted_entries
+        .iter()
+        .map(|entry| entry.uid)
+        .collect();
     let whole_entry_drops: BTreeSet<u64> = outcome
         .dropped
         .iter()
@@ -383,7 +415,7 @@ pub fn apply(
     if !whole_entry_drops.is_empty() {
         for entry in data::read_worldbook(root, world_id)? {
             if whole_entry_drops.contains(&entry.uid) && !entry.disabled {
-                rewritten_entries.push(entry.clone());
+                progress.rewritten_entries.push(entry.clone());
                 data::upsert_worldbook_entry(
                     root,
                     world_id,
@@ -421,21 +453,55 @@ pub fn apply(
         .inspect_err(|error| log::warn!("refactor card save failed: {error}"))
         .is_err();
 
-    Ok(RefactorApplyResult {
-        summary: RefactorApplySummary {
-            new_characters: character_ids.len(),
-            new_entries,
-            deleted_entries: deleted_entries.len(),
-            rewritten_entries: rewritten_entries.len(),
-            interface_applied,
-            mechanisms_applied,
-            player_assigned,
-            card_save_failed,
-        },
-        character_ids,
-        rewritten_entries,
-        deleted_entries,
+    let mut images_applied = 0usize;
+    let mut images_failed: Vec<String> = Vec::new();
+    for asset in assets {
+        let Some(Some(character_id)) = character_map.get(asset.outcome_index) else {
+            continue;
+        };
+        let written = match asset.kind {
+            AssetKind::Portrait => {
+                import::save_character_image(root, world_id, character_id, &asset.bytes)
+            }
+            AssetKind::Avatar => {
+                import::save_character_avatar(root, world_id, character_id, &asset.bytes)
+            }
+        };
+        match written {
+            Ok(()) => images_applied += 1,
+            Err(error) => {
+                log::warn!("refactor card image write failed: {error}");
+                let name = &outcome.characters[asset.outcome_index].name;
+                if !images_failed.contains(name) {
+                    images_failed.push(name.clone());
+                }
+            }
+        }
+    }
+
+    Ok(RefactorApplySummary {
+        new_characters: progress.character_ids.len(),
+        new_entries,
+        deleted_entries: progress.deleted_entries.len(),
+        rewritten_entries: progress.rewritten_entries.len(),
+        interface_applied,
+        mechanisms_applied,
+        player_assigned,
+        card_save_failed,
+        images_applied,
+        images_failed,
     })
+}
+
+/// 不附角色圖的套用（測試用簡寫）。
+#[cfg(test)]
+pub fn apply(
+    root: &Path,
+    world_id: &str,
+    outcome: &RefactorOutcome,
+    selection: &RefactorSelection,
+) -> DataResult<RefactorApplyResult> {
+    apply_with_assets(root, world_id, outcome, selection, &[]).map_err(|failure| failure.error)
 }
 
 /// 骨架填值用的欄位型別表（點分路徑→"number"｜"bool"｜"list"）。狀態樹會把值轉成字串，型別只能在套用時

@@ -23,6 +23,7 @@ import { CastRail } from "../features/characters/CastRail";
 import { StateBar } from "../features/table-state/StateBar";
 import { TableToolbar } from "./TableToolbar";
 import type { SettingsTab } from "../features/settings/SettingsWindow";
+import type { PendingRefactorCard } from "../features/refactor/refactor-card";
 
 // GM 卡的銅金色：發言對象晶片沿用書皮的 --fac，與角色卡的陣營色區隔
 const GM_COLOR = "#8a6a3c";
@@ -60,6 +61,8 @@ interface AppWorkspaceProps {
   onConfigSaved: (config: AppConfig) => void;
   onEntryConverted: () => Promise<void>;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
+  pendingRefactorCard: PendingRefactorCard | null;
+  onPendingRefactorCardTaken: (generation: number) => void;
   gate: TableGate;
   readOnlyNotice: { appVersion: string | null; backupAvailable: boolean } | null;
   repairNotice: RepairNotice | null;
@@ -99,6 +102,8 @@ export function AppWorkspace({
   onConfigSaved,
   onEntryConverted,
   onRefactorApplied,
+  pendingRefactorCard,
+  onPendingRefactorCardTaken,
   gate,
   readOnlyNotice,
   repairNotice,
@@ -322,6 +327,8 @@ export function AppWorkspace({
               worldEditorRefreshKey={worldEditorRefreshKey}
               onEntryConverted={onEntryConverted}
               onRefactorApplied={onRefactorApplied}
+              pendingRefactorCard={pendingRefactorCard}
+              onPendingRefactorCardTaken={onPendingRefactorCardTaken}
               playView={
                 <PlayView
                   onboarding={<Onboarding config={config} onSaved={onConfigSaved} />}
