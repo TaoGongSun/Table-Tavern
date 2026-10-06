@@ -18,4 +18,4 @@ grok 通道原本每輪開新 session、跨呼叫拿不到 prompt cache（根因
 
 ## 已知限制
 - 偶發整條線不命中：狐狸線換幕重開後連四輪續聊只有 1–10%。前綴純追加、每輪一個 loop，原因在 xAI 伺服器端分流。等 usage-cache-audit 用更多資料判斷要不要換 session 自救〔作者裁決 2026-10-06〕。
-- 凍結 system（含提進去的私設）在 grok 1.0.46＋app 獨立 GROK_HOME 下實際沒生效，另案 [grok-system-override](../../tasks/grok-system-override.md) 處理；本案驗的快取續聊行為不受影響。
+- 凍結 system（含提進去的私設）在 grok 1.0.46＋app 獨立 GROK_HOME 下實際沒生效，另案 [grok-system-override](grok-system-override.md) 處理；本案驗的快取續聊行為不受影響。
