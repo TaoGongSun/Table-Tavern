@@ -78,7 +78,6 @@ function install(fixture: Fixture) {
   h.new_id = () => "new-card-id";
   h.smart_free_new_models = () => [];
   h.card_interfaces = () => [];
-  h.keepalive_lanes = () => [];
   h.branch_bindings = () => [];
   h.mechanism_ledger = () => [];
 }

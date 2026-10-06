@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 
-const backend = vi.hoisted(() => ({ latest: null as unknown }));
+const backend = vi.hoisted(() => ({ latest: null as unknown, total: null as unknown }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd: string) => (cmd === "usage_report" ? report(backend.latest) : null)),
@@ -32,6 +32,7 @@ const row = {
   priced_tokens: 0,
   saved_usd: null,
   saved_partial: false,
+  estimated_rounds: 0,
   unreported: 0,
   in_use: true,
 };
@@ -40,8 +41,7 @@ function report(latest: unknown) {
   return {
     worlds: [{ id: "w1", name: "桌", rounds: 2 }],
     rows: [row],
-    total: row,
-    ping: { ...row, rounds: 0 },
+    total: backend.total ?? row,
     caches: [],
     events: 0,
     latest,
@@ -62,8 +62,9 @@ afterEach(() => {
   host.remove();
 });
 
-async function render(latest: unknown) {
+async function render(latest: unknown, total: unknown = null) {
   backend.latest = latest;
+  backend.total = total;
   await act(async () => root.render(<UsageTab currentWorld="w1" />));
   return host.querySelector(".usage-latest");
 }
@@ -111,5 +112,22 @@ describe("UsageTab 最近一輪", () => {
     });
     expect(line?.textContent).toContain(t("usageCacheReasonSkipped"));
     expect(line?.classList.contains("usage-bad")).toBe(true);
+  });
+});
+
+describe("UsageTab 已省", () => {
+  const priced = { ...row, source: "claude", priced_tokens: 30_000, saved_tokens: 15_000, saved_usd: 0.05 };
+
+  it("有輪次用估計係數算：第一眼標「約」", async () => {
+    await render(null, { ...priced, estimated_rounds: 1 });
+    const headline = host.querySelector(".usage-headline")?.textContent ?? "";
+    expect(headline).toContain(t("usageSavedHeadlineApprox", { pct: "50" }));
+  });
+
+  it("全是新紀錄：不標「約」", async () => {
+    await render(null, priced);
+    const headline = host.querySelector(".usage-headline")?.textContent ?? "";
+    expect(headline).toContain(t("usageSavedHeadline", { pct: "50" }));
+    expect(headline).not.toContain(t("usageSavedHeadlineApprox", { pct: "50" }));
   });
 });

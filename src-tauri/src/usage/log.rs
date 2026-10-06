@@ -17,7 +17,7 @@
 //! - `solo`：只帶本輪角色的劇情輪。天然單角色桌與（日後）零命中退回都是這個形狀，
 //!   靠 `roster_size` 分辨：等於 1＝這桌本來就一個人，大於 1＝策略退回。
 //! - `oneshot`：不建立續輪期待的一次性呼叫（換幕摘要、開桌生成、卡重構）。
-//! - `ping`：保溫呼叫（包 7），不推進劇情、只為刷新快取壽命；花費與劇情輪分開統計。
+//! - 舊帳本另有 `ping`（已撤的保溫呼叫），報表只把它的花費算進合計。
 //!
 //! `cache`＝這通呼叫的快取結果。算得出「理論可中量」的路徑（只有 claude 續聊線）判得比較細：
 //! - `hit`：中了，且達到理論可中量的九成以上；無理論值的路徑則是「中了」。
@@ -43,7 +43,7 @@
 //! 沒有用量數字的線事件（丟線重來）走 `append_event`，只寫 `event`＋`reason`，
 //! 不偽造 mode／cache，才不會在快取統計的分母裡憑空多一筆。
 
-use crate::lanes::CACHE_TTL_SECS;
+use crate::lanes::LEGACY_CACHE_TTL_SECS;
 use crate::transport::PromptCacheUsage;
 use serde_json::{json, Map, Value};
 use std::io::Write;
@@ -55,7 +55,6 @@ pub enum Mode {
     Shared,
     Solo,
     Oneshot,
-    Ping,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +86,6 @@ impl Mode {
             Self::Shared => "shared",
             Self::Solo => "solo",
             Self::Oneshot => "oneshot",
-            Self::Ping => "ping",
         }
     }
 }
@@ -154,8 +152,8 @@ pub struct LaneContext {
     pub expected_cached: u64,
     pub system_tokens: u64,
     pub system_hash: String,
-    /// 保溫 ping（包 7）：不推進劇情，花費與劇情輪分開統計
-    pub ping: bool,
+    /// 呼叫前採用的快取壽命（秒）；重開為 None。判斷「隔太久過期」只看它
+    pub ttl_secs: Option<u64>,
 }
 
 /// 九成以上算正常：CLI 端 token 計數與分段邊界本來就會有零頭出入。
@@ -165,7 +163,6 @@ const HIT_TOLERANCE_DEN: u64 = 10;
 /// 這通呼叫送出去的是什麼形狀。續聊線自己說明；其餘由呼叫端隨行交代。
 fn classify_mode(lane: Option<&LaneContext>, shape: PromptShape) -> Mode {
     match lane {
-        Some(lane) if lane.ping => Mode::Ping,
         Some(_) => Mode::Resume,
         None => match shape {
             PromptShape::Oneshot | PromptShape::Image => Mode::Oneshot,
@@ -223,10 +220,10 @@ fn classify_cache(
     (Cache::Zero, Some(reason))
 }
 
-/// 該中而沒中滿的解釋：超過保守窗口就歸給時間，否則只能說「低於理論值」
+/// 該中而沒中滿的解釋：超過呼叫前採用的快取壽命就歸給時間，否則只能說「低於理論值」
 /// （程式看得到數字不對，看不到是誰動了前綴）。
 fn short_reason(lane: &LaneContext) -> CacheReason {
-    match lane.age_secs > CACHE_TTL_SECS {
+    match lane.age_secs > lane.ttl_secs.unwrap_or(LEGACY_CACHE_TTL_SECS) {
         true => CacheReason::Expired,
         false => CacheReason::BelowExpected,
     }
@@ -317,6 +314,10 @@ fn call_fields(
     if let Some(created) = usage.created_tokens {
         fields.insert("created_tokens".to_owned(), json!(created));
     }
+    // 只有來源給了 1h 拆分才寫；缺欄＝時效未知，報表按 5 分鐘估算並標「約」
+    if let Some(one_hour) = usage.created_1h_tokens {
+        fields.insert("created_1h_tokens".to_owned(), json!(one_hour));
+    }
     fields.insert("output_tokens".to_owned(), json!(usage.output_tokens));
     if let Some(rate) = usage.hit_rate() {
         fields.insert("hit_rate".to_owned(), json!((rate * 10.0).round() / 10.0));
@@ -337,6 +338,9 @@ fn call_fields(
         }
         fields.insert("age_secs".to_owned(), json!(lane.age_secs));
         fields.insert("expected_cached".to_owned(), json!(lane.expected_cached));
+        if let Some(ttl) = lane.ttl_secs {
+            fields.insert("ttl_secs".to_owned(), json!(ttl));
+        }
         fields.insert("system_tokens".to_owned(), json!(lane.system_tokens));
         fields.insert("system_hash".to_owned(), json!(lane.system_hash));
     }
@@ -469,6 +473,7 @@ mod tests {
 
     fn usage(prompt: u64, cached: u64, created: u64) -> PromptCacheUsage {
         PromptCacheUsage {
+            created_1h_tokens: None,
             prompt_tokens: prompt,
             cached_tokens: Some(cached),
             created_tokens: Some(created),
@@ -487,7 +492,7 @@ mod tests {
             expected_cached,
             system_tokens: 4_000,
             system_hash: text_hash("凍結素材"),
-            ping: false,
+            ttl_secs: Some(300),
         }
     }
 
@@ -649,13 +654,53 @@ mod tests {
         assert!(line.get("cache_reason").is_none());
     }
 
+    /// 「隔太久」看呼叫前採用的壽命：1 小時線閒置 6 分鐘沒中滿，不能歸給過期；
+    /// 舊列（沒記壽命）照 5 分鐘解釋。
+    #[test]
+    fn expiry_reason_follows_the_ttl_adopted_before_the_call() {
+        let mut hour = lane(400, 9_000);
+        hour.ttl_secs = Some(3600);
+        assert_eq!(short_reason(&hour), CacheReason::BelowExpected);
+        hour.age_secs = 3601;
+        assert_eq!(short_reason(&hour), CacheReason::Expired);
+        let mut legacy = lane(301, 9_000);
+        legacy.ttl_secs = None;
+        assert_eq!(short_reason(&legacy), CacheReason::Expired);
+        legacy.age_secs = 300;
+        assert_eq!(short_reason(&legacy), CacheReason::BelowExpected);
+    }
+
+    /// 1h 拆分有回報才落帳；沒有就不寫欄位（時效未知）。
+    #[test]
+    fn one_hour_split_is_logged_only_when_reported() {
+        let mut usage = usage(10_000, 0, 9_000);
+        usage.created_1h_tokens = Some(9_000);
+        let line = call_fields(
+            None,
+            "claude",
+            "sonnet",
+            Some(&lane(0, 0)),
+            PromptShape::Oneshot,
+            usage,
+        );
+        assert_eq!(line["created_1h_tokens"], json!(9_000));
+        assert_eq!(line["ttl_secs"], json!(300));
+        usage.created_1h_tokens = None;
+        let line = call_fields(
+            None,
+            "claude",
+            "sonnet",
+            Some(&lane(0, 0)),
+            PromptShape::Oneshot,
+            usage,
+        );
+        assert!(line.get("created_1h_tokens").is_none());
+    }
+
     /// mode 只描述形狀，與快取結果互不干涉。
     #[test]
     fn mode_separates_call_shape_from_cache_result() {
         assert_eq!(classify_mode(Some(&lane(30, 9_000)), turn(4)), Mode::Resume);
-        let mut ping = lane(200, 9_000);
-        ping.ping = true;
-        assert_eq!(classify_mode(Some(&ping), turn(4)), Mode::Ping);
         assert_eq!(classify_mode(None, turn(4)), Mode::Shared);
         // 天然單角色桌與（日後）策略退回同樣是 solo，靠 roster_size 分辨
         assert_eq!(classify_mode(None, turn(1)), Mode::Solo);
@@ -689,6 +734,7 @@ mod tests {
             None,
             turn(3),
             PromptCacheUsage {
+                created_1h_tokens: None,
                 prompt_tokens: 4_690,
                 cached_tokens: None,
                 created_tokens: None,
@@ -705,6 +751,7 @@ mod tests {
             None,
             turn(3),
             PromptCacheUsage {
+                created_1h_tokens: None,
                 prompt_tokens: 2_495,
                 cached_tokens: Some(0),
                 created_tokens: None,

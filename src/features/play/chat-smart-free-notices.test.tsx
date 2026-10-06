@@ -105,7 +105,6 @@ describe("chat smart-free notices", () => {
           canUndoScene={false}
           onRegenerateSummary={() => {}}
           onRevertScene={() => {}}
-          awayTooLong={false}
           speaker=""
           gmTargeted={false}
           targetName=""

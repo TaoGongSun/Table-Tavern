@@ -84,24 +84,33 @@ node('assistant', message={'role': 'assistant', 'content': [{'type': 'thinking',
 node('assistant', message={'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]})
 node('attachment', attachment={'type': 'prompt_snapshot'})
 out.append({'type': 'last-prompt'})
-# 保溫的異常形狀（測失敗路徑用）：zero＝成功卻沒有 ping user 行、double＝兩則、
-# half＝寫下半截就失敗、tamper＝保溫期間改動前段
-mode = os.environ.get('FAKE_PING_MODE') if '系統保溫訊息' in prompt else None
-if mode == 'zero':
-    out = [o for o in out if o.get('type') != 'user']
-elif mode == 'double':
-    out.insert(2, dict(out[1], uuid=str(uuid.uuid4())))
-elif mode == 'half':
-    out = out[:2]
-elif mode == 'tamper':
-    text = open(path).read().replace('enqueue', 'tampered', 1)
-    open(path, 'w').write(text)
 with open(path, 'a') as f:
     for o in out:
         f.write(json.dumps(o, ensure_ascii=False) + '\n')
-if mode == 'half':
+# 測試用環境變數（名稱可加 _RESUME／_OPEN 後綴，只套在那種嘗試）：
+# FAKE_USAGE＝收尾用量 JSON；FAKE_RATE_BEFORE／AFTER＝在 result 前後插 rate_limit_event；
+# FAKE_FAIL＝回 is_error 的 result 後以非零碼結束；FAKE_HANG＝吐完 BEFORE 事件後卡住等中止
+kind = 'RESUME' if rid else 'OPEN'
+def env(name):
+    return os.environ.get(name + '_' + kind) or os.environ.get(name)
+usage = json.loads(env('FAKE_USAGE') or json.dumps({
+    'input_tokens': 3, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 1000,
+    'output_tokens': 10,
+    'cache_creation': {'ephemeral_1h_input_tokens': 1000, 'ephemeral_5m_input_tokens': 0}}))
+def rate(name):
+    info = env(name)
+    if info:
+        print(json.dumps({'type': 'rate_limit_event', 'rate_limit_info': json.loads(info)}), flush=True)
+rate('FAKE_RATE_BEFORE')
+if env('FAKE_HANG'):
+    open(os.path.join(d, 'hanging'), 'w').close()
+    import time
+    time.sleep(30)
+if env('FAKE_FAIL'):
+    print(json.dumps({'type': 'result', 'is_error': True, 'result': 'boom', 'usage': usage}))
     sys.exit(1)
-print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
+print(json.dumps({'type': 'result', 'is_error': False, 'result': reply, 'usage': usage}))
+rate('FAKE_RATE_AFTER')
 "#,
     )
     .unwrap();
@@ -118,8 +127,10 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
             session_dir.to_string_lossy().into_owned(),
         )],
         model: Some("sonnet".to_owned()),
-        usage_log: None,
+        // 帳本開著 runner 才會回填用量，lane 才估得出快取壽命
+        usage_log: Some(dir.join("prompt-cache.jsonl")),
         claude_home: claude_home.clone(),
+        on_overage: None,
     };
     FakeCli {
         dir,
@@ -185,6 +196,7 @@ print(json.dumps({'event': 'result', 'result': {
         model: Some("gemini-test".to_owned()),
         usage_log: Some(usage_log),
         claude_home: dir.join("unused-claude-home"),
+        on_overage: None,
     };
     FakeCli {
         dir,
@@ -249,6 +261,7 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         provider: "claude".to_owned(),
         model: "sonnet".to_owned(),
         last_call_epoch: 1_000,
+        cache_ttl_secs: LEGACY_CACHE_TTL_SECS,
         last_prompt_tokens: 0,
         agy_usage: None,
     }
@@ -417,7 +430,7 @@ fn drifted_system_rebases_on_claude_and_reopens_on_grok() {
     input.frozen_system = "凍結B".to_owned(); // 素材漂移
     let mut state = lane_state(&events, 0);
     state.expected_reply = None;
-    let expired = state.last_call_epoch + CACHE_TTL_SECS + 1;
+    let expired = state.last_call_epoch + LEGACY_CACHE_TTL_SECS + 1;
 
     match plan_turn(Some(&state), &input, expired, LaneProvider::Claude) {
         TurnPlan::Resume {
@@ -816,6 +829,7 @@ async fn lane_turns_open_rewrite_resume_and_degrade() {
         envs: call.envs.clone(),
         usage_log: None,
         claude_home: call.claude_home.clone(),
+        on_overage: None,
     };
     run_turn(
         &haiku_call,
@@ -834,216 +848,6 @@ async fn lane_turns_open_rewrite_resume_and_degrade() {
     assert!(lanes_json.contains("chars:haiku"));
 
     std::fs::remove_dir_all(&dir).unwrap();
-}
-
-fn set_lane_epoch(store_path: &Path, epoch: u64) {
-    let mut store = read_store(store_path);
-    for state in store.values_mut() {
-        state.last_call_epoch = epoch;
-    }
-    write_store(store_path, &store).unwrap();
-}
-
-/// 端到端（假 CLI）：保溫 ping 讀一次既有快取後把問答截掉，session 檔逐字回到 ping 前，
-/// 下一輪照樣續聊只送增量（回覆編號沒被 ping 墊高＝真的截乾淨）；
-/// 剛呼叫完、快取已過期、上輪沒收尾的線都不浪費這筆錢。
-#[cfg(unix)]
-#[tokio::test]
-async fn keepalive_pings_live_lanes_and_leaves_no_trace() {
-    // run_cli 會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children 的
-    // 測試（inflight.rs）不分青紅皂白殺表上全部 pid，故用同一把鎖互斥執行。
-    let _serial = crate::inflight::lock_real_process_tests();
-    let FakeCli {
-        dir,
-        call,
-        root,
-        world_id,
-        session_dir,
-        claude_home,
-        working_dir,
-    } = fake_claude("ping");
-    let calls = |index: usize| -> (Vec<String>, String) {
-        let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
-        let line: serde_json::Value =
-            serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
-        (
-            line["args"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|v| v.as_str().unwrap().to_owned())
-                .collect(),
-            line["prompt"].as_str().unwrap().to_owned(),
-        )
-    };
-
-    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
-    let reply1 = run_turn(
-        &call,
-        &root,
-        &world_id,
-        turn_input(&events, 0),
-        None,
-        |_| {},
-    )
-    .await
-    .unwrap()
-    .text;
-    assert_eq!(reply1, "回覆1");
-    let store_path = data::lanes_path(&root, &world_id).unwrap();
-    let session_id = read_store(&store_path)
-        .values()
-        .next()
-        .unwrap()
-        .session_id
-        .clone();
-    let session_path = session_file::session_file_path(&claude_home, &working_dir, &session_id);
-    let before = std::fs::read_to_string(&session_path).unwrap();
-
-    // 剛呼叫完：快取還很新，不必花這筆
-    assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 0);
-
-    // 距上輪 200 秒＝快取還活著，正是該保溫的時候
-    set_lane_epoch(&store_path, now_epoch() - 200);
-    assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 1);
-    let (ping_args, ping_prompt) = calls(1);
-    assert!(ping_args
-        .windows(2)
-        .any(|w| w == ["--resume", session_id.as_str()]));
-    assert_eq!(ping_prompt, PING_PROMPT);
-    // 保溫帶的 system 要跟開線那次逐字相同才匹配得到快取前綴（假 CLI 當場讀檔記下）
-    let systems: Vec<String> = std::fs::read_to_string(session_dir.join("calls.jsonl"))
-        .unwrap()
-        .lines()
-        .map(|line| {
-            let line: serde_json::Value = serde_json::from_str(line).unwrap();
-            line["system"].as_str().unwrap().to_owned()
-        })
-        .collect();
-    assert_eq!(systems[0], "凍結A");
-    assert_eq!(systems[1], systems[0]);
-    // 問答已截掉：檔案逐字回到 ping 前，正典 transcript 也沒被碰過
-    assert_eq!(std::fs::read_to_string(&session_path).unwrap(), before);
-    // 保溫成功＝壽命重新計時
-    assert!(now_epoch() - read_store(&store_path)[&"chars:sonnet".to_owned()].last_call_epoch < 5);
-
-    // 快取已過期：保了也只是全額重建，不如留給下一輪自己重開
-    set_lane_epoch(&store_path, now_epoch() - 3600);
-    assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 0);
-
-    // 上輪沒收尾（pending 未清）的線不碰：下一輪本來就要重開
-    set_lane_epoch(&store_path, now_epoch() - 200);
-    let mut store = read_store(&store_path);
-    store.values_mut().next().unwrap().pending_rewrite = Some(PendingRewrite {
-        confidential: None,
-        prefix: None,
-    });
-    write_store(&store_path, &store).unwrap();
-    assert_eq!(keepalive(&call, &root, &world_id).await.unwrap(), 0);
-    store.values_mut().next().unwrap().pending_rewrite = None;
-    write_store(&store_path, &store).unwrap();
-
-    // ping 過的線照樣續聊：回覆編號是 2 而不是 3＝session 裡真的沒留下保溫問答
-    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply1));
-    events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
-    let reply2 = run_turn(
-        &call,
-        &root,
-        &world_id,
-        turn_input(&events, 0),
-        None,
-        |_| {},
-    )
-    .await
-    .unwrap()
-    .text;
-    assert_eq!(reply2, "回覆2");
-    let (args, prompt) = calls(2);
-    assert!(args
-        .windows(2)
-        .any(|w| w == ["--resume", session_id.as_str()]));
-    assert!(prompt.contains("阿濤：來一杯麥酒"));
-    assert!(!prompt.contains("老闆晚安"));
-
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-/// 保溫的失敗路徑：回傳（保溫成功線數, 檔案是否回到保溫前, 線是否還在, 帳本最後一行）。
-#[cfg(unix)]
-async fn ping_with_fake_mode(mode: &str) -> (usize, bool, bool, serde_json::Value) {
-    let FakeCli {
-        dir,
-        mut call,
-        root,
-        world_id,
-        claude_home,
-        working_dir,
-        ..
-    } = fake_claude(&format!("ping-{mode}"));
-    let ledger = dir.join("usage.jsonl");
-    call.usage_log = Some(ledger.clone());
-    let events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
-    run_turn(
-        &call,
-        &root,
-        &world_id,
-        turn_input(&events, 0),
-        None,
-        |_| {},
-    )
-    .await
-    .unwrap();
-    let store_path = data::lanes_path(&root, &world_id).unwrap();
-    let session_id = read_store(&store_path)
-        .values()
-        .next()
-        .unwrap()
-        .session_id
-        .clone();
-    let session_path = session_file::session_file_path(&claude_home, &working_dir, &session_id);
-    let before = std::fs::read_to_string(&session_path).unwrap();
-
-    set_lane_epoch(&store_path, now_epoch() - 200);
-    call.envs
-        .push(("FAKE_PING_MODE".to_owned(), mode.to_owned()));
-    let pinged = keepalive(&call, &root, &world_id).await.unwrap();
-    let restored = std::fs::read_to_string(&session_path).unwrap() == before;
-    let kept = !read_store(&store_path).is_empty();
-    // 假 CLI 不回報用量：帳本只會有丟線事件，沒丟線就沒有這個檔
-    let last = std::fs::read_to_string(&ledger)
-        .ok()
-        .and_then(|text| text.lines().last().map(str::to_owned))
-        .map_or(serde_json::Value::Null, |line| {
-            serde_json::from_str(&line).unwrap()
-        });
-    std::fs::remove_dir_all(&dir).unwrap();
-    (pinged, restored, kept, last)
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn keepalive_failure_paths_restore_or_drop_with_reason() {
-    let _serial = crate::inflight::lock_real_process_tests();
-
-    // 寫下半截就失敗：不算保溫成功，但檔案還原、線保住
-    let (pinged, restored, kept, last) = ping_with_fake_mode("half").await;
-    assert_eq!((pinged, restored, kept), (0, true, true));
-    assert!(last.is_null(), "沒丟線就不該有丟線事件：{last}");
-
-    // 成功卻有零則／兩則保溫訊息：不能確定追加段是什麼，丟線並落帳 stage
-    for mode in ["zero", "double"] {
-        let (pinged, _, kept, last) = ping_with_fake_mode(mode).await;
-        assert_eq!((pinged, kept), (0, false), "{mode}");
-        assert_eq!(last["event"], "drop-lane", "{mode}");
-        assert_eq!(last["reason"], "ping-truncate-failed", "{mode}");
-        assert_eq!(last["stage"], "find-segment", "{mode}");
-    }
-
-    // 保溫期間前段被改動：無法還原，丟線
-    let (pinged, _, kept, last) = ping_with_fake_mode("tamper").await;
-    assert_eq!((pinged, kept), (0, false));
-    assert_eq!(last["reason"], "ping-truncate-failed");
-    assert_eq!(last["stage"], "truncate");
 }
 
 /// 素材變動先用補丁保住快取；超過五分鐘才把新素材追平進凍結快照，並留下可供額度頁讀取的原因紀錄。
@@ -1114,6 +918,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         model: Some("sonnet".to_owned()),
         usage_log: Some(usage_log.clone()),
         claude_home,
+        on_overage: None,
     };
     let calls = |index: usize| -> (Vec<String>, String, String) {
         let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
@@ -1249,6 +1054,7 @@ fn abort_delete_failure_clears_lane_and_returns_error() {
         model: Some("sonnet".to_owned()),
         usage_log: Some(usage_log.clone()),
         claude_home: claude_home.clone(),
+        on_overage: None,
     };
     let error = settle_abort(
         &call,
@@ -1381,6 +1187,7 @@ time.sleep(60)
         model: Some("sonnet".to_owned()),
         usage_log: None,
         claude_home: claude_home.clone(),
+        on_overage: None,
     };
     let world_for_abort = world_id.clone();
     let (guard, mut cancel) = crate::inflight::register_turn(&world_for_abort, "turn-1");
@@ -1679,6 +1486,7 @@ fn apply_rewrite_names_the_failing_stage() {
         usage_log: None,
         claude_home: claude_home.clone(),
         prompt_dir: working_dir.with_file_name("prompts"),
+        on_overage: None,
     };
     let user = |uuid: &str, parent: Option<&str>, text: &str| {
         serde_json::json!({"type":"user","uuid":uuid,"parentUuid":parent,
@@ -1770,5 +1578,6 @@ fn apply_rewrite_names_the_failing_stage() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+mod cache_ttl;
 mod grok;
 mod lane_lock;

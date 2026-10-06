@@ -76,7 +76,7 @@ pub(crate) fn chat_transport(config: &data::AppConfig) -> String {
 }
 
 /// claude CLI 的環境變數：沙盒告知＋（設了相容端點時）BASE_URL 與 token。
-/// 單發（stream_via_transport）與 lane 續聊共用。
+/// 單發（stream_via_transport）、卡重構與 lane 續聊共用；劇情續聊線另由 `lanes::pin_lane_cache_ttl` 釘 1 小時快取。
 fn claude_cli_envs(config: &data::AppConfig) -> Vec<(String, String)> {
     // Claude Code 開場會自建 macOS 沙盒，系統因此以「Table Tavern」的名義向玩家要
     // 桌面／音樂資料夾權限（tccd 日誌實證：accessing=claude-code、responsible=本 app）。
@@ -178,6 +178,7 @@ pub(crate) async fn prepare_lane_call(
             .ok()
             .map(|root| root.join("prompt-cache.jsonl")),
         claude_home: claude_home_dir(),
+        on_overage: None,
     })
 }
 
@@ -477,6 +478,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 cli::parse_claude_line,
                 thinking_to_delta,
                 usage_log.as_deref().map(|path| cli::UsageLog {
+                    usage_out: None,
+                    overage_out: None,
                     path,
                     world,
                     transport: "claude",
@@ -509,6 +512,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 cli::parse_codex_line,
                 false, // 只有 claude 解析器會產思考增量
                 usage_log.as_deref().map(|path| cli::UsageLog {
+                    usage_out: None,
+                    overage_out: None,
                     path,
                     world,
                     transport: "codex",
@@ -543,6 +548,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 cli::parse_agy_line,
                 false,
                 usage_log.as_deref().map(|path| cli::UsageLog {
+                    usage_out: None,
+                    overage_out: None,
                     path,
                     world,
                     transport: "agy",
@@ -586,6 +593,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 cli::parse_grok_line,
                 false,
                 usage_log.as_deref().map(|path| cli::UsageLog {
+                    usage_out: None,
+                    overage_out: None,
                     path,
                     world,
                     transport: "grok",
@@ -615,7 +624,26 @@ pub(crate) async fn stream_turn_reporting_truncation(
 
 #[cfg(test)]
 mod tests {
-    use super::ai_call_failure;
+    use super::{ai_call_failure, claude_cli_envs};
+
+    /// 共用的 claude 環境（單發呼叫、卡重構都走它）不帶快取時效：1 小時只釘在劇情續聊線
+    #[test]
+    fn shared_claude_envs_leave_cache_ttl_to_cli_default() {
+        let mut config = crate::data::AppConfig::default();
+        config.preferences.insert(
+            "claude_base_url".to_owned(),
+            serde_json::json!("https://example.invalid"),
+        );
+        for envs in [
+            claude_cli_envs(&crate::data::AppConfig::default()),
+            claude_cli_envs(&config),
+        ] {
+            assert!(envs
+                .iter()
+                .all(|(key, _)| key != "CLAUDE_CODE_PROMPT_CACHE_TTL"
+                    && key != "FORCE_PROMPT_CACHING_5M"));
+        }
+    }
 
     /// 只有真的送出去給模型、而它沒回話的失敗才掛碼：讀卡、寫逐字稿、找不到 CLI
     /// 都不經過這裡，前端才不會把「檔案寫不進去」講成「AI 沒回應」害玩家換模型瞎試

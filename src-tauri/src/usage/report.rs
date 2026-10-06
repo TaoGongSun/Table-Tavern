@@ -4,7 +4,7 @@
 //! 兩條規矩：
 //! - **token 是主軸**：四家 CLI 的 token 語意已在 cli.rs 換算成同一把尺，可以直接相加比較。
 //! - **第一眼只講省下多少**：收合處出「已省幾成、省了多少錢」（總花費看了只會焦慮），
-//!   花費留在細項——那裡有保溫 ping 這種本來就沒有「省下」可言的列。
+//!   花費留在細項。
 //! - **金額只轉述**：app 不自算牌價、不建價目表，`cost_usd` 照舊是各 CLI 自己回報值的加總；
 //!   省下的錢再拿它反推該輪的輸入單價乘回省下的 token，估不出的輪次標 `saved_partial`。
 //!
@@ -52,6 +52,9 @@ pub struct UsageRow {
     pub saved_usd: Option<f64>,
     /// 有輪次估不出（沒回報金額或計價不明），加總只是部分
     pub saved_partial: bool,
+    /// 省下金額裡用估計係數算的輪數（claude 舊列沒有 1h 拆分、或帳本只記別名看不出世代）。
+    /// 大於 0 時前端在省額前標「約」
+    pub estimated_rounds: u64,
     /// 完全不回報用量的輪數（agy）
     pub unreported: u64,
     /// 這個模型是目前設定在用的
@@ -98,13 +101,11 @@ pub struct UsageReport {
     pub worlds: Vec<WorldOption>,
     pub rows: Vec<UsageRow>,
     pub total: UsageRow,
-    /// 保溫 ping 小計：不推進劇情，與劇情輪分開算
-    pub ping: UsageRow,
     /// 快取結果統計。事件行（丟線重來）沒有快取結果，不進這個分母
     pub caches: Vec<CacheCount>,
     /// 線事件的次數（目前只有丟線重來）
     pub events: u64,
-    /// 最近一筆非保溫紀錄，供燈號與原因句
+    /// 最近一筆劇情紀錄，供燈號與原因句
     pub latest: Option<LatestCall>,
 }
 
@@ -160,7 +161,7 @@ fn classify_recorded(line: &Value) -> (Option<String>, String, Option<String>) {
         true => 0,
         false => number(line, "expected_cached"),
     };
-    let short = match number(line, "age_secs") > crate::lanes::CACHE_TTL_SECS {
+    let short = match number(line, "age_secs") > crate::lanes::LEGACY_CACHE_TTL_SECS {
         true => "expired",
         false => "below-expected",
     };
@@ -217,15 +218,56 @@ fn reported(line: &Value) -> bool {
     }
 }
 
-/// 快取計價係數（相對一般輸入價）：`(讀快取, 寫快取)`。讀便宜、寫（Anthropic）反而貴，
-/// 兩邊都算進去才不會把「省下多少」灌水。沒列到的來源不估——agy 完全不回報用量，
-/// api 走哪個模型不定。
-fn cache_price(transport: &str) -> Option<(f64, f64)> {
+/// 快取計價係數（相對一般輸入價）：`(讀快取, 寫快取, 讀係數是不是估的)`。讀便宜、寫（Anthropic）
+/// 反而貴，兩邊都算進去才不會把「省下多少」灌水。沒列到的來源不估——agy 完全不回報用量，
+/// api 走哪個模型不定。claude 的寫入係數在 `claude_write_cost` 依 1h／5m 拆分另算，這裡只放 5m 價。
+fn cache_price(transport: &str, model: &str) -> Option<(f64, f64, bool)> {
     match transport {
-        "claude" => Some((0.1, 1.25)), // Anthropic：讀一折、寫加價兩成半
-        "codex" => Some((0.1, 1.0)),   // OpenAI：讀一折、寫不加價
-        "grok" => Some((0.5, 1.0)),    // xAI 折扣落在五到七五折，取最保守的那頭
+        "claude" => {
+            let (read, estimated) = claude_read_price(model);
+            Some((read, 1.25, estimated))
+        }
+        "codex" => Some((0.1, 1.0, false)), // OpenAI：讀一折、寫不加價
+        "grok" => Some((0.5, 1.0, false)),  // xAI 折扣落在五到七五折，取最保守的那頭
         _ => None,
+    }
+}
+
+/// Anthropic 官方讀快取係數：Opus 5.5 0.05、Fable 5.1 0.025，其餘 0.1。
+/// 版本要比到邊界（本身或接 `-` 日期後綴），`claude-opus-5-50` 不算。帳本記的是送給 CLI 的字樣，
+/// 別名 `opus`／`fable` 現在指向這兩代，但舊列看不出世代，所以按別名套優惠標成估計。
+fn claude_read_price(model: &str) -> (f64, bool) {
+    let is = |version: &str| {
+        model == version
+            || model
+                .strip_prefix(version)
+                .is_some_and(|rest| rest.starts_with('-'))
+    };
+    if is("claude-opus-5-5") {
+        (0.05, false)
+    } else if is("claude-fable-5-1") {
+        (0.025, false)
+    } else if model == "opus" {
+        (0.05, true)
+    } else if model == "fable" {
+        (0.025, true)
+    } else {
+        (0.1, false)
+    }
+}
+
+/// claude 寫快取的等值 token：有 1h 拆分就 1h 部分 2 倍、其餘 1.25 倍；
+/// 沒有拆分（舊列或來源沒給）全按 1.25 倍，第二個值回 true＝估計。
+fn claude_write_cost(line: &Value, created: u64) -> (f64, bool) {
+    match line.get("created_1h_tokens").and_then(Value::as_u64) {
+        Some(one_hour) => {
+            let one_hour = one_hour.min(created);
+            (
+                2.0 * one_hour as f64 + 1.25 * (created - one_hour) as f64,
+                false,
+            )
+        }
+        None => (1.25 * created as f64, created > 0),
     }
 }
 
@@ -258,24 +300,30 @@ fn accumulate(row: &mut UsageRow, line: &Value, include_cache: bool) {
         row.observed_prompt_tokens += prompt;
         row.cached_tokens += cached;
     }
-    let cost = line.get("cost_usd").and_then(Value::as_f64);
-    match cost {
-        Some(value) => row.cost_usd = Some(row.cost_usd.unwrap_or(0.0) + value),
-        None => row.cost_partial = true,
-    }
+    let cost = add_cost(row, line);
 
     // 生圖不是劇情對話快取，只保留 token／實際費用，不估進對話省下量。
     if !include_cache {
         return;
     }
     // 省下多少一輪一算再累加：每輪的單價與命中結構都不同，先加總會算錯
-    let Some((read_mult, write_mult)) = cache_price(&text(line, "transport")) else {
+    let transport = text(line, "transport");
+    let Some((read_mult, write_mult, read_estimated)) =
+        cache_price(&transport, &text(line, "model"))
+    else {
         row.saved_partial = true;
         return;
     };
+    let (write_cost, write_estimated) = match transport.as_str() {
+        "claude" => claude_write_cost(line, created),
+        _ => (write_mult * created as f64, false),
+    };
+    if (read_estimated && cached > 0) || write_estimated {
+        row.estimated_rounds += 1;
+    }
     row.priced_tokens += prompt;
     let fresh = prompt.saturating_sub(cached + created) as f64;
-    let paid = fresh + read_mult * cached as f64 + write_mult * created as f64;
+    let paid = fresh + read_mult * cached as f64 + write_cost;
     let saved = prompt as f64 - paid;
     row.saved_tokens += saved;
     let charged = paid + OUTPUT_MULTIPLE * output as f64;
@@ -285,6 +333,15 @@ fn accumulate(row: &mut UsageRow, line: &Value, include_cache: bool) {
         }
         _ => row.saved_partial = true,
     }
+}
+
+fn add_cost(row: &mut UsageRow, line: &Value) -> Option<f64> {
+    let cost = line.get("cost_usd").and_then(Value::as_f64);
+    match cost {
+        Some(value) => row.cost_usd = Some(row.cost_usd.unwrap_or(0.0) + value),
+        None => row.cost_partial = true,
+    }
+    cost
 }
 
 /// `scope` 為 None＝所有桌總計；`Some(id)` 只算該桌（空字串＝未標桌）。
@@ -306,7 +363,6 @@ pub fn summarize(
         .collect();
     let mut rows: Vec<UsageRow> = Vec::new();
     let mut total = UsageRow::default();
-    let mut ping = UsageRow::default();
     let mut caches: Vec<CacheCount> = Vec::new();
     let mut events = 0u64;
     let mut latest = None;
@@ -352,11 +408,13 @@ pub fn summarize(
             continue;
         }
         let (mode, cache, cache_reason) = classify(&line);
+        // 舊帳本的保溫呼叫（已撤）：錢花了要算進合計與該模型那列，
+        // 但它不推進劇情、一律命中，輪數、token、命中率、省額與快取分佈都不收
         let is_ping = mode.as_deref() == Some("ping");
         let is_image = line.get("purpose").and_then(Value::as_str) == Some("image");
         // 生圖可能命中供應商固定工具前綴，但那不是劇情對話快取。token／費用仍照算，
         // 只從對話命中統計與「最近一輪」燈號排除。
-        if !is_image {
+        if !is_image && !is_ping {
             let state = chip_state(&cache, cache_reason.as_deref());
             match caches.iter_mut().find(|count| count.cache == state) {
                 Some(count) => count.rounds += 1,
@@ -380,11 +438,13 @@ pub fn summarize(
                 reported: reported(&line),
             });
         }
-        if is_ping {
-            accumulate(&mut ping, &line, true);
-            continue;
-        }
-        accumulate(&mut total, &line, !is_image);
+        match is_ping {
+            true => add_cost(&mut total, &line),
+            false => {
+                accumulate(&mut total, &line, !is_image);
+                None
+            }
+        };
         let source = text(&line, "transport");
         let model = text(&line, "model");
         let row = match rows
@@ -404,10 +464,15 @@ pub fn summarize(
                 rows.last_mut().expect("just pushed")
             }
         };
-        accumulate(row, &line, !is_image);
+        match is_ping {
+            true => {
+                add_cost(row, &line);
+            }
+            false => accumulate(row, &line, !is_image),
+        }
     }
 
-    for row in rows.iter_mut().chain([&mut total, &mut ping]) {
+    for row in rows.iter_mut().chain([&mut total]) {
         row.hit_rate = hit_rate(row);
     }
     // 花得最多的排前面（桌下拉不排序，照桌列表原順序）
@@ -418,7 +483,6 @@ pub fn summarize(
         worlds,
         rows,
         total,
-        ping,
         caches,
         events,
         latest,
@@ -548,9 +612,9 @@ mod tests {
         ]
     }
 
-    /// 一桌一份：ping 不混進劇情輪、不回報用量的來源只算輪數、桌名對得回來。
+    /// 一桌一份：舊保溫列只算錢、不回報用量的來源只算輪數、桌名對得回來。
     #[test]
-    fn one_table_splits_models_and_keeps_ping_apart() {
+    fn one_table_splits_models_and_counts_legacy_ping_cost_only() {
         let report = summarize(
             LOG,
             Some("w1"),
@@ -611,14 +675,21 @@ mod tests {
         let sonnet = &report.rows[1];
         assert_eq!(sonnet.prompt_tokens, 2_200); // ping 的 1200 不算進去
         assert_eq!(sonnet.cached_tokens, 1_000);
+        assert_eq!(sonnet.observed_rounds, 2);
         assert!((sonnet.hit_rate.expect("claude 有回報") - 45.5).abs() < 0.05);
-        assert_eq!(sonnet.cost_usd, Some(0.03));
+        // ping 的 0.001 進這列的花費
+        assert!((sonnet.cost_usd.expect("claude 有回報") - 0.031).abs() < 1e-9);
         // 省下多少一輪一算：建快取那輪反而多付 250（寫入加價兩成半），
         // 讀到快取那輪省下 850，兩輪淨省 600 個輸入 token 的錢
         assert_eq!(sonnet.saved_tokens, 600.0);
         assert_eq!(sonnet.priced_tokens, 2_200);
         assert!((sonnet.saved_usd.expect("claude 有回報金額") - 0.006_090).abs() < 1e-5);
         assert!(!sonnet.saved_partial);
+        assert_eq!(sonnet.estimated_rounds, 2); // 舊列沒有 1h 拆分，寫入按 1.25 估
+                                                // 別名 opus 按現行 Opus 5.5 讀價 0.05 估：360 讀＋500 寫＝付 680，省 3320
+        let opus = &report.rows[0];
+        assert_eq!(opus.saved_tokens, 3_320.0);
+        assert_eq!(opus.estimated_rounds, 1);
 
         // 不回報用量的來源：只知道跑過一輪，省下多少無從估起
         let agy = &report.rows[2];
@@ -628,16 +699,20 @@ mod tests {
         assert_eq!(agy.saved_usd, None);
         assert!(agy.cost_partial && agy.saved_partial);
 
-        // 總計含整體命中率，保溫另計
+        // 總計含整體命中率；舊保溫列只貢獻花費
         assert_eq!(report.total.rounds, 4);
         assert_eq!(report.total.prompt_tokens, 6_200);
         assert_eq!(report.total.cached_tokens, 4_600);
+        assert_eq!(report.total.observed_prompt_tokens, 6_200);
         assert!((report.total.hit_rate.expect("有可判讀輪次") - 74.2).abs() < 0.05);
-        assert_eq!(report.total.saved_tokens, 3_740.0); // sonnet 600 ＋ opus 3140
+        assert_eq!(report.total.saved_tokens, 3_920.0); // sonnet 600 ＋ opus 3320
+        assert_eq!(report.total.estimated_rounds, 3);
+        assert!((report.total.cost_usd.expect("有金額") - 0.081).abs() < 1e-9);
         assert!(report.total.cost_partial && report.total.saved_partial); // agy 那輪兩樣都缺
-        assert_eq!(report.ping.rounds, 1);
-        assert_eq!(report.ping.cost_usd, Some(0.001));
-        assert!((report.ping.saved_usd.expect("保溫也有金額") - 0.007_448).abs() < 1e-5);
+        assert_eq!(
+            report.caches.iter().map(|count| count.rounds).sum::<u64>(),
+            4
+        );
 
         // 燈號看最近一筆非保溫紀錄
         assert_eq!(
@@ -667,15 +742,15 @@ mod tests {
         assert_eq!(report.total.prompt_tokens, 7_500);
         // api 那筆的快取怎麼計價不明，500 個輸入 token 不進「省了幾成」的分母
         assert_eq!(report.total.priced_tokens, 7_000);
-        assert_eq!(report.total.saved_tokens, 4_100.0);
+        assert_eq!(report.total.saved_tokens, 4_280.0);
         assert_eq!(
             report
                 .caches
                 .iter()
                 .find(|count| count.cache == "hit")
                 .map(|count| count.rounds),
-            // 三筆舊 ok ＋ 保溫那筆（它也中了）；丟線事件不在分母裡
-            Some(4)
+            // 三筆舊 ok；舊保溫列與丟線事件都不在分母裡
+            Some(3)
         );
         assert_eq!(
             report.latest,
@@ -815,5 +890,91 @@ mod tests {
         assert_eq!(chip_state("zero", None), "zero"); // 無狀態路徑，算不出理論可中量
         assert_eq!(chip_state("not-expected", None), "not-expected");
         assert_eq!(chip_state("hit", None), "hit");
+    }
+
+    /// 一列 claude 新帳本：1000 輸入、讀 cached、寫 created（其中 1h 部分 one_hour）。
+    fn claude_line(model: &str, cached: u64, created: u64, one_hour: Option<u64>) -> String {
+        let split = one_hour.map_or(String::new(), |value| {
+            format!(r#","created_1h_tokens":{value}"#)
+        });
+        format!(
+            r#"{{"ts":"t","transport":"claude","world":"w1","model":"{model}","mode":"resume","cache":"hit","cache_reporting":"reported","prompt_tokens":1000,"cached_tokens":{cached},"created_tokens":{created}{split},"output_tokens":0,"cost_usd":0.01}}"#
+        )
+    }
+
+    fn priced(line: &str) -> UsageRow {
+        summarize(line, Some("w1"), &[("w1".to_owned(), "桌".to_owned())], &[]).total
+    }
+
+    /// 讀快取係數按完整版本比到邊界；別名看不出世代＝估計。
+    #[test]
+    fn claude_read_price_matches_exact_versions() {
+        assert_eq!(claude_read_price("claude-opus-5-5"), (0.05, false));
+        assert_eq!(claude_read_price("claude-opus-5-5-20261001"), (0.05, false));
+        assert_eq!(claude_read_price("claude-fable-5-1"), (0.025, false));
+        for older in [
+            "claude-opus-4-6",
+            "claude-opus-4-7",
+            "claude-opus-5",
+            "claude-fable-5",
+            "claude-opus-5-50",
+            "claude-sonnet-5-5",
+            "sonnet",
+            "haiku",
+        ] {
+            assert_eq!(claude_read_price(older), (0.1, false), "{older}");
+        }
+        assert_eq!(claude_read_price("opus"), (0.05, true));
+        assert_eq!(claude_read_price("fable"), (0.025, true));
+
+        // 讀 1000：0.05 → 付 50 省 950；0.1 → 付 100 省 900
+        let exact = priced(&claude_line("claude-opus-5-5", 1000, 0, Some(0)));
+        assert_eq!(exact.saved_tokens, 950.0);
+        assert_eq!(exact.estimated_rounds, 0);
+        assert_eq!(
+            priced(&claude_line("claude-opus-4-7", 1000, 0, Some(0))).saved_tokens,
+            900.0
+        );
+        let alias = priced(&claude_line("opus", 1000, 0, Some(0)));
+        assert_eq!(alias.saved_tokens, 950.0);
+        assert_eq!(alias.estimated_rounds, 1);
+        assert_eq!(
+            priced(&claude_line("sonnet", 1000, 0, Some(0))).estimated_rounds,
+            0
+        );
+    }
+
+    /// 寫快取：1h 部分 2 倍、5m 部分 1.25 倍；沒有拆分按 1.25 估；拆分大於總寫入時壓回總量。
+    #[test]
+    fn claude_write_cost_follows_one_hour_split() {
+        // 寫 1000 全 1h：付 2000，省 -1000
+        let hour = priced(&claude_line("sonnet", 0, 1000, Some(1000)));
+        assert_eq!(hour.saved_tokens, -1000.0);
+        assert_eq!(hour.estimated_rounds, 0);
+        // 純 5m：付 1250
+        let five = priced(&claude_line("sonnet", 0, 1000, Some(0)));
+        assert_eq!(five.saved_tokens, -250.0);
+        assert_eq!(five.estimated_rounds, 0);
+        // 混合 400＋600：800＋750＝1550
+        assert_eq!(
+            priced(&claude_line("sonnet", 0, 1000, Some(400))).saved_tokens,
+            -550.0
+        );
+        // 沒拆分：按 1.25 估並標估計
+        let unknown = priced(&claude_line("sonnet", 0, 1000, None));
+        assert_eq!(unknown.saved_tokens, -250.0);
+        assert_eq!(unknown.estimated_rounds, 1);
+        // 拆分壞資料大於總寫入：壓回 1000，不下溢
+        assert_eq!(
+            priced(&claude_line("sonnet", 0, 1000, Some(5000))).saved_tokens,
+            -1000.0
+        );
+        // 全為新列時沒有估計標記
+        let log = format!(
+            "{}\n{}",
+            claude_line("sonnet", 0, 1000, Some(1000)),
+            claude_line("claude-opus-5-5", 900, 100, Some(100))
+        );
+        assert_eq!(priced(&log).estimated_rounds, 0);
     }
 }

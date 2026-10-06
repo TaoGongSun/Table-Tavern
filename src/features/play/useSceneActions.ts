@@ -12,7 +12,6 @@ interface SceneChatActions {
   isBusy: () => boolean;
   beginNarration: () => string;
   endNarration: () => void;
-  noteTurnDone: () => void;
 }
 
 interface SceneActionsOptions {
@@ -72,7 +71,6 @@ export function useSceneActions({
       try {
         await invoke<number>("advance_scene", { worldId, turnId });
         const { entered, writable } = await enterTable(worldId);
-        chat.noteTurnDone();
         return entered && writable;
       } catch (reason) {
         // 玩家自己按了停止：紀錄沒動，不必再跳錯誤
@@ -131,7 +129,6 @@ export function useSceneActions({
       try {
         await invoke("regenerate_scene_summary", { worldId, turnId });
         await enterTable(worldId);
-        chat.noteTurnDone();
       } catch (reason) {
         if (backendCode(reason) !== "scene_summary_stopped") onError(String(reason));
       } finally {

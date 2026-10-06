@@ -87,6 +87,7 @@ fn extract_usage(payload: &str) -> Option<transport::PromptCacheUsage> {
         .and_then(|details| details.get("cached_tokens"))
         .and_then(|tokens| tokens.as_u64());
     Some(transport::PromptCacheUsage {
+        created_1h_tokens: None,
         prompt_tokens: input_tokens,
         cached_tokens,
         created_tokens: None,

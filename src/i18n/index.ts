@@ -50,6 +50,11 @@ import {
   transcriptMarkerMessage,
   type TranscriptMarkerMsgKey,
 } from "./features/transcript-marker";
+import {
+  claudeOverageMessage,
+  isClaudeOverageMsgKey,
+  type ClaudeOverageMsgKey,
+} from "./features/claude-overage";
 import { expandPlural } from "./plural";
 
 export type MsgKey =
@@ -63,7 +68,8 @@ export type MsgKey =
   | UpdaterMsgKey
   | AiMsgKey
   | NoteMsgKey
-  | TranscriptMarkerMsgKey;
+  | TranscriptMarkerMsgKey
+  | ClaudeOverageMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -149,7 +155,9 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
                     ? noteMsgMessage(lang, key)
                     : isTranscriptMarkerMsgKey(key)
                       ? transcriptMarkerMessage(lang, key)
-                      : MESSAGES[lang][key as CoreMsgKey];
+                      : isClaudeOverageMsgKey(key)
+                        ? claudeOverageMessage(lang, key)
+                        : MESSAGES[lang][key as CoreMsgKey];
   return formatMessage(raw, lang, params);
 }
 

@@ -32,7 +32,6 @@ function view(events: TranscriptEvent[], storyKey = "w1\u00000", notices: ChatNo
       canUndoScene={false}
       onRegenerateSummary={noop}
       onRevertScene={noop}
-      awayTooLong={false}
       speaker=""
       gmTargeted={false}
       targetName=""

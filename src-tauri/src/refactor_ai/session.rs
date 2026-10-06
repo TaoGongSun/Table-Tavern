@@ -73,6 +73,8 @@ async fn run_stage(
         cli::parse_claude_line,
         true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
         call.usage_log.as_deref().map(|path| cli::UsageLog {
+            usage_out: None,
+            overage_out: None,
             path,
             world: Some(world_id),
             transport: "claude",
@@ -138,6 +140,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
             model: Some("opus".to_owned()),
             usage_log: None,
             claude_home: dir.clone(),
+            on_overage: None,
         };
         (dir, call)
     }

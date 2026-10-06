@@ -185,6 +185,9 @@ pub struct PromptCacheUsage {
     pub prompt_tokens: u64,
     pub cached_tokens: Option<u64>,
     pub created_tokens: Option<u64>,
+    /// created_tokens 裡寫成 1 小時快取的部分；None＝來源沒給拆分（時效未知，不是已知 5 分鐘）。
+    /// 只有 claude CLI 回報，必定 ≤ created_tokens。
+    pub created_1h_tokens: Option<u64>,
     pub output_tokens: u64,
     pub cost_usd: Option<f64>,
 }
@@ -238,6 +241,7 @@ pub fn extract_usage(payload: &str) -> Option<PromptCacheUsage> {
     let prompt_tokens = usage.get("prompt_tokens")?.as_u64()?;
     let (cached_tokens, created_tokens) = cache_tokens(usage);
     Some(PromptCacheUsage {
+        created_1h_tokens: None,
         prompt_tokens,
         cached_tokens,
         created_tokens,

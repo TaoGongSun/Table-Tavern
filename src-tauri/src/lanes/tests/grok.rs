@@ -119,6 +119,7 @@ print(json.dumps({'type': 'end', 'usage': {'input_tokens': 100, 'cache_read_inpu
         usage_log: Some(dir.join("usage.jsonl")),
         claude_home: PathBuf::new(),
         prompt_dir: dir.join("prompts"),
+        on_overage: None,
     };
     FakeGrok {
         dir,
@@ -633,6 +634,7 @@ async fn real_grok_shared_lane_rewrites_verbatim_sessions() {
         usage_log: Some(dir.join("usage.jsonl")),
         claude_home: PathBuf::new(),
         prompt_dir: dir.join("prompts"),
+        on_overage: None,
     };
     let secret = "狐狸其實是失蹤的公主ZQX17";
     let mut events = vec![event(

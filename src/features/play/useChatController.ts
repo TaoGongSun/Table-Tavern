@@ -26,13 +26,6 @@ function hasContent(event: TranscriptEvent): boolean {
 // GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
 const PLAYER_SENTINEL = "__PLAYER__";
 
-// 保溫 ping（prompt-cache-optimization 包 7）：快取只活五分鐘，玩家慢慢想的時候先讀一次
-// 既有快取把壽命重新計時，代價約為讓它過期重建的十二分之一。連三次（約十二分鐘）都沒等到
-// 玩家推進就收手改提示換幕——人真的離開時，長紀錄每次回來都要全額重建，那時短紀錄才便宜。
-const KEEPALIVE_TICK_MS = 30 * 1000;
-const KEEPALIVE_AFTER_MS = 3.5 * 60 * 1000;
-const KEEPALIVE_MAX_PINGS = 3;
-
 function nowTs() {
   return new Date().toISOString();
 }
@@ -73,8 +66,6 @@ export interface ChatController {
   streamText: string;
   input: string;
   setInput: (value: string) => void;
-  /** 保溫連發到上限還沒等到玩家推進：畫面據此提示換幕 */
-  awayTooLong: boolean;
   /** 收回過、且還停在同一桌同一幕，才給復原 */
   canRestore: boolean;
   /** 換桌：整份換掉這一幕的逐字稿 */
@@ -107,8 +98,6 @@ export interface ChatController {
   /** 換幕這類 App 自己跑的長工作：期間畫面顯示 GM 正在生成；回傳這次的 turn id，停止鈕據此中止 */
   beginNarration: () => string;
   endNarration: () => void;
-  /** 玩家真的推進了一步：保溫節奏重新開始，離開提示收掉 */
-  noteTurnDone: () => void;
 }
 
 // 參數在簽名上直接解構：這支 controller 自己有個叫 input 的 state，
@@ -201,9 +190,6 @@ export function useChatController({
   } | null>(null);
   const [streamText, setStreamText] = useState("");
   const responseTruncated = useRef(false);
-  // 保溫 ping 的節奏狀態：上次真正推進的時刻、已連發幾次、這桌是否根本沒得保溫（非 claude 模式）
-  const generatingRef = useRef<{ id: string; kind: "dialogue" | "narration" } | null>(null);
-  generatingRef.current = generating;
   // generating 是 state，setState 到重繪中間連點還看得到舊的 false。這支 ref 在進函式當下就佔住。
   // 收回／復原也佔它：逐字稿操作（回合、收回、復原）同一時間只跑一個
   const busyRef = useRef(false);
@@ -232,11 +218,6 @@ export function useChatController({
     stopRequested.current = true;
     if (turnId) void invoke("chat_abort", { worldId, turnId });
   }, [worldId]);
-  const lastTurnAt = useRef(Date.now());
-  const pingCount = useRef(0);
-  const keepaliveOff = useRef(false);
-  const [awayTooLong, setAwayTooLong] = useState(false);
-
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -522,43 +503,6 @@ export function useChatController({
     }
   }, [undone, canRestore, generating, worldId, scene, refreshState, onError, reload, beginWrite]);
 
-  // 玩家真的推進了一步：保溫節奏重新開始，離開提示收掉
-  const noteTurnDone = useCallback(() => {
-    lastTurnAt.current = Date.now();
-    pingCount.current = 0;
-    keepaliveOff.current = false;
-    setAwayTooLong(false);
-  }, []);
-
-  // 保溫 ping：視窗在前景且距上次推進夠久才發，連三次都沒等到玩家就收手改提示換幕。
-  // 視窗不在前景一律不發——人不在還持續扣錢是最糟的情況。
-  // 生成中狀態走 ref：計時器整桌只掛一次，不隨每次生成重訂閱。
-  useEffect(() => {
-    if (!worldId) return;
-    const timer = setInterval(async () => {
-      if (keepaliveOff.current || generatingRef.current !== null) return;
-      if (Date.now() - lastTurnAt.current < KEEPALIVE_AFTER_MS) return;
-      if (pingCount.current >= KEEPALIVE_MAX_PINGS) {
-        setAwayTooLong(true);
-        return;
-      }
-      if (!document.hasFocus()) return;
-      try {
-        const lanes = await invoke<number>("keepalive_lanes", { worldId });
-        // 沒有線可保（非 claude 模式、或這桌還沒開過線）：靜靜停掉，不算進次數也不提示離開
-        if (lanes === 0) {
-          keepaliveOff.current = true;
-          return;
-        }
-        pingCount.current += 1;
-        lastTurnAt.current = Date.now();
-      } catch {
-        keepaliveOff.current = true;
-      }
-    }, KEEPALIVE_TICK_MS);
-    return () => clearInterval(timer);
-  }, [worldId]);
-
   // 回合沒完成：先把失敗交給彈窗，再（有追加回錯時）重讀逐字稿對齊畫面——重讀可能失敗，
   // 失敗資訊得先落地。世代已變就不重讀，免得蓋掉新桌的畫面（reload 自己也會再核一次）
   const failTurn = useCallback(
@@ -633,7 +577,6 @@ export function useChatController({
             truncated: true,
           }, started);
           await markCliConnected();
-          noteTurnDone();
         }
         return;
       }
@@ -647,9 +590,8 @@ export function useChatController({
         ...(truncated ? { truncated: true } : {}),
       }, started);
       await markCliConnected();
-      noteTurnDone();
     },
-    [noteChatStarted, worldId, metaOf, appendEvent, markCliConnected, noteTurnDone, takeResponseTruncated, reload],
+    [noteChatStarted, worldId, metaOf, appendEvent, markCliConnected, takeResponseTruncated, reload],
   );
 
   // 點名指定角色接話；也是「請 X 發言」按鈕的入口（NewPlan §9、MVP 第 8 項）
@@ -740,7 +682,6 @@ export function useChatController({
           truncated: true,
         });
         await markCliConnected();
-        noteTurnDone();
       }
       return null;
     }
@@ -776,9 +717,8 @@ export function useChatController({
     if (generation.current !== started) return null;
     await refreshState();
     await markCliConnected();
-    noteTurnDone();
     return next;
-  }, [noteChatStarted, worldId, onArrived, appendEvent, refreshState, markCliConnected, noteTurnDone, takeResponseTruncated, reload, onError]);
+  }, [noteChatStarted, worldId, onArrived, appendEvent, refreshState, markCliConnected, takeResponseTruncated, reload, onError]);
 
   // 簡易導演：GM 插入旁白（NewPlan §6.1、MVP 第 9 項）；一併回來的點名這裡不用，讓玩家自己決定下一步
   const gmNarrate = useCallback(async () => {
@@ -1005,7 +945,6 @@ export function useChatController({
       streamText,
       input,
       setInput,
-      awayTooLong,
       canRestore,
       hydrate,
       replaceEvent,
@@ -1022,7 +961,6 @@ export function useChatController({
       stopResponse,
       beginNarration,
       endNarration,
-      noteTurnDone,
     }),
     [
       events,
@@ -1032,7 +970,6 @@ export function useChatController({
       isBusy,
       streamText,
       input,
-      awayTooLong,
       canRestore,
       hydrate,
       replaceEvent,
@@ -1049,7 +986,6 @@ export function useChatController({
       stopResponse,
       beginNarration,
       endNarration,
-      noteTurnDone,
     ],
   );
 }

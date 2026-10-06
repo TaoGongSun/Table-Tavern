@@ -46,6 +46,8 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         parse_claude_line,
         true,
         Some(UsageLog {
+            usage_out: None,
+            overage_out: None,
             path: &log_path,
             world: Some("w1"),
             transport: "claude",
@@ -829,6 +831,8 @@ async fn run_cli_reports_claude_identity_only_when_unambiguous() {
             agy_usage_base: None,
             agy_usage_out: None,
             identity_out: Some(&identity),
+            usage_out: None,
+            overage_out: None,
         }),
         |_: &str| {},
     )
@@ -868,6 +872,8 @@ async fn run_cli_reports_claude_identity_only_when_unambiguous() {
             agy_usage_base: None,
             agy_usage_out: None,
             identity_out: Some(&ambiguous),
+            usage_out: None,
+            overage_out: None,
         }),
         |_: &str| {},
     )

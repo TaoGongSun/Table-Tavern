@@ -3,12 +3,13 @@ use crate::chat_assembly::gm_turn_instruction;
 use crate::chat_assembly::{self, gm_materials, GmMaterials};
 use crate::commands::character::load_active_cards;
 use crate::transport::dispatch::{
-    ai_call_failure, chat_transport, lane_provider, prepare_lane_call,
-    stream_turn_reporting_truncation, stream_turn_via_transport,
+    ai_call_failure, lane_provider, prepare_lane_call, stream_turn_reporting_truncation,
+    stream_turn_via_transport,
 };
 use crate::usage::log as usage_log;
 use crate::{config_root, data, data_root, inflight, lanes, mechanism, transport};
 use serde::Serialize;
+use tauri::Emitter;
 
 /// 角色對話的回傳。`aborted` 為真時 `text` 是停止當下已經吐出的半截，可能是空的。
 #[derive(Serialize)]
@@ -126,7 +127,7 @@ pub(crate) async fn chat_with_character(
             &lang,
             hoist,
         );
-        let call = prepare_lane_call(&app, &config, card.tier, provider).await?;
+        let call = prepare_play_lane_call(&app, &config, card.tier, provider).await?;
         let outcome = lanes::run_turn(
             &call,
             &root,
@@ -236,7 +237,7 @@ async fn gm_lane_reply(
     emit: impl FnMut(&str),
 ) -> Result<lanes::TurnOutcome, String> {
     let (frozen, tail) = chat_assembly::gm_lane_parts(materials, scope, instruction, lang);
-    let call = prepare_lane_call(app, config, transport::gm_tier(config), provider).await?;
+    let call = prepare_play_lane_call(app, config, transport::gm_tier(config), provider).await?;
     lanes::run_turn(
         &call,
         root,
@@ -764,27 +765,29 @@ fn record_card_arrivals(
     ids
 }
 
-/// 保溫 ping（包 7）：玩家還在、快取快到期時由前端呼叫，替這桌每條活著的線刷新五分鐘壽命。
-/// 回傳實際保溫的線數——claude 以外的傳輸、或這桌還沒開過線時回 0，前端據此不再重試。
-#[tauri::command]
-pub(crate) async fn keepalive_lanes(
-    app: tauri::AppHandle,
-    world_id: String,
-) -> Result<usize, String> {
-    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    if chat_transport(&config) != "claude" {
-        return Ok(0);
-    }
-    let _permit = data::world_write_permit_async(&world_id).await?;
-    let root = data_root(&app)?;
-    let call = prepare_lane_call(
-        &app,
-        &config,
-        transport::gm_tier(&config),
-        lanes::LaneProvider::Claude,
-    )
-    .await?;
-    lanes::keepalive(&call, &root, &world_id).await
+/// 劇情續聊線（角色線、GM 線）的 CLI 呼叫素材：claude 快取釘 1 小時，
+/// 有嘗試落在訂閱超額就通知前端一次（`claude-overage`，app 層只提示一次）。
+async fn prepare_play_lane_call(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    tier: data::Tier,
+    provider: lanes::LaneProvider,
+) -> Result<lanes::LaneCall, String> {
+    let mut call = prepare_lane_call(app, config, tier, provider).await?;
+    lanes::pin_lane_cache_ttl(&mut call);
+    let app = app.clone();
+    call.on_overage = Some(std::sync::Arc::new(
+        move |observed: lanes::CacheWriteObserved| {
+            let _ = app.emit(
+                "claude-overage",
+                serde_json::json!({
+                    "eventId": ulid::Ulid::generate().to_string(),
+                    "observed": observed.as_str(),
+                }),
+            );
+        },
+    ));
+    Ok(call)
 }
 
 #[cfg(test)]

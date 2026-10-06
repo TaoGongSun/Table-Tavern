@@ -329,6 +329,12 @@ async fn drive_child(
                 agy_conversation_id = Some(id);
             }
         }
+        if let Some(slot) = usage_log.as_ref().and_then(|log| log.overage_out) {
+            // 超額事件可能在 result 前後任何位置；一次嘗試內見過 true 就不撤銷（那段已按超額計費）
+            if super::stream::claude_overage(&line) == Some(true) {
+                slot.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         if let Some(log) = &usage_log {
             if let Some(mut usage) = (log.parse)(&line) {
                 // claude 回報實際模型身分與容量：換幕容量判定的上限來源（計畫 §3.4）
@@ -428,6 +434,11 @@ async fn drive_child(
                 }
                 if let Some(slot) = log.prompt_tokens_out {
                     slot.store(usage.prompt_tokens, std::sync::atomic::Ordering::Relaxed);
+                }
+                if let Some(slot) = log.usage_out {
+                    if let Ok(mut held) = slot.lock() {
+                        *held = Some(usage);
+                    }
                 }
             }
         }

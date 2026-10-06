@@ -756,4 +756,17 @@ describe("chat turn failures", () => {
       expect(h.chat().input).toBe("你好");
     });
   });
+
+  // claude-1h-cache：保溫 ping 已撤（快取釘 1 小時），玩家停多久都不在背景呼叫後端
+  it("never pings the backend while the player idles", () => {
+    vi.useFakeTimers();
+    try {
+      const h = mount({});
+      act(() => vi.advanceTimersByTime(10 * 60 * 1000));
+      expect(h.count("keepalive_lanes")).toBe(0);
+      expect(h.calls.map((call) => call.command)).not.toContain("keepalive_lanes");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

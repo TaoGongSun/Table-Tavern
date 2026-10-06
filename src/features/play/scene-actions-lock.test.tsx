@@ -41,7 +41,6 @@ describe("scene actions re-check the synchronous busy flag", () => {
       isBusy,
       beginNarration: vi.fn(() => "turn-1"),
       endNarration: vi.fn(),
-      noteTurnDone: vi.fn(),
     };
     const enterTable = vi.fn(async () => entry);
     let actions!: SceneActions;
@@ -188,7 +187,6 @@ describe("重寫提要後的退回前幕", () => {
           busyRef.current = false;
           setBusy(false);
         },
-        noteTurnDone: () => {},
       };
       const actions = useSceneActions({
         worldId: "w1",
@@ -256,7 +254,6 @@ describe("桌級鎖持有中的補救鈕", () => {
         isBusy: () => false,
         beginNarration: () => "turn-1",
         endNarration: () => {},
-        noteTurnDone: () => {},
       };
       const actions = useSceneActions({
         worldId: "w1",
