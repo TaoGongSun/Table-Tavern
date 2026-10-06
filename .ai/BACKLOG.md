@@ -13,7 +13,6 @@
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 - [usage-cache-audit](tasks/usage-cache-audit.md) — 額度快取紀錄整理（哪些線真有快取、各狀態該掛什麼標籤）＋角色線抹寫丟線 — 下一步：2026-10-06 Grok 額度恢復後開工，先讓抹寫失敗原因落帳本，再四家通道實跑對帳。
-- [grok-shared-lane](tasks/grok-shared-lane.md) — grok 角色改走共線（回合後抹寫私設，1.0.46 實測可行）— 下一步：前置 grok-system-override 已結案（a21eeda），排在 usage-cache-audit 前面〔作者裁決 2026-10-06〕
 - [long-prompt-scene-hint](tasks/long-prompt-scene-hint.md) — 桌子太長撞到指令長度上限：Windows 可能一開桌就撞、上限前先提醒換幕（換幕也要送 AI）— 下一步：公開前必做，2026-10-06 四家 CLI 都有額度時開工〔作者裁決 2026-10-04〕；先實測三個作業系統下 claude／grok／agy 的門檻，撞得到就改傳遞方式
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：排在 [usage-cache-audit](tasks/usage-cache-audit.md) 之後，看四家實跑對帳的命中率再決定做不做〔作者裁決 2026-10-02〕；ox-alpha 若已下架，根據的現象要重新立證。
 - [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：排在 api-shared-lane 的四路成對測試之後開工——那批數據才估得準底線該怎麼定、以及這個功能還需不需要。開工首步是拍板底線的統計量（最小值／眾數／出現 ≥N 次的最小值）與「樣本不足就不判定」的 N。

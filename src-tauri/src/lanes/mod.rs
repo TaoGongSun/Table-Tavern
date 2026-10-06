@@ -2,14 +2,18 @@
 //! 每桌按「線種:實際模型」分線（2026-08-03 拍板）：chars:<model>（解析到同一個模型的角色
 //! 共用一條，快取按模型分池、跨模型本來就不共用）＋gm:<model>（GM 獨立——GM 的凍結 system
 //! 多了 world.md／私設／GM 條目，依可見性憲法不能和角色同線）。
-//! Agy/Grok 的 chars 線再按角色細分（chars:<model>:<角色 id>）：它們的 session 沒有可靠的
-//! 回合後抹寫路徑，私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色。
+//! Agy 的 chars 線再按角色細分（chars:<model>:<角色 id>）：它的 session 沒有回合後抹寫路徑，
+//! 私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色。Grok 與 claude 一樣共線，
+//! 回合後抹 session 目錄的兩個檔（grok_session）。
+//! 同桌的 lane 呼叫（含保溫）以每桌一把 mutex 串行：lanes.json 整份讀寫、session 檔回合後改寫，
+//! 交錯就會互蓋狀態或把抹掉的機密段寫回。
 //! 凍結 system 每輪逐字重帶、只送新事件與回合尾段，
 //! 快取命中率的天花板因此變成「只有最後一句沒中」（實驗 E6：99.7%）。
 //! 正典 transcript 與 session 歷史靠水位＋指紋＋回覆對點對齊；任何對不上、任何改寫或呼叫失敗，
 //! 一律丟線重開全量重建（降級鏈永遠可用，聊天不中斷）。
 //! chars 線的私設隔離靠「回合注入機密段→回合後從 session 檔抹掉」維持（案 C，2026-08-03 拍板）。
 
+mod grok_session;
 mod session_file;
 mod snapshot_patch;
 
@@ -89,7 +93,7 @@ pub(crate) struct TurnInput<'a> {
     /// 回合後補在最後一則 assistant 前的名字前綴（chars 線「X：」）
     pub prefix: Option<String>,
     pub echo: ReplyEcho,
-    /// 線名後綴：Agy/Grok 的 chars 線帶角色 id（一角一線），其餘 None
+    /// 線名後綴：Agy 的 chars 線帶角色 id（一角一線），其餘 None
     pub scope: Option<String>,
 }
 
@@ -97,7 +101,7 @@ pub(crate) struct TurnInput<'a> {
 /// 不看檔位：高中檔都覆寫成 sonnet 就同一條 chars:sonnet。
 type LaneStore = std::collections::BTreeMap<String, LaneState>;
 
-/// `scope`：同一線種要再細分時的後綴（grok 的 chars 線帶角色 id）。None＝不細分。
+/// `scope`：同一線種要再細分時的後綴（agy 的 chars 線帶角色 id）。None＝不細分。
 fn lane_key(lane: Lane, model: &str, scope: Option<&str>) -> String {
     let kind = match lane {
         Lane::Chars => "chars",
@@ -172,6 +176,76 @@ fn write_store(path: &Path, store: &LaneStore) -> Result<(), String> {
         }
         .to_string()
     })
+}
+
+/// 每桌一把 lane 鎖（以 lanes.json 路徑為鍵）。run_turn 與 keepalive 從讀 store 到最終落檔全程持有。
+fn lane_lock(store_path: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>,
+        >,
+    > = std::sync::OnceLock::new();
+    let mut table = LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    table.entry(store_path.to_path_buf()).or_default().clone()
+}
+
+fn log_drop(call: &LaneCall, world_id: &str, key: &str, reason: &str) {
+    if let Some(path) = call.usage_log.as_deref() {
+        usage_log::append_event(
+            path,
+            Some(world_id),
+            key,
+            usage_log::Event::DropLane,
+            reason,
+        );
+    }
+}
+
+/// grok 的 session 根目錄＝呼叫 CLI 時給的 GROK_HOME（cli::grok_envs），兩邊一定指同一處。
+fn grok_home(call: &LaneCall) -> Result<PathBuf, String> {
+    call.envs
+        .iter()
+        .find(|(key, _)| key == "GROK_HOME")
+        .map(|(_, value)| PathBuf::from(value))
+        .ok_or_else(|| "grok lane 缺 GROK_HOME".to_owned())
+}
+
+/// grok 角色線回合後抹寫；失敗回傳帳本用的原因。
+fn rewrite_grok(
+    call: &LaneCall,
+    session_id: &str,
+    confidential: Option<&str>,
+    prefix: &str,
+    reply: &str,
+) -> Result<(), String> {
+    let home = grok_home(call).map_err(|error| format!("rewrite-failed: {error}"))?;
+    grok_session::rewrite(&home, session_id, confidential, prefix, reply)
+        .map_err(|error| format!("{}: {}", error.reason.as_str(), error.detail))
+}
+
+/// 撤銷一條 grok 線：先從 store 拿掉並落檔，再刪 session 目錄。落檔失敗就回錯——磁碟上的
+/// 舊狀態要嘛帶著 pending_rewrite、要嘛已被別的路徑重開，都不會再續用這個 id。
+/// 刪目錄失敗只記帳：store 已沒有這個 id，不會再續聊。
+fn revoke_grok_lane(
+    call: &LaneCall,
+    world_id: &str,
+    key: &str,
+    session_id: &str,
+    store: &mut LaneStore,
+    store_path: &Path,
+    reason: &str,
+) -> Result<(), String> {
+    log_drop(call, world_id, key, reason);
+    store.remove(key);
+    let written = write_store(store_path, store);
+    let removed = grok_home(call).and_then(|home| grok_session::remove_session(&home, session_id));
+    if let Err(error) = removed {
+        log_drop(call, world_id, key, &format!("cleanup-failed: {error}"));
+    }
+    written
 }
 
 /// FNV-1a 64：跨執行、跨版本皆穩定的事件指紋（std 的雜湊器不保證跨版本一致）。
@@ -464,6 +538,12 @@ fn settle_abort(
     store: &mut LaneStore,
     store_path: &Path,
 ) -> Result<(), String> {
+    // grok 中止時檔案可能停在半截（有 user、沒回覆），不去抹，整條撤銷
+    if call.provider == LaneProvider::Grok {
+        return revoke_grok_lane(
+            call, world_id, key, session_id, store, store_path, "aborted",
+        );
+    }
     let rewrite = match call.provider {
         LaneProvider::Claude => apply_rewrite(call, session_id, confidential, prefix),
         LaneProvider::Agy | LaneProvider::Grok => Ok(()),
@@ -532,10 +612,10 @@ pub(crate) async fn run_turn(
     mut cancel: Option<&mut crate::inflight::CancelSignal>,
     mut emit: impl FnMut(&str),
 ) -> Result<TurnOutcome, String> {
-    // Agy/Grok 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
+    // Agy 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
     // 提進該角色自己的凍結 system（hoist_private）＋一角一線；這裡出聲擋下，寧可整輪失敗
     // 也不讓別的角色讀到不該讀的東西。
-    if call.provider != LaneProvider::Claude
+    if call.provider == LaneProvider::Agy
         && (input.confidential.is_some() || input.prefix.is_some())
     {
         return Err(UiMsg::LaneRewriteUnsupported {
@@ -545,6 +625,8 @@ pub(crate) async fn run_turn(
     }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
     let key = lane_key(input.lane, call.model_label(), input.scope.as_deref());
+    let lock = lane_lock(&store_path);
+    let _lane_guard = lock.lock().await;
     let mut store = read_store(&store_path);
     let call_epoch = now_epoch();
     let prior = store.get(&key);
@@ -553,6 +635,21 @@ pub(crate) async fn run_turn(
     let age_secs = prior.map_or(0, |state| call_epoch.saturating_sub(state.last_call_epoch));
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
+    // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用
+    if let (TurnPlan::Reopen { reason }, Some(prior)) = (&plan, prior) {
+        if call.provider == LaneProvider::Grok && prior.provider == LaneProvider::Grok.as_str() {
+            let old = prior.session_id.clone();
+            revoke_grok_lane(
+                call,
+                world_id,
+                &key,
+                &old,
+                &mut store,
+                &store_path,
+                &format!("reopen: {}", reason.as_str()),
+            )?;
+        }
+    }
     let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
     // 每一輪重試共用同一個接收端。watch 留著最新值，停止若在降級重開前就到了，下一輪 CLI 一進迴圈就看得到。
     let cancel_rx = cancel.as_mut().map(|signal| signal.receiver());
@@ -742,6 +839,15 @@ pub(crate) async fn run_turn(
                         &actual_session_id,
                         input.confidential.as_deref(),
                         input.prefix.as_deref(),
+                    )
+                    .map_err(|_| "rewrite-failed".to_owned()),
+                    // GM 線一律原文，不抹；角色共線每輪都抹（至少要拿 reasoning、補前綴）
+                    LaneProvider::Grok if input.lane == Lane::Chars => rewrite_grok(
+                        call,
+                        &actual_session_id,
+                        input.confidential.as_deref(),
+                        input.prefix.as_deref().unwrap_or_default(),
+                        &reply,
                     ),
                     LaneProvider::Agy | LaneProvider::Grok => Ok(()),
                 };
@@ -759,16 +865,23 @@ pub(crate) async fn run_turn(
                         }
                     }
                     // 抹寫失敗＝session 內容不可信，丟線；下一輪自動重開全量，本輪回覆照常送回
-                    Err(_) => {
-                        if let Some(path) = call.usage_log.as_deref() {
-                            usage_log::append_event(
-                                path,
-                                Some(world_id),
-                                &key,
-                                usage_log::Event::DropLane,
-                                "rewrite-failed",
-                            );
-                        }
+                    Err(reason) if call.provider == LaneProvider::Grok => {
+                        revoke_grok_lane(
+                            call,
+                            world_id,
+                            &key,
+                            &actual_session_id,
+                            &mut store,
+                            &store_path,
+                            &reason,
+                        )?;
+                        return Ok(TurnOutcome {
+                            text: reply,
+                            aborted: false,
+                        });
+                    }
+                    Err(reason) => {
+                        log_drop(call, world_id, &key, &reason);
                         store.remove(&key);
                     }
                 }
@@ -780,13 +893,37 @@ pub(crate) async fn run_turn(
             }
             // 續聊失敗（session 檔認不得、CLI 拒絕 resume 等）＝丟線重開全量再試一次
             Err(_) if !opening => {
+                if call.provider == LaneProvider::Grok {
+                    revoke_grok_lane(
+                        call,
+                        world_id,
+                        &key,
+                        &session_id,
+                        &mut store,
+                        &store_path,
+                        "resume-failed",
+                    )?;
+                }
                 plan = TurnPlan::Reopen {
                     reason: ReopenReason::ResumeFailed,
                 };
             }
             Err(error) => {
-                store.remove(&key);
-                write_store(&store_path, &store)?;
+                if call.provider == LaneProvider::Grok {
+                    // 開線失敗前 CLI 可能已把帶機密段的 user 寫進新目錄
+                    revoke_grok_lane(
+                        call,
+                        world_id,
+                        &key,
+                        &session_id,
+                        &mut store,
+                        &store_path,
+                        "open-failed",
+                    )?;
+                } else {
+                    store.remove(&key);
+                    write_store(&store_path, &store)?;
+                }
                 return Err(error.to_string());
             }
         }
@@ -810,6 +947,9 @@ pub(crate) async fn keepalive(
     world_id: &str,
 ) -> Result<usize, String> {
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
+    // 與 run_turn 同一把：保溫整份讀寫 lanes.json、還會截 session 檔，交錯會把撤銷的線寫回
+    let lock = lane_lock(&store_path);
+    let _lane_guard = lock.lock().await;
     let mut store = read_store(&store_path);
     let now = now_epoch();
     // 先挑出該保溫的線再逐條呼叫：迴圈中要改 store，不能同時借著它疊代
