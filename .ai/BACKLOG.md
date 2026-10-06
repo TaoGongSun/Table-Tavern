@@ -6,6 +6,7 @@
 
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [claude-1h-cache](tasks/claude-1h-cache.md) — claude CLI 改寫 1 小時快取：過期門檻、保溫、省額係數都要重估 — 下一步：三件都改〔作者裁決 2026-10-06〕；先確認 1h 是 CLI 固定行為
+- [api-request-header-timeout](tasks/api-request-header-timeout.md) — API 請求送出後到回應頭之前、非 2xx 讀錯誤本文都沒有逾時 — 下一步：只包 send() 與錯誤本文讀取，不用 ClientBuilder::timeout
 - [image-save-strict-validate](tasks/image-save-strict-validate.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：盤點受影響入口與拒收提示
 - [harness-iframe-shot](tasks/harness-iframe-shot.md) — 測試通道截不到卡片介面 iframe — 下一步：先補已知限制與繞法
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
