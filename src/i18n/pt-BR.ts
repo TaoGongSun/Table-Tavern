@@ -538,6 +538,7 @@ export const ptBR: Record<MsgKey, string> = {
   errApiUpstream: "Algo deu errado no lado do provedor da API, sem como saber o quê. Tente de novo uma vez; se ainda falhar, troque de modelo. Se só acontece quando o registro está longo, mudar de cena pode ajudar; se acontece com frequência, mude para o modo de assinatura CLI.",
   errAiUnknown: "Esta requisição não foi concluída. Tente de novo; se continuar, troque de modelo ou de fonte de IA.",
   errEmptyReply: "A IA não devolveu nada desta vez, então nada foi adicionado à história. Tente de novo; se continuar, troque de modelo ou origem de IA.",
+  errStreamStalled: "Ficou tempo demais sem receber saída do modelo, então a espera foi interrompida e nada foi adicionado à história. Tente de novo ou troque de modelo.",
   errIncompleteReply: "A resposta da IA foi cortada antes de terminar, então nada foi adicionado à história. Tente de novo; se continuar, troque de modelo ou origem de IA.",
   errFiltered: "Esta origem de IA bloqueou a resposta. Reescreva de outro jeito ou use outro modelo.",
   errNoImage: "Esta origem não pode gerar imagens: está sem créditos de imagem ou o plano contratado não inclui geração de imagens. Tente outra origem.",

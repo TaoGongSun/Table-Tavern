@@ -557,6 +557,7 @@ export const en: Record<MsgKey, string> = {
   errApiUpstream: "Something went wrong on the provider's side, with no way to tell what. Retry once; if it still fails, switch models. If it only happens when the log has grown long, starting a new scene may help; if it happens often, switch to CLI subscription mode.",
   errAiUnknown: "That request didn't go through. Try again; if it keeps happening, switch models or AI source.",
   errEmptyReply: "The AI returned nothing this time, so nothing was added to the story. Try again; if it keeps happening, switch model or AI source.",
+  errStreamStalled: "No output came from the model for too long, so this wait was stopped and nothing was added to the story. Try again, or switch model.",
   errIncompleteReply: "The AI's reply was cut off before it finished, so nothing was added to the story. Try again; if it keeps happening, switch model or AI source.",
   errFiltered: "This AI source blocked the reply. Rephrase it, or switch to another model.",
   errNoImage: "This source can't generate images: it's out of image credits, or its plan doesn't include image generation. Try another image source.",

@@ -538,6 +538,7 @@ export const es: Record<MsgKey, string> = {
   errApiUpstream: "Algo falló en el lado del proveedor de la API y no hay forma de saber qué. Reinténtalo una vez; si sigue fallando, cambia de modelo. Si solo pasa cuando el registro es largo, cambiar de escena puede ayudar; si pasa a menudo, cambia al modo de suscripción CLI.",
   errAiUnknown: "Esta petición no llegó a completarse. Inténtalo otra vez; si sigue pasando, cambia de modelo o de fuente de IA.",
   errEmptyReply: "La IA no devolvió nada esta vez, así que no se añadió nada a la historia. Inténtalo de nuevo; si sigue pasando, cambia de modelo u origen de IA.",
+  errStreamStalled: "No llegó salida del modelo durante demasiado tiempo, así que se detuvo la espera y no se añadió nada a la historia. Inténtalo de nuevo o cambia de modelo.",
   errIncompleteReply: "La respuesta de la IA se cortó antes de terminar, así que no se añadió nada a la historia. Inténtalo de nuevo; si sigue pasando, cambia de modelo u origen de IA.",
   errFiltered: "Este origen de IA bloqueó la respuesta. Redáctalo de otra forma o cambia de modelo.",
   errNoImage: "Este origen no puede generar imágenes: no tiene créditos suficientes o tu plan no las incluye. Intenta con otro origen.",

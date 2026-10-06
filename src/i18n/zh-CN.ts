@@ -536,6 +536,7 @@ export const zhCN: Record<MsgKey, string> = {
   errApiUpstream: "API 供应商那端出错，判不出原因。先重试一次；还是失败就换个模型。只在纪录很长时发生的话可以换幕；经常发生就改用 CLI 订阅模式。",
   errAiUnknown: "这次没能完成请求。再试一次；一直这样就换个模型或 AI 来源。",
   errEmptyReply: "AI 这次没有返回任何内容，故事里没有写入任何东西。请重试；如果一直这样，请更换模型或 AI 来源。",
+  errStreamStalled: "太久没有收到模型输出，已中止这次等待，故事里没有写入任何东西。可以再试一次，或更换模型。",
   errIncompleteReply: "AI 这次的回复没写完就中断了，故事里没有写入任何东西。请重试；如果一直这样，请更换模型或 AI 来源。",
   errFiltered: "该 AI 来源拦截了这次回复。请换个说法，或改用其他模型。",
   errNoImage: "该来源无法生图：生图额度不足，或套餐未包含生图。请更换生图来源重试。",

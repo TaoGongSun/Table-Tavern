@@ -17,6 +17,8 @@ const REFUSAL_ERROR =
 // 裡抄到的字樣翻盤掉真正的失敗態。
 const FAILURE_CODES = [
   [/^(?:Error:\s*)?AI_EMPTY_RESPONSE:/, "errEmptyReply"],
+  // API 串流太久沒有正文／推理進展（後端 transport/stall.rs）；放在 HTTP 狀態之後、一般分流之前
+  [/^(?:Error:\s*)?AI_STREAM_STALLED:/, "errStreamStalled"],
   [/^(?:Error:\s*)?AI_INCOMPLETE_RESPONSE:/, "errIncompleteReply"],
   [/^(?:Error:\s*)?AI_CONTENT_FILTERED:/, "errFiltered"],
   // 穩定免費模型連續擁擠：後端只對 Model／Gone 掛這個碼，429 無證據不掛（不宣稱上游擁擠）
@@ -81,6 +83,7 @@ export function explainAiError(
   | "errNoImage"
   | "errRefused"
   | "errEmptyReply"
+  | "errStreamStalled"
   | "errIncompleteReply"
   | "errFiltered"
   | "errFreeModelBusy"

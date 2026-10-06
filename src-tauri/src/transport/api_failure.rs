@@ -142,6 +142,16 @@ impl ApiFailure {
         }
     }
 
+    /// 串流停滯逾時（見 `stall.rs`）：分類走 Timeout，顯示字串帶 `AI_STREAM_STALLED:` 碼。
+    pub fn stalled(secs: u64, emitted_text: bool) -> Self {
+        Self {
+            stage: FailureStage::Timeout,
+            emitted_text,
+            display: super::stall::stalled_message(secs),
+            ..Self::default()
+        }
+    }
+
     /// 串流收尾判定失敗：`display` 是 `StreamOutcome::failure` 的字串，detail 來自 SSE 錯誤塊（若有）。
     pub fn stream(display: String, detail: Option<ErrorDetail>, emitted_text: bool) -> Self {
         Self {

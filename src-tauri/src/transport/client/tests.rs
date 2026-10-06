@@ -11,7 +11,7 @@ use super::super::response::*;
 #[allow(unused_imports)]
 use super::super::state_view::*;
 #[allow(unused_imports)]
-use super::super::test_support::{card, event, worldbook_entry};
+use super::super::test_support::{card, event, stall_server, worldbook_entry};
 #[allow(unused_imports)]
 use super::super::turns::*;
 use super::*;
@@ -966,4 +966,120 @@ async fn key_tier_for_skips_request_for_blank_key_and_normalizes_saved_base() {
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
     let (queried, _) = key_tier_for(&AppConfig::default(), "").await;
     assert_eq!(queried, DEFAULT_BASE_URL);
+}
+
+fn stall_config(base: &str) -> AppConfig {
+    let mut config = AppConfig::default();
+    config.preferences.insert(
+        "base_url".to_owned(),
+        serde_json::Value::String(base.to_owned()),
+    );
+    config
+}
+
+fn window(first_ms: u64, after_ms: u64) -> StallWindow {
+    StallWindow {
+        first: std::time::Duration::from_millis(first_ms),
+        after: std::time::Duration::from_millis(after_ms),
+    }
+}
+
+const KEEPALIVE: &str = ": OPENROUTER PROCESSING\n\n";
+const ROLE_ONLY: &str =
+    "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}\n\n";
+const DELTA: &str = "data: {\"choices\":[{\"delta\":{\"content\":\"字\"}}]}\n\n";
+const REASONING: &str = "data: {\"choices\":[{\"delta\":{\"reasoning\":\"想\"}}]}\n\n";
+
+async fn run_chat(base: &str, window: StallWindow) -> (DataResult<StreamChatResult>, u128) {
+    let started = std::time::Instant::now();
+    let messages = [message("user", "嗨".to_owned())];
+    let result = stream_chat_windowed(
+        &stall_config(base),
+        "test/model",
+        &messages,
+        None,
+        None,
+        crate::usage::log::PromptShape::Oneshot,
+        window,
+        |_| {},
+    )
+    .await;
+    (result, started.elapsed().as_millis())
+}
+
+/// 保活註解一直來也要逾時：deadline 不因註解續命。判定靠錯誤碼：若續命，串流會先自然結束而回別種錯誤。
+/// （不量時間：reqwest::Client::new() 載憑證就可能花數秒。）
+#[tokio::test]
+async fn stall_keepalive_comments_do_not_extend_deadline() {
+    let script = (0..40).map(|_| (50, KEEPALIVE.to_owned())).collect();
+    let base = stall_server(script, 100);
+    let (result, _) = run_chat(&base, window(400, 400)).await;
+    let error = result.unwrap_err().to_string();
+    assert!(error.starts_with("AI_STREAM_STALLED:"), "{error}");
+}
+
+/// role-only 塊不算進展，也不把首字窗切成進展窗
+#[tokio::test]
+async fn stall_role_only_chunk_is_not_progress() {
+    let base = stall_server(vec![(0, ROLE_ONLY.to_owned())], 1500);
+    let (result, _) = run_chat(&base, window(300, 5000)).await;
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .starts_with("AI_STREAM_STALLED:"));
+}
+
+/// 首字窗→進展窗：第一個進展之後改用較短的窗口
+#[tokio::test]
+async fn stall_window_switches_after_first_progress() {
+    let base = stall_server(vec![(100, DELTA.to_owned())], 1500);
+    let (result, _) = run_chat(&base, window(3000, 300)).await;
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .starts_with("AI_STREAM_STALLED:"));
+}
+
+/// 慢但持續有進展（含只有推理 delta）的串流不誤殺
+#[tokio::test]
+async fn stall_slow_progressing_stream_survives() {
+    let mut script = vec![(100, REASONING.to_owned())];
+    script.extend((0..5).map(|_| (150, DELTA.to_owned())));
+    script.push((150, "data: [DONE]\n\n".to_owned()));
+    let base = stall_server(script, 0);
+    let (result, _) = run_chat(&base, window(1000, 400)).await;
+    assert_eq!(result.unwrap().text, "字字字字字");
+}
+
+/// 已吐字、已收 usage 之後停滯：先記帳再回停滯錯誤，emitted_text 為真、分類 Timeout
+#[tokio::test]
+async fn stall_after_usage_still_records_and_reports_timeout() {
+    let usage =
+        "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\n";
+    let base = stall_server(vec![(0, DELTA.to_owned()), (0, usage.to_owned())], 4000);
+    let log_path =
+        std::env::temp_dir().join(format!("tt-stall-usage-{}.jsonl", std::process::id()));
+    let _ = std::fs::remove_file(&log_path);
+    let messages = [message("user", "嗨".to_owned())];
+    let failure = stream_chat_models_windowed(
+        &stall_config(&base),
+        "test/model",
+        &messages,
+        Some(&log_path),
+        Some("w1"),
+        crate::usage::log::PromptShape::Oneshot,
+        window(1000, 300),
+        |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(failure.stage, super::super::FailureStage::Timeout);
+    assert!(failure.emitted_text);
+    assert!(failure.display.starts_with("AI_STREAM_STALLED:"));
+    let logged = std::fs::read_to_string(&log_path).unwrap();
+    assert!(
+        logged.contains("\"prompt_tokens\":10") || logged.contains("10"),
+        "{logged}"
+    );
+    let _ = std::fs::remove_file(&log_path);
 }

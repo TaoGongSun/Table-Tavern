@@ -9,6 +9,7 @@ pub(crate) mod dispatch;
 mod messages;
 mod response;
 pub(crate) mod responses;
+mod stall;
 mod state_view;
 #[cfg(test)]
 mod test_support;
@@ -46,6 +47,7 @@ pub use response::{
     gm_turn_format, narrate_instruction, parse_indented_fields, pick_speaker, summary_closing,
     takeover_instruction, GmTurnFormat, StateBlock,
 };
+pub(crate) use stall::STALLED_CODE;
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{
     chars_lane_system, chars_lane_turn, gm_lane_system, gm_lane_turn, lane_event_line,

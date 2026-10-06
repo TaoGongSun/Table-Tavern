@@ -5,11 +5,11 @@
 //! streaming event schema, completion signal, and usage shape, so adapting it here avoids changing
 //! the behavior of the legacy path.
 
+use super::stall::{self, responses_progress, Next, StallGuard, StallWindow};
 use crate::data::{AppConfig, DataResult};
 use crate::transport;
 use crate::ui_msg::UiMsg;
 use crate::usage::log as usage_log;
-use futures_util::StreamExt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ApiMode {
@@ -221,6 +221,30 @@ pub(crate) async fn stream_responses(
     usage_log_path: Option<&std::path::Path>,
     world: Option<&str>,
     shape: usage_log::PromptShape,
+    on_delta: impl FnMut(&str),
+) -> DataResult<transport::StreamChatResult> {
+    stream_responses_windowed(
+        config,
+        model,
+        messages,
+        usage_log_path,
+        world,
+        shape,
+        StallWindow::default(),
+        on_delta,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stream_responses_windowed(
+    config: &AppConfig,
+    model: &str,
+    messages: &[transport::ChatMessage],
+    usage_log_path: Option<&std::path::Path>,
+    world: Option<&str>,
+    shape: usage_log::PromptShape,
+    window: StallWindow,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<transport::StreamChatResult> {
     let base = transport::base_url(config);
@@ -253,6 +277,8 @@ pub(crate) async fn stream_responses(
     }
 
     let mut stream = response.bytes_stream();
+    let mut guard = StallGuard::new(window);
+    let mut stalled = None;
     let mut parser = transport::SseParser::default();
     let mut full_text = String::new();
     let mut usage = None;
@@ -260,8 +286,19 @@ pub(crate) async fn stream_responses(
     #[cfg(feature = "test-harness")]
     let mut harness_raw: Option<serde_json::Value> = None;
 
-    'outer: while let Some(chunk) = stream.next().await {
+    'outer: loop {
+        let chunk = match guard.next(&mut stream).await {
+            Next::Chunk(chunk) => chunk,
+            Next::End => break,
+            Next::Stalled => {
+                stalled = Some(guard.window_secs());
+                break;
+            }
+        };
         for payload in parser.push(&chunk?) {
+            if responses_progress(&payload) {
+                guard.progress();
+            }
             // Some compatible gateways still send the Chat Completions sentinel after a Responses
             // stream. Accept it as a terminal marker, but do not require it.
             if payload == "[DONE]" {
@@ -307,6 +344,9 @@ pub(crate) async fn stream_responses(
         }
     }
 
+    if let Some(secs) = stalled {
+        return Err(stall::stalled_message(secs).into());
+    }
     if let Some(failure) = outcome.failure(&full_text, model) {
         return Err(failure.into());
     }
@@ -410,5 +450,78 @@ mod tests {
             failed.failure("", "model").as_deref(),
             Some("provider failed")
         );
+    }
+
+    fn stall_config(base: &str) -> AppConfig {
+        let mut config = AppConfig::default();
+        config.preferences.insert(
+            "base_url".to_owned(),
+            serde_json::Value::String(base.to_owned()),
+        );
+        config
+    }
+
+    async fn run(
+        script: Vec<(u64, String)>,
+        hold_ms: u64,
+        first_ms: u64,
+        after_ms: u64,
+    ) -> (DataResult<transport::StreamChatResult>, u128) {
+        let base = super::super::test_support::stall_server(script, hold_ms);
+        let started = std::time::Instant::now();
+        let messages = [message("user", "嗨")];
+        let result = stream_responses_windowed(
+            &stall_config(&base),
+            "test/model",
+            &messages,
+            None,
+            None,
+            usage_log::PromptShape::Oneshot,
+            StallWindow {
+                first: std::time::Duration::from_millis(first_ms),
+                after: std::time::Duration::from_millis(after_ms),
+            },
+            |_| {},
+        )
+        .await;
+        (result, started.elapsed().as_millis())
+    }
+
+    const CREATED: &str = "data: {\"type\":\"response.created\",\"response\":{}}\n\n";
+    const THINK: &str =
+        "data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"想\"}\n\n";
+    const TEXT: &str = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"字\"}\n\n";
+    const DONE: &str = "data: {\"type\":\"response.completed\",\"response\":{}}\n\n";
+
+    #[tokio::test]
+    async fn responses_stall_after_created_only_and_keepalive() {
+        let mut script = vec![(0, CREATED.to_owned())];
+        script.extend((0..40).map(|_| (50, ": keepalive\n\n".to_owned())));
+        let (result, _) = run(script, 100, 400, 5000).await;
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("AI_STREAM_STALLED:"));
+    }
+
+    #[tokio::test]
+    async fn responses_reasoning_counts_as_progress_and_slow_stream_survives() {
+        let script = vec![
+            (100, THINK.to_owned()),
+            (200, THINK.to_owned()),
+            (200, TEXT.to_owned()),
+            (200, DONE.to_owned()),
+        ];
+        let (result, _) = run(script, 0, 1000, 400).await;
+        assert_eq!(result.unwrap().text, "字");
+    }
+
+    #[tokio::test]
+    async fn responses_window_switches_after_first_progress() {
+        let (result, _) = run(vec![(100, TEXT.to_owned())], 1500, 3000, 300).await;
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("AI_STREAM_STALLED:"));
     }
 }

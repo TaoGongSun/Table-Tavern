@@ -207,6 +207,7 @@ pub async fn run_cli_cancellable(
     // 子程序死法收網（2026-08-12，跨平台 tokio API）：
     // ①程序退出但管線不 EOF（孫程序繼承 fd）：退出後 800ms 沒新行＝強制收尾；
     // ②程序活著但斷流（網路死、CLI 內部卡死）：120 秒無任何 stdout/stderr 行＝殺程序回錯；
+    //   （API 通道的對應偵測在 transport/stall.rs，數的是模型進展而非輸出行，常數不共用。）
     // ③stdin 餵不進（上方 60 秒逾時）；④crash 無收尾事件（迴圈後 exit status 檢查）。
     let mut exited = false;
     let mut stall: Option<String> = None;

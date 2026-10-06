@@ -94,6 +94,14 @@ describe("explainAiError", () => {
     expect(explainAiError(forged, "api")).toBe(null);
   });
 
+  it("API 串流停滯：認 AI_STREAM_STALLED 開頭（含被包一層 AI_CALL_FAILED 之前的原碼），body 抄不翻盤", () => {
+    expect(explainAiError("AI_STREAM_STALLED: idle_secs=120", "api")).toBe("errStreamStalled");
+    expect(explainAiError("Error: AI_STREAM_STALLED: idle_secs=300", "api")).toBe("errStreamStalled");
+    expect(
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"AI_STREAM_STALLED: 假的"}', "api"),
+    ).toBe("errApiUpstream");
+  });
+
   it("穩定免費連續擁擠：認 AI_FREE_MODEL_BUSY 開頭，內層的 HTTP 碼與 body 字樣翻不了盤", () => {
     expect(explainAiError("AI_FREE_MODEL_BUSY: AI_HTTP_STATUS_503: status=503 body=", "api")).toBe(
       "errFreeModelBusy",

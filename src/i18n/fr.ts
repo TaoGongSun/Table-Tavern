@@ -538,6 +538,7 @@ export const fr: Record<MsgKey, string> = {
   errApiUpstream: "Quelque chose a échoué côté fournisseur de l’API, sans moyen de savoir quoi. Réessaie une fois\u00a0; si ça échoue encore, change de modèle. Si ça n’arrive que quand l’historique est long, changer d’acte peut aider\u00a0; si ça arrive souvent, passe au mode abonnement CLI.",
   errAiUnknown: "Cette requête n’a pas abouti. Réessaie\u00a0; si ça persiste, change de modèle ou de source d’IA.",
   errEmptyReply: "L'IA n'a rien renvoyé cette fois, donc rien n'a été ajouté à l'histoire. Réessaie\u00a0; si cela persiste, change de modèle ou de source d'IA.",
+  errStreamStalled: "Aucune sortie du modèle depuis trop longtemps : l'attente a été interrompue et rien n'a été ajouté à l'histoire. Réessaie ou change de modèle.",
   errIncompleteReply: "La réponse de l'IA a été coupée avant la fin, donc rien n'a été ajouté à l'histoire. Réessaie\u00a0; si cela persiste, change de modèle ou de source d'IA.",
   errFiltered: "Cette source d'IA a bloqué la réponse. Reformule, ou passe à un autre modèle.",
   errNoImage: "Cette source ne peut pas générer d'images\u00a0: crédit insuffisant, ou formule ne comprenant pas la génération d'images. Essaie une autre source.",
