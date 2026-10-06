@@ -48,9 +48,11 @@ def flag(name):
     return args[args.index(name) + 1] if name in args else None
 sid, rid = flag('--session-id'), flag('--resume')
 prompt = sys.stdin.read()
+sf = flag('--system-prompt-file')
+system = open(sf, encoding='utf-8').read() if sf else None
 d = os.environ['FAKE_SESSION_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
+    f.write(json.dumps({'args': args, 'prompt': prompt, 'system': system}) + '\n')
 path = os.path.join(d, (sid or rid) + '.jsonl')
 # 照真 CLI（2.1.287）的形狀只追加：queue-operation、user、attachment 夾雜項行、
 # thinking 與 text 拆成兩則 assistant、assistant 後再接 attachment
@@ -110,6 +112,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
         provider: LaneProvider::Claude,
         program: script,
         working_dir: working_dir.clone(),
+        prompt_dir: working_dir.with_file_name("prompts"),
         envs: vec![(
             "FAKE_SESSION_DIR".to_owned(),
             session_dir.to_string_lossy().into_owned(),
@@ -149,7 +152,7 @@ args = sys.argv[1:]
 def flag(name):
     return args[args.index(name) + 1] if name in args else None
 cid = flag('--conversation')
-prompt = flag('-p') or ''
+prompt = sys.stdin.read()
 d = os.environ['FAKE_AGY_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
     f.write(json.dumps({'args': args, 'prompt': prompt}, ensure_ascii=False) + '\n')
@@ -174,6 +177,7 @@ print(json.dumps({'event': 'result', 'result': {
         provider: LaneProvider::Agy,
         program: script,
         working_dir: working_dir.clone(),
+        prompt_dir: working_dir.with_file_name("prompts"),
         envs: vec![(
             "FAKE_AGY_DIR".to_owned(),
             dir.to_string_lossy().into_owned(),
@@ -567,6 +571,134 @@ fn prompt_carries_header_only_on_reopen_and_tail_alone_without_events() {
     );
 }
 
+/// 假 grok：照真 CLI 讀 `--agent` profile 與 `--prompt-file` 正文，逐次記下內容。
+#[cfg(unix)]
+fn fake_grok(tag: &str) -> FakeCli {
+    let FakeCli {
+        dir,
+        mut call,
+        root,
+        world_id,
+        working_dir,
+        ..
+    } = fake_claude(&format!("grok-{tag}"));
+    let script = dir.join("fake-grok.py");
+    std::fs::write(
+        &script,
+        r#"#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+def flag(name):
+    return args[args.index(name) + 1] if name in args else None
+def read(path):
+    return open(path, encoding='utf-8').read() if path else None
+d = os.environ['FAKE_SESSION_DIR']
+with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
+    f.write(json.dumps({'args': args, 'profile': read(flag('--agent')),
+                        'prompt': read(flag('--prompt-file'))}, ensure_ascii=False) + '\n')
+print(json.dumps({'type': 'text', 'data': '回覆'}, ensure_ascii=False))
+print(json.dumps({'type': 'end'}))
+"#,
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    call.provider = LaneProvider::Grok;
+    call.program = script;
+    call.model = Some("grok-test".to_owned());
+    FakeCli {
+        session_dir: PathBuf::from(
+            call.envs
+                .iter()
+                .find(|(key, _)| key == "FAKE_SESSION_DIR")
+                .map(|(_, value)| value.clone())
+                .unwrap(),
+        ),
+        dir,
+        call,
+        root,
+        world_id,
+        claude_home: PathBuf::new(),
+        working_dir,
+    }
+}
+
+/// grok 開線把 system 寫成 agent profile（內容就是 grok_agent_profile）、續聊不帶；
+/// 正文都從 --prompt-file 讀到，且文字通道帶 --verbatim。暫存檔呼叫完就刪。
+#[cfg(unix)]
+#[tokio::test]
+async fn grok_lane_opens_with_profile_file_and_resumes_with_prompt_file_only() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let FakeCli {
+        dir,
+        call,
+        root,
+        world_id,
+        session_dir,
+        ..
+    } = fake_grok("files");
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第一句")];
+    let mut first = turn_input(&events, 0);
+    first.prefix = None;
+    first.frozen_system = "凍結A ${% raw %} 保持原樣".to_owned();
+    run_turn(&call, &root, &world_id, first, None, |_| {})
+        .await
+        .unwrap();
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆"));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "只有這句是新的"));
+    let mut second = turn_input(&events, 0);
+    second.prefix = None;
+    second.frozen_system = "凍結A ${% raw %} 保持原樣".to_owned();
+    run_turn(&call, &root, &world_id, second, None, |_| {})
+        .await
+        .unwrap();
+
+    let calls: Vec<serde_json::Value> = std::fs::read_to_string(session_dir.join("calls.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(calls.len(), 2);
+    let args = |index: usize| -> Vec<String> {
+        calls[index]["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().to_owned())
+            .collect()
+    };
+    let open_args = args(0);
+    assert!(open_args.contains(&"-s".to_owned()));
+    assert!(open_args.contains(&"--verbatim".to_owned()));
+    assert!(!open_args
+        .iter()
+        .any(|arg| arg.contains("凍結A") || arg == "-p"));
+    assert_eq!(
+        calls[0]["profile"].as_str().unwrap(),
+        crate::cli::grok_payload("凍結A ${% raw %} 保持原樣", "", false)
+            .0
+            .unwrap()
+    );
+    let opening = calls[0]["prompt"].as_str().unwrap();
+    assert!(opening.contains("第一句"));
+    assert!(!opening.contains("凍結A")); // system 只在 profile，不混進正文
+
+    let resume_args = args(1);
+    assert!(resume_args.contains(&"-r".to_owned()));
+    assert!(!resume_args.contains(&"--agent".to_owned()));
+    assert!(calls[1]["profile"].is_null());
+    let delta = calls[1]["prompt"].as_str().unwrap();
+    assert!(delta.contains("只有這句是新的"));
+    assert!(!delta.contains("第一句"));
+    assert!(!delta.contains("凍結A"));
+
+    let left: Vec<_> = std::fs::read_dir(call.prompt_dir.clone())
+        .unwrap()
+        .collect();
+    assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
@@ -606,18 +738,44 @@ async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
         "回覆2"
     );
 
+    // 換幕：同一條 conversation 不能續，重開新線——system 要再帶一次、只帶一次
+    let scene_events = vec![event(TranscriptKind::Player, "", "阿濤", "新的一幕")];
+    let mut third = turn_input(&scene_events, 1);
+    third.prefix = None;
+    third.scope = Some("fox-id".to_owned());
+    run_turn(&call, &root, &world_id, third, None, |_| {})
+        .await
+        .unwrap();
+
     let calls = std::fs::read_to_string(dir.join("calls.jsonl")).unwrap();
     let calls: Vec<serde_json::Value> = calls
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(calls.len(), 2);
+    assert_eq!(calls.len(), 3);
+    assert!(!calls[2]["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|arg| arg == "--conversation"));
+    let reopened = calls[2]["prompt"].as_str().unwrap();
+    assert_eq!(reopened.matches("凍結A").count(), 1);
+    assert!(reopened.contains("新的一幕"));
+    assert!(!reopened.contains("第一句"));
     assert!(!calls[0]["args"]
         .as_array()
         .unwrap()
         .iter()
         .any(|arg| arg == "--conversation"));
-    assert!(calls[0]["prompt"].as_str().unwrap().contains("凍結A"));
+    // 開線：system 與本輪一起走 stdin，system 恰好一次、不在命令列上
+    let opening = calls[0]["prompt"].as_str().unwrap();
+    assert_eq!(opening.matches("凍結A").count(), 1);
+    assert!(opening.starts_with("凍結A\n\n"));
+    assert!(!calls[0]["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|arg| arg == "-p"));
     let second_args = calls[1]["args"].as_array().unwrap();
     let resume = second_args
         .iter()
@@ -635,7 +793,7 @@ async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(usage.len(), 2);
+    assert_eq!(usage.len(), 3);
     assert_eq!(usage[0]["agy_conversation_id"], "agy-conversation-1");
     assert_eq!(usage[1]["agy_conversation_id"], "agy-conversation-1");
     assert_eq!(usage[0]["agy_cache_read_tokens"], 0);
@@ -781,6 +939,7 @@ async fn lane_turns_open_rewrite_resume_and_degrade() {
         model: Some("haiku".to_owned()),
         program: call.program.clone(),
         working_dir: call.working_dir.clone(),
+        prompt_dir: call.prompt_dir.clone(),
         envs: call.envs.clone(),
         usage_log: None,
         claude_home: call.claude_home.clone(),
@@ -879,6 +1038,17 @@ async fn keepalive_pings_live_lanes_and_leaves_no_trace() {
         .windows(2)
         .any(|w| w == ["--resume", session_id.as_str()]));
     assert_eq!(ping_prompt, PING_PROMPT);
+    // 保溫帶的 system 要跟開線那次逐字相同才匹配得到快取前綴（假 CLI 當場讀檔記下）
+    let systems: Vec<String> = std::fs::read_to_string(session_dir.join("calls.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let line: serde_json::Value = serde_json::from_str(line).unwrap();
+            line["system"].as_str().unwrap().to_owned()
+        })
+        .collect();
+    assert_eq!(systems[0], "凍結A");
+    assert_eq!(systems[1], systems[0]);
     // 問答已截掉：檔案逐字回到 ping 前，正典 transcript 也沒被碰過
     assert_eq!(std::fs::read_to_string(&session_path).unwrap(), before);
     // 保溫成功＝壽命重新計時
@@ -1035,9 +1205,11 @@ def flag(name):
     return args[args.index(name) + 1] if name in args else None
 sid, rid = flag('--session-id'), flag('--resume')
 prompt = sys.stdin.read()
+sf = flag('--system-prompt-file')
+system = open(sf, encoding='utf-8').read() if sf else None
 d = os.environ['FAKE_SESSION_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
+    f.write(json.dumps({'args': args, 'prompt': prompt, 'system': system}) + '\n')
 path = os.path.join(d, (sid or rid) + '.jsonl')
 if rid and not os.path.exists(path):
     sys.exit(3)
@@ -1061,6 +1233,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         provider: LaneProvider::Claude,
         program: script,
         working_dir: working_dir.clone(),
+        prompt_dir: working_dir.with_file_name("prompts"),
         envs: vec![(
             "FAKE_SESSION_DIR".to_owned(),
             session_dir.to_string_lossy().into_owned(),
@@ -1069,7 +1242,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         usage_log: Some(usage_log.clone()),
         claude_home,
     };
-    let calls = |index: usize| -> (Vec<String>, String) {
+    let calls = |index: usize| -> (Vec<String>, String, String) {
         let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
         let line: serde_json::Value =
             serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
@@ -1081,6 +1254,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
                 .map(|value| value.as_str().unwrap().to_owned())
                 .collect(),
             line["prompt"].as_str().unwrap().to_owned(),
+            line["system"].as_str().unwrap().to_owned(),
         )
     };
     let old_system = "## 角色卡\n舊設定\n";
@@ -1101,10 +1275,14 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
     run_turn(&call, &root, &world_id, patched, None, |_| {})
         .await
         .unwrap();
-    let (patch_args, patch_prompt) = calls(1);
-    assert!(patch_args
-        .windows(2)
-        .any(|window| window == ["--system-prompt", old_system]));
+    let (_, first_prompt, first_system) = calls(0);
+    assert_eq!(first_system, old_system);
+    assert!(!first_prompt.contains("舊設定")); // system 只在 system 層，不混進正文
+    let (patch_args, patch_prompt, patch_system) = calls(1);
+    // 補丁輪：system 維持凍結的舊版（快取前綴不動），新設定只走正文補丁、只出現一次
+    assert_eq!(patch_system, old_system);
+    assert!(!patch_args.iter().any(|arg| arg.contains("舊設定")));
+    assert_eq!(patch_prompt.matches("## 角色卡\n新設定\n").count(), 1);
     assert!(patch_prompt.contains("## 設定更新"));
     assert!(patch_prompt.contains("## 角色卡\n新設定\n"));
 
@@ -1123,10 +1301,10 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
     run_turn(&call, &root, &world_id, rebased, None, |_| {})
         .await
         .unwrap();
-    let (rebase_args, rebase_prompt) = calls(2);
-    assert!(rebase_args
-        .windows(2)
-        .any(|window| window == ["--system-prompt", new_system]));
+    let (rebase_args, rebase_prompt, rebase_system) = calls(2);
+    assert_eq!(rebase_system, new_system);
+    assert!(!rebase_args.iter().any(|arg| arg.contains("新設定")));
+    assert!(!rebase_prompt.contains("新設定"));
     assert!(!rebase_prompt.contains("## 設定更新"));
 
     // log（包 4）：一次呼叫一行 JSONL，線的動作與該次用量寫在同一筆
@@ -1193,6 +1371,7 @@ fn abort_delete_failure_clears_lane_and_returns_error() {
         provider: LaneProvider::Claude,
         program: dir.join("unused"),
         working_dir: working_dir.clone(),
+        prompt_dir: working_dir.with_file_name("prompts"),
         envs: Vec::new(),
         model: Some("sonnet".to_owned()),
         usage_log: Some(usage_log.clone()),
@@ -1321,6 +1500,7 @@ time.sleep(60)
         provider: LaneProvider::Claude,
         program: script,
         working_dir: working_dir.clone(),
+        prompt_dir: working_dir.with_file_name("prompts"),
         envs: vec![(
             "FAKE_SESSION_DIR".to_owned(),
             session_dir.to_string_lossy().into_owned(),

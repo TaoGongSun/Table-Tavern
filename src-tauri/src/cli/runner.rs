@@ -7,6 +7,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 
+/// 餵 stdin 的上限：CLI 起來但不收 stdin（掛在啟動）時，寫入會永卡。測試縮短以免反例測試等一分鐘。
+#[cfg(not(test))]
+const STDIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+#[cfg(test)]
+const STDIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// `run_cli_cancellable` 的收場。中止不是錯誤：呼叫端要拿半截文字去做抹寫，不能走失敗重試。
 pub enum CliFinish {
     Completed(String),
@@ -113,7 +119,7 @@ pub async fn run_cli_cancellable(
     thinking_to_delta: bool,
     usage_log: Option<UsageLog<'_>>,
     mut on_delta: impl FnMut(&str),
-    mut cancel: Option<watch::Receiver<bool>>,
+    cancel: Option<watch::Receiver<bool>>,
 ) -> DataResult<CliFinish> {
     #[cfg(feature = "test-harness")]
     let harness_dispatch = crate::harness::ai_dispatch(
@@ -168,28 +174,43 @@ pub async fn run_cli_cancellable(
         crate::inflight::register_child(pid);
     }
     let _pid_guard = ChildPidGuard(child.id());
+    let result = drive_child(
+        &mut child,
+        stdin_data,
+        parse,
+        thinking_to_delta,
+        usage_log,
+        &mut on_delta,
+        cancel,
+    )
+    .await;
+    // 不論怎麼收場（完成、錯誤、斷流、取消）都先收屍再返回：呼叫端接著會刪提示詞暫存檔，
+    // Windows 上程序還開著檔就刪不掉。已經 wait 過的程序再收一次是空操作。
+    kill_child_and_wait(&mut child).await;
+    result
+}
 
-    let mut stdin = child.stdin.take().expect("stdin piped");
-    // 死法③：CLI 起來但不收 stdin（掛在啟動）＝write_all 永卡，60 秒收不完就中止。
-    // 這段也聽取消：停止鍵若卡在餵提示詞，一樣要殺程序並等它退出。
-    let write_stdin = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        stdin.write_all(stdin_data.as_bytes()),
-    );
+/// spawn 之後的整段：餵 stdin、逐行讀 stdout／stderr、判收尾。任何提早 return 都由呼叫端
+/// `run_cli_cancellable` 接著收屍。
+async fn drive_child(
+    child: &mut Child,
+    stdin_data: &str,
+    parse: fn(&str) -> CliLine,
+    thinking_to_delta: bool,
+    usage_log: Option<UsageLog<'_>>,
+    on_delta: &mut impl FnMut(&str),
+    mut cancel: Option<watch::Receiver<bool>>,
+) -> DataResult<CliFinish> {
+    // stdin 跟讀迴圈並行：正文改走 stdin 後可能好幾 MB，先寫完才讀的話，CLI 若先大量輸出
+    // 再讀 stdin，兩邊各自卡在滿掉的管線上互等。寫完就關 stdin 讓 CLI 知道輸入結束。
+    // 死法③：CLI 起來但不收 stdin（掛在啟動）＝寫入永卡，60 秒寫不完就中止。
+    let stdin = child.stdin.take().expect("stdin piped");
+    let write_stdin = tokio::time::timeout(STDIN_WRITE_TIMEOUT, async move {
+        let mut stdin = stdin;
+        stdin.write_all(stdin_data.as_bytes()).await
+    });
     tokio::pin!(write_stdin);
-    let stdin_cancel = cancel.is_some();
-    tokio::select! {
-        biased;
-        result = write_stdin.as_mut() => {
-            result.map_err(|_| UiMsg::CliStdinTimeout.into_error())??;
-        }
-        _ = wait_cancel(&mut cancel), if stdin_cancel => {
-            drop(stdin);
-            kill_child_and_wait(&mut child).await;
-            return Ok(CliFinish::Aborted(String::new()));
-        }
-    }
-    drop(stdin); // 關閉讓 CLI 知道輸入結束
+    let mut stdin_open = true;
 
     // stderr 逐行即時讀（同時兼排空防死鎖）：CLI 的「API Error…重試中」通知走 stderr，
     // 整包等結束才讀會讓玩家對著靜止的進度框發呆到 CLI 重試放棄為止。
@@ -212,7 +233,9 @@ pub async fn run_cli_cancellable(
     let mut exited = false;
     let mut stall: Option<String> = None;
     let mut aborted = false;
-    while stdout_open || stderr_open {
+    // 收場要四件都到：兩條輸出 EOF、stdin 寫完（或放棄）、程序退出。只看輸出的話，CLI 先關掉
+    // 輸出再讀 stdin（或乾脆不讀）時，迴圈會在還沒寫完時就離開，逾時、取消、斷流偵測全失效。
+    while stdout_open || stderr_open || stdin_open || !exited {
         // 收尾還沒到時，取消排在讀管線之前：輸出一直有字時，biased 不會把停止排到後面。
         // 已經收到收尾行就關掉這支：完成與停止同時就緒時，完成贏，交回全文。
         let arm_cancel = cancel.is_some() && done.is_none();
@@ -249,15 +272,27 @@ pub async fn run_cli_cancellable(
                 }
                 continue;
             },
+            written = write_stdin.as_mut(), if stdin_open => {
+                stdin_open = false;
+                match written {
+                    Err(_) => return Err(UiMsg::CliStdinTimeout.into_error()),
+                    // CLI 沒讀完就退出：交給後面的退出碼／收尾判斷帶出 CLI 自己的錯誤
+                    Ok(Err(error)) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+                    Ok(Err(error)) => return Err(error.into()),
+                    Ok(Ok(())) => {}
+                }
+                continue;
+            },
             status = child.wait(), if !exited => {
                 let _ = status?;
                 exited = true;
                 continue;
             },
             _ = tokio::time::sleep(std::time::Duration::from_millis(800)), if exited => {
-                // 程序已亡、管線遲不 EOF＝孫程序繼承了 fd，放棄排空強制收尾
+                // 程序已亡、管線遲不 EOF＝孫程序繼承了 fd，放棄排空強制收尾（stdin 同理不再寫）
                 stdout_open = false;
                 stderr_open = false;
+                stdin_open = false;
                 continue;
             },
             _ = tokio::time::sleep(std::time::Duration::from_secs(120)), if !exited => {
@@ -377,7 +412,7 @@ pub async fn run_cli_cancellable(
     }
 
     if aborted {
-        kill_child_and_wait(&mut child).await;
+        kill_child_and_wait(child).await;
         return Ok(CliFinish::Aborted(full_text));
     }
     if let Some(msg) = stall {
