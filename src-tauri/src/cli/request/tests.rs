@@ -438,11 +438,14 @@ fn grok_envs_point_home_and_grok_home_at_the_app_profile() {
     assert!(envs.contains(&("USERPROFILE".to_owned(), "/app/cli-home".to_owned())));
     // GROK_HOME 另指一處，登入態才不會跟使用者終端機的 ~/.grok 混在一起
     assert!(envs.contains(&("GROK_HOME".to_owned(), "/app/grok-home".to_owned())));
-    // 取樣參數走 GROK_CONFIG 疊加層：只在 app 這幾次呼叫生效，不寫進任何 config.toml
+    // 取樣參數與關伺服器端工具走 GROK_CONFIG 疊加層：只在 app 這幾次呼叫生效，不寫進任何 config.toml
     assert!(envs.contains(&(
         "GROK_CONFIG".to_owned(),
-        r#"{"models":{"temperature":1.1,"top_p":1.0}}"#.to_owned()
+        r#"{"models":{"temperature":1.1,"top_p":1.0},"features":{"backend_tools":false}}"#
+            .to_owned()
     )));
+    // 伺服器端工具的環境變數入口（--disable-web-search 管不到 x_search）
+    assert!(envs.contains(&("GROK_BACKEND_SEARCH".to_owned(), "0".to_owned())));
     // 關掉遠端 campaign，否則 -m 非 campaign 預設模型時 system override 會失效
     assert!(envs.contains(&("GROK_CAMPAIGNS".to_owned(), "0".to_owned())));
 }
