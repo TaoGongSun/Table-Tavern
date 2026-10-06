@@ -219,12 +219,12 @@ pub fn agy_session_args(
     args
 }
 
-/// grok 通道的環境隔離。grok 有「Claude Code 相容」設計：會自動載入 `$HOME/.claude` 下的
-/// hooks、skills、plugins、CLAUDE.md 與 permissions，官方沒有可關的旗標或設定
-/// （`[features] claude_hooks` 是伺服器端 flag、`CLAUDE_CONFIG_DIR` 無效，皆實測過）。
-/// 玩家的 coding hook 因此會擋停旁白、CLAUDE.md 會混進 GM 的系統提示。
-/// 唯一槓桿是環境變數：HOME 指向 app 的空目錄（grok 就找不到 ~/.claude），
-/// GROK_HOME 指向 app 專用設定目錄（登入態與 session 都留在 app 自己這套）。
+/// grok 通道的環境隔離。grok 有「Claude Code 相容」設計：預設會載入 `$HOME/.claude` 下的
+/// hooks、skills、agents、MCP、rules 與 CLAUDE.md。1.0.46 起有 `[compat.claude]` 的
+/// agents／hooks／mcps／rules／skills 開關（另有 `GROK_CLAUDE_*_ENABLED`），但遠端 settings
+/// 還有沒對應鍵的相容項（如 claude_sessions_enabled），開關不保證涵蓋全部。
+/// 所以照舊把 HOME 指向 app 的空目錄（grok 就找不到 ~/.claude），GROK_HOME 指向 app 專用
+/// 設定目錄——登入態與 session 也因此跟使用者終端機的 `~/.grok` 分開。
 /// 四處呼叫 grok 的地方必須共用這組，否則會出現「UI 顯示已登入、實跑未登入」。
 pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
     let home = home.to_string_lossy().into_owned();
@@ -234,6 +234,11 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
         ("USERPROFILE", home),
         ("GROK_HOME", grok_home.to_string_lossy().into_owned()),
         ("GROK_CONFIG", GROK_SAMPLING_OVERLAY.to_owned()),
+        // 遠端會下發 campaign（例：grok-4.7-launch 把預設模型改成 4.7）。app 的 grok-home 沒人
+        // dismiss 過，campaign 生效時只要 `-m` 不是它的預設模型，`--system-prompt-override`
+        // 就被丟掉、換回 coding agent 提示（1.0.46 實測）。官方文件保證這個變數連
+        // requirements 都壓得過（user-guide/26-config-reference.md `features.campaigns`）。
+        ("GROK_CAMPAIGNS", "0".to_owned()),
     ]
     .map(|(key, value)| (key.to_owned(), value))
     .to_vec()
@@ -586,6 +591,8 @@ mod tests {
             "GROK_CONFIG".to_owned(),
             r#"{"models":{"temperature":1.1,"top_p":1.0}}"#.to_owned()
         )));
+        // 關掉遠端 campaign，否則 -m 非 campaign 預設模型時 system override 會失效
+        assert!(envs.contains(&("GROK_CAMPAIGNS".to_owned(), "0".to_owned())));
     }
 
     #[test]
