@@ -243,22 +243,29 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
         // Windows 認 USERPROFILE，HOME 在那邊不作數
         ("USERPROFILE", home),
         ("GROK_HOME", grok_home.to_string_lossy().into_owned()),
-        ("GROK_CONFIG", GROK_SAMPLING_OVERLAY.to_owned()),
+        ("GROK_CONFIG", GROK_CONFIG_OVERLAY.to_owned()),
         // 遠端會下發 campaign（例：grok-4.7-launch 把預設模型改成 4.7）。app 的 grok-home 沒人
         // dismiss 過，campaign 生效時只要 `-m` 不是它的預設模型，自訂 system 就被丟掉、換回
         // coding agent 提示（1.0.46 以 `--system-prompt-override` 實測）。官方文件保證這個變數連
         // requirements 都壓得過（user-guide/26-config-reference.md `features.campaigns`）。
         ("GROK_CAMPAIGNS", "0".to_owned()),
+        // 伺服器端工具（x_search 等）：`--disable-web-search` 只拿掉客戶端 web_search，管不到它，
+        // 角色回合會被模型拿去查 X、把私設帶進查詢參數（1.0.46 實測）。overlay 那條
+        // `features.backend_tools` 同義，兩條入口各一，CLI 升版弄丟一條還有另一條；
+        // requirements／MDM 把它 pin 成 true 時兩條都壓不過。
+        ("GROK_BACKEND_SEARCH", "0".to_owned()),
     ]
     .map(|(key, value)| (key.to_owned(), value))
     .to_vec()
 }
 
-/// 取樣參數：grok 1.0.5 沒有 temperature／top_p 旗標，只吃設定檔的 `[models]` 全域預設。
-/// `GROK_CONFIG` 是官方的 JSON 疊加層（deep merge 在 config.toml 之上，白名單含 `models`），
-/// 走環境變數就不必動 GROK_HOME 裡的 config.toml，也碰不到登入態。
-/// 1.1／1.0 是為了鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
-pub const GROK_SAMPLING_OVERLAY: &str = r#"{"models":{"temperature":1.1,"top_p":1.0}}"#;
+/// `GROK_CONFIG` 是官方的 JSON 疊加層（deep merge 在 config.toml 之上，白名單含 `models`、
+/// `features`），走環境變數就不必動 GROK_HOME 裡的 config.toml，也碰不到登入態。
+/// - 取樣參數：grok 1.0.5 沒有 temperature／top_p 旗標，只吃 `[models]` 全域預設；1.1／1.0 是為了
+///   鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
+/// - `features.backend_tools`：關掉伺服器端工具，與 `GROK_BACKEND_SEARCH=0` 互為兩條入口。
+pub const GROK_CONFIG_OVERLAY: &str =
+    r#"{"models":{"temperature":1.1,"top_p":1.0},"features":{"backend_tools":false}}"#;
 
 /// 聊天單發要移除的內建工具全集（grok 1.0.5；1.0.46 新增 send_feedback）。`--deny *` 只擋執行，工具 schema 照樣佔
 /// context——實測同一段開場 12604 → 3602 input tokens，CLI 內部 log 的 `tool_count` 由 24 歸 0。
