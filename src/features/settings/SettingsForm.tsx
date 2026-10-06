@@ -7,6 +7,7 @@ import { checkApiKey } from "../ai-connection/api-key-check";
 import { tierLabel } from "../ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../ai-connection/model-catalog-store";
 import { ImageModelField } from "./ImageModelField";
+import { useKeyTier } from "./key-tier";
 import { updateConfig } from "./update-config";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -173,6 +174,9 @@ export function Settings({
   const stableFree = transport === "api" && onOpenRouter && modelMode === "stable_free";
   const recommendedApiModel = transport === "api" && onOpenRouter && modelMode === "recommended";
   const fixedApiModel = stableFree || recommendedApiModel;
+  // 確定是免費層（打不了生圖）才藏生圖模型；藏著時草稿保留但不算未儲存、不寫進存檔
+  const keyTier = useKeyTier(apiKey, transport, String(config.preferences["base_url"] ?? ""));
+  const imageModelHidden = transport === "api" && keyTier === "free";
   const [permissionNotice, setPermissionNoticeState] = useState("");
   const noticeRef = useRef("");
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
@@ -424,7 +428,7 @@ export function Settings({
   const dirtyCount = [
     apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
     baseUrl.trim() !== String(config.preferences["base_url"] ?? ""),
-    imageModel.trim() !== String(config.preferences["image_model"] ?? ""),
+    !imageModelHidden && imageModel.trim() !== String(config.preferences["image_model"] ?? ""),
     claudeCompatBaseUrl.trim() !== String(config.preferences["claude_base_url"] ?? ""),
     claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? ""),
     gmTier !== String(config.preferences["gm_tier"] ?? "best"),
@@ -478,7 +482,7 @@ export function Settings({
     setPref(
       "image_model",
       imageModel.trim(),
-      imageModel.trim() === String(config.preferences["image_model"] ?? ""),
+      imageModelHidden || imageModel.trim() === String(config.preferences["image_model"] ?? ""),
     );
     setPref(
       "claude_base_url",
@@ -619,11 +623,13 @@ export function Settings({
           )}
           {transport === "api" ? (
             <>
-              <ImageModelField
-                value={imageModel}
-                options={catalogs["api-image"] ?? []}
-                onChange={setImageModel}
-              />
+              {!imageModelHidden && (
+                <ImageModelField
+                  value={imageModel}
+                  options={catalogs["api-image"] ?? []}
+                  onChange={setImageModel}
+                />
+              )}
               {onOpenRouter && (
                 <fieldset className="transport-choice">
                   <legend>{t("modelModeLegend")}</legend>

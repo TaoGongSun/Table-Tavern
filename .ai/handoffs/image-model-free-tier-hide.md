@@ -7,5 +7,8 @@
 - 清單不縮短、不人工挑模型，60 項照列。
 - 生圖視窗的「API」來源維持現狀，免費 key 照樣列出，按下去顯示專屬提示。
 
-## Next action
-決定 `/key` 查詢接在哪一層（現在只在 Rust 的 `generate_image` 失敗時呼叫），再接到設定頁顯示條件。
+## 現況
+已進 main（做法見 [plans/image-model-free-tier-hide.md](../plans/image-model-free-tier-hide.md)）：verify 10 步綠；測試通道接本機假 `/key` 看過 free 藏、paid／404 顯示、改草稿 base 不查、藏著存檔 `image_model` 原值保留、快取首屏即藏、換 key 立即恢復顯示；Sol 驗收通過。
+
+## 等實機驗收
+排在[實測佇列](../reference/verification-queue.md)梯 2 第 22 項：真免費／付費 key 各看一次設定頁；整個關掉設定視窗再開確認首屏不閃。都過就結案歸檔。

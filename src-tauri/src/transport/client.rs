@@ -697,7 +697,9 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         let error = http_error(status, &body);
-        if matches!(status.as_u16(), 402 | 403) && is_free_tier_key(config, api_key).await {
+        if matches!(status.as_u16(), 402 | 403)
+            && key_tier(&base_url(config), api_key).await == Some(true)
+        {
             return Err(format!("{IMAGE_FREE_KEY}: {error}"));
         }
         return Err(error);
@@ -726,36 +728,44 @@ const IMAGE_FREE_KEY: &str = "AI_IMAGE_FREE_KEY";
 #[cfg(not(test))]
 const KEY_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(test)]
-const KEY_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
+const KEY_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1000);
 
-/// 補查 `GET {base}/key`：只有 2xx 且 `data.is_free_tier` 是布林 true 才算；
-/// 逾時、非 2xx、JSON 壞掉、欄位缺失或型別不對，一律當「不確定」，讓呼叫端保留原錯誤。
-async fn is_free_tier_key(config: &AppConfig, api_key: &str) -> bool {
-    // reqwest 的 client timeout 管不到 body 讀到一半停住，整段（送出＋讀 body）另外包一層
-    tokio::time::timeout(KEY_LOOKUP_TIMEOUT, lookup_free_tier(config, api_key))
-        .await
-        .unwrap_or(false)
+/// 設定頁用：以已存檔 config 的 base 查草稿 key，回傳實際打的 base 與三態結果。
+/// key 空白不發請求，直接當不確定。
+pub(crate) async fn key_tier_for(config: &AppConfig, api_key: &str) -> (String, Option<bool>) {
+    let base = base_url(config);
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return (base, None);
+    }
+    let tier = key_tier(&base, api_key).await;
+    (base, tier)
 }
 
-async fn lookup_free_tier(config: &AppConfig, api_key: &str) -> bool {
-    let Ok(response) = reqwest::Client::new()
-        .get(format!("{}/key", base_url(config)))
+/// 查 `GET {base}/key` 的 `data.is_free_tier`：`Some(true)` 免費層、`Some(false)` 非免費層；
+/// 逾時、連不上、非 2xx、JSON 壞掉、欄位缺失或型別不對，一律 `None`（不確定）。
+async fn key_tier(base: &str, api_key: &str) -> Option<bool> {
+    // 建 client 會載入系統憑證，放在逾時外；reqwest 的 client timeout 管不到 body 讀到一半停住，
+    // 整段（送出＋讀 body）另外包一層
+    let client = reqwest::Client::new();
+    tokio::time::timeout(KEY_LOOKUP_TIMEOUT, lookup_key_tier(&client, base, api_key))
+        .await
+        .ok()
+        .flatten()
+}
+
+async fn lookup_key_tier(client: &reqwest::Client, base: &str, api_key: &str) -> Option<bool> {
+    let response = client
+        .get(format!("{base}/key"))
         .bearer_auth(api_key)
         .send()
         .await
-    else {
-        return false;
-    };
+        .ok()?;
     if !response.status().is_success() {
-        return false;
+        return None;
     }
-    let Ok(body) = response.json::<serde_json::Value>().await else {
-        return false;
-    };
-    body.get("data")
-        .and_then(|data| data.get("is_free_tier"))
-        .and_then(serde_json::Value::as_bool)
-        == Some(true)
+    let body = response.json::<serde_json::Value>().await.ok()?;
+    body.get("data")?.get("is_free_tier")?.as_bool()
 }
 
 #[cfg(test)]
