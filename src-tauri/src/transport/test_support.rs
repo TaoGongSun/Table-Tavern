@@ -65,3 +65,31 @@ pub(super) fn worldbook_entry(
         locked: false,
     }
 }
+
+/// 假串流伺服器：先回 200 標頭，再依腳本 `(送出前等待毫秒, 內容)` 逐段寫出，
+/// 最後把連線再撐 `hold_ms` 才關（模擬上游卡住但連線沒斷）。回傳 base URL。
+pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let Ok((mut socket, _)) = listener.accept() else {
+            return;
+        };
+        let mut request = [0u8; 8192];
+        let _ = socket.read(&mut request);
+        let head =
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n";
+        if socket.write_all(head.as_bytes()).is_err() {
+            return;
+        }
+        for (wait, text) in script {
+            std::thread::sleep(std::time::Duration::from_millis(wait));
+            if socket.write_all(text.as_bytes()).is_err() || socket.flush().is_err() {
+                return;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+    });
+    format!("http://{address}")
+}

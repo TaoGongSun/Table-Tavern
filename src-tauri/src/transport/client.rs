@@ -1,13 +1,12 @@
 use crate::data::{AppConfig, DataResult, Tier};
 
-use futures_util::StreamExt;
-
 use serde::Serialize;
 
 use crate::ui_msg::UiMsg;
 
 use super::api_failure::ApiFailure;
 use super::messages::ChatMessage;
+use super::stall::{chat_progress, stalled_message, Next, StallGuard, StallWindow};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
@@ -473,6 +472,30 @@ pub async fn stream_chat(
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
+    on_delta: impl FnMut(&str),
+) -> DataResult<StreamChatResult> {
+    stream_chat_windowed(
+        config,
+        model,
+        messages,
+        usage_log,
+        world,
+        shape,
+        StallWindow::default(),
+        on_delta,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stream_chat_windowed(
+    config: &AppConfig,
+    model: &str,
+    messages: &[ChatMessage],
+    usage_log: Option<&std::path::Path>,
+    world: Option<&str>,
+    shape: crate::usage::log::PromptShape,
+    window: StallWindow,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<StreamChatResult> {
     let base = base_url(config);
@@ -505,17 +528,30 @@ pub async fn stream_chat(
     }
 
     let mut stream = response.bytes_stream();
+    let mut guard = StallGuard::new(window);
+    let mut stalled = None;
     let mut parser = SseParser::default();
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = StreamOutcome::default();
     #[cfg(feature = "test-harness")]
     let mut harness_raw: Option<serde_json::Value> = None;
-    'outer: while let Some(chunk) = stream.next().await {
+    'outer: loop {
+        let chunk = match guard.next(&mut stream).await {
+            Next::Chunk(chunk) => chunk,
+            Next::End => break,
+            Next::Stalled => {
+                stalled = Some(guard.window_secs());
+                break;
+            }
+        };
         for payload in parser.push(&chunk?) {
             if payload == "[DONE]" {
                 outcome.saw_done = true;
                 break 'outer;
+            }
+            if chat_progress(&payload) {
+                guard.progress();
             }
             outcome.absorb(&payload);
             #[cfg(feature = "test-harness")]
@@ -553,6 +589,9 @@ pub async fn stream_chat(
         }
     }
     // 用量照記再判成敗：失敗的呼叫一樣燒了 token，額度分頁不能少算這一筆
+    if let Some(secs) = stalled {
+        return Err(stalled_message(secs).into());
+    }
     if let Some(failure) = outcome.failure(&full_text, model) {
         return Err(failure.into());
     }
@@ -572,6 +611,30 @@ pub async fn stream_chat_models(
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
+    on_delta: impl FnMut(&str),
+) -> Result<SmartChatResult, ApiFailure> {
+    stream_chat_models_windowed(
+        config,
+        model,
+        messages,
+        usage_log,
+        world,
+        shape,
+        StallWindow::default(),
+        on_delta,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stream_chat_models_windowed(
+    config: &AppConfig,
+    model: &str,
+    messages: &[ChatMessage],
+    usage_log: Option<&std::path::Path>,
+    world: Option<&str>,
+    shape: crate::usage::log::PromptShape,
+    window: StallWindow,
     mut on_delta: impl FnMut(&str),
 ) -> Result<SmartChatResult, ApiFailure> {
     let configured = base_url(config);
@@ -616,6 +679,8 @@ pub async fn stream_chat_models(
     }
 
     let mut stream = response.bytes_stream();
+    let mut guard = StallGuard::new(window);
+    let mut stalled = None;
     let mut parser = SseParser::default();
     let mut full_text = String::new();
     let mut usage = None;
@@ -623,12 +688,23 @@ pub async fn stream_chat_models(
     #[cfg(feature = "test-harness")]
     let mut harness_raw: Option<serde_json::Value> = None;
     let mut responder_model = None;
-    'outer: while let Some(chunk) = stream.next().await {
+    'outer: loop {
+        let chunk = match guard.next(&mut stream).await {
+            Next::Chunk(chunk) => chunk,
+            Next::End => break,
+            Next::Stalled => {
+                stalled = Some(guard.window_secs());
+                break;
+            }
+        };
         let chunk = chunk.map_err(|error| ApiFailure::network(&error, !full_text.is_empty()))?;
         for payload in parser.push(&chunk) {
             if payload == "[DONE]" {
                 outcome.saw_done = true;
                 break 'outer;
+            }
+            if chat_progress(&payload) {
+                guard.progress();
             }
             outcome.absorb(&payload);
             #[cfg(feature = "test-harness")]
@@ -674,6 +750,9 @@ pub async fn stream_chat_models(
         if let Some(path) = usage_log {
             crate::usage::log::append_call(path, world, "api", log_model, None, shape, usage);
         }
+    }
+    if let Some(secs) = stalled {
+        return Err(ApiFailure::stalled(secs, !full_text.is_empty()));
     }
     if let Some(failure) = outcome.failure(&full_text, log_model) {
         return Err(ApiFailure::stream(

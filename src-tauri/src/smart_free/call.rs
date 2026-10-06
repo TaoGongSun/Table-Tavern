@@ -66,7 +66,10 @@ async fn classify_with_key(failure: &ApiFailure, env: &mut impl CallEnv) -> Fail
 
 /// 回給前端的錯誤：模型層級掛 `AI_FREE_MODEL_BUSY:`；UnknownRateLimit 保留原錯誤，不宣稱上游擁擠。
 fn display(failure: &ApiFailure, class: FailureClass) -> String {
+    let stalled = failure.display.starts_with(crate::transport::STALLED_CODE);
     let raw = match class {
+        // 停滯逾時＝我們自己等不到輸出，不宣稱上游擁擠；換模判斷仍照 class
+        _ if stalled => failure.display.clone(),
         FailureClass::Model | FailureClass::Gone => {
             format!("AI_FREE_MODEL_BUSY: {}", failure.display)
         }
@@ -353,6 +356,33 @@ mod tests {
         );
         // 重送用新的目前模型（非替代）成功＝確認可用，exhausted 跟著清空（§4.4）
         assert_eq!(state(&root), ("b".to_owned(), 0, Vec::new()));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// 停滯逾時分類仍是 Model（連兩次照樣換模），但回給前端的碼是 AI_STREAM_STALLED，
+    /// 不被包成「免費模型擁擠」。
+    #[tokio::test]
+    async fn stalled_stream_keeps_its_own_code_but_still_counts_toward_switching() {
+        let root = super::super::test_root("call-stalled");
+        let plan = plan(&["a", "b", "c"]);
+        let mut persist = ok_persist();
+        let stalled = ApiFailure::stalled(120, false);
+        let mut env = FakeEnv {
+            plan: plan.clone(),
+            replies: VecDeque::from([
+                Reply::Fail(stalled.clone()),
+                Reply::Fail(stalled),
+                Reply::Ok,
+            ]),
+            ..FakeEnv::default()
+        };
+        let first = run_call(&root, &mut env, &mut persist, 1)
+            .await
+            .unwrap_err();
+        assert!(first.starts_with("AI_STREAM_STALLED:"), "{first}");
+        let second = run_call(&root, &mut env, &mut persist, 2).await.unwrap();
+        assert_eq!(second.result.model.as_deref(), Some("b"));
+        assert_eq!(env.sent, ["a", "a", "b"]);
         let _ = std::fs::remove_dir_all(root);
     }
 

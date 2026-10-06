@@ -540,6 +540,7 @@ export const de: Record<MsgKey, string> = {
   errApiUpstream: "Beim API-Anbieter ist etwas schiefgegangen, ohne erkennbaren Grund. Versuch es einmal erneut; scheitert es weiter, wechsle das Modell. Passiert es nur bei langem Verlauf, kann ein Szenenwechsel helfen; passiert es häufig, wechsle in den CLI-Abo-Modus.",
   errAiUnknown: "Diese Anfrage kam nicht durch. Versuch es noch einmal; wenn es bleibt, wechsle Modell oder KI-Quelle.",
   errEmptyReply: "Die KI hat diesmal nichts zurückgegeben, deshalb wurde der Geschichte nichts hinzugefügt. Versuche es noch einmal; wenn es dabei bleibt, wechsle Modell oder KI-Quelle.",
+  errStreamStalled: "Vom Modell kam zu lange keine Ausgabe, deshalb wurde das Warten abgebrochen und der Geschichte nichts hinzugefügt. Versuche es noch einmal oder wechsle das Modell.",
   errIncompleteReply: "Die Antwort der KI wurde abgeschnitten, deshalb wurde der Geschichte nichts hinzugefügt. Versuche es noch einmal; wenn es dabei bleibt, wechsle Modell oder KI-Quelle.",
   errFiltered: "Diese KI-Quelle hat die Antwort blockiert. Formuliere es anders, oder wechsle zu einem anderen Modell.",
   errNoImage: "Diese Quelle kann keine Bilder generieren: Entweder ist das Bildguthaben aufgebraucht oder das Bild-Abonnement fehlt. Versuche eine andere Bildquelle.",
