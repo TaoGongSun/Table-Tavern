@@ -12,6 +12,8 @@ Status: todo（2026-10-06 Grok 額度恢復後開工，四家通道都實跑）�
    - prompt-cache-optimization 的保溫「離開提醒」（保溫連三次沒回應＋紀錄超過 8000 字元才亮）實跑時等滿 12 分鐘驗一次。
    - 收 OpenRouter 真實命中率，作為保溫設計的參數依據（原 api-cache-visibility 留下的下一步）。
 
+4. **grok 整條線不命中**：grok 角色線 2026-10-06 實測，有一條線換幕重開後連四輪 below-expected（cached 只有 128–1152），同時段別條線正常，帳本是那次測試通道 ttroot 那批。列為本案要查的現象，查完判斷要不要換 session 自救〔作者裁決 2026-10-06〕。
+
 ## Next action
 先讓抹寫失敗原因落帳本，再四家實跑；claude 角色連講兩三輪看會不會再丟線。
 

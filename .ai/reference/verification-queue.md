@@ -29,7 +29,7 @@
 | 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
 | 12 | [ui-redesign](../handoffs/ui-redesign.md) 要 AI 的對話窗 | 重構三窗（進行中、二選一、結果含已取消／部分失敗）、一句話開桌有綱要後底列；可併梯 2 第 5 順手看 |
 | 14 | [api-shared-lane](../handoffs/api-shared-lane.md) | 錯認前言者（只有 API 測得到）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens；[vendor-prefix-floor](../tasks/vendor-prefix-floor.md) 排在這批數據之後 |
-| 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) ＋ [grok-cache-miss](../handoffs/grok-cache-miss.md) 角色線 | 多角色桌：回歸事件私設只到 GM；grok 通道讓角色連接三輪以上，`chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，換角色／改卡／換幕後不每輪重開 |
+| 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) | 多角色桌：回歸事件私設只到 GM |
 | 16 | [interface-shell-cleanup](../plans/interface-shell-cleanup.md) | 用 `TestCards/WestFantsy.png` 重構接管跑一輪：面板（地圖 11×7、五分頁）照常渲染、時間跟著回合動；可併第 6 項 ai-card-refactor 五卡矩陣回歸 |
 | 17 | [test-harness](../handoffs/archive/test-harness.md) 智慧免費真供應商 | 用 OpenRouter 免費模型桌送一輪：`route` 的智慧免費預覽有值、`ai-log` 的 `api-smart-free` 派送後有同 id 的 `responder` 事件且模型是實際回應者。2026-10-04 代測：route 預覽有值（gemma-4-31b-it:free）過；穩定第一、二名整段被上游限流 429，`responder` 事件未能驗，等穩定第一名可用時重跑一輪 |
 | 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
