@@ -29,6 +29,18 @@ impl Drop for TestRoot {
     }
 }
 
+/// 過得了嚴驗的角色卡 PNG：真圖＋IEND 前一個 tEXt chara。
+pub(crate) fn card_png(chara_json: &str) -> Vec<u8> {
+    let image = super::png_image::test_png::real_png(4, 3);
+    let text = format!("chara\0{}", base64_encode(chara_json.as_bytes()));
+    let iend = image.len() - 12;
+    let mut png = image[..iend].to_vec();
+    png.extend_from_slice(&super::card_io::png_chunk(b"tEXt", text.as_bytes()));
+    png.extend_from_slice(&image[iend..]);
+    png
+}
+
+/// 只有 tEXt 的假 PNG（沒有 IHDR／IDAT、CRC 是零）：卡資料讀得到，圖救不回。
 pub(super) fn minimal_png(chara_json: &str) -> Vec<u8> {
     let mut png = PNG_MAGIC.to_vec();
     let text = format!("chara\0{}", base64_encode(chara_json.as_bytes()));

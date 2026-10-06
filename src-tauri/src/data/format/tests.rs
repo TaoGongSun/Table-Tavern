@@ -830,7 +830,7 @@ fn read_only_world_blocks_every_write_category_but_delete_still_works() {
     let mut card = character_card("01ARZ3NDEKTSV4RRFFQ69G5FB0", "旅人");
     card.id = "01ARZ3NDEKTSV4RRFFQ69G5FB0".to_owned();
     write_character(root.path(), &id, &card).unwrap();
-    let png = b"\x89PNG\r\n\x1a\nextra";
+    let png = &crate::import::png_image::test_png::real_png(2, 2);
     save_character_image(root.path(), &id, &card.id, png).unwrap();
     set_ver(&live(root.path(), &id), "99");
 

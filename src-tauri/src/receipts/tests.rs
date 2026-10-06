@@ -209,11 +209,16 @@ fn undo_worldbook_import_removes_only_gm_image_created_this_time() {
     let import_png = |label: &str, json_text: &str, png: &[u8]| {
         let before = snapshot(root.path(), &world_id);
         data::import_worldbook(root.path(), &world_id, json_text).unwrap();
-        assert!(import::save_gm_image(root.path(), &world_id, png));
+        assert_eq!(
+            import::save_gm_image(root.path(), &world_id, png).unwrap(),
+            import::GmImage::Saved
+        );
         record_worldbook_import(root.path(), &world_id, label, before, None);
     };
 
-    import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
+    let first = crate::import::png_image::test_png::real_png(2, 2);
+    let second = crate::import::png_image::test_png::real_png(3, 3);
+    import_png("第一張.png", &book("城門已關。"), &first);
     assert!(image_path.exists());
     undo_last_import(
         root.path(),
@@ -223,19 +228,15 @@ fn undo_worldbook_import_removes_only_gm_image_created_this_time() {
     .unwrap();
     assert!(!image_path.exists());
 
-    import_png("第一張.png", &book("城門已關。"), b"\x89PNG\r\n\x1a\nfirst");
-    import_png(
-        "第二張.png",
-        &book("城門又開了。"),
-        b"\x89PNG\r\n\x1a\nsecond",
-    );
+    import_png("第一張.png", &book("城門已關。"), &first);
+    import_png("第二張.png", &book("城門又開了。"), &second);
     undo_last_import(
         root.path(),
         &world_id,
         &crate::data::test_exclusive(&world_id),
     )
     .unwrap();
-    assert_eq!(fs::read(&image_path).unwrap(), b"\x89PNG\r\n\x1a\nsecond");
+    assert_eq!(fs::read(&image_path).unwrap(), second);
 }
 
 /// 匯完貼上檯面的開場白→undo：那則跟著收掉，玩家自己後來加的話原封不動。

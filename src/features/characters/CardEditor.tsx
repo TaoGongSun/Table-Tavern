@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -88,6 +88,13 @@ export function CardEditor({
   const [originalName, setOriginalName] = useState("");
   // 頂列儲存鈕在表單外，用 form 屬性指過來
   const formId = useId();
+  // 儲存進行中：重複按不再開一輪；每輪結束（含放棄、失敗）一律放開——換卡不重掛元件，鎖不放會讓之後都存不了
+  const saving = useRef(false);
+  // 編輯輪次：換卡（含換走再換回來）、換草稿就遞增。儲存回來時輪次變了一律不動畫面狀態——
+  // 只比 characterId 分不出 A→B→A，晚回會蓋掉新的編輯或清掉別張卡的草稿
+  const generation = useRef(0);
+  // 編輯對象輪次：只隨換桌、換卡遞增，自己清草稿不會動到——重讀圖回來後判斷 onSaved 還該不該送
+  const editTarget = useRef(0);
 
   useEffect(() => {
     setMessage("");
@@ -129,6 +136,14 @@ export function CardEditor({
     };
   }, [world, characterId, isNew, newCardColor]);
 
+  useEffect(() => {
+    generation.current += 1;
+  }, [world, characterId, isNew, draftImage, draftAvatar]);
+
+  useEffect(() => {
+    editTarget.current += 1;
+  }, [world, characterId, isNew]);
+
   // 已儲存之外的訊息都是擋下或失敗
   const messageIsError = message !== "" && message !== t("saved");
 
@@ -151,6 +166,19 @@ export function CardEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
+    try {
+      await saveOnce();
+    } finally {
+      saving.current = false;
+    }
+  }
+
+  async function saveOnce() {
+    const round = generation.current;
+    const current = () => generation.current === round;
+    const editing = editTarget.current;
     setMessage("");
     if (!card) return;
     const target = card.name.trim();
@@ -179,23 +207,43 @@ export function CardEditor({
     ) {
       return;
     }
+    if (!current()) return;
+    // 圖先驗：任一張不合格整個儲存取消，什麼都不寫，欄位與草稿原樣留著
+    try {
+      for (const draft of [draftImage, draftAvatar]) {
+        if (draft) await invoke("check_character_image", { data: draft.bytes });
+      }
+    } catch (reason) {
+      if (current()) setMessage(String(reason));
+      return;
+    }
+    if (!current()) return;
+    // 驗過之後的寫檔失敗：回報錯誤、草稿留著（文字可能已存）
     try {
       await invoke("write_character", { worldId: world, card: saved });
       if (draftImage === null) await invoke("delete_character_image", { worldId: world, characterId });
       else if (draftImage) await invoke("save_character_image", { worldId: world, characterId, data: draftImage.bytes });
       if (draftAvatar === null) await invoke("delete_character_avatar", { worldId: world, characterId });
       else if (draftAvatar) await invoke("save_character_avatar", { worldId: world, characterId, data: draftAvatar.bytes });
-      setDraftImage(undefined);
-      setDraftAvatar(undefined);
-      await onImagesChanged();
-      setCard(saved);
-      setSavedCardJson(JSON.stringify(saved));
-      setOriginalName(target);
-      setMessage(t("saved"));
-      onSaved(characterId);
     } catch (reason) {
-      setMessage(String(reason));
+      if (current()) setMessage(String(reason));
+      return;
     }
+    // 檔已寫下：圖從磁碟重讀一定對；畫面狀態（草稿、欄位、訊息）只在還是同一輪時才動。
+    // 這裡一次同步設好再等重讀——清草稿本身也會讓輪次遞增，之後改用編輯對象輪次判斷
+    if (!current()) {
+      await onImagesChanged();
+      return;
+    }
+    setDraftImage(undefined);
+    setDraftAvatar(undefined);
+    setCard(saved);
+    setSavedCardJson(JSON.stringify(saved));
+    setOriginalName(target);
+    setMessage(t("saved"));
+    await onImagesChanged();
+    // onSaved 會切畫面、選發言對象：重讀期間已換卡就不送，免得把人拉回舊卡
+    if (editTarget.current === editing) onSaved(characterId);
   }
 
   async function confirmLeave() {

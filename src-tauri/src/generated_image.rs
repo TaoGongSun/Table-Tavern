@@ -1,16 +1,14 @@
-//! 生圖輸出統一存 PNG：API 回的 data URL／遠端網址、CLI 存的檔案，都先變成位元組，
-//! 依 magic bytes 認格式（不信宣稱的 MIME），PNG 原樣、JPEG／WebP 解碼重編 PNG。
-//! 只保證「統一成 PNG 格式」；CRC、zlib、APNG 的嚴格驗證不在這裡。
+//! 生圖輸出統一存成通過嚴驗的 PNG：API 回的 data URL／遠端網址、CLI 存的檔案，都先變成位元組，
+//! 依 magic bytes 認格式（不信宣稱的 MIME）。PNG 走嚴格版（合格原樣、APNG 留預設靜態圖、過大縮圖，
+//! 壞檔拒收不修）；JPEG／WebP 解碼重編 PNG，過大一樣縮。
 //! 失敗一律回帶穩定前綴的錯誤，呼叫端失敗就不寫圖庫。
+use crate::import::png_clean::{self, Stored, CLEAN_LIMITS};
 use base64::Engine;
-use std::io::Cursor;
 use std::time::Duration;
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 /// 實際讀到的位元組上限（不只看 Content-Length，伺服器可以不給或說謊）
 const MAX_DOWNLOAD_BYTES: usize = 32 * 1024 * 1024;
-const MAX_DIMENSION: u32 = 8192;
-const MAX_DECODE_ALLOC: u64 = 512 * 1024 * 1024;
 
 const UNSUPPORTED: &str = "AI_IMAGE_UNSUPPORTED_FORMAT";
 const DECODE_FAILED: &str = "AI_IMAGE_DECODE_FAILED";
@@ -49,28 +47,22 @@ fn describe_unknown(bytes: &[u8]) -> String {
     format!("head={}", hex.join(" "))
 }
 
-/// 同步轉檔：PNG 原樣回傳，JPEG／WebP 解碼（限尺寸與配置量）後重編 PNG。
+/// 同步轉檔：PNG 走嚴格版整理，JPEG／WebP 解碼（先查來源尺寸）後重編 PNG。
 pub(crate) fn to_png(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     let format = match sniff(&bytes) {
-        Some(Format::Png) => return Ok(bytes),
+        Some(Format::Png) => {
+            return match png_clean::strict_stored_png(&bytes) {
+                Ok(Stored::AsIs) => Ok(bytes),
+                Ok(Stored::Rewritten(png) | Stored::Reencoded(png)) => Ok(png),
+                Err(error) => Err(format!("{DECODE_FAILED}: {error}")),
+            };
+        }
         Some(Format::Jpeg) => image::ImageFormat::Jpeg,
         Some(Format::WebP) => image::ImageFormat::WebP,
         None => return Err(format!("{UNSUPPORTED}: {}", describe_unknown(&bytes))),
     };
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(MAX_DIMENSION);
-    limits.max_image_height = Some(MAX_DIMENSION);
-    limits.max_alloc = Some(MAX_DECODE_ALLOC);
-    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
-    reader.limits(limits);
-    let decoded = reader
-        .decode()
-        .map_err(|error| format!("{DECODE_FAILED}: {error}"))?;
-    let mut png = Vec::new();
-    decoded
-        .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
-        .map_err(|error| format!("{DECODE_FAILED}: {error}"))?;
-    Ok(png)
+    png_clean::reencode(&bytes, format, CLEAN_LIMITS)
+        .map_err(|error| format!("{DECODE_FAILED}: {error}"))
 }
 
 /// 轉檔吃 CPU，丟到 blocking 執行緒，不卡住 async runtime。

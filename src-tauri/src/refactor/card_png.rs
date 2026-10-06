@@ -6,7 +6,9 @@
 use super::card_file::{parse_card_value, RefactorCardFile};
 use crate::data::DataResult;
 use crate::import::card_io::{png_chunk, PNG_MAGIC};
-use crate::import::png_image::{for_each_chunk, validate_png_image, ImageLimits, PngChunk};
+use crate::import::png_image::{
+    for_each_chunk, validate_png_image, ImageLimits, PngChunk, STORED_IMAGE_LIMITS,
+};
 use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -36,10 +38,7 @@ pub const CARD_LIMITS: CardLimits = CardLimits {
     image: 32 << 20,
     cover: 32 << 20,
     assets_total: 256 << 20,
-    pixels: ImageLimits {
-        max_side: 8192,
-        max_pixels: 24_000_000,
-    },
+    pixels: STORED_IMAGE_LIMITS,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

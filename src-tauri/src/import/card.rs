@@ -1,5 +1,7 @@
 use super::card_io::{decode_png_character, string_field, PNG_MAGIC};
 use super::mechanism::{import_mechanism, import_table_tavern_extension};
+use super::png_clean::{self, Stored};
+use super::png_image::{validate_png_image, STORED_IMAGE_LIMITS};
 use crate::data::{self, CharacterCard, CharacterMeta, DataResult, Tier};
 use crate::ui_msg::UiMsg;
 use serde_json::{json, Value};
@@ -193,11 +195,18 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
 }
 
 /// 角色卡檔解得開、有合法名字：回（卡 JSON、原檔副檔名、名字）。匯入在動任何資料前先過這關。
-fn parse_character(bytes: &[u8]) -> DataResult<(Value, &'static str, String)> {
-    let (json_bytes, raw_extension) = if bytes.starts_with(PNG_MAGIC) {
-        (decode_png_character(bytes)?, "png")
+/// 卡檔解析結果：卡 JSON（PNG 卡是 tEXt 解出來的那份）、解析後的值、卡名。
+struct ParsedCard {
+    json_bytes: Vec<u8>,
+    value: Value,
+    name: String,
+}
+
+fn parse_character(bytes: &[u8]) -> DataResult<ParsedCard> {
+    let json_bytes = if bytes.starts_with(PNG_MAGIC) {
+        decode_png_character(bytes)?
     } else {
-        (bytes.to_vec(), "import.json")
+        bytes.to_vec()
     };
     let value: Value = serde_json::from_slice(&json_bytes).map_err(|error| {
         UiMsg::CardJsonInvalid {
@@ -214,12 +223,22 @@ fn parse_character(bytes: &[u8]) -> DataResult<(Value, &'static str, String)> {
         .trim()
         .to_owned();
     data::validate_single_line("name", &name)?;
-    Ok((value, raw_extension, name))
+    Ok(ParsedCard {
+        json_bytes,
+        value,
+        name,
+    })
 }
 
 /// 只驗卡檔（不寫任何東西）：匯入本體在寫「未完成」標記前先驗，壞檔不會留下標記。
 pub fn check_character_bytes(bytes: &[u8]) -> DataResult<()> {
     parse_character(bytes).map(|_| ())
+}
+
+/// 角色卡匯入的結果：新角色＋卡圖是否沒存成（PNG 卡的圖救不回，原檔改存成 .import.json）。
+pub struct ImportedCharacter {
+    pub meta: CharacterMeta,
+    pub image_dropped: bool,
 }
 
 /// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
@@ -231,7 +250,22 @@ pub fn import_character(
     color: &str,
     lang: &str,
 ) -> DataResult<CharacterMeta> {
-    let (value, raw_extension, name) = parse_character(bytes)?;
+    import_character_reporting(root, world_id, bytes, color, lang).map(|imported| imported.meta)
+}
+
+/// 同 import_character，另回報卡圖有沒有存成。
+pub fn import_character_reporting(
+    root: &Path,
+    world_id: &str,
+    bytes: &[u8],
+    color: &str,
+    lang: &str,
+) -> DataResult<ImportedCharacter> {
+    let ParsedCard {
+        json_bytes,
+        value,
+        name,
+    } = parse_character(bytes)?;
     let card_data = value
         .get("data")
         .filter(|data| data.is_object())
@@ -253,7 +287,7 @@ pub fn import_character(
         private_md: private_markdown(card_data, lang),
     };
     data::write_character(root, world_id, &card)?;
-    data::commit_world_write(&md_path.with_extension(raw_extension), bytes)?;
+    let image_dropped = store_card_source(&md_path, bytes, &json_bytes)?;
     import_table_tavern_extension(root, world_id, &name, card_data);
     if let Some(book) = card_data.get("character_book") {
         import_mechanism(root, world_id, book);
@@ -264,17 +298,53 @@ pub fn import_character(
         }
     }
 
-    Ok(CharacterMeta {
-        id,
-        name,
-        color: color.to_owned(),
-        avatar: "🎭".to_owned(),
-        tier: Tier::Balanced,
-        show_image: true,
-        archived: false,
-        auto_hidden: false,
-        display_index: None,
+    Ok(ImportedCharacter {
+        meta: CharacterMeta {
+            id,
+            name,
+            color: color.to_owned(),
+            avatar: "🎭".to_owned(),
+            tier: Tier::Balanced,
+            show_image: true,
+            archived: false,
+            auto_hidden: false,
+            display_index: None,
+        },
+        image_dropped,
     })
+}
+
+/// 卡原檔落地（`.png` 與 `.import.json` 只寫其一，原子寫）。卡片介面從這份讀卡資料，所以：
+/// - JSON 卡：原檔照存 `.import.json`。
+/// - PNG 卡：圖走救圖版；截過或原樣的檔卡文字還在，重編的把 chara／ccv3 搬過去。最終檔要過嚴驗、
+///   讀回的卡 JSON 與匯入時相同才存 `.png`；否則（救不回、搬不到）改存解出的卡 JSON 成 `.import.json`。
+///
+/// 回傳圖是否沒存成。
+fn store_card_source(md_path: &Path, bytes: &[u8], json_bytes: &[u8]) -> DataResult<bool> {
+    if !bytes.starts_with(PNG_MAGIC) {
+        data::commit_world_write_atomic(&md_path.with_extension("import.json"), bytes)?;
+        return Ok(false);
+    }
+    let png = match png_clean::salvage_stored_png(bytes) {
+        Some(Stored::AsIs) => Some(bytes.to_vec()),
+        Some(Stored::Rewritten(png)) => Some(png),
+        Some(Stored::Reencoded(clean)) => png_clean::transplant_card_text(bytes, &clean),
+        None => None,
+    }
+    .filter(|png| {
+        validate_png_image(png, STORED_IMAGE_LIMITS).is_ok()
+            && decode_png_character(png).is_ok_and(|decoded| decoded == json_bytes)
+    });
+    match png {
+        Some(png) => {
+            data::commit_world_write_atomic(&md_path.with_extension("png"), &png)?;
+            Ok(false)
+        }
+        None => {
+            data::commit_world_write_atomic(&md_path.with_extension("import.json"), json_bytes)?;
+            Ok(true)
+        }
+    }
 }
 
 /// 世界書卡不會先建成角色，仍要直接從匯入檔取得所有可選開場白。
@@ -457,7 +527,7 @@ fn persona_as_worldbook(card_data: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::import::test_support::{minimal_png, TestRoot};
+    use crate::import::test_support::{card_png, minimal_png, TestRoot};
     use std::fs;
 
     #[test]
@@ -501,7 +571,7 @@ mod tests {
     fn imports_png_text_chunk_and_preserves_original() {
         let root = TestRoot::new("png");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
-        let png = minimal_png(r#"{"data":{"name":"凱恩","description":"騎士"}}"#);
+        let png = card_png(r#"{"data":{"name":"凱恩","description":"騎士"}}"#);
 
         let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
         assert!(root

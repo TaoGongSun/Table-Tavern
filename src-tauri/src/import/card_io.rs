@@ -176,7 +176,7 @@ mod tests {
         character_avatar, character_image, save_character_avatar, save_character_image,
     };
     use crate::import::import_character;
-    use crate::import::test_support::{minimal_png, TestRoot};
+    use crate::import::test_support::{card_png, TestRoot};
 
     #[test]
     fn decodes_base64_and_rejects_invalid_input() {
@@ -226,7 +226,7 @@ mod tests {
     fn character_image_returns_png_base64_or_none() {
         let root = TestRoot::new("image");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
-        let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
+        let png = card_png(r#"{"data":{"name":"凱恩"}}"#);
         let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
 
         let encoded = character_image(root.path(), &world_id, &meta.id)
@@ -243,10 +243,10 @@ mod tests {
     fn saves_and_reads_character_image_and_avatar() {
         let root = TestRoot::new("save-images");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
-        let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
+        let png = card_png(r#"{"data":{"name":"凱恩"}}"#);
         let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
-        let image = PNG_MAGIC.iter().copied().chain([1, 2]).collect::<Vec<_>>();
-        let avatar = PNG_MAGIC.iter().copied().chain([3, 4]).collect::<Vec<_>>();
+        let image = crate::import::png_image::test_png::real_png(2, 2);
+        let avatar = crate::import::png_image::test_png::real_png(3, 3);
 
         save_character_image(root.path(), &world_id, &meta.id, &image).unwrap();
         save_character_avatar(root.path(), &world_id, &meta.id, &avatar).unwrap();

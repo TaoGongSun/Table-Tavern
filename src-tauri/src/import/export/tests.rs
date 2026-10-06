@@ -202,7 +202,10 @@ fn save_gm_image_stores_png_and_keeps_it_for_plain_json() {
     assert_eq!(gm_image(root.path(), &world_id).unwrap(), None);
 
     let png = embed_chara_chunk(&blank_png(), r#"{"name":"莉亞"}"#.as_bytes()).unwrap();
-    assert!(save_gm_image(root.path(), &world_id, &png));
+    assert_eq!(
+        save_gm_image(root.path(), &world_id, &png).unwrap(),
+        crate::import::GmImage::Saved
+    );
     let stored = fs::read(data::gm_image_path(root.path(), &world_id).unwrap()).unwrap();
     assert_eq!(stored, png);
     assert_eq!(
@@ -210,11 +213,15 @@ fn save_gm_image_stores_png_and_keeps_it_for_plain_json() {
         Some(base64_encode(&png))
     );
 
-    assert!(!save_gm_image(
-        root.path(),
-        &world_id,
-        r#"{"entries":{"0":{"uid":0,"key":["龍"],"content":"沉睡"}}}"#.as_bytes()
-    ));
+    assert_eq!(
+        save_gm_image(
+            root.path(),
+            &world_id,
+            r#"{"entries":{"0":{"uid":0,"key":["龍"],"content":"沉睡"}}}"#.as_bytes()
+        )
+        .unwrap(),
+        crate::import::GmImage::NotPng
+    );
     assert_eq!(
         gm_image(root.path(), &world_id).unwrap(),
         Some(base64_encode(&png))
