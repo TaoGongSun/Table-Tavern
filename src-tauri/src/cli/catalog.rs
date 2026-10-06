@@ -97,15 +97,22 @@ pub fn parse_agy_catalog(output: &str) -> Vec<ModelOption> {
         .collect()
 }
 
-/// grok models 只認縮排列；保留原列為 label，去掉預設標記後作為可傳入的 id。
+/// grok models 只認縮排且以 `* `／`- ` 開頭的模型列（1.0.46 起預設用 `*`、其餘用 `-`）；
+/// 保留原列為 label，去掉預設標記後作為可傳入的 id；含空白的說明項不當模型。
 pub fn parse_grok_catalog(output: &str) -> Vec<ModelOption> {
     output
         .lines()
         .filter_map(|line| {
             let trimmed = line.trim_start();
-            let label = trimmed.strip_prefix('*')?.trim();
+            if trimmed.len() == line.len() {
+                return None;
+            }
+            let label = trimmed
+                .strip_prefix("* ")
+                .or_else(|| trimmed.strip_prefix("- "))?
+                .trim();
             let id = label.strip_suffix(" (default)").unwrap_or(label).trim();
-            (!id.is_empty()).then(|| ModelOption {
+            (!id.is_empty() && !id.chars().any(char::is_whitespace)).then(|| ModelOption {
                 id: id.to_owned(),
                 label: label.to_owned(),
             })
@@ -271,5 +278,39 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn grok_catalog_parses_dash_rows_from_1_0_46() {
+        let output = "You are logged in with grok.com.\n\nDefault model: grok-4.7\n\nAvailable models:\n  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n  - grok-4.5\n";
+        let pairs: Vec<(String, String)> = parse_grok_catalog(output)
+            .into_iter()
+            .map(|m| (m.id, m.label))
+            .collect();
+        let expect = [
+            ("grok-4.7", "grok-4.7 (default)"),
+            ("grok-4.7-build-fast", "grok-4.7-build-fast"),
+            ("grok-4.6", "grok-4.6"),
+            ("grok-4.5", "grok-4.5"),
+        ];
+        assert_eq!(
+            pairs,
+            expect
+                .iter()
+                .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn grok_catalog_rejects_non_model_rows() {
+        for output in [
+            "- grok-x\n",
+            "  *grok-x\n",
+            "  - \n",
+            "  - some explanation\n",
+        ] {
+            assert!(parse_grok_catalog(output).is_empty(), "{output:?}");
+        }
     }
 }
