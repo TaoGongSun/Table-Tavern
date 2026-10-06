@@ -48,12 +48,12 @@ export const ru: Record<MsgKey, string> = {
   usageCacheMissedWhy: "В этом ходе кэш должен был сработать, но не сработал или переиспользовал совсем немного.",
   usageCachePartial: "Частичное попадание",
   usageCachePartialWhy: "Часть была переиспользована, но намного меньше, чем позволял этот ход.",
-  usageCacheZero: "Без переиспользования",
-  usageCacheZeroWhy: "Поставщик сообщает, что в этом ходе не переиспользовано ни одного токена, поэтому он оплачивается полностью.",
+  usageCacheZero: "В этот раз без кэша",
+  usageCacheZeroWhy: "Поставщик сообщил данные кэша: в этом ходе 0, поэтому он оплачивается полностью.",
   usageCacheUnknown: "Не измеряется",
   usageCacheUnknownWhy: "Это соединение не сообщает данные о кэше; попадание и промах выглядят одинаково.",
-  usageCacheNotExpected: "Нечего переиспользовать",
-  usageCacheNotExpectedWhy: "В этом ходе не было предыдущего контекста для переиспользования; это не сбой.",
+  usageCacheNotExpected: "Новый стол / новая линия",
+  usageCacheNotExpectedWhy: "Переиспользовать пока было нечего; это не сбой.",
 
   // Форма этого вызова, отдельная от результата кэша
   usageModeResume: "Продолжение сессии",
@@ -70,7 +70,7 @@ export const ru: Record<MsgKey, string> = {
   // Событие линии: это не вызов, поэтому результата кэша нет
   usageEventDropLane: "Перезапуск линии",
   usageEventDropLaneWhy: "Уборка после хода не удалась, поэтому линия отбрасывается и открывается заново; на чат это не влияет.",
-  usageReasonFirstTurn: "Первый раунд этого стола",
+  usageReasonFirstTurn: "Линия открыта впервые",
   usageReasonPendingRewrite: "Предыдущий раунд прерван",
   usageReasonSceneChanged: "Начат новый акт",
   usageReasonHistoryRewound: "История отмотана назад",

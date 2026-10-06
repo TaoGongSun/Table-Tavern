@@ -48,12 +48,12 @@ export const fr: Record<MsgKey, string> = {
   usageCacheMissedWhy: "Ce tour aurait dû utiliser le cache, mais il ne l'a pas fait ou n'en a réutilisé qu'une infime partie.",
   usageCachePartial: "Partiel",
   usageCachePartialWhy: "Une partie a été réutilisée, mais bien moins que ce que ce tour permettait.",
-  usageCacheZero: "Aucune réutilisation",
-  usageCacheZeroWhy: "Le fournisseur indique qu'aucun jeton n'a été réutilisé à ce tour\u00a0: il est facturé au prix plein.",
+  usageCacheZero: "Pas de cache cette fois",
+  usageCacheZeroWhy: "Le fournisseur a communiqué ses chiffres de cache\u00a0: 0 à ce tour, facturé au prix plein.",
   usageCacheUnknown: "Non mesurable",
   usageCacheUnknownWhy: "Cette connexion ne communique aucun chiffre de cache\u00a0; réussite et échec se ressemblent.",
-  usageCacheNotExpected: "Rien à réutiliser",
-  usageCacheNotExpectedWhy: "Il n\'y avait aucun contexte antérieur à réutiliser à ce tour\u00a0; ce n\'est pas une panne.",
+  usageCacheNotExpected: "Nouvelle table / nouvelle ligne",
+  usageCacheNotExpectedWhy: "Il n'y avait encore rien à réutiliser\u00a0; ce n'est pas une panne.",
 
   // La forme de cet appel, distincte du résultat du cache
   usageModeResume: "Session poursuivie",
@@ -70,7 +70,7 @@ export const fr: Record<MsgKey, string> = {
   // Événement de ligne : ce n\'est pas un appel, donc pas de résultat de cache
   usageEventDropLane: "Relancer la ligne",
   usageEventDropLaneWhy: "Le rangement de fin de tour a échoué\u00a0: cette ligne est abandonnée et rouverte\u00a0; la discussion n\'est pas affectée.",
-  usageReasonFirstTurn: "Premier tour de cette table",
+  usageReasonFirstTurn: "Ligne ouverte pour la première fois",
   usageReasonPendingRewrite: "Tour précédent interrompu en cours",
   usageReasonSceneChanged: "Nouvel acte",
   usageReasonHistoryRewound: "Historique rétabli",

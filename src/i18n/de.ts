@@ -48,12 +48,12 @@ export const de: Record<MsgKey, string> = {
   usageCacheMissedWhy: "Diese Runde hätte den Cache treffen sollen, tat es aber nicht oder nur zu einem winzigen Teil.",
   usageCachePartial: "Teiltreffer",
   usageCachePartialWhy: "Es wurde etwas wiederverwendet, aber weit weniger als in dieser Runde möglich gewesen wäre.",
-  usageCacheZero: "Keine Wiederverwendung",
-  usageCacheZeroWhy: "Der Anbieter meldet, dass in dieser Runde kein einziges Token wiederverwendet wurde; sie wird voll berechnet.",
+  usageCacheZero: "Diesmal kein Cache",
+  usageCacheZeroWhy: "Der Anbieter hat Cache-Werte gemeldet; in dieser Runde waren es 0, sie wird voll berechnet.",
   usageCacheUnknown: "Nicht messbar",
   usageCacheUnknownWhy: "Diese Verbindung meldet keine Cache-Zahlen; Treffer und Fehlschlag sehen gleich aus.",
-  usageCacheNotExpected: "Nichts wiederzuverwenden",
-  usageCacheNotExpectedWhy: "In dieser Runde gab es keinen früheren Kontext zum Wiederverwenden; das ist kein Fehler.",
+  usageCacheNotExpected: "Neuer Tisch / neue Lane",
+  usageCacheNotExpectedWhy: "Es gab noch nichts wiederzuverwenden; das ist kein Fehler.",
 
   // Die Form dieses Aufrufs, unabhängig vom Cache-Ergebnis
   usageModeResume: "Fortgesetzte Sitzung",
@@ -70,7 +70,7 @@ export const de: Record<MsgKey, string> = {
   // Lane-Ereignis: kein Aufruf, also ohne Cache-Ergebnis
   usageEventDropLane: "Lane neu starten",
   usageEventDropLaneWhy: "Die Nachbereitung der Runde ist fehlgeschlagen, daher wird diese Lane verworfen und neu geöffnet; der Chat bleibt unberührt.",
-  usageReasonFirstTurn: "Erste Runde an diesem Tisch",
+  usageReasonFirstTurn: "Lane zum ersten Mal geöffnet",
   usageReasonPendingRewrite: "Vorherige Runde mittendrin abgebrochen",
   usageReasonSceneChanged: "Neuer Akt",
   usageReasonHistoryRewound: "Protokoll zurückgesetzt",
