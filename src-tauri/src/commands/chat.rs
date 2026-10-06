@@ -108,7 +108,8 @@ pub(crate) async fn chat_with_character(
         &character_id,
         &card.name,
     );
-    let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
+    // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）
+    let own_prefix = transport::speaker_prefix(&card.name, &transport::ui_language(&config));
     // CLI 訂閱走 resume 續聊線。claude／grok 全角色共用一條 session，私設回合注入、
     // 回合後從 session 檔抹掉（案 C）；Agy 無抹寫路徑，改成一角一線＋
     // 私設提進該角色自己的凍結 system，不讓別的角色讀到不該讀的東西。
@@ -128,6 +129,8 @@ pub(crate) async fn chat_with_character(
             hoist,
         );
         let call = prepare_play_lane_call(&app, &config, card.tier, provider).await?;
+        // 串流過濾在 lane 內按 attempt 做，這裡收的已是過濾後的字
+        let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
         let outcome = lanes::run_turn(
             &call,
             &root,
@@ -143,6 +146,7 @@ pub(crate) async fn chat_with_character(
                 prefix: (!hoist).then(|| transport::speaker_prefix(&card.name, &lang)),
                 echo: lanes::ReplyEcho::Dialogue {
                     speaker_id: card.id.clone(),
+                    prefix: own_prefix.clone(),
                 },
                 scope: hoist.then(|| card.id.clone()),
             },
@@ -153,7 +157,7 @@ pub(crate) async fn chat_with_character(
         .map_err(ai_call_failure)?;
         // 半截用這一輪 CLI 自己累的字。外層緩衝會跨降級重開留著前一次嘗試的增量。
         return Ok(ChatReply {
-            text: outcome.text,
+            text: transport::strip_own_prefix(&outcome.text, &own_prefix).to_owned(),
             aborted: outcome.aborted,
         });
     }
@@ -174,6 +178,15 @@ pub(crate) async fn chat_with_character(
     );
     // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
     // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
+    // buffer 收原文（中止半截再從原文剝一次）；畫面只收過濾後的字
+    let mut stream = transport::OwnPrefixStream::new(&own_prefix);
+    let emit = |delta: &str| {
+        buffer.lock().expect("delta buffer").push_str(delta);
+        let out = stream.push(delta);
+        if !out.is_empty() {
+            let _ = on_delta.send(out);
+        }
+    };
     let spoken = take_abort_or_finish(
         &mut cancel,
         &buffer,
@@ -197,8 +210,12 @@ pub(crate) async fn chat_with_character(
         ),
     )
     .await?;
+    let held = stream.finish();
+    if !held.is_empty() {
+        let _ = on_delta.send(held);
+    }
     Ok(ChatReply {
-        text: spoken.text,
+        text: transport::strip_own_prefix(&spoken.text, &own_prefix).to_owned(),
         aborted: spoken.aborted,
     })
 }

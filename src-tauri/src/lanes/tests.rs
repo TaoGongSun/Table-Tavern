@@ -57,8 +57,14 @@ path = os.path.join(d, (sid or rid) + '.jsonl')
 # 照真 CLI（2.1.287）的形狀只追加：queue-operation、user、attachment 夾雜項行、
 # thinking 與 text 拆成兩則 assistant、assistant 後再接 attachment
 last, users = None, 0
+stream = os.environ.get('FAKE_STREAM') == '1'
+def delta(text):
+    print(json.dumps({'type': 'stream_event', 'event': {'delta': {'type': 'text_delta', 'text': text}}}, ensure_ascii=False), flush=True)
 if rid:
     if not os.path.exists(path):
+        # FAKE_STREAM：先吐一段才失敗（續聊失敗重開時，上一試已經吐過字）
+        if stream:
+            delta(os.environ.get('FAKE_REPLY_PREFIX', '') + '舊')
         sys.exit(3)
     for l in open(path):
         if not l.strip():
@@ -79,7 +85,7 @@ node('user', message={'role': 'user', 'content': prompt})
 node('attachment', attachment={'type': 'environment'})
 out.append({'type': 'atis-latch'})
 node('attachment', attachment={'type': 'date'})
-reply = '回覆' + str(users + 1)
+reply = os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(users + 1)
 node('assistant', message={'role': 'assistant', 'content': [{'type': 'thinking', 'thinking': '…'}]})
 node('assistant', message={'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]})
 node('attachment', attachment={'type': 'prompt_snapshot'})
@@ -109,6 +115,9 @@ if env('FAKE_HANG'):
 if env('FAKE_FAIL'):
     print(json.dumps({'type': 'result', 'is_error': True, 'result': 'boom', 'usage': usage}))
     sys.exit(1)
+if stream:
+    for ch in reply:
+        delta(ch)
 print(json.dumps({'type': 'result', 'is_error': False, 'result': reply, 'usage': usage}))
 rate('FAKE_RATE_AFTER')
 "#,
@@ -175,7 +184,7 @@ output_tokens = 250 if cid else 100
 cached = 900 if cid else 0
 print(json.dumps({'event': 'init', 'conversation_id': 'agy-conversation-1'}))
 print(json.dumps({'event': 'result', 'result': {
-    'status': 'SUCCESS', 'response': '回覆' + str(turn), 'num_turns': turn,
+    'status': 'SUCCESS', 'response': os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(turn), 'num_turns': turn,
     'usage': {'input_tokens': input_tokens, 'output_tokens': output_tokens,
               'thinking_tokens': 20, 'cache_read_tokens': cached,
               'total_tokens': input_tokens + output_tokens}}}, ensure_ascii=False))
@@ -243,6 +252,7 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         prefix: Some("狐狸：".to_owned()),
         echo: ReplyEcho::Dialogue {
             speaker_id: "fox-id".to_owned(),
+            prefix: "狐狸：".to_owned(),
         },
         scope: None,
     }
@@ -1581,3 +1591,187 @@ fn apply_rewrite_names_the_failing_stage() {
 mod cache_ttl;
 mod grok;
 mod lane_lock;
+
+/// char-line-prefix：預期回聲存剝掉本輪「名字：」的字；前綴另傳，Agy（prefix None）照樣對得上。
+#[test]
+fn own_prefix_echo_resumes_on_stripped_event_and_diverges_otherwise() {
+    let echo = ReplyEcho::Dialogue {
+        speaker_id: "fox-id".to_owned(),
+        prefix: "狐狸：".to_owned(),
+    };
+    let expected = expected_reply_for(&echo, "狐狸：晚安");
+    assert_eq!(expected.text, "晚安");
+    assert_eq!(expected_reply_for(&echo, "狐狸：").text, "狐狸：");
+    let before = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+    let mut state = lane_state(&before, 0);
+    state.expected_reply = Some(expected);
+    for provider in [LaneProvider::Claude, LaneProvider::Agy] {
+        state.provider = provider.as_str().to_owned();
+        let stored = [
+            before[0].clone(),
+            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "晚安"),
+        ];
+        let mut input = turn_input(&stored, 0);
+        if provider == LaneProvider::Agy {
+            input.prefix = None;
+        }
+        assert!(
+            matches!(
+                plan_turn(Some(&state), &input, 1_010, provider),
+                TurnPlan::Resume { base: 2, .. }
+            ),
+            "{provider:?}"
+        );
+        for diverged in ["狐狸：晚安", "晚按"] {
+            let stored = [
+                before[0].clone(),
+                event(TranscriptKind::Dialogue, "fox-id", "狐狸", diverged),
+            ];
+            assert!(matches!(
+                plan_turn(Some(&state), &turn_input(&stored, 0), 1_010, provider),
+                TurnPlan::Reopen {
+                    reason: ReopenReason::ReplyDiverged
+                }
+            ));
+        }
+    }
+}
+
+/// 端到端（假 claude 逐字串流、回覆自帶「狐狸：」）：串流不見前綴、session 只有一層前綴、
+/// 存剝餘的下一輪續聊；續聊失敗前已吐字時，重開那一試的過濾器是新的。
+#[cfg(unix)]
+#[tokio::test]
+async fn lane_strips_self_prefix_from_stream_and_expected_per_attempt() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let FakeCli {
+        dir,
+        mut call,
+        root,
+        world_id,
+        session_dir,
+        claude_home,
+        working_dir,
+    } = fake_claude("own-prefix");
+    call.envs
+        .push(("FAKE_REPLY_PREFIX".to_owned(), "狐狸：".to_owned()));
+    call.envs.push(("FAKE_STREAM".to_owned(), "1".to_owned()));
+    let store_path = data::lanes_path(&root, &world_id).unwrap();
+    let expected = || {
+        read_store(&store_path)
+            .values()
+            .next()
+            .unwrap()
+            .expected_reply
+            .as_ref()
+            .unwrap()
+            .text
+            .clone()
+    };
+    let session_text = || -> String {
+        std::fs::read_dir(&session_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
+            .filter(|path| !path.ends_with("calls.jsonl"))
+            .map(|path| std::fs::read_to_string(path).unwrap())
+            .collect()
+    };
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let mut shown = String::new();
+    let outcome = run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |delta| shown.push_str(delta),
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.text, "狐狸：回覆1"); // lane 回原文，剝除由呼叫端做
+    assert_eq!(shown, "回覆1");
+    assert_eq!(expected(), "回覆1");
+    assert!(session_text().contains("狐狸：回覆1"));
+    assert!(!session_text().contains("狐狸：狐狸："));
+
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆1"));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來杯麥酒"));
+    let mut shown = String::new();
+    run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |delta| shown.push_str(delta),
+    )
+    .await
+    .unwrap();
+    let calls = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
+    assert!(calls.lines().nth(1).unwrap().contains("--resume"));
+    assert_eq!(shown, "回覆2");
+    assert_eq!(expected(), "回覆2");
+
+    // 續聊失敗前已吐「狐狸：舊」→ 重開。畫面殘留上一試的「舊」屬已知例外；
+    // 重開那一試從新過濾器起算，不會漏出「狐狸：」
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆2"));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "再一杯"));
+    let state = read_store(&store_path).values().next().unwrap().clone();
+    std::fs::remove_file(session_file::session_file_path(
+        &claude_home,
+        &working_dir,
+        &state.session_id,
+    ))
+    .unwrap();
+    let mut shown = String::new();
+    let outcome = run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |delta| shown.push_str(delta),
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.text, "狐狸：回覆1");
+    assert_eq!(shown, "舊回覆1");
+    assert_eq!(expected(), "回覆1");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Agy 不補前綴（prefix None），但模型自加的「狐狸：」照樣剝：存剝餘的下一輪續聊。
+#[cfg(unix)]
+#[tokio::test]
+async fn agy_lane_resumes_after_self_prefixed_reply() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let FakeCli {
+        dir,
+        mut call,
+        root,
+        world_id,
+        ..
+    } = fake_agy("own-prefix");
+    call.envs
+        .push(("FAKE_REPLY_PREFIX".to_owned(), "狐狸：".to_owned()));
+    fn agy_input(events: &[TranscriptEvent]) -> TurnInput<'_> {
+        let mut input = turn_input(events, 0);
+        input.prefix = None;
+        input.scope = Some("fox-id".to_owned());
+        input
+    }
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第一句")];
+    let first = run_turn(&call, &root, &world_id, agy_input(&events), None, |_| {})
+        .await
+        .unwrap();
+    assert_eq!(first.text, "狐狸：回覆1");
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆1"));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "第二句"));
+    run_turn(&call, &root, &world_id, agy_input(&events), None, |_| {})
+        .await
+        .unwrap();
+    let calls = std::fs::read_to_string(dir.join("calls.jsonl")).unwrap();
+    assert!(calls.lines().nth(1).unwrap().contains("--conversation"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}

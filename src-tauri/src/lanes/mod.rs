@@ -127,8 +127,9 @@ impl LaneCall {
 
 /// 回覆會以什麼形狀落回正典 transcript（下一輪靠它跳過 session 裡已有的自家回覆）。
 pub(crate) enum ReplyEcho {
-    /// 角色台詞：事件原文＝回覆原文
-    Dialogue { speaker_id: String },
+    /// 角色台詞：事件原文＝剝掉本輪 `speaker_prefix`（`prefix`）後的回覆，見 transport::strip_own_prefix。
+    /// 前綴另傳、不從 `TurnInput.prefix` 反推：Agy 那欄是 None，但模型照樣會自加前綴
+    Dialogue { speaker_id: String, prefix: String },
     /// GM 旁白：事件原文＝剝掉狀態欄與「下一位」點名行後的顯示文字
     Narration,
 }
@@ -797,10 +798,10 @@ pub(crate) struct TurnOutcome {
 
 fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
     match echo {
-        ReplyEcho::Dialogue { speaker_id } => ExpectedReply {
+        ReplyEcho::Dialogue { speaker_id, prefix } => ExpectedReply {
             speaker_id: speaker_id.clone(),
             kind: TranscriptKind::Dialogue,
-            text: reply.to_owned(),
+            text: transport::strip_own_prefix(reply, prefix).to_owned(),
         },
         // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）
         ReplyEcho::Narration => ExpectedReply {
@@ -1000,6 +1001,17 @@ pub(crate) async fn run_turn(
         // 每次嘗試各自觀測：降級重開不沿用失敗那次的用量與超額旗標
         let attempt_usage = std::sync::Mutex::new(None);
         let attempt_overage = std::sync::atomic::AtomicBool::new(false);
+        // 本輪角色自加的「名字：」不進畫面；每次 attempt 新建，續聊失敗重開不帶上一試的扣留
+        let mut stream = transport::OwnPrefixStream::new(match &input.echo {
+            ReplyEcho::Dialogue { prefix, .. } => prefix,
+            ReplyEcho::Narration => "",
+        });
+        let mut filtered = |delta: &str| {
+            let out = stream.push(delta);
+            if !out.is_empty() {
+                emit(&out);
+            }
+        };
         let result = cli::run_cli_cancellable(
             &call.program,
             &call.working_dir,
@@ -1037,7 +1049,7 @@ pub(crate) async fn run_turn(
                 agy_usage_out: (call.provider == LaneProvider::Agy).then_some(&agy_usage),
                 identity_out: Some(&identity),
             }),
-            &mut emit,
+            &mut filtered,
             cancel_rx.clone(),
         )
         .await;
@@ -1046,6 +1058,12 @@ pub(crate) async fn run_turn(
             overage_reported = true;
             if let Some(sink) = &call.on_overage {
                 sink(CacheWriteObserved::of(attempt_usage.as_ref()));
+            }
+        }
+        if result.is_ok() {
+            let held = stream.finish();
+            if !held.is_empty() {
+                emit(&held);
             }
         }
 

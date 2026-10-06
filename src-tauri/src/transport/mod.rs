@@ -8,6 +8,7 @@ mod context;
 pub(crate) mod context_overflow;
 pub(crate) mod dispatch;
 mod messages;
+mod own_prefix;
 mod response;
 pub(crate) mod responses;
 mod stall;
@@ -41,6 +42,7 @@ pub use context::{gm_prompt_full_entries, PromptEntry};
 pub(crate) use messages::language_rule;
 pub use messages::{history_header, resolve_display_macros, speaker_prefix, ChatMessage};
 pub(crate) use messages::{player_fallback_name, replace_st_macros, scaffold_en};
+pub use own_prefix::{strip_own_prefix, OwnPrefixStream};
 #[cfg(test)]
 pub use response::card_format_instruction;
 pub use response::{
