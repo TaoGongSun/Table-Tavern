@@ -29,8 +29,15 @@ export interface ModelOption {
   label: string;
 }
 
-/** 五家一起預熱；"api"＝OpenRouter 公開清單，其餘走各自的 CLI */
-export const CATALOG_SOURCES = ["api", "claude", "codex", "agy", "grok"] as const;
+/** 一起預熱；"api"＝OpenRouter 公開清單，"api-image"＝其中能出圖的，其餘走各自的 CLI */
+export const CATALOG_SOURCES = ["api", "api-image", "claude", "codex", "agy", "grok"] as const;
+
+/** 生圖模型留空時後端用的預設；與 Rust 的 transport::DEFAULT_IMAGE_MODEL 同值（測試對齊） */
+export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-image";
+
+/** OpenRouter 官方的生圖模型清單（`output_modalities=image`，免 key） */
+export const OPENROUTER_IMAGE_MODELS_URL =
+  "https://openrouter.ai/api/v1/models?output_modalities=image";
 
 export type ModelCatalogs = Record<string, ModelOption[]>;
 
@@ -44,6 +51,11 @@ export function parseOpenRouterModels(body: unknown): ModelOption[] {
     const name = (entry as { name?: unknown })?.name;
     return [{ id, label: typeof name === "string" && name !== "" ? name : id }];
   });
+}
+
+/** 生圖模型清單：排除 openrouter/auto 這類路由器，它不是固定的生圖模型 */
+export function parseOpenRouterImageModels(body: unknown): ModelOption[] {
+  return parseOpenRouterModels(body).filter((model) => !model.id.startsWith("openrouter/auto"));
 }
 
 /**

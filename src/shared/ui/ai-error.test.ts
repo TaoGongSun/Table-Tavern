@@ -188,3 +188,35 @@ describe("redactAiErrorDetail", () => {
     expect(redactAiErrorDetail(raw)).toBe(raw);
   });
 });
+
+describe("explainAiError 生圖專屬碼", () => {
+  it("免費 key 碼包著 402／403，要先於 HTTP 狀態認", () => {
+    expect(
+      explainAiError("AI_IMAGE_FREE_KEY: AI_HTTP_STATUS_402: status=402 body={}", "api"),
+    ).toBe("errImageFreeKey");
+    expect(explainAiError("Error: AI_IMAGE_FREE_KEY: AI_HTTP_STATUS_403: status=403")).toBe(
+      "errImageFreeKey",
+    );
+  });
+
+  it("沒有免費 key 碼的 402／403 照舊分流", () => {
+    expect(explainAiError("AI_HTTP_STATUS_402: status=402 body={}", "api")).toBe("errQuotaApi");
+    expect(explainAiError("AI_HTTP_STATUS_403: status=403 body={}", "api")).toBe(
+      "errApiForbidden",
+    );
+  });
+
+  it("body 裡抄到的生圖碼不翻盤", () => {
+    expect(
+      explainAiError("AI_HTTP_STATUS_402: status=402 body=AI_IMAGE_FREE_KEY: x", "api"),
+    ).toBe("errQuotaApi");
+  });
+
+  it("格式不支援、解碼失敗、下載失敗各自分流", () => {
+    expect(explainAiError("AI_IMAGE_UNSUPPORTED_FORMAT: svg")).toBe("errImageUnsupportedFormat");
+    expect(explainAiError("AI_IMAGE_DECODE_FAILED: unexpected EOF")).toBe("errImageDecodeFailed");
+    expect(explainAiError("AI_IMAGE_DOWNLOAD_FAILED: status=404 Not Found")).toBe(
+      "errImageDownloadFailed",
+    );
+  });
+});

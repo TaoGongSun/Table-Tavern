@@ -139,7 +139,6 @@ pub enum UiMsg {
         detail: String,
     },
     ImageNotPng,
-    InvalidBase64,
     InvalidFileName,
     UnsupportedImageFormat,
     ImageMissingInReply,

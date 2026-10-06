@@ -697,3 +697,171 @@ fn extract_delta_ignores_non_delta_payloads() {
         "嗨"
     );
 }
+
+/// `/images` 與 `/key` 的本機假伺服器：依請求路徑回不同內容；`/key` 可延遲模擬逾時。
+/// 回傳 base URL 與「`/key` 被打了幾次」的計數。
+fn serve_image_and_key(
+    image_status: &'static str,
+    key_status: &'static str,
+    key_body: &'static str,
+    key_delay: std::time::Duration,
+) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::io::{Read, Write};
+    use std::sync::atomic::Ordering;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let key_hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let hits = key_hits.clone();
+    std::thread::spawn(move || {
+        for socket in listener.incoming() {
+            let Ok(mut socket) = socket else { break };
+            let hits = hits.clone();
+            std::thread::spawn(move || {
+                let mut request = [0u8; 4096];
+                let read = socket.read(&mut request).unwrap_or(0);
+                let request = String::from_utf8_lossy(&request[..read]).to_string();
+                let (status, body) = if request.starts_with("GET /key") {
+                    hits.fetch_add(1, Ordering::SeqCst);
+                    std::thread::sleep(key_delay);
+                    (key_status, key_body)
+                } else {
+                    (
+                        image_status,
+                        r#"{"error":{"code":402,"message":"Insufficient credits"}}"#,
+                    )
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes());
+            });
+        }
+    });
+    (format!("http://{address}"), key_hits)
+}
+
+fn image_config(base: &str) -> AppConfig {
+    let mut config = AppConfig::default();
+    config
+        .api_keys
+        .insert("openrouter".to_owned(), "key".to_owned());
+    config.preferences.insert(
+        "base_url".to_owned(),
+        serde_json::Value::String(base.to_owned()),
+    );
+    config
+}
+
+const FREE_KEY: &str = r#"{"data":{"is_free_tier":true,"limit":null}}"#;
+
+#[tokio::test]
+async fn generate_image_marks_free_key_on_402_and_403() {
+    for status in ["402 Payment Required", "403 Forbidden"] {
+        let (base, _) = serve_image_and_key(status, "200 OK", FREE_KEY, std::time::Duration::ZERO);
+        let error = generate_image(&image_config(&base), "畫")
+            .await
+            .unwrap_err();
+        let code = &status[..3];
+        assert!(
+            error.starts_with(&format!("AI_IMAGE_FREE_KEY: AI_HTTP_STATUS_{code}: ")),
+            "{error}"
+        );
+    }
+}
+
+/// 認不準就保留原錯誤：任何一種「不確定」都不能被說成免費 key
+#[tokio::test]
+async fn generate_image_keeps_original_error_when_key_lookup_is_inconclusive() {
+    let cases: [(&str, &str, std::time::Duration); 6] = [
+        (
+            "200 OK",
+            r#"{"data":{"is_free_tier":false}}"#,
+            std::time::Duration::ZERO,
+        ),
+        (
+            "200 OK",
+            r#"{"data":{"is_free_tier":"true"}}"#,
+            std::time::Duration::ZERO,
+        ),
+        (
+            "200 OK",
+            r#"{"data":{"limit":null}}"#,
+            std::time::Duration::ZERO,
+        ),
+        (
+            "200 OK",
+            r#"{"data":{"is_free_tier":tru"#,
+            std::time::Duration::ZERO,
+        ),
+        (
+            "500 Internal Server Error",
+            FREE_KEY,
+            std::time::Duration::ZERO,
+        ),
+        ("200 OK", FREE_KEY, std::time::Duration::from_millis(1500)),
+    ];
+    for (key_status, key_body, delay) in cases {
+        let (base, hits) = serve_image_and_key("402 Payment Required", key_status, key_body, delay);
+        let error = generate_image(&image_config(&base), "畫")
+            .await
+            .unwrap_err();
+        assert!(
+            error.starts_with("AI_HTTP_STATUS_402: "),
+            "{key_body}: {error}"
+        );
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test]
+async fn generate_image_skips_key_lookup_for_other_statuses() {
+    let (base, hits) = serve_image_and_key(
+        "500 Internal Server Error",
+        "200 OK",
+        FREE_KEY,
+        std::time::Duration::ZERO,
+    );
+    let error = generate_image(&image_config(&base), "畫")
+        .await
+        .unwrap_err();
+    assert!(error.starts_with("AI_HTTP_STATUS_500: "), "{error}");
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+/// `/key` 標頭送出後 body 停住：短逾時要涵蓋讀 body，保留原錯誤、不卡到伺服器斷線
+#[tokio::test]
+async fn generate_image_key_lookup_times_out_when_body_stalls() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for socket in listener.incoming() {
+            let Ok(mut socket) = socket else { break };
+            std::thread::spawn(move || {
+                let mut request = [0u8; 4096];
+                let read = socket.read(&mut request).unwrap_or(0);
+                if String::from_utf8_lossy(&request[..read]).starts_with("GET /key") {
+                    let _ = socket.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"data\":",
+                    );
+                    let _ = socket.flush();
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                } else {
+                    let body = r#"{"error":{"code":402}}"#;
+                    let _ = socket.write_all(format!("HTTP/1.1 402 Payment Required\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes());
+                }
+            });
+        }
+    });
+    let started = std::time::Instant::now();
+    let error = generate_image(&image_config(&format!("http://{address}")), "畫")
+        .await
+        .unwrap_err();
+    assert!(error.starts_with("AI_HTTP_STATUS_402: "), "{error}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}

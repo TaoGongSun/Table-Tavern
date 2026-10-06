@@ -6,6 +6,7 @@ import { backendText } from "../../shared/ui/backend-text";
 import { checkApiKey } from "../ai-connection/api-key-check";
 import { tierLabel } from "../ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../ai-connection/model-catalog-store";
+import { ImageModelField } from "./ImageModelField";
 import { updateConfig } from "./update-config";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -618,10 +619,11 @@ export function Settings({
           )}
           {transport === "api" ? (
             <>
-              <label>
-                {t("imageModelLabel")}
-                <input value={imageModel} onChange={(e) => setImageModel(e.currentTarget.value)} />
-              </label>
+              <ImageModelField
+                value={imageModel}
+                options={catalogs["api-image"] ?? []}
+                onChange={setImageModel}
+              />
               {onOpenRouter && (
                 <fieldset className="transport-choice">
                   <legend>{t("modelModeLegend")}</legend>

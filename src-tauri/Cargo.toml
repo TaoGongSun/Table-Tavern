@@ -38,6 +38,8 @@ base64 = "0.22"
 sha2 = "0.10"
 semver = "1"
 log = "0.4"
+# 生圖輸出統一存 PNG：JPEG／WebP 解碼重編。
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
 # 測試通道（test-harness feature）專用，正式包不編譯。
 getrandom = { version = "0.3", optional = true }
 

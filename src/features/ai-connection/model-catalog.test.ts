@@ -3,7 +3,9 @@ import { setLang } from "../../i18n";
 import {
   applyCachedCatalogs,
   CLI_DEFAULT_MODEL,
+  CATALOG_SOURCES,
   mergeCatalog,
+  parseOpenRouterImageModels,
   parseOpenRouterModels,
   usageModelLabel,
   type ModelCatalogs,
@@ -79,5 +81,26 @@ describe("usageModelLabel", () => {
     expect(usageModelLabel("(CLI 預設)")).toBe("CLI 預設");
     // 只認整串相等，含這幾個字的其他 id 不動
     expect(usageModelLabel("x (CLI 預設)")).toBe("x (CLI 預設)");
+  });
+});
+
+describe("parseOpenRouterImageModels", () => {
+  it("生圖清單排除 openrouter/auto 路由器，其餘照官方名稱原樣", () => {
+    expect(
+      parseOpenRouterImageModels({
+        data: [
+          { id: "openrouter/auto-beta", name: "Auto Router" },
+          { id: "google/gemini-3.1-flash-image", name: "Google: Gemini Flash Image" },
+          { id: "inclusionai/ming-image-0.1-design", name: "Ming Image (free)" },
+        ],
+      }),
+    ).toEqual([
+      { id: "google/gemini-3.1-flash-image", label: "Google: Gemini Flash Image" },
+      { id: "inclusionai/ming-image-0.1-design", label: "Ming Image (free)" },
+    ]);
+  });
+
+  it("生圖清單跟其他清單一起預熱", () => {
+    expect(CATALOG_SOURCES).toContain("api-image");
   });
 });
