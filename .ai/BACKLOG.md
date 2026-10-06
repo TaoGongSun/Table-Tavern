@@ -4,6 +4,7 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [claude-1h-cache](tasks/claude-1h-cache.md) — claude CLI 改寫 1 小時快取：過期門檻、保溫、省額係數都要重估 — 下一步：三件都改〔作者裁決 2026-10-06〕；先確認 1h 是 CLI 固定行為
 - [api-stream-stall-timeout](tasks/api-stream-stall-timeout.md) — API 串流卡住沒有逾時，只能手動停 — 下一步：比照 CLI 加停滯逾時
 - [image-save-strict-validate](tasks/image-save-strict-validate.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：盤點受影響入口與拒收提示
