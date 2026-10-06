@@ -15,7 +15,7 @@
 | harness-iframe-shot | df6ecb1 | 測試包關掉 WKWebView 遮擋偵測（私有 SPI，只在測試包），被蓋住也拍得到卡片介面 |
 | long-prompt-scene-hint | 4d78354、4b69c6e、357ba76、e245985、48e346f | 昨晚另一串做到只剩 grok；今晚補 grok 實測（容量取 CLI 本機壓縮點）並抓到、修好「`--verbatim` 讓 grok 共線每輪丟線」的整合 bug |
 
-新立案（未排程）：grok-catalog-parse 後已做完；api-request-header-timeout（API 送出後到回應頭前無逾時）；model-version-follow（CLI 手選型號提醒換新版＋OpenRouter 預填不寫死）。
+新立案（未排程）：api-request-header-timeout（API 送出後到回應頭前無逾時）；model-version-follow（CLI 手選型號提醒換新版＋OpenRouter 預填不寫死）。
 
 ## 擱置待作者決定（分支已開、交接在分支上）
 
