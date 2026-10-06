@@ -49,12 +49,12 @@ export const en: Record<MsgKey, string> = {
   usageCacheMissedWhy: "This round should have hit the cache but did not, or reused far too little.",
   usageCachePartial: "Partial hit",
   usageCachePartialWhy: "Something was reused, but far less than this round could have reused.",
-  usageCacheZero: "No reuse",
-  usageCacheZeroWhy: "The provider reports that not one token was reused this round, so it is billed in full.",
+  usageCacheZero: "No cache this time",
+  usageCacheZeroWhy: "The provider reported cache figures, and this round's was 0, so it is billed in full.",
   usageCacheUnknown: "Not measurable",
   usageCacheUnknownWhy: "This connection reports no cache figures, so a hit or a miss looks the same.",
-  usageCacheNotExpected: "Nothing to reuse",
-  usageCacheNotExpectedWhy: "There was no earlier context to reuse this round; nothing is broken.",
+  usageCacheNotExpected: "New table / new lane",
+  usageCacheNotExpectedWhy: "There was nothing to reuse yet; nothing is broken.",
 
   // The shape of this call, which is separate from the cache result
   usageModeResume: "Continued session",
@@ -71,7 +71,7 @@ export const en: Record<MsgKey, string> = {
   // Lane event: not a call, so it has no cache result
   usageEventDropLane: "Restart lane",
   usageEventDropLaneWhy: "Post-round cleanup failed, so this lane is discarded and reopened; the chat is unaffected.",
-  usageReasonFirstTurn: "First round of this table",
+  usageReasonFirstTurn: "Lane opened for the first time",
   usageReasonPendingRewrite: "Previous round interrupted midway",
   usageReasonSceneChanged: "Act changed",
   usageReasonHistoryRewound: "History rolled back",

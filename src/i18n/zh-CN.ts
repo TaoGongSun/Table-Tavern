@@ -48,12 +48,12 @@ export const zhCN: Record<MsgKey, string> = {
   usageCacheMissedWhy: "这轮照理该命中，实际却没命中或只命中一点点。",
   usageCachePartial: "只命中一点",
   usageCachePartialWhy: "命中了，但远低于这轮照理能命中的量。",
-  usageCacheZero: "没省到",
-  usageCacheZeroWhy: "供应商回报这轮一个 token 都没重用，按全额计费。",
+  usageCacheZero: "这次没有缓存",
+  usageCacheZeroWhy: "供应商有回报缓存数字，这轮是 0，按全额计费。",
   usageCacheUnknown: "测不到",
   usageCacheUnknownWhy: "这条连接不回报缓存数据，命中与否都看不出来。",
-  usageCacheNotExpected: "本来就没得命中",
-  usageCacheNotExpectedWhy: "这轮没有可以命中的前文，不是故障。",
+  usageCacheNotExpected: "新桌／新线",
+  usageCacheNotExpectedWhy: "本来就没有可命中的，不是故障。",
 
   // 这通发出去的形状，与缓存结果是两回事
   usageModeResume: "续聊",
@@ -70,7 +70,7 @@ export const zhCN: Record<MsgKey, string> = {
   // 线事件：不是一通调用，没有缓存结果
   usageEventDropLane: "丢线重来",
   usageEventDropLaneWhy: "回合后整理失败，这条线丢掉重开，聊天不受影响。",
-  usageReasonFirstTurn: "这张桌的第一轮",
+  usageReasonFirstTurn: "第一次开这条线",
   usageReasonPendingRewrite: "上一轮中途被打断",
   usageReasonSceneChanged: "换幕了",
   usageReasonHistoryRewound: "记录被回退",

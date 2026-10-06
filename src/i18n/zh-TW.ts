@@ -54,12 +54,12 @@ export const zh = {
   usageCacheMissedWhy: "這輪照理該命中，實際卻沒中或只中一點點。",
   usageCachePartial: "只中一點",
   usageCachePartialWhy: "中了，但遠低於這輪照理能中的量。",
-  usageCacheZero: "沒省到",
-  usageCacheZeroWhy: "供應商回報這輪一個 token 都沒重用，照全額計費。",
+  usageCacheZero: "這次沒有快取",
+  usageCacheZeroWhy: "供應商有回報快取數字，這輪是 0，照全額計費。",
   usageCacheUnknown: "量不到",
   usageCacheUnknownWhy: "這條連線不回報快取資料，中沒中都看不出來。",
-  usageCacheNotExpected: "本來就沒得中",
-  usageCacheNotExpectedWhy: "這輪沒有可以命中的前文，不是故障。",
+  usageCacheNotExpected: "新桌／新線",
+  usageCacheNotExpectedWhy: "本來就沒有可中的，不是故障。",
 
   // 這通送出去的形狀，與快取結果是兩回事
   usageModeResume: "續聊",
@@ -78,7 +78,7 @@ export const zh = {
   usageEventDropLaneWhy: "回合後整理失敗，這條線丟掉重開，聊天不受影響。",
 
   // 重開／丟線的原因
-  usageReasonFirstTurn: "這桌第一輪",
+  usageReasonFirstTurn: "第一次開這條線",
   usageReasonPendingRewrite: "上一輪中途中斷",
   usageReasonSceneChanged: "換幕了",
   usageReasonHistoryRewound: "紀錄被收回",

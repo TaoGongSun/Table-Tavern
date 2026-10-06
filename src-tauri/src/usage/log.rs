@@ -25,14 +25,15 @@
 //! - `zero`：供應商有回報，回報的值就是 0。
 //! - `unknown`：這條路沒回報快取欄位，`cached_tokens`／`hit_rate` 整個欄位不寫，
 //!   額度分頁顯示「—」而非 0%（曾用 `unwrap_or(0)` 壓平，見 .ai/plans/api-cache-visibility.md）。
-//! - `not-expected`：這輪本來就沒有可中的東西（首輪、剛重開線）。
+//! - `not-expected`：新桌／新線，本來就沒有可中的東西（首輪、剛重開線）。
 //!
-//! `cache_reason` 只在 `partial`／`zero` 時補一句為什麼，同樣只有續聊線給得出。
+//! `cache_reason` 只在 `partial`／`zero` 時補一句為什麼，同樣只有續聊線給得出；
+//! `zero` 的原因只有 claude 續聊線給，agy／grok 續聊線讀 0 不帶原因（只說這次沒有快取）。
 //! `not-expected` 不帶原因——標籤本身就是原因，再補一句只會在畫面上講兩次同一件事：
 //! - `expired`：距上一句超過 app 的保守快取窗口。實測超時仍可能中，所以這只是「沒中滿的解釋」，
 //!   不宣稱快取確定被清掉，畫面上也不當故障標紅。
 //! - `below-expected`：低於理論值——程式只知道數字不對，不宣稱前綴一定被誰改過。
-//! - `skipped`：讀寫皆 0（claude CLI resume 已知毛病，2026-08 實證同一線隔輪出現、整句付全額）。
+//! - `skipped`：claude 續聊線讀寫皆 0（claude CLI resume 已知毛病，2026-08 實證同一線隔輪出現、整句付全額）。
 //!
 //! 「這輪是不是單發」與「快取有沒有中」是**正交**的兩軸，分開記才不會拿呼叫模式去解釋數字是 0
 //! ——舊版 `diag` 一欄兩用，非續聊的呼叫在碰到快取數字之前就被判成 `single`，
@@ -180,6 +181,7 @@ fn classify_mode(lane: Option<&LaneContext>, shape: PromptShape) -> Mode {
 fn classify_cache(
     lane: Option<&LaneContext>,
     usage: &PromptCacheUsage,
+    transport: &str,
 ) -> (Cache, Option<CacheReason>) {
     if !usage.reported() {
         return (Cache::Unknown, None);
@@ -207,6 +209,11 @@ fn classify_cache(
     }
     if expected == 0 {
         return (Cache::NotExpected, None);
+    }
+    // 非 claude 的續聊線（agy、grok）讀到 0 只說「這次沒有快取」，不推測原因：
+    // 它們不回報寫入量，缺欄當 0 會被誤判成 claude 的 skipped（2026-10-06 對帳實證）
+    if transport != "claude" {
+        return (Cache::Zero, None);
     }
     // 讀寫皆 0＝這句根本沒帶快取標記，與「隔太久過期」不同
     let reason = match created == 0 {
@@ -286,7 +293,7 @@ fn call_fields(
     if shape == PromptShape::Image {
         fields.insert("purpose".to_owned(), json!("image"));
     }
-    let (cache, cache_reason) = classify_cache(lane, &usage);
+    let (cache, cache_reason) = classify_cache(lane, &usage, transport);
     fields.insert("cache".to_owned(), json!(cache.as_str()));
     if let Some(reason) = cache_reason {
         fields.insert("cache_reason".to_owned(), json!(reason.as_str()));
@@ -481,52 +488,59 @@ mod tests {
     fn cache_axis_covers_each_label_by_rule() {
         // 續聊、幾乎全中
         assert_eq!(
-            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 9_000, 300)),
+            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 9_000, 300), "claude"),
             (Cache::Hit, None)
         );
         // 上輪送 9000，這輪只中 200＝中了但遠低於理論值
         assert_eq!(
-            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 200, 9_100)),
+            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 200, 9_100), "claude"),
             (Cache::Partial, Some(CacheReason::BelowExpected))
         );
         // 超過保守窗口且一個字都沒中＝歸給時間，不算故障
         assert_eq!(
-            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 9_300)),
+            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 9_300), "claude"),
             (Cache::Zero, Some(CacheReason::Expired))
         );
         // 讀寫皆 0 但上輪送過內容＝CLI 這句沒帶標記，優先於過期判定
         assert_eq!(
-            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 0)),
+            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 0), "claude"),
             (Cache::Zero, Some(CacheReason::Skipped))
         );
         // 上輪沒有可中量＝這輪本來就不該中
         assert_eq!(
-            classify_cache(Some(&lane(30, 0)), &usage(9_300, 0, 0)),
+            classify_cache(Some(&lane(30, 0)), &usage(9_300, 0, 0), "claude"),
             (Cache::NotExpected, None)
         );
         // 重開線＝我方內容不該中；一個字都沒中就是「本來就沒得中」
         let mut reopened = lane(30, 0);
         reopened.reopen = Some("scene-changed");
         assert_eq!(
-            classify_cache(Some(&reopened), &usage(9_300, 0, 9_300)),
+            classify_cache(Some(&reopened), &usage(9_300, 0, 9_300), "claude"),
             (Cache::NotExpected, None)
         );
         // 但重開線照樣可能中到供應商自己的固定前綴——實測帳本有 11 筆 warmup 中了六到九成。
         // 數字說中了就說中了，不能因為「這輪不該中」把 95.7% 講成「本來就沒得中」
         assert_eq!(
-            classify_cache(Some(&reopened), &usage(19_300, 18_499, 800)),
+            classify_cache(Some(&reopened), &usage(19_300, 18_499, 800), "claude"),
             (Cache::Hit, None)
         );
         // 隔了一小時但幾乎全中＝快取其實還活著，過期只是解釋沒中的理由，不是蓋章
         assert_eq!(
-            classify_cache(Some(&lane(3_600, 30_184)), &usage(37_000, 30_178, 6_800)),
+            classify_cache(
+                Some(&lane(3_600, 30_184)),
+                &usage(37_000, 30_178, 6_800),
+                "claude"
+            ),
             (Cache::Hit, None)
         );
         // 沒回報＝量不到，與「量到了、是 0」不同
         let mut blind = usage(9_300, 0, 0);
         blind.cached_tokens = None;
         blind.created_tokens = None;
-        assert_eq!(classify_cache(None, &blind), (Cache::Unknown, None));
+        assert_eq!(
+            classify_cache(None, &blind, "claude"),
+            (Cache::Unknown, None)
+        );
     }
 
     /// 本案的病灶：無狀態路徑以前在碰到快取數字之前就被判成「單發」，
@@ -535,14 +549,89 @@ mod tests {
     fn stateless_paths_report_real_cache_result_not_call_mode() {
         // 共線劇情輪中了八成——舊版標 single，現在快取軸誠實說 hit
         assert_eq!(
-            classify_cache(None, &usage(9_300, 7_500, 1_800)),
+            classify_cache(None, &usage(9_300, 7_500, 1_800), "api"),
             (Cache::Hit, None)
         );
         // 有回報、值就是 0：說 zero，但不宣稱原因（無狀態算不出理論值）
         assert_eq!(
-            classify_cache(None, &usage(4_411, 0, 4_411)),
+            classify_cache(None, &usage(4_411, 0, 4_411), "api"),
             (Cache::Zero, None)
         );
+    }
+
+    /// 「這次沒有快取」不推測原因；`skipped` 等原因只留給 claude 續聊線（顯示拍板第 2 項）。
+    #[test]
+    fn zero_reasons_belong_to_claude_lanes_only() {
+        let mut agy_zero = usage(9_300, 0, 0);
+        agy_zero.created_tokens = None; // agy／grok 不回報寫入量
+        for transport in ["agy", "grok"] {
+            // 續聊讀 0：近、遠、帶寫入量都一樣只說 zero，不帶原因
+            for (age, sample) in [
+                (30, &agy_zero),
+                (600, &agy_zero),
+                (30, &usage(9_300, 0, 9_300)),
+            ] {
+                assert_eq!(
+                    classify_cache(Some(&lane(age, 9_000)), sample, transport),
+                    (Cache::Zero, None),
+                    "{transport} age {age}"
+                );
+            }
+            // 首輪與重開讀 0＝新桌／新線
+            assert_eq!(
+                classify_cache(Some(&lane(30, 0)), &agy_zero, transport),
+                (Cache::NotExpected, None)
+            );
+            let mut reopened = lane(30, 9_000);
+            reopened.reopen = Some("scene-changed");
+            assert_eq!(
+                classify_cache(Some(&reopened), &agy_zero, transport),
+                (Cache::NotExpected, None)
+            );
+            // 缺快取欄仍是量不到
+            let mut blind = agy_zero;
+            blind.cached_tokens = None;
+            assert_eq!(
+                classify_cache(Some(&lane(30, 9_000)), &blind, transport),
+                (Cache::Unknown, None)
+            );
+            // 中了但不足九成是數字診斷，不屬「值為 0」，照舊帶原因
+            assert_eq!(
+                classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 200, 0), transport),
+                (Cache::Partial, Some(CacheReason::BelowExpected))
+            );
+        }
+        // claude 續聊讀 0 照舊：skipped／expired／below-expected
+        assert_eq!(
+            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 0, 0), "claude"),
+            (Cache::Zero, Some(CacheReason::Skipped))
+        );
+        assert_eq!(
+            classify_cache(Some(&lane(600, 9_000)), &usage(9_300, 0, 9_300), "claude"),
+            (Cache::Zero, Some(CacheReason::Expired))
+        );
+        assert_eq!(
+            classify_cache(Some(&lane(30, 9_000)), &usage(9_300, 0, 9_300), "claude"),
+            (Cache::Zero, Some(CacheReason::BelowExpected))
+        );
+        // 無 lane（API、codex、claude 一次性呼叫）讀 0：zero 不帶原因，不推測新桌
+        for transport in ["api", "codex", "claude"] {
+            assert_eq!(
+                classify_cache(None, &usage(4_411, 0, 4_411), transport),
+                (Cache::Zero, None)
+            );
+        }
+        // 落帳行：agy 零命中沒有 cache_reason 欄
+        let line = call_fields(
+            Some("w1"),
+            "agy",
+            "gemini",
+            Some(&lane(30, 9_000)),
+            PromptShape::Oneshot,
+            agy_zero,
+        );
+        assert_eq!(line["cache"], json!("zero"));
+        assert!(line.get("cache_reason").is_none());
     }
 
     /// mode 只描述形狀，與快取結果互不干涉。

@@ -48,12 +48,12 @@ export const ko: Record<MsgKey, string> = {
   usageCacheMissedWhy: "이번 회차는 원래 적중했어야 하는데 적중하지 않았거나 아주 조금만 재사용됐습니다.",
   usageCachePartial: "일부만 적중",
   usageCachePartialWhy: "재사용은 됐지만 이번 회차에 재사용할 수 있었던 양보다 훨씬 적습니다.",
-  usageCacheZero: "재사용 없음",
-  usageCacheZeroWhy: "공급자 보고에 따르면 이번 회차는 한 토큰도 재사용되지 않아 전액 청구됩니다.",
+  usageCacheZero: "이번에는 캐시 없음",
+  usageCacheZeroWhy: "공급자가 캐시 수치를 보고했으며 이번 회차는 0이라 전액 청구됩니다.",
   usageCacheUnknown: "측정 불가",
   usageCacheUnknownWhy: "이 연결은 캐시 수치를 보고하지 않아 적중 여부를 알 수 없습니다.",
-  usageCacheNotExpected: "재사용할 것이 없음",
-  usageCacheNotExpectedWhy: "이번 회차에는 재사용할 앞선 맥락이 없습니다. 고장이 아닙니다.",
+  usageCacheNotExpected: "새 테이블／새 레인",
+  usageCacheNotExpectedWhy: "애초에 재사용할 것이 없습니다. 고장이 아닙니다.",
 
   // 이번 호출의 형태. 캐시 결과와는 별개입니다
   usageModeResume: "이어가기",
@@ -70,7 +70,7 @@ export const ko: Record<MsgKey, string> = {
   // 레인 이벤트: 호출이 아니므로 캐시 결과가 없습니다
   usageEventDropLane: "레인 재시작",
   usageEventDropLaneWhy: "턴 정리에 실패해 이 레인을 버리고 다시 엽니다. 대화에는 영향이 없습니다.",
-  usageReasonFirstTurn: "이 테이블의 첫 라운드",
+  usageReasonFirstTurn: "이 레인을 처음 열었음",
   usageReasonPendingRewrite: "이전 라운드 도중 중단됨",
   usageReasonSceneChanged: "막이 바뀜",
   usageReasonHistoryRewound: "기록이 되돌려짐",

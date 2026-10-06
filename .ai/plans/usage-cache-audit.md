@@ -149,16 +149,67 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 5. API 串流沒有停滯逾時，免費供應商卡住時一直轉圈（5 通裡有 2 通）。
 6. 測試通道視窗不可見時 WebKit 計時器不跑，前端保溫計時器與離開提醒在通道裡驗不了；後端保溫改用 `invoke keepalive_lanes` 直接驗。在 `load` 修好之前，第一次保溫就會丟線，離開提醒本來就亮不起來。
 
-### 待使用者決定（只寫建議，不施工）
+### 顯示拍板〔作者裁決 2026-10-06〕
 
-1. codex 這種只中到供應商自帶底線的輪次：建議頭條不算「已省」，改掛「只中到 CLI 自帶部分」（併 vendor-prefix-floor）。
-2. agy／OpenRouter 有回報、值是 0：建議顯示「這次沒有快取」，不給原因；`skipped` 只留給 claude。
-3. 丟線：分頁維持現在那一行「丟線重來」，`stage`／`detail` 只留在帳本給除錯，不給玩家看。
-4. claude 1 小時快取：要不要停掉保溫 ping、把「過期」門檻改成 1 小時、省下金額改用 2 倍寫入係數。
-5. 首輪 `not-expected` 的說法：建議統一叫「新桌／新線，本來就沒有可中的」。
+1. 只中到 CLI 自帶底線的輪次頭條不算「已省」，改標「只中到 CLI 自帶部分」——歸 [vendor-prefix-floor](../tasks/vendor-prefix-floor.md)。
+2. 有回報、值是 0：顯示「這次沒有快取」，不推測原因；`skipped` 只留給 claude（含修 agy 被誤標 skipped）——本案做。
+3. 丟線：分頁維持「丟線重來」一行，`stage`／`detail` 只留帳本——本案不動 UI。
+4. claude 1 小時快取：停保溫、過期門檻改 1 小時、省額改 2 倍係數——歸 [claude-1h-cache](../tasks/claude-1h-cache.md)。
+5. 首輪說法統一「新桌／新線，本來就沒有可中的」——本案做。
 
 ### 主線決定（2026-10-06）
 
 - 角色線丟線在本案修，規格見「一之二」。
-- API 串流停滯逾時、agy `skipped` 誤標、CLI 1 小時快取的影響由主線另立案，本檔只留證據。
-- 上面五項顯示建議由主線問使用者；grok 22:00 後補跑另外安排。
+- API 串流停滯逾時、CLI 1 小時快取的影響由主線另立案（api-stream-stall-timeout、claude-1h-cache），本檔只留證據；agy `skipped` 誤標併在本案顯示第 2 項。
+- grok 22:00 後補跑另外安排。
+
+## 五、顯示施工（拍板第 2、5 項）
+
+### 判定規則（寫帳本，[usage/log.rs](../../src-tauri/src/usage/log.rs)）
+
+`classify_cache` 多收 `transport`（`call_fields` 手上本來就有）：
+
+- **續聊線、讀到 0、上輪有可中量**：
+  - claude：照舊。讀寫皆 0＝`skipped`；有寫入＝`expired`／`below-expected`。
+  - agy、grok：`cache: zero`，**不帶 `cache_reason`**。這兩家不回報寫入量（`created_tokens` 缺），舊碼 `unwrap_or(0)` 把它當「讀寫皆 0」而判成 `skipped`，就是誤標的根因。
+- 其餘不變：首輪／重開讀 0＝`not-expected`；中了＝`hit`；中了但不足九成＝`partial`＋原因（數字事實，不屬「值為 0」）；無狀態路徑 0＝`zero` 不帶原因（現況就是）。
+
+### 舊帳本回溯（讀帳本，[usage/report.rs](../../src-tauri/src/usage/report.rs) `classify`）
+
+帳本不改寫，讀的時候套同一條規則：`transport` 不是 `claude` 的續聊線行，`cache` 為 `zero` 時丟掉 `cache_reason`（新行本來就沒有；舊 agy 行的 `skipped` 被濾掉）。效果：舊 agy 零命中從紅燈「該中沒中（claude CLI 已知毛病）」改成「這次沒有快取」，統計格也從 `missed` 移到 `zero`。加 `cache` 欄之前的舊續聊線行（只有 claude）推導照舊，同一條非 claude 濾除規則一併套上。前端 `chipState` 鏡像的是後端判定，不必改。
+
+### 文案（十語系：zh-TW、zh-CN、en、ja、ko、de、fr、es、pt-BR、ru）
+
+| key | 現在（zh-TW） | 改成（zh-TW） |
+|---|---|---|
+| `usageCacheZero` | 沒省到 | 這次沒有快取 |
+| `usageCacheZeroWhy` | 供應商回報這輪一個 token 都沒重用，照全額計費。 | 供應商有回報快取數字，這輪是 0，照全額計費。 |
+| `usageCacheNotExpected` | 本來就沒得中 | 新桌／新線 |
+| `usageCacheNotExpectedWhy` | 這輪沒有可以命中的前文，不是故障。 | 本來就沒有可中的，不是故障。 |
+| `usageReasonFirstTurn` | 這桌第一輪 | 第一次開這條線 |
+
+- `usageCacheReasonSkipped`（「claude CLI 已知毛病」）文案不動，只是不再套到 agy／grok。
+- `usageReasonFirstTurn` 一併改：`first-turn` 是「這條線（模型＋角色範圍）沒有舊狀態」，同一桌中途第一次開角色線也是它，「這桌第一輪」講錯；改完配上「新桌／新線」標籤不再互相打架。
+- 模組頂註解（log.rs 標籤表、report.rs `chip_state`／`classify`、UsageTab 字典註解）同步改寫成新規則。
+
+### 測試
+
+- log.rs `cache_axis_covers_each_label_by_rule`：agy、grok 續聊線讀 0 且 `created_tokens` 缺 → `(Zero, None)`；agy 帶寫入量也一樣不帶原因；claude 讀寫皆 0 仍是 `skipped`；agy 首輪讀 0 仍是 `not-expected`。`call_fields` 落帳行斷言 agy 零命中沒有 `cache_reason` 欄。
+- report.rs：舊 agy 行帶 `cache_reason: "skipped"` → latest 的 `cache_reason` 為 None、統計格是 `zero` 不是 `missed`；同樣的 claude 行仍是 `missed`；grok 行同 agy。
+- 前端：新增 `UsageTab.test.tsx`，餵假 `usage_report`：latest＝agy `zero`、無原因 → 細項出現「這次沒有快取」、沒有 claude 毛病那句、不是紅燈；latest＝`not-expected`＋`first-turn` → 出現「新桌／新線」與「第一次開這條線」。
+- `npm run verify` 全綠。
+
+### 實測（測試通道）
+
+1. 在獨立 root 的 `data/prompt-cache.jsonl` 預先放幾行舊格式帳本（agy `skipped`、claude `skipped`、claude 首輪 `not-expected`），開額度分頁截圖：舊 agy 行顯示「這次沒有快取」、claude 行照舊紅燈。不花額度。
+2. agy `gemini-3.8-flash-low` 開一張新桌講 2 句：第 1 輪「新桌／新線」、第 2 輪「這次沒有快取」且無原因、帳本第 2 輪沒有 `cache_reason`。約 2 通，訂閱額度。
+3. grok 不測（22:00 前不送；補跑另外安排）。
+
+結果（2026-10-06，verify 10 步綠）：
+- 舊帳本回溯：預放的 agy `skipped` 行在分頁顯示「這次沒有快取」、黃燈、無原因，統計格「新桌／新線 ×1、這次沒有快取 ×1」；claude `skipped` 行照舊紅燈「該中沒中（claude CLI 已知毛病）」。
+- agy 即時：迷霧酒館 GM 線 2 句，第 1 輪 `not-expected`＋`first-turn`，第 2 輪（隔 25 秒）`zero`、帳本無 `cache_reason`；分頁最近一輪「這次沒有快取 續聊 — 供應商有回報快取數字，這輪是 0，照全額計費。」。證據在 scratchpad `uca/evidence-display/`。
+
+### 拍板〔作者裁決 2026-10-06〕
+
+1. claude 續聊線讀 0 保留 `expired`／`below-expected` 原因。
+2. API、codex 首通讀 0 不推測新桌，顯示「這次沒有快取」。

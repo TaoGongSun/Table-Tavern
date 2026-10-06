@@ -48,12 +48,12 @@ export const ja: Record<MsgKey, string> = {
   usageCacheMissedWhy: "この回は本来ヒットするはずでしたが、外れたか、ごく一部しか再利用されませんでした。",
   usageCachePartial: "一部ヒット",
   usageCachePartialWhy: "再利用はできましたが、この回で再利用できるはずの量を大きく下回っています。",
-  usageCacheZero: "再利用なし",
-  usageCacheZeroWhy: "提供元の報告では、この回は 1 トークンも再利用されず、全額課金されます。",
+  usageCacheZero: "今回はキャッシュなし",
+  usageCacheZeroWhy: "提供元はキャッシュの数値を報告しており、この回は 0 で、全額課金されます。",
   usageCacheUnknown: "計測不可",
   usageCacheUnknownWhy: "この接続はキャッシュの数値を返さないため、ヒットしたかどうか判別できません。",
-  usageCacheNotExpected: "再利用できるものがない",
-  usageCacheNotExpectedWhy: "この回は再利用できる前の文脈がありません。不具合ではありません。",
+  usageCacheNotExpected: "新しい卓／新しいレーン",
+  usageCacheNotExpectedWhy: "もともと再利用できるものがありません。不具合ではありません。",
 
   // この呼び出しの形。キャッシュ結果とは別の軸です
   usageModeResume: "継続セッション",
@@ -70,7 +70,7 @@ export const ja: Record<MsgKey, string> = {
   // レーンのイベント：呼び出しではないため、キャッシュ結果はありません
   usageEventDropLane: "レーン再開",
   usageEventDropLaneWhy: "ターン後の整理に失敗したため、このレーンを破棄して開き直します。チャットに影響はありません。",
-  usageReasonFirstTurn: "この卓の最初のラウンド",
+  usageReasonFirstTurn: "このレーンを初めて開いた",
   usageReasonPendingRewrite: "前のラウンドが途中で中断",
   usageReasonSceneChanged: "幕が変わった",
   usageReasonHistoryRewound: "ログが巻き戻された",

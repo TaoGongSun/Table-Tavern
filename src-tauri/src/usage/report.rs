@@ -66,7 +66,8 @@ pub struct CacheCount {
 
 /// 統計用的分類：把「快取結果」與「沒中的原因」壓成一個玩家看得懂的格子。
 /// `missed` 是唯一該亮紅燈的——它代表**證明得了照理該中**（算得出理論可中量、且沒中滿），
-/// 其餘一律不是故障：`zero` 只是這輪沒省到、`expired` 只代表超過 app 的保守窗口。
+/// 其餘一律不是故障：`zero` 只是這次沒有快取、`expired` 只代表超過 app 的保守窗口。
+/// 零命中的原因（含 `skipped`）只有 claude 續聊線帶得到，非 claude 已在 `classify` 濾掉。
 fn chip_state(cache: &str, cache_reason: Option<&str>) -> String {
     let faulty = matches!(cache_reason, Some("below-expected") | Some("skipped"));
     match (cache, faulty) {
@@ -112,7 +113,19 @@ pub struct UsageReport {
 /// 拿它們套同一條規則就好，不必查 diag 對照表——那張表當年正是把數字蓋掉的元凶
 /// （帳本實測：11 筆 `warmup` 中了六到九成、10 筆 `expired` 中了八成以上）。
 /// 形狀回推不出來就交白卷（None），不拿「單發」冒充。
+///
+/// 兩種格式最後都過同一道濾網：讀到 0 的原因只留給 claude 續聊線。agy／grok 不回報寫入量，
+/// 舊碼把缺欄當 0 而標成 claude 的 `skipped`；帳本不改寫，讀的時候丟掉，顯示「這次沒有快取」。
 fn classify(line: &Value) -> (Option<String>, String, Option<String>) {
+    let (mode, cache, reason) = classify_recorded(line);
+    let claude = line.get("transport").and_then(Value::as_str) == Some("claude");
+    match (cache.as_str(), claude) {
+        ("zero", false) => (mode, cache, None),
+        _ => (mode, cache, reason),
+    }
+}
+
+fn classify_recorded(line: &Value) -> (Option<String>, String, Option<String>) {
     if let Some(cache) = line.get("cache").and_then(Value::as_str) {
         return (
             line.get("mode").and_then(Value::as_str).map(str::to_owned),
@@ -726,6 +739,69 @@ mod tests {
         // 不能跟「這輪沒省到」混在一起
         assert_eq!(count("missed"), 1);
         assert_eq!(count("partial"), 0);
+    }
+
+    /// 讀到 0 的原因只留給 claude 續聊線：舊帳本裡 agy／grok 的 skipped（以及任何零命中原因）
+    /// 讀的時候濾掉，兩種帳本格式都一樣；不足九成的數字診斷不動。
+    #[test]
+    fn zero_reasons_from_non_claude_lanes_are_dropped_on_read() {
+        let row = |transport: &str, body: &str| {
+            format!(
+                r#"{{"ts":"2026-10-06 01:00:00","transport":"{transport}","world":"w1","model":"m","lane":"chars:m",{body}}}"#
+            )
+        };
+        let new_zero = |reason: &str| {
+            format!(
+                r#""mode":"resume","cache":"zero","cache_reason":"{reason}","cache_reporting":"reported","prompt_tokens":9000,"cached_tokens":0,"output_tokens":10"#
+            )
+        };
+        // 加 cache 欄之前的舊續聊線行：靠 expected_cached／age_secs／created_tokens 推導
+        let legacy_skipped = r#""prompt_tokens":9000,"cached_tokens":0,"created_tokens":0,"expected_cached":8000,"age_secs":30,"output_tokens":10"#;
+        let legacy_expired = r#""prompt_tokens":9000,"cached_tokens":0,"created_tokens":9000,"expected_cached":8000,"age_secs":900,"output_tokens":10"#;
+        let legacy_below = r#""prompt_tokens":9000,"cached_tokens":0,"created_tokens":9000,"expected_cached":8000,"age_secs":30,"output_tokens":10"#;
+        let samples = [
+            (new_zero("skipped"), "skipped"),
+            (new_zero("expired"), "expired"),
+            (new_zero("below-expected"), "below-expected"),
+            (legacy_skipped.to_owned(), "skipped"),
+            (legacy_expired.to_owned(), "expired"),
+            (legacy_below.to_owned(), "below-expected"),
+        ];
+        for (body, claude_reason) in &samples {
+            for transport in ["agy", "grok"] {
+                let line: Value = serde_json::from_str(&row(transport, body)).unwrap();
+                let (_, cache, reason) = classify(&line);
+                assert_eq!(
+                    (cache.as_str(), reason),
+                    ("zero", None),
+                    "{transport} {body}"
+                );
+                let report = summarize(&row(transport, body), Some("w1"), &names(), &[]);
+                assert_eq!(report.caches[0].cache, "zero"); // 不再落進紅色的 missed
+                assert_eq!(report.latest.unwrap().cache_reason, None);
+            }
+            // claude 對照：原因保留
+            let line: Value = serde_json::from_str(&row("claude", body)).unwrap();
+            let (_, cache, reason) = classify(&line);
+            assert_eq!(
+                (cache.as_str(), reason.as_deref()),
+                ("zero", Some(*claude_reason))
+            );
+        }
+        // 非 claude 不足九成：數字診斷照留
+        let partial = row(
+            "agy",
+            r#""mode":"resume","cache":"partial","cache_reason":"below-expected","cache_reporting":"reported","prompt_tokens":9000,"cached_tokens":200,"output_tokens":10"#,
+        );
+        let line: Value = serde_json::from_str(&partial).unwrap();
+        assert_eq!(
+            classify(&line),
+            (
+                Some("resume".to_owned()),
+                "partial".to_owned(),
+                Some("below-expected".to_owned())
+            )
+        );
     }
 
     /// 統計的格子只有 missed 該亮紅燈：expired 只代表超過保守窗口，沒有證明該中。

@@ -48,12 +48,12 @@ export const es: Record<MsgKey, string> = {
   usageCacheMissedWhy: "Esta ronda debería haber usado la caché, pero no lo hizo o reutilizó muy poco.",
   usageCachePartial: "Acierto parcial",
   usageCachePartialWhy: "Se reutilizó algo, pero mucho menos de lo que esta ronda permitía.",
-  usageCacheZero: "Sin reutilización",
-  usageCacheZeroWhy: "El proveedor informa que en esta ronda no se reutilizó ni un token, así que se cobra completa.",
+  usageCacheZero: "Esta vez sin caché",
+  usageCacheZeroWhy: "El proveedor informó cifras de caché y en esta ronda fue 0, así que se cobra completa.",
   usageCacheUnknown: "No medible",
   usageCacheUnknownWhy: "Esta conexión no informa cifras de caché; acertar y fallar se ven igual.",
-  usageCacheNotExpected: "Nada que reutilizar",
-  usageCacheNotExpectedWhy: "En esta ronda no había contexto previo que reutilizar; no es una avería.",
+  usageCacheNotExpected: "Mesa nueva / línea nueva",
+  usageCacheNotExpectedWhy: "Todavía no había nada que reutilizar; no es una avería.",
 
   // La forma de esta llamada, aparte del resultado de la caché
   usageModeResume: "Sesión continuada",
@@ -70,7 +70,7 @@ export const es: Record<MsgKey, string> = {
   // Evento de línea: no es una llamada, así que no tiene resultado de caché
   usageEventDropLane: "Reiniciar línea",
   usageEventDropLaneWhy: "La limpieza posterior al turno falló, así que esta línea se descarta y se vuelve a abrir; el chat no se ve afectado.",
-  usageReasonFirstTurn: "Primera ronda de esta mesa",
+  usageReasonFirstTurn: "Línea abierta por primera vez",
   usageReasonPendingRewrite: "La ronda anterior se interrumpió a mitad",
   usageReasonSceneChanged: "Cambió el acto",
   usageReasonHistoryRewound: "Historial revertido",

@@ -44,7 +44,7 @@ type UsageReport = {
 
 // 快取結果字典（後端 usage_log.rs 模組頂註解那張表）：短名給統計、長句給最近一輪、燈號。
 // 只有 missed 是紅的——它代表**證明得了照理該中**（算得出理論可中量、卻沒中滿）。
-// 其餘都不是故障：zero 只是這輪沒省到；expired 只代表超過 app 的保守窗口（實測超時仍可能中）；
+// 其餘都不是故障：zero 只是這次沒有快取（不推測原因）；expired 只代表超過 app 的保守窗口（實測超時仍可能中）；
 // 量不到與本來就沒得中根本不該打分，拿紅燈叫玩家去修不存在的問題最糟。
 const CACHE_KEYS = {
   hit: ["usageCacheHit", "usageCacheHitWhy", "good"],
@@ -75,7 +75,7 @@ const MODE_KEYS = {
   oneshot: "usageModeOneshot",
   ping: "usageModePing",
 } as const;
-// 沒中的原因；只有算得出理論可中量的續聊線給得出來
+// 沒中的原因；只有算得出理論可中量的續聊線給得出來，讀 0 的原因只有 claude 續聊線給
 const CACHE_REASON_KEYS = {
   expired: "usageCacheReasonExpired",
   "below-expected": "usageCacheReasonBelowExpected",

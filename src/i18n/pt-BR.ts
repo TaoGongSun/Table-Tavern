@@ -48,12 +48,12 @@ export const ptBR: Record<MsgKey, string> = {
   usageCacheMissedWhy: "Esta rodada deveria ter usado o cache, mas não usou ou reaproveitou muito pouco.",
   usageCachePartial: "Acerto parcial",
   usageCachePartialWhy: "Algo foi reaproveitado, mas bem menos do que esta rodada permitia.",
-  usageCacheZero: "Sem reaproveitamento",
-  usageCacheZeroWhy: "O provedor informa que nesta rodada nenhum token foi reaproveitado, então ela é cobrada integralmente.",
+  usageCacheZero: "Sem cache desta vez",
+  usageCacheZeroWhy: "O provedor informou os números de cache e nesta rodada foi 0, então ela é cobrada integralmente.",
   usageCacheUnknown: "Não mensurável",
   usageCacheUnknownWhy: "Esta conexão não informa números de cache; acerto e erro parecem iguais.",
-  usageCacheNotExpected: "Nada a reaproveitar",
-  usageCacheNotExpectedWhy: "Nesta rodada não havia contexto anterior para reaproveitar; não é uma falha.",
+  usageCacheNotExpected: "Mesa nova / linha nova",
+  usageCacheNotExpectedWhy: "Ainda não havia nada para reaproveitar; não é uma falha.",
 
   // O formato desta chamada, separado do resultado do cache
   usageModeResume: "Sessão continuada",
@@ -70,7 +70,7 @@ export const ptBR: Record<MsgKey, string> = {
   // Evento de linha: não é uma chamada, portanto não tem resultado de cache
   usageEventDropLane: "Reiniciar linha",
   usageEventDropLaneWhy: "A arrumação após o turno falhou, então esta linha é descartada e reaberta; o chat não é afetado.",
-  usageReasonFirstTurn: "Primeira rodada desta mesa",
+  usageReasonFirstTurn: "Linha aberta pela primeira vez",
   usageReasonPendingRewrite: "Rodada anterior interrompida no meio",
   usageReasonSceneChanged: "Novo ato",
   usageReasonHistoryRewound: "Histórico revertido",
