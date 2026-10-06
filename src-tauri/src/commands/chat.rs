@@ -95,11 +95,11 @@ pub(crate) async fn chat_with_character(
         &card.name,
     );
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
-    // CLI 訂閱走 resume 續聊線。claude 全角色共用一條 session，私設回合注入、
-    // 回合後從 session 檔抹掉（案 C）；Agy/Grok 無可靠的抹寫路徑，改成一角一線＋
+    // CLI 訂閱走 resume 續聊線。claude／grok 全角色共用一條 session，私設回合注入、
+    // 回合後從 session 檔抹掉（案 C）；Agy 無抹寫路徑，改成一角一線＋
     // 私設提進該角色自己的凍結 system，不讓別的角色讀到不該讀的東西。
     if let Some(provider) = lane_provider(&config) {
-        let hoist = provider != lanes::LaneProvider::Claude;
+        let hoist = provider == lanes::LaneProvider::Agy;
         let lang = transport::ui_language(&config);
         let cards = load_active_cards(&root, &world_id)?;
         let mut frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);

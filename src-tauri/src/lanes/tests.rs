@@ -339,13 +339,13 @@ fn plan_resumes_only_when_everything_lines_up() {
 }
 
 /// 上輪回覆（expected_reply）落檔後從水位跳過；沒落檔或被改動＝重開。
-/// 線名細分：claude 不帶 scope（全角色共用一條），grok 的 chars 線一角一條。
+/// 線名細分：claude／grok 不帶 scope（全角色共用一條），agy 的 chars 線一角一條。
 #[test]
 fn lane_key_splits_by_scope_only_when_given() {
     assert_eq!(lane_key(Lane::Chars, "sonnet", None), "chars:sonnet");
     assert_eq!(
-        lane_key(Lane::Chars, "grok-4.6", Some("fox-id")),
-        "chars:grok-4.6:fox-id"
+        lane_key(Lane::Chars, "agy-model", Some("fox-id")),
+        "chars:agy-model:fox-id"
     );
     assert_eq!(lane_key(Lane::Gm, "grok-4.6", None), "gm:grok-4.6");
 }
@@ -491,25 +491,25 @@ fn plan_rebases_changed_material_after_cache_expires() {
     }
 }
 
-/// grok 沒有回合後抹寫，機密段一旦送進去就永遠留在該線歷史裡：run_turn 出聲擋下，
+/// agy 沒有回合後抹寫，機密段一旦送進去就永遠留在該線歷史裡：run_turn 出聲擋下，
 /// 不讓呼叫端誤用共線＋回合注入那套（會把 A 的私設漏給 B）。
 #[cfg(unix)]
 #[tokio::test]
-async fn grok_lane_refuses_confidential_injection() {
+async fn agy_lane_refuses_confidential_injection() {
     let FakeCli {
         dir: _dir,
         mut call,
         root,
         world_id,
         ..
-    } = fake_claude("grok-guard");
-    call.provider = LaneProvider::Grok;
+    } = fake_claude("agy-guard");
+    call.provider = LaneProvider::Agy;
     let events = [event(TranscriptKind::Player, "", "阿濤", "你好")];
     let mut input = turn_input(&events, 0);
     input.confidential = Some("狐狸的私設".to_owned());
     let error = run_turn(&call, &root, &world_id, input, None, |_: &str| {})
         .await
-        .expect_err("帶機密段的 grok 線必須被擋下");
+        .expect_err("帶機密段的 agy 線必須被擋下");
     assert!(error.starts_with(r#"TTMSG:{"code":"lane_rewrite_unsupported""#));
 }
 
@@ -1492,3 +1492,6 @@ fn plan_after_an_unanswered_player_line_is_discarded() {
         TurnPlan::Reopen { .. } => panic!("線沒碰過收回的那句，應照常續聊"),
     }
 }
+
+mod grok;
+mod lane_lock;
