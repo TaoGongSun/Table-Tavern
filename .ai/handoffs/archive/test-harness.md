@@ -21,3 +21,6 @@ Status: done
 - `shot` 截圖底部多 64px（32pt）灰帶：WKWebView 快照含標題列高度，視窗內容完整、未裁切。
 - 本機 shell 包裝會擋含字面 `eval`、變數展開成路徑的指令：CLI 用 `js` 別名、路徑寫字面值。
 - 鍵盤／焦點回歸屬 menu-keyboard-webkit（`npm run test:webkit`），本通道的 `press` 只派給 app 自己的鍵盤處理器。
+- 視窗被別的視窗蓋住時頁面會變 `visibilityState=hidden`，WebKit 凍結 CSS 動畫並停掉 `requestAnimationFrame`，卡片介面 iframe 的淡入動畫／rAF 內容就停在起點、`shot` 只見底色（2026-10-07 實測；iframe 本身拍得到）。已修：`harness/occlusion.rs` 在啟動時對主 WKWebView 呼叫私有 SPI `_setWindowOcclusionDetectionEnabled:NO` 並 post 遮擋狀態通知，被蓋住時仍是 visible、動畫與 rAF 照跑，不搶前景。實測（macOS 26.5.1）：被蓋住時主頁與 iframe 皆 visible、rAF 約 60 次／秒、`shot` 含靜態／動畫／rAF／計時器四項；WestFantsy 卡自帶介面（匯入即有，零 AI）整頁渲染正常；零 AI 更新法：`invoke append_transcript`（scene 取 `read_state` 的 `current_scene`）追一則含 `<GoldenRPG_UI>` 區塊的 GM 旁白，回大廳重進桌，介面換成遊戲殼（srcdoc 192402→212147 字元且含標記、PNG 由選角頁變遊戲頁）。
+  - 邊界：縮小視窗、Cmd+H 隱藏時 `isVisible` 本身為 NO，此招無效（實測 hidden、rAF 0）；其他 Space 未驗證。私有 SPI 無相容保證，缺 selector 時 stderr 記一行並維持舊行為，不退回搶前景。
+  - 備援繞法（不依賴 SPI）：`js "document.querySelector('iframe.card-interface-frame').srcdoc"` 輸出 `{ok,value}`，`value` 寫成 index.html，`python3 -m http.server` 後用 Browser pane 開（pane 自己被遮住時一樣卡 rAF）。srcdoc 是當下快照，收不到後續推送。

@@ -11,7 +11,7 @@ Status: awaiting-verification
 ## 現況（2026-10-06）
 - 包 1（假設實測與文件）、包 2（前情提要佔位抽殼、缺快照處置、接管桌摘要禁標記、正文槽 Markdown 處置〔作者裁決 2026-10-06〕）、包 3（介面工具列換幕鈕、介面換幕後重開）已進 main；Sol 驗收通過，測試通道西幻接管桌硬驗收過。結果與設計見底稿。
 - 結案範圍只含西幻接管桌；Transfur 排在 interface-takeover-spike 逐型驗卡之後。
-- 測試通道 `shot` 拍不到卡片介面 iframe 內容，繞法見 [harness-iframe-shot](../tasks/harness-iframe-shot.md)。
+- 測試通道 `shot` 已能拍到卡片介面 iframe 內容（見 [test-harness](archive/test-harness.md) 已知限制）。
 
 ## Next action
 - 實機驗收：真視窗裡換幕後介面可點可用（實測佇列梯 2 第 20 項），過了就歸檔。
