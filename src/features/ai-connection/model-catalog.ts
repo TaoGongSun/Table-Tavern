@@ -27,6 +27,10 @@ export const usageModelLabel = (model: string) =>
 export interface ModelOption {
   id: string;
   label: string;
+  /** 總 context：OpenRouter 的 context_length 與 top_provider.context_length 取小（換幕容量用，CLI 目錄沒有） */
+  context_tokens?: number;
+  /** 供應商輸出上限：top_provider.max_completion_tokens */
+  max_output_tokens?: number;
 }
 
 /** 一起預熱；"api"＝OpenRouter 公開清單，"api-image"＝其中能出圖的，其餘走各自的 CLI */
@@ -49,7 +53,16 @@ export function parseOpenRouterModels(body: unknown): ModelOption[] {
     const id = (entry as { id?: unknown })?.id;
     if (typeof id !== "string" || id === "") return [];
     const name = (entry as { name?: unknown })?.name;
-    return [{ id, label: typeof name === "string" && name !== "" ? name : id }];
+    const option: ModelOption = { id, label: typeof name === "string" && name !== "" ? name : id };
+    const positive = (value: unknown) =>
+      typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
+    const top = (entry as { top_provider?: Record<string, unknown> })?.top_provider;
+    const contexts = [positive((entry as { context_length?: unknown })?.context_length), positive(top?.context_length)]
+      .filter((value): value is number => value !== undefined);
+    if (contexts.length > 0) option.context_tokens = Math.min(...contexts);
+    const maxOutput = positive(top?.max_completion_tokens);
+    if (maxOutput !== undefined) option.max_output_tokens = maxOutput;
+    return [option];
   });
 }
 

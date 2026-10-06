@@ -19,6 +19,7 @@ import { CardInterfaceOverlay } from "../features/card-interface/CardInterfaceOv
 import { MainView } from "./MainView";
 import { Onboarding } from "../features/ai-connection/Onboarding";
 import { PlayView } from "../features/play/PlayView";
+import { useSceneBudget } from "../features/play/useSceneBudget";
 import { CastRail } from "../features/characters/CastRail";
 import { StateBar } from "../features/table-state/StateBar";
 import { TableToolbar } from "./TableToolbar";
@@ -199,6 +200,16 @@ export function AppWorkspace({
     <ErrorNote text={error} transport={transport} onAdvanceScene={() => void advanceScene()} />
   ) : null;
   const errorInComposer = gate !== "repair" && mainView === null;
+  // 換幕容量（範圍 3）
+  const sceneBudget = useSceneBudget(
+    table,
+    scene,
+    chat.events.length,
+    chat.busy || tableOpBusy,
+    config,
+  );
+  // 容量提醒列的換幕鈕與工具列同一個停用條件
+  const canAdvanceScene = gate === "play" && !(chat.busy || tableOpBusy) && chat.events.length > 0;
   const generatingMeta = chat.generating !== null ? characters.metaOf(chat.generating.id) : undefined;
 
   return (
@@ -374,6 +385,9 @@ export function AppWorkspace({
                   onGmNarrate={chat.gmNarrate}
                   onGmAdvance={chat.gmAdvance}
                   errorNote={errorInComposer ? errorNote : null}
+                  sceneBudget={sceneBudget}
+                  onAdvanceScene={() => void advanceScene()}
+                  canAdvanceScene={canAdvanceScene}
                 />
               }
             />

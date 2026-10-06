@@ -273,6 +273,7 @@ fn turn_event(
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
     })
 }
 
@@ -312,6 +313,19 @@ fn land_pending_parts(tx: &CommitTx<'_>) -> DataResult<()> {
         )?;
     }
     Ok(())
+}
+
+/// 換幕容量量測用：上一回合提交了（或中止留下半截）卻還沒落檔的事件與它所屬的幕。
+/// 下一筆新事件之前一定會先代落，所以容量關卡要把它們算進本幕，才不會漏量或在擋下前就寫了檔。
+pub fn unlanded_events(tx: &CommitTx<'_>) -> Vec<(u64, crate::data::TranscriptEvent)> {
+    match turn::turn(tx) {
+        Some(record) if record.phase != Phase::Generating => record
+            .parts
+            .into_iter()
+            .map(|part| (record.scene, part.event))
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// 上一回合有回覆（正文或中止的半截）還沒落檔：那句玩家發言已經有人回了，不能當「沒回成」收掉。

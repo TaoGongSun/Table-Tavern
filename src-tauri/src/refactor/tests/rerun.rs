@@ -215,6 +215,7 @@ fn rerun_status_covers_fresh_ready_played_and_no_source() {
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
         ts: "2026-10-03T10:01:00".to_owned(),
         speaker_id: String::new(),
         speaker_name: "玩家".to_owned(),

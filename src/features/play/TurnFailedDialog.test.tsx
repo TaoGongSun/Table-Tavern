@@ -79,6 +79,47 @@ describe("TurnFailedDialog", () => {
   });
 });
 
+describe("TurnFailedDialog 換幕鈕", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function show(raw: string, onAdvanceScene?: () => void) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <TurnFailedDialog failure={{ raw }} transport="claude" onClose={() => {}} onAdvanceScene={onAdvanceScene} />,
+      ),
+    );
+    const advance = Array.from(document.querySelectorAll("dialog button")).find(
+      (node) => node.textContent === t("sceneAdvance"),
+    ) as HTMLButtonElement | undefined;
+    return { root, advance };
+  }
+
+  it("這一幕太長、換幕容量已滿：附換幕鈕；其他錯誤與沒傳動作都不附", () => {
+    const onAdvanceScene = vi.fn();
+    const tooLong = show("AI_CONTEXT_TOO_LONG: Prompt is too long", onAdvanceScene);
+    act(() => tooLong.advance!.click());
+    expect(onAdvanceScene).toHaveBeenCalledTimes(1);
+    act(() => tooLong.root.unmount());
+    const full = show('TTMSG:{"code":"scene_capacity_full"}', onAdvanceScene);
+    expect(full.advance).toBeDefined();
+    act(() => full.root.unmount());
+    const other = show("AI_HTTP_STATUS_429: slow", onAdvanceScene);
+    expect(other.advance).toBeUndefined();
+    act(() => other.root.unmount());
+    const summaryFailed = show('TTMSG:{"code":"scene_summary_failed"}', onAdvanceScene);
+    expect(summaryFailed.advance).toBeUndefined();
+    act(() => summaryFailed.root.unmount());
+    const noAction = show("AI_CONTEXT_TOO_LONG: x");
+    expect(noAction.advance).toBeUndefined();
+    act(() => noAction.root.unmount());
+  });
+});
+
 describe("nextTurnFailure", () => {
   it("keeps an open failure that carries the player's draft", () => {
     const withDraft = { raw: "a", draft: "我推開門" };

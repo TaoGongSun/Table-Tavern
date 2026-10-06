@@ -104,6 +104,8 @@ export interface TranscriptEvent {
   vars_epoch?: string;
   /** GM 回合落檔的冪等鍵 */
   turn_key?: { turn_id: string; part: string };
+  /** 寫下這則的玩家動作（送出、旁白、推進、點名各一個）；換幕容量預測靠它切段，舊事件沒有 */
+  action_id?: string;
 }
 
 /** `append_player_event` 的回傳：落檔的那則，與它在逐字稿檔裡的起始位元組（收回時的收據） */

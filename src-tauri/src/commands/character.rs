@@ -175,14 +175,7 @@ pub(super) fn load_active_cards(
     root: &std::path::Path,
     world_id: &str,
 ) -> Result<Vec<data::CharacterCard>, String> {
-    data::list_characters(root, world_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .filter(|meta| !meta.archived && !meta.auto_hidden)
-        .map(|meta| {
-            data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string())
-        })
-        .collect()
+    crate::chat_assembly::active_cards(root, world_id)
 }
 
 #[cfg(test)]

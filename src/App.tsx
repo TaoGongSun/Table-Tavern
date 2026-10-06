@@ -945,6 +945,10 @@ function App() {
               failure={turnFailure}
               transport={transport}
               onClose={() => setTurnFailure(null)}
+              onAdvanceScene={() => {
+                setTurnFailure(null);
+                void sceneActions.advanceScene();
+              }}
             />
           )
         }

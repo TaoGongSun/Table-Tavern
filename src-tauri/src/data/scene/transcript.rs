@@ -63,6 +63,10 @@ pub struct TranscriptEvent {
     /// GM 回合落檔的冪等鍵（turn_id＋turn_part），前端重試時靠它認出已提交的那則。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_key: Option<crate::data::message_vars::TurnKey>,
+    /// 寫下這則的玩家動作（送出、旁白、推進、點名、重試各配一個）：換幕容量預測靠它切出每個動作的回覆量。
+    /// 舊事件沒有這欄，預測退回以玩家句切段。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_id: Option<String>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -334,6 +338,7 @@ pub fn append_opening(
             message_vars: table.as_ref().map(message_vars::VarsTable::from_json),
             vars_rev: None,
             turn_key: None,
+            action_id: None,
         };
         let (_, event) = append_transcript_tx(tx, scene, &event)?;
         Ok((event, outcome))
@@ -612,6 +617,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-07-19T10:00:00+08:00".to_owned(),
                 speaker_id: String::new(),
@@ -630,6 +636,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-07-19T10:00:01+08:00".to_owned(),
                 speaker_id: String::new(),
@@ -648,6 +655,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-07-19T10:00:02+08:00".to_owned(),
                 speaker_id: "角色代碼".to_owned(),
@@ -722,6 +730,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: format!("2026-08-01T10:00:0{index}+08:00"),
                 speaker_id: String::new(),
@@ -790,6 +799,7 @@ mod tests {
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
@@ -831,6 +841,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "later".to_owned(),
                 speaker_id: String::new(),
@@ -904,6 +915,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "before".to_owned(),
                 speaker_id: String::new(),
@@ -987,6 +999,7 @@ mod tests {
                     vars_rev: None,
                     vars_epoch: None,
                     turn_key: None,
+                    action_id: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),
@@ -1030,6 +1043,7 @@ mod tests {
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             raw: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
@@ -1112,6 +1126,7 @@ mod tests {
                     vars_rev: None,
                     vars_epoch: None,
                     turn_key: None,
+                    action_id: None,
                     raw: None,
                     ts: "now".to_owned(),
                     speaker_id: String::new(),

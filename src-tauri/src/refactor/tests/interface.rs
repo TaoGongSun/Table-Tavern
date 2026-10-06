@@ -490,6 +490,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 ts: "2026-08-12T10:00:00.000Z".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),

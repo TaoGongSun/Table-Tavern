@@ -2,7 +2,7 @@
 // 關掉前都選得到、複製得走（不另做複製鈕）。
 import { t } from "../../i18n";
 import { Dialog } from "../../shared/ui/Dialog";
-import { AiErrorText } from "../../shared/ui/atoms";
+import { AiErrorText, offersSceneAdvance } from "../../shared/ui/atoms";
 import type { TurnFailure } from "./useChatController";
 
 /** 彈窗還開著且帶玩家原文時，後續失敗不覆寫它——原文關窗前都要拿得到 */
@@ -14,11 +14,15 @@ export function TurnFailedDialog({
   failure,
   transport,
   onClose,
+  onAdvanceScene,
 }: {
   failure: TurnFailure;
   transport?: string;
   onClose: () => void;
+  /** 這一幕太長／換幕容量已滿時，彈窗直接給換幕鈕（關窗並換幕） */
+  onAdvanceScene?: () => void;
 }) {
+  const offerAdvance = onAdvanceScene && offersSceneAdvance(failure.raw, transport);
   return (
     <Dialog
       title={t("turnFailedTitle")}
@@ -26,9 +30,16 @@ export function TurnFailedDialog({
       className="turn-failed-dialog"
       onDismiss={onClose}
       end={
-        <button type="button" className="btn btn-primary" data-autofocus="" onClick={onClose}>
-          {t("closeBtn")}
-        </button>
+        <>
+          {offerAdvance && (
+            <button type="button" className="btn" onClick={onAdvanceScene}>
+              {t("sceneAdvance")}
+            </button>
+          )}
+          <button type="button" className="btn btn-primary" data-autofocus="" onClick={onClose}>
+            {t("closeBtn")}
+          </button>
+        </>
       }
     >
       <p role="alert">

@@ -116,6 +116,91 @@ describe("chat turn failures", () => {
 
   const appendPlayer = (offset = 42): Handler => (args) => ({ event: args.event, offset });
 
+  it("capacity gate: one action id for the player line and its reply; a fresh id per action", async () => {
+    const h = mount({
+      append_player_event: appendPlayer(),
+      chat_with_character: () => ({ text: "回覆", aborted: false }),
+      append_transcript: (args) => args.event,
+    });
+    await typeAndSend(h, "第一句");
+    await typeAndSend(h, "第二句");
+    const ids = h.calls
+      .filter((call) => call.command === "append_player_event" || call.command === "chat_with_character")
+      .map((call) => call.args.actionId);
+    expect(ids).toHaveLength(4);
+    expect(typeof ids[0]).toBe("string");
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[3]).toBe(ids[2]);
+    expect(ids[2]).not.toBe(ids[0]);
+  });
+
+  // 換幕容量預測按動作切段（Rust scene_budget::predict_reply 讀的就是這個 id）：每則事件蓋上所屬動作
+  it("stamps every event an action writes with that action's id; each advance/narrate is its own action", async () => {
+    const h = mount(
+      {
+        append_player_event: appendPlayer(),
+        gm_narrate: () => ({ text: "旁白", raw: null, next: "fox", state_updates: [{ path: "hp", value: "3" }] }),
+        chat_with_character: () => ({ text: "回覆", aborted: false }),
+        append_transcript: (args) => args.event,
+      },
+      { gm: true },
+    );
+    await typeAndSend(h, "我推開門");
+    await act(async () => h.chat().gmAdvance());
+    await act(async () => h.chat().gmAdvance());
+    await act(async () => h.chat().gmNarrate());
+    const written = h.calls
+      .filter((call) => call.command === "append_player_event" || call.command === "append_transcript")
+      .map((call) => call.args.event as TranscriptEvent);
+    const gates = h.calls
+      .filter((call) => call.command === "append_player_event" || call.command === "gm_narrate")
+      .map((call) => call.args.actionId);
+    // 送出：玩家句＋旁白＋狀態更新；兩次推進：旁白＋狀態更新＋點名＋角色接話；一次旁白＋狀態更新
+    expect(written.map((event) => event.marker?.type ?? event.kind)).toEqual([
+      "player", "narration", "state_update",
+      "narration", "state_update", "gm_call", "dialogue",
+      "narration", "state_update", "gm_call", "dialogue",
+      "narration", "state_update",
+    ]);
+    const ids = written.map((event) => event.action_id);
+    expect(ids.every((id) => typeof id === "string")).toBe(true);
+    expect(new Set(ids.slice(0, 3))).toEqual(new Set([gates[0]]));
+    expect(new Set(ids.slice(3, 7))).toEqual(new Set([gates[2]]));
+    expect(new Set(ids.slice(7, 11))).toEqual(new Set([gates[3]]));
+    expect(new Set(ids.slice(11))).toEqual(new Set([gates[4]]));
+    expect(new Set([ids[0], ids[3], ids[7], ids[11]]).size).toBe(4);
+  });
+
+  it("each 'ask them to speak' is its own action: the reply carries the id the gate saw", async () => {
+    const h = mount({
+      chat_with_character: () => ({ text: "回覆", aborted: false }),
+      append_transcript: (args) => args.event,
+    });
+    await act(async () => h.chat().replyFromTarget());
+    await act(async () => h.chat().replyFromTarget());
+    const gates = h.calls.filter((call) => call.command === "chat_with_character").map((call) => call.args.actionId);
+    const ids = h.calls
+      .filter((call) => call.command === "append_transcript")
+      .map((call) => (call.args.event as TranscriptEvent).action_id);
+    expect(gates).toHaveLength(2);
+    expect(ids).toEqual(gates);
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  it("capacity gate refuses before the line lands: raw text goes back to the composer, no discard", async () => {
+    const h = mount({
+      append_player_event: () => {
+        throw 'TTMSG:{"code":"scene_capacity_full"}';
+      },
+    });
+    await typeAndSend(h, "塞不下的一句");
+    expect(h.chat().input).toBe("塞不下的一句");
+    expect(h.count("discard_unanswered_player")).toBe(0);
+    expect(h.count("chat_with_character")).toBe(0);
+    expect(h.failures).toHaveLength(1);
+    expect(h.failures[0].draft).toBeUndefined();
+  });
+
   it("discards the unanswered line and puts the raw text back (character)", async () => {
     const h = mount({
       append_player_event: appendPlayer(),

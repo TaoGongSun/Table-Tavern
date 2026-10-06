@@ -259,6 +259,7 @@ fn rename_keeps_paths_and_preserves_transcript_snapshot() {
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             raw: None,
             ts: "2026-07-27 12:00".to_owned(),
             speaker_id: card.id.clone(),

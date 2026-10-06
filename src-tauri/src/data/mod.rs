@@ -94,6 +94,18 @@ pub(crate) use format::{remove_reset_build_root, replace_world_from_build, reset
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]
 pub use state::SceneLabel;
+
+/// 換幕容量收據的世代（單調遞增、全 app 共用）：換幕、退回、分岔、重寫前情提要、改設定都推進一格，
+/// 之前發出的動作收據一律作廢——只比幕號與設定指紋，退回再進同一幕或設定 A→B→A 會讓舊收據復活。
+static CAPACITY_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn capacity_epoch() -> u64 {
+    CAPACITY_EPOCH.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub(crate) fn bump_capacity_epoch() {
+    CAPACITY_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
 #[cfg(test)]
 pub(crate) use world_lock::run_gated_local;
 

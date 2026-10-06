@@ -1,3 +1,4 @@
+mod chat_assembly;
 mod cli;
 mod commands;
 mod data;
@@ -15,6 +16,7 @@ mod receipts;
 mod refactor;
 mod refactor_ai;
 mod refactor_assemble;
+mod scene_budget;
 mod smart_free;
 mod transport;
 mod ui_msg;
@@ -191,6 +193,7 @@ pub fn run() {
             commands::chat::keepalive_lanes,
             commands::settings::usage_report,
             commands::scene::advance_scene,
+            commands::scene::scene_budget,
             commands::scene::revert_scene,
             commands::scene::fork_scene,
             commands::scene::regenerate_scene_summary,
@@ -336,6 +339,7 @@ mod command_classification {
         "refactor_survey",
         "refactor_table_mode",
         "scene_appearances",
+        "scene_budget",
         "world_has_state_bar",
     ];
 

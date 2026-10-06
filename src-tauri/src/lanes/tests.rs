@@ -204,6 +204,7 @@ fn event(kind: TranscriptKind, speaker_id: &str, name: &str, text: &str) -> Tran
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
         raw: None,
         ts: "2026-08-03T21:00:00+08:00".to_owned(),
         speaker_id: speaker_id.to_owned(),

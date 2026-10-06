@@ -116,6 +116,10 @@ pub enum UiMsg {
     SceneEmptyCannotAdvance,
     /// 換幕摘要（含分段）最終沒做成；原紀錄不動。不附換幕鈕——按了只會重跑同一條路
     SceneSummaryFailed,
+    /// 換幕容量已滿：再送一句換幕就無法一次整理（範圍 3 的鎖）。附換幕鈕
+    SceneCapacityFull,
+    /// 玩家按停止，換幕／重寫提要沒做；原紀錄不動
+    SceneSummaryStopped,
     PreviousSceneEmpty,
     TranscriptEmpty,
     SceneNotFound {

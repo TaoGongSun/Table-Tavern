@@ -177,6 +177,24 @@ pub async fn prepare_call(
     })
 }
 
+pub use select::RESERVED_OUTPUT_TOKENS;
+
+/// 換幕容量提醒用：目前排得到的穩定候選（已扣冷卻與排除，同 plan_from_disk 的 lineup）中最大的 context。
+/// 沒 key、沒快取、沒有候選都回 None——拿不到就不提醒。
+pub fn candidate_max_context(root: &Path, config: &AppConfig) -> Option<u64> {
+    let key = api_key(config)?;
+    let cache = store::read_cache(root);
+    let catalog = cache.catalog_for(&fingerprint(key))?;
+    let now = now_secs();
+    let (lineup, _) = ranking(&cache, catalog, now);
+    let ids = lineup.ids();
+    catalog
+        .iter()
+        .filter(|model| ids.contains(&model.id))
+        .map(|model| model.context_length)
+        .max()
+}
+
 /// 取票當下的權威選模素材：重讀磁碟上的設定與快取（不連網、不 await）。`sending` 是這次呼叫
 /// 實際用來送出的設定；與磁碟最新設定不同時 `matches_sender = false`，結果一律不計。
 pub fn plan_from_disk(

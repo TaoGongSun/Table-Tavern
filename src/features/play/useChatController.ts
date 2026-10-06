@@ -16,6 +16,7 @@ import {
 import { AppConfig, PlayerAppend, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../characters/card-model";
 import { parseMarker } from "../../shared/ui/event-text";
+import { backendCode } from "../../shared/ui/backend-text";
 
 /** 有本文，或帶已知標頭代碼（點名事件本文本來就空）才算有內容；空白回合不落地、不放回 */
 function hasContent(event: TranscriptEvent): boolean {
@@ -99,12 +100,12 @@ export interface ChatController {
   gmAdvance: () => Promise<void>;
   /** 請目前的發言對象接話 */
   replyFromTarget: () => Promise<void>;
-  /** 這輪是對話或旁白，送出鍵要換成停止。換幕摘要不算，它沒有可中止的 turn。 */
+  /** 這輪是對話、旁白或換幕整理，送出鍵要換成停止。 */
   canStop: boolean;
   /** 唯一的中止入口。記下目前 turn_id 再請後端只打那一輪。 */
   stopResponse: () => void;
-  /** 換幕這類 App 自己跑的長工作：期間畫面顯示 GM 正在生成 */
-  beginNarration: () => void;
+  /** 換幕這類 App 自己跑的長工作：期間畫面顯示 GM 正在生成；回傳這次的 turn id，停止鈕據此中止 */
+  beginNarration: () => string;
   endNarration: () => void;
   /** 玩家真的推進了一步：保溫節奏重新開始，離開提示收掉 */
   noteTurnDone: () => void;
@@ -208,6 +209,9 @@ export function useChatController({
   const busyRef = useRef(false);
   const stopRequested = useRef(false);
   const turnIdRef = useRef<string | null>(null);
+  // 換幕容量關卡的動作收據（scene_budget::gate）：一個玩家動作（送出、請某某發言、旁白、推進）
+  // 一個 id，玩家句與其後所有回覆都帶同一個，後端同一動作只算一次容量
+  const actionIdRef = useRef<string | null>(null);
   const [notices, setNotices] = useState<(ChatNotice & { gen: number })[]>([]);
   const [canStop, setCanStop] = useState(false);
 
@@ -387,13 +391,15 @@ export function useChatController({
       // 用後端回傳的那份（快照已補好）進畫面：收回後要復原時，送回去的事件才帶著當時的
       // 檯面值，狀態欄跟著回到那一刻
       let stamped: TranscriptEvent;
+      // 動作中寫下的每一則都蓋上這個動作的 id：後端換幕容量預測靠它切出每個動作的回覆量
+      const action = actionIdRef.current;
       const endWrite = beginWrite();
       try {
         try {
           stamped = await invoke<TranscriptEvent>("append_transcript", {
             worldId,
             scene,
-            event,
+            event: action ? { ...event, action_id: action } : event,
             turnId: turn?.turnId ?? null,
             turnPart: turn?.part ?? null,
           });
@@ -607,6 +613,7 @@ export function useChatController({
         characterId,
         turnId,
         onDelta,
+        actionId: actionIdRef.current,
       });
       // 角色回合開始時後端代落了上一輪沒落成的 GM 正文：重讀逐字稿對齊
       if (mainLost.current) {
@@ -650,6 +657,7 @@ export function useChatController({
     async (characterId: string) => {
       if (!characterId || busyRef.current) return;
       busyRef.current = true;
+      actionIdRef.current = crypto.randomUUID();
       appendFailed.current = false;
       const started = generation.current;
       onError("");
@@ -660,6 +668,7 @@ export function useChatController({
         await failTurn(reason, started);
       } finally {
         busyRef.current = false;
+        actionIdRef.current = null;
         turnIdRef.current = null;
         setCanStop(false);
         setGenerating(null);
@@ -713,6 +722,7 @@ export function useChatController({
       worldId,
       turnId,
       onDelta,
+      actionId: actionIdRef.current,
     });
     if (mainLost.current) {
       mainLost.current = false;
@@ -774,6 +784,7 @@ export function useChatController({
   const gmNarrate = useCallback(async () => {
     if (busyRef.current) return;
     busyRef.current = true;
+    actionIdRef.current = crypto.randomUUID();
     appendFailed.current = false;
     const started = generation.current;
     onError("");
@@ -784,6 +795,7 @@ export function useChatController({
       await failTurn(reason, started);
     } finally {
       busyRef.current = false;
+      actionIdRef.current = null;
       turnIdRef.current = null;
       setCanStop(false);
       setGenerating(null);
@@ -795,6 +807,7 @@ export function useChatController({
   const gmAdvance = useCallback(async () => {
     if (!config || busyRef.current || castCount === 0) return;
     busyRef.current = true;
+    actionIdRef.current = crypto.randomUUID();
     appendFailed.current = false;
     const started = generation.current;
     onError("");
@@ -822,6 +835,7 @@ export function useChatController({
       await failTurn(reason, started);
     } finally {
       busyRef.current = false;
+      actionIdRef.current = null;
       turnIdRef.current = null;
       setCanStop(false);
       setGenerating(null);
@@ -851,6 +865,7 @@ export function useChatController({
         return;
       }
       busyRef.current = true;
+      actionIdRef.current = crypto.randomUUID();
       appendFailed.current = false;
       const started = generation.current;
       onError("");
@@ -865,7 +880,8 @@ export function useChatController({
           placed = await invoke<PlayerAppend>("append_player_event", {
             worldId,
             scene,
-            event: { ts: nowTs(), speaker_id: "", speaker_name: playerName ?? "", kind: "player", text },
+            event: { ts: nowTs(), speaker_id: "", speaker_name: playerName ?? "", kind: "player", text, action_id: actionIdRef.current ?? undefined },
+            actionId: actionIdRef.current,
           });
         } catch (reason) {
           appendFailed.current = true;
@@ -900,6 +916,12 @@ export function useChatController({
           await failTurn(reason, started);
           return;
         }
+        // 換幕容量關卡在落玩家句之前就擋下：句子沒落檔，原文放回輸入框，換完幕還送得出去
+        if (!placed && backendCode(reason) === "scene_capacity_full") {
+          if (generation.current === started) setInput(raw);
+          await failTurn(reason, started);
+          return;
+        }
         let discarded = false;
         if (placed && generation.current === started) {
           const shown = placed.event;
@@ -927,6 +949,7 @@ export function useChatController({
       } finally {
         endWrite();
         busyRef.current = false;
+        actionIdRef.current = null;
         turnIdRef.current = null;
         setCanStop(false);
         setGenerating(null);
@@ -950,12 +973,19 @@ export function useChatController({
   // 換幕／重生摘要跑在 App 那頭，但畫面上那段「GM 正在生成」屬於這裡
   const beginNarration = useCallback(() => {
     busyRef.current = true;
+    stopRequested.current = false;
+    const turnId = crypto.randomUUID();
+    turnIdRef.current = turnId;
+    setCanStop(true);
     setGenerating({ id: "", kind: "narration" });
     setStreamText("");
+    return turnId;
   }, []);
 
   const endNarration = useCallback(() => {
     busyRef.current = false;
+    turnIdRef.current = null;
+    setCanStop(false);
     setGenerating(null);
     setStreamText("");
   }, []);

@@ -3,9 +3,11 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { PlayView } from "./PlayView";
+import { t } from "../../i18n";
+import type { SceneBudgetReply } from "./scene-budget";
 import type { ChatNotice } from "./useChatController";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -143,5 +145,81 @@ describe("PlayView 免費模型換模提示行", () => {
     expect(host.querySelectorAll(".message-system")).toHaveLength(2);
     act(() => root.unmount());
     host.remove();
+  });
+});
+
+describe("PlayView 換幕容量", () => {
+  const budget = (used: number, cap: number, gReply: number, hint: boolean, chatHint = false): SceneBudgetReply => ({
+    worldId: "w1",
+    configGen: "g",
+    configTag: "t",
+    requestSeq: 1,
+    scene: 0,
+    summary: { unit: "bytes", used, cap, hint, ratio: 1, reliable: true, lockable: true, gReply, over: false },
+    chatHint,
+  });
+
+  function render(sceneBudget: SceneBudgetReply | null, input: string, onAdvanceScene = vi.fn()) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const base = view(story("r1"));
+    act(() =>
+      root.render(
+        <PlayView
+          {...base.props}
+          speaker="c1"
+          targetName="甲"
+          input={input}
+          sceneBudget={sceneBudget}
+          onAdvanceScene={onAdvanceScene}
+          canAdvanceScene
+        />,
+      ),
+    );
+    const button = (label: string) =>
+      Array.from(host.querySelectorAll("button")).find((node) => node.textContent?.includes(label));
+    return { host, root, button, onAdvanceScene };
+  }
+
+  it("換幕觸發的提醒帶「現在換幕」鈕，按下就換幕；不擋任何動作", () => {
+    const { host, root, button, onAdvanceScene } = render(budget(800, 1000, 50, true), "");
+    expect(host.querySelector(".scene-capacity-hint")?.textContent).toContain(t("sceneCapacitySummaryHint"));
+    act(() => button(t("sceneAdvanceNow"))!.click());
+    expect(onAdvanceScene).toHaveBeenCalledTimes(1);
+    expect(button(t("gmNarrate"))!.hasAttribute("disabled")).toBe(false);
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("只因聊天觸發用中性文案", () => {
+    const { host, root } = render(budget(10, 1000, 50, false, true), "");
+    expect(host.querySelector(".scene-capacity-hint")?.textContent).toContain(t("sceneCapacityChatHint"));
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("打字跨過門檻當下鎖送出、刪字解鎖；無玩家句的動作看本句 0", () => {
+    // 900＋36＝936；本句「ab」＝66 → 1002 > 1000 鎖送出；空輸入 936 ≤ 1000 動作照常
+    const send = () =>
+      Array.from(document.querySelectorAll("button[type=submit]")).pop() as HTMLButtonElement;
+    const typed = render(budget(900, 1000, 36, true), "ab");
+    expect(send().disabled).toBe(true);
+    expect(typed.host.querySelector(".scene-capacity-hint.is-full")?.textContent).toContain(t("sceneCapacityFull"));
+    expect(typed.button(t("gmNarrate"))!.hasAttribute("disabled")).toBe(false);
+    act(() => typed.root.unmount());
+    typed.host.remove();
+    const cleared = render(budget(900, 1000, 36, true), "");
+    expect(send().disabled).toBe(false);
+    act(() => cleared.root.unmount());
+    cleared.host.remove();
+    // 連無玩家句的動作都塞不下：旁白、推進、請某某發言全停，換幕鈕照常
+    const full = render(budget(990, 1000, 36, true), "");
+    expect(full.button(t("gmNarrate"))!.hasAttribute("disabled")).toBe(true);
+    expect(full.button(t("gmAdvance"))!.hasAttribute("disabled")).toBe(true);
+    expect(full.button(t("requestReplyShort"))!.hasAttribute("disabled")).toBe(true);
+    expect(full.button(t("sceneAdvance"))!.hasAttribute("disabled")).toBe(false);
+    act(() => full.root.unmount());
+    full.host.remove();
   });
 });

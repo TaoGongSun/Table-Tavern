@@ -446,6 +446,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
     let cli_working_dir = cli_workspace(app)?;
     let prompt_dir = cli_prompt_dir(app)?;
 
+    // 換幕摘要那次要拿實報的總輸入做估計校正（scene_budget）；其他單發沒有探針
+    let summary_probe = crate::scene_budget::summary_probe();
     let (system, prompt) = cli::flatten_messages(
         assistant_label,
         cli_closing,
@@ -477,11 +479,12 @@ pub(crate) async fn stream_turn_reporting_truncation(
                     parse: cli::parse_claude_usage,
                     lane: None,
                     shape,
-                    prompt_tokens_out: None,
+                    prompt_tokens_out: summary_probe.as_ref().map(|probe| &probe.prompt_tokens),
                     conversation_id_out: None,
                     expected_conversation_id: None,
                     agy_usage_base: None,
                     agy_usage_out: None,
+                    identity_out: summary_probe.as_ref().map(|probe| &probe.identity),
                 }),
                 emit,
             )
@@ -508,11 +511,12 @@ pub(crate) async fn stream_turn_reporting_truncation(
                     parse: cli::parse_codex_usage,
                     lane: None,
                     shape,
-                    prompt_tokens_out: None,
+                    prompt_tokens_out: summary_probe.as_ref().map(|probe| &probe.prompt_tokens),
                     conversation_id_out: None,
                     expected_conversation_id: None,
                     agy_usage_base: None,
                     agy_usage_out: None,
+                    identity_out: summary_probe.as_ref().map(|probe| &probe.identity),
                 }),
                 emit,
             )
@@ -523,7 +527,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
             // 走 stream-json（agy_args 帶旗標）才拿得到含 cache_read_tokens 的用量。
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             // 正文走 stdin（不帶 -p 就是單發模式），不佔命令列長度
-            let combined = format!("{system}\n\n{prompt}");
+            let combined = cli::agy_body(&system, &prompt);
             let args = cli::agy_args(model, allow_cli_tools);
             cli::run_cli(
                 &program,
@@ -541,11 +545,12 @@ pub(crate) async fn stream_turn_reporting_truncation(
                     parse: cli::parse_agy_usage,
                     lane: None,
                     shape,
-                    prompt_tokens_out: None,
+                    prompt_tokens_out: summary_probe.as_ref().map(|probe| &probe.prompt_tokens),
                     conversation_id_out: None,
                     expected_conversation_id: None,
                     agy_usage_base: None,
                     agy_usage_out: None,
+                    identity_out: summary_probe.as_ref().map(|probe| &probe.identity),
                 }),
                 emit,
             )
@@ -583,11 +588,12 @@ pub(crate) async fn stream_turn_reporting_truncation(
                     parse: cli::parse_grok_usage,
                     lane: None,
                     shape,
-                    prompt_tokens_out: None,
+                    prompt_tokens_out: summary_probe.as_ref().map(|probe| &probe.prompt_tokens),
                     conversation_id_out: None,
                     expected_conversation_id: None,
                     agy_usage_base: None,
                     agy_usage_out: None,
+                    identity_out: summary_probe.as_ref().map(|probe| &probe.identity),
                 }),
                 emit,
             )

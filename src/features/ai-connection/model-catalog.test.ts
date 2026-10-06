@@ -28,6 +28,27 @@ describe("parseOpenRouterModels", () => {
     ]);
   });
 
+  it("帶出換幕容量用的 context：模型與 top_provider 取小、輸出上限；缺或不合理就不帶", () => {
+    expect(
+      parseOpenRouterModels({
+        data: [
+          {
+            id: "a/x",
+            name: "X",
+            context_length: 200000,
+            top_provider: { context_length: 131072, max_completion_tokens: 8192 },
+          },
+          { id: "a/y", context_length: 64000, top_provider: { context_length: null } },
+          { id: "a/z", context_length: "big" },
+        ],
+      }),
+    ).toEqual([
+      { id: "a/x", label: "X", context_tokens: 131072, max_output_tokens: 8192 },
+      { id: "a/y", label: "a/y", context_tokens: 64000 },
+      { id: "a/z", label: "a/z" },
+    ]);
+  });
+
   it("回應不成形狀就回空陣列，不炸掉預熱", () => {
     expect(parseOpenRouterModels(null)).toEqual([]);
     expect(parseOpenRouterModels({})).toEqual([]);

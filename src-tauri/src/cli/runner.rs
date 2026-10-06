@@ -327,6 +327,33 @@ async fn drive_child(
         }
         if let Some(log) = &usage_log {
             if let Some(mut usage) = (log.parse)(&line) {
+                // claude 回報實際模型身分與容量：換幕容量判定的上限來源（計畫 §3.4）
+                // 辨識不了（多個或都對不上）：這組容量與校正不再可信，整筆作廢（只提醒不鎖）
+                if log.transport == "claude" {
+                    let capacity_file = log.path.with_file_name("model-capacity.json");
+                    match crate::scene_budget::claude_model_usage(&line, log.model) {
+                        Some((model_id, context, max_output)) => {
+                            crate::scene_budget::record_model(
+                                &capacity_file,
+                                log.transport,
+                                log.model,
+                                &model_id,
+                                context,
+                                max_output,
+                            );
+                            if let Some(slot) = log.identity_out {
+                                if let Ok(mut identity) = slot.lock() {
+                                    *identity = Some(model_id);
+                                }
+                            }
+                        }
+                        None => crate::scene_budget::forget_model(
+                            &capacity_file,
+                            log.transport,
+                            log.model,
+                        ),
+                    }
+                }
                 #[cfg(feature = "test-harness")]
                 let mut harness_agy = serde_json::Value::Null;
                 if log.transport == "agy" {

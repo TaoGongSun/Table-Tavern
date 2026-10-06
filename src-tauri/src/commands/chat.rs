@@ -1,10 +1,13 @@
+#[cfg(test)]
+use crate::chat_assembly::gm_turn_instruction;
+use crate::chat_assembly::{self, gm_materials, GmMaterials};
 use crate::commands::character::load_active_cards;
 use crate::transport::dispatch::{
     ai_call_failure, chat_transport, lane_provider, prepare_lane_call,
     stream_turn_reporting_truncation, stream_turn_via_transport,
 };
 use crate::usage::log as usage_log;
-use crate::{config_root, data, data_root, import, inflight, lanes, mechanism, transport};
+use crate::{config_root, data, data_root, inflight, lanes, mechanism, transport};
 use serde::Serialize;
 
 /// 角色對話的回傳。`aborted` 為真時 `text` 是停止當下已經吐出的半截，可能是空的。
@@ -70,11 +73,21 @@ pub(crate) async fn chat_with_character(
     character_id: String,
     turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
+    action_id: Option<String>,
 ) -> Result<ChatReply, String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
     let buffer = std::sync::Mutex::new(String::new());
     let root = data_root(&app)?;
+    // 換幕容量鎖：排在代落上一回合待落正文之前（待落的已算進本幕），擋下就什麼都不寫。
+    // 同一動作已在落玩家句時通過就不重扣（scene_budget::gate）
+    crate::scene_budget::check_capacity(
+        &config_root(&app)?,
+        &root,
+        &world_id,
+        action_id.as_deref(),
+        "",
+    )?;
     // 回合交接（計畫 8.4）：上一個 GM 回合提交了正文卻沒落檔，先由後端代落；GM 還在生成就擋
     data::state_commit::with_commit(&root, &world_id, data::message_vars::settle_previous_turn)
         .map_err(|error| error.to_string())?;
@@ -102,22 +115,17 @@ pub(crate) async fn chat_with_character(
         let hoist = provider == lanes::LaneProvider::Agy;
         let lang = transport::ui_language(&config);
         let cards = load_active_cards(&root, &world_id)?;
-        let mut frozen = transport::chars_lane_system(&cards, player.as_ref(), &worldbook, &lang);
-        let turn = transport::chars_lane_turn(
+        let (frozen, turn) = chat_assembly::character_lane_parts(
             &card,
+            &cards,
             player.as_ref(),
             &events,
             &worldbook,
-            &state.state,
-            &state.mechanism,
+            &state,
             branch.as_deref(),
             &lang,
             hoist,
         );
-        if let Some(private) = &turn.hoisted_private {
-            frozen.push('\n');
-            frozen.push_str(private);
-        }
         let call = prepare_lane_call(&app, &config, card.tier, provider).await?;
         let outcome = lanes::run_turn(
             &call,
@@ -210,88 +218,6 @@ fn load_hidden_cards(
         .collect()
 }
 
-/// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
-/// 單發組裝與 claude lane 續聊共用同一份素材。
-struct GmMaterials {
-    world_md: String,
-    worldbook: Vec<data::WorldbookEntry>,
-    state: data::WorldState,
-    events: Vec<data::TranscriptEvent>,
-    cards: Vec<data::CharacterCard>,
-    player: Option<data::CharacterCard>,
-}
-
-fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, String> {
-    let mut state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
-    // 數字欄更新策略算這一次：提示詞與這一輪的提交（turn.commit）都用這一份
-    state.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &state);
-    let events = data::read_transcript(root, world_id, state.current_scene)
-        .map_err(|error| error.to_string())?;
-    Ok(GmMaterials {
-        world_md: data::read_world_md(root, world_id).map_err(|error| error.to_string())?,
-        worldbook: data::read_worldbook(root, world_id).map_err(|error| error.to_string())?,
-        state,
-        events,
-        cards: load_active_cards(root, world_id)?,
-        player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
-    })
-}
-
-/// 這一輪 GM 回合尾的導演指示與收尾句（四態見 transport::GmTurnFormat）：
-/// - 卡片自帶介面、還沒被 App 接管：讓路給卡片自己規定的輸出格式——格式條目全文真的在本輪
-///   提示裡才點名它（CardFormat），否則用不指向缺席格式的中性版（CardFormatAbsent）；
-/// - 介面已由 App 接管（桌上有重構產的介面骨架）：正文＋只寫變動的 `<UpdateVariable>`，不要 ```state
-///   圍欄——再叫它照卡片格式就是要它每回合重印整份狀態區塊，要圍欄又和 system 的增量協定互斥
-///   （refactor-statusbar-skeleton 實測都踩過）；
-/// - 其餘：一般旁白＋```state 圍欄。
-fn gm_turn_instruction(
-    root: &std::path::Path,
-    world_id: &str,
-    materials: &GmMaterials,
-    roster: &[String],
-    player_name: Option<&str>,
-    lang: &str,
-) -> (transport::ChatMessage, &'static str) {
-    let card_scripts: Vec<import::InterfaceScript> = import::read_card_interfaces(root, world_id)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|interface| interface.unsupported.is_none())
-        .flat_map(|interface| interface.scripts)
-        .collect();
-    let has_interface_shell = data::read_interface_shell(root, world_id)
-        .ok()
-        .flatten()
-        .is_some_and(|shell| !shell.trim().is_empty());
-    match transport::gm_turn_format(
-        !card_scripts.is_empty(),
-        has_interface_shell,
-        materials.state.refactor_mode.as_deref(),
-    ) {
-        transport::GmTurnFormat::CardFormat | transport::GmTurnFormat::CardFormatAbsent => {
-            // 只點名全文真的進得了本輪提示的格式條目；找不到就用中性版（指示與收尾句同一判定）
-            let prompt_entries =
-                transport::gm_prompt_full_entries(&materials.worldbook, &materials.events, lang);
-            let entry_title = import::card_format_entry(&card_scripts, &prompt_entries);
-            transport::card_format_turn(lang, entry_title.as_deref())
-        }
-        transport::GmTurnFormat::InterfaceTakeover => {
-            let instruction_message = transport::takeover_instruction(lang, roster, player_name);
-            let closing = transport::gm_closing(
-                transport::GmTurnFormat::InterfaceTakeover,
-                !roster.is_empty(),
-                lang,
-            );
-            (instruction_message, closing)
-        }
-        transport::GmTurnFormat::Narration => {
-            let instruction_message = transport::narrate_instruction(lang, roster, player_name);
-            let closing =
-                transport::gm_closing(transport::GmTurnFormat::Narration, !roster.is_empty(), lang);
-            (instruction_message, closing)
-        }
-    }
-}
-
 /// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
 /// （keyword 條目＋狀態＋導演指示）。narrate 與 suggest 共用，差別只在指示與 echo。
 #[allow(clippy::too_many_arguments)]
@@ -309,24 +235,7 @@ async fn gm_lane_reply(
     cancel: Option<&mut inflight::CancelSignal>,
     emit: impl FnMut(&str),
 ) -> Result<lanes::TurnOutcome, String> {
-    let frozen = transport::gm_lane_system(
-        &materials.world_md,
-        &materials.cards,
-        materials.player.as_ref(),
-        &materials.worldbook,
-        &materials.state.mechanism,
-        lang,
-    );
-    let turn = transport::gm_lane_turn(
-        &materials.events,
-        &materials.worldbook,
-        materials.player.as_ref(),
-        &materials.state.state,
-        &materials.state.mechanism,
-        scope,
-        instruction,
-        lang,
-    );
+    let (frozen, tail) = chat_assembly::gm_lane_parts(materials, scope, instruction, lang);
     let call = prepare_lane_call(app, config, transport::gm_tier(config), provider).await?;
     lanes::run_turn(
         &call,
@@ -338,7 +247,7 @@ async fn gm_lane_reply(
             events: &materials.events,
             lang,
             frozen_system: frozen,
-            tail: turn.tail,
+            tail,
             confidential: None,
             prefix: None,
             echo,
@@ -403,6 +312,7 @@ pub(crate) async fn gm_narrate(
     world_id: String,
     turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
+    action_id: Option<String>,
 ) -> Result<GmNarration, String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
@@ -410,6 +320,14 @@ pub(crate) async fn gm_narrate(
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
+    // 換幕容量鎖：開回合紀錄之前擋，擋下就什麼都不寫
+    crate::scene_budget::check_capacity(
+        &config_root(&app)?,
+        &root,
+        &world_id,
+        action_id.as_deref(),
+        "",
+    )?;
     // 回合開始（鎖內）：記回合紀錄與固定輸入；中止、出錯時 TurnGuard 把它改成已中止（計畫 8.3）
     let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
     let materials = gm_materials(&root, &world_id)?;
@@ -420,18 +338,9 @@ pub(crate) async fn gm_narrate(
         .collect();
     let player_name = materials.player.as_ref().map(|card| card.name.as_str());
     // 換幕後第一輪 GM 回合送整棵樹對齊；之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
-    let align = materials.state.mechanism.incremental
-        && materials.state.aligned_scene != Some(materials.state.current_scene);
-    let scope = transport::state_scope(
-        &materials.state.state,
-        &materials.state.mechanism,
-        &materials.cards,
-        materials.player.as_ref(),
-        &materials.state.branch_bindings,
-        align,
-    );
+    let (scope, align) = chat_assembly::gm_scope(&materials);
     let (instruction_message, closing) =
-        gm_turn_instruction(&root, &world_id, &materials, &roster, player_name, &lang);
+        chat_assembly::gm_instruction(&root, &world_id, &materials, &lang);
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     // 這一次 GM 呼叫的回覆有沒有被供應商截斷（只認這次呼叫自己回報的，同桌別的呼叫碰不到）
     let cut = std::sync::atomic::AtomicBool::new(false);
@@ -458,18 +367,7 @@ pub(crate) async fn gm_narrate(
         }
         outcome.text
     } else {
-        let mut messages = transport::assemble_gm_messages(
-            &materials.world_md,
-            &materials.cards,
-            materials.player.as_ref(),
-            &materials.events,
-            &materials.worldbook,
-            &materials.state.state,
-            &materials.state.mechanism,
-            &scope,
-            &lang,
-        );
-        messages.push(instruction_message);
+        let messages = chat_assembly::gm_messages(&materials, &scope, instruction_message, &lang);
         // GM 上下文一律全卡，與「這輪誰說話」無關，形狀恆為共線
         let spoken = take_abort_or_finish(&mut cancel, &buffer, async {
             let (text, truncated) = stream_turn_reporting_truncation(
@@ -582,6 +480,7 @@ pub(crate) async fn gm_narrate(
             &display,
             user_name,
             Some(&turn.ticket),
+            action_id.as_deref(),
         );
         // 角色卡自動回歸（AI 卡重構包 4b）：鏡射人物登場，鍵換成卡名；
         // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）。
@@ -596,6 +495,7 @@ pub(crate) async fn gm_narrate(
                 &display,
                 user_name,
                 Some(&turn.ticket),
+                action_id.as_deref(),
             );
         }
     }
@@ -721,16 +621,22 @@ pub(crate) fn chat_abort(world_id: String, turn_id: String) {
 }
 
 /// 登場紀錄：GM 回合提交後的附屬追加帶回合憑證（不交接，排在正文前）；沒有憑證就是一般新事件。
+/// `action`：觸發這回合的玩家動作，蓋在事件上供換幕容量預測切段。
 fn append_arrival(
     root: &std::path::Path,
     world_id: &str,
     scene: u64,
     event: &data::TranscriptEvent,
     turn: Option<&data::message_vars::TurnTicket>,
+    action: Option<&str>,
 ) -> data::DataResult<u64> {
+    let event = data::TranscriptEvent {
+        action_id: action.map(str::to_owned),
+        ..event.clone()
+    };
     match turn {
-        Some(ticket) => data::append_within_turn(root, world_id, scene, event, ticket),
-        None => data::append_transcript(root, world_id, scene, event),
+        Some(ticket) => data::append_within_turn(root, world_id, scene, &event, ticket),
+        None => data::append_transcript(root, world_id, scene, &event),
     }
 }
 
@@ -751,6 +657,7 @@ fn record_person_arrivals(
     reply_body: &str,
     user_name: &str,
     turn: Option<&data::message_vars::TurnTicket>,
+    action: Option<&str>,
 ) -> Vec<String> {
     let already = data::appeared_person_titles(events);
     let arrivals = transport::detect_new_arrivals(worldbook, present, reply_body, &already);
@@ -767,6 +674,7 @@ fn record_person_arrivals(
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             ts: ts.clone(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -779,7 +687,7 @@ fn record_person_arrivals(
             marker: Some(marker),
             opening: false,
         };
-        if append_arrival(root, world_id, scene, &event, turn).is_ok() {
+        if append_arrival(root, world_id, scene, &event, turn, action).is_ok() {
             titles.push(entry.title.clone());
         }
     }
@@ -804,6 +712,7 @@ fn record_card_arrivals(
     reply_body: &str,
     user_name: &str,
     turn: Option<&data::message_vars::TurnTicket>,
+    action: Option<&str>,
 ) -> Vec<String> {
     let already = data::appeared_card_names(events);
     let arrivals = transport::detect_new_card_arrivals(hidden_cards, present, reply_body, &already);
@@ -819,6 +728,7 @@ fn record_card_arrivals(
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             ts: ts.clone(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),
@@ -833,12 +743,21 @@ fn record_card_arrivals(
         };
     for card in arrivals {
         if let Some(private) = transport::card_private(card, user_name) {
-            if append_arrival(root, world_id, scene, &system_event(private, true), turn).is_err() {
+            if append_arrival(
+                root,
+                world_id,
+                scene,
+                &system_event(private, true),
+                turn,
+                action,
+            )
+            .is_err()
+            {
                 continue;
             }
         }
         let event = system_event(transport::card_arrival(card, user_name), false);
-        if append_arrival(root, world_id, scene, &event, turn).is_ok() {
+        if append_arrival(root, world_id, scene, &event, turn, action).is_ok() {
             ids.push(card.id.clone());
         }
     }
@@ -973,9 +892,12 @@ mod tests {
             "",
             "阿濤",
             None,
+            Some("act-1"),
         );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 1);
+        // 登場紀錄蓋上觸發它的動作 id（換幕容量預測切段用）
+        assert_eq!(scene0[0].action_id.as_deref(), Some("act-1"));
         assert_eq!(scene0[0].kind, data::TranscriptKind::System);
         assert_eq!(scene0[0].speaker_id, "");
         assert_eq!(scene0[0].speaker_name, "GM");
@@ -998,6 +920,7 @@ mod tests {
             "",
             "阿濤",
             None,
+            None,
         );
         assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 1);
 
@@ -1011,6 +934,7 @@ mod tests {
             Some("愛麗絲"),
             "",
             "阿濤",
+            None,
             None,
         );
         let scene1 = data::read_transcript(&root, &world_id, 1).unwrap();
@@ -1058,10 +982,15 @@ mod tests {
             "",
             "阿濤",
             None,
+            Some("act-2"),
         );
         assert_eq!(ids, vec![fox.id.clone(), owl.id.clone()]);
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
         assert_eq!(scene0.len(), 3);
+        // 卡片登場（含私設）全部蓋上觸發它的動作 id
+        assert!(scene0
+            .iter()
+            .all(|event| event.action_id.as_deref() == Some("act-2")));
         assert!(scene0
             .iter()
             .all(|event| event.kind == data::TranscriptKind::System));
@@ -1092,6 +1021,7 @@ mod tests {
             Some("狐狸、貓頭鷹"),
             "",
             "阿濤",
+            None,
             None,
         );
         assert_eq!(data::read_transcript(&root, &world_id, 0).unwrap().len(), 3);
@@ -1142,6 +1072,7 @@ mod tests {
             Some("密探"),
             "",
             "阿濤",
+            None,
             None,
         );
         let scene0 = data::read_transcript(&root, &world_id, 0).unwrap();
