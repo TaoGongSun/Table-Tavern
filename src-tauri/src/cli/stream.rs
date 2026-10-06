@@ -30,19 +30,40 @@ pub fn parse_claude_line(line: &str) -> CliLine {
                 _ => CliLine::Other,
             }
         }
-        Some("result") => CliLine::Done {
-            text: value
-                .get("result")
-                .and_then(|r| r.as_str())
-                .unwrap_or_default()
-                .to_owned(),
-            is_error: value
-                .get("is_error")
-                .and_then(|b| b.as_bool())
-                .unwrap_or(false),
-        },
+        Some("result") => claude_result(&value),
         _ => CliLine::Other,
     }
+}
+
+/// claude 收尾事件。兩種結構化欄位優先於字面：
+/// `terminal_reason: "prompt_too_long"`＝輸入超過容量（字面改版也認得）；
+/// `stop_reason: "model_context_window_exceeded"`＝生成途中撞到總容量而停，正文不完整，當失敗。
+fn claude_result(value: &serde_json::Value) -> CliLine {
+    let text = value
+        .get("result")
+        .and_then(|r| r.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    let is_error = value
+        .get("is_error")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
+    let field = |key: &str| value.get(key).and_then(|v| v.as_str());
+    if field("terminal_reason") == Some("prompt_too_long")
+        && !crate::transport::context_overflow::message_says_too_long(&text)
+    {
+        return CliLine::Done {
+            text: format!("Prompt is too long: {text}"),
+            is_error: true,
+        };
+    }
+    if field("stop_reason") == Some("model_context_window_exceeded") {
+        return CliLine::Done {
+            text: "AI_INCOMPLETE_RESPONSE: finish_reason=model_context_window_exceeded".to_owned(),
+            is_error: true,
+        };
+    }
+    CliLine::Done { text, is_error }
 }
 
 /// 各家收尾事件裡的 token 用量。usage 只出現在收尾那一行，增量行不含 "usage" 字串——
@@ -369,6 +390,43 @@ pub fn parse_grok_line(line: &str) -> CliLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 2026-10-06 haiku 實測：超長請求的收尾行（被擋、不計費）
+    #[test]
+    fn claude_prompt_too_long_result_is_structured_failure() {
+        let line = r#"{"type":"result","subtype":"success","is_error":true,"api_error_status":400,"terminal_reason":"prompt_too_long","stop_reason":"stop_sequence","result":"Prompt is too long · the request is ~902529 tokens (limit 200000)"}"#;
+        let CliLine::Done { text, is_error } = parse_claude_line(line) else {
+            panic!("not done");
+        };
+        assert!(is_error);
+        assert!(crate::transport::context_overflow::cli_failure(&text).is_some());
+        // 字面改版：結構化欄位仍認得
+        let reworded = r#"{"type":"result","is_error":true,"terminal_reason":"prompt_too_long","result":"Request exceeds limits"}"#;
+        let CliLine::Done { text, .. } = parse_claude_line(reworded) else {
+            panic!("not done");
+        };
+        assert!(crate::transport::context_overflow::cli_failure(&text).is_some());
+        // 成功回覆的正文就算寫了同一句也不是失敗
+        assert_eq!(
+            parse_claude_line(
+                r#"{"type":"result","is_error":false,"result":"他說：Prompt is too long"}"#
+            ),
+            CliLine::Done {
+                text: "他說：Prompt is too long".to_owned(),
+                is_error: false
+            }
+        );
+    }
+
+    #[test]
+    fn claude_context_window_stop_is_incomplete_failure() {
+        let line = r#"{"type":"result","is_error":false,"stop_reason":"model_context_window_exceeded","result":"半截"}"#;
+        let CliLine::Done { text, is_error } = parse_claude_line(line) else {
+            panic!("not done");
+        };
+        assert!(is_error);
+        assert!(text.starts_with("AI_INCOMPLETE_RESPONSE:"));
+    }
 
     // 樣本取自 2026-07-19 真實 CLI 冒煙輸出（scratchpad claude-smoke.jsonl／codex-smoke.jsonl）
     #[test]

@@ -540,6 +540,7 @@ export const ptBR: Record<MsgKey, string> = {
   errEmptyReply: "A IA não devolveu nada desta vez, então nada foi adicionado à história. Tente de novo; se continuar, troque de modelo ou origem de IA.",
   errStreamStalled: "Ficou tempo demais sem receber saída do modelo, então a espera foi interrompida e nada foi adicionado à história. Tente de novo ou troque de modelo.",
   errIncompleteReply: "A resposta da IA foi cortada antes de terminar, então nada foi adicionado à história. Tente de novo; se continuar, troque de modelo ou origem de IA.",
+  errContextTooLong: "Este ato está longo demais para o modelo ler de uma vez. Passe para um novo ato para resumi-lo e continue.",
   errFiltered: "Esta origem de IA bloqueou a resposta. Reescreva de outro jeito ou use outro modelo.",
   errNoImage: "Esta origem não pode gerar imagens: está sem créditos de imagem ou o plano contratado não inclui geração de imagens. Tente outra origem.",
   errRefused: "A origem recusou esta descrição, geralmente por política de conteúdo. Reescreva-a ou tente outra origem.",

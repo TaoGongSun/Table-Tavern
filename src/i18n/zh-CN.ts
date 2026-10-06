@@ -538,6 +538,7 @@ export const zhCN: Record<MsgKey, string> = {
   errEmptyReply: "AI 这次没有返回任何内容，故事里没有写入任何东西。请重试；如果一直这样，请更换模型或 AI 来源。",
   errStreamStalled: "太久没有收到模型输出，已中止这次等待，故事里没有写入任何东西。可以再试一次，或更换模型。",
   errIncompleteReply: "AI 这次的回复没写完就中断了，故事里没有写入任何东西。请重试；如果一直这样，请更换模型或 AI 来源。",
+  errContextTooLong: "这一幕太长，模型一次读不完。换幕整理成前情提要后就能继续。",
   errFiltered: "该 AI 来源拦截了这次回复。请换个说法，或改用其他模型。",
   errNoImage: "该来源无法生图：生图额度不足，或套餐未包含生图。请更换生图来源重试。",
   errRefused: "这段描述被生图来源拒绝了，多半卡到内容规范。换个说法，或改用其他生图来源重试。",

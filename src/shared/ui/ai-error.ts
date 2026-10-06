@@ -21,6 +21,8 @@ const FAILURE_CODES = [
   [/^(?:Error:\s*)?AI_STREAM_STALLED:/, "errStreamStalled"],
   [/^(?:Error:\s*)?AI_INCOMPLETE_RESPONSE:/, "errIncompleteReply"],
   [/^(?:Error:\s*)?AI_CONTENT_FILTERED:/, "errFiltered"],
+  // 模型一次讀不完這一幕（long-prompt-scene-hint 範圍 4）：後端只從結構化失敗掛這個碼
+  [/^(?:Error:\s*)?AI_CONTEXT_TOO_LONG:/, "errContextTooLong"],
   // 穩定免費模型連續擁擠：後端只對 Model／Gone 掛這個碼，429 無證據不掛（不宣稱上游擁擠）
   [/^(?:Error:\s*)?AI_FREE_MODEL_BUSY:/, "errFreeModelBusy"],
 ] as const;
@@ -86,6 +88,7 @@ export function explainAiError(
   | "errStreamStalled"
   | "errIncompleteReply"
   | "errFiltered"
+  | "errContextTooLong"
   | "errFreeModelBusy"
   | (typeof IMAGE_CODES)[number][1]
   | null {

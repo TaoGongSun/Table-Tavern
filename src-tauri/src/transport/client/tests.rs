@@ -698,6 +698,24 @@ fn extract_delta_ignores_non_delta_payloads() {
     );
 }
 
+/// 範圍 4：400 的 error 物件說容量爆掉才在最前面加 AI_CONTEXT_TOO_LONG；5xx 包著同一段不加
+#[test]
+fn http_error_marks_context_overflow_only_on_4xx_error_object() {
+    let body = r#"{"error":{"message":"This endpoint's maximum context length is 131072 tokens.","code":400}}"#;
+    let text = http_error(reqwest::StatusCode::BAD_REQUEST, body);
+    assert!(
+        text.starts_with("AI_CONTEXT_TOO_LONG: AI_HTTP_STATUS_400: "),
+        "{text}"
+    );
+    let wrapped = http_error(reqwest::StatusCode::BAD_GATEWAY, body);
+    assert!(wrapped.starts_with("AI_HTTP_STATUS_502: "), "{wrapped}");
+    let other = http_error(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"{"error":{"message":"bad model"}}"#,
+    );
+    assert!(other.starts_with("AI_HTTP_STATUS_400: "), "{other}");
+}
+
 /// `/images` 與 `/key` 的本機假伺服器：依請求路徑回不同內容；`/key` 可延遲模擬逾時。
 /// 回傳 base URL 與「`/key` 被打了幾次」的計數。
 fn serve_image_and_key(

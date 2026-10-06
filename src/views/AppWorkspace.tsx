@@ -194,7 +194,10 @@ export function AppWorkspace({
     name: speaker ? targetName : t("characterFallback"),
   });
   // AI 錯誤：遊玩畫面放在輸入框上方（內捲、不推動送出鈕）；編輯頁、前幕閱讀、需修復時留在主欄底
-  const errorNote = error ? <ErrorNote text={error} transport={transport} /> : null;
+  // 這一幕太長的錯誤旁直接附換幕鈕（換幕本身失敗回的是另一句，不會出現這顆鈕）
+  const errorNote = error ? (
+    <ErrorNote text={error} transport={transport} onAdvanceScene={() => void advanceScene()} />
+  ) : null;
   const errorInComposer = gate !== "repair" && mainView === null;
   const generatingMeta = chat.generating !== null ? characters.metaOf(chat.generating.id) : undefined;
 

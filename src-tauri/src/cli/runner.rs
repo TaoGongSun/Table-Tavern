@@ -1,5 +1,6 @@
 use super::types::{CliLine, UsageLog};
 use crate::data::DataResult;
+use crate::transport::context_overflow;
 use crate::ui_msg::UiMsg;
 use std::path::Path;
 use std::process::Stdio;
@@ -262,6 +263,9 @@ async fn drive_child(
                             }
                             if fatal {
                                 // 設定類錯誤重試不會好，立即中止（kill_on_drop 收掉子程序）
+                                if let Some(coded) = context_overflow::cli_failure(&line) {
+                                    return Err(crate::data::invalid_data(coded));
+                                }
                                 return Err(UiMsg::CliReplyError { error: line }.into_error());
                             }
                         }
@@ -424,6 +428,13 @@ async fn drive_child(
     }
     let status = child.wait().await?;
     if let Some((text, true)) = &done {
+        // 容量爆掉／生成撞到容量上限：掛穩定碼原樣上拋，前端認得出、換幕流程據此縮塊
+        if let Some(coded) = context_overflow::cli_failure(text) {
+            return Err(crate::data::invalid_data(coded));
+        }
+        if text.starts_with("AI_INCOMPLETE_RESPONSE:") {
+            return Err(crate::data::invalid_data(text.clone()));
+        }
         return Err(UiMsg::CliReplyError {
             error: text.clone(),
         }

@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { explainAiError, redactAiErrorDetail } from "./ai-error";
 
 describe("explainAiError", () => {
+  it("模型一次讀不完：只認開頭的碼，HTTP 包在後面也照認；body 裡出現字樣不翻盤", () => {
+    expect(explainAiError("AI_CONTEXT_TOO_LONG: Prompt is too long", "claude")).toBe(
+      "errContextTooLong",
+    );
+    expect(
+      explainAiError("AI_CONTEXT_TOO_LONG: AI_HTTP_STATUS_400: status=400 body={}", "api"),
+    ).toBe("errContextTooLong");
+    expect(
+      explainAiError('AI_HTTP_STATUS_502: status=502 body={"message":"AI_CONTEXT_TOO_LONG: x"}', "api"),
+    ).toBe("errApiUpstream");
+    expect(explainAiError("AI_CALL_FAILED: Prompt is too long")).toBe("errAiUnknown");
+  });
+
   it("先認傳輸層的失敗碼，三態各自分流", () => {
     expect(explainAiError("AI_EMPTY_RESPONSE: model=x finish_reason=stop")).toBe("errEmptyReply");
     expect(explainAiError("AI_INCOMPLETE_RESPONSE: model=x finish_reason=length")).toBe(

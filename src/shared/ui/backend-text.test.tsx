@@ -229,6 +229,31 @@ describe("ErrorNote", () => {
     return host.querySelector("[role=alert]") as HTMLElement;
   }
 
+  it("這一幕太長：傳了換幕動作才附換幕鈕，按下就換幕；沒傳不附", () => {
+    const onAdvanceScene = vi.fn();
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const raw = "AI_CONTEXT_TOO_LONG: Prompt is too long";
+    act(() => root!.render(<ErrorNote text={raw} transport="claude" onAdvanceScene={onAdvanceScene} />));
+    const note = host.querySelector("[role=alert]") as HTMLElement;
+    expect(note.firstChild?.textContent).toBe(t("errContextTooLong"));
+    const button = note.querySelector("button");
+    expect(button?.textContent).toBe(t("sceneAdvance"));
+    act(() => button!.click());
+    expect(onAdvanceScene).toHaveBeenCalledTimes(1);
+    act(() => root!.render(<ErrorNote text={raw} transport="claude" />));
+    expect(host.querySelector("button")).toBeNull();
+    // 換幕本身失敗回的是摘要失敗的人話：就算傳了換幕動作也不附鈕
+    act(() =>
+      root!.render(
+        <ErrorNote text='TTMSG:{"code":"scene_summary_failed"}' onAdvanceScene={onAdvanceScene} />,
+      ),
+    );
+    expect(host.querySelector("button")).toBeNull();
+    expect(host.textContent).toBe(t("be_scene_summary_failed"));
+  });
+
   it("分流沒命中：主文字顯示翻譯後的後端訊息", () => {
     setLang("ru");
     expect(show(io("disk full")).textContent).toBe(
