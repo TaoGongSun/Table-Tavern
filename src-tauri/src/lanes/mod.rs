@@ -987,11 +987,11 @@ const PING_PROMPT: &str = "（系統保溫訊息，不是劇情，也不要記�
 const PING_MIN_AGE_SECS: u64 = 180;
 
 /// 保溫 ping（包 7）：對每條快取還活著的線送一則極短訊息，讀一次既有快取就能把
-/// 五分鐘壽命重新計時，代價約為讓快取死掉重建的十二分之一。ping 的問答隨即從
-/// session 檔截掉——快取時鐘已被那次讀取刷新，截尾不改變已快取的前綴內容，
+/// 五分鐘壽命重新計時，代價約為讓快取死掉重建的十二分之一。ping 前先記下 session 檔原文，
+/// 事後整份還原——快取時鐘已被那次讀取刷新，截尾不改變已快取的前綴內容，
 /// 下一輪照樣命中，劇情與正典 transcript 也完全不受影響。
-/// 回傳實際保溫成功的線數。ping 失敗不當錯誤（保溫是省錢手段，不該中斷聊天）；
-/// 截尾失敗則丟線，避免垃圾問答在 session 裡越積越多。
+/// 回傳實際保溫成功的線數。ping 失敗不當錯誤（保溫是省錢手段，不該中斷聊天），但同樣還原；
+/// 還原失敗則丟線，避免垃圾問答在 session 裡越積越多。
 pub(crate) async fn keepalive(
     call: &LaneCall,
     root: &Path,
@@ -1030,6 +1030,15 @@ pub(crate) async fn keepalive(
             &state.snapshot,
             &cli::CliSession::Resume(&state.session_id),
         );
+        // 保溫前的原文：事後整份還原（CLI 只會追加）。讀不到就不保溫這條線
+        let session_path = session_file::session_file_path(
+            &call.claude_home,
+            &call.working_dir,
+            &state.session_id,
+        );
+        let Ok(before) = session_file::read_text(&session_path) else {
+            continue;
+        };
         let lane_log = usage_log::LaneContext {
             lane: key.clone(),
             reopen: None,
@@ -1066,16 +1075,15 @@ pub(crate) async fn keepalive(
             &mut |_: &str| {},
         )
         .await;
-        if result.is_err() {
-            continue;
-        }
-        match truncate_ping(call, &state.session_id) {
-            Ok(()) => {
+        // ping 失敗也要還原：CLI 可能已寫下半截問答
+        match restore_before_ping(&session_path, &before, result.is_ok()) {
+            Ok(()) if result.is_ok() => {
                 if let Some(state) = store.get_mut(&key) {
                     state.last_call_epoch = now_epoch();
                 }
                 pinged += 1;
             }
+            Ok(()) => {}
             Err(failure) => {
                 record_rewrite_failure(
                     call,
@@ -1095,17 +1103,26 @@ pub(crate) async fn keepalive(
     Ok(pinged)
 }
 
-/// 把保溫問答從 session 檔截掉：定位那則 ping user 行，截掉它與其後所有行
-/// （模型的 ok 回覆一併消失），檔案回到 ping 前的形狀。
-fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), RewriteFailure> {
-    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    let mut file = at("load", session_file::load(&path))?;
-    let uuid = at(
+/// 把 session 檔還原成保溫前的原文：保溫後的檔必須是「原文＋CLI 追加段」，追加段的 user 行
+/// 只能是保溫訊息（ping 成功時恰好一則）。CLI 在 ping user 之前追加的 queue-operation／attachment
+/// 也一併消失，檔案逐位元組回到保溫前。
+fn restore_before_ping(path: &Path, before: &str, pinged: bool) -> Result<(), RewriteFailure> {
+    let after = at("load", session_file::read_text(path))?;
+    let appended = at("truncate", session_file::appended_since(before, &after))?;
+    let pings = at(
         "find-segment",
-        session_file::find_user_line_with_segment(&file, PING_PROMPT),
+        session_file::marker_user_lines(appended, PING_PROMPT),
     )?;
-    at("truncate", session_file::truncate_from(&mut file, &uuid))?;
-    at("write", session_file::write_atomic(&path, &file))
+    if pinged && pings != 1 {
+        return Err(RewriteFailure {
+            stage: "find-segment",
+            detail: format!("保溫後追加段有 {pings} 則保溫訊息，應恰好一則"),
+        });
+    }
+    if appended.is_empty() {
+        return Ok(());
+    }
+    at("write", session_file::write_text_atomic(path, before))
 }
 
 #[cfg(test)]

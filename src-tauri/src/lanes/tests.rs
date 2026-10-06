@@ -52,24 +52,53 @@ d = os.environ['FAKE_SESSION_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
     f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
 path = os.path.join(d, (sid or rid) + '.jsonl')
-lines, last = [], None
+# 照真 CLI（2.1.287）的形狀只追加：queue-operation、user、attachment 夾雜項行、
+# thinking 與 text 拆成兩則 assistant、assistant 後再接 attachment
+last, users = None, 0
 if rid:
     if not os.path.exists(path):
         sys.exit(3)
     for l in open(path):
+        if not l.strip():
+            continue
         o = json.loads(l)
-        lines.append(o)
-        if o.get('type') in ('user', 'assistant'):
+        if isinstance(o.get('uuid'), str):
             last = o['uuid']
-u, a = str(uuid.uuid4()), str(uuid.uuid4())
-lines.append({'type': 'user', 'uuid': u, 'parentUuid': last,
-              'message': {'role': 'user', 'content': prompt}})
-reply = '回覆' + str(sum(1 for o in lines if o.get('type') == 'user'))
-lines.append({'type': 'assistant', 'uuid': a, 'parentUuid': u,
-              'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]}})
-with open(path, 'w') as f:
-    for o in lines:
+        if o.get('type') == 'user':
+            users += 1
+out = []
+def node(kind, **fields):
+    global last
+    me = str(uuid.uuid4())
+    out.append(dict(fields, type=kind, uuid=me, parentUuid=last))
+    last = me
+out.append({'type': 'queue-operation', 'operation': 'enqueue'})
+node('user', message={'role': 'user', 'content': prompt})
+node('attachment', attachment={'type': 'environment'})
+out.append({'type': 'atis-latch'})
+node('attachment', attachment={'type': 'date'})
+reply = '回覆' + str(users + 1)
+node('assistant', message={'role': 'assistant', 'content': [{'type': 'thinking', 'thinking': '…'}]})
+node('assistant', message={'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]})
+node('attachment', attachment={'type': 'prompt_snapshot'})
+out.append({'type': 'last-prompt'})
+# 保溫的異常形狀（測失敗路徑用）：zero＝成功卻沒有 ping user 行、double＝兩則、
+# half＝寫下半截就失敗、tamper＝保溫期間改動前段
+mode = os.environ.get('FAKE_PING_MODE') if '系統保溫訊息' in prompt else None
+if mode == 'zero':
+    out = [o for o in out if o.get('type') != 'user']
+elif mode == 'double':
+    out.insert(2, dict(out[1], uuid=str(uuid.uuid4())))
+elif mode == 'half':
+    out = out[:2]
+elif mode == 'tamper':
+    text = open(path).read().replace('enqueue', 'tampered', 1)
+    open(path, 'w').write(text)
+with open(path, 'a') as f:
+    for o in out:
         f.write(json.dumps(o, ensure_ascii=False) + '\n')
+if mode == 'half':
+    sys.exit(1)
 print(json.dumps({'type': 'result', 'is_error': False, 'result': reply}))
 "#,
     )
@@ -894,6 +923,84 @@ async fn keepalive_pings_live_lanes_and_leaves_no_trace() {
     assert!(!prompt.contains("老闆晚安"));
 
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// 保溫的失敗路徑：回傳（保溫成功線數, 檔案是否回到保溫前, 線是否還在, 帳本最後一行）。
+#[cfg(unix)]
+async fn ping_with_fake_mode(mode: &str) -> (usize, bool, bool, serde_json::Value) {
+    let FakeCli {
+        dir,
+        mut call,
+        root,
+        world_id,
+        claude_home,
+        working_dir,
+        ..
+    } = fake_claude(&format!("ping-{mode}"));
+    let ledger = dir.join("usage.jsonl");
+    call.usage_log = Some(ledger.clone());
+    let events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap();
+    let store_path = data::lanes_path(&root, &world_id).unwrap();
+    let session_id = read_store(&store_path)
+        .values()
+        .next()
+        .unwrap()
+        .session_id
+        .clone();
+    let session_path = session_file::session_file_path(&claude_home, &working_dir, &session_id);
+    let before = std::fs::read_to_string(&session_path).unwrap();
+
+    set_lane_epoch(&store_path, now_epoch() - 200);
+    call.envs
+        .push(("FAKE_PING_MODE".to_owned(), mode.to_owned()));
+    let pinged = keepalive(&call, &root, &world_id).await.unwrap();
+    let restored = std::fs::read_to_string(&session_path).unwrap() == before;
+    let kept = !read_store(&store_path).is_empty();
+    // 假 CLI 不回報用量：帳本只會有丟線事件，沒丟線就沒有這個檔
+    let last = std::fs::read_to_string(&ledger)
+        .ok()
+        .and_then(|text| text.lines().last().map(str::to_owned))
+        .map_or(serde_json::Value::Null, |line| {
+            serde_json::from_str(&line).unwrap()
+        });
+    std::fs::remove_dir_all(&dir).unwrap();
+    (pinged, restored, kept, last)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn keepalive_failure_paths_restore_or_drop_with_reason() {
+    let _serial = crate::inflight::lock_real_process_tests();
+
+    // 寫下半截就失敗：不算保溫成功，但檔案還原、線保住
+    let (pinged, restored, kept, last) = ping_with_fake_mode("half").await;
+    assert_eq!((pinged, restored, kept), (0, true, true));
+    assert!(last.is_null(), "沒丟線就不該有丟線事件：{last}");
+
+    // 成功卻有零則／兩則保溫訊息：不能確定追加段是什麼，丟線並落帳 stage
+    for mode in ["zero", "double"] {
+        let (pinged, _, kept, last) = ping_with_fake_mode(mode).await;
+        assert_eq!((pinged, kept), (0, false), "{mode}");
+        assert_eq!(last["event"], "drop-lane", "{mode}");
+        assert_eq!(last["reason"], "ping-truncate-failed", "{mode}");
+        assert_eq!(last["stage"], "find-segment", "{mode}");
+    }
+
+    // 保溫期間前段被改動：無法還原，丟線
+    let (pinged, _, kept, last) = ping_with_fake_mode("tamper").await;
+    assert_eq!((pinged, kept), (0, false));
+    assert_eq!(last["reason"], "ping-truncate-failed");
+    assert_eq!(last["stage"], "truncate");
 }
 
 /// 素材變動先用補丁保住快取；超過五分鐘才把新素材追平進凍結快照，並留下可供額度頁讀取的原因紀錄。
