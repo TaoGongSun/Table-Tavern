@@ -1,6 +1,6 @@
 # usage-cache-audit 規格
 
-交接檔：[handoffs/usage-cache-audit.md](../handoffs/usage-cache-audit.md)。
+交接檔：[handoffs/archive/usage-cache-audit.md](../handoffs/archive/usage-cache-audit.md)。
 
 ## 邊界
 
@@ -22,7 +22,8 @@
 
 1. `apply_rewrite`／`truncate_ping` 改回 `Result<(), RewriteFailure>`，`RewriteFailure { stage: &'static str, detail: String }`。stage 固定六個：`load`（讀檔或逐行驗證失敗）、`find-segment`（含機密段的 user 行 0 行或 ≥2 行）、`erase-segment`（該行內片段不是恰好一次）、`prefix-assistant`、`truncate`、`write`（原子寫或回讀驗證）。各步驟用同一支小 helper 把 session_file 的錯誤字串標上 stage，session_file 的回傳型別不動。
 2. `usage_log::append_event` 多帶 `Option<&RewriteFailure>`，落帳行多兩欄 `stage`、`detail`。detail 先遮路徑、再截斷：已知路徑（session 檔、其父目錄、claude_home、working_dir）的字串整段換成檔名或 `<dir>`——用已知字串比對，含空白與 Windows 反斜線都照樣命中；之後按 Unicode 字元截到 300 字。`reason` 值不變，舊帳本與 `usage/report.rs` 不受影響。
-3. 刪檔失敗那筆（`settle_abort` 的 abandon 錯誤）維持現狀。不加重試、不改丟線策略。
+3. 刪檔／刪目錄失敗（claude `settle_abort` 的 abandon、grok 撤銷線刪 session 目錄）落 `reason: cleanup-failed`、`stage: cleanup`，detail 同樣遮路徑。不加重試、不改丟線策略。
+3a. grok 角色共線（合併 main 後）：抹寫失敗 `reason: rewrite-failed`，stage 為 `rewrite`／`compacted`／`lock-timeout`（GROK_HOME 缺則 `locate`），detail 遮 session 目錄（群組名是編碼過的 cwd）與 GROK_HOME；中止、續聊失敗、開線失敗照記 `aborted`／`resume-failed`／`open-failed`；預定重開（換幕、改卡等）撤銷舊線但不記丟線。所有 `drop-lane` 的 `transport` 記實際 provider。
 4. 測試矩陣：
    - load：session 檔不存在。
    - find-segment：機密段不在檔內；機密段出現在兩行 user。
@@ -80,7 +81,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 
 - `npm run harness:build`，`env -u ANTHROPIC_BASE_URL node scripts/harness.mjs launch --fresh --config-from <正式 config.json> --root <本案專屬 root>`。帳本落在 `<root>/data/prompt-cache.jsonl`，正式帳本只讀。
 - 測試通道全機一把鎖（`harness/root.rs` identifier 鎖），同時只能一個實例；與其他子代理輪流，啟動前 `ps`／`status` 確認，跑完立刻 `quit`。
-- Grok 登入：正式 config 目錄的 `grok-home`、`cli-home` 複製進 `<root>/config/`，跑完刪〔作者裁決 2026-10-06〕。**Grok 額度 2026-10-06 22:00 才恢復，之前不對 grok 送任何請求**〔作者裁決 2026-10-06〕。
+- Grok：用已登入 grok 的既有測試 root，不帶 `--fresh` 啟動，不複製任何登入檔。
 - 保溫只在 `document.hasFocus()` 為真時發；測試包視窗不在前景，以 `js` 覆寫成恆真（只為量測，不改程式）。
 - 測試 root 在報告寫完、`rewrite-failures/`、帳本、`harness-ai.log` 與 CLI 版本紀錄都複製到 scratchpad 之後才刪。
 
@@ -106,7 +107,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 | claude haiku | 單角色 4 輪＋雙角色 3 輪，各輪約 2 通（旁白＋角色）≈ 14 通；保溫 3 週期 × GM＋角色兩條線 ≈ 6 通 | 訂閱額度；折 API 牌價約 $0.1–0.3 |
 | codex luna | 4 輪 ≈ 8 通，每通約 1.5 萬 token（含 CLI 自帶前綴約 1 萬） | 訂閱額度，少量 |
 | agy flash-low | ≈ 8 通 | 訂閱額度，少量 |
-| grok 4.6 | ≈ 8 通（22:00 後） | 訂閱額度，少量 |
+| grok 4.6 | ≈ 8 通 | 訂閱額度，少量 |
 | OpenRouter | ≈ 8 通，免費模型 | $0 |
 
 ### 產出
@@ -115,7 +116,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 
 ## 四、對帳結果
 
-2026-10-06 01:24–02:12 實跑。CLI：claude 2.1.287、codex 0.160.0、agy 1.2.17（grok 1.0.46 未跑）。同一張單角色卡（塞拉菲·内藤），貼開場白 1 後講 3 句＋GM 推進。證據（帳本、AI log、抹寫失敗留證）在本機 `/private/tmp/claude-501/-Users-pachelo-GitHub-Table-Tavern/2f79d440-443a-471c-ab83-e159be2fd267/scratchpad/uca/evidence/`（暫存區，不進 repo），測試 root 已刪。以下只對本次模型與樣本成立。
+2026-10-06 01:24–02:12 實跑。CLI：claude 2.1.287、codex 0.160.0、agy 1.2.17；grok 1.0.46 於 2026-10-07 補跑。同一張單角色卡（塞拉菲·内藤），貼開場白 1 後講 3 句＋GM 推進。證據（帳本、AI log、抹寫失敗留證）在本機 `/private/tmp/claude-501/-Users-pachelo-GitHub-Table-Tavern/2f79d440-443a-471c-ab83-e159be2fd267/scratchpad/uca/evidence/`（暫存區，不進 repo），測試 root 已刪。以下只對本次模型與樣本成立。
 
 | 通道 | 樣本 | 原始 usage 的快取欄 | 結果 |
 |---|---|---|---|
@@ -123,7 +124,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 | codex gpt-5.6-luna | 9 通（3 句 solo＋GM 推進 3 組 shared／solo） | `cached_input_tokens` 有 | 每通恰好讀 9,984＝首輪觀測到的 CLI 自帶底線，我方內容 0；帳本全標 `hit`，分頁頭條「已省 50%」 |
 | agy gemini-3.8-flash-low | 角色線 3 輪、GM 線 1 輪 | `cache_read_tokens` 有，累積值也是 0 | 4 輪全 0。續聊確實接上（累積 input 15,313→31,387→48,282，差分＝每輪整段重送）；第 2、3 輪 `cache_reason` 標 `skipped` |
 | OpenRouter dots-3-note-preview:free（provider AtlasCloud，全程同一支） | 5 通：3 通完成、2 通卡住 | `prompt_tokens_details.cached_tokens` 有 | 3 通全 0；另 2 通串流超過 5 分鐘沒動靜，app 沒有逾時，只能按停止 |
-| grok | — | — | 22:00 前不送，未跑 |
+| grok grok-4.6（2026-10-07 補跑，見下） | 雙角色桌：角色共線 19 輪、GM 線 4 輪 | `modelUsage.*.cacheReadInputTokens` 有（`cacheCreationInputTokens` 恆 0） | 命中率 34%，續聊有一半輪次整線不命中（只讀 128／2688），見「grok 補跑」 |
 
 原始 usage 都有快取欄位，本次沒有「缺欄被補 0」的輪次。
 
@@ -149,6 +150,30 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 5. API 串流沒有停滯逾時，免費供應商卡住時一直轉圈（5 通裡有 2 通）。
 6. 測試通道視窗不可見時 WebKit 計時器不跑，前端保溫計時器與離開提醒在通道裡驗不了；後端保溫改用 `invoke keepalive_lanes` 直接驗。在 `load` 修好之前，第一次保溫就會丟線，離開提醒本來就亮不起來。
 
+### grok 補跑（2026-10-07 01:07–01:31）
+
+合併 main 後（grok 角色共線＋每桌 lane 鎖）的測試包，新開一桌兩角色（塞拉菲·内藤、林教授｜經濟學），角色輪流講＋GM 推進，輪距 25–160 秒。證據（前後帳本、usage_report、分頁截圖）在 scratchpad `7fa4bcc0-…/scratchpad/uca/`。
+
+- **帳本與分頁一致**：本桌 20 通（中止測試前）帳本加總＝`usage_report`＝分頁：輸入 275,808、讀到 94,464（34.2%）、輸出 7,619、$0.155；分組「該中沒中 ×9、有中 ×8、這次沒有快取 ×2、新桌／新線 ×1」。grok GM 線讀 0 顯示「這次沒有快取」無原因（第 2 項），GM 首輪「新桌／新線」（第 5 項）；舊帳本那筆 grok `skipped` 讀時已變 `zero`。
+- **丟線落帳**：17 輪角色共線抹寫 0 次失敗。實測中止：帳本一筆 `drop-lane`、`transport: grok`、`reason: aborted`，下一輪新開線、不再多記。合併前 main 的 grok 丟線有三個錯（既有帳本 4 筆為證）：transport 寫死 `claude`、detail 黏在 reason（`rewrite-failed: 回覆與前綴對不上`，分頁認不得、路徑沒遮）、預定重開（`reopen: system-changed`）被記成丟線。本分支已修：reason 回固定鍵、stage／detail 另欄遮路徑、預定重開不記（原因在呼叫行的 reopen）。
+- **角色線首輪讀 128 算成「有中」**：新線讀到的 128 是 xAI 端與內容無關的底線（GM 首輪則是 0、算新桌／新線），同 vendor-prefix-floor 的現象，證據留給該案。
+- **整線不命中**：命中的續聊輪中位 93%；不命中的輪只讀 128 或 2,688，比凍結 system 還短。假說：落到沒有這段快取的伺服器（xAI 分流），未證實。本桌角色共線第 9–15 輪連 7 輪不中，第 16 輪沒介入就回到 16,128。
+
+### grok 換 session 自救：本次樣本下暫不做〔模型判斷·未裁決〕
+
+重算腳本 scratchpad `uca/recount.py`，輸入 `uca/ledger-after.jsonl`（10/06 迷霧酒館＋本次全部 grok 帳本）。規則：取 `transport: grok`、有 `lane`、非事件行，依（桌, lane）照帳本順序；讀到 >2,688 算中；帶 `reason`（first-turn、system-changed、scene-changed…）的是新線行。
+
+| 指標 | 規則 | 結果 |
+|---|---|---|
+| 行數 | — | 新線 18 行中 1（5,248，其餘 ≤1,152）；續聊 59 行中 30 |
+| 留原線，下一輪 | 續聊不中的行，下一列是續聊，數那一列 | 6/25 |
+| 留原線，兩輪 | 續聊不中的行，之後兩列都是續聊（窗可重疊），數那兩列 | 14/40 |
+| 開新線，全部 | 新線行＋下一列（下一列是續聊） | 10/30（下一列是新線也算則 10/32） |
+| 開新線，同 lane 換線 | 同上，限非該 lane 第一列 | 6/20 |
+| 連敗結局 | 續聊不中的連續段 | 10 段：自己恢復 6（1、4、2、2、1、7），被開新線打斷 3（4、2、3），資料結束 1（3） |
+
+換規則分母就會變（例如窗內允許新線行），而且兩組不是受控比較：開新線多半是換幕、改卡、中止引起，不是挑在不命中時換。這組數字看不出換 session 比留原線好：新線那輪本身幾乎必定全額，同 lane 換線兩輪 30% 也沒高過留原線的 35%。本次只結論為暫不做，不宣稱換線必然無效；等 grok 帳本累積更多再重評，若要評估就做「不中時刻意換線」的受控對照。
+
 ### 顯示拍板〔作者裁決 2026-10-06〕
 
 1. 只中到 CLI 自帶底線的輪次頭條不算「已省」，改標「只中到 CLI 自帶部分」——歸 [vendor-prefix-floor](../tasks/vendor-prefix-floor.md)。
@@ -161,7 +186,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 
 - 角色線丟線在本案修，規格見「一之二」。
 - API 串流停滯逾時、CLI 1 小時快取的影響由主線另立案（api-stream-stall-timeout、claude-1h-cache），本檔只留證據；agy `skipped` 誤標併在本案顯示第 2 項。
-- grok 22:00 後補跑另外安排。
+- grok 已於 2026-10-07 補跑（見上）。
 
 ## 五、顯示施工（拍板第 2、5 項）
 
@@ -203,7 +228,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 
 1. 在獨立 root 的 `data/prompt-cache.jsonl` 預先放幾行舊格式帳本（agy `skipped`、claude `skipped`、claude 首輪 `not-expected`），開額度分頁截圖：舊 agy 行顯示「這次沒有快取」、claude 行照舊紅燈。不花額度。
 2. agy `gemini-3.8-flash-low` 開一張新桌講 2 句：第 1 輪「新桌／新線」、第 2 輪「這次沒有快取」且無原因、帳本第 2 輪沒有 `cache_reason`。約 2 通，訂閱額度。
-3. grok 不測（22:00 前不送；補跑另外安排）。
+3. grok 見「四、grok 補跑」。
 
 結果（2026-10-06，verify 10 步綠）：
 - 舊帳本回溯：預放的 agy `skipped` 行在分頁顯示「這次沒有快取」、黃燈、無原因，統計格「新桌／新線 ×1、這次沒有快取 ×1」；claude `skipped` 行照舊紅燈「該中沒中（claude CLI 已知毛病）」。

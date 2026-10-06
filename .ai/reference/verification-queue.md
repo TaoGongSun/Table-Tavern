@@ -13,13 +13,15 @@
 
 4d. [card-mvu-shim](../handoffs/card-mvu-shim.md) 卡片介面 iframe 內按鈕實際互動（測試通道點不到沙盒 iframe 內的按鈕，留作後續 native 回歸；零 AI 派送）：用 `mvu-write-probe` 開桌、捲到逐字稿中段，面板開著按卡片按鈕寫入（由卡片按鈕送出）：第一筆即落檔、狀態欄同步、捲動位置不動；接著在狀態欄手改再按卡片寫入不被拒。
 
+4e. [refactor-card-png-export](../handoffs/refactor-card-png-export.md)（macOS 部分 2026-10-06 已用測試通道代測通過：三階匯出、陣容欄單一入口匯入 #3、59 MB 大卡往返、QuickLook 縮圖）：剩沒有環境的兩項——①Windows Explorer 看 #3 大卡（數十 MB）的縮圖與檔案大小顯示　②SillyTavern 匯入 #2／#3 PNG 會乾淨拒收（報找不到角色卡，不當成角色卡吃進去）。這兩項驗完本案才算實測完成。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度
 
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
-| 5 | [refactor-mode-split](../handoffs/refactor-mode-split.md) 剩四洞①②④ GUI 重測、重構中取消；③ 已驗出同桌重跑會清殼，refactor-statusbar-skeleton 已改成已遊玩擋下、未遊玩用原卡清回再跑 | 五卡矩陣、同卡連跑三次、二選一取消、第二段 resume 已於 2026-10-02 測試包跑過。**擋下游最多**：[refactor-card-png-export](../tasks/refactor-card-png-export.md) 待開工首包（套用映射持久化）與 [interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡都疊在這條路上 |
+| 5 | [refactor-mode-split](../handoffs/refactor-mode-split.md) 剩四洞①②④ GUI 重測、重構中取消；③ 已驗出同桌重跑會清殼，refactor-statusbar-skeleton 已改成已遊玩擋下、未遊玩用原卡清回再跑 | 五卡矩陣、同卡連跑三次、二選一取消、第二段 resume 已於 2026-10-02 測試包跑過。**擋下游最多**：[interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡疊在這條路上 |
 | 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md) B 段→A 段 ＋ [person-promote](../handoffs/person-promote.md) ＋ [state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 三案一鏈，跑一輪同時收。**前置已解除**：`refactor-output-redesign` 已於 2026-08-11 結案，B 段可直接真跑 orc-cave 卡；產物存檔後 A 段走零額度重放，額度只花一次 |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
 | 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
@@ -27,12 +29,15 @@
 | 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
 | 12 | [ui-redesign](../handoffs/ui-redesign.md) 要 AI 的對話窗 | 重構三窗（進行中、二選一、結果含已取消／部分失敗）、一句話開桌有綱要後底列；可併梯 2 第 5 順手看 |
 | 14 | [api-shared-lane](../handoffs/api-shared-lane.md) | 錯認前言者（只有 API 測得到）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens；[vendor-prefix-floor](../tasks/vendor-prefix-floor.md) 排在這批數據之後 |
-| 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) ＋ [grok-cache-miss](../handoffs/grok-cache-miss.md) 角色線 | 多角色桌：回歸事件私設只到 GM；grok 通道讓角色連接三輪以上，`chars:grok-4.6:<角色 id>` 的 cached_tokens 隨對話增長，換角色／改卡／換幕後不每輪重開 |
+| 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) | 多角色桌：回歸事件私設只到 GM |
 | 16 | [interface-shell-cleanup](../plans/interface-shell-cleanup.md) | 用 `TestCards/WestFantsy.png` 重構接管跑一輪：面板（地圖 11×7、五分頁）照常渲染、時間跟著回合動；可併第 6 項 ai-card-refactor 五卡矩陣回歸 |
 | 17 | [test-harness](../handoffs/archive/test-harness.md) 智慧免費真供應商 | 用 OpenRouter 免費模型桌送一輪：`route` 的智慧免費預覽有值、`ai-log` 的 `api-smart-free` 派送後有同 id 的 `responder` 事件且模型是實際回應者。2026-10-04 代測：route 預覽有值（gemma-4-31b-it:free）過；穩定第一、二名整段被上游限流 429，`responder` 事件未能驗，等穩定第一名可用時重跑一輪 |
 | 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
 | 19 | [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md) 狀態欄骨架桌 | 已結案、單元測試覆蓋，剩實機觀察，可搭任一梯 2 實聊順手看：①結果框「匯出」（6b）上一輪 AI 重構後沒寫檔、畫面沒報錯，零額度重放正常；下次有授權的 AI 重構時，匯出前後讀 statusMessage 與 `refactor_export_outcome` 回傳定位原因　②Haiku 接管桌偶爾對文字欄下 delta（被規則擋）、`<UpdateVariable>` 的 JSON 字串尾巴多跳脫引號（被容錯跳過），看頻率決定要不要加強提示　③生成中按套用重構／貼開場等排隊時再按停止生成：等待提示照常、截斷回覆落檔後才執行　④真模型一回合佐證排隊套用在 GM 旁白落檔後才執行（這筆回覆留在套用前的桌況）　⑤待查證：酒館 regex 替換字串與訊息顯示會不會替換 `{{user}}`／`{{char}}`，會的話面板也應替換（只查規格） |
-| 20 | [usage-cache-audit](../handoffs/usage-cache-audit.md) 前端保溫與離開提醒 | 測試通道視窗不可見時計時器不跑，只能實機看。claude 桌最後一句後視窗留在前景不動：每 3.5 分鐘保溫一次、連三次後再 3.5 分鐘亮離開提醒（紀錄超過 8000 字元才亮），帳本每週期每條線一筆 `ping`、沒有 `drop-lane`，回來再講一句仍是續聊。CLI 已改寫 1 小時快取，保溫去留由主線另案決定，若停掉保溫本項跟著撤 |
+| 20 | [interface-scene-change](../handoffs/interface-scene-change.md) 介面換幕 native 核對 | 西幻接管桌（測試通道代測已過資料面與 srcdoc 渲染）：真視窗裡打開卡片介面，按介面工具列「換幕」→ 介面留著、正文槽是前情提要、右側時間地點與地圖照舊；在介面內點區域／推薦行動送出一回合，面板跟動。測試通道拍不到也點不到 iframe 內容，只能真人看 |
+| 21 | [image-model-picker](../handoffs/image-model-picker.md) 生圖統一 PNG 真打 | 單元測試只用 mock：①付費生圖模型回 JPEG／WebP／遠端 URL 時真打一次，圖進圖庫且是 PNG（看圖庫檔頭）　②codex／agy／grok 真生圖一次，走「讀進記憶體→清工作目錄→轉 PNG→進圖庫」新流程；可併第 8 項一起跑 |
+| 22 | [image-model-free-tier-hide](../handoffs/image-model-free-tier-hide.md) 免費層藏生圖模型 | 測試通道只用本機假 `/key`：①真 OpenRouter 免費 key 與付費 key 各開一次設定頁「AI 連線」，免費隱藏生圖模型、付費顯示　②整個關掉設定視窗再開，快取首屏不閃；可併第 21 項一起跑 |
+| 23 | [usage-cache-audit](../handoffs/archive/usage-cache-audit.md) 前端保溫與離開提醒 | 測試通道視窗不可見時計時器不跑，只能實機看。claude 桌最後一句後視窗留在前景不動：每 3.5 分鐘保溫一次、連三次後再 3.5 分鐘亮離開提醒（紀錄超過 8000 字元才亮），帳本每週期每條線一筆 `ping`、沒有 `drop-lane`，回來再講一句仍是續聊。CLI 已改寫 1 小時快取，保溫去留由主線另案決定，若停掉保溫本項跟著撤 |
 
 ## 梯 3：等外部條件，不排時程
 
