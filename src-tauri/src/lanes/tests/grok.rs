@@ -36,7 +36,9 @@ import json, os, sys, time
 args = sys.argv[1:]
 def flag(name):
     return args[args.index(name) + 1] if name in args else None
-sid, rid, prompt = flag('-s'), flag('-r'), flag('-p') or ''
+def read(path):
+    return open(path, encoding='utf-8').read() if path else ''
+sid, rid, prompt = flag('-s'), flag('-r'), read(flag('--prompt-file'))
 home = os.environ['GROK_HOME']
 log = os.path.join(os.environ['FAKE_DIR'], 'calls.jsonl')
 start = time.time()
@@ -44,7 +46,8 @@ time.sleep(float(os.environ.get('FAKE_SLEEP', '0')))
 d = os.path.join(home, 'sessions', '%2Fws', sid or rid)
 def record():
     with open(log, 'a') as f:
-        f.write(json.dumps({'args': args, 'prompt': prompt, 'start': start, 'end': time.time()}, ensure_ascii=False) + '\n')
+        f.write(json.dumps({'args': args, 'prompt': prompt, 'profile': read(flag('--agent')) if flag('--agent') else None,
+                            'start': start, 'end': time.time()}, ensure_ascii=False) + '\n')
 if rid and not os.path.isdir(d):
     record()
     sys.exit(3)
@@ -62,7 +65,7 @@ def upd(kind, text=None, **extra):
         u['content'] = {'type': 'text', 'text': text}
     return {'timestamp': 1, 'method': 'session/update', 'params': {'sessionId': sid or rid, 'update': u}}
 if sid:
-    append(ch, [{'type': 'system', 'content': flag('--system-prompt-override') or ''},
+    append(ch, [{'type': 'system', 'content': read(flag('--agent'))},
                 {'type': 'user', 'content': [{'type': 'text', 'text': '<user_info>\nOS\n</user_info>'}]}])
     for name in ['chat_history.jsonl.lock', 'updates.jsonl.lock', 'summary.json.lock']:
         open(os.path.join(d, name), 'a').close()
@@ -112,6 +115,7 @@ print(json.dumps({'type': 'end', 'usage': {'input_tokens': 100, 'cache_read_inpu
         model: Some("grok-4.6".to_owned()),
         usage_log: Some(dir.join("usage.jsonl")),
         claude_home: PathBuf::new(),
+        prompt_dir: dir.join("prompts"),
     };
     FakeGrok {
         dir,
@@ -125,6 +129,8 @@ print(json.dumps({'type': 'end', 'usage': {'input_tokens': 100, 'cache_read_inpu
 struct Call {
     args: Vec<String>,
     prompt: String,
+    /// `--agent` 指向的 profile 檔內容；沒帶就是 None
+    profile: Option<String>,
     start: f64,
     end: f64,
 }
@@ -143,6 +149,7 @@ fn calls(dir: &Path) -> Vec<Call> {
                     .map(|arg| arg.as_str().unwrap().to_owned())
                     .collect(),
                 prompt: value["prompt"].as_str().unwrap().to_owned(),
+                profile: value["profile"].as_str().map(str::to_owned),
                 start: value["start"].as_f64().unwrap(),
                 end: value["end"].as_f64().unwrap(),
             }
@@ -521,4 +528,68 @@ async fn concurrent_turns_on_one_table_run_one_at_a_time() {
     assert_eq!(store.len(), 2);
     let text = all_text(&fake.grok_home);
     assert!(!text.contains("通緝犯") && !text.contains("賭債"));
+}
+
+/// 開線把 system 寫成 agent profile（內容就是 grok_payload 的 profile）、續聊不帶；
+/// 正文都從 --prompt-file 讀到、不走 -p，文字通道帶 --verbatim。暫存檔呼叫完就刪。
+#[cfg(unix)]
+#[tokio::test]
+async fn grok_lane_opens_with_profile_file_and_resumes_with_prompt_file_only() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_grok("files", &[]);
+    let FakeGrok {
+        call,
+        root,
+        world_id,
+        dir,
+        ..
+    } = &fake;
+    let frozen = "凍結A ${% raw %} 保持原樣";
+    fn gm_turn<'a>(events: &'a [TranscriptEvent], frozen: &str) -> TurnInput<'a> {
+        let mut input = turn_input(events, 0);
+        input.lane = Lane::Gm;
+        input.prefix = None;
+        input.echo = ReplyEcho::Narration;
+        input.frozen_system = frozen.to_owned();
+        input
+    }
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第一句")];
+    let reply = run_turn(call, root, world_id, gm_turn(&events, frozen), None, |_| {})
+        .await
+        .unwrap()
+        .text;
+    events.push(event(TranscriptKind::Narration, "", "", &reply));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "只有這句是新的"));
+    run_turn(call, root, world_id, gm_turn(&events, frozen), None, |_| {})
+        .await
+        .unwrap();
+
+    let calls = calls(dir);
+    assert_eq!(calls.len(), 2);
+    let open = &calls[0];
+    assert!(flag(open, "-s").is_some());
+    assert!(open.args.contains(&"--verbatim".to_owned()));
+    assert!(!open
+        .args
+        .iter()
+        .any(|arg| arg.contains("凍結A") || arg == "-p"));
+    assert_eq!(
+        open.profile.as_deref(),
+        crate::cli::grok_payload(frozen, "", false).0.as_deref()
+    );
+    assert!(open.prompt.contains("第一句"));
+    assert!(!open.prompt.contains("凍結A")); // system 只在 profile，不混進正文
+
+    let resume = &calls[1];
+    assert_eq!(flag(resume, "-r"), flag(open, "-s"));
+    assert!(!resume.args.contains(&"--agent".to_owned()));
+    assert!(resume.profile.is_none());
+    assert!(resume.prompt.contains("只有這句是新的"));
+    assert!(!resume.prompt.contains("第一句"));
+    assert!(!resume.prompt.contains("凍結A"));
+
+    let left: Vec<_> = std::fs::read_dir(&call.prompt_dir)
+        .map(|entries| entries.collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
 }

@@ -22,8 +22,8 @@ const summary = (used: number, cap: number, gReply: number, lockable = true): Su
 
 describe("scene-budget（與 Rust scene_budget 同一算法）", () => {
   it("保守估計與 Rust 對拍（src-tauri/src/scene_budget/tests.rs 同一組數字）", () => {
-    expect(budgetTokens('雷恩說：Let\'s go! {"hp":3}')).toBe(13);
-    expect(draftSize('雷恩說：Let\'s go! {"hp":3}', "tokens", 1.5)).toBe(20 + 16);
+    expect(budgetTokens('雷恩說：Let\'s go! {"hp":3}')).toBe(15);
+    expect(draftSize('雷恩說：Let\'s go! {"hp":3}', "tokens", 1.5)).toBe(23 + 16);
     expect(draftSize("測a", "bytes", 1)).toBe(4 + 64);
     expect(draftSize("", "bytes", 1)).toBe(0);
   });

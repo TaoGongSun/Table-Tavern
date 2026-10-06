@@ -45,6 +45,7 @@ struct Run<'a, C: SummaryCaller> {
     cap: &'a Capacity,
     caller: &'a mut C,
     calls: u32,
+    takeover: bool,
 }
 
 impl<C: SummaryCaller> Run<'_, C> {
@@ -222,7 +223,7 @@ impl<C: SummaryCaller> Run<'_, C> {
                     Err(error) => return Err(error),
                 }
             }
-            let merge = transport::merge_summary_messages(&segments, &lang);
+            let merge = transport::merge_summary_messages(&segments, &lang, self.takeover);
             if self.size(&merge) <= budget {
                 match self.call(merge).await {
                     Ok(reply) => return Ok(reply),
@@ -237,17 +238,20 @@ impl<C: SummaryCaller> Run<'_, C> {
 }
 
 /// 換幕摘要：回最終回覆（第一行標題＋前情提要，交給 `extract_scene_title`）。
+/// `takeover`：介面接管桌（`data::is_interface_takeover`），整幕與合併的提示詞多一句禁標記。
 pub async fn summarize_scene<C: SummaryCaller>(
     events: &[crate::data::TranscriptEvent],
     cap: &Capacity,
+    takeover: bool,
     caller: &mut C,
 ) -> Result<String, String> {
     let mut run = Run {
         cap,
         caller,
         calls: 0,
+        takeover,
     };
-    let whole = transport::summary_messages(events, &cap.lang, false);
+    let whole = transport::summary_messages(events, &cap.lang, takeover);
     let whole_size = run.size(&whole);
     let budget = cap.total.map(|total| total.saturating_sub(cap.reserve));
     let fits = budget.is_none_or(|budget| whole_size <= budget);
@@ -330,7 +334,9 @@ pub async fn advance_with<C: SummaryCaller>(
     if events.is_empty() {
         return Err(UiMsg::SceneEmptyCannotAdvance.into());
     }
-    let reply = summarize_scene(&events, cap, caller).await?;
+    let takeover =
+        crate::data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
+    let reply = summarize_scene(&events, cap, takeover, caller).await?;
     // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
     let (title, summary) = transport::extract_scene_title(&reply);
     crate::data::begin_next_scene(root, world_id, &summary, title.as_deref())
@@ -366,7 +372,9 @@ pub async fn regenerate_locked<C: SummaryCaller>(
     if previous_events.is_empty() {
         return Err(UiMsg::PreviousSceneEmpty.into());
     }
-    regenerate_with(root, world_id, &previous_events, cap, caller).await
+    let takeover =
+        crate::data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
+    regenerate_with(root, world_id, &previous_events, cap, takeover, caller).await
 }
 
 /// 重寫前情提要：整理前一幕、全部成功才覆寫目前這幕的那則摘要。
@@ -375,9 +383,10 @@ pub async fn regenerate_with<C: SummaryCaller>(
     world_id: &str,
     previous_events: &[crate::data::TranscriptEvent],
     cap: &Capacity,
+    takeover: bool,
     caller: &mut C,
 ) -> Result<(), String> {
-    let reply = summarize_scene(previous_events, cap, caller).await?;
+    let reply = summarize_scene(previous_events, cap, takeover, caller).await?;
     let (title, summary) = transport::extract_scene_title(&reply);
     crate::data::replace_scene_summary(root, world_id, &summary, title.as_deref())
         .map_err(|error| error.to_string())

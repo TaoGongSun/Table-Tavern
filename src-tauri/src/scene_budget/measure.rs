@@ -47,9 +47,18 @@ fn is_cli(transport: &str) -> bool {
     matches!(transport, "claude" | "codex" | "agy" | "grok")
 }
 
-/// 換幕摘要那次的請求（與 `commands::scene::advance_scene` 同一組裝與攤平）。
-pub fn summary_request(events: &[TranscriptEvent], lang: &str, transport: &str) -> Request {
-    summary_request_of(transport::summary_messages(events, lang, false), lang, transport)
+/// 換幕摘要那次的請求（與 `summarize::summarize_scene` 整幕那次同一組裝與攤平）。
+pub fn summary_request(
+    events: &[TranscriptEvent],
+    lang: &str,
+    transport: &str,
+    takeover: bool,
+) -> Request {
+    summary_request_of(
+        transport::summary_messages(events, lang, takeover),
+        lang,
+        transport,
+    )
 }
 
 /// 任何一次換幕摘要類呼叫（整幕、分段、合併、縮短）實際送出的形狀：CLI 以 GM 身分攤平並接摘要收尾句。
@@ -63,10 +72,16 @@ pub fn summary_request_of(messages: Vec<ChatMessage>, lang: &str, transport: &st
     }
 }
 
-pub fn summary_raw(events: &[TranscriptEvent], lang: &str, transport: &str, unit: Unit) -> Raw {
+pub fn summary_raw(
+    events: &[TranscriptEvent],
+    lang: &str,
+    transport: &str,
+    takeover: bool,
+    unit: Unit,
+) -> Raw {
     Raw {
-        full: size(&summary_request(events, lang, transport), unit),
-        fixed: size(&summary_request(&[], lang, transport), unit),
+        full: size(&summary_request(events, lang, transport, takeover), unit),
+        fixed: size(&summary_request(&[], lang, transport, takeover), unit),
     }
 }
 

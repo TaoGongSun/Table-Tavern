@@ -321,13 +321,7 @@ pub fn summary_messages(
     interface_takeover: bool,
 ) -> Vec<ChatMessage> {
     let en = scaffold_en(lang);
-    let plain_only = match (interface_takeover, en) {
-        (false, _) => "",
-        (true, true) => {
-            "Write plain narrative text only: no XML or HTML tags, no angle-bracket markup, no code fences. "
-        }
-        (true, false) => "只寫純文字：不得輸出 XML／HTML 標籤、角括號標記或程式碼圍欄。",
-    };
+    let plain_only = summary_plain_only(interface_takeover, en);
     let instruction = if en {
         format!(
             "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
@@ -359,6 +353,16 @@ pub fn summary_messages(
         push_merged(&mut messages, "user", line);
     }
     messages
+}
+
+fn summary_plain_only(interface_takeover: bool, en: bool) -> &'static str {
+    match (interface_takeover, en) {
+        (false, _) => "",
+        (true, true) => {
+            "Write plain narrative text only: no XML or HTML tags, no angle-bracket markup, no code fences. "
+        }
+        (true, false) => "只寫純文字：不得輸出 XML／HTML 標籤、角括號標記或程式碼圍欄。",
+    }
 }
 
 /// 換幕摘要的角色側紀錄行（與 `summary_messages` 同一渲染）；分段摘要按這些行切塊。
@@ -407,7 +411,13 @@ pub fn segment_summary_messages(
 }
 
 /// 合併：各段中間摘要依序交給模型，產出跟一次換幕相同格式的「標題＋前情提要」。
-pub fn merge_summary_messages(segments: &[String], lang: &str) -> Vec<ChatMessage> {
+/// 合併的輸出就是前情提要本身，介面接管桌同 `summary_messages` 多一句禁標記。
+pub fn merge_summary_messages(
+    segments: &[String],
+    lang: &str,
+    interface_takeover: bool,
+) -> Vec<ChatMessage> {
+    let plain_only = summary_plain_only(interface_takeover, scaffold_en(lang));
     let instruction = if scaffold_en(lang) {
         format!(
             "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
@@ -416,7 +426,7 @@ pub fn merge_summary_messages(segments: &[String], lang: &str) -> Vec<ChatMessag
              followed by a blank line before the recap. \
              Merge the parts into one recap of the whole scene, covering: location and time, who is present and their state, \
              key events, relationship changes, and unresolved threads — as a compact bulleted list. \
-             Output only the summary body. {language_rule}",
+             Output only the summary body. {plain_only}{language_rule}",
             language_rule = language_rule(lang),
         )
     } else {
@@ -424,7 +434,7 @@ pub fn merge_summary_messages(segments: &[String], lang: &str) -> Vec<ChatMessag
             "你是這場多人桌上角色扮演的 GM，現在要換場。這一幕是分段整理的，以下依序是各段摘要。\
              回覆第一行固定輸出「標題：〈10 字內的幕名〉」，空一行後才是摘要條列。\
              請把各段合併成整幕的一則前情提要，條列涵蓋：地點與時間、在場人物與狀態、關鍵事件、關係變化、未解懸念。\
-             {language_rule}",
+             {plain_only}{language_rule}",
             language_rule = language_rule(lang),
         )
     };

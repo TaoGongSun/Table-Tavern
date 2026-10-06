@@ -183,6 +183,8 @@ pub async fn run_cli_cancellable(
         usage_log,
         &mut on_delta,
         cancel,
+        #[cfg(feature = "test-harness")]
+        &harness_dispatch,
     )
     .await;
     // 不論怎麼收場（完成、錯誤、斷流、取消）都先收屍再返回：呼叫端接著會刪提示詞暫存檔，
@@ -201,6 +203,7 @@ async fn drive_child(
     usage_log: Option<UsageLog<'_>>,
     on_delta: &mut impl FnMut(&str),
     mut cancel: Option<watch::Receiver<bool>>,
+    #[cfg(feature = "test-harness")] harness_dispatch: &str,
 ) -> DataResult<CliFinish> {
     // stdin 跟讀迴圈並行：正文改走 stdin 後可能好幾 MB，先寫完才讀的話，CLI 若先大量輸出
     // 再讀 stdin，兩邊各自卡在滿掉的管線上互等。寫完就關 stdin 讓 CLI 知道輸入結束。
@@ -381,7 +384,7 @@ async fn drive_child(
                 // 原始收尾 usage 與解析後要落帳的數字並排（agy 另附累積值與上輪基準）
                 #[cfg(feature = "test-harness")]
                 crate::harness::ai_event(
-                    &harness_dispatch,
+                    harness_dispatch,
                     "usage-raw",
                     serde_json::json!({
                         "raw": crate::harness::raw_usage(&line),
