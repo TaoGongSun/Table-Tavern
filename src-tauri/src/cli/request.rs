@@ -245,8 +245,8 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
         ("GROK_HOME", grok_home.to_string_lossy().into_owned()),
         ("GROK_CONFIG", GROK_SAMPLING_OVERLAY.to_owned()),
         // 遠端會下發 campaign（例：grok-4.7-launch 把預設模型改成 4.7）。app 的 grok-home 沒人
-        // dismiss 過，campaign 生效時只要 `-m` 不是它的預設模型，`--system-prompt-override`
-        // 就被丟掉、換回 coding agent 提示（1.0.46 實測）。官方文件保證這個變數連
+        // dismiss 過，campaign 生效時只要 `-m` 不是它的預設模型，自訂 system 就被丟掉、換回
+        // coding agent 提示（1.0.46 以 `--system-prompt-override` 實測）。官方文件保證這個變數連
         // requirements 都壓得過（user-guide/26-config-reference.md `features.campaigns`）。
         ("GROK_CAMPAIGNS", "0".to_owned()),
     ]

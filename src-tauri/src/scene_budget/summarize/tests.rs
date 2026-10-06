@@ -146,7 +146,13 @@ fn run<T>(future: impl std::future::Future<Output = T>) -> T {
 fn fits_in_one_call() {
     let events = long_scene(3, 100);
     let mut fake = Fake::new(190_000);
-    let reply = run(summarize_scene(&events, &cap(Some(190_000)), &mut fake)).unwrap();
+    let reply = run(summarize_scene(
+        &events,
+        &cap(Some(190_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(reply.starts_with("標題"));
     assert_eq!(fake.calls.len(), 1);
     assert_eq!(fake.calls[0].0, Kind::Whole);
@@ -156,7 +162,13 @@ fn fits_in_one_call() {
 fn too_big_is_chunked_every_request_within_the_limit_and_all_lines_sent() {
     let events = long_scene(40, 2_000); // 約 240KB
     let mut fake = Fake::new(60_000);
-    let reply = run(summarize_scene(&events, &cap(Some(60_000)), &mut fake)).unwrap();
+    let reply = run(summarize_scene(
+        &events,
+        &cap(Some(60_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(reply.starts_with("標題"));
     assert!(fake.count(Kind::Segment) >= 4);
     assert_eq!(fake.count(Kind::Merge), 1);
@@ -175,7 +187,7 @@ fn too_big_is_chunked_every_request_within_the_limit_and_all_lines_sent() {
 fn unknown_limit_sends_whole_then_shrinks_on_too_long() {
     let events = long_scene(30, 2_000);
     let mut fake = Fake::new(50_000);
-    let reply = run(summarize_scene(&events, &cap(None), &mut fake)).unwrap();
+    let reply = run(summarize_scene(&events, &cap(None), false, &mut fake)).unwrap();
     assert!(reply.starts_with("標題"));
     assert_eq!(fake.calls[0].0, Kind::Whole);
     assert!(fake.count(Kind::Segment) >= 2);
@@ -186,7 +198,13 @@ fn known_limit_misestimate_shrinks_too() {
     // 以為上限 120KB，其實 40KB：分段時收到太長也要縮塊
     let events = long_scene(30, 2_000);
     let mut fake = Fake::new(40_000);
-    let reply = run(summarize_scene(&events, &cap(Some(120_000)), &mut fake)).unwrap();
+    let reply = run(summarize_scene(
+        &events,
+        &cap(Some(120_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(reply.starts_with("標題"));
     assert!(fake.calls.iter().any(|(_, size)| *size > 40_000));
     assert!(fake.calls.len() <= MAX_CALLS as usize);
@@ -201,7 +219,13 @@ fn single_event_bigger_than_a_chunk_is_hard_cut_on_char_boundaries() {
         event(TranscriptKind::Narration, "GM", &text),
     ];
     let mut fake = Fake::new(40_000);
-    run(summarize_scene(&events, &cap(Some(40_000)), &mut fake)).unwrap();
+    run(summarize_scene(
+        &events,
+        &cap(Some(40_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(fake.count(Kind::Segment) >= 3);
     let joined: String = fake
         .inputs
@@ -234,7 +258,13 @@ fn long_intermediate_summary_is_rewritten_then_truncated_before_merge() {
     let mut fake = Fake::new(60_000);
     fake.segment_reply = "長".repeat(2_000);
     fake.shorten_reply = "還是長".repeat(1_000);
-    run(summarize_scene(&events, &cap(Some(60_000)), &mut fake)).unwrap();
+    run(summarize_scene(
+        &events,
+        &cap(Some(60_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert_eq!(fake.count(Kind::Shorten), fake.count(Kind::Segment));
     let merge_input = fake
         .inputs
@@ -254,7 +284,13 @@ fn merge_too_big_recurses_into_another_layer() {
     let mut fake = Fake::new(20_000);
     // 每段中間摘要接近 1500 字（約 4.5KB）：合併放不下 20KB，要再分一層
     fake.segment_reply = "摘".repeat(1_400);
-    let reply = run(summarize_scene(&events, &cap(Some(20_000)), &mut fake)).unwrap();
+    let reply = run(summarize_scene(
+        &events,
+        &cap(Some(20_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(reply.starts_with("標題"));
     assert!(fake.count(Kind::Segment) > 30_000 * 2 / 20_000);
     assert!(fake.calls.iter().all(|(_, size)| *size <= 20_000));
@@ -265,7 +301,7 @@ fn smallest_chunk_still_too_long_gives_summary_failed_not_context_error() {
     let events = long_scene(10, 2_000);
     // 真上限比最小塊還小：縮到底仍太長
     let mut fake = Fake::new(3_000);
-    let error = run(summarize_scene(&events, &cap(None), &mut fake)).unwrap_err();
+    let error = run(summarize_scene(&events, &cap(None), false, &mut fake)).unwrap_err();
     assert!(error.contains("scene_summary_failed"), "{error}");
     assert!(!error.starts_with(context_overflow::CODE));
     assert!(fake.calls.len() <= MAX_CALLS as usize);
@@ -276,7 +312,7 @@ fn zero_capacity_exits_before_any_call() {
     let events = long_scene(10, 2_000);
     let mut fake = Fake::new(1_000_000);
     // 上限比固定部分還小：不送任何東西
-    let error = run(summarize_scene(&events, &cap(Some(100)), &mut fake)).unwrap_err();
+    let error = run(summarize_scene(&events, &cap(Some(100)), false, &mut fake)).unwrap_err();
     assert!(error.contains("scene_summary_failed"));
     assert!(fake.calls.is_empty());
 }
@@ -285,7 +321,13 @@ fn zero_capacity_exits_before_any_call() {
 fn call_budget_of_twenty_is_shared_by_every_retry() {
     let events = long_scene(200, 2_000); // 約 1.2MB，12KB 一塊要上百段
     let mut fake = Fake::new(14_000);
-    let error = run(summarize_scene(&events, &cap(Some(14_000)), &mut fake)).unwrap_err();
+    let error = run(summarize_scene(
+        &events,
+        &cap(Some(14_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap_err();
     assert!(error.contains("scene_summary_failed"));
     assert_eq!(fake.calls.len(), MAX_CALLS as usize);
 }
@@ -366,6 +408,7 @@ fn regenerate_keeps_the_old_recap_on_failure() {
         &world,
         &events,
         &cap(None),
+        false,
         &mut tiny,
     ))
     .unwrap_err();
@@ -384,7 +427,13 @@ fn shorten_request_is_measured_and_split_when_it_does_not_fit() {
     // 每段中間摘要約 45KB：比可用容量還大
     fake.segment_reply = "長".repeat(15_000);
     fake.shorten_reply = "・縮".to_owned();
-    let reply = run(summarize_scene(&events, &cap(Some(30_000)), &mut fake)).unwrap();
+    let reply = run(summarize_scene(
+        &events,
+        &cap(Some(30_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(reply.starts_with("標題"));
     assert!(fake.count(Kind::Shorten) > fake.count(Kind::Segment));
     assert!(fake.calls.iter().all(|(_, size)| *size <= 30_000));
@@ -399,7 +448,13 @@ fn shorten_too_long_shrinks_instead_of_failing() {
     fake.shorten_reply = "・縮".to_owned();
     // 第一次縮短（第 2 次呼叫）回太長
     fake.fail_at = Some((2, format!("{} too long", context_overflow::CODE)));
-    let reply = run(summarize_scene(&events, &cap(Some(60_000)), &mut fake)).unwrap();
+    let reply = run(summarize_scene(
+        &events,
+        &cap(Some(60_000)),
+        false,
+        &mut fake,
+    ))
+    .unwrap();
     assert!(reply.starts_with("標題"));
     assert_eq!(fake.calls[1].0, Kind::Shorten);
     // 減半後重送縮短（不回摘要失敗、不重做分段）
@@ -423,6 +478,7 @@ fn positive_room_below_the_minimum_chunk_fails_without_calling() {
     let error = run(summarize_scene(
         &events,
         &cap(Some(fixed + 5_000)),
+        false,
         &mut fake,
     ))
     .unwrap_err();
@@ -564,7 +620,7 @@ fn summarize_cuts_a_huge_ascii_event_under_half_ratio() {
         }
     }
     let mut caller = Counting(Vec::new());
-    let reply = run(summarize_scene(&events, &small, &mut caller)).unwrap();
+    let reply = run(summarize_scene(&events, &small, false, &mut caller)).unwrap();
     assert!(reply.starts_with("標題"));
     assert!(!caller.0.contains(&Kind::Whole), "{:?}", caller.0);
     assert!(

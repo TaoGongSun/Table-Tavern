@@ -32,8 +32,9 @@ export function budgetTokens(text: string): number {
   let total = 0;
   for (const ch of text) {
     const code = ch.codePointAt(0)!;
-    if (code > 0x7f) total += 1.2;
-    else if (/[A-Za-z0-9]/.test(ch)) total += 0.3;
+    if (code > 0x7f) total += 1.45;
+    else if (/[A-Za-z]/.test(ch)) total += 0.3;
+    else if (/[0-9]/.test(ch)) total += 1.0;
     else if (/\s/.test(ch)) total += 0.15;
     else total += 0.7;
   }

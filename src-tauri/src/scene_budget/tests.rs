@@ -152,10 +152,10 @@ fn draft_size_counts_text_plus_fixed_wrapping() {
         4 + DRAFT_OVERHEAD_BYTES
     );
     // 前端 scene-budget.test.ts 用同一組數字對拍
-    assert_eq!(budget_tokens("雷恩說：Let's go! {\"hp\":3}"), 13);
+    assert_eq!(budget_tokens("雷恩說：Let's go! {\"hp\":3}"), 15);
     assert_eq!(
         draft_size("雷恩說：Let's go! {\"hp\":3}", Unit::Tokens, 1.5),
-        20 + DRAFT_OVERHEAD_TOKENS
+        23 + DRAFT_OVERHEAD_TOKENS
     );
 }
 
@@ -323,7 +323,7 @@ fn agy_summary_measures_the_exact_stdin_body() {
     let budget = compute_with(&config, &lang, &root, &world, &materials, &sources, true);
     let summary = budget.summary.unwrap();
     let body = |events: &[TranscriptEvent]| {
-        let messages = crate::transport::summary_messages(events, &lang);
+        let messages = crate::transport::summary_messages(events, &lang, false);
         let (system, prompt) = crate::cli::flatten_messages(
             "GM",
             crate::transport::summary_closing(&lang),

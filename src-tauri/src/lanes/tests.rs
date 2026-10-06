@@ -572,134 +572,6 @@ fn prompt_carries_header_only_on_reopen_and_tail_alone_without_events() {
     );
 }
 
-/// 假 grok：照真 CLI 讀 `--agent` profile 與 `--prompt-file` 正文，逐次記下內容。
-#[cfg(unix)]
-fn fake_grok(tag: &str) -> FakeCli {
-    let FakeCli {
-        dir,
-        mut call,
-        root,
-        world_id,
-        working_dir,
-        ..
-    } = fake_claude(&format!("grok-{tag}"));
-    let script = dir.join("fake-grok.py");
-    std::fs::write(
-        &script,
-        r#"#!/usr/bin/env python3
-import json, os, sys
-args = sys.argv[1:]
-def flag(name):
-    return args[args.index(name) + 1] if name in args else None
-def read(path):
-    return open(path, encoding='utf-8').read() if path else None
-d = os.environ['FAKE_SESSION_DIR']
-with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'profile': read(flag('--agent')),
-                        'prompt': read(flag('--prompt-file'))}, ensure_ascii=False) + '\n')
-print(json.dumps({'type': 'text', 'data': '回覆'}, ensure_ascii=False))
-print(json.dumps({'type': 'end'}))
-"#,
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    call.provider = LaneProvider::Grok;
-    call.program = script;
-    call.model = Some("grok-test".to_owned());
-    FakeCli {
-        session_dir: PathBuf::from(
-            call.envs
-                .iter()
-                .find(|(key, _)| key == "FAKE_SESSION_DIR")
-                .map(|(_, value)| value.clone())
-                .unwrap(),
-        ),
-        dir,
-        call,
-        root,
-        world_id,
-        claude_home: PathBuf::new(),
-        working_dir,
-    }
-}
-
-/// grok 開線把 system 寫成 agent profile（內容就是 grok_agent_profile）、續聊不帶；
-/// 正文都從 --prompt-file 讀到，且文字通道帶 --verbatim。暫存檔呼叫完就刪。
-#[cfg(unix)]
-#[tokio::test]
-async fn grok_lane_opens_with_profile_file_and_resumes_with_prompt_file_only() {
-    let _serial = crate::inflight::lock_real_process_tests();
-    let FakeCli {
-        dir,
-        call,
-        root,
-        world_id,
-        session_dir,
-        ..
-    } = fake_grok("files");
-    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第一句")];
-    let mut first = turn_input(&events, 0);
-    first.prefix = None;
-    first.frozen_system = "凍結A ${% raw %} 保持原樣".to_owned();
-    run_turn(&call, &root, &world_id, first, None, |_| {})
-        .await
-        .unwrap();
-    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆"));
-    events.push(event(TranscriptKind::Player, "", "阿濤", "只有這句是新的"));
-    let mut second = turn_input(&events, 0);
-    second.prefix = None;
-    second.frozen_system = "凍結A ${% raw %} 保持原樣".to_owned();
-    run_turn(&call, &root, &world_id, second, None, |_| {})
-        .await
-        .unwrap();
-
-    let calls: Vec<serde_json::Value> = std::fs::read_to_string(session_dir.join("calls.jsonl"))
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert_eq!(calls.len(), 2);
-    let args = |index: usize| -> Vec<String> {
-        calls[index]["args"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| value.as_str().unwrap().to_owned())
-            .collect()
-    };
-    let open_args = args(0);
-    assert!(open_args.contains(&"-s".to_owned()));
-    assert!(open_args.contains(&"--verbatim".to_owned()));
-    assert!(!open_args
-        .iter()
-        .any(|arg| arg.contains("凍結A") || arg == "-p"));
-    assert_eq!(
-        calls[0]["profile"].as_str().unwrap(),
-        crate::cli::grok_payload("凍結A ${% raw %} 保持原樣", "", false)
-            .0
-            .unwrap()
-    );
-    let opening = calls[0]["prompt"].as_str().unwrap();
-    assert!(opening.contains("第一句"));
-    assert!(!opening.contains("凍結A")); // system 只在 profile，不混進正文
-
-    let resume_args = args(1);
-    assert!(resume_args.contains(&"-r".to_owned()));
-    assert!(!resume_args.contains(&"--agent".to_owned()));
-    assert!(calls[1]["profile"].is_null());
-    let delta = calls[1]["prompt"].as_str().unwrap();
-    assert!(delta.contains("只有這句是新的"));
-    assert!(!delta.contains("第一句"));
-    assert!(!delta.contains("凍結A"));
-
-    let left: Vec<_> = std::fs::read_dir(call.prompt_dir.clone())
-        .unwrap()
-        .collect();
-    assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
 #[cfg(unix)]
 #[tokio::test]
 async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
@@ -1806,6 +1678,7 @@ fn apply_rewrite_names_the_failing_stage() {
         model: Some("sonnet".to_owned()),
         usage_log: None,
         claude_home: claude_home.clone(),
+        prompt_dir: working_dir.with_file_name("prompts"),
     };
     let user = |uuid: &str, parent: Option<&str>, text: &str| {
         serde_json::json!({"type":"user","uuid":uuid,"parentUuid":parent,

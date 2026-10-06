@@ -272,7 +272,9 @@ fn compute_with(
     let transport = crate::transport::dispatch::chat_transport(config);
     let gm_tier = crate::transport::gm_tier(config);
     let summary = limits::resolve(config, gm_tier, sources).map(|limit| {
-        let raw = measure::summary_raw(&materials.events, lang, &transport, limit.unit);
+        let takeover =
+            data::is_interface_takeover(root, world_id, materials.state.refactor_mode.as_deref());
+        let raw = measure::summary_raw(&materials.events, lang, &transport, takeover, limit.unit);
         let path = path_budget(&limit, "summary", raw, None);
         let factor = path.ratio.unwrap_or(1.0);
         let sizes: Vec<ReplySize> = materials
