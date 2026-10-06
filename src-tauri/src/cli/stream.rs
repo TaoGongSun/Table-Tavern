@@ -394,6 +394,29 @@ pub fn parse_grok_line(line: &str) -> CliLine {
 mod tests {
     use super::*;
 
+    // 2026-10-07 grok-4.5 實測：超過伺服器上限 500000 tokens 的 error 行（被擋、不計費，exit 1）
+    #[test]
+    fn grok_prompt_too_long_error_is_structured_failure() {
+        let line = r#"{"type":"error","message":"Internal error: {\n  \"message\": \"API error (status 400 Bad Request): invalid-argument: Failed to start sampling: [input_too_large] The prompt is too long for this model's context window (544617 tokens > 500000 tokens)\",\n  \"http_status\": 400\n}"}"#;
+        let CliLine::Done { text, is_error } = parse_grok_line(line) else {
+            panic!("not done");
+        };
+        assert!(is_error);
+        assert!(crate::transport::context_overflow::cli_failure(&text).is_some());
+        // 字面改版：錯誤碼 input_too_large 仍認得
+        let CliLine::Done { text, .. } =
+            parse_grok_line(r#"{"type":"error","message":"[input_too_large] request rejected"}"#)
+        else {
+            panic!("not done");
+        };
+        assert!(crate::transport::context_overflow::cli_failure(&text).is_some());
+        // 正文增量寫了同一句不是失敗
+        assert_eq!(
+            parse_grok_line(r#"{"type":"text","data":"The prompt is too long"}"#),
+            CliLine::Delta("The prompt is too long".to_owned())
+        );
+    }
+
     // 2026-10-06 haiku 實測：超長請求的收尾行（被擋、不計費）
     #[test]
     fn claude_prompt_too_long_result_is_structured_failure() {

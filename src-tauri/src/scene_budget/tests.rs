@@ -318,6 +318,7 @@ fn agy_summary_measures_the_exact_stdin_body() {
         catalog: &catalog,
         codex_cache: None,
         codex_config: None,
+        grok_windows: None,
         smart_free_context: None,
     };
     let budget = compute_with(&config, &lang, &root, &world, &materials, &sources, true);
@@ -359,6 +360,7 @@ fn big_system_makes_chat_hint_before_summary_hint() {
         catalog: &catalog,
         codex_cache: None,
         codex_config: None,
+        grok_windows: None,
         smart_free_context: None,
     };
     let budget = compute_with(&config, &lang, &root, &world, &materials, &sources, true);
@@ -627,6 +629,64 @@ fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_flatten() {
         assert!(measured.contains(&takeover.content), "{transport}");
         assert!(!measured.contains(&narration), "{transport}");
     }
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// 卡片自帶介面的兩態：格式條目全文不在提示裡＝中性版（CardFormatAbsent），
+/// 世界書加上提到同款標籤的常駐條目＝點名版（CardFormat）；各後端量測都跟著換
+#[test]
+fn chat_measure_follows_card_format_and_card_format_absent() {
+    let events = vec![
+        event(TranscriptKind::Player, "玩家", "開始。"),
+        event(TranscriptKind::Narration, "GM", "雨。"),
+    ];
+    let (root, world) = world_with(&events, "card-format");
+    let card = serde_json::json!({"data": {"name": "莉亞", "extensions": {"regex_scripts": [{
+        "scriptName": "顯示介面",
+        "findRegex": "/<TavernUI>[\\s\\S]*?<\\/TavernUI>/s",
+        "replaceString": "<div>$1</div>",
+        "placement": [2]
+    }]}}})
+    .to_string();
+    crate::import::import_character(&root, &world, card.as_bytes(), "#3366ff", "zh-TW").unwrap();
+    let lang = crate::transport::ui_language(&config_for("claude"));
+    let instruction = |root: &std::path::Path| {
+        let materials = crate::chat_assembly::gm_materials(root, &world).unwrap();
+        crate::chat_assembly::gm_instruction(root, &world, &materials, &lang)
+            .0
+            .content
+    };
+    let assert_measured = |expected: &str, absent: &str| {
+        for transport in ["claude", "agy", "codex", "api"] {
+            let measured = text_of(&gm_path(&root, &world, transport));
+            assert!(measured.contains(expected), "{transport}");
+            assert!(!measured.contains(absent), "{transport}");
+        }
+    };
+    let neutral = crate::transport::card_format_instruction(&lang, None).content;
+    let named = crate::transport::card_format_instruction(&lang, Some("輸出格式")).content;
+    assert_eq!(instruction(&root), neutral);
+    assert_measured(&neutral, &named);
+
+    data::upsert_worldbook_entry(
+        &root,
+        &world,
+        data::WorldbookEntry {
+            uid: 0,
+            title: "輸出格式".to_owned(),
+            keys: Vec::new(),
+            content: "每次回覆都包在 <TavernUI>…</TavernUI> 裡。".to_owned(),
+            constant: true,
+            order: 0,
+            disabled: false,
+            visibility: data::Visibility::Gm,
+            is_person: false,
+            locked: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(instruction(&root), named);
+    assert_measured(&named, &neutral);
     std::fs::remove_dir_all(&root).unwrap();
 }
 

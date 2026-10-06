@@ -12,8 +12,8 @@ use std::path::Path;
 pub const AGY_BODY_BYTES: u64 = 190_000;
 /// claude 拿不到回報前的預設總 context（只提醒，不鎖）。
 const CLAUDE_DEFAULT_CONTEXT: u64 = 200_000;
-/// grok 實測前的保守預設（只提醒，不鎖）。
-const GROK_DEFAULT_CONTEXT: u64 = 128_000;
+/// grok 讀不到模型資訊時的預設（只提醒，不鎖）：1.0.46 各模型的 CLI 本機壓縮點 256000×80%。
+const GROK_DEFAULT_CONTEXT: u64 = 204_800;
 /// codex 快取缺項時的預設（只提醒，不鎖）。
 const CODEX_DEFAULT_CONTEXT: u64 = 200_000;
 /// 完整生成所需的輸出空間：正文預留＋思考預留。供應商的輸出上限把思考包在內時（Claude），
@@ -73,6 +73,8 @@ pub struct Sources<'a> {
     /// codex 自己的 models_cache.json 與 config.toml 內容（讀不到為 None）
     pub codex_cache: Option<&'a str>,
     pub codex_config: Option<&'a str>,
+    /// grok 各模型的 CLI 本機壓縮點（`read_grok_windows`；讀不到為 None）
+    pub grok_windows: Option<&'a GrokWindows>,
     /// 穩定免費目前排得到的候選中最大的 context（None＝沒有候選或沒啟用）
     pub smart_free_context: Option<u64>,
 }
@@ -142,18 +144,19 @@ pub fn resolve(config: &AppConfig, tier: Tier, sources: &Sources) -> Option<Limi
             })
         }
         "grok" => {
+            // 沒覆寫就用模型目錄裡標 (default) 的那個（grok models 的輸出）
             let model = cli::tier_override(&config.tier_models, "grok", tier)
-                .unwrap_or("(CLI 預設)")
-                .to_owned();
-            let known = entry(&model);
-            Some(token_limit(
-                &transport,
-                model,
-                GROK_DEFAULT_CONTEXT,
-                None,
-                false,
-                known,
-            ))
+                .map(str::to_owned)
+                .or_else(|| grok_default_model(sources.catalog));
+            let known_window = model
+                .as_deref()
+                .and_then(|model| sources.grok_windows?.get(model).copied());
+            let label = model.unwrap_or_else(|| "(CLI 預設)".to_owned());
+            let known = entry(&label);
+            Some(match known_window {
+                Some(total) => token_limit(&transport, label, total, None, true, known),
+                None => token_limit(&transport, label, GROK_DEFAULT_CONTEXT, None, false, known),
+            })
         }
         _ => {
             // API：穩定免費取候選最大 context；OpenRouter 取目錄；自訂 base_url 拿不到
@@ -224,6 +227,59 @@ fn codex_window(cache: &str, model: &str) -> Option<u64> {
     (percent > 0 && percent <= 100).then(|| window * percent / 100)
 }
 
+/// grok 模型 id → CLI 本機自動壓縮點（tokens）。
+pub type GrokWindows = BTreeMap<String, u64>;
+
+/// `models_cache.json` 只取需要的欄位；同一筆裡的 api_key 等其餘欄位不進任何結構。
+#[derive(serde::Deserialize)]
+struct GrokCache {
+    models: BTreeMap<String, GrokCacheModel>,
+}
+
+#[derive(serde::Deserialize)]
+struct GrokCacheModel {
+    #[serde(default)]
+    info: Option<GrokCacheInfo>,
+}
+
+#[derive(serde::Deserialize)]
+struct GrokCacheInfo {
+    #[serde(default)]
+    context_window: Option<u64>,
+    #[serde(default)]
+    auto_compact_threshold_percent: Option<u64>,
+}
+
+/// grok 的上限取 CLI 自己的壓縮點：`context_window × auto_compact_threshold_percent`。
+/// 伺服器實際收到 500000（2026-10-07 grok-4.5 實測），但輸入超過壓縮點 CLI 會先在本機
+/// 自動壓縮——共線因此丟線、單發可能被改動或延遲——所以以壓縮點為準。
+/// 檔案直接串流解析，不整份讀成字串；缺檔、解析失敗一律 None，不記原文。
+pub fn read_grok_windows(grok_home: &Path) -> Option<GrokWindows> {
+    let file = std::fs::File::open(grok_home.join("models_cache.json")).ok()?;
+    let cache: GrokCache = serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
+    Some(
+        cache
+            .models
+            .into_iter()
+            .filter_map(|(id, model)| {
+                let info = model.info?;
+                let window = info.context_window?;
+                let percent = info.auto_compact_threshold_percent?;
+                (window > 0 && percent > 0 && percent <= 100).then(|| (id, window * percent / 100))
+            })
+            .collect(),
+    )
+}
+
+/// 模型目錄 grok 那組裡標 ` (default)` 的模型 id（`parse_grok_catalog` 保留原列為 label）。
+fn grok_default_model(catalog: &BTreeMap<String, Vec<ModelOption>>) -> Option<String> {
+    catalog
+        .get("grok")?
+        .iter()
+        .find(|option| option.label.ends_with(" (default)"))
+        .map(|option| option.id.clone())
+}
+
 /// 讀 codex 的兩個檔（app 跑 codex 沿用使用者自己的 `~/.codex`，沒有另設 CODEX_HOME）。
 pub fn read_codex_files() -> (Option<String>, Option<String>) {
     let home = std::env::var_os("CODEX_HOME")
@@ -260,6 +316,7 @@ mod tests {
             catalog,
             codex_cache: None,
             codex_config: None,
+            grok_windows: None,
             smart_free_context: None,
         }
     }
@@ -303,7 +360,73 @@ mod tests {
         );
         assert_eq!(agy.ratio("summary"), Some(1.0));
         let grok = resolve(&config("grok"), Tier::Best, &sources(&empty, &catalog)).unwrap();
-        assert!(!grok.reliable);
+        assert_eq!((grok.total, grok.reliable), (204_800, false));
+    }
+
+    /// 手寫假快取：api_key 欄放假值；壓縮點＝context_window×門檻%；
+    /// 缺門檻、缺 info、壞檔、缺檔、預設模型解析不到都退回預設只提醒。
+    #[test]
+    fn grok_uses_cli_compaction_point_from_models_cache() {
+        let dir = std::env::temp_dir().join(format!(
+            "tt-grok-windows-{}-{}",
+            std::process::id(),
+            ulid::Ulid::generate()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(read_grok_windows(&dir).is_none());
+        std::fs::write(dir.join("models_cache.json"), "{not json").unwrap();
+        assert!(read_grok_windows(&dir).is_none());
+        std::fs::write(
+            dir.join("models_cache.json"),
+            r#"{"fetched_at":"x","models":{
+                "grok-a":{"info":{"id":"grok-a","context_window":256000,"auto_compact_threshold_percent":80},"api_key":"FAKE-NOT-A-KEY"},
+                "grok-b":{"info":{"context_window":256000},"api_key":"FAKE-NOT-A-KEY"},
+                "grok-c":{"api_key":"FAKE-NOT-A-KEY"},
+                "grok-d":{"info":{"context_window":256000,"auto_compact_threshold_percent":0}}
+            }}"#,
+        )
+        .unwrap();
+        let windows = read_grok_windows(&dir).unwrap();
+        assert_eq!(windows, GrokWindows::from([("grok-a".to_owned(), 204_800)]));
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let empty = capacity::Store::new();
+        let mut catalog = BTreeMap::new();
+        let mut found = sources(&empty, &catalog);
+        found.grok_windows = Some(&windows);
+        // 預設模型解析不到：只提醒
+        let limit = resolve(&config("grok"), Tier::Best, &found).unwrap();
+        assert_eq!(
+            (limit.total, limit.reliable, limit.model.as_str()),
+            (204_800, false, "(CLI 預設)")
+        );
+        catalog.insert(
+            "grok".to_owned(),
+            ["grok-a (default)", "grok-b"]
+                .map(|label| ModelOption {
+                    id: label.trim_end_matches(" (default)").to_owned(),
+                    label: label.to_owned(),
+                    ..Default::default()
+                })
+                .to_vec(),
+        );
+        let mut found = sources(&empty, &catalog);
+        found.grok_windows = Some(&windows);
+        let limit = resolve(&config("grok"), Tier::Best, &found).unwrap();
+        assert_eq!(
+            (limit.total, limit.reliable, limit.model.as_str()),
+            (204_800, true, "grok-a")
+        );
+        // 檔位覆寫成快取裡沒有門檻的模型：退回預設只提醒
+        let mut overridden = config("grok");
+        overridden
+            .tier_models
+            .insert(format!("grok:{}", Tier::Best.as_str()), "grok-b".to_owned());
+        let limit = resolve(&overridden, Tier::Best, &found).unwrap();
+        assert_eq!(
+            (limit.total, limit.reliable, limit.model.as_str()),
+            (204_800, false, "grok-b")
+        );
     }
 
     #[test]

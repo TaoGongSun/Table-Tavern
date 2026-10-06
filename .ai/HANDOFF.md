@@ -8,7 +8,6 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過；省額度已由介面接管解掉，v2 剩多卡介面切換、離線退路、代送開關；首發必含〔作者裁決 2026-10-04〕
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
-- [long-prompt-scene-hint](handoffs/long-prompt-scene-hint.md) — 桌子太長撞命令列上限：範圍 1、2 完成且驗收通過、待結案；剩 grok 真送（22:00 後），範圍 3／發現 D／範圍 4 待使用者決定
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）

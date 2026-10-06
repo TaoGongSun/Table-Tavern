@@ -77,7 +77,10 @@ n = sum(1 for l in open(ch) if '"prompt_index"' in l)
 reply = '回覆' + str(n + 1)
 summary = '正在想：' + prompt
 tool = os.environ.get('FAKE_TOOL') == '1'
-append(ch, [{'type': 'user', 'content': [{'type': 'text', 'text': '<user_query>\n' + prompt + '\n</user_query>'}], 'prompt_index': n},
+# 真 CLI：帶 --verbatim 原文照收，不帶才包 <user_query>（FAKE_WRAP 強制包，模擬舊行為）
+wrap = '--verbatim' not in args or os.environ.get('FAKE_WRAP') == '1'
+body = '<user_query>\n' + prompt + '\n</user_query>' if wrap else prompt
+append(ch, [{'type': 'user', 'content': [{'type': 'text', 'text': body}], 'prompt_index': n},
             {'type': 'reasoning', 'id': 'rs', 'summary': [{'type': 'summary_text', 'text': summary}], 'encrypted_content': 'x'}]
            + ([{'type': 'backend_tool_call', 'kind': {'tool_type': 'x_search'}}] if tool else [])
            + [{'type': 'assistant', 'content': reply}])
@@ -212,8 +215,20 @@ fn session_dirs(home: &Path) -> Vec<PathBuf> {
 #[cfg(unix)]
 #[tokio::test]
 async fn two_characters_share_one_grok_lane_without_residue() {
+    shared_lane_without_residue("shared", &[]).await;
+}
+
+/// 同上，但 user 本文帶 `<user_query>` 包裝（不帶 --verbatim 的 CLI 行為）：剝掉包裝再比對。
+#[cfg(unix)]
+#[tokio::test]
+async fn shared_lane_rewrite_also_accepts_user_query_wrapping() {
+    shared_lane_without_residue("shared-wrap", &[("FAKE_WRAP", "1")]).await;
+}
+
+#[cfg(unix)]
+async fn shared_lane_without_residue(tag: &str, extra_env: &[(&str, &str)]) {
     let _serial = crate::inflight::lock_real_process_tests();
-    let fake = fake_grok("shared", &[]);
+    let fake = fake_grok(tag, extra_env);
     let FakeGrok {
         call,
         root,
@@ -592,4 +607,81 @@ async fn grok_lane_opens_with_profile_file_and_resumes_with_prompt_file_only() {
         .map(|entries| entries.collect())
         .unwrap_or_default();
     assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
+}
+
+/// 真 grok CLI（手動跑，會花一點額度）：照 app 環境與共線旗標（帶 --verbatim），同一角色
+/// 帶私設講兩輪——第一輪 -s 開線、第二輪 -r 續聊；兩輪都抹寫成功、線沒被拆、真 session 檔
+/// 裡沒有機密段與 reasoning。
+/// `TT_GROK_CONFIG_ROOT=<設定根（含 cli-home、grok-home、cli-workspace）> cargo test --lib real_grok_shared_lane -- --ignored`
+#[cfg(unix)]
+#[tokio::test]
+#[ignore]
+async fn real_grok_shared_lane_rewrites_verbatim_sessions() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let config_root = PathBuf::from(std::env::var("TT_GROK_CONFIG_ROOT").unwrap());
+    let grok_home = config_root.join("grok-home");
+    let dir = std::env::temp_dir().join(format!("tt-real-grok-{}", ulid::Ulid::generate()));
+    let root = dir.join("root");
+    let world_id = ulid::Ulid::generate().to_string();
+    mark_playable(&root.join("worlds").join(&world_id));
+    let call = LaneCall {
+        provider: LaneProvider::Grok,
+        program: PathBuf::from(std::env::var("HOME").unwrap()).join(".grok/bin/grok"),
+        working_dir: config_root.join("cli-workspace"),
+        envs: crate::cli::grok_envs(&config_root.join("cli-home"), &grok_home),
+        model: Some("grok-4.5".to_owned()),
+        usage_log: Some(dir.join("usage.jsonl")),
+        claude_home: PathBuf::new(),
+        prompt_dir: dir.join("prompts"),
+    };
+    let secret = "狐狸其實是失蹤的公主ZQX17";
+    let mut events = vec![event(
+        TranscriptKind::Player,
+        "",
+        "阿濤",
+        "老闆晚安，今晚有什麼推薦？",
+    )];
+    let first = run_turn(
+        &call,
+        &root,
+        &world_id,
+        char_turn(&events, "狐狸", "fox-id", Some(secret)),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    let key = "chars:grok-4.5";
+    let opened = read_store(&data::lanes_path(&root, &world_id).unwrap())[key]
+        .session_id
+        .clone();
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &first));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "那就來一杯吧。"));
+    let second = run_turn(
+        &call,
+        &root,
+        &world_id,
+        char_turn(&events, "狐狸", "fox-id", Some(secret)),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    assert!(!second.trim().is_empty());
+    let store = read_store(&data::lanes_path(&root, &world_id).unwrap());
+    assert_eq!(store[key].session_id, opened, "續聊後線被換掉");
+    assert!(store[key].pending_rewrite.is_none());
+    let log = std::fs::read_to_string(dir.join("usage.jsonl")).unwrap_or_default();
+    assert!(!log.contains("drop"), "{log}");
+    let dirs = crate::lanes::grok_session::find_session_dirs(&grok_home, &opened).unwrap();
+    assert_eq!(dirs.len(), 1);
+    let text = all_text(&dirs[0]);
+    assert!(!text.contains("ZQX17"), "機密段留在 session");
+    assert!(!text.contains("\"reasoning\"") && !text.contains("agent_thought_chunk"));
+    assert!(!text.contains("<user_query>"), "verbatim 不該有包裝");
+    assert!(text.contains("那就來一杯吧"));
+    eprintln!("session {opened}\n1: {first}\n2: {second}");
+    std::fs::remove_dir_all(&dir).unwrap();
 }

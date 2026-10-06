@@ -1,6 +1,6 @@
 # long-prompt-scene-hint：長桌撞命令列上限
 
-立案見 [handoff](../handoffs/long-prompt-scene-hint.md)。公開前必做〔作者裁決 2026-10-04〕。
+立案見 [handoff](../handoffs/archive/long-prompt-scene-hint.md)。公開前必做〔作者裁決 2026-10-04〕。
 
 ## 1. 實測結果（2026-10-06）
 
@@ -37,7 +37,10 @@
 
 - claude：模型 context window。haiku 送 3.15MB 中文 system 回 `400 Prompt is too long · the request is ~1200740 tokens (limit 200000)`，`total_cost_usd: 0`（被擋的請求不計費）。中文約 1.1 token／字。
 - agy：上面的 ~195KB 單則訊息上限，遠低於 gemini 的 context。
-- grok：context window，錯誤長相待 22:00 額度恢復後實測（帳號目前 `402 Grok Build usage balance exhausted`）。
+- grok（2026-10-07 grok-4.5 low 實測兩發）：
+  - 130,000 bytes 正文＋`--verbatim`＋agent profile：session 的 user 訊息就是完整 130,000 字元、沒搬成附件，模型答出開頭與結尾的標記、照 profile 的 system 加了前綴。34,039 input tokens、$0.023。
+  - 2.4MB 正文：伺服器上限 **500,000 tokens**，stdout 收尾 `{"type":"error","message":"Internal error: {… API error (status 400 Bad Request): … [input_too_large] The prompt is too long for this model's context window (544617 tokens > 500000 tokens) …}"}`、exit 1，不計費（session usage 全 0）。
+  - 但 CLI 自己認的窗是 GROK_HOME `models_cache.json` 的 `context_window`（4.5–4.7 都是 256000）× `auto_compact_threshold_percent`（80）＝204,800。超過這個值，送出前 CLI 會先在本機自動壓縮（這發壓了兩次、花 54 秒）：共線遇到壓縮會丟線，單發可能被改動或延遲。所以 grok 的實際天花板是這個壓縮點，不是伺服器的 500k。
 - codex：context window（本案不動）。
 
 ## 2. 範圍 2 施工（審查第 1 輪已併入，已施工）
@@ -87,7 +90,7 @@
 - stdin 互等反例（2.1b）。
 - Windows CI（只在本分支觸發）：原生假 `.exe` 跑 `run_cli`——中文與空白路徑、長檔內容、並發不串檔、正常／取消／future drop 後檔案清理。三家真 CLI 在 Windows 讀檔仍標未驗證。
 - `npm run verify`。
-- 測試通道真 app 實送長桌：claude haiku；agy gemini flash low，總長控制在 190KB 截尾門檻以下；grok 正文自身 >100KB（驗 `--verbatim` 不搬檔），等 2026-10-06 22:00 額度恢復後做。
+- 測試通道真 app 實送長桌：claude haiku；agy gemini flash low，總長控制在 190KB 截尾門檻以下；grok 正文自身 >100KB 驗 `--verbatim` 不搬檔（2026-10-07 直接打 CLI 通過，見 §1.3）。
 
 ## 3. 範圍 3：換幕容量提醒與鎖（施工計畫，Sol 第 1 輪意見已併入，待確認）
 
@@ -133,7 +136,7 @@
 | claude | token／總 context | ① 每次呼叫 result `modelUsage.<實際 model id>.contextWindow`（總 context；2026-10-06 haiku 實測回 200000）與同處的 `maxOutputTokens`（`R` 的上界）；② 錯誤 `prompt is too long … M` 的 M 當總 context 的佐證。存設定根 `context-windows.json`：`{transport, 別名, 實際 model id, 總 context, maxOutputTokens, 來源, 時間}`。下一次呼叫回報的實際 id 與記錄不同（CLI 更新換了別名對應）就整筆作廢。③ 都沒有時預設 200,000，只提醒 | ①② |
 | codex | token／總 context | `models_cache.json` 中 slug＝實際模型的那筆，`context_window × effective_context_window_percent/100`；實際模型＝檔位覆寫，沒覆寫就讀 codex 自己 `config.toml` 的 `model`。讀的必須是 app 跑 codex 時用的那個 home（目前沿用使用者 `~/.codex`，施工時確認）。缺檔、損壞、找不到該 slug、預設模型解析不到 → 未知，只提醒不鎖 | 可（資料齊全時） |
 | agy | bytes／單則輸入 | 常數 190,000（實測截在 192–201KB，§1.2 發現 D） | 可 |
-| grok | — | 22:00 後實測前未知 | 實測前不鎖、只用保守預設提醒 |
+| grok | token／總 context | app GROK_HOME 的 `models_cache.json` 中該模型的 `context_window × auto_compact_threshold_percent/100`（CLI 本機壓縮點，1.0.46 為 204,800；不是伺服器的 500k，見 §1.3）。模型＝檔位覆寫，沒覆寫就取模型目錄 grok 那組標 `(default)` 的。只反序列化 info 的這兩欄，api_key 不進任何結構；缺檔、解析失敗、找不到該模型或門檻、預設模型解析不到 → 預設 204,800，只提醒不鎖，原文不寫 log 也不進錯誤 | 可（資料齊全時） |
 | API／OpenRouter | token／總 context | 目錄的 `context_length` 與 `top_provider.context_length` 取小、`top_provider.max_completion_tokens` 夾 `R`；路由到別的 provider 可能更小，所以只提醒不鎖 | 不鎖 |
 | 穩定免費 | token | 用 `smart_free::plan_from_disk` 實際排出的候選（已扣排除與冷卻）中最大的 context，輸出預留同 `select::RESERVED_OUTPUT_TOKENS`；候選隨時在變，只提醒 | 不鎖 |
 | API／自訂 base_url | — | 拿不到：不提醒、不鎖 | — |
@@ -213,7 +216,7 @@
 - 測試通道（全機一把鎖，用前 ps、用完 quit；長逐字稿直接寫檔造）：
   1. claude haiku：估計器夾具校準（總數 ≤ 5）；確認 `contextWindow`、`maxOutputTokens` 與實際 id 記下；一次超長（被擋不計費）看範圍 4 錯誤與換幕鈕。
   2. agy gemini flash low：本幕約 150KB → 提醒；約 185KB＋打字 → 鎖、gate 擋送出；按換幕成功（1 次）；造 230KB 本幕驗分段摘要（約 3 次）。
-  3. grok（22:00 後）：一次超長呼叫取錯誤長相與上限，回填 §3.4、§4。
+  3. grok：一次超長呼叫取錯誤長相與上限（2026-10-07 直接打 CLI 做完，結果見 §1.3、§3.4、§4）。
 - `npm run verify`。
 
 ## 4. 範圍 4：「太長了，請換幕」錯誤〔作者裁決 2026-10-06〕
@@ -222,7 +225,7 @@
   - claude CLI：result 行 `is_error: true` 的 `result` 文字，或 runner 認定的 `API Error` 致命 stderr 行（`cli/runner.rs::api_error_kind`）；字樣 `prompt is too long`。
   - codex CLI：其 stream 裡的錯誤事件訊息；字樣 `context_length_exceeded`／`exceeds the context window`。
   - API 路：只在 HTTP 400／413 時解析 body 的 `error.code`／`error.message`（JSON）；`context_length_exceeded`、`maximum context length`；Gemini 要同一則 message 同時有 `input token count` 與 `exceeds the maximum`。5xx 包裝、2xx 正文一律不認。
-  - grok／xAI：22:00 實測後補（候選 `maximum prompt length`）。
+  - grok CLI：streaming-json 的 `{"type":"error"}` 收尾行的 message；字樣 `prompt is too long`，另認錯誤碼 `input_too_large`（樣本見 §1.3，測試 `cli::stream` 的 grok 樣本）。
   - agy：不回錯誤（靜默截尾／空回應），不認。
 - 認到就掛 `AI_CONTEXT_TOO_LONG:`（原文照附），並加進 `dispatch.rs::ai_call_failure` 的 `CODED` 白名單。順便把上限數字依 §3.4 寫入 `context-windows.json`。
 - **前端**：`ai-error.ts` 的 `FAILURE_CODES` 加 `AI_CONTEXT_TOO_LONG → errContextTooLong`（只認開頭）；`ErrorNote` 收選用 `onAdvanceScene`，命中這個鍵或 `SceneCapacityFull` 時多一顆「換幕」鈕；只有聊天錯誤列傳入。
