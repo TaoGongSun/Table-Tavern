@@ -485,7 +485,7 @@ pub async fn stream_chat(
     }
 
     #[cfg(feature = "test-harness")]
-    crate::harness::ai_dispatch(
+    let harness_dispatch = crate::harness::ai_dispatch(
         "api",
         model,
         serde_json::json!({ "world": world, "shape": format!("{shape:?}") }),
@@ -509,6 +509,8 @@ pub async fn stream_chat(
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = StreamOutcome::default();
+    #[cfg(feature = "test-harness")]
+    let mut harness_raw: Option<serde_json::Value> = None;
     'outer: while let Some(chunk) = stream.next().await {
         for payload in parser.push(&chunk?) {
             if payload == "[DONE]" {
@@ -516,6 +518,10 @@ pub async fn stream_chat(
                 break 'outer;
             }
             outcome.absorb(&payload);
+            #[cfg(feature = "test-harness")]
+            if let Some(raw) = crate::harness::raw_usage(&payload) {
+                harness_raw = Some(raw);
+            }
             if let Some(parsed) = extract_usage(&payload) {
                 usage = Some(parsed);
             }
@@ -525,6 +531,12 @@ pub async fn stream_chat(
             }
         }
     }
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_event(
+        &harness_dispatch,
+        "usage-raw",
+        serde_json::json!({ "raw": harness_raw, "parsed": usage.as_ref().map(crate::harness::parsed_usage) }),
+    );
     if let Some(usage) = usage {
         // stderr 一行（終端機啟動時直接看）＋落檔一行（事後隨時查）
         eprintln!(
@@ -608,6 +620,8 @@ pub async fn stream_chat_models(
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = StreamOutcome::default();
+    #[cfg(feature = "test-harness")]
+    let mut harness_raw: Option<serde_json::Value> = None;
     let mut responder_model = None;
     'outer: while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|error| ApiFailure::network(&error, !full_text.is_empty()))?;
@@ -617,6 +631,10 @@ pub async fn stream_chat_models(
                 break 'outer;
             }
             outcome.absorb(&payload);
+            #[cfg(feature = "test-harness")]
+            if let Some(raw) = crate::harness::raw_usage(&payload) {
+                harness_raw = Some(raw);
+            }
             if let Some(model) = extract_response_model(&payload) {
                 responder_model = Some(model);
             }
@@ -635,6 +653,12 @@ pub async fn stream_chat_models(
         &harness_dispatch,
         "responder",
         serde_json::json!({ "model": responder_model }),
+    );
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_event(
+        &harness_dispatch,
+        "usage-raw",
+        serde_json::json!({ "raw": harness_raw, "parsed": usage.as_ref().map(crate::harness::parsed_usage) }),
     );
     let log_model = responder_model.as_deref().unwrap_or(model);
     if let Some(usage) = usage {

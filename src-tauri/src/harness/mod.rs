@@ -6,16 +6,20 @@ mod ai_log;
 pub(crate) mod dialog;
 mod eval;
 pub(crate) mod motion;
+mod rewrite_evidence;
 mod root;
 mod route;
 mod server;
+mod usage_raw;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 pub(crate) use ai_log::{ai_dispatch, ai_event, cli_model, is_ai_probe};
+pub(crate) use rewrite_evidence::rewrite_evidence;
 pub(crate) use root::HARNESS_IDENTIFIER;
+pub(crate) use usage_raw::{parsed_usage, raw_usage};
 
 struct Boot {
     root: PathBuf,
@@ -90,6 +94,11 @@ pub(crate) fn data_root() -> PathBuf {
 
 pub(crate) fn config_root() -> PathBuf {
     boot_state().root.join("config")
+}
+
+/// 尚未 boot（例如單元測試）時為 None。
+fn harness_root() -> Option<PathBuf> {
+    BOOT.get().map(|boot| boot.root.clone())
 }
 
 /// 尚未 boot（例如單元測試）時為 None，ai_log 就不寫。

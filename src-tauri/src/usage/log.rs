@@ -392,6 +392,10 @@ pub fn assign_pending_world(path: &Path, world: &str) {
 /// 沒有用量數字的線事件（目前只有抹寫失敗丟線）。不寫 mode／cache——
 /// 它不是一通呼叫，混進快取統計會憑空多一筆「量不到」。
 pub fn append_event(path: &Path, world: Option<&str>, lane: &str, event: Event, reason: &str) {
+    append(path, event_fields(world, lane, event, reason));
+}
+
+fn event_fields(world: Option<&str>, lane: &str, event: Event, reason: &str) -> Map<String, Value> {
     let mut fields = Map::new();
     fields.insert("transport".to_owned(), json!("claude"));
     if let Some(world) = world {
@@ -400,6 +404,22 @@ pub fn append_event(path: &Path, world: Option<&str>, lane: &str, event: Event, 
     fields.insert("lane".to_owned(), json!(lane));
     fields.insert("event".to_owned(), json!(event.as_str()));
     fields.insert("reason".to_owned(), json!(reason));
+    fields
+}
+
+/// 抹寫／截尾失敗的丟線：比 `append_event` 多記壞在哪一步（`stage`）與原錯誤字串（`detail`，
+/// 呼叫端已遮路徑、截斷）。`reason` 照舊，舊帳本與額度分頁的讀法不變。
+pub fn append_drop(
+    path: &Path,
+    world: Option<&str>,
+    lane: &str,
+    reason: &str,
+    stage: &str,
+    detail: &str,
+) {
+    let mut fields = event_fields(world, lane, Event::DropLane, reason);
+    fields.insert("stage".to_owned(), json!(stage));
+    fields.insert("detail".to_owned(), json!(detail));
     append(path, fields);
 }
 
@@ -631,11 +651,19 @@ mod tests {
             Event::DropLane,
             "rewrite-failed",
         );
+        append_drop(
+            &path,
+            Some("w1"),
+            "chars:sonnet",
+            "rewrite-failed",
+            "find-segment",
+            "找不到含指定片段的 user 對話行",
+        );
 
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 3);
 
         let call: Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(call["ts"].as_str().unwrap().len(), 19); // 秒級：分不出五分鐘過期線就沒用
@@ -663,6 +691,14 @@ mod tests {
         assert!(event.get("mode").is_none() && event.get("cache").is_none());
         assert_eq!(event["reason"], json!("rewrite-failed"));
         assert!(event.get("prompt_tokens").is_none());
+        assert!(event.get("stage").is_none()); // 沒有原因的事件不偽造 stage
+
+        let drop: Value = serde_json::from_str(lines[2]).unwrap();
+        assert_eq!(drop["event"], json!("drop-lane"));
+        assert_eq!(drop["reason"], json!("rewrite-failed")); // reason 不變，舊讀法照用
+        assert_eq!(drop["stage"], json!("find-segment"));
+        assert_eq!(drop["detail"], json!("找不到含指定片段的 user 對話行"));
+        assert!(drop.get("mode").is_none() && drop.get("cache").is_none());
     }
 
     #[test]
