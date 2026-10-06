@@ -34,12 +34,43 @@
 
 已知可疑點（實跑時留意，不預先修）：`session_file::load` 逐行驗證要求 user 行 content 是字串，CLI 若改寫成陣列會整檔讀失敗＝`load`；CLI 若正規化換行或尾端空白，機密段逐字比對落空＝`find-segment`。
 
+## 一之二、丟線修法：session 檔驗證接受 attachment 行
+
+根因見「四、對帳結果」。修在 [lanes/session_file.rs](../../src-tauri/src/lanes/session_file.rs)。
+
+1. **哪些行算鏈上節點**：user、assistant，加上 `type: attachment`（白名單）。本機 38 個 session 檔加 4 份留證掃過一遍，帶 uuid 的非對話行只有 attachment（250 行；子型 environment、model、date、session_context、prompt_snapshot、total_tokens_reminder、credential_org）。其餘沒有 uuid 的行（queue-operation、last-prompt、atis-latch、file-history-snapshot、cost-state、mode、ai-title）照舊不檢查、原樣保留。
+2. **鏈怎麼接**：`parse` 維護「鏈尾」＝最後一個節點的 uuid。每個節點（含 attachment）的 `parentUuid` 必須等於鏈尾：第一個節點必須是 null，之後就換它當鏈尾。所以 user→attachment…→assistant 照樣驗證是單一直線，不會因為跨過 attachment 而放過分岔。所有節點的 uuid 必須全檔唯一（對話行與 attachment 之間也不得重複），否則 `u1→x→u1` 這種環也能過關，而抹寫按 uuid 找行會命中第一則。
+3. **不認得的型就拒絕**：帶字串 uuid、卻不在白名單裡的行（例如將來的 `system`）直接驗證失敗，detail 寫出型別名稱。這樣仍走丟線，但帳本看得出是新型別；不採「凡是帶 uuid 都當節點」的寬鬆做法，因為不知道新型別會不會改變 resume 的語意。attachment 行只驗 uuid 與 parentUuid，內容不檢查。
+4. **抹寫／截尾不動 attachment**：
+   - `find_user_line_with_segment`、`erase_user_segment`、`prefix_last_assistant` 照舊只看 user／assistant。
+   - CLI 會把 thinking 和 text 拆成兩則 assistant；`prefix_last_assistant` 找最後一則，也就是 text 那則。實測的檔都是這個順序。
+   - 保溫截尾改成「記住保溫前的檔、事後還原」：送 ping 前讀下整份原文。讀不到就這條線不保溫。保溫後重讀，必須以保溫前原文為前綴（CLI 只追加），追加段裡恰有一則含保溫訊息的 user 行；然後把保溫前原文原子寫回並回讀比對。CLI 可能在 ping user 之前先追加 queue-operation 或 attachment，這些前置行也一併消失。前綴被改動＝`truncate` 失敗，丟線。`truncate_from` 隨之刪除。
+5. **原樣寫回**：`SessionFile` 每行另存讀入時的原始文字，含行尾分隔符（`\n`／`\r\n`／末行無換行）；空白行也當一行保留。寫回時，沒改過的行（含 attachment 與所有雜項行）逐字照抄，只有被抹寫或補前綴的那一行重新序列化，並沿用它原本的行尾。現行做法是整檔重新序列化，每一行的鍵順序都會被改掉（serde_json 沒開 preserve_order）；改完後未改動的行逐位元組不變。回讀驗證改成逐位元組比對。鏈驗證用的 helper（含 attachment）與抹寫／補前綴用的 helper（只認 user／assistant）分開，改寫時不會誤選 attachment。
+6. **回歸測試**：測試資料是手寫、照真實結構脫敏的 fixture，只留型別、uuid 鏈與欄位形狀，正式 session 內容不進 repo。
+   - 2.1.287 形狀：兩組 queue-operation、user、四到八行 attachment 夾著 file-history-snapshot／atis-latch、thinking 和 text 兩則 assistant、assistant 後還有 attachment，再接 last-prompt／cost-state；第二輪的 user 的 parent 接在前一輪最後那行 attachment 上。
+   - 2.1.227 形狀：user、一行 total_tokens_reminder attachment、ai-title、兩則 assistant。
+   - 斷言：
+     - 兩種形狀都能 parse。
+     - 抹寫機密段＋補前綴後寫回：改動只落在目標兩行，其餘行逐位元組不變。
+     - 截掉保溫問答後，檔案與保溫前逐位元組相同；含「ping user 之前 CLI 已先追加 queue-operation／attachment」的情況。保溫期間前段被改動要失敗。
+     - uuid 重複（對話行之間、對話行與 attachment 之間）要失敗。
+     - fixture 帶不同的鍵順序、多餘空白、CRLF、空白行、末行無換行，寫回後未改動行逐位元組不變。
+     - 最後一則 assistant 不是 text 時補前綴失敗（保留）。
+     - attachment 的 parent 沒接上鏈尾要失敗。
+     - 未知型別帶 uuid 要失敗，且訊息含型別名。
+     - 舊有的 user／assistant 驗證測試全部保留。
+   - lanes e2e 的假 CLI session 檔也插入 attachment 行，走完「開線→抹寫→續聊→保溫截尾」不丟線。
+7. 驗收：verify 綠；測試通道 claude 角色線連講 3 輪，帳本不再出現 `drop-lane`，第 2、3 輪 `mode: resume` 並讀到上一輪的量；GM 線保溫一次後截尾成功、線還在。
+   - 2026-10-06 02:41–02:52 實跑（claude 2.1.287、haiku-4-5）：角色線第 1 輪開線；第 2 輪續聊讀 5,027／理論 5,037，第 3 輪讀 6,236／6,246。GM 推進開 GM 線。後端保溫同時打到兩條線（角色線距上次 283 秒讀 7,563，GM 線 206 秒讀 6,984），還原都成功。保溫後角色線再講一句，續聊讀 7,563／7,573。全程沒有 `drop-lane`、沒有留證。
+
 ## 二、測試包量測掛點（只在 `test-harness` feature）
 
 正式包不含；沿用 AI log（`<root>/harness-ai.log`）的 dispatch id 串起呼叫。
 
 1. **原始 usage**：各家解析收尾 usage 的位置多寫一行 `usage-raw`，帶同一 dispatch id、原始收尾事件的 usage 物件原樣（缺欄就是缺，不補 0）、實際回應模型；API 另帶 OpenRouter 回的 `model`／`provider`；agy 同時記原始累積值、上輪基準與算出的本輪差分。
 2. **抹寫失敗留證**：抹寫或截尾失敗時、在丟線與 `abandon_session` 刪檔之前，把當下的 session 檔整份、要抹的機密段與名字前綴、stage／detail 寫進 `<root>/rewrite-failures/<時間>-<唯一 ID>-<安全化線名>/`（線名如 `chars:<model>`，模型可能含 `/`，非英數字元一律換 `_`），原線名寫在目錄內 metadata。留證失敗不阻止原本的清線／刪檔，但在 AI log 記一行 `rewrite-evidence-failed`。
+
+留證是同步檔案 I/O，會讓清線稍晚一點完成；成功時在 AI log 記一行 `rewrite-evidence` 附耗時。session 檔複製失敗時照樣寫 metadata，同時記 `rewrite-evidence-failed`。
 
 CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔逐筆 usage 對照帳本。回應沒給實際模型／provider 的欄位記「未回報」，不拿請求值冒充。
 
@@ -84,4 +115,50 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 
 ## 四、對帳結果
 
-（實跑後填）
+2026-10-06 01:24–02:12 實跑。CLI：claude 2.1.287、codex 0.160.0、agy 1.2.17（grok 1.0.46 未跑）。同一張單角色卡（塞拉菲·内藤），貼開場白 1 後講 3 句＋GM 推進。證據（帳本、AI log、抹寫失敗留證）在本機 `/private/tmp/claude-501/-Users-pachelo-GitHub-Table-Tavern/2f79d440-443a-471c-ab83-e159be2fd267/scratchpad/uca/evidence/`（暫存區，不進 repo），測試 root 已刪。以下只對本次模型與樣本成立。
+
+| 通道 | 樣本 | 原始 usage 的快取欄 | 結果 |
+|---|---|---|---|
+| claude haiku-4-5 | 角色線 3 輪、GM 線 3 輪、保溫 1 次 | `cache_read_input_tokens`／`cache_creation_input_tokens` 都有 | 角色線 3 輪全丟線（見下），每輪都是新線、讀 0；GM 線續聊正常：第 2 輪讀 6,783／理論 6,793，第 3 輪隔 567 秒仍讀 11,866／11,876；保溫讀 14,159／15,302 |
+| codex gpt-5.6-luna | 9 通（3 句 solo＋GM 推進 3 組 shared／solo） | `cached_input_tokens` 有 | 每通恰好讀 9,984＝首輪觀測到的 CLI 自帶底線，我方內容 0；帳本全標 `hit`，分頁頭條「已省 50%」 |
+| agy gemini-3.8-flash-low | 角色線 3 輪、GM 線 1 輪 | `cache_read_tokens` 有，累積值也是 0 | 4 輪全 0。續聊確實接上（累積 input 15,313→31,387→48,282，差分＝每輪整段重送）；第 2、3 輪 `cache_reason` 標 `skipped` |
+| OpenRouter dots-3-note-preview:free（provider AtlasCloud，全程同一支） | 5 通：3 通完成、2 通卡住 | `prompt_tokens_details.cached_tokens` 有 | 3 通全 0；另 2 通串流超過 5 分鐘沒動靜，app 沒有逾時，只能按停止 |
+| grok | — | — | 22:00 前不送，未跑 |
+
+原始 usage 都有快取欄位，本次沒有「缺欄被補 0」的輪次。
+
+### 角色線抹寫丟線：根因
+
+`session_file::load` 逐行驗證要求每則 user／assistant 的 `parentUuid` 等於前一則 user／assistant 的 uuid。claude CLI 會在兩者之間插入 `type: attachment` 行（2.1.287 每輪都有 environment、model、date、session_context 等多行；2.1.227 已偶發 total_tokens_reminder），這些行帶 uuid 且接在鏈上，第一則 assistant 就驗不過。結果：
+
+- claude 角色線每輪都要補名字前綴，**每輪都丟線**（3／3，`stage: load`，detail「第 13 行 parentUuid 未連到前一條對話 uuid …」），下一輪重開全量。
+- 保溫截尾同樣 `load` 失敗，丟 GM 線（`ping-truncate-failed`）。保溫在截尾前已經花掉。
+- GM 線不抹寫，續聊不受影響。
+- 本機正式 cli-workspace 14 個 session 檔有 5 個驗不過（8/22 起）。正式帳本只有一筆，是因為 9/06 之後沒有 claude 劇情輪。
+
+雙角色桌沒跑：壞在第一步 `load`，機密段相關的步驟根本走不到，多跑只是重複同一個結果。
+
+修法見「一之二」。
+
+### 其他發現
+
+1. **claude CLI 現在寫 1 小時快取**：每筆 `cache_creation.ephemeral_1h_input_tokens` 都是全額，`ephemeral_5m` 為 0；GM 線隔 567 秒仍幾乎全中。因此：app 以 300 秒判「過期」（`CACHE_TTL_SECS`）的前提不成立；保溫 ping 的前提（5 分鐘就過期）也不成立，這次一次 ping 花 $0.072，比一般劇情輪還貴；額度分頁估「省下多少」用 1.25 倍寫入係數，1 小時寫入是 2 倍，省下金額高估。
+2. 換新 session 時，凍結 system 相同也不共用快取：角色線三次新開，讀到的都是 0。
+3. codex 只中到 CLI 自帶的 9,984，分頁卻顯示綠字「已省 50%」（vendor-prefix-floor 描述的現象，本次重現）。
+4. agy 的零命中被標成 `skipped`，但字典對這個值的說明是「claude CLI resume 已知毛病」，套在 agy 上講錯原因。
+5. API 串流沒有停滯逾時，免費供應商卡住時一直轉圈（5 通裡有 2 通）。
+6. 測試通道視窗不可見時 WebKit 計時器不跑，前端保溫計時器與離開提醒在通道裡驗不了；後端保溫改用 `invoke keepalive_lanes` 直接驗。在 `load` 修好之前，第一次保溫就會丟線，離開提醒本來就亮不起來。
+
+### 待使用者決定（只寫建議，不施工）
+
+1. codex 這種只中到供應商自帶底線的輪次：建議頭條不算「已省」，改掛「只中到 CLI 自帶部分」（併 vendor-prefix-floor）。
+2. agy／OpenRouter 有回報、值是 0：建議顯示「這次沒有快取」，不給原因；`skipped` 只留給 claude。
+3. 丟線：分頁維持現在那一行「丟線重來」，`stage`／`detail` 只留在帳本給除錯，不給玩家看。
+4. claude 1 小時快取：要不要停掉保溫 ping、把「過期」門檻改成 1 小時、省下金額改用 2 倍寫入係數。
+5. 首輪 `not-expected` 的說法：建議統一叫「新桌／新線，本來就沒有可中的」。
+
+### 主線決定（2026-10-06）
+
+- 角色線丟線在本案修，規格見「一之二」。
+- API 串流停滯逾時、agy `skipped` 誤標、CLI 1 小時快取的影響由主線另立案，本檔只留證據。
+- 上面五項顯示建議由主線問使用者；grok 22:00 後補跑另外安排。
