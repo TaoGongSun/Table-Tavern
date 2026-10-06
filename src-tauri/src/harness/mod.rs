@@ -6,6 +6,7 @@ mod ai_log;
 pub(crate) mod dialog;
 mod eval;
 pub(crate) mod motion;
+mod occlusion;
 mod rewrite_evidence;
 mod root;
 mod route;
@@ -113,6 +114,7 @@ fn discovery_path() -> PathBuf {
 /// setup 裡呼叫：開控制埠、掛 eval 回報監聽。
 pub(crate) fn start(app: &tauri::AppHandle) {
     eval::listen(app);
+    occlusion::apply(app);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = server::serve(app.clone()).await {
