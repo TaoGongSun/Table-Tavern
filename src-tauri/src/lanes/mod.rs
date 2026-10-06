@@ -5,7 +5,7 @@
 //! Agy 的 chars 線再按角色細分（chars:<model>:<角色 id>）：它的 session 沒有回合後抹寫路徑，
 //! 私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色。Grok 與 claude 一樣共線，
 //! 回合後抹 session 目錄的兩個檔（grok_session）。
-//! 同桌的 lane 呼叫（含保溫）以每桌一把 mutex 串行：lanes.json 整份讀寫、session 檔回合後改寫，
+//! 同桌的 lane 呼叫以每桌一把 mutex 串行：lanes.json 整份讀寫、session 檔回合後改寫，
 //! 交錯就會互蓋狀態或把抹掉的機密段寫回。
 //! 凍結 system 每輪逐字重帶、只送新事件與回合尾段，
 //! 快取命中率的天花板因此變成「只有最後一句沒中」（實驗 E6：99.7%）。
@@ -67,6 +67,55 @@ pub(crate) struct LaneCall {
     pub usage_log: Option<PathBuf>,
     /// session 檔所在的 claude 設定目錄（~/.claude 或 $CLAUDE_CONFIG_DIR）；grok 不用
     pub claude_home: PathBuf,
+    /// 這一輪有嘗試落在 Claude 訂閱超額時呼叫一次（帶那次嘗試自己的寫入觀測）。
+    /// 在那次嘗試結束當下呼叫，整輪後來失敗也照報——錢已經花了。
+    pub on_overage: Option<OverageSink>,
+}
+
+pub(crate) type OverageSink = std::sync::Arc<dyn Fn(CacheWriteObserved) + Send + Sync>;
+
+/// 一次 claude 嘗試實際寫了哪種快取（超額提示據此決定能不能講倍數）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CacheWriteObserved {
+    /// 只寫 1 小時快取
+    OneHour,
+    /// 純 5 分鐘、混合、缺拆分或沒有寫入
+    Other,
+    /// 沒拿到用量（中止或失敗在 result 之前）
+    Unknown,
+}
+
+impl CacheWriteObserved {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::OneHour => "one-hour",
+            Self::Other => "other",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    fn of(usage: Option<&transport::PromptCacheUsage>) -> Self {
+        let Some(usage) = usage else {
+            return Self::Unknown;
+        };
+        let created = usage.created_tokens.unwrap_or(0);
+        match usage.created_1h_tokens {
+            Some(one_hour) if created > 0 && one_hour == created => Self::OneHour,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// 續聊線把 claude 的 prompt 快取釘成 1 小時〔作者裁決 2026-10-07〕。
+/// 只給角色線與 GM 線用；卡重構與單發呼叫維持 CLI 預設。FORCE_PROMPT_CACHING_5M=0
+/// 壓掉啟動 app 的環境殘留（實測空字串或 0 都讓它失效），玩家設定檔裡的那份壓不住。
+pub(crate) fn pin_lane_cache_ttl(call: &mut LaneCall) {
+    if call.provider == LaneProvider::Claude {
+        call.envs
+            .push(("CLAUDE_CODE_PROMPT_CACHE_TTL".to_owned(), "1h".to_owned()));
+        call.envs
+            .push(("FORCE_PROMPT_CACHING_5M".to_owned(), "0".to_owned()));
+    }
 }
 
 impl LaneCall {
@@ -157,8 +206,12 @@ struct LaneState {
     pending_rewrite: Option<PendingRewrite>,
     /// 上輪回覆應以此形狀出現在水位位置（前端呼叫返回後才落 transcript）
     expected_reply: Option<ExpectedReply>,
-    /// 追平判斷用（距上輪超過五分鐘＝快取已死，改寫快照零成本）
+    /// 追平判斷用（距上輪超過 cache_ttl_secs＝快取已死，改寫快照零成本）；呼叫開始的時刻
     last_call_epoch: u64,
+    /// 這條線快取的估計壽命（秒），由上次成功呼叫實際寫入的快取時效推得（見 next_cache_ttl）。
+    /// 舊檔沒這欄位當 5 分鐘：當時還沒釘 1 小時。
+    #[serde(default = "legacy_cache_ttl")]
+    cache_ttl_secs: u64,
     /// 上次成功呼叫的總輸入＝下輪的理論可中量（診斷用；舊檔沒這欄位當 0，不觸發重開）
     #[serde(default)]
     last_prompt_tokens: u64,
@@ -205,7 +258,7 @@ fn write_store(path: &Path, store: &LaneStore) -> Result<(), String> {
     })
 }
 
-/// 每桌一把 lane 鎖（以 lanes.json 路徑為鍵）。run_turn 與 keepalive 從讀 store 到最終落檔全程持有。
+/// 每桌一把 lane 鎖（以 lanes.json 路徑為鍵）。run_turn 從讀 store 到最終落檔全程持有。
 fn lane_lock(store_path: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     static LOCKS: std::sync::OnceLock<
         std::sync::Mutex<
@@ -442,7 +495,39 @@ fn legacy_provider() -> String {
     LaneProvider::Claude.as_str().to_owned()
 }
 
-pub(crate) const CACHE_TTL_SECS: u64 = 300;
+/// 5 分鐘快取壽命：舊 lanes.json／舊帳本列沒記時效時的預設，也是 grok／agy 線的固定窗口。
+pub(crate) const LEGACY_CACHE_TTL_SECS: u64 = 300;
+const ONE_HOUR_CACHE_TTL_SECS: u64 = 3600;
+
+fn legacy_cache_ttl() -> u64 {
+    LEGACY_CACHE_TTL_SECS
+}
+
+/// 成功一輪後這條 claude 線的估計快取壽命〔模型判斷·未裁決，見 plans/claude-1h-cache.md〕。
+/// 只有確定整段都寫成 1 小時才給 3600；混合或時效不明一律保守取 5 分鐘；
+/// 純命中沿用上輪（同 session 才算）；讀寫皆 0 或沒拿到用量＝當作已過期，不延壽。
+fn next_cache_ttl(
+    usage: Option<&transport::PromptCacheUsage>,
+    prior_ttl: Option<u64>,
+    resumed: bool,
+) -> u64 {
+    let Some(usage) = usage else {
+        return 0;
+    };
+    let created = usage.created_tokens.unwrap_or(0);
+    let cached = usage.cached_tokens.unwrap_or(0);
+    if created == 0 {
+        return match (cached > 0, resumed, prior_ttl) {
+            (false, _, _) => 0,
+            (true, true, Some(prior)) => prior,
+            (true, _, _) => LEGACY_CACHE_TTL_SECS,
+        };
+    }
+    match usage.created_1h_tokens {
+        Some(one_hour) if one_hour == created => ONE_HOUR_CACHE_TTL_SECS,
+        _ => LEGACY_CACHE_TTL_SECS,
+    }
+}
 
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
 /// 素材漂移的處置分兩家：claude 的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
@@ -518,7 +603,7 @@ fn plan_turn(
         };
     }
     let age = now_epoch.saturating_sub(state.last_call_epoch);
-    if age > CACHE_TTL_SECS {
+    if age > state.cache_ttl_secs {
         return TurnPlan::Resume {
             session_id: state.session_id.clone(),
             base,
@@ -759,6 +844,8 @@ pub(crate) async fn run_turn(
     // 診斷用（包 4）：距上輪幾秒、上輪送了多少（＝這輪的理論可中量）
     let age_secs = prior.map_or(0, |state| call_epoch.saturating_sub(state.last_call_epoch));
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
+    // 呼叫前採用的快取壽命：過期判斷與帳本診斷都用它，不拿這輪新寫入的時效回頭解釋
+    let prior_ttl = prior.map(|state| state.cache_ttl_secs);
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
     // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用
     if let (TurnPlan::Reopen { .. }, Some(prior)) = (&plan, prior) {
@@ -776,6 +863,7 @@ pub(crate) async fn run_turn(
         }
     }
     let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
+    let mut overage_reported = false;
     // 每一輪重試共用同一個接收端。watch 留著最新值，停止若在降級重開前就到了，下一輪 CLI 一進迴圈就看得到。
     let cancel_rx = cancel.as_mut().map(|signal| signal.receiver());
 
@@ -797,7 +885,7 @@ pub(crate) async fn run_turn(
                     expected_cached,
                     system_tokens: usage_log::estimate_tokens(system),
                     system_hash: usage_log::text_hash(system),
-                    ping: false,
+                    ttl_secs: prior_ttl,
                 };
                 (
                     session_id.clone(),
@@ -819,7 +907,7 @@ pub(crate) async fn run_turn(
                     expected_cached: 0, // 重開＝從零建快取
                     system_tokens: usage_log::estimate_tokens(&system),
                     system_hash: usage_log::text_hash(&system),
-                    ping: false,
+                    ttl_secs: None,
                 };
                 (new_session_id(), 0, true, system, None, lane_log)
             }
@@ -898,6 +986,8 @@ pub(crate) async fn run_turn(
                 }),
                 expected_reply: None,
                 last_call_epoch: call_epoch,
+                // 這次嘗試成功才知道寫了哪種快取；中途失敗、中止的線下一輪本來就重開
+                cache_ttl_secs: 0,
                 last_prompt_tokens: 0,
                 agy_usage: None,
             },
@@ -907,6 +997,9 @@ pub(crate) async fn run_turn(
         let conversation_id = std::sync::Mutex::new(None);
         let agy_usage = std::sync::Mutex::new(None);
         let identity = std::sync::Mutex::new(None::<String>);
+        // 每次嘗試各自觀測：降級重開不沿用失敗那次的用量與超額旗標
+        let attempt_usage = std::sync::Mutex::new(None);
+        let attempt_overage = std::sync::atomic::AtomicBool::new(false);
         let result = cli::run_cli_cancellable(
             &call.program,
             &call.working_dir,
@@ -920,6 +1013,8 @@ pub(crate) async fn run_turn(
             },
             false, // 聊天正文串流，思考不進畫面
             call.usage_log.as_deref().map(|path| cli::UsageLog {
+                usage_out: Some(&attempt_usage),
+                overage_out: (call.provider == LaneProvider::Claude).then_some(&attempt_overage),
                 path,
                 world: Some(world_id),
                 transport: call.provider.as_str(),
@@ -946,6 +1041,13 @@ pub(crate) async fn run_turn(
             cancel_rx.clone(),
         )
         .await;
+        let attempt_usage = attempt_usage.into_inner().ok().flatten();
+        if !overage_reported && attempt_overage.load(std::sync::atomic::Ordering::Relaxed) {
+            overage_reported = true;
+            if let Some(sink) = &call.on_overage {
+                sink(CacheWriteObserved::of(attempt_usage.as_ref()));
+            }
+        }
 
         match result {
             // 中止不是續聊失敗：不降級重試。私設照抹；抹不掉就棄用這條 session。
@@ -1029,6 +1131,13 @@ pub(crate) async fn run_turn(
                                     confirmed.as_deref(),
                                 );
                             }
+                            state.cache_ttl_secs = match call.provider {
+                                LaneProvider::Claude => {
+                                    next_cache_ttl(attempt_usage.as_ref(), prior_ttl, !opening)
+                                }
+                                // grok／agy 不回報快取時效，維持原本的五分鐘窗口
+                                LaneProvider::Agy | LaneProvider::Grok => LEGACY_CACHE_TTL_SECS,
+                            };
                             if call.provider == LaneProvider::Agy {
                                 state.agy_usage = actual_agy_usage;
                             }
@@ -1107,153 +1216,6 @@ pub(crate) async fn run_turn(
             }
         }
     }
-}
-
-/// 保溫訊息本文：兼作截尾時的定位片段，所以要夠獨特、不可能出現在劇情裡。
-const PING_PROMPT: &str = "（系統保溫訊息，不是劇情，也不要記進故事。請只回覆 ok。）";
-/// 剛呼叫完的線不必保溫（前端節奏之外的第二道防呆）。
-const PING_MIN_AGE_SECS: u64 = 180;
-
-/// 保溫 ping（包 7）：對每條快取還活著的線送一則極短訊息，讀一次既有快取就能把
-/// 五分鐘壽命重新計時，代價約為讓快取死掉重建的十二分之一。ping 前先記下 session 檔原文，
-/// 事後整份還原——快取時鐘已被那次讀取刷新，截尾不改變已快取的前綴內容，
-/// 下一輪照樣命中，劇情與正典 transcript 也完全不受影響。
-/// 回傳實際保溫成功的線數。ping 失敗不當錯誤（保溫是省錢手段，不該中斷聊天），但同樣還原；
-/// 還原失敗則丟線，避免垃圾問答在 session 裡越積越多。
-pub(crate) async fn keepalive(
-    call: &LaneCall,
-    root: &Path,
-    world_id: &str,
-) -> Result<usize, String> {
-    let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
-    // 與 run_turn 同一把：保溫整份讀寫 lanes.json、事後還原 session 檔，交錯會把撤銷的線寫回
-    let lock = lane_lock(&store_path);
-    let _lane_guard = lock.lock().await;
-    let mut store = read_store(&store_path);
-    let now = now_epoch();
-    // 先挑出該保溫的線再逐條呼叫：迴圈中要改 store，不能同時借著它疊代
-    let targets: Vec<(String, LaneState)> = store
-        .iter()
-        // 保溫後要整份還原 session 檔，只對 claude 的格式做；grok 線一律不 ping
-        .filter(|(_, state)| state.provider == LaneProvider::Claude.as_str())
-        .filter(|(_, state)| state.pending_rewrite.is_none())
-        .filter(|(_, state)| {
-            let age = now.saturating_sub(state.last_call_epoch);
-            (PING_MIN_AGE_SECS..=CACHE_TTL_SECS).contains(&age)
-        })
-        .map(|(key, state)| (key.clone(), state.clone()))
-        .collect();
-    if targets.is_empty() {
-        return Ok(0);
-    }
-
-    let mut pinged = 0;
-    for (key, state) in targets {
-        // 保溫要用該線自己的模型才會匹配到它的快取（線名可能帶 scope，模型讀狀態不回推）
-        if state.model.is_empty() {
-            continue;
-        }
-        // 保溫也要帶同一份 system 才匹配得到快取前綴；system 寫檔，活到 run_cli 返回後才刪
-        let system_file = cli::PromptFile::create(&call.prompt_dir, "system.txt", &state.snapshot)?;
-        let args = cli::claude_session_args(
-            &state.model,
-            system_file.path(),
-            &cli::CliSession::Resume(&state.session_id),
-        );
-        // 保溫前的原文：事後整份還原（CLI 只會追加）。讀不到就不保溫這條線
-        let session_path = session_file::session_file_path(
-            &call.claude_home,
-            &call.working_dir,
-            &state.session_id,
-        );
-        let Ok(before) = session_file::read_text(&session_path) else {
-            continue;
-        };
-        let lane_log = usage_log::LaneContext {
-            lane: key.clone(),
-            reopen: None,
-            patched: false,
-            rebased: false,
-            age_secs: now.saturating_sub(state.last_call_epoch),
-            expected_cached: state.last_prompt_tokens,
-            system_tokens: usage_log::estimate_tokens(&state.snapshot),
-            system_hash: usage_log::text_hash(&state.snapshot),
-            ping: true,
-        };
-        let result = cli::run_cli(
-            &call.program,
-            &call.working_dir,
-            &args,
-            PING_PROMPT,
-            &call.envs,
-            cli::parse_claude_line,
-            false, // 聊天正文串流，思考不進畫面
-            call.usage_log.as_deref().map(|path| cli::UsageLog {
-                path,
-                world: Some(world_id),
-                transport: "claude",
-                model: &state.model,
-                parse: cli::parse_claude_usage,
-                lane: Some(lane_log),
-                shape: usage_log::PromptShape::Oneshot, // 同上：ping 的 mode 來自 LaneContext.ping
-                prompt_tokens_out: None,
-                conversation_id_out: None,
-                expected_conversation_id: None,
-                agy_usage_base: None,
-                agy_usage_out: None,
-                identity_out: None,
-            }),
-            &mut |_: &str| {},
-        )
-        .await;
-        // ping 失敗也要還原：CLI 可能已寫下半截問答
-        match restore_before_ping(&session_path, &before, result.is_ok()) {
-            Ok(()) if result.is_ok() => {
-                if let Some(state) = store.get_mut(&key) {
-                    state.last_call_epoch = now_epoch();
-                }
-                pinged += 1;
-            }
-            Ok(()) => {}
-            Err(failure) => {
-                record_rewrite_failure(
-                    call,
-                    world_id,
-                    &key,
-                    "ping-truncate-failed",
-                    &state.session_id,
-                    &failure,
-                    Some(PING_PROMPT),
-                    None,
-                );
-                store.remove(&key);
-            }
-        }
-    }
-    write_store(&store_path, &store)?;
-    Ok(pinged)
-}
-
-/// 把 session 檔還原成保溫前的原文：保溫後的檔必須是「原文＋CLI 追加段」，追加段的 user 行
-/// 只能是保溫訊息（ping 成功時恰好一則）。CLI 在 ping user 之前追加的 queue-operation／attachment
-/// 也一併消失，檔案逐位元組回到保溫前。
-fn restore_before_ping(path: &Path, before: &str, pinged: bool) -> Result<(), RewriteFailure> {
-    let after = at("load", session_file::read_text(path))?;
-    let appended = at("truncate", session_file::appended_since(before, &after))?;
-    let pings = at(
-        "find-segment",
-        session_file::marker_user_lines(appended, PING_PROMPT),
-    )?;
-    if pinged && pings != 1 {
-        return Err(RewriteFailure {
-            stage: "find-segment",
-            detail: format!("保溫後追加段有 {pings} 則保溫訊息，應恰好一則"),
-        });
-    }
-    if appended.is_empty() {
-        return Ok(());
-    }
-    at("write", session_file::write_text_atomic(path, before))
 }
 
 #[cfg(test)]

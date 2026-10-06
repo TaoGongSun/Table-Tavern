@@ -18,10 +18,6 @@ import { capacityHint, wouldOverflow, type SceneBudgetReply } from "./scene-budg
 // 提醒的理由改成「紀錄長到模型顧不上前面」，門檻從 8000 提到 30000（2026-08-04 實測拍板）。
 const SCENE_LENGTH_HINT_CHARS = 30000;
 
-// 離開太久的換幕提醒還要紀錄夠長才有意義：短紀錄重建本來就便宜，換幕反而多花一次摘要錢。
-// 保溫仍照樣停在三次（那是省錢邏輯），這個門檻只決定要不要出聲提醒。
-const SCENE_AWAY_HINT_MIN_CHARS = 8000;
-
 // 串流中的旁白尾端會冒出狀態區塊，整則寫完才由後端剝乾淨；
 // 這裡先切掉，免得玩家每回合都看到一段圍欄或標籤閃過去
 function narrationStreamText(text: string) {
@@ -74,8 +70,6 @@ interface PlayViewProps {
   canUndoScene: boolean;
   onRegenerateSummary: () => void;
   onRevertScene: () => void;
-  /** 保溫連發到上限還沒等到玩家推進 */
-  awayTooLong: boolean;
   /** 發言對象；空字串＝還沒選 */
   speaker: string;
   /** 對象是 GM：晶片換書皮、沒有角色卡可查 */
@@ -126,7 +120,6 @@ export function PlayView({
   canUndoScene,
   onRegenerateSummary,
   onRevertScene,
-  awayTooLong,
   speaker,
   gmTargeted,
   targetName,
@@ -176,8 +169,6 @@ export function PlayView({
   // 換場提醒：粗估目前場景累計字元數，超過門檻就在輸入框上方小字提醒（不擋操作）
   const sceneChars = events.reduce((sum, event) => sum + event.text.length, 0);
   const sceneTooLong = !locked && sceneChars > SCENE_LENGTH_HINT_CHARS;
-  // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
-  const showAwayHint = !locked && awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
   // 換幕容量（範圍 3）：鎖只看換幕呼叫——再送這一句（或無玩家句的動作）會讓換幕一次送不出去。
   // 這裡只是即時提示，送出時以後端關卡為準
   const fullForActions = !locked && wouldOverflow(sceneBudget?.summary, "");
@@ -363,7 +354,7 @@ export function PlayView({
             </button>
           </div>
         )}
-        {/* 換幕提醒只顯示一個：鎖＞容量提醒＞離開太久（快取已清）＞紀錄長。容量兩種帶換幕鈕 */}
+        {/* 換幕提醒只顯示一個：鎖＞容量提醒＞紀錄長。容量兩種帶換幕鈕 */}
         {capacityFull || capacityKind ? (
           <p className={`scene-length-hint scene-capacity-hint${capacityFull ? " is-full" : ""}`}>
             {t(
@@ -384,8 +375,6 @@ export function PlayView({
               </button>
             )}
           </p>
-        ) : showAwayHint ? (
-          <p className="scene-length-hint">{t("sceneAwayHint")}</p>
         ) : sceneTooLong ? (
           <p className="scene-length-hint">{t("sceneTooLongHint")}</p>
         ) : null}

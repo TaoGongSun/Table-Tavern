@@ -539,6 +539,7 @@ fn extract_usage_reads_final_chunk_and_ignores_delta_chunks() {
     assert_eq!(
         usage,
         PromptCacheUsage {
+            created_1h_tokens: None,
             prompt_tokens: 194,
             cached_tokens: Some(150),
             created_tokens: None, // 這則沒有 cache_write_tokens：沒回報，不是 0

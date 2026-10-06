@@ -58,6 +58,7 @@ import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { Onboarding } from "./features/ai-connection/Onboarding";
 import { SmartFreeNewModelBanner } from "./features/ai-connection/SmartFreeNewModelBanner";
 import { SmartFreeNoticeToast } from "./features/ai-connection/SmartFreeNoticeToast";
+import { ClaudeOverageToast } from "./features/ai-connection/ClaudeOverageToast";
 import { ErrorNote } from "./shared/ui/atoms";
 import "./App.css";
 import type { PendingRefactorCard } from "./features/refactor/refactor-card";
@@ -975,6 +976,7 @@ function App() {
         onOpenSettings={openSettings}
       />
       <SmartFreeNoticeToast />
+      <ClaudeOverageToast />
     </div>
   );
 }

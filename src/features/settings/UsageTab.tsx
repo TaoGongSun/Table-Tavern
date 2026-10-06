@@ -21,6 +21,8 @@ type UsageRow = {
   priced_tokens: number;
   saved_usd: number | null;
   saved_partial: boolean;
+  /** 省額裡用估計係數算的輪數（舊紀錄沒有 1 小時快取拆分、或只記別名看不出模型世代） */
+  estimated_rounds: number;
   unreported: number;
   in_use: boolean;
 };
@@ -28,7 +30,6 @@ type UsageReport = {
   worlds: { id: string; name: string; rounds: number }[];
   rows: UsageRow[];
   total: UsageRow;
-  ping: UsageRow;
   caches: { cache: string; rounds: number }[];
   events: number;
   latest: {
@@ -73,7 +74,6 @@ const MODE_KEYS = {
   shared: "usageModeShared",
   solo: "usageModeSolo",
   oneshot: "usageModeOneshot",
-  ping: "usageModePing",
 } as const;
 // 沒中的原因；只有算得出理論可中量的續聊線給得出來，讀 0 的原因只有 claude 續聊線給
 const CACHE_REASON_KEYS = {
@@ -91,7 +91,6 @@ const REASON_KEYS = {
   "reply-diverged": "usageReasonReplyDiverged",
   "resume-failed": "usageReasonResumeFailed",
   "rewrite-failed": "usageReasonRewriteFailed",
-  "ping-truncate-failed": "usageReasonPingTruncateFailed",
 } as const;
 
 // 一行 →（短標 key, 長句 key, 燈號）。事件行走事件那組，其餘看快取結果
@@ -175,22 +174,11 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
   const alert = entry && latest && light === "bad";
   // 量不到要另外說一句，否則玩家看到空白的命中率會去修一個不存在的問題
   const blindNote = latest && !latest.reported ? ` — ${t("usageLatestBlind")}` : "";
-  const bodyRows = [...report.rows];
-  if (report.ping.rounds > 0) bodyRows.push({ ...report.ping, source: "", model: "ping" });
-  // 第一眼只講省下多少（總用量與花費留在細項）。保溫也是真的花掉的錢，一併算進來
-  const totals = {
-    prompt_tokens: report.total.prompt_tokens + report.ping.prompt_tokens,
-    cached_tokens: report.total.cached_tokens + report.ping.cached_tokens,
-    observed_prompt_tokens:
-      report.total.observed_prompt_tokens + report.ping.observed_prompt_tokens,
-    saved_tokens: report.total.saved_tokens + report.ping.saved_tokens,
-    priced_tokens: report.total.priced_tokens + report.ping.priced_tokens,
-    saved_usd:
-      report.total.saved_usd === null && report.ping.saved_usd === null
-        ? null
-        : (report.total.saved_usd ?? 0) + (report.ping.saved_usd ?? 0),
-    saved_partial: report.total.saved_partial || report.ping.saved_partial,
-  };
+  const bodyRows = report.rows;
+  // 第一眼只講省下多少（總用量與花費留在細項）
+  const totals = report.total;
+  // 有輪次用估計係數算省額：第一眼的百分比與金額都標「約」
+  const estimated = totals.estimated_rounds > 0;
   // null＝一輪都量不到。此時不可畫進度條：0% 的條會被讀成「全額付費、一點都沒省」，
   // 而真相是「不知道」（Sol 驗收 2026-08-21）
   const hit =
@@ -226,7 +214,9 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
           {totals.priced_tokens > 0 && (
             <p className="usage-headline">
               <span className="usage-headline-saved">
-                {t("usageSavedHeadline", { pct: savedPct.toFixed(0) })}
+                {t(estimated ? "usageSavedHeadlineApprox" : "usageSavedHeadline", {
+                  pct: savedPct.toFixed(0),
+                })}
               </span>
               {showSavedUsd && (
                 <span className="usage-headline-cost">
@@ -299,21 +289,12 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
               </tr>
             </thead>
             {bodyRows.map((row) => (
-              <tbody
-                key={`${row.source}/${row.model}`}
-                className={row.model === "ping" ? "usage-ping-row" : undefined}
-              >
+              <tbody key={`${row.source}/${row.model}`}>
                 <tr className="usage-name-row">
                   <th scope="rowgroup" colSpan={USAGE_COLUMNS}>
-                    {row.model === "ping" ? (
-                      t("usagePing")
-                    ) : (
-                      <>
-                        <span className="usage-source">{row.source}</span>{" "}
-                        {usageModelLabel(row.model)}
-                        {row.in_use && <span className="usage-badge">{t("usageInUse")}</span>}
-                      </>
-                    )}
+                    <span className="usage-source">{row.source}</span>{" "}
+                    {usageModelLabel(row.model)}
+                    {row.in_use && <span className="usage-badge">{t("usageInUse")}</span>}
                   </th>
                 </tr>
                 <tr>

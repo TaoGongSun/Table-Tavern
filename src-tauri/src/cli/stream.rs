@@ -69,6 +69,26 @@ fn claude_result(value: &serde_json::Value) -> CliLine {
     CliLine::Done { text, is_error }
 }
 
+/// claude 的 rate_limit_event：這一發是否落在 Claude 訂閱的超額用量。
+/// `isUsingOverage:true` 且超額沒被拒（allowed／allowed_warning 或缺欄）＝Some(true)；
+/// 被拒（rejected）或沒在用超額＝Some(false)；不是這種事件＝None。
+pub(crate) fn claude_overage(line: &str) -> Option<bool> {
+    if !line.contains("\"rate_limit_event\"") {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("type").and_then(|t| t.as_str()) != Some("rate_limit_event") {
+        return None;
+    }
+    let info = value.get("rate_limit_info")?;
+    let using = info
+        .get("isUsingOverage")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true);
+    let rejected = info.get("overageStatus").and_then(|s| s.as_str()) == Some("rejected");
+    Some(using && !rejected)
+}
+
 /// 各家收尾事件裡的 token 用量。usage 只出現在收尾那一行，增量行不含 "usage" 字串——
 /// 先做字串預檢，串流上千行也只有收尾那行真的解析 JSON。
 fn usage_event(line: &str, kind: &str) -> Option<serde_json::Value> {
@@ -94,7 +114,14 @@ pub fn parse_claude_usage(line: &str) -> Option<PromptCacheUsage> {
     let usage = value.get("usage")?;
     let cached = token_count(usage, "cache_read_input_tokens");
     let created = token_count(usage, "cache_creation_input_tokens");
+    // 1h 拆分缺欄、空物件、null 或非數字都算未知，不當成「全寫 5 分鐘」
+    let created_1h = usage
+        .get("cache_creation")
+        .and_then(|split| split.get("ephemeral_1h_input_tokens"))
+        .and_then(serde_json::Value::as_u64)
+        .map(|one_hour| one_hour.min(created));
     Some(PromptCacheUsage {
+        created_1h_tokens: created_1h,
         prompt_tokens: token_count(usage, "input_tokens") + created + cached,
         cached_tokens: Some(cached),
         created_tokens: Some(created),
@@ -109,6 +136,7 @@ pub fn parse_codex_usage(line: &str) -> Option<PromptCacheUsage> {
     let value = usage_event(line, "turn.completed")?;
     let usage = value.get("usage")?;
     Some(PromptCacheUsage {
+        created_1h_tokens: None,
         prompt_tokens: token_count(usage, "input_tokens"),
         cached_tokens: Some(token_count(usage, "cached_input_tokens")),
         created_tokens: Some(token_count(usage, "cache_write_input_tokens")),
@@ -126,6 +154,7 @@ pub fn parse_grok_usage(line: &str) -> Option<PromptCacheUsage> {
     let usage = value.get("usage")?;
     let cached = token_count(usage, "cache_read_input_tokens");
     Some(PromptCacheUsage {
+        created_1h_tokens: None,
         prompt_tokens: token_count(usage, "input_tokens") + cached,
         cached_tokens: Some(cached),
         created_tokens: None,
@@ -165,6 +194,7 @@ pub fn parse_agy_usage(line: &str) -> Option<PromptCacheUsage> {
         (input, None) // 兩式都對不上：記數字、不產生命中率
     };
     Some(PromptCacheUsage {
+        created_1h_tokens: None,
         prompt_tokens,
         cached_tokens,
         created_tokens: None,
@@ -200,6 +230,7 @@ pub fn parse_agy_usage_delta(
         .cache_read_tokens
         .checked_sub(base.cache_read_tokens)?;
     Some(PromptCacheUsage {
+        created_1h_tokens: None,
         prompt_tokens: input.saturating_add(cached),
         cached_tokens: Some(cached),
         created_tokens: None,
@@ -508,6 +539,86 @@ mod tests {
         assert_eq!(parse_claude_line("not json"), CliLine::Other);
     }
 
+    /// 1h 拆分：只有 cache_creation 給了數字才算已知；缺欄、空物件、null、非數字都是未知；
+    /// 大於總寫入的壞值壓回總寫入。
+    #[test]
+    fn parses_claude_one_hour_split_only_when_numeric() {
+        let line = |split: &str| {
+            format!(
+                r#"{{"type":"result","usage":{{"input_tokens":1,"cache_creation_input_tokens":1000,"cache_read_input_tokens":0,"output_tokens":3{split}}}}}"#
+            )
+        };
+        let one_hour = |split: &str| parse_claude_usage(&line(split)).unwrap().created_1h_tokens;
+        assert_eq!(
+            one_hour(
+                r#","cache_creation":{"ephemeral_1h_input_tokens":1000,"ephemeral_5m_input_tokens":0}"#
+            ),
+            Some(1000)
+        );
+        assert_eq!(
+            one_hour(
+                r#","cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":1000}"#
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            one_hour(r#","cache_creation":{"ephemeral_1h_input_tokens":5000}"#),
+            Some(1000)
+        );
+        for unknown in [
+            "",
+            r#","cache_creation":{}"#,
+            r#","cache_creation":{"ephemeral_1h_input_tokens":null}"#,
+            r#","cache_creation":{"ephemeral_1h_input_tokens":"x"}"#,
+        ] {
+            assert_eq!(one_hour(unknown), None, "{unknown}");
+        }
+    }
+
+    /// 超額：只有在用超額且沒被拒才算；不是 rate_limit_event 的行一律 None。
+    #[test]
+    fn claude_overage_reads_rate_limit_event() {
+        let event = |info: &str| {
+            format!(
+                r#"{{"type":"rate_limit_event","rate_limit_info":{info},"uuid":"u","session_id":"s"}}"#
+            )
+        };
+        assert_eq!(
+            claude_overage(&event(
+                r#"{"status":"allowed","isUsingOverage":true,"overageStatus":"allowed"}"#
+            )),
+            Some(true)
+        );
+        assert_eq!(
+            claude_overage(&event(
+                r#"{"status":"allowed","isUsingOverage":true,"overageStatus":"allowed_warning"}"#
+            )),
+            Some(true)
+        );
+        assert_eq!(
+            claude_overage(&event(r#"{"status":"allowed","isUsingOverage":true}"#)),
+            Some(true)
+        );
+        assert_eq!(
+            claude_overage(&event(
+                r#"{"status":"rejected","isUsingOverage":true,"overageStatus":"rejected"}"#
+            )),
+            Some(false)
+        );
+        // 實跑樣本（2026-10-07，本帳號超額未開通）
+        assert_eq!(
+            claude_overage(&event(
+                r#"{"status":"allowed","resetsAt":1791327600,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false}"#
+            )),
+            Some(false)
+        );
+        assert_eq!(
+            claude_overage(r#"{"type":"result","result":"rate_limit_event"}"#),
+            None
+        );
+        assert_eq!(claude_overage("not json"), None);
+    }
+
     /// 樣本取自 2026-08-03 真實冒煙輸出（同一段 system prompt 連跑兩次：第一次建快取、
     /// 第二次全命中）。各家 input_tokens 語意不同，這裡鎖住換算後的「總輸入／讀快取」。
     #[test]
@@ -518,6 +629,7 @@ mod tests {
                 r#"{"type":"result","total_cost_usd":0.0179,"usage":{"input_tokens":1,"cache_creation_input_tokens":4771,"cache_read_input_tokens":0,"output_tokens":3}}"#
             ),
             Some(PromptCacheUsage {
+                created_1h_tokens: None,
                 prompt_tokens: 4772,
                 cached_tokens: Some(0),
                 created_tokens: Some(4771),
@@ -584,6 +696,7 @@ mod tests {
         assert_eq!(
             parse_claude_usage(r#"{"type":"result","usage":{"input_tokens":12}}"#),
             Some(PromptCacheUsage {
+                created_1h_tokens: None,
                 prompt_tokens: 12,
                 cached_tokens: Some(0),
                 created_tokens: Some(0),
@@ -593,6 +706,7 @@ mod tests {
         );
         assert_eq!(
             PromptCacheUsage {
+                created_1h_tokens: None,
                 prompt_tokens: 0,
                 cached_tokens: Some(0),
                 created_tokens: Some(0),

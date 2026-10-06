@@ -500,7 +500,8 @@
   box-shadow: var(--shadow-card);
 }
 
-.smart-free-notice-toast {
+.smart-free-notice-toast,
+.claude-overage-toast {
   position: fixed;
   left: 1rem;
   bottom: 1rem;
@@ -519,7 +520,14 @@
   box-shadow: var(--shadow-card);
 }
 
-.smart-free-notice-toast button.ghost {
+.claude-overage-toast {
+  /* 與免費模型換模提示同時出現時疊在它上方，不互相蓋住 */
+  bottom: 4.5rem;
+  border-left-color: var(--amber);
+}
+
+.smart-free-notice-toast button.ghost,
+.claude-overage-toast button.ghost {
   background: transparent;
   color: var(--ink-3);
   border-color: transparent;
@@ -783,11 +791,6 @@
 .usage-table tfoot td {
   border-bottom: none;
   font-weight: 700;
-}
-
-.usage-ping-row th,
-.usage-ping-row td {
-  opacity: 0.75;
 }
 
 .usage-source {

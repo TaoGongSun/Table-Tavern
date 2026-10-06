@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use super::snapshot_patch::render_patch;
 use super::{
     build_prompt, events_fingerprint, plan_turn, Lane, LaneProvider, LaneState, ReopenReason,
-    ReplyEcho, TurnInput, TurnPlan, CACHE_TTL_SECS,
+    ReplyEcho, TurnInput, TurnPlan, LEGACY_CACHE_TTL_SECS,
 };
 use crate::cli::flatten_messages;
 use crate::data::{
@@ -701,6 +701,7 @@ fn lane_state(events: &[TranscriptEvent], system: &str, provider: LaneProvider) 
         provider: provider.as_str().to_owned(),
         model: "m".to_owned(),
         last_call_epoch: 1_000,
+        cache_ttl_secs: LEGACY_CACHE_TTL_SECS,
         last_prompt_tokens: 0,
         agy_usage: None,
     }
@@ -730,7 +731,7 @@ fn upgrading_scaffold_patches_or_rebases_claude_and_reopens_grok_agy() {
     let events = &f.events[..3];
     let input = lane_input(events, &new);
     let live = 1_001;
-    let expired = 1_000 + CACHE_TTL_SECS + 1;
+    let expired = 1_000 + LEGACY_CACHE_TTL_SECS + 1;
 
     let claude = lane_state(events, &old, LaneProvider::Claude);
     match plan_turn(Some(&claude), &input, live, LaneProvider::Claude) {

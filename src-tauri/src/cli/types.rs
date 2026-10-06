@@ -81,4 +81,8 @@ pub struct UsageLog<'a> {
     /// claude：這一次回報裡辨識得出的實際模型 id（辨識不了就保持 None）。
     /// 換幕容量的估計校正只在身分確認時才記，避免把新倍率掛到舊模型上。
     pub identity_out: Option<&'a std::sync::Mutex<Option<String>>>,
+    /// 回填這次嘗試解析出的用量（含 1h 拆分），供 lane 估計快取時效與超額觀測。
+    pub usage_out: Option<&'a std::sync::Mutex<Option<PromptCacheUsage>>>,
+    /// claude 這次嘗試內任一 rate_limit_event 標示正在用超額，就設 true（不撤銷）。
+    pub overage_out: Option<&'a std::sync::atomic::AtomicBool>,
 }

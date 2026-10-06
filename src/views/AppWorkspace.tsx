@@ -361,7 +361,6 @@ export function AppWorkspace({
                   canUndoScene={gate === "play" && canUndoScene}
                   onRegenerateSummary={() => void regenerateSummary()}
                   onRevertScene={() => void revertScene()}
-                  awayTooLong={chat.awayTooLong}
                   speaker={speaker}
                   gmTargeted={gmTargeted}
                   targetName={targetName}

@@ -1,4 +1,4 @@
-//! Claude CLI session JSONL 的讀寫：回合後抹寫與保溫截尾直接改這個檔。
+//! Claude CLI session JSONL 的讀寫：回合後抹寫直接改這個檔。
 //!
 //! 鏈驗證：user／assistant 之外，CLI 會插入帶 uuid 的 `attachment` 行並接在 parentUuid 鏈上
 //! （2.1.227 起偶發、2.1.287 每輪都有）。鏈節點＝user、assistant、attachment；每個節點的
@@ -202,35 +202,6 @@ pub(crate) fn prefix_last_assistant(
         line.dirty = true;
     }
     Ok(())
-}
-
-/// 保溫後的檔必須是「保溫前原文＋CLI 追加的一段」，回傳追加段。
-/// 前段被改動＝不能安全還原。
-pub(crate) fn appended_since<'a>(before: &str, after: &'a str) -> Result<&'a str, String> {
-    after
-        .strip_prefix(before)
-        .ok_or_else(|| "保溫期間 session 檔前段被改動，無法還原".to_owned())
-}
-
-/// 追加段裡含 `marker` 的 user 行數。追加段出現不含 `marker` 的 user 行＝混進了別的對話，拒絕。
-pub(crate) fn marker_user_lines(appended: &str, marker: &str) -> Result<usize, String> {
-    let mut count = 0;
-    for (index, (body, _)) in split_lines(appended).enumerate() {
-        if body.trim().is_empty() {
-            continue;
-        }
-        let value: Value = serde_json::from_str(body)
-            .map_err(|error| format!("追加段第 {} 行不是有效 JSON：{error}", index + 1))?;
-        if conversation_type(&value) != Some("user") {
-            continue;
-        }
-        let content = value.pointer("/message/content").and_then(Value::as_str);
-        match content.is_some_and(|content| content.contains(marker)) {
-            true => count += 1,
-            false => return Err(format!("追加段第 {} 行是保溫以外的 user 行", index + 1)),
-        }
-    }
-    Ok(count)
 }
 
 pub(crate) fn write_atomic(path: &Path, session_file: &SessionFile) -> Result<(), String> {
@@ -639,39 +610,6 @@ mod tests {
         )
         .unwrap();
         assert!(prefix_last_assistant(&mut thinking_last, "Ralph: ").is_err());
-    }
-
-    #[test]
-    fn ping_restore_accepts_only_appends_and_counts_ping_lines() {
-        let marker = "（保溫）";
-        let before = CLI_2_1_287.to_owned() + "\n";
-        // CLI 先追加 queue-operation 與 attachment，才寫 ping user 與回覆
-        let appended = line(r#"{"type":"queue-operation","operation":"enqueue"}"#)
-            + &line(
-                r#"{"parentUuid":"a2","type":"user","message":{"role":"user","content":"（保溫）"},"uuid":"p1"}"#,
-            )
-            + &line(r#"{"parentUuid":"p1","type":"attachment","uuid":"p2"}"#)
-            + &line(
-                r#"{"parentUuid":"p2","type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]},"uuid":"p3"}"#,
-            );
-        let after = before.clone() + &appended;
-        let tail = appended_since(&before, &after).unwrap();
-        assert_eq!(tail, appended);
-        assert_eq!(marker_user_lines(tail, marker).unwrap(), 1);
-        // 什麼都沒追加（ping 送出前就失敗）
-        assert_eq!(
-            marker_user_lines(appended_since(&before, &before).unwrap(), marker).unwrap(),
-            0
-        );
-        // 前段被改動
-        let tampered = before.replacen("第一句回覆", "改過", 1) + &appended;
-        assert!(appended_since(&before, &tampered).is_err());
-        // 追加段混進別的 user 行
-        let foreign = appended.clone()
-            + &line(
-                r#"{"parentUuid":"p3","type":"user","message":{"role":"user","content":"別的"},"uuid":"q1"}"#,
-            );
-        assert!(marker_user_lines(&foreign, marker).is_err());
     }
 
     #[test]
