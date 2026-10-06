@@ -4,6 +4,7 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [image-model-free-tier-hide](tasks/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單（查 /key 的 is_free_tier，查不到就照顯示） — 下一步：決定 /key 查詢接在哪一層
 - [claude-1h-cache](tasks/claude-1h-cache.md) — claude CLI 改寫 1 小時快取：過期門檻、保溫、省額係數都要重估 — 下一步：三件都改〔作者裁決 2026-10-06〕；先確認 1h 是 CLI 固定行為
 - [api-stream-stall-timeout](tasks/api-stream-stall-timeout.md) — API 串流卡住沒有逾時，只能手動停 — 下一步：比照 CLI 加停滯逾時
 - [image-save-strict-validate](tasks/image-save-strict-validate.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：盤點受影響入口與拒收提示
