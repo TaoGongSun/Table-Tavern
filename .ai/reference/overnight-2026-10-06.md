@@ -37,5 +37,4 @@
 
 ## 雜項
 
-- 兩個本地殘留分支 `worktree-agent-a6dcd3607d32fbf75`、`worktree-agent-a6eabbad02b46d707`（昨晚那串建工作樹留下，工作樹已移除）未刪。
 - 測試 root `scratchpad/ttroot` 有 grok 登入（新對話的 scratchpad 路徑不同，要重登或另建）。
