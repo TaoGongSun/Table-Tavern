@@ -74,7 +74,7 @@ if sid:
 else:
     append(up, [upd('background_tasks', tasks=[])])
 n = sum(1 for l in open(ch) if '"prompt_index"' in l)
-reply = '回覆' + str(n + 1)
+reply = os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(n + 1)
 summary = '正在想：' + prompt
 tool = os.environ.get('FAKE_TOOL') == '1'
 # 真 CLI：帶 --verbatim 原文照收，不帶才包 <user_query>（FAKE_WRAP 強制包，模擬舊行為）
@@ -200,6 +200,7 @@ fn char_turn<'a>(
     input.prefix = Some(format!("{name}："));
     input.echo = ReplyEcho::Dialogue {
         speaker_id: id.to_owned(),
+        prefix: format!("{name}："),
     };
     input
 }
@@ -686,4 +687,46 @@ async fn real_grok_shared_lane_rewrites_verbatim_sessions() {
     assert!(text.contains("那就來一杯吧"));
     eprintln!("session {opened}\n1: {first}\n2: {second}");
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// char-line-prefix：模型自加正典「狐狸：」時抹寫照過（不撤線、不雙前綴），
+/// 逐字稿存剝餘的下一輪續聊；私設照抹。
+#[cfg(unix)]
+#[tokio::test]
+async fn self_prefixed_reply_keeps_grok_lane_and_resumes() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_grok("own-prefix", &[("FAKE_REPLY_PREFIX", "狐狸：")]);
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let first = run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", Some("狐狸是通緝犯")),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    assert_eq!(first, "狐狸：回覆1");
+    let text = all_text(&fake.grok_home);
+    assert!(text.contains("狐狸：回覆1"));
+    assert!(!text.contains("狐狸：狐狸："));
+    assert!(!text.contains("通緝犯"));
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", "回覆1"));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來杯麥酒"));
+    run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", Some("狐狸是通緝犯")),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap();
+    let calls = calls(&fake.dir);
+    assert_eq!(calls.len(), 2);
+    assert!(flag(&calls[1], "-r").is_some());
+    assert!(!all_text(&fake.grok_home).contains("通緝犯"));
 }
