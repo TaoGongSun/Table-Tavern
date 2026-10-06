@@ -5,6 +5,7 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
+- [claude-resume-tail-cache](tasks/claude-resume-tail-cache.md) — claude 續聊只命中 system 段、對話尾端每輪重寫（1h 下寫入 2 倍） — 下一步：未排程；先查 resume 的快取斷點與抹寫是否動到尾端〔作者裁決 2026-10-07〕
 - [runaway-output-cap](tasks/runaway-output-cap.md) — 模型持續吐空白／亂碼時沒有單輪上限，只能手動中止 — 下一步：未排程；先查各傳輸現有輸出限制與可加上限的位置〔作者裁決 2026-10-07〕
 - [api-request-header-timeout](tasks/api-request-header-timeout.md) — API 請求送出後到回應頭之前、非 2xx 讀錯誤本文都沒有逾時 — 下一步：只包 send() 與錯誤本文讀取，不用 ClientBuilder::timeout
 - [image-save-strict-validate](reference/overnight-2026-10-06.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：已開工，分支 `image-save-strict-validate`（盤點在分支 plans 第四節）；等作者決定八項拒收處理（見夜間總表）
