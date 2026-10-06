@@ -865,3 +865,105 @@ async fn generate_image_key_lookup_times_out_when_body_stalls() {
         started.elapsed()
     );
 }
+
+#[tokio::test]
+async fn key_tier_for_reads_free_and_paid() {
+    for (body, expected) in [
+        (FREE_KEY, Some(true)),
+        (r#"{"data":{"is_free_tier":false}}"#, Some(false)),
+    ] {
+        let (base, hits) = serve_image_and_key("200 OK", "200 OK", body, std::time::Duration::ZERO);
+        let (queried, tier) = key_tier_for(&image_config(&base), " sk-draft ").await;
+        assert_eq!(
+            (queried.as_str(), tier),
+            (base.as_str(), expected),
+            "{body}"
+        );
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test]
+async fn key_tier_for_is_unknown_when_inconclusive() {
+    let cases: [(&str, &str, std::time::Duration); 7] = [
+        (
+            "200 OK",
+            r#"{"data":{"limit":null}}"#,
+            std::time::Duration::ZERO,
+        ),
+        (
+            "200 OK",
+            r#"{"data":{"is_free_tier":null}}"#,
+            std::time::Duration::ZERO,
+        ),
+        (
+            "200 OK",
+            r#"{"data":{"is_free_tier":"true"}}"#,
+            std::time::Duration::ZERO,
+        ),
+        ("200 OK", r#"{"data":null}"#, std::time::Duration::ZERO),
+        (
+            "200 OK",
+            r#"{"data":{"is_free_tier":tru"#,
+            std::time::Duration::ZERO,
+        ),
+        ("404 Not Found", FREE_KEY, std::time::Duration::ZERO),
+        ("200 OK", FREE_KEY, std::time::Duration::from_millis(1500)),
+    ];
+    for (status, body, delay) in cases {
+        let (base, _) = serve_image_and_key("200 OK", status, body, delay);
+        let (_, tier) = key_tier_for(&image_config(&base), "sk-draft").await;
+        assert_eq!(tier, None, "{status} {body}");
+    }
+}
+
+#[tokio::test]
+async fn key_tier_for_is_unknown_when_connection_fails() {
+    // 綁定後立刻放掉，這個 port 沒人聽
+    let address = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let (_, tier) = key_tier_for(&image_config(&format!("http://{address}")), "sk-draft").await;
+    assert_eq!(tier, None);
+}
+
+/// 標頭已回、body 停住：整段逾時要涵蓋讀 body
+#[tokio::test]
+async fn key_tier_for_times_out_when_body_stalls() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for socket in listener.incoming() {
+            let Ok(mut socket) = socket else { break };
+            std::thread::spawn(move || {
+                let mut request = [0u8; 4096];
+                let _ = socket.read(&mut request);
+                let _ = socket.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"data\":",
+                );
+                let _ = socket.flush();
+                std::thread::sleep(std::time::Duration::from_secs(10));
+            });
+        }
+    });
+    let started = std::time::Instant::now();
+    let (_, tier) = key_tier_for(&image_config(&format!("http://{address}")), "sk-draft").await;
+    assert_eq!(tier, None);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn key_tier_for_skips_request_for_blank_key_and_normalizes_saved_base() {
+    let (base, hits) = serve_image_and_key("200 OK", "200 OK", FREE_KEY, std::time::Duration::ZERO);
+    let (queried, tier) = key_tier_for(&image_config(&format!("{base}/")), "   ").await;
+    assert_eq!((queried.as_str(), tier), (base.as_str(), None));
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let (queried, _) = key_tier_for(&AppConfig::default(), "").await;
+    assert_eq!(queried, DEFAULT_BASE_URL);
+}

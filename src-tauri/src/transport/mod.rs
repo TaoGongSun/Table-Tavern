@@ -22,6 +22,7 @@ pub use arrivals::{
     card_arrival, card_private, detect_new_arrivals, detect_new_card_arrivals, person_arrival, Side,
 };
 pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
+pub(crate) use client::key_tier_for;
 pub(crate) use client::openrouter_api_base;
 #[cfg(feature = "test-harness")]
 pub(crate) use client::set_openrouter_origin;

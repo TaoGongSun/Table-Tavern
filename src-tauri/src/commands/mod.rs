@@ -4,6 +4,7 @@ pub(crate) mod chat;
 pub(crate) mod cli_setup;
 pub(crate) mod genesis;
 pub(crate) mod image;
+pub(crate) mod openrouter_key;
 pub(crate) mod refactor;
 pub(crate) mod scene;
 pub(crate) mod settings;
