@@ -74,6 +74,11 @@ pub(crate) fn ai_event(id: &str, event: &str, detail: Value) {
     append(json!({ "id": id, "event": event, "detail": detail }));
 }
 
+/// 不屬於任何一次派送的紀錄（例如留證失敗）。
+pub(super) fn ai_note(event: &str, detail: Value) {
+    append(json!({ "event": event, "detail": detail }));
+}
+
 /// CLI 參數裡的模型旗標值（--model x、--model=x、-m x）；沒有就是 CLI 預設。
 pub(crate) fn cli_model(args: &[String]) -> String {
     let mut iter = args.iter();

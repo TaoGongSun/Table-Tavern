@@ -1112,6 +1112,12 @@ fn abort_delete_failure_clears_lane_and_returns_error() {
     let log = std::fs::read_to_string(&usage_log).unwrap();
     assert!(log.contains("rewrite-failed"), "{log}");
     assert!(log.contains("session_abandon_failed"), "{log}");
+    let drop: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
+    assert_eq!(drop["stage"], "load", "{log}");
+    // 落帳的 detail 遮掉路徑，只剩檔名
+    let detail = drop["detail"].as_str().unwrap();
+    assert!(detail.contains("sid-blocked.jsonl"), "{detail}");
+    assert!(!detail.contains(&*dir.to_string_lossy()), "{detail}");
 
     store.insert(key.to_owned(), lane_state(&[], 0));
     settle_abort(
@@ -1491,6 +1497,116 @@ fn plan_after_an_unanswered_player_line_is_discarded() {
         TurnPlan::Resume { base, .. } => assert_eq!(base, 1),
         TurnPlan::Reopen { .. } => panic!("線沒碰過收回的那句，應照常續聊"),
     }
+}
+
+/// 抹寫失敗要說得出壞在哪一步（usage-cache-audit）。truncate 與 write 的 stage 映射另有注入測試。
+#[test]
+fn apply_rewrite_names_the_failing_stage() {
+    let dir = std::env::temp_dir().join(format!(
+        "tt-lanes-stage-{}-{}",
+        std::process::id(),
+        ulid::Ulid::generate()
+    ));
+    let working_dir = dir.join("ws");
+    let claude_home = dir.join("claude-home");
+    std::fs::create_dir_all(&working_dir).unwrap();
+    let call = LaneCall {
+        provider: LaneProvider::Claude,
+        program: dir.join("unused"),
+        working_dir: working_dir.clone(),
+        envs: Vec::new(),
+        model: Some("sonnet".to_owned()),
+        usage_log: None,
+        claude_home: claude_home.clone(),
+    };
+    let user = |uuid: &str, parent: Option<&str>, text: &str| {
+        serde_json::json!({"type":"user","uuid":uuid,"parentUuid":parent,
+            "message":{"role":"user","content":text}})
+        .to_string()
+    };
+    let assistant = |uuid: &str, parent: &str, kind: &str| {
+        serde_json::json!({"type":"assistant","uuid":uuid,"parentUuid":parent,
+            "message":{"role":"assistant","content":[{"type":kind,"text":"答"}]}})
+        .to_string()
+    };
+    let stage_of = |sid: &str, lines: Option<Vec<String>>, secret: Option<&str>| {
+        let path = session_file::session_file_path(&claude_home, &working_dir, sid);
+        if let Some(lines) = lines {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+        }
+        apply_rewrite(&call, sid, secret, Some("甲："))
+            .expect_err("應該失敗")
+            .stage
+    };
+
+    assert_eq!(stage_of("missing", None, Some("機密")), "load");
+    assert_eq!(
+        stage_of(
+            "absent",
+            Some(vec![
+                user("u1", None, "公開"),
+                assistant("a1", "u1", "text")
+            ]),
+            Some("機密")
+        ),
+        "find-segment"
+    );
+    assert_eq!(
+        stage_of(
+            "two-lines",
+            Some(vec![
+                user("u1", None, "機密"),
+                assistant("a1", "u1", "text"),
+                user("u2", Some("a1"), "又是機密"),
+                assistant("a2", "u2", "text"),
+            ]),
+            Some("機密"),
+        ),
+        "find-segment"
+    );
+    assert_eq!(
+        stage_of(
+            "twice",
+            Some(vec![
+                user("u1", None, "機密與機密"),
+                assistant("a1", "u1", "text")
+            ]),
+            Some("機密")
+        ),
+        "erase-segment"
+    );
+    assert_eq!(
+        stage_of(
+            "thinking",
+            Some(vec![
+                user("u1", None, "機密"),
+                assistant("a1", "u1", "thinking")
+            ]),
+            Some("機密")
+        ),
+        "prefix-assistant"
+    );
+
+    // 真實 I/O 寫入失敗：目錄唯讀，暫存檔建不出來（Unix 才有這種權限語意）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = session_file::session_file_path(&claude_home, &working_dir, "readonly");
+        let parent = path.parent().unwrap().to_path_buf();
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::write(
+            &path,
+            user("u1", None, "機密") + "\n" + &assistant("a1", "u1", "text") + "\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let stage =
+            apply_rewrite(&call, "readonly", Some("機密"), Some("甲：")).map_err(|f| f.stage);
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(stage, Err("write"));
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 mod grok;

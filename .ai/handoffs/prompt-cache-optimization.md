@@ -166,7 +166,7 @@ A（穩定前綴重構）、C（命中率量測）、B（Claude 顯式斷點）�
 **程式面包 1–7 全部完成**（2026-08-04）。架構已通過 Opus 四輪真桌驗收；Sonnet 命中率受 CLI 官方 bug 壓制（2.1.220 仍在，取證見 Current state），app 端無事可做，等官方修。
 
 額度分頁實機驗收全過（2026-08-04 九項、2026-10-02 補 grok／agy 列）。**剩下的都不是本包必要工作**：
-1. 離開提醒那條（保溫連三次＋紀錄過長）沒等滿 12 分鐘：併入 [usage-cache-audit](../tasks/usage-cache-audit.md) 實跑時驗〔作者裁決 2026-10-02〕。
+1. 離開提醒那條（保溫連三次＋紀錄過長）沒等滿 12 分鐘：併入 [usage-cache-audit](usage-cache-audit.md) 實跑時驗〔作者裁決 2026-10-02〕。
 2. OpenRouter（API 路）的實際扣款計量：官方可回報，本任務不接。
 3. undo 截尾優化（`truncate_from` 已備好，收回上一句目前仍走重開線）。
 4. claude CLI 的 Sonnet 快取 bug 等官方修（#29966），app 端無事可做。

@@ -287,8 +287,17 @@ pub async fn run_cli_cancellable(
         }
         if let Some(log) = &usage_log {
             if let Some(mut usage) = (log.parse)(&line) {
+                #[cfg(feature = "test-harness")]
+                let mut harness_agy = serde_json::Value::Null;
                 if log.transport == "agy" {
                     if let Some(current) = super::stream::agy_usage_counters(&line) {
+                        #[cfg(feature = "test-harness")]
+                        {
+                            harness_agy = serde_json::json!({
+                                "current": current,
+                                "base": log.agy_usage_base,
+                            });
+                        }
                         if let Some(base) = log.agy_usage_base {
                             if let Some(delta) = super::stream::parse_agy_usage_delta(current, base)
                             {
@@ -302,6 +311,17 @@ pub async fn run_cli_cancellable(
                         }
                     }
                 }
+                // 原始收尾 usage 與解析後要落帳的數字並排（agy 另附累積值與上輪基準）
+                #[cfg(feature = "test-harness")]
+                crate::harness::ai_event(
+                    &harness_dispatch,
+                    "usage-raw",
+                    serde_json::json!({
+                        "raw": crate::harness::raw_usage(&line),
+                        "parsed": crate::harness::parsed_usage(&usage),
+                        "agy": harness_agy,
+                    }),
+                );
                 eprintln!(
                     "[prompt-cache] transport={} model={} lane={} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",
                     log.transport,

@@ -233,7 +233,7 @@ pub(crate) async fn stream_responses(
     }
 
     #[cfg(feature = "test-harness")]
-    crate::harness::ai_dispatch(
+    let harness_dispatch = crate::harness::ai_dispatch(
         "api-responses",
         model,
         serde_json::json!({ "world": world, "shape": format!("{shape:?}") }),
@@ -257,6 +257,8 @@ pub(crate) async fn stream_responses(
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = ResponsesOutcome::default();
+    #[cfg(feature = "test-harness")]
+    let mut harness_raw: Option<serde_json::Value> = None;
 
     'outer: while let Some(chunk) = stream.next().await {
         for payload in parser.push(&chunk?) {
@@ -267,6 +269,10 @@ pub(crate) async fn stream_responses(
                 break 'outer;
             }
             outcome.absorb(&payload);
+            #[cfg(feature = "test-harness")]
+            if let Some(raw) = crate::harness::raw_usage(&payload) {
+                harness_raw = Some(raw);
+            }
             if let Some(parsed) = extract_usage(&payload) {
                 usage = Some(parsed);
             }
@@ -280,6 +286,12 @@ pub(crate) async fn stream_responses(
         }
     }
 
+    #[cfg(feature = "test-harness")]
+    crate::harness::ai_event(
+        &harness_dispatch,
+        "usage-raw",
+        serde_json::json!({ "raw": harness_raw, "parsed": usage.as_ref().map(crate::harness::parsed_usage) }),
+    );
     if let Some(usage) = usage {
         eprintln!(
             "[prompt-cache] transport=api model={model} prompt_tokens={} cached_tokens={} created_tokens={} hit_rate={}",

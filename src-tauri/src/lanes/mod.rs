@@ -14,8 +14,12 @@
 //! chars 線的私設隔離靠「回合注入機密段→回合後從 session 檔抹掉」維持（案 C，2026-08-03 拍板）。
 
 mod grok_session;
+mod rewrite_failure;
 mod session_file;
 mod snapshot_patch;
+
+use rewrite_failure::at;
+pub(crate) use rewrite_failure::RewriteFailure;
 
 use crate::cli;
 use crate::data::{self, TranscriptEvent, TranscriptKind};
@@ -493,20 +497,54 @@ fn apply_rewrite(
     session_id: &str,
     confidential: Option<&str>,
     prefix: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), RewriteFailure> {
     if confidential.is_none() && prefix.is_none() {
         return Ok(());
     }
     let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    let mut file = session_file::load(&path)?;
+    let mut file = at("load", session_file::load(&path))?;
     if let Some(segment) = confidential {
-        let uuid = session_file::find_user_line_with_segment(&file, segment)?;
-        session_file::erase_user_segment(&mut file, &uuid, segment)?;
+        let uuid = at(
+            "find-segment",
+            session_file::find_user_line_with_segment(&file, segment),
+        )?;
+        at(
+            "erase-segment",
+            session_file::erase_user_segment(&mut file, &uuid, segment),
+        )?;
     }
     if let Some(prefix) = prefix {
-        session_file::prefix_last_assistant(&mut file, prefix)?;
+        at(
+            "prefix-assistant",
+            session_file::prefix_last_assistant(&mut file, prefix),
+        )?;
     }
-    session_file::write_atomic(&path, &file)
+    at("write", session_file::write_atomic(&path, &file))
+}
+
+/// 抹寫／截尾失敗落帳：哪一步壞、原錯誤字串（遮路徑、截斷）。測試包另在丟線與刪檔之前
+/// 把 session 檔與要抹的片段留證。只記錄，不改丟線策略。
+#[allow(clippy::too_many_arguments)]
+fn record_rewrite_failure(
+    call: &LaneCall,
+    world_id: &str,
+    key: &str,
+    reason: &str,
+    session_id: &str,
+    failure: &RewriteFailure,
+    confidential: Option<&str>,
+    prefix: Option<&str>,
+) {
+    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
+    #[cfg(feature = "test-harness")]
+    crate::harness::rewrite_evidence(key, reason, failure, &path, confidential, prefix);
+    #[cfg(not(feature = "test-harness"))]
+    let _ = (confidential, prefix);
+    if let Some(log) = call.usage_log.as_deref() {
+        let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
+        let detail = rewrite_failure::mask_detail(&failure.detail, &paths);
+        usage_log::append_drop(log, Some(world_id), key, reason, failure.stage, &detail);
+    }
 }
 
 /// 抹寫失敗：session 內容不可信，刪掉檔。檔案本來就不在（NotFound）當已刪。
@@ -548,16 +586,17 @@ fn settle_abort(
         LaneProvider::Claude => apply_rewrite(call, session_id, confidential, prefix),
         LaneProvider::Agy | LaneProvider::Grok => Ok(()),
     };
-    if rewrite.is_err() {
-        if let Some(path) = call.usage_log.as_deref() {
-            usage_log::append_event(
-                path,
-                Some(world_id),
-                key,
-                usage_log::Event::DropLane,
-                "rewrite-failed",
-            );
-        }
+    if let Err(failure) = rewrite {
+        record_rewrite_failure(
+            call,
+            world_id,
+            key,
+            "rewrite-failed",
+            session_id,
+            &failure,
+            confidential,
+            prefix,
+        );
         // 刪檔失敗也要先清線再回錯：呼叫端看到 Err 就不會把這一輪報成中止成功。
         let abandon = abandon_session(call, session_id);
         store.remove(key);
@@ -839,8 +878,7 @@ pub(crate) async fn run_turn(
                         &actual_session_id,
                         input.confidential.as_deref(),
                         input.prefix.as_deref(),
-                    )
-                    .map_err(|_| "rewrite-failed".to_owned()),
+                    ),
                     // GM 線一律原文，不抹；角色共線每輪都抹（至少要拿 reasoning、補前綴）
                     LaneProvider::Grok if input.lane == Lane::Chars => rewrite_grok(
                         call,
@@ -848,7 +886,11 @@ pub(crate) async fn run_turn(
                         input.confidential.as_deref(),
                         input.prefix.as_deref().unwrap_or_default(),
                         &reply,
-                    ),
+                    )
+                    .map_err(|detail| RewriteFailure {
+                        stage: "rewrite",
+                        detail,
+                    }),
                     LaneProvider::Agy | LaneProvider::Grok => Ok(()),
                 };
                 match rewrite {
@@ -865,7 +907,7 @@ pub(crate) async fn run_turn(
                         }
                     }
                     // 抹寫失敗＝session 內容不可信，丟線；下一輪自動重開全量，本輪回覆照常送回
-                    Err(reason) if call.provider == LaneProvider::Grok => {
+                    Err(failure) if call.provider == LaneProvider::Grok => {
                         revoke_grok_lane(
                             call,
                             world_id,
@@ -873,15 +915,24 @@ pub(crate) async fn run_turn(
                             &actual_session_id,
                             &mut store,
                             &store_path,
-                            &reason,
+                            &failure.detail,
                         )?;
                         return Ok(TurnOutcome {
                             text: reply,
                             aborted: false,
                         });
                     }
-                    Err(reason) => {
-                        log_drop(call, world_id, &key, &reason);
+                    Err(failure) => {
+                        record_rewrite_failure(
+                            call,
+                            world_id,
+                            &key,
+                            "rewrite-failed",
+                            &actual_session_id,
+                            &failure,
+                            input.confidential.as_deref(),
+                            input.prefix.as_deref(),
+                        );
                         store.remove(&key);
                     }
                 }
@@ -1025,16 +1076,17 @@ pub(crate) async fn keepalive(
                 }
                 pinged += 1;
             }
-            Err(_) => {
-                if let Some(path) = call.usage_log.as_deref() {
-                    usage_log::append_event(
-                        path,
-                        Some(world_id),
-                        &key,
-                        usage_log::Event::DropLane,
-                        "ping-truncate-failed",
-                    );
-                }
+            Err(failure) => {
+                record_rewrite_failure(
+                    call,
+                    world_id,
+                    &key,
+                    "ping-truncate-failed",
+                    &state.session_id,
+                    &failure,
+                    Some(PING_PROMPT),
+                    None,
+                );
                 store.remove(&key);
             }
         }
@@ -1045,12 +1097,15 @@ pub(crate) async fn keepalive(
 
 /// 把保溫問答從 session 檔截掉：定位那則 ping user 行，截掉它與其後所有行
 /// （模型的 ok 回覆一併消失），檔案回到 ping 前的形狀。
-fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), String> {
+fn truncate_ping(call: &LaneCall, session_id: &str) -> Result<(), RewriteFailure> {
     let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    let mut file = session_file::load(&path)?;
-    let uuid = session_file::find_user_line_with_segment(&file, PING_PROMPT)?;
-    session_file::truncate_from(&mut file, &uuid)?;
-    session_file::write_atomic(&path, &file)
+    let mut file = at("load", session_file::load(&path))?;
+    let uuid = at(
+        "find-segment",
+        session_file::find_user_line_with_segment(&file, PING_PROMPT),
+    )?;
+    at("truncate", session_file::truncate_from(&mut file, &uuid))?;
+    at("write", session_file::write_atomic(&path, &file))
 }
 
 #[cfg(test)]
