@@ -14,15 +14,12 @@
 
 - 範圍 1、2 完成，驗收通過（Sol PASS，主線重跑 verify 10 步綠），待結案。CLI 的 system／正文都不再進命令列：claude `--system-prompt-file`、grok agent profile＋`--prompt-file`＋`--verbatim`、agy 正文走 stdin；暫存檔在 `<config_root>/cli-prompts/`。
 - claude haiku、agy gemini-3.6-flash-low 已在測試通道真 app 實送長桌（plans §1、§2.5）。
-
-## 待使用者決定（主線去問）
-
-- 範圍 3：門檻比例、提醒位置 A／B／C、到上限要不要鎖送出、文案（plans §3）。
-- 發現 D：agy 單則訊息約 195KB 以上靜默截尾；另外世界書 4 萬字（約 5 萬 token）時三次裡兩次回空（`warning: run ended with no output and no recorded error`）。可選送出前擋下＋人話錯誤／只靠範圍 3 提醒／不處理（plans §2.4）。
-- 範圍 4：claude 爆 context 回 `Prompt is too long`（400）目前落到「再試一次」，要不要新增「太長，請換幕」錯誤類別（plans §4）。
+- 2026-10-06 拍板〔作者裁決 2026-10-06〕：發現 D 交給換幕提醒；提醒門檻＝（上限 − 換幕摘要呼叫所需空間）× 80%，同時看聊天與換幕呼叫；鎖只看換幕、只在再送一句換幕就送不出去時才鎖；拿不到上限的後端不鎖、自訂 base_url 不提醒；換幕送不出去時分段摘要再合併；範圍 4 加「太長了，請換幕」專屬錯誤附換幕鈕，十語系。細節見 plans §3、§4。
+- 範圍 3／4 施工計畫已併入 Sol 第 1–3 輪意見，施工中。
 
 ## 下一步
 
-1. grok 真送（2026-10-06 22:00 額度恢復後）：正文自身 >100KB，確認 `--verbatim` 不搬檔、模型讀得到尾巴；grok 爆 context 時的錯誤長相。結果回寫 plans §1.3。
-2. 結案時刪暫時探針 `.github/workflows/argmax-probe.yml`、`.github/argmax-probe/`，再照 CLAUDE.md 壓縮合併。
-3. 三家真 CLI 在 Windows 讀暫存檔已排進[實測佇列](../reference/verification-queue.md)梯 3。
+1. 主線確認計畫後照 plans §3、§4 施工。
+2. grok 真送（2026-10-06 22:00 額度恢復後）：正文自身 >100KB，確認 `--verbatim` 不搬檔、模型讀得到尾巴；grok 爆 context 時的錯誤長相與上限。結果回寫 plans §1.3、§3.4、§4。
+3. 結案時刪暫時探針 `.github/workflows/argmax-probe.yml`、`.github/argmax-probe/`，再照 CLAUDE.md 壓縮合併。
+4. 三家真 CLI 在 Windows 讀暫存檔已排進[實測佇列](../reference/verification-queue.md)梯 3。

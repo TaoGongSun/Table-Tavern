@@ -205,6 +205,52 @@ async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial
     assert!(deltas.iter().any(|d| d.contains('⚠')));
 }
 
+/// 範圍 4：claude 超長的收尾行（真實樣本）→ 錯誤掛 AI_CONTEXT_TOO_LONG，不被 cli_reply_error 包掉；
+/// 經 ai_call_failure 也原樣放行
+#[cfg(unix)]
+#[tokio::test]
+async fn run_cli_surfaces_prompt_too_long_with_stable_code() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let dir = std::env::temp_dir().join(format!("tt-fake-cli-toolong-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("fake-claude-toolong.sh");
+    std::fs::write(
+        &script,
+        concat!(
+            "#!/bin/sh\n",
+            "cat > /dev/null\n",
+            "echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":400,\"terminal_reason\":\"prompt_too_long\",\"result\":\"Prompt is too long · the request is ~902529 tokens (limit 200000)\"}'\n",
+            "exit 1\n",
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let error = run_cli(
+        &script,
+        &dir,
+        &[],
+        "長",
+        &[],
+        parse_claude_line,
+        false,
+        None,
+        |_: &str| {},
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(
+        error.starts_with("AI_CONTEXT_TOO_LONG: Prompt is too long"),
+        "{error}"
+    );
+    assert_eq!(
+        crate::transport::dispatch::ai_call_failure(error.clone()),
+        error
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {

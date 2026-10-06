@@ -20,10 +20,28 @@ export function AiErrorText({ text, transport }: { text: string; transport?: str
   );
 }
 
-export function ErrorNote({ text, transport }: { text: string; transport?: string }) {
+/** onAdvanceScene 只有聊天錯誤列傳：這一幕太長時，下一步就是換幕，鈕直接放在錯誤旁 */
+export function ErrorNote({
+  text,
+  transport,
+  onAdvanceScene,
+}: {
+  text: string;
+  transport?: string;
+  onAdvanceScene?: () => void;
+}) {
+  const offerAdvance = onAdvanceScene && explainAiError(text, transport) === "errContextTooLong";
   return (
     <p role="alert">
       <AiErrorText text={text} transport={transport} />
+      {offerAdvance && (
+        <>
+          <br />
+          <button type="button" className="btn btn-sm" onClick={onAdvanceScene}>
+            {t("sceneAdvance")}
+          </button>
+        </>
+      )}
     </p>
   );
 }

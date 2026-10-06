@@ -46,6 +46,7 @@ const COPY = {
     be_summary_continued_scene: "這一幕是從前幕接續來的，開頭不是前情提要",
     be_summary_has_new_content: "這一幕已經有新內容，不能重寫前情提要",
     be_scene_empty_cannot_advance: "這個場景還沒有任何紀錄，沒東西可以換場",
+    be_scene_summary_failed: "這一幕太長，這次整理沒有成功，原本的紀錄都還在。",
     be_previous_scene_empty: "前一幕還沒有任何紀錄，沒東西可以重新摘要",
     be_transcript_empty: "這桌還沒有任何紀錄",
     be_scene_not_found: "場景 {scene} 不存在",
@@ -126,6 +127,7 @@ const COPY = {
     be_summary_continued_scene: "这一幕是从前幕接续来的，开头不是前情提要",
     be_summary_has_new_content: "这一幕已经有新内容，不能重写前情提要",
     be_scene_empty_cannot_advance: "这个场景还没有任何记录，没东西可以换场",
+    be_scene_summary_failed: "这一幕太长，这次整理没有成功，原本的记录都还在。",
     be_previous_scene_empty: "前一幕还没有任何记录，没东西可以重新摘要",
     be_transcript_empty: "这桌还没有任何记录",
     be_scene_not_found: "场景 {scene} 不存在",
@@ -212,6 +214,7 @@ const COPY = {
     be_summary_has_new_content:
       "This act already has new content, so its recap can't be rewritten.",
     be_scene_empty_cannot_advance: "This act has no log yet, so there's nothing to move on from.",
+    be_scene_summary_failed: "This act is too long and the recap couldn't be finished this time. Your log is untouched.",
     be_previous_scene_empty: "The previous act has no log, so there's nothing to summarize again.",
     be_transcript_empty: "This table has no log yet.",
     be_scene_not_found: "Act {scene} doesn't exist.",
@@ -297,6 +300,7 @@ const COPY = {
     be_summary_continued_scene: "この幕は前の幕からの続きで、冒頭はあらすじではありません。",
     be_summary_has_new_content: "この幕にはすでに新しい内容があるため、あらすじを書き直せません。",
     be_scene_empty_cannot_advance: "この幕にはまだ記録がないため、幕を替えられません。",
+    be_scene_summary_failed: "この幕は長すぎて、今回はあらすじにまとめられませんでした。記録はそのまま残っています。",
     be_previous_scene_empty: "前の幕に記録がないため、あらすじを作り直せません。",
     be_transcript_empty: "この卓にはまだ記録がありません。",
     be_scene_not_found: "幕 {scene} は存在しません。",
@@ -379,6 +383,7 @@ const COPY = {
     be_summary_continued_scene: "이 막은 이전 막에서 바로 이어진 것이라 시작이 요약이 아닙니다.",
     be_summary_has_new_content: "이 막에 이미 새 내용이 있어서 요약을 다시 쓸 수 없습니다.",
     be_scene_empty_cannot_advance: "이 막에는 아직 기록이 없어서 막을 바꿀 수 없습니다.",
+    be_scene_summary_failed: "이번 막이 너무 길어 이번에는 줄거리 정리에 실패했습니다. 기록은 그대로 남아 있습니다.",
     be_previous_scene_empty: "이전 막에 기록이 없어서 다시 요약할 것이 없습니다.",
     be_transcript_empty: "이 테이블에는 아직 기록이 없습니다.",
     be_scene_not_found: "막 {scene}이(가) 없습니다.",
@@ -468,6 +473,7 @@ const COPY = {
       "Este acto ya tiene contenido nuevo; no se puede reescribir el resumen.",
     be_scene_empty_cannot_advance:
       "Este acto aún no tiene historial; no hay nada para pasar al siguiente.",
+    be_scene_summary_failed: "Este acto es demasiado largo y esta vez no se pudo terminar el resumen. Tu historial sigue intacto.",
     be_previous_scene_empty:
       "El acto anterior no tiene historial; no hay nada que volver a resumir.",
     be_transcript_empty: "Esta mesa aún no tiene historial.",
@@ -560,6 +566,7 @@ const COPY = {
     be_summary_has_new_content: "Este ato já tem conteúdo novo; não dá para reescrever o resumo.",
     be_scene_empty_cannot_advance:
       "Este ato ainda não tem histórico; não há nada para passar adiante.",
+    be_scene_summary_failed: "Este ato está longo demais e desta vez não deu para terminar o resumo. Seu histórico continua intacto.",
     be_previous_scene_empty: "O ato anterior não tem histórico; não há nada para resumir de novo.",
     be_transcript_empty: "Esta mesa ainda não tem histórico.",
     be_scene_not_found: "O ato {scene} não existe.",
@@ -657,6 +664,7 @@ const COPY = {
       "Dieser Akt hat schon neuen Inhalt; die Zusammenfassung lässt sich nicht mehr neu schreiben.",
     be_scene_empty_cannot_advance:
       "Dieser Akt hat noch kein Protokoll; es gibt nichts, womit man weitermachen könnte.",
+    be_scene_summary_failed: "Dieser Akt ist zu lang, die Zusammenfassung hat diesmal nicht geklappt. Dein Protokoll ist unverändert.",
     be_previous_scene_empty:
       "Der vorige Akt hat kein Protokoll; es gibt nichts neu zusammenzufassen.",
     be_transcript_empty: "Dieser Tisch hat noch kein Protokoll.",
@@ -752,6 +760,7 @@ const COPY = {
       "Cet acte contient déjà du nouveau contenu\u00a0: impossible de réécrire le résumé.",
     be_scene_empty_cannot_advance:
       "Cet acte n'a encore aucun historique\u00a0: rien à clore pour passer au suivant.",
+    be_scene_summary_failed: "Cet acte est trop long et le résumé n'a pas pu être terminé cette fois. Ton historique est intact.",
     be_previous_scene_empty: "L'acte précédent n'a aucun historique\u00a0: rien à résumer de nouveau.",
     be_transcript_empty: "Cette table n'a encore aucun historique.",
     be_scene_not_found: "L'acte {scene} n'existe pas.",
@@ -842,6 +851,7 @@ const COPY = {
     be_summary_has_new_content:
       "В этом акте уже есть новое содержимое — пересказ переписать нельзя.",
     be_scene_empty_cannot_advance: "В этом акте ещё нет лога — начинать новый не с чего.",
+    be_scene_summary_failed: "Этот акт слишком длинный, и на этот раз пересказ не получился. Лог остался без изменений.",
     be_previous_scene_empty: "В предыдущем акте нет лога — пересказывать нечего.",
     be_transcript_empty: "У этого стола ещё нет лога.",
     be_scene_not_found: "Акта {scene} не существует.",

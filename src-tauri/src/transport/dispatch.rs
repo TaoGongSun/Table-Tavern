@@ -183,9 +183,10 @@ pub(crate) async fn prepare_lane_call(
 /// 已有更精確的碼就原樣放行；只認這份白名單，不用 `AI_` 開頭一概放行——
 /// 錯誤字串可能整包來自供應商，讓它自帶前綴就能繞過分流。
 pub(crate) fn ai_call_failure(error: String) -> String {
-    const CODED: [&str; 6] = [
+    const CODED: [&str; 7] = [
         "AI_STREAM_STALLED:",
         "AI_HTTP_STATUS_",
+        crate::transport::context_overflow::CODE,
         "AI_FREE_MODEL_BUSY:",
         "AI_EMPTY_RESPONSE:",
         "AI_INCOMPLETE_RESPONSE:",
@@ -623,6 +624,8 @@ mod tests {
             "AI_HTTP_STATUS_429: TTMSG:{\"code\":\"smart_free_daily_exhausted\"}",
             "AI_FREE_MODEL_BUSY: AI_HTTP_STATUS_503: status=503 body=",
             "AI_STREAM_STALLED: idle_secs=120",
+            "AI_CONTEXT_TOO_LONG: Prompt is too long",
+            "AI_CONTEXT_TOO_LONG: AI_HTTP_STATUS_400: status=400 body={}",
         ] {
             assert_eq!(ai_call_failure(coded.to_owned()), coded);
         }

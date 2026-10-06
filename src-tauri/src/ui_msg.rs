@@ -114,6 +114,8 @@ pub enum UiMsg {
     SummaryContinuedScene,
     SummaryHasNewContent,
     SceneEmptyCannotAdvance,
+    /// 換幕摘要（含分段）最終沒做成；原紀錄不動。不附換幕鈕——按了只會重跑同一條路
+    SceneSummaryFailed,
     PreviousSceneEmpty,
     TranscriptEmpty,
     SceneNotFound {

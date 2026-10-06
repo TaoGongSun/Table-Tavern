@@ -295,12 +295,23 @@ pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Re
         false,
         |_| {},
     )
-    .await?;
+    .await
+    .map_err(summary_failure)?;
 
     // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
     let (title, summary) = transport::extract_scene_title(&reply);
     data::begin_next_scene(&root, &world_id, &summary, title.as_deref())
         .map_err(|error| error.to_string())
+}
+
+/// 換幕摘要撞到容量上限：不能把聊天用的「請換幕」錯誤丟回去（按了只會重跑同一條路），
+/// 改回摘要失敗的人話；原紀錄沒動過。其他錯誤原樣上拋。
+fn summary_failure(error: String) -> String {
+    if error.starts_with(transport::context_overflow::CODE) {
+        UiMsg::SceneSummaryFailed.into()
+    } else {
+        error
+    }
 }
 
 /// 退回前幕：換幕的精確反向操作，純本地檔案處理不必等模型回覆。
@@ -371,7 +382,8 @@ pub(crate) async fn regenerate_scene_summary(
         false,
         |_| {},
     )
-    .await?;
+    .await
+    .map_err(summary_failure)?;
 
     let (title, summary) = transport::extract_scene_title(&reply);
     data::replace_scene_summary(&root, &world_id, &summary, title.as_deref())

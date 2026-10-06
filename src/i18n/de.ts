@@ -542,6 +542,7 @@ export const de: Record<MsgKey, string> = {
   errEmptyReply: "Die KI hat diesmal nichts zurückgegeben, deshalb wurde der Geschichte nichts hinzugefügt. Versuche es noch einmal; wenn es dabei bleibt, wechsle Modell oder KI-Quelle.",
   errStreamStalled: "Vom Modell kam zu lange keine Ausgabe, deshalb wurde das Warten abgebrochen und der Geschichte nichts hinzugefügt. Versuche es noch einmal oder wechsle das Modell.",
   errIncompleteReply: "Die Antwort der KI wurde abgeschnitten, deshalb wurde der Geschichte nichts hinzugefügt. Versuche es noch einmal; wenn es dabei bleibt, wechsle Modell oder KI-Quelle.",
+  errContextTooLong: "Dieser Akt ist zu lang, als dass das Modell ihn auf einmal lesen könnte. Beginne einen neuen Akt, um ihn zusammenzufassen, dann geht es weiter.",
   errFiltered: "Diese KI-Quelle hat die Antwort blockiert. Formuliere es anders, oder wechsle zu einem anderen Modell.",
   errNoImage: "Diese Quelle kann keine Bilder generieren: Entweder ist das Bildguthaben aufgebraucht oder das Bild-Abonnement fehlt. Versuche eine andere Bildquelle.",
   errRefused: "Die Bildquelle hat diese Beschreibung abgelehnt, meist wegen der Inhaltsrichtlinien. Formuliere sie um oder versuche eine andere Bildquelle.",

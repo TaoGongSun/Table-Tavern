@@ -540,6 +540,7 @@ export const fr: Record<MsgKey, string> = {
   errEmptyReply: "L'IA n'a rien renvoyé cette fois, donc rien n'a été ajouté à l'histoire. Réessaie\u00a0; si cela persiste, change de modèle ou de source d'IA.",
   errStreamStalled: "Aucune sortie du modèle depuis trop longtemps : l'attente a été interrompue et rien n'a été ajouté à l'histoire. Réessaie ou change de modèle.",
   errIncompleteReply: "La réponse de l'IA a été coupée avant la fin, donc rien n'a été ajouté à l'histoire. Réessaie\u00a0; si cela persiste, change de modèle ou de source d'IA.",
+  errContextTooLong: "Cet acte est trop long pour que le modèle le lise d'un coup. Passe à un nouvel acte pour le résumer, puis continue.",
   errFiltered: "Cette source d'IA a bloqué la réponse. Reformule, ou passe à un autre modèle.",
   errNoImage: "Cette source ne peut pas générer d'images\u00a0: crédit insuffisant, ou formule ne comprenant pas la génération d'images. Essaie une autre source.",
   errRefused: "La source a refusé cette description, généralement à cause des règles de contenu. Reformule-la, ou essaie une autre source.",

@@ -454,8 +454,14 @@ pub(crate) fn http_error(status: reqwest::StatusCode, body: &str) -> String {
     } else {
         ""
     };
+    // 容量爆掉另掛碼在最前面（同 AI_FREE_MODEL_BUSY 的包法）：只認 400／413 的 error 物件
+    let overflow = if super::context_overflow::api_body_says_too_long(status.as_u16(), body) {
+        format!("{} ", super::context_overflow::CODE)
+    } else {
+        String::new()
+    };
     format!(
-        "AI_HTTP_STATUS_{}: status={status} body={kept}{cut}",
+        "{overflow}AI_HTTP_STATUS_{}: status={status} body={kept}{cut}",
         status.as_u16(),
     )
 }
