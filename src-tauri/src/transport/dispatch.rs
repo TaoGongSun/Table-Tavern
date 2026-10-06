@@ -30,7 +30,7 @@ pub(crate) fn cli_prompt_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> 
 fn grok_profile(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let root = config_root(app)?;
     let home = root.join("cli-home");
-    let grok_home = root.join("grok-home");
+    let grok_home = grok_home_dir(&root);
     for path in [&home, &grok_home] {
         std::fs::create_dir_all(path).map_err(|error| {
             UiMsg::GrokProfileFailed {
@@ -46,6 +46,11 @@ fn grok_profile(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
         }
     }
     Ok((home, grok_home))
+}
+
+/// app 專用的 GROK_HOME（設定根底下）；容量判定讀 grok 的模型快取也看這裡。
+pub(crate) fn grok_home_dir(config_root: &std::path::Path) -> PathBuf {
+    config_root.join("grok-home")
 }
 
 /// 四處呼叫 grok 的地方共用這組環境；其餘 CLI 不需要隔離，回空陣列。

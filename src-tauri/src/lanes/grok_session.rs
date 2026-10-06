@@ -326,7 +326,8 @@ fn check_prefixed(text: &str, prefix: &str, reply: &str) -> Result<(), RewriteEr
 }
 
 /// chat_history：最後一則真 user（帶 prompt_index）之後只能有 reasoning 與恰好一則
-/// 字串內容、無工具呼叫的 assistant。回傳抹好的 user 本文（剝掉 `<user_query>` 包裝）供跨檔比對。
+/// 字串內容、無工具呼叫的 assistant。回傳抹好的 user 本文（有 `<user_query>` 包裝就剝掉，
+/// `--verbatim` 時沒有包裝照原文）供跨檔比對。
 fn rewrite_chat_history(
     lines: &mut Lines,
     confidential: Option<&str>,
@@ -394,11 +395,11 @@ fn rewrite_chat_history(
         return Err(failed("chat_history 找不到機密段"));
     }
     user.dirty |= erased;
+    // 不帶 --verbatim 時 CLI 把本文包進 <user_query>；帶了（app 的文字通道）就是原文
     let body = body
         .strip_prefix("<user_query>\n")
         .and_then(|rest| rest.strip_suffix("\n</user_query>"))
-        .ok_or_else(|| failed("user 本文不是 <user_query> 包裝"))?
-        .to_owned();
+        .map_or(body.clone(), str::to_owned);
 
     let assistant = &mut lines.rows[assistant_index];
     let content = assistant.value["content"].as_str().unwrap_or_default();

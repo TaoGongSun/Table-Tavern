@@ -55,4 +55,4 @@
 | [stable-free-failover](../handoffs/archive/stable-free-failover.md) 真上游換模 | 真上游連續兩次失敗→換模→同句重送，只在假端點驗過；真模型自然遇到時再看（聊天室提示行、重送成功、帳本與 ai-log 對應） |
 | [test-harness](../handoffs/archive/test-harness.md) 安裝探測記錄 | 下次實際跑 CLI 安裝／登入流程時，用測試包看 `ai-log` 有 `cli-probe:*`（claude／agy 標 `aiProbe`）與 `cli-setup-terminal:*` 各一筆 |
 | [test-harness](../handoffs/archive/test-harness.md) 正式包 listener | 要確實隔離資料的環境（獨立 macOS 帳號或 VM）：正式包帶 `TT_HARNESS_ROOT` 啟動不產 harness.json、`lsof` 看不到 listener |
-| [long-prompt-scene-hint](../handoffs/long-prompt-scene-hint.md) Windows 真 CLI 讀檔 | 等有 Windows 機且 claude／grok／agy 已登入：中文卡加世界書超過 3 萬字的桌各送一輪——claude 讀 `--system-prompt-file`、grok 讀 `--agent` profile 與 `--prompt-file`、agy 吃 stdin，都回得出話；`cli-prompts/` 呼叫後是空的。原生假 .exe 版已在 Windows CI 過，三家真 CLI 未跑 |
+| [long-prompt-scene-hint](../handoffs/archive/long-prompt-scene-hint.md) Windows 真 CLI 讀檔 | 等有 Windows 機且 claude／grok／agy 已登入：中文卡加世界書超過 3 萬字的桌各送一輪——claude 讀 `--system-prompt-file`、grok 讀 `--agent` profile 與 `--prompt-file`、agy 吃 stdin，都回得出話；`cli-prompts/` 呼叫後是空的。原生假 .exe 版已在 Windows CI 過，三家真 CLI 未跑 |

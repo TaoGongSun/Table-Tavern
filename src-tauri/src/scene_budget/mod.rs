@@ -246,11 +246,18 @@ pub fn compute(
             "codex" => limits::read_codex_files(),
             _ => (None, None),
         };
+    let grok_windows = match crate::transport::dispatch::chat_transport(&config).as_str() {
+        "grok" => {
+            limits::read_grok_windows(&crate::transport::dispatch::grok_home_dir(config_root))
+        }
+        _ => None,
+    };
     let sources = limits::Sources {
         capacity: &store,
         catalog: &catalog,
         codex_cache: codex_cache.as_deref(),
         codex_config: codex_config.as_deref(),
+        grok_windows: grok_windows.as_ref(),
         smart_free_context: crate::smart_free::is_active(&config)
             .then(|| crate::smart_free::candidate_max_context(config_root, &config))
             .flatten(),
@@ -377,11 +384,18 @@ fn summary_limit(config_root: &Path, root: &Path, config: &AppConfig) -> Option<
             "codex" => limits::read_codex_files(),
             _ => (None, None),
         };
+    let grok_windows = match crate::transport::dispatch::chat_transport(config).as_str() {
+        "grok" => {
+            limits::read_grok_windows(&crate::transport::dispatch::grok_home_dir(config_root))
+        }
+        _ => None,
+    };
     let sources = limits::Sources {
         capacity: &store,
         catalog: &catalog,
         codex_cache: codex_cache.as_deref(),
         codex_config: codex_config.as_deref(),
+        grok_windows: grok_windows.as_ref(),
         smart_free_context: crate::smart_free::is_active(config)
             .then(|| crate::smart_free::candidate_max_context(config_root, config))
             .flatten(),

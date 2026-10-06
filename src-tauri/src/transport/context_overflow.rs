@@ -14,6 +14,7 @@ pub fn message_says_too_long(message: &str) -> bool {
         || lower.contains("maximum context length")
         || lower.contains("exceeds the context window")
         || lower.contains("maximum prompt length")
+        || lower.contains("input_too_large")
         || (lower.contains("input token count") && lower.contains("exceeds the maximum"))
 }
 
@@ -63,6 +64,7 @@ mod tests {
             "Your input exceeds the context window of this model.",
             "This model's maximum prompt length is 131072 but the request contains 200000 tokens.",
             "The input token count (1200000) exceeds the maximum number of tokens allowed (1048576).",
+            "Failed to start sampling: [input_too_large] The prompt is too long for this model's context window (544617 tokens > 500000 tokens)",
         ] {
             assert!(message_says_too_long(message), "{message}");
         }

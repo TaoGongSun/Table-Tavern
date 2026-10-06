@@ -195,6 +195,7 @@ pub async fn run_cli_cancellable(
 
 /// spawn 之後的整段：餵 stdin、逐行讀 stdout／stderr、判收尾。任何提早 return 都由呼叫端
 /// `run_cli_cancellable` 接著收屍。
+#[cfg_attr(feature = "test-harness", allow(clippy::too_many_arguments))]
 async fn drive_child(
     child: &mut Child,
     stdin_data: &str,
