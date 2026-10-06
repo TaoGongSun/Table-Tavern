@@ -18,6 +18,11 @@ pub(crate) fn cli_workspace(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(workspace)
 }
 
+/// CLI 提示詞暫存檔資料夾（`cli::PromptFile`）：system／正文不塞命令列參數，改寫檔交給 CLI 讀。
+pub(crate) fn cli_prompt_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(config_root(app)?.join("cli-prompts"))
+}
+
 /// grok 專用 profile：回傳 (假 HOME, GROK_HOME)。grok 會自動吃 `$HOME/.claude` 下的
 /// hooks／skills／CLAUDE.md（官方無 opt-out），玩家的 coding hook 因此擋停過旁白。
 /// 這兩個目錄讓 grok 只看得到 app 自己這套，登入態也存在這裡，與使用者終端機的
@@ -157,6 +162,7 @@ pub(crate) async fn prepare_lane_call(
         provider,
         program: PathBuf::from(info.path),
         working_dir: cli_workspace(app)?,
+        prompt_dir: cli_prompt_dir(app)?,
         envs: match provider {
             lanes::LaneProvider::Claude => claude_cli_envs(config),
             lanes::LaneProvider::Agy => Vec::new(),
@@ -437,6 +443,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
         .into());
     }
     let cli_working_dir = cli_workspace(app)?;
+    let prompt_dir = cli_prompt_dir(app)?;
 
     let (system, prompt) = cli::flatten_messages(
         assistant_label,
@@ -449,7 +456,9 @@ pub(crate) async fn stream_turn_reporting_truncation(
         "claude" => {
             let model = cli::tier_override(&config.tier_models, "claude", tier)
                 .unwrap_or_else(|| cli::claude_model_for(tier));
-            let args = cli::claude_args(model, &system);
+            // system 寫檔、正文走 stdin：都不佔命令列長度。檔案活到 run_cli 收屍返回後才刪。
+            let system_file = cli::PromptFile::create(&prompt_dir, "system.txt", &system)?;
+            let args = cli::claude_args(model, system_file.path());
             let envs = claude_cli_envs(config);
             cli::run_cli(
                 &program,
@@ -512,13 +521,14 @@ pub(crate) async fn stream_turn_reporting_truncation(
             // agy 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時使用 CLI 預設模型。
             // 走 stream-json（agy_args 帶旗標）才拿得到含 cache_read_tokens 的用量。
             let model = cli::tier_override(&config.tier_models, "agy", tier);
+            // 正文走 stdin（不帶 -p 就是單發模式），不佔命令列長度
             let combined = format!("{system}\n\n{prompt}");
-            let args = cli::agy_args(model, &combined, allow_cli_tools);
+            let args = cli::agy_args(model, allow_cli_tools);
             cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
-                "",
+                &combined,
                 &[],
                 cli::parse_agy_line,
                 false,
@@ -541,10 +551,20 @@ pub(crate) async fn stream_turn_reporting_truncation(
             .await
         }
         "grok" => {
-            // system 走 --system-prompt-override 頂掉 grok 內建那份（生圖那條例外，見
-            // grok_args）；未覆寫時使用 CLI 預設模型
+            // system 頂掉 grok 內建那份（生圖那條例外，見 grok_payload）；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "grok", tier);
-            let args = cli::grok_args(model, &system, &prompt, allow_cli_tools);
+            // system 走 agent profile 檔、正文走 --prompt-file；檔案活到 run_cli 收屍返回後才刪
+            let (profile, body) = cli::grok_payload(&system, &prompt, allow_cli_tools);
+            let profile = profile
+                .map(|profile| cli::PromptFile::create(&prompt_dir, "grok-system.md", &profile))
+                .transpose()?;
+            let body = cli::PromptFile::create(&prompt_dir, "prompt.txt", &body)?;
+            let args = cli::grok_args(
+                model,
+                profile.as_ref().map(cli::PromptFile::path),
+                body.path(),
+                allow_cli_tools,
+            );
             let envs = cli_envs(app, "grok")?;
             cli::run_cli(
                 &program,

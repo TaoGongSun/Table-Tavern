@@ -61,7 +61,9 @@ async fn run_stage(
 ) -> Result<String, String> {
     // 重構判官固定走 claude，model 必定有值
     let model = call.model.clone().unwrap_or_default();
-    let args = cli::claude_session_args(&model, system, session);
+    // system 寫檔不進命令列；檔案活到 run_cli 收屍返回後才刪
+    let system_file = cli::PromptFile::create(&call.prompt_dir, "system.txt", system)?;
+    let args = cli::claude_session_args(&model, system_file.path(), session);
     cli::run_cli(
         &call.program,
         &call.working_dir,
@@ -112,9 +114,10 @@ def flag(name):
     return args[args.index(name) + 1] if name in args else None
 sid, rid = flag('--session-id'), flag('--resume')
 prompt = sys.stdin.read()
+system = open(flag('--system-prompt-file'), encoding='utf-8').read()
 d = os.environ['FAKE_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt}) + '\n')
+    f.write(json.dumps({'args': args, 'prompt': prompt, 'system': system}) + '\n')
 path = os.path.join(d, (sid or rid) + '.marker')
 if rid and not os.path.exists(path):
     sys.exit(3)
@@ -129,6 +132,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
             provider: crate::lanes::LaneProvider::Claude,
             program: script,
             working_dir: dir.clone(),
+            prompt_dir: dir.join("prompts"),
             envs: vec![("FAKE_DIR".to_owned(), dir.to_string_lossy().into_owned())],
             model: Some("opus".to_owned()),
             usage_log: None,
@@ -138,7 +142,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
     }
 
     #[cfg(unix)]
-    fn calls(dir: &std::path::Path, index: usize) -> (Vec<String>, String) {
+    fn calls(dir: &std::path::Path, index: usize) -> (Vec<String>, String, String) {
         let text = std::fs::read_to_string(dir.join("calls.jsonl")).unwrap();
         let line: serde_json::Value =
             serde_json::from_str(text.lines().nth(index).unwrap()).unwrap();
@@ -150,6 +154,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
                 .map(|v| v.as_str().unwrap().to_owned())
                 .collect(),
             line["prompt"].as_str().unwrap().to_owned(),
+            line["system"].as_str().unwrap().to_owned(),
         )
     }
 
@@ -165,19 +170,22 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
             .await
             .unwrap();
         assert!(raw.contains("RECOMMEND"));
-        let (args0, prompt0) = calls(&dir, 0);
+        let (args0, prompt0, system0) = calls(&dir, 0);
         assert!(args0
             .windows(2)
             .any(|w| w == ["--session-id", sid.as_str()]));
-        assert!(args0.windows(2).any(|w| w == ["--system-prompt", "系統文"]));
+        // system 由假 CLI 當場讀檔：內容到得了，而且不在命令列上
+        assert_eq!(system0, "系統文");
+        assert!(!args0.iter().any(|arg| arg.contains("系統文")));
         assert_eq!(prompt0, "第一段指示");
 
         let raw2 = resume_stage(&call, "w1", &sid, "系統文", "第二段指示", |_| {})
             .await
             .unwrap();
         assert!(raw2.contains("RECOMMEND"));
-        let (args1, prompt1) = calls(&dir, 1);
+        let (args1, prompt1, system1) = calls(&dir, 1);
         assert!(args1.windows(2).any(|w| w == ["--resume", sid.as_str()]));
+        assert_eq!(system1, "系統文");
         assert_eq!(prompt1, "第二段指示"); // 卡片 context 不重送
 
         std::fs::remove_file(dir.join(format!("{sid}.marker"))).unwrap();
@@ -187,6 +195,9 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
                 .is_err()
         );
 
+        // 呼叫結束暫存檔就刪掉，不留在 prompts 資料夾
+        let left: Vec<_> = std::fs::read_dir(dir.join("prompts")).unwrap().collect();
+        assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

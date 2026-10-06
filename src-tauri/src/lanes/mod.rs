@@ -59,6 +59,8 @@ pub(crate) struct LaneCall {
     pub provider: LaneProvider,
     pub program: PathBuf,
     pub working_dir: PathBuf,
+    /// 提示詞暫存檔資料夾（cli::PromptFile）：system／正文不塞命令列參數
+    pub prompt_dir: PathBuf,
     pub envs: Vec<(String, String)>,
     /// None＝不覆寫、用 CLI 自己的預設模型（Agy/Grok 可能這樣）
     pub model: Option<String>,
@@ -375,7 +377,7 @@ enum TurnPlan {
     Resume {
         session_id: String,
         base: usize,
-        /// 本輪實際傳給 CLI 的 --system-prompt。
+        /// 本輪實際傳給 CLI 的 system（claude 的 --system-prompt-file 內容）。
         system: String,
         patch: Option<String>,
         /// 追平只供用量 log 區分；不改變續聊流程。
@@ -811,25 +813,45 @@ pub(crate) async fn run_turn(
         } else {
             cli::CliSession::Resume(&session_id)
         };
-        // Claude 的正文走 stdin；Agy/Grok 的正文進 -p。
+        // system／正文一律不進命令列（Windows 整條命令列只有 32,767 個 UTF-16 單位）：
+        // Claude 的 system 寫檔、正文走 stdin；Grok 開線的 system 寫成 agent profile、正文寫檔；
+        // Agy 整包走 stdin（開線帶 system、續聊只送本輪）。暫存檔活到 run_cli 收屍返回後才刪。
+        let mut prompt_files = Vec::new();
         let (args, stdin) = match call.provider {
-            LaneProvider::Claude => (
-                cli::claude_session_args(call.model_label(), &system, &session),
-                prompt.as_str(),
-            ),
-            LaneProvider::Grok => (
-                cli::grok_session_args(call.model.as_deref(), &system, &prompt, &session),
-                "",
-            ),
-            LaneProvider::Agy => (
-                cli::agy_session_args(
+            LaneProvider::Claude => {
+                let system_file = cli::PromptFile::create(&call.prompt_dir, "system.txt", &system)?;
+                let args =
+                    cli::claude_session_args(call.model_label(), system_file.path(), &session);
+                prompt_files.push(system_file);
+                (args, prompt.clone())
+            }
+            LaneProvider::Grok => {
+                let profile = match (&session, system.is_empty()) {
+                    (cli::CliSession::Open(_), false) => Some(cli::PromptFile::create(
+                        &call.prompt_dir,
+                        "grok-system.md",
+                        &cli::grok_payload(&system, "", false).0.unwrap_or_default(),
+                    )?),
+                    _ => None,
+                };
+                let body = cli::PromptFile::create(&call.prompt_dir, "prompt.txt", &prompt)?;
+                let args = cli::grok_session_args(
                     call.model.as_deref(),
-                    &system,
-                    &prompt,
-                    (!opening).then_some(session_id.as_str()),
-                ),
-                "",
-            ),
+                    profile.as_ref().map(cli::PromptFile::path),
+                    body.path(),
+                    &session,
+                );
+                prompt_files.extend(profile);
+                prompt_files.push(body);
+                (args, String::new())
+            }
+            LaneProvider::Agy => {
+                let conversation = (!opening).then_some(session_id.as_str());
+                (
+                    cli::agy_session_args(call.model.as_deref(), conversation),
+                    cli::agy_session_body(&system, &prompt, conversation),
+                )
+            }
         };
 
         store.insert(
@@ -861,7 +883,7 @@ pub(crate) async fn run_turn(
             &call.program,
             &call.working_dir,
             &args,
-            stdin,
+            &stdin,
             &call.envs,
             match call.provider {
                 LaneProvider::Claude => cli::parse_claude_line,
@@ -1084,9 +1106,11 @@ pub(crate) async fn keepalive(
         if state.model.is_empty() {
             continue;
         }
+        // 保溫也要帶同一份 system 才匹配得到快取前綴；system 寫檔，活到 run_cli 返回後才刪
+        let system_file = cli::PromptFile::create(&call.prompt_dir, "system.txt", &state.snapshot)?;
         let args = cli::claude_session_args(
             &state.model,
-            &state.snapshot,
+            system_file.path(),
             &cli::CliSession::Resume(&state.session_id),
         );
         // 保溫前的原文：事後整份還原（CLI 只會追加）。讀不到就不保溫這條線

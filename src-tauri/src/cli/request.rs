@@ -77,7 +77,10 @@ pub fn codex_effort_for(tier: Tier) -> &'static str {
 
 /// --safe-mode：停用使用者的 CLAUDE.md／plugins／hooks，避免 coding 客製污染角色扮演；
 /// --tools ""：純文字生成不需要工具；--no-session-persistence：不落 session（§8.1）。
-pub fn claude_args(model: &str, system: &str) -> Vec<String> {
+/// system 走 `--system-prompt-file`（`--help` 沒列、`--bare` 說明有提），正文走 stdin：
+/// 兩者都不佔命令列長度（Windows 32,767 UTF-16 單位、macOS argv＋env 1MB）。
+pub fn claude_args(model: &str, system_file: &Path) -> Vec<String> {
+    let system_file = system_file.to_string_lossy();
     [
         "-p",
         "--verbose", // --print 的 stream-json 硬性要求
@@ -88,8 +91,8 @@ pub fn claude_args(model: &str, system: &str) -> Vec<String> {
         "--include-partial-messages",
         "--tools",
         "",
-        "--system-prompt",
-        system,
+        "--system-prompt-file",
+        &system_file,
         "--model",
         model,
     ]
@@ -99,7 +102,12 @@ pub fn claude_args(model: &str, system: &str) -> Vec<String> {
 
 /// claude lane 續聊參數：與 claude_args 同組旗標，但保留 session 落檔
 /// （resume 架構的快取命中靠 CLI 自身 session，非 §8.1 無狀態單發）。
-pub fn claude_session_args(model: &str, system: &str, session: &CliSession<'_>) -> Vec<String> {
+pub fn claude_session_args(
+    model: &str,
+    system_file: &Path,
+    session: &CliSession<'_>,
+) -> Vec<String> {
+    let system_file = system_file.to_string_lossy();
     let mut args: Vec<String> = [
         "-p",
         "--verbose", // --print 的 stream-json 硬性要求
@@ -109,8 +117,8 @@ pub fn claude_session_args(model: &str, system: &str, session: &CliSession<'_>) 
         "--include-partial-messages",
         "--tools",
         "",
-        "--system-prompt",
-        system,
+        "--system-prompt-file",
+        &system_file,
         "--model",
         model,
     ]
@@ -174,11 +182,13 @@ pub fn agy_supports_stream_json(version: &str) -> bool {
     }
 }
 
-/// agy 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
-/// -p 必須直接帶整包 prompt；聊天維持安全預設不開工具。
+/// agy 沒有 system prompt 旗標，呼叫端把 system 併進正文。正文走 stdin（不帶 `-p`
+/// 就是單發模式），不佔命令列長度；聊天維持安全預設不開工具。
 /// allow_tools：agy 的生圖工具在無頭模式需要 command 權限、提示彈不出來會被自動拒絕
 /// （2026-07-27 實測），生圖呼叫必須帶 --dangerously-skip-permissions 才會出圖。
-pub fn agy_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<String> {
+/// 注意：agy 對單則訊息約 195KB 以上會靜默只留開頭（2026-10-06 實測，`-p` 與 stdin 相同），
+/// 換傳遞方式解不掉，見 .ai/plans/long-prompt-scene-hint.md 發現 D。
+pub fn agy_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = model {
         args.push("--model".to_owned());
@@ -191,32 +201,26 @@ pub fn agy_args(model: Option<&str>, prompt: &str, allow_tools: bool) -> Vec<Str
     // 壓到最後一次吐出，串流就沒了。
     args.push("--output-format".to_owned());
     args.push("stream-json".to_owned());
-    args.push("-p".to_owned());
-    args.push(prompt.to_owned());
     args
 }
 
 /// Agy 對話 lane：首輪帶穩定素材，後續用精確 conversation ID 只送新回合。
 /// 不用 `--continue`：它是「這個 workspace 最近一條」，可能誤接生圖／重構對話。
-pub fn agy_session_args(
-    model: Option<&str>,
-    system: &str,
-    prompt: &str,
-    conversation_id: Option<&str>,
-) -> Vec<String> {
-    let body = match conversation_id {
-        Some(_) => prompt.to_owned(),
-        None => format!("{system}\n\n{prompt}"),
-    };
-    let mut args = agy_args(model, &body, false);
+pub fn agy_session_args(model: Option<&str>, conversation_id: Option<&str>) -> Vec<String> {
+    let mut args = agy_args(model, false);
     if let Some(id) = conversation_id {
-        let print = args
-            .iter()
-            .position(|arg| arg == "-p")
-            .expect("agy_args always contains -p");
-        args.splice(print..print, ["--conversation".to_owned(), id.to_owned()]);
+        args.push("--conversation".to_owned());
+        args.push(id.to_owned());
     }
     args
+}
+
+/// Agy 對話 lane 的 stdin 正文：開線＝system＋本輪，續聊只送本輪（system 已在對話裡）。
+pub fn agy_session_body(system: &str, prompt: &str, conversation_id: Option<&str>) -> String {
+    match conversation_id {
+        Some(_) => prompt.to_owned(),
+        None => format!("{system}\n\n{prompt}"),
+    }
 }
 
 /// grok 通道的環境隔離。grok 有「Claude Code 相容」設計：預設會載入 `$HOME/.claude` 下的
@@ -250,7 +254,7 @@ pub fn grok_envs(home: &Path, grok_home: &Path) -> Vec<(String, String)> {
 /// 1.1／1.0 是為了鬆開 grok 在小說／角色扮演時壓縮場景的傾向。
 pub const GROK_SAMPLING_OVERLAY: &str = r#"{"models":{"temperature":1.1,"top_p":1.0}}"#;
 
-/// 聊天單發要移除的內建工具全集（grok 1.0.5）。`--deny *` 只擋執行，工具 schema 照樣佔
+/// 聊天單發要移除的內建工具全集（grok 1.0.5；1.0.46 新增 send_feedback）。`--deny *` 只擋執行，工具 schema 照樣佔
 /// context——實測同一段開場 12604 → 3602 input tokens，CLI 內部 log 的 `tool_count` 由 24 歸 0。
 ///
 /// 名稱有兩套：串流事件 `available_commands` 報的是顯示名（`run_terminal_command`），
@@ -265,43 +269,68 @@ const GROK_CHAT_DISALLOWED_TOOLS: &str = "run_terminal_cmd,run_terminal_command,
 search_replace,list_dir,grep,kill_command_or_subagent,todo_write,\
 get_command_or_subagent_output,spawn_subagent,scheduler_create,scheduler_delete,scheduler_list,\
 monitor,search_tool,use_tool,workflow,enter_plan_mode,exit_plan_mode,ask_user_question,image_gen,\
-image_edit,image_to_video,reference_to_video,write,Agent";
+image_edit,image_to_video,reference_to_video,write,Agent,send_feedback";
+
+/// grok 單發的檔案內容：(agent profile, 正文)。
+/// 文字通道：system 由 `promptMode: full` 的 agent profile 整包換掉 grok 自己那份 coding agent
+/// system prompt（grok 內建那份偏簡潔精煉，留著會壓縮小說場景），本桌設定才真的坐在 system 層。
+/// 生圖不換：那條要靠原生 agent prompt 把 image_gen 叫起來、收工具結果再回路徑，
+/// 拔掉整份 system 有機會斷掉工具調度，維持「system 併進正文」的走法。
+pub fn grok_payload(system: &str, prompt: &str, allow_tools: bool) -> (Option<String>, String) {
+    if allow_tools || system.is_empty() {
+        let body = match system.is_empty() {
+            true => prompt.to_owned(),
+            false => format!("{system}\n\n{prompt}"),
+        };
+        return (None, body);
+    }
+    (Some(grok_agent_profile(system)), prompt.to_owned())
+}
+
+/// system 改走 agent profile 檔（`--agent <路徑>`）：grok 的 `--system-prompt-override` 沒有
+/// 檔案版，參數會撞命令列上限；而且全新 GROK_HOME（沒有 bundled/）下 override 會被忽略
+/// （2026-10-06 實測），profile 兩種狀態都正確。
+///
+/// profile 的 body 會被 grok 的模板引擎渲染（`${{ … }}`、`${% … %}`）、頭尾空白會被修掉，
+/// 所以整段包進 `${% raw %}…${% endraw %}`，內文的 `${%` 換成輸出同樣字樣的運算式——
+/// raw 區塊裡唯一會被認的就是 `${% endraw %}`。`str::replace` 是單趟替換，插入的模板
+/// 不會被再替換。逐 byte 結果以真 grok CLI 驗證（見 tests 的 #[ignore] 測試）。
+pub fn grok_agent_profile(system: &str) -> String {
+    let escaped = system.replace("${%", r#"${% endraw %}${{ "${%" }}${% raw %}"#);
+    format!(
+        "---\nname: table-tavern\ndescription: Table Tavern\npromptMode: full\n---\n${{% raw %}}{escaped}${{% endraw %}}"
+    )
+}
 
 /// 聊天單發一律關閉工具、網路搜尋、計畫與子代理，避免 CLI 執行本機命令。
 /// allow_tools：生圖呼叫要用 grok 原生 image_gen 工具，--deny * 換成 --always-approve。
+/// 正文走 `--prompt-file`。文字通道加 `--verbatim`：不然正文超過約 100KB 時 grok 會把全文
+/// 搬去 session 目錄、訊息只留節錄叫模型用 read_file 讀，而聊天把工具全拆了，模型只看得到
+/// 節錄（2026-10-06 實測）。生圖那條正文短、又要原生 agent 行為，不加。
 pub fn grok_args(
     model: Option<&str>,
-    system: &str,
-    prompt: &str,
+    profile: Option<&Path>,
+    prompt_file: &Path,
     allow_tools: bool,
 ) -> Vec<String> {
     let mut args = grok_common_args(model, allow_tools);
-    // --system-prompt-override（grok 1.0.5）整包換掉 CLI 自己那份 coding agent system
-    // prompt，本桌的設定才真的坐在 system 層；grok 內建那份偏簡潔精煉，留著會壓縮小說場景。
-    // 生圖不換：那條要靠原生 agent prompt 把 image_gen 叫起來、收工具結果再回路徑，
-    // 拔掉整份 system 有機會斷掉工具調度，維持原本「system 併進 prompt」的走法。
-    let override_system = !allow_tools && !system.is_empty();
-    if override_system {
-        args.push("--system-prompt-override".to_owned());
-        args.push(system.to_owned());
+    if let Some(profile) = profile {
+        args.push("--agent".to_owned());
+        args.push(profile.to_string_lossy().into_owned());
     }
-    args.push("-p".to_owned());
-    args.push(match override_system || system.is_empty() {
-        true => prompt.to_owned(),
-        false => format!("{system}\n\n{prompt}"),
-    });
+    push_grok_prompt(&mut args, prompt_file, !allow_tools);
     args
 }
 
 /// grok lane 續聊參數（grok-cache-miss）：與聊天單發同一組旗標，差別只在讓 session 落檔。
-/// 開線 `-s <id>` 自帶 system override；續聊 `-r <id>` **不重帶 system**——grok 把 system
+/// 開線 `-s <id>` 自帶 system profile；續聊 `-r <id>` **不重帶 system**——grok 把 system
 /// 凍在 session 建立那一刻（session 目錄下的 system_prompt.txt），重帶無效且會打散前綴，
 /// 素材漂移一律改走 prompt 內的補丁（見 lanes::plan_turn）。
 /// `-s` 對已存在的 id 會直接報「Session ID is already in use」，所以開／續兩條旗標不能互換。
 pub fn grok_session_args(
     model: Option<&str>,
-    system: &str,
-    prompt: &str,
+    profile: Option<&Path>,
+    prompt_file: &Path,
     session: &CliSession<'_>,
 ) -> Vec<String> {
     let mut args = grok_common_args(model, false);
@@ -309,9 +338,9 @@ pub fn grok_session_args(
         CliSession::Open(id) => {
             args.push("-s".to_owned());
             args.push((*id).to_owned());
-            if !system.is_empty() {
-                args.push("--system-prompt-override".to_owned());
-                args.push(system.to_owned());
+            if let Some(profile) = profile {
+                args.push("--agent".to_owned());
+                args.push(profile.to_string_lossy().into_owned());
             }
         }
         CliSession::Resume(id) => {
@@ -319,12 +348,19 @@ pub fn grok_session_args(
             args.push((*id).to_owned());
         }
     }
-    args.push("-p".to_owned());
-    args.push(prompt.to_owned());
+    push_grok_prompt(&mut args, prompt_file, true);
     args
 }
 
-/// grok 聊天／續聊共用的旗標段（不含 system、session 與 -p）。
+fn push_grok_prompt(args: &mut Vec<String>, prompt_file: &Path, verbatim: bool) {
+    if verbatim {
+        args.push("--verbatim".to_owned());
+    }
+    args.push("--prompt-file".to_owned());
+    args.push(prompt_file.to_string_lossy().into_owned());
+}
+
+/// grok 聊天／續聊共用的旗標段（不含 system、session 與正文）。
 fn grok_common_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
     let mut args: Vec<String> = ["--output-format", "streaming-json"]
         .map(str::to_owned)
@@ -360,282 +396,4 @@ fn grok_common_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    fn msg(role: &str, content: &str) -> ChatMessage {
-        ChatMessage {
-            role: role.to_owned(),
-            content: content.to_owned(),
-        }
-    }
-
-    #[test]
-    fn flatten_restores_speaker_prefix_and_appends_turn_instruction() {
-        let messages = [
-            msg("system", "你在扮演狐狸"),
-            msg("user", "玩家：晚安\n（旁白）打烊前"),
-            msg("assistant", "晚安，要來一杯嗎？"),
-            msg("user", "玩家：好啊"),
-        ];
-        let (system, prompt) =
-            flatten_messages("狐狸", "現在輪到「狐狸」回應。", &messages, "zh-TW");
-        assert_eq!(system, "你在扮演狐狸");
-        assert!(prompt.contains("玩家：晚安\n（旁白）打烊前"));
-        assert!(prompt.contains("狐狸：晚安，要來一杯嗎？"));
-        assert!(prompt.ends_with("現在輪到「狐狸」回應。"));
-    }
-
-    /// agy 1.1.8 以下不認 --output-format，要在打過去之前擋下；版本字串認不得就放行，
-    /// 讓呼叫失敗時帶著 CLI 自己的錯誤訊息，而不是因為格式換了就把整條路擋死。
-    #[test]
-    fn agy_stream_json_support_gates_on_1_1_8() {
-        assert!(!agy_supports_stream_json("1.1.7"));
-        assert!(!agy_supports_stream_json("1.0.99"));
-        assert!(!agy_supports_stream_json("0.9.9"));
-        assert!(agy_supports_stream_json("1.1.8"));
-        assert!(agy_supports_stream_json("1.1.17"));
-        assert!(agy_supports_stream_json("2.0.0"));
-        assert!(agy_supports_stream_json("agy version 1.1.17 (darwin)"));
-        assert!(agy_supports_stream_json("")); // 認不得就放行
-        assert!(agy_supports_stream_json("nightly"));
-    }
-
-    /// 共線後 messages 已自足：label 傳空就不再補名字前綴（否則「加爾：雷恩：……」），
-    /// closing 傳空就不再接收尾指示（否則本輪指定會出現兩次）。
-    #[test]
-    fn flatten_skips_label_and_closing_when_self_contained() {
-        let messages = vec![
-            ChatMessage {
-                role: "system".to_owned(),
-                content: "共用 system".to_owned(),
-            },
-            ChatMessage {
-                role: "assistant".to_owned(),
-                content: "加爾：抬起頭。".to_owned(),
-            },
-            ChatMessage {
-                role: "user".to_owned(),
-                content: "現在你是「雷恩」。".to_owned(),
-            },
-        ];
-        let (system, prompt) = flatten_messages("", "", &messages, "zh-TW");
-        assert_eq!(system, "共用 system");
-        assert_eq!(
-            prompt,
-            "以下是到目前為止的對話紀錄：\n\n加爾：抬起頭。\n\n現在你是「雷恩」。"
-        );
-        assert!(!prompt.contains("——")); // closing 為空就不留分隔線
-                                         // 舊行為不變：有 label 就補前綴、有 closing 就接在後面
-        let (_, legacy) = flatten_messages("雷恩", "收尾指示", &messages, "zh-TW");
-        assert!(legacy.contains("雷恩：加爾：抬起頭。"));
-        assert!(legacy.ends_with("——\n收尾指示"));
-    }
-
-    #[test]
-    fn agy_args_put_prompt_in_final_p_value_with_optional_model() {
-        let prompt = "system\n\n整包 prompt（含空格）";
-        assert_eq!(
-            agy_args(Some("Claude Sonnet 4.6 (Thinking)"), prompt, false),
-            [
-                "--model",
-                "Claude Sonnet 4.6 (Thinking)",
-                "--output-format",
-                "stream-json",
-                "-p",
-                prompt
-            ]
-        );
-        assert_eq!(
-            agy_args(None, prompt, false),
-            ["--output-format", "stream-json", "-p", prompt]
-        );
-    }
-
-    #[test]
-    fn agy_session_args_resume_exact_id_and_send_only_delta() {
-        let open = agy_session_args(Some("gemini-x"), "穩定 system", "第一輪", None);
-        assert!(!open.contains(&"--conversation".to_owned()));
-        assert_eq!(open[open.len() - 2..], ["-p", "穩定 system\n\n第一輪"]);
-
-        let resumed = agy_session_args(
-            Some("gemini-x"),
-            "穩定 system",
-            "只有新回合",
-            Some("conversation-1"),
-        );
-        assert!(resumed
-            .windows(2)
-            .any(|pair| pair == ["--conversation", "conversation-1"]));
-        assert_eq!(resumed[resumed.len() - 2..], ["-p", "只有新回合"]);
-        assert!(!resumed.iter().any(|arg| arg.contains("穩定 system")));
-        assert!(!resumed.contains(&"--continue".to_owned()));
-    }
-
-    #[test]
-    fn grok_args_disable_every_tool_and_put_prompt_last() {
-        let system = "本桌 system（含空格）";
-        let prompt = "整包 prompt（含空格）";
-        let args = grok_args(Some("grok-4.5"), system, prompt, false);
-        assert!(args
-            .windows(2)
-            .any(|pair| pair == ["--output-format", "streaming-json"]));
-        assert!(args.windows(2).any(|pair| pair == ["--deny", "*"]));
-        assert!(args.contains(&"--disable-web-search".to_owned()));
-        assert!(args.contains(&"--no-plan".to_owned()));
-        assert!(args.contains(&"--no-subagents".to_owned()));
-        assert!(args.windows(2).any(|pair| pair == ["--max-turns", "1"]));
-        // low 是 grok-4.6／4.5 選單的最低檔；none 會被 CLI 判成未知等級、整次生成中止
-        assert!(args
-            .windows(2)
-            .any(|pair| pair == ["--reasoning-effort", "low"]));
-        // 工具定義只在聊天那條拆：清單裡含 image_gen，生圖若跟著設就沒圖可生
-        assert!(args
-            .windows(2)
-            .any(|pair| pair[0] == "--disallowed-tools" && pair[1].contains("image_gen")));
-        // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步；
-        // 推理等級也維持原樣，免得把叫工具那步壓掉
-        let image_args = grok_args(Some("grok-4.5"), system, prompt, true);
-        assert!(!image_args.contains(&"--disallowed-tools".to_owned()));
-        assert!(!image_args.contains(&"--max-turns".to_owned()));
-        assert!(!image_args.contains(&"--reasoning-effort".to_owned()));
-        // 生圖保留 grok 原生 agent system prompt（工具調度靠它），system 照舊併進 prompt
-        assert!(!image_args.contains(&"--system-prompt-override".to_owned()));
-        assert_eq!(
-            image_args[image_args.len() - 2..],
-            ["-p".to_owned(), format!("{system}\n\n{prompt}")]
-        );
-        assert!(args.windows(2).any(|pair| pair == ["-m", "grok-4.5"]));
-        // 文字通道：system 自己坐 system 層，-p 只剩真正的 user prompt
-        assert!(args
-            .windows(2)
-            .any(|pair| pair == ["--system-prompt-override", system]));
-        assert_eq!(args[args.len() - 2..], ["-p", prompt]);
-        let default_args = grok_args(None, system, prompt, false);
-        assert_eq!(default_args[default_args.len() - 2..], ["-p", prompt]);
-        // 清單是逗號串，不能混進換行或空白（續行寫壞的話 CLI 會把整包當一個工具名）
-        let list = args
-            .windows(2)
-            .find(|pair| pair[0] == "--disallowed-tools")
-            .map(|pair| pair[1].clone())
-            .expect("聊天單發要帶 --disallowed-tools");
-        assert!(!list.contains(char::is_whitespace));
-        assert_eq!(list.split(',').count(), 26);
-        // shell 的顯示名與過濾 ID 不同名，只寫顯示名會靜默無效——兩個都要在
-        assert!(list.contains("run_terminal_cmd,"));
-        assert!(list.contains("run_terminal_command,"));
-        assert!(list.ends_with(",Agent"));
-        // system 是空的（訊息串空）就不帶旗標，也不要在 prompt 前面留兩個空行
-        let empty = grok_args(None, "", prompt, false);
-        assert!(!empty.contains(&"--system-prompt-override".to_owned()));
-        assert_eq!(empty[empty.len() - 2..], ["-p", prompt]);
-    }
-
-    #[test]
-    fn grok_session_args_open_carries_system_and_resume_does_not() {
-        let system = "你是狐狸";
-        let open = grok_session_args(
-            Some("grok-4.6"),
-            system,
-            "第一輪",
-            &CliSession::Open("sid-1"),
-        );
-        // 開線：-s 建 session，system 這時才坐進去（grok 把它凍在 session 建立那刻）
-        assert!(open.windows(2).any(|pair| pair == ["-s", "sid-1"]));
-        assert!(open
-            .windows(2)
-            .any(|pair| pair == ["--system-prompt-override", system]));
-        assert_eq!(open[open.len() - 2..], ["-p", "第一輪"]);
-        // 聊天單發那組硬化旗標一個都不能少（工具全拆、單輪、低推理）
-        assert!(open.windows(2).any(|pair| pair == ["--max-turns", "1"]));
-        assert!(open
-            .windows(2)
-            .any(|pair| pair == ["--reasoning-effort", "low"]));
-        assert!(open
-            .windows(2)
-            .any(|pair| pair[0] == "--disallowed-tools" && pair[1].contains("image_gen")));
-        assert!(open.windows(2).any(|pair| pair == ["--deny", "*"]));
-        assert!(open.windows(2).any(|pair| pair == ["-m", "grok-4.6"]));
-
-        // 續聊：-r 接同一條線，system 不重帶（重帶無效又會打散前綴），增量進 -p
-        let resume = grok_session_args(
-            Some("grok-4.6"),
-            system,
-            "增量",
-            &CliSession::Resume("sid-1"),
-        );
-        assert!(resume.windows(2).any(|pair| pair == ["-r", "sid-1"]));
-        assert!(!resume.contains(&"--system-prompt-override".to_owned()));
-        assert!(!resume.contains(&"-s".to_owned()));
-        assert_eq!(resume[resume.len() - 2..], ["-p", "增量"]);
-
-        // 未覆寫模型＝不帶 -m，由 CLI 自己選預設
-        let default_model = grok_session_args(None, system, "x", &CliSession::Open("sid-2"));
-        assert!(!default_model.contains(&"-m".to_owned()));
-    }
-
-    #[test]
-    fn grok_envs_point_home_and_grok_home_at_the_app_profile() {
-        let envs = grok_envs(
-            &PathBuf::from("/app/cli-home"),
-            &PathBuf::from("/app/grok-home"),
-        );
-        // HOME 換掉才擋得住 ~/.claude 的 hooks／CLAUDE.md；Windows 認的是 USERPROFILE
-        assert!(envs.contains(&("HOME".to_owned(), "/app/cli-home".to_owned())));
-        assert!(envs.contains(&("USERPROFILE".to_owned(), "/app/cli-home".to_owned())));
-        // GROK_HOME 另指一處，登入態才不會跟使用者終端機的 ~/.grok 混在一起
-        assert!(envs.contains(&("GROK_HOME".to_owned(), "/app/grok-home".to_owned())));
-        // 取樣參數走 GROK_CONFIG 疊加層：只在 app 這幾次呼叫生效，不寫進任何 config.toml
-        assert!(envs.contains(&(
-            "GROK_CONFIG".to_owned(),
-            r#"{"models":{"temperature":1.1,"top_p":1.0}}"#.to_owned()
-        )));
-        // 關掉遠端 campaign，否則 -m 非 campaign 預設模型時 system override 會失效
-        assert!(envs.contains(&("GROK_CAMPAIGNS".to_owned(), "0".to_owned())));
-    }
-
-    #[test]
-    fn tier_mappings_cover_all_tiers() {
-        assert_eq!(claude_model_for(Tier::Best), "opus");
-        assert_eq!(claude_model_for(Tier::Fast), "haiku");
-        assert_eq!(codex_effort_for(Tier::Balanced), "medium");
-        let args = codex_args(None, codex_effort_for(Tier::Best), false);
-        assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
-        assert!(!args.contains(&"-m".to_owned()));
-        assert_eq!(args.last().unwrap(), "-");
-        let args = codex_args(Some("gpt-5.6-terra"), codex_effort_for(Tier::Fast), false);
-        assert!(args.windows(2).any(|w| w == ["-m", "gpt-5.6-terra"]));
-        let args = claude_args(claude_model_for(Tier::Fast), "系統");
-        assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
-        assert!(args.windows(2).any(|w| w == ["--system-prompt", "系統"]));
-    }
-
-    /// lane 續聊參數必須保留 session 落檔（無 --no-session-persistence），
-    /// 開線帶 --session-id、續聊帶 --resume，其餘旗標與單發相同。
-    #[test]
-    fn claude_session_args_keep_persistence_and_pick_session_flag() {
-        let opened = claude_session_args("sonnet", "系統", &CliSession::Open("uuid-1"));
-        assert!(!opened.contains(&"--no-session-persistence".to_owned()));
-        assert!(opened.windows(2).any(|w| w == ["--session-id", "uuid-1"]));
-        assert!(opened.windows(2).any(|w| w == ["--system-prompt", "系統"]));
-        assert!(opened.windows(2).any(|w| w == ["--model", "sonnet"]));
-        let resumed = claude_session_args("sonnet", "系統", &CliSession::Resume("uuid-1"));
-        assert!(resumed.windows(2).any(|w| w == ["--resume", "uuid-1"]));
-        assert!(!resumed.contains(&"--session-id".to_owned()));
-    }
-
-    #[test]
-    fn tier_override_reads_prefixed_keys_and_ignores_blank() {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert("claude:best".to_owned(), "claude-fable-5".to_owned());
-        map.insert("claude:fast".to_owned(), "  ".to_owned());
-        map.insert("best".to_owned(), "vendor/api-model".to_owned()); // API 檔位不受影響
-        assert_eq!(
-            tier_override(&map, "claude", Tier::Best),
-            Some("claude-fable-5")
-        );
-        assert_eq!(tier_override(&map, "claude", Tier::Fast), None); // 空白＝未設
-        assert_eq!(tier_override(&map, "codex", Tier::Best), None);
-    }
-}
+mod tests;

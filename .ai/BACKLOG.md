@@ -10,7 +10,6 @@
 - [image-save-strict-validate](tasks/image-save-strict-validate.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：盤點受影響入口與拒收提示
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
-- [long-prompt-scene-hint](tasks/long-prompt-scene-hint.md) — 桌子太長撞到指令長度上限：Windows 可能一開桌就撞、上限前先提醒換幕（換幕也要送 AI）— 下一步：公開前必做，2026-10-06 四家 CLI 都有額度時開工〔作者裁決 2026-10-04〕；先實測三個作業系統下 claude／grok／agy 的門檻，撞得到就改傳遞方式
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：[usage-cache-audit](handoffs/archive/usage-cache-audit.md) 四家實跑對帳已完成（結果見 plans/usage-cache-audit.md「四」），據此決定做不做〔作者裁決 2026-10-02〕；ox-alpha 若已下架，根據的現象要重新立證。
 - [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：排在 api-shared-lane 的四路成對測試之後開工——那批數據才估得準底線該怎麼定、以及這個功能還需不需要。開工首步是拍板底線的統計量（最小值／眾數／出現 ≥N 次的最小值）與「樣本不足就不判定」的 N。
 - [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：供應商專屬面板（延後） — 下一步：等 free-player-onboarding 兩階段完成後再重新評估；目前不動 CLI、高中低與 provider-specific UI。
