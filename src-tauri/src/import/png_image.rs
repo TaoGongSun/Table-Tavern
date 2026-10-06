@@ -17,11 +17,46 @@ pub(crate) struct PngChunk<'a> {
 }
 
 /// 尺寸上限：寬高各自上限與像素總數上限（解壓只用固定緩衝，記憶體不隨圖變大）。
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ImageLimits {
     pub max_side: u32,
     pub max_pixels: u64,
 }
+
+/// 存進資料夾的圖（角色圖、頭像、GM 圖、圖庫、重構卡素材）一律只認這組上限。
+pub(crate) const STORED_IMAGE_LIMITS: ImageLimits = ImageLimits {
+    max_side: 8192,
+    max_pixels: 24_000_000,
+};
+
+/// 要縮圖的來源上限：64M 像素 × 8 位元組（RGBA16）≈ 512 MB，與解碼器配置上限對齊；
+/// 超過一律當救不回，不解碼。
+pub(crate) const REENCODE_SOURCE_LIMITS: ImageLimits = ImageLimits {
+    max_side: 16384,
+    max_pixels: 64_000_000,
+};
+
+/// 嚴驗不過的原因：動畫與過大可以處理（剝動畫、縮圖），其餘是壞檔。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PngReject {
+    Animated,
+    TooLarge { width: u32, height: u32 },
+    Invalid(String),
+}
+
+impl std::fmt::Display for PngReject {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Animated => formatter.write_str(ANIMATED),
+            Self::TooLarge { width, height } => {
+                write!(formatter, "image {width}x{height} is too large")
+            }
+            Self::Invalid(detail) => formatter.write_str(detail),
+        }
+    }
+}
+
+const ANIMATED: &str = "animated PNG is not supported";
 
 /// 串流走訪每個 chunk 並做結構檢查：magic、長度邊界、CRC；首 chunk 是 IHDR 且只有一個；
 /// IDAT 至少一個且連續；IEND 恰一個、零長、是最後一個 chunk，之後沒有任何資料。
@@ -369,6 +404,24 @@ impl ZlibCheck {
 
 /// 圖片嚴格驗證：結構＋IHDR 組合＋尺寸上限＋PLTE 規則＋整條 zlib 流與掃描線。回傳寬高。
 pub(crate) fn validate_png_image(bytes: &[u8], limits: ImageLimits) -> Result<(u32, u32), String> {
+    validate_inner(bytes, limits, &mut None)
+}
+
+/// 同 validate_png_image，但分出動畫與過大（呼叫端可剝動畫、縮圖），其餘歸壞檔。
+pub(crate) fn classify_png_image(
+    bytes: &[u8],
+    limits: ImageLimits,
+) -> Result<(u32, u32), PngReject> {
+    let mut kind = None;
+    validate_inner(bytes, limits, &mut kind)
+        .map_err(|detail| kind.unwrap_or(PngReject::Invalid(detail)))
+}
+
+fn validate_inner(
+    bytes: &[u8],
+    limits: ImageLimits,
+    kind: &mut Option<PngReject>,
+) -> Result<(u32, u32), String> {
     let mut header: Option<Header> = None;
     let mut zlib: Option<ZlibCheck> = None;
     let mut palette: Option<usize> = None;
@@ -377,11 +430,15 @@ pub(crate) fn validate_png_image(bytes: &[u8], limits: ImageLimits) -> Result<(u
             b"IHDR" => {
                 let parsed = parse_ihdr(chunk.data)?;
                 let (width, height) = (parsed.width, parsed.height);
-                if width == 0 || height == 0 || width > limits.max_side || height > limits.max_side
-                {
+                if width == 0 || height == 0 {
+                    return Err(format!("image size {width}x{height} out of range"));
+                }
+                if width > limits.max_side || height > limits.max_side {
+                    *kind = Some(PngReject::TooLarge { width, height });
                     return Err(format!("image size {width}x{height} out of range"));
                 }
                 if u64::from(width) * u64::from(height) > limits.max_pixels {
+                    *kind = Some(PngReject::TooLarge { width, height });
                     return Err(format!("image {width}x{height} has too many pixels"));
                 }
                 zlib = Some(ZlibCheck {
@@ -433,7 +490,8 @@ pub(crate) fn validate_png_image(bytes: &[u8], limits: ImageLimits) -> Result<(u
                 zlib.feed(chunk.data)?;
             }
             b"acTL" | b"fcTL" | b"fdAT" => {
-                return Err("animated PNG is not supported".to_owned());
+                *kind = Some(PngReject::Animated);
+                return Err(ANIMATED.to_owned());
             }
             kind if kind[0].is_ascii_uppercase() && !matches!(kind, b"IEND") => {
                 return Err(format!(

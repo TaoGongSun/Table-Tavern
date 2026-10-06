@@ -216,8 +216,15 @@ fn broken_character_image_blocks_export_by_name() {
     let table = applied_table("export-broken");
     let (root, world) = (table.root.path(), table.world_id.as_str());
     let first = table.ids[0].clone().unwrap();
+    // 存圖入口已會嚴驗；壞圖只可能是嚴驗前就留在磁碟上的舊檔，直接寫檔模擬
     let fake: Vec<u8> = PNG_MAGIC.iter().copied().chain([1, 2, 3]).collect();
-    save_character_image(root, world, &first, &fake).unwrap();
+    fs::write(
+        data::character_path(root, world, &first)
+            .unwrap()
+            .with_extension("png"),
+        &fake,
+    )
+    .unwrap();
     let message = export_saved(root, world, &table.out("卡.png"), true)
         .unwrap_err()
         .to_string();
@@ -232,7 +239,10 @@ fn broken_character_image_blocks_export_by_name() {
 fn gm_cover_is_used_and_stripped() {
     let table = applied_table("export-cover");
     let (root, world) = (table.root.path(), table.world_id.as_str());
-    assert!(save_gm_image(root, world, &with_st_chunk(&real_png(40, 4))));
+    assert_eq!(
+        save_gm_image(root, world, &with_st_chunk(&real_png(40, 4))).unwrap(),
+        crate::import::GmImage::Saved
+    );
     let path = table.out("卡.png");
     export_outcome(root, world, &outcome_of(&["甲"]), &path).unwrap();
     let bytes = fs::read(&path).unwrap();

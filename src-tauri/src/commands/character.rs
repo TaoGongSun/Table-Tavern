@@ -103,6 +103,7 @@ pub(crate) async fn import_character(
         meta: imported_card.value,
         book: data::WorldbookImport { imported, skipped },
         source: imported_card.source,
+        image_dropped: imported_card.image_dropped,
     })
 }
 
@@ -112,6 +113,14 @@ pub(crate) struct CharacterImport {
     meta: CharacterMeta,
     book: data::WorldbookImport,
     source: Option<String>,
+    /// PNG 卡的圖救不回、沒存成（卡照常匯入）
+    image_dropped: bool,
+}
+
+/// 角色編輯器儲存前先驗待存的圖：不合格整個儲存取消，什麼都不寫。
+#[tauri::command]
+pub(crate) fn check_character_image(data: Vec<u8>) -> Result<(), String> {
+    import::check_character_image(&data).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

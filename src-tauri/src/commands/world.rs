@@ -151,6 +151,7 @@ pub(crate) async fn import_worldbook(
     Ok(WorldbookImportResult {
         book: imported.value,
         source: imported.source,
+        image_dropped: imported.image_dropped,
     })
 }
 
@@ -160,6 +161,8 @@ pub(crate) struct WorldbookImportResult {
     #[serde(flatten)]
     book: data::WorldbookImport,
     source: Option<String>,
+    /// PNG 世界書卡的圖救不回、GM 圖沒存成
+    image_dropped: bool,
 }
 
 /// 選項要先換成當桌實名，前端貼入逐字稿時才不會留下卡片巨集。

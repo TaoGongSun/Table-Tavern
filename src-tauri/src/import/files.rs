@@ -14,9 +14,11 @@ use std::path::Path;
 
 /// 匯入結果與這次匯入的原檔識別：前端貼開場白時帶回來，開場白才掛得到正確那筆匯入。
 /// 沒留收據（什麼都沒新增）或記帳失敗時是 None。
+/// `image_dropped`：卡圖（角色圖或 GM 圖）救不回、沒存成，前端要提示。
 pub struct Imported<T> {
     pub value: T,
     pub source: Option<String>,
+    pub image_dropped: bool,
 }
 
 /// 寫標記並存原檔；原檔存不進去時什麼都還沒動，標記收掉再回錯。
@@ -66,7 +68,8 @@ pub fn import_worldbook_file(
     // 匯入本身失敗：可能已寫了一半，標記留著（來源判不完整）
     let result = data::import_worldbook(root, world_id, &json_text)?;
     super::save_world_card(root, world_id, bytes);
-    super::save_gm_image(root, world_id, bytes);
+    // 寫檔失敗照「匯入本身失敗」處理：可能已寫了一半，標記留著
+    let gm_image = super::save_gm_image(root, world_id, bytes)?;
     if let Ok(book) = serde_json::from_str(&json_text) {
         super::import_mechanism(root, world_id, &book);
     }
@@ -86,6 +89,7 @@ pub fn import_worldbook_file(
     Ok(Imported {
         value: result,
         source: finish(root, world_id, &pending, file, recorded),
+        image_dropped: gm_image == super::GmImage::Dropped,
     })
 }
 
@@ -102,7 +106,10 @@ pub fn import_character_file(
     let (pending, file) = begin(root, world_id, bytes)?;
     let before = receipts::snapshot(root, world_id);
     // 卡檔已驗過；這裡失敗是寫檔錯，可能已寫了一半，標記留著（來源判不完整）
-    let meta = super::import_character(root, world_id, bytes, color, lang)?;
+    let super::ImportedCharacter {
+        meta,
+        image_dropped,
+    } = super::import_character_reporting(root, world_id, bytes, color, lang)?;
     let recorded = receipts::record_character_import(
         root,
         world_id,
@@ -119,6 +126,7 @@ pub fn import_character_file(
     Ok(Imported {
         value: meta,
         source: finish(root, world_id, &pending, file, recorded),
+        image_dropped,
     })
 }
 

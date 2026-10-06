@@ -17,6 +17,8 @@ interface CharacterImport {
   book: WorldbookImport;
   /** 這次匯入的原檔識別：貼開場白時帶回後端，開場白才掛得到這筆匯入；沒留收據時是 null */
   source: string | null;
+  /** PNG 卡的圖救不回、沒存成角色圖（卡照常匯入） */
+  image_dropped: boolean;
 }
 
 interface ImportProbe {
@@ -48,6 +50,8 @@ interface WorldbookImport {
 /** 世界書路徑的匯入結果：收編數字＋這次匯入的原檔識別（同 CharacterImport.source） */
 interface WorldbookImportResult extends WorldbookImport {
   source: string | null;
+  /** PNG 世界書卡的圖救不回、GM 封面圖沒存成 */
+  image_dropped: boolean;
 }
 
 /** 匯入收據摘要：陣容欄「撤銷上次匯入」項靠這份判斷要不要出現 */
@@ -315,7 +319,7 @@ export function useImportController(input: {
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
   const importAsCharacter = useCallback(
     async (worldId: string, data: number[], adoptName = true) => {
-      const { meta, book, source } = await turnBackend(() =>
+      const { meta, book, source, image_dropped } = await turnBackend(() =>
         invoke<CharacterImport>("import_character", {
           worldId,
           data,
@@ -326,9 +330,13 @@ export function useImportController(input: {
       focusSpeaker(meta.id);
       if (adoptName) await adoptTableName(meta.name);
       await refreshReceipts(worldId);
-      // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話
-      if (book.imported > 0) {
-        await showMessage(worldbookImportedMessage(book), {
+      // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話；圖沒存成另外講（沒有隨身世界書的卡也要講）
+      const notices = [
+        book.imported > 0 ? worldbookImportedMessage(book) : "",
+        image_dropped ? t("importCardImageNotSaved") : "",
+      ].filter((notice) => notice !== "");
+      if (notices.length > 0) {
+        await showMessage(notices.join("\n\n"), {
           title: t("importCard"),
           okLabel: t("dialogAck"),
         });
@@ -359,7 +367,8 @@ export function useImportController(input: {
       );
       // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
       await reloadGmImage(worldId);
-      await showMessage(worldbookImportedMessage(book), {
+      const coverNotice = book.image_dropped ? "\n\n" + t("worldbookCoverNotSaved") : "";
+      await showMessage(worldbookImportedMessage(book) + coverNotice, {
         title: t("importCard"),
         okLabel: t("dialogAck"),
       });

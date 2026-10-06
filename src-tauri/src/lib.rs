@@ -112,6 +112,7 @@ pub fn run() {
             commands::character::set_character_auto_hidden,
             commands::character::delete_character,
             commands::character::probe_import,
+            commands::character::check_character_image,
             commands::refactor::card_interfaces,
             commands::character::import_character,
             commands::character::list_import_receipts,
@@ -343,6 +344,7 @@ mod command_classification {
 
     const NOT_WORLD: &[&str] = &[
         "chat_abort",
+        "check_character_image",
         "cli_verified",
         "connect_openrouter",
         "detect_clis",

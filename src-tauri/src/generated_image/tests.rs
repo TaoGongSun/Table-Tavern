@@ -79,6 +79,54 @@ fn broken_jpeg_reports_decode_failure() {
     assert!(error.starts_with("AI_IMAGE_DECODE_FAILED: "), "{error}");
 }
 
+#[test]
+fn broken_png_is_refused_not_repaired() {
+    use crate::import::png_clean::tests::{break_crc, broken_zlib, palette_png, with_trailing};
+    use crate::import::png_image::test_png::real_png;
+    let png = real_png(16, 8);
+    for (name, bytes) in [
+        ("truncated", png[..png.len() - 20].to_vec()),
+        ("bad IDAT CRC", break_crc(&png, b"IDAT")),
+        ("trailing after IEND", with_trailing(png.clone())),
+        ("palette out of range", palette_png(4, 3, 2, 5)),
+        ("broken zlib", broken_zlib(&png)),
+    ] {
+        let error = to_png(bytes).unwrap_err();
+        assert!(
+            error.starts_with("AI_IMAGE_DECODE_FAILED: "),
+            "{name}: {error}"
+        );
+    }
+}
+
+#[test]
+fn apng_is_stored_as_its_default_still_image() {
+    use crate::import::png_clean::tests::{apng, first_pixel, RED};
+    use crate::import::png_image::{validate_png_image, STORED_IMAGE_LIMITS};
+    for default_is_frame in [true, false] {
+        let png = to_png(apng(default_is_frame)).unwrap();
+        assert!(validate_png_image(&png, STORED_IMAGE_LIMITS).is_ok());
+        assert_eq!(first_pixel(&png), RED);
+    }
+}
+
+#[test]
+fn oversized_png_and_jpeg_are_shrunk_to_the_stored_limit() {
+    use crate::import::png_image::test_png::real_png;
+    use crate::import::png_image::{validate_png_image, STORED_IMAGE_LIMITS};
+    let png = to_png(real_png(8200, 2)).unwrap();
+    assert_eq!(validate_png_image(&png, STORED_IMAGE_LIMITS), Ok((8192, 1)));
+    let mut jpeg = Vec::new();
+    image::DynamicImage::ImageLuma8(image::GrayImage::new(8200, 2))
+        .write_to(
+            &mut std::io::Cursor::new(&mut jpeg),
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap();
+    let png = to_png(jpeg).unwrap();
+    assert_eq!(validate_png_image(&png, STORED_IMAGE_LIMITS), Ok((8192, 1)));
+}
+
 /// 宣稱 PNG、實際是 JPEG：照位元組認，轉成真的 PNG
 #[tokio::test]
 async fn data_url_mime_is_ignored_in_favour_of_bytes() {

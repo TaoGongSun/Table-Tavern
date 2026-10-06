@@ -35,6 +35,7 @@ fn rename_error(message: String) -> DataResult<()> {
 #[cfg(test)]
 thread_local! {
     static RENAME_SKIPS: Cell<u32> = const { Cell::new(0) };
+    static RENAME_FAIL_MATCH: RefCell<Option<String>> = const { RefCell::new(None) };
     static RENAME_FAILS: Cell<u32> = const { Cell::new(0) };
     static RENAME_ATTEMPT_IO_FAILS: Cell<u32> = const { Cell::new(0) };
     static RENAME_ATTEMPT_COUNT: Cell<u32> = const { Cell::new(0) };
@@ -65,6 +66,12 @@ impl RenameFailGuard {
         RENAME_FAILS.with(|cell| cell.set(times));
         Self
     }
+
+    /// 只讓目標路徑以 `suffix` 結尾的改名失敗：打在流程裡某個特定檔的替換，不受途中其他改名的次數影響。
+    pub(crate) fn fail_ending(suffix: &str, times: u32) -> Self {
+        RENAME_FAIL_MATCH.with(|cell| *cell.borrow_mut() = Some(suffix.to_owned()));
+        Self::fail(times)
+    }
 }
 
 #[cfg(test)]
@@ -72,6 +79,7 @@ impl Drop for RenameFailGuard {
     fn drop(&mut self) {
         RENAME_SKIPS.with(|cell| cell.set(0));
         RENAME_FAILS.with(|cell| cell.set(0));
+        RENAME_FAIL_MATCH.with(|cell| *cell.borrow_mut() = None);
     }
 }
 
@@ -378,9 +386,17 @@ fn injected_remove_failure(path: &Path) -> bool {
     }
 }
 
-fn injected_rename_failure() -> bool {
+fn injected_rename_failure(to: &Path) -> bool {
     #[cfg(test)]
     {
+        let targeted = RENAME_FAIL_MATCH.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .is_none_or(|suffix| to.to_string_lossy().ends_with(suffix.as_str()))
+        });
+        if !targeted {
+            return false;
+        }
         let skipped = RENAME_SKIPS.with(|cell| {
             let left = cell.get();
             if left == 0 {
@@ -403,13 +419,14 @@ fn injected_rename_failure() -> bool {
     }
     #[cfg(not(test))]
     {
+        let _ = to;
         false
     }
 }
 
 /// Windows 上改名常被防毒或索引暫時佔用，失敗就短暫重試。其他平台只試一次。
 pub(crate) fn rename_path(from: &Path, to: &Path) -> DataResult<()> {
-    if injected_rename_failure() {
+    if injected_rename_failure(to) {
         return rename_error(rename_failed(from, to));
     }
     let attempts = RENAME_ATTEMPTS;

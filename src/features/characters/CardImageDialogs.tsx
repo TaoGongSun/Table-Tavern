@@ -44,7 +44,7 @@ export function CropDialog({
       const image = new Image();
       await new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
-        image.onerror = () => reject(new Error("Unable to load image"));
+        image.onerror = () => reject(new Error(t("imageLoadFailed")));
         image.src = src;
       });
       const size = cropShape === "round" ? 256 : Math.min(Math.round(croppedAreaPixels.width), 1024);
@@ -56,7 +56,7 @@ export function CropDialog({
       canvas.width = size;
       canvas.height = height;
       const context = canvas.getContext("2d");
-      if (!context) throw new Error("Unable to create image canvas");
+      if (!context) throw new Error(t("imageCropFailed"));
       // 頭像存正方形原樣，圓形與黑框由 CSS 畫（拍板規格），canvas 不做圓形裁切
       context.drawImage(
         image,
@@ -70,7 +70,7 @@ export function CropDialog({
         height,
       );
       const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Unable to crop image"))), "image/png");
+        canvas.toBlob((result) => (result ? resolve(result) : reject(new Error(t("imageCropFailed")))), "image/png");
       });
       // bytes 給存檔用、url 給暫存預覽用（圖像按儲存才落地）
       await onConfirm({
@@ -79,7 +79,7 @@ export function CropDialog({
       });
       onCancel();
     } catch (reason) {
-      setMessage(String(reason));
+      setMessage(reason instanceof Error ? reason.message : String(reason));
     }
   }
 
