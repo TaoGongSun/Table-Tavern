@@ -196,14 +196,39 @@ fn lane_lock(store_path: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     table.entry(store_path.to_path_buf()).or_default().clone()
 }
 
+/// 丟線落帳（沒有 stage／detail 的那種）。`transport` 記實際 provider。
 fn log_drop(call: &LaneCall, world_id: &str, key: &str, reason: &str) {
     if let Some(path) = call.usage_log.as_deref() {
         usage_log::append_event(
             path,
+            call.provider.as_str(),
             Some(world_id),
             key,
             usage_log::Event::DropLane,
             reason,
+        );
+    }
+}
+
+/// 丟線落帳，多記壞在哪一步與原錯誤字串（先遮掉 `paths` 裡的路徑再截斷）。
+fn log_drop_failure(
+    call: &LaneCall,
+    world_id: &str,
+    key: &str,
+    reason: &str,
+    failure: &RewriteFailure,
+    paths: &[(String, String)],
+) {
+    if let Some(log) = call.usage_log.as_deref() {
+        let detail = rewrite_failure::mask_detail(&failure.detail, paths);
+        usage_log::append_drop(
+            log,
+            call.provider.as_str(),
+            Some(world_id),
+            key,
+            reason,
+            failure.stage,
+            &detail,
         );
     }
 }
@@ -217,17 +242,42 @@ fn grok_home(call: &LaneCall) -> Result<PathBuf, String> {
         .ok_or_else(|| "grok lane 缺 GROK_HOME".to_owned())
 }
 
-/// grok 角色線回合後抹寫；失敗回傳帳本用的原因。
+/// grok 錯誤字串裡可能出現的路徑：session 目錄（群組名是編碼過的 cwd）、GROK_HOME、工作目錄。
+/// 要在刪目錄之前算。
+fn grok_known_paths(call: &LaneCall, session_id: &str) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    if let Ok(home) = grok_home(call) {
+        for dir in grok_session::find_session_dirs(&home, session_id).unwrap_or_default() {
+            pairs.push((dir.display().to_string(), "<session>".to_owned()));
+        }
+        pairs.push((home.display().to_string(), "<dir>".to_owned()));
+    }
+    pairs.push((call.working_dir.display().to_string(), "<dir>".to_owned()));
+    pairs
+}
+
+/// grok 角色線回合後抹寫。stage：locate（找不到 GROK_HOME）／rewrite／compacted／lock-timeout。
 fn rewrite_grok(
     call: &LaneCall,
     session_id: &str,
     confidential: Option<&str>,
     prefix: &str,
     reply: &str,
-) -> Result<(), String> {
-    let home = grok_home(call).map_err(|error| format!("rewrite-failed: {error}"))?;
-    grok_session::rewrite(&home, session_id, confidential, prefix, reply)
-        .map_err(|error| format!("{}: {}", error.reason.as_str(), error.detail))
+) -> Result<(), RewriteFailure> {
+    let home = at("locate", grok_home(call))?;
+    grok_session::rewrite(&home, session_id, confidential, prefix, reply).map_err(|error| {
+        RewriteFailure {
+            stage: error.reason.stage(),
+            detail: error.detail,
+        }
+    })
+}
+
+/// 撤銷 grok 線的緣由。預定重開（換幕、改卡等）不是出事，不記丟線——呼叫行本來就帶 reopen。
+enum GrokRevoke {
+    Reopen,
+    Drop(&'static str),
+    Failed(RewriteFailure),
 }
 
 /// 撤銷一條 grok 線：先從 store 拿掉並落檔，再刪 session 目錄。落檔失敗就回錯——磁碟上的
@@ -240,14 +290,25 @@ fn revoke_grok_lane(
     session_id: &str,
     store: &mut LaneStore,
     store_path: &Path,
-    reason: &str,
+    why: GrokRevoke,
 ) -> Result<(), String> {
-    log_drop(call, world_id, key, reason);
+    let paths = grok_known_paths(call, session_id);
+    match &why {
+        GrokRevoke::Reopen => {}
+        GrokRevoke::Drop(reason) => log_drop(call, world_id, key, reason),
+        GrokRevoke::Failed(failure) => {
+            log_drop_failure(call, world_id, key, "rewrite-failed", failure, &paths)
+        }
+    }
     store.remove(key);
     let written = write_store(store_path, store);
     let removed = grok_home(call).and_then(|home| grok_session::remove_session(&home, session_id));
-    if let Err(error) = removed {
-        log_drop(call, world_id, key, &format!("cleanup-failed: {error}"));
+    if let Err(detail) = removed {
+        let failure = RewriteFailure {
+            stage: "cleanup",
+            detail,
+        };
+        log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
     }
     written
 }
@@ -540,11 +601,8 @@ fn record_rewrite_failure(
     crate::harness::rewrite_evidence(key, reason, failure, &path, confidential, prefix);
     #[cfg(not(feature = "test-harness"))]
     let _ = (confidential, prefix);
-    if let Some(log) = call.usage_log.as_deref() {
-        let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
-        let detail = rewrite_failure::mask_detail(&failure.detail, &paths);
-        usage_log::append_drop(log, Some(world_id), key, reason, failure.stage, &detail);
-    }
+    let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
+    log_drop_failure(call, world_id, key, reason, failure, &paths);
 }
 
 /// 抹寫失敗：session 內容不可信，刪掉檔。檔案本來就不在（NotFound）當已刪。
@@ -579,7 +637,13 @@ fn settle_abort(
     // grok 中止時檔案可能停在半截（有 user、沒回覆），不去抹，整條撤銷
     if call.provider == LaneProvider::Grok {
         return revoke_grok_lane(
-            call, world_id, key, session_id, store, store_path, "aborted",
+            call,
+            world_id,
+            key,
+            session_id,
+            store,
+            store_path,
+            GrokRevoke::Drop("aborted"),
         );
     }
     let rewrite = match call.provider {
@@ -602,15 +666,14 @@ fn settle_abort(
         store.remove(key);
         write_store(store_path, store)?;
         if let Err(error) = abandon {
-            if let Some(path) = call.usage_log.as_deref() {
-                usage_log::append_event(
-                    path,
-                    Some(world_id),
-                    key,
-                    usage_log::Event::DropLane,
-                    &error,
-                );
-            }
+            let path =
+                session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
+            let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
+            let failure = RewriteFailure {
+                stage: "cleanup",
+                detail: error.clone(),
+            };
+            log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
             return Err(error);
         }
     }
@@ -675,7 +738,7 @@ pub(crate) async fn run_turn(
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
     // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用
-    if let (TurnPlan::Reopen { reason }, Some(prior)) = (&plan, prior) {
+    if let (TurnPlan::Reopen { .. }, Some(prior)) = (&plan, prior) {
         if call.provider == LaneProvider::Grok && prior.provider == LaneProvider::Grok.as_str() {
             let old = prior.session_id.clone();
             revoke_grok_lane(
@@ -685,7 +748,7 @@ pub(crate) async fn run_turn(
                 &old,
                 &mut store,
                 &store_path,
-                &format!("reopen: {}", reason.as_str()),
+                GrokRevoke::Reopen,
             )?;
         }
     }
@@ -886,11 +949,7 @@ pub(crate) async fn run_turn(
                         input.confidential.as_deref(),
                         input.prefix.as_deref().unwrap_or_default(),
                         &reply,
-                    )
-                    .map_err(|detail| RewriteFailure {
-                        stage: "rewrite",
-                        detail,
-                    }),
+                    ),
                     LaneProvider::Agy | LaneProvider::Grok => Ok(()),
                 };
                 match rewrite {
@@ -915,7 +974,7 @@ pub(crate) async fn run_turn(
                             &actual_session_id,
                             &mut store,
                             &store_path,
-                            &failure.detail,
+                            GrokRevoke::Failed(failure),
                         )?;
                         return Ok(TurnOutcome {
                             text: reply,
@@ -952,7 +1011,7 @@ pub(crate) async fn run_turn(
                         &session_id,
                         &mut store,
                         &store_path,
-                        "resume-failed",
+                        GrokRevoke::Drop("resume-failed"),
                     )?;
                 }
                 plan = TurnPlan::Reopen {
@@ -969,7 +1028,7 @@ pub(crate) async fn run_turn(
                         &session_id,
                         &mut store,
                         &store_path,
-                        "open-failed",
+                        GrokRevoke::Drop("open-failed"),
                     )?;
                 } else {
                     store.remove(&key);
@@ -998,7 +1057,7 @@ pub(crate) async fn keepalive(
     world_id: &str,
 ) -> Result<usize, String> {
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
-    // 與 run_turn 同一把：保溫整份讀寫 lanes.json、還會截 session 檔，交錯會把撤銷的線寫回
+    // 與 run_turn 同一把：保溫整份讀寫 lanes.json、事後還原 session 檔，交錯會把撤銷的線寫回
     let lock = lane_lock(&store_path);
     let _lane_guard = lock.lock().await;
     let mut store = read_store(&store_path);
@@ -1006,7 +1065,7 @@ pub(crate) async fn keepalive(
     // 先挑出該保溫的線再逐條呼叫：迴圈中要改 store，不能同時借著它疊代
     let targets: Vec<(String, LaneState)> = store
         .iter()
-        // 保溫要截 session 檔尾，只有 claude 的格式做得到；grok 線一律不 ping
+        // 保溫後要整份還原 session 檔，只對 claude 的格式做；grok 線一律不 ping
         .filter(|(_, state)| state.provider == LaneProvider::Claude.as_str())
         .filter(|(_, state)| state.pending_rewrite.is_none())
         .filter(|(_, state)| {

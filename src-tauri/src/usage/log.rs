@@ -398,13 +398,27 @@ pub fn assign_pending_world(path: &Path, world: &str) {
 
 /// 沒有用量數字的線事件（目前只有抹寫失敗丟線）。不寫 mode／cache——
 /// 它不是一通呼叫，混進快取統計會憑空多一筆「量不到」。
-pub fn append_event(path: &Path, world: Option<&str>, lane: &str, event: Event, reason: &str) {
-    append(path, event_fields(world, lane, event, reason));
+/// `transport` 是這條線的實際 provider（claude／grok／agy）。
+pub fn append_event(
+    path: &Path,
+    transport: &str,
+    world: Option<&str>,
+    lane: &str,
+    event: Event,
+    reason: &str,
+) {
+    append(path, event_fields(transport, world, lane, event, reason));
 }
 
-fn event_fields(world: Option<&str>, lane: &str, event: Event, reason: &str) -> Map<String, Value> {
+fn event_fields(
+    transport: &str,
+    world: Option<&str>,
+    lane: &str,
+    event: Event,
+    reason: &str,
+) -> Map<String, Value> {
     let mut fields = Map::new();
-    fields.insert("transport".to_owned(), json!("claude"));
+    fields.insert("transport".to_owned(), json!(transport));
     if let Some(world) = world {
         fields.insert("world".to_owned(), json!(world));
     }
@@ -418,13 +432,14 @@ fn event_fields(world: Option<&str>, lane: &str, event: Event, reason: &str) -> 
 /// 呼叫端已遮路徑、截斷）。`reason` 照舊，舊帳本與額度分頁的讀法不變。
 pub fn append_drop(
     path: &Path,
+    transport: &str,
     world: Option<&str>,
     lane: &str,
     reason: &str,
     stage: &str,
     detail: &str,
 ) {
-    let mut fields = event_fields(world, lane, Event::DropLane, reason);
+    let mut fields = event_fields(transport, world, lane, Event::DropLane, reason);
     fields.insert("stage".to_owned(), json!(stage));
     fields.insert("detail".to_owned(), json!(detail));
     append(path, fields);
@@ -735,6 +750,7 @@ mod tests {
         );
         append_event(
             &path,
+            "claude",
             Some("w1"),
             "chars:sonnet",
             Event::DropLane,
@@ -742,8 +758,9 @@ mod tests {
         );
         append_drop(
             &path,
+            "grok",
             Some("w1"),
-            "chars:sonnet",
+            "chars:grok-4.6",
             "rewrite-failed",
             "find-segment",
             "找不到含指定片段的 user 對話行",
@@ -779,12 +796,14 @@ mod tests {
         // 事件行不偽造 mode／cache，否則快取統計會憑空多一筆
         assert!(event.get("mode").is_none() && event.get("cache").is_none());
         assert_eq!(event["reason"], json!("rewrite-failed"));
+        assert_eq!(event["transport"], json!("claude"));
         assert!(event.get("prompt_tokens").is_none());
         assert!(event.get("stage").is_none()); // 沒有原因的事件不偽造 stage
 
         let drop: Value = serde_json::from_str(lines[2]).unwrap();
         assert_eq!(drop["event"], json!("drop-lane"));
         assert_eq!(drop["reason"], json!("rewrite-failed")); // reason 不變，舊讀法照用
+        assert_eq!(drop["transport"], json!("grok")); // 記實際 provider，不寫死 claude
         assert_eq!(drop["stage"], json!("find-segment"));
         assert_eq!(drop["detail"], json!("找不到含指定片段的 user 對話行"));
         assert!(drop.get("mode").is_none() && drop.get("cache").is_none());

@@ -326,7 +326,22 @@ async fn unexpected_turn_shape_revokes_lane_and_next_turn_reopens() {
         "撤銷的線目錄要刪掉"
     );
     let log = std::fs::read_to_string(fake.dir.join("usage.jsonl")).unwrap();
-    assert!(log.contains("rewrite-failed"));
+    let drops: Vec<serde_json::Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|row: &serde_json::Value| row["event"] == "drop-lane")
+        .collect();
+    assert_eq!(drops.len(), 1, "{log}");
+    // 丟線落帳記實際 provider、固定的 reason，壞在哪步與原因另欄，路徑遮掉
+    assert_eq!(drops[0]["transport"], "grok");
+    assert_eq!(drops[0]["reason"], "rewrite-failed");
+    assert_eq!(drops[0]["stage"], "rewrite");
+    let detail = drops[0]["detail"].as_str().unwrap();
+    assert!(!detail.is_empty());
+    assert!(
+        !detail.contains(&*fake.grok_home.to_string_lossy()),
+        "{detail}"
+    );
 
     fake.call.envs.retain(|(key, _)| key != "FAKE_TOOL");
     events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply));
@@ -398,6 +413,9 @@ async fn store_write_failure_leaves_pending_and_next_turn_revokes_old_session() 
     let dirs = session_dirs(&fake.grok_home);
     assert_eq!(dirs.len(), 1);
     assert!(dirs[0].ends_with(&new), "舊目錄已撤銷");
+    // 預定重開不是出事：不記丟線，原因在呼叫行的 reopen
+    let log = std::fs::read_to_string(fake.dir.join("usage.jsonl")).unwrap_or_default();
+    assert!(!log.contains("drop-lane"), "{log}");
 }
 
 /// 續聊失敗（session 目錄不見）：先撤銷舊線再降級重開，本輪照樣有回覆。

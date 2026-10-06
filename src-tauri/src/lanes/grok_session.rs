@@ -10,7 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-/// 丟線原因（寫進用量帳本的 detail）。
+/// 抹寫失敗的種類（丟線時寫進用量帳本的 stage）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DropReason {
     RewriteFailed,
@@ -19,9 +19,9 @@ pub(crate) enum DropReason {
 }
 
 impl DropReason {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub(crate) fn stage(self) -> &'static str {
         match self {
-            Self::RewriteFailed => "rewrite-failed",
+            Self::RewriteFailed => "rewrite",
             Self::Compacted => "compacted",
             Self::LockTimeout => "lock-timeout",
         }
