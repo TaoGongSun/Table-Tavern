@@ -17,19 +17,18 @@
 
 新立案（未排程）：api-request-header-timeout（API 送出後到回應頭前無逾時）；model-version-follow（CLI 手選型號提醒換新版＋OpenRouter 預填不寫死）。
 
-## 擱置待作者決定（分支已開、交接在分支上）
+## 早上收尾（2026-10-07）
 
-1. **claude-1h-cache**（分支 `claude-1h-cache`，證據 `.ai/plans/claude-1h-cache.md`）：1 小時快取不是 CLI 固定行為——訂閱 OAuth、沒用到超額、請求來源在 allowlist 內才自動 1h；API key、相容端點、用到超額都是 5m；環境變數 `CLAUDE_CODE_PROMPT_CACHE_TTL`、`FORCE_PROMPT_CACHING_5M` 與 settings `promptCacheTtl` 都能改，`--safe-mode` 擋不住玩家自己的設定。
-   - A：app 釘死 1h（帶 `CLAUDE_CODE_PROMPT_CACHE_TTL=1h`），原裁決三件照做。注意：玩家用到超額時，1h 寫入是 2 倍價，花的是玩家的錢。
-   - B：每輪照實際寫入分項判斷過期與係數；保溫與離開提醒都要保留。
-   - C：app 釘死 5m，維持現有保溫架構（等於推翻原裁決）。
-   - 子代理傾向 A＋帳本記實際時效。
-2. **image-save-strict-validate**（分支 `image-save-strict-validate`，盤點在 `.ai/plans/image-save-strict-validate.md` 第四節）：八項待決定，含 AI 回 APNG／超大圖／壞圖怎麼處理、角色卡 PNG 匯入嚴驗不過時整張拒收或照匯換乾淨圖、儲存順序。TestCards 21 張真卡嚴驗全過。
+夜間擱置與待立案的四項，作者醒來決定後都已結案進 main：
 
-## 要作者決定要不要立案
+| 案 | commit | 作者決定 |
+|---|---|---|
+| claude-1h-cache | 87621e9 | 續聊線釘 1h、撤保溫與離開提醒、超額只提示一次、單發與重構不釘 |
+| image-save-strict-validate | 44cebbd | 八項照建議；GM 圖比照角色卡先救；寫檔 IO 失敗回報錯誤、草稿保留 |
+| grok-backend-tools | 6479e19 | 關掉 grok 伺服器端工具，生圖一起關 |
+| char-line-prefix | ebcca12 | 角色台詞剝掉模型自加的「名字：」 |
 
-- **grok 伺服器端工具**：即使帶 `--disable-web-search`，grok 仍會在角色回合呼叫伺服器端工具（`backend_tool_call`），照規則丟線重開、該輪輸入翻倍；工具參數曾帶到私設。建議立案查能否從根本關掉。
-- **角色台詞前綴**：約三分之一角色台詞被模型自己加「狐狸：」開頭，存進逐字稿、畫面看得到；claude／API 共線同格式，跨傳輸既有行為。建議立案剝除。
+過程中新立案（未排程）：runaway-output-cap（模型持續吐垃圾沒有單輪上限）、claude-resume-tail-cache（claude 續聊對話尾端每輪重寫快取）。
 
 ## 照模型判斷先做、未經作者裁決〔模型判斷·未裁決〕
 
