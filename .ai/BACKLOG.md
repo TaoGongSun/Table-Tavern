@@ -6,6 +6,7 @@
 
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [claude-1h-cache](reference/overnight-2026-10-06.md) — claude CLI 1 小時快取：過期門檻、保溫、省額係數 — 下一步：已開工，分支 `claude-1h-cache`（交接與證據在分支上）；查出 1h 不是 CLI 固定行為，等作者三選一（見夜間總表）
+- [runaway-output-cap](tasks/runaway-output-cap.md) — 模型持續吐空白／亂碼時沒有單輪上限，只能手動中止 — 下一步：未排程；先查各傳輸現有輸出限制與可加上限的位置〔作者裁決 2026-10-07〕
 - [api-request-header-timeout](tasks/api-request-header-timeout.md) — API 請求送出後到回應頭之前、非 2xx 讀錯誤本文都沒有逾時 — 下一步：只包 send() 與錯誤本文讀取，不用 ClientBuilder::timeout
 - [image-save-strict-validate](reference/overnight-2026-10-06.md) — 一般存圖接上嚴格 PNG 驗證 — 下一步：已開工，分支 `image-save-strict-validate`（盤點在分支 plans 第四節）；等作者決定八項拒收處理（見夜間總表）
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
