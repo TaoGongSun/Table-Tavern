@@ -4,6 +4,8 @@ import {
   applyCachedCatalogs,
   CATALOG_SOURCES,
   mergeCatalog,
+  OPENROUTER_IMAGE_MODELS_URL,
+  parseOpenRouterImageModels,
   parseOpenRouterModels,
   type ModelCatalogs,
   type ModelOption,
@@ -38,11 +40,14 @@ async function fetchCatalog(id: string): Promise<ModelOption[]> {
     // OpenRouter 公開清單（免 key）；拿不到就退化成純手動輸入
     return parseOpenRouterModels(await (await fetch("https://openrouter.ai/api/v1/models")).json());
   }
+  if (id === "api-image") {
+    return parseOpenRouterImageModels(await (await fetch(OPENROUTER_IMAGE_MODELS_URL)).json());
+  }
   return invoke<ModelOption[]>("list_cli_models", { cli: id });
 }
 
 /// 抓一支並落地；抓到空的由 mergeCatalog 留住上次的結果。
-/// catalogStore 一律在 await 之後才讀：五家並行預熱，拿抓取前的舊值去算會互相覆蓋。
+/// catalogStore 一律在 await 之後才讀：各支並行預熱，拿抓取前的舊值去算會互相覆蓋。
 export async function refreshCatalog(id: string): Promise<void> {
   try {
     const fetched = await fetchCatalog(id);
@@ -56,7 +61,7 @@ export async function refreshCatalog(id: string): Promise<void> {
 }
 
 /// 開 app 時跑一次：先把上次存的清單擺上（玩家點進設定即刻有東西可選），
-/// 再五家並行重抓，回來一支換一支。
+/// 再各支並行重抓，回來一支換一支。
 export async function prefetchModelCatalogs(): Promise<void> {
   if (catalogPrefetched) return;
   catalogPrefetched = true;

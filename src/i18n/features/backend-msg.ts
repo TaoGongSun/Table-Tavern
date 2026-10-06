@@ -203,7 +203,6 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   refactor_apply_partial_no_receipt: { error: "string" },
   card_data_invalid: { detail: "string" },
   image_not_png: {},
-  invalid_base64: {},
   invalid_file_name: {},
   unsupported_image_format: {},
   image_missing_in_reply: {},

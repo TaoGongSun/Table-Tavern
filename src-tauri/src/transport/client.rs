@@ -696,7 +696,11 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err(http_error(status, &body));
+        let error = http_error(status, &body);
+        if matches!(status.as_u16(), 402 | 403) && is_free_tier_key(config, api_key).await {
+            return Err(format!("{IMAGE_FREE_KEY}: {error}"));
+        }
+        return Err(error);
     }
     let value: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
     let image = value.get("data").and_then(|data| data.get(0));
@@ -715,6 +719,43 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
         }
     }
     Err(UiMsg::ImageMissingInReply.into())
+}
+
+/// 免費 key（從沒儲值過）打 `/images` 一律被拒（實測 402／403），前端據此給專屬文案。
+const IMAGE_FREE_KEY: &str = "AI_IMAGE_FREE_KEY";
+#[cfg(not(test))]
+const KEY_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(test)]
+const KEY_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// 補查 `GET {base}/key`：只有 2xx 且 `data.is_free_tier` 是布林 true 才算；
+/// 逾時、非 2xx、JSON 壞掉、欄位缺失或型別不對，一律當「不確定」，讓呼叫端保留原錯誤。
+async fn is_free_tier_key(config: &AppConfig, api_key: &str) -> bool {
+    // reqwest 的 client timeout 管不到 body 讀到一半停住，整段（送出＋讀 body）另外包一層
+    tokio::time::timeout(KEY_LOOKUP_TIMEOUT, lookup_free_tier(config, api_key))
+        .await
+        .unwrap_or(false)
+}
+
+async fn lookup_free_tier(config: &AppConfig, api_key: &str) -> bool {
+    let Ok(response) = reqwest::Client::new()
+        .get(format!("{}/key", base_url(config)))
+        .bearer_auth(api_key)
+        .send()
+        .await
+    else {
+        return false;
+    };
+    if !response.status().is_success() {
+        return false;
+    }
+    let Ok(body) = response.json::<serde_json::Value>().await else {
+        return false;
+    };
+    body.get("data")
+        .and_then(|data| data.get("is_free_tier"))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
 }
 
 #[cfg(test)]

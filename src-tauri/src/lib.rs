@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod data;
 mod evaluator;
+mod generated_image;
 mod genesis;
 #[cfg(feature = "test-harness")]
 mod harness;

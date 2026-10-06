@@ -14,7 +14,7 @@ import { CLI_LABELS, CliInfo, detectClis } from "../ai-connection/cli";
 
 const GALLERY_PAGE_SIZE = 12;
 
-// Claude Code CLI 只輸出文字，沒有生圖工具：選到它就直說，不要讓玩家等一輪才拿到失敗訊息
+// Claude Code CLI 只輸出文字，沒有生圖工具：生圖來源不列它
 const NO_IMAGE_CLIS = ["claude"];
 
 export function CropDialog({
@@ -167,7 +167,6 @@ export function AiImageDialog({
   const [galleryLoaded, setGalleryLoaded] = useState(0);
 
   const sourceOptions = ["api", ...aiClis.map((cli) => cli.id)];
-  const sourceCannotGenerate = NO_IMAGE_CLIS.includes(aiSource);
 
   async function loadGalleryPage(files: string[], start: number) {
     const page = files.slice(start, start + GALLERY_PAGE_SIZE);
@@ -187,8 +186,9 @@ export function AiImageDialog({
   useEffect(() => {
     void detectClis()
       .then((detected) => {
-        setAiClis(detected);
-        const detectedSources = ["api", ...detected.map((cli) => cli.id)];
+        const imageClis = detected.filter((cli) => !NO_IMAGE_CLIS.includes(cli.id));
+        setAiClis(imageClis);
+        const detectedSources = ["api", ...imageClis.map((cli) => cli.id)];
         setAiSource(detectedSources.includes(savedSource) ? savedSource : fallback);
       })
       .catch(() => {
@@ -259,7 +259,7 @@ export function AiImageDialog({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={aiGenerating || sourceCannotGenerate}
+          disabled={aiGenerating}
           onClick={() => void generateImage()}
         >
           <SwapLabel
@@ -294,9 +294,8 @@ export function AiImageDialog({
           <button type="button" disabled={aiGenerating} onClick={onOpenAiSettings}>⚙ {t("aiTab")}</button>
         </div>
       </label>
-      {sourceCannotGenerate && <div className="ai-gen-error" role="alert">{t("aiGenSourceNoImage", { provider: CLI_LABELS[aiSource] ?? aiSource })}</div>}
       {/* 生圖來源可以不經設定頁直接換，這裡也要講一次等一下的系統詢問是誰在問 */}
-      {aiSource !== "api" && !sourceCannotGenerate && (
+      {aiSource !== "api" && (
         <p className="cli-permission-note" role="note">
           {t("cliPermissionNote", { provider: CLI_LABELS[aiSource] ?? aiSource })}
         </p>

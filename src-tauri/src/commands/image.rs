@@ -1,3 +1,4 @@
+use crate::generated_image::{self, GeneratedImage};
 use crate::transport::dispatch::{cli_workspace, stream_turn_via_transport};
 use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
@@ -207,56 +208,6 @@ fn encode_base64(bytes: &[u8]) -> String {
     output
 }
 
-fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
-    fn sextet(byte: u8) -> Option<u8> {
-        match byte {
-            b'A'..=b'Z' => Some(byte - b'A'),
-            b'a'..=b'z' => Some(byte - b'a' + 26),
-            b'0'..=b'9' => Some(byte - b'0' + 52),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    }
-
-    let bytes = value.as_bytes();
-    if !bytes.len().is_multiple_of(4) {
-        return Err(UiMsg::InvalidBase64.into());
-    }
-    let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
-    for (index, chunk) in bytes.chunks_exact(4).enumerate() {
-        let padding = chunk.iter().rev().take_while(|&&byte| byte == b'=').count();
-        if padding > 2 || (padding > 0 && index + 1 != bytes.len() / 4) {
-            return Err(UiMsg::InvalidBase64.into());
-        }
-        let a = sextet(chunk[0]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?;
-        let b = sextet(chunk[1]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?;
-        let c = if padding >= 2 {
-            0
-        } else {
-            sextet(chunk[2]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?
-        };
-        let d = if padding >= 1 {
-            0
-        } else {
-            sextet(chunk[3]).ok_or_else(|| String::from(UiMsg::InvalidBase64))?
-        };
-        if (padding >= 1 && chunk[3] != b'=') || (padding >= 2 && chunk[2] != b'=') {
-            return Err(UiMsg::InvalidBase64.into());
-        }
-        let decoded =
-            (u32::from(a) << 18) | (u32::from(b) << 12) | (u32::from(c) << 6) | u32::from(d);
-        output.push((decoded >> 16) as u8);
-        if padding < 2 {
-            output.push((decoded >> 8) as u8);
-        }
-        if padding == 0 {
-            output.push(decoded as u8);
-        }
-    }
-    Ok(output)
-}
-
 fn validate_gallery_component(value: &str, require_png: bool) -> Result<(), String> {
     if value.is_empty()
         || value.contains("..")
@@ -300,24 +251,27 @@ fn save_generated_gallery_image(
     root: &std::path::Path,
     world_id: &str,
     character_id: &str,
-    data_url: &str,
+    png: &[u8],
 ) -> Result<(), String> {
-    let Some((header, encoded)) = data_url.split_once(',') else {
-        return Ok(());
-    };
-    if !header.starts_with("data:") || !header.ends_with(";base64") {
-        return Ok(());
-    }
     let directory = gallery_directory(root, world_id, character_id)?;
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_millis();
-    data::commit_world_write(
-        &directory.join(format!("{timestamp}.png")),
-        &decode_base64(encoded)?,
-    )
-    .map_err(|error| error.to_string())
+    data::commit_world_write(&directory.join(format!("{timestamp}.png")), png)
+        .map_err(|error| error.to_string())
+}
+
+/// 生圖輸出統一轉 PNG（見 generated_image）再進圖庫；任一步失敗就不寫圖庫。
+async fn store_generated_image(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+    image: GeneratedImage,
+) -> Result<String, String> {
+    let png = generated_image::normalize(image).await?;
+    save_generated_gallery_image(root, world_id, character_id, &png)?;
+    Ok(generated_image::png_data_url(&png))
 }
 
 fn image_file_data_url(path: &std::path::Path) -> Result<String, String> {
@@ -383,8 +337,13 @@ pub(crate) async fn generate_character_image(
         });
     if transport_kind == "api" {
         let image = transport::generate_image(&config, &prompt).await?;
-        save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
-        return Ok(image);
+        return store_generated_image(
+            &root,
+            &world_id,
+            &character_id,
+            GeneratedImage::Encoded(image),
+        )
+        .await;
     }
     // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）會存檔回路徑，其餘掃不到圖就失敗
     // 兩個暗號分開問：生不出（沒能力／沒額度）與不肯生（內容規範）要給玩家不同的下一步
@@ -415,17 +374,31 @@ pub(crate) async fn generate_character_image(
     )
     .await?;
     let workspace = cli_workspace(&app)?;
+    store_cli_reply_image(&root, &world_id, &character_id, &reply, &workspace).await
+}
+
+/// CLI 回話裡的圖：找出來讀進記憶體 → 清掉工作目錄的中轉檔 → 轉 PNG 進圖庫。
+async fn store_cli_reply_image(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+    reply: &str,
+    workspace: &std::path::Path,
+) -> Result<String, String> {
     let found = extract_image_refs(&reply)
         .into_iter()
         .find_map(|found| match found {
-            ImageRef::DataUrl(data_url) => Some(Ok(data_url)),
+            ImageRef::DataUrl(data_url) => Some(Ok(GeneratedImage::Encoded(data_url))),
             // CLI 常回相對於自己工作目錄的路徑（codex 的 imagegen 存進 output/imagegen/）；
             // 補上基準才讀得到，絕對路徑 join 後維持原樣
             ImageRef::Path(path) => {
                 let path = workspace.join(path);
-                std::fs::metadata(&path)
-                    .is_ok()
-                    .then(|| image_file_data_url(&path))
+                // 下面會清工作目錄，這裡就把檔案讀進記憶體
+                std::fs::metadata(&path).is_ok().then(|| {
+                    std::fs::read(&path)
+                        .map(GeneratedImage::Bytes)
+                        .map_err(|error| error.to_string())
+                })
             }
         })
         // REFUSED／NO_IMAGE 是上面 prompt 跟 CLI 約好的暗號，前端據此各換一句人話；
@@ -436,7 +409,7 @@ pub(crate) async fn generate_character_image(
             } else if reply.contains("NO_IMAGE") {
                 "NO_IMAGE".to_owned()
             } else {
-                match last_sentence(&reply) {
+                match last_sentence(reply) {
                     Some(tail) => UiMsg::ImageMissingInReplyTail {
                         tail: tail.to_owned(),
                     }
@@ -446,10 +419,8 @@ pub(crate) async fn generate_character_image(
             })
         });
     // 圖已經讀進記憶體，中轉檔失去用途；成功與失敗都清
-    clear_cli_workspace_images(&workspace);
-    let image = found?;
-    save_generated_gallery_image(&root, &world_id, &character_id, &image)?;
-    Ok(image)
+    clear_cli_workspace_images(workspace);
+    store_generated_image(root, world_id, character_id, found?).await
 }
 
 #[tauri::command]
@@ -489,12 +460,13 @@ pub(crate) fn delete_gallery_image(
 #[cfg(test)]
 mod tests {
     use super::{
-        clear_cli_workspace_images, decode_base64, encode_base64, extract_image_refs,
-        list_gallery_image_files, validate_gallery_component, ImageRef,
+        clear_cli_workspace_images, encode_base64, extract_image_refs, image_file_data_url,
+        list_gallery_image_files, store_cli_reply_image, store_generated_image,
+        validate_gallery_component, ImageRef,
     };
     use crate::commands::NEXT_TEMP_ID;
     use crate::data;
-    use crate::ui_msg::UiMsg;
+    use crate::generated_image::GeneratedImage;
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
@@ -590,20 +562,6 @@ mod tests {
     }
 
     #[test]
-    fn decode_base64_roundtrip_restores_bytes() {
-        let bytes = [0, 1, 2, 127, 128, 255];
-        assert_eq!(decode_base64(&encode_base64(&bytes)).unwrap(), bytes);
-    }
-
-    #[test]
-    fn decode_base64_rejects_invalid_input() {
-        assert_eq!(
-            decode_base64("not base64!").unwrap_err(),
-            UiMsg::InvalidBase64.to_string()
-        );
-    }
-
-    #[test]
     fn gallery_component_validation_allows_plain_png_name() {
         assert!(validate_gallery_component("1720000000000.png", true).is_ok());
     }
@@ -649,5 +607,120 @@ mod tests {
             ]
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "table-tavern-{label}-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    /// 遠端網址的圖：下載、轉 PNG、進圖庫，之後從圖庫重讀拿到的是 PNG
+    #[tokio::test]
+    async fn remote_image_lands_in_gallery_as_png_and_reads_back() {
+        use std::io::{Read, Write};
+        const JPEG: &[u8] = include_bytes!("../generated_image/fixtures/opaque.jpg");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                JPEG.len()
+            );
+            socket.write_all(head.as_bytes()).unwrap();
+            socket.write_all(JPEG).unwrap();
+        });
+        let root = temp_root("gallery-remote");
+        let world_id = data::create_world(&root, "生圖").unwrap();
+        let character_id = data::new_id();
+        let returned = store_generated_image(
+            &root,
+            &world_id,
+            &character_id,
+            GeneratedImage::Encoded(format!("http://{address}/fox.jpg")),
+        )
+        .await
+        .unwrap();
+        assert!(returned.starts_with("data:image/png;base64,"));
+        let files = list_gallery_image_files(&root, &world_id, &character_id).unwrap();
+        assert_eq!(files.len(), 1);
+        let directory = root
+            .join("worlds")
+            .join(&world_id)
+            .join("gen-gallery")
+            .join(&character_id);
+        let stored = std::fs::read(directory.join(&files[0])).unwrap();
+        assert!(stored.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(
+            image_file_data_url(&directory.join(&files[0])).unwrap(),
+            returned
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// 格式不支援就整個失敗，圖庫不留檔
+    #[tokio::test]
+    async fn unsupported_image_is_not_written_to_gallery() {
+        const SVG: &[u8] = include_bytes!("../generated_image/fixtures/tiny.svg");
+        let root = temp_root("gallery-reject");
+        let (world_id, character_id) = (data::new_id(), data::new_id());
+        let error = store_generated_image(
+            &root,
+            &world_id,
+            &character_id,
+            GeneratedImage::Bytes(SVG.to_vec()),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.starts_with("AI_IMAGE_UNSUPPORTED_FORMAT: "),
+            "{error}"
+        );
+        assert!(list_gallery_image_files(&root, &world_id, &character_id)
+            .unwrap()
+            .is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// CLI 存檔這條路：相對路徑讀進記憶體 → 清掉工作目錄 → 依位元組轉 PNG（副檔名說 png、
+    /// 實際是 JPEG）→ 進圖庫，從圖庫重讀與回傳值一致
+    #[tokio::test]
+    async fn cli_file_is_read_cleared_converted_and_stored() {
+        const JPEG: &[u8] = include_bytes!("../generated_image/fixtures/opaque.jpg");
+        let root = temp_root("gallery-cli");
+        let workspace = temp_root("cli-workspace");
+        std::fs::create_dir_all(workspace.join("output/imagegen")).unwrap();
+        std::fs::write(workspace.join("output/imagegen/fox.png"), JPEG).unwrap();
+        let world_id = data::create_world(&root, "生圖").unwrap();
+        let character_id = data::new_id();
+        let returned = store_cli_reply_image(
+            &root,
+            &world_id,
+            &character_id,
+            "Saved to output/imagegen/fox.png",
+            &workspace,
+        )
+        .await
+        .unwrap();
+        assert!(!workspace.join("output").exists());
+        let files = list_gallery_image_files(&root, &world_id, &character_id).unwrap();
+        assert_eq!(files.len(), 1);
+        let stored = root
+            .join("worlds")
+            .join(&world_id)
+            .join("gen-gallery")
+            .join(&character_id)
+            .join(&files[0]);
+        assert!(std::fs::read(&stored)
+            .unwrap()
+            .starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(image_file_data_url(&stored).unwrap(), returned);
+        std::fs::remove_dir_all(root).unwrap();
+        let _ = std::fs::remove_dir_all(workspace);
     }
 }

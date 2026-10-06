@@ -23,6 +23,15 @@ const FAILURE_CODES = [
   [/^(?:Error:\s*)?AI_FREE_MODEL_BUSY:/, "errFreeModelBusy"],
 ] as const;
 
+// 生圖專屬碼：由 transport::generate_image 與 generated_image 掛在開頭。免費 key 那個碼
+// 包著原本的 AI_HTTP_STATUS_402/403，所以要排在 HTTP 狀態之前認
+const IMAGE_CODES = [
+  [/^(?:Error:\s*)?AI_IMAGE_FREE_KEY:/, "errImageFreeKey"],
+  [/^(?:Error:\s*)?AI_IMAGE_UNSUPPORTED_FORMAT:/, "errImageUnsupportedFormat"],
+  [/^(?:Error:\s*)?AI_IMAGE_DECODE_FAILED:/, "errImageDecodeFailed"],
+  [/^(?:Error:\s*)?AI_IMAGE_DOWNLOAD_FAILED:/, "errImageDownloadFailed"],
+] as const;
+
 // 話送出去了、模型沒能回話，而且沒有更精確的碼（連不上、CLI 中途死掉…）。由 lib.rs 的
 // stream_via_transport 掛在真正的呼叫結果上；讀卡、寫逐字稿、找不到 CLI 都不帶這個碼。
 // 這是最後的保底：CLI 吐的原話（限流、未登入）還是要先走下面的正則分流，
@@ -75,7 +84,10 @@ export function explainAiError(
   | "errIncompleteReply"
   | "errFiltered"
   | "errFreeModelBusy"
+  | (typeof IMAGE_CODES)[number][1]
   | null {
+  const image = IMAGE_CODES.find(([prefix]) => prefix.test(raw));
+  if (image) return image[1];
   // 真實 HTTP 狀態最先判、命中就結案：這個碼由我們自己掛在最前面，後面接的是供應商
   // 原封不動的 body。任何「往字串裡找字樣」的判斷都排在它後面，否則 body 抄到什麼
   // 都能翻盤——實測見過狀態 503、body 裡卻寫著 429 的（那是 router 轉包上游的殘骸）。
