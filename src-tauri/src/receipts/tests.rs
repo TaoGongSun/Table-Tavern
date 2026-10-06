@@ -51,6 +51,7 @@ fn transcript_event(ts: &str, text: &str) -> data::TranscriptEvent {
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
         ts: ts.to_owned(),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),

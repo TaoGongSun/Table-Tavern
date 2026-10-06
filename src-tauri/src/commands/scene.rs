@@ -1,7 +1,6 @@
 use crate::data::TranscriptEvent;
 use crate::transport::dispatch::{chat_transport, stream_via_transport};
 use crate::transport::translate;
-use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
 use serde::Serialize;
 
@@ -43,9 +42,18 @@ pub(crate) fn append_player_event(
     world_id: String,
     scene: u64,
     event: TranscriptEvent,
+    action_id: Option<String>,
 ) -> Result<PlayerAppend, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
+    // 換幕容量鎖：玩家句落檔前就擋，被擋時不留孤立玩家句（卡片介面 /send 也走這裡）
+    crate::scene_budget::check_capacity(
+        &config_root(&app)?,
+        &root,
+        &world_id,
+        action_id.as_deref(),
+        &event.text,
+    )?;
     let (event, offset) = data::append_event(&root, &world_id, scene, &event, None)
         .map_err(|error| error.to_string())?;
     Ok(PlayerAppend {
@@ -265,52 +273,149 @@ pub(crate) fn export_scene(
     std::fs::write(&path, markdown).map_err(|error| error.to_string())
 }
 
+/// 換幕容量（long-prompt-scene-hint 範圍 3）。回應帶桌、幕、設定世代與請求序號：
+/// 前端只收與目前桌／幕／世代相符且序號最新的，晚回的不覆蓋新值。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SceneBudgetReply {
+    world_id: String,
+    config_gen: String,
+    /// 前端送來的設定指紋原樣帶回：前端只收「目前設定下發出」的請求
+    config_tag: String,
+    request_seq: u64,
+    #[serde(flatten)]
+    budget: crate::scene_budget::SceneBudget,
+}
+
+#[tauri::command]
+pub(crate) async fn scene_budget(
+    app: tauri::AppHandle,
+    world_id: String,
+    request_seq: u64,
+    config_tag: String,
+    config: serde_json::Value,
+) -> Result<SceneBudgetReply, String> {
+    let config_root = config_root(&app)?;
+    let root = data_root(&app)?;
+    // 組裝整幕是純 CPU＋讀檔：丟去 blocking 池，不佔 async worker
+    tokio::task::spawn_blocking(move || {
+        // 同一份設定快照：量測、世代、指紋核對都用它。前端認定的設定（樂觀更新）若還不是磁碟上這份，
+        // 指紋就不帶回，前端丟掉這筆——量的不是它以為的設定
+        let snapshot = data::read_config(&config_root).map_err(|error| error.to_string())?;
+        let config_gen = crate::scene_budget::config_generation(&snapshot);
+        let config_tag = match crate::scene_budget::snapshot_matches(&snapshot, &config) {
+            true => config_tag,
+            false => String::new(),
+        };
+        let budget = crate::scene_budget::compute(&config_root, &root, &world_id, &snapshot, true)?;
+        Ok(SceneBudgetReply {
+            world_id,
+            config_gen,
+            config_tag,
+            request_seq,
+            budget,
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 /// 換場：把當前場景公開紀錄壓成一則摘要，寫進新場景開頭，current_scene +1（NewPlan 換場＋場景摘要）。
 /// 摘要走既有 stream_via_transport＋GM 檔位，不新開連線路徑、不新增設定項。
 #[tauri::command]
-pub(crate) async fn advance_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> {
-    let _permit = data::world_write_permit_async(&world_id).await?;
+pub(crate) async fn advance_scene(
+    app: tauri::AppHandle,
+    world_id: String,
+    turn_id: Option<String>,
+) -> Result<u64, String> {
     let root = data_root(&app)?;
-    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let lang = transport::ui_language(&config);
-    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    let events = data::read_transcript(&root, &world_id, state.current_scene)
-        .map_err(|error| error.to_string())?;
-    if events.is_empty() {
-        return Err(UiMsg::SceneEmptyCannotAdvance.into());
-    }
-
-    let takeover = data::is_interface_takeover(&root, &world_id, state.refactor_mode.as_deref());
-    let messages = transport::summary_messages(&events, &lang, takeover);
-    let reply = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::gm_tier(&config),
-        Some(&world_id),
-        "GM",
-        transport::summary_closing(&lang),
-        &messages,
-        false,
-        |_| {},
-    )
-    .await
-    .map_err(summary_failure)?;
-
-    // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
-    let (title, summary) = transport::extract_scene_title(&reply);
-    data::begin_next_scene(&root, &world_id, &summary, title.as_deref())
-        .map_err(|error| error.to_string())
+    let config_root = config_root(&app)?;
+    let config = data::read_config(&config_root).map_err(|error| error.to_string())?;
+    let cap = crate::scene_budget::summary_capacity(&config_root, &root, &config);
+    // 停止鈕：前端帶 turn_id 就登記，chat_abort 打得到；登記在函式返回時解除
+    let registration = turn_id
+        .as_deref()
+        .map(|turn_id| crate::inflight::register_turn(&world_id, turn_id));
+    let (_guard, cancel) =
+        registration.map_or((None, None), |(guard, cancel)| (Some(guard), Some(cancel)));
+    let mut caller = crate::scene_budget::summarize::Cancellable::new(
+        summary_caller(&app, &config, &world_id),
+        cancel,
+    );
+    crate::scene_budget::summarize::advance_locked(&root, &world_id, &cap, &mut caller).await
 }
 
-/// 換幕摘要撞到容量上限：不能把聊天用的「請換幕」錯誤丟回去（按了只會重跑同一條路），
-/// 改回摘要失敗的人話；原紀錄沒動過。其他錯誤原樣上拋。
-fn summary_failure(error: String) -> String {
-    if error.starts_with(transport::context_overflow::CODE) {
-        UiMsg::SceneSummaryFailed.into()
-    } else {
-        error
+/// 換幕摘要類呼叫的真實那一下（GM 檔、單發）：整幕、分段、合併、縮短都走這裡。
+/// 截斷算失敗——摘要不完整就不能寫進新幕。成功時把「送出前的估計」與「實報總輸入」配成摘要種類的校正。
+struct AppSummaryCaller<'a> {
+    app: &'a tauri::AppHandle,
+    config: &'a data::AppConfig,
+    world_id: &'a str,
+    lang: String,
+    transport: String,
+    model: Option<String>,
+}
+
+impl crate::scene_budget::summarize::SummaryCaller for AppSummaryCaller<'_> {
+    async fn call(&mut self, messages: Vec<transport::ChatMessage>) -> Result<String, String> {
+        let estimate =
+            crate::scene_budget::summary_request_estimate(&messages, &self.lang, &self.transport);
+        let (result, actual, identity) = crate::scene_budget::with_summary_probe(
+            crate::transport::dispatch::stream_turn_reporting_truncation(
+                self.app,
+                self.config,
+                None,
+                false,
+                transport::gm_tier(self.config),
+                Some(self.world_id),
+                None,
+                "GM",
+                transport::summary_closing(&self.lang),
+                &messages,
+                crate::usage::log::PromptShape::Oneshot,
+                false,
+                |_| {},
+            ),
+        )
+        .await;
+        let (reply, truncated) = result?;
+        if truncated {
+            return Err("AI_INCOMPLETE_RESPONSE: scene summary truncated".to_owned());
+        }
+        // claude 要這次回報辨識得出實際模型才記校正；其他後端以解析出的模型字串為鍵
+        let identified = self.transport != "claude" || identity.is_some();
+        if let (Ok(root), Some(model), true) = (data_root(self.app), &self.model, identified) {
+            crate::scene_budget::record_calibration(
+                &root,
+                &self.transport,
+                model,
+                "summary",
+                estimate,
+                actual,
+                identity.as_deref(),
+            );
+        }
+        Ok(reply)
+    }
+}
+
+fn summary_caller<'a>(
+    app: &'a tauri::AppHandle,
+    config: &'a data::AppConfig,
+    world_id: &'a str,
+) -> AppSummaryCaller<'a> {
+    AppSummaryCaller {
+        app,
+        config,
+        world_id,
+        lang: transport::ui_language(config),
+        transport: chat_transport(config),
+        model: match (config_root(app), data_root(app)) {
+            (Ok(config_root), Ok(root)) => {
+                crate::scene_budget::summary_model(&config_root, &root, config)
+            }
+            _ => None,
+        },
     }
 }
 
@@ -340,54 +445,22 @@ pub(crate) fn fork_scene(
 pub(crate) async fn regenerate_scene_summary(
     app: tauri::AppHandle,
     world_id: String,
+    turn_id: Option<String>,
 ) -> Result<(), String> {
-    let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
-    let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
-    let lang = transport::ui_language(&config);
-    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    let scene = state.current_scene;
-    let label = data::scene_label(&state, scene);
-    let Some(previous_scene) = label.parent else {
-        return Err(UiMsg::SummaryFirstScene.into());
-    };
-    if label.forked {
-        return Err(UiMsg::SummaryContinuedScene.into());
-    }
-    let current_events =
-        data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
-    if current_events.len() != 1 {
-        // 早退：這一幕已經有新內容，不值得先花一次模型呼叫才發現不能用
-        return Err(UiMsg::SummaryHasNewContent.into());
-    }
-
-    let previous_events = data::read_transcript(&root, &world_id, previous_scene)
-        .map_err(|error| error.to_string())?;
-    if previous_events.is_empty() {
-        return Err(UiMsg::PreviousSceneEmpty.into());
-    }
-
-    let takeover = data::is_interface_takeover(&root, &world_id, state.refactor_mode.as_deref());
-    let messages = transport::summary_messages(&previous_events, &lang, takeover);
-    let reply = stream_via_transport(
-        &app,
-        &config,
-        None,
-        false,
-        transport::gm_tier(&config),
-        Some(&world_id),
-        "GM",
-        transport::summary_closing(&lang),
-        &messages,
-        false,
-        |_| {},
-    )
-    .await
-    .map_err(summary_failure)?;
-
-    let (title, summary) = transport::extract_scene_title(&reply);
-    data::replace_scene_summary(&root, &world_id, &summary, title.as_deref())
-        .map_err(|error| error.to_string())
+    let config_root = config_root(&app)?;
+    let config = data::read_config(&config_root).map_err(|error| error.to_string())?;
+    let cap = crate::scene_budget::summary_capacity(&config_root, &root, &config);
+    let registration = turn_id
+        .as_deref()
+        .map(|turn_id| crate::inflight::register_turn(&world_id, turn_id));
+    let (_guard, cancel) =
+        registration.map_or((None, None), |(guard, cancel)| (Some(guard), Some(cancel)));
+    let mut caller = crate::scene_budget::summarize::Cancellable::new(
+        summary_caller(&app, &config, &world_id),
+        cancel,
+    );
+    crate::scene_budget::summarize::regenerate_locked(&root, &world_id, &cap, &mut caller).await
 }
 
 #[cfg(test)]
@@ -422,6 +495,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -448,6 +522,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),
@@ -497,6 +572,7 @@ mod tests {
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             ts: "now".to_owned(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),

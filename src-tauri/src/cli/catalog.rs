@@ -34,6 +34,7 @@ pub fn parse_codex_catalog(json: &str) -> Vec<ModelOption> {
                 ModelOption {
                     id: slug.to_owned(),
                     label: label.to_owned(),
+                    ..Default::default()
                 },
             ))
         })
@@ -72,6 +73,7 @@ pub fn parse_claude_registry(source: impl std::io::Read) -> Vec<ModelOption> {
             options.push(ModelOption {
                 id,
                 label: String::from_utf8_lossy(&capture[2]).into_owned(),
+                ..Default::default()
             });
         }
         let keep = window.len().min(OVERLAP);
@@ -92,6 +94,7 @@ pub fn parse_agy_catalog(output: &str) -> Vec<ModelOption> {
             (!id.is_empty()).then(|| ModelOption {
                 id: id.to_owned(),
                 label: label.trim().to_owned(),
+                ..Default::default()
             })
         })
         .collect()
@@ -115,6 +118,7 @@ pub fn parse_grok_catalog(output: &str) -> Vec<ModelOption> {
             (!id.is_empty() && !id.chars().any(char::is_whitespace)).then(|| ModelOption {
                 id: id.to_owned(),
                 label: label.to_owned(),
+                ..Default::default()
             })
         })
         .collect()
@@ -142,6 +146,7 @@ pub async fn cli_model_catalog(cli: &str, envs: &[(String, String)]) -> Vec<Mode
                         alias: (*alias).to_owned(),
                     }
                     .to_string(),
+                    ..Default::default()
                 })
                 .collect();
             // 掃數百 MB 執行檔是 CPU 密集的同步工作，丟去 blocking 池免得佔住 async worker
@@ -223,10 +228,12 @@ mod tests {
                 ModelOption {
                     id: "claude-opus-5".to_owned(),
                     label: "Opus 5".to_owned(),
+                    ..Default::default()
                 },
                 ModelOption {
                     id: "claude-opus-4-6".to_owned(),
                     label: "Opus 4.6".to_owned(),
+                    ..Default::default()
                 },
             ]
         );
@@ -252,11 +259,13 @@ mod tests {
             vec![
                 ModelOption {
                     id: "gemini-3.6-flash-high".to_owned(),
-                    label: "Gemini 3.6 Flash (High)".to_owned()
+                    label: "Gemini 3.6 Flash (High)".to_owned(),
+                    ..Default::default()
                 },
                 ModelOption {
                     id: "claude-sonnet-4-6".to_owned(),
-                    label: "Claude Sonnet 4.6 (Thinking)".to_owned()
+                    label: "Claude Sonnet 4.6 (Thinking)".to_owned(),
+                    ..Default::default()
                 },
             ]
         );
@@ -270,11 +279,13 @@ mod tests {
             vec![
                 ModelOption {
                     id: "grok-4.5".to_owned(),
-                    label: "grok-4.5 (default)".to_owned()
+                    label: "grok-4.5 (default)".to_owned(),
+                    ..Default::default()
                 },
                 ModelOption {
                     id: "grok-4.1-fast".to_owned(),
-                    label: "grok-4.1-fast".to_owned()
+                    label: "grok-4.1-fast".to_owned(),
+                    ..Default::default()
                 },
             ]
         );

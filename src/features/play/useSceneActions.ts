@@ -3,13 +3,14 @@ import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { SceneLabel, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { t } from "../../i18n";
+import { backendCode } from "../../shared/ui/backend-text";
 
 interface SceneChatActions {
   events: TranscriptEvent[];
   busy: boolean;
   /** 同步版忙碌判斷：append_transcript 還沒完成時 busy（state）仍是 false，這個已是 true */
   isBusy: () => boolean;
-  beginNarration: () => void;
+  beginNarration: () => string;
   endNarration: () => void;
   noteTurnDone: () => void;
 }
@@ -22,17 +23,11 @@ interface SceneActionsOptions {
   tableName: string;
   chat: SceneChatActions;
   canLeaveEditor: () => Promise<boolean>;
-  /** entered＝已提交成目前的桌；writable＝可玩（忙碌、唯讀、待修復都不是） */
-  enterTable: (id: string) => Promise<{ entered: boolean; writable: boolean }>;
+  enterTable: (id: string) => Promise<unknown>;
   /** 進出桌互斥：會重進本桌的入口（分岔、退回）要拿到鎖才動；拿不到就什麼都不做 */
   runTableOp: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   closeMainView: () => void;
   onError: (message: string) => void;
-}
-
-/** 卡片介面上的換幕：換幕會重進本桌（重進一律收起介面），換成而且可以接著玩才把介面打開回來 */
-export async function advanceThenReopen(advance: () => Promise<boolean>, reopen: () => void): Promise<void> {
-  if (await advance()) reopen();
 }
 
 export function useSceneActions({
@@ -57,30 +52,26 @@ export function useSceneActions({
     !chat.busy &&
     !sceneLabels[String(scene)]?.forked;
 
-  // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1。
-  // 回傳 true＝換成、而且重進本桌後可以接著玩（卡片介面上的換幕鈕靠它決定要不要把介面重新打開）；
-  // 重進桌被擋（忙碌）或進的是唯讀／待修復畫面都回 false
-  async function advanceScene(): Promise<boolean> {
-    const done = await runTableOp(async () => {
+  // 換場：把目前場景公開紀錄壓成一則前情提要，寫進新場景開頭，current_scene +1
+  async function advanceScene() {
+    await runTableOp(async () => {
       // 標題列不隨主欄畫面收起，編輯角色卡時這顆鈕照樣按得到
-      if (!(await canLeaveEditor())) return false;
+      if (!(await canLeaveEditor())) return;
       // 確認框等人作答期間對話可能已經開跑，看當下不看舊閉包
-      if (chat.isBusy()) return false;
+      if (chat.isBusy()) return;
       onError("");
-      chat.beginNarration();
+      const turnId = chat.beginNarration();
       try {
-        await invoke<number>("advance_scene", { worldId });
-        const { entered, writable } = await enterTable(worldId);
+        await invoke<number>("advance_scene", { worldId, turnId });
+        await enterTable(worldId);
         chat.noteTurnDone();
-        return entered && writable;
       } catch (reason) {
-        onError(String(reason));
-        return false;
+        // 玩家自己按了停止：紀錄沒動，不必再跳錯誤
+        if (backendCode(reason) !== "scene_summary_stopped") onError(String(reason));
       } finally {
         chat.endNarration();
       }
     });
-    return done === true;
   }
 
   // 從前幕分岔續玩：把那一幕的紀錄複製成新的一幕，原本的歷史原封不動。
@@ -125,13 +116,13 @@ export function useSceneActions({
     await runTableOp(async () => {
       if (!canUndoScene || chat.isBusy()) return;
       onError("");
-      chat.beginNarration();
+      const turnId = chat.beginNarration();
       try {
-        await invoke("regenerate_scene_summary", { worldId });
+        await invoke("regenerate_scene_summary", { worldId, turnId });
         await enterTable(worldId);
         chat.noteTurnDone();
       } catch (reason) {
-        onError(String(reason));
+        if (backendCode(reason) !== "scene_summary_stopped") onError(String(reason));
       } finally {
         chat.endNarration();
       }

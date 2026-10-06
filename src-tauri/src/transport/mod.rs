@@ -52,5 +52,6 @@ pub(crate) use stall::STALLED_CODE;
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{
     chars_lane_system, chars_lane_turn, gm_lane_system, gm_lane_turn, lane_event_line,
-    summary_messages,
+    merge_summary_messages, segment_summary_messages, shorten_summary_messages, summary_lines,
+    summary_messages, LaneTurn, SEGMENT_SUMMARY_CHARS,
 };

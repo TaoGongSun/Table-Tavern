@@ -45,7 +45,7 @@ pub(crate) enum LaneProvider {
 }
 
 impl LaneProvider {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
             Self::Agy => "agy",
@@ -106,6 +106,27 @@ pub(crate) struct TurnInput<'a> {
 /// 線名（key）→ 線狀態。key＝「線種:實際模型」，模型看解析後真正傳給 CLI 的字串，
 /// 不看檔位：高中檔都覆寫成 sonnet 就同一條 chars:sonnet。
 type LaneStore = std::collections::BTreeMap<String, LaneState>;
+
+/// 換幕容量用：這條線上一輪實報的總輸入（claude 回報的是整段 context）。
+/// 線種、模型、CLI、幕都對得上才採用，對不上（換模、換幕、別的 CLI 開的線）一律 None。
+pub(crate) fn last_prompt_tokens(
+    root: &Path,
+    world_id: &str,
+    lane: Lane,
+    provider: LaneProvider,
+    model: &str,
+    scope: Option<&str>,
+    scene: u64,
+) -> Option<u64> {
+    let path = data::lanes_path(root, world_id).ok()?;
+    let store = read_store(&path);
+    let state = store.get(&lane_key(lane, model, scope))?;
+    (state.provider == provider.as_str()
+        && state.model == model
+        && state.scene == scene
+        && state.last_prompt_tokens > 0)
+        .then_some(state.last_prompt_tokens)
+}
 
 /// `scope`：同一線種要再細分時的後綴（agy 的 chars 線帶角色 id）。None＝不細分。
 fn lane_key(lane: Lane, model: &str, scope: Option<&str>) -> String {
@@ -808,6 +829,12 @@ pub(crate) async fn run_turn(
             .map(|patch| format!("{patch}\n\n{}", input.tail))
             .unwrap_or_else(|| input.tail.clone());
         let prompt = build_prompt(input.events, base, &tail, opening, input.lane, input.lang);
+        // 換幕容量的估計校正（計畫 §3.5）：只有重開全量那次「送出的就是整段」，估計與實報才配得上；
+        // agy 量的是 bytes，不需要 token 校正
+        let calibration_estimate = (opening && call.provider != LaneProvider::Agy).then(|| {
+            crate::scene_budget::budget_tokens(&system)
+                + crate::scene_budget::budget_tokens(&prompt)
+        });
         let session = if opening {
             cli::CliSession::Open(&session_id)
         } else {
@@ -879,6 +906,7 @@ pub(crate) async fn run_turn(
 
         let conversation_id = std::sync::Mutex::new(None);
         let agy_usage = std::sync::Mutex::new(None);
+        let identity = std::sync::Mutex::new(None::<String>);
         let result = cli::run_cli_cancellable(
             &call.program,
             &call.working_dir,
@@ -912,6 +940,7 @@ pub(crate) async fn run_turn(
                     .then_some(prior_agy_usage)
                     .flatten(),
                 agy_usage_out: (call.provider == LaneProvider::Agy).then_some(&agy_usage),
+                identity_out: Some(&identity),
             }),
             &mut emit,
             cancel_rx.clone(),
@@ -982,6 +1011,24 @@ pub(crate) async fn run_turn(
                             state.expected_reply = Some(expected_reply_for(&input.echo, &reply));
                             state.last_prompt_tokens =
                                 prompt_tokens.load(std::sync::atomic::Ordering::Relaxed);
+                            // claude 要這次回報辨識得出實際模型才記校正（身分不明就不記）
+                            let confirmed = identity.lock().ok().and_then(|id| id.clone());
+                            let identified =
+                                call.provider != LaneProvider::Claude || confirmed.is_some();
+                            if let (Some(estimate), true) = (calibration_estimate, identified) {
+                                crate::scene_budget::record_calibration(
+                                    root,
+                                    call.provider.as_str(),
+                                    call.model_label(),
+                                    match input.lane {
+                                        Lane::Gm => "gm",
+                                        Lane::Chars => "chars",
+                                    },
+                                    estimate,
+                                    state.last_prompt_tokens,
+                                    confirmed.as_deref(),
+                                );
+                            }
                             if call.provider == LaneProvider::Agy {
                                 state.agy_usage = actual_agy_usage;
                             }
@@ -1154,6 +1201,7 @@ pub(crate) async fn keepalive(
                 expected_conversation_id: None,
                 agy_usage_base: None,
                 agy_usage_out: None,
+                identity_out: None,
             }),
             &mut |_: &str| {},
         )

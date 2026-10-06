@@ -361,6 +361,107 @@ pub fn summary_messages(
     messages
 }
 
+/// 換幕摘要的角色側紀錄行（與 `summary_messages` 同一渲染）；分段摘要按這些行切塊。
+pub fn summary_lines(events: &[TranscriptEvent], lang: &str) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| lane_event_line(event, lang, Side::Character))
+        .collect()
+}
+
+/// 分段摘要的上限字數（中間摘要要求寫在這以內；回來超過就重寫或截斷）。
+pub const SEGMENT_SUMMARY_CHARS: usize = 1500;
+
+/// 分段摘要：這一幕太長，一次送不進模型時，切成幾段各自壓成條列（第 part／parts 段）。
+/// `lines` 第一層是紀錄行，更深的層是上一層的中間摘要。
+pub fn segment_summary_messages(
+    lines: &[String],
+    part: usize,
+    parts: usize,
+    lang: &str,
+) -> Vec<ChatMessage> {
+    let instruction = if scaffold_en(lang) {
+        format!(
+            "You are the GM of a multiplayer tabletop RPG session. This scene is too long to summarize at once, \
+             so it is being recapped in parts; this is part {part} of {parts}. \
+             Compress everything that happens in this part into a bulleted recap of at most {limit} characters, \
+             covering location and time, who is present, key events, relationship changes, and unresolved threads. \
+             No title. Output only the bullets. {language_rule}",
+            limit = SEGMENT_SUMMARY_CHARS,
+            language_rule = language_rule(lang),
+        )
+    } else {
+        format!(
+            "你是這場多人桌上角色扮演的 GM。這一幕太長，一次整理不完，正在分段整理；這是第 {part}／{parts} 段。\
+             請把這一段發生的事壓成 {limit} 字以內的條列，涵蓋地點與時間、在場人物、關鍵事件、關係變化、未解懸念。\
+             不要標題，只輸出條列。{language_rule}",
+            limit = SEGMENT_SUMMARY_CHARS,
+            language_rule = language_rule(lang),
+        )
+    };
+    let mut messages = vec![message("system", instruction)];
+    for line in lines {
+        push_merged(&mut messages, "user", line.clone());
+    }
+    messages
+}
+
+/// 合併：各段中間摘要依序交給模型，產出跟一次換幕相同格式的「標題＋前情提要」。
+pub fn merge_summary_messages(segments: &[String], lang: &str) -> Vec<ChatMessage> {
+    let instruction = if scaffold_en(lang) {
+        format!(
+            "You are the GM of a multiplayer tabletop RPG session that is about to change scenes. \
+             The scene was recapped in parts; the part recaps follow in order. \
+             The first line of your reply must be exactly \"Title: <act name, 10 words or fewer>\", \
+             followed by a blank line before the recap. \
+             Merge the parts into one recap of the whole scene, covering: location and time, who is present and their state, \
+             key events, relationship changes, and unresolved threads — as a compact bulleted list. \
+             Output only the summary body. {language_rule}",
+            language_rule = language_rule(lang),
+        )
+    } else {
+        format!(
+            "你是這場多人桌上角色扮演的 GM，現在要換場。這一幕是分段整理的，以下依序是各段摘要。\
+             回覆第一行固定輸出「標題：〈10 字內的幕名〉」，空一行後才是摘要條列。\
+             請把各段合併成整幕的一則前情提要，條列涵蓋：地點與時間、在場人物與狀態、關鍵事件、關係變化、未解懸念。\
+             {language_rule}",
+            language_rule = language_rule(lang),
+        )
+    };
+    let mut messages = vec![message("system", instruction)];
+    let total = segments.len();
+    for (index, segment) in segments.iter().enumerate() {
+        let header = match scaffold_en(lang) {
+            true => format!("[Part {}/{total}]", index + 1),
+            false => format!("【第 {}／{total} 段】", index + 1),
+        };
+        push_merged(&mut messages, "user", format!("{header}\n{segment}"));
+    }
+    messages
+}
+
+/// 中間摘要寫太長：請模型縮到上限內。
+pub fn shorten_summary_messages(text: &str, lang: &str) -> Vec<ChatMessage> {
+    let instruction = if scaffold_en(lang) {
+        format!(
+            "Shorten the recap below to at most {limit} characters, keeping the key events and unresolved threads. \
+             Output only the shortened bullets. {language_rule}",
+            limit = SEGMENT_SUMMARY_CHARS,
+            language_rule = language_rule(lang),
+        )
+    } else {
+        format!(
+            "把下面這段摘要縮短到 {limit} 字以內，保留關鍵事件與未解懸念，只輸出縮短後的條列。{language_rule}",
+            limit = SEGMENT_SUMMARY_CHARS,
+            language_rule = language_rule(lang),
+        )
+    };
+    vec![
+        message("system", instruction),
+        message("user", text.to_owned()),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]

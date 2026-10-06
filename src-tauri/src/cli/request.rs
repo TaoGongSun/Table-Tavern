@@ -215,11 +215,17 @@ pub fn agy_session_args(model: Option<&str>, conversation_id: Option<&str>) -> V
     args
 }
 
+/// Agy 單則訊息的 stdin 正文：agy 沒有 system 旗標，system 併在正文前。單發、lane 開線與
+/// 換幕容量的 bytes 量測共用這一個函式——agy 截尾看的就是這份的長度。
+pub fn agy_body(system: &str, prompt: &str) -> String {
+    format!("{system}\n\n{prompt}")
+}
+
 /// Agy 對話 lane 的 stdin 正文：開線＝system＋本輪，續聊只送本輪（system 已在對話裡）。
 pub fn agy_session_body(system: &str, prompt: &str, conversation_id: Option<&str>) -> String {
     match conversation_id {
         Some(_) => prompt.to_owned(),
-        None => format!("{system}\n\n{prompt}"),
+        None => agy_body(system, prompt),
     }
 }
 

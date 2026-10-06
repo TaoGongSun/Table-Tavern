@@ -186,6 +186,8 @@ fn write_raw_config(root: &Path, path: &Path, value: &Value) -> DataResult<()> {
             let _ = dir.sync_all();
         }
     }
+    // 設定變了：換幕容量的動作收據作廢（傳輸、模型、檔位都可能換了）
+    crate::data::bump_capacity_epoch();
     Ok(())
 }
 
@@ -328,6 +330,7 @@ mod tests {
             vec![ModelOption {
                 id: "gemini-3.6-flash-high".to_owned(),
                 label: "Gemini 3.6 Flash (High)".to_owned(),
+                ..Default::default()
             }],
         );
         write_model_catalog(root.path(), &catalog).unwrap();

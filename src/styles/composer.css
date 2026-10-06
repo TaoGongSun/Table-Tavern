@@ -52,6 +52,20 @@
   color: var(--ink-3);
 }
 
+/* 換幕容量提醒：比一般提醒醒目一階，換幕鈕跟在字後面；滿了再加強 */
+.composer > .scene-capacity-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  color: var(--ink-2);
+}
+
+.composer > .scene-capacity-hint.is-full {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+
 /* AI 錯誤：輸入框正上方，限高內捲（OpenRouter 429 的原始 JSON 可以很長），不推動送出鈕 */
 .composer > .composer-error {
   flex: 0 1 auto;

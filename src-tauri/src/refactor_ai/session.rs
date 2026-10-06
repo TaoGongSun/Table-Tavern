@@ -85,6 +85,7 @@ async fn run_stage(
             expected_conversation_id: None,
             agy_usage_base: None,
             agy_usage_out: None,
+            identity_out: None,
         }),
         &mut emit,
     )

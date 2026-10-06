@@ -58,6 +58,7 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
             expected_conversation_id: None,
             agy_usage_base: None,
             agy_usage_out: None,
+            identity_out: None,
         }),
         |delta: &str| {
             deltas.push(delta.to_owned());
@@ -778,4 +779,103 @@ mod output_closed_first {
         assert!(reaped(&case), "返回前要收屍");
         std::fs::remove_dir_all(&case.dir).unwrap();
     }
+}
+
+/// 換幕容量：claude result 的 modelUsage 辨識得出請求的模型才回填身分並記容量；
+/// 辨識不了（同家族兩版）就不回填、並把那筆容量整個作廢
+#[cfg(unix)]
+#[tokio::test]
+async fn run_cli_reports_claude_identity_only_when_unambiguous() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let dir = std::env::temp_dir().join(format!("tt-fake-cli-identity-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let log_path = dir.join("prompt-cache.jsonl");
+    let capacity = dir.join("model-capacity.json");
+    let run = |usage: &'static str| {
+        let script = dir.join("fake-claude-identity.sh");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\ncat > /dev/null\necho '{{\"type\":\"stream_event\",\"event\":{{\"type\":\"content_block_delta\",\"delta\":{{\"type\":\"text_delta\",\"text\":\"OK\"}}}}}}'\necho '{{\"type\":\"result\",\"is_error\":false,\"result\":\"OK\",\"usage\":{{\"input_tokens\":5}},\"modelUsage\":{usage}}}'\n"
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script
+    };
+    let identity = std::sync::Mutex::new(None::<String>);
+    let script = run(r#"{"claude-haiku-4-5":{"contextWindow":200000,"maxOutputTokens":32000}}"#);
+    run_cli(
+        &script,
+        &dir,
+        &[],
+        "x",
+        &[],
+        parse_claude_line,
+        false,
+        Some(UsageLog {
+            path: &log_path,
+            world: None,
+            transport: "claude",
+            model: "haiku",
+            parse: parse_claude_usage,
+            lane: None,
+            shape: crate::usage::log::PromptShape::Oneshot,
+            prompt_tokens_out: None,
+            conversation_id_out: None,
+            expected_conversation_id: None,
+            agy_usage_base: None,
+            agy_usage_out: None,
+            identity_out: Some(&identity),
+        }),
+        |_: &str| {},
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        identity.lock().unwrap().as_deref(),
+        Some("claude-haiku-4-5")
+    );
+    assert!(std::fs::read_to_string(&capacity)
+        .unwrap()
+        .contains("200000"));
+
+    let ambiguous = std::sync::Mutex::new(None::<String>);
+    let script = run(
+        r#"{"claude-haiku-4-5":{"contextWindow":200000},"claude-haiku-5":{"contextWindow":400000}}"#,
+    );
+    run_cli(
+        &script,
+        &dir,
+        &[],
+        "x",
+        &[],
+        parse_claude_line,
+        false,
+        Some(UsageLog {
+            path: &log_path,
+            world: None,
+            transport: "claude",
+            model: "haiku",
+            parse: parse_claude_usage,
+            lane: None,
+            shape: crate::usage::log::PromptShape::Oneshot,
+            prompt_tokens_out: None,
+            conversation_id_out: None,
+            expected_conversation_id: None,
+            agy_usage_base: None,
+            agy_usage_out: None,
+            identity_out: Some(&ambiguous),
+        }),
+        |_: &str| {},
+    )
+    .await
+    .unwrap();
+    assert_eq!(*ambiguous.lock().unwrap(), None);
+    assert!(!std::fs::read_to_string(&capacity)
+        .unwrap()
+        .contains("claude|haiku"));
+    std::fs::remove_dir_all(&dir).unwrap();
 }

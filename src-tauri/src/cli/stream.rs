@@ -49,11 +49,14 @@ fn claude_result(value: &serde_json::Value) -> CliLine {
         .and_then(|b| b.as_bool())
         .unwrap_or(false);
     let field = |key: &str| value.get(key).and_then(|v| v.as_str());
-    if field("terminal_reason") == Some("prompt_too_long")
-        && !crate::transport::context_overflow::message_says_too_long(&text)
-    {
+    // 結構化欄位說太長就一律失敗，不看 is_error（缺省或 false 也不能當成功）
+    if field("terminal_reason") == Some("prompt_too_long") {
+        let text = match crate::transport::context_overflow::message_says_too_long(&text) {
+            true => text,
+            false => format!("Prompt is too long: {text}"),
+        };
         return CliLine::Done {
-            text: format!("Prompt is too long: {text}"),
+            text,
             is_error: true,
         };
     }
@@ -406,6 +409,17 @@ mod tests {
             panic!("not done");
         };
         assert!(crate::transport::context_overflow::cli_failure(&text).is_some());
+        // is_error 缺省或 false：結構化欄位說太長仍一律失敗
+        for line in [
+            r#"{"type":"result","terminal_reason":"prompt_too_long","result":"Prompt is too long"}"#,
+            r#"{"type":"result","is_error":false,"terminal_reason":"prompt_too_long","result":"x"}"#,
+        ] {
+            let CliLine::Done { text, is_error } = parse_claude_line(line) else {
+                panic!("not done");
+            };
+            assert!(is_error, "{line}");
+            assert!(crate::transport::context_overflow::cli_failure(&text).is_some());
+        }
         // 成功回覆的正文就算寫了同一句也不是失敗
         assert_eq!(
             parse_claude_line(

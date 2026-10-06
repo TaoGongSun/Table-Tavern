@@ -182,6 +182,8 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   summary_has_new_content: {},
   scene_empty_cannot_advance: {},
   scene_summary_failed: {},
+  scene_capacity_full: {},
+  scene_summary_stopped: {},
   previous_scene_empty: {},
   transcript_empty: {},
   scene_not_found: { scene: "number" },

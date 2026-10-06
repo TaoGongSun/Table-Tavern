@@ -65,6 +65,7 @@ fn event(kind: TranscriptKind, text: &str) -> TranscriptEvent {
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
     }
 }
 

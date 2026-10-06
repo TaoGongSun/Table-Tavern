@@ -39,7 +39,9 @@ fn next_scene_version(state: &WorldState, upto: u64, base: u64) -> u32 {
 /// 顯示編號跟隨來源幕（從分岔幕再分岔＝跟著源頭走，不是跟著內部號走），
 /// parent 記分岔當下所在的幕，退回時回到這裡而不是來源幕。
 pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u64> {
-    with_commit(root, world_id, |tx| fork_scene_tx(tx, from_scene))
+    let forked = with_commit(root, world_id, |tx| fork_scene_tx(tx, from_scene));
+    crate::data::bump_capacity_epoch();
+    forked
 }
 
 /// 發布順序（計畫 8.4）：①新幕逐字稿（事件 id 與表版本重新配發、來源幕有效 epoch 的表改成新幕 epoch）
@@ -115,9 +117,11 @@ pub fn begin_next_scene(
     summary_text: &str,
     title: Option<&str>,
 ) -> DataResult<u64> {
-    with_commit(root, world_id, |tx| {
+    let next = with_commit(root, world_id, |tx| {
         begin_next_scene_tx(tx, summary_text, title)
-    })
+    });
+    crate::data::bump_capacity_epoch();
+    next
 }
 
 /// 發布順序（計畫 8.4）：①控制檔寫新幕種子（舊幕結束時的初始化來源、新 epoch）②新幕開頭的摘要事件
@@ -145,6 +149,7 @@ fn begin_next_scene_tx(
             vars_rev: None,
             vars_epoch: seed.as_ref().map(|vars| vars.epoch.clone()),
             turn_key: None,
+            action_id: None,
             raw: None,
             ts: local_timestamp()?,
             speaker_id: String::new(),
@@ -194,7 +199,9 @@ fn begin_next_scene_tx(
 /// 多於一則代表玩家已經在這一幕行動過，退回會悄悄吃掉那些內容，所以直接擋，
 /// 且擋下時故意先不動任何檔案／狀態（讀完才判斷），錯誤路徑不留副作用。
 pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
-    with_commit(root, world_id, |tx| revert_scene_tx(tx))
+    let reverted = with_commit(root, world_id, |tx| revert_scene_tx(tx));
+    crate::data::bump_capacity_epoch();
+    reverted
 }
 
 /// 退幕（計畫 8.4）：①寫 current_scene 切回父幕（父幕事件、epoch、種子原封不動）②成功後才移除子幕種子；
@@ -236,9 +243,11 @@ pub fn replace_scene_summary(
     summary_text: &str,
     title: Option<&str>,
 ) -> DataResult<()> {
-    with_commit(root, world_id, |_| {
+    let replaced = with_commit(root, world_id, |_| {
         replace_scene_summary_locked(root, world_id, summary_text, title)
-    })
+    });
+    crate::data::bump_capacity_epoch();
+    replaced
 }
 
 fn replace_scene_summary_locked(
@@ -333,6 +342,7 @@ mod tests {
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             raw: None,
             ts: "2026-07-19T00:00:00Z".to_owned(),
             speaker_id: String::new(),
@@ -373,6 +383,7 @@ mod tests {
             vars_rev: None,
             vars_epoch: None,
             turn_key: None,
+            action_id: None,
             raw: None,
             ts: "2026-07-24T00:00:00Z".to_owned(),
             speaker_id: String::new(),
@@ -426,6 +437,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -473,6 +485,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -499,6 +512,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:01:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -554,6 +568,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),
@@ -610,6 +625,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
@@ -664,6 +680,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
@@ -708,6 +725,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: "船長代碼".to_owned(),
@@ -786,6 +804,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:01:00Z".to_owned(),
                 speaker_id: "船長代碼".to_owned(),
@@ -860,6 +879,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 raw: None,
                 ts: "2026-08-06T00:00:00Z".to_owned(),
                 speaker_id: String::new(),

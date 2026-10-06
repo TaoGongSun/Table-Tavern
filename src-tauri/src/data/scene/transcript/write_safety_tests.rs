@@ -15,6 +15,7 @@ fn event(kind: TranscriptKind, ts: &str, text: &str) -> TranscriptEvent {
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
         raw: None,
         ts: ts.to_owned(),
         speaker_id: String::new(),

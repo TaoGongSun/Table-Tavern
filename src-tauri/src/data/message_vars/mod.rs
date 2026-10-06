@@ -30,7 +30,8 @@ pub use write::{
     edit_tree_if_events, finish_turn, has_unlanded_reply, mark_turn_appended, opening_stat,
     opening_table, prepare_turn_append, publish_scene_seed, refuse_during_turn, scene_epoch,
     scene_seed_for_fork, scene_seed_for_next, settle_before_append, settle_previous_turn,
-    turn_owns, CardWrite, CardWriteTarget, GmCommit, TurnAppend, TurnSide, TurnTicket,
+    turn_owns, unlanded_events, CardWrite, CardWriteTarget, GmCommit, TurnAppend, TurnSide,
+    TurnTicket,
 };
 
 #[cfg(test)]

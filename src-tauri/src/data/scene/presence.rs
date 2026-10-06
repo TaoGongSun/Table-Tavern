@@ -99,6 +99,7 @@ mod tests {
                 vars_rev: None,
                 vars_epoch: None,
                 turn_key: None,
+                action_id: None,
                 ts: "now".to_owned(),
                 speaker_id: String::new(),
                 speaker_name: "GM".to_owned(),

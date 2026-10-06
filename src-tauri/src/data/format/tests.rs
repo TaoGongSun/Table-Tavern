@@ -128,6 +128,7 @@ fn event(text: &str) -> TranscriptEvent {
         vars_rev: None,
         vars_epoch: None,
         turn_key: None,
+        action_id: None,
         raw: None,
         ts: "2026-07-20T00:00:00+08:00".to_owned(),
         speaker_id: String::new(),

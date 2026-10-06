@@ -12,10 +12,16 @@ pub struct CliInfo {
 /// 設定 UI 下拉用的模型選項。清單讀自各 CLI 自身（codex：~/.codex/models_cache.json；
 /// claude：執行檔內建的模型註冊表），非本程式寫死的正典；
 /// 實際用哪個模型仍由 config 的覆寫決定。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ModelOption {
     pub id: String,
     pub label: String,
+    /// 總 context（OpenRouter 目錄的 context_length 與 top_provider 取小）；CLI 目錄沒有
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_tokens: Option<u64>,
+    /// 供應商的輸出上限（OpenRouter top_provider.max_completion_tokens）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u64>,
 }
 
 /// Agy 在 `--conversation` 續聊時回傳的是整段 conversation 的累積計數。
@@ -72,4 +78,7 @@ pub struct UsageLog<'a> {
     pub agy_usage_base: Option<AgyUsageCounters>,
     /// 回填這輪 result 的累積 usage，供 lane 保存給下輪做差。
     pub agy_usage_out: Option<&'a std::sync::Mutex<Option<AgyUsageCounters>>>,
+    /// claude：這一次回報裡辨識得出的實際模型 id（辨識不了就保持 None）。
+    /// 換幕容量的估計校正只在身分確認時才記，避免把新倍率掛到舊模型上。
+    pub identity_out: Option<&'a std::sync::Mutex<Option<String>>>,
 }

@@ -11,6 +11,7 @@ import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text
 import gmBook from "../../assets/gm-book.png";
 import { IconSend, IconStop } from "../../shared/ui/icons";
 import { useStickToBottom } from "../story-scroll/useStickToBottom";
+import { capacityHint, wouldOverflow, type SceneBudgetReply } from "./scene-budget";
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
 // 快取上線後換幕不再省額度（摘要與換幕後首輪都全額計價，約等於連跑四輪），
@@ -101,6 +102,11 @@ interface PlayViewProps {
   onGmAdvance: () => void;
   /** AI 錯誤訊息：跟換幕提醒同一處，限高內捲 */
   errorNote?: ReactNode;
+  /** 換幕容量（後端 scene_budget）；null＝還沒量到或拿不到上限 */
+  sceneBudget?: SceneBudgetReply | null;
+  /** 容量提醒列上的換幕鈕：與工具列同一動作、同停用條件 */
+  onAdvanceScene?: () => void;
+  canAdvanceScene?: boolean;
 }
 
 export function PlayView({
@@ -140,6 +146,9 @@ export function PlayView({
   onGmNarrate,
   onGmAdvance,
   errorNote,
+  sceneBudget = null,
+  onAdvanceScene,
+  canAdvanceScene = false,
 }: PlayViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -169,7 +178,13 @@ export function PlayView({
   const sceneTooLong = !locked && sceneChars > SCENE_LENGTH_HINT_CHARS;
   // 離開太久＋紀錄夠長才提醒換幕：兩者缺一，換幕都是白花一次摘要錢
   const showAwayHint = !locked && awayTooLong && sceneChars > SCENE_AWAY_HINT_MIN_CHARS;
-  const frozen = busy || locked;
+  // 換幕容量（範圍 3）：鎖只看換幕呼叫——再送這一句（或無玩家句的動作）會讓換幕一次送不出去。
+  // 這裡只是即時提示，送出時以後端關卡為準
+  const fullForActions = !locked && wouldOverflow(sceneBudget?.summary, "");
+  const fullForSend = !locked && wouldOverflow(sceneBudget?.summary, input);
+  const capacityFull = fullForActions || fullForSend;
+  const capacityKind = locked ? null : capacityHint(sceneBudget);
+  const frozen = busy || locked || fullForActions;
 
   // 非持久系統提示行：at 之後逐字稿被收回變短時，超出的一併排在最後
   const noticesAt = (index: number, tail = false) =>
@@ -311,7 +326,7 @@ export function PlayView({
       <form
         className="composer"
         onSubmit={(event) => {
-          if (locked) {
+          if (locked || fullForSend) {
             event.preventDefault();
             return;
           }
@@ -348,8 +363,28 @@ export function PlayView({
             </button>
           </div>
         )}
-        {/* 兩個換幕提醒只顯示一個：離開太久（快取已清）比紀錄長更急，優先出 */}
-        {showAwayHint ? (
+        {/* 換幕提醒只顯示一個：鎖＞容量提醒＞離開太久（快取已清）＞紀錄長。容量兩種帶換幕鈕 */}
+        {capacityFull || capacityKind ? (
+          <p className={`scene-length-hint scene-capacity-hint${capacityFull ? " is-full" : ""}`}>
+            {t(
+              capacityFull
+                ? "sceneCapacityFull"
+                : capacityKind === "summary"
+                  ? "sceneCapacitySummaryHint"
+                  : "sceneCapacityChatHint",
+            )}
+            {onAdvanceScene && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={onAdvanceScene}
+                disabled={!canAdvanceScene}
+              >
+                {t(capacityFull ? "sceneAdvance" : "sceneAdvanceNow")}
+              </button>
+            )}
+          </p>
+        ) : showAwayHint ? (
           <p className="scene-length-hint">{t("sceneAwayHint")}</p>
         ) : sceneTooLong ? (
           <p className="scene-length-hint">{t("sceneTooLongHint")}</p>
@@ -377,7 +412,7 @@ export function PlayView({
               type="button"
               className="btn"
               onClick={() => onRequestReply()}
-              disabled={locked || !speaker || busy}
+              disabled={locked || !speaker || busy || fullForActions}
               title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
               aria-label={`${t("requestReplyShort")} — ${requestReplyLabel}`}
             >
@@ -420,7 +455,7 @@ export function PlayView({
             <button
               type="submit"
               className="btn btn-primary composer-primary"
-              disabled={locked || (!speaker && castEmpty) || busy}
+              disabled={locked || (!speaker && castEmpty) || busy || fullForSend}
             >
               <span className="swap-label">
                 <span>
