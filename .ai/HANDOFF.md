@@ -13,7 +13,6 @@
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖來源不列 claude、生圖模型下拉、免費 key 專屬錯誤、生圖統一存 PNG：已進 main，剩真模型與 CLI 真生圖（實測佇列梯 2 第 21）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM
-- [grok-cache-miss](handoffs/grok-cache-miss.md) — grok 走續聊：GM 線已驗，角色線（一角一線）等實機連玩三輪
 - [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：五包已進 main、範例桌詢問已過；剩重構三窗、實聊名牌與打字指示（自 ui-overhaul 併入）、格式轉換更新等觸發條件型對話窗、Windows 等未實機驗項目
 - [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1–5 完成、GUI 煙霧測試過；剩兩個真 release 的端對端驗收
 - [state-values-mvu](handoffs/state-values-mvu.md) — 狀態欄二期：八包完成、三處面板 2026-10-02 實機過，剩真桌實跑（併在 ai-card-refactor 之後）

@@ -34,7 +34,7 @@ grok 聊天與 GM 走 lane 續聊，沿用 claude 那套 `lanes.rs`（水位＋�
 
 - cargo 530 綠（新增 `grok_session_args` 旗標、`lane_key` 細分、漂移分流、換 CLI 重開、grok 機密段防呆五項測試）
 - headless 實跑：續聊第 3、4 輪 cached 92–95%，對照組固定 128
-- 待使用者實機：grok 通道連玩三輪，`prompt-cache.jsonl` 的 cached_tokens 隨對話增長
+- 實機（GM 線 2026-08-22、角色線 2026-10-06）：暖起來後命中 82–95%、prompt 只長增量；換角色、改卡、換幕都只重開一次。偶發整條線不命中歸 xAI 分流，交給 usage-cache-audit〔作者裁決 2026-10-06〕
 
 ## 查證中順手發現，另案處理
 
