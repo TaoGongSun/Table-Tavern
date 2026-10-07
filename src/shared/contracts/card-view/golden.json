@@ -1,0 +1,1292 @@
+{
+  "ccv3-itxt.png": {
+    "alternate_greetings": [],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [],
+        "form": "none",
+        "name": null,
+        "source": "none"
+      }
+    },
+    "extensions": {},
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": null,
+      "first_mes": "你好，{{user}}。",
+      "mes_example": null,
+      "name": "只寫 ccv3 的卡",
+      "personality": null,
+      "post_history_instructions": null,
+      "scenario": null,
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "你好，{{user}}。"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 0,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "只寫 ccv3 的卡",
+      "suggested": "character"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": "chara_card_v3",
+      "spec_version": "3.0",
+      "wrapped": true
+    },
+    "source": "png:ccv3",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": "card_nothing_to_import"
+    }
+  },
+  "ccv3-ztxt.png": {
+    "alternate_greetings": [],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [],
+        "form": "none",
+        "name": null,
+        "source": "none"
+      }
+    },
+    "extensions": {},
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": null,
+      "first_mes": "你好，{{user}}。",
+      "mes_example": null,
+      "name": "只寫 ccv3 的卡",
+      "personality": null,
+      "post_history_instructions": null,
+      "scenario": null,
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "你好，{{user}}。"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 0,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "只寫 ccv3 的卡",
+      "suggested": "character"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": "chara_card_v3",
+      "spec_version": "3.0",
+      "wrapped": true
+    },
+    "source": "png:ccv3",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": "card_nothing_to_import"
+    }
+  },
+  "composite.json": {
+    "alternate_greetings": [
+      "深夜，{{char}} 擦著最後一個杯子。",
+      "   ",
+      "清晨的爐火剛升起。"
+    ],
+    "books": {
+      "character": {
+        "entries": [
+          {
+            "comment": "旅店",
+            "constant": false,
+            "content": "灰燼旅店在王都南門外，地窖藏著走私酒。",
+            "enabled": true,
+            "key": "0",
+            "keys": [
+              "旅店",
+              "灰燼"
+            ],
+            "order": 10,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "[initvar]變數初始化勿開",
+            "constant": false,
+            "content": "錢包: 30\n名字: \"{{user}}\"",
+            "enabled": false,
+            "key": "1",
+            "keys": [],
+            "order": 100,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 1
+          },
+          {
+            "comment": "莫拉的過去",
+            "constant": false,
+            "content": "莫拉年輕時當過傭兵。",
+            "enabled": true,
+            "key": "2",
+            "keys": [
+              "莫拉"
+            ],
+            "order": 5,
+            "position": null,
+            "secondary_keys": [
+              "過去",
+              "從前"
+            ],
+            "uid": 2
+          },
+          {
+            "comment": "世界觀",
+            "constant": true,
+            "content": "這是一個魔法逐漸消失的世界。",
+            "enabled": true,
+            "key": "3",
+            "keys": [],
+            "order": 1,
+            "position": "after_char",
+            "secondary_keys": [],
+            "uid": 3
+          }
+        ],
+        "form": "array",
+        "name": "灰燼旅店設定"
+      },
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "旅店",
+            "constant": false,
+            "content": "灰燼旅店在王都南門外，地窖藏著走私酒。",
+            "enabled": true,
+            "key": "0",
+            "keys": [
+              "旅店",
+              "灰燼"
+            ],
+            "order": 10,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "[initvar]變數初始化勿開",
+            "constant": false,
+            "content": "錢包: 30\n名字: \"{{user}}\"",
+            "enabled": false,
+            "key": "1",
+            "keys": [],
+            "order": 100,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 1
+          },
+          {
+            "comment": "莫拉的過去",
+            "constant": false,
+            "content": "莫拉年輕時當過傭兵。",
+            "enabled": true,
+            "key": "2",
+            "keys": [
+              "莫拉"
+            ],
+            "order": 5,
+            "position": null,
+            "secondary_keys": [
+              "過去",
+              "從前"
+            ],
+            "uid": 2
+          },
+          {
+            "comment": "世界觀",
+            "constant": true,
+            "content": "這是一個魔法逐漸消失的世界。",
+            "enabled": true,
+            "key": "3",
+            "keys": [],
+            "order": 1,
+            "position": "after_char",
+            "secondary_keys": [],
+            "uid": 3
+          }
+        ],
+        "form": "array",
+        "name": "灰燼旅店設定",
+        "source": "character_book"
+      }
+    },
+    "extensions": {
+      "custom_extension": {
+        "kept": true
+      },
+      "depth_prompt": {
+        "depth": 2,
+        "prompt": "記得 {{char}} 說話總帶一句「親愛的」。",
+        "role": "system"
+      },
+      "regex_scripts": [
+        {
+          "disabled": false,
+          "findRegex": "<StatusPlaceHolderImpl/>",
+          "markdownOnly": true,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            2
+          ],
+          "promptOnly": false,
+          "replaceString": "```html\n<!DOCTYPE html>\n<html><body><p>{{user}} 的錢包：<span id=\"money\"></span></p></body></html>\n```",
+          "runOnEdit": true,
+          "scriptName": "狀態欄介面",
+          "substituteRegex": 0,
+          "trimStrings": []
+        },
+        {
+          "disabled": false,
+          "findRegex": "/<StatusPlaceHolderImpl\\/>/g",
+          "markdownOnly": false,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            2
+          ],
+          "promptOnly": true,
+          "replaceString": "",
+          "runOnEdit": false,
+          "scriptName": "送模前拿掉狀態欄",
+          "substituteRegex": 0,
+          "trimStrings": []
+        },
+        {
+          "disabled": false,
+          "findRegex": "/\\*(.+?)\\*/g",
+          "markdownOnly": false,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            1
+          ],
+          "promptOnly": false,
+          "replaceString": "（$1）",
+          "runOnEdit": true,
+          "scriptName": "玩家句的動作標記",
+          "substituteRegex": 0,
+          "trimStrings": []
+        },
+        {
+          "disabled": true,
+          "findRegex": "/旅店/g",
+          "markdownOnly": false,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            1,
+            2
+          ],
+          "promptOnly": false,
+          "replaceString": "客棧",
+          "runOnEdit": true,
+          "scriptName": "停用的腳本",
+          "substituteRegex": 0,
+          "trimStrings": []
+        }
+      ],
+      "tavern_helper": {
+        "scripts": [
+          {
+            "button": {
+              "buttons": [],
+              "enabled": false
+            },
+            "content": "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';",
+            "data": {},
+            "enabled": true,
+            "id": "card-view-mvu",
+            "info": "",
+            "name": "MVU",
+            "type": "script"
+          }
+        ],
+        "variables": {}
+      }
+    },
+    "fields": {
+      "character_version": "1.0",
+      "creator": "Table Tavern",
+      "creator_notes": "Table Tavern 卡片契約黃金檔用的自製複合卡。",
+      "description": "{{char}} 是灰燼旅店的老闆娘，認得每一位常客；{{user}} 是今晚第一位客人。",
+      "first_mes": "「歡迎光臨，{{user}}。」{{char}} 放下帳本。\n<StatusPlaceHolderImpl/>",
+      "mes_example": "<START>\n{{user}}: 還有房間嗎？\n{{char}}: 「當然有，二樓最裡面那間。」\n<START>\n{{user}}: 多少錢？\n{{char}}: 「看你付得起多少。」",
+      "name": "灰燼旅店的莫拉",
+      "personality": "精明、愛笑，嘴上不饒人。",
+      "post_history_instructions": "回覆最後一行固定寫 <StatusPlaceHolderImpl/>。",
+      "scenario": "雨夜，{{user}} 推開灰燼旅店的門。",
+      "system_prompt": "{{original}} 一律用繁體中文。"
+    },
+    "interface": {
+      "mvu": true,
+      "scripts": [
+        {
+          "find_regex": "<StatusPlaceHolderImpl/>",
+          "max_depth": null,
+          "min_depth": null,
+          "name": "狀態欄介面",
+          "replace_string": "```html\n<!DOCTYPE html>\n<html><body><p>{{user}} 的錢包：<span id=\"money\"></span></p></body></html>\n```",
+          "trim_strings": []
+        }
+      ],
+      "unsupported": null
+    },
+    "openings": [
+      "「歡迎光臨，{{user}}。」{{char}} 放下帳本。\n<StatusPlaceHolderImpl/>",
+      "深夜，{{char}} 擦著最後一個杯子。",
+      "清晨的爐火剛升起。"
+    ],
+    "route": {
+      "alternate_greetings": 3,
+      "book_entries": 4,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "灰燼旅店的莫拉",
+      "suggested": "worldbook"
+    },
+    "shell": {
+      "extra_keys": [
+        "creation_note"
+      ],
+      "spec": "chara_card_v3",
+      "spec_version": "3.0",
+      "wrapped": true
+    },
+    "source": "json",
+    "tags": [
+      "測試",
+      "複合卡"
+    ],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "composite.png": {
+    "alternate_greetings": [
+      "深夜，{{char}} 擦著最後一個杯子。",
+      "   ",
+      "清晨的爐火剛升起。"
+    ],
+    "books": {
+      "character": {
+        "entries": [
+          {
+            "comment": "旅店",
+            "constant": false,
+            "content": "灰燼旅店在王都南門外，地窖藏著走私酒。",
+            "enabled": true,
+            "key": "0",
+            "keys": [
+              "旅店",
+              "灰燼"
+            ],
+            "order": 10,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "[initvar]變數初始化勿開",
+            "constant": false,
+            "content": "錢包: 30\n名字: \"{{user}}\"",
+            "enabled": false,
+            "key": "1",
+            "keys": [],
+            "order": 100,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 1
+          },
+          {
+            "comment": "莫拉的過去",
+            "constant": false,
+            "content": "莫拉年輕時當過傭兵。",
+            "enabled": true,
+            "key": "2",
+            "keys": [
+              "莫拉"
+            ],
+            "order": 5,
+            "position": null,
+            "secondary_keys": [
+              "過去",
+              "從前"
+            ],
+            "uid": 2
+          },
+          {
+            "comment": "世界觀",
+            "constant": true,
+            "content": "這是一個魔法逐漸消失的世界。",
+            "enabled": true,
+            "key": "3",
+            "keys": [],
+            "order": 1,
+            "position": "after_char",
+            "secondary_keys": [],
+            "uid": 3
+          }
+        ],
+        "form": "array",
+        "name": "灰燼旅店設定"
+      },
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "旅店",
+            "constant": false,
+            "content": "灰燼旅店在王都南門外，地窖藏著走私酒。",
+            "enabled": true,
+            "key": "0",
+            "keys": [
+              "旅店",
+              "灰燼"
+            ],
+            "order": 10,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "[initvar]變數初始化勿開",
+            "constant": false,
+            "content": "錢包: 30\n名字: \"{{user}}\"",
+            "enabled": false,
+            "key": "1",
+            "keys": [],
+            "order": 100,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 1
+          },
+          {
+            "comment": "莫拉的過去",
+            "constant": false,
+            "content": "莫拉年輕時當過傭兵。",
+            "enabled": true,
+            "key": "2",
+            "keys": [
+              "莫拉"
+            ],
+            "order": 5,
+            "position": null,
+            "secondary_keys": [
+              "過去",
+              "從前"
+            ],
+            "uid": 2
+          },
+          {
+            "comment": "世界觀",
+            "constant": true,
+            "content": "這是一個魔法逐漸消失的世界。",
+            "enabled": true,
+            "key": "3",
+            "keys": [],
+            "order": 1,
+            "position": "after_char",
+            "secondary_keys": [],
+            "uid": 3
+          }
+        ],
+        "form": "array",
+        "name": "灰燼旅店設定",
+        "source": "character_book"
+      }
+    },
+    "extensions": {
+      "custom_extension": {
+        "kept": true
+      },
+      "depth_prompt": {
+        "depth": 2,
+        "prompt": "記得 {{char}} 說話總帶一句「親愛的」。",
+        "role": "system"
+      },
+      "regex_scripts": [
+        {
+          "disabled": false,
+          "findRegex": "<StatusPlaceHolderImpl/>",
+          "markdownOnly": true,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            2
+          ],
+          "promptOnly": false,
+          "replaceString": "```html\n<!DOCTYPE html>\n<html><body><p>{{user}} 的錢包：<span id=\"money\"></span></p></body></html>\n```",
+          "runOnEdit": true,
+          "scriptName": "狀態欄介面",
+          "substituteRegex": 0,
+          "trimStrings": []
+        },
+        {
+          "disabled": false,
+          "findRegex": "/<StatusPlaceHolderImpl\\/>/g",
+          "markdownOnly": false,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            2
+          ],
+          "promptOnly": true,
+          "replaceString": "",
+          "runOnEdit": false,
+          "scriptName": "送模前拿掉狀態欄",
+          "substituteRegex": 0,
+          "trimStrings": []
+        },
+        {
+          "disabled": false,
+          "findRegex": "/\\*(.+?)\\*/g",
+          "markdownOnly": false,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            1
+          ],
+          "promptOnly": false,
+          "replaceString": "（$1）",
+          "runOnEdit": true,
+          "scriptName": "玩家句的動作標記",
+          "substituteRegex": 0,
+          "trimStrings": []
+        },
+        {
+          "disabled": true,
+          "findRegex": "/旅店/g",
+          "markdownOnly": false,
+          "maxDepth": null,
+          "minDepth": null,
+          "placement": [
+            1,
+            2
+          ],
+          "promptOnly": false,
+          "replaceString": "客棧",
+          "runOnEdit": true,
+          "scriptName": "停用的腳本",
+          "substituteRegex": 0,
+          "trimStrings": []
+        }
+      ],
+      "tavern_helper": {
+        "scripts": [
+          {
+            "button": {
+              "buttons": [],
+              "enabled": false
+            },
+            "content": "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';",
+            "data": {},
+            "enabled": true,
+            "id": "card-view-mvu",
+            "info": "",
+            "name": "MVU",
+            "type": "script"
+          }
+        ],
+        "variables": {}
+      }
+    },
+    "fields": {
+      "character_version": "1.0",
+      "creator": "Table Tavern",
+      "creator_notes": "Table Tavern 卡片契約黃金檔用的自製複合卡。",
+      "description": "{{char}} 是灰燼旅店的老闆娘，認得每一位常客；{{user}} 是今晚第一位客人。",
+      "first_mes": "「歡迎光臨，{{user}}。」{{char}} 放下帳本。\n<StatusPlaceHolderImpl/>",
+      "mes_example": "<START>\n{{user}}: 還有房間嗎？\n{{char}}: 「當然有，二樓最裡面那間。」\n<START>\n{{user}}: 多少錢？\n{{char}}: 「看你付得起多少。」",
+      "name": "灰燼旅店的莫拉",
+      "personality": "精明、愛笑，嘴上不饒人。",
+      "post_history_instructions": "回覆最後一行固定寫 <StatusPlaceHolderImpl/>。",
+      "scenario": "雨夜，{{user}} 推開灰燼旅店的門。",
+      "system_prompt": "{{original}} 一律用繁體中文。"
+    },
+    "interface": {
+      "mvu": true,
+      "scripts": [
+        {
+          "find_regex": "<StatusPlaceHolderImpl/>",
+          "max_depth": null,
+          "min_depth": null,
+          "name": "狀態欄介面",
+          "replace_string": "```html\n<!DOCTYPE html>\n<html><body><p>{{user}} 的錢包：<span id=\"money\"></span></p></body></html>\n```",
+          "trim_strings": []
+        }
+      ],
+      "unsupported": null
+    },
+    "openings": [
+      "「歡迎光臨，{{user}}。」{{char}} 放下帳本。\n<StatusPlaceHolderImpl/>",
+      "深夜，{{char}} 擦著最後一個杯子。",
+      "清晨的爐火剛升起。"
+    ],
+    "route": {
+      "alternate_greetings": 3,
+      "book_entries": 4,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "灰燼旅店的莫拉",
+      "suggested": "worldbook"
+    },
+    "shell": {
+      "extra_keys": [
+        "creation_note"
+      ],
+      "spec": "chara_card_v3",
+      "spec_version": "3.0",
+      "wrapped": true
+    },
+    "source": "png:chara",
+    "tags": [
+      "測試",
+      "複合卡"
+    ],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "extra-keys.json": {
+    "alternate_greetings": [],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "外殼鍵排序",
+            "constant": true,
+            "content": "檢視的 extra_keys 一律依字元序。",
+            "enabled": true,
+            "key": "0",
+            "keys": [],
+            "order": 0,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          }
+        ],
+        "form": "array",
+        "name": "外殼鍵排序",
+        "source": "persona"
+      }
+    },
+    "extensions": null,
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": "檢視的 extra_keys 一律依字元序。",
+      "first_mes": "你好。",
+      "mes_example": null,
+      "name": "外殼鍵排序",
+      "personality": null,
+      "post_history_instructions": null,
+      "scenario": null,
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "你好。"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 0,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "外殼鍵排序",
+      "suggested": "character"
+    },
+    "shell": {
+      "extra_keys": [
+        "Beta",
+        "alpha",
+        "zeta",
+        "中文鍵"
+      ],
+      "spec": "chara_card_v3",
+      "spec_version": "3.0",
+      "wrapped": true
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "itxt-only.png": {
+    "error": "card_png_no_data"
+  },
+  "multiline-name.json": {
+    "alternate_greetings": [],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "阿\n布",
+            "constant": true,
+            "content": "名字裡有換行：桌面版角色卡路拒收，兩端都要判無效。",
+            "enabled": true,
+            "key": "0",
+            "keys": [],
+            "order": 0,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          }
+        ],
+        "form": "array",
+        "name": "阿\n布",
+        "source": "persona"
+      }
+    },
+    "extensions": null,
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": "名字裡有換行：桌面版角色卡路拒收，兩端都要判無效。",
+      "first_mes": "你好。",
+      "mes_example": null,
+      "name": "阿\n布",
+      "personality": null,
+      "post_history_instructions": null,
+      "scenario": null,
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "你好。"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 0,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "阿\n布",
+      "suggested": "character"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": "chara_card_v2",
+      "spec_version": "2.0",
+      "wrapped": true
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": "name_not_single_line",
+      "worldbook": null
+    }
+  },
+  "non-object-entries.json": {
+    "alternate_greetings": [],
+    "books": {
+      "character": {
+        "entries": [
+          {
+            "comment": "",
+            "constant": false,
+            "content": "有效條目",
+            "enabled": true,
+            "key": "1",
+            "keys": [
+              "甲"
+            ],
+            "order": 5,
+            "position": null,
+            "secondary_keys": [],
+            "uid": 1
+          }
+        ],
+        "form": "object",
+        "name": "混雜的書"
+      },
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "",
+            "constant": false,
+            "content": "有效條目",
+            "enabled": true,
+            "key": "1",
+            "keys": [
+              "甲"
+            ],
+            "order": 5,
+            "position": null,
+            "secondary_keys": [],
+            "uid": 1
+          }
+        ],
+        "form": "object",
+        "name": "混雜的書",
+        "source": "character_book"
+      }
+    },
+    "extensions": null,
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": "character_book 的條目值有字串與 null：不算條目、略過。",
+      "first_mes": "你好。",
+      "mes_example": null,
+      "name": "壞條目值",
+      "personality": null,
+      "post_history_instructions": null,
+      "scenario": null,
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "你好。"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 1,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "壞條目值",
+      "suggested": "character"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": "chara_card_v2",
+      "spec_version": "2.0",
+      "wrapped": true
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "object-entries.json": {
+    "alternate_greetings": [],
+    "books": {
+      "character": {
+        "entries": [
+          {
+            "comment": "北境常駐",
+            "constant": true,
+            "content": "北境終年積雪，夏天只有短短一個月，居民靠狩獵與往來商隊維生，對陌生人既好奇又防備。",
+            "enabled": true,
+            "key": "0",
+            "keys": [],
+            "order": 1,
+            "position": 0,
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "王府",
+            "constant": false,
+            "content": "鎮北王府坐落在驛站以北三十里，王府世子每月初一會親自來驛站收取軍報，順便打聽南方的消息。",
+            "enabled": false,
+            "key": "2",
+            "keys": [
+              "王府"
+            ],
+            "order": 50,
+            "position": 1,
+            "secondary_keys": [
+              "世子"
+            ],
+            "uid": 2
+          },
+          {
+            "comment": "驛站",
+            "constant": false,
+            "content": "驛站有三層樓，地下室堆滿過冬的柴火與鹹肉，二樓住著南來北往的商隊，三樓是驛丞的房間，窗戶正對著通往王府的官道。",
+            "enabled": true,
+            "key": "10",
+            "keys": [
+              "驛站",
+              "木門"
+            ],
+            "order": 100,
+            "position": 0,
+            "secondary_keys": [],
+            "uid": 10
+          }
+        ],
+        "form": "object",
+        "name": "北境設定集"
+      },
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "北境常駐",
+            "constant": true,
+            "content": "北境終年積雪，夏天只有短短一個月，居民靠狩獵與往來商隊維生，對陌生人既好奇又防備。",
+            "enabled": true,
+            "key": "0",
+            "keys": [],
+            "order": 1,
+            "position": 0,
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "王府",
+            "constant": false,
+            "content": "鎮北王府坐落在驛站以北三十里，王府世子每月初一會親自來驛站收取軍報，順便打聽南方的消息。",
+            "enabled": false,
+            "key": "2",
+            "keys": [
+              "王府"
+            ],
+            "order": 50,
+            "position": 1,
+            "secondary_keys": [
+              "世子"
+            ],
+            "uid": 2
+          },
+          {
+            "comment": "驛站",
+            "constant": false,
+            "content": "驛站有三層樓，地下室堆滿過冬的柴火與鹹肉，二樓住著南來北往的商隊，三樓是驛丞的房間，窗戶正對著通往王府的官道。",
+            "enabled": true,
+            "key": "10",
+            "keys": [
+              "驛站",
+              "木門"
+            ],
+            "order": 100,
+            "position": 0,
+            "secondary_keys": [],
+            "uid": 10
+          }
+        ],
+        "form": "object",
+        "name": "北境設定集",
+        "source": "character_book"
+      }
+    },
+    "extensions": {},
+    "fields": {
+      "character_version": "",
+      "creator": "",
+      "creator_notes": "",
+      "description": "北境邊界的一座驛站。",
+      "first_mes": "風雪拍打著驛站的木門。",
+      "mes_example": "",
+      "name": "北境驛站",
+      "personality": "",
+      "post_history_instructions": "",
+      "scenario": "",
+      "system_prompt": ""
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "風雪拍打著驛站的木門。"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 3,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": true,
+      "name": "北境驛站",
+      "suggested": "worldbook"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": "chara_card_v2",
+      "spec_version": "2.0",
+      "wrapped": true
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "persona-book.json": {
+    "alternate_greetings": [
+      "公車站的雨棚下。",
+      "海灘上的夕陽。"
+    ],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "毛毛大陸情境集",
+            "constant": true,
+            "content": "{{char}} 不是一個人，而是一連串情境：公車站、海灘、廚房。\n\n毛毛大陸",
+            "enabled": true,
+            "key": "0",
+            "keys": [],
+            "order": 0,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          }
+        ],
+        "form": "array",
+        "name": "毛毛大陸情境集",
+        "source": "persona"
+      }
+    },
+    "extensions": {},
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": "{{char}} 不是一個人，而是一連串情境：公車站、海灘、廚房。",
+      "first_mes": "選一個情境開始吧。",
+      "mes_example": "",
+      "name": "毛毛大陸情境集",
+      "personality": "",
+      "post_history_instructions": null,
+      "scenario": "毛毛大陸",
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "選一個情境開始吧。",
+      "公車站的雨棚下。",
+      "海灘上的夕陽。"
+    ],
+    "route": {
+      "alternate_greetings": 2,
+      "book_entries": 0,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "毛毛大陸情境集",
+      "suggested": "worldbook"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": "chara_card_v2",
+      "spec_version": "2.0",
+      "wrapped": true
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "standalone-book.json": {
+    "alternate_greetings": [],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "雪原",
+            "constant": false,
+            "content": "雪原上常有狼群出沒。",
+            "enabled": true,
+            "key": "0",
+            "keys": [
+              "雪原"
+            ],
+            "order": 20,
+            "position": null,
+            "secondary_keys": [],
+            "uid": 0
+          },
+          {
+            "comment": "漁村",
+            "constant": false,
+            "content": "北境的漁村靠冰釣維生。",
+            "enabled": true,
+            "key": "1",
+            "keys": [
+              "漁村"
+            ],
+            "order": 10,
+            "position": null,
+            "secondary_keys": [],
+            "uid": 1
+          }
+        ],
+        "form": "object",
+        "name": "北境地名集",
+        "source": "top_level"
+      }
+    },
+    "extensions": null,
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": null,
+      "first_mes": null,
+      "mes_example": null,
+      "name": "北境地名集",
+      "personality": null,
+      "post_history_instructions": null,
+      "scenario": null,
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 0,
+      "book_shaped": true,
+      "decision": "worldbook",
+      "lorebook_heavy": false,
+      "name": "北境地名集",
+      "suggested": "worldbook"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": null,
+      "spec_version": null,
+      "wrapped": false
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "v1-flat.json": {
+    "alternate_greetings": [],
+    "books": {
+      "character": null,
+      "worldbook": {
+        "entries": [
+          {
+            "comment": "老鐵匠",
+            "constant": true,
+            "content": "村口的老鐵匠，手臂上有燒傷。\n\n寡言，固執。\n\n{{user}} 拿著一把斷劍上門。\n\n{{user}}: 能修嗎？\n{{char}}: 「放著。」",
+            "enabled": true,
+            "key": "0",
+            "keys": [],
+            "order": 0,
+            "position": "before_char",
+            "secondary_keys": [],
+            "uid": 0
+          }
+        ],
+        "form": "array",
+        "name": "老鐵匠",
+        "source": "persona"
+      }
+    },
+    "extensions": null,
+    "fields": {
+      "character_version": null,
+      "creator": null,
+      "creator_notes": null,
+      "description": "村口的老鐵匠，手臂上有燒傷。",
+      "first_mes": "鐵鎚停了下來。「又是斷劍？」",
+      "mes_example": "{{user}}: 能修嗎？\n{{char}}: 「放著。」",
+      "name": "老鐵匠",
+      "personality": "寡言，固執。",
+      "post_history_instructions": null,
+      "scenario": "{{user}} 拿著一把斷劍上門。",
+      "system_prompt": null
+    },
+    "interface": {
+      "mvu": false,
+      "scripts": [],
+      "unsupported": null
+    },
+    "openings": [
+      "鐵鎚停了下來。「又是斷劍？」"
+    ],
+    "route": {
+      "alternate_greetings": 0,
+      "book_entries": 0,
+      "book_shaped": false,
+      "decision": "ask",
+      "lorebook_heavy": false,
+      "name": "老鐵匠",
+      "suggested": "character"
+    },
+    "shell": {
+      "extra_keys": [],
+      "spec": null,
+      "spec_version": null,
+      "wrapped": false
+    },
+    "source": "json",
+    "tags": [],
+    "validity": {
+      "character": null,
+      "worldbook": null
+    }
+  },
+  "ztxt-only.png": {
+    "error": "card_png_no_data"
+  }
+}

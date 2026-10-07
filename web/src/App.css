@@ -272,6 +272,107 @@ button:disabled {
   color: var(--muted);
 }
 
+.card-tile + .card-tile {
+  margin-top: 16px;
+}
+
+.user-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.user-name input,
+.message-edit textarea {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.user-name input {
+  flex: 1 1 200px;
+}
+
+.import-actions,
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.import-actions {
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.import-notes {
+  color: var(--muted);
+  font-size: 14px;
+  max-height: 160px;
+  overflow: auto;
+  margin-bottom: 16px;
+}
+
+.import-openings,
+.import-regex {
+  margin: 0 0 16px;
+  padding: 16px 20px;
+}
+
+.import-openings legend,
+.import-regex legend {
+  font-weight: 600;
+  padding: 0 6px;
+}
+
+.opening-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.opening-chosen {
+  background: var(--surface-2);
+}
+
+.import-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+}
+
+.message-actions {
+  margin-top: 8px;
+}
+
+.message-actions button {
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.message-user .message-actions .ghost {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.message-edit textarea {
+  width: 100%;
+  margin-top: 8px;
+  resize: vertical;
+  font: inherit;
+}
+
 .chat {
   width: 100%;
   max-width: 760px;
@@ -341,6 +442,16 @@ button:disabled {
 
 .message-body > :last-child {
   margin-bottom: 0;
+}
+
+.image-blocked {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.message-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message-flag,

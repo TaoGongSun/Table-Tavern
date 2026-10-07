@@ -12,6 +12,7 @@
     "e2e": "node e2e/run.mjs"
   },
   "dependencies": {
+    "moment": "2.30.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

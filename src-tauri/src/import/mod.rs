@@ -13,10 +13,13 @@ mod source;
 #[cfg(test)]
 mod card_image_tests;
 #[cfg(test)]
+mod card_view_tests;
+#[cfg(test)]
 mod mvu_replace_tests;
 #[cfg(test)]
 mod test_support;
 
+pub(crate) use card::book_entry_values;
 pub use card::{
     card_openings, check_character_bytes, import_character, import_character_reporting,
     probe_import, worldbook_json, ImportProbe, ImportedCharacter,

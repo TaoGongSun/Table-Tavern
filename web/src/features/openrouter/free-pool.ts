@@ -78,6 +78,11 @@ export class FreePool {
     return stableCandidates(this.catalog?.value ?? [], this.roleplay?.value ?? [], this.weekly?.value ?? [], required, now);
   }
 
+  /** 這支模型的上下文上限（token）；清單裡沒有回 0。 */
+  contextLength(modelId: string): number {
+    return this.catalog?.value.find((model) => model.id === modelId)?.contextLength ?? 0;
+  }
+
   /** 這一句的選模素材；沒有可用免費模型時丟出 NO_FREE_MODEL。 */
   plan(contents: string[], now: number): CallPlan {
     const catalog = this.catalog?.value ?? [];

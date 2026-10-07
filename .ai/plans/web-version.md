@@ -7,7 +7,7 @@
 ### 1.1 已裁決（照抄）
 - 網頁版是免費引流入口、玩完引導下載桌面版；桌面版是主力。〔作者裁決 2026-10-07〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用，見「二之二、格式契約」。〔作者裁決 2026-10-07〕本計畫把「通用」落成：卡片兩端可用、網頁桌檔可匯入桌面；不做桌面桌檔回網頁（D15）。
-- 導流與待議各項（D1–D18）的拍板見第五節。〔作者裁決 2026-10-07〕
+- 導流與待議各項（D1–D23）的拍板見第五節。〔作者裁決 2026-10-07〕
 - 與桌面版分開做、只保留基礎功能、不常更新。〔作者裁決 2026-09-30〕
 - 功能架構與頁面美感全新設計；只沿用使用者看不到的底層功能。〔作者裁決 2026-09-30〕
 - 重構按鈕、快取命中／用量頁不進網頁版。〔作者裁決 2026-09-30〕
@@ -51,6 +51,7 @@
 ### 2.4 安全
 - **PKCE**：`code_challenge_method=S256`；每次授權產一次性隨機 `state`，與 verifier 存同一分頁（sessionStorage），回呼驗過即消耗。回呼頁順序寫死：回呼參數（含錯誤、取消）讀進記憶體→立刻 `history.replaceState` 清網址→驗 state→交換一次；清理前不載任何第三方資源；全站 `<meta name="referrer" content="no-referrer">`。理由：授權碼與 state 不能經 Referer、歷史紀錄或重跑外洩。
 - **卡片 iframe 橋接**：照桌面版 `sandbox="allow-scripts"`（不給 `allow-same-origin`），iframe 是不透明來源，讀不到主頁儲存。宿主收 postMessage 一律先核 `event.source === 目前 iframe 的 contentWindow`，再核文件 token、桌世代、資料形狀，不符就丟。驗收含舊 iframe 殘留訊息與外部視窗偽造訊息。理由：不透明來源的 `event.origin` 是 `"null"`，只能靠來源視窗與 token 認人。
+- **宿主頁不外連**：宿主頁只連 openrouter.ai、api.github.com；卡片文字、顯示 regex 結果與模型輸出裡的外部圖片在渲染時換成替代文字、不留網址（`web/src/shared/ui/host-markdown.ts`，只載 data: 與同源），CSP `img-src 'self' data:` 是第二層。理由：顯示 regex 能把 `{{lastUserMessage}}` 塞進圖片網址，一載圖就外送對話。卡片 iframe（包 6）內的外連另有提示（下一條）。
 - **卡片腳本外連**：卡片腳本可以對外 fetch，等於能把它讀得到的對話內容送出去；金鑰拿不到，但對話內容會外流。寫進風險欄，並在第一次打開卡片介面時提示玩家。
 - **CSP 分兩份**：宿主頁不載第三方 JS（只連 openrouter.ai、api.github.com）；卡片另用較寬的政策（卡片常載外部字型與圖片）。srcdoc 文件會繼承宿主 CSP，額外政策只能收緊不能放寬（CSP3〈Initialize a Document's CSP list〉的繼承規則），blob:／data:／about:blank 同樣繼承，所以「宿主嚴、卡片寬」不能靠 srcDoc 做。做法：卡片 iframe 載入 `web/` 內一份獨立靜態沙盒文件（例如 `sandbox.html`），它自帶寬鬆 CSP（meta 或 `_headers`），iframe 仍掛 `sandbox="allow-scripts"`、不給 `allow-same-origin`（維持不透明來源）；卡片內容與沙盒內建庫由宿主 postMessage 送進去，沙盒文件再寫入自己的文件。宿主若用站點級 CSP 標頭，規則必須排除 `sandbox.html` 這個路徑：被站點標頭罩住時，它自己的 meta 只能再收緊，寬政策不會生效；卡片那份寬政策由 `sandbox.html` 自己的回應標頭帶。託管定為 Cloudflare Pages（D1），用 `_headers` 按路徑設：宿主 CSP 標頭排除 `sandbox.html`，卡片寬政策由 `sandbox.html` 那條路徑的標頭單獨帶。
 - **顯示安全**：卡片 metadata（名稱、描述、作者註記）與模型輸出在宿主頁一律走安全渲染（DOMPurify，`src/shared/ui/story-markdown.ts:73`），不直接塞 HTML。
@@ -72,7 +73,7 @@
 ### 桌檔契約（網頁存檔）
 - 小而穩、帶版號：頂層 `format`＋`version`（整數）；讀到不認得的版號就拒收並說明，不猜。
 - 內容四類：
-  1. **卡的指認**：完整原卡 JSON 外殼原封不動（含 `spec_version` 與未知欄位）＋可選原 PNG；兩者不一致時以 JSON 為權威。另存實際採用的匯入身分（`probe_import` 的分路結果），匯入端照存的身分走、不重新推測——避免兩邊推測規則日後分歧時同一份存檔換了路。
+  1. **卡的指認**：完整原卡 JSON 外殼原封不動（含 `spec_version` 與未知欄位）＋可選原 PNG；兩者不一致時以 JSON 為權威。另存實際採用的匯入身分（`probe_import` 的分路結果），匯入端照存的身分走、不重新推測——避免兩邊推測規則日後分歧時同一份存檔換了路。另存玩家是否允許卡內 regex 腳本（D21）；桌面版怎麼對應由包 3 定。
   2. **逐字稿**：每則 `id`／`role`／`text`／`raw`／`ts`／`opening`，欄名語意取 `TranscriptEvent` 子集（`src-tauri/src/data/scene/transcript.rs:22-75`）。
   3. **世界書觸發狀態**：照 ST 欄位名存旁檔，語意固定如下——
      - 條目識別：每條目一個穩定 ID（網頁版匯入卡時配發，存進存檔）；桌面版匯入重配 UID 時，旁檔附「穩定 ID→桌面 UID」映射表，兩邊都留。
@@ -105,7 +106,7 @@
 
 ## 三、分包
 
-順序：1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9。3（桌面版匯入器）排在 4（網頁存檔）之前：先用契約與手寫 fixture 把桌面版那頭做穩，4 再接真實網頁存檔做來回測試。包 3 先驗四類落地＋基本續聊，5、6 各自補自己那類的桌面來回測試，完整封板在 5、6 之後。
+順序：1 → 2 → 3 → 4 → 4b → 5 → 6 → 7 → 8 → 9。3（桌面版匯入器）排在 4（網頁存檔）之前：先用契約與手寫 fixture 把桌面版那頭做穩，4 再接真實網頁存檔做來回測試。包 3 先驗四類落地＋基本續聊，5、6 各自補自己那類的桌面來回測試，完整封板在 5、6 之後。
 
 | 包 | 交付（可獨立驗收） | 建議 | 相依 | 風險 |
 |---|---|---|---|---|
@@ -113,7 +114,8 @@
 | 2 匯入卡 | 照卡片契約解析與分路（含世界書卡）、選開場白（first_mes＋alternate_greetings）、玩家名、重新生成／編輯／刪除最後一則、錯誤說明。提示組裝照 ST：system_prompt→description→personality→scenario→範例對話（`mes_example` 依 `<START>` 切段）→歷史（含 depth_prompt）→post_history_instructions；完整巨集引擎；送模前 regex（placement 含 1）與顯示 regex 分流。釘一個 ST 對照版本。卡片正規化檢視的 Rust／TS 兩邊測試與黃金檔在這包落地，並修桌面版 `import/card.rs:474` 的 `has_entries`，讓物件形 entries 兩邊同一規則。 | Opus | 1 | 完整巨集引擎與 regex 分流桌面版沒有，全新寫。 |
 | 3 桌檔契約＋桌面版匯入器 | 寫定桌檔契約 v1；桌面版新增「匯入網頁存檔」（併進既有匯入、依檔案內容自動辨識，D13）：照卡片契約建桌建角（世界書路同步）、照二之二「落地規則」寫逐字稿、MVU、觸發狀態旁欄。驗收（測試通道＋假模型）：短 fixture 匯入→送一句、AI 回覆；長 fixture 匯入→下一句回容量滿→玩家按換幕（既有 `advance_scene`）→下一句送得出去，斷言換幕前後 MVU 完整表、桌內層（chat／character／script）完整延續、跨桌層（global／preset／extension）照 D18（未寫入的部分以存檔裡仍在為準）、卡片 storage 都沒丟、開場面板＝開場完整表、新幕面板＝舊幕最後一張對得上 epoch 的表，且 fixture 的換幕摘要本身不被容量擋；MVU 分開驗開場初始化、空表、尚無表；D16 的驗收直接比對下一輪送出的 messages，確認 constant 與命中 keyword 的條目真的進提示，不只檢查落檔；觸發狀態旁檔：驗完整保存，消費等 worldbook-st-trigger-parity；匯入失敗不留半桌；具名反例「第一個跨桌層鍵寫入成功、後續步驟失敗」→新桌不存在、跨桌層回到匯入前的值、匯入期間另一筆合法跨桌寫入保留。 | Opus | 2 | ①MVU 控制檔、`vars_rev`、`vars_epoch` 現有寫入路徑不支援整段帶入，要新寫入口。②世界書可見性：`data/worldbook.rs:718` 沒有 `table_tavern.visibility` 的條目預設給 GM，角色線（`transport/turns.rs:160`）濾掉；沿用 `import_character` 的話角色看不到自己卡的世界書（D16）。這可能也是桌面版一般匯入卡的既有缺口，要告知作者。③觸發狀態桌面版只存不用（另案）。 |
 | 4 網頁存檔 | IndexedDB 多份存檔、persist 請求、Safari 提示、照契約匯出／匯入網頁存檔、匯出時附「用桌面版繼續」導流；另加「匯出成 ST 聊天檔」（有損，只帶對話與卡，D3）。驗收來回測試：網頁存檔→桌面匯入→同一桌能接著玩（測試通道）。 | Opus | 2、3 | |
-| 5 世界書觸發 | 卡內 `character_book` 照 ST World Info：主鍵／正則鍵、次要鍵四種邏輯、掃描深度、大小寫與全字、constant、機率、遞迴、插入位置與順序、預算、sticky／cooldown／delay、inclusion group（欄位多在 `extensions`）；觸發狀態照契約進存檔，補桌面來回測試。 | Opus | 2、4 | |
+| 4b 上下文預算 | 照 ST 補 token 預算裁切（D23〔作者裁決 2026-10-07〕）：依實際派送模型的上下文上限扣掉保留輸出量當預算，估 token（照 ST 對該 API 的估算方式）；捨棄順序照 ST 預設（不釘範例，openai.js:1337）：固定段落（main、卡欄位、post_history_instructions）先佔，歷史由新到舊填到預算為止，剩下的才給範例對話——所以先掉範例、再掉最舊訊息；固定段落本身就超過上限時不送，給玩家提示（ST 的「Mandatory prompts exceed the context size」）。換模第二發照第二發模型的上限重算。驗收：表格測試對同一組逐字稿在不同上限下斷言送出的 messages。 | Opus | 2、4 | 估算與 ST 的實際 tokenizer 有落差；邊界附近可能仍被平台拒收。 |
+| 5 世界書觸發 | 卡內 `character_book` 照 ST World Info：主鍵／正則鍵、次要鍵四種邏輯、掃描深度、大小寫與全字、constant、機率、遞迴、插入位置與順序、預算（沿用 4b 的 token 估算）、sticky／cooldown／delay、inclusion group（欄位多在 `extensions`）；觸發狀態照契約進存檔，補桌面來回測試。 | Opus | 2、4、4b | |
 | 6 卡片介面 | regex 顯示腳本→整頁介面→沙盒 iframe（橋接照 2.4）；讀訊息墊片、MVU 讀寫墊片、parseMessage Worker、卡片 localStorage 墊片；宿主端變數語意改寫成 TS（4.1 的 message_vars 系列），照契約進存檔，補 MVU 卡的桌面來回測試。DRM／雲端載入器卡照桌面版回報不支援。 | Opus | 2、4 | 宿主端變數語意改寫成 TS 的工作量可能被低估；卡片腳本外連會外送對話內容（2.4）。 |
 | 7 導流全套 | 下載頁（版本、各平台檔、Mac／Windows 未簽章繞過說明、功能對照表）、各時機的下載提示（D10）、額度用完文案只導向下載（D11）、找卡清單資料檔（五站連結＋一行 18 禁標示，D6）。 | Sonnet | 1、4 | |
 | 8 十語系 | 十語系字典與字典體檢（比照 `check-i18n` 寫 web 版）、範例卡各語系（D5）、SEO／分享卡片的 meta。 | Sonnet | 1–7 | |
@@ -174,7 +176,7 @@
 | MVU 變數語意 | `src-tauri/src/data/message_vars/`：`mode.rs`（模式交接）、`source.rs:58`／`:77`（初始化來源與有效表）、`turn.rs`（桌世代與回合紀錄）、`write.rs:569`／`:580`（開場表）、`convert.rs`；`data/card_vars.rs`（六層） |
 | 匯出 | `src-tauri/src/data/scene/export.rs:180`、`:230`——都是給人讀的 Markdown，不能拿來回匯 |
 
-**桌面版沒有、要照 ST 新寫**（包 2、5 釘一個 ST 對照版本）
+**桌面版沒有、要照 ST 新寫**（包 2、5 釘一個 ST 對照版本）——對照版本：SillyTavern `06bde939`（2026-09-14，與 card-mvu-shim 同一版）；巨集照該版預設的新巨集引擎（`experimental_macro_engine: true`）。
 - `mes_example` 依 `<START>` 切段。
 - `system_prompt`／`post_history_instructions`／`depth_prompt`（卡片欄位覆蓋與插入深度）。
 - regex 分流：送模前（placement 含 1＝使用者輸入等）與顯示用分開套。
@@ -250,6 +252,15 @@
 - **D16 匯入網頁存檔的世界書可見性**：匯入網頁存檔專用例外，條目設為該角色可見（相容規則見二之二落地規則）。理由：與玩家在網頁版的體驗一致。
 - **D17 桌面版 WI 補齊**：等 worldbook-st-trigger-parity 做完再上線，列公開前門檻。理由：兩邊觸發行為一致才算續玩。
 - **D18 跨桌 MVU 層衝突**：只補缺，既有鍵值不覆蓋（補進原本缺少的共享鍵仍可能改變其他桌讀到的值）。理由：不改掉玩家其他桌既有的值。
+
+### 包 2 拍板（D19–D23）
+全部〔作者裁決 2026-10-07〕。
+- **D19 網頁版不收的檔**：獨立世界書檔、沒名字或名字有換行的卡給說明不收，請玩家改用桌面版。理由：網頁存檔一定要帶得回桌面版。
+- **D20 卡檔大小上限**：30 MB，先看檔案大小、不讀內容。理由：擋掉誤選的大檔、不吃光記憶體。
+- **D21 卡內 regex 腳本**：照 ST 匯入時問一次——匯入預覽有「允許使用」開關，預設照 ST 不允許（regex/index.js 未同意前不套）；不允許就整組不套（送模前、顯示、玩家輸入、編輯都不套），結果存在 `PlayCard.regexAllowed`，網頁存檔要帶。理由：玩家知情，惡意卡的 regex 不會不經同意就跑。
+- **D22 重新生成**：沒拿到新回覆（取消或失敗）就放回原回覆，開場白不能重新生成。理由：不丟資料。
+- **D23 上下文預算**：照 ST 補 token 預算裁切，獨立成包 4b（排包 4 後、包 5 前，不擋包 3）。理由：預算與世界書觸發各自可獨立驗收，包 5 的 WI 預算直接沿用 4b 的估算器，不讓包 5 過大。
+- （`{{pick}}` 已移植 seedrandom，與 ST 位元相同。）
 
 ## 六、驗收方式（候選，未安裝）
 

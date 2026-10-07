@@ -1,5 +1,6 @@
 // 網頁版端對端（npm run e2e）：本機假端點＋正式建置（端點換成假端點）＋WebKit。
-// 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→額度用完導流→下載連結→登出。
+// 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→匯入卡（錯誤說明、選開場白、玩家名、
+// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載連結→登出。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import { webkit } from "playwright";
 import { E2E_KEY, startFake } from "./fake-endpoints.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const CARDS = fileURLToPath(new URL("../../src/shared/contracts/card-view/", import.meta.url));
 const RELEASES_PAGE = "https://github.com/TaoGongSun/Table-Tavern/releases";
 
 const fake = await startFake();
@@ -73,6 +75,59 @@ try {
   await page.getByText("回應中斷").waitFor();
   assert.equal(await page.getByTestId("message-user").count(), 2);
   assert.equal(await page.getByPlaceholder("輸入你的行動或對話…").inputValue(), "");
+
+  step("匯入卡：只有 iTXt 的 PNG 說明讀不到卡資料");
+  await page.getByRole("button", { name: "← 換一張卡" }).click();
+  await page.getByLabel("你在故事裡的名字").fill("旅人");
+  await page.getByTestId("card-file").setInputFiles(`${CARDS}itxt-only.png`);
+  await page.getByTestId("import-error").getByText("這張 PNG 圖裡沒有角色卡資料").waitFor();
+
+  step("匯入複合卡 PNG：列出三個開場白，選第二個、帶入玩家名");
+  await page.getByTestId("card-file").setInputFiles(`${CARDS}composite.png`);
+  await page.getByRole("heading", { name: "灰燼旅店的莫拉" }).waitFor();
+  assert.equal(await page.locator('input[name="opening"]').count(), 3, "三個開場白");
+  await page.getByText("深夜，灰燼旅店的莫拉 擦著最後一個杯子。").click();
+  // D21：卡內 regex 腳本照 ST 預設不允許，玩家勾了才套
+  const allowRegex = page.getByTestId("import-regex-allow");
+  assert.equal(await allowRegex.isChecked(), false, "regex 腳本預設不允許");
+  await allowRegex.check();
+  await page.getByRole("button", { name: "開始這張卡" }).click();
+  await page.getByTestId("message-char").getByText("深夜，灰燼旅店的莫拉 擦著最後一個杯子。").waitFor();
+
+  step("ST 提示組裝：main→description→personality→scenario→範例→歷史（depth_prompt）→post_history_instructions");
+  fake.state.chat = "numbered";
+  const sendFrom = fake.state.chatRequests.length;
+  await page.getByPlaceholder("輸入你的行動或對話…").fill("*揮手* 晚安");
+  await page.getByRole("button", { name: "送出" }).click();
+  await page.getByText(`第 ${sendFrom + 1} 次回覆`).waitFor();
+  const sent = fake.state.chatRequests.at(-1).messages;
+  assert.equal(sent[0].content, "Write 灰燼旅店的莫拉's next reply in a fictional chat between 灰燼旅店的莫拉 and 旅人. 一律用繁體中文。");
+  assert.deepEqual(sent[5], { role: "system", name: "example_user", content: "還有房間嗎？" });
+  assert.deepEqual(sent.slice(-5), [
+    { role: "system", content: "[Start a new Chat]" },
+    { role: "system", content: "記得 灰燼旅店的莫拉 說話總帶一句「親愛的」。" },
+    { role: "assistant", content: "深夜，灰燼旅店的莫拉 擦著最後一個杯子。" },
+    { role: "user", content: "（揮手） 晚安" },
+    { role: "system", content: "回覆最後一行固定寫 <StatusPlaceHolderImpl/>。" },
+  ]);
+  await page.getByTestId("message-user").getByText("（揮手） 晚安").waitFor();
+
+  step("重新生成：換掉最後一則回覆");
+  const regenerateFrom = fake.state.chatRequests.length;
+  await page.getByRole("button", { name: "重新生成" }).click();
+  await page.getByText(`第 ${regenerateFrom + 1} 次回覆`).waitFor();
+  assert.equal(await page.getByText(`第 ${regenerateFrom} 次回覆`).count(), 0, "舊回覆應被換掉");
+  assert.equal(fake.state.chatRequests.at(-1).messages.at(-2).content, "（揮手） 晚安", "重新生成不帶舊回覆");
+
+  step("編輯最後一則（巨集代換）、刪除最後一則");
+  await page.getByTestId("last-actions").getByRole("button", { name: "編輯" }).click();
+  await page.locator(".message-edit textarea").fill("改過的回覆，{{user}}。");
+  await page.getByRole("button", { name: "儲存" }).click();
+  await page.getByText("改過的回覆，旅人。").waitFor();
+  await page.getByTestId("last-actions").getByRole("button", { name: "刪除" }).click();
+  assert.equal(await page.getByText("改過的回覆，旅人。").count(), 0);
+  assert.equal(await page.getByTestId("message-char").count(), 1, "只剩開場白");
+  fake.state.chat = "normal";
 
   step("今日免費用完：送出前查 /key，跳導流面板、原文留在輸入框");
   fake.state.remaining = 0;

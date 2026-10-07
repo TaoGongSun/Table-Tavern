@@ -1,0 +1,9 @@
+{
+  "spec": "chara_card_v2",
+  "spec_version": "2.0",
+  "data": {
+    "name": "阿\n布",
+    "description": "名字裡有換行：桌面版角色卡路拒收，兩端都要判無效。",
+    "first_mes": "你好。"
+  }
+}

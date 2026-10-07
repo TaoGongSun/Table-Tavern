@@ -1,0 +1,13 @@
+{
+  "zeta": "外殼未知欄位故意不照字元序排",
+  "spec": "chara_card_v3",
+  "中文鍵": 1,
+  "alpha": true,
+  "spec_version": "3.0",
+  "Beta": null,
+  "data": {
+    "name": "外殼鍵排序",
+    "description": "檢視的 extra_keys 一律依字元序。",
+    "first_mes": "你好。"
+  }
+}

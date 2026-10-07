@@ -803,15 +803,20 @@ pub fn import_worldbook(
     let source = imported
         .get("entries")
         .ok_or_else(|| invalid_data("imported worldbook is missing entries"))?;
-    let (source_entries, character_book): (Vec<serde_json::Value>, bool) = match source {
-        serde_json::Value::Object(entries) => (entries.values().cloned().collect(), false),
-        serde_json::Value::Array(entries) => (entries.clone(), true),
+    let character_book = match source {
+        serde_json::Value::Object(_) => false,
+        serde_json::Value::Array(_) => true,
         _ => {
             return Err(invalid_data(
                 "imported worldbook entries must be an object or array",
             ));
         }
     };
+    // 條目照卡片契約展開：物件形照 uid 鍵的數字順序（新 UID 依此配發）、非物件的值略過不算條目
+    let source_entries: Vec<serde_json::Value> = crate::import::book_entry_values(source)
+        .into_iter()
+        .cloned()
+        .collect();
 
     let mut worldbook = read_worldbook_value(root, world_id)?;
     let entries = entries_object_mut(&mut worldbook)?;
