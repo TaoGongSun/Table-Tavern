@@ -374,8 +374,49 @@ fn parse_world_info(raw: Box<RawValue>, messages: &[Message]) -> DataResult<Worl
             return Err(invalid("world_info.last_message_id"));
         }
     }
-    let _ = (parsed.timed, parsed.message_effects);
+    check_timed(&parsed.timed, &seen)?;
+    let _ = parsed.message_effects;
     Ok(WorldInfo { raw, entries })
+}
+
+/// `timed`：只有 sticky／cooldown 兩張表，鍵是 entries 裡的穩定 ID，值是 `{start, end, protected}`
+/// （start／end 為 0–2^53−1 的整數）。
+fn check_timed(timed: &serde_json::Map<String, Value>, ids: &HashSet<String>) -> DataResult<()> {
+    const MAX_SAFE: u64 = (1 << 53) - 1;
+    let count = |value: Option<&Value>| {
+        value.is_some_and(|value| match value.as_u64() {
+            Some(n) => n <= MAX_SAFE,
+            None => value
+                .as_f64()
+                .is_some_and(|f| f.fract() == 0.0 && f >= 0.0 && f <= MAX_SAFE as f64),
+        })
+    };
+    for (kind, table) in timed {
+        let Some(table) = table
+            .as_object()
+            .filter(|_| kind == "sticky" || kind == "cooldown")
+        else {
+            return Err(invalid("world_info.timed"));
+        };
+        for (id, effect) in table {
+            if !ids.contains(id) {
+                return Err(invalid(format!(
+                    "world_info.timed.{kind} 的條目不在 entries"
+                )));
+            }
+            let ok = effect.as_object().is_some_and(|e| {
+                e.keys()
+                    .all(|key| matches!(key.as_str(), "start" | "end" | "protected"))
+                    && count(e.get("start"))
+                    && count(e.get("end"))
+                    && e.get("protected").is_some_and(Value::is_boolean)
+            });
+            if !ok {
+                return Err(invalid(format!("world_info.timed.{kind}")));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_mvu(raw: RawMvu) -> DataResult<Mvu> {

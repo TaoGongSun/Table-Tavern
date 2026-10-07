@@ -57,7 +57,7 @@ const WEB_TOKENIZERS = ["claude", "llama3", "qwen2", "command-r", "command-a", "
 const SENTENCEPIECE = ["llama", "mistral", "yi", "gemma", "jamba"];
 
 /** ST 伺服器 /openai/count 對一則訊息（陣列只有它）的計數。 */
-function serverCount(model: string, message: CountedMessage, text: TextTokens): number {
+function serverCount(model: string, message: Partial<CountedMessage>, text: TextTokens): number {
   const values = Object.entries(message).filter(([, value]) => value !== undefined);
   // web tokenizer 與 sentencepiece：所有欄位值以空一行接起來整段算
   if (WEB_TOKENIZERS.includes(model) || SENTENCEPIECE.includes(model)) {
@@ -89,4 +89,17 @@ export function messageTokenCounter(
     const tokens = serverCount(model, counted, text);
     return model === "claude" ? tokens : tokens - 2;
   };
+}
+
+/**
+ * 一段文字的計數（世界書預算用）：Chat Completion 下 ST getTokenCountAsync 走 counterWrapperOpenAIAsync，
+ * 把文字包成只有 `{content}` 的一則、full＝true（不扣 2）；空字串是 0。
+ */
+export function textTokenCounter(
+  modelId: string,
+  architectureTokenizer: string | null,
+  text: TextTokens = guesstimate,
+): (content: string) => number {
+  const model = tokenizerModel(modelId, architectureTokenizer);
+  return (content) => (content ? serverCount(model, { content }, text) : 0);
 }

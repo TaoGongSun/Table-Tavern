@@ -11,14 +11,29 @@ import type { ChatLine } from "../sillytavern/macro-engine";
 import { getRegexedString, REGEX_PLACEMENT } from "../sillytavern/regex-scripts";
 import { substituteParams, type MacroContext } from "../sillytavern/substitute";
 import type { ChatVariables } from "../sillytavern/variables";
+import type { WiEntry } from "../sillytavern/world-info-book";
+import type { WiTimed } from "../sillytavern/world-info-scan";
 import type { ChatEntry } from "./chat-turn";
 
-/** 一場對話固定的東西：卡、玩家名、變數、對話識別。 */
+/** 世界書觸發狀態（存檔 world_info 的 timed／last_message_id）。 */
+export interface WorldInfoState {
+  timed: WiTimed;
+  /** 計時算到的最後一則訊息 id；null＝還沒掃過 */
+  lastMessageId: string | null;
+  /**
+   * 上一次掃出的 outlet（名稱 → 內容）。ST 的 outlet 留在 extension_prompts 直到下一次掃完才換，所以掃描前的
+   * 卡欄位與關鍵字代換讀到的是上一輪的值；不進 chat_metadata，所以也不進存檔，重新整理後從空開始。
+   */
+  outlets: Record<string, string>;
+}
+
+/** 一場對話固定的東西：卡、玩家名、變數、對話識別、世界書（這張卡的條目與現在的觸發狀態）。 */
 export interface ChatSetup {
   card: PlayCard;
   userName: string;
   variables: ChatVariables;
   chatId: string;
+  worldInfo?: { entries: WiEntry[]; state: WorldInfoState };
 }
 
 export const chatLines = (entries: ChatEntry[]): ChatLine[] =>
@@ -31,6 +46,8 @@ export function macroContext(setup: ChatSetup, entries: ChatEntry[], extra: Part
     chat: chatLines(entries),
     variables: setup.variables,
     chatId: setup.chatId,
+    // ST 的 outlet 留在 extension_prompts，任何代換都讀得到上一次掃出的值；extra 可蓋（換模那發用回合開頭的快照）
+    outlets: setup.worldInfo?.state.outlets,
     ...extra,
   };
 }

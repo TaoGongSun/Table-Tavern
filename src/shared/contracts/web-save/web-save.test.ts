@@ -9,7 +9,8 @@ const parse = (value: unknown) => parseWebSave(JSON.stringify(value));
 
 describe("web save contract v1", () => {
   it("accepts the contract fixtures", () => {
-    for (const name of ["short.json", "worldbook-route.json", "worldbook-route-mvu.json", "minimal.json", "web-export.json"]) {
+    // timed-number-forms.json：計時的數字照數值判斷（2.0、5e0、-0、2^53−1 都收，與桌面版一致）
+    for (const name of ["short.json", "worldbook-route.json", "worldbook-route-mvu.json", "minimal.json", "web-export.json", "web-export-world-info.json", "timed-number-forms.json"]) {
       const result = parseWebSave(read(name));
       expect(result.ok, name).toBe(true);
     }

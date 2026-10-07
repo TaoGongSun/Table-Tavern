@@ -1,5 +1,5 @@
 // ST 內建巨集（釘版本 06bde939：macros/definitions/{env,chat,core,time,state,variable}-macros.js）。
-// 名單涵蓋 src/shared/contracts/st-macros.json；網頁版沒有的東西（群組、instruct、世界書 outlet、擴充）
+// 名單涵蓋 src/shared/contracts/st-macros.json；網頁版沒有的東西（群組、instruct、擴充）
 // 照 ST 在單人 Chat Completion 下的值回（空字串或 false）。
 import { ELSE_MARKER, isFalseBoolean, MacroEngine, MacroRegistry, trimScopedContent, type MacroCall, type MacroDef } from "./macro-engine";
 import { parseDocument } from "./macro-parser";
@@ -214,7 +214,11 @@ const DEFINITIONS: MacroDef[] = [
     },
   },
   { name: "banned", args: [str()], handler: () => "" },
-  { name: "outlet", args: [str()], handler: () => "" },
+  {
+    name: "outlet",
+    args: [str()],
+    handler: (c) => (c.unnamedArgs[0] && Object.prototype.hasOwnProperty.call(c.env.outlets, c.unnamedArgs[0]) ? c.env.outlets[c.unnamedArgs[0]] : ""),
+  },
 
   // ── 時間（time-macros.js）
   {
