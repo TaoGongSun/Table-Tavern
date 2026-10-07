@@ -1,5 +1,9 @@
-// 網頁版文案（繁中）。十語系在包 8 補，屆時照桌面版 check-i18n 的作法加字典體檢。
+// 網頁版文案正典（繁中）：其他九個語系逐鍵對應（index.ts 的型別缺鍵就編譯失敗，features/language/dictionaries.test.ts 另查鍵集合、佔位符與
+// 單複數語法）。單複數照桌面版 plural.ts 的 ICU 子集：{n, plural, one {...} other {...}}。
 export const zhTW = {
+  metaTitle: "桌面酒館 Table Tavern｜網頁版",
+  metaDescription: "點開就能玩的 AI 角色扮演：匯入 SillyTavern 角色卡，用 OpenRouter 免費模型直接開聊，存檔可以帶去桌面版接著玩。",
+  language: "語言",
   brandSub: "網頁版",
   downloadDesktop: "下載桌面版",
   downloadDesktopVersion: "下載桌面版 v{version}",
@@ -182,3 +186,6 @@ export const zhTW = {
   site_characterTavern: "以角色卡分享為主的社群站。",
   site_pygmalion: "Pygmalion 的角色卡社群，部分卡要登入才看得到。",
 } as const;
+
+/** 每個語系的字典都要有正典的每一個鍵（多、少都會編譯失敗） */
+export type WebMessages = Record<keyof typeof zhTW, string>;

@@ -7,7 +7,7 @@
 ## 進行中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過；省額度已由介面接管解掉，v2 剩多卡介面切換、離線退路、代送開關；首發必含〔作者裁決 2026-10-04〕
-- [web-version](handoffs/web-version.md) — 網頁版引流入口：包 1 封板（be1093d..0de69dd）；包 2 封板（45baf78..52fcd59）；包 3 封板（a3cca5d..6527a28）；包 4 封板（59f420f..a5410b4）；包 4b 封板（d3d475e..f1e201f）；包 5 封板（6eb4ce4..3c812a5）；包 6 封板（d088fe3..「包 6 封板」）；包 7 封板（8a83ca7..「包 7 封板」）；包 8 十語系施工中
+- [web-version](handoffs/web-version.md) — 網頁版引流入口：包 1 封板（be1093d..0de69dd）；包 2 封板（45baf78..52fcd59）；包 3 封板（a3cca5d..6527a28）；包 4 封板（59f420f..a5410b4）；包 4b 封板（d3d475e..f1e201f）；包 5 封板（6eb4ce4..3c812a5）；包 6 封板（d088fe3..「包 6 封板」）；包 7 封板（8a83ca7..「包 7 封板」）；包 8 十語系修正輪一完成、等複驗（子代理已換手）
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）

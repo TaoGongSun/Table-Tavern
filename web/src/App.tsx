@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Lang } from "@desktop/i18n/languages";
 import { t } from "./i18n";
+import { applyLang, rememberLang } from "./i18n/lang-store";
+import { LanguagePicker } from "./features/language/LanguagePicker";
 import { CardPicker } from "./features/cards/CardPicker";
 import { ChatView } from "./features/chat/ChatView";
 import { GLOBAL_VARIABLES, type GameSetup } from "./features/chat/useChat";
@@ -31,8 +34,15 @@ function QuotaBadge({ quota }: { quota: QuotaState }) {
   }
 }
 
-export default function App({ callback }: { callback: OAuthCallback | null }) {
+export default function App({ callback, lang: initialLang }: { callback: OAuthCallback | null; lang: Lang }) {
   const session = useOpenRouterSession(callback);
+  // 換語系：整棵重繪、文案跟著換；桌、輸入框草稿都是各自的 state，不受影響
+  const [lang, setLangState] = useState(initialLang);
+  const changeLang = useCallback((next: Lang) => {
+    applyLang(next);
+    rememberLang(next);
+    setLangState(next);
+  }, []);
   const release = useLatestRelease();
   const downloadPage = useDownloadPage();
   const [game, setGame] = useState<GameSetup | null>(null);
@@ -70,6 +80,7 @@ export default function App({ callback }: { callback: OAuthCallback | null }) {
           <span className="brand-sub">{t("brandSub")}</span>
         </div>
         <div className="topbar-actions">
+          <LanguagePicker lang={lang} onChange={changeLang} />
           {session.apiKey && <QuotaBadge quota={session.quota} />}
           <DownloadLink release={release} />
           {session.apiKey && (
