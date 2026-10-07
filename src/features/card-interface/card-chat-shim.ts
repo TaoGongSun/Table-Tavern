@@ -1,8 +1,7 @@
 // 卡片介面沙盒的讀訊息墊片：getChatMessages／getCurrentMessageId／getLastMessageId 的本場讀取支援。
 // 行為對照酒館助手（JS-Slash-Runner）的型別規格與實作行為，只當規格書讀、不抄碼
 // （見 .ai/plans/card-chat-messages-shim.md）。資料只進不出：沙盒讀得到本場逐字稿，寫不回 app。
-import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
-import { eventDisplayText } from "../../shared/ui/event-text";
+// 不依賴桌面版的事件型別與語系，網頁版也直接共用。
 
 export type ChatRole = "user" | "assistant" | "system";
 
@@ -25,19 +24,6 @@ export interface CurrentFloor {
 export interface CardChat {
   currentId: number;
   floors: ChatFloor[];
-}
-
-/**
- * 本場的「樓」：gm_only 的系統事件（角色私設、非公開人物全文）不算——酒館的聊天紀錄裡沒有這類
- * app 內部資料，玩家面的面板也不該拿到。回傳每樓對應的事件，樓號＝陣列位置。
- */
-export function chatEvents(events: TranscriptEvent[]): TranscriptEvent[] {
-  return events.filter((event) => !event.gm_only);
-}
-
-/** 酒館存的是顯示 regex 套用前的原文；帶標頭代碼的系統事件給照語系組好的全文 */
-export function floorText(event: TranscriptEvent): string {
-  return event.raw ?? eventDisplayText(event);
 }
 
 /**

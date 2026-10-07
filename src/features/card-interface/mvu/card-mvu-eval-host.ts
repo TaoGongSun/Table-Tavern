@@ -18,6 +18,9 @@ export interface EvalHost {
 }
 
 export const EVAL_TIMEOUT_MS = 200;
+/** 單筆請求的字串上限（UTF-8 位元組，同 parseMessage 的訊息上限）與排隊上限（同一次指令數上限）：沙盒送來的量不設限會撐爆宿主 */
+export const MAX_EVAL_TEXT_BYTES = 256 * 1024;
+export const MAX_EVAL_QUEUE = 1000;
 const BOOT_TIMEOUT_MS = 10_000;
 
 /** 預設的 Worker：Vite 把 worker 檔與 mathjs 打成獨立 chunk，宿主第一次要求值才載入 */
@@ -129,6 +132,8 @@ export function createEvalHost(options: {
   return {
     run(op, text) {
       if (closed) return Promise.resolve({ ok: false, error: "closed" });
+      if (new TextEncoder().encode(text).length > MAX_EVAL_TEXT_BYTES) return Promise.resolve({ ok: false, error: "too-large" });
+      if (queue.length >= MAX_EVAL_QUEUE) return Promise.resolve({ ok: false, error: "queue-full" });
       return new Promise<EvalOutcome>((resolve) => {
         sequence += 1;
         queue.push({ id: sequence, op, text, resolve });

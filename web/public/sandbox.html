@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      卡片介面的沙盒文件（計畫 2.4）：iframe 掛 sandbox="allow-scripts"、不給 allow-same-origin，來源不透明，
+      讀不到宿主的儲存。這份文件自帶較寬的政策（卡片常載外部字型、圖片與程式庫），宿主頁的 CSP 不罩這條路徑；
+      卡片內容由宿主 postMessage 送進來再寫進本文件。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; form-action 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <script>
+      (function () {
+        var host = window.parent;
+        window.addEventListener("message", function receive(event) {
+          if (event.source !== host) return;
+          var data = event.data;
+          if (!data || data.source !== "table-tavern-host" || data.kind !== "load") return;
+          if (typeof data.token !== "string" || typeof data.html !== "string") return;
+          window.removeEventListener("message", receive);
+          var token = data.token;
+          // document.open 不換掉全域，只清掉文件與視窗上的監聽器；卡片文件裡的墊片會自己重掛
+          document.open();
+          document.write(data.html);
+          document.close();
+
+          // 版面基準：iframe 跟著內容長高，內容自己不出捲軸；排在卡片樣式之前，卡片要改照樣蓋得過去
+          var base = document.createElement("style");
+          base.textContent = "html,body{margin:0;overflow:hidden}";
+          var head = document.head || document.documentElement;
+          head.insertBefore(base, head.firstChild);
+
+          // 回報內容高度給宿主（宿主會夾在合理範圍內）
+          var last = -1;
+          var scheduled = false;
+          function measure() {
+            scheduled = false;
+            var body = document.body;
+            if (!body) return;
+            var height = Math.ceil(Math.max(body.scrollHeight, document.documentElement.scrollHeight));
+            if (!(height > 0) || height === last) return;
+            last = height;
+            host.postMessage({ source: "table-tavern-card", kind: "height", token: token, height: height }, "*");
+          }
+          function schedule() {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(measure);
+          }
+          if (typeof ResizeObserver === "function") {
+            var observer = new ResizeObserver(schedule);
+            observer.observe(document.documentElement);
+            if (document.body) observer.observe(document.body);
+          }
+          window.addEventListener("load", schedule);
+          schedule();
+        });
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

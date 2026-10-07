@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { resolveEndpoints } from "./src/shared/endpoints/resolve";
+import { mvuEnginePlugin } from "./mvu-engine-plugin";
 
 const origin = (url: string) => new URL(url).origin;
 
@@ -18,7 +19,8 @@ function hostCsp(mode: string): string {
     "img-src 'self' data:",
     "font-src 'self'",
     `connect-src ${origin(endpoints.openrouterApi)} ${origin(endpoints.githubApi)}`,
-    "frame-src 'none'",
+    // 卡片介面只掛同站的 sandbox.html（沙盒 iframe、不透明來源；它自帶較寬的政策，不受這份 CSP 罩）
+    "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -40,7 +42,7 @@ function hostSecurityMeta(mode: string): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), hostSecurityMeta(mode)],
+  plugins: [react(), hostSecurityMeta(mode), mvuEnginePlugin()],
   resolve: {
     // D2：直接共用桌面版的純 TS 模組
     alias: { "@desktop": fileURLToPath(new URL("../src", import.meta.url)) },

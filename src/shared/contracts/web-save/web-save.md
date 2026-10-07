@@ -1,6 +1,6 @@
 # 桌檔契約 v1：網頁存檔
 
-網頁版的一桌存成一份 JSON，桌面版照它開一張新桌接著玩（單向，D15）。網頁版寫、桌面版讀；兩邊的結構檢查一致：網頁版與桌面版前端用 `web-save.ts` 的 `parseWebSave`，桌面版匯入器用 `src-tauri/src/import/web_save/`（另驗卡在匯入身分那條路的有效性與變數表的細部上限）。範例檔就是本目錄的 fixture（`minimal.json` 是最小合法存檔；`web-export.json` 是網頁版真匯出的存檔，由 `web/e2e` 帶 `TT_WEB_EXPORT_OUT=<路徑>` 跑一次另存，桌面版來回測試讀它；`web-export-world-info.json` 同理，是帶世界書觸發狀態的真匯出，由 `TT_WEB_EXPORT_WI_OUT` 另存），兩邊的測試都讀；`invalid/` 是共用負例：每份都是從 `minimal.json` 改一處，檔名前綴是兩端都要回的錯誤分類（`version--`＝版號不認得、`invalid--`＝不合契約）。改契約＝兩邊與 fixture 同一筆 commit 一起改。
+網頁版的一桌存成一份 JSON，桌面版照它開一張新桌接著玩（單向，D15）。網頁版寫、桌面版讀；兩邊的結構檢查一致：網頁版與桌面版前端用 `web-save.ts` 的 `parseWebSave`，桌面版匯入器用 `src-tauri/src/import/web_save/`（另驗卡在匯入身分那條路的有效性與變數表的細部上限）。範例檔就是本目錄的 fixture（`minimal.json` 是最小合法存檔；`web-export.json` 是網頁版真匯出的存檔，由 `web/e2e` 帶 `TT_WEB_EXPORT_OUT=<路徑>` 跑一次另存，桌面版來回測試讀它；`web-export-world-info.json` 同理，是帶世界書觸發狀態的真匯出，由 `TT_WEB_EXPORT_WI_OUT` 另存；`web-export-mvu.json` 是載 MVU 的介面卡（開局種子、每則的表、卡片寫入、角色層、卡片 storage），由 `TT_WEB_EXPORT_MVU_OUT` 另存），兩邊的測試都讀；`invalid/` 是共用負例：每份都是從 `minimal.json` 改一處，檔名前綴是兩端都要回的錯誤分類（`version--`＝版號不認得、`invalid--`＝不合契約）。改契約＝兩邊與 fixture 同一筆 commit 一起改。
 
 ## 外框
 - `format`：固定 `"table-tavern-web-save"`。不是這個字串就不是網頁存檔。
@@ -62,13 +62,15 @@
 
 ## 網頁版匯出（現況）
 - 存檔在瀏覽器的 IndexedDB（`web/src/features/saves/`），一桌一格，存的就是這份契約；匯出＝原樣下載，匯入＝過同一個 `parseWebSave` 再收進存檔庫。
-- ST 聊天變數就是 MVU 的兩層：這段對話的 local 寫進 `mvu.layers.chat`、跨對話的 global 寫進 `mvu.layers.global`；其他層、`seed`、`macros`、每則的 `message_vars` 等包 6（卡片介面）才產生，在那之前是空表或 `null`。
-- `world_info`：每次組提示照 ST 掃一次卡內世界書，觸發狀態在真正派送出去的那一發才落地（試組、選模與換模前那一發不算），存檔時寫回；`card_storage` 包 6 之前是 `{}`。
-- 網頁版讀進來但還用不到的欄位（`message_effects`、MVU 其他層、`message_vars`、`card_storage`、`raw`）與時間原文都原樣收著、再匯出原樣帶回；網頁版自己新增的則寫成 UTC。存檔沒有 `mvu`、這桌也沒寫出變數就照樣寫 `null`。
+- ST 聊天變數就是 MVU 的兩層：這段對話的 local 寫進 `mvu.layers.chat`、跨對話的 global 寫進 `mvu.layers.global`。
+- 載 MVU 的卡（判定同卡片契約的 `interface.mvu`，且介面不是 `unsupported`）照 MagVarUpdate 438f9ffc：開局把卡內世界書標題含 `[initvar]` 的條目解析成表（生成 schema、清掉元資料），有開場白就套上開場白自己的指令，掛在第 0 則、也是 `seed`；沒有開場白時 `seed` 是開局那張、不掛在任何一則。每則 AI 回覆（至少 5 字、前面有帶 `stat_data` 與 `schema` 的表，沒有就以 `seed` 為底）照 MVU 更新成自己的 `message_vars`，樓尾補 `<StatusPlaceHolderImpl/>`（存進 `text`，`raw` 是模型原文）。`macros` 是開局的玩家名與卡名。`character` 層新開時取卡上 `extensions.tavern_helper.variables`、`script` 層取各腳本的 `data`（酒館助手存在卡裡的位置）。卡片介面可以改任何一則的表與各層（以內容指紋當版本比對）。不載 MVU 的卡不產生這些。
+- `world_info`：每次組提示照 ST 掃一次卡內世界書，觸發狀態在真正派送出去的那一發才落地（試組、選模與換模前那一發不算），存檔時寫回。
+- `card_storage`：卡片介面的沙盒 localStorage 整份快照，卡片一寫就更新。
+- 網頁版讀進來的 `message_effects`、`raw` 與時間原文原樣收著、再匯出原樣帶回（`message_vars`、MVU 各層、`card_storage` 由這桌接手）；網頁版自己新增的則寫成 UTC。存檔沒有 `mvu`、這桌也沒寫出變數就照樣寫 `null`。
 - global 層：存在瀏覽器（存檔庫的 `globals`），所有存檔共用、重新整理不丟（D29）。開站讀不到就提示可重試；各桌的寫入在取樣當下預約版本與寫入資格，預約時還沒讀回過的那筆永遠不寫（重試成功後也不放行），排同一條隊、舊版本不蓋新版本。從存檔接著玩時只補這個分頁沒有的鍵（同 D18）；這一格匯出時只寫「存檔原有的鍵＋這桌玩的期間寫過或刪過的鍵」（照寫入紀錄，寫回原值也算，寫入失敗不算），分頁裡別桌的鍵不混進來；這桌沒碰過的鍵（含分頁已有別的值、沒落地的）照存檔原值帶回。
 - 自動存檔只在回合結束後寫（D27：新開的桌第一次開口時先把開口前的樣子存成一格，寫成了才送模，存不進去就不送、原句留在輸入框）；回合中重新整理就退回上次完整回合，進行中的玩家那句記在 sessionStorage，接著玩時放回輸入框（D28）。
 - ST 聊天檔匯出（D3）另給原卡檔：從 PNG 匯入的給原 PNG，其餘給原卡 JSON 外殼。
-- 桌面版目前只把 ST 聊天變數落進 chat 層檔案：沒有 MVU 種子就不進變數模式，下一輪提示讀桌狀態、不讀 chat 層；桌面版巨集也只換 `{{user}}`／`{{char}}`。變數進提示等包 6〔模型判斷·未裁決〕。
+- 桌面版把 ST 聊天變數落進 chat 層檔案；沒有 MVU 種子就不進變數模式。桌面版巨集只換 `{{user}}`／`{{char}}`，`{{getvar}}` 與酒館助手類巨集不讀變數（桌面版既有限制）。
 
 ## 桌面版匯入（落地）
 - 一律開新桌（桌名＝卡名）；身分照 `import_route`。不記匯入收據（不能「復原上次匯入」）。

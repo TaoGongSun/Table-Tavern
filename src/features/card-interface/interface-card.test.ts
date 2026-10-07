@@ -427,4 +427,10 @@ describe("sanitizeCardStorage", () => {
     expect(sanitizeCardStorage({ blob: "x".repeat(CARD_STORAGE_LIMIT) })).toBeNull();
     expect(sanitizeCardStorage({ blob: "x".repeat(100) })).not.toBeNull();
   });
+
+  it("上限照桌檔契約量 UTF-8 位元組：字元數沒超過、位元組超過的也回 null", () => {
+    // 兩萬二千個「中」約 66 KB（字元數只有兩萬二）
+    expect(sanitizeCardStorage({ blob: "中".repeat(22_000) })).toBeNull();
+    expect(sanitizeCardStorage({ blob: "中".repeat(20_000) })).not.toBeNull();
+  });
 });

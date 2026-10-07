@@ -11,13 +11,13 @@
 // 先預留 3，固定段落（main、卡欄位、post_history_instructions）先佔、佔不下就整句不送（ST 的「Mandatory prompts
 // exceed the context size」）；[Start a new Chat] 先預約，歷史由新到舊邊代換邊放、放不下就停（更舊的不代換）；
 // 剩下的才一段段放範例對話。所以先掉範例、再掉最舊訊息（D23〔作者裁決 2026-10-07〕）。世界書前／後算固定段落。
-import { activeRegexScripts } from "../cards/play-card";
+import { activeRegexScripts, loadsMvu } from "../cards/play-card";
 import type { ChatMessage } from "../openrouter/stream-chat";
 import type { CountedMessage } from "../sillytavern/tokens";
 import { exampleDialogues, parseMesExamples } from "../sillytavern/mes-examples";
 import { getRegexedString, REGEX_PLACEMENT } from "../sillytavern/regex-scripts";
 import { baseChatReplace, substituteParams } from "../sillytavern/substitute";
-import { checkWorldInfo, type WiResult } from "../sillytavern/world-info-scan";
+import { checkWorldInfo, MVU_WI_SETTINGS, ST_WI_SETTINGS, type WiResult } from "../sillytavern/world-info-scan";
 import type { ChatEntry } from "./chat-turn";
 import { authorsNotePrompt, injectExtensionPrompts, roleName, type ExtensionPrompt, type HistoryMessage } from "./injections";
 import { macroContext, promptText, settleFirstMessage, type ChatSetup, type WorldInfoState } from "./st-text";
@@ -108,8 +108,12 @@ export function composePrompt(setup: ChatSetup, unsettled: ChatEntry[], options:
   let wi: WiResult | null = null;
   if (setup.worldInfo && setup.worldInfo.entries.length > 0) {
     const limits = options.limits;
+    const settings = loadsMvu(card) ? MVU_WI_SETTINGS : ST_WI_SETTINGS;
     wi = checkWorldInfo(structuredClone(setup.worldInfo.entries), {
-      chat: entries.map((entry, index) => `${entry.role === "user" ? setup.userName : card.text.name}: ${regexed[index].content}`).reverse(),
+      settings,
+      chat: entries
+        .map((entry, index) => (settings.includeNames ? `${entry.role === "user" ? setup.userName : card.text.name}: ` : "") + regexed[index].content)
+        .reverse(),
       maxContext: limits ? limits.maxContext - limits.maxResponse : Number.POSITIVE_INFINITY,
       globalScan: {
         personaDescription: "",

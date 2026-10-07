@@ -21,7 +21,7 @@ import { forgetPendingInput, readPendingInput, rememberPendingInput } from "../s
 import { newSaveId, type SaveStore } from "../saves/save-store";
 import { toStChat } from "../saves/st-chat";
 import { substituteParams } from "../sillytavern/substitute";
-import { commitVariables, copyVariables, createChatVariables, type VariableMap } from "../sillytavern/variables";
+import { commitVariables, copyVariables, createChatVariables, turnCommits, type VariableMap } from "../sillytavern/variables";
 import { parseWebSave, type WebSave } from "@desktop/shared/contracts/web-save/web-save";
 import { deleteLast, regenerateBase, replaceLast, resolveTurn, type ChatEntry, type PendingTurn } from "./chat-turn";
 import { t } from "../../i18n";
@@ -30,6 +30,7 @@ import { composePrompt } from "./prompt";
 import { messageTokenCounter, textTokenCounter } from "../sillytavern/tokens";
 import { tableWorldInfo, worldInfoForSave } from "./world-info-setup";
 import { editedText, macroContext, openingText, replyText, userText, type ChatSetup } from "./st-text";
+import { useTableMvu, type TableMvu } from "../mvu/useTableMvu";
 
 let counter = 0;
 const newId = () => `m${Date.now().toString(36)}${(counter += 1)}`;
@@ -50,6 +51,27 @@ export interface GameSetup {
   resume?: { entries: ChatEntry[]; local: VariableMap; carry: SaveCarry };
 }
 
+/**
+ * 回合收尾時以回合開頭的逐字稿為底：期間卡片介面寫進某一則的變數表（同 id）要留著，不被底稿蓋回舊表。
+ */
+export function keepLatestVars(entries: ChatEntry[], latest: ChatEntry[]): ChatEntry[] {
+  const byId = new Map(latest.map((entry) => [entry.id, entry]));
+  return entries.map((entry) => {
+    const now = byId.get(entry.id);
+    if (now === undefined || now.vars === entry.vars) return entry;
+    const { vars: _old, ...rest } = entry;
+    return now.vars === undefined ? rest : { ...rest, vars: now.vars };
+  });
+}
+
+/** 兩份同長的逐字稿每一則掛的是同一張表（卡片寫入一律換新的表物件，同一張＝期間沒寫過） */
+export function sameVars(a: ChatEntry[], b: ChatEntry[]): boolean {
+  return a.length === b.length && a.every((entry, index) => entry.vars === b[index].vars);
+}
+
+/** MVU 處理回覆時底稿被卡片改掉、以新底稿重算的次數上限 */
+const MVU_REBASE_TRIES = 3;
+
 export function openingEntries(setup: ChatSetup, openingIndex: number | null): ChatEntry[] {
   const raw = openingIndex === null ? undefined : setup.card.openings[openingIndex];
   if (raw === undefined) return [];
@@ -68,6 +90,8 @@ export interface ChatController {
   error: string | null;
   failover: FailoverNotice | null;
   send: () => Promise<void>;
+  /** 卡片介面的按鈕送出一句（不經輸入框；回合進行中就不送） */
+  sendText: (text: string) => Promise<void>;
   regenerate: () => Promise<void>;
   canRegenerate: boolean;
   editLast: (text: string) => void;
@@ -79,6 +103,11 @@ export interface ChatController {
   exportStChat: () => string;
   /** 最近一次自動存檔失敗（瀏覽器不讓存、空間滿了） */
   saveFailed: boolean;
+  /** 卡片介面存的設定（沙盒 localStorage 的整份快照），跟著存檔走 */
+  cardStorage: Record<string, string>;
+  /** 卡片變數（MVU、酒館助手變數層） */
+  mvu: Pick<TableMvu, "frontend" | "write" | "evaluate" | "display" | "initError">;
+  setCardStorage: (entries: Record<string, string>) => void;
 }
 
 export function useChat(game: GameSetup, session: OpenRouterSession, saves: SaveStore | null = null): ChatController {
@@ -96,6 +125,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
   );
   const [entries, setEntries] = useState<ChatEntry[]>(() => game.resume?.entries ?? openingEntries(setup, game.openingIndex));
   const [saveFailed, setSaveFailed] = useState(false);
+  const [cardStorage, setCardStorage] = useState<Record<string, string>>(() => game.resume?.carry.cardStorage ?? {});
+  const cardStorageRef = useRef(cardStorage);
+  cardStorageRef.current = cardStorage;
   // 上次在回合進行中重新整理（D28）：那一句放回輸入框
   const [input, setInput] = useState(() => (game.resume ? readPendingInput(saveId) : null) ?? "");
   const [busy, setBusy] = useState(false);
@@ -108,6 +140,16 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
   const generationRef = useRef(0);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+  const mvu = useTableMvu({
+    card: game.card,
+    userName: game.userName,
+    variables: setup.variables,
+    saved: game.resume?.carry.mvu,
+    resumed: game.resume !== undefined,
+    entriesRef,
+    setEntries,
+    substitute: (text) => substituteParams(text, macroContext(setup, entriesRef.current)),
+  });
   /** 把這桌現在的樣子寫進存檔庫（下面定義；回合開始時要先用） */
   const writeSaveRef = useRef<() => Promise<boolean>>(async () => true);
   /** 這桌已經佔了一格存檔 */
@@ -159,6 +201,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
             return;
           }
         }
+        // 卡片變數：執行期載好、開局初始化做完才組提示（類巨集要讀第 0 樓的表）
+        await mvu.ready().catch(() => {});
+        if (cancelled()) return;
         const started = begin();
         if (!started) return;
         const { pending } = started;
@@ -169,6 +214,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         // 每支模型照它的上限與 token 估算組一次提示（D23），都從回合開頭的變數副本起算；真正派送的那一次才把
         // 副作用（setvar 等）與第 0 則寫回落地，選模時試組與換模前的那一發不重複提交
         const snapshot = copyVariables(setup.variables);
+        // chat／global 的提交紀錄：卡片在回合中任何時候寫過的鍵，每一發（含換模第二發）提交都照 message 表的
+        // 規則保住，不被回合開頭的副本蓋回去
+        const commits = turnCommits(setup.variables);
         // 世界書觸發狀態同理：每一發都從回合開頭的狀態掃（換模第二發不接第一發落地的狀態）
         const worldInfoAtStart = { entries: worldInfo.entries, state: worldInfo.state };
         const composed = new Map<string, ReturnType<typeof composeFor>>();
@@ -178,17 +226,16 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
           const tokenizer = session.pool.tokenizer(model);
           const countTokens = messageTokenCounter(model, tokenizer);
           const countText = textTokenCounter(model, tokenizer);
-          return {
-            variables,
-            ...composePrompt({ ...setup, variables, worldInfo: worldInfoAtStart }, started.before, {
-              generationType,
-              input,
-              model,
-              limits,
-              countTokens,
-              countText,
-            }),
-          };
+          const prompt = composePrompt({ ...setup, variables, worldInfo: worldInfoAtStart }, started.before, {
+            generationType,
+            input,
+            model,
+            limits,
+            countTokens,
+            countText,
+          });
+          // 酒館助手的類巨集與 MVU 拿掉占位：組好整份提示之後（ST 的 GENERATE_AFTER_DATA）
+          return { variables, ...prompt, messages: mvu.prepareMessages(prompt.messages, prompt.entries, variables) };
         };
         const compose = (model: string) => {
           const turn = composed.get(model) ?? composeFor(model);
@@ -222,9 +269,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
             send: (model) => {
               const turn = compose(model);
               dispatched.turn = turn;
-              commitVariables(setup.variables, turn.variables);
+              commitVariables(setup.variables, turn.variables, commits);
               if (turn.worldInfo) worldInfo.state = turn.worldInfo;
-              setEntries(turn.entries);
+              setEntries(keepLatestVars(turn.entries, entriesRef.current));
               setStreaming("");
               return streamChat({
                 fetch: session.deps.fetch,
@@ -258,7 +305,25 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
 
         const before = dispatched.turn?.entries ?? started.before;
         const result = resolveTurn(before, pending, outcome, newId, (text) => replyText(setup, before, text));
-        setEntries(result.entries);
+        let landed = result.entries;
+        // 新回覆照 MVU 更新變數（落地前就算好，存檔與畫面拿到的是同一則）
+        const reply = landed[landed.length - 1];
+        if (reply && reply.role === "char" && !before.some((entry) => entry.id === reply.id)) {
+          // 底稿先換成卡片在回合中寫過的最新表，MVU 才從最新的有效表算起；值解析等待期間卡片又寫了前面的表，
+          // 這次算出來的就過期了，以新的底稿重算。一直被改就不提交過期的計算，這則回覆不更新變數
+          const resolved = landed;
+          landed = keepLatestVars(resolved, entriesRef.current);
+          for (let tries = 0; tries < MVU_REBASE_TRIES; tries += 1) {
+            const base = keepLatestVars(resolved, entriesRef.current);
+            const updated = await mvu.afterReply(base);
+            if (generationRef.current !== generation) return;
+            if (sameVars(base, keepLatestVars(resolved, entriesRef.current))) {
+              landed = updated;
+              break;
+            }
+          }
+        }
+        setEntries(keepLatestVars(landed, entriesRef.current));
         setStreaming("");
         setFailover(outcome.failover);
         if (result.restoreInput !== null) setInput(result.restoreInput);
@@ -272,19 +337,24 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         setBusy(false);
       }
     },
-    [session, setup, saveId, worldInfo],
+    [session, setup, saveId, worldInfo, mvu],
   );
 
-  const send = useCallback(async () => {
-    const raw = input.trim();
-    if (!raw) return;
-    await runTurn(() => {
-      const current = entriesRef.current;
-      const userEntry: ChatEntry = { id: newId(), role: "user", text: userText(setup, current, raw), sentAt: Date.now() };
-      setInput("");
-      return { before: [...current, userEntry], pending: { kind: "send", userEntry, rawInput: raw } };
-    }, "normal");
-  }, [input, runTurn, setup]);
+  const submit = useCallback(
+    async (text: string, fromInput: boolean) => {
+      const raw = text.trim();
+      if (!raw) return;
+      await runTurn(() => {
+        const current = entriesRef.current;
+        const userEntry: ChatEntry = { id: newId(), role: "user", text: userText(setup, current, raw), sentAt: Date.now() };
+        if (fromInput) setInput("");
+        return { before: [...current, userEntry], pending: { kind: "send", userEntry, rawInput: raw } };
+      }, "normal");
+    },
+    [runTurn, setup],
+  );
+  const send = useCallback(() => submit(input, true), [submit, input]);
+  const sendText = useCallback((text: string) => submit(text, false), [submit]);
 
   const regenerate = useCallback(async () => {
     if (!regenerateBase(entriesRef.current)) return;
@@ -320,7 +390,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         local: setup.variables.local.values,
         global: setup.variables.global.values,
         globalWritten: setup.variables.global.written,
-        carry: game.resume?.carry ?? EMPTY_CARRY,
+        carry: { ...(game.resume?.carry ?? EMPTY_CARRY), cardStorage: cardStorageRef.current, mvu: mvu.forSave() },
         worldInfo: worldInfoForSave(
           worldInfo,
           (game.resume?.carry ?? EMPTY_CARRY).worldInfo,
@@ -328,7 +398,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         ),
         exportedAt: Date.now(),
       }),
-    [game, setup, worldInfo],
+    [game, setup, worldInfo, mvu],
   );
 
   const exportStChat = useCallback(() => {
@@ -388,7 +458,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
   useEffect(() => {
     if (busy || (!slotRef.current && !playerSpoke)) return;
     void writeSave();
-  }, [busy, entries, playerSpoke, writeSave]);
+  }, [busy, entries, cardStorage, playerSpoke, writeSave]);
 
   return {
     setup,
@@ -400,6 +470,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
     error,
     failover,
     send,
+    sendText,
     regenerate,
     canRegenerate: regenerateBase(entries) !== null,
     editLast,
@@ -408,5 +479,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
     exportSave,
     exportStChat,
     saveFailed,
+    cardStorage,
+    setCardStorage,
+    mvu,
   };
 }

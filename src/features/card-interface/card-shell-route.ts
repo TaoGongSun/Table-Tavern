@@ -1,11 +1,24 @@
 // 卡片介面殼的選路：這桌現在該顯示哪一份殼、它是從哪一樓產生的，以及交給卡片的每一樓文字。
 // 純函式，controller 只負責接線。
 import { findShell, type CardInterface } from "./interface-card";
-import { chatEvents, floorText, type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
+import { type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { eventDisplayText, parseMarker, speakerDisplayName } from "../../shared/ui/event-text";
+
+/**
+ * 本場的「樓」：gm_only 的系統事件（角色私設、非公開人物全文）不算——酒館的聊天紀錄裡沒有這類
+ * app 內部資料，玩家面的面板也不該拿到。回傳每樓對應的事件，樓號＝陣列位置。
+ */
+export function chatEvents(events: TranscriptEvent[]): TranscriptEvent[] {
+  return events.filter((event) => !event.gm_only);
+}
+
+/** 酒館存的是顯示 regex 套用前的原文；帶標頭代碼的系統事件給照語系組好的全文 */
+export function floorText(event: TranscriptEvent): string {
+  return event.raw ?? eventDisplayText(event);
+}
 
 export interface PickedShell {
   shell: string;

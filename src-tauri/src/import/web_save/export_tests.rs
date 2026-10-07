@@ -1,11 +1,15 @@
 //! 來回測試：網頁版真匯出的存檔（`web-export.json`，由 web/e2e 以 `TT_WEB_EXPORT_OUT` 另存：範例卡、
 //! 幾輪假端點對話、停止並保留的中斷回覆、玩家句裡 setvar 的聊天變數）匯進桌面版：逐字稿照存檔落地、
-//! 下一輪角色線的歷史帶得到整段對話；ST 聊天變數只落在 chat 層檔案。網頁版包 6 之前不產生 MVU 種子與
-//! 每則變數表，桌面版維持「尚無表」，下一輪提示讀的是桌狀態、不讀 chat 層——變數進提示等包 6。
+//! 下一輪角色線的歷史帶得到整段對話；ST 聊天變數只落在 chat 層檔案。這張卡不載 MVU，網頁版不產生種子與
+//! 每則變數表，桌面版維持「尚無表」；桌面版巨集只換 {{user}}／{{char}}，chat 層的值不進提示（桌面版既有限制）。
 //! `web-export-world-info.json`（`TT_WEB_EXPORT_WI_OUT`）：帶世界書的卡玩兩輪（sticky 觸發後跨回合）的真匯出，
 //! 桌面版只保存觸發狀態（旁檔原樣＋映射表），消費等 worldbook-st-trigger-parity。
+//! `web-export-mvu.json`（`TT_WEB_EXPORT_MVU_OUT`）：載 MVU 的介面卡——開局 initvar、卡片介面把第 0 樓的表寫成
+//! 船隻 2、回覆指令更新成 5、卡片 localStorage 存了設定——匯進桌面版：變數模式、每則的表與種子原樣落在事件與
+//! 控制檔、有效狀態是最後一張表、角色層與卡片 storage 都對得上。
 use super::tests::{bytes, character_turn, fixture, layer_json, mode_of};
 use super::*;
+use crate::data::message_vars::read_control;
 use crate::import::test_support::TestRoot;
 use serde_json::json;
 
@@ -79,7 +83,7 @@ fn a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer(
     assert_eq!(sidecar["regex_allowed"], json!(false));
     assert!(!data::read_state(root.path(), &w).unwrap().regex_allowed);
 
-    // 接著玩：下一輪角色線的歷史帶得到最後一句玩家句與最後一則回覆；chat 層的變數不在提示裡（包 6）
+    // 接著玩：下一輪角色線的歷史帶得到最後一句玩家句與最後一則回覆；chat 層的變數不在提示裡（桌面版巨集不讀它）
     let sent = character_turn(&root, &w, &char_id);
     let history: String = sent.iter().map(|message| message.content.clone()).collect();
     assert!(history.contains("我付了錢"), "{history}");
@@ -122,4 +126,66 @@ fn a_real_web_export_with_world_info_keeps_the_trigger_state_in_the_sidecar() {
         sidecar["message_ids"][last],
         json!(events[3].id.clone().unwrap())
     );
+}
+
+#[test]
+fn a_real_web_export_with_mvu_lands_every_table_and_the_card_storage() {
+    let root = TestRoot::new("web-save-real-export-mvu");
+    let save = fixture("web-export-mvu.json");
+    let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    let w = imported.world_id.clone();
+    let char_id = imported.character_id.clone().expect("介面卡走角色卡路");
+
+    // 變數模式：種子＝開局那張、代換值照存檔
+    let control = read_control(root.path(), &w).unwrap();
+    assert_eq!(mode_of(&root, &w), json!("events"));
+    let scene = control.scene(0).expect("第 0 幕有種子");
+    let seed: Value = serde_json::from_str(scene.seed.text()).unwrap();
+    assert_eq!(seed, save["mvu"]["seed"]);
+    assert_eq!(seed["stat_data"]["港口"]["船隻"], json!(1));
+    assert_eq!(control.macros.as_ref().unwrap().user, "旅人");
+
+    // 每則的表原樣落在事件上（卡片寫入的 2、回覆更新的 5），掛新 epoch 與版本
+    let messages = save["messages"].as_array().unwrap();
+    let events = data::read_transcript(root.path(), &w, 0).unwrap();
+    assert_eq!(events.len(), messages.len());
+    for (event, message) in events.iter().zip(messages) {
+        match message.get("message_vars") {
+            Some(vars) => {
+                let landed: Value =
+                    serde_json::from_str(event.message_vars.as_ref().unwrap().text()).unwrap();
+                assert_eq!(&landed, vars);
+                assert_eq!(event.vars_epoch.as_deref(), Some(scene.epoch.as_str()));
+                assert!(event.vars_rev.is_some());
+            }
+            None => assert!(event.message_vars.is_none()),
+        }
+    }
+    let ships = |index: usize| {
+        serde_json::from_str::<Value>(events[index].message_vars.as_ref().unwrap().text()).unwrap()
+            ["stat_data"]["港口"]["船隻"]
+            .clone()
+    };
+    assert_eq!(
+        [ships(0), ships(2), ships(4)],
+        [json!(2), json!(5), json!(5)]
+    );
+    assert!(events[2].text.contains("<StatusPlaceHolderImpl/>"));
+
+    // 有效狀態＝最後一張表
+    let world = data::read_state(root.path(), &w).unwrap();
+    match world.state.tree.get("港口") {
+        Some(data::StateNode::Branch(port)) => {
+            assert_eq!(port.get("船隻"), Some(&data::StateNode::Leaf("5".into())));
+        }
+        other => panic!("港口不是分支：{other:?}"),
+    }
+
+    // 角色層（酒館助手存在卡上的角色變數）、卡片 storage、regex 允許旗標
+    assert_eq!(
+        layer_json(&root, &w, Layer::Character, Some(&char_id)),
+        json!({"主題": "海藍"})
+    );
+    assert_eq!(imported.card_storage["visits"], json!("1"));
+    assert!(data::read_state(root.path(), &w).unwrap().regex_allowed);
 }

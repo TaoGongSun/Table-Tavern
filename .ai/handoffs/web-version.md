@@ -14,7 +14,7 @@
 - 支援卡片介面（原卡直玩的介面渲染與 MVU 變數），盡量做到跟 ST 一樣。〔作者裁決 2026-10-04〕
 - 要有「去哪裡找卡」的導流；爬別站、另存別站卡的站（JannyAI、CharaVault、DeepSeek Tavern 等）不收。〔作者裁決 2026-09-30〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用。〔作者裁決 2026-10-07〕
-- D1–D32 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
+- D1–D35 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
 
 ## 現況
 - **包 1（最小縱切）封板**：commit be1093d..0de69dd，Sol、Grok 驗收通過，主線 verify 12 步綠、e2e 過。
@@ -40,8 +40,8 @@
   - `web/src/features/saves/`：save-store（IndexedDB：meta／data／globals 三個 store、DB 版本 2；寫入整筆撤銷、清資料後重開、同格舊版不蓋新版；global 寫入在預約當下定版本與資格——預約時還沒讀回過的那筆永遠不寫，重試成功也不放行，`loadGlobal` 補缺與標記載入同一段同步程式）、web-save-codec（契約 v1 ⇄ 一桌，用不到的欄位與時間原文原樣帶回；global 照寫入紀錄只寫這格原有＋本桌寫過的鍵）、st-chat（D3 ST 聊天檔）、download（存檔、ST 聊天檔、原卡檔）、pending-input（D28 草稿，sessionStorage）、SavesPanel／ExportFunnel。
   - useChat：自動存檔只在回合結束後、同格排隊、只有最新那次嘗試改失敗提示；新桌第一次開口先存開口前的樣子、寫成才送模（D27）；回合中重新整理退回上次完整回合、玩家那句放回輸入框（D28）。App 開站讀回 global（D29），讀不到就提示可重試。
   - 變數表上限兩端共用 `src/shared/contracts/vars-table.ts`↔`src-tauri/src/data/message_vars/json.rs`（邊界案例 `vars-table-boundary.json`）；卡片寫入原文或緊湊寫法任一通過，存檔的表只量緊湊寫法。時間兩端都驗日曆存在。`VariableScope.written` 記這桌寫過的鍵。
-  - 來回測試：e2e 帶 `TT_WEB_EXPORT_OUT` 另存的真匯出 `src/shared/contracts/web-save/web-export.json`，cargo `a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer`；測試通道 claude Sonnet 從介面匯入後送一句有接續回覆（約 0.011 美元）。ST 聊天變數只落桌面版 chat 層檔案，桌面版的 MVU 表與提示內的變數等包 6〔模型判斷·未裁決〕。
-  - D27–D29 已裁決（計畫第五節）。未驗：Chromium、手機實機、真 OpenRouter（403）；世界書觸發狀態（包 5）、卡片 storage 與 MVU 種子（包 6）屆時各補來回測試。
+  - 來回測試：e2e 帶 `TT_WEB_EXPORT_OUT` 另存的真匯出 `src/shared/contracts/web-save/web-export.json`，cargo `a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer`；測試通道 claude Sonnet 從介面匯入後送一句有接續回覆（約 0.011 美元）。ST 聊天變數落桌面版 chat 層檔案；桌面版巨集只換 `{{user}}`／`{{char}}`，chat 層的值不進桌面版提示（桌面版既有限制）。
+  - D27–D29 已裁決（計畫第五節）。未驗：Chromium、手機實機、真 OpenRouter（403）；世界書觸發狀態（包 5）、卡片 storage 與 MVU（包 6）的來回測試已各自補上。
 - **包 4b（上下文預算）封板**：commit d3d475e、f1e201f，Sol r2／Grok r2 通過。估算器照 D30：ST 計數結構＋逐欄位 guesstimate，可替換。
   - `web/src/features/sillytavern/tokens.ts`：ST 計數結構（依 `architecture.tokenizer`＋模型 id 選 tiktoken／HF／sentencepiece 計法、每則開銷、name、前端 -2），文字換 token 是可替換的 `TextTokens`（目前 guesstimate）。包 5 的 WI 預算沿用它。
   - `chat/prompt.ts` 照 populateChatCompletion 裁切：預留 3、固定段落先佔（佔不下 `overflow`）、[Start a new Chat] 先預約、歷史新到舊邊代換邊放、剩下放範例。`useChat` 每支模型照自己的上限組一次（memo），`FreePool.plan(holds)` 只挑放得下固定段落的；穩定模型只因上限不夠被篩掉→`AI_PROMPT_EXCEEDS_CONTEXT`。平台 400／413 說太長→`AI_CONTEXT_TOO_LONG`（同桌面版 context_overflow）。
@@ -54,12 +54,20 @@
   - 來回測試：e2e 帶 `TT_WEB_EXPORT_WI_OUT` 另存 `src/shared/contracts/web-save/web-export-world-info.json`，cargo `a_real_web_export_with_world_info_keeps_the_trigger_state_in_the_sidecar`。
   - 測試：`sillytavern/world-info-scan.test.ts`（觸發與位置表格、載入順序、回退表格、遞迴、預算、計時、機率、群組）、`chat/world-info-prompt.test.ts`（位置、outlet 跨輪、固定段落預算）、`chat/world-info-turn.test.tsx`（存檔來回、真停止路徑、換模第二發、outlet 跨輪不進存檔、卸載晚回與 D28 重整不落地）。
   - D31：群組篩選同一條重複移除時找不到就不刪（不照 ST 誤刪）；D32：關鍵字正則 ReDoS 照 ST 不處理。未驗：真模型（403）。
+- **包 6（卡片介面）封板**：commit d088fe3..（「web-version: 包 6 封板」那筆），Sol r4、Grok r4 驗收通過，主線 verify 12 步綠、e2e 過。
+  - 介面：訊息裡含 `html>`／`<head>`／`<body` 的程式碼區塊照酒館助手畫在該則訊息裡（不是桌面版的覆蓋層），`web/src/features/card-interface/`：沙盒 iframe 載同站 `web/public/sandbox.html`（allow-scripts、不透明來源、自帶寬政策），宿主 postMessage 送進桌面版 `buildShellDocument` 組的文件（內建庫、讀訊息、MVU、橋接墊片；墊片送宿主的每種訊息都帶文件 token），iframe 依回報高度長高；`frontend-host.ts` 是唯一訊息入口（origin 必須是 "null"、來源是掛著的 iframe 視窗、token 相符、形狀對，卸載即除名）。`CardFrontend.tsx`：第 1 次 load 送文件、第 2 次是文件寫完，之後再有 load 就當被導走，除名並換新 iframe 與新 token（連續三次就停、給說明）。卡片按鈕送出照玩家句送、卡片 localStorage 進 `card_storage`；DRM／雲端載入器卡給說明不掛；第一次看到介面提示可能外連（記在 localStorage）。宿主 CSP `frame-src 'self'`。介面一包延後載入。
+  - 卡片變數：`web/src/features/mvu/`。載 MVU 的卡（`loadsMvu`）照 MagVarUpdate 438f9ffc 開局（initvar → schema → 開場白 `<initvar>` 與自身指令 → 第 0 則與 seed）、每則 AI 回覆以前一張有效表（無則 seed）更新、樓尾補占位。updateVariables 不另寫：`web/mvu-engine-plugin.ts` 建置時把桌面版沙盒的 parseMessage 片段包成 `virtual:mvu-engine`（宿主不 eval），值解析走桌面版同一支 Worker（`evaluate.ts`）。酒館助手類巨集（`macro-like.ts`）送模前與顯示時代換；MVU 桌送模前拿掉占位、世界書用 MVU 推薦值（D33）。character／script 層新開時取卡上酒館助手的資料。執行期（lodash、yaml、json5、jsonrepair）只有用得到的桌才載。
+  - 回合中的卡片寫入（`useChat.ts`）：卡片寫入以 `Revisions`（每個目標的流水號，內容逐字比對沒變才同一版）比版本。message 表：回合收尾以 `keepLatestVars` 保住回合中的寫入；MVU 處理回覆以合併後的最新有效表為底，值解析等完再比對底稿，被卡片改過就以新底稿重算，連續 3 次被改就不提交（這則不掛表、不補占位）。chat／global：`turnCommits` 記回合中被外部改過的鍵，每一發（含換模第二發）提交都保留它們的現值，同鍵以卡片為準。類巨集送模時讀該發組提示用的變數副本。
+  - 桌面版小改：`card-interface/card-storage.ts` 從 interface-card 拆出（上限照契約量 UTF-8 位元組）、讀訊息墊片的 `chatEvents`／`floorText` 搬進 card-shell-route（墊片不再依賴語系）、橋接墊片訊息帶 token（桌面版 controller 不看）、值解析宿主 `card-mvu-eval-host.ts` 加單筆 256 KB 與排隊 1000 上限。契約格式沒改。
+  - 來回測試：e2e 帶 `TT_WEB_EXPORT_MVU_OUT` 另存 `src/shared/contracts/web-save/web-export-mvu.json`，cargo `a_real_web_export_with_mvu_lands_every_table_and_the_card_storage`；測試通道 claude Sonnet 從介面匯入這份存檔，桌面版卡片介面畫出 MVU 值。本機 TestCards（bcd368、DongeonMaster、HeroTraining）開局 initvar 都解得開、開場白都切得出介面區塊。
+  - 判斷〔模型判斷·未裁決〕：介面畫在各則訊息裡而不是覆蓋層；character 層初值取卡上酒館助手 variables、script 層取各腳本 data；類巨集照釘版酒館助手在預算與世界書掃描之後才代換（超量提示走平台拒收的既有提示）；顯示時類巨集讀最後一張表（釘版 demacroOnRender 不傳樓號）。
+  - 未驗：真模型（403）；Chromium 與手機（e2e 只跑 WebKit；導走判定靠 document.open／close 照規格再觸發一次 load，只在 WebKit 實測過）；卡片自己 fetch 外連；EJS 不執行（D34）；酒館助手變數函式只給載 MVU 的卡（D35）。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 6 卡片介面（施工中）
-照計畫分包表「6 卡片介面」列、2.4 節沙盒 iframe 橋接、4.1 宿主端變數語意施工；可拆子步驟多筆 commit，每步 verify＋web vitest＋e2e 綠，全部做完一次送審（主線開新審查串）。需要作者決定的從 D33 起編號、附建議與兩邊後果，先照建議做並標〔模型判斷·未裁決〕。
+## 下一步：包 7（導流全套）施工中
+計畫分包表「7 導流全套」列與第五節 D1、D6、D10、D11：下載頁、各時機的下載提示、額度用完只導向下載、找卡清單資料檔。做完送主線審查（主線開新審查串）。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。
@@ -75,10 +83,11 @@
 - 包 4 測試：IndexedDB 用 fake-indexeddb（`forceCloseDatabase` 模擬瀏覽器強制關連線、`IDBObjectStore.prototype.put` 可 spy 模擬配額）；sessionStorage 要 `vi.stubGlobal` 成 MemoryStorage。新桌第一次送出會先寫一筆首格，受控延遲測試要卡第二筆以後。存檔庫的 global 載入之前預約的寫入一律不寫（測試先 `restoreGlobals` 或 `loadGlobal`）。
 - 包 4 測試通道：worktree 內 `npm run harness:build`、`launch --root <暫存> --config-from <自寫 config：transport claude、cli_risk_accepted、tier_models 三檔都 sonnet>`，不用 --fresh；匯入完會跳「已照網頁版存檔開了一張新桌」對話框，要先 `answer next 知道了` 輸入框才解鎖。
 - 在 worktree 裡跑 verify 前先 `npm ci` 與 `npm ci --prefix web`：沒有自己的 node_modules 時會解析到主 repo 的，vite 擋外部路徑，幾支 vitest 檔會假紅。
+- 包 6 測試：`card-interface/frontend-host.test.ts`（來源、origin、token、形狀）、`chat/card-frontend-turn.test.tsx`（按鈕送出、card storage 進出存檔）、`chat/mvu-turn.test.tsx`（開局、回覆更新、類巨集、存檔與接著玩、重新生成、卡片寫入版本、初始化失敗；競態：回合中寫入當底、值解析等待中寫入重算與連續被打斷、換模與 message／chat／global 寫入、同鍵以卡片為準、該發副本、編輯與刪除、開局等待時停止與卸載；mock 的 `gate` 能卡住值解析、`onRun` 能在每次值解析開始時插一手）、`sillytavern/variables.test.ts`（回合提交紀錄）、`mvu/mvu-parts.test.ts`（類巨集、parseString、版本、快照、MVU 世界書設定）；桌面版 `card-mvu-eval-host.test.ts`、`interface-card.test.ts` 有對應上限測試。e2e 的介面卡 `web/e2e/interface-card.json`（MVU＋兩支顯示腳本），假端點 `state.replies` 照順序回排好的句子；導走測試把開場那支 iframe 導到 `/sandbox.html?navigated`，新的 iframe 是延後載入的，要捲回去才會載。要重產 MVU 來回 fixture：`cd web && TT_WEB_EXPORT_MVU_OUT=<絕對路徑> npm run e2e`。測 MVU 的 hook 測試要 `vi.mock("../mvu/evaluate")` 換成直接呼叫桌面版 `runEval`（測試環境沒有 Worker），開局是非同步的，等到第 0 則掛上表或 `initError` 再動作。沙盒 MVU／酒館助手規格只當規格書讀：MagVarUpdate 438f9ffc、JS-Slash-Runner 46ec10df（用 GitHub raw 抓到暫存）。測試通道匯入入口：開新的一桌 →「新增」→「匯入卡」→ `file input[type=file] <存檔路徑>`，之後有兩個「知道了」對話框，卡片介面覆蓋層會自動打開（關閉鈕「關閉介面」）。
 - 「取消未完成回合」自動收回玩家句是網頁版提案〔模型判斷·未裁決〕；桌面版零字停止是由玩家手動收回。介面文案與範例卡只有繁中（十語系在包 8）。
 
 ## 等作者
-- 開 Cloudflare 帳號並接上 repo（D1），包 9 上線前要好。
+- 開 Cloudflare 帳號並接上 repo（D1），包 9 上線前要好；`_headers` 的宿主 CSP 要排除 `sandbox.html`。
 
 ## 之後再談
 - 中文找卡：候選只有類腦、旅程兩個 Discord 社群（簡中、要答題、邀請連結會失效）。〔作者：之後再談，2026-09-30〕

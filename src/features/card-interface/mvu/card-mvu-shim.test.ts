@@ -703,7 +703,7 @@ $(errorCatched(init));
     });
     (win.document.getElementById("act") as HTMLButtonElement).click();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(sent).toContainEqual({ source: "table-tavern-card", kind: "input", text: "前進" });
+    expect(sent).toContainEqual(expect.objectContaining({ source: "table-tavern-card", kind: "input", text: "前進", token: expect.any(String) }));
     win.close();
   });
 

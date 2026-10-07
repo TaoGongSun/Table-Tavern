@@ -4,7 +4,7 @@
 // ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載連結→登出。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
 // TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）；
-// TT_WEB_EXPORT_WI_OUT 同理，另存帶世界書觸發狀態的那一份。
+// TT_WEB_EXPORT_WI_OUT 同理，另存帶世界書觸發狀態的那一份；TT_WEB_EXPORT_MVU_OUT 另存帶 MVU 與卡片設定的那一份。
 import assert from "node:assert/strict";
 import { copyFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -286,6 +286,82 @@ try {
   if (process.env.TT_WEB_EXPORT_WI_OUT) copyFileSync(wiPath, process.env.TT_WEB_EXPORT_WI_OUT);
   await page.getByTestId("export-funnel").getByRole("button", { name: "知道了" }).click();
   fake.state.chat = "normal";
+
+  step("卡片介面：顯示 regex 產出的整頁畫成沙盒 iframe，讀得到訊息、存得了設定、按鈕送得出句子，偽造訊息不收");
+  await page.getByRole("button", { name: "← 換一張卡" }).click();
+  await page.getByTestId("card-file").setInputFiles(`${E2E_DIR}interface-card.json`);
+  await page.getByRole("heading", { name: "星港管理員" }).waitFor();
+  await page.getByTestId("import-regex-allow").check();
+  await page.getByRole("button", { name: "開始這張卡" }).click();
+  await page.getByTestId("card-frontend-notice").waitFor();
+  const frontend = page.frameLocator('[data-testid="card-frontend"]').first();
+  await frontend.locator("#info").getByText("樓 0／最後 0：歡迎來到星").waitFor();
+  await frontend.locator("#visits").getByText("來過 1 次").waitFor();
+  assert.equal(await page.getByTestId("card-frontend").first().getAttribute("sandbox"), "allow-scripts", "沙盒不給 allow-same-origin");
+
+  step("MVU：開局照 initvar 初始化、介面讀寫第 0 樓的表；回覆照指令更新自己那樓、補狀態欄，下一輪提示讀得到");
+  await frontend.locator("#ships").getByText("船隻 1").waitFor();
+  await frontend.locator("#add").click();
+  await frontend.locator("#saved").getByText("已寫入").waitFor();
+  await frontend.locator("#ships").getByText("船隻 2").waitFor();
+  // 宿主頁自己偽造的卡片訊息：來源不是掛著的 iframe，不收
+  await page.evaluate(() => window.postMessage({ source: "table-tavern-card", kind: "input", text: "偽造的句子" }, "*"));
+  const uiFrom = fake.state.chatRequests.length;
+  fake.state.replies = ["貨船進港了，碼頭一下子熱鬧起來。<UpdateVariable>\n_.set('港口.船隻', 2, 5);//進港\n</UpdateVariable>", "夜裡的港口很安靜。"];
+  await frontend.locator("#go").click();
+  await page.getByTestId("message-user").getByText("從介面送出").waitFor();
+  await page.getByText("貨船進港了，碼頭一下子熱鬧起來。").waitFor();
+  assert.equal(fake.state.chatRequests.length, uiFrom + 1, "偽造的訊息不能觸發送出");
+  assert.equal(await page.getByText("偽造的句子").count(), 0);
+  const uiPrompt = fake.state.chatRequests.at(-1).messages.map((message) => message.content);
+  assert.ok(uiPrompt.includes("<now>\n港口:\n  船隻: 2\n  主人: 旅人\n</now>"), `類巨集要換成卡片寫入後的表：${JSON.stringify(uiPrompt)}`);
+  const status = page.frameLocator('[data-testid="card-frontend"]').nth(1);
+  await status.locator("#status").getByText("本樓船隻 5").waitFor();
+  // 回覆落地後開場那支介面不重掛（設定照舊），讀的還是自己那樓
+  await frontend.locator("#visits").getByText("來過 1 次").waitFor();
+  await frontend.locator("#ships").getByText("船隻 2").waitFor();
+  await page.getByPlaceholder("輸入你的行動或對話…").fill("晚安");
+  await page.getByRole("button", { name: "送出" }).click();
+  await page.getByText("夜裡的港口很安靜。").waitFor();
+  const nightPrompt = fake.state.chatRequests.at(-1).messages.map((message) => message.content);
+  assert.ok(nightPrompt.includes("<now>\n港口:\n  船隻: 5\n  主人: 旅人\n</now>"), "下一輪讀到回覆更新後的表");
+  assert.ok(!nightPrompt.some((content) => content.includes("<StatusPlaceHolderImpl/>")), "占位不送模型");
+  const [uiDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "匯出存檔" }).click()]);
+  const uiPath = await uiDownload.path();
+  const uiSave = parseWebSave(readFileSync(uiPath, "utf8"));
+  assert.ok(uiSave.ok, `介面存檔沒過契約檢查：${JSON.stringify(uiSave.error)}`);
+  assert.deepEqual(uiSave.save.card_storage, { visits: "1" }, "卡片設定要進存檔");
+  const ships = (index) => uiSave.save.messages[index].message_vars?.stat_data?.港口?.船隻;
+  assert.deepEqual([ships(0), ships(1), ships(2), ships(3), ships(4)], [2, undefined, 5, undefined, 5]);
+  assert.equal(uiSave.save.mvu.seed.stat_data.港口.船隻, 1, "種子是開局那張");
+  assert.deepEqual(uiSave.save.mvu.macros, { user: "旅人", char: "星港管理員" });
+  assert.deepEqual(uiSave.save.mvu.layers.character, { 主題: "海藍" });
+  assert.ok(uiSave.save.messages[2].text.endsWith("<StatusPlaceHolderImpl/>"));
+  if (process.env.TT_WEB_EXPORT_MVU_OUT) copyFileSync(uiPath, process.env.TT_WEB_EXPORT_MVU_OUT);
+  await page.getByTestId("export-funnel").getByRole("button", { name: "知道了" }).click();
+
+  step("卡片介面把自己導走：新頁送來的句子不收、那支介面換一支新的重掛（新 token）");
+  const sandboxFrame = page.frames().find((frame) => frame.url().endsWith("/sandbox.html"));
+  assert.ok(sandboxFrame, "找得到開場那支介面的 frame");
+  const navFrom = fake.state.chatRequests.length;
+  const framesBefore = await page.getByTestId("card-frontend").count();
+  // 導向同站的另一頁（沙盒旗標仍在、來源仍是不透明），那頁再假冒卡片送句子
+  await sandboxFrame.evaluate(() => {
+    location.href = "/sandbox.html?navigated";
+  });
+  // 新的 iframe 是延後載入的：捲回開場那則才會載
+  await page.waitForTimeout(300);
+  await page.getByTestId("card-frontend").first().scrollIntoViewIfNeeded();
+  await frontend.locator("#visits").getByText("來過 2 次").waitFor();
+  assert.equal(await page.getByTestId("card-frontend").count(), framesBefore, "換一支新的，不多也不少");
+  const navigated = page.frames().find((frame) => frame.url().includes("?navigated"));
+  if (navigated) {
+    await navigated.evaluate(() => parent.postMessage({ source: "table-tavern-card", kind: "input", text: "導走後的句子" }, "*"));
+  }
+  await page.waitForTimeout(500);
+  assert.equal(await page.getByText("導走後的句子").count(), 0, "導走後的頁面送的句子不能收");
+  assert.equal(fake.state.chatRequests.length, navFrom);
+  await page.getByTestId("card-frontend-notice").getByRole("button", { name: "知道了" }).click();
 
   step("今日免費用完：送出前查 /key，跳導流面板、原文留在輸入框");
   fake.state.remaining = 0;
