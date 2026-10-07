@@ -29,13 +29,13 @@ const busy: StreamResult = {
 /** 送一句；`results` 依序是每一發的結果。回傳每一發的模型與 messages、回合後的對話。 */
 async function sendTurn(data: unknown, options: { fits: string[]; results: StreamResult[]; runtime?: FailoverRuntime }) {
   const card = playCardFromValue("json", data);
-  const plan: CallPlan = { account: "acct", lineup: ["A", "B"], others: [], fits: new Set(options.fits), names: new Map() };
+  const plan: CallPlan = { account: "acct", lineup: ["A", "B"], others: [], fits: (model) => options.fits.includes(model), names: new Map() };
   const session = {
     apiKey: "sk-or-v1-test",
     quota: { kind: "unknown" },
     deps: { fetch: fetch, apiBase: "http://fake/api/v1" },
     runtime: options.runtime ?? new FailoverRuntime(),
-    pool: { refresh: async () => {}, plan: () => plan, contextLength: (id: string) => CONTEXT[id] ?? 0 },
+    pool: { refresh: async () => {}, plan: () => plan, contextLength: (id: string) => CONTEXT[id] ?? 0, tokenizer: () => null },
     quotaEvent: () => {},
     refreshQuota: async () => {},
   } as unknown as OpenRouterSession;
@@ -73,7 +73,7 @@ describe("macros in the dispatched prompt", () => {
 
     // 換模第二發：第一發 A 失敗換到 B，B 那一發用 B 重組；巨集副作用只落一次
     const runtime = new FailoverRuntime();
-    await runSmartCall({ ...single.plan, fits: new Set(["A", "B"]) }, runtime, {
+    await runSmartCall({ ...single.plan, fits: () => true }, runtime, {
       send: async () => busy,
       dailyRemaining: async () => 10,
       signal: new AbortController().signal,

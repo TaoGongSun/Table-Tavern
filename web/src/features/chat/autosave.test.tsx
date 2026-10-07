@@ -23,13 +23,13 @@ beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
-const plan: CallPlan = { account: "acct", lineup: ["A"], others: [], fits: new Set(["A"]), names: new Map() };
+const plan: CallPlan = { account: "acct", lineup: ["A"], others: [], fits: (model) => model === "A", names: new Map() };
 const session = {
   apiKey: "sk-or-v1-test",
   quota: { kind: "unknown" },
   deps: { fetch, apiBase: "http://fake/api/v1" },
   runtime: new FailoverRuntime(),
-  pool: { refresh: async () => {}, plan: () => plan, contextLength: () => 65536 },
+  pool: { refresh: async () => {}, plan: () => plan, contextLength: () => 65536, tokenizer: () => null },
   quotaEvent: () => {},
   refreshQuota: async () => {},
 } as unknown as OpenRouterSession;

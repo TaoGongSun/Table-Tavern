@@ -22,6 +22,7 @@ const model = (id: string, extra: Partial<FreeModel> = {}): FreeModel => ({
   name: id,
   created: OLD,
   contextLength: 65_536,
+  tokenizer: null,
   expirationAt: null,
   supportedParameters: [],
   ...extra,
@@ -50,9 +51,19 @@ describe("parseCatalog", () => {
 });
 
 describe("selection", () => {
-  it("drops models that cannot hold the sentence or expire within a day", () => {
-    const list = [model("a:free"), model("b:free", { contextLength: 1_000 }), model("c:free", { expirationAt: NOW + 3_600 })];
-    expect(eligibleModels(list, 8_000, NOW).map((m) => m.id)).toEqual(["a:free"]);
+  it("drops models that expire within a day", () => {
+    const list = [model("a:free"), model("b:free", { expirationAt: NOW + 3 * 86_400 }), model("c:free", { expirationAt: NOW + 3_600 })];
+    expect(eligibleModels(list, NOW).map((m) => m.id)).toEqual(["a:free", "b:free"]);
+  });
+
+  it("keeps architecture.tokenizer for ST's token counting", () => {
+    const entry = (tokenizer: unknown) => ({
+      id: "q:free",
+      pricing: { prompt: "0", completion: "0" },
+      architecture: { input_modalities: ["text"], output_modalities: ["text"], tokenizer },
+    });
+    expect(parseCatalog({ data: [entry("Qwen")] })?.[0].tokenizer).toBe("Qwen");
+    expect(parseCatalog({ data: [entry(null)] })?.[0].tokenizer).toBeNull();
   });
 
   it("ranks roleplay first, then weekly, then the rest; skips stealth and fresh models", () => {

@@ -64,13 +64,53 @@ function detailFromBody(body: string): ErrorDetail {
   }
 }
 
-/** 非 2xx 的顯示字串：穩定碼在前，原文留到 2000 字（真的超長才截，並明講）。 */
+/** 平台說輸入超過模型的上下文上限（同桌面版 transport/context_overflow.rs 的 CODE）。 */
+export const CONTEXT_TOO_LONG_CODE = "AI_CONTEXT_TOO_LONG:";
+
+/** 供應商錯誤訊息是不是在說輸入超過模型容量（同桌面版 context_overflow.rs message_says_too_long）。 */
+function messageSaysTooLong(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("prompt is too long") ||
+    lower.includes("context_length_exceeded") ||
+    lower.includes("maximum context length") ||
+    lower.includes("exceeds the context window") ||
+    lower.includes("maximum prompt length") ||
+    lower.includes("input_too_large") ||
+    (lower.includes("input token count") && lower.includes("exceeds the maximum"))
+  );
+}
+
+/**
+ * 只在 400／413 時看 body 的 error 物件（`code` 字串或 `message`），不在泛用全文裡掃字樣
+ * （同桌面版 api_body_says_too_long；陣列包一層取第一個）。
+ */
+export function bodySaysTooLong(status: number, body: string): boolean {
+  if (status !== 400 && status !== 413) return false;
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  const root = Array.isArray(value) ? value[0] : value;
+  const error = root && typeof root === "object" ? (root as Record<string, unknown>).error : undefined;
+  if (!error || typeof error !== "object") return false;
+  const field = (key: string) => {
+    const raw = (error as Record<string, unknown>)[key];
+    return typeof raw === "string" ? raw : "";
+  };
+  return field("code") === "context_length_exceeded" || messageSaysTooLong(field("message"));
+}
+
+/** 非 2xx 的顯示字串：穩定碼在前（容量爆掉另掛 AI_CONTEXT_TOO_LONG），原文留到 2000 字（真的超長才截，並明講）。 */
 export function httpErrorDisplay(status: number, body: string): string {
   const LIMIT = 2000;
   const chars = [...body];
   const kept = chars.slice(0, LIMIT).join("");
   const cut = chars.length > LIMIT ? "…[truncated]" : "";
-  return `AI_HTTP_STATUS_${status}: status=${status} body=${kept}${cut}`;
+  const overflow = bodySaysTooLong(status, body) ? `${CONTEXT_TOO_LONG_CODE} ` : "";
+  return `${overflow}AI_HTTP_STATUS_${status}: status=${status} body=${kept}${cut}`;
 }
 
 export function failureFromHttp(status: number, headers: Headers, body: string): ApiFailure {

@@ -175,7 +175,7 @@ describe("useChat and the shared model pool", () => {
     await session.pool.refresh("sk-or-v1-new", now);
     await act(async () => release());
     await flush();
-    const plan = session.pool.plan(["嗨"], now);
+    const plan = session.pool.plan(() => true, now);
     expect(plan.lineup).toEqual(["new/model:free"]);
     expect(plan.names.has("old/model:free")).toBe(false);
     expect(session.runtime.epoch).toBe(epochAfterLogout);

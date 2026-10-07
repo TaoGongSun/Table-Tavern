@@ -42,12 +42,16 @@
   - 變數表上限兩端共用 `src/shared/contracts/vars-table.ts`↔`src-tauri/src/data/message_vars/json.rs`（邊界案例 `vars-table-boundary.json`）；卡片寫入原文或緊湊寫法任一通過，存檔的表只量緊湊寫法。時間兩端都驗日曆存在。`VariableScope.written` 記這桌寫過的鍵。
   - 來回測試：e2e 帶 `TT_WEB_EXPORT_OUT` 另存的真匯出 `src/shared/contracts/web-save/web-export.json`，cargo `a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer`；測試通道 claude Sonnet 從介面匯入後送一句有接續回覆（約 0.011 美元）。ST 聊天變數只落桌面版 chat 層檔案，桌面版的 MVU 表與提示內的變數等包 6〔模型判斷·未裁決〕。
   - D27–D29 已裁決（計畫第五節）。未驗：Chromium、手機實機、真 OpenRouter（403）；世界書觸發狀態（包 5）、卡片 storage 與 MVU 種子（包 6）屆時各補來回測試。
+- **包 4b（上下文預算）實作完、Sol r2／Grok r2 通過**：commit d3d475e、f1e201f。估算器方案 D30 等作者拍板（B 現方案：ST 計數結構＋逐欄位 guesstimate／A：打包真 tokenizer）；拍板前不改實作。
+  - `web/src/features/sillytavern/tokens.ts`：ST 計數結構（依 `architecture.tokenizer`＋模型 id 選 tiktoken／HF／sentencepiece 計法、每則開銷、name、前端 -2），文字換 token 是可替換的 `TextTokens`（目前 guesstimate）。包 5 的 WI 預算沿用它。
+  - `chat/prompt.ts` 照 populateChatCompletion 裁切：預留 3、固定段落先佔（佔不下 `overflow`）、[Start a new Chat] 先預約、歷史新到舊邊代換邊放、剩下放範例。`useChat` 每支模型照自己的上限組一次（memo），`FreePool.plan(holds)` 只挑放得下固定段落的；穩定模型只因上限不夠被篩掉→`AI_PROMPT_EXCEEDS_CONTEXT`。平台 400／413 說太長→`AI_CONTEXT_TOO_LONG`（同桌面版 context_overflow）。
+  - 測試：`chat/context-budget.test.ts`（表格，tiktoken 與 Qwen／DeepSeek 兩族）、`chat/context-limit.test.tsx`（選模、換模重算、平台拒收、真 FreePool）。未驗：真模型（403）、估算與真 tokenizer 的落差。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 4b（上下文預算）
-照計畫分包表「4b 上下文預算」那列與 D23：依實際派送模型的上下文上限扣掉保留輸出量當預算、估 token 照 ST、捨棄順序照 ST 預設（固定段落先佔→歷史新到舊→剩下給範例）、固定段落超上限不送並提示、換模第二發照第二發模型重算。驗收是表格測試。做完送主線開審查串。
+## 下一步：包 5（世界書觸發）
+照計畫分包表「5 世界書觸發」列（D16、D17）：卡內 `character_book` 照 ST 06bde939 World Info 觸發、插入、預算（沿用 4b 估算器）、時效與群組；觸發狀態照 web-save 契約進存檔，補桌面來回測試。D30 作者回覆後：計畫第五節補 D30、4b 列拿掉「未裁決」、本檔改包 4b 封板。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。

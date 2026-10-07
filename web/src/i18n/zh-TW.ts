@@ -103,6 +103,8 @@ export const zhTW = {
   errBusy: "免費模型目前忙線，請稍後再送一次。",
   errAllBusy: "免費模型全都忙線中，約 30 分鐘後再試。",
   errNoFreeModel: "你的帳號目前沒有可用的免費模型，請稍後再試。",
+  errPromptTooLarge: "這張卡的固定設定（系統提示、角色描述等）太長，超過目前免費模型能讀的長度，這一句沒有送出。",
+  errContextTooLong: "這一輪連同前文超過模型一次能讀的長度，平台沒有收下，原句已放回輸入框；縮短這一句或刪掉最後幾則再送。",
   errAuth: "OpenRouter 拒絕了這把金鑰，請登出後重新登入。",
   errStalled: "模型太久沒有回應，已停止等待，請再送一次。",
   errRunaway: "模型輸出失控，已中止這一輪，請再送一次。",

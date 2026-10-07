@@ -5,8 +5,12 @@
 // [Start a new Chat]＋歷史（depth_prompt 依深度插入）→ post_history_instructions。
 // 卡欄位先過一輪不含卡欄位的代換，接著第 0 則寫回（Generate 先 getCharacterCardFields 再代換 chat[0]），
 // 每段提示再完整代換一次；空的段落不送。
-// 上下文長度預算（ST 依 token 預算先捨範例、再捨最舊訊息）在包 4b（D23）。
+// 上下文預算照 populateChatCompletion（openai.js:1185）與 ChatCompletion（:3917）：預算＝上下文上限－保留輸出，
+// 先預留 3，固定段落（main、卡欄位、post_history_instructions）先佔、佔不下就整句不送（ST 的「Mandatory prompts
+// exceed the context size」）；[Start a new Chat] 先預約，歷史由新到舊邊代換邊放、放不下就停（更舊的不代換）；
+// 剩下的才一段段放範例對話。所以先掉範例、再掉最舊訊息（D23〔作者裁決 2026-10-07〕）。
 import type { ChatMessage } from "../openrouter/stream-chat";
+import type { CountedMessage } from "../sillytavern/tokens";
 import { exampleDialogues, parseMesExamples } from "../sillytavern/mes-examples";
 import { baseChatReplace, substituteParams } from "../sillytavern/substitute";
 import type { ChatEntry } from "./chat-turn";
@@ -26,8 +30,10 @@ export interface PromptOptions {
   model?: string;
   /** {{input}}：玩家這一句的原文 */
   input?: string;
-  /** {{maxContext}}／{{maxResponse}}：該模型的上下文上限與保留的輸出量 */
+  /** {{maxContext}}／{{maxResponse}}：該模型的上下文上限與保留的輸出量；與 `countTokens` 都有才裁切 */
   limits?: { maxContext: number; maxResponse: number };
+  /** 這支模型一則訊息估多少 token（sillytavern/tokens.ts） */
+  countTokens?: (message: CountedMessage) => number;
 }
 
 type HistoryMessage = ChatMessage & { injected?: boolean };
@@ -39,10 +45,24 @@ function injectDepthPrompt(history: HistoryMessage[], depth: number, role: ChatM
   return newestFirst.reverse();
 }
 
-/** 一次組裝的結果：送出的訊息，與第 0 則寫回後的逐字稿。 */
+/** 一次組裝的結果：送出的訊息，與第 0 則寫回後的逐字稿。`overflow`＝固定段落就超過預算，不送（messages 為空）。 */
 export interface ComposedPrompt {
   messages: ChatMessage[];
   entries: ChatEntry[];
+  overflow: boolean;
+}
+
+/** ChatCompletion 的 token 預算；沒給上限或計數器就不裁切。 */
+function tokenBudget(options: PromptOptions) {
+  const { limits, countTokens } = options;
+  let remaining = limits && countTokens ? limits.maxContext - limits.maxResponse : Number.POSITIVE_INFINITY;
+  const cost = (message: ChatMessage) => countTokens?.(message) ?? 0;
+  return {
+    cost,
+    reserve: (tokens: number) => void (remaining -= tokens),
+    free: (tokens: number) => void (remaining += tokens),
+    affords: (tokens: number) => remaining - tokens >= 0,
+  };
 }
 
 /** 照 ST Generate 組一次提示；巨集副作用（setvar 等）直接落在 `setup.variables`。 */
@@ -90,29 +110,47 @@ export function composePrompt(setup: ChatSetup, unsettled: ChatEntry[], options:
   const scenarioPrompt = fill(scenarioText);
   const main = system ? fill(system, defaultMain) : defaultMain;
   const postHistory = jailbreak ? fill(jailbreak, "") : "";
-  // 5. populateChatCompletion：depth_prompt 插入 → [Start a new Chat] → 歷史由新到舊代換 → 範例
-  const history = injectDepthPrompt(regexed, card.depthPrompt.depth, card.depthPrompt.role, fill(depthPrompt));
-  const newChat = fill(NEW_CHAT_PROMPT);
-  const historyFilled = [...history].reverse().map((message) => ({ role: message.role, content: fill(message.content) })).reverse();
-  const examples = exampleDialogues(parseMesExamples(mesExamples), setup.userName, card.text.name).map((dialogue) => ({
-    header: fill(NEW_EXAMPLE_CHAT_PROMPT),
-    dialogue,
-  }));
-
-  const messages: ChatMessage[] = [];
-  const push = (message: ChatMessage) => {
-    if (message.content) messages.push(message);
-  };
-  push({ role: "system", content: main });
-  push({ role: "system", content: descriptionText });
-  push({ role: "system", content: personalityPrompt });
-  push({ role: "system", content: scenarioPrompt });
-  for (const { header, dialogue } of examples) {
-    push({ role: "system", content: header });
-    for (const example of dialogue) push({ role: "system", name: example.name, content: example.content });
+  // 5. populateChatCompletion：預留 3（每則回覆前的 <|start|>assistant<|message|>），固定段落逐段佔預算
+  const budget = tokenBudget(options);
+  budget.reserve(3);
+  const fixed = [main, descriptionText, personalityPrompt, scenarioPrompt, postHistory].map((content): ChatMessage => ({ role: "system", content }));
+  for (const message of fixed) {
+    const tokens = budget.cost(message);
+    if (!budget.affords(tokens)) return { messages: [], entries, overflow: true };
+    budget.reserve(tokens);
   }
-  push({ role: "system", content: newChat });
-  for (const message of historyFilled) push(message);
-  push({ role: "system", content: postHistory });
-  return { messages, entries };
+  // 6. populateChatHistory：depth_prompt 插入 → 預約 [Start a new Chat] → 歷史由新到舊代換、放得下才放
+  const history = injectDepthPrompt(regexed, card.depthPrompt.depth, card.depthPrompt.role, fill(depthPrompt));
+  const newChat: ChatMessage = { role: "system", content: fill(NEW_CHAT_PROMPT) };
+  const newChatTokens = budget.cost(newChat);
+  budget.reserve(newChatTokens);
+  const kept: ChatMessage[] = [];
+  for (const message of [...history].reverse()) {
+    const filled: ChatMessage = { role: message.role, content: fill(message.content) };
+    const tokens = budget.cost(filled);
+    if (!budget.affords(tokens)) break;
+    budget.reserve(tokens);
+    kept.unshift(filled);
+  }
+  // [Start a new Chat] 放回預算再正式放進去：連它都放不下也算固定段落超過
+  budget.free(newChatTokens);
+  if (!budget.affords(newChatTokens)) return { messages: [], entries, overflow: true };
+  budget.reserve(newChatTokens);
+  // 7. populateDialogueExamples：每段連同 [Example Chat] 整段放得下才放，放不下就停
+  const dialogues = exampleDialogues(parseMesExamples(mesExamples), setup.userName, card.text.name);
+  const examples: ChatMessage[] = [];
+  if (dialogues.length > 0) {
+    const header: ChatMessage = { role: "system", content: fill(NEW_EXAMPLE_CHAT_PROMPT) };
+    for (const dialogue of dialogues) {
+      const block = [header, ...dialogue.map((example): ChatMessage => ({ role: "system", name: example.name, content: example.content }))];
+      if (!budget.affords(block.reduce((sum, message) => sum + budget.cost(message), 0))) break;
+      // 空內容不放進去也不扣（ChatCompletion.insert）；有 name 的空訊息仍算進上面那次 canAffordAll
+      for (const message of block.filter((message) => message.content)) budget.reserve(budget.cost(message));
+      examples.push(...block);
+    }
+  }
+
+  const [mainMessage, descriptionMessage, personalityMessage, scenarioMessage, postHistoryMessage] = fixed;
+  const ordered = [mainMessage, descriptionMessage, personalityMessage, scenarioMessage, ...examples, newChat, ...kept, postHistoryMessage];
+  return { messages: ordered.filter((message) => message.content), entries, overflow: false };
 }

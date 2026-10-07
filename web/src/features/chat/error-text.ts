@@ -1,7 +1,7 @@
 // 回合錯誤字串（開頭是穩定碼）翻成玩家看得懂的話。只認開頭的碼，不解析供應商原文。
 import { t } from "../../i18n";
-import { RUNAWAY_CODE, STALLED_CODE } from "../openrouter/api-failure";
-import { ALL_BUSY, FREE_MODEL_BUSY, NO_FREE_MODEL } from "../openrouter/smart-call";
+import { CONTEXT_TOO_LONG_CODE, RUNAWAY_CODE, STALLED_CODE } from "../openrouter/api-failure";
+import { ALL_BUSY, FREE_MODEL_BUSY, NO_FREE_MODEL, PROMPT_EXCEEDS_CONTEXT } from "../openrouter/smart-call";
 
 /** 錯誤細節裡不得出現金鑰（計畫 2.4）：保險起見遮掉任何 sk-or- 開頭的字串。 */
 export function redactKeys(text: string): string {
@@ -9,6 +9,8 @@ export function redactKeys(text: string): string {
 }
 
 export function explainError(display: string): string {
+  if (display.startsWith(PROMPT_EXCEEDS_CONTEXT)) return t("errPromptTooLarge");
+  if (display.startsWith(CONTEXT_TOO_LONG_CODE)) return t("errContextTooLong");
   if (display.startsWith(NO_FREE_MODEL)) return t("errNoFreeModel");
   if (display.startsWith(ALL_BUSY)) return t("errAllBusy");
   if (display.startsWith(FREE_MODEL_BUSY)) return t("errBusy");

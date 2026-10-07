@@ -14,6 +14,8 @@ export interface FreeModel {
   name: string;
   created: number;
   contextLength: number;
+  /** 模型清單的 `architecture.tokenizer`（例：Llama3、Qwen）；估 token 時照 ST 選計數方式 */
+  tokenizer: string | null;
   expirationAt: number | null;
   supportedParameters: string[];
 }
@@ -76,6 +78,7 @@ function parseModel(entry: Json): FreeModel | null {
     name: trimmed(entry.name) ?? id,
     created: parseTimestamp(entry.created) ?? 0,
     contextLength: typeof entry.context_length === "number" ? entry.context_length : 0,
+    tokenizer: trimmed((entry.architecture as Json | undefined)?.tokenizer),
     expirationAt,
     supportedParameters: params,
   };
@@ -109,26 +112,9 @@ export function parseUpstreams(body: unknown): string[] | null {
   return [...new Set(names)].sort();
 }
 
-/** 粗估 token：ASCII 每 4 字 1 個、其他字元每字 1 個（同桌面版 usage/log.rs:237）。 */
-export function estimateTokens(text: string): number {
-  let ascii = 0;
-  let wide = 0;
-  for (const ch of text) {
-    if (ch.charCodeAt(0) < 128) ascii += 1;
-    else wide += 1;
-  }
-  return Math.floor(ascii / 4) + wide;
-}
-
-export function requiredContext(contents: string[]): number {
-  return contents.reduce((tokens, content) => tokens + estimateTokens(content) + 4, 2) + RESERVED_OUTPUT_TOKENS;
-}
-
-export function eligibleModels(catalog: FreeModel[], required: number, now: number): FreeModel[] {
-  return catalog.filter(
-    (model) =>
-      model.contextLength >= required && (model.expirationAt === null || model.expirationAt > now + EXPIRY_MARGIN_SECS),
-  );
+/** 一天內不會下架的模型（放不放得下本句由各模型的上下文預算另判，見 chat/prompt.ts）。 */
+export function eligibleModels(catalog: FreeModel[], now: number): FreeModel[] {
+  return catalog.filter((model) => model.expirationAt === null || model.expirationAt > now + EXPIRY_MARGIN_SECS);
 }
 
 function preferenceCompare(left: FreeModel, right: FreeModel): number {

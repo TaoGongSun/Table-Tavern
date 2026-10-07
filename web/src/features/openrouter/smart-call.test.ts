@@ -8,7 +8,7 @@ const plan: CallPlan = {
   account: "acct",
   lineup: ["m1", "m2", "m3"],
   others: [],
-  fits: new Set(["m1", "m2", "m3"]),
+  fits: (model) => ["m1", "m2", "m3"].includes(model),
   names: new Map([
     ["m1", "Model One"],
     ["m2", "Model Two"],
@@ -135,7 +135,7 @@ describe("runSmartCall", () => {
   });
 
   it("reports all-busy when every lineup model is exhausted", async () => {
-    const small: CallPlan = { ...plan, lineup: ["m1"], fits: new Set(["m1"]) };
+    const small: CallPlan = { ...plan, lineup: ["m1"], fits: (model) => model === "m1" };
     const runtime = new FailoverRuntime();
     await runSmartCall(small, runtime, env([failed(busy())]).value);
     const outcome = await runSmartCall(small, runtime, env([failed(busy())]).value);

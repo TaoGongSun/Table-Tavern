@@ -5,7 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlayCard } from "../cards/play-card";
 import { quotaBlocksSending } from "../funnel/quota";
 import { fetchFreeDaily } from "../openrouter/openrouter-api";
-import { isDailyExhausted, NO_FREE_MODEL, runSmartCall, type CallOutcome, type FailoverNotice } from "../openrouter/smart-call";
+import {
+  isDailyExhausted,
+  NO_FREE_MODEL,
+  PROMPT_EXCEEDS_CONTEXT,
+  runSmartCall,
+  type CallOutcome,
+  type FailoverNotice,
+} from "../openrouter/smart-call";
 import { streamChat } from "../openrouter/stream-chat";
 import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
 import { RESERVED_OUTPUT_TOKENS } from "../openrouter/catalog";
@@ -20,6 +27,7 @@ import { deleteLast, regenerateBase, replaceLast, resolveTurn, type ChatEntry, t
 import { t } from "../../i18n";
 import { explainError } from "./error-text";
 import { composePrompt } from "./prompt";
+import { messageTokenCounter } from "../sillytavern/tokens";
 import { editedText, macroContext, openingText, replyText, userText, type ChatSetup } from "./st-text";
 
 let counter = 0;
@@ -155,14 +163,27 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         if (pending.kind === "send") rememberPendingInput(saveId, pending.rawInput);
         const input = pending.kind === "send" ? pending.rawInput : "";
         setEntries(started.before);
-        // 每次組提示都從回合開頭的變數副本起算；真正派送的那一次才把副作用（setvar 等）與第 0 則寫回落地，
-        // 試組與換模前的那一發不重複提交
+        // 每支模型照它的上限與 token 估算組一次提示（D23），都從回合開頭的變數副本起算；真正派送的那一次才把
+        // 副作用（setvar 等）與第 0 則寫回落地，選模時試組與換模前的那一發不重複提交
         const snapshot = copyVariables(setup.variables);
-        const compose = (model?: string) => {
+        const composed = new Map<string, ReturnType<typeof composeFor>>();
+        const composeFor = (model: string) => {
           const variables = copyVariables(snapshot);
-          const limits =
-            model === undefined ? undefined : { maxContext: session.pool.contextLength(model), maxResponse: RESERVED_OUTPUT_TOKENS };
-          return { variables, ...composePrompt({ ...setup, variables }, started.before, { generationType, input, model, limits }) };
+          const limits = { maxContext: session.pool.contextLength(model), maxResponse: RESERVED_OUTPUT_TOKENS };
+          const countTokens = messageTokenCounter(model, session.pool.tokenizer(model));
+          return { variables, ...composePrompt({ ...setup, variables }, started.before, { generationType, input, model, limits, countTokens }) };
+        };
+        const compose = (model: string) => {
+          const turn = composed.get(model) ?? composeFor(model);
+          composed.set(model, turn);
+          return turn;
+        };
+        /** 選模時有模型因固定段落超過它的預算被跳過 */
+        let overflowSeen = false;
+        const holds = (model: string) => {
+          const overflow = compose(model).overflow;
+          if (overflow) overflowSeen = true;
+          return !overflow;
         };
         /** 真正派送出去的最後一發（換模第二發會蓋掉第一發）。 */
         const dispatched: { turn: ReturnType<typeof compose> | null } = { turn: null };
@@ -172,8 +193,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
           await session.pool.refresh(apiKey, nowSecs());
           // refresh 期間被取消：不組 plan、不碰選模狀態，照「取消未完成回合」收尾
           if (cancelled()) throw CANCELLED;
-          // 先試組一次挑模型；每一發再用那一發的模型與它的上限重組
-          const plan = session.pool.plan(compose().messages.map((message) => message.content), nowSecs());
+          // 選模只挑放得下固定段落的模型；每一發用那一發的模型與它的上限組的提示
+          const plan = session.pool.plan(holds, nowSecs());
           outcome = await runSmartCall(plan, session.runtime, {
             signal: controller.signal,
             now: nowSecs,
@@ -203,9 +224,15 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
           if (reason === CANCELLED) {
             outcome = { kind: "aborted", text: "", failover: null };
           } else {
-            const display = reason instanceof Error && reason.message === NO_FREE_MODEL ? NO_FREE_MODEL : String(reason);
+            const known = reason instanceof Error && [NO_FREE_MODEL, PROMPT_EXCEEDS_CONTEXT].includes(reason.message);
+            const display = known ? (reason as Error).message : String(reason);
             outcome = { kind: "error", display, failure: null, cls: null, daily: false, failover: null };
           }
+        }
+        // 沒有模型放得下、而且有模型是因為固定段落超過預算被跳過：照 ST 的「Mandatory prompts exceed the
+        // context size」說明，不當成沒有免費模型
+        if (outcome.kind === "error" && outcome.display === NO_FREE_MODEL && overflowSeen) {
+          outcome = { ...outcome, display: PROMPT_EXCEEDS_CONTEXT };
         }
         // 畫面已卸載：結果不再寫回（草稿留著，接著玩時放回輸入框）
         if (generationRef.current !== generation) return;
