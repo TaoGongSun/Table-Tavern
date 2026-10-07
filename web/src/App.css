@@ -416,6 +416,12 @@ button:disabled {
   border-radius: var(--radius);
 }
 
+/* 帶卡片介面的訊息整欄寬：介面多半是整頁設計 */
+.message:has(.card-frontend) {
+  width: 100%;
+  max-width: 100%;
+}
+
 .message-char {
   align-self: flex-start;
   background: var(--surface);
@@ -452,6 +458,18 @@ button:disabled {
 .message-body pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 卡片介面：跟著內容長高（沙盒回報高度），載好前先留一塊位置 */
+.card-frontend {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  height: 160px;
+  border: 0;
+  margin: 8px 0;
+  border-radius: 6px;
+  background: transparent;
 }
 
 .message-flag,

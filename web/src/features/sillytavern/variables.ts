@@ -113,16 +113,44 @@ export function copyVariables(variables: ChatVariables): ChatVariables {
   return createChatVariables(structuredClone(variables.local.values), structuredClone(variables.global.values));
 }
 
-/** 把副本的內容整份寫回 `target`（原地改：global 是跨對話共用的同一個物件），副本寫過的鍵併進來。 */
-export function commitVariables(target: ChatVariables, source: ChatVariables): void {
+/**
+ * 一個回合的提交紀錄：`since`＝這回合上次提交後 target 的樣子（還沒提交＝回合開頭），`outside`＝這回合裡被別處
+ * （卡片介面）改過的鍵。外部改過的鍵整個回合都歸外部，之後每一發的提交都不再碰。
+ */
+export interface TurnCommits {
+  since: ChatVariables;
+  outside: { local: Set<string>; global: Set<string> };
+}
+
+export function turnCommits(target: ChatVariables): TurnCommits {
+  return { since: copyVariables(target), outside: { local: new Set(), global: new Set() } };
+}
+
+/**
+ * 把副本的內容整份寫回 `target`（原地改：global 是跨對話共用的同一個物件），副本寫過的鍵併進來。給了回合的提交
+ * 紀錄就三方合併：target 從上次提交後被別處改過的鍵（新增、改值、刪除）記成外部的，連同這回合先前記下的，都保留
+ * target 現在的值，其餘照副本。
+ */
+export function commitVariables(target: ChatVariables, source: ChatVariables, turn?: TurnCommits): void {
   for (const name of source.local.written) target.local.written.add(name);
   for (const name of source.global.written) target.global.written.add(name);
-  const pairs: [VariableMap, VariableMap][] = [
-    [target.local.values, source.local.values],
-    [target.global.values, source.global.values],
+  const scopes = [
+    { into: target.local.values, from: source.local.values, before: turn?.since.local.values, outside: turn?.outside.local },
+    { into: target.global.values, from: source.global.values, before: turn?.since.global.values, outside: turn?.outside.global },
   ];
-  for (const [into, from] of pairs) {
+  for (const { into, from, before, outside } of scopes) {
+    const next = structuredClone(from);
+    if (before !== undefined && outside !== undefined) {
+      for (const key of new Set([...Object.keys(before), ...Object.keys(into)])) {
+        if (JSON.stringify(into[key]) !== JSON.stringify(before[key])) outside.add(key);
+      }
+      for (const key of outside) {
+        if (key in into) next[key] = structuredClone(into[key]);
+        else delete next[key];
+      }
+    }
     for (const key of Object.keys(into)) delete into[key];
-    Object.assign(into, structuredClone(from));
+    Object.assign(into, next);
   }
+  if (turn) turn.since = copyVariables(target);
 }

@@ -74,6 +74,9 @@ export function playCardFromValue(source: PlayCard["source"], value: unknown): P
   };
 }
 
+/** 這張卡載 MVU（酒館助手腳本載入 MagVarUpdate，判定同桌面版卡片介面），而且網頁版畫得出它的介面。 */
+export const loadsMvu = (card: PlayCard): boolean => card.view.interface.mvu && card.view.interface.unsupported === null;
+
 /** 這張卡實際生效的 regex 腳本：玩家沒允許就一個都不套。 */
 export const activeRegexScripts = (card: PlayCard): RegexScript[] => (card.regexAllowed ? card.regexScripts : []);
 

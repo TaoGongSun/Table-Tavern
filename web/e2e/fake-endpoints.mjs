@@ -38,6 +38,8 @@ export async function startFake() {
     remaining: 40,
     /** normal：分段吐完；numbered：回「第 N 次回覆」（N＝第幾個聊天請求）；hang：送出標頭後不吐任何字；partial-hang：吐一段後卡住 */
     chat: "normal",
+    /** 排好的回覆：有就照順序一則一則回（優先於 chat 模式） */
+    replies: [],
     release: "none",
     challenge: null,
     exchanges: [],
@@ -116,7 +118,12 @@ export async function startFake() {
         send({ content: "說到一半" });
         return;
       }
-      const parts = state.chat === "numbered" ? [`第 ${state.chatRequests.length} 次`, "回覆"] : ["雪還在下，", "先喝口湯", "暖暖身子吧。"];
+      const parts =
+        state.replies.length > 0
+          ? [state.replies.shift()]
+          : state.chat === "numbered"
+            ? [`第 ${state.chatRequests.length} 次`, "回覆"]
+            : ["雪還在下，", "先喝口湯", "暖暖身子吧。"];
       for (const part of parts) {
         send({ content: part });
         await pause(120);

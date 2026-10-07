@@ -1,0 +1,336 @@
+{
+  "format": "table-tavern-web-save",
+  "version": 1,
+  "exported_at": "2026-10-07T10:12:30.000Z",
+  "card": {
+    "spec": "chara_card_v2",
+    "spec_version": "2.0",
+    "data": {
+      "name": "星港管理員",
+      "description": "{{char}} 管理著一座小星港。",
+      "first_mes": "歡迎來到星港。\n<HarborUI/>",
+      "character_book": {
+        "name": "星港",
+        "entries": [
+          {
+            "id": 0,
+            "keys": [],
+            "comment": "[initvar]變數初始化勿開",
+            "content": "港口:\n  船隻: 1\n  主人: '{{user}}'\n",
+            "enabled": false,
+            "insertion_order": 1
+          },
+          {
+            "id": 1,
+            "keys": [],
+            "comment": "變數列表",
+            "content": "<now>\n{{format_message_variable::stat_data}}\n</now>",
+            "constant": true,
+            "enabled": true,
+            "insertion_order": 2
+          }
+        ]
+      },
+      "extensions": {
+        "regex_scripts": [
+          {
+            "scriptName": "星港介面",
+            "findRegex": "<HarborUI/>",
+            "replaceString": "```html\n<!DOCTYPE html>\n<html><head><style>body{font:14px sans-serif}</style></head><body>\n<p id=\"info\">載入中</p>\n<p id=\"visits\"></p>\n<p id=\"ships\"></p>\n<p id=\"saved\"></p>\n<button id=\"go\">介面送出</button>\n<button id=\"add\">加一艘船</button>\n<script>\n$(errorCatched(async function () {\n  var last = getChatMessages(-1)[0];\n  document.getElementById('info').textContent = '樓 ' + getCurrentMessageId() + '／最後 ' + getLastMessageId() + '：' + last.message.slice(0, 5);\n  var visits = Number(localStorage.getItem('visits') || '0') + 1;\n  localStorage.setItem('visits', String(visits));\n  document.getElementById('visits').textContent = '來過 ' + visits + ' 次';\n  document.getElementById('go').onclick = function () { triggerSlash('/send 從介面送出'); };\n  await waitGlobalInitialized('Mvu');\n  var id = getCurrentMessageId();\n  function draw() {\n    var data = Mvu.getMvuData({ type: 'message', message_id: id });\n    document.getElementById('ships').textContent = '船隻 ' + _.get(data, 'stat_data.港口.船隻');\n  }\n  draw();\n  eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, draw);\n  document.getElementById('add').onclick = function () {\n    var data = Mvu.getMvuData({ type: 'message', message_id: id });\n    data.stat_data.港口.船隻 += 1;\n    Mvu.replaceMvuData(data, { type: 'message', message_id: id }).then(function () {\n      document.getElementById('saved').textContent = '已寫入';\n      draw();\n    });\n  };\n}));\n</script>\n</body></html>\n```",
+            "trimStrings": [],
+            "placement": [
+              2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+          },
+          {
+            "scriptName": "狀態欄",
+            "findRegex": "<StatusPlaceHolderImpl/>",
+            "replaceString": "```html\n<body><p id=\"status\">讀取中</p>\n<script>\n$(errorCatched(async function () {\n  await waitGlobalInitialized('Mvu');\n  var data = Mvu.getMvuData({ type: 'message', message_id: getCurrentMessageId() });\n  document.getElementById('status').textContent = '本樓船隻 ' + Mvu.getMvuVariable(data, '港口.船隻');\n}));\n</script></body>\n```",
+            "trimStrings": [],
+            "placement": [
+              2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+          }
+        ],
+        "tavern_helper": {
+          "scripts": [
+            {
+              "type": "script",
+              "enabled": true,
+              "name": "MVU",
+              "id": "e2e-mvu",
+              "content": "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';",
+              "info": "",
+              "button": {
+                "enabled": false,
+                "buttons": []
+              },
+              "data": {}
+            }
+          ],
+          "variables": {
+            "主題": "海藍"
+          }
+        }
+      }
+    }
+  },
+  "import_route": "character",
+  "regex_allowed": true,
+  "user_name": "旅人",
+  "opening_index": 0,
+  "messages": [
+    {
+      "id": "mmuxy83xf10",
+      "role": "char",
+      "text": "歡迎來到星港。\n<HarborUI/>",
+      "ts": "2026-10-07T10:12:29.283Z",
+      "opening": true,
+      "message_vars": {
+        "display_data": {
+          "港口": {
+            "船隻": 1,
+            "主人": "旅人"
+          }
+        },
+        "initialized_lorebooks": {
+          "星港": []
+        },
+        "stat_data": {
+          "港口": {
+            "船隻": 2,
+            "主人": "旅人"
+          }
+        },
+        "delta_data": {},
+        "schema": {
+          "type": "object",
+          "properties": {
+            "港口": {
+              "type": "object",
+              "properties": {
+                "船隻": {
+                  "type": "number",
+                  "required": true
+                },
+                "主人": {
+                  "type": "string",
+                  "required": true
+                }
+              },
+              "extensible": false,
+              "recursiveExtensible": false,
+              "required": true
+            }
+          },
+          "extensible": false,
+          "recursiveExtensible": false
+        }
+      }
+    },
+    {
+      "id": "mmuxy841a11",
+      "role": "user",
+      "text": "從介面送出",
+      "ts": "2026-10-07T10:12:29.422Z"
+    },
+    {
+      "id": "mmuxy844s12",
+      "role": "char",
+      "text": "貨船進港了，碼頭一下子熱鬧起來。<UpdateVariable>\n_.set('港口.船隻', 2, 5);//進港\n</UpdateVariable>\n\n<StatusPlaceHolderImpl/>",
+      "raw": "貨船進港了，碼頭一下子熱鬧起來。<UpdateVariable>\n_.set('港口.船隻', 2, 5);//進港\n</UpdateVariable>",
+      "ts": "2026-10-07T10:12:29.548Z",
+      "message_vars": {
+        "initialized_lorebooks": {
+          "星港": []
+        },
+        "stat_data": {
+          "港口": {
+            "船隻": 5,
+            "主人": "旅人"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "港口": {
+              "type": "object",
+              "properties": {
+                "船隻": {
+                  "type": "number",
+                  "required": true
+                },
+                "主人": {
+                  "type": "string",
+                  "required": true
+                }
+              },
+              "extensible": false,
+              "recursiveExtensible": false,
+              "required": true
+            }
+          },
+          "extensible": false,
+          "recursiveExtensible": false
+        },
+        "display_data": {
+          "港口": {
+            "船隻": "2->5 (進港)",
+            "主人": "旅人"
+          }
+        },
+        "delta_data": {
+          "港口": {
+            "船隻": "2->5 (進港)"
+          }
+        }
+      }
+    },
+    {
+      "id": "mmuxy84ax13",
+      "role": "user",
+      "text": "晚安",
+      "ts": "2026-10-07T10:12:29.769Z"
+    },
+    {
+      "id": "mmuxy84ec14",
+      "role": "char",
+      "text": "夜裡的港口很安靜。\n\n<StatusPlaceHolderImpl/>",
+      "raw": "夜裡的港口很安靜。",
+      "ts": "2026-10-07T10:12:29.892Z",
+      "message_vars": {
+        "initialized_lorebooks": {
+          "星港": []
+        },
+        "stat_data": {
+          "港口": {
+            "船隻": 5,
+            "主人": "旅人"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "港口": {
+              "type": "object",
+              "properties": {
+                "船隻": {
+                  "type": "number",
+                  "required": true
+                },
+                "主人": {
+                  "type": "string",
+                  "required": true
+                }
+              },
+              "extensible": false,
+              "recursiveExtensible": false,
+              "required": true
+            }
+          },
+          "extensible": false,
+          "recursiveExtensible": false
+        },
+        "display_data": {
+          "港口": {
+            "船隻": 5,
+            "主人": "旅人"
+          }
+        },
+        "delta_data": {}
+      }
+    }
+  ],
+  "world_info": {
+    "entries": [
+      {
+        "id": "wi-0",
+        "key": "0"
+      },
+      {
+        "id": "wi-1",
+        "key": "1"
+      }
+    ],
+    "timed": {
+      "sticky": {},
+      "cooldown": {}
+    },
+    "last_message_id": "mmuxy84ax13",
+    "message_effects": {}
+  },
+  "mvu": {
+    "macros": {
+      "user": "旅人",
+      "char": "星港管理員"
+    },
+    "seed": {
+      "display_data": {
+        "港口": {
+          "船隻": 1,
+          "主人": "旅人"
+        }
+      },
+      "initialized_lorebooks": {
+        "星港": []
+      },
+      "stat_data": {
+        "港口": {
+          "船隻": 1,
+          "主人": "旅人"
+        }
+      },
+      "delta_data": {},
+      "schema": {
+        "type": "object",
+        "properties": {
+          "港口": {
+            "type": "object",
+            "properties": {
+              "船隻": {
+                "type": "number",
+                "required": true
+              },
+              "主人": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "extensible": false,
+            "recursiveExtensible": false,
+            "required": true
+          }
+        },
+        "extensible": false,
+        "recursiveExtensible": false
+      }
+    },
+    "layers": {
+      "chat": {},
+      "character": {
+        "主題": "海藍"
+      },
+      "global": {},
+      "preset": {},
+      "script": {},
+      "extension": {}
+    }
+  },
+  "card_storage": {
+    "visits": "1"
+  }
+}

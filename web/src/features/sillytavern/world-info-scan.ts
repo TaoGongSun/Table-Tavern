@@ -1,11 +1,23 @@
 // World Info 觸發：照 SillyTavern 釘版本 06bde939 world-info.js 的 checkWorldInfo（WorldInfoBuffer、
 // WorldInfoTimedEffects、filterByInclusionGroups）。設定照 ST 預設（default/content/settings.json）：掃描深度 2、
-// 預算 25%、無上限、含名字、遞迴開、不分大小寫、全字比對、不用群組計分；最少觸發數與遞迴步數上限都是 0
-// （那兩條路不會走，沒有搬）。網頁版只有卡內世界書（角色書），沒有全域書、對話書、人設書、外部觸發與角色過濾。
+// 預算 25%、無上限、含名字、遞迴開、不分大小寫、全字比對、不用群組計分（載 MVU 的卡換成 MVU 的推薦值）；
+// 最少觸發數與遞迴步數上限都是 0（那兩條路不會走，沒有搬）。網頁版只有卡內世界書（角色書），沒有全域書、對話書、人設書、外部觸發與角色過濾。
 // 計時狀態（chat_metadata.timedWorldInfo）以條目穩定 ID 為鍵，計時單位是訊息則數。
 import { DEFAULT_DEPTH, DEFAULT_WEIGHT, sortByOrder, WI_LOGIC, WI_POSITION, type WiEntry } from "./world-info-book";
 
-const SETTINGS = {
+export interface WiSettings {
+  depth: number;
+  budgetPercent: number;
+  budgetCap: number;
+  recursive: boolean;
+  caseSensitive: boolean;
+  matchWholeWords: boolean;
+  useGroupScoring: boolean;
+  /** 掃描的訊息前面帶「名字: 」 */
+  includeNames: boolean;
+}
+
+export const ST_WI_SETTINGS: WiSettings = {
   depth: 2,
   budgetPercent: 25,
   budgetCap: 0,
@@ -13,7 +25,14 @@ const SETTINGS = {
   caseSensitive: false,
   matchWholeWords: true,
   useGroupScoring: false,
+  includeNames: true,
 };
+
+/**
+ * 載 MVU 的卡：MVU 開局時把世界書設定換成它的推薦值（MagVarUpdate 438f9ffc `updateLorebookSettings`：
+ * 預算 100%、不含名字、不全字比對，其餘同 ST 預設）。D33〔作者裁決 2026-10-07〕
+ */
+export const MVU_WI_SETTINGS: WiSettings = { ...ST_WI_SETTINGS, budgetPercent: 100, matchWholeWords: false, includeNames: false };
 const MAX_SCAN_DEPTH = 1000;
 const SCAN = { NONE: 0, INITIAL: 1, RECURSION: 2 } as const;
 type ScanState = (typeof SCAN)[keyof typeof SCAN];
@@ -55,6 +74,8 @@ export interface WiScanInput {
   /** 一段文字幾個 token（ST getTokenCountAsync） */
   countTokens: (text: string) => number;
   random: () => number;
+  /** 世界書設定；不給＝ST 預設 */
+  settings?: WiSettings;
 }
 
 export interface WiDepthGroup {
@@ -101,6 +122,7 @@ class WorldInfoBuffer {
   constructor(
     messages: string[],
     private readonly globalScan: WiGlobalScanData,
+    private readonly settings: WiSettings,
   ) {
     for (let depth = 0; depth < MAX_SCAN_DEPTH; depth++) {
       if (messages[depth]) this.depthBuffer[depth] = messages[depth].trim();
@@ -109,7 +131,7 @@ class WorldInfoBuffer {
   }
 
   get(entry: WiEntry): string {
-    let depth = entry.scanDepth ?? SETTINGS.depth;
+    let depth = entry.scanDepth ?? this.settings.depth;
     if (depth <= 0) return "";
     if (depth > MAX_SCAN_DEPTH) depth = MAX_SCAN_DEPTH;
     const MATCHER = "\x01";
@@ -131,10 +153,10 @@ class WorldInfoBuffer {
   matchKeys(haystack: string, needle: string, entry: WiEntry): boolean {
     const keyRegex = parseRegexFromString(needle);
     if (keyRegex) return keyRegex.test(haystack);
-    const caseSensitive = entry.caseSensitive ?? SETTINGS.caseSensitive;
+    const caseSensitive = entry.caseSensitive ?? this.settings.caseSensitive;
     const hay = caseSensitive ? haystack : haystack.toLowerCase();
     const word = caseSensitive ? needle : needle.toLowerCase();
-    if (entry.matchWholeWords ?? SETTINGS.matchWholeWords) {
+    if (entry.matchWholeWords ?? this.settings.matchWholeWords) {
       if (word.split(/\s+/).length > 1) return hay.includes(word);
       return new RegExp(`(?:^|\\W)(${escapeRegex(word)})(?:$|\\W)`).test(hay);
     }
@@ -241,6 +263,7 @@ function filterByInclusionGroups(
   buffer: WorldInfoBuffer,
   timed: TimedEffects,
   random: () => number,
+  settings: WiSettings,
 ): void {
   const grouped: Record<string, WiEntry[]> = {};
   for (const item of newEntries.filter((entry) => entry.group)) {
@@ -269,12 +292,12 @@ function filterByInclusionGroups(
   }
   // 群組計分
   for (const [key, group] of Object.entries(grouped)) {
-    if (!SETTINGS.useGroupScoring && !group.some((entry) => entry.useGroupScoring)) continue;
+    if (!settings.useGroupScoring && !group.some((entry) => entry.useGroupScoring)) continue;
     if (hasSticky.get(key)) continue;
     const scores = group.map((entry) => buffer.getScore(entry));
     const maxScore = Math.max(...scores);
     for (let index = 0; index < group.length; index++) {
-      if (!(group[index].useGroupScoring ?? SETTINGS.useGroupScoring)) continue;
+      if (!(group[index].useGroupScoring ?? settings.useGroupScoring)) continue;
       if (scores[index] < maxScore) {
         removeEntry(group[index]);
         group.splice(index, 1);
@@ -313,14 +336,15 @@ function filterByInclusionGroups(
 /** checkWorldInfo。`entries` 已照 ST 排好；條目內容的巨集代換會改到傳進來的物件，呼叫端要給一份副本。 */
 export function checkWorldInfo(entries: WiEntry[], input: WiScanInput): WiResult {
   const timedState: WiTimed = { sticky: { ...input.timed.sticky }, cooldown: { ...input.timed.cooldown } };
-  const buffer = new WorldInfoBuffer(input.chat, input.globalScan);
+  const settings = input.settings ?? ST_WI_SETTINGS;
+  const buffer = new WorldInfoBuffer(input.chat, input.globalScan, settings);
   const timed = new TimedEffects(input.chat.length, entries, timedState);
   timed.check();
   const empty: WiResult = { before: "", after: "", examples: [], depth: [], anTop: [], anBottom: [], outlets: {}, timed: timedState, activated: [] };
   if (entries.length === 0) return empty;
 
-  let budget = Math.round((SETTINGS.budgetPercent * input.maxContext) / 100) || 1;
-  if (SETTINGS.budgetCap > 0 && budget > SETTINGS.budgetCap) budget = SETTINGS.budgetCap;
+  let budget = Math.round((settings.budgetPercent * input.maxContext) / 100) || 1;
+  if (settings.budgetCap > 0 && budget > settings.budgetCap) budget = settings.budgetCap;
 
   const levels = [
     ...new Set(entries.filter((entry) => entry.delayUntilRecursion).map((entry) => (entry.delayUntilRecursion === true ? 1 : Number(entry.delayUntilRecursion)))),
@@ -346,7 +370,7 @@ export function checkWorldInfo(entries: WiEntry[], input: WiScanInput): WiResult
       if (timed.isActive("cooldown", entry) && !isSticky) continue;
       if (scanState !== SCAN.RECURSION && entry.delayUntilRecursion && !isSticky) continue;
       if (scanState === SCAN.RECURSION && entry.delayUntilRecursion && Number(entry.delayUntilRecursion) > currentLevel && !isSticky) continue;
-      if (scanState === SCAN.RECURSION && SETTINGS.recursive && entry.excludeRecursion && !isSticky) continue;
+      if (scanState === SCAN.RECURSION && settings.recursive && entry.excludeRecursion && !isSticky) continue;
       if (entry.decorators.includes("@@activate")) {
         activatedNow.add(entry);
         continue;
@@ -399,7 +423,7 @@ export function checkWorldInfo(entries: WiEntry[], input: WiScanInput): WiResult
 
     let newContent = "";
     const textTokens = allActivatedText ? input.countTokens(allActivatedText) : 0;
-    filterByInclusionGroups(newEntries, allActivated, buffer, timed, input.random);
+    filterByInclusionGroups(newEntries, allActivated, buffer, timed, input.random, settings);
 
     let ignoresBudget = newEntries.filter((entry) => entry.ignoreBudget).length;
     for (const entry of newEntries) {
@@ -425,7 +449,7 @@ export function checkWorldInfo(entries: WiEntry[], input: WiScanInput): WiResult
 
     const successful = newEntries.filter((entry) => !failedProbability.has(entry));
     const forRecursion = successful.filter((entry) => !entry.preventRecursion);
-    if (SETTINGS.recursive && !overflowed && forRecursion.length) nextState = SCAN.RECURSION;
+    if (settings.recursive && !overflowed && forRecursion.length) nextState = SCAN.RECURSION;
     if (nextState === SCAN.NONE && levels.length) {
       nextState = SCAN.RECURSION;
       currentLevel = levels.shift()!;

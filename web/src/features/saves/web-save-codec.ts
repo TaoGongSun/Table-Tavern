@@ -1,6 +1,6 @@
-// 一桌 ⇄ 網頁存檔（桌檔契約 v1，src/shared/contracts/web-save/web-save.md）。匯出四類欄位全帶；網頁版
-// 還用不到的部分（MVU 的其他層與種子、每則的變數表、卡片 storage、世界書的 message_effects）讀進來時原樣收著，
-// 再匯出時原樣帶回，存檔進出網頁版不掉東西。ST 聊天變數就是 MVU 的兩層：這段對話的 local＝`chat`、
+// 一桌 ⇄ 網頁存檔（桌檔契約 v1，src/shared/contracts/web-save/web-save.md）。匯出四類欄位全帶：每則的變數表
+// 跟著逐字稿、MVU 種子與其他層由這桌的卡片變數（features/mvu）給、卡片 storage 由卡片介面給；世界書的
+// message_effects 讀進來時原樣收著再帶回。ST 聊天變數就是 MVU 的兩層：這段對話的 local＝`chat`、
 // 跨對話的 global＝`global`（TavernHelper 的 chat／global 變數讀的就是這兩處）。
 import {
   parseWebSave,
@@ -18,7 +18,7 @@ import { playableError, playCardFromValue, type ImportErrorCode, type PlayCard }
 import type { ChatEntry } from "../chat/chat-turn";
 import type { VariableMap } from "../sillytavern/variables";
 
-/** 網頁版目前不消費、但要原樣帶回的部分（世界書是接著玩的起點，觸發狀態由這桌接手）。 */
+/** 存檔帶進來、由這桌接手的部分（世界書是接著玩的起點；MVU 其他層與種子、卡片 storage 交給這桌）。 */
 export interface SaveCarry {
   worldInfo: WebSaveWorldInfo;
   /** MVU 除了 chat／global 兩層之外的部分（null＝存檔裡沒有 mvu） */

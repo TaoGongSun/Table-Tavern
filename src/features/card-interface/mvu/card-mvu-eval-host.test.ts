@@ -1,6 +1,6 @@
 // 宿主端值解析 Worker 管理（包 2c，計畫 8.9）：序列派工、200 ms 逾時終止並重建、開機等待、關閉。
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEvalHost, parseEvalRequest, type EvalWorkerLike } from "./card-mvu-eval-host";
+import { createEvalHost, MAX_EVAL_QUEUE, MAX_EVAL_TEXT_BYTES, parseEvalRequest, type EvalWorkerLike } from "./card-mvu-eval-host";
 import { runEval } from "./card-mvu-parse-engine";
 
 type Handler = (event: { data?: unknown }) => void;
@@ -164,6 +164,17 @@ describe("值解析 Worker 宿主", () => {
     expect(await pending).toEqual({ ok: false, error: "closed" });
     expect(created[0].terminated).toBe(true);
     expect(await host.run("value", "1")).toEqual({ ok: false, error: "closed" });
+  });
+
+  it("單筆字串超過上限、排隊超過上限：直接回錯，不送進 Worker", async () => {
+    const { created, createWorker } = fakeWorkers(() => "hang");
+    const host = createEvalHost({ createWorker });
+    expect(await host.run("value", "中".repeat(MAX_EVAL_TEXT_BYTES / 3 + 1))).toEqual({ ok: false, error: "too-large" });
+    // Worker 還沒開機好：排隊到上限為止，再多一筆就直接回錯
+    for (let index = 0; index < MAX_EVAL_QUEUE; index++) void host.run("value", "1");
+    expect(await host.run("value", "1")).toEqual({ ok: false, error: "queue-full" });
+    expect(created.length).toBe(1);
+    host.dispose();
   });
 
   it("parseEvalRequest：形狀不對回 null", () => {

@@ -7,16 +7,20 @@ import type { ReleaseInfo } from "../funnel/releases";
 import { downloadCard, downloadStChat, downloadWebSave } from "../saves/download";
 import { ExportFunnel } from "../saves/ExportFunnel";
 import type { SaveStore } from "../saves/save-store";
+import { FrontendNotice } from "../card-interface/FrontendNotice";
+import { splitFrontends } from "../card-interface/frontend-blocks";
+import { MessageBody, type FrontendContext } from "../card-interface/MessageBody";
+import { chatFloors, useFrontendHost } from "../card-interface/useFrontendHost";
 import type { ChatEntry } from "./chat-turn";
 import { displayText } from "./st-text";
 import { useChat, type ChatController, type GameSetup } from "./useChat";
 
-// 模型輸出與卡片文字一律走桌面版的安全渲染（DOMPurify），不直接塞 HTML（計畫 2.4）
-function Message({ entry, html, name }: { entry: ChatEntry; html: string; name: string }) {
+// 模型輸出與卡片文字一律走桌面版的安全渲染（DOMPurify），不直接塞 HTML（計畫 2.4）；前端介面另畫成沙盒 iframe
+function Message({ entry, text, floor, name, frontends }: { entry: ChatEntry; text: string; floor: number; name: string; frontends: FrontendContext }) {
   return (
     <>
       {entry.role === "char" && <div className="message-name">{name}</div>}
-      <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />
+      <MessageBody text={text} floor={floor} frontends={frontends} />
       {entry.interrupted && <div className="message-flag">{t("chatInterrupted")}</div>}
     </>
   );
@@ -141,10 +145,33 @@ export function ChatView({
   const name = game.card.text.name;
   const streamingHtml = useMemo(() => renderHostMarkdown(chat.streaming), [chat.streaming]);
   // 顯示用 regex（markdownOnly）帶深度，每次逐字稿變動重算；存檔原文不變
-  const rendered = useMemo(
-    () => chat.entries.map((_, index) => renderHostMarkdown(displayText(chat.setup, chat.entries, index))),
-    [chat.entries, chat.setup],
+  // 酒館助手類巨集也在顯示時代換（讀當下的變數）
+  const display = chat.mvu.display;
+  const shown = useMemo(
+    () => chat.entries.map((_, index) => display(displayText(chat.setup, chat.entries, index), chat.entries)),
+    [chat.entries, chat.setup, display],
   );
+  // 卡片介面：按鈕送出的句子直接送（回合中不送）、存的設定跟著存檔
+  const host = useFrontendHost({
+    onInput: (text) => void chat.sendText(text),
+    onStorage: chat.setCardStorage,
+    mvu: { write: (_frame, data, reply) => chat.mvu.write(data, reply), evaluate: (_frame, data, reply) => chat.mvu.evaluate(data, reply) },
+  });
+  const userName = chat.setup.userName;
+  const floors = useMemo(() => chatFloors(chat.entries, userName, name), [chat.entries, userName, name]);
+  const unsupported = game.card.view.interface.unsupported !== null;
+  const mvuBase = chat.mvu.frontend;
+  const frontends = useMemo<FrontendContext>(
+    () => ({
+      host,
+      floors,
+      mvuFor: (floor) => (mvuBase === null ? null : { ...mvuBase, currentId: floor }),
+      storage: chat.cardStorage,
+      unsupported,
+    }),
+    [host, floors, mvuBase, chat.cardStorage, unsupported],
+  );
+  const hasFrontend = useMemo(() => !unsupported && shown.some((text) => splitFrontends(text).some((segment) => segment.kind === "frontend")), [shown, unsupported]);
   const lastIndex = chat.entries.length - 1;
 
   useEffect(() => {
@@ -163,16 +190,22 @@ export function ChatView({
         </span>
       </div>
       <ExportBar chat={chat} name={name} release={release} />
+      {chat.mvu.initError !== null && (
+        <p className="chat-error" role="alert" data-testid="mvu-init-failed">
+          {t("mvuInitFailed", { comment: chat.mvu.initError })}
+        </p>
+      )}
       {chat.saveFailed && (
         <p className="chat-error" role="alert">
           {t("autosaveFailed")}
         </p>
       )}
 
+      {hasFrontend && <FrontendNotice />}
       <div className="chat-log" aria-live="polite">
         {chat.entries.map((entry, index) => (
           <article key={entry.id} className={`message message-${entry.role}`} data-testid={`message-${entry.role}`}>
-            <Message entry={entry} html={rendered[index]} name={name} />
+            <Message entry={entry} text={shown[index]} floor={index} name={name} frontends={frontends} />
             {index === lastIndex && !chat.busy && <LastMessageTools key={entry.id + entry.text} chat={chat} entry={entry} />}
           </article>
         ))}
