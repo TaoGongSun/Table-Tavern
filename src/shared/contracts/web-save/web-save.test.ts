@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { looksLikeWebSave, parseWebSave } from "./web-save";
+import { looksLikeWebSave, parseWebSave, rfc3339Millis } from "./web-save";
 
 const read = (name: string) => readFileSync(fileURLToPath(new URL(`./${name}`, import.meta.url)), "utf8");
 const fixture = (name: string) => JSON.parse(read(name)) as Record<string, unknown> & { [key: string]: any };
@@ -9,7 +9,7 @@ const parse = (value: unknown) => parseWebSave(JSON.stringify(value));
 
 describe("web save contract v1", () => {
   it("accepts the contract fixtures", () => {
-    for (const name of ["short.json", "worldbook-route.json", "worldbook-route-mvu.json", "minimal.json"]) {
+    for (const name of ["short.json", "worldbook-route.json", "worldbook-route-mvu.json", "minimal.json", "web-export.json"]) {
       const result = parseWebSave(read(name));
       expect(result.ok, name).toBe(true);
     }
@@ -59,6 +59,30 @@ describe("web save contract v1", () => {
       const result = parseWebSave(read(`invalid/${name}`));
       expect(result.ok, name).toBe(false);
       if (!result.ok) expect(result.error.kind, name).toBe(name.split("--")[0]);
+    }
+  });
+
+  it("times must exist on the calendar (same rule as the desktop importer)", () => {
+    expect(rfc3339Millis("2026-10-07T21:00:00Z")).toBe(Date.UTC(2026, 9, 7, 21));
+    expect(rfc3339Millis("2026-10-07T21:00:00+08:00")).toBe(Date.UTC(2026, 9, 7, 13));
+    expect(rfc3339Millis("2026-10-07T21:00-01:30")).toBe(Date.UTC(2026, 9, 7, 22, 30));
+    expect(rfc3339Millis("2026-10-07T21:00:00.123456789Z")).toBe(Date.UTC(2026, 9, 7, 21, 0, 0, 123));
+    expect(rfc3339Millis("2028-02-29T00:00:00Z")).toBe(Date.UTC(2028, 1, 29));
+    expect(rfc3339Millis("0050-01-01T00:00:00Z")).toBe(-60589296000000);
+    for (const bad of [
+      "2026-99-99T99:99:99Z",
+      "2026-02-30T00:00:00Z",
+      "2027-02-29T00:00:00Z",
+      "2100-02-29T00:00:00Z",
+      "2026-00-10T00:00:00Z",
+      "2026-10-07T24:00:00Z",
+      "2026-10-07T21:60:00Z",
+      "2026-10-07T21:00:60Z",
+      "2026-10-07T21:00:00+24:00",
+      "2026-10-07T21:00:00+08:60",
+      "2026-10-07 21:00:00Z",
+    ]) {
+      expect(rfc3339Millis(bad), bad).toBeNull();
     }
   });
 

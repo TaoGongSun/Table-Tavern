@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import type { GameSetup } from "../chat/useChat";
+import type { ReleaseInfo } from "../funnel/releases";
+import type { SaveStore } from "../saves/save-store";
+import { SavesPanel } from "../saves/SavesPanel";
 import { substituteParams } from "../sillytavern/substitute";
 import { createChatVariables } from "../sillytavern/variables";
 import { CardImport } from "./CardImport";
@@ -8,7 +11,17 @@ import { importCardFile, type ImportErrorCode, type PlayCard } from "./play-card
 import { SAMPLE_PLAY_CARD } from "./sample-card";
 import { cleanUserName, loadUserName, saveUserName } from "./user-name";
 
-export function CardPicker({ onStart }: { onStart: (game: GameSetup) => void }) {
+export function CardPicker({
+  onStart,
+  saves,
+  persisted,
+  release,
+}: {
+  onStart: (game: GameSetup) => void;
+  saves: SaveStore | null;
+  persisted: boolean | null;
+  release: ReleaseInfo;
+}) {
   const [userName, setUserName] = useState(() => loadUserName(t("defaultUserName")));
   const [imported, setImported] = useState<PlayCard | null>(null);
   const [error, setError] = useState<ImportErrorCode | null>(null);
@@ -55,6 +68,8 @@ export function CardPicker({ onStart }: { onStart: (game: GameSetup) => void }) 
         <span>{t("pickUserName")}</span>
         <input value={userName} maxLength={60} onChange={(event) => setUserName(event.target.value)} />
       </label>
+
+      <SavesPanel saves={saves} persisted={persisted} release={release} onContinue={onStart} />
 
       <article className="card-tile panel">
         <div className="card-tile-head">

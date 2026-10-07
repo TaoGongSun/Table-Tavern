@@ -14,7 +14,7 @@
 - 支援卡片介面（原卡直玩的介面渲染與 MVU 變數），盡量做到跟 ST 一樣。〔作者裁決 2026-10-04〕
 - 要有「去哪裡找卡」的導流；爬別站、另存別站卡的站（JannyAI、CharaVault、DeepSeek Tavern 等）不收。〔作者裁決 2026-09-30〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用。〔作者裁決 2026-10-07〕
-- D1–D26 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
+- D1–D29 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
 
 ## 現況
 - **包 1（最小縱切）封板**：commit be1093d..0de69dd，Sol、Grok 驗收通過，主線 verify 12 步綠、e2e 過。
@@ -36,12 +36,18 @@
   - 前端：`useImportController` 依內容認存檔；`features/import/web-save-table.ts` 進桌前寫卡片 storage（失敗問重試、放棄走 discard）。
   - 測試通道實測（claude Sonnet）：短 fixture 匯入→送一句→下一輪尾段含 constant 與觸發條目；長 fixture 容量滿→換幕中停止原幕完整→重試換幕→新幕有回覆，MVU、各層、卡片 storage 都在。
   - 未驗：Windows；網頁版真匯出的存檔（包 4 的來回測試補）；世界書路的 AI 對話只在 cargo 測過。桌面版本來就沒有送模前／玩家輸入的 regex（D24 只關掉介面顯示腳本）；角色回覆不更新 MVU 表、換幕後回覆落成 GM 旁白，都是桌面版既有行為。
+- **包 4（網頁存檔）封板**：commit 59f420f..a5410b4，Sol、Grok 驗收通過，主線 verify 12 步綠、e2e 過。
+  - `web/src/features/saves/`：save-store（IndexedDB：meta／data／globals 三個 store、DB 版本 2；寫入整筆撤銷、清資料後重開、同格舊版不蓋新版；global 寫入在預約當下定版本與資格——預約時還沒讀回過的那筆永遠不寫，重試成功也不放行，`loadGlobal` 補缺與標記載入同一段同步程式）、web-save-codec（契約 v1 ⇄ 一桌，用不到的欄位與時間原文原樣帶回；global 照寫入紀錄只寫這格原有＋本桌寫過的鍵）、st-chat（D3 ST 聊天檔）、download（存檔、ST 聊天檔、原卡檔）、pending-input（D28 草稿，sessionStorage）、SavesPanel／ExportFunnel。
+  - useChat：自動存檔只在回合結束後、同格排隊、只有最新那次嘗試改失敗提示；新桌第一次開口先存開口前的樣子、寫成才送模（D27）；回合中重新整理退回上次完整回合、玩家那句放回輸入框（D28）。App 開站讀回 global（D29），讀不到就提示可重試。
+  - 變數表上限兩端共用 `src/shared/contracts/vars-table.ts`↔`src-tauri/src/data/message_vars/json.rs`（邊界案例 `vars-table-boundary.json`）；卡片寫入原文或緊湊寫法任一通過，存檔的表只量緊湊寫法。時間兩端都驗日曆存在。`VariableScope.written` 記這桌寫過的鍵。
+  - 來回測試：e2e 帶 `TT_WEB_EXPORT_OUT` 另存的真匯出 `src/shared/contracts/web-save/web-export.json`，cargo `a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer`；測試通道 claude Sonnet 從介面匯入後送一句有接續回覆（約 0.011 美元）。ST 聊天變數只落桌面版 chat 層檔案，桌面版的 MVU 表與提示內的變數等包 6〔模型判斷·未裁決〕。
+  - D27–D29 已裁決（計畫第五節）。未驗：Chromium、手機實機、真 OpenRouter（403）；世界書觸發狀態（包 5）、卡片 storage 與 MVU 種子（包 6）屆時各補來回測試。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 4（網頁存檔）
-照計畫三分包表包 4 列與二之二桌檔契約施工：IndexedDB 多份存檔、照契約 v1 匯出／匯入網頁存檔、D3「匯出成 ST 聊天檔」、匯出附「用桌面版繼續」導流（D10）；驗收含網頁版真匯出→桌面版 import_web_save 的來回測試。
+## 下一步：包 4b（上下文預算）
+照計畫分包表「4b 上下文預算」那列與 D23：依實際派送模型的上下文上限扣掉保留輸出量當預算、估 token 照 ST、捨棄順序照 ST 預設（固定段落先佔→歷史新到舊→剩下給範例）、固定段落超上限不送並提示、換模第二發照第二發模型重算。驗收是表格測試。做完送主線開審查串。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。
@@ -52,6 +58,9 @@
 - serde_json 開了 preserve_order（schemars 帶進來），Map 是原序，需要排序的地方自己排。
 - 包 3：改契約＝`web-save.md`、fixture、`web-save.ts`、`import/web_save/parse.rs` 同一筆改；負例檔名前綴就是兩端要回的分類，Rust 與 TS 測試都掃 `invalid/`。serde 的 `Option` 欄缺鍵會默默當 None，「必填可 null」要用 parse.rs 的 `Nullable`、「可省不可 null」要用 `present`。
 - 包 3 測試通道：harness 包會把 claude 實報的 context（1,000,000）寫回 `data/model-capacity.json`，要壓上限就在每次真呼叫後重寫；容量鎖要有 `summary` 校正才會鎖（`scene_budget/mod.rs` 的 lockable）。本機 shell 包裝會擋「變數展開成路徑」與部分 heredoc，路徑寫字面值、編輯用腳本檔。
+- 包 4：e2e 用 Node 直接載入 `web-save.ts` 驗真匯出（Node 26 型別剝除），所以它對 `vars-table` 的 import 帶 `.ts` 副檔名，`web-save.ts` 不能用 enum 等非純型別語法。要重產 `web-export.json`：`cd web && TT_WEB_EXPORT_OUT=<絕對路徑> npm run e2e`，再複製進契約目錄，cargo 來回測試跟著看。
+- 包 4 測試：IndexedDB 用 fake-indexeddb（`forceCloseDatabase` 模擬瀏覽器強制關連線、`IDBObjectStore.prototype.put` 可 spy 模擬配額）；sessionStorage 要 `vi.stubGlobal` 成 MemoryStorage。新桌第一次送出會先寫一筆首格，受控延遲測試要卡第二筆以後。存檔庫的 global 載入之前預約的寫入一律不寫（測試先 `restoreGlobals` 或 `loadGlobal`）。
+- 包 4 測試通道：worktree 內 `npm run harness:build`、`launch --root <暫存> --config-from <自寫 config：transport claude、cli_risk_accepted、tier_models 三檔都 sonnet>`，不用 --fresh；匯入完會跳「已照網頁版存檔開了一張新桌」對話框，要先 `answer next 知道了` 輸入框才解鎖。
 - 在 worktree 裡跑 verify 前先 `npm ci` 與 `npm ci --prefix web`：沒有自己的 node_modules 時會解析到主 repo 的，vite 擋外部路徑，幾支 vitest 檔會假紅。
 - 「取消未完成回合」自動收回玩家句是網頁版提案〔模型判斷·未裁決〕；桌面版零字停止是由玩家手動收回。介面文案與範例卡只有繁中（十語系在包 8）。
 

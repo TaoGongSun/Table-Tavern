@@ -1,0 +1,11 @@
+{
+  "說明": "卡片變數表整張大小的邊界案例，前端 vars-table.test.ts 與桌面版 json.rs 測試都照這份造表、斷言同樣的結果。造法：'{' + 空白 × spaces + '\"n\":' + number，再接 ',\"k0\":\"aaa…\"' 這種條目（每個字串 ≤ 60000 字）湊到原文剛好 raw_offset + 2097152 位元組，最後補 '}'。text＝卡片寫入（有原文：原文或緊湊寫法任一 ≤ 上限即收）；value＝網頁存檔的表（只量緊湊寫法）。",
+  "cases": [
+    { "name": "大整數：原文剛好上限，JS 寫法多一位", "number": "999999999999999999", "spaces": 0, "raw_offset": 0, "text": "ok", "value": "too-large" },
+    { "name": "大整數：JS 寫法剛好上限", "number": "999999999999999999", "spaces": 0, "raw_offset": -1, "text": "ok", "value": "ok" },
+    { "name": "指數寫法：舊量法（原文）剛好上限照樣收", "number": "1e20", "spaces": 0, "raw_offset": 0, "text": "ok", "value": "too-large" },
+    { "name": "指數寫法：原文與緊湊都超過", "number": "1e20", "spaces": 0, "raw_offset": 1, "text": "too-large", "value": "too-large" },
+    { "name": "原文有縮排：緊湊寫法剛好上限", "number": "1", "spaces": 100, "raw_offset": 100, "text": "ok", "value": "ok" },
+    { "name": "原文有縮排：緊湊寫法多一個位元組", "number": "1", "spaces": 100, "raw_offset": 101, "text": "too-large", "value": "too-large" }
+  ]
+}

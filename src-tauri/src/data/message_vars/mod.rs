@@ -21,7 +21,7 @@ use serde_json::value::RawValue;
 pub use control::{control_path, read_control};
 pub use convert::{leaf_text, restore_leaf, Macros, TypedBatch};
 pub use json::parse as parse_json;
-pub use json::{parse_table, Json};
+pub use json::{parse_table, validate_table, Json};
 pub use mode::{ensure_active, handover_to_tree, new_token, refresh_cache};
 pub use source::{projected_tree, Source};
 pub use turn::{bump_generation, busy, generation, world_swapped, PendingMain, TurnKey};

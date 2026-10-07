@@ -19,6 +19,10 @@ describe("resolveTurn after a send", () => {
       ["user", "（揮手）你好", undefined],
       ["char", "嗨!", true],
     ]);
+    // 存檔的 raw：模型原文與整理後不同才留
+    expect(result.entries[2].raw).toBe("嗨");
+    const same = resolveTurn(before, send, { kind: "ok", text: "嗨", model: null, truncated: null, failover: null }, newId);
+    expect("raw" in same.entries[2]).toBe(false);
     expect(result.restoreInput).toBeNull();
   });
 
@@ -66,6 +70,8 @@ describe("regenerate, edit and delete the last message", () => {
 
   it("edit and delete only touch the last message", () => {
     expect(replaceLast([opening, user], "改過")).toEqual([opening, { ...user, text: "改過" }]);
+    // 改寫後模型原文不再是這段字的來源
+    expect(replaceLast([opening, { ...reply, raw: "原文" }], "改過")[1]).toEqual({ ...reply, text: "改過" });
     expect(deleteLast([opening, user])).toEqual([opening]);
     expect(deleteLast([])).toEqual([]);
   });

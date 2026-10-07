@@ -15,6 +15,12 @@ export interface ChatEntry {
   opening?: boolean;
   /** 落進逐字稿的時間（毫秒）；{{idle_duration}} 用 */
   sentAt?: number;
+  /** 存檔裡的時間原文（從存檔讀進來的才有）：再匯出原樣寫回，不經 Date 重新序列化 */
+  ts?: string;
+  /** 模型原文（過一般 regex 之前）；與 `text` 相同時不留。存檔的 `raw` */
+  raw?: string;
+  /** 這一則的 MVU 變數表（存檔的 `message_vars`）。網頁版包 6 才產生，匯入的存檔原樣帶著 */
+  vars?: Record<string, unknown>;
 }
 
 /** 這一輪是怎麼來的：玩家送出一句，或對最後一則重新生成。 */
@@ -42,7 +48,10 @@ export function resolveTurn(
   finish: (text: string) => string = (text) => text,
   now: number = Date.now(),
 ): TurnResult {
-  const reply = (text: string, interrupted: boolean): ChatEntry => ({ id: newId(), role: "char", text: finish(text), interrupted, sentAt: now });
+  const reply = (text: string, interrupted: boolean): ChatEntry => {
+    const finished = finish(text);
+    return { id: newId(), role: "char", text: finished, interrupted, sentAt: now, ...(finished === text ? {} : { raw: text }) };
+  };
   const nothing = (error: string | null): TurnResult =>
     pending.kind === "send"
       ? { entries: before.filter((entry) => entry.id !== pending.userEntry.id), restoreInput: pending.rawInput, error }
@@ -70,8 +79,10 @@ export function deleteLast(entries: ChatEntry[]): ChatEntry[] {
   return entries.slice(0, -1);
 }
 
+/** 改寫最後一則：模型原文不再是這段字的來源，一併拿掉。 */
 export function replaceLast(entries: ChatEntry[], text: string): ChatEntry[] {
   const last = entries[entries.length - 1];
   if (!last) return entries;
-  return [...entries.slice(0, -1), { ...last, text }];
+  const { raw: _raw, ...kept } = last;
+  return [...entries.slice(0, -1), { ...kept, text }];
 }

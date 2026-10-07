@@ -169,8 +169,12 @@ impl<'de> Deserialize<'de> for Json {
     }
 }
 
-/// 卡寫一張表的上限（計畫 8.8，依真卡量測預留約百倍）。
+/// 卡寫一張表的上限（計畫 8.8，依真卡量測預留約百倍），前端 src/shared/contracts/vars-table.ts 同一組數字
+/// 與先後。整張表的大小有兩種量法：卡片寫入（有原文）原文位元組或 `JSON.stringify` 緊湊寫法（[`js_len`]）
+/// 任一不超過就收——舊版只量原文，這樣只放寬、不收窄；網頁存檔的表只量緊湊寫法（兩端拿得到的都只有值）。
 pub const MAX_TABLE_BYTES: usize = 2 * 1024 * 1024;
+/// 原文在解析前先擋的上限（整張上限的四倍，防超大字串）
+pub const MAX_RAW_TABLE_BYTES: usize = 4 * MAX_TABLE_BYTES;
 pub const MAX_DEPTH: usize = 32;
 pub const MAX_STRING_BYTES: usize = 64 * 1024;
 pub const MAX_CHILDREN: usize = 10_000;
@@ -194,20 +198,99 @@ fn limit(code: &'static str, detail: impl Into<String>) -> LimitError {
 /// 解析並驗一張要寫入的表：頂層必須是物件，任一條不符整批拒絕。數值非有限在解析時就擋掉
 /// （JSON 本身寫不出 Infinity，`1e999` 解析失敗）。
 pub fn parse_table(text: &str) -> Result<Json, LimitError> {
-    if text.len() > MAX_TABLE_BYTES {
+    if text.len() > MAX_RAW_TABLE_BYTES {
         return Err(limit("too-large", format!("{} bytes", text.len())));
     }
     let value = parse(text).map_err(|error| limit("invalid-json", error))?;
-    validate_table(&value)?;
+    check_table(&value, Some(text.len()))?;
     Ok(value)
 }
 
+/// 只有值（網頁存檔的表）：大小只量緊湊寫法。
 pub fn validate_table(value: &Json) -> Result<(), LimitError> {
+    check_table(value, None)
+}
+
+/// 先後：頂層物件 → 整張大小 → 逐節點。`raw_len`＝原文位元組（有原文時兩種量法任一通過即可）。
+fn check_table(value: &Json, raw_len: Option<usize>) -> Result<(), LimitError> {
     if !matches!(value, Json::Object(_)) {
         return Err(limit("not-object", "table must be an object"));
     }
+    if !raw_len.is_some_and(|raw| raw <= MAX_TABLE_BYTES) {
+        let size = js_len(value);
+        if size > MAX_TABLE_BYTES {
+            return Err(limit("too-large", format!("{size} bytes")));
+        }
+    }
     let mut nodes = 0usize;
     walk(value, 1, &mut nodes)
+}
+
+/// 這個值經 `JSON.stringify` 寫成緊湊 JSON 的 UTF-8 位元組數（字串跳脫與 serde_json 相同；數字照 JS 的
+/// Number#toString）。
+pub fn js_len(value: &Json) -> usize {
+    match value {
+        Json::Null => 4,
+        Json::Bool(true) => 4,
+        Json::Bool(false) => 5,
+        // JS 的數字都是 f64：超過 2^53 的整數先變成最接近的 f64 再照 Number#toString 寫
+        Json::Number(number) => match (number.as_i64(), number.as_u64()) {
+            (Some(int), _) if int.unsigned_abs() <= MAX_SAFE_INTEGER => number.to_string().len(),
+            (None, Some(int)) if int <= MAX_SAFE_INTEGER => number.to_string().len(),
+            _ => number.as_f64().map_or(0, |float| js_number(float).len()),
+        },
+        Json::String(text) => string_len(text),
+        Json::Array(items) => {
+            2 + items.len().saturating_sub(1) + items.iter().map(js_len).sum::<usize>()
+        }
+        Json::Object(entries) => {
+            2 + entries.len().saturating_sub(1)
+                + entries
+                    .iter()
+                    .map(|(key, child)| string_len(key) + 1 + js_len(child))
+                    .sum::<usize>()
+        }
+    }
+}
+
+/// 2^53：JS 能精確表示的整數上限
+const MAX_SAFE_INTEGER: u64 = 1 << 53;
+
+fn string_len(text: &str) -> usize {
+    serde_json::to_string(text).map_or(0, |quoted| quoted.len())
+}
+
+/// JS 的 Number#toString（ECMA-262 Number::toString，基數 10）：最短還原位數，位數與小數點位置照規格擺。
+pub fn js_number(value: f64) -> String {
+    if value == 0.0 {
+        return "0".to_owned();
+    }
+    let sign = if value < 0.0 { "-" } else { "" };
+    let scientific = format!("{:e}", value.abs());
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let k = digits.len() as i64;
+    let n = exponent.parse::<i64>().unwrap_or(0) + 1;
+    let body = if k <= n && n <= 21 {
+        format!("{digits}{}", "0".repeat((n - k) as usize))
+    } else if 0 < n && n <= 21 {
+        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
+    } else if -6 < n && n <= 0 {
+        format!("0.{}{digits}", "0".repeat((-n) as usize))
+    } else {
+        let exp = n - 1;
+        let mantissa = if k == 1 {
+            digits.clone()
+        } else {
+            format!("{}.{}", &digits[..1], &digits[1..])
+        };
+        format!(
+            "{mantissa}e{}{}",
+            if exp >= 0 { "+" } else { "-" },
+            exp.abs()
+        )
+    };
+    format!("{sign}{body}")
 }
 
 fn walk(value: &Json, depth: usize, nodes: &mut usize) -> Result<(), LimitError> {
@@ -314,5 +397,144 @@ mod tests {
         assert_eq!(code(&many), "too-many-nodes");
         let big = format!(r#"{{"s":"{}"}}"#, "a".repeat(MAX_TABLE_BYTES));
         assert_eq!(code(&big), "too-large");
+    }
+
+    /// 緊湊寫法剛好 `size` 位元組的表：`{"k0":"aaa…","k1":"…",…}`，每個字串不超過單字串上限。
+    fn table_of_size(size: usize) -> String {
+        let mut entries: Vec<String> = Vec::new();
+        let mut used = 2;
+        let mut index = 0;
+        loop {
+            let key = format!("k{index}");
+            let fixed = usize::from(index > 0) + key.len() + 2 + 1 + 2;
+            let room = size - used - fixed;
+            let take = room.min(60_000);
+            entries.push(format!(r#""{key}":"{}""#, "a".repeat(take)));
+            used += fixed + take;
+            index += 1;
+            if take == room {
+                break;
+            }
+        }
+        let text = format!("{{{}}}", entries.join(","));
+        assert_eq!(text.len(), size);
+        text
+    }
+
+    #[test]
+    fn table_size_counts_the_compact_js_form_not_the_raw_whitespace() {
+        let exact = table_of_size(MAX_TABLE_BYTES);
+        assert_eq!(js_len(&parse(&exact).unwrap()), MAX_TABLE_BYTES);
+        // 原文縮排過（超過上限）照樣收：量的是緊湊寫法
+        let padded = exact.replace(',', " ,\n   ").replace(':', " : ");
+        assert!(padded.len() > MAX_TABLE_BYTES);
+        assert!(parse_table(&padded).is_ok());
+        let over = table_of_size(MAX_TABLE_BYTES + 1).replace(',', " , ");
+        assert_eq!(code(&over), "too-large");
+        // 原文本身超過四倍上限：解析前就擋
+        let huge = format!("{{{}\"a\":1}}", " ".repeat(MAX_RAW_TABLE_BYTES));
+        assert_eq!(code(&huge), "too-large");
+        // 孤立代理字元：JSON 解析不收
+        assert_eq!(code(r#"{"s":"\ud800"}"#), "invalid-json");
+    }
+
+    /// 照 vars-table-boundary.json 的造法：原文剛好 `total` 位元組（前端 vars-table.test.ts 同一個造法）。
+    fn boundary_table(number: &str, spaces: usize, total: usize) -> String {
+        let mut text = format!("{{{}\"n\":{number}", " ".repeat(spaces));
+        let mut used = text.len() + 1;
+        let mut index = 0;
+        while used < total {
+            let key = format!("k{index}");
+            let room = total - used - (key.len() + 6);
+            let take = if room <= 60_000 {
+                room
+            } else {
+                60_000.min(room - 20)
+            };
+            text.push_str(&format!(r#","{key}":"{}""#, "a".repeat(take)));
+            used += key.len() + 6 + take;
+            index += 1;
+        }
+        text.push('}');
+        assert_eq!(text.len(), total);
+        text
+    }
+
+    /// 前端 vars-table.test.ts 讀同一份：卡片寫入（有原文，兩種量法任一通過）與網頁存檔的表（只量緊湊寫法）。
+    #[test]
+    fn shared_size_boundary_cases_match_the_frontend() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/shared/contracts/vars-table-boundary.json");
+        let spec: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let outcome = |result: Result<(), LimitError>| match result {
+            Ok(()) => "ok".to_owned(),
+            Err(error) => error.code.to_owned(),
+        };
+        for case in spec["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let total = (MAX_TABLE_BYTES as i64 + case["raw_offset"].as_i64().unwrap()) as usize;
+            let text = boundary_table(
+                case["number"].as_str().unwrap(),
+                case["spaces"].as_u64().unwrap() as usize,
+                total,
+            );
+            assert_eq!(
+                outcome(parse_table(&text).map(|_| ())),
+                case["text"].as_str().unwrap(),
+                "{name}（卡片寫入）"
+            );
+            assert_eq!(
+                outcome(validate_table(&parse(&text).unwrap())),
+                case["value"].as_str().unwrap(),
+                "{name}（網頁存檔的表）"
+            );
+        }
+    }
+
+    /// 舊版只量原文：原文剛好上限、數字寫法在 JS 會變長的表，舊版收的現在照樣收。
+    #[test]
+    fn a_table_the_old_measure_accepted_is_still_accepted() {
+        let text = boundary_table("1e20", 0, MAX_TABLE_BYTES);
+        assert!(parse_table(&text).is_ok());
+    }
+
+    #[test]
+    fn numbers_are_measured_like_js_number_to_string() {
+        for (text, js) in [
+            ("1.0", "1"),
+            ("-2.5", "-2.5"),
+            ("1e3", "1000"),
+            ("1e20", "100000000000000000000"),
+            ("1e21", "1e+21"),
+            ("1.5e300", "1.5e+300"),
+            ("0.000001", "0.000001"),
+            ("1e-7", "1e-7"),
+            ("-1.25e-10", "-1.25e-10"),
+            ("123.456", "123.456"),
+            ("0.1", "0.1"),
+            ("-0.0", "0"),
+        ] {
+            let value = parse(&format!(r#"{{"n":{text}}}"#)).unwrap();
+            assert_eq!(js_len(&value), r#"{"n":}"#.len() + js.len(), "{text}");
+        }
+        assert_eq!(js_len(&parse(r#"{"i":12345678901234567890}"#).unwrap()), 26);
+        // 超過 2^53 的整數照 JS 先變 f64：999999999999999999 → 1000000000000000000
+        assert_eq!(
+            js_len(&parse(r#"{"i":999999999999999999}"#).unwrap()),
+            r#"{"i":1000000000000000000}"#.len()
+        );
+        assert_eq!(
+            js_len(&parse(r#"{"i":-9007199254740993}"#).unwrap()),
+            r#"{"i":-9007199254740992}"#.len()
+        );
+        assert_eq!(
+            js_len(&parse(r#"{"i":9007199254740992}"#).unwrap()),
+            r#"{"i":9007199254740992}"#.len()
+        );
+        assert_eq!(
+            js_len(&parse(r#"{"s":"a\"\n\u0001字"}"#).unwrap()),
+            r#"{"s":"a\"\n\u0001字"}"#.len()
+        );
     }
 }

@@ -24,6 +24,8 @@ export interface PlayCard {
   view: CardView;
   /** 匯入身分（角色卡路／世界書路）；桌面版匯入網頁存檔時照這個走，不重新推測 */
   route: CardRoute;
+  /** 原 PNG（從 PNG 匯入才有）：存檔的 `card_png`，桌面版靠它帶上卡圖 */
+  png?: Uint8Array;
 }
 
 /** 網頁版只玩單張角色卡：角色卡檔太大就不收（信任邊界）。 */
@@ -77,6 +79,16 @@ export const activeRegexScripts = (card: PlayCard): RegexScript[] => (card.regex
 
 export type ImportResult = { ok: true; card: PlayCard } | { ok: false; error: ImportErrorCode };
 
+/** 網頁版能不能玩這張卡：沒有角色可玩的（獨立世界書檔、沒有名字）與桌面版角色卡路會拒收的都不收。 */
+export function playableError(card: PlayCard): ImportErrorCode | null {
+  if (card.view.route.book_shaped) return "standalone_book";
+  if (card.view.route.name === null) return card.view.books.worldbook.source === "top_level" ? "standalone_book" : "missing_name";
+  // 有效性照卡片契約：桌面版角色卡路會拒收的卡，網頁版也不收（存檔才帶得回桌面版）
+  const invalid = card.view.validity.character;
+  if (invalid) return invalid === "card_missing_name" ? "missing_name" : invalid;
+  return null;
+}
+
 /**
  * 匯入一個卡檔：解碼照卡片契約；沒有角色可玩的（獨立世界書檔、沒有名字）不收——那種檔案請玩家
  * 用桌面版匯入。分路照桌面版：身分兩可的卡預設用桌面版身分框的主按鈕那條。
@@ -86,12 +98,9 @@ export function importCardBytes(bytes: Uint8Array): ImportResult {
   const decoded = decodeCardFile(bytes);
   if (!decoded.ok) return { ok: false, error: decoded.error };
   const card = playCardFromValue(decoded.source, decoded.value);
-  if (card.view.route.book_shaped) return { ok: false, error: "standalone_book" };
-  if (card.view.route.name === null) return { ok: false, error: card.view.books.worldbook.source === "top_level" ? "standalone_book" : "missing_name" };
-  // 有效性照卡片契約：桌面版角色卡路會拒收的卡，網頁版也不收（存檔才帶得回桌面版）
-  const invalid = card.view.validity.character;
-  if (invalid) return { ok: false, error: invalid === "card_missing_name" ? "missing_name" : invalid };
-  return { ok: true, card };
+  const error = playableError(card);
+  if (error) return { ok: false, error };
+  return { ok: true, card: decoded.source === "json" ? card : { ...card, png: bytes } };
 }
 
 /** 先看檔案大小再讀內容：超過上限的檔不讀進記憶體。 */

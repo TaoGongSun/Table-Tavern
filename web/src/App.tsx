@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "./i18n";
 import { CardPicker } from "./features/cards/CardPicker";
 import { ChatView } from "./features/chat/ChatView";
-import type { GameSetup } from "./features/chat/useChat";
+import { GLOBAL_VARIABLES, type GameSetup } from "./features/chat/useChat";
 import { DownloadLink } from "./features/funnel/DownloadLink";
 import { QuotaPanel } from "./features/funnel/QuotaPanel";
 import type { QuotaState } from "./features/funnel/quota";
@@ -10,6 +10,7 @@ import { useLatestRelease } from "./features/funnel/useLatestRelease";
 import { ConnectPanel } from "./features/openrouter/ConnectPanel";
 import type { OAuthCallback } from "./features/openrouter/oauth";
 import { useOpenRouterSession } from "./features/openrouter/useOpenRouterSession";
+import { openSaveStore, requestPersistence, restoreGlobals } from "./features/saves/save-store";
 
 function QuotaBadge({ quota }: { quota: QuotaState }) {
   switch (quota.kind) {
@@ -34,6 +35,24 @@ export default function App({ callback }: { callback: OAuthCallback | null }) {
   const [game, setGame] = useState<GameSetup | null>(null);
   const [quotaDismissed, setQuotaDismissed] = useState(false);
   const exhausted = session.quota.kind === "exhausted";
+  const saves = useMemo(() => openSaveStore(), []);
+  const [persisted, setPersisted] = useState<boolean | null>(null);
+  // 跨對話 global 變數照 ST 存在瀏覽器（D29）：讀回來之前不開桌，免得這桌從空的 global 起算
+  const [globalsReady, setGlobalsReady] = useState(saves === null);
+  const [globalsFailed, setGlobalsFailed] = useState(false);
+  const loadGlobals = useCallback(async () => {
+    const loaded = await restoreGlobals(saves, GLOBAL_VARIABLES);
+    setGlobalsFailed(!loaded);
+    setGlobalsReady(true);
+  }, [saves]);
+  useEffect(() => {
+    void loadGlobals();
+  }, [loadGlobals]);
+
+  // 存檔在 IndexedDB：一開站就請瀏覽器別在空間吃緊時自動清掉（Safari 的 ITP 七天清資料另外提示）
+  useEffect(() => {
+    void requestPersistence().then(setPersisted);
+  }, []);
 
   // 每次重新用完都再提示一次
   useEffect(() => {
@@ -65,13 +84,22 @@ export default function App({ callback }: { callback: OAuthCallback | null }) {
         </div>
       </header>
 
+      {globalsFailed && (
+        <p className="chat-error globals-notice" role="alert" data-testid="globals-failed">
+          {t("globalsLoadFailed")}
+          <button type="button" className="ghost" onClick={() => void loadGlobals()}>
+            {t("globalsRetry")}
+          </button>
+        </p>
+      )}
+
       <main className="stage">
         {!session.apiKey ? (
           <ConnectPanel session={session} />
-        ) : game ? (
-          <ChatView game={game} session={session} onBack={() => setGame(null)} />
+        ) : !globalsReady ? null : game ? (
+          <ChatView game={game} session={session} saves={saves} release={release} onBack={() => setGame(null)} />
         ) : (
-          <CardPicker onStart={setGame} />
+          <CardPicker onStart={setGame} saves={saves} persisted={persisted} release={release} />
         )}
       </main>
 
