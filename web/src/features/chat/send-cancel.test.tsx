@@ -2,11 +2,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { SAMPLE_CARD } from "../cards/sample-card";
+import { SAMPLE_PLAY_CARD } from "../cards/sample-card";
 import { FailoverRuntime } from "../openrouter/failover";
 import { FreePool } from "../openrouter/free-pool";
 import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
-import { useChat, type ChatController } from "./useChat";
+import { useChat, type ChatController, type GameSetup } from "./useChat";
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,11 +42,13 @@ function controlledSession() {
   return { session, calls, release };
 }
 
+const GAME: GameSetup = { card: SAMPLE_PLAY_CARD, userName: "玩家", openingIndex: 0 };
+
 let root: Root | null = null;
 let chat: ChatController;
 
 function Probe({ session }: { session: OpenRouterSession }) {
-  chat = useChat(SAMPLE_CARD.data, session);
+  chat = useChat(GAME, session);
   return null;
 }
 

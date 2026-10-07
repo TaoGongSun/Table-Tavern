@@ -126,7 +126,11 @@ pub fn save_world_card(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
     data::commit_world_write(&path, bytes).is_ok()
 }
 
-fn card_interface(character_id: &str, character_name: &str, card_data: &Value) -> CardInterface {
+pub(super) fn card_interface(
+    character_id: &str,
+    character_name: &str,
+    card_data: &Value,
+) -> CardInterface {
     let opening = string_field(card_data, "first_mes")
         .map(str::trim)
         .filter(|text| !text.is_empty())

@@ -1,0 +1,58 @@
+{
+  "spec": "chara_card_v2",
+  "spec_version": "2.0",
+  "data": {
+    "name": "北境驛站",
+    "description": "北境邊界的一座驛站。",
+    "personality": "",
+    "scenario": "",
+    "first_mes": "風雪拍打著驛站的木門。",
+    "mes_example": "",
+    "creator_notes": "",
+    "system_prompt": "",
+    "post_history_instructions": "",
+    "alternate_greetings": [],
+    "tags": [],
+    "creator": "",
+    "character_version": "",
+    "extensions": {},
+    "character_book": {
+      "name": "北境設定集",
+      "entries": {
+        "10": {
+          "uid": 10,
+          "key": ["驛站", "木門"],
+          "keysecondary": [],
+          "comment": "驛站",
+          "content": "驛站有三層樓，地下室堆滿過冬的柴火與鹹肉，二樓住著南來北往的商隊，三樓是驛丞的房間，窗戶正對著通往王府的官道。",
+          "constant": false,
+          "disable": false,
+          "order": 100,
+          "position": 0
+        },
+        "2": {
+          "uid": 2,
+          "key": ["王府"],
+          "keysecondary": ["世子"],
+          "comment": "王府",
+          "content": "鎮北王府坐落在驛站以北三十里，王府世子每月初一會親自來驛站收取軍報，順便打聽南方的消息。",
+          "constant": false,
+          "disable": true,
+          "order": 50,
+          "position": 1
+        },
+        "0": {
+          "uid": 0,
+          "key": [],
+          "keysecondary": [],
+          "comment": "北境常駐",
+          "content": "北境終年積雪，夏天只有短短一個月，居民靠狩獵與往來商隊維生，對陌生人既好奇又防備。",
+          "constant": true,
+          "disable": false,
+          "order": 1,
+          "position": 0
+        }
+      }
+    }
+  }
+}

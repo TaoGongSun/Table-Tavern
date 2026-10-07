@@ -15,6 +15,8 @@ import { extractDelta, extractModel, extractReasoning, isProgress, SseParser, St
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  /** ST 範例對話的 example_user／example_assistant */
+  name?: string;
 }
 
 /** 停滯窗口，照桌面版 stall.rs:12-14：200 之後等第一個合格進展 300 秒，之後兩次進展之間 120 秒。 */

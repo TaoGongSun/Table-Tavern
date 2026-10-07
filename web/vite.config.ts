@@ -14,6 +14,7 @@ function hostCsp(mode: string): string {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
+    // 第二層：外部圖片先在渲染時就換成替代文字（src/shared/ui/host-markdown.ts），CSP 再擋一次
     "img-src 'self' data:",
     "font-src 'self'",
     `connect-src ${origin(endpoints.openrouterApi)} ${origin(endpoints.githubApi)}`,

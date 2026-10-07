@@ -1,0 +1,18 @@
+{
+  "spec": "chara_card_v2",
+  "spec_version": "2.0",
+  "data": {
+    "name": "壞條目值",
+    "description": "character_book 的條目值有字串與 null：不算條目、略過。",
+    "first_mes": "你好。",
+    "character_book": {
+      "name": "混雜的書",
+      "entries": {
+        "3": "只是一個字串",
+        "1": { "uid": 1, "key": ["甲"], "content": "有效條目", "order": 5 },
+        "2": null,
+        "0": [1, 2]
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "北境地名集",
+  "entries": {
+    "1": { "uid": 1, "key": ["漁村"], "keysecondary": [], "comment": "漁村", "content": "北境的漁村靠冰釣維生。", "constant": false, "disable": false, "order": 10 },
+    "0": { "uid": 0, "key": ["雪原"], "comment": "雪原", "content": "雪原上常有狼群出沒。", "constant": false, "order": 20 }
+  }
+}

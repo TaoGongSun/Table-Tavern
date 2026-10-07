@@ -31,7 +31,7 @@ pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
     }
 }
 
-fn find_card_text(bytes: &[u8], keyword: &[u8]) -> DataResult<Option<Vec<u8>>> {
+pub(super) fn find_card_text(bytes: &[u8], keyword: &[u8]) -> DataResult<Option<Vec<u8>>> {
     let mut offset = PNG_MAGIC.len();
     while offset < bytes.len() {
         if bytes.len() - offset < 12 {

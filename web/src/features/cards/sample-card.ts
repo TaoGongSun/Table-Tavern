@@ -1,5 +1,6 @@
 // 內建範例卡：一張新寫的單角色卡（D5），ST chara_card_v3 格式，完整外殼照卡片契約保留。
 // 包 1 只有繁中；十語系版本在包 8 補。
+import { playCardFromValue } from "./play-card";
 
 export interface CharacterCardData {
   name: string;
@@ -56,3 +57,5 @@ export const SAMPLE_CARD: CharacterCard = {
     extensions: {},
   },
 };
+
+export const SAMPLE_PLAY_CARD = playCardFromValue("builtin", SAMPLE_CARD);

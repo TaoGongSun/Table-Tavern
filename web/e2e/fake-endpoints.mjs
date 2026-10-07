@@ -36,7 +36,7 @@ const base64Url = (buffer) => buffer.toString("base64").replace(/\+/g, "-").repl
 export async function startFake() {
   const state = {
     remaining: 40,
-    /** normal：分段吐完；hang：送出標頭後不吐任何字；partial-hang：吐一段後卡住 */
+    /** normal：分段吐完；numbered：回「第 N 次回覆」（N＝第幾個聊天請求）；hang：送出標頭後不吐任何字；partial-hang：吐一段後卡住 */
     chat: "normal",
     release: "none",
     challenge: null,
@@ -116,7 +116,8 @@ export async function startFake() {
         send({ content: "說到一半" });
         return;
       }
-      for (const part of ["雪還在下，", "先喝口湯", "暖暖身子吧。"]) {
+      const parts = state.chat === "numbered" ? [`第 ${state.chatRequests.length} 次`, "回覆"] : ["雪還在下，", "先喝口湯", "暖暖身子吧。"];
+      for (const part of parts) {
         send({ content: part });
         await pause(120);
       }

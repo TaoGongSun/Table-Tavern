@@ -1,0 +1,839 @@
+{
+ "_source": "SillyTavern 06bde939 tests/frontend/MacroEngine.e2e.js 抽出的 input→輸出案例（user=User、char=Character、不代卡欄位）；只收內建巨集。",
+ "cases": [
+  {
+   "name": "should evaluate a simple macro without arguments",
+   "input": "Start {{newline}} end.",
+   "expected": "Start \n end.",
+   "variables": {}
+  },
+  {
+   "name": "should evaluate multiple macros in order",
+   "input": "A {{setvar::test::4}}{{getvar::test}} B {{setvar::test::2}}{{getvar::test}} C",
+   "expected": "A 4 B 2 C",
+   "variables": {}
+  },
+  {
+   "name": "should handle normal double-colon separated unnamed argument",
+   "input": "Reversed: {{reverse::abc}}!",
+   "expected": "Reversed: cba!",
+   "variables": {}
+  },
+  {
+   "name": "should handle (legacy) colon separated unnamed argument",
+   "input": "Reversed: {{reverse:abc}}!",
+   "expected": "Reversed: cba!",
+   "variables": {}
+  },
+  {
+   "name": "should handle (legacy) colon separated argument as only one, even with more separators (double colon)",
+   "input": "Reversed: {{reverse:abc::def}}!",
+   "expected": "Reversed: fed::cba!",
+   "variables": {}
+  },
+  {
+   "name": "should handle (legacy) colon separated argument as only one, even with more separators (single colon)",
+   "input": "Reversed: {{reverse:abc:def}}!",
+   "expected": "Reversed: fed:cba!",
+   "variables": {}
+  },
+  {
+   "name": "should handle (legacy) whitespace separated unnamed argument",
+   "input": "Values: {{roll 1d1}}!",
+   "expected": "Values: 1!",
+   "variables": {}
+  },
+  {
+   "name": "should handle (legacy) whitespace separated unnamed argument as only one, even with more separators (space)",
+   "input": "Values: {{reverse abc def}}!",
+   "expected": "Values: fed cba!",
+   "variables": {}
+  },
+  {
+   "name": "should resolve nested macros inside arguments inside-out",
+   "input": "Result: {{setvar::test::0}}{{reverse::{{addvar::test::100}}{{getvar::test}}}}{{setvar::test::0}}",
+   "expected": "Result: 001",
+   "variables": {}
+  },
+  {
+   "name": "should resolve nested macros across multiple arguments",
+   "input": "Result: {{setvar::addvname::test}}{{addvar::{{getvar::addvname}}::{{setvar::test::5}}{{getvar::test}}}}{{getvar::test}}",
+   "expected": "Result: 10",
+   "variables": {}
+  },
+  {
+   "name": "should keep unknown macro syntax but resolve nested macros inside it",
+   "input": "Test: {{unknown::{{newline}}}}",
+   "expected": "Test: {{unknown::\n}}",
+   "variables": {}
+  },
+  {
+   "name": "should keep surrounding text inside unknown macros intact",
+   "input": "Test: {{unknown::my {{newline}} example}}",
+   "expected": "Test: {{unknown::my \n example}}",
+   "variables": {}
+  },
+  {
+   "name": "should remove single-line comments with simple body",
+   "input": "Hello{{// comment}}World",
+   "expected": "HelloWorld",
+   "variables": {}
+  },
+  {
+   "name": "should accept non-word characters immediately after //",
+   "input": "A{{//!@#$%^&*()_+}}B",
+   "expected": "AB",
+   "variables": {}
+  },
+  {
+   "name": "should ignore additional // sequences inside the comment body",
+   "input": "X{{//comment with // extra // slashes}}Y",
+   "expected": "XY",
+   "variables": {}
+  },
+  {
+   "name": "should support multi-line comment bodies",
+   "input": "Start{{// line one\nline two\nline three}}End",
+   "expected": "StartEnd",
+   "variables": {}
+  },
+  {
+   "name": "should remove scoped comment block (basic)",
+   "input": "Before{{//}}This entire block is a comment.{{///}}After",
+   "expected": "BeforeAfter",
+   "variables": {}
+  },
+  {
+   "name": "should remove scoped comment block spanning multiple lines",
+   "input": "Start\n{{//}}\n  This entire block is a comment.\n  It can span multiple lines.\n{{///}}\nEnd",
+   "expected": "Start\n\nEnd",
+   "variables": {}
+  },
+  {
+   "name": "should remove scoped comment block with extra slashes in closing tag",
+   "input": "A{{//}}ignored{{////}}B",
+   "expected": "AB",
+   "variables": {}
+  },
+  {
+   "name": "should remove scoped comment block with macros inside (macros not evaluated)",
+   "input": "X{{//}}{{user}} should be ignored{{///}}Y",
+   "expected": "XY",
+   "variables": {}
+  },
+  {
+   "name": "should not treat bare {{//}} without matching closer as scoped",
+   "input": "A{{// just a comment}}B",
+   "expected": "AB",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped comment adjacent to other text and macros",
+   "input": "{{user}}{{//}}ignored block{{///}}{{user}}",
+   "expected": "UserUser",
+   "variables": {}
+  },
+  {
+   "name": "should trim content inside scoped trim macro",
+   "input": "{{trim}}  hello world  {{/trim}}",
+   "expected": "hello world",
+   "variables": {}
+  },
+  {
+   "name": "should trim leading whitespace in scoped trim",
+   "input": "{{trim}}\n\n  content{{/trim}}",
+   "expected": "content",
+   "variables": {}
+  },
+  {
+   "name": "should trim trailing whitespace in scoped trim",
+   "input": "{{trim}}content  \n\n{{/trim}}",
+   "expected": "content",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped trim with macros inside",
+   "input": "{{trim}}  Hello {{user}}  {{/trim}}",
+   "expected": "Hello User",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested scoped trim",
+   "input": "{{trim}}  outer {{trim}}  inner  {{/trim}} outer  {{/trim}}",
+   "expected": "outer inner outer",
+   "variables": {}
+  },
+  {
+   "name": "should strip trim macro and surrounding newlines (legacy behavior)",
+   "input": "foo\n\n{{trim}}\n\nbar",
+   "expected": "foobar",
+   "variables": {}
+  },
+  {
+   "name": "should handle multiple trim macros in a single string",
+   "input": "A\n\n{{trim}}\n\nB\n\n{{trim}}\n\nC",
+   "expected": "ABC",
+   "variables": {}
+  },
+  {
+   "name": "should support legacy <USER> marker via pre-processing",
+   "input": "Hello <USER>!",
+   "expected": "Hello User!",
+   "variables": {}
+  },
+  {
+   "name": "should support legacy <BOT> and <CHAR> markers via pre-processing",
+   "input": "Bot: <BOT>, Char: <CHAR>.",
+   "expected": "Bot: Character, Char: Character.",
+   "variables": {}
+  },
+  {
+   "name": "should support legacy <GROUP> and <CHARIFNOTGROUP> markers via pre-processing (non-group fallback)",
+   "input": "Group: <GROUP>, CharIfNotGroup: <CHARIFNOTGROUP>.",
+   "expected": "Group: Character, CharIfNotGroup: Character.",
+   "variables": {}
+  },
+  {
+   "name": "should resolve nested macros in arguments, even though the outer macro has wrong number of arguments",
+   "input": "Result: {{user Something {{char}}}}",
+   "expected": "Result: {{user Something Character}}",
+   "variables": {}
+  },
+  {
+   "name": "should resolve macro with legacy hash flag (no effect)",
+   "input": "Hello {{#user}}!",
+   "expected": "Hello User!",
+   "variables": {}
+  },
+  {
+   "name": "should keep unmatched closing block macro as raw text",
+   "input": "{{/unknown}}",
+   "expected": "{{/unknown}}",
+   "variables": {}
+  },
+  {
+   "name": "should keep unmatched closing block macro for existing macro as raw text",
+   "input": "{{/user}}",
+   "expected": "{{/user}}",
+   "variables": {}
+  },
+  {
+   "name": "should keep unmatched closing block macro with arguments as raw text",
+   "input": "{{/getvar::test}}",
+   "expected": "{{/getvar::test}}",
+   "variables": {}
+  },
+  {
+   "name": "should keep closing macro raw when surrounded by other content",
+   "input": "Hello {{user}}, this {{/char}} is raw, bye {{char}}!",
+   "expected": "Hello User, this {{/char}} is raw, bye Character!",
+   "variables": {}
+  },
+  {
+   "name": "should resolve scoped macro while keeping unrelated closing raw",
+   "input": "{{setvar::x}}value{{/setvar}}{{/user}}{{getvar::x}}",
+   "expected": "{{/user}}value",
+   "variables": {}
+  },
+  {
+   "name": "should handle flags with arguments correctly",
+   "input": "{{!reverse::hello}}",
+   "expected": "olleh",
+   "variables": {}
+  },
+  {
+   "name": "should merge scoped content as last unnamed argument",
+   "input": "{{setvar::myvar}}Hello World{{/setvar}}{{getvar::myvar}}",
+   "expected": "Hello World",
+   "variables": {}
+  },
+  {
+   "name": "should resolve nested macros inside scoped content",
+   "input": "{{setvar::myvar}}Hello {{user}}!{{/setvar}}{{getvar::myvar}}",
+   "expected": "Hello User!",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested scoped macros with same name",
+   "input": "{{setvar::outer}}before {{setvar::inner}}nested{{/setvar}} after{{/setvar}}{{getvar::outer}} | {{getvar::inner}}",
+   "expected": "before  after | nested",
+   "variables": {}
+  },
+  {
+   "name": "should handle multiple independent scoped macros",
+   "input": "{{setvar::a}}first{{/setvar}}{{setvar::b}}second{{/setvar}}[{{getvar::a}}][{{getvar::b}}]",
+   "expected": "[first][second]",
+   "variables": {}
+  },
+  {
+   "name": "should keep unmatched closing tag as raw text",
+   "input": "Before {{/setvar}} After",
+   "expected": "Before {{/setvar}} After",
+   "variables": {}
+  },
+  {
+   "name": "should keep second closing tag as raw when already closed",
+   "input": "{{setvar::myvar}}content{{/setvar}}{{/setvar}}{{getvar::myvar}}",
+   "expected": "{{/setvar}}content",
+   "variables": {}
+  },
+  {
+   "name": "should work with empty scoped content",
+   "input": "{{setvar::empty}}{{/setvar}}[{{getvar::empty}}]",
+   "expected": "[]",
+   "variables": {}
+  },
+  {
+   "name": "should work with multi-line scoped content",
+   "input": "{{setvar::multi}}Line 1\nLine 2\nLine 3{{/setvar}}{{getvar::multi}}",
+   "expected": "Line 1\nLine 2\nLine 3",
+   "variables": {}
+  },
+  {
+   "name": "should preserve plaintext around scoped macros",
+   "input": "Before {{setvar::x}}value{{/setvar}} After {{getvar::x}}",
+   "expected": "Before  After value",
+   "variables": {}
+  },
+  {
+   "name": "should handle deeply nested scoped macros",
+   "input": "{{setvar::l1}}A{{setvar::l2}}B{{setvar::l3}}C{{/setvar}}B{{/setvar}}A{{/setvar}}{{getvar::l1}}|{{getvar::l2}}|{{getvar::l3}}",
+   "expected": "AA|BB|C",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped macro with existing arguments",
+   "input": "{{reverse}}hello{{/reverse}}",
+   "expected": "olleh",
+   "variables": {}
+  },
+  {
+   "name": "should not match closing tag for different macro name",
+   "input": "{{setvar::x}}content{{/getvar}}{{getvar::x}}",
+   "expected": "{{setvar::x}}content{{/getvar}}",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped content with special characters",
+   "input": "{{setvar::special}}Hello { world } :: test{{/setvar}}{{getvar::special}}",
+   "expected": "Hello { world } :: test",
+   "variables": {}
+  },
+  {
+   "name": "should keep scoped macro raw when macro accepts no arguments",
+   "input": "{{user}}Hello {{char}}!{{/user}}",
+   "expected": "{{user}}Hello Character!{{/user}}",
+   "variables": {}
+  },
+  {
+   "name": "should keep scoped macro raw when argument count exceeds maximum",
+   "input": "{{setvar::myvar::existing}}extra{{/setvar}}{{getvar::myvar}}",
+   "expected": "{{setvar::myvar::existing}}extra{{/setvar}}",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped macro inside another scoped macro content",
+   "input": "{{setvar::outer}}A{{setvar::inner}}B{{/setvar}}C{{/setvar}}{{getvar::outer}}|{{getvar::inner}}",
+   "expected": "AC|B",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim whitespace-only scoped content to empty",
+   "input": "{{setvar::ws}}   {{/setvar}}[{{getvar::ws}}]",
+   "expected": "[]",
+   "variables": {}
+  },
+  {
+   "name": "should preserve whitespace-only scoped content with # flag",
+   "input": "{{#setvar::ws}}   {{/setvar}}[{{getvar::ws}}]",
+   "expected": "[   ]",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped macro at start of input",
+   "input": "{{setvar::x}}value{{/setvar}}result:{{getvar::x}}",
+   "expected": "result:value",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped macro at end of input",
+   "input": "prefix {{setvar::x}}value{{/setvar}}",
+   "expected": "prefix ",
+   "variables": {}
+  },
+  {
+   "name": "should handle consecutive scoped macros",
+   "input": "{{setvar::a}}1{{/setvar}}{{setvar::b}}2{{/setvar}}{{setvar::c}}3{{/setvar}}{{getvar::a}}{{getvar::b}}{{getvar::c}}",
+   "expected": "123",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped macro with only macro content (no plaintext)",
+   "input": "{{setvar::x}}{{user}}{{/setvar}}{{getvar::x}}",
+   "expected": "User",
+   "variables": {}
+  },
+  {
+   "name": "should not match closing tag across different macro instances",
+   "input": "{{setvar::a}}first{{/setvar}}middle{{setvar::b}}second{{/setvar}}[{{getvar::a}}][{{getvar::b}}]",
+   "expected": "middle[first][second]",
+   "variables": {}
+  },
+  {
+   "name": "should resolve scoped macro inside another macro argument",
+   "input": "{{setvar::testvar::{{reverse}}hello{{/reverse}}}} {{getvar::testvar}}",
+   "expected": " olleh",
+   "variables": {}
+  },
+  {
+   "name": "should resolve scoped if macro inside setvar argument",
+   "input": "{{setvar::testvar::{{if true}}true branch{{/if}}}} {{getvar::testvar}}",
+   "expected": " true branch",
+   "variables": {}
+  },
+  {
+   "name": "should resolve scoped if/else macro inside setvar argument",
+   "input": "{{setvar::testvar::{{if 0}}wrong{{else}}correct{{/if}}}} {{getvar::testvar}}",
+   "expected": " correct",
+   "variables": {}
+  },
+  {
+   "name": "should resolve multiple scoped macros inside single argument",
+   "input": "{{setvar::testvar::{{reverse}}ab{{/reverse}}-{{reverse}}cd{{/reverse}}}} {{getvar::testvar}}",
+   "expected": " ba-dc",
+   "variables": {}
+  },
+  {
+   "name": "should resolve deeply nested scoped macros in arguments",
+   "input": "{{setvar::outer::{{setvar::inner::{{reverse}}xyz{{/reverse}}}}{{getvar::inner}}}} {{getvar::outer}}",
+   "expected": " zyx",
+   "variables": {}
+  },
+  {
+   "name": "should resolve scoped macro with text before and after in argument",
+   "input": "{{setvar::testvar::before {{reverse}}mid{{/reverse}} after}} {{getvar::testvar}}",
+   "expected": " before dim after",
+   "variables": {}
+  },
+  {
+   "name": "should handle scoped macro inside first argument when macro has multiple args",
+   "input": "{{setvar::myvar::prefix-{{reverse}}abc{{/reverse}}-suffix}}{{getvar::myvar}}",
+   "expected": "prefix-cba-suffix",
+   "variables": {}
+  },
+  {
+   "name": "should handle multiline scoped content inside argument",
+   "input": "{{setvar::testvar::{{if true}}\ntrue\nbranch\n{{/if}}}} {{getvar::testvar}}",
+   "expected": " true\nbranch",
+   "variables": {}
+  },
+  {
+   "name": "should return content when condition is truthy string",
+   "input": "{{if::hello::shown}}",
+   "expected": "shown",
+   "variables": {}
+  },
+  {
+   "name": "should return empty when condition is empty string",
+   "input": "{{if::::hidden}}",
+   "expected": "",
+   "variables": {}
+  },
+  {
+   "name": "should return empty when condition is \"false\"",
+   "input": "{{if::false::hidden}}",
+   "expected": "",
+   "variables": {}
+  },
+  {
+   "name": "should return empty when condition is \"off\"",
+   "input": "{{if::off::hidden}}",
+   "expected": "",
+   "variables": {}
+  },
+  {
+   "name": "should return empty when condition is \"0\"",
+   "input": "{{if::0::hidden}}",
+   "expected": "",
+   "variables": {}
+  },
+  {
+   "name": "should return content when condition is \"true\"",
+   "input": "{{if::true::shown}}",
+   "expected": "shown",
+   "variables": {}
+  },
+  {
+   "name": "should return content when condition is \"1\"",
+   "input": "{{if::1::shown}}",
+   "expected": "shown",
+   "variables": {}
+  },
+  {
+   "name": "should resolve macro name and return content when macro returns truthy",
+   "input": "{{if char}}Name: {{char}}{{/if}}",
+   "expected": "Name: Character",
+   "variables": {}
+  },
+  {
+   "name": "should resolve macro name and return empty when macro returns empty",
+   "input": "{{if noop}}should not show{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should not resolve non-existent macro names (treat as literal)",
+   "input": "{{if::notamacro::shown}}",
+   "expected": "shown",
+   "variables": {}
+  },
+  {
+   "name": "should resolve user macro and show content",
+   "input": "{{if user}}Hello {{user}}{{/if}}",
+   "expected": "Hello User",
+   "variables": {}
+  },
+  {
+   "name": "should evaluate nested macro in condition (truthy)",
+   "input": "{{setvar::flag::yes}}{{if {{getvar::flag}}}}shown{{/if}}",
+   "expected": "shown",
+   "variables": {}
+  },
+  {
+   "name": "should evaluate nested macro in condition (falsy)",
+   "input": "{{setvar::flag::}}{{if {{getvar::flag}}}}hidden{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should evaluate nested macro in condition (false string)",
+   "input": "{{setvar::flag::false}}{{if {{getvar::flag}}}}hidden{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should work with scoped content (truthy)",
+   "input": "{{if yes}}This is the content{{/if}}",
+   "expected": "This is the content",
+   "variables": {}
+  },
+  {
+   "name": "should work with scoped content (falsy)",
+   "input": "{{if::}}This should not show{{/if}}[after]",
+   "expected": "[after]",
+   "variables": {}
+  },
+  {
+   "name": "should handle macros inside scoped content",
+   "input": "{{if yes}}Hello {{user}}!{{/if}}",
+   "expected": "Hello User!",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested if macros",
+   "input": "{{if yes}}outer{{if yes}}inner{{/if}}{{/if}}",
+   "expected": "outerinner",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested if with outer false",
+   "input": "{{if::}}outer{{if yes}}inner{{/if}}{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested if with inner false",
+   "input": "{{if yes}}outer{{if::}}inner{{/if}}end{{/if}}",
+   "expected": "outerend",
+   "variables": {}
+  },
+  {
+   "name": "should work with space-separated condition (truthy)",
+   "input": "{{if something}}content{{/if}}",
+   "expected": "content",
+   "variables": {}
+  },
+  {
+   "name": "should resolve macro name with space-separated syntax",
+   "input": "{{if char}}{{char}} exists{{/if}}",
+   "expected": "Character exists",
+   "variables": {}
+  },
+  {
+   "name": "should return then-branch when condition is truthy",
+   "input": "{{if yes}}then{{else}}else{{/if}}",
+   "expected": "then",
+   "variables": {}
+  },
+  {
+   "name": "should return else-branch when condition is falsy",
+   "input": "{{if::}}then{{else}}else{{/if}}",
+   "expected": "else",
+   "variables": {}
+  },
+  {
+   "name": "should return else-branch when condition is \"false\"",
+   "input": "{{if::false}}yes{{else}}no{{/if}}",
+   "expected": "no",
+   "variables": {}
+  },
+  {
+   "name": "should handle macros in both branches",
+   "input": "{{if yes}}Hello {{user}}{{else}}Goodbye {{char}}{{/if}}",
+   "expected": "Hello User",
+   "variables": {}
+  },
+  {
+   "name": "should handle macros in else branch when falsy",
+   "input": "{{if::}}Hello {{user}}{{else}}Goodbye {{char}}{{/if}}",
+   "expected": "Goodbye Character",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested if-else in then-branch",
+   "input": "{{if yes}}outer-then{{if yes}}inner-then{{else}}inner-else{{/if}}{{else}}outer-else{{/if}}",
+   "expected": "outer-theninner-then",
+   "variables": {}
+  },
+  {
+   "name": "should handle nested if-else in else-branch",
+   "input": "{{if::}}outer-then{{else}}outer-else{{if yes}}inner-then{{else}}inner-else{{/if}}{{/if}}",
+   "expected": "outer-elseinner-then",
+   "variables": {}
+  },
+  {
+   "name": "should handle deeply nested if-else",
+   "input": "{{if::}}A{{else}}B{{if::}}C{{else}}D{{/if}}{{/if}}",
+   "expected": "BD",
+   "variables": {}
+  },
+  {
+   "name": "should return empty else-branch if not provided",
+   "input": "{{if::}}content{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should trim whitespace from branches",
+   "input": "{{if yes}}  then  {{else}}  else  {{/if}}",
+   "expected": "then",
+   "variables": {}
+  },
+  {
+   "name": "should trim newlines from branches",
+   "input": "{{if yes}}\n  then\n{{else}}\n  else\n{{/if}}",
+   "expected": "then",
+   "variables": {}
+  },
+  {
+   "name": "should trim else branch when selected",
+   "input": "{{if::}}\n  then\n{{else}}\n  else\n{{/if}}",
+   "expected": "else",
+   "variables": {}
+  },
+  {
+   "name": "should resolve macro name in condition with else branch",
+   "input": "{{if char}}Has char{{else}}No char{{/if}}",
+   "expected": "Has char",
+   "variables": {}
+  },
+  {
+   "name": "should handle empty macro returning else branch",
+   "input": "{{if noop}}Has value{{else}}Empty{{/if}}",
+   "expected": "Empty",
+   "variables": {}
+  },
+  {
+   "name": "should invert truthy condition to falsy",
+   "input": "{{if !yes}}shown{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should invert falsy condition to truthy",
+   "input": "{{if !false}}shown{{/if}}",
+   "expected": "shown",
+   "variables": {}
+  },
+  {
+   "name": "should invert empty string to truthy",
+   "input": "{{if::!}}not shown{{else}}shown{{/if}}",
+   "expected": "not shown",
+   "variables": {}
+  },
+  {
+   "name": "should work with ! prefix and macro name",
+   "input": "{{if !noop}}No value{{/if}}",
+   "expected": "No value",
+   "variables": {}
+  },
+  {
+   "name": "should work with ! prefix and truthy macro",
+   "input": "{{if !char}}No char{{else}}Has char{{/if}}",
+   "expected": "Has char",
+   "variables": {}
+  },
+  {
+   "name": "should work with ! prefix and nested macro",
+   "input": "{{setvar::emptyVar::}}{{if !{{getvar::emptyVar}}}}Empty var{{/if}}",
+   "expected": "Empty var",
+   "variables": {}
+  },
+  {
+   "name": "should NOT invert when ! comes from resolved value",
+   "input": "{{setvar::bangVar::!hello}}{{if {{getvar::bangVar}}}}Has value{{else}}No value{{/if}}",
+   "expected": "Has value",
+   "variables": {}
+  },
+  {
+   "name": "should work with else branch on inverted condition",
+   "input": "{{if !yes}}then{{else}}else{{/if}}",
+   "expected": "else",
+   "variables": {}
+  },
+  {
+   "name": "should work with separator syntax",
+   "input": "{{if::!something}}shown{{/if}}[end]",
+   "expected": "[end]",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim scoped content by default",
+   "input": "{{setvar::myvar}}\n  content with whitespace  \n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[content with whitespace]",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim leading newlines in scoped content",
+   "input": "{{setvar::myvar}}\n\n\ntext{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[text]",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim trailing newlines in scoped content",
+   "input": "{{setvar::myvar}}text\n\n\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[text]",
+   "variables": {}
+  },
+  {
+   "name": "should dedent consistent indentation when auto-trimming",
+   "input": "{{setvar::myvar}}\n  line1\n  line2  \n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[line1\nline2]",
+   "variables": {}
+  },
+  {
+   "name": "should preserve whitespace with # flag",
+   "input": "{{#setvar::myvar}}\n  content  \n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[\n  content  \n]",
+   "variables": {}
+  },
+  {
+   "name": "should preserve leading newlines with # flag",
+   "input": "{{#setvar::myvar}}\n\ntext{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[\n\ntext]",
+   "variables": {}
+  },
+  {
+   "name": "should preserve trailing newlines with # flag",
+   "input": "{{#setvar::myvar}}text\n\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[text\n\n]",
+   "variables": {}
+  },
+  {
+   "name": "should work with # flag and nested macros",
+   "input": "{{#setvar::myvar}}\n  {{char}}  \n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[\n  Character  \n]",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim with nested macros by default",
+   "input": "{{setvar::myvar}}\n  {{char}}  \n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[Character]",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim {{if}} scoped content",
+   "input": "{{if yes}}\n  trimmed  \n{{/if}}",
+   "expected": "trimmed",
+   "variables": {}
+  },
+  {
+   "name": "should preserve {{if}} whitespace with # flag",
+   "input": "{{#if yes}}\n  preserved  \n{{/if}}",
+   "expected": "\n  preserved  \n",
+   "variables": {}
+  },
+  {
+   "name": "should auto-trim {{reverse}} scoped content",
+   "input": "{{reverse}}\n  abc  \n{{/reverse}}",
+   "expected": "cba",
+   "variables": {}
+  },
+  {
+   "name": "should preserve {{reverse}} whitespace with # flag",
+   "input": "{{#reverse}}\n  abc  \n{{/reverse}}",
+   "expected": "\n  cba  \n",
+   "variables": {}
+  },
+  {
+   "name": "should dedent consistent indentation from multiline content",
+   "input": "{{setvar::myvar}}\n  # Heading\n  Content here\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[# Heading\nContent here]",
+   "variables": {}
+  },
+  {
+   "name": "should dedent based on first non-empty line indentation",
+   "input": "{{setvar::myvar}}\n    line1\n    line2\n    line3\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[line1\nline2\nline3]",
+   "variables": {}
+  },
+  {
+   "name": "should preserve relative indentation when dedenting",
+   "input": "{{setvar::myvar}}\n  parent\n    child\n  sibling\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[parent\n  child\nsibling]",
+   "variables": {}
+  },
+  {
+   "name": "should handle mixed indentation levels correctly",
+   "input": "{{setvar::myvar}}\n  # Header\n    - item1\n    - item2\n  Paragraph\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[# Header\n  - item1\n  - item2\nParagraph]",
+   "variables": {}
+  },
+  {
+   "name": "should dedent {{if}} branches with indentation",
+   "input": "{{if yes}}\n  # Title\n  Body text\n{{/if}}",
+   "expected": "# Title\nBody text",
+   "variables": {}
+  },
+  {
+   "name": "should dedent {{if}} else branch with indentation",
+   "input": "{{if false}}\n  Then branch\n{{else}}\n  # Else Title\n  Else body\n{{/if}}",
+   "expected": "# Else Title\nElse body",
+   "variables": {}
+  },
+  {
+   "name": "should not dedent when # flag is set",
+   "input": "{{#setvar::myvar}}\n  # Heading\n  Content\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[\n  # Heading\n  Content\n]",
+   "variables": {}
+  },
+  {
+   "name": "should handle single line content without dedent issues",
+   "input": "{{setvar::myvar}}\n  single line\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[single line]",
+   "variables": {}
+  },
+  {
+   "name": "should handle empty lines in multiline content",
+   "input": "{{setvar::myvar}}\n  line1\n\n  line2\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[line1\n\nline2]",
+   "variables": {}
+  },
+  {
+   "name": "should dedent based on first non-empty line and preserve relative indentation",
+   "input": "{{setvar::myvar}}\n  First Line\n    Second Line, more indented\n  Third line\n    Fourth line, also more indented\n{{/setvar}}[{{getvar::myvar}}]",
+   "expected": "[First Line\n  Second Line, more indented\nThird line\n  Fourth line, also more indented]",
+   "variables": {}
+  }
+ ]
+}

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { t } from "./i18n";
 import { CardPicker } from "./features/cards/CardPicker";
-import type { CharacterCardData } from "./features/cards/sample-card";
 import { ChatView } from "./features/chat/ChatView";
+import type { GameSetup } from "./features/chat/useChat";
 import { DownloadLink } from "./features/funnel/DownloadLink";
 import { QuotaPanel } from "./features/funnel/QuotaPanel";
 import type { QuotaState } from "./features/funnel/quota";
@@ -31,7 +31,7 @@ function QuotaBadge({ quota }: { quota: QuotaState }) {
 export default function App({ callback }: { callback: OAuthCallback | null }) {
   const session = useOpenRouterSession(callback);
   const release = useLatestRelease();
-  const [card, setCard] = useState<CharacterCardData | null>(null);
+  const [game, setGame] = useState<GameSetup | null>(null);
   const [quotaDismissed, setQuotaDismissed] = useState(false);
   const exhausted = session.quota.kind === "exhausted";
 
@@ -55,7 +55,7 @@ export default function App({ callback }: { callback: OAuthCallback | null }) {
               type="button"
               className="ghost"
               onClick={() => {
-                setCard(null);
+                setGame(null);
                 session.logout();
               }}
             >
@@ -68,10 +68,10 @@ export default function App({ callback }: { callback: OAuthCallback | null }) {
       <main className="stage">
         {!session.apiKey ? (
           <ConnectPanel session={session} />
-        ) : card ? (
-          <ChatView card={card} session={session} onBack={() => setCard(null)} />
+        ) : game ? (
+          <ChatView game={game} session={session} onBack={() => setGame(null)} />
         ) : (
-          <CardPicker onPick={setCard} />
+          <CardPicker onStart={setGame} />
         )}
       </main>
 

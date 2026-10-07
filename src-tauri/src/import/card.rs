@@ -157,8 +157,8 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     let book_entries = card_data
         .get("character_book")
         .and_then(|book| book.get("entries"))
-        .and_then(Value::as_array);
-    probe.book_entries = book_entries.map_or(0, Vec::len);
+        .map(book_entry_values);
+    probe.book_entries = book_entries.as_ref().map_or(0, Vec::len);
     // 世界書卡＝內容重心壓倒性地在世界書條目上，看比重而非人設絕對字數：
     // 這種卡匯成角色卡會把整包條目（含輸出格式規定）丟掉，卡就玩不動了。
     // 真卡實測：西幻卡人設 988 字、世界書 21,678 字（22 倍），舊的「人設少於 200 字」條件漏判它。
@@ -192,6 +192,44 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     probe.book_shaped =
         card_data.get("character_book").is_none() && card_data.get("entries").is_some();
     probe
+}
+
+/// 世界書條目一律照這支展開（卡片契約 src/shared/contracts/card-view/card-view.md）：陣列形（V2
+/// character_book）照原順序、鍵是索引；物件形（ST 獨立世界書）照 uid 鍵的數字順序，非數字鍵排最後。
+/// 不是物件的值（字串、null…）不算條目，直接略過——匯入不會因為一條壞值整本失敗。
+pub(crate) fn book_entries_keyed(entries: &Value) -> Vec<(String, &Value)> {
+    match entries {
+        Value::Array(items) => items
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| value.is_object())
+            .map(|(index, value)| (index.to_string(), value))
+            .collect(),
+        Value::Object(map) => {
+            let mut keyed: Vec<(String, &Value)> = map
+                .iter()
+                .filter(|(_, value)| value.is_object())
+                .map(|(key, value)| (key.clone(), value))
+                .collect();
+            keyed.sort_by(
+                |(a, _), (b, _)| match (a.parse::<u64>(), b.parse::<u64>()) {
+                    (Ok(x), Ok(y)) => x.cmp(&y),
+                    (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+                    (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+                    (Err(_), Err(_)) => a.cmp(b),
+                },
+            );
+            keyed
+        }
+        _ => Vec::new(),
+    }
+}
+
+pub(crate) fn book_entry_values(entries: &Value) -> Vec<&Value> {
+    book_entries_keyed(entries)
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect()
 }
 
 /// 角色卡檔解得開、有合法名字：回（卡 JSON、原檔副檔名、名字）。匯入在動任何資料前先過這關。
@@ -473,8 +511,7 @@ pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
         .unwrap_or(&value);
     let has_entries = |book: &Value| {
         book.get("entries")
-            .and_then(Value::as_array)
-            .is_some_and(|entries| !entries.is_empty())
+            .is_some_and(|entries| !book_entry_values(entries).is_empty())
     };
     if let Some(book) = card_data.get("character_book").filter(|b| has_entries(b)) {
         return Ok(book.to_string());
@@ -896,6 +933,79 @@ mod tests {
         let round_trip: Value =
             serde_json::from_str(&worldbook_json(plain.as_bytes()).unwrap()).unwrap();
         assert_eq!(round_trip, serde_json::from_str::<Value>(plain).unwrap());
+    }
+
+    /// 物件形 entries（ST 獨立世界書格式塞進 character_book）一律算有條目、照 uid 鍵展開，
+    /// 不能掉進人設欄轉換（卡片契約）
+    #[test]
+    fn object_shaped_character_book_counts_as_entries() {
+        let card = json!({"data": {
+            "name": "北境驛站",
+            "description": "短介紹",
+            "character_book": {"name": "北境", "entries": {
+                "10": {"uid": 10, "key": ["驛站"], "content": "驛".repeat(40)},
+                "2": {"uid": 2, "key": ["王府"], "content": "府".repeat(40)},
+                "0": {"uid": 0, "key": [], "content": "常駐", "constant": true},
+            }},
+        }})
+        .to_string();
+
+        let probe = probe_import(card.as_bytes());
+        assert_eq!(probe.book_entries, 3);
+        assert!(probe.lorebook_heavy);
+
+        let book: Value = serde_json::from_str(&worldbook_json(card.as_bytes()).unwrap()).unwrap();
+        assert_eq!(book["name"], "北境");
+        let uids: Vec<_> = book_entry_values(&book["entries"])
+            .iter()
+            .map(|entry| entry["uid"].as_u64().unwrap())
+            .collect();
+        assert_eq!(uids, [0, 2, 10]);
+
+        let root = TestRoot::new("object-book");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let json = worldbook_json(card.as_bytes()).unwrap();
+        assert_eq!(
+            data::import_worldbook(root.path(), &world_id, &json)
+                .unwrap()
+                .imported,
+            3
+        );
+        // 落地順序與新配的 UID 照原鍵 0、2、10，不是字串序 0、10、2
+        let landed: Vec<_> = data::read_worldbook(root.path(), &world_id)
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.uid, entry.content.chars().next().unwrap()))
+            .collect();
+        assert_eq!(landed, [(0, '常'), (1, '府'), (2, '驛')]);
+    }
+
+    /// 不是物件的條目值（字串、null）不算條目、匯入時略過，整本不會半路失敗（卡片契約）
+    #[test]
+    fn non_object_entry_values_are_skipped_not_fatal() {
+        let card = json!({"data": {
+            "name": "壞值卡",
+            "character_book": {"entries": {"0": {"key": ["甲"], "content": "有效"}, "1": "字串", "2": null}},
+        }})
+        .to_string();
+        assert_eq!(probe_import(card.as_bytes()).book_entries, 1);
+        let root = TestRoot::new("non-object-entries");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let json = worldbook_json(card.as_bytes()).unwrap();
+        let result = data::import_worldbook(root.path(), &world_id, &json).unwrap();
+        assert_eq!(result.imported, 1);
+        let array_book =
+            json!({"entries": [{"keys": ["乙"], "content": "陣列有效"}, "字串", null]}).to_string();
+        assert_eq!(
+            data::import_worldbook(root.path(), &world_id, &array_book)
+                .unwrap()
+                .imported,
+            1
+        );
+        assert_eq!(
+            data::read_worldbook(root.path(), &world_id).unwrap().len(),
+            2
+        );
     }
 
     /// 世界書內容寫在人設欄、character_book 空著的卡：轉成一條沒關鍵字的常駐條目才進得來

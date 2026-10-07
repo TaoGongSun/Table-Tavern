@@ -1,0 +1,120 @@
+// ST 聊天變數（local＝這段對話、global＝跨對話），語意照釘版本 public/scripts/variables.js：
+// 讀出來是數字字串就轉數字、加法遇到非數字改成字串串接、JSON 陣列就 push、帶 index 存成 JSON。
+
+export type VariableMap = Record<string, unknown>;
+
+export interface IndexArgs {
+  index?: string;
+}
+
+function parseOrNull(text: unknown): unknown {
+  try {
+    return JSON.parse(text as string) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+export class VariableScope {
+  constructor(readonly values: VariableMap) {}
+
+  has(name: string): boolean {
+    return this.values[name] !== undefined;
+  }
+
+  get(name: string, args: IndexArgs = {}): unknown {
+    let value = this.values[name];
+    if (args.index !== undefined) {
+      const parsed = parseOrNull(value);
+      if (parsed !== undefined && parsed !== null) {
+        const index = Number(args.index);
+        value = (parsed as Record<string, unknown>)[Number.isNaN(index) ? args.index : index];
+        if (typeof value === "object") value = JSON.stringify(value);
+      }
+    }
+    const trimmed = typeof value === "string" ? value.trim() : undefined;
+    return trimmed === "" || Number.isNaN(Number(value)) ? value || "" : Number(value);
+  }
+
+  set(name: string, value: unknown, args: IndexArgs = {}): unknown {
+    if (!name) throw new Error("Variable name cannot be empty or undefined.");
+    if (args.index !== undefined) {
+      try {
+        let parsed = JSON.parse((this.values[name] as string | undefined) ?? "null") as Record<string, unknown> | unknown[] | null;
+        const index = Number(args.index);
+        if (Number.isNaN(index)) {
+          if (parsed === null) parsed = {};
+          (parsed as Record<string, unknown>)[args.index] = value;
+        } else {
+          if (parsed === null) parsed = [];
+          (parsed as unknown[])[index] = value;
+        }
+        this.values[name] = JSON.stringify(parsed);
+      } catch {
+        // 跟 ST 一樣：存不進去就算了
+      }
+    } else {
+      this.values[name] = value;
+    }
+    return value;
+  }
+
+  del(name: string): string {
+    delete this.values[name];
+    return "";
+  }
+
+  add(name: string, value: unknown): unknown {
+    const current = this.get(name) || 0;
+    const parsed = parseOrNull(current);
+    if (Array.isArray(parsed)) {
+      parsed.push(value);
+      this.set(name, JSON.stringify(parsed));
+      return parsed;
+    }
+    const increment = Number(value);
+    if (Number.isNaN(increment) || Number.isNaN(Number(current))) {
+      const text = String(current || "") + String(value);
+      this.set(name, text);
+      return text;
+    }
+    const next = Number(current) + increment;
+    if (Number.isNaN(next)) return "";
+    this.set(name, next);
+    return next;
+  }
+
+  inc(name: string): unknown {
+    return this.add(name, 1);
+  }
+
+  dec(name: string): unknown {
+    return this.add(name, -1);
+  }
+}
+
+export interface ChatVariables {
+  local: VariableScope;
+  global: VariableScope;
+}
+
+export function createChatVariables(local: VariableMap = {}, global: VariableMap = {}): ChatVariables {
+  return { local: new VariableScope(local), global: new VariableScope(global) };
+}
+
+/** 變數副本：試組提示用，副作用不落到原本的變數。 */
+export function copyVariables(variables: ChatVariables): ChatVariables {
+  return createChatVariables(structuredClone(variables.local.values), structuredClone(variables.global.values));
+}
+
+/** 把副本的內容整份寫回 `target`（原地改：global 是跨對話共用的同一個物件）。 */
+export function commitVariables(target: ChatVariables, source: ChatVariables): void {
+  const pairs: [VariableMap, VariableMap][] = [
+    [target.local.values, source.local.values],
+    [target.global.values, source.global.values],
+  ];
+  for (const [into, from] of pairs) {
+    for (const key of Object.keys(into)) delete into[key];
+    Object.assign(into, structuredClone(from));
+  }
+}
