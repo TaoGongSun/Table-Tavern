@@ -2,7 +2,7 @@
 //! 每層一個檔 `{ id, rev, vars }`，`rev` 是版本 token：寫入帶目標 rev，不符回 stale 附權威值（跨桌改
 //! global 會這樣）。六層寫入都在這桌的短提交鎖內核對桌世代，再取同檔鎖核對 rev；資料根目錄的層
 //! （global、preset、extension）另查更新閘門。全部原子替換寫入。
-use super::message_vars::{self, new_token, parse_table, VarsTable};
+use super::message_vars::{self, new_token, parse_table, Json, VarsTable};
 use super::paths::world_dir;
 use super::state_commit::with_commit;
 use super::world_file::{with_file_lock, with_root_file_lock, LockedFile};
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 /// 原 ID 長度上限（字元）
 pub const MAX_ID_CHARS: usize = 256;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Layer {
     Chat,
@@ -423,6 +423,136 @@ pub fn write_layer(
         with_lock(&path, layer.in_world(), |file| {
             write_locked(file, &doc_id, expected_rev, &vars)
         })
+    })
+}
+
+/// 網頁存檔匯入（D18）補了哪一層的哪些頂層鍵，與補完那一刻的層版本：回滾以版本做 compare-and-set。
+/// 會落檔成匯入記錄（新桌目錄裡，放棄匯入時據以撤回），欄位即持久格式。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Filled {
+    pub layer: Layer,
+    pub id: Option<String>,
+    pub added: Vec<(String, Json)>,
+    /// 補完寫入後的 rev；什麼都沒補時是 None（沒有寫入，不用退）
+    pub rev: Option<String>,
+    /// 補之前的 rev（補之前沒有檔是 None）：撤回時層還是這個 rev＝補的那次寫入沒落地，不用退
+    pub prev_rev: Option<String>,
+    /// 補之前這層沒有檔（回滾後變空就刪檔，回到「確認不存在」）
+    pub created: bool,
+}
+
+impl Filled {
+    /// 給玩家與日誌看的位置：`global:鍵`、`extension:<原 ID>:鍵`
+    pub fn labels(&self) -> Vec<String> {
+        let place = match &self.id {
+            Some(id) => format!("{}:{id}", self.layer.name()),
+            None => self.layer.name().to_owned(),
+        };
+        self.added
+            .iter()
+            .map(|(key, _)| format!("{place}:{key}"))
+            .collect()
+    }
+}
+
+/// 跨桌層只補缺：存檔表裡有、這層沒有的頂層鍵才寫進去，既有鍵值一律不動。讀改寫都在同檔鎖內，與卡片寫入
+/// 互斥；層檔損壞或身分衝突回錯、原檔不動。什麼都不用補時不寫檔，`added` 為空。真的要寫之前（同檔鎖內、
+/// 層還沒動）先把這次要補的內容交給 `journal` 落記錄：記錄寫不成就不寫層，崩潰時記錄一定涵蓋已落地的補缺。
+pub fn fill_missing(
+    root: &Path,
+    world_id: &str,
+    layer: Layer,
+    id: Option<&str>,
+    vars: &Json,
+    journal: &mut dyn FnMut(&Filled) -> DataResult<()>,
+) -> DataResult<Filled> {
+    let (path, doc_id) = layer_path(root, world_id, layer, id)?;
+    let Json::Object(incoming) = vars else {
+        return Err(invalid_data("card-vars: 補缺的表必須是物件"));
+    };
+    with_lock(&path, layer.in_world(), |file| {
+        let (mut table, prev_rev) = match read_slot(file, &doc_id)? {
+            Slot::Missing => (Json::empty_object(), None),
+            Slot::Present(parsed) => (parsed.vars.parse()?, Some(parsed.rev)),
+            other => {
+                return Err(invalid_data(format!(
+                    "card-vars: {}（{}）",
+                    other.unusable().unwrap_or("unreadable"),
+                    path.display()
+                )))
+            }
+        };
+        let mut added = Vec::new();
+        for (key, value) in incoming {
+            if table.get(key).is_none() {
+                table.insert(key, value.clone());
+                added.push((key.clone(), value.clone()));
+            }
+        }
+        let mut filled = Filled {
+            layer,
+            id: id.map(str::to_owned),
+            added,
+            rev: None,
+            created: prev_rev.is_none(),
+            prev_rev,
+        };
+        if !filled.added.is_empty() {
+            parse_table(&table.to_text()).map_err(|limit| invalid_data(limit.code))?;
+            let token = new_token();
+            let bytes = serde_json::to_vec(&LayerFile {
+                id: doc_id.clone(),
+                rev: token.clone(),
+                vars: VarsTable::from_json(&table),
+            })?;
+            filled.rev = Some(token);
+            journal(&filled)?;
+            file.write_atomic(&bytes)?;
+        }
+        Ok(filled)
+    })
+}
+
+/// 退回 [`fill_missing`] 補的鍵：同檔鎖內 compare-and-set——層的 rev 仍是補完那一刻的值（之後沒有任何
+/// 寫入）才拿掉補的鍵、換新 rev 寫回（補之前沒有檔、退完變空就刪檔）；層還是補之前的 rev（或補之前沒檔、
+/// 現在也沒檔）＝那次寫入沒落地，不用退；rev 變了就一個都不動，回傳沒撤回的鍵（`Filled::labels` 的格式），
+/// 期間的合法寫入（含改回同值）一律保留。
+pub fn retract_filled(root: &Path, world_id: &str, filled: &Filled) -> DataResult<Vec<String>> {
+    let Some(rev) = &filled.rev else {
+        return Ok(Vec::new());
+    };
+    let (path, doc_id) = layer_path(root, world_id, filled.layer, filled.id.as_deref())?;
+    with_lock(&path, filled.layer.in_world(), |file| {
+        let parsed = match read_slot(file, &doc_id)? {
+            Slot::Present(parsed) if &parsed.rev == rev => parsed,
+            Slot::Present(parsed) if filled.prev_rev.as_ref() == Some(&parsed.rev) => {
+                return Ok(Vec::new())
+            }
+            Slot::Missing if filled.created => return Ok(Vec::new()),
+            Slot::Present(_) | Slot::Missing => return Ok(filled.labels()),
+            other => {
+                return Err(invalid_data(format!(
+                    "card-vars: {}（{}）",
+                    other.unusable().unwrap_or("unreadable"),
+                    path.display()
+                )))
+            }
+        };
+        let mut table = parsed.vars.parse()?;
+        for (key, _) in &filled.added {
+            table.remove(key);
+        }
+        if filled.created && table.as_object().is_some_and(Vec::is_empty) {
+            file.remove()?;
+            return Ok(Vec::new());
+        }
+        let bytes = serde_json::to_vec(&LayerFile {
+            id: doc_id,
+            rev: new_token(),
+            vars: VarsTable::from_json(&table),
+        })?;
+        file.write_atomic(&bytes)?;
+        Ok(Vec::new())
     })
 }
 

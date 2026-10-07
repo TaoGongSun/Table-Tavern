@@ -340,6 +340,18 @@ pub struct WorldState {
     /// characters＝這桌的卡片介面 fallback 全面停用（refactor-mode-split）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refactor_mode: Option<String>,
+    /// 卡內 regex 腳本套不套用（D24〔作者裁決 2026-10-07〕）：網頁存檔照玩家在網頁版的選擇寫入，false＝整桌
+    /// 的卡都不套（介面顯示腳本清空）；其餘桌一律 true，舊桌沒有這欄也是 true。
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub regex_allowed: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// 分岔幕的顯示編號：內部幕號單調遞增不變，玩家看到的編號靠這個脫鉤。

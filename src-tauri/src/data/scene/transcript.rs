@@ -345,7 +345,7 @@ pub fn append_opening(
     })
 }
 
-fn serialize_events(events: &[TranscriptEvent]) -> DataResult<Vec<u8>> {
+pub(super) fn serialize_events(events: &[TranscriptEvent]) -> DataResult<Vec<u8>> {
     let mut buffer = Vec::new();
     for event in events {
         buffer.extend_from_slice(&serde_json::to_vec(event)?);

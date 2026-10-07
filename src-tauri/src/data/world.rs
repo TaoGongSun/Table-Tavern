@@ -82,6 +82,7 @@ fn blank_state(id: &str, name: &str) -> WorldState {
         aligned_scene: None,
         branch_bindings: BTreeMap::new(),
         refactor_mode: None,
+        regex_allowed: true,
     }
 }
 
@@ -119,8 +120,43 @@ pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
     validate_single_line("world name", name)?;
     let id = new_id();
     let _permit = super::world_lock::world_write_permit(&id)?;
-    write_new_world(root, &id, name)?;
+    write_new_world_or_clean(root, &id, name).map_err(|failed| failed.error)?;
     Ok(id)
+}
+
+/// 建桌失敗：原本的錯，與清不掉而留下的半成品桌 id（None＝已清乾淨或根本沒建到）。
+pub(crate) struct NewWorldFailed {
+    pub error: Box<dyn std::error::Error + Send + Sync>,
+    pub leftover: Option<String>,
+}
+
+/// 建桌途中失敗就把半成品目錄清掉，不留拿不到 id 的殘桌。
+fn write_new_world_or_clean(root: &Path, id: &str, name: &str) -> Result<(), NewWorldFailed> {
+    let Err(error) = write_new_world(root, id, name) else {
+        return Ok(());
+    };
+    let cleaned = super::world_file::delete_world_tree(root, id).is_ok();
+    Err(NewWorldFailed {
+        error,
+        leftover: (!cleaned).then(|| id.to_owned()),
+    })
+}
+
+/// 匯入用：先拿到新 id 的整桌獨占再建桌，建好到匯完之間不會有別人插進來；拿不到獨占就什麼都不建。
+pub(crate) fn create_world_exclusive(
+    root: &Path,
+    name: &str,
+) -> Result<(String, super::world_lock::WorldExclusive), NewWorldFailed> {
+    let fail = |error| NewWorldFailed {
+        error,
+        leftover: None,
+    };
+    validate_single_line("world name", name).map_err(fail)?;
+    let id = new_id();
+    let held = super::world_lock::try_world_exclusive(&id)
+        .ok_or_else(|| fail(UiMsg::WorldBusy.into_error()))?;
+    write_new_world_or_clean(root, &id, name)?;
+    Ok((id, held))
 }
 
 #[derive(Deserialize)]
@@ -269,6 +305,15 @@ pub fn delete_world(root: &Path, world_id: &str) -> DataResult<()> {
     let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
         return Err(UiMsg::WorldBusy.into_error());
     };
+    super::world_file::delete_world_tree(root, world_id)
+}
+
+/// 匯入途中失敗：把剛建、還握著獨占的新桌整個收掉（不回收判斷、不另取鎖）。
+pub(crate) fn discard_new_world(
+    root: &Path,
+    world_id: &str,
+    _held: &super::world_lock::WorldExclusive,
+) -> DataResult<()> {
     super::world_file::delete_world_tree(root, world_id)
 }
 

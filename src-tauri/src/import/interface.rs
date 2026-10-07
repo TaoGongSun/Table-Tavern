@@ -33,6 +33,17 @@ pub struct CardInterface {
 /// 掃描每張已匯入卡的原始卡檔（PNG／.import.json），抽出可渲染的顯示腳本。
 /// 面板是選配功能：壞卡、非匯入卡、解析失敗一律跳過該角色，絕不讓錯誤擋住呼叫端。
 pub fn read_card_interfaces(root: &Path, world_id: &str) -> DataResult<Vec<CardInterface>> {
+    let mut result = read_card_interfaces_raw(root, world_id)?;
+    // D24：這桌不套卡內 regex 腳本（網頁存檔匯入時玩家沒允許）→ 顯示腳本整組清空，其餘照舊
+    if !data::read_state(root, world_id).map_or(true, |state| state.regex_allowed) {
+        for card in &mut result {
+            card.scripts.clear();
+        }
+    }
+    Ok(result)
+}
+
+fn read_card_interfaces_raw(root: &Path, world_id: &str) -> DataResult<Vec<CardInterface>> {
     let mut result = Vec::new();
     for meta in data::list_characters(root, world_id)? {
         if meta.archived || meta.auto_hidden {
@@ -124,6 +135,18 @@ pub fn save_world_card(root: &Path, world_id: &str, bytes: &[u8]) -> bool {
         return false;
     };
     data::commit_world_write(&path, bytes).is_ok()
+}
+
+/// 網頁存檔的世界書路：權威原卡一律保存（不看有沒有介面腳本，未知外殼欄位也要留著），落檔失敗回錯。
+pub(super) fn save_world_card_strict(root: &Path, world_id: &str, bytes: &[u8]) -> DataResult<()> {
+    let extension = if bytes.starts_with(PNG_MAGIC) {
+        decode_png_character(bytes)?;
+        "png"
+    } else {
+        serde_json::from_slice::<Value>(bytes)?;
+        "import.json"
+    };
+    data::commit_world_write(&data::world_card_path(root, world_id, extension)?, bytes)
 }
 
 pub(super) fn card_interface(

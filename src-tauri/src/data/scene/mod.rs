@@ -1,10 +1,12 @@
 mod export;
+mod import;
 mod lifecycle;
 mod marker;
 mod presence;
 mod transcript;
 
 pub use export::{export_scene_markdown, export_transcript_markdown};
+pub use import::{write_imported_scene, ImportedEvent, ImportedScene};
 pub use lifecycle::{
     begin_next_scene, fork_scene, replace_scene_summary, revert_scene, scene_label,
 };

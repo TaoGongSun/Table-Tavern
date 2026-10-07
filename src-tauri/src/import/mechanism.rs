@@ -1,4 +1,5 @@
 use super::card_io::{decode_png_character, PNG_MAGIC};
+use crate::data::DataResult;
 use crate::data::{self, FieldKind, FieldRule, StateNode};
 use crate::mechanism::{self, Record, RecordKind};
 use crate::ui_msg::UiMsg;
@@ -50,22 +51,32 @@ pub(super) fn table_tavern_extension(root: &Path, world_id: &str, name: &str) ->
 /// 世界書路徑用：從原始卡檔（PNG／JSON）取出本 app 自己匯出的 `extensions.table_tavern` 再套用。
 /// 角色卡路徑在 import_character 內已直接套過；兩條路徑都要收，同一張卡不會因為換個身分匯入就少半套機制。
 pub fn import_card_extension(root: &Path, world_id: &str, name: &str, bytes: &[u8]) {
+    let _ = import_card_extension_strict(root, world_id, name, bytes);
+}
+
+/// 同 [`import_card_extension`]，但讀寫桌檔失敗回錯（網頁存檔匯入不能吞掉落檔錯誤）；壞格式照樣略過。
+pub(super) fn import_card_extension_strict(
+    root: &Path,
+    world_id: &str,
+    name: &str,
+    bytes: &[u8],
+) -> DataResult<()> {
     let json_bytes = if bytes.starts_with(PNG_MAGIC) {
         match decode_png_character(bytes) {
             Ok(json_bytes) => json_bytes,
-            Err(_) => return,
+            Err(_) => return Ok(()),
         }
     } else {
         bytes.to_vec()
     };
     let Ok(value) = serde_json::from_slice::<Value>(&json_bytes) else {
-        return;
+        return Ok(());
     };
     let card_data = value
         .get("data")
         .filter(|data| data.is_object())
         .unwrap_or(&value);
-    import_table_tavern_extension(root, world_id, name, card_data);
+    import_table_tavern_extension_strict(root, world_id, name, card_data)
 }
 
 pub(super) fn import_table_tavern_extension(
@@ -74,15 +85,23 @@ pub(super) fn import_table_tavern_extension(
     name: &str,
     card_data: &Value,
 ) {
+    let _ = import_table_tavern_extension_strict(root, world_id, name, card_data);
+}
+
+/// 讀寫桌檔失敗回錯；壞格式的擴充資料照樣略過。
+pub(super) fn import_table_tavern_extension_strict(
+    root: &Path,
+    world_id: &str,
+    name: &str,
+    card_data: &Value,
+) -> DataResult<()> {
     let Some(extension) = card_data
         .get("extensions")
         .and_then(|extensions| extensions.get("table_tavern"))
     else {
-        return;
+        return Ok(());
     };
-    let Ok(mut world) = data::read_state(root, world_id) else {
-        return;
-    };
+    let mut world = data::read_state(root, world_id)?;
     let mut changed = false;
     if let Some(rules) = extension.get("rules") {
         if let Ok(rules) = serde_json::from_value::<BTreeMap<String, FieldRule>>(rules.clone()) {
@@ -111,10 +130,8 @@ pub(super) fn import_table_tavern_extension(
                 true
             };
             // 卡片變數模式只改初始化來源那一份（計畫 8.4）；樹模式照舊改 state.json 的樹
-            if data::message_vars::edit_tree_if_events(root, world_id, merge).unwrap_or(false) {
-                if let Ok(projected) = data::read_state(root, world_id) {
-                    world.state.tree = projected.state.tree;
-                }
+            if data::message_vars::edit_tree_if_events(root, world_id, merge)? {
+                world.state.tree = data::read_state(root, world_id)?.state.tree;
             } else {
                 merge(&mut world.state.tree);
             }
@@ -122,8 +139,9 @@ pub(super) fn import_table_tavern_extension(
         }
     }
     if changed {
-        let _ = data::write_state(root, world_id, &world);
+        data::write_state(root, world_id, &world)?;
     }
+    Ok(())
 }
 
 fn merge_state_node(existing: &mut StateNode, incoming: StateNode, overwrite: bool) {
@@ -146,13 +164,18 @@ fn merge_state_node(existing: &mut StateNode, incoming: StateNode, overwrite: bo
 /// 匯入 MVU 機制鷹架與固定型 EJS：`[initvar]` 停用條目給初始狀態樹、`[mvu_update]` 條目給欄位規則表，
 /// EJS 只收成可本地求值的觸發表；一次掃完只寫一次 state.json。壞格式一律略過，不阻斷正常匯入。
 pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
+    let _ = import_mechanism_strict(root, world_id, book);
+}
+
+/// 同 [`import_mechanism`]，但讀寫桌檔失敗回錯（網頁存檔匯入用）；壞格式照樣略過。
+pub(super) fn import_mechanism_strict(root: &Path, world_id: &str, book: &Value) -> DataResult<()> {
     let Some(entries) = book.get("entries") else {
-        return;
+        return Ok(());
     };
     let entries: Vec<&Value> = match entries {
         Value::Array(entries) => entries.iter().collect(),
         Value::Object(entries) => entries.values().collect(),
-        _ => return,
+        _ => return Ok(()),
     };
 
     let initial_tree = extract_initial_tree(&entries);
@@ -160,12 +183,10 @@ pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
     let (triggers, skipped) = extract_triggers(&entries);
     let incremental = initial_tree.is_some() || mvu_seen;
     if initial_tree.is_none() && rules.is_empty() && triggers.is_empty() && !incremental {
-        return;
+        return Ok(());
     }
 
-    let Ok(mut world) = data::read_state(root, world_id) else {
-        return;
-    };
+    let mut world = data::read_state(root, world_id)?;
     if let Some(tree) = initial_tree {
         let fill = |target: &mut BTreeMap<String, StateNode>| {
             let before = target.clone();
@@ -180,10 +201,8 @@ pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
             *target != before
         };
         // 卡片變數模式：initvar 只補進初始化來源那一份（計畫 8.4），其他幕的種子不動
-        if data::message_vars::edit_tree_if_events(root, world_id, fill).unwrap_or(false) {
-            if let Ok(projected) = data::read_state(root, world_id) {
-                world.state.tree = projected.state.tree;
-            }
+        if data::message_vars::edit_tree_if_events(root, world_id, fill)? {
+            world.state.tree = data::read_state(root, world_id)?.state.tree;
         } else {
             fill(&mut world.state.tree);
         }
@@ -211,8 +230,9 @@ pub fn import_mechanism(root: &Path, world_id: &str, book: &Value) {
     if incremental {
         world.mechanism.incremental = true;
     }
-    let _ = data::write_state(root, world_id, &world);
+    data::write_state(root, world_id, &world)?;
     mechanism::append_log(root, world_id, world.current_scene, &skipped);
+    Ok(())
 }
 
 /// EJS 原文從不送模型：可辨識的才轉成觸發表，其餘留一筆記帳讓玩家知道沒有偷偷執行。

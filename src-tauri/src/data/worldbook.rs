@@ -7,7 +7,7 @@ use super::{invalid_data, new_id, DataResult, Tier};
 use crate::mechanism::{Record, RecordKind};
 use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -688,6 +688,7 @@ fn normalize_imported_entry(
     mut value: serde_json::Value,
     character_book: bool,
     uid: u64,
+    default_visibility: &Visibility,
 ) -> DataResult<serde_json::Value> {
     let object = value
         .as_object_mut()
@@ -716,7 +717,7 @@ fn normalize_imported_entry(
         .and_then(|value| value.get("visibility"))
         .is_some();
     if !has_visibility {
-        set_visibility(&mut value, &Visibility::Gm);
+        set_visibility(&mut value, default_visibility);
     }
     if is_mechanism_scaffold(&value) {
         if let Some(object) = value.as_object_mut() {
@@ -798,6 +799,25 @@ pub fn import_worldbook(
     world_id: &str,
     json_text: &str,
 ) -> DataResult<WorldbookImport> {
+    import_worldbook_as(root, world_id, json_text, &Visibility::Gm).map(|book| book.summary)
+}
+
+/// 一次世界書匯入的完整結果：收編數字，與每條來源條目（卡片契約的 key）落到哪個 UID（內容重複被略過的映到
+/// 桌上保留的那一條；那條讀不出 UID 才是 None）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BookImport {
+    pub summary: WorldbookImport,
+    pub placed: Vec<(String, Option<u64>)>,
+}
+
+/// 同 [`import_worldbook`]，但原條目沒指定 `extensions.table_tavern.visibility` 時改用 `default_visibility`
+/// （網頁存檔匯入的 D16 例外）；明示的可見度照原樣。
+pub fn import_worldbook_as(
+    root: &Path,
+    world_id: &str,
+    json_text: &str,
+    default_visibility: &Visibility,
+) -> DataResult<BookImport> {
     let imported: serde_json::Value = serde_json::from_str(json_text)
         .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
     let source = imported
@@ -813,22 +833,31 @@ pub fn import_worldbook(
         }
     };
     // 條目照卡片契約展開：物件形照 uid 鍵的數字順序（新 UID 依此配發）、非物件的值略過不算條目
-    let source_entries: Vec<serde_json::Value> = crate::import::book_entry_values(source)
-        .into_iter()
-        .cloned()
-        .collect();
+    let source_entries: Vec<(String, serde_json::Value)> =
+        crate::import::book_entries_keyed(source)
+            .into_iter()
+            .map(|(key, value)| (key, value.clone()))
+            .collect();
 
     let mut worldbook = read_worldbook_value(root, world_id)?;
     let entries = entries_object_mut(&mut worldbook)?;
     let total = source_entries.len();
-    let mut seen: HashSet<String> = entries.values().map(entry_fingerprint).collect();
+    // 指紋 → 被保留那條的 UID：重複的來源條目映到它（契約：重複條目指向桌上留下的那一條）
+    let mut seen: HashMap<String, Option<u64>> = entries
+        .iter()
+        .map(|(key, value)| (entry_fingerprint(value), entry_uid(key, value)))
+        .collect();
     let mut uid = next_uid(entries)?;
     let mut imported = 0;
     let mut absorbed = Vec::new();
-    for source_entry in source_entries {
-        let entry = normalize_imported_entry(source_entry, character_book, uid)?;
+    let mut placed = Vec::with_capacity(total);
+    for (key, source_entry) in source_entries {
+        let entry =
+            normalize_imported_entry(source_entry, character_book, uid, default_visibility)?;
         // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容
-        if !seen.insert(entry_fingerprint(&entry)) {
+        let fingerprint = entry_fingerprint(&entry);
+        if let Some(kept) = seen.get(&fingerprint) {
+            placed.push((key, *kept));
             continue;
         }
         if is_mechanism_scaffold(&entry) {
@@ -844,6 +873,8 @@ pub fn import_worldbook(
             });
         }
         entries.insert(uid.to_string(), entry);
+        seen.insert(fingerprint, Some(uid));
+        placed.push((key, Some(uid)));
         uid = uid
             .checked_add(1)
             .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
@@ -856,9 +887,12 @@ pub fn import_worldbook(
             .unwrap_or(0);
         crate::mechanism::append_log(root, world_id, scene, &absorbed);
     }
-    Ok(WorldbookImport {
-        imported,
-        skipped: total - imported,
+    Ok(BookImport {
+        summary: WorldbookImport {
+            imported,
+            skipped: total - imported,
+        },
+        placed,
     })
 }
 
