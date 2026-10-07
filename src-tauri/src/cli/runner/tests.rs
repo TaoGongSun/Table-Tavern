@@ -45,6 +45,7 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         &[],
         parse_claude_line,
         true,
+        RunawayPolicy::Off,
         Some(UsageLog {
             usage_out: None,
             overage_out: None,
@@ -78,6 +79,7 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         &[],
         parse_claude_line,
         false,
+        RunawayPolicy::Off,
         None,
         |delta: &str| {
             quiet_deltas.push(delta.to_owned());
@@ -145,6 +147,7 @@ async fn run_cli_aborts_instantly_on_fatal_stderr_api_error_and_shows_it_in_tail
             &[],
             parse_claude_line,
             true,
+            RunawayPolicy::Off,
             None,
             |delta: &str| deltas.push(delta.to_owned()),
         ),
@@ -188,6 +191,7 @@ async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial
         &[],
         parse_claude_line,
         true,
+        RunawayPolicy::Off,
         None,
         |delta: &str| deltas.push(delta.to_owned()),
     )
@@ -237,6 +241,7 @@ async fn run_cli_surfaces_prompt_too_long_with_stable_code() {
         &[],
         parse_claude_line,
         false,
+        RunawayPolicy::Off,
         None,
         |_: &str| {},
     )
@@ -285,6 +290,7 @@ async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {
         &[("ANTHROPIC_MARKER".to_owned(), "explicit".to_owned())],
         parse_claude_line,
         false,
+        RunawayPolicy::Off,
         None,
         |_: &str| {},
     )
@@ -326,6 +332,7 @@ async fn run_cli_feeds_long_stdin_while_draining_output() {
             &[],
             parse_claude_line,
             false,
+            RunawayPolicy::Off,
             None,
             |_: &str| {},
         ),
@@ -370,6 +377,7 @@ async fn run_cli_reaps_child_before_returning_an_error() {
         )],
         parse_claude_line,
         false,
+        RunawayPolicy::Off,
         None,
         |_: &str| {},
     )
@@ -526,6 +534,7 @@ fn main() {
                     &[],
                     parse_claude_line,
                     false,
+                    RunawayPolicy::Off,
                     None,
                     |_: &str| {},
                 )
@@ -574,6 +583,7 @@ fn main() {
             &[],
             parse_claude_line,
             false,
+            RunawayPolicy::Off,
             None,
             |_: &str| {},
             Some(rx),
@@ -606,6 +616,7 @@ fn main() {
                 &[],
                 parse_claude_line,
                 false,
+                RunawayPolicy::Off,
                 None,
                 |_: &str| {},
             )
@@ -701,6 +712,7 @@ mod output_closed_first {
                 &[],
                 parse_claude_line,
                 false,
+                RunawayPolicy::Off,
                 None,
                 |_: &str| {},
             ),
@@ -729,6 +741,7 @@ mod output_closed_first {
                 &[],
                 parse_claude_line,
                 false,
+                RunawayPolicy::Off,
                 None,
                 |_: &str| {},
             ),
@@ -768,6 +781,7 @@ mod output_closed_first {
             &[],
             parse_claude_line,
             false,
+            RunawayPolicy::Off,
             None,
             |_: &str| {},
             Some(rx),
@@ -817,6 +831,7 @@ async fn run_cli_reports_claude_identity_only_when_unambiguous() {
         &[],
         parse_claude_line,
         false,
+        RunawayPolicy::Off,
         Some(UsageLog {
             path: &log_path,
             world: None,
@@ -858,6 +873,7 @@ async fn run_cli_reports_claude_identity_only_when_unambiguous() {
         &[],
         parse_claude_line,
         false,
+        RunawayPolicy::Off,
         Some(UsageLog {
             path: &log_path,
             world: None,

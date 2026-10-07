@@ -542,6 +542,7 @@ export const zhCN: Record<MsgKey, string> = {
   errAiUnknown: "这次没能完成请求。再试一次；一直这样就换个模型或 AI 来源。",
   errEmptyReply: "AI 这次没有返回任何内容，故事里没有写入任何东西。请重试；如果一直这样，请更换模型或 AI 来源。",
   errStreamStalled: "太久没有收到模型输出，已中止这次等待，故事里没有写入任何东西。可以再试一次，或更换模型。",
+  errOutputRunaway: "AI 回复失控（连续空白或长度异常），已自动中止，故事里没有写入任何东西。可以再发送一次，或更换模型。",
   errIncompleteReply: "AI 这次的回复没写完就中断了，故事里没有写入任何东西。请重试；如果一直这样，请更换模型或 AI 来源。",
   errContextTooLong: "这一幕太长，模型一次读不完。换幕整理成前情提要后就能继续。",
   errFiltered: "该 AI 来源拦截了这次回复。请换个说法，或改用其他模型。",

@@ -563,6 +563,7 @@ export const en: Record<MsgKey, string> = {
   errAiUnknown: "That request didn't go through. Try again; if it keeps happening, switch models or AI source.",
   errEmptyReply: "The AI returned nothing this time, so nothing was added to the story. Try again; if it keeps happening, switch model or AI source.",
   errStreamStalled: "No output came from the model for too long, so this wait was stopped and nothing was added to the story. Try again, or switch model.",
+  errOutputRunaway: "The model's reply ran out of control (endless blank space or abnormal length), so it was stopped automatically and nothing was added to the story. Send it again, or switch model.",
   errIncompleteReply: "The AI's reply was cut off before it finished, so nothing was added to the story. Try again; if it keeps happening, switch model or AI source.",
   errContextTooLong: "This act is too long for the model to read in one go. Start a new act to condense it into a recap, then carry on.",
   errFiltered: "This AI source blocked the reply. Rephrase it, or switch to another model.",

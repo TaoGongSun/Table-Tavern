@@ -544,6 +544,7 @@ export const es: Record<MsgKey, string> = {
   errAiUnknown: "Esta petición no llegó a completarse. Inténtalo otra vez; si sigue pasando, cambia de modelo o de fuente de IA.",
   errEmptyReply: "La IA no devolvió nada esta vez, así que no se añadió nada a la historia. Inténtalo de nuevo; si sigue pasando, cambia de modelo u origen de IA.",
   errStreamStalled: "No llegó salida del modelo durante demasiado tiempo, así que se detuvo la espera y no se añadió nada a la historia. Inténtalo de nuevo o cambia de modelo.",
+  errOutputRunaway: "La respuesta del modelo se descontroló (espacios en blanco sin fin o longitud anormal), así que se detuvo automáticamente y no se añadió nada a la historia. Vuelve a enviarla o cambia de modelo.",
   errIncompleteReply: "La respuesta de la IA se cortó antes de terminar, así que no se añadió nada a la historia. Inténtalo de nuevo; si sigue pasando, cambia de modelo u origen de IA.",
   errContextTooLong: "Este acto es demasiado largo para que el modelo lo lea de una vez. Pasa a un nuevo acto para resumirlo y podrás continuar.",
   errFiltered: "Este origen de IA bloqueó la respuesta. Redáctalo de otra forma o cambia de modelo.",

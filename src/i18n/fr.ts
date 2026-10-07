@@ -544,6 +544,7 @@ export const fr: Record<MsgKey, string> = {
   errAiUnknown: "Cette requête n’a pas abouti. Réessaie\u00a0; si ça persiste, change de modèle ou de source d’IA.",
   errEmptyReply: "L'IA n'a rien renvoyé cette fois, donc rien n'a été ajouté à l'histoire. Réessaie\u00a0; si cela persiste, change de modèle ou de source d'IA.",
   errStreamStalled: "Aucune sortie du modèle depuis trop longtemps : l'attente a été interrompue et rien n'a été ajouté à l'histoire. Réessaie ou change de modèle.",
+  errOutputRunaway: "La réponse du modèle s'est emballée (blancs sans fin ou longueur anormale) : elle a été arrêtée automatiquement et rien n'a été ajouté à l'histoire. Renvoie-la ou change de modèle.",
   errIncompleteReply: "La réponse de l'IA a été coupée avant la fin, donc rien n'a été ajouté à l'histoire. Réessaie\u00a0; si cela persiste, change de modèle ou de source d'IA.",
   errContextTooLong: "Cet acte est trop long pour que le modèle le lise d'un coup. Passe à un nouvel acte pour le résumer, puis continue.",
   errFiltered: "Cette source d'IA a bloqué la réponse. Reformule, ou passe à un autre modèle.",

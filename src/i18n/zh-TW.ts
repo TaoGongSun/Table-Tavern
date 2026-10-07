@@ -566,6 +566,7 @@ export const zh = {
   errAiUnknown: "這次沒能完成請求。再試一次；一直這樣就換個模型或 AI 來源。",
   errEmptyReply: "AI 這次沒有回出內容，故事沒有被寫進任何東西。再試一次；一直這樣就換個模型或 AI 來源。",
   errStreamStalled: "太久沒收到模型輸出，已中止這次等待，故事沒有被寫進任何東西。可以再試一次，或換個模型。",
+  errOutputRunaway: "AI 回覆失控（連續空白或長度異常），已自動中止，故事沒有被寫進任何東西。可以再送一次，或換個模型。",
   errIncompleteReply: "AI 這次的回覆沒寫完就中斷了，故事沒有被寫進任何東西。再試一次；一直這樣就換個模型或 AI 來源。",
   errContextTooLong: "這一幕太長，模型一次讀不完。換幕整理成前情提要後就能繼續。",
   errFiltered: "這個 AI 來源擋下了這次回覆。換個說法，或改用其他模型。",

@@ -404,6 +404,12 @@ pub fn parse_grok_line(line: &str) -> CliLine {
             .and_then(|data| data.as_str())
             .map(|text| CliLine::Delta(text.to_owned()))
             .unwrap_or(CliLine::Other),
+        // 思考：聊天不進畫面（thinking_to_delta=false），但要過失控的退化偵測
+        Some("thought") => value
+            .get("data")
+            .and_then(|data| data.as_str())
+            .map(|text| CliLine::Thinking(text.to_owned()))
+            .unwrap_or(CliLine::Other),
         Some("end") => CliLine::Done {
             text: String::new(),
             is_error: false,
@@ -906,7 +912,7 @@ mod tests {
         );
         assert_eq!(
             parse_grok_line(r#"{"type":"thought","data":"推理"}"#),
-            CliLine::Other
+            CliLine::Thinking("推理".to_owned())
         );
         assert_eq!(parse_grok_line(r#"{"type":"unknown"}"#), CliLine::Other);
         assert_eq!(parse_grok_line("not json"), CliLine::Other);

@@ -302,6 +302,7 @@ mod tests {
                     &[],
                     crate::cli::parse_claude_line,
                     false,
+                    crate::transport::RunawayPolicy::Off,
                     None,
                     |_delta: &str| {},
                 ) => result.map_err(|error| error.to_string()),

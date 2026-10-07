@@ -544,6 +544,7 @@ export const ptBR: Record<MsgKey, string> = {
   errAiUnknown: "Esta requisição não foi concluída. Tente de novo; se continuar, troque de modelo ou de fonte de IA.",
   errEmptyReply: "A IA não devolveu nada desta vez, então nada foi adicionado à história. Tente de novo; se continuar, troque de modelo ou origem de IA.",
   errStreamStalled: "Ficou tempo demais sem receber saída do modelo, então a espera foi interrompida e nada foi adicionado à história. Tente de novo ou troque de modelo.",
+  errOutputRunaway: "A resposta do modelo saiu do controle (espaços em branco sem fim ou tamanho anormal), então foi interrompida automaticamente e nada foi adicionado à história. Envie de novo ou troque de modelo.",
   errIncompleteReply: "A resposta da IA foi cortada antes de terminar, então nada foi adicionado à história. Tente de novo; se continuar, troque de modelo ou origem de IA.",
   errContextTooLong: "Este ato está longo demais para o modelo ler de uma vez. Passe para um novo ato para resumi-lo e continue.",
   errFiltered: "Esta origem de IA bloqueou a resposta. Reescreva de outro jeito ou use outro modelo.",

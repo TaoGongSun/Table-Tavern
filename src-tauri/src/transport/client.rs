@@ -6,6 +6,7 @@ use crate::ui_msg::UiMsg;
 
 use super::api_failure::ApiFailure;
 use super::messages::ChatMessage;
+use super::runaway::{self, RunawayGuard, RunawayPolicy};
 use super::stall::{chat_progress, stalled_message, Next, StallGuard, StallWindow};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -482,6 +483,7 @@ pub async fn stream_chat(
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
+    policy: RunawayPolicy,
     on_delta: impl FnMut(&str),
 ) -> DataResult<StreamChatResult> {
     stream_chat_windowed(
@@ -491,6 +493,7 @@ pub async fn stream_chat(
         usage_log,
         world,
         shape,
+        policy,
         StallWindow::default(),
         on_delta,
     )
@@ -505,6 +508,7 @@ async fn stream_chat_windowed(
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
+    policy: RunawayPolicy,
     window: StallWindow,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<StreamChatResult> {
@@ -544,6 +548,10 @@ async fn stream_chat_windowed(
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = StreamOutcome::default();
+    // 輸出失控：正文、思考各一支（runaway-output-cap）
+    let mut text_guard = RunawayGuard::text(policy);
+    let mut thinking_guard = RunawayGuard::thinking(policy);
+    let mut runaway = None;
     #[cfg(feature = "test-harness")]
     let mut harness_raw: Option<serde_json::Value> = None;
     'outer: loop {
@@ -571,7 +579,17 @@ async fn stream_chat_windowed(
             if let Some(parsed) = extract_usage(&payload) {
                 usage = Some(parsed);
             }
+            if let Some(reasoning) = runaway::chat_reasoning(&payload) {
+                if let Some(reason) = thinking_guard.push(&reasoning) {
+                    runaway = Some(thinking_guard.message(reason));
+                    break 'outer;
+                }
+            }
             if let Some(delta) = extract_delta(&payload) {
+                if let Some(reason) = text_guard.push(&delta) {
+                    runaway = Some(text_guard.message(reason));
+                    break 'outer;
+                }
                 on_delta(&delta);
                 full_text.push_str(&delta);
             }
@@ -599,6 +617,10 @@ async fn stream_chat_windowed(
         }
     }
     // 用量照記再判成敗：失敗的呼叫一樣燒了 token，額度分頁不能少算這一筆
+    // 失控要在 outcome 收尾判定之前回碼：沒有 [DONE] 會被判成 AI_INCOMPLETE_RESPONSE
+    if let Some(message) = runaway {
+        return Err(crate::data::invalid_data(message));
+    }
     if let Some(secs) = stalled {
         return Err(stalled_message(secs).into());
     }
@@ -621,6 +643,7 @@ pub async fn stream_chat_models(
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
+    policy: RunawayPolicy,
     on_delta: impl FnMut(&str),
 ) -> Result<SmartChatResult, ApiFailure> {
     stream_chat_models_windowed(
@@ -630,6 +653,7 @@ pub async fn stream_chat_models(
         usage_log,
         world,
         shape,
+        policy,
         StallWindow::default(),
         on_delta,
     )
@@ -644,6 +668,7 @@ async fn stream_chat_models_windowed(
     usage_log: Option<&std::path::Path>,
     world: Option<&str>,
     shape: crate::usage::log::PromptShape,
+    policy: RunawayPolicy,
     window: StallWindow,
     mut on_delta: impl FnMut(&str),
 ) -> Result<SmartChatResult, ApiFailure> {
@@ -695,6 +720,10 @@ async fn stream_chat_models_windowed(
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = StreamOutcome::default();
+    // 輸出失控：正文、思考各一支（runaway-output-cap）
+    let mut text_guard = RunawayGuard::text(policy);
+    let mut thinking_guard = RunawayGuard::thinking(policy);
+    let mut runaway = None;
     #[cfg(feature = "test-harness")]
     let mut harness_raw: Option<serde_json::Value> = None;
     let mut responder_model = None;
@@ -727,7 +756,17 @@ async fn stream_chat_models_windowed(
             if let Some(parsed) = extract_usage(&payload) {
                 usage = Some(parsed);
             }
+            if let Some(reasoning) = runaway::chat_reasoning(&payload) {
+                if let Some(reason) = thinking_guard.push(&reasoning) {
+                    runaway = Some(thinking_guard.message(reason));
+                    break 'outer;
+                }
+            }
             if let Some(delta) = extract_delta(&payload) {
+                if let Some(reason) = text_guard.push(&delta) {
+                    runaway = Some(text_guard.message(reason));
+                    break 'outer;
+                }
                 on_delta(&delta);
                 full_text.push_str(&delta);
             }
@@ -760,6 +799,9 @@ async fn stream_chat_models_windowed(
         if let Some(path) = usage_log {
             crate::usage::log::append_call(path, world, "api", log_model, None, shape, usage);
         }
+    }
+    if let Some(message) = runaway {
+        return Err(ApiFailure::runaway(message));
     }
     if let Some(secs) = stalled {
         return Err(ApiFailure::stalled(secs, !full_text.is_empty()));
@@ -883,3 +925,6 @@ async fn lookup_key_tier(client: &reqwest::Client, base: &str, api_key: &str) ->
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod runaway_tests;

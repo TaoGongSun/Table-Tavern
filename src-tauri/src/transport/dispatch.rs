@@ -189,8 +189,9 @@ pub(crate) async fn prepare_lane_call(
 /// 已有更精確的碼就原樣放行；只認這份白名單，不用 `AI_` 開頭一概放行——
 /// 錯誤字串可能整包來自供應商，讓它自帶前綴就能繞過分流。
 pub(crate) fn ai_call_failure(error: String) -> String {
-    const CODED: [&str; 7] = [
+    const CODED: [&str; 8] = [
         "AI_STREAM_STALLED:",
+        crate::transport::RUNAWAY_CODE,
         "AI_HTTP_STATUS_",
         crate::transport::context_overflow::CODE,
         "AI_FREE_MODEL_BUSY:",
@@ -289,6 +290,7 @@ struct SmartFreeEnv<'a, F: FnMut(&str)> {
     world: Option<&'a str>,
     turn_id: Option<&'a str>,
     shape: usage_log::PromptShape,
+    policy: transport::RunawayPolicy,
     emit: F,
 }
 
@@ -319,6 +321,7 @@ impl<F: FnMut(&str)> smart_free::CallEnv for SmartFreeEnv<'_, F> {
             self.usage_log,
             self.world,
             self.shape,
+            self.policy,
             &mut self.emit,
         )
         .await
@@ -360,6 +363,8 @@ pub(crate) async fn stream_turn_reporting_truncation(
     let transport_kind = transport_override
         .map(str::to_owned)
         .unwrap_or_else(|| chat_transport(config));
+    // 輸出失控檢查的範圍跟著呼叫形狀：劇情輪全套、單發只查退化、生圖不查（runaway-output-cap）
+    let policy = transport::RunawayPolicy::for_shape(shape);
     // 每次呼叫的用量落成一行 JSONL（資料目錄的 prompt-cache.jsonl），供額度分頁讀。
     // API 與 CLI 兩條路共用同一份檔案，靠行內的 transport 欄位分辨。
     let usage_log = data_root(app)
@@ -381,6 +386,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 world,
                 turn_id,
                 shape,
+                policy,
                 emit,
             };
             let result = smart_free::run_call(&root, &mut env).await?.result;
@@ -403,6 +409,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 usage_log.as_deref(),
                 world,
                 shape,
+                policy,
                 &mut emit,
             )
             .await
@@ -414,6 +421,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 usage_log.as_deref(),
                 world,
                 shape,
+                policy,
                 &mut emit,
             )
             .await
@@ -477,6 +485,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 &envs,
                 cli::parse_claude_line,
                 thinking_to_delta,
+                policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     usage_out: None,
                     overage_out: None,
@@ -511,6 +520,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 &[],
                 cli::parse_codex_line,
                 false, // 只有 claude 解析器會產思考增量
+                policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     usage_out: None,
                     overage_out: None,
@@ -547,6 +557,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 &[],
                 cli::parse_agy_line,
                 false,
+                policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     usage_out: None,
                     overage_out: None,
@@ -592,6 +603,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 &envs,
                 cli::parse_grok_line,
                 false,
+                policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
                     usage_out: None,
                     overage_out: None,

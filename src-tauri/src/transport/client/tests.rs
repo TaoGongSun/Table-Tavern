@@ -175,6 +175,7 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
         None,
         None,
         crate::usage::log::PromptShape::Oneshot,
+        crate::transport::RunawayPolicy::Off,
         |_| {},
     )
     .await
@@ -198,6 +199,7 @@ async fn stream_chat_streams_deltas_from_mock_server_and_requires_key_for_openro
         None,
         None,
         crate::usage::log::PromptShape::Oneshot,
+        crate::transport::RunawayPolicy::Off,
         |delta| {
             deltas.push(delta.to_owned());
         },
@@ -404,6 +406,7 @@ async fn stream_chat_fails_when_stream_completes_with_no_content() {
         None,
         None,
         crate::usage::log::PromptShape::Oneshot,
+        crate::transport::RunawayPolicy::Off,
         |_| {},
     )
     .await
@@ -659,6 +662,7 @@ async fn stream_chat_passes_usage_chunk_through_without_breaking_deltas() {
             roster: 3,
             solo: false,
         },
+        crate::transport::RunawayPolicy::Off,
         |delta| {
             deltas.push(delta.to_owned());
         },
@@ -1019,6 +1023,7 @@ async fn run_chat(base: &str, window: StallWindow) -> (DataResult<StreamChatResu
         None,
         None,
         crate::usage::log::PromptShape::Oneshot,
+        crate::transport::RunawayPolicy::Off,
         window,
         |_| {},
     )
@@ -1087,6 +1092,7 @@ async fn stall_after_usage_still_records_and_reports_timeout() {
         Some(&log_path),
         Some("w1"),
         crate::usage::log::PromptShape::Oneshot,
+        crate::transport::RunawayPolicy::Off,
         window(1000, 300),
         |_| {},
     )

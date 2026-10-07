@@ -1,12 +1,17 @@
 use super::types::{CliLine, UsageLog};
 use crate::data::DataResult;
-use crate::transport::context_overflow;
+use crate::transport::{
+    context_overflow, runaway_message, RunawayGuard, RunawayPolicy, RunawayReason, LINE_CAP_BYTES,
+};
 use crate::ui_msg::UiMsg;
+use lines::{CappedLines, LineRead};
 use std::path::Path;
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
+
+mod lines;
 
 /// 餵 stdin 的上限：CLI 起來但不收 stdin（掛在啟動）時，寫入會永卡。測試縮短以免反例測試等一分鐘。
 #[cfg(not(test))]
@@ -18,6 +23,12 @@ const STDIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 pub enum CliFinish {
     Completed(String),
     Aborted(String),
+    /// 輸出失控（runaway-output-cap）：程序已殺。不是錯誤值，免得 lane 把它當續聊失敗重開重試；
+    /// 呼叫端照中止收尾後再回 `AI_OUTPUT_RUNAWAY:` 碼。半截不交給玩家（A4），所以不帶。
+    Runaway {
+        reason: RunawayReason,
+        chars: usize,
+    },
 }
 
 async fn wait_cancel(cancel: &mut Option<watch::Receiver<bool>>) {
@@ -83,6 +94,7 @@ pub async fn run_cli(
     envs: &[(String, String)],
     parse: fn(&str) -> CliLine,
     thinking_to_delta: bool,
+    policy: RunawayPolicy,
     usage_log: Option<UsageLog<'_>>,
     on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
@@ -94,6 +106,7 @@ pub async fn run_cli(
         envs,
         parse,
         thinking_to_delta,
+        policy,
         usage_log,
         on_delta,
         None,
@@ -102,6 +115,10 @@ pub async fn run_cli(
     {
         CliFinish::Completed(text) => Ok(text),
         CliFinish::Aborted(_) => Err(UiMsg::CliUnexpectedAbort.into_error()),
+        // 不包成 UiMsg：TTMSG 會被 ai_call_failure 再包成 AI_CALL_FAILED，前端認不出碼
+        CliFinish::Runaway { reason, chars } => {
+            Err(crate::data::invalid_data(runaway_message(reason, chars)))
+        }
     }
 }
 
@@ -118,6 +135,8 @@ pub async fn run_cli_cancellable(
     // 思考增量要不要餵給 on_delta：只有「進度字尾」型顯示（卡重構）開 true；
     // 聊天／旁白的 on_delta 是劇情正文串流，思考混進去會出戲。
     thinking_to_delta: bool,
+    // 失控檢查的範圍：呼叫端明確給，不從 usage_log 推（lane 的 shape 固定寫 Oneshot）
+    policy: RunawayPolicy,
     usage_log: Option<UsageLog<'_>>,
     mut on_delta: impl FnMut(&str),
     cancel: Option<watch::Receiver<bool>>,
@@ -180,6 +199,7 @@ pub async fn run_cli_cancellable(
         stdin_data,
         parse,
         thinking_to_delta,
+        policy,
         usage_log,
         &mut on_delta,
         cancel,
@@ -201,6 +221,7 @@ async fn drive_child(
     stdin_data: &str,
     parse: fn(&str) -> CliLine,
     thinking_to_delta: bool,
+    policy: RunawayPolicy,
     usage_log: Option<UsageLog<'_>>,
     on_delta: &mut impl FnMut(&str),
     mut cancel: Option<watch::Receiver<bool>>,
@@ -220,11 +241,12 @@ async fn drive_child(
     // stderr 逐行即時讀（同時兼排空防死鎖）：CLI 的「API Error…重試中」通知走 stderr，
     // 整包等結束才讀會讓玩家對著靜止的進度框發呆到 CLI 重試放棄為止。
     let stderr = child.stderr.take().expect("stderr piped");
-    let mut stderr_lines = BufReader::new(stderr).lines();
+    // 單行上限是記憶體上限，不看政策（A8）
+    let mut stderr_lines = CappedLines::new(BufReader::new(stderr), LINE_CAP_BYTES);
     let mut stderr_text = String::new();
 
     let stdout = child.stdout.take().expect("stdout piped");
-    let mut lines = BufReader::new(stdout).lines();
+    let mut lines = CappedLines::new(BufReader::new(stdout), LINE_CAP_BYTES);
     let mut full_text = String::new();
     let mut done: Option<(String, bool)> = None;
     let mut stdout_open = true;
@@ -238,6 +260,11 @@ async fn drive_child(
     let mut exited = false;
     let mut stall: Option<String> = None;
     let mut aborted = false;
+    // 輸出失控：正文與思考各一支，分開計（思考只做退化偵測，Off 時兩支都不查）
+    let mut text_guard = RunawayGuard::text(policy);
+    let mut thinking_guard = RunawayGuard::thinking(policy);
+    // 觸發理由＋觸發那一支的計數（思考觸發時正文可能是 0；單行超限記正文計數）
+    let mut runaway: Option<(RunawayReason, usize)> = None;
     // 收場要四件都到：兩條輸出 EOF、stdin 寫完（或放棄）、程序退出。只看輸出的話，CLI 先關掉
     // 輸出再讀 stdin（或乾脆不讀）時，迴圈會在還沒寫完時就離開，逾時、取消、斷流偵測全失效。
     while stdout_open || stderr_open || stdin_open || !exited {
@@ -251,15 +278,23 @@ async fn drive_child(
                 break;
             }
             line = lines.next_line(), if stdout_open => match line? {
-                Some(line) => line,
-                None => {
+                LineRead::Line(line) => line,
+                LineRead::Eof => {
                     stdout_open = false;
                     continue;
+                }
+                LineRead::TooLong => {
+                    runaway = Some((RunawayReason::LineTooLong, text_guard.chars()));
+                    break;
                 }
             },
             line = stderr_lines.next_line(), if stderr_open => {
                 match line? {
-                    Some(line) => {
+                    LineRead::TooLong => {
+                        runaway = Some((RunawayReason::LineTooLong, text_guard.chars()));
+                        break;
+                    }
+                    LineRead::Line(line) => {
                         if let Some(fatal) = api_error_kind(&line) {
                             // 進度字尾型顯示（卡重構）立刻看得到錯誤；正文串流不混入
                             if thinking_to_delta {
@@ -276,7 +311,7 @@ async fn drive_child(
                         stderr_text.push_str(&line);
                         stderr_text.push('\n');
                     }
-                    None => stderr_open = false,
+                    LineRead::Eof => stderr_open = false,
                 }
                 continue;
             },
@@ -444,15 +479,34 @@ async fn drive_child(
         }
         match parse(&line) {
             CliLine::Delta(text) => {
+                if let Some(reason) = text_guard.push(&text) {
+                    runaway = Some((reason, text_guard.chars()));
+                    break;
+                }
                 on_delta(&text);
                 full_text.push_str(&text);
             }
             CliLine::Thinking(text) => {
+                if let Some(reason) = thinking_guard.push(&text) {
+                    runaway = Some((reason, thinking_guard.chars()));
+                    break;
+                }
                 if thinking_to_delta {
                     on_delta(&text);
                 }
             }
-            CliLine::Done { text, is_error } => done = Some((text, is_error)),
+            CliLine::Done { text, is_error } => {
+                // 零增量時收尾全文會被當成正文採用：收到當下就檢查，不等程序退出
+                // （CLI 送完失控的 Done 後若持續吐 stderr 不退，迴圈後的 fallback 永遠輪不到）。
+                // 只在這裡計一次，迴圈後採用 fallback 時不再餵 guard。
+                if !is_error && full_text.is_empty() {
+                    if let Some(reason) = text_guard.push(&text) {
+                        runaway = Some((reason, text_guard.chars()));
+                        break;
+                    }
+                }
+                done = Some((text, is_error));
+            }
             CliLine::Other => {}
         }
     }
@@ -460,6 +514,13 @@ async fn drive_child(
     if aborted {
         kill_child_and_wait(child).await;
         return Ok(CliFinish::Aborted(full_text));
+    }
+    if let Some((reason, chars)) = runaway {
+        kill_child_and_wait(child).await;
+        if thinking_to_delta {
+            on_delta(&format!("\n⚠ {}\n", runaway_message(reason, chars)));
+        }
+        return Ok(CliFinish::Runaway { reason, chars });
     }
     if let Some(msg) = stall {
         let _ = child.start_kill();
@@ -527,3 +588,6 @@ async fn drive_child(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod runaway_tests;

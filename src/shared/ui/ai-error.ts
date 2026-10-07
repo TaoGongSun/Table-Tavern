@@ -19,6 +19,8 @@ const FAILURE_CODES = [
   [/^(?:Error:\s*)?AI_EMPTY_RESPONSE:/, "errEmptyReply"],
   // API 串流太久沒有正文／推理進展（後端 transport/stall.rs）；放在 HTTP 狀態之後、一般分流之前
   [/^(?:Error:\s*)?AI_STREAM_STALLED:/, "errStreamStalled"],
+  // 模型持續吐空白、長度異常，後端自己喊停（transport/runaway.rs）
+  [/^(?:Error:\s*)?AI_OUTPUT_RUNAWAY:/, "errOutputRunaway"],
   [/^(?:Error:\s*)?AI_INCOMPLETE_RESPONSE:/, "errIncompleteReply"],
   [/^(?:Error:\s*)?AI_CONTENT_FILTERED:/, "errFiltered"],
   // 模型一次讀不完這一幕（long-prompt-scene-hint 範圍 4）：後端只從結構化失敗掛這個碼
@@ -86,6 +88,7 @@ export function explainAiError(
   | "errRefused"
   | "errEmptyReply"
   | "errStreamStalled"
+  | "errOutputRunaway"
   | "errIncompleteReply"
   | "errFiltered"
   | "errContextTooLong"

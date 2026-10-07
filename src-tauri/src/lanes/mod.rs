@@ -1024,6 +1024,8 @@ pub(crate) async fn run_turn(
                 LaneProvider::Grok => cli::parse_grok_line,
             },
             false, // 聊天正文串流，思考不進畫面
+            // lane 只跑劇情輪（角色、GM 旁白、GM 建議）：字數上限＋退化偵測
+            transport::RunawayPolicy::Full,
             call.usage_log.as_deref().map(|path| cli::UsageLog {
                 usage_out: Some(&attempt_usage),
                 overage_out: (call.provider == LaneProvider::Claude).then_some(&attempt_overage),
@@ -1060,7 +1062,10 @@ pub(crate) async fn run_turn(
                 sink(CacheWriteObserved::of(attempt_usage.as_ref()));
             }
         }
-        if result.is_ok() {
+        if matches!(
+            result,
+            Ok(cli::CliFinish::Completed(_) | cli::CliFinish::Aborted(_))
+        ) {
             let held = stream.finish();
             if !held.is_empty() {
                 emit(&held);
@@ -1085,6 +1090,22 @@ pub(crate) async fn run_turn(
                     text: partial,
                     aborted: true,
                 });
+            }
+            // 輸出失控：收尾比照玩家按停止（grok 撤線；claude 抹私設、claude／agy 留
+            // pending_rewrite 下一輪重開），但回錯而不是半截——不重開重試（A5）、半截不交出（A4）。
+            // settle_abort 自己失敗就回那個錯，同樣不重派送。
+            Ok(cli::CliFinish::Runaway { reason, chars }) => {
+                settle_abort(
+                    call,
+                    world_id,
+                    &key,
+                    &session_id,
+                    input.confidential.as_deref(),
+                    input.prefix.as_deref(),
+                    &mut store,
+                    &store_path,
+                )?;
+                return Err(transport::runaway_message(reason, chars));
             }
             Ok(cli::CliFinish::Completed(reply)) => {
                 let actual_session_id = match call.provider {
