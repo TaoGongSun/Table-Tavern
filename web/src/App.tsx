@@ -4,6 +4,8 @@ import { CardPicker } from "./features/cards/CardPicker";
 import { ChatView } from "./features/chat/ChatView";
 import { GLOBAL_VARIABLES, type GameSetup } from "./features/chat/useChat";
 import { DownloadLink } from "./features/funnel/DownloadLink";
+import { DownloadPage } from "./features/funnel/DownloadPage";
+import { useDownloadPage } from "./features/funnel/download-route";
 import { QuotaPanel } from "./features/funnel/QuotaPanel";
 import type { QuotaState } from "./features/funnel/quota";
 import { useLatestRelease } from "./features/funnel/useLatestRelease";
@@ -32,6 +34,7 @@ function QuotaBadge({ quota }: { quota: QuotaState }) {
 export default function App({ callback }: { callback: OAuthCallback | null }) {
   const session = useOpenRouterSession(callback);
   const release = useLatestRelease();
+  const downloadPage = useDownloadPage();
   const [game, setGame] = useState<GameSetup | null>(null);
   const [quotaDismissed, setQuotaDismissed] = useState(false);
   const exhausted = session.quota.kind === "exhausted";
@@ -104,6 +107,7 @@ export default function App({ callback }: { callback: OAuthCallback | null }) {
       </main>
 
       {exhausted && !quotaDismissed && <QuotaPanel release={release} onClose={() => setQuotaDismissed(true)} />}
+      {downloadPage.open && <DownloadPage release={release} onClose={downloadPage.close} />}
     </div>
   );
 }

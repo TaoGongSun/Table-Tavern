@@ -1,7 +1,7 @@
 // 網頁版端對端（npm run e2e）：本機假端點＋正式建置（端點換成假端點）＋WebKit。
 // 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→自動存檔（重新整理後繼續）→匯出網頁存檔
 // （契約檢查、用桌面版繼續導流）→匯出 ST 聊天檔→存檔區刪除與匯入→匯入卡（錯誤說明、選開場白、玩家名、
-// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載連結→登出。
+// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載頁與下載連結→找卡清單→登出。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
 // TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）；
 // TT_WEB_EXPORT_WI_OUT 同理，另存帶世界書觸發狀態的那一份；TT_WEB_EXPORT_MVU_OUT 另存帶 MVU 與卡片設定的那一份。
@@ -36,10 +36,23 @@ page.on("console", (message) => message.type() === "error" && consoleErrors.push
 const step = (name) => console.log(`• ${name}`);
 
 try {
-  step("未登入：常駐下載連結退回 releases 頁（目前沒有正式版）");
+  step("未登入：常駐下載連結打開下載頁——沒有正式版就說明並只給發佈頁，附安裝繞過說明與功能對照，關掉回原畫面");
   await page.goto(base);
   await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
-  assert.equal(await page.getByTestId("download-link").getAttribute("href"), RELEASES_PAGE);
+  await page.getByTestId("download-link").click();
+  await page.getByTestId("download-page").waitFor();
+  assert.ok(page.url().endsWith("#download"));
+  await page.getByText("桌面版還沒有正式版").waitFor();
+  assert.deepEqual(
+    await page.getByTestId("download-page").getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
+    [RELEASES_PAGE],
+  );
+  await page.getByText("仍要執行", { exact: false }).waitFor();
+  await page.getByTestId("feature-compare").getByText("多角色同桌", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "回到遊戲" }).click();
+  assert.equal(await page.getByTestId("download-page").count(), 0);
+  assert.ok(!page.url().includes("#"));
+  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
 
   step("PKCE 授權：回呼後網址清乾淨、金鑰只進 localStorage");
   await page.getByRole("button", { name: "用 OpenRouter 登入" }).click();
@@ -48,6 +61,10 @@ try {
   assert.equal(fake.state.exchanges.length, 1, "授權碼應只交換一次");
   assert.equal(await page.evaluate(() => localStorage.getItem("tt-web:openrouter-key")), E2E_KEY);
   await page.getByText("今日免費 40/50").waitFor();
+
+  step("開始畫面：找卡清單五站連結與一行 18 禁標示");
+  assert.equal(await page.getByTestId("find-cards").getByRole("link").count(), 5);
+  await page.getByTestId("find-cards").getByText("18 禁", { exact: false }).waitFor();
 
   step("選範例卡：開場白出現");
   await page.getByRole("button", { name: "開始" }).click();
@@ -101,6 +118,28 @@ try {
   assert.equal(await page.getByTestId("message-user").count(), 3, "三句玩家句都接得上");
   await page.getByText("回應中斷").waitFor();
 
+  step("回合中開關下載頁不中斷串流；在 #download 上重新整理，關掉下載頁後繼續這桌，回合中那句放回輸入框（D28）");
+  fake.state.chat = "partial-hang";
+  await page.getByPlaceholder("輸入你的行動或對話…").fill("下載頁草稿");
+  await page.getByRole("button", { name: "送出" }).click();
+  await page.getByTestId("message-streaming").getByText("說到一半").waitFor();
+  await page.getByTestId("download-link").click();
+  await page.getByTestId("download-page").waitFor();
+  await page.getByRole("button", { name: "回到遊戲" }).click();
+  await page.getByTestId("message-streaming").getByText("說到一半").waitFor();
+  await page.getByRole("button", { name: "停止" }).waitFor();
+  await page.getByTestId("download-link").click();
+  await page.getByTestId("download-page").waitFor();
+  await page.reload();
+  await page.getByTestId("download-page").waitFor();
+  await page.getByRole("button", { name: "回到遊戲" }).click();
+  await page.getByTestId("save-item").getByRole("button", { name: "繼續" }).click();
+  await page.getByText("鞋上的雪先跺乾淨").waitFor();
+  assert.equal(await page.getByPlaceholder("輸入你的行動或對話…").inputValue(), "下載頁草稿");
+  assert.equal(await page.getByTestId("message-user").count(), 3, "回合中那句退回輸入框，不落進逐字稿");
+  await page.getByPlaceholder("輸入你的行動或對話…").fill("");
+  fake.state.chat = "normal";
+
   step("匯出網頁存檔：過得了契約檢查、帶逐字稿與變數，附「用桌面版繼續」導流");
   const [saveDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "匯出存檔" }).click()]);
   assert.match(saveDownload.suggestedFilename(), /^瑟拉 \d{4}-\d{2}-\d{2} \d{4}\.json$/);
@@ -144,7 +183,7 @@ try {
   assert.deepEqual(save.mvu.layers.global, { 名聲: "1" });
   assert.deepEqual(save.card_storage, {});
   await page.getByTestId("export-funnel").getByText("用桌面版繼續").waitFor();
-  assert.equal(await page.getByTestId("export-funnel").getByRole("link").getAttribute("href"), RELEASES_PAGE);
+  assert.equal(await page.getByTestId("export-funnel").getByRole("link").getAttribute("href"), "#download");
   if (process.env.TT_WEB_EXPORT_OUT) copyFileSync(savePath, process.env.TT_WEB_EXPORT_OUT);
 
   step("匯出 ST 聊天檔：一行一則 JSON、檔頭照 ST，畫面說明只帶對話");
@@ -369,7 +408,11 @@ try {
   await page.getByPlaceholder("輸入你的行動或對話…").fill("第四句");
   await page.getByRole("button", { name: "送出" }).click();
   await page.getByTestId("quota-panel").waitFor();
-  assert.equal(await page.getByRole("link", { name: "前往下載頁" }).getAttribute("href"), RELEASES_PAGE);
+  // 前往下載頁：蓋在導流面板上，關掉回到面板
+  await page.getByRole("link", { name: "前往下載頁" }).click();
+  await page.getByTestId("download-page").waitFor();
+  await page.getByRole("button", { name: "回到遊戲" }).click();
+  await page.getByTestId("quota-panel").waitFor();
   assert.equal(await page.getByPlaceholder("輸入你的行動或對話…").inputValue(), "第四句");
   await page.getByRole("button", { name: "知道了" }).click();
   assert.ok(await page.getByRole("button", { name: "送出" }).isDisabled(), "用完時送出鈕要停用");
@@ -382,6 +425,13 @@ try {
   assert.match(await page.getByRole("link", { name: "下載 Windows 版" }).getAttribute("href"), /_x64-setup\.exe$/);
   assert.match(await page.getByRole("link", { name: "下載 macOS 版（Apple Silicon）" }).getAttribute("href"), /_aarch64\.dmg$/);
   await page.getByRole("button", { name: "知道了" }).click();
+  // 下載頁也給版本與兩個平台檔
+  await page.getByTestId("download-link").click();
+  await page.getByText("目前版本 v0.3.0").waitFor();
+  const files = page.getByTestId("download-page").getByRole("link");
+  assert.match(await files.nth(0).getAttribute("href"), /_x64-setup\.exe$/);
+  assert.match(await files.nth(1).getAttribute("href"), /_aarch64\.dmg$/);
+  await page.getByRole("button", { name: "回到遊戲" }).click();
 
   step("登出：清掉金鑰、回到登入畫面");
   await page.getByRole("button", { name: "登出" }).click();

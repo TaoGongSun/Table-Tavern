@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import type { GameSetup } from "../chat/useChat";
+import { DesktopOnly } from "../funnel/DesktopOnly";
 import type { ReleaseInfo } from "../funnel/releases";
+import { FindCards } from "../find-cards/FindCards";
 import type { SaveStore } from "../saves/save-store";
 import { SavesPanel } from "../saves/SavesPanel";
 import { substituteParams } from "../sillytavern/substitute";
@@ -90,6 +92,7 @@ export function CardPicker({
         {error && (
           <p className="chat-error" role="alert" data-testid="import-error">
             {t(`importErr_${error}` as MsgKey)}
+            {error === "standalone_book" && <DesktopOnly />}
           </p>
         )}
         <input
@@ -107,6 +110,8 @@ export function CardPicker({
           {reading ? t("importReading") : t("importChoose")}
         </button>
       </article>
+
+      <FindCards />
     </section>
   );
 }

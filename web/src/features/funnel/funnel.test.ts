@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { freeDailyFromBody } from "../openrouter/openrouter-api";
 import { nextQuota, quotaBlocksSending, type QuotaState } from "./quota";
-import { FALLBACK_RELEASE, fetchLatestRelease, parseRelease } from "./releases";
+import { fetchLatestRelease, NO_RELEASE, parseRelease, RELEASE_UNAVAILABLE } from "./releases";
 
 describe("quota state machine", () => {
   const unknown: QuotaState = { kind: "unknown" };
@@ -44,9 +44,24 @@ describe("quota state machine", () => {
 });
 
 describe("desktop release lookup", () => {
-  it("falls back to the releases page when there is no release yet (404)", async () => {
+  it("only a 404 means there is no release yet; both fall back to the releases page", async () => {
     const fetch404 = (async () => new Response("{}", { status: 404 })) as typeof fetch;
-    expect(await fetchLatestRelease(fetch404)).toEqual(FALLBACK_RELEASE);
+    expect(await fetchLatestRelease(fetch404)).toEqual(NO_RELEASE);
+    expect(NO_RELEASE.pageUrl).toBe("https://github.com/TaoGongSun/Table-Tavern/releases");
+  });
+
+  it("rate limits, server errors, network failures and unreadable bodies are 'unavailable', not 'no release'", async () => {
+    for (const status of [403, 429, 500]) {
+      const failing = (async () => new Response("{}", { status })) as typeof fetch;
+      expect(await fetchLatestRelease(failing)).toEqual(RELEASE_UNAVAILABLE);
+    }
+    const offline = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as typeof fetch;
+    expect(await fetchLatestRelease(offline)).toEqual(RELEASE_UNAVAILABLE);
+    const garbled = (async () => new Response("not json", { status: 200 })) as typeof fetch;
+    expect(await fetchLatestRelease(garbled)).toEqual(RELEASE_UNAVAILABLE);
+    expect(parseRelease({ assets: [] })).toEqual(RELEASE_UNAVAILABLE);
   });
 
   it("picks the fixed asset names for each platform", () => {
@@ -60,6 +75,7 @@ describe("desktop release lookup", () => {
       ],
     });
     expect(info).toEqual({
+      status: "ok",
       version: "0.3.0",
       pageUrl: "https://github.com/TaoGongSun/Table-Tavern/releases/tag/v0.3.0",
       windows: "https://github.com/x/win.exe",
@@ -69,7 +85,7 @@ describe("desktop release lookup", () => {
 
   it("refuses download links that do not point at github.com", () => {
     const info = parseRelease({ tag_name: "v1", html_url: "https://evil.example/", assets: [{ name: "a_x64-setup.exe", browser_download_url: "https://evil.example/a.exe" }] });
-    expect(info.pageUrl).toBe(FALLBACK_RELEASE.pageUrl);
+    expect(info.pageUrl).toBe(NO_RELEASE.pageUrl);
     expect(info.windows).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseWebSave } from "@desktop/shared/contracts/web-save/web-save";
 import { SAMPLE_PLAY_CARD } from "../cards/sample-card";
+import { failureNetwork } from "../openrouter/api-failure";
 import { FailoverRuntime } from "../openrouter/failover";
 import type { CallPlan } from "../openrouter/smart-call";
 import { streamChat } from "../openrouter/stream-chat";
@@ -270,6 +271,103 @@ describe("自動存檔", () => {
     expect(chat.input).toBe("我想借宿一晚{{setvar::住宿::1}}");
     expect(chat.entries.map((entry) => entry.text)).toEqual(save.messages.map((message) => message.text));
     expect(sessionStorage.getItem(`tt-web:pending-input:${meta.id}`)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it.each(["beforeunload", "pagehide"])("a reload cuts the request after %s: that failure is not the turn's end, the draft stays and nothing half-done is saved", async (leaving) => {
+    vi.stubGlobal("sessionStorage", new MemoryStorage());
+    const saves = openSaveStore(new IDBFactory())!;
+    let fail!: () => void;
+    vi.mocked(streamChat).mockImplementationOnce(
+      () => new Promise((resolve) => (fail = () => resolve({ kind: "failed", failure: failureNetwork("Load failed", false) }))),
+    );
+    await mount({ card: SAMPLE_PLAY_CARD, userName: "旅人", openingIndex: 0 }, saves);
+    await act(async () => chat.setInput("說到一半就重新整理"));
+    await act(async () => void chat.send());
+    await settle();
+    const [meta] = await saves.list();
+    // 瀏覽器先發離開事件，請求隨即被中斷、腳本還跑得到失敗結果
+    await act(async () => {
+      window.dispatchEvent(leaving === "pagehide" ? new PageTransitionEvent("pagehide", { persisted: false }) : new Event("beforeunload"));
+      fail();
+    });
+    await settle();
+    expect(sessionStorage.getItem(`tt-web:pending-input:${meta.id}`)).toBe("說到一半就重新整理");
+    expect(chat.input).toBe("");
+    // 存檔停在上一個完整回合（新桌：開口前只有開場白），半截回合的玩家句不存進去
+    const save = (await saves.get(meta.id))!;
+    expect(save.messages.map((message) => message.role)).toEqual(["char"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("the draft is cleared only once the save holding that turn is written; leaving before that keeps it", async () => {
+    vi.stubGlobal("sessionStorage", new MemoryStorage());
+    vi.mocked(streamChat).mockResolvedValueOnce({ kind: "ok", text: "回覆落地了", model: null, truncated: null });
+    const real = openSaveStore(new IDBFactory())!;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let calls = 0;
+    // 第一筆是開口前的首格；第二筆（含這一回合）卡到放行為止
+    const slow: SaveStore = {
+      ...real,
+      put: async (meta, save) => {
+        calls += 1;
+        if (calls === 2) await gate;
+        return real.put(meta, save);
+      },
+    };
+    await mount({ card: SAMPLE_PLAY_CARD, userName: "旅人", openingIndex: 0 }, slow);
+    await act(async () => chat.setInput("落地前離開"));
+    await act(async () => chat.send());
+    await settle();
+    expect(chat.entries[chat.entries.length - 1]?.text).toBe("回覆落地了");
+    const [meta] = await real.list();
+    const key = `tt-web:pending-input:${meta.id}`;
+    // 回合已落地、存檔還沒寫成就離開：存檔仍是上一回合，草稿要留著
+    await act(async () => {
+      window.dispatchEvent(new Event("beforeunload"));
+    });
+    expect(sessionStorage.getItem(key)).toBe("落地前離開");
+    expect((await real.get(meta.id))?.messages.map((message) => message.role)).toEqual(["char"]);
+    // 那一筆寫成了（存檔含這一回合），草稿才清
+    release();
+    await settle();
+    expect((await real.get(meta.id))?.messages.map((message) => message.text).slice(-1)).toEqual(["回覆落地了"]);
+    expect(sessionStorage.getItem(key)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("an older turn's save finishing late does not clear the next turn's draft", async () => {
+    vi.stubGlobal("sessionStorage", new MemoryStorage());
+    vi.mocked(streamChat)
+      .mockResolvedValueOnce({ kind: "ok", text: "第一回合的回覆", model: null, truncated: null })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const real = openSaveStore(new IDBFactory())!;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let calls = 0;
+    const slow: SaveStore = {
+      ...real,
+      put: async (meta, save) => {
+        calls += 1;
+        if (calls === 2) await gate;
+        return real.put(meta, save);
+      },
+    };
+    await mount({ card: SAMPLE_PLAY_CARD, userName: "旅人", openingIndex: 0 }, slow);
+    await act(async () => chat.setInput("第一句"));
+    await act(async () => chat.send());
+    await settle();
+    // 第一回合的存檔還卡著，玩家已經送出第二句（串流中）
+    await act(async () => chat.setInput("第二句"));
+    await act(async () => void chat.send());
+    await settle();
+    const [meta] = await real.list();
+    const key = `tt-web:pending-input:${meta.id}`;
+    expect(sessionStorage.getItem(key)).toBe("第二句");
+    release();
+    await settle();
+    expect(sessionStorage.getItem(key)).toBe("第二句");
     vi.unstubAllGlobals();
   });
 

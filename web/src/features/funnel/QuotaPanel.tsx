@@ -1,10 +1,11 @@
 import { t } from "../../i18n";
+import { DOWNLOAD_HASH } from "./download-route";
 import type { ReleaseInfo } from "./releases";
 
-/** 今日免費次數用完的導流面板：只導向下載桌面版（D11），不提任何付費選項。 */
+/** 今日免費次數用完的導流面板：只導向下載桌面版（D11），不提任何付費選項；安裝說明與功能對照在下載頁。 */
 export function QuotaPanel({ release, onClose }: { release: ReleaseInfo; onClose: () => void }) {
-  const link = (href: string, label: string, primary = false) => (
-    <a className={primary ? "button primary" : "button"} href={href} target="_blank" rel="noopener noreferrer">
+  const file = (href: string, label: string) => (
+    <a className="button primary" href={href} target="_blank" rel="noopener noreferrer">
       {label}
     </a>
   );
@@ -14,9 +15,11 @@ export function QuotaPanel({ release, onClose }: { release: ReleaseInfo; onClose
         <h2 id="quota-title">{t("quotaTitle")}</h2>
         <p>{t("quotaBody")}</p>
         <div className="quota-actions">
-          {release.windows && link(release.windows, t("quotaWindows"), true)}
-          {release.mac && link(release.mac, t("quotaMac"), true)}
-          {link(release.pageUrl, t("quotaPage"), !release.windows && !release.mac)}
+          {release.windows && file(release.windows, t("quotaWindows"))}
+          {release.mac && file(release.mac, t("quotaMac"))}
+          <a className={release.windows || release.mac ? "button" : "button primary"} href={DOWNLOAD_HASH}>
+            {t("quotaPage")}
+          </a>
         </div>
         <button type="button" className="ghost" onClick={onClose}>
           {t("quotaClose")}

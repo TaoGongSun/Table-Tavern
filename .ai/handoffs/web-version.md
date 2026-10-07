@@ -14,7 +14,7 @@
 - 支援卡片介面（原卡直玩的介面渲染與 MVU 變數），盡量做到跟 ST 一樣。〔作者裁決 2026-10-04〕
 - 要有「去哪裡找卡」的導流；爬別站、另存別站卡的站（JannyAI、CharaVault、DeepSeek Tavern 等）不收。〔作者裁決 2026-09-30〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用。〔作者裁決 2026-10-07〕
-- D1–D35 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
+- D1–D38 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
 
 ## 現況
 - **包 1（最小縱切）封板**：commit be1093d..0de69dd，Sol、Grok 驗收通過，主線 verify 12 步綠、e2e 過。
@@ -62,12 +62,20 @@
   - 來回測試：e2e 帶 `TT_WEB_EXPORT_MVU_OUT` 另存 `src/shared/contracts/web-save/web-export-mvu.json`，cargo `a_real_web_export_with_mvu_lands_every_table_and_the_card_storage`；測試通道 claude Sonnet 從介面匯入這份存檔，桌面版卡片介面畫出 MVU 值。本機 TestCards（bcd368、DongeonMaster、HeroTraining）開局 initvar 都解得開、開場白都切得出介面區塊。
   - 判斷〔模型判斷·未裁決〕：介面畫在各則訊息裡而不是覆蓋層；character 層初值取卡上酒館助手 variables、script 層取各腳本 data；類巨集照釘版酒館助手在預算與世界書掃描之後才代換（超量提示走平台拒收的既有提示）；顯示時類巨集讀最後一張表（釘版 demacroOnRender 不傳樓號）。
   - 未驗：真模型（403）；Chromium 與手機（e2e 只跑 WebKit；導走判定靠 document.open／close 照規格再觸發一次 load，只在 WebKit 實測過）；卡片自己 fetch 外連；EJS 不執行（D34）；酒館助手變數函式只給載 MVU 的卡（D35）。
+- **包 7（導流全套）封板**：commit 8a83ca7..（「web-version: 包 7 封板」那筆），Sol r3、Grok r3 驗收通過，主線 verify 12 步綠、e2e 過。
+  - 下載頁 `web/src/features/funnel/DownloadPage.tsx`：網址 `#download`（`download-route.ts`，開關不換頁，關掉清網址回原桌）；版本與 Windows／macOS 安裝檔照 GitHub Releases API（`releases.ts` 分 loading／ok／none（只有 404）／error：查不到只說暫時取不到，不說沒有正式版；缺哪個平台檔就不給那顆鈕），沒有（文案只說「還沒有正式版，請到發佈頁查看」，不保證發佈頁上有測試版）、查不到都只給發佈頁；繞過說明分平台講原因（Windows 沒買簽章憑證→SmartScreen「其他資訊→仍要執行」；macOS 沒送 Apple 公證→Gatekeeper「系統設定→隱私權與安全性→仍要打開」），步驟同 README、不叫玩家開終端機、不做安全保證；功能對照表資料 `feature-compare.ts`（計畫 1.3 不進的功能全列，含贊助；測試逐項對 1.3 清單）。
+  - D10 節點：頁首常駐連結、額度用完面板的「前往下載頁」、匯出存檔導流都連 `#download`；匯入獨立世界書被拒時接 `DesktopOnly`。D11：額度用完面板只有平台檔與下載頁。
+  - 找卡：`web/src/features/find-cards/`（`card-sites.ts` 五站資料、`FindCards.tsx` 放開始畫面，一行 18 禁標示）。
+  - DRM／雲端載入器卡的說明拿掉「可以改用桌面版」（桌面版同樣不支援）。
+  - 離開頁面（`useChat.ts`，D28）：beforeunload 與非往返快取的 pagehide 會作廢在途回合並停掉自動存檔（WebKit 在 pagehide 前就中斷請求，那個失敗不能當回合收尾），存檔停在上一個完整回合；草稿等含那一回合的存檔寫成才清（流水號比對，舊寫入不清新回合的草稿；沒有存檔庫就落地即清）。已知限制：往返快取的頁面回來時，或 beforeunload 之後導覽沒有真的發生（例如別的程式取消了離開），在途回合已作廢——玩家句留在畫面上、沒有回覆，要重新整理或手動收回；自動存檔要等下一次開口才恢復（往返快取回來時立即恢復）。
+  - 文案只有繁中（字典 `web/src/i18n/zh-TW.ts`，十語系在包 8）。D36–D38 已拍板（計畫第五節）。
+  - 測試：`funnel/download-page.test.tsx`、`funnel/funnel.test.ts`（403／429／500／斷線／讀不懂都不是「沒有正式版」）、`find-cards/find-cards.test.tsx`、`chat/autosave.test.tsx`（離開頁面時的失敗不清草稿、存檔停在上一回合、存檔寫成才清草稿、舊寫入不清新草稿）、`chat/mvu-turn.test.tsx`（MVU 等待中離開草稿仍在）；e2e 走下載頁（無版本與有版本）、串流中開關下載頁不中斷、在 `#download` 上重新整理後草稿放回、導流面板與匯出導流連下載頁、找卡清單。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 7（導流全套）施工中
-計畫分包表「7 導流全套」列與第五節 D1、D6、D10、D11：下載頁、各時機的下載提示、額度用完只導向下載、找卡清單資料檔。做完送主線審查（主線開新審查串）。
+## 下一步：包 8（十語系）施工中
+計畫分包表「8 十語系」列：網頁版文案補齊桌面版的十個語系（語系清單、切換與偵測照桌面版 `src/i18n`）、缺鍵退回繁中並有十語系鍵集合一致的檢查、範例卡各語系（D5）、SEO／分享卡片的 meta。做完送主線審查。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。
