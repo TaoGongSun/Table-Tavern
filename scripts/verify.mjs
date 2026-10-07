@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TAURI = fileURLToPath(new URL("../src-tauri/", import.meta.url));
+const WEB = fileURLToPath(new URL("../web/", import.meta.url));
 // Windows 下 npm 是 .cmd，Node 18.20 起 spawn 不准直接執行批次檔（EINVAL），要走 shell。
 // cargo 是 .exe，不需要。args 都是寫死的字面值，沒有引號注入問題。
 const WIN = process.platform === "win32";
@@ -18,6 +19,9 @@ const steps = [
   { name: "vitest", cmd: "npm", args: ["test"], cwd: ROOT, shell: WIN },
   { name: "i18n", cmd: "npm", args: ["run", "check:i18n"], cwd: ROOT, shell: WIN },
   { name: "build", cmd: "npm", args: ["run", "build"], cwd: ROOT, shell: WIN },
+  // 網頁版（web/，自己一份 package.json）：共用桌面版純 TS 模組（D2），所以兩邊一起跑
+  { name: "web vitest", cmd: "npm", args: ["test"], cwd: WEB, shell: WIN },
+  { name: "web build", cmd: "npm", args: ["run", "build"], cwd: WEB, shell: WIN },
   { name: "cargo check", cmd: "cargo", args: ["check"], cwd: TAURI },
   { name: "cargo test", cmd: "cargo", args: ["test"], cwd: TAURI },
   // 測試通道只在 feature 下編譯，單獨跑一次確保它沒爛掉。
