@@ -3,14 +3,13 @@
 import {
   buildLineup,
   eligibleModels,
-  requiredContext,
   RESERVED_OUTPUT_TOKENS,
   stableCandidates,
   type FreeModel,
 } from "./catalog";
 import { fnv1a } from "./failover";
 import { fetchRoleplaySlugs, fetchUpstreams, fetchUserCatalog, fetchWeeklyIds, type ApiDeps } from "./openrouter-api";
-import { NO_FREE_MODEL, type CallPlan } from "./smart-call";
+import { NO_FREE_MODEL, PROMPT_EXCEEDS_CONTEXT, type CallPlan } from "./smart-call";
 
 const TTL_SECS = 12 * 3600;
 
@@ -83,18 +82,29 @@ export class FreePool {
     return this.catalog?.value.find((model) => model.id === modelId)?.contextLength ?? 0;
   }
 
-  /** 這一句的選模素材；沒有可用免費模型時丟出 NO_FREE_MODEL。 */
-  plan(contents: string[], now: number): CallPlan {
+  /** 模型清單的 `architecture.tokenizer`；清單裡沒有或沒標回 null。 */
+  tokenizer(modelId: string): string | null {
+    return this.catalog?.value.find((model) => model.id === modelId)?.tokenizer ?? null;
+  }
+
+  /**
+   * 這一句的選模素材。`holds`＝這支模型的預算放得下本句的固定段落（照該模型的上限組一次提示；選模時才問、
+   * 只問到選中為止）。名單是空的：有穩定模型、只是上限連保留輸出都放不下就丟 PROMPT_EXCEEDS_CONTEXT，
+   * 一支穩定模型都沒有才丟 NO_FREE_MODEL。
+   */
+  plan(holds: (modelId: string) => boolean, now: number): CallPlan {
     const catalog = this.catalog?.value ?? [];
-    const fits = eligibleModels(catalog, requiredContext(contents), now);
+    const usable = new Set(eligibleModels(catalog, now).map((model) => model.id));
     const ranked = this.candidates(RESERVED_OUTPUT_TOKENS, now);
     const lineup = buildLineup(ranked, this.upstreams?.value ?? new Map()).entries.map(({ model }) => model.id);
-    if (fits.length === 0 || lineup.length === 0) throw new Error(NO_FREE_MODEL);
+    if (lineup.length === 0) {
+      throw new Error(this.candidates(0, now).length > 0 ? PROMPT_EXCEEDS_CONTEXT : NO_FREE_MODEL);
+    }
     return {
       account: this.account,
       lineup,
       others: ranked.map(({ model }) => model.id).filter((id) => !lineup.includes(id)),
-      fits: new Set(fits.map((model) => model.id)),
+      fits: (model) => usable.has(model) && holds(model),
       names: new Map(catalog.map((model) => [model.id, model.name])),
     };
   }

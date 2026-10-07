@@ -21,7 +21,7 @@ export interface CallPlan {
   /** 名單外的其他穩定候選（依名次）。 */
   others: string[];
   /** 放得下本句的模型。 */
-  fits: Set<string>;
+  fits: (model: string) => boolean;
   names: Map<string, string>;
 }
 
@@ -54,6 +54,11 @@ export type CallOutcome =
     };
 
 export const NO_FREE_MODEL = "AI_NO_FREE_MODEL:";
+/**
+ * 有穩定免費模型，但每一支的上下文預算都放不下本句的固定段落（含上限連保留輸出都不夠的），這一句不送
+ * （ST 的「Mandatory prompts exceed the context size」）。
+ */
+export const PROMPT_EXCEEDS_CONTEXT = "AI_PROMPT_EXCEEDS_CONTEXT:";
 export const ALL_BUSY = "AI_FREE_ALL_BUSY:";
 export const FREE_MODEL_BUSY = "AI_FREE_MODEL_BUSY:";
 
@@ -76,7 +81,7 @@ function display(failure: ApiFailure, cls: FailureClass): string {
 }
 
 export async function runSmartCall(plan: CallPlan, runtime: FailoverRuntime, env: CallEnv): Promise<CallOutcome> {
-  const fits = (model: string) => plan.fits.has(model);
+  const fits = plan.fits;
   const current = runtime.reconcile(plan.account, plan.lineup, env.now());
   const firstPick = pickForSentence(current, plan.lineup, plan.others, fits, []);
   if (!firstPick) return { kind: "error", display: NO_FREE_MODEL, failure: null, cls: null, daily: false, failover: null };
