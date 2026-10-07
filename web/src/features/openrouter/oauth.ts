@@ -5,8 +5,11 @@ import { createOpenRouterPkce } from "@desktop/features/ai-connection/openrouter
 import { exchangeCode, type ApiDeps } from "./openrouter-api";
 
 const PENDING_KEY = "tt-web:oauth-pending";
-/** 回呼網址上帶的 state 參數名；OpenRouter 會在後面接 `code`。 */
-const STATE_PARAM = "tt_oauth";
+/**
+ * state 走授權網址的 `state` 參數，OpenRouter 導回時原樣帶在回呼網址上（與 `code` 並列）；
+ * callback_url 自己的 query 會被 OpenRouter 丟掉，所以 callback_url 只給 origin＋pathname。
+ */
+const STATE_PARAM = "state";
 
 export interface OAuthCallback {
   state: string;
@@ -28,9 +31,9 @@ export async function beginAuthorization(
   const { verifier, challenge } = await createOpenRouterPkce();
   const state = randomState();
   storage.setItem(PENDING_KEY, JSON.stringify({ state, verifier }));
-  const callback = `${location.origin}${location.pathname}?${STATE_PARAM}=${state}`;
   const url = new URL(authUrl);
-  url.searchParams.set("callback_url", callback);
+  url.searchParams.set("callback_url", `${location.origin}${location.pathname}`);
+  url.searchParams.set(STATE_PARAM, state);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
   return url.toString();

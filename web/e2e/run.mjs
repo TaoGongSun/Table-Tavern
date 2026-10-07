@@ -9,9 +9,11 @@ import assert from "node:assert/strict";
 import { copyFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseWebSave } from "../../src/shared/contracts/web-save/web-save.ts";
-import { build, preview } from "vite";
+import { join } from "node:path";
+import { build } from "vite";
 import { webkit } from "playwright";
 import { E2E_KEY, startFake } from "./fake-endpoints.mjs";
+import { startStaticServer } from "./static-server.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CARDS = fileURLToPath(new URL("../../src/shared/contracts/card-view/", import.meta.url));
@@ -26,8 +28,9 @@ process.env.VITE_TT_GITHUB_API = `${fake.url}/github`;
 
 // 只有 e2e 模式才接受 VITE_TT_* 覆寫（src/shared/endpoints/resolve.ts）
 await build({ root: ROOT, mode: "e2e", logLevel: "warn", build: { outDir: "dist-e2e", emptyOutDir: true } });
-const server = await preview({ root: ROOT, logLevel: "warn", build: { outDir: "dist-e2e" }, preview: { port: 4317, strictPort: false } });
-const base = server.resolvedUrls.local[0];
+// 照 Cloudflare Pages 的行為託管產物（套 `_headers`、.html 轉無副檔名），標頭與部署時同一份
+const server = await startStaticServer(join(ROOT, "dist-e2e"));
+const base = server.url;
 
 const browser = await webkit.launch();
 // 主流程照繁中走（語系照瀏覽器偵測，固定成 zh-TW）；最後另開一個英文瀏覽器走一遍主要畫面
@@ -37,6 +40,31 @@ page.on("console", (message) => message.type() === "error" && consoleErrors.push
 const step = (name) => console.log(`• ${name}`);
 
 try {
+  step("站點標頭：宿主頁帶 CSP（只連假端點）、沙盒那條路徑只限本站嵌入、帶 hash 的資產長快取、缺檔回 404");
+  const hostHeaders = (await fetch(base)).headers;
+  assert.match(hostHeaders.get("content-security-policy"), new RegExp(`connect-src ${new URL(fake.url).origin} ${new URL(fake.url).origin};`));
+  assert.match(hostHeaders.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.equal(hostHeaders.get("cache-control"), "public, max-age=0, must-revalidate", "首頁用 Pages 預設、每次重新驗證");
+  const sandboxRedirect = await fetch(new URL("sandbox.html?x=1", base), { redirect: "manual" });
+  assert.equal(sandboxRedirect.status, 308);
+  assert.equal(sandboxRedirect.headers.get("location"), "/sandbox?x=1");
+  const sandboxResponse = await fetch(new URL("sandbox", base));
+  assert.equal(sandboxResponse.headers.get("content-security-policy"), "frame-ancestors 'self'", "沙盒只限本站嵌入、不被宿主 CSP 罩住");
+  assert.match(await sandboxResponse.text(), /default-src \* data: blob: 'unsafe-inline' 'unsafe-eval'/);
+  const asset = (await (await fetch(base)).text()).match(/src="(\/assets\/[^"]+\.js)"/)[1];
+  assert.equal((await fetch(new URL(asset, base))).headers.get("cache-control"), "public, max-age=31536000, immutable");
+  const missing = await fetch(new URL("assets/missing.js", base));
+  assert.equal(missing.status, 404, "缺檔的資產回 404，不退回首頁");
+  assert.notEqual(missing.headers.get("cache-control"), "public, max-age=31536000, immutable");
+  assert.match(await missing.text(), /找不到這一頁/);
+  // 首頁別名都 308 回 /（query 保留），宿主 app 只從 / 出、一定帶宿主 CSP；空路段回 404
+  for (const alias of ["index", "index/", "index.html"]) {
+    const response = await fetch(new URL(`${alias}?state=x`, base), { redirect: "manual" });
+    assert.equal(response.status, 308, `/${alias} 應轉回 /`);
+    assert.equal(response.headers.get("location"), "/?state=x");
+  }
+  assert.equal((await fetch(`${base}/`)).status, 404, "// 應回 404");
+
   step("未登入：常駐下載連結打開下載頁——沒有正式版就說明並只給發佈頁，附安裝繞過說明與功能對照，關掉回原畫面");
   await page.goto(base);
   await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
@@ -58,7 +86,7 @@ try {
   step("PKCE 授權：回呼後網址清乾淨、金鑰只進 localStorage");
   await page.getByRole("button", { name: "用 OpenRouter 登入" }).click();
   await page.getByText("選一張角色卡開始").waitFor();
-  assert.ok(!/code=|tt_oauth=/.test(page.url()), `回呼參數沒清掉：${page.url()}`);
+  assert.ok(!/code=|state=/.test(page.url()), `回呼參數沒清掉：${page.url()}`);
   assert.equal(fake.state.exchanges.length, 1, "授權碼應只交換一次");
   assert.equal(await page.evaluate(() => localStorage.getItem("tt-web:openrouter-key")), E2E_KEY);
   await page.getByText("今日免費 40/50").waitFor();
@@ -396,7 +424,8 @@ try {
   await page.getByTestId("export-funnel").getByRole("button", { name: "知道了" }).click();
 
   step("卡片介面把自己導走：新頁送來的句子不收、那支介面換一支新的重掛（新 token）");
-  const sandboxFrame = page.frames().find((frame) => frame.url().endsWith("/sandbox.html"));
+  // Pages 會把 /sandbox.html 308 轉到 /sandbox
+  const sandboxFrame = page.frames().find((frame) => /\/sandbox(\.html)?$/.test(frame.url()));
   assert.ok(sandboxFrame, "找得到開場那支介面的 frame");
   const navFrom = fake.state.chatRequests.length;
   const framesBefore = await page.getByTestId("card-frontend").count();

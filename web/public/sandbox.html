@@ -14,6 +14,9 @@
     <meta name="referrer" content="no-referrer" />
     <script>
       (function () {
+        // 只在不透明來源（掛著 sandbox 且沒給 allow-same-origin）下收卡片；外站用一般 iframe 嵌這頁時來源是本站，
+        // 寫進來的腳本會讀得到本站儲存（含金鑰），所以什麼都不做、頁面留空。
+        if (window.origin !== "null") return;
         var host = window.parent;
         window.addEventListener("message", function receive(event) {
           if (event.source !== host) return;

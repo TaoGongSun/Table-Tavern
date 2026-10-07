@@ -1,13 +1,13 @@
 # web-version 計畫：網頁版引流入口
 
-交接檔：[handoffs/web-version.md](../handoffs/web-version.md)。查證日期一律 2026-10-07，行號以合 main 後的 `web-version` 分支（main 12bfb30）為準。
+交接檔：[handoffs/web-version.md](../handoffs/archive/web-version.md)。查證日期一律 2026-10-07，行號以合 main 後的 `web-version` 分支（main 12bfb30）為準。
 
 ## 一、範圍
 
 ### 1.1 已裁決（照抄）
 - 網頁版是免費引流入口、玩完引導下載桌面版；桌面版是主力。〔作者裁決 2026-10-07〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用，見「二之二、格式契約」。〔作者裁決 2026-10-07〕本計畫把「通用」落成：卡片兩端可用、網頁桌檔可匯入桌面；不做桌面桌檔回網頁（D15）。
-- 導流與待議各項（D1–D41）的拍板見第五節。〔作者裁決 2026-10-07〕
+- 導流與待議各項（D1–D43）的拍板見第五節。〔作者裁決 2026-10-07〕
 - 與桌面版分開做、只保留基礎功能、不常更新。〔作者裁決 2026-09-30〕
 - 功能架構與頁面美感全新設計；只沿用使用者看不到的底層功能。〔作者裁決 2026-09-30〕
 - 重構按鈕、快取命中／用量頁不進網頁版。〔作者裁決 2026-09-30〕
@@ -39,7 +39,7 @@
 - `scripts/check-structure.mjs` 目前只走 `src/`（第 12 行 `SRC`）：改成同一套規則也走 `web/src/`，根層允許清單分開列。
 - `scripts/verify.mjs` 加 web 步驟（web 的 vitest＋build）；`.github/workflows/verify.yml` 多一步 `npm ci --prefix web`。
 - `docs/STRUCTURE.md` 補一節「web/」。
-- 部署 workflow 在包 9 才建，手動觸發（D12）。
+- 部署在包 9 才設，手動觸發（D12、D42）。
 
 ### 2.3 資料流
 - 瀏覽器直連 `openrouter.ai/api/v1`（CORS `*`，見 4.1）；沒有自家後端、沒有代理。
@@ -49,11 +49,11 @@
 - 存檔：IndexedDB，啟動時請求 `navigator.storage.persist()`；Safari 可能清資料要在存檔處講清楚並提供匯出。事實：WebKit ITP 對 7 天沒互動的網站刪掉 IndexedDB、localStorage 等腳本可寫儲存，加到主畫面（iOS）／Dock（macOS）的網頁 App 豁免（https://webkit.org/tracking-prevention/）——存檔與金鑰（D7）都受影響。
 
 ### 2.4 安全
-- **PKCE**：`code_challenge_method=S256`；每次授權產一次性隨機 `state`，與 verifier 存同一分頁（sessionStorage），回呼驗過即消耗。回呼頁順序寫死：回呼參數（含錯誤、取消）讀進記憶體→立刻 `history.replaceState` 清網址→驗 state→交換一次；清理前不載任何第三方資源；全站 `<meta name="referrer" content="no-referrer">`。理由：授權碼與 state 不能經 Referer、歷史紀錄或重跑外洩。
+- **PKCE**：`code_challenge_method=S256`；每次授權產一次性隨機 `state`，與 verifier 存同一分頁（sessionStorage），回呼驗過即消耗。`state` 走授權網址的 `state` 參數、由 OpenRouter 原樣帶回；`callback_url` 只給 origin＋pathname（OpenRouter 導回時會丟掉它自己的 query，站上實測）。回呼頁順序寫死：回呼參數（含錯誤、取消）讀進記憶體→立刻 `history.replaceState` 清網址→驗 state→交換一次；清理前不載任何第三方資源；全站 `<meta name="referrer" content="no-referrer">`。理由：授權碼與 state 不能經 Referer、歷史紀錄或重跑外洩。
 - **卡片 iframe 橋接**：照桌面版 `sandbox="allow-scripts"`（不給 `allow-same-origin`），iframe 是不透明來源，讀不到主頁儲存。宿主收 postMessage 一律先核 `event.source === 目前 iframe 的 contentWindow`，再核文件 token、桌世代、資料形狀，不符就丟。驗收含舊 iframe 殘留訊息與外部視窗偽造訊息。理由：不透明來源的 `event.origin` 是 `"null"`，只能靠來源視窗與 token 認人。
 - **宿主頁不外連**：宿主頁只連 openrouter.ai、api.github.com；卡片文字、顯示 regex 結果與模型輸出裡的外部圖片在渲染時換成替代文字、不留網址（`web/src/shared/ui/host-markdown.ts`，只載 data: 與同源），CSP `img-src 'self' data:` 是第二層。理由：顯示 regex 能把 `{{lastUserMessage}}` 塞進圖片網址，一載圖就外送對話。卡片 iframe（包 6）內的外連另有提示（下一條）。
 - **卡片腳本外連**：卡片腳本可以對外 fetch，等於能把它讀得到的對話內容送出去；金鑰拿不到，但對話內容會外流。寫進風險欄，並在第一次打開卡片介面時提示玩家。
-- **CSP 分兩份**：宿主頁不載第三方 JS（只連 openrouter.ai、api.github.com）；卡片另用較寬的政策（卡片常載外部字型與圖片）。srcdoc 文件會繼承宿主 CSP，額外政策只能收緊不能放寬（CSP3〈Initialize a Document's CSP list〉的繼承規則），blob:／data:／about:blank 同樣繼承，所以「宿主嚴、卡片寬」不能靠 srcDoc 做。做法：卡片 iframe 載入 `web/` 內一份獨立靜態沙盒文件（例如 `sandbox.html`），它自帶寬鬆 CSP（meta 或 `_headers`），iframe 仍掛 `sandbox="allow-scripts"`、不給 `allow-same-origin`（維持不透明來源）；卡片內容與沙盒內建庫由宿主 postMessage 送進去，沙盒文件再寫入自己的文件。宿主若用站點級 CSP 標頭，規則必須排除 `sandbox.html` 這個路徑：被站點標頭罩住時，它自己的 meta 只能再收緊，寬政策不會生效；卡片那份寬政策由 `sandbox.html` 自己的回應標頭帶。託管定為 Cloudflare Pages（D1），用 `_headers` 按路徑設：宿主 CSP 標頭排除 `sandbox.html`，卡片寬政策由 `sandbox.html` 那條路徑的標頭單獨帶。
+- **CSP 分兩份**：宿主頁不載第三方 JS（只連 openrouter.ai、api.github.com）；卡片另用較寬的政策（卡片常載外部字型與圖片）。srcdoc 文件會繼承宿主 CSP，額外政策只能收緊不能放寬（CSP3〈Initialize a Document's CSP list〉的繼承規則），blob:／data:／about:blank 同樣繼承，所以「宿主嚴、卡片寬」不能靠 srcDoc 做。做法：卡片 iframe 載入 `web/` 內一份獨立靜態沙盒文件（例如 `sandbox.html`），它用自己的 meta 帶寬鬆 CSP，iframe 仍掛 `sandbox="allow-scripts"`、不給 `allow-same-origin`（維持不透明來源）；卡片內容與沙盒內建庫由宿主 postMessage 送進去，沙盒文件再寫入自己的文件。宿主若用站點級 CSP 標頭，規則必須排除 `sandbox.html` 這個路徑：被站點標頭罩住時，它自己的 meta 只能再收緊，寬政策不會生效。託管定為 Cloudflare Pages（D1），用 `_headers` 按路徑設：Pages 會把多條規則命中的同名標頭用逗號併成多份政策，所以 CSP 不掛 `/*`——宿主 CSP 只給 `/`（站內只有這個宿主頁、只用 hash 路由；有 404.html，Pages 不做 SPA 退回），`sandbox.html`（與 Pages 轉成的 `/sandbox`）只給 `frame-ancestors 'self'`，卡片寬政策由 `sandbox.html` 自帶的 meta 給。沙盒文件只在不透明來源（`window.origin === "null"`）下收卡片：外站用一般 iframe 嵌它時來源是本站，寫進去的腳本會讀得到金鑰，所以除了 frame-ancestors 擋外站嵌入，文件本身也拒收。
 - **顯示安全**：卡片 metadata（名稱、描述、作者註記）與模型輸出在宿主頁一律走安全渲染（DOMPurify，`src/shared/ui/story-markdown.ts:73`），不直接塞 HTML。
 - **測試斷言**：匯出存檔的測試要斷言沒有金鑰欄位、沒有 `sk-or-` 字串。
 
@@ -120,7 +120,14 @@
 | 6 卡片介面 | regex 顯示腳本→整頁介面→沙盒 iframe（橋接照 2.4）；讀訊息墊片、MVU 讀寫墊片、parseMessage Worker、卡片 localStorage 墊片；宿主端變數語意改寫成 TS（4.1 的 message_vars 系列），照契約進存檔，補 MVU 卡的桌面來回測試。DRM／雲端載入器卡照桌面版回報不支援。介面照酒館助手畫在各則訊息裡，不做桌面版的覆蓋層〔模型判斷·未裁決〕；character 層新開時取卡上酒館助手的 variables、script 層取各腳本的 data〔模型判斷·未裁決〕。 | Opus | 2、4 | 宿主端變數語意改寫成 TS 的工作量可能被低估；卡片腳本外連會外送對話內容（2.4）。桌面版巨集只換 `{{user}}`／`{{char}}`，卡欄位的 `{{getvar}}` 不讀 chat 層：網頁版變數接進桌面版提示要一起看（桌面版既有限制，列給作者）。 |
 | 7 導流全套 | 下載頁（版本、各平台檔、Mac／Windows 未簽章繞過說明、功能對照表）、各時機的下載提示（D10）、額度用完文案只導向下載（D11）、找卡清單資料檔（五站連結＋一行 18 禁標示，D6）。 | Sonnet | 1、4 | |
 | 8 十語系 | 十語系字典與字典體檢、範例卡各語系（D5）、SEO／分享卡片的 meta。字典體檢寫成 web vitest（鍵集合、佔位符、單複數語法），不另寫 `check-i18n` 腳本——web 沒有後端訊息碼與按鈕寬度表要對，vitest 已在 verify 裡。 | Sonnet | 1–7 | |
-| 9 上線 | 部署 workflow、正式網域實開驗證（PKCE 回呼、CORS、CSP、下載連結）。只在「公開前門檻」全到位後做。 | Sonnet | 1–8；作者先開好 Cloudflare 帳號並接上 repo | |
+| 9 上線 | 部署設定（Cloudflare Pages Git 連接，D42）、正式網域實開驗證（PKCE 回呼、CORS、CSP、下載連結）。已封板、可部署（站上實開驗收待作者手動部署後由主線做，清單見交接檔）；正式公開等「公開前門檻」結案。步驟見下方「部署與上線檢查」。 | Sonnet | 1–8；作者先開好 Cloudflare 帳號 | |
+
+### 部署與上線檢查（包 9）
+- 已備：`web/site-headers.ts` 建置時寫出 `dist/_headers`（宿主 CSP 只給 `/`、不放 meta；`/sandbox`、`/sandbox.html` 只給 `frame-ancestors 'self'`；`/assets/*` 一年 immutable，其餘用 Pages 預設 `max-age=0, must-revalidate`）；`web/public/404.html` 讓缺檔回 404（不退回首頁，免得缺檔資產拿到首頁 HTML 又被長快取）。不需要 `_redirects`（下載頁走 `#download`，沒有路徑路由）。端點：只有 e2e 模式吃 `VITE_TT_*`，正式建置一律官方網址。OAuth 回呼網址＝執行時的 `location.origin`，OpenRouter 不必預先登記。
+- Cloudflare Pages 專案（Git 連接，D42）：專案 `table-tavern`、正式分支 `web-version`（結案後改 `main`）、root directory `web`、build command `npm ci --prefix .. && npm run build`、output `dist`、環境變數 `NODE_VERSION=26`；網址 `table-tavern.pages.dev`（D43）。Pages 在 root（`web/`）有 lockfile 就自動裝 web 的依賴，但 `@desktop/*` 共用的桌面版模組要根目錄的 mathjs、dompurify、marked 等，所以 build command 先 `npm ci --prefix ..` 裝根目錄依賴。
+- 手動部署（D12）：建好後在專案 Settings › Builds 關掉正式分支自動部署、Preview branches 設 None；每次上線由作者在儀表板 Deployments 對正式分支手動建立部署。
+- 主線可機械驗：`cd web && npm run e2e`（產物照 Pages 行為託管、套 `_headers`）、`npm run smoke:dist`（正式建置：CSP 用官方端點、宿主開站無 CSP 攔截、外連被擋、沙盒行內腳本與 eval 可跑）。
+- 部署後實開（要真網域）：OpenRouter 授權回呼成功並清網址、模型清單與 `/key` 讀得到（CORS）、回應標頭與上面一致、卡片介面掛得起來、下載頁版本與連結。
 
 ### 公開前門檻（公開前要到位，不是開工前）
 - 有可下載的桌面版 release：repo 目前零 release，`releases/latest` 回 404（4.5）；靠 [release-2-ci-windows](../tasks/release-2-ci-windows.md) 發出首個正式版。沒有 release 時下載鈕只能退 releases 頁，引流斷在最後一步。
@@ -246,7 +253,7 @@
 - **D9 試打**：不試打。理由：不額外佔每日免費次數。
 - **D10 下載提示**：固定節點提示（額度用完、匯出存檔、碰到桌面版才有的功能），加上頁首常駐、隨時可點的下載連結——常駐連結是裁決內容，不是可省細節。理由：干擾少、隨時找得到。
 - **D11 額度用完文案**：只導向下載。理由：引流到桌面版。
-- **D12 部署**：手動觸發 workflow。理由：CI 打包等作者說了才觸發。
+- **D12 部署**：手動觸發 workflow。理由：CI 打包等作者說了才觸發。落實方式＝Cloudflare 儀表板手動部署（D42）。
 - **D13 桌面版匯入入口**：併進既有匯入、依檔案內容自動辨識。理由：玩家不用找新按鈕。
 - **D14 首發語言**：十語系。理由：與桌面版一致。
 - **D15 反向通用**：不做桌面→網頁。理由：桌面桌一桌多角色、GM、多幕、狀態樹，對不回一桌一卡。
@@ -300,12 +307,17 @@
 - **D40 範例卡角色名在地化**：各語系用當地寫法（瑟拉／Sera／セラ／세라／Сера），故事內容照各語系改寫。理由：外語玩家讀起來自然。
 - **D41 十語系字典一起打包**：全部字典與範例卡隨主程式載入（gzip 約多 50 KB），換語系即時生效。理由：實作簡單、切換無延遲，不必處理延後載入失敗。
 
-## 六、驗收方式（候選，未安裝）
+### 包 9 拍板（D42–D43）
+全部〔作者裁決 2026-10-07〕。
+- **D42 部署方式**：Cloudflare Pages 用 Git 連接，關掉正式分支自動部署、Preview branches 設 None，每次上線由作者在儀表板手動部署，不走 GitHub Actions；設定見「部署與上線檢查」。理由：設定在儀表板點完、不用管 API token 與 secrets，關掉自動部署就守得住 D12。
+- **D43 正式網域**：先用 `table-tavern.pages.dev`，要自訂網域再加。理由：不用買網域、立刻能用；換網域不用改程式（OAuth 回呼取執行時網址），只是舊網域瀏覽器裡的存檔與金鑰帶不過去。
 
-網頁版沒有測試通道，改用以下機械驗證：
+## 六、驗收方式
+
+網頁版沒有測試通道，改用以下機械驗證（都已落地）：
 - **vitest（web/ 自己一份）**：純邏輯——卡片解析、世界書觸發（照 ST 行為的表格測試）、SSE 解析（含只有思考沒有 content 的串流）、選模與換模、存檔格式來回、巨集、匯出無金鑰斷言。
-- **Playwright 端對端**：根目錄已有 `playwright` 1.55.1 與 `@vitest/browser-playwright`（`package.json` devDependencies、`vitest.webkit.config.ts`）。對 `vite preview` 跑 Chromium＋WebKit；OpenRouter 用 `page.route` 攔截回假 SSE（格式可比照 `scripts/harness-fake-openrouter.mjs`），零額度驗：授權回呼（含 state 不符、取消、重整不重換）、串流、停止、停滯、換模、額度用完導流面板、下載連結、匯出存檔、卡片介面 iframe 內按鈕寫入 MVU、舊 iframe 與外部視窗偽造 postMessage 被丟棄。
+- **Playwright 端對端**（`cd web && npm run e2e`，不進 verify）：`vite build --mode e2e` 的產物由 `web/e2e/static-server.mjs` 照 Cloudflare Pages 行為託管（套建置產生的 `_headers`），OpenRouter 與 GitHub API 換成本機假端點 `web/e2e/fake-endpoints.mjs`，只跑 WebKit（Chromium 未跑）；正式建置另有 `npm run smoke:dist`（官方端點的 CSP、外連被擋、沙盒行內腳本可跑）。零額度驗：授權回呼（含 state 不符、取消、重整不重換）、串流、停止、停滯、換模、額度用完導流面板、下載連結、匯出存檔、卡片介面 iframe 內按鈕寫入 MVU、舊 iframe 與外部視窗偽造 postMessage 被丟棄。
 - **卡片契約黃金檔**（驗收項）：同一張複合卡由 Rust 測試與 web vitest 各算出「卡片正規化檢視」，對同一份黃金檔比對；CI 用進 repo 的自製複合卡，本機加跑 `TestCards/` 實卡（含世界書卡，驗分路不漏世界書）。
 - **桌檔來回測試**（驗收項）：包 3 用手寫契約 fixture、包 4 起用網頁版真匯出的存檔，cargo 測試與桌面版測試通道（`node scripts/harness.mjs`）匯入後核對逐字稿、世界書、MVU 變數，並照包 3 驗收項（短／長 fixture、MVU 三種情況、失敗不留半桌）送句確認能接著玩。
-- **測試用模型**〔作者裁決 2026-10-07〕：桌面版那頭（包 3 匯入後續玩、來回測試）用測試通道＋claude CLI Sonnet；網頁端機制測試用本機假端點（比照 `scripts/harness-fake-openrouter.mjs`）；OpenRouter 金鑰目前無額度（403），真免費模型實送等有額度再補，每包報告註明「真模型未實送」。
-- 上線後：部署網址實開一次，確認 PKCE 回呼網址、CORS、CSP、下載連結在正式網域都通。
+- **測試用模型**〔作者裁決 2026-10-07〕：桌面版那頭（包 3 匯入後續玩、來回測試）用測試通道＋claude CLI Sonnet；網頁端機制測試用本機假端點（比照 `scripts/harness-fake-openrouter.mjs`）；真免費模型在站上實送成功（忙線自動換模後回覆）。
+- 上線後：部署在 `table-tavern.pages.dev` 實開，PKCE 回呼、CORS、CSP、下載連結、卡片介面、自動存檔都通（Chrome）；手機由作者自行看。

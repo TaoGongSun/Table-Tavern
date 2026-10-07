@@ -40,11 +40,11 @@ Rust 側相反：新 module 先用單檔 `foo.rs`，等它真的長出兩個以�
 
 ## 網頁版 `web/`
 
-網頁版是獨立的 Vite 專案：自己一份 `package.json`、lockfile、`tsconfig.json`、`vite.config.ts`、`vitest.config.ts`（兩份設定共用的建置外掛也放 `web/` 根，例：`mvu-engine-plugin.ts`），建置產物 `web/dist/` 是純靜態檔；`web/public/` 放原樣複製的靜態檔（卡片介面的 `sandbox.html`）。
+網頁版是獨立的 Vite 專案：自己一份 `package.json`、lockfile、`tsconfig.json`、`vite.config.ts`、`vitest.config.ts`（建置外掛也放 `web/` 根，例：`mvu-engine-plugin.ts`、產生部署標頭 `_headers` 的 `site-headers.ts`），建置產物 `web/dist/` 是純靜態檔；`web/public/` 放原樣複製的靜態檔（卡片介面的 `sandbox.html`、`404.html`）。
 
 - `web/src/` 套用與 `src/` 同一套規則（features 落點、`shared/` 條件、禁止事項、命名），根層入口同樣只放 `App.tsx`、`App.css`、`main.tsx`、`vite-env.d.ts`；`check-structure` 兩棵樹都檢查。
 - 桌面版的純 TS 模組用 `@desktop/*` 路徑別名直接 import，不複製。只引不碰 Tauri（`@tauri-apps/*`、`invoke`）的模組；要引的模組若開始依賴 Tauri，先拆出純邏輯再引。
-- 端對端測試放 `web/e2e/`（不在 `web/src/`、不進 verify）。
+- 端對端測試放 `web/e2e/`（不在 `web/src/`、不進 verify），含照 Cloudflare Pages 行為託管產物的 `static-server.mjs` 與正式建置的 `smoke-dist.mjs`。
 - 根目錄的 vitest 排除 `web/**`，網頁版測試由 verify 的 web 步驟跑。
 
 ## 禁止事項
