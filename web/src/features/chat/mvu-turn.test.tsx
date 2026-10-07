@@ -8,6 +8,7 @@ import { runEval } from "@desktop/features/card-interface/mvu/card-mvu-parse-eng
 import { parseWebSave } from "@desktop/shared/contracts/web-save/web-save";
 import { playCardFromValue } from "../cards/play-card";
 import { failureFromHttp } from "../openrouter/api-failure";
+import { MemoryStorage } from "../openrouter/memory-storage";
 import { FailoverRuntime } from "../openrouter/failover";
 import { runSmartCall, type CallPlan } from "../openrouter/smart-call";
 import { streamChat, type ChatMessage, type StreamResult } from "../openrouter/stream-chat";
@@ -38,6 +39,10 @@ beforeAll(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // 失敗的測試也別把卡住的值解析與換掉的全域留給下一條
+  vi.unstubAllGlobals();
+  gate.wait = null;
+  gate.onRun = null;
 });
 
 const MVU_SCRIPT = { type: "script", enabled: true, name: "MVU", id: "mvu-1", content: "import 'https://example.invalid/MagVarUpdate/bundle.js';", data: {} };
@@ -369,6 +374,35 @@ describe("an MVU table under races and edits", () => {
     expect(firstShot).toEqual([7, "卡片先寫的"]);
     expect([chat.setup.variables.local.values.written, chat.setup.variables.global.values.early]).toEqual([7, "卡片先寫的"]);
     delete chat.setup.variables.global.values.early;
+    await unmount();
+  });
+
+  it("leaving the page while the reply's values are being parsed keeps the draft for the reload", async () => {
+    vi.stubGlobal("sessionStorage", new MemoryStorage());
+    const unmount = await mount({ card: mvuCard(INITVAR), userName: "旅人", openingIndex: 0 });
+    let release!: () => void;
+    gate.started = 0;
+    gate.wait = new Promise((resolve) => (release = resolve));
+    replies = ["<UpdateVariable>\n_.add('金幣', -20);\n</UpdateVariable>買了酒"];
+    await act(async () => chat.setInput("買酒"));
+    let running!: Promise<void>;
+    await act(async () => {
+      running = chat.send();
+    });
+    await waitFor(() => gate.started > 0);
+    const draftKey = () => Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index)).find((key) => key?.startsWith("tt-web:pending-input:"));
+    expect(draftKey()).toBeDefined();
+    await act(async () => {
+      window.dispatchEvent(new Event("beforeunload"));
+    });
+    gate.wait = null;
+    await act(async () => {
+      release();
+      await running;
+    });
+    expect(sessionStorage.getItem(draftKey()!)).toBe("買酒");
+    // 作廢的回合不落地
+    expect(chat.entries.some((entry) => entry.text.includes("買了酒"))).toBe(false);
     await unmount();
   });
 

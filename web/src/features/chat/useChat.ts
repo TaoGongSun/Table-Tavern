@@ -154,6 +154,14 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
   const writeSaveRef = useRef<() => Promise<boolean>>(async () => true);
   /** 這桌已經佔了一格存檔 */
   const slotRef = useRef(game.resume !== undefined);
+  /** 整頁正在離開（重新整理、關分頁）：作廢的回合不收尾，也不再自動存檔，存檔停在上一個完整回合（D28） */
+  const leavingRef = useRef(false);
+  /**
+   * D28 草稿的流水號：每記一次回合中的那一句就推進；回合落地時記下它，等含那一回合的存檔寫成才清草稿（寫成之前
+   * 重新整理，存檔還是上一回合，那一句要能放回輸入框）。
+   */
+  const draftRef = useRef(0);
+  const landedDraftRef = useRef(0);
 
   useEffect(() => {
     if (game.resume) forgetPendingInput(saveId);
@@ -168,6 +176,30 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
     },
     [],
   );
+  // 重新整理、關分頁（D28）：瀏覽器在 pagehide 之前就中斷請求、腳本還會跑一下，那個失敗結果不能當成回合收尾——
+  // 否則草稿被清掉、半截回合被自動存進去。整頁要離開（beforeunload）就比照卸載作廢在途回合、停掉自動存檔；
+  // 進往返快取（persisted）的頁面之後還會回來，pagehide 那時不動，回來時（pageshow）恢復自動存檔
+  useEffect(() => {
+    const leave = () => {
+      leavingRef.current = true;
+      generationRef.current += 1;
+      abortRef.current?.abort();
+    };
+    const hide = (event: PageTransitionEvent) => {
+      if (!event.persisted) leave();
+    };
+    const show = (event: PageTransitionEvent) => {
+      if (event.persisted) leavingRef.current = false;
+    };
+    window.addEventListener("beforeunload", leave);
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("beforeunload", leave);
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+    };
+  }, []);
 
   /**
    * 一個回合：送出前查今日免費次數 → `begin` 把逐字稿改成這輪的起點（回 null＝不送）→ 選模串流 → 收尾。
@@ -178,6 +210,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
       const apiKey = session.apiKey;
       if (!apiKey || busyRef.current || quotaBlocksSending(session.quota)) return;
       busyRef.current = true;
+      // 離開被取消（頁面沒真的換掉）後玩家又開口：恢復自動存檔
+      leavingRef.current = false;
       const controller = new AbortController();
       abortRef.current = controller;
       const generation = (generationRef.current += 1);
@@ -208,6 +242,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         if (!started) return;
         const { pending } = started;
         // 回合中的那一句不在存檔裡：另記草稿，重新整理後放回輸入框（D28）
+        const draft = (draftRef.current += 1);
         if (pending.kind === "send") rememberPendingInput(saveId, pending.rawInput);
         const input = pending.kind === "send" ? pending.rawInput : "";
         setEntries(started.before);
@@ -299,9 +334,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         if (outcome.kind === "error" && outcome.display === NO_FREE_MODEL && overflowSeen) {
           outcome = { ...outcome, display: PROMPT_EXCEEDS_CONTEXT };
         }
-        // 畫面已卸載：結果不再寫回（草稿留著，接著玩時放回輸入框）
+        // 畫面已卸載或整頁要離開：結果不再寫回（草稿留著，接著玩時放回輸入框）
         if (generationRef.current !== generation) return;
-        forgetPendingInput(saveId);
 
         const before = dispatched.turn?.entries ?? started.before;
         const result = resolveTurn(before, pending, outcome, newId, (text) => replyText(setup, before, text));
@@ -324,6 +358,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
           }
         }
         setEntries(keepLatestVars(landed, entriesRef.current));
+        // 回合落地：草稿等含這一回合的存檔寫成才清（沒有存檔庫就沒有可退的存檔，現在就清）
+        landedDraftRef.current = draft;
+        if (!saves) forgetPendingInput(saveId);
         setStreaming("");
         setFailover(outcome.failover);
         if (result.restoreInput !== null) setInput(result.restoreInput);
@@ -337,7 +374,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         setBusy(false);
       }
     },
-    [session, setup, saveId, worldInfo, mvu],
+    [session, setup, saveId, worldInfo, mvu, saves],
   );
 
   const submit = useCallback(
@@ -420,6 +457,10 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
   /** 寫一次；回 true＝這一筆寫成了（沒有存檔庫也算，存不了就不擋玩）。 */
   const writeSave = useCallback((): Promise<boolean> => {
     if (!saves) return Promise.resolve(true);
+    // 整頁要離開：存檔停在上一個完整回合（作廢回合的半截不存）
+    if (leavingRef.current) return Promise.resolve(false);
+    // 這一筆取樣時已落地的回合：寫成了，那一回合的草稿就可以清（之後又開了新回合、記了新草稿就不清）
+    const landedDraft = landedDraftRef.current;
     const hadSlot = slotRef.current;
     slotRef.current = true;
     const attempt = (attemptRef.current += 1);
@@ -446,7 +487,10 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
       .then(() => saves.put(meta, save))
       .then(() => writeGlobal(global))
       .then(
-        () => settle(false),
+        () => {
+          if (landedDraft !== 0 && landedDraft === draftRef.current) forgetPendingInput(saveId);
+          return settle(false);
+        },
         () => settle(true),
       );
     writesRef.current = result;
