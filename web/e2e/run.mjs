@@ -3,7 +3,8 @@
 // （契約檢查、用桌面版繼續導流）→匯出 ST 聊天檔→存檔區刪除與匯入→匯入卡（錯誤說明、選開場白、玩家名、
 // ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載連結→登出。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
-// TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）。
+// TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）；
+// TT_WEB_EXPORT_WI_OUT 同理，另存帶世界書觸發狀態的那一份。
 import assert from "node:assert/strict";
 import { copyFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,7 @@ import { E2E_KEY, startFake } from "./fake-endpoints.mjs";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CARDS = fileURLToPath(new URL("../../src/shared/contracts/card-view/", import.meta.url));
 const SAVES = fileURLToPath(new URL("../../src/shared/contracts/web-save/", import.meta.url));
+const E2E_DIR = fileURLToPath(new URL("./", import.meta.url));
 const RELEASES_PAGE = "https://github.com/TaoGongSun/Table-Tavern/releases";
 
 const fake = await startFake();
@@ -198,7 +200,7 @@ try {
   await page.getByRole("button", { name: "開始這張卡" }).click();
   await page.getByTestId("message-char").getByText("深夜，灰燼旅店的莫拉 擦著最後一個杯子。").waitFor();
 
-  step("ST 提示組裝：main→description→personality→scenario→範例→歷史（depth_prompt）→post_history_instructions");
+  step("ST 提示組裝：main→世界書前→description→personality→scenario→世界書後→範例→歷史（依深度插入）→post_history_instructions");
   fake.state.chat = "numbered";
   const sendFrom = fake.state.chatRequests.length;
   await page.getByPlaceholder("輸入你的行動或對話…").fill("*揮手* 晚安");
@@ -206,9 +208,13 @@ try {
   await page.getByText(`第 ${sendFrom + 1} 次回覆`).waitFor();
   const sent = fake.state.chatRequests.at(-1).messages;
   assert.equal(sent[0].content, "Write 灰燼旅店的莫拉's next reply in a fictional chat between 灰燼旅店的莫拉 and 旅人. 一律用繁體中文。");
-  assert.deepEqual(sent[5], { role: "system", name: "example_user", content: "還有房間嗎？" });
-  assert.deepEqual(sent.slice(-5), [
+  // 卡內世界書：「灰燼」命中（世界書前）、常駐條目（世界書後）、「莫拉」命中的依深度插入（深度 3）
+  assert.deepEqual(sent[1], { role: "system", content: "灰燼旅店在王都南門外，地窖藏著走私酒。" });
+  assert.deepEqual(sent[5], { role: "system", content: "這是一個魔法逐漸消失的世界。" });
+  assert.deepEqual(sent[7], { role: "system", name: "example_user", content: "還有房間嗎？" });
+  assert.deepEqual(sent.slice(-6), [
     { role: "system", content: "[Start a new Chat]" },
+    { role: "system", content: "莫拉年輕時當過傭兵。" },
     { role: "system", content: "記得 灰燼旅店的莫拉 說話總帶一句「親愛的」。" },
     { role: "assistant", content: "深夜，灰燼旅店的莫拉 擦著最後一個杯子。" },
     { role: "user", content: "（揮手） 晚安" },
@@ -241,6 +247,45 @@ try {
   ]);
   assert.equal(pngDownload.suggestedFilename(), "灰燼旅店的莫拉.png");
   assert.ok(readFileSync(await pngDownload.path()).equals(readFileSync(`${CARDS}composite.png`)), "原 PNG 被改了");
+
+  step("卡內世界書：關鍵字觸發、sticky 跨回合、觸發狀態進網頁存檔");
+  await page.getByRole("button", { name: "← 換一張卡" }).click();
+  await page.getByTestId("card-file").setInputFiles(`${E2E_DIR}world-info-card.json`);
+  await page.getByRole("heading", { name: "雪嶺嚮導" }).waitFor();
+  await page.getByRole("button", { name: "開始這張卡" }).click();
+  await page.getByTestId("message-char").getByText("要翻山就早點睡。").waitFor();
+  fake.state.chat = "numbered";
+  const wiTurn = async (line) => {
+    const from = fake.state.chatRequests.length;
+    await page.getByPlaceholder("輸入你的行動或對話…").fill(line);
+    await page.getByRole("button", { name: "送出" }).click();
+    await page.getByText(`第 ${from + 1} 次回覆`).waitFor();
+    return fake.state.chatRequests.at(-1).messages.map((message) => message.content);
+  };
+  const firstWi = await wiTurn("聽說昨天雪崩了");
+  assert.ok(firstWi.includes("雪崩過後三天內山路封閉。"), "關鍵字命中的條目要進提示");
+  assert.ok(firstWi.includes("嚮導從不在夜裡出發。"), "常駐條目要進提示");
+  assert.ok(!firstWi.includes("山腰有狼群。"), "沒命中的不進");
+  const secondWi = await wiTurn("那我們等兩天");
+  assert.ok(secondWi.includes("雪崩過後三天內山路封閉。"), "sticky：沒再提到也照樣帶著");
+  const [wiDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "匯出存檔" }).click()]);
+  const wiPath = await wiDownload.path();
+  const wiSave = parseWebSave(readFileSync(wiPath, "utf8"));
+  assert.ok(wiSave.ok, `世界書存檔沒過契約檢查：${JSON.stringify(wiSave.error)}`);
+  assert.deepEqual(wiSave.save.world_info.entries, [
+    { id: "wi-0", key: "0" },
+    { id: "wi-1", key: "1" },
+    { id: "wi-2", key: "2" },
+  ]);
+  // 第 2 則（玩家第一句）觸發：sticky 3、cooldown 2；第 4 則時冷卻到期、sticky 照樣觸發又記一筆冷卻
+  assert.deepEqual(wiSave.save.world_info.timed, {
+    sticky: { "wi-0": { start: 2, end: 5, protected: false } },
+    cooldown: { "wi-0": { start: 4, end: 6, protected: false } },
+  });
+  assert.equal(wiSave.save.world_info.last_message_id, wiSave.save.messages[3].id);
+  if (process.env.TT_WEB_EXPORT_WI_OUT) copyFileSync(wiPath, process.env.TT_WEB_EXPORT_WI_OUT);
+  await page.getByTestId("export-funnel").getByRole("button", { name: "知道了" }).click();
+  fake.state.chat = "normal";
 
   step("今日免費用完：送出前查 /key，跳導流面板、原文留在輸入框");
   fake.state.remaining = 0;

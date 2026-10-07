@@ -14,7 +14,7 @@
 - 支援卡片介面（原卡直玩的介面渲染與 MVU 變數），盡量做到跟 ST 一樣。〔作者裁決 2026-10-04〕
 - 要有「去哪裡找卡」的導流；爬別站、另存別站卡的站（JannyAI、CharaVault、DeepSeek Tavern 等）不收。〔作者裁決 2026-09-30〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用。〔作者裁決 2026-10-07〕
-- D1–D29 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
+- D1–D32 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
 
 ## 現況
 - **包 1（最小縱切）封板**：commit be1093d..0de69dd，Sol、Grok 驗收通過，主線 verify 12 步綠、e2e 過。
@@ -42,16 +42,24 @@
   - 變數表上限兩端共用 `src/shared/contracts/vars-table.ts`↔`src-tauri/src/data/message_vars/json.rs`（邊界案例 `vars-table-boundary.json`）；卡片寫入原文或緊湊寫法任一通過，存檔的表只量緊湊寫法。時間兩端都驗日曆存在。`VariableScope.written` 記這桌寫過的鍵。
   - 來回測試：e2e 帶 `TT_WEB_EXPORT_OUT` 另存的真匯出 `src/shared/contracts/web-save/web-export.json`，cargo `a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer`；測試通道 claude Sonnet 從介面匯入後送一句有接續回覆（約 0.011 美元）。ST 聊天變數只落桌面版 chat 層檔案，桌面版的 MVU 表與提示內的變數等包 6〔模型判斷·未裁決〕。
   - D27–D29 已裁決（計畫第五節）。未驗：Chromium、手機實機、真 OpenRouter（403）；世界書觸發狀態（包 5）、卡片 storage 與 MVU 種子（包 6）屆時各補來回測試。
-- **包 4b（上下文預算）實作完、Sol r2／Grok r2 通過**：commit d3d475e、f1e201f。估算器方案 D30 等作者拍板（B 現方案：ST 計數結構＋逐欄位 guesstimate／A：打包真 tokenizer）；拍板前不改實作。
+- **包 4b（上下文預算）封板**：commit d3d475e、f1e201f，Sol r2／Grok r2 通過。估算器照 D30：ST 計數結構＋逐欄位 guesstimate，可替換。
   - `web/src/features/sillytavern/tokens.ts`：ST 計數結構（依 `architecture.tokenizer`＋模型 id 選 tiktoken／HF／sentencepiece 計法、每則開銷、name、前端 -2），文字換 token 是可替換的 `TextTokens`（目前 guesstimate）。包 5 的 WI 預算沿用它。
   - `chat/prompt.ts` 照 populateChatCompletion 裁切：預留 3、固定段落先佔（佔不下 `overflow`）、[Start a new Chat] 先預約、歷史新到舊邊代換邊放、剩下放範例。`useChat` 每支模型照自己的上限組一次（memo），`FreePool.plan(holds)` 只挑放得下固定段落的；穩定模型只因上限不夠被篩掉→`AI_PROMPT_EXCEEDS_CONTEXT`。平台 400／413 說太長→`AI_CONTEXT_TOO_LONG`（同桌面版 context_overflow）。
   - 測試：`chat/context-budget.test.ts`（表格，tiktoken 與 Qwen／DeepSeek 兩族）、`chat/context-limit.test.tsx`（選模、換模重算、平台拒收、真 FreePool）。未驗：真模型（403）、估算與真 tokenizer 的落差。
+- **包 5（世界書觸發）封板**：commit 6eb4ce4..3c812a5，Sol r3、Grok r3 驗收通過，主線 verify 12 步綠、e2e 過。
+  - `web/src/features/sillytavern/world-info-book.ts`：卡內 `character_book` → ST 條目（陣列形照 convertCharacterBook、物件形照 ST 世界書檔預設、@@ 裝飾）；條目先後照 ST 載入（`Object.keys`：陣列形以 `entry.id` 當鍵，整數鍵由小到大、重複 id 後蓋前；物件形照原鍵序），再照 order 穩定排序；穩定 ID `wi-<契約 key>`。
+  - `world-info-scan.ts`：checkWorldInfo（掃描深度、主鍵／正則鍵＋無效正則當字面、次要鍵四邏輯、全字與大小寫、constant、機率、遞迴與延遲遞迴、25% 預算用 4b 估算器、sticky／cooldown／delay、群組優先／權重／計分）；設定照 ST 預設，最少觸發數與遞迴步數上限為 0 沒搬。
+  - `chat/prompt.ts`：世界書前／後是固定段落、範例上／下併進範例、作者註記上／下（深度 4）與依深度插入照 `chat/injections.ts`；outlet 照 ST 留到下一次掃完才換（上一輪的值經 `st-text.ts` 的共用巨集上下文給所有代換，含玩家句；換模那發以 extra 蓋成回合開頭快照），只在分頁裡、不進存檔。`chat/world-info-setup.ts` 管一桌的 ID 與觸發狀態；派送那一發才落地、每一發（含換模第二發）都從回合開頭的狀態掃。
+  - 契約三：`timed`＝sticky／cooldown 兩張「穩定 ID → {start,end,protected}」，數字照值判斷（2.0、5e0、-0 收，1.5、≥2^53 拒，兩端一致，`timed-number-forms.json` 正例＋`invalid--timed-*` 負例）；回退照 ST 由則數判斷；`message_effects` 網頁版寫 `{}`；outlet 不進存檔。
+  - 來回測試：e2e 帶 `TT_WEB_EXPORT_WI_OUT` 另存 `src/shared/contracts/web-save/web-export-world-info.json`，cargo `a_real_web_export_with_world_info_keeps_the_trigger_state_in_the_sidecar`。
+  - 測試：`sillytavern/world-info-scan.test.ts`（觸發與位置表格、載入順序、回退表格、遞迴、預算、計時、機率、群組）、`chat/world-info-prompt.test.ts`（位置、outlet 跨輪、固定段落預算）、`chat/world-info-turn.test.tsx`（存檔來回、真停止路徑、換模第二發、outlet 跨輪不進存檔、卸載晚回與 D28 重整不落地）。
+  - D31：群組篩選同一條重複移除時找不到就不刪（不照 ST 誤刪）；D32：關鍵字正則 ReDoS 照 ST 不處理。未驗：真模型（403）。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 5（世界書觸發）
-照計畫分包表「5 世界書觸發」列（D16、D17）：卡內 `character_book` 照 ST 06bde939 World Info 觸發、插入、預算（沿用 4b 估算器）、時效與群組；觸發狀態照 web-save 契約進存檔，補桌面來回測試。D30 作者回覆後：計畫第五節補 D30、4b 列拿掉「未裁決」、本檔改包 4b 封板。
+## 下一步：包 6 卡片介面（施工中）
+照計畫分包表「6 卡片介面」列、2.4 節沙盒 iframe 橋接、4.1 宿主端變數語意施工；可拆子步驟多筆 commit，每步 verify＋web vitest＋e2e 綠，全部做完一次送審（主線開新審查串）。需要作者決定的從 D33 起編號、附建議與兩邊後果，先照建議做並標〔模型判斷·未裁決〕。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。
@@ -63,6 +71,7 @@
 - 包 3：改契約＝`web-save.md`、fixture、`web-save.ts`、`import/web_save/parse.rs` 同一筆改；負例檔名前綴就是兩端要回的分類，Rust 與 TS 測試都掃 `invalid/`。serde 的 `Option` 欄缺鍵會默默當 None，「必填可 null」要用 parse.rs 的 `Nullable`、「可省不可 null」要用 `present`。
 - 包 3 測試通道：harness 包會把 claude 實報的 context（1,000,000）寫回 `data/model-capacity.json`，要壓上限就在每次真呼叫後重寫；容量鎖要有 `summary` 校正才會鎖（`scene_budget/mod.rs` 的 lockable）。本機 shell 包裝會擋「變數展開成路徑」與部分 heredoc，路徑寫字面值、編輯用腳本檔。
 - 包 4：e2e 用 Node 直接載入 `web-save.ts` 驗真匯出（Node 26 型別剝除），所以它對 `vars-table` 的 import 帶 `.ts` 副檔名，`web-save.ts` 不能用 enum 等非純型別語法。要重產 `web-export.json`：`cd web && TT_WEB_EXPORT_OUT=<絕對路徑> npm run e2e`，再複製進契約目錄，cargo 來回測試跟著看。
+- 包 5：ST 參照（world-info.js 等）不在 repo，照下行網址抓到暫存再讀；世界書的 `entry.content` 代換會改到條目物件，`checkWorldInfo` 一律吃 `structuredClone` 的副本。要重產世界書來回 fixture：`cd web && TT_WEB_EXPORT_WI_OUT=<絕對路徑> npm run e2e`，複製成 `src/shared/contracts/web-save/web-export-world-info.json`。ST 原始碼對照抓 `raw.githubusercontent.com/SillyTavern/SillyTavern/06bde939/<路徑>` 到暫存（world-info.js、openai.js、script.js、authors-note.js）。
 - 包 4 測試：IndexedDB 用 fake-indexeddb（`forceCloseDatabase` 模擬瀏覽器強制關連線、`IDBObjectStore.prototype.put` 可 spy 模擬配額）；sessionStorage 要 `vi.stubGlobal` 成 MemoryStorage。新桌第一次送出會先寫一筆首格，受控延遲測試要卡第二筆以後。存檔庫的 global 載入之前預約的寫入一律不寫（測試先 `restoreGlobals` 或 `loadGlobal`）。
 - 包 4 測試通道：worktree 內 `npm run harness:build`、`launch --root <暫存> --config-from <自寫 config：transport claude、cli_risk_accepted、tier_models 三檔都 sonnet>`，不用 --fresh；匯入完會跳「已照網頁版存檔開了一張新桌」對話框，要先 `answer next 知道了` 輸入框才解鎖。
 - 在 worktree 裡跑 verify 前先 `npm ci` 與 `npm ci --prefix web`：沒有自己的 node_modules 時會解析到主 repo 的，vite 擋外部路徑，幾支 vitest 檔會假紅。

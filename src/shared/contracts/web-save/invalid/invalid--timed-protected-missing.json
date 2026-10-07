@@ -1,0 +1,75 @@
+{
+  "format": "table-tavern-web-save",
+  "version": 1,
+  "exported_at": "2026-10-07T21:30:00Z",
+  "card": {
+    "spec": "chara_card_v2",
+    "spec_version": "2.0",
+    "data": {
+      "name": "A",
+      "first_mes": "hi"
+    }
+  },
+  "import_route": "character",
+  "regex_allowed": true,
+  "user_name": "U",
+  "opening_index": 0,
+  "messages": [
+    {
+      "id": "m0",
+      "role": "char",
+      "text": "hi",
+      "ts": "2026-10-07T21:00:00Z",
+      "opening": true,
+      "message_vars": {
+        "stat_data": {
+          "x": 1
+        }
+      }
+    },
+    {
+      "id": "m1",
+      "role": "user",
+      "text": "yo",
+      "ts": "2026-10-07T21:01:00Z"
+    }
+  ],
+  "world_info": {
+    "entries": [
+      {
+        "id": "wi-a",
+        "key": "0"
+      }
+    ],
+    "timed": {
+      "sticky": {
+        "wi-a": {
+          "start": 1,
+          "end": 3
+        }
+      }
+    },
+    "last_message_id": null,
+    "message_effects": {}
+  },
+  "mvu": {
+    "macros": {
+      "user": "U",
+      "char": "A"
+    },
+    "seed": {
+      "stat_data": {
+        "x": 1
+      }
+    },
+    "layers": {
+      "chat": {},
+      "character": {},
+      "global": {},
+      "preset": {},
+      "script": {},
+      "extension": {}
+    }
+  },
+  "card_storage": {}
+}

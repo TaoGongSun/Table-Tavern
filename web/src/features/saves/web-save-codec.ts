@@ -1,5 +1,5 @@
 // 一桌 ⇄ 網頁存檔（桌檔契約 v1，src/shared/contracts/web-save/web-save.md）。匯出四類欄位全帶；網頁版
-// 還用不到的部分（世界書觸發狀態、MVU 的其他層與種子、每則的變數表、卡片 storage）讀進來時原樣收著，
+// 還用不到的部分（MVU 的其他層與種子、每則的變數表、卡片 storage、世界書的 message_effects）讀進來時原樣收著，
 // 再匯出時原樣帶回，存檔進出網頁版不掉東西。ST 聊天變數就是 MVU 的兩層：這段對話的 local＝`chat`、
 // 跨對話的 global＝`global`（TavernHelper 的 chat／global 變數讀的就是這兩處）。
 import {
@@ -18,7 +18,7 @@ import { playableError, playCardFromValue, type ImportErrorCode, type PlayCard }
 import type { ChatEntry } from "../chat/chat-turn";
 import type { VariableMap } from "../sillytavern/variables";
 
-/** 網頁版目前不消費、但要原樣帶回的部分。 */
+/** 網頁版目前不消費、但要原樣帶回的部分（世界書是接著玩的起點，觸發狀態由這桌接手）。 */
 export interface SaveCarry {
   worldInfo: WebSaveWorldInfo;
   /** MVU 除了 chat／global 兩層之外的部分（null＝存檔裡沒有 mvu） */
@@ -46,6 +46,8 @@ export interface SnapshotInput {
   /** 這桌玩的期間寫過或刪過的 global 鍵（寫入紀錄，寫回原值也算） */
   globalWritten: ReadonlySet<string>;
   carry: SaveCarry;
+  /** 這桌現在的世界書（chat/world-info-setup.ts 的 worldInfoForSave）；不給就照 carry 帶回 */
+  worldInfo?: WebSaveWorldInfo;
   exportedAt: number;
 }
 
@@ -110,7 +112,7 @@ export function toWebSave(input: SnapshotInput): WebSave {
       ...(entry.interrupted ? { interrupted: true } : {}),
       ...(entry.vars ? { message_vars: entry.vars } : {}),
     })),
-    world_info: {
+    world_info: input.worldInfo ?? {
       ...carry.worldInfo,
       // 計時算到的那則被刪掉了：當作還沒算過（契約要求指向存在的訊息）
       last_message_id: lastId !== null && ids.has(lastId) ? lastId : null,

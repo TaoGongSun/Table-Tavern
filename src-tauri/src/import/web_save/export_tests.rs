@@ -2,6 +2,8 @@
 //! 幾輪假端點對話、停止並保留的中斷回覆、玩家句裡 setvar 的聊天變數）匯進桌面版：逐字稿照存檔落地、
 //! 下一輪角色線的歷史帶得到整段對話；ST 聊天變數只落在 chat 層檔案。網頁版包 6 之前不產生 MVU 種子與
 //! 每則變數表，桌面版維持「尚無表」，下一輪提示讀的是桌狀態、不讀 chat 層——變數進提示等包 6。
+//! `web-export-world-info.json`（`TT_WEB_EXPORT_WI_OUT`）：帶世界書的卡玩兩輪（sticky 觸發後跨回合）的真匯出，
+//! 桌面版只保存觸發狀態（旁檔原樣＋映射表），消費等 worldbook-st-trigger-parity。
 use super::tests::{bytes, character_turn, fixture, layer_json, mode_of};
 use super::*;
 use crate::import::test_support::TestRoot;
@@ -83,4 +85,41 @@ fn a_real_web_export_puts_transcript_in_history_and_chat_vars_in_the_chat_layer(
     assert!(history.contains("我付了錢"), "{history}");
     assert!(history.contains(events[6].text.as_str()));
     assert!(!history.contains("錢包"), "chat 層變數目前不進提示");
+}
+
+#[test]
+fn a_real_web_export_with_world_info_keeps_the_trigger_state_in_the_sidecar() {
+    let root = TestRoot::new("web-save-real-export-wi");
+    let save = fixture("web-export-world-info.json");
+    // 這份真匯出確實帶著 sticky 與冷卻（不是空結構）
+    assert_eq!(
+        save["world_info"]["timed"]["sticky"]["wi-0"],
+        json!({"start": 2, "end": 5, "protected": false})
+    );
+    let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    let w = imported.world_id.clone();
+    let sidecar: Value = serde_json::from_slice(
+        &std::fs::read(data::web_save_sidecar_path(root.path(), &w).unwrap()).unwrap(),
+    )
+    .unwrap();
+    // 觸發狀態原樣保存
+    assert_eq!(sidecar["world_info"], save["world_info"]);
+    // 穩定 ID → 桌面 UID：每條都對得到桌上的條目；sticky 條目不會被改成常駐
+    let book = data::read_worldbook(root.path(), &w).unwrap();
+    for (stable, content, constant) in [
+        ("wi-0", "雪崩過後三天內山路封閉。", false),
+        ("wi-1", "嚮導從不在夜裡出發。", true),
+        ("wi-2", "山腰有狼群。", false),
+    ] {
+        let entry = book.iter().find(|entry| entry.content == content).unwrap();
+        assert_eq!(sidecar["entry_uids"][stable], json!(entry.uid), "{stable}");
+        assert_eq!(entry.constant, constant, "{stable}");
+    }
+    // 計時算到的那則對得到桌面事件
+    let events = data::read_transcript(root.path(), &w, 0).unwrap();
+    let last = save["world_info"]["last_message_id"].as_str().unwrap();
+    assert_eq!(
+        sidecar["message_ids"][last],
+        json!(events[3].id.clone().unwrap())
+    );
 }

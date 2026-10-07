@@ -29,9 +29,17 @@ export interface WebSaveMessage {
 // 可省的欄（raw、opening、interrupted、message_vars、card_png）鍵不在＝沒有；在就不能是 null。
 // 必填可 null 的欄（opening_index、mvu、mvu.macros、mvu.macros.char、mvu.seed、world_info.last_message_id）鍵一定要在。
 
+/** 世界書計時（訊息則數），見契約三。 */
+export interface WebSaveTimedEffect {
+  start: number;
+  end: number;
+  protected: boolean;
+}
+
 export interface WebSaveWorldInfo {
   entries: { id: string; key: string }[];
-  timed: Record<string, unknown>;
+  /** sticky／cooldown：穩定 ID → 計時；兩張表都可省 */
+  timed: { sticky?: Record<string, WebSaveTimedEffect>; cooldown?: Record<string, WebSaveTimedEffect> };
   last_message_id: string | null;
   message_effects: Record<string, unknown>;
 }
@@ -183,6 +191,23 @@ function checkWorldInfo(value: unknown, messages: WebSaveMessage[]): WebSaveWorl
   const last: unknown = info.last_message_id;
   if (last !== null && (typeof last !== "string" || !messages.some((message) => message.id === last))) {
     fail("world_info.last_message_id");
+  }
+  // timed：只有 sticky／cooldown 兩張表，鍵是 entries 裡的穩定 ID，值是 {start, end, protected}
+  // 照數值判斷（JSON.parse 之後分不出 2 與 2.0）：2.0、2e0、-0 都算整數，與桌面版同一規則
+  const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  for (const [kind, table] of Object.entries(info.timed)) {
+    if ((kind !== "sticky" && kind !== "cooldown") || !isObject(table)) fail("world_info.timed");
+    for (const [id, effect] of Object.entries(table as Record<string, unknown>)) {
+      if (!seen.has(id)) fail(`world_info.timed.${kind} 的條目不在 entries`);
+      const e = effect as Record<string, unknown>;
+      const ok =
+        isObject(effect) &&
+        Object.keys(e).every((key) => key === "start" || key === "end" || key === "protected") &&
+        count(e.start) &&
+        count(e.end) &&
+        typeof e.protected === "boolean";
+      if (!ok) fail(`world_info.timed.${kind}`);
+    }
   }
   return info;
 }

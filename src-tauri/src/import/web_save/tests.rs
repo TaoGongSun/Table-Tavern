@@ -271,6 +271,8 @@ fn object_shaped_entries_map_stable_ids_in_uid_key_order() {
     });
     save["world_info"]["entries"] =
         json!([{ "id": "s-ten", "key": "10" }, { "id": "s-two", "key": "2" }]);
+    // 計時表的鍵要在 entries 裡（契約三）
+    save["world_info"]["timed"] = json!({});
     let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
     let w = imported.world_id;
     let book = data::read_worldbook(root.path(), &w).unwrap();
@@ -593,6 +595,25 @@ fn every_shared_invalid_fixture_is_rejected_with_the_same_class() {
     import_web_save(root.path(), &bytes(&fixture("minimal.json")), LANG).unwrap();
 }
 
+/// 計時的數字照數值判斷：`2.0`、`5e0`、`-0`、2^53−1 都收（網頁版 JSON.parse 後也分不出），與 TS 檢查一致。
+#[test]
+fn timed_numbers_are_judged_by_value_like_the_web_checker() {
+    let root = TestRoot::new("web-save-timed-numbers");
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/shared/contracts/web-save");
+    let text = std::fs::read(dir.join("timed-number-forms.json")).unwrap();
+    let imported = import_web_save(root.path(), &text, LANG).unwrap();
+    let sidecar: Value = serde_json::from_slice(
+        &std::fs::read(data::web_save_sidecar_path(root.path(), &imported.world_id).unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        sidecar["world_info"]["timed"]["sticky"]["wi-a"]["start"],
+        json!(2.0)
+    );
+}
+
 #[test]
 fn the_three_size_limits_reject_without_leaving_a_table() {
     let root = TestRoot::new("web-save-limits");
@@ -787,6 +808,7 @@ fn duplicate_entries_map_to_the_kept_uid() {
     entries.push(copy);
     save["world_info"]["entries"] =
         json!([{ "id": "first", "key": "0" }, { "id": "dup", "key": "5" }]);
+    save["world_info"]["timed"] = json!({});
     let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
     let sidecar: Value = serde_json::from_slice(
         &std::fs::read(data::web_save_sidecar_path(root.path(), &imported.world_id).unwrap())

@@ -1,6 +1,6 @@
 # 桌檔契約 v1：網頁存檔
 
-網頁版的一桌存成一份 JSON，桌面版照它開一張新桌接著玩（單向，D15）。網頁版寫、桌面版讀；兩邊的結構檢查一致：網頁版與桌面版前端用 `web-save.ts` 的 `parseWebSave`，桌面版匯入器用 `src-tauri/src/import/web_save/`（另驗卡在匯入身分那條路的有效性與變數表的細部上限）。範例檔就是本目錄的 fixture（`minimal.json` 是最小合法存檔；`web-export.json` 是網頁版真匯出的存檔，由 `web/e2e` 帶 `TT_WEB_EXPORT_OUT=<路徑>` 跑一次另存，桌面版來回測試讀它），兩邊的測試都讀；`invalid/` 是共用負例：每份都是從 `minimal.json` 改一處，檔名前綴是兩端都要回的錯誤分類（`version--`＝版號不認得、`invalid--`＝不合契約）。改契約＝兩邊與 fixture 同一筆 commit 一起改。
+網頁版的一桌存成一份 JSON，桌面版照它開一張新桌接著玩（單向，D15）。網頁版寫、桌面版讀；兩邊的結構檢查一致：網頁版與桌面版前端用 `web-save.ts` 的 `parseWebSave`，桌面版匯入器用 `src-tauri/src/import/web_save/`（另驗卡在匯入身分那條路的有效性與變數表的細部上限）。範例檔就是本目錄的 fixture（`minimal.json` 是最小合法存檔；`web-export.json` 是網頁版真匯出的存檔，由 `web/e2e` 帶 `TT_WEB_EXPORT_OUT=<路徑>` 跑一次另存，桌面版來回測試讀它；`web-export-world-info.json` 同理，是帶世界書觸發狀態的真匯出，由 `TT_WEB_EXPORT_WI_OUT` 另存），兩邊的測試都讀；`invalid/` 是共用負例：每份都是從 `minimal.json` 改一處，檔名前綴是兩端都要回的錯誤分類（`version--`＝版號不認得、`invalid--`＝不合契約）。改契約＝兩邊與 fixture 同一筆 commit 一起改。
 
 ## 外框
 - `format`：固定 `"table-tavern-web-save"`。不是這個字串就不是網頁存檔。
@@ -34,11 +34,15 @@
 欄名語意取桌面版 `TranscriptEvent` 子集。
 
 ## 三、世界書觸發狀態
-`world_info`：
-- `entries`：`[{ "id": <穩定 ID>, "key": <卡片契約裡該條目的 key> }]`。桌面版匯入時內容重複被略過的條目，映到桌上保留的那一條的 UID。穩定 ID 由網頁版匯卡時配發；`key` 指向匯入身分那條路會匯入的書（角色卡路＝`books.character`，世界書路＝`books.worldbook`）。
-- `timed`：計時狀態（sticky／cooldown／delay），欄位名照 ST，以條目穩定 ID 為鍵，以「訊息則數」計時。內容語意包 5 定，v1 只固定位置。
-- `last_message_id`：可為 null，計時已算到的最後一則訊息 `id`，`null`＝還沒算過。
-- `message_effects`：以訊息 `id` 為鍵，記那則被移除或改寫時它造成的計時變化能否回退。內容語意包 5 定，v1 只固定位置。
+`world_info`（照 ST 釘版本 06bde939 world-info.js 的 `chat_metadata.timedWorldInfo`，ST 認條目用的 `書名.uid` 與內容雜湊一律換成穩定 ID）：
+- `entries`：`[{ "id": <穩定 ID>, "key": <卡片契約裡該條目的 key> }]`。`key` 指向匯入身分那條路會匯入的書（角色卡路＝`books.character`，世界書路＝`books.worldbook`）。網頁版開桌時配：存檔已記的照用，新條目配 `wi-<key>`；只有卡內 `character_book` 的條目會觸發，世界書路的書來自頂層 `entries` 或人設欄時不配。桌面版匯入時內容重複被略過的條目，映到桌上保留的那一條的 UID。
+- `timed`：`{ "sticky": {<穩定 ID>: <計時>}, "cooldown": {<穩定 ID>: <計時>} }`，兩張表都可省（省＝空）、不收別的鍵；表的鍵必須是 `entries` 裡的 ID。計時＝`{ "start", "end", "protected" }`（start／end 照數值判斷是 0–2^53−1 的整數——`2.0`、`2e0`、`-0` 都算，`1.5`、`2^53` 以上不收；protected 是布林，不收別的鍵），單位是訊息則數：
+  - 條目觸發、且設了 sticky／cooldown 而表裡還沒有它時記一筆：start＝那次組提示時的對話則數（含開場白與玩家這一句），end＝start＋sticky（或 cooldown），protected＝false。
+  - 每次組提示先檢查：對話則數 ≤ start 且未受保護＝撤掉（刪除、重新生成、送出失敗收回讓對話退回去時，就照這條自動回退）；條目沒有設該計時＝撤掉；則數 ≥ end＝到期撤掉，sticky 到期而條目有 cooldown 就接著記一筆冷卻，start＝當下則數、protected＝true（對話沒往前也不撤）。
+  - 生效中的 sticky 不看關鍵字直接觸發、不重擲機率；冷卻中（且不在 sticky）不觸發。delay 不存：對話則數 < delay 就壓住。
+- outlet（`{{outlet::名稱}}` 的內容）照 ST 不進 chat_metadata，所以不進存檔：網頁版只在分頁裡沿用上一輪的值，重新整理或接著玩時從空開始。
+- `last_message_id`：可為 null，最近一次組提示時對話的最後一則 `id`（那次的則數＝它的位置＋1），`null`＝還沒掃過或那則已刪。
+- `message_effects`：以訊息 `id` 為鍵的物件。ST 不逐則記回退（回退由 `timed` 的 start／protected 判斷），網頁版寫 `{}`，讀到非空的原樣帶回。
 
 桌面版只保存、不消費：原樣存旁檔，另附「穩定 ID → 桌面 UID」與「訊息 id → 桌面事件 id」兩張映射表；不把 sticky 條目改成 constant。
 
@@ -59,8 +63,8 @@
 ## 網頁版匯出（現況）
 - 存檔在瀏覽器的 IndexedDB（`web/src/features/saves/`），一桌一格，存的就是這份契約；匯出＝原樣下載，匯入＝過同一個 `parseWebSave` 再收進存檔庫。
 - ST 聊天變數就是 MVU 的兩層：這段對話的 local 寫進 `mvu.layers.chat`、跨對話的 global 寫進 `mvu.layers.global`；其他層、`seed`、`macros`、每則的 `message_vars` 等包 6（卡片介面）才產生，在那之前是空表或 `null`。
-- `world_info` 包 5（世界書觸發）之前一律空結構；`card_storage` 包 6 之前是 `{}`。
-- 網頁版讀進來但還用不到的欄位（觸發狀態、MVU 其他層、`message_vars`、`card_storage`、`raw`）與時間原文都原樣收著、再匯出原樣帶回；網頁版自己新增的則寫成 UTC。存檔沒有 `mvu`、這桌也沒寫出變數就照樣寫 `null`。
+- `world_info`：每次組提示照 ST 掃一次卡內世界書，觸發狀態在真正派送出去的那一發才落地（試組、選模與換模前那一發不算），存檔時寫回；`card_storage` 包 6 之前是 `{}`。
+- 網頁版讀進來但還用不到的欄位（`message_effects`、MVU 其他層、`message_vars`、`card_storage`、`raw`）與時間原文都原樣收著、再匯出原樣帶回；網頁版自己新增的則寫成 UTC。存檔沒有 `mvu`、這桌也沒寫出變數就照樣寫 `null`。
 - global 層：存在瀏覽器（存檔庫的 `globals`），所有存檔共用、重新整理不丟（D29）。開站讀不到就提示可重試；各桌的寫入在取樣當下預約版本與寫入資格，預約時還沒讀回過的那筆永遠不寫（重試成功後也不放行），排同一條隊、舊版本不蓋新版本。從存檔接著玩時只補這個分頁沒有的鍵（同 D18）；這一格匯出時只寫「存檔原有的鍵＋這桌玩的期間寫過或刪過的鍵」（照寫入紀錄，寫回原值也算，寫入失敗不算），分頁裡別桌的鍵不混進來；這桌沒碰過的鍵（含分頁已有別的值、沒落地的）照存檔原值帶回。
 - 自動存檔只在回合結束後寫（D27：新開的桌第一次開口時先把開口前的樣子存成一格，寫成了才送模，存不進去就不送、原句留在輸入框）；回合中重新整理就退回上次完整回合，進行中的玩家那句記在 sessionStorage，接著玩時放回輸入框（D28）。
 - ST 聊天檔匯出（D3）另給原卡檔：從 PNG 匯入的給原 PNG，其餘給原卡 JSON 外殼。

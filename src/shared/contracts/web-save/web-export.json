@@ -1,7 +1,7 @@
 {
   "format": "table-tavern-web-save",
   "version": 1,
-  "exported_at": "2026-10-07T07:02:02.377Z",
+  "exported_at": "2026-10-07T09:05:59.229Z",
   "card": {
     "spec": "chara_card_v3",
     "spec_version": "3.0",
@@ -32,53 +32,56 @@
   "opening_index": 0,
   "messages": [
     {
-      "id": "mmuxrf5kq1",
+      "id": "mmuxvujxb1",
       "role": "char",
       "text": "門閂「喀」一聲拉開，風雪跟著你一起灌進屋裡。\n\n提著燈的女人眯起眼看了你一會兒，側身讓開。「進來。鞋上的雪先跺乾淨。」\n\n她把門重新閂上，走回爐邊，往鍋裡多舀了一勺湯。「這種天還敢翻山，」她頭也不回地說，「你不是很勇敢，就是很急。是哪一種？」",
-      "ts": "2026-10-07T07:02:00.698Z",
+      "ts": "2026-10-07T09:05:57.599Z",
       "opening": true
     },
     {
-      "id": "mmuxrf5mk2",
+      "id": "mmuxvujyr2",
       "role": "user",
       "text": "你好",
-      "ts": "2026-10-07T07:02:00.765Z"
+      "ts": "2026-10-07T09:05:57.651Z"
     },
     {
-      "id": "mmuxrf5x53",
+      "id": "mmuxvuk983",
       "role": "char",
       "text": "雪還在下，先喝口湯暖暖身子吧。",
-      "ts": "2026-10-07T07:02:01.145Z"
+      "ts": "2026-10-07T09:05:58.028Z"
     },
     {
-      "id": "mmuxrf62r5",
+      "id": "mmuxvukex5",
       "role": "user",
       "text": "第二句",
-      "ts": "2026-10-07T07:02:01.347Z"
+      "ts": "2026-10-07T09:05:58.233Z"
     },
     {
-      "id": "mmuxrf6436",
+      "id": "mmuxvukg76",
       "role": "char",
       "text": "說到一半",
-      "ts": "2026-10-07T07:02:01.395Z",
+      "ts": "2026-10-07T09:05:58.279Z",
       "interrupted": true
     },
     {
-      "id": "mmuxrf6537",
+      "id": "mmuxvukha7",
       "role": "user",
       "text": "我付了錢",
-      "ts": "2026-10-07T07:02:01.432Z"
+      "ts": "2026-10-07T09:05:58.318Z"
     },
     {
-      "id": "mmuxrf6fb8",
+      "id": "mmuxvukrh8",
       "role": "char",
       "text": "雪還在下，先喝口湯暖暖身子吧。",
-      "ts": "2026-10-07T07:02:01.799Z"
+      "ts": "2026-10-07T09:05:58.685Z"
     }
   ],
   "world_info": {
     "entries": [],
-    "timed": {},
+    "timed": {
+      "sticky": {},
+      "cooldown": {}
+    },
     "last_message_id": null,
     "message_effects": {}
   },
@@ -90,7 +93,9 @@
         "錢包": "15"
       },
       "character": {},
-      "global": {},
+      "global": {
+        "名聲": "1"
+      },
       "preset": {},
       "script": {},
       "extension": {}

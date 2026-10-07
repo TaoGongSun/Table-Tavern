@@ -75,6 +75,8 @@ export interface MacroEnv {
   now: () => Date;
   chatId: string;
   random: () => number;
+  /** 世界書 outlet：名稱 → 內容（ST extension_prompts 的 customWIOutlet_<名稱>） */
+  outlets: Record<string, string>;
   isMobile: boolean;
 }
 

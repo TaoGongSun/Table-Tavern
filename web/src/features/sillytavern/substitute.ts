@@ -33,6 +33,8 @@ export interface MacroContext {
   limits?: { maxContext: number; maxResponse: number };
   now?: () => Date;
   random?: () => number;
+  /** 這次世界書掃出的 outlet（{{outlet::名稱}}） */
+  outlets?: Record<string, string>;
 }
 
 export interface SubstituteOptions {
@@ -117,6 +119,7 @@ export function substituteParams(content: string, context: MacroContext, options
     now: context.now ?? (() => new Date()),
     chatId: context.chatId,
     random: context.random ?? Math.random,
+    outlets: context.outlets ?? {},
     isMobile: typeof navigator !== "undefined" && MOBILE.test(navigator.userAgent),
   };
   return ENGINE.evaluate(content, env);

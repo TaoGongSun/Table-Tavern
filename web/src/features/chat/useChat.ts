@@ -27,7 +27,8 @@ import { deleteLast, regenerateBase, replaceLast, resolveTurn, type ChatEntry, t
 import { t } from "../../i18n";
 import { explainError } from "./error-text";
 import { composePrompt } from "./prompt";
-import { messageTokenCounter } from "../sillytavern/tokens";
+import { messageTokenCounter, textTokenCounter } from "../sillytavern/tokens";
+import { tableWorldInfo, worldInfoForSave } from "./world-info-setup";
 import { editedText, macroContext, openingText, replyText, userText, type ChatSetup } from "./st-text";
 
 let counter = 0;
@@ -82,14 +83,16 @@ export interface ChatController {
 
 export function useChat(game: GameSetup, session: OpenRouterSession, saves: SaveStore | null = null): ChatController {
   const [saveId] = useState(() => game.saveId ?? newSaveId());
+  const worldInfo = useMemo(() => tableWorldInfo(game.card, (game.resume?.carry ?? EMPTY_CARRY).worldInfo), [game.card, game.resume]);
   const setup = useMemo<ChatSetup>(
     () => ({
       card: game.card,
       userName: game.userName,
       variables: createChatVariables(structuredClone(game.resume?.local ?? {}), GLOBAL_VARIABLES),
       chatId: `web-${saveId}`,
+      worldInfo,
     }),
-    [game.card, game.userName, game.resume, saveId],
+    [game.card, game.userName, game.resume, saveId, worldInfo],
   );
   const [entries, setEntries] = useState<ChatEntry[]>(() => game.resume?.entries ?? openingEntries(setup, game.openingIndex));
   const [saveFailed, setSaveFailed] = useState(false);
@@ -166,12 +169,26 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         // 每支模型照它的上限與 token 估算組一次提示（D23），都從回合開頭的變數副本起算；真正派送的那一次才把
         // 副作用（setvar 等）與第 0 則寫回落地，選模時試組與換模前的那一發不重複提交
         const snapshot = copyVariables(setup.variables);
+        // 世界書觸發狀態同理：每一發都從回合開頭的狀態掃（換模第二發不接第一發落地的狀態）
+        const worldInfoAtStart = { entries: worldInfo.entries, state: worldInfo.state };
         const composed = new Map<string, ReturnType<typeof composeFor>>();
         const composeFor = (model: string) => {
           const variables = copyVariables(snapshot);
           const limits = { maxContext: session.pool.contextLength(model), maxResponse: RESERVED_OUTPUT_TOKENS };
-          const countTokens = messageTokenCounter(model, session.pool.tokenizer(model));
-          return { variables, ...composePrompt({ ...setup, variables }, started.before, { generationType, input, model, limits, countTokens }) };
+          const tokenizer = session.pool.tokenizer(model);
+          const countTokens = messageTokenCounter(model, tokenizer);
+          const countText = textTokenCounter(model, tokenizer);
+          return {
+            variables,
+            ...composePrompt({ ...setup, variables, worldInfo: worldInfoAtStart }, started.before, {
+              generationType,
+              input,
+              model,
+              limits,
+              countTokens,
+              countText,
+            }),
+          };
         };
         const compose = (model: string) => {
           const turn = composed.get(model) ?? composeFor(model);
@@ -206,6 +223,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
               const turn = compose(model);
               dispatched.turn = turn;
               commitVariables(setup.variables, turn.variables);
+              if (turn.worldInfo) worldInfo.state = turn.worldInfo;
               setEntries(turn.entries);
               setStreaming("");
               return streamChat({
@@ -254,7 +272,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         setBusy(false);
       }
     },
-    [session, setup, saveId],
+    [session, setup, saveId, worldInfo],
   );
 
   const send = useCallback(async () => {
@@ -303,9 +321,14 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         global: setup.variables.global.values,
         globalWritten: setup.variables.global.written,
         carry: game.resume?.carry ?? EMPTY_CARRY,
+        worldInfo: worldInfoForSave(
+          worldInfo,
+          (game.resume?.carry ?? EMPTY_CARRY).worldInfo,
+          new Set(entriesRef.current.map((entry) => entry.id)),
+        ),
         exportedAt: Date.now(),
       }),
-    [game, setup],
+    [game, setup, worldInfo],
   );
 
   const exportStChat = useCallback(() => {
