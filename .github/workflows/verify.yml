@@ -35,6 +35,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm ci --prefix web
+
       # 與本地同一個入口（版本一致、結構、fmt、vitest、i18n、build、cargo）。
       # 順序寫在 scripts/verify.mjs，此處不另抄一份命令清單。
       - run: npm run verify
