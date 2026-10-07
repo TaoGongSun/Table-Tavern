@@ -11,6 +11,7 @@ mod messages;
 mod own_prefix;
 mod response;
 pub(crate) mod responses;
+mod runaway;
 mod stall;
 mod state_view;
 #[cfg(test)]
@@ -50,6 +51,8 @@ pub use response::{
     gm_turn_format, narrate_instruction, parse_indented_fields, pick_speaker, summary_closing,
     takeover_instruction, GmTurnFormat, StateBlock,
 };
+pub(crate) use runaway::{runaway_message, LINE_CAP_BYTES, RUNAWAY_CODE};
+pub use runaway::{RunawayGuard, RunawayPolicy, RunawayReason};
 pub(crate) use stall::STALLED_CODE;
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{

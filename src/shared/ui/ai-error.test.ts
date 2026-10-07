@@ -115,6 +115,21 @@ describe("explainAiError", () => {
     ).toBe("errApiUpstream");
   });
 
+  it("輸出失控：認 AI_OUTPUT_RUNAWAY 開頭（有無 Error: 前綴、CLI 與 API 都一樣），body 抄不翻盤", () => {
+    expect(explainAiError("AI_OUTPUT_RUNAWAY: reason=whitespace_run chars=2000", "grok")).toBe(
+      "errOutputRunaway",
+    );
+    expect(explainAiError("Error: AI_OUTPUT_RUNAWAY: reason=length chars=30001", "api")).toBe(
+      "errOutputRunaway",
+    );
+    expect(
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"AI_OUTPUT_RUNAWAY: 假的"}', "api"),
+    ).toBe("errApiUpstream");
+    expect(explainAiError("AI_CALL_FAILED: AI_OUTPUT_RUNAWAY: 被包住就不是我們的碼", "api")).not.toBe(
+      "errOutputRunaway",
+    );
+  });
+
   it("穩定免費連續擁擠：認 AI_FREE_MODEL_BUSY 開頭，內層的 HTTP 碼與 body 字樣翻不了盤", () => {
     expect(explainAiError("AI_FREE_MODEL_BUSY: AI_HTTP_STATUS_503: status=503 body=", "api")).toBe(
       "errFreeModelBusy",

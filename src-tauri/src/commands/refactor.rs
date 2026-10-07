@@ -171,7 +171,7 @@ pub(crate) async fn refactor_survey(
                             },
                         ) => result,
                     };
-                    result.ok()
+                    refactor_session::degrade_unless_runaway(result)?
                 }
                 Err(_) => None,
             }

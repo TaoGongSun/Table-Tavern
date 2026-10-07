@@ -221,6 +221,7 @@ mod tests {
             &[],
             crate::cli::parse_claude_line,
             false,
+            crate::transport::RunawayPolicy::Off,
             None,
             |_: &str| {},
         )
@@ -233,6 +234,7 @@ mod tests {
             &[],
             crate::cli::parse_claude_line,
             false,
+            crate::transport::RunawayPolicy::Off,
             None,
             |_: &str| {},
         )

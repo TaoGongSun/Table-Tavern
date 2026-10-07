@@ -152,6 +152,17 @@ impl ApiFailure {
         }
     }
 
+    /// 輸出失控（`runaway.rs`）：失控必定已吐出內容，`emitted_text` 恆為真＝智慧免費不重送；
+    /// 階段記 Stream，分類落在 Other，不計入換模。
+    pub fn runaway(display: String) -> Self {
+        Self {
+            stage: FailureStage::Stream,
+            emitted_text: true,
+            display,
+            ..Self::default()
+        }
+    }
+
     /// 串流收尾判定失敗：`display` 是 `StreamOutcome::failure` 的字串，detail 來自 SSE 錯誤塊（若有）。
     pub fn stream(display: String, detail: Option<ErrorDetail>, emitted_text: bool) -> Self {
         Self {

@@ -51,6 +51,18 @@ pub(crate) async fn resume_stage(
     .await
 }
 
+/// resume 的結果交給呼叫端前的分流：成功＝Some；一般失敗＝None（降級單發重送全卡）；
+/// 輸出失控＝直接回錯，不降級——同一個 prompt 再跑一次只會再燒一輪（runaway-output-cap A5）。
+pub(crate) fn degrade_unless_runaway(
+    result: Result<String, String>,
+) -> Result<Option<String>, String> {
+    match result {
+        Ok(raw) => Ok(Some(raw)),
+        Err(error) if error.starts_with(crate::transport::RUNAWAY_CODE) => Err(error),
+        Err(_) => Ok(None),
+    }
+}
+
 async fn run_stage(
     call: &LaneCall,
     world_id: &str,
@@ -72,6 +84,7 @@ async fn run_stage(
         &call.envs,
         cli::parse_claude_line,
         true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
+        crate::transport::RunawayPolicy::DegenerateOnly,
         call.usage_log.as_deref().map(|path| cli::UsageLog {
             usage_out: None,
             overage_out: None,
@@ -125,6 +138,9 @@ path = os.path.join(d, (sid or rid) + '.marker')
 if rid and not os.path.exists(path):
     sys.exit(3)
 open(path, 'a').close()
+if rid and os.environ.get('FAKE_RUNAWAY') == '1':
+    while True:
+        print(json.dumps({'type': 'stream_event', 'event': {'delta': {'type': 'text_delta', 'text': ' '}}}), flush=True)
 print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: interface\nEVIDENCE: ok'}))
 "#,
         )
@@ -202,6 +218,33 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
         // 呼叫結束暫存檔就刪掉，不留在 prompts 資料夾
         let left: Vec<_> = std::fs::read_dir(dir.join("prompts")).unwrap().collect();
         assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// resume 失控：回失控碼、只派送一次，而且分流結果是「直接回錯」不是「降級單發」。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn resume_runaway_returns_code_and_does_not_degrade() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let (dir, mut call) = fake_cli("runaway");
+        let (_, sid) = open_stage(&call, "w1", "系統文", "第一段指示", |_| {})
+            .await
+            .unwrap();
+        call.envs.push(("FAKE_RUNAWAY".to_owned(), "1".to_owned()));
+        let result = resume_stage(&call, "w1", &sid, "系統文", "第二段指示", |_| {}).await;
+        let error = result.clone().unwrap_err();
+        assert!(error.starts_with("AI_OUTPUT_RUNAWAY:"), "{error}");
+        let sent = std::fs::read_to_string(dir.join("calls.jsonl")).unwrap();
+        assert_eq!(sent.lines().count(), 2);
+        assert_eq!(degrade_unless_runaway(result), Err(error));
+        assert_eq!(
+            degrade_unless_runaway(Err("resume 認不得".to_owned())),
+            Ok(None)
+        );
+        assert_eq!(
+            degrade_unless_runaway(Ok("RECOMMEND".to_owned())),
+            Ok(Some("RECOMMEND".to_owned()))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

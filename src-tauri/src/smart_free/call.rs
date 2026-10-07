@@ -66,10 +66,15 @@ async fn classify_with_key(failure: &ApiFailure, env: &mut impl CallEnv) -> Fail
 
 /// 回給前端的錯誤：模型層級掛 `AI_FREE_MODEL_BUSY:`；UnknownRateLimit 保留原錯誤，不宣稱上游擁擠。
 fn display(failure: &ApiFailure, class: FailureClass) -> String {
-    let stalled = failure.display.starts_with(crate::transport::STALLED_CODE);
+    // 停滯逾時＝我們自己等不到輸出；輸出失控＝我們自己喊停。兩者都不宣稱上游擁擠，換模判斷仍照 class
+    let own_code = [
+        crate::transport::STALLED_CODE,
+        crate::transport::RUNAWAY_CODE,
+    ]
+    .iter()
+    .any(|code| failure.display.starts_with(code));
     let raw = match class {
-        // 停滯逾時＝我們自己等不到輸出，不宣稱上游擁擠；換模判斷仍照 class
-        _ if stalled => failure.display.clone(),
+        _ if own_code => failure.display.clone(),
         FailureClass::Model | FailureClass::Gone => {
             format!("AI_FREE_MODEL_BUSY: {}", failure.display)
         }
@@ -383,6 +388,37 @@ mod tests {
         let second = run_call(&root, &mut env, &mut persist, 2).await.unwrap();
         assert_eq!(second.result.model.as_deref(), Some("b"));
         assert_eq!(env.sent, ["a", "a", "b"]);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// 輸出失控：只派送一次（首塊就觸發也不重送），不換模，碼原樣交給前端。
+    #[tokio::test]
+    async fn runaway_is_sent_once_never_switches_and_keeps_its_code() {
+        let root = super::super::test_root("call-runaway");
+        let plan = plan(&["a", "b", "c"]);
+        let mut persist = ok_persist();
+        let runaway = ApiFailure::runaway(crate::transport::runaway_message(
+            crate::transport::RunawayReason::WhitespaceRun,
+            2000,
+        ));
+        let mut env = FakeEnv {
+            plan: plan.clone(),
+            replies: VecDeque::from([
+                Reply::Fail(runaway.clone()),
+                Reply::Fail(runaway),
+                Reply::Ok,
+            ]),
+            ..FakeEnv::default()
+        };
+        for now in [1, 2] {
+            let error = run_call(&root, &mut env, &mut persist, now)
+                .await
+                .unwrap_err();
+            assert!(error.starts_with("AI_OUTPUT_RUNAWAY:"), "{error}");
+        }
+        assert_eq!(env.sent, ["a", "a"]);
+        assert!(env.notices.is_empty());
+        assert_eq!(state(&root).0, "a");
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -795,6 +831,7 @@ mod tests {
                     Some(&self.ledger),
                     Some("w1"),
                     crate::usage::log::PromptShape::Oneshot,
+                    crate::transport::RunawayPolicy::Off,
                     |delta| deltas.push_str(delta),
                 )
                 .await

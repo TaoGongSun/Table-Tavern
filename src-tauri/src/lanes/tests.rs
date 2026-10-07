@@ -115,6 +115,13 @@ if env('FAKE_HANG'):
 if env('FAKE_FAIL'):
     print(json.dumps({'type': 'result', 'is_error': True, 'result': 'boom', 'usage': usage}))
     sys.exit(1)
+# FAKE_RUNAWAY：吐不停的空白（輸出失控）；FAKE_RUNAWAY_BLOCK 另把 session 檔換成目錄，抹寫與棄用都會失敗
+if env('FAKE_RUNAWAY'):
+    if env('FAKE_RUNAWAY_BLOCK'):
+        os.remove(path)
+        os.makedirs(path)
+    while True:
+        delta(' ')
 if stream:
     for ch in reply:
         delta(ch)
@@ -178,6 +185,10 @@ with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
     f.write(json.dumps({'args': args, 'prompt': prompt}, ensure_ascii=False) + '\n')
 if cid and cid != 'agy-conversation-1':
     sys.exit(3)
+if cid and os.environ.get('FAKE_RUNAWAY_RESUME') == '1':
+    print(json.dumps({'event': 'init', 'conversation_id': cid}), flush=True)
+    while True:
+        print(json.dumps({'event': 'step_update', 'step_update': {'step_type': 'agent_response', 'text_delta': ' '}}), flush=True)
 turn = 2 if cid else 1
 input_tokens = 1200 if cid else 1000
 output_tokens = 250 if cid else 100
@@ -1591,6 +1602,7 @@ fn apply_rewrite_names_the_failing_stage() {
 mod cache_ttl;
 mod grok;
 mod lane_lock;
+mod runaway;
 
 /// char-line-prefix：預期回聲存剝掉本輪「名字：」的字；前綴另傳，Agy（prefix None）照樣對得上。
 #[test]

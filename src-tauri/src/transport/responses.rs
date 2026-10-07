@@ -222,6 +222,7 @@ pub(crate) async fn stream_responses(
     usage_log_path: Option<&std::path::Path>,
     world: Option<&str>,
     shape: usage_log::PromptShape,
+    policy: transport::RunawayPolicy,
     on_delta: impl FnMut(&str),
 ) -> DataResult<transport::StreamChatResult> {
     stream_responses_windowed(
@@ -231,6 +232,7 @@ pub(crate) async fn stream_responses(
         usage_log_path,
         world,
         shape,
+        policy,
         StallWindow::default(),
         on_delta,
     )
@@ -245,6 +247,7 @@ async fn stream_responses_windowed(
     usage_log_path: Option<&std::path::Path>,
     world: Option<&str>,
     shape: usage_log::PromptShape,
+    policy: transport::RunawayPolicy,
     window: StallWindow,
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<transport::StreamChatResult> {
@@ -284,6 +287,10 @@ async fn stream_responses_windowed(
     let mut full_text = String::new();
     let mut usage = None;
     let mut outcome = ResponsesOutcome::default();
+    // 輸出失控：正文、思考各一支（runaway-output-cap）
+    let mut text_guard = transport::RunawayGuard::text(policy);
+    let mut thinking_guard = transport::RunawayGuard::thinking(policy);
+    let mut runaway = None;
     #[cfg(feature = "test-harness")]
     let mut harness_raw: Option<serde_json::Value> = None;
 
@@ -314,7 +321,17 @@ async fn stream_responses_windowed(
             if let Some(parsed) = extract_usage(&payload) {
                 usage = Some(parsed);
             }
+            if let Some(reasoning) = super::runaway::responses_reasoning(&payload) {
+                if let Some(reason) = thinking_guard.push(&reasoning) {
+                    runaway = Some(thinking_guard.message(reason));
+                    break 'outer;
+                }
+            }
             if let Some(delta) = extract_delta(&payload) {
+                if let Some(reason) = text_guard.push(&delta) {
+                    runaway = Some(text_guard.message(reason));
+                    break 'outer;
+                }
                 on_delta(&delta);
                 full_text.push_str(&delta);
             }
@@ -345,6 +362,10 @@ async fn stream_responses_windowed(
         }
     }
 
+    // 失控要在 outcome 收尾判定之前回碼，否則沒收尾事件會被判成 AI_INCOMPLETE_RESPONSE
+    if let Some(message) = runaway {
+        return Err(crate::data::invalid_data(message));
+    }
     if let Some(secs) = stalled {
         return Err(stall::stalled_message(secs).into());
     }
@@ -478,6 +499,7 @@ mod tests {
             None,
             None,
             usage_log::PromptShape::Oneshot,
+            transport::RunawayPolicy::Off,
             StallWindow {
                 first: std::time::Duration::from_millis(first_ms),
                 after: std::time::Duration::from_millis(after_ms),
@@ -515,6 +537,70 @@ mod tests {
         ];
         let (result, _) = run(script, 0, 1000, 400).await;
         assert_eq!(result.unwrap().text, "字");
+    }
+
+    async fn run_policy(
+        script: Vec<String>,
+        policy: transport::RunawayPolicy,
+    ) -> DataResult<transport::StreamChatResult> {
+        let base = super::super::test_support::stall_server(
+            script.into_iter().map(|text| (0, text)).collect(),
+            8000,
+        );
+        let messages = [message("user", "嗨")];
+        stream_responses_windowed(
+            &stall_config(&base),
+            "test/model",
+            &messages,
+            None,
+            None,
+            usage_log::PromptShape::Oneshot,
+            policy,
+            StallWindow {
+                first: std::time::Duration::from_secs(10),
+                after: std::time::Duration::from_secs(10),
+            },
+            |_| {},
+        )
+        .await
+    }
+
+    fn event(kind: &str, delta: &str) -> String {
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({ "type": kind, "delta": delta })
+        )
+    }
+
+    /// 失控在收尾判定之前回碼：沒有 response.completed 也不會變成 AI_INCOMPLETE_RESPONSE
+    #[tokio::test]
+    async fn responses_blank_text_and_reasoning_stop_with_runaway_code() {
+        let blank = " ".repeat(2500);
+        for kind in [
+            "response.output_text.delta",
+            "response.reasoning_summary_text.delta",
+        ] {
+            let error = run_policy(
+                vec![CREATED.to_owned(), event(kind, &blank)],
+                transport::RunawayPolicy::Full,
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+            assert!(error.starts_with("AI_OUTPUT_RUNAWAY:"), "{kind}: {error}");
+        }
+        // Off：空白思考不查
+        let ok = run_policy(
+            vec![
+                event("response.reasoning_text.delta", &blank),
+                TEXT.to_owned(),
+                DONE.to_owned(),
+            ],
+            transport::RunawayPolicy::Off,
+        )
+        .await
+        .unwrap();
+        assert_eq!(ok.text, "字");
     }
 
     #[tokio::test]

@@ -546,6 +546,7 @@ export const de: Record<MsgKey, string> = {
   errAiUnknown: "Diese Anfrage kam nicht durch. Versuch es noch einmal; wenn es bleibt, wechsle Modell oder KI-Quelle.",
   errEmptyReply: "Die KI hat diesmal nichts zurückgegeben, deshalb wurde der Geschichte nichts hinzugefügt. Versuche es noch einmal; wenn es dabei bleibt, wechsle Modell oder KI-Quelle.",
   errStreamStalled: "Vom Modell kam zu lange keine Ausgabe, deshalb wurde das Warten abgebrochen und der Geschichte nichts hinzugefügt. Versuche es noch einmal oder wechsle das Modell.",
+  errOutputRunaway: "Die Antwort des Modells ist außer Kontrolle geraten (endlose Leerzeichen oder ungewöhnliche Länge), deshalb wurde sie automatisch abgebrochen und der Geschichte nichts hinzugefügt. Sende sie erneut oder wechsle das Modell.",
   errIncompleteReply: "Die Antwort der KI wurde abgeschnitten, deshalb wurde der Geschichte nichts hinzugefügt. Versuche es noch einmal; wenn es dabei bleibt, wechsle Modell oder KI-Quelle.",
   errContextTooLong: "Dieser Akt ist zu lang, als dass das Modell ihn auf einmal lesen könnte. Beginne einen neuen Akt, um ihn zusammenzufassen, dann geht es weiter.",
   errFiltered: "Diese KI-Quelle hat die Antwort blockiert. Formuliere es anders, oder wechsle zu einem anderen Modell.",

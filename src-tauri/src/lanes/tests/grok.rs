@@ -91,6 +91,9 @@ if lock:
     os.chmod(os.path.join(lock, 'lanes.json'), 0o444)
     os.chmod(lock, 0o555)
 record()
+if rid and os.environ.get('FAKE_RUNAWAY_RESUME') == '1':
+    while True:
+        print(json.dumps({'type': 'text', 'data': ' '}), flush=True)
 print(json.dumps({'type': 'text', 'data': reply}, ensure_ascii=False))
 print(json.dumps({'type': 'end', 'usage': {'input_tokens': 100, 'cache_read_input_tokens': 128, 'output_tokens': 5}}))
 "#,
@@ -479,6 +482,46 @@ async fn resume_failure_revokes_then_reopens() {
     assert!(flag(&calls[2], "-s").is_some());
     let log = std::fs::read_to_string(fake.dir.join("usage.jsonl")).unwrap();
     assert!(log.contains("resume-failed"));
+}
+
+/// 續聊中輸出失控：撤線、只派送一次、回錯誤碼；下一輪開新線。
+#[cfg(unix)]
+#[tokio::test]
+async fn resume_runaway_revokes_lane_without_retry() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_grok("runaway", &[("FAKE_RUNAWAY_RESUME", "1")]);
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let reply = run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", None),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
+    let error = run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", Some("其實是通緝犯")),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert!(error.starts_with("AI_OUTPUT_RUNAWAY:"), "{error}");
+    let sent = calls(&fake.dir);
+    assert_eq!(sent.len(), 2, "失控不得重開重試");
+    assert!(flag(&sent[1], "-r").is_some());
+    let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
+    assert!(store.is_empty(), "grok 失控比照中止整條撤線");
+    assert!(session_dirs(&fake.grok_home).is_empty());
+    assert!(!all_text(&fake.grok_home).contains("通緝犯"));
 }
 
 /// 同桌並發：GM＋角色、角色＋角色都被每桌鎖串行——CLI 呼叫不重疊、store 不互蓋。
