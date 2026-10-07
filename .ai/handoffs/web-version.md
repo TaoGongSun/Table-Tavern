@@ -68,14 +68,24 @@
   - 找卡：`web/src/features/find-cards/`（`card-sites.ts` 五站資料、`FindCards.tsx` 放開始畫面，一行 18 禁標示）。
   - DRM／雲端載入器卡的說明拿掉「可以改用桌面版」（桌面版同樣不支援）。
   - 離開頁面（`useChat.ts`，D28）：beforeunload 與非往返快取的 pagehide 會作廢在途回合並停掉自動存檔（WebKit 在 pagehide 前就中斷請求，那個失敗不能當回合收尾），存檔停在上一個完整回合；草稿等含那一回合的存檔寫成才清（流水號比對，舊寫入不清新回合的草稿；沒有存檔庫就落地即清）。已知限制：往返快取的頁面回來時，或 beforeunload 之後導覽沒有真的發生（例如別的程式取消了離開），在途回合已作廢——玩家句留在畫面上、沒有回覆，要重新整理或手動收回；自動存檔要等下一次開口才恢復（往返快取回來時立即恢復）。
-  - 文案只有繁中（字典 `web/src/i18n/zh-TW.ts`，十語系在包 8）。D36–D38 已拍板（計畫第五節）。
+  - D36–D38 已拍板（計畫第五節）。
   - 測試：`funnel/download-page.test.tsx`、`funnel/funnel.test.ts`（403／429／500／斷線／讀不懂都不是「沒有正式版」）、`find-cards/find-cards.test.tsx`、`chat/autosave.test.tsx`（離開頁面時的失敗不清草稿、存檔停在上一回合、存檔寫成才清草稿、舊寫入不清新草稿）、`chat/mvu-turn.test.tsx`（MVU 等待中離開草稿仍在）；e2e 走下載頁（無版本與有版本）、串流中開關下載頁不中斷、在 `#download` 上重新整理後草稿放回、導流面板與匯出導流連下載頁、找卡清單。
+- **包 8（十語系）修正輪一完成，等複驗**：commit 29456ab（施工）＋修正輪一（Sol r1／Grok r1）。
+  - 語系清單與首開偵測在桌面版 `src/i18n/languages.ts`（桌面版 index 從這裡轉匯出，網頁版經 `@desktop` 共用，不帶桌面字典本體）；單複數沿用桌面版 `plural.ts`。
+  - 網頁字典 `web/src/i18n/`：`zh-TW.ts` 是正典（`WebMessages` 型別，鍵多鍵少都編譯失敗），另九個語系各一檔；`t()` 查不到鍵退回繁中。用語照桌面版各語系主流用語：ja 桌＝「卓」、世界書＝「ロアブック」；fr 世界書＝「Encyclopédie」、稱呼用 tu；ru 稱呼用 ты；refactor 照桌面版按鈕（es／pt Reorganizar、fr Réorganiser、ru Разобрать）。系統對話框裡的字（SmartScreen、Gatekeeper 的標題與按鈕）照各 OS 該語系原文，不跟著改稱呼。桌面版自身幾鍵用語不一致（ja refactorSummaryEntries「世界書」、fr refactor 幾鍵「livre du monde」）主線另告作者，本分支不動。
+  - 預設玩家名一律用名詞（Player／Spieler／Joueur／Jugador／Jogador…）：沒填名字時它會代進 `{{user}}`、出現在第三人稱句裡。
+  - 語系選擇：頁首選單（`features/language/LanguagePicker.tsx`），存 `tt-web:lang`，沒存過照瀏覽器語系（同桌面版，對不到用英文）；`i18n/lang-store.ts` 同步 `<html lang>`、標題、描述，存取 localStorage 丟例外也不炸。換語系只重繪：桌、草稿、輸入框、串流、卡片介面 iframe 都不動；畫面上的錯誤（useChat、存檔區 `SavesPanel`、匯出列 `ExportBar`）存成「怎麼說」，繪製時才翻。
+  - 範例卡各語系（`features/cards/samples/`，`samplePlayCard(lang)`）；開了桌卡就固定，換語系不換卡。玩家名沒填就用該語系預設名（不寫進名字欄）。
+  - `index.html` 加靜態描述與 og／twitter meta（繁中，D39）。窄螢幕（≤560px）頁首可換行、下載連結可折行（法文帶版本號的連結原本在 375px 撐出橫向捲動）。
+  - 測試：`features/language/dictionaries.test.ts`（十語系鍵集合、佔位符、單複數語法含俄文 one／few／many、執行期退回繁中、偵測順序含 zh-Hans／zh-Hant／zh-SG、storage 丟例外、範例卡齊全、靜態 meta 與正典同步）、`features/language/relabel.test.tsx`（存檔區與匯出列的錯誤換語系後重翻）；e2e：主流程固定 `zh-TW`，串流中換英文再換回不中斷、MVU 卡片介面換語系不重掛（同一 iframe、同一文件）；最後另開獨立英文瀏覽器情境走登入、額度面板、開始畫面、範例卡、下載頁，桌上換日文不丟桌與草稿、重新整理維持日文，十個語系的開始畫面與下載頁在 375px 寬不橫向溢出。
+  - D39–D41 待作者拍板（計畫第五節，已照建議做）。
+  - 未驗：九個語系譯文與範例卡未經母語者審閱；系統對話框原文沒有實機逐字核對，其中不確定的四處維持現狀——es SmartScreen 標題「Windows protegió su PC」（可能是「tu PC」）、es macOS 第一鈕寫「OK」（可能是「Aceptar」）、ja Gatekeeper「検証できません」（可能是「確認できません」）、ko SmartScreen 按鈕「실행」（可能是「그래도 실행」）；按鈕寬度只靠 375px 溢出檢查，沒有桌面版 check-i18n 那種逐鍵寬度表。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 8（十語系）施工中
-計畫分包表「8 十語系」列：網頁版文案補齊桌面版的十個語系（語系清單、切換與偵測照桌面版 `src/i18n`）、缺鍵退回繁中並有十語系鍵集合一致的檢查、範例卡各語系（D5）、SEO／分享卡片的 meta。做完送主線審查。
+## 下一步：包 8 複驗
+主線把修正輪一送 Sol／Grok 複驗；要修就派新子代理（前一位已換手），讀本檔與計畫分包表包 8 列、第五節 D39–D41 即可接手。複驗通過＝包 8 封板，再開包 9（上線，要等公開前門檻與作者的 Cloudflare 帳號）。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。
@@ -92,7 +102,11 @@
 - 包 4 測試通道：worktree 內 `npm run harness:build`、`launch --root <暫存> --config-from <自寫 config：transport claude、cli_risk_accepted、tier_models 三檔都 sonnet>`，不用 --fresh；匯入完會跳「已照網頁版存檔開了一張新桌」對話框，要先 `answer next 知道了` 輸入框才解鎖。
 - 在 worktree 裡跑 verify 前先 `npm ci` 與 `npm ci --prefix web`：沒有自己的 node_modules 時會解析到主 repo 的，vite 擋外部路徑，幾支 vitest 檔會假紅。
 - 包 6 測試：`card-interface/frontend-host.test.ts`（來源、origin、token、形狀）、`chat/card-frontend-turn.test.tsx`（按鈕送出、card storage 進出存檔）、`chat/mvu-turn.test.tsx`（開局、回覆更新、類巨集、存檔與接著玩、重新生成、卡片寫入版本、初始化失敗；競態：回合中寫入當底、值解析等待中寫入重算與連續被打斷、換模與 message／chat／global 寫入、同鍵以卡片為準、該發副本、編輯與刪除、開局等待時停止與卸載；mock 的 `gate` 能卡住值解析、`onRun` 能在每次值解析開始時插一手）、`sillytavern/variables.test.ts`（回合提交紀錄）、`mvu/mvu-parts.test.ts`（類巨集、parseString、版本、快照、MVU 世界書設定）；桌面版 `card-mvu-eval-host.test.ts`、`interface-card.test.ts` 有對應上限測試。e2e 的介面卡 `web/e2e/interface-card.json`（MVU＋兩支顯示腳本），假端點 `state.replies` 照順序回排好的句子；導走測試把開場那支 iframe 導到 `/sandbox.html?navigated`，新的 iframe 是延後載入的，要捲回去才會載。要重產 MVU 來回 fixture：`cd web && TT_WEB_EXPORT_MVU_OUT=<絕對路徑> npm run e2e`。測 MVU 的 hook 測試要 `vi.mock("../mvu/evaluate")` 換成直接呼叫桌面版 `runEval`（測試環境沒有 Worker），開局是非同步的，等到第 0 則掛上表或 `initError` 再動作。沙盒 MVU／酒館助手規格只當規格書讀：MagVarUpdate 438f9ffc、JS-Slash-Runner 46ec10df（用 GitHub raw 抓到暫存）。測試通道匯入入口：開新的一桌 →「新增」→「匯入卡」→ `file input[type=file] <存檔路徑>`，之後有兩個「知道了」對話框，卡片介面覆蓋層會自動打開（關閉鈕「關閉介面」）。
-- 「取消未完成回合」自動收回玩家句是網頁版提案〔模型判斷·未裁決〕；桌面版零字停止是由玩家手動收回。介面文案與範例卡只有繁中（十語系在包 8）。
+- 「取消未完成回合」自動收回玩家句是網頁版提案〔模型判斷·未裁決〕；桌面版零字停止是由玩家手動收回。
+- 包 8 字典：新增文案先加進 `web/src/i18n/zh-TW.ts`，九個語系同一筆補齊（缺了 web build 的型別檢查就失敗，`dictionaries.test.ts` 另查佔位符與單複數語法）；單複數用 ICU 子集 `{n, plural, one {...} other {...}}`，俄文要寫 one／few／many／other。用語先 grep 桌面版 `src/i18n/<語系>.ts` 對應功能的鍵（例：`worldbookTitle`、`refactorBtn`），跟桌面版主流用語走。
+- 包 8 文案要能換語系重算：元件裡不要把 `t()` 的結果存進 state；要存就存成 `() => t(...)` 之類的「怎麼說」，繪製時呼叫（參考 `useChat` 的 error、`SavesPanel`、`ExportBar`）。測試裡 `t()` 預設是繁中，要測別的語系就 `setLang` 並在 afterEach 切回 `zh-TW`。
+- 包 8 範例卡：`web/src/features/cards/samples/<語系>.ts` 只寫會變的欄位（`SampleText`），其餘欄位在 `sample-card.ts` 統一；各語系的 `{{char}}`／`{{user}}` 巨集要跟繁中同欄同數（測試會擋）。`SAMPLE_PLAY_CARD` 是繁中那份，既有測試都用它。
+- 包 8 e2e：主流程 `browser.newPage({ locale: "zh-TW" })` 固定繁中，所有中文選取器都靠這個；換語系的步驟換完要切回 `zh-TW`（`tt-web:lang` 會記住）。英文段在最後用 `browser.newContext({ locale: "en-US" })` 獨立情境跑，那時 /key 已回報用完，進開始畫面和重新整理後都要先關額度面板。
 
 ## 等作者
 - 開 Cloudflare 帳號並接上 repo（D1），包 9 上線前要好；`_headers` 的宿主 CSP 要排除 `sandbox.html`。

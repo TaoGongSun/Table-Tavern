@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_WEB_SAVE_BYTES } from "@desktop/shared/contracts/web-save/web-save";
-import { t, type MsgKey } from "../../i18n";
+import { getLang, t, type MsgKey } from "../../i18n";
 import { GLOBAL_VARIABLES, type GameSetup } from "../chat/useChat";
 import type { ReleaseInfo } from "../funnel/releases";
 import { downloadWebSave } from "./download";
@@ -32,7 +32,9 @@ export function SavesPanel({
   onContinue: (game: GameSetup) => void;
 }) {
   const [list, setList] = useState<SaveMeta[]>([]);
-  const [error, setError] = useState<string | null>(saves ? null : t("savesErr_storage"));
+  // 錯誤存成「怎麼說」，繪製時才翻：換語系跟著換
+  const [error, setErrorText] = useState<(() => string) | null>(() => (saves ? null : () => t("savesErr_storage")));
+  const setError = useCallback((text: (() => string) | null) => setErrorText(() => text), []);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [exported, setExported] = useState(false);
@@ -43,7 +45,7 @@ export function SavesPanel({
     try {
       setList(await saves.list());
     } catch {
-      setError(t("savesErr_storage"));
+      setError(() => t("savesErr_storage"));
     }
   }, [saves]);
 
@@ -54,10 +56,10 @@ export function SavesPanel({
   const load = async (id: string) => {
     setError(null);
     const save = await saves?.get(id).catch(() => null);
-    if (!save) return setError(t("savesErr_missing"));
+    if (!save) return setError(() => t("savesErr_missing"));
     // 存檔庫裡的也照契約再驗一次（瀏覽器資料可能被別的程式改壞）
     const restored = restoreWebSaveText(JSON.stringify(save));
-    if (!restored.ok) return setError(restoreMessage(restored.error));
+    if (!restored.ok) return setError(() => restoreMessage(restored.error));
     const { game } = restored;
     adoptGlobals(GLOBAL_VARIABLES, game.global);
     onContinue({
@@ -72,25 +74,25 @@ export function SavesPanel({
   const exportOne = async (meta: SaveMeta) => {
     setError(null);
     const save = await saves?.get(meta.id).catch(() => null);
-    if (!save) return setError(t("savesErr_missing"));
+    if (!save) return setError(() => t("savesErr_missing"));
     const failed = downloadWebSave(save, meta.title);
-    if (failed) setError(t("exportFailed", { detail: failed }));
+    if (failed) setError(() => t("exportFailed", { detail: failed }));
     else setExported(true);
   };
 
   const remove = async (id: string) => {
     setConfirming(null);
-    await saves?.remove(id).catch(() => setError(t("savesErr_storage")));
+    await saves?.remove(id).catch(() => setError(() => t("savesErr_storage")));
     await refresh();
   };
 
   const importFile = async (file: File) => {
     setError(null);
-    if (file.size > MAX_WEB_SAVE_BYTES) return setError(t("savesErr_too_large"));
+    if (file.size > MAX_WEB_SAVE_BYTES) return setError(() => t("savesErr_too_large"));
     setImporting(true);
     try {
       const restored = restoreWebSaveText(await file.text());
-      if (!restored.ok) return setError(restoreMessage(restored.error));
+      if (!restored.ok) return setError(() => restoreMessage(restored.error));
       const meta = {
         id: newSaveId(),
         title: restored.game.card.text.name,
@@ -100,7 +102,7 @@ export function SavesPanel({
       await saves?.put(meta, restored.save);
       await refresh();
     } catch {
-      setError(t("savesErr_storage"));
+      setError(() => t("savesErr_storage"));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -121,7 +123,7 @@ export function SavesPanel({
             <div className="save-info">
               <strong>{meta.title}</strong>
               <span className="save-note">
-                {t("savesMeta", { count: meta.messageCount, time: new Date(meta.updatedAt).toLocaleString("zh-TW") })}
+                {t("savesMeta", { count: meta.messageCount, time: new Date(meta.updatedAt).toLocaleString(getLang()) })}
               </span>
             </div>
             <div className="save-actions">
@@ -153,7 +155,7 @@ export function SavesPanel({
       </ul>
       {error && (
         <p className="chat-error" role="alert" data-testid="saves-error">
-          {error}
+          {error()}
         </p>
       )}
       {exported && <ExportFunnel release={release} onClose={() => setExported(false)} />}

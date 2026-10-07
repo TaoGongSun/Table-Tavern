@@ -113,6 +113,15 @@ textarea {
   white-space: nowrap;
 }
 
+.lang-picker {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
 .quota-badge {
   font-size: 13px;
   color: var(--muted);
@@ -689,6 +698,12 @@ button:disabled {
 @media (max-width: 560px) {
   .topbar {
     padding: 8px 12px;
+    flex-wrap: wrap;
+  }
+  /* 有些語系的下載連結很長（法文帶版本號約 40 字）：窄螢幕允許換行，不撐出橫向捲動 */
+  .download-link {
+    white-space: normal;
+    text-align: center;
   }
   .brand-sub,
   .chat-note {

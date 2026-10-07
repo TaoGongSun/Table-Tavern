@@ -132,7 +132,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
   const [input, setInput] = useState(() => (game.resume ? readPendingInput(saveId) : null) ?? "");
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // 錯誤存成「怎麼說」而不是說好的字：換語系時跟著換
+  const [error, setError] = useState<(() => string) | null>(null);
   const [failover, setFailover] = useState<FailoverNotice | null>(null);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -231,7 +232,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
           const landed = await writeSaveRef.current();
           if (cancelled()) return;
           if (!landed) {
-            setError(t("autosaveFirstFailed"));
+            setError(() => () => t("autosaveFirstFailed"));
             return;
           }
         }
@@ -365,7 +366,10 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         setFailover(outcome.failover);
         if (result.restoreInput !== null) setInput(result.restoreInput);
         if (isDailyExhausted(outcome)) session.quotaEvent({ type: "daily-exhausted-error" });
-        else if (result.error !== null) setError(explainError(result.error));
+        else if (result.error !== null) {
+          const display = result.error;
+          setError(() => () => explainError(display));
+        }
         // 更新今日免費次數（/key 不佔次數）
         void session.refreshQuota();
       } finally {
@@ -511,7 +515,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
     setInput,
     busy,
     streaming,
-    error,
+    error: error?.() ?? null,
     failover,
     send,
     sendText,

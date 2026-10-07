@@ -1,7 +1,7 @@
 // 網頁版端對端（npm run e2e）：本機假端點＋正式建置（端點換成假端點）＋WebKit。
 // 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→自動存檔（重新整理後繼續）→匯出網頁存檔
 // （契約檢查、用桌面版繼續導流）→匯出 ST 聊天檔→存檔區刪除與匯入→匯入卡（錯誤說明、選開場白、玩家名、
-// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載頁與下載連結→找卡清單→登出。
+// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載頁與下載連結→找卡清單→登出→英文瀏覽器走一遍與換語系。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
 // TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）；
 // TT_WEB_EXPORT_WI_OUT 同理，另存帶世界書觸發狀態的那一份；TT_WEB_EXPORT_MVU_OUT 另存帶 MVU 與卡片設定的那一份。
@@ -30,7 +30,8 @@ const server = await preview({ root: ROOT, logLevel: "warn", build: { outDir: "d
 const base = server.resolvedUrls.local[0];
 
 const browser = await webkit.launch();
-const page = await browser.newPage();
+// 主流程照繁中走（語系照瀏覽器偵測，固定成 zh-TW）；最後另開一個英文瀏覽器走一遍主要畫面
+const page = await browser.newPage({ locale: "zh-TW" });
 const consoleErrors = [];
 page.on("console", (message) => message.type() === "error" && consoleErrors.push(message.text()));
 const step = (name) => console.log(`• ${name}`);
@@ -127,6 +128,12 @@ try {
   await page.getByTestId("download-page").waitFor();
   await page.getByRole("button", { name: "回到遊戲" }).click();
   await page.getByTestId("message-streaming").getByText("說到一半").waitFor();
+  await page.getByRole("button", { name: "停止" }).waitFor();
+  // 串流中換語系：介面換成英文、串流照舊，換回來也不中斷
+  await page.getByTestId("lang-picker").selectOption("en");
+  await page.getByRole("button", { name: "Stop" }).waitFor();
+  await page.getByTestId("message-streaming").getByText("說到一半").waitFor();
+  await page.getByTestId("lang-picker").selectOption("zh-TW");
   await page.getByRole("button", { name: "停止" }).waitFor();
   await page.getByTestId("download-link").click();
   await page.getByTestId("download-page").waitFor();
@@ -359,6 +366,15 @@ try {
   // 回覆落地後開場那支介面不重掛（設定照舊），讀的還是自己那樓
   await frontend.locator("#visits").getByText("來過 1 次").waitFor();
   await frontend.locator("#ships").getByText("船隻 2").waitFor();
+  // 換語系不重掛卡片介面：同一個 iframe 元素、同一個文件
+  await page.getByTestId("card-frontend").first().evaluate((frame) => (frame.dataset.e2eKeep = "1"));
+  await frontend.locator("body").evaluate((body) => (body.dataset.e2eKeep = "1"));
+  await page.getByTestId("lang-picker").selectOption("en");
+  await page.getByRole("button", { name: "Send" }).waitFor();
+  await page.getByTestId("lang-picker").selectOption("zh-TW");
+  await page.getByRole("button", { name: "送出" }).waitFor();
+  assert.equal(await page.getByTestId("card-frontend").first().getAttribute("data-e2e-keep"), "1", "換語系不換 iframe");
+  assert.equal(await frontend.locator("body").getAttribute("data-e2e-keep"), "1", "換語系不重載卡片文件");
   await page.getByPlaceholder("輸入你的行動或對話…").fill("晚安");
   await page.getByRole("button", { name: "送出" }).click();
   await page.getByText("夜裡的港口很安靜。").waitFor();
@@ -437,6 +453,52 @@ try {
   await page.getByRole("button", { name: "登出" }).click();
   await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
   assert.equal(await page.evaluate(() => localStorage.getItem("tt-web:openrouter-key")), null);
+
+  step("十語系：英文瀏覽器首開就是英文（含 <html lang> 與標題）；登入、額度面板、開始畫面、範例卡、下載頁都是英文；桌上換成日文不丟桌、不丟草稿");
+  // 獨立的瀏覽器情境：不共用主流程的 localStorage（含剛才記下的語系）與 IndexedDB
+  const englishContext = await browser.newContext({ locale: "en-US" });
+  const english = await englishContext.newPage();
+  english.on("console", (message) => message.type() === "error" && consoleErrors.push(message.text()));
+  await english.goto(base);
+  await english.getByText("Connect OpenRouter to start playing").waitFor();
+  assert.equal(await english.evaluate(() => document.documentElement.lang), "en");
+  assert.equal(await english.title(), "Table Tavern | Web version");
+  await english.getByTestId("download-link").click();
+  await english.getByText("Current version v0.3.0").waitFor();
+  await english.getByText("How the web and desktop versions differ").waitFor();
+  await english.getByRole("button", { name: "Back to the game" }).click();
+  await english.getByRole("button", { name: "Sign in with OpenRouter" }).click();
+  await english.getByText("Pick a character card to start").waitFor();
+  // 這時 /key 回報今日已用完（上一段的設定）：導流面板也是英文
+  await english.getByText("Today's free uses are gone", { exact: true }).first().waitFor();
+  await english.getByRole("button", { name: "Got it" }).click();
+  await english.getByTestId("find-cards").getByText("Where to find character cards").waitFor();
+  await english.getByRole("button", { name: "Start", exact: true }).click();
+  await english.getByText("Stamp the snow off your boots first.").waitFor();
+  await english.getByPlaceholder("Type your action or words…").fill("草稿留著");
+  await english.getByTestId("lang-picker").selectOption("ja");
+  await english.getByPlaceholder("行動やセリフを入力…").waitFor();
+  assert.equal(await english.getByPlaceholder("行動やセリフを入力…").inputValue(), "草稿留著");
+  // 桌還是那張英文範例卡（開了桌，卡不跟著換語系）
+  await english.getByText("Stamp the snow off your boots first.").waitFor();
+  assert.equal(await english.evaluate(() => document.documentElement.lang), "ja");
+  assert.equal(await english.evaluate(() => localStorage.getItem("tt-web:lang")), "ja");
+  await english.reload();
+  await english.getByText("キャラクターカードを選んで始める").waitFor();
+  // 重新整理後額度面板（今日已用完）又會跳出來：先關掉
+  await english.getByTestId("quota-panel").locator("button.ghost").click();
+  // 窄螢幕（手機寬）十個語系的開始畫面與下載頁都不橫向溢出
+  await english.setViewportSize({ width: 375, height: 760 });
+  const overflow = () => english.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  for (const lang of ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru"]) {
+    await english.getByTestId("lang-picker").selectOption(lang);
+    assert.ok((await overflow()) <= 0, `${lang} 開始畫面在 375px 寬橫向溢出`);
+    await english.getByTestId("download-link").click();
+    await english.getByTestId("download-page").waitFor();
+    assert.ok((await overflow()) <= 0, `${lang} 下載頁在 375px 寬橫向溢出`);
+    await english.getByTestId("download-page").locator("button.ghost").click();
+  }
+  await englishContext.close();
 
   const csp = consoleErrors.filter((text) => /Content Security Policy|Refused to/i.test(text));
   assert.deepEqual(csp, [], "不該有 CSP 擋下的資源");

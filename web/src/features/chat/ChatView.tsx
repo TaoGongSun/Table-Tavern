@@ -70,10 +70,11 @@ function LastMessageTools({ chat, entry }: { chat: ChatController; entry: ChatEn
 }
 
 /** 匯出：網頁存檔（桌面版接著玩，匯完導流）與 SillyTavern 聊天檔（有損，附說明）。 */
-function ExportBar({ chat, name, release }: { chat: ChatController; name: string; release: ReleaseInfo }) {
+export function ExportBar({ chat, name, release }: { chat: ChatController; name: string; release: ReleaseInfo }) {
   const [funnel, setFunnel] = useState(false);
   const [stHint, setStHint] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 錯誤存成「怎麼說」，繪製時才翻：換語系跟著換
+  const [error, setError] = useState<(() => string) | null>(null);
   return (
     <div className="export-bar">
       <div className="export-actions">
@@ -87,7 +88,7 @@ function ExportBar({ chat, name, release }: { chat: ChatController; name: string
             } catch (reason) {
               failed = String(reason);
             }
-            setError(failed && t("exportFailed", { detail: failed }));
+            setError(() => (failed ? () => t("exportFailed", { detail: failed }) : null));
             setFunnel(!failed);
             setStHint(false);
           }}
@@ -117,8 +118,8 @@ function ExportBar({ chat, name, release }: { chat: ChatController; name: string
         </div>
       )}
       {error && (
-        <p className="chat-error" role="alert">
-          {error}
+        <p className="chat-error" role="alert" data-testid="export-error">
+          {error()}
         </p>
       )}
       {funnel && <ExportFunnel release={release} onClose={() => setFunnel(false)} />}

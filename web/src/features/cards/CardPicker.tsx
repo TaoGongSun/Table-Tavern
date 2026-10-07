@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { t, type MsgKey } from "../../i18n";
+import { getLang, t, type MsgKey } from "../../i18n";
 import type { GameSetup } from "../chat/useChat";
 import { DesktopOnly } from "../funnel/DesktopOnly";
 import type { ReleaseInfo } from "../funnel/releases";
@@ -10,7 +10,7 @@ import { substituteParams } from "../sillytavern/substitute";
 import { createChatVariables } from "../sillytavern/variables";
 import { CardImport } from "./CardImport";
 import { importCardFile, type ImportErrorCode, type PlayCard } from "./play-card";
-import { SAMPLE_PLAY_CARD } from "./sample-card";
+import { samplePlayCard } from "./sample-card";
 import { cleanUserName, loadUserName, saveUserName } from "./user-name";
 
 export function CardPicker({
@@ -24,13 +24,14 @@ export function CardPicker({
   persisted: boolean | null;
   release: ReleaseInfo;
 }) {
-  const [userName, setUserName] = useState(() => loadUserName(t("defaultUserName")));
+  // 沒填名字就用目前語系的預設名（存的是玩家自己填的，換語系時預設名跟著換）
+  const [userName, setUserName] = useState(() => loadUserName(""));
   const [imported, setImported] = useState<PlayCard | null>(null);
   const [error, setError] = useState<ImportErrorCode | null>(null);
   const [reading, setReading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const name = cleanUserName(userName) || t("defaultUserName");
-  const sample = SAMPLE_PLAY_CARD;
+  const sample = samplePlayCard(getLang());
   const sampleBlurb = substituteParams(sample.text.description, {
     card: sample.text,
     userName: name,
@@ -40,7 +41,7 @@ export function CardPicker({
   });
 
   const start = (game: GameSetup) => {
-    saveUserName(name);
+    saveUserName(userName);
     onStart(game);
   };
 
@@ -68,7 +69,7 @@ export function CardPicker({
       <h1>{t("pickTitle")}</h1>
       <label className="user-name">
         <span>{t("pickUserName")}</span>
-        <input value={userName} maxLength={60} onChange={(event) => setUserName(event.target.value)} />
+        <input value={userName} placeholder={t("defaultUserName")} maxLength={60} onChange={(event) => setUserName(event.target.value)} />
       </label>
 
       <SavesPanel saves={saves} persisted={persisted} release={release} onContinue={onStart} />
