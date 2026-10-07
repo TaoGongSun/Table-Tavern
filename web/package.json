@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "node e2e/run.mjs"
+    "e2e": "node e2e/run.mjs",
+    "smoke:dist": "node e2e/smoke-dist.mjs"
   },
   "dependencies": {
     "json5": "^2.2.3",

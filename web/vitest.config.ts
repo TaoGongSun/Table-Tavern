@@ -9,6 +9,7 @@ export default defineConfig({
     alias: { "@desktop": fileURLToPath(new URL("../src", import.meta.url)) },
   },
   test: {
-    include: ["src/**/*.test.{ts,tsx}"],
+    // web/ 根的建置外掛（site-headers.ts 等）測試同住在根層
+    include: ["src/**/*.test.{ts,tsx}", "*.test.ts"],
   },
 });

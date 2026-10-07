@@ -73,8 +73,11 @@ export async function startFake() {
 
     if (path === "/auth") {
       state.challenge = url.searchParams.get("code_challenge");
+      // 照真 OpenRouter：callback_url 自己的 query 丟掉，只帶 code 與原樣的 state 導回
       const callback = new URL(url.searchParams.get("callback_url"));
+      callback.search = "";
       callback.searchParams.set("code", "fake-code");
+      if (url.searchParams.has("state")) callback.searchParams.set("state", url.searchParams.get("state"));
       res.writeHead(302, { Location: callback.toString() });
       res.end();
       return;
