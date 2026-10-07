@@ -35,7 +35,7 @@ import { Lobby } from "./features/lobby/Lobby";
 import { openImportTable } from "./features/lobby/open-import-table";
 import { useTableOp } from "./features/lobby/useTableOp";
 import { showUpdateDot } from "./features/updater/version-center";
-import { useCardInterfaceController } from "./features/card-interface/useCardInterfaceController";
+import { useCardInterfaceController, writeCardStorage } from "./features/card-interface/useCardInterfaceController";
 import { useCharacterController } from "./features/characters/useCharacterController";
 import {
   type ChatController,
@@ -43,7 +43,8 @@ import {
   useChatController,
 } from "./features/play/useChatController";
 import { nextTurnFailure, TurnFailedDialog } from "./features/play/TurnFailedDialog";
-import { useImportController } from "./features/import/useImportController";
+import { useImportController, type WebSaveImport } from "./features/import/useImportController";
+import { openWebSaveTable as openWebSaveTableFlow } from "./features/import/web-save-table";
 import { useOpeningPost } from "./features/import/useOpeningPost";
 import { useSceneActions } from "./features/play/useSceneActions";
 import { type TurnWaitOp, useTurnWait } from "./features/play/useTurnWait";
@@ -349,6 +350,35 @@ function App() {
     [config, chat.busy, refreshWorlds],
   );
 
+  // 匯入網頁存檔：後端照存檔整桌建好（失敗不留半桌），卡片 storage 在進桌前寫好，再照開新桌的流程進去。
+  // 前置條件與 openTableForImport 相同；外層 runTableOp 已持鎖。
+  const openWebSaveTable = useCallback(
+    async (data: number[]) => {
+      if (!config || chat.busy) return null;
+      if (!(await canLeaveRef.current())) return null;
+      return openWebSaveTableFlow(
+        {
+          importSave: (save) => invoke<WebSaveImport>("import_web_save", { data: save }),
+          writeStorage: writeCardStorage,
+          askRetry: () =>
+            confirm(t("importWebSaveStorageRetry"), {
+              title: t("importCard"),
+              okLabel: t("importWebSaveRetry"),
+              cancelLabel: t("importWebSaveGiveUp"),
+            }),
+          discardImport: (worldId, reason) => invoke("discard_web_save_import", { worldId, reason }),
+          confirmImport: (worldId) => invoke("confirm_web_save_import", { worldId }),
+          refreshWorlds,
+          enterTable,
+          storageFailed: t("importWebSaveStorageFailed"),
+          storageReason: t("importWebSaveStorageReason"),
+        },
+        data,
+      );
+    },
+    [config, chat.busy, refreshWorlds],
+  );
+
   const resetChatted = useCallback((worldId: string) => {
     localStorage.removeItem(chattedKey(worldId));
     setChattedSinceImport(false);
@@ -368,6 +398,7 @@ function App() {
     adoptTableName: adoptImportName,
     focusSpeaker,
     openTableForImport,
+    openWebSaveTable,
     runTableOp,
     resetChatted,
     refreshState: tableState.refresh,

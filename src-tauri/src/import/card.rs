@@ -1,5 +1,8 @@
 use super::card_io::{decode_png_character, string_field, PNG_MAGIC};
-use super::mechanism::{import_mechanism, import_table_tavern_extension};
+use super::mechanism::{
+    import_mechanism, import_mechanism_strict, import_table_tavern_extension,
+    import_table_tavern_extension_strict,
+};
 use super::png_clean::{self, Stored};
 use super::png_image::{validate_png_image, STORED_IMAGE_LIMITS};
 use crate::data::{self, CharacterCard, CharacterMeta, DataResult, Tier};
@@ -299,6 +302,30 @@ pub fn import_character_reporting(
     color: &str,
     lang: &str,
 ) -> DataResult<ImportedCharacter> {
+    // 卡片隨身世界書照舊盡力而為：寫不進去不擋角色本體
+    import_character_placing(root, world_id, bytes, color, lang, BookVisibility::Gm)
+        .map(|(imported, _)| imported)
+}
+
+/// 卡片隨身世界書條目沒指定可見度時給誰看。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BookVisibility {
+    /// 桌面版預設：只給 GM
+    Gm,
+    /// 網頁存檔匯入（D16）：只給這張卡自己的角色
+    OwnCharacter,
+}
+
+/// 角色卡路的本體。`BookVisibility::OwnCharacter` 時隨身世界書寫不進去整次回錯，並回報每條來源條目
+/// 落到哪個 UID；`Gm` 時照桌面版既有行為，書寫失敗只略過（回 None）。
+pub(crate) fn import_character_placing(
+    root: &Path,
+    world_id: &str,
+    bytes: &[u8],
+    color: &str,
+    lang: &str,
+    book_visibility: BookVisibility,
+) -> DataResult<(ImportedCharacter, Option<data::BookImport>)> {
     let ParsedCard {
         json_bytes,
         value,
@@ -326,30 +353,56 @@ pub fn import_character_reporting(
     };
     data::write_character(root, world_id, &card)?;
     let image_dropped = store_card_source(&md_path, bytes, &json_bytes)?;
-    import_table_tavern_extension(root, world_id, &name, card_data);
+    let strict = book_visibility == BookVisibility::OwnCharacter;
+    if strict {
+        import_table_tavern_extension_strict(root, world_id, &name, card_data)?;
+    } else {
+        import_table_tavern_extension(root, world_id, &name, card_data);
+    }
+    let mut book_import = None;
     if let Some(book) = card_data.get("character_book") {
-        import_mechanism(root, world_id, book);
+        if strict {
+            import_mechanism_strict(root, world_id, book)?;
+        } else {
+            import_mechanism(root, world_id, book);
+        }
         // 卡片隨身的設定條目也帶進這桌世界書：以前整包丟掉，模型看不到這角色的家鄉家人秘密，
         // 卡片自訂的輸出格式規定也一併消失（同名條目由 import_worldbook 自行去重）
-        if let Ok(text) = serde_json::to_string(book) {
-            let _ = data::import_worldbook(root, world_id, &text);
+        let text = serde_json::to_string(book)?;
+        match book_visibility {
+            BookVisibility::Gm => {
+                book_import =
+                    data::import_worldbook_as(root, world_id, &text, &data::Visibility::Gm).ok()
+            }
+            BookVisibility::OwnCharacter => {
+                let visibility = data::Visibility::Characters(vec![id.clone()]);
+                book_import = Some(data::import_worldbook_as(
+                    root,
+                    world_id,
+                    &text,
+                    &visibility,
+                )?);
+            }
         }
     }
 
-    Ok(ImportedCharacter {
-        meta: CharacterMeta {
-            id,
-            name,
-            color: color.to_owned(),
-            avatar: "🎭".to_owned(),
-            tier: Tier::Balanced,
-            show_image: true,
-            archived: false,
-            auto_hidden: false,
-            display_index: None,
+    Ok((
+        ImportedCharacter {
+            meta: CharacterMeta {
+                id,
+                name,
+                color: color.to_owned(),
+                avatar: "🎭".to_owned(),
+                tier: Tier::Balanced,
+                show_image: true,
+                archived: false,
+                auto_hidden: false,
+                display_index: None,
+            },
+            image_dropped,
         },
-        image_dropped,
-    })
+        book_import,
+    ))
 }
 
 /// 卡原檔落地（`.png` 與 `.import.json` 只寫其一，原子寫）。卡片介面從這份讀卡資料，所以：

@@ -11,6 +11,7 @@ import { useTurnWait } from "../play/useTurnWait";
 import { type WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
 import { type CardInterface } from "../card-interface/interface-card";
+import { looksLikeWebSave } from "../../shared/contracts/web-save/web-save";
 
 interface CharacterImport {
   meta: CharacterMeta;
@@ -39,6 +40,19 @@ interface ImportProbe {
  *  兩條路玩家都選得到——判錯的代價是多看一眼，不是卡壞掉。 */
 function looksLikeWorldbook(probe: ImportProbe): boolean {
   return probe.book_shaped || probe.lorebook_heavy || probe.alternate_greetings > 0;
+}
+
+/** 網頁存檔匯入結果（後端 import::WebSaveImported）：新桌已整桌建好 */
+export interface WebSaveImport {
+  world_id: string;
+  /** 角色卡路的角色；世界書路沒有 */
+  character_id: string | null;
+  /** 卡片介面的 localStorage，進桌前寫進新桌 */
+  card_storage: Record<string, string>;
+  /** 新桌世界書裡來自這張卡的條目數 */
+  worldbook_entries: number;
+  /** 跨桌共用的卡片變數桌面版已有值、沒有蓋掉的鍵數（D18） */
+  shared_kept: number;
 }
 
 /** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
@@ -166,6 +180,8 @@ export function useImportController(input: {
   focusSpeaker: (characterId: string | null) => void;
   /** 開一張新桌並進去，回傳新桌 id；null＝現在開不了（沒 config、正在生成、或新桌進不去／不可寫） */
   openTableForImport: (label: string) => Promise<string | null>;
+  /** 照網頁存檔建一張新桌並進去；null＝現在開不了或新桌進不去（同 openTableForImport） */
+  openWebSaveTable: (data: number[]) => Promise<WebSaveImport | null>;
   /** 進出桌互斥：匯入現桌與開新桌並匯入整段要拿到鎖；等玩家在身分框／路由框作答時不持鎖 */
   runTableOp: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   /** 剛匯入＝又回到「還沒開演」的狀態，把這桌的開演記號清掉 */
@@ -189,6 +205,7 @@ export function useImportController(input: {
     adoptTableName,
     focusSpeaker,
     openTableForImport,
+    openWebSaveTable,
     runTableOp,
     resetChatted,
     refreshState,
@@ -453,6 +470,27 @@ export function useImportController(input: {
     [runTableOp, openTableForImport, importAsWorldbook, importAsCharacter],
   );
 
+  // 網頁存檔：一律開新桌（不問身分、不過第二張卡路由——身分存檔裡就有），進去後講清楚世界書規則的差異
+  const importWebSave = useCallback(
+    (data: number[]) =>
+      runTableOp(async () => {
+        const imported = await openWebSaveTable(data);
+        if (imported === null) return;
+        const id = imported.world_id;
+        await refreshCharacters(id);
+        focusSpeaker(imported.character_id);
+        await refreshState();
+        const notices = [
+          t("importWebSaveDone"),
+          imported.worldbook_entries > 0 ? t("importWebSaveWorldbookRules") : "",
+          imported.shared_kept > 0 ? t("importWebSaveSharedKept", { n: imported.shared_kept }) : "",
+        ].filter((notice) => notice !== "");
+        await showMessage(notices.join("\n\n"), { title: t("importCard"), okLabel: t("dialogAck") });
+        await tellAboutInterface(id, imported.character_id ?? "");
+      }),
+    [runTableOp, openWebSaveTable, refreshCharacters, focusSpeaker, refreshState, tellAboutInterface],
+  );
+
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端探測，依探測結果分流——
   // 純世界書、純角色卡都零詢問直接判定身分（還要再過第二張卡路由）；
   // 角色與世界書兩種身分都有料才彈三鍵對話框問玩家要哪個，答完一樣過路由。
@@ -464,6 +502,10 @@ export function useImportController(input: {
         if (worldRef.current !== worldId) return;
         if (hasRefactorCardChunk(bytes)) {
           onRefactorCard(worldId, file);
+          return;
+        }
+        if (looksLikeWebSave(bytes)) {
+          await importWebSave(Array.from(bytes));
           return;
         }
         const data = Array.from(bytes);
@@ -496,7 +538,7 @@ export function useImportController(input: {
         onError(String(reason));
       }
     },
-    [routeImport, importAsCharacter, runTableOp, worldId, onError, onRefactorCard],
+    [routeImport, importAsCharacter, importWebSave, runTableOp, worldId, onError, onRefactorCard],
   );
 
   // 三鍵對話框的作答：取消什麼都不做，另外兩個選項答出身分後都要過第二張卡路由

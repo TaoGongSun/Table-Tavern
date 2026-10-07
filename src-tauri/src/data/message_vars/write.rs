@@ -663,3 +663,26 @@ pub fn drop_scene_seed(tx: &CommitTx<'_>, scene: u64) -> DataResult<()> {
     }
     Ok(())
 }
+
+/// 網頁存檔匯入：控制檔設成變數模式，這一幕換新 epoch、種子＝存檔的開場完整表，代換值照存檔。
+/// 回這一幕的新 epoch（帶表的事件掛它）。
+pub fn publish_imported_seed(
+    tx: &CommitTx<'_>,
+    scene: u64,
+    macros: Option<Macros>,
+    seed: &Json,
+) -> DataResult<String> {
+    let mut control = read_control(tx.root, tx.world_id)?;
+    let epoch = new_token();
+    control.mode = super::control::Mode::Events;
+    control.macros = macros;
+    control.scenes.insert(
+        scene.to_string(),
+        SceneVars {
+            epoch: epoch.clone(),
+            seed: VarsTable::from_json(seed),
+        },
+    );
+    write_control(tx, &control)?;
+    Ok(epoch)
+}

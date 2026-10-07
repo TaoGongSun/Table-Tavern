@@ -140,6 +140,20 @@ pub enum UiMsg {
         detail: String,
     },
     CardPngNoData,
+    /// 網頁存檔（桌檔契約 v1）格式不對；detail 是哪一欄出錯的技術細節。
+    WebSaveInvalid {
+        detail: String,
+    },
+    /// 網頁存檔的版號這個桌面版不認得（拒收、不猜）。
+    WebSaveVersion {
+        version: String,
+    },
+    /// 網頁存檔匯入失敗、清理也沒做完：error 是原本的錯，leftovers 是留下的東西（`world:<桌 id>`、
+    /// `global:<鍵>`、`extension:<原 ID>:<鍵>`…，逗號分隔）。
+    WebSaveCleanupIncomplete {
+        error: String,
+        leftovers: String,
+    },
     /// 卡片 PNG 裡的角色資料解不開；detail 是技術細節原文。
     CardDataInvalid {
         detail: String,

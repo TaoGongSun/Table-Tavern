@@ -30,7 +30,7 @@ pub use format::{open_world, read_world_readonly, restore_world_backup, OpenWorl
 pub(crate) use paths::{
     character_path, gallery_dir, gm_image_path, import_pending_path, import_receipts_path,
     import_source_file_path, interface_shell_path, lanes_path, mechanism_log_path,
-    validate_single_line, world_card_path,
+    validate_single_line, web_save_pending_path, web_save_sidecar_path, world_card_path,
 };
 pub use scene::{
     appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
@@ -41,7 +41,8 @@ pub use scene::{
     discard_unanswered_player, export_scene_markdown, export_transcript_markdown, fork_scene,
     opening_checkpoint, pop_transcript, read_transcript, remove_transcript_event,
     replace_scene_summary, revert_scene, scene_label, set_last_transcript_state,
-    settle_pending_turn, sync_scene_state_tree, TranscriptEvent, TranscriptKind,
+    settle_pending_turn, sync_scene_state_tree, write_imported_scene, ImportedEvent, ImportedScene,
+    TranscriptEvent, TranscriptKind,
 };
 pub(crate) use scene::{lang_key, name_matches, player_fallback_name, split_present_names};
 pub(crate) use state::is_false;
@@ -56,6 +57,7 @@ pub use world::{
     reclaim_world_if_empty, rename_world, world_has_state_bar, write_interface_shell,
     write_refactor_outcome, write_world_md, WorldMeta,
 };
+pub(crate) use world::{create_world_exclusive, discard_new_world};
 pub(crate) use world_file::{
     commit_world_append, commit_world_remove, commit_world_write, commit_world_write_atomic,
 };
@@ -75,9 +77,9 @@ pub use world_lock::{
 };
 pub use worldbook::{
     character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
-    import_worldbook, read_worldbook, reorder_worldbook_entries, restore_worldbook_entry,
-    upsert_worldbook_entry, worldbook_entry_to_character, Visibility, WorldbookEntry,
-    WorldbookImport,
+    import_worldbook, import_worldbook_as, read_worldbook, reorder_worldbook_entries,
+    restore_worldbook_entry, upsert_worldbook_entry, worldbook_entry_to_character, BookImport,
+    Visibility, WorldbookEntry, WorldbookImport,
 };
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，

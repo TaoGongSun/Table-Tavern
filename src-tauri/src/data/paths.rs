@@ -54,6 +54,17 @@ pub(crate) fn import_receipts_path(root: &Path, world_id: &str) -> DataResult<Pa
     Ok(world_dir(root, world_id)?.join("import-receipts.json"))
 }
 
+/// 網頁存檔匯入的旁檔（世界書觸發狀態原樣＋映射表）：worlds/<world_id>/web-save.json。
+pub(crate) fn web_save_sidecar_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("web-save.json"))
+}
+
+/// 網頁存檔匯入的未確認記錄（跨桌層補了什麼）：worlds/<world_id>/web-save-pending.json。建桌後第一個寫、
+/// 玩家確認進桌才刪；還在＝這次匯入還沒確認，放棄時照它撤回跨桌層。
+pub(crate) fn web_save_pending_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("web-save-pending.json"))
+}
+
 /// 世界書路徑匯入的原始卡檔：worlds/<world_id>/source-card.<png|import.json>。
 /// 卡片自帶介面要靠它，角色卡路徑則是留在角色檔旁邊。
 pub(crate) fn world_card_path(root: &Path, world_id: &str, extension: &str) -> DataResult<PathBuf> {

@@ -107,6 +107,49 @@ pub(crate) async fn import_character(
     })
 }
 
+/// 匯入網頁存檔（桌檔契約 v1）：開一張新桌照存檔接著玩。失敗不留半桌；成功回新桌與要交給前端的卡片 storage。
+#[tauri::command]
+pub(crate) async fn import_web_save(
+    app: tauri::AppHandle,
+    data: Vec<u8>,
+) -> Result<import::WebSaveImported, String> {
+    let root = data_root(&app)?;
+    let config = data::read_config(&config_root(&app)?).unwrap_or_default();
+    let lang = transport::ui_language(&config);
+    tokio::task::spawn_blocking(move || {
+        import::import_web_save(&root, &data, &lang).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// 網頁存檔匯入完成（前端寫好卡片 storage、要進桌）：刪掉新桌的未確認記錄。
+#[tauri::command]
+pub(crate) fn confirm_web_save_import(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    import::confirm_web_save_import(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+}
+
+/// 放棄還沒確認的網頁存檔匯入：照記錄撤回跨桌層再刪新桌（獨占在 import 層）。`reason` 是放棄的原因，
+/// 清理沒做完時放進回報。
+#[tauri::command]
+pub(crate) async fn discard_web_save_import(
+    app: tauri::AppHandle,
+    world_id: String,
+    reason: String,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    tokio::task::spawn_blocking(move || {
+        import::discard_web_save_import(&root, &world_id, &reason)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 /// 角色卡匯入的完整結果：新角色本體＋卡片隨身世界書的收編數字＋這次匯入的原檔識別（貼開場白時帶回）。
 #[derive(serde::Serialize)]
 pub(crate) struct CharacterImport {

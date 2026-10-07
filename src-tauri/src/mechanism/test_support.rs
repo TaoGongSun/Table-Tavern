@@ -60,6 +60,7 @@ pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::
         aligned_scene: None,
         branch_bindings: BTreeMap::new(),
         refactor_mode: None,
+        regex_allowed: true,
     }
 }
 

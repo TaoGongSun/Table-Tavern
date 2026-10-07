@@ -62,13 +62,18 @@ function readCardStorage(worldId: string | null): CardStorage {
   }
 }
 
-function writeCardStorage(worldId: string | null, entries: unknown): void {
+/**
+ * 寫進這桌的卡片 storage，回傳有沒有寫成。沙盒推來的快照寫不進去（配額滿等）時設定留在沙盒記憶體裡、
+ * 不影響畫面；匯入網頁存檔時呼叫端看回傳值，寫不成就不能當成功。
+ */
+export function writeCardStorage(worldId: string | null, entries: unknown): boolean {
   const clean = worldId === null ? null : sanitizeCardStorage(entries);
-  if (clean === null) return;
+  if (clean === null) return false;
   try {
     window.localStorage.setItem(CARD_STORAGE_PREFIX + worldId, JSON.stringify(clean));
+    return true;
   } catch {
-    // 宿主這側寫不進去（配額滿等）：卡片設定這回合留在沙盒記憶體裡，不影響畫面
+    return false;
   }
 }
 

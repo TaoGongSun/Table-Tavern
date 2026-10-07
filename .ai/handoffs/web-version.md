@@ -14,7 +14,7 @@
 - 支援卡片介面（原卡直玩的介面渲染與 MVU 變數），盡量做到跟 ST 一樣。〔作者裁決 2026-10-04〕
 - 要有「去哪裡找卡」的導流；爬別站、另存別站卡的站（JannyAI、CharaVault、DeepSeek Tavern 等）不收。〔作者裁決 2026-09-30〕
 - 網頁版的桌檔與卡片（角色卡＋內嵌世界書的複合卡）要能跟桌面版通用。〔作者裁決 2026-10-07〕
-- D1–D23 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
+- D1–D26 全部拍板，見計畫第五節。〔作者裁決 2026-10-07〕
 
 ## 現況
 - **包 1（最小縱切）封板**：commit be1093d..0de69dd，Sol、Grok 驗收通過，主線 verify 12 步綠、e2e 過。
@@ -29,12 +29,19 @@
   - personality 含 setvar 會跑兩次，照 ST（測試「a personality with setvar runs twice like ST」）。
   - TestCards 本機 35 檔 Rust／TS 檢視一致（`TT_CARD_VIEW_TESTCARDS`、`TT_CARD_VIEW_OUT`：先跑 cargo 的 `writes_local_testcard_views_when_requested` 再跑 web 的 card-view 測試）。
   - 未驗：真模型未實送；惡意卡 regex 的 ReDoS 風險同 ST（玩家允許後才套）；只測 WebKit；token 預算排包 4b（D23）。
+- **包 3（桌檔契約＋桌面版匯入器）封板**：commit a3cca5d..6527a28，Sol、Grok 驗收通過，主線 verify 12 步綠。
+  - 契約：`src/shared/contracts/web-save/`（web-save.md、fixture：short／minimal／worldbook-route／worldbook-route-mvu／future-version、共用負例 `invalid/<分類>--<案例>.json`、TS 檢查 `web-save.ts`）。
+  - 桌面版匯入器 `src-tauri/src/import/web_save/`（parse／mod／pending／tests／pending_tests），指令 `import_web_save`、`confirm_web_save_import`、`discard_web_save_import`。資料層：`data/scene/import.rs`（整幕寫入）、`message_vars::publish_imported_seed`、`card_vars::fill_missing`（帶 journal 掛點，寫前先記）／`retract_filled`（rev compare-and-set，`prev_rev` 判沒落地）、`worldbook::import_worldbook_as`、`world::create_world_exclusive`、`import::card::import_character_placing`、`mechanism`／`interface` 的嚴格變體。D24 桌層旗標 `WorldState.regex_allowed`。
+  - 匯入成功到前端確認之間，新桌 `web-save-pending.json` 記跨桌層補了什麼；前端寫好卡片 storage 才 confirm，放棄走 discard（撤回跨桌層再刪桌）。
+  - 前端：`useImportController` 依內容認存檔；`features/import/web-save-table.ts` 進桌前寫卡片 storage（失敗問重試、放棄走 discard）。
+  - 測試通道實測（claude Sonnet）：短 fixture 匯入→送一句→下一輪尾段含 constant 與觸發條目；長 fixture 容量滿→換幕中停止原幕完整→重試換幕→新幕有回覆，MVU、各層、卡片 storage 都在。
+  - 未驗：Windows；網頁版真匯出的存檔（包 4 的來回測試補）；世界書路的 AI 對話只在 cargo 測過。桌面版本來就沒有送模前／玩家輸入的 regex（D24 只關掉介面顯示腳本）；角色回覆不更新 MVU 表、換幕後回覆落成 GM 旁白，都是桌面版既有行為。
 - 桌面版尚未發過任何 GitHub release（`releases/latest` 回 404）。
 - 測試用模型〔作者裁決 2026-10-07〕：網頁端用本機假端點，桌面端用測試通道＋claude CLI Sonnet；真免費模型實送等 OpenRouter 有額度再補，每包報告註明「真模型未實送」。
 - 作者實測：OpenRouter 角色扮演排行前兩名免費模型都能輸出 NSFW（DeepSeek 較保守、GLM 很開放）。〔作者實測 2026-09-30〕
 
-## 下一步：包 3（桌檔契約＋桌面版匯入器）
-照計畫三分包表包 3、二之二「桌檔契約」與「落地規則」、第五節 D3／D13／D15／D16／D18／D21 施工。
+## 下一步：包 4（網頁存檔）
+照計畫三分包表包 4 列與二之二桌檔契約施工：IndexedDB 多份存檔、照契約 v1 匯出／匯入網頁存檔、D3「匯出成 ST 聊天檔」、匯出附「用桌面版繼續」導流（D10）；驗收含網頁版真匯出→桌面版 import_web_save 的來回測試。
 
 接手者需知：
 - check-structure 會擋 `use` 開頭的 `.tsx`：hook 測試要用 JSX 就依行為命名（例：`send-cancel.test.tsx`）。用到 DOMPurify 的測試要 `// @vitest-environment happy-dom`。
@@ -43,6 +50,9 @@
 - 改契約＝桌面版、網頁版、golden.json 同一筆 commit；golden 可用上面兩個環境變數讓 Rust 寫出各 fixture 的檢視再組回。
 - ST 巨集測試向量 `web/src/features/sillytavern/st-macro-cases.json` 抽自 ST 06bde939 `tests/frontend/MacroEngine.e2e.js`（只收內建巨集）。
 - serde_json 開了 preserve_order（schemars 帶進來），Map 是原序，需要排序的地方自己排。
+- 包 3：改契約＝`web-save.md`、fixture、`web-save.ts`、`import/web_save/parse.rs` 同一筆改；負例檔名前綴就是兩端要回的分類，Rust 與 TS 測試都掃 `invalid/`。serde 的 `Option` 欄缺鍵會默默當 None，「必填可 null」要用 parse.rs 的 `Nullable`、「可省不可 null」要用 `present`。
+- 包 3 測試通道：harness 包會把 claude 實報的 context（1,000,000）寫回 `data/model-capacity.json`，要壓上限就在每次真呼叫後重寫；容量鎖要有 `summary` 校正才會鎖（`scene_budget/mod.rs` 的 lockable）。本機 shell 包裝會擋「變數展開成路徑」與部分 heredoc，路徑寫字面值、編輯用腳本檔。
+- 在 worktree 裡跑 verify 前先 `npm ci` 與 `npm ci --prefix web`：沒有自己的 node_modules 時會解析到主 repo 的，vite 擋外部路徑，幾支 vitest 檔會假紅。
 - 「取消未完成回合」自動收回玩家句是網頁版提案〔模型判斷·未裁決〕；桌面版零字停止是由玩家手動收回。介面文案與範例卡只有繁中（十語系在包 8）。
 
 ## 等作者
