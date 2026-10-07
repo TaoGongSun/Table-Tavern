@@ -371,6 +371,12 @@ pub fn summarize(
         let Ok(line) = serde_json::from_str::<Value>(line) else {
             continue; // 壞行跳過：診斷設施本來就是盡力而為
         };
+        // 純診斷事件（CLI 提醒偵測）不是一輪也不是線事件：不算輪數、不佔「最近一輪」
+        if line.get("event").and_then(Value::as_str)
+            == Some(crate::usage::log::Event::CliReminderSeen.as_str())
+        {
+            continue;
+        }
         let world = text(&line, "world");
         // 對不上現有桌＝開桌生成或已刪掉的桌，接在桌列表後面
         match worlds.iter_mut().find(|option| option.id == world) {

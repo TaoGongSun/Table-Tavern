@@ -604,7 +604,7 @@ fn character_state_block_shows_only_own_branch_with_marks_and_excludes_rare() {
     let block =
         character_state_block(&state, &mechanism, &branch, "亞瑟", "阿濤", "zh-TW").unwrap();
     assert!(block.starts_with(
-        "## 「亞瑟」目前的狀態（系統帳，唯讀；可以拿來演，但不要輸出任何狀態欄或更新區塊）"
+        "## 「亞瑟」目前的狀態（系統帳，唯讀；以本區為準，取代先前對話中所有同名狀態區塊；可以拿來演，但不要輸出任何狀態欄或更新區塊）"
     ));
     assert!(block.contains("HP：80（-10）"));
     assert!(!block.contains("Hidden"));

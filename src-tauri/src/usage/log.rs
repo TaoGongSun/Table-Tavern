@@ -77,6 +77,9 @@ pub enum CacheReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     DropLane,
+    /// 診斷用：session 檔出現 CLI 的 total_tokens 提醒（關提醒的環境變數失效）。
+    /// 報表一律跳過，不算輪數、不佔最近一輪
+    CliReminderSeen,
 }
 
 impl Mode {
@@ -116,6 +119,7 @@ impl Event {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::DropLane => "drop-lane",
+            Self::CliReminderSeen => "cli-reminder-seen",
         }
     }
 }

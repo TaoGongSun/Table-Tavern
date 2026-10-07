@@ -26,6 +26,8 @@ pub struct LaneTurn {
     /// system 用。**只有 `private_md`**：限定世界書的 keyword 條目隨最近事件翻動、
     /// 狀態每輪變，那兩樣進了 system 會把前綴打散，正好毀掉共線要修的東西。
     pub hoisted_private: Option<String>,
+    /// tail 含本輪角色狀態區塊（claude 單角色線靠它偵測整塊消失）
+    pub has_state_block: bool,
 }
 
 /// 事件在 lane prompt 裡的一行；`None`＝這則不送。續聊線的歷史全部以名字標注成純文字
@@ -223,9 +225,11 @@ pub fn chars_lane_turn(
             ));
         }
     }
-    if let Some(block) = branch.and_then(|branch| {
+    let state_block = branch.and_then(|branch| {
         character_state_block(state, mechanism, branch, &card.name, user_name, lang)
-    }) {
+    });
+    let has_state_block = state_block.is_some();
+    if let Some(block) = state_block {
         confidential.push_str(&block);
         confidential.push('\n');
     }
@@ -251,6 +255,7 @@ pub fn chars_lane_turn(
         tail,
         confidential: (!confidential.is_empty()).then_some(confidential),
         hoisted_private,
+        has_state_block,
     }
 }
 
@@ -308,6 +313,7 @@ pub fn gm_lane_turn(
         tail,
         confidential: None,
         hoisted_private: None, // GM 線沒有「本輪角色的私設」這個概念
+        has_state_block: false,
     }
 }
 

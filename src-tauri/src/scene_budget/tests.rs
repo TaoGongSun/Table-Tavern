@@ -632,6 +632,83 @@ fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_flatten() {
     std::fs::remove_dir_all(&root).unwrap();
 }
 
+/// 角色線量測與實送同一組開關（lanes::chars_lane_shape）：claude 單角色私設進 system、
+/// 多角色與 grok 私設在 tail 且只算一次；agy 線名分角色。
+#[test]
+fn character_measure_follows_lane_shape() {
+    let events = vec![event(TranscriptKind::Player, "玩家", "開始。")];
+    let (root, world) = world_with(&events, "lane-shape");
+    let card = |id: &str, name: &str, private: &str| data::CharacterCard {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        color: "#336699".to_owned(),
+        avatar: String::new(),
+        tier: data::Tier::Balanced,
+        show_image: true,
+        archived: false,
+        gen_prompt: String::new(),
+        public_md: format!("{name}的公開設定。"),
+        private_md: private.to_owned(),
+    };
+    let fox_id = ulid::Ulid::generate().to_string();
+    data::write_character(&root, &world, &card(&fox_id, "狐狸", "狐狸的秘密甲")).unwrap();
+    let chars_path = |transport: &str| {
+        let config = config_for(transport);
+        let lang = crate::transport::ui_language(&config);
+        let materials = measure::load(&root, &world).unwrap();
+        let provider = crate::transport::dispatch::lane_provider(&config);
+        measure::chat_paths(
+            &root,
+            &world,
+            &materials,
+            crate::transport::gm_tier(&config),
+            provider,
+            &lang,
+            transport,
+        )
+        .into_iter()
+        .find(|path| {
+            path.kind == "chars"
+                && matches!(&path.request_full, measure::Request::Cli { system, .. }
+                    if system.contains("狐狸") && !system.contains("「騎士」的私"))
+                && match &path.request_full {
+                    measure::Request::Cli { prompt, .. } => prompt.contains("現在你是「狐狸」"),
+                    measure::Request::Api(_) => false,
+                }
+        })
+        .unwrap()
+    };
+    let split = |path: &measure::ChatPath| match &path.request_full {
+        measure::Request::Cli { system, prompt } => (system.clone(), prompt.clone()),
+        measure::Request::Api(_) => panic!("lane 後端是 CLI 形狀"),
+    };
+    let secret = "狐狸的秘密甲";
+    // claude 單角色：私設進 system、不在 prompt
+    let (system, prompt) = split(&chars_path("claude"));
+    assert!(system.contains(secret));
+    assert_eq!(prompt.matches(secret).count(), 0);
+    // agy：私設進 system、線名分角色
+    let agy = chars_path("agy");
+    assert!(split(&agy).0.contains(secret));
+    assert_eq!(
+        agy.lane,
+        Some((crate::lanes::Lane::Chars, Some(fox_id.clone())))
+    );
+    // grok：私設在 tail 只算一次、線名不分角色
+    let grok = chars_path("grok");
+    let (system, prompt) = split(&grok);
+    assert!(!system.contains(secret));
+    assert_eq!(prompt.matches(secret).count(), 1);
+    assert_eq!(grok.lane, Some((crate::lanes::Lane::Chars, None)));
+    // 多一張在場卡：claude 改成多角色，私設回到 tail、只算一次
+    let knight_id = ulid::Ulid::generate().to_string();
+    data::write_character(&root, &world, &card(&knight_id, "騎士", "")).unwrap();
+    let (system, prompt) = split(&chars_path("claude"));
+    assert!(!system.contains(secret));
+    assert_eq!(prompt.matches(secret).count(), 1);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
 /// 卡片自帶介面的兩態：格式條目全文不在提示裡＝中性版（CardFormatAbsent），
 /// 世界書加上提到同款標籤的常駐條目＝點名版（CardFormat）；各後端量測都跟著換
 #[test]

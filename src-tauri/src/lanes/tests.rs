@@ -52,7 +52,8 @@ sf = flag('--system-prompt-file')
 system = open(sf, encoding='utf-8').read() if sf else None
 d = os.environ['FAKE_SESSION_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt, 'system': system}) + '\n')
+    f.write(json.dumps({'args': args, 'prompt': prompt, 'system': system,
+                        'reminder_env': os.environ.get('CLAUDE_CODE_TOTAL_TOKENS_REMINDER')}) + '\n')
 path = os.path.join(d, (sid or rid) + '.jsonl')
 # 照真 CLI（2.1.287）的形狀只追加：queue-operation、user、attachment 夾雜項行、
 # thinking 與 text 拆成兩則 assistant、assistant 後再接 attachment
@@ -83,6 +84,9 @@ def node(kind, **fields):
 out.append({'type': 'queue-operation', 'operation': 'enqueue'})
 node('user', message={'role': 'user', 'content': prompt})
 node('attachment', attachment={'type': 'environment'})
+# FAKE_REMINDER：照真 CLI 存一筆 total_tokens 提醒（關提醒的環境變數失效時的樣子）
+if os.environ.get('FAKE_REMINDER') == '1':
+    node('attachment', attachment={'type': 'total_tokens_reminder', 'text': '<total_tokens>15000000 tokens left</total_tokens>'})
 out.append({'type': 'atis-latch'})
 node('attachment', attachment={'type': 'date'})
 reply = os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(users + 1)
@@ -90,9 +94,11 @@ node('assistant', message={'role': 'assistant', 'content': [{'type': 'thinking',
 node('assistant', message={'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]})
 node('attachment', attachment={'type': 'prompt_snapshot'})
 out.append({'type': 'last-prompt'})
-with open(path, 'a') as f:
-    for o in out:
-        f.write(json.dumps(o, ensure_ascii=False) + '\n')
+# FAKE_NO_SESSION：不寫 session 檔（回合後讀檔就會失敗）
+if os.environ.get('FAKE_NO_SESSION') != '1':
+    with open(path, 'a') as f:
+        for o in out:
+            f.write(json.dumps(o, ensure_ascii=False) + '\n')
 # 測試用環境變數（名稱可加 _RESUME／_OPEN 後綴，只套在那種嘗試）：
 # FAKE_USAGE＝收尾用量 JSON；FAKE_RATE_BEFORE／AFTER＝在 result 前後插 rate_limit_event；
 # FAKE_FAIL＝回 is_error 的 result 後以非零碼結束；FAKE_HANG＝吐完 BEFORE 事件後卡住等中止
@@ -266,6 +272,8 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
             prefix: "狐狸：".to_owned(),
         },
         scope: None,
+        single_owner: None,
+        has_state_block: false,
     }
 }
 
@@ -285,6 +293,8 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         cache_ttl_secs: LEGACY_CACHE_TTL_SECS,
         last_prompt_tokens: 0,
         agy_usage: None,
+        unerased_owner: None,
+        had_state_block: false,
     }
 }
 
@@ -1602,6 +1612,7 @@ fn apply_rewrite_names_the_failing_stage() {
 mod cache_ttl;
 mod grok;
 mod lane_lock;
+mod owner;
 mod runaway;
 
 /// char-line-prefix：預期回聲存剝掉本輪「名字：」的字；前綴另傳，Agy（prefix None）照樣對得上。

@@ -77,13 +77,21 @@ pub(crate) fn chat_transport(config: &data::AppConfig) -> String {
 
 /// claude CLI 的環境變數：沙盒告知＋（設了相容端點時）BASE_URL 與 token。
 /// 單發（stream_via_transport）、卡重構與 lane 續聊共用；劇情續聊線另由 `lanes::pin_lane_cache_ttl` 釘 1 小時快取。
-fn claude_cli_envs(config: &data::AppConfig) -> Vec<(String, String)> {
+pub(crate) fn claude_cli_envs(config: &data::AppConfig) -> Vec<(String, String)> {
     // Claude Code 開場會自建 macOS 沙盒，系統因此以「Table Tavern」的名義向玩家要
     // 桌面／音樂資料夾權限（tccd 日誌實證：accessing=claude-code、responsible=本 app）。
     // 這個變數告訴它「你已經在沙盒裡」，想省掉那組彈窗；實測仍會被要求媒體資料庫權限，
     // 效果未定但無害（我們給的是 --tools ""，它本來就不需要那些資料夾）。
     // 彈窗文案改由 Info.plist 的 NSAppleMusicUsageDescription 等鍵說明。
-    let mut envs = vec![("CLAUDE_CODE_SANDBOXED".to_owned(), "1".to_owned())];
+    // 關掉 CLI 的 total_tokens 提醒：它存進 session 檔、resume 才渲染、即時送出不帶，
+    // 續聊前綴因此每輪對不上（plans/claude-resume-tail-cache.md）〔作者裁決 2026-10-07〕
+    let mut envs = vec![
+        ("CLAUDE_CODE_SANDBOXED".to_owned(), "1".to_owned()),
+        (
+            "CLAUDE_CODE_TOTAL_TOKENS_REMINDER".to_owned(),
+            "off".to_owned(),
+        ),
+    ];
     let base_url = config
         .preferences
         .get("claude_base_url")
@@ -654,6 +662,26 @@ mod tests {
                 .iter()
                 .all(|(key, _)| key != "CLAUDE_CODE_PROMPT_CACHE_TTL"
                     && key != "FORCE_PROMPT_CACHING_5M"));
+        }
+    }
+
+    /// 所有 claude 呼叫（續聊線、卡重構、單發）都關掉 CLI 的 total_tokens 提醒：
+    /// 它只在 resume 重組時渲染，會讓續聊前綴每輪對不上（claude-resume-tail-cache）
+    #[test]
+    fn shared_claude_envs_turn_off_total_tokens_reminder() {
+        let mut config = crate::data::AppConfig::default();
+        config.preferences.insert(
+            "claude_base_url".to_owned(),
+            serde_json::json!("https://example.invalid"),
+        );
+        for envs in [
+            claude_cli_envs(&crate::data::AppConfig::default()),
+            claude_cli_envs(&config),
+        ] {
+            assert!(envs.contains(&(
+                "CLAUDE_CODE_TOTAL_TOKENS_REMINDER".to_owned(),
+                "off".to_owned()
+            )));
         }
     }
 

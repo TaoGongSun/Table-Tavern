@@ -255,6 +255,24 @@ pub(crate) fn write_text_atomic(path: &Path, text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// CLI 的 total_tokens 提醒 attachment：只在 resume 重組時渲染、即時送出不帶，會讓前綴對不上
+/// （plans/claude-resume-tail-cache.md）。精確比對兩層 type，一般文字提到這個字串不算。
+fn is_total_tokens_reminder(line: &Value) -> bool {
+    line.get("type").and_then(Value::as_str) == Some("attachment")
+        && line.pointer("/attachment/type").and_then(Value::as_str) == Some("total_tokens_reminder")
+}
+
+pub(crate) fn has_total_tokens_reminder(session_file: &SessionFile) -> bool {
+    session_file.values().any(is_total_tokens_reminder)
+}
+
+/// 只讀掃描（不經 parse 的鏈驗證）：逐行解析，壞行略過。
+pub(crate) fn text_has_total_tokens_reminder(text: &str) -> bool {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .any(|line| is_total_tokens_reminder(&line))
+}
+
 pub(crate) fn read_text(path: &Path) -> Result<String, String> {
     fs::read_to_string(path)
         .map_err(|error| format!("無法讀取 session 檔 {}：{error}", path.display()))

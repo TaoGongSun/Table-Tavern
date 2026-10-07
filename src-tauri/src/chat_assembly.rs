@@ -29,6 +29,32 @@ pub(crate) fn active_cards(
         .collect()
 }
 
+/// claude 角色線的有效在場集合是否只有開口者本人（plans/claude-resume-tail-cache.md 三-B-1）。
+/// 集合＝未封存的卡中「非 auto_hidden」或「本幕已回歸」（回歸只記事件、不改旗標）＋開口者本人。
+/// 回歸以名字比對，同名多算只會偏向多角色——寧可多抹，不可漏抹。人數只影響成本，
+/// 隔離另由 lanes 的 unerased_owner 保證。
+pub(crate) fn sole_present_character(
+    root: &std::path::Path,
+    world_id: &str,
+    speaker_id: &str,
+    events: &[data::TranscriptEvent],
+) -> Result<bool, String> {
+    let metas = data::list_characters(root, world_id).map_err(|error| error.to_string())?;
+    Ok(sole_present(&metas, speaker_id, events))
+}
+
+pub(crate) fn sole_present(
+    metas: &[data::CharacterMeta],
+    speaker_id: &str,
+    events: &[data::TranscriptEvent],
+) -> bool {
+    let arrived = data::appeared_card_names(events);
+    metas
+        .iter()
+        .filter(|meta| !meta.archived && (!meta.auto_hidden || arrived.contains(&meta.name)))
+        .all(|meta| meta.id == speaker_id)
+}
+
 pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, String> {
     let mut state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
     // 數字欄更新策略算這一次：提示詞與這一輪的提交（turn.commit）都用這一份
