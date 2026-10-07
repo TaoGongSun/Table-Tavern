@@ -113,8 +113,11 @@ pub(crate) async fn chat_with_character(
     // CLI 訂閱走 resume 續聊線。claude／grok 全角色共用一條 session，私設回合注入、
     // 回合後從 session 檔抹掉（案 C）；Agy 無抹寫路徑，改成一角一線＋
     // 私設提進該角色自己的凍結 system，不讓別的角色讀到不該讀的東西。
+    // claude 單角色桌不抹：私設進 system，session 記成這個角色的未抹線（claude-resume-tail-cache）。
     if let Some(provider) = lane_provider(&config) {
-        let hoist = provider == lanes::LaneProvider::Agy;
+        let sole = provider == lanes::LaneProvider::Claude
+            && chat_assembly::sole_present_character(&root, &world_id, &card.id, &events)?;
+        let shape = lanes::chars_lane_shape(provider, sole);
         let lang = transport::ui_language(&config);
         let cards = load_active_cards(&root, &world_id)?;
         let (frozen, turn) = chat_assembly::character_lane_parts(
@@ -126,7 +129,7 @@ pub(crate) async fn chat_with_character(
             &state,
             branch.as_deref(),
             &lang,
-            hoist,
+            shape.hoist_private,
         );
         let call = prepare_play_lane_call(&app, &config, card.tier, provider).await?;
         // 串流過濾在 lane 內按 attempt 做，這裡收的已是過濾後的字
@@ -142,13 +145,17 @@ pub(crate) async fn chat_with_character(
                 lang: &lang,
                 frozen_system: frozen,
                 tail: turn.tail,
-                confidential: (!hoist).then_some(turn.confidential).flatten(),
-                prefix: (!hoist).then(|| transport::speaker_prefix(&card.name, &lang)),
+                confidential: shape.erase.then_some(turn.confidential).flatten(),
+                prefix: shape
+                    .prefix
+                    .then(|| transport::speaker_prefix(&card.name, &lang)),
                 echo: lanes::ReplyEcho::Dialogue {
                     speaker_id: card.id.clone(),
                     prefix: own_prefix.clone(),
                 },
-                scope: hoist.then(|| card.id.clone()),
+                scope: shape.scope_by_card.then(|| card.id.clone()),
+                single_owner: shape.single_owner.then(|| card.id.clone()),
+                has_state_block: turn.has_state_block,
             },
             Some(&mut cancel),
             emit,
@@ -270,6 +277,8 @@ async fn gm_lane_reply(
             prefix: None,
             echo,
             scope: None, // GM 只有一條線，不細分
+            single_owner: None,
+            has_state_block: false,
         },
         cancel,
         emit,

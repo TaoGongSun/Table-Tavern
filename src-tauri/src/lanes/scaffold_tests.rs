@@ -685,6 +685,8 @@ fn lane_input<'a>(events: &'a [TranscriptEvent], system: &str) -> TurnInput<'a> 
         prefix: None,
         echo: ReplyEcho::Narration,
         scope: None,
+        single_owner: None,
+        has_state_block: false,
     }
 }
 
@@ -704,6 +706,8 @@ fn lane_state(events: &[TranscriptEvent], system: &str, provider: LaneProvider) 
         cache_ttl_secs: LEGACY_CACHE_TTL_SECS,
         last_prompt_tokens: 0,
         agy_usage: None,
+        unerased_owner: None,
+        had_state_block: false,
     }
 }
 

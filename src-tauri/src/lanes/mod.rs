@@ -7,11 +7,15 @@
 //! 回合後抹 session 目錄的兩個檔（grok_session）。
 //! 同桌的 lane 呼叫以每桌一把 mutex 串行：lanes.json 整份讀寫、session 檔回合後改寫，
 //! 交錯就會互蓋狀態或把抹掉的機密段寫回。
-//! 凍結 system 每輪逐字重帶、只送新事件與回合尾段，
-//! 快取命中率的天花板因此變成「只有最後一句沒中」（實驗 E6：99.7%）。
+//! 凍結 system 每輪逐字重帶、只送新事件與回合尾段。claude 2.1.287 實測：每個 request 只有最後一則
+//! 訊息的斷點留下可重用的快取，回合後抹掉最新 user 行的機密段就作廢它（下一輪只中 system 段）；
+//! 開線後第 2 輪另有一次 CLI 端的不中。所以 claude 單角色線不抹（`TurnInput::single_owner`），
+//! 見 plans/claude-resume-tail-cache.md。
 //! 正典 transcript 與 session 歷史靠水位＋指紋＋回覆對點對齊；任何對不上、任何改寫或呼叫失敗，
 //! 一律丟線重開全量重建（降級鏈永遠可用，聊天不中斷）。
-//! chars 線的私設隔離靠「回合注入機密段→回合後從 session 檔抹掉」維持（案 C，2026-08-03 拍板）。
+//! chars 線的私設隔離靠「回合注入機密段→回合後從 session 檔抹掉」維持（案 C，2026-08-03 拍板）；
+//! claude 單角色線改成不抹，隔離靠「含未抹內容的 session 只給同一角色、單角色模式續用」
+//! （`LaneState::unerased_owner`，〔作者裁決 2026-10-07〕）。
 
 mod grok_session;
 mod rewrite_failure;
@@ -151,6 +155,55 @@ pub(crate) struct TurnInput<'a> {
     pub echo: ReplyEcho,
     /// 線名後綴：Agy 的 chars 線帶角色 id（一角一線），其餘 None
     pub scope: Option<String>,
+    /// claude 角色線、單角色模式時＝開口者 id：本輪不抹，session 記成這個角色的未抹線。
+    /// 其他供應商與 GM 線即使填了也會在 run_turn 歸零（只有 claude 角色線靠這欄隔離）。
+    pub single_owner: Option<String>,
+    /// 本輪 tail 含角色狀態區塊；單角色線上一輪有、這輪沒有就重開（舊值撤不掉）
+    pub has_state_block: bool,
+}
+
+/// 角色線的三個開關＋線名是否分角色（plans/claude-resume-tail-cache.md 三-B-2）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CharsLaneShape {
+    /// 私設（只有 `private_md`）搬進凍結 system
+    pub hoist_private: bool,
+    /// 傳 confidential、回合後從 session 檔抹掉
+    pub erase: bool,
+    /// 回合後替最後一則 assistant 補名字前綴
+    pub prefix: bool,
+    /// 線名帶角色 id（一角一線）
+    pub scope_by_card: bool,
+    /// 這條線記成開口者的未抹線（claude 單角色模式）
+    pub single_owner: bool,
+}
+
+/// `sole_present`：有效在場集合只有開口者本人（`chat_assembly::sole_present_character`）。
+pub(crate) fn chars_lane_shape(provider: LaneProvider, sole_present: bool) -> CharsLaneShape {
+    match provider {
+        // Agy 沒有回合後抹寫路徑：一角一線＋私設進該角色自己的 system
+        LaneProvider::Agy => CharsLaneShape {
+            hoist_private: true,
+            erase: false,
+            prefix: false,
+            scope_by_card: true,
+            single_owner: false,
+        },
+        LaneProvider::Claude if sole_present => CharsLaneShape {
+            hoist_private: true,
+            erase: false,
+            prefix: true,
+            scope_by_card: false,
+            single_owner: true,
+        },
+        // grok 不套單角色模式：system 凍在開線那刻〔作者裁決 2026-10-07〕
+        LaneProvider::Claude | LaneProvider::Grok => CharsLaneShape {
+            hoist_private: false,
+            erase: true,
+            prefix: true,
+            scope_by_card: false,
+            single_owner: false,
+        },
+    }
 }
 
 /// 線名（key）→ 線狀態。key＝「線種:實際模型」，模型看解析後真正傳給 CLI 的字串，
@@ -226,6 +279,13 @@ struct LaneState {
     /// 開這條線用的模型。線名會被 scope 撐開，模型不能再從線名回推
     #[serde(default)]
     model: String,
+    /// 這個 session 含哪個角色未抹的機密（claude 單角色線）。有值時只給同一角色、單角色模式續用。
+    /// 舊檔缺欄＝None＝照舊每輪抹的線，不猜成單角色。
+    #[serde(default)]
+    unerased_owner: Option<String>,
+    /// 上一輪 tail 有角色狀態區塊（只在 unerased_owner 有值時有意義）
+    #[serde(default)]
+    had_state_block: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -474,6 +534,12 @@ enum ReopenReason {
     ResumeFailed,
     ProviderChanged,
     SystemChanged,
+    /// 未抹線換了開口者（含別的角色解析到同一模型而共用同一 key）
+    OwnerChanged,
+    /// 未抹線遇到多角色模式（在場變多）
+    ModeChanged,
+    /// 未抹線的狀態區塊整塊消失（歷史裡的舊值撤不掉）
+    StateBlockGone,
 }
 
 impl ReopenReason {
@@ -488,6 +554,9 @@ impl ReopenReason {
             Self::ResumeFailed => "resume-failed",
             Self::ProviderChanged => "provider-changed",
             Self::SystemChanged => "system-changed",
+            Self::OwnerChanged => "owner-changed",
+            Self::ModeChanged => "mode-changed",
+            Self::StateBlockGone => "state-block-gone",
         }
     }
 }
@@ -589,6 +658,28 @@ fn plan_turn(
             } // 回覆沒落檔或被改＝session 與正典分岔
         }
     }
+    // 未抹線（claude 單角色）：順序固定，StateBlockGone 不能被「同一人續用」短路
+    if let Some(owner) = &state.unerased_owner {
+        let speaker = match &input.echo {
+            ReplyEcho::Dialogue { speaker_id, .. } => Some(speaker_id.as_str()),
+            ReplyEcho::Narration => None,
+        };
+        if speaker != Some(owner.as_str()) {
+            return TurnPlan::Reopen {
+                reason: ReopenReason::OwnerChanged,
+            };
+        }
+        if input.single_owner.as_deref() != Some(owner.as_str()) {
+            return TurnPlan::Reopen {
+                reason: ReopenReason::ModeChanged,
+            };
+        }
+        if state.had_state_block && !input.has_state_block {
+            return TurnPlan::Reopen {
+                reason: ReopenReason::StateBlockGone,
+            };
+        }
+    }
     if provider != LaneProvider::Claude {
         if state.applied != input.frozen_system {
             return TurnPlan::Reopen {
@@ -662,17 +753,19 @@ pub(crate) fn build_prompt(
 
 /// 回合後抹寫：機密段從注入的 user 行抹掉、最後一則 assistant 補名字前綴，
 /// 原子寫＋回讀驗證（session_file::write_atomic）。
+/// 回傳 Some(檔內有沒有 CLI 的 total_tokens 提醒)；沒東西要改、根本沒讀檔時回 None。
 fn apply_rewrite(
     call: &LaneCall,
     session_id: &str,
     confidential: Option<&str>,
     prefix: Option<&str>,
-) -> Result<(), RewriteFailure> {
+) -> Result<Option<bool>, RewriteFailure> {
     if confidential.is_none() && prefix.is_none() {
-        return Ok(());
+        return Ok(None);
     }
     let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
     let mut file = at("load", session_file::load(&path))?;
+    let reminder = session_file::has_total_tokens_reminder(&file);
     if let Some(segment) = confidential {
         let uuid = at(
             "find-segment",
@@ -689,7 +782,49 @@ fn apply_rewrite(
             session_file::prefix_last_assistant(&mut file, prefix),
         )?;
     }
-    at("write", session_file::write_atomic(&path, &file))
+    at("write", session_file::write_atomic(&path, &file))?;
+    Ok(Some(reminder))
+}
+
+/// 沒有抹寫的 claude 線（GM）另做只讀掃描；讀不到只回錯、由呼叫端記診斷，不丟線。
+fn scan_reminder_readonly(call: &LaneCall, session_id: &str) -> Result<bool, String> {
+    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
+    session_file::read_text(&path).map(|text| session_file::text_has_total_tokens_reminder(&text))
+}
+
+/// D 偵測的診斷：只記帳不改線。同一 session、同一種結果在一次 app 執行內只記一次。
+fn note_reminder(
+    call: &LaneCall,
+    world_id: &str,
+    key: &str,
+    session_id: &str,
+    scan: Result<bool, String>,
+) {
+    let reason = match scan {
+        Ok(false) => return,
+        Ok(true) => "seen",
+        Err(_) => "scan-failed",
+    };
+    static NOTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let first = NOTED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(format!("{session_id}\u{1f}{reason}"));
+    if !first {
+        return;
+    }
+    if let Some(path) = call.usage_log.as_deref() {
+        usage_log::append_event(
+            path,
+            call.provider.as_str(),
+            Some(world_id),
+            key,
+            usage_log::Event::CliReminderSeen,
+            reason,
+        );
+    }
 }
 
 /// 抹寫／截尾失敗落帳：哪一步壞、原錯誤字串（遮路徑、截斷）。測試包另在丟線與刪檔之前
@@ -756,7 +891,7 @@ fn settle_abort(
         );
     }
     let rewrite = match call.provider {
-        LaneProvider::Claude => apply_rewrite(call, session_id, confidential, prefix),
+        LaneProvider::Claude => apply_rewrite(call, session_id, confidential, prefix).map(|_| ()),
         LaneProvider::Agy | LaneProvider::Grok => Ok(()),
     };
     if let Err(failure) = rewrite {
@@ -819,7 +954,7 @@ pub(crate) async fn run_turn(
     call: &LaneCall,
     root: &Path,
     world_id: &str,
-    input: TurnInput<'_>,
+    mut input: TurnInput<'_>,
     mut cancel: Option<&mut crate::inflight::CancelSignal>,
     mut emit: impl FnMut(&str),
 ) -> Result<TurnOutcome, String> {
@@ -833,6 +968,12 @@ pub(crate) async fn run_turn(
             provider: call.provider.as_str().to_owned(),
         }
         .into());
+    }
+    // 只有 claude 角色線靠 unerased_owner 隔離；agy 靠分角色線名、grok 與 GM 每輪抹或不含機密，
+    // 一律歸零，plan_turn 的未抹線判定就套不到它們
+    if !(call.provider == LaneProvider::Claude && input.lane == Lane::Chars) {
+        input.single_owner = None;
+        input.has_state_block = false;
     }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
     let key = lane_key(input.lane, call.model_label(), input.scope.as_deref());
@@ -991,6 +1132,9 @@ pub(crate) async fn run_turn(
                 cache_ttl_secs: 0,
                 last_prompt_tokens: 0,
                 agy_usage: None,
+                // 呼叫前就落檔：中途崩潰時下一輪靠 pending 重開，靠這欄擋別人續用
+                unerased_owner: input.single_owner.clone(),
+                had_state_block: input.single_owner.is_some() && input.has_state_block,
             },
         );
         write_store(&store_path, &store)?;
@@ -1127,13 +1271,15 @@ pub(crate) async fn run_turn(
                 }
                 let actual_session_id = actual_session_id.expect("checked above");
                 let actual_agy_usage = agy_usage.into_inner().ok().flatten();
+                let mut reminder: Option<bool> = None;
                 let rewrite = match call.provider {
                     LaneProvider::Claude => apply_rewrite(
                         call,
                         &actual_session_id,
                         input.confidential.as_deref(),
                         input.prefix.as_deref(),
-                    ),
+                    )
+                    .map(|loaded| reminder = loaded),
                     // GM 線一律原文，不抹；角色共線每輪都抹（至少要拿 reasoning、補前綴）
                     LaneProvider::Grok if input.lane == Lane::Chars => rewrite_grok(
                         call,
@@ -1146,6 +1292,14 @@ pub(crate) async fn run_turn(
                 };
                 match rewrite {
                     Ok(()) => {
+                        // 偵測只看已載入的內容或另做只讀掃描；抹寫本身的失敗走下面的丟線
+                        if call.provider == LaneProvider::Claude {
+                            let scan = match reminder {
+                                Some(seen) => Ok(seen),
+                                None => scan_reminder_readonly(call, &actual_session_id),
+                            };
+                            note_reminder(call, world_id, &key, &actual_session_id, scan);
+                        }
                         if let Some(state) = store.get_mut(&key) {
                             state.session_id = actual_session_id;
                             state.pending_rewrite = None;

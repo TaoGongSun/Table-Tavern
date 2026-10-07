@@ -165,10 +165,11 @@ fn gm_request(
 }
 
 /// 角色那條（與 `commands::chat::chat_with_character` 同一組裝）。
+/// `shape`：lane 後端時與實送同一組開關（`lanes::chars_lane_shape`），None＝無狀態路徑。
 fn character_request(
     m: &Materials,
     card: &CharacterCard,
-    provider: Option<LaneProvider>,
+    shape: Option<lanes::CharsLaneShape>,
     lang: &str,
     transport_kind: &str,
 ) -> Request {
@@ -178,9 +179,8 @@ fn character_request(
         &card.id,
         &card.name,
     );
-    match provider {
-        Some(provider) => {
-            let hoist = provider != LaneProvider::Claude;
+    match shape {
+        Some(shape) => {
             let (system, turn) = chat_assembly::character_lane_parts(
                 card,
                 &m.cards,
@@ -190,14 +190,10 @@ fn character_request(
                 &m.state,
                 branch.as_deref(),
                 lang,
-                hoist,
+                shape.hoist_private,
             );
-            let mut tail = turn.tail;
-            // claude 共線：私設當回合注入（機密段），一樣佔這一輪的輸入
-            if let (false, Some(confidential)) = (hoist, &turn.confidential) {
-                tail = format!("{confidential}\n\n{tail}");
-            }
-            let prompt = lanes::build_prompt(&m.events, 0, &tail, true, Lane::Chars, lang);
+            // 機密段（沒提進 system 的私設、限定條目、狀態）本來就在 tail 裡，不另外再接
+            let prompt = lanes::build_prompt(&m.events, 0, &turn.tail, true, Lane::Chars, lang);
             Request::Cli { system, prompt }
         }
         // 共線組裝已自足：label 與 closing 傳空字串（同 chat_with_character）
@@ -243,15 +239,22 @@ pub fn chat_paths(
         lane: provider.map(|_| (Lane::Gm, None)),
     }];
     for card in &m.cards {
-        let scope = provider
-            .filter(|provider| *provider != LaneProvider::Claude)
+        // 與 chat_with_character 同一判定；讀卡失敗就當多角色（寧可多算機密段）
+        let shape = provider.map(|provider| {
+            let sole = provider == LaneProvider::Claude
+                && chat_assembly::sole_present_character(root, world_id, &card.id, &m.events)
+                    .unwrap_or(false);
+            lanes::chars_lane_shape(provider, sole)
+        });
+        let scope = shape
+            .filter(|shape| shape.scope_by_card)
             .map(|_| card.id.clone());
         paths.push(ChatPath {
             kind: "chars",
             tier: card.tier,
-            request_full: character_request(m, card, provider, lang, transport_kind),
-            request_fixed: character_request(&empty, card, provider, lang, transport_kind),
-            lane: provider.map(|_| (Lane::Chars, scope)),
+            request_full: character_request(m, card, shape, lang, transport_kind),
+            request_fixed: character_request(&empty, card, shape, lang, transport_kind),
+            lane: shape.map(|_| (Lane::Chars, scope)),
         });
     }
     paths

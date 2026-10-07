@@ -379,10 +379,10 @@ pub fn character_state_block(
     }
     let heading = match scaffold_en(lang) {
         true => format!(
-            "## {card_name}'s current state (system ledger, read-only; use it in your portrayal, but do not output any state fence or update block)"
+            "## {card_name}'s current state (system ledger, read-only; this block is authoritative and replaces every earlier state block of the same name in the conversation; use it in your portrayal, but do not output any state fence or update block)"
         ),
         false => format!(
-            "## 「{card_name}」目前的狀態（系統帳，唯讀；可以拿來演，但不要輸出任何狀態欄或更新區塊）"
+            "## 「{card_name}」目前的狀態（系統帳，唯讀；以本區為準，取代先前對話中所有同名狀態區塊；可以拿來演，但不要輸出任何狀態欄或更新區塊）"
         ),
     };
     Some(format!("{heading}\n{}", body.trim_end()))
