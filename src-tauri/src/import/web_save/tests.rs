@@ -47,7 +47,7 @@ pub(super) fn layer_json(root: &TestRoot, world_id: &str, layer: Layer, id: Opti
     serde_json::from_str(&read_layer(root.path(), world_id, layer, id).unwrap().vars).unwrap()
 }
 
-fn mode_of(root: &TestRoot, world_id: &str) -> Value {
+pub(super) fn mode_of(root: &TestRoot, world_id: &str) -> Value {
     serde_json::to_value(read_control(root.path(), world_id).unwrap()).unwrap()["mode"].clone()
 }
 
@@ -851,7 +851,11 @@ fn regex_refusal_becomes_a_table_flag_that_drops_display_scripts() {
     }
 }
 
-fn character_turn(root: &TestRoot, w: &str, char_id: &str) -> Vec<crate::transport::ChatMessage> {
+pub(super) fn character_turn(
+    root: &TestRoot,
+    w: &str,
+    char_id: &str,
+) -> Vec<crate::transport::ChatMessage> {
     let card = data::read_character(root.path(), w, char_id).unwrap();
     let cards = crate::chat_assembly::active_cards(root.path(), w).unwrap();
     let player = data::read_player_card(root.path(), w).unwrap();

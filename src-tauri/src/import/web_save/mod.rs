@@ -415,6 +415,8 @@ fn write_sidecar(
 }
 
 #[cfg(test)]
+mod export_tests;
+#[cfg(test)]
 mod pending_tests;
 #[cfg(test)]
 mod tests;

@@ -1,6 +1,8 @@
 // 桌檔契約 v1（網頁存檔）：型別與外框檢查。規格見同目錄 web-save.md；桌面版匯入器
 // src-tauri/src/import/web_save/parse.rs 是同一套結構規則，卡的有效性與變數表的細部上限由匯入器再驗。
 // 純 TS、不碰 Tauri：桌面版匯入分流與網頁版存檔（@desktop 別名）共用。
+// 帶副檔名：web/e2e 用 Node 直接載入這支檔驗真匯出的存檔
+import { hasLoneSurrogate, tableProblem } from "../vars-table.ts";
 
 export const WEB_SAVE_FORMAT = "table-tavern-web-save";
 export const WEB_SAVE_VERSION = 1;
@@ -10,7 +12,6 @@ const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_ID_CHARS = 128;
 const MAX_USER_NAME_CHARS = 256;
 const MAX_LAYER_ID_CHARS = 256;
-const MAX_TABLE_BYTES = 2 * 1024 * 1024;
 const MAX_CARD_STORAGE_BYTES = 64 * 1024;
 
 export type VarsTable = Record<string, unknown>;
@@ -72,7 +73,40 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const chars = (text: string) => [...text].length;
 const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(\.\d{1,9})?)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * RFC 3339 時間（日期、`T`、時分，秒與小數可省，`Z` 或 ±hh:mm）→ 毫秒；格式不對或日曆上不存在
+ * （13 月、2 月 30 日、25 點、60 秒、偏移 24 小時）回 null。桌面版 parse.rs 的 `is_rfc3339` 同一套規則。
+ */
+export function rfc3339Millis(text: string): number | null {
+  const match = RFC3339.exec(text);
+  if (!match) return null;
+  const [year, month, day, hour, minute] = match.slice(1, 6).map(Number);
+  const second = match[6] === undefined ? 0 : Number(match[6]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (days === undefined || day < 1 || day > days || hour > 23 || minute > 59 || second > 59) return null;
+  const offsetHours = match[9] === undefined ? 0 : Number(match[9]);
+  const offsetMinutes = match[10] === undefined ? 0 : Number(match[10]);
+  if (offsetHours > 23 || offsetMinutes > 59) return null;
+  const millis = match[7] === undefined ? 0 : Number(match[7].slice(1).padEnd(3, "0").slice(0, 3));
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, millis);
+  const offset = (match[8] === "-" ? -1 : 1) * (offsetHours * 60 + offsetMinutes);
+  return date.getTime() - offset * 60_000;
+}
+
+const isTime = (value: unknown): value is string => typeof value === "string" && rfc3339Millis(value) !== null;
+
+/** 整份存檔（含原卡外殼）任何字串或鍵帶孤立代理字元：桌面版的 JSON 解析不收，這裡同樣整份拒收。 */
+function hasBrokenText(value: unknown): boolean {
+  if (typeof value === "string") return hasLoneSurrogate(value);
+  if (Array.isArray(value)) return value.some(hasBrokenText);
+  if (isObject(value)) return Object.entries(value).some(([key, child]) => hasLoneSurrogate(key) || hasBrokenText(child));
+  return false;
+}
 const singleLine = (text: string) => !/[\r\n]/.test(text);
 
 /** 標準 base64、補齊 `=`、結尾位元為零（與桌面版 base64 STANDARD 解碼的接受集合相同）。 */
@@ -95,8 +129,10 @@ function idOf(value: unknown, field: string, max: number): string {
   return value as string;
 }
 
+/** 變數表：上限照卡片變數（shared/contracts/vars-table，與桌面版同一組）。 */
 function tableOf(value: unknown, field: string): VarsTable {
-  if (!isObject(value) || utf8Bytes(JSON.stringify(value)) > MAX_TABLE_BYTES) fail(field);
+  const problem = tableProblem(value);
+  if (problem) fail(`${field}: ${problem}`);
   return value as VarsTable;
 }
 
@@ -122,7 +158,7 @@ function checkMessages(value: unknown): WebSaveMessage[] {
     if (m.role !== "user" && m.role !== "char") fail(at("role"));
     if (typeof m.text !== "string" || utf8Bytes(m.text) > MAX_TEXT_BYTES) fail(at("text"));
     if (m.raw !== undefined && (typeof m.raw !== "string" || utf8Bytes(m.raw) > MAX_TEXT_BYTES)) fail(at("raw"));
-    if (typeof m.ts !== "string" || !RFC3339.test(m.ts)) fail(at("ts"));
+    if (!isTime(m.ts)) fail(at("ts"));
     for (const flag of ["opening", "interrupted"] as const) {
       if (m[flag] !== undefined && typeof m[flag] !== "boolean") fail(at(flag));
     }
@@ -174,7 +210,7 @@ function checkMvu(value: unknown): WebSaveMvu | null {
 }
 
 function check(value: Record<string, unknown>): WebSave {
-  if (typeof value.exported_at !== "string" || !RFC3339.test(value.exported_at)) fail("exported_at");
+  if (!isTime(value.exported_at)) fail("exported_at");
   if (!isObject(value.card)) fail("card");
   if (value.card_png !== undefined && !isCanonicalBase64(value.card_png)) fail("card_png");
   if (value.import_route !== "character" && value.import_route !== "worldbook") fail("import_route");
@@ -214,6 +250,7 @@ export function parseWebSave(text: string): WebSaveResult {
   if (value.version !== WEB_SAVE_VERSION) {
     return { ok: false, error: { kind: "version", version: JSON.stringify(value.version ?? null) } };
   }
+  if (hasBrokenText(value)) return { ok: false, error: { kind: "invalid", detail: "JSON: 孤立代理字元" } };
   try {
     return { ok: true, save: check(value) };
   } catch (reason) {

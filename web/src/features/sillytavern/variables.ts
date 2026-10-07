@@ -16,6 +16,9 @@ function parseOrNull(text: unknown): unknown {
 }
 
 export class VariableScope {
+  /** 這個範圍寫過或刪過的鍵（寫回原值也算，寫入失敗不算）：存檔匯出時判斷這桌碰過哪些 global 鍵 */
+  readonly written = new Set<string>();
+
   constructor(readonly values: VariableMap) {}
 
   has(name: string): boolean {
@@ -50,16 +53,19 @@ export class VariableScope {
           (parsed as unknown[])[index] = value;
         }
         this.values[name] = JSON.stringify(parsed);
+        this.written.add(name);
       } catch {
         // 跟 ST 一樣：存不進去就算了
       }
     } else {
       this.values[name] = value;
+      this.written.add(name);
     }
     return value;
   }
 
   del(name: string): string {
+    this.written.add(name);
     delete this.values[name];
     return "";
   }
@@ -107,8 +113,10 @@ export function copyVariables(variables: ChatVariables): ChatVariables {
   return createChatVariables(structuredClone(variables.local.values), structuredClone(variables.global.values));
 }
 
-/** 把副本的內容整份寫回 `target`（原地改：global 是跨對話共用的同一個物件）。 */
+/** 把副本的內容整份寫回 `target`（原地改：global 是跨對話共用的同一個物件），副本寫過的鍵併進來。 */
 export function commitVariables(target: ChatVariables, source: ChatVariables): void {
+  for (const name of source.local.written) target.local.written.add(name);
+  for (const name of source.global.written) target.global.written.add(name);
   const pairs: [VariableMap, VariableMap][] = [
     [target.local.values, source.local.values],
     [target.global.values, source.global.values],

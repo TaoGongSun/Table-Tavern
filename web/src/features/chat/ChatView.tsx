@@ -3,6 +3,10 @@ import { renderHostMarkdown } from "../../shared/ui/host-markdown";
 import { t } from "../../i18n";
 import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
 import { quotaBlocksSending } from "../funnel/quota";
+import type { ReleaseInfo } from "../funnel/releases";
+import { downloadCard, downloadStChat, downloadWebSave } from "../saves/download";
+import { ExportFunnel } from "../saves/ExportFunnel";
+import type { SaveStore } from "../saves/save-store";
 import type { ChatEntry } from "./chat-turn";
 import { displayText } from "./st-text";
 import { useChat, type ChatController, type GameSetup } from "./useChat";
@@ -61,8 +65,77 @@ function LastMessageTools({ chat, entry }: { chat: ChatController; entry: ChatEn
   );
 }
 
-export function ChatView({ game, session, onBack }: { game: GameSetup; session: OpenRouterSession; onBack: () => void }) {
-  const chat = useChat(game, session);
+/** 匯出：網頁存檔（桌面版接著玩，匯完導流）與 SillyTavern 聊天檔（有損，附說明）。 */
+function ExportBar({ chat, name, release }: { chat: ChatController; name: string; release: ReleaseInfo }) {
+  const [funnel, setFunnel] = useState(false);
+  const [stHint, setStHint] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="export-bar">
+      <div className="export-actions">
+        <button
+          type="button"
+          disabled={chat.busy}
+          onClick={() => {
+            let failed: string | null;
+            try {
+              failed = downloadWebSave(chat.exportSave(), name);
+            } catch (reason) {
+              failed = String(reason);
+            }
+            setError(failed && t("exportFailed", { detail: failed }));
+            setFunnel(!failed);
+            setStHint(false);
+          }}
+        >
+          {t("exportSave")}
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          disabled={chat.busy}
+          title={t("exportStHint")}
+          onClick={() => {
+            downloadStChat(chat.exportStChat(), name);
+            setStHint(true);
+            setFunnel(false);
+          }}
+        >
+          {t("exportStChat")}
+        </button>
+      </div>
+      {stHint && (
+        <div className="chat-notice" role="status" data-testid="export-st-hint">
+          <p>{t("exportStHint")}</p>
+          <button type="button" onClick={() => downloadCard(chat.setup.card)}>
+            {t("exportCard")}
+          </button>
+        </div>
+      )}
+      {error && (
+        <p className="chat-error" role="alert">
+          {error}
+        </p>
+      )}
+      {funnel && <ExportFunnel release={release} onClose={() => setFunnel(false)} />}
+    </div>
+  );
+}
+
+export function ChatView({
+  game,
+  session,
+  saves = null,
+  release,
+  onBack,
+}: {
+  game: GameSetup;
+  session: OpenRouterSession;
+  saves?: SaveStore | null;
+  release: ReleaseInfo;
+  onBack: () => void;
+}) {
+  const chat = useChat(game, session, saves);
   const endRef = useRef<HTMLDivElement>(null);
   const blocked = quotaBlocksSending(session.quota);
   const name = game.card.text.name;
@@ -85,8 +158,16 @@ export function ChatView({ game, session, onBack }: { game: GameSetup; session: 
           ← {t("chatBack")}
         </button>
         <h2>{name}</h2>
-        <span className="chat-note">{t("memoryOnlyNote")}</span>
+        <span className="chat-note" data-testid="autosave-note">
+          {saves ? t("autosaveNote") : t("savesErr_storage")}
+        </span>
       </div>
+      <ExportBar chat={chat} name={name} release={release} />
+      {chat.saveFailed && (
+        <p className="chat-error" role="alert">
+          {t("autosaveFailed")}
+        </p>
+      )}
 
       <div className="chat-log" aria-live="polite">
         {chat.entries.map((entry, index) => (

@@ -1,5 +1,6 @@
-// 一場對話（只在記憶體，包 4 才存檔）：送出互斥、串流顯示、停止、取消後不寫入、換模提示、額度導流，
-// 以及最後一則的重新生成／編輯／刪除。訊息文字在各時機的 ST 處理見 st-text.ts，提示組裝見 prompt.ts。
+// 一場對話：送出互斥、串流顯示、停止、取消後不寫入、換模提示、額度導流，以及最後一則的重新生成／
+// 編輯／刪除。訊息文字在各時機的 ST 處理見 st-text.ts，提示組裝見 prompt.ts。逐字稿每次定下來（不在回合
+// 中）就自動存進這個瀏覽器的存檔庫；新開的桌等玩家第一次開口才佔一格存檔。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlayCard } from "../cards/play-card";
 import { quotaBlocksSending } from "../funnel/quota";
@@ -8,25 +9,36 @@ import { isDailyExhausted, NO_FREE_MODEL, runSmartCall, type CallOutcome, type F
 import { streamChat } from "../openrouter/stream-chat";
 import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
 import { RESERVED_OUTPUT_TOKENS } from "../openrouter/catalog";
+import { EMPTY_CARRY, toWebSave, type SaveCarry } from "../saves/web-save-codec";
+import { forgetPendingInput, readPendingInput, rememberPendingInput } from "../saves/pending-input";
+import { newSaveId, type SaveStore } from "../saves/save-store";
+import { toStChat } from "../saves/st-chat";
+import { substituteParams } from "../sillytavern/substitute";
 import { commitVariables, copyVariables, createChatVariables, type VariableMap } from "../sillytavern/variables";
+import { parseWebSave, type WebSave } from "@desktop/shared/contracts/web-save/web-save";
 import { deleteLast, regenerateBase, replaceLast, resolveTurn, type ChatEntry, type PendingTurn } from "./chat-turn";
+import { t } from "../../i18n";
 import { explainError } from "./error-text";
 import { composePrompt } from "./prompt";
-import { editedText, openingText, replyText, userText, type ChatSetup } from "./st-text";
+import { editedText, macroContext, openingText, replyText, userText, type ChatSetup } from "./st-text";
 
 let counter = 0;
 const newId = () => `m${Date.now().toString(36)}${(counter += 1)}`;
 const nowSecs = () => Math.floor(Date.now() / 1000);
 const CANCELLED = Symbol("cancelled");
 
-/** ST 的 global 變數跨對話共用；網頁版目前只活在這個分頁。 */
-const GLOBAL_VARIABLES: VariableMap = {};
+/** ST 的 global 變數跨對話共用：開站時從存檔庫讀回、自動存檔時寫回（D29）；從存檔接著玩時只補缺。 */
+export const GLOBAL_VARIABLES: VariableMap = {};
 
 /** 開一桌要的東西：卡、玩家名、選哪個開場白（null＝不放開場白）。 */
 export interface GameSetup {
   card: PlayCard;
   userName: string;
   openingIndex: number | null;
+  /** 這桌在瀏覽器存檔庫裡的位置；新開的桌不給，開桌時配一個 */
+  saveId?: string;
+  /** 從存檔接著玩：逐字稿、這段對話的變數、網頁版還用不到但要原樣帶回的欄位 */
+  resume?: { entries: ChatEntry[]; local: VariableMap; carry: SaveCarry };
 }
 
 export function openingEntries(setup: ChatSetup, openingIndex: number | null): ChatEntry[] {
@@ -52,20 +64,29 @@ export interface ChatController {
   editLast: (text: string) => void;
   deleteLast: () => void;
   stop: () => void;
+  /** 這桌現在的樣子，照桌檔契約 v1 */
+  exportSave: () => WebSave;
+  /** 匯出成 SillyTavern 聊天檔（.jsonl，有損） */
+  exportStChat: () => string;
+  /** 最近一次自動存檔失敗（瀏覽器不讓存、空間滿了） */
+  saveFailed: boolean;
 }
 
-export function useChat(game: GameSetup, session: OpenRouterSession): ChatController {
+export function useChat(game: GameSetup, session: OpenRouterSession, saves: SaveStore | null = null): ChatController {
+  const [saveId] = useState(() => game.saveId ?? newSaveId());
   const setup = useMemo<ChatSetup>(
     () => ({
       card: game.card,
       userName: game.userName,
-      variables: createChatVariables({}, GLOBAL_VARIABLES),
-      chatId: `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      variables: createChatVariables(structuredClone(game.resume?.local ?? {}), GLOBAL_VARIABLES),
+      chatId: `web-${saveId}`,
     }),
-    [game.card, game.userName],
+    [game.card, game.userName, game.resume, saveId],
   );
-  const [entries, setEntries] = useState<ChatEntry[]>(() => openingEntries(setup, game.openingIndex));
-  const [input, setInput] = useState("");
+  const [entries, setEntries] = useState<ChatEntry[]>(() => game.resume?.entries ?? openingEntries(setup, game.openingIndex));
+  const [saveFailed, setSaveFailed] = useState(false);
+  // 上次在回合進行中重新整理（D28）：那一句放回輸入框
+  const [input, setInput] = useState(() => (game.resume ? readPendingInput(saveId) : null) ?? "");
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +97,14 @@ export function useChat(game: GameSetup, session: OpenRouterSession): ChatContro
   const generationRef = useRef(0);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+  /** 把這桌現在的樣子寫進存檔庫（下面定義；回合開始時要先用） */
+  const writeSaveRef = useRef<() => Promise<boolean>>(async () => true);
+  /** 這桌已經佔了一格存檔 */
+  const slotRef = useRef(game.resume !== undefined);
+
+  useEffect(() => {
+    if (game.resume) forgetPendingInput(saveId);
+  }, [game.resume, saveId]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
   // 換卡、登出時畫面卸載：在途的回合一併取消，不再替玩家多花一次免費額度
@@ -109,9 +138,21 @@ export function useChat(game: GameSetup, session: OpenRouterSession): ChatContro
         if (cancelled()) return;
         session.quotaEvent({ type: "key-info", daily });
         if (daily?.kind === "counted" && daily.remaining <= 0) return;
+        // 新開的桌第一次開口（D27）：開口前的樣子先存成一格，寫成了才送模——回合中重新整理才有完整回合可退
+        // （D28）。存不進去就不送，原句留在輸入框
+        if (!slotRef.current) {
+          const landed = await writeSaveRef.current();
+          if (cancelled()) return;
+          if (!landed) {
+            setError(t("autosaveFirstFailed"));
+            return;
+          }
+        }
         const started = begin();
         if (!started) return;
         const { pending } = started;
+        // 回合中的那一句不在存檔裡：另記草稿，重新整理後放回輸入框（D28）
+        if (pending.kind === "send") rememberPendingInput(saveId, pending.rawInput);
         const input = pending.kind === "send" ? pending.rawInput : "";
         setEntries(started.before);
         // 每次組提示都從回合開頭的變數副本起算；真正派送的那一次才把副作用（setvar 等）與第 0 則寫回落地，
@@ -166,8 +207,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession): ChatContro
             outcome = { kind: "error", display, failure: null, cls: null, daily: false, failover: null };
           }
         }
-        // 畫面已卸載：結果不再寫回
+        // 畫面已卸載：結果不再寫回（草稿留著，接著玩時放回輸入框）
         if (generationRef.current !== generation) return;
+        forgetPendingInput(saveId);
 
         const before = dispatched.turn?.entries ?? started.before;
         const result = resolveTurn(before, pending, outcome, newId, (text) => replyText(setup, before, text));
@@ -185,7 +227,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession): ChatContro
         setBusy(false);
       }
     },
-    [session, setup],
+    [session, setup, saveId],
   );
 
   const send = useCallback(async () => {
@@ -223,6 +265,81 @@ export function useChat(game: GameSetup, session: OpenRouterSession): ChatContro
     setEntries(deleteLast(entriesRef.current));
   }, []);
 
+  const exportSave = useCallback(
+    () =>
+      toWebSave({
+        card: game.card,
+        userName: game.userName,
+        openingIndex: game.openingIndex,
+        entries: entriesRef.current,
+        local: setup.variables.local.values,
+        global: setup.variables.global.values,
+        globalWritten: setup.variables.global.written,
+        carry: game.resume?.carry ?? EMPTY_CARRY,
+        exportedAt: Date.now(),
+      }),
+    [game, setup],
+  );
+
+  const exportStChat = useCallback(() => {
+    const current = entriesRef.current;
+    // 開場白照 ST 顯示前代換巨集；用變數副本，匯出不改這桌的變數
+    const preview = { ...setup, variables: copyVariables(setup.variables) };
+    const texts = current.map((entry, index) =>
+      index === 0 && entry.role === "char" ? substituteParams(entry.text, macroContext(preview, current)) : entry.text,
+    );
+    return toStChat({ userName: game.userName, characterName: game.card.text.name, texts, entries: current, createdAt: Date.now() });
+  }, [game, setup]);
+
+  // 自動存檔：回合中不存（逐字稿還會變，D28 重新整理就退回上次完整回合）；新開的桌在玩家第一次開口前不佔
+  // 存檔（D27），佔了之後每次都存。同一格的寫入排成一條：前一筆寫完才寫下一筆，晚到的舊回合蓋不掉新回合
+  // （存檔庫另有同格版本比對）。只有最新那次嘗試的結果會改「自動存檔失敗」提示；組存檔丟錯也落到提示。
+  // 跨對話 global 跟著存（D29），所有存檔共用、重新整理不丟。
+  const writesRef = useRef<Promise<unknown>>(Promise.resolve());
+  const attemptRef = useRef(0);
+  /** 寫一次；回 true＝這一筆寫成了（沒有存檔庫也算，存不了就不擋玩）。 */
+  const writeSave = useCallback((): Promise<boolean> => {
+    if (!saves) return Promise.resolve(true);
+    const hadSlot = slotRef.current;
+    slotRef.current = true;
+    const attempt = (attemptRef.current += 1);
+    const settle = (failed: boolean) => {
+      // 第一格沒寫成：下次開口再試著佔格
+      if (failed && !hadSlot) slotRef.current = false;
+      if (attemptRef.current === attempt) setSaveFailed(failed);
+      return !failed;
+    };
+    // global 先預約再取樣：版本與寫入資格（當時載入過沒有）都在這一刻定，別桌晚到的舊內容蓋不掉這份較新的
+    const writeGlobal = saves.reserveGlobalWrite();
+    let save: WebSave;
+    let global: VariableMap;
+    try {
+      save = exportSave();
+      // 只存過得了契約的存檔（原 PNG 匯入時已驗過，這裡不重驗那一大段）
+      if (!parseWebSave(JSON.stringify({ ...save, card_png: undefined })).ok) throw new Error("web save off contract");
+      global = JSON.parse(JSON.stringify(GLOBAL_VARIABLES)) as VariableMap;
+    } catch {
+      return Promise.resolve(settle(true));
+    }
+    const meta = { id: saveId, title: game.card.text.name, updatedAt: Date.now(), messageCount: save.messages.length };
+    const result = writesRef.current
+      .then(() => saves.put(meta, save))
+      .then(() => writeGlobal(global))
+      .then(
+        () => settle(false),
+        () => settle(true),
+      );
+    writesRef.current = result;
+    return result;
+  }, [saves, exportSave, game, saveId]);
+  writeSaveRef.current = writeSave;
+
+  const playerSpoke = entries.some((entry) => entry.role === "user");
+  useEffect(() => {
+    if (busy || (!slotRef.current && !playerSpoke)) return;
+    void writeSave();
+  }, [busy, entries, playerSpoke, writeSave]);
+
   return {
     setup,
     entries,
@@ -238,5 +355,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession): ChatContro
     editLast,
     deleteLast: removeLast,
     stop,
+    exportSave,
+    exportStChat,
+    saveFailed,
   };
 }

@@ -1,6 +1,7 @@
 // 卡片沙盒寫入的宿主端（計畫 8.5、8.8）：上限驗證、依寫入目標排隊、Promise 結算與被拒時推回權威值。
 // 純邏輯，送後端、更新逐字稿、回覆沙盒都由 controller 注入。
 import { type TranscriptEvent } from "../../../shared/contracts/backend-contracts";
+import { tableTextProblem } from "../../../shared/contracts/vars-table";
 
 /** 後端 `card_vars_write` 的回傳（Rust `CardWrite`）；`gone`＝宿主自己判的：await 回來時桌、桌世代或幕已換，
  *  結果不屬於現在這桌，不換進逐字稿、不推權威值 */
@@ -64,54 +65,9 @@ export interface Migration {
   to: string;
 }
 
-// 上限（與後端 data/message_vars/json.rs 同一組數字）
-const MAX_TABLE_BYTES = 2 * 1024 * 1024;
-const MAX_DEPTH = 32;
-const MAX_STRING_BYTES = 64 * 1024;
-const MAX_CHILDREN = 10_000;
-const MAX_NODES = 200_000;
-const MAX_KEY_CHARS = 256;
-
-const encoder = new TextEncoder();
-
-/** 驗一張要寫入的表；不符回原因代碼（整批拒絕），符合回 null */
+/** 驗一張要寫入的表；不符回原因代碼（整批拒絕），符合回 null。上限與後端同一組（shared/contracts/vars-table）。 */
 export function validateTable(payload: string): string | null {
-  if (encoder.encode(payload).length > MAX_TABLE_BYTES) return "too-large";
-  let value: unknown;
-  try {
-    value = JSON.parse(payload);
-  } catch {
-    return "invalid-json";
-  }
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return "not-object";
-  let nodes = 0;
-  const walk = (node: unknown, depth: number): string | null => {
-    nodes += 1;
-    if (nodes > MAX_NODES) return "too-many-nodes";
-    if (depth > MAX_DEPTH) return "too-deep";
-    if (typeof node === "string") return encoder.encode(node).length > MAX_STRING_BYTES ? "string-too-long" : null;
-    if (typeof node === "number") return Number.isFinite(node) ? null : "non-finite";
-    if (Array.isArray(node)) {
-      if (node.length > MAX_CHILDREN) return "too-many-children";
-      for (const item of node) {
-        const problem = walk(item, depth + 1);
-        if (problem) return problem;
-      }
-      return null;
-    }
-    if (node !== null && typeof node === "object") {
-      const entries = Object.entries(node);
-      if (entries.length > MAX_CHILDREN) return "too-many-children";
-      for (const [key, child] of entries) {
-        if (key === "") return "empty-key";
-        if ([...key].length > MAX_KEY_CHARS) return "key-too-long";
-        const problem = walk(child, depth + 1);
-        if (problem) return problem;
-      }
-    }
-    return null;
-  };
-  return walk(value, 1);
+  return tableTextProblem(payload);
 }
 
 function parseTable(text: string | null): Record<string, unknown> | null {

@@ -1,15 +1,20 @@
 // 網頁版端對端（npm run e2e）：本機假端點＋正式建置（端點換成假端點）＋WebKit。
-// 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→匯入卡（錯誤說明、選開場白、玩家名、
+// 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→自動存檔（重新整理後繼續）→匯出網頁存檔
+// （契約檢查、用桌面版繼續導流）→匯出 ST 聊天檔→存檔區刪除與匯入→匯入卡（錯誤說明、選開場白、玩家名、
 // ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載連結→登出。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
+// TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）。
 import assert from "node:assert/strict";
+import { copyFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseWebSave } from "../../src/shared/contracts/web-save/web-save.ts";
 import { build, preview } from "vite";
 import { webkit } from "playwright";
 import { E2E_KEY, startFake } from "./fake-endpoints.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CARDS = fileURLToPath(new URL("../../src/shared/contracts/card-view/", import.meta.url));
+const SAVES = fileURLToPath(new URL("../../src/shared/contracts/web-save/", import.meta.url));
 const RELEASES_PAGE = "https://github.com/TaoGongSun/Table-Tavern/releases";
 
 const fake = await startFake();
@@ -76,6 +81,105 @@ try {
   assert.equal(await page.getByTestId("message-user").count(), 2);
   assert.equal(await page.getByPlaceholder("輸入你的行動或對話…").inputValue(), "");
 
+  step("自動存檔：玩家句的 setvar 進變數；回開始畫面看得到這桌，重新整理後繼續就接得上");
+  fake.state.chat = "normal";
+  await page.getByPlaceholder("輸入你的行動或對話…").fill("我付了錢{{setvar::錢包::15}}{{setglobalvar::名聲::1}}");
+  await page.getByRole("button", { name: "送出" }).click();
+  await page.getByTestId("message-user").getByText("我付了錢").waitFor();
+  await page.getByRole("button", { name: "送出" }).waitFor();
+  assert.equal(await page.getByTestId("autosave-note").textContent(), "對話自動存在這個瀏覽器");
+  await page.getByRole("button", { name: "← 換一張卡" }).click();
+  await page.getByTestId("save-item").getByText("瑟拉").waitFor();
+  // Safari 的 ITP 提示放在存檔區（e2e 跑的是 WebKit）
+  await page.getByText("Safari 會在七天沒打開本站後清掉網站資料").waitFor();
+  await page.reload();
+  await page.getByTestId("save-item").getByText("瑟拉").waitFor();
+  await page.getByTestId("save-item").getByRole("button", { name: "繼續" }).click();
+  await page.getByText("鞋上的雪先跺乾淨").waitFor();
+  assert.equal(await page.getByTestId("message-user").count(), 3, "三句玩家句都接得上");
+  await page.getByText("回應中斷").waitFor();
+
+  step("匯出網頁存檔：過得了契約檢查、帶逐字稿與變數，附「用桌面版繼續」導流");
+  const [saveDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "匯出存檔" }).click()]);
+  assert.match(saveDownload.suggestedFilename(), /^瑟拉 \d{4}-\d{2}-\d{2} \d{4}\.json$/);
+  const savePath = await saveDownload.path();
+  const saveText = readFileSync(savePath, "utf8");
+  // 這個 session 帶著測試金鑰、選過免費模型：存檔裡不能有金鑰與模型設定
+  assert.ok(!saveText.includes("sk-or-"), "存檔帶到金鑰");
+  assert.ok(!saveText.includes(E2E_KEY));
+  const keyNames = [];
+  const walk = (value) => {
+    if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        keyNames.push(key);
+        walk(child);
+      }
+    }
+  };
+  walk(JSON.parse(saveText));
+  assert.deepEqual(
+    keyNames.filter((key) => /model|api_?key|token|openrouter/i.test(key)),
+    [],
+    "存檔帶到模型或金鑰類欄位",
+  );
+  const exported = parseWebSave(saveText);
+  assert.ok(exported.ok, `匯出的存檔沒過契約檢查：${JSON.stringify(exported.error)}`);
+  const save = exported.save;
+  assert.equal(save.card.data.name, "瑟拉");
+  assert.equal(save.import_route, "character");
+  assert.equal(save.user_name, "玩家");
+  assert.equal(save.opening_index, 0);
+  assert.deepEqual(
+    save.messages.map((message) => message.role),
+    ["char", "user", "char", "user", "char", "user", "char"],
+  );
+  assert.equal(save.messages[0].opening, true);
+  assert.equal(save.messages[4].interrupted, true);
+  assert.equal(save.messages[5].text, "我付了錢");
+  assert.deepEqual(save.mvu.layers.chat, { 錢包: "15" });
+  // 跨對話 global：這桌寫過的鍵，重新整理後接著玩再匯出照樣帶著
+  assert.deepEqual(save.mvu.layers.global, { 名聲: "1" });
+  assert.deepEqual(save.card_storage, {});
+  await page.getByTestId("export-funnel").getByText("用桌面版繼續").waitFor();
+  assert.equal(await page.getByTestId("export-funnel").getByRole("link").getAttribute("href"), RELEASES_PAGE);
+  if (process.env.TT_WEB_EXPORT_OUT) copyFileSync(savePath, process.env.TT_WEB_EXPORT_OUT);
+
+  step("匯出 ST 聊天檔：一行一則 JSON、檔頭照 ST，畫面說明只帶對話");
+  const [stDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "匯出成 SillyTavern 聊天檔" }).click(),
+  ]);
+  assert.match(stDownload.suggestedFilename(), /^瑟拉 - \d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s\d{3}ms\.jsonl$/);
+  const stLines = readFileSync(await stDownload.path(), "utf8").split("\n").map((line) => JSON.parse(line));
+  assert.equal(stLines.length, 8);
+  assert.deepEqual(Object.keys(stLines[0]), ["user_name", "character_name", "create_date", "chat_metadata"]);
+  assert.equal(stLines[0].character_name, "瑟拉");
+  assert.deepEqual(stLines[6], { ...stLines[6], name: "玩家", is_user: true, is_system: false, mes: "我付了錢", extra: {} });
+  await page.getByTestId("export-st-hint").getByText("SillyTavern 聊天檔只帶對話").waitFor();
+  // D3「對話與卡」：同一處給原卡檔（內建卡沒有 PNG，給原卡 JSON 外殼）
+  const [cardDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("export-st-hint").getByRole("button", { name: "下載這張角色卡" }).click(),
+  ]);
+  assert.equal(cardDownload.suggestedFilename(), "瑟拉.json");
+  const cardJson = JSON.parse(readFileSync(await cardDownload.path(), "utf8"));
+  assert.deepEqual([cardJson.spec, cardJson.data.name], ["chara_card_v3", "瑟拉"]);
+  assert.deepEqual(cardJson, save.card, "給的就是存檔裡那份原卡外殼");
+
+  step("存檔區：刪除要確認一次；匯入剛匯出的存檔回網頁版，繼續就接得上；版號不認得的存檔拒收");
+  await page.getByRole("button", { name: "← 換一張卡" }).click();
+  await page.getByTestId("save-item").getByRole("button", { name: "刪除" }).click();
+  await page.getByTestId("save-item").getByRole("button", { name: "確定刪除" }).click();
+  await page.getByText("還沒有存檔。").waitFor();
+  await page.getByTestId("save-file").setInputFiles(`${SAVES}future-version.json`);
+  await page.getByTestId("saves-error").getByText("這份存檔的版本（2）這個網頁版看不懂").waitFor();
+  await page.getByTestId("save-file").setInputFiles(savePath);
+  await page.getByTestId("save-item").getByText("瑟拉").waitFor();
+  await page.getByTestId("save-item").getByRole("button", { name: "繼續" }).click();
+  await page.getByTestId("message-user").getByText("我付了錢").waitFor();
+  assert.equal(await page.getByTestId("message-user").count(), 3);
+
   step("匯入卡：只有 iTXt 的 PNG 說明讀不到卡資料");
   await page.getByRole("button", { name: "← 換一張卡" }).click();
   await page.getByLabel("你在故事裡的名字").fill("旅人");
@@ -128,6 +232,15 @@ try {
   assert.equal(await page.getByText("改過的回覆，旅人。").count(), 0);
   assert.equal(await page.getByTestId("message-char").count(), 1, "只剩開場白");
   fake.state.chat = "normal";
+
+  step("從 PNG 匯入的卡：ST 匯出旁給的是原 PNG（一個位元組都不改）");
+  await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "匯出成 SillyTavern 聊天檔" }).click()]);
+  const [pngDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("export-st-hint").getByRole("button", { name: "下載這張角色卡" }).click(),
+  ]);
+  assert.equal(pngDownload.suggestedFilename(), "灰燼旅店的莫拉.png");
+  assert.ok(readFileSync(await pngDownload.path()).equals(readFileSync(`${CARDS}composite.png`)), "原 PNG 被改了");
 
   step("今日免費用完：送出前查 /key，跳導流面板、原文留在輸入框");
   fake.state.remaining = 0;

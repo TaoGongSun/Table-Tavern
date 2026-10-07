@@ -1,6 +1,6 @@
 //! 網頁存檔（桌檔契約 v1，src/shared/contracts/web-save/web-save.md）的讀取與檢查：信任邊界，動任何資料前
 //! 整份驗完。前端 `web-save.ts` 的 `parseWebSave` 是同一套規則。
-use crate::data::message_vars::{parse_table, Json, Macros};
+use crate::data::message_vars::{parse_json, validate_table, Json, Macros};
 use crate::data::DataResult;
 use crate::ui_msg::UiMsg;
 use base64::Engine;
@@ -186,8 +186,11 @@ struct RawWorldInfoEntry {
     key: String,
 }
 
+/// 存檔裡的變數表：只量值（緊湊寫法），與前端 `tableProblem` 同一套；存檔原文的縮排不影響收不收。
 fn table(raw: &RawValue, field: &str) -> DataResult<Json> {
-    parse_table(raw.get()).map_err(|limit| invalid(format!("{field}: {}", limit.code)))
+    let value = parse_json(raw.get()).map_err(|_| invalid(format!("{field}: invalid-json")))?;
+    validate_table(&value).map_err(|limit| invalid(format!("{field}: {}", limit.code)))?;
+    Ok(value)
 }
 
 fn check_id(id: &str, field: &str, max: usize) -> DataResult<()> {
@@ -198,17 +201,38 @@ fn check_id(id: &str, field: &str, max: usize) -> DataResult<()> {
     Ok(())
 }
 
-/// RFC 3339：日期、`T`、時分（秒與小數可省）、`Z` 或 ±hh:mm。
+/// RFC 3339：日期、`T`、時分（秒與小數可省）、`Z` 或 ±hh:mm，而且日曆上真的存在（13 月、2 月 30 日、
+/// 25 點、60 秒、偏移 24 小時都不收）。前端 web-save.ts 的 `rfc3339Millis` 同一套規則。
 fn is_rfc3339(text: &str) -> bool {
     static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    PATTERN
-        .get_or_init(|| {
-            regex::Regex::new(
-                r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$",
-            )
-            .expect("固定的正則")
-        })
-        .is_match(text)
+    let pattern = PATTERN.get_or_init(|| {
+        regex::Regex::new(
+            r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-](\d{2}):(\d{2}))$",
+        )
+        .expect("固定的正則")
+    });
+    let Some(caps) = pattern.captures(text) else {
+        return false;
+    };
+    let number = |index: usize| {
+        caps.get(index)
+            .map_or(0, |found| found.as_str().parse::<u32>().unwrap_or(u32::MAX))
+    };
+    let (year, month, day) = (number(1), number(2), number(3));
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=days).contains(&day)
+        && number(4) <= 23
+        && number(5) <= 59
+        && number(6) <= 59
+        && number(7) <= 23
+        && number(8) <= 59
 }
 
 /// 整份讀進來並檢查。版號不認得回 `WebSaveVersion`，其餘不合契約回 `WebSaveInvalid`。
@@ -399,4 +423,39 @@ fn parse_mvu(raw: RawMvu) -> DataResult<Mvu> {
             extension: keyed(layers.extension, "extension")?,
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_rfc3339;
+
+    /// 與前端 web-save.test.ts 的 `rfc3339Millis` 同一組。
+    #[test]
+    fn times_must_exist_on_the_calendar() {
+        for good in [
+            "2026-10-07T21:00:00Z",
+            "2026-10-07T21:00:00+08:00",
+            "2026-10-07T21:00-01:30",
+            "2026-10-07T21:00:00.123456789Z",
+            "2028-02-29T00:00:00Z",
+            "0050-01-01T00:00:00Z",
+        ] {
+            assert!(is_rfc3339(good), "{good}");
+        }
+        for bad in [
+            "2026-99-99T99:99:99Z",
+            "2026-02-30T00:00:00Z",
+            "2027-02-29T00:00:00Z",
+            "2100-02-29T00:00:00Z",
+            "2026-00-10T00:00:00Z",
+            "2026-10-07T24:00:00Z",
+            "2026-10-07T21:60:00Z",
+            "2026-10-07T21:00:60Z",
+            "2026-10-07T21:00:00+24:00",
+            "2026-10-07T21:00:00+08:60",
+            "2026-10-07 21:00:00Z",
+        ] {
+            assert!(!is_rfc3339(bad), "{bad}");
+        }
+    }
 }
