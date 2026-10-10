@@ -12,18 +12,12 @@ import gmBook from "../../assets/gm-book.png";
 import { IconSend, IconStop } from "../../shared/ui/icons";
 import { useStickToBottom } from "../story-scroll/useStickToBottom";
 import { capacityHint, wouldOverflow, type SceneBudgetReply } from "./scene-budget";
+import { streamDisplayText } from "./stream-display";
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。
 // 快取上線後換幕不再省額度（摘要與換幕後首輪都全額計價，約等於連跑四輪），
 // 提醒的理由改成「紀錄長到模型顧不上前面」，門檻從 8000 提到 30000（2026-08-04 實測拍板）。
 const SCENE_LENGTH_HINT_CHARS = 30000;
-
-// 串流中的旁白尾端會冒出狀態區塊，整則寫完才由後端剝乾淨；
-// 這裡先切掉，免得玩家每回合都看到一段圍欄或標籤閃過去
-function narrationStreamText(text: string) {
-  const marker = text.search(/```|<details|<status|<UpdateVariable/i);
-  return marker === -1 ? text : text.slice(0, marker);
-}
 
 /** 兩份逐字稿畫出來的故事一樣（則數、每則的時間、身分與正文都同）：差別只在變數表與版本這類不上畫面的欄位 */
 function sameStory(previous: TranscriptEvent[], next: TranscriptEvent[]): boolean {
@@ -237,8 +231,8 @@ export function PlayView({
             <div className="pb-name">
               <span className="pb-plate">{generatingMeta?.name ?? ""}</span>
             </div>
-            {streamText ? (
-              <span className="text">{streamText}</span>
+            {streamDisplayText(streamText) ? (
+              <span className="text">{streamDisplayText(streamText)}</span>
             ) : (
               <span className="typing" aria-label={t("typing", { name: generatingMeta?.name ?? "" })}>
                 <i />
@@ -250,8 +244,8 @@ export function PlayView({
         )}
         {generating !== null && generating.kind === "narration" && (
           <div className="message message-narration">
-            {narrationStreamText(streamText) ? (
-              <span className="text">{narrationStreamText(streamText)}</span>
+            {streamDisplayText(streamText) ? (
+              <span className="text">{streamDisplayText(streamText)}</span>
             ) : (
               <span className="typing" aria-label={t("typing", { name: "GM" })}>
                 <i />

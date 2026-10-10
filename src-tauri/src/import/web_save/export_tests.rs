@@ -170,7 +170,12 @@ fn a_real_web_export_with_mvu_lands_every_table_and_the_card_storage() {
         [ships(0), ships(2), ships(4)],
         [json!(2), json!(5), json!(5)]
     );
-    assert!(events[2].text.contains("<StatusPlaceHolderImpl/>"));
+    // 畫面與送模讀的 text 剝乾淨；原文（含 UpdateVariable）留在 raw 給卡片介面
+    assert_eq!(events[2].text, "貨船進港了，碼頭一下子熱鬧起來。");
+    assert!(events[2]
+        .raw
+        .as_deref()
+        .is_some_and(|raw| raw.contains("<UpdateVariable>")));
 
     // 有效狀態＝最後一張表
     let world = data::read_state(root.path(), &w).unwrap();

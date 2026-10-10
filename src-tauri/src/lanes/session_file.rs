@@ -170,9 +170,21 @@ pub(crate) fn find_user_line_with_segment(
         .ok_or_else(|| "含指定片段的 user 對話行缺少 uuid".to_owned())
 }
 
+/// 本輪回覆的收尾換寫：`reply` 是 CLI 回來的原文（核對用），`cleaned` 是剝完前綴與控制區塊、
+/// 前端會落檔的台詞（寫入用）。
+#[derive(Clone, Copy)]
+pub(crate) struct ReplyRewrite<'a> {
+    pub reply: &'a str,
+    pub cleaned: &'a str,
+}
+
+/// 最後一則 assistant 補名字前綴。帶 `rewrite` 且收尾有剝掉東西時，改成整段換成「前綴＋收尾台詞」：
+/// 先核對 text 分段串起來就是本輪原文（含或不含前綴），對不上回錯（呼叫端丟線）；
+/// 對得上就把所有 text 分段收成一段，thinking 分段保留。共用 session 的下一個角色就看不到控制區塊。
 pub(crate) fn prefix_last_assistant(
     session_file: &mut SessionFile,
     prefix: &str,
+    rewrite: Option<ReplyRewrite<'_>>,
 ) -> Result<(), String> {
     let line = session_file
         .lines
@@ -185,6 +197,45 @@ pub(crate) fn prefix_last_assistant(
         .pointer_mut("/message/content")
         .and_then(Value::as_array_mut)
         .ok_or_else(|| "assistant content 不是陣列".to_owned())?;
+    let is_text = |segment: &Value| segment.get("type").and_then(Value::as_str) == Some("text");
+    if let Some(rewrite) = rewrite {
+        let target = format!("{prefix}{}", rewrite.cleaned);
+        let unchanged = rewrite
+            .reply
+            .strip_prefix(prefix)
+            .unwrap_or(rewrite.reply)
+            .trim()
+            == rewrite.cleaned;
+        if !unchanged {
+            let mut joined = String::new();
+            for segment in content.iter().filter(|segment| is_text(segment)) {
+                joined.push_str(
+                    segment
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| "最後一條 assistant 的 text 分段沒有字串 text".to_owned())?,
+                );
+            }
+            let joined = joined.trim();
+            let reply = rewrite.reply.trim();
+            if joined != reply && joined.strip_prefix(prefix) != Some(reply) {
+                return Err("最後一條 assistant 與本輪回覆對不上".to_owned());
+            }
+            let first = content
+                .iter()
+                .position(is_text)
+                .expect("joined text came from a text segment");
+            content[first]["text"] = Value::String(target);
+            let mut index = 0;
+            content.retain(|segment| {
+                let keep = index == first || !is_text(segment);
+                index += 1;
+                keep
+            });
+            line.dirty = true;
+            return Ok(());
+        }
+    }
     let first_segment = content
         .first_mut()
         .and_then(Value::as_object_mut)
@@ -544,7 +595,7 @@ mod tests {
         let uuid = find_user_line_with_segment(&session_file, "[機密2]").unwrap();
         assert_eq!(uuid, "u2");
         erase_user_segment(&mut session_file, &uuid, "[機密2]").unwrap();
-        prefix_last_assistant(&mut session_file, "內藤：").unwrap();
+        prefix_last_assistant(&mut session_file, "內藤：", None).unwrap();
         let written = serialize(&session_file);
         let before: Vec<(&str, &str)> = split_lines(CLI_2_1_287).collect();
         let after: Vec<(&str, &str)> = split_lines(&written).collect();
@@ -604,8 +655,8 @@ mod tests {
     #[test]
     fn prefixes_only_the_last_assistant_idempotently() {
         let mut session_file = parse(SAMPLE).unwrap();
-        prefix_last_assistant(&mut session_file, "Ralph: ").unwrap();
-        prefix_last_assistant(&mut session_file, "Ralph: ").unwrap();
+        prefix_last_assistant(&mut session_file, "Ralph: ", None).unwrap();
+        prefix_last_assistant(&mut session_file, "Ralph: ", None).unwrap();
         let values = values(&session_file);
         assert_eq!(values[2]["message"]["content"][0]["text"], "first answer");
         assert_eq!(
@@ -618,7 +669,7 @@ mod tests {
 "#,
         )
         .unwrap();
-        assert!(prefix_last_assistant(&mut no_assistant, "Ralph: ").is_err());
+        assert!(prefix_last_assistant(&mut no_assistant, "Ralph: ", None).is_err());
 
         // 最後一則 assistant 不是 text（只有 thinking）＝不能補
         let mut thinking_last = parse(
@@ -627,7 +678,58 @@ mod tests {
 "#,
         )
         .unwrap();
-        assert!(prefix_last_assistant(&mut thinking_last, "Ralph: ").is_err());
+        assert!(prefix_last_assistant(&mut thinking_last, "Ralph: ", None).is_err());
+    }
+
+    #[test]
+    fn rewrite_collapses_text_segments_to_cleaned_reply_and_keeps_thinking() {
+        let sample = r#"{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"x"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"想"},{"type":"text","text":"你好"},{"type":"text","text":"<UpdateVariable>x</UpdateVariable>"}]}}
+"#;
+        let reply = "你好<UpdateVariable>x</UpdateVariable>";
+        let mut session_file = parse(sample).unwrap();
+        prefix_last_assistant(
+            &mut session_file,
+            "狐狸：",
+            Some(ReplyRewrite {
+                reply,
+                cleaned: "你好",
+            }),
+        )
+        .unwrap();
+        let rows = values(&session_file);
+        let content = rows[1]["message"]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["thinking"], "想");
+        assert_eq!(content[1]["text"], "狐狸：你好");
+
+        // 檔內文字對不上本輪原文＝不換寫、回錯（呼叫端丟線）
+        let mut session_file = parse(sample).unwrap();
+        assert!(prefix_last_assistant(
+            &mut session_file,
+            "狐狸：",
+            Some(ReplyRewrite {
+                reply: "別的話<status>a</status>",
+                cleaned: "別的話"
+            }),
+        )
+        .is_err());
+
+        // 收尾沒剝掉任何東西：照舊只補前綴
+        let mut session_file = parse(SAMPLE).unwrap();
+        prefix_last_assistant(
+            &mut session_file,
+            "Ralph: ",
+            Some(ReplyRewrite {
+                reply: "last answer",
+                cleaned: "last answer",
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            values(&session_file)[5]["message"]["content"][0]["text"],
+            "Ralph: last answer"
+        );
     }
 
     #[test]

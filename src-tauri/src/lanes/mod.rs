@@ -131,7 +131,7 @@ impl LaneCall {
 
 /// 回覆會以什麼形狀落回正典 transcript（下一輪靠它跳過 session 裡已有的自家回覆）。
 pub(crate) enum ReplyEcho {
-    /// 角色台詞：事件原文＝剝掉本輪 `speaker_prefix`（`prefix`）後的回覆，見 transport::strip_own_prefix。
+    /// 角色台詞：事件原文＝剝掉本輪 `speaker_prefix`（`prefix`）後的回覆，見 transport::finish_character_reply。
     /// 前綴另傳、不從 `TurnInput.prefix` 反推：Agy 那欄是 None，但模型照樣會自加前綴
     Dialogue { speaker_id: String, prefix: String },
     /// GM 旁白：事件原文＝剝掉狀態欄與「下一位」點名行後的顯示文字
@@ -406,14 +406,15 @@ fn rewrite_grok(
     confidential: Option<&str>,
     prefix: &str,
     reply: &str,
+    cleaned: &str,
 ) -> Result<(), RewriteFailure> {
     let home = at("locate", grok_home(call))?;
-    grok_session::rewrite(&home, session_id, confidential, prefix, reply).map_err(|error| {
-        RewriteFailure {
+    grok_session::rewrite(&home, session_id, confidential, prefix, reply, cleaned).map_err(
+        |error| RewriteFailure {
             stage: error.reason.stage(),
             detail: error.detail,
-        }
-    })
+        },
+    )
 }
 
 /// 撤銷 grok 線的緣由。預定重開（換幕、改卡等）不是出事，不記丟線——呼叫行本來就帶 reopen。
@@ -784,6 +785,7 @@ fn apply_rewrite(
     session_id: &str,
     confidential: Option<&str>,
     prefix: Option<&str>,
+    reply: Option<session_file::ReplyRewrite<'_>>,
 ) -> Result<Option<bool>, RewriteFailure> {
     if confidential.is_none() && prefix.is_none() {
         return Ok(None);
@@ -804,7 +806,7 @@ fn apply_rewrite(
     if let Some(prefix) = prefix {
         at(
             "prefix-assistant",
-            session_file::prefix_last_assistant(&mut file, prefix),
+            session_file::prefix_last_assistant(&mut file, prefix, reply),
         )?;
     }
     at("write", session_file::write_atomic(&path, &file))?;
@@ -916,7 +918,10 @@ fn settle_abort(
         );
     }
     let rewrite = match call.provider {
-        LaneProvider::Claude => apply_rewrite(call, session_id, confidential, prefix).map(|_| ()),
+        // 中止與失控：只抹機密、補前綴，不換寫收尾文字（半截內容不再續用，下一輪重開）
+        LaneProvider::Claude => {
+            apply_rewrite(call, session_id, confidential, prefix, None).map(|_| ())
+        }
         LaneProvider::Agy | LaneProvider::Grok => Ok(()),
     };
     if let Err(failure) = rewrite {
@@ -958,10 +963,11 @@ pub(crate) struct TurnOutcome {
 
 fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
     match echo {
+        // 前端落檔的是收尾後的台詞（剝前綴與控制區塊，chat_with_character 同一個純函式）
         ReplyEcho::Dialogue { speaker_id, prefix } => ExpectedReply {
             speaker_id: speaker_id.clone(),
             kind: TranscriptKind::Dialogue,
-            text: transport::strip_own_prefix(reply, prefix).to_owned(),
+            text: transport::finish_character_reply(reply, prefix, false).text,
         },
         // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）
         ReplyEcho::Narration => ExpectedReply {
@@ -1278,6 +1284,28 @@ pub(crate) async fn run_turn(
                 return Err(transport::runaway_message(reason, chars));
             }
             Ok(cli::CliFinish::Completed(reply)) => {
+                // 角色台詞收尾（剝前綴與控制區塊）：抹寫寫入它，續聊對帳也用它
+                let cleaned = match &input.echo {
+                    ReplyEcho::Dialogue { prefix, .. } => {
+                        Some(transport::finish_character_reply(&reply, prefix, false).text)
+                    }
+                    ReplyEcho::Narration => None,
+                };
+                // 只有控制區塊、沒有台詞：收尾比照失控（claude 抹私設、grok 撤線、pending_rewrite 留著
+                // 下一輪重開），不重開重試；settle_abort 自己失敗就回那個錯
+                if cleaned.as_deref() == Some("") {
+                    settle_abort(
+                        call,
+                        world_id,
+                        &key,
+                        &session_id,
+                        input.confidential.as_deref(),
+                        input.prefix.as_deref(),
+                        &mut store,
+                        &store_path,
+                    )?;
+                    return Err(transport::empty_reply_error(&reply));
+                }
                 let actual_session_id = match call.provider {
                     LaneProvider::Agy => conversation_id
                         .into_inner()
@@ -1304,6 +1332,12 @@ pub(crate) async fn run_turn(
                         &actual_session_id,
                         input.confidential.as_deref(),
                         input.prefix.as_deref(),
+                        cleaned
+                            .as_deref()
+                            .map(|cleaned| session_file::ReplyRewrite {
+                                reply: &reply,
+                                cleaned,
+                            }),
                     )
                     .map(|loaded| reminder = loaded),
                     // GM 線一律原文，不抹；角色共線每輪都抹（至少要拿 reasoning、補前綴）
@@ -1313,6 +1347,7 @@ pub(crate) async fn run_turn(
                         input.confidential.as_deref(),
                         input.prefix.as_deref().unwrap_or_default(),
                         &reply,
+                        cleaned.as_deref().unwrap_or(&reply),
                     ),
                     LaneProvider::Agy | LaneProvider::Grok => Ok(()),
                 };

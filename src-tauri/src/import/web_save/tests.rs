@@ -850,12 +850,17 @@ fn duplicate_entries_map_to_the_kept_uid() {
 }
 
 /// D24：regex_allowed=false 的存檔 → 桌旗標 false、卡片介面不套顯示腳本；true 照套。
-/// 桌面版本來就沒有送模前的 regex，兩種旗標下角色線送出的歷史都是原文（佔位標記不被拿掉）。
+/// 桌面版本來就沒有送模前的 regex，兩種旗標下角色線送出的歷史都是原文。佔位標記匯入時就剝掉了，
+/// 所以把卡的 promptOnly 腳本改成會動到正文的字面（「銅板」）來驗。
 #[test]
 fn regex_refusal_becomes_a_table_flag_that_drops_display_scripts() {
     let root = TestRoot::new("web-save-d24");
-    let allowed = import_web_save(root.path(), &bytes(&fixture("short.json")), LANG).unwrap();
-    let mut refused_save = fixture("short.json");
+    let mut allowed_save = fixture("short.json");
+    let prompt_only = &mut allowed_save["card"]["data"]["extensions"]["regex_scripts"][1];
+    assert_eq!(prompt_only["promptOnly"], json!(true));
+    prompt_only["findRegex"] = json!("/銅板/g");
+    let allowed = import_web_save(root.path(), &bytes(&allowed_save), LANG).unwrap();
+    let mut refused_save = allowed_save.clone();
     refused_save["regex_allowed"] = json!(false);
     let refused = import_web_save(root.path(), &bytes(&refused_save), LANG).unwrap();
 
@@ -896,10 +901,7 @@ fn regex_refusal_becomes_a_table_flag_that_drops_display_scripts() {
             .iter()
             .map(|m| m.content.clone())
             .collect();
-        assert!(
-            history.contains("<StatusPlaceHolderImpl/>"),
-            "送模前不跑 promptOnly 腳本"
-        );
+        assert!(history.contains("銅板"), "送模前不跑 promptOnly 腳本");
     }
 }
 

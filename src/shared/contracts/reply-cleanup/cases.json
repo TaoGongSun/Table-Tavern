@@ -1,0 +1,152 @@
+{
+  "_comment": "回覆收尾的控制標記清理對拍（char-line-status-strip）。final_complete／final_aborted＝Rust transport::final_reply_text 的完成／中止結果；stream＝前端串流顯示（streamDisplayText）。兩邊不要求全文相等，只鎖各自的規則與標記定義。",
+  "cases": [
+    {
+      "name": "lone-lt",
+      "input": "正文<",
+      "final_complete": "正文<",
+      "final_aborted": "正文<",
+      "stream": "正文"
+    },
+    {
+      "name": "fragment-upd",
+      "input": "正文<Upd",
+      "final_complete": "正文<Upd",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "fragment-st-upper",
+      "input": "正文<St",
+      "final_complete": "正文<St",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "single-backtick",
+      "input": "正文`",
+      "final_complete": "正文`",
+      "final_aborted": "正文`",
+      "stream": "正文"
+    },
+    {
+      "name": "double-backtick",
+      "input": "正文``",
+      "final_complete": "正文``",
+      "final_aborted": "正文``",
+      "stream": "正文"
+    },
+    {
+      "name": "placeholder-mid",
+      "input": "台詞<StatusPlaceHolderImpl/>後文",
+      "final_complete": "台詞後文",
+      "final_aborted": "台詞後文",
+      "stream": "台詞"
+    },
+    {
+      "name": "self-closing-then-block",
+      "input": "<status/>正文<status>狀態</status>尾文",
+      "final_complete": "正文尾文",
+      "final_aborted": "正文尾文",
+      "stream": ""
+    },
+    {
+      "name": "unclosed-plain-fence",
+      "input": "看這段\n```\ncode",
+      "final_complete": "看這段\n```\ncode",
+      "final_aborted": "看這段",
+      "stream": "看這段\n"
+    },
+    {
+      "name": "unclosed-state-fence",
+      "input": "正文\n```state\nhp: 3",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文\n"
+    },
+    {
+      "name": "unclosed-update",
+      "input": "正文<UpdateVariable>{\"a\":1}",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "unclosed-update-upper",
+      "input": "正文<UPDATEVARIABLE>x",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "closed-update-then-text",
+      "input": "正文<UpdateVariable>x</UpdateVariable>後文",
+      "final_complete": "正文後文",
+      "final_aborted": "正文後文",
+      "stream": "正文"
+    },
+    {
+      "name": "bare-status-opener",
+      "input": "正文<Status",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "unclosed-details",
+      "input": "正文<details><summary>其他</summary>內容",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "maintext-shell",
+      "input": "<maintext>正文",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "maintext-fragment",
+      "input": "正文<maint",
+      "final_complete": "正文<maint",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "maintext-close-fragment",
+      "input": "<maintext>正文</maint",
+      "final_complete": "正文</maint",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "lt-in-prose",
+      "input": "a < b 的時候",
+      "final_complete": "a < b 的時候",
+      "final_aborted": "a < b 的時候",
+      "stream": "a < b 的時候"
+    },
+    {
+      "name": "nested-details-outer-open",
+      "input": "正文<details><summary>其他</summary><details>內文</details>外層半截",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "open-details-then-closed-pair",
+      "input": "正文<details>沒閉<details><summary>其他</summary>x</details>",
+      "final_complete": "正文",
+      "final_aborted": "正文",
+      "stream": "正文"
+    },
+    {
+      "name": "closed-details-kept",
+      "input": "正文<details><summary>其他</summary>x</details>尾",
+      "final_complete": "正文<details><summary>其他</summary>x</details>尾",
+      "final_aborted": "正文<details><summary>其他</summary>x</details>尾",
+      "stream": "正文"
+    }
+  ]
+}

@@ -131,12 +131,69 @@ fn read_rows(path: &Path) -> Vec<Value> {
 }
 
 fn run(fixture: &Fixture, confidential: Option<&str>, reply: &str) -> Result<(), RewriteError> {
-    rewrite(&fixture.home, SID, confidential, PREFIX, reply)
+    let cleaned = reply.strip_prefix(PREFIX).unwrap_or(reply).trim();
+    rewrite(&fixture.home, SID, confidential, PREFIX, reply, cleaned)
 }
 
 fn expect_drop(fixture: &Fixture, confidential: Option<&str>, reply: &str, reason: DropReason) {
     let error = run(fixture, confidential, reply).expect_err("形狀不符必須丟線");
     assert_eq!(error.reason, reason, "{}", error.detail);
+}
+
+/// 回覆帶控制區塊：兩檔的本輪回覆整段換成「前綴＋收尾台詞」，updates 只留第一個回覆 chunk。
+#[test]
+fn control_blocks_are_rewritten_out_of_both_files() {
+    let mut turn = turn(Some(SECRET));
+    turn.reply_chunks = vec![
+        "「今晚話少些。」",
+        "<UpdateVariable>",
+        "_.set('錢包', 3);</UpdateVariable>",
+    ];
+    let cleaned_fixture = fixture("cleaned", &turn);
+    let reply = reply_of(&turn);
+    rewrite(
+        &cleaned_fixture.home,
+        SID,
+        Some(SECRET),
+        PREFIX,
+        &reply,
+        "「今晚話少些。」",
+    )
+    .unwrap();
+
+    let chat = read_rows(&cleaned_fixture.dir.join("chat_history.jsonl"));
+    assert_eq!(
+        chat.last().unwrap()["content"],
+        json!("狐狸：「今晚話少些。」")
+    );
+    let updates = read_rows(&cleaned_fixture.dir.join("updates.jsonl"));
+    let replies: Vec<&Value> = updates
+        .iter()
+        .filter(|row| update_kind(row) == Some("agent_message_chunk"))
+        .collect();
+    assert_eq!(replies.len(), 1);
+    assert_eq!(
+        replies[0]["params"]["update"]["content"]["text"],
+        json!("狐狸：「今晚話少些。」")
+    );
+    assert!(!value_contains(
+        &Value::Array(updates.clone()),
+        "UpdateVariable"
+    ));
+    assert!(!value_contains(&Value::Array(chat), SECRET));
+
+    // 核對仍用原文：檔內回覆不是本輪原文就丟線
+    let mismatch = fixture("cleaned-mismatch", &turn);
+    let error = rewrite(
+        &mismatch.home,
+        SID,
+        Some(SECRET),
+        PREFIX,
+        "別的話<status>a</status>",
+        "別的話",
+    )
+    .expect_err("對不上必須丟線");
+    assert_eq!(error.reason, DropReason::RewriteFailed, "{}", error.detail);
 }
 
 #[test]

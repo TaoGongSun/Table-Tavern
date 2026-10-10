@@ -315,13 +315,27 @@ fn event_of(
         (Role::Char, Some(id)) => (TranscriptKind::Dialogue, id.to_owned(), name.to_owned()),
         (Role::Char, None) => (TranscriptKind::Narration, String::new(), "GM".to_owned()),
     };
+    // 網頁訊息照 ST 存原文（`<UpdateVariable>`、MVU 佔位都在 text 裡）；桌面版畫面與送模讀 text，
+    // 所以模型回的樓照桌面版的收尾剝乾淨，原文留在 raw 給卡片介面（中斷的樓照中止規則切尾巴）
+    let (text, raw) = match message.role {
+        Role::Char => {
+            let text = crate::transport::final_reply_text(&message.text, message.interrupted);
+            let raw = message.raw.clone().unwrap_or_else(|| message.text.clone());
+            let raw = (raw != text).then_some(raw);
+            (text, raw)
+        }
+        Role::User => (
+            message.text.clone(),
+            message.raw.clone().filter(|raw| raw != &message.text),
+        ),
+    };
     TranscriptEvent {
         ts: message.ts.clone(),
         speaker_id,
         speaker_name,
         kind,
-        text: message.text.clone(),
-        raw: message.raw.clone().filter(|raw| raw != &message.text),
+        text,
+        raw,
         state: None,
         truncated: message.interrupted,
         gm_only: false,
@@ -480,5 +494,7 @@ mod export_tests;
 mod next_turn_tests;
 #[cfg(test)]
 mod pending_tests;
+#[cfg(test)]
+mod strip_tests;
 #[cfg(test)]
 mod tests;
