@@ -153,7 +153,7 @@
 | 金鑰格式檢查 | `src/features/ai-connection/api-key-check.ts:46` |
 | AI 錯誤說明與遮蔽 | `src/shared/ui/ai-error.ts:65`、`:74`（依賴 `backend-text.ts` 的錯誤碼，要一起搬或改寫） |
 | 故事 Markdown 渲染＋DOMPurify | `src/shared/ui/story-markdown.ts:73`、`:80` |
-| ST 巨集名單（只是名稱表，不是引擎） | `src/shared/contracts/st-macros.json` |
+| ST 巨集名單（只是名稱表，不是引擎） | `src/shared/contracts/st-macros/st-macros.json` |
 | regex 顯示腳本→介面殼 | `src/features/card-interface/interface-card.ts`（`parseStRegex` :53、`applyScripts` :103、`extractShell` :143、卡片 storage 墊片 :184-200、IME 防護 :273） |
 | 沙盒內建庫（jQuery／lodash／errorCatched） | `src/features/card-interface/card-sandbox-libs.ts:45` |
 | 讀訊息墊片 | `src/features/card-interface/card-chat-shim.ts:46`、`:67` |

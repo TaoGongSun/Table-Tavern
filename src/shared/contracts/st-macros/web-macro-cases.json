@@ -1,0 +1,746 @@
+{
+ "_about": "網頁版 substituteParams 對拍：預設卡、對話與 chatId 見 macro-parity-runner.ts；時鐘固定、時區 Asia/Taipei（+480 分）；random 依序取用、用完是 0。expected 是輸出、代換後兩個變數表的 JSON 原文與亂數用量。預期值由網頁版跑出（web/scripts/gen-st-macro-fixtures.mjs）。",
+ "timezone": "Asia/Taipei",
+ "utcOffsetMinutes": 480,
+ "nowMs": 1791385509123,
+ "defaultCard": {
+  "name": "莫拉",
+  "description": "{{char}} 是老闆娘，{{user}} 是客人。{{personality}}",
+  "personality": "愛笑",
+  "scenario": "雨夜",
+  "first_mes": "歡迎，{{user}}。",
+  "mes_example": "<START>\n{{user}}: 嗨\n{{char}}: 你好",
+  "creator_notes": "",
+  "system_prompt": "",
+  "post_history_instructions": "記得押韻",
+  "alternate_greetings": [
+   "第二個開場"
+  ],
+  "character_version": "2.1",
+  "depth_prompt": ""
+ },
+ "defaultChat": [
+  {
+   "isUser": false,
+   "text": "歡迎"
+  },
+  {
+   "isUser": true,
+   "text": "我要一間房"
+  },
+  {
+   "isUser": false,
+   "text": "二樓"
+  }
+ ],
+ "cases": [
+  {
+   "name": "names and legacy markers",
+   "input": "{{user}}／{{char}}／<USER>／<bot>／<Char>／<GROUP>／<CHARIFNOTGROUP>／{{group}}／{{groupNotMuted}}／{{notChar}}",
+   "expected": {
+    "output": "旅人／莫拉／旅人／莫拉／莫拉／莫拉／莫拉／莫拉／莫拉／旅人",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "card fields get one macro pass without card fields",
+   "input": "{{description}}|{{personality}}|{{scenario}}|{{charInstruction}}|{{version}}|{{persona}}|{{charPrompt}}",
+   "expected": {
+    "output": "莫拉 是老闆娘，旅人 是客人。|愛笑|雨夜|記得押韻|2.1||",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "card fields off",
+   "input": "[{{description}}][{{scenario}}][{{greeting}}]",
+   "options": {
+    "replaceCharacterCard": false
+   },
+   "expected": {
+    "output": "[][][]",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "greetings by index",
+   "input": "{{greeting}}|{{greeting::1}}|{{greeting::2}}|{{charFirstMessage::0}}|{{greeting::-1}}|{{greeting::x}}",
+   "expected": {
+    "output": "歡迎，旅人。|第二個開場||歡迎，旅人。||{{greeting::x}}",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "mes examples",
+   "input": "{{mesExamples}}||{{mesExamplesRaw}}",
+   "context": {
+    "card": {
+     "mes_example": "{{user}}: 嗨\n<start>\n{{char}}: 你好\n<START>"
+    }
+   },
+   "expected": {
+    "output": "<START>\n旅人: 嗨\n<START>\n莫拉: 你好\n<START>\n\n||旅人: 嗨\n<start>\n莫拉: 你好\n<START>",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "lazy card fields run their side effects once, on first use",
+   "input": "{{getvar::n}}|{{description}}|{{description}}|{{getvar::n}}|{{greeting::1}}{{getvar::g}}",
+   "context": {
+    "card": {
+     "description": "{{incvar::n}}號",
+     "alternate_greetings": [
+      "{{setvar::g::一}}A",
+      "{{setvar::g::二}}B"
+     ]
+    }
+   },
+   "expected": {
+    "output": "|1號|1號|1|A二",
+    "local": "{\"n\":1,\"g\":\"二\"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "card field trims and drops CR",
+   "input": "[{{scenario}}]",
+   "context": {
+    "card": {
+     "scenario": "  雨\r\n夜 \r"
+    }
+   },
+   "expected": {
+    "output": "[雨\n夜]",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "case-insensitive names, spaces inside braces, unknown macros",
+   "input": "{{USER}} {{ Char }} {{unknownMacro::{{user}}}} {{user::extra}}",
+   "expected": {
+    "output": "旅人 莫拉 {{unknownMacro::旅人}} {{user::extra}}",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "model, input, limits, generation type, mobile",
+   "input": "{{model}}|{{input}}|{{maxPrompt}}|{{maxContext}}|{{maxResponseTokens}}|{{lastGenerationType}}|{{isMobile}}|{{hasExtension::x}}",
+   "context": {
+    "model": "gpt-x",
+    "input": "草稿",
+    "limits": {
+     "maxContext": 8192,
+     "maxResponse": 1024.5
+    },
+    "generationType": "normal"
+   },
+   "expected": {
+    "output": "gpt-x|草稿|7167.5|8192|1024.5|normal|false|false",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "original is one-shot",
+   "input": "{{original}}+{{original}}",
+   "options": {
+    "original": "原文"
+   },
+   "expected": {
+    "output": "原文+",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "original without one stays raw",
+   "input": "{{original}}",
+   "expected": {
+    "output": "{{original}}",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "outlets",
+   "input": "[{{outlet::門}}][{{outlet::沒有}}][{{outlet::}}]",
+   "context": {
+    "outlets": {
+     "門": "門後的內容"
+    }
+   },
+   "expected": {
+    "output": "[門後的內容][][]",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "chat history",
+   "input": "{{lastMessage}}|{{lastUserMessage}}|{{lastCharMessage}}|{{lastMessageId}}|{{firstIncludedMessageId}}|{{firstDisplayedMessageId}}|{{allChatRange}}|{{lastSwipeId}}",
+   "expected": {
+    "output": "二樓|我要一間房|二樓|2|0|0|0-2|",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "empty chat",
+   "input": "[{{lastMessage}}][{{lastMessageId}}][{{allChatRange}}][{{firstIncludedMessageId}}][{{idle_duration}}]",
+   "context": {
+    "chat": []
+   },
+   "expected": {
+    "output": "[][][][][just now]",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "idle duration skips the latest message",
+   "input": "{{idle_duration}}|{{idleDuration}}",
+   "context": {
+    "chat": [
+     {
+      "isUser": true,
+      "text": "舊",
+      "sentAt": 1791126309123
+     },
+     {
+      "isUser": true,
+      "text": "前",
+      "sentAt": 1791378309123
+     },
+     {
+      "isUser": true,
+      "text": "最新",
+      "sentAt": 1791385508123
+     }
+    ]
+   },
+   "expected": {
+    "output": "2 hours|2 hours",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "idle duration without time",
+   "input": "{{idle_duration}}",
+   "context": {
+    "chat": [
+     {
+      "isUser": true,
+      "text": "a"
+     },
+     {
+      "isUser": false,
+      "text": "b"
+     }
+    ]
+   },
+   "expected": {
+    "output": "just now",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "time macros",
+   "input": "{{time}}|{{time::UTC+8}}|{{time_UTC-2}}|{{time_utc+5}}|{{time::UTC+20}}|{{time::UTC-0}}|{{date}}|{{weekday}}|{{isotime}}|{{isodate}}",
+   "expected": {
+    "output": "11:05 PM|11:05 PM|1:05 PM|11:05 PM|3:25 PM|3:05 PM|October 7, 2026|Wednesday|23:05|2026-10-07",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "datetimeformat tokens",
+   "input": "{{datetimeformat::YYYY-MM-DD HH:mm:ss.SSS Z ZZ [Q]Q X x S SS SSSS SSSSSSSSS}}",
+   "expected": {
+    "output": "2026-10-07 23:05:09.123 +08:00 +0800 Q4 1791385509 1791385509123 1 12 1230 123000000",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "datetimeformat week and era tokens",
+   "input": "{{datetimeformat::DDD DDDD DDDo Do E e d do dd ddd dddd w ww wo W WW Wo gg gggg ggggg GG GGGG GGGGG N NN NNN NNNN NNNNN y yy yyy yyyy yo}}",
+   "expected": {
+    "output": "280 280 280th 7th 3 3 3 3rd We Wed Wednesday 41 41 41st 41 41 41st 26 2026 02026 26 2026 02026 AD AD AD Anno Domini AD 2026 2026 2026 2026 2026th",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "datetimeformat hours and meridiem",
+   "input": "{{datetimeformat::h hh H HH k kk a A hmm hmmss Hmm Hmmss m mm s ss z zz Y YY YYYYY YYYYYY M Mo MM MMM MMMM Q}}",
+   "expected": {
+    "output": "11 11 23 23 23 23 pm PM 1105 110509 2305 230509 5 05 9 09   2026 26 02026 +002026 10 10th 10 Oct October 4",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "datetimeformat long formats and escapes",
+   "input": "{{datetimeformat::LT|LTS|L|LL|LLL|LLLL|l|ll|lll|llll|[LT [Q]]|\\Y\\Q|w|x|[unclosed}}",
+   "expected": {
+    "output": "11:05 PM|11:05:09 PM|10/07/2026|October 7, 2026|October 7, 2026 11:05 PM|Wednesday, October 7, 2026 11:05 PM|10/7/2026|Oct 7, 2026|Oct 7, 2026 11:05 PM|Wed, Oct 7, 2026 11:05 PM|[11:05 PM Q]|YQ|w|1791385509123|[unc10/7/2026o933",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "datetimeformat empty format uses the default",
+   "input": "{{datetimeformat::}}",
+   "expected": {
+    "output": "2026-10-07T23:05:09+08:00",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "time around new year",
+   "input": "{{datetimeformat::YYYY-MM-DD W GGGG w gggg ddd}}",
+   "context": {
+    "nowMs": 1798776000000
+   },
+   "expected": {
+    "output": "2027-01-01 53 2026 1 2027 Fri",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "time early morning (24h clock)",
+   "input": "{{datetimeformat::k kk h a}}",
+   "context": {
+    "nowMs": 1791390600000
+   },
+   "expected": {
+    "output": "24 24 12 am",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "timeDiff ISO forms",
+   "input": "{{timeDiff::2026-01-01::2026-01-03}}|{{timeDiff::2026-10-07T15:05:09Z::2026-10-07T10:00:00+05:00}}|{{timeDiff::2026-W41-3::2026-280}}|{{timeDiff::20261007::2026-10}}|{{timeDiff::2026-10-07 23:59:59.999::2026-10-07T24:00}}|{{timeDiff::2026::2025-12-31T23:00}}|{{timeDiff::+002026-10-07::2026-10-07T00:00:45}}|{{timeDiff::2026-10-07T12:30:15,5+0800::2026-10-07T12:30}}",
+   "expected": {
+    "output": "2 days ago|in 10 hours|a few seconds ago|in 6 days|a few seconds ago|in an hour|a minute ago|in a few seconds",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "timeDiff invalid and other formats",
+   "input": "{{timeDiff::2026-02-30::2026-01-01}}|{{timeDiff::2026-10-07T25:00::2026-01-01}}|{{timeDiff::2026-W54::2026-01-01}}|{{timeDiff::2026-13-01::2026-01-01}}|{{timeDiff::Wed, 07 Oct 2026 15:05:09 GMT::Tue, 06 Oct 2026 15:05:09 +0000}}|{{timeDiff::/Date(1791385509123)/::2026-10-07T15:00:00Z}}",
+   "expected": {
+    "output": "Invalid date|Invalid date|Invalid date|Invalid date|in a day|in 5 minutes",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "timeDiff RFC 2822 overflow",
+   "input": "{{timeDiff::Sat, 32 Jan 2026 10:00:00 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::31 Feb 2026 10:00 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::29 Feb 2026 10:00 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::29 Feb 2028 10:00 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::31 Apr 2026 10:00 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::07 Oct 2026 25:02 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::07 Oct 2026 23:61 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::07 Oct 2026 24:00:00 GMT::01 Jan 2026 00:00 GMT}}|{{timeDiff::07 Oct 2026 10:00:60 GMT::01 Jan 2026 00:00 GMT}}",
+   "expected": {
+    "output": "Invalid date|Invalid date|Invalid date|in 2 years|Invalid date|Invalid date|Invalid date|Invalid date|Invalid date",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "humanize thresholds",
+   "input": "{{timeDiff::2026-01-01T00:00:44Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-01T00:00:45Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-01T00:01:30Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-01T00:44:00Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-01T00:45:00Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-01T21:00:00Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-02T12:00:00Z::2026-01-01T00:00:00Z}}|{{timeDiff::2026-01-26::2026-01-01}}|{{timeDiff::2026-03-01::2026-01-01}}|{{timeDiff::2026-12-01::2026-01-01}}|{{timeDiff::2029-01-01::2026-01-01}}",
+   "expected": {
+    "output": "in a few seconds|in a minute|in 2 minutes|in 44 minutes|in an hour|in 21 hours|in 2 days|in 25 days|in 2 months|in a year|in 3 years",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "random takes the sequence",
+   "input": "{{random::甲::乙::丙}}|{{random 甲, 乙\\, 丙}}|{{random:甲::乙}}|{{random}}|{{random::只有}}",
+   "context": {
+    "random": [
+     0.99,
+     0.5,
+     0.4,
+     0.7
+    ]
+   },
+   "expected": {
+    "output": "丙|乙, 丙|甲||只有",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 4
+   }
+  },
+  {
+   "name": "roll formulas",
+   "input": "{{roll 6}}|{{roll::2d6+1}}|{{roll::d20-3}}|{{roll::3D4}}|{{roll::nope}}|{{roll::0d6}}|{{roll::1001d2}}",
+   "context": {
+    "random": [
+     0.5,
+     0.1,
+     0.9,
+     0.3,
+     0.2,
+     0.8,
+     0.6
+    ]
+   },
+   "expected": {
+    "output": "4|8|4|8|||",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 7
+   }
+  },
+  {
+   "name": "pick is seeded by chat id, content and position",
+   "input": "{{pick::甲::乙::丙::丁::戊::己::庚::辛}}{{pick::甲::乙::丙::丁::戊::己::庚::辛}}",
+   "context": {
+    "chatId": "table-42"
+   },
+   "expected": {
+    "output": "乙丙",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "pick position counts UTF-16 units",
+   "input": "😀莫拉{{pick::a::b::c::d::e::f::g::h::i::j}}😀{{pick a,b,c,d,e,f,g,h,i,j}}",
+   "context": {
+    "chatId": "web-save-1"
+   },
+   "expected": {
+    "output": "😀莫拉d😀h",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "pick inside an argument uses its absolute position",
+   "input": "前綴{{reverse::{{pick::一::二::三::四::五}}}}",
+   "context": {
+    "chatId": "chat-9"
+   },
+   "expected": {
+    "output": "前綴五",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "comments, escapes, trim, noop",
+   "input": "a{{// 註解 {{setvar::c::1}} }}b|\\{\\{user\\}\\}|上一行\n\n{{trim}}\n下一行|x{{noop}}y|{{{user}}}|{{user|{{getvar::c}}",
+   "expected": {
+    "output": "ab|{{user}}|上一行下一行|xy|{旅人}|{{user|1",
+    "local": "{\"c\":\"1\"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "scoped if/else with nesting, inversion and shorthand",
+   "input": "{{if user}}有{{else}}沒有{{/if}}|{{if !user}}有{{else}}沒有{{/if}}|{{if 0}}A{{/if}}|{{if off}}B{{else}}C{{/if}}|{{if 1}}外{{if 0}}內{{else}}內否{{/if}}{{/if}}|{{if::1::行內}}|{{if .hp}}有血{{else}}沒血{{/if}}|{{if $g}}G{{/if}}",
+   "context": {
+    "variables": {
+     "local": {
+      "hp": "3"
+     },
+     "global": {
+      "g": "0"
+     }
+    }
+   },
+   "expected": {
+    "output": "有|沒有||C|外內否|行內|有血|",
+    "local": "{\"hp\":\"3\"}",
+    "global": "{\"g\":\"0\"}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "scoped content dedents unless #",
+   "input": "{{if 1}}\n    縮排\n      兩行\n{{/if}}|{{#if 1}}\n  保留  \n{{/if}}|[{{trim}}  內容  {{/trim}}]|{{/if}}多餘",
+   "expected": {
+    "output": "縮排\n  兩行|\n  保留  \n|[內容]|{{/if}}多餘",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "scoped content with unknown and list macros",
+   "input": "{{foo}}x{{/foo}}|{{random}}a{{/random}}|{{reverse}}abc{{/reverse}}",
+   "expected": {
+    "output": "{{foo}}x}}|{{random}}a{{/random}}|cba",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "nested arguments evaluate inside-out",
+   "input": "{{setvar::k::v}}{{reverse::{{getvar::k}}{{newline::2}}{{space}}}}|{{getvar::{{reverse::k}}}}",
+   "expected": {
+    "output": " \n\nv|v",
+    "local": "{\"k\":\"v\"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "argument types and arity",
+   "input": "{{newline::abc}}|a{{newline::2}}b{{space::3}}c|{{space::-1}}|{{reverse}}|{{setvar::only}}|{{getvar::a::b}}",
+   "expected": {
+    "output": "{{newline::abc}}|a\n\nb   c|{{space::-1}}|{{reverse}}|{{setvar::only}}|{{getvar::a::b}}",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "deep nesting",
+   "input": "{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::{{reverse::深}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+   "expected": {
+    "output": "深",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "legacy colon and whitespace arguments",
+   "input": "{{reverse:a::b}}|{{reverse a b}}|{{roll 1d1}}|{{reverse :x}}",
+   "context": {
+    "random": [
+     0
+    ]
+   },
+   "expected": {
+    "output": "b::a|b a|1|x",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 1
+   }
+  },
+  {
+   "name": "variables keep JSON types from the store",
+   "input": "{{getvar::n}}|{{getvar::s}}|{{getvar::b}}|{{getvar::z}}|{{getvar::arr}}|{{getvar::obj}}|{{getvar::one}}|{{getvar::blank}}|{{hasvar::z}}|{{hasvar::missing}}",
+   "context": {
+    "variables": {
+     "local": {
+      "n": 1.5,
+      "s": " 007 ",
+      "b": true,
+      "z": null,
+      "arr": [
+       1,
+       "x"
+      ],
+      "obj": {
+       "k": [
+        1
+       ]
+      },
+      "one": [
+       3
+      ],
+      "blank": "  "
+     }
+    }
+   },
+   "expected": {
+    "output": "1.5|7|1|0|[1,\"x\"]|{\"k\":[1]}|3|  |true|false",
+    "local": "{\"n\":1.5,\"s\":\" 007 \",\"b\":true,\"z\":null,\"arr\":[1,\"x\"],\"obj\":{\"k\":[1]},\"one\":[3],\"blank\":\"  \"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "addvar and incvar across types",
+   "input": "{{addvar::n::2}}{{incvar::n}}|{{addvar::s::人}}|{{addvar::list::x}}{{getvar::list}}|{{incvar::obj}}|{{decvar::fresh}}|{{addvar::arr::1}}|{{addvar::f::0.1}}{{addvar::f::0.2}}{{getvar::f}}|{{addvar::big::1e21}}{{getvar::big}}",
+   "context": {
+    "variables": {
+     "local": {
+      "n": "1",
+      "s": "旅",
+      "list": "[1]",
+      "obj": {
+       "a": 1
+      },
+      "arr": [
+       1,
+       2
+      ]
+     }
+    }
+   },
+   "expected": {
+    "output": "4||[1,\"x\"]|[object Object]1|-1||0.30000000000000004|1e+21",
+    "local": "{\"n\":4,\"s\":\"旅人\",\"list\":\"[1,\\\"x\\\"]\",\"obj\":\"[object Object]1\",\"arr\":\"1,21\",\"fresh\":-1,\"f\":0.30000000000000004,\"big\":1e+21}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "indexed variables",
+   "input": "{{setvarkey::m::甲::1}}{{setvarkey::m::10::x}}{{setvarkey::m::2::y}}{{getvar::m}}|{{setvarkey::a::2::z}}{{getvar::a}}|{{getvarkey::a::2}}|{{getvarkey::a::length}}|{{getvarkey::s::1}}|{{getvarkey::s::length}}|{{setvarkey::n::0::q}}{{getvar::n}}|{{getvarkey::o::k}}|{{getvarkey::o::missing}}",
+   "context": {
+    "variables": {
+     "local": {
+      "s": "\"abc\"",
+      "n": "5",
+      "o": "{\"k\":{\"z\":1}}"
+     }
+    }
+   },
+   "expected": {
+    "output": "{\"2\":\"y\",\"10\":\"x\",\"甲\":\"1\"}|[null,null,\"z\"]|z|3|b|3|5|{\"z\":1}|",
+    "local": "{\"s\":\"\\\"abc\\\"\",\"n\":\"5\",\"o\":\"{\\\"k\\\":{\\\"z\\\":1}}\",\"m\":\"{\\\"2\\\":\\\"y\\\",\\\"10\\\":\\\"x\\\",\\\"甲\\\":\\\"1\\\"}\",\"a\":\"[null,null,\\\"z\\\"]\"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "indexed variables on arrays with odd keys",
+   "input": "{{setvarkey::a::1.5::x}}{{getvar::a}}|{{setvarkey::a::-0::y}}{{getvar::a}}|{{setvarkey::a::length::4}}{{getvar::a}}|{{setvarkey::a::foo::z}}{{getvar::a}}|{{getglobalvarkey::g::0}}",
+   "context": {
+    "variables": {
+     "local": {
+      "a": "[ 1 , 2 ]"
+     },
+     "global": {
+      "g": "[\"甲\"]"
+     }
+    }
+   },
+   "expected": {
+    "output": "[1,2]|[\"y\",2]|[\"y\",2,null,null]|[\"y\",2,null,null]|甲",
+    "local": "{\"a\":\"[\\\"y\\\",2,null,null]\"}",
+    "global": "{\"g\":\"[\\\"甲\\\"]\"}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "delete, global variables and aliases",
+   "input": "{{setglobalvar::g::1}}{{getglobalvar::g}}|{{getvar::g}}|{{globalvarexists::g}}|{{flushglobalvar::g}}{{hasglobalvar::g}}|{{varexists::x}}|{{setvarindex::x::0::a}}{{getvarindex::x::0}}|{{deletevar::x}}{{getvar::x}}",
+   "context": {
+    "variables": {
+     "local": {
+      "x": "1"
+     },
+     "global": {
+      "keep": 1
+     }
+    }
+   },
+   "expected": {
+    "output": "1||true|false|true||",
+    "local": "{}",
+    "global": "{\"keep\":1}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "key order follows JS objects",
+   "input": "{{setvar::b::1}}{{setvar::2::x}}{{setvar::a::2}}{{setvar::1::y}}{{setvar::b::3}}",
+   "context": {
+    "variables": {
+     "local": {
+      "10": 1,
+      "z": 0
+     }
+    }
+   },
+   "expected": {
+    "output": "",
+    "local": "{\"1\":\"y\",\"2\":\"x\",\"10\":1,\"z\":0,\"b\":\"3\",\"a\":\"2\"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "variable shorthand operators",
+   "input": "{{.hp=10}}{{.hp}}|{{.hp++}}|{{.hp--}}|{{.hp-=3}}{{.hp}}|{{.hp+=2}}{{.hp}}|{{.hp>5}}|{{.hp>=9}}|{{.hp<9}}|{{.hp<=9}}|{{.hp==9}}|{{.hp!=9}}|{{.s+=x}}{{.s}}|{{.hp-=abc}}{{.hp}}",
+   "expected": {
+    "output": "10|11|10|7|9|true|true|false|true|true|false|x|9",
+    "local": "{\"hp\":9,\"s\":\"x\"}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "variable shorthand fallbacks",
+   "input": "{{.missing??預設}}|{{.missing||後備}}|{{.zero||後備}}|{{.off||後備}}|{{.zero??有}}|{{$g??=7}}|{{$g}}|{{$g??=8}}|{{.e||=填}}|{{.e}}|{{.w = {{user}} }}{{.w}}|{{.cmp>abc}}",
+   "context": {
+    "variables": {
+     "local": {
+      "zero": "0",
+      "off": "off",
+      "e": "",
+      "cmp": "1"
+     }
+    }
+   },
+   "expected": {
+    "output": "預設|後備|後備|後備|0|7|7|7|填|填|旅人|false",
+    "local": "{\"zero\":\"0\",\"off\":\"off\",\"e\":\"填\",\"cmp\":\"1\",\"w\":\"旅人\"}",
+    "global": "{\"g\":\"7\"}",
+    "randomUsed": 0
+   }
+  },
+  {
+   "name": "empty variable name throws and stays raw",
+   "input": "{{setvar::::1}}|{{addvar::::1}}|{{incvar::}}|{{deletevar::}}x",
+   "expected": {
+    "output": "{{setvar::::1}}|{{addvar::::1}}|{{incvar::}}|x",
+    "local": "{}",
+    "global": "{}",
+    "randomUsed": 0
+   }
+  }
+ ]
+}

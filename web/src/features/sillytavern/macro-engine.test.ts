@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import stMacros from "@desktop/shared/contracts/st-macros.json";
+import stMacros from "@desktop/shared/contracts/st-macros/st-macros.json";
 import { LIBRARY } from "./macro-library";
 import { formatUtcOffset } from "./macro-time";
 import { seedrandom } from "./seedrandom";
-import stCasesJson from "./st-macro-cases.json";
+import stCasesJson from "@desktop/shared/contracts/st-macros/st-macro-cases.json";
 import { substituteParams, type CardText, type MacroContext } from "./substitute";
 import { createChatVariables } from "./variables";
 
@@ -188,7 +188,7 @@ describe("ST MacroEngine test vectors (st-macro-cases.json)", () => {
 });
 
 describe("contract name table", () => {
-  it("every name in src/shared/contracts/st-macros.json resolves to a built-in (except the removed charJailbreak)", () => {
+  it("every name in src/shared/contracts/st-macros/st-macros.json resolves to a built-in (except the removed charJailbreak)", () => {
     const names = [...stMacros.names, ...stMacros.argument_names].filter((name) => name !== "charjailbreak");
     expect(names.filter((name) => !LIBRARY.get(name))).toEqual([]);
   });
