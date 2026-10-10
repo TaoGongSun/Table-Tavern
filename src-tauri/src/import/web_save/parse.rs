@@ -47,6 +47,15 @@ pub struct WorldInfo {
     pub raw: Box<RawValue>,
     /// 條目穩定 ID → 卡片契約的條目 key
     pub entries: Vec<(String, String)>,
+    /// `timed` 兩張表攤平：（是不是冷卻, 穩定 ID, 計時）
+    pub timed: Vec<(bool, String, TimedValue)>,
+}
+
+/// 存檔裡的一筆計時（已驗過是 0–2^53−1 的整數）。
+pub struct TimedValue {
+    pub start: i64,
+    pub end: i64,
+    pub protected: bool,
 }
 
 pub struct Layers {
@@ -381,7 +390,45 @@ fn parse_world_info(raw: Box<RawValue>, messages: &[Message]) -> DataResult<Worl
     }
     check_timed(&parsed.timed, &seen)?;
     let _ = parsed.message_effects;
-    Ok(WorldInfo { raw, entries })
+    let timed = timed_values(&parsed.timed);
+    Ok(WorldInfo {
+        raw,
+        entries,
+        timed,
+    })
+}
+
+/// 驗過的 `timed` 攤平成清單（`check_timed` 已保證形狀，這裡只取值）。
+fn timed_values(timed: &serde_json::Map<String, Value>) -> Vec<(bool, String, TimedValue)> {
+    let number = |value: Option<&Value>| {
+        value
+            .and_then(|value| value.as_u64().or_else(|| value.as_f64().map(|f| f as u64)))
+            .unwrap_or_default() as i64
+    };
+    timed
+        .iter()
+        .flat_map(|(kind, table)| {
+            let cooldown = kind == "cooldown";
+            table
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(move |(id, effect)| {
+                    (
+                        cooldown,
+                        id.clone(),
+                        TimedValue {
+                            start: number(effect.get("start")),
+                            end: number(effect.get("end")),
+                            protected: effect
+                                .get("protected")
+                                .and_then(Value::as_bool)
+                                .unwrap_or_default(),
+                        },
+                    )
+                })
+        })
+        .collect()
 }
 
 /// `timed`：只有 sticky／cooldown 兩張表，鍵是 entries 裡的穩定 ID，值是 `{start, end, protected}`

@@ -243,6 +243,14 @@ fn build(
     }
 
     write_sidecar(root, world_id, save, &placed, &event_ids)?;
+    write_world_info_timed(
+        root,
+        world_id,
+        scene,
+        save,
+        &placed,
+        character_id.as_deref(),
+    )?;
 
     // 跨桌層最後補：只補缺，補了什麼記進 journal，之後任何一步失敗由呼叫端退回。每層真的要寫之前先把
     // 「已補＋這一層」落進未確認記錄，崩潰或放棄時記錄一定涵蓋已落地的補缺
@@ -356,6 +364,50 @@ fn write_world_layer(
     }
 }
 
+/// 世界書觸發狀態轉成這一幕的計時檔（worldbook-st-trigger-parity 三之 4）：交給演這張卡的人（P1）——
+/// 角色卡路給該角色、世界書路給 GM；穩定 ID 經條目 key 換成桌面 uid，對不到的丟掉。
+fn write_world_info_timed(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    save: &WebSave,
+    placed: &[(String, Option<u64>)],
+    character_id: Option<&str>,
+) -> DataResult<()> {
+    use crate::data::world_info_store::{import_web_timed, Perspective, WebTimed};
+    let uid_of = |stable: &str| {
+        let key = save
+            .world_info
+            .entries
+            .iter()
+            .find(|(id, _)| id == stable)
+            .map(|(_, key)| key)?;
+        placed
+            .iter()
+            .find(|(placed_key, _)| placed_key == key)
+            .and_then(|(_, uid)| *uid)
+    };
+    let effects: Vec<WebTimed> = save
+        .world_info
+        .timed
+        .iter()
+        .filter_map(|(cooldown, stable, value)| {
+            Some(WebTimed {
+                cooldown: *cooldown,
+                uid: uid_of(stable)?,
+                start: value.start,
+                end: value.end,
+                protected: value.protected,
+            })
+        })
+        .collect();
+    let perspective = match character_id {
+        Some(id) => Perspective::Character(id.to_owned()),
+        None => Perspective::Gm,
+    };
+    import_web_timed(root, world_id, scene, &perspective, &effects)
+}
+
 /// 旁檔內容；`world_info` 是存檔裡那一段的原文，照字寫回。
 #[derive(serde::Serialize)]
 struct Sidecar<'a> {
@@ -370,7 +422,7 @@ struct Sidecar<'a> {
     character_layer: Option<&'a Json>,
 }
 
-/// 旁檔：世界書觸發狀態原樣（桌面版只保存、不消費）＋兩張映射表＋regex 允許與開場白序號。
+/// 旁檔：世界書觸發狀態原樣（計時另轉成第 0 幕的計時檔）＋兩張映射表＋regex 允許與開場白序號。
 fn write_sidecar(
     root: &Path,
     world_id: &str,

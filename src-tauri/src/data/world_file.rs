@@ -332,6 +332,9 @@ pub(crate) mod write_hook {
 
     static HOOK: Mutex<Option<(PathBuf, Hook)>> = Mutex::new(None);
 
+    /// 掛點只有一個：用到它的測試先拿這把鎖排隊。
+    pub(crate) static TESTS: Mutex<()> = Mutex::new(());
+
     pub(crate) struct HookGuard;
 
     impl Drop for HookGuard {

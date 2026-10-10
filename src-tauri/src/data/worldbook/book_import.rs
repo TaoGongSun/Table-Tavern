@@ -1,5 +1,6 @@
 //! 世界書匯入：條目正規化、可見度預設、去重與可見度合併。角色卡路與世界書路共用這一份——
 //! 兩條路只差「這本書由誰演」（[`BookOwner`]）。
+use crate::data::state_commit::with_commit;
 
 use super::super::character::list_characters;
 use super::super::state::read_state;
@@ -75,6 +76,7 @@ pub fn import_worldbook_as(
     json_text: &str,
     owner: &BookOwner,
 ) -> DataResult<BookImport> {
+    // 純解析與排序只看 json_text，放在鎖外；鎖內只讀桌上的書與角色、配 uid、合併、寫書、清計時
     let members: HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(json_text)
         .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
     let entries_text = members
@@ -90,145 +92,149 @@ pub fn import_worldbook_as(
         entries: source_entries,
         dropped,
     } = st_order(&source);
-    let table_ids: HashSet<String> = match owner {
-        BookOwner::Gm => HashSet::new(),
-        BookOwner::Character(_) => list_characters(root, world_id)?
-            .into_iter()
-            .map(|meta| meta.id)
-            .collect(),
-    };
+    with_commit(root, world_id, |_| {
+        let table_ids: HashSet<String> = match owner {
+            BookOwner::Gm => HashSet::new(),
+            BookOwner::Character(_) => list_characters(root, world_id)?
+                .into_iter()
+                .map(|meta| meta.id)
+                .collect(),
+        };
 
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let preexisting: HashSet<String> = entries.keys().cloned().collect();
-    // 指紋 → 被保留那條的鍵：重複的來源條目映到它（契約：重複條目指向桌上留下的那一條）
-    let mut seen: HashMap<String, String> = sorted_entry_keys(entries)
-        .into_iter()
-        .rev()
-        .map(|key| (dedupe_fingerprint(&entries[&key]), key))
-        .collect();
-    let mut uid = next_uid(entries)?;
-    let mut summary = WorldbookImport::default();
-    let mut absorbed = Vec::new();
-    let mut placed = Vec::with_capacity(source_entries.len());
-    let mut restores: BTreeMap<String, VisibilityRestore> = BTreeMap::new();
-    for (key, source_entry) in source_entries {
-        let entry = normalize_imported_entry(
-            serde_json::Value::Object(source_entry.clone()),
-            character_book,
-            uid,
-            owner,
-            &table_ids,
-        )?;
-        // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容；可見度與來源卡併進留下那條
-        let fingerprint = dedupe_fingerprint(&entry);
-        if let Some(kept_key) = seen.get(&fingerprint) {
-            let kept = entries
-                .get_mut(kept_key)
-                .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
-            let kept_uid = entry_uid(kept_key, kept);
-            // 只記匯入前就在桌上的條目、同一條只記第一次的值；本次新建的整條屬於這次匯入
-            if preexisting.contains(kept_key) && !restores.contains_key(kept_key) {
-                if let Some(kept_uid) = kept_uid {
-                    restores.insert(
-                        kept_key.clone(),
-                        VisibilityRestore {
-                            uid: kept_uid,
-                            before_visibility: table_tavern_field(kept, "visibility").cloned(),
-                            before_cards: table_tavern_field(kept, SOURCE_CARDS).cloned(),
-                            after_visibility: None,
-                            after_cards: None,
-                        },
-                    );
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let preexisting: HashSet<String> = entries.keys().cloned().collect();
+        // 指紋 → 被保留那條的鍵：重複的來源條目映到它（契約：重複條目指向桌上留下的那一條）
+        let mut seen: HashMap<String, String> = sorted_entry_keys(entries)
+            .into_iter()
+            .rev()
+            .map(|key| (dedupe_fingerprint(&entries[&key]), key))
+            .collect();
+        let mut uid = next_uid(entries)?;
+        let mut summary = WorldbookImport::default();
+        let mut absorbed = Vec::new();
+        let mut placed = Vec::with_capacity(source_entries.len());
+        let mut restores: BTreeMap<String, VisibilityRestore> = BTreeMap::new();
+        for (key, source_entry) in source_entries {
+            let entry = normalize_imported_entry(
+                serde_json::Value::Object(source_entry.clone()),
+                character_book,
+                uid,
+                owner,
+                &table_ids,
+            )?;
+            // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容；可見度與來源卡併進留下那條
+            let fingerprint = dedupe_fingerprint(&entry);
+            if let Some(kept_key) = seen.get(&fingerprint) {
+                let kept = entries
+                    .get_mut(kept_key)
+                    .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
+                let kept_uid = entry_uid(kept_key, kept);
+                // 只記匯入前就在桌上的條目、同一條只記第一次的值；本次新建的整條屬於這次匯入
+                if preexisting.contains(kept_key) && !restores.contains_key(kept_key) {
+                    if let Some(kept_uid) = kept_uid {
+                        restores.insert(
+                            kept_key.clone(),
+                            VisibilityRestore {
+                                uid: kept_uid,
+                                before_visibility: table_tavern_field(kept, "visibility").cloned(),
+                                before_cards: table_tavern_field(kept, SOURCE_CARDS).cloned(),
+                                after_visibility: None,
+                                after_cards: None,
+                            },
+                        );
+                    }
                 }
+                merge_entry_into(kept, &entry);
+                summary.skipped += 1;
+                placed.push((key, kept_uid));
+                continue;
             }
-            merge_entry_into(kept, &entry);
-            summary.skipped += 1;
-            placed.push((key, kept_uid));
-            continue;
+            if is_mechanism_scaffold(&entry) {
+                let title = entry
+                    .get("comment")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                absorbed.push(Record {
+                    kind: RecordKind::Absorbed,
+                    path: title,
+                    detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
+                });
+            }
+            let new_key = uid.to_string();
+            entries.insert(new_key.clone(), entry);
+            seen.insert(fingerprint, new_key);
+            placed.push((key, Some(uid)));
+            uid = uid
+                .checked_add(1)
+                .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
+            summary.imported += 1;
         }
-        if is_mechanism_scaffold(&entry) {
-            let title = entry
-                .get("comment")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            absorbed.push(Record {
-                kind: RecordKind::Absorbed,
-                path: title,
-                detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
-            });
+        // `id` 重複被蓋掉的條目指向留下的那一條
+        for (gone, kept) in dropped {
+            let uid = placed
+                .iter()
+                .find(|(key, _)| *key == kept)
+                .and_then(|(_, uid)| *uid);
+            placed.push((gone, uid));
         }
-        let new_key = uid.to_string();
-        entries.insert(new_key.clone(), entry);
-        seen.insert(fingerprint, new_key);
-        placed.push((key, Some(uid)));
-        uid = uid
-            .checked_add(1)
-            .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
-        summary.imported += 1;
-    }
-    // `id` 重複被蓋掉的條目指向留下的那一條
-    for (gone, kept) in dropped {
-        let uid = placed
-            .iter()
-            .find(|(key, _)| *key == kept)
-            .and_then(|(_, uid)| *uid);
-        placed.push((gone, uid));
-    }
-    // after 以這次匯入結束時的實際值為準；沒有實際變動的不進收據
-    let restores: Vec<VisibilityRestore> = restores
-        .into_iter()
-        .filter_map(|(key, mut restore)| {
-            let value = entries.get(&key)?;
-            restore.after_visibility = table_tavern_field(value, "visibility").cloned();
-            restore.after_cards = table_tavern_field(value, SOURCE_CARDS).cloned();
-            (restore.after_visibility != restore.before_visibility
-                || restore.after_cards != restore.before_cards)
-                .then_some(restore)
+        // after 以這次匯入結束時的實際值為準；沒有實際變動的不進收據
+        let restores: Vec<VisibilityRestore> = restores
+            .into_iter()
+            .filter_map(|(key, mut restore)| {
+                let value = entries.get(&key)?;
+                restore.after_visibility = table_tavern_field(value, "visibility").cloned();
+                restore.after_cards = table_tavern_field(value, SOURCE_CARDS).cloned();
+                (restore.after_visibility != restore.before_visibility
+                    || restore.after_cards != restore.before_cards)
+                    .then_some(restore)
+            })
+            .collect();
+        write_worldbook_value(root, world_id, &worldbook)?;
+        if !absorbed.is_empty() {
+            let scene = read_state(root, world_id)
+                .map(|state| state.current_scene)
+                .unwrap_or(0);
+            crate::mechanism::append_log(root, world_id, scene, &absorbed);
+        }
+        Ok(BookImport {
+            summary,
+            placed,
+            restores,
         })
-        .collect();
-    write_worldbook_value(root, world_id, &worldbook)?;
-    if !absorbed.is_empty() {
-        let scene = read_state(root, world_id)
-            .map(|state| state.current_scene)
-            .unwrap_or(0);
-        crate::mechanism::append_log(root, world_id, scene, &absorbed);
-    }
-    Ok(BookImport {
-        summary,
-        placed,
-        restores,
     })
 }
 
 /// 清掉內容重複的條目：同一份指紋只留顯示順序最前的那條（被刪那條的可見度與來源卡併進去），
 /// 回傳刪掉幾條。給去重上線前就已經重複匯入的桌收拾用。
 pub fn dedupe_worldbook(root: &Path, world_id: &str) -> DataResult<usize> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let mut kept_by_fingerprint: HashMap<String, String> = HashMap::new();
-    let mut duplicates: Vec<(String, String)> = Vec::new();
-    for key in sorted_entry_keys(entries) {
-        let fingerprint = dedupe_fingerprint(&entries[&key]);
-        match kept_by_fingerprint.get(&fingerprint) {
-            Some(kept) => duplicates.push((key, kept.clone())),
-            None => {
-                kept_by_fingerprint.insert(fingerprint, key);
+    with_commit(root, world_id, |_| {
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let mut kept_by_fingerprint: HashMap<String, String> = HashMap::new();
+        let mut duplicates: Vec<(String, String)> = Vec::new();
+        for key in sorted_entry_keys(entries) {
+            let fingerprint = dedupe_fingerprint(&entries[&key]);
+            match kept_by_fingerprint.get(&fingerprint) {
+                Some(kept) => duplicates.push((key, kept.clone())),
+                None => {
+                    kept_by_fingerprint.insert(fingerprint, key);
+                }
             }
         }
-    }
-    for (key, kept) in &duplicates {
-        if let Some(removed) = entries.remove(key) {
-            if let Some(kept_value) = entries.get_mut(kept) {
-                merge_entry_into(kept_value, &removed);
+        for (key, kept) in &duplicates {
+            if let Some(removed) = entries.remove(key) {
+                if let Some(kept_value) = entries.get_mut(kept) {
+                    merge_entry_into(kept_value, &removed);
+                }
             }
         }
-    }
-    if !duplicates.is_empty() {
-        write_worldbook_value(root, world_id, &worldbook)?;
-    }
-    Ok(duplicates.len())
+        if !duplicates.is_empty() {
+            write_worldbook_value(root, world_id, &worldbook)?;
+        }
+        Ok(duplicates.len())
+    })
 }
 
 /// 正規化一條來源條目（V2 陣列形轉成 ST 物件形）。

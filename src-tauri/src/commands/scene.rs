@@ -6,7 +6,8 @@ use serde::Serialize;
 
 /// 前端落一則：事件沒帶快照就由後端補上目前檯面，補完的那份（含配發的 ID）回給前端——前端記憶體裡的
 /// 事件從一開始就帶著快照，收回後復原才送得回當時的值。GM 回合的正文與變動紀錄帶 `turn_id`／`turn_part`
-/// 冪等鍵（計畫 8.3）：同鍵重試回原事件，`main` 掛上回合算好的變數表。
+/// 冪等鍵（計畫 8.3）：同鍵重試回原事件，`main` 掛上回合算好的變數表。角色回覆帶 `character_turn`
+/// （那次 `chat_with_character` 的 turn_id）：照一般新事件落檔，回合鍵只給世界書落地認成敗（三之 4）。
 #[tauri::command]
 pub(crate) fn append_transcript(
     app: tauri::AppHandle,
@@ -15,6 +16,7 @@ pub(crate) fn append_transcript(
     event: TranscriptEvent,
     turn_id: Option<String>,
     turn_part: Option<String>,
+    character_turn: Option<String>,
 ) -> Result<TranscriptEvent, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
@@ -23,9 +25,15 @@ pub(crate) fn append_transcript(
         (None, None) => None,
         _ => return Err("turn_id 與 turn_part 要一起給".to_owned()),
     };
-    data::append_event(&root, &world_id, scene, &event, turn.as_ref())
-        .map(|(event, _)| event)
-        .map_err(|error| error.to_string())
+    let appended = match (character_turn, turn) {
+        (Some(_), Some(_)) => return Err("character_turn 不能與 turn_id 一起給".to_owned()),
+        (Some(character_turn), None) => {
+            data::append_character_reply(&root, &world_id, scene, &event, &character_turn)
+        }
+        (None, turn) => data::append_event(&root, &world_id, scene, &event, turn.as_ref())
+            .map(|(event, _)| event),
+    };
+    appended.map_err(|error| error.to_string())
 }
 
 /// 玩家打字送出的那句：同 append_transcript，另回追加收據（這一行在檔裡的起始位元組），

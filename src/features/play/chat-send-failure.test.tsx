@@ -185,6 +185,13 @@ describe("chat turn failures", () => {
     expect(gates).toHaveLength(2);
     expect(ids).toEqual(gates);
     expect(ids[0]).not.toBe(ids[1]);
+    // 角色回覆帶那次聊天呼叫的 turn_id 落檔（後端憑它認世界書落地成功）
+    const turns = h.calls.filter((call) => call.command === "chat_with_character").map((call) => call.args.turnId);
+    const landed = h.calls
+      .filter((call) => call.command === "append_transcript")
+      .map((call) => call.args.characterTurn);
+    expect(landed).toEqual(turns);
+    expect(turns.every((turn) => typeof turn === "string")).toBe(true);
   });
 
   it("capacity gate refuses before the line lands: raw text goes back to the composer, no discard", async () => {

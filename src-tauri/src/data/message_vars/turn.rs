@@ -16,6 +16,9 @@ pub struct TurnKey {
 /// 回合的主事件：唯一會掛表的那一則。
 pub const PART_MAIN: &str = "main";
 
+/// 角色回覆的回合鍵 part（不走 GM 冪等路徑，只給世界書落地認回合）。
+pub const PART_CHARACTER: &str = "character";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     /// 模型生成中（不持鎖）：卡寫與面板手改回 busy

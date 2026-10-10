@@ -59,6 +59,12 @@ pub(crate) fn web_save_sidecar_path(root: &Path, world_id: &str) -> DataResult<P
     Ok(world_dir(root, world_id)?.join("web-save.json"))
 }
 
+/// 世界書觸發狀態（worldbook-st-trigger-parity 三之 4）：worlds/<world_id>/world-info/，每幕一個
+/// `<幕號>.json`，另有待回報檔 `notices.json`。
+pub(crate) fn world_info_dir(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("world-info"))
+}
+
 /// 網頁存檔匯入的未確認記錄（跨桌層補了什麼）：worlds/<world_id>/web-save-pending.json。建桌後第一個寫、
 /// 玩家確認進桌才刪；還在＝這次匯入還沒確認，放棄時照它撤回跨桌層。
 pub(crate) fn web_save_pending_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {

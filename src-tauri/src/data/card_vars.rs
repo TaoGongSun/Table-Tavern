@@ -556,5 +556,60 @@ pub fn retract_filled(root: &Path, world_id: &str, filled: &Filled) -> DataResul
     })
 }
 
+/// [`restore_if_rev`] 的結果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CasRestore {
+    /// 層還是 `if_rev`，已寫回寫入前內容
+    Restored,
+    /// 先前已撤回過（層是 `new_rev`，或寫入前沒有檔、現在也沒有）
+    AlreadyRestored,
+    /// 層在之後被別人寫過：一個字都不動
+    Moved,
+}
+
+/// 世界書落地撤回（worldbook-st-trigger-parity 三之 8）：同檔鎖內 compare-and-set——層的 rev 仍是
+/// `if_rev` 才寫回 `before`（`None`＝寫入前沒有檔，撤回就刪檔），新 rev 用呼叫端事先落進日誌的 `new_rev`，
+/// 中途崩潰重跑時認得出自己撤回過。層檔損壞或身分衝突回錯、原檔不動。
+pub fn restore_if_rev(
+    root: &Path,
+    world_id: &str,
+    layer: Layer,
+    id: Option<&str>,
+    if_rev: &str,
+    before: Option<&str>,
+    new_rev: &str,
+) -> DataResult<CasRestore> {
+    let (path, doc_id) = layer_path(root, world_id, layer, id)?;
+    let table = before
+        .map(|text| parse_table(text).map_err(|limit| invalid_data(limit.code)))
+        .transpose()?;
+    with_lock(&path, layer.in_world(), |file| {
+        match read_slot(file, &doc_id)? {
+            Slot::Present(parsed) if parsed.rev == if_rev => {}
+            Slot::Present(parsed) if parsed.rev == new_rev => {
+                return Ok(CasRestore::AlreadyRestored)
+            }
+            Slot::Missing if before.is_none() => return Ok(CasRestore::AlreadyRestored),
+            Slot::Present(_) | Slot::Missing => return Ok(CasRestore::Moved),
+            other => {
+                return Err(invalid_data(format!(
+                    "card-vars: {}（{}）",
+                    other.unusable().unwrap_or("unreadable"),
+                    path.display()
+                )))
+            }
+        }
+        match &table {
+            None => file.remove()?,
+            Some(table) => file.write_atomic(&serde_json::to_vec(&LayerFile {
+                id: doc_id.clone(),
+                rev: new_rev.to_owned(),
+                vars: VarsTable::from_json(table),
+            })?)?,
+        }
+        Ok(CasRestore::Restored)
+    })
+}
+
 #[cfg(test)]
 mod tests;

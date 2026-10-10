@@ -102,7 +102,7 @@ export interface TranscriptEvent {
   vars_rev?: string;
   /** 寫入這張表當下那一幕的 epoch */
   vars_epoch?: string;
-  /** GM 回合落檔的冪等鍵 */
+  /** GM 回合落檔的冪等鍵；角色回覆是 `part: "character"`（append_transcript 的 characterTurn，世界書落地認成敗用） */
   turn_key?: { turn_id: string; part: string };
   /** 寫下這則的玩家動作（送出、旁白、推進、點名各一個）；換幕容量預測靠它切段，舊事件沒有 */
   action_id?: string;

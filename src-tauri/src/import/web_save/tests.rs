@@ -974,3 +974,85 @@ fn worldbook_route_keeps_the_character_layer_only_in_the_sidecar() {
     assert_eq!(layer_json(&root, &w, Layer::Chat, None), json!({"好感": 1}));
     assert_eq!(mode_of(&root, &w), json!("events"));
 }
+
+fn timed_of(
+    root: &TestRoot,
+    world_id: &str,
+    perspective: &data::world_info_store::Perspective,
+) -> crate::world_info::timed::WiTimed {
+    data::world_info_store::read_timed(root.path(), world_id, 0, perspective).unwrap()
+}
+
+/// 世界書觸發狀態轉成第 0 幕計時檔（worldbook-st-trigger-parity 三之 4）：角色卡路交給該角色、
+/// 穩定 ID 換成 uid、對不到的丟掉、兩個穩定 ID 對到同一 uid 照合併規則、`last_message_id` 不影響值。
+#[test]
+fn world_info_timers_land_in_scene_zero_for_the_card_owner() {
+    use data::world_info_store::Perspective;
+    let root = TestRoot::new("web-save-timed");
+    let imported = import_web_save(
+        root.path(),
+        &bytes(&fixture("web-export-world-info.json")),
+        LANG,
+    )
+    .unwrap();
+    let w = imported.world_id;
+    let owner = Perspective::Character(imported.character_id.unwrap());
+    let sidecar: Value = serde_json::from_slice(
+        &std::fs::read(data::web_save_sidecar_path(root.path(), &w).unwrap()).unwrap(),
+    )
+    .unwrap();
+    let uid = sidecar["entry_uids"]["wi-0"].as_u64().unwrap().to_string();
+    let timed = timed_of(&root, &w, &owner);
+    assert_eq!(
+        (timed.sticky[&uid].start, timed.sticky[&uid].end),
+        (2.0, 5.0)
+    );
+    assert_eq!(
+        (timed.cooldown[&uid].start, timed.cooldown[&uid].end),
+        (4.0, 6.0)
+    );
+    assert!(timed_of(&root, &w, &Perspective::Gm).sticky.is_empty());
+
+    // 兩個穩定 ID 對到同一 uid（內容重複被併掉）＋一個對不到 uid 的；last_message_id 為 null
+    let mut save = fixture("short.json");
+    let entries = save["card"]["data"]["character_book"]["entries"]
+        .as_array_mut()
+        .unwrap();
+    let copy = entries[0].clone();
+    entries.push(copy);
+    save["world_info"]["entries"] = json!([
+        { "id": "first", "key": "0" }, { "id": "dup", "key": "5" }, { "id": "gone", "key": "99" }
+    ]);
+    save["world_info"]["timed"] = json!({
+        "sticky": {
+            "first": { "start": 1, "end": 4, "protected": false },
+            "dup": { "start": 2, "end": 6, "protected": false },
+            "gone": { "start": 1, "end": 9, "protected": false }
+        },
+        "cooldown": {
+            "first": { "start": 3, "end": 7, "protected": false },
+            "dup": { "start": 3, "end": 7, "protected": true }
+        }
+    });
+    save["world_info"]["last_message_id"] = Value::Null;
+    let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    let owner = Perspective::Character(imported.character_id.unwrap());
+    let timed = timed_of(&root, &imported.world_id, &owner);
+    assert_eq!(timed.sticky.len(), 1);
+    let kept = timed.sticky.values().next().unwrap();
+    assert_eq!((kept.start, kept.end), (2.0, 6.0));
+    let cooldown = timed.cooldown.values().next().unwrap();
+    assert!(cooldown.protected);
+}
+
+#[test]
+fn worldbook_route_timers_go_to_the_gm() {
+    use data::world_info_store::Perspective;
+    let root = TestRoot::new("web-save-timed-gm");
+    let mut save = fixture("worldbook-route.json");
+    save["world_info"]["timed"] =
+        json!({ "sticky": { "wi-world": { "start": 1, "end": 3, "protected": false } } });
+    let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    let timed = timed_of(&root, &imported.world_id, &Perspective::Gm);
+    assert_eq!(timed.sticky.len(), 1);
+}

@@ -399,18 +399,33 @@ pub fn begin_turn(
 
 /// GM 回合中止或出錯（核對 turn_id）：還在生成中就改成已中止，不套狀態、不產生表。中止留下的半截正文
 /// （`half`）記進紀錄：前端沒落成時照樣由下一筆新事件前的交接代落（不帶表）。
+/// 世界書落地（三之 4）：只有「生成中→已中止且沒有任何正文要落」是確定失敗，當場撤回這回合的 pending；
+/// 成功提交後（等落檔）與留下半截的中止都不動，交給正文落檔或下一次結算。
 pub fn finish_turn(tx: &CommitTx<'_>, turn_id: &str, half: Option<PendingMain>) -> DataResult<()> {
     let parts = match half {
         Some(main) if !main.text.trim().is_empty() => vec![main_part(main)?],
         _ => Vec::new(),
     };
+    let mut failed_scene = None;
     turn::update_turn(tx, turn_id, |record| {
         if record.phase == Phase::Generating {
             record.phase = Phase::Aborted;
             record.pending = None;
             record.parts = parts;
+            if record.parts.is_empty() {
+                failed_scene = Some(record.scene);
+            }
         }
     });
+    if let Some(scene) = failed_scene {
+        crate::data::world_info_store::fail_turn(
+            tx.root,
+            tx.world_id,
+            scene,
+            turn_id,
+            crate::data::world_info_store::Report::Notices,
+        )?;
+    }
     Ok(())
 }
 
