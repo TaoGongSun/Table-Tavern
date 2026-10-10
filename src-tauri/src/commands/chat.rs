@@ -107,18 +107,27 @@ pub(crate) async fn chat_with_character(
     let timed = world_scan::landing::before_scan(&root, &world_id, scene, &turn_id, &perspective)?;
     let book = world_scan::TableBook::load(&root, &world_id)?;
     let metas = data::list_characters(&root, &world_id).map_err(|error| error.to_string())?;
+    let path = crate::scene_budget::path_limits(&config_root(&app)?, &root, &config, card.tier);
     let scan = chat_assembly::character_scan(
         &book,
         &card,
+        &cards,
         chat_assembly::sole_card_name(&metas, &events).as_deref(),
         player.as_ref(),
         &events,
         timed,
-        crate::scene_budget::scan_budget(&config_root(&app)?, &root, &config, card.tier),
+        path.budget,
+        world_scan::MacroInputs::load(
+            &root,
+            &world_id,
+            &perspective,
+            path.model.clone(),
+            path.limits,
+            true,
+        ),
         world_scan::Randomness::Live,
         &lang,
     );
-    let snapshot = book.snapshot();
     // 角色自己那支的狀態（面板指認優先，其次同名比對），只有這條分支會塞進提示詞。
     let branch = transport::resolve_branch(
         &state.state.tree,
@@ -129,15 +138,22 @@ pub(crate) async fn chat_with_character(
     // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）
     let own_prefix = transport::speaker_prefix(&card.name, &transport::ui_language(&config));
     // 呼叫回錯、或中止時一個字都沒有＝確定失敗，當場撤回這回合的世界書落地；有正文的等前端落檔清掉
+    // （呼叫回錯時沒還原的變數寫入連同原錯回報；中止沒字沒有錯可附，寫進待回報檔）
     let settle = |result: Result<ChatReply, String>| -> Result<ChatReply, String> {
-        let failed = match &result {
-            Err(_) => true,
-            Ok(reply) => reply.aborted && reply.text.trim().is_empty(),
-        };
-        if failed {
-            world_scan::landing::fail(&root, &world_id, scene, &turn_id);
+        use data::world_info_store::Report;
+        match result {
+            Err(error) => {
+                let kept =
+                    world_scan::landing::fail(&root, &world_id, scene, &turn_id, Report::Inline);
+                Err(world_scan::landing::with_kept(error, &kept))
+            }
+            Ok(reply) => {
+                if reply.aborted && reply.text.trim().is_empty() {
+                    world_scan::landing::fail(&root, &world_id, scene, &turn_id, Report::Notices);
+                }
+                Ok(reply)
+            }
         }
-        result
     };
     // CLI 訂閱走 resume 續聊線。claude／grok 全角色共用一條 session，私設回合注入、
     // 回合後從 session 檔抹掉（案 C）；Agy 無抹寫路徑，改成一角一線＋
@@ -152,14 +168,13 @@ pub(crate) async fn chat_with_character(
             &cards,
             player.as_ref(),
             &scan,
-            &snapshot,
             &state,
             branch.as_deref(),
             &lang,
             shape.hoist_private,
         );
         let call = prepare_play_lane_call(&app, &config, card.tier, provider).await?;
-        world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan.timed)?;
+        world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan)?;
         // 串流過濾在 lane 內按 attempt 做，這裡收的已是過濾後的字
         let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
         let outcome = lanes::run_turn(
@@ -206,7 +221,6 @@ pub(crate) async fn chat_with_character(
         player.as_ref(),
         &events,
         &scan,
-        &snapshot,
         &state.state,
         &state.mechanism,
         branch.as_deref(),
@@ -223,7 +237,7 @@ pub(crate) async fn chat_with_character(
             let _ = on_delta.send(out);
         }
     };
-    world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan.timed)?;
+    world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan)?;
     let spoken = take_abort_or_finish(
         &mut cancel,
         &buffer,
@@ -300,7 +314,7 @@ async fn gm_lane_reply(
         materials.state.current_scene,
         turn_id,
         &data::world_info_store::Perspective::Gm,
-        &scan.timed,
+        scan,
     )?;
     lanes::run_turn(
         &call,
@@ -409,15 +423,24 @@ pub(crate) async fn gm_narrate(
         &turn_id,
         &data::world_info_store::Perspective::Gm,
     )?;
+    let path = crate::scene_budget::path_limits(
+        &config_root(&app)?,
+        &root,
+        &config,
+        transport::gm_tier(&config),
+    );
     let scan = chat_assembly::gm_scan(
         &materials,
         &materials.events,
         timed,
-        crate::scene_budget::scan_budget(
-            &config_root(&app)?,
+        path.budget,
+        world_scan::MacroInputs::load(
             &root,
-            &config,
-            transport::gm_tier(&config),
+            &world_id,
+            &data::world_info_store::Perspective::Gm,
+            path.model.clone(),
+            path.limits,
+            true,
         ),
         world_scan::Randomness::Live,
         &lang,
@@ -468,7 +491,7 @@ pub(crate) async fn gm_narrate(
             scene,
             &turn_id,
             &data::world_info_store::Perspective::Gm,
-            &scan.timed,
+            &scan,
         )?;
         // GM 上下文一律全卡，與「這輪誰說話」無關，形狀恆為共線
         let spoken = take_abort_or_finish(&mut cancel, &buffer, async {
@@ -570,6 +593,15 @@ pub(crate) async fn gm_narrate(
         let scene = state.current_scene;
         mechanism::append_log(&root, &world_id, scene, &outcome.records);
         let present = state.state.table.get("present").map(String::as_str);
+        // 登場事件的本文以 GM 視角中性代換一次寫死（不執行副作用，方案三之 7）
+        // 公開事件用公開環境（只讀公開設定、角色側事件、不帶 outlet），GM 專屬事件才看得到私設與 outlet
+        let gm = chat_assembly::gm_neutral_session(&root, &world_id, &materials, &path, &lang);
+        let public = chat_assembly::gm_neutral_session(&root, &world_id, &materials, &path, &lang)
+            .publicized(&materials.events, &lang);
+        let fill = |text: &str, card: Option<&data::CharacterCard>, gm_only: bool| match gm_only {
+            true => gm.fill(text, card, true),
+            false => public.fill(text, card, false),
+        };
         // 人物在場登場（AI 卡重構包 4a）：present 套用後檢查新面孔，
         // 命中就把世界書全文記進歷史，system 那邊只留一行名冊。
         arrived_persons = record_person_arrivals(
@@ -584,7 +616,7 @@ pub(crate) async fn gm_narrate(
             &materials.events,
             present,
             &display,
-            user_name,
+            &fill,
             Some(&turn.ticket),
             action_id.as_deref(),
         );
@@ -599,7 +631,7 @@ pub(crate) async fn gm_narrate(
                 &materials.events,
                 present,
                 &display,
-                user_name,
+                &fill,
                 Some(&turn.ticket),
                 action_id.as_deref(),
             );
@@ -761,7 +793,7 @@ fn record_person_arrivals(
     events: &[data::TranscriptEvent],
     present: Option<&str>,
     reply_body: &str,
-    user_name: &str,
+    fill: transport::NeutralFill<'_>,
     turn: Option<&data::message_vars::TurnTicket>,
     action: Option<&str>,
 ) -> Vec<String> {
@@ -773,7 +805,7 @@ fn record_person_arrivals(
     let ts = data::local_timestamp().unwrap_or_default();
     let mut titles = Vec::new();
     for entry in arrivals {
-        let (marker, text) = transport::person_arrival(entry, user_name);
+        let (marker, text) = transport::person_arrival(entry, fill);
         let event = data::TranscriptEvent {
             id: None,
             message_vars: None,
@@ -816,7 +848,7 @@ fn record_card_arrivals(
     events: &[data::TranscriptEvent],
     present: Option<&str>,
     reply_body: &str,
-    user_name: &str,
+    fill: transport::NeutralFill<'_>,
     turn: Option<&data::message_vars::TurnTicket>,
     action: Option<&str>,
 ) -> Vec<String> {
@@ -848,7 +880,7 @@ fn record_card_arrivals(
             opening: false,
         };
     for card in arrivals {
-        if let Some(private) = transport::card_private(card, user_name) {
+        if let Some(private) = transport::card_private(card, fill) {
             if append_arrival(
                 root,
                 world_id,
@@ -862,7 +894,7 @@ fn record_card_arrivals(
                 continue;
             }
         }
-        let event = system_event(transport::card_arrival(card, user_name), false);
+        let event = system_event(transport::card_arrival(card, fill), false);
         if append_arrival(root, world_id, scene, &event, turn, action).is_ok() {
             ids.push(card.id.clone());
         }
@@ -943,7 +975,6 @@ mod tests {
             false,
         );
         let system = crate::transport::gm_lane_system(
-            &materials.world_md,
             &materials.cards,
             materials.player.as_ref(),
             &scan,
@@ -1005,7 +1036,7 @@ mod tests {
             &[],
             Some("愛麗絲"),
             "",
-            "阿濤",
+            &crate::transport::test_support::plain_fill("阿濤"),
             None,
             Some("act-1"),
         );
@@ -1033,7 +1064,7 @@ mod tests {
             &scene0,
             Some("愛麗絲"),
             "",
-            "阿濤",
+            &crate::transport::test_support::plain_fill("阿濤"),
             None,
             None,
         );
@@ -1048,7 +1079,7 @@ mod tests {
             &[],
             Some("愛麗絲"),
             "",
-            "阿濤",
+            &crate::transport::test_support::plain_fill("阿濤"),
             None,
             None,
         );
@@ -1095,7 +1126,7 @@ mod tests {
             &[],
             Some("狐狸、貓頭鷹"),
             "",
-            "阿濤",
+            &crate::transport::test_support::plain_fill("阿濤"),
             None,
             Some("act-2"),
         );
@@ -1135,7 +1166,7 @@ mod tests {
             &scene0,
             Some("狐狸、貓頭鷹"),
             "",
-            "阿濤",
+            &crate::transport::test_support::plain_fill("阿濤"),
             None,
             None,
         );
@@ -1186,7 +1217,7 @@ mod tests {
             &[],
             Some("密探"),
             "",
-            "阿濤",
+            &crate::transport::test_support::plain_fill("阿濤"),
             None,
             None,
         );
@@ -1221,7 +1252,6 @@ mod tests {
             assert_eq!(materials.state.mechanism.numeric_update, expected);
             let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, "zh-TW");
             let system = crate::transport::gm_lane_system(
-                &materials.world_md,
                 &materials.cards,
                 materials.player.as_ref(),
                 &scan,
@@ -1296,7 +1326,6 @@ mod tests {
             let (instruction, closing) =
                 super::gm_turn_instruction(&root, &world_id, &materials, &scan, &[], None, lang);
             let system = crate::transport::gm_lane_system(
-                &materials.world_md,
                 &materials.cards,
                 materials.player.as_ref(),
                 &scan,

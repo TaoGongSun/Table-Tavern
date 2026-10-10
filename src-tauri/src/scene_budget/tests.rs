@@ -565,7 +565,7 @@ fn gm_path(root: &std::path::Path, world: &str, transport: &str) -> measure::Req
         provider,
         &lang,
         transport,
-        &|_| None,
+        &|_| super::PathLimits::default(),
     )
     .remove(0)
     .request_full
@@ -669,7 +669,7 @@ fn character_measure_follows_lane_shape() {
             provider,
             &lang,
             transport,
-            &|_| None,
+            &|_| super::PathLimits::default(),
         )
         .into_iter()
         .find(|path| {
@@ -831,16 +831,48 @@ fn worldbook_measurement_is_read_only_and_keeps_keywords_out_of_the_fixed_part()
             crate::transport::dispatch::lane_provider(&config),
             &lang,
             transport,
-            &|_| None,
+            &|_| super::PathLimits::default(),
         )
         .remove(0)
     };
+    // 巨集副作用：量測照樣求值（提示裡看得到），但不落地、不更新上一輪 outlet
+    data::upsert_worldbook_entry(
+        &root,
+        &world,
+        data::WorldbookEntry {
+            uid: 902,
+            title: "記帳".to_owned(),
+            keys: vec![],
+            content: "{{setvar::量::1}}量測{{getvar::量}}".to_owned(),
+            constant: true,
+            order: 0,
+            disabled: false,
+            visibility: data::Visibility::Gm,
+            is_person: false,
+            locked: false,
+        },
+    )
+    .unwrap();
     let path = request("api");
     let (full, fixed) = (text_of(&path.request_full), text_of(&path.request_fixed));
     assert!(full.contains("地牢全文") && full.contains("常駐全文"));
     assert!(!fixed.contains("地牢全文") && fixed.contains("常駐全文"));
+    assert!(full.contains("量測1"));
     let dir = root.join("worlds").join(&world).join("world-info");
     assert!(!dir.exists(), "量測不寫計時檔");
+    let chat =
+        data::card_vars::read_layer(&root, &world, data::card_vars::Layer::Chat, None).unwrap();
+    assert_eq!(chat.rev, None, "量測不寫變數");
+    assert!(crate::world_scan::MacroInputs::load(
+        &root,
+        &world,
+        &Perspective::Gm,
+        String::new(),
+        Default::default(),
+        false
+    )
+    .prev_outlets
+    .is_empty());
 
     // 未結的 pending（寫入中）：量測照樣唯讀，pending 原封不動
     let mut timed = crate::world_info::timed::WiTimed::default();

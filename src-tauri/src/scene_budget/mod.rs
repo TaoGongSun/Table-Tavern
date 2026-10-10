@@ -298,24 +298,53 @@ impl OwnedSources {
     }
 }
 
-/// 世界書掃描的預算（方案二「預算」）：該檔位上限的 `total − reserve`，單位跟著上限（agy 是 bytes）；
-/// 拿不到上限回 None，掃描照網頁版當作沒有上限。
-fn scan_budget_of(limit: &limits::Limit) -> crate::world_scan::Budget {
-    crate::world_scan::Budget {
-        unit: limit.unit,
-        max: limit.total.saturating_sub(limit.reserve) as f64,
+/// 一條聊天路徑（某檔位）的上限：世界書掃描的預算（方案二「預算」：上限的 `total − reserve`，單位跟著上限，
+/// agy 是 bytes；拿不到上限時 None，掃描照網頁版當作沒有上限），以及巨集看到的模型與上限（`{{model}}`、
+/// `{{maxPrompt}}`）。
+#[derive(Debug, Clone, Default)]
+pub struct PathLimits {
+    pub budget: Option<crate::world_scan::Budget>,
+    pub model: String,
+    pub limits: crate::st_macros::engine::Limits,
+}
+
+fn path_limits_of(
+    config: &AppConfig,
+    tier: data::Tier,
+    limit: Option<limits::Limit>,
+) -> PathLimits {
+    match limit {
+        Some(limit) => PathLimits {
+            budget: Some(crate::world_scan::Budget {
+                unit: limit.unit,
+                max: limit.total.saturating_sub(limit.reserve) as f64,
+            }),
+            limits: crate::st_macros::engine::Limits {
+                max_context: limit.total as f64,
+                max_response: limit.reserve as f64,
+            },
+            model: limit.model,
+        },
+        None => PathLimits {
+            model: crate::transport::resolve_model(tier, config).unwrap_or_default(),
+            ..PathLimits::default()
+        },
     }
 }
 
-/// 實送那一條路徑（某檔位）的世界書掃描預算。
-pub fn scan_budget(
+/// 實送那一條路徑（某檔位）的上限。
+pub fn path_limits(
     config_root: &Path,
     root: &Path,
     config: &AppConfig,
     tier: data::Tier,
-) -> Option<crate::world_scan::Budget> {
+) -> PathLimits {
     let owned = OwnedSources::load(config_root, root, config);
-    limits::resolve(config, tier, &owned.sources()).map(|limit| scan_budget_of(&limit))
+    path_limits_of(
+        config,
+        tier,
+        limits::resolve(config, tier, &owned.sources()),
+    )
 }
 
 fn compute_with(
@@ -353,9 +382,8 @@ fn compute_with(
         }
     });
     let provider = crate::transport::dispatch::lane_provider(config);
-    let budget_for = |tier: data::Tier| {
-        limits::resolve(config, tier, sources).map(|limit| scan_budget_of(&limit))
-    };
+    let limits_for =
+        |tier: data::Tier| path_limits_of(config, tier, limits::resolve(config, tier, sources));
     let chat_hint = with_chat
         && measure::chat_paths(
             root,
@@ -365,7 +393,7 @@ fn compute_with(
             provider,
             lang,
             &transport,
-            &budget_for,
+            &limits_for,
         )
         .into_iter()
         .any(|chat| {

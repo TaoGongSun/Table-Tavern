@@ -1208,7 +1208,7 @@ async fn hoisted_worldbook_change_reopens_instead_of_patching() {
 #[cfg(unix)]
 #[tokio::test]
 async fn editing_or_deleting_a_snapshot_entry_reopens_the_unerased_lane() {
-    use crate::transport::test_support::legacy::{scan_of, snapshot_of};
+    use crate::transport::test_support::legacy::scan_of;
     let _serial = crate::inflight::lock_real_process_tests();
     let fox = crate::lanes::scaffold_tests::card("fox-id", "狐狸", "狡猾。", "其實是公主。");
     let entry = |content: &str| crate::data::WorldbookEntry {
@@ -1242,7 +1242,6 @@ async fn editing_or_deleting_a_snapshot_entry_reopens_the_unerased_lane() {
             std::slice::from_ref(&fox),
             None,
             &scan,
-            &snapshot_of(book),
             &state,
             None,
             "zh-TW",

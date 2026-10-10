@@ -46,6 +46,7 @@ impl Fixture {
         let random = RefCell::new(|| 0.0);
         let context = MacroContext {
             card: &self.card,
+            prepared: None,
             user_name: "旅人",
             chat: &[],
             variables: &self.variables,
@@ -57,6 +58,7 @@ impl Fixture {
             clock: &self.clock,
             random: &random,
             outlets: &self.outlets,
+            outlet_reads: None,
             is_mobile: false,
         };
         let result = substitute_params(
@@ -244,6 +246,7 @@ fn base_chat_replace_skips_card_fields_and_drops_cr() {
     let random = RefCell::new(|| 0.0);
     let context = MacroContext {
         card: &fixture.card,
+        prepared: None,
         user_name: "旅人",
         chat: &[],
         variables: &fixture.variables,
@@ -255,6 +258,7 @@ fn base_chat_replace_skips_card_fields_and_drops_cr() {
         clock: &fixture.clock,
         random: &random,
         outlets: &fixture.outlets,
+        outlet_reads: None,
         is_mobile: false,
     };
     let result = base_chat_replace("[{{description}}]{{user}}\r\n", &context, Mode::Neutral);

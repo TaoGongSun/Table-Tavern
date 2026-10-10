@@ -159,6 +159,12 @@ pub enum UiMsg {
     WorldInfoSettleFailed {
         error: String,
     },
+    /// 世界書落地（計時、變數副作用）中途失敗、這一輪沒送出，撤回時這些變數層（`chat`／`global`，逗號分隔）
+    /// 已被別人寫過：保留別人的寫入、沒有還原。error 是原本的錯。
+    WorldInfoVarsKept {
+        error: String,
+        layers: String,
+    },
     /// 卡片 PNG 裡的角色資料解不開；detail 是技術細節原文。
     CardDataInvalid {
         detail: String,

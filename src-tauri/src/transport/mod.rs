@@ -24,7 +24,8 @@ mod worldbook;
 pub use api_failure::RateLimit;
 pub use api_failure::{ApiFailure, ErrorDetail, FailureStage};
 pub use arrivals::{
-    card_arrival, card_private, detect_new_arrivals, detect_new_card_arrivals, person_arrival, Side,
+    card_arrival, card_private, detect_new_arrivals, detect_new_card_arrivals, person_arrival,
+    NeutralFill, Side,
 };
 pub(crate) use arrivals::{prompt_speaker, prompt_text};
 pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
@@ -43,7 +44,7 @@ pub(crate) use client::{describe, http_error};
 pub use context::{gm_prompt_full_entries, PromptEntry};
 #[cfg(test)]
 pub(crate) use messages::language_rule;
-pub use messages::{history_header, resolve_display_macros, speaker_prefix, ChatMessage};
+pub use messages::{history_header, speaker_prefix, ChatMessage};
 pub(crate) use messages::{player_fallback_name, replace_st_macros, scaffold_en};
 pub use own_prefix::{strip_own_prefix, OwnPrefixStream};
 #[cfg(test)]

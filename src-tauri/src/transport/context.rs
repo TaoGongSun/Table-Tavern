@@ -1,7 +1,7 @@
 use crate::data::{CharacterCard, Mechanism, NumericUpdate, TranscriptEvent, UpdateMode};
-use crate::world_scan::{Placed, WorldScan};
+use crate::world_scan::{Placed, PromptTexts, WorldScan};
 
-use super::messages::{language_rule, replace_st_macros, scaffold_en};
+use super::messages::{language_rule, scaffold_en};
 use super::worldbook::{full_text_members, section_body};
 
 /// 本輪 GM 提示裡真的看得到的一段世界書全文：標題＋實際送出的本文。
@@ -35,8 +35,8 @@ pub(super) fn gm_worldbook(scan: &WorldScan) -> GmWorldbook<'_> {
 }
 
 /// 本輪 GM 提示裡「全文」真的進得去的世界書內容（API 單發與 CLI lane 同一套，掃描結果與實送共用）：
-/// - 本輪掃描放進提示的條目：前／後組與作者註記、依深度的注入段落都算；只進名冊的 constant 人物條目、
-///   outlet 條目（`{{outlet}}` 包 5b 才代入）不算；
+/// - 本輪掃描放進提示的條目：前／後組與作者註記、依深度的注入段落都算；outlet 條目只有在 `{{outlet}}` 真的
+///   被代入時才算；只進名冊的 constant 人物條目不算；
 /// - 人物登場事件：歷史裡帶的是登場當時的全文（`person_arrival`），取事件本文、不回頭讀目前的條目——
 ///   登場後再改條目、或同名不同內容的條目，都不能冒充已在提示裡。
 ///
@@ -49,7 +49,7 @@ pub fn gm_prompt_full_entries<'a>(
     let mut entries: Vec<PromptEntry<'a>> = Vec::new();
     for group in [&split.system_front, &split.system_back, &split.tail] {
         entries.extend(
-            full_text_members(group)
+            full_text_members(group, &scan.outlets_used)
                 .into_iter()
                 .map(|entry| PromptEntry {
                     title: &entry.title,
@@ -68,16 +68,14 @@ pub fn gm_prompt_full_entries<'a>(
 }
 
 /// GM 的 system prompt 本體：GM 指示＋world.md＋穩定的前組世界書＋全卡（含私設）＋玩家卡＋穩定的後組世界書。
-/// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。
+/// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。文字都是 `prepare` 代換好的。
 /// constant 人物條目改走名冊行，不進全文（包 4a）。
-#[allow(clippy::too_many_arguments)]
 pub(super) fn gm_system_prompt(
-    world_md: &str,
+    texts: &PromptTexts,
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     front: &[&Placed],
     back: &[&Placed],
-    user_name: &str,
     mechanism: &Mechanism,
     lang: &str,
 ) -> String {
@@ -103,19 +101,16 @@ pub(super) fn gm_system_prompt(
     };
     let separator = if en { " " } else { "" };
     let mut system = format!("{intro}{separator}{}\n", language_rule(lang));
-    if !world_md.trim().is_empty() {
+    if !texts.world_md.trim().is_empty() {
         let heading = match en {
             true => {
                 "## World setting (only in your context; characters know only what you say aloud)"
             }
             false => "## 世界設定（只進你的上下文，角色只知道你說出口的內容）",
         };
-        system.push_str(&format!(
-            "\n{heading}\n{}\n",
-            replace_st_macros(world_md.trim(), user_name, None)
-        ));
+        system.push_str(&format!("\n{heading}\n{}\n", texts.world_md.trim()));
     }
-    let front = section_body(front, user_name, None, lang);
+    let front = section_body(front, lang);
     if !front.is_empty() {
         system.push_str(worldbook_heading(lang));
         system.push_str(&front);
@@ -135,31 +130,23 @@ pub(super) fn gm_system_prompt(
         };
         system.push_str(heading);
         for card in cards {
+            let card_texts = texts.card(card);
             system.push_str(&format!("### {}\n", card.name));
-            if !card.public_md.trim().is_empty() {
-                system.push_str(&format!(
-                    "{public_label}\n{}\n",
-                    replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
-                ));
+            if !card_texts.public.trim().is_empty() {
+                system.push_str(&format!("{public_label}\n{}\n", card_texts.public.trim()));
             }
-            if !card.private_md.trim().is_empty() {
-                system.push_str(&format!(
-                    "{private_label}\n{}\n",
-                    replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
-                ));
+            if !card_texts.private.trim().is_empty() {
+                system.push_str(&format!("{private_label}\n{}\n", card_texts.private.trim()));
             }
         }
     }
     if let Some(player) = player {
         system.push_str(&player_heading(&player.name, lang));
-        if !player.public_md.trim().is_empty() {
-            system.push_str(&format!(
-                "\n{}\n",
-                replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
-            ));
+        if !texts.player.public.trim().is_empty() {
+            system.push_str(&format!("\n{}\n", texts.player.public.trim()));
         }
     }
-    let back = section_body(back, user_name, None, lang);
+    let back = section_body(back, lang);
     if !back.is_empty() {
         system.push_str(match en {
             true => "\n## Worldbook, continued (only in your context)\n",
@@ -809,7 +796,8 @@ mod tests {
     }
 
     fn arrival_event(entry: &WorldbookEntry) -> TranscriptEvent {
-        let (marker, text) = person_arrival(entry, "玩家");
+        let (marker, text) =
+            person_arrival(entry, &crate::transport::test_support::plain_fill("玩家"));
         TranscriptEvent {
             marker: Some(marker),
             gm_only: true,

@@ -145,7 +145,7 @@ impl TableBook {
             .filter(|entry| {
                 !entry.wi.disable
                     && matches!(entry.view.visibility, Visibility::Public)
-                    && super::placement::stable(&entry.wi)
+                    && super::placement::stable(&entry.wi, &entry.view.title)
                     && [
                         position::BEFORE,
                         position::AFTER,
@@ -164,7 +164,7 @@ impl TableBook {
             .collect()
     }
 
-    /// 共用快照的條目（內文是原文，渲染時以中性脈絡代換），依放置前的排序。
+    /// 共用快照的條目（內文是原文，`prepare` 以中性脈絡代換），依放置前的排序。
     pub fn snapshot(&self) -> Vec<Placed> {
         let mut entries: Vec<WiEntry> = self
             .snapshot_entries()

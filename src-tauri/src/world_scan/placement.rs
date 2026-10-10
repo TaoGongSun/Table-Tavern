@@ -3,6 +3,7 @@
 //! `WiResult` 的字串欄位同一套規則（由掃描給的放置前排序推得）。
 
 use crate::data::{Visibility, WorldbookEntry};
+use crate::st_macros::engine::is_static;
 use crate::world_info::entry::{position, WiEntry};
 use crate::world_info::js_semantics::js_trim;
 
@@ -14,6 +15,8 @@ pub struct Placed {
     /// 掃描時代換過的內文（裝飾行已拆掉）
     pub content: String,
     pub position: f64,
+    /// outlet 位置的名稱（`{{outlet::名稱}}`）
+    pub outlet_name: String,
     pub depth: f64,
     pub role: f64,
     pub constant: bool,
@@ -37,13 +40,14 @@ impl Placed {
             title: view.title.clone(),
             content,
             position: wi.position,
+            outlet_name: wi.outlet_name.clone(),
             depth: wi.depth,
             role: wi.role,
             constant: wi.constant,
             is_person: view.is_person,
             visibility: view.visibility.clone(),
             private_trigger,
-            stable: stable(wi),
+            stable: stable(wi, &view.title),
         }
     }
 
@@ -68,10 +72,10 @@ impl Placed {
     }
 }
 
-/// 「穩定」（能進凍結 system／共用快照）裡不看巨集、可見度與觸發來源的條件：constant、不擲機率、
-/// sticky／cooldown／delay 都是 0 或沒設、不在群組、沒有 `delayUntilRecursion`、沒有裝飾、`triggers` 為空。
-/// 內文只含靜態巨集那條由包 5b 補上。
-pub(crate) fn stable(wi: &WiEntry) -> bool {
+/// 「穩定」（能進凍結 system／共用快照）裡不看可見度與觸發來源的條件：constant、不擲機率、
+/// sticky／cooldown／delay 都是 0 或沒設、不在群組、沒有 `delayUntilRecursion`、沒有裝飾、`triggers` 為空，
+/// 而且內文與標題只含靜態巨集（`{{char}}` 依說話者而變，也不算）。
+pub(crate) fn stable(wi: &WiEntry, title: &str) -> bool {
     let no_timer = |value: Option<f64>| value.is_none_or(|value| value == 0.0 || value.is_nan());
     wi.constant
         && (!wi.use_probability || wi.probability == 100.0)
@@ -82,9 +86,11 @@ pub(crate) fn stable(wi: &WiEntry) -> bool {
         && !wi.delay_until_recursion.truthy()
         && wi.decorators.is_empty()
         && wi.triggers.is_empty()
+        && is_static(&wi.content, false)
+        && is_static(title, false)
 }
 
-/// 注入段落：同深度同角色的條目內容照鍵名排序、各自 trim 後以換行接起（代換交給渲染端，整段一次）。
+/// 注入段落：同深度同角色的條目內容照鍵名排序、各自 trim 後以換行接起（條目內文在 `prepare` 已代換過）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Injection<'a> {
     pub text: String,
@@ -129,7 +135,8 @@ fn js_number(value: f64) -> String {
     }
 }
 
-/// `entries` 依放置前的排序（掃描給的順序）；內文空的條目不送（同網頁版）。outlet 不在這裡（P5，包 5b）。
+/// `entries` 依放置前的排序（掃描給的順序）；內文空的條目不送（同網頁版）。outlet 不在這裡：內容由
+/// `{{outlet::名稱}}` 代入卡寫的位置（P5）。
 pub fn arrange<'a>(entries: &[&'a Placed]) -> Arranged<'a> {
     let live: Vec<&'a Placed> = entries
         .iter()

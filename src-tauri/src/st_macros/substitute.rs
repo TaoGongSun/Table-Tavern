@@ -29,11 +29,24 @@ pub struct CardText {
     pub alternate_greetings: Vec<SourceText>,
     pub character_version: String,
     pub depth_prompt: SourceText,
+    /// `{{persona}}`：玩家卡的公開設定（ST 的人設描述）
+    pub persona: SourceText,
+}
+
+/// 已代換好的卡欄位（本視角自己的卡：擁有文字第一輪的結果）。給了就直接回傳、不再對原文求值，
+/// 卡欄位巨集不會讓同一段擁有文字的副作用多跑一次（方案三之 7）。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PreparedFields {
+    pub description: SourceText,
+    pub personality: SourceText,
+    pub depth_prompt: SourceText,
 }
 
 /// 一段對話裡固定的代換條件（網頁版 `MacroContext`）。
 pub struct MacroContext<'a> {
     pub card: &'a CardText,
+    /// `card` 的描述、個性、角色深度提示已代換好的值（本視角自己的卡）；`None`＝照原文求值
+    pub prepared: Option<&'a PreparedFields>,
     pub user_name: &'a str,
     /// 舊到新
     pub chat: &'a [ChatLine],
@@ -47,6 +60,8 @@ pub struct MacroContext<'a> {
     pub random: &'a dyn RandomSource,
     /// 這次世界書掃出的 outlet（`{{outlet::名稱}}`）
     pub outlets: &'a BTreeMap<String, SourceText>,
+    /// 有給就記下這次代換讀了哪些 outlet（格式條目判定「outlet 真的被代入」用）
+    pub outlet_reads: Option<&'a RefCell<std::collections::BTreeSet<String>>>,
     pub is_mobile: bool,
 }
 
@@ -86,13 +101,7 @@ pub fn substitute_params(
     match options.mode {
         Mode::Full => substitute_with(content, context, context.variables, options),
         Mode::Neutral => {
-            let isolated = {
-                let current = context.variables.borrow();
-                RefCell::new(Variables::new(
-                    current.local.clone(),
-                    current.global.clone(),
-                ))
-            };
+            let isolated = RefCell::new(context.variables.borrow().isolated());
             substitute_with(content, context, &isolated, options)
         }
     }
@@ -160,19 +169,25 @@ impl LazyFields<'_, '_> {
 impl CharacterSource for LazyFields<'_, '_> {
     fn field(&self, field: CardField) -> SourceText {
         let card = self.context.card;
+        let prepared = self.context.prepared;
         self.cells[field as usize]
-            .get_or_init(|| match field {
-                CardField::CharPrompt => self.replace(&card.system_prompt),
-                CardField::CharInstruction => self.replace(&card.post_history_instructions),
-                CardField::Description => self.replace(&card.description),
-                CardField::Personality => self.replace(&card.personality),
-                CardField::Scenario => self.replace(&card.scenario),
-                CardField::Persona => SourceText::default(),
-                CardField::MesExamplesRaw => self.replace(&card.mes_example),
-                CardField::CharDepthPrompt => self.replace(&card.depth_prompt),
-                CardField::CreatorNotes => self.replace(&card.creator_notes),
-                CardField::FirstMessage => self.replace(&card.first_mes),
-                CardField::Version => SourceText::public(card.character_version.clone()),
+            .get_or_init(|| match (field, prepared) {
+                (CardField::Description, Some(fields)) => fields.description.clone(),
+                (CardField::Personality, Some(fields)) => fields.personality.clone(),
+                (CardField::CharDepthPrompt, Some(fields)) => fields.depth_prompt.clone(),
+                _ => match field {
+                    CardField::CharPrompt => self.replace(&card.system_prompt),
+                    CardField::CharInstruction => self.replace(&card.post_history_instructions),
+                    CardField::Description => self.replace(&card.description),
+                    CardField::Personality => self.replace(&card.personality),
+                    CardField::Scenario => self.replace(&card.scenario),
+                    CardField::Persona => self.replace(&card.persona),
+                    CardField::MesExamplesRaw => self.replace(&card.mes_example),
+                    CardField::CharDepthPrompt => self.replace(&card.depth_prompt),
+                    CardField::CreatorNotes => self.replace(&card.creator_notes),
+                    CardField::FirstMessage => self.replace(&card.first_mes),
+                    CardField::Version => SourceText::public(card.character_version.clone()),
+                },
             })
             .clone()
     }
@@ -233,6 +248,7 @@ fn substitute_with(
         chat_id: context.chat_id,
         random: context.random,
         outlets: context.outlets,
+        outlet_reads: context.outlet_reads,
         is_mobile: context.is_mobile,
         private: Cell::new(false),
     };

@@ -1,5 +1,5 @@
 use crate::data::{CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind};
-use crate::world_scan::{Placed, WorldScan};
+use crate::world_scan::WorldScan;
 
 use super::messages::{
     message, narration_line, player_fallback_name, push_merged, speaker_prefix, system_line,
@@ -36,18 +36,19 @@ pub fn assemble_shared_messages(
     player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
     scan: &WorldScan,
-    snapshot: &[Placed],
     state: &TableState,
     mechanism: &Mechanism,
     branch: Option<&[String]>,
     lang: &str,
 ) -> Vec<ChatMessage> {
-    let mut system = chars_lane_system(cards, player, snapshot, lang);
+    let mut system = chars_lane_system(cards, player, scan, lang);
     let hoist = match cards.len() <= 1 {
         true => Hoist::StableConfidential,
         false => Hoist::None,
     };
-    let turn = chars_lane_turn(card, player, scan, state, mechanism, branch, lang, hoist);
+    let turn = chars_lane_turn(
+        card, cards, player, scan, state, mechanism, branch, lang, hoist,
+    );
     if let Some(private) = &turn.hoisted_private {
         system.push('\n');
         system.push_str(private);
@@ -88,7 +89,6 @@ pub const PLAYER_SENTINEL: &str = "__PLAYER__";
 /// 穩定的觸發條目與角色卡留在 system（穩定且需要高遵循度）。
 #[allow(clippy::too_many_arguments)]
 pub fn assemble_gm_messages(
-    world_md: &str,
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
@@ -104,12 +104,11 @@ pub fn assemble_gm_messages(
     let rendered = render_for_prompt(events, lang, Side::Gm);
     let split = gm_worldbook(scan);
     let system = gm_system_prompt(
-        world_md,
+        &scan.texts,
         cards,
         player,
         &split.system_front,
         &split.system_back,
-        user_name,
         mechanism,
         lang,
     );
@@ -130,7 +129,7 @@ pub fn assemble_gm_messages(
         };
         push_merged(&mut messages, role, line);
     }
-    let worldbook = section_body(&split.tail, user_name, None, lang);
+    let worldbook = section_body(&split.tail, lang);
     let dynamic = gm_dynamic_block(&worldbook, state, user_name, mechanism, scope, lang);
     if !dynamic.is_empty() {
         // 刻意不走 push_merged：動態塊維持獨立一則的語意邊界，不黏進最後一則發言

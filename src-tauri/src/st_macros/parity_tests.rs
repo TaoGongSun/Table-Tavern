@@ -57,6 +57,8 @@ fn card_from(base: &Value, over: Option<&Value>) -> CardText {
             .unwrap_or_default()
             .to_owned(),
         depth_prompt: field("depth_prompt"),
+        // 網頁版沒有人設（{{persona}} 是空字串）
+        persona: SourceText::default(),
     }
 }
 
@@ -156,6 +158,7 @@ fn run_web_case(fixture: &Value, ordered: &JsValue, index: usize, case: &Value) 
         .unwrap_or("normal");
     let context = MacroContext {
         card: &card,
+        prepared: None,
         user_name,
         chat: &chat,
         variables: &variables,
@@ -167,6 +170,7 @@ fn run_web_case(fixture: &Value, ordered: &JsValue, index: usize, case: &Value) 
         clock: &clock,
         random: &random,
         outlets: &outlets,
+        outlet_reads: None,
         is_mobile: false,
     };
     let original = options
@@ -256,6 +260,7 @@ fn st_macro_cases_match() {
         let random = RefCell::new(|| 0.0);
         let context = MacroContext {
             card: &card,
+            prepared: None,
             user_name: "User",
             chat: &[],
             variables: &variables,
@@ -267,6 +272,7 @@ fn st_macro_cases_match() {
             clock: &clock,
             random: &random,
             outlets: &outlets,
+            outlet_reads: None,
             is_mobile: false,
         };
         let result = substitute_params(

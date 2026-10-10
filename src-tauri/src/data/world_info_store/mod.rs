@@ -1,22 +1,17 @@
 //! 世界書觸發狀態的存放與落地（worldbook-st-trigger-parity 三之 4，三之 8 的計時部分）。
 //! `worlds/<id>/world-info/<幕號>.json`：每幕一份，分視角（GM 一份、每位角色各一份）存 sticky／cooldown，
 //! 另記一筆還沒結的落地 `pending`。讀寫一律在同檔鎖內、寫入走原子替換；讀不了或解析失敗回錯，不當空表覆寫。
-//! 實送的結算與落地由 `crate::world_scan::landing` 呼叫；變數意圖與待回報檔的出口由包 5b 接，先放寬 dead_code。
-#![cfg_attr(not(test), allow(dead_code))]
+//! 實送的結算與落地由 `crate::world_scan::landing` 呼叫，待回報檔由 `commands::scene` 的指令讀與確認。
 
 mod landing;
 mod notices;
 mod scenes;
 
-// 包 5b 接線前有些出口還沒人用
-#[allow(unused_imports)]
 pub use landing::{
     begin_landing, fail_turn, mark_sent, push_var_intent, reply_landed, settle_pending,
-    update_var_intent, ConflictReason, Report, VarConflict,
+    update_var_intent, Report, VarConflict,
 };
-#[allow(unused_imports)]
 pub use notices::{ack_notice, read_notices, Notice};
-#[allow(unused_imports)]
 pub use scenes::{carry_into_next_scene, copy_for_fork, drop_scene, import_web_timed, WebTimed};
 
 use super::card_vars::Layer;
@@ -307,7 +302,8 @@ pub fn read_timed(
 
 /// 結算一直回錯時給玩家的出路（「重設世界書觸發紀錄」）：這一幕的計時檔、其他讀不懂或留著未結落地的幕檔與
 /// 讀不懂的 `notices.json` 一律改名成 `<檔名>.broken-<時間>` 留備份（不刪、不蓋舊備份），之後當成沒有紀錄重新算。
-/// 失去的是 sticky／冷卻的進度與未結的落地紀錄（含還沒撤回的變數意圖）。回傳備份檔名。
+/// 移開前，讀得懂的幕檔裡「寫入中」的落地先撤回能撤的變數意圖，撤不回或撤回出錯的寫進待回報檔（三之 8：不得整筆
+/// 丟掉日誌）；已送出的變數副作用照規則保留。失去的是 sticky／冷卻的進度。回傳備份檔名。
 pub fn reset_scene(root: &Path, world_id: &str, scene: u64) -> DataResult<Vec<String>> {
     let suffix = format!(
         "broken-{}",
@@ -329,7 +325,8 @@ pub(crate) fn reset_scene_as(
     super::state_commit::with_commit(root, world_id, |_| {
         let dir = world_info_dir(root, world_id)?;
         let current = scene_path(root, world_id, scene)?;
-        let mut targets = vec![current.clone()];
+        let mut scenes = vec![(scene, current.clone())];
+        let mut notices_broken = None;
         if let Ok(read) = std::fs::read_dir(&dir) {
             for entry in read {
                 let path = entry?.path();
@@ -340,22 +337,39 @@ pub(crate) fn reset_scene_as(
                 let Some(stem) = name.strip_suffix(".json") else {
                     continue;
                 };
-                // 其他幕檔：讀不懂、或留著沒結的落地（分岔時來源幕結算失敗會卡在這裡）都一起移開
-                let broken = match stem {
-                    "notices" => notices::check(root, world_id).is_err(),
-                    _ if stem.parse::<u64>().is_ok() && path != current => {
-                        with_file_lock(&path, |file| read_locked(file, &path))
-                            .map_or(true, |timed| timed.pending.is_some())
+                if stem == "notices" {
+                    if notices::check(root, world_id).is_err() {
+                        notices_broken = Some(path);
                     }
-                    _ => false,
+                    continue;
+                }
+                // 其他幕檔：讀不懂、或留著沒結的落地（分岔時來源幕結算失敗會卡在這裡）都一起移開
+                let Ok(other) = stem.parse::<u64>() else {
+                    continue;
                 };
-                if broken {
-                    targets.push(path);
+                if path != current
+                    && with_file_lock(&path, |file| read_locked(file, &path))
+                        .map_or(true, |timed| timed.pending.is_some())
+                {
+                    scenes.push((other, path));
                 }
             }
         }
         let mut moved = Vec::new();
-        for path in targets {
+        // 待回報檔先移開（之後的撤回回報寫進新檔）
+        if let Some(path) = notices_broken {
+            if let Some(name) = with_file_lock(&path, |file| file.move_aside(suffix))? {
+                moved.push(name);
+            }
+        }
+        for (number, path) in &scenes {
+            if let Ok(Some(pending)) =
+                with_file_lock(path, |file| read_locked(file, path)).map(|timed| timed.pending)
+            {
+                landing::release_before_reset(root, world_id, *number, &pending)?;
+            }
+        }
+        for (_, path) in scenes {
             if let Some(name) = with_file_lock(&path, |file| file.move_aside(suffix))? {
                 moved.push(name);
             }

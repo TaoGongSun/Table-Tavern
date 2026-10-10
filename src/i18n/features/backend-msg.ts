@@ -196,6 +196,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   web_save_version: { version: "string" },
   web_save_cleanup_incomplete: { error: "string", leftovers: "string" },
   world_info_settle_failed: { error: "string" },
+  world_info_vars_kept: { error: "string", layers: "string" },
   card_png_no_data: {},
   refactor_card_invalid: { detail: "string" },
   refactor_card_newer: {},

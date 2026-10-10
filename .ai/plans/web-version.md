@@ -133,7 +133,7 @@
 - 有可下載的桌面版 release：repo 目前零 release，`releases/latest` 回 404（4.5）；靠 [release-2-ci-windows](../tasks/release-2-ci-windows.md) 發出首個正式版。沒有 release 時下載鈕只能退 releases 頁，引流斷在最後一步。
 - 介面卡兩案首發必含〔作者裁決 2026-10-04〕：[interface-card-panel](../handoffs/interface-card-panel.md)、[interface-takeover-spike](../handoffs/interface-takeover-spike.md)。網頁版導去下載的桌面版要已經帶這兩案。
 - 目標 release 上，完整複合卡（世界書＋介面＋MVU）的網頁存檔匯入後能續玩。
-- 桌面版 WI 補齊到 ST 行為：[worldbook-st-trigger-parity](../tasks/worldbook-st-trigger-parity.md) 做完才上線（D17）。〔作者裁決 2026-10-07〕
+- ~~桌面版 WI 補齊到 ST 行為~~：已完成（2026-10-11，[worldbook-st-trigger-parity](../handoffs/archive/worldbook-st-trigger-parity.md)，main 上包 1–5b 六筆）（D17）。〔作者裁決 2026-10-07〕
 - 角色台詞剝狀態區塊：[char-line-status-strip](../tasks/char-line-status-strip.md)。〔作者裁決 2026-10-10〕
 - 刪角色後清世界書可見度名單：[character-delete-visibility-cleanup](../tasks/character-delete-visibility-cleanup.md)。〔作者裁決 2026-10-10〕
 - 世界書路匯入濾掉別桌角色 id：[worldbook-path-foreign-ids](../tasks/worldbook-path-foreign-ids.md)。〔作者裁決 2026-10-10〕

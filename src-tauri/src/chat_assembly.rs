@@ -1,6 +1,8 @@
 //! 聊天回合的實送組裝（GM 旁白／推進、角色接話）。`commands::chat` 送出與 `scene_budget` 量容量
 //! 共用這裡的每一個入口——量的就是會送的，不另寫一套近似。
-use crate::world_scan::{self, Budget, Randomness, ScanRequest, TableBook, Viewer, WorldScan};
+use crate::world_scan::{
+    self, Budget, MacroInputs, MacroSession, Randomness, ScanRequest, TableBook, Viewer, WorldScan,
+};
 use crate::{data, import, mechanism, transport};
 
 /// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
@@ -97,19 +99,30 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     })
 }
 
-/// GM 視角掃一次世界書（方案三之 2）。`events` 是要掃的本幕事件（量測的固定部分傳空的）；
-/// `timed` 是 GM 的計時表；實送用 `Randomness::Live`、量測用 `Randomness::Measure`。
+/// GM 視角掃一次世界書（方案三之 2）並代換組裝文字（三之 7）。`events` 是要掃的本幕事件（量測的固定部分傳
+/// 空的）；`timed` 是 GM 的計時表；實送用 `Randomness::Live`、量測用 `Randomness::Measure`。
 pub(crate) fn gm_scan(
     materials: &GmMaterials,
     events: &[data::TranscriptEvent],
     timed: crate::world_info::timed::WiTimed,
     budget: Option<Budget>,
+    macros: MacroInputs,
     random: Randomness,
     lang: &str,
 ) -> WorldScan {
-    world_scan::scan(ScanRequest {
+    let viewer = Viewer::Gm;
+    let session = MacroSession::new(
+        macros,
+        &viewer,
+        &materials.world_md,
+        materials.book.world_card_name(),
+        materials.player.as_ref(),
+        events,
+        lang,
+    );
+    let mut scan = world_scan::scan(ScanRequest {
         book: &materials.book,
-        viewer: Viewer::Gm,
+        viewer,
         sole_card: sole_card_name(&materials.metas, events).as_deref(),
         player: materials.player.as_ref(),
         events,
@@ -117,25 +130,40 @@ pub(crate) fn gm_scan(
         timed,
         budget,
         random,
-    })
+        session: &session,
+    });
+    world_scan::prepare(
+        &mut scan,
+        &session,
+        &materials.book,
+        &viewer,
+        &materials.cards,
+        materials.player.as_ref(),
+    );
+    scan
 }
 
-/// 角色 X 視角掃一次世界書：條目池＝`Public`＋名單含 X 的限定條目，計時用 X 自己那份（P1）。
+/// 角色 X 視角掃一次世界書並代換組裝文字：條目池＝`Public`＋名單含 X 的限定條目，計時用 X 自己那份（P1）。
+/// `cards` 是組裝會列的全部角色卡（共線 system 的那份）。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn character_scan(
     book: &TableBook,
     card: &data::CharacterCard,
+    cards: &[data::CharacterCard],
     sole_card: Option<&str>,
     player: Option<&data::CharacterCard>,
     events: &[data::TranscriptEvent],
     timed: crate::world_info::timed::WiTimed,
     budget: Option<Budget>,
+    macros: MacroInputs,
     random: Randomness,
     lang: &str,
 ) -> WorldScan {
-    world_scan::scan(ScanRequest {
+    let viewer = Viewer::Character(card);
+    let session = MacroSession::new(macros, &viewer, "", None, player, events, lang);
+    let mut scan = world_scan::scan(ScanRequest {
         book,
-        viewer: Viewer::Character(card),
+        viewer,
         sole_card,
         player,
         events,
@@ -143,7 +171,36 @@ pub(crate) fn character_scan(
         timed,
         budget,
         random,
-    })
+        session: &session,
+    });
+    world_scan::prepare(&mut scan, &session, book, &viewer, cards, player);
+    scan
+}
+
+/// GM 視角的中性巨集環境（登場事件等回合提交時寫死的文字用）：讀最新的變數，不記副作用。
+pub(crate) fn gm_neutral_session(
+    root: &std::path::Path,
+    world_id: &str,
+    materials: &GmMaterials,
+    path: &crate::scene_budget::PathLimits,
+    lang: &str,
+) -> MacroSession {
+    MacroSession::new(
+        MacroInputs::load(
+            root,
+            world_id,
+            &data::world_info_store::Perspective::Gm,
+            path.model.clone(),
+            path.limits,
+            true,
+        ),
+        &Viewer::Gm,
+        &materials.world_md,
+        materials.book.world_card_name(),
+        materials.player.as_ref(),
+        &materials.events,
+        lang,
+    )
 }
 
 /// GM 回合的狀態可見範圍：換幕後第一輪送整棵樹對齊，之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
@@ -244,7 +301,6 @@ pub(crate) fn gm_lane_parts(
     lang: &str,
 ) -> (String, String) {
     let frozen = transport::gm_lane_system(
-        &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
         scan,
@@ -272,7 +328,6 @@ pub(crate) fn gm_messages(
     lang: &str,
 ) -> Vec<transport::ChatMessage> {
     let mut messages = transport::assemble_gm_messages(
-        &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
@@ -294,15 +349,15 @@ pub(crate) fn character_lane_parts(
     cards: &[data::CharacterCard],
     player: Option<&data::CharacterCard>,
     scan: &WorldScan,
-    snapshot: &[world_scan::Placed],
     state: &data::WorldState,
     branch: Option<&[String]>,
     lang: &str,
     hoist: bool,
 ) -> (String, transport::LaneTurn) {
-    let mut frozen = transport::chars_lane_system(cards, player, snapshot, lang);
+    let mut frozen = transport::chars_lane_system(cards, player, scan, lang);
     let turn = transport::chars_lane_turn(
         card,
+        cards,
         player,
         scan,
         &state.state,
@@ -318,12 +373,11 @@ pub(crate) fn character_lane_parts(
         frozen.push('\n');
         frozen.push_str(private);
     }
-    // 不抹尾段的線：system 裡的世界書（共用快照＋本輪）一變就要重開，指紋涵蓋全部
+    // 不抹尾段的線：system 裡會變的內容（共用快照＋本輪世界書與動態公開設定）一變就要重開，指紋涵蓋全部
     let mut turn = turn;
     if hoist {
         turn.hoisted_worldbook = Some(transport::system_worldbook(
-            snapshot,
-            player,
+            scan,
             turn.hoisted_worldbook.as_deref(),
             lang,
         ));
@@ -331,7 +385,7 @@ pub(crate) fn character_lane_parts(
     (frozen, turn)
 }
 
-/// 測試用：GM 視角照量測的方式掃一次（讀計時表不結算、機率視為通過、沒有上限）。
+/// 測試用：GM 視角照量測的方式掃一次（讀計時表不結算、機率視為通過、沒有上限、空變數）。
 #[cfg(test)]
 pub(crate) fn test_gm_scan(
     root: &std::path::Path,
@@ -351,14 +405,14 @@ pub(crate) fn test_gm_scan(
         &materials.events,
         timed,
         None,
+        MacroInputs::empty(),
         Randomness::Measure,
         lang,
     )
 }
 
-/// 測試用：角色視角照量測的方式掃一次。
+/// 測試用：角色視角照量測的方式掃一次（組裝的卡清單＝這桌在場的卡）。
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn test_character_scan(
     root: &std::path::Path,
     world_id: &str,
@@ -366,7 +420,7 @@ pub(crate) fn test_character_scan(
     player: Option<&data::CharacterCard>,
     events: &[data::TranscriptEvent],
     lang: &str,
-) -> (WorldScan, Vec<world_scan::Placed>) {
+) -> WorldScan {
     let book = TableBook::load(root, world_id).unwrap();
     let scene = data::read_state(root, world_id).unwrap().current_scene;
     let timed = data::world_info_store::read_timed(
@@ -377,16 +431,18 @@ pub(crate) fn test_character_scan(
     )
     .unwrap_or_default();
     let metas = data::list_characters(root, world_id).unwrap();
-    let scan = character_scan(
+    let cards = active_cards(root, world_id).unwrap();
+    character_scan(
         &book,
         card,
+        &cards,
         sole_card_name(&metas, events).as_deref(),
         player,
         events,
         timed,
         None,
+        MacroInputs::empty(),
         Randomness::Measure,
         lang,
-    );
-    (scan, book.snapshot())
+    )
 }

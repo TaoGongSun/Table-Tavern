@@ -87,8 +87,11 @@ pub(crate) fn discard_unanswered_player(
 
 /// 貼開場白（見 import::post_opening_text）。opening_index 是玩家在開場白面板挑的那則（card_openings 的
 /// 順序），import_source 是跳出這個面板的那次匯入的原檔識別（匯入結果回傳）；序號記在那筆匯入的收據上：重新重構時 expand 從原卡取同一則開場白當初始值依據。
+/// 巨集（方案三之 7）：取得到原卡時以原文完整求值，正文用求值結果（`translated` 時用前端給的翻譯版 `text`），
+/// 變數副作用走世界書落地日誌（`OpeningLanding`），寫不成就連開場白一起退掉；取不到原卡時照前端給的 `text`（清單顯示時已中性代換）落檔、沒有副作用。
 /// 整段持整桌獨占：追加失敗時要把逐字稿與狀態寫回貼之前，中間不能有別的寫入，否則會被一起蓋掉。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn post_opening(
     app: tauri::AppHandle,
     world_id: String,
@@ -97,21 +100,53 @@ pub(crate) async fn post_opening(
     text: String,
     opening_index: Option<usize>,
     import_source: Option<String>,
+    translated: Option<bool>,
 ) -> Result<TranscriptEvent, String> {
     let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
     let config = data::read_config(&config_root(&app)?).unwrap_or_default();
     let lang = transport::ui_language(&config);
-    import::post_opening_text(
+    let (body, ops) = match crate::world_scan::opening::original_opening(
+        &root,
+        &world_id,
+        import_source.as_deref(),
+        opening_index,
+    ) {
+        Some((name, raw)) => {
+            let path = crate::scene_budget::path_limits(
+                &config_root(&app)?,
+                &root,
+                &config,
+                transport::gm_tier(&config),
+            );
+            let (evaluated, ops) = crate::world_scan::opening::evaluate_for_posting(
+                &root, &world_id, scene, &name, &raw, &path, &lang,
+            )?;
+            (
+                if translated == Some(true) {
+                    text
+                } else {
+                    evaluated
+                },
+                ops,
+            )
+        }
+        None => {
+            crate::world_scan::opening::settle_before_opening(&root, &world_id, scene)?;
+            (text, Vec::new())
+        }
+    };
+    import::post_opening_text_with(
         &root,
         &world_id,
         scene,
         &ts,
-        &text,
+        &body,
         &lang,
         opening_index,
         import_source.as_deref(),
         &held,
+        &mut crate::world_scan::opening::OpeningLanding::new(&root, &world_id, scene, ops),
     )
     .map_err(|error| error.to_string())
 }
@@ -350,7 +385,11 @@ pub(crate) async fn advance_scene(
         summary_caller(&app, &config, &world_id),
         cancel,
     );
-    crate::scene_budget::summarize::advance_locked(&root, &world_id, &cap, &mut caller).await
+    let scene =
+        crate::scene_budget::summarize::advance_locked(&root, &world_id, &cap, &mut caller).await?;
+    // 上一輪 outlet 不跨幕（ST 換聊天也清空）
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(scene)
 }
 
 /// 換幕摘要類呼叫的真實那一下（GM 檔、單發）：整幕、分段、合併、縮短都走這裡。
@@ -432,7 +471,9 @@ fn summary_caller<'a>(
 pub(crate) fn revert_scene(app: tauri::AppHandle, world_id: String) -> Result<u64, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    data::revert_scene(&root, &world_id).map_err(|error| error.to_string())
+    let scene = data::revert_scene(&root, &world_id).map_err(|error| error.to_string())?;
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(scene)
 }
 
 /// 重設世界書觸發紀錄：結算一直回錯（紀錄檔壞掉等）時玩家的出路。目前這一幕的計時檔與其他讀不懂的
@@ -450,6 +491,29 @@ pub(crate) fn reset_world_info_timing(
     data::world_info_store::reset_scene(&root, &world_id, scene).map_err(|error| error.to_string())
 }
 
+/// 世界書落地撤回時沒能還原的變數寫入（待回報檔，方案三之 8）：聊天、換幕、分岔之後與開桌時讀，
+/// 前端提示玩家一次後呼叫 `ack_world_info_notice` 刪掉那則。
+#[tauri::command]
+pub(crate) fn world_info_notices(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<Vec<data::world_info_store::Notice>, String> {
+    data::world_info_store::read_notices(&data_root(&app)?, &world_id)
+        .map_err(|error| error.to_string())
+}
+
+/// 玩家看過一則待回報：刪掉它。
+#[tauri::command]
+pub(crate) fn ack_world_info_notice(
+    app: tauri::AppHandle,
+    world_id: String,
+    id: String,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    data::world_info_store::ack_notice(&data_root(&app)?, &world_id, &id)
+        .map_err(|error| error.to_string())
+}
+
 /// 從前幕分岔：把那一幕的紀錄複製成新的一幕接著玩，純本地檔案處理不必等模型回覆。
 #[tauri::command]
 pub(crate) fn fork_scene(
@@ -459,7 +523,9 @@ pub(crate) fn fork_scene(
 ) -> Result<u64, String> {
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
-    data::fork_scene(&root, &world_id, scene).map_err(|error| error.to_string())
+    let forked = data::fork_scene(&root, &world_id, scene).map_err(|error| error.to_string())?;
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(forked)
 }
 
 /// 重寫前情提要：結構照 advance_scene，差別是摘要對象換成「前一幕」的紀錄，

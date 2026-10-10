@@ -160,6 +160,61 @@ pub fn post_opening_text(
     import: Option<&str>,
     held: &data::WorldExclusive,
 ) -> DataResult<TranscriptEvent> {
+    post_opening_text_with(
+        root,
+        world_id,
+        scene,
+        ts,
+        text,
+        lang,
+        index,
+        import,
+        held,
+        &mut NoOpeningEffects,
+    )
+}
+
+/// 開場白巨集的變數副作用（`world_scan::opening::OpeningLanding`）：追加之前開落地日誌並寫好變數（失敗時自己撤回、
+/// 沒還原的層併進錯誤），開場白事件帶 `turn_key` 追加，之後 `commit` 清掉日誌；追加失敗 `abort` 撤回。
+pub trait OpeningEffects {
+    fn begin(&mut self) -> Result<(), String>;
+    fn turn_key(&self) -> Option<data::message_vars::TurnKey>;
+    fn commit(&mut self);
+    fn abort(&mut self);
+}
+
+/// 沒有副作用（取不到原卡、重貼）。
+pub struct NoOpeningEffects;
+
+impl OpeningEffects for NoOpeningEffects {
+    fn begin(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn turn_key(&self) -> Option<data::message_vars::TurnKey> {
+        None
+    }
+
+    fn commit(&mut self) {}
+
+    fn abort(&mut self) {}
+}
+
+/// `post_opening_text`，帶開場白巨集的變數副作用：上一回合代落之後開落地日誌、寫好變數，開場白帶回合鍵追加
+/// （之後崩潰，結算從逐字稿認得出它已落檔），再清掉日誌；追加失敗就撤回變數。
+#[allow(clippy::too_many_arguments)]
+pub fn post_opening_text_with(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    ts: &str,
+    text: &str,
+    lang: &str,
+    index: Option<usize>,
+    import: Option<&str>,
+    held: &data::WorldExclusive,
+    effects: &mut dyn OpeningEffects,
+) -> DataResult<TranscriptEvent> {
     let pending = receipts::begin_pending(root, world_id)?;
     let block = transport::extract_state_block(text);
     let player_name = data::read_player_card(root, world_id)
@@ -172,19 +227,37 @@ pub fn post_opening_text(
     // 上一回合沒落成的回覆先代落，再存檢查點：貼失敗回復時不會連代落的回覆一起倒掉，舊回覆也不會之後才
     // 插到開場後面
     data::settle_pending_turn(root, world_id)?;
+    // 落地日誌在上一回合代落之後才開（之前結算會把「GM 已提交、正文還沒落檔」的回合誤判成失敗）；
+    // 變數在追加之前寫好，崩潰在追加之前就整筆撤回、開場白也不在
+    if let Err(error) = effects.begin() {
+        receipts::finish_pending(root, world_id, &pending);
+        return Err(crate::data::invalid_data(error));
+    }
     let checkpoint = data::opening_checkpoint(root, world_id, scene);
-    let (event, outcome) =
-        match data::append_opening(root, world_id, scene, ts, text, &block, user_name) {
-            Ok(posted) => posted,
-            Err(error) => {
-                // 逐字稿是直接 append，失敗時可能已留下半行：寫回並確認逐字稿與狀態都回到貼之前，
-                // 才算什麼都沒貼上、解除標記；回不去（或貼前就讀不到）標記留著，來源判不完整
-                if checkpoint.is_ok_and(|checkpoint| checkpoint.restore()) {
-                    receipts::finish_pending(root, world_id, &pending);
-                }
-                return Err(error);
+    let appended = data::append_opening_keyed(
+        root,
+        world_id,
+        scene,
+        ts,
+        text,
+        &block,
+        user_name,
+        effects.turn_key(),
+    );
+    let (event, outcome) = match appended {
+        Ok(posted) => posted,
+        Err(error) => {
+            // 逐字稿是直接 append，失敗時可能已留下半行：寫回並確認逐字稿與狀態都回到貼之前，
+            // 才算什麼都沒貼上、解除標記並撤回變數；回不去（或貼前就讀不到）標記留著，來源判不完整，
+            // 落地日誌也留給下一次結算看逐字稿裡有沒有這則開場白
+            if checkpoint.is_ok_and(|checkpoint| checkpoint.restore()) {
+                effects.abort();
+                receipts::finish_pending(root, world_id, &pending);
             }
-        };
+            return Err(error);
+        }
+    };
+    effects.commit();
     mechanism::append_log(root, world_id, scene, &outcome.records);
     if receipts::record_posted_opening(root, world_id, scene, ts, index, import, held) {
         receipts::finish_pending(root, world_id, &pending);

@@ -1,5 +1,6 @@
 //! 計時存放與落地（方案四之 3）：讀寫與壞檔、則數、落地與 pending、GM／角色正文清 pending、`finish_turn`、
 //! 結算（寫入中四種變數情形、已送出成敗）、待回報檔、原子寫、換幕／分岔／退幕、刪條目清計時、跨視角。
+use super::landing::ConflictReason;
 use super::*;
 use crate::data::card_vars::{self, Layer, LayerWrite};
 use crate::data::message_vars::{self, PendingMain, TurnKey, PART_MAIN};

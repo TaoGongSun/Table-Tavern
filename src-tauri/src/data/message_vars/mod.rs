@@ -26,7 +26,7 @@ pub use mode::{ensure_active, handover_to_tree, new_token, refresh_cache};
 pub use source::{projected_tree, Source};
 pub use turn::{
     bump_generation, busy, generation, world_swapped, PendingMain, TurnKey, PART_CHARACTER,
-    PART_MAIN,
+    PART_MAIN, PART_OPENING,
 };
 pub use write::{
     apply_gm_block, begin_turn, card_write, drop_scene_seed, edit_effective_tree,

@@ -179,7 +179,7 @@ fn next_character_turn_carries_constant_and_triggered_entries() {
     let player = data::read_player_card(root.path(), &w).unwrap();
     let events = data::read_transcript(root.path(), &w, 0).unwrap();
     let world = data::read_state(root.path(), &w).unwrap();
-    let (scan, snapshot) = crate::chat_assembly::test_character_scan(
+    let scan = crate::chat_assembly::test_character_scan(
         root.path(),
         &w,
         &card,
@@ -193,7 +193,6 @@ fn next_character_turn_carries_constant_and_triggered_entries() {
         player.as_ref(),
         &events,
         &scan,
-        &snapshot,
         &world.state,
         &world.mechanism,
         None,
@@ -914,7 +913,7 @@ pub(super) fn character_turn(
     let player = data::read_player_card(root.path(), w).unwrap();
     let events = data::read_transcript(root.path(), w, 0).unwrap();
     let world = data::read_state(root.path(), w).unwrap();
-    let (scan, snapshot) = crate::chat_assembly::test_character_scan(
+    let scan = crate::chat_assembly::test_character_scan(
         root.path(),
         w,
         &card,
@@ -928,7 +927,6 @@ pub(super) fn character_turn(
         player.as_ref(),
         &events,
         &scan,
-        &snapshot,
         &world.state,
         &world.mechanism,
         None,
@@ -947,7 +945,6 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
     let scan =
         crate::chat_assembly::test_gm_scan(root.path(), &imported.world_id, &materials, LANG);
     let messages = crate::transport::assemble_gm_messages(
-        &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,

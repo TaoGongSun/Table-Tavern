@@ -29,7 +29,10 @@ pub use card::{
     probe_import, worldbook_json, ImportProbe, ImportedCharacter,
 };
 pub use export::export_character;
-pub use files::{import_character_file, import_worldbook_file, post_opening_text};
+pub use files::{
+    import_character_file, import_worldbook_file, post_opening_text, post_opening_text_with,
+    OpeningEffects,
+};
 pub use images::{
     character_avatar, character_image, check_character_image, delete_character_avatar,
     delete_character_image, gm_image, save_character_avatar, save_character_image, save_gm_image,

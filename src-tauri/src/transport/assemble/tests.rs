@@ -495,14 +495,17 @@ fn player_card_enters_character_and_gm_context() {
     assert!(!solo.contains("下一位"));
 }
 
+/// 巨集走引擎（方案三之 7）：卡片公開設定只含靜態巨集時留在共用 system，含 `{{random}}` 這類動態巨集時
+/// 移到回合尾（機密段）以該角色視角代換；GM 視角的 `{{char}}` 照現行原樣留著（不是世界書路）。
 #[test]
-fn st_macros_use_player_name_and_keep_other_macros() {
+fn st_macros_go_through_the_engine() {
     let fox = card(
         "fox-id",
         "狐狸",
-        "我是 {{char}}，認識 {{user}}，{{random}} 保留。",
+        "我是 {{char}}，認識 {{user}}，{{random::甲}} 代換。",
         "",
     );
+    let knight = card("knight-id", "騎士", "我是 {{char}}。", "");
     let player = card("player-id", "阿濤", "", "");
     let mut entry = worldbook_entry(
         0,
@@ -515,9 +518,10 @@ fn st_macros_use_player_name_and_keep_other_macros() {
     );
     entry.content = "{{user}} 來過這裡。".to_owned();
 
+    let cards = [fox.clone(), knight.clone()];
     let character = assemble_shared_messages(
-        &fox,
-        std::slice::from_ref(&fox),
+        &knight,
+        &cards,
         Some(&player),
         &[],
         &[entry.clone()],
@@ -527,8 +531,18 @@ fn st_macros_use_player_name_and_keep_other_macros() {
         "zh-TW",
     );
     let character_system = &character[0].content;
-    assert!(character_system.contains("我是 狐狸，認識 阿濤，{{random}} 保留。"));
+    assert!(character_system.contains("### 騎士\n我是 騎士。\n"));
+    assert!(
+        character_system.contains("### 狐狸\n### 騎士"),
+        "{character_system}"
+    );
+    assert!(!character_system.contains("我是 狐狸"));
     assert!(character_system.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
+    let tail = &character.last().unwrap().content;
+    assert!(
+        tail.contains("### 狐狸\n我是 狐狸，認識 阿濤，甲 代換。"),
+        "{tail}"
+    );
 
     let gm = assemble_gm_messages(
         "世界 {{CHAR}}",
@@ -542,7 +556,8 @@ fn st_macros_use_player_name_and_keep_other_macros() {
         "zh-TW",
     );
     assert!(gm[0].content.contains("### 阿濤 的情報\n阿濤 來過這裡。"));
-    assert!(gm[0].content.contains("世界 {{CHAR}}"));
+    assert!(gm[0].content.contains("世界 {{char}}"));
+    assert!(gm[0].content.contains("我是 狐狸，認識 阿濤，甲 代換。"));
 }
 
 #[test]
@@ -1189,8 +1204,14 @@ fn shared_lane_skips_card_private_event() {
     };
     let events = [
         event(TranscriptKind::Narration, "", "GM", "門開了"),
-        system(card_private(&knight, "阿濤").unwrap(), true),
-        system(card_arrival(&knight, "阿濤"), false),
+        system(
+            card_private(&knight, &crate::transport::test_support::plain_fill("阿濤")).unwrap(),
+            true,
+        ),
+        system(
+            card_arrival(&knight, &crate::transport::test_support::plain_fill("阿濤")),
+            false,
+        ),
     ];
     let messages = assemble_shared_messages(
         &fox,

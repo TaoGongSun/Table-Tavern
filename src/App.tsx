@@ -43,6 +43,7 @@ import {
   useChatController,
 } from "./features/play/useChatController";
 import { nextTurnFailure, TurnFailedDialog } from "./features/play/TurnFailedDialog";
+import { showWorldInfoNotices } from "./features/play/world-info-notices";
 import { resetWorldInfoTiming } from "./features/play/world-info-reset";
 import { useImportController, type WebSaveImport } from "./features/import/useImportController";
 import { openWebSaveTable as openWebSaveTableFlow } from "./features/import/web-save-table";
@@ -540,6 +541,8 @@ function App() {
     // 進桌就離開單幕閱讀／編輯畫面，避免殘留上一桌的狀態
     setMainView(null);
     cardInterface.close();
+    // 世界書落地撤回時沒還原的變數寫入：開桌（含換幕、分岔、退幕後重進）提示一次
+    void showWorldInfoNotices(id);
     return { entered: true, writable: true };
   }
 
@@ -789,7 +792,7 @@ function App() {
   async function postTranslatedOpening(index: number) {
     if (imports.openings === null) return;
     const translated = await imports.translateOpening(index);
-    if (translated !== null) await postOpening(translated, index);
+    if (translated !== null) await postOpening(translated, index, true);
   }
 
   async function refreshAfterEntryConverted() {

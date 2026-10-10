@@ -4,6 +4,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { SceneLabel, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { t } from "../../i18n";
 import { backendCode } from "../../shared/ui/backend-text";
+import { showWorldInfoNotices } from "./world-info-notices";
 import { askWorldInfoReset, offersWorldInfoReset } from "./world-info-reset";
 
 interface SceneChatActions {
@@ -33,6 +34,9 @@ interface SceneActionsOptions {
 
 /** 換幕類動作失敗：世界書觸發紀錄結算不了就先問要不要重設（重設成了不必再顯示錯誤），其餘照常顯示。 */
 async function reportSceneError(worldId: string, reason: unknown, onError: (message: string) => void) {
+  // 換幕、分岔、退幕前的結算可能已把沒還原的變數寫入記進待回報檔（成功時重進桌會提示）；
+  // 先提示完再問重設，兩個原生對話框不同時跳
+  await showWorldInfoNotices(worldId);
   if (offersWorldInfoReset(reason)) {
     try {
       if (await askWorldInfoReset(worldId)) return;

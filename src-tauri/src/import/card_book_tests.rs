@@ -70,14 +70,13 @@ fn lane_text(root: &Path, world_id: &str, character_id: &str, hoist: bool) -> (S
     let player = data::read_player_card(root, world_id).unwrap();
     let state = data::read_state(root, world_id).unwrap();
     let events = data::read_transcript(root, world_id, state.current_scene).unwrap();
-    let (scan, snapshot) =
+    let scan =
         chat_assembly::test_character_scan(root, world_id, &card, player.as_ref(), &events, LANG);
     let (frozen, turn) = chat_assembly::character_lane_parts(
         &card,
         &cards,
         player.as_ref(),
         &scan,
-        &snapshot,
         &state,
         None,
         LANG,
@@ -98,7 +97,7 @@ fn shared_text(root: &Path, world_id: &str, character_id: &str) -> (String, Stri
     let player = data::read_player_card(root, world_id).unwrap();
     let state = data::read_state(root, world_id).unwrap();
     let events = data::read_transcript(root, world_id, state.current_scene).unwrap();
-    let (scan, snapshot) =
+    let scan =
         chat_assembly::test_character_scan(root, world_id, &card, player.as_ref(), &events, LANG);
     let messages = crate::transport::assemble_shared_messages(
         &card,
@@ -106,7 +105,6 @@ fn shared_text(root: &Path, world_id: &str, character_id: &str) -> (String, Stri
         player.as_ref(),
         &events,
         &scan,
-        &snapshot,
         &state.state,
         &state.mechanism,
         None,
@@ -126,7 +124,6 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
     let (scope, _) = chat_assembly::gm_scope(&materials);
     let scan = chat_assembly::test_gm_scan(root, world_id, &materials, LANG);
     let single = crate::transport::assemble_gm_messages(
-        &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,

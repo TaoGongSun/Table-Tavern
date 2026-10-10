@@ -2,6 +2,8 @@
 //! 讀出來是數字字串就轉數字、加法遇到非數字改成字串串接、JSON 陣列就 push、帶 index 存成 JSON。
 //! 完整模式下每次寫入記成操作序列（[`VarOp`]），落地時在最新的表上重放（方案三之 8）。
 
+use std::rc::Rc;
+
 use super::js_value::{array_index, is_blank, number_to_string, put_entry, text_limit, JsValue};
 
 /// 帶索引寫入時陣列長度的實用上限；超過當寫入失敗（JS 吞掉例外、表不變）。
@@ -240,11 +242,12 @@ pub struct VarOp {
     pub kind: VarOpKind,
 }
 
-/// 一次求值看得到的變數：兩個範圍＋這次求值的寫入紀錄。
+/// 一次求值看得到的變數：兩個範圍＋這次求值的寫入紀錄。範圍共用到第一次寫入才複製（中性模式的隔離副本
+/// 因此幾乎不花成本，方案三之 6）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Variables {
-    pub local: VarScope,
-    pub global: VarScope,
+    pub local: Rc<VarScope>,
+    pub global: Rc<VarScope>,
     /// 依發生順序；中性模式在隔離副本上記，結束就丟掉
     pub ops: Vec<VarOp>,
 }
@@ -252,8 +255,17 @@ pub struct Variables {
 impl Variables {
     pub fn new(local: VarScope, global: VarScope) -> Self {
         Self {
-            local,
-            global,
+            local: Rc::new(local),
+            global: Rc::new(global),
+            ops: Vec::new(),
+        }
+    }
+
+    /// 隔離副本（中性模式）：同一份範圍、空的寫入紀錄；寫入時才各自複製。
+    pub fn isolated(&self) -> Self {
+        Self {
+            local: Rc::clone(&self.local),
+            global: Rc::clone(&self.global),
             ops: Vec::new(),
         }
     }
@@ -267,8 +279,8 @@ impl Variables {
 
     fn scope_mut(&mut self, kind: ScopeKind) -> &mut VarScope {
         match kind {
-            ScopeKind::Local => &mut self.local,
-            ScopeKind::Global => &mut self.global,
+            ScopeKind::Local => Rc::make_mut(&mut self.local),
+            ScopeKind::Global => Rc::make_mut(&mut self.global),
         }
     }
 
