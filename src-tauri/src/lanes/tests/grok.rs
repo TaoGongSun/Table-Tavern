@@ -75,6 +75,8 @@ else:
     append(up, [upd('background_tasks', tasks=[])])
 n = sum(1 for l in open(ch) if '"prompt_index"' in l)
 reply = os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(n + 1)
+# FAKE_REPLY_SUFFIX：回覆尾端接控制區塊；FAKE_REPLY_RESUME：續聊那試整段換成這個
+reply = (os.environ.get('FAKE_REPLY_RESUME') if rid else None) or reply + os.environ.get('FAKE_REPLY_SUFFIX', '')
 summary = '正在想：' + prompt
 tool = os.environ.get('FAKE_TOOL') == '1'
 # 真 CLI：帶 --verbatim 原文照收，不帶才包 <user_query>（FAKE_WRAP 強制包，模擬舊行為）
@@ -771,5 +773,80 @@ async fn self_prefixed_reply_keeps_grok_lane_and_resumes() {
     let calls = calls(&fake.dir);
     assert_eq!(calls.len(), 2);
     assert!(flag(&calls[1], "-r").is_some());
+    assert!(!all_text(&fake.grok_home).contains("通緝犯"));
+}
+
+/// char-line-status-strip：回覆帶控制區塊時兩檔換寫成「前綴＋收尾台詞」，下一個角色續用同一條線
+/// 看不到；只有控制區塊的完成回合整條撤線、只派送一次、回 AI_EMPTY_RESPONSE。
+#[cfg(unix)]
+#[tokio::test]
+async fn tagged_reply_is_rewritten_and_tags_only_revokes_lane() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let tag = "<UpdateVariable>_.set('錢包', 3);</UpdateVariable>";
+    let fake = fake_grok("status-strip", &[("FAKE_REPLY_SUFFIX", tag)]);
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let reply = run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", None),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    let landed = transport::finish_character_reply(&reply, "狐狸：", false).text;
+    assert_eq!(landed, "回覆1");
+    assert!(!all_text(&fake.grok_home).contains("UpdateVariable"));
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &landed));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "兔子你呢？"));
+    // 換兔子：續用同一條線
+    let mut rabbit = char_turn(&events, "兔子", "rabbit-id", None);
+    rabbit.prefix = Some("兔子：".to_owned());
+    rabbit.echo = ReplyEcho::Dialogue {
+        speaker_id: "rabbit-id".to_owned(),
+        prefix: "兔子：".to_owned(),
+    };
+    run_turn(&fake.call, &fake.root, &fake.world_id, rabbit, None, |_| {})
+        .await
+        .unwrap();
+    let sent = calls(&fake.dir);
+    assert_eq!(sent.len(), 2);
+    assert!(flag(&sent[1], "-r").is_some(), "下一個角色續用同一條線");
+    assert!(!sent[1].prompt.contains("UpdateVariable"));
+
+    let fake = fake_grok(
+        "status-strip-empty",
+        &[("FAKE_REPLY_RESUME", &format!("狐狸：{tag}"))],
+    );
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let reply = run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", None),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
+    let error = run_turn(
+        &fake.call,
+        &fake.root,
+        &fake.world_id,
+        char_turn(&events, "狐狸", "fox-id", Some("其實是通緝犯")),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap_err();
+    assert!(error.starts_with("AI_EMPTY_RESPONSE"), "{error}");
+    assert_eq!(calls(&fake.dir).len(), 2, "沒有台詞不得重開重試");
+    let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
+    assert!(store.is_empty(), "grok 比照中止整條撤線");
     assert!(!all_text(&fake.grok_home).contains("通緝犯"));
 }

@@ -575,7 +575,8 @@ export function useChatController({
       onDelta.onmessage = (delta) => {
         if (generation.current === started) setStreamText((previous) => previous + delta);
       };
-      const reply = await invoke<{ text: string; aborted: boolean }>("chat_with_character", {
+      // raw：剝殼前的台詞原文（卡片介面讀它），與 text 相同時是 null
+      const reply = await invoke<{ text: string; raw: string | null; aborted: boolean }>("chat_with_character", {
         worldId,
         characterId,
         turnId,
@@ -597,6 +598,7 @@ export function useChatController({
             speaker_name: name,
             kind: "dialogue",
             text: reply.text,
+            ...(reply.raw ? { raw: reply.raw } : {}),
             truncated: true,
           }, started, undefined, turnId);
           await markCliConnected();
@@ -610,6 +612,7 @@ export function useChatController({
         speaker_name: name,
         kind: "dialogue",
         text: reply.text,
+        ...(reply.raw ? { raw: reply.raw } : {}),
         ...(truncated ? { truncated: true } : {}),
       }, started, undefined, turnId);
       await markCliConnected();

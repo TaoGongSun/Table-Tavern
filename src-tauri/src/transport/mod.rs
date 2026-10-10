@@ -9,6 +9,7 @@ pub(crate) mod context_overflow;
 pub(crate) mod dispatch;
 mod messages;
 mod own_prefix;
+mod reply_cleanup;
 mod response;
 pub(crate) mod responses;
 mod runaway;
@@ -46,7 +47,11 @@ pub use context::{gm_prompt_full_entries, PromptEntry};
 pub(crate) use messages::language_rule;
 pub use messages::{history_header, speaker_prefix, ChatMessage};
 pub(crate) use messages::{player_fallback_name, replace_st_macros, scaffold_en};
-pub use own_prefix::{strip_own_prefix, OwnPrefixStream};
+pub use own_prefix::OwnPrefixStream;
+pub use reply_cleanup::{
+    cut_unclosed_tail, empty_reply_error, final_reply_text, finish_character_reply,
+    strip_self_closing_controls,
+};
 #[cfg(test)]
 pub use response::card_format_instruction;
 pub use response::{

@@ -90,6 +90,8 @@ if os.environ.get('FAKE_REMINDER') == '1':
 out.append({'type': 'atis-latch'})
 node('attachment', attachment={'type': 'date'})
 reply = os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(users + 1)
+# FAKE_REPLY_SUFFIX：回覆尾端接控制區塊；FAKE_REPLY_RESUME：續聊那試整段換成這個
+reply = (os.environ.get('FAKE_REPLY_RESUME') if rid else None) or reply + os.environ.get('FAKE_REPLY_SUFFIX', '')
 node('assistant', message={'role': 'assistant', 'content': [{'type': 'thinking', 'thinking': '…'}]})
 node('assistant', message={'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]})
 node('attachment', attachment={'type': 'prompt_snapshot'})
@@ -1537,7 +1539,7 @@ fn apply_rewrite_names_the_failing_stage() {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, lines.join("\n") + "\n").unwrap();
         }
-        apply_rewrite(&call, sid, secret, Some("甲："))
+        apply_rewrite(&call, sid, secret, Some("甲："), None)
             .expect_err("應該失敗")
             .stage
     };
@@ -1604,7 +1606,7 @@ fn apply_rewrite_names_the_failing_stage() {
         .unwrap();
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o500)).unwrap();
         let stage =
-            apply_rewrite(&call, "readonly", Some("機密"), Some("甲：")).map_err(|f| f.stage);
+            apply_rewrite(&call, "readonly", Some("機密"), Some("甲："), None).map_err(|f| f.stage);
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(stage, Err("write"));
     }
@@ -1616,6 +1618,7 @@ mod grok;
 mod lane_lock;
 mod owner;
 mod runaway;
+mod status_strip;
 
 /// char-line-prefix：預期回聲存剝掉本輪「名字：」的字；前綴另傳，Agy（prefix None）照樣對得上。
 #[test]
@@ -1626,7 +1629,8 @@ fn own_prefix_echo_resumes_on_stripped_event_and_diverges_otherwise() {
     };
     let expected = expected_reply_for(&echo, "狐狸：晚安");
     assert_eq!(expected.text, "晚安");
-    assert_eq!(expected_reply_for(&echo, "狐狸：").text, "狐狸：");
+    // 只有前綴＝沒有台詞（完成回合在 run_turn 就回錯，不會走到對帳）
+    assert_eq!(expected_reply_for(&echo, "狐狸：").text, "");
     let before = [event(TranscriptKind::Player, "", "阿濤", "你好")];
     let mut state = lane_state(&before, 0);
     state.expected_reply = Some(expected);

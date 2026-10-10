@@ -94,14 +94,19 @@ pub(crate) fn remove_session(grok_home: &Path, session_id: &str) -> Result<(), S
 }
 
 /// 回合後抹寫。`confidential` 是本輪送出的機密段（None／空字串＝這輪沒送）；
-/// `prefix` 補在回覆前；`reply` 是本輪串流收到的回覆原文，用來核對兩檔。
+/// `prefix` 補在回覆前；`reply` 是本輪串流收到的回覆原文，用來核對兩檔；`cleaned` 是剝完前綴與
+/// 控制區塊的台詞，收尾有剝掉東西時兩檔的回覆整段換成「前綴＋cleaned」，共用線的下一個角色看不到控制區塊。
 pub(crate) fn rewrite(
     grok_home: &Path,
     session_id: &str,
     confidential: Option<&str>,
     prefix: &str,
     reply: &str,
+    cleaned: &str,
 ) -> Result<(), RewriteError> {
+    let unchanged = reply.strip_prefix(prefix).unwrap_or(reply).trim() == cleaned;
+    let written = (!unchanged).then(|| format!("{prefix}{cleaned}"));
+    let written = written.as_deref();
     let confidential = confidential.filter(|segment| !segment.is_empty());
     let dirs = find_session_dirs(grok_home, session_id).map_err(failed)?;
     let dir = match dirs.as_slice() {
@@ -123,8 +128,8 @@ pub(crate) fn rewrite(
     let updates_path = dir.join("updates.jsonl");
     let mut chat = Lines::load(&chat_path)?;
     let mut updates = Lines::load(&updates_path)?;
-    let chat_user = rewrite_chat_history(&mut chat, confidential, prefix, reply)?;
-    let updates_user = rewrite_updates(&mut updates, confidential, prefix, reply)?;
+    let chat_user = rewrite_chat_history(&mut chat, confidential, prefix, reply, written)?;
+    let updates_user = rewrite_updates(&mut updates, confidential, prefix, reply, written)?;
     if chat_user != updates_user {
         return Err(failed("兩檔的本輪 user 內容不一致"));
     }
@@ -333,6 +338,7 @@ fn rewrite_chat_history(
     confidential: Option<&str>,
     prefix: &str,
     reply: &str,
+    written: Option<&str>,
 ) -> Result<String, RewriteError> {
     if lines.rows.iter().any(|row| {
         row.value.get("synthetic_reason").and_then(Value::as_str) == Some("compaction_meta")
@@ -405,7 +411,7 @@ fn rewrite_chat_history(
     let content = assistant.value["content"].as_str().unwrap_or_default();
     let prefixed = with_prefix(content, prefix);
     check_prefixed(&prefixed, prefix, reply)?;
-    assistant.value["content"] = Value::String(prefixed);
+    assistant.value["content"] = Value::String(written.map_or(prefixed, str::to_owned));
     assistant.dirty = true;
 
     // 每一輪的 reasoning 都拿掉（摘要為空時 encrypted_content 仍帶著推理）
@@ -422,6 +428,7 @@ fn rewrite_updates(
     confidential: Option<&str>,
     prefix: &str,
     reply: &str,
+    written: Option<&str>,
 ) -> Result<String, RewriteError> {
     if lines.rows.iter().any(|row| {
         update_kind(&row.value)
@@ -474,15 +481,26 @@ fn rewrite_updates(
         .as_str()
         .unwrap_or_default()
         .to_owned();
-    if !already {
+    if let Some(written) = written {
+        // 收尾換寫：第一個回覆 chunk 放整段「前綴＋台詞」，其餘回覆 chunk 刪掉
+        first.value["params"]["update"]["content"]["text"] = Value::String(written.to_owned());
+        first.dirty = true;
+    } else if !already {
         first.value["params"]["update"]["content"]["text"] =
             Value::String(format!("{prefix}{text}"));
         first.dirty = true;
     }
-
-    lines
-        .rows
-        .retain(|row| update_kind(&row.value) != Some("agent_thought_chunk"));
+    let dropped: Vec<usize> = match written {
+        Some(_) => message_indices[1..].to_vec(),
+        None => Vec::new(),
+    };
+    let mut index = 0;
+    lines.rows.retain(|row| {
+        let keep =
+            update_kind(&row.value) != Some("agent_thought_chunk") && !dropped.contains(&index);
+        index += 1;
+        keep
+    });
     Ok(body)
 }
 

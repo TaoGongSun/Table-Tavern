@@ -134,6 +134,31 @@ describe("chat turn failures", () => {
     expect(ids[2]).not.toBe(ids[0]);
   });
 
+  // char-line-status-strip：角色台詞落檔帶剝殼前原文（卡片介面讀它），完成與中止兩處都帶；沒有就不帶這欄
+  it("dialogue events carry the backend raw on finished and aborted replies", async () => {
+    const tag = "<UpdateVariable>x</UpdateVariable>";
+    let reply: unknown = { text: "回覆", raw: `回覆${tag}`, aborted: false };
+    const h = mount({
+      append_player_event: appendPlayer(),
+      chat_with_character: () => reply,
+      append_transcript: (args) => args.event,
+    });
+    await typeAndSend(h, "第一句");
+    reply = { text: "半截", raw: `半截${tag}`, aborted: true };
+    await typeAndSend(h, "第二句");
+    reply = { text: "乾淨", raw: null, aborted: false };
+    await typeAndSend(h, "第三句");
+    const landed = h.calls
+      .filter((call) => call.command === "append_transcript")
+      .map((call) => call.args.event as TranscriptEvent);
+    expect(landed.map((event) => [event.text, event.raw])).toEqual([
+      ["回覆", `回覆${tag}`],
+      ["半截", `半截${tag}`],
+      ["乾淨", undefined],
+    ]);
+    expect("raw" in landed[2]).toBe(false);
+  });
+
   // 換幕容量預測按動作切段（Rust scene_budget::predict_reply 讀的就是這個 id）：每則事件蓋上所屬動作
   it("stamps every event an action writes with that action's id; each advance/narrate is its own action", async () => {
     const h = mount(

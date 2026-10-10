@@ -15,7 +15,23 @@ use tauri::Emitter;
 #[derive(Serialize)]
 pub(crate) struct ChatReply {
     text: String,
+    /// 剝殼前的台詞原文（已剝本輪前綴）；與 text 相同就是 None，前端照樣存進事件裡
+    raw: Option<String>,
     aborted: bool,
+}
+
+/// 角色回覆收尾的接線層：純函式剝前綴與控制區塊，完成回合剝完沒正文就回錯
+/// （中止沒正文照舊 Ok＋aborted，由 settle 撤回世界書落地）。
+fn character_reply(reply: &str, prefix: &str, aborted: bool) -> Result<ChatReply, String> {
+    let finished = transport::finish_character_reply(reply, prefix, aborted);
+    if !aborted && finished.text.is_empty() {
+        return Err(transport::empty_reply_error(reply));
+    }
+    Ok(ChatReply {
+        text: finished.text,
+        raw: finished.raw,
+        aborted: finished.aborted,
+    })
 }
 
 struct Spoken {
@@ -207,10 +223,10 @@ pub(crate) async fn chat_with_character(
         .await
         .map_err(ai_call_failure);
         // 半截用這一輪 CLI 自己累的字。外層緩衝會跨降級重開留著前一次嘗試的增量。
-        return settle(outcome.map(|outcome| ChatReply {
-            text: transport::strip_own_prefix(&outcome.text, &own_prefix).to_owned(),
-            aborted: outcome.aborted,
-        }));
+        return settle(
+            outcome
+                .and_then(|outcome| character_reply(&outcome.text, &own_prefix, outcome.aborted)),
+        );
     }
     // api／codex 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
     // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
@@ -265,10 +281,7 @@ pub(crate) async fn chat_with_character(
     if spoken.is_ok() && !held.is_empty() {
         let _ = on_delta.send(held);
     }
-    settle(spoken.map(|spoken| ChatReply {
-        text: transport::strip_own_prefix(&spoken.text, &own_prefix).to_owned(),
-        aborted: spoken.aborted,
-    }))
+    settle(spoken.and_then(|spoken| character_reply(&spoken.text, &own_prefix, spoken.aborted)))
 }
 
 /// 這一桌自動隱藏、且未手動封存的角色卡（回合登場檢測用，AI 卡重構包 4b）；
@@ -344,10 +357,13 @@ async fn gm_lane_reply(
 
 /// 中止的旁白：半截原文照正常剝法留成 text，其餘寫入一律空著。
 fn aborted_narration(reply: &str) -> GmNarration {
-    let block = transport::extract_state_block(reply);
+    // 自閉合標籤先拿掉（免得配到後面的閉標籤），剝完照中止規則切掉沒閉合的尾巴
+    let block = transport::extract_state_block(&transport::strip_self_closing_controls(reply));
     let (_next, display) = transport::extract_next_speaker(&block.display);
     GmNarration {
-        text: display,
+        text: transport::cut_unclosed_tail(&display, true)
+            .trim_end()
+            .to_owned(),
         raw: None,
         next: None,
         state_updates: Vec::new(),
@@ -529,10 +545,7 @@ pub(crate) async fn gm_narrate(
     // apply_block 之前：狀態套用只要 incremental 為真就必跑，失敗回合會白白重擲一輪骰
     // （stream-failure-visible）。CLI 那條路沒有 stream_chat 的收工判定，這裡是唯一防線。
     if display.trim().is_empty() {
-        return Err(format!(
-            "AI_EMPTY_RESPONSE: no_text_after_control_lines raw_len={}",
-            reply.chars().count()
-        ));
+        return Err(transport::empty_reply_error(&reply));
     }
     let mut state_updates: Vec<StateUpdate> = Vec::new();
     let mut arrived_persons = Vec::new();
@@ -929,7 +942,7 @@ async fn prepare_play_lane_call(
 
 #[cfg(test)]
 mod tests {
-    use super::{record_card_arrivals, record_person_arrivals};
+    use super::{aborted_narration, character_reply, record_card_arrivals, record_person_arrivals};
     use crate::commands::{character_card, NEXT_TEMP_ID};
     use crate::data;
     use std::sync::atomic::Ordering;
@@ -937,6 +950,41 @@ mod tests {
     /// 零額度讀出 GM lane 實際送出的提示詞（凍結 system＋回合尾段），不打 AI。手動執行：
     /// `TT_PROMPT_ROOT=<資料根目錄> TT_PROMPT_WORLD=<桌 id> cargo test --lib dump_gm_lane_prompt -- --ignored --nocapture`
     /// 會把 system 與回合尾段印到 stdout，並把兩段寫進 TT_PROMPT_OUT（有設才寫）。
+    /// char-line-status-strip：完成回合剝完沒台詞回錯；中止沒台詞照舊交回（settle 撤回落地）
+    #[test]
+    fn character_reply_errors_only_when_a_finished_turn_has_no_text() {
+        let tag = "<UpdateVariable>x</UpdateVariable>";
+        let error = character_reply(&format!("狐狸：{tag}"), "狐狸：", false)
+            .err()
+            .expect("完成回合沒台詞要回錯");
+        assert!(error.starts_with("AI_EMPTY_RESPONSE"), "{error}");
+        let aborted = character_reply(tag, "狐狸：", true)
+            .ok()
+            .expect("中止照舊交回");
+        assert!(aborted.aborted && aborted.text.is_empty());
+        let reply = character_reply(&format!("狐狸：你好{tag}"), "狐狸：", false)
+            .ok()
+            .unwrap();
+        assert_eq!(reply.text, "你好");
+        assert_eq!(reply.raw.as_deref(), Some(format!("你好{tag}").as_str()));
+    }
+
+    /// GM 中止半截照中止規則：沒閉合的標籤、標記前半、沒閉合的普通圍欄都切；自閉合不吞正文
+    #[test]
+    fn aborted_narration_cuts_unclosed_tails() {
+        for (reply, expected) in [
+            ("夜深了。<UpdateVariable>{\"a\"", "夜深了。"),
+            ("夜深了。<Upd", "夜深了。"),
+            ("夜深了。\n```\ncode", "夜深了。"),
+            (
+                "<status/>夜深了。<status>hp: 3</status>雨停了",
+                "夜深了。雨停了",
+            ),
+        ] {
+            assert_eq!(aborted_narration(reply).text, expected, "{reply}");
+        }
+    }
+
     #[test]
     #[ignore]
     fn dump_gm_lane_prompt() {

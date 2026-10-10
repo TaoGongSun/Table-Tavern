@@ -3,7 +3,9 @@
 //! `prefix + 剝餘 == 原文 == session`，正典重建與續聊內容逐字一致。
 
 /// 開頭正好是 `prefix` 且剝餘不是全空白才剝；只剝一層、剝餘原樣（不吃空白）。
-pub fn strip_own_prefix<'a>(text: &'a str, prefix: &str) -> &'a str {
+/// 串流版的對照基準；落檔的台詞改由 `finish_character_reply` 收尾（char-line-status-strip）。
+#[cfg(test)]
+fn strip_own_prefix<'a>(text: &'a str, prefix: &str) -> &'a str {
     match text.strip_prefix(prefix) {
         Some(rest) if !prefix.is_empty() && rest.chars().any(|c| !c.is_whitespace()) => rest,
         _ => text,
