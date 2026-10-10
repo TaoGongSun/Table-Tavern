@@ -1,0 +1,19 @@
+{
+ "_about": "網頁存檔端對端：網頁版讀 ../web-save/web-export-world-info.json、玩家再送 nextUser，下一輪內文進了提示的條目（穩定 ID）與掃完的計時表。桌面版匯入同一份存檔、補同一句，角色視角掃一次要相同（方案四之 4）。產生：web/scripts/gen-world-info-fixtures.mjs。",
+ "save": "web-export-world-info.json",
+ "nextUser": "那我們出發吧，小心狼。",
+ "inPrompt": [
+  "wi-1",
+  "wi-2"
+ ],
+ "timed": {
+  "sticky": {},
+  "cooldown": {
+   "wi-0": {
+    "start": 6,
+    "end": 8,
+    "protected": true
+   }
+  }
+ }
+}

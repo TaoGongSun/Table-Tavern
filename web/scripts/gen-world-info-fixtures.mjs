@@ -35,6 +35,13 @@ try {
     runner.runSortCase,
   );
   write("entry-cases.json", "單一條目 → WiEntry 欄位＋裝飾：worldFile＝fromWorldFile，characterBook＝fromCharacterBook。", cases.entryCases, runner.runEntryCase);
+  const nextTurn = await server.ssrLoadModule("/scripts/web-save-next-turn.ts");
+  const expected = nextTurn.webSaveNextTurn();
+  writeFileSync(
+    `${OUT}web-save-next-turn.json`,
+    `${JSON.stringify({ _about: "網頁存檔端對端：網頁版讀 ../web-save/" + expected.save + "、玩家再送 nextUser，下一輪內文進了提示的條目（穩定 ID）與掃完的計時表。桌面版匯入同一份存檔、補同一句，角色視角掃一次要相同（方案四之 4）。產生：web/scripts/gen-world-info-fixtures.mjs。", ...expected }, null, 1)}\n`,
+  );
+  console.log("web-save-next-turn.json");
 } finally {
   await server.close();
 }

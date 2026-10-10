@@ -178,14 +178,22 @@ fn next_character_turn_carries_constant_and_triggered_entries() {
     let cards = crate::chat_assembly::active_cards(root.path(), &w).unwrap();
     let player = data::read_player_card(root.path(), &w).unwrap();
     let events = data::read_transcript(root.path(), &w, 0).unwrap();
-    let book = data::read_worldbook(root.path(), &w).unwrap();
     let world = data::read_state(root.path(), &w).unwrap();
+    let (scan, snapshot) = crate::chat_assembly::test_character_scan(
+        root.path(),
+        &w,
+        &card,
+        player.as_ref(),
+        &events,
+        LANG,
+    );
     let messages = crate::transport::assemble_shared_messages(
         &card,
         &cards,
         player.as_ref(),
         &events,
-        &book,
+        &scan,
+        &snapshot,
         &world.state,
         &world.mechanism,
         None,
@@ -905,14 +913,22 @@ pub(super) fn character_turn(
     let cards = crate::chat_assembly::active_cards(root.path(), w).unwrap();
     let player = data::read_player_card(root.path(), w).unwrap();
     let events = data::read_transcript(root.path(), w, 0).unwrap();
-    let book = data::read_worldbook(root.path(), w).unwrap();
     let world = data::read_state(root.path(), w).unwrap();
+    let (scan, snapshot) = crate::chat_assembly::test_character_scan(
+        root.path(),
+        w,
+        &card,
+        player.as_ref(),
+        &events,
+        LANG,
+    );
     crate::transport::assemble_shared_messages(
         &card,
         &cards,
         player.as_ref(),
         &events,
-        &book,
+        &scan,
+        &snapshot,
         &world.state,
         &world.mechanism,
         None,
@@ -920,7 +936,7 @@ pub(super) fn character_turn(
     )
 }
 
-/// 世界書路：沒有角色，下一輪是 GM 線；constant 與最近訊息觸發的條目都進提示。
+/// 世界書路：沒有角色，下一輪是 GM 線；constant 進提示，掃描深度外的關鍵字不觸發。
 #[test]
 fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
     let root = TestRoot::new("web-save-wb-turn");
@@ -928,12 +944,14 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
         import_web_save(root.path(), &bytes(&fixture("worldbook-route.json")), LANG).unwrap();
     let materials = crate::chat_assembly::gm_materials(root.path(), &imported.world_id).unwrap();
     let (scope, _) = crate::chat_assembly::gm_scope(&materials);
+    let scan =
+        crate::chat_assembly::test_gm_scan(root.path(), &imported.world_id, &materials, LANG);
     let messages = crate::transport::assemble_gm_messages(
         &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
-        &materials.worldbook,
+        &scan,
         &materials.state.state,
         &materials.state.mechanism,
         &scope,
@@ -944,7 +962,8 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
         .map(|message| message.content.clone())
         .collect();
     assert!(sent.contains("這是一個魔法逐漸消失的世界。"), "constant");
-    assert!(sent.contains("灰燼旅店在王都南門外"), "最近訊息提到旅店");
+    // 「旅店」只在倒數第 3 則（開場白）：掃描深度照 ST 預設 2 則（P3），這張卡載 MVU 也不帶名字，不觸發
+    assert!(!sent.contains("灰燼旅店在王都南門外"), "超出掃描深度");
     assert!(!sent.contains("本店不賒帳"), "沒被觸發的不進");
 }
 

@@ -52,7 +52,8 @@ pub fn js_round(value: f64) -> f64 {
     }
 }
 
-/// JS `ToNumber`（給 order 相減用）；`None`＝undefined。
+/// JS `ToNumber`；`None`＝undefined（對拍測試用）。
+#[cfg(test)]
 pub fn to_number(value: Option<&Value>) -> f64 {
     match value {
         None => f64::NAN,

@@ -1,6 +1,4 @@
-use crate::data::{
-    self, CharacterCard, InjectLevel, Mechanism, StateNode, TableState, WorldbookEntry,
-};
+use crate::data::{self, CharacterCard, InjectLevel, Mechanism, StateNode, TableState};
 
 use crate::mechanism;
 
@@ -9,12 +7,12 @@ use std::collections::BTreeMap;
 use super::context::worldbook_heading;
 use super::messages::{replace_st_macros, scaffold_en};
 
-/// GM 的回合動態塊：keyword 條目＋「目前狀態」。
+/// GM 的回合動態塊：世界書（尾段那份，已渲染好的本文）＋「目前狀態」。
 /// assemble_gm_messages（尾端獨立訊息）與 gm_lane_turn（resume 續聊回合尾段）共用。
 /// 增量桌（mechanism.incremental）依 scope 裁切分支＋過濾葉子＋加變動標記；
 /// 全量桌逐字維持現狀（不裁、不濾、不標）。
 pub(super) fn gm_dynamic_block(
-    keyword_entries: &[&WorldbookEntry],
+    worldbook: &str,
     state: &TableState,
     user_name: &str,
     mechanism: &Mechanism,
@@ -23,15 +21,9 @@ pub(super) fn gm_dynamic_block(
 ) -> String {
     let en = scaffold_en(lang);
     let mut dynamic = String::new();
-    if !keyword_entries.is_empty() {
+    if !worldbook.is_empty() {
         dynamic.push_str(worldbook_heading(lang).trim_start_matches('\n'));
-        for entry in keyword_entries {
-            dynamic.push_str(&format!(
-                "### {}\n{}\n",
-                replace_st_macros(&entry.title, user_name, None),
-                replace_st_macros(&entry.content, user_name, None)
-            ));
-        }
+        dynamic.push_str(worldbook);
     }
     let mut tree_text = String::new();
     render_state_tree(

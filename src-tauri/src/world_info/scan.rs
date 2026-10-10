@@ -70,6 +70,9 @@ pub struct ScanInput<'a> {
     pub trigger: &'a str,
     pub timed: WiTimed,
     pub settings: &'a WiSettings,
+    /// 桌面版：角色共線共用快照的靜態條目（方案三之 3）。預算溢出時照樣留在觸發結果裡（照網頁版設
+    /// `overflowed`、停掉後面的條目與遞迴），不當 `ignoreBudget`；對拍案例傳空集合。
+    pub pinned: &'a BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -107,6 +110,10 @@ pub struct WiResult {
     /// 桌面版：內文代換時讀到私密來源的條目
     #[serde(skip)]
     pub private_content: BTreeSet<String>,
+    /// 桌面版：觸發條目依放置前的排序（`compare_order` 穩定排序）列出 (ID, 代換後內文)，內文空的也列；
+    /// 各位置分組的先後由這份順序推得（與上面的字串欄位同一套規則）
+    #[serde(skip)]
+    pub placed: Vec<(String, String)>,
 }
 
 impl WiResult {
@@ -123,6 +130,7 @@ impl WiResult {
             activated: Vec::new(),
             private_ids: BTreeSet::new(),
             private_content: BTreeSet::new(),
+            placed: Vec::new(),
         }
     }
 }
@@ -552,13 +560,21 @@ pub fn check_world_info(
             .iter()
             .filter(|index| entries[**index].ignore_budget)
             .count();
+        let mut pinned_left = new_entries
+            .iter()
+            .filter(|index| input.pinned.contains(&entries[**index].id))
+            .count();
         for &index in &new_entries.clone() {
             let ignore = entries[index].ignore_budget;
+            let pinned = input.pinned.contains(&entries[index].id);
             if ignore {
                 ignores_budget -= 1;
             }
-            if overflowed && !ignore {
-                if ignores_budget > 0 {
+            if pinned {
+                pinned_left -= 1;
+            }
+            if overflowed && !ignore && !pinned {
+                if ignores_budget > 0 || pinned_left > 0 {
                     continue;
                 }
                 break;
@@ -581,7 +597,9 @@ pub fn check_world_info(
             new_content.push('\n');
             if !ignore && text_tokens + hooks.count_tokens(&new_content) >= budget {
                 overflowed = true;
-                continue;
+                if !pinned {
+                    continue;
+                }
             }
             let id = entries[index].id.clone();
             match all_activated
@@ -643,6 +661,7 @@ pub fn check_world_info(
     for &index in &placed {
         let entry = &entries[index];
         let content = entry.content.clone();
+        result.placed.push((entry.id.clone(), content.clone()));
         if content.is_empty() {
             continue;
         }

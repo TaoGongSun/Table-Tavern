@@ -800,8 +800,8 @@ pub use book_import::{
 pub use raw_entries::{
     apply_visibility_restore, character_book_raw_entries, identity_fingerprint,
     identity_fingerprints, insert_worldbook_entry_raw, read_worldbook_raw,
-    restore_deleted_entry_raw, set_entry_flags, set_source_cards, source_cards_of,
-    worldbook_entry_value, RestoreOutcome,
+    read_worldbook_scan_entries, restore_deleted_entry_raw, set_entry_flags, set_source_cards,
+    source_cards_of, worldbook_entry_value, RestoreOutcome,
 };
 
 #[cfg(test)]

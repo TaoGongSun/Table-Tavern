@@ -118,6 +118,7 @@ fn run_scan_case(case: &Value) -> Value {
                 .unwrap_or("normal"),
             timed,
             settings: &settings,
+            pinned: &std::collections::BTreeSet::new(),
         },
         &mut hooks,
     );

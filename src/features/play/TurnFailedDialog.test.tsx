@@ -120,6 +120,46 @@ describe("TurnFailedDialog 換幕鈕", () => {
   });
 });
 
+describe("TurnFailedDialog 世界書重設鈕", () => {
+  it("世界書觸發紀錄結算不了：附重設鈕；其他錯誤不附", async () => {
+    const onResetWorldInfo = vi.fn(() => Promise.resolve());
+    const mount = (raw: string) => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const root = createRoot(host);
+      act(() => root.render(<TurnFailedDialog failure={{ raw }} onClose={() => {}} onResetWorldInfo={onResetWorldInfo} />));
+      const button = Array.from(document.querySelectorAll("dialog button")).find(
+        (node) => node.textContent === t("worldInfoReset"),
+      ) as HTMLButtonElement | undefined;
+      return { root, button };
+    };
+    const broken = mount('TTMSG:{"code":"world_info_settle_failed","error":"壞掉"}');
+    await act(async () => broken.button!.click());
+    expect(onResetWorldInfo).toHaveBeenCalledTimes(1);
+    // 彈窗留著，重設鈕換成完成提示
+    expect(document.querySelector("dialog")!.textContent).toContain(t("worldInfoResetDone"));
+    expect(Array.from(document.querySelectorAll("dialog button")).some((node) => node.textContent === t("worldInfoReset"))).toBe(false);
+    // 彈窗開著又來一次失敗：完成提示歸零、重設鈕回來
+    act(() =>
+      broken.root.render(
+        <TurnFailedDialog
+          failure={{ raw: 'TTMSG:{"code":"world_info_settle_failed","error":"又壞了"}' }}
+          onClose={() => {}}
+          onResetWorldInfo={onResetWorldInfo}
+        />,
+      ),
+    );
+    expect(document.querySelector("dialog")!.textContent).not.toContain(t("worldInfoResetDone"));
+    expect(Array.from(document.querySelectorAll("dialog button")).some((node) => node.textContent === t("worldInfoReset"))).toBe(true);
+    act(() => broken.root.unmount());
+    document.body.innerHTML = "";
+    const other = mount("AI_HTTP_STATUS_429: slow");
+    expect(other.button).toBeUndefined();
+    act(() => other.root.unmount());
+    document.body.innerHTML = "";
+  });
+});
+
 describe("nextTurnFailure", () => {
   it("keeps an open failure that carries the player's draft", () => {
     const withDraft = { raw: "a", draft: "我推開門" };

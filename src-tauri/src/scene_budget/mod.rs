@@ -10,7 +10,7 @@ mod measure;
 pub mod summarize;
 
 pub use capacity::{claude_model_usage, forget_model, record_model};
-pub use estimate::{budget_tokens, Unit};
+pub use estimate::{budget_tokens, measure as measure_units, Unit};
 
 use crate::data::{self, AppConfig, TranscriptKind};
 use measure::Raw;
@@ -239,32 +239,83 @@ pub fn compute(
     let config = config.clone();
     let lang = crate::transport::ui_language(&config);
     let materials = measure::load(root, world_id)?;
-    let store = capacity::read(&capacity::path(root));
-    let catalog = data::read_model_catalog(config_root).unwrap_or_default();
-    let (codex_cache, codex_config) =
-        match crate::transport::dispatch::chat_transport(&config).as_str() {
+    let owned = OwnedSources::load(config_root, root, &config);
+    Ok(compute_with(
+        &config,
+        &lang,
+        root,
+        world_id,
+        &materials,
+        &owned.sources(),
+        with_chat,
+    ))
+}
+
+/// `limits::Sources` 要讀的外部資料（容量快取、模型目錄、codex／grok 本機檔、穩定免費），一次讀齊。
+struct OwnedSources {
+    store: capacity::Store,
+    catalog: std::collections::BTreeMap<String, Vec<crate::cli::ModelOption>>,
+    codex_cache: Option<String>,
+    codex_config: Option<String>,
+    grok_windows: Option<limits::GrokWindows>,
+    smart_free_context: Option<u64>,
+}
+
+impl OwnedSources {
+    fn load(config_root: &Path, root: &Path, config: &AppConfig) -> Self {
+        let transport = crate::transport::dispatch::chat_transport(config);
+        let (codex_cache, codex_config) = match transport.as_str() {
             "codex" => limits::read_codex_files(),
             _ => (None, None),
         };
-    let grok_windows = match crate::transport::dispatch::chat_transport(&config).as_str() {
-        "grok" => {
-            limits::read_grok_windows(&crate::transport::dispatch::grok_home_dir(config_root))
+        let grok_windows = match transport.as_str() {
+            "grok" => {
+                limits::read_grok_windows(&crate::transport::dispatch::grok_home_dir(config_root))
+            }
+            _ => None,
+        };
+        Self {
+            store: capacity::read(&capacity::path(root)),
+            catalog: data::read_model_catalog(config_root).unwrap_or_default(),
+            codex_cache,
+            codex_config,
+            grok_windows,
+            smart_free_context: crate::smart_free::is_active(config)
+                .then(|| crate::smart_free::candidate_max_context(config_root, config))
+                .flatten(),
         }
-        _ => None,
-    };
-    let sources = limits::Sources {
-        capacity: &store,
-        catalog: &catalog,
-        codex_cache: codex_cache.as_deref(),
-        codex_config: codex_config.as_deref(),
-        grok_windows: grok_windows.as_ref(),
-        smart_free_context: crate::smart_free::is_active(&config)
-            .then(|| crate::smart_free::candidate_max_context(config_root, &config))
-            .flatten(),
-    };
-    Ok(compute_with(
-        &config, &lang, root, world_id, &materials, &sources, with_chat,
-    ))
+    }
+
+    fn sources(&self) -> limits::Sources<'_> {
+        limits::Sources {
+            capacity: &self.store,
+            catalog: &self.catalog,
+            codex_cache: self.codex_cache.as_deref(),
+            codex_config: self.codex_config.as_deref(),
+            grok_windows: self.grok_windows.as_ref(),
+            smart_free_context: self.smart_free_context,
+        }
+    }
+}
+
+/// 世界書掃描的預算（方案二「預算」）：該檔位上限的 `total − reserve`，單位跟著上限（agy 是 bytes）；
+/// 拿不到上限回 None，掃描照網頁版當作沒有上限。
+fn scan_budget_of(limit: &limits::Limit) -> crate::world_scan::Budget {
+    crate::world_scan::Budget {
+        unit: limit.unit,
+        max: limit.total.saturating_sub(limit.reserve) as f64,
+    }
+}
+
+/// 實送那一條路徑（某檔位）的世界書掃描預算。
+pub fn scan_budget(
+    config_root: &Path,
+    root: &Path,
+    config: &AppConfig,
+    tier: data::Tier,
+) -> Option<crate::world_scan::Budget> {
+    let owned = OwnedSources::load(config_root, root, config);
+    limits::resolve(config, tier, &owned.sources()).map(|limit| scan_budget_of(&limit))
 }
 
 fn compute_with(
@@ -302,9 +353,19 @@ fn compute_with(
         }
     });
     let provider = crate::transport::dispatch::lane_provider(config);
+    let budget_for = |tier: data::Tier| {
+        limits::resolve(config, tier, sources).map(|limit| scan_budget_of(&limit))
+    };
     let chat_hint = with_chat
         && measure::chat_paths(
-            root, world_id, materials, gm_tier, provider, lang, &transport,
+            root,
+            world_id,
+            materials,
+            gm_tier,
+            provider,
+            lang,
+            &transport,
+            &budget_for,
         )
         .into_iter()
         .any(|chat| {

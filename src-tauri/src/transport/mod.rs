@@ -15,9 +15,10 @@ mod runaway;
 mod stall;
 mod state_view;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 pub(crate) mod translate;
 mod turns;
+mod worldbook;
 
 #[cfg(test)]
 pub use api_failure::RateLimit;
@@ -25,6 +26,7 @@ pub use api_failure::{ApiFailure, ErrorDetail, FailureStage};
 pub use arrivals::{
     card_arrival, card_private, detect_new_arrivals, detect_new_card_arrivals, person_arrival, Side,
 };
+pub(crate) use arrivals::{prompt_speaker, prompt_text};
 pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
 pub(crate) use client::key_tier_for;
 pub(crate) use client::openrouter_api_base;
@@ -58,5 +60,5 @@ pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{
     chars_lane_system, chars_lane_turn, gm_lane_system, gm_lane_turn, lane_event_line,
     merge_summary_messages, segment_summary_messages, shorten_summary_messages, summary_lines,
-    summary_messages, LaneTurn, SEGMENT_SUMMARY_CHARS,
+    summary_messages, system_worldbook, Hoist, LaneTurn, SEGMENT_SUMMARY_CHARS,
 };

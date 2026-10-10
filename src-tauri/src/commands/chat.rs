@@ -7,7 +7,7 @@ use crate::transport::dispatch::{
     stream_turn_via_transport,
 };
 use crate::usage::log as usage_log;
-use crate::{config_root, data, data_root, inflight, lanes, mechanism, transport};
+use crate::{config_root, data, data_root, inflight, lanes, mechanism, transport, world_scan};
 use serde::Serialize;
 use tauri::Emitter;
 
@@ -96,11 +96,29 @@ pub(crate) async fn chat_with_character(
     let card =
         data::read_character(&root, &world_id, &character_id).map_err(|error| error.to_string())?;
     let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    let events = data::read_transcript(&root, &world_id, state.current_scene)
-        .map_err(|error| error.to_string())?;
-    let worldbook = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
-
+    let scene = state.current_scene;
+    let events =
+        data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
     let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
+    let lang = transport::ui_language(&config);
+    let cards = load_active_cards(&root, &world_id)?;
+    // 世界書（方案三之 2）：交接之後先結算上一次落地，再以這個角色的視角掃一次；結果供組裝與落地共用
+    let perspective = data::world_info_store::Perspective::Character(card.id.clone());
+    let timed = world_scan::landing::before_scan(&root, &world_id, scene, &turn_id, &perspective)?;
+    let book = world_scan::TableBook::load(&root, &world_id)?;
+    let metas = data::list_characters(&root, &world_id).map_err(|error| error.to_string())?;
+    let scan = chat_assembly::character_scan(
+        &book,
+        &card,
+        chat_assembly::sole_card_name(&metas, &events).as_deref(),
+        player.as_ref(),
+        &events,
+        timed,
+        crate::scene_budget::scan_budget(&config_root(&app)?, &root, &config, card.tier),
+        world_scan::Randomness::Live,
+        &lang,
+    );
+    let snapshot = book.snapshot();
     // 角色自己那支的狀態（面板指認優先，其次同名比對），只有這條分支會塞進提示詞。
     let branch = transport::resolve_branch(
         &state.state.tree,
@@ -110,6 +128,17 @@ pub(crate) async fn chat_with_character(
     );
     // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）
     let own_prefix = transport::speaker_prefix(&card.name, &transport::ui_language(&config));
+    // 呼叫回錯、或中止時一個字都沒有＝確定失敗，當場撤回這回合的世界書落地；有正文的等前端落檔清掉
+    let settle = |result: Result<ChatReply, String>| -> Result<ChatReply, String> {
+        let failed = match &result {
+            Err(_) => true,
+            Ok(reply) => reply.aborted && reply.text.trim().is_empty(),
+        };
+        if failed {
+            world_scan::landing::fail(&root, &world_id, scene, &turn_id);
+        }
+        result
+    };
     // CLI 訂閱走 resume 續聊線。claude／grok 全角色共用一條 session，私設回合注入、
     // 回合後從 session 檔抹掉（案 C）；Agy 無抹寫路徑，改成一角一線＋
     // 私設提進該角色自己的凍結 system，不讓別的角色讀到不該讀的東西。
@@ -118,20 +147,19 @@ pub(crate) async fn chat_with_character(
         let sole = provider == lanes::LaneProvider::Claude
             && chat_assembly::sole_present_character(&root, &world_id, &card.id, &events)?;
         let shape = lanes::chars_lane_shape(provider, sole);
-        let lang = transport::ui_language(&config);
-        let cards = load_active_cards(&root, &world_id)?;
         let (frozen, turn) = chat_assembly::character_lane_parts(
             &card,
             &cards,
             player.as_ref(),
-            &events,
-            &worldbook,
+            &scan,
+            &snapshot,
             &state,
             branch.as_deref(),
             &lang,
             shape.hoist_private,
         );
         let call = prepare_play_lane_call(&app, &config, card.tier, provider).await?;
+        world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan.timed)?;
         // 串流過濾在 lane 內按 attempt 做，這裡收的已是過濾後的字
         let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
         let outcome = lanes::run_turn(
@@ -140,7 +168,7 @@ pub(crate) async fn chat_with_character(
             &world_id,
             lanes::TurnInput {
                 lane: lanes::Lane::Chars,
-                scene: state.current_scene,
+                scene,
                 events: &events,
                 lang: &lang,
                 frozen_system: frozen,
@@ -156,32 +184,33 @@ pub(crate) async fn chat_with_character(
                 scope: shape.scope_by_card.then(|| card.id.clone()),
                 single_owner: shape.single_owner.then(|| card.id.clone()),
                 has_state_block: turn.has_state_block,
+                hoisted_worldbook: turn.hoisted_worldbook,
             },
             Some(&mut cancel),
             emit,
         )
         .await
-        .map_err(ai_call_failure)?;
+        .map_err(ai_call_failure);
         // 半截用這一輪 CLI 自己累的字。外層緩衝會跨降級重開留著前一次嘗試的增量。
-        return Ok(ChatReply {
+        return settle(outcome.map(|outcome| ChatReply {
             text: transport::strip_own_prefix(&outcome.text, &own_prefix).to_owned(),
             aborted: outcome.aborted,
-        });
+        }));
     }
     // api／codex 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
     // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
     // messages 已經自足——台詞自帶名字前綴、指示已在尾端，補了會重複（見 cli::flatten_messages）。
-    let cards = load_active_cards(&root, &world_id)?;
     let messages = transport::assemble_shared_messages(
         &card,
         &cards,
         player.as_ref(),
         &events,
-        &worldbook,
+        &scan,
+        &snapshot,
         &state.state,
         &state.mechanism,
         branch.as_deref(),
-        &transport::ui_language(&config),
+        &lang,
     );
     // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
     // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
@@ -194,6 +223,7 @@ pub(crate) async fn chat_with_character(
             let _ = on_delta.send(out);
         }
     };
+    world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan.timed)?;
     let spoken = take_abort_or_finish(
         &mut cancel,
         &buffer,
@@ -216,15 +246,15 @@ pub(crate) async fn chat_with_character(
             emit,
         ),
     )
-    .await?;
+    .await;
     let held = stream.finish();
-    if !held.is_empty() {
+    if spoken.is_ok() && !held.is_empty() {
         let _ = on_delta.send(held);
     }
-    Ok(ChatReply {
+    settle(spoken.map(|spoken| ChatReply {
         text: transport::strip_own_prefix(&spoken.text, &own_prefix).to_owned(),
         aborted: spoken.aborted,
-    })
+    }))
 }
 
 /// 這一桌自動隱藏、且未手動封存的角色卡（回合登場檢測用，AI 卡重構包 4b）；
@@ -251,7 +281,9 @@ async fn gm_lane_reply(
     config: &data::AppConfig,
     root: &std::path::Path,
     world_id: &str,
+    turn_id: &str,
     materials: &GmMaterials,
+    scan: &world_scan::WorldScan,
     scope: &transport::StateScope,
     instruction: &str,
     echo: lanes::ReplyEcho,
@@ -260,8 +292,16 @@ async fn gm_lane_reply(
     cancel: Option<&mut inflight::CancelSignal>,
     emit: impl FnMut(&str),
 ) -> Result<lanes::TurnOutcome, String> {
-    let (frozen, tail) = chat_assembly::gm_lane_parts(materials, scope, instruction, lang);
+    let (frozen, tail) = chat_assembly::gm_lane_parts(materials, scan, scope, instruction, lang);
     let call = prepare_play_lane_call(app, config, transport::gm_tier(config), provider).await?;
+    world_scan::landing::land(
+        root,
+        world_id,
+        materials.state.current_scene,
+        turn_id,
+        &data::world_info_store::Perspective::Gm,
+        &scan.timed,
+    )?;
     lanes::run_turn(
         &call,
         root,
@@ -279,6 +319,7 @@ async fn gm_lane_reply(
             scope: None, // GM 只有一條線，不細分
             single_owner: None,
             has_state_block: false,
+            hoisted_worldbook: None,
         },
         cancel,
         emit,
@@ -358,6 +399,29 @@ pub(crate) async fn gm_narrate(
     // 回合開始（鎖內）：記回合紀錄與固定輸入；中止、出錯時 TurnGuard 把它改成已中止（計畫 8.3）
     let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
     let materials = gm_materials(&root, &world_id)?;
+    // 世界書（方案三之 2）：回合交接（begin 裡）之後先結算上一次落地，再以 GM 視角掃一次；
+    // 掃描結果供組裝、導演指示點名格式條目、落地三者共用。落地之後的確定失敗由 TurnGuard（finish_turn）撤回
+    let scene = materials.state.current_scene;
+    let timed = world_scan::landing::before_scan(
+        &root,
+        &world_id,
+        scene,
+        &turn_id,
+        &data::world_info_store::Perspective::Gm,
+    )?;
+    let scan = chat_assembly::gm_scan(
+        &materials,
+        &materials.events,
+        timed,
+        crate::scene_budget::scan_budget(
+            &config_root(&app)?,
+            &root,
+            &config,
+            transport::gm_tier(&config),
+        ),
+        world_scan::Randomness::Live,
+        &lang,
+    );
     let roster: Vec<String> = materials
         .cards
         .iter()
@@ -367,7 +431,7 @@ pub(crate) async fn gm_narrate(
     // 換幕後第一輪 GM 回合送整棵樹對齊；之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
     let (scope, align) = chat_assembly::gm_scope(&materials);
     let (instruction_message, closing) =
-        chat_assembly::gm_instruction(&root, &world_id, &materials, &lang);
+        chat_assembly::gm_instruction(&root, &world_id, &materials, &scan, &lang);
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     // 這一次 GM 呼叫的回覆有沒有被供應商截斷（只認這次呼叫自己回報的，同桌別的呼叫碰不到）
     let cut = std::sync::atomic::AtomicBool::new(false);
@@ -378,7 +442,9 @@ pub(crate) async fn gm_narrate(
             &config,
             &root,
             &world_id,
+            &turn_id,
             &materials,
+            &scan,
             &scope,
             &instruction,
             lanes::ReplyEcho::Narration,
@@ -394,7 +460,16 @@ pub(crate) async fn gm_narrate(
         }
         outcome.text
     } else {
-        let messages = chat_assembly::gm_messages(&materials, &scope, instruction_message, &lang);
+        let messages =
+            chat_assembly::gm_messages(&materials, &scan, &scope, instruction_message, &lang);
+        world_scan::landing::land(
+            &root,
+            &world_id,
+            scene,
+            &turn_id,
+            &data::world_info_store::Perspective::Gm,
+            &scan.timed,
+        )?;
         // GM 上下文一律全卡，與「這輪誰說話」無關，形狀恆為共線
         let spoken = take_abort_or_finish(&mut cancel, &buffer, async {
             let (text, truncated) = stream_turn_reporting_truncation(
@@ -501,7 +576,11 @@ pub(crate) async fn gm_narrate(
             &root,
             &world_id,
             scene,
-            &materials.worldbook,
+            // 精簡條目照編輯器顯示順序（登場事件的先後跟著它）；讀不到就不記登場（本來就盡力而為）
+            &data::read_worldbook(&root, &world_id).unwrap_or_else(|error| {
+                log::warn!("偵測人物登場時讀世界書失敗，這輪不記登場：{error}");
+                Vec::new()
+            }),
             &materials.events,
             present,
             &display,
@@ -845,8 +924,16 @@ mod tests {
             .collect();
         let player_name = materials.player.as_ref().map(|card| card.name.as_str());
         let lang = "zh-TW";
-        let (instruction_message, closing) =
-            super::gm_turn_instruction(&root, &world_id, &materials, &roster, player_name, lang);
+        let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, lang);
+        let (instruction_message, closing) = super::gm_turn_instruction(
+            &root,
+            &world_id,
+            &materials,
+            &scan,
+            &roster,
+            player_name,
+            lang,
+        );
         let scope = crate::transport::state_scope(
             &materials.state.state,
             &materials.state.mechanism,
@@ -859,14 +946,13 @@ mod tests {
             &materials.world_md,
             &materials.cards,
             materials.player.as_ref(),
-            &materials.worldbook,
+            &scan,
             &materials.state.mechanism,
             lang,
         );
         let instruction = format!("{}\n{closing}", instruction_message.content);
         let turn = crate::transport::gm_lane_turn(
-            &materials.events,
-            &materials.worldbook,
+            &scan,
             materials.player.as_ref(),
             &materials.state.state,
             &materials.state.mechanism,
@@ -1133,11 +1219,12 @@ mod tests {
         let run = |expected: data::NumericUpdate, expected_gold: &str, prompt: &str| {
             let materials = super::gm_materials(&root, &world_id).unwrap();
             assert_eq!(materials.state.mechanism.numeric_update, expected);
+            let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, "zh-TW");
             let system = crate::transport::gm_lane_system(
                 &materials.world_md,
                 &materials.cards,
                 materials.player.as_ref(),
-                &materials.worldbook,
+                &scan,
                 &materials.state.mechanism,
                 "zh-TW",
             );
@@ -1205,13 +1292,14 @@ mod tests {
                 "{label}"
             );
             let lang = "zh-TW";
+            let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, lang);
             let (instruction, closing) =
-                super::gm_turn_instruction(&root, &world_id, &materials, &[], None, lang);
+                super::gm_turn_instruction(&root, &world_id, &materials, &scan, &[], None, lang);
             let system = crate::transport::gm_lane_system(
                 &materials.world_md,
                 &materials.cards,
                 materials.player.as_ref(),
-                &materials.worldbook,
+                &scan,
                 &materials.state.mechanism,
                 lang,
             );

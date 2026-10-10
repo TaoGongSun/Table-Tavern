@@ -43,6 +43,7 @@ import {
   useChatController,
 } from "./features/play/useChatController";
 import { nextTurnFailure, TurnFailedDialog } from "./features/play/TurnFailedDialog";
+import { resetWorldInfoTiming } from "./features/play/world-info-reset";
 import { useImportController, type WebSaveImport } from "./features/import/useImportController";
 import { openWebSaveTable as openWebSaveTableFlow } from "./features/import/web-save-table";
 import { useOpeningPost } from "./features/import/useOpeningPost";
@@ -981,6 +982,13 @@ function App() {
                 setTurnFailure(null);
                 void sceneActions.advanceScene();
               }}
+              onResetWorldInfo={() =>
+                // 彈窗不關：玩家原文留著；重設失敗就把彈窗內容換成這次的錯誤（原文照帶）
+                resetWorldInfoTiming(liveWorldId).catch((reason) => {
+                  setTurnFailure((previous) => previous && { ...previous, raw: String(reason) });
+                  throw reason;
+                })
+              }
             />
           )
         }

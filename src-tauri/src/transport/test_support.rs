@@ -94,3 +94,154 @@ pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
     });
     format!("http://{address}")
 }
+
+/// 測試用：舊簽名（直接吃精簡條目清單）的組裝入口。照實送同一支掃描（`world_scan::scan`）掃一次再組裝：
+/// 沒有上限、量測用亂數、空計時表。各測試檔以具名 import 蓋過 glob 匯入的新簽名。
+pub(crate) mod legacy {
+    use crate::data::{CharacterCard, Mechanism, TableState, TranscriptEvent, WorldbookEntry};
+    use crate::transport::{self, ChatMessage, Hoist, LaneTurn, StateScope};
+    use crate::world_scan::{self, Placed, Randomness, ScanRequest, TableBook, Viewer, WorldScan};
+
+    pub(crate) fn scan_of(
+        worldbook: &[WorldbookEntry],
+        viewer: Viewer<'_>,
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        events: &[TranscriptEvent],
+        lang: &str,
+    ) -> WorldScan {
+        let book = TableBook::from_views(worldbook);
+        world_scan::scan(ScanRequest {
+            book: &book,
+            viewer,
+            sole_card: (cards.len() == 1).then(|| cards[0].name.as_str()),
+            player,
+            events,
+            lang,
+            timed: Default::default(),
+            budget: None,
+            random: Randomness::Measure,
+        })
+    }
+
+    pub(crate) fn snapshot_of(worldbook: &[WorldbookEntry]) -> Vec<Placed> {
+        TableBook::from_views(worldbook).snapshot()
+    }
+
+    pub(crate) fn gm_lane_system(
+        world_md: &str,
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        worldbook: &[WorldbookEntry],
+        mechanism: &Mechanism,
+        lang: &str,
+    ) -> String {
+        let scan = scan_of(worldbook, Viewer::Gm, cards, player, &[], lang);
+        transport::gm_lane_system(world_md, cards, player, &scan, mechanism, lang)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn gm_lane_turn(
+        events: &[TranscriptEvent],
+        worldbook: &[WorldbookEntry],
+        player: Option<&CharacterCard>,
+        state: &TableState,
+        mechanism: &Mechanism,
+        scope: &StateScope,
+        instruction: &str,
+        lang: &str,
+    ) -> LaneTurn {
+        let scan = scan_of(worldbook, Viewer::Gm, &[], player, events, lang);
+        transport::gm_lane_turn(&scan, player, state, mechanism, scope, instruction, lang)
+    }
+
+    pub(crate) fn chars_lane_system(
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        worldbook: &[WorldbookEntry],
+        lang: &str,
+    ) -> String {
+        transport::chars_lane_system(cards, player, &snapshot_of(worldbook), lang)
+    }
+
+    /// `hoist`：舊的 `hoist_private`，對應 API 單卡那種（私設與穩定的機密條目進 system）。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn chars_lane_turn(
+        card: &CharacterCard,
+        player: Option<&CharacterCard>,
+        events: &[TranscriptEvent],
+        worldbook: &[WorldbookEntry],
+        state: &TableState,
+        mechanism: &Mechanism,
+        branch: Option<&[String]>,
+        lang: &str,
+        hoist: bool,
+    ) -> LaneTurn {
+        let cards = std::slice::from_ref(card);
+        let scan = scan_of(
+            worldbook,
+            Viewer::Character(card),
+            cards,
+            player,
+            events,
+            lang,
+        );
+        let hoist = match hoist {
+            true => Hoist::StableConfidential,
+            false => Hoist::None,
+        };
+        transport::chars_lane_turn(card, player, &scan, state, mechanism, branch, lang, hoist)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn assemble_gm_messages(
+        world_md: &str,
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        events: &[TranscriptEvent],
+        worldbook: &[WorldbookEntry],
+        state: &TableState,
+        mechanism: &Mechanism,
+        scope: &StateScope,
+        lang: &str,
+    ) -> Vec<ChatMessage> {
+        let scan = scan_of(worldbook, Viewer::Gm, cards, player, events, lang);
+        transport::assemble_gm_messages(
+            world_md, cards, player, events, &scan, state, mechanism, scope, lang,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn assemble_shared_messages(
+        card: &CharacterCard,
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        events: &[TranscriptEvent],
+        worldbook: &[WorldbookEntry],
+        state: &TableState,
+        mechanism: &Mechanism,
+        branch: Option<&[String]>,
+        lang: &str,
+    ) -> Vec<ChatMessage> {
+        let scan = scan_of(
+            worldbook,
+            Viewer::Character(card),
+            cards,
+            player,
+            events,
+            lang,
+        );
+        transport::assemble_shared_messages(
+            card,
+            cards,
+            player,
+            events,
+            &scan,
+            &snapshot_of(worldbook),
+            state,
+            mechanism,
+            branch,
+            lang,
+        )
+    }
+}

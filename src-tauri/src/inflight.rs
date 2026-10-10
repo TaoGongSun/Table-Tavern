@@ -131,6 +131,24 @@ pub fn abort_kind(kind: Kind, world_id: &str) {
     }
 }
 
+/// 這桌有沒有別的對話輪在途：turn_id 不同的、或同一個 turn_id 登記了不只一筆（同一輪重複送出）。
+/// 世界書結算前用：兩輪並行時，結算會把對方「已送出、還沒落檔」的落地紀錄誤判成失敗撤掉，寧可擋下。
+pub fn other_turn_in_flight(world_id: &str, turn_id: &str) -> bool {
+    let map = registry().lock().unwrap();
+    let Some(senders) = map.get(&(Kind::Chat, world_id.to_owned())) else {
+        return false;
+    };
+    let mut mine = 0;
+    for registration in senders.values() {
+        match registration.turn_id.as_deref() {
+            Some(other) if other == turn_id => mine += 1,
+            Some(_) => return true,
+            None => {}
+        }
+    }
+    mine > 1
+}
+
 /// 只中止該輪對話。對不上的 turn_id（含已經結束、註冊已摘掉的）什麼都不做。
 pub fn abort_turn(world_id: &str, turn_id: &str) {
     if let Ok(map) = registry().lock() {

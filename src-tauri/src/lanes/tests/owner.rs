@@ -22,6 +22,8 @@ struct Turn<'a> {
     has_state_block: bool,
     secret: &'a str,
     frozen: &'a str,
+    /// 提進凍結 system 的世界書段（不抹尾段的線）
+    worldbook: Option<&'a str>,
 }
 
 impl<'a> Turn<'a> {
@@ -33,6 +35,7 @@ impl<'a> Turn<'a> {
             has_state_block: false,
             secret,
             frozen: "凍結",
+            worldbook: None,
         }
     }
 
@@ -74,6 +77,7 @@ impl Table {
             scope: None,
             single_owner: turn.single.then(|| turn.speaker.to_owned()),
             has_state_block: turn.has_state_block,
+            hoisted_worldbook: turn.worldbook.map(str::to_owned),
         }
     }
 
@@ -446,10 +450,15 @@ fn sole_presence_counts_arrivals_and_leans_to_multi() {
     assert!(!sole_present(&twin, "fox", &[arrival("狐狸")]));
     // 兩張都在場
     assert!(!sole_present(
-        &[fox, meta("knight", "騎士", false, false)],
+        &[fox.clone(), meta("knight", "騎士", false, false)],
         "fox",
         &[]
     ));
+    // 世界書掃描的「單角色桌」用同一套：本幕回歸的隱藏卡算進去
+    use crate::chat_assembly::sole_card_name;
+    assert_eq!(sole_card_name(&cards, &[]).as_deref(), Some("狐狸"));
+    assert_eq!(sole_card_name(&cards, &[arrival("騎士")]), None);
+    assert_eq!(sole_card_name(&[], &[]), None);
 }
 
 // ---------- 假 CLI：實際送出什麼 ----------
@@ -847,7 +856,7 @@ async fn state_block_from_real_state_reopens_only_when_whole_block_vanishes() {
     let knight = fixture.cards[0].clone();
     let branch = vec!["Heroes".to_owned(), knight.name.clone()];
     let lane_turn = |state: &crate::data::TableState| {
-        crate::transport::chars_lane_turn(
+        crate::transport::test_support::legacy::chars_lane_turn(
             &knight,
             Some(&fixture.player),
             &fixture.events,
@@ -903,7 +912,7 @@ async fn unbinding_the_branch_reopens() {
     let knight = fixture.cards[0].clone();
     let branch = vec!["Heroes".to_owned(), knight.name.clone()];
     let lane_turn = |branch: Option<&[String]>| {
-        crate::transport::chars_lane_turn(
+        crate::transport::test_support::legacy::chars_lane_turn(
             &knight,
             Some(&fixture.player),
             &fixture.events,
@@ -1144,4 +1153,123 @@ async fn gm_and_character_lanes_never_share_sessions() {
         .unwrap();
     assert_eq!(gm_state.unerased_owner, None);
     assert!(!sent_text(&table.calls()[1]).contains("狐狸私設甲"));
+}
+
+/// 不抹尾段的線把本輪世界書提進 system（worldbook-st-trigger-parity 三之 3）：世界書一變就整線重開、不走補丁
+/// （補丁回合後不抹，舊世界書會留在 session 歷史裡）；連續三輪換世界書，每輪送出的只有本輪那份。
+/// 世界書沒變、只有別的素材變時照舊續用。
+#[cfg(unix)]
+#[tokio::test]
+async fn hoisted_worldbook_change_reopens_instead_of_patching() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let books = [
+        "## 世界書\n燈塔一\n",
+        "## 世界書\n燈塔二\n",
+        "## 世界書\n燈塔三\n",
+    ];
+    let frozen: Vec<String> = books.iter().map(|book| format!("凍結\n{book}")).collect();
+    let mut table = Table::new("hoisted-worldbook");
+    for (index, book) in books.iter().enumerate() {
+        table
+            .run(Turn {
+                frozen: &frozen[index],
+                worldbook: Some(book),
+                ..Turn::single("fox-id", "狐狸", "")
+            })
+            .await
+            .unwrap();
+    }
+    let calls = table.calls();
+    let ids: Vec<(bool, String)> = calls.iter().map(session_of).collect();
+    assert!(
+        ids.iter().all(|(resumed, _)| !resumed),
+        "每輪都重開：{ids:?}"
+    );
+    for (index, call) in calls.iter().enumerate() {
+        let sent = sent_text(call);
+        for (other, book) in books.iter().enumerate() {
+            assert_eq!(sent.contains(book), other == index, "第 {index} 輪：{sent}");
+        }
+    }
+    // 世界書沒變、凍結素材別處變了：照舊續用（claude 快取內走補丁）
+    table
+        .run(Turn {
+            frozen: &format!("{}另一段\n", frozen[2]),
+            worldbook: Some(books[2]),
+            ..Turn::single("fox-id", "狐狸", "")
+        })
+        .await
+        .unwrap();
+    assert_eq!(session_of(&table.calls()[3]), (true, ids[2].1.clone()));
+}
+
+/// 走正式的掃描＋組裝：單人 Claude 線把共用快照的常駐條目改掉、再刪掉，都要重開（指紋涵蓋 system 裡全部的世界書），
+/// 不能走補丁把舊世界書留在不抹的歷史裡。
+#[cfg(unix)]
+#[tokio::test]
+async fn editing_or_deleting_a_snapshot_entry_reopens_the_unerased_lane() {
+    use crate::transport::test_support::legacy::{scan_of, snapshot_of};
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fox = crate::lanes::scaffold_tests::card("fox-id", "狐狸", "狡猾。", "其實是公主。");
+    let entry = |content: &str| crate::data::WorldbookEntry {
+        uid: 1,
+        title: "王國".to_owned(),
+        keys: Vec::new(),
+        content: content.to_owned(),
+        constant: true,
+        order: 0,
+        disabled: false,
+        visibility: crate::data::Visibility::Public,
+        is_person: false,
+        locked: false,
+    };
+    let books = [vec![entry("王國舊設定")], vec![entry("王國新設定")], vec![]];
+    let state_root = table_state_root();
+    let world = crate::data::create_world(&state_root, "快照").unwrap();
+    let state = crate::data::read_state(&state_root, &world).unwrap();
+    let mut table = Table::new("snapshot-edit");
+    for book in &books {
+        let scan = scan_of(
+            book,
+            crate::world_scan::Viewer::Character(&fox),
+            std::slice::from_ref(&fox),
+            None,
+            &table.events,
+            "zh-TW",
+        );
+        let (frozen, turn) = crate::chat_assembly::character_lane_parts(
+            &fox,
+            std::slice::from_ref(&fox),
+            None,
+            &scan,
+            &snapshot_of(book),
+            &state,
+            None,
+            "zh-TW",
+            true,
+        );
+        table
+            .run(Turn {
+                frozen: &frozen,
+                worldbook: turn.hoisted_worldbook.as_deref(),
+                ..Turn::single("fox-id", "狐狸", "")
+            })
+            .await
+            .unwrap();
+    }
+    let calls = table.calls();
+    assert!(calls.iter().all(|call| !session_of(call).0), "每輪都重開");
+    assert!(!sent_text(&calls[1]).contains("王國舊設定"));
+    assert!(!sent_text(&calls[2]).contains("王國"));
+    let _ = std::fs::remove_dir_all(&state_root);
+}
+
+fn table_state_root() -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "table-tavern-owner-state-{}-{}",
+        std::process::id(),
+        ulid::Ulid::generate()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    root
 }

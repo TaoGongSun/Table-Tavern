@@ -1,14 +1,14 @@
 //! 世界書觸發狀態的存放與落地（worldbook-st-trigger-parity 三之 4，三之 8 的計時部分）。
 //! `worlds/<id>/world-info/<幕號>.json`：每幕一份，分視角（GM 一份、每位角色各一份）存 sticky／cooldown，
 //! 另記一筆還沒結的落地 `pending`。讀寫一律在同檔鎖內、寫入走原子替換；讀不了或解析失敗回錯，不當空表覆寫。
-//! 掃描接線（包 5a）之前只有測試與換幕、匯入、刪條目用到落地以外的部分，所以先放寬 dead_code。
+//! 實送的結算與落地由 `crate::world_scan::landing` 呼叫；變數意圖與待回報檔的出口由包 5b 接，先放寬 dead_code。
 #![cfg_attr(not(test), allow(dead_code))]
 
 mod landing;
 mod notices;
 mod scenes;
 
-// 接線（包 5a／5b）前有些出口還沒人用
+// 包 5b 接線前有些出口還沒人用
 #[allow(unused_imports)]
 pub use landing::{
     begin_landing, fail_turn, mark_sent, push_var_intent, reply_landed, settle_pending,
@@ -303,6 +303,65 @@ pub fn read_timed(
         _ => timed.perspectives.remove(&key).unwrap_or_default(),
     };
     Ok(table.to_scan())
+}
+
+/// 結算一直回錯時給玩家的出路（「重設世界書觸發紀錄」）：這一幕的計時檔、其他讀不懂或留著未結落地的幕檔與
+/// 讀不懂的 `notices.json` 一律改名成 `<檔名>.broken-<時間>` 留備份（不刪、不蓋舊備份），之後當成沒有紀錄重新算。
+/// 失去的是 sticky／冷卻的進度與未結的落地紀錄（含還沒撤回的變數意圖）。回傳備份檔名。
+pub fn reset_scene(root: &Path, world_id: &str, scene: u64) -> DataResult<Vec<String>> {
+    let suffix = format!(
+        "broken-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
+    reset_scene_as(root, world_id, scene, &suffix)
+}
+
+/// `reset_scene` 本體；備份後綴由呼叫端給（測試用固定後綴驗撞名）。
+pub(crate) fn reset_scene_as(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    suffix: &str,
+) -> DataResult<Vec<String>> {
+    super::state_commit::with_commit(root, world_id, |_| {
+        let dir = world_info_dir(root, world_id)?;
+        let current = scene_path(root, world_id, scene)?;
+        let mut targets = vec![current.clone()];
+        if let Ok(read) = std::fs::read_dir(&dir) {
+            for entry in read {
+                let path = entry?.path();
+                let name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("");
+                let Some(stem) = name.strip_suffix(".json") else {
+                    continue;
+                };
+                // 其他幕檔：讀不懂、或留著沒結的落地（分岔時來源幕結算失敗會卡在這裡）都一起移開
+                let broken = match stem {
+                    "notices" => notices::check(root, world_id).is_err(),
+                    _ if stem.parse::<u64>().is_ok() && path != current => {
+                        with_file_lock(&path, |file| read_locked(file, &path))
+                            .map_or(true, |timed| timed.pending.is_some())
+                    }
+                    _ => false,
+                };
+                if broken {
+                    targets.push(path);
+                }
+            }
+        }
+        let mut moved = Vec::new();
+        for path in targets {
+            if let Some(name) = with_file_lock(&path, |file| file.move_aside(suffix))? {
+                moved.push(name);
+            }
+        }
+        Ok(moved)
+    })
 }
 
 /// 各幕計時檔與 pending 前像裡，不在 `live` 的 uid 一律清掉（只有真的拿掉東西的檔才寫）。

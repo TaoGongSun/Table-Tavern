@@ -94,7 +94,8 @@ pub fn regex_outcome(regex: &Regex, haystack: &str) -> RegexOutcome {
     }
 }
 
-/// `regex.test(haystack)`；回溯超限算不中。
+/// `regex.test(haystack)`；回溯超限算不中（對拍測試用）。
+#[cfg(test)]
 pub fn regex_test(regex: &Regex, haystack: &str) -> bool {
     regex_outcome(regex, haystack) == RegexOutcome::Match
 }

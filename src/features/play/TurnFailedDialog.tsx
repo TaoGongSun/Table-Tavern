@@ -1,9 +1,11 @@
 // 回合沒完成的攔截式彈窗：只有「關閉」。打字送出卻沒能自動收回時，玩家剛送出的原文放在這裡，
 // 關掉前都選得到、複製得走（不另做複製鈕）。
+import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { AiErrorText, offersSceneAdvance } from "../../shared/ui/atoms";
 import type { TurnFailure } from "./useChatController";
+import { offersWorldInfoReset } from "./world-info-reset";
 
 /** 彈窗還開著且帶玩家原文時，後續失敗不覆寫它——原文關窗前都要拿得到 */
 export function nextTurnFailure(previous: TurnFailure | null, next: TurnFailure): TurnFailure {
@@ -15,14 +17,21 @@ export function TurnFailedDialog({
   transport,
   onClose,
   onAdvanceScene,
+  onResetWorldInfo,
 }: {
   failure: TurnFailure;
   transport?: string;
   onClose: () => void;
   /** 這一幕太長／換幕容量已滿時，彈窗直接給換幕鈕（關窗並換幕） */
   onAdvanceScene?: () => void;
+  /** 世界書觸發紀錄結算不了：彈窗直接給重設鈕；彈窗留著（玩家原文還拿得到），重設成了就換成完成提示 */
+  onResetWorldInfo?: () => Promise<void>;
 }) {
+  const [resetDone, setResetDone] = useState(false);
+  // 彈窗開著又換成另一次失敗：完成提示屬於上一次，歸零
+  useEffect(() => setResetDone(false), [failure]);
   const offerAdvance = onAdvanceScene && offersSceneAdvance(failure.raw, transport);
+  const offerReset = onResetWorldInfo && offersWorldInfoReset(failure.raw) && !resetDone;
   return (
     <Dialog
       title={t("turnFailedTitle")}
@@ -36,6 +45,15 @@ export function TurnFailedDialog({
               {t("sceneAdvance")}
             </button>
           )}
+          {offerReset && (
+            <button type="button" className="btn" onClick={() => void onResetWorldInfo().then(
+                () => setResetDone(true),
+                // 失敗由呼叫端換掉彈窗內容
+                () => {},
+              )}>
+              {t("worldInfoReset")}
+            </button>
+          )}
           <button type="button" className="btn btn-primary" data-autofocus="" onClick={onClose}>
             {t("closeBtn")}
           </button>
@@ -45,6 +63,7 @@ export function TurnFailedDialog({
       <p role="alert">
         <AiErrorText text={failure.raw} transport={transport} />
       </p>
+      {resetDone && <p role="status">{t("worldInfoResetDone")}</p>}
       {failure.draft !== undefined && (
         <label className="turn-failed-draft">
           {t("turnFailedDraftLabel")}

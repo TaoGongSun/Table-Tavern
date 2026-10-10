@@ -23,6 +23,11 @@ use crate::data::{
 #[allow(unused_imports)]
 use crate::mechanism;
 #[allow(unused_imports)]
+use crate::transport::test_support::legacy::{
+    assemble_gm_messages, assemble_shared_messages, chars_lane_system, chars_lane_turn,
+    gm_lane_system, gm_lane_turn,
+};
+#[allow(unused_imports)]
 use std::collections::{BTreeMap, BTreeSet};
 
 /// `{{user}}` 沒有玩家卡時退回語系預設名（共線的 system 一樣要做這個代換）。

@@ -435,6 +435,21 @@ pub(crate) fn revert_scene(app: tauri::AppHandle, world_id: String) -> Result<u6
     data::revert_scene(&root, &world_id).map_err(|error| error.to_string())
 }
 
+/// 重設世界書觸發紀錄：結算一直回錯（紀錄檔壞掉等）時玩家的出路。目前這一幕的計時檔與其他讀不懂的
+/// 紀錄檔改名留備份，之後當成沒有紀錄重新算；回傳改名的檔名。
+#[tauri::command]
+pub(crate) fn reset_world_info_timing(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<Vec<String>, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let root = data_root(&app)?;
+    let scene = data::read_state(&root, &world_id)
+        .map_err(|error| error.to_string())?
+        .current_scene;
+    data::world_info_store::reset_scene(&root, &world_id, scene).map_err(|error| error.to_string())
+}
+
 /// 從前幕分岔：把那一幕的紀錄複製成新的一幕接著玩，純本地檔案處理不必等模型回覆。
 #[tauri::command]
 pub(crate) fn fork_scene(

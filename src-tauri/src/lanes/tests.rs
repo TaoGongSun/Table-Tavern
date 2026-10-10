@@ -274,6 +274,7 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         scope: None,
         single_owner: None,
         has_state_block: false,
+        hoisted_worldbook: None,
     }
 }
 
@@ -295,6 +296,7 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         agy_usage: None,
         unerased_owner: None,
         had_state_block: false,
+        hoisted_worldbook: None,
     }
 }
 

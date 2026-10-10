@@ -120,13 +120,16 @@ fn character_sent(root: &Path, world_id: &str, character_id: &str, said: &str) -
     let card = data::read_character(root, world_id, character_id).unwrap();
     let cards = chat_assembly::active_cards(root, world_id).unwrap();
     let state = data::read_state(root, world_id).unwrap();
-    let book = data::read_worldbook(root, world_id).unwrap();
+    let events = [event(said)];
+    let (scan, snapshot) =
+        chat_assembly::test_character_scan(root, world_id, &card, None, &events, LANG);
     crate::transport::assemble_shared_messages(
         &card,
         &cards,
         None,
-        &[event(said)],
-        &book,
+        &events,
+        &scan,
+        &snapshot,
         &state.state,
         &state.mechanism,
         None,
@@ -141,14 +144,26 @@ fn character_sent(root: &Path, world_id: &str, character_id: &str, said: &str) -
 /// GM 線（單發）整份送出的文字。
 fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
     let state = data::read_state(root, world_id).unwrap();
-    let book = data::read_worldbook(root, world_id).unwrap();
+    let book = crate::world_scan::TableBook::load(root, world_id).unwrap();
     let cards = chat_assembly::active_cards(root, world_id).unwrap();
+    let events = [event(said)];
+    let scan = crate::world_scan::scan(crate::world_scan::ScanRequest {
+        book: &book,
+        viewer: crate::world_scan::Viewer::Gm,
+        sole_card: (cards.len() == 1).then(|| cards[0].name.as_str()),
+        player: None,
+        events: &events,
+        lang: LANG,
+        timed: Default::default(),
+        budget: None,
+        random: crate::world_scan::Randomness::Measure,
+    });
     crate::transport::assemble_gm_messages(
         "",
         &cards,
         None,
-        &[event(said)],
-        &book,
+        &events,
+        &scan,
         &state.state,
         &state.mechanism,
         &crate::transport::StateScope::default(),

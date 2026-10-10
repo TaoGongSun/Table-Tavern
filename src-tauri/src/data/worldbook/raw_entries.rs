@@ -5,9 +5,10 @@ use crate::data::state_commit::with_commit;
 use super::super::{invalid_data, DataResult};
 use super::book_import::{identity_text, source_cards, VisibilityRestore, SOURCE_CARDS};
 use super::{
-    entries_object, entries_object_mut, entry_uid, insert_entry_value, new_entry_value, next_uid,
-    read_worldbook_value, set_is_person, set_locked, sorted_entry_keys, table_tavern_field,
-    table_tavern_mut, visibility_from_value, write_worldbook_value, Visibility, WorldbookEntry,
+    entries_object, entries_object_mut, entry_uid, entry_view, insert_entry_value, new_entry_value,
+    next_uid, read_worldbook_value, set_is_person, set_locked, sorted_entry_keys,
+    table_tavern_field, table_tavern_mut, visibility_from_value, write_worldbook_value, Visibility,
+    WorldbookEntry,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -21,6 +22,23 @@ pub fn read_worldbook_raw(
     Ok(entries_object(&value)?
         .iter()
         .filter_map(|(key, value)| Some((entry_uid(key, value)?, value.clone())))
+        .collect())
+}
+
+/// 整桌條目的精簡檢視與原始值，依 uid 遞增（世界書掃描用：ST 載入順序＝物件形的整數鍵遞增）。
+pub fn read_worldbook_scan_entries(
+    root: &Path,
+    world_id: &str,
+) -> DataResult<Vec<(WorldbookEntry, serde_json::Map<String, serde_json::Value>)>> {
+    Ok(read_worldbook_raw(root, world_id)?
+        .into_iter()
+        .filter_map(|(uid, value)| {
+            let view = entry_view(&value, Some(uid));
+            let serde_json::Value::Object(raw) = value else {
+                return None;
+            };
+            Some((WorldbookEntry { uid, ..view }, raw))
+        })
         .collect())
 }
 
