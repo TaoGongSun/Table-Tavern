@@ -1074,3 +1074,25 @@ fn worldbook_route_timers_go_to_the_gm() {
     let timed = timed_of(&root, &imported.world_id, &Perspective::Gm);
     assert_eq!(timed.sticky.len(), 1);
 }
+
+/// 世界書路：別桌的角色名單與來源卡匯入時濾掉，名單濾空給 GM。
+#[test]
+fn worldbook_route_drops_foreign_character_ids() {
+    let root = TestRoot::new("web-save-foreign-ids");
+    let mut save = fixture("worldbook-route.json");
+    let entry = &mut save["card"]["data"]["character_book"]["entries"][0];
+    entry["extensions"] = json!({ "table_tavern": {
+        "visibility": { "characters": ["01FOREIGNTABLECHARACTER0"] },
+        "source_cards": ["01FOREIGNTABLECHARACTER0"]
+    }});
+    let content = entry["content"].clone();
+    let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    let raw = data::read_worldbook_raw(root.path(), &imported.world_id).unwrap();
+    let value = raw
+        .values()
+        .find(|value| value["content"] == content)
+        .unwrap();
+    let table_tavern = &value["extensions"]["table_tavern"];
+    assert_eq!(table_tavern["visibility"], "gm");
+    assert!(table_tavern.get("source_cards").is_none());
+}

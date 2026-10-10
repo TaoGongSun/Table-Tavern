@@ -79,7 +79,7 @@
 - 一律開新桌（桌名＝卡名）；身分照 `import_route`。不記匯入收據（不能「復原上次匯入」）。
 - 玩家名非空時建一張同名玩家卡。
 - 逐字稿寫進第 0 幕：玩家句→玩家事件；開場白→GM 旁白（`opening`）；角色卡路的回覆→該角色發言，世界書路的回覆→GM 旁白。事件 id 由桌面版重配。
-- 世界書：角色卡路的卡內條目，原卡沒指定 `extensions.table_tavern.visibility` 的設成只有這個角色看得到（D16）；明示的照舊；世界書路沒有角色，照桌面版預設給 GM。
+- 世界書：角色卡路的卡內條目，原卡沒指定 `extensions.table_tavern.visibility` 的設成只有這個角色看得到（D16）；明示的照舊；世界書路沒有角色，照桌面版預設給 GM；世界書路的角色名單只留本桌 id，濾空就給 GM。
 - MVU：`seed` 是物件就把控制檔設成變數模式、這一幕新 epoch 與種子＝`seed`，帶表的事件全部掛上新 epoch 與新版本 token；`seed` 是 `null` 就不動模式。
 - 寫入順序：先拿新桌 id 的整桌獨占再建桌（建桌途中失敗清掉半成品目錄）；桌內全部（角色、原卡、世界書、機制、逐字稿、控制檔、chat／character／script 層、旁檔、世界書計時檔）成功後才補跨桌層，桌內任何落檔失敗都算匯入失敗。失敗就退回已補的跨桌鍵並刪掉新桌：跨桌層以層的 rev 做 compare-and-set，補完之後那一層有任何寫入（含改回同值）就整層不退、保留別人的寫入；退不掉的鍵、刪不掉的桌一律連同原錯回報（`web_save_cleanup_incomplete`）。
 - `card_storage` 交回前端，進新桌前寫進新桌的卡片 storage；寫不進去先問玩家重試，放棄就收掉新桌、這次匯入算失敗。匯入成功到前端確認之間，新桌的 `worlds/<id>/web-save-pending.json` 記著每層跨桌層補了哪些鍵與補完的 rev（建桌後先寫、每層寫入前先記）：寫好 storage 呼叫 `confirm_web_save_import` 刪掉它；放棄呼叫 `discard_web_save_import`，照記錄以同一套 rev compare-and-set 撤回跨桌層再刪桌，沒撤回的鍵同樣以 `web_save_cleanup_incomplete` 回報。

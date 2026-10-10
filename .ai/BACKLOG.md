@@ -5,7 +5,6 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [character-delete-visibility-cleanup](tasks/character-delete-visibility-cleanup.md) — 刪角色後世界書可見度名單沒清，條目只剩 GM 看得到 — 下一步：未排程；先定名單清空後給誰；網頁版公開前門檻〔作者裁決 2026-10-10〕
-- [worldbook-path-foreign-ids](tasks/worldbook-path-foreign-ids.md) — 世界書路匯入別桌匯出的書時殘留別桌角色 id — 下一步：未排程；網頁版公開前門檻〔作者裁決 2026-10-10〕
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [api-request-header-timeout](tasks/api-request-header-timeout.md) — API 請求送出後到回應頭之前、非 2xx 讀錯誤本文都沒有逾時 — 下一步：只包 send() 與錯誤本文讀取，不用 ClientBuilder::timeout

@@ -20,6 +20,8 @@ mod card_image_tests;
 #[cfg(test)]
 mod card_view_tests;
 #[cfg(test)]
+mod foreign_ids_tests;
+#[cfg(test)]
 mod mvu_replace_tests;
 #[cfg(test)]
 mod test_support;
