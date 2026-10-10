@@ -1,6 +1,7 @@
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::card_png::{AssetKind, CardAsset};
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
+use super::sources::{new_entry_shape, Sources};
 use super::types::{
     ApplyFailure, ApplyProgress, RefactorApplyResult, RefactorApplySummary, RefactorOutcome,
     RefactorSelection,
@@ -52,6 +53,7 @@ pub fn apply_with_assets(
             character_ids: progress.character_ids,
             rewritten_entries: progress.rewritten_entries,
             deleted_entries: progress.deleted_entries,
+            deleted_entries_raw: progress.deleted_entries_raw,
         }),
         Err(error) => Err(ApplyFailure { error, progress }),
     }
@@ -73,7 +75,8 @@ fn apply_into(
     if player_index.is_some() && state.player_card_id.is_some() {
         return Err(UiMsg::PlayerCardExists.into_error());
     }
-    let existing_character_count = data::list_characters(root, world_id)?.len();
+    let existing_characters = data::list_characters(root, world_id)?;
+    let existing_character_count = existing_characters.len();
 
     // 玩法閘門：mode 必須在來源消耗判定與任何寫入之前解析成單一有效值——characters 產物
     // 即使 selection 勾了介面也整段不套。晚一步解析的話，來源條目會先被記成「已被介面
@@ -100,23 +103,37 @@ fn apply_into(
         _ => None,
     };
 
+    let existing_entries = data::read_worldbook(root, world_id)?;
+    // 已核對來源表：產物引用的 uid 一律經它換成這桌實際的條目 uid；核對不過的視同這桌沒有這條來源
+    // ——不刪、不停用、不記帳本、不算歸屬（見 refactor/sources.rs）。快照取在任何寫入之前。
+    let sources = Sources::build(
+        outcome,
+        &existing_entries,
+        data::read_worldbook_raw(root, world_id)?,
+    );
+
     // uid → 引用它的角色 index 清單：判斷一條來源條目是「專屬」還是「共用」的依據，
     // 不看選取狀態（選取只決定「刪不刪」，不決定「算不算共用」）。
     let mut uid_owners: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
     for (index, character) in outcome.characters.iter().enumerate() {
         for uid_str in &character.source_uids {
-            if let Ok(uid) = uid_str.parse::<u64>() {
+            if let Some(uid) = sources.resolve(uid_str) {
                 uid_owners.entry(uid).or_default().push(index);
             }
         }
     }
+    let deletable_shared: BTreeSet<u64> = outcome
+        .deletable_shared_uids
+        .iter()
+        .filter_map(|uid| sources.resolve(uid))
+        .collect();
 
     // 每個來源 uid 的所有產物是否都被套用。角色的共用合集仍額外受
     // deletable_shared_uids 保護；其餘產物只要有一個沒勾，就絕不刪來源。
     let mut source_consumers: BTreeMap<u64, Vec<bool>> = BTreeMap::new();
     let mut deletion_candidates: BTreeSet<u64> = BTreeSet::new();
     let mut add_consumer = |uid_str: &str, applied: bool, candidate: bool| {
-        let Ok(uid) = uid_str.parse::<u64>() else {
+        let Some(uid) = sources.resolve(uid_str) else {
             return;
         };
         source_consumers.entry(uid).or_default().push(applied);
@@ -127,18 +144,15 @@ fn apply_into(
     for (index, character) in outcome.characters.iter().enumerate() {
         let applied = selection.character_indices.contains(&index);
         for uid in &character.source_uids {
-            let Ok(parsed_uid) = uid.parse::<u64>() else {
+            let Some(actual_uid) = sources.resolve(uid) else {
                 continue;
             };
             let owners = uid_owners
-                .get(&parsed_uid)
+                .get(&actual_uid)
                 .map(Vec::as_slice)
                 .unwrap_or_default();
             let character_deletable = owners.len() <= 1
-                || (outcome
-                    .deletable_shared_uids
-                    .iter()
-                    .any(|shared| shared == uid)
+                || (deletable_shared.contains(&actual_uid)
                     && owners
                         .iter()
                         .all(|owner| selection.character_indices.contains(owner)));
@@ -161,7 +175,6 @@ fn apply_into(
         add_consumer(&mechanism.source_uid, applied, applied);
     }
 
-    let existing_entries = data::read_worldbook(root, world_id)?;
     // 套用前就存在的 uid 集合：來源刪除只准刪這裡面的條目。產物的來源 uid 在這桌不存在時
     // （例如重構卡匯到新桌），剛落地的新條目會拿到同一批小號 uid，不設這道閘會被誤刪，
     // 且誤刪快照進收據後，undo 會把它們當「被消耗的來源」原樣插回，鎖定條目變成孤兒。
@@ -261,43 +274,14 @@ fn apply_into(
         };
         let locked =
             entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
-        // carry 型條目帶 meta：keys/constant/order/disabled/visibility/is_person 原樣照抄，
-        // order 直接用 meta 的值、不吃 next_entry_order 遞增（那個號碼留給沒有 meta 的真新條目）；
-        // 沒帶 meta（AI 重寫／本地合組的新條目）→ 現行預設不變。
-        let (keys, constant, order, disabled, visibility, is_person) = match &entry.meta {
-            Some(meta) => (
-                meta.keys.clone(),
-                meta.constant,
-                meta.order,
-                meta.disabled,
-                meta.visibility.clone(),
-                meta.is_person,
-            ),
-            None => (
-                Vec::new(),
-                false,
-                next_entry_order,
-                false,
-                Visibility::Gm,
-                false,
-            ),
-        };
-        data::upsert_worldbook_entry(
-            root,
-            world_id,
-            WorldbookEntry {
-                uid: NEW_ENTRY_UID,
-                title: entry.title.clone(),
-                keys,
-                content: entry.content.clone(),
-                constant,
-                order,
-                disabled,
-                visibility,
-                is_person,
-                locked,
-            },
-        )?;
+        let value = new_entry_value(
+            entry,
+            locked,
+            next_entry_order,
+            &sources,
+            &existing_characters,
+        );
+        data::insert_worldbook_entry_raw(root, world_id, value)?;
         if entry.meta.is_none() {
             next_entry_order = next_entry_order
                 .checked_add(1)
@@ -359,8 +343,8 @@ fn apply_into(
             .triggers
             .extend(mechanism.triggers.iter().cloned());
         state_dirty = true;
-        if let Some(record) = absorbed_ledger_record(root, world_id, &mechanism.source_uid) {
-            ledger_records.push(record);
+        if let Some(source) = sources.entry(&mechanism.source_uid) {
+            ledger_records.push(absorbed_ledger_record_for_title(&source.title));
         }
         mechanisms_applied += 1;
     }
@@ -380,7 +364,7 @@ fn apply_into(
     let preserved: BTreeSet<u64> = outcome
         .preserve_source_uids
         .iter()
-        .filter_map(|uid| uid.parse().ok())
+        .filter_map(|uid| sources.resolve(uid))
         .collect();
     for (uid, consumers) in source_consumers {
         if preexisting_uids.contains(&uid)
@@ -388,8 +372,12 @@ fn apply_into(
             && deletion_candidates.contains(&uid)
             && consumers.iter().all(|applied| *applied)
         {
-            delete_source_entry(root, world_id, uid, &mut progress.deleted_entries)?;
+            delete_source_entry(root, world_id, uid, progress)?;
         }
+    }
+    #[cfg(test)]
+    if fail_point::fire() {
+        return Err(data::invalid_data("injected failure after source deletion"));
     }
 
     // 整條淘汰的既有條目停用：dropped 是玩家沒放回的最終清單（放回的已在前端轉成 entries
@@ -405,7 +393,7 @@ fn apply_into(
         .dropped
         .iter()
         .filter(|item| item.span.is_empty())
-        .filter_map(|item| item.uid.parse().ok())
+        .filter_map(|item| sources.resolve(&item.uid))
         .filter(|uid| {
             preexisting_uids.contains(uid)
                 && !deleted_uids.contains(uid)
@@ -542,13 +530,13 @@ fn value_types_of(
     out
 }
 
-/// 被套用產物消耗掉的來源條目：整條刪除，原文記進 `deleted_entries`——匯入路徑的 undo 要
-/// 無條件插回（見 receipts::undo_last_import）。條目已經不在就略過。
+/// 被套用產物消耗掉的來源條目：整條刪除，原文（精簡與原始 JSON）記進 progress——匯入路徑的 undo 要
+/// 無條件照原始值插回（見 receipts::undo_last_import）。條目已經不在就略過。
 fn delete_source_entry(
     root: &Path,
     world_id: &str,
     uid: u64,
-    deleted_entries: &mut Vec<WorldbookEntry>,
+    progress: &mut ApplyProgress,
 ) -> DataResult<()> {
     let Some(entry) = data::read_worldbook(root, world_id)?
         .into_iter()
@@ -556,21 +544,107 @@ fn delete_source_entry(
     else {
         return Ok(());
     };
+    let raw = data::read_worldbook_raw(root, world_id)?.remove(&uid);
     data::delete_worldbook_entry(root, world_id, uid)?;
-    deleted_entries.push(entry);
+    progress.deleted_entries.push(entry.clone());
+    let mut raw = raw.unwrap_or_else(|| data::worldbook_entry_value(&entry));
+    if let Some(object) = raw.as_object_mut() {
+        object.insert("uid".to_owned(), serde_json::json!(uid));
+    }
+    progress.deleted_entries_raw.push(raw);
     Ok(())
 }
 
-/// 機制套用後記一筆已接管：來源條目原本在帳本裡是 Skipped，append_log 落檔後 read_ledger
-/// 取「同標題最新一筆」會直接蓋成 Absorbed；原本不在帳本裡的純散文條目則等於新增一筆，
-/// 讓玩家在帳本分頁看得到這條被收編了。uid 解不出來或條目已經不在就不記。
-fn absorbed_ledger_record(root: &Path, world_id: &str, uid_str: &str) -> Option<mechanism::Record> {
-    let uid: u64 = uid_str.parse().ok()?;
-    let entry = data::read_worldbook(root, world_id)
-        .ok()?
-        .into_iter()
-        .find(|entry| entry.uid == uid)?;
-    Some(absorbed_ledger_record_for_title(&entry.title))
+/// 重構新條目的原始值：
+/// - 照搬（carry，帶 meta）：來源核對成功就整條複製來源原始值（次要鍵、位置、可見度、來源卡全帶），
+///   只換內文與套用端判定的旗標；可見度取來源目前的值（跨桌反查對到別桌的同卡條目時才是那桌的角色）。
+///   核對失敗退回用 meta 建，名單裡的角色都不在本桌就給 GM。
+/// - 機制條目（locked）：不套觸發政策、不沿用可見度，維持無主鍵、非常駐、GM。
+/// - 其餘沒帶 meta 的 setting 條目：觸發、可見度、來源卡照核對成功的來源推（sources::new_entry_shape）。
+fn new_entry_value(
+    entry: &crate::refactor_ai::RefactorNewEntry,
+    locked: bool,
+    next_order: i64,
+    sources: &Sources,
+    characters: &[data::CharacterMeta],
+) -> serde_json::Value {
+    // 機制條目優先於 meta：重寫路徑會產出帶 meta 的機制條目，也一律 GM、非常駐、無主鍵
+    if locked {
+        return data::worldbook_entry_value(&WorldbookEntry {
+            uid: 0,
+            title: entry.title.clone(),
+            keys: Vec::new(),
+            content: entry.content.clone(),
+            constant: false,
+            order: entry.meta.as_ref().map_or(next_order, |meta| meta.order),
+            disabled: false,
+            visibility: Visibility::Gm,
+            is_person: false,
+            locked: true,
+        });
+    }
+    if let Some(meta) = &entry.meta {
+        let source = (entry.source_uids.len() == 1)
+            .then(|| sources.raw(&entry.source_uids[0]))
+            .flatten();
+        if let Some(raw) = source {
+            let mut value = raw.clone();
+            if let Some(object) = value.as_object_mut() {
+                object.insert(
+                    "content".to_owned(),
+                    serde_json::Value::String(entry.content.clone()),
+                );
+                object.insert(
+                    "comment".to_owned(),
+                    serde_json::Value::String(entry.title.clone()),
+                );
+            }
+            data::set_entry_flags(&mut value, false, meta.is_person);
+            return value;
+        }
+        let visibility = match &meta.visibility {
+            Visibility::Characters(ids)
+                if !ids
+                    .iter()
+                    .any(|id| characters.iter().any(|meta| &meta.id == id)) =>
+            {
+                Visibility::Gm
+            }
+            visibility => visibility.clone(),
+        };
+        return data::worldbook_entry_value(&WorldbookEntry {
+            uid: 0,
+            title: entry.title.clone(),
+            keys: meta.keys.clone(),
+            content: entry.content.clone(),
+            constant: meta.constant,
+            order: meta.order,
+            disabled: meta.disabled,
+            visibility,
+            is_person: meta.is_person,
+            locked: false,
+        });
+    }
+    let resolved: Vec<(&WorldbookEntry, &serde_json::Value)> = entry
+        .source_uids
+        .iter()
+        .filter_map(|uid| Some((sources.entry(uid)?, sources.raw(uid)?)))
+        .collect();
+    let shape = new_entry_shape(&resolved);
+    let mut value = data::worldbook_entry_value(&WorldbookEntry {
+        uid: 0,
+        title: entry.title.clone(),
+        keys: shape.keys,
+        content: entry.content.clone(),
+        constant: shape.constant,
+        order: next_order,
+        disabled: shape.disabled,
+        visibility: shape.visibility,
+        is_person: false,
+        locked: false,
+    });
+    data::set_source_cards(&mut value, &shape.source_cards);
+    value
 }
 
 fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
@@ -578,5 +652,32 @@ fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
         kind: mechanism::RecordKind::Absorbed,
         path: title.to_owned(),
         detail: UiMsg::LedgerRefactorMechanism.to_string(),
+    }
+}
+
+/// 測試用注入點：刪完來源之後、下一次寫入之前失敗一次（不寫壞任何檔），驗自動回滾那條 Err 分支。
+#[cfg(test)]
+pub(super) mod fail_point {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ARMED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(in crate::refactor) struct Armed;
+
+    pub(in crate::refactor) fn arm() -> Armed {
+        ARMED.with(|cell| cell.set(true));
+        Armed
+    }
+
+    impl Drop for Armed {
+        fn drop(&mut self) {
+            ARMED.with(|cell| cell.set(false));
+        }
+    }
+
+    pub(super) fn fire() -> bool {
+        ARMED.with(|cell| cell.replace(false))
     }
 }

@@ -31,6 +31,7 @@ fn outcome(mode: Option<&str>, interface: Option<RefactorInterface>) -> Refactor
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     }
 }
 

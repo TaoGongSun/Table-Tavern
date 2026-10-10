@@ -99,8 +99,8 @@ pub(super) const PUBLIC_SECTIONS: [(&str, [&str; 10]); 5] = [
     ),
 ];
 
-/// 私有段的備用開場白段標（`{n}` 從 1 起）；只寫不讀，匯出時併進常駐條目。
-const ALTERNATE_GREETING: [&str; 10] = [
+/// 私有段的備用開場白段標（`{n}` 從 1 起）；匯出時照它反解回 alternate_greetings。
+pub(super) const ALTERNATE_GREETING: [&str; 10] = [
     "備用開場白 {n}",
     "备用开场白 {n}",
     "Alternate greeting {n}",
@@ -276,10 +276,13 @@ pub fn check_character_bytes(bytes: &[u8]) -> DataResult<()> {
     parse_character(bytes).map(|_| ())
 }
 
-/// 角色卡匯入的結果：新角色＋卡圖是否沒存成（PNG 卡的圖救不回，原檔改存成 .import.json）。
+/// 角色卡匯入的結果：新角色＋卡圖是否沒存成（PNG 卡的圖救不回，原檔改存成 .import.json）＋
+/// 卡片隨身世界書收編結果（`book_failed`＝卡帶了書卻沒匯成，角色照建）。
 pub struct ImportedCharacter {
     pub meta: CharacterMeta,
     pub image_dropped: bool,
+    pub book: Option<data::BookImport>,
+    pub book_failed: bool,
 }
 
 /// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
@@ -294,7 +297,7 @@ pub fn import_character(
     import_character_reporting(root, world_id, bytes, color, lang).map(|imported| imported.meta)
 }
 
-/// 同 import_character，另回報卡圖有沒有存成。
+/// 同 import_character，另回報卡圖有沒有存成與隨身世界書的收編結果。
 pub fn import_character_reporting(
     root: &Path,
     world_id: &str,
@@ -302,30 +305,29 @@ pub fn import_character_reporting(
     color: &str,
     lang: &str,
 ) -> DataResult<ImportedCharacter> {
-    // 卡片隨身世界書照舊盡力而為：寫不進去不擋角色本體
-    import_character_placing(root, world_id, bytes, color, lang, BookVisibility::Gm)
-        .map(|(imported, _)| imported)
+    // 卡片隨身世界書盡力而為：寫不進去不擋角色本體，回報給玩家
+    import_character_placing(root, world_id, bytes, color, lang, BookWrite::BestEffort)
 }
 
-/// 卡片隨身世界書條目沒指定可見度時給誰看。
+/// 卡片隨身世界書（與機制、擴充欄位）寫不進去時怎麼辦。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BookVisibility {
-    /// 桌面版預設：只給 GM
-    Gm,
-    /// 網頁存檔匯入（D16）：只給這張卡自己的角色
-    OwnCharacter,
+pub(crate) enum BookWrite {
+    /// 桌面版：略過，角色照建，結果帶 `book_failed`
+    BestEffort,
+    /// 網頁存檔匯入：整次回錯（失敗不留半桌）
+    Strict,
 }
 
-/// 角色卡路的本體。`BookVisibility::OwnCharacter` 時隨身世界書寫不進去整次回錯，並回報每條來源條目
-/// 落到哪個 UID；`Gm` 時照桌面版既有行為，書寫失敗只略過（回 None）。
+/// 角色卡路的本體。卡內條目沒指定可見度就給這張卡自己的角色（「這張卡由誰演就給誰看」；世界書路
+/// 的卡由 GM 演，見 files.rs 的 import_worldbook_file）。
 pub(crate) fn import_character_placing(
     root: &Path,
     world_id: &str,
     bytes: &[u8],
     color: &str,
     lang: &str,
-    book_visibility: BookVisibility,
-) -> DataResult<(ImportedCharacter, Option<data::BookImport>)> {
+    book_write: BookWrite,
+) -> DataResult<ImportedCharacter> {
     let ParsedCard {
         json_bytes,
         value,
@@ -353,56 +355,54 @@ pub(crate) fn import_character_placing(
     };
     data::write_character(root, world_id, &card)?;
     let image_dropped = store_card_source(&md_path, bytes, &json_bytes)?;
-    let strict = book_visibility == BookVisibility::OwnCharacter;
+    let strict = book_write == BookWrite::Strict;
     if strict {
         import_table_tavern_extension_strict(root, world_id, &name, card_data)?;
     } else {
         import_table_tavern_extension(root, world_id, &name, card_data);
     }
-    let mut book_import = None;
-    if let Some(book) = card_data.get("character_book") {
+    let mut book = None;
+    let mut book_failed = false;
+    if let Some(book_value) = card_data.get("character_book") {
         if strict {
-            import_mechanism_strict(root, world_id, book)?;
+            import_mechanism_strict(root, world_id, book_value)?;
         } else {
-            import_mechanism(root, world_id, book);
+            import_mechanism(root, world_id, book_value);
         }
-        // 卡片隨身的設定條目也帶進這桌世界書：以前整包丟掉，模型看不到這角色的家鄉家人秘密，
-        // 卡片自訂的輸出格式規定也一併消失（同名條目由 import_worldbook 自行去重）
-        let text = serde_json::to_string(book)?;
-        match book_visibility {
-            BookVisibility::Gm => {
-                book_import =
-                    data::import_worldbook_as(root, world_id, &text, &data::Visibility::Gm).ok()
+        // 卡片隨身的設定條目進這桌世界書，照觸發規則送給這張卡的角色（同名條目由去重合併）
+        let text = serde_json::to_string(book_value)?;
+        let owner = data::BookOwner::Character(id.clone());
+        match data::import_worldbook_as(root, world_id, &text, &owner) {
+            Ok(imported) if strict && imported.summary.invalid > 0 => {
+                return Err(data::invalid_data(
+                    "character_book enabled must be a boolean",
+                ));
             }
-            BookVisibility::OwnCharacter => {
-                let visibility = data::Visibility::Characters(vec![id.clone()]);
-                book_import = Some(data::import_worldbook_as(
-                    root,
-                    world_id,
-                    &text,
-                    &visibility,
-                )?);
+            Ok(imported) => book = Some(imported),
+            Err(error) if strict => return Err(error),
+            Err(error) => {
+                log::warn!("character book import failed: {error}");
+                book_failed = true;
             }
         }
     }
 
-    Ok((
-        ImportedCharacter {
-            meta: CharacterMeta {
-                id,
-                name,
-                color: color.to_owned(),
-                avatar: "🎭".to_owned(),
-                tier: Tier::Balanced,
-                show_image: true,
-                archived: false,
-                auto_hidden: false,
-                display_index: None,
-            },
-            image_dropped,
+    Ok(ImportedCharacter {
+        meta: CharacterMeta {
+            id,
+            name,
+            color: color.to_owned(),
+            avatar: "🎭".to_owned(),
+            tier: Tier::Balanced,
+            show_image: true,
+            archived: false,
+            auto_hidden: false,
+            display_index: None,
         },
-        book_import,
-    ))
+        image_dropped,
+        book,
+        book_failed,
+    })
 }
 
 /// 卡原檔落地（`.png` 與 `.import.json` 只寫其一，原子寫）。卡片介面從這份讀卡資料，所以：
@@ -493,37 +493,9 @@ fn public_markdown(data: &Value, lang: &str) -> String {
         .join("\n\n")
 }
 
+/// 私設欄只收備用開場白；卡內世界書條目進這桌世界書（照觸發規則送），不再傾印進私設。
 fn private_markdown(data: &Value, lang: &str) -> String {
-    // 條目維持單換行緊湊排列；備用開場白各成一段，段間空行。
-    // `- **關鍵字、關鍵字**：內容` 的「、」「：」是語系無關的格式契約，匯出（export.rs character_book）照同字反向比對
-    let entry_block = data
-        .get("character_book")
-        .and_then(|book| book.get("entries"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            let content = string_field(entry, "content")?;
-            if content.trim().is_empty() {
-                return None;
-            }
-            let keys = entry
-                .get("keys")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join("、");
-            Some(format!("- **{keys}**：{content}"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mut sections = if entry_block.is_empty() {
-        Vec::new()
-    } else {
-        vec![entry_block]
-    };
+    let mut sections: Vec<String> = Vec::new();
     sections.extend(
         data.get("alternate_greetings")
             .and_then(Value::as_array)
@@ -643,10 +615,10 @@ mod tests {
             "### 場景\n雨夜",
             "### 開場白\n妳來了。",
             "### 語氣範例\n<START>",
-            "<!-- tt:private -->\n- **森林、月亮**：古老盟約",
         ] {
             assert!(markdown.contains(section), "missing {section}");
         }
+        assert!(!markdown.contains("古老盟約"), "條目不傾印進私設");
         assert_eq!(
             fs::read(root.path().join(format!(
                 "worlds/{world_id}/characters/{}.import.json",
@@ -852,7 +824,6 @@ mod tests {
             .unwrap()
             .private_md;
         for expected in [
-            "- **森林**：古老盟約",
             "### 備用開場白 1",
             "第二次見面。",
             "### 備用開場白 2",
@@ -860,6 +831,14 @@ mod tests {
         ] {
             assert!(private_md.contains(expected), "missing {expected}");
         }
+        // 卡內世界書條目不再傾印進私設：進這桌世界書、給這張卡的角色看
+        assert!(!private_md.contains("古老盟約"), "{private_md}");
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].visibility,
+            data::Visibility::Characters(vec![meta.id.clone()])
+        );
     }
 
     /// 測試清單 #12：匯入 ST 角色卡產生新 id、name 照原值（含原本會被擋的字元）；
@@ -969,7 +948,8 @@ mod tests {
             results[1],
             data::WorldbookImport {
                 imported: 0,
-                skipped: 2
+                skipped: 2,
+                invalid: 0
             }
         );
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();
@@ -1081,7 +1061,8 @@ mod tests {
             data::import_worldbook(root.path(), &world_id, &json).unwrap(),
             data::WorldbookImport {
                 imported: 1,
-                skipped: 0
+                skipped: 0,
+                invalid: 0
             }
         );
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();

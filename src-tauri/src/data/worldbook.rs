@@ -4,10 +4,9 @@ use super::character::{
 use super::paths::{validate_single_line, world_dir};
 use super::state::read_state;
 use super::{invalid_data, new_id, DataResult, Tier};
-use crate::mechanism::{Record, RecordKind};
 use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -124,6 +123,41 @@ fn set_visibility(value: &mut serde_json::Value, visibility: &Visibility) {
         .as_object_mut()
         .expect("object set above")
         .insert("visibility".to_owned(), visibility_value(visibility));
+}
+
+/// 匯入時被判成機制鷹架而強制停用：玩家改過停用狀態就移除（見 update_entry_fields）。
+const FORCED_DISABLE: &str = "forced_disable";
+
+/// 條目的 `extensions.table_tavern` 物件（沒有就建）；條目本身不是物件時回 None。
+fn table_tavern_mut(
+    value: &mut serde_json::Value,
+) -> Option<&mut serde_json::Map<String, serde_json::Value>> {
+    let entry = value.as_object_mut()?;
+    let extensions = entry
+        .entry("extensions")
+        .or_insert_with(|| serde_json::json!({}));
+    if !extensions.is_object() {
+        *extensions = serde_json::json!({});
+    }
+    let table_tavern = extensions
+        .as_object_mut()?
+        .entry("table_tavern")
+        .or_insert_with(|| serde_json::json!({}));
+    if !table_tavern.is_object() {
+        *table_tavern = serde_json::json!({});
+    }
+    table_tavern.as_object_mut()
+}
+
+/// 條目 `extensions.table_tavern.<key>` 的原值。
+fn table_tavern_field<'a>(
+    value: &'a serde_json::Value,
+    key: &str,
+) -> Option<&'a serde_json::Value> {
+    value
+        .get("extensions")
+        .and_then(|value| value.get("table_tavern"))
+        .and_then(|value| value.get(key))
 }
 
 fn is_person_from_value(value: &serde_json::Value) -> bool {
@@ -332,10 +366,21 @@ fn update_entry_fields(value: &mut serde_json::Value, entry: &WorldbookEntry) {
         serde_json::Value::Bool(entry.constant),
     );
     object.insert("order".to_owned(), serde_json::json!(entry.order));
+    let disable_changed = object
+        .get("disable")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+        != entry.disabled;
     object.insert(
         "disable".to_owned(),
         serde_json::Value::Bool(entry.disabled),
     );
+    // 玩家（帳本開關、編輯器）改過停用狀態：匯入時強制停用的標記作廢，匯出照現值
+    if disable_changed {
+        if let Some(table_tavern) = table_tavern_mut(value) {
+            table_tavern.remove(FORCED_DISABLE);
+        }
+    }
     set_visibility(value, &entry.visibility);
     set_is_person(value, entry.is_person);
     set_locked(value, entry.locked);
@@ -458,6 +503,20 @@ fn insert_new_entry(
     entry: &WorldbookEntry,
     uid: u64,
 ) -> DataResult<()> {
+    insert_entry_value(entries, new_entry_value(entry, uid, 0), uid)
+}
+
+/// 原始條目值插在最前面（uid 照給的、displayIndex 0）：其餘條目顯示序號往後挪一格。
+fn insert_entry_value(
+    entries: &mut serde_json::Map<String, serde_json::Value>,
+    mut value: serde_json::Value,
+    uid: u64,
+) -> DataResult<()> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| invalid_data("worldbook entry must be an object"))?;
+    object.insert("uid".to_owned(), serde_json::json!(uid));
+    object.insert("displayIndex".to_owned(), serde_json::json!(0));
     {
         let keys = sorted_entry_keys(entries);
         let has_missing_display_index = entries.values().any(|value| {
@@ -481,7 +540,7 @@ fn insert_new_entry(
                 .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))?;
             set_display_index(value, display_index)?;
         }
-        entries.insert(uid.to_string(), new_entry_value(entry, uid, 0));
+        entries.insert(uid.to_string(), value);
     }
     Ok(())
 }
@@ -657,266 +716,9 @@ pub fn character_to_worldbook_entry(
     let mut worldbook = read_worldbook_value(root, world_id)?;
     let entries = entries_object_mut(&mut worldbook)?;
     let uid = next_uid(entries)?;
-    let keys = sorted_entry_keys(entries);
-    let has_missing_display_index = entries.values().any(|value| {
-        value
-            .get("displayIndex")
-            .and_then(serde_json::Value::as_u64)
-            .is_none()
-    });
-    if has_missing_display_index {
-        normalize_display_indices(entries, &keys)?;
-    }
-    for key in keys {
-        let value = entries
-            .get_mut(&key)
-            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
-        let display_index = value
-            .get("displayIndex")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| invalid_data("worldbook displayIndex missing"))?
-            .checked_add(1)
-            .ok_or_else(|| invalid_data("worldbook displayIndex overflow"))?;
-        set_display_index(value, display_index)?;
-    }
-    entries.insert(uid.to_string(), new_entry_value(&entry, uid, 0));
+    insert_new_entry(entries, &entry, uid)?;
     write_worldbook_value(root, world_id, &worldbook)?;
     delete_character(root, world_id, character_id)
-}
-
-fn normalize_imported_entry(
-    mut value: serde_json::Value,
-    character_book: bool,
-    uid: u64,
-    default_visibility: &Visibility,
-) -> DataResult<serde_json::Value> {
-    let object = value
-        .as_object_mut()
-        .ok_or_else(|| invalid_data("worldbook entry must be an object"))?;
-    if character_book {
-        if let Some(keys) = object.remove("keys") {
-            object.insert("key".to_owned(), keys);
-        }
-        if let Some(keys) = object.remove("secondary_keys") {
-            object.insert("keysecondary".to_owned(), keys);
-        }
-        if let Some(order) = object.remove("insertion_order") {
-            object.insert("order".to_owned(), order);
-        }
-        if let Some(enabled) = object.remove("enabled") {
-            let enabled = enabled
-                .as_bool()
-                .ok_or_else(|| invalid_data("character_book enabled must be a boolean"))?;
-            object.insert("disable".to_owned(), serde_json::Value::Bool(!enabled));
-        }
-    }
-    object.insert("uid".to_owned(), serde_json::json!(uid));
-    let has_visibility = value
-        .get("extensions")
-        .and_then(|value| value.get("table_tavern"))
-        .and_then(|value| value.get("visibility"))
-        .is_some();
-    if !has_visibility {
-        set_visibility(&mut value, default_visibility);
-    }
-    if is_mechanism_scaffold(&value) {
-        if let Some(object) = value.as_object_mut() {
-            object.insert("disable".to_owned(), serde_json::Value::Bool(true));
-        }
-    }
-    Ok(value)
-}
-
-/// 機制鷹架條目：`[initvar]`／`[mvu_update]` 規則表、原生 EJS 腳本，或 ST 把整棵變數樹塞回提示詞的巨集。
-/// 本地已接管或原本就不會交給模型的內容，不該再送進模型上下文燒字數。
-/// `[mvu_update]` 只認抽得出欄位規則的規則表；同前綴的輸出格式說明 app 沒接手，照原卡啟停
-/// （沒重構的卡照酒館做）。
-fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
-    let marker = entry
-        .get("comment")
-        .and_then(serde_json::Value::as_str)
-        .or_else(|| entry.get("title").and_then(serde_json::Value::as_str))
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
-    let content = entry
-        .get("content")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default();
-    if marker.starts_with("[initvar]") {
-        return true;
-    }
-    if marker.starts_with("[mvu_update]") && crate::import::is_field_rule_table(content) {
-        return true;
-    }
-    content.contains("{{format_message_variable::") || content.contains("<%")
-}
-
-/// 條目的實質內容指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。
-/// 只看標題、內文與兩組關鍵字——uid、順序、可見度等隨匯入產生的欄位不算差異。
-fn entry_fingerprint(entry: &serde_json::Value) -> String {
-    let text = |field: &str| {
-        entry
-            .get(field)
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .trim()
-            .to_owned()
-    };
-    let keys = |field: &str| {
-        let mut items: Vec<String> = entry
-            .get(field)
-            .and_then(serde_json::Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .map(|key| key.trim().to_owned())
-                    .collect()
-            })
-            .unwrap_or_default();
-        items.sort();
-        items.join("\u{1f}")
-    };
-    format!(
-        "{}\u{1e}{}\u{1e}{}\u{1e}{}",
-        text("comment"),
-        text("content"),
-        keys("key"),
-        keys("keysecondary"),
-    )
-}
-
-/// 匯入結果：`imported`＝真的寫進去的條數，`skipped`＝內容重複被略過的條數。
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct WorldbookImport {
-    pub imported: usize,
-    pub skipped: usize,
-}
-
-pub fn import_worldbook(
-    root: &Path,
-    world_id: &str,
-    json_text: &str,
-) -> DataResult<WorldbookImport> {
-    import_worldbook_as(root, world_id, json_text, &Visibility::Gm).map(|book| book.summary)
-}
-
-/// 一次世界書匯入的完整結果：收編數字，與每條來源條目（卡片契約的 key）落到哪個 UID（內容重複被略過的映到
-/// 桌上保留的那一條；那條讀不出 UID 才是 None）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BookImport {
-    pub summary: WorldbookImport,
-    pub placed: Vec<(String, Option<u64>)>,
-}
-
-/// 同 [`import_worldbook`]，但原條目沒指定 `extensions.table_tavern.visibility` 時改用 `default_visibility`
-/// （網頁存檔匯入的 D16 例外）；明示的可見度照原樣。
-pub fn import_worldbook_as(
-    root: &Path,
-    world_id: &str,
-    json_text: &str,
-    default_visibility: &Visibility,
-) -> DataResult<BookImport> {
-    let imported: serde_json::Value = serde_json::from_str(json_text)
-        .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
-    let source = imported
-        .get("entries")
-        .ok_or_else(|| invalid_data("imported worldbook is missing entries"))?;
-    let character_book = match source {
-        serde_json::Value::Object(_) => false,
-        serde_json::Value::Array(_) => true,
-        _ => {
-            return Err(invalid_data(
-                "imported worldbook entries must be an object or array",
-            ));
-        }
-    };
-    // 條目照卡片契約展開：物件形照 uid 鍵的數字順序（新 UID 依此配發）、非物件的值略過不算條目
-    let source_entries: Vec<(String, serde_json::Value)> =
-        crate::import::book_entries_keyed(source)
-            .into_iter()
-            .map(|(key, value)| (key, value.clone()))
-            .collect();
-
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let total = source_entries.len();
-    // 指紋 → 被保留那條的 UID：重複的來源條目映到它（契約：重複條目指向桌上留下的那一條）
-    let mut seen: HashMap<String, Option<u64>> = entries
-        .iter()
-        .map(|(key, value)| (entry_fingerprint(value), entry_uid(key, value)))
-        .collect();
-    let mut uid = next_uid(entries)?;
-    let mut imported = 0;
-    let mut absorbed = Vec::new();
-    let mut placed = Vec::with_capacity(total);
-    for (key, source_entry) in source_entries {
-        let entry =
-            normalize_imported_entry(source_entry, character_book, uid, default_visibility)?;
-        // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容
-        let fingerprint = entry_fingerprint(&entry);
-        if let Some(kept) = seen.get(&fingerprint) {
-            placed.push((key, *kept));
-            continue;
-        }
-        if is_mechanism_scaffold(&entry) {
-            let title = entry
-                .get("comment")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            absorbed.push(Record {
-                kind: RecordKind::Absorbed,
-                path: title,
-                detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
-            });
-        }
-        entries.insert(uid.to_string(), entry);
-        seen.insert(fingerprint, Some(uid));
-        placed.push((key, Some(uid)));
-        uid = uid
-            .checked_add(1)
-            .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
-        imported += 1;
-    }
-    write_worldbook_value(root, world_id, &worldbook)?;
-    if !absorbed.is_empty() {
-        let scene = read_state(root, world_id)
-            .map(|state| state.current_scene)
-            .unwrap_or(0);
-        crate::mechanism::append_log(root, world_id, scene, &absorbed);
-    }
-    Ok(BookImport {
-        summary: WorldbookImport {
-            imported,
-            skipped: total - imported,
-        },
-        placed,
-    })
-}
-
-/// 清掉內容重複的條目：同一份指紋只留顯示順序最前的那條，回傳刪掉幾條。
-/// 給去重上線前就已經重複匯入的桌收拾用。
-pub fn dedupe_worldbook(root: &Path, world_id: &str) -> DataResult<usize> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let mut seen = HashSet::new();
-    let duplicates: Vec<String> = sorted_entry_keys(entries)
-        .into_iter()
-        .filter(|key| {
-            entries
-                .get(key)
-                .is_some_and(|entry| !seen.insert(entry_fingerprint(entry)))
-        })
-        .collect();
-    for key in &duplicates {
-        entries.remove(key);
-    }
-    if !duplicates.is_empty() {
-        write_worldbook_value(root, world_id, &worldbook)?;
-    }
-    Ok(duplicates.len())
 }
 
 pub fn export_worldbook(root: &Path, world_id: &str, path: &Path) -> DataResult<()> {
@@ -932,5 +734,23 @@ pub fn export_worldbook(root: &Path, world_id: &str, path: &Path) -> DataResult<
     Ok(())
 }
 
+mod book_import;
+mod raw_entries;
+
+#[cfg(test)]
+pub use book_import::import_worldbook;
+pub use book_import::{
+    dedupe_worldbook, import_worldbook_as, BookImport, BookOwner, VisibilityRestore,
+    WorldbookImport,
+};
+pub use raw_entries::{
+    apply_visibility_restore, character_book_raw_entries, identity_fingerprint,
+    identity_fingerprints, insert_worldbook_entry_raw, read_worldbook_raw,
+    restore_deleted_entry_raw, set_entry_flags, set_source_cards, source_cards_of,
+    worldbook_entry_value, RestoreOutcome,
+};
+
+#[cfg(test)]
+mod book_import_tests;
 #[cfg(test)]
 mod tests;

@@ -43,11 +43,18 @@ fn exported_png_reimports_with_identical_content() {
             .unwrap()
             .public_md
     );
+    // 條目回到世界書（同一桌去重合併，兩張卡都看得到），私設不再傾印條目
     assert_eq!(
         data::read_character(root.path(), &world_id, &round_trip.id)
             .unwrap()
             .private_md,
-        "- **森林、月亮**：古老盟約"
+        ""
+    );
+    let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].visibility,
+        data::Visibility::Characters(vec![source.id.clone(), round_trip.id.clone()])
     );
 }
 
@@ -248,7 +255,7 @@ fn every_language_imports_and_exports_back_into_the_same_fields() {
         let meta =
             import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", lang).unwrap();
         let card = data::read_character(root.path(), &world_id, &meta.id).unwrap();
-        let value = character_card_v2(root.path(), &world_id, &card);
+        let value = character_card_v2(root.path(), &world_id, &card).unwrap();
         for (field, expected) in FIELDS.into_iter().zip(["甲", "乙", "丙", "丁", "戊"]) {
             assert_eq!(value["data"][field], expected, "{lang} {field}");
         }
@@ -340,4 +347,31 @@ fn legacy_card_file_export_and_conversion_fail_without_writing() {
         .unwrap()
         .is_empty());
     assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
+}
+
+/// 備用開場白反解：開場白內文自帶的標題留在該段；圍欄裡長得像段頭的行不切段；第一個段頭之前是私有筆記；
+/// 最後一段之後的內容分不出來，併進最後一段（已知限制）。
+#[test]
+fn private_markdown_splits_back_into_notes_and_greetings() {
+    let (notes, greetings) = split_private_markdown(
+        "其實是逃兵\n\n### 備用開場白 1\n雨夜。\n### 第一章\n門開了。\n\n### Alternate greeting 2\n晴天。",
+    );
+    assert_eq!(notes, "其實是逃兵");
+    assert_eq!(greetings, vec!["雨夜。\n### 第一章\n門開了。", "晴天。"]);
+
+    let (notes, greetings) =
+        split_private_markdown("### 備用開場白 1\n```\n### 備用開場白 2\n```\n結尾");
+    assert_eq!(notes, "");
+    assert_eq!(greetings, vec!["```\n### 備用開場白 2\n```\n結尾"]);
+
+    let (notes, greetings) = split_private_markdown(
+        "### 備用開場白 1\n第一則。\n\n### 備用開場白 2\n第二則。\n\n後來補的筆記",
+    );
+    assert_eq!(notes, "");
+    assert_eq!(greetings, vec!["第一則。", "第二則。\n\n後來補的筆記"]);
+
+    // 不是正整數的不算段頭
+    let (notes, greetings) = split_private_markdown("### 備用開場白 0\n不是開場白");
+    assert_eq!(notes, "### 備用開場白 0\n不是開場白");
+    assert!(greetings.is_empty());
 }

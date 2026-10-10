@@ -186,6 +186,10 @@ pub struct RefactorSurveyOutcome {
     pub mode: String,
     #[serde(default)]
     pub raw: String,
+    /// 盤點當下整桌條目的身分指紋（uid → 指紋）：前端照抄進 RefactorOutcome，套用時核對來源。
+    /// App 在送 AI 之前取的快照，不是模型輸出。
+    #[serde(default)]
+    pub source_fingerprints: std::collections::BTreeMap<String, String>,
 }
 
 /// 展開結果（介面）：raw 永遠回傳（模型原始輸出，

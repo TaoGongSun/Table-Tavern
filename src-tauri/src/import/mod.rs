@@ -12,6 +12,8 @@ mod source;
 mod web_save;
 
 #[cfg(test)]
+mod card_book_tests;
+#[cfg(test)]
 mod card_image_tests;
 #[cfg(test)]
 mod card_view_tests;

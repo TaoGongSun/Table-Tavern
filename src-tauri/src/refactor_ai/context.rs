@@ -27,7 +27,7 @@ pub fn assemble_card_context(root: &Path, world_id: &str) -> DataResult<String> 
         out.push_str("（無）\n");
     } else {
         for entry in &worldbook {
-            out.push_str(&format_worldbook_entry(entry));
+            out.push_str(&format_worldbook_entry(entry, &characters));
             out.push('\n');
         }
     }
@@ -135,13 +135,26 @@ fn mark_entry_spans(content: &str) -> String {
     marked
 }
 
-fn format_worldbook_entry(entry: &WorldbookEntry) -> String {
-    let mut flags = Vec::new();
+/// 條目旗標：constant／disabled，與限定可見的角色名（「只給：名字」）——讓 AI 知道這條屬於某個既有角色。
+fn format_worldbook_entry(entry: &WorldbookEntry, characters: &[data::CharacterMeta]) -> String {
+    let mut flags: Vec<String> = Vec::new();
     if entry.constant {
-        flags.push("constant");
+        flags.push("constant".to_owned());
     }
     if entry.disabled {
-        flags.push("disabled");
+        flags.push("disabled".to_owned());
+    }
+    if let data::Visibility::Characters(ids) = &entry.visibility {
+        let names: Vec<&str> = ids
+            .iter()
+            .map(|id| {
+                characters
+                    .iter()
+                    .find(|meta| &meta.id == id)
+                    .map_or(id.as_str(), |meta| meta.name.as_str())
+            })
+            .collect();
+        flags.push(format!("只給：{}", names.join("、")));
     }
     let flags = if flags.is_empty() {
         String::new()
@@ -166,7 +179,10 @@ pub fn entry_full_text(root: &Path, world_id: &str, entry_uid: &str) -> DataResu
         .into_iter()
         .find(|entry| entry.uid == uid)
         .ok_or_else(|| data::invalid_data(format!("找不到 uid={uid} 的世界書條目")))?;
-    Ok(format_worldbook_entry(&entry))
+    Ok(format_worldbook_entry(
+        &entry,
+        &data::list_characters(root, world_id)?,
+    ))
 }
 
 /// 逐日樣式 regex：`第[一二三四五六七八九十\d]+天`／`每日`／`\bday ?\d`，三選一命中即算；只編譯
@@ -483,7 +499,7 @@ mod tests {
             is_person: false,
             locked: false,
         };
-        let formatted = format_worldbook_entry(&entry);
+        let formatted = format_worldbook_entry(&entry, &[]);
         assert!(formatted.contains("⟦s1⟧第一段內容。"));
         assert!(formatted.contains("⟦s2⟧第二段內容。"));
         // 標記拿掉就是原文，沒有遺漏或錯位任何 byte。

@@ -652,10 +652,13 @@ mod tests {
 
         let meta =
             import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
-        assert!(data::read_character(root.path(), &world_id, &meta.id)
-            .unwrap()
-            .private_md
-            .contains("- **初始**：這不是 YAML"));
+        let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].content, "這不是 YAML");
+        assert_eq!(
+            entries[0].visibility,
+            data::Visibility::Characters(vec![meta.id.clone()])
+        );
         assert!(data::read_state(root.path(), &world_id)
             .unwrap()
             .state

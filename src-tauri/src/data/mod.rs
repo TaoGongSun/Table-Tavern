@@ -75,11 +75,16 @@ pub use world_lock::{
     try_world_exclusive, world_exclusive_async, world_write_permit, world_write_permit_async,
     WorldExclusive,
 };
+#[cfg(test)]
+pub use worldbook::import_worldbook;
 pub use worldbook::{
-    character_to_worldbook_entry, dedupe_worldbook, delete_worldbook_entry, export_worldbook,
-    import_worldbook, import_worldbook_as, read_worldbook, reorder_worldbook_entries,
-    restore_worldbook_entry, upsert_worldbook_entry, worldbook_entry_to_character, BookImport,
-    Visibility, WorldbookEntry, WorldbookImport,
+    apply_visibility_restore, character_book_raw_entries, character_to_worldbook_entry,
+    dedupe_worldbook, delete_worldbook_entry, export_worldbook, identity_fingerprint,
+    identity_fingerprints, import_worldbook_as, insert_worldbook_entry_raw, read_worldbook,
+    read_worldbook_raw, reorder_worldbook_entries, restore_deleted_entry_raw,
+    restore_worldbook_entry, set_entry_flags, set_source_cards, source_cards_of,
+    upsert_worldbook_entry, worldbook_entry_to_character, worldbook_entry_value, BookImport,
+    BookOwner, RestoreOutcome, Visibility, VisibilityRestore, WorldbookEntry, WorldbookImport,
 };
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，

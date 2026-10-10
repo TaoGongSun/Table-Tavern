@@ -165,7 +165,7 @@ pub(crate) struct TurnInput<'a> {
 /// 角色線的三個開關＋線名是否分角色（plans/claude-resume-tail-cache.md 三-B-2）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CharsLaneShape {
-    /// 私設（只有 `private_md`）搬進凍結 system
+    /// 私設與本角色限定可見的 constant 條目搬進凍結 system
     pub hoist_private: bool,
     /// 傳 confidential、回合後從 session 檔抹掉
     pub erase: bool,

@@ -1,4 +1,4 @@
-use super::card::PUBLIC_SECTIONS;
+use super::card::{ALTERNATE_GREETING, PUBLIC_SECTIONS};
 use super::card_io::{base64_encode, blank_png, png_chunk, png_invalid, PNG_MAGIC};
 use super::mechanism::table_tavern_extension;
 use crate::data::{self, CharacterCard, DataResult};
@@ -17,7 +17,7 @@ pub fn export_character(
 ) -> DataResult<()> {
     crate::data::refuse_if_updating()?;
     let card = data::read_character(root, world_id, character_id)?;
-    let json = serde_json::to_vec_pretty(&character_card_v2(root, world_id, &card))?;
+    let json = serde_json::to_vec_pretty(&character_card_v2(root, world_id, &card)?)?;
     if path
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
@@ -32,8 +32,9 @@ pub fn export_character(
     Ok(())
 }
 
-fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> Value {
+fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> DataResult<Value> {
     let sections = split_public_markdown(&card.public_md);
+    let (notes, greetings) = split_private_markdown(&card.private_md);
     let mut data = serde_json::Map::new();
     for ((field, _), content) in PUBLIC_SECTIONS.into_iter().zip(sections) {
         data.insert(field.to_owned(), Value::String(content));
@@ -44,7 +45,7 @@ fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> V
         ("creator_notes", json!("")),
         ("system_prompt", json!("")),
         ("post_history_instructions", json!("")),
-        ("alternate_greetings", json!([])),
+        ("alternate_greetings", json!(greetings)),
         ("tags", json!([])),
         ("creator", json!("")),
         ("character_version", json!("")),
@@ -55,7 +56,10 @@ fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> V
     ] {
         data.insert(field.to_owned(), value);
     }
-    if let Some(book) = character_book(&card.private_md, &card.name) {
+    // 卡內世界書：這桌世界書裡跟著這張卡的條目＋私有筆記。世界書壞掉就整次匯出失敗——吞掉的話匯出
+    // 照樣成功、整本角色設定卻不見了；沒有世界書檔＝沒有條目，不算錯
+    let entries = data::character_book_raw_entries(root_dir, world_id, &card.id)?;
+    if let Some(book) = character_book(&entries, &notes, &card.name) {
         data.insert("character_book".to_owned(), book);
     }
     // 頂層同時放 V1 欄位：只吃舊格式的工具也讀得到（SillyTavern 自己匯出時也這樣寫）
@@ -63,7 +67,7 @@ fn character_card_v2(root_dir: &Path, world_id: &str, card: &CharacterCard) -> V
     root.insert("spec".to_owned(), json!("chara_card_v2"));
     root.insert("spec_version".to_owned(), json!("2.0"));
     root.insert("data".to_owned(), Value::Object(data));
-    Value::Object(root)
+    Ok(Value::Object(root))
 }
 
 /// public_markdown 的反向：圍欄外、整行（去掉行尾空白）等於 `### <任一語系的欄位段標>` 的行切欄，
@@ -135,54 +139,173 @@ impl Fence {
     }
 }
 
-/// private_markdown 的反向：`- **關鍵字**：內容` 回成有關鍵字的條目，
-/// 其餘私有筆記併成一條沒有關鍵字的常駐條目（ST 那邊 constant 才會固定注入）
-fn character_book(private_md: &str, name: &str) -> Option<Value> {
-    if private_md.trim().is_empty() {
-        return None;
-    }
-    let mut entries: Vec<(Vec<&str>, String)> = Vec::new();
-    let mut loose: Vec<&str> = Vec::new();
+/// private_markdown 的反向：拆成私有筆記與備用開場白。
+/// 段頭＝圍欄外、整行（去掉行尾空白）等於十語系 `### 備用開場白 {n}`（n 為正整數）的行；圍欄裡長得像段頭的
+/// 行不算。一段開場白從段頭下一行到下一個段頭或結尾為止，內文自帶的其他標題留在該段。第一個段頭之前是
+/// 私有筆記；最後一段之後的內容分不出來，一律算進最後一段（已知限制，匯入時開場白段寫在最後）。
+fn split_private_markdown(private_md: &str) -> (String, Vec<String>) {
+    let mut notes: Vec<&str> = Vec::new();
+    let mut greetings: Vec<Vec<&str>> = Vec::new();
+    let mut fence: Option<Fence> = None;
     for line in private_md.lines() {
-        match line
-            .strip_prefix("- **")
-            .and_then(|rest| rest.split_once("**："))
-        {
-            Some((keys, content)) if !content.trim().is_empty() => entries.push((
-                keys.split('、')
-                    .map(str::trim)
-                    .filter(|key| !key.is_empty())
-                    .collect(),
-                content.trim().to_owned(),
-            )),
-            _ => loose.push(line),
+        let heading = match &fence {
+            Some(open) => {
+                if open.closed_by(line) {
+                    fence = None;
+                }
+                false
+            }
+            None => {
+                fence = Fence::open(line);
+                fence.is_none() && is_greeting_heading(line)
+            }
+        };
+        if heading {
+            greetings.push(Vec::new());
+            continue;
+        }
+        match greetings.last_mut() {
+            Some(greeting) => greeting.push(line),
+            None => notes.push(line),
         }
     }
-    let loose = loose.join("\n").trim().to_owned();
-    if !loose.is_empty() {
-        entries.push((Vec::new(), loose));
-    }
-    let entries = entries
+    let greetings = greetings
         .into_iter()
-        .enumerate()
-        .map(|(index, (keys, content))| {
-            json!({
-                "id": index,
-                "keys": keys,
-                "secondary_keys": [],
-                "comment": "",
-                "content": content,
-                "constant": keys.is_empty(),
-                "selective": !keys.is_empty(),
-                "insertion_order": index,
-                "enabled": true,
-                "position": "before_char",
-                "case_sensitive": false,
-                "extensions": {},
+        .map(|lines| lines.join("\n").trim_end_matches('\n').to_owned())
+        .collect();
+    (notes.join("\n").trim().to_owned(), greetings)
+}
+
+fn is_greeting_heading(line: &str) -> bool {
+    let Some(label) = line.trim_end().strip_prefix("### ") else {
+        return false;
+    };
+    ALTERNATE_GREETING.iter().any(|template| {
+        let Some((prefix, suffix)) = template.split_once("{n}") else {
+            return false;
+        };
+        label
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(suffix))
+            .is_some_and(|number| {
+                !number.is_empty()
+                    && number.bytes().all(|byte| byte.is_ascii_digit())
+                    && number.parse::<u64>().is_ok_and(|number| number > 0)
             })
+    })
+}
+
+/// 匯出的 character_book：跟著這張卡的世界書條目（原始值轉回 V2 欄位）＋私有筆記併成的一條常駐條目
+/// （ST 那邊 constant 才會固定注入）。
+fn character_book(entries: &[Value], notes: &str, name: &str) -> Option<Value> {
+    let mut book: Vec<Value> = entries.iter().map(v2_entry).collect();
+    if !notes.is_empty() {
+        book.push(json!({
+            "keys": [],
+            "secondary_keys": [],
+            "comment": "",
+            "content": notes,
+            "constant": true,
+            "selective": false,
+            "insertion_order": book.len(),
+            "enabled": true,
+            "position": "before_char",
+            "case_sensitive": false,
+            "extensions": {},
+        }));
+    }
+    if book.is_empty() {
+        return None;
+    }
+    for (index, entry) in book.iter_mut().enumerate() {
+        entry["id"] = json!(index);
+    }
+    Some(json!({ "name": name, "entries": book, "extensions": {} }))
+}
+
+/// 這桌世界書的原始條目轉回 V2 character_book 條目（照 ST convertWorldInfoToCharacterBook 的對照）：
+/// 欄位改名、位置數字轉字串（0→before_char、其他→after_char，原數字留在 extensions.position）、
+/// 大小寫優先用原卡的 snake_case 值；匯入時強制停用的鷹架條目還原原卡啟停；table_tavern 只留
+/// 明寫的 gm／public 可見度（角色名單、來源卡、停用標記都拿掉，下一桌重新套預設）。
+fn v2_entry(raw: &Value) -> Value {
+    let mut entry = raw.as_object().cloned().unwrap_or_default();
+    entry.remove("uid");
+    entry.remove("displayIndex");
+    let keys = entry.remove("key").unwrap_or_else(|| json!([]));
+    entry.insert("keys".to_owned(), keys);
+    let secondary = entry.remove("keysecondary").unwrap_or_else(|| json!([]));
+    entry.insert("secondary_keys".to_owned(), secondary);
+    if let Some(order) = entry.remove("order") {
+        entry.insert("insertion_order".to_owned(), order);
+    }
+    let table_tavern = raw
+        .get("extensions")
+        .and_then(|extensions| extensions.get("table_tavern"));
+    let disable = entry
+        .remove("disable")
+        .and_then(|disable| disable.as_bool())
+        .unwrap_or(false);
+    let forced = table_tavern
+        .and_then(|table_tavern| table_tavern.get("forced_disable"))
+        .is_some();
+    let disable = match table_tavern
+        .and_then(|table_tavern| table_tavern.get("source_disable"))
+        .and_then(Value::as_bool)
+    {
+        Some(source) if forced && disable => source,
+        _ => disable,
+    };
+    entry.insert("enabled".to_owned(), json!(!disable));
+    let case_sensitive = entry.remove("caseSensitive");
+    if !entry.contains_key("case_sensitive") {
+        let value = case_sensitive
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        entry.insert("case_sensitive".to_owned(), json!(value));
+    }
+    entry
+        .entry("constant".to_owned())
+        .or_insert_with(|| json!(false));
+    entry
+        .entry("selective".to_owned())
+        .or_insert_with(|| json!(false));
+    let mut extensions = entry
+        .remove("extensions")
+        .and_then(|extensions| match extensions {
+            Value::Object(map) => Some(map),
+            _ => None,
         })
-        .collect::<Vec<_>>();
-    Some(json!({ "name": name, "entries": entries, "extensions": {} }))
+        .unwrap_or_default();
+    match entry.remove("position") {
+        Some(Value::String(position)) => {
+            entry.insert("position".to_owned(), Value::String(position));
+        }
+        Some(Value::Number(number)) => {
+            let label = if number.as_i64() == Some(0) {
+                "before_char"
+            } else {
+                "after_char"
+            };
+            entry.insert("position".to_owned(), json!(label));
+            extensions.insert("position".to_owned(), Value::Number(number));
+        }
+        _ => {
+            entry.insert("position".to_owned(), json!("before_char"));
+        }
+    }
+    let visibility = table_tavern
+        .and_then(|table_tavern| table_tavern.get("visibility"))
+        .and_then(Value::as_str)
+        .filter(|visibility| matches!(*visibility, "gm" | "public"));
+    extensions.remove("table_tavern");
+    if let Some(visibility) = visibility {
+        extensions.insert(
+            "table_tavern".to_owned(),
+            json!({ "visibility": visibility }),
+        );
+    }
+    entry.insert("extensions".to_owned(), Value::Object(extensions));
+    Value::Object(entry)
 }
 
 /// 匯出底圖：優先用卡片圖，其次頭像，都沒有就給一張 1×1 透明 PNG（ST 讀的是 tEXt，圖只是外觀）

@@ -264,6 +264,7 @@ fn second_image_failure_does_not_stop_the_rest() {
         result.character_ids,
         result.rewritten_entries,
         result.deleted_entries,
+        result.deleted_entries_raw,
         before,
         &data::test_exclusive(&world_id),
     );

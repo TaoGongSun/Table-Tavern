@@ -135,7 +135,8 @@ fn import_skips_entries_identical_to_existing_ones() {
         first,
         WorldbookImport {
             imported: 2,
-            skipped: 0
+            skipped: 0,
+            invalid: 0
         }
     );
 
@@ -145,7 +146,8 @@ fn import_skips_entries_identical_to_existing_ones() {
         again,
         WorldbookImport {
             imported: 0,
-            skipped: 2
+            skipped: 2,
+            invalid: 0
         }
     );
     assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 2);
@@ -178,7 +180,8 @@ fn import_skips_entries_identical_to_existing_ones() {
         third,
         WorldbookImport {
             imported: 1,
-            skipped: 1
+            skipped: 1,
+            invalid: 0
         }
     );
     assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 3);

@@ -20,6 +20,8 @@ interface CharacterImport {
   source: string | null;
   /** PNG 卡的圖救不回、沒存成角色圖（卡照常匯入） */
   image_dropped: boolean;
+  /** 卡帶了隨身世界書卻沒匯成（角色照建） */
+  book_failed: boolean;
 }
 
 interface ImportProbe {
@@ -55,10 +57,11 @@ export interface WebSaveImport {
   shared_kept: number;
 }
 
-/** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
+/** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數；invalid＝欄位壞掉被略過的條數 */
 interface WorldbookImport {
   imported: number;
   skipped: number;
+  invalid?: number;
 }
 
 /** 世界書路徑的匯入結果：收編數字＋這次匯入的原檔識別（同 CharacterImport.source） */
@@ -79,7 +82,8 @@ export interface ImportReceiptSummary {
 function worldbookImportedMessage(book: WorldbookImport) {
   return (
     t("worldbookImportDone", { n: book.imported }) +
-    (book.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: book.skipped }) : "")
+    (book.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: book.skipped }) : "") +
+    ((book.invalid ?? 0) > 0 ? t("worldbookInvalidSkipped", { d: book.invalid ?? 0 }) : "")
   );
 }
 
@@ -336,7 +340,7 @@ export function useImportController(input: {
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
   const importAsCharacter = useCallback(
     async (worldId: string, data: number[], adoptName = true) => {
-      const { meta, book, source, image_dropped } = await turnBackend(() =>
+      const { meta, book, source, image_dropped, book_failed } = await turnBackend(() =>
         invoke<CharacterImport>("import_character", {
           worldId,
           data,
@@ -349,7 +353,8 @@ export function useImportController(input: {
       await refreshReceipts(worldId);
       // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話；圖沒存成另外講（沒有隨身世界書的卡也要講）
       const notices = [
-        book.imported > 0 ? worldbookImportedMessage(book) : "",
+        book.imported > 0 || (book.invalid ?? 0) > 0 ? worldbookImportedMessage(book) : "",
+        book_failed ? t("importCardBookFailed") : "",
         image_dropped ? t("importCardImageNotSaved") : "",
       ].filter((notice) => notice !== "");
       if (notices.length > 0) {

@@ -1,10 +1,16 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import type { Visibility, WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import type { CharacterMeta } from "../characters/card-model";
 import { t } from "../../i18n";
-import { EMPTY_LEDGER, type Ledger, type LedgerEntry, type WorldbookDraft } from "./worldbook-model";
+import {
+  draftVisibility,
+  EMPTY_LEDGER,
+  type Ledger,
+  type LedgerEntry,
+  type WorldbookDraft,
+} from "./worldbook-model";
 
 interface UseWorldbookEditorOptions {
   world: string;
@@ -104,15 +110,7 @@ export function useWorldbookEditor({
 
   /** 把表單寫回世界書；失敗時把原因留在清單訊息列並回傳 false（表單不關） */
   async function persistDraft(source: WorldbookDraft) {
-    const visibility: Visibility =
-      source.visibility === "characters"
-        ? {
-            type: "characters",
-            characters: source.characters.filter((id) =>
-              characters.some((character) => character.id === id),
-            ),
-          }
-        : { type: source.visibility };
+    const visibility = draftVisibility(source);
     const entry: WorldbookEntry = {
       uid: source.uid ?? Number.MAX_SAFE_INTEGER,
       title: source.title.trim(),

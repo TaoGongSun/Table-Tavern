@@ -81,6 +81,10 @@ pub struct RefactorOutcome {
     /// 同一條來源只要有一部分沒產出成功，消耗它就會讓那部分內容憑空消失。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preserve_source_uids: Vec<String>,
+    /// 盤點當下整桌條目的身分指紋（uid → 指紋，`data::identity_fingerprint`）：套用時核對來源條目還是
+    /// 不是同一條（跨桌套用、盤點後玩家改了內容）。空＝舊產物，只照 UID 對。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub source_fingerprints: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +129,8 @@ pub struct ApplyProgress {
     pub rewritten_entries: Vec<WorldbookEntry>,
     /// 整條刪除的來源條目原文快照。
     pub deleted_entries: Vec<WorldbookEntry>,
+    /// deleted_entries 各條的原始 JSON（同序），撤銷照原始值插回。
+    pub deleted_entries_raw: Vec<serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -141,6 +147,7 @@ pub struct RefactorApplyResult {
     pub rewritten_entries: Vec<WorldbookEntry>,
     /// 整條刪除的來源條目原文快照；undo 時不論 uid 現在還在不在，一律無條件插回。
     pub deleted_entries: Vec<WorldbookEntry>,
+    pub deleted_entries_raw: Vec<serde_json::Value>,
 }
 
 /// 讀取端玩法標記正規化：舊版可能已落地 "Characters"／帶空白的值——合法值就地修正大小寫

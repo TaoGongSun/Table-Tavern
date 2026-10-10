@@ -12,6 +12,14 @@ export interface WorldbookDraft {
   characters: string[];
 }
 
+/** 表單存回的可見度。名單照表單原樣：表單只列沒封存的角色，名單裡不在清單上的 id（已封存的角色等）
+ * 玩家看不到也取消不了，照留；玩家這次取消勾選的已經不在 draft.characters 裡。 */
+export function draftVisibility(draft: WorldbookDraft): Visibility {
+  return draft.visibility === "characters"
+    ? { type: "characters", characters: [...draft.characters] }
+    : { type: draft.visibility };
+}
+
 // 機制帳本：世界書分頁「哪些條目被本地機制接管／跳過」面板，對應 mechanism.rs 的 Ledger。
 export type RecordKind = "rejected" | "clamped" | "error" | "absorbed" | "skipped" | "jump";
 

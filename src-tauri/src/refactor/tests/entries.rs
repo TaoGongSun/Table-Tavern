@@ -47,6 +47,7 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = no_player_selection(Vec::new());
 
@@ -121,6 +122,7 @@ fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_a
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -181,6 +183,7 @@ fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -237,6 +240,7 @@ fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -268,6 +272,7 @@ fn apply_then_undo_keeps_refactor_outcome_file() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -327,6 +332,7 @@ fn undo_removes_new_entries_including_locked() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -357,9 +363,9 @@ fn undo_removes_new_entries_including_locked() {
         "undo 後新條目應整批收回"
     );
 }
-/// 包 2：entries[].meta 有值時，套用後的世界書條目直接照抄 keys/constant/order/disabled/
-/// visibility/is_person；沒有 meta 的條目走現行預設（keys=[]／constant=false／order 用
-/// 遞增計數／visibility=Gm／is_person=false）——兩種條目同一次套用互不干擾。
+/// 包 2：來源不在這桌（核對失敗）時，帶 meta 的條目退回照抄 meta 的 keys/constant/order/disabled/
+/// is_person，名單裡的角色都不在本桌所以可見度給 GM；沒有 meta 的條目來源全部不在：GM、常駐、
+/// 無主鍵——兩種條目同一次套用互不干擾。
 #[test]
 fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
     let root = TestRoot::new("entry-meta-preservation");
@@ -402,6 +408,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -422,10 +429,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
     assert!(with_meta.constant);
     assert_eq!(with_meta.order, 99);
     assert!(with_meta.disabled);
-    assert_eq!(
-        with_meta.visibility,
-        Visibility::Characters(vec!["char-1".to_owned()])
-    );
+    assert_eq!(with_meta.visibility, Visibility::Gm);
     assert!(with_meta.is_person);
 
     let without_meta = entries
@@ -433,7 +437,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         .find(|entry| entry.title == "新組裝條目")
         .unwrap();
     assert!(without_meta.keys.is_empty());
-    assert!(!without_meta.constant);
+    assert!(without_meta.constant);
     assert!(!without_meta.disabled);
     assert_eq!(without_meta.visibility, Visibility::Gm);
     assert!(!without_meta.is_person);
