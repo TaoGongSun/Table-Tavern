@@ -134,6 +134,9 @@
 - 介面卡兩案首發必含〔作者裁決 2026-10-04〕：[interface-card-panel](../handoffs/interface-card-panel.md)、[interface-takeover-spike](../handoffs/interface-takeover-spike.md)。網頁版導去下載的桌面版要已經帶這兩案。
 - 目標 release 上，完整複合卡（世界書＋介面＋MVU）的網頁存檔匯入後能續玩。
 - 桌面版 WI 補齊到 ST 行為：[worldbook-st-trigger-parity](../tasks/worldbook-st-trigger-parity.md) 做完才上線（D17）。〔作者裁決 2026-10-07〕
+- 角色台詞剝狀態區塊：[char-line-status-strip](../tasks/char-line-status-strip.md)。〔作者裁決 2026-10-10〕
+- 刪角色後清世界書可見度名單：[character-delete-visibility-cleanup](../tasks/character-delete-visibility-cleanup.md)。〔作者裁決 2026-10-10〕
+- 世界書路匯入濾掉別桌角色 id：[worldbook-path-foreign-ids](../tasks/worldbook-path-foreign-ids.md)。〔作者裁決 2026-10-10〕
 - ~~匯入卡的世界書角色看得到~~：已完成（2026-10-10，[worldbook-character-visibility](../handoffs/archive/worldbook-character-visibility.md)，d4872f1）。〔作者裁決 2026-10-07〕
 
 ## 四、查證結論
