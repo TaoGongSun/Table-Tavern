@@ -10,6 +10,7 @@ mod card_import;
 mod card_png;
 mod interface;
 mod reset;
+mod sources;
 mod types;
 
 #[cfg(test)]

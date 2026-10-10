@@ -139,6 +139,9 @@ pub(crate) async fn refactor_survey(
     let context =
         refactor_ai::assemble_card_context(&root, &world_id).map_err(|error| error.to_string())?;
     let entries = data::read_worldbook(&root, &world_id).map_err(|error| error.to_string())?;
+    // 盤點當下的身分指紋：產物套用時拿它核對來源條目還是不是同一條（盤點後改過內容、跨桌套用）
+    let source_fingerprints =
+        data::identity_fingerprints(&root, &world_id).map_err(|error| error.to_string())?;
     let signals = refactor_ai::prescan_worldbook(&entries);
     let messages = refactor_ai::survey_messages(&context, &signals, &lang, &mode);
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
@@ -208,6 +211,7 @@ pub(crate) async fn refactor_survey(
     }
     refactor_ai::normalize_survey_for_mode(&mut outcome);
     outcome.frame_candidates = frame_candidates(&entries, &outcome.interface_uids);
+    outcome.source_fingerprints = source_fingerprints;
     // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
     for person in &outcome.persons {
         eprintln!(

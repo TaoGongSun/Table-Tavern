@@ -58,6 +58,7 @@ fn empty_survey() -> RefactorSurveyOutcome {
         fields: Vec::new(),
         mode: String::new(),
         raw: String::new(),
+        source_fingerprints: Default::default(),
     }
 }
 
@@ -193,6 +194,7 @@ fn assemble_local_group_route_without_span_in_declaration_falls_to_leftover() {
         fields: Vec::new(),
         mode: String::new(),
         raw: String::new(),
+        source_fingerprints: Default::default(),
     };
 
     let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();

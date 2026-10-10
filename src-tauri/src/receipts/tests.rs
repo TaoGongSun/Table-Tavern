@@ -34,14 +34,22 @@ impl Drop for TestRoot {
 fn import_character_recorded(root: &Path, world_id: &str, raw: &[u8]) -> data::CharacterMeta {
     let before = snapshot(root, world_id);
     let meta = import::import_character(root, world_id, raw, "#3366ff", "zh-TW").unwrap();
-    record_character_import(root, world_id, &meta.id, &meta.name, before, None);
+    record_character_import(
+        root,
+        world_id,
+        &meta.id,
+        &meta.name,
+        before,
+        Vec::new(),
+        None,
+    );
     meta
 }
 
 fn import_worldbook_recorded(root: &Path, world_id: &str, label: &str, json_text: &str) {
     let before = snapshot(root, world_id);
     data::import_worldbook(root, world_id, json_text).unwrap();
-    record_worldbook_import(root, world_id, label, before, None);
+    record_worldbook_import(root, world_id, label, before, Vec::new(), None);
 }
 
 fn transcript_event(ts: &str, text: &str) -> data::TranscriptEvent {
@@ -213,7 +221,7 @@ fn undo_worldbook_import_removes_only_gm_image_created_this_time() {
             import::save_gm_image(root.path(), &world_id, png).unwrap(),
             import::GmImage::Saved
         );
-        record_worldbook_import(root.path(), &world_id, label, before, None);
+        record_worldbook_import(root.path(), &world_id, label, before, Vec::new(), None);
     };
 
     let first = crate::import::png_image::test_png::real_png(2, 2);

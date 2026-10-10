@@ -204,6 +204,13 @@ struct ImportReceipt {
     /// 不是玩家刪的，跟 rewritten_entries 的「uid 還在才復原」語意不同。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     deleted_entries: Vec<WorldbookEntry>,
+    /// deleted_entries 各條的原始 JSON（同序）：撤銷照原始值插回，次要鍵、位置、來源卡等不會掉。
+    /// 舊收據沒有這欄（或長度對不上）就照精簡條目插回。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    deleted_entries_raw: Vec<serde_json::Value>,
+    /// 匯入時被去重合併改寫可見度／來源卡的既有條目：撤銷只還原這兩個欄位。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    visibility_restores: Vec<data::VisibilityRestore>,
     /// 這次操作往「機制帳本」（mechanism-log.jsonl）追加的原文；undo 時整段挖掉，其餘
     /// （含期間新產生的遊玩紀錄）不動。目前只有 AI 卡重構套用機制那條路會寫非空值。
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -522,6 +529,7 @@ pub fn record_character_import(
     character_id: &str,
     label: &str,
     before: Snapshot,
+    visibility_restores: Vec<data::VisibilityRestore>,
     import_source: Option<ImportSource>,
 ) -> Recorded {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
@@ -543,6 +551,8 @@ pub fn record_character_import(
             renamed_from: None,
             rewritten_entries: Vec::new(),
             deleted_entries: Vec::new(),
+            deleted_entries_raw: Vec::new(),
+            visibility_restores,
             added_ledger_lines: String::new(),
             interface_shell_created: false,
             interface_shell_restore: None,
@@ -565,16 +575,19 @@ pub fn record_worldbook_import(
     world_id: &str,
     label: &str,
     before: Snapshot,
+    visibility_restores: Vec<data::VisibilityRestore>,
     import_source: Option<ImportSource>,
 ) -> Recorded {
     let worldbook_entries = new_worldbook_entries(root, world_id, &before.worldbook_uids);
     let mechanism = diff_mechanism(before.state.as_ref(), root, world_id);
     let world_card_created = detect_world_card_created(root, world_id, &before);
     let gm_image_created = detect_gm_image_created(root, world_id, &before);
+    // 只有合併改寫、沒有新增的匯入也是有效收據：撤銷要把可見度退回去
     if worldbook_entries.is_empty()
         && mechanism.is_none()
         && world_card_created.is_none()
         && !gm_image_created
+        && visibility_restores.is_empty()
     {
         // 什麼都沒新增：不留收據，這次存下的原檔也沒有用（重匯它不會多出任何東西）
         if let Some(source) = &import_source {
@@ -599,6 +612,8 @@ pub fn record_worldbook_import(
             renamed_from: None,
             rewritten_entries: Vec::new(),
             deleted_entries: Vec::new(),
+            deleted_entries_raw: Vec::new(),
+            visibility_restores,
             added_ledger_lines: String::new(),
             interface_shell_created: false,
             interface_shell_restore: None,
@@ -631,6 +646,7 @@ pub fn record_refactor_apply(
     character_ids: Vec<String>,
     rewritten_entries: Vec<WorldbookEntry>,
     deleted_entries: Vec<WorldbookEntry>,
+    deleted_entries_raw: Vec<serde_json::Value>,
     before: Snapshot,
     _held: &data::WorldExclusive,
 ) -> RefactorRecord {
@@ -676,6 +692,8 @@ pub fn record_refactor_apply(
             renamed_from: None,
             rewritten_entries,
             deleted_entries,
+            deleted_entries_raw,
+            visibility_restores: Vec::new(),
             added_ledger_lines,
             interface_shell_created,
             interface_shell_restore,
@@ -819,6 +837,17 @@ fn undo_last(
         }
     }
 
+    // 1a. 被合併改寫的既有條目：只還原可見度與來源卡；玩家之後改過（目前值不是收據記的 after）就不動。
+    // 先做這步：前一筆收據新建、被這筆擴大的條目還原後，前一筆撤銷時的指紋才對得上。
+    for restore in &receipt.visibility_restores {
+        if let Some(data::RestoreOutcome::Kept) = kept(
+            strict,
+            data::apply_visibility_restore(root, world_id, restore),
+        )? {
+            report.kept_entries += 1;
+        }
+    }
+
     // 2. 世界書條目：uid 還在且指紋沒變才刪；指紋變了＝玩家改過，保留並計數。
     let current = kept(strict, data::read_worldbook(root, world_id))?.unwrap_or_default();
     for recorded in &receipt.worldbook_entries {
@@ -866,7 +895,19 @@ fn undo_last(
             ..b.clone()
         }
     };
-    for original in &receipt.deleted_entries {
+    let raw_complete = receipt.deleted_entries_raw.len() == receipt.deleted_entries.len();
+    for (index, original) in receipt.deleted_entries.iter().enumerate() {
+        if raw_complete {
+            kept(
+                strict,
+                data::restore_deleted_entry_raw(
+                    root,
+                    world_id,
+                    &receipt.deleted_entries_raw[index],
+                ),
+            )?;
+            continue;
+        }
         let current = kept(strict, data::read_worldbook(root, world_id))?.unwrap_or_default();
         match current.iter().find(|entry| entry.uid == original.uid) {
             Some(entry) if same(entry, original) => {}

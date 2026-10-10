@@ -7,7 +7,7 @@ mod pending;
 
 pub use pending::{confirm_web_save_import, discard_web_save_import};
 
-use super::card::{import_character_placing, BookVisibility};
+use super::card::{import_character_placing, BookWrite};
 use crate::data::card_vars::{self, Filled, Layer, LayerWrite};
 use crate::data::message_vars::{self, Json};
 use crate::data::state_commit::with_commit;
@@ -171,26 +171,30 @@ fn build(
         data::set_player_card(root, world_id, Some(player.id))?;
     }
 
-    // 卡：角色卡路的隨身條目沒指定可見度就只給這個角色看（D16）；世界書路沒有角色，照預設給 GM
+    // 卡：角色卡路的隨身條目沒指定可見度就只給這個角色看（D16，與桌面版同一條規則）；世界書路由 GM 演，給 GM
     let (character_id, placed) = match save.route {
         Route::Character => {
-            let (imported, book) = import_character_placing(
+            let imported = import_character_placing(
                 root,
                 world_id,
                 card_bytes,
                 CHARACTER_COLOR,
                 lang,
-                BookVisibility::OwnCharacter,
+                BookWrite::Strict,
             )?;
             (
                 Some(imported.meta.id),
-                book.map(|book| book.placed).unwrap_or_default(),
+                imported.book.map(|book| book.placed).unwrap_or_default(),
             )
         }
         Route::Worldbook => {
             let json_text = super::worldbook_json(card_bytes)?;
-            let book =
-                data::import_worldbook_as(root, world_id, &json_text, &data::Visibility::Gm)?;
+            let book = data::import_worldbook_as(root, world_id, &json_text, &data::BookOwner::Gm)?;
+            if book.summary.invalid > 0 {
+                return Err(data::invalid_data(
+                    "character_book enabled must be a boolean",
+                ));
+            }
             super::interface::save_world_card_strict(root, world_id, card_bytes)?;
             super::save_gm_image(root, world_id, card_bytes)?;
             if let Ok(book_value) = serde_json::from_str(&json_text) {

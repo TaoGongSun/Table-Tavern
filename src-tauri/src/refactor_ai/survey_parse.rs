@@ -396,6 +396,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         fields,
         mode,
         raw: raw.to_owned(),
+        source_fingerprints: Default::default(),
     }
 }
 

@@ -78,6 +78,7 @@ fn interface_outcome(source_uid: u64) -> RefactorOutcome {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     }
 }
 

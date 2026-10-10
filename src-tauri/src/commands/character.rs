@@ -86,22 +86,17 @@ pub(crate) async fn import_character(
     // 整段持整桌獨占：快照、匯入、記帳之間不讓別的寫入插進來
     let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
-    let entries_before = data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len());
     // 段標照介面語系寫進卡片內文；設定讀不到就用預設語系，不擋匯入
     let config = data::read_config(&config_root(&app)?).unwrap_or_default();
     let lang = transport::ui_language(&config);
     let imported_card =
         import::import_character_file(&root, &world_id, &data, &color, &lang, &held)
             .map_err(|error| error.to_string())?;
-    // 卡片隨身的世界書條目也要跟世界書路徑一樣回報進來幾條、重複跳過幾條
-    let imported =
-        data::read_worldbook(&root, &world_id).map_or(0, |entries| entries.len() - entries_before);
-    let skipped = import::probe_import(&data)
-        .book_entries
-        .saturating_sub(imported);
+    // 卡片隨身的世界書條目也要跟世界書路徑一樣回報進來幾條、重複跳過幾條、壞掉略過幾條
     Ok(CharacterImport {
         meta: imported_card.value,
-        book: data::WorldbookImport { imported, skipped },
+        book: imported_card.book.unwrap_or_default(),
+        book_failed: imported_card.book_failed,
         source: imported_card.source,
         image_dropped: imported_card.image_dropped,
     })
@@ -155,6 +150,8 @@ pub(crate) async fn discard_web_save_import(
 pub(crate) struct CharacterImport {
     meta: CharacterMeta,
     book: data::WorldbookImport,
+    /// 卡帶了隨身世界書卻沒匯成（角色照建）
+    book_failed: bool,
     source: Option<String>,
     /// PNG 卡的圖救不回、沒存成（卡照常匯入）
     image_dropped: bool,

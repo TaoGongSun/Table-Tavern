@@ -161,6 +161,24 @@ describe("保留來源", () => {
     const without = assembleRefactorOutcome({ characters: [], interfaces: [], entries: outcome.entries });
     expect(parseRefactorOutcome(JSON.stringify(without)).preserve_source_uids).toBeUndefined();
   });
+
+  it("盤點的來源身分指紋照抄進產物，匯出再匯入留著；形狀不對＝壞檔", () => {
+    const entries = [{ title: "設定", kind: "setting", content: "x", source_uids: ["5"], rules: {}, triggers: [] } as never];
+    const outcome = assembleRefactorOutcome({
+      characters: [],
+      interfaces: [],
+      entries,
+      sourceFingerprints: { "5": "00ff" },
+    });
+    expect(outcome.source_fingerprints).toEqual({ "5": "00ff" });
+    expect(parseRefactorOutcome(JSON.stringify(outcome)).source_fingerprints).toEqual({ "5": "00ff" });
+    const without = assembleRefactorOutcome({ characters: [], interfaces: [], entries, sourceFingerprints: {} });
+    expect(without.source_fingerprints).toBeUndefined();
+    expect(parseRefactorOutcome(JSON.stringify(without)).source_fingerprints).toBeUndefined();
+    expect(() =>
+      parseRefactorOutcome(JSON.stringify({ ...outcome, source_fingerprints: { "5": 1 } })),
+    ).toThrow(REFACTOR_IMPORT_INVALID);
+  });
 });
 
 describe("localConvertPerson", () => {

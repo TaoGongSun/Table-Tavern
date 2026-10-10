@@ -33,6 +33,7 @@ pub fn apply_and_record(
                     result.character_ids,
                     result.rewritten_entries,
                     result.deleted_entries,
+                    result.deleted_entries_raw,
                     before,
                     held,
                 );
@@ -48,6 +49,7 @@ pub fn apply_and_record(
                 progress.character_ids,
                 progress.rewritten_entries,
                 progress.deleted_entries,
+                progress.deleted_entries_raw,
                 before,
                 held,
             );

@@ -22,9 +22,9 @@ use super::state_view::{character_state_block, gm_dynamic_block, StateScope};
 pub struct LaneTurn {
     pub tail: String,
     pub confidential: Option<String>,
-    /// `hoist_private` 為真時，本輪角色的私設改由這裡回傳、不進 tail——單角色桌把它放進
-    /// system 用。**只有 `private_md`**：限定世界書的 keyword 條目隨最近事件翻動、
-    /// 狀態每輪變，那兩樣進了 system 會把前綴打散，正好毀掉共線要修的東西。
+    /// `hoist_private` 為真時，本輪角色的私設與限定可見的 constant 條目改由這裡回傳、不進 tail——
+    /// 單角色桌把它放進 system 用。限定世界書的 keyword 條目隨最近事件翻動、狀態每輪變，
+    /// 那兩樣進了 system 會把前綴打散，正好毀掉共線要修的東西，所以不在這裡。
     pub hoisted_private: Option<String>,
     /// tail 含本輪角色狀態區塊（claude 單角色線靠它偵測整塊消失）
     pub has_state_block: bool,
@@ -140,6 +140,27 @@ pub fn chars_lane_system(
     system
 }
 
+/// 「只有某角色知道的世界情報」段：限定可見條目的標題與全文。
+fn limited_block(
+    entries: &[&WorldbookEntry],
+    card: &CharacterCard,
+    user_name: &str,
+    lang: &str,
+) -> String {
+    let mut block = match scaffold_en(lang) {
+        true => format!("## World knowledge only {} has\n", card.name),
+        false => format!("## 只有「{}」知道的世界情報\n", card.name),
+    };
+    for entry in entries {
+        block.push_str(&format!(
+            "### {}\n{}\n",
+            replace_st_macros(&entry.title, user_name, Some(&card.name)),
+            replace_st_macros(&entry.content, user_name, Some(&card.name))
+        ));
+    }
+    block
+}
+
 /// chars 線回合尾段：公開 keyword 條目＋機密段（本輪角色的私設＋限定可見條目）＋本輪指定。
 /// 機密段回合結束後從 session 檔抹掉；Public constant 條目已在凍結快照，不重複。
 #[allow(clippy::too_many_arguments)]
@@ -212,18 +233,21 @@ pub fn chars_lane_turn(
             false => confidential.push_str(&block),
         }
     }
-    if !limited.is_empty() {
-        confidential.push_str(&match scaffold_en(lang) {
-            true => format!("## World knowledge only {} has\n", card.name),
-            false => format!("## 只有「{}」知道的世界情報\n", card.name),
+    // 限定可見的 constant 條目每輪都一樣：hoist 時跟私設一起進 system（不 hoist 的 Agy 線不抹尾段，
+    // 留在尾段會每輪疊一份）；keyword 命中的隨最近事件翻動，照舊走尾段。
+    let (limited_constant, limited_keyword): (Vec<_>, Vec<_>) = match hoist_private {
+        true => limited.into_iter().partition(|entry| entry.constant),
+        false => (Vec::new(), limited),
+    };
+    if !limited_constant.is_empty() {
+        let block = limited_block(&limited_constant, card, user_name, lang);
+        hoisted_private = Some(match hoisted_private {
+            Some(private) => format!("{private}{block}"),
+            None => block,
         });
-        for entry in limited {
-            confidential.push_str(&format!(
-                "### {}\n{}\n",
-                replace_st_macros(&entry.title, user_name, Some(&card.name)),
-                replace_st_macros(&entry.content, user_name, Some(&card.name))
-            ));
-        }
+    }
+    if !limited_keyword.is_empty() {
+        confidential.push_str(&limited_block(&limited_keyword, card, user_name, lang));
     }
     let state_block = branch.and_then(|branch| {
         character_state_block(state, mechanism, branch, &card.name, user_name, lang)

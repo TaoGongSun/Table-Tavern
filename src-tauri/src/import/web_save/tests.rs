@@ -191,14 +191,23 @@ fn next_character_turn_carries_constant_and_triggered_entries() {
         None,
         LANG,
     );
-    // 本輪尾段（實際送出的最後一則）：constant 條目、最近訊息提到「旅店」觸發的條目都在「只有他知道的世界情報」
-    let tail = &messages.last().unwrap().content;
-    let section = &tail[tail.find("知道的世界情報").expect("有限定條目段")..];
-    assert!(section.contains("這是一個魔法逐漸消失的世界。"), "{tail}");
-    assert!(section.contains("灰燼旅店在王都南門外"), "{tail}");
-    // 沒被觸發的 keyword 條目不進這一段
-    assert!(!section.contains("本店不賒帳"), "{tail}");
-    assert!(!section.contains("莫拉年輕時當過傭兵。"), "{tail}");
+    // 整份送出的 messages 串起來計數：constant 條目與最近訊息提到「旅店」觸發的條目恰好一次；
+    // 單卡桌的 constant 條目跟私設一起在 system
+    let sent: String = messages
+        .iter()
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        sent.matches("這是一個魔法逐漸消失的世界。").count(),
+        1,
+        "{sent}"
+    );
+    assert!(messages[0].content.contains("這是一個魔法逐漸消失的世界。"));
+    assert_eq!(sent.matches("灰燼旅店在王都南門外").count(), 1, "{sent}");
+    // 沒被觸發的 keyword 條目不送
+    assert!(!sent.contains("本店不賒帳"), "{sent}");
+    assert!(!sent.contains("莫拉年輕時當過傭兵。"), "{sent}");
 }
 
 #[test]
@@ -817,6 +826,13 @@ fn duplicate_entries_map_to_the_kept_uid() {
     .unwrap();
     assert!(sidecar["entry_uids"]["first"].is_u64());
     assert_eq!(sidecar["entry_uids"]["dup"], sidecar["entry_uids"]["first"]);
+    // 重複的那條只落一份：下一輪角色線整份 messages 裡（最近訊息提到旅店而觸發）恰好一次
+    let sent: String = character_turn(&root, &imported.world_id, &imported.character_id.unwrap())
+        .iter()
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(sent.matches("灰燼旅店在王都南門外").count(), 1, "{sent}");
 }
 
 /// D24：regex_allowed=false 的存檔 → 桌旗標 false、卡片介面不套顯示腳本；true 照套。

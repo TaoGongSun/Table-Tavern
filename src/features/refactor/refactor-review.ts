@@ -107,6 +107,8 @@ export interface RefactorOutcome {
   mode?: string;
   /** 有產物失敗（展開失敗、介面合併衝突）的來源 uid：套用時保留原條目，不刪也不停用。 */
   preserve_source_uids?: string[];
+  /** 盤點當下的來源身分指紋（uid → 指紋）：套用時核對來源條目還是不是同一條（跨桌套用、盤點後改過）。 */
+  source_fingerprints?: Record<string, string>;
 }
 
 export interface RefactorSelection {
@@ -179,6 +181,8 @@ export interface RefactorSurveyOutcome {
   /** 這份小抄依哪種玩法產出："interface"｜"characters"；舊產物空字串＝照 interface 行為。 */
   mode: string;
   raw: string;
+  /** 盤點當下整桌條目的身分指紋（uid → 指紋，App 在送 AI 前取的快照）：照抄進產物，套用時核對來源。 */
+  source_fingerprints?: Record<string, string>;
 }
 
 /** 本地零呼叫組裝的完整產物，對照後端 src-tauri/src/refactor_assemble.rs 的 RefactorLocalAssembly。 */
@@ -436,6 +440,7 @@ export function assembleRefactorOutcome(parts: {
   audit?: RefactorAuditItem[];
   mode?: string;
   preserveSourceUids?: string[];
+  sourceFingerprints?: Record<string, string>;
 }): RefactorOutcome {
   return {
     characters: parts.characters,
@@ -450,6 +455,9 @@ export function assembleRefactorOutcome(parts: {
       ? { preserve_source_uids: [...new Set(parts.preserveSourceUids)].sort() }
       : {}),
     ...(parts.mode ? { mode: parts.mode } : {}),
+    ...(parts.sourceFingerprints && Object.keys(parts.sourceFingerprints).length > 0
+      ? { source_fingerprints: parts.sourceFingerprints }
+      : {}),
   };
 }
 
@@ -629,6 +637,16 @@ export function parseRefactorOutcomeValue(raw: unknown): RefactorOutcome {
   // 保留來源清單：產出時有部分失敗或沒跑完的來源，匯出再匯入也要留著，套用才不會刪掉它們
   const preserve = readStringArray(raw, "preserve_source_uids");
   if (preserve.length > 0) outcome.preserve_source_uids = preserve;
+  // 來源身分指紋：跨桌套用靠它核對來源；缺席＝舊產物，套用時只照 UID 對。有值但形狀不對＝壞檔拒收
+  if (raw.source_fingerprints !== undefined) {
+    const fingerprints = raw.source_fingerprints;
+    if (!isRecord(fingerprints) || Object.values(fingerprints).some((value) => typeof value !== "string")) {
+      throw invalid();
+    }
+    if (Object.keys(fingerprints).length > 0) {
+      outcome.source_fingerprints = fingerprints as Record<string, string>;
+    }
+  }
   // 全區皆空＝這檔案沒有任何內容，多半根本不是重構產物；dropped／unabsorbed／audit 有其一
   // 仍算合法產物——純介面卡選 characters 的 dropped-only 匯出要能讀回重玩（套用落 mode）。
   const empty =

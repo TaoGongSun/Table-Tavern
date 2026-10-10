@@ -15,10 +15,13 @@ use std::path::Path;
 /// 匯入結果與這次匯入的原檔識別：前端貼開場白時帶回來，開場白才掛得到正確那筆匯入。
 /// 沒留收據（什麼都沒新增）或記帳失敗時是 None。
 /// `image_dropped`：卡圖（角色圖或 GM 圖）救不回、沒存成，前端要提示。
+/// `book`／`book_failed`：角色卡路的隨身世界書收編數字／卡帶了書卻沒匯成（世界書路的數字在 `value`）。
 pub struct Imported<T> {
     pub value: T,
     pub source: Option<String>,
     pub image_dropped: bool,
+    pub book: Option<WorldbookImport>,
+    pub book_failed: bool,
 }
 
 /// 寫標記並存原檔；原檔存不進去時什麼都還沒動，標記收掉再回錯。
@@ -65,8 +68,8 @@ pub fn import_worldbook_file(
     let json_text = super::worldbook_json(bytes)?;
     let (pending, file) = begin(root, world_id, bytes)?;
     let before = receipts::snapshot(root, world_id);
-    // 匯入本身失敗：可能已寫了一半，標記留著（來源判不完整）
-    let result = data::import_worldbook(root, world_id, &json_text)?;
+    // 匯入本身失敗：可能已寫了一半，標記留著（來源判不完整）。世界書路的卡由 GM 演：沒寫可見度的條目給 GM
+    let book = data::import_worldbook_as(root, world_id, &json_text, &data::BookOwner::Gm)?;
     super::save_world_card(root, world_id, bytes);
     // 寫檔失敗照「匯入本身失敗」處理：可能已寫了一半，標記留著
     let gm_image = super::save_gm_image(root, world_id, bytes)?;
@@ -79,6 +82,7 @@ pub fn import_worldbook_file(
         world_id,
         label,
         before,
+        book.restores,
         Some(ImportSource {
             route: ImportRoute::Worldbook,
             label: label.to_owned(),
@@ -87,9 +91,11 @@ pub fn import_worldbook_file(
         }),
     );
     Ok(Imported {
-        value: result,
+        value: book.summary,
         source: finish(root, world_id, &pending, file, recorded),
         image_dropped: gm_image == super::GmImage::Dropped,
+        book: None,
+        book_failed: false,
     })
 }
 
@@ -109,13 +115,20 @@ pub fn import_character_file(
     let super::ImportedCharacter {
         meta,
         image_dropped,
+        book,
+        book_failed,
     } = super::import_character_reporting(root, world_id, bytes, color, lang)?;
+    let (summary, restores) = match book {
+        Some(book) => (Some(book.summary), book.restores),
+        None => (None, Vec::new()),
+    };
     let recorded = receipts::record_character_import(
         root,
         world_id,
         &meta.id,
         &meta.name,
         before,
+        restores,
         Some(ImportSource {
             route: ImportRoute::Character,
             label: String::new(),
@@ -127,6 +140,8 @@ pub fn import_character_file(
         value: meta,
         source: finish(root, world_id, &pending, file, recorded),
         image_dropped,
+        book: summary,
+        book_failed,
     })
 }
 

@@ -644,11 +644,11 @@ fn worldbook_visibility_separates_gm_public_and_character_contexts() {
     );
     let fox_system = &fox_messages[0].content;
     let fox_tail = &fox_messages.last().unwrap().content;
-    // 公開 constant 進共用前綴；角色限定的走回合注入，留在尾端
+    // 公開 constant 進共用前綴；單卡桌角色限定的 constant 跟私設一起提進 system，不在尾端
     assert!(fox_system.contains("\n## 你知道的世界情報\n"));
     assert!(fox_system.contains("### 公開情報\n公開情報內容\n"));
-    assert!(!fox_system.contains("狐狸情報"));
-    assert!(fox_tail.contains("### 狐狸情報\n狐狸情報內容\n"));
+    assert!(fox_system.contains("### 狐狸情報\n狐狸情報內容\n"));
+    assert!(!fox_tail.contains("狐狸情報"));
     assert!(!fox_system.contains("GM 祕密"));
     assert!(!fox_tail.contains("GM 祕密"));
     assert!(!fox_system.contains("騎士情報"));
@@ -669,8 +669,8 @@ fn worldbook_visibility_separates_gm_public_and_character_contexts() {
     let knight_system = &knight_messages[0].content;
     let knight_tail = &knight_messages.last().unwrap().content;
     assert!(knight_system.contains("公開情報"));
-    assert!(!knight_system.contains("騎士情報"));
-    assert!(knight_tail.contains("騎士情報"));
+    assert!(knight_system.contains("騎士情報"));
+    assert!(!knight_tail.contains("騎士情報"));
     assert!(!knight_system.contains("狐狸情報"));
     assert!(!knight_tail.contains("狐狸情報"));
 

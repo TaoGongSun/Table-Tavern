@@ -25,6 +25,7 @@ fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     apply(
         root.path(),
@@ -91,6 +92,7 @@ fn apply_ignores_invalid_mode_values() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     apply(
         root.path(),
@@ -181,6 +183,7 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -276,6 +279,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -441,6 +445,7 @@ fn apply_rejects_conflicting_interface_before_any_write() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: vec![0],
@@ -525,6 +530,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -577,6 +583,7 @@ fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -645,6 +652,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -697,6 +705,7 @@ fn apply_interface_without_shell_creates_no_shell_file() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -743,6 +752,7 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
         unabsorbed: Vec::new(),
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
