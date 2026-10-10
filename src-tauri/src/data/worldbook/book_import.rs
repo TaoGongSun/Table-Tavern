@@ -6,8 +6,8 @@ use super::super::character::list_characters;
 use super::super::state::read_state;
 use super::super::{invalid_data, DataResult};
 use super::{
-    entries_object_mut, entry_uid, next_uid, read_worldbook_value, set_visibility,
-    sorted_entry_keys, table_tavern_field, table_tavern_mut, visibility_from_value,
+    entries_object_mut, entry_uid, next_uid, read_worldbook_value, set_source_cards,
+    set_visibility, sorted_entry_keys, table_tavern_field, table_tavern_mut, visibility_from_value,
     write_worldbook_value, Visibility, FORCED_DISABLE,
 };
 use crate::mechanism::{Record, RecordKind};
@@ -93,13 +93,10 @@ pub fn import_worldbook_as(
         dropped,
     } = st_order(&source);
     with_commit(root, world_id, |_| {
-        let table_ids: HashSet<String> = match owner {
-            BookOwner::Gm => HashSet::new(),
-            BookOwner::Character(_) => list_characters(root, world_id)?
-                .into_iter()
-                .map(|meta| meta.id)
-                .collect(),
-        };
+        let table_ids: HashSet<String> = list_characters(root, world_id)?
+            .into_iter()
+            .map(|meta| meta.id)
+            .collect();
 
         let mut worldbook = read_worldbook_value(root, world_id)?;
         let entries = entries_object_mut(&mut worldbook)?;
@@ -257,14 +254,25 @@ fn normalize_imported_entry(
     }
     object.insert("uid".to_owned(), serde_json::json!(uid));
     match owner {
-        // 世界書路：明示的可見度原樣保留（讀取端讀不懂退回 GM），沒寫的給 GM
+        // 世界書路：明示的 gm／public 照留，名單只留本桌 id；濾空、讀不懂、沒寫一律給 GM。
+        // 來源卡只留本桌 id，但明寫 gm 的條目原樣保留：那是「落定」標記，別桌作者只給 GM 的決定要跟著走
         BookOwner::Gm => {
-            if table_tavern_field(&value, "visibility").is_none() {
-                set_visibility(&mut value, &Visibility::Gm);
+            let settled_gm = matches!(
+                table_tavern_field(&value, "visibility"),
+                Some(serde_json::Value::String(text)) if text == "gm"
+            ) && !source_cards(&value).is_empty();
+            let visibility = explicit_book_visibility(&value, table_ids).unwrap_or(Visibility::Gm);
+            set_visibility(&mut value, &visibility);
+            if !settled_gm && table_tavern_field(&value, SOURCE_CARDS).is_some() {
+                let cards: Vec<String> = source_cards(&value)
+                    .into_iter()
+                    .filter(|id| table_ids.contains(id))
+                    .collect();
+                set_source_cards(&mut value, &cards);
             }
         }
         // 角色卡路：明示的 gm／public、名單裡有本桌角色的 characters 才算數；讀不懂或名單全是別桌
-        // 的 id（舊版匯出卡）一律當沒寫，給這張卡自己的角色
+        // 的 id（舊版匯出卡）一律當沒寫，給這張卡自己的角色（世界書路則給 GM）
         BookOwner::Character(id) => {
             let visibility = explicit_card_visibility(&value, table_ids)
                 .unwrap_or_else(|| Visibility::Characters(vec![id.clone()]));
@@ -299,8 +307,23 @@ fn normalize_imported_entry(
     Ok(value)
 }
 
+/// 世界書路的明示可見度：`"gm"`、`"public"`，或照讀取端規則（整個陣列都是字串）讀得懂、
+/// 至少一個本桌角色 id 的 `characters`（只留本桌的 id）。其餘一律 None。
+fn explicit_book_visibility(
+    value: &serde_json::Value,
+    table_ids: &HashSet<String>,
+) -> Option<Visibility> {
+    if let Some(serde_json::Value::Object(object)) = table_tavern_field(value, "visibility") {
+        let ids = object.get("characters")?.as_array()?;
+        if !ids.iter().all(serde_json::Value::is_string) {
+            return None;
+        }
+    }
+    explicit_card_visibility(value, table_ids)
+}
+
 /// 角色卡路的明示可見度：`"gm"`、`"public"`，或名單裡至少一個本桌角色 id 的 `characters`
-/// （只留本桌的 id）。其餘一律 None。
+/// （只留本桌的 id，非字串略過）。其餘一律 None。
 fn explicit_card_visibility(
     value: &serde_json::Value,
     table_ids: &HashSet<String>,

@@ -11,7 +11,7 @@ fn one_entry_book(extensions: serde_json::Value) -> String {
     .to_string()
 }
 
-/// 世界書路：缺欄位寫成 GM；格式壞掉的原樣保留、讀取端退回 GM——兩者分開。
+/// 世界書路：缺欄位與格式壞掉的都存成 GM，讀取也是 GM。
 #[test]
 fn worldbook_route_missing_and_broken_visibility_read_as_gm() {
     let root = TestRoot::new("book-visibility-missing");
@@ -33,7 +33,7 @@ fn worldbook_route_missing_and_broken_visibility_read_as_gm() {
     )
     .unwrap();
     let raw = read_worldbook_raw(root.path(), &world_id).unwrap();
-    assert_eq!(raw[&0]["extensions"]["table_tavern"]["visibility"], 42);
+    assert_eq!(raw[&0]["extensions"]["table_tavern"]["visibility"], "gm");
     assert_eq!(
         read_worldbook(root.path(), &world_id).unwrap()[0].visibility,
         Visibility::Gm
