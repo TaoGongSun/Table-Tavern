@@ -4,9 +4,9 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
-- [char-line-status-strip](tasks/char-line-status-strip.md) — 角色台詞照抄狀態標籤時原樣顯示，角色線沒剝狀態區塊 — 下一步：未排程；worldbook-character-visibility 結案衍生〔作者裁決 2026-10-10〕
-- [character-delete-visibility-cleanup](tasks/character-delete-visibility-cleanup.md) — 刪角色後世界書可見度名單沒清，條目只剩 GM 看得到 — 下一步：未排程；先定名單清空後給誰〔作者裁決 2026-10-10〕
-- [worldbook-path-foreign-ids](tasks/worldbook-path-foreign-ids.md) — 世界書路匯入別桌匯出的書時殘留別桌角色 id — 下一步：未排程〔作者裁決 2026-10-10〕
+- [char-line-status-strip](tasks/char-line-status-strip.md) — 角色台詞照抄狀態標籤時原樣顯示，角色線沒剝狀態區塊 — 下一步：未排程；worldbook-character-visibility 結案衍生；網頁版公開前門檻〔作者裁決 2026-10-10〕
+- [character-delete-visibility-cleanup](tasks/character-delete-visibility-cleanup.md) — 刪角色後世界書可見度名單沒清，條目只剩 GM 看得到 — 下一步：未排程；先定名單清空後給誰；網頁版公開前門檻〔作者裁決 2026-10-10〕
+- [worldbook-path-foreign-ids](tasks/worldbook-path-foreign-ids.md) — 世界書路匯入別桌匯出的書時殘留別桌角色 id — 下一步：未排程；網頁版公開前門檻〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [worldbook-st-trigger-parity](tasks/worldbook-st-trigger-parity.md) — 桌面版世界書觸發補齊到 ST 行為，並消費網頁存檔帶來的觸發狀態 — 下一步：未排程；web-version 第 1 輪審查衍生（2026-10-07）
 - [api-request-header-timeout](tasks/api-request-header-timeout.md) — API 請求送出後到回應頭之前、非 2xx 讀錯誤本文都沒有逾時 — 下一步：只包 send() 與錯誤本文讀取，不用 ClientBuilder::timeout
