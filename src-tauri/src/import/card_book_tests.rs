@@ -70,13 +70,14 @@ fn lane_text(root: &Path, world_id: &str, character_id: &str, hoist: bool) -> (S
     let player = data::read_player_card(root, world_id).unwrap();
     let state = data::read_state(root, world_id).unwrap();
     let events = data::read_transcript(root, world_id, state.current_scene).unwrap();
-    let book = data::read_worldbook(root, world_id).unwrap();
+    let (scan, snapshot) =
+        chat_assembly::test_character_scan(root, world_id, &card, player.as_ref(), &events, LANG);
     let (frozen, turn) = chat_assembly::character_lane_parts(
         &card,
         &cards,
         player.as_ref(),
-        &events,
-        &book,
+        &scan,
+        &snapshot,
         &state,
         None,
         LANG,
@@ -97,13 +98,15 @@ fn shared_text(root: &Path, world_id: &str, character_id: &str) -> (String, Stri
     let player = data::read_player_card(root, world_id).unwrap();
     let state = data::read_state(root, world_id).unwrap();
     let events = data::read_transcript(root, world_id, state.current_scene).unwrap();
-    let book = data::read_worldbook(root, world_id).unwrap();
+    let (scan, snapshot) =
+        chat_assembly::test_character_scan(root, world_id, &card, player.as_ref(), &events, LANG);
     let messages = crate::transport::assemble_shared_messages(
         &card,
         &cards,
         player.as_ref(),
         &events,
-        &book,
+        &scan,
+        &snapshot,
         &state.state,
         &state.mechanism,
         None,
@@ -121,12 +124,13 @@ fn shared_text(root: &Path, world_id: &str, character_id: &str) -> (String, Stri
 fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
     let materials = chat_assembly::gm_materials(root, world_id).unwrap();
     let (scope, _) = chat_assembly::gm_scope(&materials);
+    let scan = chat_assembly::test_gm_scan(root, world_id, &materials, LANG);
     let single = crate::transport::assemble_gm_messages(
         &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
-        &materials.worldbook,
+        &scan,
         &materials.state.state,
         &materials.state.mechanism,
         &scope,
@@ -136,7 +140,7 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
     .map(|message| message.content.clone())
     .collect::<Vec<_>>()
     .join("\n");
-    let (frozen, tail) = chat_assembly::gm_lane_parts(&materials, &scope, "", LANG);
+    let (frozen, tail) = chat_assembly::gm_lane_parts(&materials, &scan, &scope, "", LANG);
     [single, format!("{frozen}\n{tail}")]
 }
 
@@ -179,15 +183,16 @@ fn character_route_next_turn_sends_card_book_by_trigger_rules() {
         assert!(frozen.contains("甲常駐內容甲") && !tail.contains("甲常駐內容甲"));
     }
 
-    // Agy 續聊：stdin 只有本輪 prompt、system 在第一輪——兩輪串起來常駐條目仍恰好一次；
-    // 命中的 keyword 條目照舊（與 Public keyword 條目相同）每個命中的回合各一次
+    // Agy 續聊：stdin 只有本輪 prompt、system 在第一輪——不抹尾段的線，本輪觸發的世界書全在 system、
+    // 尾段不放（不然每輪疊一份）；世界書一變 system 就變、整線重開，所以兩輪串起來各條恰好一次
     let hoist = chars_lane_shape(LaneProvider::Agy, false).hoist_private;
     let (frozen, first_tail) = lane_text(root.path(), &world_id, &meta.id, hoist);
     say(root.path(), &world_id, "燈塔上好像有人。");
     let (_, second_tail) = lane_text(root.path(), &world_id, &meta.id, hoist);
     let agy = format!("{frozen}\n{first_tail}\n{second_tail}");
     assert_eq!(count(&agy, "甲常駐內容甲"), 1, "{agy}");
-    assert_eq!(count(&agy, "丙命中內容丙"), 2, "{agy}");
+    assert_eq!(count(&agy, "丙命中內容丙"), 1, "{agy}");
+    assert!(!first_tail.contains("丙命中內容丙") && !second_tail.contains("丙命中內容丙"));
 
     // GM 線：常駐、命中、明寫 GM、格式條目都在，常駐恰好一次；沒命中與停用的不送
     for gm in gm_texts(root.path(), &world_id) {

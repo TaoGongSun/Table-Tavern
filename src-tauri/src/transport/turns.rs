@@ -1,18 +1,15 @@
-use crate::data::{
-    CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind, Visibility,
-    WorldbookEntry,
-};
+use crate::data::{CharacterCard, Mechanism, TableState, TranscriptEvent, TranscriptKind};
+use crate::world_scan::{Placed, WorldScan};
 
 use super::messages::{
     language_rule, message, narration_line, player_fallback_name, push_merged, replace_st_macros,
     scaffold_en, speaker_prefix, system_line, ChatMessage,
 };
 
-use super::arrivals::{prompt_speaker, prompt_text, render_for_prompt, Side};
+use super::arrivals::{prompt_speaker, prompt_text, Side};
 
-use super::context::{
-    active_worldbook_entries, gm_system_prompt, player_heading, split_person_roster,
-};
+use super::context::{gm_system_prompt, gm_worldbook, player_heading};
+use super::worldbook::section_body;
 
 use super::state_view::{character_state_block, gm_dynamic_block, StateScope};
 
@@ -22,12 +19,26 @@ use super::state_view::{character_state_block, gm_dynamic_block, StateScope};
 pub struct LaneTurn {
     pub tail: String,
     pub confidential: Option<String>,
-    /// `hoist_private` 為真時，本輪角色的私設與限定可見的 constant 條目改由這裡回傳、不進 tail——
-    /// 單角色桌把它放進 system 用。限定世界書的 keyword 條目隨最近事件翻動、狀態每輪變，
-    /// 那兩樣進了 system 會把前綴打散，正好毀掉共線要修的東西，所以不在這裡。
+    /// `hoist` 不是 `None` 時要提進凍結 system 的段落（呼叫端接在 system 後面）：本輪角色的私設，
+    /// 加上世界書——`StableConfidential` 只收穩定的機密條目，`All` 收本輪觸發的全部世界書。
     pub hoisted_private: Option<String>,
+    /// `hoisted_private` 裡的世界書部分（`Hoist::All` 才有）：它一變，不抹尾段的線就要重開、不走補丁
+    /// （補丁回合後不抹，舊的世界書會留在 session 歷史裡，方案三之 3）
+    pub hoisted_worldbook: Option<String>,
     /// tail 含本輪角色狀態區塊（claude 單角色線靠它偵測整塊消失）
     pub has_state_block: bool,
+}
+
+/// 角色回合的世界書與私設要不要提進凍結 system（方案三之 3）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hoist {
+    /// 全角色共用一條線（Claude／Grok 共線、API 多卡）：私設與機密條目都在回合尾段的機密段
+    None,
+    /// API 單卡：私設與穩定的機密條目進 system，其餘照尾段（API 無狀態，尾段不會疊）
+    StableConfidential,
+    /// 不抹尾段的線（Agy 一角一線、單人在場的 Claude）：私設與本輪觸發的全部世界書都進 system，
+    /// 尾段不放世界書（不然每輪的世界書段會在 session 歷史裡一份份疊上去）
+    All,
 }
 
 /// 事件在 lane prompt 裡的一行；`None`＝這則不送。續聊線的歷史全部以名字標注成純文字
@@ -55,14 +66,23 @@ fn known_world_heading(lang: &str) -> &'static str {
     }
 }
 
-/// chars 線凍結 system（快照）：中性扮演引擎指示＋全部公開角色卡＋玩家卡＋Public constant 條目。
+/// chars 線「你知道的世界情報」後組段標（凍結 system 與回合尾共用），結尾帶換行。
+fn known_world_back_heading(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "## World knowledge you have, continued\n",
+        false => "## 你知道的世界情報（續）\n",
+    }
+}
+
+/// chars 線凍結 system（快照）：中性扮演引擎指示＋全部公開角色卡＋玩家卡＋共用快照的靜態世界書條目
+/// （`TableBook::snapshot`：啟用、constant、`Public`、穩定、位置前／後／範例上下，不看任何一位角色的掃描）。
 /// 全角色共用一條 session，這一輪演誰由回合尾段指定；私設與限定條目不進快照
 /// （E7：凍結 system 動一字整條快取全滅，快照只能放全員共通且穩定的素材）。
-/// Public constant 裡的 is_person 條目改走名冊行，不進全文（包 4a，見 split_person_roster）。
+/// constant 人物條目改走名冊行，不進全文（包 4a）。
 pub fn chars_lane_system(
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
-    worldbook: &[WorldbookEntry],
+    snapshot: &[Placed],
     lang: &str,
 ) -> String {
     let user_name = player
@@ -114,105 +134,95 @@ pub fn chars_lane_system(
             ));
         }
     }
-    let mut constants: Vec<&WorldbookEntry> = worldbook
-        .iter()
-        .filter(|entry| {
-            !entry.disabled && entry.constant && matches!(entry.visibility, Visibility::Public)
-        })
-        .collect();
-    constants.sort_by_key(|entry| (entry.order, entry.uid));
-    let (constants, roster) = split_person_roster(&constants, lang);
-    if !constants.is_empty() || roster.is_some() {
-        system.push('\n');
-        system.push_str(known_world_heading(lang));
-        for entry in constants {
-            system.push_str(&format!(
-                "### {}\n{}\n",
-                replace_st_macros(&entry.title, user_name, None),
-                replace_st_macros(&entry.content, user_name, None)
-            ));
-        }
-        if let Some(roster) = roster {
-            system.push_str(&roster);
-            system.push('\n');
-        }
-    }
+    system.push_str(&snapshot_worldbook(snapshot, user_name, lang));
     system
 }
 
-/// 「只有某角色知道的世界情報」段：限定可見條目的標題與全文。
-fn limited_block(
-    entries: &[&WorldbookEntry],
-    card: &CharacterCard,
-    user_name: &str,
+/// 共用快照的世界書段落（`chars_lane_system` 尾端那幾段，含開頭換行）；沒有內容回空字串。
+/// 不抹尾段的線拿它和 hoist 的世界書一起算指紋：快照條目改了或刪了也要重開。
+fn snapshot_worldbook(snapshot: &[Placed], user_name: &str, lang: &str) -> String {
+    let front: Vec<&Placed> = snapshot.iter().filter(|entry| entry.in_front()).collect();
+    let back: Vec<&Placed> = snapshot.iter().filter(|entry| entry.in_back()).collect();
+    let mut text = String::new();
+    for (heading, entries) in [
+        (known_world_heading(lang), front),
+        (known_world_back_heading(lang), back),
+    ] {
+        let body = section_body(&entries, user_name, None, lang);
+        if !body.is_empty() {
+            text.push('\n');
+            text.push_str(heading);
+            text.push_str(&body);
+        }
+    }
+    text
+}
+
+/// 凍結 system 裡世界書的全部內容（共用快照段＋提進來的本輪世界書）：不抹尾段的線以它為重開依據。
+pub fn system_worldbook(
+    snapshot: &[Placed],
+    player: Option<&CharacterCard>,
+    hoisted: Option<&str>,
     lang: &str,
 ) -> String {
-    let mut block = match scaffold_en(lang) {
+    let user_name = player
+        .map(|player| player.name.as_str())
+        .unwrap_or_else(|| player_fallback_name(lang));
+    let mut text = snapshot_worldbook(snapshot, user_name, lang);
+    text.push_str(hoisted.unwrap_or_default());
+    text
+}
+
+/// 「只有某角色知道的世界情報」段：限定可見與私密觸發的條目；沒有內容回空字串。
+fn limited_block(entries: &[&Placed], card: &CharacterCard, user_name: &str, lang: &str) -> String {
+    let body = section_body(entries, user_name, Some(&card.name), lang);
+    if body.is_empty() {
+        return body;
+    }
+    let heading = match scaffold_en(lang) {
         true => format!("## World knowledge only {} has\n", card.name),
         false => format!("## 只有「{}」知道的世界情報\n", card.name),
     };
-    for entry in entries {
-        block.push_str(&format!(
-            "### {}\n{}\n",
-            replace_st_macros(&entry.title, user_name, Some(&card.name)),
-            replace_st_macros(&entry.content, user_name, Some(&card.name))
-        ));
-    }
-    block
+    format!("{heading}{body}")
 }
 
-/// chars 線回合尾段：公開 keyword 條目＋機密段（本輪角色的私設＋限定可見條目）＋本輪指定。
-/// 機密段回合結束後從 session 檔抹掉；Public constant 條目已在凍結快照，不重複。
+/// chars 線「你知道的世界情報」段（本輪公開觸發的 `Public` 條目，共用快照已有的不重複）；沒有內容回空字串。
+fn public_block(entries: &[&Placed], card: &CharacterCard, user_name: &str, lang: &str) -> String {
+    let body = section_body(entries, user_name, Some(&card.name), lang);
+    if body.is_empty() {
+        return body;
+    }
+    format!("{}{body}", known_world_heading(lang))
+}
+
+/// chars 線回合尾段：本輪公開觸發的 `Public` 條目＋機密段（本輪角色的私設＋限定可見與私密觸發的條目）＋本輪指定。
+/// 機密段回合結束後從 session 檔抹掉；共用快照的靜態條目已在凍結 system，不重複。
+/// `hoist` 決定私設與世界書要不要改提進 system（見 `Hoist`）。
 #[allow(clippy::too_many_arguments)]
 pub fn chars_lane_turn(
     card: &CharacterCard,
     player: Option<&CharacterCard>,
-    events: &[TranscriptEvent],
-    worldbook: &[WorldbookEntry],
+    scan: &WorldScan,
     state: &TableState,
     mechanism: &Mechanism,
     branch: Option<&[String]>,
     lang: &str,
-    hoist_private: bool,
+    hoist: Hoist,
 ) -> LaneTurn {
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let visible: Vec<WorldbookEntry> = worldbook
+    let (confidential_entries, public_entries): (Vec<&Placed>, Vec<&Placed>) = scan
+        .placed
         .iter()
-        .filter(|entry| match &entry.visibility {
-            Visibility::Gm => false,
-            Visibility::Public => true,
-            Visibility::Characters(ids) => ids.iter().any(|id| id == &card.id),
-        })
-        .cloned()
-        .collect();
-    let mut public_keyword = Vec::new();
-    let mut limited = Vec::new();
-    // 觸發看角色側看得到的事件：私設裡的關鍵字不能替角色啟用條目，被略過的事件也不佔最近四則
-    let visible_events = render_for_prompt(events, lang, Side::Character);
-    for entry in active_worldbook_entries(&visible, &visible_events) {
-        match &entry.visibility {
-            Visibility::Public if entry.constant => {} // 已在凍結快照
-            Visibility::Public => public_keyword.push(entry),
-            _ => limited.push(entry), // Characters 限定：不論 constant 都走回合注入
-        }
-    }
+        .filter(|entry| !scan.snapshot.contains(&entry.uid))
+        .partition(|entry| entry.confidential());
+    let public = public_block(&public_entries, card, user_name, lang);
 
     let mut tail = String::new();
-    if !public_keyword.is_empty() {
-        tail.push_str(known_world_heading(lang));
-        for entry in public_keyword {
-            tail.push_str(&format!(
-                "### {}\n{}\n",
-                replace_st_macros(&entry.title, user_name, Some(&card.name)),
-                replace_st_macros(&entry.content, user_name, Some(&card.name))
-            ));
-        }
-        tail.push('\n');
-    }
     let mut confidential = String::new();
-    let mut hoisted_private = None;
+    let mut hoisted = String::new();
+    let mut hoisted_worldbook = None;
     if !card.private_md.trim().is_empty() {
         let heading = match scaffold_en(lang) {
             true => format!(
@@ -228,26 +238,41 @@ pub fn chars_lane_turn(
             "{heading}\n{}\n",
             replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
         );
-        match hoist_private {
-            true => hoisted_private = Some(block),
-            false => confidential.push_str(&block),
+        match hoist {
+            Hoist::None => confidential.push_str(&block),
+            Hoist::StableConfidential | Hoist::All => hoisted.push_str(&block),
         }
     }
-    // 限定可見的 constant 條目每輪都一樣：hoist 時跟私設一起進 system（不 hoist 的 Agy 線不抹尾段，
-    // 留在尾段會每輪疊一份）；keyword 命中的隨最近事件翻動，照舊走尾段。
-    let (limited_constant, limited_keyword): (Vec<_>, Vec<_>) = match hoist_private {
-        true => limited.into_iter().partition(|entry| entry.constant),
-        false => (Vec::new(), limited),
-    };
-    if !limited_constant.is_empty() {
-        let block = limited_block(&limited_constant, card, user_name, lang);
-        hoisted_private = Some(match hoisted_private {
-            Some(private) => format!("{private}{block}"),
-            None => block,
-        });
-    }
-    if !limited_keyword.is_empty() {
-        confidential.push_str(&limited_block(&limited_keyword, card, user_name, lang));
+    match hoist {
+        Hoist::None => {
+            if !public.is_empty() {
+                tail.push_str(&public);
+                tail.push('\n');
+            }
+            confidential.push_str(&limited_block(&confidential_entries, card, user_name, lang));
+        }
+        Hoist::StableConfidential => {
+            if !public.is_empty() {
+                tail.push_str(&public);
+                tail.push('\n');
+            }
+            // 穩定、前／後組的機密條目每輪都一樣，跟私設一起進 system；其餘隨掃描翻動，照舊走尾段
+            let (stable, rest): (Vec<&Placed>, Vec<&Placed>) = confidential_entries
+                .into_iter()
+                .partition(|entry| entry.stable && (entry.in_front() || entry.in_back()));
+            hoisted.push_str(&limited_block(&stable, card, user_name, lang));
+            confidential.push_str(&limited_block(&rest, card, user_name, lang));
+        }
+        Hoist::All => {
+            let mut worldbook = public;
+            let limited = limited_block(&confidential_entries, card, user_name, lang);
+            if !worldbook.is_empty() && !limited.is_empty() {
+                worldbook.push('\n');
+            }
+            worldbook.push_str(&limited);
+            hoisted.push_str(&worldbook);
+            hoisted_worldbook = Some(worldbook);
+        }
     }
     let state_block = branch.and_then(|branch| {
         character_state_block(state, mechanism, branch, &card.name, user_name, lang)
@@ -278,39 +303,42 @@ pub fn chars_lane_turn(
     LaneTurn {
         tail,
         confidential: (!confidential.is_empty()).then_some(confidential),
-        hoisted_private,
+        hoisted_private: (!hoisted.is_empty()).then_some(hoisted),
+        hoisted_worldbook,
         has_state_block,
     }
 }
 
-/// gm 線凍結 system（快照）：GM 指示＋world.md＋全 constant 條目＋全卡（含私設）＋玩家卡。
-/// GM 看得到一切，constant 條目不分可見性全部進快照。
+/// gm 線凍結 system（快照）：GM 指示＋world.md＋穩定觸發的世界書（前組、後組）＋全卡（含私設）＋玩家卡。
+/// GM 看得到一切，不分可見度；不穩定的觸發條目在回合尾段（`gm_lane_turn`）。
 pub fn gm_lane_system(
     world_md: &str,
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
-    worldbook: &[WorldbookEntry],
+    scan: &WorldScan,
     mechanism: &Mechanism,
     lang: &str,
 ) -> String {
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let mut constants: Vec<&WorldbookEntry> = worldbook
-        .iter()
-        .filter(|entry| !entry.disabled && entry.constant)
-        .collect();
-    constants.sort_by_key(|entry| (entry.order, entry.uid));
+    let split = gm_worldbook(scan);
     gm_system_prompt(
-        world_md, cards, player, &constants, user_name, mechanism, lang,
+        world_md,
+        cards,
+        player,
+        &split.system_front,
+        &split.system_back,
+        user_name,
+        mechanism,
+        lang,
     )
 }
 
-/// gm 線回合尾段：keyword 條目＋目前狀態＋導演指示（旁白＋點名合併版，由呼叫端組好傳入）。
+/// gm 線回合尾段：不穩定的觸發條目與作者註記、依深度條目＋目前狀態＋導演指示（旁白＋點名合併版，由呼叫端組好傳入）。
 #[allow(clippy::too_many_arguments)]
 pub fn gm_lane_turn(
-    events: &[TranscriptEvent],
-    worldbook: &[WorldbookEntry],
+    scan: &WorldScan,
     player: Option<&CharacterCard>,
     state: &TableState,
     mechanism: &Mechanism,
@@ -321,12 +349,8 @@ pub fn gm_lane_turn(
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let rendered = render_for_prompt(events, lang, Side::Gm);
-    let keyword_entries: Vec<&WorldbookEntry> = active_worldbook_entries(worldbook, &rendered)
-        .into_iter()
-        .filter(|entry| !entry.constant)
-        .collect();
-    let dynamic = gm_dynamic_block(&keyword_entries, state, user_name, mechanism, scope, lang);
+    let worldbook = section_body(&gm_worldbook(scan).tail, user_name, None, lang);
+    let dynamic = gm_dynamic_block(&worldbook, state, user_name, mechanism, scope, lang);
     let mut tail = String::new();
     if !dynamic.is_empty() {
         tail.push_str(&dynamic);
@@ -337,6 +361,7 @@ pub fn gm_lane_turn(
         tail,
         confidential: None,
         hoisted_private: None, // GM 線沒有「本輪角色的私設」這個概念
+        hoisted_worldbook: None,
         has_state_block: false,
     }
 }
@@ -528,6 +553,11 @@ mod tests {
     };
     #[allow(unused_imports)]
     use crate::mechanism;
+    #[allow(unused_imports)]
+    use crate::transport::test_support::legacy::{
+        assemble_gm_messages, assemble_shared_messages, chars_lane_system, chars_lane_turn,
+        gm_lane_system, gm_lane_turn,
+    };
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -834,8 +864,8 @@ mod tests {
         );
     }
 
-    /// 角色私設：角色側 keyword 觸發看不到、也不佔最近四則；GM 側照樣觸發。換幕摘要只讀角色側
-    /// 內容，回歸標頭只出現一次。
+    /// 角色私設（系統事件）：世界書掃描一律先排除系統事件（方案二「掃描範圍」，同 ST coreChat），
+    /// 兩個視角都不靠它觸發。換幕摘要只讀角色側內容，回歸標頭只出現一次。
     #[test]
     fn character_side_keyword_and_summary_ignore_card_private() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "身上藏著龍鱗。");
@@ -882,7 +912,7 @@ mod tests {
             "導演指示",
             "zh-TW",
         );
-        assert!(gm_turn.tail.contains("龍鱗傳說"));
+        assert!(!gm_turn.tail.contains("龍鱗傳說"));
 
         let joined: String = summary_messages(&events, "zh-TW", false)
             .iter()

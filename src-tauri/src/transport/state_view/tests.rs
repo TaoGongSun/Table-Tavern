@@ -23,6 +23,11 @@ use crate::data::{
 #[allow(unused_imports)]
 use crate::mechanism;
 #[allow(unused_imports)]
+use crate::transport::test_support::legacy::{
+    assemble_gm_messages, assemble_shared_messages, chars_lane_system, chars_lane_turn,
+    gm_lane_system, gm_lane_turn,
+};
+#[allow(unused_imports)]
 use std::collections::{BTreeMap, BTreeSet};
 
 #[test]
@@ -42,7 +47,7 @@ fn gm_dynamic_block_renders_nested_tree() {
         jumps: std::collections::BTreeMap::new(),
     };
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &state,
         "阿濤",
         &Mechanism::default(),
@@ -71,7 +76,7 @@ fn gm_dynamic_block_replaces_user_macro_in_tree_leaves() {
     };
 
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &state,
         "阿濤",
         &Mechanism::default(),
@@ -93,7 +98,7 @@ fn gm_dynamic_block_prints_notes_after_current_state_and_hides_when_empty() {
         jumps: std::collections::BTreeMap::new(),
     };
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &with_notes,
         "阿濤",
         &Mechanism::default(),
@@ -105,7 +110,7 @@ fn gm_dynamic_block_prints_notes_after_current_state_and_hides_when_empty() {
 
     let without_notes = TableState::default();
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &without_notes,
         "阿濤",
         &Mechanism::default(),
@@ -149,7 +154,7 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
         jumps: BTreeMap::new(),
     };
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &state,
         "阿濤",
         &mechanism,
@@ -182,7 +187,7 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
         jumps: BTreeMap::new(),
     };
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &state,
         "阿濤",
         &mechanism,
@@ -224,7 +229,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
         hidden: hidden.clone(),
         align: false,
     };
-    let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &scope, "zh-TW");
+    let dynamic = gm_dynamic_block("", &state, "阿濤", &mechanism, &scope, "zh-TW");
     assert!(!dynamic.contains("亞瑟關係文本"));
     assert!(dynamic.contains("世界氛圍文本"));
 
@@ -232,7 +237,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
         hidden,
         align: true,
     };
-    let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &aligned, "zh-TW");
+    let dynamic = gm_dynamic_block("", &state, "阿濤", &mechanism, &aligned, "zh-TW");
     assert!(dynamic.contains("亞瑟關係文本"));
 }
 
@@ -263,7 +268,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
         hidden: vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]],
         align: false,
     };
-    let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &scope, "zh-TW");
+    let dynamic = gm_dynamic_block("", &state, "阿濤", &mechanism, &scope, "zh-TW");
     assert!(!dynamic.contains("亞瑟細節文本"));
 }
 
@@ -291,7 +296,7 @@ fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
         jumps: BTreeMap::new(),
     };
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &state,
         "阿濤",
         &mechanism,
@@ -315,7 +320,7 @@ fn gm_dynamic_block_never_prints_trigger_section_for_a_full_snapshot_table() {
         jumps: BTreeMap::new(),
     };
     let dynamic = gm_dynamic_block(
-        &[],
+        "",
         &state,
         "阿濤",
         &Mechanism::default(),
@@ -505,7 +510,7 @@ fn incremental_round_tail_hides_absent_branch_snapshot_and_rare_but_shows_turn_w
         hidden: vec![vec!["鴉".to_owned()]],
         align: false,
     };
-    let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &scope, "zh-TW");
+    let dynamic = gm_dynamic_block("", &state, "阿濤", &mechanism, &scope, "zh-TW");
     assert!(dynamic.contains("## 目前狀態（這桌的檯面，接續它往下演）"));
     assert!(dynamic.contains("HP：100（+5）"));
     assert!(!dynamic.contains("Desc"));
@@ -518,7 +523,7 @@ fn incremental_round_tail_hides_absent_branch_snapshot_and_rare_but_shows_turn_w
         hidden: vec![vec!["鴉".to_owned()]],
         align: true,
     };
-    let aligned = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &align_scope, "zh-TW");
+    let aligned = gm_dynamic_block("", &state, "阿濤", &mechanism, &align_scope, "zh-TW");
     assert!(aligned.contains("## 目前狀態（完整對齊，以下是系統帳上的真值，請以此為準）"));
     assert!(aligned.contains("Desc：晨港"));
     assert!(!aligned.contains("Secret"));
@@ -555,7 +560,7 @@ fn full_scale_table_renders_everything_verbatim_ignoring_rules_scope_and_changes
         align: false,
     };
 
-    let dynamic = gm_dynamic_block(&[], &state, "阿濤", &mechanism, &scope, "zh-TW");
+    let dynamic = gm_dynamic_block("", &state, "阿濤", &mechanism, &scope, "zh-TW");
     assert_eq!(
         dynamic,
         "## 目前狀態（這桌的檯面，接續它往下演）\n\

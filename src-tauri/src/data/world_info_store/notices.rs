@@ -66,6 +66,11 @@ fn modify(
 }
 
 /// 還沒確認的回報，依記下的先後。
+/// 讀得懂嗎（重設用：讀不懂的才移去備份）。
+pub(super) fn check(root: &Path, world_id: &str) -> DataResult<()> {
+    read_notices(root, world_id).map(|_| ())
+}
+
 pub fn read_notices(root: &Path, world_id: &str) -> DataResult<Vec<Notice>> {
     let path = notices_path(root, world_id)?;
     with_file_lock(&path, |file| parse(file.read()?, &path))

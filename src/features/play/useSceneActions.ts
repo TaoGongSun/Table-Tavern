@@ -4,6 +4,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { SceneLabel, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { t } from "../../i18n";
 import { backendCode } from "../../shared/ui/backend-text";
+import { askWorldInfoReset, offersWorldInfoReset } from "./world-info-reset";
 
 interface SceneChatActions {
   events: TranscriptEvent[];
@@ -28,6 +29,19 @@ interface SceneActionsOptions {
   runTableOp: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   closeMainView: () => void;
   onError: (message: string) => void;
+}
+
+/** 換幕類動作失敗：世界書觸發紀錄結算不了就先問要不要重設（重設成了不必再顯示錯誤），其餘照常顯示。 */
+async function reportSceneError(worldId: string, reason: unknown, onError: (message: string) => void) {
+  if (offersWorldInfoReset(reason)) {
+    try {
+      if (await askWorldInfoReset(worldId)) return;
+    } catch (resetError) {
+      onError(String(resetError));
+      return;
+    }
+  }
+  onError(String(reason));
 }
 
 /** 卡片介面上的換幕：換幕會重進本桌（重進一律收起介面），換成而且可以接著玩才把介面打開回來 */
@@ -74,7 +88,7 @@ export function useSceneActions({
         return entered && writable;
       } catch (reason) {
         // 玩家自己按了停止：紀錄沒動，不必再跳錯誤
-        if (backendCode(reason) !== "scene_summary_stopped") onError(String(reason));
+        if (backendCode(reason) !== "scene_summary_stopped") await reportSceneError(worldId, reason, onError);
         return false;
       } finally {
         chat.endNarration();
@@ -100,7 +114,7 @@ export function useSceneActions({
         closeMainView();
         await enterTable(worldId);
       } catch (reason) {
-        onError(String(reason));
+        await reportSceneError(worldId, reason, onError);
       }
     });
   }
@@ -115,7 +129,7 @@ export function useSceneActions({
         await invoke<number>("revert_scene", { worldId });
         await enterTable(worldId);
       } catch (reason) {
-        onError(String(reason));
+        await reportSceneError(worldId, reason, onError);
       }
     });
   }

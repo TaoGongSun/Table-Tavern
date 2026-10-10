@@ -24,6 +24,7 @@ mod ui_msg;
 mod updater;
 mod usage;
 mod world_info;
+mod world_scan;
 
 use std::path::PathBuf;
 use tauri::Manager;
@@ -200,6 +201,7 @@ pub fn run() {
             commands::scene::advance_scene,
             commands::scene::scene_budget,
             commands::scene::revert_scene,
+            commands::scene::reset_world_info_timing,
             commands::scene::fork_scene,
             commands::scene::regenerate_scene_summary,
             commands::genesis::generate_table_outline,
@@ -288,6 +290,7 @@ mod command_classification {
         "rename_world",
         "reorder_characters",
         "reorder_worldbook_entries",
+        "reset_world_info_timing",
         "restore_world_backup",
         "revert_scene",
         "save_character_avatar",

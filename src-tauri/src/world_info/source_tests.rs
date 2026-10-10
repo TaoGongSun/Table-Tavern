@@ -2,6 +2,7 @@
 //! 兩件事：分類正確；加了來源追蹤，觸發集合與代換呼叫和沒有私密片段時逐條相同。
 
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 
 use super::entry::{from_world_file, WiEntry};
 use super::scan::{
@@ -71,6 +72,7 @@ fn scan(
             trigger: "normal",
             timed,
             settings: &ST_WI_SETTINGS,
+            pinned: &BTreeSet::new(),
         },
         hooks,
     )

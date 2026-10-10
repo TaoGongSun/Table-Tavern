@@ -25,3 +25,6 @@
 - `form: "worldFile"` 照 `fromWorldFile`，`"characterBook"` 照 `fromCharacterBook`：單一條目 → `WiEntry` 欄位＋`decorators`。
 - `form: "bookOrder"`：`entries` 是 JSON **原文**（要保住物件鍵的出現順序）→ ST 載入後的條目先後（卡片契約的 key）：陣列形依 `id`（缺則索引）、重複 `id` 後蓋前且位置留在前，物件形整數鍵遞增、其餘照原檔出現順序（`stOrder`）。
 - 桌面版另外驗兩件事（Rust 限定，不進 fixture）：每個 `characterBook` 案例經匯入轉成物件形、落檔再讀回要得到同一個 `WiEntry`；`sort-cases` 的條目經同樣轉換後排序結果不變。
+
+## web-save-next-turn.json
+網頁存檔端對端（方案四之 4）：網頁版讀 `../web-save/web-export-world-info.json`、玩家再送 `nextUser`，照實送的 `composePrompt` 組下一輪（`web/scripts/web-save-next-turn.ts`）。預期值：`inPrompt`＝內文進了提示的條目（穩定 ID）、`timed`＝掃完的計時表。桌面版（`src-tauri/src/import/web_save/next_turn_tests.rs`）匯入同一份存檔、補同一句玩家句，角色視角掃一次，觸發條目（換成 uid）與落地形狀的計時表要相同。

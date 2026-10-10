@@ -181,7 +181,18 @@ pub fn fail_turn(
 /// 結算 pending（下一次持許可的實送掃描之前、換幕、分岔；量測不跑）：
 /// - 寫入中（還沒送出就中斷）：計時還原，變數意圖逐筆撤回，沒還原的先寫進待回報檔才清 pending。
 /// - 已送出：逐字稿裡有這個回合鍵＝成功，清掉；沒有＝失敗，只還原計時（變數副作用保留）。
+///
+/// 失敗一律包成 `WorldInfoSettleFailed`（玩家看得懂、前端給重設出路，見 `reset_scene`）。
 pub fn settle_pending(root: &Path, world_id: &str, scene: u64) -> DataResult<()> {
+    settle_inner(root, world_id, scene).map_err(|error| {
+        crate::ui_msg::UiMsg::WorldInfoSettleFailed {
+            error: error.to_string(),
+        }
+        .into_error()
+    })
+}
+
+fn settle_inner(root: &Path, world_id: &str, scene: u64) -> DataResult<()> {
     with_commit(root, world_id, |_| {
         let Some(pending) = read_scene(root, world_id, scene)?.pending else {
             return Ok(());

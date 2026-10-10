@@ -565,6 +565,7 @@ fn gm_path(root: &std::path::Path, world: &str, transport: &str) -> measure::Req
         provider,
         &lang,
         transport,
+        &|_| None,
     )
     .remove(0)
     .request_full
@@ -593,14 +594,15 @@ fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_flatten() {
     let lang = crate::transport::ui_language(&config);
     let materials = crate::chat_assembly::gm_materials(&root, &world).unwrap();
     let (scope, _) = crate::chat_assembly::gm_scope(&materials);
+    let scan = crate::chat_assembly::test_gm_scan(&root, &world, &materials, &lang);
     let (instruction, closing) =
-        crate::chat_assembly::gm_instruction(&root, &world, &materials, &lang);
+        crate::chat_assembly::gm_instruction(&root, &world, &materials, &scan, &lang);
     let narration = instruction.content.clone();
     // codex：與 dispatch 同一個 flatten（label GM＋本輪收尾句）
     let (system, prompt) = crate::cli::flatten_messages(
         "GM",
         closing,
-        &crate::chat_assembly::gm_messages(&materials, &scope, instruction, &lang),
+        &crate::chat_assembly::gm_messages(&materials, &scan, &scope, instruction, &lang),
         &lang,
     );
     match gm_path(&root, &world, "codex") {
@@ -622,7 +624,9 @@ fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_flatten() {
     // 介面接管桌：指示換成接管版，量測跟著換
     data::write_interface_shell(&root, &world, "<div>shell</div>").unwrap();
     let materials = crate::chat_assembly::gm_materials(&root, &world).unwrap();
-    let (takeover, _) = crate::chat_assembly::gm_instruction(&root, &world, &materials, &lang);
+    let scan = crate::chat_assembly::test_gm_scan(&root, &world, &materials, &lang);
+    let (takeover, _) =
+        crate::chat_assembly::gm_instruction(&root, &world, &materials, &scan, &lang);
     assert_ne!(takeover.content, narration);
     for transport in ["claude", "agy", "codex", "api"] {
         let measured = text_of(&gm_path(&root, &world, transport));
@@ -665,6 +669,7 @@ fn character_measure_follows_lane_shape() {
             provider,
             &lang,
             transport,
+            &|_| None,
         )
         .into_iter()
         .find(|path| {
@@ -729,7 +734,8 @@ fn chat_measure_follows_card_format_and_card_format_absent() {
     let lang = crate::transport::ui_language(&config_for("claude"));
     let instruction = |root: &std::path::Path| {
         let materials = crate::chat_assembly::gm_materials(root, &world).unwrap();
-        crate::chat_assembly::gm_instruction(root, &world, &materials, &lang)
+        let scan = crate::chat_assembly::test_gm_scan(root, &world, &materials, &lang);
+        crate::chat_assembly::gm_instruction(root, &world, &materials, &scan, &lang)
             .0
             .content
     };
@@ -782,4 +788,77 @@ fn snapshot_must_equal_the_frontend_config() {
         &serde_json::to_value(&optimistic).unwrap()
     ));
     assert_ne!(config_generation(&disk), config_generation(&optimistic));
+}
+
+/// 世界書量測（worldbook-st-trigger-parity 三之 2）：組裝裡依傳入的事件掃，固定部分（事件清空）不帶本輪觸發的
+/// 關鍵字條目；量測一律唯讀——不寫計時檔、不動未結的 pending（以落地前的表算）。
+#[test]
+fn worldbook_measurement_is_read_only_and_keeps_keywords_out_of_the_fixed_part() {
+    use crate::data::world_info_store::{read_scene, Perspective, Stage};
+    let events = vec![event(TranscriptKind::Player, "玩家", "走進地牢。")];
+    let (root, world) = world_with(&events, "worldbook-measure");
+    for (uid, title, keys, constant) in [
+        (900, "常駐", vec![], true),
+        (901, "地牢", vec!["地牢".to_owned()], false),
+    ] {
+        data::upsert_worldbook_entry(
+            &root,
+            &world,
+            data::WorldbookEntry {
+                uid,
+                title: title.to_owned(),
+                keys,
+                content: format!("{title}全文"),
+                constant,
+                order: 0,
+                disabled: false,
+                visibility: data::Visibility::Gm,
+                is_person: false,
+                locked: false,
+            },
+        )
+        .unwrap();
+    }
+    let request = |transport: &str| {
+        let config = config_for(transport);
+        let lang = crate::transport::ui_language(&config);
+        let materials = measure::load(&root, &world).unwrap();
+        measure::chat_paths(
+            &root,
+            &world,
+            &materials,
+            crate::transport::gm_tier(&config),
+            crate::transport::dispatch::lane_provider(&config),
+            &lang,
+            transport,
+            &|_| None,
+        )
+        .remove(0)
+    };
+    let path = request("api");
+    let (full, fixed) = (text_of(&path.request_full), text_of(&path.request_fixed));
+    assert!(full.contains("地牢全文") && full.contains("常駐全文"));
+    assert!(!fixed.contains("地牢全文") && fixed.contains("常駐全文"));
+    let dir = root.join("worlds").join(&world).join("world-info");
+    assert!(!dir.exists(), "量測不寫計時檔");
+
+    // 未結的 pending（寫入中）：量測照樣唯讀，pending 原封不動
+    let mut timed = crate::world_info::timed::WiTimed::default();
+    timed.sticky.insert(
+        "99".to_owned(),
+        crate::world_info::timed::TimedEffect {
+            start: 0.0,
+            end: 5.0,
+            protected: false,
+            confidential: false,
+        },
+    );
+    data::world_info_store::begin_landing(&root, &world, 0, "turn-1", &Perspective::Gm, &timed)
+        .unwrap();
+    let before = read_scene(&root, &world, 0).unwrap();
+    request("claude");
+    let after = read_scene(&root, &world, 0).unwrap();
+    assert_eq!(before, after);
+    assert_eq!(after.pending.unwrap().stage, Stage::Writing);
+    let _ = std::fs::remove_dir_all(&root);
 }

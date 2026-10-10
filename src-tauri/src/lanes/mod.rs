@@ -160,6 +160,9 @@ pub(crate) struct TurnInput<'a> {
     pub single_owner: Option<String>,
     /// 本輪 tail 含角色狀態區塊；單角色線上一輪有、這輪沒有就重開（舊值撤不掉）
     pub has_state_block: bool,
+    /// 不抹尾段的角色線（Agy 一角一線、claude 單角色）提進凍結 system 的世界書段（`LaneTurn::hoisted_worldbook`）。
+    /// 跟上一輪不同就整線重開、不走補丁：補丁回合後不抹，舊世界書會留在 session 歷史裡（方案三之 3）
+    pub hoisted_worldbook: Option<String>,
 }
 
 /// 角色線的三個開關＋線名是否分角色（plans/claude-resume-tail-cache.md 三-B-2）。
@@ -286,6 +289,9 @@ struct LaneState {
     /// 上一輪 tail 有角色狀態區塊（只在 unerased_owner 有值時有意義）
     #[serde(default)]
     had_state_block: bool,
+    /// 上一輪提進凍結 system 的世界書段指紋（`TurnInput::hoisted_worldbook`）；舊檔沒這欄＝沒有
+    #[serde(default)]
+    hoisted_worldbook: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -540,6 +546,8 @@ enum ReopenReason {
     ModeChanged,
     /// 未抹線的狀態區塊整塊消失（歷史裡的舊值撤不掉）
     StateBlockGone,
+    /// 不抹尾段的線提進 system 的世界書變了（補丁會留在歷史裡，只能重開）
+    WorldbookChanged,
 }
 
 impl ReopenReason {
@@ -557,6 +565,7 @@ impl ReopenReason {
             Self::OwnerChanged => "owner-changed",
             Self::ModeChanged => "mode-changed",
             Self::StateBlockGone => "state-block-gone",
+            Self::WorldbookChanged => "worldbook-changed",
         }
     }
 }
@@ -680,6 +689,11 @@ fn plan_turn(
             };
         }
     }
+    if state.hoisted_worldbook != worldbook_fingerprint(input.hoisted_worldbook.as_deref()) {
+        return TurnPlan::Reopen {
+            reason: ReopenReason::WorldbookChanged,
+        };
+    }
     if provider != LaneProvider::Claude {
         if state.applied != input.frozen_system {
             return TurnPlan::Reopen {
@@ -711,6 +725,17 @@ fn plan_turn(
         patch: snapshot_patch::render_patch(&state.applied, &input.frozen_system, input.lang),
         rebased: false,
     }
+}
+
+/// 提進 system 的世界書段的指紋（存進 lanes.json，不存全文）；沒有或空的算沒有。
+fn worldbook_fingerprint(worldbook: Option<&str>) -> Option<String> {
+    let worldbook = worldbook.filter(|text| !text.is_empty())?;
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in worldbook.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    Some(format!("{hash:016x}"))
 }
 
 fn now_epoch() -> u64 {
@@ -1135,6 +1160,7 @@ pub(crate) async fn run_turn(
                 // 呼叫前就落檔：中途崩潰時下一輪靠 pending 重開，靠這欄擋別人續用
                 unerased_owner: input.single_owner.clone(),
                 had_state_block: input.single_owner.is_some() && input.has_state_block,
+                hoisted_worldbook: worldbook_fingerprint(input.hoisted_worldbook.as_deref()),
             },
         );
         write_store(&store_path, &store)?;

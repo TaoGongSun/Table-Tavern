@@ -154,6 +154,11 @@ pub enum UiMsg {
         error: String,
         leftovers: String,
     },
+    /// 世界書觸發紀錄結算不了（`world-info/<幕>.json` 或 `notices.json` 讀不懂、上一次落地撤回失敗、
+    /// 讀不到逐字稿）：修好前這桌送不出、換不了幕。前端給「重設世界書觸發紀錄」（`reset_world_info_timing`）。
+    WorldInfoSettleFailed {
+        error: String,
+    },
     /// 卡片 PNG 裡的角色資料解不開；detail 是技術細節原文。
     CardDataInvalid {
         detail: String,

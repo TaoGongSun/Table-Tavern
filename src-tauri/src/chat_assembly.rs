@@ -1,5 +1,6 @@
 //! 聊天回合的實送組裝（GM 旁白／推進、角色接話）。`commands::chat` 送出與 `scene_budget` 量容量
 //! 共用這裡的每一個入口——量的就是會送的，不另寫一套近似。
+use crate::world_scan::{self, Budget, Randomness, ScanRequest, TableBook, Viewer, WorldScan};
 use crate::{data, import, mechanism, transport};
 
 /// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
@@ -7,11 +8,14 @@ use crate::{data, import, mechanism, transport};
 #[derive(Clone)]
 pub(crate) struct GmMaterials {
     pub world_md: String,
-    pub worldbook: Vec<data::WorldbookEntry>,
+    /// 掃描用的整本世界書（觸發看掃描結果，見 `gm_scan`）
+    pub book: TableBook,
     pub state: data::WorldState,
     pub events: Vec<data::TranscriptEvent>,
     pub cards: Vec<data::CharacterCard>,
     pub player: Option<data::CharacterCard>,
+    /// 這桌全部角色卡的目錄（含封存、隱藏；世界書掃描判「單角色桌」用）
+    pub metas: Vec<data::CharacterMeta>,
 }
 
 /// 這一桌在場的角色卡（未封存、未自動隱藏）。
@@ -48,11 +52,32 @@ pub(crate) fn sole_present(
     speaker_id: &str,
     events: &[data::TranscriptEvent],
 ) -> bool {
+    effective_present(metas, events)
+        .iter()
+        .all(|meta| meta.id == speaker_id)
+}
+
+/// 有效在場集合：未封存的卡中「非 auto_hidden」或「本幕已回歸」（回歸只記事件、不改旗標）。
+fn effective_present<'a>(
+    metas: &'a [data::CharacterMeta],
+    events: &[data::TranscriptEvent],
+) -> Vec<&'a data::CharacterMeta> {
     let arrived = data::appeared_card_names(events);
     metas
         .iter()
         .filter(|meta| !meta.archived && (!meta.auto_hidden || arrived.contains(&meta.name)))
-        .all(|meta| meta.id == speaker_id)
+        .collect()
+}
+
+/// 世界書帶名字掃描的「單角色桌」（開場白用卡名）：與 Claude 單人線同一套有效在場集合，恰好一張就回它的名字。
+pub(crate) fn sole_card_name(
+    metas: &[data::CharacterMeta],
+    events: &[data::TranscriptEvent],
+) -> Option<String> {
+    match effective_present(metas, events).as_slice() {
+        [only] => Some(only.name.clone()),
+        _ => None,
+    }
 }
 
 pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, String> {
@@ -63,11 +88,61 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         .map_err(|error| error.to_string())?;
     Ok(GmMaterials {
         world_md: data::read_world_md(root, world_id).map_err(|error| error.to_string())?,
-        worldbook: data::read_worldbook(root, world_id).map_err(|error| error.to_string())?,
+        book: TableBook::load(root, world_id)?,
         state,
         events,
         cards: active_cards(root, world_id)?,
+        metas: data::list_characters(root, world_id).map_err(|error| error.to_string())?,
         player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
+    })
+}
+
+/// GM 視角掃一次世界書（方案三之 2）。`events` 是要掃的本幕事件（量測的固定部分傳空的）；
+/// `timed` 是 GM 的計時表；實送用 `Randomness::Live`、量測用 `Randomness::Measure`。
+pub(crate) fn gm_scan(
+    materials: &GmMaterials,
+    events: &[data::TranscriptEvent],
+    timed: crate::world_info::timed::WiTimed,
+    budget: Option<Budget>,
+    random: Randomness,
+    lang: &str,
+) -> WorldScan {
+    world_scan::scan(ScanRequest {
+        book: &materials.book,
+        viewer: Viewer::Gm,
+        sole_card: sole_card_name(&materials.metas, events).as_deref(),
+        player: materials.player.as_ref(),
+        events,
+        lang,
+        timed,
+        budget,
+        random,
+    })
+}
+
+/// 角色 X 視角掃一次世界書：條目池＝`Public`＋名單含 X 的限定條目，計時用 X 自己那份（P1）。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn character_scan(
+    book: &TableBook,
+    card: &data::CharacterCard,
+    sole_card: Option<&str>,
+    player: Option<&data::CharacterCard>,
+    events: &[data::TranscriptEvent],
+    timed: crate::world_info::timed::WiTimed,
+    budget: Option<Budget>,
+    random: Randomness,
+    lang: &str,
+) -> WorldScan {
+    world_scan::scan(ScanRequest {
+        book,
+        viewer: Viewer::Character(card),
+        sole_card,
+        player,
+        events,
+        lang,
+        timed,
+        budget,
+        random,
     })
 }
 
@@ -98,6 +173,7 @@ pub(crate) fn gm_turn_instruction(
     root: &std::path::Path,
     world_id: &str,
     materials: &GmMaterials,
+    scan: &WorldScan,
     roster: &[String],
     player_name: Option<&str>,
     lang: &str,
@@ -119,8 +195,7 @@ pub(crate) fn gm_turn_instruction(
     ) {
         transport::GmTurnFormat::CardFormat | transport::GmTurnFormat::CardFormatAbsent => {
             // 只點名全文真的進得了本輪提示的格式條目；找不到就用中性版（指示與收尾句同一判定）
-            let prompt_entries =
-                transport::gm_prompt_full_entries(&materials.worldbook, &materials.events, lang);
+            let prompt_entries = transport::gm_prompt_full_entries(scan, &materials.events);
             let entry_title = import::card_format_entry(&card_scripts, &prompt_entries);
             transport::card_format_turn(lang, entry_title.as_deref())
         }
@@ -147,6 +222,7 @@ pub(crate) fn gm_instruction(
     root: &std::path::Path,
     world_id: &str,
     materials: &GmMaterials,
+    scan: &WorldScan,
     lang: &str,
 ) -> (transport::ChatMessage, &'static str) {
     let roster: Vec<String> = materials
@@ -155,13 +231,14 @@ pub(crate) fn gm_instruction(
         .map(|card| card.name.clone())
         .collect();
     let player_name = materials.player.as_ref().map(|card| card.name.as_str());
-    gm_turn_instruction(root, world_id, materials, &roster, player_name, lang)
+    gm_turn_instruction(root, world_id, materials, scan, &roster, player_name, lang)
 }
 
-/// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
-/// （keyword 條目＋狀態＋導演指示）。回傳 (凍結 system, 回合尾段)。
+/// GM lane 的一輪：凍結 system（GM 指示＋world.md＋穩定觸發的世界書＋全卡）＋回合尾段
+/// （其餘觸發條目＋狀態＋導演指示）。回傳 (凍結 system, 回合尾段)。
 pub(crate) fn gm_lane_parts(
     materials: &GmMaterials,
+    scan: &WorldScan,
     scope: &transport::StateScope,
     instruction: &str,
     lang: &str,
@@ -170,13 +247,12 @@ pub(crate) fn gm_lane_parts(
         &materials.world_md,
         &materials.cards,
         materials.player.as_ref(),
-        &materials.worldbook,
+        scan,
         &materials.state.mechanism,
         lang,
     );
     let turn = transport::gm_lane_turn(
-        &materials.events,
-        &materials.worldbook,
+        scan,
         materials.player.as_ref(),
         &materials.state.state,
         &materials.state.mechanism,
@@ -190,6 +266,7 @@ pub(crate) fn gm_lane_parts(
 /// GM 無狀態路徑（API／codex）的訊息：共線組裝＋本輪指示。
 pub(crate) fn gm_messages(
     materials: &GmMaterials,
+    scan: &WorldScan,
     scope: &transport::StateScope,
     instruction_message: transport::ChatMessage,
     lang: &str,
@@ -199,7 +276,7 @@ pub(crate) fn gm_messages(
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
-        &materials.worldbook,
+        scan,
         &materials.state.state,
         &materials.state.mechanism,
         scope,
@@ -209,34 +286,107 @@ pub(crate) fn gm_messages(
     messages
 }
 
-/// 角色 lane 的一輪：凍結 system（agy／grok 一角一線時私設提進來）＋回合尾段（含 claude 的機密段）。
+/// 角色 lane 的一輪：凍結 system（不抹尾段的線——Agy 一角一線、單人 Claude——把私設與本輪世界書提進來）
+/// ＋回合尾段（含共線的機密段）。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn character_lane_parts(
     card: &data::CharacterCard,
     cards: &[data::CharacterCard],
     player: Option<&data::CharacterCard>,
-    events: &[data::TranscriptEvent],
-    worldbook: &[data::WorldbookEntry],
+    scan: &WorldScan,
+    snapshot: &[world_scan::Placed],
     state: &data::WorldState,
     branch: Option<&[String]>,
     lang: &str,
     hoist: bool,
 ) -> (String, transport::LaneTurn) {
-    let mut frozen = transport::chars_lane_system(cards, player, worldbook, lang);
+    let mut frozen = transport::chars_lane_system(cards, player, snapshot, lang);
     let turn = transport::chars_lane_turn(
         card,
         player,
-        events,
-        worldbook,
+        scan,
         &state.state,
         &state.mechanism,
         branch,
         lang,
-        hoist,
+        match hoist {
+            true => transport::Hoist::All,
+            false => transport::Hoist::None,
+        },
     );
     if let Some(private) = &turn.hoisted_private {
         frozen.push('\n');
         frozen.push_str(private);
     }
+    // 不抹尾段的線：system 裡的世界書（共用快照＋本輪）一變就要重開，指紋涵蓋全部
+    let mut turn = turn;
+    if hoist {
+        turn.hoisted_worldbook = Some(transport::system_worldbook(
+            snapshot,
+            player,
+            turn.hoisted_worldbook.as_deref(),
+            lang,
+        ));
+    }
     (frozen, turn)
+}
+
+/// 測試用：GM 視角照量測的方式掃一次（讀計時表不結算、機率視為通過、沒有上限）。
+#[cfg(test)]
+pub(crate) fn test_gm_scan(
+    root: &std::path::Path,
+    world_id: &str,
+    materials: &GmMaterials,
+    lang: &str,
+) -> WorldScan {
+    let timed = data::world_info_store::read_timed(
+        root,
+        world_id,
+        materials.state.current_scene,
+        &data::world_info_store::Perspective::Gm,
+    )
+    .unwrap_or_default();
+    gm_scan(
+        materials,
+        &materials.events,
+        timed,
+        None,
+        Randomness::Measure,
+        lang,
+    )
+}
+
+/// 測試用：角色視角照量測的方式掃一次。
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn test_character_scan(
+    root: &std::path::Path,
+    world_id: &str,
+    card: &data::CharacterCard,
+    player: Option<&data::CharacterCard>,
+    events: &[data::TranscriptEvent],
+    lang: &str,
+) -> (WorldScan, Vec<world_scan::Placed>) {
+    let book = TableBook::load(root, world_id).unwrap();
+    let scene = data::read_state(root, world_id).unwrap().current_scene;
+    let timed = data::world_info_store::read_timed(
+        root,
+        world_id,
+        scene,
+        &data::world_info_store::Perspective::Character(card.id.clone()),
+    )
+    .unwrap_or_default();
+    let metas = data::list_characters(root, world_id).unwrap();
+    let scan = character_scan(
+        &book,
+        card,
+        sole_card_name(&metas, events).as_deref(),
+        player,
+        events,
+        timed,
+        None,
+        Randomness::Measure,
+        lang,
+    );
+    (scan, book.snapshot())
 }

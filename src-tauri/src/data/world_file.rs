@@ -717,6 +717,27 @@ impl LockedFile<'_> {
         committed
     }
 
+    /// 改名成同目錄的 `<檔名>.<後綴>` 留備份，已有同名備份就接 `-2`、`-3`…，絕不蓋掉舊備份。
+    /// 回傳備份檔名；檔案不存在回 None。
+    pub(crate) fn move_aside(&self, suffix: &str) -> DataResult<Option<String>> {
+        self.writable()?;
+        if !self.path.exists() {
+            return Ok(None);
+        }
+        let base = format!(
+            "{}.{suffix}",
+            self.path.file_name().unwrap_or_default().to_string_lossy()
+        );
+        let mut name = base.clone();
+        let mut attempt = 1;
+        while self.path.with_file_name(&name).exists() {
+            attempt += 1;
+            name = format!("{base}-{attempt}");
+        }
+        rename_path(self.path, &self.path.with_file_name(&name))?;
+        Ok(Some(name))
+    }
+
     pub(crate) fn remove(&self) -> DataResult<()> {
         self.writable()?;
         remove_path_raw(self.path)

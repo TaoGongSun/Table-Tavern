@@ -37,15 +37,26 @@ Status: in progress〔作者裁決 2026-10-07：立案，網頁版公開前門�
 - 實作決定寫在方案三之 4 末（都標〔模型判斷·未裁決〕）；`web-save.md` 第三節、`web-version.md` 敘述已改寫。
 - 驗證：verify 12 步綠、cargo test 1454、vitest 1106、web vitest 762。
 
-## 包 5 要注意
-- 包 5a：`ScanHooks`（代換、計數、亂數）由呼叫端提供；`GlobalScan` 每欄分 `full`／`public`（P7 的 `public_md`＋`private_md`）；限定條目要設 `WiEntry.limited = true`；`WiResult.private_ids`／`private_content` 是機密分流的輸入；`outlets` 依 JS 鍵順序的有序陣列。接線時拿掉 `world_info/mod.rs` 的 dead_code 放寬。
-- 包 5b：`ScanHooks::substitute` 接 `st_macros::substitute_params`，`Substituted.private` 就是引擎的私密回報，掃描已沿遞迴傳遞；`{{pick}}` 的 chatId 傳桌 id；接線時拿掉 `st_macros/mod.rs` 的 dead_code 放寬。`{{persona}}` 目前永遠是空字串（同網頁版），接線時決定要不要對應玩家卡。中性模式改成第一次寫入才複製變數表留給包 5b 評估（現在每次呼叫整份複製）。
-- 包 5a：`settle_pending` 必須排在回合交接 `settle_previous_turn` 之後（`commands/chat.rs:93`、`message_vars/write.rs` 的 `settle_previous_turn`）：否則「GM 已提交、正文還沒落檔」的回合會被誤判成失敗。
-- 包 5a：結算一直回錯（計時檔壞、變數層壞或身分衝突、notices 壞、讀不到逐字稿）時 pending 清不掉，這桌從此送不出、也換不了幕、退不了幕；要給玩家看得懂的錯誤與出路。
-- 包 5a：實送掃描前 `settle_pending`（當前幕）、讀表 `read_timed`（量測同一支，不結算）；交給傳輸層那刻 `begin_landing`→`mark_sent`；持許可當場判得出的確定失敗（角色呼叫回錯、角色中止沒半截）叫 `fail_turn`。GM 回合的確定失敗已由 `finish_turn` 處理。
-- 包 5b：變數層照「意圖→寫層→`update_var_intent` 補 `after_rev`」記日誌（`VarIntent.ops` 格式自定），失敗撤回用 `fail_turn(Report::Inline)` 拿回沒還原的清單連同原錯回報；`notices.json` 的 tauri 指令與前端提示（聊天、換幕、分岔回傳與開桌時讀，看過呼叫確認）由 5b 接。
-- 包 5b：單次代換的輸入或結果超過 10MB（`js_value::MAX_TEXT_BYTES`）就整段原文照回、裡面的巨集都不代換，接線時要逐段代換，不要把整份提示詞一次丟進來。
+## 包 5a 現況（掃描接線）
+- 已驗收（第 1 輪修正後複審三方 PASS，複審建議也已做）。分支上尚未壓縮。實作決定見方案三之 3 末（都標〔模型判斷·未裁決〕），已知差異補進方案七。
+- `src-tauri/src/world_scan/`：`book.rs`（`TableBook`）、`placement.rs`（`Placed`、穩定、`arrange`）、`landing.rs`（`before_scan`／`land`／`fail`）、`tests.rs`。段落渲染 `transport/worldbook.rs`；`active_worldbook_entries`、`split_person_roster` 刪掉；`world_info/mod.rs` 的 dead_code 放寬拿掉。
+- 掃描核心加 `ScanInput.pinned`（共用快照靜態條目溢出時不撤）與 `WiResult.placed`（放置前排序的 (ID, 內文)）；對拍傳空集合，fixture 不變。
+- 組裝點：GM 線凍結 system／回合尾、GM 單發、角色共線凍結 system（`TableBook::snapshot()`）／回合尾（`transport::Hoist` 三種）、API 共線、格式條目判定（`gm_prompt_full_entries(&WorldScan, events)`）、量測（`scene_budget::measure`，唯讀、預算同 `scene_budget::scan_budget`）。
+- 不抹尾段的線：`TurnInput.hoisted_worldbook`／`LaneState.hoisted_worldbook`（指紋），變了 `worldbook-changed` 重開。
+- 實送：`chat_with_character`、`gm_narrate` 在回合交接之後 `before_scan`（結算＋讀表）→ 掃一次 → 交給傳輸層前 `land`；角色呼叫回錯或中止沒字當場 `fail`。結算失敗回 `WorldInfoSettleFailed`；出路指令 `reset_world_info_timing`（前端：回合失敗彈窗的重設鈕、換幕／分岔／退幕的確認框，`src/features/play/world-info-reset.ts`）。
+- 端對端：`src/shared/contracts/world-info/web-save-next-turn.json`（`web/scripts/web-save-next-turn.ts` 由網頁版產生），Rust `import/web_save/next_turn_tests.rs` 對拍通過。
+- scaffold baseline：fixture 最後一則玩家句改成會觸發 keyword（新的掃描深度 2 則），另加一組「worldbook …」放置案例（前／後組、注入段落、三種 Hoist）。
+- 行為變了而改寫的既有測試：系統事件不參與掃描（`character_side_keyword_and_summary_ignore_card_private`）、掃描深度 2 則（`worldbook_route_next_gm_turn…`）、Agy 世界書在 system（`card_book_tests`）。
+- 驗證（第 1 輪驗收修正後）：verify 12 步綠、cargo test 1469、vitest 1107、web vitest 762。
+
+## 包 5b 要注意
+- `ScanHooks::substitute`（`world_scan/mod.rs` 的 `Hooks`）接 `st_macros::substitute_params`，`Substituted.private` 就是引擎的私密回報，掃描已沿遞迴傳遞（`Placed::private_trigger`）；`{{pick}}` 的 chatId 傳桌 id；接線時拿掉 `st_macros/mod.rs` 的 dead_code 放寬。`{{persona}}` 目前永遠是空字串（同網頁版），接線時決定要不要對應玩家卡。中性模式改成第一次寫入才複製留給包 5b 評估。
+- 穩定定義補巨集條件（`world_scan/placement.rs::stable`）；共用快照的卡片公開設定含動態巨集時移出快照、改在回合尾會抹掉的段落；`{{outlet}}` 代入（`transport/worldbook.rs` 的 `full_text_members` 目前不算 outlet）。
+- 變數層照「意圖→寫層→`update_var_intent` 補 `after_rev`」記日誌（`VarIntent.ops` 格式自定），寫在 `world_scan::landing::land` 的 `begin_landing` 與 `mark_sent` 之間；角色確定失敗改 `fail_turn(Report::Inline)` 連同原錯回報（`landing::fail` 目前走待回報檔）。`notices.json` 的 tauri 指令與前端提示（聊天、換幕、分岔回傳與開桌時讀，看過呼叫確認）由 5b 接；`world_info_store` 的 dead_code 放寬到那時再拿掉。
+- 條目內文掃描時已代換一次（`world_info/scan.rs` 預算檢查前那次），渲染時又代換一次（`transport/worldbook.rs` 的 `section_body`）；舊代換無副作用所以無妨，接上 setvar 會變兩次，要改成只代換一次。
+- 重設世界書觸發紀錄（`world_info_store::reset_scene`）會連帶丟掉 pending 裡還沒撤回的變數意圖；有變數日誌之後要重新評估（例如先撤回能撤的、其餘寫進待回報檔再移檔）。
+- 單次代換的輸入或結果超過 10MB（`js_value::MAX_TEXT_BYTES`）就整段原文照回、裡面的巨集都不代換，接線時要逐段代換，不要把整份提示詞一次丟進來。
 - 排序用 `sort::stable_sort`（order 已正規化，比較子是全序）。
 
 ## 下一步
-包 4 送審（Opus 審查＋Sol／Grok 驗收）；通過後接包 5a。
+接包 5b（巨集接線與副作用落地，方案三之 7、三之 8），由新的施工代理接手；先讀上面「包 5b 要注意」。

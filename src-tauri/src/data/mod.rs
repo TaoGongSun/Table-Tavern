@@ -28,6 +28,8 @@ pub use config::{
     sponsor_pack_active, update_config, update_config_with, write_model_catalog, AppConfig,
 };
 pub use format::{open_world, read_world_readonly, restore_world_backup, OpenWorld, ReadonlyWorld};
+#[cfg(test)]
+pub(crate) use paths::world_info_dir;
 pub(crate) use paths::{
     character_path, gallery_dir, gm_image_path, import_pending_path, import_receipts_path,
     import_source_file_path, interface_shell_path, lanes_path, mechanism_log_path,
@@ -82,10 +84,11 @@ pub use worldbook::{
     apply_visibility_restore, character_book_raw_entries, character_to_worldbook_entry,
     dedupe_worldbook, delete_worldbook_entry, export_worldbook, identity_fingerprint,
     identity_fingerprints, import_worldbook_as, insert_worldbook_entry_raw, read_worldbook,
-    read_worldbook_raw, reorder_worldbook_entries, restore_deleted_entry_raw,
-    restore_worldbook_entry, set_entry_flags, set_source_cards, source_cards_of,
-    upsert_worldbook_entry, worldbook_entry_to_character, worldbook_entry_value, BookImport,
-    BookOwner, RestoreOutcome, Visibility, VisibilityRestore, WorldbookEntry, WorldbookImport,
+    read_worldbook_raw, read_worldbook_scan_entries, reorder_worldbook_entries,
+    restore_deleted_entry_raw, restore_worldbook_entry, set_entry_flags, set_source_cards,
+    source_cards_of, upsert_worldbook_entry, worldbook_entry_to_character, worldbook_entry_value,
+    BookImport, BookOwner, RestoreOutcome, Visibility, VisibilityRestore, WorldbookEntry,
+    WorldbookImport,
 };
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，

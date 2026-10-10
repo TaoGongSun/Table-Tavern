@@ -14,12 +14,13 @@ use crate::data::{
     CharacterCard, EventMarker, FieldKind, FieldRule, Mechanism, StateNode, TableState, Tier,
     TranscriptEvent, TranscriptKind, Trigger, TriggerMode, Visibility, WorldbookEntry,
 };
-use crate::transport::{
-    self, assemble_gm_messages, assemble_shared_messages, chars_lane_system, chars_lane_turn,
-    gm_lane_system, gm_lane_turn, lane_event_line, ChatMessage, GmTurnFormat, Side, StateScope,
+use crate::transport::test_support::legacy::{
+    assemble_gm_messages, assemble_shared_messages, chars_lane_system, chars_lane_turn,
+    gm_lane_system, gm_lane_turn,
 };
+use crate::transport::{self, lane_event_line, ChatMessage, GmTurnFormat, Side, StateScope};
 
-pub(super) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCard {
+pub(crate) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCard {
     CharacterCard {
         id: id.to_owned(),
         name: name.to_owned(),
@@ -115,7 +116,12 @@ pub(super) fn fixture() -> Fixture {
         event(TranscriptKind::Narration, "gm", "GM", "夜晚的酒館很熱鬧。"),
         event(TranscriptKind::Dialogue, "knight", "騎士", "「誰在那裡？」"),
         event(TranscriptKind::Player, "player", "阿濤", "我舉起手。"),
-        event(TranscriptKind::Player, "player", "", "沒名字的玩家說話。"),
+        event(
+            TranscriptKind::Player,
+            "player",
+            "",
+            "沒名字的玩家說：酒館真吵。",
+        ),
         event(TranscriptKind::System, "system", "系統", "時間流逝。"),
         marked(
             event(TranscriptKind::System, "system", "系統", "狡猾的狐狸。"),
@@ -372,6 +378,7 @@ pub(super) fn render_all(lang: &str) -> String {
             &shared,
         );
     }
+    render_worldbook_placement(&mut out, &f, &knight_branch, lang);
     dump_messages(
         &mut out,
         "summary_messages",
@@ -469,6 +476,158 @@ pub(super) fn render_all(lang: &str) -> String {
         &render_patch(applied, current, lang).unwrap_or_default(),
     );
     out
+}
+
+/// 世界書放置（worldbook-st-trigger-parity 三之 3）：ST 各位置、穩定與否、可見度在各條路徑落在哪裡。
+fn placement_book() -> crate::world_scan::TableBook {
+    let raw = |uid: u64, title: &str, visibility: Visibility, fields: serde_json::Value| {
+        let mut value = serde_json::json!({
+            "uid": uid, "key": [], "comment": title, "content": format!("{title}內容，{{{{user}}}}也知道"),
+            "constant": false, "order": 100, "position": 0,
+        });
+        for (key, field) in fields.as_object().unwrap() {
+            value[key] = field.clone();
+        }
+        let serde_json::Value::Object(map) = value else {
+            unreachable!()
+        };
+        let view = WorldbookEntry {
+            uid,
+            title: title.to_owned(),
+            visibility,
+            ..entry(uid, title, &[], false, Visibility::Gm)
+        };
+        (view, map)
+    };
+    let knight = || Visibility::Characters(vec!["knight".to_owned()]);
+    crate::world_scan::TableBook::from_raw(vec![
+        raw(
+            1,
+            "王國",
+            Visibility::Public,
+            serde_json::json!({"constant": true, "order": 1}),
+        ),
+        raw(
+            2,
+            "王國尾聲",
+            Visibility::Public,
+            serde_json::json!({"constant": true, "position": 1}),
+        ),
+        raw(
+            3,
+            "戰況",
+            Visibility::Public,
+            serde_json::json!({"constant": true, "sticky": 2}),
+        ),
+        raw(
+            4,
+            "酒館傳聞",
+            Visibility::Public,
+            serde_json::json!({"key": ["酒館"], "position": 6}),
+        ),
+        raw(
+            5,
+            "作者註記上",
+            Visibility::Public,
+            serde_json::json!({"key": ["酒館"], "position": 2}),
+        ),
+        raw(
+            6,
+            "依深度",
+            Visibility::Public,
+            serde_json::json!({"key": ["酒館"], "position": 4, "depth": 1, "role": 1}),
+        ),
+        raw(
+            7,
+            "騎士密令",
+            knight(),
+            serde_json::json!({"constant": true, "position": 1}),
+        ),
+        raw(
+            8,
+            "騎士暗號",
+            knight(),
+            serde_json::json!({"key": ["酒館"], "position": 4, "depth": 0, "role": 0}),
+        ),
+        raw(
+            9,
+            "GM 盤算",
+            Visibility::Gm,
+            serde_json::json!({"key": ["酒館"], "position": 3}),
+        ),
+    ])
+}
+
+fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], lang: &str) {
+    use crate::world_scan::{scan, Randomness, ScanRequest, Viewer};
+    let book = placement_book();
+    let run = |viewer| {
+        scan(ScanRequest {
+            book: &book,
+            viewer,
+            sole_card: None,
+            player: Some(&f.player),
+            events: &f.events,
+            lang,
+            timed: Default::default(),
+            budget: None,
+            random: Randomness::Measure,
+        })
+    };
+    let gm = run(Viewer::Gm);
+    let plain = Mechanism::default();
+    dump(
+        out,
+        "worldbook gm_lane_system",
+        &transport::gm_lane_system("", &f.cards, Some(&f.player), &gm, &plain, lang),
+    );
+    let turn = transport::gm_lane_turn(
+        &gm,
+        Some(&f.player),
+        &TableState::default(),
+        &plain,
+        &StateScope::default(),
+        "<instruction>",
+        lang,
+    );
+    dump(out, "worldbook gm_lane_turn", &turn.tail);
+    dump(
+        out,
+        "worldbook chars_lane_system",
+        &transport::chars_lane_system(&f.cards, Some(&f.player), &book.snapshot(), lang),
+    );
+    let knight = run(Viewer::Character(&f.cards[0]));
+    for hoist in [
+        transport::Hoist::None,
+        transport::Hoist::StableConfidential,
+        transport::Hoist::All,
+    ] {
+        let turn = transport::chars_lane_turn(
+            &f.cards[0],
+            Some(&f.player),
+            &knight,
+            &TableState::default(),
+            &plain,
+            Some(branch),
+            lang,
+            hoist,
+        );
+        dump(
+            out,
+            &format!("worldbook chars_lane_turn {hoist:?} tail"),
+            &turn.tail,
+        );
+        dump(
+            out,
+            &format!("worldbook chars_lane_turn {hoist:?} confidential"),
+            turn.confidential.as_deref().unwrap_or("<none>"),
+        );
+        dump(
+            out,
+            &format!("worldbook chars_lane_turn {hoist:?} hoisted"),
+            turn.hoisted_private.as_deref().unwrap_or("<none>"),
+        );
+    }
 }
 
 fn transport_message(role: &str, content: &str) -> ChatMessage {
@@ -687,6 +846,7 @@ fn lane_input<'a>(events: &'a [TranscriptEvent], system: &str) -> TurnInput<'a> 
         scope: None,
         single_owner: None,
         has_state_block: false,
+        hoisted_worldbook: None,
     }
 }
 
@@ -708,6 +868,7 @@ fn lane_state(events: &[TranscriptEvent], system: &str, provider: LaneProvider) 
         agy_usage: None,
         unerased_owner: None,
         had_state_block: false,
+        hoisted_worldbook: None,
     }
 }
 

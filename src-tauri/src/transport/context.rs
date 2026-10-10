@@ -1,35 +1,8 @@
-use crate::data::{
-    CharacterCard, Mechanism, NumericUpdate, TranscriptEvent, UpdateMode, WorldbookEntry,
-};
+use crate::data::{CharacterCard, Mechanism, NumericUpdate, TranscriptEvent, UpdateMode};
+use crate::world_scan::{Placed, WorldScan};
 
-use super::arrivals::{render_for_prompt, Side};
 use super::messages::{language_rule, replace_st_macros, scaffold_en};
-
-pub fn active_worldbook_entries<'a>(
-    entries: &'a [WorldbookEntry],
-    events: &[TranscriptEvent],
-) -> Vec<&'a WorldbookEntry> {
-    let recent_text: Vec<String> = events
-        .iter()
-        .rev()
-        .take(4)
-        .map(|event| event.text.to_lowercase())
-        .collect();
-    let mut active: Vec<_> = entries
-        .iter()
-        .filter(|entry| {
-            !entry.disabled
-                && (entry.constant
-                    || (!entry.keys.is_empty()
-                        && entry.keys.iter().any(|key| {
-                            let key = key.to_lowercase();
-                            !key.is_empty() && recent_text.iter().any(|text| text.contains(&key))
-                        })))
-        })
-        .collect();
-    active.sort_by_key(|entry| (entry.order, entry.uid));
-    active
-}
+use super::worldbook::{full_text_members, section_body};
 
 /// 本輪 GM 提示裡真的看得到的一段世界書全文：標題＋實際送出的本文。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,27 +11,52 @@ pub struct PromptEntry<'a> {
     pub content: &'a str,
 }
 
-/// 本輪 GM 提示裡「全文」真的進得去的世界書內容（API 單發與 CLI lane 同一套）：
-/// - `render_for_prompt(Side::Gm)` 後的 `active_worldbook_entries`：constant 條目扣掉只進名冊的人物條目
-///   （`split_person_roster` 同一個判定）進 system，keyword 條目全文進回合尾段；
+/// GM 視角的觸發條目分成凍結 system 的兩段（穩定、前／後）與回合尾段（其餘）（方案三之 3 放置表）。
+pub(super) struct GmWorldbook<'a> {
+    pub system_front: Vec<&'a Placed>,
+    pub system_back: Vec<&'a Placed>,
+    pub tail: Vec<&'a Placed>,
+}
+
+pub(super) fn gm_worldbook(scan: &WorldScan) -> GmWorldbook<'_> {
+    let mut split = GmWorldbook {
+        system_front: Vec::new(),
+        system_back: Vec::new(),
+        tail: Vec::new(),
+    };
+    for entry in &scan.placed {
+        match (entry.stable, entry.in_front(), entry.in_back()) {
+            (true, true, _) => split.system_front.push(entry),
+            (true, _, true) => split.system_back.push(entry),
+            _ => split.tail.push(entry),
+        }
+    }
+    split
+}
+
+/// 本輪 GM 提示裡「全文」真的進得去的世界書內容（API 單發與 CLI lane 同一套，掃描結果與實送共用）：
+/// - 本輪掃描放進提示的條目：前／後組與作者註記、依深度的注入段落都算；只進名冊的 constant 人物條目、
+///   outlet 條目（`{{outlet}}` 包 5b 才代入）不算；
 /// - 人物登場事件：歷史裡帶的是登場當時的全文（`person_arrival`），取事件本文、不回頭讀目前的條目——
 ///   登場後再改條目、或同名不同內容的條目，都不能冒充已在提示裡。
 ///
 /// 給「導演指示能不能點名格式條目」用，不得另寫近似判定。
 pub fn gm_prompt_full_entries<'a>(
-    worldbook: &'a [WorldbookEntry],
+    scan: &'a WorldScan,
     events: &'a [TranscriptEvent],
-    lang: &str,
 ) -> Vec<PromptEntry<'a>> {
-    let rendered = render_for_prompt(events, lang, Side::Gm);
-    let mut entries: Vec<PromptEntry<'a>> = active_worldbook_entries(worldbook, &rendered)
-        .into_iter()
-        .filter(|entry| !entry.constant || !roster_only(entry))
-        .map(|entry| PromptEntry {
-            title: &entry.title,
-            content: &entry.content,
-        })
-        .collect();
+    let split = gm_worldbook(scan);
+    let mut entries: Vec<PromptEntry<'a>> = Vec::new();
+    for group in [&split.system_front, &split.system_back, &split.tail] {
+        entries.extend(
+            full_text_members(group)
+                .into_iter()
+                .map(|entry| PromptEntry {
+                    title: &entry.title,
+                    content: &entry.content,
+                }),
+        );
+    }
     entries.extend(events.iter().filter_map(|event| match &event.marker {
         Some(crate::data::EventMarker::PersonArrival { title }) => Some(PromptEntry {
             title,
@@ -69,19 +67,16 @@ pub fn gm_prompt_full_entries<'a>(
     entries
 }
 
-/// constant 條目只進名冊、不進 system 全文的判定（包 4a）。
-fn roster_only(entry: &WorldbookEntry) -> bool {
-    entry.is_person
-}
-
-/// GM 的 system prompt 本體：GM 指示＋world.md＋constant 條目＋全卡（含私設）＋玩家卡。
+/// GM 的 system prompt 本體：GM 指示＋world.md＋穩定的前組世界書＋全卡（含私設）＋玩家卡＋穩定的後組世界書。
 /// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。
-/// constant 條目裡的 is_person 條目改走名冊行，不進全文（包 4a，見 split_person_roster）。
+/// constant 人物條目改走名冊行，不進全文（包 4a）。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn gm_system_prompt(
     world_md: &str,
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
-    constant_entries: &[&WorldbookEntry],
+    front: &[&Placed],
+    back: &[&Placed],
     user_name: &str,
     mechanism: &Mechanism,
     lang: &str,
@@ -120,20 +115,10 @@ pub(super) fn gm_system_prompt(
             replace_st_macros(world_md.trim(), user_name, None)
         ));
     }
-    let (constant_entries, roster) = split_person_roster(constant_entries, lang);
-    if !constant_entries.is_empty() || roster.is_some() {
+    let front = section_body(front, user_name, None, lang);
+    if !front.is_empty() {
         system.push_str(worldbook_heading(lang));
-        for entry in constant_entries {
-            system.push_str(&format!(
-                "### {}\n{}\n",
-                replace_st_macros(&entry.title, user_name, None),
-                replace_st_macros(&entry.content, user_name, None)
-            ));
-        }
-        if let Some(roster) = roster {
-            system.push_str(&roster);
-            system.push('\n');
-        }
+        system.push_str(&front);
     }
     if !cards.is_empty() {
         let (heading, public_label, private_label) = match en {
@@ -173,6 +158,14 @@ pub(super) fn gm_system_prompt(
                 replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
             ));
         }
+    }
+    let back = section_body(back, user_name, None, lang);
+    if !back.is_empty() {
+        system.push_str(match en {
+            true => "\n## Worldbook, continued (only in your context)\n",
+            false => "\n## 世界書（續）（只進你的上下文）\n",
+        });
+        system.push_str(&back);
     }
     if mechanism.incremental {
         system.push('\n');
@@ -395,36 +388,6 @@ fn interface_owned_notice(lang: &str) -> &'static str {
     }
 }
 
-// ---------------------------------------------------------------------
-// AI 卡重構包 4a：世界書人物條目在場過濾。人物條目全部常駐 system 會吃爆快取
-// 前綴，改成 system 只留一行名冊，某人首次在場才把全文 append 進歷史當系統事件
-// （進場付一次全文，之後吃快取價；離場不拔——拔會改動已快取的 system 前綴）。
-// ---------------------------------------------------------------------
-
-/// 世界書條目分流：`is_person && !disabled` 的不進 system 全文，只收 title 湊一行名冊；
-/// `is_person && disabled` 兩邊都不進（呼叫端本來就會先濾掉，這裡防禦性地跟著蓋掉，
-/// 不能讓停用的人物條目落回全文那邊）；沒有人物條目時 roster 是 `None`——呼叫端據此
-/// 完全不印這一行，既有輸出逐字不變。
-pub(super) fn split_person_roster<'a>(
-    entries: &[&'a WorldbookEntry],
-    lang: &str,
-) -> (Vec<&'a WorldbookEntry>, Option<String>) {
-    let mut rest = Vec::new();
-    let mut names = Vec::new();
-    for entry in entries {
-        if !roster_only(entry) {
-            rest.push(*entry);
-        } else if !entry.disabled {
-            names.push(entry.title.as_str());
-        }
-    }
-    let roster = (!names.is_empty()).then(|| match scaffold_en(lang) {
-        true => format!("Also at this table: {}", names.join(", ")),
-        false => format!("這桌還有這些人：{}", names.join("、")),
-    });
-    (rest, roster)
-}
-
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
@@ -452,31 +415,46 @@ mod tests {
     #[allow(unused_imports)]
     use crate::mechanism;
     #[allow(unused_imports)]
+    use crate::transport::test_support::legacy::{
+        assemble_gm_messages, assemble_shared_messages, chars_lane_system, chars_lane_turn,
+        gm_lane_system, gm_lane_turn,
+    };
+    #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
 
+    /// GM 視角：穩定的 constant 進 system（order 小的在前，同 order 照 ST 排序的反向）；觸發的 keyword
+    /// 條目進回合尾段；掃描深度照 ST 預設 2 則、帶名字、不分大小寫；停用的不觸發。
     #[test]
-    fn active_worldbook_entries_use_constant_recent_four_keys_and_sorting() {
+    fn gm_scan_places_stable_constants_in_system_and_keywords_in_tail() {
         let entries = [
             worldbook_entry(4, "常駐", &[], true, 20, false, Visibility::Gm),
-            worldbook_entry(1, "同序先排", &[], true, 20, false, Visibility::Gm),
+            worldbook_entry(1, "同序", &[], true, 20, false, Visibility::Gm),
             worldbook_entry(3, "近期", &["DrAgOn"], false, 10, false, Visibility::Gm),
             worldbook_entry(2, "太舊", &["ancient"], false, 0, false, Visibility::Gm),
-            worldbook_entry(1, "停用", &[], true, -10, true, Visibility::Gm),
-            worldbook_entry(0, "空關鍵字", &[], false, -20, false, Visibility::Gm),
+            worldbook_entry(5, "停用", &[], true, -10, true, Visibility::Gm),
         ];
         let events = [
             event(TranscriptKind::Narration, "", "GM", "ancient history"),
             event(TranscriptKind::Player, "", "玩家", "one"),
-            event(TranscriptKind::Dialogue, "fox-id", "狐狸", "two"),
             event(TranscriptKind::Narration, "", "GM", "A DRAGON wakes"),
             event(TranscriptKind::Player, "", "玩家", "four"),
         ];
-
-        let active = active_worldbook_entries(&entries, &events);
-        assert_eq!(
-            active.iter().map(|entry| entry.uid).collect::<Vec<_>>(),
-            [3, 1, 4]
+        let scan = crate::transport::test_support::legacy::scan_of(
+            &entries,
+            crate::world_scan::Viewer::Gm,
+            &[],
+            None,
+            &events,
+            "zh-TW",
         );
+        let split = gm_worldbook(&scan);
+        let uids = |group: &[&Placed]| group.iter().map(|entry| entry.uid).collect::<Vec<_>>();
+        // 放置前的排序（order 大的在前、同 order 照載入順序）；送出時反過來
+        assert_eq!(uids(&split.system_front), [1, 4]);
+        assert_eq!(uids(&split.tail), [3]);
+        let system = gm_lane_system("", &[], None, &entries, &Mechanism::default(), "zh-TW");
+        assert!(system.contains("### 常駐\n常駐內容\n### 同序\n同序內容\n"));
+        assert!(!system.contains("停用內容"));
     }
 
     // ---- AI 卡重構包 4a：世界書人物條目在場過濾 ----
@@ -559,10 +537,9 @@ mod tests {
         assert!(chars_system.contains("這桌還有這些人：愛麗絲、鮑伯"));
     }
 
-    /// split_person_roster 自己也擋 disabled——縱使目前三個呼叫端都已經先濾過一次，
-    /// helper 本身仍要對規格「is_person && !disabled」單獨成立，不依賴呼叫端不出錯。
+    /// 停用的人物條目不觸發，名冊行也不列。
     #[test]
-    fn split_person_roster_excludes_disabled_person_entries_defensively() {
+    fn disabled_person_entries_stay_off_the_roster() {
         let alice = WorldbookEntry {
             is_person: true,
             ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
@@ -571,10 +548,16 @@ mod tests {
             is_person: true,
             ..worldbook_entry(2, "隱藏人物", &[], true, 1, true, Visibility::Public)
         };
-        let refs: Vec<&WorldbookEntry> = vec![&alice, &disabled];
-        let (rest, roster) = split_person_roster(&refs, "zh-TW");
-        assert!(rest.is_empty());
-        assert_eq!(roster, Some("這桌還有這些人：愛麗絲".to_owned()));
+        let system = gm_lane_system(
+            "",
+            &[],
+            None,
+            &[alice, disabled],
+            &Mechanism::default(),
+            "zh-TW",
+        );
+        assert!(system.contains("這桌還有這些人：愛麗絲\n"));
+        assert!(!system.contains("隱藏人物"));
     }
 
     /// 邊界情況：constant 條目清一色是人物時，非人物清單濾完是空的，但名冊行仍要印出來
@@ -713,10 +696,15 @@ mod tests {
     }
 
     fn named_format(worldbook: &[WorldbookEntry], events: &[TranscriptEvent]) -> Option<String> {
-        crate::import::card_format_entry(
-            &format_scripts(),
-            &gm_prompt_full_entries(worldbook, events, "zh-TW"),
-        )
+        let scan = crate::transport::test_support::legacy::scan_of(
+            worldbook,
+            crate::world_scan::Viewer::Gm,
+            &[],
+            None,
+            events,
+            "zh-TW",
+        );
+        crate::import::card_format_entry(&format_scripts(), &gm_prompt_full_entries(&scan, events))
     }
 
     /// 兩條 GM 路徑各自的完整提示：API 單發 messages；CLI lane 凍結 system＋從頭組的完整歷史＋回合尾段。

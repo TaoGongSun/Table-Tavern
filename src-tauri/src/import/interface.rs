@@ -601,11 +601,19 @@ mod tests {
     }
 
     /// 走正式的提示選取，測試不另寫一份近似判定。
-    fn prompt_entries<'a>(
-        worldbook: &'a [data::WorldbookEntry],
-        events: &'a [data::TranscriptEvent],
-    ) -> Vec<crate::transport::PromptEntry<'a>> {
-        crate::transport::gm_prompt_full_entries(worldbook, events, "zh-TW")
+    fn named(scripts: &[InterfaceScript], worldbook: &[data::WorldbookEntry]) -> Option<String> {
+        let scan = crate::transport::test_support::legacy::scan_of(
+            worldbook,
+            crate::world_scan::Viewer::Gm,
+            &[],
+            None,
+            &[],
+            "zh-TW",
+        );
+        card_format_entry(
+            scripts,
+            &crate::transport::gm_prompt_full_entries(&scan, &[]),
+        )
     }
 
     fn worldbook_entry_for_test(
@@ -650,10 +658,7 @@ mod tests {
             ),
         ];
 
-        assert_eq!(
-            card_format_entry(&scripts, &prompt_entries(&worldbook, &[])),
-            Some("回复规则".to_owned())
-        );
+        assert_eq!(named(&scripts, &worldbook), Some("回复规则".to_owned()));
     }
 
     /// 世界書完全沒提到卡片格式要的標籤，就沒有可點名的條目。
@@ -668,9 +673,6 @@ mod tests {
             false,
         )];
 
-        assert_eq!(
-            card_format_entry(&scripts, &prompt_entries(&worldbook, &[])),
-            None
-        );
+        assert_eq!(named(&scripts, &worldbook), None);
     }
 }
