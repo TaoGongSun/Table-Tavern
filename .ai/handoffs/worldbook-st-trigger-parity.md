@@ -29,11 +29,23 @@ Status: in progress〔作者裁決 2026-10-07：立案，網頁版公開前門�
 - 對拍：`src/shared/contracts/st-macros/`（從原位置搬來並改好三處引用）——`st-macro-cases.json` 139 案、`web-macro-cases.json` 50 案（產生：`web/` 下 `node scripts/gen-st-macro-fixtures.mjs`，輸入 `web/scripts/st-macro-fixture-cases.ts`），說明在 `st-macros.md`。測試：網頁版 `macro-parity.test.ts`，Rust `st_macros/parity_tests.rs`；Rust 限定 `mode_tests.rs`（兩種模式、操作序列重放、私密回報、巢狀上限）。
 - 實作決定與已知差異寫在方案三之 6、七（都標〔模型判斷·未裁決〕）。
 
+## 包 4 現況（計時存放與網頁存檔消費）
+- 第 1 輪驗收修完、複審三方 PASS（複審建議的鎖順序與解析移出鎖外也已做）。只交資料層 API 與測試，掃描組裝點沒接。
+- Rust `src-tauri/src/data/world_info_store/`：`mod.rs`（`worlds/<id>/world-info/<幕>.json` 形狀、`Perspective`、則數 `chat_length`、唯讀 `read_timed`、`prune_uids`）、`landing.rs`（`begin_landing`→`push_var_intent`／`update_var_intent`→`mark_sent`；`reply_landed`、`fail_turn(Report)`、`settle_pending`；變數意圖四種情形撤回）、`notices.rs`（`notices.json`：`read_notices`／`ack_notice`）、`scenes.rs`（換幕平移、分岔複製、退幕刪檔、網頁存檔匯入）；測試 `tests.rs`。`mod.rs` 在非測試建置放寬 dead_code。
+- 接上的地方：`begin_next_scene_tx`（結算舊幕）／`fork_scene_tx`（結算目前幕與來源幕）／`revert_scene_tx`（先結算子幕，失敗不退）；世界書所有讀改寫（`worldbook.rs`、`book_import.rs`、`raw_entries.rs` 的寫書函式與 `write_worldbook_value`）都在短提交鎖內；`append_event` 的 GM `main`（含冪等命中、後端代落）清 pending；`finish_turn` 生成中→中止且沒正文時撤回；`write_worldbook_value` 刪條目清計時與發布前預清；`card_vars::restore_if_rev`；網頁存檔匯入寫第 0 幕計時檔。
+- 角色回覆落檔路：`append_transcript` 加 `character_turn`（→ `data::append_character_reply`，回合鍵 part `character`，照 `(turn_id, character)` 冪等），前端 `useChatController` 角色回覆帶 `characterTurn`。
+- 實作決定寫在方案三之 4 末（都標〔模型判斷·未裁決〕）；`web-save.md` 第三節、`web-version.md` 敘述已改寫。
+- 驗證：verify 12 步綠、cargo test 1454、vitest 1106、web vitest 762。
+
 ## 包 5 要注意
 - 包 5a：`ScanHooks`（代換、計數、亂數）由呼叫端提供；`GlobalScan` 每欄分 `full`／`public`（P7 的 `public_md`＋`private_md`）；限定條目要設 `WiEntry.limited = true`；`WiResult.private_ids`／`private_content` 是機密分流的輸入；`outlets` 依 JS 鍵順序的有序陣列。接線時拿掉 `world_info/mod.rs` 的 dead_code 放寬。
 - 包 5b：`ScanHooks::substitute` 接 `st_macros::substitute_params`，`Substituted.private` 就是引擎的私密回報，掃描已沿遞迴傳遞；`{{pick}}` 的 chatId 傳桌 id；接線時拿掉 `st_macros/mod.rs` 的 dead_code 放寬。`{{persona}}` 目前永遠是空字串（同網頁版），接線時決定要不要對應玩家卡。中性模式改成第一次寫入才複製變數表留給包 5b 評估（現在每次呼叫整份複製）。
+- 包 5a：`settle_pending` 必須排在回合交接 `settle_previous_turn` 之後（`commands/chat.rs:93`、`message_vars/write.rs` 的 `settle_previous_turn`）：否則「GM 已提交、正文還沒落檔」的回合會被誤判成失敗。
+- 包 5a：結算一直回錯（計時檔壞、變數層壞或身分衝突、notices 壞、讀不到逐字稿）時 pending 清不掉，這桌從此送不出、也換不了幕、退不了幕；要給玩家看得懂的錯誤與出路。
+- 包 5a：實送掃描前 `settle_pending`（當前幕）、讀表 `read_timed`（量測同一支，不結算）；交給傳輸層那刻 `begin_landing`→`mark_sent`；持許可當場判得出的確定失敗（角色呼叫回錯、角色中止沒半截）叫 `fail_turn`。GM 回合的確定失敗已由 `finish_turn` 處理。
+- 包 5b：變數層照「意圖→寫層→`update_var_intent` 補 `after_rev`」記日誌（`VarIntent.ops` 格式自定），失敗撤回用 `fail_turn(Report::Inline)` 拿回沒還原的清單連同原錯回報；`notices.json` 的 tauri 指令與前端提示（聊天、換幕、分岔回傳與開桌時讀，看過呼叫確認）由 5b 接。
 - 包 5b：單次代換的輸入或結果超過 10MB（`js_value::MAX_TEXT_BYTES`）就整段原文照回、裡面的巨集都不代換，接線時要逐段代換，不要把整份提示詞一次丟進來。
 - 排序用 `sort::stable_sort`（order 已正規化，比較子是全序）。
 
 ## 下一步
-包 3 已驗收；接著是包 4。
+包 4 送審（Opus 審查＋Sol／Grok 驗收）；通過後接包 5a。

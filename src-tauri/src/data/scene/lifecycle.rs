@@ -61,6 +61,14 @@ fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
     let current_scene = state.current_scene;
     let new_scene = current_scene + 1;
     let plan = message_vars::scene_seed_for_fork(tx, from_scene)?;
+    // 世界書計時：目前幕（被離開的）與來源幕的 pending 先結算，來源幕的檔複製成新幕的（不帶 pending）
+    super::super::world_info_store::copy_for_fork(
+        root,
+        world_id,
+        current_scene,
+        from_scene,
+        new_scene,
+    )?;
     for event in events.iter_mut() {
         event.id = Some(message_vars::new_token());
         event.turn_key = None;
@@ -124,8 +132,8 @@ pub fn begin_next_scene(
     next
 }
 
-/// 發布順序（計畫 8.4）：①控制檔寫新幕種子（舊幕結束時的初始化來源、新 epoch）②新幕開頭的摘要事件
-/// ③寫 current_scene。失敗就停、回錯；重試時新幕號仍是「目前幕＋1」，①② 覆寫上次沒發布的殘留。
+/// 發布順序（計畫 8.4）：①控制檔寫新幕種子（舊幕結束時的初始化來源、新 epoch）與新幕的世界書計時檔
+/// ②新幕開頭的摘要事件 ③寫 current_scene。失敗就停、回錯；重試時新幕號仍是「目前幕＋1」，①② 覆寫上次沒發布的殘留。
 fn begin_next_scene_tx(
     tx: &CommitTx<'_>,
     summary_text: &str,
@@ -138,6 +146,8 @@ fn begin_next_scene_tx(
     let next_scene = old_scene + 1;
     // 變數模式：新幕開頭的摘要帶一份種子表，第一個 GM 回覆前卡片照樣讀得到值、補得到狀態欄占位
     let seed = message_vars::scene_seed_for_next(tx, old_scene, next_scene)?;
+    // 世界書計時：舊幕 pending 先結算（GM 半截已由上面的交接代落），未到期的平移成新幕的檔（P4）
+    super::super::world_info_store::carry_into_next_scene(root, world_id, old_scene, next_scene)?;
     // 上次沒發布的殘留（摘要寫了、current_scene 沒寫成）：新幕逐字稿重來
     super::super::world_file::commit_world_remove(&transcript_path(root, world_id, next_scene)?)?;
     append_transcript_tx(
@@ -218,6 +228,8 @@ fn revert_scene_tx(tx: &CommitTx<'_>) -> DataResult<u64> {
     if read_transcript(root, world_id, scene)?.len() != 1 {
         return Err(UiMsg::SceneRewindHasNewContent.into_error());
     }
+    // 世界書計時：子幕的 pending 先結算（變數意圖寫在不分幕的層，檔刪了就撤不回）；結算失敗就整個不退
+    super::super::world_info_store::settle_pending(root, world_id, scene)?;
     state.current_scene = previous_scene;
     state.scene_titles.remove(&previous_scene.to_string());
     // 自己這筆標籤跟著檔案一起消失，不留退回後查不到來源、卻還佔著 key 的殭屍紀錄。
@@ -232,6 +244,7 @@ fn revert_scene_tx(tx: &CommitTx<'_>) -> DataResult<u64> {
     write_state(root, world_id, &state)?;
     let _ = super::super::world_file::commit_world_remove(&transcript_path(root, world_id, scene)?);
     let _ = message_vars::drop_scene_seed(tx, scene);
+    let _ = super::super::world_info_store::drop_scene(root, world_id, scene);
     message_vars::refresh_cache(tx);
     Ok(previous_scene)
 }

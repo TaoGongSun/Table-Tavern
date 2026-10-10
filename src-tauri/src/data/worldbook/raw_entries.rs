@@ -1,5 +1,6 @@
 //! 原始條目 JSON 的讀寫：保留 ST 欄位（次要鍵、位置、大小寫…）與 table_tavern 擴充欄位，
 //! 給重構套用、撤銷插回、角色卡匯出這些不能只靠精簡 `WorldbookEntry` 的地方用。
+use crate::data::state_commit::with_commit;
 
 use super::super::{invalid_data, DataResult};
 use super::book_import::{identity_text, source_cards, VisibilityRestore, SOURCE_CARDS};
@@ -34,12 +35,14 @@ pub fn insert_worldbook_entry_raw(
     world_id: &str,
     value: serde_json::Value,
 ) -> DataResult<u64> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let uid = next_uid(entries)?;
-    insert_entry_value(entries, value, uid)?;
-    write_worldbook_value(root, world_id, &worldbook)?;
-    Ok(uid)
+    with_commit(root, world_id, |_| {
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let uid = next_uid(entries)?;
+        insert_entry_value(entries, value, uid)?;
+        write_worldbook_value(root, world_id, &worldbook)?;
+        Ok(uid)
+    })
 }
 
 /// 兩條原始值除了 uid、displayIndex 以外完全相同（比解析後的值，欄位順序不算差異）。
@@ -63,28 +66,30 @@ pub fn restore_deleted_entry_raw(
     world_id: &str,
     raw: &serde_json::Value,
 ) -> DataResult<()> {
-    let uid = raw
-        .get("uid")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| invalid_data("deleted worldbook entry has no uid"))?;
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let at_uid = entries
-        .iter()
-        .find(|(key, value)| entry_uid(key, value) == Some(uid))
-        .map(|(_, value)| value.clone());
-    let target = match at_uid {
-        Some(current) if same_raw(&current, raw) => return Ok(()),
-        Some(_) => {
-            if entries.values().any(|value| same_raw(value, raw)) {
-                return Ok(());
+    with_commit(root, world_id, |_| {
+        let uid = raw
+            .get("uid")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| invalid_data("deleted worldbook entry has no uid"))?;
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let at_uid = entries
+            .iter()
+            .find(|(key, value)| entry_uid(key, value) == Some(uid))
+            .map(|(_, value)| value.clone());
+        let target = match at_uid {
+            Some(current) if same_raw(&current, raw) => return Ok(()),
+            Some(_) => {
+                if entries.values().any(|value| same_raw(value, raw)) {
+                    return Ok(());
+                }
+                next_uid(entries)?
             }
-            next_uid(entries)?
-        }
-        None => uid,
-    };
-    insert_entry_value(entries, raw.clone(), target)?;
-    write_worldbook_value(root, world_id, &worldbook)
+            None => uid,
+        };
+        insert_entry_value(entries, raw.clone(), target)?;
+        write_worldbook_value(root, world_id, &worldbook)
+    })
 }
 
 /// 可見度還原的結果：還原了／目前值已被改過（玩家改的，不動）／條目已不在。
@@ -102,33 +107,35 @@ pub fn apply_visibility_restore(
     world_id: &str,
     restore: &VisibilityRestore,
 ) -> DataResult<RestoreOutcome> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let Some(value) = entries
-        .iter_mut()
-        .find(|(key, value)| entry_uid(key, value) == Some(restore.uid))
-        .map(|(_, value)| value)
-    else {
-        return Ok(RestoreOutcome::Gone);
-    };
-    if table_tavern_field(value, "visibility") != restore.after_visibility.as_ref()
-        || table_tavern_field(value, SOURCE_CARDS) != restore.after_cards.as_ref()
-    {
-        return Ok(RestoreOutcome::Kept);
-    }
-    if let Some(table_tavern) = table_tavern_mut(value) {
-        for (key, before) in [
-            ("visibility", &restore.before_visibility),
-            (SOURCE_CARDS, &restore.before_cards),
-        ] {
-            match before {
-                Some(before) => table_tavern.insert(key.to_owned(), before.clone()),
-                None => table_tavern.remove(key),
-            };
+    with_commit(root, world_id, |_| {
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let Some(value) = entries
+            .iter_mut()
+            .find(|(key, value)| entry_uid(key, value) == Some(restore.uid))
+            .map(|(_, value)| value)
+        else {
+            return Ok(RestoreOutcome::Gone);
+        };
+        if table_tavern_field(value, "visibility") != restore.after_visibility.as_ref()
+            || table_tavern_field(value, SOURCE_CARDS) != restore.after_cards.as_ref()
+        {
+            return Ok(RestoreOutcome::Kept);
         }
-    }
-    write_worldbook_value(root, world_id, &worldbook)?;
-    Ok(RestoreOutcome::Restored)
+        if let Some(table_tavern) = table_tavern_mut(value) {
+            for (key, before) in [
+                ("visibility", &restore.before_visibility),
+                (SOURCE_CARDS, &restore.before_cards),
+            ] {
+                match before {
+                    Some(before) => table_tavern.insert(key.to_owned(), before.clone()),
+                    None => table_tavern.remove(key),
+                };
+            }
+        }
+        write_worldbook_value(root, world_id, &worldbook)?;
+        Ok(RestoreOutcome::Restored)
+    })
 }
 
 /// 條目的身分指紋（標題、內文、主鍵、次要鍵、常駐的雜湊）：重構產物核對來源條目用。

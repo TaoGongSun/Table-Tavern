@@ -169,8 +169,8 @@
 - **分幕存放**：`worlds/<id>/world-info/<幕號>.json` = `{ "version": 1, "perspectives": { "gm": {…}, "char:<角色 id>": {…} }, "pending": … }`，讀寫都在檔案鎖內，寫入走 `commit_world_write_atomic`。檔案讀不了或解析失敗就回錯，不當成空表覆寫（照 `card_vars` 的做法）。
 - **則數**＝本幕事件扣掉 `System` 類與 `SceneSummary` 摘要後的數量（與掃描清單同一個排除規則，在 `render_for_prompt` 之前就排除，各視角算出來一樣）。
 - **換幕**（P4）〔作者裁決 2026-10-10〕：在 `begin_next_scene_tx` 裡，排在開頭的 `refuse_during_turn`（`data/scene/lifecycle.rs:135`，會先把沒落檔的 GM 半截代落進逐字稿）之後、寫 `current_scene` 之前：先對舊幕的 `pending` 跑「結算 pending」（見下），再把各視角未到期的計時平移寫成新幕的檔——start、end 各減去舊幕則數（新幕從摘要之後算起，摘要不計），一律覆寫殘留（沒有計時也寫空檔）。
-- **分岔**：在 `fork_scene_tx` 裡、寫 `current_scene` 之前，先對來源幕的 `pending` 跑「結算 pending」，再把結算後的計時檔複製成新幕的檔（不帶 `pending`），一律覆寫殘留。
-- **退幕**：父幕的檔原封不動；子幕的計時檔與逐字稿一起刪（`lifecycle.rs:225-233`，同樣盡力而為）。
+- **分岔**：在 `fork_scene_tx` 裡、寫 `current_scene` 之前，先對目前幕（被離開的那一幕）與來源幕的 `pending` 跑「結算 pending」，再把來源幕結算後的計時檔複製成新幕的檔（不帶 `pending`），一律覆寫殘留〔主線裁決 2026-10-11，第 1 輪驗收：變數意圖寫在不分幕的 chat／global 層，留在回不去的幕檔裡就永遠撤不回〕。
+- **退幕**：先對子幕的 `pending` 跑「結算 pending」，結算失敗就整個不退；父幕的檔原封不動；子幕的計時檔與逐字稿一起刪（`lifecycle.rs:225-233`，同樣盡力而為）〔主線裁決 2026-10-11，第 1 輪驗收〕。
 - **落地時機**：掃描結果（與巨集副作用，三之 8）在「真的把請求交給傳輸層」那一刻才寫，仍在整桌寫入許可內。試掃、量測、送出前失敗的不寫。
 - **失敗回滾**：落地時同時記 `pending = { turn_key, 視角, 階段, 落地前該視角的表, 變數日誌 }`（變數日誌見三之 8）。**成功＝這個回合的正文確實落檔**；中止後有半截正文落檔也算成功（與 ST 一致：停止生成時半截訊息留在聊天裡），沒有正文落檔一律算失敗。
   - GM 回合：GM 正文本來就經 `append_transcript` 帶 turn_id／turn_part 落檔（`commands/scene.rs:11-28`、`data/scene/transcript.rs:180-207`），在這次 append 裡清 `pending`。成功的 `TurnGuard.commit` 只把回合狀態改成 AwaitingAppend，之後 `Drop` 照樣呼叫 `finish_turn(None)`（`commands/chat.rs:636-643`、`data/message_vars/write.rs:402-414`），所以 `finish_turn(None)` 不能一律還原：回合狀態是 AwaitingAppend、或還有非空半截等著落檔時，`pending` 保留，交給落檔或下一次結算處理；只有確定失敗——Generating→Aborted 且沒有任何正文要落檔——才當場還原。
@@ -185,7 +185,17 @@
 - **退回**：刪事件（`pop_transcript`）後重送靠「則數 ≤ start 且未受保護就撤」，與 ST 相同。編輯事件文字不動計時。
 - **同一 uid 的兩個穩定 ID**（網頁存檔裡兩條經去重對到同一 uid）：同一類計時取 end 較大的那筆，end 相同時 `protected` 為真者優先。
 - **刪條目清計時**：掛在 `write_worldbook_value`（`data/worldbook.rs:65`）——比對寫入前後的 uid 集合，消失的 uid 在寫完書之後從各幕計時檔與 `pending` 的落地前表裡一起刪掉，一處涵蓋所有刪除路徑（單刪、清重複、撤銷匯入、重構套用與撤銷）。寫完書、清計時之前崩潰的話，讀計時檔時再拿書裡現有的 uid 對一次，已經消失的照樣清（量測讀的時候只在記憶體裡對、不寫回）。uid 重用的崩潰情境——刪掉最大 uid、書已寫入、清計時前崩潰，重啟後先新增一條拿到同一個 uid，再讀計時時舊計時就被當成有效——靠另一條規則擋：新增或匯入條目要發布新書之前，先拿「寫入前的 uid 集合」對各幕計時檔與 `pending` 的前像清一次，消失的 uid 先清掉才發布。uid 以「最大值＋1」配發（`worldbook.rs:304`），不清的話刪掉最大 uid 再新增，新條目會繼承舊計時。
-- **原子替換**：計時檔（含 `pending` 與變數日誌）一律用現成的 `commit_world_write_atomic`（`data/world_file.rs:789`，內部呼叫 `write_atomic`，`:703`，暫存檔＋rename）。不改 `commit_world_write`（`:785`，直接覆寫，全域共用，改了會波及逐字稿與狀態檔）。測試直接驗這兩支在寫到一半失敗時原檔完整。
+- **原子替換**：計時檔（含 `pending` 與變數日誌）一律用現成的 `commit_world_write_atomic`（`data/world_file.rs:789`，內部呼叫 `write_atomic`，`:703`，暫存檔＋rename）。不改 `commit_world_write`（`:785`，直接覆寫，全域共用，改了會波及逐字稿與狀態檔）。測試直接驗這兩支在寫到一半失敗時原檔完整。保證的是「行程崩潰或寫到一半失敗後原檔不壞」；rename 之後沒有 fsync 目錄，不宣稱斷電耐久（共用 helper 不動）。
+
+- 包 4 施工時的實作決定〔模型判斷·未裁決〕：
+  - 模組 `data/world_info_store/`；計時檔不認得的 `version` 回錯。掃描的 f64 存成 i64 時 end 往上取整、超出範圍飽和（條目的 sticky／cooldown 可以是小數，而則數是整數，`則數 >= end` 結果不變）。
+  - 換幕「平移未到期的計時」做成全部平移、不先挑掉到期的：到期與 sticky 接冷卻交給下一次掃描的檢查，結果與 ST 不換幕一路數下去相同（先丟掉會接不上冷卻）。
+  - 正文落檔只清「已送出」的 pending（寫入中不會有正文，有也不清、留日誌給結算）；清不成只記 log，下一次結算看得到回合鍵照樣判成功。角色回覆的回合鍵 part 是 `character`，落檔照 `(turn_id, character)` 冪等（同一把短提交鎖裡先交接 GM 再查，重送回原事件）。結算判成功只認正文事件（GM `main`、角色 `character`），`state_update` 這類附屬事件不算。
+  - 變數意圖撤回：先把撤回要用的新 rev（`restore_rev`）落進日誌再 compare-and-set，崩潰重跑時層已是這個 rev 就認得是自己撤回過、不誤報；寫入前沒有檔（`expected_rev` 為 null）的撤回＝刪檔。待回報檔每則 id 是 `<回合鍵>:<意圖序號>`，重跑不重複記。確定失敗的撤回（`fail_turn`）可選寫待回報檔或交回呼叫端連同原錯回報；`finish_turn` 走待回報檔。
+  - 操作序列欄位 `ops` 先存不透明 JSON，格式由包 5b 定（結算不讀）。
+  - 刪條目清計時：只有新書會多出新 uid 時才做發布前預清；寫入前的書讀不了就回錯、不寫書也不清計時（檔案不存在照空書）；解析不了的計時檔清理時跳過（它本來就讀不了）。世界書的讀改寫連同清計時都在這桌的短提交鎖內，與結算互斥（結算寫回的落地前表不會把刪掉的 uid 帶回來）〔主線裁決 2026-10-11，第 1 輪驗收〕。
+  - 網頁存檔：訊息與事件一對一、都不是系統事件，兩邊則數相同，`last_message_id` 不用來平移。
+  - 待回報檔的 tauri 指令與前端提示不在包 4（只有包 5b 的變數意圖會產生回報），由包 5b 接。
 
 ### 5. 條目形狀、順序與去重（包 2）
 - **轉換**：`normalize_imported_entry`（`book_import.rs:233`）的 `character_book` 分支改成完整的 `convertCharacterBook`，欄位清單與預設值以網頁版 `fromCharacterBook` 為準（`world-info-book.ts:99-140`）。V2 缺 `selective` 時寫明 `false`（物件形預設是 `true`，`:149`，不能因轉換翻轉）；`enabled` 缺欄或 null 算啟用，其餘照 JS 真假值（1、"yes" 啟用，0、"" 停用），不再有「壞條目」與 `invalid` 計數，嚴格模式也不因此報錯〔作者裁決 2026-10-10，網頁版同步改〕；`order` 缺或不是有限數字補 100〔作者裁決 2026-10-10〕。`extensions` 其餘鍵（含 `table_tavern`）原樣留著。

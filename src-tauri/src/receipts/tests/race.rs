@@ -5,9 +5,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
-/// 寫入控制點是全域的：用到它的測試彼此排隊
-static HOOK_TESTS: Mutex<()> = Mutex::new(());
-
 fn book(title: &str, opening: &str) -> Vec<u8> {
     serde_json::json!({
         "spec": "chara_card_v3",
@@ -111,7 +108,7 @@ fn transcript_ts(root: &Path, world_id: &str) -> Vec<String> {
 /// 貼 A 的開場白停在逐字稿追加前，B 的聊天寫入被擋到 A 完成；A 成功時逐字稿是 A 再 B、開場紀錄掛在 A
 #[test]
 fn chat_write_waits_for_the_opening_post() {
-    let _serial = HOOK_TESTS
+    let _serial = data::write_hook::TESTS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = TestRoot::new("race-opening-chat");
@@ -157,7 +154,7 @@ fn chat_write_waits_for_the_opening_post() {
 /// 完成之後才寫，所以 B 的那句與狀態都留著；A 的標記在確認回復後解除
 #[test]
 fn opening_rollback_does_not_wipe_a_concurrent_chat_write() {
-    let _serial = HOOK_TESTS
+    let _serial = data::write_hook::TESTS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = TestRoot::new("race-opening-rollback");
@@ -214,7 +211,7 @@ fn opening_rollback_does_not_wipe_a_concurrent_chat_write() {
 /// 只剩 B、A 的原檔已刪
 #[test]
 fn import_waits_for_undo_so_the_undone_entries_stay_gone() {
-    let _serial = HOOK_TESTS
+    let _serial = data::write_hook::TESTS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = TestRoot::new("race-undo-import");

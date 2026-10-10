@@ -14,6 +14,7 @@ pub mod state_commit;
 mod test_support;
 mod world;
 mod world_file;
+pub mod world_info_store;
 mod world_lock;
 mod worldbook;
 
@@ -37,9 +38,9 @@ pub use scene::{
     EventMarker,
 };
 pub use scene::{
-    append_event, append_opening, append_transcript, append_within_turn, begin_next_scene,
-    discard_unanswered_player, export_scene_markdown, export_transcript_markdown, fork_scene,
-    opening_checkpoint, pop_transcript, read_transcript, remove_transcript_event,
+    append_character_reply, append_event, append_opening, append_transcript, append_within_turn,
+    begin_next_scene, discard_unanswered_player, export_scene_markdown, export_transcript_markdown,
+    fork_scene, opening_checkpoint, pop_transcript, read_transcript, remove_transcript_event,
     replace_scene_summary, revert_scene, scene_label, set_last_transcript_state,
     settle_pending_turn, sync_scene_state_tree, write_imported_scene, ImportedEvent, ImportedScene,
     TranscriptEvent, TranscriptKind,

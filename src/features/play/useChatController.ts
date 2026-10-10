@@ -360,8 +360,13 @@ export function useChatController({
   // started＝發起這一輪時的世代，由回合一路傳下來：換桌之後才呼叫也不會把新世代當成自己的
   const appendEvent = useCallback(
     // turn＝GM 回合的一部分（main 正文／state_update 變動紀錄）：後端以 (turn_id, turn_part) 冪等落檔，
-    // main 掛上回合算好的變數表
-    async (event: TranscriptEvent, started: number, turn?: { turnId: string; part: "main" | "state_update" }) => {
+    // main 掛上回合算好的變數表；characterTurn＝這則是那次角色聊天呼叫的回覆，後端憑它認世界書落地成功
+    async (
+      event: TranscriptEvent,
+      started: number,
+      turn?: { turnId: string; part: "main" | "state_update" },
+      characterTurn?: string,
+    ) => {
       // 空白事件一律不落地（stream-failure-visible）：AI 失敗時故事不該多出一則看不見的
       // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
       // 與任何未來新路徑的保險，錯誤碼與後端同一個
@@ -383,6 +388,7 @@ export function useChatController({
             event: action ? { ...event, action_id: action } : event,
             turnId: turn?.turnId ?? null,
             turnPart: turn?.part ?? null,
+            characterTurn: characterTurn ?? null,
           });
         } catch (reason) {
           appendFailed.current = true;
@@ -575,7 +581,7 @@ export function useChatController({
             kind: "dialogue",
             text: reply.text,
             truncated: true,
-          }, started);
+          }, started, undefined, turnId);
           await markCliConnected();
         }
         return;
@@ -588,7 +594,7 @@ export function useChatController({
         kind: "dialogue",
         text: reply.text,
         ...(truncated ? { truncated: true } : {}),
-      }, started);
+      }, started, undefined, turnId);
       await markCliConnected();
     },
     [noteChatStarted, worldId, metaOf, appendEvent, markCliConnected, takeResponseTruncated, reload],

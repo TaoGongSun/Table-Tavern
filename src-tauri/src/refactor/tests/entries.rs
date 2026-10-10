@@ -346,6 +346,25 @@ fn undo_removes_new_entries_including_locked() {
     let applied = data::read_worldbook(root.path(), &world_id).unwrap();
     assert_eq!(applied.len(), 2);
     assert!(applied.iter().any(|entry| entry.locked));
+    // 世界書計時（worldbook-st-trigger-parity 三之 4）：收回的新條目，計時跟著清
+    let timers: Vec<_> = applied
+        .iter()
+        .map(|entry| data::world_info_store::WebTimed {
+            cooldown: false,
+            uid: entry.uid,
+            start: 0,
+            end: 9,
+            protected: false,
+        })
+        .collect();
+    data::world_info_store::import_web_timed(
+        root.path(),
+        &world_id,
+        0,
+        &data::world_info_store::Perspective::Gm,
+        &timers,
+    )
+    .unwrap();
 
     receipts::undo_last_import(
         root.path(),
@@ -362,6 +381,8 @@ fn undo_removes_new_entries_including_locked() {
         Vec::<&str>::new(),
         "undo 後新條目應整批收回"
     );
+    let timed = data::world_info_store::read_scene(root.path(), &world_id, 0).unwrap();
+    assert!(timed.perspectives["gm"].sticky.is_empty());
 }
 /// 包 2：來源不在這桌（核對失敗）時，帶 meta 的條目退回照抄 meta 的 keys/constant/order/disabled/
 /// is_person，名單裡的角色都不在本桌所以可見度給 GM；沒有 meta 的條目來源全部不在：GM、常駐、

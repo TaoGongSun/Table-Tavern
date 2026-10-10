@@ -4,9 +4,11 @@ use super::character::{
 use super::paths::{validate_single_line, world_dir};
 use super::state::read_state;
 use super::{invalid_data, new_id, DataResult, Tier};
+use crate::data::state_commit::with_commit;
 use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -62,12 +64,42 @@ pub(super) fn read_worldbook_value(root: &Path, world_id: &str) -> DataResult<se
     Ok(value)
 }
 
+/// 書裡現有條目的 uid（`entries` 不是物件時是空集合）。
+pub(crate) fn worldbook_uids(value: &serde_json::Value) -> BTreeSet<u64> {
+    entries_object(value)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|(key, value)| entry_uid(key, value))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 寫書是所有刪條目路徑（單刪、清重複、撤銷匯入、重構套用與撤銷）的唯一出口，計時跟著在這裡清
+/// （worldbook-st-trigger-parity 三之 4）：會多出新 uid 時，發布前先拿寫入前的 uid 集合清掉各幕計時裡
+/// 已不在書上的 uid（uid 以最大值＋1 配發，刪掉最大那條再新增會撞號，不清新條目就繼承舊計時），清不成
+/// 就不寫書；寫完後再照新書清一次，這步失敗由讀計時時對現有 uid 補清。寫入前的書讀不了就回錯、什麼都不動
+/// （不存在照空書）。呼叫端的讀改寫連同這裡的清理都在這桌的短提交鎖內，與 pending 結算互斥：結算寫回的
+/// 落地前表不會在刪除之後把舊 uid 帶回來。
 fn write_worldbook_value(root: &Path, world_id: &str, value: &serde_json::Value) -> DataResult<()> {
-    super::world_file::commit_world_write(
-        &worldbook_path(root, world_id)?,
-        serde_json::to_string_pretty(value)?.as_bytes(),
-    )?;
-    Ok(())
+    with_commit(root, world_id, |_| {
+        let before = worldbook_uids(&read_worldbook_value(root, world_id)?);
+        let after = worldbook_uids(value);
+        if after.iter().any(|uid| !before.contains(uid)) {
+            super::world_info_store::prune_uids(root, world_id, &before)?;
+        }
+        super::world_file::commit_world_write(
+            &worldbook_path(root, world_id)?,
+            serde_json::to_string_pretty(value)?.as_bytes(),
+        )?;
+        if before.iter().any(|uid| !after.contains(uid)) {
+            if let Err(error) = super::world_info_store::prune_uids(root, world_id, &after) {
+                log::warn!("world-info: 刪條目後清計時失敗，留給讀取時補清：{error}");
+            }
+        }
+        Ok(())
+    })
 }
 
 fn visibility_from_value(value: &serde_json::Value) -> Visibility {
@@ -463,28 +495,30 @@ pub fn upsert_worldbook_entry(
     world_id: &str,
     entry: WorldbookEntry,
 ) -> DataResult<u64> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let existing_key = entries
-        .iter()
-        .find(|(key, value)| entry_uid(key, value) == Some(entry.uid))
-        .map(|(key, _)| key.clone());
-    let actual_uid = if let Some(key) = existing_key {
-        let value = entries
-            .get_mut(&key)
-            .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
-        if !value.is_object() {
-            return Err(invalid_data("worldbook entry must be an object"));
-        }
-        update_entry_fields(value, &entry);
-        entry.uid
-    } else {
-        let uid = next_uid(entries)?;
-        insert_new_entry(entries, &entry, uid)?;
-        uid
-    };
-    write_worldbook_value(root, world_id, &worldbook)?;
-    Ok(actual_uid)
+    with_commit(root, world_id, |_| {
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let existing_key = entries
+            .iter()
+            .find(|(key, value)| entry_uid(key, value) == Some(entry.uid))
+            .map(|(key, _)| key.clone());
+        let actual_uid = if let Some(key) = existing_key {
+            let value = entries
+                .get_mut(&key)
+                .ok_or_else(|| invalid_data("worldbook entry disappeared"))?;
+            if !value.is_object() {
+                return Err(invalid_data("worldbook entry must be an object"));
+            }
+            update_entry_fields(value, &entry);
+            entry.uid
+        } else {
+            let uid = next_uid(entries)?;
+            insert_new_entry(entries, &entry, uid)?;
+            uid
+        };
+        write_worldbook_value(root, world_id, &worldbook)?;
+        Ok(actual_uid)
+    })
 }
 
 /// 撤銷用：把整條刪掉的條目照原 uid 插回（顯示在最前面，同 upsert 新增）。這個 uid 已經有條目
@@ -494,18 +528,20 @@ pub fn restore_worldbook_entry(
     world_id: &str,
     entry: WorldbookEntry,
 ) -> DataResult<bool> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let taken = entries.contains_key(&entry.uid.to_string())
-        || entries
-            .iter()
-            .any(|(key, value)| entry_uid(key, value) == Some(entry.uid));
-    if taken {
-        return Ok(false);
-    }
-    insert_new_entry(entries, &entry, entry.uid)?;
-    write_worldbook_value(root, world_id, &worldbook)?;
-    Ok(true)
+    with_commit(root, world_id, |_| {
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let taken = entries.contains_key(&entry.uid.to_string())
+            || entries
+                .iter()
+                .any(|(key, value)| entry_uid(key, value) == Some(entry.uid));
+        if taken {
+            return Ok(false);
+        }
+        insert_new_entry(entries, &entry, entry.uid)?;
+        write_worldbook_value(root, world_id, &worldbook)?;
+        Ok(true)
+    })
 }
 
 /// 新條目插在最前面：其餘條目顯示序號往後挪一格。
@@ -558,48 +594,52 @@ fn insert_entry_value(
 
 /// 拖曳排序：uids 就是新的顯示順序，沒送到的條目依原順序接在後面
 pub fn reorder_worldbook_entries(root: &Path, world_id: &str, uids: &[u64]) -> DataResult<()> {
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let keys = sorted_entry_keys(entries);
+    with_commit(root, world_id, |_| {
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let keys = sorted_entry_keys(entries);
 
-    let mut ordered: Vec<String> = Vec::with_capacity(keys.len());
-    for uid in uids {
-        let Some(key) = keys
-            .iter()
-            .find(|key| entry_uid(key, &entries[*key]) == Some(*uid))
-        else {
-            continue;
-        };
-        if !ordered.contains(key) {
-            ordered.push(key.clone());
+        let mut ordered: Vec<String> = Vec::with_capacity(keys.len());
+        for uid in uids {
+            let Some(key) = keys
+                .iter()
+                .find(|key| entry_uid(key, &entries[*key]) == Some(*uid))
+            else {
+                continue;
+            };
+            if !ordered.contains(key) {
+                ordered.push(key.clone());
+            }
         }
-    }
-    for key in &keys {
-        if !ordered.contains(key) {
-            ordered.push(key.clone());
+        for key in &keys {
+            if !ordered.contains(key) {
+                ordered.push(key.clone());
+            }
         }
-    }
 
-    normalize_display_indices(entries, &ordered)?;
-    write_worldbook_value(root, world_id, &worldbook)
+        normalize_display_indices(entries, &ordered)?;
+        write_worldbook_value(root, world_id, &worldbook)
+    })
 }
 
 pub fn delete_worldbook_entry(root: &Path, world_id: &str, uid: u64) -> DataResult<()> {
-    let path = worldbook_path(root, world_id)?;
-    if !path.exists() {
-        return Ok(());
-    }
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let key = entries
-        .iter()
-        .find(|(key, value)| entry_uid(key, value) == Some(uid))
-        .map(|(key, _)| key.clone());
-    if let Some(key) = key {
-        entries.remove(&key);
-        write_worldbook_value(root, world_id, &worldbook)?;
-    }
-    Ok(())
+    with_commit(root, world_id, |_| {
+        let path = worldbook_path(root, world_id)?;
+        if !path.exists() {
+            return Ok(());
+        }
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let key = entries
+            .iter()
+            .find(|(key, value)| entry_uid(key, value) == Some(uid))
+            .map(|(key, _)| key.clone());
+        if let Some(key) = key {
+            entries.remove(&key);
+            write_worldbook_value(root, world_id, &worldbook)?;
+        }
+        Ok(())
+    })
 }
 
 /// 把世界書條目搬成可上桌的角色卡。
@@ -692,44 +732,47 @@ pub fn character_to_worldbook_entry(
     character_id: &str,
     lang: &str,
 ) -> DataResult<()> {
+    // 鎖順序（state_commit.rs）：世界許可 → 短提交鎖 → 檔鎖
     let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
         return Err(UiMsg::WorldBusy.into_error());
     };
-    let card = read_character(root, world_id, character_id)?;
-    let state = read_state(root, world_id)?;
-    if state.player_card_id.as_deref() == Some(character_id) {
-        return Err(UiMsg::PlayerCardNotConvertible.into_error());
-    }
+    with_commit(root, world_id, |_| {
+        let card = read_character(root, world_id, character_id)?;
+        let state = read_state(root, world_id)?;
+        if state.player_card_id.as_deref() == Some(character_id) {
+            return Err(UiMsg::PlayerCardNotConvertible.into_error());
+        }
 
-    let content = match (card.public_md.is_empty(), card.private_md.is_empty()) {
-        (false, false) => format!(
-            "{}\n\n{}\n{}",
-            card.public_md,
-            private_heading(lang),
-            card.private_md
-        ),
-        (false, true) => card.public_md,
-        (true, false) => card.private_md,
-        (true, true) => String::new(),
-    };
-    let entry = WorldbookEntry {
-        uid: 0,
-        title: card.name,
-        keys: Vec::new(),
-        content,
-        constant: true,
-        order: 100,
-        disabled: false,
-        visibility: Visibility::Gm,
-        is_person: false,
-        locked: false,
-    };
-    let mut worldbook = read_worldbook_value(root, world_id)?;
-    let entries = entries_object_mut(&mut worldbook)?;
-    let uid = next_uid(entries)?;
-    insert_new_entry(entries, &entry, uid)?;
-    write_worldbook_value(root, world_id, &worldbook)?;
-    delete_character(root, world_id, character_id)
+        let content = match (card.public_md.is_empty(), card.private_md.is_empty()) {
+            (false, false) => format!(
+                "{}\n\n{}\n{}",
+                card.public_md,
+                private_heading(lang),
+                card.private_md
+            ),
+            (false, true) => card.public_md,
+            (true, false) => card.private_md,
+            (true, true) => String::new(),
+        };
+        let entry = WorldbookEntry {
+            uid: 0,
+            title: card.name,
+            keys: Vec::new(),
+            content,
+            constant: true,
+            order: 100,
+            disabled: false,
+            visibility: Visibility::Gm,
+            is_person: false,
+            locked: false,
+        };
+        let mut worldbook = read_worldbook_value(root, world_id)?;
+        let entries = entries_object_mut(&mut worldbook)?;
+        let uid = next_uid(entries)?;
+        insert_new_entry(entries, &entry, uid)?;
+        write_worldbook_value(root, world_id, &worldbook)?;
+        delete_character(root, world_id, character_id)
+    })
 }
 
 pub fn export_worldbook(root: &Path, world_id: &str, path: &Path) -> DataResult<()> {

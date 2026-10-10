@@ -44,7 +44,10 @@
 - `last_message_id`：可為 null，最近一次組提示時對話的最後一則 `id`（那次的則數＝它的位置＋1），`null`＝還沒掃過或那則已刪。
 - `message_effects`：以訊息 `id` 為鍵的物件。ST 不逐則記回退（回退由 `timed` 的 start／protected 判斷），網頁版寫 `{}`，讀到非空的原樣帶回。
 
-桌面版只保存、不消費：原樣存旁檔，另附「穩定 ID → 桌面 UID」與「訊息 id → 桌面事件 id」兩張映射表；不把 sticky 條目改成 constant。
+桌面版：原樣存旁檔，另附「穩定 ID → 桌面 UID」與「訊息 id → 桌面事件 id」兩張映射表；`timed` 另轉成第 0 幕的計時檔（`worlds/<id>/world-info/0.json`）接著用，不把 sticky 條目改成 constant：
+- 交給演這張卡的視角：角色卡路給該角色，世界書路給 GM。
+- 穩定 ID 經 `key` 換成桌面 UID，對不到的丟掉；兩個穩定 ID 對到同一 UID 時，同一類取 `end` 較大的那筆，`end` 相同時 `protected` 為真者優先。
+- 訊息與事件一對一、都不是系統事件，兩邊則數相同，`start`／`end` 照用（`last_message_id` 不影響）；`message_effects` 不讀。
 
 ## 四、MVU 變數
 `mvu` 可為 null（這桌沒有卡片變數）。否則：
@@ -78,7 +81,7 @@
 - 逐字稿寫進第 0 幕：玩家句→玩家事件；開場白→GM 旁白（`opening`）；角色卡路的回覆→該角色發言，世界書路的回覆→GM 旁白。事件 id 由桌面版重配。
 - 世界書：角色卡路的卡內條目，原卡沒指定 `extensions.table_tavern.visibility` 的設成只有這個角色看得到（D16）；明示的照舊；世界書路沒有角色，照桌面版預設給 GM。
 - MVU：`seed` 是物件就把控制檔設成變數模式、這一幕新 epoch 與種子＝`seed`，帶表的事件全部掛上新 epoch 與新版本 token；`seed` 是 `null` 就不動模式。
-- 寫入順序：先拿新桌 id 的整桌獨占再建桌（建桌途中失敗清掉半成品目錄）；桌內全部（角色、原卡、世界書、機制、逐字稿、控制檔、chat／character／script 層、旁檔）成功後才補跨桌層，桌內任何落檔失敗都算匯入失敗。失敗就退回已補的跨桌鍵並刪掉新桌：跨桌層以層的 rev 做 compare-and-set，補完之後那一層有任何寫入（含改回同值）就整層不退、保留別人的寫入；退不掉的鍵、刪不掉的桌一律連同原錯回報（`web_save_cleanup_incomplete`）。
+- 寫入順序：先拿新桌 id 的整桌獨占再建桌（建桌途中失敗清掉半成品目錄）；桌內全部（角色、原卡、世界書、機制、逐字稿、控制檔、chat／character／script 層、旁檔、世界書計時檔）成功後才補跨桌層，桌內任何落檔失敗都算匯入失敗。失敗就退回已補的跨桌鍵並刪掉新桌：跨桌層以層的 rev 做 compare-and-set，補完之後那一層有任何寫入（含改回同值）就整層不退、保留別人的寫入；退不掉的鍵、刪不掉的桌一律連同原錯回報（`web_save_cleanup_incomplete`）。
 - `card_storage` 交回前端，進新桌前寫進新桌的卡片 storage；寫不進去先問玩家重試，放棄就收掉新桌、這次匯入算失敗。匯入成功到前端確認之間，新桌的 `worlds/<id>/web-save-pending.json` 記著每層跨桌層補了哪些鍵與補完的 rev（建桌後先寫、每層寫入前先記）：寫好 storage 呼叫 `confirm_web_save_import` 刪掉它；放棄呼叫 `discard_web_save_import`，照記錄以同一套 rev compare-and-set 撤回跨桌層再刪桌，沒撤回的鍵同樣以 `web_save_cleanup_incomplete` 回報。
 - `regex_allowed` 寫入桌層旗標（`state.json` 的 `regex_allowed`，D24）：false 時這桌的卡都不套卡內 regex 腳本（介面顯示腳本清空；桌面版本來就沒有送模前與玩家輸入的 regex）。一般匯卡與舊桌一律 true。旁檔 `worlds/<id>/web-save.json` 也留原值與 `opening_index`。
 - 跨桌層補缺以頂層鍵為單位。

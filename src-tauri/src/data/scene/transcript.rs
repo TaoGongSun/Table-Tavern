@@ -181,6 +181,7 @@ pub fn append_event(
             match message_vars::prepare_turn_append(tx, scene, key)? {
                 message_vars::TurnAppend::Existing(existing) => {
                     message_vars::mark_turn_appended(tx, key);
+                    reply_landed(root, world_id, scene, key);
                     return Ok((existing, None));
                 }
                 message_vars::TurnAppend::New { table: attach } => table = attach,
@@ -204,8 +205,60 @@ pub fn append_event(
         let (offset, event) = append_line_tx(tx, scene, &event)?;
         if let Some(key) = turn {
             message_vars::mark_turn_appended(tx, key);
+            reply_landed(root, world_id, scene, key);
         }
         Ok((event, Some(offset)))
+    })
+}
+
+/// GM 正文落檔（含冪等命中與後端代落）＝這個回合成功，清世界書落地的 pending。清不成不算錯：
+/// 正文已在逐字稿，下一次結算看得到回合鍵照樣判成功。
+fn reply_landed(root: &Path, world_id: &str, scene: u64, key: &message_vars::TurnKey) {
+    if key.part != message_vars::PART_MAIN {
+        return;
+    }
+    if let Err(error) =
+        super::super::world_info_store::reply_landed(root, world_id, scene, &key.turn_id)
+    {
+        log::warn!("world-info: 正文已落檔、清 pending 失敗，留給下一次結算：{error}");
+    }
+}
+
+/// 角色回覆的落檔路（世界書三之 4）：照一般新事件先交接（上一個 GM 回合沒落成的正文排在前面），不進 GM 的
+/// 冪等路徑；只把這次聊天呼叫的 turn_id 寫進事件的回合鍵，並清對應的世界書 pending。同一把短提交鎖裡
+/// 交接完再查 `(turn_id, character)`：前端重送（寫成了但回傳失敗）回原事件，不再追加第二則。
+pub fn append_character_reply(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    event: &TranscriptEvent,
+    turn_id: &str,
+) -> DataResult<TranscriptEvent> {
+    let key = message_vars::TurnKey {
+        turn_id: turn_id.to_owned(),
+        part: message_vars::PART_CHARACTER.to_owned(),
+    };
+    with_commit(root, world_id, |tx| {
+        message_vars::settle_before_append(tx, None)?;
+        let existing = find_event_rev(root, world_id, scene, Some(turn_id), |_, head| {
+            head.turn_key.as_ref() == Some(&key)
+        })?;
+        let landed = match existing {
+            Some((_, existing)) => existing,
+            None => {
+                let event = TranscriptEvent {
+                    turn_key: Some(key.clone()),
+                    ..event.clone()
+                };
+                append_line_tx(tx, scene, &event)?.1
+            }
+        };
+        if let Err(error) =
+            super::super::world_info_store::reply_landed(root, world_id, scene, turn_id)
+        {
+            log::warn!("world-info: 角色回覆已落檔、清 pending 失敗，留給下一次結算：{error}");
+        }
+        Ok(landed)
     })
 }
 
