@@ -1,0 +1,4493 @@
+{
+ "_about": "checkWorldInfo 對拍：條目是物件形原始 JSON（掃描前照 sortByOrder 排序）、chat 新到舊、maxContext null＝沒有上限；代換把 {{user}}→Alice、{{char}}→Bob 並記下每次輸入；計數＝code point 數；random 依序取用。預期值由網頁版跑出（web/scripts/gen-world-info-fixtures.mjs）。",
+ "cases": [
+  {
+   "name": "primary key, case-insensitive",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "DOOR"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "dragon"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "DOOR",
+     "dragon",
+     "a",
+     "dragon"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "whole words: inside a word does not match",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "now"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "snow"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "now",
+     "snow",
+     "b",
+     "now"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "whole words off for one entry",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "now"
+      ],
+      "matchWholeWords": false
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "now",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "multi-word key falls back to substring",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "the cold"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "cold wi"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b"
+    ],
+    "substituteCalls": [
+     "the cold",
+     "cold wi",
+     "a",
+     "b"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "case-sensitive entry",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "caseSensitive": true
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "Door"
+      ],
+      "caseSensitive": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "Door",
+     "a",
+     "Door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "case-sensitive setting",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "Close"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "close"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": true,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "Close",
+     "close",
+     "a",
+     "close"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "CJK whole word",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "龍"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "推開"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "雪灌"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "瑟拉: 先把門關上，雪灌進來了。",
+    "Alice: 我推開門，那條龍睡著。"
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "c\nb\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b",
+     "c"
+    ],
+    "substituteCalls": [
+     "龍",
+     "推開",
+     "雪灌",
+     "a",
+     "b",
+     "c"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "regex keys",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "/d(oo|ra)r/i"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "/^Seraphine/"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "/a(/"
+      ]
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "/\\bwind\\b/"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "d\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "d"
+    ],
+    "substituteCalls": [
+     "/d(oo|ra)r/i",
+     "/^Seraphine/",
+     "/a(/",
+     "/\\bwind\\b/",
+     "a",
+     "d",
+     "/^Seraphine/",
+     "/a(/"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "plain key that looks like a broken regex",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "/a(/"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Bob: write /a(/ here"
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "/a(/",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "keys are substituted then trimmed",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "  {{user}} "
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "{{char}}"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Alice: Bob, wake up."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b"
+    ],
+    "substituteCalls": [
+     "  {{user}} ",
+     "{{char}}",
+     "a",
+     "b"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "whitespace-only key matches anything",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "   "
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "   ",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "first matching key wins (later keys not substituted)",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "zzz",
+       "door",
+       "{{user}}"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "zzz",
+     "door",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "no keys, null keys, disabled",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": []
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": null
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "disable": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [],
+    "substituteCalls": [],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "secondary AND_ANY",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "bandit",
+       "snow"
+      ],
+      "selectiveLogic": 0
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "bandit"
+      ],
+      "selectiveLogic": 0
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "bandit",
+     "snow",
+     "door",
+     "bandit",
+     "a",
+     "door",
+     "bandit"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "secondary NOT_ALL",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "bandit",
+       "snow"
+      ],
+      "selectiveLogic": 1
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "cold",
+       "snow"
+      ],
+      "selectiveLogic": 1
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "bandit",
+     "door",
+     "cold",
+     "snow",
+     "a",
+     "door",
+     "cold",
+     "snow"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "secondary NOT_ANY",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "bandit",
+       "snow"
+      ],
+      "selectiveLogic": 2
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "bandit"
+      ],
+      "selectiveLogic": 2
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "door",
+     "bandit",
+     "snow",
+     "door",
+     "bandit",
+     "b",
+     "door",
+     "bandit",
+     "snow"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "secondary AND_ALL",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "cold",
+       "snow"
+      ],
+      "selectiveLogic": 3
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "cold",
+       "bandit"
+      ],
+      "selectiveLogic": 3
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "cold",
+     "snow",
+     "door",
+     "cold",
+     "bandit",
+     "a",
+     "door",
+     "cold",
+     "bandit"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "secondary ignored when not selective",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "bandit"
+      ],
+      "selective": false,
+      "selectiveLogic": 3
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "secondary keys substituted",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "keysecondary": [
+       "{{user}}"
+      ],
+      "selectiveLogic": 3
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "{{user}}",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "scan depth 2 and entry override",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "hearth"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "hearth"
+      ],
+      "scanDepth": 3
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "scanDepth": 0
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "hearth",
+     "hearth",
+     "door",
+     "b",
+     "hearth",
+     "door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "fractional scan depth",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "scanDepth": 0.5
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "wind"
+      ],
+      "scanDepth": 2.9
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "door",
+     "wind",
+     "b",
+     "door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "global scan fields",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "watcher"
+      ],
+      "matchCharacterDescription": true
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "watcher"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "tea"
+      ],
+      "matchPersonaDescription": true
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "ruins"
+      ],
+      "matchScenario": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "globalScan": {
+    "characterDescription": "The night watcher Seraphine.",
+    "personaDescription": "Alice loves tea.",
+    "scenario": ""
+   },
+   "expected": {
+    "before": "c\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "c"
+    ],
+    "substituteCalls": [
+     "watcher",
+     "watcher",
+     "tea",
+     "ruins",
+     "a",
+     "c",
+     "watcher",
+     "ruins"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "empty messages keep their slot",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "hearth"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "",
+    "Seraphine: Close the door.",
+    "Seraphine: The hearth."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "hearth",
+     "a",
+     "hearth"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "constant and decorators",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "constant": true
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "@@activate\nforced",
+      "key": [
+       "zzz"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "@@dont_activate\nnever",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "@@@activate\nescaped",
+      "constant": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "escaped\nforced\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b",
+     "d"
+    ],
+    "substituteCalls": [
+     "a",
+     "forced",
+     "escaped"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "generation type triggers",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "triggers": [
+       "continue"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "triggers": [
+       "normal",
+       "swipe"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "door",
+     "b"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "probability boundary is inclusive",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "constant": true,
+      "probability": 50,
+      "order": 2
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "constant": true,
+      "probability": 30,
+      "order": 1
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.5,
+    0.31
+   ],
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "a"
+    ],
+    "randomCalls": 2
+   }
+  },
+  {
+   "name": "an active sticky entry does not roll",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "zzz"
+      ],
+      "sticky": 3,
+      "probability": 10
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "timed": {
+    "sticky": {
+     "a": {
+      "start": 1,
+      "end": 9,
+      "protected": false
+     }
+    },
+    "cooldown": {}
+   },
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {
+      "a": {
+       "start": 1,
+       "end": 9,
+       "protected": false
+      }
+     },
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "probability rolls in order",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "constant": true,
+      "probability": 50,
+      "order": 10
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "constant": true,
+      "probability": 50,
+      "order": 5
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "constant": true,
+      "probability": 100,
+      "order": 1
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "constant": true,
+      "probability": 10,
+      "useProbability": false,
+      "order": 0
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.4,
+    0.7
+   ],
+   "expected": {
+    "before": "d\nc\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "c",
+     "d"
+    ],
+    "substituteCalls": [
+     "a",
+     "c",
+     "d"
+    ],
+    "randomCalls": 2
+   }
+  },
+  {
+   "name": "recursion activates level by level",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "the lantern",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "an old key",
+      "key": [
+       "lantern"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "end",
+      "key": [
+       "key"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "end\nan old key\nthe lantern",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b",
+     "c"
+    ],
+    "substituteCalls": [
+     "door",
+     "lantern",
+     "key",
+     "the lantern",
+     "lantern",
+     "key",
+     "an old key",
+     "key",
+     "end"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "prevent and exclude recursion",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "lantern",
+      "key": [
+       "door"
+      ],
+      "preventRecursion": true
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "bell",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "lantern"
+      ]
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "bell"
+      ],
+      "excludeRecursion": true
+     }
+    },
+    {
+     "id": "e",
+     "raw": {
+      "comment": "e",
+      "content": "e",
+      "key": [
+       "bell"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "e\nbell\nlantern",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b",
+     "e"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "lantern",
+     "bell",
+     "bell",
+     "lantern",
+     "bell",
+     "lantern",
+     "bell",
+     "e",
+     "lantern"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "delay until recursion levels",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "lantern",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "bell",
+      "key": [
+       "door"
+      ],
+      "delayUntilRecursion": true
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "delayUntilRecursion": 2
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "bell"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "c\nd\nbell\nlantern",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b",
+     "d",
+     "c"
+    ],
+    "substituteCalls": [
+     "door",
+     "bell",
+     "lantern",
+     "door",
+     "bell",
+     "bell",
+     "bell",
+     "d",
+     "door",
+     "c"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "recursion off",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "lantern",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "lantern"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": false,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "lantern",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "lantern",
+     "lantern"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "budget overflow stops later entries and recursion",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "0123456789",
+      "constant": true,
+      "order": 30
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "lantern 0123456789",
+      "constant": true,
+      "order": 20
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "short",
+      "constant": true,
+      "order": 10
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "lantern"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 100,
+   "expected": {
+    "before": "0123456789",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "lantern",
+     "0123456789",
+     "lantern 0123456789"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "ignoreBudget still goes in after overflow",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "01234567890123456789012345",
+      "constant": true,
+      "order": 30
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "x",
+      "constant": true,
+      "order": 20
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "always",
+      "constant": true,
+      "order": 10,
+      "ignoreBudget": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 100,
+   "expected": {
+    "before": "always",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "c"
+    ],
+    "substituteCalls": [
+     "01234567890123456789012345",
+     "always"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "budget counts code points (astral)",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "😀😀😀😀😀😀😀😀😀😀",
+      "constant": true,
+      "order": 2
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "abcdefghijk",
+      "constant": true,
+      "order": 1
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 100,
+   "expected": {
+    "before": "abcdefghijk\n😀😀😀😀😀😀😀😀😀😀",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b"
+    ],
+    "substituteCalls": [
+     "😀😀😀😀😀😀😀😀😀😀",
+     "abcdefghijk"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "budget cap",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "aaaaaaaaaa",
+      "constant": true,
+      "order": 2
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "bbbbbbbbbb",
+      "constant": true,
+      "order": 1
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 15,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 1000,
+   "expected": {
+    "before": "aaaaaaaaaa",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "aaaaaaaaaa",
+     "bbbbbbbbbb"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "content substituted before budget check",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "{{user}}",
+      "constant": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 32,
+   "expected": {
+    "before": "Alice",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "{{user}}"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "sticky entries get the budget first",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "aaaaaaaa",
+      "key": [
+       "door"
+      ],
+      "order": 100
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "bbbbbbbb",
+      "key": [
+       "zzz"
+      ],
+      "order": 50,
+      "sticky": 3
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 40,
+   "timed": {
+    "sticky": {
+     "b": {
+      "start": 1,
+      "end": 9,
+      "protected": false
+     }
+    },
+    "cooldown": {}
+   },
+   "expected": {
+    "before": "bbbbbbbb",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {
+      "b": {
+       "start": 1,
+       "end": 9,
+       "protected": false
+      }
+     },
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "door",
+     "bbbbbbbb",
+     "aaaaaaaa"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "recursion rounds count earlier text against the budget",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "lantern xxxxxxxxxxx",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "z",
+      "key": [
+       "lantern"
+      ],
+      "order": 200
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "yyyy",
+      "key": [
+       "lantern"
+      ],
+      "order": 50
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": 100,
+   "expected": {
+    "before": "lantern xxxxxxxxxxx\nz",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "c"
+    ],
+    "substituteCalls": [
+     "lantern",
+     "door",
+     "lantern",
+     "lantern xxxxxxxxxxx",
+     "lantern",
+     "lantern",
+     "z",
+     "yyyy"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "sticky keeps firing without keys; cooldown blocks",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "zzz"
+      ],
+      "sticky": 3
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "cooldown": 2
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "sticky": 2
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "timed": {
+    "sticky": {
+     "a": {
+      "start": 2,
+      "end": 5,
+      "protected": false
+     }
+    },
+    "cooldown": {
+     "b": {
+      "start": 1,
+      "end": 4,
+      "protected": false
+     }
+    }
+   },
+   "expected": {
+    "before": "c\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {
+      "a": {
+       "start": 2,
+       "end": 5,
+       "protected": false
+      },
+      "c": {
+       "start": 3,
+       "end": 5,
+       "protected": false
+      }
+     },
+     "cooldown": {
+      "b": {
+       "start": 1,
+       "end": 4,
+       "protected": false
+      }
+     }
+    },
+    "activated": [
+     "a",
+     "c"
+    ],
+    "substituteCalls": [
+     "door",
+     "a",
+     "c"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "sticky expires into a protected cooldown",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "zzz"
+      ],
+      "sticky": 1,
+      "cooldown": 2
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "timed": {
+    "sticky": {
+     "a": {
+      "start": 1,
+      "end": 3,
+      "protected": false
+     }
+    },
+    "cooldown": {}
+   },
+   "expected": {
+    "before": "",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {
+      "a": {
+       "start": 3,
+       "end": 5,
+       "protected": true
+      }
+     }
+    },
+    "activated": [],
+    "substituteCalls": [],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "rollback drops unprotected effects",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "zzz"
+      ],
+      "sticky": 5
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "cooldown": 5
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "timed": {
+    "sticky": {
+     "a": {
+      "start": 3,
+      "end": 8,
+      "protected": false
+     }
+    },
+    "cooldown": {
+     "b": {
+      "start": 3,
+      "end": 8,
+      "protected": true
+     }
+    }
+   },
+   "expected": {
+    "before": "",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {
+      "b": {
+       "start": 3,
+       "end": 8,
+       "protected": true
+      }
+     }
+    },
+    "activated": [],
+    "substituteCalls": [
+     "zzz"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "effects for entries without timers or gone",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "sticky": 0
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "timed": {
+    "sticky": {
+     "a": {
+      "start": 1,
+      "end": 9,
+      "protected": false
+     },
+     "gone": {
+      "start": 1,
+      "end": 2,
+      "protected": false
+     }
+    },
+    "cooldown": {
+     "b": {
+      "start": 1,
+      "end": 9,
+      "protected": false
+     }
+    }
+   },
+   "expected": {
+    "before": "b\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "a",
+     "b"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "delay holds until enough messages",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "delay": 3
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "delay": 4
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "zero timers are no timers",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "sticky": 0,
+      "cooldown": 0,
+      "delay": 0
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "a"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "group override wins by order",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupOverride": true,
+      "order": 5
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupOverride": true,
+      "order": 9
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "group": "g"
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "door",
+     "b",
+     "door",
+     "door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "group weighted roll",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupWeight": 10
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupWeight": 30
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupWeight": 60
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.5
+   ],
+   "expected": {
+    "before": "c",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "c"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "door",
+     "c",
+     "door",
+     "door"
+    ],
+    "randomCalls": 1
+   }
+  },
+  {
+   "name": "group weight boundary is inclusive",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupWeight": 50
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "groupWeight": 50
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.5
+   ],
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "a",
+     "door"
+    ],
+    "randomCalls": 1
+   }
+  },
+  {
+   "name": "group scoring keeps the best match",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door",
+       "snow"
+      ],
+      "group": "g",
+      "useGroupScoring": true
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "useGroupScoring": true
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door",
+       "snow",
+       "wind"
+      ],
+      "group": "g"
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.1
+   ],
+   "expected": {
+    "before": "c",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "c"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "door",
+     "c",
+     "door",
+     "door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "group scoring from settings",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door",
+       "snow"
+      ],
+      "group": "g"
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g"
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": true,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.9
+   ],
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "a",
+     "door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "sticky member keeps its group",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "group": "g",
+      "sticky": 3
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g"
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "timed": {
+    "sticky": {
+     "a": {
+      "start": 1,
+      "end": 9,
+      "protected": false
+     }
+    },
+    "cooldown": {}
+   },
+   "expected": {
+    "before": "a",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {
+      "a": {
+       "start": 1,
+       "end": 9,
+       "protected": false
+      }
+     },
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "a",
+     "door"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "entry in two groups removed twice (D31)",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "group": "g1, g2",
+      "groupWeight": 1
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "g1",
+      "groupWeight": 100
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "group": "g2",
+      "groupWeight": 100
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "door"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.99,
+    0.99
+   ],
+   "expected": {
+    "before": "d\nc\nb",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b",
+     "c",
+     "d"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "door",
+     "door",
+     "b",
+     "c",
+     "d",
+     "door"
+    ],
+    "randomCalls": 2
+   }
+  },
+  {
+   "name": "numeric group names iterate first",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "door"
+      ],
+      "group": "zz"
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "door"
+      ],
+      "group": "zz"
+     }
+    },
+    {
+     "id": "c",
+     "raw": {
+      "comment": "c",
+      "content": "c",
+      "key": [
+       "door"
+      ],
+      "group": "10"
+     }
+    },
+    {
+     "id": "d",
+     "raw": {
+      "comment": "d",
+      "content": "d",
+      "key": [
+       "door"
+      ],
+      "group": "10"
+     }
+    },
+    {
+     "id": "e",
+     "raw": {
+      "comment": "e",
+      "content": "e",
+      "key": [
+       "door"
+      ],
+      "group": "2"
+     }
+    },
+    {
+     "id": "f",
+     "raw": {
+      "comment": "f",
+      "content": "f",
+      "key": [
+       "door"
+      ],
+      "group": "2"
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "random": [
+    0.1,
+    0.9,
+    0.6
+   ],
+   "expected": {
+    "before": "e\nd\nb",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "b",
+     "d",
+     "e"
+    ],
+    "substituteCalls": [
+     "door",
+     "door",
+     "door",
+     "door",
+     "door",
+     "door",
+     "b",
+     "d",
+     "e",
+     "door",
+     "door",
+     "door"
+    ],
+    "randomCalls": 3
+   }
+  },
+  {
+   "name": "group already activated blocks recursion members",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "lantern",
+      "key": [
+       "door"
+      ],
+      "group": "g"
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "lantern"
+      ],
+      "group": "g"
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "lantern",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a"
+    ],
+    "substituteCalls": [
+     "door",
+     "lantern",
+     "lantern",
+     "lantern"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "positions and order",
+   "entries": [
+    {
+     "id": "b1",
+     "raw": {
+      "comment": "b1",
+      "content": "b1",
+      "constant": true,
+      "position": 0,
+      "order": 1
+     }
+    },
+    {
+     "id": "b2",
+     "raw": {
+      "comment": "b2",
+      "content": "b2",
+      "constant": true,
+      "position": 0,
+      "order": 2
+     }
+    },
+    {
+     "id": "a1",
+     "raw": {
+      "comment": "a1",
+      "content": "a1",
+      "constant": true,
+      "position": 1,
+      "order": 1
+     }
+    },
+    {
+     "id": "emt",
+     "raw": {
+      "comment": "emt",
+      "content": "emt",
+      "constant": true,
+      "position": 5
+     }
+    },
+    {
+     "id": "emb",
+     "raw": {
+      "comment": "emb",
+      "content": "emb",
+      "constant": true,
+      "position": 6
+     }
+    },
+    {
+     "id": "ant",
+     "raw": {
+      "comment": "ant",
+      "content": "ant",
+      "constant": true,
+      "position": 2
+     }
+    },
+    {
+     "id": "anb",
+     "raw": {
+      "comment": "anb",
+      "content": "anb",
+      "constant": true,
+      "position": 3
+     }
+    },
+    {
+     "id": "d4s",
+     "raw": {
+      "comment": "d4s",
+      "content": "d4s",
+      "constant": true,
+      "position": 4,
+      "depth": 4,
+      "role": 0
+     }
+    },
+    {
+     "id": "d4u",
+     "raw": {
+      "comment": "d4u",
+      "content": "d4u",
+      "constant": true,
+      "position": 4,
+      "depth": 4,
+      "role": 1
+     }
+    },
+    {
+     "id": "d2a",
+     "raw": {
+      "comment": "d2a",
+      "content": "d2a",
+      "constant": true,
+      "position": 4,
+      "depth": 2,
+      "role": 2,
+      "order": 7
+     }
+    },
+    {
+     "id": "d2a2",
+     "raw": {
+      "comment": "d2a2",
+      "content": "d2a2",
+      "constant": true,
+      "position": 4,
+      "depth": 2,
+      "role": 2,
+      "order": 3
+     }
+    },
+    {
+     "id": "out1",
+     "raw": {
+      "comment": "out1",
+      "content": "out1",
+      "constant": true,
+      "position": 7,
+      "outletName": "hud"
+     }
+    },
+    {
+     "id": "out2",
+     "raw": {
+      "comment": "out2",
+      "content": "out2",
+      "constant": true,
+      "position": 7,
+      "outletName": "hud",
+      "order": 50
+     }
+    },
+    {
+     "id": "outx",
+     "raw": {
+      "comment": "outx",
+      "content": "outx",
+      "constant": true,
+      "position": 7,
+      "outletName": ""
+     }
+    },
+    {
+     "id": "weird",
+     "raw": {
+      "comment": "weird",
+      "content": "weird",
+      "constant": true,
+      "position": 9
+     }
+    },
+    {
+     "id": "empty",
+     "raw": {
+      "comment": "empty",
+      "content": "",
+      "constant": true
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b1\nb2",
+    "after": "a1",
+    "examples": [
+     {
+      "position": "after",
+      "content": "emb"
+     },
+     {
+      "position": "before",
+      "content": "emt"
+     }
+    ],
+    "depth": [
+     {
+      "depth": 4,
+      "role": 0,
+      "entries": [
+       "d4s"
+      ]
+     },
+     {
+      "depth": 4,
+      "role": 1,
+      "entries": [
+       "d4u"
+      ]
+     },
+     {
+      "depth": 2,
+      "role": 2,
+      "entries": [
+       "d2a2",
+       "d2a"
+      ]
+     }
+    ],
+    "anTop": [
+     "ant"
+    ],
+    "anBottom": [
+     "anb"
+    ],
+    "outlets": [
+     [
+      "hud",
+      [
+       "out1",
+       "out2"
+      ]
+     ]
+    ],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "emt",
+     "emb",
+     "ant",
+     "anb",
+     "d4s",
+     "d4u",
+     "out1",
+     "outx",
+     "weird",
+     "empty",
+     "out2",
+     "d2a",
+     "d2a2",
+     "b2",
+     "b1",
+     "a1"
+    ],
+    "substituteCalls": [
+     "emt",
+     "emb",
+     "ant",
+     "anb",
+     "d4s",
+     "d4u",
+     "out1",
+     "outx",
+     "weird",
+     "",
+     "out2",
+     "d2a",
+     "d2a2",
+     "b2",
+     "b1",
+     "a1"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "same order keeps load order",
+   "entries": [
+    {
+     "id": "x",
+     "raw": {
+      "comment": "x",
+      "content": "x",
+      "constant": true,
+      "order": 5
+     }
+    },
+    {
+     "id": "y",
+     "raw": {
+      "comment": "y",
+      "content": "y",
+      "constant": true,
+      "order": 5
+     }
+    },
+    {
+     "id": "z",
+     "raw": {
+      "comment": "z",
+      "content": "z",
+      "constant": true,
+      "order": 5
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "z\ny\nx",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "x",
+     "y",
+     "z"
+    ],
+    "substituteCalls": [
+     "x",
+     "y",
+     "z"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "order coercion",
+   "entries": [
+    {
+     "id": "s",
+     "raw": {
+      "comment": "s",
+      "content": "s",
+      "constant": true,
+      "order": "7"
+     }
+    },
+    {
+     "id": "n",
+     "raw": {
+      "comment": "n",
+      "content": "n",
+      "constant": true,
+      "order": 3
+     }
+    },
+    {
+     "id": "t",
+     "raw": {
+      "comment": "t",
+      "content": "t",
+      "constant": true,
+      "order": true
+     }
+    },
+    {
+     "id": "u",
+     "raw": {
+      "comment": "u",
+      "content": "u",
+      "constant": true,
+      "order": null
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 25,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": true,
+    "useGroupScoring": false,
+    "includeNames": true
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "u\nt\nn\ns",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "s",
+     "n",
+     "t",
+     "u"
+    ],
+    "substituteCalls": [
+     "s",
+     "n",
+     "t",
+     "u"
+    ],
+    "randomCalls": 0
+   }
+  },
+  {
+   "name": "MVU settings: no whole words, no names, full budget",
+   "entries": [
+    {
+     "id": "a",
+     "raw": {
+      "comment": "a",
+      "content": "a",
+      "key": [
+       "now"
+      ]
+     }
+    },
+    {
+     "id": "b",
+     "raw": {
+      "comment": "b",
+      "content": "b",
+      "key": [
+       "oor"
+      ]
+     }
+    }
+   ],
+   "chat": [
+    "Seraphine: Close the door, the snow is coming in.",
+    "Alice: I push the door open and the cold wind rushes in.",
+    "Seraphine: The hearth at the lantern inn is still burning."
+   ],
+   "settings": {
+    "depth": 2,
+    "budgetPercent": 100,
+    "budgetCap": 0,
+    "recursive": true,
+    "caseSensitive": false,
+    "matchWholeWords": false,
+    "useGroupScoring": false,
+    "includeNames": false
+   },
+   "maxContext": null,
+   "expected": {
+    "before": "b\na",
+    "after": "",
+    "examples": [],
+    "depth": [],
+    "anTop": [],
+    "anBottom": [],
+    "outlets": [],
+    "timed": {
+     "sticky": {},
+     "cooldown": {}
+    },
+    "activated": [
+     "a",
+     "b"
+    ],
+    "substituteCalls": [
+     "now",
+     "oor",
+     "a",
+     "b"
+    ],
+    "randomCalls": 0
+   }
+  }
+ ]
+}

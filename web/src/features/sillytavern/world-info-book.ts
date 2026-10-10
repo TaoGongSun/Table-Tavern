@@ -93,7 +93,7 @@ export function parseDecorators(content: string): [string[], string] {
   return [decorators, newContent];
 }
 
-type Fields = Omit<WiEntry, "id" | "bookKey" | "decorators">;
+export type Fields = Omit<WiEntry, "id" | "bookKey" | "decorators">;
 
 /** convertCharacterBook 的一條（V2 陣列形）。 */
 function fromCharacterBook(entry: JsonObject): Fields {
@@ -203,12 +203,14 @@ export function bookEntries(cardData: unknown): { bookKey: string; fields: Field
   const objectForm = isObject(entries);
   const keyed = bookEntriesKeyed(entries);
   const byKey = new Map(keyed);
-  return stOrder(entries, keyed).map((bookKey) => {
-    const entry = byKey.get(bookKey)!;
-    const fields = objectForm ? fromWorldFile(entry) : fromCharacterBook(entry);
-    const [decorators, content] = parseDecorators(fields.content);
-    return { bookKey, fields: { ...fields, content }, decorators };
-  });
+  return stOrder(entries, keyed).map((bookKey) => ({ bookKey, ...resolveEntry(byKey.get(bookKey)!, objectForm) }));
+}
+
+/** 單一條目：物件形照 `fromWorldFile`、陣列形照 `fromCharacterBook`，再拆 `@@` 裝飾（桌面版對拍同一套）。 */
+export function resolveEntry(entry: JsonObject, objectForm: boolean): { fields: Fields; decorators: string[] } {
+  const fields = objectForm ? fromWorldFile(entry) : fromCharacterBook(entry);
+  const [decorators, content] = parseDecorators(fields.content);
+  return { fields: { ...fields, content }, decorators };
 }
 
 /**

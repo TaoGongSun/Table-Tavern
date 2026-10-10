@@ -1,0 +1,1030 @@
+{
+ "_about": "parseRegexFromString＋test 對拍：expected 是 JS 的結果；knownDifference 是桌面版刻意不同的地方（見方案七）。",
+ "cases": [
+  {
+   "name": "plain",
+   "key": "/dragon/",
+   "haystack": "\u0001a dragon",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "i flag",
+   "key": "/DRAGON/i",
+   "haystack": "\u0001a dragon",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "g flag ignored",
+   "key": "/dragon/g",
+   "haystack": "\u0001a dragon",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "y anchors at the start (scan text starts with \\x01)",
+   "key": "/wolf/y",
+   "haystack": "\u0001wolf",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "y matches when the pattern covers the start",
+   "key": "/\\x01wolf/y",
+   "haystack": "\u0001wolf",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "duplicate flags reject",
+   "key": "/a/ii",
+   "haystack": "a",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "unknown flag is not a regex",
+   "key": "/a/x",
+   "haystack": "/a/x",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "unescaped slash is not a regex",
+   "key": "/a/b/",
+   "haystack": "a/b",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "escaped slash",
+   "key": "/a\\/b/",
+   "haystack": "xa/b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "no m: ^ is start only",
+   "key": "/^door/",
+   "haystack": "\u0001x\ndoor",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "m: ^ after newline",
+   "key": "/^door/m",
+   "haystack": "\u0001x\ndoor",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "m: ^ after carriage return",
+   "key": "/^door/m",
+   "haystack": "\u0001x\rdoor",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "m: $ before U+2028",
+   "key": "/door$/m",
+   "haystack": "\u0001door x",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "no s: . skips \\n",
+   "key": "/a.b/",
+   "haystack": "a\nb",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "no s: . skips U+2028",
+   "key": "/a.b/",
+   "haystack": "a b",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "no s: . skips \\r",
+   "key": "/a.b/",
+   "haystack": "a\rb",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "s: . takes \\n",
+   "key": "/a.b/s",
+   "haystack": "a\nb",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\d is ASCII only (fullwidth digit)",
+   "key": "/\\d/",
+   "haystack": "３",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\d is ASCII only with u",
+   "key": "/\\d/u",
+   "haystack": "３",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\w is ASCII only",
+   "key": "/\\w/",
+   "haystack": "龍",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\w is ASCII only with u",
+   "key": "/\\w/u",
+   "haystack": "é",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\W matches CJK",
+   "key": "/\\W龍/",
+   "haystack": "那龍",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\s takes U+3000",
+   "key": "/a\\sb/",
+   "haystack": "a　b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\s takes U+FEFF",
+   "key": "/a\\sb/",
+   "haystack": "a﻿b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\s does not take U+0085",
+   "key": "/a\\sb/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\b is an ASCII boundary",
+   "key": "/\\b龍/",
+   "haystack": "那龍",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\b between ASCII words",
+   "key": "/\\bcat\\b/",
+   "haystack": "a cat.",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\B inside a word",
+   "key": "/c\\Bat/",
+   "haystack": "cat",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "identity escape without u",
+   "key": "/\\「門\\」/",
+   "haystack": "「門」",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "identity escape with u is an error",
+   "key": "/\\「/u",
+   "haystack": "「",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "escaped dash outside a class",
+   "key": "/a\\-b/",
+   "haystack": "a-b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "escaped caret is literal",
+   "key": "/\\^a/",
+   "haystack": "^a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lone brace is literal without u",
+   "key": "/a{b/",
+   "haystack": "a{b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lone brace with u is an error",
+   "key": "/a{b/u",
+   "haystack": "a{b",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "lone closing bracket",
+   "key": "/a]/",
+   "haystack": "a]",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "quantifier braces",
+   "key": "/a{2,3}/",
+   "haystack": "caab",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class with \\d",
+   "key": "/[\\d]/",
+   "haystack": "x7",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class with dot is literal",
+   "key": "/[.]/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "class with \\W",
+   "key": "/[\\W]/",
+   "haystack": "abc",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "class with \\W matches space",
+   "key": "/[\\W]/",
+   "haystack": "a b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "negated class with \\W",
+   "key": "/[^\\W]/",
+   "haystack": "!!a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class with \\s and \\d",
+   "key": "/[\\s\\d]/",
+   "haystack": "a　",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class range",
+   "key": "/[a-c]x/",
+   "haystack": "bx",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class dash after class escape is literal",
+   "key": "/[\\w-!]/",
+   "haystack": "-",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class caret not first is literal",
+   "key": "/[a^]/",
+   "haystack": "^",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class \\b is backspace",
+   "key": "/[\\b]/",
+   "haystack": "\b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "empty class never matches",
+   "key": "/a[]/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "negated empty class matches anything",
+   "key": "/a[^]b/",
+   "haystack": "a\nb",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "hex and unicode escapes",
+   "key": "/\\x41\\u0042/",
+   "haystack": "AB",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "u code point escape",
+   "key": "/\\u{1F600}/u",
+   "haystack": "😀",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "surrogate pair escape",
+   "key": "/\\uD83D\\uDE00/",
+   "haystack": "😀",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "control escape",
+   "key": "/\\cJ/",
+   "haystack": "\n",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "backreference",
+   "key": "/(a)\\1/",
+   "haystack": "aa",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "legacy octal without groups",
+   "key": "/\\101/",
+   "haystack": "A",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\8 is a literal 8",
+   "key": "/\\8/",
+   "haystack": "8",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "named group and backreference",
+   "key": "/(?<w>o)\\k<w>/",
+   "haystack": "door",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\k without named groups is literal k",
+   "key": "/\\k/",
+   "haystack": "k",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lookbehind",
+   "key": "/(?<=推)開/",
+   "haystack": "推開",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "negative lookahead",
+   "key": "/door(?!s)/",
+   "haystack": "doors door",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lazy quantifier",
+   "key": "/a+?b/",
+   "haystack": "aab",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "alternation",
+   "key": "/cat|dog/",
+   "haystack": "hotdog",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "unicode property with u",
+   "key": "/\\p{L}/u",
+   "haystack": "龍",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\p without u is literal p",
+   "key": "/\\p/",
+   "haystack": "p",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "invalid group is not a regex",
+   "key": "/a(/",
+   "haystack": "a(",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "without u, . takes half of an astral char (known difference)",
+   "key": "/^..$/",
+   "haystack": "😀",
+   "knownDifference": {
+    "parsed": true,
+    "matches": false,
+    "note": "JS 不帶 u 以 UTF-16 碼元比對，桌面版以 code point 比對"
+   },
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "with u, . takes the whole astral char",
+   "key": "/^.$/u",
+   "haystack": "😀",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "i flag with \\w does not fold long s",
+   "key": "/\\w/i",
+   "haystack": "ſ",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "\\0 is NUL",
+   "key": "/a\\0b/",
+   "haystack": "a\u0000b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lone surrogate escape (JS accepts, Rust cannot represent)",
+   "key": "/\\uD83D/",
+   "haystack": "😀",
+   "knownDifference": {
+    "parsed": false,
+    "matches": null,
+    "note": "落單的代理 Rust 字串表示不了，當一般字串"
+   },
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "no m: $ is the end only",
+   "key": "/door$/",
+   "haystack": "door\nx",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "lone closing bracket with u is an error",
+   "key": "/a]/u",
+   "haystack": "a]",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "\\D outside a class",
+   "key": "/a\\Db/",
+   "haystack": "axb",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "\\S outside a class",
+   "key": "/a\\Sb/",
+   "haystack": "a b",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "mixed class with \\W",
+   "key": "/[a\\W]/",
+   "haystack": "!",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "mixed class with \\W, word char outside",
+   "key": "/x[a\\W]/",
+   "haystack": "xb",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "quantifier after quantifier",
+   "key": "/a*+/",
+   "haystack": "aaa",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "double plus",
+   "key": "/a++b/",
+   "haystack": "aab",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "plus after braces",
+   "key": "/a{1,2}+/",
+   "haystack": "aa",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "quantified word boundary",
+   "key": "/\\b*/",
+   "haystack": "a",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "quantified caret",
+   "key": "/^*a/",
+   "haystack": "a",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "quantified lookbehind",
+   "key": "/(?<=a)*b/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "nothing to repeat",
+   "key": "/*a/",
+   "haystack": "a",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "lazy quantifier is fine",
+   "key": "/a*?b/",
+   "haystack": "aab",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "quantified lookahead is fine without u",
+   "key": "/(?=a)*a/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lazy then another quantifier",
+   "key": "/a*??/",
+   "haystack": "a",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "lookahead with min 1 keeps its capture",
+   "key": "/(?=(a))+\\1/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lookahead with min 0 drops its capture",
+   "key": "/^(?=(a))*\\1b/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "optional lookahead drops its capture",
+   "key": "/^(?=(a))?\\1b/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "lookahead with {0,2} drops its capture",
+   "key": "/^(?=(a)){0,2}\\1b/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "lookahead with min 0 still matches without the capture",
+   "key": "/^(?=(a))*\\1a/",
+   "haystack": "ab",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "repeated group resets its own capture each round",
+   "key": "/^(a\\1)+$/",
+   "haystack": "aa",
+   "knownDifference": {
+    "parsed": true,
+    "matches": false,
+    "note": "fancy-regex 重複群組不重設上一輪的捕捉"
+   },
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "repeated group resets captures of a branch not taken",
+   "key": "/^(?:(a)|b)+\\1$/",
+   "haystack": "ab",
+   "knownDifference": {
+    "parsed": true,
+    "matches": false,
+    "note": "fancy-regex 重複群組不重設上一輪的捕捉"
+   },
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "optional lookahead that cannot match",
+   "key": "/(?=x)?a/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lookahead with braces",
+   "key": "/(?=a){2}a/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "lookahead with braces out of order",
+   "key": "/(?=a){2,1}a/",
+   "haystack": "ac",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "negative lookahead with braces out of order",
+   "key": "/(?!b){3,2}a/",
+   "haystack": "ac",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "braces out of order",
+   "key": "/a{2,1}/",
+   "haystack": "aa",
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  },
+  {
+   "name": "lookahead quantifier then lazy",
+   "key": "/(?=a)*?a/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "backreference to a group in another branch",
+   "key": "/(a)|\\1b/",
+   "haystack": "b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "forward backreference",
+   "key": "/\\1(a)/",
+   "haystack": "a",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "backreference to an optional group that did not match",
+   "key": "/(a)?\\1b/",
+   "haystack": "b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "backreference to a nested group that did not match",
+   "key": "/(a|(b))\\2c/",
+   "haystack": "ac",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "named backreference to a group that did not match",
+   "key": "/(?<x>a)?\\k<x>b/",
+   "haystack": "b",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class control with a digit",
+   "key": "/[\\c1]/",
+   "haystack": "\u0011",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class control with underscore",
+   "key": "/[\\c_]/",
+   "haystack": "\u001f",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class control with a letter",
+   "key": "/[\\cJ]/",
+   "haystack": "\n",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class \\c with other is a backslash",
+   "key": "/[\\c*]/",
+   "haystack": "\\",
+   "expected": {
+    "parsed": true,
+    "matches": true
+   }
+  },
+  {
+   "name": "class \\w with i folds long s in Rust",
+   "key": "/[\\w]/i",
+   "haystack": "ſ",
+   "knownDifference": {
+    "parsed": true,
+    "matches": true,
+    "note": "類別內的 \\w 遇到 i，Rust 的大小寫折疊會吃到 ſ"
+   },
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "class range with i folds Kelvin sign in Rust",
+   "key": "/[a-z]/i",
+   "haystack": "K",
+   "knownDifference": {
+    "parsed": true,
+    "matches": true,
+    "note": "Rust 的大小寫折疊把 K 當成 k"
+   },
+   "expected": {
+    "parsed": true,
+    "matches": false
+   }
+  },
+  {
+   "name": "short script property name",
+   "key": "/\\p{Han}/u",
+   "haystack": "龍",
+   "knownDifference": {
+    "parsed": true,
+    "matches": true,
+    "note": "JS 要寫 Script=Han，Rust 收簡寫"
+   },
+   "expected": {
+    "parsed": false,
+    "matches": null
+   }
+  }
+ ]
+}

@@ -30,6 +30,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 ulid = "3"
 regex = "1"
+# 世界書正則鍵：JS 正則轉譯後需要前後看與反向參照（world_info/regex_key.rs）。
+fancy-regex = "0.19.2"
 tauri-plugin-updater = "~2.13"
 minisign-verify = "0.2"
 tar = "0.4"
@@ -40,8 +42,8 @@ semver = "1"
 log = "0.4"
 # 生圖輸出統一存 PNG：JPEG／WebP 解碼重編。
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
-# 測試通道（test-harness feature）專用，正式包不編譯。
-getrandom = { version = "0.3", optional = true }
+# 世界書機率與群組抽選的亂數（測試通道也用）。
+getrandom = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", optional = true }
@@ -53,7 +55,7 @@ winreg = "0.56"
 
 [features]
 # 只給主線自動化 GUI 實測的測試包用：`npm run harness:build`。正式包絕不開。
-test-harness = ["dep:getrandom", "dep:objc2", "dep:block2"]
+test-harness = ["dep:objc2", "dep:block2"]
 
 [dev-dependencies]
 minisign = "0.7"

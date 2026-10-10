@@ -22,6 +22,7 @@ mod transport;
 mod ui_msg;
 mod updater;
 mod usage;
+mod world_info;
 
 use std::path::PathBuf;
 use tauri::Manager;
