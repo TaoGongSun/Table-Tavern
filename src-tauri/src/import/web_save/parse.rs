@@ -66,6 +66,8 @@ pub struct Mvu {
 
 pub struct WebSave {
     pub card: Value,
+    /// `card` 的原文：物件形世界書條目的鍵順序要從這裡讀（`Value` 會把鍵排序）
+    pub card_text: String,
     pub card_png: Option<Vec<u8>>,
     pub route: Route,
     pub regex_allowed: bool,
@@ -119,7 +121,7 @@ where
 
 #[derive(Deserialize)]
 struct RawSave {
-    card: Value,
+    card: Box<RawValue>,
     #[serde(default, deserialize_with = "present")]
     card_png: Option<String>,
     import_route: String,
@@ -263,7 +265,9 @@ pub fn parse(bytes: &[u8]) -> DataResult<WebSave> {
     if !is_rfc3339(&raw.exported_at) {
         return Err(invalid("exported_at"));
     }
-    if !raw.card.is_object() {
+    let card_text = raw.card.get().to_owned();
+    let card: Value = serde_json::from_str(&card_text).map_err(|_| invalid("card"))?;
+    if !card.is_object() {
         return Err(invalid("card"));
     }
     let card_png = match raw.card_png {
@@ -299,7 +303,8 @@ pub fn parse(bytes: &[u8]) -> DataResult<WebSave> {
         return Err(invalid("card_storage"));
     }
     Ok(WebSave {
-        card: raw.card,
+        card,
+        card_text,
         card_png,
         route,
         regex_allowed: raw.regex_allowed,

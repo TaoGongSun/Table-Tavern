@@ -216,7 +216,6 @@ export const ja: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "生成画像を削除",
   aiGalleryDeleteConfirm: "本当にこの生成画像を削除しますか？この操作は取り消せません。",
   worldbookDuplicatesSkipped: "（重複 {d} 件をスキップ）",
-  worldbookInvalidSkipped: "（壊れた項目 {d} 件をスキップ）",
   openingLineAsk: "このカードには開幕テキストがあります。GM の導入ナレーションとして投稿しますか？",
   openingChoiceTitle: "導入を選ぶ",
   openingChoiceItem: "導入 {n}",

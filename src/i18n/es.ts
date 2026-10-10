@@ -216,7 +216,6 @@ export const es: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Eliminar imagen generada",
   aiGalleryDeleteConfirm: "¿Eliminar esta imagen generada? Esta acción no se puede deshacer.",
   worldbookDuplicatesSkipped: " ({d, plural, one {# duplicado omitido} other {# duplicados omitidos}})",
-  worldbookInvalidSkipped: " ({d, plural, one {# entrada dañada omitida} other {# entradas dañadas omitidas}})",
   openingLineAsk: "Esta ficha tiene un texto de apertura. ¿Publicarlo como narración inicial del GM?",
   openingChoiceTitle: "Elegir apertura",
   openingChoiceItem: "Apertura {n}",

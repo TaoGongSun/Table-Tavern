@@ -216,7 +216,6 @@ export const ko: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "생성된 이미지 삭제",
   aiGalleryDeleteConfirm: "이 생성 이미지를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
   worldbookDuplicatesSkipped: "(중복 {d}개 건너뜀)",
-  worldbookInvalidSkipped: "(손상된 항목 {d}개 건너뜀)",
   openingLineAsk: "이 카드에 오프닝 텍스트가 있습니다. GM의 도입 내레이션으로 올릴까요?",
   openingChoiceTitle: "도입 선택",
   openingChoiceItem: "도입 {n}",

@@ -135,8 +135,7 @@ fn import_skips_entries_identical_to_existing_ones() {
         first,
         WorldbookImport {
             imported: 2,
-            skipped: 0,
-            invalid: 0
+            skipped: 0
         }
     );
 
@@ -146,20 +145,19 @@ fn import_skips_entries_identical_to_existing_ones() {
         again,
         WorldbookImport {
             imported: 0,
-            skipped: 2,
-            invalid: 0
+            skipped: 2
         }
     );
     assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 2);
 
-    // 關鍵字順序不同、內文前後有空白＝同一條；改過內文的才算新條目
+    // 內文一樣的略過；改過內文的才算新條目
     let mixed = serde_json::json!({
         "entries": {
             "0": {
                 "uid": 0,
-                "key": ["夜", "城門"],
+                "key": ["城門", "夜"],
                 "comment": "城門",
-                "content": "  城門已關。  ",
+                "content": "城門已關。",
                 "constant": false,
                 "order": 1,
                 "disable": false
@@ -180,11 +178,58 @@ fn import_skips_entries_identical_to_existing_ones() {
         third,
         WorldbookImport {
             imported: 1,
-            skipped: 1,
-            invalid: 0
+            skipped: 1
         }
     );
     assert_eq!(read_worldbook(root.path(), &world_id).unwrap().len(), 3);
+
+    // 只差空白也是另一條（內文原樣進提示、鍵代換前不 trim）
+    for (field, value) in [
+        ("content", serde_json::json!("城門已關。\n")),
+        ("comment", serde_json::json!(" 城門")),
+        ("key", serde_json::json!(["城門", "夜 "])),
+    ] {
+        let mut entry = book["entries"]["0"].clone();
+        entry[field] = value;
+        let changed = serde_json::json!({ "entries": { "0": entry } });
+        let result = import_worldbook(root.path(), &world_id, &changed.to_string()).unwrap();
+        assert_eq!(result.imported, 1, "{field}");
+    }
+    // 缺 key 與空陣列同一指紋
+    let bare = serde_json::json!({ "entries": {
+        "0": { "uid": 0, "comment": "空鍵", "content": "空鍵內文", "constant": true },
+        "1": { "uid": 1, "key": [], "comment": "空鍵", "content": "空鍵內文", "constant": true }
+    } });
+    let result = import_worldbook(root.path(), &world_id, &bare.to_string()).unwrap();
+    assert_eq!((result.imported, result.skipped), (1, 1));
+
+    // 影響觸發的欄位（鍵順序、機率、計時、群組…）不同＝另一條；停用與 order 不算
+    for (field, value) in [
+        ("key", serde_json::json!(["夜", "城門"])),
+        ("probability", serde_json::json!(50)),
+        ("sticky", serde_json::json!(3)),
+        ("group", serde_json::json!("門")),
+        ("position", serde_json::json!(4)),
+        ("keysecondary", serde_json::json!(["門"])),
+    ] {
+        let mut entry = book["entries"]["0"].clone();
+        entry[field] = value;
+        let changed = serde_json::json!({ "entries": { "0": entry } });
+        let result = import_worldbook(root.path(), &world_id, &changed.to_string()).unwrap();
+        assert_eq!(result.imported, 1, "{field}");
+    }
+    let mut same = book["entries"]["0"].clone();
+    same["disable"] = serde_json::json!(true);
+    same["order"] = serde_json::json!(99);
+    same["sticky"] = serde_json::json!(0);
+    same["delayUntilRecursion"] = serde_json::json!(false);
+    let result = import_worldbook(
+        root.path(),
+        &world_id,
+        &serde_json::json!({ "entries": { "0": same } }).to_string(),
+    )
+    .unwrap();
+    assert_eq!(result.skipped, 1);
 }
 
 /// 機制鷹架條目（[initvar]／[mvu_update]／整棵樹重送巨集）匯入後要被系統關掉，

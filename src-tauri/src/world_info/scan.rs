@@ -12,7 +12,7 @@ use super::entry::{logic, position, WiEntry};
 use super::js_semantics::{is_js_whitespace, is_js_word, js_key_order, js_round, js_trim};
 use super::regex_key::{parse_regex_from_string, regex_outcome, RegexOutcome};
 use super::settings::WiSettings;
-use super::sort::{compare_order, v8_sort};
+use super::sort::{compare_order, stable_sort};
 use super::timed::{TimedEffects, TimedType, WiTimed};
 
 const MAX_SCAN_DEPTH: f64 = 1000.0;
@@ -371,7 +371,7 @@ pub fn check_world_info(
             levels.push(level);
         }
     }
-    v8_sort(&mut levels, &|a: &f64, b: &f64| a - b);
+    stable_sort(&mut levels, &|a: &f64, b: &f64| a - b);
     let mut levels = std::collections::VecDeque::from(levels);
     let mut current_level = levels.pop_front().unwrap_or(0.0);
 
@@ -522,7 +522,7 @@ pub fn check_world_info(
         let mut new_entries = activated_now.clone();
         if new_entries.len() > 1 {
             // `Number(sticky(b)) - Number(sticky(a)) || index(a) - index(b)`
-            v8_sort(&mut new_entries, &|a: &usize, b: &usize| {
+            stable_sort(&mut new_entries, &|a: &usize, b: &usize| {
                 let sticky = |index: usize| f64::from(u8::from(is_sticky(&timed, &entries[index])));
                 let by_sticky = sticky(*b) - sticky(*a);
                 if by_sticky != 0.0 {
@@ -637,7 +637,7 @@ pub fn check_world_info(
     let mut before: Vec<String> = Vec::new();
     let mut after: Vec<String> = Vec::new();
     let mut placed: Vec<usize> = all_activated.iter().map(|(_, index)| *index).collect();
-    v8_sort(&mut placed, &|a: &usize, b: &usize| {
+    stable_sort(&mut placed, &|a: &usize, b: &usize| {
         compare_order(&entries[*a], &entries[*b])
     });
     for &index in &placed {
@@ -916,7 +916,7 @@ fn filter_by_inclusion_groups(
             .copied()
             .filter(|item| entries[*item].group_override)
             .collect();
-        v8_sort(&mut prios, &|a: &usize, b: &usize| {
+        stable_sort(&mut prios, &|a: &usize, b: &usize| {
             compare_order(&entries[*a], &entries[*b])
         });
         if let Some(first) = prios.first() {

@@ -4342,7 +4342,7 @@
    }
   },
   {
-   "name": "order coercion",
+   "name": "non-numeric order becomes 100",
    "entries": [
     {
      "id": "s",
@@ -4398,7 +4398,7 @@
    },
    "maxContext": null,
    "expected": {
-    "before": "u\nt\nn\ns",
+    "before": "n\nu\nt\ns",
     "after": "",
     "examples": [],
     "depth": [],
@@ -4411,15 +4411,15 @@
     },
     "activated": [
      "s",
-     "n",
      "t",
-     "u"
+     "u",
+     "n"
     ],
     "substituteCalls": [
      "s",
-     "n",
      "t",
-     "u"
+     "u",
+     "n"
     ],
     "randomCalls": 0
    }

@@ -3,6 +3,7 @@ use super::card_io::{base64_encode, blank_png, png_chunk, png_invalid, PNG_MAGIC
 use super::mechanism::table_tavern_extension;
 use crate::data::{self, CharacterCard, DataResult};
 use crate::ui_msg::UiMsg;
+use crate::world_info::entry::EXTENSION_FIELDS;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::Path;
@@ -199,8 +200,15 @@ fn is_greeting_heading(line: &str) -> bool {
 /// （ST 那邊 constant 才會固定注入）。
 fn character_book(entries: &[Value], notes: &str, name: &str) -> Option<Value> {
     let mut book: Vec<Value> = entries.iter().map(v2_entry).collect();
+    // 條目的 id＝uid（ST 以 id 當載入順序的鍵）；私有筆記條目取比所有 id 都大的下一個
+    let next_id = book
+        .iter()
+        .filter_map(|entry| entry.get("id").and_then(Value::as_u64))
+        .max()
+        .map_or(0, |max| max + 1);
     if !notes.is_empty() {
         book.push(json!({
+            "id": next_id,
             "keys": [],
             "secondary_keys": [],
             "comment": "",
@@ -217,9 +225,6 @@ fn character_book(entries: &[Value], notes: &str, name: &str) -> Option<Value> {
     if book.is_empty() {
         return None;
     }
-    for (index, entry) in book.iter_mut().enumerate() {
-        entry["id"] = json!(index);
-    }
     Some(json!({ "name": name, "entries": book, "extensions": {} }))
 }
 
@@ -229,15 +234,20 @@ fn character_book(entries: &[Value], notes: &str, name: &str) -> Option<Value> {
 /// 明寫的 gm／public 可見度（角色名單、來源卡、停用標記都拿掉，下一桌重新套預設）。
 fn v2_entry(raw: &Value) -> Value {
     let mut entry = raw.as_object().cloned().unwrap_or_default();
-    entry.remove("uid");
+    if let Some(uid) = entry.remove("uid") {
+        entry.insert("id".to_owned(), uid);
+    }
     entry.remove("displayIndex");
     let keys = entry.remove("key").unwrap_or_else(|| json!([]));
     entry.insert("keys".to_owned(), keys);
     let secondary = entry.remove("keysecondary").unwrap_or_else(|| json!([]));
     entry.insert("secondary_keys".to_owned(), secondary);
-    if let Some(order) = entry.remove("order") {
-        entry.insert("insertion_order".to_owned(), order);
-    }
+    // 缺或不是有限數字＝讀取端的 100（作者裁決 2026-10-10）
+    let order = entry
+        .remove("order")
+        .filter(|order| order.as_f64().is_some_and(f64::is_finite))
+        .unwrap_or_else(|| json!(100));
+    entry.insert("insertion_order".to_owned(), order);
     let table_tavern = raw
         .get("extensions")
         .and_then(|extensions| extensions.get("table_tavern"));
@@ -259,16 +269,18 @@ fn v2_entry(raw: &Value) -> Value {
     let case_sensitive = entry.remove("caseSensitive");
     if !entry.contains_key("case_sensitive") {
         let value = case_sensitive
-            .and_then(|value| value.as_bool())
+            .as_ref()
+            .and_then(Value::as_bool)
             .unwrap_or(false);
         entry.insert("case_sensitive".to_owned(), json!(value));
     }
-    entry
-        .entry("constant".to_owned())
-        .or_insert_with(|| json!(false));
-    entry
-        .entry("selective".to_owned())
-        .or_insert_with(|| json!(false));
+    // 布林欄位照讀取端的解讀補：非布林（含 null）時 constant 是 false、selective 是 true
+    // （物件形預設）；不然 V2 讀回來變 false，有次要鍵時觸發會放寬
+    for (field, fallback) in [("constant", false), ("selective", true)] {
+        if !entry.get(field).is_some_and(Value::is_boolean) {
+            entry.insert(field.to_owned(), json!(fallback));
+        }
+    }
     let mut extensions = entry
         .remove("extensions")
         .and_then(|extensions| match extensions {
@@ -276,6 +288,15 @@ fn v2_entry(raw: &Value) -> Value {
             _ => None,
         })
         .unwrap_or_default();
+    // 物件形的觸發欄位收回 extensions 的 snake_case（ST 匯入只讀 extensions，留在頂層會丟）
+    if let Some(case_sensitive) = case_sensitive {
+        extensions.insert("case_sensitive".to_owned(), case_sensitive);
+    }
+    for (field, snake) in EXTENSION_FIELDS {
+        if let Some(value) = entry.remove(field) {
+            extensions.insert(snake.to_owned(), value);
+        }
+    }
     match entry.remove("position") {
         Some(Value::String(position)) => {
             entry.insert("position".to_owned(), Value::String(position));

@@ -65,6 +65,14 @@ pub fn to_number(value: Option<&Value>) -> f64 {
     }
 }
 
+/// `String(value)`：頂層 `null` 是 `"null"`（陣列裡的 null 是空字串，見 [`to_js_string`]）。
+pub fn js_string(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_owned(),
+        other => to_js_string(other),
+    }
+}
+
 /// 陣列 ToPrimitive 用的 `String(value)`（物件一律 `[object Object]`）。
 fn to_js_string(value: &Value) -> String {
     match value {

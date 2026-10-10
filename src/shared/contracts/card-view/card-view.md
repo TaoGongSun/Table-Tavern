@@ -26,9 +26,9 @@
 
 ## 條目
 - `form`：`array`、`object`、`none`。
-- 物件形一律算有條目（`has_entries`、`book_entries`、`lorebook_heavy`、桌面版 `import_worldbook` 同規則），照鍵的數字順序展開（桌面版新配的 UID 也照這個順序），非數字鍵排最後依字元序；陣列形照原順序。
+- 物件形一律算有條目（`has_entries`、`book_entries`、`lorebook_heavy`、桌面版 `import_worldbook` 同規則），照鍵的數字順序展開（卡片介面看到的順序；桌面版新配的 UID 改照 ST 載入順序，見 world-info 契約的 `bookOrder`），非數字鍵排最後依字元序；陣列形照原順序。
 - 值不是物件的（字串、null、陣列）兩種形狀都不算條目、直接略過，匯入不得因此失敗。
 - 每條：`key`（物件鍵或陣列索引字串）、`uid`、`keys`、`secondary_keys`、`comment`、`content`、`constant`、`enabled`、`order`、`position`（原樣，缺為 null）。
-  - 陣列形（V2）：keys／secondary_keys／insertion_order／enabled（缺＝true）／`id`。
+  - 陣列形（V2）：keys／secondary_keys／insertion_order／enabled（缺或 null＝true，其餘照 JS 真假值，與匯入同一套規則）／`id`。
   - 物件形（ST）：key／keysecondary／order／`!disable`／`uid`（缺則取鍵的整數）。
   - 整數欄只認 JSON 整數；字串清單只收字串項。

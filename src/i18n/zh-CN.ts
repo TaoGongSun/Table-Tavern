@@ -216,7 +216,6 @@ export const zhCN: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "删除生成图",
   aiGalleryDeleteConfirm: "确定要删除这张生成图吗？此操作不可撤销。",
   worldbookDuplicatesSkipped: "（略过 {d} 条重复）",
-  worldbookInvalidSkipped: "（{d} 条字段损坏，已略过）",
   worldbookDedupe: "清理重复",
   worldbookDedupeConfirm: "会删掉内容一模一样的多余条目，每组只留排最前面那条。要继续吗？",
   worldbookDedupeDone: "已清掉 {n} 条重复",

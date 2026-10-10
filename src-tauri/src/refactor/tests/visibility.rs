@@ -69,7 +69,15 @@ fn entries_selection(count: usize) -> RefactorSelection {
     }
 }
 
-fn import_card(root: &Path, world_id: &str, name: &str, entries: Value) -> String {
+fn import_card(root: &Path, world_id: &str, name: &str, mut entries: Value) -> String {
+    // V2 缺 `enabled` 算停用（照 ST）；測試資料沒寫的當啟用
+    for entry in entries.as_array_mut().into_iter().flatten() {
+        entry
+            .as_object_mut()
+            .unwrap()
+            .entry("enabled")
+            .or_insert(json!(true));
+    }
     let card = json!({"data": {"name": name, "character_book": {"entries": entries}}}).to_string();
     crate::import::import_character(root, world_id, card.as_bytes(), "#3366ff", LANG)
         .unwrap()
@@ -378,7 +386,7 @@ fn locked_mechanism_entries_and_carry_flags() {
         .remove(&carried.uid)
         .unwrap();
     assert_eq!(raw["keysecondary"], json!(["夜"]));
-    assert_eq!(raw["position"], "after_char");
+    assert_eq!(raw["position"], json!(1));
     assert_eq!(data::source_cards_of(&raw), vec![card.clone()]);
 }
 

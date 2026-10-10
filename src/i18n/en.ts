@@ -227,7 +227,6 @@ export const en: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Delete generated image",
   aiGalleryDeleteConfirm: "Delete this generated image? This cannot be undone.",
   worldbookDuplicatesSkipped: " ({d, plural, one {# duplicate} other {# duplicates}} skipped)",
-  worldbookInvalidSkipped: " ({d, plural, one {# broken entry} other {# broken entries}} skipped)",
   openingLineAsk: "This card has an opening line. Post it as the GM's opening narration?",
   openingChoiceTitle: "Choose an opening",
   openingChoiceItem: "Opening {n}",

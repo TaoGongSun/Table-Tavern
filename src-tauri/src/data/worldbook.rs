@@ -224,6 +224,17 @@ fn set_locked(value: &mut serde_json::Value, locked: bool) {
         .insert("locked".to_owned(), serde_json::Value::Bool(locked));
 }
 
+/// 條目的 order 給編輯器看的整數：與掃描讀取端同一條規則（有限數字照用，缺或不是數字補 100），
+/// 小數四捨五入。
+fn view_order(value: &serde_json::Value) -> i64 {
+    value
+        .get("order")
+        .and_then(serde_json::Value::as_f64)
+        .filter(|order| order.is_finite())
+        .unwrap_or(100.0)
+        .round() as i64
+}
+
 fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> WorldbookEntry {
     WorldbookEntry {
         uid: value
@@ -255,10 +266,7 @@ fn entry_view(value: &serde_json::Value, fallback_uid: Option<u64>) -> Worldbook
             .get("constant")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false),
-        order: value
-            .get("order")
-            .and_then(serde_json::Value::as_i64)
-            .unwrap_or(0),
+        order: view_order(value),
         disabled: value
             .get("disable")
             .and_then(serde_json::Value::as_bool)
@@ -365,7 +373,10 @@ fn update_entry_fields(value: &mut serde_json::Value, entry: &WorldbookEntry) {
         "constant".to_owned(),
         serde_json::Value::Bool(entry.constant),
     );
-    object.insert("order".to_owned(), serde_json::json!(entry.order));
+    // 編輯器沒改 order 就不碰原值（7.5、缺值、字串經整數視圖寫回會被截成別的數字）
+    if view_order(&serde_json::Value::Object(object.clone())) != entry.order {
+        object.insert("order".to_owned(), serde_json::json!(entry.order));
+    }
     let disable_changed = object
         .get("disable")
         .and_then(serde_json::Value::as_bool)

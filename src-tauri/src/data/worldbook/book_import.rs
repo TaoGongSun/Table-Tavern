@@ -10,6 +10,8 @@ use super::{
     write_worldbook_value, Visibility, FORCED_DISABLE,
 };
 use crate::mechanism::{Record, RecordKind};
+use crate::world_info::book_order::{st_order, SourceEntries, StOrdered};
+use crate::world_info::entry::{character_book_to_world_object, from_world_file, RecursionDelay};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -23,14 +25,11 @@ pub enum BookOwner {
     Character(String),
 }
 
-/// 匯入結果：`imported`＝真的寫進去的條數，`skipped`＝內容重複被略過的條數，
-/// `invalid`＝欄位壞掉（`enabled` 不是布林）被略過的條數。
+/// 匯入結果：`imported`＝真的寫進去的條數，`skipped`＝內容重複被略過的條數。
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorldbookImport {
     pub imported: usize,
     pub skipped: usize,
-    #[serde(default)]
-    pub invalid: usize,
 }
 
 /// 匯入時被合併改寫的既有條目：撤銷只還原這兩個欄位（`extensions.table_tavern` 的
@@ -76,26 +75,21 @@ pub fn import_worldbook_as(
     json_text: &str,
     owner: &BookOwner,
 ) -> DataResult<BookImport> {
-    let imported: serde_json::Value = serde_json::from_str(json_text)
+    let members: HashMap<String, &serde_json::value::RawValue> = serde_json::from_str(json_text)
         .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?;
-    let source = imported
+    let entries_text = members
         .get("entries")
-        .ok_or_else(|| invalid_data("imported worldbook is missing entries"))?;
-    let character_book = match source {
-        serde_json::Value::Object(_) => false,
-        serde_json::Value::Array(_) => true,
-        _ => {
-            return Err(invalid_data(
-                "imported worldbook entries must be an object or array",
-            ));
-        }
-    };
-    // 條目照卡片契約展開：物件形照 uid 鍵的數字順序（新 UID 依此配發）、非物件的值略過不算條目
-    let source_entries: Vec<(String, serde_json::Value)> =
-        crate::import::book_entries_keyed(source)
-            .into_iter()
-            .map(|(key, value)| (key, value.clone()))
-            .collect();
+        .ok_or_else(|| invalid_data("imported worldbook is missing entries"))?
+        .get();
+    // 從原文解析才保得住物件形鍵的出現順序；新 UID 依 ST 載入順序配發（陣列形照 `id`，重複的後蓋前）
+    let source = SourceEntries::parse(entries_text)
+        .map_err(|error| invalid_data(format!("invalid worldbook JSON: {error}")))?
+        .ok_or_else(|| invalid_data("imported worldbook entries must be an object or array"))?;
+    let character_book = source.is_array();
+    let StOrdered {
+        entries: source_entries,
+        dropped,
+    } = st_order(&source);
     let table_ids: HashSet<String> = match owner {
         BookOwner::Gm => HashSet::new(),
         BookOwner::Character(_) => list_characters(root, world_id)?
@@ -119,13 +113,13 @@ pub fn import_worldbook_as(
     let mut placed = Vec::with_capacity(source_entries.len());
     let mut restores: BTreeMap<String, VisibilityRestore> = BTreeMap::new();
     for (key, source_entry) in source_entries {
-        let Some(entry) =
-            normalize_imported_entry(source_entry, character_book, uid, owner, &table_ids)?
-        else {
-            summary.invalid += 1;
-            placed.push((key, None));
-            continue;
-        };
+        let entry = normalize_imported_entry(
+            serde_json::Value::Object(source_entry.clone()),
+            character_book,
+            uid,
+            owner,
+            &table_ids,
+        )?;
         // 已經有一模一樣的條目就跳過，重複匯入同一份書不會塞出兩套內容；可見度與來源卡併進留下那條
         let fingerprint = dedupe_fingerprint(&entry);
         if let Some(kept_key) = seen.get(&fingerprint) {
@@ -173,6 +167,14 @@ pub fn import_worldbook_as(
             .checked_add(1)
             .ok_or_else(|| invalid_data("worldbook uid overflow"))?;
         summary.imported += 1;
+    }
+    // `id` 重複被蓋掉的條目指向留下的那一條
+    for (gone, kept) in dropped {
+        let uid = placed
+            .iter()
+            .find(|(key, _)| *key == kept)
+            .and_then(|(_, uid)| *uid);
+        placed.push((gone, uid));
     }
     // after 以這次匯入結束時的實際值為準；沒有實際變動的不進收據
     let restores: Vec<VisibilityRestore> = restores
@@ -229,33 +231,23 @@ pub fn dedupe_worldbook(root: &Path, world_id: &str) -> DataResult<usize> {
     Ok(duplicates.len())
 }
 
-/// 正規化一條來源條目。`enabled` 不是布林＝這條壞掉，回 None（呼叫端略過並計數）。
+/// 正規化一條來源條目（V2 陣列形轉成 ST 物件形）。
 fn normalize_imported_entry(
     mut value: serde_json::Value,
     character_book: bool,
     uid: u64,
     owner: &BookOwner,
     table_ids: &HashSet<String>,
-) -> DataResult<Option<serde_json::Value>> {
+) -> DataResult<serde_json::Value> {
     let object = value
         .as_object_mut()
         .ok_or_else(|| invalid_data("worldbook entry must be an object"))?;
     if character_book {
-        if let Some(keys) = object.remove("keys") {
-            object.insert("key".to_owned(), keys);
+        let converted = character_book_to_world_object(object);
+        for field in ["keys", "secondary_keys", "insertion_order", "enabled"] {
+            object.remove(field);
         }
-        if let Some(keys) = object.remove("secondary_keys") {
-            object.insert("keysecondary".to_owned(), keys);
-        }
-        if let Some(order) = object.remove("insertion_order") {
-            object.insert("order".to_owned(), order);
-        }
-        if let Some(enabled) = object.remove("enabled") {
-            let Some(enabled) = enabled.as_bool() else {
-                return Ok(None);
-            };
-            object.insert("disable".to_owned(), serde_json::Value::Bool(!enabled));
-        }
+        object.extend(converted);
     }
     object.insert("uid".to_owned(), serde_json::json!(uid));
     match owner {
@@ -298,7 +290,7 @@ fn normalize_imported_entry(
             table_tavern.insert(FORCED_DISABLE.to_owned(), serde_json::Value::Bool(true));
         }
     }
-    Ok(Some(value))
+    Ok(value)
 }
 
 /// 角色卡路的明示可見度：`"gm"`、`"public"`，或名單裡至少一個本桌角色 id 的 `characters`
@@ -439,15 +431,34 @@ pub(super) fn identity_text(entry: &serde_json::Value) -> String {
     )
 }
 
-/// 去重指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。身分欄位＋鷹架條目的來源停用值；
-/// 不含停用、順序、可見度等玩家會改或隨匯入產生的欄位——玩家用帳本開關或編輯器改過這些之後，
-/// 同一張卡再匯入也不會多出一條。鷹架條目匯入後一律停用，靠來源停用值把原本一啟一停的兩條分開。
+/// 去重指紋：同一份世界書重複匯入時用它認出「一模一樣的條目」。以讀取端（[`from_world_file`]）讀出的
+/// `WiEntry` 計算，納入所有影響觸發的欄位（鍵與其順序、次要鍵、邏輯、位置、機率、群組、計時、遞迴、
+/// 掃描範圍、`triggers`、`match*`、裝飾…）加標題、內文與鷹架條目的來源停用值；不含停用、順序、可見度
+/// 等玩家會改或隨匯入產生的欄位——玩家用帳本開關或編輯器改過這些之後，同一張卡再匯入也不會多出一條。
+/// 先正規化再算：`delayUntilRecursion` 的 `false`／`0` 都當 0、`true` 當 1，計時的 `null`／`0` 都當 0，
+/// 缺 `key` 當空陣列；標題、內文、鍵一律用原文（內文原樣進提示，只差空白也不是同一行為）；沒有次要鍵時 `selective` 與 `selectiveLogic` 不算。鷹架條目匯入後一律停用，靠來源停用值把原本一啟一停的兩條分開。
 fn dedupe_fingerprint(entry: &serde_json::Value) -> String {
+    let empty = serde_json::Map::new();
+    let mut wi = from_world_file(entry.as_object().unwrap_or(&empty));
+    wi.order = 0.0;
+    wi.disable = false;
+    // 缺 `key`／非陣列與空陣列行為相同
+    wi.key.get_or_insert_with(Vec::new);
+    wi.delay_until_recursion = RecursionDelay::Level(wi.delay_until_recursion.level());
+    // 沒有次要鍵時 `selective`／`selectiveLogic` 不影響觸發（V2 缺欄是 false、物件形缺欄是 true）
+    if wi.keysecondary.is_empty() {
+        wi.selective = false;
+        wi.selective_logic = 0.0;
+    }
+    for timer in [&mut wi.sticky, &mut wi.cooldown, &mut wi.delay] {
+        *timer = Some(timer.unwrap_or(0.0));
+    }
+    let behavior = serde_json::to_string(&wi).unwrap_or_default();
     let source_disable =
         match table_tavern_field(entry, SOURCE_DISABLE).and_then(serde_json::Value::as_bool) {
             Some(true) => "1",
             Some(false) => "0",
             None => "-",
         };
-    format!("{}\u{1e}{source_disable}", identity_text(entry))
+    format!("{behavior}\u{1e}{source_disable}")
 }

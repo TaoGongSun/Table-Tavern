@@ -5,7 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [worldbook-st-trigger-parity](handoffs/worldbook-st-trigger-parity.md) — 桌面版世界書觸發補齊 ST 行為並消費網頁存檔觸發狀態：施工方案已寫，等三方送審
+- [worldbook-st-trigger-parity](handoffs/worldbook-st-trigger-parity.md) — 桌面版世界書觸發補齊 ST 行為並消費網頁存檔觸發狀態：包 1 完成、包 2 等驗收
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1 實機全過；省額度已由介面接管解掉，v2 剩多卡介面切換、離線退路、代送開關；首發必含〔作者裁決 2026-10-04〕
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，剩其他卡型驗證；舊產殼路線清理已進 main、等西幻卡實測；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕

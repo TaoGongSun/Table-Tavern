@@ -10,12 +10,21 @@ Status: in progress〔作者裁決 2026-10-07：立案，網頁版公開前門�
 - 已知差異（regex-cases 的 `knownDifference`）：無 `u` 的 `/^..$/` 對 emoji、落單代理 `/\uD83D/`、`/[\w]/i` 對 ſ、`/[a-z]/i` 對 K、`/\p{Han}/u`、重複群組不清上一輪捕捉（`/^(a\1)+$/`、`/^(?:(a)|b)+\1$/`）。已寫進方案七。
 - 驗收時沒結掉的建議：無（第 1 輪 7–11 已全納入）。
 
-## 包 2 起要注意
-- 包 2：V2 卡缺 `insertion_order` 時網頁版是 undefined（NaN，跟誰比都算相等）；落檔成物件形後若不寫 `order` 鍵，讀回來會變成 `fromWorldFile` 的預設 100，排序就與網頁版不同。轉換時要決定怎麼保住「undefined」（例如保留缺鍵並讓桌面版讀取端認得來源形狀，或寫入可還原 NaN 的值），並在 `entry-cases`／`sort-cases` 補落檔後讀回的案例。
-- 包 2：`entry.rs` 的 `from_character_book` 已照網頁版，可直接當轉換規格；轉換後再經 `from_world_file` 讀回要得到同一個 `WiEntry`（含 `selective` 缺欄＝false、`enabled` 缺欄＝停用）。
+## 包 2 現況（條目形狀、順序與去重）
+- 施工完成，等驗收。分支上尚未壓縮。
+- 轉換：V2 `character_book` 條目匯入時轉成 ST 物件形（`world_info/entry.rs` `character_book_to_world_object`，欄位值取自 `from_character_book` 同一份規格；`selective` 缺欄明寫 false；`invalid` 計數與嚴格模式報錯已拿掉）。`order` 缺或不是有限數字補 100、`enabled` 缺或 null 算啟用（其餘照 JS 真假值），網頁版同步（作者裁決 2026-10-10）；排序改標準庫穩定排序（`sort::stable_sort`），sort-cases 只留全序案例。`extensions` 其餘鍵原樣留著。
+- 順序與 uid：`world_info/book_order.rs`（`SourceEntries` 原文保序解析＋`st_order`）；`import_worldbook_as` 依 ST 載入順序配 uid，重複 `id` 後蓋前，被蓋掉的條目在 `placed` 映到留下那條。三個入口都從原文保序：角色卡路與世界書路（`import/card.rs` 的 `character_book_text`／`worldbook_json` 回原文）、網頁存檔（`WebSave.card_text`）。
+- 去重指紋改以 `from_world_file` 讀出的 `WiEntry` 計算（`data/worldbook/book_import.rs`）；標題、內文、鍵用原文不 trim，缺 `key` 同空陣列，沒有次要鍵時 `selective`／`selectiveLogic` 不算。`identity_text`／重構身分指紋不動。
+- 匯出：`v2_entry` 把物件形觸發欄位收回 `extensions` snake_case（`EXTENSION_FIELDS` 表與轉換共用），補 `id`＝uid，私有筆記條目取下一個未用 id。
+- 對拍：`entry-cases.json` 28 案（新增 V2 缺欄與 `bookOrder` 9 案）；Rust `parity_tests.rs` 加落檔讀回、`extensions` 往返、sort-cases 經轉換後不變；Rust 限定 `import/book_shape_tests.rs`。
+- 既有測試跟著改：V2 測試資料統一 `position`（`enabled: true` 補丁留著無妨）；`card-view.md` 一句話改成 UID 照 ST 順序。
+- 第 1 輪驗收修正：物件形匯出補 `selective` true／`insertion_order` 100 並有往返測試；網頁存檔 PNG 鍵順序不同就不採用（`book_object_key_order`）；編輯器 order 視圖同讀取端規則、沒改不動原值；card-view（網頁與 Rust 測試鏡像）V2 `enabled` 同匯入規則；`worldbook_entries` 以不重複 uid 計。
+- 驗證：verify 12 步綠、cargo test 1391、web vitest 711。
+
+## 包 3 起要注意
 - 包 5a：`ScanHooks`（代換、計數、亂數）由呼叫端提供；`GlobalScan` 每欄分 `full`／`public`（P7 的 `public_md`＋`private_md`）；限定條目要設 `WiEntry.limited = true`；`WiResult.private_ids`／`private_content` 是機密分流的輸入；`outlets` 依 JS 鍵順序的有序陣列。接線時拿掉 `mod.rs` 的 dead_code 放寬。
 - 包 5b：`Substituted.private` 是巨集引擎回報「讀到私密來源」的管道，掃描已沿遞迴傳遞。
-- 排序一律用 `sort::v8_sort`（不要用 Rust 的 `sort_by`）：比較子非全序時結果會不同。
+- 排序用 `sort::stable_sort`（order 已正規化，比較子是全序）。
 
 ## 下一步
-包 1 結束。換新代理接手包 2（Sonnet）。
+包 2 等驗收。

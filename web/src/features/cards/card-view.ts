@@ -143,6 +143,8 @@ function parseI64(key: string): number | null {
 function entryView(key: string, entry: JsonObject, objectForm: boolean): EntryView {
   const text = (field: string) => (typeof entry[field] === "string" ? (entry[field] as string) : "");
   const flag = (field: string) => (typeof entry[field] === "boolean" ? (entry[field] as boolean) : null);
+  /** V2 `enabled`：缺或 null＝啟用，其餘照 JS 真假值（與匯入同一套規則） */
+  const enabledFlag = () => (entry.enabled === undefined || entry.enabled === null ? true : Boolean(entry.enabled));
   const integer = (field: string) => (isInteger(entry[field]) ? (entry[field] as number) : null);
   const common = {
     key,
@@ -166,7 +168,7 @@ function entryView(key: string, entry: JsonObject, objectForm: boolean): EntryVi
     uid: integer("id"),
     keys: strings(entry.keys),
     secondary_keys: strings(entry.secondary_keys),
-    enabled: flag("enabled") ?? true,
+    enabled: enabledFlag(),
     order: integer("insertion_order") ?? 0,
   } satisfies EntryView;
 }
