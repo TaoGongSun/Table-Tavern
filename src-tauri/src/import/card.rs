@@ -369,15 +369,14 @@ pub(crate) fn import_character_placing(
         } else {
             import_mechanism(root, world_id, book_value);
         }
-        // 卡片隨身的設定條目進這桌世界書，照觸發規則送給這張卡的角色（同名條目由去重合併）
-        let text = serde_json::to_string(book_value)?;
+        // 卡片隨身的設定條目進這桌世界書，照觸發規則送給這張卡的角色（同名條目由去重合併）。
+        // 交原文才保得住物件形條目的鍵順序
+        let text = match character_book_text(&json_bytes, &value) {
+            Some(text) => text.to_owned(),
+            None => serde_json::to_string(book_value)?,
+        };
         let owner = data::BookOwner::Character(id.clone());
         match data::import_worldbook_as(root, world_id, &text, &owner) {
-            Ok(imported) if strict && imported.summary.invalid > 0 => {
-                return Err(data::invalid_data(
-                    "character_book enabled must be a boolean",
-                ));
-            }
             Ok(imported) => book = Some(imported),
             Err(error) if strict => return Err(error),
             Err(error) => {
@@ -516,6 +515,40 @@ fn private_markdown(data: &Value, lang: &str) -> String {
     sections.join("\n\n")
 }
 
+/// 物件第一層成員 `name` 的原文。
+fn raw_member<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let mut members: std::collections::HashMap<String, &'a serde_json::value::RawValue> =
+        serde_json::from_str(text).ok()?;
+    members.remove(name).map(serde_json::value::RawValue::get)
+}
+
+/// 卡 JSON 原文裡 `card_data` 那層的原文：`data` 是物件就是它，否則整份。
+fn card_data_text<'a>(json_bytes: &'a [u8], value: &Value) -> Option<&'a str> {
+    let text = std::str::from_utf8(json_bytes).ok()?;
+    match value.get("data").is_some_and(Value::is_object) {
+        true => raw_member(text, "data"),
+        false => Some(text),
+    }
+}
+
+/// 實際匯入會用的那本書（`worldbook_json` 的判定：`character_book`、`data.entries` 或頂層 `entries`）
+/// 的物件形 `entries` 鍵順序（原文順序）；陣列形或沒有條目回 `None`。
+pub(crate) fn book_object_key_order(json_bytes: &[u8]) -> Option<Vec<String>> {
+    let book = worldbook_json(json_bytes).ok()?;
+    let entries = raw_member(&book, "entries")?;
+    match crate::world_info::book_order::SourceEntries::parse(entries).ok()?? {
+        crate::world_info::book_order::SourceEntries::Object(items) => {
+            Some(items.into_iter().map(|(key, _)| key).collect())
+        }
+        crate::world_info::book_order::SourceEntries::Array(_) => None,
+    }
+}
+
+/// `card_data.character_book` 的原文。
+fn character_book_text<'a>(json_bytes: &'a [u8], value: &Value) -> Option<&'a str> {
+    raw_member(card_data_text(json_bytes, value)?, "character_book")
+}
+
 /// 世界書匯入的前處理：PNG 卡先解出內嵌 JSON；整包若是角色卡（社群發佈的世界書卡），
 /// 剝到 character_book 那層再交給 data::import_worldbook；卡上沒有條目時改走人設欄轉換
 pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
@@ -538,12 +571,15 @@ pub fn worldbook_json(bytes: &[u8]) -> DataResult<String> {
         book.get("entries")
             .is_some_and(|entries| !book_entry_values(entries).is_empty())
     };
+    // 回原文（不經 Value 重新序列化）：物件形條目的鍵順序決定新 UID 與 ST 載入先後
     if let Some(book) = card_data.get("character_book").filter(|b| has_entries(b)) {
-        return Ok(book.to_string());
+        return Ok(character_book_text(&json_bytes, &value)
+            .map_or_else(|| book.to_string(), str::to_owned));
     }
     // 頂層就是世界書本體（V2 獨立書 JSON，entries 是物件不是陣列）
     if card_data.get("entries").is_some() {
-        return Ok(card_data.to_string());
+        return Ok(card_data_text(&json_bytes, &value)
+            .map_or_else(|| card_data.to_string(), str::to_owned));
     }
     persona_as_worldbook(card_data)
         .map(|book| book.to_string())
@@ -948,8 +984,7 @@ mod tests {
             results[1],
             data::WorldbookImport {
                 imported: 0,
-                skipped: 2,
-                invalid: 0
+                skipped: 2
             }
         );
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();
@@ -1061,8 +1096,7 @@ mod tests {
             data::import_worldbook(root.path(), &world_id, &json).unwrap(),
             data::WorldbookImport {
                 imported: 1,
-                skipped: 0,
-                invalid: 0
+                skipped: 0
             }
         );
         let entries = data::read_worldbook(root.path(), &world_id).unwrap();

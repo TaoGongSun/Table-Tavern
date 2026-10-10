@@ -54,7 +54,7 @@
 |---|---|---|---|
 | 條目欄位來源 | V2 卡內書經 `convertCharacterBook` 轉成物件形；獨立書檔本來就是物件形 | 兩種形狀混存，只讀精簡欄位 | 匯入時照 `convertCharacterBook` 轉成物件形落檔；讀取端一個 resolver 照 `fromWorldFile` 的預設補欄位；匯出照 `convertWorldInfoToCharacterBook` 收回 `extensions`（三之 5） |
 | 載入順序、uid、重複 | 陣列形以 `entry.id`（缺則索引）當鍵，整數鍵遞增、其餘照出現順序，重複 id 後蓋前、位置留在前；物件形照 `Object.keys` | 照索引配 uid、重複都留；物件形照數字鍵、非數字鍵排最後 | 照網頁版 `stOrder` 決定順序並依此配 uid，重複照 ST 只留後一條；物件形非整數鍵要保留原檔出現順序（三之 5） |
-| 排序 | `b.order - a.order`，NaN 視為相等，V8 `Array.prototype.sort`（TimSort） | `(order, uid)` 遞增 | 照網頁版比較子（order 照 JS ToNumber，非數字是 NaN）；order 混了 NaN 時比較子不是全序、結果取決於演算法，所以 Rust 忠實移植 V8 TimSort（長度 < 8 直接二分插入、偵測 run、二分插入補到 minrun、run 堆疊不變式、gallop 合併），`sort-cases.json` 對拍（含 NaN／undefined、長度 >64） |
+| 排序 | `b.order - a.order`，Array.prototype.sort（穩定） | `(order, uid)` 遞增 | 讀取條目時 `order` 一律正規化：有限數字照用，缺欄或不是數字（字串、null、undefined）補 100，比較子因此是全序；Rust 用標準庫穩定排序，不移植 V8 TimSort〔作者裁決 2026-10-10：能簡單做得比 ST 好就不模仿〕；`sort-cases.json` 只放全序案例（含長度 >64、同值穩定性） |
 | 主鍵比對 | 先代換巨集再 trim；`/樣式/旗標` 是正則，否則字串；全字比對 `(?:^\|\W)(詞)(?:$\|\W)`、多字詞改子字串；大小寫依條目或全域 | 小寫子字串 | 照網頁版。全字比對的 `\W` 一律寫成 `[^A-Za-z0-9_]`（JS 這裡沒有 `u`，中日韓字元算 `\W`；Rust `\W` 是 Unicode，照搬會讓中文鍵永遠比不中） |
 | 正則鍵 | `parseRegexFromString`；`new RegExp` 失敗就當一般字串 | 無 | 照網頁版，經 JS→Rust 轉譯表（三之 1），引擎 `fancy-regex`（新增依賴） |
 | 次要鍵 | `selective` 且有次要鍵才看；AND_ANY／NOT_ALL／NOT_ANY／AND_ALL | 無 | 照網頁版 |
@@ -77,7 +77,7 @@
 ## 三、做法
 
 ### 1. 掃描核心：Rust 照網頁版移植成純函式（包 1）
-- 新模組 `src-tauri/src/world_info/`：`entry.rs`（原始 JSON → `WiEntry`，含裝飾拆解）、`scan.rs`（`check_world_info`）、`timed.rs`（TimedEffects）、`settings.rs`（ST／MVU 兩組常數）、`regex_key.rs`（JS 正則轉譯）、`sort.rs`（V8 TimSort）、`js_semantics.rs`（JS 空白、trim、ToNumber、鍵順序、Math.round）。結構照網頁版一個檔對一個檔，方便逐行對照。
+- 新模組 `src-tauri/src/world_info/`：`entry.rs`（原始 JSON → `WiEntry`，含裝飾拆解）、`scan.rs`（`check_world_info`）、`timed.rs`（TimedEffects）、`settings.rs`（ST／MVU 兩組常數）、`regex_key.rs`（JS 正則轉譯）、`sort.rs`（穩定排序）、`js_semantics.rs`（JS 空白、trim、ToNumber、鍵順序、Math.round）。結構照網頁版一個檔對一個檔，方便逐行對照。
 - 輸入：已排序條目、新到舊訊息、預算上限、全域掃描欄位、生成類型、計時表、代換函式、計數函式、亂數函式、設定。輸出：觸發條目（依加入順序）、各插入位置的分組、新計時表、outlet 內容、每條觸發條目的「觸發來源」（見三之 3 機密分流）。不碰檔案、不碰時間。
 - 主鍵與次要鍵「先代換再 trim」、內文「在預算檢查前代換」的順序照網頁版，由 fixture 的呼叫紀錄鎖住。
 - `WorldbookEntry` 精簡檢視不擴充；掃描端直接讀原始條目 JSON（`read_worldbook_value`）配上 uid。
@@ -188,12 +188,13 @@
 - **原子替換**：計時檔（含 `pending` 與變數日誌）一律用現成的 `commit_world_write_atomic`（`data/world_file.rs:789`，內部呼叫 `write_atomic`，`:703`，暫存檔＋rename）。不改 `commit_world_write`（`:785`，直接覆寫，全域共用，改了會波及逐字稿與狀態檔）。測試直接驗這兩支在寫到一半失敗時原檔完整。
 
 ### 5. 條目形狀、順序與去重（包 2）
-- **轉換**：`normalize_imported_entry`（`book_import.rs:233`）的 `character_book` 分支改成完整的 `convertCharacterBook`，欄位清單與預設值以網頁版 `fromCharacterBook` 為準（`world-info-book.ts:99-140`）。V2 缺 `selective` 時寫明 `false`（物件形預設是 `true`，`:149`，不能因轉換翻轉）；`enabled` 缺欄照網頁版 `!entry.enabled` 算停用。`extensions` 其餘鍵（含 `table_tavern`）原樣留著。
+- **轉換**：`normalize_imported_entry`（`book_import.rs:233`）的 `character_book` 分支改成完整的 `convertCharacterBook`，欄位清單與預設值以網頁版 `fromCharacterBook` 為準（`world-info-book.ts:99-140`）。V2 缺 `selective` 時寫明 `false`（物件形預設是 `true`，`:149`，不能因轉換翻轉）；`enabled` 缺欄或 null 算啟用，其餘照 JS 真假值（1、"yes" 啟用，0、"" 停用），不再有「壞條目」與 `invalid` 計數，嚴格模式也不因此報錯〔作者裁決 2026-10-10，網頁版同步改〕；`order` 缺或不是有限數字補 100〔作者裁決 2026-10-10〕。`extensions` 其餘鍵（含 `table_tavern`）原樣留著。
 - **順序與 uid**：陣列形照網頁版 `stOrder`（`world-info-book.ts:189-197`）決定順序並依此配新 uid，重複 `id` 照 ST 只留後一條、位置在前一條；物件形照 `Object.keys` 順序（整數鍵遞增、其餘依原檔出現順序）——`serde_json` 沒開 `preserve_order` 會把鍵排序，讀卡內書時改用保留順序的解析（只用在這一處，不全域開 `preserve_order`）。匯出的 `v2_entry` 補上 `id`（＝uid）。
 - **從原始文字保序**：三個入口都要從原始位元組／文字抽出 `entries`，保住原順序直到落檔——角色卡路（`import/card.rs:252` 已先解析成鍵排序過的 `Value`、`:373` 又重新序列化）、世界書路（`import/files.rs:72` → `worldbook_json`）、網頁存檔（`import/web_save/mod.rs:192` → `worldbook_json`）。做法：在卡 JSON 原文上用保序的解析（只抽 `character_book.entries`／書的 `entries`，產出有序的 `(鍵, 原文值)` 清單）交給 `import_worldbook_as`，不經過已排序的 `Value`。
 - **去重指紋**（`book_import.rs:445`）：改成以 resolver 讀出的 `WiEntry` 計算，納入所有影響觸發的欄位——主鍵（含順序）、次要鍵、`selective`、`selectiveLogic`、constant、`position`、`depth`、`role`、機率兩欄、群組四欄、`scanDepth`、大小寫／全字／群組計分、sticky／cooldown／delay、三個遞迴欄位、`triggers`、`ignoreBudget`、`outletName`、`match*`、裝飾，加上標題、內文、`source_disable`；仍不含 `order`、停用（玩家會改，前案裁決）。先正規化再算：`delayUntilRecursion` 的 `false`／`0` 都當 0、`true` 當 1，計時的 `null`／`0` 都當 0，V2 與物件形的同一條目才算出同一指紋。重構用的身分指紋（`identity_text`）不動。
 - **再匯入命中**：指紋相同＝觸發行為相同，所以只併可見度與來源卡（`merge_entry_into` 現行），`order`、停用保留桌上的值。
 - **匯出**：`v2_entry` 反向照 ST `convertWorldInfoToCharacterBook` 把物件形欄位收回 `extensions` 的 snake_case，`position` 規則沿用現有。
+- 包 2 施工時的實作決定〔模型判斷·未裁決〕：去重指紋標題、內文、鍵一律用原文（不 trim），缺 `key` 與空陣列同指紋，沒有次要鍵時不算 `selective`／`selectiveLogic`（不影響觸發，V2 缺欄 false、物件形缺欄 true）；`id` 重複被蓋掉的條目在 `placed` 映到留下那條的 uid，`worldbook_entries` 以不重複的 uid 計；物件形匯出補讀取端預設（缺 `selective` 寫 true，`insertion_order` 缺或非有限數字寫 100）；網頁存檔的 PNG 只在 `Value` 相等且物件形條目鍵順序一致時才採用；編輯器的 order 視圖與讀取端同一規則（缺或非數字 100、小數四捨五入顯示），沒改 order 的存檔不動原值。
 - 舊桌裡已經是混合形的條目不轉換（舊桌不相容，限發佈前）〔模型判斷·未裁決〕：讀取端照物件形預設補，V2 `extensions` 裡的值讀不到。
 
 ### 6. 巨集引擎（包 3，P6）〔作者裁決 2026-10-10〕
@@ -240,7 +241,7 @@
 - 契約目錄 `src/shared/contracts/world-info/`：
   - `scan-cases.json`：每案＝條目（物件形原始 JSON＋穩定 ID）、新到舊訊息、設定、計時表、預算上限、生成類型、亂數序列、全域掃描欄位 → 預期的觸發 ID 順序、各位置分組內容、新計時表、outlet、**代換呼叫紀錄**（代換函式是會改寫文字並記錄呼叫的非恆等函式）與**亂數消耗次數**。鎖住「主鍵先代換再 trim」「內文在預算檢查前代換」的順序。計數規則固定為「Unicode code point 數」，含一個星平面字元（例：emoji）的案例。
   - `regex-cases.json`：三之 1 轉譯表每一列各至少一案（含 `y` 不中、`\d` 不吃全形、`\s` 吃 U+3000、`.` 不吃 U+2028、多餘跳脫、`u` 下多餘跳脫變一般字串），另含字元類別內的 `[\d]`、`[.]`、`[\W]`、`[\s\d]`、已跳脫的 `\^`，以及無 `u` 的 `/^..$/` 對單一 emoji（標註已知差異）。
-  - `sort-cases.json`：`sortByOrder` 在 V8 排序下的結果（order 混 NaN／undefined／可轉數字的值，長度 >64 走 merge 與 gallop）。
+  - `sort-cases.json`：`sortByOrder` 的穩定排序結果（order 都是有限數字，含大量同值、長度 >64）。
   - `entry-cases.json`：V2 陣列形與物件形原始條目 → 預期 `WiEntry`；重複 `id`、`stOrder`、物件形非整數鍵順序、缺 `selective`；角色卡路匯入落檔後再讀出同一個 `WiEntry`。
   - `integration-cases.json`（跨巨集與掃描兩個引擎）：卡欄位、聊天、變數、上一輪 outlet → 掃描時的代換結果、組裝時再代換的結果、本輪 outlet、副作用操作序列（依順序）、每段送出文字。比對的是這些中間產物，不比整份提示（兩邊組法本來就不同）。
   - `web-save-next-turn.json`：端對端預期值（四之 4），與 e2e 會重新產生的 `web-export-world-info.json` 分開放。
@@ -320,6 +321,8 @@
 逐包送審、逐包合併到本分支，結案時整理成一包一筆進 main。
 
 ## 七、已知差異（施工後仍與網頁版／ST 不同處）
+- 刻意不模仿 ST〔作者裁決 2026-10-10〕：`order` 缺或不是數字補 100（ST 是 NaN，排序結果取決於演算法）；V2 條目缺 `enabled` 或為 null 算啟用（ST 算停用）；網頁版同步改成這兩條。
+- 去重會把只差 `order` 或停用狀態的兩條併成一條（指紋不含這兩者，前案裁決）；ST 不去重，兩條都會在〔模型判斷·未裁決〕。
 - 正則：JS 收、`fancy-regex` 收不下的語法在桌面版當一般字串（例：落單的代理 `/\uD83D/`）；回溯超限算不命中，同一次掃描裡撞過上限的鍵之後直接算不中。
 - 正則的 `i` 旗標：類別外的 `\w`、`\d`、`\s`、`\b` 包了 `(?-i:…)` 與 JS 相同；類別內做不到——`/[\w]/i` 在桌面版會中 ſ、`/[a-z]/i` 會中 K（U+212A），JS 不中。
 - 量詞界限超過 2^31：V8 把界限飽和後再比上下限（`/(?=a){2147483648,2147483647}a/` JS 解析成功），桌面版照實際數值比、判轉譯失敗當一般字串；實際卡不會這樣寫，不追。〔模型判斷·未裁決〕

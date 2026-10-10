@@ -154,7 +154,7 @@ export const scanCases: ScanCase[] = [
     e("empty", { constant: true, content: "" }),
   ]),
   base("same order keeps load order", [e("x", { constant: true, order: 5 }), e("y", { constant: true, order: 5 }), e("z", { constant: true, order: 5 })]),
-  base("order coercion", [e("s", { constant: true, order: "7" }), e("n", { constant: true, order: 3 }), e("t", { constant: true, order: true }), e("u", { constant: true, order: null })]),
+  base("non-numeric order becomes 100", [e("s", { constant: true, order: "7" }), e("n", { constant: true, order: 3 }), e("t", { constant: true, order: true }), e("u", { constant: true, order: null })]),
 
   // MVU 設定
   base("MVU settings: no whole words, no names, full budget", [e("a", { key: ["now"] }), e("b", { key: ["oor"] })], { settings: MVU }),
@@ -362,7 +362,7 @@ export const entryCases: EntryCase[] = [
   { name: "world file: decorators", form: "worldFile", raw: { content: "@@activate\n@@unknown\n@@@dont_activate\nbody\n@@activate" } },
   { name: "world file: only decorators keeps content", form: "worldFile", raw: { content: "@@activate\n@@dont_activate" } },
   { name: "world file: escaped decorator after unknown", form: "worldFile", raw: { content: "@@unknown\n@@@activate\nbody" } },
-  { name: "character book: defaults (no enabled means disabled)", form: "characterBook", raw: { keys: ["a"], content: "x" } },
+  { name: "character book: defaults (no enabled means enabled)", form: "characterBook", raw: { keys: ["a"], content: "x" } },
   {
     name: "character book: extensions",
     form: "characterBook",
@@ -410,7 +410,27 @@ export const entryCases: EntryCase[] = [
   },
   { name: "character book: position string only", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: true, position: "before_char" } },
   { name: "character book: enabled truthiness", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: 1 } },
+  { name: "character book: enabled string", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: "yes" } },
+  { name: "character book: enabled zero", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: 0 } },
+  { name: "character book: enabled empty string", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: "" } },
+  { name: "character book: enabled null means enabled", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: null } },
   { name: "character book: keys not an array", form: "characterBook", raw: { keys: null, content: "x", enabled: true } },
+  { name: "character book: insertion_order null", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: true, insertion_order: null } },
+  { name: "character book: insertion_order string", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: true, insertion_order: "7" } },
+  { name: "character book: insertion_order missing with extensions", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: true, extensions: { depth: 2, table_tavern: { visibility: "gm" } } } },
+  { name: "character book: extensions not an object", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: true, insertion_order: 3, extensions: 5 } },
+  { name: "character book: secondary keys without selective", form: "characterBook", raw: { keys: ["a"], secondary_keys: ["b"], content: "x", enabled: true, insertion_order: 3 } },
+  { name: "character book: decorators in content", form: "characterBook", raw: { keys: ["a"], content: "@@activate\nbody", enabled: true, insertion_order: 3 } },
+  { name: "character book: wrong typed extensions", form: "characterBook", raw: { keys: ["a"], content: "x", enabled: true, insertion_order: 3, extensions: { probability: "50", sticky: null, delay_until_recursion: "1", position: 1.5, triggers: ["normal", 3] } } },
+  { name: "book order: array sorted by id", form: "bookOrder", entries: '[{"id":3},{"id":1},{"id":2}]' },
+  { name: "book order: array without ids uses the index", form: "bookOrder", entries: "[{},{},{}]" },
+  { name: "book order: duplicate id keeps the position of the first, the value of the last", form: "bookOrder", entries: '[{"id":5},{"id":2},{"id":5,"n":1},{"id":1}]' },
+  { name: "book order: missing id collides with another entry's id", form: "bookOrder", entries: '[{"id":1},{},{"id":0}]' },
+  { name: "book order: string, null and float ids", form: "bookOrder", entries: '[{"id":"b"},{"id":"a"},{"id":"10"},{"id":"2"},{"id":null},{"id":1.5},{"id":"01"}]' },
+  { name: "book order: non-object items are skipped but keep their index", form: "bookOrder", entries: '[{"id":4},"x",null,{"id":3}]' },
+  { name: "book order: object form integer keys first then file order", form: "bookOrder", entries: '{"b":{},"10":{},"a":{},"2":{},"x":5}' },
+  { name: "book order: object form duplicate keys", form: "bookOrder", entries: '{"b":{"n":1},"a":{},"b":{"n":2}}' },
+  { name: "book order: object form ignores ids", form: "bookOrder", entries: '{"z":{"id":1},"y":{"id":0}}' },
 ];
 
 /** 決定性的偽亂數（LCG），產生長陣列的排序案例。 */
@@ -422,29 +442,20 @@ function lcg(seed: number) {
   };
 }
 
-function mixed(length: number, seed: number, odd: number): SortCase["items"] {
+function ties(length: number, seed: number, range: number): SortCase["items"] {
   const next = lcg(seed);
-  return Array.from({ length }, () => {
-    const roll = next();
-    if (roll < odd / 3) return {};
-    if (roll < (odd * 2) / 3) return { order: "x" };
-    if (roll < odd) return { order: String(Math.floor(next() * 10)) };
-    return { order: Math.floor(next() * 8) };
-  });
+  return Array.from({ length }, () => ({ order: Math.floor(next() * range) }));
 }
 
 export const sortCases: SortCase[] = [
-  { name: "number, non-numeric string, number, number", items: [{ order: 1 }, { order: "x" }, { order: 3 }, { order: 1 }] },
-  { name: "undefined between numbers", items: [{ order: 0 }, {}, { order: 30 }, { order: 30 }] },
-  { name: "coercible values", items: [{ order: null }, { order: true }, { order: "5" }, { order: " 7 " }, { order: [] }, { order: [2] }, { order: {} }, { order: 3 }] },
+  { name: "ties keep load order", items: [{ order: 1 }, { order: 3 }, { order: 3 }, { order: 1 }] },
+  { name: "negative and fractional", items: [{ order: -5 }, { order: 0.5 }, { order: 0 }, { order: -0.5 }, { order: 100 }] },
   { name: "all numbers, many ties, length 300", items: Array.from({ length: 300 }, (_, index) => ({ order: (index * 37) % 11 })) },
-  { name: "mixed, length 70", items: mixed(70, 1, 0.3) },
-  { name: "mixed, length 100", items: mixed(100, 7, 0.2) },
-  { name: "mixed, length 257", items: mixed(257, 42, 0.1) },
-  { name: "mostly sorted with a few non-numbers, length 400", items: Array.from({ length: 400 }, (_, index) => (index % 53 === 0 ? {} : { order: 1000 - index })) },
-  { name: "short mixed", items: mixed(20, 3, 0.4) },
-  { name: "length 5 with NaN", items: [{ order: 775 }, { order: 41 }, { order: 0 }, { order: "x" }, { order: 3 }] },
-  { name: "length 6 with undefined", items: [{ order: 2 }, {}, { order: 9 }, { order: 1 }, { order: "y" }, { order: 5 }] },
-  { name: "length 7 mixed", items: mixed(7, 11, 0.5) },
-  { name: "length 7 descending with NaN", items: [{ order: 1 }, { order: 2 }, { order: "z" }, { order: 3 }, { order: 4 }, {}, { order: 5 }] },
+  { name: "ties, length 70", items: ties(70, 1, 8) },
+  { name: "ties, length 100", items: ties(100, 7, 5) },
+  { name: "ties, length 257", items: ties(257, 42, 8) },
+  { name: "mostly sorted, length 400", items: Array.from({ length: 400 }, (_, index) => ({ order: index % 53 === 0 ? 7 : 1000 - index })) },
+  { name: "short", items: ties(20, 3, 6) },
+  { name: "length 5", items: [{ order: 775 }, { order: 41 }, { order: 0 }, { order: 41 }, { order: 3 }] },
+  { name: "all equal, length 70", items: Array.from({ length: 70 }, () => ({ order: 100 })) },
 ];

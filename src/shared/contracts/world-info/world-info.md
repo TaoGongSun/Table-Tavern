@@ -19,7 +19,9 @@
 `parseRegexFromString(key)` 再 `test(haystack)`：`expected` 是 JS 的 `{ parsed, matches }`（`parsed: false`＝當一般字串）。`knownDifference` 是桌面版刻意不同的結果，Rust 測試比它。
 
 ## sort-cases.json
-`sortByOrder`（ST `sortFn`）在 V8 `Array.prototype.sort` 下的結果：`items` 是 `{ order }`（沒有 `order` 鍵＝undefined），`expected` 是排序後的原索引。order 混了 NaN 時比較子不是全序，結果取決於 V8 的 TimSort，桌面版照它移植。
+`sortByOrder`（ST `sortFn`）的穩定排序結果：`items` 是 `{ order }`（有限數字，讀取條目時缺欄或不是數字已補 100），`expected` 是排序後的原索引。
 
 ## entry-cases.json
-單一條目 → `WiEntry` 欄位＋`decorators`：`form: "worldFile"` 照 `fromWorldFile`，`"characterBook"` 照 `fromCharacterBook`。
+- `form: "worldFile"` 照 `fromWorldFile`，`"characterBook"` 照 `fromCharacterBook`：單一條目 → `WiEntry` 欄位＋`decorators`。
+- `form: "bookOrder"`：`entries` 是 JSON **原文**（要保住物件鍵的出現順序）→ ST 載入後的條目先後（卡片契約的 key）：陣列形依 `id`（缺則索引）、重複 `id` 後蓋前且位置留在前，物件形整數鍵遞增、其餘照原檔出現順序（`stOrder`）。
+- 桌面版另外驗兩件事（Rust 限定，不進 fixture）：每個 `characterBook` 案例經匯入轉成物件形、落檔再讀回要得到同一個 `WiEntry`；`sort-cases` 的條目經同樣轉換後排序結果不變。

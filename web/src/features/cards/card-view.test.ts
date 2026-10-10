@@ -20,6 +20,14 @@ describe("card view contract (shared golden file with src-tauri card_view_tests.
     });
   }
 
+  it("V2 enabled follows the import rule: missing or null enables, the rest by JS truthiness", () => {
+    const entries = [{}, { enabled: null }, { enabled: true }, { enabled: 1 }, { enabled: "yes" }, { enabled: false }, { enabled: 0 }, { enabled: "" }];
+    const card = JSON.stringify({ data: { name: "甲", character_book: { entries: entries.map((entry) => ({ keys: [], content: "x", ...entry })) } } });
+    const view = cardView(new TextEncoder().encode(card));
+    if ("error" in view) throw new Error(view.error);
+    expect(view.books.character!.entries.map((entry) => entry.enabled)).toEqual([true, true, true, true, true, false, false, false]);
+  });
+
   it("object-shaped entries count as entries and expand by numeric uid key", () => {
     const view = cardView(read("object-entries.json"));
     if ("error" in view) throw new Error(view.error);

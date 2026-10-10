@@ -126,15 +126,19 @@ fn card_name(card: &Value) -> String {
 /// 用哪份檔匯卡：PNG 讀出的卡與 `card` 完全相同才用 PNG（帶得到卡圖），否則以 `card` 為準。
 fn card_bytes(save: &WebSave) -> DataResult<Vec<u8>> {
     if let Some(png) = &save.card_png {
+        // `Value` 相等不看物件鍵順序，而物件形條目的順序決定 ST 載入先後，所以順序也要一致
         let same = super::card_io::decode_png_character(png)
             .ok()
-            .and_then(|json| serde_json::from_slice::<Value>(&json).ok())
-            .is_some_and(|decoded| decoded == save.card);
+            .is_some_and(|json| {
+                serde_json::from_slice::<Value>(&json).is_ok_and(|decoded| decoded == save.card)
+                    && super::card::book_object_key_order(&json)
+                        == super::card::book_object_key_order(save.card_text.as_bytes())
+            });
         if same {
             return Ok(png.clone());
         }
     }
-    Ok(serde_json::to_vec(&save.card)?)
+    Ok(save.card_text.clone().into_bytes())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -190,11 +194,6 @@ fn build(
         Route::Worldbook => {
             let json_text = super::worldbook_json(card_bytes)?;
             let book = data::import_worldbook_as(root, world_id, &json_text, &data::BookOwner::Gm)?;
-            if book.summary.invalid > 0 {
-                return Err(data::invalid_data(
-                    "character_book enabled must be a boolean",
-                ));
-            }
             super::interface::save_world_card_strict(root, world_id, card_bytes)?;
             super::save_gm_image(root, world_id, card_bytes)?;
             if let Ok(book_value) = serde_json::from_str(&json_text) {
@@ -279,7 +278,12 @@ fn build(
         world_id: world_id.to_owned(),
         character_id,
         card_storage: save.card_storage.clone(),
-        worldbook_entries: placed.iter().filter(|(_, uid)| uid.is_some()).count(),
+        // 去重併掉或 `id` 被蓋掉的條目映到留下那條的 uid，不重複算
+        worldbook_entries: placed
+            .iter()
+            .filter_map(|(_, uid)| *uid)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
         shared_kept,
     })
 }

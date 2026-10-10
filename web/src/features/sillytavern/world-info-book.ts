@@ -22,8 +22,8 @@ export interface WiEntry {
   content: string;
   constant: boolean;
   selective: boolean;
-  /** 原值（可能不是數字；排序照 ST 直接相減） */
-  order: unknown;
+  /** 一律是有限數字：缺欄或不是數字補 100（排序因此是全序） */
+  order: number;
   position: number;
   excludeRecursion: boolean;
   preventRecursion: boolean;
@@ -62,6 +62,8 @@ const bool = (value: unknown, fallback: boolean) => (typeof value === "boolean" 
 const num = (value: unknown, fallback: number) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 const nullableNum = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 const nullableBool = (value: unknown) => (typeof value === "boolean" ? value : null);
+const DEFAULT_ORDER = 100;
+const order = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : DEFAULT_ORDER);
 const str = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
 
 /** parseDecorators：開頭連續的 @@ 行裡認得的裝飾拿出來，其餘內容照原樣。 */
@@ -105,12 +107,12 @@ function fromCharacterBook(entry: JsonObject): Fields {
     content: str(entry.content),
     constant: bool(entry.constant, false),
     selective: bool(entry.selective, false),
-    order: entry.insertion_order,
+    order: order(entry.insertion_order),
     position: num(ext.position, entry.position === "before_char" ? WI_POSITION.before : WI_POSITION.after),
     excludeRecursion: bool(ext.exclude_recursion, false),
     preventRecursion: bool(ext.prevent_recursion, false),
     delayUntilRecursion: typeof ext.delay_until_recursion === "number" || typeof ext.delay_until_recursion === "boolean" ? ext.delay_until_recursion : false,
-    disable: !entry.enabled,
+    disable: entry.enabled === undefined || entry.enabled === null ? false : !entry.enabled,
     probability: num(ext.probability, 100),
     useProbability: bool(ext.useProbability, true),
     depth: num(ext.depth, DEFAULT_DEPTH),
@@ -147,7 +149,7 @@ function fromWorldFile(entry: JsonObject): Fields {
     content: str(entry.content),
     constant: bool(entry.constant, false),
     selective: bool(entry.selective, true),
-    order: Object.prototype.hasOwnProperty.call(entry, "order") ? entry.order : 100,
+    order: order(entry.order),
     position: num(entry.position, 0),
     excludeRecursion: bool(entry.excludeRecursion, false),
     preventRecursion: bool(entry.preventRecursion, false),
@@ -239,8 +241,7 @@ export function worldInfoEntries(cardData: unknown, ids: { id: string; key: stri
   return entries.sort(sortByOrder);
 }
 
-/** ST sortFn：`b.order - a.order`（不是數字就照 JS 算出 NaN，當成相等）。 */
-export function sortByOrder(a: { order: unknown }, b: { order: unknown }): number {
-  const diff = (b.order as number) - (a.order as number);
-  return Number.isNaN(diff) ? 0 : diff;
+/** ST sortFn：`b.order - a.order`（order 已正規化成有限數字，比較子是全序，同值保持原順序）。 */
+export function sortByOrder(a: { order: number }, b: { order: number }): number {
+  return b.order - a.order;
 }

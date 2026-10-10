@@ -216,7 +216,6 @@ export const de: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Generiertes Bild löschen",
   aiGalleryDeleteConfirm: "Möchtest du dieses generierte Bild wirklich löschen? Dies kann nicht rückgängig gemacht werden.",
   worldbookDuplicatesSkipped: " ({d, plural, one {# Duplikat} other {# Duplikate}} übersprungen)",
-  worldbookInvalidSkipped: " ({d, plural, one {# beschädigter Eintrag} other {# beschädigte Einträge}} übersprungen)",
   openingLineAsk: "Diese Karte hat einen Eröffnungstext. Als Eröffnungserzählung der SL posten?",
   openingChoiceTitle: "Eröffnung wählen",
   openingChoiceItem: "Eröffnung {n}",

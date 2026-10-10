@@ -57,11 +57,10 @@ export interface WebSaveImport {
   shared_kept: number;
 }
 
-/** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數；invalid＝欄位壞掉被略過的條數 */
+/** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
 interface WorldbookImport {
   imported: number;
   skipped: number;
-  invalid?: number;
 }
 
 /** 世界書路徑的匯入結果：收編數字＋這次匯入的原檔識別（同 CharacterImport.source） */
@@ -82,8 +81,7 @@ export interface ImportReceiptSummary {
 function worldbookImportedMessage(book: WorldbookImport) {
   return (
     t("worldbookImportDone", { n: book.imported }) +
-    (book.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: book.skipped }) : "") +
-    ((book.invalid ?? 0) > 0 ? t("worldbookInvalidSkipped", { d: book.invalid ?? 0 }) : "")
+    (book.skipped > 0 ? t("worldbookDuplicatesSkipped", { d: book.skipped }) : "")
   );
 }
 
@@ -353,7 +351,7 @@ export function useImportController(input: {
       await refreshReceipts(worldId);
       // 卡片隨身的世界書條目也要報數，跟世界書路徑講一樣的話；圖沒存成另外講（沒有隨身世界書的卡也要講）
       const notices = [
-        book.imported > 0 || (book.invalid ?? 0) > 0 ? worldbookImportedMessage(book) : "",
+        book.imported > 0 ? worldbookImportedMessage(book) : "",
         book_failed ? t("importCardBookFailed") : "",
         image_dropped ? t("importCardImageNotSaved") : "",
       ].filter((notice) => notice !== "");

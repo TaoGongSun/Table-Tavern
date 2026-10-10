@@ -87,7 +87,10 @@ fn entry_view(key: &str, entry: &Value, object_form: bool) -> Value {
                 .get("insertion_order")
                 .and_then(Value::as_i64)
                 .unwrap_or(0),
-            flag("enabled").unwrap_or(true),
+            // 缺或 null＝啟用，其餘照 JS 真假值（與匯入同一套規則）
+            entry.get("enabled").is_none_or(|enabled| {
+                enabled.is_null() || crate::world_info::js_semantics::truthy(Some(enabled))
+            }),
             entry.get("id").and_then(Value::as_i64),
         )
     };
@@ -307,4 +310,25 @@ fn writes_local_testcard_views_when_requested() {
         written += 1;
     }
     assert!(written > 0, "TestCards 目錄裡沒有卡");
+}
+
+#[test]
+fn v2_enabled_follows_the_import_rule() {
+    let enabled = |entry: Value| entry_view("0", &entry, false)["enabled"].clone();
+    for on in [
+        json!({}),
+        json!({"enabled": null}),
+        json!({"enabled": true}),
+        json!({"enabled": 1}),
+        json!({"enabled": "yes"}),
+    ] {
+        assert_eq!(enabled(on.clone()), true, "{on}");
+    }
+    for off in [
+        json!({"enabled": false}),
+        json!({"enabled": 0}),
+        json!({"enabled": ""}),
+    ] {
+        assert_eq!(enabled(off.clone()), false, "{off}");
+    }
 }

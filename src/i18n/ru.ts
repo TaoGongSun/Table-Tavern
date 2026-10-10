@@ -216,7 +216,6 @@ export const ru: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Удалить изображение",
   aiGalleryDeleteConfirm: "Удалить это изображение? Это действие нельзя отменить.",
   worldbookDuplicatesSkipped: " (пропущено дубликатов: {d})",
-  worldbookInvalidSkipped: " (пропущено повреждённых записей: {d})",
   openingLineAsk: "У карточки есть вступительный текст. Отправить его как вступление от ГМ?",
   openingChoiceTitle: "Выбрать вступление",
   openingChoiceItem: "Вступление {n}",

@@ -264,7 +264,19 @@ fn worldbook_route_gives_the_book_to_the_gm() {
     }
 }
 
-fn single_entry_card(name: &str, entry: Value) -> String {
+fn single_entry_card(name: &str, mut entry: Value) -> String {
+    // V2 缺 `enabled` 算停用（照 ST）；測試資料沒寫的當啟用
+    entry
+        .as_object_mut()
+        .unwrap()
+        .entry("enabled")
+        .or_insert(json!(true));
+    // 位置也影響去重；缺欄時 V2 是 after_char、物件形是前，測試資料統一成前
+    entry
+        .as_object_mut()
+        .unwrap()
+        .entry("position")
+        .or_insert(json!("before_char"));
     json!({"data": {"name": name, "character_book": {"entries": [entry]}}}).to_string()
 }
 
@@ -416,8 +428,8 @@ fn fingerprint_keeps_trigger_variants_and_ignores_player_toggles() {
     let root = TestRoot::new("card-book-fingerprint");
     let world_id = data::create_world(root.path(), "酒館").unwrap();
     let card = json!({"data": {"name": "莉亞", "character_book": {"entries": [
-        {"comment": "傳說", "keys": ["月"], "content": "月下的傳說", "constant": true},
-        {"comment": "傳說", "keys": ["月"], "content": "月下的傳說", "constant": false}
+        {"enabled": true, "comment": "傳說", "keys": ["月"], "content": "月下的傳說", "constant": true},
+        {"enabled": true, "comment": "傳說", "keys": ["月"], "content": "月下的傳說", "constant": false}
     ]}}})
     .to_string();
     import_character(root.path(), &world_id, card.as_bytes(), "#3366ff", LANG).unwrap();
@@ -647,10 +659,10 @@ fn undo_after_repeated_hits_in_one_batch() {
     let (_, before) = entry_value(root.path(), &world_id, "既有條目");
     let public = json!({"table_tavern": {"visibility": "public"}});
     let card = json!({"data": {"name": "莉亞", "character_book": {"entries": [
-        {"comment": "舊", "keys": [], "content": "既有條目", "constant": true},
-        {"comment": "舊", "keys": [], "content": "既有條目", "constant": true, "extensions": public},
-        {"comment": "新", "keys": [], "content": "這次新建", "constant": true},
-        {"comment": "新", "keys": [], "content": "這次新建", "constant": true, "extensions": public}
+        {"enabled": true, "comment": "舊", "keys": [], "content": "既有條目", "position": "before_char", "constant": true},
+        {"enabled": true, "comment": "舊", "keys": [], "content": "既有條目", "position": "before_char", "constant": true, "extensions": public},
+        {"enabled": true, "comment": "新", "keys": [], "content": "這次新建", "position": "before_char", "constant": true},
+        {"enabled": true, "comment": "新", "keys": [], "content": "這次新建", "position": "before_char", "constant": true, "extensions": public}
     ]}}})
     .to_string();
     import_character_file(
@@ -775,10 +787,10 @@ fn exported_card_reimports_into_a_new_table_with_the_book_visible() {
         "name": "莉亞",
         "alternate_greetings": ["第二次見面。", "雨天再訪。"],
         "character_book": {"entries": [
-            {"comment": "常駐", "keys": [], "content": "甲常駐內容甲", "constant": true},
-            {"comment": "月", "keys": ["月"], "secondary_keys": ["夜"], "content": "月夜傳說",
+            {"enabled": true, "comment": "常駐", "keys": [], "content": "甲常駐內容甲", "constant": true},
+            {"enabled": true, "comment": "月", "keys": ["月"], "secondary_keys": ["夜"], "content": "月夜傳說",
              "selective": true, "position": "after_char", "case_sensitive": true},
-            {"comment": "祕密", "keys": [], "content": "戊GM內容戊", "constant": true,
+            {"enabled": true, "comment": "祕密", "keys": [], "content": "戊GM內容戊", "constant": true,
              "extensions": {"table_tavern": {"visibility": "gm"}}}
         ]}
     }})
@@ -904,7 +916,7 @@ fn mvu_card_survives_export_and_reimport() {
     assert!(!b.state.tree.is_empty());
 }
 
-/// 書壞掉：整本讀不了時角色照建、結果帶旗標；單條 enabled 不是布林時其餘照匯，略過與重複分開回報。
+/// 書壞掉：整本讀不了時角色照建、結果帶旗標；單條 enabled 是怪值時照 JS 真假值處理、其餘照匯，重複的略過回報。
 #[test]
 fn broken_books_are_reported_not_swallowed() {
     let root = TestRoot::new("card-book-broken");
@@ -925,7 +937,7 @@ fn broken_books_are_reported_not_swallowed() {
 
     let partly = json!({"data": {"name": "凱恩", "character_book": {"entries": [
         {"keys": [], "content": "好的條目", "constant": true, "enabled": true},
-        {"keys": [], "content": "壞的條目", "constant": true, "enabled": "yes"},
+        {"keys": [], "content": "怪的條目", "constant": true, "enabled": "yes"},
         {"keys": [], "content": "好的條目", "constant": true, "enabled": true}
     ]}}})
     .to_string();
@@ -942,17 +954,15 @@ fn broken_books_are_reported_not_swallowed() {
     assert_eq!(
         imported.book,
         Some(data::WorldbookImport {
-            imported: 1,
-            skipped: 1,
-            invalid: 1
+            imported: 2,
+            skipped: 1
         })
     );
-    let contents: Vec<String> = data::read_worldbook(root.path(), &world_id)
-        .unwrap()
-        .into_iter()
-        .map(|entry| entry.content)
-        .collect();
-    assert_eq!(contents, vec!["好的條目".to_owned()]);
+    // enabled 照 JS 真假值："yes" 算啟用
+    let entries = data::read_worldbook(root.path(), &world_id).unwrap();
+    let contents: Vec<&str> = entries.iter().map(|entry| entry.content.as_str()).collect();
+    assert_eq!(contents, ["好的條目", "怪的條目"]);
+    assert!(entries.iter().all(|entry| !entry.disabled));
 }
 
 /// 這桌匯出的世界書再匯回來：鷹架條目沿用原本的來源停用值——同一桌不多出重複，新桌一啟一停兩條各自

@@ -216,7 +216,6 @@ export const fr: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Supprimer l'image générée",
   aiGalleryDeleteConfirm: "Veux-tu vraiment supprimer cette image générée\u00a0? Cette action est irréversible.",
   worldbookDuplicatesSkipped: " ({d, plural, one {# doublon ignoré} other {# doublons ignorés}})",
-  worldbookInvalidSkipped: " ({d, plural, one {# entrée endommagée ignorée} other {# entrées endommagées ignorées}})",
   openingLineAsk: "Cette fiche a un texte d'ouverture. Le publier comme narration d'introduction du MJ\u00a0?",
   openingChoiceTitle: "Choisir l'ouverture",
   openingChoiceItem: "Ouverture {n}",

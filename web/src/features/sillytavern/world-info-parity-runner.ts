@@ -1,7 +1,7 @@
 // 桌面版對拍（worldbook-st-trigger-parity）：同一份案例由網頁版實作跑出預期值（web/scripts/gen-world-info-fixtures.mjs），
 // 網頁版與 Rust 的 parity 測試各自重跑、只比對。案例檔在 src/shared/contracts/world-info/，欄位說明見該目錄的 world-info.md。
 import { isObject, type JsonObject } from "../cards/card-file";
-import { resolveEntry, sortByOrder, type Fields } from "./world-info-book";
+import { bookEntries, resolveEntry, sortByOrder, type Fields } from "./world-info-book";
 import { checkWorldInfo, parseRegexFromString, type WiGlobalScanData, type WiResult, type WiSettings, type WiTimed } from "./world-info-scan";
 
 export interface ScanCase {
@@ -25,8 +25,8 @@ export type ScanExpected = Omit<WiResult, "outlets"> & { outlets: [string, strin
 
 export interface SortCase {
   name: string;
-  /** 每個元素的 order；沒有 order 鍵＝undefined */
-  items: { order?: unknown }[];
+  /** 每個元素的 order（有限數字） */
+  items: { order: number }[];
 }
 
 export interface RegexCase {
@@ -42,11 +42,10 @@ export interface RegexOutcome {
   matches: boolean | null;
 }
 
-export interface EntryCase {
-  name: string;
-  form: "worldFile" | "characterBook";
-  raw: JsonObject;
-}
+export type EntryCase =
+  | { name: string; form: "worldFile" | "characterBook"; raw: JsonObject }
+  /** `entries` 的 JSON 原文（要保住物件鍵的出現順序）→ ST 載入後的先後（卡片契約的 key） */
+  | { name: string; form: "bookOrder"; entries: string };
 
 const EMPTY_SCAN: WiGlobalScanData = {
   personaDescription: "",
@@ -95,7 +94,7 @@ export function runScanCase(input: ScanCase): ScanExpected {
   return { ...result, outlets: Object.entries(result.outlets), substituteCalls: calls, randomCalls: used };
 }
 
-/** sortByOrder 之後的原索引順序（V8 Array.prototype.sort）。 */
+/** sortByOrder 之後的原索引順序（穩定排序）。 */
 export function runSortCase(input: SortCase): number[] {
   return input.items
     .map((item, index) => ({ order: item.order, index }))
@@ -108,7 +107,8 @@ export function runRegexCase(input: RegexCase): RegexOutcome {
   return regex ? { parsed: true, matches: regex.test(input.haystack) } : { parsed: false, matches: null };
 }
 
-export function runEntryCase(input: EntryCase): Fields & { decorators: string[] } {
+export function runEntryCase(input: EntryCase): (Fields & { decorators: string[] }) | string[] {
+  if (input.form === "bookOrder") return bookEntries({ character_book: { entries: JSON.parse(input.entries) } }).map((entry) => entry.bookKey);
   if (!isObject(input.raw)) throw new Error(`${input.name}: raw must be an object`);
   const { fields, decorators } = resolveEntry(input.raw, input.form === "worldFile");
   return { ...fields, decorators };

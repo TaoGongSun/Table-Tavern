@@ -69,9 +69,8 @@ pub struct WiEntry {
     pub content: String,
     pub constant: bool,
     pub selective: bool,
-    /// 原值（可能不是數字；排序照 JS 相減）；`None`＝undefined
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub order: Option<Value>,
+    /// 一律是有限數字：缺欄或不是數字補 100，排序因此是全序
+    pub order: f64,
     pub position: f64,
     pub exclude_recursion: bool,
     pub prevent_recursion: bool,
@@ -202,6 +201,13 @@ fn finish(mut entry: WiEntry) -> WiEntry {
     entry
 }
 
+pub const DEFAULT_ORDER: f64 = 100.0;
+
+/// `order` 正規化：有限數字照用，其餘（缺欄、字串、null…）補 100〔作者裁決 2026-10-10〕。
+fn order_of(value: Option<&Value>) -> f64 {
+    nullable_num(value).unwrap_or(DEFAULT_ORDER)
+}
+
 /// 物件形（ST 世界書檔）的一條；`fromWorldFile`。
 pub fn from_world_file(entry: &Map<String, Value>) -> WiEntry {
     let get = |field: &str| entry.get(field);
@@ -216,7 +222,7 @@ pub fn from_world_file(entry: &Map<String, Value>) -> WiEntry {
         content: str_or(get("content"), ""),
         constant: bool_or(get("constant"), false),
         selective: bool_or(get("selective"), true),
-        order: Some(get("order").cloned().unwrap_or(Value::from(100))),
+        order: order_of(get("order")),
         position: num_or(get("position"), position::BEFORE),
         exclude_recursion: bool_or(get("excludeRecursion"), false),
         prevent_recursion: bool_or(get("preventRecursion"), false),
@@ -275,7 +281,7 @@ pub fn from_character_book(entry: &Map<String, Value>) -> WiEntry {
         content: str_or(get("content"), ""),
         constant: bool_or(get("constant"), false),
         selective: bool_or(get("selective"), false),
-        order: get("insertion_order").cloned(),
+        order: order_of(get("insertion_order")),
         position: num_or(x("position"), fallback_position),
         exclude_recursion: bool_or(x("exclude_recursion"), false),
         prevent_recursion: bool_or(x("prevent_recursion"), false),
@@ -283,7 +289,8 @@ pub fn from_character_book(entry: &Map<String, Value>) -> WiEntry {
             x("delay_until_recursion"),
             RecursionDelay::Flag(false),
         ),
-        disable: !truthy(get("enabled")),
+        // 缺 `enabled` 或 null 算啟用，其餘照 JS 真假值〔作者裁決 2026-10-10〕
+        disable: get("enabled").is_some_and(|enabled| !enabled.is_null() && !truthy(Some(enabled))),
         probability: num_or(x("probability"), 100.0),
         use_probability: bool_or(x("useProbability"), true),
         depth: num_or(x("depth"), DEFAULT_DEPTH),
@@ -311,6 +318,137 @@ pub fn from_character_book(entry: &Map<String, Value>) -> WiEntry {
         decorators: Vec::new(),
         limited: false,
     })
+}
+
+/// 物件形欄位 ↔ V2 `extensions` 的 snake_case 鍵（`convertCharacterBook` 與 `convertWorldInfoToCharacterBook`
+/// 兩個方向共用）。`position`、`caseSensitive` 另有規則，不在表裡。
+pub const EXTENSION_FIELDS: [(&str, &str); 26] = [
+    ("excludeRecursion", "exclude_recursion"),
+    ("preventRecursion", "prevent_recursion"),
+    ("delayUntilRecursion", "delay_until_recursion"),
+    ("probability", "probability"),
+    ("useProbability", "useProbability"),
+    ("depth", "depth"),
+    ("selectiveLogic", "selectiveLogic"),
+    ("outletName", "outlet_name"),
+    ("group", "group"),
+    ("groupOverride", "group_override"),
+    ("groupWeight", "group_weight"),
+    ("scanDepth", "scan_depth"),
+    ("matchWholeWords", "match_whole_words"),
+    ("useGroupScoring", "use_group_scoring"),
+    ("role", "role"),
+    ("sticky", "sticky"),
+    ("cooldown", "cooldown"),
+    ("delay", "delay"),
+    ("matchPersonaDescription", "match_persona_description"),
+    ("matchCharacterDescription", "match_character_description"),
+    ("matchCharacterPersonality", "match_character_personality"),
+    ("matchCharacterDepthPrompt", "match_character_depth_prompt"),
+    ("matchScenario", "match_scenario"),
+    ("matchCreatorNotes", "match_creator_notes"),
+    ("triggers", "triggers"),
+    ("ignoreBudget", "ignore_budget"),
+];
+
+fn number_value(number: f64) -> Value {
+    if number.fract() == 0.0 && number.abs() < 9e15 {
+        Value::from(number as i64)
+    } else {
+        Value::from(number)
+    }
+}
+
+fn optional_number(value: Option<f64>) -> Value {
+    value.map_or(Value::Null, number_value)
+}
+
+fn optional_bool(value: Option<bool>) -> Value {
+    value.map_or(Value::Null, Value::Bool)
+}
+
+fn string_list(values: &[String]) -> Value {
+    Value::Array(values.iter().cloned().map(Value::String).collect())
+}
+
+/// V2 `character_book` 的一條轉成 ST 物件形（`convertCharacterBook`）：回傳要覆蓋到條目上的欄位。
+/// 欄位值與預設一律取自 [`from_character_book`]（同一份規格），讀回來（[`from_world_file`]）得到同一個
+/// `WiEntry`：缺 `selective`＝false 明寫、缺 `enabled`＝啟用、`order` 缺或不是數字補 100。`content` 留原文（`@@` 裝飾由讀取端拆）；
+/// `extensions` 其餘鍵原樣留著。
+pub fn character_book_to_world_object(entry: &Map<String, Value>) -> Map<String, Value> {
+    let wi = from_character_book(entry);
+    let mut out = Map::new();
+    out.insert(
+        "key".to_owned(),
+        wi.key.as_deref().map_or(Value::Null, string_list),
+    );
+    out.insert("keysecondary".to_owned(), string_list(&wi.keysecondary));
+    out.insert("comment".to_owned(), Value::String(wi.comment.clone()));
+    out.insert(
+        "content".to_owned(),
+        Value::String(str_or(entry.get("content"), "")),
+    );
+    out.insert("constant".to_owned(), Value::Bool(wi.constant));
+    out.insert("selective".to_owned(), Value::Bool(wi.selective));
+    out.insert("position".to_owned(), number_value(wi.position));
+    out.insert("disable".to_owned(), Value::Bool(wi.disable));
+    out.insert("caseSensitive".to_owned(), optional_bool(wi.case_sensitive));
+    out.insert(
+        "delayUntilRecursion".to_owned(),
+        match wi.delay_until_recursion {
+            RecursionDelay::Flag(flag) => Value::Bool(flag),
+            RecursionDelay::Level(level) => number_value(level),
+        },
+    );
+    out.insert("probability".to_owned(), number_value(wi.probability));
+    out.insert("useProbability".to_owned(), Value::Bool(wi.use_probability));
+    out.insert("depth".to_owned(), number_value(wi.depth));
+    out.insert(
+        "selectiveLogic".to_owned(),
+        number_value(wi.selective_logic),
+    );
+    out.insert(
+        "outletName".to_owned(),
+        Value::String(wi.outlet_name.clone()),
+    );
+    out.insert("group".to_owned(), Value::String(wi.group.clone()));
+    out.insert("groupOverride".to_owned(), Value::Bool(wi.group_override));
+    out.insert("groupWeight".to_owned(), number_value(wi.group_weight));
+    out.insert("scanDepth".to_owned(), optional_number(wi.scan_depth));
+    out.insert(
+        "matchWholeWords".to_owned(),
+        optional_bool(wi.match_whole_words),
+    );
+    out.insert(
+        "useGroupScoring".to_owned(),
+        optional_bool(wi.use_group_scoring),
+    );
+    out.insert("role".to_owned(), number_value(wi.role));
+    out.insert("sticky".to_owned(), optional_number(wi.sticky));
+    out.insert("cooldown".to_owned(), optional_number(wi.cooldown));
+    out.insert("delay".to_owned(), optional_number(wi.delay));
+    for (field, value) in [
+        ("excludeRecursion", wi.exclude_recursion),
+        ("preventRecursion", wi.prevent_recursion),
+        ("matchPersonaDescription", wi.match_persona_description),
+        ("matchCharacterDescription", wi.match_character_description),
+        ("matchCharacterPersonality", wi.match_character_personality),
+        ("matchCharacterDepthPrompt", wi.match_character_depth_prompt),
+        ("matchScenario", wi.match_scenario),
+        ("matchCreatorNotes", wi.match_creator_notes),
+        ("ignoreBudget", wi.ignore_budget),
+    ] {
+        out.insert(field.to_owned(), Value::Bool(value));
+    }
+    out.insert("triggers".to_owned(), string_list(&wi.triggers));
+    let extensions = entry
+        .get("extensions")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    out.insert("order".to_owned(), number_value(wi.order));
+    out.insert("extensions".to_owned(), Value::Object(extensions));
+    out
 }
 
 #[cfg(test)]

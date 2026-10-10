@@ -216,7 +216,6 @@ export const ptBR: Record<MsgKey, string> = {
   aiGalleryDeleteTitle: "Excluir imagem gerada",
   aiGalleryDeleteConfirm: "Excluir esta imagem gerada? Esta ação não pode ser desfeita.",
   worldbookDuplicatesSkipped: " ({d, plural, one {# duplicado ignorado} other {# duplicados ignorados}})",
-  worldbookInvalidSkipped: " ({d, plural, one {# entrada danificada ignorada} other {# entradas danificadas ignoradas}})",
   openingLineAsk: "Esta ficha tem um texto de abertura. Publicar como narração inicial do GM?",
   openingChoiceTitle: "Escolher abertura",
   openingChoiceItem: "Abertura {n}",

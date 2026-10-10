@@ -232,7 +232,6 @@ export const zh = {
   aiGalleryDeleteTitle: "刪除生成圖",
   aiGalleryDeleteConfirm: "確定要刪除這張生成圖嗎？此操作不可復原。",
   worldbookDuplicatesSkipped: "（略過 {d} 條重複）",
-  worldbookInvalidSkipped: "（{d} 條欄位壞掉，略過）",
   worldbookDedupe: "清理重複",
   worldbookDedupeConfirm: "會刪掉內容一模一樣的多餘條目，每組只留排最前面那條。要繼續嗎？",
   worldbookDedupeDone: "已清掉 {n} 條重複",

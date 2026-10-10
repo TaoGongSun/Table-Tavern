@@ -30,7 +30,7 @@ try {
   );
   write(
     "sort-cases.json",
-    "sortByOrder（ST sortFn）在 V8 Array.prototype.sort 下的結果：expected 是排序後的原索引。items 沒有 order 鍵＝undefined。",
+    "sortByOrder（ST sortFn，order 已正規化成有限數字）的穩定排序結果：expected 是排序後的原索引。",
     cases.sortCases,
     runner.runSortCase,
   );

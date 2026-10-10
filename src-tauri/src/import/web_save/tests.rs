@@ -826,6 +826,13 @@ fn duplicate_entries_map_to_the_kept_uid() {
     .unwrap();
     assert!(sidecar["entry_uids"]["first"].is_u64());
     assert_eq!(sidecar["entry_uids"]["dup"], sidecar["entry_uids"]["first"]);
+    assert_eq!(
+        imported.worldbook_entries,
+        data::read_worldbook(root.path(), &imported.world_id)
+            .unwrap()
+            .len(),
+        "被去重的不重複算"
+    );
     // 重複的那條只落一份：下一輪角色線整份 messages 裡（最近訊息提到旅店而觸發）恰好一次
     let sent: String = character_turn(&root, &imported.world_id, &imported.character_id.unwrap())
         .iter()
