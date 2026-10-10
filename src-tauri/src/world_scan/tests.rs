@@ -9,13 +9,13 @@ use crate::world_info::scan::{check_world_info, GlobalScan, ScanInput};
 use crate::world_info::settings::ST_WI_SETTINGS;
 use serde_json::{json, Map, Value};
 
-const LANG: &str = "zh-TW";
+pub(super) const LANG: &str = "zh-TW";
 
 /// 暫存資料根（測試結束刪掉）。
-struct TempRoot(std::path::PathBuf);
+pub(super) struct TempRoot(std::path::PathBuf);
 
 impl TempRoot {
-    fn new(label: &str) -> Self {
+    pub(super) fn new(label: &str) -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
@@ -26,7 +26,7 @@ impl TempRoot {
         Self(path)
     }
 
-    fn path(&self) -> &std::path::Path {
+    pub(super) fn path(&self) -> &std::path::Path {
         &self.0
     }
 }
@@ -37,7 +37,7 @@ impl Drop for TempRoot {
     }
 }
 
-fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCard {
+pub(super) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCard {
     CharacterCard {
         id: id.to_owned(),
         name: name.to_owned(),
@@ -52,7 +52,7 @@ fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> CharacterCar
     }
 }
 
-fn event(kind: TranscriptKind, name: &str, text: &str) -> TranscriptEvent {
+pub(super) fn event(kind: TranscriptKind, name: &str, text: &str) -> TranscriptEvent {
     TranscriptEvent {
         id: None,
         message_vars: None,
@@ -75,7 +75,7 @@ fn event(kind: TranscriptKind, name: &str, text: &str) -> TranscriptEvent {
 }
 
 /// 一條原始條目（ST 物件形）：標題＝內文前綴，`fields` 蓋過預設。
-fn raw(
+pub(super) fn raw(
     uid: u64,
     title: &str,
     visibility: Visibility,
@@ -114,22 +114,38 @@ fn raw(
     (view, map)
 }
 
-fn run(
+pub(super) fn run(
     book: &TableBook,
     viewer: Viewer<'_>,
     cards: &[CharacterCard],
     events: &[TranscriptEvent],
 ) -> WorldScan {
+    transport::test_support::legacy::prepared_book(book, viewer, "", cards, None, events, LANG)
+}
+
+/// 帶預算的掃描＋代換（空變數、沒有玩家卡）。
+fn run_with_budget(
+    book: &TableBook,
+    viewer: Viewer<'_>,
+    sole_card: Option<&str>,
+    events: &[TranscriptEvent],
+    max: f64,
+) -> WorldScan {
+    let session = MacroSession::new(MacroInputs::empty(), &viewer, "", None, None, events, LANG);
     scan(ScanRequest {
         book,
         viewer,
-        sole_card: (cards.len() == 1).then(|| cards[0].name.as_str()),
+        sole_card,
         player: None,
         events,
         lang: LANG,
         timed: Default::default(),
-        budget: None,
+        budget: Some(Budget {
+            unit: crate::scene_budget::Unit::Bytes,
+            max,
+        }),
         random: Randomness::Measure,
+        session: &session,
     })
 }
 
@@ -384,7 +400,12 @@ fn shared_snapshot_is_static_and_identical_for_every_character() {
     let fox = card("fox", "狐狸", "狡猾的狐狸。", "");
     let cards = [knight.clone(), fox.clone()];
     let events = [event(TranscriptKind::Player, "阿濤", "走進酒館")];
-    let system = transport::chars_lane_system(&cards, None, &book.snapshot(), LANG);
+    let system = transport::chars_lane_system(
+        &cards,
+        None,
+        &run(&book, Viewer::Character(&knight), &cards, &events),
+        LANG,
+    );
     assert!(system.contains("## 你知道的世界情報\n### 王國\n王國內容\n"));
     assert!(system.contains("## 你知道的世界情報（續）\n### 王國後記\n王國後記內容\n"));
     for absent in [
@@ -401,11 +422,12 @@ fn shared_snapshot_is_static_and_identical_for_every_character() {
     for speaker in [&knight, &fox, &knight] {
         let scan = run(&book, Viewer::Character(speaker), &cards, &events);
         assert_eq!(
-            transport::chars_lane_system(&cards, None, &book.snapshot(), LANG),
+            transport::chars_lane_system(&cards, None, &scan, LANG),
             system
         );
         let turn = transport::chars_lane_turn(
             speaker,
+            &cards,
             None,
             &scan,
             &Default::default(),
@@ -454,20 +476,7 @@ fn snapshot_entries_survive_budget_overflow_but_stop_the_rest() {
     ]);
     let fox = card("fox", "狐狸", "", "");
     let events = [event(TranscriptKind::Player, "阿濤", "走進酒館")];
-    let scanned = scan(ScanRequest {
-        book: &book,
-        viewer: Viewer::Character(&fox),
-        sole_card: Some("狐狸"),
-        player: None,
-        events: &events,
-        lang: LANG,
-        timed: Default::default(),
-        budget: Some(Budget {
-            unit: crate::scene_budget::Unit::Bytes,
-            max: 40.0,
-        }),
-        random: Randomness::Measure,
-    });
+    let scanned = run_with_budget(&book, Viewer::Character(&fox), Some("狐狸"), &events, 40.0);
     let mut placed = uids(&scanned.placed);
     placed.sort();
     assert_eq!(placed, [1, 2], "靜態條目都留著，溢出後的關鍵字條目停掉");
@@ -476,20 +485,13 @@ fn snapshot_entries_survive_budget_overflow_but_stop_the_rest() {
 }
 
 fn run_budget(book: &TableBook, max: f64) -> Vec<u64> {
-    let scanned = scan(ScanRequest {
+    let scanned = run_with_budget(
         book,
-        viewer: Viewer::Gm,
-        sole_card: None,
-        player: None,
-        events: &[event(TranscriptKind::Player, "阿濤", "走進酒館")],
-        lang: LANG,
-        timed: Default::default(),
-        budget: Some(Budget {
-            unit: crate::scene_budget::Unit::Bytes,
-            max,
-        }),
-        random: Randomness::Measure,
-    });
+        Viewer::Gm,
+        None,
+        &[event(TranscriptKind::Player, "阿濤", "走進酒館")],
+        max,
+    );
     uids(&scanned.placed)
 }
 
@@ -557,6 +559,7 @@ fn confidential_triggers_go_to_the_confidential_block() {
         .any(|entry| entry.uid == 6 || entry.uid == 7));
     let turn = transport::chars_lane_turn(
         &fox,
+        std::slice::from_ref(&fox),
         None,
         &scanned,
         &Default::default(),
@@ -603,6 +606,7 @@ fn hoist_modes_place_the_worldbook() {
     let turn = |hoist| {
         transport::chars_lane_turn(
             &fox,
+            std::slice::from_ref(&fox),
             None,
             &scanned,
             &Default::default(),
@@ -736,7 +740,7 @@ fn mvu_settings_follow_the_viewer() {
 /// 實送的落地呼叫點：掃描前結算並讀表、交出去那刻寫成已送出、確定失敗撤回成落地前的表。
 #[test]
 fn landing_writes_on_send_and_undoes_on_failure() {
-    use crate::data::world_info_store::{read_scene, Perspective, Stage};
+    use crate::data::world_info_store::{read_scene, Perspective, Report, Stage};
     let root = TempRoot::new("world-scan-landing");
     let world = data::create_world(root.path(), "落地").unwrap();
     let gm = Perspective::Gm;
@@ -752,16 +756,20 @@ fn landing_writes_on_send_and_undoes_on_failure() {
             confidential: false,
         },
     );
-    landing::land(root.path(), &world, 0, "t1", &gm, &timed).unwrap();
+    let scanned = WorldScan {
+        timed,
+        ..WorldScan::default()
+    };
+    landing::land(root.path(), &world, 0, "t1", &gm, &scanned).unwrap();
     let stored = read_scene(root.path(), &world, 0).unwrap();
     assert_eq!(stored.pending.as_ref().unwrap().stage, Stage::Sent);
     assert!(stored.perspectives["gm"].sticky.contains_key("1"));
-    landing::fail(root.path(), &world, 0, "t1");
+    landing::fail(root.path(), &world, 0, "t1", Report::Notices);
     let stored = read_scene(root.path(), &world, 0).unwrap();
     assert!(stored.pending.is_none());
     assert!(stored.perspectives["gm"].sticky.is_empty());
     // 已送出、逐字稿沒有回合鍵：下一次掃描前的結算當失敗撤回
-    landing::land(root.path(), &world, 0, "t2", &gm, &timed).unwrap();
+    landing::land(root.path(), &world, 0, "t2", &gm, &scanned).unwrap();
     assert_eq!(
         landing::before_scan(root.path(), &world, 0, "t9", &gm).unwrap(),
         Default::default()

@@ -95,12 +95,71 @@ pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
     format!("http://{address}")
 }
 
-/// 測試用：舊簽名（直接吃精簡條目清單）的組裝入口。照實送同一支掃描（`world_scan::scan`）掃一次再組裝：
-/// 沒有上限、量測用亂數、空計時表。各測試檔以具名 import 蓋過 glob 匯入的新簽名。
+/// 測試用：登場事件的代換（只換 `{{user}}`／`{{char}}`，與巨集引擎在這些文字上的結果相同）。
+pub(crate) fn plain_fill(
+    user: &str,
+) -> impl Fn(&str, Option<&crate::data::CharacterCard>, bool) -> String + '_ {
+    move |text, card, _| {
+        super::messages::replace_st_macros(text, user, card.map(|card| card.name.as_str()))
+    }
+}
+
+/// 測試用：舊簽名（直接吃精簡條目清單）的組裝入口。照實送同一支掃描（`world_scan::scan`）掃一次、`prepare`
+/// 代換再組裝：沒有上限、量測用亂數、空計時表、空變數。各測試檔以具名 import 蓋過 glob 匯入的新簽名。
 pub(crate) mod legacy {
     use crate::data::{CharacterCard, Mechanism, TableState, TranscriptEvent, WorldbookEntry};
     use crate::transport::{self, ChatMessage, Hoist, LaneTurn, StateScope};
-    use crate::world_scan::{self, Placed, Randomness, ScanRequest, TableBook, Viewer, WorldScan};
+    use crate::world_scan::{
+        self, MacroInputs, MacroSession, Randomness, ScanRequest, TableBook, Viewer, WorldScan,
+    };
+
+    /// 掃描＋代換。`world_md` 只有 GM 視角用得到。
+    pub(crate) fn prepared(
+        worldbook: &[WorldbookEntry],
+        viewer: Viewer<'_>,
+        world_md: &str,
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        events: &[TranscriptEvent],
+        lang: &str,
+    ) -> WorldScan {
+        let book = TableBook::from_views(worldbook);
+        prepared_book(&book, viewer, world_md, cards, player, events, lang)
+    }
+
+    pub(crate) fn prepared_book(
+        book: &TableBook,
+        viewer: Viewer<'_>,
+        world_md: &str,
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        events: &[TranscriptEvent],
+        lang: &str,
+    ) -> WorldScan {
+        let session = MacroSession::new(
+            MacroInputs::empty(),
+            &viewer,
+            world_md,
+            book.world_card_name(),
+            player,
+            events,
+            lang,
+        );
+        let mut scan = world_scan::scan(ScanRequest {
+            book,
+            viewer,
+            sole_card: (cards.len() == 1).then(|| cards[0].name.as_str()),
+            player,
+            events,
+            lang,
+            timed: Default::default(),
+            budget: None,
+            random: Randomness::Measure,
+            session: &session,
+        });
+        world_scan::prepare(&mut scan, &session, book, &viewer, cards, player);
+        scan
+    }
 
     pub(crate) fn scan_of(
         worldbook: &[WorldbookEntry],
@@ -110,22 +169,38 @@ pub(crate) mod legacy {
         events: &[TranscriptEvent],
         lang: &str,
     ) -> WorldScan {
-        let book = TableBook::from_views(worldbook);
-        world_scan::scan(ScanRequest {
-            book: &book,
-            viewer,
-            sole_card: (cards.len() == 1).then(|| cards[0].name.as_str()),
-            player,
-            events,
-            lang,
-            timed: Default::default(),
-            budget: None,
-            random: Randomness::Measure,
-        })
+        prepared(worldbook, viewer, "", cards, player, events, lang)
     }
 
-    pub(crate) fn snapshot_of(worldbook: &[WorldbookEntry]) -> Vec<Placed> {
-        TableBook::from_views(worldbook).snapshot()
+    /// 角色共線 system 用的掃描：卡片文字與共用快照不看視角，借第一張卡（沒有卡時借一張空卡）。
+    pub(crate) fn system_scan(
+        worldbook: &[WorldbookEntry],
+        cards: &[CharacterCard],
+        player: Option<&CharacterCard>,
+        lang: &str,
+    ) -> WorldScan {
+        let blank = CharacterCard {
+            id: String::new(),
+            name: String::new(),
+            color: String::new(),
+            avatar: String::new(),
+            tier: crate::data::Tier::Fast,
+            show_image: true,
+            archived: false,
+            gen_prompt: String::new(),
+            public_md: String::new(),
+            private_md: String::new(),
+        };
+        let viewer = cards.first().unwrap_or(&blank);
+        prepared(
+            worldbook,
+            Viewer::Character(viewer),
+            "",
+            cards,
+            player,
+            &[],
+            lang,
+        )
     }
 
     pub(crate) fn gm_lane_system(
@@ -136,8 +211,8 @@ pub(crate) mod legacy {
         mechanism: &Mechanism,
         lang: &str,
     ) -> String {
-        let scan = scan_of(worldbook, Viewer::Gm, cards, player, &[], lang);
-        transport::gm_lane_system(world_md, cards, player, &scan, mechanism, lang)
+        let scan = prepared(worldbook, Viewer::Gm, world_md, cards, player, &[], lang);
+        transport::gm_lane_system(cards, player, &scan, mechanism, lang)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -161,7 +236,8 @@ pub(crate) mod legacy {
         worldbook: &[WorldbookEntry],
         lang: &str,
     ) -> String {
-        transport::chars_lane_system(cards, player, &snapshot_of(worldbook), lang)
+        let scan = system_scan(worldbook, cards, player, lang);
+        transport::chars_lane_system(cards, player, &scan, lang)
     }
 
     /// `hoist`：舊的 `hoist_private`，對應 API 單卡那種（私設與穩定的機密條目進 system）。
@@ -190,7 +266,9 @@ pub(crate) mod legacy {
             true => Hoist::StableConfidential,
             false => Hoist::None,
         };
-        transport::chars_lane_turn(card, player, &scan, state, mechanism, branch, lang, hoist)
+        transport::chars_lane_turn(
+            card, cards, player, &scan, state, mechanism, branch, lang, hoist,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -205,10 +283,8 @@ pub(crate) mod legacy {
         scope: &StateScope,
         lang: &str,
     ) -> Vec<ChatMessage> {
-        let scan = scan_of(worldbook, Viewer::Gm, cards, player, events, lang);
-        transport::assemble_gm_messages(
-            world_md, cards, player, events, &scan, state, mechanism, scope, lang,
-        )
+        let scan = prepared(worldbook, Viewer::Gm, world_md, cards, player, events, lang);
+        transport::assemble_gm_messages(cards, player, events, &scan, state, mechanism, scope, lang)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -232,16 +308,7 @@ pub(crate) mod legacy {
             lang,
         );
         transport::assemble_shared_messages(
-            card,
-            cards,
-            player,
-            events,
-            &scan,
-            &snapshot_of(worldbook),
-            state,
-            mechanism,
-            branch,
-            lang,
+            card, cards, player, events, &scan, state, mechanism, branch, lang,
         )
     }
 }

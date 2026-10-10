@@ -559,27 +559,25 @@ fn placement_book() -> crate::world_scan::TableBook {
 }
 
 fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], lang: &str) {
-    use crate::world_scan::{scan, Randomness, ScanRequest, Viewer};
+    use crate::world_scan::Viewer;
     let book = placement_book();
     let run = |viewer| {
-        scan(ScanRequest {
-            book: &book,
+        crate::transport::test_support::legacy::prepared_book(
+            &book,
             viewer,
-            sole_card: None,
-            player: Some(&f.player),
-            events: &f.events,
+            "",
+            &f.cards,
+            Some(&f.player),
+            &f.events,
             lang,
-            timed: Default::default(),
-            budget: None,
-            random: Randomness::Measure,
-        })
+        )
     };
     let gm = run(Viewer::Gm);
     let plain = Mechanism::default();
     dump(
         out,
         "worldbook gm_lane_system",
-        &transport::gm_lane_system("", &f.cards, Some(&f.player), &gm, &plain, lang),
+        &transport::gm_lane_system(&f.cards, Some(&f.player), &gm, &plain, lang),
     );
     let turn = transport::gm_lane_turn(
         &gm,
@@ -594,7 +592,12 @@ fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], 
     dump(
         out,
         "worldbook chars_lane_system",
-        &transport::chars_lane_system(&f.cards, Some(&f.player), &book.snapshot(), lang),
+        &transport::chars_lane_system(
+            &f.cards,
+            Some(&f.player),
+            &run(Viewer::Character(&f.cards[0])),
+            lang,
+        ),
     );
     let knight = run(Viewer::Character(&f.cards[0]));
     for hoist in [
@@ -604,6 +607,7 @@ fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], 
     ] {
         let turn = transport::chars_lane_turn(
             &f.cards[0],
+            &f.cards,
             Some(&f.player),
             &knight,
             &TableState::default(),

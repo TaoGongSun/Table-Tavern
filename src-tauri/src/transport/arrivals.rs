@@ -6,7 +6,12 @@ use crate::data::{
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use super::messages::{player_fallback_name, replace_st_macros};
+use super::messages::player_fallback_name;
+
+/// 登場事件的中性代換（桌面版特有機制，不在 ST 生成流程裡：回合提交時求值一次寫死、不執行副作用）。
+/// `card` 是那段文字所屬的角色卡（世界書人物條目是 `None`）；`gm_only`＝事件只給 GM 看（才讀得到私設與 GM outlet），
+/// 公開事件一律用公開環境代換。
+pub type NeutralFill<'a> = &'a dyn Fn(&str, Option<&CharacterCard>, bool) -> String;
 
 /// present 欄斷詞／在場名字比對現在是 `data::split_present_names`／`data::name_matches`
 /// （包 4b 拉出去給角色卡換幕結算共用，data 層不能反過來依賴 transport）；
@@ -37,14 +42,18 @@ pub fn detect_new_arrivals<'a>(
         .collect()
 }
 
-/// 人物登場事件：代碼帶 title（比對回抽用），本文是條目全文（`{{user}}` 已代換——事件一旦
+/// 人物登場事件：代碼帶 title（比對回抽用），本文是條目全文（巨集已中性代換——事件一旦
 /// 落進 transcript 就不會再過巨集代換一次）。
-pub fn person_arrival(entry: &WorldbookEntry, user_name: &str) -> (EventMarker, String) {
+pub fn person_arrival(entry: &WorldbookEntry, fill: NeutralFill<'_>) -> (EventMarker, String) {
     (
         EventMarker::PersonArrival {
             title: entry.title.clone(),
         },
-        replace_st_macros(&entry.content, user_name, None),
+        fill(
+            &entry.content,
+            None,
+            !matches!(entry.visibility, data::Visibility::Public),
+        ),
     )
 }
 
@@ -76,14 +85,14 @@ pub fn detect_new_card_arrivals<'a>(
         .collect()
 }
 
-/// 角色卡回歸事件：本文是公開設定（`{{user}}`／`{{char}}` 已代換，空白就留空）。所有線都看得到，
+/// 角色卡回歸事件：本文是公開設定（巨集已中性代換，空白就留空）。所有線都看得到，
 /// 呼叫端標 gm_only=false；私設另由 `card_private` 成一則 GM 專屬事件。
-pub fn card_arrival(card: &CharacterCard, user_name: &str) -> (EventMarker, String) {
+pub fn card_arrival(card: &CharacterCard, fill: NeutralFill<'_>) -> (EventMarker, String) {
     let public = card.public_md.trim();
     let text = if public.is_empty() {
         String::new()
     } else {
-        replace_st_macros(public, user_name, Some(&card.name))
+        fill(public, Some(card), false)
     };
     (
         EventMarker::CardArrival {
@@ -94,14 +103,14 @@ pub fn card_arrival(card: &CharacterCard, user_name: &str) -> (EventMarker, Stri
 }
 
 /// 角色卡回歸時的私設事件；私設空白回 `None`（不產事件）。呼叫端標 gm_only=true。
-pub fn card_private(card: &CharacterCard, user_name: &str) -> Option<(EventMarker, String)> {
+pub fn card_private(card: &CharacterCard, fill: NeutralFill<'_>) -> Option<(EventMarker, String)> {
     let private = card.private_md.trim();
     (!private.is_empty()).then(|| {
         (
             EventMarker::CardPrivate {
                 name: card.name.clone(),
             },
-            replace_st_macros(private, user_name, Some(&card.name)),
+            fill(private, Some(card), true),
         )
     })
 }
@@ -258,7 +267,10 @@ mod tests {
         };
         let entries = [alice];
 
-        let (marker, text) = person_arrival(&entries[0], "阿濤");
+        let (marker, text) = person_arrival(
+            &entries[0],
+            &crate::transport::test_support::plain_fill("阿濤"),
+        );
         let this_scene_events = [marked(marker, &text, false)];
         let already_this_scene = data::appeared_person_titles(&this_scene_events);
         assert_eq!(already_this_scene, BTreeSet::from(["愛麗絲".to_owned()]));
@@ -319,7 +331,8 @@ mod tests {
             content: "{{user}} 認識她。".to_owned(),
             ..worldbook_entry(1, "愛麗絲", &[], true, 0, false, Visibility::Public)
         };
-        let (marker, text) = person_arrival(&alice, "阿濤");
+        let (marker, text) =
+            person_arrival(&alice, &crate::transport::test_support::plain_fill("阿濤"));
         assert_eq!(
             marker,
             EventMarker::PersonArrival {
@@ -390,13 +403,15 @@ mod tests {
             "{{user}} 認識牠。",
             "{{user}} 不知道牠其實是妖狐。",
         );
-        let (marker, text) = card_arrival(&fox, "阿濤");
+        let (marker, text) =
+            card_arrival(&fox, &crate::transport::test_support::plain_fill("阿濤"));
         assert_eq!(text, "阿濤 認識牠。");
         assert_eq!(
             prompt_text(&marked(marker, &text, false), "zh-TW", Side::Gm).as_deref(),
             Some("（角色回歸）〈狐狸〉\n公開設定：\n阿濤 認識牠。")
         );
-        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let (marker, text) =
+            card_private(&fox, &crate::transport::test_support::plain_fill("阿濤")).unwrap();
         let private = marked(marker, &text, true);
         assert_eq!(
             prompt_text(&private, "zh-CN", Side::Gm).as_deref(),
@@ -408,8 +423,17 @@ mod tests {
         );
 
         let no_private = card("fox-id", "狐狸", "  \n", "  \n");
-        assert_eq!(card_private(&no_private, "阿濤"), None);
-        let (marker, text) = card_arrival(&no_private, "阿濤");
+        assert_eq!(
+            card_private(
+                &no_private,
+                &crate::transport::test_support::plain_fill("阿濤")
+            ),
+            None
+        );
+        let (marker, text) = card_arrival(
+            &no_private,
+            &crate::transport::test_support::plain_fill("阿濤"),
+        );
         assert_eq!(text, "");
         assert_eq!(
             prompt_text(&marked(marker, &text, false), "ru", Side::Character).as_deref(),
@@ -422,9 +446,11 @@ mod tests {
     #[test]
     fn character_side_hides_card_private_and_gm_only_bodies() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
-        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let (marker, text) =
+            card_private(&fox, &crate::transport::test_support::plain_fill("阿濤")).unwrap();
         let private = marked(marker, &text, true);
-        let (marker, text) = card_arrival(&fox, "阿濤");
+        let (marker, text) =
+            card_arrival(&fox, &crate::transport::test_support::plain_fill("阿濤"));
         let public = marked(marker, &text, false);
         let person = marked(
             EventMarker::PersonArrival {
@@ -557,10 +583,12 @@ mod tests {
     #[test]
     fn card_private_event_is_not_counted_as_arrival() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "其實是妖狐。");
-        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let (marker, text) =
+            card_private(&fox, &crate::transport::test_support::plain_fill("阿濤")).unwrap();
         let private = marked(marker, &text, true);
         assert!(data::appeared_card_names(std::slice::from_ref(&private)).is_empty());
-        let (marker, text) = card_arrival(&fox, "阿濤");
+        let (marker, text) =
+            card_arrival(&fox, &crate::transport::test_support::plain_fill("阿濤"));
         let public = marked(marker, &text, false);
         assert_eq!(
             data::appeared_card_names(&[private, public]),

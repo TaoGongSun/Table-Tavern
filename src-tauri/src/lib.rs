@@ -202,6 +202,8 @@ pub fn run() {
             commands::scene::scene_budget,
             commands::scene::revert_scene,
             commands::scene::reset_world_info_timing,
+            commands::scene::world_info_notices,
+            commands::scene::ack_world_info_notice,
             commands::scene::fork_scene,
             commands::scene::regenerate_scene_summary,
             commands::genesis::generate_table_outline,
@@ -291,6 +293,7 @@ mod command_classification {
         "reorder_characters",
         "reorder_worldbook_entries",
         "reset_world_info_timing",
+        "ack_world_info_notice",
         "restore_world_backup",
         "revert_scene",
         "save_character_avatar",
@@ -310,6 +313,7 @@ mod command_classification {
     ];
 
     const READ_WORLD: &[&str] = &[
+        "world_info_notices",
         "branch_bindings",
         "card_interfaces",
         "card_layers",

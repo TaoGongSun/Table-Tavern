@@ -2,8 +2,8 @@ use crate::data::{CharacterCard, Mechanism, TableState, TranscriptEvent, Transcr
 use crate::world_scan::{Placed, WorldScan};
 
 use super::messages::{
-    language_rule, message, narration_line, player_fallback_name, push_merged, replace_st_macros,
-    scaffold_en, speaker_prefix, system_line, ChatMessage,
+    language_rule, message, narration_line, player_fallback_name, push_merged, scaffold_en,
+    speaker_prefix, system_line, ChatMessage,
 };
 
 use super::arrivals::{prompt_speaker, prompt_text, Side};
@@ -78,16 +78,14 @@ fn known_world_back_heading(lang: &str) -> &'static str {
 /// （`TableBook::snapshot`：啟用、constant、`Public`、穩定、位置前／後／範例上下，不看任何一位角色的掃描）。
 /// 全角色共用一條 session，這一輪演誰由回合尾段指定；私設與限定條目不進快照
 /// （E7：凍結 system 動一字整條快取全滅，快照只能放全員共通且穩定的素材）。
+/// 公開設定含動態巨集的卡（`CardTexts::dynamic`）只留名字，設定本文改在回合尾（`dynamic_profiles`）。
 /// constant 人物條目改走名冊行，不進全文（包 4a）。
 pub fn chars_lane_system(
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
-    snapshot: &[Placed],
+    scan: &WorldScan,
     lang: &str,
 ) -> String {
-    let user_name = player
-        .map(|player| player.name.as_str())
-        .unwrap_or_else(|| player_fallback_name(lang));
     let en = scaffold_en(lang);
     let intro = match en {
         true => {
@@ -116,39 +114,43 @@ pub fn chars_lane_system(
             false => "\n## 登場角色（公開設定）\n",
         });
         for card in cards {
+            let texts = scan.texts.card(card);
             system.push_str(&format!("### {}\n", card.name));
-            if !card.public_md.trim().is_empty() {
-                system.push_str(&format!(
-                    "{}\n",
-                    replace_st_macros(card.public_md.trim(), user_name, Some(&card.name))
-                ));
+            if !texts.dynamic && !texts.public.trim().is_empty() {
+                system.push_str(&format!("{}\n", texts.public.trim()));
             }
         }
     }
     if let Some(player) = player {
         system.push_str(&player_heading(&player.name, lang));
-        if !player.public_md.trim().is_empty() {
-            system.push_str(&format!(
-                "\n{}\n",
-                replace_st_macros(player.public_md.trim(), user_name, Some(&player.name))
-            ));
+        let texts = &scan.texts.player;
+        if !texts.dynamic && !texts.public.trim().is_empty() {
+            system.push_str(&format!("\n{}\n", texts.public.trim()));
         }
     }
-    system.push_str(&snapshot_worldbook(snapshot, user_name, lang));
+    system.push_str(&snapshot_worldbook(scan, lang));
     system
 }
 
 /// 共用快照的世界書段落（`chars_lane_system` 尾端那幾段，含開頭換行）；沒有內容回空字串。
 /// 不抹尾段的線拿它和 hoist 的世界書一起算指紋：快照條目改了或刪了也要重開。
-fn snapshot_worldbook(snapshot: &[Placed], user_name: &str, lang: &str) -> String {
-    let front: Vec<&Placed> = snapshot.iter().filter(|entry| entry.in_front()).collect();
-    let back: Vec<&Placed> = snapshot.iter().filter(|entry| entry.in_back()).collect();
+fn snapshot_worldbook(scan: &WorldScan, lang: &str) -> String {
+    let front: Vec<&Placed> = scan
+        .snapshot_entries
+        .iter()
+        .filter(|entry| entry.in_front())
+        .collect();
+    let back: Vec<&Placed> = scan
+        .snapshot_entries
+        .iter()
+        .filter(|entry| entry.in_back())
+        .collect();
     let mut text = String::new();
     for (heading, entries) in [
         (known_world_heading(lang), front),
         (known_world_back_heading(lang), back),
     ] {
-        let body = section_body(&entries, user_name, None, lang);
+        let body = section_body(&entries, lang);
         if !body.is_empty() {
             text.push('\n');
             text.push_str(heading);
@@ -158,24 +160,51 @@ fn snapshot_worldbook(snapshot: &[Placed], user_name: &str, lang: &str) -> Strin
     text
 }
 
-/// 凍結 system 裡世界書的全部內容（共用快照段＋提進來的本輪世界書）：不抹尾段的線以它為重開依據。
-pub fn system_worldbook(
-    snapshot: &[Placed],
-    player: Option<&CharacterCard>,
-    hoisted: Option<&str>,
-    lang: &str,
-) -> String {
-    let user_name = player
-        .map(|player| player.name.as_str())
-        .unwrap_or_else(|| player_fallback_name(lang));
-    let mut text = snapshot_worldbook(snapshot, user_name, lang);
+/// 凍結 system 裡會變的全部內容（共用快照段＋提進來的本輪世界書與動態公開設定）：不抹尾段的線以它為重開依據。
+pub fn system_worldbook(scan: &WorldScan, hoisted: Option<&str>, lang: &str) -> String {
+    let mut text = snapshot_worldbook(scan, lang);
     text.push_str(hoisted.unwrap_or_default());
     text
 }
 
+/// 公開設定含動態巨集的卡（與玩家卡）：本輪以這個角色的視角代換好的公開設定（三之 3）。標題仍是公開設定，
+/// 放在回合後會抹掉的段落（共線回合後不抹的公開段會每輪疊一份）；沒有回空字串。
+fn dynamic_profiles(
+    cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
+    scan: &WorldScan,
+    lang: &str,
+) -> String {
+    let mut body = String::new();
+    for card in cards {
+        let texts = scan.texts.card(card);
+        if texts.dynamic && !texts.public.trim().is_empty() {
+            body.push_str(&format!("### {}\n{}\n", card.name, texts.public.trim()));
+        }
+    }
+    if let Some(player) = player {
+        let texts = &scan.texts.player;
+        if texts.dynamic && !texts.public.trim().is_empty() {
+            body.push_str(&format!(
+                "{}\n{}\n",
+                player_heading(&player.name, lang).trim_start_matches('\n'),
+                texts.public.trim()
+            ));
+        }
+    }
+    if body.is_empty() {
+        return body;
+    }
+    let heading = match scaffold_en(lang) {
+        true => "## Characters (public profiles, this turn)\n",
+        false => "## 登場角色（公開設定，本輪）\n",
+    };
+    format!("{heading}{body}")
+}
+
 /// 「只有某角色知道的世界情報」段：限定可見與私密觸發的條目；沒有內容回空字串。
-fn limited_block(entries: &[&Placed], card: &CharacterCard, user_name: &str, lang: &str) -> String {
-    let body = section_body(entries, user_name, Some(&card.name), lang);
+fn limited_block(entries: &[&Placed], card: &CharacterCard, lang: &str) -> String {
+    let body = section_body(entries, lang);
     if body.is_empty() {
         return body;
     }
@@ -187,20 +216,21 @@ fn limited_block(entries: &[&Placed], card: &CharacterCard, user_name: &str, lan
 }
 
 /// chars 線「你知道的世界情報」段（本輪公開觸發的 `Public` 條目，共用快照已有的不重複）；沒有內容回空字串。
-fn public_block(entries: &[&Placed], card: &CharacterCard, user_name: &str, lang: &str) -> String {
-    let body = section_body(entries, user_name, Some(&card.name), lang);
+fn public_block(entries: &[&Placed], lang: &str) -> String {
+    let body = section_body(entries, lang);
     if body.is_empty() {
         return body;
     }
     format!("{}{body}", known_world_heading(lang))
 }
 
-/// chars 線回合尾段：本輪公開觸發的 `Public` 條目＋機密段（本輪角色的私設＋限定可見與私密觸發的條目）＋本輪指定。
-/// 機密段回合結束後從 session 檔抹掉；共用快照的靜態條目已在凍結 system，不重複。
-/// `hoist` 決定私設與世界書要不要改提進 system（見 `Hoist`）。
+/// chars 線回合尾段：本輪公開觸發的 `Public` 條目＋機密段（動態公開設定＋本輪角色的私設＋限定可見與私密觸發的
+/// 條目）＋本輪指定。機密段回合結束後從 session 檔抹掉；共用快照的靜態條目已在凍結 system，不重複。
+/// `hoist` 決定私設與世界書要不要改提進 system（見 `Hoist`）。`cards` 是凍結 system 列的那份卡清單。
 #[allow(clippy::too_many_arguments)]
 pub fn chars_lane_turn(
     card: &CharacterCard,
+    cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     scan: &WorldScan,
     state: &TableState,
@@ -217,13 +247,18 @@ pub fn chars_lane_turn(
         .iter()
         .filter(|entry| !scan.snapshot.contains(&entry.uid))
         .partition(|entry| entry.confidential());
-    let public = public_block(&public_entries, card, user_name, lang);
+    let public = public_block(&public_entries, lang);
+    let profiles = dynamic_profiles(cards, player, scan, lang);
+    let own = scan.texts.card(card);
 
     let mut tail = String::new();
     let mut confidential = String::new();
     let mut hoisted = String::new();
     let mut hoisted_worldbook = None;
-    if !card.private_md.trim().is_empty() {
+    if !profiles.is_empty() && hoist != Hoist::All {
+        confidential.push_str(&profiles);
+    }
+    if !own.private.trim().is_empty() {
         let heading = match scaffold_en(lang) {
             true => format!(
                 "## {}'s private profile (only they know this; do not reveal it unless the story gets there)",
@@ -234,10 +269,7 @@ pub fn chars_lane_turn(
                 card.name
             ),
         };
-        let block = format!(
-            "{heading}\n{}\n",
-            replace_st_macros(card.private_md.trim(), user_name, Some(&card.name))
-        );
+        let block = format!("{heading}\n{}\n", own.private.trim());
         match hoist {
             Hoist::None => confidential.push_str(&block),
             Hoist::StableConfidential | Hoist::All => hoisted.push_str(&block),
@@ -249,7 +281,7 @@ pub fn chars_lane_turn(
                 tail.push_str(&public);
                 tail.push('\n');
             }
-            confidential.push_str(&limited_block(&confidential_entries, card, user_name, lang));
+            confidential.push_str(&limited_block(&confidential_entries, card, lang));
         }
         Hoist::StableConfidential => {
             if !public.is_empty() {
@@ -260,16 +292,18 @@ pub fn chars_lane_turn(
             let (stable, rest): (Vec<&Placed>, Vec<&Placed>) = confidential_entries
                 .into_iter()
                 .partition(|entry| entry.stable && (entry.in_front() || entry.in_back()));
-            hoisted.push_str(&limited_block(&stable, card, user_name, lang));
-            confidential.push_str(&limited_block(&rest, card, user_name, lang));
+            hoisted.push_str(&limited_block(&stable, card, lang));
+            confidential.push_str(&limited_block(&rest, card, lang));
         }
         Hoist::All => {
-            let mut worldbook = public;
-            let limited = limited_block(&confidential_entries, card, user_name, lang);
-            if !worldbook.is_empty() && !limited.is_empty() {
-                worldbook.push('\n');
+            // 動態公開設定與本輪世界書一起進 system、一起算重開指紋
+            let mut worldbook = profiles;
+            for block in [public, limited_block(&confidential_entries, card, lang)] {
+                if !worldbook.is_empty() && !block.is_empty() {
+                    worldbook.push('\n');
+                }
+                worldbook.push_str(&block);
             }
-            worldbook.push_str(&limited);
             hoisted.push_str(&worldbook);
             hoisted_worldbook = Some(worldbook);
         }
@@ -312,24 +346,19 @@ pub fn chars_lane_turn(
 /// gm 線凍結 system（快照）：GM 指示＋world.md＋穩定觸發的世界書（前組、後組）＋全卡（含私設）＋玩家卡。
 /// GM 看得到一切，不分可見度；不穩定的觸發條目在回合尾段（`gm_lane_turn`）。
 pub fn gm_lane_system(
-    world_md: &str,
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     scan: &WorldScan,
     mechanism: &Mechanism,
     lang: &str,
 ) -> String {
-    let user_name = player
-        .map(|player| player.name.as_str())
-        .unwrap_or_else(|| player_fallback_name(lang));
     let split = gm_worldbook(scan);
     gm_system_prompt(
-        world_md,
+        &scan.texts,
         cards,
         player,
         &split.system_front,
         &split.system_back,
-        user_name,
         mechanism,
         lang,
     )
@@ -349,7 +378,7 @@ pub fn gm_lane_turn(
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let worldbook = section_body(&gm_worldbook(scan).tail, user_name, None, lang);
+    let worldbook = section_body(&gm_worldbook(scan).tail, lang);
     let dynamic = gm_dynamic_block(&worldbook, state, user_name, mechanism, scope, lang);
     let mut tail = String::new();
     if !dynamic.is_empty() {
@@ -869,10 +898,12 @@ mod tests {
     #[test]
     fn character_side_keyword_and_summary_ignore_card_private() {
         let fox = card("fox-id", "狐狸", "尾巴很大。", "身上藏著龍鱗。");
-        let (marker, text) = card_private(&fox, "阿濤").unwrap();
+        let (marker, text) =
+            card_private(&fox, &crate::transport::test_support::plain_fill("阿濤")).unwrap();
         let private = marked(marker, &text, true);
         let knight = card("knight-id", "騎士", "王國騎士", "");
-        let (marker, text) = card_arrival(&knight, "阿濤");
+        let (marker, text) =
+            card_arrival(&knight, &crate::transport::test_support::plain_fill("阿濤"));
         let arrival = marked(marker, &text, false);
         let entries = [worldbook_entry(
             1,

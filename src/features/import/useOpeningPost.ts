@@ -20,7 +20,7 @@ export function useOpeningPost({
 }) {
   const { run, busy, waiting } = useTurnWait(chat.isBusy, worldId);
 
-  async function post(text: string, index: number) {
+  async function post(text: string, index: number, translated = false) {
     // 面板是舊桌跳出來的（人已換桌）就只收掉，不貼到現在這張桌
     if (imports.openingsWorldId !== worldId) {
       imports.closeOpenings();
@@ -29,7 +29,7 @@ export function useOpeningPost({
     const panel = imports.openingsPanelId();
     await run(async ({ live, backend }) => {
       const posted = await backend(() =>
-        chat.postOpening(text, index, imports.openingsSource, live),
+        chat.postOpening(text, index, imports.openingsSource, live, translated),
       );
       if (posted && live() && imports.openingsPanelId() === panel) imports.closeOpenings();
     });

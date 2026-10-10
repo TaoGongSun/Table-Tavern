@@ -1,20 +1,34 @@
 //! 世界書掃描接線（worldbook-st-trigger-parity 包 5a，方案三之 2、三之 3）：一次生成＝一個視角掃一次。
 //! 條目池依可見度過濾、訊息與全域欄位照視角組好，交給 `world_info::scan::check_world_info`；
 //! 結果（`WorldScan`）由組裝、導演指示點名格式條目、落地三者共用，不再重擲。
-//! 巨集在包 5b 換成新引擎；這裡的代換先沿用舊的 `{{user}}`／`{{char}}`。
+//! 巨集走 `st_macros`（`macros::MacroSession`）：掃描時代換鍵與內文，掃完由 `prepare` 代換組裝要用的文字，
+//! 組裝本身不再代換（方案三之 7）。
 
 mod book;
+#[cfg(test)]
+mod integration_parity_tests;
 pub mod landing;
+#[cfg(test)]
+mod macro_tests;
+pub mod macros;
+pub mod opening;
+#[cfg(test)]
+mod opening_tests;
 mod placement;
+mod prepare;
 #[cfg(test)]
 mod tests;
 
 pub use book::TableBook;
+pub use macros::{MacroInputs, MacroSession};
 pub use placement::{arrange, Placed};
+pub use prepare::{prepare, PromptTexts};
 
 use crate::data::world_info_store::counts_toward_timing;
 use crate::data::{CharacterCard, TranscriptEvent, TranscriptKind};
 use crate::scene_budget::{measure_units, Unit};
+use crate::st_macros::engine::SourceText;
+use crate::st_macros::variables::VarOp;
 use crate::transport::{self, Side};
 use crate::world_info::js_semantics::js_trim;
 use crate::world_info::scan::{
@@ -22,7 +36,7 @@ use crate::world_info::scan::{
 };
 use crate::world_info::sort::sort_entries;
 use crate::world_info::timed::WiTimed;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// 掃描的視角：GM 看得到全部條目；角色只看得到 `Public` 與名單含自己的限定條目（P1、三之 2）。
 #[derive(Clone, Copy)]
@@ -72,32 +86,40 @@ pub struct ScanRequest<'a> {
     pub timed: WiTimed,
     pub budget: Option<Budget>,
     pub random: Randomness,
+    /// 這一輪的巨集環境（同一個視角）
+    pub session: &'a MacroSession,
 }
 
-/// 一個視角這一輪的掃描結果。
+/// 一個視角這一輪的掃描結果，加上 `prepare` 代換好的組裝文字。
 #[derive(Debug, Clone, Default)]
 pub struct WorldScan {
-    /// 觸發的條目，依 ST 放置前的排序（`compare_order` 穩定排序）
+    /// 觸發的條目，依 ST 放置前的排序（`compare_order` 穩定排序）；`prepare` 之後標題與內文都已代換
     pub placed: Vec<Placed>,
     /// 掃完之後的計時表（實送時落地）
     pub timed: WiTimed,
     /// 角色視角：共用快照的靜態條目（已在凍結 system，回合尾段不重複）；GM 視角是空的
     pub snapshot: BTreeSet<u64>,
+    /// 角色視角：共用快照的條目（`prepare` 以中性脈絡代換）
+    pub snapshot_entries: Vec<Placed>,
+    /// 本輪 outlet（名稱 → 內容；組成裡有機密條目就是私密）：實送落地後成為下一輪的「上一輪 outlet」
+    pub outlets: BTreeMap<String, SourceText>,
+    /// 掃完之後的代換真的代入過的 outlet（格式條目判定用）
+    pub outlets_used: BTreeSet<String>,
+    /// 組裝要用的已代換文字
+    pub texts: PromptTexts,
+    /// 這一輪完整求值寫下的變數操作序列（實送落地時重放）
+    pub var_ops: Vec<VarOp>,
 }
 
-struct Hooks {
-    user: String,
-    char_name: Option<String>,
+struct Hooks<'a> {
+    session: &'a MacroSession,
     unit: Option<Unit>,
     random: Randomness,
 }
 
-impl ScanHooks for Hooks {
+impl ScanHooks for Hooks<'_> {
     fn substitute(&mut self, text: &str) -> Substituted {
-        Substituted {
-            text: transport::replace_st_macros(text, &self.user, self.char_name.as_deref()),
-            private: false,
-        }
+        self.session.own(text)
     }
 
     fn count_tokens(&mut self, text: &str) -> f64 {
@@ -162,21 +184,36 @@ fn joined(parts: &[&str]) -> String {
 
 /// 全域掃描欄位（P7）：角色視角的描述、個性、角色深度提示比對該卡 `public_md`＋`private_md`（公開部分只有
 /// `public_md`），人設比對玩家卡 `public_md`；GM 視角角色欄給空；劇本與作者備註沒有對應欄位。
-fn global_scan(request: &ScanRequest<'_>, user: &str, char_name: Option<&str>) -> GlobalScan {
-    let fill = |text: &str| transport::replace_st_macros(text, user, char_name);
-    let persona = request
-        .player
-        .map(|player| fill(player.public_md.trim()))
-        .unwrap_or_default();
+/// 文字是擁有者第一輪代換的結果（ST 先 `getCharacterCardFields` 再掃），同一份文字不重複執行副作用。
+/// 代換讀到私密來源（私密的上一輪 outlet、私設）的那段不算公開部分：只靠它觸發的條目照私密觸發分流。
+fn global_scan(request: &ScanRequest<'_>) -> GlobalScan {
+    let session = request.session;
+    let field = |full: String, public: &str, private: bool| ScanField {
+        public: match private {
+            true => String::new(),
+            false => public.to_owned(),
+        },
+        full,
+    };
+    let persona = match request.player {
+        Some(player) => {
+            let card = macros::card_text(player, false, session.persona());
+            let persona = session.neutral(player.public_md.trim(), &card);
+            field(persona.text.clone(), &persona.text, persona.private)
+        }
+        None => ScanField::default(),
+    };
+    let base = session.own_base();
     let character = match request.viewer {
         Viewer::Gm => ScanField::default(),
-        Viewer::Character(card) => ScanField {
-            full: fill(&joined(&[&card.public_md, &card.private_md])),
-            public: fill(card.public_md.trim()),
-        },
+        Viewer::Character(_) => field(
+            joined(&[&base.public.text, &base.private.text]),
+            base.public.text.trim(),
+            base.public.private,
+        ),
     };
     GlobalScan {
-        persona_description: ScanField::public(persona),
+        persona_description: persona,
         character_description: character.clone(),
         character_personality: character.clone(),
         character_depth_prompt: character,
@@ -187,16 +224,8 @@ fn global_scan(request: &ScanRequest<'_>, user: &str, char_name: Option<&str>) -
 
 /// 掃一個視角。
 pub fn scan(request: ScanRequest<'_>) -> WorldScan {
-    let user = request
-        .player
-        .map(|player| player.name.trim())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| transport::player_fallback_name(request.lang))
-        .to_owned();
-    let char_name = match request.viewer {
-        Viewer::Gm => None,
-        Viewer::Character(card) => Some(card.name.clone()),
-    };
+    // ST 先代換卡欄位（含副作用）才掃：擁有文字的第一輪代換排在最前面
+    request.session.own_base();
     let settings = request.book.settings(&request.viewer);
     let mut pool = request.book.pool(&request.viewer);
     sort_entries(&mut pool);
@@ -206,10 +235,9 @@ pub fn scan(request: ScanRequest<'_>) -> WorldScan {
     };
     let pinned: BTreeSet<String> = snapshot.iter().map(u64::to_string).collect();
     let chat = scan_messages(&request, settings.include_names);
-    let global = global_scan(&request, &user, char_name.as_deref());
+    let global = global_scan(&request);
     let mut hooks = Hooks {
-        user,
-        char_name,
+        session: request.session,
         unit: request.budget.map(|budget| budget.unit),
         random: request.random,
     };
@@ -227,7 +255,7 @@ pub fn scan(request: ScanRequest<'_>) -> WorldScan {
         },
         &mut hooks,
     );
-    let placed = result
+    let placed: Vec<Placed> = result
         .placed
         .iter()
         .filter_map(|(id, content)| {
@@ -241,10 +269,30 @@ pub fn scan(request: ScanRequest<'_>) -> WorldScan {
             ))
         })
         .collect();
+    let outlets = result
+        .outlets
+        .iter()
+        .map(|(name, contents)| {
+            let private = placed.iter().any(|entry: &Placed| {
+                entry.outlet_name == *name
+                    && entry.position == crate::world_info::entry::position::OUTLET
+                    && entry.confidential()
+            });
+            (
+                name.clone(),
+                SourceText {
+                    text: contents.join("\n"),
+                    private,
+                },
+            )
+        })
+        .collect();
     WorldScan {
         placed,
         timed: result.timed,
         snapshot,
+        outlets,
+        ..WorldScan::default()
     }
 }
 

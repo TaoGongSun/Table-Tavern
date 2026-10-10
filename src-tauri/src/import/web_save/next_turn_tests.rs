@@ -36,7 +36,7 @@ fn next_character_turn_matches_the_web_version() {
     data::append_transcript(root.path(), &w, 0, &user).unwrap();
     let events = data::read_transcript(root.path(), &w, 0).unwrap();
     let card = data::read_character(root.path(), &w, &char_id).unwrap();
-    let (scan, _) = crate::chat_assembly::test_character_scan(
+    let scan = crate::chat_assembly::test_character_scan(
         root.path(),
         &w,
         &card,

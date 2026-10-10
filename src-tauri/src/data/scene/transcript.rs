@@ -350,6 +350,21 @@ pub fn append_opening(
     block: &crate::transport::StateBlock,
     user_name: &str,
 ) -> DataResult<(TranscriptEvent, Outcome)> {
+    append_opening_keyed(root, world_id, scene, ts, raw, block, user_name, None)
+}
+
+/// `append_opening`，事件帶回合鍵（帶變數副作用的開場白：世界書落地日誌靠它認出開場白已落檔）。
+#[allow(clippy::too_many_arguments)]
+pub fn append_opening_keyed(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    ts: &str,
+    raw: &str,
+    block: &crate::transport::StateBlock,
+    user_name: &str,
+    turn_key: Option<message_vars::TurnKey>,
+) -> DataResult<(TranscriptEvent, Outcome)> {
     with_commit(root, world_id, |tx| {
         // 先交接：上一回合沒落成的回覆（含新表）先落，開場表才以它為底，不會被舊來源算出的表蓋回
         message_vars::settle_before_append(tx, None)?;
@@ -390,7 +405,7 @@ pub fn append_opening(
             },
             message_vars: table.as_ref().map(message_vars::VarsTable::from_json),
             vars_rev: None,
-            turn_key: None,
+            turn_key,
             action_id: None,
         };
         let (_, event) = append_transcript_tx(tx, scene, &event)?;

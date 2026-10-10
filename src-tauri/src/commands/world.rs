@@ -165,7 +165,7 @@ pub(crate) struct WorldbookImportResult {
     image_dropped: bool,
 }
 
-/// 選項要先換成當桌實名，前端貼入逐字稿時才不會留下卡片巨集。
+/// 選項以中性求值換好巨集給玩家挑（不寫變數）；貼出時後端從原檔重新完整求值（`post_opening`）。
 #[tauri::command]
 pub(crate) fn card_openings(
     app: tauri::AppHandle,
@@ -177,17 +177,19 @@ pub(crate) fn card_openings(
         return Ok(Vec::new());
     };
     let root = data_root(&app)?;
-    let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
+    let config = data::read_config(&crate::config_root(&app)?).unwrap_or_default();
+    let path = crate::scene_budget::path_limits(
+        &crate::config_root(&app)?,
+        &root,
+        &config,
+        transport::gm_tier(&config),
+    );
+    let macros = crate::world_scan::opening::OpeningMacros::load(
+        &root, &world_id, &name, &path, &lang, false,
+    );
     Ok(openings
         .iter()
-        .map(|opening| {
-            transport::resolve_display_macros(
-                opening,
-                player.as_ref().map(|card| card.name.as_str()),
-                &name,
-                &lang,
-            )
-        })
+        .map(|opening| macros.display(opening))
         .collect())
 }
 

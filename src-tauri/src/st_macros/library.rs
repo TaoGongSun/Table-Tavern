@@ -538,6 +538,9 @@ fn definitions() -> Vec<MacroDef> {
             let name = c.arg(0).unwrap_or("");
             match c.env.outlets.get(name).filter(|_| !name.is_empty()) {
                 Some(outlet) => {
+                    if let Some(reads) = c.env.outlet_reads {
+                        reads.borrow_mut().insert(name.to_owned());
+                    }
                     c.env.mark_private(outlet.private);
                     text(outlet.text.clone())
                 }

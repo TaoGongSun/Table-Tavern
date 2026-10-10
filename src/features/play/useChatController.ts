@@ -17,6 +17,8 @@ import { AppConfig, PlayerAppend, TranscriptEvent } from "../../shared/contracts
 import { CharacterMeta } from "../characters/card-model";
 import { parseMarker } from "../../shared/ui/event-text";
 import { backendCode } from "../../shared/ui/backend-text";
+import { showWorldInfoNotices } from "./world-info-notices";
+import { askWorldInfoReset, offersWorldInfoReset } from "./world-info-reset";
 
 /** 有本文，或帶已知標頭代碼（點名事件本文本來就空）才算有內容；空白回合不落地、不放回 */
 function hasContent(event: TranscriptEvent): boolean {
@@ -76,12 +78,14 @@ export interface ChatController {
   reload: () => Promise<void>;
   /** 貼出開場白；true＝真的貼上檯面了，呼叫端據此收掉開場白面板（失敗時面板留著） */
   /** index＝開場白清單序號、importSource＝跳出面板的那次匯入的原檔識別，序號記在那筆匯入的收據上；
-   *  isCurrent＝呼叫端的「這次操作還算數嗎」，回來時已換桌就不把事件加進畫面、不刷新 */
+   *  isCurrent＝呼叫端的「這次操作還算數嗎」，回來時已換桌就不把事件加進畫面、不刷新；
+   *  translated＝text 是翻譯版（後端正文用它，巨集副作用照原檔原文）。後端取得到原檔時正文以原文重新求值 */
   postOpening: (
     text: string,
     index?: number,
     importSource?: string | null,
     isCurrent?: () => boolean,
+    translated?: boolean,
   ) => Promise<boolean>;
   undoLast: () => Promise<void>;
   restoreUndone: () => Promise<void>;
@@ -411,6 +415,7 @@ export function useChatController({
       index?: number,
       importSource?: string | null,
       isCurrent: () => boolean = () => true,
+      translated = false,
     ) => {
       onError("");
       const endWrite = beginWrite();
@@ -422,6 +427,7 @@ export function useChatController({
           text,
           openingIndex: index ?? null,
           importSource: importSource ?? null,
+          translated,
         });
         // 排在回合後面的期間可能已經換桌：開場白照樣落在原桌，但不能加進現在這桌的畫面
         if (!isCurrent()) return true;
@@ -431,7 +437,18 @@ export function useChatController({
         await refreshState();
         return true;
       } catch (reason) {
-        if (isCurrent()) onError(String(reason));
+        if (!isCurrent()) return false;
+        // 開場白落地撤回時沒還原的變數寫入記在待回報檔；結算不了就給重設出路（重設成了玩家再貼一次）
+        await showWorldInfoNotices(worldId);
+        if (offersWorldInfoReset(reason)) {
+          try {
+            if (await askWorldInfoReset(worldId)) return false;
+          } catch (resetError) {
+            onError(String(resetError));
+            return false;
+          }
+        }
+        onError(String(reason));
         return false;
       } finally {
         endWrite();
@@ -564,7 +581,7 @@ export function useChatController({
         turnId,
         onDelta,
         actionId: actionIdRef.current,
-      });
+      }).finally(() => void showWorldInfoNotices(worldId));
       // 角色回合開始時後端代落了上一輪沒落成的 GM 正文：重讀逐字稿對齊
       if (mainLost.current) {
         mainLost.current = false;
@@ -671,7 +688,7 @@ export function useChatController({
       turnId,
       onDelta,
       actionId: actionIdRef.current,
-    });
+    }).finally(() => void showWorldInfoNotices(worldId));
     if (mainLost.current) {
       mainLost.current = false;
       await reload();

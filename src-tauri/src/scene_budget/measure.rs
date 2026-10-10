@@ -6,7 +6,9 @@ use crate::cli;
 use crate::data::{self, CharacterCard, TranscriptEvent};
 use crate::lanes::{self, Lane, LaneProvider};
 use crate::transport::{self, ChatMessage, Side};
-use crate::world_scan::{Budget, Randomness, WorldScan};
+use crate::world_scan::{MacroInputs, Randomness, WorldScan};
+
+use super::PathLimits;
 
 /// 一次請求在某單位下的原始量（尚未乘校正）：整包與事件清空後的固定部分。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,7 +156,24 @@ fn measure_timed(
 
 /// GM 那條（與 `commands::chat::gm_narrate` 同一組裝）：lane 後端量「重開全量」那份
 /// （任何對不上都會降級重開），無狀態路徑量共線組裝＋同一個指示四態。
-/// 世界書在組裝裡依「傳入的事件」掃（固定部分清空事件後重組，不帶本輪關鍵字條目），量測一律唯讀。
+/// 世界書在組裝裡依「傳入的事件」掃（固定部分清空事件後重組，不帶本輪關鍵字條目），量測一律唯讀：
+/// 變數只讀不落地、上一輪 outlet 只讀不更新、亂數固定 0。
+fn measure_macros(
+    root: &std::path::Path,
+    world_id: &str,
+    perspective: &data::world_info_store::Perspective,
+    path: &PathLimits,
+) -> MacroInputs {
+    MacroInputs::load(
+        root,
+        world_id,
+        perspective,
+        path.model.clone(),
+        path.limits,
+        false,
+    )
+}
+
 fn gm_request(
     root: &std::path::Path,
     world_id: &str,
@@ -162,10 +181,19 @@ fn gm_request(
     provider: Option<LaneProvider>,
     lang: &str,
     transport_kind: &str,
-    budget: Option<Budget>,
+    path: &PathLimits,
 ) -> Request {
-    let timed = measure_timed(root, world_id, m, &data::world_info_store::Perspective::Gm);
-    let scan = chat_assembly::gm_scan(m, &m.events, timed, budget, Randomness::Measure, lang);
+    let perspective = data::world_info_store::Perspective::Gm;
+    let timed = measure_timed(root, world_id, m, &perspective);
+    let scan = chat_assembly::gm_scan(
+        m,
+        &m.events,
+        timed,
+        path.budget,
+        measure_macros(root, world_id, &perspective, path),
+        Randomness::Measure,
+        lang,
+    );
     let (scope, _) = chat_assembly::gm_scope(m);
     let (instruction, closing) = chat_assembly::gm_instruction(root, world_id, m, &scan, lang);
     match provider {
@@ -196,7 +224,7 @@ fn character_request(
     shape: Option<lanes::CharsLaneShape>,
     lang: &str,
     transport_kind: &str,
-    budget: Option<Budget>,
+    path: &PathLimits,
 ) -> Request {
     let branch = transport::resolve_branch(
         &m.state.state.tree,
@@ -204,24 +232,21 @@ fn character_request(
         &card.id,
         &card.name,
     );
-    let timed = measure_timed(
-        root,
-        world_id,
-        m,
-        &data::world_info_store::Perspective::Character(card.id.clone()),
-    );
+    let perspective = data::world_info_store::Perspective::Character(card.id.clone());
+    let timed = measure_timed(root, world_id, m, &perspective);
     let scan: WorldScan = chat_assembly::character_scan(
         &m.book,
         card,
+        &m.cards,
         chat_assembly::sole_card_name(&m.metas, &m.events).as_deref(),
         m.player.as_ref(),
         &m.events,
         timed,
-        budget,
+        path.budget,
+        measure_macros(root, world_id, &perspective, path),
         Randomness::Measure,
         lang,
     );
-    let snapshot = m.book.snapshot();
     match shape {
         Some(shape) => {
             let (system, turn) = chat_assembly::character_lane_parts(
@@ -229,7 +254,6 @@ fn character_request(
                 &m.cards,
                 m.player.as_ref(),
                 &scan,
-                &snapshot,
                 &m.state,
                 branch.as_deref(),
                 lang,
@@ -247,7 +271,6 @@ fn character_request(
                 m.player.as_ref(),
                 &m.events,
                 &scan,
-                &snapshot,
                 &m.state.state,
                 &m.state.mechanism,
                 branch.as_deref(),
@@ -262,7 +285,7 @@ fn character_request(
 }
 
 /// 這桌所有實際會用到的聊天路徑：GM＋每個在場角色。固定部分＝同一組裝把本幕事件清空。
-/// `budget_for`：某檔位的世界書掃描預算（與實送同一個上限）。
+/// `limits_for`：某檔位的上限（世界書掃描預算、巨集看到的模型與上限，與實送同一個來源）。
 #[allow(clippy::too_many_arguments)]
 pub fn chat_paths(
     root: &std::path::Path,
@@ -272,17 +295,25 @@ pub fn chat_paths(
     provider: Option<LaneProvider>,
     lang: &str,
     transport_kind: &str,
-    budget_for: &dyn Fn(data::Tier) -> Option<Budget>,
+    limits_for: &dyn Fn(data::Tier) -> PathLimits,
 ) -> Vec<ChatPath> {
     let empty = Materials {
         events: Vec::new(),
         ..m.clone()
     };
-    let gm_budget = budget_for(gm_tier);
+    let gm_limits = limits_for(gm_tier);
     let mut paths = vec![ChatPath {
         kind: "gm",
         tier: gm_tier,
-        request_full: gm_request(root, world_id, m, provider, lang, transport_kind, gm_budget),
+        request_full: gm_request(
+            root,
+            world_id,
+            m,
+            provider,
+            lang,
+            transport_kind,
+            &gm_limits,
+        ),
         request_fixed: gm_request(
             root,
             world_id,
@@ -290,7 +321,7 @@ pub fn chat_paths(
             provider,
             lang,
             transport_kind,
-            gm_budget,
+            &gm_limits,
         ),
         lane: provider.map(|_| (Lane::Gm, None)),
     }];
@@ -305,7 +336,7 @@ pub fn chat_paths(
         let scope = shape
             .filter(|shape| shape.scope_by_card)
             .map(|_| card.id.clone());
-        let budget = budget_for(card.tier);
+        let path = limits_for(card.tier);
         paths.push(ChatPath {
             kind: "chars",
             tier: card.tier,
@@ -317,7 +348,7 @@ pub fn chat_paths(
                 shape,
                 lang,
                 transport_kind,
-                budget,
+                &path,
             ),
             request_fixed: character_request(
                 root,
@@ -327,7 +358,7 @@ pub fn chat_paths(
                 shape,
                 lang,
                 transport_kind,
-                budget,
+                &path,
             ),
             lane: shape.map(|_| (Lane::Chars, scope)),
         });

@@ -121,15 +121,13 @@ fn character_sent(root: &Path, world_id: &str, character_id: &str, said: &str) -
     let cards = chat_assembly::active_cards(root, world_id).unwrap();
     let state = data::read_state(root, world_id).unwrap();
     let events = [event(said)];
-    let (scan, snapshot) =
-        chat_assembly::test_character_scan(root, world_id, &card, None, &events, LANG);
+    let scan = chat_assembly::test_character_scan(root, world_id, &card, None, &events, LANG);
     crate::transport::assemble_shared_messages(
         &card,
         &cards,
         None,
         &events,
         &scan,
-        &snapshot,
         &state.state,
         &state.mechanism,
         None,
@@ -147,19 +145,16 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
     let book = crate::world_scan::TableBook::load(root, world_id).unwrap();
     let cards = chat_assembly::active_cards(root, world_id).unwrap();
     let events = [event(said)];
-    let scan = crate::world_scan::scan(crate::world_scan::ScanRequest {
-        book: &book,
-        viewer: crate::world_scan::Viewer::Gm,
-        sole_card: (cards.len() == 1).then(|| cards[0].name.as_str()),
-        player: None,
-        events: &events,
-        lang: LANG,
-        timed: Default::default(),
-        budget: None,
-        random: crate::world_scan::Randomness::Measure,
-    });
-    crate::transport::assemble_gm_messages(
+    let scan = crate::transport::test_support::legacy::prepared_book(
+        &book,
+        crate::world_scan::Viewer::Gm,
         "",
+        &cards,
+        None,
+        &events,
+        LANG,
+    );
+    crate::transport::assemble_gm_messages(
         &cards,
         None,
         &events,

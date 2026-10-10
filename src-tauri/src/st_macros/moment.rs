@@ -42,11 +42,13 @@ impl Clock for SystemClock {
 }
 
 /// 固定時刻、固定時區（測試與對拍用）。
+#[cfg(test)]
 pub struct FixedClock {
     pub now_ms: f64,
     pub offset_minutes: f64,
 }
 
+#[cfg(test)]
 impl Clock for FixedClock {
     fn now_ms(&self) -> f64 {
         self.now_ms

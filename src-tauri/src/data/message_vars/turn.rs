@@ -19,6 +19,9 @@ pub const PART_MAIN: &str = "main";
 /// 角色回覆的回合鍵 part（不走 GM 冪等路徑，只給世界書落地認回合）。
 pub const PART_CHARACTER: &str = "character";
 
+/// 開場白的回合鍵 part（帶變數副作用的開場白才有，只給世界書落地認回合）。
+pub const PART_OPENING: &str = "opening";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     /// 模型生成中（不持鎖）：卡寫與面板手改回 busy

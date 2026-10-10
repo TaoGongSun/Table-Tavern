@@ -27,6 +27,7 @@ pub struct ScanField {
 }
 
 impl ScanField {
+    #[cfg(test)]
     pub fn public(text: impl Into<String>) -> Self {
         let text = text.into();
         Self {
@@ -47,7 +48,7 @@ pub struct GlobalScan {
 }
 
 /// 代換結果；`private`＝代換讀到了私密來源（巨集引擎回報；掃描本身只負責傳遞）。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Substituted {
     pub text: String,
     pub private: bool,

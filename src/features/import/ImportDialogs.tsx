@@ -62,7 +62,8 @@ interface ImportDialogsProps {
   onTranslateAll: () => void;
   /** 貼出這一則（有譯文就是譯文） */
   /** index＝這則在開場白清單裡的序號（重新重構時從原卡取同一則當初始值依據） */
-  onPostOpening: (text: string, index: number) => void;
+  /** translated＝貼的是翻譯版（後端正文用它，巨集副作用照原文） */
+  onPostOpening: (text: string, index: number, translated: boolean) => void;
   /** 貼出進行中：兩顆貼出鈕停用，不重複送出 */
   postBusy: boolean;
   /** 正排在進行中的回合後面：貼出鈕就地換成等待提示 */
@@ -263,7 +264,13 @@ export function ImportDialogs({
                   type="button"
                   className="btn btn-primary"
                   disabled={postBusy}
-                  onClick={() => onPostOpening(translations[expanded] ?? openings[expanded], expanded)}
+                  onClick={() =>
+                    onPostOpening(
+                      translations[expanded] ?? openings[expanded],
+                      expanded,
+                      translations[expanded] !== undefined,
+                    )
+                  }
                 >
                   <SwapLabel
                     labels={[t("openingLineOk"), t("turnQueuedWait")]}

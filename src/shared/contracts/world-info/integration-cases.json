@@ -1,0 +1,895 @@
+{
+ "_about": "巨集×世界書掃描（方案四之 1）：照 prompt.ts 的先後跑卡欄位第一輪 → 掃描（代換鍵與內文、讀上一輪 outlet）→ outlet 換成本輪 → 世界書前／後與注入段落再代換；比中間產物與跑完的變數表，不比整份提示。chatId＝table、亂數一律 0、沒有上限。預期值由網頁版跑出（web/scripts/gen-world-info-fixtures.mjs）。",
+ "cases": [
+  {
+   "name": "setvar in one entry, getvar in a later one",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 200,
+      "content": "{{setvar::門::開著}}門已{{getvar::門}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "key": [
+       "龍"
+      ],
+      "order": 100,
+      "content": "龍說：門{{getvar::門}}。"
+     }
+    }
+   ],
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "門已開著"
+     ],
+     [
+      "2",
+      "龍說：門開著。"
+     ]
+    ],
+    "before": "龍說：門開著。\n門已開著",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{\"門\":\"開著\"}",
+    "global": "{}",
+    "ops": [
+     "local:set:門=\"開著\""
+    ]
+   }
+  },
+  {
+   "name": "keys are substituted from variables",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "key": [
+       "{{getvar::k}}"
+      ],
+      "content": "取鍵命中"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "key": [
+       "{{getvar::none}}"
+      ],
+      "content": "空鍵不中"
+     }
+    }
+   ],
+   "variables": {
+    "local": {
+     "k": "龍"
+    }
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "取鍵命中"
+     ]
+    ],
+    "before": "取鍵命中",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{\"k\":\"龍\"}",
+    "global": "{}",
+    "ops": []
+   }
+  },
+  {
+   "name": "recursion runs the side effects of each activated entry once",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 200,
+      "content": "{{incvar::層}}提到燈塔"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "key": [
+       "燈塔"
+      ],
+      "order": 100,
+      "content": "{{incvar::層}}燈塔亮著，第{{getvar::層}}層"
+     }
+    }
+   ],
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "1提到燈塔"
+     ],
+     [
+      "2",
+      "2燈塔亮著，第2層"
+     ]
+    ],
+    "before": "2燈塔亮著，第2層\n1提到燈塔",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{\"層\":2}",
+    "global": "{}",
+    "ops": [
+     "local:add:層=1",
+     "local:add:層=1"
+    ]
+   }
+  },
+  {
+   "name": "author's note and depth injections",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "position": 2,
+      "content": "上：{{user}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "position": 3,
+      "content": "下：{{char}}"
+     }
+    },
+    {
+     "id": "3",
+     "raw": {
+      "comment": "條目3",
+      "constant": true,
+      "position": 4,
+      "depth": 1,
+      "role": 0,
+      "content": "深一系統{{incvar::n}}"
+     }
+    },
+    {
+     "id": "4",
+     "raw": {
+      "comment": "條目4",
+      "constant": true,
+      "position": 4,
+      "depth": 1,
+      "role": 1,
+      "content": "深一玩家"
+     }
+    },
+    {
+     "id": "5",
+     "raw": {
+      "comment": "條目5",
+      "constant": true,
+      "position": 4,
+      "depth": 3,
+      "role": 2,
+      "content": "深三助手{{getvar::n}}"
+     }
+    }
+   ],
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "上：Alice"
+     ],
+     [
+      "2",
+      "下：瑟拉"
+     ],
+     [
+      "3",
+      "深一系統1"
+     ],
+     [
+      "4",
+      "深一玩家"
+     ],
+     [
+      "5",
+      "深三助手1"
+     ]
+    ],
+    "before": "",
+    "after": "",
+    "injections": [
+     "上：Alice\n\n下：瑟拉",
+     "深三助手1",
+     "深一玩家",
+     "深一系統1"
+    ],
+    "outlets": [],
+    "local": "{\"n\":1}",
+    "global": "{}",
+    "ops": [
+     "local:add:n=1"
+    ]
+   }
+  },
+  {
+   "name": "outlets: the scan reads the previous round, this round replaces it",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 300,
+      "position": 7,
+      "outletName": "線索",
+      "content": "新線索{{setvar::o::1}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "order": 200,
+      "position": 0,
+      "content": "前：{{outlet::線索}}"
+     }
+    },
+    {
+     "id": "3",
+     "raw": {
+      "comment": "條目3",
+      "constant": true,
+      "order": 100,
+      "position": 1,
+      "content": "後：{{getvar::o}}"
+     }
+    }
+   ],
+   "prevOutlets": {
+    "線索": "舊線索"
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "新線索"
+     ],
+     [
+      "2",
+      "前：舊線索"
+     ],
+     [
+      "3",
+      "後：1"
+     ]
+    ],
+    "before": "前：舊線索",
+    "after": "後：1",
+    "injections": [],
+    "outlets": [
+     [
+      "線索",
+      "新線索"
+     ]
+    ],
+    "local": "{\"o\":\"1\"}",
+    "global": "{}",
+    "ops": [
+     "local:set:o=\"1\""
+    ]
+   }
+  },
+  {
+   "name": "card field macros in entries",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "content": "卡說：{{description}}／{{personality}}"
+     }
+    }
+   ],
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "卡說：瑟拉 是守夜人，認得 Alice。／瑟拉 是守夜人，認得 Alice。"
+     ]
+    ],
+    "before": "卡說：瑟拉 是守夜人，認得 Alice。／瑟拉 是守夜人，認得 Alice。",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{}",
+    "global": "{}",
+    "ops": []
+   }
+  },
+  {
+   "name": "global variables and random picks",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 200,
+      "content": "{{setglobalvar::g::{{random::甲::乙}}}}{{getglobalvar::g}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "order": 100,
+      "content": "挑：{{pick::紅::綠::藍}}"
+     }
+    }
+   ],
+   "variables": {
+    "global": {
+     "舊": 1
+    }
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "甲"
+     ],
+     [
+      "2",
+      "挑：藍"
+     ]
+    ],
+    "before": "挑：藍\n甲",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{}",
+    "global": "{\"舊\":1,\"g\":\"甲\"}",
+    "ops": [
+     "global:set:g=\"甲\""
+    ]
+   }
+  },
+  {
+   "name": "the second pass expands macro text produced by the first",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "content": "{{getvar::tpl}}"
+     }
+    }
+   ],
+   "variables": {
+    "local": {
+     "tpl": "{{user}} 在此"
+    }
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "{{user}} 在此"
+     ]
+    ],
+    "before": "Alice 在此",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{\"tpl\":\"{{user}} 在此\"}",
+    "global": "{}",
+    "ops": []
+   }
+  },
+  {
+   "name": "card fields with side effects run once, card field macros reuse the first pass",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{incvar::n}}號守夜人 {{char}}"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 200,
+      "content": "卡：{{description}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "order": 100,
+      "position": 1,
+      "content": "{{personality}}／n={{getvar::n}}"
+     }
+    }
+   ],
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "卡：1號守夜人 瑟拉"
+     ],
+     [
+      "2",
+      "1號守夜人 瑟拉／n=1"
+     ]
+    ],
+    "before": "卡：1號守夜人 瑟拉",
+    "after": "1號守夜人 瑟拉／n=1",
+    "injections": [],
+    "outlets": [],
+    "local": "{\"n\":1}",
+    "global": "{}",
+    "ops": [
+     "local:add:n=1"
+    ]
+   }
+  },
+  {
+   "name": "first-pass output with side effects: before, after, the card, then injections from shallow to deep",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 守夜。{{getvar::t0}}"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "position": 0,
+      "content": "{{getvar::t1}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "position": 1,
+      "content": "{{getvar::t2}}"
+     }
+    },
+    {
+     "id": "3",
+     "raw": {
+      "comment": "條目3",
+      "constant": true,
+      "position": 4,
+      "depth": 1,
+      "role": 0,
+      "content": "{{getvar::t3}}深一"
+     }
+    },
+    {
+     "id": "4",
+     "raw": {
+      "comment": "條目4",
+      "constant": true,
+      "position": 4,
+      "depth": 3,
+      "role": 0,
+      "content": "{{getvar::t4}}深三"
+     }
+    },
+    {
+     "id": "5",
+     "raw": {
+      "comment": "條目5",
+      "constant": true,
+      "position": 2,
+      "content": "{{getvar::t5}}註記"
+     }
+    },
+    {
+     "id": "6",
+     "raw": {
+      "comment": "條目6",
+      "constant": true,
+      "position": 4,
+      "depth": 1,
+      "role": 1,
+      "content": "{{getvar::t6}}深一玩家"
+     }
+    }
+   ],
+   "variables": {
+    "local": {
+     "t0": "{{addvar::s::卡}}",
+     "t1": "{{addvar::s::甲}}",
+     "t2": "{{addvar::s::乙}}",
+     "t3": "{{addvar::s::丙}}",
+     "t4": "{{addvar::s::丁}}",
+     "t5": "{{addvar::s::戊}}",
+     "t6": "{{addvar::s::己}}"
+    }
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "{{addvar::s::甲}}"
+     ],
+     [
+      "2",
+      "{{addvar::s::乙}}"
+     ],
+     [
+      "3",
+      "{{addvar::s::丙}}深一"
+     ],
+     [
+      "4",
+      "{{addvar::s::丁}}深三"
+     ],
+     [
+      "5",
+      "{{addvar::s::戊}}註記"
+     ],
+     [
+      "6",
+      "{{addvar::s::己}}深一玩家"
+     ]
+    ],
+    "before": "",
+    "after": "",
+    "injections": [
+     "註記",
+     "深三",
+     "深一玩家",
+     "深一"
+    ],
+    "outlets": [],
+    "local": "{\"t0\":\"{{addvar::s::卡}}\",\"t1\":\"{{addvar::s::甲}}\",\"t2\":\"{{addvar::s::乙}}\",\"t3\":\"{{addvar::s::丙}}\",\"t4\":\"{{addvar::s::丁}}\",\"t5\":\"{{addvar::s::戊}}\",\"t6\":\"{{addvar::s::己}}\",\"s\":\"甲乙卡丙己丁戊\"}",
+    "global": "{}",
+    "ops": [
+     "local:add:s=\"甲\"",
+     "local:add:s=\"乙\"",
+     "local:add:s=\"卡\"",
+     "local:add:s=\"丙\"",
+     "local:add:s=\"己\"",
+     "local:add:s=\"丁\"",
+     "local:add:s=\"戊\""
+    ]
+   }
+  },
+  {
+   "name": "outlet contents get no second pass, quoted or not",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 300,
+      "position": 7,
+      "outletName": "沒人引用",
+      "content": "{{getvar::tpl}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "order": 200,
+      "position": 7,
+      "outletName": "有引用",
+      "content": "{{getvar::tpl}}"
+     }
+    },
+    {
+     "id": "3",
+     "raw": {
+      "comment": "條目3",
+      "constant": true,
+      "order": 100,
+      "position": 0,
+      "content": "引：{{getvar::q}}"
+     }
+    }
+   ],
+   "variables": {
+    "local": {
+     "tpl": "{{incvar::n}}",
+     "q": "{{outlet::有引用}}"
+    }
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      "{{incvar::n}}"
+     ],
+     [
+      "2",
+      "{{incvar::n}}"
+     ],
+     [
+      "3",
+      "引：{{outlet::有引用}}"
+     ]
+    ],
+    "before": "引：{{incvar::n}}",
+    "after": "",
+    "injections": [],
+    "outlets": [
+     [
+      "有引用",
+      "{{incvar::n}}"
+     ],
+     [
+      "沒人引用",
+      "{{incvar::n}}"
+     ]
+    ],
+    "local": "{\"tpl\":\"{{incvar::n}}\",\"q\":\"{{outlet::有引用}}\"}",
+    "global": "{}",
+    "ops": []
+   }
+  },
+  {
+   "name": "operation log: values, indexes, same-value indexed writes, deletes",
+   "card": {
+    "name": "瑟拉",
+    "description": "{{char}} 是守夜人，認得 {{user}}。"
+   },
+   "userName": "Alice",
+   "chat": [
+    {
+     "isUser": false,
+     "text": "爐火還在燒。"
+    },
+    {
+     "isUser": true,
+     "text": "我推開燈籠旅店的門，看見一條龍。"
+    }
+   ],
+   "entries": [
+    {
+     "id": "1",
+     "raw": {
+      "comment": "條目1",
+      "constant": true,
+      "order": 200,
+      "content": "{{setvarindex::arr::1::b}}{{setvarindex::arr::1::b}}{{addvar::cnt::2}}"
+     }
+    },
+    {
+     "id": "2",
+     "raw": {
+      "comment": "條目2",
+      "constant": true,
+      "order": 100,
+      "content": "{{setglobalvar::g::{{getvar::arr}}}}{{deletevar::cnt}}{{decvar::d}}"
+     }
+    }
+   ],
+   "variables": {
+    "local": {
+     "arr": "[\"a\",\"b\"]",
+     "d": 5
+    }
+   },
+   "expected": {
+    "scanned": [
+     [
+      "1",
+      ""
+     ],
+     [
+      "2",
+      "4"
+     ]
+    ],
+    "before": "4",
+    "after": "",
+    "injections": [],
+    "outlets": [],
+    "local": "{\"arr\":\"[\\\"a\\\",\\\"b\\\"]\",\"d\":4}",
+    "global": "{\"g\":\"[\\\"a\\\",\\\"b\\\"]\"}",
+    "ops": [
+     "local:set:arr[1]=\"b\"",
+     "local:set:arr[1]=\"b\"",
+     "local:add:cnt=\"2\"",
+     "global:set:g=\"[\\\"a\\\",\\\"b\\\"]\"",
+     "local:del:cnt",
+     "local:add:d=-1"
+    ]
+   }
+  }
+ ]
+}

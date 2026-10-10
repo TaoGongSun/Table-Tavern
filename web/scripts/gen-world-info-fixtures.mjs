@@ -35,6 +35,14 @@ try {
     runner.runSortCase,
   );
   write("entry-cases.json", "單一條目 → WiEntry 欄位＋裝飾：worldFile＝fromWorldFile，characterBook＝fromCharacterBook。", cases.entryCases, runner.runEntryCase);
+  const integration = await server.ssrLoadModule("/scripts/world-info-integration-cases.ts");
+  const integrationRunner = await server.ssrLoadModule("/src/features/chat/integration-parity-runner.ts");
+  write(
+    "integration-cases.json",
+    "巨集×世界書掃描（方案四之 1）：照 prompt.ts 的先後跑卡欄位第一輪 → 掃描（代換鍵與內文、讀上一輪 outlet）→ outlet 換成本輪 → 世界書前／後與注入段落再代換；比中間產物與跑完的變數表，不比整份提示。chatId＝table、亂數一律 0、沒有上限。預期值由網頁版跑出（web/scripts/gen-world-info-fixtures.mjs）。",
+    integration.integrationCases,
+    integrationRunner.runIntegrationCase,
+  );
   const nextTurn = await server.ssrLoadModule("/scripts/web-save-next-turn.ts");
   const expected = nextTurn.webSaveNextTurn();
   writeFileSync(

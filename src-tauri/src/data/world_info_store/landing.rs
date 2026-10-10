@@ -179,6 +179,8 @@ pub fn fail_turn(
 }
 
 /// 結算 pending（下一次持許可的實送掃描之前、換幕、分岔；量測不跑）：
+/// - 逐字稿裡已有這個回合鍵的正文＝成功，清掉（不論階段：開場白先寫變數、再帶回合鍵追加、最後才標已送出，
+///   追加後崩潰也是成功；一般生成在已送出之前不會有正文）。
 /// - 寫入中（還沒送出就中斷）：計時還原，變數意圖逐筆撤回，沒還原的先寫進待回報檔才清 pending。
 /// - 已送出：逐字稿裡有這個回合鍵＝成功，清掉；沒有＝失敗，只還原計時（變數副作用保留）。
 ///
@@ -197,7 +199,7 @@ fn settle_inner(root: &Path, world_id: &str, scene: u64) -> DataResult<()> {
         let Some(pending) = read_scene(root, world_id, scene)?.pending else {
             return Ok(());
         };
-        if pending.stage == Stage::Sent && turn_in_transcript(root, world_id, scene, &pending)? {
+        if turn_in_transcript(root, world_id, scene, &pending)? {
             return modify_scene(root, world_id, scene, |timed| {
                 timed.pending = None;
                 Ok(())
@@ -207,7 +209,7 @@ fn settle_inner(root: &Path, world_id: &str, scene: u64) -> DataResult<()> {
     })
 }
 
-/// 判斷成敗唯一看逐字稿的地方：只認回合鍵，不從內容推斷；只有正文算（GM `main`、角色 `character`），
+/// 判斷成敗唯一看逐字稿的地方：只認回合鍵，不從內容推斷；只有正文算（GM `main`、角色 `character`、開場白），
 /// `state_update` 這類附屬事件不算。
 fn turn_in_transcript(
     root: &Path,
@@ -218,7 +220,12 @@ fn turn_in_transcript(
     Ok(read_transcript(root, world_id, scene)?.iter().any(|event| {
         event.turn_key.as_ref().is_some_and(|key| {
             key.turn_id == pending.turn_key
-                && (key.part == message_vars::PART_MAIN || key.part == message_vars::PART_CHARACTER)
+                && [
+                    message_vars::PART_MAIN,
+                    message_vars::PART_CHARACTER,
+                    message_vars::PART_OPENING,
+                ]
+                .contains(&key.part.as_str())
         })
     }))
 }
@@ -310,4 +317,45 @@ fn undo_intent(
             CasRestore::Moved => Some(ConflictReason::Overwritten),
         },
     )
+}
+
+/// 重設（`reset_scene`）移開幕檔之前：寫入中的落地逐筆撤回變數意圖，沒還原的、撤回本身出錯的都寫進待回報檔
+/// （撤回出錯＝不知道層現在是什麼樣子，記成 `Unknown`）。已送出的不動（變數副作用照規則保留）。
+/// 待回報檔寫不進去就回錯：呼叫端不移檔、pending 留著（不得整筆丟掉日誌）。
+pub(super) fn release_before_reset(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    pending: &Pending,
+) -> DataResult<()> {
+    if pending.stage != Stage::Writing {
+        return Ok(());
+    }
+    let mut notices = Vec::new();
+    for (index, intent) in pending.vars.iter().enumerate() {
+        let reason = match undo_intent(root, world_id, scene, pending, index, intent) {
+            Ok(None) => continue,
+            Ok(Some(reason)) => reason,
+            Err(error) => {
+                log::warn!(
+                    "world-info: 重設前撤回 {} 的變數意圖 {index} 失敗：{error}",
+                    pending.turn_key
+                );
+                ConflictReason::Unknown
+            }
+        };
+        notices.push(Notice {
+            id: format!("{}:{index}", pending.turn_key),
+            turn_key: pending.turn_key.clone(),
+            conflict: VarConflict {
+                layer: intent.layer,
+                layer_id: intent.id.clone(),
+                reason,
+            },
+        });
+    }
+    if !notices.is_empty() {
+        append_notices(root, world_id, &notices)?;
+    }
+    Ok(())
 }

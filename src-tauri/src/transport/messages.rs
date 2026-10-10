@@ -67,21 +67,8 @@ pub(super) fn system_line(text: &str, lang: &str) -> String {
 /// 沒有玩家卡時，依語系補上玩家稱呼（定義在 data 層，匯出與點名標頭也用）。
 pub(crate) use crate::data::player_fallback_name;
 
-/// 要直接貼上畫面的文字（開場白）先把巨集換成當桌實名——存進 transcript 的就是玩家看到的樣子。
-pub fn resolve_display_macros(
-    text: &str,
-    player_name: Option<&str>,
-    char_name: &str,
-    lang: &str,
-) -> String {
-    let user = player_name
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| player_fallback_name(lang));
-    replace_st_macros(text, user, Some(char_name))
-}
-
-/// 只替換 SillyTavern 的玩家與角色巨集，其餘巨集保持原樣。
+/// 只替換 SillyTavern 的玩家與角色巨集，其餘巨集保持原樣。只用在信任邊界（狀態值來自模型輸出，接上巨集引擎
+/// 等於讓模型輸出能觸發 setvar，方案三之 7）；組裝與開場白走 `world_scan` 的巨集引擎。
 pub(crate) fn replace_st_macros(text: &str, user_name: &str, char_name: Option<&str>) -> String {
     let mut result = String::with_capacity(text.len());
     let mut index = 0;

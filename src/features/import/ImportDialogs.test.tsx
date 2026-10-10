@@ -77,6 +77,6 @@ describe("開場白貼出鈕", () => {
     const button = postButton();
     expect(shownLabel(button)).toBe(t("openingLineOk"));
     act(() => button.click());
-    expect(onPostOpening).toHaveBeenCalledWith("甲的開場", 0);
+    expect(onPostOpening).toHaveBeenCalledWith("甲的開場", 0, false);
   });
 });

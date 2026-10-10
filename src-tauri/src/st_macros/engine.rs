@@ -54,6 +54,7 @@ impl SourceText {
         }
     }
 
+    #[cfg(test)]
     pub fn private(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -136,6 +137,8 @@ pub struct MacroEnv<'a> {
     pub chat_id: &'a str,
     pub random: &'a dyn RandomSource,
     pub outlets: &'a BTreeMap<String, SourceText>,
+    /// 有給就記下讀過的 outlet 名稱
+    pub outlet_reads: Option<&'a RefCell<std::collections::BTreeSet<String>>>,
     pub is_mobile: bool,
     /// 這次求值讀到了私密來源
     pub private: Cell<bool>,
@@ -329,6 +332,37 @@ fn evaluate_at(input: &str, env: &MacroEnv, offset: usize, depth: usize) -> Stri
     let result = ESCAPED_BRACE.replace_all(&result, "$1");
     let result = TRIM_MARK.replace_all(&result, "");
     result.split(ELSE_MARKER).collect()
+}
+
+/// 只含「靜態巨集」（方案三之 3 的穩定定義）：`{{user}}`、`{{newline}}`、`{{trim}}`、`{{noop}}` 與註解，
+/// `allow_char` 再加 `{{char}}`（卡片公開設定以該卡自己的名字代換）。帶參數、旗標、變數簡寫、跳脫大括號
+/// （代換後會變成新的巨集）或剖析不了的一律不算。
+pub fn is_static(text: &str, allow_char: bool) -> bool {
+    if TIME_UTC.is_match(text) || ESCAPED_BRACE.is_match(text) {
+        return false;
+    }
+    let mut pre = text.to_owned();
+    for (marker, replacement) in LEGACY_MARKERS.iter() {
+        pre = marker
+            .replace_all(&pre, regex::NoExpand(replacement))
+            .into_owned();
+    }
+    let Ok(nodes) = parse_document(&pre) else {
+        return false;
+    };
+    nodes.iter().all(|node| {
+        if node.variable.is_some() {
+            return false;
+        }
+        let name = node.name.to_lowercase();
+        if name == "//" {
+            return true;
+        }
+        node.flags.is_empty()
+            && node.args.is_empty()
+            && (matches!(name.as_str(), "user" | "newline" | "trim" | "noop")
+                || (allow_char && name == "char"))
+    })
 }
 
 /// 一段文字當成獨立文件剖析求值（參數、成對內容都走這支）。
