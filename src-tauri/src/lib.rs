@@ -18,6 +18,7 @@ mod refactor_ai;
 mod refactor_assemble;
 mod scene_budget;
 mod smart_free;
+mod st_macros;
 mod transport;
 mod ui_msg;
 mod updater;

@@ -22,7 +22,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["raw_value"] }
+serde_json = { version = "1", features = ["raw_value", "float_roundtrip"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 futures-util = { version = "0.3", default-features = false }
 tokio = { version = "1", features = ["process", "io-util", "net", "rt", "macros", "time", "sync"] }
@@ -44,6 +44,8 @@ log = "0.4"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
 # 世界書機率與群組抽選的亂數（測試通道也用）。
 getrandom = "0.3"
+# 時間巨集的本地時區（st_macros/moment.rs）。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", optional = true }

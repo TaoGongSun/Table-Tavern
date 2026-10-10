@@ -202,7 +202,15 @@
 - 巨集脈絡的桌面版對應：`{{user}}`＝玩家名；`{{char}}`＝本視角角色名（GM 視角：世界書路用原卡名，其餘照現行）；卡欄位巨集照 P7 的對應；`{{lastmessage}}` 系列與歷史＝本視角非系統、非摘要事件，舊到新，保留時間與是否玩家（同網頁版 `st-text.ts:39`）；`{{model}}`＝該路徑模型字串；`{{maxprompt}}`＝該路徑上限；`{{outlet::名稱}}` 見三之 7；`{{pick}}` 的種子照網頁版 `hash(hash(chatId), 內容雜湊, 全域位移)`（`macro-library.ts:212`），只把 chatId 換成桌 id、其餘兩段照算（網頁版 chatId 是 `web-<存檔 id>`，匯入的桌結果會不同，列已知差異）。
 - 變數巨集讀寫桌面版既有的卡片變數層（chat、global，`data/card_vars.rs`），落地見三之 8。
 - 代換順序照網頁版 `prompt.ts` 的先後；桌面版沒有的段落（範例對話、jailbreak）跳過。
-- 巨集案例搬進 `src/shared/contracts/st-macros/`（`st-macros.json` 與 `st-macro-cases.json`），一起改引用處：`src-tauri/src/refactor_ai/result_parse.rs:119`、`src/features/refactor/refactor-shell.ts:10`、`web/src/features/sillytavern/macro-engine.test.ts:2`。
+- 巨集案例在 `src/shared/contracts/st-macros/`（`st-macros.json`、`st-macro-cases.json`、網頁版跑出的 `web-macro-cases.json`，說明見同目錄 `st-macros.md`）。
+- 包 3 施工時的實作決定〔模型判斷·未裁決〕：
+  - API：`st_macros::substitute::substitute_params(內容, &MacroContext, SubstituteOptions{mode, original, replace_character_card})` 回 `world_info::scan::Substituted`；卡欄位是 `SourceText{text, private}`，outlet 是名稱→`SourceText`；時鐘 `moment::Clock`（正式用 `SystemClock`，新增 `chrono` 依賴取本地時區）、亂數 `engine::RandomSource`。網頁版的 `dynamicMacros` 正式路徑沒用到、`postProcess` 只有送模前 regex（`regex-scripts.ts:72`，本案範圍外）用到，都不移植。`{{original}}` 的原文也是 `SourceText`，取用時照私密旗標回報。
+  - 中性模式：每次 `substitute_params` 呼叫開一份變數隔離副本，同一次呼叫裡用到才代換的卡欄位共用這份副本。
+  - 操作序列記在變數層方法這一級：`set`（含索引）、`add`（`inc`／`dec` 記成加 ±1、`-=` 記成加負數）、`delete`；丟例外的、或例外被內部吞掉而實際沒寫成的（索引寫入解析失敗、相加得 NaN）不記。落地時 `Variables::replay` 在最新的表上照順序重放同一組方法，只重做寫入本身：`||=`、`??=`、`{{if}}` 分支裡的寫入不再重判條件；同一批 ops 只能打在還沒套用過它的表上。
+  - 私密來源寧可多報：整次求值中只要讀過私密來源就回 true，兩種模式都一樣——包含被註解或 `{{if}}` 條件吃掉、沒進輸出的；替代開場白一取就整串代換，任何一則讀到私密就算（沒被取用的那幾則也一樣）。沒走到的 `{{if}}` 分支不求值、不算。不追蹤變數汙染（作者裁決不變）。
+  - 資源上限（能簡單做得比 ST 好）：字串實用上限 10MB（UTF-8 位元組，`js_value::MAX_TEXT_BYTES`）。一段求值結果每次追加前先算合計長度，超過就整段放棄、原文照回；字串相加、`{{space}}`／`{{newline}}` 的結果超過上限當丟例外（巨集原樣留著）；`{{space}}`／`{{newline}}` 次數另限 100 萬。帶索引的寫入讓陣列長度超過 100 萬、或寫回的 JSON 超過上限，當寫入失敗（表不變、不記操作）。
+  - 巢狀超過 128 層時，最近一層完整求值（最外層，或 `{{if}}` 內部的 resolve）放棄並回它的原文，外層照常代換（JS 是堆疊溢位被同樣的 `evaluate` 接住，門檻較深）。
+  - 中性模式目前每次呼叫一開始就整份複製變數表；改成第一次寫入才複製留給包 5b 評估。
 
 ### 7. 巨集呼叫點與副作用時機（包 5b）
 - **只在本視角執行**：完整求值（含副作用）只用在本視角擁有的文字——自己那張卡（角色視角）、world.md 與世界書路原卡的內容（GM 視角）、本視角條目池裡的條目。其他卡的欄位（GM 的全卡段、角色共線的別人公開設定）用中性模式。
@@ -247,7 +255,7 @@
   - `web-save-next-turn.json`：端對端預期值（四之 4），與 e2e 會重新產生的 `web-export-world-info.json` 分開放。
   - `world-info.md`：欄位說明與「改 fixture＝兩邊同一筆 commit」。
 - 產生預期值的腳本 `web/scripts/gen-world-info-fixtures.mjs`（輸入在 `web/scripts/world-info-fixture-cases.ts`）用網頁版實作跑出、人工核對後提交；兩邊的測試（網頁版 `web/src/features/sillytavern/world-info-parity.test.ts`、Rust `src-tauri/src/world_info/parity_tests.rs`）只比對、不改寫 fixture。
-- 巨集：`st-macro-cases.json` 兩邊全過；另由網頁版補跑出時間（固定時鐘）、`{{pick}}`（固定 chatId）、`{{lastmessage}}` 系列、卡欄位、歷史的案例。
+- 巨集：`st-macro-cases.json` 與 `web-macro-cases.json`（網頁版跑出時間〔固定時鐘、Asia/Taipei〕、`{{pick}}`、`{{lastmessage}}` 系列、卡欄位、歷史、變數型別與鍵順序）兩邊全過；完整／中性模式、操作序列重放、私密來源回報是 Rust 限定測試（`st_macros/mode_tests.rs`）。
 - 案例至少涵蓋第二節每一列；另含中日韓全字比對、D31、sticky 到期接冷卻、退回、delay、0 值計時、預算溢出停遞迴、`ignoreBudget`、群組計分與權重、`@@` 裝飾、order 同值的載入順序。
 
 ### 2. 桌面版組裝
@@ -338,6 +346,14 @@
 - 變數不追蹤私密〔作者裁決 2026-10-10〕：卡作者用 `{{setvar}}` 把私設或限定條目的內容存進變數，別的角色 `{{getvar}}` 讀得到（與 ST 相同，但桌面版其他地方有可見度，這裡會漏）。
 - 卡欄位巨集照 P7 的對應，描述與個性回傳同一段文字；桌面版沒有的提示段落（範例對話、jailbreak）不代換。
 - 送出後才失敗時，變數副作用保留（與 ST 相同），計時則回滾。
+- 巨集（包 3）〔模型判斷·未裁決〕：
+  - `{{timeDiff}}` 的時間字串不是 ISO 8601／RFC 2822（或 RFC 2822 的星期對不上）時，moment 退回瀏覽器 `Date` 解析，桌面版回 `Invalid date`。
+  - JS 原型屬性名（`constructor`、`toString`、`__proto__`…）當變數名、索引鍵時，網頁版／ST 會讀到原型上的東西，桌面版當不存在。
+  - 變數值的 JSON：超出倍精度範圍的數字（`1e400`，JS 是 Infinity）、巢狀超過 128 層、落單代理跳脫，桌面版當解析失敗；對字串取索引落在星平面字元的半個碼元時回 U+FFFD。
+  - 巨集巢狀超過 128 層時最近一層完整求值（最外層或 `{{if}}` 的內部求值）回原文，網頁版照常求值。
+  - 資源上限（見三之 6）：字串 10MB、`{{space}}`／`{{newline}}` 次數與索引寫入的陣列長度各 100 萬；網頁版要到 V8 字串上限（約 5 億碼元）才失敗。
+  - RFC 2822 時間的 24 時：照 moment 判溢位（它的陣列沒有毫秒欄），與 ISO 的 `24:00` 不同。
+  - `{{persona}}` 永遠是空字串（同網頁版，ST 是玩家人設）；包 5b 接線時決定要不要對應玩家卡。
 
 ## 八、範圍外發現
 - 桌面版沒有送模前 regex，條目內容不過卡內 WORLD_INFO regex（web-version D24 已記）。

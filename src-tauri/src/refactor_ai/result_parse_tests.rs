@@ -175,10 +175,12 @@ fn placeholder_contract_separates_body_macros_and_paths() {
 
 #[test]
 fn st_macro_list_is_shared_with_frontend() {
-    // 前後端讀同一份 src/shared/contracts/st-macros.json：這裡驗證它讀得到、內容合理
+    // 前後端讀同一份 src/shared/contracts/st-macros/st-macros.json：這裡驗證它讀得到、內容合理
     use super::result_parse::is_st_macro;
-    let raw: serde_json::Value =
-        serde_json::from_str(include_str!("../../../src/shared/contracts/st-macros.json")).unwrap();
+    let raw: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../src/shared/contracts/st-macros/st-macros.json"
+    ))
+    .unwrap();
     let names = raw["names"].as_array().unwrap();
     assert!(names.iter().any(|name| name == "user"));
     for name in names {

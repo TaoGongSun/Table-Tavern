@@ -1,5 +1,5 @@
 // ST 內建巨集（釘版本 06bde939：macros/definitions/{env,chat,core,time,state,variable}-macros.js）。
-// 名單涵蓋 src/shared/contracts/st-macros.json；網頁版沒有的東西（群組、instruct、擴充）
+// 名單涵蓋 src/shared/contracts/st-macros/st-macros.json；網頁版沒有的東西（群組、instruct、擴充）
 // 照 ST 在單人 Chat Completion 下的值回（空字串或 false）。
 import { ELSE_MARKER, isFalseBoolean, MacroEngine, MacroRegistry, trimScopedContent, type MacroCall, type MacroDef } from "./macro-engine";
 import { parseDocument } from "./macro-parser";

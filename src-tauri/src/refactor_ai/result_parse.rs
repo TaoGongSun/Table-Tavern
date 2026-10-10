@@ -108,7 +108,7 @@ fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterfac
 /// 正文槽：App 每回合拿模型的訊息正文填進去。
 const BODY_PLACEHOLDER: &str = "本回合.正文";
 
-/// 原卡的酒館巨集清單：前後端共用 src/shared/contracts/st-macros.json 這一份，不各寫各的。
+/// 原卡的酒館巨集清單：前後端共用 src/shared/contracts/st-macros/st-macros.json 這一份，不各寫各的。
 #[derive(serde::Deserialize)]
 struct StMacros {
     names: Vec<String>,
@@ -116,8 +116,10 @@ struct StMacros {
 }
 
 static ST_MACROS: std::sync::LazyLock<StMacros> = std::sync::LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../../src/shared/contracts/st-macros.json"))
-        .expect("st-macros.json 格式錯誤")
+    serde_json::from_str(include_str!(
+        "../../../src/shared/contracts/st-macros/st-macros.json"
+    ))
+    .expect("st-macros.json 格式錯誤")
 });
 
 /// 是不是已知的酒館巨集：無參名稱，或 `名稱::參數`／`名稱:參數` 的已知帶參名稱（不分大小寫）。

@@ -7,7 +7,7 @@
 export type StateNode = string | { [key: string]: StateNode };
 
 import yaml from "js-yaml";
-import stMacros from "../../shared/contracts/st-macros.json";
+import stMacros from "../../shared/contracts/st-macros/st-macros.json";
 
 // 佔位符只認 `{{...}}`：內容不含花括號或換行的簡單形式。
 const PLACEHOLDER_REGEX = /\{\{([^{}\n]+)\}\}/g;
@@ -17,7 +17,7 @@ export const BODY_PLACEHOLDER = "本回合.正文";
 
 /**
  * 骨架佔位符契約（解析驗證與填值共用，後端 result_parse.rs 同一套規則、同一份巨集清單
- * src/shared/contracts/st-macros.json）：
+ * src/shared/contracts/st-macros/st-macros.json）：
  * - `body`：正文槽 `{{本回合.正文}}`，永遠照正文原樣填，不做任何格式轉換；
  * - `path`：狀態樹裡有這個葉子就是狀態引用（優先於巨集名，`{{Time}}` 有葉子就填值）；
  * - `macro`：不是狀態葉子、而且是已知的酒館巨集（無參名稱，或 `名稱::參數`／`名稱:參數` 的已知帶參名稱），
