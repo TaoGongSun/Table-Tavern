@@ -1,6 +1,6 @@
 //! statusbar-yaml-list-flatten：狀態區塊的 YAML 清單解析。
-use super::response::{extract_state_block, StateBlock};
-use super::state_yaml::{parse_state_fields, ParsedFields};
+use super::{parse_state_fields, ParsedFields};
+use crate::transport::response::{extract_state_block, StateBlock};
 
 fn p(segments: &[&str]) -> Vec<String> {
     segments.iter().map(|segment| segment.to_string()).collect()

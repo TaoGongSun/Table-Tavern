@@ -22,6 +22,8 @@ mod card_view_tests;
 #[cfg(test)]
 mod foreign_ids_tests;
 #[cfg(test)]
+mod initvar_list_tests;
+#[cfg(test)]
 mod mvu_replace_tests;
 #[cfg(test)]
 pub(crate) mod test_support;
