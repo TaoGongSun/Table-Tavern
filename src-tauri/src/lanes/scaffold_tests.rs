@@ -851,6 +851,9 @@ fn lane_input<'a>(events: &'a [TranscriptEvent], system: &str) -> TurnInput<'a> 
         single_owner: None,
         has_state_block: false,
         hoisted_worldbook: None,
+        tail_worldbook: None,
+        tail_tracked: true,
+        capacity: None,
     }
 }
 
@@ -873,6 +876,7 @@ fn lane_state(events: &[TranscriptEvent], system: &str, provider: LaneProvider) 
         unerased_owner: None,
         had_state_block: false,
         hoisted_worldbook: None,
+        tail_stale: Some(super::TailStale::default()),
     }
 }
 

@@ -277,6 +277,9 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         single_owner: None,
         has_state_block: false,
         hoisted_worldbook: None,
+        tail_worldbook: None,
+        tail_tracked: true,
+        capacity: None,
     }
 }
 
@@ -299,6 +302,7 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         unerased_owner: None,
         had_state_block: false,
         hoisted_worldbook: None,
+        tail_stale: Some(TailStale::default()),
     }
 }
 
@@ -1620,6 +1624,7 @@ mod lane_lock;
 mod owner;
 mod runaway;
 mod status_strip;
+mod tail_threshold;
 
 /// char-line-prefix：預期回聲存剝掉本輪「名字：」的字；前綴另傳，Agy（prefix None）照樣對得上。
 #[test]

@@ -199,8 +199,8 @@ fn gm_request(
     match provider {
         Some(_) => {
             let joined = format!("{}\n{closing}", instruction.content);
-            let (system, tail) = chat_assembly::gm_lane_parts(m, &scan, &scope, &joined, lang);
-            let prompt = lanes::build_prompt(&m.events, 0, &tail, true, Lane::Gm, lang);
+            let (system, turn) = chat_assembly::gm_lane_parts(m, &scan, &scope, &joined, lang);
+            let prompt = lanes::build_prompt(&m.events, 0, &turn.tail, true, Lane::Gm, lang);
             Request::Cli { system, prompt }
         }
         None => stateless_request(

@@ -910,3 +910,50 @@ async fn switching_gm_lane_from_claude_to_grok_deletes_the_claude_session() {
     assert!(log.contains("provider-changed"));
     std::fs::remove_dir_all(&claude.dir).unwrap();
 }
+
+/// GM 線尾段世界書到份數上限（tail-worldbook-erase）：第 9 輪撤掉舊線、以 `-s` 開新線，舊 session 目錄已刪、
+/// 新線 prompt 只帶本輪一份世界書。
+#[cfg(unix)]
+#[tokio::test]
+async fn grok_gm_lane_reopens_at_the_tail_worldbook_cap() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_grok("tail-cap", &[]);
+    let note = "## 世界書（只進你的上下文）\n夜裡的燈塔會說話。\n";
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "第1句")];
+    for round in 1..=9 {
+        let mut input = turn_input(&events, 0);
+        input.lane = Lane::Gm;
+        input.prefix = None;
+        input.echo = ReplyEcho::Narration;
+        input.tail = format!("{note}\n請推進劇情。");
+        input.tail_worldbook = Some(note.to_owned());
+        let reply = run_turn(&fake.call, &fake.root, &fake.world_id, input, None, |_| {})
+            .await
+            .unwrap()
+            .text;
+        events.push(event(TranscriptKind::Narration, "", "", &reply));
+        events.push(event(
+            TranscriptKind::Player,
+            "",
+            "阿濤",
+            &format!("第{}句", round + 1),
+        ));
+    }
+    let calls = calls(&fake.dir);
+    assert_eq!(calls.len(), 9);
+    assert!(flag(&calls[0], "-s").is_some() && flag(&calls[8], "-s").is_some());
+    assert!((1..8).all(|index| flag(&calls[index], "-r").is_some()));
+    assert_eq!(calls[8].prompt.matches(note).count(), 1);
+    let old = flag(&calls[7], "-r").unwrap();
+    assert!(session_dirs(&fake.grok_home)
+        .iter()
+        .all(|dir| !dir.ends_with(&old)));
+    let text = std::fs::read_to_string(fake.call.usage_log.as_deref().unwrap()).unwrap();
+    assert!(text.contains("\"reason\":\"tail-worldbook\""));
+    let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
+    assert_eq!(
+        store.values().next().unwrap().tail_stale.unwrap().copies,
+        1,
+        "重開後只剩本輪"
+    );
+}

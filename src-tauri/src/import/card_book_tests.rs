@@ -137,7 +137,8 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
     .map(|message| message.content.clone())
     .collect::<Vec<_>>()
     .join("\n");
-    let (frozen, tail) = chat_assembly::gm_lane_parts(&materials, &scan, &scope, "", LANG);
+    let (frozen, turn) = chat_assembly::gm_lane_parts(&materials, &scan, &scope, "", LANG);
+    let tail = turn.tail;
     [single, format!("{frozen}\n{tail}")]
 }
 
