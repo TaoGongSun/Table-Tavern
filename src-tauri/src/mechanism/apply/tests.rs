@@ -231,7 +231,7 @@ fn delta_on_missing_path_is_a_hard_error() {
 }
 
 #[test]
-fn delta_on_text_field_is_a_hard_error() {
+fn delta_on_text_field_is_rejected_and_fed_back() {
     let mut tree = tree_from(&[("World.Location", "晨港")]);
     let mechanism = Mechanism::default();
     let patches = vec![Patch {
@@ -242,7 +242,9 @@ fn delta_on_text_field_is_a_hard_error() {
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
-    assert_eq!(outcome.records[0].kind, RecordKind::Error);
+    assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+    assert!(outcome.records[0].detail.contains("文字欄"));
+    assert_eq!(outcome.notes, vec![outcome.records[0].detail.clone()]);
     let StateNode::Branch(world) = tree.get("World").unwrap() else {
         panic!("World 應該是分支");
     };

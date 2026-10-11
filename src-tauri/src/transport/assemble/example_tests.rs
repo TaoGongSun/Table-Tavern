@@ -133,3 +133,129 @@ fn guide_table_example_skips_wildcard_paths_and_keeps_order() {
     assert!(content.contains(r#"{"op":"delta","path":"/World/Day","value":-1}"#));
     assert!(!content.contains("/Heroes/*/"));
 }
+
+// ---- takeover-text-field-delta：清單欄通用提醒 ----
+
+const LIST_REMINDER: &str = "值是多行字串的清單欄，就算行內有數字也不能用 delta";
+
+fn system_with_tree(mechanism: &Mechanism, tree: &[(&str, &str)]) -> String {
+    let mut state = TableState::default();
+    for (path, value) in tree {
+        let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
+        crate::data::set_tree_value(&mut state.tree, &segments, value);
+    }
+    assemble_gm_messages(
+        "",
+        &[],
+        None,
+        &[],
+        &[],
+        &state,
+        mechanism,
+        &StateScope::default(),
+        "zh-TW",
+    )[0]
+    .content
+    .clone()
+}
+
+#[test]
+fn guide_table_with_list_rule_gets_reminder_before_interface_notice() {
+    let content = system(&mechanism(
+        &[
+            ("神經狀態", rule(FieldKind::List)),
+            ("時間", rule(FieldKind::Text)),
+        ],
+        NumericUpdate::DeltaOnly,
+        "神經狀態：每筆一行。",
+    ));
+    let reminder_at = content.find(LIST_REMINDER).unwrap();
+    assert!(content.find(HEADING).unwrap() < reminder_at);
+    assert!(reminder_at < content.find("## 介面由誰畫").unwrap());
+    assert!(content.contains("（沒變的行也照抄）"));
+    // 不點名路徑：清單欄不出現在範例裡
+    assert!(!content.contains("/神經狀態"));
+}
+
+#[test]
+fn delta_only_table_with_only_list_rules_still_gets_reminder() {
+    let content = system(&mechanism(
+        &[("魔物", rule(FieldKind::List))],
+        NumericUpdate::DeltaOnly,
+        "",
+    ));
+    assert!(!content.contains(HEADING));
+    assert!(content.contains(LIST_REMINDER));
+}
+
+#[test]
+fn tables_without_list_rule_or_upstream_get_no_reminder() {
+    let no_list = system(&mechanism(
+        &[("時間", rule(FieldKind::Text))],
+        NumericUpdate::DeltaOnly,
+        "時間：字串。",
+    ));
+    assert!(!no_list.contains(LIST_REMINDER));
+    let upstream = system(&mechanism(
+        &[("魔物", rule(FieldKind::List))],
+        NumericUpdate::Upstream,
+        "",
+    ));
+    assert_eq!(
+        upstream,
+        system(&mechanism(&[], NumericUpdate::Upstream, ""))
+    );
+}
+
+#[test]
+fn reminder_system_is_stable_when_tree_shape_changes() {
+    let table = mechanism(
+        &[
+            ("神經狀態", rule(FieldKind::List)),
+            ("時間", rule(FieldKind::Text)),
+        ],
+        NumericUpdate::DeltaOnly,
+        "神經狀態：每筆一行。",
+    );
+    let leaf = system_with_tree(&table, &[("神經狀態", "neuro|疲勞|20|x"), ("時間", "早上")]);
+    let branch = system_with_tree(
+        &table,
+        &[("神經狀態.疲勞", "20"), ("時間", "晚上"), ("新枝.甲", "1")],
+    );
+    assert!(leaf.contains(LIST_REMINDER));
+    assert_eq!(leaf, branch);
+}
+
+#[test]
+fn english_table_gets_english_reminder() {
+    let table = mechanism(
+        &[("Status", rule(FieldKind::List))],
+        NumericUpdate::DeltaOnly,
+        "Status: one entry per line.",
+    );
+    let content = assemble_gm_messages(
+        "",
+        &[],
+        None,
+        &[],
+        &[],
+        &TableState::default(),
+        &table,
+        &StateScope::default(),
+        "en",
+    )[0]
+    .content
+    .clone();
+    assert!(content.contains("List fields (values that are multi-line strings) never take delta"));
+    assert!(!content.contains(LIST_REMINDER));
+}
+
+#[test]
+fn upstream_table_with_guide_gets_reminder() {
+    let content = system(&mechanism(
+        &[("魔物", rule(FieldKind::List))],
+        NumericUpdate::Upstream,
+        "魔物：清單。",
+    ));
+    assert!(content.contains(LIST_REMINDER));
+}
