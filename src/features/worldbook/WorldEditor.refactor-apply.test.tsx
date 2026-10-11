@@ -280,12 +280,14 @@ describe("WorldEditor after a refactor apply or reset", () => {
   });
 
   it("a clean existing draft is closed before the reset is sent and never written", async () => {
-    let formOpenAtReset: boolean | null = null;
+    let closedWhileResetPending = false;
     backend.handlers.refactor_rerun_status = () => "ready";
-    // 送出時當下的畫面：先讓已排程的 render 落地再看
+    // 清回還沒回應時表單就要關掉（關草稿在送出前；畫面晚一次 render，用等的不賭計時器先後）
     backend.handlers.refactor_reset_to_source = async () => {
-      await new Promise((done) => setTimeout(done, 0));
-      formOpenAtReset = form() !== null;
+      await vi.waitFor(() => expect(form()).toBeNull(), { timeout: 200 }).then(
+        () => (closedWhileResetPending = true),
+        () => {},
+      );
       return "committed";
     };
     backend.handlers.card_interfaces = () => [{ unsupported: "drm", scripts: [] }];
@@ -293,7 +295,7 @@ describe("WorldEditor after a refactor apply or reset", () => {
     await openEntry(1);
     await act(async () => button(t("refactorBtn")).click());
     await vi.waitFor(() => expect(commands("card_interfaces")).toHaveLength(1));
-    expect(formOpenAtReset).toBe(false);
+    expect(closedWhileResetPending).toBe(true);
     expect(form()).toBeNull();
     expect(upserts()).toHaveLength(0);
   });
