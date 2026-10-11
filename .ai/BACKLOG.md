@@ -5,6 +5,7 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [import-refresh-world-editor](tasks/import-refresh-world-editor.md) — 世界設定開著時從角色列匯入卡，條目清單不刷新 — 下一步：未排程
+- [update-download-timeouts](tasks/update-download-timeouts.md) — 回退點下載與更新外掛檢查／下載沒有逾時 — 下一步：未排程
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
