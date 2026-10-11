@@ -21,13 +21,27 @@
 //! 尾段世界書（GM 線、角色共線的公開段）回合後不抹，舊尾段留在歷史吃快取；份數到 8、或至少 4 份且佔
 //! 固定容量 15% 就以 `tail-worldbook` 整線重開壓平（`TailStale`，plans/tail-worldbook-erase.md）。
 
+mod cleanup;
 mod grok_session;
+mod plan;
+mod rewrite;
 mod rewrite_failure;
 mod session_file;
 mod snapshot_patch;
+mod store;
 
+use cleanup::{retire_claude_session, revoke_grok_lane, settle_abort, GrokRevoke};
+use plan::{
+    events_fingerprint, expected_reply_for, next_cache_ttl, plan_turn, worldbook_fingerprint,
+    ReopenReason, TurnPlan,
+};
+use rewrite::{
+    apply_rewrite, grok_home, note_reminder, record_rewrite_failure, rewrite_grok,
+    scan_reminder_readonly,
+};
 use rewrite_failure::at;
 pub(crate) use rewrite_failure::RewriteFailure;
+use store::{lane_lock, log_drop, log_drop_failure, read_store, write_store};
 
 use crate::cli;
 use crate::data::{self, TranscriptEvent, TranscriptKind};
@@ -185,13 +199,6 @@ pub(crate) struct TailStale {
     pub bytes: u64,
 }
 
-/// 份數上限：常駐作者註記每輪都在，最多留這麼多份舊注入〔模型判斷·未裁決〕
-const TAIL_STALE_MAX_COPIES: u32 = 8;
-/// 比例門檻至少要這麼多份才觸發，保證兩次重開之間的間隔下限〔作者裁決 2026-10-11〕
-const TAIL_STALE_RATIO_MIN_COPIES: u32 = 4;
-/// 舊尾段佔該路徑固定容量的比例上限（百分比）〔模型判斷·未裁決〕
-const TAIL_STALE_RATIO_PERCENT: f64 = 15.0;
-
 impl TailStale {
     fn add(&mut self, text: &str) {
         self.copies += 1;
@@ -212,21 +219,6 @@ impl TailStale {
             .filter(|capacity| capacity.max > 0.0)
             .map(|capacity| self.size(capacity.unit) as f64 * 100.0 / capacity.max)
     }
-}
-
-/// 舊尾段世界書到門檻了沒：份數到上限，或份數夠且佔容量比例到上限。計數未知（升級前的舊線）一律算到。
-fn tail_reopen(state: &LaneState, input: &TurnInput<'_>) -> bool {
-    if !input.tail_tracked {
-        return false;
-    }
-    let Some(stale) = state.tail_stale else {
-        return true;
-    };
-    stale.copies >= TAIL_STALE_MAX_COPIES
-        || (stale.copies >= TAIL_STALE_RATIO_MIN_COPIES
-            && stale
-                .percent(input.capacity)
-                .is_some_and(|percent| percent >= TAIL_STALE_RATIO_PERCENT))
 }
 
 /// 角色線的三個開關＋線名是否分角色（plans/claude-resume-tail-cache.md 三-B-2）。
@@ -374,194 +366,6 @@ struct ExpectedReply {
     text: String,
 }
 
-fn read_store(path: &Path) -> LaneStore {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-fn write_store(path: &Path, store: &LaneStore) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(store).map_err(|error| error.to_string())?;
-    crate::data::commit_world_write(path, text.as_bytes()).map_err(|error| {
-        UiMsg::LaneStateWriteFailed {
-            path: path.display().to_string(),
-            error: error.to_string(),
-        }
-        .to_string()
-    })
-}
-
-/// 每桌一把 lane 鎖（以 lanes.json 路徑為鍵）。run_turn 從讀 store 到最終落檔全程持有。
-fn lane_lock(store_path: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
-    static LOCKS: std::sync::OnceLock<
-        std::sync::Mutex<
-            std::collections::HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>,
-        >,
-    > = std::sync::OnceLock::new();
-    let mut table = LOCKS
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    table.entry(store_path.to_path_buf()).or_default().clone()
-}
-
-/// 丟線落帳（沒有 stage／detail 的那種）。`transport` 記實際 provider。
-fn log_drop(call: &LaneCall, world_id: &str, key: &str, reason: &str) {
-    if let Some(path) = call.usage_log.as_deref() {
-        usage_log::append_event(
-            path,
-            call.provider.as_str(),
-            Some(world_id),
-            key,
-            usage_log::Event::DropLane,
-            reason,
-        );
-    }
-}
-
-/// 丟線落帳，多記壞在哪一步與原錯誤字串（先遮掉 `paths` 裡的路徑再截斷）。
-fn log_drop_failure(
-    call: &LaneCall,
-    world_id: &str,
-    key: &str,
-    reason: &str,
-    failure: &RewriteFailure,
-    paths: &[(String, String)],
-) {
-    if let Some(log) = call.usage_log.as_deref() {
-        let detail = rewrite_failure::mask_detail(&failure.detail, paths);
-        usage_log::append_drop(
-            log,
-            call.provider.as_str(),
-            Some(world_id),
-            key,
-            reason,
-            failure.stage,
-            &detail,
-        );
-    }
-}
-
-/// grok 的 session 根目錄＝呼叫 CLI 時給的 GROK_HOME（cli::grok_envs），兩邊一定指同一處。
-fn grok_home(call: &LaneCall) -> Result<PathBuf, String> {
-    call.envs
-        .iter()
-        .find(|(key, _)| key == "GROK_HOME")
-        .map(|(_, value)| PathBuf::from(value))
-        .ok_or_else(|| "grok lane 缺 GROK_HOME".to_owned())
-}
-
-/// grok 錯誤字串裡可能出現的路徑：session 目錄（群組名是編碼過的 cwd）、GROK_HOME、工作目錄。
-/// 要在刪目錄之前算。
-fn grok_known_paths(call: &LaneCall, session_id: &str) -> Vec<(String, String)> {
-    let mut pairs = Vec::new();
-    if let Ok(home) = grok_home(call) {
-        for dir in grok_session::find_session_dirs(&home, session_id).unwrap_or_default() {
-            pairs.push((dir.display().to_string(), "<session>".to_owned()));
-        }
-        pairs.push((home.display().to_string(), "<dir>".to_owned()));
-    }
-    pairs.push((call.working_dir.display().to_string(), "<dir>".to_owned()));
-    pairs
-}
-
-/// grok 角色線回合後抹寫。stage：locate（找不到 GROK_HOME）／rewrite／compacted／lock-timeout。
-fn rewrite_grok(
-    call: &LaneCall,
-    session_id: &str,
-    confidential: Option<&str>,
-    prefix: &str,
-    reply: &str,
-    cleaned: &str,
-) -> Result<(), RewriteFailure> {
-    let home = at("locate", grok_home(call))?;
-    grok_session::rewrite(&home, session_id, confidential, prefix, reply, cleaned).map_err(
-        |error| RewriteFailure {
-            stage: error.reason.stage(),
-            detail: error.detail,
-        },
-    )
-}
-
-/// 撤銷 grok 線的緣由。預定重開（換幕、改卡等）不是出事，不記丟線——呼叫行本來就帶 reopen。
-enum GrokRevoke {
-    Reopen,
-    Drop(&'static str),
-    Failed(RewriteFailure),
-}
-
-/// 撤銷一條 grok 線：先從 store 拿掉並落檔，再刪 session 目錄。落檔失敗就回錯——磁碟上的
-/// 舊狀態要嘛帶著 pending_rewrite、要嘛已被別的路徑重開，都不會再續用這個 id。
-/// 刪目錄失敗只記帳：store 已沒有這個 id，不會再續聊。
-fn revoke_grok_lane(
-    call: &LaneCall,
-    world_id: &str,
-    key: &str,
-    session_id: &str,
-    store: &mut LaneStore,
-    store_path: &Path,
-    why: GrokRevoke,
-) -> Result<(), String> {
-    let paths = grok_known_paths(call, session_id);
-    match &why {
-        GrokRevoke::Reopen => {}
-        GrokRevoke::Drop(reason) => log_drop(call, world_id, key, reason),
-        GrokRevoke::Failed(failure) => {
-            log_drop_failure(call, world_id, key, "rewrite-failed", failure, &paths)
-        }
-    }
-    store.remove(key);
-    let written = write_store(store_path, store);
-    let removed = grok_home(call).and_then(|home| grok_session::remove_session(&home, session_id));
-    if let Err(detail) = removed {
-        let failure = RewriteFailure {
-            stage: "cleanup",
-            detail,
-        };
-        log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
-    }
-    written
-}
-
-/// FNV-1a 64：跨執行、跨版本皆穩定的事件指紋（std 的雜湊器不保證跨版本一致）。
-fn events_fingerprint(events: &[TranscriptEvent]) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut eat = |bytes: &[u8]| {
-        for byte in bytes {
-            hash ^= u64::from(*byte);
-            hash = hash.wrapping_mul(0x0100_0000_01b3);
-        }
-    };
-    for event in events {
-        let kind = match event.kind {
-            TranscriptKind::Dialogue => "dialogue",
-            TranscriptKind::Narration => "narration",
-            TranscriptKind::Player => "player",
-            TranscriptKind::System => "system",
-        };
-        let marker = event
-            .marker
-            .as_ref()
-            .and_then(|marker| serde_json::to_string(marker).ok())
-            .unwrap_or_default();
-        let gm_only = if event.gm_only { "1" } else { "0" };
-        for field in [
-            kind,
-            &event.speaker_id,
-            &event.speaker_name,
-            &event.text,
-            &marker,
-            gm_only,
-        ] {
-            eat(field.as_bytes());
-            eat(&[0x1f]);
-        }
-        eat(&[0x1e]);
-    }
-    format!("{hash:016x}")
-}
-
 /// 產生 claude CLI 接受的 UUID v4 字串。亂數取自兩顆 ulid（時間戳頭 6 bytes 換成
 /// 第二顆的隨機尾），不為此多引一個 uuid/rand 依賴。
 /// pub(crate)：refactor_session（重構兩段判官）開線也用同一套 id。
@@ -582,245 +386,14 @@ pub(crate) fn new_session_id() -> String {
     )
 }
 
-enum TurnPlan {
-    Resume {
-        session_id: String,
-        base: usize,
-        /// 本輪實際傳給 CLI 的 system（claude 的 --system-prompt-file 內容）。
-        system: String,
-        patch: Option<String>,
-        /// 追平只供用量 log 區分；不改變續聊流程。
-        rebased: bool,
-    },
-    Reopen {
-        reason: ReopenReason,
-    },
-}
-
-#[derive(Clone, Copy)]
-enum ReopenReason {
-    FirstTurn,
-    PendingRewrite,
-    SceneChanged,
-    HistoryRewound,
-    HistoryEdited,
-    ReplyDiverged,
-    ResumeFailed,
-    ProviderChanged,
-    SystemChanged,
-    /// 未抹線換了開口者（含別的角色解析到同一模型而共用同一 key）
-    OwnerChanged,
-    /// 未抹線遇到多角色模式（在場變多）
-    ModeChanged,
-    /// 未抹線的狀態區塊整塊消失（歷史裡的舊值撤不掉）
-    StateBlockGone,
-    /// 不抹尾段的線提進 system 的世界書變了（補丁會留在歷史裡，只能重開）
-    WorldbookChanged,
-    /// 歷史裡的舊尾段世界書累積到門檻（或計數未知），重開壓平
-    TailWorldbook,
-}
-
-impl ReopenReason {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::FirstTurn => "first-turn",
-            Self::PendingRewrite => "pending-rewrite",
-            Self::SceneChanged => "scene-changed",
-            Self::HistoryRewound => "history-rewound",
-            Self::HistoryEdited => "history-edited",
-            Self::ReplyDiverged => "reply-diverged",
-            Self::ResumeFailed => "resume-failed",
-            Self::ProviderChanged => "provider-changed",
-            Self::SystemChanged => "system-changed",
-            Self::OwnerChanged => "owner-changed",
-            Self::ModeChanged => "mode-changed",
-            Self::StateBlockGone => "state-block-gone",
-            Self::WorldbookChanged => "worldbook-changed",
-            Self::TailWorldbook => "tail-worldbook",
-        }
-    }
-}
-
 fn legacy_provider() -> String {
     LaneProvider::Claude.as_str().to_owned()
 }
 
 /// 5 分鐘快取壽命：舊 lanes.json／舊帳本列沒記時效時的預設，也是 grok／agy 線的固定窗口。
 pub(crate) const LEGACY_CACHE_TTL_SECS: u64 = 300;
-const ONE_HOUR_CACHE_TTL_SECS: u64 = 3600;
-
 fn legacy_cache_ttl() -> u64 {
     LEGACY_CACHE_TTL_SECS
-}
-
-/// 成功一輪後這條 claude 線的估計快取壽命〔模型判斷·未裁決，見 plans/claude-1h-cache.md〕。
-/// 只有確定整段都寫成 1 小時才給 3600；混合或時效不明一律保守取 5 分鐘；
-/// 純命中沿用上輪（同 session 才算）；讀寫皆 0 或沒拿到用量＝當作已過期，不延壽。
-fn next_cache_ttl(
-    usage: Option<&transport::PromptCacheUsage>,
-    prior_ttl: Option<u64>,
-    resumed: bool,
-) -> u64 {
-    let Some(usage) = usage else {
-        return 0;
-    };
-    let created = usage.created_tokens.unwrap_or(0);
-    let cached = usage.cached_tokens.unwrap_or(0);
-    if created == 0 {
-        return match (cached > 0, resumed, prior_ttl) {
-            (false, _, _) => 0,
-            (true, true, Some(prior)) => prior,
-            (true, _, _) => LEGACY_CACHE_TTL_SECS,
-        };
-    }
-    match usage.created_1h_tokens {
-        Some(one_hour) if one_hour == created => ONE_HOUR_CACHE_TTL_SECS,
-        _ => LEGACY_CACHE_TTL_SECS,
-    }
-}
-
-/// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
-/// 素材漂移的處置：claude 角色共線的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
-/// grok 的 system 凍在 session 建立那刻，補丁只是一則 user 訊息、壓不過權重更高的舊 system，
-/// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。GM 線三家與 claude 單角色線都一變就重開：
-/// world.md／卡／私設的動態巨集讓凍結 system 每輪可能變，補丁會在不抹的歷史裡一份份疊上去〔作者裁決 2026-10-11〕。
-/// 歷史裡的舊尾段世界書到門檻（`tail_reopen`）也重開，排在其他原因之後、每個續聊出口之前。
-fn plan_turn(
-    state: Option<&LaneState>,
-    input: &TurnInput<'_>,
-    now_epoch: u64,
-    provider: LaneProvider,
-) -> TurnPlan {
-    let Some(state) = state else {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::FirstTurn,
-        };
-    };
-    if state.provider != provider.as_str() {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::ProviderChanged,
-        }; // 線名撞到別家 CLI 開的線：session id 是對方的，resume 一定失敗
-    }
-    if state.pending_rewrite.is_some() {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::PendingRewrite,
-        }; // 上一輪中途斷掉，session 內容不可信（可能殘留機密段）
-    }
-    if state.scene != input.scene {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::SceneChanged,
-        }; // 換場＝重開（拍板行為）
-    }
-    let mut base = state.sent_events;
-    if base > input.events.len() {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::HistoryRewound,
-        }; // 正典被收回到水位之前
-    }
-    if events_fingerprint(&input.events[..base]) != state.sent_hash {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::HistoryEdited,
-        }; // 已送段被改動
-    }
-    if let Some(expected) = &state.expected_reply {
-        match input.events.get(base) {
-            Some(event)
-                if event.speaker_id == expected.speaker_id
-                    && event.kind == expected.kind
-                    && event.text == expected.text
-                    && event.marker.is_none()
-                    && !event.gm_only =>
-            {
-                base += 1; // 上輪回覆已在 session 裡（assistant），跳過不重送
-            }
-            _ => {
-                return TurnPlan::Reopen {
-                    reason: ReopenReason::ReplyDiverged,
-                }
-            } // 回覆沒落檔或被改＝session 與正典分岔
-        }
-    }
-    // 未抹線（claude 單角色）：順序固定，StateBlockGone 不能被「同一人續用」短路
-    if let Some(owner) = &state.unerased_owner {
-        let speaker = match &input.echo {
-            ReplyEcho::Dialogue { speaker_id, .. } => Some(speaker_id.as_str()),
-            ReplyEcho::Narration => None,
-        };
-        if speaker != Some(owner.as_str()) {
-            return TurnPlan::Reopen {
-                reason: ReopenReason::OwnerChanged,
-            };
-        }
-        if input.single_owner.as_deref() != Some(owner.as_str()) {
-            return TurnPlan::Reopen {
-                reason: ReopenReason::ModeChanged,
-            };
-        }
-        if state.had_state_block && !input.has_state_block {
-            return TurnPlan::Reopen {
-                reason: ReopenReason::StateBlockGone,
-            };
-        }
-    }
-    if state.hoisted_worldbook != worldbook_fingerprint(input.hoisted_worldbook.as_deref()) {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::WorldbookChanged,
-        };
-    }
-    if provider != LaneProvider::Claude || input.lane == Lane::Gm || input.single_owner.is_some() {
-        // snapshot != applied＝升級前快取內補過丁、尚未追平的舊 claude GM／單角色線，歷史裡有補丁，一併重開
-        if state.applied != input.frozen_system || state.snapshot != state.applied {
-            return TurnPlan::Reopen {
-                reason: ReopenReason::SystemChanged,
-            };
-        }
-        if tail_reopen(state, input) {
-            return TurnPlan::Reopen {
-                reason: ReopenReason::TailWorldbook,
-            };
-        }
-        return TurnPlan::Resume {
-            session_id: state.session_id.clone(),
-            base,
-            system: state.snapshot.clone(),
-            patch: None,
-            rebased: false,
-        };
-    }
-    // claude 角色共線的兩個續聊出口（追平、補丁）之前
-    if tail_reopen(state, input) {
-        return TurnPlan::Reopen {
-            reason: ReopenReason::TailWorldbook,
-        };
-    }
-    let age = now_epoch.saturating_sub(state.last_call_epoch);
-    if age > state.cache_ttl_secs {
-        return TurnPlan::Resume {
-            session_id: state.session_id.clone(),
-            base,
-            system: input.frozen_system.clone(),
-            patch: None,
-            rebased: state.snapshot != input.frozen_system,
-        };
-    }
-    TurnPlan::Resume {
-        session_id: state.session_id.clone(),
-        base,
-        system: state.snapshot.clone(),
-        patch: snapshot_patch::render_patch(&state.applied, &input.frozen_system, input.lang),
-        rebased: false,
-    }
-}
-
-/// 提進 system 的世界書段的指紋（存進 lanes.json，不存全文）；沒有或空的算沒有。
-fn worldbook_fingerprint(worldbook: Option<&str>) -> Option<String> {
-    let worldbook = worldbook.filter(|text| !text.is_empty())?;
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in worldbook.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
-    Some(format!("{hash:016x}"))
 }
 
 fn now_epoch() -> u64 {
@@ -861,236 +434,11 @@ pub(crate) fn build_prompt(
     format!("{header}{}\n\n——\n{tail}", lines.join("\n\n"))
 }
 
-/// 回合後抹寫：機密段從注入的 user 行抹掉、最後一則 assistant 補名字前綴，
-/// 原子寫＋回讀驗證（session_file::write_atomic）。
-/// 回傳 Some(檔內有沒有 CLI 的 total_tokens 提醒)；沒東西要改、根本沒讀檔時回 None。
-fn apply_rewrite(
-    call: &LaneCall,
-    session_id: &str,
-    confidential: Option<&str>,
-    prefix: Option<&str>,
-    reply: Option<session_file::ReplyRewrite<'_>>,
-) -> Result<Option<bool>, RewriteFailure> {
-    if confidential.is_none() && prefix.is_none() {
-        return Ok(None);
-    }
-    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    let mut file = at("load", session_file::load(&path))?;
-    let reminder = session_file::has_total_tokens_reminder(&file);
-    if let Some(segment) = confidential {
-        let uuid = at(
-            "find-segment",
-            session_file::find_user_line_with_segment(&file, segment),
-        )?;
-        at(
-            "erase-segment",
-            session_file::erase_user_segment(&mut file, &uuid, segment),
-        )?;
-    }
-    if let Some(prefix) = prefix {
-        at(
-            "prefix-assistant",
-            session_file::prefix_last_assistant(&mut file, prefix, reply),
-        )?;
-    }
-    at("write", session_file::write_atomic(&path, &file))?;
-    Ok(Some(reminder))
-}
-
-/// 沒有抹寫的 claude 線（GM）另做只讀掃描；讀不到只回錯、由呼叫端記診斷，不丟線。
-fn scan_reminder_readonly(call: &LaneCall, session_id: &str) -> Result<bool, String> {
-    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    session_file::read_text(&path).map(|text| session_file::text_has_total_tokens_reminder(&text))
-}
-
-/// D 偵測的診斷：只記帳不改線。同一 session、同一種結果在一次 app 執行內只記一次。
-fn note_reminder(
-    call: &LaneCall,
-    world_id: &str,
-    key: &str,
-    session_id: &str,
-    scan: Result<bool, String>,
-) {
-    let reason = match scan {
-        Ok(false) => return,
-        Ok(true) => "seen",
-        Err(_) => "scan-failed",
-    };
-    static NOTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-        std::sync::OnceLock::new();
-    let first = NOTED
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(format!("{session_id}\u{1f}{reason}"));
-    if !first {
-        return;
-    }
-    if let Some(path) = call.usage_log.as_deref() {
-        usage_log::append_event(
-            path,
-            call.provider.as_str(),
-            Some(world_id),
-            key,
-            usage_log::Event::CliReminderSeen,
-            reason,
-        );
-    }
-}
-
-/// 抹寫／截尾失敗落帳：哪一步壞、原錯誤字串（遮路徑、截斷）。測試包另在丟線與刪檔之前
-/// 把 session 檔與要抹的片段留證。只記錄，不改丟線策略。
-#[allow(clippy::too_many_arguments)]
-fn record_rewrite_failure(
-    call: &LaneCall,
-    world_id: &str,
-    key: &str,
-    reason: &str,
-    session_id: &str,
-    failure: &RewriteFailure,
-    confidential: Option<&str>,
-    prefix: Option<&str>,
-) {
-    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    #[cfg(feature = "test-harness")]
-    crate::harness::rewrite_evidence(key, reason, failure, &path, confidential, prefix);
-    #[cfg(not(feature = "test-harness"))]
-    let _ = (confidential, prefix);
-    let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
-    log_drop_failure(call, world_id, key, reason, failure, &paths);
-}
-
-/// 抹寫失敗：session 內容不可信，刪掉檔。檔案本來就不在（NotFound）當已刪。
-/// 其他刪除錯誤交回呼叫端，不能當成這條線已經棄用成功。
-fn abandon_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
-    if call.provider != LaneProvider::Claude {
-        return Ok(());
-    }
-    remove_claude_session(call, session_id)
-}
-
-/// 刪一個 claude session 檔，不看本輪 provider（呼叫端已確認那條線是 claude 開的）。
-fn remove_claude_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
-    let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-    match std::fs::remove_file(&path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(UiMsg::SessionAbandonFailed {
-            path: path.display().to_string(),
-            error: error.to_string(),
-        }
-        .into()),
-    }
-}
-
-/// 重開前撤掉被取代的 claude session（GM 線、單角色線；共線到尾段世界書門檻時）：先從 store 拿掉並落檔，落檔成功才刪檔
-/// （落檔失敗回錯、舊檔留著，磁碟上的舊狀態仍指著它）；刪檔失敗只記帳，store 已不再續用這個 id。
-/// 不這樣清，常重開的線每次會留一份整幕逐字稿檔。
-fn retire_claude_session(
-    call: &LaneCall,
-    world_id: &str,
-    key: &str,
-    session_id: &str,
-    store: &mut LaneStore,
-    store_path: &Path,
-) -> Result<(), String> {
-    store.remove(key);
-    write_store(store_path, store)?;
-    if let Err(error) = remove_claude_session(call, session_id) {
-        let path =
-            session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-        let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
-        let failure = RewriteFailure {
-            stage: "cleanup",
-            detail: error,
-        };
-        log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
-    }
-    Ok(())
-}
-
-/// 中止回合的收尾。抹寫成功就什麼都不改——呼叫前已經寫下 pending_rewrite、expected_reply 仍是 None。
-fn settle_abort(
-    call: &LaneCall,
-    world_id: &str,
-    key: &str,
-    session_id: &str,
-    confidential: Option<&str>,
-    prefix: Option<&str>,
-    store: &mut LaneStore,
-    store_path: &Path,
-) -> Result<(), String> {
-    // grok 中止時檔案可能停在半截（有 user、沒回覆），不去抹，整條撤銷
-    if call.provider == LaneProvider::Grok {
-        return revoke_grok_lane(
-            call,
-            world_id,
-            key,
-            session_id,
-            store,
-            store_path,
-            GrokRevoke::Drop("aborted"),
-        );
-    }
-    let rewrite = match call.provider {
-        // 中止與失控：只抹機密、補前綴，不換寫收尾文字（半截內容不再續用，下一輪重開）
-        LaneProvider::Claude => {
-            apply_rewrite(call, session_id, confidential, prefix, None).map(|_| ())
-        }
-        LaneProvider::Agy | LaneProvider::Grok => Ok(()),
-    };
-    if let Err(failure) = rewrite {
-        record_rewrite_failure(
-            call,
-            world_id,
-            key,
-            "rewrite-failed",
-            session_id,
-            &failure,
-            confidential,
-            prefix,
-        );
-        // 刪檔失敗也要先清線再回錯：呼叫端看到 Err 就不會把這一輪報成中止成功。
-        let abandon = abandon_session(call, session_id);
-        store.remove(key);
-        write_store(store_path, store)?;
-        if let Err(error) = abandon {
-            let path =
-                session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
-            let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
-            let failure = RewriteFailure {
-                stage: "cleanup",
-                detail: error.clone(),
-            };
-            log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
-            return Err(error);
-        }
-    }
-    Ok(())
-}
-
 /// 一輪 lane 的收場。`aborted` 時 `text` 是已經吐出的半截，呼叫端不再把它當完整回覆寫狀態。
 #[derive(Debug)]
 pub(crate) struct TurnOutcome {
     pub text: String,
     pub aborted: bool,
-}
-
-fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply {
-    match echo {
-        // 前端落檔的是收尾後的台詞（剝前綴與控制區塊，chat_with_character 同一個純函式）
-        ReplyEcho::Dialogue { speaker_id, prefix } => ExpectedReply {
-            speaker_id: speaker_id.clone(),
-            kind: TranscriptKind::Dialogue,
-            text: transport::finish_character_reply(reply, prefix, false).text,
-        },
-        // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）
-        ReplyEcho::Narration => ExpectedReply {
-            speaker_id: String::new(),
-            kind: TranscriptKind::Narration,
-            text: transport::extract_next_speaker(&transport::extract_state_block(reply).display).1,
-        },
-    }
 }
 
 /// 跑一輪 lane 呼叫：計畫（續聊或重開）→ 呼叫前落狀態 → CLI → 回合後抹寫 → 落最終狀態。
