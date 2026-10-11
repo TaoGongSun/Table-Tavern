@@ -274,6 +274,8 @@ export const ru: Record<MsgKey, string> = {
   refactorUnsupportedCard: "Интерфейс этой карты загружается с внешнего сайта; приложение не может его перенять, поэтому перестройка таких карт пока не поддерживается.",
   refactorModeTitle: "Какой стиль игры сохранить для этой карты?",
   refactorModeSuggestInterface: "Рекомендуем сохранить исходный стиль игры: {evidence}",
+  refactorProbeFailed: "Первичная оценка не удалась. Выберите стиль игры сами.",
+  refactorProbeUnparsable: "Не удалось разобрать ответ первичной оценки. Выберите стиль игры сами.",
   refactorModeSuggestCharacters: "Рекомендуем перейти на мультиперсонажный чат: {evidence}",
   refactorModeOptInterface: "Сохранить исходный стиль игры",
   refactorModeOptInterfaceDesc: "Игра идёт так же, как в исходной карте; её персонажи не появятся в списке персонажей.",

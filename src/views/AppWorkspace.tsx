@@ -340,6 +340,7 @@ export function AppWorkspace({
               onDeletePlayerCard={deletePlayerCard}
               onClose={() => setMainView(null)}
               leaveGuard={leaveGuard}
+              transport={transport}
               config={config}
               onPreference={onPreference}
               onOpenAiSettings={() => onOpenSettings("ai")}

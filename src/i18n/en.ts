@@ -285,6 +285,8 @@ export const en: Record<MsgKey, string> = {
   refactorUnsupportedCard: "This card's interface loads from an external site; the app can't take it over, so refactoring isn't supported for this kind of card yet.",
   refactorModeTitle: "Which play style should this card keep?",
   refactorModeSuggestInterface: "Suggested: keep the original play style. {evidence}",
+  refactorProbeFailed: "The quick assessment failed. Please choose a play style yourself.",
+  refactorProbeUnparsable: "The quick assessment reply couldn't be read. Please choose a play style yourself.",
   refactorModeSuggestCharacters: "Suggested: switch to multi-character chat. {evidence}",
   refactorModeOptInterface: "Keep the original play style",
   refactorModeOptInterfaceDesc: "Plays exactly like the original card; its people won't appear in the character list.",

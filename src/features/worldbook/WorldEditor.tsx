@@ -26,6 +26,7 @@ export function WorldEditor({
   onPendingRefactorCardTaken,
   worldChange,
   onWorldChangeTaken,
+  transport,
 }: {
   title: string;
   world: string;
@@ -45,6 +46,8 @@ export function WorldEditor({
   /** 刪角色、匯入、撤銷匯入的通知：開著時重讀並修剪／定基草稿，不重新掛載（草稿留著） */
   worldChange: WorldChange | null;
   onWorldChangeTaken: (worldId: string, generation: number) => void;
+  /** 聊天 transport：重構初判失敗的錯誤分流用；不傳走中性文案 */
+  transport?: string;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -187,7 +190,7 @@ export function WorldEditor({
         onExportSavedRefactorOutcome={refactor.exportSavedRefactorOutcome}
       />
 
-      <RefactorRunDialogs refactor={refactor} />
+      <RefactorRunDialogs refactor={refactor} transport={transport} />
       <RefactorResultDialog refactor={refactor} entries={worldbook.entries} />
     </EditPage>
   );

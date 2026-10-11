@@ -25,7 +25,9 @@ pub(crate) async fn open_stage(
         &cli::CliSession::Open(&session_id),
         emit,
     )
-    .await?;
+    .await
+    // CLI 呼叫的失敗掛 AI_CALL_FAILED（已帶碼的原樣放行），前端白名單分類才不會把它當成設定障礙
+    .map_err(crate::transport::dispatch::ai_call_failure)?;
     Ok((raw, session_id))
 }
 
@@ -130,6 +132,8 @@ def flag(name):
     return args[args.index(name) + 1] if name in args else None
 sid, rid = flag('--session-id'), flag('--resume')
 prompt = sys.stdin.read()
+if os.environ.get('FAKE_FAIL') == '1':
+    sys.exit(3)
 system = open(flag('--system-prompt-file'), encoding='utf-8').read()
 d = os.environ['FAKE_DIR']
 with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
@@ -138,7 +142,7 @@ path = os.path.join(d, (sid or rid) + '.marker')
 if rid and not os.path.exists(path):
     sys.exit(3)
 open(path, 'a').close()
-if rid and os.environ.get('FAKE_RUNAWAY') == '1':
+if os.environ.get('FAKE_RUNAWAY') == '1':
     while True:
         print(json.dumps({'type': 'stream_event', 'event': {'delta': {'type': 'text_delta', 'text': ' '}}}), flush=True)
 print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: interface\nEVIDENCE: ok'}))
@@ -218,6 +222,26 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
         // 呼叫結束暫存檔就刪掉，不留在 prompts 資料夾
         let left: Vec<_> = std::fs::read_dir(dir.join("prompts")).unwrap().collect();
         assert!(left.is_empty(), "暫存檔沒刪：{left:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 開線送出後失敗：CLI 非零碼結束＝AI_CALL_FAILED；失控碼保持原樣不包殼。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn open_failure_is_marked_call_failed_and_runaway_keeps_code() {
+        let _serial = crate::inflight::lock_real_process_tests();
+        let (dir, mut call) = fake_cli("openfail");
+        call.envs.push(("FAKE_FAIL".to_owned(), "1".to_owned()));
+        let error = open_stage(&call, "w1", "系統文", "第一段指示", |_| {})
+            .await
+            .unwrap_err();
+        assert!(error.starts_with("AI_CALL_FAILED:"), "{error}");
+        call.envs.pop();
+        call.envs.push(("FAKE_RUNAWAY".to_owned(), "1".to_owned()));
+        let error = open_stage(&call, "w1", "系統文", "第一段指示", |_| {})
+            .await
+            .unwrap_err();
+        assert!(error.starts_with("AI_OUTPUT_RUNAWAY:"), "{error}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

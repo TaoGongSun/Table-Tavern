@@ -274,6 +274,8 @@ export const ko: Record<MsgKey, string> = {
   refactorUnsupportedCard: "이 카드의 인터페이스는 외부 사이트에서 로드되어 앱이 이어받을 수 없습니다. 이런 카드의 리팩터링은 아직 지원되지 않습니다.",
   refactorModeTitle: "이 카드는 어떤 플레이 방식을 유지할까요?",
   refactorModeSuggestInterface: "추천: 원본 카드 방식 유지. {evidence}",
+  refactorProbeFailed: "초기 판단에 실패했습니다. 플레이 방식을 직접 선택해 주세요.",
+  refactorProbeUnparsable: "초기 판단 응답을 해석하지 못했습니다. 플레이 방식을 직접 선택해 주세요.",
   refactorModeSuggestCharacters: "추천: 다중 캐릭터 대화로 전환. {evidence}",
   refactorModeOptInterface: "원본 카드 방식 유지",
   refactorModeOptInterfaceDesc: "원본 카드와 똑같이 플레이하며, 인물은 캐릭터 목록에 나타나지 않습니다.",

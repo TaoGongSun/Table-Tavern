@@ -45,7 +45,7 @@ const IMAGE_CODES = [
 const CALL_FAILED = /^(?:Error:\s*)?AI_CALL_FAILED:/;
 
 /** 缺 OpenRouter key 的後端代碼；可能被 stream_via_transport 包一層 AI_CALL_FAILED。 */
-function isOpenRouterKeyMissing(raw: string): boolean {
+export function isOpenRouterKeyMissing(raw: string): boolean {
   return backendCode(raw.replace(CALL_FAILED, "").trimStart()) === "openrouter_api_key_missing";
 }
 
