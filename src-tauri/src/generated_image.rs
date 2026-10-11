@@ -78,15 +78,21 @@ pub(crate) async fn download(
     timeout: Duration,
     max_bytes: usize,
 ) -> Result<Vec<u8>, String> {
-    // reqwest 的 client timeout 管不到 body 讀到一半停住，整段（送出＋讀 body）另外包一層
-    tokio::time::timeout(timeout, download_body(url, max_bytes))
+    // 建 client 放在時限外（macOS 首次建立會查系統代理，可能花數秒）；reqwest 的 client timeout
+    // 管不到 body 讀到一半停住，整段（送出＋讀 body）另外包一層
+    let client = reqwest::Client::new();
+    tokio::time::timeout(timeout, download_body(&client, url, max_bytes))
         .await
         .unwrap_or_else(|_| Err(format!("{DOWNLOAD_FAILED}: timed out after {timeout:?}")))
 }
 
-async fn download_body(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+async fn download_body(
+    client: &reqwest::Client,
+    url: &str,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
     let failed = |detail: String| format!("{DOWNLOAD_FAILED}: {detail}");
-    let mut response = reqwest::Client::new()
+    let mut response = client
         .get(url)
         .send()
         .await

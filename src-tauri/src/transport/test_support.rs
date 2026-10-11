@@ -122,8 +122,18 @@ pub(crate) fn hang_server(reply: &'static str, hold_ms: u64) -> String {
     format!("http://{address}")
 }
 
+/// 計時前先把行程內第一次建 reqwest client 的成本付掉：macOS 首次建立會查系統代理，
+/// 掃執行檔所在目錄（`target/debug/deps` 動輒數十萬檔），可能花數秒，不該算進受測時限。
+pub(crate) fn warm_http_client() {
+    static WARM: std::sync::Once = std::sync::Once::new();
+    WARM.call_once(|| {
+        let _ = reqwest::Client::new();
+    });
+}
+
 /// 測試外層的 watchdog：受測函式自己的時限失效（舊碼）時讓測試紅，而不是卡到伺服器收尾。
 pub(crate) async fn watchdog<T>(future: impl std::future::Future<Output = T>) -> T {
+    warm_http_client();
     tokio::time::timeout(std::time::Duration::from_secs(10), future)
         .await
         .expect("受測呼叫沒有在時限內結束")

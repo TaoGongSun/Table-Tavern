@@ -177,7 +177,7 @@ async fn exchange_code(code: &str, verifier: &str) -> Result<String, String> {
     exchange_code_at(OPENROUTER_KEY_URL, code, verifier).await
 }
 
-/// 建 client 會載入系統憑證，放在時限外；送出＋讀本文整段限時，逾時算網路錯誤。
+/// 建 client 放在時限外（macOS 首次建立會查系統代理，可能花數秒）；送出＋讀本文整段限時，逾時算網路錯誤。
 async fn exchange_code_at(url: &str, code: &str, verifier: &str) -> Result<String, String> {
     let client = reqwest::Client::new();
     tokio::time::timeout(EXCHANGE_TIMEOUT, request_key(&client, url, code, verifier))
