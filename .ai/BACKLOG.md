@@ -6,7 +6,6 @@
 
 - [world-editor-delete-character-guard](tasks/world-editor-delete-character-guard.md) — 世界設定編輯中從側欄刪角色，finishRemoval 直接卸載編輯器、未儲存的 world.md 與新條目草稿靜默遺失 — 下一步：未排程；先定守門放刪除確認前，還是刪別的東西時不卸載 WorldEditor
 - [remove-path-try-exists](tasks/remove-path-try-exists.md) — 刪檔遇到查詢錯誤（無搜尋權限）誤報成功 — 下一步：未排程，改用 try_exists
-- [tail-worldbook-erase](tasks/tail-worldbook-erase.md) — GM 線與角色共線尾段世界書回合後抹掉，不再每輪疊一份 — 下一步：未排程，排在 gm-line-system-change-restart 之後〔作者裁決 2026-10-11：選 A〕
 - [solo-private-dynamic-reopen](tasks/solo-private-dynamic-reopen.md) — 單人在場 Claude 線私設含動態巨集時沒算進重開指紋，補丁每輪疊加 — 下一步：未排程
 - [lanes-mod-split](tasks/lanes-mod-split.md) — lanes/mod.rs 1525 行，拆出 plan.rs／cleanup.rs — 下一步：未排程，純搬移
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
