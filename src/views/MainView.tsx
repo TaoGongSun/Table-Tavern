@@ -45,6 +45,8 @@ interface MainViewProps {
   onOpenAiSettings: () => void;
   /** 回合或換幕進行中（同步查當下） */
   isBusy: () => boolean;
+  /** 聊天 transport：重構初判失敗的錯誤分流要指對地方；給不出就走中性文案 */
+  transport?: string;
   worldOpen: boolean;
   onEntryConverted: () => Promise<void>;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
@@ -83,6 +85,7 @@ export function MainView({
   onPreference,
   onOpenAiSettings,
   isBusy,
+  transport,
   worldOpen,
   onEntryConverted,
   onRefactorApplied,
@@ -158,6 +161,7 @@ export function MainView({
           worldChange={worldChange}
           onWorldChangeTaken={onWorldChangeTaken}
           isTurnRunning={isBusy}
+          transport={transport}
         />
       ) : (
         playView

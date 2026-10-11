@@ -274,6 +274,8 @@ export const ja: Record<MsgKey, string> = {
   refactorUnsupportedCard: "このカードのインターフェースは外部サイトから読み込まれるため、アプリでは引き継げません。この種のカードのリファクタリングは未対応です。",
   refactorModeTitle: "このカードはどちらの遊び方を残しますか？",
   refactorModeSuggestInterface: "おすすめ：元のカードの遊び方を残す。{evidence}",
+  refactorProbeFailed: "初期判定に失敗しました。遊び方をご自身で選んでください。",
+  refactorProbeUnparsable: "初期判定の返答を読み取れませんでした。遊び方をご自身で選んでください。",
   refactorModeSuggestCharacters: "おすすめ：マルチキャラクター会話に切り替える。{evidence}",
   refactorModeOptInterface: "元のカードの遊び方を残す",
   refactorModeOptInterfaceDesc: "遊び方は元のカードと同じ。人物はキャラクター一覧に表示されません。",

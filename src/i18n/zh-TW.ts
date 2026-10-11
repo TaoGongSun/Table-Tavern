@@ -275,6 +275,8 @@ export const zh = {
   refactorUnsupportedCard: "這張卡的介面由外部網站載入，App 接管不了，暫不支援重構這類卡。",
   refactorModeTitle: "這張卡要保留哪種玩法？",
   refactorModeSuggestInterface: "建議保留原卡玩法：{evidence}",
+  refactorProbeFailed: "初判沒有成功，請自己選玩法。",
+  refactorProbeUnparsable: "初判的回覆看不懂，請自己選玩法。",
   refactorModeSuggestCharacters: "建議改成多角色對話：{evidence}",
   refactorModeOptInterface: "保留原卡玩法",
   refactorModeOptInterfaceDesc: "玩法跟原卡一樣；人物不會出現在角色清單。",

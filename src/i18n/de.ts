@@ -276,6 +276,8 @@ export const de: Record<MsgKey, string> = {
   refactorUnsupportedCard: "Die Oberfläche dieser Karte wird von einer externen Website geladen; die App kann sie nicht übernehmen, daher wird das Umbauen solcher Karten noch nicht unterstützt.",
   refactorModeTitle: "Welche Spielweise soll diese Karte behalten?",
   refactorModeSuggestInterface: "Empfehlung: die ursprüngliche Spielweise behalten. {evidence}",
+  refactorProbeFailed: "Die Ersteinschätzung ist fehlgeschlagen. Bitte wähle die Spielweise selbst.",
+  refactorProbeUnparsable: "Die Antwort der Ersteinschätzung war nicht lesbar. Bitte wähle die Spielweise selbst.",
   refactorModeSuggestCharacters: "Empfehlung: auf Mehrcharakter-Chat umstellen. {evidence}",
   refactorModeOptInterface: "Ursprüngliche Spielweise behalten",
   refactorModeOptInterfaceDesc: "Spielt sich genau wie die Originalkarte; ihre Personen erscheinen nicht in der Charakterliste.",

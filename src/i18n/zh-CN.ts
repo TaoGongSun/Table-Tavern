@@ -259,6 +259,8 @@ export const zhCN: Record<MsgKey, string> = {
   refactorUnsupportedCard: "这张卡的界面由外部网站加载，App 接管不了，暂不支持重构这类卡。",
   refactorModeTitle: "这张卡要保留哪种玩法？",
   refactorModeSuggestInterface: "建议保留原卡玩法：{evidence}",
+  refactorProbeFailed: "初判没有成功，请自己选玩法。",
+  refactorProbeUnparsable: "初判的回复看不懂，请自己选玩法。",
   refactorModeSuggestCharacters: "建议改成多角色对话：{evidence}",
   refactorModeOptInterface: "保留原卡玩法",
   refactorModeOptInterfaceDesc: "玩法跟原卡一样；人物不会出现在角色列表。",

@@ -66,4 +66,4 @@ DongeonMaster-safe 重構改用 gm_tier 高階檔：route 確認初判與盤點�
 3. **骨架多行值填錯（已修，[takeover-text-multiline](takeover-text-multiline.md)）**：兩個不同根因。Transfur 骨架 `mainText|{{本回合.正文}}` 是一段一筆的記錄式格式，正文第二段起沒補 `mainText|` 前綴；RPGImmortal 骨架的鍵本身是佔位（`{{地圖類型}}:`），被當成純量加引號，YAML 解析失敗（不是縮排問題）。
 4. **文字欄被下 delta（已修，[takeover-text-field-delta](takeover-text-field-delta.md)）**：Transfur 接管桌 GM 對 `神經狀態`（文字欄）每回合下 delta，3/3 被拒（與 refactor-statusbar-skeleton 待觀察 ② 同類）。
 5. **開場白的原卡狀態欄被解析成多餘枝（已修，[takeover-opening-statusbar-branch](takeover-opening-statusbar-branch.md)）**：NorthHall 接管桌貼開場白後，狀態樹多出 `状态栏` 整棵（原卡 `<Status_block>` 的 YAML），與骨架欄位並存。
-6. **初判失敗不留痕**：設定缺 `cli_risk_accepted` 時初判在派送前失敗，畫面只看到沒有建議的二選一，看不出原因（照 2026-08-14 拍板不偽造證據，但錯誤本身沒露出）。
+6. **初判失敗不留痕（已修，[refactor-probe-failure-hidden](refactor-probe-failure-hidden.md)）**：設定缺 `cli_risk_accepted` 時初判在派送前失敗，畫面只看到沒有建議的二選一，看不出原因。

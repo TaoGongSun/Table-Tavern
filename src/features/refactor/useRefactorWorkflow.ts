@@ -39,6 +39,8 @@ import { sourceContainerRoles } from "./refactor-slot";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
   detectRefactorTristate,
+  probeFailureKind,
+  stripTransportPrefix,
   type RefactorMode,
   type RefactorRecommendOutcome,
   type RefactorRunTicket,
@@ -55,6 +57,8 @@ export interface RefactorModeAsk {
   picked: RefactorMode;
   /** 第二段 resume 憑證；null＝初判失敗或非 claude lane，第二段直接重送全卡。 */
   ticket: RefactorRunTicket | null;
+  /** 初判送出後失敗或解析不出：框內附原因（raw＝後端原文）；初判成功為 null。 */
+  failure: { kind: "failed" | "unparsable"; raw: string } | null;
 }
 
 interface UseRefactorWorkflowOptions {
@@ -201,8 +205,15 @@ export function useRefactorWorkflow({
   // 桌照現狀。分兩段：先查桌況（擋下的當場提示），清回留給呼叫端在該做的時候做。`stale` 為真＝這次請求已作廢。
   type RerunStatus = "fresh" | "played" | "no_source" | "ready";
   // 回 false＝擋下或已作廢。
+  // 查詢失敗在這裡就報到狀態列（兩個呼叫端都在呼叫前清過狀態列、拿到 false 直接收手，只報一次）。
   async function checkRerun(stale: () => boolean): Promise<RerunStatus | false> {
-    const rerun = await invoke<RerunStatus>("refactor_rerun_status", { worldId: world });
+    let rerun: RerunStatus;
+    try {
+      rerun = await invoke<RerunStatus>("refactor_rerun_status", { worldId: world });
+    } catch (reason) {
+      if (!stale()) setStatusMessage(String(reason));
+      return false;
+    }
     if (stale()) return false;
     if (rerun === "played" || rerun === "no_source") {
       await showMessage(t(rerun === "played" ? "refactorRerunPlayed" : "refactorRerunNoSource"), {
@@ -250,13 +261,20 @@ export function useRefactorWorkflow({
     if (progress) return;
     const origin = world;
     const stale = () => !mounted.current || worldRef.current !== origin;
+    setStatusMessage("");
     const rerun = await checkRerun(stale);
     if (rerun === false) return;
     if (rerun === "ready" && !(await resetForRerun(stale))) return;
     setStatusMessage("");
-    const cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world }).catch(
-      () => [] as CardInterface[],
-    );
+    let cards: CardInterface[];
+    try {
+      cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world });
+    } catch (reason) {
+      // 讀不到卡片介面不能當成「無介面卡」直跑角色線
+      if (!stale()) setStatusMessage(String(reason));
+      return;
+    }
+    if (stale()) return;
     const tristate = detectRefactorTristate(cards);
     if (tristate === "unsupported") {
       setStatusMessage(t("refactorUnsupportedCard"));
@@ -284,6 +302,7 @@ export function useRefactorWorkflow({
         onDelta: channel,
       });
       setProgress(null);
+      if (stale()) return;
       const recommend: RefactorMode = probe.recommend === "characters" ? "characters" : "interface";
       setModeAsk({
         recommend,
@@ -291,12 +310,27 @@ export function useRefactorWorkflow({
         expanded: false,
         picked: recommend,
         ticket: probe.run_id ? { runId: probe.run_id, fingerprint: probe.fingerprint } : null,
+        failure: null,
       });
     } catch (reason) {
       setProgress(null);
-      if (String(reason).includes("refactor-aborted")) return;
-      // 初判失敗＝不偽造證據：no 判官句、直接展開兩選項、預設介面優先（2026-08-14 拍板）
-      setModeAsk({ recommend: null, evidence: "", expanded: true, picked: "interface", ticket: null });
+      if (stale()) return;
+      const kind = probeFailureKind(reason);
+      if (kind === "aborted") return;
+      // 白名單碼（持續性設定／前置障礙）：不開二選一，原因直接報（2026-10-12 作者裁決）
+      if (kind === "not_sent") {
+        setStatusMessage(stripTransportPrefix(String(reason)));
+        return;
+      }
+      // 送出後失敗／解析不出＝不偽造證據：無判官句、展開兩選項、預設介面優先（2026-08-14 拍板），框內附原因
+      setModeAsk({
+        recommend: null,
+        evidence: "",
+        expanded: true,
+        picked: "interface",
+        ticket: null,
+        failure: { kind, raw: String(reason) },
+      });
     }
   }
 

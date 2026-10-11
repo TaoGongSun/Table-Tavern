@@ -36,6 +36,7 @@ import { useRefactorWorkflow, type RefactorWorkflowController } from "./useRefac
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const turn = { running: false };
+const statuses: string[] = [];
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 let controller: RefactorWorkflowController | null = null;
@@ -46,7 +47,7 @@ function Harness({ world = "W" }: { world?: string }) {
   controller = useRefactorWorkflow({
     world,
     worldName: "驛站",
-    setStatusMessage: () => {},
+    setStatusMessage: (message: string) => statuses.push(message),
     refreshAfterApply,
     flushDraft,
     isTurnRunning: () => turn.running,
@@ -66,6 +67,7 @@ async function mount() {
 const commands = () => backend.calls.map((call) => call.command);
 
 beforeEach(() => {
+  statuses.length = 0;
   backend.handlers = {};
   backend.calls = [];
   dialogs.confirm.mockReset().mockResolvedValue(true);
@@ -688,5 +690,161 @@ describe("重構卡 PNG：角色圖暫存的 token 生命週期", () => {
     expect(controller!.outcome).not.toBeNull();
     await act(async () => controller!.closeRefactor());
     expect(releases()).toHaveLength(1);
+  });
+});
+
+describe("初判失敗分流（refactor-probe-failure-hidden）", () => {
+  const msg = (code: string, params: Record<string, string> = {}) =>
+    `TTMSG:${JSON.stringify({ code, ...params })}`;
+  const supported = () => [
+    {
+      character_id: "c1",
+      character_name: "角色",
+      scripts: [{ name: "s", find_regex: "/x/", replace_string: "<div>x</div>", trim_strings: [], min_depth: null, max_depth: null }],
+      unsupported: null,
+      opening: null,
+    },
+  ];
+  const errors = () => statuses.filter((message) => message !== "");
+
+  beforeEach(() => {
+    backend.handlers.refactor_rerun_status = () => "fresh";
+    backend.handlers.card_interfaces = supported;
+  });
+
+  it("沒送出（缺風險告知）：不開二選一、狀態列報原因、不跑第二段", async () => {
+    await mount();
+    const raw = msg("cli_risk_not_accepted");
+    backend.handlers.refactor_recommend = () => Promise.reject(raw);
+    await act(async () => controller!.runAiRefactor());
+    expect(controller!.modeAsk).toBeNull();
+    expect(controller!.progress).toBeNull();
+    expect(errors()).toEqual([raw]);
+    expect(commands()).not.toContain("refactor_survey");
+  });
+
+  it("沒送出且帶傳輸層前綴（缺 key、今日免費額度用完）：狀態列不含 AI_ 前綴", async () => {
+    await mount();
+    for (const code of ["openrouter_api_key_missing", "smart_free_daily_exhausted"]) {
+      statuses.length = 0;
+      const prefix = code === "openrouter_api_key_missing" ? "AI_CALL_FAILED" : "AI_HTTP_STATUS_429";
+      backend.handlers.refactor_recommend = () => Promise.reject(`Error: ${prefix}: ${msg(code)}`);
+      await act(async () => controller!.runAiRefactor());
+      expect(controller!.modeAsk).toBeNull();
+      expect(errors()).toEqual([msg(code)]);
+      expect(errors().join("")).not.toContain("AI_");
+    }
+  });
+
+  it("送出後失敗、殼內非白名單、未知碼：開二選一（無建議、展開、預選介面）並附原文", async () => {
+    await mount();
+    for (const raw of [
+      "AI_HTTP_STATUS_429: status=429 body=",
+      `AI_CALL_FAILED: ${msg("cli_reply_error", { error: "boom" })}`,
+      msg("some_future_code"),
+    ]) {
+      backend.handlers.refactor_recommend = () => Promise.reject(raw);
+      await act(async () => controller!.runAiRefactor());
+      expect(controller!.modeAsk).toEqual({
+        recommend: null,
+        evidence: "",
+        expanded: true,
+        picked: "interface",
+        ticket: null,
+        failure: { kind: "failed", raw },
+      });
+      expect(errors()).toEqual([]);
+      await act(async () => controller!.setModeAsk(null));
+    }
+  });
+
+  it("解析不出：開二選一、failure.kind＝unparsable", async () => {
+    await mount();
+    backend.handlers.refactor_recommend = () => Promise.reject("refactor-recommend-unparsable");
+    await act(async () => controller!.runAiRefactor());
+    expect(controller!.modeAsk?.failure).toEqual({
+      kind: "unparsable",
+      raw: "refactor-recommend-unparsable",
+    });
+  });
+
+  it("初判成功：failure 為 null", async () => {
+    await mount();
+    backend.handlers.refactor_recommend = () => ({
+      recommend: "characters",
+      evidence: "證據",
+      run_id: "",
+      fingerprint: "",
+      raw: "",
+    });
+    await act(async () => controller!.runAiRefactor());
+    expect(controller!.modeAsk).toMatchObject({ recommend: "characters", failure: null });
+  });
+
+  async function switchTableDuring(command: string, settle: (finish: (value: unknown) => void, fail: (reason: unknown) => void) => void) {
+    let finish!: (value: unknown) => void;
+    let fail!: (reason: unknown) => void;
+    backend.handlers[command] = () =>
+      new Promise((done, reject) => {
+        finish = done;
+        fail = reject;
+      });
+    let running!: Promise<void>;
+    await act(async () => {
+      running = controller!.runAiRefactor();
+    });
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    await act(async () => root?.render(<Harness world="B" />));
+    await act(async () => {
+      settle(finish, fail);
+      await running;
+    });
+  }
+
+  it("初判回來已換桌（成功或失敗）：不開框、不寫狀態列", async () => {
+    await mount();
+    await switchTableDuring("refactor_recommend", (_finish, fail) => fail("AI_CALL_FAILED: x"));
+    expect(controller!.modeAsk).toBeNull();
+    expect(errors()).toEqual([]);
+    await act(async () => root?.render(<Harness world="W" />));
+    await switchTableDuring("refactor_recommend", (finish) =>
+      finish({ recommend: "interface", evidence: "e", run_id: "", fingerprint: "", raw: "" }),
+    );
+    expect(controller!.modeAsk).toBeNull();
+    await act(async () => root?.render(<Harness world="W" />));
+    await switchTableDuring("refactor_recommend", (_finish, fail) => fail(msg("cli_risk_not_accepted")));
+    expect(errors()).toEqual([]);
+  });
+
+  it("讀卡片介面失敗：狀態列報原因、不當成無介面卡直跑；換桌後失敗不報", async () => {
+    await mount();
+    backend.handlers.card_interfaces = () => Promise.reject("讀卡失敗");
+    await act(async () => controller!.runAiRefactor());
+    expect(errors()).toEqual(["讀卡失敗"]);
+    expect(commands()).not.toContain("refactor_recommend");
+    expect(commands()).not.toContain("refactor_survey");
+
+    statuses.length = 0;
+    await switchTableDuring("card_interfaces", (_finish, fail) => fail("讀卡失敗"));
+    expect(errors()).toEqual([]);
+    expect(commands()).not.toContain("refactor_survey");
+  });
+
+  it("查桌況失敗：AI 重構與匯入重構卡兩條路徑都只報一次、不往下走；換桌後不報", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => Promise.reject("查桌況失敗");
+    await act(async () => controller!.runAiRefactor());
+    expect(errors()).toEqual(["查桌況失敗"]);
+    expect(commands()).toEqual(["refactor_rerun_status"]);
+
+    statuses.length = 0;
+    backend.calls = [];
+    await act(async () => controller!.pickRefactorOutcome(new File(["{}"], "card.json")));
+    expect(errors()).toEqual(["查桌況失敗"]);
+    expect(commands()).toEqual(["refactor_rerun_status"]);
+
+    statuses.length = 0;
+    await switchTableDuring("refactor_rerun_status", (_finish, fail) => fail("查桌況失敗"));
+    expect(errors()).toEqual([]);
   });
 });

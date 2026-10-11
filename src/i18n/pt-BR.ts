@@ -274,6 +274,8 @@ export const ptBR: Record<MsgKey, string> = {
   refactorUnsupportedCard: "A interface desta carta é carregada de um site externo; o app não consegue assumi-la, então a reestruturação ainda não suporta esse tipo de carta.",
   refactorModeTitle: "Qual estilo de jogo esta carta deve manter?",
   refactorModeSuggestInterface: "Recomendado: manter o estilo original. {evidence}",
+  refactorProbeFailed: "A avaliação inicial falhou. Escolha você mesmo o estilo de jogo.",
+  refactorProbeUnparsable: "Não foi possível ler a resposta da avaliação inicial. Escolha você mesmo o estilo de jogo.",
   refactorModeSuggestCharacters: "Recomendado: mudar para conversa multipersonagem. {evidence}",
   refactorModeOptInterface: "Manter o estilo original",
   refactorModeOptInterfaceDesc: "Joga-se igual à carta original; as pessoas dela não aparecerão na lista de personagens.",

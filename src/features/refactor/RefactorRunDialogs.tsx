@@ -1,13 +1,16 @@
 import { t } from "../../i18n";
 import { backendText } from "../../shared/ui/backend-text";
+import { AiErrorText } from "../../shared/ui/atoms";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
 import type { RefactorWorkflowController } from "./useRefactorWorkflow";
 
 interface RefactorRunDialogsProps {
   refactor: RefactorWorkflowController;
+  /** 聊天 transport：初判失敗的錯誤分流要指對地方；不傳走中性文案 */
+  transport?: string;
 }
 
-export function RefactorRunDialogs({ refactor }: RefactorRunDialogsProps) {
+export function RefactorRunDialogs({ refactor, transport }: RefactorRunDialogsProps) {
   const {
     progress,
     modeAsk,
@@ -84,6 +87,17 @@ export function RefactorRunDialogs({ refactor }: RefactorRunDialogsProps) {
                 ? t("refactorModeSuggestInterface", { evidence: modeAsk.evidence })
                 : t("refactorModeSuggestCharacters", { evidence: modeAsk.evidence })}
             </p>
+          )}
+          {/* 初判送出後失敗：比照回合失敗彈窗附人話＋原文；解析不出只給一句，不露內部代碼 */}
+          {modeAsk.recommend === null && modeAsk.failure?.kind === "failed" && (
+            <p role="alert">
+              {t("refactorProbeFailed")}
+              <br />
+              <AiErrorText text={modeAsk.failure.raw} transport={transport} />
+            </p>
+          )}
+          {modeAsk.recommend === null && modeAsk.failure?.kind === "unparsable" && (
+            <p role="alert">{t("refactorProbeUnparsable")}</p>
           )}
           {modeAsk.expanded && (
             <div className="refactor-mode-options">
