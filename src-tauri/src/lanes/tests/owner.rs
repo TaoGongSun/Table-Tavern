@@ -248,11 +248,12 @@ fn plan_turn_owner_rules_in_fixed_order() {
     );
 }
 
-/// 私設變動走現成補丁（起點：已傳達的素材就含舊私設）。對假 CLI 實收的 system／prompt 逐字比對：
-/// TTL 內替換、TTL 內移除都續用舊 system＋補丁；TTL 外整份追平；更新後換角開新線。
+/// 私設變動一律整線重開、不走補丁（solo-private-dynamic-reopen）：TTL 內替換、TTL 內移除、TTL 外換成另一份
+/// system 都開新 session，送出的 system 只有本輪私設、prompt 不帶補丁，被取代的舊檔刪掉；system 不變（TTL 內外）
+/// 照常續用；換角開新線。對假 CLI 實收的 system／prompt 逐字比對。
 #[cfg(unix)]
 #[tokio::test]
-async fn private_changes_patch_within_ttl_rebase_after_and_never_cross_speakers() {
+async fn private_changes_reopen_without_patch_and_never_cross_speakers() {
     let _serial = crate::inflight::lock_real_process_tests();
     const BASE: &str = "## 世界\n霧口鎮的旅店酒館。\n";
     const OLD: &str = "## 世界\n霧口鎮的旅店酒館。\n\n## 「狐狸」的私有設定\n其實是王子。\n";
@@ -262,70 +263,58 @@ async fn private_changes_patch_within_ttl_rebase_after_and_never_cross_speakers(
         frozen,
         ..Turn::single("fox-id", "狐狸", "")
     };
-    let patch_of = |applied: &str, current: &str| {
-        super::super::snapshot_patch::render_patch(applied, current, "zh-TW").unwrap()
-    };
     let prompt_of = |call: &Value| call["prompt"].as_str().unwrap().to_owned();
     let system_of = |call: &Value| call["system"].as_str().unwrap().to_owned();
-    let mut table = Table::new("private-patch");
+    let mut table = Table::new("private-reopen");
+    let expire = |table: &Table| {
+        let path = data::lanes_path(&table.fake.root, &table.fake.world_id).unwrap();
+        let mut store = read_store(&path);
+        for state in store.values_mut() {
+            state.last_call_epoch = now_epoch() - state.cache_ttl_secs - 60;
+        }
+        write_store(&path, &store).unwrap();
+    };
 
-    // 開線：已傳達的素材＝含舊私設
+    // 開線、TTL 內替換、TTL 內移除、system 不變、TTL 外換回舊私設、TTL 外 system 不變
     table.run(fox(OLD)).await.unwrap();
-    let opened = session_of(&table.calls()[0]).1;
-    let state = table.state().unwrap();
-    assert_eq!(state.snapshot, OLD);
-    assert_eq!(state.applied, OLD);
-
-    // TTL 內私設替換：續用、system 仍是舊字串、prompt 帶「舊→新」補丁
     table.run(fox(REPLACED)).await.unwrap();
-    let replaced = table.calls()[1].clone();
-    let replaced_patch = patch_of(OLD, REPLACED);
-    assert!(replaced_patch.contains("其實是公主。"));
-    assert_eq!(session_of(&replaced), (true, opened.clone()), "替換：續用");
-    assert_eq!(system_of(&replaced), OLD, "替換：TTL 內 system 不換");
-    assert!(
-        prompt_of(&replaced).contains(&format!("——\n{replaced_patch}\n\n")),
-        "替換：補丁原文接在本輪 tail 前"
-    );
-    assert_eq!(table.state().unwrap().applied, REPLACED);
-
-    // TTL 內私設移除：續用、system 仍是舊字串、prompt 帶「替換後→移除」補丁
     table.run(fox(BASE)).await.unwrap();
-    let removed = table.calls()[2].clone();
-    let removed_patch = patch_of(REPLACED, BASE);
-    assert_ne!(removed_patch, replaced_patch);
-    assert_eq!(session_of(&removed), (true, opened.clone()), "移除：續用");
-    assert_eq!(system_of(&removed), OLD, "移除：TTL 內 system 不換");
-    assert!(
-        prompt_of(&removed).contains(&format!("——\n{removed_patch}\n\n")),
-        "移除：補丁原文接在本輪 tail 前"
-    );
-    assert_eq!(table.state().unwrap().applied, BASE);
-
-    // TTL 外：整份追平，system 換成最新素材，不帶補丁
-    let path = data::lanes_path(&table.fake.root, &table.fake.world_id).unwrap();
-    let mut store = read_store(&path);
-    for state in store.values_mut() {
-        state.last_call_epoch = now_epoch() - state.cache_ttl_secs - 60;
+    table.run(fox(BASE)).await.unwrap();
+    expire(&table);
+    table.run(fox(OLD)).await.unwrap();
+    expire(&table);
+    table.run(fox(OLD)).await.unwrap();
+    let calls = table.calls();
+    let ids: Vec<(bool, String)> = calls.iter().map(session_of).collect();
+    for (index, system) in [(0, OLD), (1, REPLACED), (2, BASE), (4, OLD)] {
+        assert!(!ids[index].0, "第 {index} 輪重開：{ids:?}");
+        assert_eq!(
+            system_of(&calls[index]),
+            system,
+            "第 {index} 輪 system 只有本輪素材"
+        );
+        assert!(
+            !prompt_of(&calls[index]).contains("其實是"),
+            "第 {index} 輪 prompt 不帶補丁"
+        );
     }
-    write_store(&path, &store).unwrap();
-    table.run(fox(BASE)).await.unwrap();
-    let rebased = table.calls()[3].clone();
+    assert_eq!(ids[3], (true, ids[2].1.clone()), "TTL 內 system 不變：續用");
+    assert_eq!(system_of(&calls[3]), BASE);
+    assert_eq!(ids[5], (true, ids[4].1.clone()), "TTL 外 system 不變：續用");
+    assert_eq!(system_of(&calls[5]), OLD);
+    for index in [0, 1, 2] {
+        assert!(
+            !session_exists(&table, &ids[index].1),
+            "第 {index} 輪被取代的舊檔已刪"
+        );
+    }
+    let state = table.state().unwrap();
     assert_eq!(
-        session_of(&rebased),
-        (true, opened.clone()),
-        "TTL 外：續用不重開"
+        (state.snapshot.as_str(), state.applied.as_str()),
+        (OLD, OLD)
     );
-    assert_eq!(system_of(&rebased), BASE, "TTL 外：system 換成最新");
-    let rebased_prompt = prompt_of(&rebased);
-    assert!(
-        !rebased_prompt.contains(&replaced_patch),
-        "TTL 外：不帶補丁"
-    );
-    assert!(!rebased_prompt.contains(&removed_patch), "TTL 外：不帶補丁");
-    assert!(!rebased_prompt.contains("其實是"));
 
-    // 更新後換角：owner-changed 開新線，system 只有騎士素材，沒有狐狸的私設或補丁
+    // 換角：owner-changed 開新線，system 只有騎士素材，沒有狐狸的私設；狐狸那條舊檔刪掉
     table
         .run(Turn {
             frozen: KNIGHT,
@@ -333,18 +322,21 @@ async fn private_changes_patch_within_ttl_rebase_after_and_never_cross_speakers(
         })
         .await
         .unwrap();
-    let swapped = table.calls()[4].clone();
+    let swapped = table.calls()[6].clone();
     let (resumed, id) = session_of(&swapped);
     assert!(!resumed, "換角：開新線");
-    assert_ne!(id, opened);
     assert_eq!(system_of(&swapped), KNIGHT, "換角：system 只有騎士素材");
-    assert!(
-        !sent_text(&swapped).contains("其實是"),
-        "換角：沒有狐狸的私設或補丁"
-    );
+    assert!(!sent_text(&swapped).contains("其實是"));
+    assert!(!session_exists(&table, &ids[4].1), "換角：狐狸的舊檔已刪");
+    assert!(session_exists(&table, &id));
     let state = table.state().unwrap();
     assert_eq!(state.unerased_owner.as_deref(), Some("knight-id"));
     assert_eq!(state.applied, KNIGHT);
+}
+
+fn session_exists(table: &Table, session_id: &str) -> bool {
+    session_file::session_file_path(&table.fake.claude_home, &table.fake.working_dir, session_id)
+        .exists()
 }
 
 /// 舊 lanes.json 沒有新欄位：整份照讀，claude 角色線讀成「照舊每輪抹」。
@@ -1160,7 +1152,7 @@ async fn gm_and_character_lanes_never_share_sessions() {
 
 /// 不抹尾段的線把本輪世界書提進 system（worldbook-st-trigger-parity 三之 3）：世界書一變就整線重開、不走補丁
 /// （補丁回合後不抹，舊世界書會留在 session 歷史裡）；連續三輪換世界書，每輪送出的只有本輪那份。
-/// 世界書沒變、只有別的素材變時照舊續用。
+/// 世界書沒變、別的素材變了也重開；system 完全不變才續用。
 #[cfg(unix)]
 #[tokio::test]
 async fn hoisted_worldbook_change_reopens_instead_of_patching() {
@@ -1194,16 +1186,23 @@ async fn hoisted_worldbook_change_reopens_instead_of_patching() {
             assert_eq!(sent.contains(book), other == index, "第 {index} 輪：{sent}");
         }
     }
-    // 世界書沒變、凍結素材別處變了：照舊續用（claude 快取內走補丁）
-    table
-        .run(Turn {
-            frozen: &format!("{}另一段\n", frozen[2]),
-            worldbook: Some(books[2]),
-            ..Turn::single("fox-id", "狐狸", "")
-        })
-        .await
-        .unwrap();
-    assert_eq!(session_of(&table.calls()[3]), (true, ids[2].1.clone()));
+    // 世界書沒變、凍結素材別處變了：同樣重開（system-changed），不走補丁
+    let elsewhere = format!("{}另一段\n", frozen[2]);
+    for _ in 0..2 {
+        table
+            .run(Turn {
+                frozen: &elsewhere,
+                worldbook: Some(books[2]),
+                ..Turn::single("fox-id", "狐狸", "")
+            })
+            .await
+            .unwrap();
+    }
+    let calls = table.calls();
+    let (resumed, reopened) = session_of(&calls[3]);
+    assert!(!resumed && reopened != ids[2].1, "別處變了：重開");
+    // system 完全不變：續用
+    assert_eq!(session_of(&calls[4]), (true, reopened));
 }
 
 /// 走正式的掃描＋組裝：單人 Claude 線把共用快照的常駐條目改掉、再刪掉，都要重開（指紋涵蓋 system 裡全部的世界書），

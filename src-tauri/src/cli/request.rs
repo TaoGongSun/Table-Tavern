@@ -338,7 +338,7 @@ pub fn grok_args(
 /// grok lane 續聊參數（grok-cache-miss）：與聊天單發同一組旗標，差別只在讓 session 落檔。
 /// 開線 `-s <id>` 自帶 system profile；續聊 `-r <id>` **不重帶 system**——grok 把 system
 /// 凍在 session 建立那一刻（session 目錄下的 system_prompt.txt），重帶無效且會打散前綴，
-/// 素材漂移一律改走 prompt 內的補丁（見 lanes::plan_turn）。
+/// 素材漂移時 grok 整線重開；prompt 內補丁只有 Claude 角色共線用（見 lanes::plan_turn）。
 /// `-s` 對已存在的 id 會直接報「Session ID is already in use」，所以開／續兩條旗標不能互換。
 pub fn grok_session_args(
     model: Option<&str>,

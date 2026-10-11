@@ -16,6 +16,8 @@
 //! chars 線的私設隔離靠「回合注入機密段→回合後從 session 檔抹掉」維持（案 C，2026-08-03 拍板）；
 //! claude 單角色線改成不抹，隔離靠「含未抹內容的 session 只給同一角色、單角色模式續用」
 //! （`LaneState::unerased_owner`，〔作者裁決 2026-10-07〕）。
+//! 不抹的線（GM、claude 單角色線）凍結 system 一變就整線重開、刪掉被取代的舊 session 檔，不在歷史裡疊補丁
+//! 〔作者裁決 2026-10-11〕；只有每輪抹的 claude 角色共線還走補丁／追平。
 //! 尾段世界書（GM 線、角色共線的公開段）回合後不抹，舊尾段留在歷史吃快取；份數到 8、或至少 4 份且佔
 //! 固定容量 15% 就以 `tail-worldbook` 整線重開壓平（`TailStale`，plans/tail-worldbook-erase.md）。
 
@@ -146,7 +148,7 @@ pub(crate) struct TurnInput<'a> {
     pub events: &'a [TranscriptEvent],
     /// 介面語系：事件標頭照提示詞慣例組字（en 出英文、其餘繁中），玩家空名退回該語系稱呼
     pub lang: &'a str,
-    /// 本輪重組的最新素材全文；與已傳達版本（applied）不同時，claude 角色線快取存活走補丁、過期走追平，其餘重開
+    /// 本輪重組的最新素材全文；與已傳達版本（applied）不同時，claude 角色共線快取存活走補丁、過期走追平，其餘重開
     pub frozen_system: String,
     /// 回合尾段（transport::chars_lane_turn／gm_lane_turn 的 tail）
     pub tail: String,
@@ -678,10 +680,10 @@ fn next_cache_ttl(
 }
 
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
-/// 素材漂移的處置：claude 角色線的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
+/// 素材漂移的處置：claude 角色共線的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
 /// grok 的 system 凍在 session 建立那刻，補丁只是一則 user 訊息、壓不過權重更高的舊 system，
-/// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。GM 線三家都一變就重開：
-/// world.md／卡的動態巨集讓凍結 system 每輪可能變，補丁會在不抹的歷史裡一份份疊上去〔作者裁決 2026-10-11〕。
+/// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。GM 線三家與 claude 單角色線都一變就重開：
+/// world.md／卡／私設的動態巨集讓凍結 system 每輪可能變，補丁會在不抹的歷史裡一份份疊上去〔作者裁決 2026-10-11〕。
 /// 歷史裡的舊尾段世界書到門檻（`tail_reopen`）也重開，排在其他原因之後、每個續聊出口之前。
 fn plan_turn(
     state: Option<&LaneState>,
@@ -765,8 +767,8 @@ fn plan_turn(
             reason: ReopenReason::WorldbookChanged,
         };
     }
-    if provider != LaneProvider::Claude || input.lane == Lane::Gm {
-        // snapshot != applied＝升級前快取內補過丁、尚未追平的舊 claude GM 線，歷史裡有補丁，一併重開
+    if provider != LaneProvider::Claude || input.lane == Lane::Gm || input.single_owner.is_some() {
+        // snapshot != applied＝升級前快取內補過丁、尚未追平的舊 claude GM／單角色線，歷史裡有補丁，一併重開
         if state.applied != input.frozen_system || state.snapshot != state.applied {
             return TurnPlan::Reopen {
                 reason: ReopenReason::SystemChanged,
@@ -785,7 +787,7 @@ fn plan_turn(
             rebased: false,
         };
     }
-    // claude 角色線的兩個續聊出口（追平、補丁）之前
+    // claude 角色共線的兩個續聊出口（追平、補丁）之前
     if tail_reopen(state, input) {
         return TurnPlan::Reopen {
             reason: ReopenReason::TailWorldbook,
@@ -981,9 +983,9 @@ fn remove_claude_session(call: &LaneCall, session_id: &str) -> Result<(), String
     }
 }
 
-/// 重開前撤掉被取代的 claude session（GM 線；角色線到尾段世界書門檻時）：先從 store 拿掉並落檔，落檔成功才刪檔
+/// 重開前撤掉被取代的 claude session（GM 線、單角色線；共線到尾段世界書門檻時）：先從 store 拿掉並落檔，落檔成功才刪檔
 /// （落檔失敗回錯、舊檔留著，磁碟上的舊狀態仍指著它）；刪檔失敗只記帳，store 已不再續用這個 id。
-/// 常重開的線不這樣清，每次會留一份整幕逐字稿檔。
+/// 不這樣清，常重開的線每次會留一份整幕逐字稿檔。
 fn retire_claude_session(
     call: &LaneCall,
     world_id: &str,
@@ -1149,7 +1151,7 @@ pub(crate) async fn run_turn(
         });
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
     // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用。
-    // GM 線的舊 claude session 看舊線 provider 清掉（本輪換成 grok／agy 也清）
+    // GM 線與單角色線的舊 claude session 看舊線 provider 清掉（本輪換成 grok／agy 也清）
     if let (TurnPlan::Reopen { reason }, Some(prior)) = (&plan, prior) {
         let old = prior.session_id.clone();
         if call.provider == LaneProvider::Grok && prior.provider == LaneProvider::Grok.as_str() {
@@ -1163,9 +1165,12 @@ pub(crate) async fn run_turn(
                 GrokRevoke::Reopen,
             )?;
         } else if prior.provider == LaneProvider::Claude.as_str()
-            && (input.lane == Lane::Gm || matches!(reason, ReopenReason::TailWorldbook))
+            && (input.lane == Lane::Gm
+                || prior.unerased_owner.is_some()
+                || input.single_owner.is_some()
+                || matches!(reason, ReopenReason::TailWorldbook))
         {
-            // 角色線只在到門檻的週期性重開時清（其他原因的角色線重開照舊不刪）
+            // GM 線與單角色線（舊線或本輪是）任何原因都清；共線只在到門檻的週期性重開時清
             retire_claude_session(call, world_id, &key, &old, &mut store, &store_path)?;
         }
     }
@@ -1589,7 +1594,9 @@ pub(crate) async fn run_turn(
                         &store_path,
                         GrokRevoke::Drop("resume-failed"),
                     )?;
-                } else if call.provider == LaneProvider::Claude && input.lane == Lane::Gm {
+                } else if call.provider == LaneProvider::Claude
+                    && (input.lane == Lane::Gm || input.single_owner.is_some())
+                {
                     retire_claude_session(
                         call,
                         world_id,
