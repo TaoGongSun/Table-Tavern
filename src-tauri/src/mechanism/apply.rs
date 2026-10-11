@@ -1,13 +1,15 @@
 use crate::data::{self, FieldKind, FieldRule, Mechanism, NumericUpdate, StateNode, UpdateMode};
 use std::collections::BTreeMap;
 
+use super::note::{build_notes, shown_pointer, snippet};
 use super::rules::rule_for;
 use super::tree::{
-    build_notes, format_num, insert_node, json_to_node, leaf_value, split_pair, take_node,
-    value_as_f64,
+    format_num, insert_node, json_to_node, leaf_value, split_pair, take_node, value_as_f64,
 };
-use super::types::{Outcome, Patch, PatchOp, Record, RecordKind};
-use super::upstream_set::{upstream_set, TypedView, Val};
+use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
+use super::upstream_set::{is_vwd, upstream_set, TypedView, Val};
+
+mod hint;
 
 // ---------------------------------------------------------------------
 // 套用：依欄位規則把 Patch 套進狀態樹
@@ -21,19 +23,28 @@ pub fn apply_updates(
     patches: &[Patch],
 ) -> Outcome {
     let mut view = TypedView::for_table(mechanism, None, tree, tree);
-    apply_updates_typed(tree, mechanism, patches, &mut view)
+    let parsed: Vec<Parsed> = patches.iter().cloned().map(Parsed::Patch).collect();
+    apply_updates_typed(tree, mechanism, &parsed, &mut view)
 }
 
 /// 同 `apply_updates`，`view` 是這一批的帶型別視圖（沒重構的 MVU 卡才有作用，見 `upstream_set`）。
+/// 解析時就拒收的項目照原位置記進記錄，回饋順序＝區塊裡的原順序。
 pub(super) fn apply_updates_typed(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
-    patches: &[Patch],
+    parsed: &[Parsed],
     view: &mut TypedView,
 ) -> Outcome {
     let mut records = Vec::new();
     let mut changes = BTreeMap::new();
-    for patch in patches {
+    for item in parsed {
+        let patch = match item {
+            Parsed::Patch(patch) => patch,
+            Parsed::Note(record) => {
+                records.push(record.clone());
+                continue;
+            }
+        };
         if !view.is_active() {
             apply_one(tree, mechanism, patch, view, &mut records, &mut changes);
             continue;
@@ -76,17 +87,20 @@ fn apply_one(
     if let Some(offending) = readonly_violation(patch) {
         records.push(Record::new(
             RecordKind::Rejected,
-            offending.clone(),
-            format!("{offending} 是唯讀欄位（底線開頭），不接受更新。"),
+            offending.join("."),
+            format!(
+                "{} 是唯讀欄位（底線開頭），不接受更新。",
+                shown_pointer(offending)
+            ),
         ));
         return false;
     }
     match patch.op {
-        PatchOp::Delta => apply_delta(tree, mechanism, patch, records, changes),
+        PatchOp::Delta => apply_delta(tree, mechanism, patch, view, records, changes),
         PatchOp::Replace => apply_replace(tree, mechanism, patch, view, records, changes),
         PatchOp::Insert => apply_insert(tree, mechanism, patch, view, records, changes),
-        PatchOp::Remove => apply_remove(tree, patch, records, changes),
-        PatchOp::Move => return apply_move(tree, patch, records, changes),
+        PatchOp::Remove => apply_remove(tree, mechanism, patch, view, records, changes),
+        PatchOp::Move => return apply_move(tree, mechanism, patch, view, records, changes),
     }
     false
 }
@@ -101,12 +115,86 @@ pub(super) fn signed_delta_mark(delta: f64) -> String {
     }
 }
 
-fn readonly_violation(patch: &Patch) -> Option<String> {
+/// delta 的增量：數字或數字字串（比上游寬鬆），非有限數（"NaN"、"inf"）不收。
+fn finite_delta(value: Option<&serde_json::Value>) -> Option<f64> {
+    value_as_f64(value).filter(|delta| delta.is_finite())
+}
+
+/// 上游 add 的 `parseFloat((a + b).toPrecision(12))`。
+fn to_precision_12(value: f64) -> f64 {
+    if !value.is_finite() || value == 0.0 {
+        return value;
+    }
+    format!("{value:.11e}").parse().unwrap_or(value)
+}
+
+/// `[值, 說明]` 的 delta：第 0 項加增量、說明不動；明確規則有範圍就夾（與本 app 數字欄一致）。
+#[allow(clippy::too_many_arguments)]
+fn vwd_delta(
+    tree: &mut BTreeMap<String, StateNode>,
+    patch: &Patch,
+    path_str: &str,
+    rule: &FieldRule,
+    items: &[Val],
+    view: &mut TypedView,
+    records: &mut Vec<Record>,
+    changes: &mut BTreeMap<String, String>,
+) {
+    let reject = |records: &mut Vec<Record>, detail: String| {
+        records.push(Record::new(
+            RecordKind::Rejected,
+            path_str.to_owned(),
+            detail,
+        ));
+    };
+    let shown = shown_pointer(&patch.path);
+    if let Some(detail) = hint::guard_refusal(rule, &shown) {
+        return reject(records, detail);
+    }
+    let Val::Num(first) = items[0] else {
+        return reject(
+            records,
+            format!(
+                "{shown} 的第 0 項不是數字，不能 delta；replace 它只會改第 0 項（目前「{}」）。",
+                hint::first_item_text(&items[0])
+            ),
+        );
+    };
+    let Some(delta) = finite_delta(patch.value.as_ref()) else {
+        return reject(
+            records,
+            format!("{shown} 是數字欄，delta 的值要是純數字增減量（例 5、-10）。"),
+        );
+    };
+    let raw = to_precision_12(first + delta);
+    let mut next = raw;
+    if let Some(min) = rule.min {
+        next = next.max(min);
+    }
+    if let Some(max) = rule.max {
+        next = next.min(max);
+    }
+    let value = Val::Arr(vec![Val::Num(next), items[1].clone()]);
+    if insert_node(tree, &patch.path, value.node()).is_err() {
+        return;
+    }
+    view.set(&patch.path, &value);
+    changes.insert(path_str.to_owned(), signed_delta_mark(delta));
+    if next != raw && raw.is_finite() {
+        records.push(Record::new(
+            RecordKind::Clamped,
+            path_str.to_owned(),
+            format!("{path_str} 已夾在範圍內，目前值 {}。", format_num(next)),
+        ));
+    }
+}
+
+fn readonly_violation(patch: &Patch) -> Option<&[String]> {
     if patch.path.iter().any(|segment| segment.starts_with('_')) {
-        return Some(patch.path.join("."));
+        return Some(&patch.path);
     }
     if patch.op == PatchOp::Move && patch.from.iter().any(|segment| segment.starts_with('_')) {
-        return Some(patch.from.join("."));
+        return Some(&patch.from);
     }
     None
 }
@@ -115,37 +203,51 @@ fn apply_delta(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patch: &Patch,
+    view: &mut TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
     let path_str = patch.path.join(".");
-    let Some(node) = data::node_at(tree, &patch.path) else {
-        records.push(Record::new(
-            RecordKind::Error,
-            path_str.clone(),
-            format!("路徑不存在：{path_str}"),
-        ));
-        return;
-    };
-    let Some(current) = leaf_value(node).map(str::to_owned) else {
-        records.push(Record::new(
-            RecordKind::Error,
-            path_str.clone(),
-            format!("{path_str} 是分支，不能做增減。"),
-        ));
-        return;
+    let current = match data::node_at(tree, &patch.path) {
+        None => {
+            records.push(hint::missing(
+                tree,
+                mechanism,
+                view,
+                &patch.path,
+                PatchOp::Delta,
+            ));
+            return;
+        }
+        Some(StateNode::Branch(children)) => {
+            records.push(hint::branch(mechanism, &patch.path, children, "做增減"));
+            return;
+        }
+        Some(StateNode::Leaf(value)) => value.clone(),
     };
     let rule = rule_for(mechanism, &patch.path, Some(&current));
+    // 沒重構 MVU 卡的 `[值, 說明]`：照上游加在第 0 項（骰值／唯讀規則照樣先擋）。
+    if view.is_active() {
+        if let Some(Val::Arr(items)) = view.get(&patch.path) {
+            if is_vwd(&items) {
+                vwd_delta(
+                    tree, patch, &path_str, &rule, &items, view, records, changes,
+                );
+                return;
+            }
+        }
+    }
     // 先看欄位收不收 delta，再解析值：用錯操作要回饋給模型改，所以記拒收（進下一輪自癒回饋）。
-    if let Some(detail) = delta_refusal(&rule, &path_str) {
+    let shown = shown_pointer(&patch.path);
+    if let Some(detail) = delta_refusal(&rule, &shown) {
         records.push(Record::new(RecordKind::Rejected, path_str.clone(), detail));
         return;
     }
-    let Some(delta) = value_as_f64(patch.value.as_ref()) else {
+    let Some(delta) = finite_delta(patch.value.as_ref()) else {
         let detail = if rule.kind == FieldKind::Pair {
-            format!("{path_str} 是「現值/上限」欄，delta 只給現值的增減量（純數字，例 -10）。")
+            format!("{shown} 是「現值/上限」欄，delta 只給現值的增減量（純數字，例 -10）。")
         } else {
-            format!("{path_str} 是數字欄，delta 的值要是純數字增減量（例 5、-10）。")
+            format!("{shown} 是數字欄，delta 的值要是純數字增減量（例 5、-10）。")
         };
         records.push(Record::new(RecordKind::Rejected, path_str.clone(), detail));
         return;
@@ -223,29 +325,24 @@ fn apply_delta(
     }
 }
 
-/// 這一欄不收 delta 時回傳要回饋給模型的拒收句：骰值、唯讀（含衍生值）沿用既有訊息，
+/// 這一欄不收 delta 時回傳要回饋給模型的拒收句（`shown`＝提示用路徑）：骰值、唯讀（含衍生值）沿用既有訊息，
 /// 文字與清單欄指明改用 replace。數字類欄回 None，交給後面解析增減量。
-fn delta_refusal(rule: &FieldRule, path_str: &str) -> Option<String> {
-    if rule.update == UpdateMode::Local || rule.kind == FieldKind::Roll {
-        return Some(format!("{path_str} 由系統本地擲骰，請勿更新。"));
-    }
-    if rule.update == UpdateMode::Reject
-        || matches!(rule.kind, FieldKind::ReadOnly | FieldKind::Derived)
-    {
-        return Some(format!("{path_str} 是唯讀欄位，不接受更新。"));
+fn delta_refusal(rule: &FieldRule, shown: &str) -> Option<String> {
+    if let Some(detail) = hint::guard_refusal(rule, shown) {
+        return Some(detail);
     }
     match rule.kind {
-        FieldKind::List => Some(list_refusal(path_str)),
+        FieldKind::List => Some(list_refusal(shown)),
         FieldKind::Text => Some(format!(
-            "{path_str} 是文字欄，不能用 delta；請用 replace 寫新值。"
+            "{shown} 是文字欄，不能用 delta；請用 replace 寫新值。"
         )),
         _ => None,
     }
 }
 
-fn list_refusal(path_str: &str) -> String {
+fn list_refusal(shown: &str) -> String {
     format!(
-        "{path_str} 是清單欄，不能用 delta；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。"
+        "{shown} 是清單欄，不能用 delta；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。"
     )
 }
 
@@ -259,10 +356,12 @@ fn apply_replace(
 ) {
     let path_str = patch.path.join(".");
     let Some(node) = data::node_at(tree, &patch.path) else {
-        records.push(Record::new(
-            RecordKind::Error,
-            path_str.clone(),
-            format!("路徑不存在：{path_str}"),
+        records.push(hint::missing(
+            tree,
+            mechanism,
+            view,
+            &patch.path,
+            PatchOp::Replace,
         ));
         return;
     };
@@ -294,6 +393,7 @@ fn replace_existing(
     changes: &mut BTreeMap<String, String>,
 ) {
     let rule = rule_for(mechanism, path, current_leaf.as_deref());
+    let shown = shown_pointer(path);
     // 沒重構的 MVU 卡：replace 一律照上游 set（文字欄也是，型別才對得上），數字欄解除 delta 限制；
     // 本地擲骰、唯讀照舊擋（落到下面的分支）。
     let numeric = matches!(
@@ -325,23 +425,23 @@ fn replace_existing(
             records.push(Record::new(
                 RecordKind::Rejected,
                 path_str.clone(),
-                format!("{path_str} 由系統本地擲骰，請勿更新。"),
+                format!("{shown} 由系統本地擲骰，請勿更新。"),
             ));
         }
         UpdateMode::Reject => {
             records.push(Record::new(
                 RecordKind::Rejected,
                 path_str.clone(),
-                format!("{path_str} 是唯讀欄位，不接受更新。"),
+                format!("{shown} 是唯讀欄位，不接受更新。"),
             ));
+        }
+        UpdateMode::Delta if current_leaf.is_none() => {
+            if let Some(StateNode::Branch(children)) = data::node_at(tree, path) {
+                records.push(hint::branch(mechanism, path, children, "整個替換成單一值"));
+            }
         }
         UpdateMode::Delta if rule.kind == FieldKind::Pair => {
             let Some(current) = current_leaf else {
-                records.push(Record::new(
-                    RecordKind::Error,
-                    path_str.clone(),
-                    format!("{path_str} 是分支，不能替換。"),
-                ));
                 return;
             };
             let Some((current_value, max)) = split_pair(&current) else {
@@ -357,7 +457,7 @@ fn replace_existing(
                 records.push(Record::new(
                     RecordKind::Rejected,
                     path_str.clone(),
-                    format!("{path_str} 新值不是「現值/上限」格式，已忽略。"),
+                    format!("{shown} 新值不是「現值/上限」格式，已忽略。"),
                 ));
                 return;
             };
@@ -366,7 +466,7 @@ fn replace_existing(
                     RecordKind::Rejected,
                     path_str.clone(),
                     format!(
-                        "{path_str} 現值 {}/{}，請用增減量（delta）而不是絕對值。",
+                        "{shown} 現值 {}/{}，請用增減量（delta）而不是絕對值。",
                         format_num(current_value),
                         format_num(max)
                     ),
@@ -382,11 +482,11 @@ fn replace_existing(
             }
         }
         UpdateMode::Delta => {
-            let current_display = current_leaf.unwrap_or_default();
+            let current_display = snippet(&current_leaf.unwrap_or_default(), 40);
             records.push(Record::new(
                 RecordKind::Rejected,
                 path_str.clone(),
-                format!("{path_str} 現值 {current_display}，請用增減量（delta）而不是絕對值。"),
+                format!("{shown} 現值 {current_display}，請用增減量（delta）而不是絕對值。"),
             ));
         }
     }
@@ -416,57 +516,37 @@ fn apply_insert(
         );
         return;
     }
-    if let Some((list_path, rule)) = list_leaf_prefix(tree, mechanism, &patch.path) {
-        // 往清單欄底下插一筆（`/神經狀態/-`）：清單是一整個字串，要模型改用 replace；
-        // 清單本身設成骰值／唯讀時以那個為準。
-        let detail = match rule.update {
-            UpdateMode::Local => format!("{list_path} 由系統本地擲骰，請勿更新。"),
-            UpdateMode::Reject => format!("{list_path} 是唯讀欄位，不接受更新。"),
-            UpdateMode::Delta | UpdateMode::Replace => format!(
-                "{list_path} 是清單欄，不能逐行插入；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。"
-            ),
-        };
-        records.push(Record::new(RecordKind::Rejected, list_path, detail));
-        return;
-    }
     let node = json_to_node(patch.value.as_ref().unwrap_or(&serde_json::Value::Null));
     if insert_node(tree, &patch.path, node).is_ok() {
         changes.insert(path_str, "更新".to_owned());
     } else {
-        records.push(Record::new(
-            RecordKind::Error,
-            path_str.clone(),
-            format!("{path_str} 中間層已被其他欄位占用，無法建立。"),
+        // 中途撞到葉子（往清單欄 `/神經狀態/-` 插一筆、在單一欄位底下建子欄位）：告訴 GM 該怎麼寫
+        records.push(hint::missing(
+            tree,
+            mechanism,
+            view,
+            &patch.path,
+            PatchOp::Insert,
         ));
     }
 }
 
-/// 路徑中途撞到的葉子若是清單欄，回傳那個清單欄的點分路徑與規則。
-fn list_leaf_prefix(
-    tree: &BTreeMap<String, StateNode>,
-    mechanism: &Mechanism,
-    path: &[String],
-) -> Option<(String, FieldRule)> {
-    (1..path.len()).find_map(|end| {
-        let prefix = &path[..end];
-        let current = leaf_value(data::node_at(tree, prefix)?)?;
-        let rule = rule_for(mechanism, prefix, Some(current));
-        (rule.kind == FieldKind::List).then(|| (prefix.join("."), rule))
-    })
-}
-
 fn apply_remove(
     tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
     patch: &Patch,
+    view: &TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
     let path_str = patch.path.join(".");
     if data::node_at(tree, &patch.path).is_none() {
-        records.push(Record::new(
-            RecordKind::Error,
-            path_str.clone(),
-            format!("路徑不存在，無法刪除：{path_str}"),
+        records.push(hint::missing(
+            tree,
+            mechanism,
+            view,
+            &patch.path,
+            PatchOp::Remove,
         ));
         return;
     }
@@ -478,16 +558,19 @@ fn apply_remove(
 /// 回傳 true＝搬成功。
 fn apply_move(
     tree: &mut BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
     patch: &Patch,
+    view: &TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) -> bool {
-    let from_str = patch.from.join(".");
     let Some(node) = take_node(tree, &patch.from) else {
-        records.push(Record::new(
-            RecordKind::Error,
-            from_str.clone(),
-            format!("路徑不存在：{from_str}"),
+        records.push(hint::missing(
+            tree,
+            mechanism,
+            view,
+            &patch.from,
+            PatchOp::Move,
         ));
         return false;
     };
@@ -497,10 +580,12 @@ fn apply_move(
         true
     } else {
         let _ = insert_node(tree, &patch.from, node); // 寫不進去就放回原位，不憑空丟資料
-        records.push(Record::new(
-            RecordKind::Error,
-            path_str.clone(),
-            format!("{path_str} 中間層已被其他欄位占用，搬移失敗。"),
+        records.push(hint::missing(
+            tree,
+            mechanism,
+            view,
+            &patch.path,
+            PatchOp::Move,
         ));
         false
     }
@@ -508,6 +593,8 @@ fn apply_move(
 
 #[cfg(test)]
 mod delta_refusal_tests;
+#[cfg(test)]
+mod hint_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

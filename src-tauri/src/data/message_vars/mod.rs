@@ -100,3 +100,5 @@ impl<'de> Deserialize<'de> for VarsTable {
 mod replace_parity_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vwd_delta_tests;

@@ -352,6 +352,7 @@ mod tests {
                 kind: RecordKind::Absorbed,
                 path: "船員合集".to_owned(),
                 detail: "偵測到 [initvar] 標記".to_owned(),
+                group: None,
             }],
         );
 
@@ -394,6 +395,7 @@ mod tests {
             kind,
             path: path.to_owned(),
             detail,
+            group: None,
         };
         mechanism::append_log(
             &root.0,

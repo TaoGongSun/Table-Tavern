@@ -1,10 +1,23 @@
-use crate::data::{FieldKind, FieldRule, Mechanism};
+use crate::data::{FieldKind, FieldRule, InjectLevel, Mechanism};
 
 use super::tree::split_pair;
 
 /// `rule_for` 的公開包裝，給 `transport.rs` 依路徑取欄位規則（渲染狀態樹要知道 inject 層級）。
 pub fn rule_for_path(mechanism: &Mechanism, path: &[String], current: Option<&str>) -> FieldRule {
     rule_for(mechanism, path, current)
+}
+
+/// 這片葉子會不會出現在 GM 看到的「目前狀態」：全量桌全送；增量桌 Rare 不送、Snapshot 只在對齊回合送。
+/// 渲染（`state_view`）與回饋列鍵共用。
+pub fn leaf_shown(mechanism: &Mechanism, path: &[String], value: &str, align: bool) -> bool {
+    if !mechanism.incremental {
+        return true;
+    }
+    match rule_for(mechanism, path, Some(value)).inject {
+        InjectLevel::Rare => false,
+        InjectLevel::Snapshot => align,
+        InjectLevel::Turn => true,
+    }
 }
 
 /// 找欄位規則：先精確比對 path 的點分路徑，沒有就找同段數、每段相同或為 `*`

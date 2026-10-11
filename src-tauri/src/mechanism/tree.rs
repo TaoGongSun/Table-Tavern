@@ -1,25 +1,6 @@
 use crate::data::{self, StateNode};
 use std::collections::BTreeMap;
 
-use super::types::{Record, RecordKind};
-
-pub(super) fn build_notes(records: &[Record]) -> Vec<String> {
-    let mut notes = Vec::new();
-    for record in records {
-        if record.kind != RecordKind::Rejected {
-            continue;
-        }
-        if notes.contains(&record.detail) {
-            continue;
-        }
-        notes.push(record.detail.clone());
-        if notes.len() >= 5 {
-            break;
-        }
-    }
-    notes
-}
-
 // ---------------------------------------------------------------------
 // 樹操作小工具（本檔自用，data::set_tree_value 只覆蓋葉子字串的情形）
 // ---------------------------------------------------------------------

@@ -265,6 +265,7 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
                 kind: RecordKind::Skipped,
                 path: title.to_owned(),
                 detail: UiMsg::LedgerScriptUnrecognized.to_string(),
+                group: None,
             });
         }
     }

@@ -5,12 +5,12 @@ use std::path::Path;
 
 use super::apply::{apply_updates_typed, signed_delta_mark};
 use super::derive::{recompute_derived, reroll};
-use super::parse::parse_updates;
+use super::note::build_notes;
+use super::parse::parse_block;
 use super::rules::rule_for_path;
-use super::tree::build_notes;
 use super::tree::{format_num, leaf_at, numeric_value};
 use super::triggers::evaluate_triggers;
-use super::types::{Outcome, Patch, Record, RecordKind};
+use super::types::{Outcome, Parsed, Record, RecordKind};
 use super::upstream_set::TypedView;
 
 /// 全量桌跳動標記的門檻：兩個條件都要達到才算「跳」，寧可少標也不要一直誤報
@@ -168,10 +168,10 @@ pub fn apply_block_typed(
             data::set_tree_value(&mut world.state.tree, path, value);
         }
     }
-    let patches: Vec<Patch> = block
+    let parsed: Vec<Parsed> = block
         .updates
         .iter()
-        .flat_map(|update| parse_updates(update))
+        .flat_map(|update| parse_block(update))
         .collect();
     let mut view = TypedView::for_table(
         &world.mechanism,
@@ -180,7 +180,7 @@ pub fn apply_block_typed(
         &world.state.tree,
     );
     let mut outcome =
-        apply_updates_typed(&mut world.state.tree, &world.mechanism, &patches, &mut view);
+        apply_updates_typed(&mut world.state.tree, &world.mechanism, &parsed, &mut view);
     if base.is_some() && view.is_active() {
         outcome.typed = Some(crate::data::message_vars::TypedBatch {
             doc: view.finish(),
@@ -211,8 +211,9 @@ pub fn apply_block_typed(
         .extend(recompute_derived(&mut world.state.tree, &world.mechanism));
     if let Some(record) = scope_record {
         outcome.records.insert(0, record);
-        outcome.notes = build_notes(&outcome.records);
     }
+    // 全部記錄收齊（解析拒收、套用、跳動、衍生、桌型篩掉）後照記錄順序重建回饋
+    outcome.notes = build_notes(&outcome.records);
     world.state.notes = outcome.notes.clone();
     world.state.changes = outcome.changes.clone();
     outcome

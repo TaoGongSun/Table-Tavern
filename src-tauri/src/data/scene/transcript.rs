@@ -1044,6 +1044,30 @@ mod tests {
         assert_eq!(read_state(root.path(), &world_id).unwrap().state, previous);
     }
 
+    /// 非接管桌的開場白也照常套用 `<UpdateVariable>`：寫錯的路徑在第 1 回合就回饋給 GM。
+    #[test]
+    fn opening_patch_errors_on_a_plain_table_feed_back_on_turn_one() {
+        let root = TestRoot::new("transcript-opening-feedback");
+        let world_id = create_world(root.path(), "開場回饋桌").unwrap();
+        let raw = "開場旁白<UpdateVariable><JSONPatch>[{\"op\":\"replace\",\"path\":\"/角色/生命\",\"value\":1}]</JSONPatch></UpdateVariable>";
+        let (_, outcome) = append_opening(
+            root.path(),
+            &world_id,
+            0,
+            "opening",
+            raw,
+            &crate::transport::extract_state_block(raw),
+            "阿濤",
+        )
+        .unwrap();
+        let expected = vec!["路徑不存在：/角色。".to_owned()];
+        assert_eq!(outcome.notes, expected);
+        assert_eq!(
+            read_state(root.path(), &world_id).unwrap().state.notes,
+            expected
+        );
+    }
+
     #[test]
     fn pop_transcript_restores_the_previous_event_snapshot() {
         let root = TestRoot::new("transcript-state-pop");

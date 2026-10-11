@@ -18,7 +18,7 @@
 - 現值本身不是數字（帳本壞值）維持 Error。
 - 英文桌訊息沿用既有做法只寫中文〔模型判斷·未裁決〕。
 ### 2. insert 撞到清單葉子（`apply_insert`）
-GM 寫 `insert /神經狀態/-` 時路徑中間是清單規則的葉子：改記 Rejected，路徑報清單欄本身，訊息「{path} 是清單欄，不能逐行插入；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。」清單另設 Local／Reject 時改回骰值／唯讀訊息。其他不回饋的 Error（路徑不存在、分支不能增減等）不在本案，見 [mechanism-error-feedback](../tasks/mechanism-error-feedback.md)。
+GM 寫 `insert /神經狀態/-` 時路徑中間是清單規則的葉子：改記 Rejected，路徑報清單欄本身，訊息「{path} 是清單欄，不能逐行插入；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。」清單另設 Local／Reject 時改回骰值／唯讀訊息。其他不回饋的 Error（路徑不存在、分支不能增減等）不在本案，見 [mechanism-error-feedback](../handoffs/archive/mechanism-error-feedback.md)。
 ### 3. 清單欄通用提醒（`transport/context.rs`）
 - 規則裡只要有任何 `kind: list`，在本桌範例的位置（有 guide 的接管桌，或無 guide 的 DeltaOnly 增量桌；沒有可用範例時也照加）加一句不點名路徑的提醒：「值是多行字串的清單欄，就算行內有數字也不能用 delta；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。」中英各一。
 - 只依規則，不讀即時狀態樹（system 讀樹會隨樹形變動觸發 SystemChanged 整條 GM 線重開，也違反 MECHANISM-FORMAT.md「凍結快照不含狀態」）；不改 `gm_lane_system` 參數。

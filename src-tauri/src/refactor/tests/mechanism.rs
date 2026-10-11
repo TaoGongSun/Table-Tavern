@@ -26,6 +26,7 @@ fn apply_mechanism_deletes_source_after_recording_absorption() {
             kind: mechanism::RecordKind::Skipped,
             path: "詭異的機制腳本".to_owned(),
             detail: "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+            group: None,
         }],
     );
 
@@ -130,6 +131,7 @@ fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
             kind: mechanism::RecordKind::Skipped,
             path: "詭異的機制腳本二號".to_owned(),
             detail: "卡片腳本認不出來，沒轉成觸發表，預設不送模型。".to_owned(),
+            group: None,
         }],
     );
 

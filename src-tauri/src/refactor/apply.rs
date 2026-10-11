@@ -903,6 +903,7 @@ fn absorbed_ledger_record_for_title(title: &str) -> mechanism::Record {
         kind: mechanism::RecordKind::Absorbed,
         path: title.to_owned(),
         detail: UiMsg::LedgerRefactorMechanism.to_string(),
+        group: None,
     }
 }
 

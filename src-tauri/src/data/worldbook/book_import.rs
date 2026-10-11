@@ -157,6 +157,7 @@ pub fn import_worldbook_as(
                     kind: RecordKind::Absorbed,
                     path: title,
                     detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
+                    group: None,
                 });
             }
             let new_key = uid.to_string();

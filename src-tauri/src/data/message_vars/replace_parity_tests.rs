@@ -70,7 +70,7 @@ fn upstream_replace_matches_the_shim_cases() {
 }
 
 /// move（墊片照上游不套用 move，只能後端單測）：只有明確搬成功才照原型別寫回目的欄；拒收（來源或目的是底線
-/// 唯讀欄）、失敗（目的中間層被葉子占住）都不動帶型別視圖。
+/// 唯讀欄、目的中間層被葉子占住）都不動帶型別視圖。
 #[test]
 fn move_keeps_types_only_when_it_actually_moves() {
     let run = |stat: &str, from: &str, to: &str| -> (String, Vec<crate::mechanism::Record>) {
@@ -105,7 +105,7 @@ fn move_keeps_types_only_when_it_actually_moves() {
     let kinds = |records: &[crate::mechanism::Record]| -> Vec<crate::mechanism::RecordKind> {
         records.iter().map(|record| record.kind).collect()
     };
-    use crate::mechanism::RecordKind::{Error, Rejected};
+    use crate::mechanism::RecordKind::Rejected;
     // 拒收：來源唯讀、目的唯讀
     let (merged, records) = run(r#"{"_src":"123","dst":123}"#, "/_src", "/dst");
     assert_eq!(
@@ -117,11 +117,11 @@ fn move_keeps_types_only_when_it_actually_moves() {
         (merged.as_str(), kinds(&records)),
         (r#"{"src":"123","_dst":123}"#, vec![Rejected])
     );
-    // 失敗：目的中間層是葉子
+    // 失敗：目的中間層是葉子（拒收回饋 GM，原值放回）
     let (merged, records) = run(r#"{"src":"123","blk":5}"#, "/src", "/blk/x");
     assert_eq!(
         (merged.as_str(), kinds(&records)),
-        (r#"{"src":"123","blk":5}"#, vec![Error])
+        (r#"{"src":"123","blk":5}"#, vec![Rejected])
     );
     // 成功：字串 "123" 搬到原本是數字的欄，照原值型別寫字串
     let (merged, records) = run(r#"{"src":"123","dst":1}"#, "/src", "/dst");

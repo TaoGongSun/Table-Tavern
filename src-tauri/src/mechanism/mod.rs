@@ -5,6 +5,7 @@
 mod apply;
 mod derive;
 mod ledger;
+mod note;
 mod parse;
 mod policy;
 mod rules;
@@ -18,11 +19,13 @@ mod block_scope_tests;
 #[cfg(test)]
 mod feedback_e2e_tests;
 #[cfg(test)]
+mod parse_feedback_tests;
+#[cfg(test)]
 mod test_support;
 
 #[cfg(test)]
 pub use ledger::apply_block;
 pub use ledger::{append_log, apply_block_typed, read_ledger, BlockScope, Ledger};
 pub use policy::{mvu_source, resolve_numeric_update};
-pub use rules::rule_for_path;
+pub use rules::{leaf_shown, rule_for_path};
 pub use types::{Outcome, Record, RecordKind};

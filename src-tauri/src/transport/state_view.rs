@@ -145,16 +145,7 @@ fn render_state_tree(
         if !branch_hidden {
             match node {
                 StateNode::Leaf(value) => {
-                    let show = if incremental {
-                        let rule = mechanism::rule_for_path(render.mechanism, path, Some(value));
-                        match rule.inject {
-                            InjectLevel::Rare => false,
-                            InjectLevel::Snapshot => render.align,
-                            InjectLevel::Turn => true,
-                        }
-                    } else {
-                        true
-                    };
+                    let show = mechanism::leaf_shown(render.mechanism, path, value, render.align);
                     if show {
                         let mark = if incremental {
                             render

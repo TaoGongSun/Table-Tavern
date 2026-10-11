@@ -204,7 +204,7 @@ fn pair_delta_moves_current_value_and_replace_only_changes_cap() {
     assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
     assert_eq!(
         outcome.records[0].detail,
-        "亚瑟·晨光.HP 現值 450/600，請用增減量（delta）而不是絕對值。"
+        "/亚瑟·晨光/HP 現值 450/600，請用增減量（delta）而不是絕對值。"
     );
     let StateNode::Branch(character) = tree.get("亚瑟·晨光").unwrap() else {
         panic!("角色應該是分支");
@@ -216,7 +216,7 @@ fn pair_delta_moves_current_value_and_replace_only_changes_cap() {
 }
 
 #[test]
-fn delta_on_missing_path_is_a_hard_error() {
+fn delta_on_missing_path_is_rejected_and_fed_back() {
     let mut tree: BTreeMap<String, StateNode> = BTreeMap::new();
     let mechanism = Mechanism::default();
     let patches = vec![Patch {
@@ -227,7 +227,9 @@ fn delta_on_missing_path_is_a_hard_error() {
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
-    assert_eq!(outcome.records[0].kind, RecordKind::Error);
+    assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+    assert_eq!(outcome.notes, vec!["路徑不存在：/World。".to_owned()]);
+    assert!(tree.is_empty());
 }
 
 #[test]
@@ -255,7 +257,7 @@ fn delta_on_text_field_is_rejected_and_fed_back() {
 }
 
 #[test]
-fn remove_on_missing_path_is_a_hard_error() {
+fn remove_on_missing_path_is_rejected_and_fed_back() {
     let mut tree: BTreeMap<String, StateNode> = BTreeMap::new();
     let mechanism = Mechanism::default();
     let patches = vec![Patch {
@@ -270,7 +272,8 @@ fn remove_on_missing_path_is_a_hard_error() {
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
-    assert_eq!(outcome.records[0].kind, RecordKind::Error);
+    assert_eq!(outcome.records[0].kind, RecordKind::Rejected);
+    assert_eq!(outcome.notes, vec!["路徑不存在：/Player。".to_owned()]);
 }
 
 #[test]
@@ -355,7 +358,7 @@ fn notes_are_deduped_and_capped_at_five() {
     assert_eq!(outcome.records.len(), 3);
     assert_eq!(
         outcome.notes,
-        vec!["World.Roll100 由系統本地擲骰，請勿更新。".to_owned()]
+        vec!["/World/Roll100 由系統本地擲骰，請勿更新。".to_owned()]
     );
 }
 
@@ -437,7 +440,7 @@ fn accepted_delta_records_signed_mark_but_rejection_and_error_do_not() {
             from: Vec::new(),
             value: Some(serde_json::json!(999)),
         },
-        // 路徑不存在＝硬錯誤，不進 changes。
+        // 路徑不存在＝拒收（回饋 GM），不進 changes。
         Patch {
             op: PatchOp::Delta,
             path: vec!["World".to_owned(), "沒有這欄".to_owned()],
@@ -523,4 +526,13 @@ fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark
         Some(&"移除".to_owned())
     );
     assert_eq!(outcome.changes.get("Heroes.鴉"), Some(&"搬移".to_owned()));
+}
+
+/// 上游 `toPrecision(12)` 遇到恰好落在中點的值取較大者；這裡的十進位格式化是半值取偶，
+/// 只有二進位值恰好落在中點時差最後一位，可忽略。
+#[test]
+fn to_precision_12_matches_upstream_except_exact_binary_midpoints() {
+    assert_eq!(to_precision_12(0.1 + 0.2), 0.3);
+    assert_eq!(to_precision_12(123456789012.6), 123456789013.0);
+    assert_eq!(to_precision_12(123456789012.5), 123456789012.0);
 }
