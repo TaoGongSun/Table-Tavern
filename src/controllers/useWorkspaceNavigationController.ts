@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { UndoEntryChanges, WorldChange } from "../features/worldbook/worldbook-model";
+import type { EntryChanges, WorldChange } from "../features/worldbook/worldbook-model";
 
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 export const GM_TARGET = "__GM__";
@@ -67,18 +67,36 @@ export function useWorkspaceNavigationController({
   const stillHere = () => entry.current.generation === enteredAt;
   const [worldChange, setWorldChange] = useState<WorldChange | null>(null);
 
-  /** 世界設定通知：同桌就累積到被取走為止，換桌重來 */
-  function postWorldChange(ids: string[], undoChanges: (UndoEntryChanges | null)[]) {
-    setWorldChange((current) => {
-      const same = current?.worldId === worldId;
-      return {
-        worldId,
-        generation: (current?.generation ?? 0) + 1,
-        ids: same ? [...current.ids, ...ids] : ids,
-        undoChanges: same ? [...current.undoChanges, ...undoChanges] : undoChanges,
-      };
-    });
-  }
+  /** 世界設定通知：同桌就累積到被取走為止，換桌重來。只用 setter，身分穩定（匯入 controller 的 callback 吃它） */
+  const postWorldChange = useCallback(
+    (target: string, ids: string[], entryChanges: (EntryChanges | null)[]) => {
+      setWorldChange((current) => {
+        const same = current?.worldId === target;
+        return {
+          worldId: target,
+          generation: (current?.generation ?? 0) + 1,
+          ids: same ? [...current.ids, ...ids] : ids,
+          entryChanges: same ? [...current.entryChanges, ...entryChanges] : entryChanges,
+        };
+      });
+    },
+    [],
+  );
+
+  /** 匯入寫完世界書：通知世界設定重讀清單；擴大了可見度的既有條目帶 visibility 組（開著的草稿據此定基）。
+   * 一律用傳入的桌 id——開新桌並匯入時 controller 手上是舊閉包，閉包裡的桌 id 是原桌 */
+  const noteImported = useCallback(
+    (target: string, widened: number[]) => {
+      postWorldChange(
+        target,
+        [],
+        widened.length > 0
+          ? [{ changed: widened.map((uid) => ({ uid, groups: ["visibility"] })), deleted: [] }]
+          : [],
+      );
+    },
+    [postWorldChange],
+  );
 
   /** 只關正在顯示其中一張卡的編輯器；實際關了才清守門 */
   function closeCardViews(ids: string[]) {
@@ -131,15 +149,15 @@ export function useWorkspaceNavigationController({
       onError(String(reason));
     }
     closeCardViews([id]);
-    if (deleted) postWorldChange([id], []);
+    if (deleted) postWorldChange(worldId, [id], []);
   }
 
   /** 撤銷上次匯入完成：被撤銷刪掉的卡若正在編輯就關、不另問〔作者裁決 2026-10-11〕，別的畫面不動；
    * 世界設定一律收到通知（撤銷可能只改條目）。換桌後晚到就不動 */
-  function finishUndoImport(removedIds: string[], entryChanges: UndoEntryChanges | null) {
+  function finishUndoImport(removedIds: string[], entryChanges: EntryChanges | null) {
     if (!stillHere()) return;
     closeCardViews(removedIds);
-    postWorldChange(removedIds, [entryChanges]);
+    postWorldChange(worldId, removedIds, [entryChanges]);
   }
 
   const finishArchiveToggled = (id: string) => settleRemoval(id, false);
@@ -149,7 +167,7 @@ export function useWorkspaceNavigationController({
   function takeWorldChange(takenWorldId: string, generation: number) {
     setWorldChange((current) =>
       current?.worldId === takenWorldId && current.generation === generation
-        ? { ...current, ids: [], undoChanges: [] }
+        ? { ...current, ids: [], entryChanges: [] }
         : current,
     );
   }
@@ -267,6 +285,7 @@ export function useWorkspaceNavigationController({
     finishArchiveToggled,
     finishConverted,
     finishUndoImport,
+    noteImported,
     worldChange,
     takeWorldChange,
   };

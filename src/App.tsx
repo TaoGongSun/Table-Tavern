@@ -65,7 +65,7 @@ import { ClaudeOverageToast } from "./features/ai-connection/ClaudeOverageToast"
 import { ErrorNote } from "./shared/ui/atoms";
 import "./App.css";
 import type { PendingRefactorCard } from "./features/refactor/refactor-card";
-import type { UndoEntryChanges } from "./features/worldbook/worldbook-model";
+import type { EntryChanges } from "./features/worldbook/worldbook-model";
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
 interface UndoReport {
@@ -80,7 +80,7 @@ interface UndoReport {
   /** 卡檔確定已不在的角色 id：關編輯器、修剪草稿名單 */
   removed_character_ids: string[];
   /** 世界書實際被改的條目與欄組；後端讀不到世界書時是 null */
-  entry_changes: UndoEntryChanges | null;
+  entry_changes: EntryChanges | null;
 }
 
 // 這桌向 AI 發過對話請求了沒（每桌一把）。開演之後復原＝把演到一半的角色卡連同後續編輯一起刪掉，
@@ -409,6 +409,7 @@ function App() {
     refreshState: tableState.refresh,
     isTurnRunning: chat.isBusy,
     onError: setError,
+    onWorldbookChanged: navigation.noteImported,
     onRefactorCard: (worldId, file) => {
       setPendingRefactorCard((current) => ({
         worldId,

@@ -20,19 +20,21 @@ export function draftVisibility(draft: WorldbookDraft): Visibility {
     : { type: draft.visibility };
 }
 
-/** 撤銷匯入實際改了哪些條目（後端 UndoReport.entry_changes）：changed 的 groups 是草稿欄組 */
-export interface UndoEntryChanges {
+/** 撤銷匯入（後端 UndoReport.entry_changes）或匯入合併（widened_entries，只有 visibility 組）實際改了哪些既有條目：
+ * changed 的 groups 是草稿欄組 */
+export interface EntryChanges {
   changed: { uid: number; groups: DraftGroup[] }[];
   deleted: number[];
 }
 
-/** 世界設定的通知：刪角色只帶 ids；撤銷匯入另帶這次的條目改動（null＝後端讀不到世界書，無從判斷）。
- * 世代單調遞增；ids、undoChanges 是同一桌還沒被世界設定取走的累積 */
+/** 世界設定的通知：刪角色只帶 ids；撤銷匯入另帶這次的條目改動（null＝後端讀不到世界書，無從判斷）；
+ * 匯入兩者都可能空（只重讀），擴大了既有條目可見度時帶一筆。
+ * 世代單調遞增；ids、entryChanges 是同一桌還沒被世界設定取走的累積 */
 export interface WorldChange {
   worldId: string;
   generation: number;
   ids: string[];
-  undoChanges: (UndoEntryChanges | null)[];
+  entryChanges: (EntryChanges | null)[];
 }
 
 /** 草稿欄組，與後端 undo_changes 的欄組名一致；visibility 含名單 */
@@ -67,7 +69,7 @@ export interface DraftState {
   seq: number;
 }
 
-/** 待定基：還沒套到草稿上的撤銷改動，同 uid 欄組取聯集 */
+/** 待定基：還沒套到草稿上的撤銷／匯入改動，同 uid 欄組取聯集 */
 export interface PendingRebase {
   changed: Map<number, Set<DraftGroup>>;
   deleted: Set<number>;
@@ -75,7 +77,7 @@ export interface PendingRebase {
 
 export function mergePendingRebase(
   pending: PendingRebase | null,
-  changes: UndoEntryChanges,
+  changes: EntryChanges,
 ): PendingRebase {
   const next: PendingRebase = {
     changed: new Map(pending?.changed ?? []),
@@ -96,8 +98,8 @@ function withGroup(target: WorldbookDraft, source: WorldbookDraft, group: DraftG
   return { ...target, [group]: source[group] };
 }
 
-/** 依撤銷報上來的改動把開著的既有條目草稿定基〔作者裁決 2026-10-11〕：條目被刪（或重讀找不到）→ 關；
- * 被改的欄組草稿與快照都換成重讀值，玩家在這些欄組的輸入丟掉；其餘欄組不動。新條目草稿與沒命中的不動。
+/** 依撤銷／匯入報上來的改動把開著的既有條目草稿定基：條目被刪（或重讀找不到）→ 關；
+ * 被改的欄組草稿與快照都換成重讀值，玩家在這些欄組的輸入丟掉（撤銷〔作者裁決 2026-10-11〕；匯入比照〔模型判斷·未裁決〕）；其餘欄組不動。新條目草稿與沒命中的不動。
  * 回傳的 origin 鍵順序與 draftFromEntry 一致。 */
 export function rebaseDraft(
   state: DraftState,

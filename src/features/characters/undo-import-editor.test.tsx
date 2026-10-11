@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // 陣容欄撤銷上次匯入時主欄的編輯畫面（undo-import-editor-guard）：世界設定不重新掛載、未存的字留著；
 // 被撤銷刪掉的卡正在編輯就關、不另問；別張卡不關；撤銷退回玩家卡指定時側欄跟著重讀。
+// 陣容欄匯入卡時（import-refresh-world-editor）：開著的世界設定重讀條目，不重新掛載、未存的字留著。
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -242,5 +243,55 @@ describe("undo last import with an editor open", () => {
     await undo();
     expect(dialogs.message).toHaveBeenCalled();
     expect(document.body.textContent).toContain("讀不到狀態");
+  });
+  it("an import from the cast rail rereads the open world editor's entries without remounting", async () => {
+    let book: unknown[] = [];
+    backend.handlers.read_worldbook = () => book;
+    backend.handlers.probe_import = () => {
+      throw new Error("probe unavailable");
+    };
+    backend.handlers.import_character = () => {
+      book = [
+        {
+          uid: 7,
+          title: "匯入的條目",
+          keys: [],
+          content: "內容",
+          constant: true,
+          order: 0,
+          disabled: false,
+          locked: false,
+          visibility: { type: "public" },
+        },
+      ];
+      return {
+        meta: actor("c3", "丙角"),
+        book: { imported: 1, skipped: 0 },
+        source: null,
+        image_dropped: false,
+        book_failed: false,
+        widened_entries: [],
+      };
+    };
+    await start();
+    await click(labelled(t("worldSummary")));
+    const text = document.querySelector<HTMLTextAreaElement>(".settings-form textarea")!;
+    await typeInto(text, "沒存的世界");
+    const worldReads = backend.calls.filter((call) => call.command === "read_world_md").length;
+    expect(document.body.textContent).not.toContain("匯入的條目");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept^=".png"]')!;
+    Object.defineProperty(input, "files", {
+      value: [new File([new Uint8Array([1, 2, 3])], "card.json")],
+      configurable: true,
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await settle();
+    expect(backend.calls.some((call) => call.command === "import_character")).toBe(true);
+    expect(document.body.textContent).toContain("匯入的條目");
+    expect(document.querySelector<HTMLTextAreaElement>(".settings-form textarea")!.value).toBe("沒存的世界");
+    expect(backend.calls.filter((call) => call.command === "read_world_md")).toHaveLength(worldReads);
   });
 });

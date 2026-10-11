@@ -22,6 +22,8 @@ interface CharacterImport {
   image_dropped: boolean;
   /** 卡帶了隨身世界書卻沒匯成（角色照建） */
   book_failed: boolean;
+  /** 被合併擴大了可見度的既有條目 uid（舊後端沒有這欄） */
+  widened_entries?: number[];
 }
 
 interface ImportProbe {
@@ -68,6 +70,8 @@ interface WorldbookImportResult extends WorldbookImport {
   source: string | null;
   /** PNG 世界書卡的圖救不回、GM 封面圖沒存成 */
   image_dropped: boolean;
+  /** 同 CharacterImport.widened_entries */
+  widened_entries?: number[];
 }
 
 /** 匯入收據摘要：陣容欄「撤銷上次匯入」項靠這份判斷要不要出現 */
@@ -193,6 +197,8 @@ export function useImportController(input: {
   /** 同步問「這桌有沒有回合在跑」：有的話匯入會排在它後面 */
   isTurnRunning: () => boolean;
   onError: (message: string) => void;
+  /** 匯入寫完世界書（後端回來後第一步）：開著的世界設定重讀清單、定基被擴大可見度的草稿 */
+  onWorldbookChanged: (worldId: string, widened: number[]) => void;
   /** 單一入口：丟進來的是重構卡 PNG 就交給世界設定的重構流程（不轉數字陣列、不走角色匯入） */
   onRefactorCard: (worldId: string, file: File) => void;
 }): ImportController {
@@ -213,6 +219,7 @@ export function useImportController(input: {
     refreshState,
     isTurnRunning,
     onError,
+    onWorldbookChanged,
     onRefactorCard,
   } = input;
   const { backend: turnBackend, waiting: waitingForTurn } = useTurnWait(isTurnRunning, worldId);
@@ -338,13 +345,15 @@ export function useImportController(input: {
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
   const importAsCharacter = useCallback(
     async (worldId: string, data: number[], adoptName = true) => {
-      const { meta, book, source, image_dropped, book_failed } = await turnBackend(() =>
-        invoke<CharacterImport>("import_character", {
-          worldId,
-          data,
-          color: PALETTE[castSize % PALETTE.length],
-        }),
+      const { meta, book, source, image_dropped, book_failed, widened_entries } = await turnBackend(
+        () =>
+          invoke<CharacterImport>("import_character", {
+            worldId,
+            data,
+            color: PALETTE[castSize % PALETTE.length],
+          }),
       );
+      onWorldbookChanged(worldId, widened_entries ?? []);
       await refreshCharacters(worldId);
       focusSpeaker(meta.id);
       if (adoptName) await adoptTableName(meta.name);
@@ -368,6 +377,7 @@ export function useImportController(input: {
     [
       castSize,
       turnBackend,
+      onWorldbookChanged,
       refreshCharacters,
       focusSpeaker,
       adoptTableName,
@@ -385,6 +395,7 @@ export function useImportController(input: {
       const book = await turnBackend(() =>
         invoke<WorldbookImportResult>("import_worldbook", { worldId, data, label }),
       );
+      onWorldbookChanged(worldId, book.widened_entries ?? []);
       // 匯的是 PNG 卡：後端已把整張圖存成 GM 卡的圖，這裡讀回來讓側欄立刻換掉書本圖
       await reloadGmImage(worldId);
       const coverNotice = book.image_dropped ? "\n\n" + t("worldbookCoverNotSaved") : "";
@@ -403,6 +414,7 @@ export function useImportController(input: {
     },
     [
       turnBackend,
+      onWorldbookChanged,
       reloadGmImage,
       focusSpeaker,
       adoptTableName,

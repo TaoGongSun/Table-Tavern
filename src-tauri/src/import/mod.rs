@@ -25,6 +25,8 @@ mod foreign_ids_tests;
 mod mvu_replace_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod widened_entries_tests;
 
 #[cfg(test)]
 pub use card::import_character;

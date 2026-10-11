@@ -110,6 +110,7 @@ pub(crate) async fn import_character(
         book_failed: imported_card.book_failed,
         source: imported_card.source,
         image_dropped: imported_card.image_dropped,
+        widened_entries: imported_card.widened_entries,
     })
 }
 
@@ -166,6 +167,8 @@ pub(crate) struct CharacterImport {
     source: Option<String>,
     /// PNG 卡的圖救不回、沒存成（卡照常匯入）
     image_dropped: bool,
+    /// 被合併擴大了可見度的既有條目 uid：開著的世界設定據此定基草稿
+    widened_entries: Vec<u64>,
 }
 
 /// 角色編輯器儲存前先驗待存的圖：不合格整個儲存取消，什麼都不寫。

@@ -162,12 +162,12 @@ describe("removal navigation", () => {
     await act(async () => nav!.takeWorldChange("w2", 2));
     expect(nav!.worldChange!.ids).toEqual(["B", "C"]);
     await act(async () => nav!.takeWorldChange("w1", 2));
-    expect(nav!.worldChange).toEqual({ worldId: "w1", generation: 2, ids: [], undoChanges: [] });
+    expect(nav!.worldChange).toEqual({ worldId: "w1", generation: 2, ids: [], entryChanges: [] });
     await del("D");
     worldId = "w2";
     await render();
     await del("E");
-    expect(nav!.worldChange).toEqual({ worldId: "w2", generation: 4, ids: ["E"], undoChanges: [] });
+    expect(nav!.worldChange).toEqual({ worldId: "w2", generation: 4, ids: ["E"], entryChanges: [] });
   });
 
   // 刪除或善後停在 await 時換桌：回來的續程不得動新桌（Sol 驗收 r1）
@@ -250,8 +250,8 @@ describe("removal navigation", () => {
       }
       await act(async () => nav!.finishUndoImport([], report));
       expect(nav!.worldChange!.ids).toEqual(["A", "A", "B", "B", "B", "B", "B"]);
-      expect(nav!.worldChange!.undoChanges).toHaveLength(8);
-      expect(nav!.worldChange!.undoChanges[7]).toEqual(report);
+      expect(nav!.worldChange!.entryChanges).toHaveLength(8);
+      expect(nav!.worldChange!.entryChanges[7]).toEqual(report);
     });
 
     for (const route of [["w2"], ["w2", "w1"]]) {
@@ -282,5 +282,52 @@ describe("removal navigation", () => {
         expect(nav!.mainView).toEqual({ kind: "world" });
       });
     }
+  });
+  describe("import notice", () => {
+    it("posts a reload-only notice, with a visibility group for widened entries", async () => {
+      await show({ kind: "world" });
+      await act(async () => nav!.noteImported("w1", []));
+      expect(nav!.worldChange).toEqual({ worldId: "w1", generation: 1, ids: [], entryChanges: [] });
+      await act(async () => nav!.noteImported("w1", [3, 5]));
+      expect(nav!.worldChange!.entryChanges).toEqual([
+        {
+          changed: [
+            { uid: 3, groups: ["visibility"] },
+            { uid: 5, groups: ["visibility"] },
+          ],
+          deleted: [],
+        },
+      ]);
+      expect(nav!.mainView).toEqual({ kind: "world" });
+    });
+
+    // 開新桌並匯入：import controller 拿著原桌那輪的舊閉包，通知要落在傳入的新桌
+    it("posts to the table it was given even through a stale closure", async () => {
+      const stale = nav!.noteImported;
+      await del("B");
+      await switchTo("w2");
+      await act(async () => stale("w2", [7]));
+      expect(nav!.worldChange).toEqual({
+        worldId: "w2",
+        generation: 2,
+        ids: [],
+        entryChanges: [{ changed: [{ uid: 7, groups: ["visibility"] }], deleted: [] }],
+      });
+    });
+
+    it("accumulates with an undo notice on the same table; taking an old generation keeps the new one", async () => {
+      const undo = { changed: [{ uid: 1, groups: ["content" as const] }], deleted: [] };
+      await act(async () => nav!.noteImported("w1", [4]));
+      await act(async () => nav!.finishUndoImport(["A"], undo));
+      expect(nav!.worldChange!.ids).toEqual(["A"]);
+      expect(nav!.worldChange!.entryChanges).toHaveLength(2);
+      await act(async () => nav!.noteImported("w1", []));
+      await act(async () => nav!.takeWorldChange("w1", 2));
+      expect(nav!.worldChange!.generation).toBe(3);
+      expect(nav!.worldChange!.ids).toEqual(["A"]);
+      expect(nav!.worldChange!.entryChanges).toHaveLength(2);
+      await act(async () => nav!.takeWorldChange("w1", 3));
+      expect(nav!.worldChange).toEqual({ worldId: "w1", generation: 3, ids: [], entryChanges: [] });
+    });
   });
 });

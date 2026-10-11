@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import type { CharacterMeta } from "../characters/card-model";
-import type { UndoEntryChanges, WorldChange } from "./worldbook-model";
+import type { EntryChanges, WorldChange } from "./worldbook-model";
 
 const backend = vi.hoisted(() => ({
   handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
@@ -66,7 +66,7 @@ function entry(uid: number, patch: Partial<WorldbookEntry> = {}): WorldbookEntry
   };
 }
 
-const changes = (patch: Partial<UndoEntryChanges> = {}): UndoEntryChanges => ({
+const changes = (patch: Partial<EntryChanges> = {}): EntryChanges => ({
   changed: [],
   deleted: [],
   ...patch,
@@ -136,12 +136,12 @@ describe("WorldEditor after undoing the last import", () => {
     await act(async () => root!.render(editor(change)));
   }
 
-  function notice(ids: string[], undo: (UndoEntryChanges | null)[]): WorldChange {
+  function notice(ids: string[], undo: (EntryChanges | null)[]): WorldChange {
     generation += 1;
-    return { worldId: "w1", generation, ids, undoChanges: undo };
+    return { worldId: "w1", generation, ids, entryChanges: undo };
   }
 
-  async function notify(ids: string[], undo: (UndoEntryChanges | null)[]) {
+  async function notify(ids: string[], undo: (EntryChanges | null)[]) {
     await act(async () => root!.render(editor(notice(ids, undo))));
   }
 
