@@ -42,15 +42,11 @@ pub(crate) fn stage_launch_installer(
 }
 
 pub(crate) fn clear_launch_dir(versions: &Path) -> Result<(), String> {
-    let launch = versions.join(LAUNCH_DIR);
-    if !launch.exists() {
-        return Ok(());
+    match std::fs::remove_dir_all(versions.join(LAUNCH_DIR)) {
+        Ok(()) => sync_dir(versions),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
     }
-    std::fs::remove_dir_all(&launch).map_err(|error| error.to_string())?;
-    if versions.exists() {
-        sync_dir(versions)?;
-    }
-    Ok(())
 }
 
 #[cfg_attr(not(any(test, windows)), allow(dead_code))]
@@ -124,5 +120,21 @@ mod tests {
         clear_launch_dir(&root.0).unwrap();
         assert!(!root.0.join(LAUNCH_DIR).exists());
         clear_launch_dir(&root.0).unwrap();
+    }
+
+    /// 版本庫沒有搜尋權限：.launch 查不到也刪不掉，回錯、檔案還在。
+    #[cfg(unix)]
+    #[test]
+    fn an_unsearchable_versions_dir_is_an_error_not_a_clear() {
+        let root = TempDir::new();
+        let dest =
+            stage_launch_installer(&root.0, "TableTavern_0.1.0_x64-setup.exe", b"exe").unwrap();
+        let Some(result) =
+            crate::test_perm::with_unsearchable(&root.0, &dest, || clear_launch_dir(&root.0))
+        else {
+            return;
+        };
+        assert!(result.is_err());
+        assert!(dest.is_file());
     }
 }

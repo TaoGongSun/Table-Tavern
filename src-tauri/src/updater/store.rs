@@ -144,28 +144,42 @@ pub(crate) fn clear_version_residue(versions: &Path, version: &str) -> Result<()
 }
 
 pub(crate) fn clear_all_residue(versions: &Path) -> Result<(), String> {
-    if !versions.exists() {
+    if !versions.try_exists().map_err(|error| error.to_string())? {
         return Ok(());
     }
+    // 逐筆清：單筆失敗（例如 Windows 待刪項目拒絕存取）記 log 後清下一筆，最後回第一個錯。
+    let mut first = None;
     for entry in fs::read_dir(versions).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with(".partial-") || name.starts_with(".trash-") {
-            remove_path(&entry.path())?;
+        let removed = entry.map_err(|error| error.to_string()).and_then(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(".partial-") || name.starts_with(".trash-") {
+                remove_path(&entry.path())
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(error) = removed {
+            log::warn!("清版本庫殘留單筆失敗：{error}");
+            first.get_or_insert(error);
         }
     }
-    Ok(())
+    first.map_or(Ok(()), Err)
 }
 
+/// 不在算已刪；查不到在不在（例如上層沒有搜尋權限）回錯，不當成已刪。
 fn remove_path(path: &Path) -> Result<(), String> {
-    if !path.exists() {
+    if !path.try_exists().map_err(|error| error.to_string())? {
         return Ok(());
     }
-    if path.is_dir() {
-        fs::remove_dir_all(path).map_err(|error| error.to_string())
+    let removed = if path.is_dir() {
+        fs::remove_dir_all(path)
     } else {
-        fs::remove_file(path).map_err(|error| error.to_string())
+        fs::remove_file(path)
+    };
+    match removed {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.to_string()),
+        _ => Ok(()),
     }
 }
 
@@ -247,7 +261,7 @@ pub(crate) fn commit_download(
         write_synced(&partial.join(file), bytes)?;
         write_synced(&partial.join(format!("{file}.sig")), signature.as_bytes())?;
         write_synced(&partial.join("release.json"), &body)?;
-        if final_dir.exists() {
+        if final_dir.try_exists().map_err(|error| error.to_string())? {
             fs::rename(&final_dir, &trash).map_err(|error| error.to_string())?;
         }
         if let Err(error) = fs::rename(&partial, &final_dir) {
@@ -262,9 +276,7 @@ pub(crate) fn commit_download(
         let _ = remove_path(&partial);
         return Err(error);
     }
-    if trash.exists() {
-        remove_path(&trash)?;
-    }
+    remove_path(&trash)?;
     Ok(())
 }
 
@@ -464,5 +476,52 @@ mod tests {
         clear_version_residue(versions, "1.0.0").unwrap();
         assert!(!versions.join(".partial-1.0.0").exists());
         assert!(versions.join(".trash-9.9.9").is_dir());
+    }
+
+    /// 版本庫沒有搜尋權限：殘留查不到在不在，回錯、殘留還在；不在的殘留照樣算已清。
+    #[cfg(unix)]
+    #[test]
+    fn residue_behind_an_unsearchable_dir_is_an_error_not_a_deletion() {
+        let root = TempDir(temp_versions("locked"));
+        let versions = &root.0;
+        let partial = versions.join(".partial-1.0.0");
+        fs::create_dir_all(&partial).unwrap();
+        let Some(result) = crate::test_perm::with_unsearchable(versions, &partial, || {
+            clear_version_residue(versions, "1.0.0")
+        }) else {
+            return;
+        };
+        assert!(result.is_err());
+        assert!(partial.is_dir());
+        clear_version_residue(versions, "2.0.0").unwrap();
+    }
+
+    /// 一筆殘留清不掉不中止整輪：其他殘留照清，最後回錯。
+    #[cfg(unix)]
+    #[test]
+    fn one_stuck_residue_does_not_stop_the_rest() {
+        let root = TempDir(temp_versions("stuck"));
+        let versions = &root.0;
+        let locked = versions.join(".partial-1.0.0").join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        let probe = locked.join("x");
+        fs::write(&probe, b"x").unwrap();
+        let trashes: Vec<_> = (2..7)
+            .map(|major| versions.join(format!(".trash-{major}.0.0")))
+            .collect();
+        for trash in &trashes {
+            fs::create_dir_all(trash).unwrap();
+        }
+        let Some(result) =
+            crate::test_perm::with_unsearchable(&locked, &probe, || clear_all_residue(versions))
+        else {
+            return;
+        };
+        assert!(result.is_err());
+        for trash in &trashes {
+            assert!(!trash.exists(), "{} 要清掉", trash.display());
+        }
+        clear_all_residue(versions).unwrap();
+        assert!(!versions.join(".partial-1.0.0").exists());
     }
 }

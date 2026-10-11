@@ -248,6 +248,9 @@ pub fn run() {
         });
 }
 
+#[cfg(all(test, unix))]
+mod test_perm;
+
 #[cfg(test)]
 mod command_classification {
     /// generate_handler 裡每一個 command 都要落在這三類之一。改清單時兩邊一起改。

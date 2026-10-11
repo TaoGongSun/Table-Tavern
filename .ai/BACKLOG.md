@@ -6,7 +6,6 @@
 
 - [world-editor-delete-character-guard](tasks/world-editor-delete-character-guard.md) — 世界設定編輯中從側欄刪角色，finishRemoval 直接卸載編輯器、未儲存的 world.md 與新條目草稿靜默遺失 — 下一步：未排程；先定守門放刪除確認前，還是刪別的東西時不卸載 WorldEditor
 - [agy-state-block-gone-reopen](tasks/agy-state-block-gone-reopen.md) — Agy 一角一線狀態區塊整塊消失不重開，舊區塊留在歷史 — 下一步：未排程
-- [exists-guard-followups](tasks/exists-guard-followups.md) — updater 與 move_aside 其餘 exists() 守衛把查詢錯誤當不存在（6 處） — 下一步：未排程
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [api-request-header-timeout](tasks/api-request-header-timeout.md) — API 請求送出後到回應頭之前、非 2xx 讀錯誤本文都沒有逾時 — 下一步：只包 send() 與錯誤本文讀取，不用 ClientBuilder::timeout
