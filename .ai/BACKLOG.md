@@ -4,6 +4,7 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [world-editor-delete-character-guard](tasks/world-editor-delete-character-guard.md) — 世界設定編輯中從側欄刪角色，finishRemoval 直接卸載編輯器、未儲存的 world.md 與新條目草稿靜默遺失 — 下一步：未排程；先定守門放刪除確認前，還是刪別的東西時不卸載 WorldEditor
 - [gm-line-system-change-restart](tasks/gm-line-system-change-restart.md) — GM 線凍結 system 含動態巨集每輪變動時整線重開（Claude 不再疊加補丁） — 下一步：未排程，比照 Grok 現行重開〔作者裁決 2026-10-11：選 A〕
 - [remove-path-try-exists](tasks/remove-path-try-exists.md) — 刪檔遇到查詢錯誤（無搜尋權限）誤報成功 — 下一步：未排程，改用 try_exists
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
