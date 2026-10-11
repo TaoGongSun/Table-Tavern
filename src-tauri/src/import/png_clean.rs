@@ -249,5 +249,57 @@ pub(crate) fn transplant_card_text(original: &[u8], clean: &[u8]) -> Option<Vec<
     Some(out)
 }
 
+/// 文字 chunk 的關鍵字是 chara／ccv3＝ST 卡資料。
+pub(crate) fn is_st_card_chunk(kind: &[u8; 4], data: &[u8]) -> bool {
+    matches!(kind, b"tEXt" | b"zTXt" | b"iTXt")
+        && data
+            .split(|byte| *byte == 0)
+            .next()
+            .is_some_and(|keyword| keyword == b"chara" || keyword == b"ccv3")
+}
+
+/// 不驗 CRC 逐 chunk 複製到 IEND 前，`drop` 為真的 chunk 略過；回傳（magic＋留下的 chunk，IEND chunk）。
+/// IEND 之後的尾巴不要。結構檢查只到邊界：表頭不足、長度溢位、越界、沒有 IEND 各回對應錯誤。
+pub(crate) fn copy_chunks_before_iend<'a>(
+    bytes: &'a [u8],
+    mut drop: impl FnMut(&[u8; 4], &[u8]) -> bool,
+) -> Result<(Vec<u8>, &'a [u8]), String> {
+    if !bytes.starts_with(PNG_MAGIC) {
+        return Err("not a PNG".to_owned());
+    }
+    let mut out = PNG_MAGIC.to_vec();
+    let mut offset = PNG_MAGIC.len();
+    while offset < bytes.len() {
+        if bytes.len() - offset < 12 {
+            return Err("chunk header truncated".to_owned());
+        }
+        let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let end = offset
+            .checked_add(12)
+            .and_then(|end| end.checked_add(length))
+            .ok_or_else(|| "chunk length overflow".to_owned())?;
+        if end > bytes.len() {
+            return Err("chunk runs past end of file".to_owned());
+        }
+        let kind: [u8; 4] = bytes[offset + 4..offset + 8].try_into().unwrap();
+        if &kind == b"IEND" {
+            return Ok((out, &bytes[offset..end]));
+        }
+        if !drop(&kind, &bytes[offset + 8..end - 4]) {
+            out.extend_from_slice(&bytes[offset..end]);
+        }
+        offset = end;
+    }
+    Err("missing IEND chunk".to_owned())
+}
+
+/// 剝掉 ST 卡文字 chunk（chara／ccv3），圖本身原位元組不動；角色顯示圖一律存這個版本，
+/// 卡片資料只認 `<id>.card.png`／`.import.json`。
+pub(crate) fn strip_card_text(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let (mut out, iend) = copy_chunks_before_iend(bytes, is_st_card_chunk)?;
+    out.extend_from_slice(iend);
+    Ok(out)
+}
+
 #[cfg(test)]
 pub(crate) mod tests;

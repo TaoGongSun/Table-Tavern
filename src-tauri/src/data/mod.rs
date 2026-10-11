@@ -19,9 +19,9 @@ mod world_lock;
 mod worldbook;
 
 pub use character::{
-    character_card_gone, delete_character, list_characters, read_character, read_player_card,
-    reorder_characters, set_character_archived, set_character_auto_hidden, write_character,
-    CharacterCard, CharacterMeta,
+    character_card_gone, character_files_present, delete_character, list_characters,
+    read_character, read_player_card, reorder_characters, set_character_archived,
+    set_character_auto_hidden, write_character, CharacterCard, CharacterMeta,
 };
 pub use config::{
     install_sponsor_pack, migrate_legacy_config, read_config, read_model_catalog,

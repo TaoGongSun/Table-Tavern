@@ -288,7 +288,10 @@ mod tests {
         let encoded = character_image(root.path(), &world_id, &meta.id)
             .unwrap()
             .unwrap();
-        assert_eq!(decode_base64(encoded.as_bytes()).unwrap(), png);
+        assert_eq!(
+            decode_base64(encoded.as_bytes()).unwrap(),
+            crate::import::png_clean::strip_card_text(&png).unwrap()
+        );
         assert_eq!(
             character_image(root.path(), &world_id, &data::new_id()).unwrap(),
             None

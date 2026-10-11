@@ -68,7 +68,7 @@ export function useCharacterController(input: {
   // 這桌的玩家卡 id（來自 world state）：玩家卡的載入 effect 靠它重跑
   const [playerCardId, setPlayerCardId] = useState<string | null>(null);
   const [playerCard, setPlayerCard] = useState<CharacterCard | null>(null);
-  // 角色圖快取：角色 id → data URL（來源是匯入時存下的原 PNG，後端 read_character_image）
+  // 角色圖快取：角色 id → data URL（顯示圖，後端 read_character_image；原卡另存、不從這裡讀）
   const [characterImages, setCharacterImages] = useState<Record<string, string>>({});
   const [characterAvatars, setCharacterAvatars] = useState<Record<string, string>>({});
   const [playerImage, setPlayerImage] = useState<string | null>(null);

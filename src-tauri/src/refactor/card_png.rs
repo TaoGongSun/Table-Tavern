@@ -5,9 +5,10 @@
 
 use super::card_file::{parse_card_value, RefactorCardFile};
 use crate::data::DataResult;
-use crate::import::card_io::{png_chunk, PNG_MAGIC};
+use crate::import::card_io::png_chunk;
+use crate::import::png_clean::{copy_chunks_before_iend, is_st_card_chunk};
 use crate::import::png_image::{
-    for_each_chunk, validate_png_image, ImageLimits, PngChunk, STORED_IMAGE_LIMITS,
+    for_each_chunk, validate_png_image, ImageLimits, STORED_IMAGE_LIMITS,
 };
 use crate::ui_msg::UiMsg;
 use serde::{Deserialize, Serialize};
@@ -95,29 +96,17 @@ fn valid_asset_id(id: &str) -> bool {
         })
 }
 
-/// 文字 chunk 的關鍵字是 chara／ccv3＝ST 卡資料。
-fn is_st_card_chunk(kind: &[u8; 4], data: &[u8]) -> bool {
-    matches!(kind, b"tEXt" | b"zTXt" | b"iTXt")
-        && data
-            .split(|byte| *byte == 0)
-            .next()
-            .is_some_and(|keyword| keyword == b"chara" || keyword == b"ccv3")
-}
-
-/// 底圖剝掉 ST 卡 chunk 與舊版自家 chunk，回傳 IEND 之前的部分（不含 IEND）。
+/// 底圖剝掉 ST 卡 chunk 與舊版自家 chunk，回傳 IEND 之前的部分（不含 IEND）。先過嚴格結構檢查。
 fn stripped_base(base: &[u8]) -> Result<Vec<u8>, String> {
-    let mut out = PNG_MAGIC.to_vec();
-    for_each_chunk(base, |chunk| {
-        if !(is_own(chunk) || &chunk.kind == b"IEND" || is_st_card_chunk(&chunk.kind, chunk.data)) {
-            out.extend_from_slice(&base[chunk.start..chunk.end]);
-        }
-        Ok(())
-    })?;
-    Ok(out)
+    for_each_chunk(base, |_| Ok(()))?;
+    copy_chunks_before_iend(base, |kind, data| {
+        is_own(kind) || is_st_card_chunk(kind, data)
+    })
+    .map(|(out, _)| out)
 }
 
-fn is_own(chunk: &PngChunk) -> bool {
-    &chunk.kind == MANIFEST_CHUNK || &chunk.kind == ASSET_CHUNK
+fn is_own(kind: &[u8; 4]) -> bool {
+    kind == MANIFEST_CHUNK || kind == ASSET_CHUNK
 }
 
 /// 封裝：先在複製任何素材之前檢查張數、單張、總量與封面上限；card 先轉對外版本；
@@ -198,7 +187,7 @@ pub(crate) fn decode_with(bytes: &[u8], limits: &CardLimits) -> DataResult<Decod
         if &chunk.kind == MANIFEST_CHUNK {
             manifests += 1;
             manifest_chunk.get_or_insert(chunk.data);
-        } else if !is_own(chunk) {
+        } else if !is_own(&chunk.kind) {
             cover += chunk.end - chunk.start;
         }
         Ok(())

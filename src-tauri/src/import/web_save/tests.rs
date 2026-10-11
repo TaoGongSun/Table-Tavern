@@ -785,6 +785,7 @@ fn a_matching_png_brings_the_card_image() {
     let png = crate::import::test_support::card_png(&save["card"].to_string());
     save["card_png"] = json!(base64::engine::general_purpose::STANDARD.encode(&png));
     let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    assert!(!imported.image_dropped);
     let image = crate::import::character_image(
         root.path(),
         &imported.world_id,
@@ -793,6 +794,51 @@ fn a_matching_png_brings_the_card_image() {
     assert!(
         image.unwrap().is_some(),
         "PNG 與 card 一致：用 PNG 匯入、帶上卡圖"
+    );
+}
+
+/// 匯卡寫檔失敗、回滾也清不乾淨：整張新桌會收掉，回原錯、不叫玩家手動清殘檔。
+#[test]
+fn a_failed_rollback_returns_the_original_error() {
+    let root = TestRoot::new("web-save-rollback");
+    let mut save = fixture("short.json");
+    let png = crate::import::test_support::card_png(&save["card"].to_string());
+    save["card_png"] = json!(base64::engine::general_purpose::STANDARD.encode(&png));
+    let before = world_ids(&root);
+    let error = {
+        let _rename = data::RenameFailGuard::fail_ending_after(".png", 1, 1);
+        let _remove = data::RemoveFailGuard::fail_ending(".png.tmp", 10);
+        import_web_save(root.path(), &bytes(&save), LANG).unwrap_err()
+    }
+    .to_string();
+    assert!(
+        !error.contains("character_import_rollback_failed"),
+        "{error}"
+    );
+    assert!(!error.contains("web_save_cleanup_incomplete"), "{error}");
+    assert_eq!(world_ids(&root), before, "失敗後不留新桌");
+}
+
+/// PNG 與 card 一致但圖救不回：卡照常匯入（原卡退成 .import.json），結果帶 image_dropped 給前端提示。
+#[test]
+fn an_unrecoverable_png_reports_image_dropped() {
+    let root = TestRoot::new("web-save-png-dropped");
+    let mut save = fixture("short.json");
+    let png = crate::import::test_support::minimal_png(&save["card"].to_string());
+    save["card_png"] = json!(base64::engine::general_purpose::STANDARD.encode(&png));
+    let imported = import_web_save(root.path(), &bytes(&save), LANG).unwrap();
+    assert!(imported.image_dropped);
+    let char_id = imported.character_id.unwrap();
+    assert!(
+        crate::import::character_image(root.path(), &imported.world_id, &char_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        data::character_path(root.path(), &imported.world_id, &char_id)
+            .unwrap()
+            .with_extension("import.json")
+            .is_file()
     );
 }
 

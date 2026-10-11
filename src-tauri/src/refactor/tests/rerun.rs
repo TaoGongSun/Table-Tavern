@@ -370,6 +370,107 @@ fn reset_replays_character_route_imports() {
     assert_eq!(characters[0].color, "#abc");
 }
 
+/// PNG 角色卡換過圖再清回：照匯入原檔重匯，原卡 `.card.png` 與剝掉卡文字的顯示圖 `.png` 都回到剛匯入的樣子。
+#[test]
+fn reset_restores_card_file_and_display_image() {
+    let root = TestRoot::new("rerun-card-png");
+    let world_id = imported_world(&root);
+    let png = crate::import::test_support::card_png(NPC);
+    let id = import::import_character_file(
+        root.path(),
+        &world_id,
+        &png,
+        "#abc",
+        "zh-TW",
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap()
+    .value
+    .id;
+    import::save_character_image(
+        root.path(),
+        &world_id,
+        &id,
+        &crate::import::png_image::test_png::real_png(4, 3),
+    )
+    .unwrap();
+    refactor(&root, &world_id);
+    reset_to_import_source(root.path(), &world_id, "zh-TW").unwrap();
+    let characters = data::list_characters(root.path(), &world_id).unwrap();
+    assert_eq!(characters.len(), 1);
+    let file = |extension: &str| {
+        std::fs::read(
+            data::character_path(root.path(), &world_id, &characters[0].id)
+                .unwrap()
+                .with_extension(extension),
+        )
+        .unwrap()
+    };
+    assert_eq!(file("card.png"), png);
+    assert_eq!(
+        file("png"),
+        crate::import::png_clean::strip_card_text(&png).unwrap()
+    );
+}
+
+/// 清回時重匯 PNG 角色、顯示圖寫不進去：整次清回失敗，原桌原封不動、臨時根清乾淨。
+#[test]
+fn display_image_failure_during_reset_leaves_the_table_untouched() {
+    let root = TestRoot::new("rerun-display-fails");
+    let world_id = imported_world(&root);
+    import::import_character_file(
+        root.path(),
+        &world_id,
+        &crate::import::test_support::card_png(NPC),
+        "#abc",
+        "zh-TW",
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
+    refactor(&root, &world_id);
+    let before = fingerprint(root.path(), &world_id);
+    let error = {
+        // `.png` 結尾的改名第一支是原卡 `.card.png`，放行它、打在顯示圖
+        let _guard = data::RenameFailGuard::fail_ending_after(".png", 1, 1);
+        reset_to_import_source(root.path(), &world_id, "zh-TW").unwrap_err()
+    }
+    .to_string();
+    assert!(
+        error.contains(".png.tmp") && !error.contains(".card.png"),
+        "{error}"
+    );
+    assert_eq!(fingerprint(root.path(), &world_id), before);
+    assert!(!root
+        .path()
+        .join("worlds")
+        .join(format!(".tt-reset-{world_id}"))
+        .exists());
+    assert_eq!(
+        rerun_status(root.path(), &world_id).unwrap(),
+        RerunStatus::Ready
+    );
+
+    // 回滾也清不乾淨（暫存檔刪不掉）：臨時根整個收掉，回原錯、不叫玩家手動清檔
+    let error = {
+        let _rename = data::RenameFailGuard::fail_ending_after(".png", 1, 1);
+        let _remove = data::RemoveFailGuard::fail_ending(".png.tmp", 10);
+        reset_to_import_source(root.path(), &world_id, "zh-TW").unwrap_err()
+    }
+    .to_string();
+    assert!(
+        !error.contains("character_import_rollback_failed"),
+        "{error}"
+    );
+    assert_eq!(fingerprint(root.path(), &world_id), before);
+
+    // 故障排除後再清回一次就成功
+    reset_to_import_source(root.path(), &world_id, "zh-TW").unwrap();
+    assert_eq!(
+        data::list_characters(root.path(), &world_id).unwrap().len(),
+        1
+    );
+}
+
 /// 角色原檔壞掉：重建在臨時根失敗，原桌原封不動、臨時根清乾淨
 #[test]
 fn broken_character_source_leaves_the_table_untouched() {

@@ -38,6 +38,13 @@ const COPY = {
     be_player_card_exists: "這桌已經有玩家卡",
     be_player_card_not_convertible: "玩家卡不能轉",
     be_character_not_found: "角色 {id} 不存在",
+    be_character_files_left:
+      "角色已刪除，但有 {count} 個附檔沒清掉：{files}（位置相對於這桌資料夾），請手動刪除。",
+    be_character_import_rollback_failed:
+      "匯入失敗：{error}\n清理也沒做完，角色 {id} 留下殘檔：{files}（位置相對於這桌資料夾）。若角色還在清單上，直接刪掉該角色即可；否則請手動刪除。",
+    be_undo_incomplete: "撤銷沒完成：{error}\n再按一次撤銷會重試。",
+    be_undo_files_left:
+      "撤銷沒完成：有 {count} 個附檔沒清掉：{files}（位置相對於這桌資料夾）。\n再按一次撤銷會重試刪除；仍然失敗再手動刪除。",
     be_scene_fork_not_earlier: "只能從前面的幕分岔",
     be_scene_nothing_to_continue: "這一幕沒有紀錄可以接續",
     be_scene_first_no_previous: "已經是第一幕，沒有前幕可以退回",
@@ -128,6 +135,13 @@ const COPY = {
     be_player_card_exists: "这桌已经有玩家卡",
     be_player_card_not_convertible: "玩家卡不能转",
     be_character_not_found: "角色 {id} 不存在",
+    be_character_files_left:
+      "角色已删除，但有 {count} 个附件文件没清掉：{files}（位置相对于这张桌的文件夹），请手动删除。",
+    be_character_import_rollback_failed:
+      "导入失败：{error}\n清理也没做完，角色 {id} 留下残留文件：{files}（位置相对于这张桌的文件夹）。若角色还在列表上，直接删除该角色即可；否则请手动删除。",
+    be_undo_incomplete: "撤销没完成：{error}\n再按一次撤销会重试。",
+    be_undo_files_left:
+      "撤销没完成：有 {count} 个附件文件没清掉：{files}（位置相对于这张桌的文件夹）。\n再按一次撤销会重试删除；仍然失败再手动删除。",
     be_scene_fork_not_earlier: "只能从前面的幕分岔",
     be_scene_nothing_to_continue: "这一幕没有记录可以接续",
     be_scene_first_no_previous: "已经是第一幕，没有前幕可以退回",
@@ -220,6 +234,13 @@ const COPY = {
     be_player_card_exists: "This table already has a player card.",
     be_player_card_not_convertible: "The player card can't be converted.",
     be_character_not_found: "Character {id} doesn't exist.",
+    be_character_files_left:
+      "The character was deleted, but {count} attached file(s) couldn't be removed: {files} (paths are relative to this table's folder). Please delete them by hand.",
+    be_character_import_rollback_failed:
+      "Import failed: {error}\nCleanup didn't finish either — character {id} left files behind: {files} (paths are relative to this table's folder). If the character is still in the list, just delete it; otherwise delete the files by hand.",
+    be_undo_incomplete: "The undo didn't finish: {error}\nPress Undo again to retry.",
+    be_undo_files_left:
+      "The undo didn't finish: {count} attached file(s) couldn't be removed: {files} (paths are relative to this table's folder).\nPress Undo again to retry deleting them; if it still fails, delete them by hand.",
     be_scene_fork_not_earlier: "You can only branch from an earlier act.",
     be_scene_nothing_to_continue: "This act has no log to continue from.",
     be_scene_first_no_previous:
@@ -319,6 +340,13 @@ const COPY = {
     be_player_card_exists: "この卓にはすでにプレイヤーカードがあります。",
     be_player_card_not_convertible: "プレイヤーカードは変換できません。",
     be_character_not_found: "キャラクター {id} は存在しません。",
+    be_character_files_left:
+      "キャラクターは削除しましたが、付属ファイル {count} 件を消せませんでした：{files}（場所はこの卓のフォルダからの相対パス）。手動で削除してください。",
+    be_character_import_rollback_failed:
+      "インポートに失敗しました：{error}\n後片付けも完了せず、キャラクター {id} のファイルが残っています：{files}（場所はこの卓のフォルダからの相対パス）。キャラクターが一覧に残っていればそのキャラクターを削除するだけで構いません。そうでなければ手動で削除してください。",
+    be_undo_incomplete: "取り消しが完了しませんでした：{error}\nもう一度取り消しを押すと再試行します。",
+    be_undo_files_left:
+      "取り消しが完了しませんでした：付属ファイル {count} 件を消せませんでした：{files}（場所はこの卓のフォルダからの相対パス）。\nもう一度取り消しを押すと削除を再試行します。それでも失敗したら手動で削除してください。",
     be_scene_fork_not_earlier: "分岐できるのは前の幕からだけです。",
     be_scene_nothing_to_continue: "この幕には続きにできる記録がありません。",
     be_scene_first_no_previous: "すでに第一幕です。戻れる前の幕はありません。",
@@ -411,6 +439,13 @@ const COPY = {
     be_player_card_exists: "이 테이블에는 이미 플레이어 카드가 있습니다.",
     be_player_card_not_convertible: "플레이어 카드는 변환할 수 없습니다.",
     be_character_not_found: "캐릭터 {id}이(가) 없습니다.",
+    be_character_files_left:
+      "캐릭터는 삭제했지만 첨부 파일 {count}개를 지우지 못했습니다: {files} (위치는 이 테이블 폴더 기준). 직접 삭제해 주세요.",
+    be_character_import_rollback_failed:
+      "가져오기에 실패했습니다: {error}\n정리도 끝나지 않아 캐릭터 {id}의 파일이 남아 있습니다: {files} (위치는 이 테이블 폴더 기준). 캐릭터가 아직 목록에 있으면 그 캐릭터를 삭제하면 됩니다. 아니면 직접 삭제해 주세요.",
+    be_undo_incomplete: "실행 취소가 끝나지 않았습니다: {error}\n실행 취소를 한 번 더 누르면 다시 시도합니다.",
+    be_undo_files_left:
+      "실행 취소가 끝나지 않았습니다: 첨부 파일 {count}개를 지우지 못했습니다: {files} (위치는 이 테이블 폴더 기준).\n실행 취소를 한 번 더 누르면 삭제를 다시 시도합니다. 그래도 실패하면 직접 삭제해 주세요.",
     be_scene_fork_not_earlier: "이전 막에서만 갈라져 나갈 수 있습니다.",
     be_scene_nothing_to_continue: "이 막에는 이어 갈 기록이 없습니다.",
     be_scene_first_no_previous: "이미 첫 번째 막이라 돌아갈 이전 막이 없습니다.",
@@ -506,6 +541,13 @@ const COPY = {
     be_player_card_exists: "Esta mesa ya tiene una ficha de jugador.",
     be_player_card_not_convertible: "La ficha de jugador no se puede convertir.",
     be_character_not_found: "El personaje {id} no existe.",
+    be_character_files_left:
+      "El personaje se eliminó, pero no se pudieron borrar {count} archivo(s) asociados: {files} (rutas relativas a la carpeta de esta mesa). Bórralos a mano.",
+    be_character_import_rollback_failed:
+      "La importación falló: {error}\nTampoco se completó la limpieza: el personaje {id} dejó archivos: {files} (rutas relativas a la carpeta de esta mesa). Si el personaje sigue en la lista, basta con eliminarlo; si no, bórralos a mano.",
+    be_undo_incomplete: "No se completó la acción de deshacer: {error}\nPulsa Deshacer otra vez para reintentar.",
+    be_undo_files_left:
+      "No se completó la acción de deshacer: no se pudieron borrar {count} archivo(s) asociados: {files} (rutas relativas a la carpeta de esta mesa).\nPulsa Deshacer otra vez para reintentar el borrado; si sigue fallando, bórralos a mano.",
     be_scene_fork_not_earlier: "Solo se puede ramificar desde un acto anterior.",
     be_scene_nothing_to_continue: "Este acto no tiene historial desde el que continuar.",
     be_scene_first_no_previous: "Ya es el primer acto; no hay uno anterior al que volver.",
@@ -609,6 +651,13 @@ const COPY = {
     be_player_card_exists: "Esta mesa já tem uma ficha de jogador.",
     be_player_card_not_convertible: "A ficha de jogador não pode ser convertida.",
     be_character_not_found: "O personagem {id} não existe.",
+    be_character_files_left:
+      "O personagem foi excluído, mas {count} arquivo(s) associado(s) não puderam ser removidos: {files} (caminhos relativos à pasta desta mesa). Exclua-os manualmente.",
+    be_character_import_rollback_failed:
+      "A importação falhou: {error}\nA limpeza também não terminou: o personagem {id} deixou arquivos: {files} (caminhos relativos à pasta desta mesa). Se o personagem ainda estiver na lista, basta excluí-lo; caso contrário, exclua os arquivos manualmente.",
+    be_undo_incomplete: "O desfazer não terminou: {error}\nPressione Desfazer de novo para tentar outra vez.",
+    be_undo_files_left:
+      "O desfazer não terminou: {count} arquivo(s) associado(s) não puderam ser removidos: {files} (caminhos relativos à pasta desta mesa).\nPressione Desfazer de novo para tentar excluir outra vez; se ainda falhar, exclua-os manualmente.",
     be_scene_fork_not_earlier: "Só dá para ramificar a partir de um ato anterior.",
     be_scene_nothing_to_continue: "Este ato não tem histórico para continuar.",
     be_scene_first_no_previous: "Este já é o primeiro ato; não há um anterior para voltar.",
@@ -713,6 +762,13 @@ const COPY = {
     be_player_card_exists: "Dieser Tisch hat bereits eine Spielerkarte.",
     be_player_card_not_convertible: "Die Spielerkarte kann nicht umgewandelt werden.",
     be_character_not_found: "Charakter {id} existiert nicht.",
+    be_character_files_left:
+      "Der Charakter wurde gelöscht, aber {count} zugehörige Datei(en) ließen sich nicht entfernen: {files} (Pfade relativ zum Ordner dieses Tischs). Bitte lösche sie von Hand.",
+    be_character_import_rollback_failed:
+      "Import fehlgeschlagen: {error}\nAuch das Aufräumen wurde nicht abgeschlossen – Charakter {id} hat Dateien hinterlassen: {files} (Pfade relativ zum Ordner dieses Tischs). Steht der Charakter noch in der Liste, lösche ihn einfach; sonst lösche die Dateien von Hand.",
+    be_undo_incomplete: "Das Rückgängigmachen wurde nicht abgeschlossen: {error}\nDrücke noch einmal auf Rückgängig, um es erneut zu versuchen.",
+    be_undo_files_left:
+      "Das Rückgängigmachen wurde nicht abgeschlossen: {count} zugehörige Datei(en) ließen sich nicht entfernen: {files} (Pfade relativ zum Ordner dieses Tischs).\nDrücke noch einmal auf Rückgängig, um das Löschen erneut zu versuchen; klappt es weiterhin nicht, lösche sie von Hand.",
     be_scene_fork_not_earlier: "Abzweigen geht nur von einem früheren Akt.",
     be_scene_nothing_to_continue: "Dieser Akt hat kein Protokoll, an das man anknüpfen kann.",
     be_scene_first_no_previous:
@@ -820,6 +876,13 @@ const COPY = {
     be_player_card_exists: "Cette table a déjà une fiche de joueur.",
     be_player_card_not_convertible: "La fiche de joueur ne peut pas être convertie.",
     be_character_not_found: "Le personnage {id} n'existe pas.",
+    be_character_files_left:
+      "Le personnage a été supprimé, mais {count} fichier(s) associé(s) n'ont pas pu être retirés : {files} (chemins relatifs au dossier de cette table). Supprime-les à la main.",
+    be_character_import_rollback_failed:
+      "L'importation a échoué : {error}\nLe nettoyage n'a pas abouti non plus : le personnage {id} a laissé des fichiers : {files} (chemins relatifs au dossier de cette table). Si le personnage est encore dans la liste, il suffit de le supprimer ; sinon, supprime les fichiers à la main.",
+    be_undo_incomplete: "L'annulation n'a pas abouti : {error}\nAppuie de nouveau sur Annuler pour réessayer.",
+    be_undo_files_left:
+      "L'annulation n'a pas abouti : {count} fichier(s) associé(s) n'ont pas pu être retirés : {files} (chemins relatifs au dossier de cette table).\nAppuie de nouveau sur Annuler pour réessayer la suppression ; si ça échoue encore, supprime-les à la main.",
     be_scene_fork_not_earlier: "On ne peut bifurquer qu'à partir d'un acte précédent.",
     be_scene_nothing_to_continue: "Cet acte n'a aucun historique à reprendre.",
     be_scene_first_no_previous: "C'est déjà le premier acte\u00a0: aucun acte précédent où revenir.",
@@ -922,6 +985,13 @@ const COPY = {
     be_player_card_exists: "У этого стола уже есть карточка игрока.",
     be_player_card_not_convertible: "Карточку игрока нельзя конвертировать.",
     be_character_not_found: "Персонажа {id} не существует.",
+    be_character_files_left:
+      "Персонаж удалён, но {count} связанных файла(ов) удалить не удалось: {files} (пути относительно папки этого стола). Удалите их вручную.",
+    be_character_import_rollback_failed:
+      "Импорт не удался: {error}\nОчистка тоже не завершилась — от персонажа {id} остались файлы: {files} (пути относительно папки этого стола). Если персонаж ещё в списке, просто удалите его; иначе удалите файлы вручную.",
+    be_undo_incomplete: "Отмена не завершилась: {error}\nНажмите «Отменить» ещё раз, чтобы повторить.",
+    be_undo_files_left:
+      "Отмена не завершилась: {count} связанных файла(ов) удалить не удалось: {files} (пути относительно папки этого стола).\nНажмите «Отменить» ещё раз, чтобы повторить удаление; если снова не выйдет, удалите их вручную.",
     be_scene_fork_not_earlier: "Ответвиться можно только от предыдущего акта.",
     be_scene_nothing_to_continue: "В этом акте нет лога, который можно продолжить.",
     be_scene_first_no_previous: "Это уже первый акт — возвращаться некуда.",

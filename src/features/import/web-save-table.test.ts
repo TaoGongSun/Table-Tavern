@@ -8,6 +8,7 @@ const imported: WebSaveImport = {
   card_storage: { theme: "dark" },
   worldbook_entries: 0,
   shared_kept: 0,
+  image_dropped: false,
 };
 
 const CLEANUP_INCOMPLETE =

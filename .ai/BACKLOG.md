@@ -4,7 +4,6 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
-- [character-image-overwrites-card](tasks/character-image-overwrites-card.md) — 換／刪角色圖會蓋掉匯入的原卡 PNG（資料遺失） — 下一步：未排程
 - [mvu-array-index-path](tasks/mvu-array-index-path.md) — 未重構 MVU 卡陣列索引路徑（/HP/0）照上游支援 — 下一步：未排程
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認
 - [initvar-yaml-list](tasks/initvar-yaml-list.md) — [initvar] YAML 清單在樹模式桌被攤平 — 下一步：未排程

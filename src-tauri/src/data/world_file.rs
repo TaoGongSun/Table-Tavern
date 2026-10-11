@@ -69,8 +69,13 @@ impl RenameFailGuard {
 
     /// 只讓目標路徑以 `suffix` 結尾的改名失敗：打在流程裡某個特定檔的替換，不受途中其他改名的次數影響。
     pub(crate) fn fail_ending(suffix: &str, times: u32) -> Self {
+        Self::fail_ending_after(suffix, 0, times)
+    }
+
+    /// 同 fail_ending，但先放行 `skip` 次符合的改名（打在流程中第 N 支同結尾的檔）。
+    pub(crate) fn fail_ending_after(suffix: &str, skip: u32, times: u32) -> Self {
         RENAME_FAIL_MATCH.with(|cell| *cell.borrow_mut() = Some(suffix.to_owned()));
-        Self::fail(times)
+        Self::fail_after(skip, times)
     }
 }
 

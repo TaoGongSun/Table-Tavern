@@ -89,6 +89,7 @@ beforeEach(async () => {
     card_storage: {},
     worldbook_entries: 5,
     shared_kept: 1,
+    image_dropped: false,
   };
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(<Harness />));
@@ -113,7 +114,16 @@ describe("網頁存檔匯入分流", () => {
     expect(shown[0]).toContain(t("importWebSaveDone"));
     expect(shown[0]).toContain(t("importWebSaveWorldbookRules"));
     expect(shown[0]).toContain(t("importWebSaveSharedKept", { n: 1 }));
+    expect(shown[0]).not.toContain(t("importCardImageNotSaved"));
     expect(interfaceChecks).toEqual(["NEW"]);
+  });
+
+  it("卡圖救不回（後端回 image_dropped）時匯入完成訊息要講", async () => {
+    result = { ...result!, image_dropped: true };
+    await importBytes(new Uint8Array(fixture("short.json")), "存檔.json");
+    const shown = vi.mocked(showMessage).mock.calls.map((call) => String(call[0]));
+    expect(shown[0]).toContain(t("importWebSaveDone"));
+    expect(shown[0]).toContain(t("importCardImageNotSaved"));
   });
 
   it("版號不認得的存檔也交給存檔匯入（由後端說明），不當成角色卡", async () => {

@@ -1,6 +1,7 @@
 use super::card::{ALTERNATE_GREETING, PUBLIC_SECTIONS};
 use super::card_io::{base64_encode, blank_png, png_chunk, png_invalid, PNG_MAGIC};
 use super::mechanism::table_tavern_extension;
+use super::png_clean;
 use crate::data::{self, CharacterCard, DataResult};
 use crate::ui_msg::UiMsg;
 use crate::world_info::entry::EXTENSION_FIELDS;
@@ -350,40 +351,13 @@ fn embed_chara_chunk(base: &[u8], json: &[u8]) -> DataResult<Vec<u8>> {
     if !base.starts_with(PNG_MAGIC) {
         return Err(UiMsg::ImageNotPng.into_error());
     }
-    let mut output = PNG_MAGIC.to_vec();
-    let mut offset = PNG_MAGIC.len();
-    while offset < base.len() {
-        if base.len() - offset < 12 {
-            return Err(png_invalid("chunk header truncated"));
-        }
-        let length = u32::from_be_bytes(base[offset..offset + 4].try_into().unwrap()) as usize;
-        let chunk_end = offset
-            .checked_add(12)
-            .and_then(|end| end.checked_add(length))
-            .ok_or_else(|| png_invalid("chunk length overflow"))?;
-        if chunk_end > base.len() {
-            return Err(png_invalid("chunk runs past end of file"));
-        }
-        let kind = &base[offset + 4..offset + 8];
-        let chunk_data = &base[offset + 8..offset + 8 + length];
-        if kind == b"IEND" {
-            let mut text = b"chara\0".to_vec();
-            text.extend_from_slice(base64_encode(json).as_bytes());
-            output.extend_from_slice(&png_chunk(b"tEXt", &text));
-            output.extend_from_slice(&base[offset..chunk_end]);
-            return Ok(output);
-        }
-        let is_card_text = matches!(kind, b"tEXt" | b"zTXt" | b"iTXt")
-            && chunk_data
-                .split(|byte| *byte == 0)
-                .next()
-                .is_some_and(|keyword| keyword == b"chara" || keyword == b"ccv3");
-        if !is_card_text {
-            output.extend_from_slice(&base[offset..chunk_end]);
-        }
-        offset = chunk_end;
-    }
-    Err(png_invalid("missing IEND chunk"))
+    let (mut output, iend) = png_clean::copy_chunks_before_iend(base, png_clean::is_st_card_chunk)
+        .map_err(|detail| png_invalid(&detail))?;
+    let mut text = b"chara\0".to_vec();
+    text.extend_from_slice(base64_encode(json).as_bytes());
+    output.extend_from_slice(&png_chunk(b"tEXt", &text));
+    output.extend_from_slice(iend);
+    Ok(output)
 }
 
 #[cfg(test)]

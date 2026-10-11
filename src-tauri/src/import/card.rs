@@ -276,7 +276,7 @@ pub fn check_character_bytes(bytes: &[u8]) -> DataResult<()> {
     parse_character(bytes).map(|_| ())
 }
 
-/// 角色卡匯入的結果：新角色＋卡圖是否沒存成（PNG 卡的圖救不回，原檔改存成 .import.json）＋
+/// 角色卡匯入的結果：新角色＋卡圖是否沒存成（PNG 卡的圖救不回，沒有顯示圖）＋
 /// 卡片隨身世界書收編結果（`book_failed`＝卡帶了書卻沒匯成，角色照建）。
 pub struct ImportedCharacter {
     pub meta: CharacterMeta,
@@ -356,7 +356,11 @@ pub(crate) fn import_character_placing(
         private_md: private_markdown(card_data, lang),
     };
     data::write_character(root, world_id, &card)?;
-    let image_dropped = store_card_source(&md_path, bytes, &json_bytes)?;
+    // 原卡或顯示圖寫不進去：整次回錯，剛建的角色 md 與已寫的檔一併收掉，不留半匯入的角色
+    let image_dropped = match store_card_source(&md_path, bytes, &json_bytes) {
+        Ok(dropped) => dropped,
+        Err(error) => return Err(roll_back_character(root, world_id, &id, error)),
+    };
     let strict = book_write == BookWrite::Strict;
     if strict {
         import_table_tavern_extension_strict(root, world_id, &name, card_data)?;
@@ -406,36 +410,88 @@ pub(crate) fn import_character_placing(
     })
 }
 
-/// 卡原檔落地（`.png` 與 `.import.json` 只寫其一，原子寫）。卡片介面從這份讀卡資料，所以：
-/// - JSON 卡：原檔照存 `.import.json`。
+/// 匯入寫檔失敗後收掉剛建的角色，連同這次寫入可能留下的暫存檔（原子寫失敗時刪暫存檔的錯被吞掉，
+/// 由 delete_character 再清一次）。
+/// 清乾淨就回原錯；清不乾淨回 `CharacterImportRollbackFailed`，同時帶原錯、角色 id 與留下的檔名，
+/// 讓玩家知道有殘檔要清。整個工作區會整批收掉的呼叫端（網頁存檔、重構清回）用
+/// [`original_import_error`] 換回原錯。
+fn roll_back_character(
+    root: &Path,
+    world_id: &str,
+    id: &str,
+    error: Box<dyn std::error::Error + Send + Sync>,
+) -> Box<dyn std::error::Error + Send + Sync> {
+    // delete_character 連這次寫入可能留下的暫存檔一起清
+    let cleanup = data::delete_character(root, world_id, id);
+    let left = data::character_files_present(root, world_id, id).unwrap_or_default();
+    if cleanup.is_ok() && left.is_empty() {
+        return error;
+    }
+    if let Err(cleanup) = cleanup {
+        log::warn!("rollback of half-imported character failed: {cleanup}");
+    }
+    UiMsg::CharacterImportRollbackFailed {
+        error: error.to_string(),
+        id: id.to_owned(),
+        files: left.join(", "),
+    }
+    .into_error()
+}
+
+/// 呼叫端失敗後整批收掉工作區（網頁存檔的新桌、重構清回的臨時根）時，殘檔會一起清掉，
+/// 不必叫玩家手動刪：`CharacterImportRollbackFailed` 換回裡面的原錯，其他錯原樣回傳。
+pub(crate) fn original_import_error(
+    error: Box<dyn std::error::Error + Send + Sync>,
+) -> Box<dyn std::error::Error + Send + Sync> {
+    match UiMsg::parse(&error.to_string()) {
+        Some(UiMsg::CharacterImportRollbackFailed { error: inner, .. }) => {
+            data::invalid_data(inner)
+        }
+        _ => error,
+    }
+}
+
+/// 卡原檔與顯示圖落地（都原子寫）。原卡 `<id>.card.png` 與 `<id>.import.json` 只寫其一，之後沒有路徑會
+/// 改它；顯示圖 `<id>.png` 另存一份剝掉卡片文字的圖，換圖、刪圖只動這份。
+/// - JSON 卡：原檔照存 `.import.json`，沒有顯示圖。
 /// - PNG 卡：圖走救圖版；截過或原樣的檔卡文字還在，重編的把 chara／ccv3 搬過去。最終檔要過嚴驗、
-///   讀回的卡 JSON 與匯入時相同才存 `.png`；否則（救不回、搬不到）改存解出的卡 JSON 成 `.import.json`。
+///   讀回的卡 JSON 與匯入時相同才存 `.card.png`；否則改存解出的卡 JSON 成 `.import.json`。
+///   顯示圖只要救得回就存（搬卡文字失敗也照存）。
 ///
-/// 回傳圖是否沒存成。
+/// 回傳顯示圖是否沒存成（PNG 卡的圖救不回）；寫檔失敗回 Err。
 fn store_card_source(md_path: &Path, bytes: &[u8], json_bytes: &[u8]) -> DataResult<bool> {
     if !bytes.starts_with(PNG_MAGIC) {
         data::commit_world_write_atomic(&md_path.with_extension("import.json"), bytes)?;
         return Ok(false);
     }
-    let png = match png_clean::salvage_stored_png(bytes) {
-        Some(Stored::AsIs) => Some(bytes.to_vec()),
-        Some(Stored::Rewritten(png)) => Some(png),
-        Some(Stored::Reencoded(clean)) => png_clean::transplant_card_text(bytes, &clean),
-        None => None,
-    }
-    .filter(|png| {
+    let (image, card) = match png_clean::salvage_stored_png(bytes) {
+        Some(Stored::AsIs) => (Some(bytes.to_vec()), Some(bytes.to_vec())),
+        Some(Stored::Rewritten(png)) => (Some(png.clone()), Some(png)),
+        Some(Stored::Reencoded(clean)) => {
+            let card = png_clean::transplant_card_text(bytes, &clean);
+            (Some(clean), card)
+        }
+        None => (None, None),
+    };
+    let card = card.filter(|png| {
         validate_png_image(png, STORED_IMAGE_LIMITS).is_ok()
             && decode_png_character(png).is_ok_and(|decoded| decoded == json_bytes)
     });
-    match png {
+    let display = image
+        .and_then(|png| png_clean::strip_card_text(&png).ok())
+        .filter(|png| validate_png_image(png, STORED_IMAGE_LIMITS).is_ok());
+    match card {
+        Some(png) => data::commit_world_write_atomic(&md_path.with_extension("card.png"), &png)?,
+        None => {
+            data::commit_world_write_atomic(&md_path.with_extension("import.json"), json_bytes)?
+        }
+    }
+    match display {
         Some(png) => {
             data::commit_world_write_atomic(&md_path.with_extension("png"), &png)?;
             Ok(false)
         }
-        None => {
-            data::commit_world_write_atomic(&md_path.with_extension("import.json"), json_bytes)?;
-            Ok(true)
-        }
+        None => Ok(true),
     }
 }
 
@@ -678,13 +734,16 @@ mod tests {
             .path()
             .join(format!("worlds/{world_id}/characters/{}.md", meta.id))
             .is_file());
+        let file = |extension: &str| {
+            root.path().join(format!(
+                "worlds/{world_id}/characters/{}.{extension}",
+                meta.id
+            ))
+        };
+        assert_eq!(fs::read(file("card.png")).unwrap(), png);
         assert_eq!(
-            fs::read(
-                root.path()
-                    .join(format!("worlds/{world_id}/characters/{}.png", meta.id))
-            )
-            .unwrap(),
-            png
+            fs::read(file("png")).unwrap(),
+            png_clean::strip_card_text(&png).unwrap()
         );
         assert_eq!(
             data::list_characters(root.path(), &world_id).unwrap().len(),

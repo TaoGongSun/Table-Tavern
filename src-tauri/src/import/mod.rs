@@ -24,12 +24,13 @@ mod foreign_ids_tests;
 #[cfg(test)]
 mod mvu_replace_tests;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 #[cfg(test)]
 mod widened_entries_tests;
 
 #[cfg(test)]
 pub use card::import_character;
+pub(crate) use card::original_import_error;
 pub use card::{
     card_openings, check_character_bytes, import_character_reporting, probe_import, worldbook_json,
     ImportProbe, ImportedCharacter,

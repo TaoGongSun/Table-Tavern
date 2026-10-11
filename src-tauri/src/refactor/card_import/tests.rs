@@ -276,3 +276,50 @@ fn second_image_failure_does_not_stop_the_rest() {
     assert!(!path(&ids[0], "png").exists());
     assert!(!path(&ids[2], "png").exists());
 }
+
+/// 舊版重構卡的 Portrait 夾帶 ST 卡資料（chara）：套用後存下的顯示圖剝掉卡文字，介面不冒出多一份。
+#[test]
+fn portrait_carrying_card_text_is_stored_without_it() {
+    let root = TestRoot::new("portrait-card-text");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let outcome = outcome_of(&["甲"]);
+    let card = json!({"data": {"name": "別張卡", "extensions": {"regex_scripts": [{
+        "scriptName": "顯示介面", "findRegex": "/.+/s",
+        "replaceString": "<div>ok</div>", "placement": [2]
+    }]}}})
+    .to_string();
+    let bytes = crate::import::test_support::card_png(&card);
+    let assets = [CardAsset {
+        outcome_index: 0,
+        kind: AssetKind::Portrait,
+        bytes: bytes.clone(),
+    }];
+    let result = apply_with_assets(
+        root.path(),
+        &world_id,
+        &outcome,
+        &no_player_selection(vec![0]),
+        &assets,
+    )
+    .unwrap();
+    assert_eq!(result.summary.images_applied, 1);
+    let id = data::list_characters(root.path(), &world_id)
+        .unwrap()
+        .into_iter()
+        .find(|meta| meta.name == "甲")
+        .unwrap()
+        .id;
+    let display = std::fs::read(
+        data::character_path(root.path(), &world_id, &id)
+            .unwrap()
+            .with_extension("png"),
+    )
+    .unwrap();
+    assert_eq!(
+        display,
+        crate::import::png_clean::strip_card_text(&bytes).unwrap()
+    );
+    assert!(crate::import::read_card_interfaces(root.path(), &world_id)
+        .unwrap()
+        .is_empty());
+}

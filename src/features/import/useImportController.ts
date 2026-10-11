@@ -57,6 +57,8 @@ export interface WebSaveImport {
   worldbook_entries: number;
   /** 跨桌共用的卡片變數桌面版已有值、沒有蓋掉的鍵數（D18） */
   shared_kept: number;
+  /** 角色卡路的 PNG 卡圖救不回、沒有角色圖（卡照常匯入） */
+  image_dropped: boolean;
 }
 
 /** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
@@ -497,6 +499,7 @@ export function useImportController(input: {
         await refreshState();
         const notices = [
           t("importWebSaveDone"),
+          imported.image_dropped ? t("importCardImageNotSaved") : "",
           imported.worldbook_entries > 0 ? t("importWebSaveWorldbookRules") : "",
           imported.shared_kept > 0 ? t("importWebSaveSharedKept", { n: imported.shared_kept }) : "",
         ].filter((notice) => notice !== "");

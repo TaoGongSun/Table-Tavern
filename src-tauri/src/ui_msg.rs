@@ -104,6 +104,26 @@ pub enum UiMsg {
     CharacterNotFound {
         id: String,
     },
+    /// 角色卡檔已刪，附檔（圖、原卡等）有幾支沒清掉；files 是相對桌資料夾的位置。
+    CharacterFilesLeft {
+        count: usize,
+        files: String,
+    },
+    /// 角色卡匯入寫檔失敗、回滾也沒清乾淨：error 是原寫入錯誤，id／files 是殘留的角色與檔名。
+    CharacterImportRollbackFailed {
+        error: String,
+        id: String,
+        files: String,
+    },
+    /// 撤銷匯入刪角色沒刪乾淨：收據沒彈出，請玩家再按一次。
+    UndoIncomplete {
+        error: String,
+    },
+    /// 撤銷匯入刪角色時附檔沒清掉（files 是相對桌資料夾的位置）：收據沒彈出，再按一次會重試。
+    UndoFilesLeft {
+        count: usize,
+        files: String,
+    },
 
     // ── 幕與紀錄
     SceneForkNotEarlier,
@@ -424,6 +444,11 @@ impl From<UiMsg> for String {
 }
 
 impl UiMsg {
+    /// 讀回 `TTMSG:` 字串；不是或解不開回 None。
+    pub fn parse(text: &str) -> Option<UiMsg> {
+        serde_json::from_str(text.strip_prefix(MARK)?).ok()
+    }
+
     /// 給 `DataResult`／`?` 用，等同 `invalid_data(msg.to_string())`。
     pub fn into_error(self) -> Box<dyn Error + Send + Sync> {
         invalid_data(self.to_string())

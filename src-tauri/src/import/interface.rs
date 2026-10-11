@@ -30,7 +30,7 @@ pub struct CardInterface {
     pub mvu: bool,
 }
 
-/// 掃描每張已匯入卡的原始卡檔（PNG／.import.json），抽出可渲染的顯示腳本。
+/// 掃描每張已匯入卡的原卡檔（`<id>.card.png`／`.import.json`，世界層 `source-card.*`），抽出可渲染的顯示腳本。
 /// 面板是選配功能：單張卡出錯絕不讓整份清單報錯。非匯入卡（沒有原卡檔）略過；原卡檔在但讀不出
 /// （IO 錯誤、PNG 結構壞、卡片資料解不開）回一筆 `unsupported = "unreadable"`，重構拿它擋下，
 /// 不讓讀不出的卡被當成「沒有介面」。
@@ -83,9 +83,9 @@ fn unreadable(character_id: &str, character_name: &str, path: &Path, error: &str
 
 fn read_card_interfaces_raw(root: &Path, world_id: &str) -> DataResult<Vec<CardInterface>> {
     let mut result = Vec::new();
-    // 角色層：`<id>.png` 不一定是原卡（換角色圖、重構套用的立繪都寫這檔），所以 PNG 沒有卡片資料
-    // 就改看 `.import.json`；兩份都沒有卡片資料＝非匯入卡，略過。任一份讀得出就用它，都讀不出
-    // 而且至少一份是損毀才算 unreadable。
+    // 角色層：原卡只認 `<id>.card.png`／`.import.json`（顯示圖 `<id>.png` 從不當原卡）。兩份都沒有＝
+    // 非匯入卡，略過；任一份讀得出就用它，都讀不出才算 unreadable。`.card.png` 只在匯入時寫、必帶
+    // 卡片資料，所以讀出是一般圖也算損毀。
     for meta in data::list_characters(root, world_id)? {
         if meta.archived || meta.auto_hidden {
             continue;
@@ -94,7 +94,7 @@ fn read_card_interfaces_raw(root: &Path, world_id: &str) -> DataResult<Vec<CardI
         let mut card_data = None;
         let mut broken = None;
         for path in [
-            md_path.with_extension("png"),
+            md_path.with_extension("card.png"),
             md_path.with_extension("import.json"),
         ] {
             if !path.exists() {
@@ -105,7 +105,7 @@ fn read_card_interfaces_raw(root: &Path, world_id: &str) -> DataResult<Vec<CardI
                     card_data = Some(value);
                     break;
                 }
-                Ok(None) => {}
+                Ok(None) => broken = broken.or(Some((path, "PNG has no card data".to_owned()))),
                 Err(error) => broken = broken.or(Some((path, error))),
             }
         }
@@ -571,7 +571,7 @@ mod tests {
         assert_unreadable(&interfaces[0], &meta.id, "莉亞");
     }
 
-    /// JSON 匯入後換了角色圖（一般 PNG、沒有卡片資料）：改讀 .import.json，介面照樣讀得到。
+    /// JSON 匯入後換了角色圖：顯示圖從不當原卡，照讀 .import.json。
     #[test]
     fn read_card_interfaces_falls_back_to_import_json_behind_plain_png() {
         let root = TestRoot::new("interfaces-plain-png-json");
@@ -598,28 +598,63 @@ mod tests {
         assert_eq!(interfaces[0].scripts.len(), 1);
     }
 
-    /// PNG 匯入後換成一般圖（原卡資料沒了、也沒有 .import.json）：不是損毀，照舊當沒有原卡略過。
+    /// PNG 匯入後換角色圖（換成另一張 ST 卡也一樣）、再刪圖：原卡 `.card.png` 不動，介面照舊是原卡的，
+    /// 存下的顯示圖不帶那張卡的資料，介面不多一份。
     #[test]
-    fn read_card_interfaces_skips_plain_png_without_card_data() {
-        let root = TestRoot::new("interfaces-plain-png");
+    fn character_image_changes_never_touch_the_original_card() {
+        let root = TestRoot::new("interfaces-image-swap");
         let world_id = data::create_world(root.path(), "酒館").unwrap();
         let png = crate::import::test_support::card_png(&scripted_card("莉亞"));
         let meta = import_character(root.path(), &world_id, &png, "#3366ff", "zh-TW").unwrap();
-        assert!(!raw_file(root.path(), &world_id, &meta.id, "import.json").exists());
+        let card_file = raw_file(root.path(), &world_id, &meta.id, "card.png");
+        assert_eq!(fs::read(&card_file).unwrap(), png);
+        let other = json!({"data": {"name": "艾倫", "extensions": {"regex_scripts": [
+            {"scriptName": "甲", "findRegex": "/a/", "replaceString": "<b>甲</b>", "placement": [2]},
+            {"scriptName": "乙", "findRegex": "/b/", "replaceString": "<b>乙</b>", "placement": [2]}
+        ]}}})
+        .to_string();
         crate::import::save_character_image(
             root.path(),
             &world_id,
             &meta.id,
-            &crate::import::png_image::test_png::real_png(4, 3),
+            &crate::import::test_support::card_png(&other),
+        )
+        .unwrap();
+        let display = fs::read(raw_file(root.path(), &world_id, &meta.id, "png")).unwrap();
+        assert_eq!(find_png_card(&display).unwrap(), None);
+        let check = || {
+            let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+            assert_eq!(interfaces.len(), 1);
+            assert_eq!(interfaces[0].character_name, "莉亞");
+            assert_eq!(interfaces[0].unsupported, None);
+            assert_eq!(interfaces[0].scripts.len(), 1);
+            assert_eq!(interfaces[0].scripts[0].replace_string, "<div>ok</div>");
+            assert_eq!(fs::read(&card_file).unwrap(), png);
+        };
+        check();
+        crate::import::delete_character_image(root.path(), &world_id, &meta.id).unwrap();
+        check();
+    }
+
+    /// `.card.png` 只在匯入時寫、必帶卡片資料：讀出是一般圖（結構完好、沒卡片資料）也算損毀。
+    #[test]
+    fn read_card_interfaces_reports_plain_card_png_as_unreadable() {
+        let root = TestRoot::new("interfaces-plain-card-png");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let png = crate::import::test_support::card_png(&scripted_card("莉亞"));
+        let meta = import_character(root.path(), &world_id, &png, "#3366ff", "zh-TW").unwrap();
+        fs::write(
+            raw_file(root.path(), &world_id, &meta.id, "card.png"),
+            crate::import::png_image::test_png::real_png(4, 3),
         )
         .unwrap();
 
-        assert!(read_card_interfaces(root.path(), &world_id)
-            .unwrap()
-            .is_empty());
+        let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
+        assert_eq!(interfaces.len(), 1);
+        assert_unreadable(&interfaces[0], &meta.id, "莉亞");
     }
 
-    /// PNG 結構壞掉（截斷）＝損毀，回 unreadable。
+    /// `.card.png` 結構壞掉（截斷）＝損毀，回 unreadable。
     #[test]
     fn read_card_interfaces_reports_truncated_png_as_unreadable() {
         let root = TestRoot::new("interfaces-truncated-png");
@@ -628,14 +663,19 @@ mod tests {
         let meta = import_character(root.path(), &world_id, &png, "#3366ff", "zh-TW").unwrap();
         let mut truncated = PNG_MAGIC.to_vec();
         truncated.extend_from_slice(&[0, 0, 0, 9]);
-        fs::write(raw_file(root.path(), &world_id, &meta.id, "png"), truncated).unwrap();
+        fs::write(
+            raw_file(root.path(), &world_id, &meta.id, "card.png"),
+            truncated,
+        )
+        .unwrap();
 
         let interfaces = read_card_interfaces(root.path(), &world_id).unwrap();
         assert_eq!(interfaces.len(), 1);
         assert_unreadable(&interfaces[0], &meta.id, "莉亞");
     }
 
-    /// 兩份原卡檔的組合：一般圖＋壞 JSON＝unreadable；有效 PNG 原卡＋壞 JSON＝用 PNG；壞 PNG＋好 JSON＝用 JSON。
+    /// 兩份原卡檔的組合：一般圖 .card.png＋壞 JSON＝unreadable；有效 .card.png＋壞 JSON＝用 .card.png；
+    /// 壞 .card.png＋好 JSON＝用 JSON。
     #[test]
     fn read_card_interfaces_combines_png_and_import_json() {
         let root = TestRoot::new("interfaces-combos");
@@ -650,7 +690,11 @@ mod tests {
         };
 
         let plain_bad = import(scripted_card("甲").as_bytes());
-        crate::import::save_character_image(root.path(), &world_id, &plain_bad, &plain).unwrap();
+        fs::write(
+            raw_file(root.path(), &world_id, &plain_bad, "card.png"),
+            &plain,
+        )
+        .unwrap();
         fs::write(
             raw_file(root.path(), &world_id, &plain_bad, "import.json"),
             b"not json",
@@ -666,7 +710,7 @@ mod tests {
 
         let bad_good = import(scripted_card("丙").as_bytes());
         fs::write(
-            raw_file(root.path(), &world_id, &bad_good, "png"),
+            raw_file(root.path(), &world_id, &bad_good, "card.png"),
             &truncated,
         )
         .unwrap();

@@ -40,7 +40,8 @@ pub fn gm_image(root: &Path, world_id: &str) -> DataResult<Option<String>> {
     Ok(Some(base64_encode(&fs::read(path)?)))
 }
 
-/// 匯入時存下的原 PNG（characters/<id>.png）；沒有圖回 None，前端拿 base64 組 data URL 顯示
+/// 角色顯示圖（characters/<id>.png，不帶卡片資料；原卡另存 <id>.card.png）；沒有圖回 None，
+/// 前端拿 base64 組 data URL 顯示
 pub fn character_image(
     root: &Path,
     world_id: &str,
@@ -108,6 +109,8 @@ fn save_character_png(
     extension: &str,
 ) -> DataResult<()> {
     check_character_image(bytes)?;
+    // 剝掉 ST 卡文字：顯示圖不是原卡，存成別張卡的 PNG 也不該帶著那張卡的資料
+    let stripped = png_clean::strip_card_text(bytes).map_err(|detail| png_invalid(&detail))?;
     let path = data::character_path(root, world_id, character_id)?;
     if !path.exists() {
         return Err(UiMsg::CharacterNotFound {
@@ -116,7 +119,7 @@ fn save_character_png(
         .into_error());
     }
     // 原子寫：寫一半失敗時舊圖原樣留著，不會留下半張圖
-    data::commit_world_write_atomic(&path.with_extension(extension), bytes)?;
+    data::commit_world_write_atomic(&path.with_extension(extension), &stripped)?;
     Ok(())
 }
 
