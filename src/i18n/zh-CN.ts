@@ -316,7 +316,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorModeMismatch: "AI 跑错玩法（产出与你选的不一致），这份结果不采用，请再按一次重构。",
   refactorInterfaceConflict: "界面产物互相冲突（{path}），这组界面没有套用，来源条目保留",
   refactorFrameUnmatched: "外框条目对不上界面骨架，没有套用，来源条目保留",
-  refactorRerunPlayed: "这桌已有游玩数据，再次重构容易和现有数据冲突，请开新桌重构。",
+  refactorRerunPlayed: "这张桌已经有游玩记录，重构只能在开新桌时进行，请开新桌再重构。",
   refactorRerunNoSource: "这桌没有保存原卡，无法重新重构，请开新桌重构。",
   refactorDroppedRestore: "放回",
   refactorUnabsorbedSection: "未接管机制 {n} 项",

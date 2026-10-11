@@ -331,7 +331,7 @@ export const es: Record<MsgKey, string> = {
   refactorModeMismatch: "La IA produjo el estilo de juego equivocado (no coincide con tu elección). Este resultado se descartó; vuelve a ejecutar la reestructuración.",
   refactorInterfaceConflict: "Los resultados de interfaz se contradicen ({path}); no se aplicaron y se conservaron las entradas de origen",
   refactorFrameUnmatched: "La entrada de marco no encaja con el esqueleto de la interfaz; no se aplicó y se conservó la entrada de origen",
-  refactorRerunPlayed: "Esta mesa ya tiene datos de partida. Reorganizar de nuevo puede chocar con ellos; reorganiza en una mesa nueva.",
+  refactorRerunPlayed: "Esta mesa ya tiene historial de partida. Solo se puede reorganizar en una mesa nueva; abre una mesa nueva y reorganiza allí.",
   refactorRerunNoSource: "Esta mesa no guarda la carta original, así que no se puede reorganizar de nuevo. Reorganiza en una mesa nueva.",
   refactorDroppedRestore: "Restaurar",
   refactorUnabsorbedSection: "{n, plural, one {# mecánica no incorporada} other {# mecánicas no incorporadas}}",

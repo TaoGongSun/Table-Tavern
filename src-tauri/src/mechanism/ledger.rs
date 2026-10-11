@@ -7,6 +7,7 @@ use super::apply::{apply_updates_typed, signed_delta_mark};
 use super::derive::{recompute_derived, reroll};
 use super::parse::parse_updates;
 use super::rules::rule_for_path;
+use super::tree::build_notes;
 use super::tree::{format_num, leaf_at, numeric_value};
 use super::triggers::evaluate_triggers;
 use super::types::{Outcome, Patch, Record, RecordKind};
@@ -82,7 +83,59 @@ pub fn apply_block(
     block: &crate::transport::StateBlock,
     user_name: &str,
 ) -> Outcome {
-    apply_block_typed(world, block, user_name, None)
+    apply_block_typed(world, block, user_name, None, BlockScope::Table)
+}
+
+/// 狀態區塊的來處與桌型。介面接管桌的狀態只走 `<UpdateVariable>`（與導演指示同一份契約）：
+/// 原卡格式的狀態區塊（`<Status_block>` YAML、狀態圍欄、狀態 `<details>`）是原卡的渲染輸出，
+/// 不是對骨架的回報，收進樹只會長出多餘枝或蓋掉骨架值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockScope {
+    /// 非接管桌：照舊全收
+    Table,
+    /// 接管桌的開場白：狀態區塊與 `<UpdateVariable>` 都是照原卡結構寫的，一律不收，只記帳不回饋
+    TakeoverOpening,
+    /// 接管桌的 GM 回覆：狀態區塊不收並回饋，`<UpdateVariable>` 照收
+    TakeoverReply,
+}
+
+const IGNORED_OPENING_PATH: &str = "開場白狀態區塊";
+const REJECTED_BLOCK_PATH: &str = "狀態區塊";
+
+/// 照 `scope` 篩掉不收的部分，回傳要套用的區塊與這次篩掉的記帳。
+fn scoped_block(
+    block: &crate::transport::StateBlock,
+    scope: BlockScope,
+) -> (crate::transport::StateBlock, Option<Record>) {
+    let mut kept = block.clone();
+    let record = match scope {
+        BlockScope::Table => None,
+        BlockScope::TakeoverOpening => {
+            let dropped = !kept.fields.is_empty() || !kept.updates.is_empty();
+            kept.fields.clear();
+            kept.updates.clear();
+            dropped.then(|| {
+                Record::new(
+                    RecordKind::Ignored,
+                    IGNORED_OPENING_PATH.to_owned(),
+                    "介面接管桌的開場白自帶原卡格式的狀態區塊，未套用；初始值以重構產物為準。"
+                        .to_owned(),
+                )
+            })
+        }
+        BlockScope::TakeoverReply => {
+            let dropped = !kept.fields.is_empty();
+            kept.fields.clear();
+            dropped.then(|| {
+                Record::new(
+                    RecordKind::Rejected,
+                    REJECTED_BLOCK_PATH.to_owned(),
+                    "狀態區塊未套用，請以 UpdateVariable 回報變動。".to_owned(),
+                )
+            })
+        }
+    };
+    (kept, record)
 }
 
 /// 同 `apply_block`，`base` 是變數模式這一輪的 stat_data（投影就是進來時的樹）：沒重構的 MVU 卡的
@@ -92,7 +145,10 @@ pub fn apply_block_typed(
     block: &crate::transport::StateBlock,
     user_name: &str,
     base: Option<&crate::data::message_vars::Json>,
+    scope: BlockScope,
 ) -> Outcome {
+    let (scoped, scope_record) = scoped_block(block, scope);
+    let block = &scoped;
     let jump_check = !world.mechanism.incremental;
     let old_values: Vec<Option<String>> = if jump_check {
         block
@@ -153,6 +209,10 @@ pub fn apply_block_typed(
     outcome
         .records
         .extend(recompute_derived(&mut world.state.tree, &world.mechanism));
+    if let Some(record) = scope_record {
+        outcome.records.insert(0, record);
+        outcome.notes = build_notes(&outcome.records);
+    }
     world.state.notes = outcome.notes.clone();
     world.state.changes = outcome.changes.clone();
     outcome
@@ -248,6 +308,7 @@ pub fn read_ledger(root: &Path, world_id: &str) -> Ledger {
             RecordKind::Clamped => ledger.clamped += 1,
             RecordKind::Error => ledger.errors += 1,
             RecordKind::Jump => ledger.jumps += 1,
+            RecordKind::Ignored => {}
         }
     }
     if absorbed_or_skipped.is_empty() {

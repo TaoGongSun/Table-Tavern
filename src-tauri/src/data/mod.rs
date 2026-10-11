@@ -55,8 +55,8 @@ pub use state::{
     TriggerCase, TriggerMode, UpdateMode, WorldState,
 };
 pub use world::{
-    create_reset_world, create_sample_world, create_world, delete_world, is_interface_takeover,
-    list_worlds, read_interface_shell, read_refactor_outcome, read_world_md,
+    create_reset_world, create_sample_world, create_world, delete_world, interface_takeover,
+    is_interface_takeover, list_worlds, read_interface_shell, read_refactor_outcome, read_world_md,
     reclaim_world_if_empty, rename_world, world_has_state_bar, write_interface_shell,
     write_refactor_outcome, write_world_md, WorldMeta,
 };

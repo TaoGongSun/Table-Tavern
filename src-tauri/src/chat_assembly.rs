@@ -18,6 +18,8 @@ pub(crate) struct GmMaterials {
     pub player: Option<data::CharacterCard>,
     /// 這桌全部角色卡的目錄（含封存、隱藏；世界書掃描判「單角色桌」用）
     pub metas: Vec<data::CharacterMeta>,
+    /// 介面接管桌（讀殼失敗算否）：導演指示與這一輪套用狀態用同一個判定
+    pub takeover: bool,
 }
 
 /// 這一桌在場的角色卡（未封存、未自動隱藏）。
@@ -88,6 +90,7 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     state.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &state);
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
+    let takeover = data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
     Ok(GmMaterials {
         world_md: data::read_world_md(root, world_id).map_err(|error| error.to_string())?,
         book: TableBook::load(root, world_id)?,
@@ -96,6 +99,7 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         cards: active_cards(root, world_id)?,
         metas: data::list_characters(root, world_id).map_err(|error| error.to_string())?,
         player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
+        takeover,
     })
 }
 
@@ -241,13 +245,9 @@ pub(crate) fn gm_turn_instruction(
         .filter(|interface| interface.unsupported.is_none())
         .flat_map(|interface| interface.scripts)
         .collect();
-    let has_interface_shell = data::read_interface_shell(root, world_id)
-        .ok()
-        .flatten()
-        .is_some_and(|shell| !shell.trim().is_empty());
     match transport::gm_turn_format(
         !card_scripts.is_empty(),
-        has_interface_shell,
+        materials.takeover,
         materials.state.refactor_mode.as_deref(),
     ) {
         transport::GmTurnFormat::CardFormat | transport::GmTurnFormat::CardFormatAbsent => {

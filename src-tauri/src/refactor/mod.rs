@@ -21,7 +21,7 @@ pub use card_import::{
     claim_assets, open_and_stage, release_assets, return_assets, OpenCardResult,
 };
 pub(crate) use reset::refactored;
-pub use reset::{rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
+pub use reset::{apply_to_table, rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
 pub use types::{
     normalize_stored_mode, RefactorApplySummary, RefactorCharacter, RefactorInterface,
     RefactorOutcome, RefactorSelection,

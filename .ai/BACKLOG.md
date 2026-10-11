@@ -6,7 +6,6 @@
 
 - [mechanism-error-feedback](tasks/mechanism-error-feedback.md) — 路徑不存在、對分支增減等錯誤也回饋給 GM — 下一步：未排程
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕
-- [takeover-opening-statusbar-branch](tasks/takeover-opening-statusbar-branch.md) — 重構接管：開場白狀態欄解析成多餘分支 — 下一步：未排程
 - [refactor-probe-failure-hidden](tasks/refactor-probe-failure-hidden.md) — 重構初判失敗畫面看不出原因 — 下一步：未排程
 - [generated-image-download-flaky](tasks/generated-image-download-flaky.md) — 生圖下載 4 條測試在 verify 中偶發 5 秒逾時 — 下一步：未排程，先查假伺服器
 - [worldeditor-reset-test-flaky](tasks/worldeditor-reset-test-flaky.md) — WorldEditor 重構重設測試在 verify 偶發失敗 — 下一步：未排程

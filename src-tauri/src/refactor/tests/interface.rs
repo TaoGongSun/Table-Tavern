@@ -150,6 +150,8 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         "描述如何顯示狀態欄的散文",
     );
     let mut before_state = data::read_state(root.path(), &world_id).unwrap();
+    // MVU 來源的桌：既有樹是權威，同名頂層保留目前值（非 MVU 桌以產物為準，見 tree_authority.rs）
+    before_state.mechanism.incremental = true;
     before_state.state.tree = BTreeMap::from([
         ("沦陷天数".to_owned(), StateNode::Leaf("7".to_owned())),
         ("淪陷天數".to_owned(), StateNode::Leaf("42".to_owned())),

@@ -40,11 +40,17 @@ pub use types::{
 };
 
 /// 這桌既有狀態樹段（經卡片變數投影讀樹）：盤點、接管、合組、介面展開的 user 訊息共用。
+/// 介面模式（`mode` 是 interface）而且不是 MVU 來源的桌回空段：那棵樹只是開場白狀態區塊解析出來的原卡
+/// 渲染輸出（有損），照它命名會讓骨架沿用帶裝飾的路徑；套用時也以產物為準（見 refactor/apply.rs）。
+/// characters 模式與 MVU 桌照附。讀卡失敗回錯，不預設成非 MVU。
 pub fn table_tree_section(
     root: &std::path::Path,
     world_id: &str,
+    mode: Option<&str>,
 ) -> crate::data::DataResult<String> {
-    Ok(existing_tree_section(
-        &crate::data::read_state(root, world_id)?.state.tree,
-    ))
+    let state = crate::data::read_state(root, world_id)?;
+    if mode == Some("interface") && !crate::mechanism::mvu_source(root, world_id, &state)? {
+        return Ok(String::new());
+    }
+    Ok(existing_tree_section(&state.state.tree))
 }

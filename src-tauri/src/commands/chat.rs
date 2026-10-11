@@ -382,6 +382,42 @@ fn aborted_narration(reply: &str) -> GmNarration {
     }
 }
 
+/// gm_narrate 提交時套用這一輪的狀態（鎖內、套在回合固定的輸入上）。狀態更新一律盡力而為：模型格式壞掉或
+/// 存檔寫不進去，都不該害玩家丟掉整段旁白；骰值要每回合重擲，就算這一輪模型完全沒吐更新也要跑一次。
+/// `loaded` 是回合開始時載入的機制設定（數字欄更新策略與 incremental 以它為準）；`takeover` 與這一輪導演指示
+/// 同一個判定：介面接管桌只認 `<UpdateVariable>`，狀態區塊不收並回饋。要不要套用看過濾前的區塊——接管桌
+/// incremental 一律為真、必套，先後不影響結果。
+pub(crate) fn gm_commit_apply(
+    state: &mut data::WorldState,
+    stat: Option<&data::message_vars::Json>,
+    block: &transport::StateBlock,
+    user_name: &str,
+    loaded: &data::Mechanism,
+    takeover: bool,
+    align: bool,
+) -> (
+    Option<mechanism::Outcome>,
+    Option<data::message_vars::TypedBatch>,
+) {
+    let apply = !block.fields.is_empty() || !block.updates.is_empty() || loaded.incremental;
+    let outcome = apply.then(|| {
+        let scene = state.current_scene;
+        state.mechanism.numeric_update = loaded.numeric_update;
+        let scope = if takeover {
+            mechanism::BlockScope::TakeoverReply
+        } else {
+            mechanism::BlockScope::Table
+        };
+        let outcome = mechanism::apply_block_typed(state, block, user_name, stat, scope);
+        if align {
+            state.aligned_scene = Some(scene);
+        }
+        outcome
+    });
+    let typed = outcome.as_ref().and_then(|outcome| outcome.typed.clone());
+    (outcome, typed)
+}
+
 /// gm_narrate 回傳：剝乾淨的旁白顯示文字＋下一位發言者（角色 id 或玩家哨兵）。
 /// GM 沒點名或名字對不上名單＝None，前端就地停下、不當錯誤。
 #[derive(Serialize)]
@@ -559,11 +595,6 @@ pub(crate) async fn gm_narrate(
     let mut state_updates: Vec<StateUpdate> = Vec::new();
     let mut arrived_persons = Vec::new();
     let mut arrived_characters = Vec::new();
-    // 狀態更新一律盡力而為：模型格式壞掉或存檔寫不進去，都不該害玩家丟掉整段旁白。
-    // 骰值要每回合重擲，就算這一輪模型完全沒吐更新也要跑一次。
-    let apply = !block.fields.is_empty()
-        || !block.updates.is_empty()
-        || materials.state.mechanism.incremental;
     let user_name = player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
     // 提交（鎖內、核對 turn_id、幕與世代）：套在回合開始時固定的輸入上；變數模式時新表與正文留在回合紀錄
     // 等前端落檔。狀態沒寫成要明確回報（state_error），不吞掉
@@ -575,17 +606,15 @@ pub(crate) async fn gm_narrate(
     let committed = turn.commit(
         main,
         |state, stat| {
-            let outcome = apply.then(|| {
-                let scene = state.current_scene;
-                state.mechanism.numeric_update = materials.state.mechanism.numeric_update;
-                let outcome = mechanism::apply_block_typed(state, &block, user_name, stat);
-                if align {
-                    state.aligned_scene = Some(scene);
-                }
-                outcome
-            });
-            let typed = outcome.as_ref().and_then(|outcome| outcome.typed.clone());
-            (outcome, typed)
+            gm_commit_apply(
+                state,
+                stat,
+                &block,
+                user_name,
+                &materials.state.mechanism,
+                materials.takeover,
+                align,
+            )
         },
         // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
         |state, outcome| {

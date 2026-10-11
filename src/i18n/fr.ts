@@ -331,7 +331,7 @@ export const fr: Record<MsgKey, string> = {
   refactorModeMismatch: "L'IA a produit le mauvais style de jeu (différent de ton choix). Ce résultat a été écarté — relance la refonte.",
   refactorInterfaceConflict: "Les résultats d'interface se contredisent ({path})\u00a0; ils n'ont pas été appliqués et les entrées sources sont conservées",
   refactorFrameUnmatched: "L'entrée de cadre ne correspond pas au squelette de l'interface\u00a0; elle n'a pas été appliquée et l'entrée source est conservée",
-  refactorRerunPlayed: "Cette table a déjà des données de partie. Réorganiser à nouveau risque d'entrer en conflit avec elles\u00a0; réorganise sur une nouvelle table.",
+  refactorRerunPlayed: "Cette table a déjà un historique de partie. La réorganisation ne se fait que sur une nouvelle table\u00a0; ouvre une nouvelle table pour réorganiser.",
   refactorRerunNoSource: "Cette table n'a pas conservé la carte d'origine, elle ne peut donc pas être réorganisée à nouveau. Réorganise sur une nouvelle table.",
   refactorDroppedRestore: "Restaurer",
   refactorUnabsorbedSection: "{n, plural, one {# mécanique non intégrée} other {# mécaniques non intégrées}}",

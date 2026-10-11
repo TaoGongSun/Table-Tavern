@@ -333,7 +333,7 @@ export const de: Record<MsgKey, string> = {
   refactorModeMismatch: "Die KI hat die falsche Spielweise ausgegeben (passt nicht zu deiner Wahl). Dieses Ergebnis wurde verworfen — bitte den Umbau erneut starten.",
   refactorInterfaceConflict: "Die Oberflächen-Ergebnisse widersprechen sich ({path}); sie wurden nicht übernommen, die Quelleinträge bleiben erhalten",
   refactorFrameUnmatched: "Der Rahmeneintrag passt nicht zum Oberflächengerüst; er wurde nicht übernommen, der Quelleintrag bleibt erhalten",
-  refactorRerunPlayed: "Dieser Tisch hat bereits Spieldaten. Eine erneute Reorganisation kann damit kollidieren – bitte an einem neuen Tisch reorganisieren.",
+  refactorRerunPlayed: "Dieser Tisch hat bereits einen Spielverlauf. Reorganisieren geht nur an einem neuen Tisch – bitte einen neuen Tisch öffnen und dort reorganisieren.",
   refactorRerunNoSource: "Für diesen Tisch ist keine Originalkarte gespeichert, daher ist keine erneute Reorganisation möglich. Bitte an einem neuen Tisch reorganisieren.",
   refactorDroppedRestore: "Zurückholen",
   refactorUnabsorbedSection: "{n, plural, one {# nicht übernommene Mechanik} other {# nicht übernommene Mechaniken}}",

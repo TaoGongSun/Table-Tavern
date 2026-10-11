@@ -133,7 +133,14 @@ export function pruneDraftCharacters(draft: WorldbookDraft, removed: string[]): 
 }
 
 // 機制帳本：世界書分頁「哪些條目被本地機制接管／跳過」面板，對應 mechanism.rs 的 Ledger。
-export type RecordKind = "rejected" | "clamped" | "error" | "absorbed" | "skipped" | "jump";
+export type RecordKind =
+  | "rejected"
+  | "clamped"
+  | "error"
+  | "absorbed"
+  | "skipped"
+  | "jump"
+  | "ignored";
 
 export interface LedgerEntry {
   uid: number;

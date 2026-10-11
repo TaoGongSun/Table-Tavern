@@ -810,9 +810,15 @@ fn rule_mechanism_entries_follow_source_position_and_keywords() {
     assert!(!gm_sent(root.path(), &world_id, "你好。").contains("劇本接管"));
 }
 
-/// 篩選後規則與觸發全空：不鎖、照來源觸發，仍是 GM；停用的來源照樣停用。
+/// 篩選後規則與觸發全空：不鎖、照來源觸發，仍是 GM；停用的來源照樣停用。MVU 與非 MVU 桌都一樣——
+/// 沒套介面時既有樹一律算數（非 MVU 只在套介面時不算，見 tree_authority.rs）。
 #[test]
 fn mechanism_entry_filtered_to_empty_unlocks_and_follows_source() {
+    filtered_to_empty_case(true);
+    filtered_to_empty_case(false);
+}
+
+fn filtered_to_empty_case(mvu: bool) {
     let root = TestRoot::new("refactor-visibility-mechanism-empty");
     let world_id = data::create_world(root.path(), "酒館").unwrap();
     import_gm_book(
@@ -825,6 +831,8 @@ fn mechanism_entry_filtered_to_empty_unlocks_and_follows_source() {
         }}),
     );
     let mut state = data::read_state(root.path(), &world_id).unwrap();
+    // MVU 來源的桌（世界書 MVU 鷹架會開 incremental）
+    state.mechanism.incremental = mvu;
     state.state.tree = BTreeMap::from([(
         "基础信息".to_owned(),
         data::StateNode::Branch(BTreeMap::from([(
@@ -913,6 +921,8 @@ fn filtered_empty_mechanism_from_character_person_entry_is_forced_gm() {
         Visibility::Characters(vec![card.clone()])
     );
     let mut state = data::read_state(root.path(), &world_id).unwrap();
+    // MVU 來源的桌（世界書 MVU 鷹架會開 incremental）
+    state.mechanism.incremental = true;
     state.state.tree = BTreeMap::from([(
         "基础信息".to_owned(),
         data::StateNode::Leaf("未知".to_owned()),

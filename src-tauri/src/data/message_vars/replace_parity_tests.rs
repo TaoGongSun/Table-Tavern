@@ -38,6 +38,7 @@ fn upstream_replace_matches_the_shim_cases() {
             &crate::transport::extract_state_block(&reply),
             "阿濤",
             Some(&stat),
+            crate::mechanism::BlockScope::Table,
         );
         // 墊片沒有記帳：後端該拒收的路徑由案例標明（`backend_rejected`），其餘不得拒收
         let rejected: Vec<&str> = outcome
@@ -84,6 +85,7 @@ fn move_keeps_types_only_when_it_actually_moves() {
             &crate::transport::extract_state_block(&reply),
             "阿濤",
             Some(&stat),
+            crate::mechanism::BlockScope::Table,
         );
         let types = BTreeMap::new();
         let rules = NewValues {
@@ -175,7 +177,13 @@ fn opening_and_gm_commit_keep_json_types_in_message_vars() {
             |state, stat| {
                 state.mechanism.numeric_update =
                     crate::mechanism::resolve_numeric_update(tx.root, tx.world_id, state);
-                let outcome = crate::mechanism::apply_block_typed(state, &block, "阿濤", stat);
+                let outcome = crate::mechanism::apply_block_typed(
+                    state,
+                    &block,
+                    "阿濤",
+                    stat,
+                    crate::mechanism::BlockScope::Table,
+                );
                 let typed = outcome.typed.clone();
                 (outcome, typed)
             },
