@@ -5,6 +5,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../../i18n";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { CharacterCard, CharacterDeleteOutcome, DraftImage, Tier } from "./card-model";
+import { cardFileGone } from "./useCharacterController";
 import { tierLabel } from "../ai-connection/model-catalog";
 import { IconArchive, IconBook, IconDelete, IconExport, IconSparkle } from "../../shared/ui/icons";
 import type { MoreMenuItem } from "../../shared/ui/MoreMenu";
@@ -96,6 +97,10 @@ export function CardEditor({
   // 編輯對象輪次：只隨換桌、換卡遞增，自己清草稿不會動到——重讀圖回來後判斷 onSaved 還該不該送
   const editTarget = useRef(0);
 
+  // 新卡顏色隨名單長度變，刪別張卡就會換；只在開新卡（換編輯對象）當下取一次，不讓它重跑載入、蓋掉草稿
+  const newCardColorRef = useRef(newCardColor);
+  newCardColorRef.current = newCardColor;
+
   useEffect(() => {
     setMessage("");
     setDraftImage(undefined);
@@ -104,7 +109,7 @@ export function CardEditor({
       const blank: CharacterCard = {
         id: characterId,
         name: "",
-        color: newCardColor,
+        color: newCardColorRef.current,
         avatar: DEFAULT_AVATAR,
         tier: "balanced",
         show_image: true,
@@ -134,7 +139,7 @@ export function CardEditor({
     return () => {
       stale = true;
     };
-  }, [world, characterId, isNew, newCardColor]);
+  }, [world, characterId, isNew]);
 
   useEffect(() => {
     generation.current += 1;
@@ -263,7 +268,9 @@ export function CardEditor({
   }
 
   // 同一顆鈕雙向切換：隱藏區進來的卡按它就是還原，免得編輯器裡出現按了沒意義的「隱藏角色」
+  // 隱藏／還原後編輯器會關，未存的改動先過離開詢問〔作者裁決 2026-10-11〕
   async function toggleArchived() {
+    if (!(await confirmLeave())) return;
     setMessage("");
     try {
       await invoke("set_character_archived", {
@@ -327,20 +334,26 @@ export function CardEditor({
       setMessage(t("worldBusy"));
       return;
     }
+    let done: string;
     try {
       const outcome = await invoke<CharacterDeleteOutcome | undefined>(
         "character_to_worldbook_entry",
         { worldId: world, characterId },
       );
       // 編輯器轉完就卸載，提示接在完成訊息後面才看得到
-      const done = outcome?.worldbook_cleanup_failed
+      done = outcome?.worldbook_cleanup_failed
         ? `${t("convertCardDone")}\n${t("deleteCharacterCleanupFailed")}`
         : t("convertCardDone");
-      await showMessage(done, { okLabel: t("dialogAck") });
-      await onConverted();
     } catch (reason) {
-      setMessage(String(reason));
+      // 轉換回錯但卡檔確定已不在：卡已刪，照轉成處理（善後與通知照走）
+      if (!(await cardFileGone(world, characterId))) {
+        setMessage(String(reason));
+        return;
+      }
+      done = t("deleteCharacterPartial", { reason: String(reason) });
     }
+    await showMessage(done, { okLabel: t("dialogAck") });
+    await onConverted();
   }
 
   function chooseImage(file: File) {

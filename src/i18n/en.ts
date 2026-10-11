@@ -431,6 +431,7 @@ export const en: Record<MsgKey, string> = {
   convertCardConfirm: "This turns the whole card, including private notes, into one always-on GM-visible entry, then deletes this card and its images. Continue?",
   convertCardDone: "Converted to a world book entry.",
   deleteCharacterCleanupFailed: "The character was deleted, but its links in the world book weren't fully cleaned up. Check the world book.",
+  deleteCharacterPartial: "The character was deleted, but some of its files weren't cleaned up: {reason}",
   exportCardPng: "Character card PNG",
   exportCardJson: "Character card JSON",
   exportCardNeedsSave: "Save the card before exporting",

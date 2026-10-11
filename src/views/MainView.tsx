@@ -9,6 +9,7 @@ import { ActReader } from "../features/play/ActReader";
 import { CardEditor } from "../features/characters/CardEditor";
 import { WorldEditor } from "../features/worldbook/WorldEditor";
 import type { PendingRefactorCard } from "../features/refactor/refactor-card";
+import type { CastRemoval } from "../features/worldbook/worldbook-model";
 
 interface MainViewProps {
   sceneLabelOf: (n: number) => string;
@@ -30,8 +31,10 @@ interface MainViewProps {
   onImagesChanged: () => Promise<void>;
   onCardSaved: (id: string) => Promise<void>;
   onPlayerCardSaved: (id: string) => Promise<void>;
-  /** 隱藏或轉出後的善後：名單重載、發言對象改人、關掉編輯面板 */
-  onFinishRemoval: (id: string) => Promise<void>;
+  /** 隱藏／還原後的善後：名單重載、發言對象改人、關掉這張卡的編輯面板 */
+  onArchiveToggled: (id: string) => Promise<void>;
+  /** 轉成條目（卡確定已刪）後的善後：同上，另通知開著的世界設定 */
+  onConverted: (id: string) => Promise<void>;
   onDeleteCharacter: (id: string) => Promise<void>;
   onDeletePlayerCard: (id: string) => Promise<void>;
   /** 關掉編輯畫面回到遊玩 */
@@ -49,6 +52,9 @@ interface MainViewProps {
   onRefactorApplied: (live: () => boolean) => Promise<void>;
   pendingRefactorCard: PendingRefactorCard | null;
   onPendingRefactorCardTaken: (generation: number) => void;
+  /** 確定已刪的角色通知：開著的世界設定據此重讀 */
+  castRemoval: CastRemoval | null;
+  onCastRemovalTaken: (worldId: string, generation: number) => void;
   /** 遊玩畫面（messages＋composer）；元素在 App 建好傳進來 */
   playView: ReactNode;
 }
@@ -69,7 +75,8 @@ export function MainView({
   onImagesChanged,
   onCardSaved,
   onPlayerCardSaved,
-  onFinishRemoval,
+  onArchiveToggled,
+  onConverted,
   onDeleteCharacter,
   onDeletePlayerCard,
   onClose,
@@ -84,6 +91,8 @@ export function MainView({
   onRefactorApplied,
   pendingRefactorCard,
   onPendingRefactorCardTaken,
+  castRemoval,
+  onCastRemovalTaken,
   playView,
 }: MainViewProps) {
   return (
@@ -120,7 +129,7 @@ export function MainView({
             void (editingPlayerCard ? onPlayerCardSaved(saved) : onCardSaved(saved))
           }
           onArchived={
-            cardKind === "character" ? () => onFinishRemoval(cardId) : async () => onClose()
+            cardKind === "character" ? () => onArchiveToggled(cardId) : async () => onClose()
           }
           onDeleted={
             cardKind === "character"
@@ -134,7 +143,7 @@ export function MainView({
           config={config}
           onPreference={onPreference}
           onOpenAiSettings={onOpenAiSettings}
-          onConverted={() => onFinishRemoval(cardId)}
+          onConverted={() => onConverted(cardId)}
           isBusy={isBusy}
         />
       ) : worldOpen ? (
@@ -150,6 +159,8 @@ export function MainView({
           onRefactorApplied={onRefactorApplied}
           pendingRefactorCard={pendingRefactorCard}
           onPendingRefactorCardTaken={onPendingRefactorCardTaken}
+          castRemoval={castRemoval}
+          onCastRemovalTaken={onCastRemovalTaken}
           isTurnRunning={isBusy}
         />
       ) : (

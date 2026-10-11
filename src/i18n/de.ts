@@ -419,6 +419,7 @@ export const de: Record<MsgKey, string> = {
   convertCardConfirm: "Die ganze Karte einschließlich privater Notizen wird zu einem dauerhaft aktiven, für den GM sichtbaren Eintrag zusammengeführt. Danach werden diese Karte und ihre Bilder gelöscht. Fortfahren?",
   convertCardDone: "In Weltbucheintrag umgewandelt.",
   deleteCharacterCleanupFailed: "Der Charakter wurde gelöscht, aber seine Verknüpfungen im Weltbuch wurden nicht vollständig bereinigt. Prüfe das Weltbuch.",
+  deleteCharacterPartial: "Der Charakter wurde gelöscht, aber einige seiner Dateien wurden nicht entfernt: {reason}",
   exportCardPng: "Charakterkarte PNG",
   exportCardJson: "Charakterkarte JSON",
   exportCardNeedsSave: "Karte vor dem Exportieren speichern",

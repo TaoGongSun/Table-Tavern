@@ -818,3 +818,6 @@ fn conversion_holds_the_exclusive_through_cleanup() {
     let (_, value) = entry(root.path(), &world_id, "祕密");
     assert_eq!(table_tavern(&value)["visibility"], json!("gm"));
 }
+
+#[path = "upsert_guard_tests.rs"]
+mod upsert_guard;

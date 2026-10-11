@@ -13,17 +13,53 @@ pub struct CharacterDeleteOutcome {
 }
 
 /// 玩家刪角色：先刪卡、再清。刪卡回錯時照樣清（md 已刪就清），清完回原錯；刪卡成功但清理沒做完
-/// （含查不到卡檔是否還在）回旗標。呼叫端持共用許可。
+/// （含查不到卡檔是否還在）回旗標。呼叫端持共用許可。整段持這桌的短提交鎖：前端存條目的「卡檔還在
+/// 嗎」檢查與提交（[`upsert_entry_dropping_gone`]）排在整段之前或之後，不會夾在刪卡與清理中間。
 pub fn delete_character_and_clean(
     root: &Path,
     world_id: &str,
     character_id: &str,
 ) -> DataResult<CharacterDeleteOutcome> {
-    let deleted = data::delete_character(root, world_id, character_id);
-    let cleaned = after_character_delete(root, world_id, &[character_id.to_owned()]);
-    deleted?;
-    Ok(CharacterDeleteOutcome {
-        worldbook_cleanup_failed: !cleaned,
+    data::state_commit::with_commit(root, world_id, |_| {
+        let deleted = data::delete_character(root, world_id, character_id);
+        let cleaned = after_character_delete(root, world_id, &[character_id.to_owned()]);
+        deleted?;
+        Ok(CharacterDeleteOutcome {
+            worldbook_cleanup_failed: !cleaned,
+        })
+    })
+}
+
+/// 前端存世界書條目：可見名單裡卡檔確定已不在的角色 id 先拿掉（名單清空改 GM，同刪角色後清理的規則），
+/// 編輯器手上的過期資料就寫不回已刪角色。玩家卡、解析不了但檔還在的卡都保留；查詢錯誤（含 id 不合法）
+/// 也保留、記 log，不讓整次存檔失敗。比清理寬：舊資料裡本來就沒卡的殘留 id 也在下次存檔時清掉。
+/// 檢查與提交在同一把短提交鎖內，與 [`delete_character_and_clean`] 互斥。
+/// 只接前端寫條目這支指令；撤銷還原、重構套用、匯入合併不走這裡（清理成功時，它們的 id 來源已由刪除清理
+/// 轉換過；清理失敗的殘留不擴大誰看得到）。
+pub fn upsert_entry_dropping_gone(
+    root: &Path,
+    world_id: &str,
+    mut entry: data::WorldbookEntry,
+) -> DataResult<u64> {
+    data::state_commit::with_commit(root, world_id, |_| {
+        if let data::Visibility::Characters(list) = &entry.visibility {
+            let listed: BTreeSet<&String> = list.iter().collect();
+            let gone: Vec<String> = listed
+                .into_iter()
+                .filter(|id| match data::character_card_gone(root, world_id, id) {
+                    Ok(gone) => gone,
+                    Err(error) => {
+                        log::warn!("存條目時查不到角色卡檔是否還在，名單保留這個 id：{error}");
+                        false
+                    }
+                })
+                .cloned()
+                .collect();
+            if !gone.is_empty() {
+                data::scrub_entry(&mut entry, &gone);
+            }
+        }
+        data::upsert_worldbook_entry(root, world_id, entry)
     })
 }
 

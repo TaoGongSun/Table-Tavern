@@ -417,6 +417,7 @@ export const ja: Record<MsgKey, string> = {
   convertCardConfirm: "カード全体（非公開メモを含む）をGMに見える常時有効の項目へ統合し、このカードと画像を削除します。続けますか？",
   convertCardDone: "世界書の項目に変換しました。",
   deleteCharacterCleanupFailed: "キャラクターは削除しましたが、世界書のキャラクター関連の整理が完了していません。世界書を確認してください。",
+  deleteCharacterPartial: "キャラクターは削除しましたが、一部のファイルを片付けられませんでした：{reason}",
   exportCardPng: "キャラクターシート PNG",
   exportCardJson: "キャラクターシート JSON",
   exportCardNeedsSave: "エクスポートする前に保存してください",

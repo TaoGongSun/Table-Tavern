@@ -20,6 +20,22 @@ export function draftVisibility(draft: WorldbookDraft): Visibility {
     : { type: draft.visibility };
 }
 
+/** 確定已刪的角色通知：世代單調遞增；ids 是同一桌還沒被世界設定取走的累積 */
+export interface CastRemoval {
+  worldId: string;
+  generation: number;
+  ids: string[];
+}
+
+/** 草稿名單拿掉確定已刪的角色（不論目前選哪種可見度，名單都濾），規則同後端刪角色後清理：
+ * 有命中才動；只有「指定角色」濾空才改 GM；沒命中回原物件 */
+export function pruneDraftCharacters(draft: WorldbookDraft, removed: string[]): WorldbookDraft {
+  if (!draft.characters.some((id) => removed.includes(id))) return draft;
+  const kept = draft.characters.filter((id) => !removed.includes(id));
+  const emptied = draft.visibility === "characters" && kept.length === 0;
+  return { ...draft, characters: kept, visibility: emptied ? "gm" : draft.visibility };
+}
+
 // 機制帳本：世界書分頁「哪些條目被本地機制接管／跳過」面板，對應 mechanism.rs 的 Ledger。
 export type RecordKind = "rejected" | "clamped" | "error" | "absorbed" | "skipped" | "jump";
 

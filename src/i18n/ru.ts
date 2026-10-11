@@ -417,6 +417,7 @@ export const ru: Record<MsgKey, string> = {
   convertCardConfirm: "Вся карточка, включая личные заметки, будет объединена в одну постоянную запись, видимую ГМ; затем эта карточка и её изображения будут удалены. Продолжить?",
   convertCardDone: "Преобразовано в запись книги мира.",
   deleteCharacterCleanupFailed: "Персонаж удалён, но его связи в книге мира очищены не полностью. Проверь книгу мира.",
+  deleteCharacterPartial: "Персонаж удалён, но часть его файлов не удалось убрать: {reason}",
   exportCardPng: "Карточка PNG",
   exportCardJson: "Карточка JSON",
   exportCardNeedsSave: "Сначала сохрани карточку",

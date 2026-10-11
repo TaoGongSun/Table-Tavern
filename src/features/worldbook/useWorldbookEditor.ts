@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
@@ -7,6 +7,7 @@ import { t } from "../../i18n";
 import {
   draftVisibility,
   EMPTY_LEDGER,
+  pruneDraftCharacters,
   type Ledger,
   type LedgerEntry,
   type WorldbookDraft,
@@ -31,13 +32,55 @@ export function useWorldbookEditor({
   // 條目表單開啟當下的快照，用來判斷「有沒有改過」（未儲存提示）
   const [draftOrigin, setDraftOrigin] = useState("");
 
+  // 三種重讀各自編號：換桌或後發的重讀已送出時，晚到的舊回應丟掉
+  const castRead = useRef(0);
+  const entriesRead = useRef(0);
+  const ledgerRead = useRef(0);
+
+  // 舊請求晚到的成功與失敗都丟掉（失敗不往外拋），不蓋掉新的名單或訊息
+  async function readCast() {
+    const ticket = ++castRead.current;
+    let cast: CharacterMeta[];
+    try {
+      cast = await invoke<CharacterMeta[]>("list_characters", { worldId: world });
+    } catch (reason) {
+      if (ticket === castRead.current) throw reason;
+      return;
+    }
+    if (ticket === castRead.current) {
+      setCharacters(cast.filter((character) => !character.archived));
+    }
+  }
+
   async function refreshCast() {
     try {
-      const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: world });
-      setCharacters(cast.filter((character) => !character.archived));
+      await readCast();
     } catch (reason) {
       setMessage(String(reason));
     }
+  }
+
+  async function refreshWorldbook() {
+    const ticket = ++entriesRead.current;
+    let next: WorldbookEntry[];
+    try {
+      next = await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world });
+    } catch (reason) {
+      if (ticket === entriesRead.current) throw reason;
+      return;
+    }
+    if (ticket === entriesRead.current) setEntries(next);
+  }
+
+  async function refreshLedger() {
+    const ticket = ++ledgerRead.current;
+    let next = EMPTY_LEDGER;
+    try {
+      next = await invoke<Ledger>("mechanism_ledger", { worldId: world });
+    } catch {
+      // 帳本掛掉不該擋住世界書編輯：失敗就當空，不彈錯誤。
+    }
+    if (ticket === ledgerRead.current) setLedger(next);
   }
 
   useEffect(() => {
@@ -46,13 +89,8 @@ export function useWorldbookEditor({
     setLedger(EMPTY_LEDGER);
     setCharacters([]);
     setDraft(null);
-    invoke<WorldbookEntry[]>("read_worldbook", { worldId: world })
-      .then(setEntries)
-      .catch((reason) => setMessage(String(reason)));
-    // 帳本掛掉不該擋住世界書編輯：失敗就當空，不彈錯誤。
-    invoke<Ledger>("mechanism_ledger", { worldId: world })
-      .then(setLedger)
-      .catch(() => setLedger(EMPTY_LEDGER));
+    refreshWorldbook().catch((reason) => setMessage(String(reason)));
+    void refreshLedger();
     void refreshCast();
   }, [world]);
 
@@ -60,23 +98,27 @@ export function useWorldbookEditor({
   // 既有條目改到一半離開時會自動存，不算未儲存；只有還沒存過的新條目要提醒
   const newEntryDirty = draftDirty && draft?.uid === null;
 
-  async function refreshWorldbook() {
-    setEntries(await invoke<WorldbookEntry[]>("read_worldbook", { worldId: world }));
-  }
-
-  async function refreshLedger() {
-    try {
-      setLedger(await invoke<Ledger>("mechanism_ledger", { worldId: world }));
-    } catch {
-      setLedger(EMPTY_LEDGER);
-    }
-  }
-
   // 表單切到「指定角色」時沿用原本的直接重抓語意；這條原本沒有錯誤訊息處理。
   function refreshCharactersForVisibility() {
-    void invoke<CharacterMeta[]>("list_characters", { worldId: world }).then((cast) =>
-      setCharacters(cast.filter((character) => !character.archived)),
-    );
+    void readCast().catch(() => {});
+  }
+
+  /** 確定已刪的角色：開著的草稿與它的原樣快照同規則拿掉這些 id（不製造新的未儲存，玩家其餘改動照留），
+   * 再重讀條目、勾選名單與帳本。後端存條目時另有防線，這裡只求畫面一致。 */
+  async function applyCharactersRemoved(removed: string[]) {
+    if (removed.length > 0) {
+      setDraft((current) => current && pruneDraftCharacters(current, removed));
+      setDraftOrigin((origin) => {
+        if (origin === "") return origin;
+        const pruned = pruneDraftCharacters(JSON.parse(origin) as WorldbookDraft, removed);
+        return JSON.stringify(pruned);
+      });
+    }
+    await Promise.all([
+      refreshWorldbook().catch((reason) => setMessage(String(reason))),
+      refreshCast(),
+      refreshLedger(),
+    ]);
   }
 
   // 帳本的「照原文送模型」開關＝重用既有 upsert_worldbook_entry 反轉該條目的 disabled；
@@ -305,6 +347,7 @@ export function useWorldbookEditor({
     refreshWorldbook,
     refreshLedger,
     refreshCast,
+    applyCharactersRemoved,
     refreshCharactersForVisibility,
     toggleLedgerEntry,
     addEntry,

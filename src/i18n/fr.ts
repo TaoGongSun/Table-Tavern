@@ -417,6 +417,7 @@ export const fr: Record<MsgKey, string> = {
   convertCardConfirm: "Toute la fiche, y compris les notes privées, sera fusionnée en une entrée permanente visible au MJ\u00a0; cette fiche et ses images seront ensuite supprimées. Continuer\u00a0?",
   convertCardDone: "Convertie en entrée d'encyclopédie.",
   deleteCharacterCleanupFailed: "Le personnage a été supprimé, mais ses liens dans l'encyclopédie n'ont pas été entièrement nettoyés. Vérifie l'encyclopédie.",
+  deleteCharacterPartial: "Le personnage a été supprimé, mais certains de ses fichiers n'ont pas été nettoyés : {reason}",
   exportCardPng: "Fiche de personnage PNG",
   exportCardJson: "Fiche de personnage JSON",
   exportCardNeedsSave: "Enregistrer la fiche avant d'exporter",

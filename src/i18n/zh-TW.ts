@@ -433,6 +433,7 @@ export const zh = {
   convertCardConfirm: "會把整張卡（含私有筆記）併成一條 GM 可見的常駐條目，然後刪除這張卡與圖片。要繼續嗎？",
   convertCardDone: "已轉成世界書條目。",
   deleteCharacterCleanupFailed: "角色已刪除，但世界書的角色關聯未清理完成，可到世界書檢查。",
+  deleteCharacterPartial: "角色已刪除，但部分檔案沒清乾淨：{reason}",
   exportCardPng: "角色卡 PNG",
   exportCardJson: "角色卡 JSON",
   exportCardNeedsSave: "先儲存再匯出",

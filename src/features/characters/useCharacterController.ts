@@ -40,9 +40,20 @@ export interface CharacterController {
   restoreAutoHidden: (id: string) => Promise<void>;
   /** 角色被隱藏或刪除後的名單善後：回傳發言對象該換成誰，null＝發言對象不是它、不必動 */
   noteRemoved: (removedId: string, speaker: string) => Promise<string | null>;
-  /** 確認框＋刪檔，true＝真的刪掉了（取消或失敗都是 false，畫面不用動） */
-  remove: (id: string) => Promise<boolean>;
+  /** 確認框＋刪檔。刪檔回錯時問後端卡檔是否確定已不在：確定不在仍算 deleted（另提示部分清理失敗） */
+  remove: (id: string) => Promise<RemoveResult>;
   removePlayer: (id: string) => Promise<boolean>;
+}
+
+export type RemoveResult = "cancelled" | "deleted" | "failed";
+
+/** 刪角色或轉條目回錯後：卡檔確定已不在才回 true；查詢失敗＝不確認 */
+export async function cardFileGone(worldId: string, characterId: string): Promise<boolean> {
+  try {
+    return await invoke<boolean>("character_card_gone", { worldId, characterId });
+  } catch {
+    return false;
+  }
 }
 
 export function useCharacterController(input: {
@@ -275,7 +286,7 @@ export function useCharacterController(input: {
 
   // 隱藏區與角色卡編輯畫面共用同一條刪除路徑（確認框＋刪檔），善後由呼叫端接手
   const remove = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<RemoveResult> => {
       onError("");
       try {
         const name = metaOf(id)?.name ?? id;
@@ -285,16 +296,25 @@ export function useCharacterController(input: {
           okLabel: t("dialogDelete"),
           cancelLabel: t("dialogCancel"),
         });
-        if (!accepted) return false;
+        if (!accepted) return "cancelled";
+      } catch (reason) {
+        onError(String(reason));
+        return "failed";
+      }
+      try {
         const outcome = await invoke<CharacterDeleteOutcome | undefined>("delete_character", {
           worldId,
           characterId: id,
         });
         if (outcome?.worldbook_cleanup_failed) onError(t("deleteCharacterCleanupFailed"));
-        return true;
+        return "deleted";
       } catch (reason) {
+        if (await cardFileGone(worldId, id)) {
+          onError(t("deleteCharacterPartial", { reason: String(reason) }));
+          return "deleted";
+        }
         onError(String(reason));
-        return false;
+        return "failed";
       }
     },
     [metaOf, worldId, onError],
