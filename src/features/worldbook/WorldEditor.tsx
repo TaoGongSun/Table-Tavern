@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
@@ -9,6 +9,7 @@ import { useRefactorWorkflow } from "../refactor/useRefactorWorkflow";
 import type { PendingRefactorCard } from "../refactor/refactor-card";
 import { useWorldbookEditor } from "./useWorldbookEditor";
 import { EditPage } from "../../shared/ui/EditPage";
+import type { CastRemoval } from "./worldbook-model";
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 export function WorldEditor({
@@ -23,6 +24,8 @@ export function WorldEditor({
   isTurnRunning,
   pendingRefactorCard,
   onPendingRefactorCardTaken,
+  castRemoval,
+  onCastRemovalTaken,
 }: {
   title: string;
   world: string;
@@ -39,6 +42,9 @@ export function WorldEditor({
   /** 陣容欄交過來的重構卡 PNG：只接同一桌的、每個世代只接一次 */
   pendingRefactorCard: PendingRefactorCard | null;
   onPendingRefactorCardTaken: (generation: number) => void;
+  /** 側欄刪掉角色的通知：開著時重讀並修剪草稿，不重新掛載（草稿留著） */
+  castRemoval: CastRemoval | null;
+  onCastRemovalTaken: (worldId: string, generation: number) => void;
 }) {
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
@@ -74,6 +80,16 @@ export function WorldEditor({
     onPendingRefactorCardTaken(pendingRefactorCard.generation);
     void refactor.pickRefactorOutcome(pendingRefactorCard.file);
   }, [pendingRefactorCard, world]);
+
+  // 掛載時已有的通知不處理（掛載本來就讀新資料）；只接之後、同一桌的世代
+  const seenRemoval = useRef(castRemoval?.generation ?? 0);
+  useEffect(() => {
+    if (!castRemoval || castRemoval.worldId !== world) return;
+    if (castRemoval.generation <= seenRemoval.current) return;
+    seenRemoval.current = castRemoval.generation;
+    onCastRemovalTaken(castRemoval.worldId, castRemoval.generation);
+    void worldbook.applyCharactersRemoved(castRemoval.ids);
+  }, [castRemoval, world]);
 
   useEffect(() => {
     setMessage("");

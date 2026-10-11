@@ -52,22 +52,22 @@ describe("useCharacterController delete cleanup notice", () => {
 
   it("deletes and then shows the notice when the cleanup did not finish", async () => {
     backend.handlers.delete_character = () => ({ worldbook_cleanup_failed: true });
-    let removed = false;
+    let removed = "";
     await act(async () => {
       removed = await controller!.remove("c1");
     });
-    expect(removed).toBe(true);
+    expect(removed).toBe("deleted");
     expect(lastError()).toBe(t("deleteCharacterCleanupFailed"));
   });
 
   it("stays quiet when the cleanup finished or the backend returns nothing", async () => {
     for (const result of [{ worldbook_cleanup_failed: false }, undefined]) {
       backend.handlers.delete_character = () => result;
-      let removed = false;
+      let removed = "";
       await act(async () => {
         removed = await controller!.remove("c1");
       });
-      expect(removed).toBe(true);
+      expect(removed).toBe("deleted");
       expect(lastError()).toBe("");
     }
   });
@@ -83,5 +83,45 @@ describe("useCharacterController delete cleanup notice", () => {
       backend.calls.indexOf("delete_character"),
     );
     expect(lastError()).toBe(t("deleteCharacterCleanupFailed"));
+  });
+
+  // 刪檔回錯：問後端卡檔是否確定已不在（world-editor-delete-character-guard）
+  async function removeAfterFailure(gone: (() => unknown) | undefined) {
+    backend.handlers.delete_character = () => {
+      throw "磁碟錯誤";
+    };
+    if (gone) backend.handlers.character_card_gone = gone;
+    let removed = "";
+    await act(async () => {
+      removed = await controller!.remove("c1");
+    });
+    return removed;
+  }
+
+  it("counts a failed delete as deleted when the card file is confirmed gone", async () => {
+    expect(await removeAfterFailure(() => true)).toBe("deleted");
+    expect(lastError()).toBe(t("deleteCharacterPartial", { reason: "磁碟錯誤" }));
+  });
+
+  it("keeps a failed delete as failed when the card is still there or the check fails", async () => {
+    expect(await removeAfterFailure(() => false)).toBe("failed");
+    expect(lastError()).toBe("磁碟錯誤");
+    expect(
+      await removeAfterFailure(() => {
+        throw "查不到";
+      }),
+    ).toBe("failed");
+    expect(lastError()).toBe("磁碟錯誤");
+  });
+
+  it("reports a cancelled confirm without touching the backend", async () => {
+    const { confirm } = await import("@tauri-apps/plugin-dialog");
+    vi.mocked(confirm).mockResolvedValueOnce(false);
+    let removed = "";
+    await act(async () => {
+      removed = await controller!.remove("c1");
+    });
+    expect(removed).toBe("cancelled");
+    expect(backend.calls).not.toContain("delete_character");
   });
 });

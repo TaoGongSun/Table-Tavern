@@ -14,7 +14,8 @@ use std::path::Path;
 mod character_delete;
 mod sources;
 pub use character_delete::{
-    character_to_worldbook_entry_and_clean, delete_character_and_clean, CharacterDeleteOutcome,
+    character_to_worldbook_entry_and_clean, delete_character_and_clean, upsert_entry_dropping_gone,
+    CharacterDeleteOutcome,
 };
 pub use sources::{
     begin_pending, discard_import_source, finish_pending, import_replays, store_import_source,

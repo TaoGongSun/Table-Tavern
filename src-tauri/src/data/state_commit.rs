@@ -52,12 +52,57 @@ pub fn with_commit<T>(root: &Path, world_id: &str, work: impl FnOnce(&CommitTx<'
         .entry(key)
         .or_default()
         .clone();
-    let _held = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _held = match lock.try_lock() {
+        Ok(held) => held,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => {
+            #[cfg(test)]
+            contention_hook::fire(world_id);
+            lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+    };
     work(&CommitTx {
         root,
         world_id,
         _private: (),
     })
+}
+
+/// 測試用：某桌的短提交鎖被占著、這條執行緒正要排隊時呼叫，交錯測試據此確認對方真的在等鎖。
+/// 全域的，用到它的測試要彼此排隊（與 `write_hook::TESTS` 共用）。
+#[cfg(test)]
+pub(crate) mod contention_hook {
+    use std::sync::{Arc, Mutex};
+
+    type Hook = Arc<dyn Fn() + Send + Sync>;
+
+    static HOOK: Mutex<Option<(String, Hook)>> = Mutex::new(None);
+
+    pub(crate) struct HookGuard;
+
+    impl Drop for HookGuard {
+        fn drop(&mut self) {
+            *HOOK.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        }
+    }
+
+    pub(crate) fn install(world_id: &str, hook: impl Fn() + Send + Sync + 'static) -> HookGuard {
+        *HOOK.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            Some((world_id.to_owned(), Arc::new(hook)));
+        HookGuard
+    }
+
+    pub(super) fn fire(world_id: &str) {
+        let hook = HOOK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .filter(|(target, _)| target == world_id)
+            .map(|(_, hook)| hook.clone());
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
 }
 
 #[cfg(test)]

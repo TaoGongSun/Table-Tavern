@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { CastRemoval } from "../features/worldbook/worldbook-model";
 
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 export const GM_TARGET = "__GM__";
@@ -13,12 +14,23 @@ export type MainViewState =
   | { kind: "world" }
   | null;
 
+/** 這個畫面是不是正在顯示這張卡（四種卡片編輯畫面） */
+function showsCard(view: MainViewState, id: string) {
+  return (
+    (view?.kind === "character" ||
+      view?.kind === "new-character" ||
+      view?.kind === "player" ||
+      view?.kind === "new-player") &&
+    view.id === id
+  );
+}
+
 interface NavigationCharacters {
   player: { id: string } | null;
   refresh: () => Promise<unknown>;
   reloadPlayer: (playerCardId: string | null) => Promise<void>;
   noteRemoved: (removedId: string, speaker: string) => Promise<string | null>;
-  remove: (id: string) => Promise<boolean>;
+  remove: (id: string) => Promise<"cancelled" | "deleted" | "failed">;
   removePlayer: (id: string) => Promise<boolean>;
 }
 
@@ -42,6 +54,18 @@ export function useWorkspaceNavigationController({
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<MainViewState>(null);
+  // 確認框、刪檔都是 await：關不關編輯器要看當下的畫面，不吃舊閉包
+  const mainViewRef = useRef(mainView);
+  mainViewRef.current = mainView;
+  // 進桌世代：每換一次桌（含 w1→w2→w1）遞增。這一輪 render 的閉包記下當時的世代，刪除、善後的
+  // 非同步續程回來時世代已變＝玩家換桌了，不得再動目前這桌的發言對象、畫面與通知
+  const entry = useRef({ worldId, generation: 0 });
+  if (entry.current.worldId !== worldId) {
+    entry.current = { worldId, generation: entry.current.generation + 1 };
+  }
+  const enteredAt = entry.current.generation;
+  const stillHere = () => entry.current.generation === enteredAt;
+  const [castRemoval, setCastRemoval] = useState<CastRemoval | null>(null);
 
   // 四種卡片編輯畫面都帶 id，先收斂成一個值，下面就只需要問「是不是玩家卡」
   const cardView =
@@ -74,11 +98,40 @@ export function useWorkspaceNavigationController({
     await characters.reloadPlayer(id);
   }
 
-  // 角色被隱藏或刪除後的善後：名單重載（controller）、發言對象改人、關掉編輯面板
-  async function finishRemoval(id: string) {
-    const nextSpeaker = await characters.noteRemoved(id, speaker);
-    if (nextSpeaker !== null) setSpeaker(nextSpeaker);
-    setMainView(null);
+  // 角色被隱藏、刪除或轉成條目後的善後：名單重載、發言對象改人；只關正在顯示這張卡的編輯器，
+  // 別的畫面（世界設定、別張卡、新卡草稿）原樣留著〔作者裁決 2026-10-11〕。卡確定已不在才發刪除通知，
+  // 開著的世界設定靠它重讀。名單善後失敗不擋關卡與通知。
+  async function settleRemoval(id: string, deleted: boolean) {
+    if (!stillHere()) return;
+    try {
+      const nextSpeaker = await characters.noteRemoved(id, speaker);
+      if (!stillHere()) return;
+      if (nextSpeaker !== null) setSpeaker(nextSpeaker);
+    } catch (reason) {
+      if (!stillHere()) return;
+      onError(String(reason));
+    }
+    if (showsCard(mainViewRef.current, id)) leaveGuard.current = null;
+    setMainView((current) => (showsCard(current, id) ? null : current));
+    if (deleted) {
+      setCastRemoval((current) => ({
+        worldId,
+        generation: (current?.generation ?? 0) + 1,
+        ids: current?.worldId === worldId ? [...current.ids, id] : [id],
+      }));
+    }
+  }
+
+  const finishArchiveToggled = (id: string) => settleRemoval(id, false);
+  const finishConverted = (id: string) => settleRemoval(id, true);
+
+  /** 世界設定取走通知：同桌同世代才清 ids，取走後又來的新通知不受影響 */
+  function takeCastRemoval(takenWorldId: string, generation: number) {
+    setCastRemoval((current) =>
+      current?.worldId === takenWorldId && current.generation === generation
+        ? { ...current, ids: [] }
+        : current,
+    );
   }
 
   // 離開目前的編輯畫面前先問未儲存：換編輯對象、選發言對象、回大廳、換桌都走這一關
@@ -159,9 +212,9 @@ export function useWorkspaceNavigationController({
   // 隱藏區與角色卡編輯畫面共用同一條刪除路徑：確認框與刪檔在 controller，這裡接善後
   async function deleteCharacter(id: string) {
     try {
-      if (await characters.remove(id)) await finishRemoval(id);
+      if ((await characters.remove(id)) === "deleted") await settleRemoval(id, true);
     } catch (reason) {
-      onError(String(reason));
+      if (stillHere()) onError(String(reason));
     }
   }
 
@@ -191,7 +244,10 @@ export function useWorkspaceNavigationController({
     deletePlayerCard,
     finishCardSaved,
     finishPlayerCardSaved,
-    finishRemoval,
+    finishArchiveToggled,
+    finishConverted,
+    castRemoval,
+    takeCastRemoval,
   };
 }
 

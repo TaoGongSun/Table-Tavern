@@ -9,6 +9,17 @@ pub(crate) fn list_characters(
     data::list_characters(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
+/// 刪角色或轉條目回錯時，前端問卡檔是否確定已不在；查詢錯誤（含 id 不合法）回錯＝不確認。
+#[tauri::command]
+pub(crate) fn character_card_gone(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+) -> Result<bool, String> {
+    data::character_card_gone(&data_root(&app)?, &world_id, &character_id)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub(crate) fn reorder_characters(
     app: tauri::AppHandle,

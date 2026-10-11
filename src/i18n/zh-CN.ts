@@ -415,6 +415,7 @@ export const zhCN: Record<MsgKey, string> = {
   convertCardConfirm: "会把整张卡（含私有笔记）合并成一条 GM 可见的常驻条目，然后删除这张卡和图片。要继续吗？",
   convertCardDone: "已转成世界书条目。",
   deleteCharacterCleanupFailed: "角色已删除，但世界书的角色关联未清理完成，可到世界书检查。",
+  deleteCharacterPartial: "角色已删除，但部分文件没清理干净：{reason}",
   exportCardPng: "角色卡 PNG",
   exportCardJson: "角色卡 JSON",
   exportCardNeedsSave: "先保存再导出",

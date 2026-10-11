@@ -77,7 +77,8 @@ pub(crate) fn upsert_worldbook_entry(
     entry: data::WorldbookEntry,
 ) -> Result<u64, String> {
     let _permit = data::world_write_permit(&world_id)?;
-    data::upsert_worldbook_entry(&data_root(&app)?, &world_id, entry)
+    // 可見名單裡卡檔確定已不在的角色先拿掉：編輯器的過期資料寫不回已刪角色
+    receipts::upsert_entry_dropping_gone(&data_root(&app)?, &world_id, entry)
         .map_err(|error| error.to_string())
 }
 

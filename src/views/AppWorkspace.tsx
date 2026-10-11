@@ -133,7 +133,10 @@ export function AppWorkspace({
     deletePlayerCard,
     finishCardSaved,
     finishPlayerCardSaved,
-    finishRemoval,
+    finishArchiveToggled,
+    finishConverted,
+    castRemoval,
+    takeCastRemoval,
   } = navigation;
   const {
     canUndoScene,
@@ -328,7 +331,8 @@ export function AppWorkspace({
               }
               onCardSaved={finishCardSaved}
               onPlayerCardSaved={finishPlayerCardSaved}
-              onFinishRemoval={finishRemoval}
+              onArchiveToggled={finishArchiveToggled}
+              onConverted={finishConverted}
               onDeleteCharacter={deleteCharacter}
               onDeletePlayerCard={deletePlayerCard}
               onClose={() => setMainView(null)}
@@ -343,6 +347,8 @@ export function AppWorkspace({
               onRefactorApplied={onRefactorApplied}
               pendingRefactorCard={pendingRefactorCard}
               onPendingRefactorCardTaken={onPendingRefactorCardTaken}
+              castRemoval={castRemoval}
+              onCastRemovalTaken={takeCastRemoval}
               playView={
                 <PlayView
                   onboarding={<Onboarding config={config} onSaved={onConfigSaved} />}

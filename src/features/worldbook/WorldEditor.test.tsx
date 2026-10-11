@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import type { PendingRefactorCard } from "../refactor/refactor-card";
+import type { CastRemoval } from "./worldbook-model";
 
 const backend = vi.hoisted(() => ({
   handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
@@ -71,11 +72,17 @@ describe("WorldEditor", () => {
 
   const taken = vi.fn();
 
-  function editor(pending: PendingRefactorCard | null = null) {
+  const removalTaken = vi.fn();
+
+  function editor(
+    pending: PendingRefactorCard | null = null,
+    removal: CastRemoval | null = null,
+    world = "w1",
+  ) {
     return (
       <WorldEditor
         title={t("worldAria")}
-        world="w1"
+        world={world}
         worldName="Alpha"
         onBack={() => {}}
         leaveGuard={leaveGuard}
@@ -85,30 +92,18 @@ describe("WorldEditor", () => {
         isTurnRunning={() => false}
         pendingRefactorCard={pending}
         onPendingRefactorCardTaken={taken}
+        castRemoval={removal}
+        onCastRemovalTaken={removalTaken}
       />
     );
   }
 
-  async function mount() {
+  async function mount(removal: CastRemoval | null = null) {
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
     await act(async () => {
-      root?.render(
-        <WorldEditor
-          title={t("worldAria")}
-          world="w1"
-          worldName="Alpha"
-          onBack={() => {}}
-          leaveGuard={leaveGuard}
-          convertColor="#e07a5f"
-          onEntryConverted={async () => {}}
-          onRefactorApplied={async () => {}}
-          isTurnRunning={() => false}
-          pendingRefactorCard={null}
-          onPendingRefactorCardTaken={() => {}}
-        />,
-      );
+      root?.render(editor(null, removal));
     });
   }
 

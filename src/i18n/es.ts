@@ -417,6 +417,7 @@ export const es: Record<MsgKey, string> = {
   convertCardConfirm: "Unirá toda la ficha, incluidas las notas privadas, en una entrada permanente visible para el GM y después eliminará esta ficha y sus imágenes. ¿Continuar?",
   convertCardDone: "Se convirtió en una entrada del Libro del Mundo.",
   deleteCharacterCleanupFailed: "Se eliminó el personaje, pero sus vínculos en el Libro del Mundo no se limpiaron por completo. Revisa el Libro del Mundo.",
+  deleteCharacterPartial: "Se eliminó el personaje, pero algunos de sus archivos no se limpiaron: {reason}",
   exportCardPng: "Ficha en PNG",
   exportCardJson: "Ficha en JSON",
   exportCardNeedsSave: "Guarda la ficha antes de exportar",

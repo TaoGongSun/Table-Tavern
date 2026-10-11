@@ -53,6 +53,7 @@ interface MountOptions {
   characterId?: string;
   isNew?: boolean;
   isPlayer?: boolean;
+  color?: string;
 }
 
 describe("CardEditor", () => {
@@ -61,6 +62,7 @@ describe("CardEditor", () => {
   const onBack = vi.fn();
   const onDeleted = vi.fn(async () => {});
   const onConverted = vi.fn(async () => {});
+  const onArchived = vi.fn(async () => {});
   let busy = false;
   const leaveGuard: { current: (() => Promise<boolean>) | null } = { current: null };
 
@@ -70,6 +72,7 @@ describe("CardEditor", () => {
     onBack.mockReset();
     onDeleted.mockClear();
     onConverted.mockClear();
+    onArchived.mockClear();
     vi.mocked(confirm).mockReset();
     vi.mocked(confirm).mockResolvedValue(true);
     vi.mocked(showMessage).mockClear();
@@ -87,7 +90,12 @@ describe("CardEditor", () => {
     document.body.innerHTML = "";
   });
 
-  function element({ characterId = "c1", isNew = false, isPlayer = false }: MountOptions) {
+  function element({
+    characterId = "c1",
+    isNew = false,
+    isPlayer = false,
+    color = "#e07a5f",
+  }: MountOptions) {
     return (
       <CardEditor
         title="Title"
@@ -95,10 +103,10 @@ describe("CardEditor", () => {
         characterId={characterId}
         isNew={isNew}
         isPlayer={isPlayer}
-        newCardColor="#e07a5f"
+        newCardColor={color}
         onImagesChanged={async () => {}}
         onSaved={() => {}}
-        onArchived={async () => {}}
+        onArchived={onArchived}
         onDeleted={onDeleted}
         onBack={onBack}
         leaveGuard={leaveGuard}
@@ -306,5 +314,91 @@ describe("CardEditor", () => {
       expect(onConverted).not.toHaveBeenCalled();
       expect(nameInput()!.value).toBe("Alice");
     });
+  });
+
+  // world-editor-delete-character-guard：刪別張卡讓新卡顏色變了，編輯中的草稿不能被重載蓋掉
+  async function typeName(value: string) {
+    const input = nameInput()!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it("keeps an existing card's draft when the next new-card color changes", async () => {
+    backend.handlers.read_character = () => card("c1", "Alice");
+    await mount();
+    await typeName("Alicia");
+    await act(async () => root?.render(element({ color: "#3d84a8" })));
+    expect(nameInput()!.value).toBe("Alicia");
+    expect(backend.calls.filter((call) => call.command === "read_character")).toHaveLength(1);
+  });
+
+  it("keeps a new card's draft and color when the next new-card color changes", async () => {
+    await mount({ characterId: "n1", isNew: true });
+    await typeName("Bob");
+    await act(async () => root?.render(element({ characterId: "n1", isNew: true, color: "#3d84a8" })));
+    expect(nameInput()!.value).toBe("Bob");
+    await act(async () => saveButton().click());
+    const writes = backend.calls.filter((call) => call.command === "write_character");
+    expect((writes[0].args.card as CharacterCard).color).toBe("#e07a5f");
+  });
+
+  it("takes the current color when another new card opens", async () => {
+    await mount({ characterId: "n1", isNew: true, color: "#3d84a8" });
+    await act(async () => root?.render(element({ characterId: "n2", isNew: true, color: "#81b29a" })));
+    await typeName("Cleo");
+    await act(async () => saveButton().click());
+    const writes = backend.calls.filter((call) => call.command === "write_character");
+    expect((writes[0].args.card as CharacterCard).color).toBe("#81b29a");
+  });
+
+  it("asks before hiding with unsaved changes and stays when told to", async () => {
+    backend.handlers.read_character = () => card("c1", "Alice");
+    await mount();
+    await typeName("Alicia");
+    vi.mocked(confirm).mockResolvedValueOnce(false);
+    const archive = openMore().find((item) => item.textContent === t("archiveCharacter"))!;
+    await act(async () => archive.click());
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(backend.calls.some((call) => call.command === "set_character_archived")).toBe(false);
+    expect(onArchived).not.toHaveBeenCalled();
+    expect(nameInput()!.value).toBe("Alicia");
+  });
+
+  it("hides without asking when nothing is unsaved", async () => {
+    backend.handlers.read_character = () => card("c1", "Alice");
+    await mount();
+    const archive = openMore().find((item) => item.textContent === t("archiveCharacter"))!;
+    await act(async () => archive.click());
+    expect(confirm).not.toHaveBeenCalled();
+    expect(backend.calls.some((call) => call.command === "set_character_archived")).toBe(true);
+    expect(onArchived).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a failed conversion as done when the card file is confirmed gone", async () => {
+    backend.handlers.read_character = () => card("c1", "Alice");
+    backend.handlers.character_to_worldbook_entry = () => {
+      throw "部分失敗";
+    };
+    for (const [gone, converted] of [
+      [true, 1],
+      [false, 0],
+    ] as const) {
+      onConverted.mockClear();
+      backend.handlers.character_card_gone = () => gone;
+      await mount();
+      const convert = openMore().find((item) => item.textContent === t("convertCardToEntry"))!;
+      await act(async () => convert.click());
+      expect(onConverted).toHaveBeenCalledTimes(converted);
+      act(() => root?.unmount());
+      host?.remove();
+      root = null;
+    }
+    expect(showMessage).toHaveBeenCalledWith(
+      t("deleteCharacterPartial", { reason: "部分失敗" }),
+      expect.anything(),
+    );
   });
 });
