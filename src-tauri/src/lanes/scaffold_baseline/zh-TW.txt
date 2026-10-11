@@ -50,8 +50,7 @@ Affection 每回合必報。
 <UpdateVariable>
 <JSONPatch>
 [
-  {"op":"replace","path":"/Heroes/*/Mood","value":"（新的值）"},
-  {"op":"delta","path":"/Heroes/*/Affection","value":-1}
+  {"op":"replace","path":"/Heroes/騎士/Mood","value":"（新的值）"}
 ]
 </JSONPatch>
 </UpdateVariable>
@@ -296,8 +295,7 @@ Affection 每回合必報。
 <UpdateVariable>
 <JSONPatch>
 [
-  {"op":"replace","path":"/Heroes/*/Mood","value":"（新的值）"},
-  {"op":"delta","path":"/Heroes/*/Affection","value":-1}
+  {"op":"replace","path":"/Heroes/騎士/Mood","value":"（新的值）"}
 ]
 </JSONPatch>
 </UpdateVariable>

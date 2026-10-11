@@ -1,4 +1,6 @@
+use crate::data::StateNode;
 use crate::transport::ChatMessage;
+use std::collections::BTreeMap;
 
 const SYSTEM_PREAMBLE: &str = r#"你是「Table Tavern」桌上跑團 App 的「AI 卡重構」助手。玩家從別的平台匯入了一張角色卡，原始內容良莠不齊：
 人物、世界設定、介面格式、數值機制常混寫在同一批世界書條目裡。你的工作是把這張卡整本重新構築成本 App 的
@@ -31,8 +33,12 @@ pub(super) fn system_message(context: &str) -> ChatMessage {
 
 /// 既有狀態欄位清單行：放 user 訊息（system 必須逐字元不變才吃得到快取）。展開階段逐次累積
 /// 傳入——前一次呼叫定下的欄位名，後一次呼叫沿用，欄位命名才有單一權威。
-pub(super) fn known_fields_line(known_fields: &[String]) -> String {
-    if known_fields.is_empty() {
+pub(super) fn known_fields_line(known_fields: &[String], tree_section: &str) -> String {
+    if known_fields.is_empty() && !tree_section.is_empty() {
+        "既有狀態欄位：清單是空的；狀態樹已有的欄位照下面「既有狀態樹」段逐字沿用，樹裡沒有的新欄位才由你命名\
+        （玩家語言、機器好處理的值）。"
+            .to_owned()
+    } else if known_fields.is_empty() {
         "既有狀態欄位：目前還沒有，任何新欄位都由你命名（玩家語言、機器好處理的值）。".to_owned()
     } else {
         format!(
@@ -107,7 +113,8 @@ pub(super) const INTERFACE_UPDATE_RULES: &str = r#"骨架的每個佔位符，�
 - GUIDE 用卡原文的語言與詞彙寫。"#;
 
 /// 欄位規則的 JSON 形狀說明：機制條目重寫、舊 mechanism 展開、介面接管的回報規矩共用。
-pub(super) const MECHANISM_FIELD_SCHEMA: &str = r#"欄位規則：每個規則掛在一個路徑（點分字串，不含分支前綴，例如 HP、好感度）底下，形狀是：
+pub(super) const MECHANISM_FIELD_SCHEMA: &str = r#"欄位規則：每個規則掛在一個路徑（從狀態樹根起算的完整點分路徑，例如 亞瑟.HP、World.好感度；動態鍵
+可用 * 代表，例如 冒險者.*.HP）底下，形狀是：
 { "kind": "number|pair|roll|text|list|counter|read_only", "update": "delta|replace|local|reject",
   "inject": "turn|snapshot|rare", "min": <數字，可省>, "max": <數字，可省>, "branch": "<分支名，可省>" }
 kind／update／inject 三個一定要填（不要省略）；不確定 update／inject 就照下表填對應的預設值；
@@ -141,3 +148,64 @@ id／title／mode／cases 一定要填；preamble／scope／flag 沒有就不寫
 { "kind": "contains", "path": "...", "any": ["...", "..."] }
 { "kind": "flag", "path": "...", "expect": true|false }
 觸發表的 text 是給 GM 的劇情素材，照原卡內容寫，不必迴避劇透——它只在觸發時才會出現。"#;
+
+/// 「既有狀態樹」最多列幾行葉子路徑；超過就截斷，但頂層鍵另外完整列出。
+const TREE_SECTION_MAX_LINES: usize = 200;
+
+/// 既有狀態樹段（樹空回空字串）：這桌已經在用的變數（例如 MVU 卡匯入時由 initvar 建好的樹），
+/// AI 看不到就會照玩家語言自取名字，規則與觸發全部對不到節點（takeover-mvu-path-mismatch）。
+/// 放 user 訊息（system 要逐位元組不變才吃快取），並在這裡寫明它優先於玩家語言與繁簡規則。
+pub(crate) fn existing_tree_section(tree: &BTreeMap<String, StateNode>) -> String {
+    if tree.is_empty() {
+        return String::new();
+    }
+    fn walk(tree: &BTreeMap<String, StateNode>, prefix: &str, lines: &mut Vec<String>) {
+        for (key, node) in tree {
+            let path = if prefix.is_empty() {
+                key.clone()
+            } else {
+                format!("{prefix}.{key}")
+            };
+            match node {
+                StateNode::Leaf(_) => lines.push(path),
+                StateNode::Branch(children) if children.is_empty() => {
+                    lines.push(format!("{path}（空分支，子鍵由劇情新增）"))
+                }
+                StateNode::Branch(children) => walk(children, &path, lines),
+            }
+        }
+    }
+    let mut lines = Vec::new();
+    walk(tree, "", &mut lines);
+    let mut listing = lines
+        .iter()
+        .take(TREE_SECTION_MAX_LINES)
+        .map(|line| format!("- {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if lines.len() > TREE_SECTION_MAX_LINES {
+        let top: Vec<&str> = tree.keys().map(String::as_str).collect();
+        listing.push_str(&format!(
+            "\n（以上非完整清單，只列前 {TREE_SECTION_MAX_LINES} 條；全部頂層鍵：{}）",
+            top.join("、")
+        ));
+    }
+    format!(
+        "既有狀態樹（這桌已經在用的變數，點分路徑逐行列出）：\n{listing}\n\n\
+        路徑命名優先序（這條高於「欄位名一律玩家語言」「沿用卡原文詞彙」「繁簡不並存」等任何命名規則）：\
+        FIELDS、RULES 的鍵、TRIGGERS 的 when.path、STATE 的鍵、SHELL 佔位符路徑，凡是指到上面已有的欄位，\
+        一律照上面逐字寫（原文是簡體就寫簡體，不翻譯、不轉繁簡），從樹根寫完整點分路徑；值與說明文字照玩家\
+        語言。萬用 `*` 只准用在 RULES 的鍵（代表房間編號、人名這類動態鍵）；TRIGGERS 的 when.path／flag、\
+        STATE 的鍵、SHELL 佔位符一律寫具體的絕對路徑，逐人／逐房間的門檻不要做成觸發。TRIGGERS 的 flag \
+        是新旗標：取一個新鍵名，放在既有頂層分支底下或另開專用分支，不可指到上面列出的既有葉子。"
+    )
+}
+
+/// 語言行的但書：附了既有狀態樹時，路徑鍵不受「用玩家語言」約束。
+pub(super) fn key_language_exception(tree_section: &str) -> &'static str {
+    if tree_section.is_empty() {
+        ""
+    } else {
+        "唯獨路徑鍵照「既有狀態樹」段的優先序逐字寫，不受這條約束。"
+    }
+}

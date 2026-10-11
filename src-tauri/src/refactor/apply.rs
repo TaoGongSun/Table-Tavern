@@ -197,6 +197,18 @@ fn apply_into(
         .transpose()?
         .unwrap_or(0);
 
+    // 本次新增的規則／觸發先篩過再併入（既有 state.mechanism 不參與）：套用前樹非空時，
+    // 首段對不到樹（套用前頂層 ∪ 這次真的套用的介面頂層）的整條丟掉——AI 沒看到既有樹、
+    // 自取名字時，這些規則對不到任何節點，留著只會誤導範例與面板。
+    let candidates = Candidates::collect(
+        outcome,
+        selection,
+        filter_scope(
+            &state.state.tree,
+            normalized_interface.as_ref().map(|(fields, _)| fields),
+        ),
+    );
+
     // 這次會寫的重構殼：下方寫殼分支用同一個值，純空白殼不會先刪舊殼又寫進一份空白。
     let new_shell = match (&outcome.interface, &normalized_interface) {
         (Some(interface), Some(_)) => interface
@@ -273,11 +285,12 @@ fn apply_into(
         let Some(entry) = outcome.entries.get(index) else {
             continue;
         };
-        let locked =
-            entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
+        let (rules, triggers) = candidates.entries.get(&index).cloned().unwrap_or_default();
+        let shape = MechanismShape::of(entry, !rules.is_empty() || !triggers.is_empty());
+        let locked = shape.locked();
         let value = new_entry_value(
             entry,
-            locked,
+            shape,
             next_entry_order,
             &sources,
             &existing_characters,
@@ -290,13 +303,8 @@ fn apply_into(
         }
         new_entries += 1;
         if locked {
-            for (path, rule) in &entry.rules {
-                state.mechanism.rules.insert(path.clone(), rule.clone());
-            }
-            state
-                .mechanism
-                .triggers
-                .extend(entry.triggers.iter().cloned());
+            state.mechanism.rules.extend(rules);
+            state.mechanism.triggers.extend(triggers);
             state_dirty = true;
             ledger_records.push(absorbed_ledger_record_for_title(&entry.title));
         }
@@ -336,13 +344,13 @@ fn apply_into(
         let Some(mechanism) = outcome.mechanisms.get(index) else {
             continue;
         };
-        for (path, rule) in &mechanism.rules {
-            state.mechanism.rules.insert(path.clone(), rule.clone());
-        }
-        state
-            .mechanism
-            .triggers
-            .extend(mechanism.triggers.iter().cloned());
+        let (rules, triggers) = candidates
+            .mechanisms
+            .get(&index)
+            .cloned()
+            .unwrap_or_default();
+        state.mechanism.rules.extend(rules);
+        state.mechanism.triggers.extend(triggers);
         state_dirty = true;
         if let Some(source) = sources.entry(&mechanism.source_uid) {
             ledger_records.push(absorbed_ledger_record_for_title(&source.title));
@@ -515,6 +523,117 @@ pub fn apply(
     apply_with_assets(root, world_id, outcome, selection, &[]).map_err(|failure| failure.error)
 }
 
+/// 篩選用的頂層鍵集合：套用前樹空就不篩（None）；非空時＝套用前頂層 ∪ 本次套用介面的頂層。
+fn filter_scope(
+    tree: &BTreeMap<String, data::StateNode>,
+    interface_fields: Option<&serde_json::Value>,
+) -> Option<BTreeSet<String>> {
+    if tree.is_empty() {
+        return None;
+    }
+    let mut scope: BTreeSet<String> = tree.keys().cloned().collect();
+    if let Some(object) = interface_fields.and_then(serde_json::Value::as_object) {
+        scope.extend(object.keys().cloned());
+    }
+    Some(scope)
+}
+
+fn first_segment(path: &str) -> &str {
+    path.split('.').next().unwrap_or_default()
+}
+
+/// 規則留不留：首段 `*`（合法萬用）一律留；否則首段要在集合裡。不篩時全留。
+fn keep_rule(path: &str, scope: Option<&BTreeSet<String>>) -> bool {
+    let head = first_segment(path);
+    head == "*" || scope.is_none_or(|scope| scope.contains(head))
+}
+
+/// 觸發留不留：任一條件路徑或 `trigger.flag` 有一段是 `*` 就丟（求值不支援萬用，帶 default 的
+/// range 會每回合用 default 求值，once 命中會長出字面 `*` 分支），樹空也丟；其餘 range（沒帶
+/// default）／contains 首段要在集合裡，flag 條件與 `trigger.flag` 是新旗標、不比首段。
+fn keep_trigger(trigger: &data::Trigger, scope: Option<&BTreeSet<String>>) -> bool {
+    let wildcard = |path: &str| path.split('.').any(|segment| segment == "*");
+    if trigger.flag.as_deref().is_some_and(wildcard) {
+        return false; // once 命中會長出字面 `*` 分支
+    }
+    trigger
+        .cases
+        .iter()
+        .flat_map(|case| case.when.iter())
+        .all(|condition| {
+            let (path, checked) = match condition {
+                data::Condition::Range { path, default, .. } => (path, default.is_none()),
+                data::Condition::Contains { path, .. } => (path, true),
+                data::Condition::Flag { path, .. } => (path, false),
+            };
+            if wildcard(path) {
+                return false;
+            }
+            !checked || scope.is_none_or(|scope| scope.contains(first_segment(path)))
+        })
+}
+
+type RuleSet = (BTreeMap<String, FieldRule>, Vec<data::Trigger>);
+
+/// 本次要併入的規則／觸發（已篩），依產物 index 存；沒勾的不收。
+struct Candidates {
+    entries: BTreeMap<usize, RuleSet>,
+    mechanisms: BTreeMap<usize, RuleSet>,
+}
+
+impl Candidates {
+    fn collect(
+        outcome: &RefactorOutcome,
+        selection: &RefactorSelection,
+        scope: Option<BTreeSet<String>>,
+    ) -> Self {
+        let scope = scope.as_ref();
+        let mut dropped = (0usize, 0usize);
+        let mut filter = |rules: &BTreeMap<String, FieldRule>, triggers: &[data::Trigger]| {
+            let kept_rules: BTreeMap<String, FieldRule> = rules
+                .iter()
+                .filter(|(path, _)| keep_rule(path, scope))
+                .map(|(path, rule)| (path.clone(), rule.clone()))
+                .collect();
+            let kept_triggers: Vec<data::Trigger> = triggers
+                .iter()
+                .filter(|trigger| keep_trigger(trigger, scope))
+                .cloned()
+                .collect();
+            dropped.0 += rules.len() - kept_rules.len();
+            dropped.1 += triggers.len() - kept_triggers.len();
+            (kept_rules, kept_triggers)
+        };
+        let mut entries = BTreeMap::new();
+        for &index in &selection.entry_indices {
+            let Some(entry) = outcome.entries.get(index) else {
+                continue;
+            };
+            if entry.kind == "mechanism" {
+                entries.insert(index, filter(&entry.rules, &entry.triggers));
+            }
+        }
+        let mut mechanisms = BTreeMap::new();
+        for &index in &selection.mechanism_indices {
+            let Some(mechanism) = outcome.mechanisms.get(index) else {
+                continue;
+            };
+            mechanisms.insert(index, filter(&mechanism.rules, &mechanism.triggers));
+        }
+        if dropped != (0, 0) {
+            log::warn!(
+                "重構套用：{} 條規則、{} 組觸發對不到狀態樹，已略過",
+                dropped.0,
+                dropped.1
+            );
+        }
+        Self {
+            entries,
+            mechanisms,
+        }
+    }
+}
+
 /// 骨架填值用的欄位型別表（點分路徑→"number"｜"bool"｜"list"）。狀態樹會把值轉成字串，型別只能在套用時
 /// 從產物記下來：number／bool 取自模型產出的 STATE 初始 JSON 葉子型別；list 取自同一份產物的欄位規則
 /// `kind: list`——只有這種欄位在行內集合 `[{{x}}]` 裡當「集合片段」拆成多個元素（見 refactor-shell.ts）。
@@ -578,39 +697,130 @@ fn delete_source_entry(
     Ok(())
 }
 
+/// 機制條目落地的形狀（套用端判定，不是 AI 說了算）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MechanismShape {
+    /// 不是機制條目，或機制條目本來就沒有規則與觸發：走一般條目的建法。
+    Plain,
+    /// 只有觸發表的接管條目（觸發劇本）：鎖定、GM、無主鍵、非常駐——觸發命中時才注入，防劇透。
+    Hidden,
+    /// 帶欄位規則的接管條目（GM 要讀得到「何時怎麼變」），或篩選後規則與觸發全空的條目：
+    /// 照來源觸發給 GM；locked 依篩選後是否還有規則或觸發。
+    Visible { locked: bool },
+}
+
+impl MechanismShape {
+    /// `entry` 是篩選前的產物，`kept` 是篩選後還留著的規則／觸發是否非空。
+    fn of(entry: &crate::refactor_ai::RefactorNewEntry, kept: bool) -> Self {
+        let was_locked =
+            entry.kind == "mechanism" && (!entry.rules.is_empty() || !entry.triggers.is_empty());
+        if !was_locked {
+            MechanismShape::Plain
+        } else if !entry.rules.is_empty() || !kept {
+            MechanismShape::Visible { locked: kept }
+        } else {
+            MechanismShape::Hidden
+        }
+    }
+
+    fn locked(self) -> bool {
+        matches!(
+            self,
+            MechanismShape::Hidden | MechanismShape::Visible { locked: true }
+        )
+    }
+}
+
 /// 重構新條目的原始值：
 /// - 照搬（carry，帶 meta）：來源核對成功就整條複製來源原始值（次要鍵、位置、可見度、來源卡全帶），
 ///   只換內文與套用端判定的旗標；可見度取來源目前的值（跨桌反查對到別桌的同卡條目時才是那桌的角色）。
 ///   核對失敗退回用 meta 建，名單裡的角色都不在本桌就給 GM。
-/// - 機制條目（locked）：不套觸發政策、不沿用可見度，維持無主鍵、非常駐、GM。
+/// - 只有觸發表的機制條目（Hidden）：不套觸發政策、不沿用可見度，維持無主鍵、非常駐、GM。
+/// - 帶欄位規則的機制條目（Visible）：觸發照來源（單一來源核對得到就複製原始值，否則 meta，
+///   再否則 sources::new_entry_shape），可見度一律 GM、非人物條目。
 /// - 其餘沒帶 meta 的 setting 條目：觸發、可見度、來源卡照核對成功的來源推（sources::new_entry_shape）。
 fn new_entry_value(
     entry: &crate::refactor_ai::RefactorNewEntry,
-    locked: bool,
+    shape: MechanismShape,
     next_order: i64,
     sources: &Sources,
     characters: &[data::CharacterMeta],
 ) -> serde_json::Value {
-    // 機制條目優先於 meta：重寫路徑會產出帶 meta 的機制條目，也一律 GM、非常駐、無主鍵
-    if locked {
-        return data::worldbook_entry_value(&WorldbookEntry {
-            uid: 0,
-            title: entry.title.clone(),
-            keys: Vec::new(),
-            content: entry.content.clone(),
-            constant: false,
-            order: entry.meta.as_ref().map_or(next_order, |meta| meta.order),
-            disabled: false,
-            visibility: Visibility::Gm,
-            is_person: false,
-            locked: true,
-        });
+    let single_raw = || {
+        (entry.source_uids.len() == 1)
+            .then(|| sources.raw(&entry.source_uids[0]))
+            .flatten()
+    };
+    match shape {
+        MechanismShape::Hidden => {
+            return data::worldbook_entry_value(&WorldbookEntry {
+                uid: 0,
+                title: entry.title.clone(),
+                keys: Vec::new(),
+                content: entry.content.clone(),
+                constant: false,
+                order: entry.meta.as_ref().map_or(next_order, |meta| meta.order),
+                disabled: false,
+                visibility: Visibility::Gm,
+                is_person: false,
+                locked: true,
+            });
+        }
+        MechanismShape::Visible { locked } => {
+            if let Some(raw) = single_raw() {
+                let mut value = raw.clone();
+                if let Some(object) = value.as_object_mut() {
+                    object.insert(
+                        "content".to_owned(),
+                        serde_json::Value::String(entry.content.clone()),
+                    );
+                    object.insert(
+                        "comment".to_owned(),
+                        serde_json::Value::String(entry.title.clone()),
+                    );
+                }
+                data::set_mechanism_flags(&mut value, locked);
+                return value;
+            }
+            if let Some(meta) = &entry.meta {
+                return data::worldbook_entry_value(&WorldbookEntry {
+                    uid: 0,
+                    title: entry.title.clone(),
+                    keys: meta.keys.clone(),
+                    content: entry.content.clone(),
+                    constant: meta.constant,
+                    order: meta.order,
+                    disabled: meta.disabled,
+                    visibility: Visibility::Gm,
+                    is_person: false,
+                    locked,
+                });
+            }
+            let resolved: Vec<(&WorldbookEntry, &serde_json::Value)> = entry
+                .source_uids
+                .iter()
+                .filter_map(|uid| Some((sources.entry(uid)?, sources.raw(uid)?)))
+                .collect();
+            let shape = new_entry_shape(&resolved);
+            let mut value = data::worldbook_entry_value(&WorldbookEntry {
+                uid: 0,
+                title: entry.title.clone(),
+                keys: shape.keys,
+                content: entry.content.clone(),
+                constant: shape.constant,
+                order: next_order,
+                disabled: shape.disabled,
+                visibility: Visibility::Gm,
+                is_person: false,
+                locked,
+            });
+            data::set_source_cards(&mut value, &shape.source_cards);
+            return value;
+        }
+        MechanismShape::Plain => {}
     }
     if let Some(meta) = &entry.meta {
-        let source = (entry.source_uids.len() == 1)
-            .then(|| sources.raw(&entry.source_uids[0]))
-            .flatten();
-        if let Some(raw) = source {
+        if let Some(raw) = single_raw() {
             let mut value = raw.clone();
             if let Some(object) = value.as_object_mut() {
                 object.insert(

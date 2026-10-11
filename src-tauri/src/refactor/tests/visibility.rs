@@ -328,7 +328,7 @@ fn worldbook_route_merged_entries_reach_the_gm() {
     );
 }
 
-/// 機制條目不套觸發政策、不沿用可見度；carry 條目的 locked／is_person 以套用端判定為準。
+/// 帶欄位規則的機制條目照來源觸發、可見度固定 GM；carry 條目的 locked／is_person 以套用端判定為準。
 #[test]
 fn locked_mechanism_entries_and_carry_flags() {
     let root = TestRoot::new("refactor-visibility-locked");
@@ -373,17 +373,20 @@ fn locked_mechanism_entries_and_carry_flags() {
     );
     apply(root.path(), &world_id, &outcome, &entries_selection(3)).unwrap();
 
+    // 帶欄位規則的機制條目照來源觸發（來源常駐就常駐），但可見度一律 GM、不進角色線
     let meta_rule = new_entry(root.path(), &world_id, "帶meta規則內容");
-    assert!(meta_rule.locked);
+    assert!(meta_rule.locked && !meta_rule.is_person);
     assert_eq!(meta_rule.visibility, Visibility::Gm);
-    assert!(!meta_rule.constant && meta_rule.keys.is_empty());
+    assert!(meta_rule.constant);
     assert!(!character_sent(root.path(), &world_id, &card, "你好。").contains("帶meta規則內容"));
+    assert!(gm_sent(root.path(), &world_id, "你好。").contains("帶meta規則內容"));
 
     let rule = new_entry(root.path(), &world_id, "規則說明內容");
     assert!(rule.locked);
     assert_eq!(rule.visibility, Visibility::Gm);
-    assert!(!rule.constant && rule.keys.is_empty());
+    assert!(rule.constant);
     assert!(!character_sent(root.path(), &world_id, &card, "你好。").contains("規則說明內容"));
+    assert!(gm_sent(root.path(), &world_id, "你好。").contains("規則說明內容"));
 
     let carried = new_entry(root.path(), &world_id, "照搬的內容");
     assert!(!carried.locked && !carried.is_person);
@@ -704,4 +707,232 @@ fn apply_failure_after_source_deletion_rolls_back_with_raw_fields() {
     assert!(receipts::list_import_receipts(root.path(), &world_id)
         .iter()
         .all(|receipt| receipt.kind != "refactor"));
+}
+
+fn mechanism_entry(
+    source: &data::WorldbookEntry,
+    content: &str,
+    rules: &[&str],
+    triggers: Vec<data::Trigger>,
+) -> RefactorNewEntry {
+    let mut entry = carry(source);
+    entry.title = format!("{}（機制）", source.title);
+    entry.content = content.to_owned();
+    entry.kind = "mechanism".to_owned();
+    entry.rules = rules
+        .iter()
+        .map(|path| ((*path).to_owned(), FieldRule::for_kind(FieldKind::Number)))
+        .collect();
+    entry.triggers = triggers;
+    entry
+}
+
+fn range_trigger(id: &str, path: &str) -> data::Trigger {
+    data::Trigger {
+        id: id.to_owned(),
+        title: id.to_owned(),
+        mode: data::TriggerMode::Range,
+        cases: vec![data::TriggerCase {
+            when: vec![data::Condition::Range {
+                path: path.to_owned(),
+                min: Some(1.0),
+                max: None,
+                min_exclusive: false,
+                max_exclusive: false,
+                default: None,
+            }],
+            text: "命中".to_owned(),
+        }],
+        preamble: String::new(),
+        scope: Vec::new(),
+        flag: None,
+    }
+}
+
+fn import_gm_book(root: &Path, world_id: &str, entries: Value) {
+    data::import_worldbook_as(root, world_id, &entries.to_string(), &data::BookOwner::Gm).unwrap();
+}
+
+/// 帶規則（含規則＋觸發混合）的機制條目：單一來源核對得到就複製來源原始值（位置、次要鍵照原卡），
+/// keyword 來源要命中主鍵才送 GM；只有觸發表的條目維持隱藏（防劇透）。
+#[test]
+fn rule_mechanism_entries_follow_source_position_and_keywords() {
+    let root = TestRoot::new("refactor-visibility-mechanism-keyword");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    import_gm_book(
+        root.path(),
+        &world_id,
+        json!({"entries": {
+            "0": {"uid": 0, "comment": "規則", "key": ["迷宮"], "keysecondary": ["房間"],
+                  "content": "變數規則原文", "constant": false, "position": 4, "depth": 2},
+            "1": {"uid": 1, "comment": "劇本", "key": [], "content": "劇本原文", "constant": true}
+        }}),
+    );
+    let fingerprints = data::identity_fingerprints(root.path(), &world_id).unwrap();
+    let rule_source = new_entry(root.path(), &world_id, "變數規則原文");
+    let script_source = new_entry(root.path(), &world_id, "劇本原文");
+    let outcome = outcome(
+        vec![
+            mechanism_entry(
+                &rule_source,
+                "變數規則接管",
+                &["迷宮.威脅"],
+                vec![range_trigger("威脅", "迷宮.威脅")],
+            ),
+            mechanism_entry(
+                &script_source,
+                "劇本接管",
+                &[],
+                vec![range_trigger("劇本", "天數")],
+            ),
+        ],
+        fingerprints,
+    );
+    apply(root.path(), &world_id, &outcome, &entries_selection(2)).unwrap();
+
+    let rule = new_entry(root.path(), &world_id, "變數規則接管");
+    assert!(rule.locked);
+    assert_eq!(rule.visibility, Visibility::Gm);
+    assert_eq!(rule.keys, vec!["迷宮".to_owned()]);
+    let raw = data::read_worldbook_raw(root.path(), &world_id)
+        .unwrap()
+        .remove(&rule.uid)
+        .unwrap();
+    assert_eq!(raw["position"], json!(4));
+    assert_eq!(raw["depth"], json!(2));
+    assert_eq!(raw["keysecondary"], json!(["房間"]));
+    assert!(gm_sent(root.path(), &world_id, "走進迷宮的房間。").contains("變數規則接管"));
+    assert!(!gm_sent(root.path(), &world_id, "你好。").contains("變數規則接管"));
+
+    let script = new_entry(root.path(), &world_id, "劇本接管");
+    assert!(script.locked);
+    assert!(!script.constant && script.keys.is_empty());
+    assert!(!gm_sent(root.path(), &world_id, "你好。").contains("劇本接管"));
+}
+
+/// 篩選後規則與觸發全空：不鎖、照來源觸發，仍是 GM；停用的來源照樣停用。
+#[test]
+fn mechanism_entry_filtered_to_empty_unlocks_and_follows_source() {
+    let root = TestRoot::new("refactor-visibility-mechanism-empty");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    import_gm_book(
+        root.path(),
+        &world_id,
+        json!({"entries": {
+            "0": {"uid": 0, "comment": "規則", "key": [], "content": "繁體規則原文", "constant": true},
+            "1": {"uid": 1, "comment": "停用", "key": [], "content": "停用規則原文", "constant": true,
+                  "disable": true}
+        }}),
+    );
+    let mut state = data::read_state(root.path(), &world_id).unwrap();
+    state.state.tree = BTreeMap::from([(
+        "基础信息".to_owned(),
+        data::StateNode::Branch(BTreeMap::from([(
+            "时间".to_owned(),
+            data::StateNode::Leaf("未知".to_owned()),
+        )])),
+    )]);
+    data::write_state(root.path(), &world_id, &state).unwrap();
+    let fingerprints = data::identity_fingerprints(root.path(), &world_id).unwrap();
+    let source = new_entry(root.path(), &world_id, "繁體規則原文");
+    let disabled = new_entry(root.path(), &world_id, "停用規則原文");
+    let outcome = outcome(
+        vec![
+            mechanism_entry(
+                &source,
+                "對不上的規則",
+                &["迷宮之主位置"],
+                vec![range_trigger("撤退", "撤退進度")],
+            ),
+            mechanism_entry(&disabled, "停用的規則", &["基础信息.时间"], Vec::new()),
+        ],
+        fingerprints,
+    );
+    apply(root.path(), &world_id, &outcome, &entries_selection(2)).unwrap();
+
+    let entry = new_entry(root.path(), &world_id, "對不上的規則");
+    assert!(!entry.locked && !entry.is_person);
+    assert_eq!(entry.visibility, Visibility::Gm);
+    assert!(entry.constant);
+    assert!(gm_sent(root.path(), &world_id, "你好。").contains("對不上的規則"));
+    let mechanism = data::read_state(root.path(), &world_id).unwrap().mechanism;
+    assert!(!mechanism.rules.contains_key("迷宮之主位置"));
+    assert!(mechanism.triggers.is_empty());
+
+    let disabled = new_entry(root.path(), &world_id, "停用的規則");
+    assert!(disabled.locked && disabled.disabled);
+    assert!(!gm_sent(root.path(), &world_id, "你好。").contains("停用的規則"));
+}
+
+/// 無 meta 的多來源合組機制條目：觸發照 sources::new_entry_shape（有常駐來源就常駐）。
+#[test]
+fn merged_rule_mechanism_without_meta_uses_source_shape() {
+    let root = TestRoot::new("refactor-visibility-mechanism-merged");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    import_gm_book(
+        root.path(),
+        &world_id,
+        json!({"entries": {
+            "0": {"uid": 0, "comment": "甲", "key": [], "content": "甲機制", "constant": true},
+            "1": {"uid": 1, "comment": "乙", "key": ["乙"], "content": "乙機制", "constant": false}
+        }}),
+    );
+    let fingerprints = data::identity_fingerprints(root.path(), &world_id).unwrap();
+    let mut entry = merged("合組機制", "合組機制說明", &[0, 1]);
+    entry.kind = "mechanism".to_owned();
+    entry.rules = BTreeMap::from([("好感".to_owned(), FieldRule::for_kind(FieldKind::Number))]);
+    apply(
+        root.path(),
+        &world_id,
+        &outcome(vec![entry], fingerprints),
+        &entries_selection(1),
+    )
+    .unwrap();
+    let entry = new_entry(root.path(), &world_id, "合組機制說明");
+    assert!(entry.locked && entry.constant);
+    assert_eq!(entry.visibility, Visibility::Gm);
+    assert!(gm_sent(root.path(), &world_id, "你好。").contains("合組機制說明"));
+}
+
+/// 來源是角色專屬的人物條目、篩完規則與觸發全空：條目不鎖但強制 GM、非人物條目，不進角色線。
+#[test]
+fn filtered_empty_mechanism_from_character_person_entry_is_forced_gm() {
+    let root = TestRoot::new("refactor-visibility-mechanism-person");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let card = import_card(
+        root.path(),
+        &world_id,
+        "莉亞",
+        json!([{"comment": "人物規則", "keys": [], "content": "人物規則原文", "constant": true}]),
+    );
+    let mut source = new_entry(root.path(), &world_id, "人物規則原文");
+    source.is_person = true;
+    data::upsert_worldbook_entry(root.path(), &world_id, source.clone()).unwrap();
+    assert_eq!(
+        source.visibility,
+        Visibility::Characters(vec![card.clone()])
+    );
+    let mut state = data::read_state(root.path(), &world_id).unwrap();
+    state.state.tree = BTreeMap::from([(
+        "基础信息".to_owned(),
+        data::StateNode::Leaf("未知".to_owned()),
+    )]);
+    data::write_state(root.path(), &world_id, &state).unwrap();
+    let fingerprints = data::identity_fingerprints(root.path(), &world_id).unwrap();
+    let outcome = outcome(
+        vec![mechanism_entry(
+            &source,
+            "人物規則接管",
+            &["莉亞.好感"],
+            Vec::new(),
+        )],
+        fingerprints,
+    );
+    apply(root.path(), &world_id, &outcome, &entries_selection(1)).unwrap();
+
+    let entry = new_entry(root.path(), &world_id, "人物規則接管");
+    assert!(!entry.locked && !entry.is_person);
+    assert_eq!(entry.visibility, Visibility::Gm);
+    assert!(!character_sent(root.path(), &world_id, &card, "你好。").contains("人物規則接管"));
+    assert!(gm_sent(root.path(), &world_id, "你好。").contains("人物規則接管"));
 }

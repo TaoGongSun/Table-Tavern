@@ -1,4 +1,4 @@
-use super::prompt_common::system_message;
+use super::prompt_common::{key_language_exception, system_message};
 use super::types::PrescanSignal;
 use crate::transport::ChatMessage;
 
@@ -149,15 +149,18 @@ pub fn survey_messages(
     signals: &[PrescanSignal],
     lang: &str,
     mode: &str,
+    tree_section: &str,
 ) -> Vec<ChatMessage> {
     vec![
         system_message(context),
         ChatMessage {
             role: "user".to_owned(),
             content: format!(
-                "{SURVEY_BODY}\n\n{}\n\n{}\n\n全部內容（人名與專有名詞以外）使用 BCP-47 語言代碼「{lang}」對應的語言；GROUPS／SPLITS 的 title 也用這個語言。",
+                "{SURVEY_BODY}\n\n{}\n\n{}\n\n{}全部內容（人名與專有名詞以外）使用 BCP-47 語言代碼「{lang}」對應的語言；GROUPS／SPLITS 的 title 也用這個語言。{}",
                 mode_body(mode),
-                signals_line(signals)
+                signals_line(signals),
+                super::rewrite::tree_block(tree_section),
+                key_language_exception(tree_section)
             ),
         },
     ]
