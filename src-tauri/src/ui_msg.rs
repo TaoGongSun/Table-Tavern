@@ -180,6 +180,8 @@ pub enum UiMsg {
         error: String,
     },
     NoImportToUndo,
+    /// 存的是既有條目，但它已經不在了（例如被撤銷匯入刪掉）：不以新條目寫回。
+    WorldbookEntryGone,
 
     // ── AI 卡重構
     RefactorShellConflict {

@@ -65,6 +65,7 @@ import { ClaudeOverageToast } from "./features/ai-connection/ClaudeOverageToast"
 import { ErrorNote } from "./shared/ui/atoms";
 import "./App.css";
 import type { PendingRefactorCard } from "./features/refactor/refactor-card";
+import type { UndoEntryChanges } from "./features/worldbook/worldbook-model";
 
 /** 復原上次匯入的結果：kept_entries＝玩家改過內容而保留下來的世界書條目數 */
 interface UndoReport {
@@ -76,6 +77,10 @@ interface UndoReport {
   renamed_back: boolean;
   /** 匯完貼上檯面的那則開場白也被收掉了：前端據此重載逐字稿 */
   removed_opening: boolean;
+  /** 卡檔確定已不在的角色 id：關編輯器、修剪草稿名單 */
+  removed_character_ids: string[];
+  /** 世界書實際被改的條目與欄組；後端讀不到世界書時是 null */
+  entry_changes: UndoEntryChanges | null;
 }
 
 // 這桌向 AI 發過對話請求了沒（每桌一把）。開演之後復原＝把演到一半的角色卡連同後續編輯一起刪掉，
@@ -123,8 +128,6 @@ function App() {
   const [hasStateBar, setHasStateBar] = useState(false);
   // 這桌向 AI 開演了沒：聊天域寫、匯入域清、陣容欄的「撤銷上次匯入」讀，留在 App 當共用旗標
   const [chattedSinceImport, setChattedSinceImport] = useState(false);
-  // 復原動作可能改動世界書／機制資料；世界設定畫面若剛好開著就靠改這把 key 強制整個重新掛載重載
-  const [worldEditorRefreshKey, setWorldEditorRefreshKey] = useState(0);
   // 陣容欄丟進來的重構卡 PNG：開世界設定後交給重構流程，換桌作廢
   const [pendingRefactorCard, setPendingRefactorCard] = useState<PendingRefactorCard | null>(null);
   // 生成對話框只留開關在 App：草稿與三支生成流程都在 GenerateTableDialog 自己身上
@@ -745,6 +748,8 @@ function App() {
         invoke<UndoReport>("undo_last_import", { worldId: table }),
       );
       if (!live()) return;
+      // 被撤銷刪掉的卡若正在編輯就關（不另問）；開著的世界設定靠通知重讀、定基草稿，不重新掛載
+      navigation.finishUndoImport(report.removed_character_ids, report.entry_changes);
       const cast = await characters.refresh();
       if (!live()) return;
       // 發言對象指向的角色被這次復原刪掉了（不管是不是巧合）就改回 GM，不然輸入框對著空氣
@@ -768,9 +773,16 @@ function App() {
       const worldList = await invoke<WorldMeta[]>("list_worlds");
       if (!live()) return;
       setWorlds(worldList);
-      // 世界設定畫面（世界書／機制帳本）若開著，資料在它自己的元件狀態裡，用 key 強制整個重掛載重載
-      setWorldEditorRefreshKey((key) => key + 1);
       await imports.refreshReceipts(table);
+      if (!live()) return;
+      // 撤銷重構可能退回玩家卡指定：側欄玩家卡重讀（失敗只報錯，不擋完成訊息）
+      try {
+        const state = await invoke<WorldState>("read_state", { worldId: table });
+        if (!live()) return;
+        await characters.reloadPlayer(state.player_card_id);
+      } catch (reason) {
+        if (live()) setError(String(reason));
+      }
       if (!live()) return;
       await showMessage(
         t("undoLastImportDone") +
@@ -919,7 +931,6 @@ function App() {
           setEditingName={setEditingName}
           hasStateBar={hasStateBar}
           chattedSinceImport={chattedSinceImport}
-          worldEditorRefreshKey={worldEditorRefreshKey}
           config={config}
           error={error}
           transport={transport}

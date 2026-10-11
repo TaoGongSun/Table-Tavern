@@ -13,6 +13,7 @@ use std::path::Path;
 
 mod character_delete;
 mod sources;
+mod undo_changes;
 pub use character_delete::{
     character_to_worldbook_entry_and_clean, delete_character_and_clean, upsert_entry_dropping_gone,
     CharacterDeleteOutcome,
@@ -21,6 +22,7 @@ pub use sources::{
     begin_pending, discard_import_source, finish_pending, import_replays, store_import_source,
     ImportReplay, ImportRoute, ImportSource,
 };
+use undo_changes::EntryChanges;
 
 /// 匯入記帳的結果：Failed＝收據讀壞被重寫或寫不進去，呼叫端的「未完成」標記就不能解除。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,6 +248,10 @@ pub struct UndoReport {
     pub renamed_back: bool,
     /// 這次 undo 把匯完貼上檯面的那則開場白也收掉了；前端據此重載逐字稿。
     pub removed_opening: bool,
+    /// 卡檔確定已不在的角色 id：前端據此關編輯器、修剪草稿名單。
+    pub removed_character_ids: Vec<String>,
+    /// 世界書實際被改的條目與欄組；撤銷前後讀不到世界書就是 None。
+    pub entry_changes: Option<EntryChanges>,
 }
 
 fn read_receipts(root: &Path, world_id: &str) -> Vec<ImportReceipt> {
@@ -808,6 +814,10 @@ fn undo_last(
         data::write_state(root, world_id, &state)?;
     }
 
+    // 前快照：給前端草稿定基的改動比對用，讀不到只少了報告，不中斷撤銷
+    let book_before = data::read_worldbook(root, world_id).ok();
+    let mut step_deleted = HashSet::new();
+
     // 1. 角色卡：md／原始檔／圖片／圖庫一併刪除——按鈕語意是撤銷這次匯入，玩家後續編輯一併退場。
     // 卡檔確定已不在的 id 記下來，3a 之後從世界書名單清掉（刪除本身回錯但 md 已刪的也算）。
     let mut gone_characters = Vec::new();
@@ -875,10 +885,14 @@ fn undo_last(
             continue; // 已經不在了（例如玩家自己刪過），不重複計數
         };
         if worldbook_entry_fingerprint(entry) == recorded.fingerprint {
-            kept(
+            if kept(
                 strict,
                 data::delete_worldbook_entry(root, world_id, recorded.uid),
-            )?;
+            )?
+            .is_some()
+            {
+                step_deleted.insert(recorded.uid);
+            }
             report.removed_entries += 1;
         } else {
             report.kept_entries += 1;
@@ -957,6 +971,16 @@ fn undo_last(
             data::scrub_character_ids(root, world_id, &gone_characters),
         )?;
     }
+    report.entry_changes = match (book_before, data::read_worldbook(root, world_id)) {
+        (Some(before), Ok(after)) => Some(undo_changes::diff(
+            &before,
+            &after,
+            &step_deleted,
+            &gone_characters,
+        )),
+        _ => None,
+    };
+    report.removed_character_ids = gone_characters;
 
     // 4. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。
     if let Some(mechanism) = &receipt.mechanism {

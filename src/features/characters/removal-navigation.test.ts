@@ -31,8 +31,9 @@ describe("removal navigation", () => {
     reloadPlayer: async () => {},
     noteRemoved: (id: string, speaker: string) => noteRemoved(id, speaker),
     remove: () => removeResult(),
-    removePlayer: async () => true,
+    removePlayer: (id: string) => removePlayerResult(id),
   };
+  let removePlayerResult: (id: string) => Promise<boolean> = async () => true;
 
   function Probe() {
     nav = useWorkspaceNavigationController({
@@ -52,6 +53,7 @@ describe("removal navigation", () => {
     worldId = "w1";
     removeResult = async () => "deleted";
     noteRemoved = async () => null;
+    removePlayerResult = async () => true;
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
@@ -84,10 +86,10 @@ describe("removal navigation", () => {
       await show(view);
       await del("B");
       expect(nav!.mainView).toEqual(view);
-      expect(nav!.castRemoval).toMatchObject({ worldId: "w1", generation: index + 1 });
+      expect(nav!.worldChange).toMatchObject({ worldId: "w1", generation: index + 1 });
     }
     // 還沒被取走的 id 累積
-    expect(nav!.castRemoval!.ids).toEqual(["B", "B", "B", "B", "B"]);
+    expect(nav!.worldChange!.ids).toEqual(["B", "B", "B", "B", "B"]);
   });
 
   it("closes the editor showing the deleted card and clears its guard", async () => {
@@ -96,7 +98,7 @@ describe("removal navigation", () => {
     await del("A");
     expect(nav!.mainView).toBeNull();
     expect(nav!.leaveGuard.current).toBeNull();
-    expect(nav!.castRemoval!.ids).toEqual(["A"]);
+    expect(nav!.worldChange!.ids).toEqual(["A"]);
   });
 
   it("does nothing when the delete is cancelled or fails", async () => {
@@ -105,7 +107,7 @@ describe("removal navigation", () => {
       removeResult = async () => result;
       await del("A");
       expect(nav!.mainView).toEqual({ kind: "character", id: "A" });
-      expect(nav!.castRemoval).toBeNull();
+      expect(nav!.worldChange).toBeNull();
     }
   });
 
@@ -124,7 +126,7 @@ describe("removal navigation", () => {
       await pending;
     });
     expect(nav!.mainView).toEqual({ kind: "world" });
-    expect(nav!.castRemoval!.ids).toEqual(["A"]);
+    expect(nav!.worldChange!.ids).toEqual(["A"]);
   });
 
   it("closes and notifies even when the cast refresh fails", async () => {
@@ -134,7 +136,7 @@ describe("removal navigation", () => {
     await show({ kind: "character", id: "A" });
     await del("A");
     expect(nav!.mainView).toBeNull();
-    expect(nav!.castRemoval!.ids).toEqual(["A"]);
+    expect(nav!.worldChange!.ids).toEqual(["A"]);
     expect(errors).toContain("名單重讀失敗");
   });
 
@@ -142,30 +144,30 @@ describe("removal navigation", () => {
     await show({ kind: "character", id: "A" });
     await act(async () => nav!.finishArchiveToggled("A"));
     expect(nav!.mainView).toBeNull();
-    expect(nav!.castRemoval).toBeNull();
+    expect(nav!.worldChange).toBeNull();
   });
 
   it("converting closes the card editor and notifies", async () => {
     await show({ kind: "character", id: "A" });
     await act(async () => nav!.finishConverted("A"));
     expect(nav!.mainView).toBeNull();
-    expect(nav!.castRemoval!.ids).toEqual(["A"]);
+    expect(nav!.worldChange!.ids).toEqual(["A"]);
   });
 
   it("takes only the matching world and generation, and resets ids on another table", async () => {
     await del("B");
     await del("C");
-    await act(async () => nav!.takeCastRemoval("w1", 1));
-    expect(nav!.castRemoval!.ids).toEqual(["B", "C"]);
-    await act(async () => nav!.takeCastRemoval("w2", 2));
-    expect(nav!.castRemoval!.ids).toEqual(["B", "C"]);
-    await act(async () => nav!.takeCastRemoval("w1", 2));
-    expect(nav!.castRemoval).toEqual({ worldId: "w1", generation: 2, ids: [] });
+    await act(async () => nav!.takeWorldChange("w1", 1));
+    expect(nav!.worldChange!.ids).toEqual(["B", "C"]);
+    await act(async () => nav!.takeWorldChange("w2", 2));
+    expect(nav!.worldChange!.ids).toEqual(["B", "C"]);
+    await act(async () => nav!.takeWorldChange("w1", 2));
+    expect(nav!.worldChange).toEqual({ worldId: "w1", generation: 2, ids: [], undoChanges: [] });
     await del("D");
     worldId = "w2";
     await render();
     await del("E");
-    expect(nav!.castRemoval).toEqual({ worldId: "w2", generation: 4, ids: ["E"] });
+    expect(nav!.worldChange).toEqual({ worldId: "w2", generation: 4, ids: ["E"], undoChanges: [] });
   });
 
   // 刪除或善後停在 await 時換桌：回來的續程不得動新桌（Sol 驗收 r1）
@@ -198,7 +200,7 @@ describe("removal navigation", () => {
       });
       expect(nav!.mainView).toEqual({ kind: "character", id: "A" });
       expect(nav!.speaker).toBe("A");
-      expect(nav!.castRemoval).toBeNull();
+      expect(nav!.worldChange).toBeNull();
     });
 
     it(`drops a cleanup that finishes after switching tables (${route.join("→")})`, async () => {
@@ -214,13 +216,71 @@ describe("removal navigation", () => {
       // 新桌自己已有待取通知
       noteRemoved = async () => null;
       await del("Z");
-      const before = nav!.castRemoval;
+      const before = nav!.worldChange;
       await act(async () => {
         refresh.resolve("");
         await pending;
       });
-      expect(nav!.castRemoval).toEqual(before);
+      expect(nav!.worldChange).toEqual(before);
       expect(nav!.speaker).toBe("A");
     });
   }
+
+  describe("undo last import", () => {
+    const report = { changed: [{ uid: 1, groups: ["content" as const] }], deleted: [2] };
+
+    it("closes only views showing an undone card, without asking, and always notifies", async () => {
+      for (const view of [
+        { kind: "character", id: "A" },
+        { kind: "player", id: "A" },
+      ] as MainViewState[]) {
+        await show(view);
+        nav!.leaveGuard.current = async () => false;
+        await act(async () => nav!.finishUndoImport(["A"], report));
+        expect(nav!.mainView).toBeNull();
+        expect(nav!.leaveGuard.current).toBeNull();
+      }
+      for (const view of views) {
+        await show(view);
+        const guard = async () => true;
+        nav!.leaveGuard.current = guard;
+        await act(async () => nav!.finishUndoImport(["B"], null));
+        expect(nav!.mainView).toEqual(view);
+        expect(nav!.leaveGuard.current).toBe(guard);
+      }
+      await act(async () => nav!.finishUndoImport([], report));
+      expect(nav!.worldChange!.ids).toEqual(["A", "A", "B", "B", "B", "B", "B"]);
+      expect(nav!.worldChange!.undoChanges).toHaveLength(8);
+      expect(nav!.worldChange!.undoChanges[7]).toEqual(report);
+    });
+
+    for (const route of [["w2"], ["w2", "w1"]]) {
+      it(`ignores an undo that finishes after switching tables (${route.join("→")})`, async () => {
+        await show({ kind: "character", id: "A" });
+        const finish = nav!.finishUndoImport;
+        for (const next of route) await switchTo(next);
+        await show({ kind: "character", id: "A" });
+        await act(async () => finish(["A"], report));
+        expect(nav!.mainView).toEqual({ kind: "character", id: "A" });
+        expect(nav!.worldChange).toBeNull();
+      });
+
+      it(`keeps the view when the player card delete returns after switching tables (${route.join("→")})`, async () => {
+        const removal = deferred<boolean>();
+        removePlayerResult = () => removal.promise;
+        await show({ kind: "player", id: "P" });
+        let pending: Promise<void> = Promise.resolve();
+        act(() => {
+          pending = nav!.deletePlayerCard("P");
+        });
+        for (const next of route) await switchTo(next);
+        await show({ kind: "world" });
+        await act(async () => {
+          removal.resolve(true);
+          await pending;
+        });
+        expect(nav!.mainView).toEqual({ kind: "world" });
+      });
+    }
+  });
 });

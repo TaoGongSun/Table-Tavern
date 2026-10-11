@@ -36,12 +36,22 @@ pub fn delete_character_and_clean(
 /// 檢查與提交在同一把短提交鎖內，與 [`delete_character_and_clean`] 互斥。
 /// 只接前端寫條目這支指令；撤銷還原、重構套用、匯入合併不走這裡（清理成功時，它們的 id 來源已由刪除清理
 /// 轉換過；清理失敗的殘留不擴大誰看得到）。
+/// `create` 為 false＝存的是既有條目：鎖內找不到這個 uid（已被撤銷匯入等刪掉）就回 `WorldbookEntryGone`，
+/// 不以新 uid 寫回，免得過期草稿讓已刪條目復活。
 pub fn upsert_entry_dropping_gone(
     root: &Path,
     world_id: &str,
     mut entry: data::WorldbookEntry,
+    create: bool,
 ) -> DataResult<u64> {
     data::state_commit::with_commit(root, world_id, |_| {
+        if !create
+            && !data::read_worldbook(root, world_id)?
+                .iter()
+                .any(|current| current.uid == entry.uid)
+        {
+            return Err(crate::ui_msg::UiMsg::WorldbookEntryGone.into_error());
+        }
         if let data::Visibility::Characters(list) = &entry.visibility {
             let listed: BTreeSet<&String> = list.iter().collect();
             let gone: Vec<String> = listed

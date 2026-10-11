@@ -9,7 +9,7 @@ import { ActReader } from "../features/play/ActReader";
 import { CardEditor } from "../features/characters/CardEditor";
 import { WorldEditor } from "../features/worldbook/WorldEditor";
 import type { PendingRefactorCard } from "../features/refactor/refactor-card";
-import type { CastRemoval } from "../features/worldbook/worldbook-model";
+import type { WorldChange } from "../features/worldbook/worldbook-model";
 
 interface MainViewProps {
   sceneLabelOf: (n: number) => string;
@@ -46,15 +46,13 @@ interface MainViewProps {
   /** 回合或換幕進行中（同步查當下） */
   isBusy: () => boolean;
   worldOpen: boolean;
-  /** 復原匯入改動了世界書：換這把 key 讓整支編輯器重新掛載重載 */
-  worldEditorRefreshKey: number;
   onEntryConverted: () => Promise<void>;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
   pendingRefactorCard: PendingRefactorCard | null;
   onPendingRefactorCardTaken: (generation: number) => void;
   /** 確定已刪的角色通知：開著的世界設定據此重讀 */
-  castRemoval: CastRemoval | null;
-  onCastRemovalTaken: (worldId: string, generation: number) => void;
+  worldChange: WorldChange | null;
+  onWorldChangeTaken: (worldId: string, generation: number) => void;
   /** 遊玩畫面（messages＋composer）；元素在 App 建好傳進來 */
   playView: ReactNode;
 }
@@ -86,13 +84,12 @@ export function MainView({
   onOpenAiSettings,
   isBusy,
   worldOpen,
-  worldEditorRefreshKey,
   onEntryConverted,
   onRefactorApplied,
   pendingRefactorCard,
   onPendingRefactorCardTaken,
-  castRemoval,
-  onCastRemovalTaken,
+  worldChange,
+  onWorldChangeTaken,
   playView,
 }: MainViewProps) {
   return (
@@ -148,7 +145,6 @@ export function MainView({
         />
       ) : worldOpen ? (
         <WorldEditor
-          key={worldEditorRefreshKey}
           title={t("worldAria")}
           world={world}
           worldName={worldName}
@@ -159,8 +155,8 @@ export function MainView({
           onRefactorApplied={onRefactorApplied}
           pendingRefactorCard={pendingRefactorCard}
           onPendingRefactorCardTaken={onPendingRefactorCardTaken}
-          castRemoval={castRemoval}
-          onCastRemovalTaken={onCastRemovalTaken}
+          worldChange={worldChange}
+          onWorldChangeTaken={onWorldChangeTaken}
           isTurnRunning={isBusy}
         />
       ) : (

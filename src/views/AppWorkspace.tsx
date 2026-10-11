@@ -39,7 +39,6 @@ interface AppWorkspaceProps {
   setEditingName: Dispatch<SetStateAction<EditingTableName>>;
   hasStateBar: boolean;
   chattedSinceImport: boolean;
-  worldEditorRefreshKey: number;
   config: AppConfig;
   error: string;
   transport: string | undefined;
@@ -82,7 +81,6 @@ export function AppWorkspace({
   setEditingName,
   hasStateBar,
   chattedSinceImport,
-  worldEditorRefreshKey,
   config,
   error,
   transport,
@@ -135,8 +133,8 @@ export function AppWorkspace({
     finishPlayerCardSaved,
     finishArchiveToggled,
     finishConverted,
-    castRemoval,
-    takeCastRemoval,
+    worldChange,
+    takeWorldChange,
   } = navigation;
   const {
     canUndoScene,
@@ -342,13 +340,12 @@ export function AppWorkspace({
               onOpenAiSettings={() => onOpenSettings("ai")}
               isBusy={chat.isBusy}
               worldOpen={mainView?.kind === "world"}
-              worldEditorRefreshKey={worldEditorRefreshKey}
               onEntryConverted={onEntryConverted}
               onRefactorApplied={onRefactorApplied}
               pendingRefactorCard={pendingRefactorCard}
               onPendingRefactorCardTaken={onPendingRefactorCardTaken}
-              castRemoval={castRemoval}
-              onCastRemovalTaken={takeCastRemoval}
+              worldChange={worldChange}
+              onWorldChangeTaken={takeWorldChange}
               playView={
                 <PlayView
                   onboarding={<Onboarding config={config} onSaved={onConfigSaved} />}

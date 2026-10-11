@@ -75,10 +75,12 @@ pub(crate) fn upsert_worldbook_entry(
     app: tauri::AppHandle,
     world_id: String,
     entry: data::WorldbookEntry,
+    create: bool,
 ) -> Result<u64, String> {
     let _permit = data::world_write_permit(&world_id)?;
-    // 可見名單裡卡檔確定已不在的角色先拿掉：編輯器的過期資料寫不回已刪角色
-    receipts::upsert_entry_dropping_gone(&data_root(&app)?, &world_id, entry)
+    // 可見名單裡卡檔確定已不在的角色先拿掉：編輯器的過期資料寫不回已刪角色；
+    // 既有條目（create＝false）已不在就回錯，不以新條目寫回
+    receipts::upsert_entry_dropping_gone(&data_root(&app)?, &world_id, entry, create)
         .map_err(|error| error.to_string())
 }
 

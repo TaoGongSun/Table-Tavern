@@ -20,7 +20,7 @@ fn gm_entry(root: &Path, world_id: &str, content: &str) -> u64 {
 fn save_with(root: &Path, world_id: &str, uid: u64, visibility: Visibility) -> Visibility {
     let mut current = compact(root, world_id, uid);
     current.visibility = visibility;
-    upsert_entry_dropping_gone(root, world_id, current).unwrap();
+    upsert_entry_dropping_gone(root, world_id, current, false).unwrap();
     compact(root, world_id, uid).visibility
 }
 
@@ -111,7 +111,7 @@ fn io_errors_while_checking_keep_the_id() {
     current.visibility = characters(&[&a]);
     let Some(saved) =
         crate::test_perm::with_unsearchable(&directory, &directory.join(format!("{a}.md")), || {
-            upsert_entry_dropping_gone(root.path(), &world_id, current)
+            upsert_entry_dropping_gone(root.path(), &world_id, current, false)
         })
     else {
         return;
@@ -144,6 +144,7 @@ fn new_entries_are_guarded_too() {
             is_person: false,
             locked: false,
         },
+        true,
     )
     .unwrap();
     assert_eq!(
@@ -202,7 +203,7 @@ fn delete_waits_for_a_save_that_already_checked() {
     };
     let mut current = compact(root.path(), &world_id, uid);
     current.visibility = characters(&[&b]);
-    upsert_entry_dropping_gone(root.path(), &world_id, current).unwrap();
+    upsert_entry_dropping_gone(root.path(), &world_id, current, false).unwrap();
     let cleanup_failed = done.recv_timeout(Duration::from_secs(10)).unwrap().unwrap();
     drop(_hook);
     drop(_contention);
@@ -258,7 +259,7 @@ fn a_save_after_a_failed_cleanup_still_drops_the_deleted_id() {
                 save_done.clone(),
             );
             std::thread::spawn(move || {
-                let saved = upsert_entry_dropping_gone(&root, &world_id, stale).is_ok();
+                let saved = upsert_entry_dropping_gone(&root, &world_id, stale, false).is_ok();
                 done.store(true, Ordering::SeqCst);
                 let _ = sender.send(saved);
             });
@@ -286,4 +287,42 @@ fn a_save_after_a_failed_cleanup_still_drops_the_deleted_id() {
         compact(root.path(), &world_id, uid).visibility,
         Visibility::Gm
     );
+}
+
+/// 既有條目（create＝false）已不在：回 `worldbook_entry_gone`、世界書不變；新條目照常新增。
+#[test]
+fn saving_a_vanished_existing_entry_is_refused() {
+    let (root, world_id) = new_table("guard-gone");
+    let uid = data::upsert_worldbook_entry(
+        root.path(),
+        &world_id,
+        WorldbookEntry {
+            uid: u64::MAX,
+            title: "舊".to_owned(),
+            keys: Vec::new(),
+            content: "會被刪".to_owned(),
+            constant: false,
+            order: 100,
+            disabled: false,
+            visibility: Visibility::Gm,
+            is_person: false,
+            locked: false,
+        },
+    )
+    .unwrap();
+    let stale = compact(root.path(), &world_id, uid);
+    data::delete_worldbook_entry(root.path(), &world_id, uid).unwrap();
+    let before = data::read_worldbook_raw(root.path(), &world_id).unwrap();
+
+    let error = upsert_entry_dropping_gone(root.path(), &world_id, stale.clone(), false)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(error, crate::ui_msg::UiMsg::WorldbookEntryGone.to_string());
+    assert_eq!(
+        data::read_worldbook_raw(root.path(), &world_id).unwrap(),
+        before
+    );
+
+    let created = upsert_entry_dropping_gone(root.path(), &world_id, stale, true).unwrap();
+    assert_eq!(compact(root.path(), &world_id, created).content, "會被刪");
 }

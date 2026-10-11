@@ -82,6 +82,7 @@ const COPY = {
     be_image_missing_in_reply_tail: "回覆中沒有圖片：{tail}",
     be_import_receipt_corrupt: "匯入收據已損毀，無可復原：{error}",
     be_no_import_to_undo: "沒有可復原的匯入紀錄",
+    be_worldbook_entry_gone: "這個條目已經被刪除了",
     be_refactor_shell_conflict: "介面產物自相矛盾：渲染殼同時綁定「{branch}.…」與頂層兩套路徑，請重新執行重構",
     be_refactor_value_mismatch:
       "介面產物同一欄位兩套初始值不一致：「{first}」＝{first_value}、「{second}」＝{second_value}，請重新執行重構",
@@ -170,6 +171,7 @@ const COPY = {
     be_image_missing_in_reply_tail: "回复中没有图片：{tail}",
     be_import_receipt_corrupt: "导入回执已损坏，无法撤销：{error}",
     be_no_import_to_undo: "没有可撤销的导入记录",
+    be_worldbook_entry_gone: "这个条目已经被删除了",
     be_refactor_shell_conflict: "界面产物自相矛盾：渲染壳同时绑定「{branch}.…」与顶层两套路径，请重新执行重构",
     be_refactor_value_mismatch:
       "界面产物同一字段两套初始值不一致：「{first}」＝{first_value}、「{second}」＝{second_value}，请重新执行重构",
@@ -265,6 +267,7 @@ const COPY = {
     be_image_missing_in_reply_tail: "The reply didn't include an image: {tail}",
     be_import_receipt_corrupt: "The import record is damaged, so nothing can be undone: {error}",
     be_no_import_to_undo: "There's no import to undo.",
+    be_worldbook_entry_gone: "This entry has already been deleted.",
     be_refactor_shell_conflict:
       "The generated interface contradicts itself: the display shell binds both “{branch}.…” and the top-level paths. Run Refactor again.",
     be_refactor_value_mismatch:
@@ -357,6 +360,7 @@ const COPY = {
     be_image_missing_in_reply_tail: "返答に画像が含まれていません：{tail}",
     be_import_receipt_corrupt: "読み込み記録が壊れているため、元に戻せません：{error}",
     be_no_import_to_undo: "元に戻せる読み込みはありません。",
+    be_worldbook_entry_gone: "この項目はすでに削除されています。",
     be_refactor_shell_conflict:
       "生成されたインターフェースが矛盾しています：表示シェルが「{branch}.…」とトップレベルの両方のパスを参照しています。再構成をもう一度実行してください。",
     be_refactor_value_mismatch:
@@ -447,6 +451,7 @@ const COPY = {
     be_image_missing_in_reply_tail: "응답에 이미지가 없습니다: {tail}",
     be_import_receipt_corrupt: "가져오기 기록이 손상되어 되돌릴 수 없습니다: {error}",
     be_no_import_to_undo: "되돌릴 가져오기 기록이 없습니다.",
+    be_worldbook_entry_gone: "이 항목은 이미 삭제되었습니다.",
     be_refactor_shell_conflict:
       "생성된 인터페이스가 서로 모순됩니다: 표시 셸이 '{branch}.…'와 최상위 경로를 모두 참조합니다. 재구성을 다시 실행하세요.",
     be_refactor_value_mismatch:
@@ -547,6 +552,7 @@ const COPY = {
     be_import_receipt_corrupt:
       "El registro de importación está dañado; no se puede deshacer: {error}",
     be_no_import_to_undo: "No hay ninguna importación que deshacer.",
+    be_worldbook_entry_gone: "Esta entrada ya se eliminó.",
     be_refactor_shell_conflict:
       "La interfaz generada se contradice: la plantilla de visualización usa a la vez «{branch}.…» y las rutas de nivel superior. Vuelve a ejecutar Reorganizar.",
     be_refactor_value_mismatch:
@@ -646,6 +652,7 @@ const COPY = {
     be_import_receipt_corrupt:
       "O registro de importação está danificado; não dá para desfazer: {error}",
     be_no_import_to_undo: "Não há nenhuma importação para desfazer.",
+    be_worldbook_entry_gone: "Esta entrada já foi excluída.",
     be_refactor_shell_conflict:
       "A interface gerada se contradiz: o modelo de exibição usa ao mesmo tempo “{branch}.…” e os caminhos de nível superior. Execute Reorganizar de novo.",
     be_refactor_value_mismatch:
@@ -752,6 +759,7 @@ const COPY = {
     be_import_receipt_corrupt:
       "Das Importprotokoll ist beschädigt; nichts lässt sich rückgängig machen: {error}",
     be_no_import_to_undo: "Es gibt keinen Import zum Rückgängigmachen.",
+    be_worldbook_entry_gone: "Dieser Eintrag wurde bereits gelöscht.",
     be_refactor_shell_conflict:
       "Die erzeugte Oberfläche widerspricht sich: Die Anzeigevorlage bindet sowohl „{branch}.…“ als auch die Pfade der obersten Ebene. Bitte Umbauen erneut ausführen.",
     be_refactor_value_mismatch:
@@ -854,6 +862,7 @@ const COPY = {
     be_import_receipt_corrupt:
       "Le journal d'import est endommagé\u00a0: rien ne peut être annulé\u00a0: {error}",
     be_no_import_to_undo: "Aucun import à annuler.",
+    be_worldbook_entry_gone: "Cette entrée a déjà été supprimée.",
     be_refactor_shell_conflict:
       "L'interface générée se contredit\u00a0: le gabarit d'affichage utilise à la fois «\u00a0{branch}.…\u00a0» et les chemins de premier niveau. Relance Réorganiser.",
     be_refactor_value_mismatch:
@@ -951,6 +960,7 @@ const COPY = {
     be_image_missing_in_reply_tail: "В ответе нет изображения: {tail}",
     be_import_receipt_corrupt: "Журнал импорта повреждён — отменить нечего: {error}",
     be_no_import_to_undo: "Нет импорта, который можно отменить.",
+    be_worldbook_entry_gone: "Эта запись уже удалена.",
     be_refactor_shell_conflict:
       "Созданный интерфейс противоречит сам себе: шаблон отображения ссылается и на «{branch}.…», и на пути верхнего уровня. Запусти «Разобрать» ещё раз.",
     be_refactor_value_mismatch:
