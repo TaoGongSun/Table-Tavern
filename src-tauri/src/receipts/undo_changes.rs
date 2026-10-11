@@ -1,5 +1,5 @@
-//! 撤銷匯入實際改了哪些世界書條目、哪些欄組：給前端開著的條目草稿定基用（undo-import-editor-guard）。
-//! 撤銷持整桌獨占，前後兩份快照之間只有撤銷自己寫世界書，比對結果就是撤銷的實際改動。
+//! 撤銷匯入、重構套用實際改了哪些世界書條目、哪些欄組：給前端開著的條目草稿定基用（undo-import-editor-guard、
+//! refactor-apply-open-draft）。兩者都持整桌獨占，前後兩份快照之間只有自己寫世界書，比對結果就是實際改動。
 use crate::data::{self, WorldbookEntry};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -7,7 +7,7 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct EntryChanges {
     pub changed: Vec<EntryChange>,
-    /// 撤銷刪掉的 uid；同一 uid 被換成另一條也算刪除
+    /// 刪掉的 uid；同一 uid 被換成另一條也算刪除
     pub deleted: Vec<u64>,
 }
 
@@ -18,9 +18,9 @@ pub struct EntryChange {
     pub groups: Vec<&'static str>,
 }
 
-/// `removed` 是撤銷刪掉的角色：前快照先剪掉它們再比，純剪名單的差異不算撤銷改欄（前端照刪角色修剪）。
-/// `step_deleted` 是撤銷刪條目那步實際刪掉的 uid，之後可能被插回的條目佔走，仍算刪除。
-pub(super) fn diff(
+/// `removed` 是這次刪掉的角色：前快照先剪掉它們再比，純剪名單的差異不算撤銷改欄（前端照刪角色修剪）。
+/// `step_deleted` 是刪條目那步實際刪掉的 uid，之後可能被插回的條目佔走，仍算刪除。
+pub(crate) fn diff(
     before: &[WorldbookEntry],
     after: &[WorldbookEntry],
     step_deleted: &HashSet<u64>,

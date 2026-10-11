@@ -261,6 +261,7 @@ fn reset_restores_the_freshly_imported_table() {
     let fresh_state = data::read_state(root.path(), &world_id).unwrap();
     let fresh_book = data::read_worldbook(root.path(), &world_id).unwrap();
     let fresh_events = data::read_transcript(root.path(), &world_id, 0).unwrap();
+    data::write_world_md(root.path(), &world_id, "玩家寫的世界設定").unwrap();
 
     refactor(&root, &world_id);
     assert!(data::read_interface_shell(root.path(), &world_id)
@@ -269,6 +270,11 @@ fn reset_restores_the_freshly_imported_table() {
 
     reset_to_import_source(root.path(), &world_id, "zh-TW").unwrap();
 
+    // world.md 照抄〔作者裁決 2026-10-11〕
+    assert_eq!(
+        data::read_world_md(root.path(), &world_id).unwrap(),
+        "玩家寫的世界設定"
+    );
     let state = data::read_state(root.path(), &world_id).unwrap();
     assert_eq!(state.name, "北境驛站");
     assert_eq!(state.refactor_mode, None);
@@ -317,6 +323,26 @@ fn reset_restores_the_freshly_imported_table() {
         data::read_state(root.path(), &world_id).unwrap().mechanism,
         fresh_state.mechanism
     );
+}
+
+/// world.md 照抄：檔不在當空白照常清回；讀不了（其他錯誤）就不清回，原桌不動。
+#[test]
+fn reset_copies_world_md_only_when_readable() {
+    let root = TestRoot::new("rerun-world-md");
+    let world_id = imported_world(&root);
+    refactor(&root, &world_id);
+    let world_md = root.path().join("worlds").join(&world_id).join("world.md");
+
+    std::fs::remove_file(&world_md).unwrap();
+    std::fs::create_dir(&world_md).unwrap();
+    assert!(reset_to_import_source(root.path(), &world_id, "zh-TW").is_err());
+    assert!(data::read_refactor_outcome(root.path(), &world_id)
+        .unwrap()
+        .is_some());
+
+    std::fs::remove_dir(&world_md).unwrap();
+    reset_to_import_source(root.path(), &world_id, "zh-TW").unwrap();
+    assert_eq!(data::read_world_md(root.path(), &world_id).unwrap(), "");
 }
 
 #[test]

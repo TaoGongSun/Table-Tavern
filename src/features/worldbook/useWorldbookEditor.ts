@@ -224,6 +224,11 @@ export function useWorldbookEditor({
         entry: { ...target, disabled: !target.disabled },
         create: false,
       });
+      // 同一條的草稿若開著，enabled 跟上開關，免得自動存蓋回
+      pendingRebase.current = mergePendingRebase(pendingRebase.current, {
+        changed: [{ uid: target.uid, groups: ["enabled"] }],
+        deleted: [],
+      });
       await refreshWorldbook();
       await refreshLedger();
     } catch (reason) {
@@ -394,6 +399,8 @@ export function useWorldbookEditor({
         cancelLabel: t("dialogCancel"),
       });
       if (!accepted) return;
+      // 去重會改留下那條的可見度：開著的既有條目草稿先存起來並關掉，不留過期草稿
+      if (!(await flushAndCloseExistingDraft())) return;
       // 去重只刪東西，別觸發匯入後的選 GM／改桌名
       const removed = await invoke<number>("dedupe_worldbook", { worldId: world });
       if (removed > 0) await refreshWorldbook();
@@ -453,6 +460,16 @@ export function useWorldbookEditor({
     return true;
   }
 
+  /** 整批改寫世界書之前（清回、去重）：開著的既有條目草稿存起來再關掉（乾淨的也關），存不起來回 false；
+   * 新條目草稿不動 */
+  async function flushAndCloseExistingDraft() {
+    if (!(await flushExistingDraftForLeave())) return false;
+    updateDraft((current) =>
+      current.draft !== null && current.draft.uid !== null ? { ...current, ...CLOSED } : current,
+    );
+    return true;
+  }
+
   return {
     entries,
     ledger,
@@ -481,6 +498,7 @@ export function useWorldbookEditor({
     exportWorldbook,
     convertEntryToCharacter,
     flushExistingDraftForLeave,
+    flushAndCloseExistingDraft,
   };
 }
 

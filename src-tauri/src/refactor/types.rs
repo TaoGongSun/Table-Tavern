@@ -120,6 +120,8 @@ pub struct RefactorApplySummary {
     pub images_applied: usize,
     /// 角色圖寫入失敗的角色名（其餘圖照寫、套用照樣成立）。
     pub images_failed: Vec<String>,
+    /// 這次改了哪些既有條目（停用、刪除）：給世界設定開著的條目草稿定基；套用後讀不到世界書是 None。
+    pub entry_changes: Option<crate::receipts::undo_changes::EntryChanges>,
 }
 
 /// 套用中途失敗時已經落地的部分：呼叫端靠它記收據再撤銷，回到零寫入。

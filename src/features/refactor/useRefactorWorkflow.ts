@@ -45,6 +45,7 @@ import {
 import type { CardInterface } from "../card-interface/interface-card";
 import { useTurnWait } from "../play/useTurnWait";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import type { EntryChanges } from "../worldbook/worldbook-model";
 
 export interface RefactorModeAsk {
   recommend: RefactorMode | null;
@@ -59,8 +60,11 @@ interface UseRefactorWorkflowOptions {
   world: string;
   worldName: string;
   setStatusMessage: (message: string) => void;
-  /** live() 為 false（換桌或卸載）時刷新鏈要在下一個 await 邊界停下 */
-  refreshAfterApply: (live: () => boolean) => Promise<void>;
+  /** live() 為 false（換桌或卸載）時刷新鏈要在下一個 await 邊界停下；entryChanges 是這次改了哪些既有條目
+   * （開著的條目草稿據此定基），null＝無從判斷（清回、套用後讀不到世界書） */
+  refreshAfterApply: (live: () => boolean, entryChanges: EntryChanges | null) => Promise<void>;
+  /** 清回前先把開著的既有條目草稿存起來並關掉（乾淨的也關）；存不起來回 false，不清回 */
+  flushDraft: () => Promise<boolean>;
   /** 同步問「這桌有沒有回合在跑」：有的話套用會排在它後面（後端持整桌獨占） */
   isTurnRunning: () => boolean;
 }
@@ -108,6 +112,7 @@ export function useRefactorWorkflow({
   worldName,
   setStatusMessage,
   refreshAfterApply,
+  flushDraft,
   isTurnRunning,
 }: UseRefactorWorkflowOptions) {
   const { run: runQueued, waiting: waitingForTurn } = useTurnWait(isTurnRunning, world);
@@ -216,6 +221,8 @@ export function useRefactorWorkflow({
         cancelLabel: t("dialogCancel"),
       });
       if (!confirmed) return;
+      // 清回會換掉每一條：草稿先存起來（清回失敗時改動也保得住），之後的開著的既有草稿無從定基
+      if (!(await flushDraft())) return;
       const origin = world;
       const live = () => mounted.current && worldRef.current === origin;
       try {
@@ -225,7 +232,7 @@ export function useRefactorWorkflow({
         return;
       }
       if (!live()) return;
-      await refreshAfterApply(live);
+      await refreshAfterApply(live, null);
       if (!live()) return;
     }
     setStatusMessage("");
@@ -702,7 +709,7 @@ export function useRefactorWorkflow({
         applyPhase.current = "idle";
         if (!live()) return;
         closeRefactor();
-        await refreshAfterApply(live);
+        await refreshAfterApply(live, summary.entry_changes ?? null);
         if (!live()) return;
         await showMessage(refactorApplyMessage(summary), {
           title: t("refactorBtn"),

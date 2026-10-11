@@ -11,8 +11,9 @@ use crate::data::{
 };
 use crate::import;
 use crate::mechanism;
+use crate::receipts::undo_changes;
 use crate::ui_msg::UiMsg;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::Path;
 
 /// 新角色卡色票，跟前端 App.tsx 的 PALETTE 同一組；新卡依桌上目前角色數輪替。
@@ -416,6 +417,27 @@ fn apply_into(
         }
     }
 
+    // 世界書寫入到此為止：與開頭快照比出實際改了哪些既有條目，讀不到只記 None（套用已成立，不回錯）
+    let entry_changes = match data::read_worldbook(root, world_id) {
+        Ok(after) => {
+            let step_deleted: HashSet<u64> = progress
+                .deleted_entries
+                .iter()
+                .map(|entry| entry.uid)
+                .collect();
+            Some(undo_changes::diff(
+                &existing_entries,
+                &after,
+                &step_deleted,
+                &[],
+            ))
+        }
+        Err(error) => {
+            log::warn!("refactor apply worldbook re-read failed: {error}");
+            None
+        }
+    };
+
     // 套用成功後存一份完整產物（封套＋套用映射），供玩家之後直接匯出重玩、不必重燒 AI 額度
     // 重新展開同一張卡，含角色圖匯出也靠映射配回改過名的角色；undo 與收據不動這個檔，
     // 二次套用整份覆寫。
@@ -478,6 +500,7 @@ fn apply_into(
         card_save_failed,
         images_applied,
         images_failed,
+        entry_changes,
     })
 }
 
