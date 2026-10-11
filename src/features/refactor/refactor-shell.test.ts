@@ -1,6 +1,12 @@
 import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { classifyPlaceholder, fillSkeletonPlaceholders, type StateNode } from "./refactor-shell";
+import {
+  bodyRecordPrefix,
+  classifyPlaceholder,
+  fillSkeletonPlaceholders,
+  spreadBodyRecord,
+  type StateNode,
+} from "./refactor-shell";
 
 describe("fillSkeletonPlaceholders", () => {
   it("值原文放回、不 escape：清單欄位的內層標籤要留給卡的顯示腳本解析", () => {
@@ -372,5 +378,159 @@ describe("classifyPlaceholder", () => {
     ["人物列表", "path"],
   ])("%s → %s", (token, kind) => {
     expect(classifyPlaceholder(token, isLeaf)).toBe(kind);
+  });
+});
+
+describe("fillSkeletonPlaceholders（記錄式正文槽）", () => {
+  const body = (text: string): Record<string, StateNode> => ({ 本回合: { 正文: text } });
+  const fill = (skeleton: string, text: string) => fillSkeletonPlaceholders(skeleton, body(text));
+
+  it("`欄位|{{本回合.正文}}`：正文每段一筆記錄、丟空白行，已帶前綴的行不重補", () => {
+    const skeleton = "<mainPage>\nmainText|{{本回合.正文}}\nnpc|村田\n</mainPage>";
+    expect(fill(skeleton, "第一段\n\n第二段\r\n第三段\nmainText|第四段")).toBe(
+      "<mainPage>\nmainText|第一段\nmainText|第二段\nmainText|第三段\nmainText|第四段\nnpc|村田\n</mainPage>",
+    );
+    expect(fill("  mainText| {{ 本回合.正文 }}  ", "甲\n乙")).toBe("  mainText| 甲\n  mainText| 乙");
+  });
+
+  it("不是記錄式就逐字照現狀：多佔位、非行尾、標籤包住、其他分隔、全空正文", () => {
+    const tree = { ...body("甲\n乙"), x: "X" };
+    for (const skeleton of [
+      "mainText|{{本回合.正文}}|{{x}}",
+      "mainText|{{本回合.正文}}。",
+      "<maintext>{{本回合.正文}}</maintext>",
+      "{{本回合.正文}}",
+      "正文：{{本回合.正文}}",
+      "x|{{x}}",
+    ]) {
+      const plain = skeleton.replace("{{本回合.正文}}", "甲\n乙").replace("{{x}}", "X");
+      expect(fillSkeletonPlaceholders(skeleton, tree)).toBe(plain);
+    }
+    expect(fill("mainText|{{本回合.正文}}", "")).toBe("mainText|");
+    expect(fill("mainText|{{本回合.正文}}", "\n \n")).toBe("mainText|\n \n");
+  });
+
+  it("YAML 容器裡的正文槽不套記錄式規則", () => {
+    const skeleton = "<Status_block>\n状态栏:\n  說明: x|{{本回合.正文}}\n</Status_block>";
+    expect(bodyRecordPrefix(skeleton, ["Status_block"])).toBeNull();
+    expect(bodyRecordPrefix("<p>\nmainText|{{本回合.正文}}\n</p>")).toBe("mainText|");
+    expect(spreadBodyRecord("mainText|", "a\n\nb")).toBe("mainText|a\nmainText|b");
+    expect(spreadBodyRecord("mainText|", "  mainText|a\nb")).toBe("mainText|a\nmainText|b");
+  });
+});
+
+describe("fillSkeletonPlaceholders（YAML 鍵位置的佔位符）", () => {
+  const read = (filled: string) => {
+    const content = /<Status_block>([\s\S]*?)<\/Status_block>/.exec(filled)?.[1] ?? "";
+    return yaml.load(content) as Record<string, unknown>;
+  };
+  const fill = (lines: string[], values: Record<string, string>) =>
+    fillSkeletonPlaceholders(["<Status_block>", ...lines, "</Status_block>"].join("\n"), { s: values }, ["Status_block"]);
+
+  // RPGImmortal 骨架的最小重現：地圖類型是鍵，小地圖元素是下一行整行插入的多行清單
+  const map = "- \"👹【赤魁】(35,45) 站起身\"\n- \"🪖【李管事】(50,15) 抱著花名冊\"\n";
+
+  it("動態鍵下接多行清單：讀回 {洞府: [...]}（RPGImmortal 回歸）", () => {
+    const filled = fill(
+      ["状态栏:", "  用户列表:", "    - 用户:", '        名字: " 🗺️小地图"', "        {{s.類型}}:", "           {{s.元素}}"],
+      { 類型: "洞府", 元素: map },
+    );
+    expect(read(filled)).toEqual({
+      状态栏: { 用户列表: [{ 用户: { 名字: " 🗺️小地图", 洞府: ["👹【赤魁】(35,45) 站起身", "🪖【李管事】(50,15) 抱著花名冊"] } }] },
+    });
+  });
+
+  it("容器首行就是動態鍵也認成 YAML 容器", () => {
+    expect(read(fill(["{{s.類型}}:", "  {{s.元素}}"], { 類型: "洞府", 元素: map }))).toEqual({
+      洞府: ["👹【赤魁】(35,45) 站起身", "🪖【李管事】(50,15) 抱著花名冊"],
+    });
+  });
+
+  it("鍵裡夾固定文字、清單項的鍵、鍵值都是佔位", () => {
+    const filled = fill(
+      ["第{{s.n}}层:", "  - a", "NPC_{{s.k}}: v", "列表:", "  - {{s.k}}: {{s.v}}", "    其他: 1", "  - {{s.k}}: {{s.n}}"],
+      { n: "3", k: "甲", v: "第一行\n第二行" },
+    );
+    expect(read(filled)).toEqual({
+      第3层: ["a"],
+      NPC_甲: "v",
+      列表: [{ 甲: "第一行\n第二行", 其他: 1 }, { 甲: "3" }],
+    });
+  });
+
+  it("引號鍵與區塊指示符讀回原值", () => {
+    const filled = fill(['"{{s.q}}": 雙', "'{{s.r}}': 單", "{{s.k}}詩: |", "  {{s.v}}", "{{s.k}}註: # {{s.v}}", "  x: 1"], {
+      q: 'a"b\'c',
+      r: "it's",
+      k: "甲",
+      v: "第一行\n第二行",
+    });
+    expect(read(filled)).toEqual({ [`a"b'c`]: "雙", "it's": "單", 甲詩: "第一行\n第二行\n", 甲註: { x: 1 } });
+  });
+
+  it("清單項裡的區塊純量（動態／固定鍵、| 與 >）：同層下一個欄位不被吃進區塊", () => {
+    for (const indicator of ["|", ">"]) {
+      for (const head of ["{{s.k}}", "固定"]) {
+        const filled = fill(
+          ["列表:", `  - ${head}: ${indicator}`, "      {{s.text}}", "    sibling: {{s.v}}", "    其他: 1"],
+          { k: "固定", text: "第一行\n第二行", v: "a: b" },
+        );
+        const text = indicator === "|" ? "第一行\n第二行\n" : "第一行 第二行\n";
+        expect(read(filled)).toEqual({ 列表: [{ 固定: text, sibling: "a: b", 其他: 1 }] });
+      }
+    }
+  });
+
+  it("巢狀清單項的鍵：`- - {{k}}: v` 鍵名正確、多行對映子層縮排正確", () => {
+    const filled = fill(["- - {{s.k}}: {{s.v}}", "  - {{s.k}}: {{s.m}}"], { k: "甲", v: "乙", m: "x: a\ny: b" });
+    expect(read(filled)).toEqual([[{ 甲: "乙" }, { 甲: { x: "a", y: "b" } }]]);
+  });
+
+  it("無鍵的巢狀清單項填多行值：對映、文字、清單各自讀回", () => {
+    const values = { m: "x: a\ny: b", t: "第一行\n第二行", l: "- a\n- b" };
+    expect(read(fill(["列表:", "  - - {{s.m}}"], values))).toEqual({ 列表: [[{ x: "a", y: "b" }]] });
+    expect(read(fill(["列表:", "  - - {{s.t}}"], values))).toEqual({ 列表: [["第一行\n第二行"]] });
+    expect(read(fill(["列表:", "  - - {{s.l}}"], values))).toEqual({ 列表: [[["a", "b"]]] });
+    // 沒記號也沒鍵的整行佔位：輸出與改動前逐字相同
+    expect(fill(["列表:", "  {{s.l}}", "說明:", "    {{s.t}}"], values)).toBe(
+      "<Status_block>\n列表:\n  - a\n  - b\n說明:\n    第一行\n    第二行\n</Status_block>",
+    );
+  });
+
+  it("清單項裡的鍵填多行對映與清單：讀回巢狀結構", () => {
+    const filled = fill(
+      ["- 固定: {{s.m}}", "  旁: 1", "- 清單: {{s.l}}", "- {{s.k}}: {{s.m}}"],
+      { k: "甲", m: "x: a\ny: b", l: "- a\n- b" },
+    );
+    expect(read(filled)).toEqual([{ 固定: { x: "a", y: "b" }, 旁: 1 }, { 清單: ["a", "b"] }, { 甲: { x: "a", y: "b" } }]);
+  });
+
+  it("鍵是佔位、值是固定文字：值照原樣，型別不變", () => {
+    expect(read(fill(["{{s.a}}: 1", "{{s.b}}: true", "{{s.c}}: null", "{{s.d}}: 文字 # 註"], { a: "a", b: "b", c: "c", d: "d" }))).toEqual({
+      a: 1,
+      b: true,
+      c: null,
+      d: "文字",
+    });
+  });
+
+  it("特殊鍵值讀回實際鍵名", () => {
+    for (const key of ["", "第一行\n第二行", "true", "<<", "  前後空白  ", "a: b", "x #y", "null", "123"]) {
+      const parsed = read(fill(["{{s.k}}: 值", "固定: 1"], { k: key }));
+      expect(Object.keys(parsed)).toEqual([key.trim(), "固定"]);
+      expect(parsed[key.trim()]).toBe("值");
+    }
+  });
+
+  it("不誤判成鍵：引號值裡的冒號、行內集合、引號清單項輸出不變", () => {
+    const values = { k: "甲", v: "乙", t: "子時" };
+    expect(fill(['- "{{s.k}}: {{s.v}}"'], values)).toBe('<Status_block>\n- "甲: 乙"\n</Status_block>');
+    expect(read(fill(['時間: "{{s.t}}: 現在"'], values))).toEqual({ 時間: "子時: 現在" });
+    expect(read(fill(["- \"{{s.t}}: 現在\""], values))).toEqual(["子時: 現在"]);
+    expect(read(fill(["m: { {{s.k}}: v }"], values))).toEqual({ m: { 甲: "v" } });
+  });
+
+  it("註解行的值換行換空白、不影響結構", () => {
+    expect(fill(["# 注意 {{s.v}}", "a: 1"], { v: "x\ny" })).toBe("<Status_block>\n# 注意 x y\na: 1\n</Status_block>");
   });
 });

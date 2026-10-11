@@ -84,11 +84,68 @@ export function fillSkeletonPlaceholders(
   let out = "";
   let cursor = 0;
   for (const [start, end] of ranges) {
-    out += fillRaw(skeleton.slice(cursor, start), tree);
+    out += fillPlainRegion(skeleton.slice(cursor, start), tree);
     out += fillYamlRegion(skeleton.slice(start, end), tree, valueTypes);
     cursor = end;
   }
-  return out + fillRaw(skeleton.slice(cursor), tree);
+  return out + fillPlainRegion(skeleton.slice(cursor), tree);
+}
+
+// 記錄式正文行：整行只有正文槽一個佔位符、在行尾，前面的固定文字以欄位分隔 `|` 結尾（例如 `mainText|{{本回合.正文}}`）。
+// 這種格式一段一筆記錄，回傳前綴；其餘回 null。
+function recordPrefix(line: string): string | null {
+  const matches = [...line.matchAll(PLACEHOLDER_REGEX)];
+  if (matches.length !== 1 || !isBody(matches[0][1])) return null;
+  const at = matches[0].index ?? 0;
+  if (line.slice(at + matches[0][0].length).trim() !== "") return null;
+  const prefix = line.slice(0, at);
+  return prefix.trimEnd().endsWith("|") ? prefix : null;
+}
+
+/** 骨架非 YAML 區的記錄式正文槽前綴（見 recordPrefix）；沒有回 null。前情提要換回正文時用同一份前綴。 */
+export function bodyRecordPrefix(skeleton: string, yamlTags: string[] = []): string | null {
+  const ranges = yamlRanges(skeleton, yamlTags);
+  const plain: string[] = [];
+  let cursor = 0;
+  for (const [start, end] of ranges) {
+    plain.push(skeleton.slice(cursor, start));
+    cursor = end;
+  }
+  plain.push(skeleton.slice(cursor));
+  for (const region of plain) {
+    for (const line of region.split("\n")) {
+      const prefix = recordPrefix(line);
+      if (prefix !== null) return prefix;
+    }
+  }
+  return null;
+}
+
+/**
+ * 正文照記錄式格式展開：按行切開、丟掉空白行，每行一筆 `前綴+該行`（已以前綴開頭的行不再補）。
+ * 正文沒有非空白行時照原樣接在前綴後面（與一般填值相同）。
+ */
+export function spreadBodyRecord(prefix: string, body: string): string {
+  const head = prefix.trimStart();
+  const indent = prefix.slice(0, prefix.length - head.length);
+  const lines = body.split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.length === 0) return prefix + body;
+  return lines
+    .map((line) => (line.trimStart().startsWith(head) ? indent + line.trimStart() : prefix + line))
+    .join("\n");
+}
+
+// 非 YAML 區：記錄式正文行照 spreadBodyRecord 展開，其餘照原樣填
+function fillPlainRegion(text: string, tree: Record<string, StateNode>): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      const prefix = recordPrefix(line);
+      if (prefix === null) return fillRaw(line, tree);
+      const token = [...line.matchAll(PLACEHOLDER_REGEX)][0][1];
+      return spreadBodyRecord(prefix, resolve(tree, token) ?? "");
+    })
+    .join("\n");
 }
 
 function escapeRegExp(text: string): string {
@@ -108,7 +165,12 @@ function looksLikeYaml(content: string): boolean {
         !/^(---|\.\.\.)(\s|$)/.test(line) &&
         !/^\{\{[^{}\n]+\}\}$/.test(line),
     );
-  return first !== undefined && /^(-\s|-$|[^\s:#{][^:#]*:(\s|$))/.test(first);
+  // 佔位符遮成普通字元再判斷：動態鍵 `{{k}}:` 也是鍵
+  return first !== undefined && /^(-\s|-$|[^\s:#{][^:#]*:(\s|$))/.test(maskPlaceholders(first));
+}
+
+function maskPlaceholders(text: string): string {
+  return text.replace(PLACEHOLDER_REGEX, (match) => "x".repeat(match.length));
 }
 
 // 每個 YAML 容器 `<tag>…</tag>` 的內文範圍（內文確實是 YAML 結構才算），依位置排序、不重疊
@@ -147,8 +209,6 @@ const YAML_UNSAFE_PLAIN = /^[\s\-?:,[\]{}#&*!|>'"%@`]|\s$|: |:$| #|[\u0000-\u001
 const YAML_BLOCK_STRUCTURE = /^\s*(-\s|-$|[^\s:#][^:#]*:(\s|$))/;
 // 開啟區塊純量的那一行：`鍵: |`、`- >-` 之類
 const YAML_BLOCK_OPENER = /^\s*(?:-\s+|[^#\s][^#]*?:\s+)[|>][+-]?[0-9]?\s*$/;
-// 一行的開頭：縮排、清單記號、鍵（鍵不能以引號、#、{ 開頭）
-const YAML_LINE = /^(\s*(?:-\s+)?)((?:[^\s"'#{][^:#]*?|"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'):(?:\s+|$))?(.*)$/;
 const SINGLE_PLACEHOLDER = /^\{\{([^{}\n]+)\}\}$/;
 
 function plainScalar(text: string): string {
@@ -203,7 +263,12 @@ function fillYamlRegion(
     }
     if (!/\{\{[^{}\n]+\}\}/.test(line)) {
       out.push(line);
-      if (YAML_BLOCK_OPENER.test(line)) blockParent = indent;
+      if (YAML_BLOCK_OPENER.test(line)) blockParent = blockColumn(line, indent);
+      continue;
+    }
+    // 註解行：值照單行填（換行換空白），不影響結構
+    if (line.trim().startsWith("#")) {
+      out.push(fillInline(line, tree));
       continue;
     }
     // 正文槽走正文契約：整行照原樣填，永不 YAML 化
@@ -211,9 +276,17 @@ function fillYamlRegion(
       out.push(fillRaw(line, tree));
       continue;
     }
-    out.push(fillYamlLine(line, indent, tree, valueTypes));
+    const filled = fillYamlLine(line, indent, tree, valueTypes);
+    out.push(filled.text);
+    if (filled.block) blockParent = blockColumn(line, indent);
   }
   return out.join("\n");
+}
+
+// 區塊純量的父層欄：有鍵（`- 鍵: |`）是鍵所在欄，沒鍵（`- |`）是行首縮排；內容行要比它更深
+function blockColumn(line: string, indent: number): number {
+  const { lead, key } = splitYamlLine(line);
+  return key === "" ? indent : lead.length;
 }
 
 function fillBlockLine(line: string, indent: number, tree: Record<string, StateNode>): string {
@@ -224,16 +297,100 @@ function fillBlockLine(line: string, indent: number, tree: Record<string, StateN
   });
 }
 
+// 註解裡的值：換行換成空白，留在同一行
+function fillInline(text: string, tree: Record<string, StateNode>): string {
+  return text.replace(PLACEHOLDER_REGEX, (match, token: string) => {
+    const value = resolve(tree, token);
+    return value === null ? match : value.replace(/\r?\n/g, " ");
+  });
+}
+
+// 引號純量（從 from 的引號起算）收尾引號的位置；沒收尾回 -1
+function quoteEnd(text: string, from: number): number {
+  const quote = text[from];
+  let end = from + 1;
+  while (end < text.length) {
+    if (quote === '"' && text[end] === "\\") end += 2;
+    else if (quote === "'" && text[end] === "'" && text[end + 1] === "'") end += 2;
+    else if (text[end] === quote) return end;
+    else end += 1;
+  }
+  return -1;
+}
+
+/**
+ * 一行拆成縮排與清單記號（lead）、鍵、分隔（冒號加後面的空白）、值。鍵只認 plain 鍵（開頭不是引號、`[`、
+ * `{`（`{{` 除外）、`#`，不含 `#`）或一整段引號純量；分隔冒號是後接空白或行尾的第一個冒號，佔位符與引號內的不算。
+ * 沒有鍵時 key、sep 是空字串，整段都是值。
+ */
+function splitYamlLine(line: string): { lead: string; key: string; sep: string; rest: string } {
+  const lead = /^\s*(?:-\s+)*/.exec(line)?.[0] ?? "";
+  const body = line.slice(lead.length);
+  const none = { lead, key: "", sep: "", rest: body };
+  let keyEnd: number;
+  if (body.startsWith('"') || body.startsWith("'")) {
+    const end = quoteEnd(body, 0);
+    if (end === -1 || !/^:(\s|$)/.test(body.slice(end + 1))) return none;
+    keyEnd = end + 1;
+  } else {
+    if (/^[[#]|^\{(?!\{)/.test(body)) return none;
+    const masked = maskPlaceholders(body);
+    const colon = masked.search(/:(\s|$)/);
+    if (colon <= 0 || masked.slice(0, colon).includes("#")) return none;
+    keyEnd = colon;
+  }
+  const sep = /^:\s*/.exec(body.slice(keyEnd))?.[0] ?? ":";
+  return { lead, key: body.slice(0, keyEnd), sep, rest: body.slice(keyEnd + sep.length) };
+}
+
+// 鍵裡的佔位符：plain 鍵填好去頭尾空白後照純量規則（會被轉型或含指示字元就加引號）；引號鍵照各自的引號規則
+function fillYamlKey(key: string, tree: Record<string, StateNode>): string {
+  if (!/\{\{[^{}\n]+\}\}/.test(key)) return key;
+  if (key.startsWith('"')) {
+    return `"${key.slice(1, -1).replace(PLACEHOLDER_REGEX, (match, token: string) => {
+      const value = resolve(tree, token);
+      return value === null ? match : escapeDouble(value);
+    })}"`;
+  }
+  if (key.startsWith("'")) {
+    const full = fillRaw(key.slice(1, -1).replace(/''/g, "'"), tree);
+    return full.includes("\n") ? JSON.stringify(full) : `'${full.replace(/'/g, "''")}'`;
+  }
+  return plainScalar(fillRaw(key, tree).trim());
+}
+
+// 鍵後面的區塊純量指示符（`|`、`>-`、`|2+` 之類，可帶行尾註解）
+const YAML_BLOCK_INDICATOR = /^[|>](?:[+-]?[0-9]?|[0-9][+-])(?:\s+#.*)?$/;
+
 function fillYamlLine(
   line: string,
   indent: number,
   tree: Record<string, StateNode>,
   valueTypes: Record<string, string>,
+): { text: string; block: boolean } {
+  const { lead, key: rawKey, sep, rest } = splitYamlLine(line);
+  const key = rawKey === "" ? "" : `${fillYamlKey(rawKey, tree)}${sep}`;
+  if (rawKey !== "") {
+    // 值段沒有佔位符：固定文字照原樣（`{{k}}: 1` 的 1 仍是數字）
+    if (!/\{\{[^{}\n]+\}\}/.test(rest)) {
+      return { text: `${lead}${key}${rest}`, block: YAML_BLOCK_INDICATOR.test(rest.trim()) };
+    }
+    // 值只剩空白或註解（子層在下面幾行）：鍵後原樣接上；區塊指示符照留，底下交給區塊純量規則
+    const value = rest.trim();
+    if (value === "" || value.startsWith("#")) return { text: `${lead}${key}${fillInline(rest, tree)}`, block: false };
+    if (YAML_BLOCK_INDICATOR.test(value)) return { text: `${lead}${key}${fillInline(rest, tree)}`, block: true };
+  }
+  return { text: fillYamlValue(lead, key, rest, indent, tree, valueTypes), block: false };
+}
+
+function fillYamlValue(
+  lead: string,
+  key: string,
+  rest: string,
+  indent: number,
+  tree: Record<string, StateNode>,
+  valueTypes: Record<string, string>,
 ): string {
-  const parsed = YAML_LINE.exec(line);
-  const lead = parsed?.[1] ?? "";
-  const key = parsed?.[2] ?? "";
-  const rest = parsed?.[3] ?? line;
   if (rest.startsWith('"')) {
     let end = 1;
     while (end < rest.length && rest[end] !== '"') end += rest[end] === "\\" ? 2 : 1;
@@ -271,7 +428,9 @@ function fillYamlLine(
       return `${" ".repeat(indent)}${lines.join(`\n${" ".repeat(indent)}`)}${comment}`;
     }
     if (lines.length > 1) {
-      const child = " ".repeat(indent + 2);
+      // 子層要比值所在欄更深：有鍵（`- 鍵: {{x}}`）比鍵所在欄深一層，沒鍵（`- - {{x}}`）對齊最內層清單項的內容欄，
+      // 沒記號也沒鍵維持行首縮排加一層
+      const child = " ".repeat(key === "" ? (lead.trim() === "" ? indent + 2 : lead.length) : lead.length + 2);
       const body = lines.map((text) => (text === "" ? "" : `${child}${text}`)).join("\n");
       const head = `${lead}${key}`.trimEnd();
       const structure = YAML_BLOCK_STRUCTURE.test(lines.find((text) => text.trim() !== "") ?? "");

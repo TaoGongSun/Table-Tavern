@@ -163,6 +163,15 @@ describe("pickCardShell", () => {
       }
     });
 
+    it("本回合 底下其他欄位照留，正文另外放進 本回合.正文", () => {
+      const skeleton = "<UI>{{本回合.正文}}|{{本回合.在場NPC}}|{{本回合.檢定}}</UI>";
+      const picked = pick(skeleton, {
+        tableMode: "interface",
+        events: [gmAt("正文", { 本回合: { 正文: "舊", 在場NPC: "村田", 檢定: "成功" } })],
+      });
+      expect(picked?.current.text).toBe("<UI>正文|村田|成功</UI>");
+    });
+
     it("沒有快照的 GM 樓退回原文", () => {
       const noSnapshot = [gm("上回合", "<UI>上回合畫面</UI>"), gm("沒有快照")];
       const picked = pick(skeleton, { tableMode: "interface", events: noSnapshot });
@@ -409,6 +418,23 @@ describe("pickCardShell", () => {
       const event = recap("—\r\n**甲**\r\n---\r\n- 乙\r\n", { World: { Time: "9:30" } });
       const picked = pick(panel, { tableMode: "interface", events: [event] });
       expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n甲\r\n- 乙\r\n<p>時間 9:30</p></body>");
+    });
+
+    it("記錄式正文槽（`mainText|`）：摘要每行一筆記錄，本樓、交給卡片那一樓與殼（$1 嵌在 JS 模板字串）三處一致", () => {
+      const record: CardInterface = {
+        ...card,
+        scripts: [{ ...card.scripts[0], replace_string: "```html\n<script>const raw = `$1`;</script>\n```" }],
+      };
+      const skeleton = "<UI>\nmainText|{{本回合.正文}}\nnpc|{{本回合.在場NPC}}\n</UI>";
+      const picked = pick(skeleton, {
+        tableMode: "interface",
+        cardInterfaces: [record],
+        events: [recap("甲\n\n乙", { 本回合: { 在場NPC: "村田" } })],
+      });
+      const lines = "\nmainText|【前情提要】\nmainText|甲\nmainText|乙\nnpc|村田\n";
+      expect(picked?.current.text).toBe(`<UI>${lines}</UI>`);
+      expect(picked?.floors[0].message).toBe(picked?.current.text);
+      expect(picked?.shell).toBe(`<script>const raw = \`${lines}\`;</script>`);
     });
 
     it("沒有骨架的桌：前情提要照舊走原文", () => {
