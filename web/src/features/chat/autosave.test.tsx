@@ -179,9 +179,9 @@ describe("自動存檔", () => {
     // 首格還沒寫成：模型一發都沒送
     expect(vi.mocked(streamChat)).not.toHaveBeenCalled();
     expect(await real.list()).toEqual([]);
+    // 放行後要走完寫首格、mvu、選模才送模：等它送出，不賭固定 20ms 等得夠（負載下會超過）
     release();
-    await settle();
-    expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
+    await act(async () => vi.waitFor(() => expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1), { timeout: 2000 }));
     const [meta] = await real.list();
     expect(meta).toBeDefined();
   });
