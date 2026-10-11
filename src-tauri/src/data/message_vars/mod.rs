@@ -97,6 +97,8 @@ impl<'de> Deserialize<'de> for VarsTable {
 }
 
 #[cfg(test)]
+mod list_block_tests;
+#[cfg(test)]
 mod replace_parity_tests;
 #[cfg(test)]
 mod tests;

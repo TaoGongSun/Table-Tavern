@@ -13,6 +13,7 @@ fn block(json: &str) -> StateBlock {
         fields: Vec::new(),
         updates: vec![format!("<JSONPatch>{json}</JSONPatch>")],
         display: String::new(),
+        ..Default::default()
     }
 }
 
@@ -132,6 +133,7 @@ fn notes_follow_source_order_across_parse_and_apply_and_blocks() {
             r#"<JSONPatch>[{"op":"replace","path":"/C","value":1}]</JSONPatch>"#.to_owned(),
         ],
         display: String::new(),
+        ..Default::default()
     };
     apply_block(&mut world, &blocks, "阿濤");
     let heads: Vec<String> = world

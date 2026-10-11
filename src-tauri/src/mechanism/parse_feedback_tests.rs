@@ -177,6 +177,7 @@ fn broken_json_note_does_not_claim_blocked_updates_were_applied() {
         fields: Vec::new(),
         updates: vec![r#"<JSONPatch>[{"op":"delta","path":"/A/沒有","value":1} {"op":"replace","path":"/A/x","value":}]</JSONPatch>"#.to_owned()],
         display: String::new(),
+        ..Default::default()
     };
     apply_block(&mut world, &block, "阿濤");
     assert_eq!(

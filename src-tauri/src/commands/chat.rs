@@ -399,7 +399,10 @@ pub(crate) fn gm_commit_apply(
     Option<mechanism::Outcome>,
     Option<data::message_vars::TypedBatch>,
 ) {
-    let apply = !block.fields.is_empty() || !block.updates.is_empty() || loaded.incremental;
+    let apply = !block.fields.is_empty()
+        || !block.lists.is_empty()
+        || !block.updates.is_empty()
+        || loaded.incremental;
     let outcome = apply.then(|| {
         let scene = state.current_scene;
         state.mechanism.numeric_update = loaded.numeric_update;
@@ -1005,6 +1008,33 @@ mod tests {
             .unwrap();
         assert_eq!(reply.text, "你好");
         assert_eq!(reply.raw.as_deref(), Some(format!("你好{tag}").as_str()));
+    }
+
+    /// 只有清單（`鍵: []`）的狀態區塊也要套用：非增量桌照樣清空那支清單
+    #[test]
+    fn list_only_status_block_still_applies() {
+        let mut state: data::WorldState = serde_json::from_value(serde_json::json!({
+            "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "name": "清單桌",
+            "current_scene": 0
+        }))
+        .unwrap();
+        data::set_tree_value(
+            &mut state.state.tree,
+            &["名單".to_owned(), "0".to_owned()],
+            "林远",
+        );
+        let block =
+            crate::transport::extract_state_block("旁白<Status_block>名單: []</Status_block>");
+        assert!(block.fields.is_empty() && block.updates.is_empty());
+        let loaded = state.mechanism.clone();
+        let (outcome, _) =
+            super::gm_commit_apply(&mut state, None, &block, "阿濤", &loaded, false, false);
+        assert!(outcome.is_some());
+        assert_eq!(
+            state.state.tree.get("名單"),
+            Some(&data::StateNode::Branch(Default::default()))
+        );
     }
 
     /// GM 中止半截照中止規則：沒閉合的標籤、標記前半、沒閉合的普通圍欄都切；自閉合不吞正文

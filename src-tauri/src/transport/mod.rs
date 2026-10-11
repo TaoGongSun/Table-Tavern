@@ -15,6 +15,9 @@ pub(crate) mod responses;
 mod runaway;
 mod stall;
 mod state_view;
+mod state_yaml;
+#[cfg(test)]
+mod state_yaml_tests;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub(crate) mod translate;

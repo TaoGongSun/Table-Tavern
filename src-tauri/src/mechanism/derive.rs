@@ -203,6 +203,7 @@ mod tests {
             fields: Vec::new(),
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
 
         apply_block(&mut world, &block, "阿濤");

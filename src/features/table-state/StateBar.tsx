@@ -1,6 +1,6 @@
 // 牌桌狀態列：平欄摘要（時間｜地點｜在場）是收合時唯一的一行，本身就是開關；
 // 展開後是可點擊編輯的欄位與可折疊的狀態樹。開關記在 localStorage，跨桌沿用。
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { t } from "../../i18n";
 import { BranchBinding, StateNode } from "../../shared/contracts/backend-contracts";
 import { CharacterCard, CharacterMeta } from "../characters/card-model";
@@ -8,6 +8,12 @@ import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
+
+/** 清單出身的分支：鍵恰為 0..n-1（從 0 起、不缺號、至少一項），與後端 is_index_branch 一致 */
+function isIndexBranch(node: Record<string, StateNode>): boolean {
+  const keys = Object.keys(node);
+  return keys.length > 0 && keys.every((_, index) => index.toString() in node);
+}
 
 // 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；
 // 大小寫不分、容許中間空白（{{ user }}），其他巨集不動
@@ -155,9 +161,20 @@ export function StateBar({
     return set;
   }, [player, bindings]);
 
-  // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉
-  function stateTreeNodes(nodes: Record<string, StateNode>, path: string[], depth: number) {
-    return Object.entries(nodes).map(([key, node]) => {
+  // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉。
+  // inList：這一層是清單項或其底下（祖先有鍵恰為 0..n-1 連號的分支）
+  function stateTreeNodes(
+    nodes: Record<string, StateNode>,
+    path: string[],
+    depth: number,
+    inList = false,
+  ): ReactNode {
+    const entries = Object.entries(nodes);
+    // 空分支（例如清空的清單）內容區顯示空值字樣；根層空樹什麼都不印
+    if (entries.length === 0 && depth > 0) {
+      return <div className="state-tree-empty">{t("stateEmptyValue")}</div>;
+    }
+    return entries.map(([key, node]) => {
       const childPath = [...path, key];
       if (typeof node === "string") return stateLeafRow(childPath, true, key);
       const bound = bindings.find(
@@ -165,9 +182,11 @@ export function StateBar({
           binding.path.length === childPath.length &&
           binding.path.every((segment, index) => segment === childPath[index]),
       );
-      // 清單出身的分支（鍵全是數字索引，如「氣味標記者：0→利格魯德」的名冊）不是誰的狀態包，
-      // 掛指認下拉會被讀成「挑誰出場」；只有名字鍵的物件分支才提供指認。
-      const isList = Object.keys(node).every((childKey) => /^\d+$/.test(childKey));
+      // 清單出身的分支（鍵恰為 0..n-1，如「氣味標記者：0→利格魯德」的名冊）與清單裡的項目
+      // （如「人物列表/0」及其底下）不是誰的狀態包，掛指認下拉會被讀成「挑誰出場」；
+      // 只有名字鍵的物件分支才提供指認。年份那種不連號的數字鍵照常是名字鍵。
+      const indexBranch = isIndexBranch(node);
+      const isList = inList || indexBranch || Object.keys(node).length === 0;
       return (
         <details
           className="state-tree-branch"
@@ -199,7 +218,9 @@ export function StateBar({
               </select>
             )}
           </summary>
-          <div className="state-tree-children">{stateTreeNodes(node, childPath, depth + 1)}</div>
+          <div className="state-tree-children">
+            {stateTreeNodes(node, childPath, depth + 1, inList || indexBranch)}
+          </div>
         </details>
       );
     });

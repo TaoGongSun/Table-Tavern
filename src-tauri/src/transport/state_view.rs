@@ -138,7 +138,7 @@ fn render_state_tree(
     path: &mut Vec<String>,
 ) {
     let incremental = render.mechanism.incremental;
-    for (key, node) in tree {
+    for (key, node) in ordered(tree) {
         path.push(key.clone());
         let indent = "  ".repeat(path.len() - 1 - render.base);
         let branch_hidden = incremental && !render.align && render.hidden.iter().any(|h| h == path);
@@ -160,13 +160,23 @@ fn render_state_tree(
                             String::new()
                         };
                         let value = replace_st_macros(value, render.user_name, None);
-                        output.push_str(&field_line(
-                            &indent,
-                            key,
-                            &format!("{value}{mark}"),
-                            render.en,
-                        ));
+                        if !incremental && value.contains('\n') {
+                            output.push_str(&field_line(&indent, key, "|", render.en));
+                            push_block_lines(output, &format!("{indent}  "), &value);
+                        } else {
+                            output.push_str(&field_line(
+                                &indent,
+                                key,
+                                &format!("{value}{mark}"),
+                                render.en,
+                            ));
+                        }
                     }
+                }
+                StateNode::Branch(children)
+                    if !incremental && (children.is_empty() || data::is_index_branch(children)) =>
+                {
+                    render_list(output, &indent, key, children, render, path);
                 }
                 StateNode::Branch(children) => {
                     let header = match render.en {
@@ -183,6 +193,99 @@ fn render_state_tree(
             }
         }
         path.pop();
+    }
+}
+
+/// 分支的子節點照印出順序：清單出身的索引分支依數字排（字串排會變成 0,1,10,2…）。
+fn ordered(tree: &BTreeMap<String, StateNode>) -> Vec<(&String, &StateNode)> {
+    let mut entries: Vec<_> = tree.iter().collect();
+    if data::is_index_branch(tree) {
+        entries.sort_by_key(|(key, _)| key.parse::<usize>().unwrap_or(usize::MAX));
+    }
+    entries
+}
+
+/// 全量桌把清單出身的分支印回 YAML 清單（與狀態區塊解析器往返一致）：空的印 `鍵：[]`；
+/// 純量項 `- 值`（含冒號就加引號）；物件項第一個子鍵接在 `- ` 後、其餘對齊它；巢狀清單 `- - 值`。
+fn render_list(
+    output: &mut String,
+    indent: &str,
+    key: &str,
+    children: &BTreeMap<String, StateNode>,
+    render: &TreeRender,
+    path: &mut Vec<String>,
+) {
+    if children.is_empty() {
+        output.push_str(&field_line(indent, key, "[]", render.en));
+        return;
+    }
+    output.push_str(&match render.en {
+        true => format!("{indent}{key}:\n"),
+        false => format!("{indent}{key}：\n"),
+    });
+    render_items(output, &format!("{indent}  "), children, render, path);
+}
+
+fn render_items(
+    output: &mut String,
+    item_indent: &str,
+    children: &BTreeMap<String, StateNode>,
+    render: &TreeRender,
+    path: &mut Vec<String>,
+) {
+    for (index, node) in ordered(children) {
+        path.push(index.clone());
+        match node {
+            StateNode::Leaf(value) => {
+                let value = replace_st_macros(value, render.user_name, None);
+                if value.contains('\n') {
+                    output.push_str(&format!("{item_indent}- |\n"));
+                    push_block_lines(output, &format!("{item_indent}  "), &value);
+                } else {
+                    output.push_str(&format!("{item_indent}- {}\n", list_scalar(&value)));
+                }
+            }
+            StateNode::Branch(grand) if grand.is_empty() => {
+                output.push_str(&format!("{item_indent}- []\n"));
+            }
+            StateNode::Branch(grand) => {
+                let inner_indent = format!("{item_indent}  ");
+                let mut inner = String::new();
+                if data::is_index_branch(grand) {
+                    render_items(&mut inner, &inner_indent, grand, render, path);
+                } else {
+                    render_state_tree(&mut inner, grand, render, path);
+                }
+                // 第一行的縮排換成 `- `，其餘行原樣（子鍵已在 `- ` 後內容那一欄）
+                let first = inner.strip_prefix(inner_indent.as_str()).unwrap_or(&inner);
+                output.push_str(&format!("{item_indent}- {first}"));
+            }
+        }
+        path.pop();
+    }
+}
+
+/// 多行葉子印成區塊純量的續行（`鍵：|` 底下多縮排一層）；空白行與行首縮排不保留。
+fn push_block_lines(output: &mut String, indent: &str, value: &str) {
+    for line in value.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        output.push_str(&format!("{indent}{line}\n"));
+    }
+}
+
+/// 清單純量項：含冒號、引號開頭、空字串或長得像空容器時加引號，免得讀回時被當成鍵或容器。
+fn list_scalar(value: &str) -> String {
+    let needs_quote = value.is_empty()
+        || value.contains([':', '：'])
+        || value.starts_with(['"', '\'', '-', '#', '*', '+', '>', '[', '{']);
+    if !needs_quote {
+        return value.to_owned();
+    }
+    if !value.contains('"') {
+        format!("\"{value}\"")
+    } else if !value.contains('\'') {
+        format!("'{value}'")
+    } else {
+        value.to_owned()
     }
 }
 
@@ -424,5 +527,7 @@ fn collect_snapshot_updates(
     }
 }
 
+#[cfg(test)]
+mod list_render_tests;
 #[cfg(test)]
 mod tests;
