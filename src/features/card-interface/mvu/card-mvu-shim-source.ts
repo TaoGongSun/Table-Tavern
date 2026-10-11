@@ -243,7 +243,6 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
         if (normalized.character_name !== undefined && normalized.character_name !== "current") {
           throw new Error(name + ": 只支援目前這張卡的角色變數");
         }
-        if (store.characterId === "") throw new Error(name + ": 這份殼找不到唯一所屬的卡，不能讀寫角色變數");
         return "character:" + store.characterId;
       case "script":
       case "extension":

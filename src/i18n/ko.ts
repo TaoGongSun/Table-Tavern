@@ -572,6 +572,7 @@ export const ko: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "카드 인터페이스",
   cardInterfaceClose: "인터페이스 닫기",
+  cardInterfaceWorldTab: "세계",
 
 
   importCardInterface: "이 카드에는 전용 화면이 들어 있습니다. 테이블을 연 뒤 채팅 위쪽의 「카드 인터페이스」를 누르면 전체 화면으로 열립니다.",

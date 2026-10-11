@@ -594,6 +594,7 @@ export const zh = {
 
   cardInterfaceOpen: "卡片介面",
   cardInterfaceClose: "關閉介面",
+  cardInterfaceWorldTab: "世界",
 
 
   importCardInterface: "這張卡自帶介面畫面。開桌後點聊天上方的「卡片介面」就能整面打開。",

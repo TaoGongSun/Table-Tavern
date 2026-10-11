@@ -434,9 +434,6 @@ describe("沙盒非 message 層（8.7）", () => {
     expect(win.getVariables()).toEqual({ c: 1 });
     expect(win.getVariables(options.script)).toEqual({ s: [1, 2] });
     expect(posted).toHaveLength(0);
-    const unknown = sandbox({ ...layered, characterId: "" });
-    expect(() => unknown.win.getVariables({ type: "character" })).toThrow(/唯一所屬的卡/);
-    expect(unknown.win.getVariables()).toEqual({ c: 1 });
   });
 
   it("寫入在飛時推來的舊版本快照不蓋掉本地值", async () => {

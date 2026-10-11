@@ -881,4 +881,150 @@ describe("useCardInterfaceController", () => {
       expect(controller!.shellDoc).not.toContain("getAllVariables");
     });
   });
+
+  describe("多卡分頁", () => {
+    // 世界書卡畫 <UI>、角色卡 c9 畫 <S>
+    const charCard: CardInterface = {
+      ...fixedCard,
+      character_id: "c9",
+      character_name: "角色",
+      scripts: [{ ...fixedCard.scripts[0], find_regex: "/<S>([\\s\\S]*?)<\\/S>/s", replace_string: "```html\n<!DOCTYPE html><head></head><body>角色殼</body>\n```" }],
+      opening: null,
+    };
+    const worldCard: CardInterface = { ...fixedCard, character_id: "", character_name: "西幻" };
+    const line = (raw: string): TranscriptEvent => ({ ts: "t", speaker_id: "c9", speaker_name: "角色", kind: "dialogue", text: "台詞", raw });
+
+    beforeEach(() => {
+      backend.cards = [worldCard, charCard];
+    });
+
+    it("分頁只在面板開著且兩張都畫得出時列出；手動選了就停著，新回覆不跳走", async () => {
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>")] });
+      expect(controller!.cardTabs).toEqual([]);
+      expect(controller!.activeCard).toBe("c9");
+      await act(async () => controller!.open());
+      expect(controller!.cardTabs.map((tab) => tab.key)).toEqual(["world", "c9"]);
+      await act(async () => controller!.pinCard("world"));
+      expect(controller!.activeCard).toBe("world");
+      expect(controller!.shellDoc).toContain("固定殼");
+      // 角色又說了一句：仍停在世界書卡
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>"), line("<S>又一句</S>")] });
+      expect(controller!.activeCard).toBe("world");
+      // 再切回角色卡
+      await act(async () => controller!.pinCard("c9"));
+      expect(controller!.activeCard).toBe("c9");
+    });
+
+    it("固定的卡畫不出殼：自動退回跟著最新、介面不關", async () => {
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>")] });
+      await act(async () => controller!.open());
+      await act(async () => controller!.pinCard("c9"));
+      expect(controller!.activeCard).toBe("c9");
+      await render({ events: [gm("<UI>旁白</UI>")] });
+      expect(controller!.activeCard).toBe("world");
+      expect(controller!.uiOpen).toBe(true);
+      // 那張卡之後又畫得出來：不會自己跳回去（固定已解除）
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>"), gm("<UI>新旁白</UI>")] });
+      expect(controller!.activeCard).toBe("world");
+    });
+
+    it("固定的卡在最近十樓以外：最近畫不出殼也照樣顯示它、面板不關", async () => {
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>")] });
+      await act(async () => controller!.open());
+      await act(async () => controller!.pinCard("world"));
+      const quiet = Array.from({ length: 12 }, (_, i) => gm(`沒有標籤${i}`));
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>"), ...quiet] });
+      expect(controller!.shellReady).toBe(true);
+      expect(controller!.uiOpen).toBe(true);
+      expect(controller!.activeCard).toBe("world");
+      expect(controller!.shellDoc).toContain("固定殼");
+    });
+
+    it("回大廳再進同一桌：解除固定", async () => {
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>")] });
+      await act(async () => controller!.open());
+      await act(async () => controller!.pinCard("world"));
+      await render({ worldId: "" });
+      await render({ worldId: "w1" });
+      expect(controller!.activeCard).toBe("c9");
+    });
+
+    it("兩張 MVU 卡對同一 GM 樓產出相同 HTML：切分頁換 token，舊佇列結束、舊 token 的寫入被拒", async () => {
+      const mvuOf = (id: string, name: string): CardInterface => ({ ...mvuCard, character_id: id, character_name: name });
+      backend.cards = [mvuOf("m1", "甲"), mvuOf("m2", "乙")];
+      backend.active = true;
+      backend.write = () => new Promise(() => {});
+      const floor: TranscriptEvent = {
+        ts: "t",
+        speaker_id: "",
+        speaker_name: "GM",
+        kind: "narration",
+        text: "第二回合正文",
+        id: "e1",
+        vars_rev: "r1",
+        message_vars: { stat_data: { 玩家: { 金幣: 1 } } },
+        state: { table: {}, tree: { 玩家: { 金幣: "1" } } },
+      };
+      await render({ events: [floor], tree: { 玩家: { 金幣: "1" } } });
+      await act(async () => controller!.open());
+      await render();
+      expect(controller!.activeCard).toBe("m1");
+      expect(controller!.cardTabs.map((tab) => tab.key)).toEqual(["m1", "m2"]);
+      const oldToken = controller!.shellKey;
+      const send = (token: string, requestId: string) => {
+        const frame = { postMessage: vi.fn() };
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: { source: "table-tavern-card", kind: "mvu-write", token, generation: 3, scene: 0, requestId, target: "e1", base: "r1", payload: "{}" },
+            source: frame as unknown as Window,
+          }),
+        );
+        return frame;
+      };
+      let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+      await act(async () => {
+        frame = send(oldToken, "q1");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(backend.writes).toHaveLength(1);
+      await act(async () => controller!.pinCard("m2"));
+      await render();
+      expect(controller!.activeCard).toBe("m2");
+      expect(controller!.shellKey).not.toBe(oldToken);
+      expect(controller!.mvu?.characterId).toBe("m2");
+      expect(frame!.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "mvu-settle", results: [{ requestId: "q1", ok: false, error: "closed" }] }),
+        { targetOrigin: "*" },
+      );
+      await act(async () => {
+        send(oldToken, "q2");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(backend.writes).toHaveLength(1);
+    });
+
+    it("換桌就回到跟著最新", async () => {
+      await render({ events: [gm("<UI>旁白</UI>"), line("<S>台詞</S>")] });
+      await act(async () => controller!.open());
+      await act(async () => controller!.pinCard("world"));
+      expect(controller!.activeCard).toBe("world");
+      await render({ worldId: "w2" });
+      expect(controller!.activeCard).toBe("c9");
+    });
+  });
+
+  it("組字中的 Esc 不關介面，一般 Esc 才關", async () => {
+    await render();
+    await act(async () => controller!.open());
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 229 }));
+    });
+    expect(controller!.uiOpen).toBe(true);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(controller!.uiOpen).toBe(false);
+  });
 });
+

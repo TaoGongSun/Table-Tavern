@@ -572,6 +572,7 @@ export const ptBR: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "Interface da Carta",
   cardInterfaceClose: "Fechar interface",
+  cardInterfaceWorldTab: "Mundo",
 
 
   importCardInterface:

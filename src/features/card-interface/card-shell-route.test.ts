@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickCardShell, skeletonYamlTags } from "./card-shell-route";
+import { drawableCards, pickCardShell, skeletonYamlTags } from "./card-shell-route";
 import { type CardInterface } from "./interface-card";
 import { setLang } from "../../i18n";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
@@ -512,7 +512,7 @@ describe("pickCardShell：MVU 卡", () => {
       mvu: { liveTree: liveTree as never, userName: "阿濤" },
     });
 
-  it("character 層身分是實際產生殼的卡：A 卡先列、B 卡產生殼時取 B；產不出同一份殼（腳本接力）就空字串；世界書卡固定 world", () => {
+  it("character 層身分是實際產生殼的卡：A 卡先列、B 卡產生殼時取 B；跨卡接力不成立（不出殼）；世界書卡固定 world", () => {
     const other = (id: string, find: string): CardInterface => ({
       ...mvuCard,
       character_id: id,
@@ -534,7 +534,7 @@ describe("pickCardShell：MVU 卡", () => {
     expect(owner([a, b])).toBe("B");
     expect(owner([b, a])).toBe("B");
     expect(owner([a, { ...b, character_id: "" }])).toBe("world");
-    // 兩張卡各自都產不出同一份殼（A 的輸出給 B 接著轉）：不猜
+    // 腳本按卡隔離：A 的輸出不再交給 B 接著轉，這段文字誰都畫不出殼
     const relay = (id: string, find: string, replace: string): CardInterface => ({
       ...b,
       character_id: id,
@@ -542,7 +542,7 @@ describe("pickCardShell：MVU 卡", () => {
     });
     const first = relay("R1", "<StatusPlaceHolderImpl/>", "<Mid/>");
     const second = relay("R2", "<Mid/>", "```html\n<!DOCTYPE html><body>接力殼</body>\n```");
-    expect(owner([first, second])).toBe("");
+    expect(owner([first, second])).toBeUndefined();
   });
 
   it("身分跟著選殼命中的那段文字走：A 的舊樓與 B 的最新樓產出同一份殼時取 B，不因重掃舊樓取 A", () => {
@@ -637,3 +637,185 @@ describe("pickCardShell：MVU 卡", () => {
     expect(skeletonPick?.mvu ?? null).toBeNull();
   });
 });
+
+describe("多卡：腳本按卡隔離、說話者優先、指定卡", () => {
+  // 每張卡把 <Tag> 換成自己的殼；donass 型的雜項腳本另外測
+  const tagged = (id: string, tag: string, body: string, opening: string | null = null): CardInterface => ({
+    character_id: id,
+    character_name: id === "" ? "世界" : `卡${id}`,
+    scripts: [
+      {
+        name: "殼",
+        find_regex: `/<${tag}>([\\s\\S]*?)<\\/${tag}>/s`,
+        replace_string: `\`\`\`html\n<!DOCTYPE html><body>${body}:$1</body>\n\`\`\``,
+        trim_strings: [],
+        min_depth: null,
+        max_depth: null,
+      },
+    ],
+    unsupported: null,
+    opening,
+  });
+  const line = (speaker: string, raw: string): TranscriptEvent => ({
+    ts: "t",
+    speaker_id: speaker,
+    speaker_name: speaker,
+    kind: "dialogue",
+    text: "台詞",
+    raw,
+  });
+  const base = { tableMode: null, refactorShell: null } as const;
+
+  it("同標籤兩張卡：各自的台詞樓畫出各自的殼，說話者的卡排在後面也一樣", () => {
+    const a = tagged("A", "S", "A殼");
+    const b = tagged("B", "S", "B殼");
+    const events = [line("B", "<S>b說</S>")];
+    expect(pickCardShell({ ...base, events, cardInterfaces: [a, b] })?.shell).toBe("<!DOCTYPE html><body>B殼:b說</body>");
+    expect(pickCardShell({ ...base, events, cardInterfaces: [a, b] })?.card).toBe("B");
+    // 說話者沒有自己的介面：比照 GM 樓照順序
+    expect(pickCardShell({ ...base, events: [line("X", "<S>x說</S>")], cardInterfaces: [a, b] })?.card).toBe("A");
+  });
+
+  it("GM 樓先試世界書卡（世界書卡在清單最後也一樣）", () => {
+    const char = tagged("A", "S", "A殼");
+    const world = tagged("", "S", "世界殼");
+    const picked = pickCardShell({ ...base, events: [gm("x", "<S>旁白</S>")], cardInterfaces: [char, world] });
+    expect(picked?.card).toBe("world");
+    expect(picked?.shell).toContain("世界殼");
+  });
+
+  it("一張卡的雜項替換不改別張卡的文字與殼；卡內多支腳本照樣接力", () => {
+    const donass: CardInterface = {
+      ...tagged("D", "StatusData", "D殼"),
+      scripts: [
+        { ...tagged("D", "x", "").scripts[0], name: "代詞", find_regex: "/她/g", replace_string: "他" },
+        ...tagged("D", "StatusData", "D殼").scripts,
+      ],
+    };
+    const world = tagged("", "UI", "西幻");
+    const gmFloor = gm("x", "<UI>她拔劍</UI>");
+    const picked = pickCardShell({ ...base, events: [gmFloor], cardInterfaces: [donass, world] });
+    expect(picked?.shell).toBe("<!DOCTYPE html><body>西幻:她拔劍</body>");
+    const own = pickCardShell({ ...base, events: [line("D", "<StatusData>她</StatusData>")], cardInterfaces: [donass, world] });
+    expect(own?.shell).toBe("<!DOCTYPE html><body>D殼:他</body>");
+  });
+
+  it("空桌開場白只給所屬那張卡：同標籤兩張各自畫出自己的開場", () => {
+    const a = tagged("A", "S", "A殼", "<S>A開場</S>");
+    const b = tagged("B", "S", "B殼", "<S>B開場</S>");
+    const input = { ...base, events: [], cardInterfaces: [a, b] };
+    expect(pickCardShell(input)?.shell).toBe("<!DOCTYPE html><body>A殼:A開場</body>");
+    expect(pickCardShell({ ...input, card: "B" })?.shell).toBe("<!DOCTYPE html><body>B殼:B開場</body>");
+    expect(pickCardShell({ ...input, card: "B" })?.current).toEqual({ id: 0, name: "卡B", text: "<S>B開場</S>" });
+    expect(drawableCards(input)).toEqual([
+      { key: "A", name: "卡A" },
+      { key: "B", name: "卡B" },
+    ]);
+  });
+
+  it("指定卡：只用那張卡、掃整幕（十樓以外的舊樓也算）；那張卡畫不出就回 null", () => {
+    const a = tagged("A", "S", "A殼");
+    const b = tagged("B", "T", "B殼");
+    const events = [
+      line("B", "<T>很久以前</T>"),
+      ...Array.from({ length: 12 }, (_, i) => gm(`無${i}`)),
+      gm("x", "<S>最新</S>"),
+    ];
+    expect(pickCardShell({ ...base, events, cardInterfaces: [a, b] })?.card).toBe("A");
+    // 跟著最新只掃近十樓：B 那一樓太舊
+    expect(pickCardShell({ ...base, events: events.slice(0, -1), cardInterfaces: [a, b] })).toBeNull();
+    const pinned = pickCardShell({ ...base, events, cardInterfaces: [a, b], card: "B" });
+    expect(pinned?.shell).toBe("<!DOCTYPE html><body>B殼:很久以前</body>");
+    expect(pinned?.current.id).toBe(0);
+    expect(pickCardShell({ ...base, events, cardInterfaces: [a, b], card: "C" })).toBeNull();
+    expect(drawableCards({ ...base, events, cardInterfaces: [a, b] }).map((tab) => tab.key)).toEqual(["A", "B"]);
+    // 只有一張畫得出東西的卡：不列分頁
+    expect(drawableCards({ ...base, events, cardInterfaces: [a] })).toEqual([]);
+  });
+
+  it("最新 GM 樓後面接十則以上玩家樓：跟著最新與指定卡都還畫得出", () => {
+    const a = tagged("A", "S", "A殼");
+    const b = tagged("B", "T", "B殼");
+    const events = [gm("x", "<S>畫面</S>"), ...Array.from({ length: 12 }, (_, i) => player(`第${i}句`))];
+    expect(pickCardShell({ ...base, events, cardInterfaces: [a, b] })?.current.id).toBe(0);
+    expect(pickCardShell({ ...base, events, cardInterfaces: [a, b], card: "A" })?.current.id).toBe(0);
+  });
+
+  it("兩張卡產出相同 HTML：身分與 MVU character 層跟著命中的卡換人，{{char}} 換成命中卡的名字", () => {
+    const same = (id: string, tag: string): CardInterface => ({
+      ...tagged(id, tag, "同一份"),
+      scripts: [{ ...tagged(id, tag, "").scripts[0], replace_string: "```html\n<!DOCTYPE html><body>同一份</body>\n```" }],
+      mvu: true,
+    });
+    const a = same("A", "S");
+    const b = same("B", "S");
+    const mvu = { liveTree: { x: "1" } as never, userName: "阿濤" };
+    const pickA = pickCardShell({ ...base, events: [line("A", "<S>甲</S>")], cardInterfaces: [a, b], mvu });
+    const pickB = pickCardShell({ ...base, events: [line("B", "<S>乙</S>")], cardInterfaces: [a, b], mvu });
+    expect(pickA?.shell).toBe(pickB?.shell);
+    expect(pickA?.mvu?.characterId).toBe("A");
+    expect(pickB?.mvu?.characterId).toBe("B");
+    expect(pickA?.mvu?.macros.char).toBe("卡A");
+    expect(pickB?.mvu?.macros.char).toBe("卡B");
+  });
+
+  it("指定卡＋接管骨架：指定骨架來源卡時別張卡畫得出的原文樓改填骨架；指定別張卡時照它的原文", () => {
+    const source = tagged("", "UI", "骨架殼");
+    const other = tagged("B", "S", "B殼");
+    const events = [{ ...gmAt("旁白", { World: { Time: "清晨" } }), raw: "<S>B的原文</S>" }];
+    const input = {
+      tableMode: "interface",
+      refactorShell: "<UI>{{World.Time}} {{本回合.正文}}</UI>",
+      events,
+      cardInterfaces: [other, source],
+    };
+    // 跟著最新：原文畫得出（B）就用原文
+    expect(pickCardShell(input)?.card).toBe("B");
+    const pinnedSource = pickCardShell({ ...input, card: "world" });
+    expect(pinnedSource?.shell).toBe("<!DOCTYPE html><body>骨架殼:清晨 旁白</body>");
+    expect(pinnedSource?.current.text).toBe("<UI>清晨 旁白</UI>");
+    expect(pinnedSource?.floors[0].message).toBe(pinnedSource?.current.text);
+    const pinnedOther = pickCardShell({ ...input, card: "B" });
+    expect(pinnedOther?.shell).toBe("<!DOCTYPE html><body>B殼:B的原文</body>");
+    // 骨架只歸來源卡：沒有原文可畫的樓，指定別張卡畫不出骨架
+    expect(pickCardShell({ ...input, events: [gmAt("旁白", { World: { Time: "清晨" } })], card: "B" })).toBeNull();
+  });
+
+  it("已貼出的開場白：原文對得上某張卡的開場白就只給那張卡；對不上照 GM 樓規則", () => {
+    const dm = tagged("DM", "S", "DM殼", "<S>迷宮開場</S>");
+    const bcd = tagged("BCD", "S", "BCD殼", "  <S>配種開場</S>\n");
+    const posted = (raw: string): TranscriptEvent => ({ ...gm("開場", raw), opening: true });
+    const own = pickCardShell({ ...base, events: [posted("<S>配種開場</S>")], cardInterfaces: [dm, bcd] });
+    expect(own?.card).toBe("BCD");
+    expect(own?.shell).toBe("<!DOCTYPE html><body>BCD殼:配種開場</body>");
+    // 代換過巨集等對不上的開場：照 GM 樓順序
+    expect(pickCardShell({ ...base, events: [posted("<S>改過的開場</S>")], cardInterfaces: [dm, bcd] })?.card).toBe("DM");
+    // 對上的卡沒介面（沒腳本／加密）：照 GM 樓規則，不因認了卡就畫不出
+    const silent = { ...tagged("X", "S", "X殼", "<S>配種開場</S>"), scripts: [] };
+    expect(pickCardShell({ ...base, events: [posted("<S>配種開場</S>")], cardInterfaces: [silent, dm] })?.card).toBe("DM");
+  });
+
+  it("空桌開場白：世界書卡先（排在清單最後也一樣）", () => {
+    const char = tagged("A", "S", "A殼", "<S>角色開場</S>");
+    const world = tagged("", "S", "世界殼", "<S>世界開場</S>");
+    const picked = pickCardShell({ ...base, events: [], cardInterfaces: [char, world] });
+    expect(picked?.card).toBe("world");
+    expect(picked?.current.name).toBe("世界");
+  });
+
+  it("同標籤兩張卡＋接管骨架：骨架合成樓只歸來源卡，指定另一張畫不出骨架", () => {
+    const source = tagged("", "UI", "來源殼");
+    const twin = tagged("B", "UI", "B殼");
+    const input = {
+      tableMode: "interface",
+      refactorShell: "<UI>{{World.Time}} {{本回合.正文}}</UI>",
+      events: [gmAt("旁白", { World: { Time: "清晨" } })],
+      cardInterfaces: [twin, source],
+    };
+    expect(pickCardShell(input)?.card).toBe("world");
+    expect(pickCardShell(input)?.shell).toBe("<!DOCTYPE html><body>來源殼:清晨 旁白</body>");
+    expect(pickCardShell({ ...input, card: "B" })).toBeNull();
+    expect(drawableCards(input).map((tab) => tab.key)).toEqual(["world"]);
+  });
+});
+

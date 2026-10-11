@@ -7,6 +7,7 @@ import {
   buildStorageShimSource,
   CARD_STORAGE_LIMIT,
   extractShell,
+  createShellCache,
   findShell,
   parseStRegex,
   sanitizeCardStorage,
@@ -214,6 +215,52 @@ describe("findShell", () => {
 
   it("候選文字全對不上就回 null，空值直接跳過", () => {
     expect(findShell([card()], [null, undefined, "", "純文字"])).toBeNull();
+  });
+
+  it("按卡隔離：A 卡的輸出不交給 B 卡接著轉；回傳命中的卡", () => {
+    const relayA = card({ character_id: "A", scripts: [{ ...card().scripts[0], find_regex: "/<X>/", replace_string: "<UI>接力</UI>" }] });
+    const plainB = card({ character_id: "B" });
+    expect(findShell([relayA, plainB], ["<X>"])).toBeNull();
+    expect(findShell([relayA, plainB], ["<UI>直接</UI>"])?.card.character_id).toBe("B");
+  });
+
+  it("開場白只給所屬那張卡；說話者有自己的卡就只給他", () => {
+    const a = card({ character_id: "A" });
+    const b = card({ character_id: "B", scripts: [{ ...card().scripts[0], replace_string: "```html\n<!DOCTYPE html><body>B</body>\n```" }] });
+    expect(findShell([a, b], [{ text: "<UI>開場</UI>", owner: "B" }])?.shell).toContain("<body>B</body>");
+    expect(findShell([a, b], [{ text: "<UI>台詞</UI>", speaker: "B" }])?.card.character_id).toBe("B");
+    expect(findShell([a, b], [{ text: "<UI>台詞</UI>", speaker: "沒卡的人" }])?.card.character_id).toBe("A");
+    expect(findShell([a, b], [{ text: "<UI>開場</UI>", owner: "A" }], { only: "B" })).toBeNull();
+  });
+
+  it("快取：同一張卡同一段文字只套一次腳本；帶 noCache 的候選不進快取", () => {
+    const cache = createShellCache();
+    const a = card();
+    findShell([a], ["<UI>一</UI>"], { cache });
+    expect(cache.entries.size).toBe(1);
+    expect(cache.chars).toBeGreaterThan(0);
+    cache.entries.set([...cache.entries.keys()][0], "快取裡的殼");
+    expect(findShell([a], ["<UI>一</UI>"], { cache })?.shell).toBe("快取裡的殼");
+    findShell([a], [{ text: "<UI>佔位</UI>", noCache: true }], { cache });
+    expect(cache.entries.size).toBe(1);
+  });
+
+  it("單筆就超過上限的不存", () => {
+    const cache = createShellCache();
+    const huge = `<UI>${"字".repeat(20_000_001)}</UI>`;
+    expect(findShell([card()], [huge], { cache })).not.toBeNull();
+    expect(cache.entries.size).toBe(0);
+    expect(cache.chars).toBe(0);
+  });
+
+  it("快取超過總字元上限就整份清掉重來", () => {
+    const cache = createShellCache();
+    cache.chars = 19_999_990;
+    cache.entries.set("舊", null);
+    findShell([card()], ["<UI>這段文字加殼超過上限</UI>"], { cache });
+    expect(cache.entries.has("舊")).toBe(false);
+    expect(cache.entries.size).toBe(1);
+    expect(cache.chars).toBeLessThan(1000);
   });
 });
 

@@ -570,6 +570,7 @@ export const zhCN: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "卡片界面",
   cardInterfaceClose: "关闭界面",
+  cardInterfaceWorldTab: "世界",
 
 
   importCardInterface: "这张卡自带界面画面。开桌后点聊天上方的「卡片界面」就能整面打开。",
