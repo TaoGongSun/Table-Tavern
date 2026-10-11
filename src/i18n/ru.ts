@@ -572,6 +572,7 @@ export const ru: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "Интерфейс карты",
   cardInterfaceClose: "Закрыть интерфейс",
+  cardInterfaceWorldTab: "Мир",
 
 
   importCardInterface:

@@ -572,6 +572,7 @@ export const ja: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "カード画面",
   cardInterfaceClose: "画面を閉じる",
+  cardInterfaceWorldTab: "世界",
 
 
   importCardInterface: "このカードには専用の画面が付いています。卓を開いたらチャット上部の「カード画面」を押すと全画面で開けます。",

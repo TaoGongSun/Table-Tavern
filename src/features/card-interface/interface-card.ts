@@ -25,22 +25,101 @@ export interface CardInterface {
   mvu?: boolean;
 }
 
+/** 卡在這桌的穩定代號：角色卡用 character_id，世界書卡（沒有 id）固定 `world`（也是 MVU character 層的身分） */
+export function cardKey(card: CardInterface): string {
+  return card.character_id || "world";
+}
+
+/** 這張卡畫得出東西：不是 DRM／雲端載入器卡，而且有顯示腳本 */
+export function cardDrawable(card: CardInterface): boolean {
+  return card.unsupported === null && card.scripts.length > 0;
+}
+
 /**
- * 從幾段候選文字裡挑出第一個畫得出來的殼（依序試，先命中先用）。
- * 面板與匯入流程共用同一套判斷，才不會出現「按鈕說有、打開卻空的」。
- * index＝命中的是第幾段候選（呼叫端自己對回它代表哪一樓，這不是樓號）。
+ * 一段候選文字與它的來源。腳本按卡隔離（ST 的卡片 regex 只套在那張卡的訊息上）：
+ * - `owner`：已知所屬的卡（卡片開場白、已貼出且原文對得上的開場白、骨架合成樓），只給那張卡（cardKey）；
+ * - `speaker`：角色台詞樓的說話者，他有自己的介面就只給他的卡；
+ * - 其餘（GM 旁白、system 樓、說話者沒介面）：世界書卡先、其餘照桌上順序。
+ * 純字串＝沒有來源，照最後一種。`noCache`：這段文字每次選路都不同（前情提要佔位帶亂數），不進快取。
+ */
+export type ShellCandidate =
+  | string
+  | null
+  | undefined
+  | { text: string | null | undefined; speaker?: string; owner?: string; noCache?: boolean };
+
+/** 世界書卡先、其餘照桌上順序 */
+export function gmOrder(cards: CardInterface[]): CardInterface[] {
+  return [...cards.filter((card) => card.character_id === ""), ...cards.filter((card) => card.character_id !== "")];
+}
+
+/** 一段候選文字依來源該試哪幾張卡（依序，先命中先用） */
+export function candidateCards(cards: CardInterface[], candidate: ShellCandidate): CardInterface[] {
+  const usable = cards.filter(cardDrawable);
+  if (typeof candidate === "object" && candidate !== null) {
+    if (candidate.owner !== undefined) return usable.filter((card) => cardKey(card) === candidate.owner);
+    const speaker = candidate.speaker;
+    if (speaker) {
+      const own = usable.filter((card) => card.character_id !== "" && card.character_id === speaker);
+      if (own.length > 0) return own;
+    }
+  }
+  return gmOrder(usable);
+}
+
+/** 「某張卡套某段文字抽得出哪份殼」的快取（呼叫端持有；卡清單一換就換新的一份）。chars＝鍵與殼的總字元數 */
+export interface ShellCache {
+  entries: Map<string, string | null>;
+  chars: number;
+}
+// 殼動輒幾十 KB、鍵含整樓文字：照總字元數設上限，超過就整份清掉重來（約 40 MB 記憶體）
+const SHELL_CACHE_CHARS = 20_000_000;
+
+export function createShellCache(): ShellCache {
+  return { entries: new Map(), chars: 0 };
+}
+
+/** 單張卡套一段文字：卡內多支腳本照順序接力，抽不到回 null */
+export function cardShell(card: CardInterface, text: string, cache?: ShellCache): string | null {
+  const key = cache === undefined ? "" : `${cardKey(card)}\u0000${text}`;
+  if (cache?.entries.has(key)) return cache.entries.get(key) ?? null;
+  const shell = extractShell(applyScripts(text, card.scripts));
+  if (cache !== undefined) {
+    const size = key.length + (shell?.length ?? 0);
+    // 單筆就超過上限的不存：上限是嚴格的
+    if (size > SHELL_CACHE_CHARS) return shell;
+    if (cache.chars + size > SHELL_CACHE_CHARS) {
+      cache.entries.clear();
+      cache.chars = 0;
+    }
+    cache.entries.set(key, shell);
+    cache.chars += size;
+  }
+  return shell;
+}
+
+/**
+ * 從幾段候選文字裡挑出第一個畫得出來的殼（依序試，先命中先用），每段只試它來源該試的卡、一張一張試，
+ * 跨卡不接力。面板與匯入流程共用同一套判斷，才不會出現「按鈕說有、打開卻空的」。
+ * index＝命中的是第幾段候選（呼叫端自己對回它代表哪一樓，這不是樓號）；card＝產生這份殼的卡。
+ * only＝指定卡（cardKey）：只有那張卡在候選規則下輪得到時才試。
  */
 export function findShell(
   cards: CardInterface[],
-  texts: (string | null | undefined)[],
-): { shell: string; index: number } | null {
-  const scripts = cards.filter((card) => card.unsupported === null).flatMap((card) => card.scripts);
-  if (scripts.length === 0) return null;
-  for (let index = 0; index < texts.length; index++) {
-    const text = texts[index];
+  candidates: ShellCandidate[],
+  options: { only?: string | null; cache?: ShellCache } = {},
+): { shell: string; index: number; card: CardInterface } | null {
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    const described = typeof candidate === "object" && candidate !== null ? candidate : null;
+    const text = typeof candidate === "object" && candidate !== null ? candidate.text : candidate;
     if (!text) continue;
-    const shell = extractShell(applyScripts(text, scripts));
-    if (shell !== null) return { shell, index };
+    const cache = described?.noCache ? undefined : options.cache;
+    for (const card of candidateCards(cards, candidate)) {
+      if (options.only != null && cardKey(card) !== options.only) continue;
+      const shell = cardShell(card, text, cache);
+      if (shell !== null) return { shell, index, card };
+    }
   }
   return null;
 }
@@ -300,6 +379,40 @@ export function buildEscapeShimSource(token?: string): string {
 `;
 }
 
+/**
+ * 破圖收斂原始碼（純 JS，供 shim 內嵌）：外部圖片抓不到時（圖床倒站、被擋、沒網路）不顯示瀏覽器的破圖示與
+ * alt 字，版面位置照留。抓不到的 <img> 標上 data-tt-broken、用注入的樣式藏起來；之後同一張圖載入成功
+ * （卡片 onerror 換了有效網址）就移除標記。只動自己的標記，卡片自己設的 visibility／class 不碰。
+ * 在 document 的 capture 階段聽：資源的 error／load 不冒泡，而元素的 load 事件依 DOM 規格不傳到 window，
+ * 掛 window 收不到恢復那一下。
+ */
+export function buildBrokenImageSource(): string {
+  return `
+  (function () {
+    var style = document.createElement("style");
+    style.textContent = "img[data-tt-broken]{visibility:hidden!important}";
+    (document.head || document.documentElement).appendChild(style);
+    function isImage(target) {
+      return target && target.tagName === "IMG";
+    }
+    document.addEventListener(
+      "error",
+      function (event) {
+        if (isImage(event.target)) event.target.setAttribute("data-tt-broken", "");
+      },
+      true
+    );
+    document.addEventListener(
+      "load",
+      function (event) {
+        if (isImage(event.target)) event.target.removeAttribute("data-tt-broken");
+      },
+      true
+    );
+  })();
+`;
+}
+
 // 宿主橋接墊片：沙盒 iframe 是 allow-scripts、沒有 allow-same-origin，碰不到宿主 DOM，
 // 所以在 iframe 內偽造一個誘餌輸入框，把卡片戳 window.parent/window.top 的動作攔下來轉成 postMessage。
 function buildHostBridgeShim(seed: CardStorage, token?: string): string {
@@ -308,6 +421,7 @@ function buildHostBridgeShim(seed: CardStorage, token?: string): string {
   var parentRef = window.parent;
 ${buildImeGuardSource()}
 ${buildEscapeShimSource(token)}
+${buildBrokenImageSource()}
 ${buildStorageShimSource(seed, token)}
 
   function notifyHost(text) {

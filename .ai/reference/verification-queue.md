@@ -15,6 +15,8 @@
 
 4e. [refactor-card-png-export](../handoffs/refactor-card-png-export.md)（macOS 部分 2026-10-06 已用測試通道代測通過：三階匯出、陣容欄單一入口匯入 #3、59 MB 大卡往返、QuickLook 縮圖）：剩沒有環境的兩項——①Windows Explorer 看 #3 大卡（數十 MB）的縮圖與檔案大小顯示　②SillyTavern 匯入 #2／#3 PNG 會乾淨拒收（報找不到角色卡，不當成角色卡吃進去）。這兩項驗完本案才算實測完成。
 
+4f. [interface-card-panel](../handoffs/interface-card-panel.md) v2（多卡分頁、卡片介面底部輸入列；零 AI 部分已用測試通道代測）：真視窗（非測試通道）①介面開著時在底部輸入列用注音、拼音選字：按 Enter 選字不會誤送，選好的字確實上得去，選完再按 Enter 才送出　②同桌兩張帶介面的卡（例：`TestCards/WestFantsy.png`＋`donass.png`）：點工具列卡名分頁切換各自畫面、點了停住不跳走。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度

@@ -15,7 +15,7 @@ import {
 } from "../controllers/useWorkspaceNavigationController";
 import { t } from "../i18n";
 import { ErrorNote } from "../shared/ui/atoms";
-import { CardInterfaceOverlay } from "../features/card-interface/CardInterfaceOverlay";
+import { buildOverlayComposer, CardInterfaceOverlay } from "../features/card-interface/CardInterfaceOverlay";
 import { MainView } from "./MainView";
 import { Onboarding } from "../features/ai-connection/Onboarding";
 import { PlayView } from "../features/play/PlayView";
@@ -421,6 +421,24 @@ export function AppWorkspace({
           onAdvanceScene={() => void advanceThenReopen(advanceScene, cardInterface.open)}
           advanceDisabled={chat.busy || tableOpBusy || chat.events.length === 0}
           onClose={() => cardInterface.close()}
+          tabs={cardInterface.cardTabs}
+          activeCard={cardInterface.activeCard}
+          onPickCard={cardInterface.pinCard}
+          composer={buildOverlayComposer({
+            // 覆蓋層只在 gate === "play" 掛上，唯讀鎖一定沒開
+            locked: false,
+            speaker,
+            castEmpty: characters.active.length === 0,
+            busy: chat.busy || tableOpBusy,
+            sceneSummary: sceneBudget?.summary,
+            targetName,
+            draft: chat.input,
+            setDraft: chat.setInput,
+            send: chat.send,
+            canStop: chat.canStop,
+            onStop: chat.stopResponse,
+            errorNote: errorInComposer ? errorNote : null,
+          })}
         />
       )}
     </>

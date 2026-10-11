@@ -43,7 +43,8 @@
 }
 
 /* 換場提醒：獨立一行、小字、可換行，不擋操作 */
-.composer > .scene-length-hint {
+.composer > .scene-length-hint,
+.card-interface-composer > .scene-length-hint {
   flex: 0 1 auto;
   min-height: 1.5em;
   overflow-y: auto;
@@ -53,7 +54,8 @@
 }
 
 /* 換幕容量提醒：比一般提醒醒目一階，換幕鈕跟在字後面；滿了再加強 */
-.composer > .scene-capacity-hint {
+.composer > .scene-capacity-hint,
+.card-interface-composer > .scene-capacity-hint {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -61,7 +63,8 @@
   color: var(--ink-2);
 }
 
-.composer > .scene-capacity-hint.is-full {
+.composer > .scene-capacity-hint.is-full,
+.card-interface-composer > .scene-capacity-hint.is-full {
   color: var(--ink-1);
   font-weight: 600;
 }

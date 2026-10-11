@@ -572,6 +572,7 @@ export const es: Record<MsgKey, string> = {
 
   cardInterfaceOpen: "Interfaz de carta",
   cardInterfaceClose: "Cerrar interfaz",
+  cardInterfaceWorldTab: "Mundo",
 
 
   importCardInterface:

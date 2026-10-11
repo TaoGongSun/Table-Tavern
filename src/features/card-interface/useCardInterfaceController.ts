@@ -4,12 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   buildShellDocument,
+  cardKey,
+  createShellCache,
   findShell,
+  gmOrder,
   sanitizeCardStorage,
   type CardInterface,
   type CardStorage,
+  type ShellCache,
 } from "./interface-card";
-import { pickCardShell } from "./card-shell-route";
+import { drawableCards, pickCardShell, type PickInput } from "./card-shell-route";
 import { buildCardChat, type CardChat } from "./card-chat-shim";
 import { type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import {
@@ -80,8 +84,14 @@ export function writeCardStorage(worldId: string | null, entries: unknown): bool
 export interface CardInterfaceController {
   /** 覆蓋層開著沒 */
   uiOpen: boolean;
-  /** 這桌畫得出殼：頭上那顆「開啟卡片介面」鈕與覆蓋層都靠它決定出不出現 */
+  /** 這桌畫得出殼（實際顯示的那份）：頭上那顆「開啟卡片介面」鈕與覆蓋層都靠它決定出不出現 */
   shellReady: boolean;
+  /** 分頁鈕：本場畫得出殼的卡（不到兩張就是空陣列，不顯示分頁） */
+  cardTabs: { key: string; name: string }[];
+  /** 目前顯示的殼是哪張卡（cardKey）；分頁鈕亮這顆 */
+  activeCard: string | null;
+  /** 玩家點分頁：固定在那張卡，直到再切、換桌，或那張卡畫不出殼（自動退回跟著最新） */
+  pinCard: (key: string) => void;
   /** 介面由 App 接管（有重構骨架、不是角色優先桌；與後端 gm_turn_format 同一依據）：模型只回報
    *  UpdateVariable、不寫 state 圍欄，頂部狀態欄不顯示 */
   interfaceTakeover: boolean;
@@ -137,6 +147,13 @@ export function useCardInterfaceController(input: {
   // 原卡欄位型別（重構套用時記下）：骨架填值時決定數字／布林的寫法
   const [valueTypes, setValueTypes] = useState<Record<string, string>>({});
   const [cardUiOpen, setCardUiOpen] = useState(false);
+  // 玩家點分頁固定的卡（cardKey）；null＝跟著最新。綁著當時的桌，換桌當下就失效（不必等 effect 清）
+  const [pinned, setPinned] = useState<{ worldId: string; card: string } | null>(null);
+  const pinnedCard = pinned !== null && pinned.worldId === worldId ? pinned.card : null;
+  // 離開這桌（換桌、回大廳）就回到跟著最新：之後回到同一桌也不會還停在舊選擇
+  useEffect(() => setPinned(null), [worldId]);
+  // 卡套文字的結果快取：卡清單一換就換新的一份（同一份文字再算一次結果相同，分頁逐張選殼才不會每次重套腳本）
+  const shellCache = useMemo<ShellCache>(() => createShellCache(), [cardInterfaces]);
 
   // 介面腳本與殼的讀取世代號：切桌或又讀一次後，晚到的舊回應（含撤銷、套用刷新途中換桌）不寫進畫面
   const interfacesLoad = useRef(0);
@@ -210,28 +227,29 @@ export function useCardInterfaceController(input: {
   const varsActive = varsState?.active === true;
   const varsGeneration = varsState?.generation ?? -1;
   const varsScene = varsState?.scene ?? 0;
-  const picked = useMemo(
-    () =>
-      pickCardShell({
-        tableMode,
-        refactorShell,
-        events,
-        cardInterfaces,
-        valueTypes,
-        mvu: {
-          liveTree: tree,
-          userName,
-          active: varsActive,
-          generation: varsGeneration,
-          scene: varsScene,
-        },
-      }),
+  const pickInput = useMemo<PickInput>(
+    () => ({
+      tableMode,
+      refactorShell,
+      events,
+      cardInterfaces,
+      valueTypes,
+      cache: shellCache,
+      mvu: {
+        liveTree: tree,
+        userName,
+        active: varsActive,
+        generation: varsGeneration,
+        scene: varsScene,
+      },
+    }),
     [
       tableMode,
       refactorShell,
       events,
       cardInterfaces,
       valueTypes,
+      shellCache,
       tree,
       userName,
       varsActive,
@@ -239,7 +257,20 @@ export function useCardInterfaceController(input: {
       varsScene,
     ],
   );
-  // 讀非 message 層：character 層的身分是殼實際所屬的卡（pickCardShell 決定，空字串＝不唯一、不讀）。
+  // 跟著最新的選路結果決定這桌有沒有介面；玩家固定了某張卡就顯示那張的，那張畫不出殼時退回跟著最新
+  const autoPicked = useMemo(() => pickCardShell(pickInput), [pickInput]);
+  const pinnedPicked = useMemo(
+    () => (pinnedCard === null ? null : pickCardShell({ ...pickInput, card: pinnedCard })),
+    [pickInput, pinnedCard],
+  );
+  useEffect(() => {
+    if (pinnedCard !== null && pinnedPicked === null) setPinned(null);
+  }, [pinnedCard, pinnedPicked]);
+  const picked = pinnedPicked ?? autoPicked;
+  // 分頁只在面板開著時算（逐張卡各跑一次選殼）
+  const cardTabs = useMemo(() => (cardUiOpen ? drawableCards(pickInput) : []), [cardUiOpen, pickInput]);
+  const activeCard = picked?.card ?? null;
+  // 讀非 message 層：character 層的身分是殼實際所屬的卡（pickCardShell 決定）。
   // 讀取失敗不是空表：各層標成 error（沙盒讀取拋錯、寫入拒絕），重開面板重讀
   const characterId = picked?.mvu?.characterId ?? null;
   const layersKey = characterId === null ? null : JSON.stringify([worldId, varsState?.generation ?? -1, characterId]);
@@ -259,7 +290,7 @@ export function useCardInterfaceController(input: {
     };
     invoke<{ key: string; rev: string | null; vars: string; error?: string }[]>("card_layers", {
       worldId,
-      characterId: characterId === "" ? null : characterId,
+      characterId,
     })
       .then((entries) => {
         const next: Record<string, MvuLayer> = {};
@@ -274,7 +305,7 @@ export function useCardInterfaceController(input: {
       .catch((reason) => {
         const error = `load-failed: ${String(reason)}`;
         const failed: Record<string, MvuLayer> = {};
-        for (const key of ["chat", "global", "preset", "script:", "extension:", ...(characterId === "" ? [] : [`character:${characterId}`])]) {
+        for (const key of ["chat", "global", "preset", "script:", "extension:", `character:${characterId}`]) {
           failed[key] = { rev: null, vars: {}, error };
         }
         apply(failed);
@@ -295,7 +326,8 @@ export function useCardInterfaceController(input: {
   const currentName = picked?.current.name ?? "";
   const currentText = picked?.current.text ?? "";
 
-  const cardShellReady = shell !== null;
+  // 面板存廢看實際顯示的殼：固定的卡掃整幕，最近幾樓畫不出殼時它仍在
+  const cardShellReady = picked !== null;
 
   // 本場讀訊息快照：掛載時嵌進 doc，之後的變動由覆蓋層推送（本樓一律是產生殼的那段文字）
   const chat = useMemo(() => (picked === null ? null : buildCardChat(picked.floors, picked.current)), [picked]);
@@ -318,16 +350,16 @@ export function useCardInterfaceController(input: {
   // 存下的卡片設定與讀訊息快照都經 ref／讀檔帶進殼、刻意不進依賴：卡片一存設定或逐字稿一動就重算
   // doc 的話，srcdoc 跟著換，整支 iframe 重繪閃白——殼或本樓變了（key 也跟著變）才順手帶上最新的。
   // 依賴 uiOpen：面板關著時別樓有變動，重新打開時在卡片第一次執行前就嵌入最新快照
-  // （覆蓋層關著時整支卸載，重開必然是新掛載）。key 涵蓋桌別、桌世代與幕：同殼同文切桌、整桌還原（備份帶回
-  // 同 id 的事件）也會重掛，舊殼的寫入佇列跟著關掉。
+  // （覆蓋層關著時整支卸載，重開必然是新掛載）。key 涵蓋桌別、桌世代、幕與殼所屬的卡：同殼同文切桌、整桌還原（備份帶回
+  // 同 id 的事件）、兩張卡產出相同 HTML 時切分頁（character 層身分不同）也會重掛，舊殼的 token 與寫入佇列跟著作廢。
   const cardShellKey = useMemo(
     () =>
       shell === null
         ? "empty"
         : fingerprint(
-            JSON.stringify([worldId, varsGeneration, varsScene, shell, currentId, currentName, currentText]),
+            JSON.stringify([worldId, varsGeneration, varsScene, activeCard, shell, currentId, currentName, currentText]),
           ),
-    [worldId, varsGeneration, varsScene, shell, currentId, currentName, currentText],
+    [worldId, varsGeneration, varsScene, activeCard, shell, currentId, currentName, currentText],
   );
   // MVU 卡的殼要等非 message 層讀回才出文件（hasMvuCard 與 mvu 非 null 才有非 message 層可讀）
   const layersReady = mvu === null || layers !== null;
@@ -558,6 +590,8 @@ export function useCardInterfaceController(input: {
   useEffect(() => {
     if (!cardUiOpen) return;
     const onKey = (event: KeyboardEvent) => {
+      // 組字中的 Esc 是取消選字（介面底部輸入列打字時），不關介面
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === "Escape") setCardUiOpen(false);
     };
     window.addEventListener("keydown", onKey);
@@ -566,6 +600,7 @@ export function useCardInterfaceController(input: {
 
   const open = useCallback(() => setCardUiOpen(true), []);
   const close = useCallback(() => setCardUiOpen(false), []);
+  const pinCard = useCallback((key: string) => setPinned({ worldId: worldIdRef.current, card: key }), []);
 
   const refreshInterfaces = useCallback(async (id: string) => {
     const mine = ++interfacesLoad.current;
@@ -596,7 +631,7 @@ export function useCardInterfaceController(input: {
   // 匯入完畫得出來就直接打開一次：這類卡的開場本來就是一整頁畫面，
   // 玩家不主動點按鈕不會知道有這東西（聊天裡只看得到孤零零一句「请选择你的身份」）
   const openIfDrawable = useCallback((list: CardInterface[]) => {
-    if (findShell(list, list.map((card) => card.opening)) !== null) setCardUiOpen(true);
+    if (findShell(list, gmOrder(list).map((card) => ({ text: card.opening, owner: cardKey(card) }))) !== null) setCardUiOpen(true);
   }, []);
 
   const interfaceTakeover = (refactorShell?.trim() ?? "") !== "" && tableMode !== "characters";
@@ -606,6 +641,9 @@ export function useCardInterfaceController(input: {
       uiOpen: cardUiOpen,
       interfaceTakeover,
       shellReady: cardShellReady,
+      cardTabs,
+      activeCard,
+      pinCard,
       shellDoc: cardShellDoc,
       shellKey: cardShellKey,
       chat,
@@ -621,6 +659,9 @@ export function useCardInterfaceController(input: {
       cardUiOpen,
       interfaceTakeover,
       cardShellReady,
+      cardTabs,
+      activeCard,
+      pinCard,
       cardShellDoc,
       cardShellKey,
       chat,

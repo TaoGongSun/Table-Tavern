@@ -1,6 +1,6 @@
 // 卡片介面殼的選路：這桌現在該顯示哪一份殼、它是從哪一樓產生的，以及交給卡片的每一樓文字。
 // 純函式，controller 只負責接線。
-import { findShell, type CardInterface } from "./interface-card";
+import { cardDrawable, cardKey, findShell, gmOrder, type CardInterface, type ShellCache, type ShellCandidate } from "./interface-card";
 import { type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
@@ -22,6 +22,8 @@ export function floorText(event: TranscriptEvent): string {
 
 export interface PickedShell {
   shell: string;
+  /** 產生這份殼的卡（cardKey）：分頁鈕亮哪顆、MVU character 層身分 */
+  card: string;
   /** 產生這份殼的那一樓；讀訊息墊片的 getCurrentMessageId 回它 */
   current: CurrentFloor;
   /** 交給卡片的每一樓（樓號＝位置）；本樓的文字與 current.text 是同一份 */
@@ -54,6 +56,11 @@ function roleOf(event: TranscriptEvent): ChatRole {
 
 interface FloorBuild {
   message: string;
+  /** 候選來源：原文的角色台詞樓帶說話者；對得上卡片開場白的開場樓帶所屬卡；其餘比照 GM 樓試卡 */
+  speaker?: string;
+  owner?: string;
+  /** 骨架合成樓：只歸骨架來源卡 */
+  synthesized?: boolean;
   /** 前情提要樓：message 的正文槽放的是 slot，選完殼才換回 text */
   recap?: { slot: string; text: string };
   /** 不參與選殼（缺快照的前情提要樓） */
@@ -96,10 +103,31 @@ function pickNonce(haystack: string, next: () => string): string {
   }
 }
 
+/** 角色台詞樓的說話者：候選來源用它決定只給說話者自己的卡（有的話） */
+function speakerOf(event: TranscriptEvent): string | undefined {
+  return event.kind === "dialogue" && event.speaker_id ? event.speaker_id : undefined;
+}
+
+/**
+ * 已貼出的開場白：原文（或正文）去頭尾空白後等於某張卡的開場白（多張相同取第一張），而且那張卡畫得出東西，就認那張卡；
+ * 對不上（巨集已代換、選了別的 alternate_greetings 等）或那張卡沒介面，照 GM 樓規則（同說話者規則）
+ */
+function openingOwner(event: TranscriptEvent, cards: CardInterface[]): string | undefined {
+  if (event.opening !== true) return undefined;
+  const texts = [event.raw, event.text].filter((text): text is string => typeof text === "string").map((text) => text.trim());
+  const card = cards.find((card) => {
+    const opening = card.opening?.trim();
+    return opening !== undefined && opening !== "" && texts.includes(opening);
+  });
+  return card === undefined || !cardDrawable(card) ? undefined : cardKey(card);
+}
+
 /**
  * 一樓交給卡片的文字。對照酒館：狀態欄跟著每則訊息走，每樓帶自己那一刻的狀態區塊。
  * 有重構骨架時，GM 旁白／角色對話這兩種樓依序：原文自己畫得出殼（重構前的開場白、舊回合）就用原文；
  * 否則用這一樓存下的狀態快照（state.tree）加這一樓的正文填骨架；沒有快照就用原文。
+ * 「原文畫得出殼」與選殼同一套候選規則（說話者優先、按卡隔離），指定卡時只看那張卡：指定的若是骨架來源卡，
+ * 別張卡畫得出的原文樓在這次選路裡改填骨架。合成樓（synthesized）只歸骨架來源卡（pickCardShell 決定）。
  * 前情提要樓（換幕摘要）例外：不走原文、一律填骨架，正文槽先放佔位，選殼的 regex 與圍欄抽取都碰不到
  * 摘要本文，選完才換回；沒有快照就用目前檯面樹（摘要在幕首，檯面樹就是它那一刻的值），連檯面樹都沒有
  * 就不參與選殼。玩家與 system 樓一律原文。合成只在記憶體裡，不寫回逐字稿。
@@ -112,9 +140,13 @@ function floorMessage(
   valueTypes: Record<string, string>,
   liveTree: StateTree | undefined,
   slot: string,
+  pick: { only: string | null; cache?: ShellCache },
 ): FloorBuild {
   const raw = floorText(event);
-  if (skeleton === null || (event.kind !== "narration" && event.kind !== "dialogue")) return { message: raw };
+  const source = { speaker: speakerOf(event), owner: openingOwner(event, cards) };
+  if (skeleton === null || (event.kind !== "narration" && event.kind !== "dialogue")) {
+    return { message: raw, ...source };
+  }
   const snapshot = event.state?.tree as Record<string, StateNode> | undefined;
   if (parseMarker(event.marker)?.type === "scene_summary") {
     const tree = snapshot ?? liveTree;
@@ -122,28 +154,17 @@ function floorMessage(
     return {
       message: fillSkeletonPlaceholders(skeleton, { ...tree, 本回合: { 正文: slot } }, yamlTags, valueTypes),
       recap: { slot, text: inertRecap(eventDisplayText(event)) },
+      synthesized: true,
     };
   }
-  if (snapshot === undefined || findShell(cards, [raw]) !== null) return { message: raw };
+  if (snapshot === undefined || findShell(cards, [{ text: raw, ...source }], pick) !== null) return { message: raw, ...source };
   return {
     message: fillSkeletonPlaceholders(skeleton, { ...snapshot, 本回合: { 正文: eventDisplayText(event) } }, yamlTags, valueTypes),
+    synthesized: true,
   };
 }
 
-/**
- * 實際產生這份殼的卡（`character` 層變數的身分，由宿主決定、不信沙盒）：只看選殼實際命中的那一段候選文字
- * （身分跟著選殼結果走，不重掃其他候選），只用單張卡自己的腳本就能從它產出同一份殼的第一張卡；世界書卡（沒有 id）固定 `world`。多張卡的腳本接力才產得出來、或找不到，回空字串
- * （沙盒讀寫 character 層一律拋錯、宿主也拒絕），不猜。
- */
-export function shellOwner(cards: CardInterface[], text: string | null | undefined, shell: string): string {
-  for (const card of cards) {
-    if (card.unsupported !== null) continue;
-    if (findShell([card], [text])?.shell === shell) return card.character_id || "world";
-  }
-  return "";
-}
-
-export function pickCardShell(input: {
+export interface PickInput {
   /** 桌面玩法標記；undefined＝還不知道 */
   tableMode: string | null | undefined;
   /** AI 重構產的介面骨架（interface-shell.html）；null＝沒有 */
@@ -165,8 +186,19 @@ export function pickCardShell(input: {
     /** 非 message 層現況（面板掛載時從後端讀回） */
     layers?: Record<string, MvuLayer>;
   } | null;
-}): PickedShell | null {
+  /** 指定卡（cardKey）：只用那張卡、掃整幕找它最新畫得出的一樓；null／不給＝跟著最新 */
+  card?: string | null;
+  /** 卡套文字的結果快取（controller 持有，卡清單一換就換新） */
+  cache?: ShellCache;
+}
+
+/** 跟著最新時往回掃幾樓（最新 GM 樓另外先試、不受此限）；指定卡掃整幕 */
+const RECENT_FLOORS = 10;
+
+export function pickCardShell(input: PickInput): PickedShell | null {
   const { tableMode, cardInterfaces } = input;
+  const only = input.card ?? null;
+  const pickOptions = { only, cache: input.cache };
   // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構骨架、卡片自帶殼、
   // 掃 raw 的 fallback 整組短路。標記還沒讀回（undefined）也先不顯示，未知就放行會在角色桌
   // 切桌瞬間閃出介面。
@@ -178,9 +210,9 @@ export function pickCardShell(input: {
   // 掛載與推送都用同一份。
   const events = chatEvents(input.events);
   // MVU 卡（沒重構、照原卡畫面）：每樓的變數表，與公開樓號同一套索引；有 stat_data 的非玩家樓比照 MVU 補占位，
-  // 補好的文字選殼與讀訊息共用同一份
+  // 補好的文字選殼與讀訊息共用同一份。{{char}} 先用第一張 MVU 卡的名字補占位，命中別張 MVU 卡時換成它的
   const mvuCard = cardInterfaces.find((card) => card.mvu === true && card.unsupported === null);
-  const mvu =
+  const buildMvu = (char: string | null) =>
     skeleton === null && mvuCard !== undefined && input.mvu
       ? buildCardMvu({
           events,
@@ -193,9 +225,10 @@ export function pickCardShell(input: {
           currentId: 0,
           liveTree: input.mvu.liveTree,
           valueTypes: input.valueTypes ?? {},
-          macros: { user: input.mvu.userName, char: mvuCard.character_name || null },
+          macros: { user: input.mvu.userName, char },
         })
       : null;
+  const mvu = buildMvu(mvuCard?.character_name || null);
   const nonce =
     skeleton === null
       ? ""
@@ -212,13 +245,16 @@ export function pickCardShell(input: {
       input.valueTypes ?? {},
       input.mvu?.liveTree,
       `${SLOT_PREFIX}${nonce}N${id}E`,
+      pickOptions,
     ),
   );
   const floors = events.map((event, id) => {
-    const { message, noShell } = builds[id];
+    const { message, noShell, speaker, owner } = builds[id];
     return {
       event,
       id,
+      speaker,
+      owner,
       noShell: noShell === true,
       message:
         mvu === null
@@ -231,37 +267,60 @@ export function pickCardShell(input: {
   const slotPattern = recaps.size === 0 ? null : new RegExp(`${SLOT_PREFIX}${nonce}N\\d+E`, "g");
   const restore = (text: string): string =>
     slotPattern === null ? text : text.replace(slotPattern, (slot) => recaps.get(slot) ?? slot);
-  // 先試最新一個 GM 樓（旁白／角色對話）：後面接再多玩家樓，本樓都不會被擠出視窗；再往前掃最近 10 樓的
-  // 非玩家樓；空桌退回卡片開場白——這類卡的開場就是一整頁選角畫面
+  // 先試最新一個 GM 樓（旁白／角色對話）：後面接再多玩家樓，本樓都不會被擠出視窗；再往前掃非玩家樓
+  // （跟著最新掃近 10 樓、指定卡掃整幕）；空桌退回卡片開場白——這類卡的開場就是一整頁選角畫面，各自只給所屬的卡
   const latestGm = [...floors]
     .reverse()
     .find(({ event, noShell }) => !noShell && (event.kind === "narration" || event.kind === "dialogue"));
   const recent = [
     ...(latestGm ? [latestGm] : []),
-    ...floors
-      .slice(-10)
+    ...(only === null ? floors.slice(-RECENT_FLOORS) : floors)
       .filter(({ event, noShell }) => !noShell && event.kind !== "player")
       .reverse()
       .filter((floor) => floor !== latestGm),
   ];
-  const openings = floors.length === 0 ? cardInterfaces : [];
-  const candidates = [...recent.map(({ message }) => message), ...openings.map((card) => card.opening)];
+  // 骨架來源卡：最新一個合成樓照 GM 樓順序第一張畫得出它的卡（骨架照搬的是那張卡的輸出格式）。
+  // 合成樓只歸它：同標籤的別張卡被指定時畫不出骨架
+  let skeletonOwner: string | undefined;
+  for (const floor of [...floors].reverse()) {
+    const build = builds[floor.id];
+    if (!build.synthesized || floor.noShell) continue;
+    const hit = findShell(cardInterfaces, [{ text: floor.message, noCache: build.recap !== undefined }], { cache: input.cache });
+    if (hit !== null) {
+      skeletonOwner = cardKey(hit.card);
+      break;
+    }
+  }
+  const openings = floors.length === 0 ? gmOrder(cardInterfaces) : [];
+  const candidates: ShellCandidate[] = [
+    ...recent.map(({ id, message, speaker, owner }) =>
+      builds[id].synthesized
+        ? { text: message, owner: skeletonOwner ?? "", noCache: builds[id].recap !== undefined }
+        : { text: message, speaker, owner },
+    ),
+    ...openings.map((card) => ({ text: card.opening, owner: cardKey(card) })),
+  ];
   // 前情提要樓選出的殼必須還帶著完整佔位：卡腳本若把佔位改掉或吃掉，換不回本文，這份殼就會漏掉摘要。
   // 這種樓不出殼，改試下一個候選（較舊的樓或開場白），都沒有就不顯示介面，絕不交付漏正文的殼
   const skipped = new Set<number>();
-  let match: { shell: string; index: number } | null = null;
+  let match: ReturnType<typeof findShell> = null;
   for (;;) {
     match = findShell(
       cardInterfaces,
-      candidates.map((text, index) => (skipped.has(index) ? null : text)),
+      candidates.map((candidate, index) => (skipped.has(index) ? null : candidate)),
+      pickOptions,
     );
     if (match === null) return null;
     const slot = match.index < recent.length ? builds[recent[match.index].id].recap?.slot : undefined;
     if (slot === undefined || match.shell.includes(slot)) break;
     skipped.add(match.index);
   }
-  const characterId = shellOwner(cardInterfaces, candidates[match.index], match.shell);
-  const withOwner = (value: CardMvu | null): CardMvu | null => (value === null ? null : { ...value, characterId });
+  const hit = match.card;
+  const card = cardKey(hit);
+  // MVU character 層身分＝產生這份殼的卡；命中的是另一張 MVU 卡時 {{char}} 換成它的名字
+  const owned = hit.mvu === true && hit !== mvuCard ? buildMvu(hit.character_name || null) : mvu;
+  const withOwner = (value: CardMvu | null, currentId: number): CardMvu | null =>
+    value === null ? null : { ...value, currentId, characterId: card };
   const chatFloors: ChatFloor[] = floors.map(({ event, message }) => ({
     name: speakerDisplayName(event),
     role: roleOf(event),
@@ -271,16 +330,29 @@ export function pickCardShell(input: {
     const { event, id, message } = recent[match.index];
     return {
       shell: restore(match.shell),
+      card,
       current: { id, name: speakerDisplayName(event), text: restore(message) },
       floors: chatFloors,
-      mvu: withOwner(mvu === null ? null : { ...mvu, currentId: id }),
+      mvu: withOwner(owned, id),
     };
   }
-  const card = openings[match.index - recent.length];
   return {
     shell: match.shell,
-    current: { id: 0, name: card.character_name, text: card.opening ?? "" },
+    card,
+    current: { id: 0, name: hit.character_name, text: hit.opening ?? "" },
     floors: chatFloors,
-    mvu: withOwner(mvu),
+    mvu: withOwner(owned, 0),
   };
+}
+
+/**
+ * 分頁鈕要列的卡：桌上畫得出東西的卡不到兩張就不列（單卡桌沒有分頁）。直接拿「指定卡選殼」逐張跑，
+ * 與指定卡同一套候選規則、掃整幕，分頁才不會因為最近幾樓換人說話而忽隱忽現。順序：世界書卡先、其餘照桌上順序。
+ */
+export function drawableCards(input: PickInput): { key: string; name: string }[] {
+  const usable = input.cardInterfaces.filter(cardDrawable);
+  if (usable.length < 2) return [];
+  return gmOrder(usable)
+    .filter((card) => pickCardShell({ ...input, card: cardKey(card) }) !== null)
+    .map((card) => ({ key: cardKey(card), name: card.character_name }));
 }
