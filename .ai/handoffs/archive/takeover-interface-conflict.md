@@ -1,4 +1,4 @@
-> 結案 2026-10-11：佔位容器讓位給定義容器進 main，三方驗收 PASS；畫面驗收（多行值縮排）待 takeover-text-multiline。
+> 結案 2026-10-11：佔位容器讓位給定義容器進 main，三方驗收 PASS；畫面驗收已由 takeover-text-multiline 補過（根因是 YAML 鍵位佔位，不是多行縮排）。
 
 # 重構接管：多來源產出同欄位就整組介面不套
 
