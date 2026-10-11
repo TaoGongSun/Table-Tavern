@@ -16,8 +16,7 @@ mod runaway;
 mod stall;
 mod state_view;
 mod state_yaml;
-#[cfg(test)]
-mod state_yaml_tests;
+pub use state_yaml::parse_initvar_tree;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub(crate) mod translate;

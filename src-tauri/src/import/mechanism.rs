@@ -294,10 +294,7 @@ fn extract_initial_tree(entries: &[&Value]) -> Option<BTreeMap<String, StateNode
     if content.trim().is_empty() {
         return None;
     }
-    let mut tree = BTreeMap::new();
-    for (path, value) in crate::transport::parse_indented_fields(content) {
-        insert_initial_tree_node(&mut tree, &path, value);
-    }
+    let tree = crate::transport::parse_initvar_tree(content);
     (!tree.is_empty()).then_some(tree)
 }
 
@@ -489,38 +486,6 @@ fn build_field_rule(
     }
     rule.branch = rule_path.first().cloned();
     Some(rule)
-}
-
-fn insert_initial_tree_node(
-    children: &mut BTreeMap<String, StateNode>,
-    path: &[String],
-    value: Option<String>,
-) {
-    let Some((key, rest)) = path.split_first() else {
-        return;
-    };
-    if rest.is_empty() {
-        match value {
-            Some(value) => {
-                // 行內陣列／物件帶 MVU 元資料（`["$__META_EXTENSIBLE__$", "劍"]`）照上游初始化剝掉，索引才對得上
-                // 〔主線裁定，依作者裁決 罕見邊際狀況輕防〕
-                let value = crate::data::message_vars::strip_meta_leaf(&value).unwrap_or(value);
-                children.insert(key.clone(), StateNode::Leaf(value));
-            }
-            None => {
-                children
-                    .entry(key.clone())
-                    .or_insert_with(|| StateNode::Branch(BTreeMap::new()));
-            }
-        }
-        return;
-    }
-    let child = children
-        .entry(key.clone())
-        .or_insert_with(|| StateNode::Branch(BTreeMap::new()));
-    if let StateNode::Branch(children) = child {
-        insert_initial_tree_node(children, rest, value);
-    }
 }
 
 #[cfg(test)]

@@ -8,7 +8,6 @@
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：未排程，排在 initvar-yaml-list 之後
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認
-- [initvar-yaml-list](tasks/initvar-yaml-list.md) — [initvar] YAML 清單在樹模式桌被攤平 — 下一步：未排程
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
