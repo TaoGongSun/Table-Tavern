@@ -39,7 +39,8 @@ const turn = { running: false };
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 let controller: RefactorWorkflowController | null = null;
-const refreshAfterApply = vi.fn(async () => {});
+const refreshAfterApply = vi.fn(async (_live: () => boolean, _changes: unknown) => {});
+const flushDraft = vi.fn(async () => true);
 
 function Harness({ world = "W" }: { world?: string }) {
   controller = useRefactorWorkflow({
@@ -47,6 +48,7 @@ function Harness({ world = "W" }: { world?: string }) {
     worldName: "驛站",
     setStatusMessage: () => {},
     refreshAfterApply,
+    flushDraft,
     isTurnRunning: () => turn.running,
   });
   return null;
@@ -69,6 +71,7 @@ beforeEach(() => {
   dialogs.confirm.mockReset().mockResolvedValue(true);
   dialogs.message.mockReset().mockResolvedValue(undefined);
   refreshAfterApply.mockReset().mockResolvedValue(undefined);
+  flushDraft.mockReset().mockResolvedValue(true);
   backend.handlers.card_interfaces = () => [];
   // 開重構卡走後端同一入口：這裡模擬 JSON 原樣回傳（PNG 的測試自己覆寫）
   backend.handlers.refactor_card_open = (bytes) => ({
@@ -122,6 +125,28 @@ describe("runAiRefactor 重新重構判定", () => {
       "card_interfaces",
     ]);
     expect(refreshAfterApply).toHaveBeenCalledTimes(1);
+    // 清回無從定基：傳 null（開著的既有條目草稿關掉）
+    expect(refreshAfterApply.mock.calls[0][1]).toBeNull();
+    expect(flushDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("清回前先存開著的既有條目草稿：存不起來就不清回", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "ready";
+    flushDraft.mockResolvedValueOnce(false);
+    await act(async () => controller!.runAiRefactor());
+    expect(commands()).toEqual(["refactor_rerun_status"]);
+    expect(refreshAfterApply).not.toHaveBeenCalled();
+
+    // 存草稿排在清回之前
+    let flushedBeforeReset = false;
+    flushDraft.mockImplementationOnce(async () => {
+      flushedBeforeReset = !commands().includes("refactor_reset_to_source");
+      return true;
+    });
+    await act(async () => controller!.runAiRefactor());
+    expect(flushedBeforeReset).toBe(true);
+    expect(commands()).toContain("refactor_reset_to_source");
   });
 
   it("清回已提交但臨時根沒清掉（committed_cleanup_pending）：照成功刷新、接著重構", async () => {
@@ -234,6 +259,7 @@ describe("套用重構排在進行中的回合後面", () => {
         deleted_entries: 0,
         interface_applied: false,
         mechanisms_applied: 0,
+        entry_changes: { changed: [], deleted: [] },
       });
       await first;
     });
@@ -261,6 +287,16 @@ describe("套用重構排在進行中的回合後面", () => {
     expect(controller!.busy).toBe(false);
   });
 
+  it("套用成功：把後端回報的條目改動交給刷新（開著的草稿據此定基）", async () => {
+    await mount();
+    await act(async () => controller!.pickRefactorOutcome(new File([OUTCOME], "card.json")));
+    const changes = { changed: [{ uid: 3, groups: ["enabled"] }], deleted: [4] };
+    backend.handlers.refactor_apply = () => ({ new_characters: 1, entry_changes: changes });
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    expect(refreshAfterApply).toHaveBeenCalledTimes(1);
+    expect(refreshAfterApply.mock.calls[0][1]).toEqual(changes);
+  });
+
   it("沒有回合在跑：不亮等待提示", async () => {
     await mount();
     await act(async () => controller!.pickRefactorOutcome(new File([OUTCOME], "card.json")));
@@ -272,7 +308,7 @@ describe("套用重構排在進行中的回合後面", () => {
     });
     expect(controller!.waitingForTurn).toBe(false);
     await act(async () => {
-      resolve({ new_characters: 1 });
+      resolve({ new_characters: 1, entry_changes: { changed: [], deleted: [] } });
       await first;
     });
   });
@@ -290,7 +326,7 @@ describe("套用重構排隊期間換桌或卸載", () => {
     await act(async () => {
       pending = controller!.applyRefactor(controller!.selection!);
     });
-    return { pending, resolve: () => resolve({ new_characters: 1 }) };
+    return { pending, resolve: () => resolve({ new_characters: 1, entry_changes: { changed: [], deleted: [] } }) };
   }
 
   it("換到別桌後舊的套用才回來：不關結果卡、不刷新、不跳訊息，按鈕鎖放開", async () => {
@@ -398,7 +434,7 @@ describe("重構卡 PNG：角色圖暫存的 token 生命週期", () => {
       await a;
     });
     expect(releases()).toEqual([{ worldId: "W", token: "TA" }]);
-    backend.handlers.refactor_apply = () => ({ new_characters: 1 });
+    backend.handlers.refactor_apply = () => ({ new_characters: 1, entry_changes: { changed: [], deleted: [] } });
     await act(async () => controller!.applyRefactor(controller!.selection!));
     const apply = backend.calls.find((call) => call.command === "refactor_apply")!;
     expect(apply.args.assetToken).toBe("TB");
@@ -443,7 +479,12 @@ describe("重構卡 PNG：角色圖暫存的 token 生命週期", () => {
   it("套用帶 token；成功後不再送釋放（後端已取走）", async () => {
     await mount();
     await openPng();
-    backend.handlers.refactor_apply = () => ({ new_characters: 1, images_applied: 1, images_failed: [] });
+    backend.handlers.refactor_apply = () => ({
+      new_characters: 1,
+      images_applied: 1,
+      images_failed: [],
+      entry_changes: { changed: [], deleted: [] },
+    });
     await act(async () => controller!.applyRefactor(controller!.selection!));
     const apply = backend.calls.find((call) => call.command === "refactor_apply")!;
     expect(apply.args.assetToken).toBe("T1");

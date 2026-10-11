@@ -9,7 +9,7 @@ import { useRefactorWorkflow } from "../refactor/useRefactorWorkflow";
 import type { PendingRefactorCard } from "../refactor/refactor-card";
 import { useWorldbookEditor } from "./useWorldbookEditor";
 import { EditPage } from "../../shared/ui/EditPage";
-import type { WorldChange } from "./worldbook-model";
+import type { EntryChanges, WorldChange } from "./worldbook-model";
 
 // 世界書 v1：一份只進 GM 上下文的 world.md（NewPlan §7.0）
 export function WorldEditor({
@@ -54,13 +54,10 @@ export function WorldEditor({
 
   const worldbook = useWorldbookEditor({ world, convertColor, onEntryConverted });
 
+  // 重讀條目、名單、帳本，開著的條目草稿依這次改動定基（衝突以重構結果為準；null 就關掉既有條目草稿）；
   // live() 為 false（換桌或卸載）就停下，後面的刷新不再動畫面
-  async function refreshAfterApply(live: () => boolean) {
-    await worldbook.refreshWorldbook();
-    if (!live()) return;
-    await worldbook.refreshLedger();
-    if (!live()) return;
-    await worldbook.refreshCast();
+  async function refreshAfterApply(live: () => boolean, entryChanges: EntryChanges | null) {
+    await worldbook.applyWorldChange([], [entryChanges]);
     if (!live()) return;
     await onRefactorApplied(live);
   }
@@ -70,6 +67,7 @@ export function WorldEditor({
     worldName,
     setStatusMessage: worldbook.setMessage,
     refreshAfterApply,
+    flushDraft: worldbook.flushAndCloseExistingDraft,
     isTurnRunning,
   });
 

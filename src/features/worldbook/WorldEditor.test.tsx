@@ -191,7 +191,10 @@ describe("WorldEditor", () => {
 
     it("still applies with the held token", async () => {
       await openOutcome();
-      backend.handlers.refactor_apply = () => ({ new_characters: 1 });
+      backend.handlers.refactor_apply = () => ({
+        new_characters: 1,
+        entry_changes: { changed: [], deleted: [] },
+      });
       await act(async () => button(t("refactorApplyAll")).click());
       await vi.waitFor(() => expect(commands("refactor_apply")).toHaveLength(1));
       expect(commands("refactor_apply")[0].args.assetToken).toBe("T1");

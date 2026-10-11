@@ -13,7 +13,7 @@ use std::path::Path;
 
 mod character_delete;
 mod sources;
-mod undo_changes;
+pub(crate) mod undo_changes;
 pub use character_delete::{
     character_to_worldbook_entry_and_clean, delete_character_and_clean, upsert_entry_dropping_gone,
     CharacterDeleteOutcome,

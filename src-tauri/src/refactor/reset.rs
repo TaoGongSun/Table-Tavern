@@ -4,7 +4,7 @@
 //! - 沒有匯入原檔或來源不完整（舊桌、收據讀壞、原檔記不下來）：擋下，請玩家開新桌。
 //!
 //! 未重構的桌照現狀直接重構。清回的細節〔模型判斷·未裁決，主線同意〕：保留桌名、模型指定與已貼的
-//! 開場白（同一則原文、同一個序號重貼在原本那筆匯入之後），其餘照原路徑依序重匯，world.md 清空；
+//! 開場白（同一則原文、同一個序號重貼在原本那筆匯入之後），world.md 照抄〔作者裁決 2026-10-11〕，其餘照原路徑依序重匯；
 //! 未遊玩＝current_scene 是 0 而且逐字稿最多一則事件。
 //!
 //! 並行〔模型判斷·未裁決〕：整段持這桌的獨占鎖，拿到鎖才檢查 Ready；鎖被佔（匯入、貼訊息、另一次重設）
@@ -83,6 +83,18 @@ pub fn reset_to_import_source(root: &Path, world_id: &str, lang: &str) -> DataRe
         .ok_or_else(|| data::invalid_data("refactor-rerun-NoSource"))?;
     let state = data::read_state(root, world_id)?;
     let events = data::read_transcript(root, world_id, 0)?;
+    // world.md 照抄〔作者裁決 2026-10-11〕：檔不在當空白，其他讀取錯誤照回（不能把讀不到當成清空）
+    let world_md = match data::read_world_md(root, world_id) {
+        Ok(text) => text,
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            String::new()
+        }
+        Err(error) => return Err(error),
+    };
     let build_root = data::reset_build_root(root, world_id);
     // 上一次中斷留下的臨時根先清掉；清不掉就不做（不能在舊殘留上重建）
     data::remove_reset_build_root(root, world_id)?;
@@ -90,6 +102,7 @@ pub fn reset_to_import_source(root: &Path, world_id: &str, lang: &str) -> DataRe
         &build_root,
         world_id,
         &state,
+        &world_md,
         &events,
         &expected,
         lang,
@@ -131,6 +144,7 @@ fn rebuild(
     build_root: &Path,
     world_id: &str,
     state: &data::WorldState,
+    world_md: &str,
     events: &[data::TranscriptEvent],
     replays: &[ImportReplay],
     lang: &str,
@@ -141,6 +155,7 @@ fn rebuild(
         world_id,
         &state.name,
         state.model_bindings.clone(),
+        world_md,
     )?;
     let raw_text = |event: &data::TranscriptEvent| event.raw.clone().unwrap_or(event.text.clone());
     let mut reposted = Vec::new();

@@ -104,9 +104,10 @@ pub fn create_reset_world(
     world_id: &str,
     name: &str,
     model_bindings: BTreeMap<String, String>,
+    world_md: &str,
 ) -> DataResult<()> {
     let directory = super::world_file::prepare_new_world(build_root, world_id)?;
-    super::world_file::commit_world_write(&directory.join("world.md"), b"")?;
+    super::world_file::commit_world_write(&directory.join("world.md"), world_md.as_bytes())?;
     let mut state = blank_state(world_id, name);
     state.model_bindings = model_bindings;
     super::world_file::commit_world_write(

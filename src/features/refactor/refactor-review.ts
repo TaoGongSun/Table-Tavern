@@ -4,6 +4,7 @@
 import { composeFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { classifyPlaceholder } from "./refactor-shell";
 import type { RefactorApplied } from "./refactor-card";
+import type { EntryChanges } from "../worldbook/worldbook-model";
 
 export interface RefactorCharacter {
   name: string;
@@ -223,6 +224,8 @@ export interface RefactorApplySummary {
   images_applied: number;
   /** 角色圖寫入失敗的角色名 */
   images_failed: string[];
+  /** 這次改了哪些既有條目（停用、刪除）；套用後讀不到世界書是 null */
+  entry_changes: EntryChanges | null;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

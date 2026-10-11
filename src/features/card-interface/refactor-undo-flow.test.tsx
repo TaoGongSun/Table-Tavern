@@ -298,6 +298,7 @@ describe("refactor undo restores panel and state bar", () => {
           deleted_entries: 0,
           interface_applied: true,
           mechanisms_applied: 0,
+          entry_changes: { changed: [], deleted: [] },
         };
       };
 

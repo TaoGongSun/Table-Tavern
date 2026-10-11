@@ -463,3 +463,83 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
     assert_eq!(without_meta.visibility, Visibility::Gm);
     assert!(!without_meta.is_person);
 }
+
+/// 套用回報實際改了哪些既有條目（refactor-apply-open-draft）：整條淘汰的報 enabled、完整消耗的報 deleted，
+/// 新增條目與沒動的不報；給世界設定開著的條目草稿定基。
+#[test]
+fn apply_reports_changed_existing_entries() {
+    let root = TestRoot::new("apply-entry-changes");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let dropped_uid = seed_entry(root.path(), &world_id, "格式", "輸出協定");
+    let source_uid = seed_entry(root.path(), &world_id, "舊設定", "舊世界書全文");
+    let untouched_uid = seed_entry(root.path(), &world_id, "地理", "北境多雪");
+    let outcome = RefactorOutcome {
+        mode: None,
+        characters: Vec::new(),
+        interface: None,
+        mechanisms: Vec::new(),
+        entries: vec![crate::refactor_ai::RefactorNewEntry {
+            title: "新世界觀".to_owned(),
+            kind: "setting".to_owned(),
+            content: "重寫的世界觀".to_owned(),
+            source_uids: vec![source_uid.to_string()],
+            rules: BTreeMap::new(),
+            triggers: Vec::new(),
+            meta: None,
+        }],
+        deletable_shared_uids: Vec::new(),
+        dropped: vec![crate::refactor_assemble::RefactorDroppedEntry {
+            uid: dropped_uid.to_string(),
+            span: String::new(),
+            title: "格式".to_owned(),
+            content: "輸出協定".to_owned(),
+            rule: 5,
+        }],
+        unabsorbed: Vec::new(),
+        audit: Vec::new(),
+        preserve_source_uids: Vec::new(),
+        source_fingerprints: Default::default(),
+    };
+    let selection = RefactorSelection {
+        character_indices: Vec::new(),
+        apply_interface: false,
+        mechanism_indices: Vec::new(),
+        entry_indices: vec![0],
+        player_index: None,
+    };
+
+    let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+    let changes = result.summary.entry_changes.expect("worldbook readable");
+    assert_eq!(
+        changes,
+        receipts::undo_changes::EntryChanges {
+            changed: vec![receipts::undo_changes::EntryChange {
+                uid: dropped_uid,
+                groups: vec!["enabled"],
+            }],
+            deleted: vec![source_uid],
+        }
+    );
+    assert!(!changes
+        .changed
+        .iter()
+        .any(|change| change.uid == untouched_uid));
+
+    // 沒有淘汰、沒有刪除：空
+    let quiet = RefactorOutcome {
+        entries: Vec::new(),
+        dropped: Vec::new(),
+        ..outcome
+    };
+    let result = apply(
+        root.path(),
+        &world_id,
+        &quiet,
+        &no_player_selection(Vec::new()),
+    )
+    .unwrap();
+    assert_eq!(
+        result.summary.entry_changes,
+        Some(receipts::undo_changes::EntryChanges::default())
+    );
+}
