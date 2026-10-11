@@ -702,15 +702,19 @@ fn swap_failures_after_moving_the_original_away() {
     refactor(&root, &world_id);
     let before = fingerprint(root.path(), &world_id);
     {
-        // 原桌搬去 trash 那一步失敗（第 3 次改名）：staging 與日誌收掉，原桌不動
-        let _guard = data::RenameFailGuard::fail_after(2, 1);
+        // 原桌搬去 trash 那一步失敗：staging 與日誌收掉，原桌不動。照目標路徑打，不數改名次數
+        // （重建桌內的收據等原子寫也會改名）
+        let _guard = data::RenameFailGuard::fail_ending(&format!(".tt-trash-{world_id}"), 1);
         assert!(reset_to_import_source(root.path(), &world_id, "zh-TW").is_err());
     }
     assert_eq!(fingerprint(root.path(), &world_id), before);
     {
-        // 改名順序：重建桌→staging、日誌暫存→正式日誌、原桌→trash、staging→原位（第 4 次失敗）、
-        // trash→原位（退回）
-        let _guard = data::RenameFailGuard::fail_after(3, 1);
+        // 改名順序：重建桌→staging、日誌暫存→正式日誌、原桌→trash、staging→原位（失敗）、
+        // trash→原位（退回）；後兩步的目標都是原位
+        let _guard = data::RenameFailGuard::fail_ending(
+            &format!("{}{world_id}", std::path::MAIN_SEPARATOR),
+            1,
+        );
         assert!(reset_to_import_source(root.path(), &world_id, "zh-TW").is_err());
     }
     assert_eq!(fingerprint(root.path(), &world_id), before);
@@ -723,7 +727,10 @@ fn swap_failures_after_moving_the_original_away() {
         assert!(!worlds.join(&name).exists(), "殘留 {name}");
     }
     {
-        let _guard = data::RenameFailGuard::fail_after(3, 2);
+        let _guard = data::RenameFailGuard::fail_ending(
+            &format!("{}{world_id}", std::path::MAIN_SEPARATOR),
+            2,
+        );
         assert!(reset_to_import_source(root.path(), &world_id, "zh-TW").is_err());
     }
     assert!(!worlds.join(&world_id).exists());

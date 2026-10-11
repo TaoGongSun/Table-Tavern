@@ -402,6 +402,12 @@ pub fn set_character_auto_hidden(
     Ok(())
 }
 
+/// 卡檔（`characters/<id>.md`）確定已不在：刪角色後清世界書名單的判準。查不到（權限、I/O 錯誤）
+/// 回 Err，不當成已刪。
+pub fn character_card_gone(root: &Path, world_id: &str, character_id: &str) -> DataResult<bool> {
+    Ok(!character_path(root, world_id, character_id)?.try_exists()?)
+}
+
 pub fn delete_character(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
     let path = character_path(root, world_id, character_id)?;
     super::world_file::commit_world_remove(&path)?;

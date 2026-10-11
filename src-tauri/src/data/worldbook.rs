@@ -102,6 +102,20 @@ fn write_worldbook_value(root: &Path, world_id: &str, value: &serde_json::Value)
     })
 }
 
+/// 整檔原子寫（暫存檔＋fsync＋改名，失敗原檔不動）。只給不增刪 uid 的改寫用，不經計時清理。
+fn write_worldbook_value_atomic(
+    root: &Path,
+    world_id: &str,
+    value: &serde_json::Value,
+) -> DataResult<()> {
+    with_commit(root, world_id, |_| {
+        super::world_file::commit_world_write_atomic(
+            &worldbook_path(root, world_id)?,
+            serde_json::to_string_pretty(value)?.as_bytes(),
+        )
+    })
+}
+
 fn visibility_from_value(value: &serde_json::Value) -> Visibility {
     match value
         .get("extensions")
@@ -725,17 +739,16 @@ fn private_heading(lang: &str) -> &'static str {
 }
 
 /// 把角色卡搬回世界書，桌上與隱藏區的卡都可以。`lang`：介面語系，決定私有段標的語言。
-/// 取獨占：回合或換幕持共用許可期間會讀卡、寫卡，交錯會點名已刪的卡或把卡檔寫回來。
-pub fn character_to_worldbook_entry(
+/// 要出示獨占：回合或換幕持共用許可期間會讀卡、寫卡，交錯會點名已刪的卡或把卡檔寫回來；
+/// 呼叫端持著同一把獨占接著清世界書裡的角色 id（receipts::after_character_delete）。
+pub fn character_to_worldbook_entry_held(
     root: &Path,
     world_id: &str,
     character_id: &str,
     lang: &str,
+    _held: &super::WorldExclusive,
 ) -> DataResult<()> {
     // 鎖順序（state_commit.rs）：世界許可 → 短提交鎖 → 檔鎖
-    let Some(_lock) = super::world_lock::try_world_exclusive(world_id) else {
-        return Err(UiMsg::WorldBusy.into_error());
-    };
     with_commit(root, world_id, |_| {
         let card = read_character(root, world_id, character_id)?;
         let state = read_state(root, world_id)?;
@@ -789,6 +802,7 @@ pub fn export_worldbook(root: &Path, world_id: &str, path: &Path) -> DataResult<
 }
 
 mod book_import;
+mod character_scrub;
 mod raw_entries;
 
 #[cfg(test)]
@@ -796,6 +810,10 @@ pub use book_import::import_worldbook;
 pub use book_import::{
     dedupe_worldbook, import_worldbook_as, BookImport, BookOwner, VisibilityRestore,
     WorldbookImport,
+};
+pub use character_scrub::{
+    apply_entry_fields, apply_restore_before, entry_view_of, restore_after_matches,
+    scrub_character_ids, scrub_entry, scrub_entry_value, scrub_restore,
 };
 pub use raw_entries::{
     apply_visibility_restore, character_book_raw_entries, identity_fingerprint,
@@ -806,5 +824,7 @@ pub use raw_entries::{
 
 #[cfg(test)]
 mod book_import_tests;
+#[cfg(test)]
+mod character_scrub_tests;
 #[cfg(test)]
 mod tests;

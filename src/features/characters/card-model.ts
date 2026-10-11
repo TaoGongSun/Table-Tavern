@@ -25,4 +25,7 @@ export interface CharacterCard extends CharacterMeta {
 export const PALETTE = ["#e07a5f", "#3d84a8", "#81b29a", "#f2a541", "#9b5de5", "#e56399"];
 
 // 裁切完成的圖：bytes 給後端存檔、url 給畫面預覽（按儲存前只活在記憶體裡）
+/** 刪角色、角色卡轉條目的回傳：角色已刪除，但世界書的角色關聯沒清完。 */
+export type CharacterDeleteOutcome = { worldbook_cleanup_failed: boolean };
+
 export type DraftImage = { bytes: number[]; url: string };

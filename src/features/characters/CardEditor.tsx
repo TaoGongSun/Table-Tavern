@@ -4,7 +4,7 @@ import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../../i18n";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
-import { CharacterCard, DraftImage, Tier } from "./card-model";
+import { CharacterCard, CharacterDeleteOutcome, DraftImage, Tier } from "./card-model";
 import { tierLabel } from "../ai-connection/model-catalog";
 import { IconArchive, IconBook, IconDelete, IconExport, IconSparkle } from "../../shared/ui/icons";
 import type { MoreMenuItem } from "../../shared/ui/MoreMenu";
@@ -328,8 +328,15 @@ export function CardEditor({
       return;
     }
     try {
-      await invoke("character_to_worldbook_entry", { worldId: world, characterId });
-      await showMessage(t("convertCardDone"), { okLabel: t("dialogAck") });
+      const outcome = await invoke<CharacterDeleteOutcome | undefined>(
+        "character_to_worldbook_entry",
+        { worldId: world, characterId },
+      );
+      // 編輯器轉完就卸載，提示接在完成訊息後面才看得到
+      const done = outcome?.worldbook_cleanup_failed
+        ? `${t("convertCardDone")}\n${t("deleteCharacterCleanupFailed")}`
+        : t("convertCardDone");
+      await showMessage(done, { okLabel: t("dialogAck") });
       await onConverted();
     } catch (reason) {
       setMessage(String(reason));

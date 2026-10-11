@@ -11,7 +11,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+mod character_delete;
 mod sources;
+pub use character_delete::{
+    character_to_worldbook_entry_and_clean, delete_character_and_clean, CharacterDeleteOutcome,
+};
 pub use sources::{
     begin_pending, discard_import_source, finish_pending, import_replays, store_import_source,
     ImportReplay, ImportRoute, ImportSource,
@@ -253,10 +257,9 @@ fn read_receipts(root: &Path, world_id: &str) -> Vec<ImportReceipt> {
     serde_json::from_str(&text).unwrap_or_default()
 }
 
+/// 收據檔一律整檔原子寫：寫到一半或改名失敗時整份舊收據原樣留著。
 fn write_receipts(root: &Path, world_id: &str, receipts: &[ImportReceipt]) -> DataResult<()> {
-    let path = data::import_receipts_path(root, world_id)?;
-    data::commit_world_write(&path, serde_json::to_string_pretty(receipts)?.as_bytes())?;
-    Ok(())
+    pop_receipts(root, world_id, receipts)
 }
 
 /// 原子寫整份收據（撤銷彈出、重構追加）：寫到一半失敗時整份舊收據原樣留著（不是半截 JSON）。
@@ -805,6 +808,8 @@ fn undo_last(
     }
 
     // 1. 角色卡：md／原始檔／圖片／圖庫一併刪除——按鈕語意是撤銷這次匯入，玩家後續編輯一併退場。
+    // 卡檔確定已不在的 id 記下來，3a 之後從世界書名單清掉（刪除本身回錯但 md 已刪的也算）。
+    let mut gone_characters = Vec::new();
     if let Some(character_id) = &receipt.character_id {
         if kept(strict, data::delete_character(root, world_id, character_id))?.is_some() {
             report.removed_character = Some(receipt.label.clone());
@@ -816,6 +821,13 @@ fn undo_last(
                 strict,
                 data::commit_world_remove(&character_path.with_extension("import.json")),
             )?;
+        }
+        if kept(
+            strict,
+            data::character_card_gone(root, world_id, character_id),
+        )? == Some(true)
+        {
+            gone_characters.push(character_id.clone());
         }
     }
     // AI 卡重構等一次套用多張角色卡的路徑：character_id／character_ids 兩欄位互斥，
@@ -834,6 +846,13 @@ fn undo_last(
                     data::commit_world_remove(&character_path.with_extension("import.json")),
                 )?;
             }
+        }
+        if kept(
+            strict,
+            data::character_card_gone(root, world_id, character_id),
+        )? == Some(true)
+        {
+            gone_characters.push(character_id.clone());
         }
     }
 
@@ -927,6 +946,15 @@ fn undo_last(
                 )?;
             }
         }
+    }
+
+    // 3b. 這次刪掉的角色從世界書名單與來源卡拿掉（名單清空改 GM）。放在 2、3a 之後：先清會讓本次新建的
+    // 條目指紋對不上而被保留。插回的快照早於這次匯入、不含這些 id，清理不會改到它們，重試時「已插回」照樣認得。
+    if !gone_characters.is_empty() {
+        kept(
+            strict,
+            data::scrub_character_ids(root, world_id, &gone_characters),
+        )?;
     }
 
     // 4. 機制／狀態樹：只退回這次匯入自己造成的鍵，其餘（別筆匯入或期間的正常遊玩）不動。

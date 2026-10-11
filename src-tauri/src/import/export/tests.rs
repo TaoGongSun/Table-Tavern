@@ -342,7 +342,14 @@ fn legacy_card_file_export_and_conversion_fail_without_writing() {
     let target = root.path().join("舊卡.json");
     assert!(export_character(root.path(), &world_id, &id, &target).is_err());
     assert!(!target.exists());
-    assert!(data::character_to_worldbook_entry(root.path(), &world_id, &id, "zh-TW").is_err());
+    assert!(data::character_to_worldbook_entry_held(
+        root.path(),
+        &world_id,
+        &id,
+        "zh-TW",
+        &data::test_exclusive(&world_id)
+    )
+    .is_err());
     assert!(data::read_worldbook(root.path(), &world_id)
         .unwrap()
         .is_empty());

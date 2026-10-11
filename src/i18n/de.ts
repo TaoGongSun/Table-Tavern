@@ -418,6 +418,7 @@ export const de: Record<MsgKey, string> = {
   convertCardUnsaved: "Es gibt ungespeicherte Änderungen. Speichere sie vor dem Umwandeln.",
   convertCardConfirm: "Die ganze Karte einschließlich privater Notizen wird zu einem dauerhaft aktiven, für den GM sichtbaren Eintrag zusammengeführt. Danach werden diese Karte und ihre Bilder gelöscht. Fortfahren?",
   convertCardDone: "In Weltbucheintrag umgewandelt.",
+  deleteCharacterCleanupFailed: "Der Charakter wurde gelöscht, aber seine Verknüpfungen im Weltbuch wurden nicht vollständig bereinigt. Prüfe das Weltbuch.",
   exportCardPng: "Charakterkarte PNG",
   exportCardJson: "Charakterkarte JSON",
   exportCardNeedsSave: "Karte vor dem Exportieren speichern",

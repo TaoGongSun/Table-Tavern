@@ -70,9 +70,9 @@ pub(crate) fn delete_character(
     app: tauri::AppHandle,
     world_id: String,
     character_id: String,
-) -> Result<(), String> {
+) -> Result<receipts::CharacterDeleteOutcome, String> {
     let _permit = data::world_write_permit(&world_id)?;
-    data::delete_character(&data_root(&app)?, &world_id, &character_id)
+    receipts::delete_character_and_clean(&data_root(&app)?, &world_id, &character_id)
         .map_err(|error| error.to_string())
 }
 

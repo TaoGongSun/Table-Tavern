@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
 import { isCharacterHidden } from "./character-visibility";
-import { type CharacterCard, type CharacterMeta } from "./card-model";
+import { type CharacterCard, type CharacterDeleteOutcome, type CharacterMeta } from "./card-model";
 
 export interface CharacterController {
   /** 這桌的完整名單（含隱藏區），順序＝側欄順序 */
@@ -286,7 +286,11 @@ export function useCharacterController(input: {
           cancelLabel: t("dialogCancel"),
         });
         if (!accepted) return false;
-        await invoke("delete_character", { worldId, characterId: id });
+        const outcome = await invoke<CharacterDeleteOutcome | undefined>("delete_character", {
+          worldId,
+          characterId: id,
+        });
+        if (outcome?.worldbook_cleanup_failed) onError(t("deleteCharacterCleanupFailed"));
         return true;
       } catch (reason) {
         onError(String(reason));
@@ -307,12 +311,16 @@ export function useCharacterController(input: {
           cancelLabel: t("dialogCancel"),
         });
         if (!accepted) return false;
-        await invoke("delete_character", { worldId, characterId: id });
+        const outcome = await invoke<CharacterDeleteOutcome | undefined>("delete_character", {
+          worldId,
+          characterId: id,
+        });
         await invoke("set_player_card", { worldId, cardId: null });
         setPlayerCardId(null);
         setPlayerCard(null);
         setPlayerImage(null);
         setPlayerAvatar(null);
+        if (outcome?.worldbook_cleanup_failed) onError(t("deleteCharacterCleanupFailed"));
         return true;
       } catch (reason) {
         onError(String(reason));
