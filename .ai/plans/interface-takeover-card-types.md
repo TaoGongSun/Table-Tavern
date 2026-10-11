@@ -67,3 +67,30 @@ DongeonMaster-safe 重構改用 gm_tier 高階檔：route 確認初判與盤點�
 4. **文字欄被下 delta（已修，[takeover-text-field-delta](takeover-text-field-delta.md)）**：Transfur 接管桌 GM 對 `神經狀態`（文字欄）每回合下 delta，3/3 被拒（與 refactor-statusbar-skeleton 待觀察 ② 同類）。
 5. **開場白的原卡狀態欄被解析成多餘枝（已修，[takeover-opening-statusbar-branch](takeover-opening-statusbar-branch.md)）**：NorthHall 接管桌貼開場白後，狀態樹多出 `状态栏` 整棵（原卡 `<Status_block>` 的 YAML），與骨架欄位並存。
 6. **初判失敗不留痕（已修，[refactor-probe-failure-hidden](refactor-probe-failure-hidden.md)）**：設定缺 `cli_risk_accepted` 時初判在派送前失敗，畫面只看到沒有建議的二選一，看不出原因。
+
+## 重驗（2026-10-12）
+
+介面接管相關修正進 main 後（db44fb45）重跑兩張不過的卡。測試通道、claude CLI；重構 `gm_tier=best`（初判與盤點 opus、展開 sonnet），套用後切 `balanced` 用 sonnet 實聊 3 回合；開場白以 `post_opening` 貼出（scene 取 `read_state.current_scene`）。本輪不跑未重構基準桌。卡片介面在 sandbox iframe 內點不到，分頁內容用 srcdoc 快照在瀏覽器點開看。
+
+| 卡 | 重構結果 | 接管 1／2／3 回合 輸出 tok | 原文字數 | 劇情字數 | patch（送出／套用） | 畫面 |
+|---|---|---|---|---|---|---|
+| DongeonMaster-safe（MVU） | 照建議保留原卡玩法；重建 23 條，`[mvu_update]` 更新規則收成機制、輸出格式兩條淘汰（同上輪） | 2778／3919／3807 | 1629／2256／2102 | 713／898／859 | 8/8、5/5、4/4（含 insert 新房間、魔物、冒險者小隊） | 開局頁→迷宮之書照畫；地下構造圖出現新房間與「魔:2 隊:1」，小隊頁列出新小隊 |
+| RPGImmortal | 照建議保留原卡玩法；「遊戲介面搬進 app」、重建 8 條，介面已套用（未接管機制 3 項，原文留在 GM 規則） | 4023／3445／3801 | 2896／2033／2776 | 676／627／585 | 13/13、8/8、10/10 | 開局頁照畫；狀態欄時間地點、行動選項每回合跟動；小地圖照元素座標畫出，在場 NPC 分頁跟動 |
+
+用量（ai-log）：DongeonMaster-safe 重構 3 次 $1.17、實聊 3 次 $0.71；RPGImmortal 重構 4 次 $0.54、實聊 3 次 $0.43；合計 **$2.85**。
+
+### 判定
+- **MVU 前端型（DongeonMaster-safe）**：過。patch 全數套用，路徑對得上原卡簡體樹，介面數值跟動。
+- **狀態欄＋小地圖（RPGImmortal）**：過。介面套上，三回合欄位全數套用、畫面跟動。
+
+### 問題清單
+①（擋住接管後能玩下去）：無。
+
+②（瑕疵，只列不修）：
+- DongeonMaster-safe 每回合輸入 21.7K→42.8K→59.5K，增長仍快（RPGImmortal 9.7K→16.4K→22.7K）；未查原因。
+- DongeonMaster-safe insert 值裡的陣列（`魔物: []`、`["Mon_001","Mon_002"]`）存成索引分支（`{}`、`{"0":…,"1":…}`），布林 `false` 存成字串；介面目前照畫。
+- DongeonMaster-safe GM 寫入的文字值是繁體，原卡樹與介面是簡體，混排。
+- RPGImmortal 介面標題與主角名顯示字面 `{{user}}`（桌上沒放玩家卡）。
+- RPGImmortal 骨架清單欄（`小地圖元素`、`在場NPC`、`行動選項` 等）GM 整段連縮排的 YAML 片段寫進文字值；介面解析正常。
+
+證據（本機暫存，`/private/tmp/claude-501/-Users-pachelo-GitHub-Table-Tavern/1b77609f-1ee3-454f-b35a-437005d7c286/scratchpad/recheck/`）：`dm/`、`rpg/` 為測試 root（`harness-ai.log`、`data/worlds/*/transcript/0.jsonl`、`state.json`）；截圖 `dm-0-opening.png`、`dm-1.png`、`dm-3-map.jpg`、`dm-3-squad.jpg`、`rpg-0-opening.png`、`rpg-1.png`、`rpg-3.png`、`rpg-3-minimap.jpg`。
