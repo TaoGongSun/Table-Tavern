@@ -3,6 +3,7 @@
 // 型別對照後端 src-tauri/src/refactor.rs 前段的 RefactorOutcome／RefactorSelection 契約。
 import { composeFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { classifyPlaceholder } from "./refactor-shell";
+import { resolveContainerSlots, type SourceContainerRoles } from "./refactor-slot";
 import type { RefactorApplied } from "./refactor-card";
 import type { EntryChanges } from "../worldbook/worldbook-model";
 
@@ -273,6 +274,7 @@ function leafAt(tree: Record<string, unknown>, path: string): boolean {
 
 /** 多條介面候選合併成一條（每條都消耗自己的來源，所以每條的格式、欄位與指引都要留著）：
  * - 先依最小來源 uid 穩定排序，平行完成的順序不影響結果；
+ * - 來源原文只放佔位的容器讓位給另一條定義同名容器的條目（refactor-slot.ts，containerRoles 由呼叫端依條目原文算）；
  * - 狀態樹遞迴合併、保留不同葉子；欄位規則依路徑合併；同一路徑兩份的值或規則不同＝衝突；
  * - 骨架與回報指引各自去重（trim 後全文相同算同一份）後依序串接；
  * - 合併後每份骨架的狀態路徑佔位符都要對到合併後的葉子與規則，對不上也算衝突。
@@ -283,6 +285,7 @@ function leafAt(tree: Record<string, unknown>, path: string): boolean {
 export function mergeRefactorInterfaces(
   interfaces: RefactorInterface[],
   frames: RefactorFrameCandidate[] = [],
+  containerRoles: Record<string, SourceContainerRoles> = {},
 ): {
   interface: RefactorInterface | null;
   conflict: string | null;
@@ -290,12 +293,15 @@ export function mergeRefactorInterfaces(
 } {
   const allFramesFailed = frames.map((frame) => frame.uid);
   if (interfaces.length === 0) return { interface: null, conflict: null, failedFrames: allFramesFailed };
-  const ordered = [...interfaces].sort((a, b) => {
-    const [uidA, rawA] = interfaceOrderKey(a);
-    const [uidB, rawB] = interfaceOrderKey(b);
-    if (uidA !== uidB) return uidA < uidB ? -1 : 1;
-    return rawA < rawB ? -1 : rawA > rawB ? 1 : 0;
-  });
+  const ordered = resolveContainerSlots(
+    [...interfaces].sort((a, b) => {
+      const [uidA, rawA] = interfaceOrderKey(a);
+      const [uidB, rawB] = interfaceOrderKey(b);
+      if (uidA !== uidB) return uidA < uidB ? -1 : 1;
+      return rawA < rawB ? -1 : rawA > rawB ? 1 : 0;
+    }),
+    containerRoles,
+  );
   const stateFields: Record<string, unknown> = {};
   const shells: string[] = [];
   const guides: string[] = [];
@@ -437,6 +443,8 @@ export function assembleRefactorOutcome(parts: {
   interfaces: RefactorInterface[];
   /** 確認為外框的條目（見 refactor-frame.ts） */
   frames?: RefactorFrameCandidate[];
+  /** 來源條目原文的容器角色（uid→），佔位容器讓位用；見 refactor-slot.ts */
+  containerRoles?: Record<string, SourceContainerRoles>;
   entries: RefactorNewEntry[];
   dropped?: RefactorDroppedEntry[];
   unabsorbed?: RefactorUnabsorbedItem[];
@@ -447,7 +455,7 @@ export function assembleRefactorOutcome(parts: {
 }): RefactorOutcome {
   return {
     characters: parts.characters,
-    interface: mergeRefactorInterfaces(parts.interfaces, parts.frames ?? []).interface,
+    interface: mergeRefactorInterfaces(parts.interfaces, parts.frames ?? [], parts.containerRoles).interface,
     entries: parts.entries,
     mechanisms: [],
     deletable_shared_uids: [],

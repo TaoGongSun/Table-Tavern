@@ -4,7 +4,6 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
-- [takeover-interface-conflict](tasks/takeover-interface-conflict.md) — 重構接管：多來源產出同欄位就整組介面不套（RPGImmortal） — 下一步：未排程
 - [takeover-mvu-path-mismatch](tasks/takeover-mvu-path-mismatch.md) — 重構接管：MVU 卡重構後繁簡路徑不一致、GM 對不上變數 — 下一步：未排程
 - [takeover-text-multiline](tasks/takeover-text-multiline.md) — 重構接管：行式格式正文只顯示第一段 — 下一步：未排程
 - [takeover-text-field-delta](tasks/takeover-text-field-delta.md) — 重構接管：文字欄位被下數值增減 — 下一步：未排程
