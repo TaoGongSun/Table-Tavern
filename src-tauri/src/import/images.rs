@@ -127,10 +127,7 @@ fn delete_character_png(
     extension: &str,
 ) -> DataResult<()> {
     let path = data::character_path(root, world_id, character_id)?.with_extension(extension);
-    if path.exists() {
-        data::commit_world_remove(&path)?;
-    }
-    Ok(())
+    data::commit_world_remove(&path)
 }
 
 #[cfg(test)]
@@ -209,5 +206,36 @@ mod tests {
         delete_character_image(root.path(), &world_id, &meta.id).unwrap();
         delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
         delete_character_avatar(root.path(), &world_id, &meta.id).unwrap();
+    }
+
+    /// 角色目錄沒有搜尋權限：查不到圖在不在，刪圖回錯、圖還在。
+    #[cfg(unix)]
+    #[test]
+    fn delete_character_image_reports_an_unsearchable_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TestRoot::new("delete-images-locked");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let png = minimal_png(r#"{"data":{"name":"凱恩"}}"#);
+        let meta = import_character(root.path(), &world_id, &png, "#111111", "zh-TW").unwrap();
+        let image = data::character_path(root.path(), &world_id, &meta.id)
+            .unwrap()
+            .with_extension("png");
+        fs::write(&image, b"x").unwrap();
+        let characters = image.parent().unwrap().to_path_buf();
+        fs::set_permissions(&characters, fs::Permissions::from_mode(0o000)).unwrap();
+        match image.try_exists() {
+            Err(_) => {}
+            Ok(true) => {
+                fs::set_permissions(&characters, fs::Permissions::from_mode(0o755)).unwrap();
+                eprintln!("略過：0o000 擋不住查詢（以 root 執行），測不出查詢錯誤");
+                return;
+            }
+            Ok(false) => panic!("圖檔在，查詢卻回不在"),
+        }
+        let result = delete_character_image(root.path(), &world_id, &meta.id);
+        fs::set_permissions(&characters, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(result.is_err());
+        assert!(image.is_file());
     }
 }

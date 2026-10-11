@@ -411,19 +411,9 @@ pub fn character_card_gone(root: &Path, world_id: &str, character_id: &str) -> D
 pub fn delete_character(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
     let path = character_path(root, world_id, character_id)?;
     super::world_file::commit_world_remove(&path)?;
-    let gallery = gallery_dir(root, world_id, character_id)?;
-    if gallery.exists() {
-        super::world_file::commit_world_remove(&gallery)?;
-    }
-    let image_path = path.with_extension("png");
-    if image_path.exists() {
-        super::world_file::commit_world_remove(&image_path)?;
-    }
-    let avatar_path = path.with_extension("avatar.png");
-    if avatar_path.exists() {
-        super::world_file::commit_world_remove(&avatar_path)?;
-    }
-    Ok(())
+    super::world_file::commit_world_remove(&gallery_dir(root, world_id, character_id)?)?;
+    super::world_file::commit_world_remove(&path.with_extension("png"))?;
+    super::world_file::commit_world_remove(&path.with_extension("avatar.png"))
 }
 
 #[cfg(test)]

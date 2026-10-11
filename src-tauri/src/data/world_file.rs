@@ -538,8 +538,9 @@ pub(crate) fn fsync_tree(dir: &Path) -> DataResult<()> {
     fsync_dir(dir)
 }
 
+/// 刪檔或整個目錄；確定不在（NotFound）才算已刪，查不到（例如父目錄沒有搜尋權限）回錯。
 pub(crate) fn remove_path_raw(path: &Path) -> DataResult<()> {
-    if !path.exists() {
+    if !path.try_exists()? {
         return Ok(());
     }
     if injected_remove_failure(path) {
@@ -548,12 +549,15 @@ pub(crate) fn remove_path_raw(path: &Path) -> DataResult<()> {
         }
         .into_error());
     }
-    if path.is_dir() {
-        fs::remove_dir_all(path)?;
+    let removed = if path.is_dir() {
+        fs::remove_dir_all(path)
     } else {
-        fs::remove_file(path)?;
+        fs::remove_file(path)
+    };
+    match removed {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 pub(crate) fn copy_dir(from: &Path, to: &Path) -> DataResult<()> {
@@ -838,10 +842,7 @@ pub(crate) fn prepare_new_world(root: &Path, id: &str) -> DataResult<PathBuf> {
 
 /// 玩家確認刪桌：主目錄與這桌的 sidecar 一起清掉，避免留下「只有備份」的修復列。
 pub(crate) fn delete_world_tree(root: &Path, world_id: &str) -> DataResult<()> {
-    let dir = world_dir(root, world_id)?;
-    if dir.exists() {
-        fs::remove_dir_all(&dir)?;
-    }
+    remove_path_raw(&world_dir(root, world_id)?)?;
     let worlds = worlds_dir(root);
     for name in [
         format!(".tt-staging-{world_id}"),
@@ -1345,5 +1346,42 @@ mod rename_tests {
         drop(fails);
         assert_eq!(attempts.counts(), (2, 0), "被注入的那次呼叫不進重試迴圈");
         assert!(from.is_file());
+    }
+}
+
+#[cfg(test)]
+mod remove_tests {
+    use super::*;
+
+    /// 父目錄沒有搜尋權限：查不到檔案在不在，回錯、檔案還在；不在的路徑照樣算已刪。
+    #[cfg(unix)]
+    #[test]
+    fn an_unsearchable_parent_is_an_error_not_a_deletion() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("tt-remove-{}", ulid::Ulid::generate()));
+        let parent = dir.join("locked");
+        fs::create_dir_all(&parent).unwrap();
+        let file = parent.join("card.md");
+        fs::write(&file, b"x").unwrap();
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o000)).unwrap();
+        match file.try_exists() {
+            Err(_) => {}
+            Ok(true) => {
+                fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
+                let _ = fs::remove_dir_all(&dir);
+                eprintln!("略過：0o000 擋不住查詢（以 root 執行），測不出查詢錯誤");
+                return;
+            }
+            Ok(false) => panic!("檔案在，查詢卻回不在"),
+        }
+        let result = remove_path_raw(&file);
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
+        let missing = remove_path_raw(&parent.join("missing.md"));
+        let still_there = file.is_file();
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+        assert!(still_there);
+        assert!(missing.is_ok());
     }
 }
