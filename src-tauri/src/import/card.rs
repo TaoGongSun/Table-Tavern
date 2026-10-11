@@ -287,6 +287,8 @@ pub struct ImportedCharacter {
 
 /// 匯入永遠是全新一張卡：mint 新 id，name 照卡片原值（不再擋特殊字元，只擋換行）。
 /// `lang`：介面語系，決定寫進內文的段標語言（寫入後就是玩家內文，不隨語系變）。
+/// 正式路徑都走 import_character_reporting；這支只剩測試用。
+#[cfg(test)]
 pub fn import_character(
     root: &Path,
     world_id: &str,
