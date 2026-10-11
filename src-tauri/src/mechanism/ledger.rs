@@ -8,7 +8,7 @@ use super::derive::{recompute_derived, reroll};
 use super::note::build_notes;
 use super::parse::parse_block;
 use super::rules::rule_for_path;
-use super::tree::{format_num, leaf_at, numeric_value};
+use super::tree::{format_num, insert_node, leaf_at, numeric_value, take_node};
 use super::triggers::evaluate_triggers;
 use super::types::{Outcome, Parsed, Record, RecordKind};
 use super::upstream_set::TypedView;
@@ -111,8 +111,11 @@ fn scoped_block(
     let record = match scope {
         BlockScope::Table => None,
         BlockScope::TakeoverOpening => {
-            let dropped = !kept.fields.is_empty() || !kept.updates.is_empty();
+            let dropped =
+                !kept.fields.is_empty() || !kept.lists.is_empty() || !kept.updates.is_empty();
             kept.fields.clear();
+            kept.lists.clear();
+            kept.maps.clear();
             kept.updates.clear();
             dropped.then(|| {
                 Record::new(
@@ -124,8 +127,10 @@ fn scoped_block(
             })
         }
         BlockScope::TakeoverReply => {
-            let dropped = !kept.fields.is_empty();
+            let dropped = !kept.fields.is_empty() || !kept.lists.is_empty();
             kept.fields.clear();
+            kept.lists.clear();
+            kept.maps.clear();
             dropped.then(|| {
                 Record::new(
                     RecordKind::Rejected,
@@ -136,6 +141,105 @@ fn scoped_block(
         }
     };
     (kept, record)
+}
+
+/// 清單整支替換時每個容器的處置（全部在任何刪除之前判定）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ListFate {
+    /// 整支移除重寫（清單），或清單身分黏著先移除（具名容器樹上是索引分支）
+    Fresh,
+    /// 變數模式下容器是葉子或具名分支：不移除，這支底下的欄位也不寫
+    Skipped,
+    /// 具名容器照常寫鍵
+    Plain,
+}
+
+/// 狀態區塊的清單整支替換，寫欄位之前做：
+/// - 具名容器在樹上是清單出身的索引分支（清單身分黏著）→ 先移除，再照具名鍵寫；
+/// - 清單容器先移除再放空分支（`鍵: []` 留空清單），根層清單順手刪掉平欄同名鍵；
+/// - 變數模式只動「不存在」「空分支」或「索引分支」的容器，葉子（stat_data 陣列的 JSON 文字）與具名分支
+///   不移除、底下的欄位與巢狀容器一律不動；這回合真有欄位被略過才記一筆 Ignored（只進帳本）。
+///
+/// 回傳略過的路徑（欄位寫入時跳過）與記帳。
+fn replace_lists(
+    world: &mut data::WorldState,
+    block: &crate::transport::StateBlock,
+    variable_mode: bool,
+) -> (Vec<Vec<String>>, Vec<Record>) {
+    let tree = &world.state.tree;
+    let indexed = |path: &[String]| matches!(data::node_at(tree, path), Some(data::StateNode::Branch(children)) if data::is_index_branch(children));
+    let rewritable = |path: &[String]| match data::node_at(tree, path) {
+        None => true,
+        Some(data::StateNode::Branch(children)) => {
+            children.is_empty() || data::is_index_branch(children)
+        }
+        Some(data::StateNode::Leaf(_)) => false,
+    };
+    // 祖先先判：有略過的祖先就整支略過，有重寫的祖先就跟著重寫
+    let mut containers: Vec<(&Vec<String>, bool)> = block
+        .lists
+        .iter()
+        .map(|path| (path, true))
+        .chain(block.maps.iter().map(|path| (path, false)))
+        .collect();
+    containers.sort_by_key(|(path, _)| path.len());
+    let mut fates: Vec<(&Vec<String>, bool, ListFate)> = Vec::new();
+    for (path, is_list) in containers {
+        let inherited = fates
+            .iter()
+            .filter(|(ancestor, _, _)| path.starts_with(ancestor) && ancestor.len() < path.len())
+            .map(|(_, _, fate)| *fate)
+            .fold(None, |acc, fate| match (acc, fate) {
+                (Some(ListFate::Skipped), _) | (_, ListFate::Skipped) => Some(ListFate::Skipped),
+                (Some(ListFate::Fresh), _) | (_, ListFate::Fresh) => Some(ListFate::Fresh),
+                _ => acc,
+            });
+        let fate = match (inherited, is_list) {
+            (Some(ListFate::Skipped), _) => ListFate::Skipped,
+            (Some(ListFate::Fresh), true) => ListFate::Fresh,
+            (Some(ListFate::Fresh), false) => ListFate::Plain,
+            (_, true) if !variable_mode || rewritable(path) => ListFate::Fresh,
+            (_, true) => ListFate::Skipped,
+            (_, false) if indexed(path) => ListFate::Fresh,
+            (_, false) => ListFate::Plain,
+        };
+        fates.push((path, is_list, fate));
+    }
+    let mut skipped = Vec::new();
+    let mut records = Vec::new();
+    for (path, _, fate) in &fates {
+        let top = !fates.iter().any(|(ancestor, _, other)| {
+            path.starts_with(ancestor) && ancestor.len() < path.len() && other == fate
+        });
+        // 只在這回合真有欄位被略過時記（空清單略過不記，免得每回合重複記同一筆）
+        let dropped_fields = block
+            .fields
+            .iter()
+            .any(|(field, _)| field.starts_with(path));
+        if *fate == ListFate::Skipped && top && dropped_fields {
+            skipped.push((*path).clone());
+            records.push(Record::new(
+                RecordKind::Ignored,
+                path.join("."),
+                "狀態區塊把這支寫成清單，但帳上是陣列或具名資料，維持原值未套用。".to_owned(),
+            ));
+        }
+    }
+    let tree = &mut world.state.tree;
+    for (path, _, fate) in &fates {
+        if *fate == ListFate::Fresh {
+            take_node(tree, path);
+        }
+    }
+    for (path, is_list, fate) in &fates {
+        if *fate == ListFate::Fresh && *is_list {
+            let _ = insert_node(tree, path, data::StateNode::Branch(BTreeMap::new()));
+            if let [name] = path.as_slice() {
+                world.state.table.remove(name);
+            }
+        }
+    }
+    (skipped, records)
 }
 
 /// 同 `apply_block`，`base` 是變數模式這一輪的 stat_data（投影就是進來時的樹）：沒重構的 MVU 卡的
@@ -150,18 +254,26 @@ pub fn apply_block_typed(
     let (scoped, scope_record) = scoped_block(block, scope);
     let block = &scoped;
     let jump_check = !world.mechanism.incremental;
+    // 清單整支替換：底下的舊值當作沒有，不拿來比跳動
     let old_values: Vec<Option<String>> = if jump_check {
         block
             .fields
             .iter()
-            .map(|(path, _)| old_field_value(world, path))
+            .map(|(path, _)| {
+                let in_list = block.lists.iter().any(|list| path.starts_with(list));
+                (!in_list).then(|| old_field_value(world, path)).flatten()
+            })
             .collect()
     } else {
         Vec::new()
     };
 
     let entry = base.is_some().then(|| world.state.tree.clone());
+    let (skipped, list_records) = replace_lists(world, block, base.is_some());
     for (path, value) in &block.fields {
+        if skipped.iter().any(|list| path.starts_with(list)) {
+            continue;
+        }
         if path.len() == 1 {
             world.state.table.insert(path[0].clone(), value.clone());
         } else {
@@ -181,6 +293,7 @@ pub fn apply_block_typed(
     );
     let mut outcome =
         apply_updates_typed(&mut world.state.tree, &world.mechanism, &parsed, &mut view);
+    outcome.records.splice(0..0, list_records);
     if base.is_some() && view.is_active() {
         outcome.typed = Some(crate::data::message_vars::TypedBatch {
             doc: view.finish(),
@@ -364,6 +477,7 @@ mod tests {
                     .to_owned(),
             ],
             display: String::new(),
+            ..Default::default()
         };
 
         let outcome = apply_block(&mut world, &block, "阿濤");
@@ -598,6 +712,7 @@ mod tests {
             fields: Vec::new(),
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
 
         let outcome = apply_block(&mut world, &block, "阿濤");
@@ -629,6 +744,7 @@ mod tests {
             fields: Vec::new(),
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
         apply_block(&mut world, &block, "阿濤");
         assert!(world.state.triggers.is_empty());
@@ -645,6 +761,7 @@ mod tests {
             fields: vec![(vec!["World".to_owned(), "HP".to_owned()], "100".to_owned())],
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
         let outcome = apply_block(&mut world, &block, "阿濤");
         assert_eq!(world.state.jumps.get("World.HP"), Some(&"+40".to_owned()));
@@ -663,6 +780,7 @@ mod tests {
             fields: vec![(vec!["World".to_owned(), "HP".to_owned()], "10".to_owned())],
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
         apply_block(&mut world, &block, "阿濤");
         assert!(world.state.jumps.is_empty());
@@ -678,6 +796,7 @@ mod tests {
             fields: vec![(vec!["World".to_owned(), "Day".to_owned()], "100".to_owned())],
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
         apply_block(&mut world, &block, "阿濤");
         assert!(world.state.jumps.is_empty());
@@ -695,6 +814,7 @@ mod tests {
             fields: vec![(vec!["World".to_owned(), "HP".to_owned()], "100".to_owned())],
             updates: Vec::new(),
             display: String::new(),
+            ..Default::default()
         };
         apply_block(&mut world, &block, "阿濤");
         assert!(world.state.jumps.is_empty());

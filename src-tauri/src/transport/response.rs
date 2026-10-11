@@ -1,6 +1,7 @@
 use super::messages::{message, scaffold_en, ChatMessage};
 
 use super::assemble::PLAYER_SENTINEL;
+use super::state_yaml::{parse_state_fields, ParsedFields};
 
 /// 從換場摘要回覆的第一行取幕名：以「標題：」或「Title:」開頭（大小寫寬鬆）才算，
 /// 取到就把該行（含後面的空行）從摘要文字中拿掉；解析不到就回傳 None、原文整段當摘要。
@@ -322,12 +323,16 @@ fn find_state_tag(display: &str) -> Option<StateTag> {
 }
 
 /// extract_state_block 的回傳：欄位對、原始 `<UpdateVariable>` 內容（供 mechanism 解析）、
-/// 剝除後的顯示文字。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 剝除後的顯示文字、清單與具名容器路徑。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StateBlock {
     pub fields: Vec<(Vec<String>, String)>,
     pub updates: Vec<String>,
     pub display: String,
+    /// 狀態區塊裡的清單容器路徑：套用時整支替換（見 `mechanism::apply_block_typed`）
+    pub lists: Vec<Vec<String>>,
+    /// 具名容器路徑：樹上該處若是清單出身的索引分支，套用時先整支移除再寫
+    pub maps: Vec<Vec<String>>,
 }
 
 /// 從 GM 回覆剝出狀態區塊。
@@ -335,7 +340,9 @@ pub struct StateBlock {
 /// 算出的位移拿回原字串切片就會切在非字元邊界上 panic。
 pub fn extract_state_block(reply: &str) -> StateBlock {
     let mut display = reply.to_owned();
-    let mut blocks = Vec::new();
+    // 狀態區塊（原文起點, 內容）；display 一路被剝，起點換回原文座標靠 removals 逐筆倒推
+    let mut blocks: Vec<(usize, String)> = Vec::new();
+    let mut removals: Vec<(usize, usize)> = Vec::new();
     let mut updates = Vec::new();
     let mut removed = false;
 
@@ -384,8 +391,15 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
             details_cursor = end_start + "</details>".len();
             continue;
         }
-        blocks.push(inner[summary_end + "</summary>".len()..].to_owned());
-        display.replace_range(start..end_start + "</details>".len(), "");
+        blocks.push((
+            original_offset(&removals, start),
+            inner[summary_end + "</summary>".len()..].to_owned(),
+        ));
+        cut(
+            &mut display,
+            &mut removals,
+            start..end_start + "</details>".len(),
+        );
         details_cursor = start;
         removed = true;
     }
@@ -393,12 +407,12 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
     while let Some(tag) = find_state_tag(&display) {
         let content = display[tag.content_start..tag.content_end].to_owned();
         if tag.collect {
-            blocks.push(content);
+            blocks.push((original_offset(&removals, tag.start), content));
         } else {
             // UpdateVariable 是 MVU 的 JSON patch，原始內容交給 mechanism::parse_updates 解析。
             updates.push(content);
         }
-        display.replace_range(tag.start..tag.end, "");
+        cut(&mut display, &mut removals, tag.start..tag.end);
         removed = true;
     }
 
@@ -413,9 +427,13 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
             .find("</maintext>")
             .map(|index| content_start + index)
         {
-            display.replace_range(close_start..close_start + "</maintext>".len(), "");
+            cut(
+                &mut display,
+                &mut removals,
+                close_start..close_start + "</maintext>".len(),
+            );
         }
-        display.replace_range(start..content_start, "");
+        cut(&mut display, &mut removals, start..content_start);
         removed = true;
     }
 
@@ -451,7 +469,10 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
         }
         cursor = end_start + 3;
     }
-    let fence_blocks: Vec<_> = fences.iter().map(|(_, _, block)| block.clone()).collect();
+    let fence_blocks: Vec<_> = fences
+        .iter()
+        .map(|(start, _, block)| (original_offset(&removals, *start), block.clone()))
+        .collect();
     for (start, end, _) in fences.into_iter().rev() {
         display.replace_range(start..end, "");
         removed = true;
@@ -460,34 +481,100 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
 
     if !removed {
         return StateBlock {
-            fields: Vec::new(),
-            updates: Vec::new(),
             display: reply.to_owned(),
+            ..StateBlock::default()
         };
     }
 
-    let fields = blocks
-        .iter()
-        .flat_map(|block| parse_indented_fields(block))
-        .filter_map(|(mut path, value)| {
-            let value = value?;
-            if path.len() == 1 {
-                path[0] = match path[0].to_ascii_lowercase().as_str() {
-                    "time" | "時間" | "时间" => "time".to_owned(),
-                    "place" | "location" | "地點" | "地点" => "place".to_owned(),
-                    "present" | "在場" | "在场" | "在場人物" | "在场人物" => {
-                        "present".to_owned()
-                    }
-                    _ => path[0].clone(),
-                };
-            }
-            Some((path, value))
-        })
-        .collect();
+    // 依各區塊在原文的起點合併（上面是依外殼種類分批收的），「最後一塊勝出」才是原文的最後一塊。
+    blocks.sort_by_key(|(start, _)| *start);
+    let mut parsed = ParsedFields::default();
+    for (_, block) in &blocks {
+        let next = parse_state_fields(block);
+        // 同一回覆多個區塊寫同一清單：後塊整份勝出，前塊在這支底下留的欄位與容器標記一併作廢；
+        // 後塊把前塊的清單改報成具名形（兩項變一項）也一樣
+        let replaced: Vec<Vec<String>> = next
+            .lists
+            .iter()
+            .chain(next.maps.iter().filter(|map| parsed.lists.contains(map)))
+            .cloned()
+            .collect();
+        for list in &replaced {
+            parsed.fields.retain(|(path, _)| !path.starts_with(list));
+            parsed.lists.retain(|path| !path.starts_with(list));
+            parsed.maps.retain(|path| !path.starts_with(list));
+        }
+        parsed.fields.extend(next.fields);
+        parsed.lists.extend(next.lists);
+        parsed.maps.extend(next.maps);
+    }
+    let ParsedFields {
+        mut fields,
+        mut lists,
+        maps,
+    } = parsed;
+    for (path, _) in &mut fields {
+        if path.len() == 1 {
+            path[0] = table_key(&path[0]).unwrap_or(&path[0]).to_owned();
+        }
+    }
+    // 時間／地點／在場人物寫成純量清單：以「、」串起進平欄，不進樹（空清單寫空值）
+    lists.retain(|list| {
+        let [name] = list.as_slice() else {
+            return true;
+        };
+        let Some(key) = table_key(name) else {
+            return true;
+        };
+        let under: Vec<&(Vec<String>, String)> = fields
+            .iter()
+            .filter(|(path, _)| path.starts_with(list))
+            .collect();
+        if under.iter().any(|(path, _)| path.len() != 2) {
+            return true;
+        }
+        let joined = under
+            .iter()
+            .map(|(_, value)| value.as_str())
+            .collect::<Vec<_>>()
+            .join("、");
+        fields.retain(|(path, _)| !path.starts_with(list));
+        fields.push((vec![key.to_owned()], joined));
+        false
+    });
     StateBlock {
         fields,
         updates,
         display: display.trim_end().to_owned(),
+        lists,
+        maps,
+    }
+}
+
+/// 從 display 剝掉一段，記下（剝除處, 長度）供 `original_offset` 倒推原文座標。
+fn cut(display: &mut String, removals: &mut Vec<(usize, usize)>, range: std::ops::Range<usize>) {
+    removals.push((range.start, range.len()));
+    display.replace_range(range, "");
+}
+
+/// display 目前的位移換回原文位移：由最後一次剝除往前倒推，落在剝除處之後就加回被剝的長度。
+fn original_offset(removals: &[(usize, usize)], offset: usize) -> usize {
+    removals.iter().rev().fold(offset, |position, (at, len)| {
+        if position >= *at {
+            position + len
+        } else {
+            position
+        }
+    })
+}
+
+/// 平欄的三個固定鍵（時間、地點、在場人物）各種寫法對回內部鍵。
+fn table_key(key: &str) -> Option<&'static str> {
+    match key.to_ascii_lowercase().as_str() {
+        "time" | "時間" | "时间" => Some("time"),
+        "place" | "location" | "地點" | "地点" => Some("place"),
+        "present" | "在場" | "在场" | "在場人物" | "在场人物" => Some("present"),
+        _ => None,
     }
 }
 
@@ -781,24 +868,23 @@ mod tests {
         assert_eq!(display, "雨停了。");
     }
 
+    /// 單一清單項底下帶子層 → 清單（`World/0/城市`）；項目裡清單項與具名鍵混用 → 照舊攤平成具名鍵，
+    /// 純量項丟掉。
     #[test]
-    fn extract_state_block_collects_nested_yaml_and_skips_plain_list_items() {
-        let StateBlock { fields, .. } = extract_state_block(
+    fn extract_state_block_collects_nested_yaml_and_flattens_mixed_items() {
+        let block = extract_state_block(
             "<Status_block>World:\n  - 城市:\n      名稱: \"晨港\"\n      - 純清單項\n      人口: '1200'\n</Status_block>",
         );
+        let path = |segments: &[&str]| segments.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            fields,
+            block.fields,
             vec![
-                (
-                    vec!["World".to_owned(), "城市".to_owned(), "名稱".to_owned()],
-                    "晨港".to_owned(),
-                ),
-                (
-                    vec!["World".to_owned(), "城市".to_owned(), "人口".to_owned()],
-                    "1200".to_owned(),
-                ),
+                (path(&["World", "0", "城市", "名稱"]), "晨港".to_owned()),
+                (path(&["World", "0", "城市", "人口"]), "1200".to_owned()),
             ]
         );
+        assert_eq!(block.lists, vec![path(&["World"])]);
+        assert!(block.maps.contains(&path(&["World", "0", "城市"])));
     }
 
     /// 縮排行與空字典都要保留成分支標記，葉子則保留實際值。
@@ -872,6 +958,7 @@ mod tests {
             fields,
             updates,
             display,
+            ..
         } = extract_state_block("她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>");
         assert!(fields.is_empty());
         assert_eq!(updates, vec!["{\"time\":\"午夜\"}".to_owned()]);
@@ -910,6 +997,7 @@ mod tests {
                 fields: Vec::new(),
                 updates: Vec::new(),
                 display: reply.to_owned(),
+                ..Default::default()
             }
         );
     }
@@ -924,6 +1012,7 @@ mod tests {
                 fields: Vec::new(),
                 updates: Vec::new(),
                 display: reply.to_owned(),
+                ..Default::default()
             }
         );
     }
@@ -958,6 +1047,7 @@ mod tests {
                 fields: Vec::new(),
                 updates: Vec::new(),
                 display: reply.to_owned(),
+                ..Default::default()
             }
         );
     }

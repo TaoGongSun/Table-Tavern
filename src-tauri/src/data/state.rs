@@ -308,6 +308,12 @@ pub fn node_at<'a>(
     }
 }
 
+/// 清單出身的分支：鍵恰為 `0..n-1`（從 0 起、不缺號、至少一項）。年份、樓層那種數字鍵不算。
+pub fn is_index_branch(children: &BTreeMap<String, StateNode>) -> bool {
+    !children.is_empty()
+        && (0..children.len()).all(|index| children.contains_key(&index.to_string()))
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldState {
     pub id: String,

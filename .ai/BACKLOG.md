@@ -8,7 +8,6 @@
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認
 - [initvar-yaml-list](tasks/initvar-yaml-list.md) — [initvar] YAML 清單在樹模式桌被攤平 — 下一步：未排程
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕
-- [statusbar-yaml-list-flatten](tasks/statusbar-yaml-list-flatten.md) — 未重構桌狀態欄 YAML 清單攤平只剩最後一筆 — 下一步：未排程
 - [refactor-silent-skips](tasks/refactor-silent-skips.md) — 重構路徑其餘靜默略過（讀原卡失敗、略過角色、取消無回饋） — 下一步：未排程
 - [worldeditor-reset-test-flaky](tasks/worldeditor-reset-test-flaky.md) — WorldEditor 重構重設測試在 verify 偶發失敗 — 下一步：未排程
 - [web-autosave-test-flaky](tasks/web-autosave-test-flaky.md) — web 自動存檔測試在 verify 偶發失敗 — 下一步：未排程
