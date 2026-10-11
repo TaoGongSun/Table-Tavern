@@ -43,14 +43,22 @@ pub(crate) async fn update_check(
         });
     }
 
-    let plugin = match app.updater() {
-        Ok(plugin) => plugin,
-        Err(error) => return Ok(updater::CheckResult::failed(manual, error.to_string())),
-    };
+    let plugin =
+        match updater::with_timeouts(app.updater_builder(), updater::NetTimeouts::PRODUCTION)
+            .build()
+        {
+            Ok(plugin) => plugin,
+            Err(error) => return Ok(updater::CheckResult::failed(manual, error.to_string())),
+        };
     // 失敗不碰待裝槽：前端保留原本的更新資訊，槽裡那一份也留著。
     let found = match plugin.check().await {
         Ok(found) => found,
-        Err(error) => return Ok(updater::CheckResult::failed(manual, error.to_string())),
+        Err(error) => {
+            return Ok(updater::CheckResult::failed(
+                manual,
+                updater::plugin_error_text(error),
+            ))
+        }
     };
     let preferences = if manual {
         read_preferences(&app).ok()
@@ -195,9 +203,17 @@ async fn download_prepared(
                 || {},
             )
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(updater::plugin_error_text)?;
         Some((bytes, update.signature.clone()))
     };
+    // 接著可能要遠端補回退點：進度條改回不定進度，不停在 100%。
+    let _ = app.emit(
+        "update-progress",
+        ProgressPayload {
+            downloaded: 0,
+            total: None,
+        },
+    );
     let endpoint = updater::rollback_point_endpoint();
     let new_release = staged
         .as_ref()
@@ -216,38 +232,13 @@ async fn download_prepared(
         pubkey,
         data::CURRENT_FORMAT,
         &endpoint,
-        fetch_release_asset,
+        updater::fetch_release_asset,
     )
     .await?;
     Ok(updater::DownloadResult {
         version,
         rollback_ready,
     })
-}
-
-async fn fetch_release_asset(url: String) -> Result<Vec<u8>, String> {
-    if !url.starts_with("https://") {
-        return Err(UiMsg::RollbackPointUrlInvalid.into());
-    }
-    let response = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|error| error.to_string())?
-        .get(&url)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-    if !response.status().is_success() {
-        return Err(UiMsg::RollbackPointDownloadFailed {
-            status: response.status().to_string(),
-        }
-        .into());
-    }
-    response
-        .bytes()
-        .await
-        .map(|bytes| bytes.to_vec())
-        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

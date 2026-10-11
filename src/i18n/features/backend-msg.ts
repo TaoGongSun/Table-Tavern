@@ -255,6 +255,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   update_endpoint_invalid: {},
   rollback_point_url_invalid: {},
   rollback_point_download_failed: { status: "string" },
+  update_network_failed: {},
   swap_record_missing: {},
   app_id_unavailable: {},
   residue_cleanup_stuck: {},

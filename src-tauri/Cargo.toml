@@ -61,3 +61,7 @@ test-harness = ["dep:objc2", "dep:block2"]
 
 [dev-dependencies]
 minisign = "0.7"
+# 更新外掛的時限測試要 mock app（updater/net_tests.rs）。
+tauri = { version = "2", features = ["test"] }
+# 回退點轉址降級測試的本機 https 假伺服器（updater/net_tests.rs）。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

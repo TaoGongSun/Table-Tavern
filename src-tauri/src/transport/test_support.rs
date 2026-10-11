@@ -74,7 +74,7 @@ pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
 }
 
 /// 同 `stall_server`，但讀到請求後先等 `head_ms` 才回 200 標頭（模擬回應頭晚到）。
-pub(super) fn stall_server_after(head_ms: u64, script: Vec<(u64, String)>, hold_ms: u64) -> String {
+pub(crate) fn stall_server_after(head_ms: u64, script: Vec<(u64, String)>, hold_ms: u64) -> String {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
