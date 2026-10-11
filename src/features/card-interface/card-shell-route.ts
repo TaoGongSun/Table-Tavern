@@ -3,7 +3,7 @@
 import { cardDrawable, cardKey, findShell, gmOrder, type CardInterface, type ShellCache, type ShellCandidate } from "./interface-card";
 import { type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
-import { fillSkeletonPlaceholders, type StateNode } from "../refactor/refactor-shell";
+import { bodyRecordPrefix, fillSkeletonPlaceholders, spreadBodyRecord, type StateNode } from "../refactor/refactor-shell";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { eventDisplayText, parseMarker, speakerDisplayName } from "../../shared/ui/event-text";
 
@@ -151,17 +151,26 @@ function floorMessage(
   if (parseMarker(event.marker)?.type === "scene_summary") {
     const tree = snapshot ?? liveTree;
     if (tree === undefined) return { message: raw, noShell: true };
+    // 記錄式正文槽（`mainText|{{本回合.正文}}`）：佔位前面已有前綴，換回的摘要照同一份前綴展開、去掉第一行的前綴
+    const recap = inertRecap(eventDisplayText(event));
+    const prefix = bodyRecordPrefix(skeleton, yamlTags);
     return {
-      message: fillSkeletonPlaceholders(skeleton, { ...tree, 本回合: { 正文: slot } }, yamlTags, valueTypes),
-      recap: { slot, text: inertRecap(eventDisplayText(event)) },
+      message: fillSkeletonPlaceholders(skeleton, withBody(tree, slot), yamlTags, valueTypes),
+      recap: { slot, text: prefix === null ? recap : spreadBodyRecord(prefix, recap).slice(prefix.length) },
       synthesized: true,
     };
   }
   if (snapshot === undefined || findShell(cards, [{ text: raw, ...source }], pick) !== null) return { message: raw, ...source };
   return {
-    message: fillSkeletonPlaceholders(skeleton, { ...snapshot, 本回合: { 正文: eventDisplayText(event) } }, yamlTags, valueTypes),
+    message: fillSkeletonPlaceholders(skeleton, withBody(snapshot, eventDisplayText(event)), yamlTags, valueTypes),
     synthesized: true,
   };
+}
+
+// 正文槽的值放進 本回合.正文；本回合 底下其他欄位（檢定、在場 NPC 等）照留
+function withBody(tree: Record<string, StateNode>, body: string): Record<string, StateNode> {
+  const turn = tree.本回合;
+  return { ...tree, 本回合: { ...(typeof turn === "object" && turn !== null ? turn : {}), 正文: body } };
 }
 
 export interface PickInput {
