@@ -64,11 +64,13 @@ impl TableBook {
                 .filter(|interface| !interface.character_id.is_empty() && loads_mvu(interface))
                 .map(|interface| interface.character_id.clone())
                 .collect(),
+            // 讀不出的世界層原卡（unreadable）名字是空的，跳過它看另一份
             world_card: interfaces
                 .iter()
-                .find(|interface| interface.character_id.is_empty())
-                .map(|interface| interface.character_name.trim().to_owned())
-                .filter(|name| !name.is_empty()),
+                .filter(|interface| interface.character_id.is_empty())
+                .map(|interface| interface.character_name.trim())
+                .find(|name| !name.is_empty())
+                .map(str::to_owned),
         }
     }
 

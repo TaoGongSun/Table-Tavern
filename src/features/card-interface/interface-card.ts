@@ -14,7 +14,7 @@ export interface InterfaceScript {
   max_depth: number | null;
 }
 
-/** 後端 `card_interfaces` 回傳的一張卡；`unsupported` 非 null＝DRM 卡或雲端載入器卡，畫不出來。 */
+/** 後端 `card_interfaces` 回傳的一張卡；`unsupported` 非 null 畫不出來：`scrypt`（DRM 卡）、`remote_loader`（雲端載入器卡）、`unreadable`（原卡檔在但讀不出）。 */
 export interface CardInterface {
   character_id: string;
   character_name: string;
@@ -30,7 +30,7 @@ export function cardKey(card: CardInterface): string {
   return card.character_id || "world";
 }
 
-/** 這張卡畫得出東西：不是 DRM／雲端載入器卡，而且有顯示腳本 */
+/** 這張卡畫得出東西：沒被判不支援或讀不出，而且有顯示腳本 */
 export function cardDrawable(card: CardInterface): boolean {
   return card.unsupported === null && card.scripts.length > 0;
 }

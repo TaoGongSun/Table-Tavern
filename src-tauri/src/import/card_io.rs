@@ -25,10 +25,50 @@ fn card_data_invalid(detail: &str) -> Box<dyn std::error::Error + Send + Sync> {
 
 /// 讀 PNG 卡的角色資料：優先 tEXt `chara`（V2），沒有才讀 `ccv3`（只寫 V3 的卡）；兩種 data 欄位同形。
 pub(super) fn decode_png_character(bytes: &[u8]) -> DataResult<Vec<u8>> {
+    find_card_chunks(bytes)?.ok_or_else(|| UiMsg::CardPngNoData.into_error())
+}
+
+fn find_card_chunks(bytes: &[u8]) -> DataResult<Option<Vec<u8>>> {
     match find_card_text(bytes, b"chara")? {
-        Some(found) => Ok(found),
-        None => find_card_text(bytes, b"ccv3")?.ok_or_else(|| UiMsg::CardPngNoData.into_error()),
+        Some(found) => Ok(Some(found)),
+        None => find_card_text(bytes, b"ccv3"),
     }
+}
+
+/// 同 `decode_png_character`，但沒有卡片資料時分兩種：基本結構完整（IHDR 起頭、chunk 不越界、
+/// 有 IEND）＝一般圖片，回 `Ok(None)`；結構不完整（只剩 signature、在 chunk 邊界截斷）＝損毀，回錯。
+pub(super) fn find_png_card(bytes: &[u8]) -> DataResult<Option<Vec<u8>>> {
+    let found = find_card_chunks(bytes)?;
+    if found.is_none() {
+        check_png_frame(bytes)?;
+    }
+    Ok(found)
+}
+
+fn check_png_frame(bytes: &[u8]) -> DataResult<()> {
+    let mut offset = PNG_MAGIC.len();
+    let mut first = true;
+    while offset < bytes.len() {
+        if bytes.len() - offset < 12 {
+            return Err(png_invalid("chunk header truncated"));
+        }
+        let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let chunk_end = offset
+            .checked_add(12)
+            .and_then(|end| end.checked_add(length))
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| png_invalid("chunk runs past end of file"))?;
+        let kind = &bytes[offset + 4..offset + 8];
+        if first && kind != b"IHDR" {
+            return Err(png_invalid("first chunk is not IHDR"));
+        }
+        if kind == b"IEND" {
+            return Ok(());
+        }
+        first = false;
+        offset = chunk_end;
+    }
+    Err(png_invalid("missing IEND"))
 }
 
 pub(super) fn find_card_text(bytes: &[u8], keyword: &[u8]) -> DataResult<Option<Vec<u8>>> {
@@ -203,6 +243,22 @@ mod tests {
             decode_png_character(PNG_MAGIC).unwrap_err().to_string(),
             UiMsg::CardPngNoData.to_string()
         );
+    }
+
+    #[test]
+    fn find_png_card_tells_plain_image_from_truncated_png() {
+        let plain = crate::import::png_image::test_png::real_png(4, 3);
+        assert_eq!(find_png_card(&plain).unwrap(), None);
+        // 只剩 signature
+        assert!(find_png_card(PNG_MAGIC).is_err());
+        // 在 chunk 邊界截斷（拿掉 IEND）
+        assert!(find_png_card(&plain[..plain.len() - 12]).is_err());
+        // 只剩 IHDR
+        assert!(find_png_card(&plain[..PNG_MAGIC.len() + 25]).is_err());
+        // 第一個 chunk 不是 IHDR（signature 後直接接 IEND）
+        let mut no_ihdr = PNG_MAGIC.to_vec();
+        no_ihdr.extend_from_slice(&plain[plain.len() - 12..]);
+        assert!(find_png_card(&no_ihdr).is_err());
     }
 
     #[test]

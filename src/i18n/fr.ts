@@ -272,6 +272,8 @@ export const fr: Record<MsgKey, string> = {
   refactorSurveying: "Analyse de la carte…",
   refactorProbing: "Évaluation de la carte…",
   refactorUnsupportedCard: "L'interface de cette carte est chargée depuis un site externe\u00a0; l'app ne peut pas la reprendre, la refonte de ce type de carte n'est donc pas encore prise en charge.",
+  refactorCardUnreadable: "Le fichier d'origine de la carte «\u00a0{name}\u00a0» est illisible (peut-être endommagé)\u00a0: impossible de savoir si elle a une interface, donc pas de refonte. Réimporte la carte sur une nouvelle table et fais la refonte là-bas.",
+  refactorCardUnreadableUnnamed: "Le fichier d'origine de la carte de cette table est illisible (peut-être endommagé)\u00a0: impossible de savoir si elle a une interface, donc pas de refonte. Réimporte la carte sur une nouvelle table et fais la refonte là-bas.",
   refactorModeTitle: "Quel style de jeu cette carte doit-elle conserver\u00a0?",
   refactorModeSuggestInterface: "Recommandé\u00a0: conserver le style d'origine. {evidence}",
   refactorProbeFailed: "L'évaluation initiale a échoué. Choisissez vous-même le style de jeu.",

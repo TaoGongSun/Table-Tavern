@@ -164,6 +164,18 @@ describe("runAiRefactor 重新重構判定", () => {
     expect(refreshAfterApply).toHaveBeenCalledTimes(1);
   });
 
+  it("重構過的桌：先確認清回，清回後原卡仍讀不出才擋下", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "ready";
+    backend.handlers.card_interfaces = () => [
+      { character_id: "c1", character_name: "莉亞", scripts: [], unsupported: "unreadable", opening: null },
+    ];
+    await act(async () => controller!.runAiRefactor());
+    expect(dialogs.confirm).toHaveBeenCalledTimes(1);
+    expect(commands()).toEqual(["refactor_rerun_status", "refactor_reset_to_source", "card_interfaces"]);
+    expect(statuses.filter(Boolean)).toEqual([t("refactorCardUnreadable", { name: "莉亞" })]);
+  });
+
   it("沒重構過的桌照現狀：不確認、不清桌", async () => {
     await mount();
     backend.handlers.refactor_rerun_status = () => "fresh";
@@ -846,5 +858,142 @@ describe("初判失敗分流（refactor-probe-failure-hidden）", () => {
     statuses.length = 0;
     await switchTableDuring("refactor_rerun_status", (_finish, fail) => fail("查桌況失敗"));
     expect(errors()).toEqual([]);
+  });
+});
+
+describe("原卡讀不出（refactor-silent-skips）", () => {
+  const script = { name: "s", find_regex: "/x/", replace_string: "<div>x</div>", trim_strings: [], min_depth: null, max_depth: null };
+  const card = (id: string, name: string, unsupported: string | null, scripts: unknown[] = []) => ({
+    character_id: id,
+    character_name: name,
+    scripts,
+    unsupported,
+    opening: null,
+  });
+
+  beforeEach(() => {
+    backend.handlers.refactor_rerun_status = () => "fresh";
+  });
+
+  it("只有讀不出的卡、或與可接管卡混合：都擋下報原因，不初判也不盤點", async () => {
+    await mount();
+    for (const cards of [
+      [card("c1", "莉亞", "unreadable")],
+      [card("c2", "艾倫", null, [script]), card("c1", "莉亞", "unreadable")],
+    ]) {
+      statuses.length = 0;
+      backend.calls = [];
+      backend.handlers.card_interfaces = () => cards;
+      await act(async () => controller!.runAiRefactor());
+      expect(statuses.filter(Boolean)).toEqual([t("refactorCardUnreadable", { name: "莉亞" })]);
+      expect(commands()).toEqual(["refactor_rerun_status", "card_interfaces"]);
+    }
+  });
+
+  it("世界層原卡讀不出（沒有名字）：用不帶名的文案", async () => {
+    await mount();
+    backend.handlers.card_interfaces = () => [card("", "", "unreadable")];
+    await act(async () => controller!.runAiRefactor());
+    expect(statuses.filter(Boolean)).toEqual([t("refactorCardUnreadableUnnamed")]);
+  });
+});
+
+describe("取消重構失敗（refactor-silent-skips）", () => {
+  function pendingSurvey() {
+    installRun(STATUS);
+    const finishes: ((value: unknown) => void)[] = [];
+    const survey = backend.handlers.refactor_survey;
+    backend.handlers.refactor_survey = (args) =>
+      new Promise((done) => finishes.push(() => done(survey(args))));
+    return finishes;
+  }
+
+  it("abort 失敗：取消鈕恢復可按、狀態列報原因；可再按，之後不再發下一條", async () => {
+    await mount();
+    const finishes = pendingSurvey();
+    let running!: Promise<void>;
+    await act(async () => {
+      running = controller!.startRefactorRun("interface");
+    });
+    await vi.waitFor(() => expect(finishes).toHaveLength(1));
+    backend.handlers.refactor_abort = () => Promise.reject("取消失敗");
+    await act(async () => controller!.cancelAiRefactor());
+    expect(controller!.progress?.cancelling).toBe(false);
+    expect(statuses.filter(Boolean)).toEqual(["取消失敗"]);
+
+    backend.handlers.refactor_abort = () => null;
+    await act(async () => controller!.cancelAiRefactor());
+    expect(commands().filter((command) => command === "refactor_abort")).toHaveLength(2);
+    expect(controller!.progress?.cancelling).toBe(true);
+
+    await act(async () => {
+      finishes[0](undefined);
+      await running;
+    });
+    expect(expandedUids()).toEqual([]);
+  });
+
+  it("同桌已開新一段進度：舊 abort 晚到失敗不還原、不寫狀態列", async () => {
+    await mount();
+    const finishes = pendingSurvey();
+    await act(async () => {
+      void controller!.startRefactorRun("interface");
+    });
+    await vi.waitFor(() => expect(finishes).toHaveLength(1));
+    let failOld!: (reason: unknown) => void;
+    backend.handlers.refactor_abort = () => new Promise((_done, reject) => (failOld = reject));
+    await act(async () => controller!.cancelAiRefactor());
+
+    await act(async () => {
+      void controller!.startRefactorRun("interface");
+    });
+    await vi.waitFor(() => expect(finishes).toHaveLength(2));
+    backend.handlers.refactor_abort = () => null;
+    await act(async () => controller!.cancelAiRefactor());
+
+    await act(async () => failOld("舊段取消失敗"));
+    expect(controller!.progress?.cancelling).toBe(true);
+    expect(statuses.filter(Boolean)).toEqual([]);
+  });
+
+  it("卸載後 abort 才失敗：不動作", async () => {
+    await mount();
+    const finishes = pendingSurvey();
+    await act(async () => {
+      void controller!.startRefactorRun("interface");
+    });
+    await vi.waitFor(() => expect(finishes).toHaveLength(1));
+    let failOld!: (reason: unknown) => void;
+    backend.handlers.refactor_abort = () => new Promise((_done, reject) => (failOld = reject));
+    await act(async () => controller!.cancelAiRefactor());
+    act(() => root?.unmount());
+    root = null;
+    await act(async () => failOld("卸載後取消失敗"));
+    expect(statuses.filter(Boolean)).toEqual([]);
+  });
+
+  it("舊桌的 abort 晚到失敗：不解除新桌重構的取消鎖、不寫狀態列", async () => {
+    await mount();
+    const finishes = pendingSurvey();
+    await act(async () => {
+      void controller!.startRefactorRun("interface");
+    });
+    await vi.waitFor(() => expect(finishes).toHaveLength(1));
+    let failOld!: (reason: unknown) => void;
+    backend.handlers.refactor_abort = () => new Promise((_done, reject) => (failOld = reject));
+    await act(async () => controller!.cancelAiRefactor());
+
+    await act(async () => root?.render(<Harness world="B" />));
+    await act(async () => {
+      void controller!.startRefactorRun("interface");
+    });
+    await vi.waitFor(() => expect(finishes).toHaveLength(2));
+    backend.handlers.refactor_abort = () => null;
+    await act(async () => controller!.cancelAiRefactor());
+    expect(controller!.progress?.cancelling).toBe(true);
+
+    await act(async () => failOld("舊桌取消失敗"));
+    expect(controller!.progress?.cancelling).toBe(true);
+    expect(statuses.filter(Boolean)).toEqual([]);
   });
 });

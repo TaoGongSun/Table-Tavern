@@ -17,7 +17,7 @@
 - `route`：桌面版 `probe_import` 的 name（trim 後非空）、book_shaped、lorebook_heavy、book_entries、alternate_greetings；`decision`＝沒有 name 或 book_shaped 時 `worldbook`，否則 `ask`（由玩家選身分）；`suggested`＝decision 是 worldbook、或 book_shaped／lorebook_heavy／有備用開場白時 `worldbook`，否則 `character`。
 - `books.character`：`character_book` 是物件時 `{name, form, entries}`，否則 null（角色卡路把它併進桌的世界書）。
 - `books.worldbook`：世界書路會匯入的書（桌面版 `worldbook_json`）：`source` 為 `character_book`（有條目）、`top_level`（頂層有 `entries` 鍵）、`persona`（人設欄 description／personality／scenario／mes_example 非空者以空行併成一條常駐條目，comment＝卡名）、`none`（什麼都沒有）。
-- `interface`：`extensions.regex_scripts` 裡啟用、非 promptOnly、placement 含 2 的顯示腳本（name、find_regex、replace_string、trim_strings、min_depth、max_depth）；`mvu`＝`tavern_helper`／`TavernHelper_scripts` 裡有啟用、內容含 `MagVarUpdate` 的腳本；`unsupported`：first_mes 或 description 含 `SCRYPT`（不分大小寫）＝`scrypt`（腳本清空），顯示腳本是吞整段的萬用式且替換字串短於 2000、含 `.load(` ＝`remote_loader`（腳本清空）。
+- `interface`：`extensions.regex_scripts` 裡啟用、非 promptOnly、placement 含 2 的顯示腳本（name、find_regex、replace_string、trim_strings、min_depth、max_depth）；`mvu`＝`tavern_helper`／`TavernHelper_scripts` 裡有啟用、內容含 `MagVarUpdate` 的腳本；`unsupported`：first_mes 或 description 含 `SCRYPT`（不分大小寫）＝`scrypt`（腳本清空），顯示腳本是吞整段的萬用式且替換字串短於 2000、含 `.load(` ＝`remote_loader`（腳本清空）。讀檔層另有 `unreadable`：原卡檔在但讀不出（IO 錯誤、PNG 結構壞、卡片資料解不開），只出現在桌面版的 `card_interfaces`，不屬卡片內容判定。
 
 ## 有效性規則
 - `validity.character`（角色卡路，桌面版 `parse_character`）：`name` 不是字串或 trim 後為空＝`card_missing_name`（空名字桌面版身分框不給走角色卡路）；trim 後含 `\n` 或 `\r`＝`name_not_single_line`；其餘 null。

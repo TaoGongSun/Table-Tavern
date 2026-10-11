@@ -283,6 +283,8 @@ export const en: Record<MsgKey, string> = {
   refactorSurveying: "Surveying the card…",
   refactorProbing: "Assessing the card…",
   refactorUnsupportedCard: "This card's interface loads from an external site; the app can't take it over, so refactoring isn't supported for this kind of card yet.",
+  refactorCardUnreadable: "The original card file for \"{name}\" can't be read (it may be damaged), so the app can't tell whether it has a card interface and can't refactor it. Please import the card again on a new table and refactor there.",
+  refactorCardUnreadableUnnamed: "This table's original card file can't be read (it may be damaged), so the app can't tell whether it has a card interface and can't refactor it. Please import the card again on a new table and refactor there.",
   refactorModeTitle: "Which play style should this card keep?",
   refactorModeSuggestInterface: "Suggested: keep the original play style. {evidence}",
   refactorProbeFailed: "The quick assessment failed. Please choose a play style yourself.",

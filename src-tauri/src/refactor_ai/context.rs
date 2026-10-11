@@ -36,13 +36,14 @@ pub fn assemble_card_context(root: &Path, world_id: &str) -> DataResult<String> 
     if characters.is_empty() {
         out.push_str("（無）\n");
     } else {
+        // 讀不到就回錯（帶角色名）：少了一張既有卡，AI 會重拆出重複角色
         for meta in &characters {
-            if let Ok(card) = data::read_character(root, world_id, &meta.id) {
-                out.push_str(&format!(
-                    "#### {}\nPUBLIC:\n{}\nPRIVATE:\n{}\n\n",
-                    card.name, card.public_md, card.private_md
-                ));
-            }
+            let card = data::read_character(root, world_id, &meta.id)
+                .map_err(|error| format!("{}: {error}", meta.name))?;
+            out.push_str(&format!(
+                "#### {}\nPUBLIC:\n{}\nPRIVATE:\n{}\n\n",
+                card.name, card.public_md, card.private_md
+            ));
         }
     }
 
@@ -366,6 +367,36 @@ mod tests {
                 && context.contains("欠了債。")
         );
         assert!(context.contains("已接管") && context.contains("偵測到 [initvar] 標記"));
+    }
+
+    /// 清單列得出、讀卻讀不到的角色（檔名與 id 不符）：回錯並帶角色名，不靜默少一張。
+    #[test]
+    fn assemble_card_context_fails_when_listed_character_cannot_be_read() {
+        let root = TestRoot::new();
+        let world_id = data::create_world(&root.0, "夜港").unwrap();
+        let id = data::new_id();
+        data::write_character(
+            &root.0,
+            &world_id,
+            &data::CharacterCard {
+                id: id.clone(),
+                name: "伊利亞".to_owned(),
+                color: "#fff".to_owned(),
+                avatar: "🦊".to_owned(),
+                tier: data::Tier::Balanced,
+                show_image: true,
+                archived: false,
+                gen_prompt: String::new(),
+                public_md: "走私者。".to_owned(),
+                private_md: "欠了債。".to_owned(),
+            },
+        )
+        .unwrap();
+        let path = data::character_path(&root.0, &world_id, &id).unwrap();
+        fs::rename(&path, path.with_file_name("renamed.md")).unwrap();
+
+        let error = assemble_card_context(&root.0, &world_id).unwrap_err();
+        assert!(error.to_string().starts_with("伊利亞: "));
     }
 
     #[test]

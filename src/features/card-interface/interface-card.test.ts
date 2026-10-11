@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   applyScripts,
+  candidateCards,
+  cardDrawable,
   buildEscapeShimSource,
   buildImeGuardSource,
   buildShellDocument,
@@ -479,5 +481,22 @@ describe("sanitizeCardStorage", () => {
     // 兩萬二千個「中」約 66 KB（字元數只有兩萬二）
     expect(sanitizeCardStorage({ blob: "中".repeat(22_000) })).toBeNull();
     expect(sanitizeCardStorage({ blob: "中".repeat(20_000) })).not.toBeNull();
+  });
+});
+
+describe("讀不出的原卡（unreadable）", () => {
+  it("畫不出、不進候選，同桌其他卡照常", () => {
+    const script = makeScript({ find_regex: "/x/", replace_string: "<div>x</div>" });
+    const broken: CardInterface = {
+      character_id: "c1",
+      character_name: "壞",
+      scripts: [],
+      unsupported: "unreadable",
+      opening: null,
+      mvu: false,
+    };
+    const healthy: CardInterface = { ...broken, character_id: "c2", unsupported: null, scripts: [script] };
+    expect(cardDrawable(broken)).toBe(false);
+    expect(candidateCards([broken, healthy], "x")).toEqual([healthy]);
   });
 });

@@ -880,3 +880,21 @@ fn another_turn_in_flight_blocks_the_settle() {
         landing::before_scan(root.path(), &world, 0, "char-turn", &Perspective::Gm).unwrap_err();
     assert!(error.contains("world_busy"), "{error}");
 }
+
+/// 世界層兩份原卡其一讀不出（unreadable、名字空）：原卡名照樣取另一份的。
+#[test]
+fn world_card_name_skips_unreadable_world_card() {
+    let card = |name: &str, unsupported: Option<&str>| CardInterface {
+        character_id: String::new(),
+        character_name: name.to_owned(),
+        scripts: Vec::new(),
+        unsupported: unsupported.map(str::to_owned),
+        opening: None,
+        mvu: false,
+    };
+    let book = TableBook::from_parts(
+        Vec::new(),
+        &[card("", Some("unreadable")), card("嚮導", None)],
+    );
+    assert_eq!(book.world_card_name(), Some("嚮導"));
+}

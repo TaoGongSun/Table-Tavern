@@ -274,6 +274,8 @@ export const de: Record<MsgKey, string> = {
   refactorSurveying: "Karte wird durchsucht…",
   refactorProbing: "Karte wird eingeschätzt…",
   refactorUnsupportedCard: "Die Oberfläche dieser Karte wird von einer externen Website geladen; die App kann sie nicht übernehmen, daher wird das Umbauen solcher Karten noch nicht unterstützt.",
+  refactorCardUnreadable: "Die Originalkartendatei von „{name}“ lässt sich nicht lesen (evtl. beschädigt); ob sie eine Kartenoberfläche hat, ist nicht feststellbar, daher kein Umbau möglich. Bitte die Karte an einem neuen Tisch erneut importieren und dort umbauen.",
+  refactorCardUnreadableUnnamed: "Die Originalkartendatei dieses Tisches lässt sich nicht lesen (evtl. beschädigt); ob sie eine Kartenoberfläche hat, ist nicht feststellbar, daher kein Umbau möglich. Bitte die Karte an einem neuen Tisch erneut importieren und dort umbauen.",
   refactorModeTitle: "Welche Spielweise soll diese Karte behalten?",
   refactorModeSuggestInterface: "Empfehlung: die ursprüngliche Spielweise behalten. {evidence}",
   refactorProbeFailed: "Die Ersteinschätzung ist fehlgeschlagen. Bitte wähle die Spielweise selbst.",
