@@ -35,6 +35,7 @@ import {
   type RefactorCardOpenResult,
 } from "./refactor-card";
 import { confirmFrames, type RefactorFrameCandidate } from "./refactor-frame";
+import { sourceContainerRoles } from "./refactor-slot";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
   detectRefactorTristate,
@@ -560,7 +561,14 @@ export function useRefactorWorkflow({
         localNotes > 0
       ) {
         // 多條介面產物互相衝突（同一欄位兩份值不同、骨架對不上欄位）：整組不套，參與的條目都記成失敗
-        const merged = mergeRefactorInterfaces(interfaces, frames);
+        // 容器角色只算介面候選用到的來源條目
+        const interfaceUids = new Set(interfaces.flatMap((candidate) => candidate.source_uids));
+        const containerRoles = Object.fromEntries(
+          entries
+            .filter((entry) => interfaceUids.has(String(entry.uid)))
+            .map((entry) => [String(entry.uid), sourceContainerRoles(entry.content)]),
+        );
+        const merged = mergeRefactorInterfaces(interfaces, frames, containerRoles);
         if (merged.conflict !== null) {
           for (const name of interfaceNames) {
             failedTitles.push({ name, reason: t("refactorInterfaceConflict", { path: merged.conflict }) });
@@ -579,6 +587,7 @@ export function useRefactorWorkflow({
           characters,
           interfaces: merged.conflict === null ? interfaces : [],
           frames: merged.conflict === null ? frames : [],
+          containerRoles,
           entries: refactorEntries,
           dropped: local.dropped,
           unabsorbed: local.unabsorbed,
