@@ -4,6 +4,8 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [refactor-apply-open-draft](tasks/refactor-apply-open-draft.md) — 世界設定套用重構卡後，開著的既有條目草稿自動存會把整條蓋回 — 下一步：未排程
+- [undo-import-table-lock](tasks/undo-import-table-lock.md) — 匯入進行中按撤銷上次匯入可能撤錯卡 — 下一步：未排程
 - [update-download-timeouts](tasks/update-download-timeouts.md) — 回退點下載與更新外掛檢查／下載沒有逾時 — 下一步：未排程
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
