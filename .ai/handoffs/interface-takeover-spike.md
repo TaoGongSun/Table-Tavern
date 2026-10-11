@@ -38,7 +38,7 @@
 2026-08-13 升級成獨立任務 [refactor-mode-split](refactor-mode-split.md)（兩段式定向＋模式專屬解析），本案不再追蹤。
 
 ### 2. 其他型別的卡驗證——已驗
-結果見 [plans/interface-takeover-card-types.md](../plans/interface-takeover-card-types.md)：狀態欄型過、整頁型大致過；MVU 型與 RPGImmortal 剩待辦程式問題（見 [BACKLOG](../BACKLOG.md)），修好後再驗。維持接管、重構加提醒〔作者裁決 2026-10-11〕。
+結果見 [plans/interface-takeover-card-types.md](../plans/interface-takeover-card-types.md)：狀態欄型過、整頁型大致過；MVU 型（DongeonMaster-safe）與 RPGImmortal 於 2026-10-12 修正後重驗皆過（patch 全數套用，見該檔「重驗（2026-10-12）」一節）。維持接管、重構加提醒〔作者裁決 2026-10-11〕。
 
 ### 3. 角色發言無視介面渲染（本質問題，使用者評估「很可能無法解決」）
 拆出來的 NPC 一開口，`cardInterfaceShell` 的 direct-first 拿它的訊息試卡腳本、不中就用骨架填 `{{本回合.正文}}`，而 NPC 發言不帶 patch。整頁型卡靠待辦 1 迴避；狀態欄型卡（NorthHall）反而沒問題——那種介面跟著每則訊息走，角色發言各自帶狀態欄，走現有「近 10 則掃 `event.raw`」那條路就渲染得出來。
