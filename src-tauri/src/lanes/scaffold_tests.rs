@@ -876,10 +876,10 @@ fn lane_state(events: &[TranscriptEvent], system: &str, provider: LaneProvider) 
     }
 }
 
-/// 既有非中文桌升級：舊（繁中）骨架的線遇到新（英文）骨架。Claude 快取活著走補丁、過期整份追平，
-/// Grok／Agy 因 system 改變重開；追上之後第二輪照常續聊。已送段指紋只看原事件，渲染前綴改字不影響。
+/// 既有非中文桌升級：舊（繁中）骨架的線遇到新骨架。GM 線三家都因 system 改變重開（快取活著或過期都一樣），
+/// 追上之後第二輪照常續聊。已送段指紋只看原事件，渲染前綴改字不影響。
 #[test]
-fn upgrading_scaffold_patches_or_rebases_claude_and_reopens_grok_agy() {
+fn upgrading_scaffold_reopens_gm_lane_on_every_provider() {
     let f = fixture();
     let old = gm_lane_system(
         "",
@@ -899,6 +899,64 @@ fn upgrading_scaffold_patches_or_rebases_claude_and_reopens_grok_agy() {
     );
     let events = &f.events[..3];
     let input = lane_input(events, &new);
+    let live = 1_001;
+    let expired = 1_000 + LEGACY_CACHE_TTL_SECS + 1;
+    for provider in [LaneProvider::Claude, LaneProvider::Grok, LaneProvider::Agy] {
+        let state = lane_state(events, &old, provider);
+        for now in [live, expired] {
+            assert!(
+                matches!(
+                    plan_turn(Some(&state), &input, now, provider),
+                    TurnPlan::Reopen {
+                        reason: ReopenReason::SystemChanged
+                    }
+                ),
+                "{provider:?} @ {now}"
+            );
+        }
+        let caught_up = lane_state(events, &new, provider);
+        for now in [live, expired] {
+            match plan_turn(Some(&caught_up), &input, now, provider) {
+                TurnPlan::Resume {
+                    system,
+                    patch,
+                    rebased,
+                    base,
+                    ..
+                } => {
+                    assert_eq!(system, new);
+                    assert!(patch.is_none() && !rebased);
+                    assert_eq!(base, events.len());
+                }
+                TurnPlan::Reopen { .. } => panic!("{provider:?} 追上後續聊"),
+            }
+        }
+    }
+}
+
+/// 同一升級落在 Claude 角色線：快取活著走補丁、過期整份追平，追上之後照常續聊（補丁路徑只剩角色線用）。
+#[test]
+fn upgrading_scaffold_patches_or_rebases_claude_chars_lane() {
+    let f = fixture();
+    let old = gm_lane_system(
+        "",
+        &f.cards,
+        None,
+        &f.worldbook,
+        &Mechanism::default(),
+        "zh-TW",
+    );
+    let new = gm_lane_system(
+        "",
+        &f.cards,
+        None,
+        &f.worldbook,
+        &Mechanism::default(),
+        "ja",
+    );
+    let events = &f.events[..3];
+    let mut input = lane_input(events, &new);
+    input.lane = Lane::Chars;
     let live = 1_001;
     let expired = 1_000 + LEGACY_CACHE_TTL_SECS + 1;
 
@@ -929,20 +987,6 @@ fn upgrading_scaffold_patches_or_rebases_claude_and_reopens_grok_agy() {
             assert!(patch.is_none() && rebased);
         }
         TurnPlan::Reopen { .. } => panic!("claude 過期整份追平"),
-    }
-    for provider in [LaneProvider::Grok, LaneProvider::Agy] {
-        let state = lane_state(events, &old, provider);
-        assert!(matches!(
-            plan_turn(Some(&state), &input, live, provider),
-            TurnPlan::Reopen {
-                reason: ReopenReason::SystemChanged
-            }
-        ));
-        let caught_up = lane_state(events, &new, provider);
-        assert!(matches!(
-            plan_turn(Some(&caught_up), &input, live, provider),
-            TurnPlan::Resume { patch: None, .. }
-        ));
     }
     let caught_up = lane_state(events, &new, LaneProvider::Claude);
     assert!(matches!(

@@ -1614,6 +1614,7 @@ fn apply_rewrite_names_the_failing_stage() {
 }
 
 mod cache_ttl;
+mod gm_restart;
 mod grok;
 mod lane_lock;
 mod owner;

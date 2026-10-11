@@ -144,7 +144,7 @@ pub(crate) struct TurnInput<'a> {
     pub events: &'a [TranscriptEvent],
     /// 介面語系：事件標頭照提示詞慣例組字（en 出英文、其餘繁中），玩家空名退回該語系稱呼
     pub lang: &'a str,
-    /// 本輪重組的最新素材全文；與已傳達版本（applied）不同時，快取存活走補丁、過期走追平
+    /// 本輪重組的最新素材全文；與已傳達版本（applied）不同時，claude 角色線快取存活走補丁、過期走追平，其餘重開
     pub frozen_system: String,
     /// 回合尾段（transport::chars_lane_turn／gm_lane_turn 的 tail）
     pub tail: String,
@@ -610,9 +610,10 @@ fn next_cache_ttl(
 }
 
 /// 決定這一輪續聊還是重開。所有「對不上」都走 Reopen：重開永遠正確，只是少省一次快取。
-/// 素材漂移的處置分兩家：claude 的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
+/// 素材漂移的處置：claude 角色線的 system 每輪隨旗標重帶，補丁補得動、快取死了還能整份追平；
 /// grok 的 system 凍在 session 建立那刻，補丁只是一則 user 訊息、壓不過權重更高的舊 system，
-/// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。
+/// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。GM 線三家都一變就重開：
+/// world.md／卡的動態巨集讓凍結 system 每輪可能變，補丁會在不抹的歷史裡一份份疊上去〔作者裁決 2026-10-11〕。
 fn plan_turn(
     state: Option<&LaneState>,
     input: &TurnInput<'_>,
@@ -695,8 +696,9 @@ fn plan_turn(
             reason: ReopenReason::WorldbookChanged,
         };
     }
-    if provider != LaneProvider::Claude {
-        if state.applied != input.frozen_system {
+    if provider != LaneProvider::Claude || input.lane == Lane::Gm {
+        // snapshot != applied＝升級前快取內補過丁、尚未追平的舊 claude GM 線，歷史裡有補丁，一併重開
+        if state.applied != input.frozen_system || state.snapshot != state.applied {
             return TurnPlan::Reopen {
                 reason: ReopenReason::SystemChanged,
             };
@@ -882,6 +884,11 @@ fn abandon_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
     if call.provider != LaneProvider::Claude {
         return Ok(());
     }
+    remove_claude_session(call, session_id)
+}
+
+/// 刪一個 claude session 檔，不看本輪 provider（呼叫端已確認那條線是 claude 開的）。
+fn remove_claude_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
     let path = session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),
@@ -892,6 +899,32 @@ fn abandon_session(call: &LaneCall, session_id: &str) -> Result<(), String> {
         }
         .into()),
     }
+}
+
+/// GM 線重開前撤掉被取代的 claude session：先從 store 拿掉並落檔，落檔成功才刪檔
+/// （落檔失敗回錯、舊檔留著，磁碟上的舊狀態仍指著它）；刪檔失敗只記帳，store 已不再續用這個 id。
+/// 常重開的 GM 線不這樣清，每輪會留一份整幕逐字稿檔。
+fn retire_claude_gm_session(
+    call: &LaneCall,
+    world_id: &str,
+    key: &str,
+    session_id: &str,
+    store: &mut LaneStore,
+    store_path: &Path,
+) -> Result<(), String> {
+    store.remove(key);
+    write_store(store_path, store)?;
+    if let Err(error) = remove_claude_session(call, session_id) {
+        let path =
+            session_file::session_file_path(&call.claude_home, &call.working_dir, session_id);
+        let paths = rewrite_failure::known_paths(&path, &call.claude_home, &call.working_dir);
+        let failure = RewriteFailure {
+            stage: "cleanup",
+            detail: error,
+        };
+        log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
+    }
+    Ok(())
 }
 
 /// 中止回合的收尾。抹寫成功就什麼都不改——呼叫前已經寫下 pending_rewrite、expected_reply 仍是 None。
@@ -1020,10 +1053,11 @@ pub(crate) async fn run_turn(
     // 呼叫前採用的快取壽命：過期判斷與帳本診斷都用它，不拿這輪新寫入的時效回頭解釋
     let prior_ttl = prior.map(|state| state.cache_ttl_secs);
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
-    // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用
+    // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用。
+    // GM 線的舊 claude session 看舊線 provider 清掉（本輪換成 grok／agy 也清）
     if let (TurnPlan::Reopen { .. }, Some(prior)) = (&plan, prior) {
+        let old = prior.session_id.clone();
         if call.provider == LaneProvider::Grok && prior.provider == LaneProvider::Grok.as_str() {
-            let old = prior.session_id.clone();
             revoke_grok_lane(
                 call,
                 world_id,
@@ -1033,6 +1067,8 @@ pub(crate) async fn run_turn(
                 &store_path,
                 GrokRevoke::Reopen,
             )?;
+        } else if input.lane == Lane::Gm && prior.provider == LaneProvider::Claude.as_str() {
+            retire_claude_gm_session(call, world_id, &key, &old, &mut store, &store_path)?;
         }
     }
     let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
@@ -1444,6 +1480,15 @@ pub(crate) async fn run_turn(
                         &mut store,
                         &store_path,
                         GrokRevoke::Drop("resume-failed"),
+                    )?;
+                } else if call.provider == LaneProvider::Claude && input.lane == Lane::Gm {
+                    retire_claude_gm_session(
+                        call,
+                        world_id,
+                        &key,
+                        &session_id,
+                        &mut store,
+                        &store_path,
                     )?;
                 }
                 plan = TurnPlan::Reopen {

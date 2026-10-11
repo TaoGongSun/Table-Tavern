@@ -850,3 +850,63 @@ async fn tagged_reply_is_rewritten_and_tags_only_revokes_lane() {
     assert!(store.is_empty(), "grok 比照中止整條撤線");
     assert!(!all_text(&fake.grok_home).contains("通緝犯"));
 }
+
+/// GM 線從 claude 換到 grok：重開時刪掉被取代的舊 claude session 檔（看舊線 provider，不看本輪）。
+#[cfg(unix)]
+#[tokio::test]
+async fn switching_gm_lane_from_claude_to_grok_deletes_the_claude_session() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let claude = fake_claude("gm-to-grok");
+    let grok = fake_grok("gm-from-claude", &[]);
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    fn gm(events: &[TranscriptEvent]) -> TurnInput<'_> {
+        let mut input = turn_input(events, 0);
+        input.lane = Lane::Gm;
+        input.prefix = None;
+        input.echo = ReplyEcho::Narration;
+        input
+    }
+    let reply = run_turn(
+        &claude.call,
+        &claude.root,
+        &claude.world_id,
+        gm(&events),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    let store = data::lanes_path(&claude.root, &claude.world_id).unwrap();
+    let old = read_store(&store)["gm:sonnet"].session_id.clone();
+    let old_path = session_file::session_file_path(&claude.claude_home, &claude.working_dir, &old);
+    assert!(old_path.exists());
+    events.push(event(TranscriptKind::Narration, "", "", &reply));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯"));
+    let call = LaneCall {
+        model: Some("sonnet".to_owned()), // 同一個線名，才會撞到 claude 開的線
+        claude_home: claude.claude_home.clone(),
+        working_dir: claude.working_dir.clone(),
+        program: grok.call.program.clone(),
+        prompt_dir: grok.call.prompt_dir.clone(),
+        envs: grok.call.envs.clone(),
+        usage_log: grok.call.usage_log.clone(),
+        provider: LaneProvider::Grok,
+        on_overage: None,
+    };
+    run_turn(
+        &call,
+        &claude.root,
+        &claude.world_id,
+        gm(&events),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap();
+    assert!(!old_path.exists(), "舊 claude session 檔已刪");
+    assert_eq!(read_store(&store)["gm:sonnet"].provider, "grok");
+    let log = std::fs::read_to_string(grok.dir.join("usage.jsonl")).unwrap();
+    assert!(log.contains("provider-changed"));
+    std::fs::remove_dir_all(&claude.dir).unwrap();
+}
