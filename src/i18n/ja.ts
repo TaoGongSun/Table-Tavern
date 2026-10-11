@@ -272,6 +272,8 @@ export const ja: Record<MsgKey, string> = {
   refactorSurveying: "カードを確認中…",
   refactorProbing: "判定中…",
   refactorUnsupportedCard: "このカードのインターフェースは外部サイトから読み込まれるため、アプリでは引き継げません。この種のカードのリファクタリングは未対応です。",
+  refactorCardUnreadable: "「{name}」の元カードファイルが読み込めません（破損している可能性があります）。カードインターフェースの有無が判断できないため、リファクタリングできません。新しい卓でこのカードを読み込み直してからリファクタリングしてください。",
+  refactorCardUnreadableUnnamed: "この卓の元カードファイルが読み込めません（破損している可能性があります）。カードインターフェースの有無が判断できないため、リファクタリングできません。新しい卓でこのカードを読み込み直してからリファクタリングしてください。",
   refactorModeTitle: "このカードはどちらの遊び方を残しますか？",
   refactorModeSuggestInterface: "おすすめ：元のカードの遊び方を残す。{evidence}",
   refactorProbeFailed: "初期判定に失敗しました。遊び方をご自身で選んでください。",

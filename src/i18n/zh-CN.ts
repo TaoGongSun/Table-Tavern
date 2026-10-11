@@ -257,6 +257,8 @@ export const zhCN: Record<MsgKey, string> = {
   refactorSurveying: "盘点中…",
   refactorProbing: "初判中…",
   refactorUnsupportedCard: "这张卡的界面由外部网站加载，App 接管不了，暂不支持重构这类卡。",
+  refactorCardUnreadable: "「{name}」的原卡文件读不出来（可能已损坏），判断不了有没有卡片界面，暂不能重构；请开新桌重新导入这张卡再重构。",
+  refactorCardUnreadableUnnamed: "这桌的原卡文件读不出来（可能已损坏），判断不了有没有卡片界面，暂不能重构；请开新桌重新导入这张卡再重构。",
   refactorModeTitle: "这张卡要保留哪种玩法？",
   refactorModeSuggestInterface: "建议保留原卡玩法：{evidence}",
   refactorProbeFailed: "初判没有成功，请自己选玩法。",

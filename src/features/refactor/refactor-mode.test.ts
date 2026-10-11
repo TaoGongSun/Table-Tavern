@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectRefactorTristate, probeFailureKind, stripTransportPrefix } from "./refactor-mode";
+import { detectRefactorCardState, probeFailureKind, stripTransportPrefix } from "./refactor-mode";
 import { type CardInterface, type InterfaceScript } from "../card-interface/interface-card";
 
 function script(): InterfaceScript {
@@ -10,24 +10,31 @@ function card(overrides: Partial<CardInterface>): CardInterface {
   return { character_id: "c1", character_name: "角色", scripts: [], unsupported: null, opening: null, ...overrides };
 }
 
-describe("detectRefactorTristate", () => {
+describe("detectRefactorCardState", () => {
   it("無介面卡＝none（免問直跑角色線）", () => {
-    expect(detectRefactorTristate([])).toBe("none");
-    expect(detectRefactorTristate([card({})])).toBe("none");
+    expect(detectRefactorCardState([])).toBe("none");
+    expect(detectRefactorCardState([card({})])).toBe("none");
   });
 
   it("有可用顯示腳本＝supported（進二選一）", () => {
-    expect(detectRefactorTristate([card({ scripts: [script()] })])).toBe("supported");
+    expect(detectRefactorCardState([card({ scripts: [script()] })])).toBe("supported");
   });
 
   it("只有 DRM／雲端載入器卡＝unsupported（擋下）", () => {
-    expect(detectRefactorTristate([card({ unsupported: "remote_loader" })])).toBe("unsupported");
-    expect(detectRefactorTristate([card({ unsupported: "scrypt" })])).toBe("unsupported");
+    expect(detectRefactorCardState([card({ unsupported: "remote_loader" })])).toBe("unsupported");
+    expect(detectRefactorCardState([card({ unsupported: "scrypt" })])).toBe("unsupported");
+  });
+
+  it("任一張原卡讀不出＝unreadable，優先於 supported 與 unsupported", () => {
+    const unreadable = card({ character_id: "c3", unsupported: "unreadable" });
+    expect(detectRefactorCardState([unreadable])).toBe("unreadable");
+    expect(detectRefactorCardState([card({ scripts: [script()] }), unreadable])).toBe("unreadable");
+    expect(detectRefactorCardState([card({ unsupported: "remote_loader" }), unreadable])).toBe("unreadable");
   });
 
   it("混合桌取還有得救優先：一張可接管＋一張擋下＝supported", () => {
     expect(
-      detectRefactorTristate([card({ unsupported: "remote_loader" }), card({ character_id: "c2", scripts: [script()] })]),
+      detectRefactorCardState([card({ unsupported: "remote_loader" }), card({ character_id: "c2", scripts: [script()] })]),
     ).toBe("supported");
   });
 });

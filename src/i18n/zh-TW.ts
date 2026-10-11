@@ -273,6 +273,8 @@ export const zh = {
   refactorSurveying: "盤點中…",
   refactorProbing: "初判中…",
   refactorUnsupportedCard: "這張卡的介面由外部網站載入，App 接管不了，暫不支援重構這類卡。",
+  refactorCardUnreadable: "「{name}」的原卡檔讀不出來（可能已損毀），判斷不了有沒有卡片介面，暫不能重構；請開新桌重新匯入這張卡再重構。",
+  refactorCardUnreadableUnnamed: "這桌的原卡檔讀不出來（可能已損毀），判斷不了有沒有卡片介面，暫不能重構；請開新桌重新匯入這張卡再重構。",
   refactorModeTitle: "這張卡要保留哪種玩法？",
   refactorModeSuggestInterface: "建議保留原卡玩法：{evidence}",
   refactorProbeFailed: "初判沒有成功，請自己選玩法。",

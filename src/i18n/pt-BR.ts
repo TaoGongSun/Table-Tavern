@@ -272,6 +272,8 @@ export const ptBR: Record<MsgKey, string> = {
   refactorSurveying: "Analisando a carta…",
   refactorProbing: "Avaliando a carta…",
   refactorUnsupportedCard: "A interface desta carta é carregada de um site externo; o app não consegue assumi-la, então a reestruturação ainda não suporta esse tipo de carta.",
+  refactorCardUnreadable: "Não foi possível ler o arquivo original da carta \"{name}\" (pode estar danificado), então não dá para saber se ela tem interface e a reestruturação não é possível. Importe a carta de novo em uma mesa nova e reestruture lá.",
+  refactorCardUnreadableUnnamed: "Não foi possível ler o arquivo original da carta desta mesa (pode estar danificado), então não dá para saber se ela tem interface e a reestruturação não é possível. Importe a carta de novo em uma mesa nova e reestruture lá.",
   refactorModeTitle: "Qual estilo de jogo esta carta deve manter?",
   refactorModeSuggestInterface: "Recomendado: manter o estilo original. {evidence}",
   refactorProbeFailed: "A avaliação inicial falhou. Escolha você mesmo o estilo de jogo.",

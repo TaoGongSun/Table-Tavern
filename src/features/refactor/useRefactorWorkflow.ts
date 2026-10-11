@@ -38,7 +38,7 @@ import { confirmFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { sourceContainerRoles } from "./refactor-slot";
 import { REFACTOR_PARALLEL_LIMIT, runRefactorCalls, withRateLimitRetry } from "./refactor-run";
 import {
-  detectRefactorTristate,
+  detectRefactorCardState,
   probeFailureKind,
   stripTransportPrefix,
   type RefactorMode,
@@ -155,6 +155,8 @@ export function useRefactorWorkflow({
   const [progress, setProgress] = useState<{ text: string; cancelling: boolean; tail: string } | null>(null);
   // 迴圈裡讀取的取消旗標——用 ref 而非 state：async 迴圈裡的閉包看不到後續 setState，只有 ref.current 每次都讀最新值。
   const cancelRef = useRef(false);
+  // 進度世代：每開一段新進度（初判、主體）加一，晚到的取消失敗只認發起時那一段
+  const progressGen = useRef(0);
   // 不排隊的路徑（清回原卡後刷新）自己判斷「還在原桌、元件還在」
   const worldRef = useRef(world);
   worldRef.current = world;
@@ -251,12 +253,36 @@ export function useRefactorWorkflow({
     return !stale();
   }
 
+  // 讀卡片介面判四態；讀不到、讀不出原卡、DRM／雲端載入器卡都在這裡報到狀態列並回 null（擋下）。
+  async function routableCardState(stale: () => boolean): Promise<"supported" | "none" | null> {
+    let cards: CardInterface[];
+    try {
+      cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world });
+    } catch (reason) {
+      // 讀不到卡片介面不能當成「無介面卡」直跑角色線
+      if (!stale()) setStatusMessage(String(reason));
+      return null;
+    }
+    if (stale()) return null;
+    const state = detectRefactorCardState(cards);
+    if (state === "unreadable") {
+      const name = cards.find((card) => card.unsupported === "unreadable")?.character_name.trim();
+      setStatusMessage(name ? t("refactorCardUnreadable", { name }) : t("refactorCardUnreadableUnnamed"));
+      return null;
+    }
+    if (state === "unsupported") {
+      setStatusMessage(t("refactorUnsupportedCard"));
+      return null;
+    }
+    return state;
+  }
+
   // AI 卡重構：盤點出六區塊小抄（PERSONS／INTERFACE／ENTRIES／SPLITS／GROUPS／FIELDS）→本地
   // 零呼叫組裝（refactor_assemble_local：carry 照搬＋split 零呼叫路由＋clean 人物組卡）→剩餘
   // AI 呼叫全並行（人物佇列＋absorb＋group＋statusbar＋interface，上限 4、無序列鏈）→組產物。
   // knownFields 是 survey.fields 固定一份，所有呼叫共用，不再沿呼叫鏈累積。
-  // 入口：三態偵測分流（refactor-mode-split）。supported 卡先跑初判再彈二選一；
-  // none 是唯一免問的路（直跑角色線）；unsupported（DRM／雲端載入器）擋下不跑。
+  // 入口：四態偵測分流（refactor-mode-split）。supported 卡先跑初判再彈二選一；
+  // none 是唯一免問的路（直跑角色線）；unreadable（原卡讀不出）與 unsupported（DRM／雲端載入器）擋下不跑。
   async function runAiRefactor() {
     if (progress) return;
     const origin = world;
@@ -264,29 +290,19 @@ export function useRefactorWorkflow({
     setStatusMessage("");
     const rerun = await checkRerun(stale);
     if (rerun === false) return;
+    // 重構過的桌先清回再判：清回用的是收據保存的原檔，目前桌檔讀不出不代表清回後也讀不出
     if (rerun === "ready" && !(await resetForRerun(stale))) return;
     setStatusMessage("");
-    let cards: CardInterface[];
-    try {
-      cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world });
-    } catch (reason) {
-      // 讀不到卡片介面不能當成「無介面卡」直跑角色線
-      if (!stale()) setStatusMessage(String(reason));
-      return;
-    }
-    if (stale()) return;
-    const tristate = detectRefactorTristate(cards);
-    if (tristate === "unsupported") {
-      setStatusMessage(t("refactorUnsupportedCard"));
-      return;
-    }
-    if (tristate === "none") {
+    const state = await routableCardState(stale);
+    if (state === null) return;
+    if (state === "none") {
       await startRefactorRun("characters");
       return;
     }
     // supported：初判帶全卡只出兩行；取消走既有 refactor_abort 路。
     cancelRef.current = false;
     setCancelled(false);
+    progressGen.current += 1;
     setProgress({ text: t("refactorProbing"), cancelling: false, tail: "" });
     try {
       let probeTail = "";
@@ -338,6 +354,7 @@ export function useRefactorWorkflow({
   async function startRefactorRun(mode: RefactorMode, ticket: RefactorRunTicket | null = null) {
     cancelRef.current = false;
     setCancelled(false);
+    progressGen.current += 1;
     setProgress({ text: t("refactorSurveying"), cancelling: false, tail: "" });
     try {
       // 共用 tail：所有呼叫（survey＋展開）的 Channel onDelta 都 append 進同一個 buffer，
@@ -676,10 +693,18 @@ export function useRefactorWorkflow({
 
   // 取消：擋「還沒發的下一條」＋後端 abort 在途呼叫（refactor_abort，包 2 交付）——已經在燒
   // 的那幾條立刻中止，中止錯誤走 sentinel "refactor-aborted" 靜默略過，不列入失敗。
+  // abort 失敗（只會是 IPC 層）：還原取消鈕讓玩家能再按，原因報狀態列；cancelRef 保持 true，不再發下一條。
+  // 只在發起取消的那一桌、那一段進度還在時才還原，不能解除別桌或下一段的取消鎖。
   function cancelAiRefactor() {
     cancelRef.current = true;
     setProgress((current) => current && { ...current, cancelling: true });
-    void invoke("refactor_abort", { worldId: world });
+    const origin = world;
+    const gen = progressGen.current;
+    invoke("refactor_abort", { worldId: origin }).catch((reason) => {
+      if (!mounted.current || worldRef.current !== origin || progressGen.current !== gen) return;
+      setProgress((current) => current && { ...current, cancelling: false });
+      setStatusMessage(String(reason));
+    });
   }
 
   // 匯入重構卡（也是零額度測試入口）：.json 與 PNG 都以原始 bytes 交後端同一個入口
