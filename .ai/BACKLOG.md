@@ -9,6 +9,7 @@
 - [takeover-opening-statusbar-branch](tasks/takeover-opening-statusbar-branch.md) — 重構接管：開場白狀態欄解析成多餘分支 — 下一步：未排程
 - [refactor-probe-failure-hidden](tasks/refactor-probe-failure-hidden.md) — 重構初判失敗畫面看不出原因 — 下一步：未排程
 - [generated-image-download-flaky](tasks/generated-image-download-flaky.md) — 生圖下載 4 條測試在 verify 中偶發 5 秒逾時 — 下一步：未排程，先查假伺服器
+- [worldeditor-reset-test-flaky](tasks/worldeditor-reset-test-flaky.md) — WorldEditor 重構重設測試在 verify 偶發失敗 — 下一步：未排程
 - [mvu-shim-flaky-test](tasks/mvu-shim-flaky-test.md) — MVU 墊片事件測試靠 60ms 等待，負載重時偶發失敗 — 下一步：再遇到才處理〔作者裁決 2026-10-10〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：未排程；先查各 CLI 清單能否分辨預設、OpenRouter 官方 API 能否判斷新版〔作者裁決 2026-10-06〕
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
