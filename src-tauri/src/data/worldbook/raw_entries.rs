@@ -4,11 +4,11 @@ use crate::data::state_commit::with_commit;
 
 use super::super::{invalid_data, DataResult};
 use super::book_import::{identity_text, source_cards, VisibilityRestore, SOURCE_CARDS};
+use super::character_scrub::{apply_restore_before, restore_after_matches};
 use super::{
     entries_object, entries_object_mut, entry_uid, entry_view, insert_entry_value, new_entry_value,
-    next_uid, read_worldbook_value, set_is_person, set_locked, sorted_entry_keys,
-    table_tavern_field, table_tavern_mut, visibility_from_value, write_worldbook_value, Visibility,
-    WorldbookEntry,
+    next_uid, read_worldbook_value, set_is_person, set_locked, sorted_entry_keys, table_tavern_mut,
+    visibility_from_value, write_worldbook_value, Visibility, WorldbookEntry,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -135,22 +135,10 @@ pub fn apply_visibility_restore(
         else {
             return Ok(RestoreOutcome::Gone);
         };
-        if table_tavern_field(value, "visibility") != restore.after_visibility.as_ref()
-            || table_tavern_field(value, SOURCE_CARDS) != restore.after_cards.as_ref()
-        {
+        if !restore_after_matches(value, restore) {
             return Ok(RestoreOutcome::Kept);
         }
-        if let Some(table_tavern) = table_tavern_mut(value) {
-            for (key, before) in [
-                ("visibility", &restore.before_visibility),
-                (SOURCE_CARDS, &restore.before_cards),
-            ] {
-                match before {
-                    Some(before) => table_tavern.insert(key.to_owned(), before.clone()),
-                    None => table_tavern.remove(key),
-                };
-            }
-        }
+        apply_restore_before(value, restore);
         write_worldbook_value(root, world_id, &worldbook)?;
         Ok(RestoreOutcome::Restored)
     })

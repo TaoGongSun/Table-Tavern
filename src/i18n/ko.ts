@@ -416,6 +416,7 @@ export const ko: Record<MsgKey, string> = {
   convertCardUnsaved: "저장되지 않은 변경사항이 있습니다. 먼저 저장한 뒤 변환하세요.",
   convertCardConfirm: "비공개 메모를 포함한 카드 전체를 GM이 볼 수 있는 상시 항목 하나로 합친 뒤, 이 카드와 이미지를 삭제합니다. 계속할까요?",
   convertCardDone: "월드북 항목으로 변환했습니다.",
+  deleteCharacterCleanupFailed: "캐릭터는 삭제했지만 월드북의 캐릭터 연결 정리가 끝나지 않았습니다. 월드북을 확인해 주세요.",
   exportCardPng: "캐릭터 카드 PNG",
   exportCardJson: "캐릭터 카드 JSON",
   exportCardNeedsSave: "내보내기 전에 먼저 저장하세요",

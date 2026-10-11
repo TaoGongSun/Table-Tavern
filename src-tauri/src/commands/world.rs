@@ -1,5 +1,5 @@
 use crate::data::CharacterMeta;
-use crate::{config_root, data, data_root, import, transport};
+use crate::{config_root, data, data_root, import, receipts, transport};
 
 #[tauri::command]
 pub(crate) fn list_worlds(app: tauri::AppHandle) -> Result<Vec<data::WorldMeta>, String> {
@@ -121,13 +121,18 @@ pub(crate) fn character_to_worldbook_entry(
     app: tauri::AppHandle,
     world_id: String,
     character_id: String,
-) -> Result<(), String> {
-    // 獨占在 data::character_to_worldbook_entry（try_world_exclusive），這裡不拿共用許可，免得跟自己搶。
+) -> Result<receipts::CharacterDeleteOutcome, String> {
+    // 獨占在 receipts::character_to_worldbook_entry_and_clean（try_world_exclusive），這裡不拿共用許可，免得跟自己搶。
     // 私有段標照介面語系寫進條目內文；設定讀不到就用預設語系，不擋轉換
     let config = data::read_config(&config_root(&app)?).unwrap_or_default();
     let lang = transport::ui_language(&config);
-    data::character_to_worldbook_entry(&data_root(&app)?, &world_id, &character_id, &lang)
-        .map_err(|error| error.to_string())
+    receipts::character_to_worldbook_entry_and_clean(
+        &data_root(&app)?,
+        &world_id,
+        &character_id,
+        &lang,
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// 狀態列是否顯示：沒有匯入狀態列規則的桌，整條狀態列不掛上去。

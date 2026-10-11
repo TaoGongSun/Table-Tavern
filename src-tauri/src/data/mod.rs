@@ -19,9 +19,9 @@ mod world_lock;
 mod worldbook;
 
 pub use character::{
-    delete_character, list_characters, read_character, read_player_card, reorder_characters,
-    set_character_archived, set_character_auto_hidden, write_character, CharacterCard,
-    CharacterMeta,
+    character_card_gone, delete_character, list_characters, read_character, read_player_card,
+    reorder_characters, set_character_archived, set_character_auto_hidden, write_character,
+    CharacterCard, CharacterMeta,
 };
 pub use config::{
     install_sponsor_pack, migrate_legacy_config, read_config, read_model_catalog,
@@ -81,14 +81,15 @@ pub use world_lock::{
 #[cfg(test)]
 pub use worldbook::import_worldbook;
 pub use worldbook::{
-    apply_visibility_restore, character_book_raw_entries, character_to_worldbook_entry,
-    dedupe_worldbook, delete_worldbook_entry, export_worldbook, identity_fingerprint,
-    identity_fingerprints, import_worldbook_as, insert_worldbook_entry_raw, read_worldbook,
-    read_worldbook_raw, read_worldbook_scan_entries, reorder_worldbook_entries,
-    restore_deleted_entry_raw, restore_worldbook_entry, set_entry_flags, set_source_cards,
-    source_cards_of, upsert_worldbook_entry, worldbook_entry_to_character, worldbook_entry_value,
-    BookImport, BookOwner, RestoreOutcome, Visibility, VisibilityRestore, WorldbookEntry,
-    WorldbookImport,
+    apply_entry_fields, apply_restore_before, apply_visibility_restore, character_book_raw_entries,
+    character_to_worldbook_entry_held, dedupe_worldbook, delete_worldbook_entry, entry_view_of,
+    export_worldbook, identity_fingerprint, identity_fingerprints, import_worldbook_as,
+    insert_worldbook_entry_raw, read_worldbook, read_worldbook_raw, read_worldbook_scan_entries,
+    reorder_worldbook_entries, restore_after_matches, restore_deleted_entry_raw,
+    restore_worldbook_entry, scrub_character_ids, scrub_entry, scrub_entry_value, scrub_restore,
+    set_entry_flags, set_source_cards, source_cards_of, upsert_worldbook_entry,
+    worldbook_entry_to_character, worldbook_entry_value, BookImport, BookOwner, RestoreOutcome,
+    Visibility, VisibilityRestore, WorldbookEntry, WorldbookImport,
 };
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，

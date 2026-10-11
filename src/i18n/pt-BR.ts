@@ -416,6 +416,7 @@ export const ptBR: Record<MsgKey, string> = {
   convertCardUnsaved: "Há alterações não salvas. Salve antes de converter.",
   convertCardConfirm: "Isto reunirá toda a ficha, inclusive as anotações privadas, em uma entrada permanente visível ao GM e depois excluirá esta ficha e suas imagens. Continuar?",
   convertCardDone: "Convertido em uma entrada do Livro do Mundo.",
+  deleteCharacterCleanupFailed: "O personagem foi excluído, mas os vínculos dele no Livro do Mundo não foram totalmente limpos. Confira o Livro do Mundo.",
   exportCardPng: "Ficha de personagem em PNG",
   exportCardJson: "Ficha de personagem em JSON",
   exportCardNeedsSave: "Salve a ficha antes de exportar",

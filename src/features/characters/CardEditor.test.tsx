@@ -240,6 +240,17 @@ describe("CardEditor", () => {
       expect(onConverted).toHaveBeenCalledTimes(1);
     });
 
+    it("appends the cleanup notice to the done message", async () => {
+      backend.handlers.read_character = () => card("c1", "Alice");
+      backend.handlers.character_to_worldbook_entry = () => ({ worldbook_cleanup_failed: true });
+      await mount();
+      await chooseConvert();
+      const text = vi.mocked(showMessage).mock.calls[0][0];
+      expect(text).toContain(t("convertCardDone"));
+      expect(text).toContain(t("deleteCharacterCleanupFailed"));
+      expect(onConverted).toHaveBeenCalledTimes(1);
+    });
+
     it("does nothing when the confirm is cancelled", async () => {
       backend.handlers.read_character = () => card("c1", "Alice");
       vi.mocked(confirm).mockResolvedValue(false);
