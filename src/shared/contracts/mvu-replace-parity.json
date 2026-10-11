@@ -1,5 +1,5 @@
 {
-  "_comment": "mvu-replace-numeric：沒重構的 MVU 卡 JSONPatch replace 的後端（mechanism Upstream 策略＋卡片變數模式合回 stat_data）與前端墊片 Mvu.parseMessage 必須得到完全相同的 stat_data。語意照上游 MagVarUpdate 438f9ffc update_variables.ts L906-956；set 產生的非有限數在整批做完、序列化時轉 null〔作者裁決 2026-10-04〕。 backend_rejected：後端記帳預期拒收的路徑（墊片沒有記帳），結果兩邊仍須完全一致。",
+  "_comment": "mvu-replace-numeric：沒重構的 MVU 卡 JSONPatch replace 的後端（mechanism Upstream 策略＋卡片變數模式合回 stat_data）與前端墊片 Mvu.parseMessage 必須得到完全相同的 stat_data。語意照上游 MagVarUpdate 438f9ffc update_variables.ts L906-956；set 產生的非有限數在整批做完、序列化時轉 null〔作者裁決 2026-10-04〕。 backend_rejected：後端記帳預期拒收的路徑（墊片沒有記帳），結果兩邊仍須完全一致。 schema_any：墊片以 schema 為 any 跑（MagVarUpdate 在 getSchemaForPath 回 null 時的行為：不查可擴充、必填鍵、模板）；這是 MagVarUpdate 路徑，不是 tavern_resource mvu_zod 自己套用指令的行為（另案 mvu-zod-semantics）。陣列索引路徑（mvu-array-index-path）的案例都是。",
   "cases": [
     {
       "name": "數字換數字",
@@ -500,6 +500,827 @@
             "n": null,
             "x": 1
           }
+        }
+      }
+    },
+    {
+      "name": "陣列索引 replace",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/A/1",
+          "value": "x"
+        }
+      ],
+      "expected": {
+        "A": [
+          "a",
+          "x",
+          "c"
+        ]
+      }
+    },
+    {
+      "name": "值帶說明的索引路徑：第 0 項字串轉數字、第 1 項改說明",
+      "schema_any": true,
+      "stat_data": {
+        "HP": [
+          50,
+          "生命"
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/HP/0",
+          "value": "60"
+        },
+        {
+          "op": "replace",
+          "path": "/HP/1",
+          "value": "氣血"
+        }
+      ],
+      "expected": {
+        "HP": [
+          60,
+          "氣血"
+        ]
+      }
+    },
+    {
+      "name": "元素本身是值帶說明：replace 只改其第 0 項",
+      "schema_any": true,
+      "stat_data": {
+        "列表": [
+          [
+            10,
+            "x"
+          ],
+          [
+            20,
+            "y"
+          ]
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/列表/1",
+          "value": 5
+        }
+      ],
+      "expected": {
+        "列表": [
+          [
+            10,
+            "x"
+          ],
+          [
+            5,
+            "y"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "陣列裡的物件與巢狀陣列",
+      "schema_any": true,
+      "stat_data": {
+        "角色列表": [
+          {
+            "名": "甲",
+            "HP": 3
+          },
+          {
+            "名": "乙",
+            "HP": 4
+          }
+        ],
+        "矩陣": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/角色列表/1/HP",
+          "value": 9
+        },
+        {
+          "op": "replace",
+          "path": "/矩陣/0/1",
+          "value": 7
+        }
+      ],
+      "expected": {
+        "角色列表": [
+          {
+            "名": "甲",
+            "HP": 3
+          },
+          {
+            "名": "乙",
+            "HP": 9
+          }
+        ],
+        "矩陣": [
+          [
+            1,
+            7
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      }
+    },
+    {
+      "name": "陣列索引 delta：數字、值帶說明第 0 項、元素是值帶說明、12 位有效數字",
+      "schema_any": true,
+      "stat_data": {
+        "數值": [
+          1,
+          2,
+          3
+        ],
+        "HP": [
+          50,
+          "生命"
+        ],
+        "列表": [
+          [
+            10,
+            "x"
+          ]
+        ],
+        "小數": [
+          0.1
+        ]
+      },
+      "patch": [
+        {
+          "op": "delta",
+          "path": "/數值/2",
+          "value": 5
+        },
+        {
+          "op": "delta",
+          "path": "/HP/0",
+          "value": -10
+        },
+        {
+          "op": "delta",
+          "path": "/列表/0",
+          "value": 2
+        },
+        {
+          "op": "delta",
+          "path": "/小數/0",
+          "value": 0.2
+        }
+      ],
+      "expected": {
+        "數值": [
+          1,
+          2,
+          8
+        ],
+        "HP": [
+          40,
+          "生命"
+        ],
+        "列表": [
+          [
+            12,
+            "x"
+          ]
+        ],
+        "小數": [
+          0.3
+        ]
+      }
+    },
+    {
+      "name": "陣列 insert：- 推尾、索引插入、超長推尾、01 當 1",
+      "schema_any": true,
+      "stat_data": {
+        "R": {
+          "A": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/R/A/-",
+          "value": "d"
+        },
+        {
+          "op": "insert",
+          "path": "/R/A/0",
+          "value": "z"
+        },
+        {
+          "op": "insert",
+          "path": "/R/A/99",
+          "value": "e"
+        },
+        {
+          "op": "insert",
+          "path": "/R/A/01",
+          "value": "y"
+        }
+      ],
+      "expected": {
+        "R": {
+          "A": [
+            "z",
+            "y",
+            "a",
+            "b",
+            "c",
+            "d",
+            "e"
+          ]
+        }
+      }
+    },
+    {
+      "name": "頂層陣列 insert（上游父路徑是根時擋下，這裡放行）",
+      "schema_any": true,
+      "stat_data": {
+        "物品": [
+          "劍"
+        ]
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/物品/-",
+          "value": "盾"
+        },
+        {
+          "op": "add",
+          "path": "/物品/0",
+          "value": "弓"
+        }
+      ],
+      "expected": {
+        "物品": [
+          "弓",
+          "劍",
+          "盾"
+        ]
+      }
+    },
+    {
+      "name": "陣列 remove：索引、01 當 1、值帶說明刪說明、元素物件刪鍵",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "HP": [
+          50,
+          "生命"
+        ],
+        "角色列表": [
+          {
+            "名": "甲",
+            "HP": 3
+          }
+        ]
+      },
+      "patch": [
+        {
+          "op": "remove",
+          "path": "/A/1"
+        },
+        {
+          "op": "remove",
+          "path": "/A/01"
+        },
+        {
+          "op": "remove",
+          "path": "/HP/1"
+        },
+        {
+          "op": "remove",
+          "path": "/角色列表/0/HP"
+        }
+      ],
+      "expected": {
+        "A": [
+          "a",
+          "d"
+        ],
+        "HP": [
+          50
+        ],
+        "角色列表": [
+          {
+            "名": "甲"
+          }
+        ]
+      }
+    },
+    {
+      "name": "索引不存在：越界、01、-、-1 都不動",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          "a",
+          "b"
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/A/01",
+          "value": "x"
+        },
+        {
+          "op": "replace",
+          "path": "/A/2",
+          "value": "x"
+        },
+        {
+          "op": "replace",
+          "path": "/A/-",
+          "value": "x"
+        },
+        {
+          "op": "replace",
+          "path": "/A/-1",
+          "value": "x"
+        },
+        {
+          "op": "delta",
+          "path": "/A/5",
+          "value": 1
+        },
+        {
+          "op": "remove",
+          "path": "/A/2"
+        },
+        {
+          "op": "remove",
+          "path": "/A/-"
+        }
+      ],
+      "expected": {
+        "A": [
+          "a",
+          "b"
+        ]
+      },
+      "backend_rejected": [
+        "A.01",
+        "A.2",
+        "A.-",
+        "A.-1",
+        "A.5",
+        "A.2",
+        "A.-"
+      ]
+    },
+    {
+      "name": "整列 replace 寫陣列整個換掉（偏離上游的巢狀），寫非陣列仍只改第 0 項",
+      "schema_any": true,
+      "stat_data": {
+        "背包": [
+          "劍",
+          "盾"
+        ],
+        "HP": [
+          50,
+          "生命"
+        ],
+        "稱號": [
+          "勇者",
+          "說明"
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/背包",
+          "value": [
+            "劍",
+            "盾",
+            "弓"
+          ]
+        },
+        {
+          "op": "replace",
+          "path": "/HP",
+          "value": [
+            60,
+            "生命"
+          ]
+        },
+        {
+          "op": "replace",
+          "path": "/稱號",
+          "value": "魔王"
+        }
+      ],
+      "expected": {
+        "背包": [
+          "劍",
+          "盾",
+          "弓"
+        ],
+        "HP": [
+          60,
+          "生命"
+        ],
+        "稱號": [
+          "魔王",
+          "說明"
+        ]
+      }
+    },
+    {
+      "name": "insert 的值剝掉 $meta 與可擴充標記",
+      "schema_any": true,
+      "stat_data": {
+        "R": {
+          "A": [
+            {
+              "k": 1
+            }
+          ]
+        }
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/R/A/-",
+          "value": {
+            "$meta": {
+              "extensible": true
+            },
+            "k": 2,
+            "l": [
+              "$__META_EXTENSIBLE__$",
+              1
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "R": {
+          "A": [
+            {
+              "k": 1
+            },
+            {
+              "k": 2,
+              "l": [
+                1
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "insert 容器是 null 建物件、容器不存在擋下",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          {
+            "x": null,
+            "z": 1
+          }
+        ]
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/A/0/x/k",
+          "value": 1
+        },
+        {
+          "op": "insert",
+          "path": "/A/0/y/k",
+          "value": 2
+        }
+      ],
+      "expected": {
+        "A": [
+          {
+            "x": {
+              "k": 1
+            },
+            "z": 1
+          }
+        ]
+      },
+      "backend_rejected": [
+        "A.0.y.k"
+      ]
+    },
+    {
+      "name": "insert 到元素物件既有的鍵直接覆蓋、不轉型",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          {
+            "o": "s",
+            "n": 1
+          }
+        ]
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/A/0/o",
+          "value": "5"
+        },
+        {
+          "op": "insert",
+          "path": "/A/0/n",
+          "value": "7"
+        }
+      ],
+      "expected": {
+        "A": [
+          {
+            "o": "5",
+            "n": "7"
+          }
+        ]
+      }
+    },
+    {
+      "name": "物件鍵 01：insert 設成 1、remove 刪原字面",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          {
+            "0": "o"
+          }
+        ],
+        "B": [
+          {
+            "01": 1,
+            "o": 2
+          }
+        ]
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/A/0/01",
+          "value": "X"
+        },
+        {
+          "op": "remove",
+          "path": "/B/0/01"
+        }
+      ],
+      "expected": {
+        "A": [
+          {
+            "0": "o",
+            "1": "X"
+          }
+        ],
+        "B": [
+          {
+            "o": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "同一批交錯：insert、replace、remove、整列 replace、delta",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          "a",
+          "b",
+          "c"
+        ],
+        "HP": [
+          50,
+          "生命"
+        ]
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/A/-",
+          "value": "d"
+        },
+        {
+          "op": "replace",
+          "path": "/A/3",
+          "value": "D"
+        },
+        {
+          "op": "remove",
+          "path": "/A/0"
+        },
+        {
+          "op": "replace",
+          "path": "/A",
+          "value": [
+            "x",
+            "y"
+          ]
+        },
+        {
+          "op": "delta",
+          "path": "/HP/0",
+          "value": 5
+        }
+      ],
+      "expected": {
+        "A": [
+          "x",
+          "y"
+        ],
+        "HP": [
+          55,
+          "生命"
+        ]
+      }
+    },
+    {
+      "name": "非有限數隨 splice 位移：刪前面、插頭、巢狀容器、刪掉含標記的子樹、改回有限值與 null",
+      "schema_any": true,
+      "stat_data": {
+        "A": [
+          1,
+          2,
+          3
+        ],
+        "B": [
+          1,
+          2
+        ],
+        "C": [
+          1,
+          1
+        ],
+        "M": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "D": [
+          [
+            1,
+            2
+          ],
+          5
+        ]
+      },
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/A/1",
+          "value": "很多"
+        },
+        {
+          "op": "remove",
+          "path": "/A/0"
+        },
+        {
+          "op": "replace",
+          "path": "/B/0",
+          "value": "很多"
+        },
+        {
+          "op": "insert",
+          "path": "/B/0",
+          "value": 9
+        },
+        {
+          "op": "replace",
+          "path": "/C/0",
+          "value": "很多"
+        },
+        {
+          "op": "replace",
+          "path": "/C/0",
+          "value": "5"
+        },
+        {
+          "op": "replace",
+          "path": "/C/1",
+          "value": "很多"
+        },
+        {
+          "op": "replace",
+          "path": "/C/1",
+          "value": null
+        },
+        {
+          "op": "replace",
+          "path": "/M/1/0",
+          "value": "很多"
+        },
+        {
+          "op": "remove",
+          "path": "/M/0"
+        },
+        {
+          "op": "replace",
+          "path": "/D/0/1",
+          "value": "很多"
+        },
+        {
+          "op": "remove",
+          "path": "/D/0"
+        }
+      ],
+      "expected": {
+        "A": [
+          null,
+          3
+        ],
+        "B": [
+          9,
+          null,
+          2
+        ],
+        "C": [
+          5,
+          null
+        ],
+        "M": [
+          [
+            null,
+            4
+          ]
+        ],
+        "D": [
+          5
+        ]
+      }
+    },
+    {
+      "name": "insert 新鍵的值是陣列，之後同一批可走索引路徑",
+      "schema_any": true,
+      "stat_data": {
+        "R": {
+          "x": 1
+        }
+      },
+      "patch": [
+        {
+          "op": "insert",
+          "path": "/R/清單",
+          "value": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "op": "replace",
+          "path": "/R/清單/1",
+          "value": "c"
+        }
+      ],
+      "expected": {
+        "R": {
+          "x": 1,
+          "清單": [
+            "a",
+            "c"
+          ]
         }
       }
     }

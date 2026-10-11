@@ -341,6 +341,7 @@ Sol 第 14 輪 4 項：恢復誤刪的 8.3 後半與 8.4 開頭（對照 24f0eac
 ## 包 2c 施工結果（2026-10-03；Sol 驗收通過，第 2 輪）
 
 - **上游核對**：MagVarUpdate `438f9ffc` 逐檔讀過（8.9 所列檔案），行為照它重寫；JS-Slash-Runner 只涉及 `eventEmit` 序列語意（監聽器依序 await、單支出錯不影響其他），沙盒原本的 `emit` 已是這個行為。
+- **刻意偏離上游**（mvu-array-index-path，與後端一致，不是移植錯誤，別改回）〔主線裁定，依作者裁決 酒館行為照做〕：`applySet` 舊值 `[值, 說明]`、新值是陣列時整個換掉（上游巢狀寫壞清單）；`applyInsert` 容器在頂層時不查父路徑（上游 `lodash.get(資料, "")` 恆為 undefined，擋下 `/物品/-`）；splice（陣列 insert、remove 快速路徑）只位移 set 產生的非有限數標記、不撤銷整個陣列〔依作者裁決 2026-10-04 非有限數轉 null〕。
 - **落點**：`mvu/card-mvu-parse-source.ts`（沙盒端，嵌進 `card-mvu-shim-source.ts` 的 IIFE；String.raw 片段，不能含反引號，要比對反引號寫 `\x60`）、`mvu/card-mvu-parse-engine.ts`（Worker 內的值解析，純函式）、`mvu/card-mvu-eval.worker.ts`、`mvu/card-mvu-eval-host.ts`（宿主端 Worker 管理）；`useCardInterfaceController.ts` 一份殼一支宿主、處理 `mvu-eval`。依賴新增 `mathjs`、`json5`、`jsonrepair`、`yaml`（上游同一個 YAML 套件）；mathjs 只在 Worker chunk（約 740 KB），主 bundle 不變。快照 `CardMvu` 新增 `macros`（`{{user}}`／`{{char}}` 代換值）。
 - **測試**：引擎（值解析六段、受限數學式、JSONPatch 區塊文字、值上限）、沙盒端（各指令與 JSONPatch、set 轉型、`[值, 說明]`、schema、模板、事件順序與參數、監聽器改資料、不落檔、各上限、5 秒、宿主沒回應）、宿主 Worker 管理（假 Worker：序列、200 ms 逾時終止與重建、開機等待、關閉）、controller（`mvu-eval` 驗 token、關面板終止）、jsdom 整份殼（探針卡 parseMessage 預覽走值解析）。另有真 WebKit 的 `card-mvu-eval.webkit.test.tsx`（真 Worker 算式、重算式逾時終止並重建；`npm run test:webkit`，不進 verify）。
 - 取捨〔模型判斷·未裁決〕：

@@ -154,51 +154,72 @@ fn explicit_range_clamps_both_ends_and_records_the_clamped_value() {
 }
 
 #[test]
-fn following_the_index_path_hints_persists_the_right_values() {
-    // 數字 VWD：提示「replace 它只會改第 0 項」，照做之後是 [55, "生命"]
+fn index_paths_persist_like_upstream() {
     let (merged, records, _) = run(
         r#"{"HP":[50,"生命"]}"#,
         r#"[{"op":"replace","path":"/HP/0","value":55}]"#,
         &[],
     );
-    assert_eq!(merged, r#"{"HP":[50,"生命"]}"#);
-    assert!(records[0].detail.contains("只會改第 0 項") && !records[0].detail.contains("整個陣列"));
-    let (merged, _, _) = run(
-        r#"{"HP":[50,"生命"]}"#,
-        r#"[{"op":"replace","path":"/HP","value":55}]"#,
-        &[],
-    );
+    assert!(records.is_empty(), "{records:?}");
     assert_eq!(merged, r#"{"HP":[55,"生命"]}"#);
-    // 一般陣列：提示寫整個 JSON 陣列，照做之後整個換掉
-    let stat = r#"{"物品":["劍","盾","弓"]}"#;
-    let (_, records, _) = run(
-        stat,
+    let (merged, records, _) = run(
+        r#"{"物品":["劍","盾","弓"]}"#,
         r#"[{"op":"replace","path":"/物品/1","value":"斧"}]"#,
         &[],
     );
-    assert!(records[0].detail.contains("整個 JSON 陣列"));
-    let (merged, _, _) = run(
-        stat,
-        r#"[{"op":"replace","path":"/物品","value":["劍","斧","弓"]}]"#,
-        &[],
-    );
+    assert!(records.is_empty(), "{records:?}");
     assert_eq!(merged, r#"{"物品":["劍","斧","弓"]}"#);
 }
 
-/// 恰好兩個字串的清單照上游當 [值, 說明]：照提示 replace 只換掉第 0 項（提示據實，不保證整列換掉）。
+/// 恰好兩個字串的清單：索引路徑照一般陣列；整列 replace 寫陣列整個換掉（偏離上游的巢狀），寫非陣列仍只改第 0 項。
 #[test]
-fn two_string_list_replace_only_changes_the_first_item_as_the_hint_says() {
+fn two_string_list_whole_replace_with_an_array_replaces_it() {
     let stat = r#"{"背包":["劍","盾"]}"#;
-    let (_, records, _) = run(
+    let (merged, _, _) = run(
         stat,
         r#"[{"op":"replace","path":"/背包/1","value":"弓"}]"#,
         &[],
     );
-    assert!(records[0].detail.contains("只會改第 0 項（目前「劍」）"));
+    assert_eq!(merged, r#"{"背包":["劍","弓"]}"#);
+    let (merged, _, _) = run(
+        stat,
+        r#"[{"op":"replace","path":"/背包","value":["劍","盾","弓"]}]"#,
+        &[],
+    );
+    assert_eq!(merged, r#"{"背包":["劍","盾","弓"]}"#);
     let (merged, _, _) = run(
         stat,
         r#"[{"op":"replace","path":"/背包","value":"弓"}]"#,
         &[],
     );
     assert_eq!(merged, r#"{"背包":["弓","盾"]}"#);
+}
+
+/// mvu-array-index-path：索引路徑只轉換被操作的元素，其餘元素保留原始 JSON（大整數不經 f64；墊片的 JS 表示不了，
+/// 只在後端測）。
+#[test]
+fn index_paths_keep_untouched_elements_verbatim() {
+    let (merged, records, _) = run(
+        r#"{"A":[9007199254740993,1,{"n":12345678901234567890}]}"#,
+        r#"[{"op":"replace","path":"/A/1","value":2},{"op":"insert","path":"/A/0","value":0},{"op":"remove","path":"/A/2"}]"#,
+        &[],
+    );
+    assert!(records.is_empty(), "{records:?}");
+    assert_eq!(
+        merged,
+        r#"{"A":[0,9007199254740993,{"n":12345678901234567890}]}"#
+    );
+}
+
+/// Upstream 桌 `insert /物件/-`：樹落成實際的鍵（"0"），視圖照同一個鍵寫，同批 replace 後落檔沒有重複鍵。
+#[test]
+fn insert_dash_into_an_object_writes_the_actual_key() {
+    let (merged, records, changes) = run(
+        r#"{"物品":{}}"#,
+        r#"[{"op":"insert","path":"/物品/-","value":"劍"},{"op":"replace","path":"/物品/0","value":"盾"}]"#,
+        &[],
+    );
+    assert!(records.is_empty(), "{records:?}");
+    assert_eq!(merged, r#"{"物品":{"0":"盾"}}"#);
+    assert!(changes.contains_key("物品.0") && !changes.contains_key("物品.-"));
 }

@@ -241,9 +241,10 @@ describe("parseMessage：insert／assign／delete／add", () => {
     };
     const blocked = await win.Mvu.parseMessage("_.assign('角色', {乙: 1});_.assign('角色', '丙', 1);_.assign('列', 2);", closed);
     expect(blocked.stat_data).toEqual({ 角色: { 甲: 1 }, 列: [1] });
-    // 沒有 schema 時：新鍵插在單層路徑下會因「找不到父路徑」被擋（上游的行為），有 schema 才放行
-    const bare = await win.Mvu.parseMessage("_.assign('開', 'k', 1);", { stat_data: { 開: {} } });
-    expect(bare.stat_data.開).toEqual({});
+    // 沒有 schema 時：上游對頂層容器查父路徑 lodash.get(資料, "") 恆為 undefined 而擋下；這裡放行（偏離上游，
+    // mvu-array-index-path〔主線裁定，依作者裁決 酒館行為照做〕），深一層的容器照舊查父路徑
+    const bare = await win.Mvu.parseMessage("_.assign('開', 'k', 1);_.assign('無.子', 'k', 1);", { stat_data: { 開: {} } });
+    expect(bare.stat_data).toEqual({ 開: { k: 1 } });
   });
 
   it("模板：assign 新元素時套 $meta.template，值的屬性優先；陣列模板用 $arrayMeta 元素宣告", async () => {
@@ -609,7 +610,12 @@ describe("parseMessage：沒重構 MVU 卡的數字欄 replace（與後端同一
     it(sample.name, async () => {
       const { win } = sandbox();
       const message = `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(sample.patch)}\n</JSONPatch>\n</UpdateVariable>`;
-      const result = await win.Mvu.parseMessage(message, withSchema(structuredClone(sample.stat_data) as Table));
+      const stat = structuredClone(sample.stat_data) as Table;
+      // schema_any：MagVarUpdate 在 schema 為 any（generateSchema 的 zod hack）時的行為，不查可擴充、必填鍵、模板；
+      // 不是 tavern_resource mvu_zod 自己套用指令的行為
+      const table =
+        "schema_any" in sample && sample.schema_any ? { stat_data: stat, schema: "没有用别管这个" } : withSchema(stat);
+      const result = await win.Mvu.parseMessage(message, table);
       expect(JSON.parse(JSON.stringify(result.stat_data))).toEqual(sample.expected);
     });
   }

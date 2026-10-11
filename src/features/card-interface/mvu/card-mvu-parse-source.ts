@@ -526,6 +526,30 @@ export function buildMvuParseSource(): string {
     });
   }
 
+  // splice 只移動位置、不改寫元素值：set 產生的非有限數標記跟著位移，被刪掉的那一項的標記丟掉；只動被 splice
+  // 那一層容器的直接索引段〔主線裁定，依作者裁決 2026-10-04 非有限數轉 null；後端 array.rs 同步〕
+  function shiftSets(st, container, index, step) {
+    var depth = container.length;
+    st.ctx.nonFiniteSets = st.ctx.nonFiniteSets.filter(function (entry) {
+      if (entry.segments.length <= depth) return true;
+      for (var i = 0; i < depth; i++) if (entry.segments[i] !== String(container[i])) return true;
+      if (!/^\d+$/.test(entry.segments[depth])) return true;
+      var at = Number(entry.segments[depth]);
+      if (step < 0 && at === index) return false;
+      if (step > 0 ? at >= index : at > index) {
+        entry.segments = entry.segments.slice();
+        entry.segments[depth] = String(at + step);
+        entry.path = segmentsToPath(entry.segments);
+      }
+      return true;
+    });
+  }
+  // Array.prototype.splice 的起點：負數從尾端算、超出範圍夾在 0..長度
+  function spliceAt(index, length) {
+    if (index < 0) return Math.max(length + index, 0);
+    return Math.min(index, length);
+  }
+
   // lodash.merge(target, source) 實際會覆寫的位置才撤銷：兩邊都是可合併的容器就往下遞迴（照 lodash：來源陣列只合進
   // 陣列、來源物件合進任何物件），否則整個鍵被換掉；來源是 undefined 的鍵不寫。沒被動到的兄弟欄保留標記
   function touchMerge(st, segments, source, target) {
@@ -552,7 +576,10 @@ export function buildMvuParseSource(): string {
     var newValue = isoIfDate(await parseValue(st.ctx, command.args[command.args.length - 1]));
     var pathIsVwd = false;
     touch(st, path);
-    if (!st.strictSet && isVwd(oldValue) && !Array.isArray(oldValue[0])) {
+    // 偏離上游：新值是陣列時整個換掉，不寫進第 0 項（上游會巢狀成 [[…], 說明]，把恰好兩個字串的清單寫壞）
+    // 〔主線裁定，依作者裁決 酒館行為照做；後端 upstream_set 同步〕
+    var wholeVwd = !st.strictSet && isVwd(oldValue) && !Array.isArray(oldValue[0]) && Array.isArray(newValue);
+    if (!st.strictSet && isVwd(oldValue) && !Array.isArray(oldValue[0]) && !wholeVwd) {
       // [值, 說明]：改第 0 項；舊值是數字且新值不是 null 才強轉成數字（數字欄位可以設成 null）
       var oldCopy = lodash.cloneDeep(oldValue[0]);
       oldValue[0] = typeof oldValue[0] === "number" && newValue !== null ? Number(newValue) : newValue;
@@ -572,7 +599,7 @@ export function buildMvuParseSource(): string {
       st.ctx.nonFiniteSets.push({ path: path, segments: lodash.toPath(path), vwd: pathIsVwd });
     }
     var display;
-    if (!st.strictSet && isVwd(oldValue) && Array.isArray(finalValue)) {
+    if (!st.strictSet && !wholeVwd && isVwd(oldValue) && Array.isArray(finalValue)) {
       display = displayOf(oldValue[0]) + "->" + displayOf(finalValue[0]) + " " + reasonStr;
     } else {
       display = displayOf(oldValue) + "->" + displayOf(finalValue) + " " + reasonStr;
@@ -608,7 +635,12 @@ export function buildMvuParseSource(): string {
         outError(st, "不可擴充的陣列不能插入：" + path + " " + reasonStr);
         return "";
       }
-    } else if (path !== "" && !lodash.get(variables.stat_data, segmentsToPath(lodash.toPath(path).slice(0, -1)))) {
+    } else if (
+      // 偏離上游：父路徑是根（頂層容器，如 /物品/-）時上游的 lodash.get(資料, "") 恆為 undefined 而擋下，
+      // GM 最常寫的寫法會失敗，這裡放行〔主線裁定，依作者裁決 酒館行為照做〕
+      lodash.toPath(path).length > 1 &&
+      !lodash.get(variables.stat_data, segmentsToPath(lodash.toPath(path).slice(0, -1)))
+    ) {
       outError(st, "插入的父路徑不存在：" + path + " " + reasonStr);
       return "";
     }
@@ -652,7 +684,7 @@ export function buildMvuParseSource(): string {
       if (Array.isArray(collection) && (typeof keyOrIndex === "number" || keyOrIndex === "-")) {
         // JSON Patch 的 "-" 是追加到陣列尾
         var index = keyOrIndex === "-" ? collection.length : keyOrIndex;
-        touch(st, path);
+        shiftSets(st, lodash.toPath(path), spliceAt(index, collection.length), 1);
         var label = keyOrIndex === "-" || keyOrIndex === -1 ? "tail" : keyOrIndex;
         valueToAssign = applyTemplate(valueToAssign, template, st.strictTemplate, st.concatTemplateArray);
         collection.splice(index, 0, valueToAssign);
@@ -703,7 +735,7 @@ export function buildMvuParseSource(): string {
       var at = parseInt(lastPart, 10);
       if (Array.isArray(container) && at < container.length) {
         var originalArray = lodash.cloneDeep(container);
-        touch(st, arrayPath);
+        shiftSets(st, lodash.toPath(arrayPath), at, -1);
         container.splice(at, 1);
         await singleUpdated(st, arrayPath, originalArray, container);
         return "";

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use super::super::note::{compose, plain, pointer, render_group, shown_pointer, snippet};
 use super::super::rules::{leaf_shown, rule_for};
 use super::super::types::{NoteGroup, PatchOp, Record, RecordKind};
-use super::super::upstream_set::{is_vwd, TypedView, Val};
+use super::super::upstream_set::Val;
 
 /// `[值, 說明]` 第 0 項的顯示文字：字串照原文，其餘寫成 JSON，截到 30 字。
 pub(super) fn first_item_text(item: &Val) -> String {
@@ -42,7 +42,6 @@ fn rejected(path: &[String], detail: String) -> Record {
 pub(super) fn missing(
     tree: &BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
-    view: &TypedView,
     path: &[String],
     op: PatchOp,
 ) -> Record {
@@ -55,7 +54,7 @@ pub(super) fn missing(
         match data::node_at(tree, prefix) {
             Some(StateNode::Branch(_)) => continue,
             Some(StateNode::Leaf(value)) => {
-                return leaf_in_the_way(mechanism, view, prefix, value, op);
+                return leaf_in_the_way(mechanism, prefix, value, op);
             }
             None => return missing_prefix(tree, mechanism, path, end, op),
         }
@@ -64,38 +63,12 @@ pub(super) fn missing(
     missing_prefix(tree, mechanism, path, path.len(), op)
 }
 
-/// 路徑中途撞到葉子：陣列（上游 MVU）＞清單欄＞一般單一欄位。
-fn leaf_in_the_way(
-    mechanism: &Mechanism,
-    view: &TypedView,
-    prefix: &[String],
-    value: &str,
-    op: PatchOp,
-) -> Record {
+/// 路徑中途撞到葉子：清單欄＞一般單一欄位（上游 MVU 的陣列另走 `array`）。
+fn leaf_in_the_way(mechanism: &Mechanism, prefix: &[String], value: &str, op: PatchOp) -> Record {
     let shown = shown_pointer(prefix);
     let rule = rule_for(mechanism, prefix, Some(value));
     if let Some(detail) = guard_refusal(&rule, &shown) {
         return rejected(prefix, plain(detail));
-    }
-    if view.is_active() {
-        if let Some(Val::Arr(items)) = view.get(prefix) {
-            let detail = if is_vwd(&items) && matches!(items[0], Val::Num(_)) {
-                format!(
-                    "{shown} 是 [值, 說明] 欄，不能用索引路徑；replace 它只會改第 0 項（值只寫新數字），增減用 delta 它。"
-                )
-            } else if is_vwd(&items) {
-                // 第 0 項不是數字也照上游當 [值, 說明]（例如恰好兩個字串的清單）：照實講 replace 只動第 0 項
-                format!(
-                    "{shown} 依上游規則視為 [值, 說明]：replace 它只會改第 0 項（目前「{}」）；增刪項目目前不支援。",
-                    first_item_text(&items[0])
-                )
-            } else {
-                format!(
-                    "{shown} 是陣列，目前不支援逐項路徑；請 replace 它，值寫成整個 JSON 陣列（不要加引號）。"
-                )
-            };
-            return rejected(prefix, plain(detail));
-        }
     }
     let detail = match rule.kind {
         FieldKind::List if op == PatchOp::Insert => format!(
@@ -133,6 +106,18 @@ fn missing_prefix(
     let items = siblings
         .map(|children| listable_keys(mechanism, children, parent))
         .unwrap_or_default();
+    missing_group(path, end, items, op)
+}
+
+/// `path[..end]` 不存在的拒收記錄：`items` 是上一層現有的鍵（已過濾）。同一前綴的多筆在回饋裡合成一條。
+pub(super) fn missing_group(
+    path: &[String],
+    end: usize,
+    items: Vec<String>,
+    op: PatchOp,
+) -> Record {
+    let prefix = &path[..end];
+    let parent = &prefix[..end - 1];
     let last_only = end == path.len();
     let insert_hint = last_only && matches!(op, PatchOp::Replace | PatchOp::Delta);
     let head = format!("路徑不存在：{}", shown_pointer(prefix));

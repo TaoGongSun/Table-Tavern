@@ -96,9 +96,10 @@ pub(super) fn is_vwd(items: &[Val]) -> bool {
 
 /// set 的套用規則：`[值, 說明]` 只改第 0 項（舊值是數字且新值不是 null 才 `Number()`）；
 /// 舊值是數字、新值是字串就 `Number()`；其餘照新值寫。不夾範圍、不拒收。
+/// 偏離上游一格：新值是陣列時整個換掉（上游會巢狀成 `[[…], 說明]` 把清單寫壞）〔主線裁定，依作者裁決 酒館行為照做〕。
 pub(super) fn upstream_set(old: &Val, new: Val) -> Val {
     if let Val::Arr(items) = old {
-        if is_vwd(items) {
+        if is_vwd(items) && !matches!(new, Val::Arr(_)) {
             let first = if matches!(items[0], Val::Num(_)) && new != Val::Null {
                 Val::Num(js_to_number(&new))
             } else {
@@ -314,13 +315,9 @@ impl TypedView {
         view
     }
 
-    /// 這條路徑目前的帶型別值（含批內 set 出來、還沒序列化的 NaN）。
+    /// 這條路徑目前的帶型別值（含批內 set 出來、還沒序列化的 NaN）。陣列只認正規十進位索引。
     pub(super) fn get(&self, path: &[String]) -> Option<Val> {
-        let mut node = &self.doc;
-        for segment in path {
-            node = node.get(segment)?;
-        }
-        let mut value = Val::from_json(node);
+        let mut value = Val::from_json(self.json_at(path)?);
         for mark in &self.non_finite {
             if let Some(rest) = mark.strip_prefix(path) {
                 set_non_finite(&mut value, rest);
@@ -329,14 +326,49 @@ impl TypedView {
         Some(value)
     }
 
+    /// 這條路徑目前的 JSON（非有限數位置是 null，標記另見 `marks_under`）。陣列只認正規十進位索引。
+    pub(super) fn json_at(&self, path: &[String]) -> Option<&Json> {
+        let mut node = &self.doc;
+        for segment in path {
+            node = json_child(node, segment)?;
+        }
+        Some(node)
+    }
+
+    /// `path` 底下的非有限數標記（相對路徑）。
+    pub(super) fn marks_under(&self, path: &[String]) -> Vec<Vec<String>> {
+        self.non_finite
+            .iter()
+            .filter_map(|mark| mark.strip_prefix(path).map(<[String]>::to_vec))
+            .collect()
+    }
+
+    /// 一條指令照 JSON 整個換掉 `path`（物件路徑）：未改動的部分保留原始 JSON（含大整數），`marks` 是新值底下
+    /// 的非有限數標記（相對路徑）。這條指令不再照樹的差異同步。
+    pub(super) fn replace_json(&mut self, path: &[String], value: Json, marks: Vec<Vec<String>>) {
+        self.non_finite.retain(|mark| !mark.starts_with(path));
+        self.non_finite.extend(marks.into_iter().map(|mark| {
+            let mut full = path.to_vec();
+            full.extend(mark);
+            full
+        }));
+        self.write(path, value);
+        self.set_written = true;
+    }
+
     /// 整個位置換成 `value`（舊的子欄寫入與非有限數標記一併作廢）。
     fn put(&mut self, path: &[String], value: &Val) {
         self.non_finite.retain(|mark| !mark.starts_with(path));
         let mut marks = Vec::new();
         collect_non_finite(value, &mut path.to_vec(), &mut marks);
         self.non_finite.extend(marks);
+        self.write(path, value.to_json());
+    }
+
+    /// 文件上寫入一處（缺的父層補成物件）。
+    fn write(&mut self, path: &[String], value: Json) {
         let Some((key, parents)) = path.split_last() else {
-            self.doc = value.to_json();
+            self.doc = value;
             return;
         };
         let mut target = &mut self.doc;
@@ -346,7 +378,7 @@ impl TypedView {
             }
             target = target.get_mut(segment).expect("剛補上的分支");
         }
-        target.insert(key, value.to_json());
+        target.insert(key, value);
     }
 
     fn remove(&mut self, path: &[String]) {
@@ -449,7 +481,28 @@ impl TypedView {
     }
 }
 
-fn collect_non_finite(value: &Val, path: &mut Vec<String>, marks: &mut Vec<Vec<String>>) {
+/// 陣列索引段（上游 `lodash.has`／`get`）：只認正規十進位（`0`、`12`；`01`、`-1`、`-` 都不是）。
+pub(super) fn array_index(segment: &str) -> Option<usize> {
+    let canonical = segment == "0"
+        || (!segment.is_empty()
+            && !segment.starts_with('0')
+            && segment.bytes().all(|byte| byte.is_ascii_digit()));
+    canonical.then(|| segment.parse().ok()).flatten()
+}
+
+/// 往下走一段：物件認鍵、陣列認正規十進位索引。
+pub(super) fn json_child<'a>(node: &'a Json, segment: &str) -> Option<&'a Json> {
+    match node {
+        Json::Array(items) => items.get(array_index(segment)?),
+        other => other.get(segment),
+    }
+}
+
+pub(super) fn collect_non_finite(
+    value: &Val,
+    path: &mut Vec<String>,
+    marks: &mut Vec<Vec<String>>,
+) {
     match value {
         Val::Num(number) if !number.is_finite() => marks.push(path.clone()),
         Val::Arr(items) => {
@@ -470,16 +523,13 @@ fn collect_non_finite(value: &Val, path: &mut Vec<String>, marks: &mut Vec<Vec<S
     }
 }
 
-fn set_non_finite(value: &mut Val, rest: &[String]) {
+pub(super) fn set_non_finite(value: &mut Val, rest: &[String]) {
     let Some((first, tail)) = rest.split_first() else {
         *value = Val::Num(f64::NAN);
         return;
     };
     let child = match value {
-        Val::Arr(items) => first
-            .parse::<usize>()
-            .ok()
-            .and_then(|index| items.get_mut(index)),
+        Val::Arr(items) => array_index(first).and_then(|index| items.get_mut(index)),
         Val::Obj(entries) => entries
             .iter_mut()
             .find(|(key, _)| key == first)
