@@ -5,7 +5,7 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [takeover-mvu-path-mismatch](tasks/takeover-mvu-path-mismatch.md) — 重構接管：MVU 卡重構後繁簡路徑不一致、GM 對不上變數 — 下一步：未排程
-- [takeover-text-multiline](tasks/takeover-text-multiline.md) — 重構接管：行式格式正文只顯示第一段 — 下一步：未排程
+- [takeover-text-multiline](tasks/takeover-text-multiline.md) — 重構接管：多行值填進有前綴／縮排的佔位行只第一行對（正文只顯示第一段、YAML 縮排壞） — 下一步：未排程
 - [takeover-text-field-delta](tasks/takeover-text-field-delta.md) — 重構接管：文字欄位被下數值增減 — 下一步：未排程
 - [takeover-opening-statusbar-branch](tasks/takeover-opening-statusbar-branch.md) — 重構接管：開場白狀態欄解析成多餘分支 — 下一步：未排程
 - [refactor-probe-failure-hidden](tasks/refactor-probe-failure-hidden.md) — 重構初判失敗畫面看不出原因 — 下一步：未排程
