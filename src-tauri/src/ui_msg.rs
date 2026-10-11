@@ -285,6 +285,8 @@ pub enum UiMsg {
     RollbackPointDownloadFailed {
         status: String,
     },
+    /// 更新檢查或下載連線失敗、逾時（外掛 reqwest 錯誤，不含解析錯誤）。
+    UpdateNetworkFailed,
     SwapRecordMissing,
     AppIdUnavailable,
     ResidueCleanupStuck,

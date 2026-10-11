@@ -33,6 +33,7 @@ const COPY = {
     be_update_endpoint_invalid: "更新位址無法推出 repo",
     be_rollback_point_url_invalid: "回退點下載失敗",
     be_rollback_point_download_failed: "回退點下載失敗：{status}",
+    be_update_network_failed: "網路連線失敗或逾時，請檢查網路後再試一次",
     be_swap_record_missing: "沒有替換紀錄",
     be_app_id_unavailable: "無法取得要留下的 App 識別",
     be_residue_cleanup_stuck: "殘留整理無法收斂",
@@ -69,6 +70,7 @@ const COPY = {
     be_update_endpoint_invalid: "无法从更新地址推出 repo",
     be_rollback_point_url_invalid: "回退点下载失败",
     be_rollback_point_download_failed: "回退点下载失败：{status}",
+    be_update_network_failed: "网络连接失败或超时，请检查网络后再试一次",
     be_swap_record_missing: "没有替换记录",
     be_app_id_unavailable: "无法取得要保留的 App 标识",
     be_residue_cleanup_stuck: "残留整理无法收敛",
@@ -105,6 +107,8 @@ const COPY = {
     be_update_endpoint_invalid: "Couldn't work out the repo from the update address",
     be_rollback_point_url_invalid: "Couldn't download the rollback point",
     be_rollback_point_download_failed: "Couldn't download the rollback point: {status}",
+    be_update_network_failed:
+      "Network connection failed or timed out. Check your connection and try again",
     be_swap_record_missing: "No replacement record",
     be_app_id_unavailable: "Couldn't identify the app to keep",
     be_residue_cleanup_stuck: "Cleaning up leftovers didn't settle",
@@ -141,6 +145,7 @@ const COPY = {
     be_update_endpoint_invalid: "アップデート先のアドレスからリポジトリを特定できません",
     be_rollback_point_url_invalid: "戻り先をダウンロードできませんでした",
     be_rollback_point_download_failed: "戻り先をダウンロードできませんでした：{status}",
+    be_update_network_failed: "ネットワーク接続に失敗したか、タイムアウトしました。接続を確認してもう一度お試しください",
     be_swap_record_missing: "置き換えの記録がありません",
     be_app_id_unavailable: "残すアプリを識別できません",
     be_residue_cleanup_stuck: "残ったファイルの整理が終わりませんでした",
@@ -177,6 +182,7 @@ const COPY = {
     be_update_endpoint_invalid: "업데이트 주소에서 저장소를 알아낼 수 없습니다",
     be_rollback_point_url_invalid: "되돌릴 지점을 다운로드하지 못했습니다",
     be_rollback_point_download_failed: "되돌릴 지점을 다운로드하지 못했습니다: {status}",
+    be_update_network_failed: "네트워크 연결에 실패했거나 시간이 초과되었습니다. 연결을 확인한 뒤 다시 시도하세요",
     be_swap_record_missing: "교체 기록이 없습니다",
     be_app_id_unavailable: "남겨 둘 앱을 식별할 수 없습니다",
     be_residue_cleanup_stuck: "남은 파일 정리가 끝나지 않았습니다",
@@ -215,6 +221,8 @@ const COPY = {
       "No se pudo deducir el repositorio desde la dirección de actualización",
     be_rollback_point_url_invalid: "No se pudo descargar el punto de retorno",
     be_rollback_point_download_failed: "No se pudo descargar el punto de retorno: {status}",
+    be_update_network_failed:
+      "La conexión de red falló o se agotó el tiempo. Revisa tu conexión e inténtalo de nuevo",
     be_swap_record_missing: "No hay registro del reemplazo",
     be_app_id_unavailable: "No se pudo identificar la app que hay que conservar",
     be_residue_cleanup_stuck: "La limpieza de restos no terminó",
@@ -253,6 +261,8 @@ const COPY = {
       "Não foi possível deduzir o repositório pelo endereço de atualização",
     be_rollback_point_url_invalid: "Não foi possível baixar o ponto de retorno",
     be_rollback_point_download_failed: "Não foi possível baixar o ponto de retorno: {status}",
+    be_update_network_failed:
+      "A conexão de rede falhou ou expirou. Verifique sua conexão e tente novamente",
     be_swap_record_missing: "Não há registro da substituição",
     be_app_id_unavailable: "Não foi possível identificar o app a manter",
     be_residue_cleanup_stuck: "A limpeza das sobras não terminou",
@@ -292,6 +302,8 @@ const COPY = {
     be_rollback_point_url_invalid: "Der Rücksprungpunkt konnte nicht heruntergeladen werden",
     be_rollback_point_download_failed:
       "Der Rücksprungpunkt konnte nicht heruntergeladen werden: {status}",
+    be_update_network_failed:
+      "Netzwerkverbindung fehlgeschlagen oder Zeitüberschreitung. Prüfe die Verbindung und versuche es erneut",
     be_swap_record_missing: "Kein Ersetzungsprotokoll vorhanden",
     be_app_id_unavailable: "Die zu behaltende App ließ sich nicht erkennen",
     be_residue_cleanup_stuck: "Das Aufräumen von Resten kam nicht zum Abschluss",
@@ -331,6 +343,8 @@ const COPY = {
       "Impossible de déduire le dépôt à partir de l'adresse de mise à jour",
     be_rollback_point_url_invalid: "Impossible de télécharger le point de retour",
     be_rollback_point_download_failed: "Impossible de télécharger le point de retour\u00a0: {status}",
+    be_update_network_failed:
+      "La connexion réseau a échoué ou a expiré. Vérifie ta connexion et réessaie",
     be_swap_record_missing: "Aucun journal de remplacement",
     be_app_id_unavailable: "Impossible d'identifier l'app à conserver",
     be_residue_cleanup_stuck: "Le nettoyage des restes n'a pas abouti",
@@ -367,6 +381,8 @@ const COPY = {
     be_update_endpoint_invalid: "Не удалось определить репозиторий по адресу обновлений",
     be_rollback_point_url_invalid: "Не удалось загрузить точку отката",
     be_rollback_point_download_failed: "Не удалось загрузить точку отката: {status}",
+    be_update_network_failed:
+      "Сбой сетевого подключения или истекло время ожидания. Проверьте подключение и повторите попытку",
     be_swap_record_missing: "Нет записи о замене",
     be_app_id_unavailable: "Не удалось определить, какое приложение оставить",
     be_residue_cleanup_stuck: "Уборка остатков не завершилась",

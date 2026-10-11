@@ -7,6 +7,7 @@ mod install_prep;
 mod launch;
 mod level;
 pub(crate) mod macos;
+mod net;
 mod ops;
 mod post_launch;
 mod preview;
@@ -39,6 +40,7 @@ pub(crate) use install_prep::{forward_before_raise, rollback_before_raise};
 pub(crate) use launch::stage_launch_installer;
 #[cfg(target_os = "windows")]
 pub(crate) use launch::start_nsis_installer;
+pub(crate) use net::{fetch_release_asset, plugin_error_text, with_timeouts, NetTimeouts};
 pub(crate) use ops::{delete_version_locked, list_versions_locked};
 pub(crate) use post_launch::settle_launch_locked;
 pub(crate) use preview::{rollback_preview_locked, RollbackPreview};
