@@ -87,7 +87,7 @@ export const fr: Record<MsgKey, string> = {
   turnFailedTitle: "Ce tour n'a pas pu se terminer",
   worldInfoReset: "Réinitialiser les déclenchements",
   worldInfoResetConfirm: "Impossible de clôturer les enregistrements de déclenchement du livre du monde de cet acte. Les réinitialiser ? La progression sticky et de recharge de cet acte est effacée et recomptée ; l'ancien fichier est gardé en sauvegarde.",
-  worldInfoResetDone: "Réinitialisé. Vous pouvez renvoyer.",
+  worldInfoResetDone: "Réinitialisé. Tu peux renvoyer.",
   worldInfoVarNoticeTitle: "Les variables du livre du monde n'ont pas pu être annulées",
   worldInfoVarNoticeOverwritten: "Le dernier envoi n'a pas abouti, mais les {layer} ont été modifiées ensuite par une autre écriture : leurs valeurs actuelles sont gardées et les écritures de variables de cet envoi n'ont pas été annulées.",
   worldInfoVarNoticeUnknown: "Le dernier envoi n'a pas abouti et on n'a pas pu confirmer si son écriture dans les {layer} a été annulée : leurs valeurs actuelles sont gardées.",

@@ -88,7 +88,7 @@ export const de: Record<MsgKey, string> = {
   worldInfoReset: "Weltbuch-Auslöser zurücksetzen",
   worldInfoResetConfirm: "Die Weltbuch-Auslöseprotokolle dieses Akts lassen sich nicht abschließen. Zurücksetzen? Der Sticky- und Abklingfortschritt dieses Akts wird gelöscht und neu gezählt; die alte Datei bleibt als Sicherung.",
   worldInfoResetDone: "Zurückgesetzt. Du kannst erneut senden.",
-  worldInfoVarNoticeTitle: "Weltbuch-Variablen konnten nicht zurückgesetzt werden",
+  worldInfoVarNoticeTitle: "Weltbuch-Variablen konnten nicht zurückgenommen werden",
   worldInfoVarNoticeOverwritten: "Das letzte Senden wurde nicht abgeschlossen, aber die {layer} wurden danach von einem anderen Schreibvorgang geändert. Die aktuellen Werte bleiben, die Variablenänderungen dieses Sendens wurden nicht zurückgenommen.",
   worldInfoVarNoticeUnknown: "Das letzte Senden wurde nicht abgeschlossen, und es ließ sich nicht klären, ob sein Schreiben in die {layer} zurückgenommen wurde. Die aktuellen Werte bleiben.",
   worldInfoVarLayerChat: "Chat-Variablen dieses Tisches",
