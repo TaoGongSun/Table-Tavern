@@ -89,11 +89,16 @@ fn number_json(value: f64) -> Json {
         .unwrap_or(Json::Null)
 }
 
+/// `[值, 說明]`（上游 isVwd）：兩項、第二項是字串、第一項不是陣列。
+pub(super) fn is_vwd(items: &[Val]) -> bool {
+    items.len() == 2 && matches!(items[1], Val::Str(_)) && !matches!(items[0], Val::Arr(_))
+}
+
 /// set 的套用規則：`[值, 說明]` 只改第 0 項（舊值是數字且新值不是 null 才 `Number()`）；
 /// 舊值是數字、新值是字串就 `Number()`；其餘照新值寫。不夾範圍、不拒收。
 pub(super) fn upstream_set(old: &Val, new: Val) -> Val {
     if let Val::Arr(items) = old {
-        if items.len() == 2 && matches!(items[1], Val::Str(_)) && !matches!(items[0], Val::Arr(_)) {
+        if is_vwd(items) {
             let first = if matches!(items[0], Val::Num(_)) && new != Val::Null {
                 Val::Num(js_to_number(&new))
             } else {

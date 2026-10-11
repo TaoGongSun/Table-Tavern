@@ -103,3 +103,16 @@ fn table_scope_still_collects_status_blocks() {
         Some("999")
     );
 }
+
+/// mechanism-error-feedback：接管桌 GM 回覆的 `<UpdateVariable>` 寫錯路徑也回饋。
+#[test]
+fn takeover_reply_patch_with_a_wrong_path_feeds_back() {
+    let mut world = takeover_world();
+    let reply = "<UpdateVariable><JSONPatch>[{\"op\":\"replace\",\"path\":\"/地點名\",\"value\":\"驛丞房\"}]</JSONPatch></UpdateVariable>";
+    let block = crate::transport::extract_state_block(reply);
+    apply_block_typed(&mut world, &block, "阿濤", None, BlockScope::TakeoverReply);
+    assert_eq!(
+        world.state.notes,
+        vec!["路徑不存在：/地點名。頂層現有：地點、糧草。若要新增請用 insert。".to_owned()]
+    );
+}

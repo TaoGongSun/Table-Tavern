@@ -125,9 +125,12 @@ fn readonly_roll_and_derived_fields_reject_non_numeric_delta_with_existing_wordi
     );
     let kinds: Vec<_> = outcome.records.iter().map(|r| r.kind).collect();
     assert_eq!(kinds, vec![RecordKind::Rejected; 3]);
-    assert_eq!(outcome.records[0].detail, "RO 是唯讀欄位，不接受更新。");
-    assert_eq!(outcome.records[1].detail, "Dice 由系統本地擲骰，請勿更新。");
-    assert_eq!(outcome.records[2].detail, "Total 是唯讀欄位，不接受更新。");
+    assert_eq!(outcome.records[0].detail, "/RO 是唯讀欄位，不接受更新。");
+    assert_eq!(
+        outcome.records[1].detail,
+        "/Dice 由系統本地擲骰，請勿更新。"
+    );
+    assert_eq!(outcome.records[2].detail, "/Total 是唯讀欄位，不接受更新。");
     assert_eq!(leaf(&tree, "Total").as_deref(), Some("9"));
 }
 
@@ -200,7 +203,7 @@ fn replay_of_recorded_transfur_turns_feeds_every_list_delta_back() {
         ));
         let outcome = apply_updates(&mut tree, &mechanism, &patches);
         assert_eq!(outcome.notes.len(), 1, "{:?}", outcome.records);
-        assert!(outcome.notes[0].starts_with("神經狀態 是清單欄"));
+        assert!(outcome.notes[0].starts_with("/神經狀態 是清單欄"));
         assert_eq!(leaf(&tree, "地點").as_deref(), Some(place));
         assert_eq!(leaf(&tree, "神經狀態").as_deref(), Some(NEURO));
     }
@@ -241,10 +244,10 @@ fn list_and_text_with_local_or_reject_answer_with_readonly_wording() {
     assert_eq!(
         details,
         vec![
-            "清單甲 是唯讀欄位，不接受更新。",
-            "清單乙 由系統本地擲骰，請勿更新。",
-            "文字甲 是唯讀欄位，不接受更新。",
-            "清單甲 是唯讀欄位，不接受更新。",
+            "/清單甲 是唯讀欄位，不接受更新。",
+            "/清單乙 由系統本地擲骰，請勿更新。",
+            "/文字甲 是唯讀欄位，不接受更新。",
+            "/清單甲 是唯讀欄位，不接受更新。",
         ]
     );
     assert!(outcome

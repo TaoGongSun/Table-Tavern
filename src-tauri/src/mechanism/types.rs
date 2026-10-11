@@ -42,12 +42,43 @@ pub struct Record {
     pub kind: RecordKind,
     pub path: String,
     pub detail: String,
+    /// 「路徑不存在」的回饋分組：同一批撞同一個不存在前綴的合成一條回饋。只在記憶體，帳本照舊一筆一筆記。
+    #[serde(skip)]
+    pub(crate) group: Option<Box<NoteGroup>>,
 }
 
 impl Record {
     pub(super) fn new(kind: RecordKind, path: String, detail: String) -> Self {
-        Self { kind, path, detail }
+        Self {
+            kind,
+            path,
+            detail,
+            group: None,
+        }
     }
+}
+
+/// 一條可合併的回饋句：`head` ＋ `intro` ＋ 列鍵 ＋ `tail`，合併時再補「本輪 N 筆未套用：…」。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NoteGroup {
+    pub(super) key: String,
+    pub(super) head: String,
+    pub(super) intro: String,
+    /// 合併兩筆以上時改用的開頭與列鍵引言（同一層多個新鍵時不點名單一路徑）
+    pub(super) merged_head: String,
+    pub(super) merged_intro: String,
+    pub(super) items: Vec<String>,
+    pub(super) max_items: usize,
+    pub(super) tail: String,
+    /// 這一筆原本要寫的路徑末段（合併尾綴列的鍵名）
+    pub(super) leaf: String,
+}
+
+/// 解析 `<UpdateVariable>` 的一個結果：可套用的指令，或解析時就拒收的回饋（照原位置排）。
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum Parsed {
+    Patch(Patch),
+    Note(Record),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
