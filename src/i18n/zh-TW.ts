@@ -286,6 +286,7 @@ export const zh = {
   refactorParallelStep: "整理中 完成 {done}/{total}",
   refactorRerunWarnBody: "會用原卡重新重構，取代目前的重構結果。",
   refactorCancel: "取消",
+  refactorNoGuaranteeNotice: "重構不保證成功，建議使用高階模型；若連續幾次都失敗，建議放棄，直接用原卡玩。",
   refactorNothingToDo: "這張卡沒有需要整理的東西",
   refactorPartialFailed: "{n} 條失敗（{names}）",
   refactorResultTitle: "重構完成",

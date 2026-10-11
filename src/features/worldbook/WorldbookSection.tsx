@@ -126,6 +126,7 @@ export function WorldbookSection({
           <span className="btn-label">{t("worldbookAddEntry")}</span>
         </button>
       </div>
+      <p className="refactor-notice">{t("refactorNoGuaranteeNotice")}</p>
       {/* 匯入重構卡的選檔框：⋯ 選單收起後還要在，所以留在區塊裡而不是選單裡 */}
       <input
         ref={refactorInputRef}

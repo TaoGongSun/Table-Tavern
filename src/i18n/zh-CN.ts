@@ -270,6 +270,7 @@ export const zhCN: Record<MsgKey, string> = {
   refactorParallelStep: "整理中 完成 {done}/{total}",
   refactorRerunWarnBody: "会用原卡重新重构，取代目前的重构结果。",
   refactorCancel: "取消",
+  refactorNoGuaranteeNotice: "重构不保证成功，建议使用高阶模型；若连续几次都失败，建议放弃，直接用原卡玩。",
   refactorNothingToDo: "这张卡没有需要整理的东西",
   refactorPartialFailed: "{n} 条失败（{names}）",
   refactorResultTitle: "重构完成",

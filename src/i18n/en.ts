@@ -296,6 +296,7 @@ export const en: Record<MsgKey, string> = {
   refactorParallelStep: "Done {done}/{total}",
   refactorRerunWarnBody: "This will refactor again from the original card and replace the current refactor result.",
   refactorCancel: "Cancel",
+  refactorNoGuaranteeNotice: "Refactoring isn't guaranteed to succeed, and a top-tier model works best. If it keeps failing, give up and play the original card as is.",
   refactorNothingToDo: "Nothing on this card needs sorting",
   refactorPartialFailed: "{n} failed ({names})",
   refactorResultTitle: "Refactor complete",

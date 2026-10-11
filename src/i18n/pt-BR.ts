@@ -285,6 +285,7 @@ export const ptBR: Record<MsgKey, string> = {
   refactorParallelStep: "Concluído {done}/{total}",
   refactorRerunWarnBody: "Vai reorganizar de novo a partir do cartão original e substituir o resultado atual.",
   refactorCancel: "Cancelar",
+  refactorNoGuaranteeNotice: "A reestruturação não garante sucesso; recomendamos um modelo de ponta. Se falhar várias vezes seguidas, desista e jogue com a carta original como está.",
   refactorNothingToDo: "Esta carta não tem nada para reorganizar",
   refactorPartialFailed: "{n, plural, one {# falhou} other {# falharam}} ({names})",
   refactorResultTitle: "Reorganização concluída",

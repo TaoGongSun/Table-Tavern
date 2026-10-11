@@ -285,6 +285,7 @@ export const ko: Record<MsgKey, string> = {
   refactorParallelStep: "완료 {done}/{total}",
   refactorRerunWarnBody: "원본 카드로 다시 재구성하여 현재 재구성 결과를 대체합니다.",
   refactorCancel: "취소",
+  refactorNoGuaranteeNotice: "리팩터링은 성공을 보장하지 않으며, 상위 모델 사용을 권장합니다. 여러 번 연달아 실패하면 포기하고 원본 카드 그대로 플레이하는 것을 권장합니다.",
   refactorNothingToDo: "이 카드는 정리할 게 없어요",
   refactorPartialFailed: "{n}개 실패 ({names})",
   refactorResultTitle: "재구성 완료",
