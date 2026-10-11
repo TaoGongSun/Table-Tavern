@@ -219,16 +219,17 @@ describe("refactor undo restores panel and state bar", () => {
   });
 
   // 撤銷匯入與套用重構完成後走實際的 App 刷新鏈；在 characters.refresh／refreshInterfaces／refreshShell
-  // 任一處懸著時換到另一桌，舊桌的陣容、發言對象、介面與骨架都不能寫進新桌
+  // 任一處懸著時換到另一桌，舊桌的陣容、發言對象、介面與骨架都不能寫進新桌。
+  // 撤銷持換桌鎖（undo-import-table-lock）：懸著時回不了大廳，放開後撤銷做完才能離桌
   describe.each([
-    ["撤銷匯入", "undo"],
-    ["套用重構", "apply"],
-  ] as const)("%s後刷新到一半換桌", (_label, flow) => {
+    ["撤銷匯入後刷新到一半要換桌", "undo", "懸在 %s：持換桌鎖回不了大廳，放開後才能離桌"],
+    ["套用重構後刷新到一半換桌", "apply", "懸在 %s：新桌的發言對象、介面、骨架不被舊桌覆寫"],
+  ] as const)("%s", (_label, flow, title) => {
     it.each([
       ["characters.refresh", "list_characters"],
       ["refreshInterfaces", "card_interfaces"],
       ["refreshShell", "refactor_interface_shell"],
-    ])("懸在 %s：新桌的發言對象、介面、骨架不被舊桌覆寫", async (_stage, command) => {
+    ])(title, async (_stage, command) => {
       const actor = (id: string, name: string) => ({
         id,
         name,
@@ -338,6 +339,23 @@ describe("refactor undo restores panel and state bar", () => {
       }
       await settle();
       await vi.waitFor(() => expect(seen).toBeGreaterThan(skip));
+
+      const lobbyEntry = () =>
+        document.querySelector(`[aria-label="${t("lobbyEnterTable", { name: "驛站" })}"]`);
+      if (flow === "undo") {
+        await click(document.querySelector(`[aria-label="${t("backToLobby")}"]`)!);
+        await settle();
+        expect(lobbyEntry()).toBeNull();
+        await act(async () => {
+          release();
+        });
+        await settle();
+        await settle();
+        await click(document.querySelector(`[aria-label="${t("backToLobby")}"]`)!);
+        await settle();
+        expect(lobbyEntry()).not.toBeNull();
+        return;
+      }
 
       await click(document.querySelector(`[aria-label="${t("backToLobby")}"]`)!);
       await settle();

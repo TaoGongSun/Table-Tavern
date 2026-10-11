@@ -602,3 +602,116 @@ fn undo_reads_old_format_receipt_without_new_fields() {
     assert!(report.removed_characters.is_empty());
     assert!(data::read_character(root.path(), &world_id, &meta.id).is_err());
 }
+
+fn expected_last(root: &Path, world_id: &str) -> ExpectedReceipt {
+    let receipts = list_import_receipts(root, world_id);
+    let last = receipts.last().unwrap().clone();
+    ExpectedReceipt {
+        count: receipts.len(),
+        kind: last.kind,
+        label: last.label,
+        timestamp: last.timestamp,
+        character_id: last.character_id,
+    }
+}
+
+/// 確認框看的是甲、按下後乙又寫了收據：不撤，兩張卡與收據都原樣；拿最新那筆再撤才照撤。
+#[test]
+fn undo_refuses_when_last_receipt_is_not_the_confirmed_one() {
+    let root = TestRoot::new("expected-mismatch");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let first = import_character_recorded(
+        root.path(),
+        &world_id,
+        &character_book_card("甲", serde_json::json!([])),
+    );
+    let seen = expected_last(root.path(), &world_id);
+    let second = import_character_recorded(
+        root.path(),
+        &world_id,
+        &character_book_card("乙", serde_json::json!([])),
+    );
+
+    let error = undo_expected_import(
+        root.path(),
+        &world_id,
+        &seen,
+        &data::test_exclusive(&world_id),
+    )
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("import_receipt_changed"),
+        "{error}"
+    );
+    assert!(data::read_character(root.path(), &world_id, &first.id).is_ok());
+    assert!(data::read_character(root.path(), &world_id, &second.id).is_ok());
+    assert_eq!(list_import_receipts(root.path(), &world_id).len(), 2);
+
+    let current = expected_last(root.path(), &world_id);
+    let report = undo_expected_import(
+        root.path(),
+        &world_id,
+        &current,
+        &data::test_exclusive(&world_id),
+    )
+    .unwrap();
+    assert_eq!(report.removed_character, Some("乙".to_owned()));
+    assert!(data::read_character(root.path(), &world_id, &second.id).is_err());
+    assert!(data::read_character(root.path(), &world_id, &first.id).is_ok());
+}
+
+/// 同一分鐘、同名的兩筆：清單長度不同也算不符（時間戳只到分鐘）。
+#[test]
+fn undo_refuses_same_label_same_minute_when_count_differs() {
+    let root = TestRoot::new("expected-count");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let book = |content: &str| {
+        serde_json::json!({ "entries": { "0": {
+            "uid": 0, "key": ["城門"], "comment": content, "content": content,
+            "constant": false, "order": 1, "disable": false
+        } } })
+        .to_string()
+    };
+    import_worldbook_recorded(root.path(), &world_id, "書", &book("城門已關。"));
+    let seen = expected_last(root.path(), &world_id);
+    import_worldbook_recorded(root.path(), &world_id, "書", &book("城門大開。"));
+    let mut stale = expected_last(root.path(), &world_id);
+    stale.count = seen.count;
+    assert!(undo_expected_import(
+        root.path(),
+        &world_id,
+        &stale,
+        &data::test_exclusive(&world_id),
+    )
+    .is_err());
+    assert_eq!(list_import_receipts(root.path(), &world_id).len(), 2);
+}
+
+/// 確認框那筆已被別處撤掉、收據清單空了：帶 expected 回 import_receipt_changed（前端重讀），不帶照舊 no_import_to_undo。
+#[test]
+fn undo_with_expected_on_empty_receipts_reports_changed() {
+    let root = TestRoot::new("expected-empty");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    import_character_recorded(
+        root.path(),
+        &world_id,
+        &character_book_card("甲", serde_json::json!([])),
+    );
+    let seen = expected_last(root.path(), &world_id);
+    undo_last_import(root.path(), &world_id, &data::test_exclusive(&world_id)).unwrap();
+
+    let error = undo_expected_import(
+        root.path(),
+        &world_id,
+        &seen,
+        &data::test_exclusive(&world_id),
+    )
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("import_receipt_changed"),
+        "{error}"
+    );
+    let error =
+        undo_last_import(root.path(), &world_id, &data::test_exclusive(&world_id)).unwrap_err();
+    assert!(error.to_string().contains("no_import_to_undo"), "{error}");
+}

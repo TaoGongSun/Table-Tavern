@@ -26,7 +26,7 @@ import {
   WorldState,
 } from "./shared/contracts/backend-contracts";
 import { CharacterMeta } from "./features/characters/card-model";
-import { backendText } from "./shared/ui/backend-text";
+import { backendCode, backendText } from "./shared/ui/backend-text";
 import { useAppPreferencesController } from "./features/settings/useAppPreferencesController";
 import { useVersionCenter } from "./features/updater/useVersionCenter";
 import { VersionTab } from "./features/updater/VersionTab";
@@ -725,16 +725,19 @@ function App() {
   }
 
   // 陣容欄「撤銷上次匯入」：逆向收據清單最後一筆，逐筆倒退。
-  // 一次動到角色、卡片介面、檯面、狀態樹與世界設定五個域，留在 App 當跨域協調
+  // 一次動到角色、卡片介面、檯面、狀態樹與世界設定五個域，留在 App 當跨域協調。
+  // 與匯入共用換桌鎖，從確認框前持到完成訊息：兩者不會同時排在回合後面、順序不定。
   function undoLastImport() {
-    return undoWait.run(runUndoLastImport);
+    if (openingPost.busy) return Promise.resolve();
+    return runTableOp(() => undoWait.run(runUndoLastImport));
   }
 
   // 排在回合後面的期間可能已經換桌：撤銷照樣在原桌完成，但之後每個 await 邊界 live() 為 false 就不再動現在這桌的畫面
   async function runUndoLastImport({ live, backend }: TurnWaitOp) {
     if (imports.receipts.length === 0) return;
     setError("");
-    const last = imports.receipts[imports.receipts.length - 1];
+    const receiptCount = imports.receipts.length;
+    const last = imports.receipts[receiptCount - 1];
     try {
       // 收據名稱可能是後端代碼（重構套用），舊收據是中文原文
       const label = backendText(last.label);
@@ -746,7 +749,11 @@ function App() {
       });
       if (!accepted) return;
       const report = await backend(() =>
-        invoke<UndoReport>("undo_last_import", { worldId: table }),
+        // 後端比對最後一筆仍是確認框這筆才撤（重構套用等不拿換桌鎖的入口可能剛寫了收據）
+        invoke<UndoReport>("undo_last_import", {
+          worldId: table,
+          expected: { ...last, count: receiptCount },
+        }),
       );
       if (!live()) return;
       // 被撤銷刪掉的卡若正在編輯就關（不另問）；開著的世界設定靠通知重讀、定基草稿，不重新掛載
@@ -794,7 +801,10 @@ function App() {
         { title: t("undoLastImport"), okLabel: t("dialogAck") },
       );
     } catch (reason) {
-      if (live()) setError(String(reason));
+      if (!live()) return;
+      setError(String(reason));
+      // 收據已換過：重讀清單，下次確認框顯示的就是新的最後一筆
+      if (backendCode(reason) === "import_receipt_changed") await imports.refreshReceipts(table);
     }
   }
 
@@ -943,6 +953,7 @@ function App() {
           navigation={navigation}
           sceneActions={sceneActions}
           tableOpBusy={tableOp.busy}
+          undoImportLocked={tableOp.busy || openingPost.busy}
           onRenameTable={(raw) => void renameTable(table, raw)}
           onGoLobby={() => void goLobby()}
           onUndoImport={() => void undoLastImport()}

@@ -217,6 +217,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   image_missing_in_reply_tail: { tail: "string" },
   import_receipt_corrupt: { error: "string" },
   no_import_to_undo: {},
+  import_receipt_changed: {},
   worldbook_entry_gone: {},
   refactor_shell_conflict: { branch: "string" },
   refactor_value_mismatch: { first: "string", first_value: "string", second: "string", second_value: "string" },

@@ -53,6 +53,8 @@ interface AppWorkspaceProps {
   tableOpBusy: boolean;
   onRenameTable: (raw: string) => void;
   onGoLobby: () => void;
+  /** 換桌鎖被占或開場白正在貼：撤銷項停用 */
+  undoImportLocked: boolean;
   onUndoImport: () => void;
   /** 匯入或撤銷匯入正排在進行中的回合後面 */
   turnWaiting: boolean;
@@ -92,6 +94,7 @@ export function AppWorkspace({
   navigation,
   sceneActions,
   tableOpBusy,
+  undoImportLocked,
   onRenameTable,
   onGoLobby,
   onUndoImport,
@@ -238,6 +241,8 @@ export function AppWorkspace({
         onDeleteCharacter={(id) => void deleteCharacter(id)}
         onCreateCard={() => void openNewCard()}
         onImportFile={(file) => void imports.importFile(file)}
+        importLocked={tableOpBusy}
+        undoImportLocked={undoImportLocked}
         canUndoImport={imports.receipts.length > 0 && !chattedSinceImport}
         onUndoImport={() => void onUndoImport()}
         turnWaiting={turnWaiting}

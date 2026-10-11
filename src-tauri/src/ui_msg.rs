@@ -180,6 +180,8 @@ pub enum UiMsg {
         error: String,
     },
     NoImportToUndo,
+    /// 撤銷確認框顯示的那筆已不是最後一筆（期間又有匯入、重構套用寫了收據）：不撤，請玩家再按一次。
+    ImportReceiptChanged,
     /// 存的是既有條目，但它已經不在了（例如被撤銷匯入刪掉）：不以新條目寫回。
     WorldbookEntryGone,
 
