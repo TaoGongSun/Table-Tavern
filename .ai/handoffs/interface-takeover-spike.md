@@ -1,7 +1,8 @@
 # interface-takeover-spike 交接（2026-08-12 收工）
 
 ## 對話約束（使用者當日裁決，新對話必守）
-- 禁長考：判斷題直答。禁自行測試燒額度：使用者按按鈕實測，本機編譯／cargo／vitest 可跑（零額度）。
+- 禁長考：判斷題直答。
+- 實測可花額度，照測項挑模型（重構高階、一般回合低階）〔作者裁決 2026-10-11〕；露骨成人卡不拿來讓模型生成內容。
 - 查卡資料一律讀 `TestCards/` 原卡（PNG tEXt chara chunk），不查桌目錄。
 
 ## 結論：介面接管成立，軌不取消
@@ -36,18 +37,8 @@
 ### 1. 拆角色 vs 保留介面交給玩家選擇——已移交
 2026-08-13 升級成獨立任務 [refactor-mode-split](refactor-mode-split.md)（兩段式定向＋模式專屬解析），本案不再追蹤。
 
-### 2. 其他型別的卡驗證（目前只有西幻型過關）
-`TestCards/` 分型結果（腳本名稱是卡作者自己命名的，比啟發式分類可靠）：
-
-| 型別 | 代表卡 | 特徵 |
-|---|---|---|
-| 資料槽型 ✅已過 | WestFantsy | `西幻`：捕 5 群＋`<script type="text/xml">` 資料槽 5 個。**全套卡裡只有這一張** |
-| MVU 前端型 | **bcd368…**、HeroTrainingUnderSide | 帶 `[仅提示]变量更新中`／`[不发送]去除变量更新` ——狀態本來就走變數更新，協定同源，應最順，優先驗 |
-| 整頁前端非 MVU | DongeonMaster(149KB)、Transfur(628KB)、RPGImmortal(327KB) | 整段替換成完整 HTML，不走資料槽 |
-| 狀態欄＋真人物多 | **NorthHall** | `一体式美化状态栏`／`只美化状态栏`／`隐藏`（空）；世界書 8 位真人物各帶設定＋性格。預期結論是「拆角色、介面不接管」，要驗的是它會不會被誤判 playable |
-| 雲端載入器 | TrainEmperor | 腳本全 0KB（`云端版`／`实时链接`），畫面靠外部載入，`CardInterface.unsupported` 該擋掉 |
-
-分型腳本在 scratchpad（`classify-cards.py`，換 session 會清，重寫成本約十分鐘）。一型一張、四次驗證就覆蓋完。
+### 2. 其他型別的卡驗證——已驗
+結果見 [plans/interface-takeover-card-types.md](../plans/interface-takeover-card-types.md)：狀態欄型過、整頁型大致過；MVU 型與 RPGImmortal 剩待辦程式問題（見 [BACKLOG](../BACKLOG.md)），修好後再驗。維持接管、重構加提醒〔作者裁決 2026-10-11〕。
 
 ### 3. 角色發言無視介面渲染（本質問題，使用者評估「很可能無法解決」）
 拆出來的 NPC 一開口，`cardInterfaceShell` 的 direct-first 拿它的訊息試卡腳本、不中就用骨架填 `{{本回合.正文}}`，而 NPC 發言不帶 patch。整頁型卡靠待辦 1 迴避；狀態欄型卡（NorthHall）反而沒問題——那種介面跟著每則訊息走，角色發言各自帶狀態欄，走現有「近 10 則掃 `event.raw`」那條路就渲染得出來。
