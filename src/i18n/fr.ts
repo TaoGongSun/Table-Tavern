@@ -285,6 +285,7 @@ export const fr: Record<MsgKey, string> = {
   refactorParallelStep: "Terminé {done}/{total}",
   refactorRerunWarnBody: "La réorganisation repartira de la carte d'origine et remplacera le résultat actuel.",
   refactorCancel: "Annuler",
+  refactorNoGuaranteeNotice: "La refonte n'est pas garantie de réussir ; un modèle haut de gamme est recommandé. Si elle échoue plusieurs fois de suite, abandonnez et jouez la carte d'origine telle quelle.",
   refactorNothingToDo: "Cette carte n'a rien à réorganiser",
   refactorPartialFailed: "{n} en échec ({names})",
   refactorResultTitle: "Réorganisation terminée",

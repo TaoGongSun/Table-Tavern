@@ -285,6 +285,7 @@ export const es: Record<MsgKey, string> = {
   refactorParallelStep: "Listo {done}/{total}",
   refactorRerunWarnBody: "Se reorganizará de nuevo a partir de la carta original y se reemplazará el resultado actual.",
   refactorCancel: "Cancelar",
+  refactorNoGuaranteeNotice: "La reestructuración no garantiza el éxito; se recomienda un modelo de gama alta. Si falla varias veces seguidas, déjalo y juega con la carta original tal cual.",
   refactorNothingToDo: "Esta carta no tiene nada que reorganizar",
   refactorPartialFailed: "{n, plural, one {# fallido} other {# fallidos}} ({names})",
   refactorResultTitle: "Reorganización completada",

@@ -285,6 +285,7 @@ export const ja: Record<MsgKey, string> = {
   refactorParallelStep: "完了 {done}/{total}",
   refactorRerunWarnBody: "元のカードから再構成し、現在の再構成結果を置き換えます。",
   refactorCancel: "キャンセル",
+  refactorNoGuaranteeNotice: "リファクタは成功を保証できません。上位モデルの使用をおすすめします。何度か続けて失敗する場合は、あきらめて元のカードのまま遊ぶことをおすすめします。",
   refactorNothingToDo: "このカードには整理するものがありません",
   refactorPartialFailed: "{n} 件失敗（{names}）",
   refactorResultTitle: "再構成が完了しました",

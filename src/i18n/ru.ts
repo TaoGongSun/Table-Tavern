@@ -285,6 +285,7 @@ export const ru: Record<MsgKey, string> = {
   refactorParallelStep: "Готово {done}/{total}",
   refactorRerunWarnBody: "Разбор будет выполнен заново по исходной карте и заменит текущий результат.",
   refactorCancel: "Отмена",
+  refactorNoGuaranteeNotice: "Реструктуризация не гарантирует успеха; рекомендуем модель высшего уровня. Если несколько попыток подряд не удались, откажитесь и играйте с исходной картой как есть.",
   refactorNothingToDo: "На этой карте нечего разбирать",
   refactorPartialFailed: "Не удалось: {n} ({names})",
   refactorResultTitle: "Разбор завершён",

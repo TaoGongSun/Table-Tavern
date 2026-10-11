@@ -287,6 +287,7 @@ export const de: Record<MsgKey, string> = {
   refactorParallelStep: "Fertig {done}/{total}",
   refactorRerunWarnBody: "Es wird erneut aus der Originalkarte reorganisiert und das aktuelle Ergebnis ersetzt.",
   refactorCancel: "Abbrechen",
+  refactorNoGuaranteeNotice: "Der Umbau gelingt nicht garantiert; ein Modell der obersten Klasse wird empfohlen. Schlägt er mehrmals hintereinander fehl, gib auf und spiele die Original-Karte unverändert.",
   refactorNothingToDo: "Diese Karte enthält nichts zum Umbauen",
   refactorPartialFailed: "{n} fehlgeschlagen ({names})",
   refactorResultTitle: "Reorganisation abgeschlossen",
