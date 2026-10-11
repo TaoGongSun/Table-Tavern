@@ -30,6 +30,8 @@ pub struct WebSaveImported {
     pub worldbook_entries: usize,
     /// 跨桌層因為桌面版已有同名鍵而沒寫進去的鍵數（D18，存檔裡的值仍在）
     pub shared_kept: usize,
+    /// 角色卡路的 PNG 卡圖救不回、沒有角色圖（卡照常匯入）
+    pub image_dropped: bool,
 }
 
 const PLAYER_COLOR: &str = "#3d84a8";
@@ -176,7 +178,7 @@ fn build(
     }
 
     // 卡：角色卡路的隨身條目沒指定可見度就只給這個角色看（D16，與桌面版同一條規則）；世界書路由 GM 演，給 GM
-    let (character_id, placed) = match save.route {
+    let (character_id, placed, image_dropped) = match save.route {
         Route::Character => {
             let imported = import_character_placing(
                 root,
@@ -185,10 +187,13 @@ fn build(
                 CHARACTER_COLOR,
                 lang,
                 BookWrite::Strict,
-            )?;
+            )
+            // 失敗時整張新桌會收掉，殘檔不必叫玩家清：換回原錯
+            .map_err(super::card::original_import_error)?;
             (
                 Some(imported.meta.id),
                 imported.book.map(|book| book.placed).unwrap_or_default(),
+                imported.image_dropped,
             )
         }
         Route::Worldbook => {
@@ -200,7 +205,7 @@ fn build(
                 super::mechanism::import_mechanism_strict(root, world_id, &book_value)?;
             }
             super::mechanism::import_card_extension_strict(root, world_id, name, card_bytes)?;
-            (None, book.placed)
+            (None, book.placed, false)
         }
     };
 
@@ -293,6 +298,7 @@ fn build(
             .collect::<std::collections::HashSet<_>>()
             .len(),
         shared_kept,
+        image_dropped,
     })
 }
 

@@ -3,7 +3,7 @@ use super::state::read_state;
 use super::{invalid_data, DataResult, Tier};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // 匯入卡附原 PNG 時的顯示開關（NewPlan §5.2）；舊卡與手建卡缺此欄一律視為 true
 fn default_show_image() -> bool {
@@ -408,12 +408,77 @@ pub fn character_card_gone(root: &Path, world_id: &str, character_id: &str) -> D
     Ok(!character_path(root, world_id, character_id)?.try_exists()?)
 }
 
-pub fn delete_character(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
+/// 角色卡檔之外的附檔：圖庫、顯示圖、頭像、原卡（`.card.png`／`.import.json`）與匯入暫存檔。
+fn character_attachments(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<[PathBuf; 8]> {
     let path = character_path(root, world_id, character_id)?;
-    super::world_file::commit_world_remove(&path)?;
-    super::world_file::commit_world_remove(&gallery_dir(root, world_id, character_id)?)?;
-    super::world_file::commit_world_remove(&path.with_extension("png"))?;
-    super::world_file::commit_world_remove(&path.with_extension("avatar.png"))
+    Ok([
+        gallery_dir(root, world_id, character_id)?,
+        path.with_extension("png"),
+        path.with_extension("avatar.png"),
+        path.with_extension("card.png"),
+        path.with_extension("import.json"),
+        // 匯入原子寫失敗時可能留下的暫存檔
+        path.with_extension("card.png.tmp"),
+        path.with_extension("import.json.tmp"),
+        path.with_extension("png.tmp"),
+    ])
+}
+
+/// 給玩家看的殘檔位置：相對這桌資料夾（`characters/<檔名>`、圖庫 `gen-gallery/<id>/`），不列絕對路徑。
+fn leftover_name(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let parent = path
+        .parent()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if path.is_dir() {
+        format!("{parent}/{name}/")
+    } else {
+        format!("{parent}/{name}")
+    }
+}
+
+/// 刪角色：先刪卡檔（md），刪不掉就停；再逐一清附檔，單檔失敗不擋其他檔，最後以
+/// `CharacterFilesLeft` 彙總沒清掉的檔名。全部可重做（不在的檔算已清）。
+pub fn delete_character(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
+    super::world_file::commit_world_remove(&character_path(root, world_id, character_id)?)?;
+    let failed: Vec<String> = character_attachments(root, world_id, character_id)?
+        .iter()
+        .filter(|leftover| super::world_file::commit_world_remove(leftover).is_err())
+        .map(|leftover| leftover_name(leftover))
+        .collect();
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(crate::ui_msg::UiMsg::CharacterFilesLeft {
+            count: failed.len(),
+            files: failed.join(", "),
+        }
+        .into_error())
+    }
+}
+
+/// 這個角色還留在磁碟上的檔（卡檔與附檔）檔名；查不到的也列上（保守當成還在）。
+pub fn character_files_present(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<Vec<String>> {
+    let mut paths = vec![character_path(root, world_id, character_id)?];
+    paths.extend(character_attachments(root, world_id, character_id)?);
+    Ok(paths
+        .iter()
+        .filter(|path| path.try_exists().unwrap_or(true))
+        .map(|path| leftover_name(path))
+        .collect())
 }
 
 #[cfg(test)]

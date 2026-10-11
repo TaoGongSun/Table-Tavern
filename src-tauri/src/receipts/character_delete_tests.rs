@@ -5,6 +5,7 @@ use super::super::{
 };
 use super::*;
 use crate::data::{RemoveFailGuard, RenameFailGuard, Visibility, WorldbookEntry, WriteFailGuard};
+use crate::ui_msg::UiMsg;
 use crate::{chat_assembly, import};
 use serde_json::{json, Value};
 use std::fs;
@@ -246,7 +247,7 @@ fn conversion_cleans_even_when_the_card_delete_half_fails() {
     assert_eq!(table_tavern(&value)["visibility"], json!("gm"));
 }
 
-/// 撤銷（非嚴格）：刪卡那步圖庫刪除失敗，卡檔已刪的 id 照樣從名單拿掉。
+/// 撤銷（非嚴格）：刪卡那步圖庫刪除失敗就回錯、收據不彈出、名單先不動；再按一次清乾淨、名單拿掉。
 #[test]
 fn undo_cleans_when_the_card_delete_half_fails() {
     let (root, world_id) = new_table("undo-half");
@@ -256,15 +257,34 @@ fn undo_cleans_when_the_card_delete_half_fails() {
     edit(root.path(), &world_id, uid, |entry| {
         entry.visibility = Visibility::Characters(vec![a.clone()]);
     });
-    fs::create_dir_all(
-        root.path()
-            .join(format!("worlds/{world_id}/gen-gallery/{a}")),
-    )
-    .unwrap();
+    let gallery = root
+        .path()
+        .join(format!("worlds/{world_id}/gen-gallery/{a}"));
+    fs::create_dir_all(&gallery).unwrap();
+    let receipts_before = fs::read(receipts_path(root.path(), &world_id)).unwrap();
     {
         let _guard = RemoveFailGuard::fail_ending(&a, 1);
-        undo(root.path(), &world_id);
+        let error = undo_last_import(root.path(), &world_id, &data::test_exclusive(&world_id))
+            .unwrap_err()
+            .to_string();
+        let Some(UiMsg::UndoFilesLeft { count, files }) = UiMsg::parse(&error) else {
+            panic!("{error}");
+        };
+        assert_eq!((count, files), (1, format!("gen-gallery/{a}/")));
     }
+    assert!(gallery.exists());
+    assert_eq!(
+        fs::read(receipts_path(root.path(), &world_id)).unwrap(),
+        receipts_before
+    );
+    assert_eq!(
+        compact(root.path(), &world_id, uid).visibility,
+        Visibility::Characters(vec![a.clone()])
+    );
+
+    let report = undo(root.path(), &world_id);
+    assert_eq!(report.removed_character.as_deref(), Some("甲"));
+    assert!(!gallery.exists());
     assert_eq!(
         compact(root.path(), &world_id, uid).visibility,
         Visibility::Gm

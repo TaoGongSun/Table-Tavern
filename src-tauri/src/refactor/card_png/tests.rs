@@ -1,4 +1,5 @@
 use super::*;
+use crate::import::card_io::PNG_MAGIC;
 use crate::import::png_image::test_png::{assemble, real_png, rgba_ihdr};
 use crate::refactor::card_file::{RefactorApplied, RefactorAppliedCharacter};
 use crate::refactor::types::RefactorOutcome;

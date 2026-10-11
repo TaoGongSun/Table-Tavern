@@ -791,6 +791,22 @@ pub fn rollback_last_import(
     undo_last(root, world_id, held, true, None)
 }
 
+/// 撤銷刪角色沒刪乾淨：包一層「撤銷沒完成，再按一次會重試刪除」。附檔殘留時改報件數與位置，
+/// 不帶刪角色那則「請手動刪除」的指引（撤銷可以重試）。
+fn undo_incomplete(
+    error: Box<dyn std::error::Error + Send + Sync>,
+) -> Box<dyn std::error::Error + Send + Sync> {
+    match UiMsg::parse(&error.to_string()) {
+        Some(UiMsg::CharacterFilesLeft { count, files }) => {
+            UiMsg::UndoFilesLeft { count, files }.into_error()
+        }
+        _ => UiMsg::UndoIncomplete {
+            error: error.to_string(),
+        }
+        .into_error(),
+    }
+}
+
 /// strict＝false 時個別域的失敗吞掉照常彈出收據（玩家手動撤銷的既有行為）；true 時一律傳回。
 fn kept<T>(strict: bool, result: DataResult<T>) -> DataResult<Option<T>> {
     match result {
@@ -857,21 +873,13 @@ fn undo_last(
     let book_before = data::read_worldbook(root, world_id).ok();
     let mut step_deleted = HashSet::new();
 
-    // 1. 角色卡：md／原始檔／圖片／圖庫一併刪除——按鈕語意是撤銷這次匯入，玩家後續編輯一併退場。
-    // 卡檔確定已不在的 id 記下來，3a 之後從世界書名單清掉（刪除本身回錯但 md 已刪的也算）。
+    // 1. 角色卡：md／原卡／圖片／圖庫一併刪除——按鈕語意是撤銷這次匯入，玩家後續編輯一併退場。
+    // 刪不乾淨一律回 Err（手動撤銷也不吞）：收據不彈出、後面各域還沒動，玩家再按一次會重刪（可重做），
+    // 不會留下收據已彈出、再也清不掉的原卡與圖。卡檔確定已不在的 id 記下來，3a 之後從世界書名單清掉。
     let mut gone_characters = Vec::new();
     if let Some(character_id) = &receipt.character_id {
-        if kept(strict, data::delete_character(root, world_id, character_id))?.is_some() {
-            report.removed_character = Some(receipt.label.clone());
-        }
-        // delete_character 不清 .import.json（非 PNG 匯入時的原始檔，PNG 匯入時原始檔與
-        // 角色圖是同一個 .png，已經被 delete_character 清掉）。
-        if let Ok(character_path) = data::character_path(root, world_id, character_id) {
-            kept(
-                strict,
-                data::commit_world_remove(&character_path.with_extension("import.json")),
-            )?;
-        }
+        data::delete_character(root, world_id, character_id).map_err(undo_incomplete)?;
+        report.removed_character = Some(receipt.label.clone());
         if kept(
             strict,
             data::character_card_gone(root, world_id, character_id),
@@ -881,21 +889,21 @@ fn undo_last(
         }
     }
     // AI 卡重構等一次套用多張角色卡的路徑：character_id／character_ids 兩欄位互斥，
-    // 沒有共用的「單一 label＝角色名」可用，逐張讀當下名字再刪。
-    for character_id in &receipt.character_ids {
-        let name = data::read_character(root, world_id, character_id)
-            .ok()
-            .map(|card| card.name);
-        if kept(strict, data::delete_character(root, world_id, character_id))?.is_some() {
-            if let Some(name) = name {
-                report.removed_characters.push(name);
-            }
-            if let Ok(character_path) = data::character_path(root, world_id, character_id) {
-                kept(
-                    strict,
-                    data::commit_world_remove(&character_path.with_extension("import.json")),
-                )?;
-            }
+    // 沒有共用的「單一 label＝角色名」可用，逐張讀當下名字再刪。名字先全部讀齊：刪到一半失敗、
+    // 玩家重按時，已刪的那幾張讀不到名字了（因此重按的報告只列這次才刪掉的）。
+    let names: Vec<Option<String>> = receipt
+        .character_ids
+        .iter()
+        .map(|character_id| {
+            data::read_character(root, world_id, character_id)
+                .ok()
+                .map(|card| card.name)
+        })
+        .collect();
+    for (character_id, name) in receipt.character_ids.iter().zip(names) {
+        data::delete_character(root, world_id, character_id).map_err(undo_incomplete)?;
+        if let Some(name) = name {
+            report.removed_characters.push(name);
         }
         if kept(
             strict,

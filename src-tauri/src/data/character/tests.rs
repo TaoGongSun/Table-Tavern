@@ -189,8 +189,12 @@ fn delete_character_removes_card_images_and_gallery() {
     let md_path = character_path(root.path(), &world_id, &card.id).unwrap();
     let png_path = md_path.with_extension("png");
     let avatar_path = md_path.with_extension("avatar.png");
+    let card_path = md_path.with_extension("card.png");
+    let json_path = md_path.with_extension("import.json");
     fs::write(&png_path, b"png").unwrap();
     fs::write(&avatar_path, b"avatar").unwrap();
+    fs::write(&card_path, b"card").unwrap();
+    fs::write(&json_path, b"{}").unwrap();
     let gallery = gallery_dir(root.path(), &world_id, &card.id).unwrap();
     fs::create_dir_all(&gallery).unwrap();
     fs::write(gallery.join("1.png"), b"gen").unwrap();
@@ -203,7 +207,38 @@ fn delete_character_removes_card_images_and_gallery() {
     assert!(!md_path.exists());
     assert!(!png_path.exists());
     assert!(!avatar_path.exists());
+    assert!(!card_path.exists());
+    assert!(!json_path.exists());
     assert!(!gallery.exists());
+}
+
+/// 刪角色時某支附檔刪不掉：其他檔照清、回錯點名沒清掉的；再刪一次（卡檔已不在）把剩下的清乾淨。
+#[test]
+fn delete_character_keeps_going_past_a_failed_file_and_can_retry() {
+    let root = TestRoot::new("delete-character-partial");
+    let world_id = create_world(root.path(), "世界").unwrap();
+    let card = character_card(&new_id(), "退場角色");
+    write_character(root.path(), &world_id, &card).unwrap();
+    let md_path = character_path(root.path(), &world_id, &card.id).unwrap();
+    let files =
+        ["png", "avatar.png", "card.png", "import.json"].map(|ext| md_path.with_extension(ext));
+    for file in &files {
+        fs::write(file, b"x").unwrap();
+    }
+
+    let error = {
+        let _guard = RemoveFailGuard::fail_ending(".card.png", 1);
+        delete_character(root.path(), &world_id, &card.id).unwrap_err()
+    };
+    assert!(error.to_string().contains(".card.png"), "{error}");
+    assert!(!md_path.exists());
+    assert!(files[2].exists());
+    for file in [&files[0], &files[1], &files[3]] {
+        assert!(!file.exists(), "{}", file.display());
+    }
+
+    delete_character(root.path(), &world_id, &card.id).unwrap();
+    assert!(!files[2].exists());
 }
 
 /// 測試清單 #4：兩個同名角色可並存，各自讀寫互不干擾

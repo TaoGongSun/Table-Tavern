@@ -221,6 +221,7 @@ fn rebuild(
                 .source
             }
             ImportRoute::Character => {
+                // 失敗時整個臨時根會收掉，殘檔不必叫玩家清：換回原錯
                 import::import_character_file(
                     build_root,
                     world_id,
@@ -228,7 +229,8 @@ fn rebuild(
                     &replay.source.color,
                     lang,
                     held,
-                )?
+                )
+                .map_err(import::original_import_error)?
                 .source
             }
         };
