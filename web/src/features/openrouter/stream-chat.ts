@@ -19,13 +19,15 @@ export interface ChatMessage {
   name?: string;
 }
 
-/** 停滯窗口，照桌面版 stall.rs:12-14：200 之後等第一個合格進展 300 秒，之後兩次進展之間 120 秒。 */
+/** 停滯窗口，照桌面版 stall.rs：送出後（回應頭與首字共用同一期限）等第一個合格進展 300 秒，
+ *  之後兩次進展之間 120 秒；非 2xx 讀錯誤本文 30 秒，逾時當空本文。 */
 export interface StallWindow {
   firstMs: number;
   afterMs: number;
+  errorBodyMs: number;
 }
 
-export const DEFAULT_STALL_WINDOW: StallWindow = { firstMs: 300_000, afterMs: 120_000 };
+export const DEFAULT_STALL_WINDOW: StallWindow = { firstMs: 300_000, afterMs: 120_000, errorBodyMs: 30_000 };
 
 export type StreamResult =
   | { kind: "ok"; text: string; model: string | null; truncated: string | null }
@@ -55,8 +57,15 @@ export async function streamChat(request: StreamRequest): Promise<StreamResult> 
   if (signal.aborted) return { kind: "aborted", text: "" };
   signal.addEventListener("abort", forward, { once: true });
   let fullText = "";
+  // 回應頭與首字共用同一期限：從送出就起算
+  let deadline = Date.now() + window.firstMs;
   try {
     let response: Response;
+    let headersStalled = false;
+    const headersTimer = setTimeout(() => {
+      headersStalled = true;
+      local.abort();
+    }, deadline - Date.now());
     try {
       response = await request.fetch(`${request.apiBase}/chat/completions`, {
         method: "POST",
@@ -69,11 +78,16 @@ export async function streamChat(request: StreamRequest): Promise<StreamResult> 
         signal: local.signal,
       });
     } catch (error) {
+      if (headersStalled) {
+        return { kind: "failed", failure: failureStalled(Math.round(window.firstMs / 1000), false) };
+      }
       if (signal.aborted) return { kind: "aborted", text: "" };
       return { kind: "failed", failure: failureNetwork(String(error), false) };
+    } finally {
+      clearTimeout(headersTimer);
     }
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
+      const body = await errorBody(response, window.errorBodyMs, local);
       if (signal.aborted) return { kind: "aborted", text: "" };
       return { kind: "failed", failure: failureFromHttp(response.status, response.headers, body) };
     }
@@ -84,7 +98,6 @@ export async function streamChat(request: StreamRequest): Promise<StreamResult> 
     const outcome = new StreamOutcome();
     const textGuard = RunawayGuard.text();
     const thinkingGuard = RunawayGuard.thinking();
-    let deadline = Date.now() + window.firstMs;
     let progressed = false;
     let responder: string | null = null;
     let runaway: string | null = null;
@@ -155,5 +168,23 @@ export async function streamChat(request: StreamRequest): Promise<StreamResult> 
     return { kind: "ok", text: fullText, model: responder, truncated: outcome.truncation(fullText) };
   } finally {
     signal.removeEventListener("abort", forward);
+  }
+}
+
+/** 非 2xx 的錯誤本文：讀失敗或逾時都當空字串；逾時就斷線，計時器在所有出口清掉。 */
+async function errorBody(response: Response, limitMs: number, local: AbortController): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), limitMs);
+  });
+  try {
+    const body = await Promise.race([response.text().catch(() => ""), timeout]);
+    if (body === null) {
+      local.abort();
+      return "";
+    }
+    return body;
+  } finally {
+    clearTimeout(timer);
   }
 }

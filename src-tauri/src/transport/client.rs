@@ -7,7 +7,7 @@ use crate::ui_msg::UiMsg;
 use super::api_failure::ApiFailure;
 use super::messages::ChatMessage;
 use super::runaway::{self, RunawayGuard, RunawayPolicy};
-use super::stall::{chat_progress, stalled_message, Next, StallGuard, StallWindow};
+use super::stall::{chat_progress, stalled_message, Next, Sent, StallGuard, StallWindow};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
@@ -534,15 +534,19 @@ async fn stream_chat_windowed(
         request = request.bearer_auth(key);
     }
 
-    let response = request.send().await?;
+    let mut guard = StallGuard::new(window);
+    let response = match guard.send(request).await {
+        Sent::Response(response) => response,
+        Sent::Failed(error) => return Err(error.into()),
+        Sent::Stalled => return Err(stalled_message(guard.window_secs()).into()),
+    };
     let status = response.status();
     if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
+        let body = guard.error_body(response).await;
         return Err(http_error(status, &body).into());
     }
 
     let mut stream = response.bytes_stream();
-    let mut guard = StallGuard::new(window);
     let mut stalled = None;
     let mut parser = SseParser::default();
     let mut full_text = String::new();
@@ -702,19 +706,20 @@ async fn stream_chat_models_windowed(
         request = request.bearer_auth(key);
     }
 
-    let response = request
-        .send()
-        .await
-        .map_err(|error| ApiFailure::network(&error, false))?;
+    let mut guard = StallGuard::new(window);
+    let response = match guard.send(request).await {
+        Sent::Response(response) => response,
+        Sent::Failed(error) => return Err(ApiFailure::network(&error, false)),
+        Sent::Stalled => return Err(ApiFailure::stalled(guard.window_secs(), false)),
+    };
     let status = response.status();
     if !status.is_success() {
         let headers = response.headers().clone();
-        let body = response.text().await.unwrap_or_default();
+        let body = guard.error_body(response).await;
         return Err(ApiFailure::from_http(status, &headers, &body));
     }
 
     let mut stream = response.bytes_stream();
-    let mut guard = StallGuard::new(window);
     let mut stalled = None;
     let mut parser = SseParser::default();
     let mut full_text = String::new();
@@ -836,7 +841,9 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
         .unwrap_or(DEFAULT_IMAGE_MODEL);
     #[cfg(feature = "test-harness")]
     crate::harness::ai_dispatch("api-image", model, serde_json::json!({ "shape": "Image" }));
-    let response = reqwest::Client::new()
+    // 建 client 會載入系統憑證，放在時限外；時限只包 /images 的送出與讀本文
+    let client = reqwest::Client::new();
+    let request = client
         .post(format!("{}/images", base_url(config)))
         .bearer_auth(api_key)
         .json(&serde_json::json!({
@@ -844,22 +851,22 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
             "prompt": prompt,
             "aspect_ratio": "2:3",
             "resolution": "1K",
-        }))
-        .send()
+        }));
+    let reply = tokio::time::timeout(IMAGE_TIMEOUT, image_reply(request))
         .await
-        .map_err(|error| error.to_string())?;
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        let error = http_error(status, &body);
-        if matches!(status.as_u16(), 402 | 403)
-            && key_tier(&base_url(config), api_key).await == Some(true)
-        {
-            return Err(format!("{IMAGE_FREE_KEY}: {error}"));
+        .map_err(|_| format!("image request timed out after {IMAGE_TIMEOUT:?}"))??;
+    let value = match reply {
+        ImageReply::Ok(value) => value,
+        ImageReply::Http(status, body) => {
+            let error = http_error(status, &body);
+            if matches!(status.as_u16(), 402 | 403)
+                && key_tier(&base_url(config), api_key).await == Some(true)
+            {
+                return Err(format!("{IMAGE_FREE_KEY}: {error}"));
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
-    let value: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    };
     let image = value.get("data").and_then(|data| data.get(0));
     if let Some(b64) = image
         .and_then(|entry| entry.get("b64_json"))
@@ -876,6 +883,28 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
         }
     }
     Err(UiMsg::ImageMissingInReply.into())
+}
+
+/// 生圖非串流，回應頭要等圖生完：送出＋讀本文整段限時（與串流首字窗同為 5 分鐘）。
+#[cfg(not(test))]
+const IMAGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+#[cfg(test)]
+const IMAGE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(2000);
+
+enum ImageReply {
+    Ok(serde_json::Value),
+    Http(reqwest::StatusCode, String),
+}
+
+async fn image_reply(request: reqwest::RequestBuilder) -> Result<ImageReply, String> {
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Ok(ImageReply::Http(status, body));
+    }
+    let value = response.json().await.map_err(|error| error.to_string())?;
+    Ok(ImageReply::Ok(value))
 }
 
 /// 免費 key（從沒儲值過）打 `/images` 一律被拒（實測 402／403），前端據此給專屬文案。
@@ -928,3 +957,6 @@ mod tests;
 
 #[cfg(test)]
 mod runaway_tests;
+
+#[cfg(test)]
+mod timeout_tests;

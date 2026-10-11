@@ -11,7 +11,9 @@ use super::super::response::*;
 #[allow(unused_imports)]
 use super::super::state_view::*;
 #[allow(unused_imports)]
-use super::super::test_support::{card, event, stall_server, worldbook_entry};
+use super::super::test_support::{
+    card, event, hang_server, stall_server, watchdog, worldbook_entry,
+};
 #[allow(unused_imports)]
 use super::super::turns::*;
 use super::*;
@@ -1004,6 +1006,7 @@ fn window(first_ms: u64, after_ms: u64) -> StallWindow {
     StallWindow {
         first: std::time::Duration::from_millis(first_ms),
         after: std::time::Duration::from_millis(after_ms),
+        ..Default::default()
     }
 }
 

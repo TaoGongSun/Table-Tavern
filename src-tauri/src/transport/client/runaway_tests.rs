@@ -42,6 +42,7 @@ fn window() -> StallWindow {
     StallWindow {
         first: std::time::Duration::from_secs(10),
         after: std::time::Duration::from_secs(10),
+        ..Default::default()
     }
 }
 

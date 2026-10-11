@@ -12,6 +12,11 @@ use tokio::net::{TcpListener, TcpStream};
 const OPENROUTER_AUTH_URL: &str = "https://openrouter.ai/auth";
 const OPENROUTER_KEY_URL: &str = "https://openrouter.ai/api/v1/auth/keys";
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
+/// 換金鑰整段時限，與網頁版 `openrouter-api.ts` 的 15 秒一致。
+#[cfg(not(test))]
+const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const EXCHANGE_TIMEOUT: Duration = Duration::from_millis(1500);
 const MAX_CALLBACK_REQUEST_BYTES: usize = 16 * 1024;
 
 const ERR_BROWSER: &str = "openrouter_oauth_browser";
@@ -169,8 +174,25 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Resul
 }
 
 async fn exchange_code(code: &str, verifier: &str) -> Result<String, String> {
-    let response = reqwest::Client::new()
-        .post(OPENROUTER_KEY_URL)
+    exchange_code_at(OPENROUTER_KEY_URL, code, verifier).await
+}
+
+/// 建 client 會載入系統憑證，放在時限外；送出＋讀本文整段限時，逾時算網路錯誤。
+async fn exchange_code_at(url: &str, code: &str, verifier: &str) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    tokio::time::timeout(EXCHANGE_TIMEOUT, request_key(&client, url, code, verifier))
+        .await
+        .unwrap_or_else(|_| Err(ERR_NETWORK.to_owned()))
+}
+
+async fn request_key(
+    client: &reqwest::Client,
+    url: &str,
+    code: &str,
+    verifier: &str,
+) -> Result<String, String> {
+    let response = client
+        .post(url)
         .json(&KeyExchangeRequest {
             code,
             code_verifier: verifier,
@@ -489,5 +511,20 @@ mod tests {
         assert_eq!(data::read_config(&root).unwrap(), saved);
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn key_exchange_times_out_as_network_error() {
+        use crate::transport::test_support::{hang_server, watchdog};
+        for reply in [
+            "",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{\"key",
+        ] {
+            let base = hang_server(reply, 30_000);
+            let error = watchdog(exchange_code_at(&format!("{base}/auth/keys"), "c", "v"))
+                .await
+                .unwrap_err();
+            assert_eq!(error, ERR_NETWORK, "{reply}");
+        }
     }
 }

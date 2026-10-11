@@ -5,7 +5,7 @@
 //! streaming event schema, completion signal, and usage shape, so adapting it here avoids changing
 //! the behavior of the legacy path.
 
-use super::stall::{self, responses_progress, Next, StallGuard, StallWindow};
+use super::stall::{self, responses_progress, Next, Sent, StallGuard, StallWindow};
 use crate::data::{AppConfig, DataResult};
 use crate::transport;
 use crate::ui_msg::UiMsg;
@@ -273,15 +273,19 @@ async fn stream_responses_windowed(
         request = request.bearer_auth(key);
     }
 
-    let response = request.send().await?;
+    let mut guard = StallGuard::new(window);
+    let response = match guard.send(request).await {
+        Sent::Response(response) => response,
+        Sent::Failed(error) => return Err(error.into()),
+        Sent::Stalled => return Err(stall::stalled_message(guard.window_secs()).into()),
+    };
     let status = response.status();
     if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
+        let body = guard.error_body(response).await;
         return Err(transport::http_error(status, &body).into());
     }
 
     let mut stream = response.bytes_stream();
-    let mut guard = StallGuard::new(window);
     let mut stalled = None;
     let mut parser = transport::SseParser::default();
     let mut full_text = String::new();
@@ -503,6 +507,7 @@ mod tests {
             StallWindow {
                 first: std::time::Duration::from_millis(first_ms),
                 after: std::time::Duration::from_millis(after_ms),
+                ..Default::default()
             },
             |_| {},
         )
@@ -559,10 +564,49 @@ mod tests {
             StallWindow {
                 first: std::time::Duration::from_secs(10),
                 after: std::time::Duration::from_secs(10),
+                ..Default::default()
             },
             |_| {},
         )
         .await
+    }
+
+    async fn run_hang(reply: &'static str) -> DataResult<transport::StreamChatResult> {
+        let base = super::super::test_support::hang_server(reply, 30_000);
+        let messages = [message("user", "嗨")];
+        super::super::test_support::watchdog(stream_responses_windowed(
+            &stall_config(&base),
+            "test/model",
+            &messages,
+            None,
+            None,
+            usage_log::PromptShape::Oneshot,
+            transport::RunawayPolicy::Off,
+            StallWindow {
+                first: std::time::Duration::from_millis(500),
+                after: std::time::Duration::from_millis(500),
+                error_body: std::time::Duration::from_millis(500),
+            },
+            |_| {},
+        ))
+        .await
+    }
+
+    #[tokio::test]
+    async fn responses_headers_never_arrive_reports_stalled() {
+        let error = run_hang("").await.unwrap_err().to_string();
+        assert!(error.starts_with("AI_STREAM_STALLED:"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn responses_error_body_stall_keeps_status() {
+        let error = run_hang(
+            "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{\"err",
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.starts_with("AI_HTTP_STATUS_502:"), "{error}");
     }
 
     fn event(kind: &str, delta: &str) -> String {

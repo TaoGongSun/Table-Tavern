@@ -23,6 +23,32 @@ function fakeFetch(chunks: string[], options: { status?: number; hang?: boolean;
   }) as typeof fetch;
 }
 
+/** 回應頭永遠不來：只有收到 abort 才 reject。 */
+const silentFetch = (async (_url: RequestInfo | URL, init?: RequestInit) =>
+  new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+  })) as typeof fetch;
+
+/** 回應頭等 `headMs` 才到，之後每 `gapMs` 吐一段 delta、最後收尾；總時間刻意超過首字窗。 */
+function slowFetch(count: number, gapMs: number, headMs = 0): typeof fetch {
+  return (async (_url: RequestInfo | URL, init?: RequestInit) => {
+    await new Promise((resolve) => setTimeout(resolve, headMs));
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        init?.signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
+        for (let i = 0; i < count; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, gapMs));
+          controller.enqueue(encoder.encode(delta("字")));
+        }
+        controller.enqueue(encoder.encode(stop + sse("[DONE]")));
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200 });
+  }) as typeof fetch;
+}
+
 function request(fetchImpl: typeof fetch, extra: Partial<StreamRequest> = {}): StreamRequest & { seen: string[] } {
   const seen: string[] = [];
   return {
@@ -52,14 +78,14 @@ describe("streamChat", () => {
 
   it("gives up when no progress arrives inside the stall window", async () => {
     const req = request(fakeFetch([": OPENROUTER PROCESSING\n\n"], { hang: true }), {
-      window: { firstMs: 30, afterMs: 30 },
+      window: { firstMs: 30, afterMs: 30, errorBodyMs: 30 },
     });
     const result = await streamChat(req);
     expect(result).toMatchObject({ kind: "failed", failure: { stage: "timeout", emittedText: false } });
   });
 
   it("marks a stall after some text as emitted", async () => {
-    const req = request(fakeFetch([delta("半")], { hang: true }), { window: { firstMs: 30, afterMs: 30 } });
+    const req = request(fakeFetch([delta("半")], { hang: true }), { window: { firstMs: 30, afterMs: 30, errorBodyMs: 30 } });
     expect(await streamChat(req)).toMatchObject({ kind: "failed", failure: { emittedText: true } });
   });
 
@@ -85,5 +111,49 @@ describe("streamChat", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     controller.abort();
     expect(await pending).toEqual({ kind: "aborted", text: "" });
+  });
+
+  it("gives up when response headers never arrive, sharing the first-progress deadline", async () => {
+    const req = request(silentFetch, { window: { firstMs: 30, afterMs: 30, errorBodyMs: 30 } });
+    const result = await streamChat(req);
+    expect(result).toMatchObject({ kind: "failed", failure: { stage: "timeout", emittedText: false } });
+    expect(result.kind === "failed" && result.failure.display).toMatch(/^AI_STREAM_STALLED:/);
+  });
+
+  it("still returns aborted when stopped while waiting for headers", async () => {
+    const controller = new AbortController();
+    const pending = streamChat(request(silentFetch, { signal: controller.signal }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    expect(await pending).toEqual({ kind: "aborted", text: "" });
+  });
+
+  it("keeps the status and rate-limit headers when the error body never finishes, and disconnects", async () => {
+    let passed: AbortSignal | undefined;
+    const hanging = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      passed = init?.signal ?? undefined;
+      return new Response(new ReadableStream<Uint8Array>({ start() {} }), {
+        status: 503,
+        headers: { "x-ratelimit-remaining": "0" },
+      });
+    }) as typeof fetch;
+    const result = await streamChat(request(hanging, { window: { firstMs: 5_000, afterMs: 5_000, errorBodyMs: 30 } }));
+    expect(result).toMatchObject({
+      kind: "failed",
+      failure: { stage: "http", status: 503, rateLimit: { remaining: "0" } },
+    });
+    expect(result.kind === "failed" && result.failure.display).toMatch(/body=$/);
+    expect(passed?.aborted).toBe(true);
+  });
+
+  it("does not kill a progressing stream that outlives the first-progress window", async () => {
+    const req = request(slowFetch(5, 100), { window: { firstMs: 200, afterMs: 400, errorBodyMs: 30 } });
+    expect(await streamChat(req)).toMatchObject({ kind: "ok", text: "字字字字字" });
+  });
+
+  it("times out when late headers plus a late first delta exceed one shared deadline", async () => {
+    // 各自 100ms 都在 150ms 首字窗內、合計超過；回應頭到了若重設期限，串流就會正常收完
+    const req = request(slowFetch(1, 100, 100), { window: { firstMs: 150, afterMs: 400, errorBodyMs: 30 } });
+    expect(await streamChat(req)).toMatchObject({ kind: "failed", failure: { stage: "timeout" } });
   });
 });

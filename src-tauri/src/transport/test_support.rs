@@ -70,6 +70,11 @@ pub(super) fn worldbook_entry(
 /// 假串流伺服器：先回 200 標頭，再依腳本 `(送出前等待毫秒, 內容)` 逐段寫出，
 /// 最後把連線再撐 `hold_ms` 才關（模擬上游卡住但連線沒斷）。回傳 base URL。
 pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
+    stall_server_after(0, script, hold_ms)
+}
+
+/// 同 `stall_server`，但讀到請求後先等 `head_ms` 才回 200 標頭（模擬回應頭晚到）。
+pub(super) fn stall_server_after(head_ms: u64, script: Vec<(u64, String)>, hold_ms: u64) -> String {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
@@ -79,6 +84,7 @@ pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
         };
         let mut request = [0u8; 8192];
         let _ = socket.read(&mut request);
+        std::thread::sleep(std::time::Duration::from_millis(head_ms));
         let head =
             "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n";
         if socket.write_all(head.as_bytes()).is_err() {
@@ -93,6 +99,34 @@ pub(super) fn stall_server(script: Vec<(u64, String)>, hold_ms: u64) -> String {
         std::thread::sleep(std::time::Duration::from_millis(hold_ms));
     });
     format!("http://{address}")
+}
+
+/// 卡住的伺服器：讀一次請求（讀取限 5 秒；單次 read 不保證讀完，夠讓客戶端進入等回應頭）後只寫 `reply`
+/// （空字串＝連回應頭都不回；也可只寫回應頭與半截本文），撐 `hold_ms` 才關。accept 本身無期限，
+/// 客戶端沒來連就跟著測試行程結束。`hold_ms` 要遠長於受測時限，舊碼才會被測試外的 watchdog 抓到。
+pub(crate) fn hang_server(reply: &'static str, hold_ms: u64) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let Ok((mut socket, _)) = listener.accept() else {
+            return;
+        };
+        let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+        let mut request = [0u8; 8192];
+        let _ = socket.read(&mut request);
+        let _ = socket.write_all(reply.as_bytes());
+        let _ = socket.flush();
+        std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+    });
+    format!("http://{address}")
+}
+
+/// 測試外層的 watchdog：受測函式自己的時限失效（舊碼）時讓測試紅，而不是卡到伺服器收尾。
+pub(crate) async fn watchdog<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(std::time::Duration::from_secs(10), future)
+        .await
+        .expect("受測呼叫沒有在時限內結束")
 }
 
 /// 測試用：登場事件的代換（只換 `{{user}}`／`{{char}}`，與巨集引擎在這些文字上的結果相同）。
