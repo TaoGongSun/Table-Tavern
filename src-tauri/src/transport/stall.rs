@@ -1,4 +1,5 @@
 //! API 串流的停滯偵測：只有「合格進展」（正文或推理 delta）才延後 deadline。
+//! 期限從送出請求就起算，回應頭與首字共用同一個首字窗（見 `StallGuard::send`）。
 //! 保活註解、空行、半行、空 `data:`、壞 JSON、role-only 塊都不續命——OpenRouter 會在上游卡住時
 //! 持續送 `: OPENROUTER PROCESSING`，若按位元組計時就永遠不會逾時。
 //! CLI 通道另有自己的 120 秒（`cli/runner.rs`，數輸出行）；兩邊數的東西不同，常數不共用。
@@ -12,11 +13,15 @@ use tokio::time::Instant;
 const FIRST_PROGRESS_SECS: u64 = 300;
 /// 首個進展之後，兩個合格進展之間的等待（與 `cli/runner.rs` 的 120 秒同值）。
 const PROGRESS_SECS: u64 = 120;
+/// 非 2xx 時讀錯誤本文的等待；逾時當空本文，狀態碼照報。
+const ERROR_BODY_SECS: u64 = 30;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StallWindow {
+    /// 送出到第一個合格進展（含等回應頭）的總預算。
     pub first: Duration,
     pub after: Duration,
+    pub error_body: Duration,
 }
 
 impl Default for StallWindow {
@@ -24,8 +29,15 @@ impl Default for StallWindow {
         Self {
             first: Duration::from_secs(FIRST_PROGRESS_SECS),
             after: Duration::from_secs(PROGRESS_SECS),
+            error_body: Duration::from_secs(ERROR_BODY_SECS),
         }
     }
+}
+
+pub(crate) enum Sent {
+    Response(reqwest::Response),
+    Failed(reqwest::Error),
+    Stalled,
 }
 
 pub(crate) enum Next<B> {
@@ -59,6 +71,25 @@ impl StallGuard {
             Ok(None) => Next::End,
             Err(_) => Next::Stalled,
         }
+    }
+
+    /// 送出請求：回應頭與首字共用同一期限（本地伺服器常等首字才回應頭），所以總預算就是 `first`。
+    /// 逾時丟掉 future＝取消本地等待並斷線，不保證上游停止或不計費。
+    pub async fn send(&self, request: reqwest::RequestBuilder) -> Sent {
+        match tokio::time::timeout_at(self.deadline, request.send()).await {
+            Ok(Ok(response)) => Sent::Response(response),
+            Ok(Err(error)) => Sent::Failed(error),
+            Err(_) => Sent::Stalled,
+        }
+    }
+
+    /// 非 2xx 的錯誤本文：讀失敗或逾時都回空字串。
+    pub async fn error_body(&self, response: reqwest::Response) -> String {
+        tokio::time::timeout(self.window.error_body, response.text())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default()
     }
 
     /// 收到合格進展：之後的窗口改用 `after`。
