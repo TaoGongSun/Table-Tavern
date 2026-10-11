@@ -8,6 +8,7 @@
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕
 - [statusbar-yaml-list-flatten](tasks/statusbar-yaml-list-flatten.md) — 未重構桌狀態欄 YAML 清單攤平只剩最後一筆 — 下一步：未排程
 - [refactor-probe-failure-hidden](tasks/refactor-probe-failure-hidden.md) — 重構初判失敗畫面看不出原因 — 下一步：未排程
+- [refactor-silent-skips](tasks/refactor-silent-skips.md) — 重構路徑其餘靜默略過（讀原卡失敗、略過角色、取消無回饋） — 下一步：未排程
 - [generated-image-download-flaky](tasks/generated-image-download-flaky.md) — 生圖下載 4 條測試在 verify 中偶發 5 秒逾時 — 下一步：未排程，先查假伺服器
 - [worldeditor-reset-test-flaky](tasks/worldeditor-reset-test-flaky.md) — WorldEditor 重構重設測試在 verify 偶發失敗 — 下一步：未排程
 - [web-autosave-test-flaky](tasks/web-autosave-test-flaky.md) — web 自動存檔測試在 verify 偶發失敗 — 下一步：未排程
