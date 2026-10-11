@@ -5,7 +5,6 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [world-editor-delete-character-guard](tasks/world-editor-delete-character-guard.md) — 世界設定編輯中從側欄刪角色，finishRemoval 直接卸載編輯器、未儲存的 world.md 與新條目草稿靜默遺失 — 下一步：未排程；先定守門放刪除確認前，還是刪別的東西時不卸載 WorldEditor
-- [gm-line-system-change-restart](tasks/gm-line-system-change-restart.md) — GM 線凍結 system 含動態巨集每輪變動時整線重開（Claude 不再疊加補丁） — 下一步：未排程，比照 Grok 現行重開〔作者裁決 2026-10-11：選 A〕
 - [remove-path-try-exists](tasks/remove-path-try-exists.md) — 刪檔遇到查詢錯誤（無搜尋權限）誤報成功 — 下一步：未排程，改用 try_exists
 - [tail-worldbook-erase](tasks/tail-worldbook-erase.md) — GM 線與角色共線尾段世界書回合後抹掉，不再每輪疊一份 — 下一步：未排程，排在 gm-line-system-change-restart 之後〔作者裁決 2026-10-11：選 A〕
 - [solo-private-dynamic-reopen](tasks/solo-private-dynamic-reopen.md) — 單人在場 Claude 線私設含動態巨集時沒算進重開指紋，補丁每輪疊加 — 下一步：未排程
