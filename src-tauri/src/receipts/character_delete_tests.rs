@@ -271,7 +271,7 @@ fn undo_cleans_when_the_card_delete_half_fails() {
     );
 }
 
-/// 卡檔存在與否查不到（目錄沒有搜尋權限）：不當成已刪、名單不動；刪卡本身成功時回旗標，不回錯。
+/// 卡檔存在與否查不到（目錄沒有搜尋權限）：刪卡回錯、不當成已刪，名單不動、卡檔還在。
 #[cfg(unix)]
 #[test]
 fn unreadable_card_directory_is_not_treated_as_deleted() {
@@ -286,11 +286,19 @@ fn unreadable_card_directory_is_not_treated_as_deleted() {
     let characters = root.path().join(format!("worlds/{world_id}/characters"));
     fs::set_permissions(&characters, fs::Permissions::from_mode(0o000)).unwrap();
     let checked = data::character_card_gone(root.path(), &world_id, &a);
-    // 刪卡在沒有搜尋權限的目錄裡看不到檔案、什麼都沒刪而回成功；之後的存在檢查回錯
+    match checked {
+        Err(_) => {}
+        Ok(false) => {
+            fs::set_permissions(&characters, fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!("略過：0o000 擋不住查詢（以 root 執行），測不出查詢錯誤");
+            return;
+        }
+        Ok(true) => panic!("卡檔在，查詢卻回已不在"),
+    }
     let outcome = delete_character_and_clean(root.path(), &world_id, &a);
     fs::set_permissions(&characters, fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(checked.is_err());
-    assert!(outcome.unwrap().worldbook_cleanup_failed);
+    assert!(outcome.is_err());
+    assert!(!data::character_card_gone(root.path(), &world_id, &a).unwrap());
     assert_eq!(fs::read(&book).unwrap(), before);
 }
 
