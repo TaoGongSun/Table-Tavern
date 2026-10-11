@@ -219,6 +219,41 @@ fn existing_reasons_win_over_the_threshold() {
     let mut hoisted = turn_input(&events, 0);
     hoisted.hoisted_worldbook = Some("新的世界書".to_owned());
     check(&base, &hoisted, LaneProvider::Claude, "worldbook-changed");
+    // 單人線：只換 system 記 system-changed（先於門檻）；同時換世界書記 worldbook-changed
+    let mut solo_base = base.clone();
+    solo_base.unerased_owner = Some("fox-id".to_owned());
+    let mut solo_system = turn_input(&events, 0);
+    solo_system.single_owner = Some("fox-id".to_owned());
+    solo_system.frozen_system = "凍結B".to_owned();
+    check(
+        &solo_base,
+        &solo_system,
+        LaneProvider::Claude,
+        "system-changed",
+    );
+    solo_system.hoisted_worldbook = Some("新的世界書".to_owned());
+    check(
+        &solo_base,
+        &solo_system,
+        LaneProvider::Claude,
+        "worldbook-changed",
+    );
+    // 未抹線三項先於世界書
+    let mut knight = solo_base.clone();
+    knight.unerased_owner = Some("knight-id".to_owned());
+    check(&knight, &solo_system, LaneProvider::Claude, "owner-changed");
+    let mut multi = turn_input(&events, 0);
+    multi.frozen_system = "凍結B".to_owned();
+    multi.hoisted_worldbook = Some("新的世界書".to_owned());
+    check(&solo_base, &multi, LaneProvider::Claude, "mode-changed");
+    let mut had_block = solo_base.clone();
+    had_block.had_state_block = true;
+    check(
+        &had_block,
+        &solo_system,
+        LaneProvider::Claude,
+        "state-block-gone",
+    );
     let mut changed = gm_input(&events, ROOMY);
     changed.frozen_system = "凍結B".to_owned();
     check(&base, &changed, LaneProvider::Claude, "system-changed");

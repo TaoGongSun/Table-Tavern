@@ -1623,6 +1623,7 @@ mod grok;
 mod lane_lock;
 mod owner;
 mod runaway;
+mod solo_restart;
 mod status_strip;
 mod tail_threshold;
 

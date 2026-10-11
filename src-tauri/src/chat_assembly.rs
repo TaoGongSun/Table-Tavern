@@ -373,7 +373,8 @@ pub(crate) fn character_lane_parts(
         frozen.push('\n');
         frozen.push_str(private);
     }
-    // 不抹尾段的線：system 裡會變的內容（共用快照＋本輪世界書與動態公開設定）一變就要重開，指紋涵蓋全部
+    // 不抹尾段的線：system 裡的世界書部分（共用快照＋本輪世界書與動態公開設定）算指紋，供帳本記 worldbook-changed；
+    // 整份 system（含私設）另由 lanes::plan_turn 比對，一變就重開
     let mut turn = turn;
     if hoist {
         turn.hoisted_worldbook = Some(transport::system_worldbook(
