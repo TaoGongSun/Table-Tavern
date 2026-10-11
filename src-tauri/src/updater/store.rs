@@ -167,13 +167,28 @@ pub(crate) fn clear_all_residue(versions: &Path) -> Result<(), String> {
     first.map_or(Ok(()), Err)
 }
 
-/// 不在算已刪；查不到在不在（例如上層沒有搜尋權限）回錯，不當成已刪。
-fn remove_path(path: &Path) -> Result<(), String> {
-    if !path.try_exists().map_err(|error| error.to_string())? {
-        return Ok(());
+/// 路徑本身在不在（不跟 symlink）：懸空連結也算在。查不到（例如上層沒有搜尋權限）回錯。
+fn entry_exists(path: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.to_string()),
     }
-    let removed = if path.is_dir() {
+}
+
+/// 刪路徑本身、不跟 symlink：不在算已刪；查不到在不在回錯，不當成已刪。
+/// symlink 先當檔案刪，失敗再當目錄刪（Windows 目錄 symlink／junction）。
+fn remove_path(path: &Path) -> Result<(), String> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let kind = meta.file_type();
+    let removed = if kind.is_dir() {
         fs::remove_dir_all(path)
+    } else if kind.is_symlink() {
+        fs::remove_file(path).or_else(|error| fs::remove_dir(path).map_err(|_| error))
     } else {
         fs::remove_file(path)
     };
@@ -261,7 +276,7 @@ pub(crate) fn commit_download(
         write_synced(&partial.join(file), bytes)?;
         write_synced(&partial.join(format!("{file}.sig")), signature.as_bytes())?;
         write_synced(&partial.join("release.json"), &body)?;
-        if final_dir.try_exists().map_err(|error| error.to_string())? {
+        if entry_exists(&final_dir)? {
             fs::rename(&final_dir, &trash).map_err(|error| error.to_string())?;
         }
         if let Err(error) = fs::rename(&partial, &final_dir) {
@@ -523,5 +538,81 @@ mod tests {
         }
         clear_all_residue(versions).unwrap();
         assert!(!versions.join(".partial-1.0.0").exists());
+    }
+
+    #[cfg(unix)]
+    fn gone(path: &Path) -> bool {
+        matches!(fs::symlink_metadata(path), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+    }
+
+    #[cfg(unix)]
+    fn commit_fixture(versions: &Path) {
+        let bytes = b"good-installer";
+        let (_, signature) = sign_fixture(bytes);
+        commit_download(
+            versions,
+            "1.0.0",
+            "App_1.0.0_aarch64.app.tar.gz",
+            bytes,
+            &signature,
+            "darwin-aarch64",
+            None,
+        )
+        .unwrap();
+    }
+
+    /// 懸空的 `.partial-<版本>` 要清得掉，不然 create_dir 永遠 EEXIST。
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_partial_symlink_does_not_block_the_download() {
+        let root = TempDir(temp_versions("dangling-partial"));
+        let versions = &root.0;
+        fs::create_dir_all(versions).unwrap();
+        std::os::unix::fs::symlink(versions.join("missing"), versions.join(".partial-1.0.0"))
+            .unwrap();
+        commit_fixture(versions);
+        assert!(fs::symlink_metadata(versions.join("1.0.0"))
+            .unwrap()
+            .file_type()
+            .is_dir());
+        assert!(gone(&versions.join(".partial-1.0.0")));
+    }
+
+    /// 懸空的正式版本目錄要換成真目錄，不然 rename 永遠失敗。
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_version_symlink_is_replaced_by_a_real_dir() {
+        let root = TempDir(temp_versions("dangling-final"));
+        let versions = &root.0;
+        fs::create_dir_all(versions).unwrap();
+        std::os::unix::fs::symlink(versions.join("missing"), versions.join("1.0.0")).unwrap();
+        commit_fixture(versions);
+        assert!(fs::symlink_metadata(versions.join("1.0.0"))
+            .unwrap()
+            .file_type()
+            .is_dir());
+        assert!(gone(&versions.join(".partial-1.0.0")));
+        assert!(gone(&versions.join(".trash-1.0.0")));
+    }
+
+    /// 殘留是指向真目錄或真檔案的 symlink：只刪連結，目標不動。
+    #[cfg(unix)]
+    #[test]
+    fn residue_symlinks_are_unlinked_without_touching_targets() {
+        let root = TempDir(temp_versions("symlink-targets"));
+        let versions = root.0.join("versions");
+        fs::create_dir_all(&versions).unwrap();
+        let target_dir = root.0.join("keep-dir");
+        fs::create_dir_all(&target_dir).unwrap();
+        fs::write(target_dir.join("x"), b"x").unwrap();
+        let target_file = root.0.join("keep-file");
+        fs::write(&target_file, b"y").unwrap();
+        std::os::unix::fs::symlink(&target_dir, versions.join(".trash-1.0.0")).unwrap();
+        std::os::unix::fs::symlink(&target_file, versions.join(".partial-2.0.0")).unwrap();
+        clear_all_residue(&versions).unwrap();
+        assert!(gone(&versions.join(".trash-1.0.0")));
+        assert!(gone(&versions.join(".partial-2.0.0")));
+        assert_eq!(fs::read(target_dir.join("x")).unwrap(), b"x");
+        assert_eq!(fs::read(&target_file).unwrap(), b"y");
     }
 }
