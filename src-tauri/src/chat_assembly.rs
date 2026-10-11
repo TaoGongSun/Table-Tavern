@@ -292,14 +292,14 @@ pub(crate) fn gm_instruction(
 }
 
 /// GM lane 的一輪：凍結 system（GM 指示＋world.md＋穩定觸發的世界書＋全卡）＋回合尾段
-/// （其餘觸發條目＋狀態＋導演指示）。回傳 (凍結 system, 回合尾段)。
+/// （其餘觸發條目＋狀態＋導演指示）。回傳 (凍結 system, 回合尾段與其中的尾段世界書)。
 pub(crate) fn gm_lane_parts(
     materials: &GmMaterials,
     scan: &WorldScan,
     scope: &transport::StateScope,
     instruction: &str,
     lang: &str,
-) -> (String, String) {
+) -> (String, transport::LaneTurn) {
     let frozen = transport::gm_lane_system(
         &materials.cards,
         materials.player.as_ref(),
@@ -316,7 +316,7 @@ pub(crate) fn gm_lane_parts(
         instruction,
         lang,
     );
-    (frozen, turn.tail)
+    (frozen, turn)
 }
 
 /// GM 無狀態路徑（API／codex）的訊息：共線組裝＋本輪指示。

@@ -78,6 +78,9 @@ impl Table {
             single_owner: turn.single.then(|| turn.speaker.to_owned()),
             has_state_block: turn.has_state_block,
             hoisted_worldbook: turn.worldbook.map(str::to_owned),
+            tail_worldbook: None,
+            tail_tracked: !turn.single,
+            capacity: None,
         }
     }
 

@@ -158,6 +158,17 @@ pub struct LaneContext {
     pub system_hash: String,
     /// 呼叫前採用的快取壽命（秒）；重開為 None。判斷「隔太久過期」只看它
     pub ttl_secs: Option<u64>,
+    /// 呼叫前歷史裡的舊尾段世界書（重開那行是清理前的值）；計數未知的舊線為 None
+    pub stale: Option<StaleTail>,
+}
+
+/// 舊尾段世界書的累計（tail-worldbook-erase）：份數、大小（容量單位）、容量與佔比；容量未知時後兩者 None。
+#[derive(Debug, Clone, Copy)]
+pub struct StaleTail {
+    pub copies: u32,
+    pub size: u64,
+    pub capacity: Option<u64>,
+    pub percent: Option<f64>,
 }
 
 /// 九成以上算正常：CLI 端 token 計數與分段邊界本來就會有零頭出入。
@@ -347,6 +358,15 @@ fn call_fields(
         }
         fields.insert("system_tokens".to_owned(), json!(lane.system_tokens));
         fields.insert("system_hash".to_owned(), json!(lane.system_hash));
+        if let Some(stale) = lane.stale {
+            fields.insert("stale_copies".to_owned(), json!(stale.copies));
+            fields.insert("stale_size".to_owned(), json!(stale.size));
+            fields.insert("stale_capacity".to_owned(), json!(stale.capacity));
+            fields.insert(
+                "stale_ratio".to_owned(),
+                json!(stale.percent.map(|percent| (percent * 10.0).round() / 10.0)),
+            );
+        }
     }
     fields
 }
@@ -497,6 +517,7 @@ mod tests {
             system_tokens: 4_000,
             system_hash: text_hash("凍結素材"),
             ttl_secs: Some(300),
+            stale: None,
         }
     }
 

@@ -2,7 +2,7 @@
 
 ## 一、裁決
 - GM 線凍結 system 因動態巨集（world.md、角色卡等）變動時整線重開，比照 `Hoist::All`／Grok，Claude 不再在 session 裡疊補丁〔作者裁決 2026-10-11〕。
-- 尾段疊加：回合後抹掉尾段世界書〔作者裁決 2026-10-11〕，由待辦 tail-worldbook-erase 處理，本案不動尾段。
+- 尾段疊加：累積到門檻再整線重開清掉〔作者裁決 2026-10-11〕，見 [tail-worldbook-erase](tail-worldbook-erase.md)，本案不動尾段。
 
 ## 二、現況（掛點）
 - 組裝：`gm_narrate` → `commands/chat.rs` `gm_lane_reply`（唯一呼叫點）→ `chat_assembly::gm_lane_parts` → `transport::gm_lane_system`（GM 指示＋world.md＋穩定前／後組條目＋全卡＋玩家卡＋機制協定）與 `gm_lane_turn`（不穩定條目、作者註記、依深度＋目前狀態＋導演指示）。
@@ -49,7 +49,7 @@
 - 已知差異：常重開的桌，GM 歷史是重開時壓平的整段逐字稿，不是多輪對話（與 API 單發、Grok 現行相同）。
 
 ## 七、尾段疊加（不在本案）
-GM 線與角色共線尾段世界書回合後不抹、每輪疊一份：作者裁決回合後抹掉〔作者裁決 2026-10-11〕，另案 [tail-worldbook-erase](../tasks/tail-worldbook-erase.md)。
+GM 線與角色共線尾段世界書回合後不抹：累積到門檻再整線重開清掉〔作者裁決 2026-10-11〕，見 [tail-worldbook-erase](tail-worldbook-erase.md)。
 
 ## 八、已知問題（併入待辦 [solo-private-dynamic-reopen](../tasks/solo-private-dynamic-reopen.md)，不在本案）
 - 單人在場 `Hoist::All` 的 Claude 角色線把私設（`own.private`）提進凍結 system，但重開指紋只算世界書段、沒算私設（`transport/turns.rs:271-276`、`:298-307`；`chat_assembly.rs:377-383`）；私設含動態巨集時同樣每輪走補丁疊加。

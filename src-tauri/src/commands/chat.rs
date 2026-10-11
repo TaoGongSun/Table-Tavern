@@ -216,6 +216,10 @@ pub(crate) async fn chat_with_character(
                 single_owner: shape.single_owner.then(|| card.id.clone()),
                 has_state_block: turn.has_state_block,
                 hoisted_worldbook: turn.hoisted_worldbook,
+                tail_worldbook: turn.tail_worldbook,
+                // Hoist::All 的線世界書在 system，尾段沒有世界書，不累計（看線的形狀，不看欄位巧合）
+                tail_tracked: !shape.hoist_private,
+                capacity: path.budget,
             },
             Some(&mut cancel),
             emit,
@@ -316,10 +320,11 @@ async fn gm_lane_reply(
     echo: lanes::ReplyEcho,
     lang: &str,
     provider: lanes::LaneProvider,
+    capacity: Option<world_scan::Budget>,
     cancel: Option<&mut inflight::CancelSignal>,
     emit: impl FnMut(&str),
 ) -> Result<lanes::TurnOutcome, String> {
-    let (frozen, tail) = chat_assembly::gm_lane_parts(materials, scan, scope, instruction, lang);
+    let (frozen, turn) = chat_assembly::gm_lane_parts(materials, scan, scope, instruction, lang);
     let call = prepare_play_lane_call(app, config, transport::gm_tier(config), provider).await?;
     world_scan::landing::land(
         root,
@@ -339,7 +344,7 @@ async fn gm_lane_reply(
             events: &materials.events,
             lang,
             frozen_system: frozen,
-            tail,
+            tail: turn.tail,
             confidential: None,
             prefix: None,
             echo,
@@ -347,6 +352,9 @@ async fn gm_lane_reply(
             single_owner: None,
             has_state_block: false,
             hoisted_worldbook: None,
+            tail_worldbook: turn.tail_worldbook,
+            tail_tracked: true,
+            capacity,
         },
         cancel,
         emit,
@@ -489,6 +497,7 @@ pub(crate) async fn gm_narrate(
             lanes::ReplyEcho::Narration,
             &lang,
             provider,
+            path.budget,
             Some(&mut cancel),
             emit,
         )

@@ -16,6 +16,8 @@
 //! chars 線的私設隔離靠「回合注入機密段→回合後從 session 檔抹掉」維持（案 C，2026-08-03 拍板）；
 //! claude 單角色線改成不抹，隔離靠「含未抹內容的 session 只給同一角色、單角色模式續用」
 //! （`LaneState::unerased_owner`，〔作者裁決 2026-10-07〕）。
+//! 尾段世界書（GM 線、角色共線的公開段）回合後不抹，舊尾段留在歷史吃快取；份數到 8、或至少 4 份且佔
+//! 固定容量 15% 就以 `tail-worldbook` 整線重開壓平（`TailStale`，plans/tail-worldbook-erase.md）。
 
 mod grok_session;
 mod rewrite_failure;
@@ -163,6 +165,66 @@ pub(crate) struct TurnInput<'a> {
     /// 不抹尾段的角色線（Agy 一角一線、claude 單角色）提進凍結 system 的世界書段（`LaneTurn::hoisted_worldbook`）。
     /// 跟上一輪不同就整線重開、不走補丁：補丁回合後不抹，舊世界書會留在 session 歷史裡（方案三之 3）
     pub hoisted_worldbook: Option<String>,
+    /// 本輪尾段世界書原文（`LaneTurn::tail_worldbook`）：回合後留在歷史，成功收尾時累進 `TailStale`
+    pub tail_worldbook: Option<String>,
+    /// 這條線的尾段會帶世界書（GM 線、角色線且非 `Hoist::All`）：舊尾段累積到門檻就重開，
+    /// 舊 lanes.json 沒有計數時也據此重開一次。看線的形狀決定，不看 `tail_worldbook` 有沒有值
+    pub tail_tracked: bool,
+    /// 該路徑的固定容量（`scene_budget::path_limits` 的 total − reserve），比例門檻的分母；None＝上限未知，只看份數
+    pub capacity: Option<crate::world_scan::Budget>,
+}
+
+/// 歷史裡累積的舊尾段世界書（tail-worldbook-erase）：舊尾段先留著吃歷史快取，累積到門檻才整線重開壓平。
+/// 估的是回合後留在歷史裡的那段原文（不含 thinking、reasoning、CLI 附加內容），兩種單位都記，比例照容量單位取。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct TailStale {
+    pub copies: u32,
+    pub tokens: u64,
+    pub bytes: u64,
+}
+
+/// 份數上限：常駐作者註記每輪都在，最多留這麼多份舊注入〔模型判斷·未裁決〕
+const TAIL_STALE_MAX_COPIES: u32 = 8;
+/// 比例門檻至少要這麼多份才觸發，保證兩次重開之間的間隔下限〔作者裁決 2026-10-11〕
+const TAIL_STALE_RATIO_MIN_COPIES: u32 = 4;
+/// 舊尾段佔該路徑固定容量的比例上限（百分比）〔模型判斷·未裁決〕
+const TAIL_STALE_RATIO_PERCENT: f64 = 15.0;
+
+impl TailStale {
+    fn add(&mut self, text: &str) {
+        self.copies += 1;
+        self.tokens += crate::scene_budget::budget_tokens(text);
+        self.bytes += text.len() as u64;
+    }
+
+    fn size(&self, unit: crate::scene_budget::Unit) -> u64 {
+        match unit {
+            crate::scene_budget::Unit::Tokens => self.tokens,
+            crate::scene_budget::Unit::Bytes => self.bytes,
+        }
+    }
+
+    /// 佔容量的百分比；容量未知回 None（不是 0%）
+    fn percent(&self, capacity: Option<crate::world_scan::Budget>) -> Option<f64> {
+        capacity
+            .filter(|capacity| capacity.max > 0.0)
+            .map(|capacity| self.size(capacity.unit) as f64 * 100.0 / capacity.max)
+    }
+}
+
+/// 舊尾段世界書到門檻了沒：份數到上限，或份數夠且佔容量比例到上限。計數未知（升級前的舊線）一律算到。
+fn tail_reopen(state: &LaneState, input: &TurnInput<'_>) -> bool {
+    if !input.tail_tracked {
+        return false;
+    }
+    let Some(stale) = state.tail_stale else {
+        return true;
+    };
+    stale.copies >= TAIL_STALE_MAX_COPIES
+        || (stale.copies >= TAIL_STALE_RATIO_MIN_COPIES
+            && stale
+                .percent(input.capacity)
+                .is_some_and(|percent| percent >= TAIL_STALE_RATIO_PERCENT))
 }
 
 /// 角色線的三個開關＋線名是否分角色（plans/claude-resume-tail-cache.md 三-B-2）。
@@ -292,6 +354,9 @@ struct LaneState {
     /// 上一輪提進凍結 system 的世界書段指紋（`TurnInput::hoisted_worldbook`）；舊檔沒這欄＝沒有
     #[serde(default)]
     hoisted_worldbook: Option<String>,
+    /// 歷史裡累積的舊尾段世界書；舊檔沒這欄＝未知（不是 0），會帶尾段世界書的線遇到就重開一次
+    #[serde(default)]
+    tail_stale: Option<TailStale>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -549,6 +614,8 @@ enum ReopenReason {
     StateBlockGone,
     /// 不抹尾段的線提進 system 的世界書變了（補丁會留在歷史裡，只能重開）
     WorldbookChanged,
+    /// 歷史裡的舊尾段世界書累積到門檻（或計數未知），重開壓平
+    TailWorldbook,
 }
 
 impl ReopenReason {
@@ -567,6 +634,7 @@ impl ReopenReason {
             Self::ModeChanged => "mode-changed",
             Self::StateBlockGone => "state-block-gone",
             Self::WorldbookChanged => "worldbook-changed",
+            Self::TailWorldbook => "tail-worldbook",
         }
     }
 }
@@ -614,6 +682,7 @@ fn next_cache_ttl(
 /// grok 的 system 凍在 session 建立那刻，補丁只是一則 user 訊息、壓不過權重更高的舊 system，
 /// 所以 grok 一有漂移就整線重開（改卡、改世界書都是低頻動作）。GM 線三家都一變就重開：
 /// world.md／卡的動態巨集讓凍結 system 每輪可能變，補丁會在不抹的歷史裡一份份疊上去〔作者裁決 2026-10-11〕。
+/// 歷史裡的舊尾段世界書到門檻（`tail_reopen`）也重開，排在其他原因之後、每個續聊出口之前。
 fn plan_turn(
     state: Option<&LaneState>,
     input: &TurnInput<'_>,
@@ -703,12 +772,23 @@ fn plan_turn(
                 reason: ReopenReason::SystemChanged,
             };
         }
+        if tail_reopen(state, input) {
+            return TurnPlan::Reopen {
+                reason: ReopenReason::TailWorldbook,
+            };
+        }
         return TurnPlan::Resume {
             session_id: state.session_id.clone(),
             base,
             system: state.snapshot.clone(),
             patch: None,
             rebased: false,
+        };
+    }
+    // claude 角色線的兩個續聊出口（追平、補丁）之前
+    if tail_reopen(state, input) {
+        return TurnPlan::Reopen {
+            reason: ReopenReason::TailWorldbook,
         };
     }
     let age = now_epoch.saturating_sub(state.last_call_epoch);
@@ -901,10 +981,10 @@ fn remove_claude_session(call: &LaneCall, session_id: &str) -> Result<(), String
     }
 }
 
-/// GM 線重開前撤掉被取代的 claude session：先從 store 拿掉並落檔，落檔成功才刪檔
+/// 重開前撤掉被取代的 claude session（GM 線；角色線到尾段世界書門檻時）：先從 store 拿掉並落檔，落檔成功才刪檔
 /// （落檔失敗回錯、舊檔留著，磁碟上的舊狀態仍指著它）；刪檔失敗只記帳，store 已不再續用這個 id。
-/// 常重開的 GM 線不這樣清，每輪會留一份整幕逐字稿檔。
-fn retire_claude_gm_session(
+/// 常重開的線不這樣清，每次會留一份整幕逐字稿檔。
+fn retire_claude_session(
     call: &LaneCall,
     world_id: &str,
     key: &str,
@@ -1052,10 +1132,25 @@ pub(crate) async fn run_turn(
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
     // 呼叫前採用的快取壽命：過期判斷與帳本診斷都用它，不拿這輪新寫入的時效回頭解釋
     let prior_ttl = prior.map(|state| state.cache_ttl_secs);
+    // 舊尾段計數：續聊那次嘗試沿用，開線（含續聊失敗降級）歸零；帳本記呼叫前（重開時＝清理前）的值
+    let prior_stale = prior.and_then(|state| state.tail_stale);
+    // 不累計的線（Hoist::All）不寫：那裡的 0 沒有資訊
+    let stale_log = prior_stale
+        .filter(|_| input.tail_tracked)
+        .map(|stale| usage_log::StaleTail {
+            copies: stale.copies,
+            size: stale.size(
+                input
+                    .capacity
+                    .map_or(crate::scene_budget::Unit::Tokens, |capacity| capacity.unit),
+            ),
+            capacity: input.capacity.map(|capacity| capacity.max as u64),
+            percent: stale.percent(input.capacity),
+        });
     let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
     // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用。
     // GM 線的舊 claude session 看舊線 provider 清掉（本輪換成 grok／agy 也清）
-    if let (TurnPlan::Reopen { .. }, Some(prior)) = (&plan, prior) {
+    if let (TurnPlan::Reopen { reason }, Some(prior)) = (&plan, prior) {
         let old = prior.session_id.clone();
         if call.provider == LaneProvider::Grok && prior.provider == LaneProvider::Grok.as_str() {
             revoke_grok_lane(
@@ -1067,8 +1162,11 @@ pub(crate) async fn run_turn(
                 &store_path,
                 GrokRevoke::Reopen,
             )?;
-        } else if input.lane == Lane::Gm && prior.provider == LaneProvider::Claude.as_str() {
-            retire_claude_gm_session(call, world_id, &key, &old, &mut store, &store_path)?;
+        } else if prior.provider == LaneProvider::Claude.as_str()
+            && (input.lane == Lane::Gm || matches!(reason, ReopenReason::TailWorldbook))
+        {
+            // 角色線只在到門檻的週期性重開時清（其他原因的角色線重開照舊不刪）
+            retire_claude_session(call, world_id, &key, &old, &mut store, &store_path)?;
         }
     }
     let prompt_tokens = std::sync::atomic::AtomicU64::new(0);
@@ -1095,6 +1193,7 @@ pub(crate) async fn run_turn(
                     system_tokens: usage_log::estimate_tokens(system),
                     system_hash: usage_log::text_hash(system),
                     ttl_secs: prior_ttl,
+                    stale: stale_log,
                 };
                 (
                     session_id.clone(),
@@ -1117,6 +1216,7 @@ pub(crate) async fn run_turn(
                     system_tokens: usage_log::estimate_tokens(&system),
                     system_hash: usage_log::text_hash(&system),
                     ttl_secs: None,
+                    stale: stale_log,
                 };
                 (new_session_id(), 0, true, system, None, lane_log)
             }
@@ -1203,6 +1303,11 @@ pub(crate) async fn run_turn(
                 unerased_owner: input.single_owner.clone(),
                 had_state_block: input.single_owner.is_some() && input.has_state_block,
                 hoisted_worldbook: worldbook_fingerprint(input.hoisted_worldbook.as_deref()),
+                // 本輪那份只在成功收尾時累加
+                tail_stale: Some(match opening {
+                    true => TailStale::default(),
+                    false => prior_stale.unwrap_or_default(),
+                }),
             },
         );
         write_store(&store_path, &store)?;
@@ -1401,6 +1506,9 @@ pub(crate) async fn run_turn(
                             state.session_id = actual_session_id;
                             state.pending_rewrite = None;
                             state.expected_reply = Some(expected_reply_for(&input.echo, &reply));
+                            if let Some(worldbook) = &input.tail_worldbook {
+                                state.tail_stale.get_or_insert_default().add(worldbook);
+                            }
                             state.last_prompt_tokens =
                                 prompt_tokens.load(std::sync::atomic::Ordering::Relaxed);
                             // claude 要這次回報辨識得出實際模型才記校正（身分不明就不記）
@@ -1482,7 +1590,7 @@ pub(crate) async fn run_turn(
                         GrokRevoke::Drop("resume-failed"),
                     )?;
                 } else if call.provider == LaneProvider::Claude && input.lane == Lane::Gm {
-                    retire_claude_gm_session(
+                    retire_claude_session(
                         call,
                         world_id,
                         &key,

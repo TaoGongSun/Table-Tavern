@@ -8,7 +8,7 @@ use super::messages::{
 
 use super::arrivals::{prompt_speaker, prompt_text, Side};
 
-use super::context::{gm_system_prompt, gm_worldbook, player_heading};
+use super::context::{gm_system_prompt, gm_worldbook, player_heading, worldbook_heading};
 use super::worldbook::section_body;
 
 use super::state_view::{character_state_block, gm_dynamic_block, StateScope};
@@ -27,6 +27,9 @@ pub struct LaneTurn {
     pub hoisted_worldbook: Option<String>,
     /// tail 含本輪角色狀態區塊（claude 單角色線靠它偵測整塊消失）
     pub has_state_block: bool,
+    /// tail 裡本輪尾段世界書那段原文（GM＝世界書段含段標；角色線＝公開段）。回合後不抹、留在歷史，
+    /// 續聊線靠它累計舊尾段、到門檻重開（tail-worldbook-erase）。`Hoist::All` 與沒有尾段世界書時 None
+    pub tail_worldbook: Option<String>,
 }
 
 /// 角色回合的世界書與私設要不要提進凍結 system（方案三之 3）。
@@ -255,6 +258,7 @@ pub fn chars_lane_turn(
     let mut confidential = String::new();
     let mut hoisted = String::new();
     let mut hoisted_worldbook = None;
+    let tail_worldbook = (hoist != Hoist::All && !public.is_empty()).then(|| public.clone());
     if !profiles.is_empty() && hoist != Hoist::All {
         confidential.push_str(&profiles);
     }
@@ -340,6 +344,7 @@ pub fn chars_lane_turn(
         hoisted_private: (!hoisted.is_empty()).then_some(hoisted),
         hoisted_worldbook,
         has_state_block,
+        tail_worldbook,
     }
 }
 
@@ -379,6 +384,13 @@ pub fn gm_lane_turn(
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
     let worldbook = section_body(&gm_worldbook(scan).tail, lang);
+    // 與 gm_dynamic_block 開頭那段逐字相同（段標＋本文）
+    let tail_worldbook = (!worldbook.is_empty()).then(|| {
+        format!(
+            "{}{worldbook}",
+            worldbook_heading(lang).trim_start_matches('\n')
+        )
+    });
     let dynamic = gm_dynamic_block(&worldbook, state, user_name, mechanism, scope, lang);
     let mut tail = String::new();
     if !dynamic.is_empty() {
@@ -392,6 +404,7 @@ pub fn gm_lane_turn(
         hoisted_private: None, // GM 線沒有「本輪角色的私設」這個概念
         hoisted_worldbook: None,
         has_state_block: false,
+        tail_worldbook,
     }
 }
 
@@ -811,6 +824,101 @@ mod tests {
         assert!(turn.tail.contains("寶箱情報內容"));
         assert!(turn.tail.contains("地點：酒館"));
         assert!(turn.tail.ends_with("（導演指示）請插入旁白。"));
+    }
+
+    /// 尾段世界書（tail-worldbook-erase）：交出的那段與 tail 裡逐字相同、恰好一次；不在機密段裡（回合後留在歷史）。
+    /// `Hoist::All` 的線世界書在 system，尾段沒有世界書段，必為 None；沒有尾段條目時也是 None。
+    #[test]
+    fn tail_worldbook_is_the_exact_public_segment_left_in_history() {
+        use crate::transport::test_support::legacy::scan_of;
+        use crate::world_scan::Viewer;
+        let fox = card("fox-id", "狐狸", "旅店老闆", "其實是通緝犯");
+        let events = [event(TranscriptKind::Player, "", "阿濤", "打開寶箱")];
+        let entries = [
+            worldbook_entry(1, "公開常識", &[], true, 0, false, Visibility::Public),
+            worldbook_entry(
+                2,
+                "寶箱情報",
+                &["寶箱"],
+                false,
+                0,
+                false,
+                Visibility::Public,
+            ),
+        ];
+        let cards = std::slice::from_ref(&fox);
+        let scan = scan_of(
+            &entries,
+            Viewer::Character(&fox),
+            cards,
+            None,
+            &events,
+            "zh-TW",
+        );
+        let run = |hoist| {
+            super::chars_lane_turn(
+                &fox,
+                cards,
+                None,
+                &scan,
+                &TableState::default(),
+                &Mechanism::default(),
+                None,
+                "zh-TW",
+                hoist,
+            )
+        };
+        let shared = run(Hoist::None);
+        let worldbook = shared.tail_worldbook.expect("公開觸發條目是尾段世界書");
+        assert!(worldbook.contains("寶箱情報內容"));
+        assert_eq!(shared.tail.matches(worldbook.as_str()).count(), 1);
+        let confidential = shared.confidential.expect("私設在機密段");
+        assert!(!confidential.contains("寶箱情報"));
+        assert!(run(Hoist::All).tail_worldbook.is_none());
+        let quiet = [event(TranscriptKind::Player, "", "阿濤", "坐下")];
+        let scan = scan_of(
+            &entries,
+            Viewer::Character(&fox),
+            cards,
+            None,
+            &quiet,
+            "zh-TW",
+        );
+        let none = super::chars_lane_turn(
+            &fox,
+            cards,
+            None,
+            &scan,
+            &TableState::default(),
+            &Mechanism::default(),
+            None,
+            "zh-TW",
+            Hoist::None,
+        );
+        assert!(none.tail_worldbook.is_none());
+
+        let mut state = TableState::default();
+        state.table.insert("place".to_owned(), "酒館".to_owned());
+        let gm = |events: &[TranscriptEvent]| {
+            gm_lane_turn(
+                events,
+                &entries,
+                None,
+                &state,
+                &Mechanism::default(),
+                &StateScope::default(),
+                "請推進。",
+                "zh-TW",
+            )
+        };
+        let turn = gm(&events);
+        let worldbook = turn.tail_worldbook.expect("GM 尾段世界書段");
+        assert!(worldbook.starts_with("## 世界書"));
+        assert!(worldbook.contains("寶箱情報內容"));
+        assert!(!worldbook.contains("酒館")); // 目前狀態不算世界書
+        assert!(turn.tail.starts_with(worldbook.as_str()));
+        assert_eq!(turn.tail.matches(worldbook.as_str()).count(), 1);
+        assert!(gm(&quiet).tail_worldbook.is_none());
     }
 
     #[test]
