@@ -4,7 +4,6 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
-- [takeover-text-field-delta](tasks/takeover-text-field-delta.md) — 重構接管：文字欄位被下數值增減 — 下一步：未排程
 - [mechanism-error-feedback](tasks/mechanism-error-feedback.md) — 路徑不存在、對分支增減等錯誤也回饋給 GM — 下一步：未排程
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕
 - [takeover-opening-statusbar-branch](tasks/takeover-opening-statusbar-branch.md) — 重構接管：開場白狀態欄解析成多餘分支 — 下一步：未排程

@@ -14,6 +14,8 @@ mod types;
 pub(crate) mod upstream_set;
 
 #[cfg(test)]
+mod feedback_e2e_tests;
+#[cfg(test)]
 mod test_support;
 
 #[cfg(test)]
