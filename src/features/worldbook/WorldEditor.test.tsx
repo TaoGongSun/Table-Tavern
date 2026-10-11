@@ -175,7 +175,7 @@ describe("WorldEditor", () => {
       worldId: "w1",
       generation: 1,
       ids: [],
-      undoChanges: [{ changed: [], deleted: [7] }],
+      entryChanges: [{ changed: [], deleted: [7] }],
     };
 
     async function openOutcome() {

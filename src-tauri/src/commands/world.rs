@@ -160,6 +160,7 @@ pub(crate) async fn import_worldbook(
         book: imported.value,
         source: imported.source,
         image_dropped: imported.image_dropped,
+        widened_entries: imported.widened_entries,
     })
 }
 
@@ -171,6 +172,8 @@ pub(crate) struct WorldbookImportResult {
     source: Option<String>,
     /// PNG 世界書卡的圖救不回、GM 圖沒存成
     image_dropped: bool,
+    /// 被合併擴大了可見度的既有條目 uid：開著的世界設定據此定基草稿
+    widened_entries: Vec<u64>,
 }
 
 /// 選項以中性求值換好巨集給玩家挑（不寫變數）；貼出時後端從原檔重新完整求值（`post_opening`）。

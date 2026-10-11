@@ -50,6 +50,7 @@ function Harness() {
     refreshState: noop,
     isTurnRunning: () => false,
     onError: (message) => message && errors.push(message),
+    onWorldbookChanged: () => {},
     onRefactorCard: () => {},
   });
   return null;

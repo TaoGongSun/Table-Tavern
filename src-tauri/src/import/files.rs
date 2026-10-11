@@ -16,12 +16,23 @@ use std::path::Path;
 /// 沒留收據（什麼都沒新增）或記帳失敗時是 None。
 /// `image_dropped`：卡圖（角色圖或 GM 圖）救不回、沒存成，前端要提示。
 /// `book`／`book_failed`：角色卡路的隨身世界書收編數字／卡帶了書卻沒匯成（世界書路的數字在 `value`）。
+/// `widened_entries`：被這次合併擴大了可見度的既有條目 uid（只動來源卡的不算）：開著的世界設定據此定基草稿。
 pub struct Imported<T> {
     pub value: T,
     pub source: Option<String>,
     pub image_dropped: bool,
     pub book: Option<WorldbookImport>,
     pub book_failed: bool,
+    pub widened_entries: Vec<u64>,
+}
+
+/// 收據的可見度還原清單裡，可見度真的被改的條目（每條 uid 在清單裡本來就只出現一次）。
+fn widened_entries(restores: &[data::VisibilityRestore]) -> Vec<u64> {
+    restores
+        .iter()
+        .filter(|restore| restore.after_visibility != restore.before_visibility)
+        .map(|restore| restore.uid)
+        .collect()
 }
 
 /// 寫標記並存原檔；原檔存不進去時什麼都還沒動，標記收掉再回錯。
@@ -77,6 +88,7 @@ pub fn import_worldbook_file(
         super::import_mechanism(root, world_id, &book);
     }
     super::import_card_extension(root, world_id, label, bytes);
+    let widened = widened_entries(&book.restores);
     let recorded = receipts::record_worldbook_import(
         root,
         world_id,
@@ -96,6 +108,7 @@ pub fn import_worldbook_file(
         image_dropped: gm_image == super::GmImage::Dropped,
         book: None,
         book_failed: false,
+        widened_entries: widened,
     })
 }
 
@@ -122,6 +135,7 @@ pub fn import_character_file(
         Some(book) => (Some(book.summary), book.restores),
         None => (None, Vec::new()),
     };
+    let widened = widened_entries(&restores);
     let recorded = receipts::record_character_import(
         root,
         world_id,
@@ -142,6 +156,7 @@ pub fn import_character_file(
         image_dropped,
         book: summary,
         book_failed,
+        widened_entries: widened,
     })
 }
 

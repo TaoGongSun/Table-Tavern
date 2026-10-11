@@ -62,6 +62,7 @@ function Harness({ world }: { world: string }) {
     refreshState: noop,
     isTurnRunning: () => turn.running,
     onError: (message) => message && errors.push(message),
+    onWorldbookChanged: () => {},
     onRefactorCard: () => {},
   });
   chat = useChatController({

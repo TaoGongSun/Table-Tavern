@@ -16,7 +16,7 @@ import {
   type Ledger,
   type LedgerEntry,
   type PendingRebase,
-  type UndoEntryChanges,
+  type EntryChanges,
   type WorldbookDraft,
 } from "./worldbook-model";
 
@@ -56,7 +56,7 @@ export function useWorldbookEditor({
     setDraftState(next);
   }
   const { draft, origin: draftOrigin, seq: draftSeq } = draftState;
-  // 撤銷匯入報來、還沒套到草稿上的改動；之後任一次成功且最新的條目重讀套用後才清
+  // 撤銷匯入或匯入合併報來、還沒套到草稿上的改動；之後任一次成功且最新的條目重讀套用後才清
   const pendingRebase = useRef<PendingRebase | null>(null);
 
   // 三種重讀各自編號：換桌或後發的重讀已送出時，晚到的舊回應丟掉
@@ -151,9 +151,9 @@ export function useWorldbookEditor({
   }
 
   /** 世界設定的通知：確定已刪的角色從開著的草稿與它的原樣快照拿掉（不製造新的未儲存，玩家其餘改動照留）；
-   * 撤銷匯入的條目改動排進待定基，等條目重讀成功時套用；撤銷時讀不到世界書（null）就直接關掉既有條目草稿
+   * 撤銷匯入與匯入合併的條目改動排進待定基，等條目重讀成功時套用；撤銷時讀不到世界書（null）就直接關掉既有條目草稿
    * （無從判斷，罕見不嚴防）。再重讀條目、勾選名單與帳本。後端存條目時另有防線，這裡只求畫面一致。 */
-  async function applyWorldChange(removed: string[], undoChanges: (UndoEntryChanges | null)[]) {
+  async function applyWorldChange(removed: string[], entryChanges: (EntryChanges | null)[]) {
     if (removed.length > 0) {
       updateDraft((current) => {
         if (current.draft === null) return current;
@@ -166,7 +166,7 @@ export function useWorldbookEditor({
         return { ...current, draft: pruneDraftCharacters(current.draft, removed), origin };
       });
     }
-    for (const changes of undoChanges) {
+    for (const changes of entryChanges) {
       if (changes === null) {
         updateDraft((current) =>
           current.draft !== null && current.draft.uid !== null ? { ...current, ...CLOSED } : current,
@@ -213,7 +213,7 @@ export function useWorldbookEditor({
   // 找不到該 uid 就跳過（條目已被刪，不是這裡的錯）。
   async function toggleLedgerEntry(ledgerEntry: LedgerEntry) {
     setMessage("");
-    // 撤銷重讀的空窗裡清單可能還是舊的：先等定基與進行中的重讀，再從最新清單取整條
+    // 撤銷／匯入重讀的空窗裡清單可能還是舊的：先等定基與進行中的重讀，再從最新清單取整條
     if (!(await awaitPendingRebase())) return;
     await readInFlight.current?.catch(() => {});
     const target = entriesRef.current.find((entry) => entry.uid === ledgerEntry.uid);

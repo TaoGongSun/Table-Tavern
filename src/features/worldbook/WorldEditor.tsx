@@ -42,7 +42,7 @@ export function WorldEditor({
   /** 陣容欄交過來的重構卡 PNG：只接同一桌的、每個世代只接一次 */
   pendingRefactorCard: PendingRefactorCard | null;
   onPendingRefactorCardTaken: (generation: number) => void;
-  /** 刪角色、撤銷匯入的通知：開著時重讀並修剪／定基草稿，不重新掛載（草稿留著） */
+  /** 刪角色、匯入、撤銷匯入的通知：開著時重讀並修剪／定基草稿，不重新掛載（草稿留著） */
   worldChange: WorldChange | null;
   onWorldChangeTaken: (worldId: string, generation: number) => void;
 }) {
@@ -94,7 +94,7 @@ export function WorldEditor({
     if (worldChange.generation <= seenChange.current) return;
     seenChange.current = worldChange.generation;
     onWorldChangeTaken(worldChange.worldId, worldChange.generation);
-    void worldbook.applyWorldChange(worldChange.ids, worldChange.undoChanges);
+    void worldbook.applyWorldChange(worldChange.ids, worldChange.entryChanges);
   }, [worldChange, world]);
 
   useEffect(() => {

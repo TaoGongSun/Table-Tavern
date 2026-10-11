@@ -182,7 +182,7 @@ describe("WorldEditor after a character is deleted", () => {
     await typeInto(entryContent(), "新條目草稿");
     backend.calls = [];
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     expect(worldText().value).toBe("改過的世界");
     expect(entryContent().value).toBe("新條目草稿");
     expect(commands("read_worldbook")).toHaveLength(1);
@@ -195,7 +195,7 @@ describe("WorldEditor after a character is deleted", () => {
     await mount();
     await openEntry(1);
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     expect(checkedCast()).toEqual(["甲:true"]);
     expect(await leave()).toBe(true);
     expect(upserts()).toHaveLength(0);
@@ -206,7 +206,7 @@ describe("WorldEditor after a character is deleted", () => {
     await openEntry(2);
     await typeInto(entryContent(), "改過的內文");
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     expect(entryContent().value).toBe("改過的內文");
     expect(await leave()).toBe(true);
     expect(upserts()).toHaveLength(1);
@@ -222,7 +222,7 @@ describe("WorldEditor after a character is deleted", () => {
     )!;
     await act(async () => boxB.click());
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     expect(await leave()).toBe(true);
     expect(upserts()).toHaveLength(0);
   });
@@ -232,7 +232,7 @@ describe("WorldEditor after a character is deleted", () => {
     await openEntry(3);
     await typeInto(entryContent(), "改過");
     backendDeletes("A");
-    await notify({ worldId: "w1", generation: 1, ids: ["A"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["A"], entryChanges: [] });
     expect(await leave()).toBe(true);
     expect(upserts()[0].visibility).toEqual({ type: "characters", characters: [PLAYER, "B"] });
   });
@@ -247,12 +247,12 @@ describe("WorldEditor after a character is deleted", () => {
         release = () => resolve(stale);
       });
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     await typeInto(entryContent(), "重讀途中打的字");
     // 第二次通知的重讀先回來，第一次的舊回應晚到要丟掉
     const fresh = book;
     backend.handlers.read_worldbook = () => fresh;
-    await notify({ worldId: "w1", generation: 2, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 2, ids: ["B"], entryChanges: [] });
     await act(async () => release());
     expect(entryContent().value).toBe("重讀途中打的字");
     expect(host!.textContent).not.toContain("舊回應");
@@ -270,7 +270,7 @@ describe("WorldEditor after a character is deleted", () => {
     backend.handlers.list_characters = () => {
       throw "讀不到名單";
     };
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     expect(host!.textContent).toContain("讀不到");
     expect(entryContent().value).toBe("改過");
     // 自動存完會重讀清單：讓它讀得到，只驗送出的內容
@@ -283,16 +283,16 @@ describe("WorldEditor after a character is deleted", () => {
     await mount();
     await openEntry(1);
     await typeInto(entryContent(), "改過");
-    await notify({ worldId: "w2", generation: 1, ids: ["A", "B"], undoChanges: [] });
+    await notify({ worldId: "w2", generation: 1, ids: ["A", "B"], entryChanges: [] });
     expect(taken).not.toHaveBeenCalled();
-    await notify({ worldId: "w1", generation: 2, ids: ["B"], undoChanges: [] });
-    await notify({ worldId: "w1", generation: 3, ids: ["A"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 2, ids: ["B"], entryChanges: [] });
+    await notify({ worldId: "w1", generation: 3, ids: ["A"], entryChanges: [] });
     expect(await leave()).toBe(true);
     expect(upserts()[0].visibility).toEqual({ type: "gm" });
   });
 
   it("takes but does not apply a notice that was already there when it mounted", async () => {
-    await mount({ worldId: "w1", generation: 5, ids: ["B"], undoChanges: [] });
+    await mount({ worldId: "w1", generation: 5, ids: ["B"], entryChanges: [] });
     expect(commands("read_worldbook")).toHaveLength(1);
     expect(taken).toHaveBeenCalledWith("w1", 5);
     await openEntry(1);
@@ -313,7 +313,7 @@ describe("WorldEditor after a character is deleted", () => {
     backend.handlers.mechanism_ledger = () => ledgerWith(1, "E1");
     await mount();
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     const toggle = host!.querySelector<HTMLInputElement>(".mechanism-ledger-toggle input")!;
     await act(async () => toggle.click());
     expect(upserts()).toHaveLength(1);
@@ -329,11 +329,11 @@ describe("WorldEditor after a character is deleted", () => {
     backend.handlers.mechanism_ledger = () =>
       new Promise((resolve) => (pending.ledger = () => resolve(ledgerWith(9, "舊帳本"))));
     backendDeletes("B");
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     const freshCast = cast;
     backend.handlers.list_characters = () => freshCast;
     backend.handlers.mechanism_ledger = () => ledgerWith(1, "新帳本");
-    await notify({ worldId: "w1", generation: 2, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 2, ids: ["B"], entryChanges: [] });
     await act(async () => {
       pending.cast?.();
       pending.ledger?.();
@@ -351,10 +351,10 @@ describe("WorldEditor after a character is deleted", () => {
       new Promise((_, reject) => (pending.book = () => reject("舊的世界書錯誤")));
     backend.handlers.list_characters = () =>
       new Promise((_, reject) => (pending.cast = () => reject("舊的名單錯誤")));
-    await notify({ worldId: "w1", generation: 1, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 1, ids: ["B"], entryChanges: [] });
     backend.handlers.read_worldbook = () => book;
     backend.handlers.list_characters = () => cast;
-    await notify({ worldId: "w1", generation: 2, ids: ["B"], undoChanges: [] });
+    await notify({ worldId: "w1", generation: 2, ids: ["B"], entryChanges: [] });
     await act(async () => {
       pending.book?.();
       pending.cast?.();
