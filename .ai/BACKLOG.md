@@ -5,6 +5,7 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
 - [mechanism-error-feedback](tasks/mechanism-error-feedback.md) — 路徑不存在、對分支增減等錯誤也回饋給 GM — 下一步：未排程
+- [mvu-array-index-path](tasks/mvu-array-index-path.md) — 未重構 MVU 卡陣列索引路徑（/HP/0）照上游支援 — 下一步：未排程
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕
 - [statusbar-yaml-list-flatten](tasks/statusbar-yaml-list-flatten.md) — 未重構桌狀態欄 YAML 清單攤平只剩最後一筆 — 下一步：未排程
 - [refactor-silent-skips](tasks/refactor-silent-skips.md) — 重構路徑其餘靜默略過（讀原卡失敗、略過角色、取消無回饋） — 下一步：未排程
