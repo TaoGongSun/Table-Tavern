@@ -83,7 +83,7 @@ lanes/mod.rs 模組註解寫的「命中率天花板＝只有最後一句沒中�
 3. **記錄**
    - `LaneState` 新增 `unerased_owner: Option<String>`（角色 id），`#[serde(default)]`。
    - 舊 lanes.json 缺這個欄位時讀成 None，等於照舊每輪抹；整份 store 照常反序列化。
-   - 只有 **claude 角色線**會寫 owner；agy、grok、GM 一律寫 None（`had_state_block` 也一律 false），所以 B-4 第 2～4 項不會套到它們。agy 的隔離靠分角色的 lane key，不靠這兩個欄位。
+   - 只有 **claude 角色線**會寫 owner；agy、grok、GM 一律寫 None，所以 B-4 第 2～3 項（換人、換模式）不會套到它們。agy 的隔離靠分角色的 lane key。`had_state_block` 只在不抹尾段的角色線寫（claude 單角色、agy 一角一線），狀態區塊消失照 B-4 第 4 項重開（plans/agy-state-block-gone-reopen.md）；grok、GM 恆 false。
    - claude 角色線每次嘗試在呼叫前寫 store 時一併寫入：
      - 單角色模式（開線或續用皆同）：寫開口者 id，私設是空的也一樣寫；前線 owner 為 None 而續用時也是在這一刻記下新 owner；
      - 多角色模式（開線，或續用 owner 為 None 的既有抹寫線）：寫 None。
@@ -164,7 +164,7 @@ lanes/mod.rs 模組註解寫的「命中率天花板＝只有最後一句沒中�
   - 前線 owner 為 None＋單角色 → Resume，呼叫前記下新 owner；
   - 前線 owner＝X、本輪同一人但狀態區塊從有到無 → StateBlockGone（不被同人續用短路）；
   - 判定順序照 B-4，pending 等既有條件優先；
-  - agy 單角色線（一角一線）遇到狀態區塊消失、在場變多：照舊不重開，owner 與 `had_state_block` 恆為 None／false；
+  - agy 一角一線：在場變多照舊續用、owner 恆為 None；狀態區塊從有到無以 StateBlockGone 重開；
   - 私設改字且在 TTL 內 → Resume 帶補丁；
   - 私設在 TTL 外 → rebased Resume。
   - 私設要涵蓋新增、修改、清空三種，以及更新後換角。
