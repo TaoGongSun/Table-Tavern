@@ -9,6 +9,7 @@ use super::tree::{
 use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
 use super::upstream_set::{is_vwd, upstream_set, TypedView, Val};
 
+mod array;
 mod hint;
 
 // ---------------------------------------------------------------------
@@ -95,11 +96,18 @@ fn apply_one(
         ));
         return false;
     }
+    // 沒重構 MVU 卡：路徑進到陣列（`/HP/0`、`/清單/-`）照上游在帶型別視圖上操作，整個陣列寫回葉子
+    if patch.op != PatchOp::Move {
+        if let Some(base) = array::array_field(tree, view, &patch.path) {
+            array::apply(tree, mechanism, patch, base, view, records, changes);
+            return false;
+        }
+    }
     match patch.op {
         PatchOp::Delta => apply_delta(tree, mechanism, patch, view, records, changes),
         PatchOp::Replace => apply_replace(tree, mechanism, patch, view, records, changes),
         PatchOp::Insert => apply_insert(tree, mechanism, patch, view, records, changes),
-        PatchOp::Remove => apply_remove(tree, mechanism, patch, view, records, changes),
+        PatchOp::Remove => apply_remove(tree, mechanism, patch, records, changes),
         PatchOp::Move => return apply_move(tree, mechanism, patch, view, records, changes),
     }
     false
@@ -116,19 +124,80 @@ pub(super) fn signed_delta_mark(delta: f64) -> String {
 }
 
 /// delta 的增量：數字或數字字串（比上游寬鬆），非有限數（"NaN"、"inf"）不收。
-fn finite_delta(value: Option<&serde_json::Value>) -> Option<f64> {
+pub(super) fn finite_delta(value: Option<&serde_json::Value>) -> Option<f64> {
     value_as_f64(value).filter(|delta| delta.is_finite())
 }
 
 /// 上游 add 的 `parseFloat((a + b).toPrecision(12))`。
-fn to_precision_12(value: f64) -> f64 {
+pub(super) fn to_precision_12(value: f64) -> f64 {
     if !value.is_finite() || value == 0.0 {
         return value;
     }
     format!("{value:.11e}").parse().unwrap_or(value)
 }
 
-/// `[值, 說明]` 的 delta：第 0 項加增量、說明不動；明確規則有範圍就夾（與本 app 數字欄一致）。
+/// `[值, 說明]` 的 delta 算出來的結果：新值、增量、夾值前後。
+pub(super) struct VwdDelta {
+    pub(super) value: Val,
+    pub(super) delta: f64,
+    raw: f64,
+    next: f64,
+}
+
+impl VwdDelta {
+    /// 被夾到範圍內時的記錄（結果是非有限數不算夾值）。
+    pub(super) fn clamped(&self, path_str: &str) -> Option<Record> {
+        (self.next != self.raw && self.raw.is_finite()).then(|| {
+            Record::new(
+                RecordKind::Clamped,
+                path_str.to_owned(),
+                format!(
+                    "{path_str} 已夾在範圍內，目前值 {}。",
+                    format_num(self.next)
+                ),
+            )
+        })
+    }
+}
+
+/// `[值, 說明]` 的 delta 計算：第 0 項加增量、說明不動；明確規則有範圍就夾（與本 app 數字欄一致）。
+/// `shown` 是句中印的路徑；擋下時回拒收句。
+pub(super) fn vwd_delta_value(
+    rule: &FieldRule,
+    shown: &str,
+    items: &[Val],
+    value: Option<&serde_json::Value>,
+) -> Result<VwdDelta, String> {
+    if let Some(detail) = hint::guard_refusal(rule, shown) {
+        return Err(detail);
+    }
+    let Val::Num(first) = items[0] else {
+        return Err(format!(
+            "{shown} 的第 0 項不是數字，不能 delta；replace 它只會改第 0 項（目前「{}」）。",
+            hint::first_item_text(&items[0])
+        ));
+    };
+    let Some(delta) = finite_delta(value) else {
+        return Err(format!(
+            "{shown} 是數字欄，delta 的值要是純數字增減量（例 5、-10）。"
+        ));
+    };
+    let raw = to_precision_12(first + delta);
+    let mut next = raw;
+    if let Some(min) = rule.min {
+        next = next.max(min);
+    }
+    if let Some(max) = rule.max {
+        next = next.min(max);
+    }
+    Ok(VwdDelta {
+        value: Val::Arr(vec![Val::Num(next), items[1].clone()]),
+        delta,
+        raw,
+        next,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn vwd_delta(
     tree: &mut BTreeMap<String, StateNode>,
@@ -140,53 +209,24 @@ fn vwd_delta(
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
-    let reject = |records: &mut Vec<Record>, detail: String| {
-        records.push(Record::new(
-            RecordKind::Rejected,
-            path_str.to_owned(),
-            detail,
-        ));
-    };
     let shown = shown_pointer(&patch.path);
-    if let Some(detail) = hint::guard_refusal(rule, &shown) {
-        return reject(records, detail);
-    }
-    let Val::Num(first) = items[0] else {
-        return reject(
-            records,
-            format!(
-                "{shown} 的第 0 項不是數字，不能 delta；replace 它只會改第 0 項（目前「{}」）。",
-                hint::first_item_text(&items[0])
-            ),
-        );
+    let result = match vwd_delta_value(rule, &shown, items, patch.value.as_ref()) {
+        Ok(result) => result,
+        Err(detail) => {
+            records.push(Record::new(
+                RecordKind::Rejected,
+                path_str.to_owned(),
+                detail,
+            ));
+            return;
+        }
     };
-    let Some(delta) = finite_delta(patch.value.as_ref()) else {
-        return reject(
-            records,
-            format!("{shown} 是數字欄，delta 的值要是純數字增減量（例 5、-10）。"),
-        );
-    };
-    let raw = to_precision_12(first + delta);
-    let mut next = raw;
-    if let Some(min) = rule.min {
-        next = next.max(min);
-    }
-    if let Some(max) = rule.max {
-        next = next.min(max);
-    }
-    let value = Val::Arr(vec![Val::Num(next), items[1].clone()]);
-    if insert_node(tree, &patch.path, value.node()).is_err() {
+    if insert_node(tree, &patch.path, result.value.node()).is_err() {
         return;
     }
-    view.set(&patch.path, &value);
-    changes.insert(path_str.to_owned(), signed_delta_mark(delta));
-    if next != raw && raw.is_finite() {
-        records.push(Record::new(
-            RecordKind::Clamped,
-            path_str.to_owned(),
-            format!("{path_str} 已夾在範圍內，目前值 {}。", format_num(next)),
-        ));
-    }
+    view.set(&patch.path, &result.value);
+    changes.insert(path_str.to_owned(), signed_delta_mark(result.delta));
+    records.extend(result.clamped(path_str));
 }
 
 fn readonly_violation(patch: &Patch) -> Option<&[String]> {
@@ -210,13 +250,7 @@ fn apply_delta(
     let path_str = patch.path.join(".");
     let current = match data::node_at(tree, &patch.path) {
         None => {
-            records.push(hint::missing(
-                tree,
-                mechanism,
-                view,
-                &patch.path,
-                PatchOp::Delta,
-            ));
+            records.push(hint::missing(tree, mechanism, &patch.path, PatchOp::Delta));
             return;
         }
         Some(StateNode::Branch(children)) => {
@@ -359,7 +393,6 @@ fn apply_replace(
         records.push(hint::missing(
             tree,
             mechanism,
-            view,
             &patch.path,
             PatchOp::Replace,
         ));
@@ -516,18 +549,27 @@ fn apply_insert(
         );
         return;
     }
-    let node = json_to_node(patch.value.as_ref().unwrap_or(&serde_json::Value::Null));
-    if insert_node(tree, &patch.path, node).is_ok() {
-        changes.insert(path_str, "更新".to_owned());
+    // 沒重構 MVU 卡：新值照 stat_data 投影（陣列是一片葉子、之後走得了索引路徑），標記照上游剝掉
+    let typed = view
+        .is_active()
+        .then(|| array::gm_value(patch.value.as_ref()));
+    let node = match &typed {
+        Some(json) => array::json_node(json),
+        None => json_to_node(patch.value.as_ref().unwrap_or(&serde_json::Value::Null)),
+    };
+    if let Ok(key) = insert_node(tree, &patch.path, node) {
+        // 末段 `-` 在樹上落成實際的鍵（目前沒被用掉的最小整數），視圖與變動標記照實際的鍵寫
+        let mut written = patch.path.clone();
+        if let Some(last) = written.last_mut() {
+            *last = key;
+        }
+        if let Some(json) = typed {
+            view.replace_json(&written, json, Vec::new());
+        }
+        changes.insert(written.join("."), "更新".to_owned());
     } else {
         // 中途撞到葉子（往清單欄 `/神經狀態/-` 插一筆、在單一欄位底下建子欄位）：告訴 GM 該怎麼寫
-        records.push(hint::missing(
-            tree,
-            mechanism,
-            view,
-            &patch.path,
-            PatchOp::Insert,
-        ));
+        records.push(hint::missing(tree, mechanism, &patch.path, PatchOp::Insert));
     }
 }
 
@@ -535,19 +577,12 @@ fn apply_remove(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
     patch: &Patch,
-    view: &TypedView,
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) {
     let path_str = patch.path.join(".");
     if data::node_at(tree, &patch.path).is_none() {
-        records.push(hint::missing(
-            tree,
-            mechanism,
-            view,
-            &patch.path,
-            PatchOp::Remove,
-        ));
+        records.push(hint::missing(tree, mechanism, &patch.path, PatchOp::Remove));
         return;
     }
     // 空字串＝刪除，並沿用 set_tree_value 既有的「因此變空的父分支一併剪掉」行為。
@@ -564,14 +599,12 @@ fn apply_move(
     records: &mut Vec<Record>,
     changes: &mut BTreeMap<String, String>,
 ) -> bool {
+    if let Some(record) = array::move_refusal(tree, view, patch) {
+        records.push(record);
+        return false;
+    }
     let Some(node) = take_node(tree, &patch.from) else {
-        records.push(hint::missing(
-            tree,
-            mechanism,
-            view,
-            &patch.from,
-            PatchOp::Move,
-        ));
+        records.push(hint::missing(tree, mechanism, &patch.from, PatchOp::Move));
         return false;
     };
     let path_str = patch.path.join(".");
@@ -580,17 +613,13 @@ fn apply_move(
         true
     } else {
         let _ = insert_node(tree, &patch.from, node); // 寫不進去就放回原位，不憑空丟資料
-        records.push(hint::missing(
-            tree,
-            mechanism,
-            view,
-            &patch.path,
-            PatchOp::Move,
-        ));
+        records.push(hint::missing(tree, mechanism, &patch.path, PatchOp::Move));
         false
     }
 }
 
+#[cfg(test)]
+mod array_tests;
 #[cfg(test)]
 mod delta_refusal_tests;
 #[cfg(test)]

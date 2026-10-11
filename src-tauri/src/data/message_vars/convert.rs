@@ -223,6 +223,14 @@ fn restore_tree(tree: &Tree, path: &mut Vec<String>, types: &BTreeMap<String, St
     object
 }
 
+/// 葉子文字是帶 MVU 元資料（`$meta`、可擴充標記、`$arrayMeta` 元素）的 JSON 陣列／物件時，回傳剝掉後的文字
+/// （上游初始化時就剝掉；樹模式的 `[initvar]` 逐行解析不經 `clean`，匯入時在這裡補上）。沒有元資料回 None。
+pub fn strip_meta_leaf(text: &str) -> Option<String> {
+    let value = parse_json(text)?;
+    let cleaned = clean(&value, None);
+    (cleaned != value).then(|| leaf_text(&cleaned))
+}
+
 /// 一棵狀態樹 → stat_data（物化）：型別還原、清 metadata、代換巨集。
 pub fn tree_to_stat(
     tree: &Tree,

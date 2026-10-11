@@ -19,7 +19,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 
 pub use control::{control_path, read_control};
-pub use convert::{leaf_text, restore_leaf, Macros, TypedBatch};
+pub use convert::{clean, leaf_text, restore_leaf, strip_meta_leaf, Macros, TypedBatch};
 pub use json::parse as parse_json;
 pub use json::{parse_table, validate_table, Json};
 pub use mode::{ensure_active, handover_to_tree, new_token, refresh_cache};

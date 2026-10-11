@@ -397,14 +397,13 @@ fn hint_pointer_escapes_and_round_trips_through_the_parser() {
 // ---- 沒重構 MVU 卡（Upstream）的陣列 ----
 
 #[test]
-fn upstream_index_paths_explain_vwd_and_plain_arrays() {
+fn upstream_index_paths_apply_to_vwd_and_plain_arrays() {
     let mut tree = tree_from(&[
         ("HP", r#"[50,"生命"]"#),
         ("稱號", r#"["勇者","目前稱號"]"#),
         ("物品", r#"["劍","盾","弓"]"#),
     ]);
     let mechanism = upstream(&[("物品", rule(FieldKind::List, None, None))]);
-    let before = tree.clone();
     let outcome = apply_updates(
         &mut tree,
         &mechanism,
@@ -414,20 +413,15 @@ fn upstream_index_paths_explain_vwd_and_plain_arrays() {
             replace("/物品/1", serde_json::json!("斧")),
         ],
     );
+    assert!(outcome.records.is_empty(), "{:?}", outcome.records);
     assert_eq!(
-        outcome.notes,
-        vec![
-            "/HP 是 [值, 說明] 欄，不能用索引路徑；replace 它只會改第 0 項（值只寫新數字），增減用 delta 它。".to_owned(),
-            "/稱號 依上游規則視為 [值, 說明]：replace 它只會改第 0 項（目前「勇者」）；增刪項目目前不支援。".to_owned(),
-            "/物品 是陣列，目前不支援逐項路徑；請 replace 它，值寫成整個 JSON 陣列（不要加引號）。"
-                .to_owned(),
-        ]
+        tree,
+        tree_from(&[
+            ("HP", r#"[40,"生命"]"#),
+            ("稱號", r#"["魔王","目前稱號"]"#),
+            ("物品", r#"["劍","斧","弓"]"#),
+        ])
     );
-    assert!(outcome.notes[..2]
-        .iter()
-        .all(|note| !note.contains("整個陣列")));
-    assert!(!outcome.notes[1].contains("delta") && !outcome.notes[1].contains("只寫新值"));
-    assert_eq!(tree, before);
 }
 
 #[test]
@@ -518,22 +512,27 @@ fn vwd_delta_with_a_string_value_is_rejected() {
 
 /// 恰好兩個字串的清單照上游當 [值, 說明]：索引、逐項插入、刪除都照實說 replace 只會改第 0 項。
 #[test]
-fn two_string_list_counts_as_vwd_and_the_hint_says_replace_only_touches_the_first_item() {
+fn two_string_list_takes_index_paths_like_any_array() {
     let stat = r#"["劍","盾"]"#;
-    for bad in [
-        replace("/背包/0", serde_json::json!("弓")),
-        replace("/背包/1", serde_json::json!("弓")),
-        patch(PatchOp::Insert, "/背包/-", Some(serde_json::json!("弓"))),
-        patch(PatchOp::Remove, "/背包/0", None),
+    for (op, after) in [
+        (
+            replace("/背包/0", serde_json::json!("弓")),
+            r#"["弓","盾"]"#,
+        ),
+        (
+            replace("/背包/1", serde_json::json!("弓")),
+            r#"["劍","弓"]"#,
+        ),
+        (
+            patch(PatchOp::Insert, "/背包/-", Some(serde_json::json!("弓"))),
+            r#"["劍","盾","弓"]"#,
+        ),
+        (patch(PatchOp::Remove, "/背包/0", None), r#"["盾"]"#),
     ] {
         let mut tree = tree_from(&[("背包", stat)]);
-        let outcome = apply_updates(&mut tree, &upstream(&[]), &[bad]);
-        let note = only_note(&outcome);
-        assert!(
-            note.contains("只會改第 0 項（目前「劍」）") && !note.contains("只寫新值"),
-            "{note}"
-        );
-        assert_eq!(tree, tree_from(&[("背包", stat)]));
+        let outcome = apply_updates(&mut tree, &upstream(&[]), &[op]);
+        assert!(outcome.records.is_empty(), "{:?}", outcome.records);
+        assert_eq!(tree, tree_from(&[("背包", after)]));
     }
 }
 

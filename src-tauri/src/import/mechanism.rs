@@ -502,6 +502,9 @@ fn insert_initial_tree_node(
     if rest.is_empty() {
         match value {
             Some(value) => {
+                // 行內陣列／物件帶 MVU 元資料（`["$__META_EXTENSIBLE__$", "劍"]`）照上游初始化剝掉，索引才對得上
+                // 〔主線裁定，依作者裁決 罕見邊際狀況輕防〕
+                let value = crate::data::message_vars::strip_meta_leaf(&value).unwrap_or(value);
                 children.insert(key.clone(), StateNode::Leaf(value));
             }
             None => {
@@ -580,6 +583,39 @@ mod tests {
         assert_eq!(
             outfit.get("上装"),
             Some(&StateNode::Leaf("白袍".to_owned()))
+        );
+    }
+
+    /// 樹模式 [initvar] 的行內陣列帶 MVU 可擴充標記：照上游初始化剝掉（索引才對得上），沒有元資料的原文不動。
+    #[test]
+    fn initvar_inline_arrays_drop_mvu_markers() {
+        let root = TestRoot::new("initvar-marker");
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let raw = json!({
+            "data": {
+                "name": "莉亞",
+                "character_book": {
+                    "entries": [{
+                        "comment": "[initvar]变量初始化勿开",
+                        "enabled": false,
+                        "content": "Player:\n  物品: [\"$__META_EXTENSIBLE__$\", \"劍\"]\n  稱號: [\"勇者\", \"說明\"]"
+                    }]
+                }
+            }
+        })
+        .to_string();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW").unwrap();
+        let state = data::read_state(root.path(), &world_id).unwrap();
+        let Some(StateNode::Branch(player)) = state.state.tree.get("Player") else {
+            panic!("缺少 Player 分支");
+        };
+        assert_eq!(
+            player.get("物品"),
+            Some(&StateNode::Leaf(r#"["劍"]"#.to_owned()))
+        );
+        assert_eq!(
+            player.get("稱號"),
+            Some(&StateNode::Leaf(r#"["勇者", "說明"]"#.to_owned()))
         );
     }
 

@@ -14,12 +14,12 @@ pub(super) fn leaf_value(node: &StateNode) -> Option<&str> {
 
 /// 在 path 寫入任意節點（含整棵子樹），缺的中間層自動補成 Branch；
 /// 撞到既有葉子擋路就放棄，回傳 Err 不動樹。路徑最後一段是 `-` 時，
-/// 在該 Branch 用「目前沒被用掉的最小非負整數」當 key 附加。
+/// 在該 Branch 用「目前沒被用掉的最小非負整數」當 key 附加。成功回傳最後一段實際寫入的鍵。
 pub(super) fn insert_node(
     branch: &mut BTreeMap<String, StateNode>,
     path: &[String],
     node: StateNode,
-) -> Result<(), ()> {
+) -> Result<String, ()> {
     let (first, rest) = path.split_first().ok_or(())?;
     if rest.is_empty() {
         let key = if first == "-" {
@@ -27,8 +27,8 @@ pub(super) fn insert_node(
         } else {
             first.clone()
         };
-        branch.insert(key, node);
-        return Ok(());
+        branch.insert(key.clone(), node);
+        return Ok(key);
     }
     let entry = branch
         .entry(first.clone())
