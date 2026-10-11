@@ -33,4 +33,4 @@
 ## 真模型實測（2026-10-11，測試通道，sonnet 重構＋haiku 接管 3 回合，共 7 次呼叫 $0.70）
 - 這次兩條都產出同名 `行動選項`（外框條葉子、定義條清單），舊碼會判衝突；新碼「重構完成・遊戲介面搬進 app」，套用後骨架 maintext→BGM→單一 Status_block。
 - 3 回合：行動選項四項每回合依劇情更新、BGM 第 1 回合換成 z9j13x.mp3、時間地點小地圖跟動；第 2 回合 haiku JSON 少逗號整份無效（同 NorthHall 第 1 回合）。
-- 畫面：原卡「美化状态栏」腳本報 YAML 錯誤。原因不在合併：多行清單值（小地圖元素）填進有縮排的骨架行，只有第一行帶縮排，第二行起頂格→YAML 壞。與 [takeover-text-multiline](../tasks/takeover-text-multiline.md)（行式正文只吃第一段）同一類「多行值填進帶前綴的佔位行」。
+- 畫面：原卡「美化状态栏」腳本報 YAML 錯誤。原因不在合併：骨架的鍵本身是佔位（`{{地圖類型}}:`）被當成純量加引號，已在 [takeover-text-multiline](takeover-text-multiline.md) 修好。
