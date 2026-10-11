@@ -111,7 +111,7 @@
 - 觸發政策〔主線裁決 2026-10-10，第 3 輪審查〕：套用到**所有**沒帶 meta 的 setting 新條目，不論可見度：
   - 只算啟用的來源：`keys`＝啟用來源的主鍵聯集（去重、保留出現順序）；`constant`＝任一啟用來源是 constant；`disabled`＝來源全部停用才停用（此時 keys／constant 改用全部來源計算，維持條目被玩家啟用時的行為）。
   - 理由：新條目內容是從這些來源合成的，「任一啟用的來源會被送出時它就送出」最接近原卡在 ST 的行為。代價：只要有一條啟用的 constant 來源，合成後整條常駐，該條線字數可能比原本多。次要鍵不併（合成後無法保留原本的 AND／NOT 邏輯），列已知限制。
-  - 排除：機制條目（`kind=="mechanism"` 且有 rules 或 triggers，即 `apply.rs:262-263` 判成 locked 的）優先於 meta——重寫路徑會產出帶 meta 的機制條目〔主線裁決 2026-10-10，施工驗收第 1 輪〕——不套觸發政策、也不沿用可見度，維持 `keys=[]`、非常駐、`Gm`。沒勾成卡的人物條目（`:222`，`is_person`）可見度與觸發都維持現行——人物條目走登場機制（`transport/arrivals.rs`）。
+  - 排除：機制條目（`kind=="mechanism"` 且有 rules 或 triggers，即 `apply.rs:262-263` 判成 locked 的）優先於 meta——重寫路徑會產出帶 meta 的機制條目〔主線裁決 2026-10-10，施工驗收第 1 輪〕——可見度一律 `Gm`、不沿用；觸發依 [takeover-mvu-path-mismatch](takeover-mvu-path-mismatch.md) 改法 1：帶欄位規則的照來源觸發（GM 要讀得到欄位怎麼變），只有觸發表的維持 `keys=[]`、非常駐〔主線裁決 2026-10-11〕。沒勾成卡的人物條目（`:222`，`is_person`）可見度與觸發都維持現行——人物條目走登場機制（`transport/arrivals.rs`）。
 - 歸屬與 ST 欄位〔主線裁決 2026-10-10，第 2 輪審查〕：
   - carry 條目（來源通過核對時）：從原始快照整條複製來源 JSON（`keysecondary`、`position`、`selective`、`case_sensitive`、`source_cards`、`source_disable` 等全帶），只換 uid、displayIndex、內文；`locked`、`is_person` 用套用端的判定覆寫，不沿用原始值裡的舊旗標〔主線裁決 2026-10-10，第 3 輪審查〕；可見度取已對上的來源條目**目前**的可見度，不用 `meta.visibility`〔主線裁決 2026-10-10，第 5 輪審查〕——A 桌名單 [A角色] 的 carry 套到 B 桌、反查對到 [B角色] 的同卡條目時才不會被覆寫回 A 桌的 id；同桌 survey 後玩家改了可見度也照這條。要在 data 層加一個「從原始值插入」的入口，因為 `new_entry_value`（`worldbook.rs:344`）只寫精簡欄位。`RefactorEntryMeta`（`refactor_ai/types.rs:216`）不必加欄位，carry 在套用端靠 `source_uids` 對回快照。
   - 合組／AI 重寫的新條目：`source_cards`＝存在來源的聯集；`keysecondary`、`position` 用預設值——已知限制：合成條目匯出時不帶次要鍵與非預設位置。
@@ -152,7 +152,7 @@
     - 角色卡路匯入 → 套用把該卡條目合組成新條目（無 meta）的產物 → 角色線含新條目內容（有啟用的 constant 來源時無觸發也在；全 keyword 來源時命中來源主鍵才在）、來源條目已刪。
     - 混合來源的新條目給 `Gm`：角色線看不到；GM 線（`assemble_gm_messages`）照觸發政策看得到。世界書路重構桌的合組條目同樣在 GM 線出現。
     - 反例：停用的 constant 來源＋啟用的 keyword 來源合組 → 不常駐，只在命中 keyword 時出現；來源全停用 → 新條目停用。
-    - 負向：來源是 `Characters` 常駐條目時，locked 機制條目不進角色線、仍是 `Gm`、非常駐。carry 條目來源原始值帶舊的 `locked`／`is_person` 旗標時，以套用端判定為準。
+    - 負向：來源是 `Characters` 常駐條目時，locked 機制條目不進角色線、仍是 `Gm`（帶欄位規則的照來源觸發，來源常駐才常駐）。carry 條目來源原始值帶舊的 `locked`／`is_person` 旗標時，以套用端判定為準。
     - 跨桌：outcome 帶 `source_fingerprints`，套到另一桌——缺來源時 carry 退回 meta、無 meta 條目退回 `Gm`＋常駐；沒有 `source_fingerprints` 的產物照 UID 對。
     - 同 UID、指紋不符的目標條目：套用前後原樣保留（不刪、不停用、沒有帳本紀錄、不被機制或介面 source_uid 停用），且不複製它的原始 JSON。
     - UID 不同、內容相同（同卡匯到新桌）：反查恰好一條時對上並照常吸收刪除；反查到多條時當核對失敗、全部原樣保留。

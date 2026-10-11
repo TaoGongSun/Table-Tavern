@@ -219,6 +219,10 @@ pub(super) fn fixture() -> Fixture {
                 "Heroes.*.Mood".to_owned(),
                 FieldRule::for_kind(FieldKind::Text),
             ),
+            (
+                "Heroes.騎士.Mood".to_owned(),
+                FieldRule::for_kind(FieldKind::Text),
+            ),
         ]),
         triggers: vec![Trigger {
             id: "mood".to_owned(),

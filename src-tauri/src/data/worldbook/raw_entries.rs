@@ -7,8 +7,8 @@ use super::book_import::{identity_text, source_cards, VisibilityRestore, SOURCE_
 use super::character_scrub::{apply_restore_before, restore_after_matches};
 use super::{
     entries_object, entries_object_mut, entry_uid, entry_view, insert_entry_value, new_entry_value,
-    next_uid, read_worldbook_value, set_is_person, set_locked, sorted_entry_keys, table_tavern_mut,
-    visibility_from_value, write_worldbook_value, Visibility, WorldbookEntry,
+    next_uid, read_worldbook_value, set_is_person, set_locked, set_visibility, sorted_entry_keys,
+    table_tavern_mut, visibility_from_value, write_worldbook_value, Visibility, WorldbookEntry,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -202,4 +202,10 @@ pub fn set_source_cards(value: &mut serde_json::Value, cards: &[String]) {
 pub fn set_entry_flags(value: &mut serde_json::Value, locked: bool, is_person: bool) {
     set_locked(value, locked);
     set_is_person(value, is_person);
+}
+
+/// 機制條目照來源觸發落地時的旗標：可見度固定 GM、非人物條目，locked 依套用端判定。
+pub fn set_mechanism_flags(value: &mut serde_json::Value, locked: bool) {
+    set_entry_flags(value, locked, false);
+    set_visibility(value, &Visibility::Gm);
 }

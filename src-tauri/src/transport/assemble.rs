@@ -139,4 +139,6 @@ pub fn assemble_gm_messages(
 }
 
 #[cfg(test)]
+mod example_tests;
+#[cfg(test)]
 mod tests;

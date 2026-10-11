@@ -143,7 +143,9 @@ pub(crate) async fn refactor_survey(
     let source_fingerprints =
         data::identity_fingerprints(&root, &world_id).map_err(|error| error.to_string())?;
     let signals = refactor_ai::prescan_worldbook(&entries);
-    let messages = refactor_ai::survey_messages(&context, &signals, &lang, &mode);
+    let tree_section =
+        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let messages = refactor_ai::survey_messages(&context, &signals, &lang, &mode, &tree_section);
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let resumed = match (run_id.as_deref(), fingerprint.as_deref()) {
         (Some(rid), Some(fp))
@@ -279,12 +281,15 @@ pub(crate) async fn refactor_expand(
     // 初始值依據：玩家貼出的那則開場白（取自匯入原檔）裡、這條條目的容器區塊
     let opening = import::chosen_opening(&root, &world_id)
         .and_then(|opening| import::opening_blocks_for(&opening, &entry_text));
+    let tree_section =
+        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
     let messages = refactor_ai::expand_messages(
         &context,
         &entry_uid,
         &entry_text,
         entry_kind,
         &known_fields,
+        &tree_section,
         opening.as_deref(),
     );
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
@@ -400,8 +405,16 @@ pub(crate) async fn refactor_absorb_entry(
     let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
         .map_err(|error| error.to_string())?;
     let known_fields = known_fields.unwrap_or_default();
-    let messages =
-        refactor_ai::absorb_messages(&context, &entry_uid, &entry_text, &known_fields, &lang);
+    let tree_section =
+        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let messages = refactor_ai::absorb_messages(
+        &context,
+        &entry_uid,
+        &entry_text,
+        &known_fields,
+        &tree_section,
+        &lang,
+    );
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let raw = tokio::select! {
         biased;
@@ -497,12 +510,15 @@ pub(crate) async fn refactor_split_group(
         }
     }
     let known_fields = known_fields.unwrap_or_default();
+    let tree_section =
+        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
     let messages = refactor_ai::group_messages(
         &context,
         &title,
         group_kind,
         &materials,
         &known_fields,
+        &tree_section,
         &lang,
     );
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
@@ -568,12 +584,15 @@ pub(crate) async fn refactor_expand_spans(
     let known_fields = known_fields.unwrap_or_default();
     let opening = import::chosen_opening(&root, &world_id)
         .and_then(|opening| import::opening_blocks_for(&opening, &material));
+    let tree_section =
+        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
     let messages = refactor_ai::expand_messages(
         &context,
         &entry_uid,
         &material,
         refactor_ai::SPANS_EXPAND_KIND,
         &known_fields,
+        &tree_section,
         opening.as_deref(),
     );
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);

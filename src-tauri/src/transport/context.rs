@@ -1,4 +1,6 @@
-use crate::data::{CharacterCard, Mechanism, NumericUpdate, TranscriptEvent, UpdateMode};
+use crate::data::{
+    CharacterCard, FieldKind, Mechanism, NumericUpdate, TranscriptEvent, UpdateMode,
+};
 use crate::world_scan::{Placed, PromptTexts, WorldScan};
 
 use super::messages::{language_rule, scaffold_en};
@@ -171,6 +173,14 @@ pub(super) fn gm_system_prompt(
             }
             system.push_str("\n\n");
             system.push_str(interface_owned_notice(lang));
+        } else if mechanism.numeric_update == NumericUpdate::DeltaOnly {
+            // 無介面的增量桌（重構過、或非 MVU 來源）：沒有範例 GM 只看得到通用協定的
+            // /Heroes、/World，會照那個樣子自創路徑（DongeonMaster 重構桌實測踩過）。
+            // 未重構 MVU 桌走 Upstream，提示詞逐字不變。
+            if let Some(example) = table_update_example(mechanism, lang) {
+                system.push_str("\n\n");
+                system.push_str(&example);
+            }
         }
     }
     system
@@ -302,18 +312,27 @@ fn delta_only_protocol(lang: &str) -> &'static str {
 }
 
 /// 本桌專屬的更新區塊範例：通用協定的範例路徑（/Heroes、/World）是示意，模型會照抄（實測 Haiku 踩過），
-/// 這裡用本桌欄位規則的真實路徑各示範一筆 delta 與 replace（取規則表排序最前的一筆），格式照協定。
-/// 只跟著 guide 出現（介面接管桌）；規則只在套用時變，凍結快照照樣穩定。
+/// 這裡用本桌欄位規則的真實路徑示範：delta 取排序最前的數字類欄、replace 取排序最前的文字欄，
+/// 含 `*` 的萬用路徑與清單欄不取，找不到就略過那一行。跟著 guide（介面接管桌）或無 guide 的
+/// DeltaOnly 增量桌出現；規則只在套用時變，凍結快照照樣穩定。
 fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
     let pointer = |path: &str| -> String {
         path.split('.')
             .map(|segment| format!("/{}", segment.replace('~', "~0").replace('/', "~1")))
             .collect()
     };
+    let concrete = |path: &str| !path.split('.').any(|segment| segment == "*");
     let delta = mechanism
         .rules
         .iter()
-        .find(|(_, rule)| rule.update == UpdateMode::Delta)
+        .find(|(path, rule)| {
+            concrete(path)
+                && rule.update == UpdateMode::Delta
+                && matches!(
+                    rule.kind,
+                    FieldKind::Number | FieldKind::Pair | FieldKind::Counter
+                )
+        })
         .map(|(path, _)| {
             serde_json::json!({ "op": "delta", "path": pointer(path), "value": -1 }).to_string()
         });
@@ -325,7 +344,9 @@ fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
     let replace = mechanism
         .rules
         .iter()
-        .find(|(_, rule)| rule.update == UpdateMode::Replace)
+        .find(|(path, rule)| {
+            concrete(path) && rule.update == UpdateMode::Replace && rule.kind == FieldKind::Text
+        })
         .map(|(path, _)| {
             serde_json::json!({ "op": "replace", "path": pointer(path), "value": placeholder })
                 .to_string()
