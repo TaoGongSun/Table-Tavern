@@ -119,13 +119,11 @@ fn write_record_file(
 }
 
 pub(crate) fn delete_record(parent: &Path) -> Result<(), String> {
-    let path = parent.join(RECORD_NAME);
-    if !path.exists() {
-        return Ok(());
+    match fs::remove_file(parent.join(RECORD_NAME)) {
+        Ok(()) => sync_dir(parent),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
     }
-    fs::remove_file(&path).map_err(|error| error.to_string())?;
-    sync_dir(parent)?;
-    Ok(())
 }
 
 pub(crate) fn cleanup_residue(
@@ -944,5 +942,24 @@ mod tests {
         let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         gzip.write_all(&raw).unwrap();
         gzip.finish().unwrap()
+    }
+
+    /// 上層沒有搜尋權限：對調紀錄刪不掉，回錯、紀錄還在；沒有紀錄照樣算已刪。
+    #[cfg(unix)]
+    #[test]
+    fn deleting_the_record_behind_an_unsearchable_dir_is_an_error() {
+        let root = TempDir::new("locked");
+        write_record(&root.0, "0.1.0", "0.2.0", Stage::Extracting).unwrap();
+        let record = root.0.join(RECORD_NAME);
+        let Some(result) =
+            crate::test_perm::with_unsearchable(&root.0, &record, || delete_record(&root.0))
+        else {
+            return;
+        };
+        assert!(result.is_err());
+        assert!(record.is_file());
+        delete_record(&root.0).unwrap();
+        delete_record(&root.0).unwrap();
+        assert!(!record.exists());
     }
 }

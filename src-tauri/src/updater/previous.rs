@@ -38,15 +38,18 @@ fn file_path(versions: &Path) -> std::path::PathBuf {
 }
 
 pub(crate) fn read_previous(versions: &Path) -> PreviousState {
-    let path = file_path(versions);
-    if !path.is_file() {
-        return PreviousState::default();
-    }
-    let Ok(text) = fs::read_to_string(&path) else {
-        return PreviousState {
-            unreadable: true,
-            ..PreviousState::default()
-        };
+    let text = match fs::read_to_string(file_path(versions)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return PreviousState::default();
+        }
+        // 查不到在不在（例如版本庫沒有搜尋權限）也算讀不懂，不當成沒有紀錄。
+        Err(_) => {
+            return PreviousState {
+                unreadable: true,
+                ..PreviousState::default()
+            };
+        }
     };
     let Ok(file) = serde_json::from_str::<PreviousFile>(&text) else {
         return PreviousState {
@@ -138,12 +141,11 @@ fn write_state(
     pending: Option<(String, String)>,
 ) -> Result<(), String> {
     if previous.is_none() && pending.is_none() {
-        let path = file_path(versions);
-        if path.exists() {
-            fs::remove_file(&path).map_err(|error| error.to_string())?;
-            sync_dir(versions)?;
-        }
-        return Ok(());
+        return match fs::remove_file(file_path(versions)) {
+            Ok(()) => sync_dir(versions),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        };
     }
     let file = PreviousFile {
         previous,
@@ -260,5 +262,37 @@ mod tests {
         fs::write(root.0.join(FILE_NAME), b"{").unwrap();
         confirm_on_launch(&root.0, "0.2.0").unwrap();
         assert_eq!(fs::read(root.0.join(FILE_NAME)).unwrap(), b"{");
+    }
+
+    /// 版本庫沒有搜尋權限：讀到的是「讀不懂」不是「沒有紀錄」，清空狀態刪不掉 previous.json
+    /// 回錯，紀錄都還在。
+    #[cfg(unix)]
+    #[test]
+    fn an_unsearchable_dir_is_unreadable_and_clearing_it_is_an_error() {
+        let root = TempDir::new("locked");
+        seed(&root.0, Some("0.3.0"), None);
+        let file = root.0.join(FILE_NAME);
+        let Some((state, cleared)) = crate::test_perm::with_unsearchable(&root.0, &file, || {
+            (read_previous(&root.0), write_state(&root.0, None, None))
+        }) else {
+            return;
+        };
+        assert!(state.unreadable);
+        assert!(cleared.is_err());
+        assert_eq!(read_previous(&root.0).previous.as_deref(), Some("0.3.0"));
+        write_state(&root.0, None, None).unwrap();
+        write_state(&root.0, None, None).unwrap();
+        assert!(!file.exists());
+    }
+
+    /// previous.json 是目錄：算讀不懂，啟動確認不改它、回 Ok。
+    #[test]
+    fn a_directory_in_place_of_the_file_is_unreadable_and_left_alone() {
+        let root = TempDir::new("dir");
+        let path = root.0.join(FILE_NAME);
+        fs::create_dir_all(&path).unwrap();
+        assert!(read_previous(&root.0).unreadable);
+        confirm_on_launch(&root.0, "0.3.0").unwrap();
+        assert!(path.is_dir());
     }
 }

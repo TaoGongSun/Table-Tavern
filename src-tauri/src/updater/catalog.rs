@@ -217,7 +217,7 @@ fn read_release(dir: &Path) -> Option<ReleaseFile> {
 }
 
 fn version_dirs(versions: &Path) -> Result<Vec<(String, PathBuf)>, String> {
-    if !versions.exists() {
+    if !versions.try_exists().map_err(|error| error.to_string())? {
         return Ok(Vec::new());
     }
     let mut found = Vec::new();

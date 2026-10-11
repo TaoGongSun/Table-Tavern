@@ -722,10 +722,10 @@ impl LockedFile<'_> {
     }
 
     /// 改名成同目錄的 `<檔名>.<後綴>` 留備份，已有同名備份就接 `-2`、`-3`…，絕不蓋掉舊備份。
-    /// 回傳備份檔名；檔案不存在回 None。
+    /// 回傳備份檔名；檔案不存在回 None，查不到在不在回錯（不當成不存在、也不拿來挑備份名）。
     pub(crate) fn move_aside(&self, suffix: &str) -> DataResult<Option<String>> {
         self.writable()?;
-        if !self.path.exists() {
+        if !self.path.try_exists()? {
             return Ok(None);
         }
         let base = format!(
@@ -734,7 +734,7 @@ impl LockedFile<'_> {
         );
         let mut name = base.clone();
         let mut attempt = 1;
-        while self.path.with_file_name(&name).exists() {
+        while self.path.with_file_name(&name).try_exists()? {
             attempt += 1;
             name = format!("{base}-{attempt}");
         }
@@ -1349,39 +1349,62 @@ mod rename_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod remove_tests {
     use super::*;
 
+    /// 測試結束（含 panic）刪掉暫存目錄；權限由 `with_unsearchable` 先還原。
+    struct Dir(PathBuf);
+
+    impl Dir {
+        fn locked_file(label: &str, name: &str) -> (Self, PathBuf) {
+            let dir =
+                Self(std::env::temp_dir().join(format!("tt-{label}-{}", ulid::Ulid::generate())));
+            let parent = dir.0.join("locked");
+            fs::create_dir_all(&parent).unwrap();
+            let file = parent.join(name);
+            fs::write(&file, b"x").unwrap();
+            (dir, file)
+        }
+    }
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// 父目錄沒有搜尋權限：查不到檔案在不在，回錯、檔案還在；不在的路徑照樣算已刪。
-    #[cfg(unix)]
     #[test]
     fn an_unsearchable_parent_is_an_error_not_a_deletion() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = std::env::temp_dir().join(format!("tt-remove-{}", ulid::Ulid::generate()));
-        let parent = dir.join("locked");
-        fs::create_dir_all(&parent).unwrap();
-        let file = parent.join("card.md");
-        fs::write(&file, b"x").unwrap();
-        fs::set_permissions(&parent, fs::Permissions::from_mode(0o000)).unwrap();
-        match file.try_exists() {
-            Err(_) => {}
-            Ok(true) => {
-                fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
-                let _ = fs::remove_dir_all(&dir);
-                eprintln!("略過：0o000 擋不住查詢（以 root 執行），測不出查詢錯誤");
-                return;
-            }
-            Ok(false) => panic!("檔案在，查詢卻回不在"),
-        }
-        let result = remove_path_raw(&file);
-        fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
-        let missing = remove_path_raw(&parent.join("missing.md"));
-        let still_there = file.is_file();
-        let _ = fs::remove_dir_all(&dir);
+        let (_dir, file) = Dir::locked_file("remove", "card.md");
+        let parent = file.parent().unwrap();
+        let Some(result) =
+            crate::test_perm::with_unsearchable(parent, &file, || remove_path_raw(&file))
+        else {
+            return;
+        };
         assert!(result.is_err());
-        assert!(still_there);
-        assert!(missing.is_ok());
+        assert!(file.is_file());
+        assert!(remove_path_raw(&parent.join("missing.md")).is_ok());
+    }
+
+    /// 父目錄沒有搜尋權限：移開備份查不到在不在，回錯、原檔還在，不回「不存在」。
+    #[test]
+    fn move_aside_behind_an_unsearchable_parent_is_an_error() {
+        let (_dir, file) = Dir::locked_file("aside", "timed.json");
+        let parent = file.parent().unwrap();
+        let Some(result) = crate::test_perm::with_unsearchable(parent, &file, || {
+            with_root_file_lock(&file, |locked| locked.move_aside("bak"))
+        }) else {
+            return;
+        };
+        assert!(result.is_err());
+        assert!(file.is_file());
+        let moved = with_root_file_lock(&file, |locked| locked.move_aside("bak"));
+        assert_eq!(moved.unwrap().as_deref(), Some("timed.json.bak"));
+        let missing = parent.join("missing.json");
+        let missing = with_root_file_lock(&missing, |locked| locked.move_aside("bak"));
+        assert_eq!(missing.unwrap(), None);
     }
 }
