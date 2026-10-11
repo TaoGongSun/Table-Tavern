@@ -81,10 +81,22 @@ export function useCharacterController(input: {
   const playerLoad = useRef(0);
   // 角色清單重讀的世代號：換桌（hydrate）或又重讀一次後，晚到的舊清單不寫進畫面
   const castLoad = useRef(0);
+  // 側欄排序的序號：只有最後一次排序失敗才重讀名單
+  const reorderSeq = useRef(0);
   // hydrate 會把圖與玩家卡同步清空，補回來的是下面三支 effect。同一張桌裡換幕／分岔時
   // worldId、角色清單、玩家卡 id 都沒變，effect 不會重跑，畫面就停在清空後的空狀態
   // （分岔完角色圖與玩家卡整排消失，切走再切回來才回得來——scene-fork 實機驗收抓到）
   const [hydration, setHydration] = useState(0);
+  // 進桌世代：worldId 每變一次就遞增（含 w1→w2→w1）。刪除、還原、排序的 await 回來時世代變了＝玩家換桌了，
+  // 錯誤與畫面寫入都不落到新桌
+  const entry = useRef({ worldId, generation: 0 });
+  if (entry.current.worldId !== worldId) {
+    entry.current = { worldId, generation: entry.current.generation + 1 };
+  }
+  const sameTable = useCallback(() => {
+    const enteredAt = entry.current.generation;
+    return () => entry.current.generation === enteredAt;
+  }, []);
 
   const loadCharacterImages = useCallback(async (worldId: string, ids: string[]) => {
     const mine = ++imagesLoad.current;
@@ -233,7 +245,9 @@ export function useCharacterController(input: {
   const reorder = useCallback(
     async (ordered: CharacterMeta[]) => {
       onError("");
-      const previous = characters;
+      const here = sameTable();
+      // 失敗不回捲到舊快照（期間可能有重讀加進新角色）：報錯後從磁碟重讀名單。換桌後、或之後又排過序就不動
+      const mine = ++reorderSeq.current;
       setCharacters([...ordered, ...archived]);
       try {
         await invoke("reorder_characters", {
@@ -241,38 +255,47 @@ export function useCharacterController(input: {
           ids: ordered.map((character) => character.id),
         });
       } catch (reason) {
-        setCharacters(previous);
+        if (!here() || mine !== reorderSeq.current) return;
         onError(String(reason));
+        try {
+          await refresh();
+        } catch (refreshReason) {
+          if (here()) onError(String(refreshReason));
+        }
       }
     },
-    [characters, archived, worldId, onError],
+    [archived, worldId, onError, sameTable, refresh],
   );
 
   const restore = useCallback(
     async (id: string) => {
       onError("");
+      const here = sameTable();
       try {
         await invoke("set_character_archived", { worldId, characterId: id, archived: false });
+        if (!here()) return;
         await refresh();
       } catch (reason) {
-        onError(String(reason));
+        if (here()) onError(String(reason));
       }
     },
-    [worldId, onError, refresh],
+    [worldId, onError, refresh, sameTable],
   );
 
   // 隱藏區裡 auto_hidden 卡的「拉回」：解除自動隱藏（不是解除封存），下次換幕結算才會重新判定
   const restoreAutoHidden = useCallback(
     async (id: string) => {
       onError("");
+      const here = sameTable();
       try {
         await invoke("set_character_auto_hidden", { worldId, characterId: id, autoHidden: false });
+        if (!here()) return;
         await refresh();
       } catch (reason) {
-        onError(String(reason));
+        if (here()) onError(String(reason));
       }
     },
-    [worldId, onError, refresh],
+    [worldId, onError, refresh, sameTable],
   );
 
   const noteRemoved = useCallback(
@@ -288,6 +311,10 @@ export function useCharacterController(input: {
   const remove = useCallback(
     async (id: string): Promise<RemoveResult> => {
       onError("");
+      const here = sameTable();
+      const report = (message: string) => {
+        if (here()) onError(message);
+      };
       try {
         const name = metaOf(id)?.name ?? id;
         const accepted = await confirm(t("deleteCharacterConfirm", { name }), {
@@ -298,7 +325,7 @@ export function useCharacterController(input: {
         });
         if (!accepted) return "cancelled";
       } catch (reason) {
-        onError(String(reason));
+        report(String(reason));
         return "failed";
       }
       try {
@@ -306,23 +333,24 @@ export function useCharacterController(input: {
           worldId,
           characterId: id,
         });
-        if (outcome?.worldbook_cleanup_failed) onError(t("deleteCharacterCleanupFailed"));
+        if (outcome?.worldbook_cleanup_failed) report(t("deleteCharacterCleanupFailed"));
         return "deleted";
       } catch (reason) {
         if (await cardFileGone(worldId, id)) {
-          onError(t("deleteCharacterPartial", { reason: String(reason) }));
+          report(t("deleteCharacterPartial", { reason: String(reason) }));
           return "deleted";
         }
-        onError(String(reason));
+        report(String(reason));
         return "failed";
       }
     },
-    [metaOf, worldId, onError],
+    [metaOf, worldId, onError, sameTable],
   );
 
   const removePlayer = useCallback(
     async (id: string) => {
       onError("");
+      const here = sameTable();
       try {
         const accepted = await confirm(t("deleteCharacterConfirm", { name: playerCard?.name ?? id }), {
           title: t("deleteCharacterTitle"),
@@ -336,6 +364,8 @@ export function useCharacterController(input: {
           characterId: id,
         });
         await invoke("set_player_card", { worldId, cardId: null });
+        // 換桌後才回來：不動新桌的玩家卡、不報錯，呼叫端也不關畫面
+        if (!here()) return false;
         setPlayerCardId(null);
         setPlayerCard(null);
         setPlayerImage(null);
@@ -343,11 +373,11 @@ export function useCharacterController(input: {
         if (outcome?.worldbook_cleanup_failed) onError(t("deleteCharacterCleanupFailed"));
         return true;
       } catch (reason) {
-        onError(String(reason));
+        if (here()) onError(String(reason));
         return false;
       }
     },
-    [playerCard, worldId, onError],
+    [playerCard, worldId, onError, sameTable],
   );
 
   return useMemo(

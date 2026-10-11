@@ -30,7 +30,7 @@ export function WorldbookSection({
     characters,
     message,
     draft,
-    draftOrigin,
+    draftSeq,
     setDraft,
     refreshCharactersForVisibility,
     toggleLedgerEntry,
@@ -56,7 +56,7 @@ export function WorldbookSection({
   // （不用 smooth：長清單的平滑捲動會被後續 render 打斷，停在半路）
   useEffect(() => {
     draftFormRef.current?.scrollIntoView({ block: "nearest" });
-  }, [draftOrigin]);
+  }, [draftSeq]);
 
   const entryForm = draft && (
     <WorldbookEntryForm

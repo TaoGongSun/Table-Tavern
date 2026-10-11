@@ -32,6 +32,7 @@ function controller(entries: WorldbookEntry[]) {
     message: "",
     draft: null,
     draftOrigin: "",
+    draftSeq: 0,
     setDraft: vi.fn(),
     refreshCharactersForVisibility: vi.fn(),
     toggleLedgerEntry: vi.fn(async () => {}),

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CastRemoval } from "../features/worldbook/worldbook-model";
+import type { UndoEntryChanges, WorldChange } from "../features/worldbook/worldbook-model";
 
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 export const GM_TARGET = "__GM__";
@@ -65,7 +65,26 @@ export function useWorkspaceNavigationController({
   }
   const enteredAt = entry.current.generation;
   const stillHere = () => entry.current.generation === enteredAt;
-  const [castRemoval, setCastRemoval] = useState<CastRemoval | null>(null);
+  const [worldChange, setWorldChange] = useState<WorldChange | null>(null);
+
+  /** 世界設定通知：同桌就累積到被取走為止，換桌重來 */
+  function postWorldChange(ids: string[], undoChanges: (UndoEntryChanges | null)[]) {
+    setWorldChange((current) => {
+      const same = current?.worldId === worldId;
+      return {
+        worldId,
+        generation: (current?.generation ?? 0) + 1,
+        ids: same ? [...current.ids, ...ids] : ids,
+        undoChanges: same ? [...current.undoChanges, ...undoChanges] : undoChanges,
+      };
+    });
+  }
+
+  /** 只關正在顯示其中一張卡的編輯器；實際關了才清守門 */
+  function closeCardViews(ids: string[]) {
+    if (ids.some((id) => showsCard(mainViewRef.current, id))) leaveGuard.current = null;
+    setMainView((current) => (ids.some((id) => showsCard(current, id)) ? null : current));
+  }
 
   // 四種卡片編輯畫面都帶 id，先收斂成一個值，下面就只需要問「是不是玩家卡」
   const cardView =
@@ -111,25 +130,26 @@ export function useWorkspaceNavigationController({
       if (!stillHere()) return;
       onError(String(reason));
     }
-    if (showsCard(mainViewRef.current, id)) leaveGuard.current = null;
-    setMainView((current) => (showsCard(current, id) ? null : current));
-    if (deleted) {
-      setCastRemoval((current) => ({
-        worldId,
-        generation: (current?.generation ?? 0) + 1,
-        ids: current?.worldId === worldId ? [...current.ids, id] : [id],
-      }));
-    }
+    closeCardViews([id]);
+    if (deleted) postWorldChange([id], []);
+  }
+
+  /** 撤銷上次匯入完成：被撤銷刪掉的卡若正在編輯就關、不另問〔作者裁決 2026-10-11〕，別的畫面不動；
+   * 世界設定一律收到通知（撤銷可能只改條目）。換桌後晚到就不動 */
+  function finishUndoImport(removedIds: string[], entryChanges: UndoEntryChanges | null) {
+    if (!stillHere()) return;
+    closeCardViews(removedIds);
+    postWorldChange(removedIds, [entryChanges]);
   }
 
   const finishArchiveToggled = (id: string) => settleRemoval(id, false);
   const finishConverted = (id: string) => settleRemoval(id, true);
 
-  /** 世界設定取走通知：同桌同世代才清 ids，取走後又來的新通知不受影響 */
-  function takeCastRemoval(takenWorldId: string, generation: number) {
-    setCastRemoval((current) =>
+  /** 世界設定取走通知：同桌同世代才清累積，取走後又來的新通知不受影響 */
+  function takeWorldChange(takenWorldId: string, generation: number) {
+    setWorldChange((current) =>
       current?.worldId === takenWorldId && current.generation === generation
-        ? { ...current, ids: [] }
+        ? { ...current, ids: [], undoChanges: [] }
         : current,
     );
   }
@@ -219,7 +239,7 @@ export function useWorkspaceNavigationController({
   }
 
   async function deletePlayerCard(id: string) {
-    if (await characters.removePlayer(id)) setMainView(null);
+    if ((await characters.removePlayer(id)) && stillHere()) setMainView(null);
   }
 
   return {
@@ -246,8 +266,9 @@ export function useWorkspaceNavigationController({
     finishPlayerCardSaved,
     finishArchiveToggled,
     finishConverted,
-    castRemoval,
-    takeCastRemoval,
+    finishUndoImport,
+    worldChange,
+    takeWorldChange,
   };
 }
 

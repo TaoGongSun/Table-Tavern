@@ -183,6 +183,8 @@ describe("refactor undo restores panel and state bar", () => {
         kept_entries: 0,
         renamed_back: false,
         removed_opening: false,
+        removed_character_ids: [],
+        entry_changes: { changed: [], deleted: [] },
       };
     };
 
@@ -283,6 +285,8 @@ describe("refactor undo restores panel and state bar", () => {
           kept_entries: 0,
           renamed_back: false,
           removed_opening: false,
+          removed_character_ids: ["c1"],
+          entry_changes: { changed: [], deleted: [] },
         };
       };
       h.refactor_apply = () => {

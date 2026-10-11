@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import type { PendingRefactorCard } from "../refactor/refactor-card";
-import type { CastRemoval } from "./worldbook-model";
+import type { WorldChange } from "./worldbook-model";
 
 const backend = vi.hoisted(() => ({
   handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
@@ -76,7 +76,7 @@ describe("WorldEditor", () => {
 
   function editor(
     pending: PendingRefactorCard | null = null,
-    removal: CastRemoval | null = null,
+    removal: WorldChange | null = null,
     world = "w1",
   ) {
     return (
@@ -92,13 +92,13 @@ describe("WorldEditor", () => {
         isTurnRunning={() => false}
         pendingRefactorCard={pending}
         onPendingRefactorCardTaken={taken}
-        castRemoval={removal}
-        onCastRemovalTaken={removalTaken}
+        worldChange={removal}
+        onWorldChangeTaken={removalTaken}
       />
     );
   }
 
-  async function mount(removal: CastRemoval | null = null) {
+  async function mount(removal: WorldChange | null = null) {
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
@@ -153,5 +153,56 @@ describe("WorldEditor", () => {
     // 同一份待處理檔重繪不會再開一次
     await act(async () => root?.render(editor(pending)));
     expect(commands("refactor_card_open")).toHaveLength(1);
+  });
+
+  // 撤銷匯入不再重新掛載世界設定（undo-import-editor-guard）：開著的重構結果卡與它的暫存素材留著，
+  // 撤銷後照樣能套用或取消
+  describe("refactor result after an undo notice", () => {
+    const outcomeCard = {
+      card: {
+        format: "table-tavern-refactor-card",
+        version: 1,
+        outcome: { characters: [{ name: "阿福", source_uids: ["1"] }] },
+      },
+      assets: [{ outcome_index: 0, kind: "avatar" }],
+      token: "T1",
+    };
+    const button = (label: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+        (candidate) => candidate.textContent?.startsWith(label),
+      )!;
+    const undoNotice: WorldChange = {
+      worldId: "w1",
+      generation: 1,
+      ids: [],
+      undoChanges: [{ changed: [], deleted: [7] }],
+    };
+
+    async function openOutcome() {
+      backend.handlers.refactor_card_open = () => outcomeCard;
+      await mount();
+      const pending = { worldId: "w1", file: new File(["{}"], "card.png"), generation: 1 };
+      await act(async () => root?.render(editor(pending)));
+      await vi.waitFor(() => expect(button(t("refactorApplyAll"))).toBeDefined());
+      await act(async () => root?.render(editor(pending, undoNotice)));
+      expect(commands("read_world_md")).toHaveLength(1);
+      expect(commands("refactor_card_release")).toHaveLength(0);
+    }
+
+    it("still applies with the held token", async () => {
+      await openOutcome();
+      backend.handlers.refactor_apply = () => ({ new_characters: 1 });
+      await act(async () => button(t("refactorApplyAll")).click());
+      await vi.waitFor(() => expect(commands("refactor_apply")).toHaveLength(1));
+      expect(commands("refactor_apply")[0].args.assetToken).toBe("T1");
+    });
+
+    it("still dismisses and releases the held token", async () => {
+      await openOutcome();
+      await act(async () => button(t("refactorDismiss")).click());
+      expect(commands("refactor_card_release").map((call) => call.args)).toEqual([
+        { worldId: "w1", token: "T1" },
+      ]);
+    });
   });
 });

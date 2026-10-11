@@ -584,7 +584,15 @@ fn undo_restores_only_visibility_of_widened_entries() {
     widened.content = "玩家改寫的常駐內容".to_owned();
     data::upsert_worldbook_entry(root.path(), &world_id, widened).unwrap();
 
-    receipts::undo_last_import(root.path(), &world_id, &held).unwrap();
+    let report = receipts::undo_last_import(root.path(), &world_id, &held).unwrap();
+    // 還原的可見度恰好等於剪掉撤銷的卡：不算撤銷改欄，報告不報這條（前端照刪角色修剪）
+    assert!(report
+        .entry_changes
+        .as_ref()
+        .unwrap()
+        .changed
+        .iter()
+        .all(|change| change.uid != uid));
     let (_, after) = entry_value(root.path(), &world_id, "玩家改寫的常駐內容");
     for field in ["visibility", "source_cards"] {
         assert_eq!(
