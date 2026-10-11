@@ -236,6 +236,17 @@ pub struct ImportReceiptSummary {
     pub character_id: Option<String>,
 }
 
+/// 撤銷確認框那筆收據的身分（收據清單長度＋摘要欄位）：時間戳只到分鐘，單靠它分不出同一分鐘的兩筆。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExpectedReceipt {
+    pub count: usize,
+    pub kind: String,
+    pub label: String,
+    pub timestamp: String,
+    #[serde(default)]
+    pub character_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct UndoReport {
     /// 被刪角色的名字（給前端組訊息用；id 已經沒意義了）——單張角色匯入路徑專用。
@@ -750,22 +761,34 @@ pub fn list_import_receipts(root: &Path, world_id: &str) -> Vec<ImportReceiptSum
 /// 逆向最後一筆收據。收據檔存在但解析失敗要回錯（不能悄悄當空，不然玩家以為復原了
 /// 其實什麼都沒發生）；缺檔／空陣列＝沒有可復原的紀錄，同樣回錯。
 /// 要出示整桌獨占：讀出收據、各域逆向到寫回彈出後的清單之間，別的匯入、開場紀錄或聊天寫入不能插進來。
+/// 不比對收據的版本只剩測試在用；玩家撤銷走 `undo_expected_import`。
+#[cfg(test)]
 pub fn undo_last_import(
     root: &Path,
     world_id: &str,
     held: &data::WorldExclusive,
 ) -> DataResult<UndoReport> {
-    undo_last(root, world_id, held, false)
+    undo_last(root, world_id, held, false, None)
 }
 
-/// 重構套用中途失敗的自動回滾：同 undo_last_import，但任一域還原失敗就回 Err、收據不彈出
+/// 玩家從陣容欄撤銷：最後一筆收據不是確認框顯示的那筆（含收據已空）就回 `ImportReceiptChanged`、什麼都不動。
+pub fn undo_expected_import(
+    root: &Path,
+    world_id: &str,
+    expected: &ExpectedReceipt,
+    held: &data::WorldExclusive,
+) -> DataResult<UndoReport> {
+    undo_last(root, world_id, held, false, Some(expected))
+}
+
+/// 重構套用中途失敗的自動回滾：同玩家撤銷但不比對收據，但任一域還原失敗就回 Err、收據不彈出
 /// （留著給玩家手動撤銷），不像玩家手動撤銷那樣盡力而為、吞掉個別失敗。
 pub fn rollback_last_import(
     root: &Path,
     world_id: &str,
     held: &data::WorldExclusive,
 ) -> DataResult<UndoReport> {
-    undo_last(root, world_id, held, true)
+    undo_last(root, world_id, held, true, None)
 }
 
 /// strict＝false 時個別域的失敗吞掉照常彈出收據（玩家手動撤銷的既有行為）；true 時一律傳回。
@@ -782,6 +805,7 @@ fn undo_last(
     world_id: &str,
     _held: &data::WorldExclusive,
     strict: bool,
+    expected: Option<&ExpectedReceipt>,
 ) -> DataResult<UndoReport> {
     let path = data::import_receipts_path(root, world_id)?;
     let mut receipts: Vec<ImportReceipt> = if path.exists() {
@@ -795,9 +819,24 @@ fn undo_last(
     } else {
         Vec::new()
     };
-    let receipt = receipts
-        .pop()
-        .ok_or_else(|| UiMsg::NoImportToUndo.into_error())?;
+    // 帶 expected 時收據已空也算「換過了」：前端看到的那筆已被別處撤掉，要它重讀
+    let receipt = receipts.pop().ok_or_else(|| {
+        if expected.is_some() {
+            UiMsg::ImportReceiptChanged.into_error()
+        } else {
+            UiMsg::NoImportToUndo.into_error()
+        }
+    })?;
+    if let Some(expected) = expected {
+        let same = expected.count == receipts.len() + 1
+            && expected.kind == receipt.kind
+            && expected.label == receipt.label
+            && expected.timestamp == receipt.timestamp
+            && expected.character_id == receipt.character_id;
+        if !same {
+            return Err(UiMsg::ImportReceiptChanged.into_error());
+        }
+    }
 
     let mut report = UndoReport::default();
 

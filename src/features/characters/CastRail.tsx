@@ -52,6 +52,10 @@ interface CastRailProps {
   onDeleteCharacter: (id: string) => void;
   onCreateCard: () => void;
   onImportFile: (file: File) => void;
+  /** 換桌級操作（匯入、撤銷匯入…）進行中：匯入項停用 */
+  importLocked: boolean;
+  /** 同上，另含開場白正在貼：撤銷項停用 */
+  undoImportLocked: boolean;
   /** 這桌有匯入紀錄且還沒向 AI 開演：復原項才掛得上 */
   canUndoImport: boolean;
   onUndoImport: () => void;
@@ -87,6 +91,8 @@ export function CastRail(props: CastRailProps) {
     onDeleteCharacter,
     onCreateCard,
     onImportFile,
+    importLocked,
+    undoImportLocked,
     canUndoImport,
     onUndoImport,
     turnWaiting,
@@ -134,6 +140,7 @@ export function CastRail(props: CastRailProps) {
       label: t("importCard"),
       hint: t("importCardHint"),
       onSelect: () => importInputRef.current?.click(),
+      disabled: importLocked,
     },
     ...(canUndoImport
       ? [
@@ -142,6 +149,7 @@ export function CastRail(props: CastRailProps) {
             label: t("undoLastImport"),
             hint: t("undoLastImportHint"),
             onSelect: onUndoImport,
+            disabled: undoImportLocked,
           },
         ]
       : []),

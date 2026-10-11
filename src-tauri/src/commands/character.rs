@@ -191,14 +191,15 @@ pub(crate) fn list_import_receipts(
     Ok(receipts::list_import_receipts(&data_root(&app)?, &world_id))
 }
 
-/// 逆向最後一筆匯入收據：刪角色、刪未經玩家修改的世界書條目、退回機制寫入與桌名。
+/// 逆向最後一筆匯入收據（須是前端確認框那筆）：刪角色、刪未經玩家修改的世界書條目、退回機制寫入與桌名。
 #[tauri::command]
 pub(crate) async fn undo_last_import(
     app: tauri::AppHandle,
     world_id: String,
+    expected: receipts::ExpectedReceipt,
 ) -> Result<receipts::UndoReport, String> {
     let held = data::world_exclusive_async(&world_id).await?;
-    receipts::undo_last_import(&data_root(&app)?, &world_id, &held)
+    receipts::undo_expected_import(&data_root(&app)?, &world_id, &expected, &held)
         .map_err(|error| error.to_string())
 }
 
