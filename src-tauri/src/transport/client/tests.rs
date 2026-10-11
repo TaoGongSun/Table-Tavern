@@ -879,6 +879,7 @@ async fn generate_image_key_lookup_times_out_when_body_stalls() {
             });
         }
     });
+    crate::transport::test_support::warm_http_client();
     let started = std::time::Instant::now();
     let error = generate_image(&image_config(&format!("http://{address}")), "畫")
         .await
@@ -973,6 +974,7 @@ async fn key_tier_for_times_out_when_body_stalls() {
             });
         }
     });
+    crate::transport::test_support::warm_http_client();
     let started = std::time::Instant::now();
     let (_, tier) = key_tier_for(&image_config(&format!("http://{address}")), "sk-draft").await;
     assert_eq!(tier, None);
@@ -1035,7 +1037,7 @@ async fn run_chat(base: &str, window: StallWindow) -> (DataResult<StreamChatResu
 }
 
 /// 保活註解一直來也要逾時：deadline 不因註解續命。判定靠錯誤碼：若續命，串流會先自然結束而回別種錯誤。
-/// （不量時間：reqwest::Client::new() 載憑證就可能花數秒。）
+/// （不量時間：macOS 首次 reqwest::Client::new() 查系統代理會掃執行檔目錄，可能花數秒。）
 #[tokio::test]
 async fn stall_keepalive_comments_do_not_extend_deadline() {
     let script = (0..40).map(|_| (50, KEEPALIVE.to_owned())).collect();

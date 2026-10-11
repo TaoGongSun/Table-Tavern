@@ -195,7 +195,10 @@ async fn download_times_out() {
     let error = download(&url, Duration::from_millis(200), 1024)
         .await
         .unwrap_err();
-    assert!(error.starts_with("AI_IMAGE_DOWNLOAD_FAILED: "), "{error}");
+    assert!(
+        error.starts_with("AI_IMAGE_DOWNLOAD_FAILED: timed out"),
+        "{error}"
+    );
 }
 
 #[tokio::test]
