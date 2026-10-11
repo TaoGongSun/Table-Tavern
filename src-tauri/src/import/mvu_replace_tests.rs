@@ -189,3 +189,49 @@ fn numeric_update_is_not_persisted() {
     let reread = data::read_state(root.path(), &world_id).unwrap();
     assert_eq!(reread.mechanism.numeric_update, NumericUpdate::DeltaOnly);
 }
+
+/// 被判不支援的 MVU 腳本卡（遠端載入器）、沒有世界書鷹架的未重構桌：數字欄更新策略仍走上游，
+/// 數字 replace 照收（不支援只影響重構的 MVU 來源判定，見 mechanism::mvu_source）。
+#[test]
+fn unsupported_mvu_script_card_still_accepts_numeric_replace() {
+    let extensions = json!({
+        "tavern_helper": {"scripts": [{
+            "name": "MVU", "enabled": true, "type": "script",
+            "content": "import'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';"
+        }]},
+        "regex_scripts": [{
+            "scriptName": "載入", "findRegex": "/[\\s\\S]*/", "placement": [2],
+            "replaceString": "<div></div><script>$('body').load('https://example.com/ui');</script>"
+        }]
+    });
+    let (root, world_id) = table("mvu-replace-remote", &card(json!([]), extensions));
+    let cards = crate::import::read_card_interfaces(root.path(), &world_id).unwrap();
+    assert!(cards
+        .iter()
+        .any(|card| card.mvu && card.unsupported.is_some()));
+    let mut state = data::read_state(root.path(), &world_id).unwrap();
+    assert!(!state.mechanism.incremental);
+    for (path, value) in [
+        ("World.Invasion", "1"),
+        ("World.Gold", "100000"),
+        ("Player.HP", "480/500"),
+    ] {
+        let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
+        data::set_tree_value(&mut state.state.tree, &segments, value);
+    }
+    data::write_state(root.path(), &world_id, &state).unwrap();
+    assert_eq!(policy(&root, &world_id), NumericUpdate::Upstream);
+    let outcome = post_opening(&root, &world_id);
+    assert!(
+        !outcome
+            .records
+            .iter()
+            .any(|record| record.kind == RecordKind::Rejected),
+        "{:?}",
+        outcome.records
+    );
+    assert_eq!(
+        value(&root, &world_id, "World.Gold").as_deref(),
+        Some("99000")
+    );
+}

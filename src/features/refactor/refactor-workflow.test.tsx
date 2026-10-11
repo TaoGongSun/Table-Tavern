@@ -231,6 +231,147 @@ describe("外框兩階段派發", () => {
   });
 });
 
+describe("套用重構卡產物的桌況閘門（與 AI 重構同一套）", () => {
+  const OUTCOME = JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }] });
+  const pick = () => controller!.pickRefactorOutcome(new File([OUTCOME], "card.json"));
+
+  it("已遊玩、沒有匯入原檔：提示後擋下，不開結果卡", async () => {
+    await mount();
+    for (const [status, key] of [
+      ["played", "refactorRerunPlayed"],
+      ["no_source", "refactorRerunNoSource"],
+    ] as const) {
+      backend.calls = [];
+      backend.handlers.refactor_rerun_status = () => status;
+      await act(async () => pick());
+      expect(dialogs.message).toHaveBeenLastCalledWith(t(key), expect.anything());
+      expect(commands()).toEqual(["refactor_rerun_status"]);
+      expect(controller!.outcome).toBeNull();
+    }
+  });
+
+  it("重構過、未遊玩：卡檔驗過才確認並清回，再開結果卡；取消就不開也不清回", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "ready";
+    dialogs.confirm.mockResolvedValueOnce(false);
+    await act(async () => pick());
+    expect(commands()).toEqual(["refactor_rerun_status", "refactor_card_open"]);
+    expect(controller!.outcome).toBeNull();
+
+    backend.calls = [];
+    await act(async () => pick());
+    expect(commands()).toEqual([
+      "refactor_rerun_status",
+      "refactor_card_open",
+      "refactor_reset_to_source",
+    ]);
+    expect(flushDraft).toHaveBeenCalledTimes(1);
+    expect(refreshAfterApply).toHaveBeenCalledTimes(1);
+    expect(controller!.outcome).not.toBeNull();
+  });
+
+  it("壞卡不觸發清回", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "ready";
+    await act(async () => controller!.pickRefactorOutcome(new File(["{壞掉"], "bad.json")));
+    expect(commands()).not.toContain("refactor_reset_to_source");
+    expect(dialogs.confirm).not.toHaveBeenCalled();
+    expect(controller!.outcome).toBeNull();
+  });
+
+  it("桌況回覆延遲期間關卡或另選檔：舊請求不開結果卡、不清回、不覆蓋", async () => {
+    await mount();
+    let answer!: (status: string) => void;
+    backend.handlers.refactor_rerun_status = () => new Promise((done) => (answer = done));
+    let first!: Promise<void>;
+    await act(async () => {
+      first = pick();
+    });
+    await act(async () => controller!.closeRefactor());
+    await act(async () => {
+      answer("ready");
+      await first;
+    });
+    expect(commands()).toEqual(["refactor_rerun_status"]);
+    expect(controller!.outcome).toBeNull();
+
+    // 另選一張：新請求照常開，舊請求晚到也不覆蓋
+    backend.calls = [];
+    const answers: ((status: string) => void)[] = [];
+    backend.handlers.refactor_rerun_status = () => new Promise((done) => answers.push(done));
+    let older!: Promise<void>;
+    let newer!: Promise<void>;
+    await act(async () => {
+      older = controller!.pickRefactorOutcome(
+        new File([JSON.stringify({ characters: [{ name: "舊的", source_uids: ["1"] }] })], "old.json"),
+      );
+    });
+    await act(async () => {
+      newer = controller!.pickRefactorOutcome(
+        new File([JSON.stringify({ characters: [{ name: "新的", source_uids: ["1"] }] })], "new.json"),
+      );
+    });
+    await act(async () => {
+      answers[1]("fresh");
+      await newer;
+    });
+    await act(async () => {
+      answers[0]("ready");
+      await older;
+    });
+    expect(controller!.outcome?.characters[0].name).toBe("新的");
+    expect(commands()).not.toContain("refactor_reset_to_source");
+    expect(dialogs.confirm).not.toHaveBeenCalled();
+  });
+
+  it("清回途中另選一張卡：清回成功仍刷新畫面，舊請求不開結果卡、不覆蓋新請求", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "ready";
+    let resetDone!: () => void;
+    backend.handlers.refactor_reset_to_source = () => new Promise<void>((done) => (resetDone = done));
+    let older!: Promise<void>;
+    await act(async () => {
+      older = controller!.pickRefactorOutcome(
+        new File([JSON.stringify({ characters: [{ name: "舊的", source_uids: ["1"] }] })], "old.json"),
+      );
+    });
+    await vi.waitFor(() => expect(commands()).toContain("refactor_reset_to_source"));
+    // 清回還沒回來時另選一張：後端已清回，桌況回 fresh
+    backend.handlers.refactor_rerun_status = () => "fresh";
+    await act(async () =>
+      controller!.pickRefactorOutcome(
+        new File([JSON.stringify({ characters: [{ name: "新的", source_uids: ["1"] }] })], "new.json"),
+      ),
+    );
+    expect(controller!.outcome?.characters[0].name).toBe("新的");
+    await act(async () => {
+      resetDone();
+      await older;
+    });
+    expect(refreshAfterApply).toHaveBeenCalledTimes(1);
+    expect(refreshAfterApply.mock.calls[0][0]()).toBe(true);
+    expect(controller!.outcome?.characters[0].name).toBe("新的");
+  });
+
+  it("未重構的桌直接開結果卡", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "fresh";
+    await act(async () => pick());
+    expect(commands()).toEqual(["refactor_rerun_status", "refactor_card_open"]);
+    expect(dialogs.confirm).not.toHaveBeenCalled();
+  });
+
+  it("後端判已遊玩拒套：顯示開新桌提醒", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "fresh";
+    await act(async () => pick());
+    backend.handlers.refactor_apply = () => Promise.reject("refactor-played");
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    expect(dialogs.message).toHaveBeenLastCalledWith(t("refactorRerunPlayed"), expect.anything());
+    expect(controller!.busy).toBe(false);
+  });
+});
+
 describe("套用重構排在進行中的回合後面", () => {
   const OUTCOME = JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }] });
 

@@ -70,6 +70,9 @@ interface UseRefactorWorkflowOptions {
   isTurnRunning: () => boolean;
 }
 
+// 後端拒套已遊玩桌的錯誤（refactor/reset.rs REFACTOR_PLAYED），一字不差。
+const REFACTOR_PLAYED = "refactor-played";
+
 // 重構卡存檔對話框預設檔名：桌名可能含檔名非法字元，一律代換成 -；空桌名就不接前綴，只用在地化字尾。
 // 尾碼只給玩家分辨三階（不含圖／含角色圖），格式判定只認檔內 chunk。
 function refactorCardFileName(tableName: string, withImages: boolean): string {
@@ -193,6 +196,50 @@ export function useRefactorWorkflow({
     }
   }
 
+  // 重構的桌況閘門（AI 重構與套用重構卡產物共用）〔作者裁決 2026-10-03、2026-10-11〕：已遊玩擋（請開新桌）、
+  // 重構過但沒有匯入原檔擋；重構過、未遊玩的確認後清回剛匯入原卡的狀態，永不拿重構後的資料再重構。未重構的
+  // 桌照現狀。分兩段：先查桌況（擋下的當場提示），清回留給呼叫端在該做的時候做。`stale` 為真＝這次請求已作廢。
+  type RerunStatus = "fresh" | "played" | "no_source" | "ready";
+  // 回 false＝擋下或已作廢。
+  async function checkRerun(stale: () => boolean): Promise<RerunStatus | false> {
+    const rerun = await invoke<RerunStatus>("refactor_rerun_status", { worldId: world });
+    if (stale()) return false;
+    if (rerun === "played" || rerun === "no_source") {
+      await showMessage(t(rerun === "played" ? "refactorRerunPlayed" : "refactorRerunNoSource"), {
+        title: t("refactorBtn"),
+        kind: "warning",
+        okLabel: t("dialogAck"),
+      });
+      return false;
+    }
+    return rerun;
+  }
+
+  // 重構過、未遊玩：確認後先存草稿，清回剛匯入原卡的狀態並刷新畫面。回 true＝已清回、可以往下走。
+  // 清回一旦成功，刷新只看桌別（後端已換掉整桌，畫面一定要跟上）；`stale` 只決定刷新後要不要接著往下走。
+  async function resetForRerun(stale: () => boolean): Promise<boolean> {
+    const origin = world;
+    const sameTable = () => mounted.current && worldRef.current === origin;
+    const confirmed = await confirm(t("refactorRerunWarnBody"), {
+      title: t("refactorBtn"),
+      kind: "warning",
+      okLabel: t("refactorRerunOk"),
+      cancelLabel: t("dialogCancel"),
+    });
+    if (!confirmed || stale()) return false;
+    // 清回會換掉每一條：草稿先存起來（清回失敗時改動也保得住），之後的開著的既有草稿無從定基
+    if (!(await flushDraft()) || stale()) return false;
+    try {
+      await invoke("refactor_reset_to_source", { worldId: world });
+    } catch (reason) {
+      if (!stale()) setStatusMessage(String(reason));
+      return false;
+    }
+    if (!sameTable()) return false;
+    await refreshAfterApply(sameTable, null);
+    return !stale();
+  }
+
   // AI 卡重構：盤點出六區塊小抄（PERSONS／INTERFACE／ENTRIES／SPLITS／GROUPS／FIELDS）→本地
   // 零呼叫組裝（refactor_assemble_local：carry 照搬＋split 零呼叫路由＋clean 人物組卡）→剩餘
   // AI 呼叫全並行（人物佇列＋absorb＋group＋statusbar＋interface，上限 4、無序列鏈）→組產物。
@@ -201,41 +248,11 @@ export function useRefactorWorkflow({
   // none 是唯一免問的路（直跑角色線）；unsupported（DRM／雲端載入器）擋下不跑。
   async function runAiRefactor() {
     if (progress) return;
-    // 重新重構〔作者裁決 2026-10-03〕：已遊玩擋、沒有匯入原檔擋；未遊玩確認後清回剛匯入原卡的狀態再照一般
-    // 流程重構，永不拿重構後的資料再重構。未重構的桌照現狀。
-    const rerun = await invoke<"fresh" | "played" | "no_source" | "ready">("refactor_rerun_status", {
-      worldId: world,
-    });
-    if (rerun === "played" || rerun === "no_source") {
-      await showMessage(t(rerun === "played" ? "refactorRerunPlayed" : "refactorRerunNoSource"), {
-        title: t("refactorBtn"),
-        kind: "warning",
-        okLabel: t("dialogAck"),
-      });
-      return;
-    }
-    if (rerun === "ready") {
-      const confirmed = await confirm(t("refactorRerunWarnBody"), {
-        title: t("refactorBtn"),
-        kind: "warning",
-        okLabel: t("refactorRerunOk"),
-        cancelLabel: t("dialogCancel"),
-      });
-      if (!confirmed) return;
-      // 清回會換掉每一條：草稿先存起來（清回失敗時改動也保得住），之後的開著的既有草稿無從定基
-      if (!(await flushDraft())) return;
-      const origin = world;
-      const live = () => mounted.current && worldRef.current === origin;
-      try {
-        await invoke("refactor_reset_to_source", { worldId: world });
-      } catch (reason) {
-        if (live()) setStatusMessage(String(reason));
-        return;
-      }
-      if (!live()) return;
-      await refreshAfterApply(live, null);
-      if (!live()) return;
-    }
+    const origin = world;
+    const stale = () => !mounted.current || worldRef.current !== origin;
+    const rerun = await checkRerun(stale);
+    if (rerun === false) return;
+    if (rerun === "ready" && !(await resetForRerun(stale))) return;
     setStatusMessage("");
     const cards = await invoke<CardInterface[]>("card_interfaces", { worldId: world }).catch(
       () => [] as CardInterface[],
@@ -436,6 +453,7 @@ export function useRefactorWorkflow({
                   worldId: world,
                   entryUid: task.uid,
                   knownFields,
+                  mode,
                   onDelta: makeOnDelta(),
                 }),
               () => cancelRef.current,
@@ -455,6 +473,7 @@ export function useRefactorWorkflow({
                   kind: task.group.kind,
                   spans: task.group.spans,
                   knownFields,
+                  mode,
                   onDelta: makeOnDelta(),
                 }),
               () => cancelRef.current,
@@ -472,6 +491,7 @@ export function useRefactorWorkflow({
                   entryUid: task.uid,
                   spans: task.spans,
                   knownFields,
+                  mode,
                   onDelta: makeOnDelta(),
                 }),
               () => cancelRef.current,
@@ -492,6 +512,7 @@ export function useRefactorWorkflow({
                     ? "interface_shell"
                     : "interface_statusbar",
                   knownFields,
+                  mode,
                   onDelta: makeOnDelta(),
                 }),
               () => cancelRef.current,
@@ -637,6 +658,10 @@ export function useRefactorWorkflow({
     const stale = () => seq !== openSeq.current || !mounted.current || worldRef.current !== openedFor;
     let opened: RefactorCardOpenResult | null = null;
     try {
+      // 桌況閘門（拖入與按鈕選檔兩個入口都走這裡，與 AI 重構同一套）：已遊玩／沒有原檔先擋；
+      // 重構過的桌要等卡檔驗過、真的有東西可套，才確認並清回
+      const rerun = await checkRerun(stale);
+      if (rerun === false) return;
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (stale()) return;
       opened = await invoke<RefactorCardOpenResult>("refactor_card_open", bytes, {
@@ -648,6 +673,10 @@ export function useRefactorWorkflow({
         return;
       }
       const card: RefactorCard = parseRefactorCardValue(opened.card);
+      if (rerun === "ready" && !(await resetForRerun(stale))) {
+        releaseToken(token);
+        return;
+      }
       if (heldToken.current?.token !== token?.token) releaseHeldAssets();
       heldToken.current = token;
       setAssetCount(opened?.assets.length ?? 0);
@@ -730,7 +759,15 @@ export function useRefactorWorkflow({
         if (gone && heldToken.current?.token === assetToken) heldToken.current = null;
         applyPhase.current = "idle";
         if (live() && gone) closeRefactor();
-        if (live()) setStatusMessage(String(reason));
+        // 後端判已遊玩（開著結果卡時桌上又有了回合）：換成同一則開新桌提醒
+        if (live() && String(reason).includes(REFACTOR_PLAYED)) {
+          setStatusMessage("");
+          await showMessage(t("refactorRerunPlayed"), {
+            title: t("refactorBtn"),
+            kind: "warning",
+            okLabel: t("dialogAck"),
+          });
+        } else if (live()) setStatusMessage(String(reason));
       } finally {
         // 按鈕鎖一律放開（卸載後 React 不會套用），換桌後留著的面板不能永遠鎖死
         setBusy(false);

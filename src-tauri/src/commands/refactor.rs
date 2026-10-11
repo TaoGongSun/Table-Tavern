@@ -36,8 +36,8 @@ pub(crate) async fn refactor_apply(
     let assets = claimed
         .as_ref()
         .map_or(&[][..], |staged| &staged.assets[..]);
-    // 中途失敗會在裡面記收據並立刻撤銷，回到零寫入（見 refactor/apply_record.rs）
-    let result = refactor::apply_and_record(
+    // 已遊玩擋下（不寫、不換世代）；其餘套用後整桌交換。見 refactor/reset.rs
+    refactor::apply_to_table(
         &root,
         &world_id,
         &outcome,
@@ -45,10 +45,8 @@ pub(crate) async fn refactor_apply(
         assets,
         record_receipt.unwrap_or(true),
         &held,
-    );
-    // 整桌交換（計畫 8.4）：清回合紀錄、桌世代加一，舊殼的在途卡寫被擋
-    data::message_vars::world_swapped(&root, &world_id);
-    result.map_err(|error| refactor::return_assets(claimed, error.to_string()))
+    )
+    .map_err(|error| refactor::return_assets(claimed, error))
 }
 
 /// AI 卡重構定向（初判）：supported 卡在玩家二選一之前的快速判斷，帶全卡只出
@@ -143,8 +141,8 @@ pub(crate) async fn refactor_survey(
     let source_fingerprints =
         data::identity_fingerprints(&root, &world_id).map_err(|error| error.to_string())?;
     let signals = refactor_ai::prescan_worldbook(&entries);
-    let tree_section =
-        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let tree_section = refactor_ai::table_tree_section(&root, &world_id, Some(&mode))
+        .map_err(|error| error.to_string())?;
     let messages = refactor_ai::survey_messages(&context, &signals, &lang, &mode, &tree_section);
     let (_guard, mut cancel) = inflight::register(inflight::Kind::Refactor, &world_id);
     let resumed = match (run_id.as_deref(), fingerprint.as_deref()) {
@@ -267,6 +265,8 @@ pub(crate) async fn refactor_expand(
     entry_uid: String,
     kind: String,
     known_fields: Option<Vec<String>>,
+    // 這次 run 的玩法（interface／characters）：決定附不附既有狀態樹段（見 refactor_ai::table_tree_section）
+    mode: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
@@ -281,8 +281,8 @@ pub(crate) async fn refactor_expand(
     // 初始值依據：玩家貼出的那則開場白（取自匯入原檔）裡、這條條目的容器區塊
     let opening = import::chosen_opening(&root, &world_id)
         .and_then(|opening| import::opening_blocks_for(&opening, &entry_text));
-    let tree_section =
-        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let tree_section = refactor_ai::table_tree_section(&root, &world_id, mode.as_deref())
+        .map_err(|error| error.to_string())?;
     let messages = refactor_ai::expand_messages(
         &context,
         &entry_uid,
@@ -385,6 +385,8 @@ pub(crate) async fn refactor_absorb_entry(
     world_id: String,
     entry_uid: String,
     known_fields: Option<Vec<String>>,
+    // 這次 run 的玩法（interface／characters）：決定附不附既有狀態樹段（見 refactor_ai::table_tree_section）
+    mode: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
     crate::data::refuse_if_updating()?;
@@ -405,8 +407,8 @@ pub(crate) async fn refactor_absorb_entry(
     let entry_text = refactor_ai::entry_full_text(&root, &world_id, &entry_uid)
         .map_err(|error| error.to_string())?;
     let known_fields = known_fields.unwrap_or_default();
-    let tree_section =
-        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let tree_section = refactor_ai::table_tree_section(&root, &world_id, mode.as_deref())
+        .map_err(|error| error.to_string())?;
     let messages = refactor_ai::absorb_messages(
         &context,
         &entry_uid,
@@ -477,6 +479,8 @@ pub(crate) async fn refactor_split_group(
     kind: String,
     spans: Vec<String>,
     known_fields: Option<Vec<String>>,
+    // 這次 run 的玩法（interface／characters）：決定附不附既有狀態樹段（見 refactor_ai::table_tree_section）
+    mode: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorRewriteOutcome, String> {
     crate::data::refuse_if_updating()?;
@@ -510,8 +514,8 @@ pub(crate) async fn refactor_split_group(
         }
     }
     let known_fields = known_fields.unwrap_or_default();
-    let tree_section =
-        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let tree_section = refactor_ai::table_tree_section(&root, &world_id, mode.as_deref())
+        .map_err(|error| error.to_string())?;
     let messages = refactor_ai::group_messages(
         &context,
         &title,
@@ -560,6 +564,8 @@ pub(crate) async fn refactor_expand_spans(
     entry_uid: String,
     spans: Vec<String>,
     known_fields: Option<Vec<String>>,
+    // 這次 run 的玩法（interface／characters）：決定附不附既有狀態樹段（見 refactor_ai::table_tree_section）
+    mode: Option<String>,
     on_delta: tauri::ipc::Channel<String>,
 ) -> Result<refactor_ai::RefactorExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
@@ -584,8 +590,8 @@ pub(crate) async fn refactor_expand_spans(
     let known_fields = known_fields.unwrap_or_default();
     let opening = import::chosen_opening(&root, &world_id)
         .and_then(|opening| import::opening_blocks_for(&opening, &material));
-    let tree_section =
-        refactor_ai::table_tree_section(&root, &world_id).map_err(|error| error.to_string())?;
+    let tree_section = refactor_ai::table_tree_section(&root, &world_id, mode.as_deref())
+        .map_err(|error| error.to_string())?;
     let messages = refactor_ai::expand_messages(
         &context,
         &entry_uid,

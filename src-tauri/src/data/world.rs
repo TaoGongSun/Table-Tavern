@@ -353,12 +353,21 @@ pub fn read_interface_shell(root: &Path, world_id: &str) -> DataResult<Option<St
 
 /// 介面接管桌＝有非空的重構骨架、而且不是角色優先（characters）桌。
 /// 與 `transport::gm_turn_format` 同一依據；換幕的出場收尾與摘要提示詞共用這個判定。
+/// 讀殼失敗算非接管；套用開場白這類讀錯不能猜的地方改用 `interface_takeover`。
 pub fn is_interface_takeover(root: &Path, world_id: &str, refactor_mode: Option<&str>) -> bool {
-    refactor_mode != Some("characters")
-        && read_interface_shell(root, world_id)
-            .ok()
-            .flatten()
-            .is_some_and(|shell| !shell.trim().is_empty())
+    interface_takeover(root, world_id, refactor_mode).unwrap_or(false)
+}
+
+/// `is_interface_takeover`，讀殼失敗回錯。
+pub fn interface_takeover(
+    root: &Path,
+    world_id: &str,
+    refactor_mode: Option<&str>,
+) -> DataResult<bool> {
+    if refactor_mode == Some("characters") {
+        return Ok(false);
+    }
+    Ok(read_interface_shell(root, world_id)?.is_some_and(|shell| !shell.trim().is_empty()))
 }
 
 pub fn write_interface_shell(root: &Path, world_id: &str, content: &str) -> DataResult<()> {

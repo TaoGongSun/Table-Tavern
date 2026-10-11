@@ -331,7 +331,7 @@ export const ptBR: Record<MsgKey, string> = {
   refactorModeMismatch: "A IA produziu o estilo de jogo errado (não bate com sua escolha). Este resultado foi descartado — rode a reestruturação de novo.",
   refactorInterfaceConflict: "Os resultados de interface se contradizem ({path}); não foram aplicados e as entradas de origem foram mantidas",
   refactorFrameUnmatched: "A entrada de moldura não se encaixa no esqueleto da interface; não foi aplicada e a entrada de origem foi mantida",
-  refactorRerunPlayed: "Esta mesa já tem dados de jogo. Reorganizar de novo pode entrar em conflito com eles; reorganize em uma mesa nova.",
+  refactorRerunPlayed: "Esta mesa já tem histórico de jogo. Só é possível reorganizar em uma mesa nova; abra uma mesa nova e reorganize lá.",
   refactorRerunNoSource: "Esta mesa não guardou o cartão original, então não pode ser reorganizada de novo. Reorganize em uma mesa nova.",
   refactorDroppedRestore: "Restaurar",
   refactorUnabsorbedSection: "{n, plural, one {# mecânica não incorporada} other {# mecânicas não incorporadas}}",

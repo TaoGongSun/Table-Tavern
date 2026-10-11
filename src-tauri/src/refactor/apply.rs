@@ -104,6 +104,19 @@ fn apply_into(
         _ => None,
     };
 
+    // 既有樹算不算權威：非 MVU 來源的桌（樹只是開場白狀態區塊解析出來的原卡渲染輸出，有損）這次又真的
+    // 套用介面，就以產物的 state_fields 為準——不保留同名頂層的現值、篩規則時把套用前的樹當空。MVU 桌與
+    // 不套介面時照 takeover-mvu-path-mismatch 的做法。要在任何寫入之前算（套用會把 incremental 打開）；
+    // 讀卡失敗回錯，不預設成非 MVU。
+    let tree_authoritative =
+        normalized_interface.is_none() || crate::mechanism::mvu_source(root, world_id, &state)?;
+    let empty_tree = BTreeMap::new();
+    let tree_before = if tree_authoritative {
+        &state.state.tree
+    } else {
+        &empty_tree
+    };
+
     let existing_entries = data::read_worldbook(root, world_id)?;
     // 已核對來源表：產物引用的 uid 一律經它換成這桌實際的條目 uid；核對不過的視同這桌沒有這條來源
     // ——不刪、不停用、不記帳本、不算歸屬（見 refactor/sources.rs）。快照取在任何寫入之前。
@@ -204,7 +217,7 @@ fn apply_into(
         outcome,
         selection,
         filter_scope(
-            &state.state.tree,
+            tree_before,
             normalized_interface.as_ref().map(|(fields, _)| fields),
         ),
     );
@@ -314,7 +327,12 @@ fn apply_into(
     if let (Some(interface), Some((state_fields, rules))) =
         (&outcome.interface, &normalized_interface)
     {
-        rebuild_state_fields(&mut state.state.tree, &mut state.state.jumps, state_fields);
+        rebuild_state_fields(
+            &mut state.state.tree,
+            &mut state.state.jumps,
+            state_fields,
+            tree_authoritative,
+        );
         state_dirty = true;
         if let Some(shell) = new_shell {
             data::write_interface_shell(root, world_id, shell)?;

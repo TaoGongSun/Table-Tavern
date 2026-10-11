@@ -1,11 +1,11 @@
 //! 重新重構（refactor-statusbar-skeleton 待問 1〔作者裁決 2026-10-03〕）：已重構的桌再按重構，
-//! - 已有遊玩資料（開場白以外有任何訊息）：擋下，請玩家開新桌；
+//! - 已有遊玩資料（見 `played`）：擋下，請玩家開新桌（未重構的桌也一樣〔作者裁決 2026-10-11〕）；
 //! - 未遊玩：清回剛匯入原卡的狀態（照匯入原檔重匯），再走一般重構流程——永不拿重構後的資料再重構；
 //! - 沒有匯入原檔或來源不完整（舊桌、收據讀壞、原檔記不下來）：擋下，請玩家開新桌。
 //!
 //! 未重構的桌照現狀直接重構。清回的細節〔模型判斷·未裁決，主線同意〕：保留桌名、模型指定與已貼的
 //! 開場白（同一則原文、同一個序號重貼在原本那筆匯入之後），world.md 照抄〔作者裁決 2026-10-11〕，其餘照原路徑依序重匯；
-//! 未遊玩＝current_scene 是 0 而且逐字稿最多一則事件。
+//! 未遊玩＝`played` 為否。
 //!
 //! 並行〔模型判斷·未裁決〕：整段持這桌的獨占鎖，拿到鎖才檢查 Ready；鎖被佔（匯入、貼訊息、另一次重設）
 //! 就回「這桌忙」。臨時根裡的重匯沿用同一張獨占憑證。
@@ -42,17 +42,66 @@ pub(crate) fn refactored(
     Ok(state.refactor_mode.is_some() || data::read_refactor_outcome(root, world_id)?.is_some())
 }
 
-fn played(root: &Path, world_id: &str, state: &data::WorldState) -> DataResult<bool> {
-    Ok(state.current_scene > 0 || data::read_transcript(root, world_id, 0)?.len() > 1)
+/// 已遊玩〔作者裁決 2026-10-11〕：換過幕、第 0 幕有開場白以外的事件（舊紀錄沒有 opening 欄位的照算）、
+/// 有生成中或已提交還沒落檔的 GM 回覆（含中止的半截），或是網頁存檔匯入的桌（天生有遊玩紀錄〔作者裁決 2026-10-12〕）。
+/// 生成中的回合也算：在途回合即將成為遊玩紀錄；失敗或沒有正文就中止的回合會解除，不會一直擋著。
+/// 已遊玩的桌一律不能重構，請玩家開新桌。
+pub(crate) fn played(root: &Path, world_id: &str, state: &data::WorldState) -> DataResult<bool> {
+    if state.current_scene > 0 || data::web_save_sidecar_path(root, world_id)?.exists() {
+        return Ok(true);
+    }
+    if data::read_transcript(root, world_id, 0)?
+        .iter()
+        .any(|event| !event.opening)
+    {
+        return Ok(true);
+    }
+    // 回合在生成中或已提交等落檔：那一輪的回覆遲早會落進逐字稿
+    Ok(data::state_commit::with_commit(root, world_id, |tx| {
+        data::message_vars::busy(tx) || data::message_vars::has_unlanded_reply(tx)
+    }))
+}
+
+/// 已遊玩的桌拒套重構時回的錯（前端靠它換成提醒文案，一字不差）。
+pub const REFACTOR_PLAYED: &str = "refactor-played";
+
+/// 重構套用的後端關卡（呼叫端已持整桌獨占）：已遊玩就回 `REFACTOR_PLAYED`，什麼都不寫、不換世代
+/// （回合紀錄照留，等著落檔的回覆不受影響）；否則照 `apply_and_record` 套用，之後整桌交換（清回合紀錄、
+/// 世代加一，舊殼的在途卡寫被擋）。
+pub fn apply_to_table(
+    root: &Path,
+    world_id: &str,
+    outcome: &super::RefactorOutcome,
+    selection: &super::RefactorSelection,
+    assets: &[super::card_png::CardAsset],
+    record_receipt: bool,
+    held: &data::WorldExclusive,
+) -> Result<super::RefactorApplySummary, String> {
+    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    if played(root, world_id, &state).map_err(|error| error.to_string())? {
+        return Err(REFACTOR_PLAYED.to_owned());
+    }
+    // 中途失敗會在裡面記收據並立刻撤銷，回到零寫入（見 refactor/apply_record.rs）
+    let result = super::apply_and_record(
+        root,
+        world_id,
+        outcome,
+        selection,
+        assets,
+        record_receipt,
+        held,
+    );
+    data::message_vars::world_swapped(root, world_id);
+    result.map_err(|error| error.to_string())
 }
 
 pub fn rerun_status(root: &Path, world_id: &str) -> DataResult<RerunStatus> {
     let state = data::read_state(root, world_id)?;
-    if !refactored(root, world_id, &state)? {
-        return Ok(RerunStatus::Fresh);
-    }
     if played(root, world_id, &state)? {
         return Ok(RerunStatus::Played);
+    }
+    if !refactored(root, world_id, &state)? {
+        return Ok(RerunStatus::Fresh);
     }
     Ok(match receipts::import_replays(root, world_id)? {
         Some(replays) if !replays.is_empty() => RerunStatus::Ready,

@@ -23,9 +23,10 @@ fn branch(children: &[(&str, StateNode)]) -> StateNode {
     )
 }
 
-/// 套用前的樹：MVU 卡匯入後那種已經有變數的桌。
+/// 套用前的樹：MVU 卡匯入後那種已經有變數的桌（世界書 MVU 鷹架會開 incremental，即 MVU 來源）。
 fn seed_tree(root: &Path, world_id: &str) {
     let mut state = data::read_state(root, world_id).unwrap();
+    state.mechanism.incremental = true;
     state.state.tree = BTreeMap::from([
         ("基础信息".to_owned(), branch(&[("时间", leaf("未知"))])),
         ("冒险者".to_owned(), branch(&[])),
@@ -325,6 +326,63 @@ fn interface_top_level_uses_mirror_folded_fields() {
     let rules = applied_mechanism(root.path(), &world_id).rules;
     assert!(rules.contains_key("地點"));
     assert!(!rules.contains_key("状态栏.地點"));
+}
+
+/// 對照組：同一棵樹但不是 MVU 來源（樹只是開場白狀態區塊解析出來的）又套用介面，套用前的樹不算數，
+/// 照「樹空整批不篩」走。
+#[test]
+fn non_mvu_interface_apply_does_not_filter_by_the_parsed_tree() {
+    let root = TestRoot::new("filter-non-mvu");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    seed_tree(root.path(), &world_id);
+    let mut state = data::read_state(root.path(), &world_id).unwrap();
+    state.mechanism.incremental = false;
+    data::write_state(root.path(), &world_id, &state).unwrap();
+    let source = seed_entry(root.path(), &world_id, "機制", "規則");
+    let ui_source = seed_entry(root.path(), &world_id, "介面", "介面格式");
+    let outcome = mechanism_outcome(
+        BTreeMap::from([
+            ("地點".to_owned(), rule(FieldKind::Text)),
+            ("别處.值".to_owned(), rule(FieldKind::Number)),
+        ]),
+        Vec::new(),
+        source,
+        Some(interface(
+            serde_json::json!({ "地點": "" }),
+            Some("<div>{{地點}}{{本回合.正文}}</div>"),
+            ui_source,
+        )),
+        None,
+    );
+    apply(root.path(), &world_id, &outcome, &mechanism_selection(true)).unwrap();
+    let rules = applied_mechanism(root.path(), &world_id).rules;
+    assert!(rules.contains_key("地點"));
+    assert!(rules.contains_key("别處.值"));
+
+    // 同樣的產物套到 MVU 桌：對不到樹與介面頂層的規則照篩
+    let root = TestRoot::new("filter-mvu-control");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    seed_tree(root.path(), &world_id);
+    let source = seed_entry(root.path(), &world_id, "機制", "規則");
+    let ui_source = seed_entry(root.path(), &world_id, "介面", "介面格式");
+    let outcome = mechanism_outcome(
+        BTreeMap::from([
+            ("地點".to_owned(), rule(FieldKind::Text)),
+            ("别處.值".to_owned(), rule(FieldKind::Number)),
+        ]),
+        Vec::new(),
+        source,
+        Some(interface(
+            serde_json::json!({ "地點": "" }),
+            Some("<div>{{地點}}{{本回合.正文}}</div>"),
+            ui_source,
+        )),
+        None,
+    );
+    apply(root.path(), &world_id, &outcome, &mechanism_selection(true)).unwrap();
+    let rules = applied_mechanism(root.path(), &world_id).rules;
+    assert!(rules.contains_key("地點"));
+    assert!(!rules.contains_key("别處.值"));
 }
 
 /// 旗標路徑含 `*`（trigger.flag 或 flag 條件）整組丟：once 命中會長出字面 `*` 分支。

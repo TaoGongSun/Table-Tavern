@@ -331,7 +331,7 @@ export const ja: Record<MsgKey, string> = {
   refactorModeMismatch: "AIが選択と違う遊び方で出力したため、この結果は破棄しました。もう一度リファクタリングしてください。",
   refactorInterfaceConflict: "インターフェースの結果が衝突しています（{path}）。適用せず、元のエントリーは残しました",
   refactorFrameUnmatched: "外枠エントリーがインターフェースの骨組みに合わないため適用せず、元のエントリーは残しました",
-  refactorRerunPlayed: "この卓にはすでにプレイデータがあります。再構成すると既存のデータと衝突しやすいため、新しい卓で再構成してください。",
+  refactorRerunPlayed: "この卓にはすでにプレイ記録があります。再構成は新しい卓でのみ行えるため、新しい卓を開いてから再構成してください。",
   refactorRerunNoSource: "この卓には元のカードが保存されていないため、再構成できません。新しい卓で再構成してください。",
   refactorDroppedRestore: "戻す",
   refactorUnabsorbedSection: "未対応メカニクス {n} 件",

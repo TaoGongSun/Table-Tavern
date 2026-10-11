@@ -342,7 +342,7 @@ export const en: Record<MsgKey, string> = {
   refactorModeMismatch: "The AI produced the wrong play style (it doesn't match your choice). This result was discarded — please run refactoring again.",
   refactorInterfaceConflict: "The interface results conflict ({path}); they were not applied and their source entries were kept",
   refactorFrameUnmatched: "The frame entry doesn't fit the interface skeleton; it was not applied and its source entry was kept",
-  refactorRerunPlayed: "This table already has play data. Refactoring again can easily conflict with it, so please refactor on a new table.",
+  refactorRerunPlayed: "This table already has play history. Refactoring is only possible on a new table, so please start a new table and refactor there.",
   refactorRerunNoSource: "This table has no saved original card, so it can't be refactored again. Please refactor on a new table.",
   refactorDroppedRestore: "Restore",
   refactorUnabsorbedSection: "{n, plural, one {# unadopted mechanism} other {# unadopted mechanisms}}",

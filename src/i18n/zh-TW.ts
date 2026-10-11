@@ -332,7 +332,7 @@ export const zh = {
   refactorModeMismatch: "AI 跑錯玩法（產出與你選的不一致），這份結果不採用，請再按一次重構。",
   refactorInterfaceConflict: "介面產物互相衝突（{path}），這組介面沒有套用，來源條目保留",
   refactorFrameUnmatched: "外框條目對不上介面骨架，沒有套用，來源條目保留",
-  refactorRerunPlayed: "這桌已有遊玩資料，再次重構容易和現有資料衝突，請開新桌重構。",
+  refactorRerunPlayed: "這張桌已經有遊玩紀錄，重構只能在開新桌時進行，請開新桌再重構。",
   refactorRerunNoSource: "這桌沒有保存原卡，無法重新重構，請開新桌重構。",
   refactorDroppedRestore: "放回",
   refactorUnabsorbedSection: "未接管機制 {n} 項",

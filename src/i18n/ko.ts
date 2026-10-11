@@ -331,7 +331,7 @@ export const ko: Record<MsgKey, string> = {
   refactorModeMismatch: "AI가 선택과 다른 플레이 방식으로 출력해 이 결과는 버렸습니다. 리팩터링을 다시 실행해 주세요.",
   refactorInterfaceConflict: "인터페이스 결과가 서로 충돌합니다({path}). 적용하지 않았고 원본 항목은 유지했습니다",
   refactorFrameUnmatched: "외곽 항목이 인터페이스 골격과 맞지 않아 적용하지 않았고 원본 항목은 유지했습니다",
-  refactorRerunPlayed: "이 테이블에는 이미 플레이 데이터가 있습니다. 다시 재구성하면 기존 데이터와 충돌하기 쉬우니 새 테이블에서 재구성하세요.",
+  refactorRerunPlayed: "이 테이블에는 이미 플레이 기록이 있습니다. 재구성은 새 테이블에서만 할 수 있으니 새 테이블을 열고 재구성하세요.",
   refactorRerunNoSource: "이 테이블에는 원본 카드가 저장되어 있지 않아 다시 재구성할 수 없습니다. 새 테이블에서 재구성하세요.",
   refactorDroppedRestore: "복원",
   refactorUnabsorbedSection: "미편입 메커니즘 {n}건",

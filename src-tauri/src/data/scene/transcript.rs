@@ -377,7 +377,15 @@ pub fn append_opening_keyed(
         world.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &world);
         let before = world.state.tree.clone();
         let base = message_vars::opening_stat(tx, scene)?;
-        let outcome = mechanism::apply_block_typed(&mut world, block, user_name, base.as_ref());
+        // 介面接管桌的開場白自帶原卡格式的狀態區塊：不收（讀不到殼就不猜，整筆不貼）
+        let scope =
+            if crate::data::interface_takeover(root, world_id, world.refactor_mode.as_deref())? {
+                mechanism::BlockScope::TakeoverOpening
+            } else {
+                mechanism::BlockScope::Table
+            };
+        let outcome =
+            mechanism::apply_block_typed(&mut world, block, user_name, base.as_ref(), scope);
         let table = message_vars::opening_table(
             tx,
             scene,

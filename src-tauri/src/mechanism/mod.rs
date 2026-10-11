@@ -14,13 +14,15 @@ mod types;
 pub(crate) mod upstream_set;
 
 #[cfg(test)]
+mod block_scope_tests;
+#[cfg(test)]
 mod feedback_e2e_tests;
 #[cfg(test)]
 mod test_support;
 
 #[cfg(test)]
 pub use ledger::apply_block;
-pub use ledger::{append_log, apply_block_typed, read_ledger, Ledger};
-pub use policy::resolve_numeric_update;
+pub use ledger::{append_log, apply_block_typed, read_ledger, BlockScope, Ledger};
+pub use policy::{mvu_source, resolve_numeric_update};
 pub use rules::rule_for_path;
 pub use types::{Outcome, Record, RecordKind};

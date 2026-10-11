@@ -223,12 +223,14 @@ fn shell_placeholders(shell: &str) -> BTreeSet<String> {
     out
 }
 
-/// state_fields 是物件時整份重建狀態樹：同名頂層鍵保留目前值，其餘舊鍵一律捨棄；非物件產物
-/// 則不動任何狀態，避免壞產物清空整桌。新欄位的 JSON 轉換集中在 json_to_state_node。
+/// state_fields 是物件時整份重建狀態樹：`keep_current`（既有樹是權威）時同名頂層鍵保留目前值，否則一律取
+/// 產物值；其餘舊鍵一律捨棄。非物件產物則不動任何狀態，避免壞產物清空整桌。新欄位的 JSON 轉換集中在
+/// json_to_state_node。
 pub(super) fn rebuild_state_fields(
     tree: &mut BTreeMap<String, StateNode>,
     jumps: &mut BTreeMap<String, String>,
     state_fields: &serde_json::Value,
+    keep_current: bool,
 ) {
     let Some(object) = state_fields.as_object() else {
         return;
@@ -239,6 +241,7 @@ pub(super) fn rebuild_state_fields(
             (
                 key.clone(),
                 tree.get(key)
+                    .filter(|_| keep_current)
                     .cloned()
                     .unwrap_or_else(|| json_to_state_node(value)),
             )
