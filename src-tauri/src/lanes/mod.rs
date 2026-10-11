@@ -176,7 +176,8 @@ pub(crate) struct TurnInput<'a> {
     /// claude 角色線、單角色模式時＝開口者 id：本輪不抹，session 記成這個角色的未抹線。
     /// 其他供應商與 GM 線即使填了也會在 run_turn 歸零（只有 claude 角色線靠這欄隔離）。
     pub single_owner: Option<String>,
-    /// 本輪 tail 含角色狀態區塊；單角色線上一輪有、這輪沒有就重開（舊值撤不掉）
+    /// 本輪 tail 含角色狀態區塊；不抹尾段的角色線（claude 單角色、Agy 一角一線）上一輪有、
+    /// 這輪沒有就重開（舊值撤不掉）。其他線在 run_turn 歸零
     pub has_state_block: bool,
     /// 不抹尾段的角色線（Agy 一角一線、claude 單角色）提進凍結 system 的世界書段（`LaneTurn::hoisted_worldbook`）。
     /// 跟上一輪不同就整線重開、不走補丁：補丁回合後不抹，舊世界書會留在 session 歷史裡（方案三之 3）
@@ -342,7 +343,7 @@ struct LaneState {
     /// 舊檔缺欄＝None＝照舊每輪抹的線，不猜成單角色。
     #[serde(default)]
     unerased_owner: Option<String>,
-    /// 上一輪 tail 有角色狀態區塊（只在 unerased_owner 有值時有意義）
+    /// 上一輪 tail 有角色狀態區塊（只在不抹尾段的角色線寫：claude 單角色線、Agy 一角一線）
     #[serde(default)]
     had_state_block: bool,
     /// 上一輪提進凍結 system 的世界書段指紋（`TurnInput::hoisted_worldbook`）；舊檔沒這欄＝沒有
@@ -464,9 +465,14 @@ pub(crate) async fn run_turn(
         .into());
     }
     // 只有 claude 角色線靠 unerased_owner 隔離；agy 靠分角色線名、grok 與 GM 每輪抹或不含機密，
-    // 一律歸零，plan_turn 的未抹線判定就套不到它們
+    // 一律歸零，plan_turn 的換人／換模式判定就套不到它們
     if !(call.provider == LaneProvider::Claude && input.lane == Lane::Chars) {
         input.single_owner = None;
+    }
+    // 不抹尾段的角色線：狀態區塊留在歷史撤不掉，整塊消失要重開（StateBlockGone）
+    let keeps_tail = input.lane == Lane::Chars
+        && (input.single_owner.is_some() || call.provider == LaneProvider::Agy);
+    if !keeps_tail {
         input.has_state_block = false;
     }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
@@ -654,7 +660,7 @@ pub(crate) async fn run_turn(
                 agy_usage: None,
                 // 呼叫前就落檔：中途崩潰時下一輪靠 pending 重開，靠這欄擋別人續用
                 unerased_owner: input.single_owner.clone(),
-                had_state_block: input.single_owner.is_some() && input.has_state_block,
+                had_state_block: keeps_tail && input.has_state_block,
                 hoisted_worldbook: worldbook_fingerprint(input.hoisted_worldbook.as_deref()),
                 // 本輪那份只在成功收尾時累加
                 tail_stale: Some(match opening {

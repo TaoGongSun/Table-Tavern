@@ -90,7 +90,7 @@ pub(super) enum ReopenReason {
     OwnerChanged,
     /// 未抹線遇到多角色模式（在場變多）
     ModeChanged,
-    /// 未抹線的狀態區塊整塊消失（歷史裡的舊值撤不掉）
+    /// 不抹尾段的角色線（claude 單角色、Agy 一角一線）狀態區塊整塊消失（歷史裡的舊值撤不掉）
     StateBlockGone,
     /// 不抹尾段的線提進 system 的世界書變了（補丁會留在歷史裡，只能重開）
     WorldbookChanged,
@@ -208,7 +208,7 @@ pub(super) fn plan_turn(
             } // 回覆沒落檔或被改＝session 與正典分岔
         }
     }
-    // 未抹線（claude 單角色）：順序固定，StateBlockGone 不能被「同一人續用」短路
+    // 未抹線（claude 單角色）：先判換人、換模式，緊接著判 StateBlockGone，不能被「同一人續用」短路
     if let Some(owner) = &state.unerased_owner {
         let speaker = match &input.echo {
             ReplyEcho::Dialogue { speaker_id, .. } => Some(speaker_id.as_str()),
@@ -224,11 +224,12 @@ pub(super) fn plan_turn(
                 reason: ReopenReason::ModeChanged,
             };
         }
-        if state.had_state_block && !input.has_state_block {
-            return TurnPlan::Reopen {
-                reason: ReopenReason::StateBlockGone,
-            };
-        }
+    }
+    // 不抹尾段的角色線（claude 單角色、Agy 一角一線）：歷史裡的舊狀態區塊撤不掉，整塊消失就重開
+    if state.had_state_block && !input.has_state_block {
+        return TurnPlan::Reopen {
+            reason: ReopenReason::StateBlockGone,
+        };
     }
     if state.hoisted_worldbook != worldbook_fingerprint(input.hoisted_worldbook.as_deref()) {
         return TurnPlan::Reopen {

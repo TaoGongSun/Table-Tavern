@@ -226,6 +226,14 @@ fn plan_turn_owner_rules_in_fixed_order() {
         plan(&with_block, &speaking(&events, "fox-id", true, true)),
         None
     );
+    // 沒有 owner 的不抹尾段線（Agy 一角一線）：狀態區塊從有到無照樣重開
+    let mut agy = owned_state(&events, None);
+    agy.had_state_block = true;
+    assert_eq!(
+        plan(&agy, &speaking(&events, "fox-id", false, false)),
+        Some("state-block-gone")
+    );
+    assert_eq!(plan(&agy, &speaking(&events, "fox-id", false, true)), None);
     // owner 為 None：多角色、單角色都照原規則續用
     let erased = owned_state(&events, None);
     assert_eq!(
@@ -929,47 +937,162 @@ async fn unbinding_the_branch_reopens() {
     assert_ne!(sessions[1].1, sessions[0].1);
 }
 
-/// agy 一角一線：就算呼叫端填了 single_owner，也不套未抹線判定（狀態消失、在場變多都照常續用）。
+/// Agy 一角一線跑一串回合（`owner` 模擬呼叫端誤填 single_owner）；回傳每輪
+/// (是不是續用, 送出的 prompt, 重開原因, 落檔的 had_state_block, 落檔的 unerased_owner)。
 #[cfg(unix)]
-#[tokio::test]
-async fn agy_lane_ignores_owner_rules() {
-    let _serial = crate::inflight::lock_real_process_tests();
-    let fake = fake_agy("owner");
+async fn agy_rounds(
+    tag: &str,
+    rounds: &[(bool, bool)],
+) -> Vec<(bool, String, Option<String>, bool, Option<String>)> {
+    let fake = fake_agy(tag);
     let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "晚安")];
-    fn input(events: &[TranscriptEvent], single: bool, has_state_block: bool) -> TurnInput<'_> {
-        let mut input = turn_input(events, 0);
+    let mut out = Vec::new();
+    for (index, &(owner, has_state_block)) in rounds.iter().enumerate() {
+        let mut input = turn_input(&events, 0);
         input.prefix = None;
         input.scope = Some("fox-id".to_owned());
-        input.single_owner = single.then(|| "fox-id".to_owned());
+        input.single_owner = owner.then(|| "fox-id".to_owned());
         input.has_state_block = has_state_block;
-        input
+        let reply = run_turn(&fake.call, &fake.root, &fake.world_id, input, None, |_| {})
+            .await
+            .unwrap()
+            .text;
+        let calls = std::fs::read_to_string(fake.dir.join("calls.jsonl")).unwrap();
+        let call: Value = serde_json::from_str(calls.lines().nth(index).unwrap()).unwrap();
+        let resumed = call["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg == "--conversation");
+        let usage = std::fs::read_to_string(fake.dir.join("usage.jsonl")).unwrap();
+        let row: Value = serde_json::from_str(usage.lines().nth(index).unwrap()).unwrap();
+        let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
+        let state = store.values().next().unwrap();
+        out.push((
+            resumed,
+            call["prompt"].as_str().unwrap().to_owned(),
+            row["reason"].as_str().map(str::to_owned),
+            state.had_state_block,
+            state.unerased_owner.clone(),
+        ));
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply));
+        events.push(event(TranscriptKind::Player, "", "阿濤", "然後呢"));
     }
-    for (single, has_state_block) in [(true, true), (true, false), (false, false)] {
+    std::fs::remove_dir_all(&fake.dir).unwrap();
+    out
+}
+
+/// Agy 一角一線不抹尾段：狀態區塊有→有續用、有→無開新 conversation（重帶 system）、無→無續用。
+#[cfg(unix)]
+#[tokio::test]
+async fn agy_lane_reopens_when_state_block_vanishes() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let rounds = agy_rounds(
+        "state-gone",
+        &[(false, true), (false, true), (false, false), (false, false)],
+    )
+    .await;
+    let resumed: Vec<bool> = rounds.iter().map(|round| round.0).collect();
+    assert_eq!(resumed, [false, true, false, true]);
+    assert_eq!(rounds[0].2.as_deref(), Some("first-turn"));
+    assert_eq!(rounds[1].2, None);
+    assert_eq!(rounds[2].2.as_deref(), Some("state-block-gone"));
+    assert_eq!(rounds[3].2, None);
+    assert_eq!(rounds[2].1.matches("凍結A").count(), 1, "重開重帶 system");
+    assert!(!rounds[3].1.contains("凍結A"));
+    let had: Vec<bool> = rounds.iter().map(|round| round.3).collect();
+    assert_eq!(had, [true, true, false, false]);
+    assert!(rounds.iter().all(|round| round.4.is_none()));
+}
+
+/// Agy 線就算呼叫端填了 single_owner：owner 被清掉、在場變多照常續用，狀態區塊消失仍重開。
+#[cfg(unix)]
+#[tokio::test]
+async fn agy_lane_drops_owner_but_keeps_state_block_rule() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let rounds = agy_rounds("owner", &[(true, true), (false, true), (true, false)]).await;
+    let resumed: Vec<bool> = rounds.iter().map(|round| round.0).collect();
+    assert_eq!(resumed, [false, true, false]);
+    assert_eq!(rounds[2].2.as_deref(), Some("state-block-gone"));
+    assert!(rounds.iter().all(|round| round.4.is_none()));
+}
+
+/// Agy GM 線不是角色線：傳入的狀態區塊旗標不落檔。
+#[cfg(unix)]
+#[tokio::test]
+async fn agy_gm_lane_does_not_record_state_block() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_agy("gm-state");
+    let events = vec![event(TranscriptKind::Player, "", "阿濤", "晚安")];
+    let mut input = turn_input(&events, 0);
+    input.lane = Lane::Gm;
+    input.prefix = None;
+    input.echo = ReplyEcho::Narration;
+    input.has_state_block = true;
+    run_turn(&fake.call, &fake.root, &fake.world_id, input, None, |_| {})
+        .await
+        .unwrap();
+    let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
+    assert!(!store.values().next().unwrap().had_state_block);
+    std::fs::remove_dir_all(&fake.dir).unwrap();
+}
+
+/// 每輪抹的 claude 角色共線（多角色）：狀態區塊有→無照常續用，不記 had_state_block。
+#[cfg(unix)]
+#[tokio::test]
+async fn shared_claude_lane_ignores_state_block_vanishing() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let mut table = Table::new("shared-state");
+    table
+        .run(Turn::multi("fox-id", "狐狸", "狀態").with_state(true))
+        .await
+        .unwrap();
+    assert!(!table.state().unwrap().had_state_block);
+    table
+        .run(Turn::multi("fox-id", "狐狸", "狀態二").with_state(false))
+        .await
+        .unwrap();
+    assert!(!table.state().unwrap().had_state_block);
+    let sessions: Vec<_> = table.calls().iter().map(session_of).collect();
+    assert_eq!(sessions[1], (true, sessions[0].1.clone()), "共線續用");
+}
+
+/// claude GM 線：狀態區塊欄被歸零，有→無照常續用。
+#[cfg(unix)]
+#[tokio::test]
+async fn gm_lane_ignores_state_block_vanishing() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let table = Table::new("gm-state");
+    let mut events = table.events.clone();
+    let mut sessions = Vec::new();
+    for has_state_block in [true, false] {
+        let mut input = turn_input(&events, 0);
+        input.lane = Lane::Gm;
+        input.prefix = None;
+        input.echo = ReplyEcho::Narration;
+        input.has_state_block = has_state_block;
         let reply = run_turn(
-            &fake.call,
-            &fake.root,
-            &fake.world_id,
-            input(&events, single, has_state_block),
+            &table.fake.call,
+            &table.fake.root,
+            &table.fake.world_id,
+            input,
             None,
             |_| {},
         )
         .await
         .unwrap()
         .text;
-        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply));
+        let store = table.store();
+        let state = store
+            .get(&lane_key(Lane::Gm, table.fake.call.model_label(), None))
+            .unwrap();
+        assert!(!state.had_state_block);
+        sessions.push(state.session_id.clone());
+        events.push(event(TranscriptKind::Narration, "", "GM", &reply));
         events.push(event(TranscriptKind::Player, "", "阿濤", "然後呢"));
     }
-    let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
-    let state = store.values().next().unwrap();
-    assert_eq!(state.unerased_owner, None);
-    assert!(!state.had_state_block);
-    let calls = std::fs::read_to_string(fake.dir.join("calls.jsonl")).unwrap();
-    let resumed = calls
-        .lines()
-        .filter(|line| line.contains("--conversation"))
-        .count();
-    assert_eq!(resumed, 2, "第 2、3 輪都續用");
-    std::fs::remove_dir_all(&fake.dir).unwrap();
+    let calls: Vec<_> = table.calls().iter().map(session_of).collect();
+    assert_eq!(calls[1], (true, calls[0].1.clone()), "GM 線續用");
 }
 
 // ---------- 偵測與環境變數 ----------

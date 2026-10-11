@@ -305,6 +305,31 @@ async fn shared_lane_without_residue(tag: &str, extra_env: &[(&str, &str)]) {
     assert!(text.contains("狐狸：回覆1") && text.contains("騎士：回覆2"));
 }
 
+/// grok 角色線每輪抹：狀態區塊有→無照常續用，不記 had_state_block。
+#[cfg(unix)]
+#[tokio::test]
+async fn grok_chars_lane_ignores_state_block_vanishing() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_grok("state-gone", &[]);
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    for has_state_block in [true, false] {
+        let mut input = char_turn(&events, "狐狸", "fox-id", Some("狐狸是通緝犯"));
+        input.has_state_block = has_state_block;
+        let reply = run_turn(&fake.call, &fake.root, &fake.world_id, input, None, |_| {})
+            .await
+            .unwrap()
+            .text;
+        let store = read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap());
+        assert!(!store["chars:grok-4.6"].had_state_block);
+        events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply));
+        events.push(event(TranscriptKind::Player, "", "阿濤", "然後呢"));
+    }
+    let calls = calls(&fake.dir);
+    assert_eq!(calls.len(), 2);
+    let session = flag(&calls[0], "-s").expect("第一輪開線");
+    assert_eq!(flag(&calls[1], "-r").as_deref(), Some(session.as_str()));
+}
+
 /// GM 線一律原文：不抹、不拿 reasoning、不補前綴。
 #[cfg(unix)]
 #[tokio::test]
