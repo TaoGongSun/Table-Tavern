@@ -38,13 +38,16 @@ export function correctlyMerge<T extends object>(target: T, source: unknown): T 
   return lodash.mergeWith(target, source, (_left: unknown, right: unknown) => (Array.isArray(right) ? right : undefined));
 }
 
-/** 條目內容：`<initvar>` 包住或程式碼區塊包住的取裡面那段 */
-function initvarBody(content: string): string {
+/** 條目內容：`<initvar>` 包住或程式碼區塊包住的取裡面那段；剩下的首尾非空行若是成對的 `<標籤>`／`</標籤>` 也剝掉，
+ *  不然 YAML 會把首行標籤併進第一個鍵（與桌面版得出同一棵樹） */
+export function initvarBody(content: string): string {
   let body = content;
   const xml = body.trim().match(/.*<initvar>.*\n([\s\S]*)\n.*<\/initvar>.*/m);
   if (xml) body = xml[1];
   const fenced = body.trim().match(/```.*\n([\s\S]*)\n```/m);
   if (fenced) body = fenced[1];
+  const wrapped = body.trim().match(/^<([A-Za-z_][\w.-]*)>[ \t]*\n([\s\S]*)\n[ \t]*<\/\1>$/);
+  if (wrapped) body = wrapped[2];
   return body;
 }
 
