@@ -120,7 +120,7 @@
 | 6 卡片介面 | regex 顯示腳本→整頁介面→沙盒 iframe（橋接照 2.4）；讀訊息墊片、MVU 讀寫墊片、parseMessage Worker、卡片 localStorage 墊片；宿主端變數語意改寫成 TS（4.1 的 message_vars 系列），照契約進存檔，補 MVU 卡的桌面來回測試。DRM／雲端載入器卡照桌面版回報不支援。介面照酒館助手畫在各則訊息裡，不做桌面版的覆蓋層〔模型判斷·未裁決〕；character 層新開時取卡上酒館助手的 variables、script 層取各腳本的 data〔模型判斷·未裁決〕。 | Opus | 2、4 | 宿主端變數語意改寫成 TS 的工作量可能被低估；卡片腳本外連會外送對話內容（2.4）。桌面版巨集只換 `{{user}}`／`{{char}}`，卡欄位的 `{{getvar}}` 不讀 chat 層：網頁版變數接進桌面版提示要一起看（桌面版既有限制，列給作者）。 |
 | 7 導流全套 | 下載頁（版本、各平台檔、Mac／Windows 未簽章繞過說明、功能對照表）、各時機的下載提示（D10）、額度用完文案只導向下載（D11）、找卡清單資料檔（五站連結＋一行 18 禁標示，D6）。 | Sonnet | 1、4 | |
 | 8 十語系 | 十語系字典與字典體檢、範例卡各語系（D5）、SEO／分享卡片的 meta。字典體檢寫成 web vitest（鍵集合、佔位符、單複數語法），不另寫 `check-i18n` 腳本——web 沒有後端訊息碼與按鈕寬度表要對，vitest 已在 verify 裡。 | Sonnet | 1–7 | |
-| 9 上線 | 部署設定（Cloudflare Pages Git 連接，D42）、正式網域實開驗證（PKCE 回呼、CORS、CSP、下載連結）。已封板、可部署（站上實開驗收待作者手動部署後由主線做，清單見交接檔）；正式公開等「公開前門檻」結案。步驟見下方「部署與上線檢查」。 | Sonnet | 1–8；作者先開好 Cloudflare 帳號 | |
+| 9 上線 | 部署設定（Cloudflare Pages Git 連接，D42）、正式網域實開驗證（PKCE 回呼、CORS、CSP、下載連結）。已封板、可部署（站上實開驗收待作者手動部署後由主線做，清單見交接檔）；2026-10-12 main 已部署上線（3f3ebea），公開前門檻結案。步驟見下方「部署與上線檢查」。 | Sonnet | 1–8；作者先開好 Cloudflare 帳號 | |
 
 ### 部署與上線檢查（包 9）
 - 已備：`web/site-headers.ts` 建置時寫出 `dist/_headers`（宿主 CSP 只給 `/`、不放 meta；`/sandbox`、`/sandbox.html` 只給 `frame-ancestors 'self'`；`/assets/*` 一年 immutable，其餘用 Pages 預設 `max-age=0, must-revalidate`）；`web/public/404.html` 讓缺檔回 404（不退回首頁，免得缺檔資產拿到首頁 HTML 又被長快取）。不需要 `_redirects`（下載頁走 `#download`，沒有路徑路由）。端點：只有 e2e 模式吃 `VITE_TT_*`，正式建置一律官方網址。OAuth 回呼網址＝執行時的 `location.origin`，OpenRouter 不必預先登記。
