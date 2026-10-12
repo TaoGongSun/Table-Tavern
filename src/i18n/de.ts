@@ -386,7 +386,7 @@ export const de: Record<MsgKey, string> = {
   importCardImageNotSaved: "Das Bild der Karte ist beschädigt und wurde nicht als Charakterbild gespeichert. Die Karte selbst wurde importiert; du kannst später ein Bild hochladen.",
   importCardBookFailed: "Das Weltbuch der Karte konnte nicht importiert werden (der Charakter wurde trotzdem angelegt). Importiere die Karte noch einmal als Weltbuch.",
   importWebSaveDone: "Aus deinem Spielstand der Web-Version wurde ein neuer Tisch geöffnet. Du kannst dort weiterspielen.",
-  importWebSaveWorldbookRules: "Hinweis: Die Desktop-App löst Weltbuch-Einträge anders aus als die Web-Version (derzeit nur dauerhaft aktive Einträge und Schlüsselwörter aus den letzten Nachrichten, noch ohne Timer wie sticky oder cooldown). Die Details, auf die sich Figuren stützen, können daher leicht abweichen.",
+  importWebSaveWorldbookRules: "Hinweis: Der Auslösestatus des Weltbuchs (Timer wie sticky und cooldown) wurde mit übernommen. Einige ungewöhnlich geschriebene Einträge können in der Desktop-App etwas anders auslösen als in der Web-Version.",
   importWebSaveSharedKept: "{n} tischübergreifende Kartenvariablen hatten in der Desktop-App schon Werte; diese wurden beibehalten.",
   importWebSaveStorageRetry: "Die Einstellungen der Kartenoberfläche konnten auf diesem Computer nicht gespeichert werden (der Speicher ist evtl. voll). Erneut versuchen?",
   importWebSaveRetry: "Erneut versuchen",

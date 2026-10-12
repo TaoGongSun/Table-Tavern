@@ -384,7 +384,7 @@ export const ko: Record<MsgKey, string> = {
   importCardImageNotSaved: "카드 이미지가 손상되어 캐릭터 이미지로 저장하지 못했습니다. 카드 내용은 정상적으로 가져왔으며, 이미지는 나중에 직접 올릴 수 있습니다.",
   importCardBookFailed: "카드에 포함된 세계서를 가져오지 못했습니다(캐릭터는 정상적으로 만들어졌습니다). 카드를 세계서로 다시 가져와 보세요.",
   importWebSaveDone: "웹 버전 저장 파일로 새 테이블을 열었습니다. 이어서 플레이할 수 있습니다.",
-  importWebSaveWorldbookRules: "참고: 데스크톱 앱의 월드북 발동 규칙은 웹 버전과 다릅니다(현재는 상시 항목과 최근 몇 개 메시지의 키워드만 보며, sticky·cooldown 같은 타이머는 아직 없습니다). 캐릭터가 참고하는 설정이 웹 버전과 조금 다를 수 있습니다.",
+  importWebSaveWorldbookRules: "참고: 월드북 발동 상태(sticky·cooldown 같은 타이머)도 함께 가져왔습니다. 특이하게 작성된 일부 항목은 데스크톱 앱에서 웹 버전과 조금 다르게 발동할 수 있습니다.",
   importWebSaveSharedKept: "테이블 간에 공유되는 카드 변수 {n}개는 데스크톱 앱에 이미 값이 있어 기존 값을 유지했습니다.",
   importWebSaveStorageRetry: "카드 인터페이스 설정을 이 컴퓨터에 저장하지 못했습니다(저장 공간이 가득 찼을 수 있습니다). 다시 시도할까요?",
   importWebSaveRetry: "다시 시도",

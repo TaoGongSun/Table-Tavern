@@ -384,7 +384,7 @@ export const ja: Record<MsgKey, string> = {
   importCardImageNotSaved: "カードの画像が壊れているため、キャラクター画像として保存できませんでした。カードの内容は読み込み済みです。画像はあとで自分でアップロードできます。",
   importCardBookFailed: "カード付属の世界書を読み込めませんでした（キャラクターは通常どおり作成済み）。カードを世界書としてもう一度読み込んでみてください。",
   importWebSaveDone: "ウェブ版のセーブから新しいテーブルを開きました。続きから遊べます。",
-  importWebSaveWorldbookRules: "ご注意：デスクトップ版のワールドブックの発動ルールはウェブ版と異なります（現在は常時有効のエントリーと直近数件のメッセージ内のキーワードのみで、sticky や cooldown などのタイマーはまだありません）。キャラクターが参照する設定が少し違う場合があります。",
+  importWebSaveWorldbookRules: "ご注意：ワールドブックの発動状態（sticky や cooldown などのタイマー）も一緒に引き継ぎました。特殊な書き方のエントリーは、デスクトップ版でウェブ版と少し違う発動をする場合があります。",
   importWebSaveSharedKept: "テーブル間で共有されるカード変数のうち {n} 件はデスクトップ版に既に値があったため、そちらを残しました。",
   importWebSaveStorageRetry: "カードインターフェースの設定をこのコンピューターに保存できませんでした（保存領域がいっぱいかもしれません）。もう一度試しますか？",
   importWebSaveRetry: "再試行",

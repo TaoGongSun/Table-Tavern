@@ -396,7 +396,7 @@ export const en: Record<MsgKey, string> = {
   importCardImageNotSaved: "The card's image is damaged, so it wasn't saved as the character image. The card itself was imported; you can upload an image later.",
   importCardBookFailed: "The card's worldbook couldn't be imported (the character was created as usual). Try importing the card again as a worldbook.",
   importWebSaveDone: "A new table was opened from your web save. You can pick up where you left off.",
-  importWebSaveWorldbookRules: "Note: the desktop app triggers World Book entries differently from the web version (for now it only uses always-on entries and keywords in the last few messages, without timers like sticky or cooldown), so the details characters draw on may differ a little.",
+  importWebSaveWorldbookRules: "Note: World Book trigger state (timers like sticky and cooldown) came along with the save. A few entries written in unusual ways may trigger a little differently in the desktop app than on the web.",
   importWebSaveSharedKept: "{n} shared card variables already had values in the desktop app; those values were kept.",
   importWebSaveStorageRetry: "The card interface settings couldn't be saved on this computer (storage may be full). Try again?",
   importWebSaveRetry: "Try again",

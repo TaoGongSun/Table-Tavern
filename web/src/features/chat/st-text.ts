@@ -4,7 +4,7 @@
 // - 開場白：只套一般 regex（placement 2），巨集保留原文；第 0 則每次顯示都重新代換（messageFormatting），
 //   每次送出前把第 0 則代換結果寫回逐字稿（Generate 的 chat[0].mes = substituteParams(chat[0].mes)）。
 // - 編輯：只跑 runOnEdit 的腳本 → 去頭尾空白 → 巨集代換。
-// - 顯示：markdownOnly 腳本（帶深度），不改存檔。
+// - 顯示：AI 訊息先藏 `<UpdateVariable>`，再套 markdownOnly 腳本（帶深度），不改存檔。
 // 玩家沒允許這張卡的腳本（D21）時，以上每個時機都不套任何腳本。
 import { activeRegexScripts, type PlayCard } from "../cards/play-card";
 import type { ChatLine } from "../sillytavern/macro-engine";
@@ -13,6 +13,7 @@ import { substituteParams, type MacroContext } from "../sillytavern/substitute";
 import type { ChatVariables } from "../sillytavern/variables";
 import type { WiEntry } from "../sillytavern/world-info-book";
 import type { WiTimed } from "../sillytavern/world-info-scan";
+import { hideUpdateVariable } from "../mvu/hide-update-variable";
 import type { ChatEntry } from "./chat-turn";
 
 /** 世界書觸發狀態（存檔 world_info 的 timed／last_message_id）。 */
@@ -87,7 +88,9 @@ export function displayText(setup: ChatSetup, entries: ChatEntry[], index: numbe
   const context = macroContext(setup, entries, extra);
   // ST messageFormatting：第 0 則（非玩家）顯示前先代換巨集
   const text = index === 0 && entry.role === "char" ? substituteParams(entry.text, context) : entry.text;
-  return getRegexedString(text, placementOf(entry.role), activeRegexScripts(setup.card), context, {
+  // MVU 指令區塊先藏再套顯示 regex：反過來的話狀態欄占位已換成 HTML，切沒閉合的尾巴會吃掉它
+  const shown = entry.role === "char" ? hideUpdateVariable(text) : text;
+  return getRegexedString(shown, placementOf(entry.role), activeRegexScripts(setup.card), context, {
     isMarkdown: true,
     depth: entries.length - index - 1,
   });

@@ -384,7 +384,7 @@ export const fr: Record<MsgKey, string> = {
   importCardImageNotSaved: "L'image de la carte est endommagée : elle n'a pas été enregistrée comme image du personnage. La carte a bien été importée ; vous pourrez ajouter une image plus tard.",
   importCardBookFailed: "Le livre de monde de la carte n'a pas pu être importé (le personnage a bien été créé). Essayez d'importer la carte à nouveau comme livre de monde.",
   importWebSaveDone: "Une nouvelle table a été ouverte à partir de votre sauvegarde de la version web. Vous pouvez reprendre là où vous en étiez.",
-  importWebSaveWorldbookRules: "À noter : l'application de bureau déclenche les entrées du Livre du monde autrement que la version web (pour l'instant uniquement les entrées toujours actives et les mots-clés des derniers messages, sans minuteurs comme sticky ou cooldown) ; les détails sur lesquels s'appuient les personnages peuvent donc légèrement différer.",
+  importWebSaveWorldbookRules: "À noter : l'état de déclenchement du Livre du monde (minuteurs comme sticky et cooldown) a été repris avec la sauvegarde. Quelques entrées écrites de façon inhabituelle peuvent se déclencher un peu différemment dans l'application de bureau que sur le web.",
   importWebSaveSharedKept: "{n} variables de carte partagées entre tables avaient déjà une valeur dans l'application de bureau ; ces valeurs ont été conservées.",
   importWebSaveStorageRetry: "Les réglages de l'interface de la carte n'ont pas pu être enregistrés sur cet ordinateur (le stockage est peut-être plein). Réessayer ?",
   importWebSaveRetry: "Réessayer",
