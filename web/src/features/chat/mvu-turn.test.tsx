@@ -14,6 +14,7 @@ import { runSmartCall, type CallPlan } from "../openrouter/smart-call";
 import { streamChat, type ChatMessage, type StreamResult } from "../openrouter/stream-chat";
 import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
 import { restoreWebSave } from "../saves/web-save-codec";
+import { displayText } from "./st-text";
 import { useChat, type ChatController, type GameSetup } from "./useChat";
 
 vi.mock("../openrouter/openrouter-api", () => ({ fetchFreeDaily: async () => null }));
@@ -149,6 +150,9 @@ describe("an MVU card on a table", () => {
     expect((chat.entries[2].vars as { display_data: Record<string, unknown> }).display_data.金幣).toBe("100->80 (買酒)");
     expect(chat.entries[2].text.endsWith("\n\n<StatusPlaceHolderImpl/>")).toBe(true);
     expect(chat.entries[2].raw).toBe("你買了一杯酒。<UpdateVariable>\n_.set('金幣', 100, 80);//買酒\n</UpdateVariable>");
+    // 畫面藏指令區塊、留正文與狀態欄占位；逐字稿照原文
+    expect(chat.entries[2].text).toContain("_.set(");
+    expect(displayText(chat.setup, chat.entries, 2)).toBe("你買了一杯酒。\n\n<StatusPlaceHolderImpl/>");
     await say("再坐一下");
     const second = lastPrompt();
     expect(second).toContain("<now>\n旅店:\n  燈火: 亮\n  主人: 旅人\n金幣: 80\n</now>");

@@ -369,7 +369,7 @@ export const zhCN: Record<MsgKey, string> = {
   importCardImageNotSaved: "卡片里的图片文件损坏，没有存成角色图；卡片内容已照常导入，之后可以自己上传图片。",
   importCardBookFailed: "卡片附带的世界书没能导入（角色已照常建立）。可以把卡片当世界书再导入一次试试。",
   importWebSaveDone: "已按网页版存档开了一张新桌，可以接着玩。",
-  importWebSaveWorldbookRules: "提醒：桌面版的世界书触发规则和网页版不同（目前只认常驻条目与最近几条消息里的关键词，还没有 sticky、cooldown 这类计时），角色参考到的设定可能和网页版略有出入。",
+  importWebSaveWorldbookRules: "提醒：世界书的触发状态（sticky、cooldown 等计时）已一并带过来；少数特殊写法的条目在桌面版的触发结果可能和网页版略有出入。",
   importWebSaveSharedKept: "有 {n} 个跨桌共用的卡片变量桌面版本来就有值，保留桌面版的值。",
   importWebSaveStorageRetry: "卡片界面的设置存不进这台电脑（浏览器存储空间可能满了）。要再试一次吗？",
   importWebSaveRetry: "再试一次",

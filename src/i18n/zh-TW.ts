@@ -387,7 +387,7 @@ export const zh = {
   importCardImageNotSaved: "卡片裡的圖檔損壞，沒有存成角色圖；卡片內容已照常匯入，之後可以自己上傳圖片。",
   importCardBookFailed: "卡片附帶的世界書沒能匯入（角色已照常建立）。可以把卡片當世界書再匯一次試試。",
   importWebSaveDone: "已照網頁版存檔開了一張新桌，可以接著玩。",
-  importWebSaveWorldbookRules: "提醒：桌面版的世界書觸發規則跟網頁版不同（目前只認常駐條目與最近幾則訊息裡的關鍵字，還沒有 sticky、cooldown 這類計時），角色參考到的設定可能和網頁版略有出入。",
+  importWebSaveWorldbookRules: "提醒：世界書的觸發狀態（sticky、cooldown 等計時）已一併帶過來；少數特殊寫法的條目在桌面版的觸發結果可能和網頁版略有出入。",
   importWebSaveSharedKept: "有 {n} 個跨桌共用的卡片變數桌面版本來就有值，保留桌面版的值。",
   importWebSaveStorageRetry: "卡片介面的設定存不進這台電腦（瀏覽器儲存空間可能滿了）。要再試一次嗎？",
   importWebSaveRetry: "再試一次",

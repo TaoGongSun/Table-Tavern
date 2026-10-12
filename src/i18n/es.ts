@@ -384,7 +384,7 @@ export const es: Record<MsgKey, string> = {
   importCardImageNotSaved: "La imagen de la tarjeta está dañada, así que no se guardó como imagen del personaje. La tarjeta se importó igualmente; puedes subir una imagen más tarde.",
   importCardBookFailed: "No se pudo importar el libro de mundo de la tarjeta (el personaje se creó igualmente). Prueba a importar la tarjeta otra vez como libro de mundo.",
   importWebSaveDone: "Se abrió una mesa nueva a partir de tu partida guardada de la versión web. Puedes seguir donde lo dejaste.",
-  importWebSaveWorldbookRules: "Aviso: la app de escritorio activa las entradas del Libro del Mundo de otra forma que la versión web (por ahora solo usa entradas siempre activas y palabras clave de los últimos mensajes, sin temporizadores como sticky o cooldown), así que los detalles que usan los personajes pueden variar un poco.",
+  importWebSaveWorldbookRules: "Aviso: el estado de activación del Libro del Mundo (temporizadores como sticky y cooldown) se ha traído con la partida. Algunas entradas escritas de forma poco común pueden activarse un poco distinto en la app de escritorio que en la web.",
   importWebSaveSharedKept: "{n} variables de tarjeta compartidas entre mesas ya tenían valor en la app de escritorio; se conservaron esos valores.",
   importWebSaveStorageRetry: "No se pudieron guardar los ajustes de la interfaz de la tarjeta en este equipo (puede que el almacenamiento esté lleno). ¿Reintentar?",
   importWebSaveRetry: "Reintentar",

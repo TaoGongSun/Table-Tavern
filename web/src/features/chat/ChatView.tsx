@@ -11,6 +11,7 @@ import { FrontendNotice } from "../card-interface/FrontendNotice";
 import { splitFrontends } from "../card-interface/frontend-blocks";
 import { MessageBody, type FrontendContext } from "../card-interface/MessageBody";
 import { chatFloors, useFrontendHost } from "../card-interface/useFrontendHost";
+import { hideUpdateVariableStreaming } from "../mvu/hide-update-variable";
 import type { ChatEntry } from "./chat-turn";
 import { displayText } from "./st-text";
 import { useChat, type ChatController, type GameSetup } from "./useChat";
@@ -144,7 +145,7 @@ export function ChatView({
   const endRef = useRef<HTMLDivElement>(null);
   const blocked = quotaBlocksSending(session.quota);
   const name = game.card.text.name;
-  const streamingHtml = useMemo(() => renderHostMarkdown(chat.streaming), [chat.streaming]);
+  const streamingHtml = useMemo(() => renderHostMarkdown(hideUpdateVariableStreaming(chat.streaming)), [chat.streaming]);
   // 顯示用 regex（markdownOnly）帶深度，每次逐字稿變動重算；存檔原文不變
   // 酒館助手類巨集也在顯示時代換（讀當下的變數）
   const display = chat.mvu.display;
