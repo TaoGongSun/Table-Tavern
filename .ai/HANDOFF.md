@@ -6,10 +6,9 @@
 
 ## 進行中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
-- [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，其他卡型 2026-10-12 驗完（MVU 型與 RPGImmortal 重驗過）；舊產殼路線清理已進 main、等西幻卡實測；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
+- [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，其他卡型 2026-10-12 驗完（MVU 型與 RPGImmortal 重驗過）；舊產殼路線清理已進 main、西幻卡實測過；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
-- [interface-card-panel](handoffs/interface-card-panel.md) — 介面卡渲染面板：v1、v2（多卡分頁、破圖收斂、介面底部輸入列）已進 main；剩真視窗輸入列選字與多卡分頁點選（實測佇列梯 1 第 4f）
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖來源不列 claude、生圖模型下拉、免費 key 專屬錯誤、生圖統一存 PNG：已進 main，剩真模型與 CLI 真生圖（實測佇列梯 2 第 21）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM
@@ -28,4 +27,3 @@
 - [api-shared-lane](handoffs/api-shared-lane.md) — API 路徑改走 chars 共線：包 A／B 完成、Sol 過，剩錯認前言者＋四路快取成對測試
 - [claude-compat-endpoint](handoffs/claude-compat-endpoint.md) — Claude 相容端點：實作完成、cargo/build 雙驗證綠，等使用者用真相容端點實測後結案
 - [refactor-card-png-export](handoffs/refactor-card-png-export.md) — 重構卡 PNG 匯出：包 A–D 已進 main、macOS 測試通道實測過；剩 Windows Explorer 縮圖與 SillyTavern 拒收兩項（實測佇列梯 1 第 4e）
-- [interface-scene-change](handoffs/interface-scene-change.md) — 介面桌換幕：包 1–3 已進 main、測試通道西幻接管桌驗過；剩真視窗換幕後介面點擊（實測佇列梯 2 第 20 項）

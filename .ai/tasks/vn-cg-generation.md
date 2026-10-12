@@ -8,7 +8,7 @@ Updated: 2026-08-13T01:41:37.007146+08:00
 ## Summary
 2026-08-06 起意（源於 ST 玩家用 NovelAI 在酒館內生圖的做法）：長期可考慮，主要動機是 **VN 模式的 CG**，不是角色圖。
 
-**價值主張**：現有 VN 型卡（訓帝卡）靠作者預先畫好 101 張圖掛免費圖床，圖床倒站即全滅（見 [interface-card-panel](../handoffs/interface-card-panel.md)）。若 CG 能在劇情節點即時生成，作者不必準備圖庫、也沒有圖床死穴——這是原生 VN 皮相對雲端流派的差異化。
+**價值主張**：現有 VN 型卡（訓帝卡）靠作者預先畫好 101 張圖掛免費圖床，圖床倒站即全滅（見 [interface-card-panel](../handoffs/archive/interface-card-panel.md)）。若 CG 能在劇情節點即時生成，作者不必準備圖庫、也沒有圖床死穴——這是原生 VN 皮相對雲端流派的差異化。
 
 **為何需要另一條生圖路**：現有 `transport::generate_image` 走 OpenRouter `/images`（`google/gemini-3.1-flash-image`）按張計費，撐不起「每個劇情節點一張 CG」的用量。吃到飽訂閱才撐得起——NAI Opus 約 $25/月，一般尺寸不扣 Anlas＝實質無限張。訂閱是**玩家自己的**（自填 token），app 不代購不代付。
 
