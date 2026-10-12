@@ -2,7 +2,7 @@
 
 # Handoff: interface-card-panel
 
-v1（2026-08-04 實機驗收全過）與 v2（多卡分頁＋腳本按卡隔離、破圖收斂、介面底部輸入列；2026-10-11 三方驗收 PASS）都已進 main，首發必含〔作者裁決 2026-10-04〕。程式無待做，剩真視窗實測（實測佇列梯 1 第 4f）。規格：v1 [plans/interface-card-panel.md](../plans/interface-card-panel.md)、v2 [plans/interface-card-panel-v2.md](../plans/interface-card-panel-v2.md)。
+v1（2026-08-04 實機驗收全過）與 v2（多卡分頁＋腳本按卡隔離、破圖收斂、介面底部輸入列；2026-10-11 三方驗收 PASS）都已進 main，首發必含〔作者裁決 2026-10-04〕。程式無待做，剩真視窗實測（實測佇列梯 1 第 4f）。規格：v1 [plans/interface-card-panel.md](../../plans/interface-card-panel.md)、v2 [plans/interface-card-panel-v2.md](../../plans/interface-card-panel-v2.md)。
 
 ## 現在的行為
 - 讀取：`src-tauri/src/import/interface.rs` 的 `read_card_interfaces` 讀每張未封存角色的原始卡檔（`<id>.png`／`<id>.import.json`）與世界書卡原始檔，抽 `extensions.regex_scripts` 的顯示腳本（未停用、非 promptOnly、placement 含 2）。偵測 SCrypt（DRM）與雲端載入器就清空腳本並回原因，不解不繞。這桌不允許卡內 regex（網頁存檔匯入時）就整組清空。
