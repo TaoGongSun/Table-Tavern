@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkWorldInfo, MVU_WI_SETTINGS, ST_WI_SETTINGS } from "../sillytavern/world-info-scan";
 import type { WiEntry } from "../sillytavern/world-info-book";
-import { correctlyMerge, parseStructured } from "./initvar";
+import { correctlyMerge, initvarBody, parseStructured } from "./initvar";
 import { replaceMacroLike, withoutDollarKeys } from "./macro-like";
 import { cardMvuBase, cardWrite, finishReplyText, isMvuData, lastValidVars, layerTables, Revisions, withoutPlaceholder, EMPTY_LAYERS } from "./tables";
 
@@ -33,6 +33,11 @@ describe("MVU structured parsing (parseString) and merging", () => {
     expect(parseStructured('{"a": 1, "b": [1, 2')).toEqual({ a: 1, b: [1, 2] });
     expect(() => parseStructured("a: [1, *沒有")).toThrow();
     expect(correctlyMerge({ a: [1, 2, 3], b: { c: 1 } }, { a: [9], b: { d: 2 } })).toEqual({ a: [9], b: { c: 1, d: 2 } });
+  });
+
+  it("an initvar body wrapped in an outer tag pair parses to the inner keys", () => {
+    const content = "<Initial_Variables>\n基础信息:\n  时间: 未知\n迷宫之主:\n  代价: 未知\n</Initial_Variables>";
+    expect(parseStructured(initvarBody(content))).toEqual({ 基础信息: { 时间: "未知" }, 迷宫之主: { 代价: "未知" } });
   });
 });
 
