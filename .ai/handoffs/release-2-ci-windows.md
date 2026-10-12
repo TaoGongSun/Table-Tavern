@@ -3,7 +3,8 @@
 分支：已併入 main 並刪除（2026-10-12）。
 
 ## 現況
-- 發版準備已進 main：五處版本 0.3.0、CHANGELOG `[0.3.0]`（繁中＋英文發布說明，日期 2026-10-12）、發版產物加固定檔名下載副本 `TableTavern-Windows-Setup.exe`／`TableTavern-macOS.dmg`。
+- **v0.3.0 已發布（2026-10-12）**：https://github.com/TaoGongSun/Table-Tavern/releases/tag/v0.3.0 ，CI run 全綠、8 個產物齊、`releases/latest/download/` 兩個固定檔名可直接下載。剩作者兩平台照繞過步驟下載安裝能開（實機驗收）。
+- 發版內容：五處版本 0.3.0、CHANGELOG `[0.3.0]`（繁中＋英文發布說明，日期 2026-10-12）、發版產物加固定檔名下載副本 `TableTavern-Windows-Setup.exe`／`TableTavern-macOS.dmg`。
 - 兩平台首發都不簽章：Windows 先觀察玩家對 SmartScreen 的接受度再決定買不買憑證（2026-07-24 拍板）；Mac 同樣不簽〔作者裁決 2026-10-04〕。候選憑證路線（Certum 開源憑證、Azure Trusted Signing）價格與資格皆未查證，禁當事實引用。
 - 首發不等端對端驗收，App 內更新的端對端改在第二版發出時驗〔作者裁決 2026-10-12〕。
 - 發版流程、檢查清單、已知限制在 [plans/release-2-ci-windows.md](../plans/release-2-ci-windows.md)。
