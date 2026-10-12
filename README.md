@@ -2,65 +2,81 @@
 
 **[繁體中文 →](README.zh-TW.md)**
 
-A desktop app where AI plays a whole table of characters — and the Game Master too.
+AI plays a whole table of characters — and the GM (game master) too. Drop in one character card and just chat; want more depth, open a full table with a world setting, a lorebook, and scene changes, where the GM narrates and decides who speaks next. Each character only knows what the GM has said out loud in the story, so secrets really stay secret until they're revealed — no relying on the AI to "pretend not to know."
 
-Play it as simple or as deep as you like: drop in a single character card and just chat, or run a full campaign with a world setting, a lorebook, scene changes, and a GM who narrates and decides who speaks next. Each character only knows what the GM says out loud, so secrets stay secret until the story reveals them — in a typical AI chat, secrets survive only as long as the AI keeps pretending not to know; here, the characters genuinely don't know.
+## Coming from SillyTavern? Bring your stuff
 
-Interface in ten languages — English, 繁體中文, 简体中文, 日本語, 한국어, Español, Português (Brasil), Deutsch, Français, Русский. The built-in sample table follows your language, and you can regenerate it anytime after switching.
+- **Character cards and lorebooks import directly** — PNG or JSON — and you can export your cards back out.
+- **Cards with their own interface and variable system (MVU) still work**: the status bars, buttons, and stats the card defines show up and respond as written.
+- **Web saves carry over to the desktop app**, so you can keep playing there — conversation, variables, and lorebook state included.
 
-## Download & Install
+## Play now
 
-> Current builds are **test versions** — expect rough edges. Impressions and suggestions of any kind are welcome in [GitHub Issues](https://github.com/TaoGongSun/Table-Tavern/issues) — every bit of feedback helps polish the game.
+[![Play-in your browser](https://img.shields.io/badge/Play-in%20your%20browser-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
+[![Download-Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/latest/download/TableTavern-Windows-Setup.exe)
+[![Download-macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/latest/download/TableTavern-macOS.dmg)
 
-**Windows**: download the installer from the release page. Windows may show an "unknown publisher" warning — click **More info → Run anyway**.
+**Web version**: open <https://table-tavern.pages.dev> and play — free, nothing to install. The web version runs one card per table; once you want more (multiple characters, a GM, your own worlds, your own subscription), download the desktop app.
 
-**macOS** (Apple Silicon only): download the `.dmg`, drag `Table Tavern.app` into Applications, double-click.
+Web saves live in your browser. Safari may clear data for sites you haven't opened in a while, so export saves you care about.
 
-If macOS says the app can't be verified: press **Done**, open **System Settings → Privacy & Security**, scroll to the bottom, click **Open Anyway**, confirm once. That's it — the warning appears because this test build isn't notarized with Apple yet.
+## Installing the desktop app
 
-## Getting Started
+The download buttons above fetch the latest version directly. The release isn't code-signed yet, so your system will warn you the first time you open it. Do the steps below once — it's not malware.
 
-1. First launch drops you straight into a sample table. Poke around freely.
-2. To make characters talk, the app needs an AI service. Click **Connect OpenRouter**, sign in (or sign up) in your browser, authorize — and you're back at the table, ready to chat. No key to copy and no top-up needed: the app picks a capable free model for you. Want stronger, paid models later? Top up your [OpenRouter](https://openrouter.ai/) account; the GM and each character can use different ones, and you pay only for what you use. Pasting a key by hand stays as an advanced option.
-3. That's all. Write a card, join the table, play.
+**Windows**: run the installer you downloaded. If you see "Windows protected your PC": click **More info → Run anyway**.
 
-Already paying for Claude, ChatGPT, Gemini, or Grok? You can route conversations through their official command-line tools instead and spend your existing subscription — see the Q&A below.
+**macOS** (Apple Silicon): open the `.dmg` you downloaded, drag `Table Tavern.app` into Applications, double-click. If macOS says it can't verify the app: press **Done**, open **System Settings → Privacy & Security**, scroll to the bottom, click **Open Anyway**, and confirm once.
 
-## Q&A
+When a new version comes out, the app lets you know and updates in one click.
 
-**Is the app free?**
-Yes — free and open source, and you can play for free: after connecting OpenRouter, the app runs on a free model by default. Paid models cost only what your AI provider charges for usage, paid by you directly to them — no subscription.
+## Getting started
 
-**Can I sponsor the project?**
-We're still in the testing period — **please don't feel any need to sponsor yet.** The sponsor perks (five extra color themes and AI character-art generation) are finished, and sponsoring unlocks them right now; we just don't feel right asking for money while the experience is still being polished.
+1. The first launch drops you into a sample table. Poke around.
+2. Click **Connect OpenRouter** (OpenRouter is a service that connects you to many AI providers), sign in or sign up in your browser, approve — and you're back at the table. No key to copy and paste.
+3. Start chatting. Don't feel like writing a card? Describe the story you want in one sentence and the app sets up a whole table.
 
-**Is my data uploaded anywhere?**
-No. Tables, cards, and chat logs live on your computer as plain files, and your API key is stored only on your machine. Conversations go directly from you to the AI provider you chose — there is no middleman server.
+## Why it's fun — and easy on your budget
 
-**Can I use my SillyTavern character cards?**
-Yes. Import V2 card PNGs directly, and export your cards back out as PNG or JSON.
+- **Play completely free**: once OpenRouter is connected, the app picks a good free model for you. If that one is busy or temporarily unavailable, it switches to the next one and tells you in the chat.
+- **Use the subscription you already have**: with a Claude, ChatGPT, Gemini, or Grok subscription, you can route play through that provider's official command-line tool and spend the allowance you already pay for. The app installs it in one click, walks you through signing in, and shows **Connected** once it detects you're logged in. Providers' rules on this kind of use differ; the app explains the risks before you switch, and the choice is yours.
+- **Saves usage everywhere**:
+  - Makes the most of AI providers' prompt caching, so the setup resent each turn isn't billed at full price again and again; the usage page shows your hit rate.
+  - Card refactoring: for cards that reprint their whole interface every turn, the app takes over drawing the interface and the model only reports the values that changed — shorter replies, shorter waits.
+  - Scene changes condense the story so far into a summary for the next scene, instead of hauling the whole conversation along.
+  - The GM and each character can run on different model tiers — the strong one for who matters, a cheaper one for the extras.
+  - Runaway output stops on its own, and you can stop any reply yourself.
+- **AI character art**: generate a portrait for a character card. Needs a paid OpenRouter model or the ChatGPT / Gemini / Grok official command-line tool; the free tier can't generate images.
+- **Your data stays on your computer**: tables, cards, and chat logs are local files, and conversations go straight from your computer to the AI service you picked — no server of ours in between.
+- **Ten interface languages**: English, 繁體中文, 简体中文, 日本語, 한국어, Español, Português (Brasil), Deutsch, Français, Русский. The sample table follows your language too.
 
-**Can characters "peek" at things they shouldn't know?**
-No. Only the GM reads the world setting and everyone's cards. A character learns something only when the GM actually says it in the story — you can even mark lorebook entries as visible to specific characters only.
+## FAQ
 
-**Can I play on my existing Claude / ChatGPT / Gemini / Grok subscription?**
-Yes — in AI settings, switch the transport to that provider's official CLI (one-click install included). Provider policies on this kind of use differ and change; the app shows each provider's risk notes before you enable it, so you can decide for yourself.
+**Does it cost money?**
+The app is free and open source, and you can play entirely on free models. For stronger paid models, top up your OpenRouter account and pay only for what you use, directly to the AI provider — no subscription.
+
+**Can I sponsor?**
+Yes. Sponsoring on Ko-fi gets you a sponsor pack; import it to unlock five extra color themes. Every feature works without sponsoring.
+
+**Can characters peek at things they shouldn't know?**
+No. Only the GM reads the world setting and everyone's cards; a character learns something only when the GM says it in the story. You can also limit lorebook entries to specific characters.
 
 **Where is my data? How do I back it up?**
-Everything is in `Documents/TableTavern/` — copy that folder and you've backed up every table, card, and log. Settings and keys are in the system app-config folder, separate from your stories.
+Everything is in `Documents/TableTavern/` — copy the folder and you've backed it all up. Settings and keys live separately in the system's app-config folder.
 
-**The app won't open / got blocked.**
-See the install section above — it's the standard warning for unsigned test builds, not a malware verdict.
+**Questions or suggestions?**
+Drop them in [GitHub Issues](https://github.com/TaoGongSun/Table-Tavern/issues).
 
-## For Developers
+## For developers
 
-Tauri 2 (Rust) + Vite + React + TypeScript. Start with the [current architecture guide](docs/ARCHITECTURE.md) and the [source layout guide](docs/STRUCTURE.md); `NewPlan.md` is the original product-direction document and may be superseded by later `.ai/plans/` decisions. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+The desktop app is Tauri 2 (Rust) + React/TypeScript; the web version is a separate Vite project in `web/`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture, [docs/STRUCTURE.md](docs/STRUCTURE.md) for where files go, and [CHANGELOG.md](CHANGELOG.md) for changes; releases are on [GitHub Releases](https://github.com/TaoGongSun/Table-Tavern/releases).
 
 ```bash
 npm install
-npm run tauri dev    # dev mode
-npm run tauri build  # .app / DMG / installer
-npm run verify       # one-shot check: front-end build + Rust tests + i18n + structure
+npm run tauri dev    # desktop dev mode
+npm run tauri build  # installer / .app / DMG
+npm run verify       # one-shot check: build, tests, i18n, structure
+cd web && npm install && npm run dev   # web dev mode
 ```
 
 ## License
