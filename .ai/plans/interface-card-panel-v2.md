@@ -1,6 +1,6 @@
 # interface-card-panel v2：多卡分頁、破圖收斂、介面內輸入列
 
-狀態：結案（2026-10-11 進 main，三方驗收 PASS）；剩真視窗實測排實測佇列梯 1 第 4f。交接檔：[interface-card-panel](../handoffs/interface-card-panel.md)。首發必含〔作者裁決 2026-10-04〕。三項取捨〔作者裁決 2026-10-11〕，細節經三方審查定案。
+狀態：結案（2026-10-11 進 main，三方驗收 PASS）；剩真視窗實測排實測佇列梯 1 第 4f。交接檔：[interface-card-panel](../handoffs/archive/interface-card-panel.md)。首發必含〔作者裁決 2026-10-04〕。三項取捨〔作者裁決 2026-10-11〕，細節經三方審查定案。
 
 ## 一、多張卡各自的介面
 

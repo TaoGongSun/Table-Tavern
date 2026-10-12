@@ -196,7 +196,7 @@ system 是快取前綴，幕中改動＝快取全失效（prompt-cache 的 85–
 
 ### 渲染
 
-1. **卡片自帶 HTML 殼** → 走 [interface-card-panel](../handoffs/interface-card-panel.md) 既有沙盒路徑，掃近 10 則 GM 原文過卡的顯示腳本。
+1. **卡片自帶 HTML 殼** → 走 [interface-card-panel](../handoffs/archive/interface-card-panel.md) 既有沙盒路徑，掃近 10 則 GM 原文過卡的顯示腳本。
 2. **接管桌**（盤點判 playable）→ 重構產的骨架（卡每回合輸出格式，變動處 `{{狀態樹路徑}}`、正文槽 `{{本回合.正文}}`）由 app 填值，再過卡自己的顯示腳本；沒命中就退回第 1 層的掃 raw。AI 永不產介面。
 3. **狀態欄**（`table-state/StateBar.tsx` 平欄＋狀態樹）一直都在，跟卡片介面互不相干；沒有通用介面元件，骨架失敗不會自動切出替代畫面。
 

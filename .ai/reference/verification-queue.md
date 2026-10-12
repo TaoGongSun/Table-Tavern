@@ -15,7 +15,6 @@
 
 4e. [refactor-card-png-export](../handoffs/refactor-card-png-export.md)（macOS 部分 2026-10-06 已用測試通道代測通過：三階匯出、陣容欄單一入口匯入 #3、59 MB 大卡往返、QuickLook 縮圖）：剩沒有環境的兩項——①Windows Explorer 看 #3 大卡（數十 MB）的縮圖與檔案大小顯示　②SillyTavern 匯入 #2／#3 PNG 會乾淨拒收（報找不到角色卡，不當成角色卡吃進去）。這兩項驗完本案才算實測完成。
 
-4f. [interface-card-panel](../handoffs/interface-card-panel.md) v2（多卡分頁、卡片介面底部輸入列；零 AI 部分已用測試通道代測）：真視窗（非測試通道）①介面開著時在底部輸入列用注音、拼音選字：按 Enter 選字不會誤送，選好的字確實上得去，選完再按 Enter 才送出　②同桌兩張帶介面的卡（例：`TestCards/WestFantsy.png`＋`donass.png`）：點工具列卡名分頁切換各自畫面、點了停住不跳走。
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
@@ -32,11 +31,9 @@
 | 12 | [ui-redesign](../handoffs/ui-redesign.md) 要 AI 的對話窗 | 重構三窗（進行中、二選一、結果含已取消／部分失敗）、一句話開桌有綱要後底列；可併梯 2 第 5 順手看 |
 | 14 | [api-shared-lane](../handoffs/api-shared-lane.md) | 錯認前言者（只有 API 測得到）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens；[vendor-prefix-floor](../tasks/vendor-prefix-floor.md) 排在這批數據之後 |
 | 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) | 多角色桌：回歸事件私設只到 GM |
-| 16 | [interface-shell-cleanup](../plans/interface-shell-cleanup.md) | 用 `TestCards/WestFantsy.png` 重構接管跑一輪：面板（地圖 11×7、五分頁）照常渲染、時間跟著回合動；可併第 6 項 ai-card-refactor 五卡矩陣回歸 |
 | 17 | [test-harness](../handoffs/archive/test-harness.md) 智慧免費真供應商 | 用 OpenRouter 免費模型桌送一輪：`route` 的智慧免費預覽有值、`ai-log` 的 `api-smart-free` 派送後有同 id 的 `responder` 事件且模型是實際回應者。2026-10-04 代測：route 預覽有值（gemma-4-31b-it:free）過；穩定第一、二名整段被上游限流 429，`responder` 事件未能驗，等穩定第一名可用時重跑一輪 |
 | 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
 | 19 | [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md) 狀態欄骨架桌 | 已結案、單元測試覆蓋，剩實機觀察，可搭任一梯 2 實聊順手看：①結果框「匯出」（6b）上一輪 AI 重構後沒寫檔、畫面沒報錯，零額度重放正常；下次有授權的 AI 重構時，匯出前後讀 statusMessage 與 `refactor_export_outcome` 回傳定位原因　②文字欄被下 delta 已由 [takeover-text-field-delta](../plans/takeover-text-field-delta.md) 改成拒收回饋＋提示詞清單欄提醒；剩 `<UpdateVariable>` 的 JSON 字串尾巴多跳脫引號（被容錯跳過），看頻率決定要不要加強提示　③生成中按套用重構／貼開場等排隊時再按停止生成：等待提示照常、截斷回覆落檔後才執行　④真模型一回合佐證排隊套用在 GM 旁白落檔後才執行（這筆回覆留在套用前的桌況）　⑤待查證：酒館 regex 替換字串與訊息顯示會不會替換 `{{user}}`／`{{char}}`，會的話面板也應替換（只查規格） |
-| 20 | [interface-scene-change](../handoffs/interface-scene-change.md) 介面換幕 native 核對 | 西幻接管桌（測試通道代測已過資料面與 srcdoc 渲染）：真視窗裡打開卡片介面，按介面工具列「換幕」→ 介面留著、正文槽是前情提要、右側時間地點與地圖照舊；在介面內點區域／推薦行動送出一回合，面板跟動。測試通道拍不到也點不到 iframe 內容，只能真人看 |
 | 21 | [image-model-picker](../handoffs/image-model-picker.md) 生圖統一 PNG 真打 | 單元測試只用 mock：①付費生圖模型回 JPEG／WebP／遠端 URL 時真打一次，圖進圖庫且是 PNG（看圖庫檔頭）　②codex／agy／grok 真生圖一次，走「讀進記憶體→清工作目錄→轉 PNG→進圖庫」新流程；可併第 8 項一起跑 |
 | 22 | [image-model-free-tier-hide](../handoffs/image-model-free-tier-hide.md) 免費層藏生圖模型 | 測試通道只用本機假 `/key`：①真 OpenRouter 免費 key 與付費 key 各開一次設定頁「AI 連線」，免費隱藏生圖模型、付費顯示　②整個關掉設定視窗再開，快取首屏不閃；可併第 21 項一起跑 |
 

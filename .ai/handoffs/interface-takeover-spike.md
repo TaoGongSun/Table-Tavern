@@ -43,7 +43,7 @@
 ### 3. 角色發言無視介面渲染（本質問題，使用者評估「很可能無法解決」）
 拆出來的 NPC 一開口，`cardInterfaceShell` 的 direct-first 拿它的訊息試卡腳本、不中就用骨架填 `{{本回合.正文}}`，而 NPC 發言不帶 patch。整頁型卡靠待辦 1 迴避；狀態欄型卡（NorthHall）反而沒問題——那種介面跟著每則訊息走，角色發言各自帶狀態欄，走現有「近 10 則掃 `event.raw`」那條路就渲染得出來。
 
-### 4. 舊產殼路線清理——已進 main、等西幻卡實測
+### 4. 舊產殼路線清理——已進 main，2026-10-12 西幻接管桌真視窗實測過
 清單見 [plans/interface-shell-cleanup.md](../plans/interface-shell-cleanup.md)。殼的選路在 `src/features/card-interface/card-shell-route.ts` 的 `pickCardShell`；舊整頁 HTML 產物（開頭 `<!DOCTYPE html`／`<html`）視同沒有重構殼、退回近 10 則掃 raw〔作者裁決 2026-10-02〕。實測排[實測佇列](../reference/verification-queue.md)梯 2 第 16。
 
 ## 陷阱備忘

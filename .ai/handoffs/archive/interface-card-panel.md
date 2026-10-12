@@ -1,3 +1,5 @@
+> 真視窗實測（輸入列注音／拼音選字不誤送、多卡分頁切換停住）2026-10-12 作者親測通過，結案。
+
 # Handoff: interface-card-panel
 
 v1（2026-08-04 實機驗收全過）與 v2（多卡分頁＋腳本按卡隔離、破圖收斂、介面底部輸入列；2026-10-11 三方驗收 PASS）都已進 main，首發必含〔作者裁決 2026-10-04〕。程式無待做，剩真視窗實測（實測佇列梯 1 第 4f）。規格：v1 [plans/interface-card-panel.md](../plans/interface-card-panel.md)、v2 [plans/interface-card-panel-v2.md](../plans/interface-card-panel-v2.md)。

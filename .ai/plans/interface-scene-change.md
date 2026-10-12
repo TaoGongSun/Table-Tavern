@@ -1,6 +1,6 @@
 # 介面桌換幕：前情提要進正文槽、面板與狀態樹原樣續存
 
-本檔存放 [interface-scene-change](../handoffs/interface-scene-change.md) 的規格細節，由交接檔連回。2026-08-13 立案；2026-08-14 Sol 第 1 輪覆核併入；2026-10-06 兩項假設實測完成、分包重定。
+本檔存放 [interface-scene-change](../handoffs/archive/interface-scene-change.md) 的規格細節，由交接檔連回。2026-08-13 立案；2026-08-14 Sol 第 1 輪覆核併入；2026-10-06 兩項假設實測完成、分包重定。
 
 ## 目的（2026-08-13 使用者定調）
 
