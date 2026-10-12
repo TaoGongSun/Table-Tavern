@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -67,8 +67,25 @@ describe("finalizeRelease 演練", () => {
     expect(readFileSync(join(staged.out, `TableTavern_${version}_aarch64.dmg`), "utf8")).toBe(
       "dmg-bytes",
     );
+    expect(readFileSync(join(staged.out, "TableTavern-Windows-Setup.exe"), "utf8")).toBe(
+      "exe-bytes",
+    );
+    expect(readFileSync(join(staged.out, "TableTavern-macOS.dmg"), "utf8")).toBe("dmg-bytes");
+    expect(readdirSync(staged.out).sort()).toEqual(
+      [
+        exe,
+        `${exe}.sig`,
+        `TableTavern_${version}_aarch64.app.tar.gz`,
+        `TableTavern_${version}_aarch64.app.tar.gz.sig`,
+        `TableTavern_${version}_aarch64.dmg`,
+        "TableTavern-Windows-Setup.exe",
+        "TableTavern-macOS.dmg",
+        "latest.json",
+      ].sort(),
+    );
     const written = JSON.parse(readFileSync(join(staged.out, "latest.json"), "utf8"));
     expect(written.format_version).toBe(1);
+    expect(JSON.stringify(written)).not.toMatch(/TableTavern-(Windows-Setup|macOS)/);
     expect(written).toEqual(result.latest);
   });
 

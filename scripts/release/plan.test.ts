@@ -138,6 +138,10 @@ describe("檔名與 latest.json", () => {
   it("改成無空格檔名；dmg 沒有 sig 就不列入必驗", () => {
     const plan = planReleaseFiles(inputs, "0.2.0");
     expect(plan.names).toEqual(releaseFilenames("0.2.0"));
+    expect(plan.stableCopies).toEqual([
+      { from: "TableTavern_0.2.0_x64-setup.exe", to: "TableTavern-Windows-Setup.exe" },
+      { from: "TableTavern_0.2.0_aarch64.dmg", to: "TableTavern-macOS.dmg" },
+    ]);
     expect(plan.copies.map((copy) => copy.to)).toEqual([
       "TableTavern_0.2.0_x64-setup.exe",
       "TableTavern_0.2.0_x64-setup.exe.sig",

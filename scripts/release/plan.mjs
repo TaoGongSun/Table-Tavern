@@ -125,6 +125,15 @@ export function releaseFilenames(version) {
   };
 }
 
+/**
+ * 不帶版本號的下載副本：`releases/latest/download/<名稱>` 永遠指向最新正式版，README 直接連。
+ * 只是人點的下載入口，不進 latest.json、不驗簽（內容與帶版本號的檔相同，那份已驗）。
+ */
+export const STABLE_DOWNLOAD_NAMES = Object.freeze({
+  exe: "TableTavern-Windows-Setup.exe",
+  dmg: "TableTavern-macOS.dmg",
+});
+
 export function classifyArtifact(filename) {
   const base = String(filename).split(/[/\\]/).pop();
   if (base.startsWith(".")) return "skip";
@@ -201,7 +210,12 @@ export function planReleaseFiles(files, version) {
     { file: names.appTarGz, sig: `${names.appTarGz}.sig` },
   ];
 
-  return { copies, names, requireSig };
+  const stableCopies = [
+    { from: names.exe, to: STABLE_DOWNLOAD_NAMES.exe },
+    { from: names.dmg, to: STABLE_DOWNLOAD_NAMES.dmg },
+  ];
+
+  return { copies, names, requireSig, stableCopies };
 }
 
 /** 從 marker.rs 原文抓 `CURRENT_FORMAT`。不呼叫 current_format()。 */

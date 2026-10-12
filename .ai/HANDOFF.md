@@ -5,6 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
+- [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版首個正式版 0.3.0（未簽章）：發版準備已進 main，等主線推 tag 發版
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，其他卡型 2026-10-12 驗完（MVU 型與 RPGImmortal 重驗過）；舊產殼路線清理已進 main、西幻卡實測過；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
 
@@ -13,7 +14,7 @@
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖來源不列 claude、生圖模型下拉、免費 key 專屬錯誤、生圖統一存 PNG：已進 main，剩真模型與 CLI 真生圖（實測佇列梯 2 第 21）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM
 - [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：五包已進 main、範例桌詢問已過；剩重構三窗、實聊名牌與打字指示（自 ui-overhaul 併入）、格式轉換更新等觸發條件型對話窗、Windows 等未實機驗項目
-- [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1–5 完成、GUI 煙霧測試過；剩兩個真 release 的端對端驗收
+- [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：包 1–5 完成、GUI 煙霧測試過；剩兩個真 release 的端對端驗收，改在第二版發出時驗
 - [state-values-mvu](handoffs/state-values-mvu.md) — 狀態欄二期：八包完成、三處面板 2026-10-02 實機過，剩真桌實跑（併在 ai-card-refactor 之後）
 - [worldbook-card-import](handoffs/worldbook-card-import.md) — 世界書卡匯入：本地操作 2026-10-02 實機過，剩篇幅／配角解禁實聊排梯 2 第 10
 - [sponsor-features](handoffs/sponsor-features.md) — 贊助三項：贊助狀態與作者頁 2026-10-02 實機過，剩 AI 生圖排梯 2 第 8

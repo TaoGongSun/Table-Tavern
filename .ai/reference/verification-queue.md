@@ -49,7 +49,7 @@
 | [claude-compat-endpoint](../handoffs/claude-compat-endpoint.md) | 實作與 cargo/build 已綠；等有真 Claude-compatible base URL＋key 時做使用者實測 |
 | [ui-redesign](../handoffs/ui-redesign.md) 觸發條件型對話窗 | 格式轉換更新窗要有含格式轉換的新版；設定外部指定分頁與齒輪紅點要有新版；換幕提醒＋錯誤＋狀態同時要真出錯 |
 | [ui-redesign](../handoffs/ui-redesign.md) Windows | 等有 Windows 機：WebView2 連按兩次 Esc 對話窗不被繞過關閉，及分包 1 遺留的 Windows 外觀 |
-| [desktop-update-detect](../handoffs/desktop-update-detect.md) 端對端 | 要兩個真 release 才測得到偵測→更新→回退→刪版與跨格式回退；第一個帶更新功能的正式版發出前必須驗過 |
+| [desktop-update-detect](../handoffs/desktop-update-detect.md) 端對端 | 要兩個真 release 才測得到偵測→更新→回退→刪版與跨格式回退；改在第二版發出時驗〔作者裁決 2026-10-12〕 |
 | [stable-free-failover](../handoffs/archive/stable-free-failover.md) 真上游換模 | 真上游連續兩次失敗→換模→同句重送，只在假端點驗過；真模型自然遇到時再看（聊天室提示行、重送成功、帳本與 ai-log 對應） |
 | [test-harness](../handoffs/archive/test-harness.md) 安裝探測記錄 | 下次實際跑 CLI 安裝／登入流程時，用測試包看 `ai-log` 有 `cli-probe:*`（claude／agy 標 `aiProbe`）與 `cli-setup-terminal:*` 各一筆 |
 | [claude-1h-cache](../handoffs/archive/claude-1h-cache.md) 真超額與邊界 | ①Claude 訂閱真的用到超額：跳一次超額提示，文案對到該輪實得時效（本帳號超額未開通）　②玩家 `~/.claude/settings.json` 的 `env` 帶 `FORCE_PROMPT_CACHING_5M=1` 時，`--safe-mode` 下續聊線是否被壓成 5m（帳本 `created_1h_tokens=0`、lanes.json 壽命 300）　③同一條 claude 線閒置超過 1 小時，下一輪改走 rebased　④Windows 上述各項 |

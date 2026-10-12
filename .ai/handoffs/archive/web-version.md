@@ -93,7 +93,7 @@
   - 可部署；正式公開等下面的公開前門檻結案。
 
 ## 公開前門檻（計畫第三節原文，正式公開前要到位）
-- 有可下載的桌面版 release：[release-2-ci-windows](../../tasks/release-2-ci-windows.md) 發出首個正式版。
+- 有可下載的桌面版 release：[release-2-ci-windows](../release-2-ci-windows.md) 發出首個正式版。
 - 介面卡兩案首發必含：[interface-card-panel](../interface-card-panel.md)、[interface-takeover-spike](../interface-takeover-spike.md)。
 - 目標 release 上，完整複合卡（世界書＋介面＋MVU）的網頁存檔匯入後能續玩。
 - 桌面版 WI 補齊到 ST 行為：[worldbook-st-trigger-parity](../../tasks/worldbook-st-trigger-parity.md)（D17）。
