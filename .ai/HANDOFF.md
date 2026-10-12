@@ -5,11 +5,11 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版首個正式版 0.3.0（未簽章）：發版準備已進 main，等主線推 tag 發版
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，其他卡型 2026-10-12 驗完（MVU 型與 RPGImmortal 重驗過）；舊產殼路線清理已進 main、西幻卡實測過；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版首個正式版 v0.3.0 已發布（2026-10-12，未簽章）；剩作者 Windows／Mac 照繞過步驟下載安裝能開
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖來源不列 claude、生圖模型下拉、免費 key 專屬錯誤、生圖統一存 PNG：已進 main，剩真模型與 CLI 真生圖（實測佇列梯 2 第 21）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM
