@@ -1,4 +1,4 @@
-// 收 Windows／macOS 兩包產物：改無空格檔名、組 latest.json、用 minisign 驗簽。
+// 收 Windows／macOS 兩包產物：改無空格檔名、複製固定檔名下載副本、組 latest.json、用 minisign 驗簽。
 // 正式模式才呼叫 gh 建草稿再公開。演練模式只把檔案放進 --out。
 //
 //   node scripts/release/finalize.mjs \
@@ -233,6 +233,10 @@ export function finalizeRelease(options) {
     copyFileSync(join(srcRoot, copy.from), join(outDir, copy.to));
   }
 
+  for (const copy of planned.stableCopies) {
+    copyFileSync(join(outDir, copy.from), join(outDir, copy.to));
+  }
+
   const exeSignature = readFileSync(join(outDir, `${planned.names.exe}.sig`), "utf8");
   const appSignature = readFileSync(join(outDir, `${planned.names.appTarGz}.sig`), "utf8");
   const pubDate = options.pubDate ?? new Date().toISOString();
@@ -256,6 +260,9 @@ export function finalizeRelease(options) {
   console.log(`下載路徑用的 tag：${tag}`);
   for (const copy of planned.copies) {
     console.log(`改名：${copy.from} → ${copy.to}`);
+  }
+  for (const copy of planned.stableCopies) {
+    console.log(`固定檔名副本：${copy.from} → ${copy.to}`);
   }
   if (notes.warning) console.log(notes.warning);
   console.log(`寫入 ${join(outDir, "latest.json")}`);

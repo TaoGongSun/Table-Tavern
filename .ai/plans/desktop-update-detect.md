@@ -277,7 +277,7 @@
 
 ## 驗收
 
-- 需要兩個真 release 才能端對端測，排進 [verification-queue](../reference/verification-queue.md)。包 5 介面的功能實測併在這一輪；第一個帶更新功能的正式版發出前必須驗過〔作者裁決 2026-10-02〕。
+- 需要兩個真 release 才能端對端測，排進 [verification-queue](../reference/verification-queue.md)。包 5 介面的功能實測併在這一輪；改在第二版發出時驗〔作者裁決 2026-10-12〕。
 - Windows、Mac 各一輪：偵測→一鍵更新→回到上一版→逐版刪除。
 - 跨格式轉換後回退：唯讀、提示、改用備份續玩、另存內容都在；舊版不寫壞新格式。
 - 失敗情境：遷移中斷／磁碟滿後重開；Windows 降版安裝失敗；Mac 換 `.app` 失敗（通過條件：App 不消失）；兩個實例同開一桌；手動安裝的舊版沒有 updater 產物。

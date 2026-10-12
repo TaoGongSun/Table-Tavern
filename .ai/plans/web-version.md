@@ -130,7 +130,7 @@
 - 部署後實開（要真網域）：OpenRouter 授權回呼成功並清網址、模型清單與 `/key` 讀得到（CORS）、回應標頭與上面一致、卡片介面掛得起來、下載頁版本與連結。
 
 ### 公開前門檻（公開前要到位，不是開工前）
-- 有可下載的桌面版 release：repo 目前零 release，`releases/latest` 回 404（4.5）；靠 [release-2-ci-windows](../tasks/release-2-ci-windows.md) 發出首個正式版。沒有 release 時下載鈕只能退 releases 頁，引流斷在最後一步。
+- 有可下載的桌面版 release：repo 目前零 release，`releases/latest` 回 404（4.5）；靠 [release-2-ci-windows](../handoffs/release-2-ci-windows.md) 發出首個正式版。沒有 release 時下載鈕只能退 releases 頁，引流斷在最後一步。
 - 介面卡兩案首發必含〔作者裁決 2026-10-04〕：[interface-card-panel](../handoffs/archive/interface-card-panel.md)、[interface-takeover-spike](../handoffs/interface-takeover-spike.md)。網頁版導去下載的桌面版要已經帶這兩案。真視窗實測 2026-10-12 作者親測通過。
 - 目標 release 上，完整複合卡（世界書＋介面＋MVU）的網頁存檔匯入後能續玩。2026-10-12 在 main 上預演過（[composite-card-continue](composite-card-continue.md)）；正式驗證仍等目標 release。
 - ~~桌面版 WI 補齊到 ST 行為~~：已完成（2026-10-11，[worldbook-st-trigger-parity](../handoffs/archive/worldbook-st-trigger-parity.md)，main 上包 1–5b 六筆）（D17）。〔作者裁決 2026-10-07〕
