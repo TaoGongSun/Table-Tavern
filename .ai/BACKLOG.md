@@ -4,7 +4,7 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
-- [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：待作者定方向
+- [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：網頁版公開後再決定〔作者裁決 2026-10-12〕
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：未排程，排在 initvar-yaml-list 之後
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認
