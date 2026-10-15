@@ -59,6 +59,13 @@ winreg = "0.56"
 # 只給主線自動化 GUI 實測的測試包用：`npm run harness:build`。正式包絕不開。
 test-harness = ["dep:objc2", "dep:block2"]
 
+# debug 產物曾膨脹到 146G：本 crate 只留行號（panic 回溯仍有檔名行號），相依套件不帶除錯資訊。
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [dev-dependencies]
 minisign = "0.7"
 # 更新外掛的時限測試要 mock app（updater/net_tests.rs）。
