@@ -11,6 +11,10 @@ const WEB = fileURLToPath(new URL("../web/", import.meta.url));
 // cargo 是 .exe，不需要。args 都是寫死的字面值，沒有引號注入問題。
 const WIN = process.platform === "win32";
 
+// target 曾累積到 149G：有裝 cargo-sweep 就先刪最舊產物壓到 20G 以下；沒裝（如 CI）跳過，失敗不擋 verify。
+const sweep = spawnSync("cargo", ["sweep", "--maxsize", "20GB"], { cwd: TAURI, stdio: "inherit" });
+if (sweep.status !== 0) console.log("（略過 cargo sweep：未安裝或執行失敗）");
+
 const steps = [
   { name: "structure", cmd: "node", args: ["scripts/check-structure.mjs"], cwd: ROOT },
   { name: "version", cmd: "node", args: ["scripts/check-version.mjs"], cwd: ROOT },
