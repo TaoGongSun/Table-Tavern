@@ -9,6 +9,7 @@
 - [interface-takeover-spike](handoffs/interface-takeover-spike.md) — 介面接管 spike：西幻資料槽型已成立，其他卡型 2026-10-12 驗完（MVU 型與 RPGImmortal 重驗過）；舊產殼路線清理已進 main、西幻卡實測過；首發必含，interface-scene-change 一併做〔作者裁決 2026-10-04〕
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [desktop-tour](handoffs/desktop-tour.md) — 網頁版的桌面版導覽頁：已進 main、三方驗收過，待作者部署 Cloudflare Pages；剩 WebKit e2e 補跑（要先裝 Playwright WebKit）與站上實開
 - [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版首個正式版 v0.3.0 已發布（2026-10-12，未簽章）；剩作者 Windows／Mac 照繞過步驟下載安裝能開
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖來源不列 claude、生圖模型下拉、免費 key 專屬錯誤、生圖統一存 PNG：已進 main，剩真模型與 CLI 真生圖（實測佇列梯 2 第 21）

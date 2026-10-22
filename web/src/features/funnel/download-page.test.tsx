@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
-// 下載頁：版本與各平台檔、沒有正式版退發佈頁、安裝繞過說明、功能對照表；`#download` 開關；碰到桌面版才有的功能給下載連結。
+// 下載頁（桌面版導覽）：版本與上下兩組下載鈕、沒有正式版退發佈頁、截圖選圖與缺圖退圖示卡、安裝繞過說明、功能對照表；
+// 覆蓋層行為（鎖捲動、Esc、焦點）；`#download` 開關；碰到桌面版才有的功能給下載連結。
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DesktopOnly } from "./DesktopOnly";
 import { DOWNLOAD_HASH, useDownloadPage } from "./download-route";
 import { DownloadPage } from "./DownloadPage";
 import { t, type MsgKey } from "../../i18n";
 import { FEATURE_COMPARE } from "./feature-compare";
 import { fetchLatestRelease, LOADING_RELEASE, NO_RELEASE, RELEASE_UNAVAILABLE, type ReleaseInfo } from "./releases";
+import { TOUR_FEATURES } from "./tour-features";
+import { pickTourImage, type TourImages } from "./tour-images";
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -31,8 +34,11 @@ afterEach(async () => {
   window.history.replaceState(null, "", "/");
 });
 
-const links = () => [...host.querySelectorAll("a")].map((a) => ({ text: a.textContent, href: a.getAttribute("href"), rel: a.getAttribute("rel") }));
+const describeLinks = (scope: ParentNode) => [...scope.querySelectorAll("a")].map((a) => ({ text: a.textContent, href: a.getAttribute("href"), rel: a.getAttribute("rel") }));
+const links = () => describeLinks(host);
 const targets = () => [...host.querySelectorAll("a")].map((a) => a.getAttribute("target"));
+/** 上（主視覺）、下（安裝說明之後）兩組下載鈕各自的連結 */
+const groups = () => ["download-cta", "download-cta-bottom"].map((id) => describeLinks(host.querySelector(`[data-testid=${id}]`)!));
 
 const RELEASE: ReleaseInfo = {
   status: "ok",
@@ -43,15 +49,19 @@ const RELEASE: ReleaseInfo = {
 };
 
 describe("the download page", () => {
-  it("with a release: the version, both platform files and the release page, all opening outside the app", async () => {
+  it("with a release: the version once, and both download groups give both platform files and the release page, all opening outside the app", async () => {
     await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
+    expect(host.querySelectorAll("[data-testid=download-version]")).toHaveLength(1);
     expect(host.querySelector("[data-testid=download-version]")?.textContent).toBe("目前版本 v0.3.0");
-    expect(links()).toEqual([
+    const expected = [
       { text: "下載 Windows 版", href: RELEASE.windows, rel: "noopener noreferrer" },
       { text: "下載 macOS 版（Apple Silicon）", href: RELEASE.mac, rel: "noopener noreferrer" },
       { text: "所有版本與檔案", href: RELEASE.pageUrl, rel: "noopener noreferrer" },
-    ]);
-    expect(targets()).toEqual(["_blank", "_blank", "_blank"]);
+    ];
+    expect(groups()).toEqual([expected, expected]);
+    // 頁面上沒有其他連結
+    expect(links()).toEqual([...expected, ...expected]);
+    expect(targets()).toEqual(Array(6).fill("_blank"));
   });
 
   it("rate limited, offline, or a release without matching installers: no broken link and never 'no release yet'", async () => {
@@ -83,10 +93,12 @@ describe("the download page", () => {
       const release = await fetchLatestRelease(fetchImpl);
       await render(<DownloadPage release={release} onClose={() => {}} />);
       expect(host.textContent, label).not.toContain("還沒有正式版");
-      const only = links();
-      expect(only, label).toHaveLength(1);
-      expect(only[0].href, label).toMatch(/^https:\/\/github\.com\/TaoGongSun\/Table-Tavern\/releases/);
-      expect(targets(), label).toEqual(["_blank"]);
+      for (const group of groups()) {
+        expect(group, label).toHaveLength(1);
+        expect(group[0].href, label).toMatch(/^https:\/\/github\.com\/TaoGongSun\/Table-Tavern\/releases/);
+      }
+      expect(links(), label).toHaveLength(2);
+      expect(targets(), label).toEqual(["_blank", "_blank"]);
       await act(async () => root?.unmount());
       root = null;
       host.remove();
@@ -96,14 +108,14 @@ describe("the download page", () => {
   it("without a release (the API said 404): says so and only links the releases page", async () => {
     await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} />);
     expect(host.querySelector("[data-testid=download-version]")?.textContent).toContain("還沒有正式版");
-    expect(links().map((link) => link.href)).toEqual([NO_RELEASE.pageUrl]);
+    expect(links().map((link) => link.href)).toEqual([NO_RELEASE.pageUrl, NO_RELEASE.pageUrl]);
   });
 
   it("when the lookup failed or is still running it does not claim there is no release", async () => {
     await render(<DownloadPage release={RELEASE_UNAVAILABLE} onClose={() => {}} />);
     const version = () => host.querySelector("[data-testid=download-version]")?.textContent ?? "";
     expect(version()).toBe("版本資訊暫時無法取得，請到發佈頁查看。");
-    expect(links().map((link) => link.href)).toEqual([RELEASE_UNAVAILABLE.pageUrl]);
+    expect(links().map((link) => link.href)).toEqual([RELEASE_UNAVAILABLE.pageUrl, RELEASE_UNAVAILABLE.pageUrl]);
     await act(async () => root!.render(<DownloadPage release={LOADING_RELEASE} onClose={() => {}} />));
     expect(version()).toBe("正在查詢最新版本…");
     expect(host.textContent).not.toContain("還沒有正式版");
@@ -111,7 +123,10 @@ describe("the download page", () => {
 
   it("a release missing one platform's file shows no button for it, only the files that exist", async () => {
     await render(<DownloadPage release={{ ...RELEASE, mac: null }} onClose={() => {}} />);
-    expect(links().map((link) => link.text)).toEqual(["下載 Windows 版", "所有版本與檔案"]);
+    expect(groups().map((group) => group.map((link) => link.text))).toEqual([
+      ["下載 Windows 版", "所有版本與檔案"],
+      ["下載 Windows 版", "所有版本與檔案"],
+    ]);
   });
 
   it("explains getting past SmartScreen (no signing certificate) and Gatekeeper (not notarized) without a terminal or a safety promise", async () => {
@@ -149,6 +164,83 @@ describe("the download page", () => {
         expect([item, row!.web, row!.desktop]).toEqual([item, false, true]);
       }
     }
+  });
+});
+
+describe("the tour around the download buttons", () => {
+  const SHOT_KEYS = ["table", ...TOUR_FEATURES.filter((feature) => feature.form === "shot").map((feature) => feature.key)];
+  const fakeImages = (langs: string[]): TourImages =>
+    Object.fromEntries(SHOT_KEYS.flatMap((key) => langs.map((lang) => [`./tour/${key}.${lang}.webp`, `/assets/${key}.${lang}.webp`])));
+
+  it("picks the Traditional Chinese shot for both Chinese pages, the English shot for the rest, and nothing when it is missing", () => {
+    const images = fakeImages(["zh-TW", "en"]);
+    expect(pickTourImage(images, "status", "zh-TW")).toBe("/assets/status.zh-TW.webp");
+    expect(pickTourImage(images, "status", "zh-CN")).toBe("/assets/status.zh-TW.webp");
+    for (const lang of ["en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru"] as const) {
+      expect(pickTourImage(images, "status", lang), lang).toBe("/assets/status.en.webp");
+    }
+    expect(pickTourImage(images, "scenes", "zh-TW")).toBeNull();
+    expect(pickTourImage({}, "table", "en")).toBeNull();
+    // 只有英文圖時繁中頁不拿英文圖頂替
+    expect(pickTourImage(fakeImages(["en"]), "status", "zh-TW")).toBeNull();
+  });
+
+  it("every shot has its size and its card title as alt text; only the hero loads eagerly", async () => {
+    await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} images={fakeImages(["zh-TW", "en"])} />);
+    const images = [...host.querySelectorAll("img")];
+    expect(images).toHaveLength(SHOT_KEYS.length);
+    for (const img of images) {
+      expect([img.getAttribute("width"), img.getAttribute("height")]).toEqual(["1600", "1136"]);
+    }
+    expect(images.map((img) => img.getAttribute("alt"))).toEqual([
+      t("tourTitle"),
+      ...TOUR_FEATURES.filter((feature) => feature.form === "shot").map((feature) => t(feature.title)),
+    ]);
+    expect(images.map((img) => img.getAttribute("loading"))).toEqual([null, "lazy", "lazy", "lazy", "lazy"]);
+    expect(images[1].getAttribute("src")).toBe("/assets/subscription.zh-TW.webp");
+    expect(host.querySelectorAll(".tour-icon-card")).toHaveLength(2);
+  });
+
+  it("without shots every feature is an icon card, and a shot that fails to load turns its card into an icon card", async () => {
+    await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} images={{}} />);
+    expect(host.querySelectorAll("img")).toHaveLength(0);
+    expect(host.querySelectorAll(".tour-icon-card")).toHaveLength(TOUR_FEATURES.length);
+    await act(async () => root?.unmount());
+    host.remove();
+
+    await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} images={fakeImages(["zh-TW"])} />);
+    const card = () => host.querySelector("[data-testid=tour-oneLine]")!;
+    expect(card().querySelector("img")).not.toBeNull();
+    await act(async () => card().querySelector("img")!.dispatchEvent(new Event("error")));
+    expect(card().classList.contains("tour-icon-card")).toBe(true);
+    expect(card().querySelector("img")).toBeNull();
+    expect(host.querySelectorAll("img")).toHaveLength(SHOT_KEYS.length - 1);
+  });
+
+  it("has a single close button, and no in-page '#' link that would change the address and close it", async () => {
+    await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
+    const buttons = [...host.querySelectorAll("button")];
+    expect(buttons.map((button) => button.textContent)).toEqual(["回到遊戲"]);
+    expect(host.querySelectorAll('a[href^="#"]')).toHaveLength(0);
+  });
+
+  it("locks the page behind it, takes focus, closes on Esc and hands focus and scrolling back", async () => {
+    document.body.style.overflow = "auto";
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const onClose = vi.fn();
+    await render(<DownloadPage release={NO_RELEASE} onClose={onClose} />);
+    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.activeElement?.textContent).toBe("回到遊戲");
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await act(async () => root?.unmount());
+    root = null;
+    expect(document.body.style.overflow).toBe("auto");
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+    document.body.style.overflow = "";
   });
 });
 

@@ -4,6 +4,7 @@
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 
+- [worldbook-keys-separator-i18n](tasks/worldbook-keys-separator-i18n.md) — 世界編輯器關鍵字分隔符寫死全形「、」，英文介面下不對 — 下一步：未排程，小修
 - [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：網頁版公開後再決定〔作者裁決 2026-10-12〕
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：未排程，排在 initvar-yaml-list 之後
