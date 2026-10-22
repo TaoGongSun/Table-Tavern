@@ -64,8 +64,9 @@ try {
     assert.equal(response.headers.get("location"), "/?state=x");
   }
   assert.equal((await fetch(`${base}/`)).status, 404, "// 應回 404");
+  assert.equal((await fetch(new URL("download", base))).status, 404, "導覽頁走 #download，/download 不是頁面");
 
-  step("未登入：常駐下載連結打開下載頁——沒有正式版就說明並只給發佈頁，附安裝繞過說明與功能對照，關掉回原畫面");
+  step("未登入：常駐下載連結打開下載頁（桌面版導覽）——沒有正式版就說明，上下兩組都只給發佈頁，附特色、安裝繞過說明與功能對照；只有一顆關閉鈕，關掉回原畫面");
   await page.goto(base);
   await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
   await page.getByTestId("download-link").click();
@@ -74,11 +75,21 @@ try {
   await page.getByText("桌面版還沒有正式版").waitFor();
   assert.deepEqual(
     await page.getByTestId("download-page").getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
-    [RELEASES_PAGE],
+    [RELEASES_PAGE, RELEASES_PAGE],
   );
+  await page.getByText("桌面版多了什麼").waitFor();
+  assert.equal(await page.getByRole("button", { name: "回到遊戲" }).count(), 1, "導覽頁只有一顆關閉鈕");
   await page.getByText("仍要執行", { exact: false }).waitFor();
   await page.getByTestId("feature-compare").getByText("多角色同桌", { exact: false }).waitFor();
   await page.getByRole("button", { name: "回到遊戲" }).click();
+  assert.equal(await page.getByTestId("download-page").count(), 0);
+  assert.ok(!page.url().includes("#"));
+  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
+  // 分享的網址 /#download 直接打開導覽頁；Esc 關掉、網址清乾淨
+  await page.goto(new URL("/#download", base).href);
+  await page.getByTestId("download-page").waitFor();
+  await page.getByText("桌面版多了什麼").waitFor();
+  await page.keyboard.press("Escape");
   assert.equal(await page.getByTestId("download-page").count(), 0);
   assert.ok(!page.url().includes("#"));
   await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
@@ -473,7 +484,7 @@ try {
   // 下載頁也給版本與兩個平台檔
   await page.getByTestId("download-link").click();
   await page.getByText("目前版本 v0.3.0").waitFor();
-  const files = page.getByTestId("download-page").getByRole("link");
+  const files = page.getByTestId("download-cta").getByRole("link");
   assert.match(await files.nth(0).getAttribute("href"), /_x64-setup\.exe$/);
   assert.match(await files.nth(1).getAttribute("href"), /_aarch64\.dmg$/);
   await page.getByRole("button", { name: "回到遊戲" }).click();
