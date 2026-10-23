@@ -6,12 +6,12 @@
 - `#download` 從小對話窗擴成滿版導覽頁：固定頁首（唯一關閉鈕）、主視覺（主標、副標、下載鈕、版本行、主圖）、四張截圖特色卡＋兩張圖示卡、功能對照表、安裝繞過說明＋第二組下載鈕。程式在 `web/src/features/funnel/`（`DownloadPage.tsx`、`tour-images.ts`、`tour-features.ts`、`tour/*.webp`），樣式 `web/src/App.css` 的 `.tour-*`，十語系各加 16 鍵。
 - 截圖 10 張（繁中、英文各 5）全是我方範例桌內容、零 AI；清單見下。
 - 驗收：verify 12 步綠；Sol、Grok、opus-review 三方驗收通過（2026-10-23）；Chrome 實開 14 組（375×667 十語系＋無正式版、1280×800、深色）下載鈕在第一屏、無橫向溢出。
-- **做好了、待部署**。部署由作者在 Cloudflare Pages 儀表板對 main 手動建立部署（D12／D42；專案 `table-tavern`，步驟見 [plans/web-version.md](../plans/web-version.md)「部署與上線檢查」）。
+- WebKit 補跑（2026-10-23）：`npm run e2e` 全部通過、`npm run smoke:dist` 全部通過。
+- **已上線**（2026-10-23）：作者在 Cloudflare Pages 對 main 7f686cb 手動部署，正式環境即該版。站上實開 `https://table-tavern.pages.dev/#download`：十張 `/assets/*.webp` 皆 200、`immutable` 長快取、1600×1136；1280×800 深色與 375×812 淺色都無橫向溢出、下載鈕在第一屏、版本 v0.3.0、下載連結指 v0.3.0 安裝檔。
+- 本案已無剩餘事項。順手發現已立案：[worldbook-keys-separator-i18n](../tasks/worldbook-keys-separator-i18n.md)。
 
-## 剩下
-1. **WebKit e2e 補跑**：本機沒有 Playwright WebKit（`~/Library/Caches/ms-playwright` 不存在，要下載、作者未授權）。作者同意後 `cd web && npx playwright install webkit`，再 `npm run e2e` 與 `npm run smoke:dist`。Chrome 代跑會在既有第 6 步「取消未完成回合」逾時（main 上同樣，與本案無關）。
-2. 部署後站上實開 `https://table-tavern.pages.dev/#download`：十張圖載得出來（`/assets/*.webp`）、桌機與手機各看一次、深淺色各一次。
-3. 順手發現已立案：[worldbook-keys-separator-i18n](../tasks/worldbook-keys-separator-i18n.md)。
+## 已知環境坑
+`npx playwright install webkit`（Playwright 1.55.1）在 Node 26 上下載完會卡在解壓（只寫出 `libwebrtc.dylib` 就停、CPU 0%）。解法：停掉安裝，用系統 `unzip` 把暫存區的 `playwright-download-webkit-*.zip` 解到 `~/Library/Caches/ms-playwright/webkit-<rev>/`，再 `touch INSTALLATION_COMPLETE`。
 
 ## 截圖清單
 全部 1600×1136（視窗內容實高 568pt；不留底帶、不置中裁），深色主題（app 預設），測試通道 fresh root、零 AI。台詞、狀態欄值、世界書條目、開桌描述皆我方自寫，以 `invoke` 寫入。
