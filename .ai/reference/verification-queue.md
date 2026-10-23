@@ -5,7 +5,7 @@
 
 ## 梯 1：本地操作，不花 API 額度
 
-0. [desktop-tour](../handoffs/desktop-tour.md)：①作者授權後 `cd web && npx playwright install webkit`，跑 `npm run e2e`、`npm run smoke:dist`　②作者在 Cloudflare Pages 對 main 手動部署，站上開 `/#download` 看十張圖、桌機與手機、深淺色。
+0. [desktop-tour](../handoffs/desktop-tour.md)：2026-10-23 完成——WebKit `npm run e2e`、`npm run smoke:dist` 全過；main 7f686cb 已部署，站上 `/#download` 十張圖 200、桌機深色與手機淺色版面正常。
 
 1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
 
