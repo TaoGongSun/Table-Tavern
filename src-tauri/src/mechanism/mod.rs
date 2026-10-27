@@ -31,6 +31,8 @@ mod list_block_tests;
 #[cfg(test)]
 mod object_key_glyph_tests;
 #[cfg(test)]
+mod once_flag_tests;
+#[cfg(test)]
 mod parse_feedback_tests;
 #[cfg(test)]
 mod slash_key_tests;

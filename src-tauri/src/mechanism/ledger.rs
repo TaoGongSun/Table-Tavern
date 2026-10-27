@@ -371,7 +371,11 @@ pub(super) fn local_rules(
         world.state.triggers = triggered.hits;
         for flag in &triggered.flags {
             let segments: Vec<String> = flag.split('.').map(str::to_owned).collect();
-            data::set_tree_value(&mut world.state.tree, &segments, "true");
+            // 求值已濾掉寫不進去的路徑（指到分支、父層是葉子）；萬一仍沒寫成就不記「已觸發」
+            if !data::set_tree_value(&mut world.state.tree, &segments, "true") {
+                log::warn!("一次性旗標 {flag} 沒能釘成 true");
+                continue;
+            }
             records.push(Record::new(
                 RecordKind::Absorbed,
                 flag.clone(),

@@ -197,7 +197,9 @@ fn rules_and_triggers_off_the_tree_are_dropped() {
         vec![
             "*.HP".to_owned(),
             "冒险者.*.恐惧值".to_owned(),
-            "基础信息.时间".to_owned()
+            "基础信息.时间".to_owned(),
+            // 留下的一次性觸發替旗標補唯讀規則（refactor-trigger-overlap）
+            "旗標.事件甲".to_owned()
         ]
     );
     // 首段萬用的規則命中實際葉子

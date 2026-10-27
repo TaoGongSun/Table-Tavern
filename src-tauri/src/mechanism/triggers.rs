@@ -20,7 +20,8 @@ pub struct TriggerOutcome {
 /// 逐個 Trigger 依序掃 cases，第一個所有 `when` 都成立的就停（空 `when` 一定成立，
 /// 當 else 兜底）；沒有任何 case 命中＝這個 trigger 這輪沒有文本。命中文本＝
 /// `preamble`（非空時）＋空行＋case 文本，換完 `{{state:路徑}}` 佔位再過一次
-/// `{{user}}` 代換。`Once` 命中則把它的 flag 路徑收進輸出，由呼叫端釘進樹。
+/// `{{user}}` 代換。`Once` 命中則把它的 flag 路徑收進輸出，由呼叫端釘進樹；
+/// 旗標已真（或路徑寫不進去）的 `Once` 整條跳過——重構 AI 產的 once 多半不在 `when` 帶旗標條件。
 pub fn evaluate_triggers(
     tree: &BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
@@ -28,6 +29,19 @@ pub fn evaluate_triggers(
 ) -> TriggerOutcome {
     let mut outcome = TriggerOutcome::default();
     for trigger in &mechanism.triggers {
+        if trigger.mode == TriggerMode::Once {
+            if let Some(flag) = &trigger.flag {
+                match once_flag(tree, flag) {
+                    OnceFlag::Unplayed => {}
+                    OnceFlag::Played => continue,
+                    OnceFlag::Blocked => {
+                        // 釘不進樹就會每回合重演：當作已演跳過（罕見，輕防）
+                        log::warn!("一次性觸發 {} 的旗標路徑 {flag} 寫不進狀態樹（指到分支或父層是葉子），當作已演跳過", trigger.id);
+                        continue;
+                    }
+                }
+            }
+        }
         let Some(case) = trigger.cases.iter().find(|case| {
             case.when
                 .iter()
@@ -49,6 +63,45 @@ pub fn evaluate_triggers(
         }
     }
     outcome
+}
+
+enum OnceFlag {
+    /// 路徑不存在或葉子不為真：還沒演。
+    Unplayed,
+    Played,
+    /// 指到分支、父層被葉子擋住或有空段：`set_tree_value` 釘不進去（或會蓋掉分支）。
+    Blocked,
+}
+
+fn once_flag(tree: &BTreeMap<String, StateNode>, path: &str) -> OnceFlag {
+    let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
+    if segments.iter().any(String::is_empty) {
+        return OnceFlag::Blocked;
+    }
+    match resolve_path(tree, path) {
+        PathValue::Leaf(text) if flag_text_is_true(text) => OnceFlag::Played,
+        PathValue::Leaf(_) => OnceFlag::Unplayed,
+        PathValue::Branch => OnceFlag::Blocked,
+        PathValue::Missing => {
+            let parent_is_leaf = (1..segments.len()).any(|end| {
+                matches!(
+                    data::node_at(tree, &segments[..end]),
+                    Some(StateNode::Leaf(_))
+                )
+            });
+            if parent_is_leaf {
+                OnceFlag::Blocked
+            } else {
+                OnceFlag::Unplayed
+            }
+        }
+    }
+}
+
+/// 旗標葉子的真假：去前後空白、不分大小寫，`true`／`1` 為真。
+fn flag_text_is_true(text: &str) -> bool {
+    let text = text.trim().to_ascii_lowercase();
+    text == "true" || text == "1"
 }
 
 /// 條件求值：值一律從樹上讀葉子字串；路徑指到分支（不是葉子）一律不成立，
@@ -116,10 +169,7 @@ fn holds(tree: &BTreeMap<String, StateNode>, mechanism: &Mechanism, condition: &
         }
         Condition::Flag { path, expect } => {
             let actual = match resolve_path(tree, path) {
-                PathValue::Leaf(text) => {
-                    let text = text.trim().to_ascii_lowercase();
-                    text == "true" || text == "1"
-                }
+                PathValue::Leaf(text) => flag_text_is_true(text),
                 PathValue::Missing => false,
                 PathValue::Branch => return false,
             };

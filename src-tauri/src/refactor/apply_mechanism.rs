@@ -486,3 +486,31 @@ pub(super) fn explicit_number(value: &str) -> Option<(String, Option<String>)> {
         )
     })
 }
+
+/// 一次性旗標補唯讀規則（比照 EJS 匯入 `import/mechanism.rs`）：模型回報改不動旗標、GM 也看不到它。
+/// 該路徑已有別的規則就不覆蓋、記 warn。
+pub(super) fn pin_once_flag_rules(
+    rules: &mut BTreeMap<String, FieldRule>,
+    triggers: &[data::Trigger],
+) {
+    for trigger in triggers {
+        let Some(flag) = trigger.flag.as_deref().filter(|flag| !flag.is_empty()) else {
+            continue;
+        };
+        if trigger.mode != data::TriggerMode::Once {
+            continue;
+        }
+        let mut rule = FieldRule::for_kind(FieldKind::ReadOnly);
+        rule.branch = flag.split('.').next().map(str::to_owned);
+        match rules.get(flag) {
+            None => {
+                rules.insert(flag.to_owned(), rule);
+            }
+            Some(existing) if *existing == rule => {}
+            Some(_) => log::warn!(
+                "重構套用：一次性旗標 {flag} 已有其他規則，不補唯讀規則（觸發 {}）",
+                trigger.id
+            ),
+        }
+    }
+}

@@ -1,4 +1,6 @@
-use super::apply_mechanism::{filter_scope, namespace, open_rule_reporting, Candidates};
+use super::apply_mechanism::{
+    filter_scope, namespace, open_rule_reporting, pin_once_flag_rules, Candidates,
+};
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::card_png::{AssetKind, CardAsset};
 use super::collections;
@@ -423,6 +425,7 @@ fn apply_into(
         moved_table_keys = open_rule_reporting(&mut state, &merged_rules, &merged_triggers);
         state_dirty = true;
     }
+    pin_once_flag_rules(&mut state.mechanism.rules, &merged_triggers);
     // 卡欄位與固定鍵同義的標記：收圍欄的桌改成 App 鏡像，不要模型雙報
     let fence_table = data::requires_present_report(root, world_id, state.refactor_mode.as_deref());
     let unmatched = mechanism::mark_survey_mirrors(&mut state, &outcome.mirrors, fence_table);

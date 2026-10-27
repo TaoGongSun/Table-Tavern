@@ -16,5 +16,6 @@ mod takeover_fence_scene_keys;
 mod takeover_flat_keys;
 mod takeover_opening;
 mod tree_authority;
+mod trigger_overlap;
 mod user_macro_names;
 mod visibility;
