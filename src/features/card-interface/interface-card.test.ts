@@ -3,6 +3,7 @@ import {
   applyScripts,
   candidateCards,
   cardCarriesPage,
+  cardShell,
   cardDrawable,
   buildEscapeShimSource,
   buildImeGuardSource,
@@ -18,6 +19,8 @@ import {
   type CardStorage,
   type InterfaceScript,
 } from "./interface-card";
+
+const NAMES = { user: "玩家", char: "卡" };
 
 function makeScript(overrides: Partial<InterfaceScript>): InterfaceScript {
   return {
@@ -66,7 +69,7 @@ describe("applyScripts", () => {
     });
     const raw = "<GoldenRPG_UI><CurrentView>正文</CurrentView><WorldSystem>世界</WorldSystem></GoldenRPG_UI>";
 
-    const result = applyScripts(raw, [script]);
+    const result = applyScripts(raw, [script], NAMES);
 
     expect(result).toContain("<div>正文</div>");
     expect(result).toContain("<div>世界</div>");
@@ -81,7 +84,7 @@ describe("applyScripts", () => {
     });
     const raw = "trim me: [KEEP-DROPME]";
 
-    const result = applyScripts(raw, [script]);
+    const result = applyScripts(raw, [script], NAMES);
 
     expect(result).toBe("trim me: before [KEEP-] after, group=KEEP-");
     expect(result).not.toContain("DROPME");
@@ -90,9 +93,45 @@ describe("applyScripts", () => {
   it("中間一支腳本樣式壞掉時只跳過該支，前後兩支照常套用", () => {
     const scripts = makeThreeScriptsWithBadMiddle();
 
-    const result = applyScripts("AAA", scripts);
+    const result = applyScripts("AAA", scripts, NAMES);
 
     expect(result).toBe("CCC");
+  });
+});
+
+describe("applyScripts（抓取引用與 {{user}}／{{char}}，照 ST runRegexScript）", () => {
+  const run = (raw: string, find: string, replace: string, trim: string[] = [], names = NAMES) =>
+    applyScripts(raw, [makeScript({ find_regex: find, replace_string: replace, trim_strings: trim })], names);
+
+  it("$N 任意位數、$0、$<名稱>、{{MATCH}}；越界、未命中、不存在的群組換空字串", () => {
+    expect(run("abcdefghij", "/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)/", "[$10|$1|$01]")).toBe("[j|a|a]");
+    expect(run("ab", "/(?<x>a)b/", "[$0|$<x>|{{MATCH}}|{{Match}}]")).toBe("[ab|a|ab|ab]");
+    expect(run("ab", "/(a)(z)?b/", "[$2|$3|$99|$<nope>]")).toBe("[|||]");
+  });
+
+  it("抓取值只代換一輪：命中文字裡的 $1、{{match}} 原樣；$&、$( 維持字面", () => {
+    expect(run("<UI>$1 與 {{match}}</UI>", "/<UI>(.*?)<\\/UI>/", "<p>$1</p>$&$(x)")).toBe("<p>$1 與 {{match}}</p>$&$(x)");
+  });
+
+  it("替換字串與抓取文字裡的 {{user}}／{{char}} 都換（不分大小寫、內側可有空白）", () => {
+    expect(run("<UI>歡迎 {{user}}</UI>", "/<UI>(.*?)<\\/UI>/", "{{User}} 對 {{ char }}：$1")).toBe("玩家 對 卡：歡迎 玩家");
+  });
+
+  it("名字含 {{char}}、$1 不會再被代換；名字空白就保留字面", () => {
+    expect(run("<UI>z</UI>", "/<UI>(.)<\\/UI>/", "{{user}}:$1:{{char}}", [], { user: "{{char}}$1", char: "$<x>" })).toBe(
+      "{{char}}$1:z:$<x>",
+    );
+    expect(run("<UI>", "/<UI>/", "{{user}}|{{char}}", [], { user: " ", char: "" })).toBe("{{user}}|{{char}}");
+  });
+
+  it("trim_strings 先代換名字再挖，整段命中、位置與具名群組都挖", () => {
+    expect(run("<UI>卡：嗨</UI>", "/<UI>(?<t>.*?)<\\/UI>/", "$1|$<t>|{{match}}", ["{{char}}："])).toBe("嗨|嗨|<UI>嗨</UI>");
+  });
+
+  it("其他巨集與卡片的 Vue 模板原樣保留", () => {
+    expect(run("<UI>", "/<UI>/", "{{ attributes.str }}{{ text }}{{random::a::b}}{{getvar::x}}")).toBe(
+      "{{ attributes.str }}{{ text }}{{random::a::b}}{{getvar::x}}",
+    );
   });
 });
 
@@ -206,52 +245,74 @@ describe("findShell", () => {
   });
 
   it("依序試候選文字，先命中的先用", () => {
-    const match = findShell([card()], ["沒有標籤的旁白", "<UI>最新一則</UI>", "<UI>更舊的</UI>"]);
+    const match = findShell([card()], ["沒有標籤的旁白", "<UI>最新一則</UI>", "<UI>更舊的</UI>"], { userName: "玩家" });
     expect(match?.shell).toContain("最新一則");
     expect(match?.index).toBe(1);
   });
 
   it("畫不出來的卡（DRM／雲端載入器）不參與，沒腳本就回 null", () => {
-    expect(findShell([card({ unsupported: "scrypt" })], ["<UI>開場</UI>"])).toBeNull();
-    expect(findShell([card({ scripts: [] })], ["<UI>開場</UI>"])).toBeNull();
+    expect(findShell([card({ unsupported: "scrypt" })], ["<UI>開場</UI>"], { userName: "玩家" })).toBeNull();
+    expect(findShell([card({ scripts: [] })], ["<UI>開場</UI>"], { userName: "玩家" })).toBeNull();
   });
 
   it("候選文字全對不上就回 null，空值直接跳過", () => {
-    expect(findShell([card()], [null, undefined, "", "純文字"])).toBeNull();
+    expect(findShell([card()], [null, undefined, "", "純文字"], { userName: "玩家" })).toBeNull();
   });
 
   it("按卡隔離：A 卡的輸出不交給 B 卡接著轉；回傳命中的卡", () => {
     const relayA = card({ character_id: "A", scripts: [{ ...card().scripts[0], find_regex: "/<X>/", replace_string: "<UI>接力</UI>" }] });
     const plainB = card({ character_id: "B" });
-    expect(findShell([relayA, plainB], ["<X>"])).toBeNull();
-    expect(findShell([relayA, plainB], ["<UI>直接</UI>"])?.card.character_id).toBe("B");
+    expect(findShell([relayA, plainB], ["<X>"], { userName: "玩家" })).toBeNull();
+    expect(findShell([relayA, plainB], ["<UI>直接</UI>"], { userName: "玩家" })?.card.character_id).toBe("B");
   });
 
   it("開場白只給所屬那張卡；說話者有自己的卡就只給他", () => {
     const a = card({ character_id: "A" });
     const b = card({ character_id: "B", scripts: [{ ...card().scripts[0], replace_string: "```html\n<!DOCTYPE html><body>B</body>\n```" }] });
-    expect(findShell([a, b], [{ text: "<UI>開場</UI>", owner: "B" }])?.shell).toContain("<body>B</body>");
-    expect(findShell([a, b], [{ text: "<UI>台詞</UI>", speaker: "B" }])?.card.character_id).toBe("B");
-    expect(findShell([a, b], [{ text: "<UI>台詞</UI>", speaker: "沒卡的人" }])?.card.character_id).toBe("A");
-    expect(findShell([a, b], [{ text: "<UI>開場</UI>", owner: "A" }], { only: "B" })).toBeNull();
+    expect(findShell([a, b], [{ text: "<UI>開場</UI>", owner: "B" }], { userName: "玩家" })?.shell).toContain("<body>B</body>");
+    expect(findShell([a, b], [{ text: "<UI>台詞</UI>", speaker: "B" }], { userName: "玩家" })?.card.character_id).toBe("B");
+    expect(findShell([a, b], [{ text: "<UI>台詞</UI>", speaker: "沒卡的人" }], { userName: "玩家" })?.card.character_id).toBe("A");
+    expect(findShell([a, b], [{ text: "<UI>開場</UI>", owner: "A" }], { userName: "玩家", only: "B" })).toBeNull();
   });
 
   it("快取：同一張卡同一段文字只套一次腳本；帶 noCache 的候選不進快取", () => {
     const cache = createShellCache();
     const a = card();
-    findShell([a], ["<UI>一</UI>"], { cache });
+    findShell([a], ["<UI>一</UI>"], { userName: "玩家", cache });
     expect(cache.entries.size).toBe(1);
     expect(cache.chars).toBeGreaterThan(0);
     cache.entries.set([...cache.entries.keys()][0], "快取裡的殼");
-    expect(findShell([a], ["<UI>一</UI>"], { cache })?.shell).toBe("快取裡的殼");
-    findShell([a], [{ text: "<UI>佔位</UI>", noCache: true }], { cache });
+    expect(findShell([a], ["<UI>一</UI>"], { userName: "玩家", cache })?.shell).toBe("快取裡的殼");
+    findShell([a], [{ text: "<UI>佔位</UI>", noCache: true }], { userName: "玩家", cache });
     expect(cache.entries.size).toBe(1);
+  });
+
+  it("{{char}} 用命中的那張卡的名字（非 MVU 卡也一樣），{{user}} 用傳進來的玩家名", () => {
+    const named = (id: string, name: string) =>
+      card({
+        character_id: id,
+        character_name: name,
+        scripts: [{ ...card().scripts[0], replace_string: "```html\n<!DOCTYPE html><body>{{user}}見{{char}}:$1</body>\n```" }],
+      });
+    const cards = [named("A", "甲"), named("B", "乙")];
+    expect(findShell(cards, [{ text: "<UI>x</UI>", speaker: "B" }], { userName: "旅人" })?.shell).toBe(
+      "<!DOCTYPE html><body>旅人見乙:x</body>",
+    );
+    expect(findShell(cards, ["<UI>x</UI>"], { userName: "旅人" })?.shell).toBe("<!DOCTYPE html><body>旅人見甲:x</body>");
+  });
+
+  it("快取鍵含玩家名：同一份快取改名後拿到新名字的殼", () => {
+    const cache = createShellCache();
+    const a = card({ scripts: [{ ...card().scripts[0], replace_string: "```html\n<!DOCTYPE html><body>{{user}}</body>\n```" }] });
+    expect(findShell([a], ["<UI>一</UI>"], { userName: "舊名", cache })?.shell).toContain("舊名");
+    expect(findShell([a], ["<UI>一</UI>"], { userName: "新名", cache })?.shell).toContain("新名");
+    expect(cardShell(a, "<UI>一</UI>", "舊名", cache)).toContain("舊名");
   });
 
   it("單筆就超過上限的不存", () => {
     const cache = createShellCache();
     const huge = `<UI>${"字".repeat(20_000_001)}</UI>`;
-    expect(findShell([card()], [huge], { cache })).not.toBeNull();
+    expect(findShell([card()], [huge], { userName: "玩家", cache })).not.toBeNull();
     expect(cache.entries.size).toBe(0);
     expect(cache.chars).toBe(0);
   });
@@ -260,7 +321,7 @@ describe("findShell", () => {
     const cache = createShellCache();
     cache.chars = 19_999_990;
     cache.entries.set("舊", null);
-    findShell([card()], ["<UI>這段文字加殼超過上限</UI>"], { cache });
+    findShell([card()], ["<UI>這段文字加殼超過上限</UI>"], { userName: "玩家", cache });
     expect(cache.entries.has("舊")).toBe(false);
     expect(cache.entries.size).toBe(1);
     expect(cache.chars).toBeLessThan(1000);
@@ -534,6 +595,6 @@ describe("cardCarriesPage（匯入提示的判準）", () => {
   it("範本有頁面、開場沒命中 find：仍算（已知限制，匯入先預告、鈕要等模型輸出）", () => {
     const card = { ...base, scripts: [page], opening: "沒有標籤的開場白" };
     expect(cardCarriesPage(card)).toBe(true);
-    expect(findShell([card], [card.opening])).toBeNull();
+    expect(findShell([card], [card.opening], { userName: "玩家" })).toBeNull();
   });
 });

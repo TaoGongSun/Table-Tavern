@@ -358,6 +358,50 @@ describe("fillSkeletonPlaceholders（YAML 容器）", () => {
       "{{user}} 在 仓房，{{random::甲::乙}}",
     );
   });
+
+  it("{{user}}／{{char}} 給了名字就照值的位置規則填：名字含引號、換行、冒號、井號時卡照樣讀回原名", () => {
+    const names = ['他說"走"\\後院', "It's 雪", "北境 # 後院", "key: value", "- 開頭", "true", "12", "甲\n乙", "{{char}}$1"];
+    for (const user of names) {
+      const filled = fillSkeletonPlaceholders(
+        block(
+          '  名字: "👤 {{user}}"',
+          "  对象: {{char}}",
+          "  單: '{{ User }}的'",
+          "  純: {{user}}前綴{{s.v}}",
+          "  n: [{{user}}, {{s.v}}]",
+          "  m: {k: {{user}}}",
+          "  l:",
+          "    - {{user}}",
+          "  b: |",
+          "    {{user}}",
+          "  {{user}}: 鍵",
+        ),
+        { s: { v: "仓房" } },
+        ["Status_block"],
+        {},
+        {},
+        { user, char: user },
+      );
+      expect(read(filled).状态栏).toEqual({
+        名字: `👤 ${user}`,
+        对象: user,
+        單: `${user}的`,
+        純: `${user}前綴仓房`,
+        n: [user, "仓房"],
+        m: { k: user },
+        l: [user],
+        b: `${user}\n`,
+        [user]: "鍵",
+      });
+    }
+  });
+
+  it("名字是空的、或狀態樹真有 user 葉子時：巨集保留字面／狀態值優先", () => {
+    expect(fillSkeletonPlaceholders("{{user}}與{{char}}", {}, [], {}, {}, { user: " ", char: "" })).toBe("{{user}}與{{char}}");
+    expect(fillSkeletonPlaceholders("{{user}}與{{char}}", { user: "樹上的值" }, [], {}, {}, { user: "旅人", char: "莫拉" })).toBe(
+      "樹上的值與莫拉",
+    );
+  });
 });
 
 describe("classifyPlaceholder", () => {

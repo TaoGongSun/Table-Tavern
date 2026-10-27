@@ -52,20 +52,39 @@ function lookupLeaf(tree: Record<string, StateNode>, path: string): string | und
   return typeof node === "string" ? node : undefined;
 }
 
-/** 佔位符的值；巨集回 null＝原樣保留，查不到的路徑回空字串 */
-function resolve(tree: Record<string, StateNode>, token: string): string | null {
+/** 骨架裡 {{user}}／{{char}} 的值；去頭尾空白後是空的就保留字面 */
+export interface SkeletonNames {
+  user: string;
+  char: string;
+}
+
+/** 填值的來源：狀態樹，加上 {{user}}／{{char}} 的名字 */
+interface FillValues {
+  tree: Record<string, StateNode>;
+  names: SkeletonNames;
+}
+
+/**
+ * 佔位符的值；巨集回 null＝原樣保留，查不到的路徑回空字串。{{user}}／{{char}}（不是狀態葉子時）換成名字，
+ * 和一般值走同一套位置跳脫，名字含引號或換行時 YAML 照樣解析得回原名
+ */
+function resolve(values: FillValues, token: string): string | null {
   const path = token.trim();
-  const kind = classifyPlaceholder(path, (candidate) => lookupLeaf(tree, candidate) !== undefined);
-  if (kind === "macro") return null;
-  return lookupLeaf(tree, path) ?? "";
+  const kind = classifyPlaceholder(path, (candidate) => lookupLeaf(values.tree, candidate) !== undefined);
+  if (kind === "macro") {
+    const macro = path.toLowerCase();
+    const name = macro === "user" ? values.names.user : macro === "char" ? values.names.char : "";
+    return name.trim() === "" ? null : name;
+  }
+  return lookupLeaf(values.tree, path) ?? "";
 }
 
 function isBody(token: string): boolean {
   return token.trim() === BODY_PLACEHOLDER;
 }
 
-function fillRaw(text: string, tree: Record<string, StateNode>): string {
-  return text.replace(PLACEHOLDER_REGEX, (match, token: string) => resolve(tree, token) ?? match);
+function fillRaw(text: string, values: FillValues): string {
+  return text.replace(PLACEHOLDER_REGEX, (match, token: string) => resolve(values, token) ?? match);
 }
 
 /**
@@ -75,6 +94,7 @@ function fillRaw(text: string, tree: Record<string, StateNode>): string {
  * - `yamlTags` 指定的容器（例如卡用 YAML 解析器讀的 `<Status_block>`）之內：值照所在位置的 YAML 語法
  *   表示，卡讀到的才是原值（規則見 fillYamlRegion）。容器外（正文槽、其他格式）照原樣填。
  * - 集合區段 `{{#集合}}…{{/集合}}` 先依 `collections`（mechanism.collections）展開，見 refactor-shell-sections.ts。
+ * - `{{user}}`／`{{char}}` 照值的規則填 `names`；其餘巨集原樣保留。
  */
 export function fillSkeletonPlaceholders(
   skeleton: string,
@@ -82,6 +102,7 @@ export function fillSkeletonPlaceholders(
   yamlTags: string[] = [],
   valueTypes: Record<string, string> = {},
   collections: Collections = {},
+  names: SkeletonNames = { user: "", char: "" },
 ): string {
   const ranges = yamlRanges(skeleton, yamlTags);
   const regions: { text: string; yaml: boolean }[] = [];
@@ -94,10 +115,10 @@ export function fillSkeletonPlaceholders(
   // 先展開集合區段（只綁路徑、不放值），整份再一次填值
   const binder = new SectionBinder(tree, collections);
   const bound = regions.map((region) => ({ ...region, text: binder.bind(region.text, region.yaml) }));
-  const filledTree = binder.tree();
+  const values: FillValues = { tree: binder.tree(), names };
   const types = binder.valueTypes(valueTypes);
   return bound
-    .map((region) => (region.yaml ? fillYamlRegion(region.text, filledTree, types) : fillPlainRegion(region.text, filledTree)))
+    .map((region) => (region.yaml ? fillYamlRegion(region.text, values, types) : fillPlainRegion(region.text, values)))
     .join("");
 }
 
@@ -146,14 +167,14 @@ export function spreadBodyRecord(prefix: string, body: string): string {
 }
 
 // 非 YAML 區：記錄式正文行照 spreadBodyRecord 展開，其餘照原樣填
-function fillPlainRegion(text: string, tree: Record<string, StateNode>): string {
+function fillPlainRegion(text: string, values: FillValues): string {
   return text
     .split("\n")
     .map((line) => {
       const prefix = recordPrefix(line);
-      if (prefix === null) return fillRaw(line, tree);
+      if (prefix === null) return fillRaw(line, values);
       const token = [...line.matchAll(PLACEHOLDER_REGEX)][0][1];
-      return spreadBodyRecord(prefix, resolve(tree, token) ?? "");
+      return spreadBodyRecord(prefix, resolve(values, token) ?? "");
     })
     .join("\n");
 }
@@ -253,11 +274,11 @@ function escapeDouble(value: string): string {
  * - 一般純量：佔位符是整個值且值有多行時，YAML 結構照結構縮排插入、文字寫成 `|-` 區塊；其餘把固定文字
  *   與值組成完整純量後再判斷要不要加引號（`📍 北境 # 後院` 這種會被讀成註解的就整個加引號）；
  *   行尾原有的註解保留。
- * 巨集原樣保留、當成固定文字。
+ * `{{user}}`／`{{char}}` 照值填（names），其餘巨集原樣保留、當成固定文字。
  */
 function fillYamlRegion(
   region: string,
-  tree: Record<string, StateNode>,
+  values: FillValues,
   valueTypes: Record<string, string>,
 ): string {
   const out: string[] = [];
@@ -266,7 +287,7 @@ function fillYamlRegion(
     const indent = /^ */.exec(line)?.[0].length ?? 0;
     if (blockParent !== null) {
       if (line.trim() === "" || indent > blockParent) {
-        out.push(fillBlockLine(line, indent, tree));
+        out.push(fillBlockLine(line, indent, values));
         continue;
       }
       blockParent = null;
@@ -278,15 +299,15 @@ function fillYamlRegion(
     }
     // 註解行：值照單行填（換行換空白），不影響結構
     if (line.trim().startsWith("#")) {
-      out.push(fillInline(line, tree));
+      out.push(fillInline(line, values));
       continue;
     }
     // 正文槽走正文契約：整行照原樣填，永不 YAML 化
     if ([...line.matchAll(PLACEHOLDER_REGEX)].some((match) => isBody(match[1]))) {
-      out.push(fillRaw(line, tree));
+      out.push(fillRaw(line, values));
       continue;
     }
-    const filled = fillYamlLine(line, indent, tree, valueTypes);
+    const filled = fillYamlLine(line, indent, values, valueTypes);
     out.push(filled.text);
     if (filled.block) blockParent = blockColumn(line, indent);
   }
@@ -299,18 +320,18 @@ function blockColumn(line: string, indent: number): number {
   return key === "" ? indent : lead.length;
 }
 
-function fillBlockLine(line: string, indent: number, tree: Record<string, StateNode>): string {
+function fillBlockLine(line: string, indent: number, values: FillValues): string {
   const pad = " ".repeat(indent);
   return line.replace(PLACEHOLDER_REGEX, (match, token: string) => {
-    const value = resolve(tree, token);
+    const value = resolve(values, token);
     return value === null ? match : value.replace(/\r?\n/g, `\n${pad}`);
   });
 }
 
 // 註解裡的值：換行換成空白，留在同一行
-function fillInline(text: string, tree: Record<string, StateNode>): string {
+function fillInline(text: string, values: FillValues): string {
   return text.replace(PLACEHOLDER_REGEX, (match, token: string) => {
-    const value = resolve(tree, token);
+    const value = resolve(values, token);
     return value === null ? match : value.replace(/\r?\n/g, " ");
   });
 }
@@ -354,19 +375,19 @@ function splitYamlLine(line: string): { lead: string; key: string; sep: string; 
 }
 
 // 鍵裡的佔位符：plain 鍵填好去頭尾空白後照純量規則（會被轉型或含指示字元就加引號）；引號鍵照各自的引號規則
-function fillYamlKey(key: string, tree: Record<string, StateNode>): string {
+function fillYamlKey(key: string, values: FillValues): string {
   if (!/\{\{[^{}\n]+\}\}/.test(key)) return key;
   if (key.startsWith('"')) {
     return `"${key.slice(1, -1).replace(PLACEHOLDER_REGEX, (match, token: string) => {
-      const value = resolve(tree, token);
+      const value = resolve(values, token);
       return value === null ? match : escapeDouble(value);
     })}"`;
   }
   if (key.startsWith("'")) {
-    const full = fillRaw(key.slice(1, -1).replace(/''/g, "'"), tree);
+    const full = fillRaw(key.slice(1, -1).replace(/''/g, "'"), values);
     return full.includes("\n") ? JSON.stringify(full) : `'${full.replace(/'/g, "''")}'`;
   }
-  return plainScalar(fillRaw(key, tree).trim());
+  return plainScalar(fillRaw(key, values).trim());
 }
 
 // 鍵後面的區塊純量指示符（`|`、`>-`、`|2+` 之類，可帶行尾註解）
@@ -375,11 +396,11 @@ const YAML_BLOCK_INDICATOR = /^[|>](?:[+-]?[0-9]?|[0-9][+-])(?:\s+#.*)?$/;
 function fillYamlLine(
   line: string,
   indent: number,
-  tree: Record<string, StateNode>,
+  values: FillValues,
   valueTypes: Record<string, string>,
 ): { text: string; block: boolean } {
   const { lead, key: rawKey, sep, rest } = splitYamlLine(line);
-  const key = rawKey === "" ? "" : `${fillYamlKey(rawKey, tree)}${sep}`;
+  const key = rawKey === "" ? "" : `${fillYamlKey(rawKey, values)}${sep}`;
   if (rawKey !== "") {
     // 值段沒有佔位符：固定文字照原樣（`{{k}}: 1` 的 1 仍是數字）
     if (!/\{\{[^{}\n]+\}\}/.test(rest)) {
@@ -387,10 +408,10 @@ function fillYamlLine(
     }
     // 值只剩空白或註解（子層在下面幾行）：鍵後原樣接上；區塊指示符照留，底下交給區塊純量規則
     const value = rest.trim();
-    if (value === "" || value.startsWith("#")) return { text: `${lead}${key}${fillInline(rest, tree)}`, block: false };
-    if (YAML_BLOCK_INDICATOR.test(value)) return { text: `${lead}${key}${fillInline(rest, tree)}`, block: true };
+    if (value === "" || value.startsWith("#")) return { text: `${lead}${key}${fillInline(rest, values)}`, block: false };
+    if (YAML_BLOCK_INDICATOR.test(value)) return { text: `${lead}${key}${fillInline(rest, values)}`, block: true };
   }
-  return { text: fillYamlValue(lead, key, rest, indent, tree, valueTypes), block: false };
+  return { text: fillYamlValue(lead, key, rest, indent, values, valueTypes), block: false };
 }
 
 function fillYamlValue(
@@ -398,14 +419,14 @@ function fillYamlValue(
   key: string,
   rest: string,
   indent: number,
-  tree: Record<string, StateNode>,
+  values: FillValues,
   valueTypes: Record<string, string>,
 ): string {
   if (rest.startsWith('"')) {
     let end = 1;
     while (end < rest.length && rest[end] !== '"') end += rest[end] === "\\" ? 2 : 1;
     const content = rest.slice(1, end).replace(PLACEHOLDER_REGEX, (match, token: string) => {
-      const value = resolve(tree, token);
+      const value = resolve(values, token);
       return value === null ? match : escapeDouble(value);
     });
     return `${lead}${key}"${content}"${rest.slice(end + 1)}`;
@@ -417,18 +438,18 @@ function fillYamlValue(
       else if (rest[end] === "'") break;
       else end += 1;
     }
-    const full = fillRaw(rest.slice(1, end).replace(/''/g, "'"), tree);
+    const full = fillRaw(rest.slice(1, end).replace(/''/g, "'"), values);
     const scalar = full.includes("\n") ? JSON.stringify(full) : `'${full.replace(/'/g, "''")}'`;
     return `${lead}${key}${scalar}${rest.slice(end + 1)}`;
   }
-  if (/^\[|^\{(?!\{)/.test(rest)) return `${lead}${key}${fillFlowCollection(rest, tree, valueTypes)}`;
+  if (/^\[|^\{(?!\{)/.test(rest)) return `${lead}${key}${fillFlowCollection(rest, values, valueTypes)}`;
   // 一般純量：先分出行尾註解（固定文字裡的「 #」；佔位符裡的不算）
   const masked = rest.replace(PLACEHOLDER_REGEX, (match) => "x".repeat(match.length));
   const commentAt = masked.search(/\s#/);
   const scalarText = (commentAt === -1 ? rest : rest.slice(0, commentAt)).trimEnd();
   const comment = commentAt === -1 ? "" : rest.slice(commentAt);
   const single = SINGLE_PLACEHOLDER.exec(scalarText);
-  const singleValue = single ? resolve(tree, single[1]) : null;
+  const singleValue = single ? resolve(values, single[1]) : null;
   if (single && singleValue !== null) {
     const value = singleValue;
     const lines = value.replace(/\r\n/g, "\n").split("\n");
@@ -450,7 +471,7 @@ function fillYamlValue(
   if (single && singleValue !== null) {
     return `${lead}${key}${typedScalar(singleValue, single[1].trim(), valueTypes)}${comment}`;
   }
-  const full = fillRaw(scalarText, tree);
+  const full = fillRaw(scalarText, values);
   const scalar = full.includes("\n") ? JSON.stringify(full) : plainScalar(full);
   return `${lead}${key}${scalar}${comment}`;
 }
@@ -558,14 +579,13 @@ function plainEnd(rest: string, from: number): number {
  * - 一般純量只有一個佔位符：是 `[{{x}}]` 唯一內容、而且欄位型別是 list 時當集合片段（見 flowFragment），
  *   否則是單一元素（flowElement，遵守型別表）；
  * - 一般純量是固定文字夾佔位符（`前綴{{x}}`）：整個元素填好後當字串，會被轉型、含指示字元或換行就整個加引號；
- *   原卡巨集 token 在引號裡原樣保留（`"{{user}}前綴…"`）；目前合成顯示流程（填骨架→卡片 regex→沙盒快照→
- *   卡片腳本解析）不自動替換巨集。日後若加入巨集替換，須在值替換完成後再做 YAML 跳脫；
+ *   `{{user}}`／`{{char}}` 照值填（同上跳脫），其餘原卡巨集 token 在引號裡原樣保留；
  * - 行內註解（空白後的 #）以後原樣保留。
  * 引號只在元素開頭才算開始引號純量，`it's` 這種一般純量裡的引號不算。
  */
 function fillFlowCollection(
   rest: string,
-  tree: Record<string, StateNode>,
+  values: FillValues,
   valueTypes: Record<string, string>,
 ): string {
   let out = "";
@@ -587,7 +607,7 @@ function fillFlowCollection(
       let end = i + 1;
       while (end < rest.length && rest[end] !== '"') end += rest[end] === "\\" ? 2 : 1;
       const content = rest.slice(i + 1, end).replace(PLACEHOLDER_REGEX, (match, token: string) => {
-        const value = resolve(tree, token);
+        const value = resolve(values, token);
         return value === null ? match : escapeDouble(value);
       });
       out += `"${content}"`;
@@ -601,7 +621,7 @@ function fillFlowCollection(
         else if (rest[end] === "'") break;
         else end += 1;
       }
-      const full = fillRaw(rest.slice(i + 1, end).replace(/''/g, "'"), tree);
+      const full = fillRaw(rest.slice(i + 1, end).replace(/''/g, "'"), values);
       out += full.includes("\n") ? JSON.stringify(full) : `'${full.replace(/'/g, "''")}'`;
       i = end + 1;
       continue;
@@ -619,7 +639,7 @@ function fillFlowCollection(
       continue;
     }
     const single = SINGLE_PLACEHOLDER.exec(element);
-    const value = single ? resolve(tree, single[1]) : null;
+    const value = single ? resolve(values, single[1]) : null;
     if (single && value === null) {
       out += token;
     } else if (single && value !== null) {
@@ -627,7 +647,7 @@ function fillFlowCollection(
       const fragment = previous === "[" && after === "]" && valueTypes[path] === "list";
       out += (fragment ? flowFragment(value) : flowElement(value, path, valueTypes)) + trailing;
     } else {
-      out += flowElement(fillRaw(element, tree), null, valueTypes) + trailing;
+      out += flowElement(fillRaw(element, values), null, valueTypes) + trailing;
     }
   }
   return out;

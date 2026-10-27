@@ -787,7 +787,7 @@ function cardScript(file: string, scriptName: string): InterfaceScript {
 }
 
 function realShell(file: string, scriptName: string): string {
-  const shell = extractShell(applyScripts("劇情推進的正文\n\n<StatusPlaceHolderImpl/>", [cardScript(file, scriptName)]));
+  const shell = extractShell(applyScripts("劇情推進的正文\n\n<StatusPlaceHolderImpl/>", [cardScript(file, scriptName)], { user: "玩家", char: "卡" }));
   // jsdom 不跑 module script：改成一般 script（卡片腳本放在 body 尾端，執行時機相同）
   return shell!.replace(/<script type="module">/g, "<script>");
 }

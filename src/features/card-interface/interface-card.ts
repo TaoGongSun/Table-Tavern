@@ -85,11 +85,11 @@ export function createShellCache(): ShellCache {
   return { entries: new Map(), chars: 0 };
 }
 
-/** 單張卡套一段文字：卡內多支腳本照順序接力，抽不到回 null */
-export function cardShell(card: CardInterface, text: string, cache?: ShellCache): string | null {
-  const key = cache === undefined ? "" : `${cardKey(card)}\u0000${text}`;
+/** 單張卡套一段文字：卡內多支腳本照順序接力，抽不到回 null。userName＝殼裡 {{user}} 的值，{{char}} 用這張卡的名字 */
+export function cardShell(card: CardInterface, text: string, userName: string, cache?: ShellCache): string | null {
+  const key = cache === undefined ? "" : `${cardKey(card)}\u0000${userName}\u0000${text}`;
   if (cache?.entries.has(key)) return cache.entries.get(key) ?? null;
-  const shell = extractShell(applyScripts(text, card.scripts));
+  const shell = extractShell(applyScripts(text, card.scripts, { user: userName, char: card.character_name }));
   if (cache !== undefined) {
     const size = key.length + (shell?.length ?? 0);
     // 單筆就超過上限的不存：上限是嚴格的
@@ -108,12 +108,12 @@ export function cardShell(card: CardInterface, text: string, cache?: ShellCache)
  * 從幾段候選文字裡挑出第一個畫得出來的殼（依序試，先命中先用），每段只試它來源該試的卡、一張一張試，
  * 跨卡不接力。面板與匯入流程共用同一套判斷，才不會出現「按鈕說有、打開卻空的」。
  * index＝命中的是第幾段候選（呼叫端自己對回它代表哪一樓，這不是樓號）；card＝產生這份殼的卡。
- * only＝指定卡（cardKey）：只有那張卡在候選規則下輪得到時才試。
+ * only＝指定卡（cardKey）：只有那張卡在候選規則下輪得到時才試。userName＝殼裡 {{user}} 的值。
  */
 export function findShell(
   cards: CardInterface[],
   candidates: ShellCandidate[],
-  options: { only?: string | null; cache?: ShellCache } = {},
+  options: { userName: string; only?: string | null; cache?: ShellCache },
 ): { shell: string; index: number; card: CardInterface } | null {
   for (let index = 0; index < candidates.length; index++) {
     const candidate = candidates[index];
@@ -123,7 +123,7 @@ export function findShell(
     const cache = described?.noCache ? undefined : options.cache;
     for (const card of candidateCards(cards, candidate)) {
       if (options.only != null && cardKey(card) !== options.only) continue;
-      const shell = cardShell(card, text, cache);
+      const shell = cardShell(card, text, options.userName, cache);
       if (shell !== null) return { shell, index, card };
     }
   }
@@ -157,26 +157,43 @@ export function parseStRegex(findRegex: string): RegExp | null {
   }
 }
 
-// replace_string 裡的代換只做一輪：掃過去遇到 {{match}}／$1..$9 就換，其餘原樣輸出。
-// 不能先換 {{match}} 再對結果跑一次 $1 代換，命中文字裡若剛好含 $1 會被二次代換。
-function substitute(template: string, match: string, groups: (string | undefined)[]): string {
-  let result = "";
-  for (let i = 0; i < template.length; i++) {
-    if (template.startsWith("{{match}}", i)) {
-      result += match;
-      i += "{{match}}".length - 1;
-      continue;
-    }
-    const char = template[i];
-    const next = template[i + 1];
-    if (char === "$" && next !== undefined && next >= "1" && next <= "9") {
-      result += groups[Number(next) - 1] ?? "";
-      i += 1;
-      continue;
-    }
-    result += char;
-  }
-  return result;
+/** 殼裡 {{user}}／{{char}} 的值；去頭尾空白後是空的就保留字面（ST 換成空字串） */
+export interface MacroNames {
+  user: string;
+  char: string;
+}
+
+// 只認 user／char（不分大小寫、內側可有空白，同 ST）；其餘巨集與卡片的 Vue 模板 {{ x }} 原樣保留
+const NAME_MACRO = /\{\{\s*(user|char)\s*\}\}/gi;
+
+/** 一次掃完 {{user}}／{{char}}：名字用回呼字面插入，名字裡的 {{char}}、$1 不會再被代換 */
+export function substituteNames(text: string, names: MacroNames): string {
+  return text.replace(NAME_MACRO, (match, name: string) => {
+    const value = name.toLowerCase() === "user" ? names.user : names.char;
+    return value.trim() === "" ? match : value;
+  });
+}
+
+// 抓取引用：{{match}}（不分大小寫）、$N（任意位數，$0＝整段命中）、$<名稱>
+const CAPTURE_REF = /\{\{match\}\}|\$(\d+)|\$<([^>]+)>/gi;
+
+/**
+ * 照 ST runRegexScript 代換一次命中：抓取引用只掃一輪（命中文字裡的 $1 不會被二次代換），越界、未命中、
+ * 不存在的群組換空字串，每個抓取值先挖掉 trim_strings；最後整段（含抓取進來的文字）再掃一次 user／char。
+ * $&、$( 這類 JS 替換語法不認，原樣留著。
+ */
+function substitute(
+  template: string,
+  groups: (string | undefined)[],
+  named: Record<string, string | undefined> | undefined,
+  trims: string[],
+  names: MacroNames,
+): string {
+  const filled = template.replace(CAPTURE_REF, (_whole, num: string | undefined, name: string | undefined) => {
+    const value = name !== undefined ? named?.[name] : groups[num === undefined ? 0 : Number(num)];
+    return value ? trimAll(value, trims) : "";
+  });
+  return substituteNames(filled, names);
 }
 
 function trimAll(value: string, trimStrings: string[]): string {
@@ -186,7 +203,7 @@ function trimAll(value: string, trimStrings: string[]): string {
 /**
  * 依序套用顯示腳本；單支炸掉就跳過該支續走下一支，永遠回傳字串。
  */
-export function applyScripts(raw: string, scripts: InterfaceScript[]): string {
+export function applyScripts(raw: string, scripts: InterfaceScript[], names: MacroNames): string {
   let text = raw;
 
   for (const script of scripts) {
@@ -195,15 +212,14 @@ export function applyScripts(raw: string, scripts: InterfaceScript[]): string {
       const regex = parseStRegex(script.find_regex);
       if (!regex) continue;
 
+      // trim_strings 先代換名字再挖，代換完是空的就不挖（trimAll 跳過空針）
+      const trims = script.trim_strings.map((needle) => substituteNames(needle, names));
       text = text.replace(regex, (match: string, ...rest: unknown[]) => {
         const hasNamedGroups = rest.length > 0 && typeof rest[rest.length - 1] === "object";
+        const named = hasNamedGroups ? (rest[rest.length - 1] as Record<string, string | undefined>) : undefined;
         const positional = hasNamedGroups ? rest.slice(0, -1) : rest;
         const captures = positional.slice(0, -2) as (string | undefined)[];
-
-        const trimmedMatch = trimAll(match, script.trim_strings);
-        const trimmedCaptures = captures.map((group) => (group === undefined ? undefined : trimAll(group, script.trim_strings)));
-
-        return substitute(script.replace_string, trimmedMatch, trimmedCaptures);
+        return substitute(script.replace_string, [match, ...captures], named, trims, names);
       });
     } catch {
       // 這支腳本壞掉：保留前一步的結果，續走下一支。

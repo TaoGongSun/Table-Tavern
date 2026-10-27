@@ -472,7 +472,7 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
           min_depth: null,
           max_depth: null,
         },
-      ]),
+      ], { user: "玩家", char: "卡" }),
     )!;
     const mvu: CardMvu = {
       currentId: 0,

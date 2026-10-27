@@ -253,9 +253,9 @@ export function useCardInterfaceController(input: {
       valueTypes,
       collections,
       cache: shellCache,
+      userName,
       mvu: {
         liveTree: tree,
-        userName,
         active: varsActive,
         generation: varsGeneration,
         scene: varsScene,
@@ -636,8 +636,10 @@ export function useCardInterfaceController(input: {
   // 匯入完畫得出來就直接打開一次：這類卡的開場本來就是一整頁畫面，
   // 玩家不主動點按鈕不會知道有這東西（聊天裡只看得到孤零零一句「请选择你的身份」）
   const openIfDrawable = useCallback((list: CardInterface[]) => {
-    if (findShell(list, gmOrder(list).map((card) => ({ text: card.opening, owner: cardKey(card) }))) !== null) setCardUiOpen(true);
-  }, []);
+    if (findShell(list, gmOrder(list).map((card) => ({ text: card.opening, owner: cardKey(card) })), { userName }) !== null) {
+      setCardUiOpen(true);
+    }
+  }, [userName]);
 
   const interfaceTakeover = (refactorShell?.trim() ?? "") !== "" && tableMode !== "characters";
 

@@ -45,7 +45,7 @@ const events: TranscriptEvent[] = [
 ];
 
 function pick(refactorShell: string | null, over: Partial<Parameters<typeof pickCardShell>[0]> = {}) {
-  return pickCardShell({ tableMode: null, refactorShell, events, cardInterfaces: [card], ...over });
+  return pickCardShell({ tableMode: null, refactorShell, events, cardInterfaces: [card], userName: "玩家", ...over });
 }
 const shellOf = (...args: Parameters<typeof pick>) => pick(...args)?.shell ?? null;
 
@@ -83,6 +83,19 @@ describe("pickCardShell", () => {
   describe("有效骨架", () => {
     it("空桌退回卡片開場白", () => {
       expect(shellOf(skeleton, { tableMode: "interface", events: emptyTable })).toContain("開場白");
+    });
+
+    it("骨架裡的 {{user}}／{{char}} 填值時就換成玩家名與卡名，交給卡片的那一樓也不留 token", () => {
+      const picked = pick("<UI>{{user}}見{{ Char }} {{World.Time}}</UI>", { tableMode: "interface", events, userName: "旅人" });
+      expect(picked?.shell).toBe("<!DOCTYPE html><body>旅人見卡 黃昏</body>");
+      expect(picked?.current.text).toBe("<UI>旅人見卡 黃昏</UI>");
+    });
+
+    it("空桌開場白：原卡 first_mes 裡的 {{user}} 經卡片 regex 抓進殼也換成玩家名", () => {
+      const greeting = makeCard("卡", "<UI>歡迎 {{user}}</UI>");
+      expect(shellOf(null, { events: emptyTable, cardInterfaces: [greeting], userName: "旅人" })).toBe(
+        "<!DOCTYPE html><body>歡迎 旅人</body>",
+      );
     });
 
     it("最新 GM 原文卡腳本自己畫得出來就不塞骨架", () => {
@@ -310,7 +323,7 @@ describe("pickCardShell", () => {
       const picked = pick(panel, {
         tableMode: "interface",
         events: [recap("甲</UI>乙")],
-        mvu: { liveTree: { World: { Time: "9:30" } }, userName: "" },
+        mvu: { liveTree: { World: { Time: "9:30" } } }, userName: "",
       });
       expect(picked?.shell).toBe("<!DOCTYPE html><body>【前情提要】\n甲＜/UI＞乙<p>時間 9:30</p></body>");
     });
@@ -546,7 +559,7 @@ describe("pickCardShell：MVU 卡", () => {
       refactorShell: null,
       events: list,
       cardInterfaces: [mvuCard],
-      mvu: { liveTree: liveTree as never, userName: "阿濤" },
+      mvu: { liveTree: liveTree as never }, userName: "阿濤",
     });
 
   it("character 層身分是實際產生殼的卡：A 卡先列、B 卡產生殼時取 B；跨卡接力不成立（不出殼）；世界書卡固定 world", () => {
@@ -566,7 +579,7 @@ describe("pickCardShell：MVU 卡", () => {
         refactorShell: null,
         events: list.map((event) => ({ ...event, speaker_id: "" })),
         cardInterfaces: cards,
-        mvu: { liveTree: { 基础信息: { 时间: "x" } } as never, userName: "阿濤" },
+        mvu: { liveTree: { 基础信息: { 时间: "x" } } as never }, userName: "阿濤",
       })?.mvu?.characterId;
     expect(owner([a, b])).toBe("B");
     expect(owner([b, a])).toBe("B");
@@ -601,7 +614,7 @@ describe("pickCardShell：MVU 卡", () => {
         refactorShell: null,
         events: [oldFloor, latest],
         cardInterfaces: cards,
-        mvu: { liveTree: { 基础信息: { 时间: "b" } } as never, userName: "阿濤" },
+        mvu: { liveTree: { 基础信息: { 时间: "b" } } as never }, userName: "阿濤",
       });
       expect(picked?.current.id).toBe(1);
       expect(picked?.mvu?.characterId).toBe("B");
@@ -661,7 +674,7 @@ describe("pickCardShell：MVU 卡", () => {
     expect(empty?.floors[1].message).toBe("迷宫开始运转了");
     expect(empty?.shell).toContain("开局畫面");
     expect(
-      pickCardShell({ tableMode: null, refactorShell: null, events, cardInterfaces: [card], mvu: { liveTree: {}, userName: "阿濤" } })
+      pickCardShell({ tableMode: null, refactorShell: null, events, cardInterfaces: [card], mvu: { liveTree: {} }, userName: "阿濤" })
         ?.mvu,
     ).toBeNull();
     const skeletonPick = pickCardShell({
@@ -669,7 +682,7 @@ describe("pickCardShell：MVU 卡", () => {
       refactorShell: "<StatusPlaceHolderImpl/>",
       events: [reply("迷宫开始运转了", "第1日")],
       cardInterfaces: [mvuCard],
-      mvu: { liveTree: {}, userName: "阿濤" },
+      mvu: { liveTree: {} }, userName: "阿濤",
     });
     expect(skeletonPick?.mvu ?? null).toBeNull();
   });
@@ -701,7 +714,7 @@ describe("多卡：腳本按卡隔離、說話者優先、指定卡", () => {
     text: "台詞",
     raw,
   });
-  const base = { tableMode: null, refactorShell: null } as const;
+  const base = { tableMode: null, refactorShell: null, userName: "玩家" } as const;
 
   it("同標籤兩張卡：各自的台詞樓畫出各自的殼，說話者的卡排在後面也一樣", () => {
     const a = tagged("A", "S", "A殼");
@@ -786,7 +799,7 @@ describe("多卡：腳本按卡隔離、說話者優先、指定卡", () => {
     });
     const a = same("A", "S");
     const b = same("B", "S");
-    const mvu = { liveTree: { x: "1" } as never, userName: "阿濤" };
+    const mvu = { liveTree: { x: "1" } as never };
     const pickA = pickCardShell({ ...base, events: [line("A", "<S>甲</S>")], cardInterfaces: [a, b], mvu });
     const pickB = pickCardShell({ ...base, events: [line("B", "<S>乙</S>")], cardInterfaces: [a, b], mvu });
     expect(pickA?.shell).toBe(pickB?.shell);
@@ -805,6 +818,7 @@ describe("多卡：腳本按卡隔離、說話者優先、指定卡", () => {
       refactorShell: "<UI>{{World.Time}} {{本回合.正文}}</UI>",
       events,
       cardInterfaces: [other, source],
+      userName: "玩家",
     };
     // 跟著最新：原文畫得出（B）就用原文
     expect(pickCardShell(input)?.card).toBe("B");
@@ -840,6 +854,25 @@ describe("多卡：腳本按卡隔離、說話者優先、指定卡", () => {
     expect(picked?.current.name).toBe("世界");
   });
 
+  it("多卡＋接管骨架：A 在前但只有 B 畫得出骨架時，介面與合成樓的 {{char}} 是 B 的名字", () => {
+    const a = { ...tagged("A", "S", "A殼"), character_name: "甲" };
+    const b = {
+      ...tagged("B", "UI", "B殼"),
+      character_name: "乙",
+      scripts: [{ ...tagged("B", "UI", "B殼").scripts[0], replace_string: "```html\n<!DOCTYPE html><body>$1</body>\n```" }],
+    };
+    const picked = pickCardShell({
+      ...base,
+      tableMode: "interface",
+      refactorShell: "<UI>{{user}}見{{char}} {{World.Time}}</UI>",
+      events: [gmAt("旁白", { World: { Time: "清晨" } })],
+      cardInterfaces: [a, b],
+      userName: "旅人",
+    });
+    expect(picked?.card).toBe("B");
+    expect(picked?.shell).toBe("<!DOCTYPE html><body>旅人見乙 清晨</body>");
+  });
+
   it("同標籤兩張卡＋接管骨架：骨架合成樓只歸來源卡，指定另一張畫不出骨架", () => {
     const source = tagged("", "UI", "來源殼");
     const twin = tagged("B", "UI", "B殼");
@@ -848,6 +881,7 @@ describe("多卡：腳本按卡隔離、說話者優先、指定卡", () => {
       refactorShell: "<UI>{{World.Time}} {{本回合.正文}}</UI>",
       events: [gmAt("旁白", { World: { Time: "清晨" } })],
       cardInterfaces: [twin, source],
+      userName: "玩家",
     };
     expect(pickCardShell(input)?.card).toBe("world");
     expect(pickCardShell(input)?.shell).toBe("<!DOCTYPE html><body>來源殼:清晨 旁白</body>");

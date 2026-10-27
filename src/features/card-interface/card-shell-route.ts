@@ -1,6 +1,6 @@
 // 卡片介面殼的選路：這桌現在該顯示哪一份殼、它是從哪一樓產生的，以及交給卡片的每一樓文字。
 // 純函式，controller 只負責接線。
-import { cardDrawable, cardKey, findShell, gmOrder, type CardInterface, type ShellCache, type ShellCandidate } from "./interface-card";
+import { cardDrawable, cardKey, findShell, gmOrder, type CardInterface, type MacroNames, type ShellCache, type ShellCandidate } from "./interface-card";
 import { type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import { bodyRecordPrefix, fillSkeletonPlaceholders, spreadBodyRecord, type StateNode } from "../refactor/refactor-shell";
@@ -142,7 +142,8 @@ function floorMessage(
   collections: Collections,
   liveTree: StateTree | undefined,
   slot: string,
-  pick: { only: string | null; cache?: ShellCache },
+  pick: { userName: string; only: string | null; cache?: ShellCache },
+  names: MacroNames,
 ): FloorBuild {
   const raw = floorText(event);
   const source = { speaker: speakerOf(event), owner: openingOwner(event, cards) };
@@ -157,14 +158,14 @@ function floorMessage(
     const recap = inertRecap(eventDisplayText(event));
     const prefix = bodyRecordPrefix(skeleton, yamlTags);
     return {
-      message: fillSkeletonPlaceholders(skeleton, withBody(tree, slot), yamlTags, valueTypes, collections),
+      message: fillSkeletonPlaceholders(skeleton, withBody(tree, slot), yamlTags, valueTypes, collections, names),
       recap: { slot, text: prefix === null ? recap : spreadBodyRecord(prefix, recap).slice(prefix.length) },
       synthesized: true,
     };
   }
   if (snapshot === undefined || findShell(cards, [{ text: raw, ...source }], pick) !== null) return { message: raw, ...source };
   return {
-    message: fillSkeletonPlaceholders(skeleton, withBody(snapshot, eventDisplayText(event)), yamlTags, valueTypes, collections),
+    message: fillSkeletonPlaceholders(skeleton, withBody(snapshot, eventDisplayText(event)), yamlTags, valueTypes, collections, names),
     synthesized: true,
   };
 }
@@ -188,11 +189,12 @@ export interface PickInput {
   collections?: Collections;
   /** 前情提要佔位的亂數來源（測試注入用；預設密碼學亂數） */
   nonce?: () => string;
-  /** 目前狀態樹（含面板手動改值）與玩家名：MVU 卡的活樓讀它；active＝卡片變數模式（每樓讀事件上自己的表）；
+  /** 這桌玩家名（沒有就用語系稱呼）：殼與骨架裡 {{user}} 的值 */
+  userName: string;
+  /** 目前狀態樹（含面板手動改值）：MVU 卡的活樓讀它；active＝卡片變數模式（每樓讀事件上自己的表）；
    *  null＝不給 MVU 快照 */
   mvu?: {
     liveTree: StateTree;
-    userName: string;
     active?: boolean;
     generation?: number;
     scene?: number;
@@ -211,7 +213,7 @@ const RECENT_FLOORS = 10;
 export function pickCardShell(input: PickInput): PickedShell | null {
   const { tableMode, cardInterfaces } = input;
   const only = input.card ?? null;
-  const pickOptions = { only, cache: input.cache };
+  const pickOptions = { userName: input.userName, only, cache: input.cache };
   // 角色優先桌：介面產物一律不建不顯示（refactor-mode-split 拍板）——重構骨架、卡片自帶殼、
   // 掃 raw 的 fallback 整組短路。標記還沒讀回（undefined）也先不顯示，未知就放行會在角色桌
   // 切桌瞬間閃出介面。
@@ -219,6 +221,13 @@ export function pickCardShell(input: PickInput): PickedShell | null {
   const skeleton =
     input.refactorShell !== null && input.refactorShell.trim() !== "" ? input.refactorShell : null;
   const yamlTags = skeletonYamlTags(cardInterfaces);
+  // 骨架裡的 {{user}} 填值時就換成玩家名（YAML 容器內照位置跳脫），卡片 regex 看不到 token。
+  // {{char}} 只有一張畫得出東西的卡時就地換；多張時填值前還不知道哪張畫得出骨架，保留字面交給命中那張卡的 regex 換
+  const drawable = cardInterfaces.filter(cardDrawable);
+  const skeletonNames: MacroNames = {
+    user: input.userName,
+    char: drawable.length === 1 ? drawable[0].character_name : "",
+  };
   // 樓號＝本場「樓」的位置（gm_only 事件不算一樓）；每樓的文字只算這一次，選殼、本樓、歷史樓、
   // 掛載與推送都用同一份。
   const events = chatEvents(input.events);
@@ -238,7 +247,7 @@ export function pickCardShell(input: PickInput): PickedShell | null {
           currentId: 0,
           liveTree: input.mvu.liveTree,
           valueTypes: input.valueTypes ?? {},
-          macros: { user: input.mvu.userName, char },
+          macros: { user: input.userName, char },
         })
       : null;
   const mvu = buildMvu(mvuCard?.character_name || null);
@@ -260,6 +269,7 @@ export function pickCardShell(input: PickInput): PickedShell | null {
       input.mvu?.liveTree,
       `${SLOT_PREFIX}${nonce}N${id}E`,
       pickOptions,
+      skeletonNames,
     ),
   );
   const floors = events.map((event, id) => {
@@ -299,7 +309,7 @@ export function pickCardShell(input: PickInput): PickedShell | null {
   for (const floor of [...floors].reverse()) {
     const build = builds[floor.id];
     if (!build.synthesized || floor.noShell) continue;
-    const hit = findShell(cardInterfaces, [{ text: floor.message, noCache: build.recap !== undefined }], { cache: input.cache });
+    const hit = findShell(cardInterfaces, [{ text: floor.message, noCache: build.recap !== undefined }], { userName: input.userName, cache: input.cache });
     if (hit !== null) {
       skeletonOwner = cardKey(hit.card);
       break;
