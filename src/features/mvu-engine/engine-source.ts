@@ -11,8 +11,9 @@ import { SOURCE_LIMITS } from "./source-limits";
 import { SOURCE_PATH } from "./source-path";
 import { SOURCE_SCHEMA } from "./source-schema";
 import { SOURCE_UPDATE } from "./source-update";
+import { SOURCE_ZOD } from "./source-zod";
 
-/** `function createMvuCore(env) { … }` 的原始碼：回 `{ parseMessage, generateSchema, cleanUpMetadata }` */
+/** `function createMvuCore(env) { … }` 的原始碼：回值見 host-contract.ts 的 MvuCore */
 export function buildMvuEngineSource(): string {
   return [
     "function createMvuCore(env) {",
@@ -29,8 +30,17 @@ export function buildMvuEngineSource(): string {
     SOURCE_PATH,
     SOURCE_COMMANDS,
     SOURCE_APPLY,
+    SOURCE_ZOD,
     SOURCE_UPDATE,
-    "  return { parseMessage: parseMessage, generateSchema: generateSchema, cleanUpMetadata: cleanUpMetadata };",
+    "  return {",
+    "    parseMessage: parseMessage,",
+    "    parseMessageDetailed: parseMessageDetailed,",
+    "    generateSchema: generateSchema,",
+    "    cleanUpMetadata: cleanUpMetadata,",
+    "    registerMvuSchema: registerMvuSchema,",
+    "    zodStatus: zodStatus,",
+    "    zodInitialize: zodInitialize",
+    "  };",
     "}",
   ].join("\n");
 }

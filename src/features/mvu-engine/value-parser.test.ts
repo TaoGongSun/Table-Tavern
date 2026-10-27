@@ -1,6 +1,14 @@
 // parseMessage 的值解析引擎（計畫 8.9）：值解析六段、受限數學式、JSONPatch 區塊文字解析、值上限。
 import { describe, expect, it } from "vitest";
-import { MAX_EXPRESSION_CHARS, parseCommandValue, parsePatchBlock, runEval, valueLimitProblem } from "./value-parser";
+import {
+  isEvalOp,
+  MAX_EXPRESSION_CHARS,
+  parseCommandValue,
+  parsePatchBlock,
+  parseZodCommandValue,
+  runEval,
+  valueLimitProblem,
+} from "./value-parser";
 
 describe("值解析六段", () => {
   it("字面量與 JSON", () => {
@@ -104,5 +112,28 @@ describe("值上限與 runEval", () => {
     const deep = `${"[".repeat(40)}1${"]".repeat(40)}`;
     expect(runEval("value", deep)).toEqual({ ok: false, error: "value-limit:too-deep" });
     expect(runEval("patch", "[1, 2")).toMatchObject({ ok: true });
+  });
+});
+
+describe("zod 卡的指令值（mvu_zod parseCommandValue）", () => {
+  it("字面量、JSON、物件／陣列字面量（JSON5）、YAML、去引號；沒有數學式", () => {
+    expect(parseZodCommandValue(" true ")).toBe(true);
+    expect(parseZodCommandValue("undefined")).toBeUndefined();
+    expect(parseZodCommandValue('{"a": 1}')).toEqual({ a: 1 });
+    expect(parseZodCommandValue("{a: '高', b: [1, 2,],}")).toEqual({ a: "高", b: [1, 2] });
+    expect(parseZodCommandValue("2 * 3")).toBe("2 * 3");
+    expect(parseZodCommandValue("'abc'")).toBe("abc");
+    expect(parseZodCommandValue("42")).toBe(42);
+    expect(parseZodCommandValue("key: v")).toEqual({ key: "v" });
+  });
+
+  it("物件字面量裡的運算式不求值：JSON5 解不了就走 YAML", () => {
+    expect(parseZodCommandValue("{x: 1+1}")).toEqual({ x: "1+1" });
+  });
+
+  it("runEval 收 zod-value；isEvalOp 只認三種", () => {
+    expect(runEval("zod-value", "2 * 3")).toEqual({ ok: true, value: "2 * 3" });
+    expect(runEval("value", "2 * 3")).toEqual({ ok: true, value: 6 });
+    expect(["value", "patch", "zod-value", "other", 1].map(isEvalOp)).toEqual([true, true, true, false, false]);
   });
 });

@@ -1,0 +1,166 @@
+[
+  {
+    "name": "set 夾值",
+    "message": "_.set('世界.威脅', 150);//高"
+  },
+  {
+    "name": "set 三參數取最後",
+    "message": "_.set('世界.威脅', 30, 20);"
+  },
+  {
+    "name": "set 字串欄寫數字拒收",
+    "message": "_.set('世界.天氣', 7);"
+  },
+  {
+    "name": "set 轉不成數字拒收、保留舊值",
+    "message": "_.set('世界.威脅', 'abc');"
+  },
+  {
+    "name": "set 數字字串轉型",
+    "message": "_.set('世界.威脅', '42');"
+  },
+  {
+    "name": "set 沒有數學式",
+    "message": "_.set('世界.威脅', 2 * 3);"
+  },
+  {
+    "name": "set 物件字面量",
+    "message": "_.set('世界.設定', {難度: '高', 回合: 3,});"
+  },
+  {
+    "name": "set 路徑前綴剝掉",
+    "message": "_.set('stat_data.世界.天氣', '雨');_.set('status_current_variables.世界.威脅', 5);"
+  },
+  {
+    "name": "set 路徑不存在照建",
+    "message": "_.set('隊員.丙', {名字: '丙'});"
+  },
+  {
+    "name": "set 頂層新鍵保留",
+    "message": "_.set('筆記', '自由欄');"
+  },
+  {
+    "name": "唯讀路徑靜默忽略",
+    "message": "_.set('世界._秘密', 1);_.add('_隱藏', 1);_.insert('_暗', 'k', 1);_.delete('_暗.k');"
+  },
+  {
+    "name": "add 數字與夾值",
+    "message": "_.add('世界.威脅', 5);_.add('世界.威脅', 500);"
+  },
+  {
+    "name": "add 舊值不是數字拒收",
+    "message": "_.add('世界.天氣', 1);_.add('不存在', 1);"
+  },
+  {
+    "name": "add 增量是字串",
+    "message": "_.add('世界.威脅', '7');"
+  },
+  {
+    "name": "insert 補預設值",
+    "message": "_.insert('隊員', '丁', {名字: '丁'});"
+  },
+  {
+    "name": "insert 缺必填拒收",
+    "message": "_.insert('隊員', '戊', {職業: '法師'});"
+  },
+  {
+    "name": "insert enum 錯拒收",
+    "message": "_.insert('隊員', '己', {名字: '己', 職業: '牧師'});"
+  },
+  {
+    "name": "insert 容器不存在先物件",
+    "message": "_.insert('新區', '鑰匙', 1);"
+  },
+  {
+    "name": "insert 容器不存在物件不過改陣列",
+    "message": "<JSONPatch>[{\"op\":\"remove\",\"path\":\"/標籤\"}]</JSONPatch>_.insert('標籤', '新標');"
+  },
+  {
+    "name": "insert 陣列索引與尾端",
+    "message": "_.insert('標籤', 0, '頭');<JSONPatch>[{\"op\":\"add\",\"path\":\"/標籤/-\",\"value\":\"尾\"}]</JSONPatch>"
+  },
+  {
+    "name": "insert 目標是原始型別忽略",
+    "message": "_.insert('世界.天氣', 'x', 1);"
+  },
+  {
+    "name": "insert 合併物件",
+    "message": "_.insert('隊員.甲', {士氣: 999});"
+  },
+  {
+    "name": "巢狀未列鍵被剝掉＝沒變",
+    "message": "_.insert('世界', '多餘', 1);_.set('隊員.甲.暱稱', '小甲');"
+  },
+  {
+    "name": "delete record 與兩參數",
+    "message": "_.delete('隊員.乙');_.delete('隊員', '甲');"
+  },
+  {
+    "name": "delete 陣列元素 pullAt",
+    "message": "_.delete('標籤[0]');"
+  },
+  {
+    "name": "delete 必填拒收",
+    "message": "_.delete('檔案.編號');"
+  },
+  {
+    "name": "delete 頂層鍵",
+    "message": "_.delete('稱號');"
+  },
+  {
+    "name": "move 搬移",
+    "message": "<JSONPatch>[{\"op\":\"move\",\"from\":\"/隊員/甲\",\"path\":\"/隊員/庚\"}]</JSONPatch>"
+  },
+  {
+    "name": "move 陣列",
+    "message": "<JSONPatch>[{\"op\":\"move\",\"from\":\"/標籤/0\",\"path\":\"/世界/設定/舊標\"}]</JSONPatch>"
+  },
+  {
+    "name": "move 來源不存在拒收",
+    "message": "<JSONPatch>[{\"op\":\"move\",\"from\":\"/隊員/無\",\"path\":\"/隊員/辛\"}]</JSONPatch>"
+  },
+  {
+    "name": "move 頂層",
+    "message": "<JSONPatch>[{\"op\":\"move\",\"from\":\"/稱號\",\"path\":\"/舊稱號\"}]</JSONPatch>"
+  },
+  {
+    "name": "別名 assign remove unset",
+    "message": "_.assign('隊員', '壬', {名字: '壬'});_.remove('隊員.乙');_.unset('世界.設定');"
+  },
+  {
+    "name": "JSONPatch 各種",
+    "message": "<JSONPatch>[{\"op\":\"replace\",\"path\":\"/世界/天氣\",\"value\":\"霧\"},{\"op\":\"delta\",\"path\":\"/隊員/甲/士氣\",\"value\":15},{\"op\":\"insert\",\"path\":\"/隊員/癸\",\"value\":{\"名字\":\"癸\"}},{\"op\":\"remove\",\"path\":\"/隊員/乙/背包\"},{\"op\":\"replace\",\"path\":\"/世界/設定/a~1b\",\"value\":1}]</JSONPatch>"
+  },
+  {
+    "name": "自訂 transform 背包整理",
+    "message": "_.set('隊員.甲.背包.藥水.數量', 0);_.insert('隊員.甲.背包', '繩', {數量: 1});_.insert('隊員.甲.背包', '火把', {數量: 1});_.insert('隊員.甲.背包', '地圖', {數量: 1});_.insert('隊員.甲.背包', '銀幣', {數量: 9});_.insert('隊員.甲.背包', '乾糧', {數量: 2});"
+  },
+  {
+    "name": "自訂 transform 體力字串",
+    "message": "_.set('隊員.甲.體力', '1200/1000');_.set('隊員.乙.體力', 500);"
+  },
+  {
+    "name": "拒收後續指令照跑",
+    "message": "_.set('世界.天氣', '雪');_.set('世界.威脅', 'x');_.add('世界.威脅', 1);_.insert('隊員', '缺', {});_.set('稱號', '老手');"
+  },
+  {
+    "name": "set 同值沒變",
+    "message": "_.set('世界.天氣', '陰');"
+  },
+  {
+    "name": "or literal",
+    "message": "_.set('稱號', 0);_.set('稱號', 1);"
+  },
+  {
+    "name": "根路徑整份換掉",
+    "message": "_.set('', {\"世界\": {\"天氣\": \"晴\"}});"
+  },
+  {
+    "name": "沒有指令",
+    "message": "這則沒有變數更新。"
+  },
+  {
+    "name": "巨集",
+    "message": "_.set('世界.天氣', '{{user}}的雨');"
+  }
+]

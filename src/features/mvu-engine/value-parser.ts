@@ -223,12 +223,54 @@ export function valueLimitProblem(value: unknown): string | null {
   return walk(value, 1);
 }
 
-export type EvalOp = "value" | "patch";
+/**
+ * zod 版 MVU 卡（mvu_zod）的指令值解析：字面量 → JSON → 物件／陣列字面量 → YAML → 去頭尾引號的字串，沒有數學式。
+ * 上游的物件／陣列字面量用 new Function 求值；這裡改 JSON5（模型輸出永不當程式執行），含運算式的字面量因此
+ * 走 YAML 變成字串值〔作者裁決 2026-10-27〕。日期轉 ISO 字串（同上游）。
+ */
+export function parseZodCommandValue(text: string): unknown {
+  const value = parseZodCommandValueRaw(text);
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map((item: unknown) => (item instanceof Date ? item.toISOString() : item));
+  return value;
+}
+function parseZodCommandValueRaw(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (trimmed === "undefined") return undefined;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+      try {
+        const literal: unknown = JSON5.parse(trimmed);
+        if (literal !== null && typeof literal === "object") return literal;
+      } catch {
+        /* 可能是未加引號的字串 */
+      }
+    }
+  }
+  try {
+    return yamlLoad(trimmed);
+  } catch {
+    /* 普通字串 */
+  }
+  return trimQuotesAndBackslashes(text);
+}
+
+/** 值解析請求的種類：MagVarUpdate 指令值、JSONPatch 區塊、zod 卡指令值 */
+export type EvalOp = "value" | "patch" | "zod-value";
+const EVAL_OPS: readonly unknown[] = ["value", "patch", "zod-value"];
+export function isEvalOp(op: unknown): op is EvalOp {
+  return EVAL_OPS.includes(op);
+}
 
 /** Worker 與測試共用的入口：回 `{ ok, value }` 或 `{ ok: false, error }`；結果超過值上限算錯 */
 export function runEval(op: EvalOp, text: string): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
-    const value = op === "patch" ? parsePatchBlock(text) : parseCommandValue(text);
+    const value = op === "patch" ? parsePatchBlock(text) : op === "zod-value" ? parseZodCommandValue(text) : parseCommandValue(text);
     const problem = valueLimitProblem(value);
     if (problem !== null) return { ok: false, error: `value-limit:${problem}` };
     return { ok: true, value };

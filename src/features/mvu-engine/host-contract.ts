@@ -23,11 +23,56 @@ export interface MvuCoreEnv {
   /** MVU 事件名（MagVarUpdate variable_def.ts） */
   events: Record<string, string>;
   lodash: unknown;
+  /** 選配：zod 命名空間（zod 4）。給了，卡片 schema 經 registerMvuSchema 註冊後走 mvu_zod 語意；沒給（iframe）就不走 */
+  z?: unknown;
 }
 
 export interface MvuCore {
   /** MVU updateVariables：深拷貝 old 後照訊息裡的指令更新、回新資料（超出上限丟錯） */
   parseMessage: (message: string, old: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  /** 宿主提交用：完整新表＋zod 逐條結果＋stat_data 逐葉變動（整次失敗丟錯） */
+  parseMessageDetailed: (message: string, old: Record<string, unknown>) => Promise<MvuDetailedResult>;
   generateSchema: (data: unknown, oldSchema?: unknown) => Record<string, unknown>;
   cleanUpMetadata: (data: unknown) => void;
+  /** 卡片 schema 腳本 import 的 registerMvuSchema（mvu_zod）：只認第一份，之後的只計數 */
+  registerMvuSchema: (input: unknown) => void;
+  zodStatus: () => { registered: boolean; duplicates: number };
+  /** 開局（VARIABLE_INITIALIZED）：整份 stat_data 過 schema，成功就淺合併回 variables.stat_data */
+  zodInitialize: (variables: Record<string, unknown>) => ZodInitOutcome;
+}
+
+export type ZodInitOutcome =
+  | { ok: true; zod: boolean }
+  | { ok: false; zod: true; issues: string[]; issueCount: number };
+
+/** zod 逐條結果。applied：已套用；no-change：過了 schema 但資料沒變（例如巢狀未列鍵被剝掉）；
+ *  rejected：上游會通知 GM 的拒收（schema、add-not-number、move-source-missing、move-source-<刪來源那步的原因>）；
+ *  ignored：上游靜默丟掉（唯讀路徑、add 沒有路徑、目標不是容器、不認得的指令） */
+export interface ZodCommandResult {
+  index: number;
+  op: string;
+  /** 指令作用的路徑（分段，鍵名完整保留）；delete 照上游把所有參數接成一條 */
+  path: string[];
+  /** move 的目的地 */
+  to?: string[];
+  status: "applied" | "no-change" | "rejected" | "ignored";
+  reason?: string;
+  issues?: string[];
+  issueCount?: number;
+}
+
+export interface MvuChange {
+  path: string[];
+  before?: unknown;
+  after?: unknown;
+  /** 值太大只記路徑 */
+  truncated?: true;
+}
+
+export interface MvuDetailedResult {
+  table: Record<string, unknown>;
+  zod: boolean;
+  results: ZodCommandResult[];
+  changes: MvuChange[];
+  changesTruncated: boolean;
 }

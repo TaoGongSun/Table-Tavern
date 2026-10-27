@@ -5,7 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [mvu-zod-semantics](handoffs/mvu-zod-semantics.md) — zod 卡照上游 mvu_zod、桌面 QuickJS／網頁共用 MVU 引擎：P1 共用核心抽出完成待驗收
+- [mvu-zod-semantics](handoffs/mvu-zod-semantics.md) — zod 卡照上游 mvu_zod、桌面 QuickJS／網頁共用 MVU 引擎：P2 zod 迴圈與回傳契約完成待驗收
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）

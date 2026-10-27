@@ -1,0 +1,52 @@
+import { registerMvuSchema as r } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';
+
+// 乾淨替代 schema：照真 zod 卡用到的構件重做（夾值 transform、自訂 transform、enum、必填、record、巢狀物件、const 組合）
+const PercentSchema = z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0);
+
+const BagSchema = z.record(
+  z.string().describe('物品名'),
+  z.object({
+    說明: z.string().prefault('無'),
+    數量: z.coerce.number().prefault(1),
+  }).prefault({})
+).transform(data => {
+  const kept = _.pickBy(data, item => item.數量 > 0);
+  const coins = _.pick(kept, ['金幣', '銀幣']);
+  const others = _(_.omit(kept, ['金幣', '銀幣'])).entries().takeRight(3).fromPairs().value();
+  return { ...coins, ...others };
+}).prefault({});
+
+const GaugeSchema = z.coerce.string().transform(v => {
+  let text = v;
+  if (!text.includes('/')) text = `${text}/${text}`;
+  const parts = text.split('/');
+  const now = _.clamp(parseInt(parts[0], 10) || 0, 0, 999);
+  const max = _.clamp(parseInt(parts[1], 10) || 0, 0, 999);
+  return `${now}/${max}`;
+}).prefault('100/100');
+
+export const Schema = z.object({
+  世界: z.object({
+    天氣: z.string().prefault('晴'),
+    威脅: PercentSchema.describe('威脅度'),
+    設定: z.record(z.string(), z.any()).prefault({}),
+  }).prefault({}),
+  隊員: z.record(
+    z.string().describe('隊員名'),
+    z.object({
+      名字: z.string(),
+      職業: z.enum(['戰士', '法師', '盜賊']).prefault('戰士'),
+      體力: GaugeSchema,
+      士氣: PercentSchema,
+      背包: BagSchema,
+    }).prefault({ 名字: '無名' })
+  ).prefault({}),
+  檔案: z.object({
+    編號: z.string(),
+    等級: z.coerce.number().transform(v => _.clamp(v, 1, 5)),
+  }).prefault({ 編號: 'A0', 等級: 1 }),
+  標籤: z.array(z.string()).optional(),
+  稱號: z.string().or(z.literal(0)).prefault('新人'),
+});
+
+$(() => { r(Schema) });

@@ -28,7 +28,12 @@ export const SOURCE_UPDATE = String.raw`
       else if (command.type === "assign") command.type = "insert";
     });
     await emit(EVENTS.COMMAND_PARSED, [variables, commands, content], false);
+    // zod 卡（mvu_zod）：上游是卡片腳本載入時就註冊的監聽器，排在其他監聽器之前；逐條套用後清空指令，
+    // 下面的 MagVarUpdate 套用迴圈就不跑
+    var zod = zodActive();
+    if (zod) await zodCommandParsed(ctx, variables, commands);
     await emit(EVENTS.COMMAND_PARSED + "_for_zod", [variables, commands, content], false);
+    if (zod) commands.length = 0;
     await emit(EVENTS.COMMAND_PARSED + "_ended_for_zod", [variables, commands, content], false);
     // 監聽器可以增刪指令：套用前重查指令數與期限
     checkCommandCount(commands);
@@ -58,8 +63,8 @@ export const SOURCE_UPDATE = String.raw`
         throw error;
       }
       if (display) {
-        lodash.set(outStatus.stat_data, path, display);
-        lodash.set(deltaStatus.stat_data, path, display);
+        ownSet(outStatus.stat_data, path, display);
+        ownSet(deltaStatus.stat_data, path, display);
       }
     }
     variables.display_data = outStatus.stat_data;
@@ -69,6 +74,10 @@ export const SOURCE_UPDATE = String.raw`
     lodash.unset(variables.stat_data, "$internal");
     var modified = !lodash.isEqual(variables.stat_data, before.stat_data);
     if (modified) reconcileAndApplySchema(variables);
+    if (zod) {
+      nullNonFinite(variables.stat_data);
+      zodUpdateEnded(variables);
+    }
     await emit(EVENTS.VARIABLE_UPDATE_ENDED + "_for_zod", [variables, before], false);
     checkDeadline(ctx);
     return modified;
@@ -112,29 +121,47 @@ export const SOURCE_UPDATE = String.raw`
   // set 產生、到整批結束都還是非有限數的位置轉成 null（同上游存檔時的 JSON.stringify）；其餘來源的非有限數照舊由上限擋下
   function nullNonFiniteSets(ctx, result) {
     ctx.nonFiniteSets.forEach(function (entry) {
-      var holder = entry.path === "" ? result : lodash.get(result.stat_data, entry.path);
+      var holder = entry.path === "" ? result : ownGet(result.stat_data, entry.path);
       if (entry.vwd) {
         if (Array.isArray(holder) && typeof holder[0] === "number" && !isFinite(holder[0])) holder[0] = null;
       } else if (typeof holder === "number" && !isFinite(holder)) {
         if (entry.path === "") result.stat_data = null;
-        else lodash.set(result.stat_data, entry.path, null);
+        else ownSet(result.stat_data, entry.path, null);
       }
     });
   }
 
-  // Mvu.parseMessage(message, old)：深拷貝 old 後照訊息更新、回新資料（上游一律回新資料，沒有變動也是）。
-  // 純沙盒運算，不送宿主寫入、不落檔、不記帳；超過上限（訊息 256 KB、指令 1000 條、整次 5 秒、結果同 8.8）丟錯
-  async function parseMessage(message, oldData) {
+  // 整次處理：深拷貝 old、照訊息更新、套上限；回結果與這次的 ctx（zod 逐條結果在 ctx.zodResults）
+  async function runParse(message, oldData) {
     if (typeof message !== "string") throw new Error("parseMessage: message 必須是字串");
     if (!isPlainObject(oldData)) throw new Error("parseMessage: old_data 必須是物件");
     if (utf8Length(message) > PARSE_LIMITS.MESSAGE_BYTES) throw parseFailure("message-too-large", "訊息超過 256 KB");
-    var ctx = { deadline: Date.now() + PARSE_LIMITS.TOTAL_MS, nonFiniteSets: [] };
+    var ctx = { deadline: Date.now() + PARSE_LIMITS.TOTAL_MS, nonFiniteSets: [], zodResults: [] };
     var result = lodash.cloneDeep(oldData);
     await updateVariables(ctx, message, result);
     checkDeadline(ctx);
     nullNonFiniteSets(ctx, result);
     var problem = limitProblem(result);
     if (problem) throw parseFailure(problem, "結果超出上限（" + problem + "）");
-    return result;
+    return { result: result, ctx: ctx };
+  }
+
+  // Mvu.parseMessage(message, old)：深拷貝 old 後照訊息更新、回新資料（上游一律回新資料，沒有變動也是）。
+  // 純沙盒運算，不送宿主寫入、不落檔、不記帳；超過上限（訊息 256 KB、指令 1000 條、整次 5 秒、結果同 8.8）丟錯
+  async function parseMessage(message, oldData) {
+    return (await runParse(message, oldData)).result;
+  }
+
+  // 宿主提交用（mvu-zod-semantics 回傳契約）：完整新表＋zod 逐條結果＋stat_data 逐葉變動。整次失敗照樣丟錯
+  async function parseMessageDetailed(message, oldData) {
+    var run = await runParse(message, oldData);
+    var diff = diffChanges(oldData.stat_data, run.result.stat_data);
+    return {
+      table: run.result,
+      zod: zodActive(),
+      results: run.ctx.zodResults,
+      changes: diff.changes,
+      changesTruncated: diff.truncated
+    };
   }
 `;

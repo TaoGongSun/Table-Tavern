@@ -620,3 +620,36 @@ describe("parseMessage：沒重構 MVU 卡的數字欄 replace（與後端同一
     });
   }
 });
+
+describe("parseMessage：路徑只走自有屬性（原型汙染）", () => {
+  it("insert／合併／JSONPatch／__proto__ 鍵都碰不到 Object.prototype；__proto__ 只是一般的自有鍵", async () => {
+    const { win } = sandbox();
+    const before = Object.getOwnPropertyNames(Object.prototype).sort();
+    const messages = [
+      "_.insert('constructor.prototype', 'p1', 1);",
+      "_.insert('constructor.prototype', {p2: 1});",
+      '<JSONPatch>[{"op":"add","path":"/__proto__/p5","value":1}]</JSONPatch>',
+      "_.insert('__proto__', 'p6', 1);",
+      "_.set('constructor.prototype.p3', 1);_.add('constructor.prototype.p4', 1);_.delete('constructor.prototype.hasOwnProperty');",
+    ];
+    const results: Table[] = [];
+    for (const message of messages) results.push(await win.Mvu.parseMessage(message, withSchema({ 物品: [] })));
+    const probe = {} as Record<string, unknown>;
+    expect(["p1", "p2", "p3", "p4", "p5", "p6"].map((key) => probe[key])).toEqual(Array(6).fill(undefined));
+    expect(Object.getOwnPropertyNames(Object.prototype).sort()).toEqual(before);
+    expect(typeof Object.prototype.hasOwnProperty).toBe("function");
+    // 原型上的 __proto__ 不算存在、取到 undefined：insert 的「目標是原始型別」檢查（existing !== null 就算）照上游擋下，表不變
+    expect(results[3]!.stat_data).toEqual({ 物品: [] });
+    // 已有的物件底下插入 __proto__ 鍵：寫成自有鍵，物件本身的原型不變
+    const own = await win.Mvu.parseMessage("_.insert('角色', '__proto__', {好感: 1});", withSchema({ 角色: {} }));
+    const roles = own.stat_data.角色 as Table;
+    expect(Object.getOwnPropertyDescriptor(roles, "__proto__")?.value).toEqual({ 好感: 1 });
+    expect(Object.getPrototypeOf(roles)).toBe(Object.prototype);
+  });
+
+  it("讀得到字串的自有屬性（同 lodash）：set 原有的路徑檢查不變", async () => {
+    const { win } = sandbox();
+    const result = await win.Mvu.parseMessage("_.set('名.length', 9);", withSchema({ 名: "阿明" }));
+    expect(result.stat_data.名).toEqual({ length: 9 });
+  });
+});

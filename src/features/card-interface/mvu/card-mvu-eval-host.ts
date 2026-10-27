@@ -1,6 +1,6 @@
 // 宿主端的值解析 Worker 管理（計畫 8.9）：一次只跑一筆，單筆 200 ms 逾時就 terminate 該 Worker、回錯、
 // 下一筆再建新的（mathjs 重載不浪費在沒人用的時候）。沙盒送來的請求經 `handleEvalMessage` 轉進來。
-import { type EvalOp } from "../../mvu-engine/value-parser";
+import { isEvalOp, type EvalOp } from "../../mvu-engine/value-parser";
 
 export type EvalOutcome = { ok: true; value: unknown } | { ok: false; error: string };
 
@@ -152,6 +152,6 @@ export function createEvalHost(options: {
 /** 沙盒送來的 `mvu-eval` 請求：形狀不對回 null（不理）；否則交給 Worker，回覆內容由呼叫端送回沙盒 */
 export function parseEvalRequest(data: Record<string, unknown>): { requestId: string; op: EvalOp; text: string } | null {
   if (typeof data.requestId !== "string" || typeof data.text !== "string") return null;
-  if (data.op !== "value" && data.op !== "patch") return null;
+  if (!isEvalOp(data.op)) return null;
   return { requestId: data.requestId, op: data.op, text: data.text };
 }

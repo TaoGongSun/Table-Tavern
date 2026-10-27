@@ -17,4 +17,4 @@ mvu-array-index-path 驗收時查到：zod 版 MVU 卡（registerMvuSchema，Tes
 [plans/mvu-zod-semantics.md](../plans/mvu-zod-semantics.md)（宿主 QuickJS、分包 P1–P6、驗收要點）。
 
 ## Next action
-P1（共用核心抽出＋host 介面）已在分支完成、verify 12 步綠，等主線驗收；通過後做 P2。討論紀錄：Sol 串 01a17baf-eea3-7561-9b5a-91e70855970b、Grok 串 01a17baf-eacf-7651-b1b8-6a502d1e7400。
+P1 已驗收；P2（zod 迴圈、回傳契約與 schema 選擇規則定版）在分支完成、verify 12 步綠，等主線驗收；通過後做 P3。討論紀錄：Sol 串 01a17baf-eea3-7561-9b5a-91e70855970b、Grok 串 01a17baf-eacf-7651-b1b8-6a502d1e7400。

@@ -2,6 +2,7 @@
 // 初始化時的 schema 生成與元資料清理。值解析交給 Worker（evaluate.ts）。
 import lodash from "lodash";
 import { createMvuCore } from "virtual:mvu-engine";
+import { isEvalOp } from "@desktop/features/mvu-engine/value-parser";
 import type { Evaluator } from "./evaluate";
 
 /** MVU 事件名（MagVarUpdate variable_def.ts）；宿主這邊沒有監聽器，只是片段要用到 */
@@ -35,7 +36,7 @@ export function createHostMvu(evaluator: Evaluator, macros: MvuMacros): HostMvu 
     lodash,
     host: {
       evaluate: (op, text, done) => {
-        if ((op !== "value" && op !== "patch") || typeof text !== "string") {
+        if (!isEvalOp(op) || typeof text !== "string") {
           done({ ok: false, error: "bad-request" });
           return null;
         }

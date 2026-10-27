@@ -68,11 +68,11 @@ export const SOURCE_APPLY = String.raw`
 
   async function applySet(st, command, path, reasonStr) {
     var variables = st.variables;
-    if (path !== "" && !lodash.has(variables.stat_data, path)) {
+    if (path !== "" && !ownHas(variables.stat_data, path)) {
       outError(st, "set 的路徑不存在：" + path + " " + reasonStr);
       return "";
     }
-    var oldValue = path === "" ? lodash.cloneDeep(variables.stat_data) : lodash.get(variables.stat_data, path);
+    var oldValue = path === "" ? lodash.cloneDeep(variables.stat_data) : ownGet(variables.stat_data, path);
     var newValue = isoIfDate(await parseValue(st.ctx, command.args[command.args.length - 1]));
     var pathIsVwd = false;
     touch(st, path);
@@ -86,13 +86,13 @@ export const SOURCE_APPLY = String.raw`
       oldValue = oldCopy;
       pathIsVwd = true;
     } else if (typeof oldValue === "number" && newValue !== null && typeof newValue === "string") {
-      lodash.set(variables.stat_data, path, Number(newValue));
+      ownSet(variables.stat_data, path, Number(newValue));
     } else if (path) {
-      lodash.set(variables.stat_data, path, newValue);
+      ownSet(variables.stat_data, path, newValue);
     } else {
       variables.stat_data = newValue;
     }
-    var finalValue = path === "" ? variables.stat_data : lodash.get(variables.stat_data, path);
+    var finalValue = path === "" ? variables.stat_data : ownGet(variables.stat_data, path);
     if (pathIsVwd) finalValue = finalValue[0];
     // set 轉出的非有限數（Number("很多") 等）照上游留在記憶體裡，整批做完、序列化前才轉 null（作者裁決 2026-10-04）
     if (typeof finalValue === "number" && !isFinite(finalValue)) {
@@ -111,7 +111,7 @@ export const SOURCE_APPLY = String.raw`
   async function applyInsert(st, command, path, reasonStr) {
     var variables = st.variables;
     var schema = variables.schema;
-    var existing = path === "" ? variables.stat_data : lodash.get(variables.stat_data, path);
+    var existing = path === "" ? variables.stat_data : ownGet(variables.stat_data, path);
     var targetSchema = getSchemaForPath(schema, path);
     // 目標是原始型別就不能插入
     if (existing !== null && !Array.isArray(existing) && !lodash.isObject(existing)) {
@@ -139,7 +139,7 @@ export const SOURCE_APPLY = String.raw`
       // 偏離上游：父路徑是根（頂層容器，如 /物品/-）時上游的 lodash.get(資料, "") 恆為 undefined 而擋下，
       // GM 最常寫的寫法會失敗，這裡放行〔主線裁定，依作者裁決 酒館行為照做〕
       lodash.toPath(path).length > 1 &&
-      !lodash.get(variables.stat_data, segmentsToPath(lodash.toPath(path).slice(0, -1)))
+      !ownGet(variables.stat_data, segmentsToPath(lodash.toPath(path).slice(0, -1)))
     ) {
       outError(st, "插入的父路徑不存在：" + path + " " + reasonStr);
       return "";
@@ -152,11 +152,11 @@ export const SOURCE_APPLY = String.raw`
     var valueToAssign;
     if (command.args.length === 2) {
       valueToAssign = isoDates(await parseValue(st.ctx, command.args[1]));
-      collection = path === "" ? variables.stat_data : lodash.get(variables.stat_data, path);
+      collection = path === "" ? variables.stat_data : ownGet(variables.stat_data, path);
       if (!Array.isArray(collection) && !lodash.isObject(collection)) {
         collection = Array.isArray(valueToAssign) ? [] : {};
         touch(st, path);
-        lodash.set(variables.stat_data, path, collection);
+        ownSet(variables.stat_data, path, collection);
       }
       if (Array.isArray(collection)) {
         template = targetSchema && isArraySchema(targetSchema) ? targetSchema.template : undefined;
@@ -179,7 +179,7 @@ export const SOURCE_APPLY = String.raw`
     } else if (command.args.length >= 3) {
       valueToAssign = isoDates(await parseValue(st.ctx, command.args[2]));
       var keyOrIndex = await parseValue(st.ctx, command.args[1]);
-      collection = path === "" ? variables.stat_data : lodash.get(variables.stat_data, path);
+      collection = path === "" ? variables.stat_data : ownGet(variables.stat_data, path);
       template = targetSchema && (isArraySchema(targetSchema) || isObjectSchema(targetSchema)) ? targetSchema.template : undefined;
       if (Array.isArray(collection) && (typeof keyOrIndex === "number" || keyOrIndex === "-")) {
         // JSON Patch 的 "-" 是追加到陣列尾
@@ -199,7 +199,7 @@ export const SOURCE_APPLY = String.raw`
       } else {
         collection = {};
         touch(st, path);
-        lodash.set(variables.stat_data, path, collection);
+        ownSet(variables.stat_data, path, collection);
         valueToAssign = applyTemplate(valueToAssign, template, st.strictTemplate, st.concatTemplateArray);
         setOwn(collection, String(keyOrIndex), valueToAssign);
         display = "CREATED object at '" + path + "' and ASSIGNED key '" + keyOrIndex + "' " + reasonStr;
@@ -210,7 +210,7 @@ export const SOURCE_APPLY = String.raw`
       outError(st, "insert 的參數無效：" + path);
       return "";
     }
-    var newValue = isNullOrWhiteSpace(path) ? variables.stat_data : lodash.get(variables.stat_data, path);
+    var newValue = isNullOrWhiteSpace(path) ? variables.stat_data : ownGet(variables.stat_data, path);
     await singleUpdated(st, path, oldValue, newValue);
     try {
       // 新套用的模板立刻展開成 schema，並清掉資料裡的元資料標記
@@ -231,7 +231,7 @@ export const SOURCE_APPLY = String.raw`
     // 單一參數、路徑尾是數字：移除那個陣列元素
     if (command.args.length === 1 && /^\d+$/.test(lastPart)) {
       var arrayPath = segmentsToPath(parts.slice(0, -1));
-      var container = lodash.get(variables.stat_data, arrayPath);
+      var container = ownGet(variables.stat_data, arrayPath);
       var at = parseInt(lastPart, 10);
       if (Array.isArray(container) && at < container.length) {
         var originalArray = lodash.cloneDeep(container);
@@ -241,7 +241,7 @@ export const SOURCE_APPLY = String.raw`
         return "";
       }
     }
-    if (!lodash.has(variables.stat_data, path)) {
+    if (!ownHas(variables.stat_data, path)) {
       outError(st, "delete 的路徑不存在：" + path);
       return "";
     }
@@ -262,7 +262,7 @@ export const SOURCE_APPLY = String.raw`
       outError(st, "delete 無法判斷刪除目標：" + path + " " + reasonStr);
       return "";
     }
-    if (containerPath !== "" && !lodash.has(variables.stat_data, containerPath)) {
+    if (containerPath !== "" && !ownHas(variables.stat_data, containerPath)) {
       outError(st, "delete 的容器路徑不存在：" + containerPath + " " + reasonStr);
       return "";
     }
@@ -285,14 +285,14 @@ export const SOURCE_APPLY = String.raw`
     var removed = false;
     var display = "";
     if (target === undefined) {
-      var oldValue = lodash.get(variables.stat_data, path);
+      var oldValue = ownGet(variables.stat_data, path);
       touch(st, path);
-      lodash.unset(variables.stat_data, path);
+      ownUnset(variables.stat_data, path);
       display = "REMOVED path '" + path + "' " + reasonStr;
       removed = true;
       await singleUpdated(st, path, oldValue, undefined);
     } else {
-      var collection = lodash.get(variables.stat_data, path);
+      var collection = ownGet(variables.stat_data, path);
       if (!Array.isArray(collection) && !lodash.isObject(collection)) {
         outError(st, "delete 的目標不是集合：" + path + " " + reasonStr);
         return "";
@@ -320,13 +320,13 @@ export const SOURCE_APPLY = String.raw`
           if (target >= 0 && target < keys.length) {
             var byIndex = keys[target];
             touch(st, path, byIndex);
-            lodash.unset(collection, byIndex);
+            ownUnset(collection, byIndex);
             removed = true;
             display = "REMOVED " + (target + 1) + "th entry ('" + byIndex + "') from object '" + path + "' " + reasonStr;
           }
         } else {
           var byName = String(target);
-          if (lodash.has(collection, byName)) {
+          if (ownHas(collection, byName)) {
             touch(st, path, byName);
             delete collection[byName];
             removed = true;
@@ -344,12 +344,12 @@ export const SOURCE_APPLY = String.raw`
 
   async function applyAdd(st, command, path, reasonStr) {
     var variables = st.variables;
-    if (!lodash.has(variables.stat_data, path)) {
+    if (!ownHas(variables.stat_data, path)) {
       outError(st, "add 的路徑不存在：" + path + " " + reasonStr);
       return "";
     }
-    var initial = lodash.cloneDeep(lodash.get(variables.stat_data, path));
-    var oldValue = lodash.get(variables.stat_data, path);
+    var initial = lodash.cloneDeep(ownGet(variables.stat_data, path));
+    var oldValue = ownGet(variables.stat_data, path);
     var valueToAdd = oldValue;
     var vwd = isVwd(oldValue) && typeof oldValue[0] !== "object";
     if (vwd) valueToAdd = oldValue[0];
@@ -377,9 +377,9 @@ export const SOURCE_APPLY = String.raw`
       touch(st, path);
       if (vwd) {
         oldValue[0] = shifted;
-        lodash.set(variables.stat_data, path, oldValue);
+        ownSet(variables.stat_data, path, oldValue);
       } else {
-        lodash.set(variables.stat_data, path, shifted);
+        ownSet(variables.stat_data, path, shifted);
       }
     } else if (typeof valueToAdd === "number") {
       if (typeof delta !== "number") {
@@ -390,15 +390,15 @@ export const SOURCE_APPLY = String.raw`
       touch(st, path);
       if (vwd) {
         oldValue[0] = sum;
-        lodash.set(variables.stat_data, path, oldValue);
+        ownSet(variables.stat_data, path, oldValue);
       } else {
-        lodash.set(variables.stat_data, path, sum);
+        ownSet(variables.stat_data, path, sum);
       }
     } else {
       outError(st, "add 不支援這種值：" + path + " " + reasonStr);
       return "";
     }
-    finalValue = lodash.get(variables.stat_data, path);
+    finalValue = ownGet(variables.stat_data, path);
     display = vwd
       ? JSON.stringify(initial[0]) + "->" + JSON.stringify(finalValue[0]) + " " + reasonStr
       : JSON.stringify(initial) + "->" + JSON.stringify(finalValue) + " " + reasonStr;
