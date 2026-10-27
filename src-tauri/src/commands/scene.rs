@@ -272,15 +272,29 @@ pub(crate) fn scene_appearances(
     scene_appearances_at(&data_root(&app)?, &world_id)
 }
 
-// 收回上一句：只砍當前這一幕的最後一筆，可連按；回傳 false＝這一幕已經收乾淨了
+// 收回上一樓：整樓（登場塊、正文、變動摘要、點名）一次收走，回傳刪掉的事件；空的＝這一幕已經收乾淨了
 #[tauri::command]
-pub(crate) fn pop_transcript(
+pub(crate) fn pop_transcript_floor(
     app: tauri::AppHandle,
     world_id: String,
     scene: u64,
-) -> Result<bool, String> {
+) -> Result<Vec<TranscriptEvent>, String> {
     let _permit = data::world_write_permit(&world_id)?;
-    data::pop_transcript(&data_root(&app)?, &world_id, scene).map_err(|error| error.to_string())
+    data::pop_transcript_floor(&data_root(&app)?, &world_id, scene)
+        .map_err(|error| error.to_string())
+}
+
+// 復原剛收回的那一樓：整組照原序一次寫回，回傳落檔的那幾則（新 ID／版本 token）
+#[tauri::command]
+pub(crate) fn restore_transcript_events(
+    app: tauri::AppHandle,
+    world_id: String,
+    scene: u64,
+    events: Vec<TranscriptEvent>,
+) -> Result<Vec<TranscriptEvent>, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    data::restore_transcript_events(&data_root(&app)?, &world_id, scene, &events)
+        .map_err(|error| error.to_string())
 }
 
 // 存檔位置由前端的「另存新檔」對話框決定，這裡只負責產內容寫入該路徑

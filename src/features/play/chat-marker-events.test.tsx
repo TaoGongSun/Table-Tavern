@@ -64,8 +64,9 @@ describe("chat controller with marker events", () => {
     return { current: () => chat, errors };
   }
 
-  it("lands a marker-only call event, undoes it and restores it", async () => {
+  it("lands a marker-only call event; one undo takes the whole GM floor and restore puts it back in order", async () => {
     const written: TranscriptEvent[] = [];
+    const restoredSent: TranscriptEvent[][] = [];
     invokeMock.mockImplementation(async (command, args) => {
       if (command === "gm_narrate") {
         return {
@@ -76,11 +77,17 @@ describe("chat controller with marker events", () => {
         };
       }
       if (command === "append_transcript") {
-        const event = args!.event as TranscriptEvent;
+        const event = { ...(args!.event as TranscriptEvent), id: `e${written.length}` };
         written.push(event);
         return event;
       }
-      if (command === "pop_transcript") return true;
+      // 後端一次收整樓：正文、變動摘要、點名一起回來（原序）
+      if (command === "pop_transcript_floor") return written.slice(0, 3);
+      if (command === "restore_transcript_events") {
+        const events = args!.events as TranscriptEvent[];
+        restoredSent.push(events);
+        return events;
+      }
       return null;
     });
     const { current, errors } = mount(undefined);
@@ -96,13 +103,51 @@ describe("chat controller with marker events", () => {
     expect(written[2].text).toBe("");
 
     await act(async () => current().undoLast());
-    expect(current().events).toHaveLength(2);
+    expect(current().events).toHaveLength(0);
     expect(current().canRestore).toBe(true);
 
     await act(async () => current().restoreUndone());
-    expect(written[written.length - 1].marker).toEqual({ type: "gm_call", name: "" });
-    const events = current().events;
-    expect(events[events.length - 1].marker).toEqual({ type: "gm_call", name: "" });
+    expect(restoredSent).toHaveLength(1);
+    expect(restoredSent[0].map((event) => event.marker ?? null)).toEqual([
+      null,
+      { type: "state_update" },
+      { type: "gm_call", name: "" },
+    ]);
+    expect(current().events.map((event) => event.id)).toEqual(["e0", "e1", "e2"]);
+    expect(current().canRestore).toBe(false);
+  });
+
+  it("a failed restore keeps the whole floor on the stack and the retry sends it once", async () => {
+    const floor: TranscriptEvent[] = [
+      { id: "a", ts: "1", speaker_id: "", speaker_name: "GM", kind: "narration", text: "旁白" },
+      { id: "b", ts: "2", speaker_id: "", speaker_name: "GM", kind: "system", text: "hp：3", marker: { type: "state_update" } },
+    ];
+    let fail = true;
+    const sent: TranscriptEvent[][] = [];
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "pop_transcript_floor") return floor;
+      if (command === "restore_transcript_events") {
+        sent.push(args!.events as TranscriptEvent[]);
+        if (fail) {
+          fail = false;
+          throw new Error("io");
+        }
+        return args!.events;
+      }
+      return null;
+    });
+    const { current, errors } = mount(undefined);
+    act(() => current().hydrate(floor));
+    await act(async () => current().undoLast());
+    expect(current().events).toHaveLength(0);
+    await act(async () => current().restoreUndone());
+    expect(errors.some((message) => message.includes("io"))).toBe(true);
+    expect(current().events).toHaveLength(0);
+    expect(current().canRestore).toBe(true);
+    await act(async () => current().restoreUndone());
+    expect(sent).toHaveLength(2);
+    expect(sent[1].map((event) => event.id)).toEqual(["a", "b"]);
+    expect(current().events.map((event) => event.id)).toEqual(["a", "b"]);
     expect(current().canRestore).toBe(false);
   });
 
@@ -151,7 +196,12 @@ describe("chat controller with marker events", () => {
         }
         return { ...event, id: "e1", message_vars: { z: 1, a: 2 } };
       }
-      if (command === "pop_transcript") return true;
+      if (command === "pop_transcript_floor") return [current().events[0]];
+      if (command === "restore_transcript_events") {
+        const events = args!.events as TranscriptEvent[];
+        calls.push({ part: "restore", turnId: null, vars: events[0].message_vars });
+        return events;
+      }
       return null;
     });
     const { current, errors } = mount("阿濤");

@@ -7,6 +7,8 @@ use crate::data::{self, RenameFailGuard, TranscriptEvent, TranscriptKind};
 use serde_json::json;
 use std::path::Path;
 
+mod undo_floor;
+
 const USER: &str = "阿濤";
 
 fn macros() -> Macros {

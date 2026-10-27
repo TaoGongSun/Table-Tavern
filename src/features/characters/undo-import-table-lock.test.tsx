@@ -292,8 +292,8 @@ describe("undo last import shares the table lock with imports", () => {
 
   // 回歸：匯入排在回合（此處用收回上一句的非 AI 忙碌）後面時撤銷照走
   it("blocks undo while an import waits for the turn, and both proceed after it", async () => {
-    const popping = deferred<boolean>();
-    backend.handlers.pop_transcript = () => popping.promise;
+    const popping = deferred<unknown[]>();
+    backend.handlers.pop_transcript_floor = () => popping.promise;
     await start();
     await retractLine();
     await pickFile();
@@ -301,7 +301,7 @@ describe("undo last import shares the table lock with imports", () => {
     await triggerUndoHandler();
     expect(dialogs.confirm).not.toHaveBeenCalled();
 
-    await act(async () => popping.resolve(false));
+    await act(async () => popping.resolve([]));
     await vi.waitFor(() => expect(called("import_character")).toHaveLength(1));
     await vi.waitFor(() => expect(rail.props!.undoImportLocked).toBe(false));
     // 防漏放：回合結束、匯入完成後可撤銷
@@ -311,8 +311,8 @@ describe("undo last import shares the table lock with imports", () => {
 
   // 回歸：撤銷確認後排在回合後面時匯入照走
   it("blocks imports while a confirmed undo waits for the turn, and both proceed after it", async () => {
-    const popping = deferred<boolean>();
-    backend.handlers.pop_transcript = () => popping.promise;
+    const popping = deferred<unknown[]>();
+    backend.handlers.pop_transcript_floor = () => popping.promise;
     await start();
     await retractLine();
     await undoFromMenu();
@@ -321,7 +321,7 @@ describe("undo last import shares the table lock with imports", () => {
     await pickFile();
     expect(called("import_character")).toHaveLength(0);
 
-    await act(async () => popping.resolve(false));
+    await act(async () => popping.resolve([]));
     await vi.waitFor(() => expect(called("undo_last_import")).toHaveLength(1));
     await vi.waitFor(() => expect(rail.props!.importLocked).toBe(false));
     // 防漏放

@@ -45,6 +45,7 @@
 | 21 | [image-model-picker](../handoffs/image-model-picker.md) 生圖統一 PNG 真打 | 2026-10-27：①OpenRouter 帳戶未儲值，跳過〔作者裁決 2026-10-27〕；②codex、agy 測試通道過（圖庫檔頭 PNG、2:3、cli-workspace 清空），grok：app 端 grok 未登入（測試 root 無 auth；正式 grok-home 也沒有 auth.json），跳過，待作者決定是否在測試 root 登入。 單元測試只用 mock：①付費生圖模型回 JPEG／WebP／遠端 URL 時真打一次，圖進圖庫且是 PNG（看圖庫檔頭）　②codex／agy／grok 真生圖一次，走「讀進記憶體→清工作目錄→轉 PNG→進圖庫」新流程；可併第 8 項一起跑 |
 | 22 | [image-model-free-tier-hide](../handoffs/image-model-free-tier-hide.md) 免費層藏生圖模型 | 2026-10-27：OpenRouter 帳戶未儲值，跳過〔作者裁決 2026-10-27〕。 測試通道只用本機假 `/key`：①真 OpenRouter 免費 key 與付費 key 各開一次設定頁「AI 連線」，免費隱藏生圖模型、付費顯示　②整個關掉設定視窗再開，快取首屏不閃；可併第 21 項一起跑 |
 | 23 | [mvu-zod-semantics](../handoffs/archive/mvu-zod-semantics.md) MVU zod 桌真機 | 2026-10-27 測試通道過（DongeonMaster-safe＝原 zod 卡去成人內容的仿製卡、zod schema 原樣，非原卡；Claude CLI sonnet 三回合）：開局變數過 schema（數字轉型）、鍵順序照 initvar；GM 寫的 insert 和睦值 250 夾成 100、缺欄補預設值；帶出财宝计算='很多' 拒收維持 0、`_内部标记` 未寫入，下一輪提示「上一輪被系統擋下的更新」有對應三句；收回後回到前一則（測試小队名回「未命名小队」）。觀察：GM 在 `<Analysis>` 裡引用的 `_.set` 指令也被執行一次，造成重複套用與一句「insert 值沒有變、沒有寫入」的誤導回饋；「收回上一句」第一下只收掉系統變動摘要行，按第二下才收 GM 旁白。 桌面用測試通道、低階模型：拿 zod 卡（TestCards 三張真卡裡沒露骨內容的那張，或自製乾淨 zod 卡）開局，確認開局變數過了卡片 schema（夾值、預設值）、鍵順序照 initvar；跑三、四回合，其中一回合讓 GM 寫一條會被拒收的值與一條 `_` 開頭路徑，下一回合送出的提示「上一輪被系統擋下的更新」段有對應回饋句、狀態沒寫進去；收回一回合後狀態回到前一則 |
+| 24 | [undo-two-clicks-summary-line](../handoffs/archive/undo-two-clicks-summary-line.md) 收回一下收一樓 | 測試通道、低階模型：MVU 桌（zod 卡）與樹模式重構桌各跑一回合讓 GM 改文字欄（出變動摘要行），多角色桌另跑一回合帶出兩張卡登場（私設、登場交錯）。「收回上一句」按一下：登場塊、GM 旁白、摘要、點名一起消失，玩家句留著，狀態欄數值與平欄（時間、在場）回到玩家句那一刻；「復原剛收回的」按一下整樓照原序回來、數值回到回合後；連按收回／復原逐樓往返 |
 
 ## 梯 3：等外部條件，不排時程
 

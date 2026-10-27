@@ -561,8 +561,9 @@ pub fn sync_scene_state_tree(
     })
 }
 
-/// 收回上一句（可連按）：砍掉這一幕最後一筆事件後整檔重寫（帶的表跟著事件一起走）。
-/// 回傳是否真的刪了——這一幕已經空了就是 false，收不會倒退咬到上一幕。
+/// 砍掉這一幕最後一筆事件後整檔重寫（帶的表跟著事件一起走），測試用來逐則倒退；玩家的收回走
+/// `pop_transcript_floor`（一次收一樓）。回傳是否真的刪了——這一幕已經空了就是 false。
+#[cfg(test)]
 pub fn pop_transcript(root: &Path, world_id: &str, scene: u64) -> DataResult<bool> {
     with_commit(root, world_id, |tx| {
         let remaining = edit_scene(root, world_id, scene, |mut events| {
@@ -716,7 +717,9 @@ pub fn read_transcript(
     }
 }
 
+mod floor;
 mod lines;
+pub use floor::{pop_transcript_floor, restore_transcript_events};
 pub(crate) use lines::{edit_line, find_event_rev, find_rev, LineHead};
 
 #[cfg(test)]

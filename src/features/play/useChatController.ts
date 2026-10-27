@@ -15,15 +15,18 @@ import {
 } from "../ai-connection/smart-free-events";
 import { AppConfig, PlayerAppend, TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../characters/card-model";
-import { parseMarker } from "../../shared/ui/event-text";
 import { backendCode } from "../../shared/ui/backend-text";
 import { showWorldInfoNotices } from "./world-info-notices";
 import { askWorldInfoReset, offersWorldInfoReset } from "./world-info-reset";
-
-/** 有本文，或帶已知標頭代碼（點名事件本文本來就空）才算有內容；空白回合不落地、不放回 */
-function hasContent(event: TranscriptEvent): boolean {
-  return event.text.trim() !== "" || parseMarker(event.marker) !== null;
-}
+import {
+  consumeFrom,
+  hasContent,
+  pushUndone,
+  restorableIndex,
+  restorePayload,
+  tailMatches,
+  type UndoStack,
+} from "./undo-stack";
 
 // GM 點到玩家時後端回這個代號（transport.rs 的 PLAYER_SENTINEL），收到就把發言權交回給玩家
 const PLAYER_SENTINEL = "__PLAYER__";
@@ -154,13 +157,8 @@ export function useChatController({
     },
     [],
   );
-  // 這一輪收回的那幾句，後收的疊在最上面（復原一次拿一則，順序自然還原）。
-  // 記下當時的桌與幕，換桌換幕後整疊自動失效（比對不上就不顯示），免得放回錯的地方
-  const [undone, setUndone] = useState<{
-    worldId: string;
-    scene: number;
-    events: TranscriptEvent[];
-  } | null>(null);
+  // 這一輪收回的那幾樓，後收的疊在最上面（復原一次放回一樓，順序自然還原）
+  const [undone, setUndone] = useState<UndoStack | null>(null);
   const [input, setInput] = useState("");
   // 打字送出整輪（含玩家句落檔、失敗收回）期間鎖住輸入框：失敗時框內不可能有新字，原文才能直接放回
   const [sending, setSending] = useState(false);
@@ -281,11 +279,7 @@ export function useChatController({
   // 收回過、且還停在同一桌同一幕，才給復原（換桌換幕就當這次收回已成定局）。
   // 疊裡全是空白事件（AI 失敗年代留下的那幾則）就不給亮——按了也沒東西回得來。
   // 帶標頭代碼的事件（點名）本文本來就空，也算有內容
-  const canRestore =
-    undone !== null &&
-    undone.worldId === worldId &&
-    undone.scene === scene &&
-    undone.events.some(hasContent);
+  const canRestore = restorableIndex(undone, worldId, scene) >= 0;
 
   // 畫面上的逐字稿除了重讀，還會被本地改動換掉：先落檔、回來再把結果換進畫面（追加、收回、卡片寫入換表）。
   // 重讀從發出到回來之間只要有本地改動完成或還在途，讀到的那份就可能比畫面舊（蓋回舊表、吃掉剛追加的事件），
@@ -457,24 +451,27 @@ export function useChatController({
     [worldId, scene, refreshState, onError, beginWrite],
   );
 
-  // 收回上一句：一次砍一則、可連按往回收，收到這一幕見底就停（不動上一幕）
+  // 收回上一句：一次收一樓（登場塊、正文、變動摘要、點名一起走），可連按往回收，收到這一幕見底就停（不動上一幕）
   const undoLast = useCallback(async () => {
     if (busyRef.current || generating !== null || events.length === 0) return;
     busyRef.current = true;
     onError("");
-    const last = events[events.length - 1];
     const started = generation.current;
     const endWrite = beginWrite();
     try {
-      if (!(await invoke<boolean>("pop_transcript", { worldId, scene }))) return;
+      const removed = await invoke<TranscriptEvent[]>("pop_transcript_floor", { worldId, scene });
+      if (removed.length === 0) return;
+      // 後端已刪：先入疊（記在發起時那桌那幕），之後的重讀或換桌都不能讓這樓變成收不回來
+      setUndone((previous) => pushUndone(previous, worldId, scene, removed));
       if (generation.current !== started) return;
-      setEvents((previous) => previous.slice(0, -1));
-      endWrite();
-      setUndone((previous) =>
-        previous && previous.worldId === worldId && previous.scene === scene
-          ? { ...previous, events: [...previous.events, last] }
-          : { worldId, scene, events: [last] },
-      );
+      if (tailMatches(events, removed)) {
+        setEvents((previous) => previous.slice(0, previous.length - removed.length));
+        endWrite();
+      } else {
+        // 畫面落後磁碟（例如後端代落過畫面沒有的那則）：重讀對齊（重讀要等本地改動收尾，先收）
+        endWrite();
+        await reload();
+      }
       await refreshState();
     } catch (reason) {
       onError(String(reason));
@@ -482,41 +479,38 @@ export function useChatController({
       endWrite();
       busyRef.current = false;
     }
-  }, [generating, events, worldId, scene, refreshState, onError, beginWrite]);
+  }, [generating, events, worldId, scene, refreshState, onError, reload, beginWrite]);
 
-  // 復原一次放回一則，可連按把整輪收回逐則倒回去。
-  // 這裡不走 appendEvent——放回舊句不該把剩下那幾句一起作廢，只消耗疊頂那一則。
-  // 疊頂若是空白事件就連同丟棄、往下找第一則有內容的放回：空白回合本來就不該存在，
-  // 放回去只會讓玩家覺得按鈕壞了（stream-failure-visible）
+  // 復原一次放回一樓（後端一次提交整組寫回），可連按把整輪收回逐樓倒回去。
+  // 這裡不走 appendEvent——放回舊句不該把剩下那幾樓一起作廢，只消耗疊頂那一組。
+  // 疊頂若是全空白的組就連同丟棄、往下找第一組有內容的放回：空白回合本來就不該存在，
+  // 放回去只會讓玩家覺得按鈕壞了（stream-failure-visible）。寫回失敗整組留在疊上，可重按重試
   const restoreUndone = useCallback(async () => {
-    if (!undone || !canRestore || busyRef.current || generating !== null) return;
+    const index = restorableIndex(undone, worldId, scene);
+    if (!undone || index < 0 || busyRef.current || generating !== null) return;
     busyRef.current = true;
-    let index = undone.events.length - 1;
-    while (index >= 0 && !hasContent(undone.events[index])) index -= 1;
-    const event = undone.events[index];
     onError("");
     const started = generation.current;
     const endWrite = beginWrite();
     try {
-      // 用後端回傳的那份：帶表的事件復原時版本 token 會換新，卡片寫入要拿新版本。表以 JSON 文字送回
-      // （Tauri 參數會把物件鍵排序，文字才保得住原順序）
-      const payload = event.message_vars ? { ...event, message_vars: JSON.stringify(event.message_vars) } : event;
-      const restored = await invoke<TranscriptEvent>("append_transcript", { worldId, scene, event: payload });
+      // 用後端回傳的那幾則：帶表的事件復原時版本 token 會換新，卡片寫入要拿新版本
+      const restored = await invoke<TranscriptEvent[]>("restore_transcript_events", {
+        worldId,
+        scene,
+        events: restorePayload(undone.groups[index]),
+      });
+      // 後端已寫回：先消耗疊（發起時那桌那幕），之後的重讀失敗或換桌都不能讓這組再被放回一次
+      setUndone((previous) => consumeFrom(previous, worldId, scene, index));
       if (generation.current !== started) return;
       if (mainLost.current) {
-        // 後端在放回這句之前代落了上一輪沒落成的 GM 回覆：重讀對齊（重讀要等本地改動收尾，先收）
+        // 後端在放回之前代落了上一輪沒落成的 GM 回覆：重讀對齊（重讀要等本地改動收尾，先收）
         mainLost.current = false;
         endWrite();
         await reload();
       } else {
-        setEvents((previous) => [...previous, restored]);
+        setEvents((previous) => [...previous, ...restored]);
         endWrite();
       }
-      setUndone((previous) =>
-        previous && index > 0
-          ? { ...previous, events: previous.events.slice(0, index) }
-          : null,
-      );
       await refreshState();
     } catch (reason) {
       onError(String(reason));
@@ -524,7 +518,7 @@ export function useChatController({
       endWrite();
       busyRef.current = false;
     }
-  }, [undone, canRestore, generating, worldId, scene, refreshState, onError, reload, beginWrite]);
+  }, [undone, generating, worldId, scene, refreshState, onError, reload, beginWrite]);
 
   // 回合沒完成：先把失敗交給彈窗，再（有追加回錯時）重讀逐字稿對齊畫面——重讀可能失敗，
   // 失敗資訊得先落地。世代已變就不重讀，免得蓋掉新桌的畫面（reload 自己也會再核一次）

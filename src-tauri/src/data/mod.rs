@@ -35,6 +35,8 @@ pub(crate) use paths::{
     import_source_file_path, interface_shell_path, lanes_path, mechanism_log_path,
     validate_single_line, web_save_pending_path, web_save_sidecar_path, world_card_path,
 };
+#[cfg(test)]
+pub use scene::pop_transcript;
 pub use scene::{
     appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
     EventMarker,
@@ -42,10 +44,11 @@ pub use scene::{
 pub use scene::{
     append_character_reply, append_event, append_opening, append_opening_keyed, append_transcript,
     append_within_turn, begin_next_scene, discard_unanswered_player, export_scene_markdown,
-    export_transcript_markdown, fork_scene, opening_checkpoint, pop_transcript, read_transcript,
-    remove_transcript_event, replace_scene_summary, revert_scene, scene_label,
-    set_last_transcript_state, settle_pending_turn, sync_scene_state_tree, write_imported_scene,
-    ImportedEvent, ImportedScene, TranscriptEvent, TranscriptKind,
+    export_transcript_markdown, fork_scene, opening_checkpoint, pop_transcript_floor,
+    read_transcript, remove_transcript_event, replace_scene_summary, restore_transcript_events,
+    revert_scene, scene_label, set_last_transcript_state, settle_pending_turn,
+    sync_scene_state_tree, write_imported_scene, ImportedEvent, ImportedScene, TranscriptEvent,
+    TranscriptKind,
 };
 pub(crate) use scene::{
     fold_glyphs, glyph_equal, lang_key, match_present, match_present_with, name_matches,

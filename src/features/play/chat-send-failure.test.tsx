@@ -642,11 +642,11 @@ describe("chat turn failures", () => {
     });
 
     it("undo or restore finishing after a switch leaves the new table alone", async () => {
-      const pop = gate<boolean>();
+      const pop = gate<TranscriptEvent[]>();
       const restore = gate<unknown>();
       const h = mount({
-        pop_transcript: () => pop.promise,
-        append_transcript: () => restore.promise,
+        pop_transcript_floor: () => pop.promise,
+        restore_transcript_events: () => restore.promise,
       });
       act(() => h.chat().hydrate([playerEvent("上一句", "t0")]));
       let undoing!: Promise<void>;
@@ -657,28 +657,30 @@ describe("chat turn failures", () => {
       const fresh = playerEvent("新桌事件", "fresh");
       act(() => h.chat().hydrate([fresh]));
       await act(async () => {
-        pop.resolve(true);
+        pop.resolve([playerEvent("上一句", "t0")]);
         await undoing;
       });
       expect(h.chat().events).toEqual([fresh]);
       expect(h.chat().canRestore).toBe(false);
       expect(h.refreshState).not.toHaveBeenCalled();
 
-      // 回原桌收回一句再復原，復原等待中換桌
+      // 回原桌：途中換桌那次收回已入疊（記在原桌），可以復原
       h.moveTo("w1");
-      act(() => h.chat().hydrate([playerEvent("上一句", "t0")]));
-      const popNow = gate<boolean>();
+      act(() => h.chat().hydrate([playerEvent("第二句", "t1")]));
+      expect(h.chat().canRestore).toBe(true);
+      // 再收回一句再復原，復原等待中換桌
+      const popNow = gate<TranscriptEvent[]>();
       h.calls.length = 0;
       invokeMock.mockImplementation(async (command, args = {}) => {
         h.calls.push({ command, args });
-        if (command === "pop_transcript") return popNow.promise;
-        if (command === "append_transcript") return restore.promise;
+        if (command === "pop_transcript_floor") return popNow.promise;
+        if (command === "restore_transcript_events") return restore.promise;
         return null;
       });
       let undoAgain!: Promise<void>;
       await act(async () => {
         undoAgain = h.chat().undoLast();
-        popNow.resolve(true);
+        popNow.resolve([playerEvent("第二句", "t1")]);
         await undoAgain;
       });
       expect(h.chat().canRestore).toBe(true);
@@ -689,18 +691,72 @@ describe("chat turn failures", () => {
       h.moveTo("w2");
       act(() => h.chat().hydrate([fresh]));
       await act(async () => {
-        restore.resolve(null);
+        restore.resolve([playerEvent("第二句", "t1")]);
         await restoring;
       });
       expect(h.chat().events).toEqual([fresh]);
+      // 回原桌：途中換桌那次放回已消耗，再按放回的是更早收回的那句，不會重寫「第二句」
+      h.moveTo("w1");
+      act(() => h.chat().hydrate([playerEvent("第二句", "t1")]));
+      invokeMock.mockImplementation(async (command, args = {}) => {
+        h.calls.push({ command, args });
+        if (command === "restore_transcript_events") return args.events;
+        return null;
+      });
+      await act(async () => h.chat().restoreUndone());
+      const sent = h.calls.filter((call) => call.command === "restore_transcript_events");
+      expect((sent[sent.length - 1].args.events as TranscriptEvent[]).map((event) => event.text)).toEqual(["上一句"]);
+      expect(h.chat().canRestore).toBe(false);
+    });
+
+    it("an undo whose follow-up reload fails is still on the stack and restorable", async () => {
+      const h = mount({
+        // 畫面尾端對不上（後端代落過畫面沒有的那句）→ 要重讀，重讀失敗
+        pop_transcript_floor: () => [playerEvent("磁碟上那句", "tx")],
+        read_transcript: () => Promise.reject("讀檔失敗"),
+        restore_transcript_events: (args) => args.events,
+      });
+      act(() => h.chat().hydrate([playerEvent("上一句", "t0")]));
+      await act(async () => h.chat().undoLast());
+      expect(h.errors).toContain("讀檔失敗");
+      expect(h.chat().canRestore).toBe(true);
+      await act(async () => h.chat().restoreUndone());
+      const sent = h.calls.filter((call) => call.command === "restore_transcript_events");
+      expect((sent[0].args.events as TranscriptEvent[]).map((event) => event.text)).toEqual(["磁碟上那句"]);
+    });
+
+    it("a restore whose follow-up reload fails is consumed and never written twice", async () => {
+      const h = mount(
+        {
+          gm_narrate: () => ({ text: "夜深了。", raw: null, next: null }),
+          // GM 正文三次都沒落成：後端會在下一筆追加前代落，復原後要重讀
+          append_transcript: () => Promise.reject("io"),
+          read_transcript: () => Promise.reject("讀檔失敗"),
+          pop_transcript_floor: () => [playerEvent("上一句", "t0")],
+          restore_transcript_events: (args) => args.events,
+        },
+        { gm: true },
+      );
+      act(() => h.chat().hydrate([playerEvent("上一句", "t0")]));
+      await act(async () => h.chat().gmNarrate());
+      await act(async () => h.chat().undoLast());
+      expect(h.chat().canRestore).toBe(true);
+      const readsBefore = h.count("read_transcript");
+      await act(async () => h.chat().restoreUndone());
+      expect(h.count("restore_transcript_events")).toBe(1);
+      // 走到代落後的重讀，而且重讀失敗
+      expect(h.count("read_transcript")).toBe(readsBefore + 1);
+      expect(h.chat().canRestore).toBe(false);
+      await act(async () => h.chat().restoreUndone());
+      expect(h.count("restore_transcript_events")).toBe(1);
     });
   });
 
   describe("one transcript operation at a time", () => {
     it("blocks sending while an undo is still writing", async () => {
-      const pop = gate<boolean>();
+      const pop = gate<TranscriptEvent[]>();
       const h = mount({
-        pop_transcript: () => pop.promise,
+        pop_transcript_floor: () => pop.promise,
         append_player_event: appendPlayer(),
       });
       act(() => h.chat().hydrate([playerEvent("上一句", "t0")]));
@@ -711,7 +767,7 @@ describe("chat turn failures", () => {
       await typeAndSend(h, "你好");
       expect(h.count("append_player_event")).toBe(0);
       await act(async () => {
-        pop.resolve(true);
+        pop.resolve([playerEvent("上一句", "t0")]);
         await undoing;
       });
     });
@@ -722,7 +778,7 @@ describe("chat turn failures", () => {
         append_player_event: () => append.promise,
         chat_with_character: () => ({ text: "晚安", aborted: false }),
         append_transcript: (args) => args.event,
-        pop_transcript: () => true,
+        pop_transcript_floor: () => [playerEvent("上一句", "t0")],
       });
       act(() => h.chat().setInput("你好"));
       let first!: Promise<void>;
@@ -734,7 +790,7 @@ describe("chat turn failures", () => {
       await act(async () => h.chat().send(formEvent));
       await act(async () => h.chat().undoLast());
       expect(h.count("append_player_event")).toBe(1);
-      expect(h.count("pop_transcript")).toBe(0);
+      expect(h.count("pop_transcript_floor")).toBe(0);
       await act(async () => {
         append.resolve({ event: playerEvent("你好"), offset: 0 });
         await first;
@@ -745,8 +801,8 @@ describe("chat turn failures", () => {
     it("blocks sending while a restore is still writing", async () => {
       const restore = gate<unknown>();
       const h = mount({
-        pop_transcript: () => true,
-        append_transcript: () => restore.promise,
+        pop_transcript_floor: () => [playerEvent("上一句", "t0")],
+        restore_transcript_events: () => restore.promise,
         append_player_event: appendPlayer(),
       });
       act(() => h.chat().hydrate([playerEvent("上一句", "t0")]));
@@ -760,7 +816,7 @@ describe("chat turn failures", () => {
       expect(h.count("append_player_event")).toBe(0);
       await act(async () => {
         // 後端回傳落檔的那則（帶表的事件版本會換新），畫面放回的是這份
-        restore.resolve(playerEvent("上一句", "t0"));
+        restore.resolve([playerEvent("上一句", "t0")]);
         await restoring;
       });
       expect(h.chat().events.map((event) => event.text)).toEqual(["上一句"]);
