@@ -33,7 +33,10 @@
     },
     "resources": {
       "src/data/scene/opencc/LICENSE.txt": "licenses/OpenCC/LICENSE.txt",
-      "src/data/scene/opencc/NOTICE.txt": "licenses/OpenCC/NOTICE.txt"
+      "src/data/scene/opencc/NOTICE.txt": "licenses/OpenCC/NOTICE.txt",
+      "../node_modules/opencc-js/LICENSE": "licenses/opencc-js/LICENSE",
+      "../node_modules/opencc-js/LICENSES/Apache-2.0.txt": "licenses/opencc-js/Apache-2.0.txt",
+      "../node_modules/opencc-js/THIRD_PARTY_LICENSES.md": "licenses/opencc-js/THIRD_PARTY_LICENSES.md"
     },
     "icon": [
       "icons/32x32.png",

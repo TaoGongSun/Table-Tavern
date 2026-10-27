@@ -6,11 +6,14 @@ use super::messages::scaffold_en;
 use crate::world_scan::{arrange, Placed};
 use std::collections::BTreeSet;
 
-/// 名冊行（AI 卡重構包 4a）：constant 人物條目不進全文，只列名字。
+/// 名冊行（AI 卡重構包 4a）：constant 人物條目不進全文，只列名字；寫明不代表在場，模型才不會把名冊當 present 名單。
 pub(super) fn roster_line(names: &[&str], lang: &str) -> String {
     match scaffold_en(lang) {
-        true => format!("Also at this table: {}", names.join(", ")),
-        false => format!("這桌還有這些人：{}", names.join("、")),
+        true => format!(
+            "Character roster (does not imply current presence): {}",
+            names.join(", ")
+        ),
+        false => format!("人物名冊（不代表目前在場）：{}", names.join("、")),
     }
 }
 

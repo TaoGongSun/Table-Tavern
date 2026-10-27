@@ -241,6 +241,83 @@ mod tests {
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
 
+    /// 真流程：舊名單非空，GM 回覆的圍欄寫裸 `present:` → 套用後平欄是空字串（Some("")）→
+    /// 只信 present、不退回正文比對：正文提到名字也不登場、不回歸。
+    #[test]
+    fn bare_present_clears_the_old_list_and_keeps_body_fallback_off() {
+        let mut world: data::WorldState =
+            serde_json::from_value(serde_json::json!({"id": "w", "name": "桌"})).unwrap();
+        world
+            .state
+            .table
+            .insert("present".to_owned(), "林远、阿古拉".to_owned());
+        let reply =
+            "阿古拉和铁三都走了，院子裡只剩風聲。\n```state\ntime: 夜\nplace: 前院\npresent:\n```";
+        let block = extract_state_block(reply);
+        mechanism::apply_block(&mut world, &block, "林远");
+        let present = world.state.table.get("present").map(String::as_str);
+        assert_eq!(present, Some(""));
+        assert!(world.state.tree.get("present").is_none(), "不長出空分支");
+
+        let person = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "阿古拉", &[], true, 0, false, Visibility::Public)
+        };
+        let iron = card("iron", "铁三", "", "");
+        let already = BTreeSet::new();
+        assert!(detect_new_arrivals(&[person], &[], present, &block.display, &already).is_empty());
+        assert!(
+            detect_new_card_arrivals(&[iron], &[], present, &block.display, &already).is_empty()
+        );
+    }
+
+    /// A/B 重放的實際輸出（haiku，繁中介面）：present 換成繁體後，簡體名冊人物照樣登場、
+    /// 隱藏的簡體角色卡照樣回歸；沒條目的「商隊領頭」不誤觸任何人。
+    #[test]
+    fn interface_script_present_from_a_real_reply_still_triggers_arrivals() {
+        let person = |uid: u64, title: &str| WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(uid, title, &[], true, 0, false, Visibility::Gm)
+        };
+        let entries = [person(1, "沈书吏"), person(2, "阿古拉")];
+        let cards = [card("he", "贺铮", "", ""), card("zhou", "周掌柜", "", "")];
+        let present = Some("林遠、賀錚、鐵三、阿古拉、周掌櫃、商隊領頭");
+        let already = BTreeSet::new();
+        let titles: Vec<&str> = detect_new_arrivals(&entries, &[], present, "", &already)
+            .into_iter()
+            .map(|entry| entry.title.as_str())
+            .collect();
+        assert_eq!(titles, vec!["阿古拉"]);
+        let names: Vec<&str> = detect_new_card_arrivals(&cards, &[], present, "", &already)
+            .into_iter()
+            .map(|card| card.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["贺铮", "周掌柜"]);
+    }
+
+    /// 已知限制（現況記錄）：原字精確優先。人物「沈鬱」在簡中介面被寫成「沈郁」，同桌另有「沈郁」時，
+    /// 精確命中另一人；同桌只有「沈鬱」時折疊唯一命中、照常登場。
+    #[test]
+    fn interface_script_name_hits_the_exact_namesake_before_folding() {
+        let person = |uid: u64, title: &str| WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(uid, title, &[], true, 0, false, Visibility::Gm)
+        };
+        let already = BTreeSet::new();
+        let both = [person(1, "沈鬱"), person(2, "沈郁")];
+        let titles: Vec<&str> = detect_new_arrivals(&both, &[], Some("沈郁"), "", &already)
+            .into_iter()
+            .map(|entry| entry.title.as_str())
+            .collect();
+        assert_eq!(titles, vec!["沈郁"], "算到另一個沈郁頭上");
+        let alone = [person(1, "沈鬱")];
+        let titles: Vec<&str> = detect_new_arrivals(&alone, &[], Some("沈郁"), "", &already)
+            .into_iter()
+            .map(|entry| entry.title.as_str())
+            .collect();
+        assert_eq!(titles, vec!["沈鬱"]);
+    }
+
     /// 規格 (c)(g)：present 名單有新面孔就命中，名字用雙向包含比對
     /// （「亞歷山大」對得上「亞歷山大・馮・史特勞斯」）。
     #[test]

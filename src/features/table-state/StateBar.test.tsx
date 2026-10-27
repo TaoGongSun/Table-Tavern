@@ -4,7 +4,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { t } from "../../i18n";
+import { setLang, t } from "../../i18n";
+import { loadGlyphEngine } from "./present-glyphs";
 import { StateBar } from "./StateBar";
 import { displayWithFormat, parseWithFormat } from "./state-format";
 
@@ -105,5 +106,85 @@ describe("StateBar 數字欄顯示模板", () => {
     expect(parseWithFormat("第 天", "第 {} 天")).toBe("第 天");
     expect(parseWithFormat("第 8 夜", "第 {} 天")).toBe("第 8 夜");
     expect(parseWithFormat("第 8 天", undefined)).toBe("第 8 天");
+  });
+});
+
+function renderPresent(present: string, onBeginEdit: (path: string[], tree: boolean, value: string) => void = noop) {
+  act(() =>
+    root.render(
+      <StateBar
+        fields={{ time: "夜", place: "前院", present }}
+        tree={{}}
+        jumps={{}}
+        bindings={[]}
+        editing={null}
+        onBeginEdit={onBeginEdit}
+        onChangeEditValue={noop}
+        onSave={noop}
+        onCancelEdit={noop}
+        onMarkCounter={noop}
+        onBind={noop}
+        player={{ id: "p", name: "林远" } as never}
+        castCount={1}
+        cast={[]}
+        knownNames={["林远", "贺铮", "周掌柜", "阿古拉"]}
+      />,
+    ),
+  );
+}
+
+async function settle(target: "tw" | "cn") {
+  await act(async () => {
+    await loadGlyphEngine(target);
+    await Promise.resolve();
+  });
+}
+
+const summaryPresent = () => [...host.querySelectorAll("summary .state-bar-seg")][2] as HTMLElement;
+const fieldButton = (index: number) => host.querySelectorAll<HTMLButtonElement>(".state-bar-value")[index];
+
+describe("StateBar present 顯示字形", () => {
+  afterEach(() => setLang("zh-TW"));
+
+  it("zh-TW：收合摘要、title、展開欄位都轉繁；玩家巨集先代換；點開編輯是原字", async () => {
+    setLang("zh-TW");
+    const begin = vi.fn();
+    renderPresent("{{user}}、贺铮、周掌櫃", begin);
+    await settle("tw");
+    renderPresent("{{user}}、贺铮、周掌櫃", begin);
+    expect(summaryPresent().textContent).toContain("林遠、賀錚、周掌櫃");
+    expect(summaryPresent().title).toContain("林遠、賀錚、周掌櫃");
+    expect(fieldButton(2).textContent).toBe("林遠、賀錚、周掌櫃");
+    act(() => fieldButton(2).click());
+    expect(begin).toHaveBeenCalledWith(["present"], false, "{{user}}、贺铮、周掌櫃");
+    expect(fieldButton(0).textContent).toBe("夜");
+  });
+
+  it("zh-CN：繁體轉簡，沈鬱不變成沉郁", async () => {
+    setLang("zh-CN");
+    renderPresent("賀錚、沈鬱");
+    await settle("cn");
+    expect(fieldButton(2).textContent).toBe("贺铮、沈郁");
+  });
+
+  it("非中文介面不轉；切換語系即時改顯示", async () => {
+    setLang("en");
+    renderPresent("贺铮、周掌柜");
+    expect(fieldButton(2).textContent).toBe("贺铮、周掌柜");
+    setLang("zh-TW");
+    renderPresent("贺铮、周掌柜");
+    await settle("tw");
+    expect(fieldButton(2).textContent).toBe("賀錚、周掌櫃");
+    setLang("ja");
+    renderPresent("贺铮、周掌柜");
+    expect(fieldButton(2).textContent).toBe("贺铮、周掌柜");
+  });
+
+  it("載入完成前值已更新（或換桌）：顯示的是最新值的轉換", async () => {
+    setLang("zh-TW");
+    renderPresent("贺铮");
+    renderPresent("阿古拉、周掌柜");
+    await settle("tw");
+    expect(fieldButton(2).textContent).toBe("阿古拉、周掌櫃");
   });
 });

@@ -2,7 +2,7 @@
 
 # flat-field-reporting — 重構桌平欄欄位隨回合更新、不長兩份
 
-自 [acr-live-observations](../../tasks/acr-live-observations.md) 第 2 件拆出。分支 `flat-field-reporting`。
+自 [acr-live-observations](acr-live-observations.md) 第 2 件拆出。分支 `flat-field-reporting`。
 
 ## 問題
 clean-orc（`src-tauri/src/import/fixtures/clean-orc-cave.json`）characters 重構後，開場平欄的「剧情阶段/要塞事件」「当前环境」「驻留/交涉角色」留在平欄：GM 在「目前狀態」看得到，卻只能用更新區塊寫樹 → replace 被拒「路徑不存在…若要新增請用 insert」→ GM 改 insert，樹上長出第二份。根因見原立案檔第 2 節。作者目標：重構過的卡每個欄位都能隨回合更新，而且不能兩份。

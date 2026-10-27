@@ -93,6 +93,11 @@ export function setLang(next: Lang) {
   lang = next;
 }
 
+/** 目前介面語言（render 前由偏好控制器同步進來） */
+export function currentLang(): Lang {
+  return lang;
+}
+
 export function t(key: MsgKey, params?: Record<string, string | number>): string {
   const raw: string = isOpenRouterOnboardingMsgKey(key)
     ? openRouterOnboardingMessage(lang, key)

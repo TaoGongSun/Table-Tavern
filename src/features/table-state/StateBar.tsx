@@ -1,12 +1,13 @@
 // 牌桌狀態列：平欄摘要（時間｜地點｜在場）是收合時唯一的一行，本身就是開關；
 // 展開後是可點擊編輯的欄位與可折疊的狀態樹。開關記在 localStorage，跨桌沿用。
 import { Fragment, type ReactNode, useMemo, useState } from "react";
-import { t } from "../../i18n";
+import { currentLang, t } from "../../i18n";
 import { BranchBinding, StateNode } from "../../shared/contracts/backend-contracts";
 import { CharacterCard, CharacterMeta } from "../characters/card-model";
 import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
 import { displayWithFormat } from "./state-format";
+import { usePresentDisplay } from "./present-glyphs";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
 
@@ -43,6 +44,8 @@ interface StateBarProps {
   /** 這桌的角色總數：一個都沒有就不掛分支指認下拉 */
   castCount: number;
   cast: CharacterMeta[];
+  /** 本桌全部人名（含隱藏、封存卡、玩家、人物條目）：present 顯示轉字形時鎖名與歸位用 */
+  knownNames?: readonly string[];
 }
 
 /** 主欄的狀態列：平欄摘要＋可折疊的狀態樹，每一格點著就能改 */
@@ -62,6 +65,7 @@ export function StateBar({
   player,
   castCount,
   cast,
+  knownNames = [],
 }: StateBarProps) {
   const [stateBarOpen, setStateBarOpen] = useState(
     () => localStorage.getItem(STATE_BAR_OPEN_KEY) === "true",
@@ -81,7 +85,15 @@ export function StateBar({
     { key: "place", label: `${t("stateFieldPlace")} ` },
     { key: "present", label: t("stateSummaryPresent") },
   ];
-  const stateValue = (key: string) => fields[key] || t("stateEmptyValue");
+  const playerName = player?.name || t("playerLabel");
+  const presentDisplay = usePresentDisplay(currentLang(), knownNames);
+  // present 只在顯示時轉成介面字形（玩家巨集先代換）；編輯與存回仍是原字
+  const displayValue = (key: string, value: string) => {
+    const text = displayUserMacro(value, playerName);
+    return key === "present" ? presentDisplay(text) : text;
+  };
+  const stateValue = (key: string) =>
+    fields[key] ? (key === "present" ? displayValue(key, fields[key]) : fields[key]) : t("stateEmptyValue");
 
   // 表單交給瀏覽器處理 Enter，中文輸入法選字時不會提前送出。
   function stateFieldForm(path: string[], isTree: boolean, label: string) {
@@ -136,7 +148,7 @@ export function StateBar({
               title={t("stateEditHint")}
               onClick={() => onBeginEdit(path, isTree, value)}
             >
-              {value ? displayUserMacro(shown, player?.name || t("playerLabel")) : t("stateEmptyValue")}
+              {value ? (isTree ? displayUserMacro(shown, playerName) : displayValue(path[0], shown)) : t("stateEmptyValue")}
             </button>
             {jumpMark && (
               <button

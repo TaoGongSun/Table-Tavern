@@ -561,7 +561,7 @@ mod tests {
             "zh-TW",
         )[0]
         .content;
-        assert!(!gm_system.contains("這桌還有這些人"));
+        assert!(!gm_system.contains("人物名冊（不代表目前在場）"));
 
         let lane_system = gm_lane_system(
             "世界總覽",
@@ -571,10 +571,10 @@ mod tests {
             &Mechanism::default(),
             "zh-TW",
         );
-        assert!(!lane_system.contains("這桌還有這些人"));
+        assert!(!lane_system.contains("人物名冊（不代表目前在場）"));
 
         let chars_system = chars_lane_system(&[], None, &entries, "zh-TW");
-        assert!(!chars_system.contains("這桌還有這些人"));
+        assert!(!chars_system.contains("人物名冊（不代表目前在場）"));
     }
 
     /// 規格 (b)：is_person 條目不進 system 全文，改收進名冊行；disabled 的人物條目不列進名冊。
@@ -611,12 +611,14 @@ mod tests {
         assert!(!gm_system.contains("愛麗絲內容"));
         assert!(!gm_system.contains("鮑伯內容"));
         assert!(!gm_system.contains("已停用的人"));
-        assert!(gm_system.contains("這桌還有這些人：愛麗絲、鮑伯"));
+        assert!(gm_system.contains("人物名冊（不代表目前在場）：愛麗絲、鮑伯"));
 
         let chars_system = chars_lane_system(&[], None, &entries, "zh-TW");
         assert!(chars_system.contains("小鎮傳說內容"));
         assert!(!chars_system.contains("愛麗絲內容"));
-        assert!(chars_system.contains("這桌還有這些人：愛麗絲、鮑伯"));
+        assert!(chars_system.contains("人物名冊（不代表目前在場）：愛麗絲、鮑伯"));
+        assert!(chars_lane_system(&[], None, &entries, "en")
+            .contains("Character roster (does not imply current presence): 愛麗絲, 鮑伯"));
     }
 
     /// 停用的人物條目不觸發，名冊行也不列。
@@ -638,7 +640,7 @@ mod tests {
             &Mechanism::default(),
             "zh-TW",
         );
-        assert!(system.contains("這桌還有這些人：愛麗絲\n"));
+        assert!(system.contains("人物名冊（不代表目前在場）：愛麗絲\n"));
         assert!(!system.contains("隱藏人物"));
     }
 
@@ -663,7 +665,8 @@ mod tests {
             "zh-TW",
         )[0]
         .content;
-        assert!(gm_system.contains("\n## 世界書（只進你的上下文）\n這桌還有這些人：愛麗絲\n"));
+        assert!(gm_system
+            .contains("\n## 世界書（只進你的上下文）\n人物名冊（不代表目前在場）：愛麗絲\n"));
     }
 
     // ---- mvu-replace-numeric：協定的數字欄兩條依更新策略分版 ----
@@ -908,8 +911,8 @@ mod tests {
         let (api, lane) = both_gm_prompts(&worldbook, &[]);
         assert!(!api.contains("<StatusBlock>"));
         assert!(!lane.contains("<StatusBlock>"));
-        assert!(api.contains("這桌還有這些人：輸出格式"));
-        assert!(lane.contains("這桌還有這些人：輸出格式"));
+        assert!(api.contains("人物名冊（不代表目前在場）：輸出格式"));
+        assert!(lane.contains("人物名冊（不代表目前在場）：輸出格式"));
 
         let arrived = [arrival_event(&worldbook[0])];
         assert_eq!(

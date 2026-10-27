@@ -22,6 +22,7 @@ import { PlayView } from "../features/play/PlayView";
 import { useSceneBudget } from "../features/play/useSceneBudget";
 import { CastRail } from "../features/characters/CastRail";
 import { StateBar } from "../features/table-state/StateBar";
+import { useKnownPresentNames } from "../features/table-state/present-glyphs";
 import { TableToolbar } from "./TableToolbar";
 import type { SettingsTab } from "../features/settings/SettingsWindow";
 import type { PendingRefactorCard } from "../features/refactor/refactor-card";
@@ -140,6 +141,14 @@ export function AppWorkspace({
     worldChange,
     takeWorldChange,
   } = navigation;
+  const knownPresentNames = useKnownPresentNames(
+    table,
+    characters.list.map((card) => card.name),
+    characters.player?.name,
+    tableState.fields["present"] ?? "",
+    // 世界書在主欄編輯畫面裡改：回到遊戲畫面或匯入通知時重讀人物條目
+    `${mainView === null}\u0000${worldChange?.generation ?? 0}`,
+  );
   const {
     canUndoScene,
     advanceScene,
@@ -306,6 +315,7 @@ export function AppWorkspace({
                 player={characters.player}
                 castCount={characters.list.length}
                 cast={characters.active}
+                knownNames={knownPresentNames}
               />
             )}
 

@@ -246,7 +246,7 @@ fn apply_into(
     for (index, character) in outcome.characters.iter().enumerate() {
         if !selection.character_indices.contains(&index) {
             // 沒勾：整併成一條恆定的 is_person 條目（來源刪除與勾選的人同一套，見上方 source_consumers）。
-            // 恆定人物條目只進 GM 的名冊行（「這桌還有這些人」），全文等 present 點名時由登場事件送。
+            // 恆定人物條目只進 GM 的名冊行（「人物名冊（不代表目前在場）」），全文等 present 點名時由登場事件送。
             // uid 用 NEW_ENTRY_UID 哨兵，實際落檔的 uid 由 upsert_worldbook_entry 分配。
             data::upsert_worldbook_entry(
                 root,

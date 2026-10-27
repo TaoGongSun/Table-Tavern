@@ -30,6 +30,7 @@
     "lodash": "4.17.21",
     "marked": "^18.0.7",
     "mathjs": "^15.2.0",
+    "opencc-js": "1.4.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-easy-crop": "^6.2.3",

@@ -42,7 +42,10 @@ pub fn narrate_instruction(
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
          After the narration, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
-         Always output `time`, `place`, and `present`; write `time` and `place` in the player's language, write each `present` name exactly as it appears in the cast or setting (same characters, no translation or script change), separate multiple present characters with `、`, and repeat unchanged values too. \
+         Always output `time`, `place`, and `present`; write `time` and `place` in the player's language and repeat them if unchanged. \
+         Output `present` in full every turn: based on this turn's story as it stands at the end of the narration, list only the people who are actually at `place` at that moment. \
+         The character roster only identifies who people are; it is not a list of who is here, so do not list anyone just because they are on the roster, were mentioned, or are expected to come. \
+         If nobody is there, leave `present:` empty. As an exception to the language rule, write each `present` name exactly as it appears in the cast or setting (same characters, no translation, transliteration, or script change), separated by `、`. \
          Do not add any explanation outside the narration and fence."
             .to_owned()
     } else {
@@ -50,8 +53,10 @@ pub fn narrate_instruction(
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
          不要替「登場角色」名單上的角色或玩家說話。旁白本文結束後另起一行，輸出一個 ```state 圍欄，\
          圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
-         time、place 用玩家的語言寫；present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不換簡繁字形；\
-         present 的多人用頓號分隔，沒有變化的欄位也照抄目前值。\
+         time、place 用玩家的語言寫，沒有變化就照抄目前值。\
+         present 每一回合都要完整輸出：依本輪敘事、以旁白結束當下為準，只列此刻確實身在 place 的人物；\
+         人物名冊只供辨識是誰，不是在場名單，不因列在名冊、被提到或約好要見就列；沒有人在場就寫「present:」後面留空。\
+         present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不音譯、不換簡繁字形（這是語言規範的例外）；多人用頓號分隔。\
          圍欄以外不要有多餘說明。"
             .to_owned()
     };
@@ -538,6 +543,21 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
             .join("、");
         fields.retain(|(path, _)| !path.starts_with(list));
         fields.push((vec![key.to_owned()], joined));
+        false
+    });
+    // 在場人物寫成裸空值（`present:`）＝沒有人在場，跟空清單一樣寫空值進平欄；
+    // 時間、地點與其他鍵的裸空值照舊只標空分支（不清掉平欄舊值）
+    let mut maps = maps;
+    maps.retain(|map| {
+        let [name] = map.as_slice() else {
+            return true;
+        };
+        if table_key(name) != Some("present")
+            || fields.iter().any(|(path, _)| path.starts_with(map))
+        {
+            return true;
+        }
+        fields.push((vec!["present".to_owned()], String::new()));
         false
     });
     StateBlock {
@@ -1086,5 +1106,52 @@ mod tests {
                 })
             );
         }
+    }
+
+    /// present 指示：每輪重判、名冊只供辨識、可留空；名字照原字（語言規範的例外，顯示字形由 app 轉）
+    #[test]
+    fn narration_present_rule_recomputes_each_turn_and_keeps_original_names() {
+        let zh = narrate_instruction("zh-CN", &[], None, false).content;
+        assert!(zh.contains("time、place 用玩家的語言寫，沒有變化就照抄目前值"));
+        assert!(zh.contains("以旁白結束當下為準") && zh.contains("人物名冊只供辨識是誰"));
+        assert!(
+            zh.contains("「present:」後面留空")
+                && zh.contains("不換簡繁字形（這是語言規範的例外）")
+        );
+        assert!(!zh.contains("沒有變化的欄位也照抄目前值"));
+        for lang in ["en", "ja", "ru"] {
+            let en = narrate_instruction(lang, &[], None, false).content;
+            assert!(
+                en.contains("repeat them if unchanged")
+                    && en.contains("at the end of the narration")
+            );
+            assert!(
+                en.contains("it is not a list of who is here")
+                    && en.contains("leave `present:` empty")
+            );
+            assert!(
+                en.contains("exception to the language rule")
+                    && en.contains("no translation, transliteration, or script change")
+            );
+            assert!(!en.contains("repeat unchanged values too"));
+        }
+    }
+
+    /// 在場人物寫成裸空值＝沒有人在場：進平欄成空字串；時地與其他鍵照舊只標空分支
+    #[test]
+    fn bare_empty_present_clears_the_table_field_but_other_keys_keep_their_meaning() {
+        let StateBlock { fields, maps, .. } =
+            extract_state_block("人都走了。\n```state\ntime: 夜\n地點:\n在場人物:\n状态栏:\n```");
+        assert_eq!(
+            fields,
+            vec![
+                (vec!["time".to_owned()], "夜".to_owned()),
+                (vec!["present".to_owned()], String::new()),
+            ]
+        );
+        assert_eq!(
+            maps,
+            vec![vec!["地點".to_owned()], vec!["状态栏".to_owned()]]
+        );
     }
 }
