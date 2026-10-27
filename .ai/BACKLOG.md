@@ -37,6 +37,9 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [story-html-whitelist](tasks/story-html-whitelist.md) — 訊息顯示把所有原始 HTML 跳脫成字，ST 會渲染白名單標籤、剝掉不認得的標籤 — 下一步：未排程
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
+- [story-html-style-attr](tasks/story-html-style-attr.md) — 訊息 HTML 放行 style 屬性（字色底色），需 CSS 消毒與網頁 CSP 取捨 — 下一步：等 story-html-whitelist 結案後評估
+- [story-html-style-class](tasks/story-html-style-class.md) — 支援 <style> 與 class，讓狀態欄卡外觀接近 ST（需 CSS 解析新依賴） — 下一步：等 story-html-whitelist 結案後評估
+- [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下三案依其數據決定做不做：
