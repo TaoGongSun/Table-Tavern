@@ -26,7 +26,7 @@ mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF）�
 - 順序：①介面桌處理 NPC 開口蓋掉旁白 → ②修 cardformat-presence-autohide（已結案）→ ③shell-update-flash 先校準量測、不依門檻直接做雙緩衝 → ④character-presence 名冊接線降後獨立排（在場規則搬出 chat.rs 跟著④做）。〔作者裁決 2026-10-27〕
 - ①的做法：介面桌停用角色點名（不做回合聚合正文；代價是介面桌失去多角色開口）。〔作者裁決 2026-10-27〕
 
-- [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制（順序④） — 下一步：開工前先拍兩點（怎麼認名冊欄位、名冊與 present 不一致時誰優先）；在場規則搬出 chat.rs 跟著本案做；包 4 已做的在場過濾與自動上下場不重做
+- [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制（順序④） — 下一步：延後到 VN 前再評估〔作者裁決 2026-10-27〕（①②做完後受益桌型少：純介面桌不拆人物）；屆時做法 Sol／Grok 已共識：重構時標名冊路徑＋沒重構桌嚴格欄位名比對退路（只認唯一、形狀合法候選，否則當未知）＋依桌型決定信 present 或名冊；在場規則搬出 chat.rs 跟著本案做
 
 ## 階段 D：引擎行為實聊
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
