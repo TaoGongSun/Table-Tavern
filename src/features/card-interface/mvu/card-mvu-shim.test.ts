@@ -545,13 +545,19 @@ describe("MVU 墊片：事件", () => {
     };
     win.eventOn(win.Mvu.events.VARIABLE_UPDATE_STARTED, slow("S"));
     win.eventOn(win.Mvu.events.VARIABLE_UPDATE_ENDED, slow("E"));
+    // 最後註冊的 ENDED 監聽器排在 slow("E") 之後，第二次推送（金=11）走到這裡＝全部處理完
+    const done = new Promise<void>((resolve) => {
+      win.eventOn(win.Mvu.events.VARIABLE_UPDATE_ENDED, (vars: unknown) => {
+        if ((vars as MvuData).stat_data.金 === 11) resolve();
+      });
+    });
     const third: CardMvu = { ...snapshot, states: [snapshot.states[0], data({ 金: 11 })] };
     for (const listener of win.listeners) {
       for (const mvu of [changed, third]) {
         listener({ source: win.parent, data: { source: "table-tavern-host", kind: "chat", token: "tok", mvu } });
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await done;
     expect(log).toEqual(["S開始5", "S結束5", "E開始9", "E結束9", "S開始9", "S結束9", "E開始11", "E結束11"]);
   });
 
