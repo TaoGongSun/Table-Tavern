@@ -16,11 +16,11 @@ claude 以外的四條路（api／codex／agy／grok）每換一個角色就整�
 
 ## Next action
 
-API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉固定的 9,984。
+API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋共線兩路（api、codex）快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉 CLI 自帶底線（0.164.0 起是 11,008）。
 
 ## Constraints
 
 - 包 C 未完成前，`anthropic/*` 共線後只保證 system 快取，不能宣稱完整支援。
 - 包 B 對沒有快取的模型是純增（輸入最小的 deepseek 最壞 +34%）；**哪個模型真的沒快取尚無實測**（2026-08-22 查證：那 27 筆缺 `cache_reporting` 欄，0 不可判讀）。自動退回另案 no-cache-model-optout。
 - 同名兩張卡在共線逐字稿裡不再可分（都是「名字：」），與 claude lane 行為一致。
-- agy 那條要下次真的在 app 裡用過才有數字，既有 23 筆 unreported 不回溯。
+- agy、grok 已不走本案共線：agy 2026-09-09 起續聊一角一線（5d2177ad），grok 2026-08-22 起續聊、10-07 起改 grok-shared-lane 共線；詳見規格「現況」節。agy 小桌（prompt 低於約 16k–20k）快取為 0 屬預期（觀測推論）。

@@ -21,6 +21,6 @@
 - [refactor-dispatch](handoffs/refactor-dispatch.md) — AI 重構提速省費：P4–P6 已隨 refactor-survey-spans T4① 過，只剩 P8（API 模式跑重構）
 - [prompt-cache-optimization](handoffs/prompt-cache-optimization.md) — 提示詞快取優化：程式面包 1–7 完成、額度分頁全驗過；剩離開提醒自然遇到再看、undo 截尾優化等非必要項，OpenRouter／API 已收束出本案範圍
 - [i18n-more-languages](handoffs/i18n-more-languages.md) — 十國語言：機械關卡持續綠，人眼審校等網頁版與卡片匯出（refactor-card-png-export）都做完後一起驗〔作者裁決 2026-10-04〕
-- [api-shared-lane](handoffs/api-shared-lane.md) — API 路徑改走 chars 共線：包 A／B 完成、Sol 過，剩錯認前言者＋四路快取成對測試
+- [api-shared-lane](handoffs/api-shared-lane.md) — API 路徑改走 chars 共線：包 A／B 完成、Sol 過，剩錯認前言者＋api／codex 快取成對測試（agy、grok 已改走 lane 續聊）
 - [claude-compat-endpoint](handoffs/claude-compat-endpoint.md) — Claude 相容端點：實作完成、cargo/build 雙驗證綠，等使用者用真相容端點實測後結案
 - [refactor-card-png-export](handoffs/refactor-card-png-export.md) — 重構卡 PNG 匯出：包 A–D 已進 main、macOS 測試通道實測過；剩 Windows Explorer 縮圖與 SillyTavern 拒收兩項（實測佇列梯 1 第 4e）

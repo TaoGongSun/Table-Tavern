@@ -1,6 +1,12 @@
 # api-shared-lane — API 路徑改走 chars 共線
 
-**狀態：設計已拍板（2026-08-21 與 Sol 收斂）。等使用者同意即可開工。**
+**狀態：包 A／B 已完成。共線組裝現在只有 api 與 codex 兩路在用；agy、grok 已改走 lane 續聊（見下節），本檔其餘談 CLI 攤平的段落只對 codex 仍成立。**
+
+## 現況：agy、grok 不走本案共線（2026-10-28 查證）
+
+- **grok**：2026-08-22 起改走 lane 續聊（grok-cache-miss，d065d9a9），當時一角一線；2026-10-07 起改回全角色共線 `chars:<模型>`，回合後抹 session 檔（[grok-shared-lane](grok-shared-lane.md)）。
+- **agy**：2026-09-09 起改走 `--conversation` 續聊、一角一線 `chars:<模型>:<角色 id>`，私設提進該角色自己的凍結 system（5d2177ad；agy 對話沒有回合後抹寫路徑）。之後 grok-shared-lane、worldbook-st-trigger-parity 都以此為前提。
+- **agy 快取門檻（觀測推論，非官方文件）**：agy 內部用量紀錄與 CLI 的 `cache_read_tokens` 一致；prompt 低於約 16k 幾乎不中（8k–16k 約 8%），約 16k–20k 以上才穩定命中（約 70–80%），命中量大致以 4,096 token 一格累進。2026-09-09 一條角色線 prompt 20k→36k 每輪續聊都中 16k–29k；2026-10-06、10-28 的 0 都是 prompt 8.7k–16.9k 的小桌。小桌任何線路形狀都是 0，所以 agy 不改共線。
 
 ## 問題
 
@@ -159,7 +165,7 @@ agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開�
 
 包 A 驗收四項：正文逐字不變、沒有重複 final text、錯誤事件仍會失敗、usage 正確落帳。
 
-包 B 完成後做**成對測試**（同角色／換角色 × 冷／暖），記**絕對 cached tokens** 而不只看百分比；**codex 要先扣掉固定的 9,984**，否則 90% 可能只是它自己的前綴在中。
+包 B 完成後對共線兩路（api、codex）做**成對測試**（同角色／換角色 × 冷／暖），記**絕對 cached tokens** 而不只看百分比；**codex 要先扣掉固定的 9,984**，否則 90% 可能只是它自己的前綴在中。
 
 快取實測基線：codex 15 筆（底線 9,984）、api `stealth/ox-alpha` 4 筆（底線 64）、grok 4 筆（89.1／48.6／49.0／91.8%，同樣的雙峰）。三條路各自獨立證實「換角色全滅、同角色連續全中」。agy 要先改 `stream-json` 才量得到。`deepseek-v4-pro-0813-free` 27 筆全部缺 `cache_reporting` 欄（加欄前的 api 行把「沒回報」壓平成 0，2026-08-22 查證），拿它測共線量不到任何東西。
 
