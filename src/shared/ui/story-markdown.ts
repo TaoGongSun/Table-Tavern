@@ -54,8 +54,10 @@ const marked = new Marked({
   breaks: true,
   gfm: true,
   renderer: {
+    // 原始 HTML 一律跳脫成文字，只有已閉合的註解拿掉（同 ST：卡片的隱藏記憶欄玩家看不到，原文與上下文照留）。
+    // 沒閉合的不剝：marked 會把它之後整則回覆收進同一個 token
     html(token: Tokens.HTML | Tokens.Tag): string {
-      return escapeHtml(token.text);
+      return escapeHtml(token.text.replace(/<!--(?:-?>|[\s\S]*?--!?>)/g, ""));
     },
     link(token): string {
       return token.text;

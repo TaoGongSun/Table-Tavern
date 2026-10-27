@@ -109,3 +109,59 @@ describe("sanitizeStoryHtml", () => {
     });
   });
 });
+
+// 對照 ST（showdown＋DOMPurify）：已閉合的註解畫面上看不到，code 裡的、沒閉合的照顯示
+describe("HTML comments", () => {
+  const visible = (text: string) => {
+    const box = document.createElement("div");
+    box.innerHTML = renderStoryMarkdown(text);
+    return box.textContent ?? "";
+  };
+
+  it("hides the card's hidden memory bar written as stand-alone comment lines", () => {
+    const shown = visible(
+      "正文。\n\n<!-- 隐藏记忆栏 开始 -->\n\n<!-- \n<核心记忆>\n\n- 事件：[酒館遇襲]\n\n</核心记忆>\n\n-->\n\n<!-- 隐藏记忆栏 结束 -->\n\n選項：A／B",
+    );
+    expect(shown).toContain("正文。");
+    expect(shown).toContain("選項：A／B");
+    expect(shown).not.toMatch(/<!--|-->|记忆|酒館遇襲/);
+  });
+
+  it("hides inline and empty comments", () => {
+    expect(visible("一行裡<!-- 行內 -->接著").trim()).toBe("一行裡接著");
+    for (const empty of ["<!-->", "<!--->", "<!---->"]) {
+      expect(visible(`前${empty}後`).trim(), empty).toBe("前後");
+    }
+  });
+
+  it("ends a comment at the first terminator, including --!>", () => {
+    expect(visible("前<!-- 外 <!-- 內 --> 剩下 -->後").trim()).toBe("前 剩下 -->後");
+    expect(visible("<!-- a --!>後文<!-- b -->尾\n").trim()).toBe("後文尾");
+  });
+
+  it("keeps text after the comment on the same line", () => {
+    expect(visible("<!-- x -->後文").trim()).toBe("後文");
+  });
+
+  it("keeps comments inside code", () => {
+    expect(visible("`<!-- span -->`")).toContain("<!-- span -->");
+    expect(visible("```\n<!-- fence -->\n```")).toContain("<!-- fence -->");
+    expect(visible("段落\n\n    <!-- indented -->\n")).toContain("<!-- indented -->");
+  });
+
+  it("leaves an unclosed comment as text so the story is not swallowed", () => {
+    const shown = visible("正文\n\n<!-- 沒關\n後面的故事");
+    expect(shown).toContain("<!-- 沒關");
+    expect(shown).toContain("後面的故事");
+  });
+
+  it("shows a comment while it streams in and hides it once closed", () => {
+    const full = "正文\n\n<!-- 记忆 -->\n\n結尾";
+    for (let end = 1; end <= full.length; end++) {
+      const prefix = full.slice(0, end);
+      const shown = visible(prefix);
+      if (prefix.includes("-->")) expect(shown, prefix).not.toContain("记忆");
+      else if (prefix.includes("<!-- 记")) expect(shown, prefix).toContain("记");
+    }
+  });
+});
