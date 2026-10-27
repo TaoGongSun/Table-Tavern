@@ -47,7 +47,7 @@ pub(super) fn apply_updates_typed(
                 continue;
             }
         };
-        let canonical = match canonicalize(tree, patch) {
+        let canonical = match canonicalize(tree, mechanism, patch) {
             Ok(canonical) => canonical,
             Err(record) => {
                 records.push(record);
@@ -87,7 +87,12 @@ pub(super) fn apply_updates_typed(
 
 /// 路徑對回樹上的寫法（模型把「驻守天数」寫成「駐守天數」也對得上）：精確優先、同層唯一折疊兜底，
 /// 歧義整筆拒收。insert 與 move 目的地的最後一段是新鍵，不折；move 來源整條都折。
-fn canonicalize(tree: &BTreeMap<String, StateNode>, patch: &Patch) -> Result<Patch, Record> {
+/// 單段 insert 例外：只差字形的是「有精確登記規則的頂層葉子」（系統管的欄位）就接到它，免得長出第二份。
+fn canonicalize(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patch: &Patch,
+) -> Result<Patch, Record> {
     let ambiguous = |path: &[String], keys: Vec<String>| {
         Record::new(
             RecordKind::Rejected,
@@ -100,8 +105,15 @@ fn canonicalize(tree: &BTreeMap<String, StateNode>, patch: &Patch) -> Result<Pat
         )
     };
     let new_key = matches!(patch.op, PatchOp::Insert | PatchOp::Move);
-    let path =
+    let mut path =
         canonical_path(tree, &patch.path, !new_key).map_err(|keys| ambiguous(&patch.path, keys))?;
+    if patch.op == PatchOp::Insert && patch.path.len() == 1 {
+        if let Some(key) = registered_glyph_leaf(tree, mechanism, &path[0])
+            .map_err(|keys| ambiguous(&patch.path, keys))?
+        {
+            path = vec![key];
+        }
+    }
     let from = if patch.op == PatchOp::Move {
         canonical_path(tree, &patch.from, true).map_err(|keys| ambiguous(&patch.from, keys))?
     } else {
@@ -113,6 +125,32 @@ fn canonicalize(tree: &BTreeMap<String, StateNode>, patch: &Patch) -> Result<Pat
         from,
         value: patch.value.clone(),
     })
+}
+
+/// 單段 insert 目標不存在時：頂層只差字形、且 `mechanism.rules` 精確登記了該鍵（不認萬用 `*`）的葉子。
+/// 唯一回 Some，多個回 Err（候選鍵），沒有回 None。巢狀路徑不在這裡處理（照原字當新鍵）。
+fn registered_glyph_leaf(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    key: &str,
+) -> Result<Option<String>, Vec<String>> {
+    if tree.contains_key(key) {
+        return Ok(None);
+    }
+    let candidates: Vec<String> = tree
+        .iter()
+        .filter(|(name, node)| {
+            matches!(node, StateNode::Leaf(_))
+                && data::glyph_equal(name, key)
+                && mechanism.rules.contains_key(*name)
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    match candidates.len() {
+        0 => Ok(None),
+        1 => Ok(candidates.into_iter().next()),
+        _ => Err(candidates),
+    }
 }
 
 /// 回傳 true＝這一筆是 move 而且搬成功（其餘一律 false）。

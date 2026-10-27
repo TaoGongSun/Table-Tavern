@@ -193,6 +193,8 @@ pub(super) fn numeric_value(raw: &str) -> Option<f64> {
 /// 模型寫的路徑對回樹上的寫法：逐段走，原文鍵存在就用原文；不存在時找同層「只差簡繁字形」的鍵，
 /// 唯一一個才採用，多個＝歧義回 Err（那一層的候選鍵）。走到樹上沒有的位置就把其餘段原樣接上。
 /// `fold_last=false` 時最後一段不折（insert／move 目的地的新鍵不能被當成拼錯的舊鍵）。
+/// 鍵名本身含「/」（`剧情阶段/要塞事件`）而模型照原字寫成兩段時：某段精確與字形都對不到，才把它跟後面
+/// 幾段用「/」接回去對同層既有的鍵（見 `rejoin`）；接出來的是既有鍵，末段也照接。
 pub(crate) fn canonical_path(
     tree: &BTreeMap<String, StateNode>,
     path: &[String],
@@ -200,31 +202,68 @@ pub(crate) fn canonical_path(
 ) -> Result<Vec<String>, Vec<String>> {
     let mut out = Vec::with_capacity(path.len());
     let mut branch = Some(tree);
-    for (index, segment) in path.iter().enumerate() {
+    let mut index = 0;
+    while index < path.len() {
+        let segment = &path[index];
         let Some(children) = branch else {
             out.push(segment.clone());
+            index += 1;
             continue;
         };
+        let mut used = 1;
         let key = if children.contains_key(segment) {
             segment.clone()
-        } else if index + 1 < path.len() || fold_last {
-            let folded: Vec<&String> = children
-                .keys()
-                .filter(|key| data::glyph_equal(key, segment))
-                .collect();
+        } else {
+            let folded: Vec<&String> = if index + 1 < path.len() || fold_last {
+                children
+                    .keys()
+                    .filter(|key| data::glyph_equal(key, segment))
+                    .collect()
+            } else {
+                Vec::new()
+            };
             match folded.as_slice() {
-                [] => segment.clone(),
                 [key] => (*key).clone(),
+                [] => match rejoin(children, &path[index..])? {
+                    Some((key, count)) => {
+                        used = count;
+                        key
+                    }
+                    None => segment.clone(),
+                },
                 many => return Err(many.iter().map(|key| (*key).clone()).collect()),
             }
-        } else {
-            segment.clone()
         };
         branch = match children.get(&key) {
             Some(StateNode::Branch(next)) => Some(next),
             _ => None,
         };
         out.push(key);
+        index += used;
     }
     Ok(out)
+}
+
+/// 從 `rest[0]` 起接 2..=全部段（由長到短）成「a/b/…」對同層既有的鍵：每個長度先精確、再字形唯一，
+/// 第一個命中的長度採用；同一長度字形多候選＝歧義回 Err，不依遍歷順序猜。都沒有回 None。
+fn rejoin(
+    children: &BTreeMap<String, StateNode>,
+    rest: &[String],
+) -> Result<Option<(String, usize)>, Vec<String>> {
+    for count in (2..=rest.len()).rev() {
+        let joined = rest[..count].join("/");
+        if children.contains_key(&joined) {
+            return Ok(Some((joined, count)));
+        }
+        let folded: Vec<&String> = children
+            .keys()
+            .filter(|key| data::glyph_equal(key, &joined))
+            .collect();
+        match folded.as_slice() {
+            [] => {}
+            [key] => return Ok(Some(((*key).clone(), count))),
+            many => return Err(many.iter().map(|key| (*key).clone()).collect()),
+        }
+    }
+    Ok(None)
 }

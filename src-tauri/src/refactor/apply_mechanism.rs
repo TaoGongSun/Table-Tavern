@@ -37,15 +37,41 @@ fn align_path(
     if path.is_empty() {
         return Ok(String::new());
     }
+    let ambiguous = |candidates: Vec<String>| {
+        data::invalid_data(format!(
+            "refactor path {path} is ambiguous among {}",
+            candidates.join(" / ")
+        ))
+    };
     let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
-    mechanism::canonical_path(namespace, &segments, fold_last)
-        .map(|aligned| aligned.join("."))
-        .map_err(|candidates| {
-            data::invalid_data(format!(
-                "refactor path {path} is ambiguous among {}",
-                candidates.join(" / ")
-            ))
+    let aligned = mechanism::canonical_path(namespace, &segments, fold_last).map_err(ambiguous)?;
+    if fold_last && aligned.len() == 1 && !namespace.contains_key(&aligned[0]) {
+        if let Some(key) = slash_head_match(namespace, &aligned[0]).map_err(ambiguous)? {
+            return Ok(key);
+        }
+    }
+    Ok(aligned.join("."))
+}
+
+/// 單段路徑對不上任何鍵時，找含「/」的頂層鍵：第一個「/」之前那段跟它精確或只差字形
+/// （AI 規則寫 `劇情階段`、平欄鍵是 `剧情阶段/要塞事件`）。唯一回 Some，多個回 Err，沒有回 None。
+fn slash_head_match(
+    namespace: &BTreeMap<String, StateNode>,
+    segment: &str,
+) -> Result<Option<String>, Vec<String>> {
+    let matches: Vec<String> = namespace
+        .keys()
+        .filter(|key| {
+            key.split_once('/')
+                .is_some_and(|(head, _)| head == segment || data::glyph_equal(head, segment))
         })
+        .cloned()
+        .collect();
+    match matches.len() {
+        0 => Ok(None),
+        1 => Ok(matches.into_iter().next()),
+        _ => Err(matches),
+    }
 }
 
 fn align_rules(
@@ -266,7 +292,9 @@ impl Candidates {
 /// GM 有 `<UpdateVariable>` 可回報，並把規則與觸發條件讀的欄位在樹上備好初值。
 /// - 樹上已有的葉子（含遊玩中的現值）一律不動。
 /// - 樹上沒有、但開場狀態平欄有同名鍵：搬進樹（平欄那份刪掉，免得 GM 看到兩份）。數字型規則只認
-///   明確格式取數字（純數字、`現值/上限`、`第 N 天` 一類），取不到就不搬；搬成數字後畫面顯示成純數字。
+///   明確格式取數字（純數字、`現值/上限`、`第 N 天` 一類，原寫法記成顯示模板）；取不到就照原文字搬、
+///   規則改成文字欄。
+/// - 平欄其餘 time／place／present 以外的鍵也全搬進樹並補文字規則（樹上已有同名的以樹為準）。
 /// - 只有觸發在讀、沒有規則的欄位補一條規則（range→number、contains→text 每輪送），回合尾才列得出來。
 ///
 /// 回傳從平欄搬進樹的鍵（呼叫端同步把事件快照裡的平欄也拿掉）。
@@ -313,37 +341,79 @@ pub(super) fn open_rule_reporting(
             ),
             None => range_only,
         };
+        let mut as_text = false;
         if data::node_at(&state.state.tree, &segments).is_none() && segments.len() == 1 {
-            if let Some(value) = state.state.table.get(&path).cloned() {
+            if let Some(value) = state.state.table.remove(&path) {
                 let initial = if numeric {
                     explicit_number(&value)
                 } else {
-                    Some((value, None))
+                    Some((value.clone(), None))
                 };
-                if let Some((initial, format)) = initial {
-                    data::set_tree_value(&mut state.state.tree, &segments, &initial);
-                    state.state.table.remove(&path);
-                    if let Some(format) = format {
-                        state.mechanism.display_formats.insert(path.clone(), format);
-                    }
-                    moved.push(path.clone());
+                // 數字型卻不是明確格式：照原文字搬、規則改文字——留平欄等於這欄永遠凍住
+                let (initial, format) = initial.unwrap_or_else(|| {
+                    as_text = numeric;
+                    (value, None)
+                });
+                data::set_tree_value(&mut state.state.tree, &segments, &initial);
+                if let Some(format) = format {
+                    state.mechanism.display_formats.insert(path.clone(), format);
                 }
+                if as_text {
+                    log::warn!("重構套用：{path} 的開場值不是明確數字格式，改以文字欄搬進狀態樹");
+                }
+                if as_text && kind.is_some() {
+                    state
+                        .mechanism
+                        .rules
+                        .insert(path.clone(), turn_rule(FieldKind::Text));
+                }
+                moved.push(path.clone());
             }
         }
         if kind.is_none()
             && data::node_at(&state.state.tree, &segments).is_some()
             && !mechanism::has_rule(&state.mechanism, &segments)
         {
-            let mut rule = FieldRule::for_kind(if numeric {
+            let kind = if numeric && !as_text {
                 FieldKind::Number
             } else {
                 FieldKind::Text
-            });
-            rule.inject = data::InjectLevel::Turn;
-            state.mechanism.rules.insert(path.clone(), rule);
+            };
+            state.mechanism.rules.insert(path.clone(), turn_rule(kind));
         }
     }
+    // 其餘開場平欄（沒有規則或觸發讀的）也全搬進樹、補文字規則：留在平欄 GM 看得到卻回報不了，
+    // 用 insert 硬寫又會在樹上長出第二份。
+    let rest: Vec<String> = state
+        .state
+        .table
+        .keys()
+        .filter(|key| !BASE_TABLE_KEYS.contains(&key.as_str()))
+        .cloned()
+        .collect();
+    for key in rest {
+        let Some(value) = state.state.table.remove(&key) else {
+            continue;
+        };
+        let segments = vec![key.clone()];
+        if data::node_at(&state.state.tree, &segments).is_none() {
+            data::set_tree_value(&mut state.state.tree, &segments, &value);
+        }
+        if !mechanism::has_rule(&state.mechanism, &segments) {
+            state
+                .mechanism
+                .rules
+                .insert(key.clone(), turn_rule(FieldKind::Text));
+        }
+        moved.push(key);
+    }
     moved
+}
+
+fn turn_rule(kind: FieldKind) -> FieldRule {
+    let mut rule = FieldRule::for_kind(kind);
+    rule.inject = data::InjectLevel::Turn;
+    rule
 }
 
 /// 明確格式才取數字：純數字照留、`3/5` 照留（現值/上限）、`第 7 天` 這類「第 N 單位」取 N，

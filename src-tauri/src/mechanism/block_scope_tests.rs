@@ -98,9 +98,11 @@ fn table_scope_still_collects_status_blocks() {
         world.state.table.get("天气").map(String::as_str),
         Some("小雪")
     );
+    // 增量桌：樹上已有同名頂層葉子的圍欄欄位改走 replace（數字欄照 replace 守門），不在平欄長第二份
+    assert!(!world.state.table.contains_key("糧草"));
     assert_eq!(
-        world.state.table.get("糧草").map(String::as_str),
-        Some("999")
+        world.state.tree.get("糧草"),
+        Some(&StateNode::Leaf("320".to_owned()))
     );
 }
 

@@ -26,6 +26,8 @@ mod list_block_tests;
 #[cfg(test)]
 mod parse_feedback_tests;
 #[cfg(test)]
+mod slash_key_tests;
+#[cfg(test)]
 mod test_support;
 
 #[cfg(test)]

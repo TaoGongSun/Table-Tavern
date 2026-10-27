@@ -125,8 +125,18 @@ fn rules_in_another_script_align_to_the_opening_table_and_open_reporting_then_un
         Some(&data::StateNode::Leaf("1".to_owned()))
     );
     assert!(!state.state.table.contains_key("驻守天数"));
+    // 沒有規則讀的平欄鍵也搬進樹、補文字規則（flat-field-reporting）；time／place／present 留平欄
+    assert!(!state.state.table.contains_key("当前环境"));
     assert_eq!(
-        state.state.table.get("当前环境").map(String::as_str),
+        data::node_at(&state.state.tree, &["当前环境".to_owned()]),
+        Some(&data::StateNode::Leaf("城门".to_owned()))
+    );
+    assert_eq!(
+        state.mechanism.rules.get("当前环境").map(|rule| rule.kind),
+        Some(FieldKind::Text)
+    );
+    assert_eq!(
+        state.state.table.get("place").map(String::as_str),
         Some("城门")
     );
     assert!(!crate::mechanism::mvu_source(root.path(), &world_id, &state).unwrap());
@@ -154,6 +164,11 @@ fn rules_in_another_script_align_to_the_opening_table_and_open_reporting_then_un
         state.state.table.get("驻守天数").map(String::as_str),
         Some("第 1 天")
     );
+    assert_eq!(
+        state.state.table.get("当前环境").map(String::as_str),
+        Some("城门")
+    );
+    assert!(!state.mechanism.rules.contains_key("当前环境"));
 }
 
 /// 只有觸發、沒有規則的桌：觸發讀的欄位補一條每輪送的規則，回合尾才列得出來；
@@ -212,10 +227,20 @@ fn trigger_only_tables_get_rules_for_read_paths_and_keep_played_values() {
         .get("状态栏.地点")
         .expect("觸發讀的欄位補規則");
     assert_eq!(added.inject, data::InjectLevel::Turn);
-    // 「账载四百四十石」不是明確數字格式：不搬、平欄照留（規則本身照收）
-    assert!(state.mechanism.rules.contains_key("糧草"));
-    assert!(data::node_at(&state.state.tree, &["糧草".to_owned()]).is_none());
-    assert!(state.state.table.contains_key("糧草"));
+    // 「账载四百四十石」不是明確數字格式：照原文字搬進樹、規則改文字欄（留平欄會永遠凍住）
+    assert_eq!(
+        state
+            .mechanism
+            .rules
+            .get("糧草")
+            .map(|rule| (rule.kind, rule.inject)),
+        Some((FieldKind::Text, data::InjectLevel::Turn))
+    );
+    assert_eq!(
+        data::node_at(&state.state.tree, &["糧草".to_owned()]),
+        Some(&data::StateNode::Leaf("账载四百四十石".to_owned()))
+    );
+    assert!(!state.state.table.contains_key("糧草"));
     // 回合尾只列規則蓋到的欄位
     assert!(crate::mechanism::leaf_shown(
         &state.mechanism,

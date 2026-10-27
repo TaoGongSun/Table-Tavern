@@ -15,6 +15,8 @@ ai-card-refactor 實測（測試通道，2026-10-27）看到三個現象。第�
 修法方向〔模型判斷·未裁決〕：指示點明名冊上的人；或 present 沒列到時，用正文命中名冊名字補上。
 
 ## 2. clean-orc 平欄劇情欄位不更新
+**已結：拆成 [flat-field-reporting](../handoffs/archive/flat-field-reporting.md) 結案（2026-10-27）。**
+
 根因：
 - 「剧情阶段」：AI 規則的路徑是「劇情階段」，平欄的鍵是「剧情阶段/要塞事件」。`align_path`（`refactor/apply_mechanism.rs` 的 `namespace()`）只折疊簡繁，接不上後綴，所以 `open_rule_reporting`（約 :312）沒把它搬進樹，`mechanism/apply.rs:431-437` 就以「路徑不存在」拒收。鍵名裡的「/」也和 JSONPatch 的分隔符衝突。
 - 「当前环境」：沒有規則讀它，所以從來沒搬進樹。

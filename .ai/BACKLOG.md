@@ -35,13 +35,13 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
 
 - [present-name-interface-lang](tasks/present-name-interface-lang.md) — present 人名一律照介面語言寫，消除與「一律繁體」的指示衝突〔作者裁決 2026-10-27〕 — 下一步：開工先確認狀態路徑鍵要不要也照介面語言（未裁決）
-- [acr-live-observations](tasks/acr-live-observations.md) — 重構案實測兩件事（人物進在場名單太晚、clean-orc 平欄劇情欄位不更新），根因已查、修法方向未裁決 — 下一步：各自開工前先確認修法方向
+- [acr-live-observations](tasks/acr-live-observations.md) — 重構案實測兩件事（人物進在場名單太晚；第 2 件 clean-orc 平欄劇情欄位不更新已由 flat-field-reporting 結案），根因已查、修法方向未裁決 — 下一步：第 1 件開工前先確認修法方向
 - [gm-no-state-fence-worldbook-table](tasks/gm-no-state-fence-worldbook-table.md) — 無介面世界書桌 GM 照世界書狀態欄格式輸出、不附 state 圍欄，時間地點在場為空 — 下一步：未排程；先讀該桌逐字稿查根因
 - [hand-built-card-interface-prompt](tasks/hand-built-card-interface-prompt.md) — 手建角色存檔後誤跳「這張卡自帶介面畫面」，但該桌沒有介面鈕 — 下一步：未排程；先重現
 - [takeover-yaml-key-glyph](tasks/takeover-yaml-key-glyph.md) — 接管桌續聊 GM 把清單欄 YAML 鍵寫成繁體，原卡腳本只認簡體鍵而少欄（ai-card-refactor B5 重現） — 下一步：未排程；先重現
 - [card-interface-toolbar-overlap](tasks/card-interface-toolbar-overlap.md) — 卡片介面右上「換幕／關閉」工具列浮蓋卡片右上按鈕 — 下一步：未排程；先重現
-- [takeover-flat-nonfixed-keys](tasks/takeover-flat-nonfixed-keys.md) — 介面接管路線開增量時平欄非固定劇情鍵凍住不更新 — 下一步：等 flat-field-reporting 結案；先重現
-- [card-field-overlaps-fixed-keys](tasks/card-field-overlaps-fixed-keys.md) — 卡欄位（当前环境、驻留/交涉角色）與 place／present 同義，GM 只報固定鍵、卡欄位凍住 — 下一步：等 flat-field-reporting 結案；先提做法選項，與 character-presence 一併評估
+- [takeover-flat-nonfixed-keys](tasks/takeover-flat-nonfixed-keys.md) — 介面接管路線開增量時平欄非固定劇情鍵凍住不更新 — 下一步：先重現
+- [card-field-overlaps-fixed-keys](tasks/card-field-overlaps-fixed-keys.md) — 卡欄位（当前环境、驻留/交涉角色）與 place／present 同義，GM 只報固定鍵、卡欄位凍住 — 下一步：先提做法選項，與 character-presence 一併評估
 - [refactor-player-card-user-macro](tasks/refactor-player-card-user-macro.md) — clean-orc 重構後玩家卡名稱顯示字面 `{{user}}` — 下一步：未排程；先重現
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
