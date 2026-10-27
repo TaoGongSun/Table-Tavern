@@ -1,14 +1,14 @@
 //! 角色卡與世界書 PNG 匯入的存圖：原卡存 `<id>.card.png`（救圖版截到 IEND／重編，搬不到卡文字退成
 //! .import.json），顯示圖 `<id>.png` 另存剝掉卡文字的一份；GM 圖救回與略過，以及卡片介面（顯示腳本、
 //! MVU、開場白）不受影響。
-use super::card_io::{png_chunk, PNG_MAGIC};
-use super::png_clean::strip_card_text;
-use super::png_clean::tests::{break_crc, palette_png, with_trailing};
-use super::png_image::test_png::real_png;
-use super::png_image::{validate_png_image, STORED_IMAGE_LIMITS};
-use super::test_support::{card_png, minimal_png, TestRoot};
-use super::*;
 use crate::data;
+use crate::import::card_io::{png_chunk, PNG_MAGIC};
+use crate::import::png_clean::strip_card_text;
+use crate::import::png_clean::tests::{break_crc, palette_png, with_trailing};
+use crate::import::png_image::test_png::real_png;
+use crate::import::png_image::{validate_png_image, STORED_IMAGE_LIMITS};
+use crate::import::test_support::{card_png, minimal_png, TestRoot};
+use crate::import::*;
 use crate::ui_msg::UiMsg;
 use serde_json::json;
 use std::fs;
@@ -43,7 +43,7 @@ fn card_json() -> String {
 fn with_chara(png: &[u8], chara_json: &str) -> Vec<u8> {
     let text = format!(
         "chara\0{}",
-        super::card_io::base64_encode(chara_json.as_bytes())
+        crate::import::card_io::base64_encode(chara_json.as_bytes())
     );
     let iend = png.len() - 12;
     let mut out = png[..iend].to_vec();
@@ -126,7 +126,7 @@ fn assert_display_of(outcome: &Outcome, card: &[u8], label: &str) {
         "{label}"
     );
     assert_eq!(
-        super::card_io::find_png_card(&display).unwrap(),
+        crate::import::card_io::find_png_card(&display).unwrap(),
         None,
         "{label}"
     );
@@ -224,7 +224,7 @@ fn salvaged_image_without_card_text_still_stores_display() {
         let mut png = clean.clone();
         let text = format!(
             "chara\0{}",
-            super::card_io::base64_encode(card_json().as_bytes())
+            crate::import::card_io::base64_encode(card_json().as_bytes())
         );
         png.extend_from_slice(&png_chunk(b"tEXt", text.as_bytes()));
         png

@@ -6,9 +6,9 @@
 //!
 //! 預期值要改時人工明確執行：`UPDATE_EXPECTED=1 cargo test --lib clean_cards`，再審 diff 後 commit。
 
-use super::test_support::TestRoot;
-use super::{import_character_file, import_worldbook_file, read_card_interfaces};
 use crate::data::{self, StateNode};
+use crate::import::test_support::TestRoot;
+use crate::import::{import_character_file, import_worldbook_file, read_card_interfaces};
 use crate::mechanism::{self, RecordKind};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

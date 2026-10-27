@@ -1,10 +1,12 @@
 //! 卡內世界書的條目形狀、順序與去重（worldbook-st-trigger-parity 包 2）：V2 條目匯入時轉成 ST 物件形、
 //! 新 UID 依 ST 載入順序配發（三個入口都從原文保序）、去重指紋納入所有影響觸發的欄位、匯出收回 `extensions`。
 
-use super::test_support::TestRoot;
-use super::web_save::import_web_save;
-use super::{export_character, import_character, import_character_file, import_worldbook_file};
 use crate::data;
+use crate::import::test_support::TestRoot;
+use crate::import::web_save::import_web_save;
+use crate::import::{
+    export_character, import_character, import_character_file, import_worldbook_file,
+};
 use crate::world_info::entry::{from_character_book, from_world_file, RecursionDelay, WiEntry};
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -167,13 +169,13 @@ fn array_form_uids_follow_st_load_order_and_duplicate_ids_keep_the_last() {
         ["無id在索引3", "id10", "id20新", "id30", "字串id"]
     );
     // 契約的 key（陣列索引）→ uid：被蓋掉的那條指向留下的
-    let imported = super::card::import_character_placing(
+    let imported = crate::import::card::import_character_placing(
         root.path(),
         &data::create_world(root.path(), "乙").unwrap(),
         card.as_bytes(),
         "#3366ff",
         LANG,
-        super::card::BookWrite::Strict,
+        crate::import::card::BookWrite::Strict,
     )
     .unwrap();
     let placed = imported.book.unwrap().placed;
@@ -635,7 +637,7 @@ fn editor_view_of_order_follows_the_read_side_rule() {
 
 #[test]
 fn book_order_check_covers_every_book_shape() {
-    use super::card::book_object_key_order;
+    use crate::import::card::book_object_key_order;
     let order = |text: &str| book_object_key_order(text.as_bytes());
     let entries = |first: &str, second: &str| {
         format!(r#"{{"{first}":{{"key":[],"content":"1"}},"{second}":{{"key":[],"content":"2"}}}}"#)

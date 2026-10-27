@@ -2,11 +2,11 @@
 //! 跟網頁版 web/src/features/cards/card-view.ts 對同一份 golden.json 比對。檢視一律用桌面版真正的
 //! 匯入函式算（PNG 解碼、probe_import、card_openings、worldbook_json、card_interface），
 //! 條目欄位的正規化規則照 card-view.md。
-use super::card::{
+use crate::import::card::{
     book_entries_keyed, card_openings, check_character_bytes, probe_import, worldbook_json,
 };
-use super::card_io::{decode_png_character, find_card_text, string_field, PNG_MAGIC};
-use super::interface::card_interface;
+use crate::import::card_io::{decode_png_character, find_card_text, string_field, PNG_MAGIC};
+use crate::import::interface::card_interface;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 

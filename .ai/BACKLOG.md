@@ -16,7 +16,6 @@
 mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/archive/mvu-zod-semantics.md)），順序：zod（已結案）→ command-syntax → meta-schema → shim-flaky-test（已結案）→ card-mvu-shim 4d（作者手點，見[實測佇列](reference/verification-queue.md)）。
 開工前結構體檢：import/（目前 29 檔）、import/card.rs 1188、message_vars。
 
-- [import-tests-folder](tasks/import-tests-folder.md) — import/ 24 檔（11 支測試）超過資料夾上限，測試收進子資料夾 — 下一步：MVU 相容段開工前結構體檢時一併做
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：等出現實卡再開工〔模型判斷·未裁決〕（2026-10-27 掃 TestCards 全部 55 項無一張教指令式語法）；開工時優先讓非 zod 路徑重用共用核心 source-commands.ts
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
 - [card-shim-no-zod](tasks/card-shim-no-zod.md) — 卡片 iframe 的 shim 沒有 z，zod 桌的 parseMessage 仍走 MagVarUpdate 語意 — 下一步：未排程；見 mvu-zod-semantics 規格 §4.4，排在該案合併之後

@@ -2,8 +2,8 @@
 //! （認得記接管、認不得記跳過），角色卡路、世界書路、網頁存檔兩路結果相同，且各自對。
 //! 只驗兩路相等擋不住「兩路同漏」，所以每個情境都另外斷言分類與條數。
 
-use super::test_support::TestRoot;
-use super::{import_character_file, import_web_save, import_worldbook_file};
+use crate::import::test_support::TestRoot;
+use crate::import::{import_character_file, import_web_save, import_worldbook_file};
 use crate::mechanism::{self, RecordKind};
 use crate::{data, refactor_ai};
 use serde_json::{json, Value};

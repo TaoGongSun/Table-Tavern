@@ -1,7 +1,7 @@
 //! 世界書路匯入別桌匯出的書：角色名單與來源卡只留本桌 id（worldbook-path-foreign-ids）。
-use super::test_support::TestRoot;
-use super::{import_character, import_worldbook_file};
 use crate::data::{self, Visibility};
+use crate::import::test_support::TestRoot;
+use crate::import::{import_character, import_worldbook_file};
 use crate::{chat_assembly, receipts};
 use serde_json::{json, Value};
 use std::path::Path;

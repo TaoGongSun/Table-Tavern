@@ -13,27 +13,9 @@ mod source;
 mod web_save;
 
 #[cfg(test)]
-mod book_shape_tests;
-#[cfg(test)]
-mod card_book_tests;
-#[cfg(test)]
-mod card_image_tests;
-#[cfg(test)]
-mod card_view_tests;
-#[cfg(test)]
-mod clean_cards_tests;
-#[cfg(test)]
-mod foreign_ids_tests;
-#[cfg(test)]
-mod initvar_list_tests;
-#[cfg(test)]
-mod ledger_route_tests;
-#[cfg(test)]
-mod mvu_replace_tests;
-#[cfg(test)]
 pub(crate) mod test_support;
 #[cfg(test)]
-mod widened_entries_tests;
+mod tests;
 
 #[cfg(test)]
 pub use card::import_character;

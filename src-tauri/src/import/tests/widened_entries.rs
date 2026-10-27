@@ -1,8 +1,8 @@
 //! 匯入回報 `widened_entries`（import-refresh-world-editor）：被合併擴大了可見度的既有條目 uid，
 //! 開著的世界設定據此定基草稿。角色卡路與世界書路對等；只動來源卡、全新條目不報；同一條只報一次。
 
-use super::test_support::TestRoot;
-use super::{import_character_file, import_worldbook_file};
+use crate::import::test_support::TestRoot;
+use crate::import::{import_character_file, import_worldbook_file};
 use crate::{data, mechanism};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -43,7 +43,7 @@ fn import_card(
     root: &Path,
     world_id: &str,
     bytes: &[u8],
-) -> super::files::Imported<data::CharacterMeta> {
+) -> crate::import::files::Imported<data::CharacterMeta> {
     import_character_file(
         root,
         world_id,
@@ -59,7 +59,7 @@ fn import_book(
     root: &Path,
     world_id: &str,
     bytes: &[u8],
-) -> super::files::Imported<data::WorldbookImport> {
+) -> crate::import::files::Imported<data::WorldbookImport> {
     import_worldbook_file(root, world_id, bytes, "書", &data::test_exclusive(world_id)).unwrap()
 }
 
