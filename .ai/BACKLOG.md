@@ -40,6 +40,8 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
 - [gm-reprints-retired-statusbar](tasks/gm-reprints-retired-statusbar.md) — 重構淘汰狀態欄後 GM 仍模仿開場白每回合重印 <details> 狀態欄，多花輸出 — 下一步：未排程；先多模型重現量輸出
 - [refactor-trigger-overlap](tasks/refactor-trigger-overlap.md) — 多條機制條目對同一欄的觸發並存，同回合可能重複命中 — 下一步：未排程；先重現看 GM 提示實際長相
+- [greeting-context-st-parity](tasks/greeting-context-st-parity.md) — 開場白與全部備用開場白每回合塞進 GM system，ST 只當第 0 則 — 下一步：等 gm-reprints-retired-statusbar 結案
+- [stage-card-in-speaker-list](tasks/stage-card-in-speaker-list.md) — 舞台卡出現在下一位點名名單；收尾句中英不一致 — 下一步：未排程
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下三案依其數據決定做不做：
