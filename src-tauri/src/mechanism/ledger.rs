@@ -97,6 +97,9 @@ pub enum BlockScope {
     TakeoverOpening,
     /// 接管桌的 GM 回覆：狀態區塊不收並回饋，`<UpdateVariable>` 照收
     TakeoverReply,
+    /// 卡片狀態欄退場桌（`WorldState::statusbar_retired`）的 GM 回覆：卡片自帶的狀態區塊（`<details>` 狀態欄、
+    /// `<status…>`）不收並回饋，```state 圍欄與 `<UpdateVariable>` 照收
+    RetiredCardBlocks,
 }
 
 const IGNORED_OPENING_PATH: &str = "開場白狀態區塊";
@@ -126,6 +129,17 @@ fn scoped_block(
                 )
             })
         }
+        BlockScope::RetiredCardBlocks => block.fenced.as_ref().map(|fenced| {
+            kept.fields = fenced.fields.clone();
+            kept.lists = fenced.lists.clone();
+            kept.maps = fenced.maps.clone();
+            Record::new(
+                RecordKind::Rejected,
+                REJECTED_BLOCK_PATH.to_owned(),
+                "卡片原本的狀態欄格式已淘汰，回覆裡的狀態欄未套用，之後不要再印；欄位變動請改用 ```state 圍欄與 UpdateVariable 更新區塊回報。"
+                    .to_owned(),
+            )
+        }),
         BlockScope::TakeoverReply => {
             let dropped = !kept.fields.is_empty() || !kept.lists.is_empty();
             kept.fields.clear();

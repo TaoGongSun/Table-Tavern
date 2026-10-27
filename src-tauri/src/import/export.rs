@@ -104,6 +104,44 @@ fn split_public_markdown(markdown: &str) -> [String; PUBLIC_SECTIONS.len()] {
     sections.map(|section| section.trim().to_owned())
 }
 
+/// 組提示詞用：拿掉公開設定的開場白段與私設的備用開場白段（段頭判定與匯出反解同一套），其餘原樣。
+/// 卡片狀態欄退場的桌（`WorldState::statusbar_retired`）才用：開場白裡的狀態欄範例會被 GM 照抄。
+/// 選中的開場白已以逐字稿第 0 則進上下文；卡檔本身不動，匯出照樣反解得回來。
+pub(crate) fn strip_greetings(public_md: &str, private_md: &str) -> (String, String) {
+    let first_mes = PUBLIC_SECTIONS
+        .iter()
+        .position(|(field, _)| *field == "first_mes")
+        .expect("PUBLIC_SECTIONS 有 first_mes");
+    let mut public: Vec<&str> = Vec::new();
+    let mut skipping = false;
+    let mut fence: Option<Fence> = None;
+    for line in public_md.lines() {
+        match &fence {
+            Some(open) => {
+                if open.closed_by(line) {
+                    fence = None;
+                }
+            }
+            None => {
+                if let Some(opened) = Fence::open(line) {
+                    fence = Some(opened);
+                } else if let Some(index) = section_index(line) {
+                    skipping = index == first_mes;
+                }
+            }
+        }
+        if !skipping {
+            public.push(line);
+        }
+    }
+    let (notes, greetings) = split_private_markdown(private_md);
+    let private = match greetings.is_empty() {
+        true => private_md.to_owned(),
+        false => notes,
+    };
+    (public.join("\n").trim().to_owned(), private)
+}
+
 fn section_index(line: &str) -> Option<usize> {
     let label = line.trim_end().strip_prefix("### ")?;
     PUBLIC_SECTIONS

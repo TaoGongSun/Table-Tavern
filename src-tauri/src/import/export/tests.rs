@@ -382,3 +382,17 @@ fn private_markdown_splits_back_into_notes_and_greetings() {
     assert_eq!(notes, "### 備用開場白 0\n不是開場白");
     assert!(greetings.is_empty());
 }
+
+/// gm-reprints-retired-statusbar：提示詞用的開場白剝除只認段頭（圍欄裡的不算），私設沒有開場白段就原樣
+#[test]
+fn strip_greetings_removes_only_greeting_sections() {
+    let public = "### 簡介\n甲\n### 開場白\n開場\n```\n### 場景\n```\n尾\n### Scenario\n乙";
+    let (stripped, private) = strip_greetings(public, "只有筆記\n### 不是開場白");
+    assert_eq!(stripped, "### 簡介\n甲\n### Scenario\n乙");
+    assert_eq!(private, "只有筆記\n### 不是開場白");
+    let (_, private) = strip_greetings(
+        "",
+        "### Alternate greeting 1\nA\n### Alternate greeting 2\nB",
+    );
+    assert_eq!(private, "");
+}

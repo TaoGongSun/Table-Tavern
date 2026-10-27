@@ -25,6 +25,7 @@ pub use card::{
     ImportProbe, ImportedCharacter,
 };
 pub use export::export_character;
+pub(crate) use export::strip_greetings;
 pub use files::{
     import_character_file, import_worldbook_file, post_opening_text, post_opening_text_with,
     OpeningEffects,

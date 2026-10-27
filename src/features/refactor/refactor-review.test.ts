@@ -367,6 +367,16 @@ describe("parseRefactorOutcome", () => {
     expect(outcome.mode).toBe("characters");
   });
 
+  it("淘汰項的卡片狀態欄標記匯出後讀得回來，非 true 一律不帶", () => {
+    const dropped = [
+      { uid: "7", span: "7#s2", title: "狀態欄", content: "<details/>", rule: 5, statusbar: true },
+      { uid: "8", span: "", title: "主介面", content: "<div/>", rule: 5, statusbar: "yes" },
+    ];
+    const outcome = parseRefactorOutcome(JSON.stringify({ dropped, mode: "characters" }));
+    expect(outcome.dropped[0].statusbar).toBe(true);
+    expect(outcome.dropped[1]).not.toHaveProperty("statusbar");
+  });
+
   it("新世界書條目解析，省略 rules／triggers 時補預設", () => {
     expect(parseRefactorOutcome(JSON.stringify({ entries: [{ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] }] })).entries)
       .toEqual([makeEntry({ title: "規矩", kind: "mechanism", content: "不可違反", source_uids: ["3"] })]);

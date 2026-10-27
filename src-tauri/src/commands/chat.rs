@@ -114,6 +114,7 @@ pub(crate) async fn chat_with_character(
     let card =
         data::read_character(&root, &world_id, &character_id).map_err(|error| error.to_string())?;
     let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let card = chat_assembly::prompt_card(card, state.statusbar_retired);
     let scene = state.current_scene;
     let events =
         data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
@@ -301,10 +302,13 @@ fn load_hidden_cards(
         .map_err(|error| error.to_string())?
         .into_iter()
         .partition(|meta| meta.auto_hidden && !meta.archived);
+    let retired = chat_assembly::statusbar_retired(root, world_id);
     let hidden = hidden
         .into_iter()
         .map(|meta| {
-            data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string())
+            data::read_character(root, world_id, &meta.id)
+                .map(|card| chat_assembly::prompt_card(card, retired))
+                .map_err(|error| error.to_string())
         })
         .collect::<Result<_, _>>()?;
     Ok((hidden, others.into_iter().map(|meta| meta.name).collect()))
@@ -414,6 +418,8 @@ pub(crate) fn gm_commit_apply(
         state.mechanism.numeric_update = loaded.numeric_update;
         let scope = if takeover {
             mechanism::BlockScope::TakeoverReply
+        } else if state.statusbar_retired {
+            mechanism::BlockScope::RetiredCardBlocks
         } else {
             mechanism::BlockScope::Table
         };

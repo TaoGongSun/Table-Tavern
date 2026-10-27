@@ -397,6 +397,11 @@ fn apply_into(
         state.refactor_mode = Some(mode.to_owned());
         state_dirty = true;
     }
+    // 卡片狀態欄退場：characters 桌真的淘汰了狀態欄格式（玩家放回的已不在 dropped）
+    if mode == Some("characters") && outcome.dropped.iter().any(|item| item.statusbar) {
+        state.statusbar_retired = true;
+        state_dirty = true;
+    }
 
     let mut mechanisms_applied = 0usize;
     for &index in &selection.mechanism_indices {

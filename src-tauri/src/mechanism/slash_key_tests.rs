@@ -154,6 +154,7 @@ fn fence(fields: &[(&str, &str)]) -> StateBlock {
         display: String::new(),
         lists: Vec::new(),
         maps: Vec::new(),
+        fenced: None,
     }
 }
 

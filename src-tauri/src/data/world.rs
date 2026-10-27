@@ -84,6 +84,7 @@ fn blank_state(id: &str, name: &str) -> WorldState {
         aligned_scene: None,
         branch_bindings: BTreeMap::new(),
         refactor_mode: None,
+        statusbar_retired: false,
         regex_allowed: true,
     }
 }

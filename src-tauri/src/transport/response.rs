@@ -337,6 +337,17 @@ pub struct StateBlock {
     pub lists: Vec<Vec<String>>,
     /// 具名容器路徑：樹上該處若是清單出身的索引分支，套用時先整支移除再寫
     pub maps: Vec<Vec<String>>,
+    /// 回覆裡有卡片自帶狀態區塊時，只由 ```state 圍欄收到的欄位（`None`＝沒有卡片狀態區塊，全部欄位都來自圍欄）。
+    /// 卡片狀態欄退場的桌只套這份（`mechanism::BlockScope::RetiredCardBlocks`）。
+    pub fenced: Option<BlockFields>,
+}
+
+/// 狀態區塊合併後的欄位、清單與具名容器路徑。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockFields {
+    pub fields: Vec<(Vec<String>, String)>,
+    pub lists: Vec<Vec<String>>,
+    pub maps: Vec<Vec<String>>,
 }
 
 /// 從 GM 回覆剝出狀態區塊。
@@ -481,7 +492,9 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
         display.replace_range(start..end, "");
         removed = true;
     }
-    blocks.extend(fence_blocks);
+    // 卡片自帶的狀態區塊（`<details>` 狀態欄、`<status…>` 標籤）與 ```state 圍欄分開記：狀態欄退場的桌只認圍欄
+    let has_card_blocks = !blocks.is_empty();
+    blocks.extend(fence_blocks.iter().cloned());
 
     if !removed {
         return StateBlock {
@@ -490,6 +503,19 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
         };
     }
 
+    let merged = merge_blocks(blocks);
+    StateBlock {
+        fields: merged.fields,
+        updates,
+        display: display.trim_end().to_owned(),
+        lists: merged.lists,
+        maps: merged.maps,
+        fenced: has_card_blocks.then(|| merge_blocks(fence_blocks)),
+    }
+}
+
+/// 一批狀態區塊合併成欄位：依原文起點排序、後塊勝出，固定鍵改內部鍵、純量清單併進平欄。
+fn merge_blocks(mut blocks: Vec<(usize, String)>) -> BlockFields {
     // 依各區塊在原文的起點合併（上面是依外殼種類分批收的），「最後一塊勝出」才是原文的最後一塊。
     blocks.sort_by_key(|(start, _)| *start);
     let mut parsed = ParsedFields::default();
@@ -561,10 +587,8 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
         fields.push((vec!["present".to_owned()], String::new()));
         false
     });
-    StateBlock {
+    BlockFields {
         fields,
-        updates,
-        display: display.trim_end().to_owned(),
         lists,
         maps,
     }

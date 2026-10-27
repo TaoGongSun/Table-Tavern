@@ -431,6 +431,7 @@ fn cross_table_apply_verifies_sources() {
         title: "常駐".to_owned(),
         content: "甲常駐甲".to_owned(),
         rule: 0,
+        statusbar: false,
     }];
     outcome.mechanisms = vec![super::super::types::RefactorMechanism {
         source_uid: a_constant.uid.to_string(),

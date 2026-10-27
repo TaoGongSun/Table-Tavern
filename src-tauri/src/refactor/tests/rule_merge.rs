@@ -38,6 +38,7 @@ fn delta_days(state: &mut data::WorldState, delta: i64) -> crate::mechanism::Out
         display: String::new(),
         lists: Vec::new(),
         maps: Vec::new(),
+        fenced: None,
     };
     crate::mechanism::apply_block(state, &block, "玩家")
 }

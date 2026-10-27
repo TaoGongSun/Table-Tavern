@@ -13,6 +13,7 @@ fn gm_update(state: &mut data::WorldState, patch_json: &str) -> crate::mechanism
         display: String::new(),
         lists: Vec::new(),
         maps: Vec::new(),
+        fenced: None,
     };
     crate::mechanism::apply_block(state, &block, "玩家")
 }
@@ -157,6 +158,7 @@ fn every_flat_field_moves_into_the_tree_and_updates_without_duplicates() {
         display: String::new(),
         lists: Vec::new(),
         maps: Vec::new(),
+        fenced: None,
     };
     crate::mechanism::apply_block(&mut state, &fence, "玩家");
     assert!(!state.state.table.contains_key("当前环境"));

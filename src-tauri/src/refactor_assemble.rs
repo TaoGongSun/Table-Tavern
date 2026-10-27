@@ -30,6 +30,10 @@ pub struct RefactorDroppedEntry {
     pub title: String,
     pub content: String,
     pub rule: u8,
+    /// 淘汰的是卡片自帶狀態欄的格式（characters 桌 rule 5 的狀態欄型介面條目、statusbar 段）；
+    /// 套用時據此標記這桌卡片狀態區塊已退場（`WorldState::statusbar_retired`）。可完全遊玩的介面條目不算。
+    #[serde(default, skip_serializing_if = "crate::data::is_false")]
+    pub statusbar: bool,
 }
 
 /// app 尚無執行機構的機制段：原文已經照搬進對應的 GM 規則條目（資料不會遺失），這裡只是給
@@ -94,6 +98,7 @@ pub fn assemble_local(
                 title: entry.title.clone(),
                 content: entry.content.clone(),
                 rule: 5,
+                statusbar: !survey.playable_interface_uids.contains(uid_str),
             });
         }
     }
@@ -216,6 +221,7 @@ fn assemble_verdicts(
                     title: entry.title.clone(),
                     content: entry.content.clone(),
                     rule,
+                    statusbar: false,
                 }),
                 _ => {
                     push_carry(entry, entries, used_titles);
@@ -300,6 +306,7 @@ fn assemble_splits(
                         title: entry.title.clone(),
                         content: text.clone(),
                         rule: 5,
+                        statusbar: true,
                     });
                 }
                 routed.insert((uid, span_id)); // interface 模式：本包不組裝（AI 呼叫材料）
@@ -326,6 +333,7 @@ fn assemble_splits(
                         title: entry.title.clone(),
                         content: text,
                         rule,
+                        statusbar: false,
                     });
                     routed.insert((uid, span_id));
                 }

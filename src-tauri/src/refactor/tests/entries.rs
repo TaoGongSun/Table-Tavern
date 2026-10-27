@@ -35,6 +35,7 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
                 title: "格式".to_owned(),
                 content: "<mainPage>卡片介面輸出協定</mainPage>".to_owned(),
                 rule: 5,
+                statusbar: false,
             },
             crate::refactor_assemble::RefactorDroppedEntry {
                 uid: partial_uid.to_string(),
@@ -42,6 +43,7 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
                 title: "混合條目".to_owned(),
                 content: "第二段。".to_owned(),
                 rule: 2,
+                statusbar: false,
             },
         ],
         unabsorbed: Vec::new(),
@@ -501,6 +503,7 @@ fn apply_reports_changed_existing_entries() {
             title: "格式".to_owned(),
             content: "輸出協定".to_owned(),
             rule: 5,
+            statusbar: false,
         }],
         unabsorbed: Vec::new(),
         audit: Vec::new(),

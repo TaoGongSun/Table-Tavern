@@ -412,6 +412,10 @@ pub struct WorldState {
     /// characters＝這桌的卡片介面 fallback 全面停用（refactor-mode-split）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refactor_mode: Option<String>,
+    /// characters 重構實際淘汰了卡片自帶狀態欄的格式（gm-reprints-retired-statusbar）：組提示詞時角色卡不送
+    /// 開場白與備用開場白段（範例裡的狀態欄會被照抄），GM 回覆裡的卡片狀態區塊不收並回饋。撤銷重構還原。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub statusbar_retired: bool,
     /// 卡內 regex 腳本套不套用（D24〔作者裁決 2026-10-07〕）：網頁存檔照玩家在網頁版的選擇寫入，false＝整桌
     /// 的卡都不套（介面顯示腳本清空）；其餘桌一律 true，舊桌沒有這欄也是 true。
     #[serde(default = "default_true", skip_serializing_if = "is_true")]

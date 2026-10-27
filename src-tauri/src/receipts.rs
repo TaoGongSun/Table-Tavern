@@ -147,6 +147,9 @@ struct MechanismUndo {
     /// 這次操作改了鏡像欄表（mechanism.mirrors）：整份原表，undo 寫回；None＝沒改。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mirrors_before: Option<BTreeMap<String, String>>,
+    /// 這次操作改了卡片狀態欄退場標記（WorldState::statusbar_retired）：原值，undo 寫回；None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    statusbar_retired_before: Option<bool>,
     /// 這次操作從開場狀態平欄搬走的鍵與原值（重構收編規則時搬進樹），undo 插回平欄。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     removed_table: BTreeMap<String, String>,
@@ -167,6 +170,7 @@ impl MechanismUndo {
             && self.display_formats_before.is_none()
             && self.collections_before.is_none()
             && self.mirrors_before.is_none()
+            && self.statusbar_retired_before.is_none()
             && self.removed_table.is_empty()
     }
 }
@@ -474,6 +478,8 @@ fn diff_mechanism(
         .then(|| before.mechanism.collections.clone());
     let mirrors_before = (before.mechanism.mirrors != after.mechanism.mirrors)
         .then(|| before.mechanism.mirrors.clone());
+    let statusbar_retired_before =
+        (before.statusbar_retired != after.statusbar_retired).then_some(before.statusbar_retired);
 
     let removed_table: BTreeMap<String, String> = before
         .state
@@ -498,6 +504,7 @@ fn diff_mechanism(
         display_formats_before,
         collections_before,
         mirrors_before,
+        statusbar_retired_before,
     };
     (!undo.is_empty()).then_some(undo)
 }
@@ -1121,6 +1128,9 @@ fn undo_last(
             }
             if let Some(mirrors) = &mechanism.mirrors_before {
                 state.mechanism.mirrors = mirrors.clone();
+            }
+            if let Some(retired) = mechanism.statusbar_retired_before {
+                state.statusbar_retired = retired;
             }
             for (key, value) in &mechanism.removed_table {
                 state

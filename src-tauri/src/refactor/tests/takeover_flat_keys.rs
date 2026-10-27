@@ -573,6 +573,7 @@ fn fence_tables_only_migrate_what_the_fence_can_reach() {
         display: String::new(),
         lists: Vec::new(),
         maps: Vec::new(),
+        fenced: None,
     };
     crate::mechanism::apply_block(&mut state, &fence, "玩家");
     assert_eq!(at(&state, "心態"), Some(leaf("放松")));

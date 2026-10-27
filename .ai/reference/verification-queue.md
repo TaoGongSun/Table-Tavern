@@ -47,6 +47,7 @@
 | 23 | [mvu-zod-semantics](../handoffs/archive/mvu-zod-semantics.md) MVU zod 桌真機 | 2026-10-27 測試通道過（DongeonMaster-safe＝原 zod 卡去成人內容的仿製卡、zod schema 原樣，非原卡；Claude CLI sonnet 三回合）：開局變數過 schema（數字轉型）、鍵順序照 initvar；GM 寫的 insert 和睦值 250 夾成 100、缺欄補預設值；帶出财宝计算='很多' 拒收維持 0、`_内部标记` 未寫入，下一輪提示「上一輪被系統擋下的更新」有對應三句；收回後回到前一則（測試小队名回「未命名小队」）。觀察：GM 在 `<Analysis>` 裡引用的 `_.set` 指令也被執行一次，造成重複套用與一句「insert 值沒有變、沒有寫入」的誤導回饋；「收回上一句」第一下只收掉系統變動摘要行，按第二下才收 GM 旁白。 桌面用測試通道、低階模型：拿 zod 卡（TestCards 三張真卡裡沒露骨內容的那張，或自製乾淨 zod 卡）開局，確認開局變數過了卡片 schema（夾值、預設值）、鍵順序照 initvar；跑三、四回合，其中一回合讓 GM 寫一條會被拒收的值與一條 `_` 開頭路徑，下一回合送出的提示「上一輪被系統擋下的更新」段有對應回饋句、狀態沒寫進去；收回一回合後狀態回到前一則 |
 | 24 | [undo-two-clicks-summary-line](../handoffs/archive/undo-two-clicks-summary-line.md) 收回一下收一樓 | 測試通道、低階模型：MVU 桌（zod 卡）與樹模式重構桌各跑一回合讓 GM 改文字欄（出變動摘要行），多角色桌另跑一回合帶出兩張卡登場（私設、登場交錯）。「收回上一句」按一下：登場塊、GM 旁白、摘要、點名一起消失，玩家句留著，狀態欄數值與平欄（時間、在場）回到玩家句那一刻；「復原剛收回的」按一下整樓照原序回來、數值回到回合後；連按收回／復原逐樓往返 |
 | 25 | [refactor-rule-conflict-same-field](../handoffs/archive/refactor-rule-conflict-same-field.md) 同欄多份規則 | 測試通道、低階模型：clean-orc（TestCards/clean-orc-cave.json）characters 模式真重構，按「全部套用」一次成功（不再回 `refactor rules conflict`）；狀態欄 驻守天数 照常顯示「第 1 天」、往後回合能遞增。產物不一定撞到同欄（非必然），重構結果框看兩條機制條目都寫 驻守天数 才算驗到 |
+| 26 | [gm-reprints-retired-statusbar](../handoffs/archive/gm-reprints-retired-statusbar.md) 重構桌不重印狀態欄 | 2026-10-28 測試通道過（Sonnet 4 回合、codex 2 回合 0 重印）。剩實機觀察：clean-orc（或 orc-cave-copy、NorthHall）characters 重構後實聊數回合，GM 不再附卡片 `<details>` 狀態欄、故事裡也沒有改寫成正文的狀態欄；可搭任一梯 2 實聊順手看 |
 
 ## 梯 3：等外部條件，不排時程
 

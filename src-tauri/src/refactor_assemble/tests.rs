@@ -497,6 +497,7 @@ fn characters_mode_drops_interface_entries_and_statusbar_spans_as_rule5() {
     let root = TestRoot::new();
     let world_id = data::create_world(&root.0, "測試桌").unwrap();
     let ui_uid = seed(&root.0, &world_id, "介面條目", "整頁介面定義");
+    let play_uid = seed(&root.0, &world_id, "遊玩介面", "可完全遊玩的介面");
     let mixed_uid = seed(
         &root.0,
         &world_id,
@@ -504,7 +505,8 @@ fn characters_mode_drops_interface_entries_and_statusbar_spans_as_rule5() {
         "狀態欄欄位定義\n\n世界設定段",
     );
     let survey = RefactorSurveyOutcome {
-        interface_uids: vec![ui_uid.to_string()],
+        interface_uids: vec![ui_uid.to_string(), play_uid.to_string()],
+        playable_interface_uids: vec![play_uid.to_string()],
         verdicts: vec![verdict(mixed_uid, "split")],
         splits: vec![
             RefactorSpanRoute {
@@ -536,10 +538,17 @@ fn characters_mode_drops_interface_entries_and_statusbar_spans_as_rule5() {
         .any(|item| item.uid == ui_uid.to_string()
             && item.rule == 5
             && item.span.is_empty()
-            && item.content == "整頁介面定義"));
+            && item.content == "整頁介面定義"
+            && item.statusbar));
+    // 可完全遊玩的介面也淘汰，但不算卡片狀態欄（gm-reprints-retired-statusbar）
+    assert!(assembly
+        .dropped
+        .iter()
+        .any(|item| item.uid == play_uid.to_string() && item.rule == 5 && !item.statusbar));
     assert!(assembly.dropped.iter().any(|item| item.rule == 5
         && item.span == format!("{mixed_uid}#s1")
-        && item.content == "狀態欄欄位定義"));
+        && item.content == "狀態欄欄位定義"
+        && item.statusbar));
     assert!(assembly
         .entries
         .iter()

@@ -72,6 +72,8 @@ export interface RefactorDroppedEntry {
   title: string;
   content: string;
   rule: number;
+  /** 淘汰的是卡片自帶狀態欄的格式：套用時後端據此標記這桌卡片狀態欄退場。舊產物缺席＝否。 */
+  statusbar?: boolean;
 }
 
 /** app 尚無執行機構的機制段：原文已經照搬進對應的 GM 規則條目（資料不會遺失），這裡只是給
@@ -618,6 +620,7 @@ function parseDropped(raw: unknown): RefactorDroppedEntry {
     title: readString(raw, "title"),
     content: readString(raw, "content"),
     rule: readNumber(raw, "rule", true),
+    ...(raw.statusbar === true ? { statusbar: true } : {}),
   };
 }
 
