@@ -34,7 +34,7 @@ function setup() {
   const deps: FrontendHostDeps = {
     onInput: vi.fn(),
     onStorage: vi.fn(),
-    mvu: { write: vi.fn(), evaluate: vi.fn() },
+    mvu: { write: vi.fn(), evaluate: vi.fn(), parse: vi.fn() },
   };
   const host = createFrontendHost({ current: deps });
   const frame = fakeWindow();
@@ -67,12 +67,14 @@ describe("frontend host: only the mounted frames, the right token and the right 
       send(card({ kind: "height", height: 10, token }));
       send(card({ kind: "mvu-write", token }));
       send(card({ kind: "mvu-eval", token }));
+      send(card({ kind: "mvu-parse", token }));
     }
     expect(deps.onInput).not.toHaveBeenCalled();
     expect(deps.onStorage).not.toHaveBeenCalled();
     expect(onHeight).not.toHaveBeenCalled();
     expect(deps.mvu!.write).not.toHaveBeenCalled();
     expect(deps.mvu!.evaluate).not.toHaveBeenCalled();
+    expect(deps.mvu!.parse).not.toHaveBeenCalled();
   });
 
   it("only opaque-origin messages count: a real origin from the same window is dropped", () => {
@@ -116,6 +118,19 @@ describe("frontend host: only the mounted frames, the right token and the right 
     reply({ kind: "mvu-eval-result", requestId: "r1", ok: true, value: 1 });
     expect(frame.postMessage).toHaveBeenCalledWith(
       { source: "table-tavern-host", token: "T1", kind: "mvu-eval-result", requestId: "r1", ok: true, value: 1 },
+      { targetOrigin: "*" },
+    );
+  });
+
+  it("zod parseMessage requests reach the channel with a reply bound to the same frame and token", () => {
+    const { deps, frame, send, card } = setup();
+    send(card({ kind: "mvu-parse", requestId: "p1", message: "_.set('a', 1);", old: "{}" }));
+    const [record, data, reply] = vi.mocked(deps.mvu!.parse).mock.calls[0];
+    expect(record.floor).toBe(2);
+    expect(data.message).toBe("_.set('a', 1);");
+    reply({ kind: "mvu-parse-result", requestId: "p1", ok: true, zod: false });
+    expect(frame.postMessage).toHaveBeenCalledWith(
+      { source: "table-tavern-host", token: "T1", kind: "mvu-parse-result", requestId: "p1", ok: true, zod: false },
       { targetOrigin: "*" },
     );
   });

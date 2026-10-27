@@ -27,7 +27,8 @@ import {
   parseLayerKey,
   type SettleResult,
 } from "./mvu/card-mvu-write";
-import { createEvalHost, parseEvalRequest, type EvalHost } from "./mvu/card-mvu-eval-host";
+import { createEvalHost, type EvalHost } from "./mvu/card-mvu-eval-host";
+import { parseWriteRequest, serveEval, serveParse, type HostParse } from "./mvu/card-mvu-messages";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
 // 短指紋（djb2）：card-interface iframe 的 key 用，內容一換 key 就換。
@@ -548,47 +549,24 @@ export function useCardInterfaceController(input: {
       // 卡片寫入變數：token 要是目前這份殼的，形狀不對一律不理
       if (data.kind === "mvu-write") {
         const holder = writeQueue.current;
-        if (
-          holder === null ||
-          data.token !== holder.token ||
-          typeof data.requestId !== "string" ||
-          typeof data.target !== "string" ||
-          typeof data.payload !== "string" ||
-          !(typeof data.base === "string" || data.base === null) ||
-          !Number.isInteger(data.generation) ||
-          !Number.isInteger(data.scene)
-        ) {
-          return;
-        }
+        const request = holder !== null && data.token === holder.token ? parseWriteRequest(data) : null;
+        if (holder === null || request === null) return;
         holder.reply = event.source;
-        holder.queue.enqueue({
-          requestId: data.requestId,
-          target: data.target,
-          payload: data.payload,
-          base: data.base,
-          generation: data.generation,
-          scene: data.scene,
-        });
+        holder.queue.enqueue(request);
         return;
       }
-      // parseMessage 的值解析與數學式：交給宿主專用 Worker（單筆 200 ms 逾時），結果回給送來的那份沙盒
-      if (data.kind === "mvu-eval") {
+      // parseMessage：值解析交宿主專用 Worker（單筆 200 ms 逾時）；zod 桌整次交後端的 zod 引擎只算不寫。
+      // 結果回給送來的那份沙盒，殼換了就不回
+      if (data.kind === "mvu-eval" || data.kind === "mvu-parse") {
         const holder = writeQueue.current;
-        const request = holder !== null && data.token === holder.token ? parseEvalRequest(data) : null;
-        if (holder === null || request === null) return;
+        if (holder === null || data.token !== holder.token) return;
         const source = event.source;
-        const reply = (outcome: unknown) => {
+        const reply = (message: Record<string, unknown>) => {
           if (writeQueue.current !== holder) return;
-          source?.postMessage(
-            { source: "table-tavern-host", kind: "mvu-eval-result", token: holder.token, requestId: request.requestId, ...(outcome as object) },
-            { targetOrigin: "*" },
-          );
+          source?.postMessage({ source: "table-tavern-host", token: holder.token, ...message }, { targetOrigin: "*" });
         };
-        // 任何例外（Worker 建不出來、結果送不回）都回錯給沙盒，不讓請求懸著
-        void holder.evals
-          .run(request.op, request.text)
-          .catch((reason: unknown) => ({ ok: false, error: `host-error: ${String(reason)}` }))
-          .then(reply);
+        if (data.kind === "mvu-eval") serveEval(holder.evals, data, reply);
+        else serveParse((message, oldJson) => invoke<HostParse>("card_vars_parse", { worldId, message, oldJson }), data, reply);
         return;
       }
       if (data.kind !== "input") return;

@@ -57,14 +57,7 @@ pub(crate) fn card_vars_write(
             })
         }
     };
-    let config = data::read_config(&config_root(&app)?).unwrap_or_default();
-    let lang = transport::ui_language(&config);
-    let user = data::read_player_card(&root, &world_id)
-        .ok()
-        .flatten()
-        .map(|card| card.name)
-        .unwrap_or_else(|| transport::player_fallback_name(&lang).to_owned());
-    let macros = data::message_vars::Macros { user, char: None };
+    let macros = card_macros(&app, &root, &world_id)?;
     data::state_commit::with_commit(&root, &world_id, |tx| {
         data::message_vars::card_write(
             tx,
@@ -77,6 +70,52 @@ pub(crate) fn card_vars_write(
         )
     })
     .map_err(|error| error.to_string())
+}
+
+/// 卡片變數的巨集代換值：同 GM 回合（`{{user}}`＝玩家卡名，沒有就照介面語系的稱呼；`{{char}}` 由下游決定）
+fn card_macros(
+    app: &tauri::AppHandle,
+    root: &std::path::Path,
+    world_id: &str,
+) -> Result<data::message_vars::Macros, String> {
+    let config = data::read_config(&config_root(app)?).unwrap_or_default();
+    let lang = transport::ui_language(&config);
+    let user = data::read_player_card(root, world_id)
+        .ok()
+        .flatten()
+        .map(|card| card.name)
+        .unwrap_or_else(|| transport::player_fallback_name(&lang).to_owned());
+    Ok(data::message_vars::Macros { user, char: None })
+}
+
+/// `card_vars_parse` 的回傳：`zod` false＝確認不是 zod 桌（沙盒自己跑）；true 時 `table` 是結果表的 JSON 文字（保留鍵序）
+#[derive(Serialize)]
+pub(crate) struct CardParse {
+    zod: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    table: Option<String>,
+}
+
+/// 卡片前端自己呼叫 parseMessage（card-shim-no-zod）：zod 桌交同一台 zod 引擎只算不寫（不碰 state、不記帳）。
+/// 判定失敗或整次失敗回 Err，沙盒據以 reject。
+#[tauri::command]
+pub(crate) async fn card_vars_parse(
+    app: tauri::AppHandle,
+    world_id: String,
+    message: String,
+    old_json: String,
+) -> Result<CardParse, String> {
+    let root = data_root(&app)?;
+    let macros = card_macros(&app, &root, &world_id)?;
+    let table = tokio::task::spawn_blocking(move || {
+        crate::mvu_engine::wiring::card_parse(&root, &world_id, &message, &old_json, &macros)
+    })
+    .await
+    .map_err(|error| format!("crashed: {error}"))??;
+    Ok(CardParse {
+        zod: table.is_some(),
+        table,
+    })
 }
 
 /// 設定／清掉玩家卡：只改 `player_card_id` 那一欄（取代前端讀整份 state 再整份寫回）。

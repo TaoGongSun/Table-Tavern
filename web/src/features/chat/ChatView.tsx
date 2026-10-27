@@ -157,7 +157,9 @@ export function ChatView({
   const host = useFrontendHost({
     onInput: (text) => void chat.sendText(text),
     onStorage: chat.setCardStorage,
-    mvu: { write: (_frame, data, reply) => chat.mvu.write(data, reply), evaluate: (_frame, data, reply) => chat.mvu.evaluate(data, reply) },
+    mvu: { write: (_frame, data, reply) => chat.mvu.write(data, reply), evaluate: (_frame, data, reply) => chat.mvu.evaluate(data, reply),
+      parse: (_frame, data, reply) => chat.mvu.parse(data, reply),
+    },
   });
   const userName = chat.setup.userName;
   const floors = useMemo(() => chatFloors(chat.entries, userName, name), [chat.entries, userName, name]);

@@ -54,6 +54,18 @@ function sandbox(answer?: (op: string, text: string) => Record<string, unknown> 
   const listeners: Listener[] = [];
   const parent = {
     postMessage: (message: Posted) => {
+      // 這裡測的是沙盒裡的核心：宿主一律回「不是 zod 桌」（zod 桌交宿主的路徑在 card-mvu-parse.test.ts），不記進 posted
+      if (message.kind === "mvu-parse") {
+        void Promise.resolve().then(() => {
+          for (const listener of listeners) {
+            listener({
+              source: parent,
+              data: { source: "table-tavern-host", token: "tok", kind: "mvu-parse-result", requestId: message.requestId, ok: true, zod: false },
+            });
+          }
+        });
+        return;
+      }
       posted.push(message);
       if (message.kind !== "mvu-eval") return;
       const reply = answer ? answer(message.op!, message.text!) : runEval(message.op as "value" | "patch", message.text!);

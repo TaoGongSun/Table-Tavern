@@ -501,10 +501,13 @@ describe("自製測試卡 mvu-write-probe（GUI 驗收 6a 用的 fixture）", ()
       const data = event.data as { source?: string; kind?: string; requestId?: string; op?: "value" | "patch"; text?: string };
       if (data.source !== "table-tavern-card") return;
       sent.push(data as never);
-      // 宿主的值解析 Worker 換成同進程的引擎
-      if (data.kind === "mvu-eval") {
+      // 宿主的值解析 Worker 換成同進程的引擎；這桌不是 zod 桌（宿主回 zod:false，沙盒自己跑核心）
+      if (data.kind === "mvu-eval" || data.kind === "mvu-parse") {
         // 在頁面自己的 realm 裡造事件，source 才會是頁面認得的 parent
-        const reply = { source: "table-tavern-host", token: "tok", kind: "mvu-eval-result", requestId: data.requestId, ...runEval(data.op!, data.text!) };
+        const reply =
+          data.kind === "mvu-eval"
+            ? { source: "table-tavern-host", token: "tok", kind: "mvu-eval-result", requestId: data.requestId, ...runEval(data.op!, data.text!) }
+            : { source: "table-tavern-host", token: "tok", kind: "mvu-parse-result", requestId: data.requestId, ok: true, zod: false };
         // jsdom 的 MessageEvent 不收 source 初始值，事件造好後再補上；頂層頁面的真 parent 就是 window（window.parent 已被誘餌換掉）
         win.eval(
           `var e = new MessageEvent("message", { data: JSON.parse(${JSON.stringify(JSON.stringify(reply))}) }); Object.defineProperty(e, "source", { value: window }); window.dispatchEvent(e);`,

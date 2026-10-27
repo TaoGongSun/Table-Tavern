@@ -52,6 +52,8 @@ export interface MvuCore {
   zodStatus: () => { registered: boolean; duplicates: number };
   /** 開局（VARIABLE_INITIALIZED）：整份 stat_data 過 schema，成功就淺合併回 variables.stat_data */
   zodInitialize: (variables: Record<string, unknown>) => ZodInitOutcome;
+  /** parseMessage 的上限（宿主代跑前先擋：卡片 iframe 送宿主前比照） */
+  limits: { readonly MESSAGE_BYTES: number; readonly TABLE_BYTES: number };
 }
 
 export type ZodInitOutcome =

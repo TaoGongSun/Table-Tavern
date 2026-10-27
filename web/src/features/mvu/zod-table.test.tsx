@@ -2,6 +2,8 @@
 // zod 卡（卡上有註冊 schema 的腳本）在一桌裡：開局（initvar → 開場白覆寫 → cleanUpMetadata → zodInitialize，只做一次）、
 // 每則回覆走 zod 迴圈；整次失敗不退回 MagVarUpdate——那一則不寫變數、顯示可清除的提示，玩家下一次操作才重試。
 // 隔離 iframe／Worker 換成同一份引擎的測試替身（zod/test-runner.ts）；隔離本身由 web/e2e/zod-isolation.mjs 在真瀏覽器測。
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -253,3 +255,65 @@ describe("zod 桌", () => {
     expect(blocked[1].mvuNotes).toEqual([expect.stringContaining("燈火 的 add 沒有套用、維持原值")]);
   });
 });
+
+/** 卡片 iframe 的 parseMessage（card-shim-no-zod）：TableMvu.parse 收到的請求，回覆收在這裡 */
+async function askParse(message: string, old: unknown): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => mvu.parse({ requestId: "p1", message, old: JSON.stringify(old) }, resolve));
+}
+
+describe("卡片 iframe 的 parseMessage", () => {
+  it("zod 桌交這桌的 zod 引擎只算不寫（同一支 runner）；結果表照引擎鍵序", async () => {
+    const { unmount } = await mount();
+    const before = JSON.stringify(entries);
+    const answer = await askParse("_.set('金幣', 5000);_.set('燈火', '紅');", { stat_data: { 計數: 2, 燈火: "亮", 金幣: 100 }, schema: "没有用别管这个" });
+    expect(answer).toMatchObject({ kind: "mvu-parse-result", requestId: "p1", ok: true, zod: true });
+    expect(answer.table).toBe('{"stat_data":{"計數":3,"燈火":"亮","金幣":999},"schema":"没有用别管这个"}');
+    expect(zod.runners).toHaveLength(1);
+    expect(JSON.stringify(entries)).toBe(before);
+    // 整次失敗：回錯，iframe 據以 reject
+    zod.failParse = 1;
+    expect(await askParse("_.set('金幣', 1);", { stat_data: {} })).toMatchObject({ ok: false, error: expect.stringContaining("deadline") });
+    await unmount();
+  });
+
+  it("zod 桌執行期還沒載好：回錯（not-ready），不當成不是 zod 桌；非 zod 桌回 zod:false", async () => {
+    const root = createRoot(document.createElement("div"));
+    function Probe() {
+      mvu = useTableMvu({
+        card: zodCard(),
+        userName: "玩家",
+        variables: createChatVariables(),
+        saved: undefined,
+        resumed: false,
+        entriesRef: { current: [] },
+        setEntries: () => {},
+        substitute: (text) => text,
+      });
+      return null;
+    }
+    act(() => root.render(<Probe />));
+    expect(await askParse("_.set('金幣', 1);", { stat_data: {} })).toMatchObject({ ok: false, error: expect.stringContaining("not-ready") });
+    await act(async () => root.unmount());
+    const plain = zodCard(undefined, "console.log('沒有 schema');");
+    const { unmount } = await mount({ card: plain });
+    expect(await askParse("_.set('金幣', 1);", { stat_data: {} })).toEqual({ kind: "mvu-parse-result", requestId: "p1", ok: true, zod: false });
+    await unmount();
+  });
+});
+
+// TestCards/ 本機限定（CI 略過）：三張真卡 17 條，網頁 zod runner 的結果表與桌面宿主、沙盒通道逐字相同（保留鍵序）。
+// 基準由 src/features/card-interface/mvu/card-mvu-parse.test.ts 寫出
+// 網頁測試在 web/ 底下跑（happy-dom 環境的 import.meta.url 不是檔案路徑）
+const GOLDEN = resolve(process.cwd(), "../TestCards/card-parse-golden.json");
+describe.skipIf(!existsSync(GOLDEN))("真卡：網頁 zod runner 與桌面宿主逐字相同（TestCards 本機限定）", () => {
+  it("17 條", async () => {
+    const golden = JSON.parse(readFileSync(GOLDEN, "utf8")) as { name: string; schema: string; old: string; message: string; table: string }[];
+    expect(golden).toHaveLength(17);
+    for (const item of golden) {
+      const runner = createTestZodRunner(item.schema);
+      const result = await runner.parse(item.message, JSON.parse(item.old) as Record<string, unknown>, { user: "玩家", char: null });
+      expect(JSON.stringify(result.table), `${item.name} ${item.message}`).toBe(item.table);
+    }
+  });
+});
+

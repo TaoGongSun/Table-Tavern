@@ -12,10 +12,12 @@ export interface FrameRecord {
   onHeight: (height: number) => void;
 }
 
-/** 卡片寫 MVU 變數、要求值解析：形狀已核過、token 相符才交過來，回覆由呼叫端送回同一個視窗 */
+/** 卡片寫 MVU 變數、要求值解析與 zod 桌 parseMessage：形狀已核過、token 相符才交過來，回覆由呼叫端送回同一個視窗 */
 export interface MvuChannel {
   write: (frame: FrameRecord, data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
   evaluate: (frame: FrameRecord, data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
+  /** zod 桌的 parseMessage：交這桌的 zod 引擎只算不寫 */
+  parse: (frame: FrameRecord, data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
 }
 
 export interface FrontendHostDeps {
@@ -75,6 +77,9 @@ export function createFrontendHost(depsRef: { current: FrontendHostDeps }): Fron
           return;
         case "mvu-eval":
           deps.mvu?.evaluate(frame, data, reply);
+          return;
+        case "mvu-parse":
+          deps.mvu?.parse(frame, data, reply);
           return;
         default:
           // close（Esc）等桌面版覆蓋層才用得到的訊息：內嵌在訊息裡的介面不理

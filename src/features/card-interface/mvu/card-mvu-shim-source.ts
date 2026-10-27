@@ -5,6 +5,7 @@
 import { scriptLiteral } from "../card-chat-shim";
 import { type CardMvu } from "./card-mvu-shim";
 import { buildMvuEngineSource } from "../../mvu-engine/engine-source";
+import { MVU_PARSE_SOURCE } from "./card-mvu-parse-source";
 
 /**
  * 排在讀訊息墊片之後、橋接墊片之前：真 parent 先收進閉包，之後只認它推來、token 相符、形狀正確的快照與
@@ -14,7 +15,7 @@ import { buildMvuEngineSource } from "../../mvu-engine/engine-source";
  * 本地值依寫入目標（事件 key）暫存，結算前推來的快照不蓋掉它；被拒時換成宿主推回的權威值並發外部變動事件。
  *
  * parseMessage（包 2c）：MVU 共用核心（mvu-engine/engine-source.ts）整段在沙盒跑；這裡是它的 iframe 宿主——值解析與數學式
- * 逐條送宿主的專用 Worker（`mvu-eval`／`mvu-eval-result`）。
+ * 逐條送宿主的專用 Worker（`mvu-eval`／`mvu-eval-result`）。zod 桌整次交宿主的 zod 引擎（`mvu-parse`／`mvu-parse-result`）。
  *
  * 非 message 層（包 2b）：chat／character／global／preset／script／extension 各是一份「整張表」，沿用同一套
  * 本地值、版本與結算機制，寫入目標 key 是層名（script／extension／character 帶 `:原 ID`），宿主依 key 決定
@@ -443,7 +444,7 @@ ${buildMvuEngineSource()}
       }
     }
   });
-  var parseMessage = mvuCore.parseMessage;
+${MVU_PARSE_SOURCE}
   var Mvu = {
     events: EVENTS,
     getMvuData: function (option) {
@@ -477,7 +478,7 @@ ${buildMvuEngineSource()}
       if (options.is_recursive) await emit(EVENTS.SINGLE_VARIABLE_UPDATED, [stat, path, old, value], false);
       return true;
     },
-    // MVU 共用核心（mvu-engine/engine-source.ts）：值解析送宿主的專用 Worker
+    // 非 zod 桌：MVU 共用核心（mvu-engine/engine-source.ts），值解析送宿主的專用 Worker；zod 桌交宿主的 zod 引擎
     parseMessage: parseMessage,
     getMvuVariable: function (data, path, option) {
       var options = option || {};
@@ -647,6 +648,10 @@ ${buildMvuEngineSource()}
     // 值解析結果直接結算，不排進序列佇列：監聽器（在佇列裡跑）呼叫 parseMessage 時要等的就是它
     if (data.kind === "mvu-eval-result") {
       if (typeof data.requestId === "string") resolveEval(data);
+      return;
+    }
+    if (data.kind === "mvu-parse-result") {
+      if (typeof data.requestId === "string") resolveParse(data);
       return;
     }
     if (data.kind === "chat") {

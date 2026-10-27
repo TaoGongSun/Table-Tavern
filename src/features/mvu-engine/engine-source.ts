@@ -39,7 +39,8 @@ export function buildMvuEngineSource(): string {
     "    cleanUpMetadata: cleanUpMetadata,",
     "    registerMvuSchema: registerMvuSchema,",
     "    zodStatus: zodStatus,",
-    "    zodInitialize: zodInitialize",
+    "    zodInitialize: zodInitialize,",
+    "    limits: PARSE_LIMITS",
     "  };",
     "}",
   ].join("\n");

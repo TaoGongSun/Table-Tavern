@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CardMvu } from "@desktop/features/card-interface/mvu/card-mvu-shim";
 import { parseEvalRequest } from "@desktop/features/card-interface/mvu/card-mvu-eval-host";
+import { serveParse } from "@desktop/features/card-interface/mvu/card-mvu-messages";
 import type { WebSaveMvu } from "@desktop/shared/contracts/web-save/web-save";
 import { loadsMvu, type PlayCard } from "../cards/play-card";
 import type { ChatEntry } from "../chat/chat-turn";
@@ -66,6 +67,8 @@ export interface TableMvu {
   frontend: CardMvu | null;
   write: (data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
   evaluate: (data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
+  /** 卡片 iframe 自己呼叫 parseMessage：zod 桌交這桌的 zod 引擎只算不寫（同處理 AI 回覆那一支）；非 zod 桌回 zod:false */
+  parse: (data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
   /** 開局初始化失敗（哪一條 initvar 讀不懂） */
   initError: string | null;
   /** zod 桌：初始值沒過卡片的變數規則，照原值開局 */
@@ -368,8 +371,29 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
     [active, evaluator],
   );
 
+  const parse = useCallback(
+    (data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => {
+      if (!active) return;
+      serveParse(
+        async (message, old) => {
+          if (schema === null) return { zod: false };
+          // zod 桌但執行期還沒載好：不能當成不是 zod 桌
+          const runtime = runtimeRef.current;
+          if (runtime?.zod == null) throw new Error("not-ready: 這桌的 zod 引擎還沒載好");
+          const parsed: unknown = JSON.parse(old);
+          if (!isObject(parsed)) throw new Error("bad-input: old 必須是物件");
+          const result = await runtime.zod().parse(message, parsed, runtime.macros);
+          return { zod: true, table: JSON.stringify(result.table) };
+        },
+        data,
+        reply,
+      );
+    },
+    [active, schema],
+  );
+
   return useMemo(
-    () => ({ active, ready, afterReply, feedback, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure }),
-    [active, ready, afterReply, feedback, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure],
+    () => ({ active, ready, afterReply, feedback, prepareMessages, display, forSave, frontend, write, evaluate, parse, initError, zodInitInvalid, zodFailure }),
+    [active, ready, afterReply, feedback, prepareMessages, display, forSave, frontend, write, evaluate, parse, initError, zodInitInvalid, zodFailure],
   );
 }

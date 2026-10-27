@@ -24,6 +24,7 @@ const backend = vi.hoisted(() => ({
   layersHold: null as Promise<void> | null,
   layerWrites: [] as Record<string, unknown>[],
   layerWrite: null as null | ((args: Record<string, unknown>) => Promise<unknown>),
+  parses: [] as Record<string, unknown>[],
 }));
 
 // 值解析 Worker 換成同進程的假替身（跑真的引擎）；records＝每支建出的 Worker 是否被終止
@@ -113,6 +114,11 @@ vi.mock("@tauri-apps/api/core", () => ({
       if (backend.layersFail) throw new Error("讀不了");
       return backend.layers;
     }
+    if (command === "card_vars_parse") {
+      backend.parses.push(args);
+      if (args.message === "壞") throw "detect: 讀不到桌";
+      return { zod: true, table: '{"stat_data":{"金":100}}' };
+    }
     if (command === "card_layer_write") {
       backend.layerWrites.push(args);
       return backend.layerWrite ? backend.layerWrite(args) : null;
@@ -191,6 +197,7 @@ describe("useCardInterfaceController", () => {
     backend.layersHold = null;
     backend.layerReads = [];
     backend.layerWrites = [];
+    backend.parses = [];
     backend.layerWrite = null;
     updated.length = 0;
     props = { worldId: "w1", events: [gm("<UI>第一樓</UI>")], tree: {} };
@@ -493,6 +500,32 @@ describe("useCardInterfaceController", () => {
         expect(evalWorkers.created).toHaveLength(1);
         await act(async () => controller!.close());
         expect(evalWorkers.created[0].terminated).toBe(true);
+      });
+
+      it("zod 桌 parseMessage：token 相符才交後端只算不寫、結果與錯誤回給送來的沙盒；token 不符不理", async () => {
+        await render({ events: [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)] });
+        await act(async () => controller!.open());
+        let ok!: { postMessage: ReturnType<typeof vi.fn> };
+        let bad!: { postMessage: ReturnType<typeof vi.fn> };
+        let other!: { postMessage: ReturnType<typeof vi.fn> };
+        await act(async () => {
+          ok = fromCard({ kind: "mvu-parse", requestId: "p1", message: "_.set('金', 500);", old: '{"stat_data":{"金":1}}' });
+          bad = fromCard({ kind: "mvu-parse", requestId: "p2", message: "壞", old: "{}" });
+          other = fromCard({ kind: "mvu-parse", token: "別份殼", requestId: "p3", message: "x", old: "{}" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        await settle();
+        expect(backend.parses).toEqual([
+          { worldId: "w1", message: "_.set('金', 500);", oldJson: '{"stat_data":{"金":1}}' },
+          { worldId: "w1", message: "壞", oldJson: "{}" },
+        ]);
+        expect(ok.postMessage).toHaveBeenCalledWith(
+          { source: "table-tavern-host", token: controller!.shellKey, kind: "mvu-parse-result", requestId: "p1", ok: true, zod: true, table: '{"stat_data":{"金":100}}' },
+          { targetOrigin: "*" },
+        );
+        expect(bad.postMessage.mock.calls[0][0]).toMatchObject({ requestId: "p2", ok: false, error: "detect: 讀不到桌" });
+        expect(other.postMessage).not.toHaveBeenCalled();
+        expect(backend.writes).toEqual([]);
       });
 
       it("切殼時未完成的值解析：結果晚到不回給舊殼", async () => {

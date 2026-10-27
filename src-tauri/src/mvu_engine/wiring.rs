@@ -36,14 +36,19 @@ pub struct ZodTable {
 }
 
 /// 這桌是不是 zod 桌：重構過、角色優先、讀不到卡都不是；帶 schema 的卡取最先匯入的那張（規格 1.5 節）。
-/// 匯入順序看角色 id（ULID，匯入當下配發、拖曳排序不動它）；世界層原卡（建桌時匯入）排最前。
+/// 判定失敗（讀不到 state、卡清單、重構標記）也當不是；要分清楚的呼叫端用 `zod_table_checked`。
 pub fn zod_table(root: &Path, world_id: &str) -> Option<ZodTable> {
-    let state = data::read_state(root, world_id).ok()?;
-    if crate::refactor::refactored(root, world_id, &state).unwrap_or(true) {
-        return None;
+    zod_table_checked(root, world_id).ok().flatten()
+}
+
+/// 同 `zod_table`，但分得出「確認不是 zod 桌」（`Ok(None)`）與「判定失敗」（`Err`）。
+/// 匯入順序看角色 id（ULID，匯入當下配發、拖曳排序不動它）；世界層原卡（建桌時匯入）排最前。
+pub fn zod_table_checked(root: &Path, world_id: &str) -> DataResult<Option<ZodTable>> {
+    let state = data::read_state(root, world_id)?;
+    if crate::refactor::refactored(root, world_id, &state)? {
+        return Ok(None);
     }
-    let mut interfaces: Vec<_> = crate::import::read_card_interfaces(root, world_id)
-        .ok()?
+    let mut interfaces: Vec<_> = crate::import::read_card_interfaces(root, world_id)?
         .into_iter()
         .filter(|card| card.unsupported.is_none())
         .collect();
@@ -51,13 +56,49 @@ pub fn zod_table(root: &Path, world_id: &str) -> Option<ZodTable> {
     let mut cards = interfaces
         .into_iter()
         .filter_map(|card| card.zod.map(|zod| (card.character_name, zod)));
-    let (char_name, zod) = cards.next()?;
-    Some(ZodTable {
+    let Some((char_name, zod)) = cards.next() else {
+        return Ok(None);
+    };
+    Ok(Some(ZodTable {
         schema: Arc::new(SchemaScript::new(zod.source)),
         initvars: zod.initvars,
         char_name,
         skipped: cards.map(|(name, _)| name).collect(),
-    })
+    }))
+}
+
+/// 卡片前端自己呼叫 `Mvu.parseMessage`（card-shim-no-zod）：zod 桌交同一台引擎只算不寫，回結果表的 JSON 文字
+/// （保留鍵序）；確認不是 zod 桌回 `Ok(None)`（沙盒照舊自己跑）。判定失敗、整次失敗都回 `Err`（沙盒 reject，不退回
+/// MagVarUpdate 語意）；錯誤文字開頭是失敗種類。
+pub fn card_parse(
+    root: &Path,
+    world_id: &str,
+    message: &str,
+    old_json: &str,
+    macros: &Macros,
+) -> Result<Option<String>, String> {
+    let zod = zod_table_checked(root, world_id).map_err(|error| format!("detect: {error}"))?;
+    let Some(zod) = zod else {
+        return Ok(None);
+    };
+    let old = match serde_json::from_str::<Value>(old_json) {
+        Ok(Value::Object(map)) => map,
+        _ => return Err("bad-input: old 必須是物件".to_owned()),
+    };
+    let engine = shared();
+    let batch = engine
+        .run_batch(
+            world_id,
+            &zod.schema,
+            message,
+            &old,
+            &engine_macros(macros, &zod),
+            engine.deadline(),
+        )
+        .map_err(|failure| format!("{:?}: {}", failure.kind, failure.detail))?;
+    serde_json::to_string(&batch.detailed.table)
+        .map(Some)
+        .map_err(|error| format!("bad-output: {error}"))
 }
 
 fn engine_macros(macros: &Macros, zod: &ZodTable) -> EngineMacros {

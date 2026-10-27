@@ -729,3 +729,65 @@ fn gm_feedback_uses_the_shared_sentences_including_readonly_paths() {
         ]
     );
 }
+
+#[test]
+fn card_parse_runs_zod_engine_without_writing_and_tells_not_zod_from_detection_failure() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let root = TestRoot::new("card-parse");
+    let macros = Macros {
+        user: USER.to_owned(),
+        char: None,
+    };
+    let world_id = data::create_world(root.path(), "zod桌").unwrap();
+    import_card(root.path(), &world_id, "冒險隊", SMALL, None);
+    let before = data::read_state(root.path(), &world_id).unwrap();
+    let old = r#"{"stat_data":{"名":"甲","金":1},"display_data":{}}"#;
+    let table = wiring::card_parse(
+        root.path(),
+        &world_id,
+        "_.set('金', 500);_.set('名', 3);",
+        old,
+        &macros,
+    )
+    .unwrap()
+    .expect("zod 桌");
+    // 夾值照 schema；名 被 schema 拒收留原值；鍵序照舊表
+    assert!(
+        table.starts_with(r#"{"stat_data":{"名":"甲","金":100}"#),
+        "{table}"
+    );
+    let after = data::read_state(root.path(), &world_id).unwrap();
+    assert_eq!(after.state.tree, before.state.tree, "只算不寫");
+    // 確認不是 zod 桌：一般桌、重構過
+    let plain = data::create_world(root.path(), "一般桌").unwrap();
+    assert_eq!(
+        wiring::card_parse(root.path(), &plain, "_.set('a', 1);", "{}", &macros),
+        Ok(None)
+    );
+    // 判定失敗（讀不到桌）不能當成不是 zod 桌
+    let missing = wiring::card_parse(
+        root.path(),
+        "no-such-world",
+        "_.set('a', 1);",
+        "{}",
+        &macros,
+    );
+    assert!(
+        matches!(&missing, Err(error) if error.starts_with("detect:")),
+        "{missing:?}"
+    );
+    // old 不是物件、schema 載入失敗都是 Err
+    assert!(wiring::card_parse(root.path(), &world_id, "x", "[]", &macros).is_err());
+    let broken = data::create_world(root.path(), "壞 schema").unwrap();
+    import_card(root.path(), &broken, "壞", "import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';\nthrow new Error('boom'); registerMvuSchema(z.object({}));", None);
+    let failed = wiring::card_parse(root.path(), &broken, "_.set('a', 1);", "{}", &macros);
+    assert!(
+        matches!(&failed, Err(error) if error.starts_with("SchemaLoad")),
+        "{failed:?}"
+    );
+    data::write_refactor_outcome(root.path(), &world_id, "{}").unwrap();
+    assert_eq!(
+        wiring::card_parse(root.path(), &world_id, "_.set('金', 5);", old, &macros),
+        Ok(None)
+    );
+}
