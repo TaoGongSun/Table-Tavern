@@ -3,6 +3,7 @@
 還沒開工的案子。手寫維護，一條一行；立案說明在各自的 [tasks/](tasks/)`<id>.md`。
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
+競品研究：[Marinara Engine 參考策略](plans/marinara_reference_notes.md)（借鏡清單 §14、強化順序 §15、研究待辦 §20 尚未立案）。
 
 - [worldbook-keys-separator-i18n](tasks/worldbook-keys-separator-i18n.md) — 世界編輯器關鍵字分隔符寫死全形「、」，英文介面下不對 — 下一步：未排程，小修
 - [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：網頁版公開後再決定〔作者裁決 2026-10-12〕
