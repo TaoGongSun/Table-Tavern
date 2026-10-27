@@ -20,6 +20,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
 - [web-mvu-memory-cap](tasks/web-mvu-memory-cap.md) — 網頁版 MVU 引擎補記憶體硬上限（現只有時間上限；可選 quickjs-emscripten） — 下一步：作者裁決先當例外、記待辦〔作者裁決 2026-10-27〕；排在 mvu-zod-semantics 合併之後
 - [mvu-abandoned-threads-flaky](tasks/mvu-abandoned-threads-flaky.md) — mvu_engine 作廢執行緒名額測試在負載下偶發失敗，讓 verify 假紅 — 下一步：未排程；先在高負載下重現
+- [mvu-memory-bomb-flaky](tasks/mvu-memory-bomb-flaky.md) — mvu_engine 記憶體炸彈測試負載下 Deadline 搶在 Memory 前，verify 假紅 — 下一步：未排程；用 abandoned-threads 案的負載腳本重現
 
 ## 階段 C：卡片介面接管
 
