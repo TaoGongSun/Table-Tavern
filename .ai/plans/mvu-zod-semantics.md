@@ -1,6 +1,6 @@
 # mvu-zod-semantics 規格
 
-zod 卡照上游 mvu_zod，用真 zod 執行卡片自帶的 schema；桌面與網頁共用同一份 JS 的 MVU 引擎。拍板見交接檔 [handoffs/mvu-zod-semantics.md](../handoffs/mvu-zod-semantics.md)。
+zod 卡照上游 mvu_zod，用真 zod 執行卡片自帶的 schema；桌面與網頁共用同一份 JS 的 MVU 引擎。拍板見交接檔 [handoffs/archive/mvu-zod-semantics.md](../handoffs/archive/mvu-zod-semantics.md)。
 本檔經 Sol、Grok、主線三方審過；未標來源的細節是施工判斷，標〔模型判斷·未裁決〕。
 
 ## 0. 定案

@@ -112,7 +112,7 @@
   - `src/App.tsx`：傳 `tableState.tree`。
 - 改後端：`src-tauri/src/import/interface.rs`，`CardInterface` 加 `mvu`（卡的 tavern_helper 腳本是否載入 MVU）。前端型別同步。
 - 包 2（第 8 節）：
-  - 前端新增 `card-mvu-write.ts`（宿主端驗證、依完整目標的佇列與 Promise 結算）、parseMessage 五檔（沙盒端 `card-mvu-parse-source.ts`、Worker 內的 `card-mvu-parse-engine.ts`＋`card-mvu-eval.worker.ts`、宿主端 `card-mvu-eval-host.ts`），各附測試；沙盒寫入函式加在 `card-mvu-shim.ts`，超過 1000 行就把沙盒原始碼拆到 `card-mvu-shim-source.ts`。資料夾約 21 檔，屆時考慮開 `card-interface/mvu/` 子資料夾。
+  - 前端新增 `card-mvu-write.ts`（宿主端驗證、依完整目標的佇列與 Promise 結算）、parseMessage 五檔（沙盒端 `src/features/mvu-engine/engine-source.ts`（串接 `source-*.ts` 片段）、Worker 內的 `src/features/mvu-engine/value-parser.ts`＋`card-mvu-eval.worker.ts`、宿主端 `card-mvu-eval-host.ts`），各附測試；沙盒寫入函式加在 `card-mvu-shim.ts`，超過 1000 行就把沙盒原始碼拆到 `card-mvu-shim-source.ts`。資料夾約 21 檔，屆時考慮開 `card-interface/mvu/` 子資料夾。
   - 後端：短提交鎖與投影入口放 `data/` 層（`world_lock.rs` 旁、`data/state.rs`）；`commands/card_vars.rs` 只做邊界；非 message 層檔案讀寫放 `data/card_vars.rs`；`TranscriptEvent` 加 `id`、`message_vars`、`vars_rev`。
 
 ### 8. 包 2：寫入、非 message 層、parseMessage（2a、2b、2c 已施工）
@@ -248,10 +248,10 @@ MVU：
 #### 8.9 parseMessage（2c）
 上游核對版本：MagVarUpdate `438f9ffc`（`update_variables.ts`、`schema.ts`、`util.ts`、`variable_def.ts`、`function/global/index.ts`、`util/common.ts`）。
 
-- 照 MVU `updateVariables` 重寫（沙盒端 `card-mvu-parse-source.ts`），不用 app 機制層解析器：
+- 照 MVU `updateVariables` 重寫（沙盒端 `src/features/mvu-engine/engine-source.ts` 串接的 `source-*.ts` 片段），不用 app 機制層解析器：
   - 指令抽取：`_.set`／`insert`／`assign`／`remove`／`unset`／`delete`／`add`（括號配對忽略引號內括號、`;` 結尾、`//` 理由、參數個數檢查）加 `<JSONPatch>`／`<json_patch>` 區塊（replace／add／insert／remove／delta／move，`-` 追加陣列尾）；兩者合併後依出現位置排序；訊息先代換 `{{user}}`／`{{char}}`。
   - 套用：set 分支的 `Number()` 轉型（舊值是數字且新值是字串才轉，`[值, 說明]` 改第 0 項、舊值數字且新值非 null 才轉）；insert 的 schema 規則（不可擴充物件／陣列、未知鍵、父路徑）與模板；delete 的必填鍵與不可擴充陣列；add 的數字與日期（毫秒）；`display_data`／`delta_data` 字串 `舊->新 (理由)`；有資料變動才用目前資料重生 schema（保留 strictTemplate／strictSet／concatTemplateArray）。`move` 照上游沒有對應套用。
-  - 值解析六段：字面量 → JSON → JSON5（只收物件、陣列）→ 單引號 YAML → 受限數學式 → YAML → 去頭尾引號的字串（Worker 內，`card-mvu-parse-engine.ts`）。
+  - 值解析六段：字面量 → JSON → JSON5（只收物件、陣列）→ 單引號 YAML → 受限數學式 → YAML → 去頭尾引號的字串（Worker 內，`src/features/mvu-engine/value-parser.ts`）。
 - 事件在沙盒依序 await 監聽器、參數是活物件（不隔離拷貝）：抽指令 → `STARTED(variables)` → `COMMAND_PARSED(variables, commands, message)`（監聽器可改 commands）→ `COMMAND_PARSED_for_zod`、`COMMAND_PARSED_ended_for_zod` → 逐條套用（每條 `SINGLE_VARIABLE_UPDATED(stat_data, path, 舊, 新)`）→ `ENDED(variables, before)` → 移除 `$internal`、schema 調和 → `ENDED_for_zod`。`BEFORE_MESSAGE_UPDATE` 照原始碼只在上游 `handleVariablesInMessage`（寫回樓層那條路，app 沒有），`parseMessage` 本身不發。
 - 值解析與 JSONPatch 區塊文字解析在宿主專用 Web Worker 跑（mathjs 實例隔離、json5、yaml、jsonrepair，D1）：沙盒逐條送 `mvu-eval`（`{ op: value | patch, text }`）、宿主轉 Worker、結果以 `mvu-eval-result` 回送（不排進沙盒的序列佇列，監聽器裡再呼叫 parseMessage 才不卡死）。一次一筆；單筆 200 ms 逾時就 `terminate()`、回 `timeout`，下一筆再建新 Worker；Worker 開機（載入 mathjs）完成才開始計時，開機 10 秒沒好算失敗。
 - 數學式是「實例隔離」，不是封死危險函式（同上游）：共用實例只算「無賦值、無間接呼叫、只用唯讀 `Math`／`math` 門面」的純數學式，其餘（賦值、`import`、求導後 evaluate、單位修改）走一次性新實例，`parse("2+3").evaluate()`、`evaluate("2+3")` 仍可執行；`Math`／`math` 是凍結的白名單門面，算式改不到宿主物件；外層還有 Worker 隔離與 200 ms 終止。
@@ -342,7 +342,7 @@ Sol 第 14 輪 4 項：恢復誤刪的 8.3 後半與 8.4 開頭（對照 24f0eac
 
 - **上游核對**：MagVarUpdate `438f9ffc` 逐檔讀過（8.9 所列檔案），行為照它重寫；JS-Slash-Runner 只涉及 `eventEmit` 序列語意（監聽器依序 await、單支出錯不影響其他），沙盒原本的 `emit` 已是這個行為。
 - **刻意偏離上游**（mvu-array-index-path，與後端一致，不是移植錯誤，別改回）〔主線裁定，依作者裁決 酒館行為照做〕：`applySet` 舊值 `[值, 說明]`、新值是陣列時整個換掉（上游巢狀寫壞清單）；`applyInsert` 容器在頂層時不查父路徑（上游 `lodash.get(資料, "")` 恆為 undefined，擋下 `/物品/-`）；splice（陣列 insert、remove 快速路徑）只位移 set 產生的非有限數標記、不撤銷整個陣列〔依作者裁決 2026-10-04 非有限數轉 null〕。
-- **落點**：`mvu/card-mvu-parse-source.ts`（沙盒端，嵌進 `card-mvu-shim-source.ts` 的 IIFE；String.raw 片段，不能含反引號，要比對反引號寫 `\x60`）、`mvu/card-mvu-parse-engine.ts`（Worker 內的值解析，純函式）、`mvu/card-mvu-eval.worker.ts`、`mvu/card-mvu-eval-host.ts`（宿主端 Worker 管理）；`useCardInterfaceController.ts` 一份殼一支宿主、處理 `mvu-eval`。依賴新增 `mathjs`、`json5`、`jsonrepair`、`yaml`（上游同一個 YAML 套件）；mathjs 只在 Worker chunk（約 740 KB），主 bundle 不變。快照 `CardMvu` 新增 `macros`（`{{user}}`／`{{char}}` 代換值）。
+- **落點**：`../mvu-engine/engine-source.ts` 串接的 `source-*.ts` 片段（沙盒端，嵌進 `card-mvu-shim-source.ts` 的 IIFE；String.raw 片段，不能含反引號，要比對反引號寫 `\x60`）、`../mvu-engine/value-parser.ts`（Worker 內的值解析，純函式）、`mvu/card-mvu-eval.worker.ts`、`mvu/card-mvu-eval-host.ts`（宿主端 Worker 管理）；`useCardInterfaceController.ts` 一份殼一支宿主、處理 `mvu-eval`。依賴新增 `mathjs`、`json5`、`jsonrepair`、`yaml`（上游同一個 YAML 套件）；mathjs 只在 Worker chunk（約 740 KB），主 bundle 不變。快照 `CardMvu` 新增 `macros`（`{{user}}`／`{{char}}` 代換值）。
 - **測試**：引擎（值解析六段、受限數學式、JSONPatch 區塊文字、值上限）、沙盒端（各指令與 JSONPatch、set 轉型、`[值, 說明]`、schema、模板、事件順序與參數、監聽器改資料、不落檔、各上限、5 秒、宿主沒回應）、宿主 Worker 管理（假 Worker：序列、200 ms 逾時終止與重建、開機等待、關閉）、controller（`mvu-eval` 驗 token、關面板終止）、jsdom 整份殼（探針卡 parseMessage 預覽走值解析）。另有真 WebKit 的 `card-mvu-eval.webkit.test.tsx`（真 Worker 算式、重算式逾時終止並重建；`npm run test:webkit`，不進 verify）。
 - 取捨〔模型判斷·未裁決〕：
   - 新增 `jsonrepair`（上游 `parseString` 修殘缺 JSON 的依賴）：JSONPatch 區塊文字解析照上游 YAML → JSON5 → jsonrepair → YAML 的順序。

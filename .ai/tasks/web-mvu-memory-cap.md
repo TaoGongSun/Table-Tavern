@@ -1,7 +1,7 @@
 # web-mvu-memory-cap — 網頁版 MVU 引擎記憶體硬上限
 
 ## Summary
-MVU zod 卡的變數 schema 准在隔離環境執行（見 [mvu-zod-semantics](mvu-zod-semantics.md)），隔離要求含記憶體上限。網頁版 Worker 目前只有時間上限，達不到記憶體上限這一條。先當例外、記待辦〔作者裁決 2026-10-27〕。
+MVU zod 卡的變數 schema 准在隔離環境執行（見 [mvu-zod-semantics](../handoffs/archive/mvu-zod-semantics.md)），隔離要求含記憶體上限。網頁版 Worker 目前只有時間上限，達不到記憶體上限這一條。先當例外、記待辦〔作者裁決 2026-10-27〕。
 
 ## 已知線索
 - 可考慮 quickjs-emscripten（WASM 版 QuickJS，可設記憶體上限）。桌面版是否已有記憶體上限未查。

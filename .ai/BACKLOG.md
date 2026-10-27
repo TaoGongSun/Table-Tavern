@@ -13,8 +13,8 @@
 - [revert-fork-auto-hidden](tasks/revert-fork-auto-hidden.md) — revert／fork 不復原換幕結算寫下的 auto_hidden — 下一步：未排程；開工先提做法選項給作者
 
 ## 階段 B：MVU 相容
-mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF），順序第一：zod 施工 → command-syntax → meta-schema → shim-flaky-test（已結案）→ card-mvu-shim 4d（作者手點，見[實測佇列](reference/verification-queue.md)）。
-開工前結構體檢：import/（目前 29 檔）、import/card.rs 1188、message_vars、card-mvu-parse-source.ts 1047。
+mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/archive/mvu-zod-semantics.md)），順序：zod（已結案）→ command-syntax → meta-schema → shim-flaky-test（已結案）→ card-mvu-shim 4d（作者手點，見[實測佇列](reference/verification-queue.md)）。
+開工前結構體檢：import/（目前 29 檔）、import/card.rs 1188、message_vars。
 
 - [import-tests-folder](tasks/import-tests-folder.md) — import/ 24 檔（11 支測試）超過資料夾上限，測試收進子資料夾 — 下一步：MVU 相容段開工前結構體檢時一併做
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認

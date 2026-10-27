@@ -93,7 +93,7 @@ Status: 已結案（2026-10-27 合併 main，與 person-promote、state-values-m
 7. 分支綁定（`transport/state_view.rs` 的 resolve_branch／auto_match_branch）仍是 `key == card_name` 精確同名，不做字形折疊；卡名與分支鍵字形不同時要玩家在面板手動指認〔模型判斷·未裁決〕。
 
 ## Constraints
-- 產物一律人審後套用（紅線）；卡片內容永遠當資料、永不執行（唯一例外：MVU zod 卡的變數 schema 准在隔離環境執行〔作者裁決 2026-10-27〕，見 tasks/mvu-zod-semantics.md）；抽不出原樣留著。
+- 產物一律人審後套用（紅線）；卡片內容永遠當資料、永不執行（唯一例外：MVU zod 卡的變數 schema 准在隔離環境執行〔作者裁決 2026-10-27〕，見 [mvu-zod-semantics](mvu-zod-semantics.md)）；抽不出原樣留著。
 - 重構燒使用者額度：按鈕必須主動按，不自動跑。
 - 部分套用規則：勾選單位是人，人一律整併——勾中→角色卡、沒勾→一條恆定人物條目（GM 名冊列人名、登場才送全文）；專屬來源條目刪除走收據，共用合集照收尾判定、且其他消費者都套用了才刪；REMAINDER→原條目改寫。〔作者裁決 2026-10-27〕
 - 驗證基線：`npm run verify` 12 步全綠（2026-10-27 分支上 cargo 1892、vitest 1383、web 791）。

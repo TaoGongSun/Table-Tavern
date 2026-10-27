@@ -23,7 +23,7 @@
 - **TranscriptEvent 加欄位**：Rust 約 50 處結構字面值；照 `cargo test --no-run` 回報的 E0063 位置，在該行 `TranscriptEvent {` 之後插新欄位（可寫小腳本照錯誤位置插），不要用「找 `TranscriptEvent {` 到配對 `}`」硬套。
 - **故障注入**：控制檔與 state.json 都走原子替換（暫存檔＋改名），`RenameFailGuard` 打得到；寫到一半用 `WriteFailGuard::partial_ending("state.json.tmp", n)`（只打指定檔）；逐字稿追加用 `AppendFailGuard`。唯讀權限擋不住改名，別再用。
 - **換幕結算會自動隱藏沒登場的卡**，隱藏的 MVU 卡不算資格；跨幕測試要把卡解除隱藏（`message_vars/tests.rs` 有例子）。
-- **沙盒墊片**：原始碼在 `mvu/card-mvu-shim-source.ts`（純 ES5＋async；parseMessage 那段在 `mvu/card-mvu-parse-source.ts`，String.raw 片段不能含反引號、`${`，比對反引號寫 `\x60`）；內部互叫用閉包函式，不讀 `window.*`（卡片會換掉）。單元測試用 `new Function("window", 原始碼)(假 window)`，假 window 放 `_: lodash` 與 `parent.postMessage`。
+- **沙盒墊片**：原始碼在 `mvu/card-mvu-shim-source.ts`（純 ES5＋async；parseMessage 那段在 `src/features/mvu-engine/`（`engine-source.ts` 串接的 `source-*.ts` 片段），String.raw 片段不能含反引號、`${`，比對反引號寫 `\x60`）；內部互叫用閉包函式，不讀 `window.*`（卡片會換掉）。單元測試用 `new Function("window", 原始碼)(假 window)`，假 window 放 `_: lodash` 與 `parent.postMessage`。
 - **非 message 層**：後端 `data/card_vars.rs`（`write_layer` 桌內層在短提交鎖內核對世代、根目錄層用 `with_root_file_lock`）；沙盒寫入目標 key 以 `parseLayerKey` 辨識；controller 的 `layers` 只在面板開著時讀、關掉清空。（計畫第 6 節）：兩張受惠卡都走 `CardFormat`，導演指示可能壓掉 `<UpdateVariable>`，等 GUI 驗收實抓提示才定；確認衝突就另立案（不由本案子代理立案）。
 
 ## 受惠卡

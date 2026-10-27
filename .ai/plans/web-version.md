@@ -157,7 +157,7 @@
 | regex 顯示腳本→介面殼 | `src/features/card-interface/interface-card.ts`（`parseStRegex` :53、`applyScripts` :103、`extractShell` :143、卡片 storage 墊片 :184-200、IME 防護 :273） |
 | 沙盒內建庫（jQuery／lodash／errorCatched） | `src/features/card-interface/card-sandbox-libs.ts:45` |
 | 讀訊息墊片 | `src/features/card-interface/card-chat-shim.ts:46`、`:67` |
-| MVU 讀寫墊片 | `src/features/card-interface/mvu/card-mvu-shim.ts:222`、`card-mvu-shim-source.ts:22`、`card-mvu-write.ts:140`、`card-mvu-parse-source.ts:9`、`card-mvu-parse-engine.ts:229`、`card-mvu-eval-host.ts:28` |
+| MVU 讀寫墊片 | `src/features/card-interface/mvu/card-mvu-shim.ts:222`、`card-mvu-shim-source.ts:22`、`card-mvu-write.ts:140`、`src/features/mvu-engine/engine-source.ts`、`src/features/mvu-engine/value-parser.ts`、`card-mvu-eval-host.ts:28` |
 | iframe 沙盒寫法 | `src/features/card-interface/CardInterfaceOverlay.tsx:86-95`（`sandbox="allow-scripts"`＋srcDoc）——網頁版只能沿用 sandbox 屬性，不能照搬 srcDoc（會繼承宿主 CSP，見 2.4） |
 
 注意：MVU 墊片的型別綁 `shared/contracts/backend-contracts.ts` 的 `TranscriptEvent`／`StateNode`；`card-shell-route.ts:6` 依賴重構的 `refactor-shell`（接管路線），網頁版只取原卡直玩那段。`useCardInterfaceController.ts` 全靠 Tauri `invoke`（:145-:580），要重寫宿主端。

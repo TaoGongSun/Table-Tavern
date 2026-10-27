@@ -4,8 +4,8 @@
 - `build_notes`（`mechanism/tree.rs:6`）只收 `Rejected`，最多 5 條、同文去重；由 `state_view.rs:93` 印成「上一輪被系統擋下的更新」。`Error` 只進記帳檔與面板計數。
 - notes 只在**有套用的回合**整份覆寫（`ledger.rs:216`）：`chat.rs:402` 全量桌沒有狀態區塊就不套用，上一輪的 notes 原樣留著。
 - 所有桌型（非接管桌、接管桌 `TakeoverReply` 的 `<UpdateVariable>`、沒重構的 MVU 卡 Upstream、全量／增量桌）都走 `apply_updates_typed`。接管桌開場白的 updates 在 `scoped_block` 先清掉；**非接管桌開場白也走 `apply_block_typed`**，錯誤會在第 1 回合回饋。
-- 上游 MVU 對不存在的路徑 set／add／delete 也是報錯不建立（`src/features/card-interface/mvu/card-mvu-parse-source.ts` `applySet`／`applyAdd`／`applyDelete`），本案不改「不建立」，只補回饋。
-- 解析層（`parse.rs:128` `value_to_patch`）把認不出的 op、缺 path、壞 JSON 物件整筆丟掉，連記帳都沒有；上游收 `"op":"add"`（＝insert）、move 目的地取 `path ?? to`（`card-mvu-parse-source.ts:326-360`），本地都不收。
+- 上游 MVU 對不存在的路徑 set／add／delete 也是報錯不建立（`src/features/mvu-engine/source-apply.ts` `applySet`／`applyAdd`／`applyDelete`），本案不改「不建立」，只補回饋。
+- 解析層（`parse.rs:128` `value_to_patch`）把認不出的 op、缺 path、壞 JSON 物件整筆丟掉，連記帳都沒有；上游收 `"op":"add"`（＝insert）、move 目的地取 `path ?? to`（`src/features/mvu-engine/source-commands.ts` 的 JSONPatch 轉指令），本地都不收。
 - 沒重構 MVU 卡的 stat_data 陣列（含 `[值, 說明]`，下稱 VWD）在狀態樹是一片 JSON 文字葉子；`delta` 打到 VWD 上游加在第 0 項（`applyAdd`），本地推定成文字欄拒收。
 
 ## 主線裁定〔主線裁定，依作者裁決 酒館行為照做〕

@@ -44,6 +44,7 @@
 | 19 | [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md) 狀態欄骨架桌 | 已結案、單元測試覆蓋，剩實機觀察，可搭任一梯 2 實聊順手看（2026-10-27：①過、②0/15 塊解析失敗、③④的「套用重構」那半現況到不了——已有遊玩紀錄的桌拒收重構，生成中套用重構的排隊情境無從觸發；③「貼開場」那半未試、⑤酒館 regex 替換字串最後會跑 substituteParams，會換 {{user}}／{{char}}）：①結果框「匯出」（6b）上一輪 AI 重構後沒寫檔、畫面沒報錯，零額度重放正常；下次有授權的 AI 重構時，匯出前後讀 statusMessage 與 `refactor_export_outcome` 回傳定位原因　②文字欄被下 delta 已由 [takeover-text-field-delta](../plans/takeover-text-field-delta.md) 改成拒收回饋＋提示詞清單欄提醒；剩 `<UpdateVariable>` 的 JSON 字串尾巴多跳脫引號（被容錯跳過），看頻率決定要不要加強提示　③④驗法過時，待改寫（玩家一送出這桌就算已有遊玩紀錄，重構會被拒，「生成中套用重構」排隊情境觸發不到；原驗法：③生成中按套用重構／貼開場等排隊時再按停止生成，④真模型一回合佐證排隊套用在 GM 旁白落檔後才執行）　⑤待查證：酒館 regex 替換字串與訊息顯示會不會替換 `{{user}}`／`{{char}}`，會的話面板也應替換（只查規格） |
 | 21 | [image-model-picker](../handoffs/image-model-picker.md) 生圖統一 PNG 真打 | 單元測試只用 mock：①付費生圖模型回 JPEG／WebP／遠端 URL 時真打一次，圖進圖庫且是 PNG（看圖庫檔頭）　②codex／agy／grok 真生圖一次，走「讀進記憶體→清工作目錄→轉 PNG→進圖庫」新流程；可併第 8 項一起跑 |
 | 22 | [image-model-free-tier-hide](../handoffs/image-model-free-tier-hide.md) 免費層藏生圖模型 | 測試通道只用本機假 `/key`：①真 OpenRouter 免費 key 與付費 key 各開一次設定頁「AI 連線」，免費隱藏生圖模型、付費顯示　②整個關掉設定視窗再開，快取首屏不閃；可併第 21 項一起跑 |
+| 23 | [mvu-zod-semantics](../handoffs/archive/mvu-zod-semantics.md) MVU zod 桌真機 | 桌面用測試通道、低階模型：拿 zod 卡（TestCards 三張真卡裡沒露骨內容的那張，或自製乾淨 zod 卡）開局，確認開局變數過了卡片 schema（夾值、預設值）、鍵順序照 initvar；跑三、四回合，其中一回合讓 GM 寫一條會被拒收的值與一條 `_` 開頭路徑，下一回合送出的提示「上一輪被系統擋下的更新」段有對應回饋句、狀態沒寫進去；收回一回合後狀態回到前一則 |
 
 ## 梯 3：等外部條件，不排時程
 
@@ -64,3 +65,4 @@
 | [test-harness](../handoffs/archive/test-harness.md) 正式包 listener | 要確實隔離資料的環境（獨立 macOS 帳號或 VM）：正式包帶 `TT_HARNESS_ROOT` 啟動不產 harness.json、`lsof` 看不到 listener |
 | [long-prompt-scene-hint](../handoffs/archive/long-prompt-scene-hint.md) Windows 真 CLI 讀檔 | 等有 Windows 機且 claude／grok／agy 已登入：中文卡加世界書超過 3 萬字的桌各送一輪——claude 讀 `--system-prompt-file`、grok 讀 `--agent` profile 與 `--prompt-file`、agy 吃 stdin，都回得出話；`cli-prompts/` 呼叫後是空的。原生假 .exe 版已在 Windows CI 過，三家真 CLI 未跑 |
 | [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 既有 lane 續聊 | 2026-10-27 測試通道過：舊版開的接管桌（GM 線已送 14 則）升級後送一輪，system-changed 重開線換成唯一敘事者版、無「下一位」、介面數值照更新。已有 GM 續聊線的接管桌升級後送一輪：凍結 system 開頭換成唯一敘事者版後續聊照常（snapshot 補丁或重開線都行）、GM 不寫「下一位」、介面不被蓋 |
+| [mvu-zod-semantics](../handoffs/archive/mvu-zod-semantics.md) 網頁 308 標頭 | 網頁版上線後抽查 Cloudflare Pages 上 `/mvu-zod`、`/mvu-zod.html`（308）的實際回應標頭帶隔離 CSP（本機託管伺服器的 308 不帶標頭，驗不到） |
