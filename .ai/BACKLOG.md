@@ -5,6 +5,7 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 競品研究：[Marinara Engine 參考策略](plans/marinara_reference_notes.md)（借鏡清單 §14、強化順序 §15、研究待辦 §20 尚未立案）。
 
+- [import-tests-folder](tasks/import-tests-folder.md) — import/ 24 檔（11 支測試）超過資料夾上限，測試收進子資料夾 — 下一步：MVU 相容段開工前結構體檢時一併做
 - [cardformat-presence-autohide](tasks/cardformat-presence-autohide.md) — 沒重構的顯示腳本桌不報 present，換幕後原卡主角色被自動隱藏 — 下一步：併入卡片介面接管段，與 character-presence 同一個條件一起修
 - [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：網頁版公開後再決定〔作者裁決 2026-10-12〕
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
