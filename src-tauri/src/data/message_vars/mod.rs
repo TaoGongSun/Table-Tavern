@@ -7,8 +7,10 @@
 //! - `mode`：模式交接與快取重建
 //! - `turn`：桌世代與 GM 回合紀錄
 //! - `write`：初始化來源的改寫、卡寫、GM 回合與開場的新表
+//! - `engine_turn`：zod 卡引擎路徑的兩段鎖（固定輸入、重驗才寫）與表／樹轉換
 mod control;
 mod convert;
+mod engine_turn;
 mod json;
 mod mode;
 mod source;
@@ -20,9 +22,15 @@ use serde_json::value::RawValue;
 
 pub use control::{control_path, read_control};
 pub use convert::{clean, leaf_text, restore_leaf, strip_meta_leaf, Macros, TypedBatch};
+pub use engine_turn::{
+    activate_for_opening, active_table, apply_engine_turn, engine_turn_input, merge_post_process,
+    needs_seed, table_tree,
+};
 pub use json::parse as parse_json;
 pub use json::{parse_table, validate_table, Json};
-pub use mode::{ensure_active, handover_to_tree, new_token, refresh_cache};
+pub use mode::{
+    derive_display, ensure_active, handover_to_tree, new_token, refresh_cache, tree_seed,
+};
 pub use source::{projected_tree, Source};
 pub use turn::{
     bump_generation, busy, generation, world_swapped, PendingMain, TurnKey, PART_CHARACTER,

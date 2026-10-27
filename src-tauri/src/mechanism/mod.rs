@@ -4,6 +4,7 @@
 
 mod apply;
 mod derive;
+pub mod engine_records;
 mod ledger;
 mod note;
 mod parse;

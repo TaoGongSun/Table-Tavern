@@ -1,4 +1,5 @@
-//! 固定型 EJS 辨識器：只把可靜態還原的條件分支收成觸發表，從不執行腳本。
+//! 固定型 EJS 辨識器：只把可靜態還原的條件分支收成觸發表，從不執行腳本（卡片腳本只有 zod 變數 schema
+//! 例外，限隔離的 `mvu_engine` 執行）。
 
 use crate::data::{Condition, Trigger, TriggerCase, TriggerMode};
 use std::collections::BTreeMap;

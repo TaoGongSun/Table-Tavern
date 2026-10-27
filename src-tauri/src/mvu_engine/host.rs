@@ -5,7 +5,8 @@
 
 use super::contract::{
     BatchOutput, DetailedResult, EngineFailure, FailureKind, InitOutput, Limits, Macros,
-    SchemaScript, MAX_CHANGES, MAX_RESULTS, MESSAGE_BYTES, SCHEMA_SOURCE_BYTES, TABLE_BYTES,
+    SchemaScript, SeedBase, MAX_CHANGES, MAX_RESULTS, MESSAGE_BYTES, SCHEMA_SOURCE_BYTES,
+    TABLE_BYTES,
 };
 use super::runtime::{EngineRuntime, Guard};
 use serde_json::{Map, Value};
@@ -25,6 +26,12 @@ pub(super) enum Op {
     },
     Initialize {
         stat_json: String,
+    },
+    Seed {
+        initvars_json: String,
+        opening: String,
+        macros_json: String,
+        base_json: String,
     },
     /// 測試用：模擬卡在不受中斷的原生程式碼裡
     #[cfg(test)]
@@ -144,7 +151,7 @@ impl MvuEngine {
             old_json,
             macros_json,
         };
-        let (json, duplicates) = self.dispatch(table, schema, op, deadline)?;
+        let (json, _) = self.dispatch(table, schema, op, deadline)?;
         let detailed: DetailedResult = serde_json::from_str(&json)
             .map_err(|error| bad_output(format!("回傳不符契約：{error}")))?;
         if detailed.results.len() > MAX_RESULTS || detailed.changes.len() > MAX_CHANGES {
@@ -153,10 +160,7 @@ impl MvuEngine {
         // 核心自己會擋，但卡片腳本與核心同一個 realm：在 Rust 再驗一次表的大小
         table_json(&detailed.table).map_err(|failure| bad_output(failure.detail))?;
         check_deadline(deadline)?;
-        Ok(BatchOutput {
-            detailed,
-            duplicates,
-        })
+        Ok(BatchOutput { detailed })
     }
 
     /// 開局：initvar 的 stat_data 先 cleanUpMetadata 再過 schema
@@ -178,39 +182,50 @@ impl MvuEngine {
         }
         let (json, duplicates) =
             self.dispatch(table, schema, Op::Initialize { stat_json }, deadline)?;
-        let mut reply: Value = serde_json::from_str(&json)
-            .map_err(|error| bad_output(format!("回傳不是 JSON：{error}")))?;
-        let stat_data = reply
-            .get_mut("stat_data")
-            .map(Value::take)
-            .unwrap_or(Value::Null);
-        if serde_json::to_string(&stat_data).map_or(true, |text| text.len() > TABLE_BYTES) {
-            return Err(bad_output("開局結果超過 2 MB".into()));
-        }
-        let outcome = &reply["outcome"];
-        let invalid = match outcome["ok"].as_bool() {
-            Some(true) => None,
-            Some(false) => {
-                let issues = outcome["issues"]
-                    .as_array()
-                    .map(|issues| {
-                        issues
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                Some((issues, outcome["issueCount"].as_u64().unwrap_or(0) as usize))
-            }
-            None => return Err(bad_output("開局回傳缺 outcome".into())),
+        init_output(&json, duplicates, deadline)
+    }
+
+    /// 種子（MVU initCheck）：卡內各條 `[initvar]` 原文依序在引擎裡保序解析深合併（卡上沒有 initvar 時改以狀態樹
+    /// 物化的 stat_data 為底），開場白的 `<initvar>` 區塊整份取代，再同 `initialize`。任一條 initvar 解析失敗＝整次失敗
+    pub fn seed(
+        &self,
+        table: &str,
+        schema: &Arc<SchemaScript>,
+        base: SeedBase<'_>,
+        opening: &str,
+        macros: &Macros,
+        deadline: Instant,
+    ) -> Result<InitOutput, EngineFailure> {
+        check_schema(schema)?;
+        let too_large = |error: serde_json::Error| {
+            EngineFailure::new(FailureKind::InputTooLarge, error.to_string())
         };
-        check_deadline(deadline)?;
-        Ok(InitOutput {
-            stat_data,
-            invalid,
-            duplicates,
-        })
+        let (initvars_json, base_json) = match base {
+            SeedBase::Initvars(initvars) => (
+                serde_json::to_string(initvars).map_err(too_large)?,
+                "null".to_owned(),
+            ),
+            SeedBase::Tree(stat) => (
+                "[]".to_owned(),
+                serde_json::to_string(stat).map_err(too_large)?,
+            ),
+        };
+        if initvars_json.len() + base_json.len() + opening.len() > TABLE_BYTES {
+            return Err(EngineFailure::new(
+                FailureKind::InputTooLarge,
+                "initvar 與開場白超過 2 MB",
+            ));
+        }
+        let macros_json = serde_json::to_string(macros)
+            .map_err(|error| EngineFailure::new(FailureKind::InputTooLarge, error.to_string()))?;
+        let op = Op::Seed {
+            initvars_json,
+            opening: opening.to_owned(),
+            macros_json,
+            base_json,
+        };
+        let (json, duplicates) = self.dispatch(table, schema, op, deadline)?;
+        init_output(&json, duplicates, deadline)
     }
 
     fn dispatch(
@@ -402,6 +417,47 @@ impl MvuEngine {
     }
 }
 
+/// 開局與種子的回覆：表大小再驗一次、拆出驗證錯誤
+fn init_output(
+    json: &str,
+    duplicates: u32,
+    deadline: Instant,
+) -> Result<InitOutput, EngineFailure> {
+    let mut reply: Value = serde_json::from_str(json)
+        .map_err(|error| bad_output(format!("回傳不是 JSON：{error}")))?;
+    let stat_data = reply
+        .get_mut("stat_data")
+        .map(Value::take)
+        .unwrap_or(Value::Null);
+    if serde_json::to_string(&stat_data).map_or(true, |text| text.len() > TABLE_BYTES) {
+        return Err(bad_output("開局結果超過 2 MB".into()));
+    }
+    let outcome = &reply["outcome"];
+    let invalid = match outcome["ok"].as_bool() {
+        Some(true) => None,
+        Some(false) => {
+            let issues = outcome["issues"]
+                .as_array()
+                .map(|issues| {
+                    issues
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some((issues, outcome["issueCount"].as_u64().unwrap_or(0) as usize))
+        }
+        None => return Err(bad_output("開局回傳缺 outcome".into())),
+    };
+    check_deadline(deadline)?;
+    Ok(InitOutput {
+        stat_data,
+        invalid,
+        duplicates,
+    })
+}
+
 /// 期限一到就整次失敗：回成功前、輸出驗證後都要再對一次（中斷只在 JS 執行中輪詢，原生程式與 Rust 的處理看不到）
 fn check_deadline(deadline: Instant) -> Result<(), EngineFailure> {
     if Instant::now() >= deadline {
@@ -496,6 +552,12 @@ fn process(
             macros_json,
         } => current.parse(message, old_json, macros_json, guard),
         Op::Initialize { stat_json } => current.initialize(stat_json, guard),
+        Op::Seed {
+            initvars_json,
+            opening,
+            macros_json,
+            base_json,
+        } => current.seed(initvars_json, opening, macros_json, base_json, guard),
         #[cfg(test)]
         Op::Stall(duration) => {
             thread::sleep(*duration);

@@ -467,6 +467,10 @@ fn duplicate_registrations_are_counted() {
     let engine = MvuEngine::new(quick());
     let schema =
         script("registerMvuSchema(z.object({ a: z.number() }));\nregisterMvuSchema(z.object({}));");
+    let init = engine
+        .initialize("dup", &schema, &json!({ "a": 1 }), engine.deadline())
+        .unwrap();
+    assert_eq!(init.duplicates, 1);
     let output = batch(
         &engine,
         "dup",
@@ -475,7 +479,6 @@ fn duplicate_registrations_are_counted() {
         json!({ "a": 1 }),
     )
     .unwrap();
-    assert_eq!(output.duplicates, 1);
     // 只認第一份：a 必須是數字
     assert_eq!(statuses(&output), vec![CommandStatus::Rejected]);
 }

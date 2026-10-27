@@ -1,0 +1,28 @@
+{
+  "_note": "zod 卡 [initvar] 條目的收集順序：桌面 import/card_schema.rs 與網頁 web/src/features/mvu/initvar.ts（initvarEntries）跑同一份，照 ST 載入後的先後。",
+  "cases": [
+    {
+      "name": "陣列形：照 id 整數由小到大、非整數 id 排後、id 重複後蓋前（位置留前）、停用照收",
+      "entries": [
+        { "id": 5, "comment": "[initvar]五", "content": "e: 5" },
+        { "id": 2, "comment": "[initvar]二", "content": "b: 2", "enabled": false },
+        { "id": 3, "comment": "地點", "content": "晨港" },
+        { "id": "x", "comment": "[InitVar]字", "content": "x: 1" },
+        { "comment": "[initvar]沒 id 用索引", "content": "i: 4" },
+        { "id": 2, "comment": "[initvar]二蓋", "content": "b: 22" }
+      ],
+      "expected": ["b: 22", "i: 4", "e: 5", "x: 1"]
+    },
+    {
+      "name": "物件形：照 JS 鍵序（整數鍵由小到大，其餘照出現順序）、剝 @@ 裝飾、標題只看 comment",
+      "entries": {
+        "10": { "comment": "[initvar]十", "content": "c: 10" },
+        "b": { "comment": "[initvar]乙", "content": "@@activate\nk: 1" },
+        "2": { "comment": "[initvar]二", "content": "c: 2" },
+        "a": { "comment": "[initvar]甲", "content": "a: 1" },
+        "n": { "name": "[initvar]只有名字", "content": "n: 1" }
+      },
+      "expected": ["c: 2", "c: 10", "k: 1", "a: 1"]
+    }
+  ]
+}

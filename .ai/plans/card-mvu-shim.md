@@ -25,7 +25,7 @@
 | 依賴全域 | `$`（jQuery）、`_`（lodash）、`errorCatched`，卡內不自載 | 同左 |
 
 - 兩張卡的 `[initvar]` 都是一般值；DongeonMaster 帶 MVU 的 `$meta`（extensible／template）與 `[]` 空陣列。
-- tavern_helper 腳本：`MVU基础脚本`（import MVU bundle）與 `变量结构`。app 不執行這些腳本；變數由 app 狀態樹管（state-values-mvu）。
+- tavern_helper 腳本：`MVU基础脚本`（import MVU bundle）與 `变量结构`。app 不執行這些腳本；變數由 app 狀態樹管（state-values-mvu）。例外：zod 卡的 `变量结构`（registerMvuSchema）在隔離引擎裡執行，見 [mvu-zod-semantics](mvu-zod-semantics.md) 2.6 節。
 - 開場白：bcd368 的 first_mes 帶占位；DongeonMaster 的 first_mes 沒占位，開場畫面走另一支 `开局` regex。
 
 ## 做法

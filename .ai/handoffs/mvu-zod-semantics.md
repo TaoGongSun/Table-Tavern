@@ -1,6 +1,6 @@
 # zod 版 MVU 卡的更新語意改以 mvu_zod 為基準
 
-Status: in-progress（分支 mvu-zod-semantics）
+Status: in-progress（分支 mvu-zod-semantics）：P1–P4 完成，等 P5 併回，下一步 P6
 
 ## Summary
 mvu-array-index-path 驗收時查到：zod 版 MVU 卡（registerMvuSchema，TestCards 帶 [initvar] 的四張全是）實際由 StageDog/tavern_resource 的 util/mvu_zod.ts 在 `mag_command_parsed_for_zod` 自行 applyCommand 並清空指令，MagVarUpdate 的 applySet／applyInsert／applyDelete／applyAdd 一條都收不到。本地 mvu-replace-numeric、mechanism-error-feedback、mvu-array-index-path 都以 MagVarUpdate 為基準。mvu_zod 差異：set 直接 `_.set`（不做 VWD 第 0 項、不轉 Number、路徑不存在照建）；add 只收數字、無 toPrecision(12)、無 VWD；insert 容器 nil 先試 {} 再 []、頂層不查父路徑；delete 陣列用 pullAt；move 會搬（delete 再 set）；`_` 開頭路徑靜默忽略；每條指令最後過卡片 zod schema（safeParse，含轉型、夾值、預設值），不通過整條不套用。
@@ -30,10 +30,12 @@ mvu-array-index-path 驗收時查到：zod 版 MVU 卡（registerMvuSchema，Tes
   - 共用路徑存取只走自有屬性（`source-path.ts`），MagVarUpdate 與 zod 都用。
   - commit a0b39e32、aa7b60cf、3f2c2147、6b48f359、9e00c47e、b313efb5。
 - 根 package.json 已加 `zod` 4.6.7（鎖版）。web 端到 P5 才加。
-- P3 第 2 輪（Grok 可收、Sol 一項必改）已修：全域名額改成「執行中＋作廢未結束」，送出前取得。之前第 1 輪的修正：被淘汰的執行中 worker 逾時照樣作廢計數、回成功前重驗期限、鍵順序保序（serde_json preserve_order）、中斷穿過 catch／finally 的 cargo 測試、重開上限改每桌。三方共識定案已寫進規格 1.3、1.5、2.2、2.4a。宿主在 `src-tauri/src/mvu_engine/`，入口 `quickjs-entry.ts`，bundle 由 `npm run build` 產生。
+- P3 第 2 輪（Grok 可收、Sol 一項必改）已修：全域名額改成「執行中＋作廢未結束」，送出前取得。之前第 1 輪的修正：被淘汰的執行中 worker 逾時照樣作廢計數、回成功前重驗期限、鍵順序保序（serde_json preserve_order）、中斷穿過 catch／finally 的 cargo 測試、重開上限改每桌。三方共識定案已寫進規格 1.3、1.5、2.2、2.4a。宿主在 `src-tauri/src/mvu_engine/`，入口 `quickjs-entry.ts`，bundle 由 `npm run build` 產生。P3 第 3 輪已收。
+- P4 已收（第 2 輪 Sol、Grok 都可收，三方共識；之後依 Grok 建議把堆疊溢位與記憶體不足的失敗文案拆開）：接線在 `mvu_engine/wiring.rs`（GM 回合與開場白共用，段 0 種子／段 1 固定輸入／段 2 鎖外跑引擎與後處理／段 3 憑證重驗），變數層在 `data/message_vars/engine_turn.rs`，帳本映射在 `mechanism/engine_records.rs`，zod 判定與 initvar 收集在 `import/card_schema.rs`；chat.rs 與 transcript.rs 只加呼叫。定案寫在規格 1.5、2.4、2.4a、2.6；整合測試 `mvu_engine/wiring_tests.rs`。
 
 ## Next action
-- 等 P3 第 3 輪驗收；過了才開 P4（桌面接線）：讀規格 2.4–2.6 與 3 節 P4 列，特別是 2.4a 的存表保序要求。`lib.rs` 的 `mvu_engine` 目前 `allow(dead_code, unused_imports)`，接線時拿掉。2.6 的文件紅線例外在 P4 同步改。
+- 等 P5（網頁宿主，另一條子代理）併回 mvu-zod-semantics；主線通知後才開 P6（P6 的 parity json、zod 回饋句會碰網頁那邊）。開工先讀規格 3 節 P6 列。
+- P5 併回後：initvar 解析合併小函式（`quickjs-entry.ts` 與 `web/src/features/mvu/initvar.ts` 各一份）搬進共用核心。
 - 發版前要驗 Windows MSVC 編譯（規格 0 節）。
 
 ## 本機驗證

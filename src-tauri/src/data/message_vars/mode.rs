@@ -13,7 +13,7 @@ pub fn new_token() -> String {
     ulid::Ulid::generate().to_string()
 }
 
-/// 這桌該不該用卡片變數模式：有載入 MVU 的卡、沒有重構骨架、不是角色優先桌（與前端 `pickCardShell`
+/// 這桌該不該用卡片變數模式：有載入 MVU（或帶 zod 變數 schema）的卡、沒有重構骨架、不是角色優先桌（與前端 `pickCardShell`
 /// 給 MVU 快照的條件同一依據）。是的話回那張卡的名字（`{{char}}` 代換用）。
 pub fn eligible_char(root: &Path, world_id: &str, refactor_mode: Option<&str>) -> Option<String> {
     if refactor_mode == Some("characters") {
@@ -29,7 +29,7 @@ pub fn eligible_char(root: &Path, world_id: &str, refactor_mode: Option<&str>) -
     crate::import::read_card_interfaces(root, world_id)
         .ok()?
         .into_iter()
-        .find(|card| card.mvu && card.unsupported.is_none())
+        .find(|card| (card.mvu || card.zod.is_some()) && card.unsupported.is_none())
         .map(|card| card.character_name)
 }
 
@@ -64,42 +64,34 @@ pub fn derive_display(table: &mut Json, stat: Json) {
 ///   新種子、換新 epoch，一次寫入控制檔即發布。
 /// - 樹模式且不符合條件：不動、回 false。停用腳本、讀不到卡片介面都不會把變數模式切回去。
 pub fn ensure_active(tx: &CommitTx<'_>, macros: Option<&Macros>) -> DataResult<bool> {
+    ensure_active_seeded(tx, macros, None)
+}
+
+/// 同 `ensure_active`；要新建種子時 `seed` 有值就直接用它（zod 卡由引擎建、過了 schema 的保序種子），
+/// 不從狀態樹物化。
+pub fn ensure_active_seeded(
+    tx: &CommitTx<'_>,
+    macros: Option<&Macros>,
+    seed: Option<&Json>,
+) -> DataResult<bool> {
     let mut control = read_control(tx.root, tx.world_id)?;
     let cache = read_state_cache(tx.root, tx.world_id)?;
     let scene = cache.current_scene;
     if control.active(scene).is_some() {
         return Ok(true);
     }
-    let char_name = match control.mode {
-        Mode::Events => None,
-        Mode::Tree => match eligible_char(tx.root, tx.world_id, cache.refactor_mode.as_deref()) {
-            Some(name) => Some(name),
-            None => return Ok(false),
-        },
+    let Some((macros, previous)) = seed_basis(tx, &control, &cache, macros)? else {
+        return Ok(false);
     };
-    let macros = match (macros, &control.macros) {
-        (Some(given), _) => Some(Macros {
-            user: given.user.clone(),
-            char: given.char.clone().or(char_name),
-        }),
-        (None, Some(stored)) => Some(stored.clone()),
-        (None, None) => None,
-    };
-    // 上一份完整表：這一幕以前的 epoch 的初始化來源（重構往返後退回、或模式切回來時沿用 schema 等鍵）
-    let previous = match control.scene(scene) {
-        Some(vars) => Some(
-            init_source(tx.root, tx.world_id, scene, vars)?
-                .table()
-                .clone(),
+    let seed = match seed {
+        Some(seed) => seed.clone(),
+        None => materialize(
+            &cache.state.tree,
+            &cache.mechanism.value_types,
+            macros.as_ref(),
+            previous.as_ref(),
         ),
-        None => None,
     };
-    let seed = materialize(
-        &cache.state.tree,
-        &cache.mechanism.value_types,
-        macros.as_ref(),
-        previous.as_ref(),
-    );
     control.mode = Mode::Events;
     if macros.is_some() {
         control.macros = macros;
@@ -113,6 +105,61 @@ pub fn ensure_active(tx: &CommitTx<'_>, macros: Option<&Macros>) -> DataResult<b
     );
     write_control(tx, &control)?;
     Ok(true)
+}
+
+/// 這一幕要新建種子時、`ensure_active` 不給種子會物化出的那張表（只讀不發布）：zod 桌卡上沒有 `[initvar]` 時，
+/// 鎖外先拿它的 stat_data 過 schema 再當種子。已啟用或不符合條件回 None。
+pub fn tree_seed(tx: &CommitTx<'_>, macros: Option<&Macros>) -> DataResult<Option<Json>> {
+    let control = read_control(tx.root, tx.world_id)?;
+    let cache = read_state_cache(tx.root, tx.world_id)?;
+    if control.active(cache.current_scene).is_some() {
+        return Ok(None);
+    }
+    Ok(
+        seed_basis(tx, &control, &cache, macros)?.map(|(macros, previous)| {
+            materialize(
+                &cache.state.tree,
+                &cache.mechanism.value_types,
+                macros.as_ref(),
+                previous.as_ref(),
+            )
+        }),
+    )
+}
+
+/// 新建種子的依據：這桌該不該啟用（不該回 None）、生效的巨集、上一份完整表（這一幕以前的 epoch 的初始化來源，
+/// 重構往返後退回、或模式切回來時沿用 schema 等鍵）。
+fn seed_basis(
+    tx: &CommitTx<'_>,
+    control: &super::control::Control,
+    cache: &crate::data::WorldState,
+    macros: Option<&Macros>,
+) -> DataResult<Option<(Option<Macros>, Option<Json>)>> {
+    let scene = cache.current_scene;
+    let char_name = match control.mode {
+        Mode::Events => None,
+        Mode::Tree => match eligible_char(tx.root, tx.world_id, cache.refactor_mode.as_deref()) {
+            Some(name) => Some(name),
+            None => return Ok(None),
+        },
+    };
+    let macros = match (macros, &control.macros) {
+        (Some(given), _) => Some(Macros {
+            user: given.user.clone(),
+            char: given.char.clone().or(char_name),
+        }),
+        (None, Some(stored)) => Some(stored.clone()),
+        (None, None) => None,
+    };
+    let previous = match control.scene(scene) {
+        Some(vars) => Some(
+            init_source(tx.root, tx.world_id, scene, vars)?
+                .table()
+                .clone(),
+        ),
+        None => None,
+    };
+    Ok(Some((macros, previous)))
 }
 
 /// 重構套用（events → tree）：先把有效 stat_data 投影寫進 state.json 樹並確認寫成，再寫控制檔發布

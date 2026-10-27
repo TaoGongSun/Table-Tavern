@@ -100,7 +100,7 @@ pub enum BlockScope {
 }
 
 const IGNORED_OPENING_PATH: &str = "開場白狀態區塊";
-const REJECTED_BLOCK_PATH: &str = "狀態區塊";
+pub(super) const REJECTED_BLOCK_PATH: &str = "狀態區塊";
 
 /// 照 `scope` 篩掉不收的部分，回傳要套用的區塊與這次篩掉的記帳。
 fn scoped_block(
@@ -303,25 +303,7 @@ pub fn apply_block_typed(
     if jump_check {
         detect_jumps(world, &block.fields, &old_values, &mut outcome.records);
     }
-    if world.mechanism.incremental {
-        reroll(&mut world.state.tree, &world.mechanism);
-        let triggered = evaluate_triggers(&world.state.tree, &world.mechanism, user_name);
-        world.state.triggers = triggered.hits;
-        for flag in &triggered.flags {
-            let segments: Vec<String> = flag.split('.').map(str::to_owned).collect();
-            data::set_tree_value(&mut world.state.tree, &segments, "true");
-            outcome.records.push(Record::new(
-                RecordKind::Absorbed,
-                flag.clone(),
-                format!("一次性事件已觸發，旗標 {flag} 釘死為 true，不再重演。"),
-            ));
-        }
-    }
-    // 衍生值不分全量／增量桌都要重算：模型看不到 rare 欄位、也算不出它的值，
-    // 全靠本地用這一輪剛套用完的樹重新求一次。
-    outcome
-        .records
-        .extend(recompute_derived(&mut world.state.tree, &world.mechanism));
+    local_rules(world, user_name, &mut outcome.records);
     if let Some(record) = scope_record {
         outcome.records.insert(0, record);
     }
@@ -330,6 +312,30 @@ pub fn apply_block_typed(
     world.state.notes = outcome.notes.clone();
     world.state.changes = outcome.changes.clone();
     outcome
+}
+
+/// 套用之後的本地規則（zod 引擎路徑共用）：增量桌重擲骰值、求觸發表（一次性旗標釘死為 true），
+/// 衍生值不分全量／增量桌都重算——模型看不到 rare 欄位、也算不出它的值，全靠本地用剛套用完的樹重新求一次。
+pub(super) fn local_rules(
+    world: &mut data::WorldState,
+    user_name: &str,
+    records: &mut Vec<Record>,
+) {
+    if world.mechanism.incremental {
+        reroll(&mut world.state.tree, &world.mechanism);
+        let triggered = evaluate_triggers(&world.state.tree, &world.mechanism, user_name);
+        world.state.triggers = triggered.hits;
+        for flag in &triggered.flags {
+            let segments: Vec<String> = flag.split('.').map(str::to_owned).collect();
+            data::set_tree_value(&mut world.state.tree, &segments, "true");
+            records.push(Record::new(
+                RecordKind::Absorbed,
+                flag.clone(),
+                format!("一次性事件已觸發，旗標 {flag} 釘死為 true，不再重演。"),
+            ));
+        }
+    }
+    records.extend(recompute_derived(&mut world.state.tree, &world.mechanism));
 }
 
 // ---------------------------------------------------------------------

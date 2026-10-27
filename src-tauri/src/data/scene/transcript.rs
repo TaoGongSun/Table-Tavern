@@ -365,6 +365,8 @@ pub fn append_opening_keyed(
     user_name: &str,
     turn_key: Option<message_vars::TurnKey>,
 ) -> DataResult<(TranscriptEvent, Outcome)> {
+    // zod 卡：種子、引擎與後處理在鎖外先算好（mvu_engine::wiring），鎖內只核對來源沒變再寫
+    let zod = crate::mvu_engine::wiring::prepare_opening(root, world_id, raw, block, user_name)?;
     with_commit(root, world_id, |tx| {
         // 先交接：上一回合沒落成的回覆（含新表）先落，開場表才以它為底，不會被舊來源算出的表蓋回
         message_vars::settle_before_append(tx, None)?;
@@ -372,28 +374,48 @@ pub fn append_opening_keyed(
             user: user_name.to_owned(),
             char: None,
         };
-        message_vars::ensure_active(tx, Some(&macros))?;
+        // zod 卡在鎖外已啟用（建種子失敗就這一幕不啟用，不得改從樹物化）
+        if zod.is_none() {
+            message_vars::ensure_active(tx, Some(&macros))?;
+        }
         let mut world = read_state(root, world_id)?;
-        world.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &world);
-        let before = world.state.tree.clone();
-        let base = message_vars::opening_stat(tx, scene)?;
-        // 介面接管桌的開場白自帶原卡格式的狀態區塊：不收（讀不到殼就不猜，整筆不貼）
-        let scope =
-            if crate::data::interface_takeover(root, world_id, world.refactor_mode.as_deref())? {
-                mechanism::BlockScope::TakeoverOpening
-            } else {
-                mechanism::BlockScope::Table
-            };
-        let outcome =
-            mechanism::apply_block_typed(&mut world, block, user_name, base.as_ref(), scope);
-        let table = message_vars::opening_table(
-            tx,
-            scene,
-            &before,
-            &world.state.tree,
-            &world.mechanism.value_types,
-            outcome.typed.as_ref(),
-        )?;
+        let (table, outcome) = match &zod {
+            Some(prepared) => {
+                crate::mvu_engine::wiring::opening_result(tx, prepared, &mut world, user_name)?
+            }
+            None => {
+                world.mechanism.numeric_update =
+                    mechanism::resolve_numeric_update(root, world_id, &world);
+                let before = world.state.tree.clone();
+                let base = message_vars::opening_stat(tx, scene)?;
+                // 介面接管桌的開場白自帶原卡格式的狀態區塊：不收（讀不到殼就不猜，整筆不貼）
+                let scope = if crate::data::interface_takeover(
+                    root,
+                    world_id,
+                    world.refactor_mode.as_deref(),
+                )? {
+                    mechanism::BlockScope::TakeoverOpening
+                } else {
+                    mechanism::BlockScope::Table
+                };
+                let outcome = mechanism::apply_block_typed(
+                    &mut world,
+                    block,
+                    user_name,
+                    base.as_ref(),
+                    scope,
+                );
+                let table = message_vars::opening_table(
+                    tx,
+                    scene,
+                    &before,
+                    &world.state.tree,
+                    &world.mechanism.value_types,
+                    outcome.typed.as_ref(),
+                )?;
+                (table, outcome)
+            }
+        };
         let event = TranscriptEvent {
             ts: ts.to_owned(),
             speaker_id: String::new(),

@@ -1,7 +1,10 @@
 // 桌面 QuickJS 宿主的 bundle 入口（mvu-zod-semantics 規格 1.2、2.3 節）：`npm run build:mvu-bundle` 打成
 // src-tauri/gen/mvu-engine.js（IIFE、全域名 TTMvu），由 src-tauri/src/mvu_engine/runtime.rs 求值後呼叫 `TTMvu.boot()`。
 // 與 Rust 之間一律傳 JSON 字串。值解析在同一個 context 同步跑：QuickJS 沒有計時器，期限由 Rust 的中斷處理器守。
+import JSON5 from "json5";
+import { jsonrepair } from "jsonrepair";
 import lodash from "lodash";
+import YAML from "yaml";
 import { z } from "zod";
 import { buildMvuEngineSource } from "./engine-source";
 import { MVU_EVENTS, type MvuCore } from "./host-contract";
@@ -16,6 +19,69 @@ export interface DesktopEngine {
   parse: (message: string, oldJson: string, macrosJson: string) => Promise<string>;
   /** 開局：initvar 先 cleanUpMetadata 再過 schema；回 `{ outcome, stat_data }` 的 JSON */
   initialize: (statJson: string) => string;
+  /** 種子（MVU initCheck）：卡內各條 `[initvar]` 依序解析深合併 → 開場白的 `<initvar>` 區塊整份取代 → initialize。
+   *  `initvarsJson` 是條目內文的字串陣列；任一條解析失敗就丟錯（上游這本書整本不算初始化）。卡上沒有 initvar 時
+   *  `baseJson` 給狀態樹物化的 stat_data（已代換過巨集）取代 initvar 那段，其餘同一條路 */
+  seed: (initvarsJson: string, opening: string, macrosJson: string, baseJson: string) => string;
+}
+
+// ---- initvar 解析：與網頁宿主 web/src/features/mvu/initvar.ts 同一份規則（MagVarUpdate loadInitVarData），
+// 只當規格書讀。網頁不能被桌面引用，所以這裡各寫一份；兩邊改動要同步 ----
+
+/** MVU util/common parseString：YAML 優先（`[`／`{` 開頭的改成最後才試），再 JSON5、jsonrepair */
+function parseStructured(content: string): unknown {
+  const jsonFirst = /^[[{]/.test(content.trimStart());
+  const yaml = () => YAML.parseDocument(content, { merge: true }).toJS();
+  if (!jsonFirst) {
+    try {
+      return yaml();
+    } catch {
+      // 換下一種
+    }
+  }
+  try {
+    return JSON5.parse(content);
+  } catch {
+    // 換下一種
+  }
+  try {
+    return JSON.parse(jsonrepair(content));
+  } catch (error) {
+    if (!jsonFirst) throw error;
+  }
+  return yaml();
+}
+
+/** 陣列整個取代、其餘深合併（MVU correctlyMerge） */
+function correctlyMerge<T extends object>(target: T, source: unknown): T {
+  return lodash.mergeWith(target, source, (_left: unknown, right: unknown) => (Array.isArray(right) ? right : undefined));
+}
+
+/** 條目內容：`<initvar>` 或程式碼區塊包住的取裡面那段；剩下首尾成對的 `<標籤>` 也剝掉 */
+function initvarBody(content: string): string {
+  let body = content;
+  const xml = body.trim().match(/.*<initvar>.*\n([\s\S]*)\n.*<\/initvar>.*/m);
+  if (xml) body = xml[1]!;
+  const fenced = body.trim().match(/```.*\n([\s\S]*)\n```/m);
+  if (fenced) body = fenced[1]!;
+  const wrapped = body.trim().match(/^<([A-Za-z_][\w.-]*)>[ \t]*\n([\s\S]*)\n[ \t]*<\/\1>$/);
+  if (wrapped) body = wrapped[2]!;
+  return body;
+}
+
+/** 開場白裡的 `<initvar>` 區塊：有就整份取代世界書的初始值（解析失敗的區塊略過）；沒有回 null */
+function openingOverride(opening: string, substitute: (text: string) => string): Record<string, unknown> | null {
+  const override: Record<string, unknown> = {};
+  let applied = false;
+  for (const match of opening.matchAll(/<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim)) {
+    try {
+      correctlyMerge(override, parseStructured(substitute(match[2]!)));
+      applied = true;
+    } catch {
+      // MVU 記錯誤後略過這一塊
+    }
+  }
+  return applied ? override : null;
 }
 
 /** UTF-8 位元組長度（不配置緩衝區） */
@@ -117,13 +183,32 @@ export function createDesktopEngine(): DesktopEngine {
       }
     },
     initialize(statJson) {
-      const stat: unknown = parse(statJson);
-      core.cleanUpMetadata(stat);
-      const variables: Record<string, unknown> = { stat_data: stat };
-      const outcome = core.zodInitialize(variables);
-      return stringify({ outcome, stat_data: variables.stat_data });
+      return initialize(parse(statJson));
+    },
+    seed(initvarsJson, opening, macrosJson, baseJson) {
+      const given = parse(macrosJson) as Macros;
+      // 巨集代換同核心的 substituteMacros：{{user}}／{{char}} 不分大小寫，沒有 char 就原樣留著
+      const substitute = (text: string) =>
+        text.replace(/\{\{(user|char)\}\}/gi, (match: string, name: string) => {
+          if (!given) return match;
+          if (name.toLowerCase() === "user") return given.user;
+          return given.char ?? match;
+        });
+      const base = parse(baseJson) as Record<string, unknown> | null;
+      const stat: Record<string, unknown> = base ?? {};
+      for (const content of base ? [] : (parse(initvarsJson) as string[])) {
+        const parsed = parseStructured(substitute(initvarBody(content)));
+        if (parsed) correctlyMerge(stat, parsed);
+      }
+      return initialize(openingOverride(opening, substitute) ?? stat);
     },
   };
+  function initialize(stat: unknown): string {
+    core.cleanUpMetadata(stat);
+    const variables: Record<string, unknown> = { stat_data: stat };
+    const outcome = core.zodInitialize(variables);
+    return stringify({ outcome, stat_data: variables.stat_data });
+  }
 }
 
 /** QuickJS 開機：補宿主全域（TextEncoder、安靜的 console），放卡片 schema 腳本要用的 z、_、$，回核心介面 */

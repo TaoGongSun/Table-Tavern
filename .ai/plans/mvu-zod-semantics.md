@@ -91,7 +91,7 @@ status 四種：
 
 ### 1.5 schema 載入與選擇規則（P2 定版）
 - 偵測：tavern_helper 腳本裡 `enabled` 不為 false、內容含 `registerMvuSchema` 的那一支，存原文。停用的腳本不算，照上游不跑，該桌就是非 zod 桌。
-- 同一桌有兩張卡都偵測到：用先匯入的那張；後面那張不執行，明白告知玩家〔模型判斷·未裁決，主線裁〕。同一張卡有多支：取腳本順序的第一支。
+- 同一桌有兩張卡都偵測到：用先匯入的那張；後面那張不執行，明白告知玩家〔模型判斷·未裁決，主線裁〕。桌面的「先匯入」看角色 id（ULID，匯入當下配發，側欄拖曳不動它）；世界層原卡（建桌時匯入）排最前〔模型判斷·未裁決〕。同一張卡有多支：取腳本順序的第一支。
 - 下列情況都算載入失敗：腳本執行拋錯、觸限、import 白名單外的模組、執行完沒呼叫 `registerMvuSchema`、`registerMvuSchema` 展開 schema 時拋錯（核心照上游在註冊時就展開一次）。載入失敗時，該桌 MVU 更新整次失敗並回饋，不退回 MagVarUpdate〔模型判斷·未裁決，主線裁〕。
 - 載入途中逾時歸期限失敗（Deadline），同樣整次失敗、不呼叫核心；「可重試」指玩家重 Roll 時再試，宿主不自動重試〔模型判斷·三方共識〕。
 - 腳本內重複呼叫 `registerMvuSchema`：只認第一次，其餘只計入 `zodStatus().duplicates`。
@@ -143,7 +143,7 @@ status 四種：
 zod 桌改成三段：
 1. **固定輸入（短鎖）**：`message_vars::turn_input` 沿用 `apply_gm_block` 開頭那組核對。`ensure_active` 物化出的 input 先存回回合紀錄，再回傳 `input_rev`。schema 雜湊與 macros 一起固定；若不固定，就列入失效條件。
 2. **鎖外跑引擎**：`run_batch` 回 1.4 的契約。
-3. **短鎖重驗才寫**：核對 turn_id、phase、scene、generation、input_rev、schema 雜湊，不符就回 None。
+3. **短鎖重驗才寫**：核對 turn_id、phase、scene、generation、input_rev、schema 雜湊，不符就回 None。P4 實作：段 1 存的輸入整張比對；schema 雜湊在段 3 同一把鎖內重讀這桌生效的 schema 比對。開場白的結果帶三份憑證（初始化來源、桌世代、schema 雜湊），鎖內任一不符算整次失敗、正文照落。
    - pending 取這次的最終表，也就是含後處理的結果。新表照樣經 `merge_tree_change_typed`（或等價的合成），重擲與旗標才會進落檔的表；不能直接拿 `result.table` 跳過合成。
 
 後處理〔Sol、Grok 意見合併〕：
@@ -157,25 +157,36 @@ zod 桌改成三段：
 - 退回時，triggers、旗標、records 一併撤回（ledger.rs:306 同時改這些），不能只退變數表。
 
 其餘條款：
-- `block.fields` 與清單整支替換在引擎路徑跑不跑，P4 開工時寫明。
+- `block.fields` 與清單整支替換：引擎路徑不跑〔模型判斷·三方共識〕。上游 MVU 只認指令，本 app 的狀態區塊欄位與清單不是上游語意；回覆裡有就整批不套，記一筆 Rejected（同介面接管桌的「狀態區塊未套用，請以 UpdateVariable 回報變動」），讓模型下一輪改用指令。引擎收的是整段原始回覆（同上游 parseMessage 掃整則訊息），不是只有 `<UpdateVariable>` 內文〔模型判斷·三方共識〕。
 - 帳本：新檔 `mechanism/engine_records.rs`，把逐條結果映射成 `Record`，回饋句沿用 `build_notes`。`_` 路徑的回饋留給 P6。
 - 開場白走同一條路（transcript.rs:389 → `opening_table`）。整次失敗時照 `state_error` 留正文、不裝變數，不走「世代不符回 None」。
 - initvar 的 safeParse 在建 `init_source` 時做一次；`scene_seed_for_next` 不重跑。
 - 收回讀已存快照，不重跑 transform。
 - 整次失敗：狀態整批不提交，正文照常落檔，回饋「變數更新失敗，可能需要重 Roll」。
+- 玩家回饋〔模型判斷·三方共識〕：GM 回合走既有 `state_error`（前端照舊顯示錯誤提示），開場白記一筆 Error 進機制帳本；建種子失敗一併照這套。文字用新的 UiMsg，十語系：
+  - `mvu_engine_busy`：「變數引擎忙碌中：全機同時最多處理兩個變數更新（含卡住待回收的），這一輪變數沒有更新，可稍後重 Roll。」Busy 與作廢上限、每桌重開上限都歸這句。
+  - `mvu_update_failed_<種類>`：「變數更新失敗，可能需要重 Roll（原因）」，原因各語系一句白話，不塞英文代碼。種類：timeout（逾時）、memory（記憶體）、stack（堆疊）、too_large（回覆或變數超出長度上限）、too_many_commands、schema_load、initvar（initvar 讀不懂）、engine（其餘）。
+  - 單條拒收不算失敗：照帳本 Rejected 回饋模型（`engine_records.rs`），玩家端不跳錯。
 
 ### 2.4a 物件鍵順序
 - 保留寫入順序〔作者裁決 2026-10-27〕：上游在 JS 保留插入順序，依順序的 transform（HeroTraining 物品只留最後 10 個、背包 takeRight）要和上游一致。
 - P3 已做：serde_json 開 `preserve_order`（全 crate），引擎進出與存讀往返都保序（cargo 測試 `key_insertion_order_survives_store_and_read_round_trips`）；Node 對照改成逐項完全相同。`Map` 的相等比較本來就不看順序；`ui_msg` 的參數文字、`scene_budget` 的設定世代指紋都照名稱排序，維持原行為（不動存檔順序）。
-- P4 接線要守：zod 桌的表不經 `StateNode` 的 `BTreeMap`（依鍵名排序）存讀，或改成保序結構；刪鍵用 `shift_remove`（`Map::remove` 開了 preserve_order 後是 swap_remove，會換順序）。
+- P4 接線：
+  - 存讀〔模型判斷·未裁決〕：逐字稿事件本來就以保序的 `message_vars::Json` 原文存整張表；zod 桌的新表直接取引擎回的表（serde Map → 文字 → `Json`，全程保序），不經 `StateNode` 樹再物化。`state.json` 的樹只是投影快取，排序無妨。
+  - 種子（照上游 initCheck、與 P5 對齊）：zod 桌第一次啟用變數模式時由引擎建：卡上各條 `[initvar]` 原文（收集順序同網頁 `bookEntries`：陣列形照 id 整數由小到大、id 重複後蓋前，物件形照 JS 鍵序，標題只看 comment，內文先剝 `@@`，停用的照收；兩邊跑同一份案例 `src/shared/contracts/mvu-initvar-order.json`）依序解析（YAML／JSON5，保序）合併（陣列整支取代）→ 開場白自帶的 `<initvar>` 覆寫 → cleanUpMetadata → 過 schema，就是「建 init_source 時做一次 safeParse」；開場白本身的指令接著走一般 zod 迴圈。卡上沒有 `[initvar]` 時以狀態樹物化的表為底，同樣走「開場白覆寫 → 過 schema」。建種子失敗（schema 載入失敗、觸限等）＝整次失敗：正文照落、不帶表、這一幕不啟用變數模式（下一輪再建），不改從樹物化。
+  - 已知限制〔模型判斷·三方共識〕：卡上沒有 initvar 時種子鍵序依鍵名排序（樹的順序）；種子建好前在面板手改的值不進種子（有 initvar 時）。
+  - initvar 解析與合併的小函式目前在 `quickjs-entry.ts` 與 `web/src/features/mvu/initvar.ts` 各一份（桌面不能引用 web），兩邊要同步；P5 併回後搬進共用核心〔模型判斷·三方共識〕。
+  - 非 zod 桌的開場白 `<initvar>` 覆寫不在本案，主線另外立案〔模型判斷·三方共識〕。
+  - 後處理改到樹時，用 `merge_tree_change` 合回引擎表：只換變了的葉、其餘沿用原 JSON 與原順序。
+  - 刪鍵：接線程式碼不對 serde `Map` 刪鍵；若要刪一律 `shift_remove`。
 
 ### 2.5 判定
 - zod 桌＝未重構桌（Upstream），且有卡註冊 schema。
-- `CardInterface.mvu_schema` 存腳本原文，偵測寫在新檔 `import/card_schema.rs`。
+- `CardInterface.zod` 存腳本原文與 `[initvar]` 原文，偵測寫在 `import/card_schema.rs`。
 - 重構桌照舊。非 zod 的 MVU 桌本案照舊走 Rust；等 mvu-command-syntax／mvu-meta-schema 接上引擎後，再清掉只服務 Upstream 的 Rust 碼。
 
 ### 2.6 文件例外
-`evaluator.rs` 開頭、`import/ejs.rs`、card-mvu-shim 計畫裡「不執行卡片腳本」的紅線，加上例外：只限卡片變數 schema、只在隔離環境執行。在功能啟用的那一包同步改。
+`evaluator.rs` 開頭、`import/ejs.rs`、card-mvu-shim 計畫裡「不執行卡片腳本」的紅線，加上例外：只限卡片變數 schema、只在隔離環境執行。P4 已同步改。
 
 ## 3. 分包與驗收
 | 包 | 內容 | 驗收要點 |

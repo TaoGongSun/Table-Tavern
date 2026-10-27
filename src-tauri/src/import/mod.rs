@@ -1,5 +1,6 @@
 mod card;
 pub(crate) mod card_io;
+mod card_schema;
 mod ejs;
 mod export;
 mod files;

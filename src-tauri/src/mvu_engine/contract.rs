@@ -128,8 +128,6 @@ pub struct DetailedResult {
 #[derive(Debug, Clone)]
 pub struct BatchOutput {
     pub detailed: DetailedResult,
-    /// 卡片腳本裡重複呼叫 registerMvuSchema 的次數（只認第一次）
-    pub duplicates: u32,
 }
 
 /// 開局（initvar 先 cleanUpMetadata 再過 schema）。驗不過時 `stat_data` 是清掉元資料後的原值。
@@ -138,6 +136,7 @@ pub struct InitOutput {
     pub stat_data: Value,
     /// 驗不過時的錯誤文字（每則已限字數）與總數；`None`＝通過
     pub invalid: Option<(Vec<String>, usize)>,
+    /// 卡片腳本裡重複呼叫 registerMvuSchema 的次數（只認第一次；建種子時告知玩家一次）
     pub duplicates: u32,
 }
 
@@ -184,4 +183,11 @@ impl fmt::Display for EngineFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}: {}", self.kind, self.detail)
     }
+}
+
+/// 種子的底：卡上的 `[initvar]` 原文，或（卡上沒有 initvar 時）狀態樹物化的 stat_data
+#[derive(Clone, Copy)]
+pub enum SeedBase<'a> {
+    Initvars(&'a [String]),
+    Tree(&'a Value),
 }

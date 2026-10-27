@@ -87,6 +87,34 @@ describe("入口介面", () => {
     expect(second.table.stat_data.a).not.toBe("玩家");
   });
 
+  it("種子：各條 initvar 依序深合併（陣列整個取代）、巨集代換、保序，再過 schema", () => {
+    const engine = createDesktopEngine();
+    engine.register(z.object({ 名字: z.string(), 數值: z.coerce.number().transform((v) => Math.min(v, 100)) }).loose());
+    const initvars = ["<initvar>\n乙: 1\n名字: '{{user}}和{{char}}'\n清單: [1, 2]\n</initvar>", "數值: '500'\n清單: [3]\n甲: 2"];
+    const seeded = JSON.parse(engine.seed(JSON.stringify(initvars), "", MACROS, "null")) as { outcome: unknown; stat_data: Record<string, unknown> };
+    expect(seeded.outcome).toEqual({ ok: true, zod: true });
+    expect(seeded.stat_data).toEqual({ 乙: 1, 名字: "玩家和{{char}}", 清單: [3], 數值: 100, 甲: 2 });
+    expect(Object.keys(seeded.stat_data)).toEqual(["乙", "名字", "清單", "數值", "甲"]);
+  });
+
+  it("種子：開場白的 <initvar> 整份取代世界書初始值", () => {
+    const engine = createDesktopEngine();
+    engine.register(z.object({ 名字: z.string().prefault("無名") }).loose());
+    const seeded = JSON.parse(engine.seed(JSON.stringify(["名字: 甲\n舊: 1"]), "開場<initvar>\n新: 2\n</initvar>", MACROS, "null"));
+    expect(seeded.stat_data).toEqual({ 新: 2, 名字: "無名" });
+  });
+
+  it("種子：沒有 initvar 時以樹物化的表為底（不再代換巨集），一樣過 schema、開場白 <initvar> 照樣取代", () => {
+    const engine = createDesktopEngine();
+    engine.register(z.object({ 名字: z.string().prefault("無名"), 數值: z.coerce.number().transform((v) => Math.min(v, 100)) }).loose());
+    const base = JSON.stringify({ 數值: "500", 名字: "{{user}}", 甲: 1 });
+    const seeded = JSON.parse(engine.seed("[]", "", MACROS, base));
+    expect(seeded.stat_data).toEqual({ 數值: 100, 名字: "{{user}}", 甲: 1 });
+    expect(Object.keys(seeded.stat_data)).toEqual(["數值", "名字", "甲"]);
+    const overridden = JSON.parse(engine.seed("[]", "<initvar>\n數值: 7\n</initvar>", MACROS, base));
+    expect(overridden.stat_data).toEqual({ 數值: 7, 名字: "無名" });
+  });
+
   it("UTF-8 長度與 TextEncoder 相同（含代理對與落單代理）", () => {
     for (const text of ["", "abc", "中文字", "😀x", "a\ud800b", "\udc00", "éࠀ￿"]) {
       expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length);

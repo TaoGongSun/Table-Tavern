@@ -28,6 +28,9 @@ pub struct CardInterface {
     /// 卡的酒館助手腳本有載入 MVU（MagVarUpdate）：沙盒要墊 MVU 讀變數函式、GM 樓比照 MVU 補狀態欄占位。
     #[serde(default)]
     pub mvu: bool,
+    /// zod 版 MVU 卡的變數 schema 腳本與 `[initvar]` 原文（card_schema.rs）；只給後端引擎用，不送前端
+    #[serde(skip)]
+    pub zod: Option<super::card_schema::ZodSchema>,
 }
 
 /// 掃描每張已匯入卡的原卡檔（`<id>.card.png`／`.import.json`，世界層 `source-card.*`），抽出可渲染的顯示腳本。
@@ -78,6 +81,7 @@ fn unreadable(character_id: &str, character_name: &str, path: &Path, error: &str
         unsupported: Some(UNREADABLE.to_owned()),
         opening: None,
         mvu: false,
+        zod: None,
     }
 }
 
@@ -206,6 +210,7 @@ pub(super) fn card_interface(
             unsupported: Some("scrypt".to_owned()),
             opening,
             mvu: false,
+            zod: None,
         };
     }
 
@@ -231,6 +236,7 @@ pub(super) fn card_interface(
         unsupported: is_remote_loader.then(|| "remote_loader".to_owned()),
         opening,
         mvu: loads_mvu(card_data),
+        zod: super::card_schema::zod_schema(card_data),
     }
 }
 

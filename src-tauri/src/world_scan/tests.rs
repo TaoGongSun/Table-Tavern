@@ -684,6 +684,7 @@ fn scan_names_and_exclusions_follow_the_plan() {
         unsupported: None,
         opening: None,
         mvu: false,
+        zod: None,
     };
     let world = TableBook::from_parts(
         vec![raw(
@@ -712,6 +713,7 @@ fn mvu_settings_follow_the_viewer() {
         unsupported: None,
         opening: None,
         mvu: true,
+        zod: None,
     };
     let entries = || {
         vec![raw(
@@ -891,6 +893,7 @@ fn world_card_name_skips_unreadable_world_card() {
         unsupported: unsupported.map(str::to_owned),
         opening: None,
         mvu: false,
+        zod: None,
     };
     let book = TableBook::from_parts(
         Vec::new(),

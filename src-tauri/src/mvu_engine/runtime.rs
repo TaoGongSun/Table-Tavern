@@ -250,6 +250,31 @@ impl EngineRuntime {
         })
     }
 
+    /// 種子：回 `{ outcome, stat_data }` JSON
+    pub(super) fn seed(
+        &self,
+        initvars_json: &str,
+        opening: &str,
+        macros_json: &str,
+        base_json: &str,
+        guard: &Guard,
+    ) -> Result<String, EngineFailure> {
+        self.ctx.with(|ctx| {
+            let api = self
+                .api
+                .clone()
+                .restore(&ctx)
+                .map_err(|error| EngineFailure::new(FailureKind::Crashed, error.to_string()))?;
+            call_string(
+                &ctx,
+                &api,
+                "seed",
+                (initvars_json, opening, macros_json, base_json),
+            )
+            .map_err(|error| classify(error, guard))
+        })
+    }
+
     pub(super) fn collect_garbage(&self) {
         self.runtime.run_gc();
     }

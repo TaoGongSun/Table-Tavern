@@ -30,6 +30,18 @@ pub enum UiMsg {
     StateEditDuringTurn,
     /// GM 回合生成中或正文還沒落檔：換幕、分岔、退幕先擋，回合不會套到別的幕。
     SceneChangeDuringTurn,
+    /// zod 卡的變數引擎名額滿：全機同時最多兩個變數更新請求（含卡住待回收的）；這一輪變數沒更新、正文照落。
+    MvuEngineBusy,
+    /// zod 卡的變數更新整次失敗：狀態整批沒寫、正文照落。依失敗種類各一句（逾時、記憶體、堆疊、長度上限、
+    /// 指令太多、schema 載入失敗、initvar 讀不懂、引擎內部錯誤）。
+    MvuUpdateFailedTimeout,
+    MvuUpdateFailedMemory,
+    MvuUpdateFailedStack,
+    MvuUpdateFailedTooLarge,
+    MvuUpdateFailedTooManyCommands,
+    MvuUpdateFailedSchemaLoad,
+    MvuUpdateFailedInitvar,
+    MvuUpdateFailedEngine,
     WorldNotFound,
     /// 桌目錄旁有轉換日誌／暫存／垃圾桶，寫入先擋。
     WorldConverting,

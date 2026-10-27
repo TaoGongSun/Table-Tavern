@@ -607,31 +607,39 @@ pub(crate) async fn gm_narrate(
         raw: (reply != display).then(|| reply.clone()),
         truncated: cut.load(std::sync::atomic::Ordering::Relaxed),
     };
-    let committed = turn.commit(
-        main,
-        |state, stat| {
-            gm_commit_apply(
-                state,
-                stat,
-                &block,
-                user_name,
-                &materials.state.mechanism,
-                materials.takeover,
-                align,
-            )
-        },
-        // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
-        |state, outcome| {
-            if outcome.is_none() {
-                return Vec::new();
-            }
-            state_updates = transport::snapshot_updates(&state.state, &state.mechanism, user_name)
-                .into_iter()
-                .map(|(path, value)| StateUpdate { path, value })
-                .collect();
-            state_update_side(&state_updates).into_iter().collect()
-        },
-    );
+    // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
+    let sides = |state: &data::WorldState, outcome: &Option<mechanism::Outcome>| {
+        if outcome.is_none() {
+            return Vec::new();
+        }
+        state_updates = transport::snapshot_updates(&state.state, &state.mechanism, user_name)
+            .into_iter()
+            .map(|(path, value)| StateUpdate { path, value })
+            .collect();
+        state_update_side(&state_updates).into_iter().collect()
+    };
+    // zod 卡（mvu-zod-semantics）：卡片 schema 與共用 MVU 核心在隔離引擎裡跑，三段提交見 mvu_engine::wiring
+    let committed = match crate::mvu_engine::wiring::zod_table(&root, &world_id) {
+        Some(zod) => {
+            turn.commit_engine(zod, main, &reply, &block, user_name, sides)
+                .await
+        }
+        None => turn.commit(
+            main,
+            |state, stat| {
+                gm_commit_apply(
+                    state,
+                    stat,
+                    &block,
+                    user_name,
+                    &materials.state.mechanism,
+                    materials.takeover,
+                    align,
+                )
+            },
+            sides,
+        ),
+    };
     let mut state_error = None;
     let committed = match committed {
         Ok(Some(commit)) => {
@@ -733,6 +741,8 @@ struct TurnGuard {
     turn_id: String,
     /// 同回合內部追加（登場紀錄）用的憑證
     ticket: data::message_vars::TurnTicket,
+    /// 回合開始時的巨集代換值（zod 引擎路徑用）
+    macros: data::message_vars::Macros,
 }
 
 /// 變動紀錄（與前端落的那則同一個寫法）；沒有變動就沒有這一部分。
@@ -774,7 +784,36 @@ impl TurnGuard {
             world_id: world_id.to_owned(),
             turn_id: turn_id.to_owned(),
             ticket,
+            macros,
         })
+    }
+
+    /// zod 卡的提交：同 `commit` 的回傳；整次失敗時 `error` 帶給玩家的那句、正文照落。
+    async fn commit_engine(
+        &self,
+        zod: crate::mvu_engine::wiring::ZodTable,
+        main: data::message_vars::PendingMain,
+        reply: &str,
+        block: &transport::StateBlock,
+        user_name: &str,
+        sides: impl FnOnce(
+            &data::WorldState,
+            &Option<mechanism::Outcome>,
+        ) -> Vec<data::message_vars::TurnSide>,
+    ) -> Result<Option<data::message_vars::GmCommit<Option<mechanism::Outcome>>>, String> {
+        crate::mvu_engine::wiring::gm_commit(
+            &self.root,
+            &self.world_id,
+            &self.turn_id,
+            zod,
+            main,
+            reply,
+            block,
+            user_name,
+            self.macros.clone(),
+            sides,
+        )
+        .await
     }
 
     /// turn_id／幕／世代已不符回 Ok(None)；讀寫錯誤回 Err（呼叫端回報，不害玩家丟掉整段旁白）。

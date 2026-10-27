@@ -15,7 +15,7 @@ use crate::data::state_commit::CommitTx;
 use crate::data::{invalid_data, DataResult};
 use std::collections::BTreeMap;
 
-fn stat_of(table: &Json) -> Json {
+pub(super) fn stat_of(table: &Json) -> Json {
     table
         .get("stat_data")
         .cloned()
@@ -455,16 +455,10 @@ pub fn apply_gm_block<R>(
     apply: impl FnOnce(&mut WorldState, Option<&Json>) -> (R, Option<TypedBatch>),
     sides: impl FnOnce(&WorldState, &R) -> Vec<TurnSide>,
 ) -> DataResult<Option<GmCommit<R>>> {
-    let Some(mut record) = turn::turn(tx).filter(|record| record.turn_id == turn_id) else {
+    let Some(mut record) = live_turn(tx, turn_id)? else {
         return Ok(None);
     };
-    let scene = read_state_cache(tx.root, tx.world_id)?.current_scene;
-    if record.phase != Phase::Generating
-        || record.scene != scene
-        || record.generation != turn::generation(tx)
-    {
-        return Ok(None);
-    }
+    let scene = record.scene;
     if record.input.is_none() && ensure_active(tx, record.macros.as_ref())? {
         record.input = super::source::current_source(tx.root, tx.world_id, scene)?
             .map(|source| source.table().clone());
@@ -493,7 +487,45 @@ pub fn apply_gm_block<R>(
         derive_display(&mut table, stat);
         table
     });
-    // 正文與附屬部分在同一次鎖內一起登記：放鎖前待落清單就是完整的，中間不會有交接把附屬部分漏掉
+    submit(
+        tx,
+        turn_id,
+        record.input,
+        pending,
+        main,
+        state,
+        result,
+        sides,
+        true,
+    )
+}
+
+/// 生成中、幕與桌世代都還對得上的回合紀錄；不符回 None。
+pub(super) fn live_turn(tx: &CommitTx<'_>, turn_id: &str) -> DataResult<Option<TurnRecord>> {
+    let Some(record) = turn::turn(tx).filter(|record| record.turn_id == turn_id) else {
+        return Ok(None);
+    };
+    let scene = read_state_cache(tx.root, tx.world_id)?.current_scene;
+    let live = record.phase == Phase::Generating
+        && record.scene == scene
+        && record.generation == turn::generation(tx);
+    Ok(live.then_some(record))
+}
+
+/// 提交的收尾：正文與附屬部分在同一次鎖內一起登記（放鎖前待落清單就是完整的，中間不會有交接把附屬部分漏掉），
+/// 回合轉「等落檔」掛上新表，`write` 為真才寫狀態快取（寫失敗明確回報、不吞掉）。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn submit<R>(
+    tx: &CommitTx<'_>,
+    turn_id: &str,
+    input: Option<Json>,
+    pending: Option<Json>,
+    main: PendingMain,
+    state: WorldState,
+    result: R,
+    sides: impl FnOnce(&WorldState, &R) -> Vec<TurnSide>,
+    write: bool,
+) -> DataResult<Option<GmCommit<R>>> {
     let mut parts = vec![main_part(main)?];
     for side in sides(&state, &result) {
         if side.part == PART_MAIN || parts.iter().any(|item| item.part == side.part) {
@@ -506,13 +538,16 @@ pub fn apply_gm_block<R>(
     }
     turn::update_turn(tx, turn_id, |stored| {
         stored.phase = Phase::AwaitingAppend;
-        stored.input = record.input.clone();
+        stored.input = input;
         stored.pending = pending;
         stored.parts = parts;
     });
-    let error = write_state(tx.root, tx.world_id, &state)
-        .err()
-        .map(|error| error.to_string());
+    let error = match write {
+        true => write_state(tx.root, tx.world_id, &state)
+            .err()
+            .map(|error| error.to_string()),
+        false => None,
+    };
     Ok(Some(GmCommit {
         state,
         result,
