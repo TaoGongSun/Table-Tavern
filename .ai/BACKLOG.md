@@ -41,6 +41,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [gm-reprints-retired-statusbar](tasks/gm-reprints-retired-statusbar.md) — 重構淘汰狀態欄後 GM 仍模仿開場白每回合重印 <details> 狀態欄，多花輸出 — 下一步：未排程；先多模型重現量輸出
 - [greeting-context-st-parity](tasks/greeting-context-st-parity.md) — 開場白與全部備用開場白每回合塞進 GM system，ST 只當第 0 則 — 下一步：等 gm-reprints-retired-statusbar 結案
 - [stage-card-in-speaker-list](tasks/stage-card-in-speaker-list.md) — 舞台卡出現在下一位點名名單；收尾句中英不一致 — 下一步：未排程
+- [state-update-echo-in-story](tasks/state-update-echo-in-story.md) — GM 照抄歷史裡的「（系統）狀態更新」事件進正文並顯示 — 下一步：未排程；先量一般桌長局發生率
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下三案依其數據決定做不做：
