@@ -1,7 +1,7 @@
 # Handoff: person-promote
 
 ## Current state
-實作完成、主線審查通過、四項自驗全綠（見 Verification）。剩實機驗收——與 [ai-card-refactor](ai-card-refactor.md) 的待實測清單 A–E 合併跑（2026-08-07 拍板）。
+實作完成、主線審查通過。2026-10-27 實機驗收（test-harness，Sonnet 5.5，與 [ai-card-refactor](ai-card-refactor.md) A–E 合跑）本案項目全過；整體結案仍等 ai-card-refactor 的三個紅修完。
 
 ## Completed
 - 盤點認人（refactor_ai.rs SURVEY_BODY:132）：單人條目也列、同一人跨條歸組（輸出 name＋uids＋player 標記）、排除勢力／組織／職階、多語言版本挑接近玩家語言的一版；解析成 RefactorSurveyPerson{name, uids, is_player}。
@@ -17,11 +17,15 @@
 - 分工：opus subagent 實作（194 tool uses）＋主線 Fable 5 審查複驗。
 
 ## Remaining
-- 實機驗收（等使用者）：匯入三張測試卡實跑——HeroTrainingUnderSide_stats（15 人合併、概览不再拆薄卡）、NorthHall（霍玄一人一卡＋玩家指定只問一次）、orc-cave-copy（Rigurd 中英只出一人）；undo 一鍵倒退含刪除條目與玩家卡。
-- 與 ai-card-refactor 交接檔「待實測清單」A–E 合併驗收，全過兩案一起結案搬 DONE。
+實機驗收結果（2026-10-27；露骨卡改用作者裁決另做的乾淨卡，NorthHall.png 已撤出改用 NorthHall-structure）：
+- [x] 15 人合併（`TestCards/clean-hero-roster.json` 代 HeroTrainingUnderSide_stats）：16 張＝15 人＋{{user}}；角色概览 uid35 沒拆薄卡，只在概览出現的名字沒建卡；英雄分支自動指認 15 支。
+- [x] 一人一卡＋玩家只問一次（`NorthHall-structure.png`）：8 張，每人兩條來源併一張，只有林远有「這是我的角色」。
+- [x] 跨語只出一人（`clean-orc-cave.json` 的托伦代 Rigurd）：中文＋行為模式兩條併一張；EN 版在卡內是停用條目，進淘汰、沒另成一人。
+- [x] undo 一鍵倒退（含刪除條目與玩家卡）：見 ai-card-refactor A4。
+- 觀察：同一張卡兩次重構，人名字形不一致（吉爾／吉尔），與 ai-card-refactor 紅 1 同源風險。
 
 ## Next action
-使用者實機驗收上列項目；期間發現問題開新對話帶本檔即可接手。
+等 ai-card-refactor 紅 1／2／3 修完、補跑過後，兩案一起結案。
 
 ## Constraints
 - 盤點 system 提示詞逐字元相同才吃得到快取，改輸出格式只動 user 訊息那半。
