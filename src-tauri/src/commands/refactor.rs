@@ -637,6 +637,21 @@ pub(crate) fn refactor_interface_shell(
     data::read_interface_shell(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
+/// 介面接管桌（`data::is_interface_takeover`，與 GM 指示、角色回合拒收同一判定）：前端據此只走 GM 敘事線。
+#[tauri::command]
+pub(crate) fn interface_takeover_table(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<bool, String> {
+    let root = data_root(&app)?;
+    let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    Ok(data::is_interface_takeover(
+        &root,
+        &world_id,
+        state.refactor_mode.as_deref(),
+    ))
+}
+
 /// 桌面玩法標記（refactor-mode-split）：重構套用時寫入；"characters"＝前端停用這桌的
 /// 卡片介面 fallback（覆蓋層按鈕不出現、近 10 則掃 raw 的路徑不啟動）。讀取端正規化
 /// 舊版壞值：合法大小寫就地修正、未知值回 Err，controller 維持未知不 fallback。

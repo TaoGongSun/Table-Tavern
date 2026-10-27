@@ -31,6 +31,8 @@ interface CastRailProps {
   gmId: string;
   /** 目前的發言對象；空字串＝還沒選。描邊與 aria-pressed 一律看它 */
   speaker: string;
+  /** 發言對象能不能選（角色卡與 GM 磚）；只走 GM 的桌為 false：不顯示選對象提示與按壓態，點了只回遊玩畫面 */
+  cardsTargetable: boolean;
   /** 唯讀或需要修復：寫入動作停用（不隱藏，位置不動） */
   locked: boolean;
   gmImage: string | null;
@@ -71,6 +73,7 @@ export function CastRail(props: CastRailProps) {
   const {
     gmId,
     speaker,
+    cardsTargetable,
     locked,
     gmImage,
     player,
@@ -176,6 +179,7 @@ export function CastRail(props: CastRailProps) {
             <>
               <NarrowGmTile
                 selected={speaker === gmId}
+                targetable={cardsTargetable}
                 image={gmImage}
                 locked={locked}
                 onSelect={onSelectGm}
@@ -193,6 +197,7 @@ export function CastRail(props: CastRailProps) {
                   key={character.id}
                   character={character}
                   selected={speaker === character.id}
+                  targetable={cardsTargetable}
                   image={images[character.id]}
                   avatar={avatars[character.id]}
                   locked={locked}
@@ -205,6 +210,7 @@ export function CastRail(props: CastRailProps) {
             <>
               <WideGmCard
                 selected={speaker === gmId}
+                targetable={cardsTargetable}
                 image={gmImage}
                 locked={locked}
                 onSelect={onSelectGm}
@@ -222,6 +228,7 @@ export function CastRail(props: CastRailProps) {
                   key={character.id}
                   character={character}
                   selected={speaker === character.id}
+                  targetable={cardsTargetable}
                   dragging={castDrag.draggingKey === character.id}
                   image={images[character.id]}
                   avatar={avatars[character.id]}

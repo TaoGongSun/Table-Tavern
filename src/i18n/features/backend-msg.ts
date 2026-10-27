@@ -188,6 +188,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   scene_summary_failed: {},
   scene_capacity_full: {},
   scene_summary_stopped: {},
+  interface_table_gm_only: {},
   previous_scene_empty: {},
   transcript_empty: {},
   scene_not_found: { scene: "number" },

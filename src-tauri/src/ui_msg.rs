@@ -140,6 +140,8 @@ pub enum UiMsg {
     SceneCapacityFull,
     /// 玩家按停止，換幕／重寫提要沒做；原紀錄不動
     SceneSummaryStopped,
+    /// 介面接管桌只走 GM 敘事線：角色回合一律拒收，不寫樓、不打模型、不扣容量
+    InterfaceTableGmOnly,
     PreviousSceneEmpty,
     TranscriptEmpty,
     SceneNotFound {

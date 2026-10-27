@@ -49,6 +49,7 @@ import { useImportController, type WebSaveImport } from "./features/import/useIm
 import { openWebSaveTable as openWebSaveTableFlow } from "./features/import/web-save-table";
 import { useOpeningPost } from "./features/import/useOpeningPost";
 import { useSceneActions } from "./features/play/useSceneActions";
+import { useGmOnlyTable } from "./features/play/useGmOnlyTable";
 import { type TurnWaitOp, useTurnWait } from "./features/play/useTurnWait";
 import { loadBranchBindings, useTableStateController } from "./features/table-state/useTableStateController";
 import {
@@ -167,8 +168,16 @@ function App() {
   // 角色名單、本幕出場集合、玩家卡與角色圖／GM 圖三份快取都在 controller 裡。
   const characters = useCharacterController({ worldId: liveWorldId, onError: setError });
 
+  // 介面接管桌只走 GM 一條敘事線：發言對象鎖 GM；判定還沒讀回（換桌瞬間）不接受回合，
+  // 免得空對象的送出留下沒人回的半回合
+  const gmOnlyTable = useGmOnlyTable(liveWorldId);
+  function whenTurnReady<A extends unknown[]>(fn: (...args: A) => Promise<void>) {
+    return gmOnlyTable.whenReady(whenTableFree(fn));
+  }
+
   const navigation = useWorkspaceNavigationController({
     worldId: liveWorldId,
+    gmOnly: gmOnlyTable.gmOnly,
     characters,
     onError: setError,
   });
@@ -303,7 +312,7 @@ function App() {
     events: chat.events,
     tree: tableState.tree,
     userName: characters.player?.name?.trim() || t("playerLabel"),
-    submitText: whenTableFree(chat.submitText),
+    submitText: whenTurnReady(chat.submitText),
     onEventUpdated: chat.replaceEvent,
     onCardWrite: () => void tableState.refresh().catch((reason) => setError(String(reason))),
   });
@@ -769,6 +778,8 @@ function App() {
       // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次
       await cardInterface.refreshShell(table);
       if (!live()) return;
+      await gmOnlyTable.refresh(table);
+      if (!live()) return;
       // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
       await characters.reloadGmImage();
       if (!live()) return;
@@ -840,6 +851,8 @@ function App() {
     if (!live()) return;
     await cardInterface.refreshShell(table);
     if (!live()) return;
+    await gmOnlyTable.refresh(table);
+    if (!live()) return;
     await tableState.refresh();
     if (!live()) return;
     await imports.refreshReceipts(table);
@@ -896,14 +909,14 @@ function App() {
     send: async (event) => {
       // 表單送出一律攔下預設行為，放不放行才交給鎖
       event.preventDefault();
-      await whenTableFree(chat.send)(event);
+      await whenTurnReady(chat.send)(event);
     },
     undoLast: whenTableFree(chat.undoLast),
     restoreUndone: whenTableFree(chat.restoreUndone),
-    gmNarrate: whenTableFree(chat.gmNarrate),
-    gmAdvance: whenTableFree(chat.gmAdvance),
-    replyFromTarget: whenTableFree(chat.replyFromTarget),
-    submitText: whenTableFree(chat.submitText),
+    gmNarrate: whenTurnReady(chat.gmNarrate),
+    gmAdvance: whenTurnReady(chat.gmAdvance),
+    replyFromTarget: whenTurnReady(chat.replyFromTarget),
+    submitText: whenTurnReady(chat.submitText),
   };
 
   return (

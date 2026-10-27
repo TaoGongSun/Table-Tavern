@@ -24,7 +24,7 @@
 
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
-| 5 | [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 已結案（2026-10-27） | 實測全過；下游 [interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡可開始 |
+| 5 | [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 已結案（2026-10-27） | 實測全過；下游 [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 逐型驗卡可開始 |
 | 6 | [ai-card-refactor](../handoffs/archive/ai-card-refactor.md)＋[person-promote](../handoffs/archive/person-promote.md)＋[state-values-mvu](../handoffs/archive/state-values-mvu.md) 真桌 | 已驗、已結案（2026-10-27）：person-promote 與 state-values 增量／全量過；ai-card-refactor 三紅修完後測試通道重跑 C2、C4、D2 全綠（Haiku 5.5 共 7 次） |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
 | 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
@@ -57,3 +57,4 @@
 | [claude-1h-cache](../handoffs/archive/claude-1h-cache.md) 真超額與邊界 | ①Claude 訂閱真的用到超額：跳一次超額提示，文案對到該輪實得時效（本帳號超額未開通）　②玩家 `~/.claude/settings.json` 的 `env` 帶 `FORCE_PROMPT_CACHING_5M=1` 時，`--safe-mode` 下續聊線是否被壓成 5m（帳本 `created_1h_tokens=0`、lanes.json 壽命 300）　③同一條 claude 線閒置超過 1 小時，下一輪改走 rebased　④Windows 上述各項 |
 | [test-harness](../handoffs/archive/test-harness.md) 正式包 listener | 要確實隔離資料的環境（獨立 macOS 帳號或 VM）：正式包帶 `TT_HARNESS_ROOT` 啟動不產 harness.json、`lsof` 看不到 listener |
 | [long-prompt-scene-hint](../handoffs/archive/long-prompt-scene-hint.md) Windows 真 CLI 讀檔 | 等有 Windows 機且 claude／grok／agy 已登入：中文卡加世界書超過 3 萬字的桌各送一輪——claude 讀 `--system-prompt-file`、grok 讀 `--agent` profile 與 `--prompt-file`、agy 吃 stdin，都回得出話；`cli-prompts/` 呼叫後是空的。原生假 .exe 版已在 Windows CI 過，三家真 CLI 未跑 |
+| [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 既有 lane 續聊 | 已有 GM 續聊線的接管桌升級後送一輪：凍結 system 開頭換成唯一敘事者版後續聊照常（snapshot 補丁或重開線都行）、GM 不寫「下一位」、介面不被蓋 |

@@ -118,47 +118,23 @@ pub fn gm_turn_format(
 
 /// 介面接管桌的導演指示：正文之後只附 `<UpdateVariable>`（只寫有變動的欄位，沒變動就不寫），
 /// 不要 ```state 圍欄、不重印狀態區塊——與 system 的增量協定同一份契約，兩邊不互斥。
-pub fn takeover_instruction(
-    lang: &str,
-    roster: &[String],
-    player_name: Option<&str>,
-) -> ChatMessage {
-    let mut instruction = if scaffold_en(lang) {
+/// 這種桌只走 GM 一條敘事線（作者裁決 2026-10-27）：名單上的角色也由 GM 演，不點名下一位。
+pub fn takeover_instruction(lang: &str) -> ChatMessage {
+    let instruction = if scaffold_en(lang) {
         "(Director instruction) Write this turn's story: describe scene changes, the world's response, or plot progress. \
-         Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
+         Use any length the story needs. You play every character, including those on the Characters list, and they may appear and speak; never speak or act for the player. \
          After the story, start a new line and output the `<UpdateVariable>` update block, writing only the fields that changed this turn; if nothing changed, omit the block. \
          Copy every path and every key inside values exactly as they appear in the current state (same characters, no translation or script change). \
          The app draws the status display itself: do not output a ```state fence, do not reprint any status block, and add no explanation outside the story and the update block."
-            .to_owned()
     } else {
         "（導演指示）請寫這一回合的劇情正文：描述場景變化、世界反應或劇情推進，\
-         篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
-         不要替「登場角色」名單上的角色或玩家說話。正文結束後另起一行，輸出 `<UpdateVariable>` 更新區塊，\
+         篇幅不設限，依劇情需要自由發揮。所有角色（含「登場角色」名單上的角色）都由你扮演，可以出場與說話；\
+         不要替玩家說話或行動。正文結束後另起一行，輸出 `<UpdateVariable>` 更新區塊，\
          只寫這一回合有變動的欄位；沒有任何變動就不要輸出更新區塊。\
          路徑與值裡的鍵名一律照目前狀態裡的原字逐字抄，不翻譯、不換簡繁字形。\
          狀態畫面由 App 自己畫：不要輸出 ```state 圍欄，不要重印任何狀態區塊，正文與更新區塊以外不要有多餘說明。"
-            .to_owned()
     };
-    if !roster.is_empty() {
-        let call = if scaffold_en(lang) {
-            format!(
-                " Finally, end with exactly one line `Next: <name>`, choosing the next speaker from: {}. \
-                 If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
-                roster.join("、"),
-                player = player_name.map_or(String::new(), |name| format!(" ({name})")),
-            )
-        } else {
-            format!(
-                "最後再另起一行，固定輸出「下一位：〈名字〉」，\
-                 從名單中選出下一位最適合發言的角色：{}。\
-                 若現在應該輪到玩家{player}行動，就寫「下一位：{PLAYER_SENTINEL}」。",
-                roster.join("、"),
-                player = player_name.map_or(String::new(), |name| format!("（{name}）")),
-            )
-        };
-        instruction.push_str(&call);
-    }
-    message("user", instruction)
+    message("user", instruction.to_owned())
 }
 
 /// 卡片自帶介面桌的導演指示＋收尾句：同一個判定（格式條目全文在不在本輪提示）同時決定兩者。
@@ -207,11 +183,9 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
         (true, GmTurnFormat::CardFormatAbsent, _) => {
             "Now, as the GM, carry out the director instruction above and produce this turn's reply. Do not add a name prefix."
         }
-        (true, GmTurnFormat::InterfaceTakeover, false) => {
+        // 介面接管桌不點名，名冊有無都同一句
+        (true, GmTurnFormat::InterfaceTakeover, _) => {
             "Now, as the GM, carry out the director instruction above. Output only the story and, if anything changed, the update block. Do not add a name prefix."
-        }
-        (true, GmTurnFormat::InterfaceTakeover, true) => {
-            "Now, as the GM, carry out the director instruction above. Output only the story, the update block if anything changed, and the `Next:` line. Do not add a name prefix."
         }
         (true, GmTurnFormat::Narration, false) => {
             "Now, as the GM, carry out the director instruction above. Output only the narration and the required state fence. Do not add a name prefix."
@@ -225,11 +199,8 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
         (false, GmTurnFormat::CardFormatAbsent, _) => {
             "現在請以 GM 身分執行上述導演指示，產生本回合的回覆，不要加名字前綴。"
         }
-        (false, GmTurnFormat::InterfaceTakeover, false) => {
+        (false, GmTurnFormat::InterfaceTakeover, _) => {
             "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"
-        }
-        (false, GmTurnFormat::InterfaceTakeover, true) => {
-            "現在請以 GM 身分執行上述導演指示，只輸出劇情正文、有變動時的更新區塊與「下一位」行，不要加名字前綴。"
         }
         (false, GmTurnFormat::Narration, false) => {
             "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
@@ -746,17 +717,22 @@ mod tests {
         assert_eq!(gm_turn_format(false, false, None), Narration);
     }
 
-    /// 接管指示要 UpdateVariable、不要 state 圍欄；有名單時點名行接在最後
+    /// 接管指示要 UpdateVariable、不要 state 圍欄；只走 GM 敘事線：不點名、名單角色由 GM 演
     #[test]
     fn takeover_instruction_asks_for_update_block_not_state_fence() {
         for lang in ["zh-TW", "en"] {
-            let solo = takeover_instruction(lang, &[], None).content;
-            assert!(solo.contains("<UpdateVariable>"));
-            assert!(!solo.contains("present"));
-            assert!(!solo.contains("time"));
-            let named = takeover_instruction(lang, &["狐狸".to_owned()], Some("阿濤")).content;
-            assert!(named.contains("狐狸") && named.contains(PLAYER_SENTINEL));
+            let text = takeover_instruction(lang).content;
+            assert!(text.contains("<UpdateVariable>"));
+            assert!(!text.contains("present"));
+            assert!(!text.contains("time"));
+            assert!(!text.contains("下一位") && !text.contains("Next:"));
+            assert!(!text.contains(PLAYER_SENTINEL));
+            let closing = gm_closing(GmTurnFormat::InterfaceTakeover, true, lang);
+            assert!(!closing.contains("下一位") && !closing.contains("Next:"));
         }
+        assert!(takeover_instruction("zh-TW")
+            .content
+            .contains("登場角色」名單上的角色）都由你扮演"));
     }
 
     /// 卡片自帶介面時的導演指示：點名世界書那條格式規定的標題，且不再要求舊版的

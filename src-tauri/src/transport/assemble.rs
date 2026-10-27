@@ -97,6 +97,7 @@ pub fn assemble_gm_messages(
     mechanism: &Mechanism,
     scope: &StateScope,
     lang: &str,
+    takeover: bool,
 ) -> Vec<ChatMessage> {
     let user_name = player
         .map(|player| player.name.as_str())
@@ -111,6 +112,7 @@ pub fn assemble_gm_messages(
         &split.system_back,
         mechanism,
         lang,
+        takeover,
     );
 
     let mut messages = vec![message("system", system)];

@@ -349,13 +349,14 @@ pub fn chars_lane_turn(
 }
 
 /// gm 線凍結 system（快照）：GM 指示＋world.md＋穩定觸發的世界書（前組、後組）＋全卡（含私設）＋玩家卡。
-/// GM 看得到一切，不分可見度；不穩定的觸發條目在回合尾段（`gm_lane_turn`）。
+/// GM 看得到一切，不分可見度；不穩定的觸發條目在回合尾段（`gm_lane_turn`）。`takeover` 見 `gm_system_prompt`。
 pub fn gm_lane_system(
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     scan: &WorldScan,
     mechanism: &Mechanism,
     lang: &str,
+    takeover: bool,
 ) -> String {
     let split = gm_worldbook(scan);
     gm_system_prompt(
@@ -366,6 +367,7 @@ pub fn gm_lane_system(
         &split.system_back,
         mechanism,
         lang,
+        takeover,
     )
 }
 

@@ -68,6 +68,8 @@ interface PlayViewProps {
   speaker: string;
   /** 對象是 GM：晶片換書皮、沒有角色卡可查 */
   gmTargeted: boolean;
+  /** 只走 GM 的桌（介面接管桌）：藏「請他發言」「GM 推進」「清除對象」，只留 GM 旁白與送出 */
+  gmOnly: boolean;
   targetName: string;
   targetColor: string;
   /** 對象的頭像圖；沒有就退到 GM 書皮或角色 emoji */
@@ -116,6 +118,7 @@ export function PlayView({
   onRevertScene,
   speaker,
   gmTargeted,
+  gmOnly,
   targetName,
   targetColor,
   targetImage,
@@ -338,14 +341,16 @@ export function PlayView({
               )}
               <span className="btn-label">{targetName}</span>
             </span>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={locked}
-              onClick={() => onClearTarget()}
-            >
-              {t("clearTarget")}
-            </button>
+            {!gmOnly && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={locked}
+                onClick={() => onClearTarget()}
+              >
+                {t("clearTarget")}
+              </button>
+            )}
           </div>
         )}
         {/* 換幕提醒只顯示一個：鎖＞容量提醒＞紀錄長。容量兩種帶換幕鈕 */}
@@ -391,16 +396,18 @@ export function PlayView({
             主次分級＋分處兩端，送出不會跟「請某某發言」相鄰誤按（2026-07-28 使用者回報的問題） */}
         <div className="composer-actions">
           <div className="btn-seg" role="group">
-            <button
-              type="button"
-              className="btn"
-              onClick={() => onRequestReply()}
-              disabled={locked || !speaker || busy || fullForActions}
-              title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
-              aria-label={`${t("requestReplyShort")} — ${requestReplyLabel}`}
-            >
-              <span className="btn-label">{t("requestReplyShort")}</span>
-            </button>
+            {!gmOnly && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => onRequestReply()}
+                disabled={locked || !speaker || busy || fullForActions}
+                title={`${requestReplyLabel} — ${t("requestReplyHint")}`}
+                aria-label={`${t("requestReplyShort")} — ${requestReplyLabel}`}
+              >
+                <span className="btn-label">{t("requestReplyShort")}</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn"
@@ -410,15 +417,17 @@ export function PlayView({
             >
               <span className="btn-label">{t("gmNarrate")}</span>
             </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={onGmAdvance}
-              disabled={frozen || castEmpty}
-              title={t("gmAdvanceHint")}
-            >
-              <span className="btn-label">{t("gmAdvance")}</span>
-            </button>
+            {!gmOnly && (
+              <button
+                type="button"
+                className="btn"
+                onClick={onGmAdvance}
+                disabled={frozen || castEmpty}
+                title={t("gmAdvanceHint")}
+              >
+                <span className="btn-label">{t("gmAdvance")}</span>
+              </button>
+            )}
           </div>
           {/* 送出與停止同一個位置互換；兩種字都排進去、只顯示其一，按鈕寬度取兩者較大不跳動 */}
           {canStop ? (

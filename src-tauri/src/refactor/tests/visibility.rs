@@ -163,6 +163,7 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
         &state.mechanism,
         &crate::transport::StateScope::default(),
         LANG,
+        false,
     )
     .iter()
     .map(|message| message.content.clone())

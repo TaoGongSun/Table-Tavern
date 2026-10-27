@@ -118,6 +118,7 @@ export function AppWorkspace({
     leaveGuard,
     speaker,
     setSpeaker,
+    gmOnly,
     mainView,
     setMainView,
     cardView,
@@ -221,6 +222,7 @@ export function AppWorkspace({
       <CastRail
         gmId={GM_TARGET}
         speaker={speaker}
+        cardsTargetable={!gmOnly}
         locked={gate !== "play"}
         gmImage={characters.gmImage}
         player={characters.player}
@@ -373,6 +375,7 @@ export function AppWorkspace({
                   onRevertScene={() => void revertScene()}
                   speaker={speaker}
                   gmTargeted={gmTargeted}
+                  gmOnly={gmOnly}
                   targetName={targetName}
                   targetColor={
                     gmTargeted ? GM_COLOR : (characters.metaOf(speaker)?.color ?? "#888888")

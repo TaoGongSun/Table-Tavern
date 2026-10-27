@@ -36,12 +36,15 @@ interface NavigationCharacters {
 
 interface WorkspaceNavigationControllerOptions {
   worldId: string;
+  /** 這桌只走 GM 一條敘事線（介面接管桌，見 useGmOnlyTable）；undefined＝還沒讀回 */
+  gmOnly: boolean | undefined;
   characters: NavigationCharacters;
   onError: (message: string) => void;
 }
 
 export function useWorkspaceNavigationController({
   worldId,
+  gmOnly,
   characters,
   onError,
 }: WorkspaceNavigationControllerOptions) {
@@ -50,7 +53,9 @@ export function useWorkspaceNavigationController({
   // 守門有入口落在 controller 的 callback 裡（匯入路由框的「開新桌並匯入」），那些閉包不隨
   // 主欄畫面重建，走 ref 才問得到當下這個畫面（比照 currentConfigRef）
   const canLeaveRef = useRef<() => Promise<boolean>>(async () => true);
-  const [speaker, setSpeaker] = useState("");
+  const [chosenSpeaker, setSpeaker] = useState("");
+  // 只走 GM 的桌：對外的發言對象一律是 GM，選角色、匯入或新卡指過去都不生效〔作者裁決 2026-10-27〕
+  const speaker = gmOnly === true ? GM_TARGET : chosenSpeaker;
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<MainViewState>(null);
@@ -208,14 +213,16 @@ export function useWorkspaceNavigationController({
   // 點卡＝選發言對象，編輯是另一顆鈕。遊玩畫面再點一次已選中的卡＝取消對象，
   // 讓玩家能描述動作或對全場說話；人在編輯頁或前幕閱讀時，點卡＝先過未儲存守門、
   // 回到遊玩畫面再選為對象（不是取消，也不是轉去編輯）
+  // 只走 GM 的桌：點卡照樣過守門、回遊玩畫面，只跳過選對象
   async function selectSpeaker(target: string) {
+    const targetable = gmOnly !== true;
     if (mainView) {
       if (!(await canLeaveEditor())) return;
       setMainView(null);
-      setSpeaker(target);
+      if (targetable) setSpeaker(target);
       return;
     }
-    setSpeaker((current) => (current === target ? "" : target));
+    if (targetable) setSpeaker((current) => (current === target ? "" : target));
   }
 
   const selectCard = (id: string) => selectSpeaker(id);
@@ -265,6 +272,8 @@ export function useWorkspaceNavigationController({
     canLeaveRef,
     speaker,
     setSpeaker,
+    /** 只走 GM 的桌（已讀回且為真）：藏點名相關按鈕、角色卡不當發言對象 */
+    gmOnly: gmOnly === true,
     mainView,
     setMainView,
     cardView,

@@ -132,6 +132,7 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
         &materials.state.mechanism,
         &scope,
         LANG,
+        materials.takeover,
     )
     .iter()
     .map(|message| message.content.clone())

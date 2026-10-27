@@ -38,6 +38,7 @@ describe("removal navigation", () => {
   function Probe() {
     nav = useWorkspaceNavigationController({
       worldId,
+      gmOnly: false,
       characters,
       onError: (message) => errors.push(message),
     });

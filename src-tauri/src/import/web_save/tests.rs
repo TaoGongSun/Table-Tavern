@@ -1001,6 +1001,7 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
         &materials.state.mechanism,
         &scope,
         LANG,
+        materials.takeover,
     );
     let sent: String = messages
         .iter()

@@ -59,12 +59,15 @@ function EditButton({
 
 export function WideGmCard({
   selected,
+  targetable,
   image,
   locked,
   onSelect,
   onEdit,
 }: {
   selected: boolean;
+  /** 能不能取消／切換發言對象；只走 GM 的桌為 false：不帶提示與 aria-pressed，選取外觀照留 */
+  targetable: boolean;
   image: string | null;
   locked: boolean;
   onSelect: () => void;
@@ -75,8 +78,8 @@ export function WideGmCard({
       <button
         type="button"
         className="tcard-main"
-        aria-pressed={selected}
-        title={t(selected ? "gmTargetHintClear" : "gmTargetHint")}
+        aria-pressed={targetable ? selected : undefined}
+        title={targetable ? t(selected ? "gmTargetHintClear" : "gmTargetHint") : undefined}
         onClick={onSelect}
       >
         <span className="tcard-art">
@@ -144,6 +147,7 @@ export function WidePlayerCard({
 export function WideCastCard({
   character,
   selected,
+  targetable,
   dragging,
   image,
   avatar,
@@ -155,6 +159,8 @@ export function WideCastCard({
 }: {
   character: CharacterMeta;
   selected: boolean;
+  /** 能不能當發言對象；false 時不帶選對象提示與按壓態（只走 GM 的桌） */
+  targetable: boolean;
   dragging: boolean;
   image: string | undefined;
   avatar: string | undefined;
@@ -175,9 +181,13 @@ export function WideCastCard({
       <button
         type="button"
         className="tcard-main"
-        aria-pressed={selected}
+        aria-pressed={targetable ? selected : undefined}
         data-drag-handle
-        title={`${t(selected ? "castHintClear" : "castHint", { name })}｜${t("dragToReorder")}`}
+        title={
+          targetable
+            ? `${t(selected ? "castHintClear" : "castHint", { name })}｜${t("dragToReorder")}`
+            : t("dragToReorder")
+        }
         disabled={locked}
         onClick={() => {
           if (!justDragged()) onSelect();
@@ -209,12 +219,15 @@ export function WideCastCard({
 
 export function NarrowGmTile({
   selected,
+  targetable,
   image,
   locked,
   onSelect,
   onEdit,
 }: {
   selected: boolean;
+  /** 能不能取消／切換發言對象；只走 GM 的桌為 false：不帶提示與 aria-pressed，選取外觀照留 */
+  targetable: boolean;
   image: string | null;
   locked: boolean;
   onSelect: () => void;
@@ -226,8 +239,8 @@ export function NarrowGmTile({
         type="button"
         className="rail-tile-main"
         aria-label="GM"
-        aria-pressed={selected}
-        title={t(selected ? "gmTargetHintClear" : "gmTargetHint")}
+        aria-pressed={targetable ? selected : undefined}
+        title={targetable ? t(selected ? "gmTargetHintClear" : "gmTargetHint") : "GM"}
         onClick={onSelect}
       >
         <span className={`rail-tile-art rail-tile-gm${selected ? " rail-tile-selected" : ""}`}>
@@ -285,6 +298,7 @@ export function NarrowPlayerTile({
 export function NarrowCastTile({
   character,
   selected,
+  targetable,
   image,
   avatar,
   locked,
@@ -293,6 +307,8 @@ export function NarrowCastTile({
 }: {
   character: CharacterMeta;
   selected: boolean;
+  /** 同 WideCastCard */
+  targetable: boolean;
   image: string | undefined;
   avatar: string | undefined;
   locked: boolean;
@@ -306,8 +322,8 @@ export function NarrowCastTile({
         type="button"
         className="rail-tile-main"
         aria-label={name}
-        aria-pressed={selected}
-        title={t(selected ? "castHintClear" : "castHint", { name })}
+        aria-pressed={targetable ? selected : undefined}
+        title={targetable ? t(selected ? "castHintClear" : "castHint", { name }) : name}
         disabled={locked}
         onClick={onSelect}
       >

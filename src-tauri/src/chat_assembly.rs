@@ -103,6 +103,41 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     })
 }
 
+/// 介面接管桌只走 GM 一條敘事線（作者裁決 2026-10-27）：角色回合一律拒收。只讀不寫，
+/// 呼叫端放在容量記帳、代落上一輪等任何副作用之前，被拒就不寫樓、不打模型、不扣容量。
+pub(crate) fn reject_character_turn_on_takeover(
+    root: &std::path::Path,
+    world_id: &str,
+) -> Result<(), String> {
+    let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    match data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref()) {
+        true => Err(crate::ui_msg::UiMsg::InterfaceTableGmOnly.into()),
+        false => Ok(()),
+    }
+}
+
+/// GM 點名對回角色 id：LLM 只認名字，同名取第一個；玩家哨兵原樣回傳。介面接管桌不點名，
+/// 模型照習慣寫了點名行（已由 `extract_next_speaker` 剝掉）也一律 None，前端不接力。
+pub(crate) fn next_speaker(
+    takeover: bool,
+    cards: &[data::CharacterCard],
+    next_raw: Option<String>,
+    player_name: Option<&str>,
+) -> Option<String> {
+    if takeover {
+        return None;
+    }
+    let roster: Vec<String> = cards.iter().map(|card| card.name.clone()).collect();
+    let picked = transport::pick_speaker(&next_raw?, &roster, player_name)?;
+    if picked == transport::PLAYER_SENTINEL {
+        return Some(picked);
+    }
+    cards
+        .iter()
+        .find(|card| card.name == picked)
+        .map(|card| card.id.clone())
+}
+
 /// GM 視角掃一次世界書（方案三之 2）並代換組裝文字（三之 7）。`events` 是要掃的本幕事件（量測的固定部分傳
 /// 空的）；`timed` 是 GM 的計時表；實送用 `Randomness::Live`、量測用 `Randomness::Measure`。
 pub(crate) fn gm_scan(
@@ -267,15 +302,11 @@ pub(crate) fn gm_turn_instruction(
             let entry_title = import::card_format_entry(&card_scripts, &prompt_entries);
             transport::card_format_turn(lang, entry_title.as_deref())
         }
-        transport::GmTurnFormat::InterfaceTakeover => {
-            let instruction_message = transport::takeover_instruction(lang, roster, player_name);
-            let closing = transport::gm_closing(
-                transport::GmTurnFormat::InterfaceTakeover,
-                !roster.is_empty(),
-                lang,
-            );
-            (instruction_message, closing)
-        }
+        // 介面接管桌只走 GM 一條敘事線：不點名
+        transport::GmTurnFormat::InterfaceTakeover => (
+            transport::takeover_instruction(lang),
+            transport::gm_closing(transport::GmTurnFormat::InterfaceTakeover, false, lang),
+        ),
         transport::GmTurnFormat::Narration => {
             // 增量桌：圍欄只管三欄，其餘欄位的變動另附更新區塊
             let updates = materials.state.mechanism.incremental;
@@ -323,6 +354,7 @@ pub(crate) fn gm_lane_parts(
         scan,
         &materials.state.mechanism,
         lang,
+        materials.takeover,
     );
     let turn = transport::gm_lane_turn(
         scan,
@@ -353,6 +385,7 @@ pub(crate) fn gm_messages(
         &materials.state.mechanism,
         scope,
         lang,
+        materials.takeover,
     );
     messages.push(instruction_message);
     messages
@@ -463,4 +496,77 @@ pub(crate) fn test_character_scan(
         Randomness::Measure,
         lang,
     )
+}
+
+#[cfg(test)]
+mod takeover_gate_tests {
+    use super::{next_speaker, reject_character_turn_on_takeover};
+    use crate::{data, transport};
+
+    /// 一般桌照常點名（角色對回 id、玩家哨兵原樣）；介面接管桌一律不點名
+    #[test]
+    fn next_speaker_is_none_on_takeover_tables() {
+        let fox = data::CharacterCard {
+            id: "fox-id".to_owned(),
+            name: "狐狸".to_owned(),
+            color: "#336699".to_owned(),
+            avatar: "🦊".to_owned(),
+            tier: data::Tier::Balanced,
+            show_image: true,
+            archived: false,
+            gen_prompt: String::new(),
+            public_md: String::new(),
+            private_md: String::new(),
+        };
+        let cards = [fox];
+        let named = || Some("狐狸".to_owned());
+        assert_eq!(
+            next_speaker(false, &cards, named(), None).as_deref(),
+            Some("fox-id")
+        );
+        assert_eq!(
+            next_speaker(
+                false,
+                &cards,
+                Some(transport::PLAYER_SENTINEL.to_owned()),
+                None
+            )
+            .as_deref(),
+            Some(transport::PLAYER_SENTINEL)
+        );
+        assert_eq!(next_speaker(true, &cards, named(), None), None);
+        assert_eq!(next_speaker(false, &cards, None, None), None);
+    }
+
+    fn world_files(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                files.extend(world_files(&path));
+            } else {
+                files.push((path.clone(), std::fs::read(&path).unwrap()));
+            }
+        }
+        files.sort();
+        files
+    }
+
+    /// 接管桌拒收角色回合且不動任何檔；一般桌與角色優先桌照常放行
+    #[test]
+    fn character_turn_rejected_on_takeover_without_side_effects() {
+        let root = crate::smart_free::test_root("takeover-gate");
+        let world_id = data::create_world(&root, "接管桌").unwrap();
+        assert!(reject_character_turn_on_takeover(&root, &world_id).is_ok());
+        data::write_interface_shell(&root, &world_id, "<UI>{{本回合.正文}}</UI>").unwrap();
+        let before = world_files(&root);
+        let error = reject_character_turn_on_takeover(&root, &world_id).unwrap_err();
+        assert!(error.contains("interface_table_gm_only"), "{error}");
+        assert_eq!(world_files(&root), before);
+        let mut state = data::read_state(&root, &world_id).unwrap();
+        state.refactor_mode = Some("characters".to_owned());
+        data::write_state(&root, &world_id, &state).unwrap();
+        assert!(reject_character_turn_on_takeover(&root, &world_id).is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

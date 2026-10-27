@@ -1,6 +1,6 @@
 # interface-shell-cleanup：清舊產殼路線殘留
 
-來源：[interface-takeover-spike](../handoffs/interface-takeover-spike.md) 待辦 4。舊路線＝重構叫 AI 寫整份自包含 HTML 殼；現行＝重構把卡每回合輸出格式抄成骨架（`{{狀態樹路徑}}`＋`{{本回合.正文}}`），app 填值後過卡自己的顯示腳本。下文「殼」若不另註，都指現行骨架。玩家可見行為不變；唯一例外是舊路線重構過的桌（整頁 HTML 殼），改走近 10 則掃 raw、不做相容〔作者裁決 2026-10-02〕。
+來源：[interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 待辦 4。舊路線＝重構叫 AI 寫整份自包含 HTML 殼；現行＝重構把卡每回合輸出格式抄成骨架（`{{狀態樹路徑}}`＋`{{本回合.正文}}`），app 填值後過卡自己的顯示腳本。下文「殼」若不另註，都指現行骨架。玩家可見行為不變；唯一例外是舊路線重構過的桌（整頁 HTML 殼），改走近 10 則掃 raw、不做相容〔作者裁決 2026-10-02〕。
 
 ## 要改
 

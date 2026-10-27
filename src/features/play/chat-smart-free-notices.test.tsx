@@ -107,6 +107,7 @@ describe("chat smart-free notices", () => {
           onRevertScene={() => {}}
           speaker=""
           gmTargeted={false}
+          gmOnly={false}
           targetName=""
           targetColor="#888888"
           targetImage={null}

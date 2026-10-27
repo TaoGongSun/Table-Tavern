@@ -402,14 +402,7 @@ pub(super) fn render_all(lang: &str) -> String {
             "narrate empty",
             transport::narrate_instruction(lang, &[], None, false),
         ),
-        (
-            "takeover roster+player",
-            transport::takeover_instruction(lang, &roster, Some("阿濤")),
-        ),
-        (
-            "takeover empty",
-            transport::takeover_instruction(lang, &[], None),
-        ),
+        ("takeover", transport::takeover_instruction(lang)),
         (
             "card_format title",
             transport::card_format_instruction(lang, Some("輸出格式")),
@@ -581,7 +574,7 @@ fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], 
     dump(
         out,
         "worldbook gm_lane_system",
-        &transport::gm_lane_system(&f.cards, Some(&f.player), &gm, &plain, lang),
+        &transport::gm_lane_system(&f.cards, Some(&f.player), &gm, &plain, lang, false),
     );
     let turn = transport::gm_lane_turn(
         &gm,

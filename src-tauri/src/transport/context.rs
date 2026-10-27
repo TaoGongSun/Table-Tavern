@@ -71,7 +71,9 @@ pub fn gm_prompt_full_entries<'a>(
 
 /// GM 的 system prompt 本體：GM 指示＋world.md＋穩定的前組世界書＋全卡（含私設）＋玩家卡＋穩定的後組世界書。
 /// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。文字都是 `prepare` 代換好的。
-/// constant 人物條目改走名冊行，不進全文（包 4a）。
+/// constant 人物條目改走名冊行，不進全文（包 4a）。`takeover`：介面接管桌（`data::is_interface_takeover`），
+/// 開頭換成唯一敘事者版（名單上的角色也由 GM 演、不點名）。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn gm_system_prompt(
     texts: &PromptTexts,
     cards: &[CharacterCard],
@@ -80,10 +82,28 @@ pub(super) fn gm_system_prompt(
     back: &[&Placed],
     mechanism: &Mechanism,
     lang: &str,
+    takeover: bool,
 ) -> String {
     let en = scaffold_en(lang);
-    let intro = match en {
-        true => {
+    let intro = match (en, takeover) {
+        // 介面接管桌只走 GM 一條敘事線（作者裁決 2026-10-27）：名單上的角色也由 GM 演，不點名
+        (true, true) => {
+            "You are the GM (director and narrator) of this tabletop RPG session, and its only narrator. You describe \
+             scenes and how the world responds, drive the pacing of the story, and keep it from stalling or repeating. \
+             Narration is public: everyone hears it. You play every character — supporting characters without a \
+             character card and the characters on the \"Characters\" list alike — and may bring them in, have them \
+             speak, and act freely; only the player plays themselves, so never speak or act for the player. Only you \
+             know the full world setting and the characters' private profiles; do not reveal anything the story has \
+             not uncovered yet."
+        }
+        (false, true) => {
+            "你是這場桌上角色扮演的 GM（導演兼旁白），也是唯一的敘事者。你負責描述場景與世界反應、\
+             推進劇情節奏，並防止劇情停滯或重複。\
+             旁白是所有人都聽得到的公開敘事。所有角色——沒有角色卡的配角與「登場角色」名單上的角色——\
+             都由你扮演，可自由出場、說話、行動；只有玩家由玩家自己扮演，不要替玩家說話或行動。\
+             世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。"
+        }
+        (true, false) => {
             "You are the GM (director and narrator) of this multiplayer tabletop RPG session. You describe scenes and \
              how the world responds, drive the pacing of the story, decide who speaks next, and keep the conversation \
              from stalling or repeating. Narration is public: everyone hears it. You fully play supporting characters \
@@ -92,7 +112,7 @@ pub(super) fn gm_system_prompt(
              players, so do not speak for them. Only you know the full world setting and the characters' private \
              profiles; do not reveal anything the story has not uncovered yet."
         }
-        false => {
+        (false, false) => {
             "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
              推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
              旁白是所有人都聽得到的公開敘事。沒有角色卡的配角（路人、店主、反派等）\
@@ -453,6 +473,36 @@ mod tests {
     };
     #[allow(unused_imports)]
     use std::collections::{BTreeMap, BTreeSet};
+
+    /// 介面接管桌的 GM 開頭：唯一敘事者、名單角色也由 GM 演、不提點名；保留公開旁白與不說破
+    #[test]
+    fn takeover_gm_intro_drops_roll_call_and_keeps_secrecy() {
+        let texts = crate::world_scan::PromptTexts::default();
+        let mechanism = Mechanism::default();
+        for (lang, sole, call, secret) in [
+            ("zh-TW", "唯一的敘事者", "決定下一位發言者", "不要說破"),
+            (
+                "en",
+                "only narrator",
+                "decide who speaks next",
+                "do not reveal",
+            ),
+        ] {
+            let normal =
+                super::gm_system_prompt(&texts, &[], None, &[], &[], &mechanism, lang, false);
+            let takeover =
+                super::gm_system_prompt(&texts, &[], None, &[], &[], &mechanism, lang, true);
+            assert!(normal.contains(call) && !normal.contains(sole), "{lang}");
+            assert!(
+                takeover.contains(sole) && !takeover.contains(call),
+                "{lang}"
+            );
+            assert!(
+                takeover.contains(secret) && normal.contains(secret),
+                "{lang}"
+            );
+        }
+    }
 
     /// GM 視角：穩定的 constant 進 system（order 小的在前，同 order 照 ST 排序的反向）；觸發的 keyword
     /// 條目進回合尾段；掃描深度照 ST 預設 2 則、帶名字、不分大小寫；停用的不觸發。

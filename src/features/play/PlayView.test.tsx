@@ -34,6 +34,7 @@ function view(events: TranscriptEvent[], storyKey = "w1\u00000", notices: ChatNo
       onRevertScene={noop}
       speaker=""
       gmTargeted={false}
+      gmOnly={false}
       targetName=""
       targetColor="#888888"
       targetImage={null}

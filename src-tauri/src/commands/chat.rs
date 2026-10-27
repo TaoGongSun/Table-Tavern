@@ -96,6 +96,8 @@ pub(crate) async fn chat_with_character(
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
     let buffer = std::sync::Mutex::new(String::new());
     let root = data_root(&app)?;
+    // 介面接管桌只走 GM：擋在容量記帳與代落之前，被拒什麼都不寫
+    chat_assembly::reject_character_turn_on_takeover(&root, &world_id)?;
     // 換幕容量鎖：排在代落上一回合待落正文之前（待落的已算進本幕），擋下就什麼都不寫。
     // 同一動作已在落玩家句時通過就不重扣（scene_budget::gate）
     crate::scene_budget::check_capacity(
@@ -512,11 +514,6 @@ pub(crate) async fn gm_narrate(
         world_scan::Randomness::Live,
         &lang,
     );
-    let roster: Vec<String> = materials
-        .cards
-        .iter()
-        .map(|card| card.name.clone())
-        .collect();
     let player_name = materials.player.as_ref().map(|card| card.name.as_str());
     // 換幕後第一輪 GM 回合送整棵樹對齊；之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
     let (scope, align) = chat_assembly::gm_scope(&materials);
@@ -714,19 +711,8 @@ pub(crate) async fn gm_narrate(
             );
         }
     }
-    // LLM 只認名字，點名後對回角色 id（同名取第一個）；玩家哨兵原樣回傳
-    let next = next_raw
-        .and_then(|raw| transport::pick_speaker(&raw, &roster, player_name))
-        .and_then(|picked| {
-            if picked == transport::PLAYER_SENTINEL {
-                return Some(picked);
-            }
-            materials
-                .cards
-                .iter()
-                .find(|card| card.name == picked)
-                .map(|card| card.id.clone())
-        });
+    let next =
+        chat_assembly::next_speaker(materials.takeover, &materials.cards, next_raw, player_name);
     Ok(GmNarration {
         raw: (reply != display).then_some(reply),
         text: display,
@@ -1129,6 +1115,7 @@ mod tests {
             &scan,
             &materials.state.mechanism,
             lang,
+            materials.takeover,
         );
         let instruction = format!("{}\n{closing}", instruction_message.content);
         let turn = crate::transport::gm_lane_turn(
@@ -1412,6 +1399,7 @@ mod tests {
                 &scan,
                 &materials.state.mechanism,
                 "zh-TW",
+                materials.takeover,
             );
             assert!(system.contains(prompt), "{system}");
             let mut state = data::read_state(&root, &world_id).unwrap();
@@ -1486,6 +1474,7 @@ mod tests {
                 &scan,
                 &materials.state.mechanism,
                 lang,
+                materials.takeover,
             );
             let prompt = format!("{system}\n{}\n{closing}", instruction.content);
             // 卡的格式條目照原卡啟用、全文進提示；上游版協定在
