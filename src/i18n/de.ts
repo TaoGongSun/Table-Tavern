@@ -193,6 +193,7 @@ export const de: Record<MsgKey, string> = {
   worldbookExport: "Weltbuch exportieren",
   worldbookEmpty: "Noch keine Weltbucheinträge vorhanden",
   worldbookNoKeys: "Keine Schlüsselwörter",
+  listSeparator: ", ",
   worldbookConstant: "Dauerhaft",
   worldbookConstantLabel: "Dauerhaft (wird bei jedem Zug in den Kontext geladen, ohne Schlüsselwort – verbraucht Token und vergrößert den Kontext, daher nur für Kernfakten nutzen)",
   worldbookDisabled: "Deaktiviert",

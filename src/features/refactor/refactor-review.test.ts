@@ -470,11 +470,11 @@ describe("sourceEntryTitles", () => {
   ];
 
   it("多條來源逐條查標題後用「、」接起來", () => {
-    expect(sourceEntryTitles(entries, ["12", "13"])).toBe("人物设定、性格");
+    expect(sourceEntryTitles(entries, ["12", "13"], "、")).toBe("人物设定、性格");
   });
 
   it("單一來源就是單一標題", () => {
-    expect(sourceEntryTitles(entries, ["12"])).toBe("人物设定");
+    expect(sourceEntryTitles(entries, ["12"], "、")).toBe("人物设定");
   });
 });
 

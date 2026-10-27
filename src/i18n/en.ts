@@ -204,6 +204,7 @@ export const en: Record<MsgKey, string> = {
   worldbookExport: "Export World Book",
   worldbookEmpty: "No world book entries yet",
   worldbookNoKeys: "No keywords",
+  listSeparator: ", ",
   worldbookConstant: "Constant",
   worldbookConstantLabel: "Constant (always in context, no keyword needed — costs tokens on every turn, so reserve for core world facts)",
   worldbookDisabled: "Disabled",

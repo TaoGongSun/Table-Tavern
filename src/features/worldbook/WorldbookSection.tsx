@@ -212,7 +212,7 @@ export function WorldbookSection({
                     const head = (
                       <>
                         <strong>{entry.title || entry.uid}</strong>
-                        <span>{entry.keys.join("、") || t("worldbookNoKeys")}</span>
+                        <span>{entry.keys.join(t("listSeparator")) || t("worldbookNoKeys")}</span>
                         <div className="worldbook-badges">
                           {entry.constant && <span className="worldbook-badge">{t("worldbookConstant")}</span>}
                           {/* 可見範圍＝資訊邊界：全 app 統一的虛線琥珀機密記號 */}

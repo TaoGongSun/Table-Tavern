@@ -193,6 +193,7 @@ export const ru: Record<MsgKey, string> = {
   worldbookExport: "Экспортировать книгу мира",
   worldbookEmpty: "В книге мира пока нет записей",
   worldbookNoKeys: "Нет ключевых слов",
+  listSeparator: ", ",
   worldbookConstant: "Постоянно",
   worldbookConstantLabel: "Постоянно (всегда в контексте, ключевые слова не нужны — расходует токены на каждом ходу, используй только для базовых фактов мира)",
   worldbookDisabled: "Отключено",

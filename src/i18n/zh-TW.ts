@@ -209,6 +209,7 @@ export const zh = {
   worldbookExport: "匯出世界書",
   worldbookEmpty: "尚無世界書條目",
   worldbookNoKeys: "無關鍵字",
+  listSeparator: "、",
   worldbookConstant: "恆定",
   worldbookConstantLabel: "恆定（不用等關鍵字，每次發言都送進上下文——每則都佔 token、上下文會胖，只留給世界觀基本盤）",
   worldbookDisabled: "停用中",

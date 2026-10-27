@@ -7,6 +7,7 @@ import { t } from "../../i18n";
 import { backendCode } from "../../shared/ui/backend-text";
 import {
   draftFromEntry,
+  parseKeys,
   draftVisibility,
   EMPTY_LEDGER,
   mergePendingRebase,
@@ -114,7 +115,7 @@ export function useWorldbookEditor({
     const pending = pendingRebase.current;
     if (pending) {
       pendingRebase.current = null;
-      updateDraft((current) => rebaseDraft(current, pending, next));
+      updateDraft((current) => rebaseDraft(current, pending, next, t("listSeparator")));
     }
   }
 
@@ -256,10 +257,7 @@ export function useWorldbookEditor({
     const entry: WorldbookEntry = {
       uid: form.uid ?? Number.MAX_SAFE_INTEGER,
       title: form.title.trim(),
-      keys: form.keys
-        .split(/[,、]/)
-        .map((key) => key.trim())
-        .filter(Boolean),
+      keys: parseKeys(form.keys),
       content: form.content,
       constant: form.constant,
       order: form.order,
@@ -334,7 +332,7 @@ export function useWorldbookEditor({
   }
 
   function editEntry(entry: WorldbookEntry) {
-    void openDraft(draftFromEntry(entry));
+    void openDraft(draftFromEntry(entry, t("listSeparator")));
   }
 
   async function saveEntry(event: FormEvent<HTMLFormElement>) {

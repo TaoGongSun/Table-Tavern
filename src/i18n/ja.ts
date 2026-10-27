@@ -193,6 +193,7 @@ export const ja: Record<MsgKey, string> = {
   worldbookExport: "ロアブックをエクスポート",
   worldbookEmpty: "ロアブックの項目がありません",
   worldbookNoKeys: "キーワードなし",
+  listSeparator: "、",
   worldbookConstant: "常時有効",
   worldbookConstantLabel: "常時有効（キーワードを待たず、毎回の発言でコンテキストに送信されます。トークンを消費しコンテキスト肥大化の原因となるため、基本世界観のみに制限してください）",
   worldbookDisabled: "無効化中",

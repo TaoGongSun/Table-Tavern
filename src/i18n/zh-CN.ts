@@ -193,6 +193,7 @@ export const zhCN: Record<MsgKey, string> = {
   worldbookExport: "导出世界书",
   worldbookEmpty: "暂无世界书条目",
   worldbookNoKeys: "无关键字",
+  listSeparator: "、",
   worldbookConstant: "恒定",
   worldbookConstantLabel: "恒定（无需等关键字，每次发言都送入上下文——每条都占 token、上下文会变大，只留给世界观基本盘）",
   worldbookDisabled: "停用中",

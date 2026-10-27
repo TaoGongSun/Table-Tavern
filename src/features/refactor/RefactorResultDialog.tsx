@@ -154,7 +154,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
         <p className="usage-bad" role="alert">
           {t("refactorPartialFailed", {
             n: failures.length,
-            names: failures.map((failure) => failure.name).join("、"),
+            names: failures.map((failure) => failure.name).join(t("listSeparator")),
           })}
           {[...new Set(failures.map((failure) => failure.reason).filter(Boolean))].map((reason) => (
             <span key={reason} className="refactor-fail-reason">
@@ -203,7 +203,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                       </summary>
                       <span className="refactor-source">
                         {t("refactorSourceLabel", {
-                          titles: sourceEntryTitles(entries, character.source_uids),
+                          titles: sourceEntryTitles(entries, character.source_uids, t("listSeparator")),
                         })}
                       </span>
                       <p>{t("refactorCharPublic")}</p>
@@ -277,7 +277,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                       </summary>
                       <span className="refactor-source">
                         {t("refactorSourceLabel", {
-                          titles: sourceEntryTitles(entries, entry.source_uids),
+                          titles: sourceEntryTitles(entries, entry.source_uids, t("listSeparator")),
                         })}
                       </span>
                       <div style={{ whiteSpace: "pre-wrap" }}>{entry.content}</div>
@@ -310,7 +310,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                   </summary>
                   <span className="refactor-source">
                     {t("refactorSourceLabel", {
-                      titles: sourceEntryTitles(entries, outcome.interface.source_uids),
+                      titles: sourceEntryTitles(entries, outcome.interface.source_uids, t("listSeparator")),
                     })}
                   </span>
                   <div>
@@ -319,7 +319,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                         typeof outcome.interface.state_fields === "object" &&
                         outcome.interface.state_fields !== null &&
                         !Array.isArray(outcome.interface.state_fields)
-                          ? Object.keys(outcome.interface.state_fields).join("、")
+                          ? Object.keys(outcome.interface.state_fields).join(t("listSeparator"))
                           : "",
                     })}
                   </div>

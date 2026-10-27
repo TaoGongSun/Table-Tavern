@@ -193,6 +193,7 @@ export const ko: Record<MsgKey, string> = {
   worldbookExport: "월드북 내보내기",
   worldbookEmpty: "아직 등록된 월드북 항목이 없습니다",
   worldbookNoKeys: "키워드 없음",
+  listSeparator: ", ",
   worldbookConstant: "상시 적용",
   worldbookConstantLabel: "상시 적용 (키워드 매칭 없이 매 발화마다 컨텍스트에 포함됩니다. 토큰 소모가 늘어나므로 세계관 기본 규칙에만 권장합니다)",
   worldbookDisabled: "비활성화됨",

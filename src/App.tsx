@@ -795,7 +795,7 @@ function App() {
       await showMessage(
         t("undoLastImportDone") +
           (report.removed_characters.length > 0
-            ? t("undoLastImportRemovedCharacters", { names: report.removed_characters.join("、") })
+            ? t("undoLastImportRemovedCharacters", { names: report.removed_characters.join(t("listSeparator")) })
             : "") +
           (report.kept_entries > 0 ? t("undoLastImportKept", { n: report.kept_entries }) : ""),
         { title: t("undoLastImport"), okLabel: t("dialogAck") },

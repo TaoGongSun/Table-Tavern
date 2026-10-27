@@ -108,7 +108,7 @@ function refactorApplyMessage(summary: RefactorApplySummary) {
     summary.mechanisms_applied > 0 && t("refactorApplyDoneMechanisms", { n: summary.mechanisms_applied }),
     summary.images_applied > 0 && t("refactorApplyDoneImages", { n: summary.images_applied }),
     (summary.images_failed?.length ?? 0) > 0 &&
-      t("refactorApplyImagesFailed", { names: summary.images_failed.join("、") }),
+      t("refactorApplyImagesFailed", { names: summary.images_failed.join(t("listSeparator")) }),
     summary.card_save_failed && t("refactorApplySaveFailed"),
   ]
     .filter(Boolean)

@@ -48,11 +48,11 @@ export type DraftGroup =
   | "visibility";
 
 /** 條目轉成表單草稿；鍵順序固定（draftDirty 以 JSON.stringify 比對） */
-export function draftFromEntry(entry: WorldbookEntry): WorldbookDraft {
+export function draftFromEntry(entry: WorldbookEntry, keySeparator: string): WorldbookDraft {
   return {
     uid: entry.uid,
     title: entry.title,
-    keys: entry.keys.join("、"),
+    keys: entry.keys.join(keySeparator),
     content: entry.content,
     constant: entry.constant,
     enabled: !entry.disabled,
@@ -60,6 +60,14 @@ export function draftFromEntry(entry: WorldbookEntry): WorldbookDraft {
     visibility: entry.visibility.type,
     characters: entry.visibility.type === "characters" ? entry.visibility.characters : [],
   };
+}
+
+/** 表單關鍵字欄轉回陣列：半形逗號與全形頓號都收，各段去空白、丟空段 */
+export function parseKeys(text: string): string[] {
+  return text
+    .split(/[,、]/)
+    .map((key) => key.trim())
+    .filter(Boolean);
 }
 
 /** 開著的條目草稿與它開啟當下的原樣快照（JSON）；seq 是開啟序號，換一條就遞增 */
@@ -105,6 +113,7 @@ export function rebaseDraft(
   state: DraftState,
   pending: PendingRebase,
   fresh: WorldbookEntry[],
+  keySeparator: string,
 ): DraftState {
   const { draft } = state;
   if (!draft || draft.uid === null) return state;
@@ -113,7 +122,7 @@ export function rebaseDraft(
   if (!groups) return state;
   const entry = fresh.find((candidate) => candidate.uid === draft.uid);
   if (!entry) return { ...state, draft: null, origin: "" };
-  const reread = draftFromEntry(entry);
+  const reread = draftFromEntry(entry, keySeparator);
   let nextDraft = draft;
   let nextOrigin = JSON.parse(state.origin) as WorldbookDraft;
   for (const group of groups) {

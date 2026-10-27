@@ -193,6 +193,7 @@ export const fr: Record<MsgKey, string> = {
   worldbookExport: "Exporter l'encyclopédie",
   worldbookEmpty: "Aucune entrée pour le moment",
   worldbookNoKeys: "Aucun mot-clé",
+  listSeparator: ", ",
   worldbookConstant: "Constant",
   worldbookConstantLabel: "Constant (toujours actif, sans mot-clé requis — consomme des tokens à chaque tour, à réserver aux bases de l'univers)",
   worldbookDisabled: "Désactivé",

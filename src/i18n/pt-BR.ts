@@ -193,6 +193,7 @@ export const ptBR: Record<MsgKey, string> = {
   worldbookExport: "Exportar Livro do Mundo",
   worldbookEmpty: "Nenhuma entrada no Livro do Mundo ainda",
   worldbookNoKeys: "Sem palavras-chave",
+  listSeparator: ", ",
   worldbookConstant: "Constante",
   worldbookConstantLabel: "Constante (sempre no contexto, sem necessidade de palavra-chave — consome tokens a cada turno, use apenas para fatos centrais do mundo)",
   worldbookDisabled: "Desativado",

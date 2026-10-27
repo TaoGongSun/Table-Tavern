@@ -63,7 +63,7 @@ export function SmartFreeNewModelBanner({ config, onConfigSaved, onOpenSettings 
 
   if (models.length === 0) return null;
 
-  const names = models.map((model) => model.label).join("、");
+  const names = models.map((model) => model.label).join(t("listSeparator"));
   const ids = models.map((model) => model.model);
 
   async function markSeen() {

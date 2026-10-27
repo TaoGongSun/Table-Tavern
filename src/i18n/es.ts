@@ -193,6 +193,7 @@ export const es: Record<MsgKey, string> = {
   worldbookExport: "Exportar Libro del Mundo",
   worldbookEmpty: "Aún no hay entradas en el Libro del Mundo",
   worldbookNoKeys: "Sin palabras clave",
+  listSeparator: ", ",
   worldbookConstant: "Constante",
   worldbookConstantLabel: "Constante (siempre activa sin necesidad de palabras clave; consume tokens en cada turno, úsala solo para hechos fundamentales)",
   worldbookDisabled: "Desactivado",

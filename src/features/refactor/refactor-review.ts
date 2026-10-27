@@ -719,9 +719,9 @@ export function sourceEntryTitle(entries: { uid: number; title: string }[], sour
   return entry ? entry.title || sourceUid : sourceUid;
 }
 
-/** 一位角色可能併自多條來源：逐條查標題後用「、」接起來，人審畫面看得出這張卡併了哪幾條。 */
-export function sourceEntryTitles(entries: { uid: number; title: string }[], sourceUids: string[]): string {
-  return sourceUids.map((uid) => sourceEntryTitle(entries, uid)).join("、");
+/** 一位角色可能併自多條來源：逐條查標題後用 separator 接起來，人審畫面看得出這張卡併了哪幾條。 */
+export function sourceEntryTitles(entries: { uid: number; title: string }[], sourceUids: string[], separator: string): string {
+  return sourceUids.map((uid) => sourceEntryTitle(entries, uid)).join(separator);
 }
 
 /** 展開細看的 checkbox 切換：角色／機制都是 indices 陣列，勾選加入、取消移除。 */
