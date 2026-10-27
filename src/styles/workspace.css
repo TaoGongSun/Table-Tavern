@@ -473,6 +473,26 @@ button.scene-chip,
   font-weight: 700;
 }
 
+/* 卡片寫的原始 HTML（story-markdown 白名單）：摺疊區塊與表格給最基本的邊界，其餘照瀏覽器預設 */
+.text.rendered details {
+  margin: 0.5em 0;
+}
+
+.text.rendered summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.text.rendered table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+
+.text.rendered :is(th, td) {
+  border: 1px solid var(--line);
+  padding: 0.25em 0.6em;
+}
+
 /* 卡片作者內嵌的配圖（開場白常見）：外連圖尺寸不受控，限寬限高免得一張洗掉整個畫面。
    載入失敗時瀏覽器顯示 alt 文字，不另外處理——外連圖失效是常態，不值得為它加狀態 */
 .text.rendered img {

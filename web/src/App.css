@@ -464,6 +464,20 @@ button:disabled {
   font-size: 13px;
 }
 
+/* 卡片寫的原始 HTML（story-markdown 白名單）：摺疊區塊與表格給最基本的邊界 */
+.message-body summary {
+  cursor: pointer;
+}
+
+.message-body table {
+  border-collapse: collapse;
+}
+
+.message-body :is(th, td) {
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+}
+
 .message-body pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
