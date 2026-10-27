@@ -1,6 +1,7 @@
 use super::apply_mechanism::{filter_scope, namespace, open_rule_reporting, Candidates};
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::card_png::{AssetKind, CardAsset};
+use super::flat_migration;
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::sources::{new_entry_shape, Sources};
 use super::types::{
@@ -342,10 +343,12 @@ fn apply_into(
     }
 
     let mut interface_applied = false;
+    // 從平欄搬走或刪掉的鍵：落檔後同步把整幕事件快照的平欄也拿掉，收回才不會讓它復活
+    let mut moved_table_keys = Vec::new();
     if let (Some(interface), Some((state_fields, rules))) =
         (&outcome.interface, &normalized_interface)
     {
-        rebuild_state_fields(
+        let rebuilt = rebuild_state_fields(
             &mut state.state.tree,
             &mut state.state.jumps,
             state_fields,
@@ -364,6 +367,14 @@ fn apply_into(
                 state.mechanism.guide = interface.guide.trim().to_owned();
             }
             state.mechanism.value_types = value_types_of(state_fields, rules);
+        }
+        // 先貼開場白再重構時開場狀態的單段鍵在平欄：接管後寫不回平欄，對到樹上的刪掉、對不到的搬進樹
+        if rebuilt && state.mechanism.incremental {
+            moved_table_keys = flat_migration::migrate_flat_table(
+                &mut state,
+                tree_authoritative,
+                new_shell.is_none(),
+            );
         }
         interface_applied = true;
     }
@@ -398,7 +409,6 @@ fn apply_into(
 
     // 收編了規則或觸發、但沒有殼路徑替它開增量協定（characters 桌、介面沒套成的桌）：GM 原本沒有
     // 回報這些欄位的管道，規則與觸發形同虛設（ai-card-refactor 紅 3）
-    let mut moved_table_keys = Vec::new();
     if !state.mechanism.incremental && (!merged_rules.is_empty() || !merged_triggers.is_empty()) {
         moved_table_keys = open_rule_reporting(&mut state, &merged_rules, &merged_triggers);
         state_dirty = true;

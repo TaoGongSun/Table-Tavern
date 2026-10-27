@@ -9,6 +9,7 @@ mod card_export;
 mod card_file;
 mod card_import;
 mod card_png;
+mod flat_migration;
 mod interface;
 mod reset;
 mod sources;

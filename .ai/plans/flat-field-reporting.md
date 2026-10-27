@@ -41,7 +41,7 @@
 
 ## 7. 已知缺口（另案）
 - 卡欄位與 place／present 同義（`当前环境`、`驻留/交涉角色`），GM 只報固定鍵、卡欄位停在開場值：寫入通道已通，屬模型回報缺口 → [card-field-overlaps-fixed-keys](../tasks/card-field-overlaps-fixed-keys.md)。
-- 殼（介面接管）路線開增量時不碰平欄 → [takeover-flat-nonfixed-keys](../tasks/takeover-flat-nonfixed-keys.md)。
+- 殼（介面接管）路線開增量時不碰平欄 → [takeover-flat-nonfixed-keys](../handoffs/archive/takeover-flat-nonfixed-keys.md)。
 
 ## 驗收
 - `refactor/tests/flat_field_reporting.rs` 轉綠，補測：insert 後 `剧情阶段/要塞事件` 值確實是新值；接段跨長度照最長命中、同長度字形多候選才拒收；例外二只認精確規則鍵（萬用規則命中保留原字新鍵）；真分支優先不接段；數字解析失敗搬成文字＋文字規則；圍欄寫數字規則欄（走 replace 守門）；簡繁多候選拒收（對齊層整次拒套、執行期拒收、圍欄拒收）；搬移後收回／收據復原把樹與平欄都退回。

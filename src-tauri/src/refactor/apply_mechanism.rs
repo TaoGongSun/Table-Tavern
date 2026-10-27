@@ -7,7 +7,7 @@ use crate::mechanism;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// 平欄裡固定由 ```state 圍欄回報的三個鍵：不當規則欄位搬進樹。
-const BASE_TABLE_KEYS: [&str; 3] = ["time", "place", "present"];
+pub(super) const BASE_TABLE_KEYS: [&str; 3] = ["time", "place", "present"];
 
 /// 對齊用的命名空間：套用前的樹，加上開場狀態平欄裡 time／place／present 以外的鍵（當頂層葉子）。
 /// 非 MVU、狀態區塊不是 YAML 的卡，開場狀態只在平欄（`驻守天数：第 1 天`），AI 照玩家語言自取的
@@ -55,7 +55,7 @@ fn align_path(
 
 /// 單段路徑對不上任何鍵時，找含「/」的頂層鍵：第一個「/」之前那段跟它精確或只差字形
 /// （AI 規則寫 `劇情階段`、平欄鍵是 `剧情阶段/要塞事件`）。唯一回 Some，多個回 Err，沒有回 None。
-fn slash_head_match(
+pub(super) fn slash_head_match(
     namespace: &BTreeMap<String, StateNode>,
     segment: &str,
 ) -> Result<Option<String>, Vec<String>> {
@@ -410,7 +410,7 @@ pub(super) fn open_rule_reporting(
     moved
 }
 
-fn turn_rule(kind: FieldKind) -> FieldRule {
+pub(super) fn turn_rule(kind: FieldKind) -> FieldRule {
     let mut rule = FieldRule::for_kind(kind);
     rule.inject = data::InjectLevel::Turn;
     rule
@@ -418,7 +418,7 @@ fn turn_rule(kind: FieldKind) -> FieldRule {
 
 /// 明確格式才取數字：純數字照留、`3/5` 照留（現值/上限）、`第 7 天` 這類「第 N 單位」取 N，
 /// 並回傳原寫法的顯示模板（`第 {} 天`，數字位置換成 `{}`）讓畫面照原格式顯示。
-fn explicit_number(value: &str) -> Option<(String, Option<String>)> {
+pub(super) fn explicit_number(value: &str) -> Option<(String, Option<String>)> {
     let trimmed = value.trim();
     if trimmed.parse::<f64>().is_ok_and(f64::is_finite) {
         return Some((trimmed.to_owned(), None));

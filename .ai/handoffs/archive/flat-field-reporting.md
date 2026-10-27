@@ -15,4 +15,4 @@ clean-orc（`src-tauri/src/import/fixtures/clean-orc-cave.json`）characters 重
 
 ## 已知缺口（另案）
 - `当前环境`、`驻留/交涉角色` 與 place／present 同義，真實流程三回合沒被 Haiku 回報：寫入通道是通的，屬模型回報缺口。本案只保證欄位寫得進、不兩份，不宣稱所有欄位都持續更新 → [card-field-overlaps-fixed-keys](../../tasks/card-field-overlaps-fixed-keys.md)。
-- 殼（介面接管）路線的平欄非固定鍵 → [takeover-flat-nonfixed-keys](../../tasks/takeover-flat-nonfixed-keys.md)。
+- 殼（介面接管）路線的平欄非固定鍵 → [takeover-flat-nonfixed-keys](takeover-flat-nonfixed-keys.md)。
