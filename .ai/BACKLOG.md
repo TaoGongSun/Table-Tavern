@@ -39,6 +39,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [card-interface-toolbar-overlap](tasks/card-interface-toolbar-overlap.md) — 卡片介面右上「換幕／關閉」工具列浮蓋卡片右上按鈕 — 下一步：未排程；先重現
 - [takeover-flat-nonfixed-keys](tasks/takeover-flat-nonfixed-keys.md) — 介面接管路線開增量時平欄非固定劇情鍵凍住不更新 — 下一步：先重現
 - [card-field-overlaps-fixed-keys](tasks/card-field-overlaps-fixed-keys.md) — 卡欄位（当前环境、驻留/交涉角色）與 place／present 同義，GM 只報固定鍵、卡欄位凍住 — 下一步：先提做法選項，與 character-presence 一併評估
+- [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
 
