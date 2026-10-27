@@ -34,6 +34,8 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [takeover-list-structured](tasks/takeover-list-structured.md) — 接管桌清單欄改結構化、GM 只報變動值（yaml-key-glyph 做法 D） — 下一步：要做〔作者裁決 2026-10-27〕
 - [card-field-overlaps-fixed-keys](tasks/card-field-overlaps-fixed-keys.md) — 卡欄位（当前环境、驻留/交涉角色）與 place／present 同義，GM 只報固定鍵、卡欄位凍住 — 下一步：先提做法選項，與 character-presence 一併評估
 - [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
+- [takeover-fence-scene-keys](tasks/takeover-fence-scene-keys.md) — 接管桌回覆不收圍欄，平欄 time／place／present 凍住 — 下一步：未排程；先重現
+- [card-regex-user-char-macro](tasks/card-regex-user-char-macro.md) — 卡片 regex 替換字串不代換 {{user}}／{{char}}，面板顯示字面 — 下一步：未排程
 - [story-html-whitelist](tasks/story-html-whitelist.md) — 訊息顯示把所有原始 HTML 跳脫成字，ST 會渲染白名單標籤、剝掉不認得的標籤 — 下一步：未排程
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
