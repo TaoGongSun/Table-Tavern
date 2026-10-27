@@ -32,11 +32,12 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
 
 - [mvu-object-key-glyph](tasks/mvu-object-key-glyph.md) — 物件值 replace 的巢狀鍵不做簡繁折疊，未重構 MVU 卡會長出繁體鍵 — 下一步：未排程；先重現
-- [takeover-list-structured](tasks/takeover-list-structured.md) — 接管桌清單欄改結構化、GM 只報變動值（yaml-key-glyph 做法 D） — 下一步：未排程；需作者決定要不要做
+- [takeover-list-structured](tasks/takeover-list-structured.md) — 接管桌清單欄改結構化、GM 只報變動值（yaml-key-glyph 做法 D） — 下一步：要做〔作者裁決 2026-10-27〕
 - [takeover-flat-nonfixed-keys](tasks/takeover-flat-nonfixed-keys.md) — 介面接管路線開增量時平欄非固定劇情鍵凍住不更新 — 下一步：先重現
 - [card-field-overlaps-fixed-keys](tasks/card-field-overlaps-fixed-keys.md) — 卡欄位（当前环境、驻留/交涉角色）與 place／present 同義，GM 只報固定鍵、卡欄位凍住 — 下一步：先提做法選項，與 character-presence 一併評估
 - [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
 - [card-format-html-comment-shown](tasks/card-format-html-comment-shown.md) — 模型照抄卡片格式裡的 HTML 註解（如 <!-- 隐藏记忆栏 -->）後畫面顯示成純文字，ST 會藏 — 下一步：未排程；先重現、查 ST 處理方式
+- [story-html-whitelist](tasks/story-html-whitelist.md) — 訊息顯示把所有原始 HTML 跳脫成字，ST 會渲染白名單標籤、剝掉不認得的標籤 — 下一步：未排程
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
 
@@ -57,7 +58,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [vn-prestructure-split](tasks/vn-prestructure-split.md) — VN v1 開工前結構案：commands/chat.rs 1525、transport/response.rs 1114、data/scene/transcript.rs 1257 行；另列 App.tsx 1049、useChatController.ts 1017、features/play（23 檔）、transport/（25 檔） — 下一步：未排程；開工前重量行數，commands 應只做邊界
 
 ## 階段 H：VN 模式
-- [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：前置＝階段 F 生圖實測與[實測報告](plans/vn-mode-image-spike.md)的三項作者決定；v1 開工前先做 vn-prestructure-split
+- [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制） — 下一步：生圖管線已定案（[實測報告](plans/vn-mode-image-spike.md)）；v1 開工前先做 vn-prestructure-split
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 
 ## 排後

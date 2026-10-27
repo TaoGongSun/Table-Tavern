@@ -9,17 +9,12 @@
 - **c CG**（定稿參考圖＋規格塊）：Codex、agy 通過（臉髮瞳色與服裝大項對上）；Grok 不通過（先生空場景再貼人、像拼貼、裙長跑掉）。
 - **NAI**（僅官方文件，待作者 token）：`POST image.novelai.net/ai/generate-image` 預設回 zip、`Accept: application/json` 回 base64；Director Tools 走 `/ai/augment-image`（含 Emotion、Remove Background）。透明只有 V5，角色參考只有 V4.5（每張加扣 5 Anlas），無單一模型兼得；Opus 免費限 V4.5 以下且不帶參考圖。model ID 與 req_type 字串要實打確認。
 
-## 建議管線〔模型判斷·未裁決〕
-- v2 立繪：Codex 生透明定稿→玩家重骰挑選→逐張編輯 4–5 張表情差分；非 Codex 來源走素色底＋BiRefNet-lite。等於把拍板 7 的主路從「素色底＋去背」改成「原生透明」，去背當後備。agy 適合當第二來源。
-- v3 CG：與該桌定稿同一來源（Codex 或 agy），定稿＋規格塊、玩家重骰把關；Grok 不當 CG 來源。NAI 須玩家點擊觸發。
-
-## 待作者決定
-1. 拍板 7 的主路是否由「素色底＋去背」改為「原生透明」（去背當後備）。
-2. Grok 是否確定不當 CG 來源。
-3. NAI ToS 寫「all generation requests must be initiated by a human action」，劇情自動觸發 CG 與全自動目標衝突：NAI 只走玩家點擊觸發，或放棄 NAI。
+## 定案管線〔作者裁決 2026-10-27〕
+- v2 立繪：拍板 7 主路改為原生透明——Codex 生透明定稿→玩家重骰挑選→逐張編輯 4–5 張表情差分；非透明來源走素色底＋BiRefNet-lite 去背當後備。agy 為第二來源。
+- v3 CG：與該桌定稿同一來源，優先 Codex；Grok 可當 CG 來源但排在 Codex 之後。定稿＋規格塊、玩家重骰把關。
+- NAI 暫不測、不納入管線。
 
 ## 定案前還缺
-1. NAI token 實測。
 2. app 提示詞要明令「只呼叫一次生圖工具、不得自行後製」（Grok 會自貼臉拼圖、Codex 會自重試）。
 3. 權限做法：agy 不加 skip 旗標也能出圖（叫它的 image-generator 子代理並等做完），可取代 app 現行加旗標做法。
 4. 測試環境與 app 不同（本機預設 HOME、Codex 未加 `--ignore-user-config`），app 隔離執行時行為可能不同。
