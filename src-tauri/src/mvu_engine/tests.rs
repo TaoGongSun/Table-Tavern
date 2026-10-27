@@ -5,7 +5,7 @@ use super::host::Op;
 use super::runtime::is_mvu_zod_url;
 use super::*;
 use serde_json::{json, Map, Value};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -68,6 +68,25 @@ fn wait_unstuck(engine: &MvuEngine) {
         thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(engine.stuck_threads(), 0);
+}
+
+/// 卡住到測試放行的操作：回（操作、已開始訊號、放行把手）。把手留在測試作用域，丟掉＝放行（panic 時也會丟）
+fn hold() -> (Op, mpsc::Receiver<()>, mpsc::Sender<()>) {
+    let (started, started_rx) = mpsc::sync_channel(1);
+    let (release_tx, release) = mpsc::channel();
+    (Op::Hold { started, release }, started_rx, release_tx)
+}
+
+/// 受測的卡住操作要真的開始過（作廢的是卡在裡面的執行緒，不是入口就因期限退回的請求）
+fn assert_hold_started(started: &mpsc::Receiver<()>) {
+    started
+        .recv_timeout(Duration::from_secs(2))
+        .expect("Hold 未開始");
+}
+
+/// 受測操作的期限：準備步驟另用寬鬆的 `Limits::batch`，不跟它搶
+fn tight() -> Instant {
+    Instant::now() + Duration::from_millis(1000)
 }
 
 fn statuses(output: &BatchOutput) -> Vec<CommandStatus> {
@@ -488,38 +507,37 @@ fn duplicate_registrations_are_counted() {
 
 #[test]
 fn abandoned_threads_are_capped_and_counted_until_they_exit() {
-    // 期限要夠 debug 版建 runtime（約 0.3 秒），卡住的時間要超過期限＋寬限
+    // 準備與收尾用寬鬆期限（debug 版建 runtime 在負載下要好幾秒）；受測的卡住操作另給 1 秒期限，卡到測試放行為止
     let limits = Limits {
-        batch: Duration::from_millis(1000),
         outer_grace: Duration::from_millis(200),
         max_busy_threads: 2,
         ..Limits::default()
     };
     let engine = MvuEngine::new(limits);
     let schema = script(COUNTER);
-    let stall = |name: &str| {
-        engine.run_op(
-            name,
-            &schema,
-            Op::Stall(Duration::from_millis(4000)),
-            engine.deadline(),
-        )
-    };
     counter(&engine, "a", &schema);
+    let (op, a_started, a_release) = hold();
     let started = Instant::now();
-    assert_eq!(stall("a").unwrap_err().kind, FailureKind::Deadline);
+    assert_eq!(
+        engine.run_op("a", &schema, op, tight()).unwrap_err().kind,
+        FailureKind::Deadline
+    );
     assert!(
         started.elapsed() < Duration::from_millis(1200) + slack(),
         "{:?}",
         started.elapsed()
     );
+    assert_hold_started(&a_started);
     assert_eq!(engine.stuck_threads(), 1);
     counter(&engine, "b", &schema);
-    assert_eq!(stall("b").unwrap_err().kind, FailureKind::Deadline);
+    let (op, b_started, b_release) = hold();
+    assert_eq!(
+        engine.run_op("b", &schema, op, tight()).unwrap_err().kind,
+        FailureKind::Deadline
+    );
+    assert_hold_started(&b_started);
     assert_eq!(engine.stuck_threads(), 2);
     // 名額被兩條卡死的執行緒佔滿：新請求一律拒收（已有 runtime 的桌也一樣）
-    let generous = Limits::default().batch;
-    let deadline = || Instant::now() + generous;
     let busy = engine
         .run_batch(
             "c",
@@ -527,11 +545,12 @@ fn abandoned_threads_are_capped_and_counted_until_they_exit() {
             "_.set('n', 0);",
             &table(json!({ "n": 0 })),
             &macros(),
-            deadline(),
+            engine.deadline(),
         )
         .unwrap_err();
     assert_eq!(busy.kind, FailureKind::Busy);
     // 卡住的執行緒結束後計數歸零，又能開新的
+    drop((a_release, b_release));
     wait_unstuck(&engine);
     assert!(engine
         .run_batch(
@@ -540,7 +559,7 @@ fn abandoned_threads_are_capped_and_counted_until_they_exit() {
             "_.set('n', 0);",
             &table(json!({ "n": 0 })),
             &macros(),
-            deadline()
+            engine.deadline()
         )
         .is_ok());
 }
@@ -548,8 +567,8 @@ fn abandoned_threads_are_capped_and_counted_until_they_exit() {
 /// Sol 第 2 輪重現：三桌相隔 150 ms 一起卡住，池只留兩桌、先開的被淘汰，作廢數仍不得超過名額
 #[test]
 fn overlapping_stalls_on_many_tables_never_exceed_the_global_cap() {
+    // 收尾用寬鬆期限；受測的三個卡住操作各給 1.5 秒期限
     let engine = Arc::new(MvuEngine::new(Limits {
-        batch: Duration::from_millis(1500),
         outer_grace: Duration::from_millis(200),
         ..Limits::default()
     }));
@@ -563,7 +582,7 @@ fn overlapping_stalls_on_many_tables_never_exceed_the_global_cap() {
                     name,
                     &schema,
                     Op::Stall(Duration::from_secs(5)),
-                    engine.deadline(),
+                    Instant::now() + Duration::from_millis(1500),
                 )
                 .unwrap_err()
                 .kind
@@ -610,8 +629,8 @@ fn rotating_and_two_concurrent_tables_are_not_blocked() {
 
 #[test]
 fn respawns_after_abandoning_are_capped_per_table_and_window() {
+    // 準備用寬鬆期限；受測的卡住操作另給 1 秒期限，卡到測試放行為止
     let limits = Limits {
-        batch: Duration::from_millis(1000),
         outer_grace: Duration::from_millis(100),
         max_busy_threads: 10,
         max_respawns: 2,
@@ -622,15 +641,11 @@ fn respawns_after_abandoning_are_capped_per_table_and_window() {
     for _ in 0..2 {
         // 先建好（作廢後重開也算在這裡），卡住的只有那一步
         counter(&engine, "a", &schema);
-        let failure = engine
-            .run_op(
-                "a",
-                &schema,
-                Op::Stall(Duration::from_millis(3000)),
-                engine.deadline(),
-            )
-            .unwrap_err();
+        let (op, started, release) = hold();
+        let failure = engine.run_op("a", &schema, op, tight()).unwrap_err();
         assert_eq!(failure.kind, FailureKind::Deadline);
+        assert_hold_started(&started);
+        drop(release);
     }
     wait_unstuck(&engine);
     // 連續逾時的那桌在窗口內開不了新的；別桌不受影響
@@ -643,8 +658,8 @@ fn respawns_after_abandoning_are_capped_per_table_and_window() {
 
 #[test]
 fn an_evicted_worker_that_times_out_is_still_abandoned_and_counted() {
+    // 準備用寬鬆期限；受測的卡住操作另給 1.5 秒期限，卡到淘汰與作廢都斷言完才放行
     let limits = Limits {
-        batch: Duration::from_millis(1500),
         outer_grace: Duration::from_millis(200),
         max_tables: 1,
         ..Limits::default()
@@ -652,19 +667,20 @@ fn an_evicted_worker_that_times_out_is_still_abandoned_and_counted() {
     let engine = Arc::new(MvuEngine::new(limits));
     let schema = script(COUNTER);
     counter(&engine, "a", &schema);
+    let (op, started, release) = hold();
     let stalled = {
         let (engine, schema) = (Arc::clone(&engine), Arc::clone(&schema));
         thread::spawn(move || {
             engine.run_op(
                 "a",
                 &schema,
-                Op::Stall(Duration::from_millis(5000)),
-                engine.deadline(),
+                op,
+                Instant::now() + Duration::from_millis(1500),
             )
         })
     };
-    // a 還在跑時切到 b：池只留一桌，a 被淘汰
-    thread::sleep(Duration::from_millis(100));
+    // a 卡住後切到 b：池只留一桌，a 被淘汰
+    assert_hold_started(&started);
     assert_eq!(counter(&engine, "b", &schema), json!(1));
     assert_eq!(engine.tables(), vec!["b"]);
     assert_eq!(
@@ -672,7 +688,42 @@ fn an_evicted_worker_that_times_out_is_still_abandoned_and_counted() {
         FailureKind::Deadline
     );
     assert_eq!(engine.stuck_threads(), 1);
+    drop(release);
     wait_unstuck(&engine);
+}
+
+/// 名額剛好在邊上：一條卡住佔一個，另一桌收到回覆就立刻送下一個，不得撞到還沒歸還的名額
+#[test]
+fn back_to_back_requests_beside_a_held_slot_are_never_busy() {
+    let engine = Arc::new(MvuEngine::new(Limits {
+        max_busy_threads: 2,
+        ..Limits::default()
+    }));
+    let schema = script(COUNTER);
+    counter(&engine, "a", &schema);
+    counter(&engine, "b", &schema);
+    let (op, started, release) = hold();
+    let held = {
+        let (engine, schema) = (Arc::clone(&engine), Arc::clone(&schema));
+        // 佔名額的那一個不受測，期限給到測試一定跑得完：結束時要是正常回覆，不是逾時作廢
+        let deadline = Instant::now() + Duration::from_secs(60);
+        thread::spawn(move || engine.run_op("a", &schema, op, deadline))
+    };
+    assert_hold_started(&started);
+    for round in 0..200 {
+        let reply = batch(&engine, "b", &schema, "_.set('n', 0);", json!({ "n": 0 }));
+        assert!(reply.is_ok(), "第 {round} 次：{:?}", reply.err());
+    }
+    // 確定性版本：上一個請求回覆後執行緒先別結束這一輪，下一個請求照樣拿得到名額
+    let (gate_tx, gate) = mpsc::channel();
+    engine
+        .run_op("b", &schema, Op::Linger(gate), engine.deadline())
+        .unwrap();
+    let next = engine.run_op("c", &schema, Op::Stall(Duration::ZERO), engine.deadline());
+    drop(gate_tx);
+    assert!(next.is_ok(), "{:?}", next.err());
+    drop(release);
+    assert!(held.join().unwrap().is_ok());
 }
 
 #[test]

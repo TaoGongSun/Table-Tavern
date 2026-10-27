@@ -35,6 +35,15 @@ pub(super) enum Op {
     /// 測試用：模擬卡在不受中斷的原生程式碼裡
     #[cfg(test)]
     Stall(std::time::Duration),
+    /// 測試用：開始後送 `started`，卡到測試放行（丟掉 `release` 的 Sender）；60 秒沒放行算失敗
+    #[cfg(test)]
+    Hold {
+        started: mpsc::SyncSender<()>,
+        release: mpsc::Receiver<()>,
+    },
+    /// 測試用：照常回覆，但回覆送出後執行緒等 gate 放行才進下一輪（驗名額在回覆前就已歸還）
+    #[cfg(test)]
+    Linger(mpsc::Receiver<()>),
     /// 測試用：執行緒 panic
     #[cfg(test)]
     Panic,
@@ -48,8 +57,9 @@ struct Job {
     op: Op,
     deadline: Instant,
     reply: mpsc::SyncSender<Result<(String, u32), EngineFailure>>,
-    /// 跟著請求走：執行緒做完（或請求沒被處理就丟掉）才歸還；卡住的執行緒一直握著
-    _permit: Permit,
+    /// 跟著請求走：執行緒做完、送回覆之前歸還（呼叫端拿到回覆時名額必定已還），請求沒被處理就丟掉時也歸還；
+    /// 卡住的執行緒一直握著
+    permit: Permit,
 }
 
 /// 「執行中＋作廢未結束」的執行緒名額（全域）。送出請求前取得，所以就算 worker 被 LRU 淘汰、之後才逾時，
@@ -104,9 +114,9 @@ struct Pool {
 pub struct MvuEngine {
     limits: Limits,
     pool: Mutex<Pool>,
-    /// 作廢後還沒結束的執行緒數（執行緒結束時自己減）
+    /// 作廢後還沒結束的執行緒數（執行緒結束時自己減）：只做追蹤，不限制名額
     stuck: Arc<AtomicUsize>,
-    /// 握著名額的請求數（執行中、排隊中、作廢未結束）
+    /// 握著名額的請求數（執行中、排隊中、作廢未結束）：全域名額實際由這個與 `Permit` 限制
     busy: Arc<AtomicUsize>,
 }
 
@@ -252,7 +262,7 @@ impl MvuEngine {
             op,
             deadline,
             reply,
-            _permit: permit,
+            permit,
         };
         // 執行緒閒置過久自己結束、或剛被淘汰時送不出去：換一條新的再送一次
         let mut sent = None;
@@ -525,7 +535,15 @@ fn worker_loop(inbox: mpsc::Receiver<Job>, guard: &Guard, limits: &Limits) {
             }
         };
         guard.disarm();
-        let _ = job.reply.send(result);
+        // 先還名額再回覆：呼叫端收到回覆立刻送下一個請求，不會撞到還沒歸還的名額而誤判 Busy
+        // 只搬走 reply 與 permit：job.op 留著，下面測試用的 Linger 才拿得到 gate（連 op 一起解構丟掉，回歸測試會空過）
+        let Job { reply, permit, .. } = job;
+        drop(permit);
+        let _ = reply.send(result);
+        #[cfg(test)]
+        if let Op::Linger(gate) = &job.op {
+            let _ = gate.recv_timeout(std::time::Duration::from_secs(60));
+        }
     }
 }
 
@@ -567,6 +585,18 @@ fn process(
             thread::sleep(*duration);
             Ok("null".into())
         }
+        #[cfg(test)]
+        Op::Hold { started, release } => {
+            let _ = started.try_send(());
+            match release.recv_timeout(std::time::Duration::from_secs(60)) {
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => Ok("null".into()),
+                Err(RecvTimeoutError::Timeout) => {
+                    Err(EngineFailure::new(FailureKind::Crashed, "Hold 60 秒沒放行"))
+                }
+            }
+        }
+        #[cfg(test)]
+        Op::Linger(_) => Ok("null".into()),
         #[cfg(test)]
         Op::Panic => panic!("測試用 panic"),
         #[cfg(test)]
