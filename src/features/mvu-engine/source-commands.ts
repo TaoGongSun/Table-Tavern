@@ -117,13 +117,52 @@ export const SOURCE_COMMANDS = String.raw`
     return false;
   }
 
+  // 等長遮罩：區間內除 CR／LF 外換成空白，偏移與原文一致（UTF-16 碼元）
+  function maskSpan(chars, start, end) {
+    for (var k = start; k < end; k++) if (chars[k] !== "\n" && chars[k] !== "\r") chars[k] = " ";
+  }
+
+  // 思考區（照上游 MagVarUpdate 5cf5685a）：think／thinking／reasoning／analysis／analyze 不分大小寫、可帶屬性；
+  // 堆疊只彈同名最近一層，錯配的結束標籤略過，未閉合遮到結尾；區外落單的結束標籤只遮標籤本身
+  function maskReasoning(text) {
+    var chars = text.split("");
+    var tag = /<(\/?)\s*(thinking|think|reasoning|analysis|analyze)\b[^>]*>/gi;
+    var stack = [];
+    var from = 0;
+    var found;
+    while ((found = tag.exec(text)) !== null) {
+      var name = found[2].toLowerCase();
+      if (!found[1]) {
+        if (stack.length === 0) from = found.index;
+        stack.push(name);
+      } else if (stack.length === 0) {
+        maskSpan(chars, found.index, tag.lastIndex);
+      } else if (stack[stack.length - 1] === name) {
+        stack.pop();
+        if (stack.length === 0) maskSpan(chars, from, tag.lastIndex);
+      }
+    }
+    if (stack.length > 0) maskSpan(chars, from, text.length);
+    return chars;
+  }
+
   async function extractCommands(ctx, text) {
     var results = [];
+    // 遮罩視圖：先遮思考區，在視圖上找 JSONPatch（思考區裡的不算），再把 JSONPatch 區塊整段遮掉才掃舊式指令，
+    // patch 裡看起來像 _.set 的字串是資料、不再跑一次。所有內容都按視圖的區間從原文切
+    var view = maskReasoning(text);
+    var viewText = view.join("");
     // JSONPatch 區塊：內容交 Worker 解析（YAML／JSON5／修殘缺 JSON），解析失敗的區塊略過
     var patchPattern = /<(json_?patch)>(?:\s*\x60\x60\x60.*)?((?:(?!<json_?patch>)[\s\S])*?)(?:\x60\x60\x60\s*)?<\/\1>/gim;
     var blocks = [];
     var found;
-    while ((found = patchPattern.exec(text)) !== null) blocks.push({ index: found.index, body: found[2].trim() });
+    while ((found = patchPattern.exec(viewText)) !== null) {
+      var closeTag = ("</" + found[1] + ">").length;
+      var fence = found[0].slice(0, found[0].length - closeTag).match(/\x60\x60\x60\s*$/);
+      var bodyEnd = found.index + found[0].length - closeTag - (fence ? fence[0].length : 0);
+      blocks.push({ index: found.index, body: text.substring(bodyEnd - found[2].length, bodyEnd).trim() });
+      maskSpan(view, found.index, patchPattern.lastIndex);
+    }
     for (var b = 0; b < blocks.length; b++) {
       var outcome = await evalRemote(ctx, "patch", blocks[b].body);
       if (outcome.ok && isJsonPatch(outcome.value)) {
@@ -133,12 +172,13 @@ export const SOURCE_COMMANDS = String.raw`
         });
       }
     }
+    var legacyText = view.join("");
     var scan = /_\.(set|insert|assign|remove|unset|delete|add)\(/g;
     var comment = /\s*\/\/(.*)/y;
     var i = 0;
     while (i < text.length) {
       scan.lastIndex = i;
-      var match = scan.exec(text);
+      var match = scan.exec(legacyText);
       if (match === null) break;
       var type = match[1];
       var start = match.index;

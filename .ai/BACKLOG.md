@@ -35,7 +35,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [takeover-fence-scene-keys](tasks/takeover-fence-scene-keys.md) — 接管桌回覆不收圍欄，平欄 time／place／present 凍住 — 下一步：未排程；先重現
 - [card-regex-user-char-macro](tasks/card-regex-user-char-macro.md) — 卡片 regex 替換字串不代換 {{user}}／{{char}}，面板顯示字面 — 下一步：未排程
 - [multichar-next-speaker-silent](tasks/multichar-next-speaker-silent.md) — 多角色（非介面）桌 GM 每輪寫「下一位：X」但角色不接話 — 下一步：未排程；先重現
-- [mvu-analysis-section-replay](tasks/mvu-analysis-section-replay.md) — GM 在 <Analysis> 引用的 _.set 也被執行，重複套用且第二次回饋誤導 — 下一步：未排程；先查上游 MVU 是否解析 Analysis 段
 - [undo-two-clicks-summary-line](tasks/undo-two-clicks-summary-line.md) — 收回上一句第一下只收系統變動摘要行，第二下才收 GM 旁白 — 下一步：未排程
 - [agy-lane-shape-vs-spec](tasks/agy-lane-shape-vs-spec.md) — agy 實際走續聊且每角色一條 lane，與 api-shared-lane 規格的四路共線不符 — 下一步：未排程；先查是刻意改的（改文件）還是回歸（修）
 - [story-html-whitelist](tasks/story-html-whitelist.md) — 訊息顯示把所有原始 HTML 跳脫成字，ST 會渲染白名單標籤、剝掉不認得的標籤 — 下一步：未排程

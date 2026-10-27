@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMvuEngineSource } from "./engine-source";
 import type { MvuCore, MvuDetailedResult } from "./host-contract";
 import { runEval } from "./value-parser";
+import { zodNotes } from "./zod-feedback";
 import { REAL_CARDS, dongeonAdventurer, hasRealCards, realCard } from "./fixtures/real-cards";
 import replaceParity from "../../shared/contracts/mvu-replace-parity.json";
 
@@ -248,6 +249,24 @@ describe("回傳契約與收尾", () => {
     const rejected = detailed.results[1]!;
     expect(rejected).toMatchObject({ index: 1, op: "set", path: ["世界", "天氣"], status: "rejected", reason: "schema", issueCount: 1 });
     expect(rejected.issues![0]).toContain("世界.天氣");
+  });
+
+  it("Analysis 裡引用的指令不執行：逐條結果、變動與回饋只算 JSONPatch 那一份（實測佇列第 23 項）", async () => {
+    const core = zodCore();
+    const start = initialized(core);
+    const message = [
+      "<UpdateVariable>",
+      "<Analysis>verbatim: `_.set('世界.威脅', 150);` `_.set('世界.天氣', 7);`</Analysis>",
+      '<JSONPatch>[{"op":"replace","path":"/世界/威脅","value":150},{"op":"replace","path":"/世界/天氣","value":7}]</JSONPatch>',
+      "</UpdateVariable>",
+    ].join("\n");
+    const detailed = await core.parseMessageDetailed(message, start);
+    expect(detailed.results.map((entry) => [entry.index, entry.status])).toEqual([
+      [0, "applied"],
+      [1, "rejected"],
+    ]);
+    expect(detailed.changes).toEqual([{ path: ["世界", "威脅"], before: 30, after: 100 }]);
+    expect(zodNotes(detailed.results)).toHaveLength(1);
   });
 
   it("schema 拒收的錯誤文字限條數與字數", async () => {

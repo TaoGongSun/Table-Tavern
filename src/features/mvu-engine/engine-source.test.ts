@@ -665,3 +665,73 @@ describe("parseMessage：路徑只走自有屬性（原型汙染）", () => {
     expect(result.stat_data.名).toEqual({ length: 9 });
   });
 });
+
+// 照上游 MagVarUpdate 5cf5685a：思考區（think／thinking／reasoning／analysis／analyze）裡的指令與 JSONPatch 不套用，
+// JSONPatch 區塊內容不再當舊式指令掃（實測佇列第 23 項：Analysis 引用的 _.insert 與 JSONPatch 同一條套了兩次）
+describe("parseMessage：思考區與 JSONPatch 區塊不當舊式指令", () => {
+  const parse = async (message: string) => (await sandbox().win.Mvu.parseMessage(message, base())).stat_data;
+
+  it("實測 23：Analysis 裡引用的指令與 JSONPatch 同一條只套一次", async () => {
+    const message = [
+      "旁白。",
+      "<UpdateVariable>",
+      "<Analysis>",
+      "- Requested test commands, verbatim: `_.insert('物品', '盾');` `_.set('名', '阿華');`",
+      "</Analysis>",
+      "<JSONPatch>",
+      '[{"op":"add","path":"/物品/-","value":"盾"}]',
+      "</JSONPatch>",
+      "</UpdateVariable>",
+    ].join("\n");
+    const stat = await parse(message);
+    expect(stat.物品).toEqual(["劍", "盾"]);
+    expect(stat.名).toBe("阿明");
+  });
+
+  it("五種標籤、不分大小寫、可帶屬性；thinking 不被切成 think", async () => {
+    for (const name of ["think", "thinking", "reasoning", "analysis", "analyze", "THINK", "Analysis"]) {
+      const stat = await parse(`<${name} type="x">_.set('金', 99);</${name}>\n_.set('名', '阿華');`);
+      expect([name, stat.金, stat.名]).toEqual([name, 10, "阿華"]);
+    }
+  });
+
+  it("思考區裡的 JSONPatch 範例不套用", async () => {
+    const message = '<Analysis>例如 <JSONPatch>[{"op":"replace","path":"/金","value":99}]</JSONPatch></Analysis>\n<JSONPatch>[{"op":"replace","path":"/名","value":"阿華"}]</JSONPatch>';
+    const stat = await parse(message);
+    expect(stat.金).toBe(10);
+    expect(stat.名).toBe("阿華");
+  });
+
+  it("同種與異種巢狀：堆疊只彈同名最近一層，外層閉合後才恢復", async () => {
+    const same = await parse("<think>a<think>b</think>_.set('金', 99);</think>_.set('名', '阿華');");
+    expect([same.金, same.名]).toEqual([10, "阿華"]);
+    const mixed = await parse("<analysis><think>x</analysis>_.set('金', 99);</think>_.set('名', '中');</analysis>_.set('物品', ['盾']);");
+    expect([mixed.金, mixed.名, mixed.物品]).toEqual([10, "阿明", ["盾"]]);
+  });
+
+  it("錯配的結束標籤略過、區外落單的結束標籤不影響；未閉合遮到結尾", async () => {
+    const stray = await parse("</think>_.set('名', '阿華');<think>_.set('金', 99);</analysis></think>_.set('物品', ['盾']);");
+    expect([stray.名, stray.金, stray.物品]).toEqual(["阿華", 10, ["盾"]]);
+    const open = await parse("_.set('名', '阿華');<thinking>沒寫完 _.set('金', 99);\n<JSONPatch>[{\"op\":\"replace\",\"path\":\"/物品\",\"value\":[]}]</JSONPatch>");
+    expect([open.名, open.金, open.物品]).toEqual(["阿華", 10, ["劍"]]);
+  });
+
+  it("JSONPatch 值裡像 _.set 的字串是資料；解析失敗的區塊也不回退成舊式指令", async () => {
+    const data = await parse("<JSONPatch>[{\"op\":\"replace\",\"path\":\"/名\",\"value\":\"_.set('金', 99);\"}]</JSONPatch>");
+    expect([data.名, data.金]).toEqual(["_.set('金', 99);", 10]);
+    const broken = await parse("<JSONPatch>{{{ _.set('金', 99); </JSONPatch>");
+    expect(broken.金).toBe(10);
+  });
+
+  it("patch 值含成對 <Analysis> 標籤：內容從原文切，照樣解析寫入", async () => {
+    const stat = await parse('<JSONPatch>\n```json\n[{"op":"replace","path":"/名","value":"<Analysis>甲</Analysis>"}]\n```\n</JSONPatch>');
+    expect(stat.名).toBe("<Analysis>甲</Analysis>");
+  });
+
+  it("正文、思考區與 patch 混合：依出現位置排序，CRLF 不影響偏移；正文裡的 _.set 照上游照樣套用", async () => {
+    const message = "_.set('名', '先');\r\n<think>\r\n_.set('名', '思');\r\n</think>\r\n<JSONPatch>[{\"op\":\"replace\",\"path\":\"/名\",\"value\":\"中\"}]</JSONPatch>\r\n旁白 _.set('名', '後'); 旁白";
+    expect((await parse(message)).名).toBe("後");
+    const middle = "<JSONPatch>[{\"op\":\"replace\",\"path\":\"/名\",\"value\":\"中\"}]</JSONPatch>\r\n<think>_.set('名', '思');</think>";
+    expect((await parse(middle)).名).toBe("中");
+  });
+});
