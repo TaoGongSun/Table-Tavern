@@ -367,6 +367,11 @@ pub fn append_opening_keyed(
 ) -> DataResult<(TranscriptEvent, Outcome)> {
     // zod 卡：種子、引擎與後處理在鎖外先算好（mvu_engine::wiring），鎖內只核對來源沒變再寫
     let zod = crate::mvu_engine::wiring::prepare_opening(root, world_id, raw, block, user_name)?;
+    // 非 zod 桌：開場白的 `<initvar>` 也在鎖外先算（覆寫值）
+    let plain = match zod {
+        Some(_) => crate::mvu_engine::plain_opening::PlainOpening::Skip,
+        None => crate::mvu_engine::plain_opening::prepare(root, world_id, raw, user_name)?,
+    };
     with_commit(root, world_id, |tx| {
         // 先交接：上一回合沒落成的回覆（含新表）先落，開場表才以它為底，不會被舊來源算出的表蓋回
         message_vars::settle_before_append(tx, None)?;
@@ -375,11 +380,16 @@ pub fn append_opening_keyed(
             char: None,
         };
         // zod 卡在鎖外已啟用（建種子失敗就這一幕不啟用，不得改從樹物化）
-        if zod.is_none() {
-            message_vars::ensure_active(tx, Some(&macros))?;
-        }
+        let overridden = zod.is_none()
+            && message_vars::ensure_active_overridden(tx, Some(&macros), plain.stat())?;
         let mut world = read_state(root, world_id)?;
-        let (table, outcome) = match &zod {
+        // 覆寫種子發布了：樹先換成它的投影，開場白的指令與 before 快照才以覆寫值為底
+        if overridden {
+            if let Some(tree) = message_vars::projected_tree(root, world_id, world.current_scene)? {
+                world.state.tree = tree;
+            }
+        }
+        let (table, mut outcome) = match &zod {
             Some(prepared) => {
                 crate::mvu_engine::wiring::opening_result(tx, prepared, &mut world, user_name)?
             }
@@ -416,6 +426,14 @@ pub fn append_opening_keyed(
                 (table, outcome)
             }
         };
+        if let Some(detail) = plain.failure() {
+            outcome
+                .records
+                .push(mechanism::engine_records::engine_notice(
+                    "開局",
+                    format!("開場白的 <initvar> 沒能套用，照世界書的初始值開局：{detail}"),
+                ));
+        }
         let event = TranscriptEvent {
             ts: ts.to_owned(),
             speaker_id: String::new(),

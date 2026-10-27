@@ -130,11 +130,13 @@ pub(super) struct EngineRuntime {
     ctx: Context,
     runtime: Runtime,
     pub(super) schema_hash: [u8; 32],
+    pub(super) plain: bool,
     pub(super) duplicates: u32,
 }
 
 impl EngineRuntime {
     /// 建 runtime、載 bundle、載卡片 schema；任何一步失敗都算 schema 載入失敗（規格 1.5 節）
+    /// （無 schema 的 `plain` 不載卡片模組、不檢查註冊）
     pub(super) fn build(
         schema: &SchemaScript,
         limits: &Limits,
@@ -168,6 +170,10 @@ impl EngineRuntime {
                 })()
                 .catch(&ctx)
                 .map_err(|error| load_failed(format!("引擎開機失敗：{}", caught(error))))?;
+                if schema.plain {
+                    let _ = ctx.globals().remove(SHIM_GLOBAL);
+                    return Ok((Persistent::save(&ctx, api), 0));
+                }
                 let evaluated = Module::evaluate(ctx.clone(), CARD_MODULE, schema.source.as_str())
                     .and_then(|promise| promise.finish::<()>())
                     .catch(&ctx);
@@ -205,6 +211,7 @@ impl EngineRuntime {
             ctx,
             runtime,
             schema_hash: schema.hash,
+            plain: schema.plain,
             duplicates,
         })
     }

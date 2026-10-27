@@ -453,11 +453,13 @@ fn init_output(
         }
         None => return Err(bad_output("開局回傳缺 outcome".into())),
     };
+    let applied = reply["applied"].as_bool().unwrap_or(false);
     check_deadline(deadline)?;
     Ok(InitOutput {
         stat_data,
         invalid,
         duplicates,
+        applied,
     })
 }
 
@@ -536,10 +538,9 @@ fn process(
 ) -> Result<(String, u32), EngineFailure> {
     check_deadline(job.deadline)?;
     guard.arm(job.deadline);
-    if runtime
-        .as_ref()
-        .is_some_and(|current| current.schema_hash != job.schema.hash)
-    {
+    if runtime.as_ref().is_some_and(|current| {
+        current.schema_hash != job.schema.hash || current.plain != job.schema.plain
+    }) {
         *runtime = None;
     }
     if runtime.is_none() {

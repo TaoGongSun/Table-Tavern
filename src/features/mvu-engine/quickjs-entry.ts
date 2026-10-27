@@ -19,7 +19,8 @@ export interface DesktopEngine {
   parse: (message: string, oldJson: string, macrosJson: string) => Promise<string>;
   /** 開局：initvar 先 cleanUpMetadata 再過 schema；回 `{ outcome, stat_data }` 的 JSON */
   initialize: (statJson: string) => string;
-  /** 種子（MVU initCheck）：卡內各條 `[initvar]` 依序解析深合併 → 開場白的 `<initvar>` 區塊整份取代 → initialize。
+  /** 種子（MVU initCheck）：卡內各條 `[initvar]` 依序解析深合併 → 開場白的 `<initvar>` 區塊整份取代 → initialize；
+   *  回傳另帶 `applied`（開場白的 `<initvar>` 有沒有套上）。沒註冊 schema（非 zod 桌）時 zodInitialize 不動值。
    *  `initvarsJson` 是條目內文的字串陣列；任一條解析失敗就丟錯（上游這本書整本不算初始化）。卡上沒有 initvar 時
    *  `baseJson` 給狀態樹物化的 stat_data（已代換過巨集）取代 initvar 那段，其餘同一條路 */
   seed: (initvarsJson: string, opening: string, macrosJson: string, baseJson: string) => string;
@@ -142,14 +143,16 @@ export function createDesktopEngine(): DesktopEngine {
         const parsed = parseStructured(substitute(initvarBody(content)));
         if (parsed) correctlyMerge(stat, parsed);
       }
-      return initialize(openingOverride(opening, substitute) ?? stat);
+      const override = openingOverride(opening, substitute);
+      return initialize(override ?? stat, override !== null);
     },
   };
-  function initialize(stat: unknown): string {
+  /** `applied`：只有 seed 帶（開場白的 `<initvar>` 有套上）；非 zod 桌靠它判斷要不要用覆寫值 */
+  function initialize(stat: unknown, applied?: boolean): string {
     core.cleanUpMetadata(stat);
     const variables: Record<string, unknown> = { stat_data: stat };
     const outcome = core.zodInitialize(variables);
-    return stringify({ outcome, stat_data: variables.stat_data });
+    return stringify({ outcome, stat_data: variables.stat_data, applied });
   }
 }
 

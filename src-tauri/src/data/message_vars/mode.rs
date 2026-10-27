@@ -110,6 +110,14 @@ pub fn ensure_active_seeded(
 /// 這一幕要新建種子時、`ensure_active` 不給種子會物化出的那張表（只讀不發布）：zod 桌卡上沒有 `[initvar]` 時，
 /// 鎖外先拿它的 stat_data 過 schema 再當種子。已啟用或不符合條件回 None。
 pub fn tree_seed(tx: &CommitTx<'_>, macros: Option<&Macros>) -> DataResult<Option<Json>> {
+    Ok(tree_seed_with_macros(tx, macros)?.map(|(table, _)| table))
+}
+
+/// 同 `tree_seed`，另回建種子時生效的巨集（`{{user}}`／`{{char}}` 的有效值，同 `seed_basis`）。
+pub fn tree_seed_with_macros(
+    tx: &CommitTx<'_>,
+    macros: Option<&Macros>,
+) -> DataResult<Option<(Json, Option<Macros>)>> {
     let control = read_control(tx.root, tx.world_id)?;
     let cache = read_state_cache(tx.root, tx.world_id)?;
     if control.active(cache.current_scene).is_some() {
@@ -117,14 +125,33 @@ pub fn tree_seed(tx: &CommitTx<'_>, macros: Option<&Macros>) -> DataResult<Optio
     }
     Ok(
         seed_basis(tx, &control, &cache, macros)?.map(|(macros, previous)| {
-            materialize(
+            let table = materialize(
                 &cache.state.tree,
                 &cache.mechanism.value_types,
                 macros.as_ref(),
                 previous.as_ref(),
-            )
+            );
+            (table, macros)
         }),
     )
+}
+
+/// 非 zod 桌開場白（initvar-nonzod-overwrite）：這一幕還沒啟用、`override_stat` 有值時，以提交當下樹物化的表、
+/// stat_data 整份換成它當種子啟用，回 true（這次發布了覆寫種子，呼叫端要把樹換成新投影）；其餘同 `ensure_active`、回 false。
+pub fn ensure_active_overridden(
+    tx: &CommitTx<'_>,
+    macros: Option<&Macros>,
+    override_stat: Option<&Json>,
+) -> DataResult<bool> {
+    if let Some(stat) = override_stat {
+        if let Some((mut table, _)) = tree_seed_with_macros(tx, macros)? {
+            derive_display(&mut table, stat.clone());
+            ensure_active_seeded(tx, macros, Some(&table))?;
+            return Ok(true);
+        }
+    }
+    ensure_active(tx, macros)?;
+    Ok(false)
 }
 
 /// 新建種子的依據：這桌該不該啟用（不該回 None）、生效的巨集、上一份完整表（這一幕以前的 epoch 的初始化來源，

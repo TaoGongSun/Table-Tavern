@@ -1,6 +1,7 @@
 //! 桌面接線（規格 3 節 P4 驗收）：保序種子、GM 回合三段提交、過期結果不提交、整次失敗正文照落、開場白同一條路、
 //! 收回讀已存快照不重跑 transform、後處理退回連帶撤回觸發與記錄。用乾淨 schema 夾具（src/features/mvu-engine/fixtures）。
 use super::wiring::{self, commit_turn, failure_message, gm_commit, prepare_turn, zod_table};
+use super::TEST_SERIAL as SERIAL;
 use super::{EngineFailure, FailureKind};
 use crate::data::message_vars::{self, Json, Macros, PendingMain, TurnKey};
 use crate::data::state_commit::with_commit;
@@ -8,15 +9,11 @@ use crate::data::{self, StateNode, TranscriptEvent, TranscriptKind};
 use crate::mechanism::{Outcome, RecordKind};
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 const SCHEMA: &str = include_str!("../../../src/features/mvu-engine/fixtures/clean-zod-schema.txt");
 const INITVAR: &str =
     include_str!("../../../src/features/mvu-engine/fixtures/clean-zod-initvar.yaml");
 const USER: &str = "玩家";
-
-/// 引擎是全 app 一份、全機名額 2：這組測試互相排隊，免得並行時互搶名額
-static SERIAL: Mutex<()> = Mutex::new(());
 
 struct TestRoot(PathBuf);
 

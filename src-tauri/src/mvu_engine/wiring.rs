@@ -143,11 +143,11 @@ fn seed_failure_message(failure: &EngineFailure) -> String {
     }
 }
 
-fn json_of(value: &Value) -> DataResult<Json> {
+pub(super) fn json_of(value: &Value) -> DataResult<Json> {
     message_vars::parse_json(&value.to_string()).map_err(crate::data::invalid_data)
 }
 
-fn value_of(json: &Json) -> DataResult<Value> {
+pub(super) fn value_of(json: &Json) -> DataResult<Value> {
     serde_json::from_str(&json.to_text())
         .map_err(|error| crate::data::invalid_data(error.to_string()))
 }

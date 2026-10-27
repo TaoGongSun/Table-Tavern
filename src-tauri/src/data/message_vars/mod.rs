@@ -29,7 +29,8 @@ pub use engine_turn::{
 pub use json::parse as parse_json;
 pub use json::{parse_table, validate_table, Json};
 pub use mode::{
-    derive_display, ensure_active, handover_to_tree, new_token, refresh_cache, tree_seed,
+    derive_display, ensure_active, ensure_active_overridden, handover_to_tree, new_token,
+    refresh_cache, tree_seed, tree_seed_with_macros,
 };
 pub use source::{projected_tree, Source};
 pub use turn::{

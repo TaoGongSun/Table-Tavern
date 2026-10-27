@@ -5,6 +5,7 @@ mod card_view;
 mod clean_cards;
 mod foreign_ids;
 mod initvar_list;
+mod initvar_opening;
 mod ledger_route;
 mod mvu_replace;
 mod widened_entries;

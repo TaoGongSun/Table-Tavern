@@ -869,3 +869,89 @@ fn engine_is_send_and_sync() {
     fn assert<T: Send + Sync>() {}
     assert::<MvuEngine>();
 }
+
+// ---- 無 schema runtime（非 zod 桌開場白的 `<initvar>`，initvar-nonzod-overwrite） ----
+
+fn plain_seed(
+    engine: &MvuEngine,
+    name: &str,
+    opening: &str,
+) -> Result<super::contract::InitOutput, EngineFailure> {
+    engine.seed(
+        name,
+        &Arc::new(SchemaScript::plain()),
+        SeedBase::Tree(&json!({ "金幣": 10 })),
+        opening,
+        &macros(),
+        engine.deadline(),
+    )
+}
+
+fn empty_zod_script() -> Arc<SchemaScript> {
+    Arc::new(SchemaScript::new(String::new()))
+}
+
+#[test]
+fn plain_runtime_seeds_without_a_schema_and_reports_applied() {
+    let engine = MvuEngine::new(quick());
+    let applied = plain_seed(
+        &engine,
+        "plain",
+        "<initvar>\n職業: 騎士\n名字: '{{user}}'\n</initvar>",
+    )
+    .unwrap();
+    assert!(applied.applied);
+    assert_eq!(applied.stat_data, json!({ "職業": "騎士", "名字": "玩家" }));
+    assert!(applied.invalid.is_none());
+    let untouched = plain_seed(&engine, "plain", "開場").unwrap();
+    assert!(!untouched.applied);
+    assert_eq!(untouched.stat_data, json!({ "金幣": 10 }));
+    // 同一桌接著送空字串的 zod 腳本：快取身分不同，照舊報沒有註冊
+    let failure = batch(
+        &engine,
+        "plain",
+        &empty_zod_script(),
+        "_.set('a', 1);",
+        json!({ "a": 0 }),
+    )
+    .unwrap_err();
+    assert_eq!(failure.kind, FailureKind::SchemaLoad, "{failure}");
+}
+
+#[test]
+fn switching_between_plain_and_zod_on_one_table_rebuilds_the_runtime() {
+    let engine = MvuEngine::new(quick());
+    let schema = script(COUNTER);
+    assert_eq!(counter(&engine, "t", &schema), json!(1));
+    assert!(
+        plain_seed(&engine, "t", "<initvar>\n甲: 1\n</initvar>")
+            .unwrap()
+            .applied
+    );
+    // 換回 zod：runtime 重建（計數從頭），schema 照常生效
+    assert_eq!(counter(&engine, "t", &schema), json!(1));
+    assert_eq!(counter(&engine, "t", &schema), json!(2));
+    assert!(
+        plain_seed(&engine, "t", "<initvar>\n甲: 1\n</initvar>")
+            .unwrap()
+            .applied
+    );
+}
+
+#[test]
+fn zod_runtime_rebuilds_after_a_plain_table_evicts_it() {
+    let engine = MvuEngine::new(Limits {
+        max_tables: 1,
+        ..quick()
+    });
+    let schema = script(COUNTER);
+    assert_eq!(counter(&engine, "zod", &schema), json!(1));
+    assert!(
+        plain_seed(&engine, "plain", "<initvar>\n甲: 1\n</initvar>")
+            .unwrap()
+            .applied
+    );
+    assert_eq!(engine.tables(), vec!["plain"]);
+    assert_eq!(counter(&engine, "zod", &schema), json!(1));
+    assert_eq!(engine.tables(), vec!["zod"]);
+}

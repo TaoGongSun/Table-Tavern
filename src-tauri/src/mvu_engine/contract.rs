@@ -55,17 +55,30 @@ impl Default for Limits {
     }
 }
 
-/// 卡片的變數 schema 腳本原文（ES module，import 卡片的 mvu_zod）與雜湊；雜湊變了就重建 runtime。
+/// 卡片的變數 schema 腳本原文（ES module，import 卡片的 mvu_zod）與雜湊；雜湊或 `plain` 變了就重建 runtime。
 #[derive(Debug)]
 pub struct SchemaScript {
     pub source: String,
     pub hash: [u8; 32],
+    /// 無 schema（非 zod 桌只借共用核心算開場白的 `<initvar>`）：不載卡片模組、不要求 registerMvuSchema
+    pub plain: bool,
 }
 
 impl SchemaScript {
     pub fn new(source: String) -> Self {
         let hash = Sha256::digest(source.as_bytes()).into();
-        Self { source, hash }
+        Self {
+            source,
+            hash,
+            plain: false,
+        }
+    }
+
+    pub fn plain() -> Self {
+        Self {
+            plain: true,
+            ..Self::new(String::new())
+        }
     }
 }
 
@@ -141,6 +154,8 @@ pub struct InitOutput {
     pub invalid: Option<(Vec<String>, usize)>,
     /// 卡片腳本裡重複呼叫 registerMvuSchema 的次數（只認第一次；建種子時告知玩家一次）
     pub duplicates: u32,
+    /// 種子：開場白的 `<initvar>` 有沒有套上（`initialize` 一律 false）
+    pub applied: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

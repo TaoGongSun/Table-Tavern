@@ -115,6 +115,16 @@ describe("入口介面", () => {
     expect(overridden.stat_data).toEqual({ 數值: 7, 名字: "無名" });
   });
 
+  it("種子：沒註冊 schema（非 zod 桌）只做開場白 <initvar> 取代與清元資料，applied 標出有沒有套上", () => {
+    const engine = createDesktopEngine();
+    const base = JSON.stringify({ 金幣: 10, 地點: "村莊" });
+    const none = JSON.parse(engine.seed("[]", "開場<initvar>*&:|*[</initvar>", MACROS, base));
+    expect(none).toEqual({ outcome: { ok: true, zod: false }, stat_data: { 金幣: 10, 地點: "村莊" }, applied: false });
+    const same = JSON.parse(engine.seed("[]", "<initvar>\n地點: 村莊\n金幣: 10\n$meta: {strictSet: true}\n</initvar>", MACROS, base));
+    expect(same.applied).toBe(true);
+    expect(Object.keys(same.stat_data)).toEqual(["地點", "金幣"]);
+  });
+
   it("UTF-8 長度與 TextEncoder 相同（含代理對與落單代理）", () => {
     for (const text of ["", "abc", "中文字", "😀x", "a\ud800b", "\udc00", "éࠀ￿"]) {
       expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length);

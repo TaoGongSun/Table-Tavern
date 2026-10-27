@@ -6,6 +6,7 @@ mod contract;
 mod host;
 #[cfg(test)]
 mod parity_tests;
+pub mod plain_opening;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -19,3 +20,7 @@ pub use contract::{
     Change, CommandResult, EngineFailure, FailureKind, Limits, Macros, SchemaScript, SeedBase,
 };
 pub use host::MvuEngine;
+
+/// 測試用：引擎全 app 一份、全機名額 2，用到共享引擎的測試互相排隊，免得並行時互搶名額
+#[cfg(test)]
+pub static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
