@@ -3,6 +3,60 @@
 
 use super::*;
 
+/// 炸彈桌：`n` 是模組層計數器（每批加一，runtime 重建才會從 1 重新數），`a` 收到「炸」就跑 `bomb`
+fn bomb_schema(bomb: &str) -> Arc<SchemaScript> {
+    script(&format!(
+        "let runs = 0;\nregisterMvuSchema(z.object({{ n: z.any().transform(() => ++runs), a: z.any().transform(v => {{ if (v === '炸') {{ {bomb} }} return v; }}), b: z.any() }}));"
+    ))
+}
+
+fn bomb_counter(engine: &MvuEngine, name: &str, schema: &Arc<SchemaScript>) -> Value {
+    batch(
+        engine,
+        name,
+        schema,
+        "_.set('n', 0);",
+        json!({ "n": 0, "a": 0, "b": 0 }),
+    )
+    .unwrap()
+    .detailed
+    .table["stat_data"]["n"]
+        .clone()
+}
+
+/// 同桌同 schema（雜湊不變，重建只會是觸限拆掉的）：觸限前計數 1→2，`b` 先設再炸、整次回 Err，
+/// 觸限後計數重新 1→2。回失敗給呼叫端斷言 kind／detail
+fn bomb_and_rebuild(engine: &MvuEngine, name: &str, bomb: &str) -> EngineFailure {
+    let schema = bomb_schema(bomb);
+    assert_eq!(bomb_counter(engine, name, &schema), json!(1), "{bomb}");
+    assert_eq!(bomb_counter(engine, name, &schema), json!(2), "{bomb}");
+    let failure = batch_until(
+        engine,
+        name,
+        &schema,
+        "_.set('b', 1);_.set('a', '炸');",
+        json!({ "n": 0, "a": 0, "b": 0 }),
+        measured(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        bomb_counter(engine, name, &schema),
+        json!(1),
+        "{bomb}: 沒重建"
+    );
+    assert_eq!(bomb_counter(engine, name, &schema), json!(2), "{bomb}");
+    failure
+}
+
+/// 記憶體觸限：kind 一定是 Memory；最後一塊可能連錯誤物件都建不出來，兩條分類路徑都算
+fn assert_memory(failure: &EngineFailure, what: &str) {
+    assert_eq!(failure.kind, FailureKind::Memory, "{what}: {failure}");
+    assert!(
+        failure.detail.contains("out of memory") || failure.detail.contains("丟出 null"),
+        "{what}: {failure}"
+    );
+}
+
 #[test]
 fn memory_bombs_fail_the_whole_batch_and_the_runtime_is_rebuilt() {
     let engine = bomb_engine();
@@ -11,37 +65,124 @@ fn memory_bombs_fail_the_whole_batch_and_the_runtime_is_rebuilt() {
         ("a.push('x'.repeat(1 << 20) + i)", "out of memory"),
         ("a.push({ i: i, s: [i, i, i] })", "丟出 null"),
     ] {
-        let schema = script(&format!(
-            "registerMvuSchema(z.object({{ a: z.any().transform(v => {{ if (v === '炸') {{ const a = []; for (let i = 0; ; i++) {bomb}; }} return v; }}), b: z.any() }}));"
-        ));
-        batch(
+        let failure = bomb_and_rebuild(
             &engine,
             "bomb",
-            &schema,
-            "_.set('a', 1);",
-            json!({ "a": 0, "b": 0 }),
-        )
-        .unwrap();
-        let failure = batch_until(
-            &engine,
-            "bomb",
-            &schema,
-            "_.set('b', 1);_.set('a', '炸');",
-            json!({ "a": 0, "b": 0 }),
-            measured(),
-        )
-        .unwrap_err();
+            &format!("const a = []; for (let i = 0; ; i++) {bomb};"),
+        );
         assert_eq!(failure.kind, FailureKind::Memory, "{bomb}: {failure}");
         assert!(failure.detail.contains(detail), "{bomb}: {failure}");
-        let after = batch(
+    }
+}
+
+/// 多次小配置累加（每塊 16 MB，參照全留到最後）：正式上限 64 MB 擋得住；迴圈有上界（64 塊＝1 GB），
+/// 上限漏了就正常跑完回傳、斷言變紅，不會無限配置
+#[test]
+fn accumulated_buffer_and_typed_array_bombs_hit_the_default_limit() {
+    let engine = MvuEngine::new(roomy());
+    for alloc in [
+        "new ArrayBuffer(16 << 20)",
+        "new Uint8Array(16 << 20)",
+        "new Float64Array(2 << 20)",
+    ] {
+        let failure = bomb_and_rebuild(
             &engine,
-            "bomb",
-            &schema,
-            "_.set('a', 2);",
-            json!({ "a": 0, "b": 0 }),
+            "accumulate",
+            &format!(
+                "const keep = []; for (let i = 0; i < 64; i++) keep.push({alloc}); return keep.length;"
+            ),
+        );
+        assert_memory(&failure, alloc);
+    }
+}
+
+/// 不可成長的 SharedArrayBuffer 累加（沒裝 SAB 配置掛鉤，走一般配置、受上限管）；
+/// 可變長度 ArrayBuffer 每次長 16 MB（realloc 路徑），先確認可變長度與小幅增長成立
+#[test]
+fn shared_and_slowly_resized_buffers_hit_the_limit() {
+    let engine = bomb_engine();
+    let failure = bomb_and_rebuild(
+        &engine,
+        "shared",
+        "const keep = []; for (let i = 0; i < 64; i++) keep.push(new SharedArrayBuffer(16 << 20)); return keep.length;",
+    );
+    assert_memory(&failure, "SharedArrayBuffer 累加");
+    let failure = bomb_and_rebuild(
+        &engine,
+        "grow",
+        "const ab = new ArrayBuffer(16, { maxByteLength: 1 << 30 }); \
+         if (!ab.resizable || ab.byteLength !== 16) throw new Error('前置：不可變長'); \
+         ab.resize(4096); if (ab.byteLength !== 4096) throw new Error('前置：小幅增長'); \
+         for (let i = 1; i <= 64; i++) ab.resize(i * (16 << 20)); return ab.byteLength;",
+    );
+    assert_memory(&failure, "resize 慢長");
+}
+
+/// 單次大配置：TypedArray、不可成長的 SharedArrayBuffer、resize、transfer 擴容（前置步驟先確認成立，
+/// 前置失敗會是 Script 不是 Memory）。每項一桌、同桌同 schema：觸限前後各數 1→2，證明是觸限拆掉重建
+#[test]
+fn single_large_typed_array_shared_and_realloc_bombs_hit_the_limit() {
+    let engine = bomb_engine();
+    let schema = script("registerMvuSchema(z.object({}));");
+    let eval = |table: &str, code: &str, deadline: Instant| {
+        engine.run_op(table, &schema, Op::Eval(code.into()), deadline)
+    };
+    let count = |table: &str| {
+        eval(
+            table,
+            "String(globalThis.k = (globalThis.k || 0) + 1)",
+            engine.deadline(),
         )
-        .unwrap();
-        assert_eq!(after.detailed.table["stat_data"]["a"], json!(2));
+        .unwrap()
+    };
+    for (i, code) in [
+        "String(new Uint8Array(512 << 20).length)",
+        "String(new Int32Array(128 << 20).length)",
+        "String(new SharedArrayBuffer(512 << 20).byteLength)",
+        "const ab = new ArrayBuffer(16, { maxByteLength: 1 << 30 }); \
+         if (!ab.resizable || ab.byteLength !== 16) throw new Error('前置：不可變長'); \
+         ab.resize(4096); if (ab.byteLength !== 4096) throw new Error('前置：小幅增長'); \
+         ab.resize(512 << 20); String(ab.byteLength)",
+        "const ab = new ArrayBuffer(16); if (ab.byteLength !== 16) throw new Error('前置：建構'); \
+         const t = ab.transfer(4096); if (t.byteLength !== 4096 || !ab.detached) throw new Error('前置：小幅 transfer'); \
+         String(t.transfer(512 << 20).byteLength)",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let table = format!("single-{i}");
+        assert_eq!((count(&table), count(&table)), ("1".into(), "2".into()), "{code}");
+        let failure = eval(&table, code, measured()).map(|_| ()).unwrap_err();
+        assert_memory(&failure, code);
+        assert_eq!(
+            (count(&table), count(&table)),
+            ("1".into(), "2".into()),
+            "{code}: 沒重建"
+        );
+    }
+}
+
+/// 對照：配置 64 次、每次用完就丟（同時存活的 backing store 約 4 MiB），總量 256 MiB 也照常跑完回傳——
+/// 上限算的是同時存活的量，不是累計配置量
+#[test]
+fn allocating_and_dropping_buffers_stays_under_the_limit() {
+    for (engine, label) in [(MvuEngine::new(roomy()), "64 MB"), (bomb_engine(), "32 MB")] {
+        let schema = bomb_schema(
+            "let total = 0; for (let i = 0; i < 64; i++) { const ab = new ArrayBuffer(4 << 20); total += ab.byteLength; } return total;",
+        );
+        let output = batch(
+            &engine,
+            "churn",
+            &schema,
+            "_.set('a', '炸');",
+            json!({ "n": 0, "a": 0, "b": 0 }),
+        )
+        .unwrap_or_else(|failure| panic!("{label}: {failure}"));
+        assert_eq!(
+            output.detailed.table["stat_data"]["a"],
+            json!(64 * 4 * 1024 * 1024),
+            "{label}"
+        );
     }
 }
 
