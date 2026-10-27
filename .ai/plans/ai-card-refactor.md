@@ -1,6 +1,6 @@
 # AI 卡重構按鈕：整卡抽成機制格式＋介面本地化＋人物拆成角色卡
 
-本檔存放 [ai-card-refactor](../handoffs/ai-card-refactor.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
+本檔存放 [ai-card-refactor](../handoffs/archive/ai-card-refactor.md) 的規格細節（拍板結論、分包、驗收等），由任務檔的 Summary 連回。
 
 ## 拍板結論（2026-08-04–06 討論定案）
 1. **入口＝每張卡都能重構**：帳本只認硬標記（`[initvar]`／`[mvu_update]`／`<%`），純散文卡帳本永遠空，卻最需要重構。兩處入口：匯入完問一次＋世界書分頁常駐按鈕可補按，旗標防重複問。產物走匯入收據可一鍵倒退。
@@ -15,5 +15,5 @@
 兩型樣本齊備，不需再匯卡。
 
 ## 順序
-1. ~~依 [CARD-REFACTOR-SPEC.md](../reference/CARD-REFACTOR-SPEC.md) 實作包 1–7~~——**2026-08-06–07 七包全部實作完成**（十一個 commit，cargo test 406／vitest 53／build／i18n 全綠），細節見[交接檔](../handoffs/ai-card-refactor.md)。
+1. ~~依 [CARD-REFACTOR-SPEC.md](../reference/CARD-REFACTOR-SPEC.md) 實作包 1–7~~——**2026-08-06–07 七包全部實作完成**（十一個 commit，cargo test 406／vitest 53／build／i18n 全綠），細節見[交接檔](../handoffs/archive/ai-card-refactor.md)。
 2. **合併實測**：照交接檔「待實測清單」A–E 段逐項勾（含狀態欄二期執行期合併驗收與勇者卡增量煙霧），全過即與 [person-promote](person-promote.md) 一起結案。2026-08-10 開跑，A 段抓到三個 bug 已修完（vitest 82／build／i18n 綠），詳見交接檔。

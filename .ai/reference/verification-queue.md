@@ -25,7 +25,7 @@
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
 | 5 | [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 已結案（2026-10-27） | 實測全過；下游 [interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡可開始 |
-| 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md)＋[person-promote](../handoffs/person-promote.md)＋[state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 2026-10-27 已真跑（露骨卡改用 `TestCards/clean-orc-cave.json`、`clean-hero-roster.json`、`NorthHall-structure.png`）：person-promote 與 state-values 增量／全量過，A／B／C／E 大多過；卡在 ai-card-refactor 三紅（簡繁名字比對、is_person 條目不進名冊、非 MVU 卡 characters 重構後機制無回報管道）與 A5 待裁決。修完只需補跑 C2、C4、D2 |
+| 6 | [ai-card-refactor](../handoffs/archive/ai-card-refactor.md)＋[person-promote](../handoffs/archive/person-promote.md)＋[state-values-mvu](../handoffs/archive/state-values-mvu.md) 真桌 | 已驗、已結案（2026-10-27）：person-promote 與 state-values 增量／全量過；ai-card-refactor 三紅修完後測試通道重跑 C2、C4、D2 全綠（Haiku 5.5 共 7 次） |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
 | 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
 | 10 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 篇幅與配角解禁 | 用新打的 release 包，同一張世界書卡確認 GM 旁白篇幅放開、配角會開口、角色回覆有內心戲 |

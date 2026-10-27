@@ -1,5 +1,7 @@
 # Handoff: person-promote
 
+Status: 已結案（2026-10-27 合併 main，與 ai-card-refactor 一起；梯 2 第 6 項真桌實測全過）
+
 ## Current state
 實作完成、主線審查通過。2026-10-27 實機驗收（test-harness，Sonnet 5.5，與 [ai-card-refactor](ai-card-refactor.md) A–E 合跑）本案項目全過；整體結案仍等 ai-card-refactor 的三個紅修完。
 

@@ -1,6 +1,6 @@
 # 卡片重構規格（ai-card-refactor）
 
-任務背景與拍板見 [ai-card-refactor](../handoffs/ai-card-refactor.md)，機制格式見 [MECHANISM-FORMAT.md](MECHANISM-FORMAT.md)。
+任務背景與拍板見 [ai-card-refactor](../handoffs/archive/ai-card-refactor.md)，機制格式見 [MECHANISM-FORMAT.md](MECHANISM-FORMAT.md)。
 本檔是分包實作規格，逐包討論定案後寫入。
 
 ## 總則

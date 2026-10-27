@@ -1,15 +1,18 @@
 # Handoff: ai-card-refactor
 
+Status: 已結案（2026-10-27 合併 main，與 person-promote、state-values-mvu 一起）
+
 ## Current state
-2026-10-27 用 test-harness 真跑完梯 2 第 6 項（Sonnet 5.5 重構、Haiku 5.5 回合；orc-cave／勇者卡露骨，改用作者裁決另做的乾淨卡 `TestCards/clean-orc-cave.json`、`clean-hero-roster.json`，另加 `NorthHall-structure.png`）。A／B／C／E 大多過，卡在三個紅與一個待裁決，逐項結果、證據路徑與重現步驟見 `/private/tmp/claude-501/-Users-<user>--claude-spares-spare-yfWgps/853b218d-0b3d-4f00-b3b6-0b81bbbd6996/scratchpad/results-6.md`（scratchpad，主線看完再決定留存處）。
-- 紅 1（C2）：換幕結算與登場／回歸偵測的名字比對沒有簡繁正規化，模型把簡體卡名寫成繁體時，在場角色被收進隱藏區。`data/scene/presence.rs:16`（`transport/arrivals.rs:39`、`:82` 共用）。
-- 紅 2（C4）：重構時沒勾的人建成 `constant:false`、keys 空的 is_person 條目（`refactor/apply.rs:258`），名冊行只收 constant 人物條目（`world_scan/placement.rs:60`），GM 完全看不到這些人。
-- 紅 3（D）：非 MVU 卡選 characters 模式重構後，收編的欄位規則／觸發表沒有回報管道——`refactor/apply.rs:341` 只在介面殼路徑開 incremental，characters 桌的 GM 只回報 time/place/present（`transport/response.rs:51`、`:102`）；另外 AI 把規則路徑譯成繁體（駐守天數 vs 開場狀態的 驻守天数）。MVU 卡（clean-hero）匯入時已帶 incremental，同樣 characters 模式機制正常。
-- 待作者裁決（A5）：沒勾的人「新增 is_person 條目＋原條目不動」＝同一人內容兩份。`refactor/apply.rs:35` 註解寫來源條目不動；本檔 Constraints 寫「至少一人被勾才動，全沒勾的條目原樣不動」。
+- 梯 2 第 6 項三紅＋A5 修完，Sol／Grok 四輪驗收三方共識；測試通道重跑 C2、C4、D2 全綠（Haiku 5.5 共 7 次）。進 main 三筆：字形折疊與整桌名字池、沒勾的人整併與空選取不動桌子、收編機制開回報管道與「第 N 天」顯示模板。
+- 做法要點：
+  - 字形：`data/scene/glyph.rs` 以 OpenCC `TSCharacters.txt` 折成簡體再比（版本與授權見 `data/scene/opencc/README.md`，LICENSE／NOTICE 由 `bundle.resources` 帶進發佈物）。在場比對 `data::match_present_with`：原文優先、折疊兜底、同一原文名字只算一次、折疊歧義不隱藏也不送全文；回合尾裁切、人物登場、角色卡回歸、換幕結算共用整桌名字池（全部卡名＋人物條目）。狀態路徑 `mechanism::canonical_path` 逐段精確優先、同層唯一折疊、歧義拒收。
+  - 人物整併〔作者裁決 2026-10-27〕：沒勾的人成 `constant:true` 的 is_person 條目；一項都沒勾就不動桌子〔作者裁決 2026-10-27〕（兩顆套用鈕反灰、`apply_to_table` 回 `refactor-empty-selection`）。
+  - 收編機制：`refactor/apply_mechanism.rs` 對齊路徑（字形歧義或衝突整次拒套）、`{{state:…}}` 佔位一起對齊、開 incremental 標 `incremental_by_refactor`、平欄搬進樹備初值；`Mechanism.display_formats` 記「第 {} 天」，狀態列照模板顯示、輸入照模板解析回數字〔作者裁決 2026-10-27〕。
+- 實測看到、未在本案處理（主線立案）：Haiku 寫的 present 一律簡體（GM 指示要照原字抄）；人物條目的人在劇情出場後好幾輪才進 present，登場事件延後；clean-orc 平欄劇情欄位（剧情阶段、当前环境）GM 用增量更新時因不在樹上被拒收，一直停在開場值。
 
 ## Completed
-- 玩家卡選取改為只問一位（2026-08-10 拍板）：展開細看原本每行都有「玩家卡」單選＋「不指定玩家」一列，等於任何角色都能被選成玩家——不符合多數卡預設好玩家是誰的設計。現在只有 AI 標記 `suspected_player` 的那位出現「這是我的角色」勾選（預設勾、可取消），沒人被標記就整個選項不出現（[App.tsx:2615](../../src/App.tsx#L2615)）；i18n 刪 `refactorPlayerNone`／`refactorPlayerRadioLabel`，改 `refactorPlayerCheckLabel`。結果卡標題「整理好了」→「重構完成」（十語系同步）。事後改主意的入口另立 [character-to-player-card](../tasks/character-to-player-card.md)。
-- 實測第一天修正（2026-08-10）：A2 展開細看白畫面＝假產物檔停留在 person-promote 前的舊契約（單數 `source_uid`），已改寫成新契約並改成不依賴任何卡的自足測法（見待實測清單 A 段前言）；`parseRefactorOutcome` 補逐欄驗證＋`REFACTOR_IMPORT_INVALID` 訊息（[refactor-review.ts:198](../../src/features/refactor/refactor-review.ts#L198)），格式不對整份拒收不再炸畫面，十語系 +1 鍵；連帶修 `mergeRefactorInterfaces` 丟掉 AI 產的 HTML 渲染殼——殼從沒傳進 `refactor_apply`，B4 原本必紅（[refactor-review.ts:93](../../src/features/refactor/refactor-review.ts#L93)，前端 `RefactorInterface` 補 `shell?`）。
+- 玩家卡選取改為只問一位（2026-08-10 拍板）：展開細看原本每行都有「玩家卡」單選＋「不指定玩家」一列，等於任何角色都能被選成玩家——不符合多數卡預設好玩家是誰的設計。現在只有 AI 標記 `suspected_player` 的那位出現「這是我的角色」勾選（預設勾、可取消），沒人被標記就整個選項不出現（[App.tsx:2615](../../../src/App.tsx#L2615)）；i18n 刪 `refactorPlayerNone`／`refactorPlayerRadioLabel`，改 `refactorPlayerCheckLabel`。結果卡標題「整理好了」→「重構完成」（十語系同步）。事後改主意的入口另立 [character-to-player-card](../../tasks/character-to-player-card.md)。
+- 實測第一天修正（2026-08-10）：A2 展開細看白畫面＝假產物檔停留在 person-promote 前的舊契約（單數 `source_uid`），已改寫成新契約並改成不依賴任何卡的自足測法（見待實測清單 A 段前言）；`parseRefactorOutcome` 補逐欄驗證＋`REFACTOR_IMPORT_INVALID` 訊息（[refactor-review.ts:198](../../../src/features/refactor/refactor-review.ts#L198)），格式不對整份拒收不再炸畫面，十語系 +1 鍵；連帶修 `mergeRefactorInterfaces` 丟掉 AI 產的 HTML 渲染殼——殼從沒傳進 `refactor_apply`，B4 原本必紅（[refactor-review.ts:93](../../../src/features/refactor/refactor-review.ts#L93)，前端 `RefactorInterface` 補 `shell?`）。
 - 包 1a（2026-08-06）：`refactor.rs` 新檔（契約 `RefactorOutcome`／`RefactorSelection`＋`apply()`＋4 測試）；`receipts.rs` 擴充（`character_ids`／`rewritten_entries` 皆 `#[serde(default)]`、`record_refactor_apply`、undo 多角色刪除＋改寫條目還原＋舊格式相容測試）；`WorldbookEntry.is_person`（存 ST `extensions.table_tavern`）；lib.rs 註冊 command `refactor_apply(world_id, outcome, selection) -> RefactorApplySummary { new_characters, new_entries, rewritten_entries, interface_applied, mechanisms_applied }`。
 - 包 1b（2026-08-06）：`src/features/refactor/refactor-review.ts` 新檔（契約型別＋5 純函式＋12 vitest）；App.tsx 世界書分頁「✨ 重構」按鈕（包 1 階段選產物 JSON 檔餵入，TODO 包 2 換真 AI）＋結果卡 modal（摘要只列有產物的區）＋展開細看三區 checkbox 預設全勾＋套用／不要＋undo 訊息含多張角色；十語系各 +18 鍵。
 - 包 2b（2026-08-06）：「✨ 重構」按鈕接真 AI 兩階段（survey→序列逐條 expand→merge→餵 1b 面板）＋進度字＋取消（擋下一條、當前條跑完、已完成的照樣進結果卡）＋單條失敗略過列名；「匯入重構卡」選檔鈕保留為零額度正式入口；refactor-review.ts 加佇列組裝／介面淺合併／結果合併三純函式＋7 測試；十語系補齊。**包 2 整包完成。**
@@ -45,7 +48,7 @@
 - [x] A2 展開細看：三區預設全勾；角色行 emoji＋名字＋灰字出處條目名；只有 AI 認定是 `{{user}}` 的那位有「這是我的角色」勾選（預設勾、可取消）。
 - [x] A3 全部套用→結果與 B3 一致（換一張同卡新桌驗，確認產物可重放）。
 - [x] A4 側欄「復原上次匯入」→全部回原樣（角色消失、被刪條目回來、停用狀態復原、玩家卡取消、狀態欄欄位消失、帳本紀錄消失）；`worlds/<id>/refactor-outcome.json` 仍在（undo 不刪檔，2026-08-10 拍板）。
-- [ ] A5（計數過；沒勾的人內容重複待作者裁決，見 Current state）重選檔案→只勾共用合集裡的部分人→套用→合集條目因有人沒勾而整條留著、沒勾的人各自成獨立 is_person 條目；完成訊息的新增條目數＝磁碟實際多出的條數（refactor-apply-count-mismatch 已修）→復原回原樣。
+- [ ] A5（依 A5＝整併〔作者裁決 2026-10-27〕改寫驗收條件）重選檔案→只勾共用合集裡的部分人→套用→勾的人成角色卡、沒勾的人各成一條恆定 is_person 條目；沒勾的人也算已消耗來源：專屬來源條目刪除，共用合集照收尾判定（`deletable_shared_uids`）且合集的其他消費者（條目、機制、介面）都套用了才刪，不因「有人沒勾」而留；完成訊息的新增條目數＝磁碟實際多出的條數→復原回原樣。
 - [x] A6 隨便選一個非產物 JSON（例如 TestCards/WestFantsy.json）→顯示「這個檔案不是重構產物」，畫面不變白（防禦已於 2026-08-10 補上）。
 - [x] A7 套用後世界書分頁「匯出重構卡」→存檔→再匯入讀回，摘要與 A1 一致；沒重構過的新桌按同鈕→「這桌還沒有重構卡」。
 
@@ -53,19 +56,19 @@
 測試卡改用 **TestCards/orc-cave-copy.png**（2026-08-10 拍板，結構單純且三類產物齊備）：18 條條目，人物 6 位（利格魯德跨中英兩條＋行為模式共三條、巴古克／古茲卡各一條＋兩人共用一條劇情線、格洛克、伯恩、`{{USER}}` 玩家設定），uid 12 同時是介面來源（可收合狀態欄模板：淪陷天數／當前環境／駐留角色／劇情階段）與機制來源（天數計數＋第 7／14／21／30 天里程碑），其餘為種族與世界觀設定不該被拆。西幻卡（規模大、17 次呼叫）留作壓力測試備用。
 - [x] B1（改用 NorthHall-structure 與 clean-orc-cave）orc-cave 桌按「✨ 重構」→「盤點中…」→「整理『X』i/n」逐條進度→結果卡（預期：6 人、1 介面、機制若干；利格魯德三條併成一張、`{{USER}}` 標成疑似玩家）。
 - [x] B2 重跑一次並中途按取消→已完成的部分照樣進結果卡。
-- [x] B3（「介面來源條目停用」清單過時：現行是消耗即刪，依據 refactor-statusbar-skeleton）套用→升格者的專屬條目整條消失、共用條目全勾才刪、沒勾的人各自成獨立條目、狀態欄出現淪陷天數等欄位、帳本機制條「已接管」、介面來源條目停用。
+- [x] B3（驗收條件依 A5＝整併〔作者裁決 2026-10-27〕改寫；「介面來源條目停用」清單過時：現行是消耗即刪，依據 refactor-statusbar-skeleton）套用→勾的人成角色卡、沒勾的人各成一條恆定 is_person 條目，兩者的專屬條目都整條消失；共用合集照收尾判定且其他消費者都套用才刪；狀態欄出現淪陷天數等欄位、帳本機制條「已接管」。
 - [x] B4（ⓘ 鈕清單過時：interface-takeover-spike 已完成變更 5 移除；「關覆蓋層看側欄狀態欄保底」清單過時：接管桌不顯示頂欄，依據 refactor-statusbar-skeleton）介面覆蓋層開啟→重構殼渲染（AI 有產 SHELL 時）；工具列 ⓘ 鈕點開說明；殼壞時關覆蓋層看側欄狀態欄＝保底。
 - [x] B5（附品質問題：模型把 list 欄 YAML 鍵寫成繁體，原卡腳本認不到，人物卡片少欄）GM 跑一輪→狀態樹變→介面數值跟著換新。
 
 ### C. 在場過濾與自動上下場（用 B 套用後的桌）
 - [x] C1 GM 回覆 present 含某沒升格人物名→聊天出現「（人物登場）〈名〉」系統事件（含設定全文）；同幕同人不重複。
-- [ ] C2 紅（紅 1；手動封存不受影響這半過）換幕→本幕沒出場的角色卡進隱藏區（標「自動隱藏」）、出場過的留主區；手動封存卡不受自動結算影響。
+- [x] C2（2026-10-27 重跑綠：繁體 present 換幕後簡體卡名留主區）換幕→本幕沒出場的角色卡進隱藏區（標「自動隱藏」）、出場過的留主區；手動封存卡不受自動結算影響。
 - [x] C3 隱藏區拉回自動隱藏卡→立即回主區。
-- [ ] C4 紅（紅 2）（開發者）看 GM 線 system／lanes 快照：is_person 條目只剩一行名冊「這桌還有這些人：…」。
+- [x] C4（2026-10-27 重跑綠：名冊行列沒勾的人、system 無全文、登場事件送全文）（開發者）看 GM 線 system／lanes 快照：is_person 條目只剩一行名冊「這桌還有這些人：…」。
 
 ### D. 機制執行期（state-values-mvu 合併驗收，2026-08-05 拍板延至本案後一起驗）
 - [ ] D1 部分（增量 delta 真模型正常；Haiku 守規則沒觸發夾限／拒收；未重構 MVU 卡 replace 數字欄照上游收＝清單過時，依據 mechanism/apply.rs:432）重構產的欄位規則生效：GM 報值超界被夾回、拒收欄回饋。
-- [ ] D2 介面桌與未重構 MVU 桌過；非 MVU 卡 characters 桌紅（紅 3）觸發表：數值進區間→對應文本注入。
+- [x] D2（2026-10-27 重跑綠：clean-orc 角色卡桌第 7 天觸發命中、狀態列顯示「第 7 天」）觸發表：數值進區間→對應文本注入。
 - [-] D3 測不到（本輪產物沒有 derived 欄）derived 公式欄（若有產出）本地重算，模型不用報。
 - [x] D4（改用 clean-hero-roster）增量路徑煙霧：勇者卡桌便宜檔位跑幾輪（SPEC「合併實測」項）。
 
@@ -76,7 +79,7 @@
 
 ### 實測後拍板事項（2026-10-27 觀察，待作者拍板）
 - revert_scene 不復原 auto_hidden：換幕後退回前幕，被結算隱藏的 5 張卡仍在隱藏區，GM 上下文少了他們，要玩家手動還原。fork_scene 未測。
-- 展開細看全取消再套用：不再是空訊息，而是「新增 8 條世界書條目」——人全變 is_person 條目、原條目也在、淘汰條目被停用；玩家以為沒選，桌子已被改。
+- 一項都沒勾就不動桌子〔作者裁決 2026-10-27〕（已做）：摘要與展開兩顆套用鈕都反灰、`applyRefactor` 共用 `selectionIsEmpty` 不送後端；後端 `apply_to_table` 收到空選取回 `refactor-empty-selection`。
 - 進度字在世界書區、跑完才開結果卡，沒看到被擋的情況。
 - 復原上次匯入後 refactor-outcome.json 仍在，同桌再匯入重構卡會跳「會用原卡重新重構，取代目前的重構結果」，字面像 AI 重跑、實際零額度清回原卡。
 
@@ -87,14 +90,10 @@
 4. 全程在場但最後一輪 present 漏列且從未隱藏過的卡，換幕會誤隱藏——手動或劇情拉回即復原。
 5. 殼檔二次套用覆寫不回上一版（與 world_card_created 既有慣例一致）；殼快取滯留已補（undo 後刷新）。
 6. 單發 assemble_messages 路徑（非 lane 單角色）對 Public 的 is_person 條目仍送全文——重構產的條目都是 Gm 限定，實務不觸發。
-
-## Next action
-1. 主線把紅 1／2／3 立案修，A5 問作者裁決。
-2. 修完只需補跑 C2、C4、D2（characters 桌），其餘已過不必重跑；重現步驟在 Current state 指的結果檔。
-3. 全過→本案與 person-promote、state-values-mvu 一起結案。
+7. 分支綁定（`transport/state_view.rs` 的 resolve_branch／auto_match_branch）仍是 `key == card_name` 精確同名，不做字形折疊；卡名與分支鍵字形不同時要玩家在面板手動指認〔模型判斷·未裁決〕。
 
 ## Constraints
 - 產物一律人審後套用（紅線）；卡片內容永遠當資料、永不執行（唯一例外：MVU zod 卡的變數 schema 准在隔離環境執行〔作者裁決 2026-10-27〕，見 tasks/mvu-zod-semantics.md）；抽不出原樣留著。
 - 重構燒使用者額度：按鈕必須主動按，不自動跑。
-- 部分套用規則（主線詮釋定案）：勾選單位是人；來源條目**至少一人被勾才動**（勾中→角色卡、沒勾→各自獨立人物條目、REMAINDER→原條目改寫）；全沒勾的條目原樣不動。
-- 驗證基線（實作完成後）：cargo test 406、vitest 53、npm build、check:i18n 全綠。
+- 部分套用規則：勾選單位是人，人一律整併——勾中→角色卡、沒勾→一條恆定人物條目（GM 名冊列人名、登場才送全文）；專屬來源條目刪除走收據，共用合集照收尾判定、且其他消費者都套用了才刪；REMAINDER→原條目改寫。〔作者裁決 2026-10-27〕
+- 驗證基線：`npm run verify` 12 步全綠（2026-10-27 分支上 cargo 1892、vitest 1383、web 791）。
