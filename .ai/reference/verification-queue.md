@@ -13,16 +13,16 @@
 
 4a. [card-mvu-shim](../handoffs/card-mvu-shim.md) 包 2a（2026-10-03 已代測通過，步驟留作回歸；卡片寫入，test-harness 獨立 root、零 AI 派送；自製測試卡 `scripts/harness-fixtures/mvu-write-probe.json`）：①匯入測試卡開新桌、貼開場白（first_mes 已自帶占位），打開卡片介面：錢 100（number）、血量 `[5,"生命值"]`（array）、名字＝玩家名、編號 7　②逐一按寫入按鈕（replace／insertOrAssign／insert 不改既有值／delete／updateVariablesWith／setMvuVariable＋replaceMvuData／寫字串 "123"）：值即時變、紀錄區寫「已落檔」；關掉重開面板，值與型別都還在（編號 "123" 仍是 string）、狀態欄（手改面板）同步　③`post_opening` 再寫一則不帶占位的假 GM 訊息，面板換到新樓後按「寫歷史樓」：只有第 0 樓的值變、最新樓不變　④「寫超大值」被拒、面板回到原值　⑤收回上一句：面板值倒回上一樓；復原後再按寫入照常落檔　⑥面板開著時在狀態欄手改「欄位.錢」：面板不重掛、數值自動換，再按卡片寫入不被拒　⑦parseMessage 已於 2026-10-03 代測通過　⑧ai-log 零派送，quit 後兩個正式目錄 hash 不變。
 
-4d. [card-mvu-shim](../handoffs/card-mvu-shim.md) 卡片介面 iframe 內按鈕實際互動（測試通道點不到沙盒 iframe 內的按鈕，留作後續 native 回歸；零 AI 派送）：用 `mvu-write-probe` 開桌、捲到逐字稿中段，面板開著按卡片按鈕寫入（由卡片按鈕送出）：第一筆即落檔、狀態欄同步、捲動位置不動；接著在狀態欄手改再按卡片寫入不被拒。
+4d. [card-mvu-shim](../handoffs/card-mvu-shim.md) 卡片介面 iframe 內按鈕實際互動（測試通道點不到沙盒 iframe 內的按鈕，留作後續 native 回歸；零 AI 派送）：用 `mvu-write-probe` 開桌、捲到逐字稿中段，面板開著按卡片按鈕寫入（由卡片按鈕送出）：第一筆即落檔、狀態欄同步、捲動位置不動；接著在狀態欄手改再按卡片寫入不被拒。 2026-10-28 替代做法過（卡片複本 `vq/probe-click.json` 在 iframe 內程式觸發按鈕，走卡片真正的按鈕處理；非真人點擊）：逐字稿捲到中段（scrollTop 1000）按 replaceVariables，第一筆即落檔 100→101、狀態欄同步、捲動不動；狀態欄手改成 500 後再按，寫成 501、不被拒。真點擊待主線全螢幕補（背景 computer-use 點不到 iframe）。
 
 4e. [refactor-card-png-export](../handoffs/refactor-card-png-export.md)（macOS 部分 2026-10-06 已用測試通道代測通過：三階匯出、陣容欄單一入口匯入 #3、59 MB 大卡往返、QuickLook 縮圖）：剩沒有環境的兩項——①Windows Explorer 看 #3 大卡（數十 MB）的縮圖與檔案大小顯示　②SillyTavern 匯入 #2／#3 PNG 會乾淨拒收（報找不到角色卡，不當成角色卡吃進去）。②2026-10-28 本機 SillyTavern 1.19.0（06bde93）過：北境驿站重構後匯出的 #2（只有 ttRd）與 #3（ttRd＋ttAs，2.5 MB）走 ST 匯入 API（與 UI 同一支後端）都回 `{"error":true}`、角色資料夾無新檔、log 為「No PNG metadata」；①Windows 無環境未驗。這兩項驗完本案才算實測完成。
 
 
-4f. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 殼內按鈕與設定（測試通道點不到沙盒 iframe 內的按鈕；零 AI 派送或假 GM 端點）：①毛絨轉變桌介面開著，按殼內按鈕送出行動：聊天收到該句　②殼內改設定（例：主題、字號）後關掉重開介面、再走一回合：設定仍在　③送出後新殼還在背面載（等待期）時按舊殼按鈕：不送出。注意：等待期間 pending 那支殼（新殼）可以存設定，舊殼的設定寫入一律拒收。
+4f. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 殼內按鈕與設定（測試通道點不到沙盒 iframe 內的按鈕；零 AI 派送或假 GM 端點）：①毛絨轉變桌介面開著，按殼內按鈕送出行動：聊天收到該句　②殼內改設定（例：主題、字號）後關掉重開介面、再走一回合：設定仍在　③送出後新殼還在背面載（等待期）時按舊殼按鈕：不送出。注意：等待期間 pending 那支殼（新殼）可以存設定，舊殼的設定寫入一律拒收。 2026-10-28 替代做法過（Transfur-safe 複本＋本機假 GM＋iframe 內程式觸發）：①殼內輸入命令按「发送」→ 聊天收到該句並觸發 GM 回合　②殼內設定改 synthwave、字號 1.2，關掉重開介面並再走一回合，localStorage 與畫面主題都還在　③送出後鎖定期（502–917 ms）對舊殼觸發「发送」：舊殼送出 input 訊息但逐字稿沒有這句（宿主拒收）；這法繞過擋板，擋板本身沒驗到。真點擊待主線全螢幕補。
 
 4g. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 等待期鍵盤：送出後新殼在背面載的那段時間，用原生 Tab／Shift+Tab（真鍵盤，測試通道的 press 不觸發原生移焦）焦點進不了兩支 iframe 內的控制項。
 
-4h. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 離線：毛絨轉變桌（殼靠 CDN 的 tailwind、daisyui、字型）斷網後走一回合：新殼最遲 1500 ms 強制翻上來（可能是半載好的殼），之後介面可繼續用、不卡住。
+4h. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 離線：毛絨轉變桌（殼靠 CDN 的 tailwind、daisyui、字型）斷網後走一回合：新殼最遲 1500 ms 強制翻上來（可能是半載好的殼），之後介面可繼續用、不卡住。 2026-10-28 替代做法（CDN 網址改走本機代理，切「直接拒絕／連線卡住」；非整機斷網）：拒絕模式殼照常 ready、鎖 129–163 ms；卡住模式 7 次中 6 次鎖 1501–1503 ms 強制翻面，之後殼半載、宿主介面與下一回合照常可用；第一次卡住鎖了 7.7 秒未再重現；卡住期間主頁計時器最大間隔約 1 秒（測試包內，原因未查）。
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
