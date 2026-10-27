@@ -135,6 +135,7 @@ export const ptBR: WebMessages = {
   errRunaway: "A saída do modelo saiu do controle, então este turno foi interrompido. Envie de novo.",
   errEmpty: "Desta vez o modelo não devolveu nada. Envie de novo.",
   errFiltered: "A resposta foi bloqueada pelo filtro de conteúdo do provedor.",
+  mvuNotesHeading: "## Atualizações que o sistema rejeitou no turno anterior (corrija-as com estes valores atuais)",
   errIncomplete: "A resposta foi cortada no meio. Envie de novo.",
   errNetwork: "A conexão caiu. Verifique sua rede e envie de novo.",
   errRateLimited: "O OpenRouter está limitando as solicitações no momento. Espere um pouco e envie de novo.",

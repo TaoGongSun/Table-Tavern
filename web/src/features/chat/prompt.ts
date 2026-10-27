@@ -42,6 +42,9 @@ export interface PromptOptions {
   countTokens?: (message: CountedMessage) => number;
   /** 一段文字估多少 token（世界書預算） */
   countText?: (text: string) => number;
+  /** zod 桌上一則回覆被擋下的變數更新回饋（一則 system，mvu-zod-semantics 規格 6.1）：算固定段落、先佔預算，
+   *  接在最後；佔不下整次不送。不過巨集代換 */
+  feedback?: string;
 }
 
 /**
@@ -178,6 +181,9 @@ export function composePrompt(setup: ChatSetup, unsettled: ChatEntry[], options:
   const fixed = [main, wiBefore, descriptionText, personalityPrompt, scenarioPrompt, wiAfter, postHistory].map(
     (content): ChatMessage => ({ role: "system", content }),
   );
+  // 回饋只在有內容時才算（空段落照 ST 也會被計費，沒有回饋就不能多扣）
+  const feedbackMessage: ChatMessage | null = options.feedback ? { role: "system", content: options.feedback } : null;
+  if (feedbackMessage) fixed.push(feedbackMessage);
   const overflow = { messages: [], entries, overflow: true, worldInfo };
   for (const message of fixed) {
     const tokens = budget.cost(message);
@@ -227,6 +233,7 @@ export function composePrompt(setup: ChatSetup, unsettled: ChatEntry[], options:
     newChat,
     ...kept,
     postHistoryMessage,
+    ...(feedbackMessage ? [feedbackMessage] : []),
   ];
   return { messages: ordered.filter((message) => message.content), entries, overflow: false, worldInfo };
 }

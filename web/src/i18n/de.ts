@@ -135,6 +135,7 @@ export const de: WebMessages = {
   errRunaway: "Die Ausgabe des Modells ist außer Kontrolle geraten, daher wurde dieser Zug abgebrochen. Bitte sende erneut.",
   errEmpty: "Das Modell hat diesmal nichts zurückgegeben. Bitte sende erneut.",
   errFiltered: "Die Antwort wurde vom Inhaltsfilter des Anbieters blockiert.",
+  mvuNotesHeading: "## Updates, die das System im letzten Zug abgelehnt hat (korrigiere sie anhand dieser aktuellen Werte)",
   errIncomplete: "Die Antwort brach mittendrin ab. Bitte sende erneut.",
   errNetwork: "Die Verbindung ist abgebrochen. Prüfe dein Netzwerk und sende erneut.",
   errRateLimited: "OpenRouter drosselt gerade Anfragen. Warte kurz und sende erneut.",

@@ -269,6 +269,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
             limits,
             countTokens,
             countText,
+            feedback: mvu.feedback(started.before),
           });
           // 酒館助手的類巨集與 MVU 拿掉占位：組好整份提示之後（ST 的 GENERATE_AFTER_DATA）
           return { variables, ...prompt, messages: mvu.prepareMessages(prompt.messages, prompt.entries, variables) };

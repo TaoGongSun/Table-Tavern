@@ -13,6 +13,7 @@ import { createEvaluator, type Evaluator } from "./evaluate";
 import type { MvuRuntime } from "./runtime";
 import type { ZodRunner } from "./zod/frame-host";
 import { findSchemaScript } from "./zod/schema-script";
+import { t } from "../../i18n";
 import {
   cardMvuBase,
   cardWrite,
@@ -53,6 +54,8 @@ export interface TableMvu {
   ready: () => Promise<void>;
   /** 新回覆落地前：MVU 處理最後一則 */
   afterReply: (entries: ChatEntry[]) => Promise<ChatEntry[]>;
+  /** 組提示時：zod 桌上一則回覆被擋下的回饋（一則 system 的內容）；沒有回 undefined */
+  feedback: (entries: ChatEntry[]) => string | undefined;
   /** 送模前：類巨集代換（讀這一發的變數副本）、MVU 拿掉占位 */
   prepareMessages: (messages: ChatMessage[], entries: ChatEntry[], scopes: ChatVariables) => ChatMessage[];
   /** 顯示時的類巨集代換 */
@@ -182,8 +185,11 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
       const targetId = opening?.id ?? entriesRef.current[entriesRef.current.length - 1]?.id;
       const vars = opening ? outcome.opening : outcome.table;
       if (targetId !== undefined && vars !== null) {
-        entriesRef.current = entriesRef.current.map((entry) => (entry.id === targetId ? { ...entry, vars } : entry));
-        setEntries((previous) => previous.map((entry) => (entry.id === targetId ? { ...entry, vars } : entry)));
+        // 開場白指令被擋下的回饋掛在開場那一樓，第一輪送 GM
+        const notes = opening && outcome.openingNotes?.length ? { mvuNotes: outcome.openingNotes } : {};
+        const attach = (entry: ChatEntry) => (entry.id === targetId ? { ...entry, vars, ...notes } : entry);
+        entriesRef.current = entriesRef.current.map(attach);
+        setEntries((previous) => previous.map(attach));
       }
     },
     [active, entriesRef, resumed, card, setEntries],
@@ -256,6 +262,17 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
       });
     },
     [active, reader],
+  );
+
+  // zod 桌：這批逐字稿裡最後一則 AI 回覆的變數指令被擋下了，回饋給 GM 的那則 system（同桌面狀態區段那段，標題跟著語系）；
+  // 由 composePrompt 當固定段落算進預算
+  const feedback = useCallback(
+    (entries: ChatEntry[]) => {
+      if (schema === null) return undefined;
+      const notes = [...entries].reverse().find((entry) => entry.role === "char")?.mvuNotes;
+      return notes?.length ? [t("mvuNotesHeading"), ...notes].join("\n") : undefined;
+    },
+    [schema],
   );
 
   const display = useCallback(
@@ -352,7 +369,7 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
   );
 
   return useMemo(
-    () => ({ active, ready, afterReply, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure }),
-    [active, ready, afterReply, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure],
+    () => ({ active, ready, afterReply, feedback, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure }),
+    [active, ready, afterReply, feedback, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure],
   );
 }

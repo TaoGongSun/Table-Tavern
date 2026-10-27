@@ -4,9 +4,8 @@
 //! 呼叫端手上仍握著它的追蹤（Ticket），逾時照樣作廢、計數。
 
 use super::contract::{
-    BatchOutput, DetailedResult, EngineFailure, FailureKind, InitOutput, Limits, Macros,
-    SchemaScript, SeedBase, MAX_CHANGES, MAX_RESULTS, MESSAGE_BYTES, SCHEMA_SOURCE_BYTES,
-    TABLE_BYTES,
+    BatchOutput, EngineFailure, FailureKind, InitOutput, Limits, Macros, SchemaScript, SeedBase,
+    MAX_CHANGES, MAX_RESULTS, MESSAGE_BYTES, SCHEMA_SOURCE_BYTES, TABLE_BYTES,
 };
 use super::runtime::{EngineRuntime, Guard};
 use serde_json::{Map, Value};
@@ -152,15 +151,19 @@ impl MvuEngine {
             macros_json,
         };
         let (json, _) = self.dispatch(table, schema, op, deadline)?;
-        let detailed: DetailedResult = serde_json::from_str(&json)
+        let output: BatchOutput = serde_json::from_str(&json)
             .map_err(|error| bad_output(format!("回傳不符契約：{error}")))?;
+        let detailed = &output.detailed;
         if detailed.results.len() > MAX_RESULTS || detailed.changes.len() > MAX_CHANGES {
             return Err(bad_output("逐條結果或變動筆數超過上限".into()));
+        }
+        if output.feedback.len() != detailed.results.len() {
+            return Err(bad_output("回饋句與逐條結果筆數不符".into()));
         }
         // 核心自己會擋，但卡片腳本與核心同一個 realm：在 Rust 再驗一次表的大小
         table_json(&detailed.table).map_err(|failure| bad_output(failure.detail))?;
         check_deadline(deadline)?;
-        Ok(BatchOutput { detailed })
+        Ok(output)
     }
 
     /// 開局：initvar 的 stat_data 先 cleanUpMetadata 再過 schema

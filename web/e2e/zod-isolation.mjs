@@ -234,7 +234,7 @@ try {
         { schema: fixture("clean-zod-schema.txt"), initvar: YAML.parse(fixture("clean-zod-initvar.yaml")), cases: golden.cases },
       );
       assert.deepEqual(output.init, golden.init);
-      golden.cases.forEach(({ name: label, message: _message, ...expected }, index) => assert.deepEqual(output.results[index], expected, label));
+      golden.cases.forEach(({ name: label, message: _message, feedback: _feedback, ...expected }, index) => assert.deepEqual(output.results[index], expected, label));
       assert.deepEqual(cspErrors, [], "引擎正常運作時不該有 CSP 違規（jitless）");
 
       if (existsSync(REAL_GOLDEN)) {
@@ -252,7 +252,9 @@ try {
             },
             card,
           );
-          assert.deepEqual(actual, { init: card.init, detailed: card.detailed }, card.name);
+          // 基準是桌面入口的輸出、另帶回饋句（feedback）；網頁 runner 只回契約本體
+          const { feedback: _feedback, ...detailed } = card.detailed;
+          assert.deepEqual(actual, { init: card.init, detailed }, card.name);
         }
       } else {
         console.log("（略過真卡：沒有 TestCards/zod-cards-golden.json）");

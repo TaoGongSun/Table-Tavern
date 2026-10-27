@@ -21,6 +21,8 @@ export interface ChatEntry {
   raw?: string;
   /** 這一則的 MVU 變數表（存檔的 `message_vars`）。網頁版包 6 才產生，匯入的存檔原樣帶著 */
   vars?: Record<string, unknown>;
+  /** zod 桌：這一則的變數指令被擋下的回饋（下一輪送 GM，mvu-zod-semantics 規格 6.1）；不進存檔 */
+  mvuNotes?: string[];
 }
 
 /** 這一輪是怎麼來的：玩家送出一句，或對最後一則重新生成。 */

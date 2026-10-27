@@ -4,6 +4,8 @@
 
 mod contract;
 mod host;
+#[cfg(test)]
+mod parity_tests;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -12,9 +14,8 @@ pub mod wiring;
 mod wiring_tests;
 
 #[cfg(test)]
-use contract::{BatchOutput, DetailedResult};
+use contract::{BatchOutput, CommandStatus, DetailedResult};
 pub use contract::{
-    Change, CommandResult, CommandStatus, EngineFailure, FailureKind, Limits, Macros, SchemaScript,
-    SeedBase,
+    Change, CommandResult, EngineFailure, FailureKind, Limits, Macros, SchemaScript, SeedBase,
 };
 pub use host::MvuEngine;

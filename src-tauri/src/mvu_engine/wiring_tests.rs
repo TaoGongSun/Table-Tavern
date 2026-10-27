@@ -707,3 +707,25 @@ fn results_computed_under_a_replaced_schema_or_generation_are_not_used() {
         );
     }
 }
+
+#[test]
+fn gm_feedback_uses_the_shared_sentences_including_readonly_paths() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let root = TestRoot::new("zod-feedback");
+    let world_id = zod_world(&root, SCHEMA);
+    opening(root.path(), &world_id, "開場");
+    let (committed, _) = gm_turn(
+        root.path(),
+        &world_id,
+        "t1",
+        "_.set('世界._秘密', 1);_.add('稱號', 1);",
+    );
+    let notes = committed.unwrap().result.unwrap().notes;
+    assert_eq!(
+        notes,
+        vec![
+            "世界._秘密 裡的「_秘密」以 _ 開頭，是唯讀欄位，這條 set 沒有套用。".to_owned(),
+            "稱號 的 add 沒有套用、維持原值：路径: 稱號 ✖ 不能对非数字类型 'string' 进行加减运算 → 原值: \"見習\"".to_owned(),
+        ]
+    );
+}

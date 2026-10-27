@@ -134,6 +134,7 @@ export const ko: WebMessages = {
   errRunaway: "모델 출력이 통제를 벗어나 이번 턴을 중단했습니다. 다시 보내 주세요.",
   errEmpty: "이번에는 모델이 아무 내용도 보내지 않았습니다. 다시 보내 주세요.",
   errFiltered: "응답이 제공업체의 콘텐츠 필터에 막혔습니다.",
+  mvuNotesHeading: "## 지난 턴에 시스템이 거부한 업데이트 (현재 값에 맞춰 수정하세요)",
   errIncomplete: "응답이 중간에 끊겼습니다. 다시 보내 주세요.",
   errNetwork: "연결이 끊겼습니다. 네트워크를 확인한 뒤 다시 보내 주세요.",
   errRateLimited: "OpenRouter가 잠시 요청을 제한하고 있습니다. 조금 기다렸다가 보내 주세요.",

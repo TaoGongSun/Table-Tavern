@@ -9,6 +9,7 @@ import { buildMvuEngineSource } from "./engine-source";
 import type { MvuCore, MvuDetailedResult } from "./host-contract";
 import { runEval } from "./value-parser";
 import { REAL_CARDS, dongeonAdventurer, hasRealCards, realCard } from "./fixtures/real-cards";
+import replaceParity from "../../shared/contracts/mvu-replace-parity.json";
 
 const lodashName = "lodash";
 const lodash = ((await import(/* @vite-ignore */ lodashName)) as { default: unknown }).default;
@@ -483,4 +484,26 @@ describe.skipIf(!hasRealCards)("真卡 schema（TestCards 本機限定）", () =
     expect(Object.keys(stat.Player.Inventory)).toEqual(["金龙", ...Array.from({ length: 10 }, (_, i) => `杂物${i + 2}`)]);
     expect([stat.Heroes.新勇者.HP, stat.Heroes.新勇者.Desire, stat.Heroes.新勇者.Outfit.上装]).toEqual(["10000/10000", 0, "无"]);
   });
+});
+
+// parity json 的 zod 分支（規格 6.2）：同一份 patch 走 zod 迴圈；預期值在本機跑上游比對過，桌面 cargo 經 QuickJS 跑同一份
+describe("parity json 的 zod 分支（與桌面 QuickJS 同一份案例）", () => {
+  const zodRun = async (schema: string, stat: unknown, message: string) => {
+    const core = newCore();
+    core.registerMvuSchema(new Function("z", "_", `return ${schema};`)(z, lodash));
+    const result = await core.parseMessageDetailed(message, { stat_data: structuredClone(stat) as Table });
+    return { stat: JSON.parse(JSON.stringify(result.table.stat_data)) as unknown, statuses: result.results.map((item) => item.status) };
+  };
+  for (const sample of replaceParity.cases) {
+    it(sample.name, async () => {
+      const message = `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(sample.patch)}\n</JSONPatch>\n</UpdateVariable>`;
+      const got = await zodRun("z.object({})", sample.stat_data, message);
+      expect(got).toEqual({ stat: sample.zod.expected, statuses: sample.zod.statuses });
+    });
+  }
+  for (const sample of replaceParity.zod_cases) {
+    it(`zod 專屬：${sample.name}`, async () => {
+      expect(await zodRun(sample.schema, sample.stat_data, sample.message)).toEqual({ stat: sample.expected, statuses: sample.statuses });
+    });
+  }
 });

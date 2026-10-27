@@ -46,7 +46,9 @@ env.events、env.lodash
 | `source-zod.ts` | zod 迴圈、開局驗證、變動清單 |
 | `value-parser.ts` | 原 `card-mvu-parse-engine.ts` |
 | `host-contract.ts` | host 介面與回傳契約型別 |
-| `quickjs-entry.ts` | 桌面 bundle 入口：`boot()` 補 TextEncoder、安靜的 console 與卡片用的 z、_、$，回 JSON 字串介面（register、status、parse、initialize） |
+| `initvar.ts` | initvar 解析與合併（parseStructured、correctlyMerge、initvarBody、openingOverride），桌面入口與網頁共用（6.3 節） |
+| `zod-feedback.ts` | zod 逐條結果給 GM 的回饋句與 notes 上限，桌面與網頁共用（6.1 節） |
+| `quickjs-entry.ts` | 桌面 bundle 入口：`boot()` 補 TextEncoder、安靜的 console 與卡片用的 z、_、$，回 JSON 字串介面（register、status、parse（另帶 feedback）、initialize、seed） |
 | `fixtures/zod-corpus-golden.json` | 入口在 Node 跑 41 案的完整輸出，cargo 拿同一份比 QuickJS；重產 `UPDATE_ZOD_GOLDEN=1` |
 | `fixtures/real-cards.ts` | 三張真卡的取材與對照指令（vitest 兩檔共用；真卡基準寫到 `TestCards/zod-cards-golden.json` 給 cargo） |
 
@@ -158,7 +160,7 @@ zod 桌改成三段：
 
 其餘條款：
 - `block.fields` 與清單整支替換：引擎路徑不跑〔模型判斷·三方共識〕。上游 MVU 只認指令，本 app 的狀態區塊欄位與清單不是上游語意；回覆裡有就整批不套，記一筆 Rejected（同介面接管桌的「狀態區塊未套用，請以 UpdateVariable 回報變動」），讓模型下一輪改用指令。引擎收的是整段原始回覆（同上游 parseMessage 掃整則訊息），不是只有 `<UpdateVariable>` 內文〔模型判斷·三方共識〕。
-- 帳本：新檔 `mechanism/engine_records.rs`，把逐條結果映射成 `Record`，回饋句沿用 `build_notes`。`_` 路徑的回饋留給 P6。
+- 帳本：新檔 `mechanism/engine_records.rs`，把逐條結果映射成 `Record`，回饋句沿用 `build_notes`；句子本身與 `_` 路徑的回饋見 6.1 節。
 - 開場白走同一條路（transcript.rs:389 → `opening_table`）。整次失敗時照 `state_error` 留正文、不裝變數，不走「世代不符回 None」。
 - initvar 的 safeParse 在建 `init_source` 時做一次；`scene_seed_for_next` 不重跑。
 - 收回讀已存快照，不重跑 transform。
@@ -175,7 +177,7 @@ zod 桌改成三段：
   - 存讀〔模型判斷·未裁決〕：逐字稿事件本來就以保序的 `message_vars::Json` 原文存整張表；zod 桌的新表直接取引擎回的表（serde Map → 文字 → `Json`，全程保序），不經 `StateNode` 樹再物化。`state.json` 的樹只是投影快取，排序無妨。
   - 種子（照上游 initCheck、與 P5 對齊）：zod 桌第一次啟用變數模式時由引擎建：卡上各條 `[initvar]` 原文（收集順序同網頁 `bookEntries`：陣列形照 id 整數由小到大、id 重複後蓋前，物件形照 JS 鍵序，標題只看 comment，內文先剝 `@@`，停用的照收；兩邊跑同一份案例 `src/shared/contracts/mvu-initvar-order.json`）依序解析（YAML／JSON5，保序）合併（陣列整支取代）→ 開場白自帶的 `<initvar>` 覆寫 → cleanUpMetadata → 過 schema，就是「建 init_source 時做一次 safeParse」；開場白本身的指令接著走一般 zod 迴圈。卡上沒有 `[initvar]` 時以狀態樹物化的表為底，同樣走「開場白覆寫 → 過 schema」。建種子失敗（schema 載入失敗、觸限等）＝整次失敗：正文照落、不帶表、這一幕不啟用變數模式（下一輪再建），不改從樹物化。
   - 已知限制〔模型判斷·三方共識〕：卡上沒有 initvar 時種子鍵序依鍵名排序（樹的順序）；種子建好前在面板手改的值不進種子（有 initvar 時）。
-  - initvar 解析與合併的小函式目前在 `quickjs-entry.ts` 與 `web/src/features/mvu/initvar.ts` 各一份（桌面不能引用 web），兩邊要同步；P5 併回後搬進共用核心〔模型判斷·三方共識〕。
+  - initvar 解析與合併的小函式在共用核心 `src/features/mvu-engine/initvar.ts`，桌面與網頁共用（6.3 節）。
   - 非 zod 桌的開場白 `<initvar>` 覆寫不在本案，主線另外立案〔模型判斷·三方共識〕。
   - 後處理改到樹時，用 `merge_tree_change` 合回引擎表：只換變了的葉、其餘沿用原 JSON 與原順序。
   - 刪鍵：接線程式碼不對 serde `Map` 刪鍵；若要刪一律 `shift_remove`。
@@ -196,7 +198,7 @@ zod 桌改成三段：
 | P3 | Rust QuickJS 宿主 | 短驗證全部轉成 cargo 測試；deadline、逾時復原上限 |
 | P4 | 桌面接線 | 過期結果不提交；失敗時正文仍落檔；開場白同路；收回不重跑 transform；後處理退回連帶撤回 |
 | P5 | 網頁宿主（P2 契約凍結後，與 P3／P4 並行） | 見下方 P5 驗收清單 |
-| P6 | 裁決落地 | parity json 加 zod 分支、zod 回饋句、`_` 路徑回饋 |
+| P6 | 裁決落地（6 節） | parity json 加 zod 分支、zod 回饋句（兩宿主同一份句子）、`_` 路徑回饋、initvar 小函式搬進共用核心 |
 
 P2 對照清單：上游獨立對照，逐項比對：
 - insert 遇 nil 時，建物件或陣列；
@@ -238,7 +240,7 @@ P5 驗收清單（`npm run e2e:zod`，WebKit＋本機 Chrome，P5 必跑、不�
 - 沒有記憶體硬上限（0 節，另案 web-mvu-memory-cap）。
 
 ### 4.3 回傳與提交
-- 宿主端用 `parseMessageDetailed`，表以 JSON 文字往返（同桌面語意）。主頁重驗形狀、results ≤ 1000、changes ≤ 2000、表 ≤ 2 MB（`zod/validate.ts`）。逐條拒收的回饋留到 P6。
+- 宿主端用 `parseMessageDetailed`，表以 JSON 文字往返（同桌面語意）。主頁重驗形狀、results ≤ 1000、changes ≤ 2000、表 ≤ 2 MB（`zod/validate.ts`）。逐條拒收回饋給 GM 見 6.1 節。
 - 開局與桌面同序：世界書 initvar → 開場白 `<initvar>` 覆寫 → cleanUpMetadata → zodInitialize（只一次；續玩、收回不重跑）→ 開場白指令走 zod 迴圈。zod 桌不生成 MVU schema，schema 欄放上游佔位字串。
 - 提示分開：
   - 初始值讀不懂：沿用舊橫幅。
@@ -249,6 +251,38 @@ P5 驗收清單（`npm run e2e:zod`，WebKit＋本機 Chrome，P5 必跑、不�
 
 ### 4.4 已知缺口
 - 卡片 iframe 的 shim 核心沒有 z（1.1 節）：卡片前端自己呼叫 parseMessage 時，zod 桌照樣走 MagVarUpdate 語意，可能接受 zod 路徑會拒收的值（主線另立案）。
+
+## 6. 裁決落地（P6）
+上游 mvu_zod 對逐條錯誤只跳玩家通知（toastr），沒有回饋 GM 的機制；下面這套是本 app 的設計（同 mechanism-error-feedback：GM 改得了的錯誤就回饋）〔模型判斷·三方共識〕。
+
+### 6.1 回饋句（GM 看到什麼）
+- 句子只有一份：共用核心的純 TS 模組 `src/features/mvu-engine/zod-feedback.ts`，吃 1.4 節的 `results` 逐條出句；桌面經 QuickJS bundle 拿文字（`quickjs-entry.ts` 的 parse 回傳另帶 `feedback`，與 results 一一對應，P2 凍結的 `parseMessageDetailed` 契約不動），`engine_records.rs` 只把文字映射成 Rejected 記錄、不再自己組句；網頁在主頁直接呼叫。
+- 路徑寫法同 `_.set` 的路徑（核心 `formatPath`：鍵名含點、括號、引號的段寫成 `["…"]`），空路徑寫「整張表」。op 照引擎的指令型別（JSONPatch 的 replace 會寫成 set）。
+- 各狀態的句子：
+  - rejected／schema：「{路徑} 的 {op} 被卡片 schema 拒收、維持原值：{錯誤；錯誤}（共 N 則）」，總數多於列出的才補括號。
+  - rejected／add-not-number：「{路徑} 的 add 沒有套用、維持原值：{錯誤}」（錯誤帶原值與型別，照上游文字）。
+  - rejected／move-source-missing：「move 的來源 {路徑} 不存在，沒有搬。」；move-source-<原因>：「move 的來源 {路徑} 刪不掉、沒有搬：{錯誤}」。
+  - no-change：「{路徑} 的 {op} 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。」
+  - ignored／readonly（`_` 路徑）：「{路徑} 裡的「{第一個 _ 開頭的段}」以 _ 開頭，是唯讀欄位，這條 {op} 沒有套用。」；move 擋在目的地時指出目的地：「move 的目的地 {目的地} 裡的「{段}」以 _ 開頭，是唯讀欄位，沒有搬。」；來源是唯讀（rejected／move-source-readonly）：「move 的來源 {路徑} 裡的「{段}」以 _ 開頭，是唯讀欄位，沒有搬。」
+  - 其餘 ignored（no-path、not-container、unsupported）不回饋，同上游靜默；列已知限制，之後有需要再做〔模型判斷·三方共識〕。
+  - op 照引擎的指令型別：JSONPatch 的 replace／delta 在句子裡寫成 set／add〔模型判斷·三方共識〕。
+- 上限同桌面 `build_notes`：依結果順序、同文去重、最多 5 條、每條最多 240 個 Unicode 碼點（超過截到 239 補「…」）。兩邊跑同一份契約 `src/shared/contracts/mvu-zod-feedback.json`（results → 預期句子與 notes），cargo 與 vitest 都跑。
+- 一致的範圍是「引擎逐條結果 → 句子」：桌面的 notes 還會混進狀態區塊未套用（2.4 節）與本地後處理（重擲、觸發、衍生）的拒收，網頁沒有這兩種〔模型判斷·三方共識〕。
+- GM 看到的位置：
+  - 桌面：照舊在狀態區段「## 上一輪被系統擋下的更新（請照這些現值修正）」（英文提示用英文標題），notes 存 state.json，收回時跟著快照回去。
+  - 網頁：notes 掛在那則 AI 回覆的 ChatEntry 上；組提示時取這批逐字稿裡最後一則 AI 回覆的 notes，做成一則 system（標題跟著介面語系，十語系；每條一行），交給 `composePrompt` 當固定段落：先佔預算、接在最後（post_history_instructions 之後），佔不下整次不送，選模判斷同一份結果〔模型判斷·三方共識〕。重 Roll 時被換掉那則不在送出的逐字稿裡，回饋跟著消失。
+  - 已知限制：網頁存檔格式（共用契約 web-save）不存 notes，重新載入後上一輪的回饋不保留；之後有需要再做〔模型判斷·三方共識〕。
+  - 桌面英文提示用英文標題、其餘用中文標題；網頁十語系各一句。句子本身兩邊都是中文。
+- 玩家端照舊只看整次失敗的提示（2.4、4.3 節），單條拒收不跳錯。
+
+### 6.2 parity json 的 zod 分支
+- `src/shared/contracts/mvu-replace-parity.json` 每案加 `zod`：同一份 patch 走 zod 迴圈，schema 用全放行的 `z.object({})`（核心與上游都把頂層換成 looseObject，所以任何值都過），隔離「指令語意差異」：預期 stat_data＋逐條 status。差異的典型：數字字串照字串寫、轉不成數字不變 null、值帶說明（`[值, 說明]`）整個換掉不只改第 0 項、路徑不存在照建。
+- 另加 `zod_cases`：一組帶真 schema 的小案例——coerce 轉數字、夾值、轉不成數字整條拒收保留舊值、prefault 補回→no-change、嚴格物件剝鍵→no-change、`_` 路徑→ignored、add 到字串→rejected、頂層刪鍵與 move。
+- 預期值一律用本機上游對照（`scratchpad/zod-oracle`，跑上游 `mvu_zod.ts`，不入版控）逐案比出來：stat_data、applied 與上游會回報的指令序號都要相同；不只拿我們的核心產生。
+- 跑的地方：vitest（Node 核心）與 cargo（QuickJS，經 `run_batch`）讀同一份檔；網頁 Worker 跑的是同一份核心，e2e:zod 照跑。
+
+### 6.3 initvar 小函式搬家
+- `parseStructured`、`correctlyMerge`、`initvarBody`、`openingOverride` 搬到 `src/features/mvu-engine/initvar.ts`，桌面 `quickjs-entry.ts` 與網頁 `web/src/features/mvu/initvar.ts` 都改 import 這份，舊副本刪掉；網頁的 `initvarEntries`、`initialTable`（MagVarUpdate 開局路）留在 web。`mvu-initvar-order.json` 兩邊照舊要過。
 
 ## 5. 結構
 - 已超過 1000 行的檔：parse-source 1047 行，P1 拆；`commands/chat.rs` 1486 行與 `data/scene/transcript.rs` 1248 行，本案只加呼叫，拆檔另立案。

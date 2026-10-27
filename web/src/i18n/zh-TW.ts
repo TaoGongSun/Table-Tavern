@@ -124,6 +124,8 @@ export const zhTW = {
   errRunaway: "模型輸出失控，已中止這一輪，請再送一次。",
   errEmpty: "模型這次沒有回任何內容，請再送一次。",
   errFiltered: "回應被供應商的內容過濾擋下。",
+  /** zod 桌：送給 GM 的「上一輪被擋下的變數更新」那則 system 的標題（同桌面狀態區段） */
+  mvuNotesHeading: "## 上一輪被系統擋下的更新（請照這些現值修正）",
   errIncomplete: "回應中途斷了，請再送一次。",
   errNetwork: "連線中斷，請檢查網路後再送一次。",
   errRateLimited: "OpenRouter 暫時限流，請稍等一下再送。",

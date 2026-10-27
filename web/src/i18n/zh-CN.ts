@@ -124,6 +124,7 @@ export const zhCN: WebMessages = {
   errRunaway: "模型输出失控，已中止这一轮，请再发一次。",
   errEmpty: "模型这次没有回任何内容，请再发一次。",
   errFiltered: "回应被供应商的内容过滤拦下。",
+  mvuNotesHeading: "## 上一轮被系统拦下的更新（请照这些现值修正）",
   errIncomplete: "回应中途断了，请再发一次。",
   errNetwork: "连接中断，请检查网络后再发一次。",
   errRateLimited: "OpenRouter 暂时限流，请稍等一下再发。",

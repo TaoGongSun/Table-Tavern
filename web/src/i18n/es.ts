@@ -135,6 +135,7 @@ export const es: WebMessages = {
   errRunaway: "La salida del modelo se descontroló, así que se detuvo este turno. Vuelve a enviar.",
   errEmpty: "Esta vez el modelo no devolvió nada. Vuelve a enviar.",
   errFiltered: "El filtro de contenido del proveedor bloqueó la respuesta.",
+  mvuNotesHeading: "## Actualizaciones que el sistema rechazó en el turno anterior (corrígelas con estos valores actuales)",
   errIncomplete: "La respuesta se cortó a medias. Vuelve a enviar.",
   errNetwork: "Se perdió la conexión. Revisa tu red y vuelve a enviar.",
   errRateLimited: "OpenRouter está limitando las solicitudes por ahora. Espera un poco y vuelve a enviar.",

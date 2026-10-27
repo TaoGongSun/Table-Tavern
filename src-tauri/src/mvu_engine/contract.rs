@@ -125,9 +125,12 @@ pub struct DetailedResult {
     pub changes_truncated: bool,
 }
 
-#[derive(Debug, Clone)]
+/// 引擎一批的回傳：契約本體，加上與 results 一一對應的 GM 回饋句（共用核心 zod-feedback.ts 出的句子，None＝不回饋）
+#[derive(Debug, Clone, Deserialize)]
 pub struct BatchOutput {
+    #[serde(flatten)]
     pub detailed: DetailedResult,
+    pub feedback: Vec<Option<String>>,
 }
 
 /// 開局（initvar 先 cleanUpMetadata 再過 schema）。驗不過時 `stat_data` 是清掉元資料後的原值。

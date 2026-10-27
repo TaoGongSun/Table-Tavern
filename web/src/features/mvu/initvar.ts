@@ -2,54 +2,9 @@
 // 卡內世界書標題含 `[initvar]` 的條目（停用的也算）依序解析成 stat_data 合併，生成 schema、清掉元資料；
 // 開場白裡的 `<initvar>` 區塊整份取代世界書的初始值；最後把開場白本身的更新指令套上去，就是第 0 樓的變數表。
 // 解析任何一條失敗，這本書整本不算初始化（MVU 記錯誤後略過），這桌就沒有卡片變數。
-import JSON5 from "json5";
-import { jsonrepair } from "jsonrepair";
-import lodash from "lodash";
-import YAML from "yaml";
+import { correctlyMerge, initvarBody, parseStructured } from "@desktop/features/mvu-engine/initvar";
 import { bookEntries } from "../sillytavern/world-info-book";
 import type { HostMvu, MvuTable } from "./engine";
-
-/** MVU util/common parseString：YAML 優先（`[`／`{` 開頭的改成最後才試），再 JSON5、jsonrepair */
-export function parseStructured(content: string): unknown {
-  const jsonFirst = /^[[{]/.test(content.trimStart());
-  const yaml = () => YAML.parseDocument(content, { merge: true }).toJS();
-  if (!jsonFirst) {
-    try {
-      return yaml();
-    } catch {
-      // 換下一種
-    }
-  }
-  try {
-    return JSON5.parse(content);
-  } catch {
-    // 換下一種
-  }
-  try {
-    return JSON.parse(jsonrepair(content));
-  } catch (error) {
-    if (!jsonFirst) throw error;
-  }
-  return yaml();
-}
-
-/** 陣列整個取代、其餘深合併（MVU correctlyMerge） */
-export function correctlyMerge<T extends object>(target: T, source: unknown): T {
-  return lodash.mergeWith(target, source, (_left: unknown, right: unknown) => (Array.isArray(right) ? right : undefined));
-}
-
-/** 條目內容：`<initvar>` 包住或程式碼區塊包住的取裡面那段；剩下的首尾非空行若是成對的 `<標籤>`／`</標籤>` 也剝掉，
- *  不然 YAML 會把首行標籤併進第一個鍵（與桌面版得出同一棵樹） */
-export function initvarBody(content: string): string {
-  let body = content;
-  const xml = body.trim().match(/.*<initvar>.*\n([\s\S]*)\n.*<\/initvar>.*/m);
-  if (xml) body = xml[1];
-  const fenced = body.trim().match(/```.*\n([\s\S]*)\n```/m);
-  if (fenced) body = fenced[1];
-  const wrapped = body.trim().match(/^<([A-Za-z_][\w.-]*)>[ \t]*\n([\s\S]*)\n[ \t]*<\/\1>$/);
-  if (wrapped) body = wrapped[2];
-  return body;
-}
 
 export interface InitvarEntry {
   comment: string;
@@ -86,19 +41,4 @@ export function initialTable(entries: InitvarEntry[], bookName: string, substitu
     ok: true,
     table: { display_data: {}, initialized_lorebooks: { [bookName]: [] }, stat_data: stat, delta_data: {}, schema },
   };
-}
-
-/** 開場白裡的 `<initvar>` 區塊：有就整份取代世界書給的初始值（解析失敗的區塊略過）；沒有回 null */
-export function openingOverride(opening: string, substitute: (text: string) => string): MvuTable | null {
-  const override: MvuTable = {};
-  let applied = false;
-  for (const match of opening.matchAll(/<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim)) {
-    try {
-      correctlyMerge(override, parseStructured(substitute(match[2])));
-      applied = true;
-    } catch {
-      // MVU 記錯誤後略過這一塊
-    }
-  }
-  return applied ? override : null;
 }

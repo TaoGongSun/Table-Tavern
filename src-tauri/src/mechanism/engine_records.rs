@@ -1,11 +1,11 @@
-//! zod 卡引擎路徑的記帳（mvu-zod-semantics 規格 2.4 節）：引擎逐條結果映射成 `Record`，回饋句沿用
-//! `build_notes`；套用後的本地規則（重擲、觸發、衍生）與一般路徑共用 `local_rules`。
+//! zod 卡引擎路徑的記帳（mvu-zod-semantics 規格 2.4、6.1 節）：引擎逐條結果與共用核心給的回饋句映射成 `Record`，
+//! 上限沿用 `build_notes`；套用後的本地規則（重擲、觸發、衍生）與一般路徑共用 `local_rules`。
 use super::apply::signed_delta_mark;
 use super::ledger::{local_rules, REJECTED_BLOCK_PATH};
 use super::note::build_notes;
 use super::types::{Outcome, Record, RecordKind};
 use crate::data;
-use crate::mvu_engine::{Change, CommandResult, CommandStatus};
+use crate::mvu_engine::{Change, CommandResult};
 use std::collections::BTreeMap;
 
 /// 回饋模型的路徑：分段照原樣接（鍵名含點的段用 `["…"]` 包起來，同核心的錯誤文字）
@@ -29,34 +29,19 @@ fn path_text(segments: &[String]) -> String {
     text
 }
 
-/// 逐條結果 → 帳本。rejected 與 no-change 都回饋模型（no-change 是過了 schema 卻沒寫進去，免得模型以為已寫入）；
-/// applied 不記；ignored（唯讀 `_` 路徑等，上游靜默丟掉）的回饋留給 P6。
-pub fn engine_records(results: &[CommandResult]) -> Vec<Record> {
+/// 逐條結果 → 帳本：句子由共用核心出（`zod-feedback.ts`，網頁同一份，經引擎回傳的 `feedback` 帶過來），這裡只映射成
+/// Rejected 記錄；None（applied、不回饋的 ignored）不記。
+pub fn engine_records(results: &[CommandResult], feedback: &[Option<String>]) -> Vec<Record> {
     results
         .iter()
-        .filter_map(|result| {
-            let path = path_text(&result.path);
-            let detail = match result.status {
-                CommandStatus::Applied | CommandStatus::Ignored => return None,
-                CommandStatus::NoChange => format!(
-                    "{path} 的 {} 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
-                    result.op
-                ),
-                CommandStatus::Rejected => {
-                    let issues = result.issues.as_deref().unwrap_or_default().join("；");
-                    let more = match result.issue_count {
-                        Some(count) if count > result.issues.as_ref().map_or(0, Vec::len) => {
-                            format!("（共 {count} 則）")
-                        }
-                        _ => String::new(),
-                    };
-                    format!(
-                        "{path} 的 {} 被卡片 schema 拒收、維持原值：{issues}{more}",
-                        result.op
-                    )
-                }
-            };
-            Some(Record::new(RecordKind::Rejected, path, detail))
+        .zip(feedback)
+        .filter_map(|(result, line)| {
+            let line = line.as_ref()?;
+            Some(Record::new(
+                RecordKind::Rejected,
+                path_text(&result.path),
+                line.clone(),
+            ))
         })
         .collect()
 }
@@ -120,49 +105,27 @@ pub fn finish_engine(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
-    fn result(
-        status: CommandStatus,
-        path: &[&str],
-        issues: Option<Vec<&str>>,
-        count: Option<usize>,
-    ) -> CommandResult {
-        CommandResult {
-            index: 0,
-            op: "set".into(),
-            path: path.iter().map(|segment| segment.to_string()).collect(),
-            to: None,
-            status,
-            reason: None,
-            issues: issues.map(|items| items.into_iter().map(str::to_owned).collect()),
-            issue_count: count,
-        }
-    }
-
+    /// 與網頁同一份契約（src/shared/contracts/mvu-zod-feedback.json）：共用核心給的句子映射成記錄後，
+    /// build_notes 的去重、5 條、240 字上限得出同一份 notes
     #[test]
-    fn rejected_and_unchanged_feed_back_applied_and_ignored_do_not() {
-        let records = engine_records(&[
-            result(CommandStatus::Applied, &["a"], None, None),
-            result(
-                CommandStatus::Rejected,
-                &["世界", "a.b"],
-                Some(vec!["✖ 錯一", "✖ 錯二"]),
-                Some(7),
-            ),
-            result(CommandStatus::NoChange, &["隊員", "甲"], None, None),
-            result(CommandStatus::Ignored, &["_秘密"], None, None),
-        ]);
-        assert_eq!(records.len(), 2);
-        assert!(records
-            .iter()
-            .all(|record| record.kind == RecordKind::Rejected));
-        assert_eq!(records[0].path, "世界[\"a.b\"]");
-        assert!(
-            records[0].detail.contains("✖ 錯一；✖ 錯二（共 7 則）"),
-            "{}",
-            records[0].detail
-        );
-        assert!(records[1].detail.contains("沒有寫入"));
-        assert_eq!(build_notes(&records).len(), 2);
+    fn notes_match_the_shared_feedback_contract() {
+        let contract: Value = serde_json::from_str(include_str!(
+            "../../../src/shared/contracts/mvu-zod-feedback.json"
+        ))
+        .unwrap();
+        for case in contract["cases"].as_array().unwrap() {
+            let results: Vec<CommandResult> =
+                serde_json::from_value(case["results"].clone()).unwrap();
+            let lines: Vec<Option<String>> = serde_json::from_value(case["lines"].clone()).unwrap();
+            let notes: Vec<String> = serde_json::from_value(case["notes"].clone()).unwrap();
+            let records = engine_records(&results, &lines);
+            assert!(records
+                .iter()
+                .all(|record| record.kind == RecordKind::Rejected));
+            assert_eq!(build_notes(&records), notes, "{}", case["name"]);
+        }
+        assert_eq!(path_text(&["世界".into(), "a.b".into()]), "世界[\"a.b\"]");
     }
 }

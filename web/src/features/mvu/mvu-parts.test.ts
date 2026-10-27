@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkWorldInfo, MVU_WI_SETTINGS, ST_WI_SETTINGS } from "../sillytavern/world-info-scan";
 import type { WiEntry } from "../sillytavern/world-info-book";
-import { correctlyMerge, initvarBody, parseStructured } from "./initvar";
+import { correctlyMerge, initvarBody, parseStructured } from "@desktop/features/mvu-engine/initvar";
 import { replaceMacroLike, withoutDollarKeys } from "./macro-like";
 import { cardMvuBase, cardWrite, finishReplyText, isMvuData, lastValidVars, layerTables, Revisions, withoutPlaceholder, EMPTY_LAYERS } from "./tables";
 

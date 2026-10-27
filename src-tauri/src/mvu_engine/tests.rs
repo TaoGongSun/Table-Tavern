@@ -122,10 +122,11 @@ fn corpus_matches_node_golden() {
             engine.deadline(),
         );
         let expected: DetailedResult = serde_json::from_value(case.clone()).unwrap();
-        let got = output
-            .unwrap_or_else(|failure| panic!("{name}: {failure}"))
-            .detailed;
-        assert_eq!(got, expected, "{name}");
+        let got = output.unwrap_or_else(|failure| panic!("{name}: {failure}"));
+        assert_eq!(got.detailed, expected, "{name}");
+        let feedback: Vec<Option<String>> =
+            serde_json::from_value(case["feedback"].clone()).unwrap();
+        assert_eq!(got.feedback, feedback, "{name}");
     }
 }
 

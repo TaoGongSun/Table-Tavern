@@ -163,7 +163,10 @@
      "after": 100
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "set 三參數取最後",
@@ -234,7 +237,10 @@
      "after": 20
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "set 字串欄寫數字拒收",
@@ -301,7 +307,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界.天氣 的 set 被卡片 schema 拒收、維持原值：路径: 世界.天氣 ✖ Invalid input: expected string, received number → 输入: 7"
+   ]
   },
   {
    "name": "set 轉不成數字拒收、保留舊值",
@@ -368,7 +377,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界.威脅 的 set 被卡片 schema 拒收、維持原值：路径: 世界.威脅 ✖ Invalid input: expected number, received NaN → 输入: null"
+   ]
   },
   {
    "name": "set 數字字串轉型",
@@ -439,7 +451,10 @@
      "after": 42
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "set 沒有數學式",
@@ -506,7 +521,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界.威脅 的 set 被卡片 schema 拒收、維持原值：路径: 世界.威脅 ✖ Invalid input: expected number, received NaN → 输入: null"
+   ]
   },
   {
    "name": "set 物件字面量",
@@ -588,7 +606,10 @@
      "after": 3
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "set 路徑前綴剝掉",
@@ -676,7 +697,11 @@
      "after": 5
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null
+   ]
   },
   {
    "name": "set 路徑不存在照建",
@@ -759,7 +784,10 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "set 頂層新鍵保留",
@@ -828,7 +856,10 @@
      "after": "自由欄"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "唯讀路徑靜默忽略",
@@ -919,7 +950,13 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界._秘密 裡的「_秘密」以 _ 開頭，是唯讀欄位，這條 set 沒有套用。",
+    "_隱藏 裡的「_隱藏」以 _ 開頭，是唯讀欄位，這條 add 沒有套用。",
+    "_暗 裡的「_暗」以 _ 開頭，是唯讀欄位，這條 insert 沒有套用。",
+    "_暗.k 裡的「_暗」以 _ 開頭，是唯讀欄位，這條 delete 沒有套用。"
+   ]
   },
   {
    "name": "add 數字與夾值",
@@ -999,7 +1036,11 @@
      "after": 100
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null
+   ]
   },
   {
    "name": "add 舊值不是數字拒收",
@@ -1079,7 +1120,11 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界.天氣 的 add 沒有套用、維持原值：路径: 世界.天氣 ✖ 不能对非数字类型 'string' 进行加减运算 → 原值: \"陰\"",
+    "不存在 的 add 沒有套用、維持原值：路径: 不存在 ✖ 不能对非数字类型 'undefined' 进行加减运算"
+   ]
   },
   {
    "name": "add 增量是字串",
@@ -1150,7 +1195,10 @@
      "after": 37
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "insert 補預設值",
@@ -1232,7 +1280,10 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "insert 缺必填拒收",
@@ -1298,7 +1349,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "隊員 的 insert 被卡片 schema 拒收、維持原值：路径: 隊員.戊.名字 ✖ Invalid input: expected string, received undefined"
+   ]
   },
   {
    "name": "insert enum 錯拒收",
@@ -1364,7 +1418,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "隊員 的 insert 被卡片 schema 拒收、維持原值：路径: 隊員.己.職業 ✖ Invalid option: expected one of \"戰士\"|\"法師\"|\"盜賊\" → 输入: \"牧師\""
+   ]
   },
   {
    "name": "insert 容器不存在先物件",
@@ -1437,7 +1494,10 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "insert 容器不存在物件不過改陣列",
@@ -1521,7 +1581,11 @@
      "before": "森林"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null
+   ]
   },
   {
    "name": "insert 陣列索引與尾端",
@@ -1623,7 +1687,11 @@
      "after": "尾"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null
+   ]
   },
   {
    "name": "insert 目標是原始型別忽略",
@@ -1686,7 +1754,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "insert 合併物件",
@@ -1758,7 +1829,10 @@
      "after": 100
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "巢狀未列鍵被剝掉＝沒變",
@@ -1831,7 +1905,11 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界 的 insert 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+    "隊員.甲.暱稱 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。"
+   ]
   },
   {
    "name": "delete record 與兩參數",
@@ -1914,7 +1992,11 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null
+   ]
   },
   {
    "name": "delete 陣列元素 pullAt",
@@ -1991,7 +2073,10 @@
      "before": "森林"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "delete 必填拒收",
@@ -2058,7 +2143,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "檔案.編號 的 delete 被卡片 schema 拒收、維持原值：路径: 檔案.編號 ✖ Invalid input: expected string, received undefined"
+   ]
   },
   {
    "name": "delete 頂層鍵",
@@ -2127,7 +2215,10 @@
      "after": "新人"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "move 搬移",
@@ -2238,7 +2329,10 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "move 陣列",
@@ -2330,7 +2424,10 @@
      "before": "森林"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "move 來源不存在拒收",
@@ -2401,7 +2498,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "move 的來源 隊員.無 不存在，沒有搬。"
+   ]
   },
   {
    "name": "move 頂層",
@@ -2480,7 +2580,10 @@
      "after": "見習"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "別名 assign remove unset",
@@ -2587,7 +2690,12 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null,
+    "世界.設定 的 delete 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。"
+   ]
   },
   {
    "name": "JSONPatch 各種",
@@ -2736,7 +2844,14 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null,
+    null,
+    "隊員.乙.背包 的 delete 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+    null
+   ]
   },
   {
    "name": "自訂 transform 背包整理",
@@ -2924,7 +3039,15 @@
      }
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
   },
   {
    "name": "自訂 transform 體力字串",
@@ -3016,7 +3139,11 @@
      "after": "500/500"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    null
+   ]
   },
   {
    "name": "拒收後續指令照跑",
@@ -3146,7 +3273,14 @@
      "after": "老手"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    "世界.威脅 的 set 被卡片 schema 拒收、維持原值：路径: 世界.威脅 ✖ Invalid input: expected number, received NaN → 输入: null",
+    null,
+    "隊員 的 insert 被卡片 schema 拒收、維持原值：路径: 隊員.缺.名字 ✖ Invalid input: expected string, received undefined",
+    null
+   ]
   },
   {
    "name": "set 同值沒變",
@@ -3209,7 +3343,10 @@
     }
    ],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    "世界.天氣 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。"
+   ]
   },
   {
    "name": "or literal",
@@ -3291,7 +3428,11 @@
      "after": 0
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null,
+    "稱號 的 set 被卡片 schema 拒收、維持原值：路径: 稱號 ✖ Invalid input → 输入: 1"
+   ]
   },
   {
    "name": "根路徑整份換掉",
@@ -3403,7 +3544,10 @@
      "after": "新人"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   },
   {
    "name": "沒有指令",
@@ -3455,7 +3599,8 @@
    "zod": true,
    "results": [],
    "changes": [],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": []
   },
   {
    "name": "巨集",
@@ -3526,7 +3671,10 @@
      "after": "玩家的雨"
     }
    ],
-   "changesTruncated": false
+   "changesTruncated": false,
+   "feedback": [
+    null
+   ]
   }
  ]
 }

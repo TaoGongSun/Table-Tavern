@@ -263,7 +263,7 @@ pub(super) fn run(
         Ok(batch) => batch,
         Err(failure) => return Ok(failed(world, records, failure)),
     };
-    records.extend(engine_records(&batch.detailed.results));
+    records.extend(engine_records(&batch.detailed.results, &batch.feedback));
     let changes = engine_changes(&batch.detailed.changes);
     let table = json_of(&Value::Object(batch.detailed.table))?;
     world.state.tree = message_vars::table_tree(&table);

@@ -1,5 +1,5 @@
 {
-  "_comment": "mvu-replace-numeric：沒重構的 MVU 卡 JSONPatch replace 的後端（mechanism Upstream 策略＋卡片變數模式合回 stat_data）與前端墊片 Mvu.parseMessage 必須得到完全相同的 stat_data。語意照上游 MagVarUpdate 438f9ffc update_variables.ts L906-956；set 產生的非有限數在整批做完、序列化時轉 null〔作者裁決 2026-10-04〕。 backend_rejected：後端記帳預期拒收的路徑（墊片沒有記帳），結果兩邊仍須完全一致。 schema_any：墊片以 schema 為 any 跑（MagVarUpdate 在 getSchemaForPath 回 null 時的行為：不查可擴充、必填鍵、模板）；這是 MagVarUpdate 路徑，不是 tavern_resource mvu_zod 自己套用指令的行為（另案 mvu-zod-semantics）。陣列索引路徑（mvu-array-index-path）的案例都是。",
+  "_comment": "mvu-replace-numeric：沒重構的 MVU 卡 JSONPatch replace 的後端（mechanism Upstream 策略＋卡片變數模式合回 stat_data）與前端墊片 Mvu.parseMessage 必須得到完全相同的 stat_data。語意照上游 MagVarUpdate 438f9ffc update_variables.ts L906-956；set 產生的非有限數在整批做完、序列化時轉 null〔作者裁決 2026-10-04〕。 backend_rejected：後端記帳預期拒收的路徑（墊片沒有記帳），結果兩邊仍須完全一致。 schema_any：墊片以 schema 為 any 跑（MagVarUpdate 在 getSchemaForPath 回 null 時的行為：不查可擴充、必填鍵、模板）；這是 MagVarUpdate 路徑，不是 tavern_resource mvu_zod 自己套用指令的行為（另案 mvu-zod-semantics）。陣列索引路徑（mvu-array-index-path）的案例都是。 zod：同一份 patch 走 zod 迴圈（tavern_resource mvu_zod，規格 mvu-zod-semantics 6.2 節）、schema 用全放行的 z.object({})，expected 是 stat_data（JSON 往返後）、statuses 是逐條狀態。zod_cases：帶真 schema 的 zod 專屬案例（schema 是以 z、_ 為參數求值的運算式）。zod 分支的預期值都在本機跑上游 mvu_zod.ts 比對過（stat_data、applied、上游回報的序號全同），Node 核心（vitest）與桌面 QuickJS（cargo）讀同一份。",
   "cases": [
     {
       "name": "數字換數字",
@@ -15,6 +15,14 @@
       ],
       "expected": {
         "金": 99000
+      },
+      "zod": {
+        "expected": {
+          "金": 99000
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -31,6 +39,14 @@
       ],
       "expected": {
         "金": 85
+      },
+      "zod": {
+        "expected": {
+          "金": "85"
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -47,6 +63,14 @@
       ],
       "expected": {
         "金": 12.5
+      },
+      "zod": {
+        "expected": {
+          "金": " 12.5 "
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -63,6 +87,14 @@
       ],
       "expected": {
         "金": null
+      },
+      "zod": {
+        "expected": {
+          "金": "很多"
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -83,6 +115,16 @@
         "角色": {
           "好感": null
         }
+      },
+      "zod": {
+        "expected": {
+          "角色": {
+            "好感": null
+          }
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -105,6 +147,17 @@
           "好感": 250,
           "名": "阿明"
         }
+      },
+      "zod": {
+        "expected": {
+          "角色": {
+            "好感": 250,
+            "名": "阿明"
+          }
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -121,6 +174,14 @@
       ],
       "expected": {
         "HP": "450/600"
+      },
+      "zod": {
+        "expected": {
+          "HP": "450/600"
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -143,6 +204,14 @@
           85,
           "對主角的好感"
         ]
+      },
+      "zod": {
+        "expected": {
+          "好感": 85
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -164,6 +233,15 @@
       ],
       "expected": {
         "金": 25
+      },
+      "zod": {
+        "expected": {
+          "金": 25
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -175,11 +253,19 @@
         {
           "op": "replace",
           "path": "/金",
-          "value": "\uFEFF85"
+          "value": "﻿85"
         }
       ],
       "expected": {
         "金": 85
+      },
+      "zod": {
+        "expected": {
+          "金": "﻿85"
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -195,7 +281,15 @@
         }
       ],
       "expected": {
-        "金": 18446744073709551616
+        "金": 18446744073709552000
+      },
+      "zod": {
+        "expected": {
+          "金": "0x10000000000000000"
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -218,6 +312,14 @@
           1,
           "desc"
         ]
+      },
+      "zod": {
+        "expected": {
+          "金": true
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -234,6 +336,14 @@
       ],
       "expected": {
         "金": "很多"
+      },
+      "zod": {
+        "expected": {
+          "金": "很多"
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -255,6 +365,15 @@
       ],
       "expected": {
         "金": "85"
+      },
+      "zod": {
+        "expected": {
+          "金": "85"
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -271,6 +390,14 @@
       ],
       "expected": {
         "金": 123
+      },
+      "zod": {
+        "expected": {
+          "金": 123
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -292,6 +419,15 @@
       ],
       "expected": {
         "金": 85
+      },
+      "zod": {
+        "expected": {
+          "金": "85"
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -319,6 +455,17 @@
         "P": {
           "a": "很多"
         }
+      },
+      "zod": {
+        "expected": {
+          "P": {
+            "a": "很多"
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -349,6 +496,18 @@
           "a": "85",
           "b": 1
         }
+      },
+      "zod": {
+        "expected": {
+          "P": {
+            "a": "85",
+            "b": 1
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -376,6 +535,17 @@
         "P": {
           "a": "85"
         }
+      },
+      "zod": {
+        "expected": {
+          "P": {
+            "a": "85"
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -403,6 +573,18 @@
           "a": "123",
           "b": 5
         }
+      },
+      "zod": {
+        "expected": {
+          "P": {
+            "a": "123",
+            "b": 5
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -428,6 +610,17 @@
         "P": {
           "b": 9
         }
+      },
+      "zod": {
+        "expected": {
+          "P": {
+            "b": "9"
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -449,7 +642,16 @@
       },
       "backend_rejected": [
         "_src"
-      ]
+      ],
+      "zod": {
+        "expected": {
+          "_src": "123",
+          "dst": 123
+        },
+        "statuses": [
+          "rejected"
+        ]
+      }
     },
     {
       "name": "move-rejected-readonly-dest",
@@ -470,7 +672,16 @@
       },
       "backend_rejected": [
         "_dst"
-      ]
+      ],
+      "zod": {
+        "expected": {
+          "src": "123",
+          "_dst": 123
+        },
+        "statuses": [
+          "ignored"
+        ]
+      }
     },
     {
       "name": "nested-nan-then-sibling-write",
@@ -501,6 +712,20 @@
             "x": 1
           }
         }
+      },
+      "zod": {
+        "expected": {
+          "P": {
+            "child": {
+              "n": "很多",
+              "x": 1
+            }
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -525,6 +750,18 @@
           "a",
           "x",
           "c"
+        ]
+      },
+      "zod": {
+        "expected": {
+          "A": [
+            "a",
+            "x",
+            "c"
+          ]
+        },
+        "statuses": [
+          "applied"
         ]
       }
     },
@@ -553,6 +790,18 @@
         "HP": [
           60,
           "氣血"
+        ]
+      },
+      "zod": {
+        "expected": {
+          "HP": [
+            "60",
+            "氣血"
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied"
         ]
       }
     },
@@ -588,6 +837,20 @@
             5,
             "y"
           ]
+        ]
+      },
+      "zod": {
+        "expected": {
+          "列表": [
+            [
+              10,
+              "x"
+            ],
+            5
+          ]
+        },
+        "statuses": [
+          "applied"
         ]
       }
     },
@@ -648,6 +911,34 @@
             3,
             4
           ]
+        ]
+      },
+      "zod": {
+        "expected": {
+          "角色列表": [
+            {
+              "名": "甲",
+              "HP": 3
+            },
+            {
+              "名": "乙",
+              "HP": 9
+            }
+          ],
+          "矩陣": [
+            [
+              1,
+              7
+            ],
+            [
+              3,
+              4
+            ]
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied"
         ]
       }
     },
@@ -715,6 +1006,34 @@
         "小數": [
           0.3
         ]
+      },
+      "zod": {
+        "expected": {
+          "數值": [
+            1,
+            2,
+            8
+          ],
+          "HP": [
+            40,
+            "生命"
+          ],
+          "列表": [
+            [
+              10,
+              "x"
+            ]
+          ],
+          "小數": [
+            0.30000000000000004
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied",
+          "rejected",
+          "applied"
+        ]
       }
     },
     {
@@ -763,6 +1082,27 @@
             "e"
           ]
         }
+      },
+      "zod": {
+        "expected": {
+          "R": {
+            "A": [
+              "z",
+              "y",
+              "a",
+              "b",
+              "c",
+              "d",
+              "e"
+            ]
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied",
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -790,6 +1130,19 @@
           "弓",
           "劍",
           "盾"
+        ]
+      },
+      "zod": {
+        "expected": {
+          "物品": [
+            "弓",
+            "劍",
+            "盾"
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied"
         ]
       }
     },
@@ -844,6 +1197,28 @@
           {
             "名": "甲"
           }
+        ]
+      },
+      "zod": {
+        "expected": {
+          "A": [
+            "a",
+            "d"
+          ],
+          "HP": [
+            50
+          ],
+          "角色列表": [
+            {
+              "名": "甲"
+            }
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied",
+          "applied",
+          "applied"
         ]
       }
     },
@@ -905,7 +1280,24 @@
         "A.5",
         "A.2",
         "A.-"
-      ]
+      ],
+      "zod": {
+        "expected": {
+          "A": [
+            "a",
+            "b"
+          ]
+        },
+        "statuses": [
+          "no-change",
+          "applied",
+          "no-change",
+          "no-change",
+          "rejected",
+          "applied",
+          "no-change"
+        ]
+      }
     },
     {
       "name": "整列 replace 寫陣列整個換掉（偏離上游的巢狀），寫非陣列仍只改第 0 項",
@@ -962,6 +1354,25 @@
           "魔王",
           "說明"
         ]
+      },
+      "zod": {
+        "expected": {
+          "背包": [
+            "劍",
+            "盾",
+            "弓"
+          ],
+          "HP": [
+            60,
+            "生命"
+          ],
+          "稱號": "魔王"
+        },
+        "statuses": [
+          "applied",
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -1006,6 +1417,30 @@
             }
           ]
         }
+      },
+      "zod": {
+        "expected": {
+          "R": {
+            "A": [
+              {
+                "k": 1
+              },
+              {
+                "$meta": {
+                  "extensible": true
+                },
+                "k": 2,
+                "l": [
+                  "$__META_EXTENSIBLE__$",
+                  1
+                ]
+              }
+            ]
+          }
+        },
+        "statuses": [
+          "applied"
+        ]
       }
     },
     {
@@ -1043,7 +1478,26 @@
       },
       "backend_rejected": [
         "A.0.y.k"
-      ]
+      ],
+      "zod": {
+        "expected": {
+          "A": [
+            {
+              "x": {
+                "k": 1
+              },
+              "z": 1,
+              "y": {
+                "k": 2
+              }
+            }
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
+      }
     },
     {
       "name": "insert 到元素物件既有的鍵直接覆蓋、不轉型",
@@ -1074,6 +1528,20 @@
             "o": "5",
             "n": "7"
           }
+        ]
+      },
+      "zod": {
+        "expected": {
+          "A": [
+            {
+              "o": "5",
+              "n": "7"
+            }
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied"
         ]
       }
     },
@@ -1115,6 +1583,25 @@
           {
             "o": 2
           }
+        ]
+      },
+      "zod": {
+        "expected": {
+          "A": [
+            {
+              "0": "o",
+              "1": "X"
+            }
+          ],
+          "B": [
+            {
+              "o": 2
+            }
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied"
         ]
       }
     },
@@ -1169,6 +1656,25 @@
         "HP": [
           55,
           "生命"
+        ]
+      },
+      "zod": {
+        "expected": {
+          "A": [
+            "x",
+            "y"
+          ],
+          "HP": [
+            55,
+            "生命"
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied"
         ]
       }
     },
@@ -1289,6 +1795,46 @@
         "D": [
           5
         ]
+      },
+      "zod": {
+        "expected": {
+          "A": [
+            "很多",
+            3
+          ],
+          "B": [
+            9,
+            "很多",
+            2
+          ],
+          "C": [
+            "5",
+            null
+          ],
+          "M": [
+            [
+              "很多",
+              4
+            ]
+          ],
+          "D": [
+            5
+          ]
+        },
+        "statuses": [
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied",
+          "applied"
+        ]
       }
     },
     {
@@ -1322,7 +1868,154 @@
             "c"
           ]
         }
+      },
+      "zod": {
+        "expected": {
+          "R": {
+            "x": 1,
+            "清單": [
+              "a",
+              "c"
+            ]
+          }
+        },
+        "statuses": [
+          "applied",
+          "applied"
+        ]
       }
+    }
+  ],
+  "zod_cases": [
+    {
+      "name": "coerce 轉數字、夾值",
+      "schema": "z.object({ 金: z.coerce.number().transform(v => _.clamp(v, 0, 100)) })",
+      "stat_data": {
+        "金": 10
+      },
+      "message": "<UpdateVariable>\n_.set('金', '85');\n_.set('金', 500);\n</UpdateVariable>",
+      "expected": {
+        "金": 100
+      },
+      "statuses": [
+        "applied",
+        "applied"
+      ]
+    },
+    {
+      "name": "轉不成數字整條拒收、保留舊值，同批後續照套",
+      "schema": "z.object({ 金: z.coerce.number() })",
+      "stat_data": {
+        "金": 10
+      },
+      "message": "<UpdateVariable>\n_.set('金', 'abc');\n_.set('金', 20);\n</UpdateVariable>",
+      "expected": {
+        "金": 20
+      },
+      "statuses": [
+        "rejected",
+        "applied"
+      ]
+    },
+    {
+      "name": "刪掉後 prefault 補回原值：no-change",
+      "schema": "z.object({ 名: z.string().prefault('無名') })",
+      "stat_data": {
+        "名": "無名"
+      },
+      "message": "<UpdateVariable>\n_.delete('名');\n</UpdateVariable>",
+      "expected": {
+        "名": "無名"
+      },
+      "statuses": [
+        "no-change"
+      ]
+    },
+    {
+      "name": "巢狀物件沒列的鍵被剝掉：no-change",
+      "schema": "z.object({ 隊員: z.object({ 名: z.string() }) })",
+      "stat_data": {
+        "隊員": {
+          "名": "甲"
+        }
+      },
+      "message": "<UpdateVariable>\n_.set('隊員.外號', '阿甲');\n</UpdateVariable>",
+      "expected": {
+        "隊員": {
+          "名": "甲"
+        }
+      },
+      "statuses": [
+        "no-change"
+      ]
+    },
+    {
+      "name": "_ 開頭的路徑靜默忽略（任一段）",
+      "schema": "z.object({})",
+      "stat_data": {
+        "a": 1,
+        "_秘": 1
+      },
+      "message": "<UpdateVariable>\n_.set('_秘', 2);\n_.set('a._x', 3);\n_.add('a', 1);\n</UpdateVariable>",
+      "expected": {
+        "a": 2,
+        "_秘": 1
+      },
+      "statuses": [
+        "ignored",
+        "ignored",
+        "applied"
+      ]
+    },
+    {
+      "name": "add 到字串：拒收",
+      "schema": "z.object({})",
+      "stat_data": {
+        "稱號": "見習"
+      },
+      "message": "<UpdateVariable>\n_.add('稱號', 1);\n</UpdateVariable>",
+      "expected": {
+        "稱號": "見習"
+      },
+      "statuses": [
+        "rejected"
+      ]
+    },
+    {
+      "name": "頂層刪鍵、move 搬移、move 來源不存在",
+      "schema": "z.object({})",
+      "stat_data": {
+        "a": 1,
+        "b": {
+          "c": 2
+        }
+      },
+      "message": "<UpdateVariable>\n_.delete('a');\n<JSONPatch>[{\"op\":\"move\",\"from\":\"/b/c\",\"path\":\"/d\"},{\"op\":\"move\",\"from\":\"/沒有\",\"path\":\"/e\"}]</JSONPatch>\n</UpdateVariable>",
+      "expected": {
+        "b": {},
+        "d": 2
+      },
+      "statuses": [
+        "applied",
+        "applied",
+        "rejected"
+      ]
+    },
+    {
+      "name": "路徑不存在照建（MagVarUpdate 會擋）",
+      "schema": "z.object({})",
+      "stat_data": {},
+      "message": "<UpdateVariable>\n_.set('新.深.鍵', 1);\n</UpdateVariable>",
+      "expected": {
+        "新": {
+          "深": {
+            "鍵": 1
+          }
+        }
+      },
+      "statuses": [
+        "applied"
+      ]
     }
   ]
 }

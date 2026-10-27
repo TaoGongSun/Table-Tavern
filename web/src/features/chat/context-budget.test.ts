@@ -24,6 +24,7 @@ const LINES = [
 ];
 const ENTRIES: ChatEntry[] = LINES.map((text, index) => ({ id: `h${index}`, role: index % 2 === 0 ? "char" : "user", text }));
 const MAX_RESPONSE = 100;
+const FEEDBACK = "## 上一輪被系統擋下的更新（請照這些現值修正）\n金 的 set 被卡片 schema 拒收、維持原值：✖ 要數字";
 
 /** 送出的訊息縮寫：main、desc、ex（[Example Chat]）、ex1/ex2（第幾段範例的對話）、new、h0–h5、phi */
 function shape(messages: ChatMessage[]): string[] {
@@ -35,15 +36,17 @@ function shape(messages: ChatMessage[]): string[] {
     if (message.name) return `ex${dialogue}`;
     if (message.content === "[Start a new Chat]") return "new";
     if (message.content === CARD.text.post_history_instructions) return "phi";
+    if (message.content === FEEDBACK) return "fb";
     return `h${LINES.indexOf(message.content)}`;
   });
 }
 
-function send(model: string, tokenizer: string | null, budget: number) {
+function send(model: string, tokenizer: string | null, budget: number, feedback?: string) {
   const setup = { card: CARD, userName: "旅人", variables: createChatVariables(), chatId: "c" };
   const result = composePrompt(setup, ENTRIES, {
     limits: { maxContext: budget + MAX_RESPONSE, maxResponse: MAX_RESPONSE },
     countTokens: messageTokenCounter(model, tokenizer),
+    feedback,
   });
   return result.overflow ? "overflow" : shape(result.messages).join(" ");
 }
@@ -148,5 +151,20 @@ describe("ST token counting structure (text tokens by guesstimate: UTF-8 bytes /
     expect(messageTokenCounter("qwen/qwen3-coder:free", "Qwen")({ role: "user", content: "你好" })).toBe(2);
     // 空內容不算（有 name 才算）
     expect(messageTokenCounter("openai/gpt-oss-20b:free", "GPT")({ role: "system", content: "" })).toBe(0);
+  });
+});
+
+// zod 桌的回饋（mvu-zod-semantics 規格 6.1）：算固定段落、先佔預算、接在最後；擠的是歷史，連它都放不下就整句不送
+describe("zod feedback counts as a fixed section", () => {
+  const gptOss = ["openai/gpt-oss-20b:free", "GPT"] as const;
+  const cost = messageTokenCounter(...gptOss)({ role: "system", content: FEEDBACK });
+  it("rides at the end and takes its share before the history", () => {
+    expect(cost).toBeGreaterThan(0);
+    expect(send(...gptOss, 300 + cost, FEEDBACK)).toBe(`${FIXED(`ex ex1 ex1 ex ex2 ex2 new ${ALL_HISTORY}`)} fb`);
+    // 同一個上限多了回饋：先掉範例與最舊的歷史，不會超額送出
+    expect(send(...gptOss, 208, FEEDBACK)).not.toContain("h0");
+    expect(send(...gptOss, 94 + cost, FEEDBACK)).toBe(`${FIXED("new")} fb`);
+    expect(send(...gptOss, 94 + cost - 1, FEEDBACK)).toBe("overflow");
+    expect(send(...gptOss, 94)).toBe(FIXED("new"));
   });
 });

@@ -9,6 +9,7 @@ import { runEval } from "@desktop/features/mvu-engine/value-parser";
 import { playCardFromValue } from "../cards/play-card";
 import type { ChatEntry } from "../chat/chat-turn";
 import { createChatVariables } from "../sillytavern/variables";
+import { setLang } from "../../i18n";
 import { useTableMvu, type SavedMvu, type TableMvu } from "./useTableMvu";
 import { createTestZodRunner } from "./zod/test-runner";
 import { ZodRunError, type ZodRunner } from "./zod/frame-host";
@@ -225,5 +226,30 @@ describe("zod 桌", () => {
     await mount({ card: zodCard("金幣: [1, *沒有這個錨點") });
     expect(mvu.initError).toBe("[initvar]");
     expect(mvu.zodFailure).toBeNull();
+  });
+
+  it("逐條被擋下的回饋掛在那則回覆上，組提示時給一則 system（與桌面同一份句子、標題跟著語系）；重 Roll 掉那則就不帶", async () => {
+    await mount({ start: [{ id: "e0", role: "char", text: "歡迎。<UpdateVariable>_.set('燈火', '黃昏');_.set('_秘密', 1);</UpdateVariable>", opening: true }] });
+    // 開場白的指令被擋：第一輪就回饋
+    expect(entries[0].mvuNotes).toEqual([
+      expect.stringContaining("燈火 的 set 被卡片 schema 拒收、維持原值"),
+      "_秘密 裡的「_秘密」以 _ 開頭，是唯讀欄位，這條 set 沒有套用。",
+    ]);
+    expect(mvu.feedback(entries)).toBe(["## 上一輪被系統擋下的更新（請照這些現值修正）", ...entries[0].mvuNotes!].join("\n"));
+    setLang("en");
+    try {
+      expect(mvu.feedback(entries)?.split("\n")[0]).toBe("## Updates the system rejected last turn (correct them using these current values)");
+    } finally {
+      setLang("zh-TW");
+    }
+    // 回饋改由 composePrompt 算進預算，送模前的代換不再附加
+    expect(mvu.prepareMessages([{ role: "system", content: "主提示" }], entries, createChatVariables())).toHaveLength(1);
+
+    const after = await mvu.afterReply([...entries, reply("好的。<UpdateVariable>_.set('金幣', 5);</UpdateVariable>")]);
+    expect(after[1].mvuNotes).toBeUndefined();
+    // 最後一則回覆沒被擋：不再帶開場白那一輪的回饋
+    expect(mvu.feedback(after)).toBeUndefined();
+    const blocked = await mvu.afterReply([...entries, reply("好的。<UpdateVariable>_.add('燈火', 1);</UpdateVariable>")]);
+    expect(blocked[1].mvuNotes).toEqual([expect.stringContaining("燈火 的 add 沒有套用、維持原值")]);
   });
 });

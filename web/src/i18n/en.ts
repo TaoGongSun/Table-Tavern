@@ -135,6 +135,7 @@ export const en: WebMessages = {
   errRunaway: "The model's output ran out of control, so this turn was stopped. Please send again.",
   errEmpty: "The model returned nothing this time. Please send again.",
   errFiltered: "The reply was blocked by the provider's content filter.",
+  mvuNotesHeading: "## Updates the system rejected last turn (correct them using these current values)",
   errIncomplete: "The reply was cut off midway. Please send again.",
   errNetwork: "The connection dropped. Check your network and send again.",
   errRateLimited: "OpenRouter is rate limiting for the moment. Wait a little and send again.",

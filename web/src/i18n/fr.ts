@@ -136,6 +136,7 @@ export const fr: WebMessages = {
   errRunaway: "La sortie du modèle s'est emballée, ce tour a donc été arrêté. Renvoie ta réplique.",
   errEmpty: "Le modèle n'a rien renvoyé cette fois. Renvoie ta réplique.",
   errFiltered: "La réponse a été bloquée par le filtre de contenu du fournisseur.",
+  mvuNotesHeading: "## Mises à jour rejetées par le système au tour précédent (corrige-les d'après ces valeurs actuelles)",
   errIncomplete: "La réponse s'est interrompue en cours de route. Renvoie ta réplique.",
   errNetwork: "La connexion a été coupée. Vérifie ton réseau et renvoie.",
   errRateLimited: "OpenRouter limite les requêtes pour le moment. Patiente un peu et renvoie.",

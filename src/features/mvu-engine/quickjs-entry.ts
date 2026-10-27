@@ -1,21 +1,21 @@
 // 桌面 QuickJS 宿主的 bundle 入口（mvu-zod-semantics 規格 1.2、2.3 節）：`npm run build:mvu-bundle` 打成
 // src-tauri/gen/mvu-engine.js（IIFE、全域名 TTMvu），由 src-tauri/src/mvu_engine/runtime.rs 求值後呼叫 `TTMvu.boot()`。
 // 與 Rust 之間一律傳 JSON 字串。值解析在同一個 context 同步跑：QuickJS 沒有計時器，期限由 Rust 的中斷處理器守。
-import JSON5 from "json5";
-import { jsonrepair } from "jsonrepair";
 import lodash from "lodash";
-import YAML from "yaml";
 import { z } from "zod";
 import { buildMvuEngineSource } from "./engine-source";
+import { correctlyMerge, initvarBody, openingOverride, parseStructured } from "./initvar";
 import { MVU_EVENTS, type MvuCore } from "./host-contract";
 import { isEvalOp, runEval } from "./value-parser";
+import { zodFeedbackLine } from "./zod-feedback";
 
 export interface DesktopEngine {
   /** 墊片模組（卡片 import 的 mvu_zod）轉呼叫 registerMvuSchema：只認第一份 */
   register: (input: unknown) => void;
   /** zodStatus() 的 JSON */
   status: () => string;
-  /** parseMessageDetailed：回契約（host-contract.ts 的 MvuDetailedResult）的 JSON；整次失敗丟錯 */
+  /** parseMessageDetailed：回契約（host-contract.ts 的 MvuDetailedResult）的 JSON，另帶 `feedback`（與 results 一一對應的
+   *  回饋句，zod-feedback.ts；null＝不回饋）；整次失敗丟錯 */
   parse: (message: string, oldJson: string, macrosJson: string) => Promise<string>;
   /** 開局：initvar 先 cleanUpMetadata 再過 schema；回 `{ outcome, stat_data }` 的 JSON */
   initialize: (statJson: string) => string;
@@ -23,65 +23,6 @@ export interface DesktopEngine {
    *  `initvarsJson` 是條目內文的字串陣列；任一條解析失敗就丟錯（上游這本書整本不算初始化）。卡上沒有 initvar 時
    *  `baseJson` 給狀態樹物化的 stat_data（已代換過巨集）取代 initvar 那段，其餘同一條路 */
   seed: (initvarsJson: string, opening: string, macrosJson: string, baseJson: string) => string;
-}
-
-// ---- initvar 解析：與網頁宿主 web/src/features/mvu/initvar.ts 同一份規則（MagVarUpdate loadInitVarData），
-// 只當規格書讀。網頁不能被桌面引用，所以這裡各寫一份；兩邊改動要同步 ----
-
-/** MVU util/common parseString：YAML 優先（`[`／`{` 開頭的改成最後才試），再 JSON5、jsonrepair */
-function parseStructured(content: string): unknown {
-  const jsonFirst = /^[[{]/.test(content.trimStart());
-  const yaml = () => YAML.parseDocument(content, { merge: true }).toJS();
-  if (!jsonFirst) {
-    try {
-      return yaml();
-    } catch {
-      // 換下一種
-    }
-  }
-  try {
-    return JSON5.parse(content);
-  } catch {
-    // 換下一種
-  }
-  try {
-    return JSON.parse(jsonrepair(content));
-  } catch (error) {
-    if (!jsonFirst) throw error;
-  }
-  return yaml();
-}
-
-/** 陣列整個取代、其餘深合併（MVU correctlyMerge） */
-function correctlyMerge<T extends object>(target: T, source: unknown): T {
-  return lodash.mergeWith(target, source, (_left: unknown, right: unknown) => (Array.isArray(right) ? right : undefined));
-}
-
-/** 條目內容：`<initvar>` 或程式碼區塊包住的取裡面那段；剩下首尾成對的 `<標籤>` 也剝掉 */
-function initvarBody(content: string): string {
-  let body = content;
-  const xml = body.trim().match(/.*<initvar>.*\n([\s\S]*)\n.*<\/initvar>.*/m);
-  if (xml) body = xml[1]!;
-  const fenced = body.trim().match(/```.*\n([\s\S]*)\n```/m);
-  if (fenced) body = fenced[1]!;
-  const wrapped = body.trim().match(/^<([A-Za-z_][\w.-]*)>[ \t]*\n([\s\S]*)\n[ \t]*<\/\1>$/);
-  if (wrapped) body = wrapped[2]!;
-  return body;
-}
-
-/** 開場白裡的 `<initvar>` 區塊：有就整份取代世界書的初始值（解析失敗的區塊略過）；沒有回 null */
-function openingOverride(opening: string, substitute: (text: string) => string): Record<string, unknown> | null {
-  const override: Record<string, unknown> = {};
-  let applied = false;
-  for (const match of opening.matchAll(/<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim)) {
-    try {
-      correctlyMerge(override, parseStructured(substitute(match[2]!)));
-      applied = true;
-    } catch {
-      // MVU 記錯誤後略過這一塊
-    }
-  }
-  return applied ? override : null;
 }
 
 /** UTF-8 位元組長度（不配置緩衝區） */
@@ -177,7 +118,8 @@ export function createDesktopEngine(): DesktopEngine {
     async parse(message, oldJson, macrosJson) {
       macros = parse(macrosJson) as Macros;
       try {
-        return stringify(await core.parseMessageDetailed(message, parse(oldJson) as Record<string, unknown>));
+        const detailed = await core.parseMessageDetailed(message, parse(oldJson) as Record<string, unknown>);
+        return stringify({ ...detailed, feedback: detailed.results.map(zodFeedbackLine) });
       } finally {
         macros = null;
       }

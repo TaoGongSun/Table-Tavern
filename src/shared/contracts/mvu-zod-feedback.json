@@ -1,0 +1,298 @@
+{
+  "_comment": "zod 卡逐條結果給 GM 的回饋句（mvu-zod-semantics 規格 6.1）：桌面 mechanism/engine_records.rs 經 QuickJS 拿 src/features/mvu-engine/zod-feedback.ts 的句子、網頁直接呼叫同一份；lines 是逐條句子（null＝不回饋），notes 是去重、5 條、240 碼點之後給下一輪 GM 的清單。預期值由 zod-feedback.test.ts 釘住，改句子要兩邊一起過。",
+  "cases": [
+    {
+      "name": "各狀態的句子與路徑寫法",
+      "results": [
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "世界",
+            "威脅"
+          ],
+          "status": "applied"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "世界",
+            "威脅"
+          ],
+          "status": "rejected",
+          "reason": "schema",
+          "issues": [
+            "路径: 世界.威脅 ✖ Invalid input: expected number, received string → 输入: \"高\""
+          ],
+          "issueCount": 1
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "檔案",
+            "a.b"
+          ],
+          "status": "rejected",
+          "reason": "schema",
+          "issues": [
+            "✖ 錯一",
+            "✖ 錯二"
+          ],
+          "issueCount": 7
+        },
+        {
+          "index": 0,
+          "op": "add",
+          "path": [
+            "稱號"
+          ],
+          "status": "rejected",
+          "reason": "add-not-number",
+          "issues": [
+            "路径: 稱號 ✖ 不能对非数字类型 'string' 进行加减运算 → 原值: \"見習\""
+          ],
+          "issueCount": 1
+        },
+        {
+          "index": 0,
+          "op": "move",
+          "path": [
+            "不存在"
+          ],
+          "status": "rejected",
+          "reason": "move-source-missing",
+          "issues": [
+            "移动源路径不存在: 不存在"
+          ],
+          "issueCount": 1
+        },
+        {
+          "index": 0,
+          "op": "move",
+          "path": [
+            "隊員",
+            "甲"
+          ],
+          "status": "rejected",
+          "reason": "move-source-schema",
+          "issues": [
+            "✖ 必填"
+          ],
+          "issueCount": 1
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "隊員",
+            "甲",
+            "體力"
+          ],
+          "status": "no-change",
+          "reason": "unchanged"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "隊員",
+            "_秘密",
+            "值"
+          ],
+          "status": "ignored",
+          "reason": "readonly"
+        },
+        {
+          "index": 0,
+          "op": "add",
+          "path": [],
+          "status": "ignored",
+          "reason": "no-path"
+        },
+        {
+          "index": 0,
+          "op": "insert",
+          "path": [
+            "稱號"
+          ],
+          "status": "ignored",
+          "reason": "not-container"
+        },
+        {
+          "index": 0,
+          "op": "frob",
+          "path": [
+            "x"
+          ],
+          "status": "ignored",
+          "reason": "unsupported"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [],
+          "status": "no-change",
+          "reason": "unchanged"
+        }
+      ],
+      "lines": [
+        null,
+        "世界.威脅 的 set 被卡片 schema 拒收、維持原值：路径: 世界.威脅 ✖ Invalid input: expected number, received string → 输入: \"高\"",
+        "檔案[\"a.b\"] 的 set 被卡片 schema 拒收、維持原值：✖ 錯一；✖ 錯二（共 7 則）",
+        "稱號 的 add 沒有套用、維持原值：路径: 稱號 ✖ 不能对非数字类型 'string' 进行加减运算 → 原值: \"見習\"",
+        "move 的來源 不存在 不存在，沒有搬。",
+        "move 的來源 隊員.甲 刪不掉、沒有搬：✖ 必填",
+        "隊員.甲.體力 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "隊員._秘密.值 裡的「_秘密」以 _ 開頭，是唯讀欄位，這條 set 沒有套用。",
+        null,
+        null,
+        null,
+        "整張表 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。"
+      ],
+      "notes": [
+        "世界.威脅 的 set 被卡片 schema 拒收、維持原值：路径: 世界.威脅 ✖ Invalid input: expected number, received string → 输入: \"高\"",
+        "檔案[\"a.b\"] 的 set 被卡片 schema 拒收、維持原值：✖ 錯一；✖ 錯二（共 7 則）",
+        "稱號 的 add 沒有套用、維持原值：路径: 稱號 ✖ 不能对非数字类型 'string' 进行加减运算 → 原值: \"見習\"",
+        "move 的來源 不存在 不存在，沒有搬。",
+        "move 的來源 隊員.甲 刪不掉、沒有搬：✖ 必填"
+      ]
+    },
+    {
+      "name": "同文去重、最多 5 條、每條 240 碼點",
+      "results": [
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "a"
+          ],
+          "status": "no-change"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "a"
+          ],
+          "status": "no-change"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "b"
+          ],
+          "status": "no-change"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "c"
+          ],
+          "status": "no-change"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "長"
+          ],
+          "status": "rejected",
+          "reason": "schema",
+          "issues": [
+            "✖ 很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤"
+          ],
+          "issueCount": 1
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "d"
+          ],
+          "status": "no-change"
+        },
+        {
+          "index": 0,
+          "op": "set",
+          "path": [
+            "e"
+          ],
+          "status": "no-change"
+        }
+      ],
+      "lines": [
+        "a 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "a 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "b 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "c 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "長 的 set 被卡片 schema 拒收、維持原值：✖ 很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤",
+        "d 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "e 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。"
+      ],
+      "notes": [
+        "a 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "b 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "c 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。",
+        "長 的 set 被卡片 schema 拒收、維持原值：✖ 很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤很長的錯誤…",
+        "d 的 set 通過了卡片 schema，但值沒有變（schema 沒列的鍵會被剝掉、被刪的會補回預設值），沒有寫入。"
+      ]
+    },
+    {
+      "name": "move 擋在唯讀目的地或唯讀來源：指出被擋的那一端",
+      "results": [
+        {
+          "index": 0,
+          "op": "move",
+          "path": [
+            "a"
+          ],
+          "status": "ignored",
+          "to": [
+            "_b"
+          ],
+          "reason": "readonly"
+        },
+        {
+          "index": 1,
+          "op": "move",
+          "path": [
+            "a"
+          ],
+          "status": "ignored",
+          "to": [
+            "c",
+            "_d",
+            "e"
+          ],
+          "reason": "readonly"
+        },
+        {
+          "index": 2,
+          "op": "move",
+          "path": [
+            "_a"
+          ],
+          "status": "rejected",
+          "to": [
+            "b"
+          ],
+          "reason": "move-source-readonly"
+        }
+      ],
+      "lines": [
+        "move 的目的地 _b 裡的「_b」以 _ 開頭，是唯讀欄位，沒有搬。",
+        "move 的目的地 c._d.e 裡的「_d」以 _ 開頭，是唯讀欄位，沒有搬。",
+        "move 的來源 _a 裡的「_a」以 _ 開頭，是唯讀欄位，沒有搬。"
+      ],
+      "notes": [
+        "move 的目的地 _b 裡的「_b」以 _ 開頭，是唯讀欄位，沒有搬。",
+        "move 的目的地 c._d.e 裡的「_d」以 _ 開頭，是唯讀欄位，沒有搬。",
+        "move 的來源 _a 裡的「_a」以 _ 開頭，是唯讀欄位，沒有搬。"
+      ]
+    }
+  ]
+}

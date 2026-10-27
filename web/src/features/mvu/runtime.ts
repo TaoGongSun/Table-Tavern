@@ -5,7 +5,9 @@ import type { PlayCard } from "../cards/play-card";
 import type { ChatEntry } from "../chat/chat-turn";
 import { createHostMvu, type HostMvu, type MvuMacros } from "./engine";
 import type { Evaluator } from "./evaluate";
-import { correctlyMerge, initialTable, initvarBody, initvarEntries, openingOverride, parseStructured } from "./initvar";
+import { correctlyMerge, initvarBody, openingOverride, parseStructured } from "@desktop/features/mvu-engine/initvar";
+import { zodNotes } from "@desktop/features/mvu-engine/zod-feedback";
+import { initialTable, initvarEntries } from "./initvar";
 import { lastValidVars, finishReplyText, type VarsTable } from "./tables";
 import type { ZodRunner } from "./zod/frame-host";
 
@@ -47,9 +49,10 @@ export type InitOutcome =
       table: VarsTable;
       /** 開場那一樓的表；null＝沒有開場白，或 zod 桌開場白的更新整次失敗（那一樓不寫變數） */
       opening: VarsTable | null;
-      /** zod 桌：初始值沒過 schema（照原值）；開場白的更新整次失敗 */
+      /** zod 桌：初始值沒過 schema（照原值）；開場白的更新整次失敗；開場白指令被擋下的回饋（第一輪送 GM） */
       zodInitInvalid?: boolean;
       openingFailed?: boolean;
+      openingNotes?: string[];
     }
   | { ok: false; comment: string; error: string };
 
@@ -120,7 +123,8 @@ async function initializeZod(
   if (opening === null) return { ok: true, table, opening: null, zodInitInvalid };
   try {
     const result = await zod.parse(opening, structuredClone(table), runtime.macros);
-    return { ok: true, table: result.table as VarsTable, opening: result.table as VarsTable, zodInitInvalid };
+    const openingNotes = zodNotes(result.results);
+    return { ok: true, table: result.table as VarsTable, opening: result.table as VarsTable, zodInitInvalid, openingNotes };
   } catch (error) {
     console.error("[table-tavern] 開場白的變數指令處理失敗", error);
     return { ok: true, table, opening: null, zodInitInvalid, openingFailed: true };
@@ -137,9 +141,12 @@ export async function processReply(runtime: MvuRuntime, entries: ChatEntry[], in
   const base = lastValidVars(entries, index) ?? (seed === null ? undefined : (structuredClone(seed) as VarsTable));
   if (base === undefined || !("stat_data" in base)) return null;
   let next: VarsTable;
+  let notes: string[] = [];
   if (runtime.zod) {
-    // zod 桌整次失敗照拋（ZodRunError）：呼叫端提示、這則不寫變數
-    next = (await runtime.zod().parse(entry.text, base, runtime.macros)).table as VarsTable;
+    // zod 桌整次失敗照拋（ZodRunError）：呼叫端提示、這則不寫變數。逐條被擋下的回饋掛在這則上，下一輪送 GM
+    const result = await runtime.zod().parse(entry.text, base, runtime.macros);
+    next = result.table as VarsTable;
+    notes = zodNotes(result.results);
   } else {
     try {
       next = await runtime.mvu.parseMessage(entry.text, base);
@@ -157,5 +164,12 @@ export async function processReply(runtime: MvuRuntime, entries: ChatEntry[], in
     else delete vars[field];
   }
   const text = finishReplyText(entry.text);
-  return { ...entry, text, vars, ...(text === entry.text ? {} : { raw: entry.raw ?? entry.text }) };
+  const { mvuNotes: _previous, ...rest } = entry;
+  return {
+    ...rest,
+    text,
+    vars,
+    ...(text === entry.text ? {} : { raw: entry.raw ?? entry.text }),
+    ...(notes.length > 0 ? { mvuNotes: notes } : {}),
+  };
 }
