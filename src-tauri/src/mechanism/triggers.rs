@@ -121,6 +121,18 @@ fn current_number(value: &str) -> Option<f64> {
 
 /// 把命中文本裡的 `{{state:<點分路徑>}}` 換成樹上的現值，路徑不存在就換成空字串。
 fn resolve_state_placeholders(text: &str, tree: &BTreeMap<String, StateNode>) -> String {
+    let resolved: Result<String, std::convert::Infallible> = map_state_placeholders(text, |path| {
+        Ok(leaf_at(tree, path).unwrap_or("").to_owned())
+    });
+    resolved.unwrap_or_else(|never| match never {})
+}
+
+/// 逐個 `{{state:<點分路徑>}}` 佔位把路徑交給 `replace`，用它回的字串取代整個佔位；`replace` 回錯就整段回錯。
+/// 沒有收尾的殘缺標記原樣保留，不吃掉後面的文字。求值（換成現值）與重構套用（路徑對齊）共用。
+pub(crate) fn map_state_placeholders<E>(
+    text: &str,
+    mut replace: impl FnMut(&str) -> Result<String, E>,
+) -> Result<String, E> {
     const MARK: &str = "{{state:";
     let mut result = String::with_capacity(text.len());
     let mut rest = text;
@@ -128,16 +140,15 @@ fn resolve_state_placeholders(text: &str, tree: &BTreeMap<String, StateNode>) ->
         result.push_str(&rest[..start]);
         let after = &rest[start + MARK.len()..];
         let Some(end) = after.find("}}") else {
-            // 沒有收尾的殘缺標記：原樣保留，不吃掉後面的文字
             result.push_str(&rest[start..]);
             rest = "";
             break;
         };
-        result.push_str(leaf_at(tree, &after[..end]).unwrap_or(""));
+        result.push_str(&replace(&after[..end])?);
         rest = &after[end + 2..];
     }
     result.push_str(rest);
-    result
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -355,6 +366,7 @@ mod tests {
     fn evaluate_triggers_stops_at_the_first_matching_case_and_falls_back_to_else() {
         let mechanism = Mechanism {
             value_types: Default::default(),
+            display_formats: Default::default(),
             numeric_update: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
@@ -372,6 +384,7 @@ mod tests {
                 flag: None,
             }],
             incremental: true,
+            incremental_by_refactor: false,
             guide: String::new(),
         };
 
@@ -402,6 +415,7 @@ mod tests {
     fn evaluate_triggers_produces_no_text_when_no_case_matches_and_there_is_no_fallback() {
         let mechanism = Mechanism {
             value_types: Default::default(),
+            display_formats: Default::default(),
             numeric_update: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
@@ -415,6 +429,7 @@ mod tests {
                 flag: None,
             }],
             incremental: true,
+            incremental_by_refactor: false,
             guide: String::new(),
         };
         let tree = tree_from(&[("World.Invasion", "10")]);
@@ -427,6 +442,7 @@ mod tests {
     fn evaluate_triggers_replaces_state_placeholder_and_user_macro() {
         let mechanism = Mechanism {
             value_types: Default::default(),
+            display_formats: Default::default(),
             numeric_update: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
@@ -443,6 +459,7 @@ mod tests {
                 flag: None,
             }],
             incremental: true,
+            incremental_by_refactor: false,
             guide: String::new(),
         };
         let tree = tree_from(&[("World.Location", "晨港")]);

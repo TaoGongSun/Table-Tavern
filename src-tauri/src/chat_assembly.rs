@@ -277,9 +277,15 @@ pub(crate) fn gm_turn_instruction(
             (instruction_message, closing)
         }
         transport::GmTurnFormat::Narration => {
-            let instruction_message = transport::narrate_instruction(lang, roster, player_name);
-            let closing =
-                transport::gm_closing(transport::GmTurnFormat::Narration, !roster.is_empty(), lang);
+            // 增量桌：圍欄只管三欄，其餘欄位的變動另附更新區塊
+            let updates = materials.state.mechanism.incremental;
+            let instruction_message =
+                transport::narrate_instruction(lang, roster, player_name, updates);
+            let closing = if updates {
+                transport::narration_closing_with_updates(!roster.is_empty(), lang)
+            } else {
+                transport::gm_closing(transport::GmTurnFormat::Narration, !roster.is_empty(), lang)
+            };
             (instruction_message, closing)
         }
     }

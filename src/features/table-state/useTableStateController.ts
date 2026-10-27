@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { type BranchBinding, type StateNode, type WorldState } from "../../shared/contracts/backend-contracts";
+import { parseWithFormat } from "./state-format";
 
 // 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
 export function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
@@ -36,11 +37,17 @@ export interface TableStateController {
   tree: Record<string, StateNode>;
   /** 全量桌的跳動警示：路徑（點分）→ 顯示標記 */
   jumps: Record<string, string>;
+  /** 數字欄的顯示模板：路徑（點分）→「第 {} 天」這類原寫法 */
+  displayFormats: Record<string, string>;
   /** 每條分支目前綁給哪個角色 */
   bindings: BranchBinding[];
   editing: EditingStateField | null;
   /** 換桌：把 read_state 的結果與已讀好的綁定清單一次同步塞進來（不得在裡面 await） */
-  hydrate: (state: WorldState["state"] | undefined, bindings: BranchBinding[]) => void;
+  hydrate: (
+    state: WorldState["state"] | undefined,
+    bindings: BranchBinding[],
+    displayFormats?: Record<string, string>,
+  ) => void;
   /** 重讀這桌的狀態與綁定 */
   refresh: () => Promise<void>;
   save: (path: string[], tree: boolean, value: string) => Promise<void>;
@@ -68,6 +75,7 @@ export function useTableStateController(input: {
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
+  const [displayFormats, setDisplayFormats] = useState<Record<string, string>>({});
   // 分支指認清單：每條狀態樹分支目前綁給哪個角色，換桌／讀狀態一起重載
   const [branchBindings, setBranchBindings] = useState<BranchBinding[]>([]);
   const [editingStateField, setEditingStateField] = useState<EditingStateField | null>(null);
@@ -77,13 +85,17 @@ export function useTableStateController(input: {
 
   // 換桌世代：hydrate 一次就換，在途的重讀回來時世代不同就不碰畫面
   const readGeneration = useRef(0);
-  const hydrate = useCallback((state: WorldState["state"] | undefined, bindings: BranchBinding[]) => {
-    readGeneration.current += 1;
-    setTableState(state?.table ?? {});
-    setTableTree(state?.tree ?? {});
-    setTableJumps(state?.jumps ?? {});
-    setBranchBindings(bindings);
-  }, []);
+  const hydrate = useCallback(
+    (state: WorldState["state"] | undefined, bindings: BranchBinding[], formats?: Record<string, string>) => {
+      readGeneration.current += 1;
+      setTableState(state?.table ?? {});
+      setTableTree(state?.tree ?? {});
+      setTableJumps(state?.jumps ?? {});
+      setDisplayFormats(formats ?? {});
+      setBranchBindings(bindings);
+    },
+    [],
+  );
 
   // 重讀是兩趟非同步：同時只跑一趟，在途期間再被要求（卡片頻繁寫入、手改）就在這趟套用後補讀一次，
   // 回來的結果一律比在途前新，不會有晚回的舊結果蓋掉新值。換桌（worldId 變或 hydrate）換世代，
@@ -112,6 +124,7 @@ export function useTableStateController(input: {
           setTableState(state.state?.table ?? {});
           setTableTree(state.state?.tree ?? {});
           setTableJumps(state.state?.jumps ?? {});
+          setDisplayFormats(state.mechanism?.display_formats ?? {});
           setBranchBindings(bindings);
         } while (job.again);
       } finally {
@@ -124,8 +137,9 @@ export function useTableStateController(input: {
 
   // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。
   const save = useCallback(
-    async (path: string[], tree: boolean, value: string) => {
+    async (path: string[], tree: boolean, input: string) => {
       if (stateFieldSaveBusy.current || stateFieldEditCancelled.current) return;
+      const value = tree ? parseWithFormat(input, displayFormats[path.join(".")]) : input;
       setEditingStateField(null);
       if (value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
       stateFieldSaveBusy.current = true;
@@ -141,7 +155,7 @@ export function useTableStateController(input: {
         stateFieldSaveBusy.current = false;
       }
     },
-    [tableTree, tableState, worldId, onError, refresh],
+    [tableTree, tableState, displayFormats, worldId, onError, refresh],
   );
 
   // 玩家點跳動記號：把該欄永久標成計數器，之後全量桌跳動比對不再對它示警
@@ -192,6 +206,7 @@ export function useTableStateController(input: {
       fields: tableState,
       tree: tableTree,
       jumps: tableJumps,
+      displayFormats,
       bindings: branchBindings,
       editing: editingStateField,
       hydrate,
@@ -208,6 +223,7 @@ export function useTableStateController(input: {
       tableState,
       tableTree,
       tableJumps,
+      displayFormats,
       branchBindings,
       editingStateField,
       hydrate,

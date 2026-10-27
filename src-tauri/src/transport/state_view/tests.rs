@@ -138,11 +138,13 @@ fn trigger_with_scope(id: &str, scope: &[&str]) -> data::Trigger {
 fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
     let mechanism = Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![trigger_with_scope("侵略", &[])],
         incremental: true,
+        incremental_by_refactor: false,
         guide: String::new(),
     };
     let state = TableState {
@@ -171,11 +173,13 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
 fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
     let mechanism = Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![trigger_with_scope("侵略", &[])],
         incremental: true,
+        incremental_by_refactor: false,
         guide: String::new(),
     };
     let state = TableState {
@@ -203,6 +207,7 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
 fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_aligned() {
     let mechanism = Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
@@ -211,6 +216,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
             trigger_with_scope("世界氛圍", &[]),
         ],
         incremental: true,
+        incremental_by_refactor: false,
         guide: String::new(),
     };
     let state = TableState {
@@ -246,6 +252,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
 fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
     let mechanism = Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
@@ -254,6 +261,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
             &["Heroes", "亞瑟", "Affection"],
         )],
         incremental: true,
+        incremental_by_refactor: false,
         guide: String::new(),
     };
     let state = TableState {
@@ -276,12 +284,14 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
 fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
     let mechanism = Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         // 刻意讓清單順序跟字典序相反，確認印出順序跟著 Vec 走。
         triggers: vec![trigger_with_scope("乙", &[]), trigger_with_scope("甲", &[])],
         incremental: true,
+        incremental_by_refactor: false,
         guide: String::new(),
     };
     let state = TableState {

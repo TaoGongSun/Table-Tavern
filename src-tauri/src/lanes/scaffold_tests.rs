@@ -305,7 +305,7 @@ pub(super) fn render_all(lang: &str) -> String {
         &chars_lane_system(&f.cards, None, &f.worldbook, lang),
     );
 
-    let narrate = transport::narrate_instruction(lang, &roster, Some("阿濤")).content;
+    let narrate = transport::narrate_instruction(lang, &roster, Some("阿濤"), false).content;
     for (title, mechanism, scope) in [
         ("gm_lane_turn incremental hidden", &f.incremental, &hidden),
         ("gm_lane_turn incremental align", &f.incremental, &align),
@@ -392,15 +392,15 @@ pub(super) fn render_all(lang: &str) -> String {
     for (title, message) in [
         (
             "narrate roster+player",
-            transport::narrate_instruction(lang, &roster, Some("阿濤")),
+            transport::narrate_instruction(lang, &roster, Some("阿濤"), false),
         ),
         (
             "narrate roster",
-            transport::narrate_instruction(lang, &roster, None),
+            transport::narrate_instruction(lang, &roster, None, false),
         ),
         (
             "narrate empty",
-            transport::narrate_instruction(lang, &[], None),
+            transport::narrate_instruction(lang, &[], None, false),
         ),
         (
             "takeover roster+player",

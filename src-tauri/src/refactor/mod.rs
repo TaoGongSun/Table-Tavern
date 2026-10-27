@@ -3,6 +3,7 @@
 //! 「已經有一份 RefactorOutcome，怎麼套用、怎麼復原」——手寫 JSON 餵進 apply() 就能驗證整條路。
 
 mod apply;
+mod apply_mechanism;
 mod apply_record;
 mod card_export;
 mod card_file;

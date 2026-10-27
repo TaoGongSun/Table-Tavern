@@ -483,8 +483,14 @@ fn rewind_state(tx: &CommitTx<'_>, scene: u64, events: &[TranscriptEvent]) -> Da
 /// 狀態樹被逐字稿以外的路徑換掉（重構套用重建欄位）之後，把新樹補進這一幕每一則事件的快照。
 /// 收回上一句與換幕都拿事件快照當回捲基準，不補的話玩家一收回，介面就被打回重構前的舊欄位。
 /// 補整幕而不是只補最後一則：連按收回會一路往前吃，任何一則留著舊欄位都會在那一下現形。
-/// 只換 tree／jumps——劇情面的欄位（table、changes、notes）照舊跟著各自那一刻走。
-pub fn sync_scene_state_tree(root: &Path, world_id: &str, state: &WorldState) -> DataResult<()> {
+/// 只換 tree／jumps——劇情面的欄位（table、changes、notes）照舊跟著各自那一刻走；唯一例外是這次從平欄搬進樹的鍵。
+/// `moved_table_keys`：這次從平欄搬進樹的鍵，事件快照的平欄裡也一併拿掉（不然收回上一句會把舊值帶回平欄）。
+pub fn sync_scene_state_tree(
+    root: &Path,
+    world_id: &str,
+    state: &WorldState,
+    moved_table_keys: &[String],
+) -> DataResult<()> {
     with_commit(root, world_id, |tx| {
         let scene = state.current_scene;
         let rewritten = edit_scene(root, world_id, scene, |mut events| {
@@ -497,6 +503,9 @@ pub fn sync_scene_state_tree(root: &Path, world_id: &str, state: &WorldState) ->
                     snapshot.tree = state.state.tree.clone();
                     snapshot.jumps = state.state.jumps.clone();
                     touched = true;
+                }
+                for key in moved_table_keys {
+                    touched |= snapshot.table.remove(key).is_some();
                 }
             }
             Ok(if touched {

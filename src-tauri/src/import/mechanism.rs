@@ -234,6 +234,8 @@ pub(super) fn import_mechanism_strict(root: &Path, world_id: &str, book: &Value)
     }
     if incremental {
         world.mechanism.incremental = true;
+        // 匯入了真的 MVU 鷹架：增量不再只是重構為了收編規則開的
+        world.mechanism.incremental_by_refactor = false;
     }
     data::write_state(root, world_id, &world)?;
     mechanism::append_log(root, world_id, world.current_scene, &ledger);

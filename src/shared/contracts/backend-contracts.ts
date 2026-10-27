@@ -61,6 +61,8 @@ export interface WorldState {
     // 全量桌的跳動警示：路徑（點分）→ 顯示標記（"+40"／"-80"），增量桌一律是空物件
     jumps?: Record<string, string>;
   };
+  // 數字欄的顯示寫法（點分路徑→模板，`{}` 是數字的位置，例：「第 {} 天」）：樹上存數字，畫面照模板套回原寫法
+  mechanism?: { display_formats?: Record<string, string> };
 }
 
 // 分支指認清單：auto＝後端同名自動比對出來的結果，還沒真的存進 state.json

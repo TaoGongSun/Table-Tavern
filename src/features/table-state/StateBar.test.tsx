@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import { StateBar } from "./StateBar";
+import { displayWithFormat, parseWithFormat } from "./state-format";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,13 +33,14 @@ afterEach(() => {
 
 const noop = () => {};
 
-function renderTree(tree: Record<string, unknown>) {
+function renderTree(tree: Record<string, unknown>, displayFormats?: Record<string, string>) {
   act(() =>
     root.render(
       <StateBar
         fields={{}}
         tree={tree as never}
         jumps={{}}
+        displayFormats={displayFormats}
         bindings={[]}
         editing={null}
         onBeginEdit={noop}
@@ -81,5 +83,27 @@ describe("StateBar 分支指認下拉", () => {
     expect(host.querySelector(".state-tree-empty")?.textContent).toBe(t("stateEmptyValue"));
     renderTree({});
     expect(host.querySelector(".state-tree-empty")).toBeNull();
+  });
+});
+
+describe("StateBar 數字欄顯示模板", () => {
+  it("樹上存數字、畫面照原寫法顯示；點開編輯仍是數字；值不是純數字就原樣", () => {
+    expect(displayWithFormat("7", "第 {} 天")).toBe("第 7 天");
+    expect(displayWithFormat("第 7 天", "第 {} 天")).toBe("第 7 天");
+    expect(displayWithFormat("7", undefined)).toBe("7");
+    renderTree({ 驻守天数: "7" }, { 驻守天数: "第 {} 天" });
+    const values = [...host.querySelectorAll(".state-bar-value")].map((node) => node.textContent);
+    expect(values).toContain("第 7 天");
+    expect(values).not.toContain("7");
+  });
+
+  it("輸入照模板解析回數字（空白有無都算），不符合就原樣", () => {
+    expect(parseWithFormat("第 8 天", "第 {} 天")).toBe("8");
+    expect(parseWithFormat("第8天", "第 {} 天")).toBe("8");
+    expect(parseWithFormat("8", "第 {} 天")).toBe("8");
+    expect(parseWithFormat("第八天", "第 {} 天")).toBe("第八天");
+    expect(parseWithFormat("第 天", "第 {} 天")).toBe("第 天");
+    expect(parseWithFormat("第 8 夜", "第 {} 天")).toBe("第 8 夜");
+    expect(parseWithFormat("第 8 天", undefined)).toBe("第 8 天");
   });
 });

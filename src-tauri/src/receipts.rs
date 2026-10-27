@@ -137,6 +137,12 @@ struct MechanismUndo {
     /// None＝沒改。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     value_types_before: Option<BTreeMap<String, String>>,
+    /// 這次操作改了數字欄顯示模板表（mechanism.display_formats）：整份原表，undo 寫回；None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    display_formats_before: Option<BTreeMap<String, String>>,
+    /// 這次操作從開場狀態平欄搬走的鍵與原值（重構收編規則時搬進樹），undo 插回平欄。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    removed_table: BTreeMap<String, String>,
 }
 
 impl MechanismUndo {
@@ -151,6 +157,8 @@ impl MechanismUndo {
             && !self.player_card_assigned
             && self.guide_before.is_none()
             && self.value_types_before.is_none()
+            && self.display_formats_before.is_none()
+            && self.removed_table.is_empty()
     }
 }
 
@@ -450,8 +458,20 @@ fn diff_mechanism(
         (before.mechanism.guide != after.mechanism.guide).then(|| before.mechanism.guide.clone());
     let value_types_before = (before.mechanism.value_types != after.mechanism.value_types)
         .then(|| before.mechanism.value_types.clone());
+    let display_formats_before = (before.mechanism.display_formats
+        != after.mechanism.display_formats)
+        .then(|| before.mechanism.display_formats.clone());
+
+    let removed_table: BTreeMap<String, String> = before
+        .state
+        .table
+        .iter()
+        .filter(|(key, _)| !after.state.table.contains_key(*key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
 
     let undo = MechanismUndo {
+        removed_table,
         added_rule_keys,
         restored_rules,
         added_trigger_ids,
@@ -462,6 +482,7 @@ fn diff_mechanism(
         player_card_assigned,
         guide_before,
         value_types_before,
+        display_formats_before,
     };
     (!undo.is_empty()).then_some(undo)
 }
@@ -1055,6 +1076,9 @@ fn undo_last(
             );
             if let Some(before) = mechanism.incremental_before {
                 state.mechanism.incremental = before;
+                if !before {
+                    state.mechanism.incremental_by_refactor = false;
+                }
             }
             if !tree_in_events {
                 apply_map_undo(
@@ -1073,6 +1097,16 @@ fn undo_last(
             }
             if let Some(value_types) = &mechanism.value_types_before {
                 state.mechanism.value_types = value_types.clone();
+            }
+            if let Some(display_formats) = &mechanism.display_formats_before {
+                state.mechanism.display_formats = display_formats.clone();
+            }
+            for (key, value) in &mechanism.removed_table {
+                state
+                    .state
+                    .table
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
             }
             kept(strict, data::write_state(root, world_id, &state))?;
         }

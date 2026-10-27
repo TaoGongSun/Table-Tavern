@@ -292,6 +292,7 @@ export function AppWorkspace({
                 fields={tableState.fields}
                 tree={tableState.tree}
                 jumps={tableState.jumps}
+                displayFormats={tableState.displayFormats}
                 bindings={tableState.bindings}
                 editing={tableState.editing}
                 onBeginEdit={tableState.beginEdit}

@@ -13,6 +13,10 @@ pub fn leaf_shown(mechanism: &Mechanism, path: &[String], value: &str, align: bo
     if !mechanism.incremental {
         return true;
     }
+    // 重構開的增量桌只列規則蓋到的欄位：其餘是開場狀態的殘留，列出來 GM 會逐欄回報整支
+    if mechanism.incremental_by_refactor && !has_rule(mechanism, path) {
+        return false;
+    }
     match rule_for(mechanism, path, Some(value)).inject {
         InjectLevel::Rare => false,
         InjectLevel::Snapshot => align,
@@ -36,6 +40,11 @@ pub(super) fn rule_for(mechanism: &Mechanism, path: &[String], current: Option<&
         _ => FieldKind::Text,
     };
     FieldRule::for_kind(kind)
+}
+
+/// 這條路徑有沒有明寫的規則（精確或萬用），不含依現值推定的預設。
+pub fn has_rule(mechanism: &Mechanism, path: &[String]) -> bool {
+    mechanism.rules.contains_key(&path.join(".")) || wildcard_rule(mechanism, path).is_some()
 }
 
 fn wildcard_rule<'a>(mechanism: &'a Mechanism, path: &[String]) -> Option<&'a FieldRule> {

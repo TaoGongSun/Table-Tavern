@@ -189,6 +189,10 @@ pub struct Mechanism {
     /// 這桌的數值走增量協定、由本地記帳（MVU 卡匯入後開啟）。
     #[serde(default, skip_serializing_if = "is_false")]
     pub incremental: bool,
+    /// incremental 是重構套用時為了讓收編的規則／觸發有回報管道才開的（不是 MVU 鷹架）：
+    /// 這種桌的樹只是開場狀態，不算 MVU 來源（`mechanism::mvu_source`），回合尾也只列規則蓋到的欄位。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub incremental_by_refactor: bool,
     /// 這張卡自己的回報指引：介面接管後跟在通用協定後面進系統提示詞，講這張卡每回合
     /// 必報哪些欄位、哪些只在變動時報。空＝這桌沒有卡專屬規矩，只走通用協定。
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -197,6 +201,10 @@ pub struct Mechanism {
     /// 決定 YAML 裡要不要加引號、行內集合要不要拆元素，卡讀回的型別才會跟原卡一致。沒列的欄位＝字串。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub value_types: BTreeMap<String, String>,
+    /// 數字欄的顯示寫法（點分路徑→模板，`{}` 是數字的位置，例：`第 {} 天`）：原卡開場寫「第 1 天」的欄位
+    /// 收編成數字規則後，樹上只存數字（觸發與增量要比大小），玩家畫面照模板套回原寫法〔作者裁決 2026-10-27〕。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub display_formats: BTreeMap<String, String>,
     /// 數字欄更新策略：不落檔，由載入層（`mechanism::resolve_numeric_update`）每次算好再交給
     /// 套用與提示詞同一份；沒算過＝DeltaOnly（原規則）。
     #[serde(skip)]
@@ -221,10 +229,12 @@ impl Default for Mechanism {
     fn default() -> Self {
         Self {
             value_types: Default::default(),
+            display_formats: Default::default(),
             version: mechanism_version(),
             rules: BTreeMap::new(),
             triggers: Vec::new(),
             incremental: false,
+            incremental_by_refactor: false,
             guide: String::new(),
             numeric_update: NumericUpdate::default(),
         }

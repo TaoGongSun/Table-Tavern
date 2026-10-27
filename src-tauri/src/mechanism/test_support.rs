@@ -20,6 +20,7 @@ pub(super) fn rule(kind: FieldKind, min: Option<f64>, max: Option<f64>) -> Field
 pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
     Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: rules
@@ -28,6 +29,7 @@ pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
             .collect(),
         triggers: Vec::new(),
         incremental: false,
+        incremental_by_refactor: false,
         guide: String::new(),
     }
 }
@@ -88,6 +90,7 @@ pub(super) fn else_case(text: &str) -> data::TriggerCase {
 pub(super) fn once_mechanism() -> Mechanism {
     Mechanism {
         value_types: Default::default(),
+        display_formats: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
@@ -117,6 +120,7 @@ pub(super) fn once_mechanism() -> Mechanism {
             flag: Some("Events.國變".to_owned()),
         }],
         incremental: true,
+        incremental_by_refactor: false,
         guide: String::new(),
     }
 }

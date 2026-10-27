@@ -31,10 +31,12 @@ pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
 
 /// 導演指示：插入旁白（附加在 GM 上下文最後）；有名單時尾端固定要一行「下一位：」點名，
 /// 旁白與點名一次呼叫完成（包 5 拍板）。
+/// `updates`：這桌開了增量協定，圍欄之後另附 `<UpdateVariable>`（插在「下一位」之前，順序才不打架）。
 pub fn narrate_instruction(
     lang: &str,
     roster: &[String],
     player_name: Option<&str>,
+    updates: bool,
 ) -> ChatMessage {
     let mut instruction = if scaffold_en(lang) {
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
@@ -53,6 +55,9 @@ pub fn narrate_instruction(
          圍欄以外不要有多餘說明。"
             .to_owned()
     };
+    if updates {
+        instruction.push_str(narration_update_note(lang));
+    }
     if !roster.is_empty() {
         let call = if scaffold_en(lang) {
             format!(
@@ -232,6 +237,25 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
         (false, GmTurnFormat::Narration, true) => {
             "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
         }
+    }
+}
+
+/// 一般旁白桌開了增量協定（收編過規則或觸發）：```state 圍欄只管 time／place／present，其餘欄位的變動
+/// 要另附 `<UpdateVariable>`，不然模型以為圍欄就是全部、規則欄位永遠沒人回報（ai-card-refactor 紅 3）。
+pub fn narration_update_note(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => " After the fence, if any field under \"Current state\" other than time, place, and present changed this turn, also output a `<UpdateVariable>` update block with only those changes, copying each path exactly as it appears there.",
+        false => "圍欄之後，「目前狀態」裡 time、place、present 以外的欄位這一回合有變動時，另附一個 `<UpdateVariable>` 更新區塊，只寫有變動的欄位，路徑照「目前狀態」裡的原字逐字抄。",
+    }
+}
+
+/// `narration_update_note` 那種桌的收尾句：允許更新區塊。
+pub fn narration_closing_with_updates(has_roster: bool, lang: &str) -> &'static str {
+    match (scaffold_en(lang), has_roster) {
+        (true, false) => "Now, as the GM, carry out the director instruction above. Output only the narration, the required state fence, and the update block if anything else changed. Do not add a name prefix.",
+        (true, true) => "Now, as the GM, carry out the director instruction above. Output only the narration, the required state fence, the update block if anything else changed, and the `Next:` line. Do not add a name prefix.",
+        (false, false) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與其他欄位有變動時的更新區塊，不要加名字前綴。",
+        (false, true) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄、其他欄位有變動時的更新區塊與「下一位」行，不要加名字前綴。",
     }
 }
 
@@ -806,7 +830,7 @@ mod tests {
             ("fr", "La pluie cesse.", "Vieux port", "Nuit à la taverne"),
             ("ru", "Дождь стих.", "Старый порт", "Ночь в таверне"),
         ] {
-            let instruction = narrate_instruction(lang, &roster, None).content;
+            let instruction = narrate_instruction(lang, &roster, None, false).content;
             assert!(instruction.contains("`Next: <name>`") && instruction.contains("```state"));
             let reply = format!(
                 "{body}\n```state\ntime: 0:00\nplace: {place}\npresent: Renard\n```\nNext: {PLAYER_SENTINEL}"
@@ -1063,5 +1087,28 @@ mod tests {
         } = extract_state_block(reply);
         assert_eq!(fields, vec![(vec!["time".to_owned()], "午夜".to_owned())]);
         assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
+    }
+
+    /// 增量的旁白桌：更新區塊的說明插在「下一位」那句之前，收尾句也允許更新區塊
+    #[test]
+    fn narration_with_updates_asks_for_the_block_before_the_next_speaker_line() {
+        for lang in ["zh-TW", "en"] {
+            let text = narrate_instruction(lang, &["狐狸".to_owned()], None, true).content;
+            let note = text.find("UpdateVariable").expect(lang);
+            let next = text
+                .find(if lang == "en" { "Next:" } else { "下一位" })
+                .expect(lang);
+            assert!(note < next, "{lang}");
+            assert!(!narrate_instruction(lang, &[], None, false)
+                .content
+                .contains("UpdateVariable"));
+            assert!(
+                narration_closing_with_updates(true, lang).contains(if lang == "en" {
+                    "update block"
+                } else {
+                    "更新區塊"
+                })
+            );
+        }
     }
 }

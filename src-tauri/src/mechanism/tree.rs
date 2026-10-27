@@ -193,7 +193,7 @@ pub(super) fn numeric_value(raw: &str) -> Option<f64> {
 /// 模型寫的路徑對回樹上的寫法：逐段走，原文鍵存在就用原文；不存在時找同層「只差簡繁字形」的鍵，
 /// 唯一一個才採用，多個＝歧義回 Err（那一層的候選鍵）。走到樹上沒有的位置就把其餘段原樣接上。
 /// `fold_last=false` 時最後一段不折（insert／move 目的地的新鍵不能被當成拼錯的舊鍵）。
-pub(super) fn canonical_path(
+pub(crate) fn canonical_path(
     tree: &BTreeMap<String, StateNode>,
     path: &[String],
     fold_last: bool,

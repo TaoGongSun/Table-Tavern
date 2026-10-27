@@ -1,3 +1,4 @@
+use super::apply_mechanism::{filter_scope, namespace, open_rule_reporting, Candidates};
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::card_png::{AssetKind, CardAsset};
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
@@ -215,9 +216,11 @@ fn apply_into(
         selection,
         filter_scope(
             tree_before,
+            &state.state.table,
             normalized_interface.as_ref().map(|(fields, _)| fields),
         ),
-    );
+        &namespace(tree_before, &state.state.table),
+    )?;
 
     // 這次會寫的重構殼：下方寫殼分支用同一個值，純空白殼不會先刪舊殼又寫進一份空白。
     let new_shell = match (&outcome.interface, &normalized_interface) {
@@ -292,6 +295,9 @@ fn apply_into(
     let mut state_dirty = player_assigned;
 
     let mut ledger_records = Vec::new();
+    // 這次真的併入的規則與觸發（收編後要不要開回報管道看它們）
+    let mut merged_rules: BTreeMap<String, FieldRule> = BTreeMap::new();
+    let mut merged_triggers: Vec<data::Trigger> = Vec::new();
     for &index in &selection.entry_indices {
         let Some(entry) = outcome.entries.get(index) else {
             continue;
@@ -314,6 +320,8 @@ fn apply_into(
         }
         new_entries += 1;
         if locked {
+            merged_rules.extend(rules.clone());
+            merged_triggers.extend(triggers.iter().cloned());
             state.mechanism.rules.extend(rules);
             state.mechanism.triggers.extend(triggers);
             state_dirty = true;
@@ -365,6 +373,8 @@ fn apply_into(
             .get(&index)
             .cloned()
             .unwrap_or_default();
+        merged_rules.extend(rules.clone());
+        merged_triggers.extend(triggers.iter().cloned());
         state.mechanism.rules.extend(rules);
         state.mechanism.triggers.extend(triggers);
         state_dirty = true;
@@ -374,6 +384,14 @@ fn apply_into(
         mechanisms_applied += 1;
     }
 
+    // 收編了規則或觸發、但沒有殼路徑替它開增量協定（characters 桌、介面沒套成的桌）：GM 原本沒有
+    // 回報這些欄位的管道，規則與觸發形同虛設（ai-card-refactor 紅 3）
+    let mut moved_table_keys = Vec::new();
+    if !state.mechanism.incremental && (!merged_rules.is_empty() || !merged_triggers.is_empty()) {
+        moved_table_keys = open_rule_reporting(&mut state, &merged_rules, &merged_triggers);
+        state_dirty = true;
+    }
+
     if state_dirty {
         // 卡片變數模式交接（events → tree，計畫 8.1）：先把有效值投影寫進狀態樹、控制檔切回 tree，
         // 再寫重建後的樹；`state` 一開頭就是經投影入口讀的，重建建立在有效值上。
@@ -381,7 +399,7 @@ fn apply_into(
         data::write_state(root, world_id, &state)?;
         // 重建狀態樹沒有經過逐字稿，事件快照還停在套用前的舊欄位——不補上去，
         // 玩家一按收回（或換幕）就把重構剛建好的樹換回去。
-        data::sync_scene_state_tree(root, world_id, &state)?;
+        data::sync_scene_state_tree(root, world_id, &state, &moved_table_keys)?;
     }
     if !ledger_records.is_empty() {
         mechanism::append_log(root, world_id, state.current_scene, &ledger_records);
@@ -537,117 +555,6 @@ pub fn apply(
     selection: &RefactorSelection,
 ) -> DataResult<RefactorApplyResult> {
     apply_with_assets(root, world_id, outcome, selection, &[]).map_err(|failure| failure.error)
-}
-
-/// 篩選用的頂層鍵集合：套用前樹空就不篩（None）；非空時＝套用前頂層 ∪ 本次套用介面的頂層。
-fn filter_scope(
-    tree: &BTreeMap<String, data::StateNode>,
-    interface_fields: Option<&serde_json::Value>,
-) -> Option<BTreeSet<String>> {
-    if tree.is_empty() {
-        return None;
-    }
-    let mut scope: BTreeSet<String> = tree.keys().cloned().collect();
-    if let Some(object) = interface_fields.and_then(serde_json::Value::as_object) {
-        scope.extend(object.keys().cloned());
-    }
-    Some(scope)
-}
-
-fn first_segment(path: &str) -> &str {
-    path.split('.').next().unwrap_or_default()
-}
-
-/// 規則留不留：首段 `*`（合法萬用）一律留；否則首段要在集合裡。不篩時全留。
-fn keep_rule(path: &str, scope: Option<&BTreeSet<String>>) -> bool {
-    let head = first_segment(path);
-    head == "*" || scope.is_none_or(|scope| scope.contains(head))
-}
-
-/// 觸發留不留：任一條件路徑或 `trigger.flag` 有一段是 `*` 就丟（求值不支援萬用，帶 default 的
-/// range 會每回合用 default 求值，once 命中會長出字面 `*` 分支），樹空也丟；其餘 range（沒帶
-/// default）／contains 首段要在集合裡，flag 條件與 `trigger.flag` 是新旗標、不比首段。
-fn keep_trigger(trigger: &data::Trigger, scope: Option<&BTreeSet<String>>) -> bool {
-    let wildcard = |path: &str| path.split('.').any(|segment| segment == "*");
-    if trigger.flag.as_deref().is_some_and(wildcard) {
-        return false; // once 命中會長出字面 `*` 分支
-    }
-    trigger
-        .cases
-        .iter()
-        .flat_map(|case| case.when.iter())
-        .all(|condition| {
-            let (path, checked) = match condition {
-                data::Condition::Range { path, default, .. } => (path, default.is_none()),
-                data::Condition::Contains { path, .. } => (path, true),
-                data::Condition::Flag { path, .. } => (path, false),
-            };
-            if wildcard(path) {
-                return false;
-            }
-            !checked || scope.is_none_or(|scope| scope.contains(first_segment(path)))
-        })
-}
-
-type RuleSet = (BTreeMap<String, FieldRule>, Vec<data::Trigger>);
-
-/// 本次要併入的規則／觸發（已篩），依產物 index 存；沒勾的不收。
-struct Candidates {
-    entries: BTreeMap<usize, RuleSet>,
-    mechanisms: BTreeMap<usize, RuleSet>,
-}
-
-impl Candidates {
-    fn collect(
-        outcome: &RefactorOutcome,
-        selection: &RefactorSelection,
-        scope: Option<BTreeSet<String>>,
-    ) -> Self {
-        let scope = scope.as_ref();
-        let mut dropped = (0usize, 0usize);
-        let mut filter = |rules: &BTreeMap<String, FieldRule>, triggers: &[data::Trigger]| {
-            let kept_rules: BTreeMap<String, FieldRule> = rules
-                .iter()
-                .filter(|(path, _)| keep_rule(path, scope))
-                .map(|(path, rule)| (path.clone(), rule.clone()))
-                .collect();
-            let kept_triggers: Vec<data::Trigger> = triggers
-                .iter()
-                .filter(|trigger| keep_trigger(trigger, scope))
-                .cloned()
-                .collect();
-            dropped.0 += rules.len() - kept_rules.len();
-            dropped.1 += triggers.len() - kept_triggers.len();
-            (kept_rules, kept_triggers)
-        };
-        let mut entries = BTreeMap::new();
-        for &index in &selection.entry_indices {
-            let Some(entry) = outcome.entries.get(index) else {
-                continue;
-            };
-            if entry.kind == "mechanism" {
-                entries.insert(index, filter(&entry.rules, &entry.triggers));
-            }
-        }
-        let mut mechanisms = BTreeMap::new();
-        for &index in &selection.mechanism_indices {
-            let Some(mechanism) = outcome.mechanisms.get(index) else {
-                continue;
-            };
-            mechanisms.insert(index, filter(&mechanism.rules, &mechanism.triggers));
-        }
-        if dropped != (0, 0) {
-            log::warn!(
-                "重構套用：{} 條規則、{} 組觸發對不到狀態樹，已略過",
-                dropped.0,
-                dropped.1
-            );
-        }
-        Self {
-            entries,
-            mechanisms,
-        }
-    }
 }
 
 /// 骨架填值用的欄位型別表（點分路徑→"number"｜"bool"｜"list"）。狀態樹會把值轉成字串，型別只能在套用時

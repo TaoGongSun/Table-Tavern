@@ -52,5 +52,14 @@ pub fn table_tree_section(
     if mode == Some("interface") && !crate::mechanism::mvu_source(root, world_id, &state)? {
         return Ok(String::new());
     }
-    Ok(existing_tree_section(&state.state.tree))
+    // 開場狀態只落在平欄的卡（狀態區塊不是 YAML）：time／place／present 以外的鍵也當頂層欄位列出，
+    // AI 才會照原字命名規則路徑，不會自取另一種字形（驻守天数 vs 駐守天數）
+    let mut tree = state.state.tree.clone();
+    for (key, value) in &state.state.table {
+        if !matches!(key.as_str(), "time" | "place" | "present") {
+            tree.entry(key.clone())
+                .or_insert_with(|| crate::data::StateNode::Leaf(value.clone()));
+        }
+    }
+    Ok(existing_tree_section(&tree))
 }

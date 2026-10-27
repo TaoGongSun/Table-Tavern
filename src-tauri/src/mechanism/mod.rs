@@ -31,5 +31,9 @@ mod test_support;
 pub use ledger::apply_block;
 pub use ledger::{append_log, apply_block_typed, read_ledger, BlockScope, Ledger};
 pub use policy::{mvu_source, resolve_numeric_update};
-pub use rules::{leaf_shown, rule_for_path};
+pub use rules::{has_rule, leaf_shown, rule_for_path};
+pub(crate) use tree::canonical_path;
+#[cfg(test)]
+pub(crate) use triggers::evaluate_triggers;
+pub(crate) use triggers::map_state_placeholders;
 pub use types::{Outcome, Record, RecordKind};

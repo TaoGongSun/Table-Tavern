@@ -6,6 +6,7 @@ import { BranchBinding, StateNode } from "../../shared/contracts/backend-contrac
 import { CharacterCard, CharacterMeta } from "../characters/card-model";
 import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
+import { displayWithFormat } from "./state-format";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
 
@@ -27,6 +28,8 @@ interface StateBarProps {
   fields: Record<string, string>;
   tree: Record<string, StateNode>;
   jumps: Record<string, string>;
+  /** 數字欄的顯示模板（點分路徑→「第 {} 天」）；點開編輯仍是數字本身 */
+  displayFormats?: Record<string, string>;
   bindings: BranchBinding[];
   editing: EditingStateField | null;
   onBeginEdit: (path: string[], tree: boolean, value: string) => void;
@@ -47,6 +50,7 @@ export function StateBar({
   fields,
   tree,
   jumps,
+  displayFormats = {},
   bindings,
   editing,
   onBeginEdit,
@@ -117,6 +121,7 @@ export function StateBar({
       editing.path.length === path.length &&
       editing.path.every((segment, index) => segment === path[index]);
     const value = isTree ? treeValueAt(tree, path) : (fields[path[0]] ?? "");
+    const shown = isTree ? displayWithFormat(value, displayFormats[path.join(".")]) : value;
     const jumpMark = jumps[path.join(".")];
     return (
       <div className="state-bar-field" key={path.join("\0")}>
@@ -131,7 +136,7 @@ export function StateBar({
               title={t("stateEditHint")}
               onClick={() => onBeginEdit(path, isTree, value)}
             >
-              {value ? displayUserMacro(value, player?.name || t("playerLabel")) : t("stateEmptyValue")}
+              {value ? displayUserMacro(shown, player?.name || t("playerLabel")) : t("stateEmptyValue")}
             </button>
             {jumpMark && (
               <button

@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { type TableStateController, useTableStateController } from "./useTableStateController";
 
 const calls: string[] = [];
@@ -42,6 +43,29 @@ describe("useTableStateController 手改", () => {
     expect(calls).toContain("onEdited");
     expect(calls.indexOf("onEdited")).toBeGreaterThan(calls.indexOf("read_state"));
     expect(onEdited).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+  });
+});
+
+describe("useTableStateController 數字欄顯示模板", () => {
+  it("照模板輸入「第 8 天」存成數字 8〔作者裁決 2026-10-27〕", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    let controller: TableStateController | null = null;
+    function Probe() {
+      controller = useTableStateController({ worldId: "w1", onError: () => {} });
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(createElement(Probe)));
+    act(() => controller!.hydrate({ table: {}, tree: { 驻守天数: "7" } }, [], { 驻守天数: "第 {} 天" }));
+    vi.mocked(invoke).mockClear();
+    await act(async () => {
+      await controller!.save(["驻守天数"], true, "第 8 天");
+    });
+    expect(vi.mocked(invoke).mock.calls[0]).toEqual([
+      "set_state_path",
+      { worldId: "w1", path: ["驻守天数"], value: "8" },
+    ]);
     await act(async () => root.unmount());
   });
 });
