@@ -35,15 +35,19 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
 - [takeover-fence-scene-keys](tasks/takeover-fence-scene-keys.md) — 接管桌回覆不收圍欄，平欄 time／place／present 凍住 — 下一步：未排程；先重現
 - [card-regex-user-char-macro](tasks/card-regex-user-char-macro.md) — 卡片 regex 替換字串不代換 {{user}}／{{char}}，面板顯示字面 — 下一步：未排程
+- [multichar-next-speaker-silent](tasks/multichar-next-speaker-silent.md) — 多角色（非介面）桌 GM 每輪寫「下一位：X」但角色不接話 — 下一步：未排程；先重現
+- [mvu-analysis-section-replay](tasks/mvu-analysis-section-replay.md) — GM 在 <Analysis> 引用的 _.set 也被執行，重複套用且第二次回饋誤導 — 下一步：未排程；先查上游 MVU 是否解析 Analysis 段
+- [undo-two-clicks-summary-line](tasks/undo-two-clicks-summary-line.md) — 收回上一句第一下只收系統變動摘要行，第二下才收 GM 旁白 — 下一步：未排程
+- [agy-lane-shape-vs-spec](tasks/agy-lane-shape-vs-spec.md) — agy 實際走續聊且每角色一條 lane，與 api-shared-lane 規格的四路共線不符 — 下一步：未排程；先查是刻意改的（改文件）還是回歸（修）
 - [story-html-whitelist](tasks/story-html-whitelist.md) — 訊息顯示把所有原始 HTML 跳脫成字，ST 會渲染白名單標籤、剝掉不認得的標籤 — 下一步：未排程
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下三案依其數據決定做不做：
-- [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：排在 api-shared-lane 的四路成對測試之後開工——那批數據才估得準底線該怎麼定、以及這個功能還需不需要。開工首步是拍板底線的統計量（最小值／眾數／出現 ≥N 次的最小值）與「樣本不足就不判定」的 N。
-- [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：[usage-cache-audit](handoffs/archive/usage-cache-audit.md) 四家實跑對帳已完成（結果見 plans/usage-cache-audit.md「四」），據此決定做不做〔作者裁決 2026-10-02〕；ox-alpha 若已下架，根據的現象要重新立證。
-- [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
+- [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：可開工〔模型判斷·未裁決〕：實測佇列第 14 項（2026-10-28）codex 0.164.0 自帶段實為 11,008（非 9,984、隨 CLI 版本變），9 通我方 0 命中卻全標 hit、額度分頁顯示 36–76%；建議底線依「通道＋CLI 版本」取眾數、樣本 ≥3 才判定（出現過 6,912 低於自帶段，不能取最小值）。
+- [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：開工首步先在測試 root PATH 放包裝腳本抓兩通 codex 實際輸入、比對共同前綴長度：短＝我們組裝問題照規格做；長卻只中自帶段＝codex 自身插入變動內容，改記已知限制。agy 每角色一條 lane、6 通全 0，不適用；API 路缺數據（OpenRouter 未儲值）。
+- [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：仍缺數據（實測第 14 項 API 路因 OpenRouter 未儲值未測，2026-10-28）；開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 
 ## 階段 F：生圖
 [sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測；之後 vn-mode 前置實測 a／b／c（已有[實測報告](plans/vn-mode-image-spike.md)，待作者三項決定）。
