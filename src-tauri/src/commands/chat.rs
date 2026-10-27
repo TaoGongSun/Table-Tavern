@@ -412,6 +412,7 @@ pub(crate) fn gm_commit_apply(
     let outcome = apply.then(|| {
         let scene = state.current_scene;
         state.mechanism.numeric_update = loaded.numeric_update;
+        state.mechanism.list_key_seeds = loaded.list_key_seeds.clone();
         let scope = if takeover {
             mechanism::BlockScope::TakeoverReply
         } else {

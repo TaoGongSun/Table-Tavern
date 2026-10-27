@@ -22,6 +22,7 @@ pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: rules
             .iter()
@@ -94,6 +95,7 @@ pub(super) fn once_mechanism() -> Mechanism {
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![data::Trigger {

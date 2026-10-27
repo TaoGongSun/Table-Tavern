@@ -88,6 +88,7 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     let mut state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
     // 數字欄更新策略算這一次：提示詞與這一輪的提交（turn.commit）都用這一份
     state.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &state);
+    state.mechanism.list_key_seeds = mechanism::resolve_list_key_seeds(root, world_id);
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     let takeover = data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());

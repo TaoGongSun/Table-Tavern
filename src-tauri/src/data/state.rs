@@ -209,6 +209,10 @@ pub struct Mechanism {
     /// 套用與提示詞同一份；沒算過＝DeltaOnly（原規則）。
     #[serde(skip)]
     pub numeric_update: NumericUpdate,
+    /// 清單欄鍵名校正的參考（`mechanism::list_keys`）：重構產物介面的初始值，路徑 → 字串值。不落檔，
+    /// 由載入層（`mechanism::resolve_list_key_seeds`）讀 refactor-outcome.json 填好；沒重構過＝空。
+    #[serde(skip)]
+    pub list_key_seeds: BTreeMap<Vec<String>, String>,
 }
 
 /// 數字欄（Number／Counter／Pair）怎麼接受模型的更新。
@@ -237,6 +241,7 @@ impl Default for Mechanism {
             incremental_by_refactor: false,
             guide: String::new(),
             numeric_update: NumericUpdate::default(),
+            list_key_seeds: BTreeMap::new(),
         }
     }
 }

@@ -140,6 +140,7 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![trigger_with_scope("侵略", &[])],
@@ -175,6 +176,7 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![trigger_with_scope("侵略", &[])],
@@ -209,6 +211,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![
@@ -254,6 +257,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         triggers: vec![trigger_with_scope(
@@ -286,6 +290,7 @@ fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
+        list_key_seeds: Default::default(),
         version: 1,
         rules: BTreeMap::new(),
         // 刻意讓清單順序跟字典序相反，確認印出順序跟著 Vec 走。

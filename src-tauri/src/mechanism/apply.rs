@@ -1,6 +1,7 @@
 use crate::data::{self, FieldKind, FieldRule, Mechanism, NumericUpdate, StateNode, UpdateMode};
 use std::collections::BTreeMap;
 
+use super::list_keys::{BatchKeys, Prepared};
 use super::note::{build_notes, shown_pointer, snippet};
 use super::rules::rule_for;
 use super::tree::{
@@ -39,6 +40,14 @@ pub(super) fn apply_updates_typed(
 ) -> Outcome {
     let mut records = Vec::new();
     let mut changes = BTreeMap::new();
+    let patches: Vec<&Patch> = parsed
+        .iter()
+        .filter_map(|item| match item {
+            Parsed::Patch(patch) => Some(patch),
+            Parsed::Note(_) => None,
+        })
+        .collect();
+    let list_keys = BatchKeys::new(tree, mechanism, &patches);
     for item in parsed {
         let patch = match item {
             Parsed::Patch(patch) => patch,
@@ -54,9 +63,13 @@ pub(super) fn apply_updates_typed(
                 continue;
             }
         };
-        let patch = &canonical;
+        let prepared = list_keys.prepare(mechanism, &canonical);
+        let patch = prepared
+            .as_ref()
+            .map_or(&canonical, |prepared| &prepared.patch);
         if !view.is_active() {
             apply_one(tree, mechanism, patch, view, &mut records, &mut changes);
+            record_list_keys(tree, prepared.as_ref(), &changes, &mut records);
             continue;
         }
         let before = tree.clone();
@@ -75,6 +88,7 @@ pub(super) fn apply_updates_typed(
         if let (true, Some(moved)) = (move_done, moved) {
             view.overwrite(&patch.path, &moved);
         }
+        record_list_keys(tree, prepared.as_ref(), &changes, &mut records);
     }
     let notes = build_notes(&records);
     Outcome {
@@ -82,6 +96,28 @@ pub(super) fn apply_updates_typed(
         notes,
         changes,
         typed: None,
+    }
+}
+
+/// 清單欄鍵名校正：真的寫進樹（這一批有變動標記、葉子就是校正後的值）才記帳。
+fn record_list_keys(
+    tree: &BTreeMap<String, StateNode>,
+    prepared: Option<&Prepared>,
+    changes: &BTreeMap<String, String>,
+    records: &mut Vec<Record>,
+) {
+    let Some(prepared) = prepared else {
+        return;
+    };
+    let written = changes.contains_key(&prepared.patch.path.join("."))
+        && data::node_at(tree, &prepared.patch.path).and_then(leaf_value)
+            == prepared
+                .patch
+                .value
+                .as_ref()
+                .and_then(|value| value.as_str());
+    if written {
+        records.push(prepared.record());
     }
 }
 

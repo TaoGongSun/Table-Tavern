@@ -368,6 +368,7 @@ mod tests {
             value_types: Default::default(),
             display_formats: Default::default(),
             numeric_update: Default::default(),
+            list_key_seeds: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
             triggers: vec![data::Trigger {
@@ -417,6 +418,7 @@ mod tests {
             value_types: Default::default(),
             display_formats: Default::default(),
             numeric_update: Default::default(),
+            list_key_seeds: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
             triggers: vec![data::Trigger {
@@ -444,6 +446,7 @@ mod tests {
             value_types: Default::default(),
             display_formats: Default::default(),
             numeric_update: Default::default(),
+            list_key_seeds: Default::default(),
             version: 1,
             rules: BTreeMap::new(),
             triggers: vec![data::Trigger {

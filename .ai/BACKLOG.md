@@ -31,7 +31,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 D：引擎行為實聊
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
 
-- [takeover-yaml-key-glyph](tasks/takeover-yaml-key-glyph.md) — 接管桌續聊 GM 把清單欄 YAML 鍵寫成繁體，原卡腳本只認簡體鍵而少欄（ai-card-refactor B5 重現） — 下一步：未排程；先重現
 - [mvu-object-key-glyph](tasks/mvu-object-key-glyph.md) — 物件值 replace 的巢狀鍵不做簡繁折疊，未重構 MVU 卡會長出繁體鍵 — 下一步：未排程；先重現
 - [takeover-list-structured](tasks/takeover-list-structured.md) — 接管桌清單欄改結構化、GM 只報變動值（yaml-key-glyph 做法 D） — 下一步：未排程；需作者決定要不要做
 - [takeover-flat-nonfixed-keys](tasks/takeover-flat-nonfixed-keys.md) — 介面接管路線開增量時平欄非固定劇情鍵凍住不更新 — 下一步：先重現

@@ -396,6 +396,7 @@ pub fn append_opening_keyed(
             None => {
                 world.mechanism.numeric_update =
                     mechanism::resolve_numeric_update(root, world_id, &world);
+                world.mechanism.list_key_seeds = mechanism::resolve_list_key_seeds(root, world_id);
                 let before = world.state.tree.clone();
                 let base = message_vars::opening_stat(tx, scene)?;
                 // 介面接管桌的開場白自帶原卡格式的狀態區塊：不收（讀不到殼就不猜，整筆不貼）
