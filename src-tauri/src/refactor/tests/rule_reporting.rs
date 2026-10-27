@@ -61,6 +61,7 @@ fn characters_outcome(entries: Vec<crate::refactor_ai::RefactorNewEntry>) -> Ref
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     }
 }
 

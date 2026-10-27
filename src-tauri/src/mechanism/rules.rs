@@ -7,9 +7,13 @@ pub fn rule_for_path(mechanism: &Mechanism, path: &[String], current: Option<&st
     rule_for(mechanism, path, current)
 }
 
-/// 這片葉子會不會出現在 GM 看到的「目前狀態」：全量桌全送；增量桌 Rare 不送、Snapshot 只在對齊回合送。
+/// 這片葉子會不會出現在 GM 看到的「目前狀態」：鏡像欄不送；全量桌全送；增量桌 Rare 不送、Snapshot 只在對齊回合送。
 /// 渲染（`state_view`）與回饋列鍵共用。
 pub fn leaf_shown(mechanism: &Mechanism, path: &[String], value: &str, align: bool) -> bool {
+    // 鏡像欄由 App 從固定鍵抄，列給 GM 只會招來同義的雙報
+    if mechanism.mirrors.contains_key(&path.join(".")) {
+        return false;
+    }
     if !mechanism.incremental {
         return true;
     }

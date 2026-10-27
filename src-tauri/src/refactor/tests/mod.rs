@@ -1,5 +1,6 @@
 mod characters;
 mod entries;
+mod fixed_key_mirror;
 mod flat_field_reporting;
 mod interface;
 mod mechanism;

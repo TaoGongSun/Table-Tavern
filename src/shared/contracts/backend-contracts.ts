@@ -62,7 +62,7 @@ export interface WorldState {
     jumps?: Record<string, string>;
   };
   // 數字欄的顯示寫法（點分路徑→模板，`{}` 是數字的位置，例：「第 {} 天」）：樹上存數字，畫面照模板套回原寫法
-  mechanism?: { display_formats?: Record<string, string> };
+  mechanism?: { display_formats?: Record<string, string>; mirrors?: Record<string, string> };
 }
 
 // 分支指認清單：auto＝後端同名自動比對出來的結果，還沒真的存進 state.json

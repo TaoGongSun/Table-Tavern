@@ -423,6 +423,13 @@ fn apply_into(
         moved_table_keys = open_rule_reporting(&mut state, &merged_rules, &merged_triggers);
         state_dirty = true;
     }
+    // 卡欄位與固定鍵同義的標記：收圍欄的桌改成 App 鏡像，不要模型雙報
+    let fence_table = data::requires_present_report(root, world_id, state.refactor_mode.as_deref());
+    let unmatched = mechanism::mark_survey_mirrors(&mut state, &outcome.mirrors, fence_table);
+    if !unmatched.is_empty() {
+        log::warn!("refactor mirrors without a matching tree leaf, dropped: {unmatched:?}");
+    }
+    state_dirty |= mechanism::adopt_mirror_marks(&mut state, fence_table);
 
     if state_dirty {
         // 卡片變數模式交接（events → tree，計畫 8.1）：先把有效值投影寫進狀態樹、控制檔切回 tree，

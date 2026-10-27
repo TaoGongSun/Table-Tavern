@@ -304,6 +304,7 @@ export function AppWorkspace({
                 tree={tableState.tree}
                 jumps={tableState.jumps}
                 displayFormats={tableState.displayFormats}
+                mirrors={tableState.mirrors}
                 bindings={tableState.bindings}
                 editing={tableState.editing}
                 onBeginEdit={tableState.beginEdit}

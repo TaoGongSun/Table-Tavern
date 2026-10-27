@@ -535,7 +535,7 @@ function App() {
     setScene(state.current_scene);
     setSceneTitles(state.scene_titles ?? {});
     setSceneLabels(state.scene_labels ?? {});
-    tableState.hydrate(state.state, bindings, state.mechanism?.display_formats);
+    tableState.hydrate(state.state, bindings, state.mechanism?.display_formats, state.mechanism?.mirrors);
     chat.hydrate(transcript);
     // 角色圖／GM 圖／玩家卡由 controller 自己的 effect 補：hydrate 先把上一桌的清掉，
     // 這裡一路同步提交，不讓 await 把 React batch 切成跨桌混合的中間畫面

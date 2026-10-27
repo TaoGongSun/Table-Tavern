@@ -85,6 +85,10 @@ pub struct RefactorOutcome {
     /// 不是同一條（跨桌套用、盤點後玩家改了內容）。空＝舊產物，只照 UID 對。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub source_fingerprints: BTreeMap<String, String>,
+    /// 盤點標的鏡像欄（欄位名 → "place"｜"present"，card-field-overlaps-fixed-keys）：套用時對上樹上同名葉子
+    /// 才收進 `mechanism.mirrors`，對不上就丟掉該行。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mirrors: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

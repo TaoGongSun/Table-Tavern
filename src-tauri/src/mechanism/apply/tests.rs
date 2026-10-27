@@ -345,6 +345,7 @@ fn notes_are_deduped_and_capped_at_five() {
             inject: InjectLevel::Turn,
             branch: None,
             formula: None,
+            same_as: None,
         },
     )]);
     let patch = Patch {

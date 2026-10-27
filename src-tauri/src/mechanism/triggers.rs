@@ -403,6 +403,7 @@ mod tests {
             incremental: true,
             incremental_by_refactor: false,
             guide: String::new(),
+            mirrors: Default::default(),
         };
 
         let high = tree_from(&[("World.Invasion", "90")]);
@@ -449,6 +450,7 @@ mod tests {
             incremental: true,
             incremental_by_refactor: false,
             guide: String::new(),
+            mirrors: Default::default(),
         };
         let tree = tree_from(&[("World.Invasion", "10")]);
         let outcome = evaluate_triggers(&tree, &mechanism, "阿濤");
@@ -480,6 +482,7 @@ mod tests {
             incremental: true,
             incremental_by_refactor: false,
             guide: String::new(),
+            mirrors: Default::default(),
         };
         let tree = tree_from(&[("World.Location", "晨港")]);
         let outcome = evaluate_triggers(&tree, &mechanism, "阿濤");

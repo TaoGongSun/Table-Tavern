@@ -112,6 +112,8 @@ export interface RefactorOutcome {
   preserve_source_uids?: string[];
   /** 盤點當下的來源身分指紋（uid → 指紋）：套用時核對來源條目還是不是同一條（跨桌套用、盤點後改過）。 */
   source_fingerprints?: Record<string, string>;
+  /** 盤點標的鏡像欄（欄位名 → place｜present）：套用時對上樹上同名葉子才由 App 從固定鍵抄。 */
+  mirrors?: Record<string, string>;
 }
 
 export interface RefactorSelection {
@@ -186,6 +188,8 @@ export interface RefactorSurveyOutcome {
   raw: string;
   /** 盤點當下整桌條目的身分指紋（uid → 指紋，App 在送 AI 前取的快照）：照抄進產物，套用時核對來源。 */
   source_fingerprints?: Record<string, string>;
+  /** MIRRORS：與固定鍵嚴格同義的欄位（欄位名 → place｜present），照抄進產物。 */
+  mirrors?: Record<string, string>;
 }
 
 /** 本地零呼叫組裝的完整產物，對照後端 src-tauri/src/refactor_assemble.rs 的 RefactorLocalAssembly。 */
@@ -473,6 +477,7 @@ export function assembleRefactorOutcome(parts: {
   mode?: string;
   preserveSourceUids?: string[];
   sourceFingerprints?: Record<string, string>;
+  mirrors?: Record<string, string>;
 }): RefactorOutcome {
   return {
     characters: parts.characters,
@@ -490,6 +495,7 @@ export function assembleRefactorOutcome(parts: {
     ...(parts.sourceFingerprints && Object.keys(parts.sourceFingerprints).length > 0
       ? { source_fingerprints: parts.sourceFingerprints }
       : {}),
+    ...(parts.mirrors && Object.keys(parts.mirrors).length > 0 ? { mirrors: parts.mirrors } : {}),
   };
 }
 
@@ -678,6 +684,14 @@ export function parseRefactorOutcomeValue(raw: unknown): RefactorOutcome {
     if (Object.keys(fingerprints).length > 0) {
       outcome.source_fingerprints = fingerprints as Record<string, string>;
     }
+  }
+  // 鏡像欄對照：缺席＝舊產物；只收 place／present，其餘值或形狀不對＝壞檔拒收
+  if (raw.mirrors !== undefined) {
+    const mirrors = raw.mirrors;
+    if (!isRecord(mirrors) || Object.values(mirrors).some((value) => value !== "place" && value !== "present")) {
+      throw invalid();
+    }
+    if (Object.keys(mirrors).length > 0) outcome.mirrors = mirrors as Record<string, string>;
   }
   // 全區皆空＝這檔案沒有任何內容，多半根本不是重構產物；dropped／unabsorbed／audit 有其一
   // 仍算合法產物——純介面卡選 characters 的 dropped-only 匯出要能讀回重玩（套用落 mode）。

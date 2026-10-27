@@ -21,6 +21,7 @@ fn rule(kind: FieldKind, update: UpdateMode) -> FieldRule {
         inject: InjectLevel::Turn,
         branch: None,
         formula: None,
+        same_as: None,
     }
 }
 
@@ -52,6 +53,7 @@ fn outcome_with(
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     }
 }
 

@@ -43,6 +43,8 @@ interface StateBarProps {
   jumps: Record<string, string>;
   /** 數字欄的顯示模板（點分路徑→「第 {} 天」）；點開編輯仍是數字本身 */
   displayFormats?: Record<string, string>;
+  /** 鏡像欄（點分路徑）：跟著地點／在場自動更新，不給手改 */
+  mirrors?: Record<string, string>;
   bindings: BranchBinding[];
   editing: EditingStateField | null;
   onBeginEdit: (path: string[], tree: boolean, value: string) => void;
@@ -66,6 +68,7 @@ export function StateBar({
   tree,
   jumps,
   displayFormats = {},
+  mirrors = {},
   bindings,
   editing,
   onBeginEdit,
@@ -147,6 +150,22 @@ export function StateBar({
     const value = isTree ? treeValueAt(tree, path) : (fields[path[0]] ?? "");
     const shown = isTree ? displayWithFormat(value, displayFormats[path.join(".")]) : value;
     const jumpMark = jumps[path.join(".")];
+    const shownText = value
+      ? isTree
+        ? displayUserMacro(shown, playerName)
+        : displayValue(path[0], shown)
+      : t("stateEmptyValue");
+    // 鏡像欄跟著固定鍵走：照樣顯示、不給點開改（改地點／在場那一格就會帶過來）
+    if (isTree && mirrors[path.join(".")]) {
+      return (
+        <div className="state-bar-field" key={path.join("\0")}>
+          <span className="state-bar-label">{label}</span>
+          <div className="state-bar-value-row">
+            <span className="state-bar-value">{shownText}</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="state-bar-field" key={path.join("\0")}>
         <span className="state-bar-label">{label}</span>
@@ -160,7 +179,7 @@ export function StateBar({
               title={t("stateEditHint")}
               onClick={() => onBeginEdit(path, isTree, value)}
             >
-              {value ? (isTree ? displayUserMacro(shown, playerName) : displayValue(path[0], shown)) : t("stateEmptyValue")}
+              {shownText}
             </button>
             {jumpMark && (
               <button

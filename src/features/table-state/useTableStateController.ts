@@ -39,6 +39,8 @@ export interface TableStateController {
   jumps: Record<string, string>;
   /** 數字欄的顯示模板：路徑（點分）→「第 {} 天」這類原寫法 */
   displayFormats: Record<string, string>;
+  /** 鏡像欄：路徑（點分）→ 跟著哪個固定鍵（place／present）走，畫面上唯讀 */
+  mirrors: Record<string, string>;
   /** 每條分支目前綁給哪個角色 */
   bindings: BranchBinding[];
   editing: EditingStateField | null;
@@ -47,6 +49,7 @@ export interface TableStateController {
     state: WorldState["state"] | undefined,
     bindings: BranchBinding[],
     displayFormats?: Record<string, string>,
+    mirrors?: Record<string, string>,
   ) => void;
   /** 重讀這桌的狀態與綁定 */
   refresh: () => Promise<void>;
@@ -76,6 +79,7 @@ export function useTableStateController(input: {
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
   const [displayFormats, setDisplayFormats] = useState<Record<string, string>>({});
+  const [mirrors, setMirrors] = useState<Record<string, string>>({});
   // 分支指認清單：每條狀態樹分支目前綁給哪個角色，換桌／讀狀態一起重載
   const [branchBindings, setBranchBindings] = useState<BranchBinding[]>([]);
   const [editingStateField, setEditingStateField] = useState<EditingStateField | null>(null);
@@ -86,12 +90,18 @@ export function useTableStateController(input: {
   // 換桌世代：hydrate 一次就換，在途的重讀回來時世代不同就不碰畫面
   const readGeneration = useRef(0);
   const hydrate = useCallback(
-    (state: WorldState["state"] | undefined, bindings: BranchBinding[], formats?: Record<string, string>) => {
+    (
+      state: WorldState["state"] | undefined,
+      bindings: BranchBinding[],
+      formats?: Record<string, string>,
+      mirrorPaths?: Record<string, string>,
+    ) => {
       readGeneration.current += 1;
       setTableState(state?.table ?? {});
       setTableTree(state?.tree ?? {});
       setTableJumps(state?.jumps ?? {});
       setDisplayFormats(formats ?? {});
+      setMirrors(mirrorPaths ?? {});
       setBranchBindings(bindings);
     },
     [],
@@ -125,6 +135,7 @@ export function useTableStateController(input: {
           setTableTree(state.state?.tree ?? {});
           setTableJumps(state.state?.jumps ?? {});
           setDisplayFormats(state.mechanism?.display_formats ?? {});
+          setMirrors(state.mechanism?.mirrors ?? {});
           setBranchBindings(bindings);
         } while (job.again);
       } finally {
@@ -207,6 +218,7 @@ export function useTableStateController(input: {
       tree: tableTree,
       jumps: tableJumps,
       displayFormats,
+      mirrors,
       bindings: branchBindings,
       editing: editingStateField,
       hydrate,
@@ -224,6 +236,7 @@ export function useTableStateController(input: {
       tableTree,
       tableJumps,
       displayFormats,
+      mirrors,
       branchBindings,
       editingStateField,
       hydrate,

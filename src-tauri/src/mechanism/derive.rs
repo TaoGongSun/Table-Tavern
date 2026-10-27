@@ -144,6 +144,7 @@ mod tests {
                 inject: InjectLevel::Turn,
                 branch: None,
                 formula: None,
+                same_as: None,
             },
         )]);
         let mut saw_change = false;

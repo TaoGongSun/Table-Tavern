@@ -48,6 +48,7 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(Vec::new());
 
@@ -123,6 +124,7 @@ fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_a
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -184,6 +186,7 @@ fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -241,6 +244,7 @@ fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -273,6 +277,7 @@ fn apply_then_undo_keeps_refactor_outcome_file() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -333,6 +338,7 @@ fn undo_removes_new_entries_including_locked() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -430,6 +436,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -499,6 +506,7 @@ fn apply_reports_changed_existing_entries() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),

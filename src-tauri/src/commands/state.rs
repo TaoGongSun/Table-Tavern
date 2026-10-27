@@ -49,6 +49,7 @@ pub(crate) async fn set_table_state(
                     state.state.table.insert(key.clone(), value.clone());
                 }
             }
+            mechanism::sync_mirrors_from_edit(state, &fields);
             Ok(Some(state.clone()))
         })?
         .expect("update_state 回 Some");

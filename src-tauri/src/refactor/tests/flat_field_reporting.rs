@@ -46,6 +46,7 @@ fn orc_outcome(source_uid: u64) -> (RefactorOutcome, RefactorSelection) {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),

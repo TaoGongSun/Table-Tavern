@@ -144,6 +144,9 @@ struct MechanismUndo {
     /// 不寫回的話撤銷後樹與規則回到舊樣子、描述卻還是新集合，GM 的寫入會被形狀檢查拒收。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     collections_before: Option<BTreeMap<String, data::CollectionSpec>>,
+    /// 這次操作改了鏡像欄表（mechanism.mirrors）：整份原表，undo 寫回；None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mirrors_before: Option<BTreeMap<String, String>>,
     /// 這次操作從開場狀態平欄搬走的鍵與原值（重構收編規則時搬進樹），undo 插回平欄。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     removed_table: BTreeMap<String, String>,
@@ -163,6 +166,7 @@ impl MechanismUndo {
             && self.value_types_before.is_none()
             && self.display_formats_before.is_none()
             && self.collections_before.is_none()
+            && self.mirrors_before.is_none()
             && self.removed_table.is_empty()
     }
 }
@@ -468,6 +472,8 @@ fn diff_mechanism(
         .then(|| before.mechanism.display_formats.clone());
     let collections_before = (before.mechanism.collections != after.mechanism.collections)
         .then(|| before.mechanism.collections.clone());
+    let mirrors_before = (before.mechanism.mirrors != after.mechanism.mirrors)
+        .then(|| before.mechanism.mirrors.clone());
 
     let removed_table: BTreeMap<String, String> = before
         .state
@@ -491,6 +497,7 @@ fn diff_mechanism(
         value_types_before,
         display_formats_before,
         collections_before,
+        mirrors_before,
     };
     (!undo.is_empty()).then_some(undo)
 }
@@ -1111,6 +1118,9 @@ fn undo_last(
             }
             if let Some(collections) = &mechanism.collections_before {
                 state.mechanism.collections = collections.clone();
+            }
+            if let Some(mirrors) = &mechanism.mirrors_before {
+                state.mechanism.mirrors = mirrors.clone();
             }
             for (key, value) in &mechanism.removed_table {
                 state

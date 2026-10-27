@@ -222,3 +222,24 @@ fn parse_survey_skips_malformed_groups_lines() {
     assert_eq!(outcome.groups.len(), 1);
     assert_eq!(outcome.groups[0].id, "g3");
 }
+
+/// MIRRORS：一行「欄位名 = place／present」（含斜線欄名），其他值丟掉；FIELDS 不被污染。
+#[test]
+fn parse_survey_reads_mirrors_without_touching_fields() {
+    let raw = "## FIELDS\n- 驻守天数\n- 当前环境\n- 驻留/交涉角色\n\n## MIRRORS\n- 当前环境 = place\n- 驻留/交涉角色 = Present\n- 驻守天数 = time\n- 没有等号\n";
+    let outcome = parse_survey(raw);
+    assert_eq!(
+        outcome.fields,
+        vec!["驻守天数", "当前环境", "驻留/交涉角色"]
+    );
+    assert_eq!(
+        outcome.mirrors,
+        [
+            ("当前环境".to_owned(), "place".to_owned()),
+            ("驻留/交涉角色".to_owned(), "present".to_owned())
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert!(parse_survey("## FIELDS\n- 好感度\n").mirrors.is_empty());
+}

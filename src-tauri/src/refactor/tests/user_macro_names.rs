@@ -23,6 +23,7 @@ fn outcome_of(characters: Vec<RefactorCharacter>) -> RefactorOutcome {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     }
 }
 

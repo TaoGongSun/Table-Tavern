@@ -28,6 +28,7 @@ fn outcome(
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: fingerprints,
+        mirrors: Default::default(),
     }
 }
 

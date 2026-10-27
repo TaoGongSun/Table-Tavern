@@ -17,6 +17,7 @@ pub(super) fn rule(kind: FieldKind) -> FieldRule {
         inject: InjectLevel::Turn,
         branch: None,
         formula: None,
+        same_as: None,
     }
 }
 
@@ -72,6 +73,7 @@ pub(super) fn interface_outcome(
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     }
 }
 

@@ -26,6 +26,7 @@ fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     apply(
         root.path(),
@@ -93,6 +94,7 @@ fn apply_ignores_invalid_mode_values() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     apply(
         root.path(),
@@ -186,6 +188,7 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -270,6 +273,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
                     inject: InjectLevel::Turn,
                     branch: None,
                     formula: None,
+                    same_as: None,
                 },
             )]),
             guide: "每回合報時間".to_owned(),
@@ -282,6 +286,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -321,6 +326,7 @@ fn normalize_collapses_mirror_branch_with_shell_deciding_canon() {
         inject: InjectLevel::Turn,
         branch: None,
         formula: None,
+        same_as: None,
     };
     let state_fields = serde_json::json!({
         "地點": "",
@@ -448,6 +454,7 @@ fn apply_rejects_conflicting_interface_before_any_write() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: vec![0],
@@ -533,6 +540,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -586,6 +594,7 @@ fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -655,6 +664,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -708,6 +718,7 @@ fn apply_interface_without_shell_creates_no_shell_file() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -755,6 +766,7 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),

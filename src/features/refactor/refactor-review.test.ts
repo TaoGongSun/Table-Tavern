@@ -194,6 +194,19 @@ describe("保留來源", () => {
       parseRefactorOutcome(JSON.stringify({ ...outcome, source_fingerprints: { "5": 1 } })),
     ).toThrow(REFACTOR_IMPORT_INVALID);
   });
+
+  it("盤點的鏡像欄對照照抄進產物，匯出再匯入留著；值不是 place／present＝壞檔", () => {
+    const entries = [{ title: "設定", kind: "setting", content: "x", source_uids: ["5"], rules: {}, triggers: [] } as never];
+    const mirrors = { 当前环境: "place", "驻留/交涉角色": "present" };
+    const outcome = assembleRefactorOutcome({ characters: [], interfaces: [], entries, mirrors });
+    expect(outcome.mirrors).toEqual(mirrors);
+    expect(parseRefactorOutcome(JSON.stringify(outcome)).mirrors).toEqual(mirrors);
+    const without = assembleRefactorOutcome({ characters: [], interfaces: [], entries, mirrors: {} });
+    expect(parseRefactorOutcome(JSON.stringify(without)).mirrors).toBeUndefined();
+    expect(() => parseRefactorOutcome(JSON.stringify({ ...outcome, mirrors: { 当前环境: "time" } }))).toThrow(
+      REFACTOR_IMPORT_INVALID,
+    );
+  });
 });
 
 describe("localConvertPerson", () => {

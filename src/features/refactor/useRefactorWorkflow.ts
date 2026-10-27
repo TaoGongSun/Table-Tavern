@@ -669,6 +669,7 @@ export function useRefactorWorkflow({
           audit: local.audit,
           mode,
           sourceFingerprints: survey.source_fingerprints,
+          mirrors: survey.mirrors,
           preserveSourceUids: unfinishedSourceUids(
             pool.map((task) => ({ uids: refactorTaskUids(task), succeeded: succeeded.has(task) })),
             conflictUids,

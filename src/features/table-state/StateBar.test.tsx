@@ -205,3 +205,35 @@ describe("StateBar present 顯示字形", () => {
     expect(fieldButton(2).textContent).toBe("阿古拉、周掌櫃");
   });
 });
+
+describe("StateBar 鏡像欄", () => {
+  it("跟著固定鍵走的卡欄位照樣顯示但不給點開改，其他葉子照舊可改", () => {
+    act(() =>
+      root.render(
+        <StateBar
+          fields={{ place: "北坡" }}
+          tree={{ 当前环境: "北坡", 剧情阶段: "初始" } as never}
+          jumps={{}}
+          mirrors={{ 当前环境: "place" }}
+          bindings={[]}
+          editing={null}
+          onBeginEdit={noop}
+          onChangeEditValue={noop}
+          onSave={noop}
+          onCancelEdit={noop}
+          onMarkCounter={noop}
+          onBind={noop}
+          player={null}
+          castCount={1}
+          cast={[]}
+        />,
+      ),
+    );
+    const rows = [...host.querySelectorAll(".state-tree-children .state-bar-field, .state-bar-field")];
+    const row = (label: string) =>
+      rows.find((el) => el.querySelector(".state-bar-label")?.textContent === label);
+    expect(row("当前环境")?.querySelector("button")).toBeNull();
+    expect(row("当前环境")?.textContent).toContain("北坡");
+    expect(row("剧情阶段")?.querySelector("button.state-bar-value")).not.toBeNull();
+  });
+});

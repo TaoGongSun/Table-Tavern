@@ -363,6 +363,8 @@ pub(super) fn local_rules(
     user_name: &str,
     records: &mut Vec<Record>,
 ) {
+    // 鏡像欄先跟上固定鍵，觸發與衍生值才讀得到本輪的地點／在場
+    super::mirror::sync_mirrors(world);
     if world.mechanism.incremental {
         reroll(&mut world.state.tree, &world.mechanism);
         let triggered = evaluate_triggers(&world.state.tree, &world.mechanism, user_name);

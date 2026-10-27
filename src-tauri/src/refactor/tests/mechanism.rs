@@ -49,6 +49,7 @@ fn apply_mechanism_deletes_source_after_recording_absorption() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -91,6 +92,7 @@ fn apply_mechanism_deletes_source_with_no_prior_ledger_record() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -154,6 +156,7 @@ fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),

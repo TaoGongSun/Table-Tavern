@@ -32,6 +32,7 @@ pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
         incremental: false,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     }
 }
 
@@ -126,5 +127,6 @@ pub(super) fn once_mechanism() -> Mechanism {
         incremental: true,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     }
 }

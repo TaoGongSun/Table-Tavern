@@ -5,12 +5,18 @@ use super::prompt_common::{
 use super::types::GroupKind;
 use crate::transport::ChatMessage;
 
+/// App 固定鍵（card-field-overlaps-fixed-keys）：GM 另行回報，規則不必管；同義卡欄位的對照只由盤點的 MIRRORS 標。
+const FIXED_KEY_MIRROR_NOTE: &str = r#"App 自己管三個固定欄位：time（時間）、place（所在地點）、present（此刻在場人物的名字清單），GM 每回合
+另行回報，不必替它們寫規則。"#;
+
 fn absorb_body() -> String {
     format!(
         r#"這條世界書條目的本文，App 會原文照搬並鎖定，你**只**需要把其中可以由 App 本地執行的部分抽成
 結構化規則。
 
 {MECHANISM_FIELD_SCHEMA}
+
+{FIXED_KEY_MIRROR_NOTE}
 
 {MECHANISM_TRIGGER_SCHEMA}
 
@@ -110,6 +116,8 @@ fn group_body(title: &str, kind: GroupKind, materials: &[(String, String)]) -> S
 二、RULES／TRIGGERS——把其中可以由 App 本地執行的部分抽成結構化 JSON。
 
 {MECHANISM_FIELD_SCHEMA}
+
+{FIXED_KEY_MIRROR_NOTE}
 
 {MECHANISM_TRIGGER_SCHEMA}
 

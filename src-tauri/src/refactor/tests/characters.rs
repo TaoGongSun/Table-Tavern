@@ -26,6 +26,7 @@ fn apply_merges_multi_source_person_deletes_exclusive_entries_and_sets_player_th
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         player_index: Some(0),
@@ -105,6 +106,7 @@ fn apply_rejects_second_player_card_and_writes_nothing() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = RefactorSelection {
         player_index: Some(0),
@@ -146,6 +148,7 @@ fn apply_unselected_person_gets_constant_person_entry_and_both_sources_are_consu
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(vec![0]); // 只勾阿明；小華（index 1）沒勾
 
@@ -204,6 +207,7 @@ fn apply_partial_group_selection_creates_person_entries_for_the_rest_and_keeps_s
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(vec![0, 1]); // 甲、乙
 
@@ -287,6 +291,7 @@ fn apply_shared_uid_follows_finishing_verdict_regardless_of_selection_but_waits_
             audit: Vec::new(),
             preserve_source_uids: Vec::new(),
             source_fingerprints: Default::default(),
+            mirrors: Default::default(),
         };
         let selection = no_player_selection(vec![0]); // 只勾霍玄；重寫條目也沒勾
 
@@ -329,6 +334,7 @@ fn apply_shared_uid_deleted_once_when_all_owners_selected_and_verdict_deletable(
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(vec![0, 1]);
 
@@ -362,6 +368,7 @@ fn apply_shared_uid_kept_without_finish_verdict_even_if_all_owners_selected() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let selection = no_player_selection(vec![0, 1]);
 
@@ -402,6 +409,7 @@ fn apply_unselected_person_entry_survives_new_entries_in_same_apply() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     let mut selection = no_player_selection(vec![0]); // 小華沒勾
     selection.entry_indices = vec![0, 1]; // 「不要的條目」沒勾
@@ -471,6 +479,7 @@ fn apply_rejects_before_writing_when_worldbook_uid_is_exhausted() {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     };
     assert!(apply(
         root.path(),

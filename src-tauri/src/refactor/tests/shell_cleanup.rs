@@ -32,6 +32,7 @@ fn outcome(mode: Option<&str>, interface: Option<RefactorInterface>) -> Refactor
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     }
 }
 
@@ -385,6 +386,7 @@ fn unrelated_mechanism_values_survive_shell_cleanup() {
             inject: InjectLevel::Turn,
             branch: None,
             formula: None,
+            same_as: None,
         },
     );
     data::write_state(root.path(), &world_id, &state).unwrap();
@@ -429,6 +431,7 @@ fn stale_rules_survive_rerun_and_insert_regrows_retired_field() {
             inject: InjectLevel::Turn,
             branch: None,
             formula: None,
+            same_as: None,
         },
     );
     first.guide = "每回合報舊區.HP".to_owned();

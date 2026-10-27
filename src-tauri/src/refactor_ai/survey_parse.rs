@@ -305,6 +305,15 @@ fn parse_group_line(line: &str) -> Option<RefactorSplitGroup> {
     })
 }
 
+/// MIRRORS 區塊行：`- 当前环境 = place`，只收 place／present；欄位名去掉前後空白與開頭 `-`。
+fn parse_mirror_line(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim().trim_start_matches('-').trim();
+    let (name, key) = trimmed.rsplit_once('=')?;
+    let name = name.trim();
+    let key = key.trim().to_ascii_lowercase();
+    (!name.is_empty() && (key == "place" || key == "present")).then(|| (name.to_owned(), key))
+}
+
 /// FIELDS 區塊行：`- 好感度`，去掉開頭 `-` 與空白就是欄位名；空行略過。
 fn parse_field_line(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_start_matches('-').trim();
@@ -326,6 +335,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
             "SPLITS",
             "GROUPS",
             "FIELDS",
+            "MIRRORS",
         ],
     );
     let mut persons = Vec::new();
@@ -335,6 +345,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
     let mut splits = Vec::new();
     let mut groups = Vec::new();
     let mut fields = Vec::new();
+    let mut mirrors = std::collections::BTreeMap::new();
     let mut mode = String::new();
     for block in &blocks {
         match block.marker {
@@ -382,6 +393,12 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
             "SPLITS" => splits.extend(block.lines.iter().filter_map(|line| parse_split_line(line))),
             "GROUPS" => groups.extend(block.lines.iter().filter_map(|line| parse_group_line(line))),
             "FIELDS" => fields.extend(block.lines.iter().filter_map(|line| parse_field_line(line))),
+            "MIRRORS" => mirrors.extend(
+                block
+                    .lines
+                    .iter()
+                    .filter_map(|line| parse_mirror_line(line)),
+            ),
             _ => {}
         }
     }
@@ -394,6 +411,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         splits,
         groups,
         fields,
+        mirrors,
         mode,
         raw: raw.to_owned(),
         source_fingerprints: Default::default(),

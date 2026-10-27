@@ -180,6 +180,9 @@ pub struct RefactorSurveyOutcome {
     /// 狀態欄位命名唯一權威：後續每次展開呼叫的 known_fields 都從這裡起算。
     #[serde(default)]
     pub fields: Vec<String>,
+    /// MIRRORS 區塊：與 App 固定鍵嚴格同義的欄位（欄位名 → "place"｜"present"），隨產物帶到套用。
+    #[serde(default)]
+    pub mirrors: std::collections::BTreeMap<String, String>,
     /// 這份小抄依哪種玩法產出："interface"（保留原卡玩法）｜"characters"（多角色對話）。
     /// 舊產物缺席＝空字串，前端照 interface 行為處理。
     #[serde(default)]

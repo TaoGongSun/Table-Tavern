@@ -147,6 +147,7 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
         incremental: true,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -183,6 +184,7 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
         incremental: true,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -221,6 +223,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
         incremental: true,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -267,6 +270,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
         incremental: true,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -298,6 +302,7 @@ fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
         incremental: true,
         incremental_by_refactor: false,
         guide: String::new(),
+        mirrors: Default::default(),
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),

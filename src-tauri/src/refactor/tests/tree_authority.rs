@@ -86,6 +86,7 @@ fn outcome(mode: &str, state_fields: serde_json::Value) -> RefactorOutcome {
         audit: Vec::new(),
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
+        mirrors: Default::default(),
     }
 }
 

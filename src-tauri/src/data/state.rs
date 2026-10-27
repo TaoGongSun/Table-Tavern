@@ -82,6 +82,10 @@ pub struct FieldRule {
     /// 直覺的 `formula`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
+    /// 重構 AI 標的「這欄嚴格等義於固定鍵 place／present」：只在產物裡傳遞，套用時收進
+    /// `Mechanism::mirrors`（收圍欄的桌）或丟掉，不落在桌上的規則表。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_as: Option<String>,
 }
 
 impl FieldRule {
@@ -103,6 +107,7 @@ impl FieldRule {
             inject,
             branch: None,
             formula: None,
+            same_as: None,
         }
     }
 }
@@ -213,6 +218,10 @@ pub struct Mechanism {
     /// 套用與提示詞同一份；沒算過＝DeltaOnly（原規則）。
     #[serde(skip)]
     pub numeric_update: NumericUpdate,
+    /// 鏡像欄（card-field-overlaps-fixed-keys）：樹上點分路徑 → 固定鍵（"place"｜"present"）。卡自帶、與固定鍵
+    /// 同義的欄位由 App 每回合從平欄抄過去，不要模型回報；條件與佔位照舊讀樹上這一欄。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mirrors: BTreeMap<String, String>,
 }
 
 /// 一個集合的形狀。具名集合以名字為鍵、項目一律是物件（項目帶 app 管的順序葉子 `_序`）；序列集合是 0..n-1。
@@ -274,6 +283,7 @@ impl Default for Mechanism {
             incremental_by_refactor: false,
             guide: String::new(),
             numeric_update: NumericUpdate::default(),
+            mirrors: BTreeMap::new(),
         }
     }
 }
@@ -287,6 +297,7 @@ impl Mechanism {
             && self.guide.is_empty()
             && self.value_types.is_empty()
             && self.collections.is_empty()
+            && self.mirrors.is_empty()
     }
 }
 
